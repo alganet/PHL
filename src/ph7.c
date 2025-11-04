@@ -5,4 +5,5 @@
  */
 
 #include "ph7.h"
+#include "ph7int.h"
 #include "../ph7.c"
