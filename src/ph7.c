@@ -12,4 +12,5 @@
 #include "oo.c"
 #include "memobj.c"
 #include "lib.c"
+#include "lex.c"
 #include "../ph7.c"
