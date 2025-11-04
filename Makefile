@@ -4,13 +4,13 @@
 
 build/ph7: src/ph7.c
 	@mkdir -p build
-	cc -o build/ph7 src/ph7.c examples/ph7_interp.c -W -Wunused -Wall -I. -Ofast
+	cc -o build/ph7 src/ph7.c examples/ph7_interp.c -W -Wunused -Wall -Isrc -Ofast
 
 clean:
 	rm -f build/ph7
 
 test: build/ph7
 	@sh -c '\
-		test "$$(./build/ph7 scripts/hello_world.php)" = "Hello World!" &&\
+		test "$$(./build/ph7 -r scripts/hello_world.php)" = "Hello World!" &&\
 			echo "Test passed." ||\
 			echo "Test failed."'

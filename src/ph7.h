@@ -1,53 +1,11 @@
-/* This file was automatically generated.  Do not edit (except for compile time directive)! */ 
+/**
+ * SPDX-FileCopyrightText: 2011, 2012, 2013, 2014 Symisc Systems <licensing@symisc.net>
+ * SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
 #ifndef _PH7_H_
 #define _PH7_H_
-/*
- * Symisc PH7: An embeddable bytecode compiler and a virtual machine for the PHP(5) programming language.
- * Copyright (C) 2011-2012, Symisc Systems http://ph7.symisc.net/
- * Version 2.1.4
- * For information on licensing,redistribution of this file,and for a DISCLAIMER OF ALL WARRANTIES
- * please contact Symisc Systems via:
- *       legal@symisc.net
- *       licensing@symisc.net
- *       contact@symisc.net
- * or visit:
- *      http://ph7.symisc.net/
- */
-/*
- * Copyright (C) 2011, 2012 Symisc Systems. All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. Redistributions in any form must be accompanied by information on
- *    how to obtain complete source code for the PH7 engine and any 
- *    accompanying software that uses the PH7 engine software.
- *    The source code must either be included in the distribution
- *    or be available for no more than the cost of distribution plus
- *    a nominal fee, and must be freely redistributable under reasonable
- *    conditions. For an executable file, complete source code means
- *    the source code for all modules it contains.It does not include
- *    source code for modules or files that typically accompany the major
- *    components of the operating system on which the executable file runs.
- *
- * THIS SOFTWARE IS PROVIDED BY SYMISC SYSTEMS ``AS IS'' AND ANY EXPRESS
- * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, OR
- * NON-INFRINGEMENT, ARE DISCLAIMED.  IN NO EVENT SHALL SYMISC SYSTEMS
- * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
- * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
- * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
- /* $SymiscID: ph7.h v2.1 UNIX|WIN32/64 2012-09-15 09:43 stable <chm@symisc.net> $ */
+/* Embedded header file for the PH7 engine: <ph7.h> */
 #include <stdarg.h> /* needed for the definition of va_list */
 /*
  * Compile time engine version, signature, identification in the symisc source tree
@@ -85,16 +43,7 @@
  * This macro hold the one associated with ph7.
  */
 #define PH7_IDENT "ph7:c193f4d8a6b90ee60f9afad11840f1010054fdf9"
-/*
- * Copyright notice.
- * If you have any questions about the licensing situation,please
- * visit http://ph7.symisc.net/licensing.html
- * or contact Symisc Systems via:
- *   legal@symisc.net
- *   licensing@symisc.net
- *   contact@symisc.net
- */
-#define PH7_COPYRIGHT "Copyright (C) Symisc Systems 2011-2012, http://ph7.symisc.net/"
+#define PH7_COPYRIGHT "Copyright (C) 2011, 2012, 2013, 2014 Symisc Systems <licensing@symisc.net>\nCopyright (C) Alexandre Gomes Gaigalas <alganet@gmail.com>"
 /* Make sure we can call this stuff from C++ */
 #ifdef __cplusplus
 extern "C" { 
