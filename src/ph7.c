@@ -13,4 +13,5 @@
 #include "memobj.c"
 #include "lib.c"
 #include "lex.c"
+#include "hashmap.c"
 #include "../ph7.c"
