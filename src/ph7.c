@@ -8,4 +8,6 @@
 #include "ph7int.h"
 #include "vm.c"
 #include "vfs.c"
+#include "parse.c"
+#include "oo.c"
 #include "../ph7.c"
