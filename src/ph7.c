@@ -10,4 +10,5 @@
 #include "vfs.c"
 #include "parse.c"
 #include "oo.c"
+#include "memobj.c"
 #include "../ph7.c"
