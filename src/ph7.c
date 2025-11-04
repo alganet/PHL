@@ -16,4 +16,5 @@
 #include "hashmap.c"
 #include "constant.c"
 #include "compile.c"
+#include "builtin.c"
 #include "../ph7.c"
