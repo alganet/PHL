@@ -15,4 +15,5 @@
 #include "lex.c"
 #include "hashmap.c"
 #include "constant.c"
+#include "compile.c"
 #include "../ph7.c"
