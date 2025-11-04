@@ -7,4 +7,5 @@
 #include "ph7.h"
 #include "ph7int.h"
 #include "vm.c"
+#include "vfs.c"
 #include "../ph7.c"
