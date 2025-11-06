@@ -6,7 +6,7 @@
 
 #ifndef PH7_AMALGAMATION
 #define PH7_AMALGAMATION
-#endif /* PH7_AMALGAMATION */
+#endif
 
 #include "ph7.h"
 #include "ph7int.h"

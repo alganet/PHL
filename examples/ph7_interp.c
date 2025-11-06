@@ -13,7 +13,7 @@
  * your error output (STDOUT) should display the compile-time error messages.
  *
  * Usage example of the ph7 interpreter:
- *   ph7 scripts/hello_world.php
+ *   ph7 examples/hello_world.php
  * Running the interpreter with script arguments
  *    ph7 scripts/mp3_tag.php /usr/local/path/to/my_mp3s
  *
