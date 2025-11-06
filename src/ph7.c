@@ -4,17 +4,22 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#ifndef PH7_AMALGAMATION
+#define PH7_AMALGAMATION
+#endif /* PH7_AMALGAMATION */
+
 #include "ph7.h"
 #include "ph7int.h"
-#include "vm.c"
-#include "vfs.c"
-#include "parse.c"
-#include "oo.c"
-#include "memobj.c"
-#include "lib.c"
-#include "lex.c"
-#include "hashmap.c"
-#include "constant.c"
-#include "compile.c"
+
+#include "api.c"
 #include "builtin.c"
-#include "../ph7.c"
+#include "compile.c"
+#include "constant.c"
+#include "hashmap.c"
+#include "lex.c"
+#include "lib.c"
+#include "memobj.c"
+#include "oo.c"
+#include "parse.c"
+#include "vfs.c"
+#include "vm.c"
