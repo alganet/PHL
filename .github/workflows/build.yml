@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
+# SPDX-License-Identifier: BSD-3-Clause
+
+name: Build
+
+on:
+  push:
+    branches: [ dev ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  Build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - name: x86_64-linux-gnu
+            os: ubuntu-latest
+            run_cmd: make
+          - name: x86_64-windows-msvc
+            os: windows-latest
+            extension: .exe
+            run_cmd: build-aux/nmake.bat /nologo /f build-aux/nmake.mk
+    steps:
+    - uses: actions/checkout@v4
+
+    - if: matrix.os == 'windows-latest'
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Build
+      run: ${{ matrix.run_cmd }}
+
+    - name: Archive
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.name }}-ph7${{ matrix.extension }}
+        path: build/${{ matrix.name }}
+  Report:
+    runs-on: ${{ matrix.os }}
+    needs: Build
+    strategy:
+      matrix:
+        include:
+          - name: x86_64-linux-gnu
+            os: ubuntu-latest
+            run_cmd: make test || true
+          - name: x86_64-windows-msvc
+            os: windows-latest
+            extension: .exe
+            run_cmd: wsl -e sh -c 'sh tests/phpt.sh --target-executable build/x86_64-windows-msvc/ph7.exe --target-dir vendor/php-src/tests || true'
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+        
+    - if: matrix.os == 'windows-latest'
+      uses: Vampire/setup-wsl@v6
+
+    - name: Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ matrix.name }}-ph7${{ matrix.extension }}
+        path: build/${{ matrix.name }}
+
+    - name: Test
+      run: |
+        chmod +x build/${{ matrix.name }}/ph7${{ matrix.extension }}
+        ${{ matrix.run_cmd }}

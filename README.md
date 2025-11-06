@@ -1,269 +1,162 @@
-PH7 - An Embedded Implementation of PHP (C Library).
-===
+# PHL - Embeddable PHP Engine
 
-PH7 is a in-process software C library which implements a highly-efficient embeddable bytecode compiler and a virtual machine for the PHP programming language. In other words, PH7 is a PHP engine which allow the host application to compile and execute PHP scripts in-process. PH7 is to PHP what SQLite is to SQL.
+A lightweight, portable, embeddable implementation of PHP written in C.
 
-PH7 implements most of the constructs introduced by the PHP 5.3 release such as heredoc, nowdoc, gotos, classes, anonymous functions, closures and so on and introduces very [powerful extensions](http://ph7.symisc.net/features.html) to the PHP programming language such as:
+## About
 
+PH7 is an in-process software library that implements a highly-efficient embeddable bytecode compiler and virtual machine for the PHP programming language. It allows host applications to compile and execute PHP scripts in-process, making PH7 to PHP what SQLite is to SQL.
 
- * Function & Method Overloading.
- * Full Type Hinting.
- * Introducing comma expressions.
- * Introducing the eq and ne operators for strict string comparison.
- * Improved operators precedences.
- * Powerful OO subsystem.
- * Function arguments can take any complex expressions as their default values.
- * 64-bit integer arithmetic for all platforms.
- * Native UTF-8 support.
- * Written in ANSI C, thread-safe, full-reentrant; compile and run unmodified in any platform including restricted embedded devices with a C compiler.
- * Amalgamation: All C source code for PH7 are combined into a single source file.
- * Built with more 470 function including an XML parser (with namespace support), INI processor, CSV reader/writer, UTF-8 encoder/decoder, zip archive extractor, JSON encoder/decoder, random number/strings generator, native and efficient File IO for Windows and UNIX systems and many more without the need of any external library to link with.
- * PH7 is an Open-Source product.
- 
+This is a refactored version of the original PH7 repository, revived after years of dormancy with modern development practices and a focus on reliability.
 
-As an embedded interpreter, it allows multiple interpreter states to coexist in the same program, without any interference between them. Programmatically, foreign functions in C/C++ can be added and values can be defined in the PHP environment. Being a quite small program, it is easy to comprehend, get to grips with, and use. 
+## Project Goals
 
-PH7 History - Why PHP?
-=========================
+- **Lightweight**: Keep the engine suitable for embedded systems and resource-constrained environments
+- **Portable**: Maintain compatibility across platforms with minimal dependencies
+- **Reliable**: Introduce extensive testing and state-of-the-art continuous integration
+- **Compatible**: Refactor PH7's original idiosyncrasies to be more compatible with official PHP.
 
-PH7 was developed in the early 2011 by a Tunisian startup for a French conglomerate which was looking for a way to power the web interface of their commercial routers.
-Previously the technology used by the conglomerate was obsolete and based on a minimal HTTP server (micro-httpd written by Jef Poskanzer) and a hard-coded binary (the web interface) served via old CGI interface.
-This poor combination shows its limitation when the company decided to switch to a user-configurable (self config) routers where everything must be done via the web interface. This involve a dynamic web UI that have to deal with many issues.
-In order to keep the low level software layer of the router untouched, it was decided to write all the web interface in a dynamic web oriented programming language and the compilation result to be executed by a virtual machine (PH7) and thus leaving the low-level stack of the router untouched.
+## PH7 (Original) Features
 
+- **PHP 5.3 Constructs**: Support for heredoc, nowdoc, goto, classes, anonymous functions, closures, and more
+- **Extended Language Features**:
+  - Function & Method Overloading
+  - Full Type Hinting
+  - Comma expressions
+  - String comparison operators (`eq` and `ne`)
+  - Improved operator precedence
+  - Powerful object-oriented subsystem
+  - Complex expressions as default function argument values
+  - 64-bit integer arithmetic on all platforms
+  - Native UTF-8 support
 
-PH7 in 5 Minutes or Less
-=========================
-Here is what you do to start experimenting with the PH7 engine without having to do a lot of tedious reading and configuration:
+- **Embeddable Architecture**:
+  - Written in ANSI C
+  - Thread-safe and fully reentrant
+  - Multiple interpreter states can coexist without interference
+  - Single-file amalgamation build available
 
-Below is a simple C program that demonstrates how to use the C/C++ interface to PH7. This program compile and execute the following PHP script:
-```php
-<?php
- echo 'Welcome guest'.PHP_EOL;
- echo 'Current system time is: '.date('Y-m-d H:i:s').PHP_EOL;
- echo 'and you are running '.php_uname();
-?>
+- **Rich Built-in Library** (470+ functions):
+  - XML parser with namespace support
+  - INI processor
+  - CSV reader/writer
+  - UTF-8 encoder/decoder
+  - ZIP archive extractor
+  - JSON encoder/decoder
+  - Random number/string generator
+  - Native File I/O for Windows and UNIX
+
+## Quick Start
+
+### Building
+
+```bash
+make
 ```
 
-That is, this simple PHP script when running should display a greeting message, the current system time and the host operating system. A typical output of this program would look like this:
+The default build produces executables in `build/x86_64-linux-gnu/` (or your platform's equivalent).
 
-     Welcome guest
-     Current system time is: 2012-09-14 10:08:44
-     and you are running Microsoft Windows 7 localhost 6.1 build 7600 x86
-
-Here is the C code. Note that you can get a working version of this program [here](http://www.symisc.net/downloads/ph7_intro.c):
+### Hello World Example
 
 ```c
-/* Compile this file together with the ph7 engine source code to generate
-* the executable. For example:
-* gcc -W -Wall -O6 -o ph7_test ph7_intro.c ph7.c
-*/
-/*
-* This simple program is a quick introduction on how to embed and start
-* experimenting with the PH7 engine without having to do a lot of tedious
-* reading and configuration.
-*
-* For an introduction to the PH7 C/C++ interface, please refer to this page
-* http://ph7.symisc.net/api_intro.html
-* For the full C/C++ API reference guide, please refer to this page
-* http://ph7.symisc.net/c_api.html
-*/
-/*
-* The following is the PHP program to execute.
-* <?php
-* echo 'Welcome guest'.PHP_EOL;
-* echo 'Current system time is: '.date('Y-m-d H:i:s').PHP_EOL;
-* echo 'and you are running '.php_uname();
-* ?>
-* That is, this simple program when running should display a greeting
-* message, the current system time and the host operating system.
-* A typical output of this program would look like this:
-*
-* Welcome guest
-* Current system time is: 2012-09-14 02:08:44
-* and you are running Microsoft Windows 7 localhost 6.1 build 7600 x86
-*
-*/
-#define PHP_PROG "<?php "\
-"echo 'Welcome guest'.PHP_EOL;"\
-"echo 'Current system time is: '.date('Y-m-d H:i:s').PHP_EOL;"\
-"echo 'and you are running '.php_uname();"\
-"?>"
-/* Make sure you have the latest release of the PH7 engine
-* from:
-* http://ph7.symisc.net/downloads.html
-*/
+#include "src/ph7.h"
 #include <stdio.h>
-#include <stdlib.h>
-/* Make sure this header file is available.*/
-#include "ph7.h"
-/*
-* Display an error message and exit.
-*/
-static void Fatal(const char *zMsg)
-{
-  puts(zMsg);
-  /* Shutdown the library */
-  ph7_lib_shutdown();
-  /* Exit immediately */
-   exit(0);
- }
-/*
-* VM output consumer callback.
-* Each time the virtual machine generates some outputs, the following
-* function gets called by the underlying virtual machine to consume
-* the generated output.
-* All this function does is redirecting the VM output to STDOUT.
-* This function is registered later via a call to ph7_vm_config()
-* with a configuration verb set to: PH7_VM_CONFIG_OUTPUT.
-*/
-static int Output_Consumer(const void *pOutput, unsigned int nOutputLen, void *pUserData /* Unused */)
-{
-  /*
-   * Note that it's preferable to use the write() system call to display the output
-   * rather than using the libc printf() which everybody now is extremely slow.
-   */
-  printf("%.*s",
-      nOutputLen,
-      (const char *)pOutput /* Not null terminated */
-   );
-    /* All done, VM output was redirected to STDOUT */
+
+static int output_consumer(const void *pOutput, unsigned int nLen, void *pUserData) {
+    printf("%.*s", nLen, (const char *)pOutput);
     return PH7_OK;
- }
-/*
-* Main program: Compile and execute the PHP program defined above.
-*/
-int main(void)
-{
-  ph7 *pEngine; /* PH7 engine */
-  ph7_vm *pVm; /* Compiled PHP program */
-  int rc;
-  /* Allocate a new PH7 engine instance */
-  rc = ph7_init(&pEngine);
-  if( rc != PH7_OK ){
-   /*
-    * If the supplied memory subsystem is so sick that we are unable
-    * to allocate a tiny chunk of memory, there is no much we can do here.
-    */
-   Fatal("Error while allocating a new PH7 engine instance");
-  }
-  /* Compile the PHP test program defined above */
-  rc = ph7_compile_v2(
-      pEngine, /* PH7 engine */
-      PHP_PROG, /* PHP test program */
-      -1 /* Compute input length automatically*/,
-      &pVm, /* OUT: Compiled PHP program */
-      0 /* IN: Compile flags */
-   );
-  if( rc != PH7_OK ){
-    if( rc == PH7_COMPILE_ERR ){
-      const char *zErrLog;
-      int nLen;
-     /* Extract error log */
-     ph7_config(pEngine,
-       PH7_CONFIG_ERR_LOG,
-       &zErrLog,
-       &nLen
-     );
-   if( nLen > 0 ){
-     /* zErrLog is null terminated */
-     puts(zErrLog);
-    }
-  }
-  /* Exit */
-  Fatal("Compile error");
 }
-/*
- * Now we have our script compiled, it's time to configure our VM.
- * We will install the output consumer callback defined above
- * so that we can consume and redirect the VM output to STDOUT.
- */
-rc = ph7_vm_config(pVm,
-      PH7_VM_CONFIG_OUTPUT,
-      Output_Consumer, /* Output Consumer callback */
-      0 /* Callback private data */
-   );
-  if( rc != PH7_OK ){
-     Fatal("Error while installing the VM output consumer callback");
-  }
-/*
-* And finally, execute our program. Note that your output (STDOUT in our case)
-* should display the result.
-*/
-ph7_vm_exec(pVm,0);
-/* All done, cleanup the mess left behind.
-*/
-ph7_vm_release(pVm);
-ph7_release(pEngine);
-return 0;
+
+int main(void) {
+    ph7 *pEngine;
+    ph7_vm *pVm;
+    const char *code = "<?php echo 'Hello, World!'; ?>";
+    
+    // Initialize engine
+    ph7_init(&pEngine);
+    
+    // Compile PHP code
+    ph7_compile_v2(pEngine, code, -1, &pVm, 0);
+    
+    // Configure output handler
+    ph7_vm_config(pVm, PH7_VM_CONFIG_OUTPUT, output_consumer, 0);
+    
+    // Execute
+    ph7_vm_exec(pVm, 0);
+    
+    // Cleanup
+    ph7_vm_release(pVm);
+    ph7_release(pEngine);
+    
+    return 0;
 }
 ```
 
+Compile with:
+```bash
+gcc -o hello hello.c src/ph7.c
+```
 
-We create a new [PH7 engine instance](http://ph7.symisc.net/c_api_func.html#ph7_init) using a call to [ph7_init()](http://ph7.symisc.net/c_api_func.html#ph7_init) on line 86. This is often the first PH7 API call that an application makes and is a prerequisite in order to compile PHP code using one of the compile interfaces.
+### Using the Interpreter
 
+The project includes a standalone PHP interpreter:
 
-We compile our PHP test program on line 95 using the [ph7_compile_v2()](http://ph7.symisc.net/c_api_func.html#ph7_compile_v2) interface.
+```bash
+# Run a PHP file
+./build/x86_64-linux-gnu/ph7 examples/hello_world.php
 
+# With script arguments
+./build/x86_64-linux-gnu/ph7 script.php arg1 arg2
+```
 
-We [configure our Virtual Machine](http://ph7.symisc.net/c_api_func.html#ph7_vm_config) on line 125 by setting a [VM output consumer callback](http://ph7.symisc.net/output_consumer.html) named Output_Consumer(). All this callback does is redirecting the VM output to STDOUT using the libc printf() routine or the write() system call.
+## Examples
 
+See the [`examples/`](examples/) directory for more usage examples:
 
-And finally we execute our PHP program on line 137 using a call to [ph7_vm_exec()](http://ph7.symisc.net/c_api_func.html#ph7_vm_exec). You should see now the greeting message, the current date and the host operating system.
+- `ph7_intro.c` - Basic embedding example
+- `ph7_cgi.c` - CGI-style execution
+- `ph7_func_intro.c` - Registering C functions
+- `ph7_const_intro.c` - Defining constants
 
+## Testing
 
-Clean-up is done on line 140 and 141 respectively via calls to [ph7_vm_release()](http://ph7.symisc.net/c_api_func.html#ph7_vm_release) and [ph7_release()](http://ph7.symisc.net/c_api_func.html#ph7_release).
+*(Testing infrastructure is being developed as part of this refactor)*
 
-Now, Compile this C file together with the PH7 engine source code to generate the executable. For example:
+```bash
+# Run tests
+make test
+```
 
-**gcc -W -Wall -O6 -o ph7_test ph7_intro.c ph7.c**
+## Documentation
 
-When running [./ph7_test ] you should see the greeting message, the current system time and the host operating system.
+- [Original API Documentation](http://ph7.symisc.net/c_api.html)
+- [Embedding Guide](http://ph7.symisc.net/intro.html)
+- [Foreign Function Interface](http://ph7.symisc.net/func_intro.html)
 
-The PH7 [download](http://ph7.symisc.net/downloads.html) page includes a simple stand-alone PHP interpreter named ph7 (or ph7.exe on windows) that allows the user to enter and execute PHP files against a PH7 engine. This utility is available in prebuilt binaries forms or can be compiled from source. You can get a copy of the PH7 interpreter from the download page.
+## License
 
-To start the ph7 program, just type "ph7" followed by the name of the PHP file to compile and execute. That is, the first argument is to the interpreter, the rest are scripts arguments, press "Enter" and the PHP code will be executed.
+PH7 is licensed under the BSD 3-Clause License. See [`LICENSES/`](LICENSES/) for details.
 
-If something goes wrong while processing the PHP script due to a compile-time error, your error output (STDOUT) should display the compile-time error messages.
+## History
 
+PH7 was originally developed in 2011 for embedded router web interfaces, providing a dynamic scripting environment in resource-constrained devices. This refactored version aims to modernize the codebase while preserving its lightweight, embeddable nature.
 
-Usage example of the ph7 interpreter:
+## Contributing
 
-Running the interpreter
+Contributions are welcome! This refactor focuses on:
+- Improving test coverage
+- Setting up modern CI/CD pipelines
+- Maintaining backward compatibility
+- Keeping the codebase portable and lightweight
 
-**ph7 scripts/hello_world.php**
+## Differences from Original
 
-Running the interpreter with script arguments
+This refactored version maintains API compatibility with the original PH7 while introducing:
+- Modern build system improvements
+- Comprehensive test suite
+- Continuous integration
+- Better documentation
+- Active maintenance
 
-**ph7 scripts/mp3_tag.php /usr/local/path/to/my_mp3s**
+---
 
-Useful links to start with
-===========================
-
-[Download](http://ph7.symisc.net/downloads.html) 	:	Get a copy of the last public release of the PH7 engine, start embedding and enjoy programming with.
-
-[Distinctive Features](http://ph7.symisc.net/features.html): 	This document enumerates and describes some of the features and the powerfull extensions introduced by the PH7 engine.
-
-
-[Frequently Asked Questions](http://ph7.symisc.net/faq.html): 	FAQ: The title of the document says all...
-
-
-[Copyright/Licensing](http://ph7.symisc.net/licensing.html): 		PH7 is dual-licensed and is available free of charge for open source projects. Find more on the licensing situation there.
-
-[Online Community Support](http://ph7.symisc.net/support.html): 	Need some help, join the PH7 online community.
-
-PH7 Programming Interfaces
-==========================
-
-Documentation describing the APIs used to program PH7. Note that PH7 is very easy to learn, even for new programmer. Here is some useful links to start with:
-
-
-[PH7 In 5 Minutes Or Less](http://ph7.symisc.net/intro.html):  Gives a high-level overview on the how to embed the PH7 engine in a host application.
-
-[An Introduction To The PH7 C/C++ Interface](http://ph7.symisc.net/api_intro.html): Gives an overview and roadmap to the C/C++ interface to PH7.
-
-[C/C++ API Reference Guide](http://ph7.symisc.net/c_api.html):  This document describes each API function in details.
-
-[Foreign Function Implementation](http://ph7.symisc.net/func_intro.html): Is a how-to guide on how to install C functions and invoke them from your PHP script.
-
-[Constant Expansion Mechanism](http://ph7.symisc.net/const_intro.html): 	Is a how-to guide on how to install foreign constants and expand their values from your PHP script.
+**Note**: For the historical README, see [`OLDREADME.md`](OLDREADME.md).
