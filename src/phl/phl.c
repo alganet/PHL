@@ -29,6 +29,7 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 /* Make sure this header file is available.*/
 #include "ph7.h"
 /* 
@@ -47,10 +48,21 @@ static void Fatal(const char *zMsg)
  */
 static void Help(void)
 {
-	puts("phl [-h|-b|-x] path/to/php_file [script args]");
+	puts("phl [-h|--help|-b|-x|-v|--version] path/to/php_file [script args]");
 	puts("\t-b: Dump PH7 byte-code instructions");
 	puts("\t-x: Report run-time errors");
-	puts("\t-h: Display this message and exit");
+	puts("\t-v, --version: Display version information and exit");
+	puts("\t-h, --help: Display this message and exit");
+	/* Exit immediately */
+	exit(0);
+}
+/*
+ * Display version information and exit.
+ */
+static void Version(void)
+{
+	puts("PHL " PH7_VERSION " (cli) (built " __DATE__ " " __TIME__ ")");
+	puts("Copyright (c) 2011-2014 Symisc Systems, 2025 Alexandre Gomes Gaigalas");
 	/* Exit immediately */
 	exit(0);
 }
@@ -114,6 +126,18 @@ int main(int argc,char **argv)
 			/* No more interpreter arguments */
 			break;
 		}
+		/* Check for long options */
+		if( argv[n][1] == '-' ){
+			if( strcmp(argv[n], "--version") == 0 ){
+				Version();
+			}else if( strcmp(argv[n], "--help") == 0 ){
+				Help();
+			}else{
+				/* Unknown long option */
+				Help();
+			}
+			continue;
+		}
 		c = argv[n][1];
 		if( c == 'b' ){
 			/* Dump byte-code instructions */
@@ -121,6 +145,9 @@ int main(int argc,char **argv)
 		}else if( c == 'x' ){
 			/* Report run-time errors */
 			err_report = 1;
+		}else if( c == 'v' ){
+			/* Display version */
+			Version();
 		}else{
 			/* Display a help message and exit */
 			Help();

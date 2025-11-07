@@ -4,11 +4,20 @@
 
 # This file MUST support GNU make 3.82
 
-BUILD_DIR = build/$(shell $(CC) -dumpmachine)
 CC ?= cc
+TARGET ?= $(shell CC=$(CC) ./build-aux/get_target.sh)
+
+BUILD_DIR = build/$(TARGET)
 CFLAGS = -W -Wunused -Wall -Isrc/ph7 -Ofast
 LDFLAGS = -lm
-PROGRAM = phl
+
+.PHONY: all clean test test-compat coverage coverage-html
+all: $(BUILD_DIR)/phl
+clean: $(BUILD_DIR)-clean
+test: $(BUILD_DIR)-test
+test-compat: $(BUILD_DIR)-test-compat
+coverage: $(BUILD_DIR)/coverage
+coverage-html: $(BUILD_DIR)/coverage-html
 
 # Source file lists
 SRC_SOURCES = \
@@ -41,7 +50,7 @@ OBJECTS = \
   $(BUILD_DIR)/src/ph7/vm.o \
   $(BUILD_DIR)/src/phl/phl.o
 
-all: $(BUILD_DIR)/$(PROGRAM)
+all: $(BUILD_DIR)/phl
 
 # Pattern rules for compilation
 $(BUILD_DIR)/src/ph7/%.o: src/ph7/%.c | $(BUILD_DIR)/src/ph7
@@ -51,41 +60,63 @@ $(BUILD_DIR)/src/phl/%.o: src/phl/%.c | $(BUILD_DIR)/src/phl
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Build target
-$(BUILD_DIR)/$(PROGRAM): $(OBJECTS)
+$(BUILD_DIR)/phl: $(OBJECTS)
 	$(CC) $(CFLAGS) -o $@ $(OBJECTS) $(LDFLAGS)
 
 # Directory creation
 $(BUILD_DIR)/src/ph7 $(BUILD_DIR)/src/phl:
 	@mkdir -p $@
 
-clean:
+$(BUILD_DIR)-clean:
 	@rm -rf $(BUILD_DIR)/*
 
-test: $(BUILD_DIR)/$(PROGRAM)
-	@sh tests/phpt.sh \
-          --target-executable $(BUILD_DIR)/phl \
-          --target-dir vendor/php-src/tests
+# TESTING AND COVERAGE TARGETS
+# ----------------------------
 
-# Coverage build with gcov flags
+TEST_EXECUTABLE ?= $(BUILD_DIR)/phl
+PHP_EXECUTABLE ?= $(shell command -v php)
+
+TEST_PHL_CMD = $(BUILD_DIR)/phl -x tests/phpt.php \
+	--target-executable $(TEST_EXECUTABLE) \
+	--target-dir tests
+TEST_PHP_CMD = $(BUILD_DIR)/phl -x tests/phpt.php \
+	--target-executable $(PHP_EXECUTABLE) \
+	--target-dir tests
+
+$(BUILD_DIR)-test:
+	@$(TEST_PHL_CMD)
+
+$(BUILD_DIR)-test-compat:
+	$(eval TEST_EXECUTABLE := $(BUILD_DIR)/phl)
+	@$(TEST_EXECUTABLE) --version
+	@$(TEST_PHL_CMD) --output-format dot
+	@$(PHP_EXECUTABLE) --version
+	@$(TEST_PHP_CMD) --output-format dot
+
 COVERAGE_CFLAGS = $(CFLAGS) -fprofile-arcs -ftest-coverage
 COVERAGE_LDFLAGS = $(LDFLAGS) -lgcov
 COVERAGE_OBJECTS = $(OBJECTS:.o=.gcov.o)
-COVERAGE_PROGRAM = $(BUILD_DIR)/phl-coverage
+COVERAGE_PHL_CMD = $(BUILD_DIR)/phl -x tests/phpt.php \
+	--target-executable $(BUILD_DIR)/phl-coverage \
+	--target-dir tests \
+	--output-format dot
 
 $(BUILD_DIR)/src/ph7/%.gcov.o: src/ph7/%.c | $(BUILD_DIR)/src/ph7
 	$(CC) $(COVERAGE_CFLAGS) -c $< -o $@
 
-$(BUILD_DIR)/examples/%.gcov.o: examples/%.c | $(BUILD_DIR)/examples
+$(BUILD_DIR)/src/phl/%.gcov.o: src/phl/%.c | $(BUILD_DIR)/src/phl
 	$(CC) $(COVERAGE_CFLAGS) -c $< -o $@
 
-$(COVERAGE_PROGRAM): $(COVERAGE_OBJECTS)
+$(BUILD_DIR)/phl-coverage: $(COVERAGE_OBJECTS)
 	$(CC) $(COVERAGE_CFLAGS) -o $@ $(COVERAGE_OBJECTS) $(COVERAGE_LDFLAGS)
 
-coverage: clean $(COVERAGE_PROGRAM)
-	-@sh tests/phpt.sh \
-          --target-executable $(COVERAGE_PROGRAM) \
-          --target-dir vendor/php-src/tests
-	@lcov --capture --directory $(BUILD_DIR) --output-file $(BUILD_DIR)/coverage.info
-	@lcov --remove $(BUILD_DIR)/coverage.info '*/examples/*' --output-file $(BUILD_DIR)/coverage.info
-	@genhtml $(BUILD_DIR)/coverage.info --output-directory $(BUILD_DIR)/coverage-html
+$(BUILD_DIR)/coverage.info: clean $(BUILD_DIR)/phl-coverage
+	@$(COVERAGE_PHL_CMD)
+	@lcov --capture --directory $(BUILD_DIR) --include 'src/*' --output-file $(BUILD_DIR)/coverage.info
+	@lcov --list $(BUILD_DIR)/coverage.info
+	@lcov --summary $(BUILD_DIR)/coverage.info
+
+$(BUILD_DIR)/coverage-html: $(BUILD_DIR)/coverage.info
+	@genhtml --include 'src/*' $(BUILD_DIR)/coverage.info --output-directory $(BUILD_DIR)/coverage-html
 	@echo "Coverage report generated in $(BUILD_DIR)/coverage-html/index.html"
+

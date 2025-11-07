@@ -1,0 +1,13 @@
+--TEST--
+Clean test example
+--FILE--
+<?php
+echo "Hello from clean test";
+?>
+--EXPECT--
+Hello from clean test
+--CLEAN--
+<?php
+// Some cleanup code
+echo "Cleaning up\n";
+?>

@@ -1,0 +1,10 @@
+--TEST--
+Skip test example
+--SKIPIF--
+<?php echo "skip this test"; ?>
+--FILE--
+<?php
+echo "This should not run";
+?>
+--EXPECT--
+This should not run

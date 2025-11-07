@@ -48,7 +48,7 @@ jobs:
       with:
         name: ${{ matrix.name }}-phl${{ matrix.extension }}
         path: build/${{ matrix.name }}
-  Report:
+  Test:
     runs-on: ${{ matrix.os }}
     needs: Build
     strategy:
@@ -56,18 +56,14 @@ jobs:
         include:
           - name: x86_64-linux-gnu
             os: ubuntu-latest
-            run_cmd: make test || true
+            run_cmd: make test-compat
           - name: x86_64-windows-msvc
             os: windows-latest
             extension: .exe
-            run_cmd: wsl -e sh -c 'sh tests/phpt.sh --target-executable build/x86_64-windows-msvc/phl.exe --target-dir vendor/php-src/tests || true'
+            run_cmd: >
+              build-aux/nmake.bat /nologo /f build-aux/nmake.mk test-compat
     steps:
     - uses: actions/checkout@v5
-      with:
-        submodules: true
-        
-    - if: matrix.os == 'windows-latest'
-      uses: Vampire/setup-wsl@v6
 
     - name: Artifact
       uses: actions/download-artifact@v6
