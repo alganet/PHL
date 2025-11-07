@@ -19,14 +19,13 @@ win_temp="$(powershell.exe \
     -NoProfile -ExecutionPolicy Bypass \
     -Command 'Write-Host ${env:TEMP}')"
 wsl_temp=$(wslpath -u "$win_temp")
-tmpdir="$wsl_temp/PH7-build"
+tmpdir="$wsl_temp/PHL-build"
 
 # Create temp build directory and copy source files
 mkdir -p "$tmpdir"
-rsync -a "$workspace_dir/build-aux" "$tmpdir" &
 rsync -a "$workspace_dir/src" "$tmpdir" &
-rsync -a "$workspace_dir/examples" "$tmpdir" &
 rsync -a "$workspace_dir/tests" "$tmpdir" &
+rsync -a "$workspace_dir/build-aux" "$tmpdir" &
 wait
 
 # Run build in temp directory via PowerShell
