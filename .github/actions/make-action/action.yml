@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
+# SPDX-License-Identifier: BSD-3-Clause
+
+name: 'Portable Make Action'
+description: 'Reusable action to run make commands for jobs'
+
+inputs:
+  name:
+    description: 'The build name (e.g., x86_64-linux-gnu). Will be used to determine OS.'
+    required: true
+  make:
+    description: 'The make command to run (e.g., test, test-compat, or empty for build)'
+    required: false
+    default: ''
+  extension:
+    description: 'File extension for the binary (e.g., .exe for Windows)'
+    required: false
+    default: ''
+  save_job:
+    description: 'Job name to save artifact as. If set, uploads artifact with name {save_job}-{name}.'
+    required: false
+  restore_job:
+    description: 'Job name to restore artifact from. If set, downloads artifact with name {restore_job}-{name}.'
+    required: false
+
+runs:
+  using: 'composite'
+  steps:
+    - if: inputs.restore_job != ''
+      name: Download artifact
+      uses: actions/download-artifact@v5
+      with:
+        name: ${{ inputs.restore_job }}-${{ inputs.name }}
+        path: build/${{ inputs.name }}
+
+    - if: inputs.restore_job != '' && contains(inputs.name, '-linux-')
+      run: chmod +x build/${{ inputs.name }}/phl${{ inputs.extension }}
+      shell: bash
+
+    - if: contains(inputs.name, '-linux-')
+      run: make ${{ inputs.make }}
+      shell: bash
+
+    - if: contains(inputs.name, '-windows-')
+      run: build-aux/nmake.bat /nologo /f build-aux/nmake.mk ${{ inputs.make }}
+      shell: cmd
+
+    - if: inputs.save_job != ''
+      name: Upload artifact
+      uses: actions/upload-artifact@v5
+      with:
+        name: ${{ inputs.save_job }}-${{ inputs.name }}
+        path: build/${{ inputs.name }}

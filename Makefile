@@ -16,7 +16,7 @@ all: $(BUILD_DIR)/phl
 clean: $(BUILD_DIR)-clean
 test: $(BUILD_DIR)-test
 test-compat: $(BUILD_DIR)-test-compat
-coverage: $(BUILD_DIR)/coverage
+coverage: $(BUILD_DIR)/coverage.info
 coverage-html: $(BUILD_DIR)/coverage-html
 
 # Source file lists
@@ -96,7 +96,7 @@ $(BUILD_DIR)-test-compat:
 COVERAGE_CFLAGS = $(CFLAGS) -fprofile-arcs -ftest-coverage
 COVERAGE_LDFLAGS = $(LDFLAGS) -lgcov
 COVERAGE_OBJECTS = $(OBJECTS:.o=.gcov.o)
-COVERAGE_PHL_CMD = $(BUILD_DIR)/phl -x tests/phpt.php \
+COVERAGE_PHL_CMD = $(BUILD_DIR)/phl-coverage -x tests/phpt.php \
 	--target-executable $(BUILD_DIR)/phl-coverage \
 	--target-dir tests \
 	--output-format dot
@@ -110,7 +110,7 @@ $(BUILD_DIR)/src/phl/%.gcov.o: src/phl/%.c | $(BUILD_DIR)/src/phl
 $(BUILD_DIR)/phl-coverage: $(COVERAGE_OBJECTS)
 	$(CC) $(COVERAGE_CFLAGS) -o $@ $(COVERAGE_OBJECTS) $(COVERAGE_LDFLAGS)
 
-$(BUILD_DIR)/coverage.info: clean $(BUILD_DIR)/phl-coverage
+$(BUILD_DIR)/coverage.info: $(BUILD_DIR)/phl-coverage
 	@$(COVERAGE_PHL_CMD)
 	@lcov --capture --directory $(BUILD_DIR) --include 'src/*' --output-file $(BUILD_DIR)/coverage.info
 	@lcov --list $(BUILD_DIR)/coverage.info
