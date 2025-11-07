@@ -55,8 +55,9 @@ make test
 - Ensure CI checks pass
 - Follow the coding standards below
 
-### Branch Strategy
+### Branch and Commit Strategy
 
+- One commit per pull request, if you need changes to your PR, amend it
 - We maintain a linear main branch history
 - Only rebase-style commits are accepted (no merge commits)
 - Please rebase your feature branch onto the latest main before submitting a PR
@@ -91,9 +92,11 @@ make test
 - Add comments to code for clarity
 - Update examples if relevant
 
-## License
+## Licensing
 
 By contributing to PHL, you agree that your contributions will be licensed under the BSD 3-Clause License.
+
+Please make sure you include the appropriate SPDX headers in new files.
 
 ## Questions?
 
