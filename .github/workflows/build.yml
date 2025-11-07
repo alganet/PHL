@@ -23,7 +23,7 @@ jobs:
             extension: .exe
             run_cmd: build-aux/nmake.bat /nologo /f build-aux/nmake.mk
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - if: matrix.os == 'windows-latest'
       uses: microsoft/setup-msbuild@v2
@@ -50,7 +50,7 @@ jobs:
             extension: .exe
             run_cmd: wsl -e sh -c 'sh tests/phpt.sh --target-executable build/x86_64-windows-msvc/ph7.exe --target-dir vendor/php-src/tests || true'
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         submodules: true
         
