@@ -3,11 +3,17 @@
 
 # This file must support nmake.exe
 
-BUILD_DIR = build\x86_64-windows-msvc
 CC = cl
+TARGET = x86_64-windows-msvc
+
+BUILD_DIR = build\$(TARGET)
 CFLAGS = /Fd$(BUILD_DIR)\ph7.pdb /I src\ph7 /W4 /Ox
 LDFLAGS = /link advapi32.lib /nologo /subsystem:console /entry:mainCRTStartup
-PROGRAM = phl.exe
+
+all: $(BUILD_DIR)\phl.exe
+clean: $(BUILD_DIR)-clean
+test: $(BUILD_DIR)-test
+test-compat: $(BUILD_DIR)-test-compat
 
 # Source file lists
 SRC_SOURCES = \
@@ -40,8 +46,6 @@ OBJECTS = \
   $(BUILD_DIR)\src\ph7\vm.obj \
   $(BUILD_DIR)\src\phl\phl.obj
 
-all: $(BUILD_DIR)\$(PROGRAM)
-
 # Inference rules for compilation
 {src\ph7}.c{$(BUILD_DIR)\src\ph7}.obj:
   @if not exist $(BUILD_DIR)\src\ph7 mkdir $(BUILD_DIR)\src\ph7
@@ -52,12 +56,34 @@ all: $(BUILD_DIR)\$(PROGRAM)
   $(CC) $(CFLAGS) /Fo"$@" /c $<
 
 # Build target
-$(BUILD_DIR)\$(PROGRAM): $(BUILD_DIR) $(OBJECTS)
+$(BUILD_DIR)\phl.exe: $(BUILD_DIR) $(OBJECTS)
   $(CC) $(CFLAGS) /Fe$@ $(OBJECTS) $(LDFLAGS)
 
 # Directory creation
 $(BUILD_DIR):
   @if not exist $(BUILD_DIR) mkdir $(BUILD_DIR)
 
-clean:
+$(BUILD_DIR)-clean:
   @del /s /q $(BUILD_DIR)\*
+
+# TESTING AND COVERAGE TARGETS
+# ----------------------------
+
+TEST_EXECUTABLE = $(BUILD_DIR)\phl.exe
+PHP_EXECUTABLE = php.exe
+
+TEST_PHL_CMD = $(BUILD_DIR)\phl.exe -x tests/phpt.php \
+	--target-executable $(TEST_EXECUTABLE) \
+	--target-dir tests
+TEST_PHP_CMD = $(BUILD_DIR)\phl.exe -x tests/phpt.php \
+	--target-executable $(PHP_EXECUTABLE) \
+	--target-dir tests
+
+$(BUILD_DIR)-test:
+	@$(TEST_PHL_CMD)
+
+$(BUILD_DIR)-test-compat:
+	@$(BUILD_DIR)\phl.exe --version
+	@$(TEST_PHL_CMD) --output-format dot
+	@$(PHP_EXECUTABLE) --version
+	@$(TEST_PHP_CMD) --output-format dot

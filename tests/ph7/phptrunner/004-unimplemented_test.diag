@@ -1,0 +1,10 @@
+--TEST--
+Unimplemented test example
+--GET--
+some get data
+--FILE--
+<?php
+echo "This uses unimplemented feature";
+?>
+--EXPECT--
+This uses unimplemented feature
