@@ -6,9 +6,9 @@
 
 BUILD_DIR = build/$(shell $(CC) -dumpmachine)
 CC ?= cc
-CFLAGS = -W -Wunused -Wall -Isrc -Ofast
+CFLAGS = -W -Wunused -Wall -Isrc/ph7 -Ofast
 LDFLAGS = -lm
-PROGRAM = ph7
+PROGRAM = phl
 
 # Source file lists
 SRC_SOURCES = \
@@ -25,31 +25,29 @@ SRC_SOURCES = \
   vfs.c \
   vm.c
 
-EXAMPLE_SOURCES = ph7_interp.c
-
 # Object files
 OBJECTS = \
-  $(BUILD_DIR)/src/api.o \
-  $(BUILD_DIR)/src/builtin.o \
-  $(BUILD_DIR)/src/compile.o \
-  $(BUILD_DIR)/src/constant.o \
-  $(BUILD_DIR)/src/hashmap.o \
-  $(BUILD_DIR)/src/lex.o \
-  $(BUILD_DIR)/src/lib.o \
-  $(BUILD_DIR)/src/memobj.o \
-  $(BUILD_DIR)/src/oo.o \
-  $(BUILD_DIR)/src/parse.o \
-  $(BUILD_DIR)/src/vfs.o \
-  $(BUILD_DIR)/src/vm.o \
-  $(BUILD_DIR)/examples/ph7_interp.o
+  $(BUILD_DIR)/src/ph7/api.o \
+  $(BUILD_DIR)/src/ph7/builtin.o \
+  $(BUILD_DIR)/src/ph7/compile.o \
+  $(BUILD_DIR)/src/ph7/constant.o \
+  $(BUILD_DIR)/src/ph7/hashmap.o \
+  $(BUILD_DIR)/src/ph7/lex.o \
+  $(BUILD_DIR)/src/ph7/lib.o \
+  $(BUILD_DIR)/src/ph7/memobj.o \
+  $(BUILD_DIR)/src/ph7/oo.o \
+  $(BUILD_DIR)/src/ph7/parse.o \
+  $(BUILD_DIR)/src/ph7/vfs.o \
+  $(BUILD_DIR)/src/ph7/vm.o \
+  $(BUILD_DIR)/src/phl/phl.o
 
 all: $(BUILD_DIR)/$(PROGRAM)
 
 # Pattern rules for compilation
-$(BUILD_DIR)/src/%.o: src/%.c | $(BUILD_DIR)/src
+$(BUILD_DIR)/src/ph7/%.o: src/ph7/%.c | $(BUILD_DIR)/src/ph7
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD_DIR)/examples/%.o: examples/%.c | $(BUILD_DIR)/examples
+$(BUILD_DIR)/src/phl/%.o: src/phl/%.c | $(BUILD_DIR)/src/phl
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Build target
@@ -57,7 +55,7 @@ $(BUILD_DIR)/$(PROGRAM): $(OBJECTS)
 	$(CC) $(CFLAGS) -o $@ $(OBJECTS) $(LDFLAGS)
 
 # Directory creation
-$(BUILD_DIR)/src $(BUILD_DIR)/examples:
+$(BUILD_DIR)/src/ph7 $(BUILD_DIR)/src/phl:
 	@mkdir -p $@
 
 clean:
@@ -65,16 +63,16 @@ clean:
 
 test: $(BUILD_DIR)/$(PROGRAM)
 	@sh tests/phpt.sh \
-          --target-executable $(BUILD_DIR)/ph7 \
+          --target-executable $(BUILD_DIR)/phl \
           --target-dir vendor/php-src/tests
 
 # Coverage build with gcov flags
 COVERAGE_CFLAGS = $(CFLAGS) -fprofile-arcs -ftest-coverage
 COVERAGE_LDFLAGS = $(LDFLAGS) -lgcov
 COVERAGE_OBJECTS = $(OBJECTS:.o=.gcov.o)
-COVERAGE_PROGRAM = $(BUILD_DIR)/ph7-coverage
+COVERAGE_PROGRAM = $(BUILD_DIR)/phl-coverage
 
-$(BUILD_DIR)/src/%.gcov.o: src/%.c | $(BUILD_DIR)/src
+$(BUILD_DIR)/src/ph7/%.gcov.o: src/ph7/%.c | $(BUILD_DIR)/src/ph7
 	$(CC) $(COVERAGE_CFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/examples/%.gcov.o: examples/%.c | $(BUILD_DIR)/examples

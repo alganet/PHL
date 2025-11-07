@@ -34,7 +34,7 @@ jobs:
     - name: Archive
       uses: actions/upload-artifact@v5
       with:
-        name: ${{ matrix.name }}-ph7${{ matrix.extension }}
+        name: ${{ matrix.name }}-phl${{ matrix.extension }}
         path: build/${{ matrix.name }}
   Report:
     runs-on: ${{ matrix.os }}
@@ -48,7 +48,7 @@ jobs:
           - name: x86_64-windows-msvc
             os: windows-latest
             extension: .exe
-            run_cmd: wsl -e sh -c 'sh tests/phpt.sh --target-executable build/x86_64-windows-msvc/ph7.exe --target-dir vendor/php-src/tests || true'
+            run_cmd: wsl -e sh -c 'sh tests/phpt.sh --target-executable build/x86_64-windows-msvc/phl.exe --target-dir vendor/php-src/tests || true'
     steps:
     - uses: actions/checkout@v5
       with:
@@ -60,10 +60,10 @@ jobs:
     - name: Artifact
       uses: actions/download-artifact@v6
       with:
-        name: ${{ matrix.name }}-ph7${{ matrix.extension }}
+        name: ${{ matrix.name }}-phl${{ matrix.extension }}
         path: build/${{ matrix.name }}
 
     - name: Test
       run: |
-        chmod +x build/${{ matrix.name }}/ph7${{ matrix.extension }}
+        chmod +x build/${{ matrix.name }}/phl${{ matrix.extension }}
         ${{ matrix.run_cmd }}

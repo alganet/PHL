@@ -5,9 +5,9 @@
 
 BUILD_DIR = build\x86_64-windows-msvc
 CC = cl
-CFLAGS = /Fd$(BUILD_DIR)\ph7.pdb /I src /W4 /Ox
+CFLAGS = /Fd$(BUILD_DIR)\ph7.pdb /I src\ph7 /W4 /Ox
 LDFLAGS = /link advapi32.lib /nologo /subsystem:console /entry:mainCRTStartup
-PROGRAM = ph7.exe
+PROGRAM = phl.exe
 
 # Source file lists
 SRC_SOURCES = \
@@ -24,33 +24,31 @@ SRC_SOURCES = \
   vfs.c \
   vm.c
 
-EXAMPLE_SOURCES = ph7_interp.c
-
 # Object files
 OBJECTS = \
-  $(BUILD_DIR)\src\api.obj \
-  $(BUILD_DIR)\src\builtin.obj \
-  $(BUILD_DIR)\src\compile.obj \
-  $(BUILD_DIR)\src\constant.obj \
-  $(BUILD_DIR)\src\hashmap.obj \
-  $(BUILD_DIR)\src\lex.obj \
-  $(BUILD_DIR)\src\lib.obj \
-  $(BUILD_DIR)\src\memobj.obj \
-  $(BUILD_DIR)\src\oo.obj \
-  $(BUILD_DIR)\src\parse.obj \
-  $(BUILD_DIR)\src\vfs.obj \
-  $(BUILD_DIR)\src\vm.obj \
-  $(BUILD_DIR)\examples\ph7_interp.obj
+  $(BUILD_DIR)\src\ph7\api.obj \
+  $(BUILD_DIR)\src\ph7\builtin.obj \
+  $(BUILD_DIR)\src\ph7\compile.obj \
+  $(BUILD_DIR)\src\ph7\constant.obj \
+  $(BUILD_DIR)\src\ph7\hashmap.obj \
+  $(BUILD_DIR)\src\ph7\lex.obj \
+  $(BUILD_DIR)\src\ph7\lib.obj \
+  $(BUILD_DIR)\src\ph7\memobj.obj \
+  $(BUILD_DIR)\src\ph7\oo.obj \
+  $(BUILD_DIR)\src\ph7\parse.obj \
+  $(BUILD_DIR)\src\ph7\vfs.obj \
+  $(BUILD_DIR)\src\ph7\vm.obj \
+  $(BUILD_DIR)\src\phl\phl.obj
 
 all: $(BUILD_DIR)\$(PROGRAM)
 
 # Inference rules for compilation
-{src}.c{$(BUILD_DIR)\src}.obj:
-  @if not exist $(BUILD_DIR)\src mkdir $(BUILD_DIR)\src
+{src\ph7}.c{$(BUILD_DIR)\src\ph7}.obj:
+  @if not exist $(BUILD_DIR)\src\ph7 mkdir $(BUILD_DIR)\src\ph7
   $(CC) $(CFLAGS) /Fo"$@" /c $<
 
-{examples}.c{$(BUILD_DIR)\examples}.obj:
-  @if not exist $(BUILD_DIR)\examples mkdir $(BUILD_DIR)\examples
+{src\phl}.c{$(BUILD_DIR)\src\phl}.obj:
+  @if not exist $(BUILD_DIR)\src\phl mkdir $(BUILD_DIR)\src\phl
   $(CC) $(CFLAGS) /Fo"$@" /c $<
 
 # Build target

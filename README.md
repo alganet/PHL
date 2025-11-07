@@ -58,7 +58,7 @@ The default build produces executables in `build/x86_64-linux-gnu/` (or your pla
 ### Hello World Example
 
 ```c
-#include "src/ph7.h"
+#include "src/ph7/ph7.h"
 #include <stdio.h>
 
 static int output_consumer(const void *pOutput, unsigned int nLen, void *pUserData) {
@@ -93,7 +93,7 @@ int main(void) {
 
 Compile with:
 ```bash
-gcc -o hello hello.c src/ph7.c
+gcc -o hello hello.c src/ph7/ph7amalgam.c
 ```
 
 ### Using the Interpreter
@@ -102,10 +102,10 @@ The project includes a standalone PHP interpreter:
 
 ```bash
 # Run a PHP file
-./build/x86_64-linux-gnu/ph7 examples/hello_world.php
+./build/x86_64-linux-gnu/phl examples/hello_world.php
 
 # With script arguments
-./build/x86_64-linux-gnu/ph7 script.php arg1 arg2
+./build/x86_64-linux-gnu/phl script.php arg1 arg2
 ```
 
 ## Examples
