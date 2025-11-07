@@ -3,17 +3,13 @@
 
 name: Build
 
+env:
+  ALL_FILES_MIN_COVERAGE: 20
+  CHANGED_FILES_MIN_COVERAGE: 25
+
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - 'Makefile'
-      - 'build-aux/**'
-      - '.github/workflows/build.yml'
   pull_request:
-    branches: [ main ]
+    branches: [ main, dev ]
     paths:
       - 'src/**'
       - 'tests/**'
@@ -22,6 +18,7 @@ on:
       - '.github/workflows/build.yml'
 
 jobs:
+  # make
   Build:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -29,49 +26,88 @@ jobs:
         include:
           - name: x86_64-linux-gnu
             os: ubuntu-latest
-            run_cmd: make
           - name: x86_64-windows-msvc
             os: windows-latest
             extension: .exe
-            run_cmd: build-aux/nmake.bat /nologo /f build-aux/nmake.mk
     steps:
     - uses: actions/checkout@v5
-
-    - if: matrix.os == 'windows-latest'
+    - if: contains(matrix.name, '-windows-')
       uses: microsoft/setup-msbuild@v2
-
-    - name: Build
-      run: ${{ matrix.run_cmd }}
-
-    - name: Archive
-      uses: actions/upload-artifact@v5
+    - uses: ./.github/actions/make-action
       with:
-        name: ${{ matrix.name }}-phl${{ matrix.extension }}
-        path: build/${{ matrix.name }}
+        name: ${{ matrix.name }}
+        extension: ${{ matrix.extension }}
+        save_job: Build
+
+  # make test & test-compat
   Test:
     runs-on: ${{ matrix.os }}
     needs: Build
     strategy:
       matrix:
         include:
-          - name: x86_64-linux-gnu
+          - make: test
+            name: x86_64-linux-gnu
             os: ubuntu-latest
-            run_cmd: make test-compat
-          - name: x86_64-windows-msvc
+          - make: test
+            name: x86_64-windows-msvc
             os: windows-latest
             extension: .exe
-            run_cmd: >
-              build-aux/nmake.bat /nologo /f build-aux/nmake.mk test-compat
+          - make: test-compat
+            name: x86_64-linux-gnu
+            os: ubuntu-latest
+          - make: test-compat
+            name: x86_64-windows-msvc
+            os: windows-latest
+            extension: .exe
     steps:
     - uses: actions/checkout@v5
-
-    - name: Artifact
-      uses: actions/download-artifact@v6
+    - uses: ./.github/actions/make-action
       with:
-        name: ${{ matrix.name }}-phl${{ matrix.extension }}
-        path: build/${{ matrix.name }}
+        make: ${{ matrix.make }}
+        name: ${{ matrix.name }}
+        extension: ${{ matrix.extension }}
+        restore_job: Build
 
-    - name: Test
-      run: |
-        chmod +x build/${{ matrix.name }}/phl${{ matrix.extension }}
-        ${{ matrix.run_cmd }}
+  # make coverage-html
+  Coverage:
+    runs-on: ubuntu-latest
+    needs: Build
+    steps:
+    - uses: actions/checkout@v5
+    - run: sudo apt-get update && sudo apt-get install -y lcov
+    - uses: ./.github/actions/make-action
+      with:
+        make: coverage-html
+        name: x86_64-linux-gnu
+        restore_job: Build
+        save_job: Coverage
+
+  # Coverage reporting
+  Coverage-Report:
+    runs-on: ubuntu-latest
+    needs: Coverage
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+    - uses: actions/checkout@v5
+    - uses: actions/download-artifact@v5
+      with:
+        name: Coverage-x86_64-linux-gnu
+        path: build/x86_64-linux-gnu
+    - name: Check for source changes
+      id: check-changes
+      uses: dorny/paths-filter@v3
+      with:
+        filters: |
+          src:
+            - 'src/**'
+    - uses: jbaczuk/pr-test-coverage@v1
+      if: steps.check-changes.outputs.src == 'true'
+      with:
+        lcov-file: build/x86_64-linux-gnu/coverage.info
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        changed-files-minimum-coverage: ${{ env.CHANGED_FILES_MIN_COVERAGE }}
+        all-files-minimum-coverage: ${{ env.ALL_FILES_MIN_COVERAGE }}
+        update-comment: true
