@@ -103,11 +103,14 @@ jobs:
         filters: |
           src:
             - 'src/**'
+            - 'tests/**'
+            - 'Makefile'
+            - 'build-aux/**'
+            - '.github/workflows/build.yml'
     - uses: jbaczuk/pr-test-coverage@v1
       if: steps.check-changes.outputs.src == 'true'
       with:
         lcov-file: build/x86_64-linux-gnu/coverage.info
         github-token: ${{ secrets.GITHUB_TOKEN }}
-        changed-files-minimum-coverage: ${{ env.CHANGED_FILES_MIN_COVERAGE }}
         all-files-minimum-coverage: ${{ env.ALL_FILES_MIN_COVERAGE }}
         update-comment: true

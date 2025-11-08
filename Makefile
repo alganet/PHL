@@ -8,7 +8,7 @@ CC ?= cc
 TARGET ?= $(shell CC=$(CC) ./build-aux/get_target.sh)
 
 BUILD_DIR = build/$(TARGET)
-CFLAGS = -W -Wunused -Wall -Isrc/ph7 -Ofast
+CFLAGS = -W -Wunused -Wall -Isrc/ph7 -Ofast -DPH7_ENABLE_MATH_FUNC
 LDFLAGS = -lm
 
 .PHONY: all clean test test-compat coverage coverage-html
@@ -73,31 +73,29 @@ $(BUILD_DIR)-clean:
 # TESTING AND COVERAGE TARGETS
 # ----------------------------
 
-TEST_EXECUTABLE ?= $(BUILD_DIR)/phl
+TEST_EXECUTABLE ?= $(BUILD_DIR)/phl -x
 PHP_EXECUTABLE ?= $(shell command -v php)
 
-TEST_PHL_CMD = $(BUILD_DIR)/phl -x tests/phpt.php \
-	--target-executable $(TEST_EXECUTABLE) \
+TEST_PHL_CMD = $(TEST_EXECUTABLE) tests/phpt.php \
 	--target-dir tests
-TEST_PHP_CMD = $(BUILD_DIR)/phl -x tests/phpt.php \
-	--target-executable $(PHP_EXECUTABLE) \
+TEST_PHP_CMD = $(PHP_EXECUTABLE) tests/phpt.php \
 	--target-dir tests
 
 $(BUILD_DIR)-test:
-	@$(TEST_PHL_CMD)
+	@$(TEST_EXECUTABLE) --version
+	$(TEST_PHL_CMD)
 
 $(BUILD_DIR)-test-compat:
 	$(eval TEST_EXECUTABLE := $(BUILD_DIR)/phl)
 	@$(TEST_EXECUTABLE) --version
 	@$(TEST_PHL_CMD) --output-format dot
 	@$(PHP_EXECUTABLE) --version
-	@$(TEST_PHP_CMD) --output-format dot
+	$(TEST_PHP_CMD) --output-format dot
 
 COVERAGE_CFLAGS = $(CFLAGS) -fprofile-arcs -ftest-coverage
 COVERAGE_LDFLAGS = $(LDFLAGS) -lgcov
 COVERAGE_OBJECTS = $(OBJECTS:.o=.gcov.o)
 COVERAGE_PHL_CMD = $(BUILD_DIR)/phl-coverage -x tests/phpt.php \
-	--target-executable $(BUILD_DIR)/phl-coverage \
 	--target-dir tests \
 	--output-format dot
 
@@ -113,7 +111,7 @@ $(BUILD_DIR)/phl-coverage: $(COVERAGE_OBJECTS)
 $(BUILD_DIR)/coverage.info: $(BUILD_DIR)/phl-coverage
 	@$(COVERAGE_PHL_CMD)
 	@lcov --capture --directory $(BUILD_DIR) --include 'src/*' --output-file $(BUILD_DIR)/coverage.info
-	@lcov --list $(BUILD_DIR)/coverage.info
+	@./build-aux/per_file_coverage.sh $(BUILD_DIR)/coverage.info
 	@lcov --summary $(BUILD_DIR)/coverage.info
 
 $(BUILD_DIR)/coverage-html: $(BUILD_DIR)/coverage.info

@@ -7,7 +7,7 @@ CC = cl
 TARGET = x86_64-windows-msvc
 
 BUILD_DIR = build\$(TARGET)
-CFLAGS = /Fd$(BUILD_DIR)\ph7.pdb /I src\ph7 /W4 /Ox
+CFLAGS = /Fd$(BUILD_DIR)\ph7.pdb /I src\ph7 /W4 /Ox /DPH7_ENABLE_MATH_FUNC
 LDFLAGS = /link advapi32.lib /nologo /subsystem:console /entry:mainCRTStartup
 
 all: $(BUILD_DIR)\phl.exe
@@ -69,14 +69,12 @@ $(BUILD_DIR)-clean:
 # TESTING AND COVERAGE TARGETS
 # ----------------------------
 
-TEST_EXECUTABLE = $(BUILD_DIR)\phl.exe
+TEST_EXECUTABLE = $(BUILD_DIR)\phl.exe -x
 PHP_EXECUTABLE = php.exe
 
-TEST_PHL_CMD = $(BUILD_DIR)\phl.exe -x tests/phpt.php \
-	--target-executable $(TEST_EXECUTABLE) \
+TEST_PHL_CMD = $(TEST_EXECUTABLE) tests/phpt.php \
 	--target-dir tests
-TEST_PHP_CMD = $(BUILD_DIR)\phl.exe -x tests/phpt.php \
-	--target-executable $(PHP_EXECUTABLE) \
+TEST_PHP_CMD = $(PHP_EXECUTABLE) tests/phpt.php \
 	--target-dir tests
 
 $(BUILD_DIR)-test:
