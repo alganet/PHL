@@ -1,8 +1,0 @@
---TEST--
-Failing test example
---FILE--
-<?php
-echo "Wrong output";
-?>
---EXPECT--
-Expected output

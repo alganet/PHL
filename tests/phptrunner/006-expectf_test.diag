@@ -1,0 +1,16 @@
+--CREDITS--
+SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
+SPDX-License-Identifier: BSD-3-Clause
+--TEST--
+EXPECTF %s pattern test
+--FILE--
+<?php
+$name = "world";
+echo "Hello " . $name;
+?>
+--EXPECTF--
+Hello %s
+--CLEAN--
+<?php
+unset($name);
+?>

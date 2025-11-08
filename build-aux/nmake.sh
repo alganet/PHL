@@ -23,9 +23,9 @@ tmpdir="$wsl_temp/PHL-build"
 
 # Create temp build directory and copy source files
 mkdir -p "$tmpdir"
-rsync -a "$workspace_dir/src" "$tmpdir" &
-rsync -a "$workspace_dir/tests" "$tmpdir" &
-rsync -a "$workspace_dir/build-aux" "$tmpdir" &
+rsync -a --delete "$workspace_dir/src" "$tmpdir" &
+rsync -a --delete "$workspace_dir/tests" "$tmpdir" &
+rsync -a --delete "$workspace_dir/build-aux" "$tmpdir" &
 wait
 
 # Run build in temp directory via PowerShell
@@ -37,5 +37,6 @@ wait
 if test -d "$tmpdir/build/x86_64-windows-msvc"; then
     rsync -a --delete "$tmpdir/build/x86_64-windows-msvc/" "$workspace_dir/build/x86_64-windows-msvc/" &
 fi
+
 rsync -a "$tmpdir/build-aux" "$workspace_dir/" &
 wait

@@ -1,8 +1,0 @@
---TEST--
-Passing test example
---FILE--
-<?php
-echo "Expected output";
-?>
---EXPECT--
-Expected output

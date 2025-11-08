@@ -11,7 +11,7 @@
 $valid_sections = array('test', 'description', 'credits', 'skipif', 'file', 'expect', 'expectf', 'expectregex', 'clean', 'post', 'post_raw', 'get', 'cookie', 'stdin', 'ini', 'args', 'env');
 
 // Unimplemented section types
-$not_implemented = array('post', 'post_raw', 'get', 'cookie', 'stdin', 'ini', 'args', 'env', 'expectf', 'expectregex');
+$not_implemented = array('post', 'post_raw', 'get', 'cookie', 'stdin', 'ini', 'args', 'env', 'expectregex');
 
 // Default values
 $target_executable = "";
@@ -158,9 +158,12 @@ function find_files($dir, $extension, $filter = '') {
     if (!is_dir($dir)) {
         return $files;
     }
-    $handle = opendir($dir);
-    while (($entry = readdir($handle)) !== false) {
-        if ($entry == '.' || $entry == '..') continue;
+    $entries = scandir($dir);
+    if ($entries === false) {
+        return $files;
+    }
+    foreach ($entries as $entry) {
+        if ($entry === '.' || $entry === '..') continue;
         $path = $dir . '/' . $entry;
         if (is_dir($path)) {
             $files = array_merge($files, find_files($path, $extension, $filter));
@@ -171,8 +174,55 @@ function find_files($dir, $extension, $filter = '') {
             }
         }
     }
-    closedir($handle);
     return $files;
+}
+
+function match_expectf_pattern($pattern, $output) {
+    // Handle %d (digits) and %s (non-whitespace strings) without regex
+    $pattern_len = strlen($pattern);
+    $output_len = strlen($output);
+    $p = 0; // pattern position
+    $o = 0; // output position
+    
+    while ($p < $pattern_len) {
+        if ($pattern[$p] === '%') {
+            $p++; // move past %
+            if ($p >= $pattern_len) {
+                return false; // incomplete % sequence
+            }
+            
+            if ($pattern[$p] === 'd') {
+                // Match one or more digits
+                if ($o >= $output_len || !ctype_digit($output[$o])) {
+                    return false;
+                }
+                while ($o < $output_len && ctype_digit($output[$o])) {
+                    $o++;
+                }
+            } elseif ($pattern[$p] === 's') {
+                // Match one or more non-whitespace characters
+                if ($o >= $output_len || ctype_space($output[$o])) {
+                    return false;
+                }
+                while ($o < $output_len && !ctype_space($output[$o])) {
+                    $o++;
+                }
+            } else {
+                return false; // unknown % sequence
+            }
+            $p++; // move past d or s
+        } else {
+            // Literal character match
+            if ($o >= $output_len || $pattern[$p] !== $output[$o]) {
+                return false;
+            }
+            $p++;
+            $o++;
+        }
+    }
+    
+    // Allow trailing content in output for flexibility
+    return true;
 }
 
 // Find test files
@@ -214,7 +264,7 @@ foreach ($files as $file) {
     if (isset($sections['skipif'])) {
         $skipif_path = $file . '.skipif';
         ob_start();
-        @include($skipif_path);
+        include($skipif_path);
         $skip_output = ob_get_clean();
         $skip_output = trim($skip_output);
         if (!empty($skip_output)) {
@@ -250,13 +300,22 @@ foreach ($files as $file) {
             // Test execution
             $file_path = $file . '.file';
             ob_start();
-            @include($file_path);
+            include($file_path);
             $output = ob_get_clean();
             $output = trim($output);
             
             $expected = isset($sections['expect']) ? trim($sections['expect']) : '';
+            $expectedf = isset($sections['expectf']) ? trim($sections['expectf']) : '';
             
-            if ($output === $expected) {
+            $matches = false;
+            if (!empty($expectedf)) {
+                // Use EXPECTF with pattern matching for %d and %s
+                $matches = match_expectf_pattern($expectedf, $output);
+            } elseif ($output === $expected) {
+                $matches = true;
+            }
+            
+            if ($matches) {
                 if ($output_format == "tap") {
                     echo "ok $count - $test_name\n";
                 } else {
@@ -266,6 +325,12 @@ foreach ($files as $file) {
             } else {
                 if ($output_format == "tap") {
                     echo "not ok $count - $test_name\n";
+                    if (!empty($expectedf)) {
+                        echo "# Expected pattern: '$expectedf'\n";
+                    } else {
+                        echo "# Expected: '$expected'\n";
+                    }
+                    echo "# Actual: '$output'\n";
                 } else {
                     echo "F";
                 }
@@ -278,7 +343,7 @@ foreach ($files as $file) {
     if (isset($sections['clean'])) {
         $clean_path = $file . '.clean';
         ob_start();
-        @include($clean_path);
+        include($clean_path);
         ob_end_clean();
     }
     
