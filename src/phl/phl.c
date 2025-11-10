@@ -19,7 +19,6 @@
  *
  * Command line options:
  *   -b: Dump PH7 byte-code instructions
- *   -x: Report run-time errors
  *   -h: Display this help message
  *
  * The PHL interpreter package includes more than 70 PHP scripts to test ranging from
@@ -48,9 +47,8 @@ static void Fatal(const char *zMsg)
  */
 static void Help(void)
 {
-	puts("phl [-h|--help|-b|-x|-v|--version] path/to/php_file [script args]");
+	puts("phl [-h|--help|-b|-v|--version] path/to/php_file [script args]");
 	puts("\t-b: Dump PH7 byte-code instructions");
-	puts("\t-x: Report run-time errors");
 	puts("\t-v, --version: Display version information and exit");
 	puts("\t-h, --help: Display this message and exit");
 	/* Exit immediately */
@@ -116,7 +114,6 @@ int main(int argc,char **argv)
 	ph7 *pEngine; /* PH7 engine */
 	ph7_vm *pVm;  /* Compiled PHP program */
 	int dump_vm = 0;    /* Dump VM instructions if TRUE */
-	int err_report = 0; /* Report run-time errors if TRUE */
 	int n;              /* Script arguments */
 	int rc;
 	/* Process interpreter arguments first*/
@@ -142,9 +139,6 @@ int main(int argc,char **argv)
 		if( c == 'b' ){
 			/* Dump byte-code instructions */
 			dump_vm = 1;
-		}else if( c == 'x' ){
-			/* Report run-time errors */
-			err_report = 1;
 		}else if( c == 'v' ){
 			/* Display version */
 			Version();
@@ -209,10 +203,8 @@ int main(int argc,char **argv)
 	for( n = n + 1; n < argc ; ++n ){
 		ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,argv[n]/* Argument value */);
 	}
-	if( err_report ){
-		/* Report script run-time errors */
-		ph7_vm_config(pVm,PH7_VM_CONFIG_ERR_REPORT);
-	}
+	/* Report script run-time errors (now default behavior) */
+	ph7_vm_config(pVm,PH7_VM_CONFIG_ERR_REPORT);
 	if( dump_vm ){
 		/* Dump PH7 byte-code instructions */
 		ph7_vm_dump_v2(pVm,

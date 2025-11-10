@@ -24,7 +24,7 @@ set /a next_year=%year% + 1
 
 :: Check if nmake.exe is in PATH
 set "vcvars_path="
-where nmake >nul 2>nul
+where nmake.exe >nul 2>nul
 if errorlevel 1 (
     :: Search for vcvarsall.bat in Visual Studio installations
     for %%P in ("%ProgramFiles%" "%ProgramFiles(x86)%") do (
@@ -45,7 +45,7 @@ if errorlevel 1 (
 
 :: Check if OpenCppCoverage is in the PATH
 set "opencppcoverage_path="
-where OpenCppCoverage >nul 2>nul
+where OpenCppCoverage.exe >nul 2>nul
 if errorlevel 1 (
     :: Search for OpenCppCoverage in common installation paths
     for %%P in ("%ProgramFiles%" "%ProgramFiles(x86)%") do (
@@ -60,10 +60,10 @@ if errorlevel 1 (
 )
 
 :: Check if php is in the PATH
-where php >nul 2>nul
+where php.exe >nul 2>nul
 if errorlevel 1 (
     :: Search for ..\php installation
-    if exist "%~dp0..\php\php-win.exe" (
+    if exist "%~dp0..\php\php.exe" (
         set "php_path=%~dp0..\php"
     ) else (
         echo Warning: PHP not found. Will not run compatibility tests.

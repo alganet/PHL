@@ -22,5 +22,15 @@ runs:
         key: OpenCppCoverage-${{ hashFiles('build-aux/install_opencppcoverage.bat') }}
         restore-keys: OpenCppCoverage-
     - if: runner.os == 'Windows'
+      uses: actions/cache@v4
+      id: cache-php
+      with:
+        path: php
+        key: php-${{ hashFiles('build-aux/install_php.bat') }}
+        restore-keys: php-
+    - if: runner.os == 'Windows'
       shell: cmd
       run: build-aux\install_opencppcoverage.bat
+    - if: runner.os == 'Windows'
+      shell: cmd
+      run: build-aux\install_php.bat
