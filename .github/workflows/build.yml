@@ -92,7 +92,7 @@ jobs:
       pull-requests: write
     steps:
     - uses: actions/checkout@v5
-    - uses: actions/download-artifact@v5
+    - uses: actions/download-artifact@v6
       with:
         name: Coverage-x86_64-linux-gnu
         path: build/x86_64-linux-gnu
