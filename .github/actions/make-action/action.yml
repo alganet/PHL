@@ -28,7 +28,7 @@ runs:
   steps:
     - if: inputs.restore_job != ''
       name: Download artifact
-      uses: actions/download-artifact@v5
+      uses: actions/download-artifact@v6
       with:
         name: ${{ inputs.restore_job }}-${{ inputs.name }}
         path: build/${{ inputs.name }}
@@ -42,7 +42,7 @@ runs:
       shell: bash
 
     - if: contains(inputs.name, '-windows-')
-      run: build-aux/nmake.bat /nologo /f build-aux/nmake.mk ${{ inputs.make }}
+      run: build-aux/dev.bat nmake /nologo /f build-aux/nmake.mk ${{ inputs.make }}
       shell: cmd
 
     - if: inputs.save_job != ''
