@@ -6,5 +6,5 @@ the `phpt.php` test runner. As so, they are marked as disabled.
 You can run those diagnostics using:
 
 ```sh
-phl -x tests/phpt.php --target-dir tests/ph7/phptrunner --file-extension disabled
+phl tests/phpt.php --target-dir tests/ph7/phptrunner --file-extension disabled
 ```

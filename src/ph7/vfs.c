@@ -3772,11 +3772,6 @@ static int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_value **
 	}
 	/* Data to write */
 	zData = ph7_value_to_string(apArg[1],&nLen);
-	if( nLen < 1 ){
-		/* Nothing to write,return immediately */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
 	/* Try to open the file in read-write mode */
 	iOpenFlags = PH7_IO_OPEN_CREATE|PH7_IO_OPEN_RDWR|PH7_IO_OPEN_TRUNC;
 	/* Extract the flags */
@@ -3802,6 +3797,12 @@ static int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_value **
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	if( nLen < 1 ){
+		/* Empty data, file is created/truncated */
+		ph7_result_int64(pCtx,0);
+		PH7_StreamCloseHandle(pStream,pHandle);
+		return PH7_OK;
+	}
 	if( pStream->xWrite ){
 		ph7_int64 n;
 		if( (iFlags & 0x01/* LOCK_EX */) && pStream->xLock ){
@@ -3810,7 +3811,7 @@ static int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_value **
 		}
 		/* Perform the write operation */
 		n = pStream->xWrite(pHandle,(const void *)zData,nLen);
-		if( n < 1 ){
+		if( n < 0 ){
 			/* IO error,return FALSE */
 			ph7_result_bool(pCtx,0);
 		}else{
