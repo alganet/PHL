@@ -2716,7 +2716,7 @@ static int PH7_builtin_feof(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	rc = SXERR_EOF;
 	/* Perform the requested operation */
-	if( SyBlobLength(&pDev->sBuffer) - pDev->nOfft > 0 ){
+	if( SyBlobLength(&pDev->sBuffer) > pDev->nOfft ){
 		/* Data is available */
 		rc = PH7_OK;
 	}else{
@@ -2813,7 +2813,7 @@ static ph7_int64 StreamReadLine(io_private *pDev,const char **pzData,ph7_int64 n
 		SyBlobReset(&pDev->sBuffer);
 		pDev->nOfft = 0;
 	}
-	if( SyBlobLength(&pDev->sBuffer) - pDev->nOfft > 0 ){
+	if( SyBlobLength(&pDev->sBuffer) > pDev->nOfft ){
 		/* Check if there is a line */
 		rc = GetLine(pDev,&n,pzData);
 		if( rc == SXRET_OK ){
@@ -2850,7 +2850,7 @@ static ph7_int64 StreamReadLine(io_private *pDev,const char **pzData,ph7_int64 n
 			return n;
 		}
 	}
-	if( SyBlobLength(&pDev->sBuffer) - pDev->nOfft > 0 ){
+	if( SyBlobLength(&pDev->sBuffer) > pDev->nOfft ){
 		/* Read limit reached,return the available data */
 		*pzData = (const char *)SyBlobDataAt(&pDev->sBuffer,pDev->nOfft);
 		n = SyBlobLength(&pDev->sBuffer) - pDev->nOfft;
