@@ -1,13 +1,22 @@
 # SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 # SPDX-License-Identifier: BSD-3-Clause
 
-name: Build
+name: CI
+permissions: {}
 
 env:
   ALL_FILES_MIN_COVERAGE: 20
   CHANGED_FILES_MIN_COVERAGE: 25
 
 on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'Makefile'
+      - 'build-aux/**'
+      - '.github/workflows/build.yml'
   pull_request:
     branches: [ main, dev ]
     paths:
@@ -18,114 +27,107 @@ on:
       - '.github/workflows/build.yml'
 
 jobs:
-  # make
-  Build:
+  build:
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
       matrix:
         include:
-          - name: x86_64-linux-gnu
+          - make: build
+            name: x86_64-linux-gnu
             os: ubuntu-latest
-          - name: x86_64-windows-msvc
+          - make: build
+            name: x86_64-windows-msvc
             os: windows-latest
             extension: .exe
     steps:
     - uses: actions/checkout@v5
-    - if: contains(matrix.name, '-windows-')
-      uses: microsoft/setup-msbuild@v2
+    - uses: ./.github/actions/setup-action
     - uses: ./.github/actions/make-action
       with:
         name: ${{ matrix.name }}
-        extension: ${{ matrix.extension }}
-        save_job: Build
-
-  # make test & test-compat
-  Test:
-    runs-on: ${{ matrix.os }}
-    needs: Build
-    strategy:
-      matrix:
-        include:
-          - make: test
-            name: x86_64-linux-gnu
-            os: ubuntu-latest
-          - make: test
-            name: x86_64-windows-msvc
-            os: windows-latest
-            extension: .exe
-          - make: test-compat
-            name: x86_64-linux-gnu
-            os: ubuntu-latest
-          - make: test-compat
-            name: x86_64-windows-msvc
-            os: windows-latest
-            extension: .exe
-    steps:
-    - uses: actions/checkout@v5
-    - uses: ./.github/actions/make-action
-      with:
         make: ${{ matrix.make }}
-        name: ${{ matrix.name }}
         extension: ${{ matrix.extension }}
-        restore_job: Build
 
-  # make coverage-html
-  Coverage:
-    runs-on: ubuntu-latest
-    needs: Build
+  qa:
+    runs-on: ${{ matrix.os }}
+    needs: build
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        make: [test, test-compat, coverage]
+        include:
+          - os: ubuntu-latest
+            name: x86_64-linux-gnu
+          - os: windows-latest
+            name: x86_64-windows-msvc
+            extension: .exe
     steps:
     - uses: actions/checkout@v5
-    - run: sudo apt-get update && sudo apt-get install -y lcov
+    - uses: ./.github/actions/setup-action
     - uses: ./.github/actions/make-action
       with:
-        make: coverage-html
-        name: x86_64-linux-gnu
-        restore_job: Build
-        save_job: Coverage
+        name: ${{ matrix.name }}
+        make: ${{ matrix.make }}
+        extension: ${{ matrix.extension }}
+        artifacts_from: build
 
-  OpenCppCoverage:
-    runs-on: windows-latest
-    needs: Build
-    steps:
-    - uses: actions/checkout@v5
-    - uses: actions/cache@v4
-      id: cache-opencppcoverage
-      with:
-        path: OpenCppCoverageSetup-x64-*
-        key: OpenCppCoverage-${{ hashFiles('build-aux/install_opencppcoverage.bat') }}
-        restore-keys: OpenCppCoverage-
-    - run: build-aux\install_opencppcoverage.bat
-    - run: build-aux\dev.bat OpenCppCoverage.exe || exit /b 0
-      shell: cmd
-
-  # Coverage reporting
-  Coverage-Report:
+  report:
     runs-on: ubuntu-latest
-    needs: Coverage
+    needs: qa
     permissions:
       contents: read
       pull-requests: write
     steps:
     - uses: actions/checkout@v5
+    - uses: ./.github/actions/setup-action
     - uses: actions/download-artifact@v6
       with:
-        name: Coverage-x86_64-linux-gnu
-        path: build/x86_64-linux-gnu
-    - name: Check for source changes
-      id: check-changes
-      uses: dorny/paths-filter@v3
+        pattern: coverage-*
+        path: artifact
+    
+    - run: |
+        mkdir -p report
+        chmod +x artifact/coverage-x86_64-linux-gnu/coverage/phl-coverage
+
+        lcov --add-tracefile artifact/coverage-x86_64-linux-gnu/coverage/coverage.info \
+             --add-tracefile artifact/coverage-x86_64-windows-msvc/coverage/coverage.info \
+             --output-file report/coverage.info
+
+        sed -i 's|SF:a/PHL/PHL/|SF:|g' report/coverage.info
+        
+        genhtml --quiet --include 'src/ph7/*'\
+          --output-directory report/html report/coverage.info
+
+        ./artifact/coverage-x86_64-linux-gnu/coverage/phl-coverage \
+          build-aux/lcov_info_to_text.php --content=all\
+            report/coverage.info > report/coverage.md
+
+        echo "### Coverage" >> report/summary.md
+        echo "" >> report/summary.md
+
+        ./artifact/coverage-x86_64-linux-gnu/coverage/phl-coverage \
+          build-aux/lcov_info_to_text.php --content=summary\
+            report/coverage.info >> report/summary.md
+
+        echo "" >> report/summary.md
+        echo "Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> report/summary.md
+    - 
+      if: github.event_name == 'pull_request'
+      run: |
+        echo "<details><summary>Code Coverage Report</summary>" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        cat report/coverage.md >> "$GITHUB_STEP_SUMMARY"
+        echo "</details>" >> "$GITHUB_STEP_SUMMARY"
+        gh pr comment $PR_NUMBER --edit-last --create-if-none --body-file report/summary.md
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        PR_NUMBER: ${{ github.event.number }}
+
+    - uses: actions/upload-artifact@v5
       with:
-        filters: |
-          src:
-            - 'src/**'
-            - 'tests/**'
-            - 'Makefile'
-            - 'build-aux/**'
-            - '.github/workflows/build.yml'
-    - uses: jbaczuk/pr-test-coverage@v1
-      if: steps.check-changes.outputs.src == 'true'
-      with:
-        lcov-file: build/x86_64-linux-gnu/coverage.info
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        all-files-minimum-coverage: ${{ env.ALL_FILES_MIN_COVERAGE }}
-        update-comment: true
+        name: report
+        path: report

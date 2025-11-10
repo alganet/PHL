@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 # SPDX-License-Identifier: BSD-3-Clause
 
-name: 'Portable Make Action'
+name: 'Make Action'
 description: 'Reusable action to run make commands for jobs'
 
 inputs:
@@ -9,31 +9,26 @@ inputs:
     description: 'The build name (e.g., x86_64-linux-gnu). Will be used to determine OS.'
     required: true
   make:
-    description: 'The make command to run (e.g., test, test-compat, or empty for build)'
-    required: false
-    default: ''
+    description: 'The make command to run (e.g., test, test-compat, or empty for build). Will be used to name artifacts.'
+    required: true
   extension:
     description: 'File extension for the binary (e.g., .exe for Windows)'
     required: false
     default: ''
-  save_job:
-    description: 'Job name to save artifact as. If set, uploads artifact with name {save_job}-{name}.'
+  artifacts_from:
+    description: 'Job name to restore artifact from. If set, downloads artifact with name {artifacts_from}-{name}.'
     required: false
-  restore_job:
-    description: 'Job name to restore artifact from. If set, downloads artifact with name {restore_job}-{name}.'
-    required: false
-
 runs:
   using: 'composite'
   steps:
-    - if: inputs.restore_job != ''
+    - if: inputs.artifacts_from != ''
       name: Download artifact
       uses: actions/download-artifact@v6
       with:
-        name: ${{ inputs.restore_job }}-${{ inputs.name }}
+        name: ${{ inputs.artifacts_from }}-${{ inputs.name }}
         path: build/${{ inputs.name }}
 
-    - if: inputs.restore_job != '' && contains(inputs.name, '-linux-')
+    - if: inputs.artifacts_from != '' && contains(inputs.name, '-linux-')
       run: chmod +x build/${{ inputs.name }}/phl${{ inputs.extension }}
       shell: bash
 
@@ -45,9 +40,8 @@ runs:
       run: build-aux/dev.bat nmake /nologo /f build-aux/nmake.mk ${{ inputs.make }}
       shell: cmd
 
-    - if: inputs.save_job != ''
-      name: Upload artifact
+    - name: Upload artifact
       uses: actions/upload-artifact@v5
       with:
-        name: ${{ inputs.save_job }}-${{ inputs.name }}
+        name: ${{ inputs.make }}-${{ inputs.name }}
         path: build/${{ inputs.name }}

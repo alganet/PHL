@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
+# SPDX-License-Identifier: BSD-3-Clause
+
+name: 'Setup Action'
+description: 'Reusable action to run setup dependencies'
+
+runs:
+  using: 'composite'
+  steps:
+    - if: runner.os == 'Linux'
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: lcov
+        version: 1.0
+    - if: runner.os == 'Windows'
+      uses: microsoft/setup-msbuild@v2
+    - if: runner.os == 'Windows'
+      uses: actions/cache@v4
+      id: cache-opencppcoverage
+      with:
+        path: OpenCppCoverageSetup-x64-*
+        key: OpenCppCoverage-${{ hashFiles('build-aux/install_opencppcoverage.bat') }}
+        restore-keys: OpenCppCoverage-
+    - if: runner.os == 'Windows'
+      shell: cmd
+      run: build-aux\install_opencppcoverage.bat
