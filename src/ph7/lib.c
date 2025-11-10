@@ -3987,7 +3987,7 @@ static sxi32  ProcessXML(SyXMLParser *pParse,SySet *pTagStack,SySet *pWorker)
 			int isXML = 0;
 			/* Extract the target and data */
 			XMLExtactPI(pToken,&sTarget,&sData,&isXML);
-			if( isXML && SySetCursor(pTokenSet) - 1 > 0 ){
+			if( isXML && SySetCursor(pTokenSet) > 1 ){
 				if( pParse->xError ){
 					rc = pParse->xError("Unexpected XML declaration. The XML declaration must be the first node in the document",
 						SXML_ERROR_MISPLACED_XML_PI,pToken,pParse->pUserData);
