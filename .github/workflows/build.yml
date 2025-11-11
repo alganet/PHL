@@ -41,6 +41,9 @@ jobs:
             name: x86_64-windows-msvc
             os: windows-latest
             extension: .exe
+          - make: build
+            name: x86_64-apple-darwin
+            os: macos-15-intel
     steps:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/setup-action
@@ -49,6 +52,7 @@ jobs:
         name: ${{ matrix.name }}
         make: ${{ matrix.make }}
         extension: ${{ matrix.extension }}
+        artifacts: 'true'
 
   qa:
     runs-on: ${{ matrix.os }}
@@ -57,7 +61,7 @@ jobs:
       contents: read
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-15-intel]
         make: [test, test-compat, coverage]
         include:
           - os: ubuntu-latest
@@ -65,6 +69,8 @@ jobs:
           - os: windows-latest
             name: x86_64-windows-msvc
             extension: .exe
+          - os: macos-15-intel
+            name: x86_64-apple-darwin
     steps:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/setup-action
@@ -73,6 +79,7 @@ jobs:
         name: ${{ matrix.name }}
         make: ${{ matrix.make }}
         extension: ${{ matrix.extension }}
+        artifacts: ${{ contains(matrix.make, 'coverage') && 'true' || 'false' }}
         artifacts_from: build
 
   report:
@@ -95,6 +102,8 @@ jobs:
 
         lcov --add-tracefile artifact/coverage-x86_64-linux-gnu/coverage/coverage.info \
              --add-tracefile artifact/coverage-x86_64-windows-msvc/coverage/coverage.info \
+             --add-tracefile artifact/coverage-x86_64-apple-darwin/coverage/coverage.info \
+             --ignore-errors format \
              --output-file report/coverage.info
 
         sed -i 's|SF:a/PHL/PHL/|SF:|g' report/coverage.info

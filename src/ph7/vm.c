@@ -12971,7 +12971,7 @@ static sxi32 VmXMLStartElementHandler(SyXMLRawStr *pStart,SyXMLRawStr *pNS,sxu32
 		return SXRET_OK;
 	}
 	/* Invoke the user callback */
-	PH7_VmCallUserFunctionAp(pEngine->pVm,pCallback,0,&pEngine->sParserValue,pTag,pAttr,0);
+	PH7_VmCallUserFunctionAp(pEngine->pVm,pCallback,0,&pEngine->sParserValue,pTag,pAttr,(ph7_value*)0);
 	/* Clean-up the mess left behind */
 	ph7_context_release_value(pEngine->pCtx,pTag);
 	ph7_context_release_value(pEngine->pCtx,pAttr);
@@ -13008,7 +13008,7 @@ static sxi32 VmXMLEndElementHandler(SyXMLRawStr *pEnd,SyXMLRawStr *pNS,void *pUs
 		return SXRET_OK;
 	}
 	/* Invoke the user callback */
-	PH7_VmCallUserFunctionAp(pEngine->pVm,pCallback,0,&pEngine->sParserValue,pTag,0);
+	PH7_VmCallUserFunctionAp(pEngine->pVm,pCallback,0,&pEngine->sParserValue,pTag,(ph7_value*)0);
 	/* Clean-up the mess left behind */
 	ph7_context_release_value(pEngine->pCtx,pTag);
 	return SXRET_OK;
@@ -13044,7 +13044,7 @@ static sxi32 VmXMLTextHandler(SyXMLRawStr *pText,void *pUserData)
 		return SXRET_OK;
 	}
 	/* Invoke the user callback */
-	PH7_VmCallUserFunctionAp(pEngine->pVm,pCallback,0,&pEngine->sParserValue,pData,0);
+	PH7_VmCallUserFunctionAp(pEngine->pVm,pCallback,0,&pEngine->sParserValue,pData,(ph7_value*)0);
 	/* Clean-up the mess left behind */
 	ph7_context_release_value(pEngine->pCtx,pData);
 	return SXRET_OK;
@@ -13081,7 +13081,7 @@ static sxi32 VmXMLPIHandler(SyXMLRawStr *pTargetStr,SyXMLRawStr *pDataStr,void *
 		return SXRET_OK;
 	}
 	/* Invoke the user callback */
-	PH7_VmCallUserFunctionAp(pEngine->pVm,pCallback,0,&pEngine->sParserValue,pTarget,pData,0);
+	PH7_VmCallUserFunctionAp(pEngine->pVm,pCallback,0,&pEngine->sParserValue,pTarget,pData,(ph7_value*)0);
 	/* Clean-up the mess left behind */
 	ph7_context_release_value(pEngine->pCtx,pTarget);
 	ph7_context_release_value(pEngine->pCtx,pData);
@@ -13119,7 +13119,7 @@ static sxi32 VmXMLNSStartHandler(SyXMLRawStr *pUriStr,SyXMLRawStr *pPrefixStr,vo
 		return SXRET_OK;
 	}
 	/* Invoke the user callback */
-	PH7_VmCallUserFunctionAp(pEngine->pVm,pCallback,0,&pEngine->sParserValue,pUri,pPrefix,0);
+	PH7_VmCallUserFunctionAp(pEngine->pVm,pCallback,0,&pEngine->sParserValue,pUri,pPrefix,(ph7_value*)0);
 	/* Clean-up the mess left behind */
 	ph7_context_release_value(pEngine->pCtx,pUri);
 	ph7_context_release_value(pEngine->pCtx,pPrefix);
@@ -13154,7 +13154,7 @@ static sxi32 VmXMLNSEndHandler(SyXMLRawStr *pPrefixStr,void *pUserData)
 		return SXRET_OK;
 	}
 	/* Invoke the user callback */
-	PH7_VmCallUserFunctionAp(pEngine->pVm,pCallback,0,&pEngine->sParserValue,pPrefix,0);
+	PH7_VmCallUserFunctionAp(pEngine->pVm,pCallback,0,&pEngine->sParserValue,pPrefix,(ph7_value*)0);
 	/* Clean-up the mess left behind */
 	ph7_context_release_value(pEngine->pCtx,pPrefix);
 	return SXRET_OK;

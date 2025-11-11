@@ -7,7 +7,7 @@ Compatibility test with Zend PHP on Windows
 --SKIPIF--
 <?php
 
-if (PHP_OS === 'Linux' || !function_exists('zend_version')) {
+if (PHP_OS !== 'Windows' || !function_exists('zend_version')) {
     echo "skip: platform";
 }
 if (!function_exists('file_put_contents') || !function_exists('flock') || !function_exists('fopen')) {

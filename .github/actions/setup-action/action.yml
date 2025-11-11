@@ -12,6 +12,12 @@ runs:
       with:
         packages: lcov
         version: 1.0
+    - if: runner.os == 'macOS'
+      uses: tecolicom/actions-use-homebrew-tools@v1
+      with:
+        tools: lcov
+        cache: yes
+        key: brewcache-1.0
     - if: runner.os == 'Windows'
       uses: microsoft/setup-msbuild@v2
     - if: runner.os == 'Windows'
