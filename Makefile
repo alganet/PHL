@@ -74,7 +74,7 @@ $(BUILD_DIR)-test-compat: $(BUILD_DIR)/phl
 # ----------------
 
 COVERAGE_CFLAGS = $(filter-out -Ofast, $(CFLAGS)) -O0 -fprofile-arcs -ftest-coverage
-COVERAGE_LDFLAGS = $(LDFLAGS) -lgcov
+COVERAGE_LDFLAGS = $(LDFLAGS)
 COVERAGE_OBJECTS = $(patsubst $(BUILD_DIR)/src/%,$(BUILD_DIR)/coverage/%,$(OBJECTS:.o=.gcov.o))
 
 COVERAGE_PHL_CMD = $(BUILD_DIR)/coverage/phl-coverage tests/phpt.php \
@@ -93,9 +93,10 @@ $(BUILD_DIR)/coverage/phl-coverage: $(COVERAGE_OBJECTS)
 $(BUILD_DIR)/coverage/coverage.info: .ALWAYS $(BUILD_DIR)/coverage/phl-coverage
 	@$(COVERAGE_PHL_CMD)
 	@lcov --capture --rc geninfo_unexecuted_blocks=1 --quiet \
+		--ignore-errors unsupported,unsupported \
 		--include 'src/ph7/*' --directory $(BUILD_DIR) \
 		--output-file $(BUILD_DIR)/coverage/coverage.info
-	@sed -i 's|SF:$(CURDIR)/|SF:|g' $(BUILD_DIR)/coverage/coverage.info
+	@sed 's|SF:.*/src/|SF:src/|g' $(BUILD_DIR)/coverage/coverage.info > $(BUILD_DIR)/coverage/coverage.info.tmp && mv $(BUILD_DIR)/coverage/coverage.info.tmp $(BUILD_DIR)/coverage/coverage.info
 	@$(BUILD_DIR)/coverage/phl-coverage ./build-aux/lcov_info_to_text.php $(BUILD_DIR)/coverage/coverage.info
 
 $(BUILD_DIR)/coverage/html: .ALWAYS $(BUILD_DIR)/coverage/coverage.info
