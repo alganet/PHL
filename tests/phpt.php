@@ -8,74 +8,75 @@
  */
 
 // Valid section types
-$valid_sections = array('test', 'description', 'credits', 'skipif', 'file', 'expect', 'expectf', 'expectregex', 'clean', 'post', 'post_raw', 'get', 'cookie', 'stdin', 'ini', 'args', 'env');
+$phpt_valid_sections = array('test', 'description', 'credits', 'skipif', 'file', 'expect', 'expectf', 'expectregex', 'clean', 'post', 'post_raw', 'get', 'cookie', 'stdin', 'ini', 'args', 'env');
 
 // Unimplemented section types
-$not_implemented = array('post', 'post_raw', 'get', 'cookie', 'stdin', 'ini', 'args', 'env', 'expectregex');
+$phpt_not_implemented = array('post', 'post_raw', 'get', 'cookie', 'stdin', 'ini', 'args', 'env', 'expectregex');
 
 // Default values
-$target_executable = "";
-$target_timeout = 1;
-$target_dir = dirname(__FILE__);
-$file_extension = "phpt";
-$filter = "";
-$output_format = "tap";
+$phpt_target_executable = "";
+$phpt_target_timeout = 1;
+$phpt_target_dir = dirname(__FILE__);
+$phpt_file_extension = "phpt";
+$phpt_filter = "";
+$phpt_output_format = "tap";
+$phpt_curdir = getcwd();
 
 // Parse arguments
 if (count($argv) > 0 && strpos($argv[0], '--') !== 0) {
-    $args = array_slice($argv, 1);
-    $script_name = $argv[0];
+    $phpt_args = array_slice($argv, 1);
+    $phpt_script_name = $argv[0];
 } else {
-    $args = $argv;
-    $script_name = 'phpt.php';
+    $phpt_args = $argv;
+    $phpt_script_name = 'phpt.php';
 }
-while (!empty($args)) {
-    $arg = array_shift($args);
-    switch ($arg) {
+while (!empty($phpt_args)) {
+    $phpt_arg = array_shift($phpt_args);
+    switch ($phpt_arg) {
         case '--target-executable':
-            $target_executable = array_shift($args);
-            if ($target_executable === null) {
+            $phpt_target_executable = array_shift($phpt_args);
+            if ($phpt_target_executable === null) {
                 echo "Error: --target-executable requires a value\n";
                 exit(1);
             }
             break;
         case '--target-timeout':
-            $target_timeout = array_shift($args);
-            if ($target_timeout === null) {
+            $phpt_target_timeout = array_shift($phpt_args);
+            if ($phpt_target_timeout === null) {
                 echo "Error: --target-timeout requires a value\n";
                 exit(1);
             }
             break;
         case '--target-dir':
-            $target_dir = array_shift($args);
-            if ($target_dir === null) {
+            $phpt_target_dir = array_shift($phpt_args);
+            if ($phpt_target_dir === null) {
                 echo "Error: --target-dir requires a value\n";
                 exit(1);
             }
             break;
         case '--file-extension':
-            $file_extension = array_shift($args);
-            if ($file_extension === null) {
+            $phpt_file_extension = array_shift($phpt_args);
+            if ($phpt_file_extension === null) {
                 echo "Error: --file-extension requires a value\n";
                 exit(1);
             }
             break;
         case '--filter':
-            $filter = array_shift($args);
-            if ($filter === null) {
+            $phpt_filter = array_shift($phpt_args);
+            if ($phpt_filter === null) {
                 echo "Error: --filter requires a value\n";
                 exit(1);
             }
             break;
         case '--output-format':
-            $output_format = array_shift($args);
-            if ($output_format === null) {
+            $phpt_output_format = array_shift($phpt_args);
+            if ($phpt_output_format === null) {
                 echo "Error: --output-format requires a value\n";
                 exit(1);
             }
             break;
         case '--help':
-            echo "Usage: " . $script_name . " [options]\n";
+            echo "Usage: " . $phpt_script_name . " [options]\n";
             echo "\n";
             echo "Options:\n";
             echo "  --target-executable <exe>  Path to the executable being tested (mandatory)\n";
@@ -88,7 +89,7 @@ while (!empty($args)) {
             echo "\n";
             exit(0);
         default:
-            echo "Unknown option: $arg\n";
+            echo "Unknown option: $phpt_arg\n";
             exit(1);
     }
 }
@@ -96,128 +97,133 @@ while (!empty($args)) {
 // Argument parsing complete
 
 // Validate arguments
-if (!is_numeric($target_timeout) || $target_timeout != (int)$target_timeout) {
-    echo "1..0 # Target timeout '$target_timeout' is not a valid integer.\n";
+if (!is_numeric($phpt_target_timeout) || $phpt_target_timeout != (int)$phpt_target_timeout) {
+    echo "1..0 # Target timeout '$phpt_target_timeout' is not a valid integer.\n";
     exit(1);
 }
-if (!is_dir($target_dir)) {
-    echo "1..0 # Target directory '$target_dir' not found.\n";
+if (!is_dir($phpt_target_dir)) {
+    echo "1..0 # Target directory '$phpt_target_dir' not found.\n";
     exit(1);
 }
-if ($output_format != "tap" && $output_format != "dot") {
-    echo "1..0 # Invalid output format '$output_format'. Must be 'tap' or 'dot'.\n";
+if ($phpt_output_format != "tap" && $phpt_output_format != "dot") {
+    echo "1..0 # Invalid output format '$phpt_output_format'. Must be 'tap' or 'dot'.\n";
     exit(1);
 }
 
 // TAP header
-if ($output_format == "tap") {
+if ($phpt_output_format == "tap") {
     echo "Tap Version 13\n";
 }
 
-function parse_phpt_sections($path, $valid_sections) {
+function parse_phpt_sections($phpt_path, $phpt_valid_sections) {
     // Read file and normalize line endings to LF
-    $content = file_get_contents($path);
-    $content = str_replace("\r\n", "\n", $content);
-    $content = str_replace("\r", "\n", $content);
-    $lines = explode("\n", $content);
+    $phpt_content = file_get_contents($phpt_path);
+    $phpt_content = str_replace("\r\n", "\n", $phpt_content);
+    $phpt_content = str_replace("\r", "\n", $phpt_content);
+    $phpt_lines = explode("\n", $phpt_content);
     
-    $sections = array();
-    $current_section = null;
-    $content_lines = array();
+    $phpt_sections = array();
+    $phpt_current_section = null;
+    $phpt_content_lines = array();
     
-    foreach ($lines as $line) {
-        if (substr($line, 0, 2) === '--' && substr($line, -2) === '--') {
+    foreach ($phpt_lines as $phpt_line) {
+        if (substr($phpt_line, 0, 2) === '--' && substr($phpt_line, -2) === '--') {
             // Save previous section
-            if ($current_section !== null) {
-                $sections[$current_section] = implode("\n", $content_lines);
+            if ($phpt_current_section !== null) {
+                $phpt_sections[$phpt_current_section] = implode("\n", $phpt_content_lines);
             }
-            $section_name = strtolower(substr($line, 2, -2));
-            if (in_array($section_name, $valid_sections)) {
-                $current_section = $section_name;
+            $phpt_section_name = strtolower(substr($phpt_line, 2, -2));
+            if (in_array($phpt_section_name, $phpt_valid_sections)) {
+                $phpt_current_section = $phpt_section_name;
             } else {
-                $current_section = null;
+                $phpt_current_section = null;
             }
-            $content_lines = array();
+            $phpt_content_lines = array();
         } else {
-            if ($current_section !== null) {
-                $content_lines[] = $line;
+            if ($phpt_current_section !== null) {
+                $phpt_content_lines[] = $phpt_line;
             }
         }
     }
     
     // Save last section
-    if ($current_section !== null) {
-        $sections[$current_section] = implode("\n", $content_lines);
+    if ($phpt_current_section !== null) {
+        $phpt_sections[$phpt_current_section] = implode("\n", $phpt_content_lines);
     }
     
-    return $sections;
+    return $phpt_sections;
 }
 
-function find_files($dir, $extension, $filter = '') {
-    $files = array();
-    if (!is_dir($dir)) {
-        return $files;
+function find_files($phpt_dir, $phpt_extension, $phpt_filter = '') {
+    $phpt_files = array();
+    if (!is_dir($phpt_dir)) {
+        return $phpt_files;
     }
-    $entries = scandir($dir);
-    if ($entries === false) {
-        return $files;
+    $phpt_entries = scandir($phpt_dir);
+    if ($phpt_entries === false) {
+        return $phpt_files;
     }
-    foreach ($entries as $entry) {
-        if ($entry === '.' || $entry === '..') continue;
-        $path = $dir . '/' . $entry;
-        if (is_dir($path)) {
-            $files = array_merge($files, find_files($path, $extension, $filter));
-        } elseif (is_file($path) && pathinfo($path, PATHINFO_EXTENSION) === $extension) {
-            $basename = pathinfo($path, PATHINFO_FILENAME);
-            if (empty($filter) || strpos($basename, $filter) === 0) {
-                $files[] = $path;
+    foreach ($phpt_entries as $phpt_entry) {
+        if ($phpt_entry === '.' || $phpt_entry === '..') continue;
+        $phpt_path = $phpt_dir . '/' . $phpt_entry;
+        if (is_dir($phpt_path)) {
+            $phpt_files = array_merge($phpt_files, find_files($phpt_path, $phpt_extension, $phpt_filter));
+        } elseif (is_file($phpt_path) && pathinfo($phpt_path, PATHINFO_EXTENSION) === $phpt_extension) {
+            $phpt_basename = pathinfo($phpt_path, PATHINFO_FILENAME);
+            if (empty($phpt_filter) || strpos($phpt_basename, $phpt_filter) === 0) {
+                $phpt_files[] = $phpt_path;
             }
         }
     }
-    return $files;
+    return $phpt_files;
 }
 
-function match_expectf_pattern($pattern, $output) {
+function handle_error($errno, $errstr, $errfile, $errline) {
+    echo "Error [$errno]: $errstr in $errfile on line $errline\n";
+    exit(1);
+}
+
+function match_expectf_pattern($phpt_pattern, $phpt_output) {
     // Handle %d (digits) and %s (non-whitespace strings) without regex
-    $pattern_len = strlen($pattern);
-    $output_len = strlen($output);
-    $p = 0; // pattern position
-    $o = 0; // output position
+    $phpt_pattern_len = strlen($phpt_pattern);
+    $phpt_output_len = strlen($phpt_output);
+    $phpt_p = 0; // pattern position
+    $phpt_o = 0; // output position
     
-    while ($p < $pattern_len) {
-        if ($pattern[$p] === '%') {
-            $p++; // move past %
-            if ($p >= $pattern_len) {
+    while ($phpt_p < $phpt_pattern_len) {
+        if ($phpt_pattern[$phpt_p] === '%') {
+            $phpt_p++; // move past %
+            if ($phpt_p >= $phpt_pattern_len) {
                 return false; // incomplete % sequence
             }
             
-            if ($pattern[$p] === 'd') {
+            if ($phpt_pattern[$phpt_p] === 'd') {
                 // Match one or more digits
-                if ($o >= $output_len || !ctype_digit($output[$o])) {
+                if ($phpt_o >= $phpt_output_len || !ctype_digit($phpt_output[$phpt_o])) {
                     return false;
                 }
-                while ($o < $output_len && ctype_digit($output[$o])) {
-                    $o++;
+                while ($phpt_o < $phpt_output_len && ctype_digit($phpt_output[$phpt_o])) {
+                    $phpt_o++;
                 }
-            } elseif ($pattern[$p] === 's') {
+            } elseif ($phpt_pattern[$phpt_p] === 's') {
                 // Match one or more non-whitespace characters
-                if ($o >= $output_len || ctype_space($output[$o])) {
+                if ($phpt_o >= $phpt_output_len || ctype_space($phpt_output[$phpt_o])) {
                     return false;
                 }
-                while ($o < $output_len && !ctype_space($output[$o])) {
-                    $o++;
+                while ($phpt_o < $phpt_output_len && !ctype_space($phpt_output[$phpt_o])) {
+                    $phpt_o++;
                 }
             } else {
                 return false; // unknown % sequence
             }
-            $p++; // move past d or s
+            $phpt_p++; // move past d or s
         } else {
             // Literal character match
-            if ($o >= $output_len || $pattern[$p] !== $output[$o]) {
+            if ($phpt_o >= $phpt_output_len || $phpt_pattern[$phpt_p] !== $phpt_output[$phpt_o]) {
                 return false;
             }
-            $p++;
-            $o++;
+            $phpt_p++;
+            $phpt_o++;
         }
     }
     
@@ -226,160 +232,173 @@ function match_expectf_pattern($pattern, $output) {
 }
 
 // Find test files
-$files = find_files($target_dir, $file_extension, $filter);
-sort($files);
+$phpt_files = find_files($phpt_target_dir, $phpt_file_extension, $phpt_filter);
+sort($phpt_files);
 
-$total = count($files);
-if ($output_format == "tap") {
-    echo "1..$total\n";
+$phpt_total = count($phpt_files);
+if ($phpt_output_format == "tap") {
+    echo "1..$phpt_total\n";
 }
 
-$passed = 0;
-$failed = 0;
-$skipped = 0;
-$nimp = 0;
-$count = 1;
+$phpt_passed = 0;
+$phpt_failed = 0;
+$phpt_skipped = 0;
+$phpt_nimp = 0;
+$phpt_count = 1;
 
-foreach ($files as $file) {
-    $sections = parse_phpt_sections($file, $valid_sections);
+foreach ($phpt_files as $phpt_file) {
+    $phpt_sections = parse_phpt_sections($phpt_file, $phpt_valid_sections);
     
     // Write sections to disk
-    if (isset($sections['file'])) {
-        $file_path = $file . '.file';
-        file_put_contents($file_path, $sections['file']);
+    if (isset($phpt_sections['file'])) {
+        $phpt_file_path = $phpt_file . '.file';
+        file_put_contents($phpt_file_path, $phpt_sections['file']);
     }
-    if (isset($sections['skipif'])) {
-        $skipif_path = $file . '.skipif';
-        file_put_contents($skipif_path, $sections['skipif']);
+    if (isset($phpt_sections['skipif'])) {
+        $phpt_skipif_path = $phpt_file . '.skipif';
+        file_put_contents($phpt_skipif_path, $phpt_sections['skipif']);
     }
-    if (isset($sections['clean'])) {
-        $clean_path = $file . '.clean';
-        file_put_contents($clean_path, $sections['clean']);
+    if (isset($phpt_sections['clean'])) {
+        $phpt_clean_path = $phpt_file . '.clean';
+        file_put_contents($phpt_clean_path, $phpt_sections['clean']);
     }
 
-    $test_name = $file;
+    $phpt_test_name = $phpt_file;
     
     // SKIPIF check
-    $skip = false;
-    if (isset($sections['skipif'])) {
-        $skipif_path = $file . '.skipif';
+    $phpt_skip = false;
+    if (isset($phpt_sections['skipif'])) {
+        $phpt_skipif_path = $phpt_file . '.skipif';
         ob_start();
-        include($skipif_path);
-        $skip_output = ob_get_clean();
-        $skip_output = trim($skip_output);
-        if (!empty($skip_output)) {
-            $skip = true;
+        include($phpt_skipif_path);
+        $phpt_skip_output = ob_get_clean();
+        chdir($phpt_curdir);
+        $phpt_skip_output = trim($phpt_skip_output);
+        if (!empty($phpt_skip_output)) {
+            $phpt_skip = true;
         }
     }
     
-    if ($skip) {
-        if ($output_format == "tap") {
-            echo "ok $count - $test_name # skip\n";
+    if ($phpt_skip) {
+        if ($phpt_output_format == "tap") {
+            echo "ok $phpt_count - $phpt_test_name # skip\n";
         } else {
             echo "S";
         }
-        $skipped++;
+        $phpt_skipped++;
     } else {
         // Check for unimplemented sections
-        $has_unimplemented = false;
-        foreach ($not_implemented as $section) {
-            if (isset($sections[$section]) && !empty(trim($sections[$section]))) {
-                $has_unimplemented = true;
+        $phpt_has_unimplemented = false;
+        foreach ($phpt_not_implemented as $phpt_section) {
+            if (isset($phpt_sections[$phpt_section]) && !empty(trim($phpt_sections[$phpt_section]))) {
+                $phpt_has_unimplemented = true;
                 break;
             }
         }
         
-        if ($has_unimplemented) {
-            if ($output_format == "tap") {
-                echo "not ok $count - $test_name # TODO no runner support\n";
+        if ($phpt_has_unimplemented) {
+            if ($phpt_output_format == "tap") {
+                echo "not ok $phpt_count - $phpt_test_name # TODO no runner support\n";
             } else {
                 echo "F";
             }
-            $nimp++;
+            $phpt_nimp++;
         } else {
             // Test execution
-            $file_path = $file . '.file';
+            $phpt_file_path = $phpt_file . '.file';
             ob_start();
-            include($file_path);
-            $output = ob_get_clean();
-            $output = trim($output);
+            set_error_handler('handle_error');
+            include($phpt_file_path);
+            set_error_handler(null);
+            $phpt_output = ob_get_clean();
+            $phpt_output = str_replace("\r\n", "\n", $phpt_output);
+            $phpt_output = str_replace("\r", "", $phpt_output);
+            chdir($phpt_curdir);
+            $phpt_output = trim($phpt_output);
             
-            $expected = isset($sections['expect']) ? trim($sections['expect']) : '';
-            $expectedf = isset($sections['expectf']) ? trim($sections['expectf']) : '';
+            $phpt_expected = isset($phpt_sections['expect']) ? trim($phpt_sections['expect']) : '';
+            $phpt_expectedf = isset($phpt_sections['expectf']) ? trim($phpt_sections['expectf']) : '';
             
-            $matches = false;
-            if (!empty($expectedf)) {
+            $phpt_matches = false;
+            if (!empty($phpt_expectedf)) {
                 // Use EXPECTF with pattern matching for %d and %s
-                $matches = match_expectf_pattern($expectedf, $output);
-            } elseif ($output === $expected) {
-                $matches = true;
+                $phpt_matches = match_expectf_pattern($phpt_expectedf, $phpt_output);
+            } elseif ($phpt_output === $phpt_expected) {
+                $phpt_matches = true;
             }
             
-            if ($matches) {
-                if ($output_format == "tap") {
-                    echo "ok $count - $test_name\n";
+            if ($phpt_matches === true) {
+                if ($phpt_output_format == "tap") {
+                    echo "ok $phpt_count - $phpt_test_name\n";
                 } else {
                     echo ".";
                 }
-                $passed++;
+                $phpt_passed++;
             } else {
-                if ($output_format == "tap") {
-                    echo "not ok $count - $test_name\n";
-                    if (!empty($expectedf)) {
-                        echo "# Expected pattern: '$expectedf'\n";
+                if ($phpt_output_format == "tap") {
+                    echo "not ok $phpt_count - $phpt_test_name\n";
+                    if (!empty($phpt_expectedf)) {
+                        echo "# Expected pattern: '$phpt_expectedf'\n";
                     } else {
-                        echo "# Expected: '$expected'\n";
+                        echo "# Expected: '$phpt_expected'\n";
                     }
-                    echo "# Actual: '$output'\n";
+                    echo "# Actual: '$phpt_output'\n";
                 } else {
                     echo "F";
+                    if (!empty($phpt_expectedf)) {
+                        echo "# Expected pattern: '$phpt_expectedf'\n";
+                    } else {
+                        echo "# Expected: '$phpt_expected'\n";
+                    }
+                    echo "# Actual: '$phpt_output'\n";
                 }
-                $failed++;
+                $phpt_failed++;
             }
         }
     }
     
     // CLEAN execution
-    if (isset($sections['clean'])) {
-        $clean_path = $file . '.clean';
+    if (isset($phpt_sections['clean']) && $phpt_skip === false) {
+        $phpt_clean_path = $phpt_file . '.clean';
         ob_start();
-        include($clean_path);
+        include($phpt_clean_path);
         ob_end_clean();
+        chdir($phpt_curdir);
     }
     
-    $count++;
+    $phpt_count++;
     
     // Clean up temp files
-    @unlink($file . '.file');
-    @unlink($file . '.skipif');
-    @unlink($file . '.clean');
-    @unlink($file . '.output');
-    @unlink($file . '.expect');
+    @unlink($phpt_file . '.file');
+    @unlink($phpt_file . '.skipif');
+    @unlink($phpt_file . '.clean');
+    @unlink($phpt_file . '.output');
+    @unlink($phpt_file . '.expect');
 }
 
-if ($output_format == "tap") {
+if ($phpt_output_format == "tap") {
     echo "# Incomplete Tests\n";
     echo "# ----------------\n";
-    echo "#     ok: $skipped\t(# skip)\n";
-    echo "# not ok: $nimp\t(# TODO)\n";
+    echo "#     ok: $phpt_skipped\t(# skip)\n";
+    echo "# not ok: $phpt_nimp\t(# TODO)\n";
     echo "# ----------------\n";
-    echo "#  Total: " . ($skipped + $nimp) . " incomplete\n";
+    echo "#  Total: " . ($phpt_skipped + $phpt_nimp) . " incomplete\n";
     echo "\n";
     echo "# Test Summary\n";
     echo "# ----------------\n";
-    echo "#     ok: " . ($passed + $skipped) . "\n";
-    echo "# not ok: " . ($failed + $nimp) . "\n";
+    echo "#     ok: " . ($phpt_passed + $phpt_skipped) . "\n";
+    echo "# not ok: " . ($phpt_failed + $phpt_nimp) . "\n";
     echo "# ----------------\n";
-    echo "#  Total: $total tests\n";
+    echo "#  Total: $phpt_total tests\n";
 } else {
-    echo " (" . ($passed + $skipped) . "/$total)\n";
+    echo " (" . ($phpt_passed + $phpt_skipped) . "/$phpt_total)\n";
 }
 
-if ($total != ($passed + $failed + $skipped + $nimp)) {
-    echo "# WARNING: Test count mismatch in directory '$target_dir'.\n";
+if ($phpt_total != ($phpt_passed + $phpt_failed + $phpt_skipped + $phpt_nimp)) {
+    echo "# WARNING: Test count mismatch in directory '$phpt_target_dir'.\n";
     exit(1);
 }
 
-if ($failed > 0) {
+if ($phpt_failed > 0) {
     exit(1);
 }

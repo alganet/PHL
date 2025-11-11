@@ -2,11 +2,12 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Test file_put_contents with empty data and locked file
+Test file_put_contents()
 --SKIPIF--
 <?php
-if (function_exists('zend_version')) {
-    echo "Zend PHP on Windows handles locks differently";
+
+if (PHP_OS === 'WINNT' && function_exists('zend_version')) {
+    echo "skip: platform";
 }
 if (!function_exists('file_put_contents') || !function_exists('flock') || !function_exists('fopen')) {
     echo 'skip: file functions not available';

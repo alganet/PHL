@@ -6,6 +6,8 @@
 #ifndef PH7_AMALGAMATION
 #include "ph7int.h"
 #endif
+#include <stddef.h>
+#include <stdlib.h>
 /*
  * The code in this file implements execution method of the PH7 Virtual Machine.
  * The PH7 compiler (implemented in 'compiler.c' and 'parse.c') generates a bytecode program
@@ -2181,6 +2183,49 @@ static sxi32 VmCallErrorHandler(ph7_vm *pVm,SyBlob *pMsg)
  * Refer to the implementation of [ph7_context_throw_error()] for additional
  * information.
  */
+static sxi32 VmInvokeErrorHandler(ph7_vm *pVm, sxi32 iErr, const char *zMessage, SyString *pFile, sxi32 iLine)
+{
+	if( ph7_value_is_callable(&pVm->aErrCB[1]) ){
+		ph7_value apArg[4];
+		ph7_value *apArgPtr[4];
+		ph7_value sResult;
+		SyString sErr;
+		/* Prepare arguments */
+		PH7_MemObjInitFromInt(pVm,&apArg[0],iErr);
+		SyStringInitFromBuf(&sErr,zMessage,SyStrlen(zMessage));
+		PH7_MemObjInitFromString(pVm,&apArg[1],&sErr);
+		if( pFile ){
+			SyStringInitFromBuf(&sErr,pFile->zString,pFile->nByte);
+			PH7_MemObjInitFromString(pVm,&apArg[2],&sErr);
+		}else{
+			PH7_MemObjInit(pVm,&apArg[2]);
+		}
+		PH7_MemObjInitFromInt(pVm,&apArg[3],iLine);
+		PH7_MemObjInit(pVm,&sResult);
+		/* Set up pointer array */
+		apArgPtr[0] = &apArg[0];
+		apArgPtr[1] = &apArg[1];
+		apArgPtr[2] = &apArg[2];
+		apArgPtr[3] = &apArg[3];
+		/* Call the handler */
+		PH7_VmCallUserFunction(pVm,&pVm->aErrCB[1],4,apArgPtr,&sResult);
+		/* Check return value */
+		if( (sResult.iFlags & MEMOBJ_BOOL) == 0 ){
+			PH7_MemObjToBool(&sResult);
+		}
+		/* Release */
+		PH7_MemObjRelease(&apArg[0]);
+		PH7_MemObjRelease(&apArg[1]);
+		PH7_MemObjRelease(&apArg[2]);
+		PH7_MemObjRelease(&apArg[3]);
+		PH7_MemObjRelease(&sResult);
+		/* Return TRUE  (proceed to report error) if handler returned FALSE (he's reporting he couldn't catch the error)
+		          FALSE (proceed to omit error)   if handler returned TRUE (he's reporting he caught the error) */
+		return sResult.x.iVal == 0 ? TRUE : FALSE;
+	}
+	/* No handler, always call error handler */
+	return TRUE;
+}
 PH7_PRIVATE sxi32 PH7_VmThrowError(
 	ph7_vm *pVm,         /* Target VM */
 	SyString *pFuncName, /* Function name. NULL otherwise */
@@ -2191,7 +2236,7 @@ PH7_PRIVATE sxi32 PH7_VmThrowError(
 	SyBlob *pWorker = &pVm->sWorker;
 	SyString *pFile;
 	char *zErr;
-	sxi32 rc;
+	sxi32 rc = SXRET_OK;
 	if( !pVm->bErrReport ){
 		/* Don't bother reporting errors */
 		return SXRET_OK;
@@ -2220,8 +2265,10 @@ PH7_PRIVATE sxi32 PH7_VmThrowError(
 		SyBlobAppend(pWorker,"(): ",sizeof("(): ")-1);
 	}
 	SyBlobAppend(pWorker,zMessage,SyStrlen(zMessage));
-	/* Consume the error message */
-	rc = VmCallErrorHandler(&(*pVm),pWorker);
+	/* Check for user error handler */
+	if( VmInvokeErrorHandler(pVm, iErr, zMessage, pFile, 0) ){
+		rc = VmCallErrorHandler(&(*pVm),pWorker);
+	}
 	return rc;
 }
 /*
@@ -2238,9 +2285,10 @@ static sxi32 VmThrowErrorAp(
 	)
 {
 	SyBlob *pWorker = &pVm->sWorker;
+	SyBlob sMsg;
 	SyString *pFile;
 	char *zErr;
-	sxi32 rc;
+	sxi32 rc = SXRET_OK;
 	if( !pVm->bErrReport ){
 		/* Don't bother reporting errors */
 		return SXRET_OK;
@@ -2268,9 +2316,16 @@ static sxi32 VmThrowErrorAp(
 		SyBlobAppend(pWorker,pFuncName->zString,pFuncName->nByte);
 		SyBlobAppend(pWorker,"(): ",sizeof("(): ")-1);
 	}
-	SyBlobFormatAp(pWorker,zFormat,ap);
-	/* Consume the error message */
-	rc = VmCallErrorHandler(&(*pVm),pWorker);
+	/* Format the raw message */
+	SyBlobInit(&sMsg, &pVm->sAllocator);
+	SyBlobFormatAp(&sMsg,zFormat,ap);
+	/* Check if a user error handler is installed */
+	if( VmInvokeErrorHandler(pVm, iErr, (const char *)SyBlobData(&sMsg), pFile, 0) ){
+		/* No handler or handler returned TRUE, normal processing */
+		SyBlobAppend(pWorker,SyBlobData(&sMsg),SyBlobLength(&sMsg));
+		rc = VmCallErrorHandler(&(*pVm),pWorker);
+	}
+	SyBlobRelease(&sMsg);
 	return rc;
 }
 /*
@@ -2413,6 +2468,11 @@ case PH7_OP_HALT:
 	}else if( pLastRef ){
 		/* Nothing referenced */
 		*pLastRef = SXU32_HIGH;
+	}
+	/* Check if we're in an included file context */
+	if( SySetUsed(&pVm->aFiles) > 0 ){
+		/* Terminate the entire process */
+		exit(pVm->iExitStatus);
 	}
 	goto Abort;
 /*
@@ -8501,6 +8561,11 @@ static int vm_builtin_exit(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			pCtx->pVm->iExitStatus = iExitStatus;
 		}
 	}
+	/* Check if we are in an included file */
+	if( SySetUsed(&pCtx->pVm->aFiles) > 0 ){
+		/* Exit the entire process */
+		exit(pCtx->pVm->iExitStatus);
+	}
 	/* Abort processing immediately */
 	return PH7_ABORT;
 }
@@ -9001,7 +9066,10 @@ static int vm_builtin_trigger_error(ph7_context *pCtx,int nArg,ph7_value **apArg
 			}
 		}
 		/* Report error */
-		ph7_context_throw_error_format(pCtx,nErr,"%.*s",nLen,zErr);
+		rc = PH7_VmThrowError(pCtx->pVm, NULL, nErr, zErr);
+		if( rc == PH7_ABORT ){
+			return rc;
+		}
 		/* Return true */
 		ph7_result_bool(pCtx,1);
 	}else{
@@ -9257,10 +9325,6 @@ static int vm_builtin_set_error_handler(ph7_context *pCtx,int nArg,ph7_value **a
 			PH7_MemObjStore(apArg[0],pNew);
 		}
 	}
-	ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-		"This function is disabled in the current release of the PH7(%s) engine",
-		ph7_lib_version()
-		);
 	return PH7_OK;
 }
 /*
