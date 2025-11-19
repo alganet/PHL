@@ -6,10 +6,10 @@
 # ---
 #
 # Usage:
-#   sh build-aux/dev.sh [run|wipe] [dev.exe arguments quoted]
+#   sh build-aux/dev.sh [wipe|run 'quoted cmd.exe command']
 #
 # Example:
-#   sh build-aux/dev.sh run 'build-aux\dev.bat nmake /nologo /f build-aux\nmake.mk'
+#   sh build-aux/dev.sh run 'build-aux\dev.bat nmake /nologo /f Makefile'
 
 # Get workspace directory
 workspace_dir=$(cd "$(dirname "$0")/.." && pwd)
@@ -22,17 +22,26 @@ wsl_temp=$(wslpath -u "$win_temp")
 tmpdir="$wsl_temp/PHL-build"
 
 
-if test "$1" = "wipe"; then
-    rm -rf "$tmpdir" build-aux/dev.cmd
-    exit 0
-fi
-shift
+case "${1:-}" in
+    "wipe")
+        rm -rf "$tmpdir" build-aux/dev.cmd
+        exit 0
+        ;;
+    "run")
+        shift
+        ;;
+    *)
+        echo "Usage: $0 [wipe|run 'quoted cmd.exe command']"
+        exit 1
+        ;;
+esac
 
 # Create temp build directory and copy source files
 mkdir -p "$tmpdir"
 rsync -a --delete "$workspace_dir/src" "$tmpdir" &
 rsync -a --delete "$workspace_dir/tests" "$tmpdir" &
 rsync -a --delete "$workspace_dir/build-aux" "$tmpdir" &
+rsync -a "$workspace_dir/Makefile" "$tmpdir" &
 wait
 
 # Run build in temp directory via PowerShell
