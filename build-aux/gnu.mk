@@ -15,13 +15,6 @@ COVERAGE_CFLAGS = -W -Wunused -Wall -Isrc/ph7 -O0 $(PH7_DEFINES) -D__UNIXES__ -f
 
 PHP_BIN ?= $(shell command -v php)$(BIN_SUFFIX)
 
-# Pattern rules for compilation
-$(BUILD_DIR)/src/ph7/%.o: src/ph7/%.c | $(BUILD_DIR)/src/ph7
-	$(CC) $(CFLAGS) -c $< -o $@
-$(BUILD_DIR)/src/phl/%.o: src/phl/%.c | $(BUILD_DIR)/src/phl
-	$(CC) $(CFLAGS) -c $< -o $@
-$(BUILD_DIR)/src/ph7 $(BUILD_DIR)/src/phl:
-	@mkdir -p $@
 $(PHL_BIN): $(OBJECTS)
 	$(CC) $(CFLAGS) -o $@ $(OBJECTS) $(LDFLAGS)
 
@@ -32,14 +25,8 @@ $(BUILD_DIR)-clean:
 # --------
 
 COVERAGE_LDFLAGS = $(LDFLAGS)
-COVERAGE_OBJECTS = $(patsubst $(BUILD_DIR)/src/%,$(BUILD_DIR)/coverage/%,$(OBJECTS:.o=.gcov.o))
+COVERAGE_OBJECTS = $(patsubst $(BUILD_DIR)/src/%,$(BUILD_DIR)/coverage/src/%,$(OBJECTS:.o=.o))
 
-$(BUILD_DIR)/coverage/ph7/%.gcov.o: src/ph7/%.c | $(BUILD_DIR)/coverage/ph7
-	$(CC) $(COVERAGE_CFLAGS) -c $< -o $@
-$(BUILD_DIR)/coverage/phl/%.gcov.o: src/phl/%.c | $(BUILD_DIR)/coverage/phl
-	$(CC) $(COVERAGE_CFLAGS) -c $< -o $@
-$(BUILD_DIR)/coverage/ph7 $(BUILD_DIR)/coverage/phl:
-	@mkdir -p $@
 $(COVERAGE_BIN): $(COVERAGE_OBJECTS)
 	$(CC) $(COVERAGE_CFLAGS) -o $@ $(COVERAGE_OBJECTS) $(COVERAGE_LDFLAGS)
 

@@ -38,8 +38,10 @@ COVERAGE_PHL_CMD = "$(COVERAGE_BIN)" "tests/phpt.php" \
 # \
 !ifndef 0 # \
 !include "build-aux/nmake.mk" # \
+!include "$(MAKEDIR)/build-aux/patterns.mk" # \
 !else
 include build-aux/gnu.mk
+include build-aux/rules.mk
 # \
 !endif
 # --- POLYGLOT MAGIC ENDS
