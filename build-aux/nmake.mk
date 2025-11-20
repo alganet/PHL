@@ -15,19 +15,9 @@ COVERAGE_CFLAGS = /nologo /Fd$(BUILD_DIR:/=\)\coverage\ph7-coverage.pdb /I src /
 
 PHP_BIN = php$(BIN_SUFFIX)
 
-# Pattern rules for compilation
-{src/ph7}.c{$(BUILD_DIR)/src/ph7}.obj:
-	@if not exist "$(BUILD_DIR)/src/ph7" mkdir "$(BUILD_DIR)/src/ph7"
-	$(CC) $(CFLAGS) /Fo"$@" /c $<
-{src/phl}.c{$(BUILD_DIR)/src/phl}.obj:
-	@if not exist "$(BUILD_DIR)/src/phl" mkdir "$(BUILD_DIR)/src/phl"
-	$(CC) $(CFLAGS) /Fo"$@" /c $<
-$(BUILD_DIR):
-	@if not exist "$(BUILD_DIR)" mkdir "$(BUILD_DIR)"
 $(PHL_BIN): $(BUILD_DIR) $(OBJECTS)
 	$(CC) $(CFLAGS) /Fe$@ $(OBJECTS) $(LDFLAGS)
 
-# Clean target
 $(BUILD_DIR)-clean:
 	-@rd /s /q $(BUILD_DIR:/=\) 2>nul
 
@@ -35,16 +25,8 @@ $(BUILD_DIR)-clean:
 # --------
 
 COVERAGE_LDFLAGS = $(LDFLAGS) /DEBUG
-COVERAGE_OBJECTS = $(OBJECTS:/src/=/coverage/)
+COVERAGE_OBJECTS = $(OBJECTS:/src/=/coverage/src/)
 
-{src/ph7}.c{$(BUILD_DIR)/coverage/ph7}.obj:
-	@if not exist "$(BUILD_DIR)/coverage/ph7" mkdir "$(BUILD_DIR)/coverage/ph7"
-	$(CC) $(COVERAGE_CFLAGS) /Fo"$@" /c $<
-{src/phl}.c{$(BUILD_DIR)/coverage/phl}.obj:
-	@if not exist "$(BUILD_DIR)/coverage/phl" mkdir "$(BUILD_DIR)/coverage/phl"
-	$(CC) $(COVERAGE_CFLAGS) /Fo"$@" /c $<
-$(BUILD_DIR)/coverage:
-	@if not exist "$(BUILD_DIR)/coverage" mkdir "$(BUILD_DIR)/coverage"
 $(COVERAGE_BIN): $(BUILD_DIR)/coverage $(COVERAGE_OBJECTS)
 	$(CC) $(COVERAGE_CFLAGS) /Fe$@ $(COVERAGE_OBJECTS) $(COVERAGE_LDFLAGS)
 

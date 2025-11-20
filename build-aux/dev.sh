@@ -6,10 +6,11 @@
 # ---
 #
 # Usage:
-#   sh build-aux/dev.sh [wipe|run 'quoted cmd.exe command']
+#   sh build-aux/dev.sh wipe|run|make [OPTIONS]
 #
 # Example:
-#   sh build-aux/dev.sh run 'build-aux\dev.bat nmake /nologo /f Makefile'
+#   sh build-aux/dev.sh run 'build-aux\dev.bat nmake test' # always quote
+#   sh build-aux/dev.sh make test # equivalent to above
 
 # Get workspace directory
 workspace_dir=$(cd "$(dirname "$0")/.." && pwd)
@@ -30,6 +31,10 @@ case "${1:-}" in
     "run")
         shift
         ;;
+    "make")
+        shift
+        set -- 'build-aux\dev.bat nmake /nologo' "$@"
+        ;;
     *)
         echo "Usage: $0 [wipe|run 'quoted cmd.exe command']"
         exit 1
@@ -43,6 +48,9 @@ rsync -a --delete "$workspace_dir/tests" "$tmpdir" &
 rsync -a --delete "$workspace_dir/build-aux" "$tmpdir" &
 rsync -a "$workspace_dir/Makefile" "$tmpdir" &
 wait
+
+# Ensure we have the structure to rsync back
+mkdir -p "$workspace_dir/build/x86_64-windows-msvc"
 
 # Run build in temp directory via PowerShell
 (timeout 60s powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "

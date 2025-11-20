@@ -41,7 +41,7 @@ runs:
       shell: bash
 
     - if: contains(inputs.name, '-windows')
-      run: build-aux/dev.bat nmake /nologo /f Makefile ${{ inputs.make }}
+      run: build-aux/dev.bat nmake /nologo ${{ inputs.make }}
       shell: cmd
 
     - if: inputs.artifacts == 'true'
