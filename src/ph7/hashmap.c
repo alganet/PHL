@@ -3,9 +3,7 @@
  * SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
  * SPDX-License-Identifier: BSD-3-Clause
  */
-#ifndef PH7_AMALGAMATION
 #include "ph7int.h"
-#endif
 /* This file implement generic hashmaps known as 'array' in the PHP world */
 /* Allowed node types */
 #define HASHMAP_INT_NODE   1  /* Node with an int [i.e: 64-bit integer] key */

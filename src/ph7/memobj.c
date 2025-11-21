@@ -3,9 +3,7 @@
  * SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
  * SPDX-License-Identifier: BSD-3-Clause
  */
-#ifndef PH7_AMALGAMATION
 #include "ph7int.h"
-#endif
 /* This file handle low-level stuff related to indexed memory objects [i.e: ph7_value] */
 /*
  * Notes on memory objects [i.e: ph7_value].
