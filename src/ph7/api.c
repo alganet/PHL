@@ -3,9 +3,7 @@
  * SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
  * SPDX-License-Identifier: BSD-3-Clause
  */
-#ifndef PH7_AMALGAMATION
 #include "ph7int.h"
-#endif
 /* This file implement the public interfaces presented to host-applications.
  * Routines in other files are for internal use by PH7 and should not be
  * accessed by users of the library.

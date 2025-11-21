@@ -33,7 +33,6 @@ This is a refactored version of the original PH7 repository, revived after years
   - Written in ANSI C
   - Thread-safe and fully reentrant
   - Multiple interpreter states can coexist without interference
-  - Single-file amalgamation build available
 
 - **Rich Built-in Library** (470+ functions):
   - XML parser with namespace support
@@ -93,7 +92,7 @@ int main(void) {
 
 Compile with:
 ```bash
-gcc -o hello hello.c src/ph7/ph7amalgam.c
+make
 ```
 
 ### Using the Interpreter

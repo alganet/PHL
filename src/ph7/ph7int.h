@@ -6,13 +6,8 @@
 #ifndef __PH7INT_H__
 #define __PH7INT_H__
 /* Internal interface definitions for PH7. */
-#ifdef PH7_AMALGAMATION
-/* Marker for routines not intended for external use */
-#define PH7_PRIVATE static
-#else
 #define PH7_PRIVATE
 #include "ph7.h"
-#endif 
 #ifndef PH7_PI
 /* Value of PI */
 #define PH7_PI 3.1415926535898
