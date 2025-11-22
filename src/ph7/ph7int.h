@@ -1009,7 +1009,7 @@ typedef struct ph7_vm_func_closure_env ph7_vm_func_closure_env;
 typedef struct ph7_vm_func_static_var  ph7_vm_func_static_var;
 typedef struct ph7_vm_func_arg ph7_vm_func_arg;
 typedef struct ph7_vm_func ph7_vm_func;
-typedef struct VmFrame VmFrame;
+typedef struct VmFrame VmFrame; /* Forward declaration - full definition in vm.c */
 /*
  * Each collected function argument is recorded in an instance
  * of the following structure.
@@ -1148,6 +1148,7 @@ struct ph7_class
 	sxu32 nLine;          /* Line number on which this class was declared */
 	SySet aInterface;     /* Implemented interface container */
 	ph7_class *pNextName; /* Next class [interface, abstract, etc.] with the same name */
+	int bMounted;         /* TRUE if class has been mounted (internal VM state) */
 };
 /* Class configuration flags */
 #define PH7_CLASS_FINAL       0x001 /* Class is final [cannot be extended] */
@@ -1769,6 +1770,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionAp(ph7_vm *pVm,ph7_value *pFunc,ph7_valu
 PH7_PRIVATE sxi32 PH7_VmUnsetMemObj(ph7_vm *pVm,sxu32 nObjIdx,int bForce);
 PH7_PRIVATE void PH7_VmRandomString(ph7_vm *pVm,char *zBuf,int nLen);
 PH7_PRIVATE ph7_class * PH7_VmPeekTopClass(ph7_vm *pVm);
+PH7_PRIVATE ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm);
 PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke);
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 PH7_PRIVATE const ph7_io_stream * PH7_VmGetStreamDevice(ph7_vm *pVm,const char **pzDevice,int nByte);

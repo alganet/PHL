@@ -715,7 +715,7 @@ static sxi32 VmErrorFormat(ph7_vm *pVm,sxi32 iErr,const char *zFormat,...);
  * Mount a compiled class into the freshly created vitual machine so that
  * it can be instanciated from the executed PHP script.
  */
-static sxi32 VmMountUserClass(
+PH7_PRIVATE sxi32 VmMountUserClass(
 	ph7_vm *pVm,      /* Target VM */
 	ph7_class *pClass /* Class to be mounted */
 	)
@@ -778,6 +778,8 @@ static sxi32 VmMountUserClass(
 			}
 		}
 	}
+	/* Mark class as mounted to avoid redundant mounting */
+	pClass->bMounted = TRUE;
 	return SXRET_OK;
 }
 /*
@@ -5020,40 +5022,54 @@ case PH7_OP_MEMBER: {
 				}else{
 					/* Attribute access */
 					ph7_class_attr *pAttr = 0;
-					/* Extract the target attribute */
-					if( sName.nByte > 0 ){
-						pAttr = PH7_ClassExtractAttribute(pClass,sName.zString,sName.nByte);
-					}
-					if( pAttr == 0 ){
-						/* No such attribute,load null */
-						VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Undefined class attribute '%z::%z',PH7 is loading NULL",
-							&pClass->sName,&sName);
-						/* Call the __get magic method if available */
-						PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,0,"__get",sizeof("__get")-1,&sName);
-					}
-					/* Pop the attribute name from the stack */
-					if( !pInstr->p3 ){
-						VmPopOperand(&pTos,1);
-					}
-					PH7_MemObjRelease(pTos);
-					pTos->nIdx = SXU32_HIGH;
-					if( pAttr ){
-						if( (pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
-							/* Access to a non static attribute */
-							VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Access to a non-static class attribute '%z::%z',PH7 is loading NULL",
-								&pClass->sName,&pAttr->sName
-								);
-						}else{
-							ph7_value *pValue;
-							/* Check if the access to the attribute is allowed */
-							if( VmClassMemberAccess(&(*pVm),pClass,&pAttr->sName,pAttr->iProtection,TRUE) ){
-								/* Load the desired attribute */
-								pValue = (ph7_value *)SySetAt(&pVm->aMemObj,pAttr->nIdx);
-								if( pValue ){
-									PH7_MemObjLoad(pValue,pTos);
-									if( pAttr->iFlags & PH7_CLASS_ATTR_STATIC ){
-										/* Load index number */
-										pTos->nIdx = pAttr->nIdx;
+					/* Check for special ::class pseudo-constant */
+					if( sName.nByte == sizeof("class")-1 &&
+					    SyStrnicmp(sName.zString,"class",sizeof("class")-1) == 0 ){
+						/* ::class returns the fully qualified class name */
+						/* Pop the attribute name from the stack */
+						if( !pInstr->p3 ){
+							VmPopOperand(&pTos,1);
+						}
+						PH7_MemObjRelease(pTos);
+						/* Load the class name */
+						ph7_value_string(pTos,pClass->sName.zString,(int)pClass->sName.nByte);
+						pTos->nIdx = SXU32_HIGH;
+					}else{
+						/* Extract the target attribute */
+						if( sName.nByte > 0 ){
+							pAttr = PH7_ClassExtractAttribute(pClass,sName.zString,sName.nByte);
+						}
+						if( pAttr == 0 ){
+							/* No such attribute,load null */
+							VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Undefined class attribute '%z::%z',PH7 is loading NULL",
+								&pClass->sName,&sName);
+							/* Call the __get magic method if available */
+							PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,0,"__get",sizeof("__get")-1,&sName);
+						}
+						/* Pop the attribute name from the stack */
+						if( !pInstr->p3 ){
+							VmPopOperand(&pTos,1);
+						}
+						PH7_MemObjRelease(pTos);
+						pTos->nIdx = SXU32_HIGH;
+						if( pAttr ){
+							if( (pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
+								/* Access to a non static attribute */
+								VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Access to a non-static class attribute '%z::%z',PH7 is loading NULL",
+									&pClass->sName,&pAttr->sName
+									);
+							}else{
+								ph7_value *pValue;
+								/* Check if the access to the attribute is allowed */
+								if( VmClassMemberAccess(&(*pVm),pClass,&pAttr->sName,pAttr->iProtection,TRUE) ){
+									/* Load the desired attribute */
+									pValue = (ph7_value *)SySetAt(&pVm->aMemObj,pAttr->nIdx);
+									if( pValue ){
+										PH7_MemObjLoad(pValue,pTos);
+										if( pAttr->iFlags & PH7_CLASS_ATTR_STATIC ){
+											/* Load index number */
+											pTos->nIdx = pAttr->nIdx;
+										}
 									}
 								}
 							}
@@ -6497,6 +6513,47 @@ PH7_PRIVATE ph7_class * PH7_VmPeekTopClass(ph7_vm *pVm)
 	apClass = (ph7_class **)SySetBasePtr(pSet);
 	return apClass[pSet->nUsed - 1];
 }
+/*
+ * ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm)
+ *   Get the class that declared the currently executing method.
+ *   This is used for resolving the 'self::' constant.
+ *
+ * Parameters
+ *   pVm: Target VM
+ *
+ * Return
+ *   The declaring class of the current method, or NULL if:
+ *   - Not executing within a class method
+ *
+ * Note
+ *   This differs from PH7_VmPeekTopClass() which returns the runtime class
+ *   from the 'self' stack. For self::, we need the class that declared the
+ *   currently executing method, not the runtime class (use static:: for that).
+ *   This is found by walking the call frames to locate the method's
+ *   declaring class.
+ */
+PH7_PRIVATE ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm)
+{
+	VmFrame *pFrame = pVm->pFrame;
+	ph7_vm_func *pVmFunc;
+
+	/* Skip exception frames to find the actual method frame */
+	while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
+		pFrame = pFrame->pParent;
+	}
+
+	/* Check if we're in a method context */
+	if( pFrame->pParent ){
+		pVmFunc = (ph7_vm_func *)pFrame->pUserData;
+		if( pVmFunc && (pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) ){
+			/* Return the declaring class */
+			return (ph7_class *)pVmFunc->pUserData;
+		}
+	}
+
+	return 0;
+}
+
 /*
  * string get_class ([ object $object = NULL ] )
  *   Returns the name of the class of an object
@@ -10491,7 +10548,26 @@ static sxi32 VmEvalChunk(
 			ph7_result_bool(pCtx,0);
 		}
 	}else{
+		/* Mount any newly defined classes */
+		SyHashEntry *pEntry;
+		ph7_class *pClass;
 		ph7_value sResult; /* Return value */
+		sxi32 rc;
+		SyHashResetLoopCursor(&pVm->hClass);
+		while((pEntry = SyHashGetNextEntry(&pVm->hClass)) != 0 ){
+			pClass = (ph7_class *)pEntry->pUserData;
+			/* Only mount classes that haven't been mounted yet */
+			if( !pClass->bMounted ){
+				rc = VmMountUserClass(pVm,pClass);
+				if( rc != SXRET_OK ){
+					/* Mount failure (likely memory error) */
+					if( pCtx ){
+						ph7_result_bool(pCtx,0);
+					}
+					goto Cleanup;
+				}
+			}
+		}
 		if( SXRET_OK != PH7_VmEmitInstr(pVm,PH7_OP_DONE,0,0,0,0) ){
 			/* Out of memory */
 			if( pCtx ){

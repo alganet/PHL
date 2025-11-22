@@ -1810,8 +1810,14 @@ static void PH7_self_Const(ph7_value *pVal,void *pUserData)
 {
 	ph7_vm *pVm = (ph7_vm *)pUserData;
 	ph7_class *pClass;
-	/* Extract the target class if available */
-	pClass = PH7_VmPeekTopClass(pVm);
+
+	/* Get the declaring class of the current method */
+	pClass = PH7_VmPeekDeclaringClass(pVm);
+	if( pClass == 0 ){
+		/* Not in a method, fall back to runtime class */
+		pClass = PH7_VmPeekTopClass(pVm);
+	}
+
 	if( pClass ){
 		SyString *pName = &pClass->sName;
 		/* Expand class name */
@@ -1828,17 +1834,19 @@ static void PH7_parent_Const(ph7_value *pVal,void *pUserData)
 {
 	ph7_vm *pVm = (ph7_vm *)pUserData;
 	ph7_class *pClass;
-	/* Extract the target class if available */
-	pClass = PH7_VmPeekTopClass(pVm);
+
+	/* Get the declaring class, then its parent */
+	pClass = PH7_VmPeekDeclaringClass(pVm);
 	if( pClass && pClass->pBase ){
 		SyString *pName = &pClass->pBase->sName;
-		/* Expand class name */
+		/* Expand parent class name */
 		ph7_value_string(pVal,pName->zString,(int)pName->nByte);
 	}else{
 		/* Expand null */
 		ph7_value_null(pVal);
 	}
 }
+
 /*
  * Table of built-in constants.
  */
