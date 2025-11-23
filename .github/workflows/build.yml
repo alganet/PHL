@@ -98,8 +98,8 @@ jobs:
       with:
         pattern: coverage-*
         path: artifact
-
-    - run: |
+    - name: Coverage report
+      run: |
         mkdir -p report
         chmod +x artifact/coverage-x86_64-linux-gnu/coverage/phl-coverage
 
@@ -127,7 +127,7 @@ jobs:
 
         echo "" >> report/summary.md
         echo "Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> report/summary.md
-    -
+    - name: Coverage comment
       if: github.event_name == 'pull_request'
       run: |
         echo "<details><summary>Code Coverage Report</summary>" >> "$GITHUB_STEP_SUMMARY"
@@ -144,7 +144,7 @@ jobs:
         name: report
         path: report
 
-    - name: Commit coverage to coverage branch
+    - name: Coverage history
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
       run: |
         set -euo pipefail
@@ -165,3 +165,12 @@ jobs:
           git commit -m "Coverage: ${GITHUB_SHA} (${GITHUB_RUN_ID})"
           git push origin coverage
         fi
+
+    - name: Restore workspace
+      if: always()
+      run: |
+        set -euo pipefail
+        echo "Restoring workspace to original commit: ${GITHUB_SHA}"
+        git fetch origin || true
+        git checkout --detach "${GITHUB_SHA}" || true
+        git reset --hard "${GITHUB_SHA}" || true
