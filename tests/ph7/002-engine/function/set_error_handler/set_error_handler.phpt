@@ -15,5 +15,5 @@ set_error_handler($restore_error_handler);
 echo "After error\n";
 ?>
 --EXPECTF--
-Handler called: %d, Test error suppressed, set_error_handler_suppress.phpt.file, %d
+Handler called: %d, Test error suppressed, set_error_handler.phpt.file, %d
 After error
