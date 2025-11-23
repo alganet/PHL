@@ -86,16 +86,19 @@ jobs:
     runs-on: ubuntu-latest
     needs: qa
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
     steps:
     - uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+        persist-credentials: true
     - uses: ./.github/actions/setup-action
     - uses: actions/download-artifact@v6
       with:
         pattern: coverage-*
         path: artifact
-    
+
     - run: |
         mkdir -p report
         chmod +x artifact/coverage-x86_64-linux-gnu/coverage/phl-coverage
@@ -107,7 +110,7 @@ jobs:
              --output-file report/coverage.info
 
         sed -i 's|SF:a/PHL/PHL/|SF:|g' report/coverage.info
-        
+
         genhtml --quiet --include 'src/ph7/*'\
           --output-directory report/html report/coverage.info
 
@@ -124,7 +127,7 @@ jobs:
 
         echo "" >> report/summary.md
         echo "Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> report/summary.md
-    - 
+    -
       if: github.event_name == 'pull_request'
       run: |
         echo "<details><summary>Code Coverage Report</summary>" >> "$GITHUB_STEP_SUMMARY"
@@ -140,3 +143,25 @@ jobs:
       with:
         name: report
         path: report
+
+    - name: Commit coverage to coverage branch
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: |
+        set -euo pipefail
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        # Assumes the 'coverage' branch already exists and that actions/checkout
+        # checked out with 'persist-credentials: true' (default) so we can push.
+        git fetch origin coverage
+        git checkout coverage
+        git pull --ff-only origin coverage || true
+        # Copy latest coverage artifacts
+        cp -f report/coverage.info .
+        cp -f report/coverage.md . || true
+        git add coverage.info coverage.md || true
+        if git diff --cached --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "Coverage: ${GITHUB_SHA} (${GITHUB_RUN_ID})"
+          git push origin coverage
+        fi
