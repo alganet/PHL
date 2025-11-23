@@ -1,0 +1,46 @@
+# EditorConfig helps maintain consistent coding styles for multiple developers
+# and editors. https://editorconfig.org
+
+root = true
+
+[*]
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.{c,h,cpp,hpp}]
+indent_style = tab
+tab_width = 4
+indent_size = tab
+
+[Makefile]
+indent_style = tab
+tab_width = 4
+indent_size = tab
+
+[*.mk]
+indent_style = tab
+tab_width = 4
+indent_size = tab
+
+[*.php]
+indent_style = space
+indent_size = 4
+
+[*.sh]
+indent_style = tab
+indent_size = 4
+
+[*.{json,yml,yaml,xml}]
+indent_style = space
+indent_size = 2
+
+[*.{md,markdown,txt}]
+trim_trailing_whitespace = false
+indent_style = space
+indent_size = 2
+
+[*.bat]
+indent_style = space
+indent_size = 4
