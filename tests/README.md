@@ -55,6 +55,14 @@ Notes and tips
 - When you move or rename tests, update expected outputs that depend on basename (for example, `basename($errfile)` used by error handler tests).
 - If a test must differ per runtime, prefer to create a complementary test under the same function dir and mark differences with `--EXPECTF--` patterns.
 
+Best Practices
+- Use `--CREDITS--` on new PHPT files with SPDX metadata.
+- Add a `--CLEAN--` section to unset variables, close resources and remove temporary files so tests do not pollute the runner context.
+- Use `--SKIPIF--` to skip tests that depend on features not available in the current runtime (e.g. PH7-only constants or functions).
+- Prefer `--EXPECTF--` or numeric formatting (e.g., `sprintf`) when runtime differences (precision, platform behavior) may cause failures.
+- Use `tempnam(sys_get_temp_dir(), 'ph7_')` for temporary files and clean them in `--CLEAN--`.
+- For Windows vs Unix differences, use `PHP_OS` to branch or skip.
+
 Maintainers
 - If you’re not sure where to put a test — ask in the project's issue tracker or reach out to the maintainers.
 
