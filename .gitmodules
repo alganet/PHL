@@ -1,4 +1,0 @@
-[submodule "vendor/php-src"]
-	path = vendor/php-src
-	url = https://github.com/php/php-src.git
-	branch = PHP-5.3.29
