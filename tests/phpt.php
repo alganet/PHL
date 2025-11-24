@@ -121,11 +121,11 @@ function parse_phpt_sections($phpt_path, $phpt_valid_sections) {
     $phpt_content = str_replace("\r\n", "\n", $phpt_content);
     $phpt_content = str_replace("\r", "\n", $phpt_content);
     $phpt_lines = explode("\n", $phpt_content);
-    
+
     $phpt_sections = array();
     $phpt_current_section = null;
     $phpt_content_lines = array();
-    
+
     foreach ($phpt_lines as $phpt_line) {
         if (substr($phpt_line, 0, 2) === '--' && substr($phpt_line, -2) === '--') {
             // Save previous section
@@ -145,12 +145,12 @@ function parse_phpt_sections($phpt_path, $phpt_valid_sections) {
             }
         }
     }
-    
+
     // Save last section
     if ($phpt_current_section !== null) {
         $phpt_sections[$phpt_current_section] = implode("\n", $phpt_content_lines);
     }
-    
+
     return $phpt_sections;
 }
 
@@ -192,14 +192,14 @@ function match_expectf_pattern($phpt_pattern, $phpt_output) {
     $phpt_output_len = strlen($phpt_output);
     $phpt_p = 0; // pattern position
     $phpt_o = 0; // output position
-    
+
     while ($phpt_p < $phpt_pattern_len) {
         if ($phpt_pattern[$phpt_p] === '%') {
             $phpt_p++; // move past %
             if ($phpt_p >= $phpt_pattern_len) {
                 return false; // incomplete % sequence
             }
-            
+
             if ($phpt_pattern[$phpt_p] === 'd') {
                 // Match one or more digits
                 if ($phpt_o >= $phpt_output_len || !ctype_digit($phpt_output[$phpt_o])) {
@@ -229,7 +229,7 @@ function match_expectf_pattern($phpt_pattern, $phpt_output) {
             $phpt_o++;
         }
     }
-    
+
     // Allow trailing content in output for flexibility
     return true;
 }
@@ -251,7 +251,7 @@ $phpt_count = 1;
 
 foreach ($phpt_files as $phpt_file) {
     $phpt_sections = parse_phpt_sections($phpt_file, $phpt_valid_sections);
-    
+
     // Write sections to disk
     if (isset($phpt_sections['file'])) {
         $phpt_file_path = $phpt_file . '.file';
@@ -267,7 +267,7 @@ foreach ($phpt_files as $phpt_file) {
     }
 
     $phpt_test_name = $phpt_file;
-    
+
     // SKIPIF check
     $phpt_skip = false;
     if (isset($phpt_sections['skipif'])) {
@@ -281,7 +281,7 @@ foreach ($phpt_files as $phpt_file) {
             $phpt_skip = true;
         }
     }
-    
+
     if ($phpt_skip) {
         if ($phpt_output_format == "tap") {
             echo "ok $phpt_count - $phpt_test_name # skip\n";
@@ -298,7 +298,7 @@ foreach ($phpt_files as $phpt_file) {
                 break;
             }
         }
-        
+
         if ($phpt_has_unimplemented) {
             if ($phpt_output_format == "tap") {
                 echo "not ok $phpt_count - $phpt_test_name # TODO no runner support\n";
@@ -318,10 +318,10 @@ foreach ($phpt_files as $phpt_file) {
             $phpt_output = str_replace("\r", "", $phpt_output);
             chdir($phpt_curdir);
             $phpt_output = trim($phpt_output);
-            
+
             $phpt_expected = isset($phpt_sections['expect']) ? trim($phpt_sections['expect']) : '';
             $phpt_expectedf = isset($phpt_sections['expectf']) ? trim($phpt_sections['expectf']) : '';
-            
+
             $phpt_matches = false;
             if (!empty($phpt_expectedf)) {
                 // Use EXPECTF with pattern matching for %d and %s
@@ -329,7 +329,7 @@ foreach ($phpt_files as $phpt_file) {
             } elseif ($phpt_output === $phpt_expected) {
                 $phpt_matches = true;
             }
-            
+
             if ($phpt_matches === true) {
                 if ($phpt_output_format == "tap") {
                     echo "ok $phpt_count - $phpt_test_name\n";
@@ -359,7 +359,7 @@ foreach ($phpt_files as $phpt_file) {
             }
         }
     }
-    
+
     // CLEAN execution
     if (isset($phpt_sections['clean']) && $phpt_skip === false) {
         $phpt_clean_path = $phpt_file . '.clean';
@@ -368,9 +368,9 @@ foreach ($phpt_files as $phpt_file) {
         ob_end_clean();
         chdir($phpt_curdir);
     }
-    
+
     $phpt_count++;
-    
+
     // Clean up temp files
     @unlink($phpt_file . '.file');
     @unlink($phpt_file . '.skipif');

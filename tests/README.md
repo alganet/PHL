@@ -10,6 +10,7 @@ tests/
 ├─ ph7/
 │  ├─ 001-smoke/          # High-level smoke tests (small and representative)
 │  └─ 002-engine/         # Engine-level tests (internal API & builtin tests)
+│     ├─ constants/       # Per-constant tests (each constant gets a file)
 │     ├─ function/        # Per-function tests (each function gets a folder)
 │     │─ oo/              # Object-oriented tests for classes, interfaces, etc
 │     │  ├─ addslashes/addslashes.phpt
@@ -20,6 +21,7 @@ tests/
 
 Conventions & style
 - Tests are PHPT-format files with sections such as `--TEST--`, `--FILE--`, `--EXPECT--`/`--EXPECTF--` and (optionally) `--CLEAN--`.
+- All test files must include the `--CREDITS--` section at the top for SPDX compliance.
 - Prefer focused tests: each PHPT should exercise one behavior of one function or feature. Avoid huge grouped tests asserting many unrelated behaviors.
 - Naming:
   - Use a clear directory name matching the runtime function or subsystem (e.g., `function/addslashes/addslashes.phpt`).
