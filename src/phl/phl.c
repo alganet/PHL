@@ -5,7 +5,7 @@
  */
 /*
  * The PHL interpreter is a simple stand-alone PHP interpreter that allows
- * the user to enter and execute PHP files against a PH7 engine. 
+ * the user to enter and execute PHP files against a PH7 engine.
  * To start the phl program, just type "phl" followed by the name of the PHP file
  * to compile and execute. That is, the first argument is to the interpreter, the rest
  * are scripts arguments, press "Enter" and the PHP code will be executed.
@@ -22,7 +22,7 @@
  *   -h: Display this help message
  *
  * The PHL interpreter package includes more than 70 PHP scripts to test ranging from
- * simple hello world programs to XML processing, ZIP archive extracting, MP3 tag extracting, 
+ * simple hello world programs to XML processing, ZIP archive extracting, MP3 tag extracting,
  * UUID generation, JSON encoding/decoding, INI processing, Base32 encoding/decoding and many
  * more. These scripts are available in the scripts directory from the zip archive.
  */
@@ -31,7 +31,11 @@
 #include <string.h>
 /* Make sure this header file is available.*/
 #include "ph7.h"
-/* 
+#if defined(__WINNT__) && defined(PH7_DEBUG)
+#define MINIDUMP_IMPLEMENTATION
+#include "minidump.h"
+#endif
+/*
  * Display an error message and exit.
  */
 static void Fatal(const char *zMsg)
@@ -107,7 +111,7 @@ static int Output_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUs
 	return PH7_OK;
 }
 /*
- * Main program: Compile and execute the PHP file. 
+ * Main program: Compile and execute the PHP file.
  */
 int main(int argc,char **argv)
 {
@@ -151,6 +155,11 @@ int main(int argc,char **argv)
 		puts("Missing PHP file to compile");
 		Help();
 	}
+
+#if defined(__WINNT__) && defined(PH7_DEBUG)
+	/* Install an unhandled exception minidump handler for Windows debug builds */
+	CreateMiniDumpOnUnHandledException();
+#endif
 	/* Allocate a new PH7 engine instance */
 	rc = ph7_init(&pEngine);
 	if( rc != PH7_OK ){

@@ -1035,6 +1035,41 @@ PH7_PRIVATE sxi32 PH7_HashmapCmp(
 	return 0; /* Hashmaps are equals */
 }
 /*
+ * Duplicate a hashmap node.
+ * This function is used by HashmapMerge, HashmapOverwrite and PH7_HashmapDup.
+ */
+static sxi32 HashmapDuplicateNode(
+	ph7_hashmap *pDest,
+	ph7_hashmap_node *pEntry,
+	ph7_value *pVal,
+	int iAction /* 0: Merge, 1: Overwrite, 2: Dup */
+	)
+{
+	ph7_value sSafeVal = *pVal;
+	ph7_value sKey;
+	sxi32 rc;
+
+	if( pEntry->iType == HASHMAP_BLOB_NODE ){
+		/* Blob key insertion */
+		PH7_MemObjInitFromString(pDest->pVm,&sKey,0);
+		PH7_MemObjStringAppend(&sKey,(const char *)SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey));
+		rc = PH7_HashmapInsert(pDest,&sKey,&sSafeVal);
+		PH7_MemObjRelease(&sKey);
+	}else{
+		/* Int key */
+		if( iAction == 0 ){ /* Merge */
+			rc = HashmapInsert(pDest,0/* Automatic index assign */,&sSafeVal);
+		}else if( iAction == 1 ){ /* Overwrite */
+			PH7_MemObjInitFromInt(pDest->pVm,&sKey,pEntry->xKey.iKey);
+			rc = PH7_HashmapInsert(pDest,&sKey,&sSafeVal);
+			PH7_MemObjRelease(&sKey);
+		}else{ /* Dup */
+			rc = HashmapInsertIntKey(pDest,pEntry->xKey.iKey,&sSafeVal,0,FALSE);
+		}
+	}
+	return rc;
+}
+/*
  * Merge two hashmaps.
  * Note on the merge process
  * According to the PHP language reference manual.
@@ -1049,7 +1084,7 @@ PH7_PRIVATE sxi32 PH7_HashmapCmp(
 static sxi32 HashmapMerge(ph7_hashmap *pSrc,ph7_hashmap *pDest)
 {
 	ph7_hashmap_node *pEntry;
-	ph7_value sKey,*pVal;
+	ph7_value *pVal;
 	sxi32 rc;
 	sxu32 n;
 	if( pSrc == pDest ){
@@ -1064,14 +1099,15 @@ static sxi32 HashmapMerge(ph7_hashmap *pSrc,ph7_hashmap *pDest)
 	for( n = 0 ; n < pSrc->nEntry ; ++n ){
 		/* Extract the node value */
 		pVal = HashmapExtractNodeValue(pEntry);
-		if( pEntry->iType == HASHMAP_BLOB_NODE ){
-			/* Blob key insertion */
-			PH7_MemObjInitFromString(pDest->pVm,&sKey,0);
-			PH7_MemObjStringAppend(&sKey,(const char *)SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey));
-			rc = PH7_HashmapInsert(&(*pDest),&sKey,pVal);
-			PH7_MemObjRelease(&sKey);
+		if( pVal ){
+			/* Make a local copy of the value.
+			 * The insertion call below may trigger a memory pool reallocation
+			 * which will invalidate the 'pVal' pointer since it points
+			 * to the old pool.
+			 */
+			rc = HashmapDuplicateNode(pDest,pEntry,pVal,0);
 		}else{
-			rc = HashmapInsert(&(*pDest),0/* Automatic index assign */,pVal);
+			rc = SXRET_OK;
 		}
 		if( rc != SXRET_OK ){
 			return rc;
@@ -1098,7 +1134,7 @@ static sxi32 HashmapMerge(ph7_hashmap *pSrc,ph7_hashmap *pDest)
 static sxi32 HashmapOverwrite(ph7_hashmap *pSrc,ph7_hashmap *pDest)
 {
 	ph7_hashmap_node *pEntry;
-	ph7_value sKey,*pVal;
+	ph7_value *pVal;
 	sxi32 rc;
 	sxu32 n;
 	if( pSrc == pDest ){
@@ -1113,16 +1149,11 @@ static sxi32 HashmapOverwrite(ph7_hashmap *pSrc,ph7_hashmap *pDest)
 	for( n = 0 ; n < pSrc->nEntry ; ++n ){
 		/* Extract the node value */
 		pVal = HashmapExtractNodeValue(pEntry);
-		if( pEntry->iType == HASHMAP_BLOB_NODE ){
-			/* Blob key insertion */
-			PH7_MemObjInitFromString(pDest->pVm,&sKey,0);
-			PH7_MemObjStringAppend(&sKey,(const char *)SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey));
+		if( pVal ){
+			rc = HashmapDuplicateNode(pDest,pEntry,pVal,1);
 		}else{
-			/* Int key insertion */
-			PH7_MemObjInitFromInt(pDest->pVm,&sKey,pEntry->xKey.iKey);
+			rc = SXRET_OK;
 		}
-		rc = PH7_HashmapInsert(&(*pDest),&sKey,pVal);
-		PH7_MemObjRelease(&sKey);
 		if( rc != SXRET_OK ){
 			return rc;
 		}
@@ -1138,7 +1169,7 @@ static sxi32 HashmapOverwrite(ph7_hashmap *pSrc,ph7_hashmap *pDest)
 PH7_PRIVATE sxi32 PH7_HashmapDup(ph7_hashmap *pSrc,ph7_hashmap *pDest)
 {
 	ph7_hashmap_node *pEntry;
-	ph7_value sKey,*pVal;
+	ph7_value *pVal;
 	sxi32 rc;
 	sxu32 n;
 	if( pSrc == pDest ){
@@ -1153,15 +1184,10 @@ PH7_PRIVATE sxi32 PH7_HashmapDup(ph7_hashmap *pSrc,ph7_hashmap *pDest)
 	for( n = 0 ; n < pSrc->nEntry ; ++n ){
 		/* Extract the node value */
 		pVal = HashmapExtractNodeValue(pEntry);
-		if( pEntry->iType == HASHMAP_BLOB_NODE ){
-			/* Blob key insertion */
-			PH7_MemObjInitFromString(pDest->pVm,&sKey,0);
-			PH7_MemObjStringAppend(&sKey,(const char *)SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey));
-			rc = PH7_HashmapInsert(&(*pDest),&sKey,pVal);
-			PH7_MemObjRelease(&sKey);
+		if( pVal ){
+			rc = HashmapDuplicateNode(pDest,pEntry,pVal,2);
 		}else{
-			/* Int key insertion */
-			rc = HashmapInsertIntKey(&(*pDest),pEntry->xKey.iKey,pVal,0,FALSE);
+			rc = SXRET_OK;
 		}
 		if( rc != SXRET_OK ){
 			return rc;
@@ -1226,13 +1252,14 @@ PH7_PRIVATE sxi32 PH7_HashmapUnion(ph7_hashmap *pLeft,ph7_hashmap *pRight)
 		/* Make sure the given key does not exists in the left array */
 		if( pEntry->iType == HASHMAP_BLOB_NODE ){
 			/* BLOB key */
-			if( SXRET_OK != 
+			if( SXRET_OK !=
 				HashmapLookupBlobKey(&(*pLeft),SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey),0) ){
 					pObj = HashmapExtractNodeValue(pEntry);
 					if( pObj ){
+						ph7_value sSafeVal = *pObj;
 						/* Perform the insertion */
 						rc = HashmapInsertBlobKey(&(*pLeft),SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey),
-							pObj,0,FALSE);
+							&sSafeVal,0,FALSE);
 						if( rc != SXRET_OK ){
 							return rc;
 						}
@@ -1243,8 +1270,9 @@ PH7_PRIVATE sxi32 PH7_HashmapUnion(ph7_hashmap *pLeft,ph7_hashmap *pRight)
 			if( SXRET_OK != HashmapLookupIntKey(&(*pLeft),pEntry->xKey.iKey,0) ){
 				pObj = HashmapExtractNodeValue(pEntry);
 				if( pObj ){
+					ph7_value sSafeVal = *pObj;
 					/* Perform the insertion */
-					rc = HashmapInsertIntKey(&(*pLeft),pEntry->xKey.iKey,pObj,0,FALSE);
+					rc = HashmapInsertIntKey(&(*pLeft),pEntry->xKey.iKey,&sSafeVal,0,FALSE);
 					if( rc != SXRET_OK ){
 						return rc;
 					}

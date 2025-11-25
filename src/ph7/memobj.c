@@ -476,6 +476,7 @@ PH7_PRIVATE sxi32 PH7_MemObjToHashmap(ph7_value *pObj)
 			SyBlobRelease(&pObj->sBlob);
 		}
 		/* Invalidate any prior representation */
+		PH7_MemObjRelease(pObj);
 		MemObjSetType(pObj,MEMOBJ_HASHMAP);
 		pObj->x.pOther = pMap;
 	}
