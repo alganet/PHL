@@ -16,7 +16,7 @@ echo "Testing fgets() basic functionality\n";
 // Create a temporary file with known content
 $testFile = tempnam(sys_get_temp_dir(), 'ph7_fgets_test');
 if (!$testFile) {
-    die("Failed to create temp file\n");
+    echo "Failed to create temp file\n";
 }
 
 $content = "Line 1\nLine 2\nLine 3\n";
@@ -25,7 +25,7 @@ file_put_contents($testFile, $content);
 // Test fgets() without length limit
 $fp = fopen($testFile, 'r');
 if (!$fp) {
-    die("Failed to open file\n");
+    echo "Failed to open file\n";
 }
 
 echo "Reading with fgets():\n";
