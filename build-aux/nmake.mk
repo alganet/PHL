@@ -9,9 +9,9 @@ BIN_SUFFIX = .exe
 
 CC = cl
 TARGET = x86_64-windows-msvc
-CFLAGS = /nologo /Fd$(BUILD_DIR:/=\)\ph7.pdb /I src /I src/ph7 /W4 /Ox $(PH7_DEFINES)
-LDFLAGS = /nologo /link advapi32.lib dbghelp.lib /subsystem:console /entry:mainCRTStartup
-COVERAGE_CFLAGS = /nologo /Fd$(BUILD_DIR:/=\)\coverage\ph7-coverage.pdb /I src /I src/ph7 /W4 /Od /Zi $(PH7_DEFINES)
+CFLAGS = /nologo /Fd$(BUILD_DIR:/=\)\ph7.pdb /I src /I src/ph7 /W4 /Ox $(PH7_DEFINES:-=/)
+LDFLAGS = /nologo /link advapi32.lib /subsystem:console /entry:mainCRTStartup
+COVERAGE_CFLAGS = /nologo /Fd$(BUILD_DIR:/=\)\coverage\ph7-coverage.pdb /I src /I src/ph7 /W4 /Od /Zi $(PH7_DEFINES:-=/) /DPH7_DEBUG
 
 PHP_BIN = php$(BIN_SUFFIX)
 
@@ -24,14 +24,14 @@ $(BUILD_DIR)-clean:
 # COVERAGE
 # --------
 
-COVERAGE_LDFLAGS = $(LDFLAGS) /DEBUG
+COVERAGE_LDFLAGS = /nologo /link advapi32.lib dbghelp.lib /subsystem:console /entry:mainCRTStartup
 COVERAGE_OBJECTS = $(OBJECTS:/src/=/coverage/src/)
 
 $(COVERAGE_BIN): $(BUILD_DIR)/coverage $(COVERAGE_OBJECTS)
 	$(CC) $(COVERAGE_CFLAGS) /Fe$@ $(COVERAGE_OBJECTS) $(COVERAGE_LDFLAGS)
 
 $(BUILD_DIR)/coverage/coverage.info: .ALWAYS $(COVERAGE_BIN)
-	-@OpenCppCoverage.exe --quiet \
+	@OpenCppCoverage.exe --quiet \
 	--sources "$(MAKEDIR)\src" \
 	--export_type cobertura:$(BUILD_DIR)/coverage/cobertura.xml \
 	-- $(COVERAGE_PHL_CMD)
