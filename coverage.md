@@ -1,26 +1,27 @@
 | Filename                       | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| src/ph7/api.c                  | 37.46%   | 324/865     |
-| src/ph7/builtin.c              | 0.97%    | 36/3716     |
-| src/ph7/compile.c              | 43.98%   | 1374/3124   |
-| src/ph7/constant.c             | 3.39%    | 27/797      |
-| src/ph7/hashmap.c              | 19.41%   | 491/2529    |
-| src/ph7/lex.c                  | 52.40%   | 295/563     |
-| src/ph7/lib.c                  | 28.75%   | 825/2870    |
-| src/ph7/memobj.c               | 34.60%   | 209/604     |
-| src/ph7/oo.c                   | 23.63%   | 86/364      |
-| src/ph7/parse.c                | 57.16%   | 459/803     |
-| src/ph7/vfs.c                  | 9.39%    | 292/3111    |
-| src/ph7/vm.c                   | 16.93%   | 1045/6173   |
-| src/phl/phl.c                  | 26.03%   | 19/73       |
+| src/minidump.h                 | 11.11%   | 4/36        |
+| src/ph7/api.c                  | 57.11%   | 494/865     |
+| src/ph7/builtin.c              | 35.98%   | 1337/3716   |
+| src/ph7/compile.c              | 54.90%   | 1715/3124   |
+| src/ph7/constant.c             | 32.12%   | 256/797     |
+| src/ph7/hashmap.c              | 48.90%   | 1242/2540   |
+| src/ph7/lex.c                  | 75.31%   | 424/563     |
+| src/ph7/lib.c                  | 57.91%   | 1662/2870   |
+| src/ph7/memobj.c               | 67.27%   | 407/605     |
+| src/ph7/oo.c                   | 48.08%   | 175/364     |
+| src/ph7/parse.c                | 63.51%   | 510/803     |
+| src/ph7/vfs.c                  | 30.05%   | 935/3111    |
+| src/ph7/vm.c                   | 39.66%   | 2448/6173   |
+| src/phl/phl.c                  | 39.19%   | 29/74       |
 | src/ph7/api.c                  | 55.11%   | 491/891     |
 | src/ph7/builtin.c              | 34.36%   | 1374/3999   |
 | src/ph7/compile.c              | 53.81%   | 1813/3369   |
 | src/ph7/constant.c             | 32.75%   | 263/803     |
-| src/ph7/hashmap.c              | 48.29%   | 1300/2692   |
+| src/ph7/hashmap.c              | 48.32%   | 1305/2701   |
 | src/ph7/lex.c                  | 75.86%   | 465/613     |
-| src/ph7/lib.c                  | 56.80%   | 1703/2998   |
-| src/ph7/memobj.c               | 67.55%   | 431/638     |
+| src/ph7/lib.c                  | 56.84%   | 1704/2998   |
+| src/ph7/memobj.c               | 67.45%   | 431/639     |
 | src/ph7/oo.c                   | 47.49%   | 180/379     |
 | src/ph7/parse.c                | 60.75%   | 548/902     |
 | src/ph7/vfs.c                  | 27.96%   | 854/3054    |
@@ -28,5 +29,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 33.31%   | 17558/52708 |
-| Functions                      | 59.18%   | 767/1296    |
+| Lines                          | 44.95%   | 23720/52767 |
+| Functions                      | 59.21%   | 768/1297    |
