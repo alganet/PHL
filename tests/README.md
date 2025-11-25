@@ -10,6 +10,7 @@ tests/
 ├─ ph7/
 │  ├─ 001-smoke/          # High-level smoke tests (small and representative)
 │  └─ 002-engine/         # Engine-level tests (internal API & builtin tests)
+│     ├─ array/           # Tests that exercise PHL's hashmap implementation
 │     ├─ constants/       # Per-constant tests (each constant gets a file)
 │     ├─ function/        # Per-function tests (each function gets a folder)
 │     │─ oo/              # Object-oriented tests for classes, interfaces, etc
