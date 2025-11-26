@@ -199,7 +199,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstallMethod(ph7_class *pClass,ph7_class_method *pMe
  *   {
  *       echo 'Foo: ' . $string . PHP_EOL;
  *   }
- *   
+ *
  *   public function printPHP()
  *   {
  *       echo 'PHP is great.' . PHP_EOL;
@@ -215,7 +215,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstallMethod(ph7_class *pClass,ph7_class_method *pMe
  * $foo = new foo();
  * $bar = new bar();
  * $foo->printItem('baz'); // Output: 'Foo: baz'
- * $foo->printPHP();       // Output: 'PHP is great' 
+ * $foo->printPHP();       // Output: 'PHP is great'
  * $bar->printItem('baz'); // Output: 'Bar: baz'
  * $bar->printPHP();       // Output: 'PHP is great'
  *
@@ -242,13 +242,13 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 		pAttr = (ph7_class_attr *)pEntry->pUserData;
 		pName = &pAttr->sName;
 		if( (pEntry = SyHashGet(&pSub->hAttr,(const void *)pName->zString,pName->nByte)) != 0 ){
-			if( pAttr->iProtection == PH7_CLASS_PROT_PRIVATE && 
+			if( pAttr->iProtection == PH7_CLASS_PROT_PRIVATE &&
 				((ph7_class_attr *)pEntry->pUserData)->iProtection != PH7_CLASS_PROT_PUBLIC ){
 					/* Cannot redeclare private attribute */
 					PH7_GenCompileError(&(*pGen),E_WARNING,((ph7_class_attr *)pEntry->pUserData)->nLine,
 						"Private attribute '%z::%z' redeclared inside child class '%z'",
 						&pBase->sName,pName,&pSub->sName);
-					
+
 			}
 			continue;
 		}
@@ -389,7 +389,7 @@ PH7_PRIVATE sxi32 PH7_ClassImplement(ph7_class *pMain,ph7_class *pInterface)
 	}
 	/* Install in the interface container */
 	SySetPut(&pMain->aInterface,(const void *)&pInterface);
-	/* TICKET 1433-49/1: Symisc eXtension 
+	/* TICKET 1433-49/1: Symisc eXtension
 	 *  A class may not implemnt all declared interface methods,so there
 	 *  is no need for a method installer loop here.
 	 */
@@ -418,7 +418,7 @@ PH7_PRIVATE sxi32 PH7_ClassImplement(ph7_class *pMain,ph7_class *pInterface)
  * In the class context, it is possible to create a new object by new self and new parent.
  * When assigning an already created instance of a class to a new variable, the new variable
  * will access the same instance as the object that was assigned. This behaviour is the same
- * when passing instances to a function. A copy of an already created object can be made by 
+ * when passing instances to a function. A copy of an already created object can be made by
  * cloning it.
  * Example #4 Object Assignment
  * <?php
@@ -443,7 +443,7 @@ PH7_PRIVATE sxi32 PH7_ClassImplement(ph7_class *pMain,ph7_class *pInterface)
  * }
  * Example #5 Creating new objects
  * <?php
- * class Test 
+ * class Test
  * {
  *   static public function getNew()
  *   {
@@ -531,14 +531,14 @@ static ph7_value * ExtractClassAttrValue(ph7_vm *pVm,VmClassAttr *pAttr)
  * According to PHP language reference manual.
  * Creating a copy of an object with fully replicated properties is not always the wanted behavior.
  * A good example of the need for copy constructors. Another example is if your object holds a reference
- * to another object which it uses and when you replicate the parent object you want to create 
+ * to another object which it uses and when you replicate the parent object you want to create
  * a new instance of this other object so that the replica has its own separate copy.
  * An object copy is created by using the clone keyword (which calls the object's __clone() method if possible).
  * An object's __clone() method cannot be called directly.
  * $copy_of_object = clone $object;
  * When an object is cloned, PHP 5 will perform a shallow copy of all of the object's properties.
  * Any properties that are references to other variables, will remain references.
- * Once the cloning is complete, if a __clone() method is defined, then the newly created object's __clone() method 
+ * Once the cloning is complete, if a __clone() method is defined, then the newly created object's __clone() method
  * will be called, to allow any necessary properties that need to be changed.
  * Example #1 Cloning an object
  * <?php
@@ -555,7 +555,7 @@ static ph7_value * ExtractClassAttrValue(ph7_vm *pVm,VmClassAttr *pAttr)
  *       $this->instance = ++self::$instances;
  *   }
  * }
- * 
+ *
  * class MyCloneable
  * {
  *   public $object1;
@@ -757,7 +757,7 @@ PH7_PRIVATE void PH7_ClassInstanceUnref(ph7_class_instance *pThis)
  *       $this->flag = $flag;
  *   }
  * }
- * 
+ *
  * $o = new Flag();
  * $p = new Flag();
  * $q = $o;
@@ -816,9 +816,9 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceCmp(ph7_class_instance *pLeft,ph7_class_insta
 	/*
 	 * Attribute comparison.
 	 * According to the PHP reference manual:
-	 *  When using the comparison operator (==), object variables are compared 
+	 *  When using the comparison operator (==), object variables are compared
 	 *  in a simple manner, namely: Two object instances are equal if they have
-	 *  the same attributes and values, and are instances of the same class. 
+	 *  the same attributes and values, and are instances of the same class.
 	 */
 	if( pLeft == pRight ){
 		/* Same instance,don't bother processing,object are equals */
@@ -1003,7 +1003,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceCallMagicMethod(
 PH7_PRIVATE ph7_value * PH7_ClassInstanceExtractAttrValue(ph7_class_instance *pThis,VmClassAttr *pAttr)
 {
    /* Extract the attribute value */
-	ph7_value *pValue;	
+	ph7_value *pValue;
 	pValue = ExtractClassAttrValue(pThis->pVm,pAttr);
 	return pValue;
 }
@@ -1017,7 +1017,7 @@ PH7_PRIVATE ph7_value * PH7_ClassInstanceExtractAttrValue(ph7_class_instance *pT
  *
  *  The following example:
  *  class Test {
- *   public $A = 25<<1;  // 50 
+ *   public $A = 25<<1;  // 50
  *	 public $c = rand_str(3);   // Random string of length 3
  *	 public $d = rand() & 1023; // Random number between 0..1023
  *  }
@@ -1034,7 +1034,7 @@ PH7_PRIVATE ph7_value * PH7_ClassInstanceExtractAttrValue(ph7_class_instance *pT
  * You have noticed that PH7 allow class attributes [i.e: $a,$c,$d in the example above]
  * have any complex expression (even function calls/Annonymous functions) as their default
  * value unlike the standard PHP engine.
- * This is a very powerful feature that you have to look at. 
+ * This is a very powerful feature that you have to look at.
  */
 PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmap(ph7_class_instance *pThis,ph7_hashmap *pMap)
 {
@@ -1065,9 +1065,9 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmap(ph7_class_instance *pThis,ph7_hashm
 	return SXRET_OK;
 }
 /*
- * Iterate throw class attributes and invoke the given callback [i.e: xWalk()] for each 
+ * Iterate throw class attributes and invoke the given callback [i.e: xWalk()] for each
  * retrieved attribute.
- * Note that argument are passed to the callback by copy. That is,any modification to 
+ * Note that argument are passed to the callback by copy. That is,any modification to
  * the attribute value in the callback body will not alter the real attribute value.
  * If the callback wishes to abort processing [i.e: it's invocation] it must return
  * a value different from PH7_OK.

@@ -46,7 +46,7 @@
 #define PH7_COPYRIGHT "Copyright (C) 2011, 2012, 2013, 2014 Symisc Systems <licensing@symisc.net>\nCopyright (C) Alexandre Gomes Gaigalas <alganet@gmail.com>"
 /* Make sure we can call this stuff from C++ */
 #ifdef __cplusplus
-extern "C" { 
+extern "C" {
 #endif
 /* Forward declaration to public objects */
 typedef struct ph7_io_stream ph7_io_stream;
@@ -62,8 +62,8 @@ typedef struct ph7 ph7;
  * For most purposes, PH7 can be built just fine using the default compilation options.
  * However, if required, the compile-time options documented below can be used to omit
  * PH7 features (resulting in a smaller compiled library size) or to change the default
- * values of some parameters. 
- * Every effort has been made to ensure that the various combinations of compilation 
+ * values of some parameters.
+ * Every effort has been made to ensure that the various combinations of compilation
  * options work harmoniously and produce a working library.
  *
  * PH7_ENABLE_THREADS
@@ -122,7 +122,7 @@ typedef struct ph7 ph7;
 /* Windows Systems */
 #if !defined(__WINNT__)
 #define __WINNT__
-#endif 
+#endif
 #else
 /*
  * By default we will assume that we are compiling on a UNIX systems.
@@ -212,7 +212,7 @@ struct Sytm
 	 (pSYTM)->tm_zone = 0;
 
 /* Dynamic memory allocation methods. */
-struct SyMemMethods 
+struct SyMemMethods
 {
 	void * (*xAlloc)(unsigned int);          /* [Required:] Allocate a memory chunk */
 	void * (*xRealloc)(void *,unsigned int); /* [Required:] Re-allocate a memory chunk */
@@ -225,7 +225,7 @@ struct SyMemMethods
 /* Out of memory callback signature. */
 typedef int (*ProcMemError)(void *);
 /* Mutex methods. */
-struct SyMutexMethods 
+struct SyMutexMethods
 {
 	int (*xGlobalInit)(void);		/* [Optional:] Global mutex initialization */
 	void  (*xGlobalRelease)(void);	/* [Optional:] Global Release callback () */
@@ -243,7 +243,7 @@ struct SyMutexMethods
 #define	SX_APIEXPORT
 #endif
 /* Standard return values from Symisc public interfaces */
-#define SXRET_OK       0      /* Not an error */	
+#define SXRET_OK       0      /* Not an error */
 #define SXERR_MEM      (-1)   /* Out of memory */
 #define SXERR_IO       (-2)   /* IO error */
 #define SXERR_EMPTY    (-3)   /* Empty field */
@@ -263,7 +263,7 @@ struct SyMutexMethods
 #define SXERR_NOTIMPLEMENTED  (-17) /* Operation not implemented */
 #define SXERR_EOF      (-18) /* End of input */
 #define SXERR_PERM     (-19) /* Permission error */
-#define SXERR_NOOP     (-20) /* No-op */	
+#define SXERR_NOOP     (-20) /* No-op */
 #define SXERR_FORMAT   (-21) /* Invalid format */
 #define SXERR_NEXT     (-22) /* Not an error */
 #define SXERR_OS       (-23) /* System call return an error */
@@ -286,7 +286,7 @@ struct SyMutexMethods
 #define PH7_ABORT   SXERR_ABORT   /* Foreign Function request operation abort/Another thread have released this instance */
 #define PH7_IO_ERR  SXERR_IO      /* IO error */
 #define PH7_CORRUPT SXERR_CORRUPT /* Corrupt pointer/Unknown configuration option */
-#define PH7_LOOKED  SXERR_LOCKED  /* Forbidden Operation */ 
+#define PH7_LOOKED  SXERR_LOCKED  /* Forbidden Operation */
 #define PH7_COMPILE_ERR (-70)     /* Compilation error */
 #define PH7_VM_ERR      (-71)     /* Virtual machine error */
 /* end-of-error-codes */
@@ -306,12 +306,12 @@ typedef sxi64 ph7_int64;
  *
  * The following set of constants are the available configuration verbs that can
  * be used by the host-application to configure the PH7 engine.
- * These constants must be passed as the second argument to the [ph7_config()] 
+ * These constants must be passed as the second argument to the [ph7_config()]
  * interface.
  * Each options require a variable number of arguments.
  * The [ph7_config()] interface will return PH7_OK on success, any other
  * return value indicates failure.
- * For a full discussion on the configuration verbs and their expected 
+ * For a full discussion on the configuration verbs and their expected
  * parameters, please refer to this page:
  *      http://ph7.symisc.net/c_api_func.html#ph7_config
  */
@@ -323,7 +323,7 @@ typedef sxi64 ph7_int64;
  *
  * The following set of constants are the available configuration verbs that can
  * be used by the host-application to configure the PH7 Virtual machine.
- * These constants must be passed as the second argument to the [ph7_vm_config()] 
+ * These constants must be passed as the second argument to the [ph7_vm_config()]
  * interface.
  * Each options require a variable number of arguments.
  * The [ph7_vm_config()] interface will return PH7_OK on success, any other return
@@ -360,15 +360,15 @@ typedef sxi64 ph7_int64;
  *
  * The following set of constants are the available configuration verbs that can
  * be used by the host-application to configure the whole library.
- * These constants must be passed as the first argument to the [ph7_lib_config()] 
+ * These constants must be passed as the first argument to the [ph7_lib_config()]
  * interface.
  * Each options require a variable number of arguments.
  * The [ph7_lib_config()] interface will return PH7_OK on success, any other return
  * value indicates failure.
  * Notes:
  * The default configuration is recommended for most applications and so the call to
- * [ph7_lib_config()] is usually not necessary. It is provided to support rare 
- * applications with unusual needs. 
+ * [ph7_lib_config()] is usually not necessary. It is provided to support rare
+ * applications with unusual needs.
  * The [ph7_lib_config()] interface is not threadsafe. The application must insure that
  * no other [ph7_*()] interfaces are invoked by other threads while [ph7_lib_config()]
  * is running. Furthermore, [ph7_lib_config()] may only be invoked prior to library
@@ -381,11 +381,11 @@ typedef sxi64 ph7_int64;
  * refer to this page:
  *      http://ph7.symisc.net/c_api_func.html#Global_Library_Management_Interfaces
  */
-#define PH7_LIB_CONFIG_USER_MALLOC            1 /* ONE ARGUMENT: const SyMemMethods *pMemMethods */ 
+#define PH7_LIB_CONFIG_USER_MALLOC            1 /* ONE ARGUMENT: const SyMemMethods *pMemMethods */
 #define PH7_LIB_CONFIG_MEM_ERR_CALLBACK       2 /* TWO ARGUMENTS: int (*xMemError)(void *),void *pUserData */
-#define PH7_LIB_CONFIG_USER_MUTEX             3 /* ONE ARGUMENT: const SyMutexMethods *pMutexMethods */ 
-#define PH7_LIB_CONFIG_THREAD_LEVEL_SINGLE    4 /* NO ARGUMENTS */ 
-#define PH7_LIB_CONFIG_THREAD_LEVEL_MULTI     5 /* NO ARGUMENTS */ 
+#define PH7_LIB_CONFIG_USER_MUTEX             3 /* ONE ARGUMENT: const SyMutexMethods *pMutexMethods */
+#define PH7_LIB_CONFIG_THREAD_LEVEL_SINGLE    4 /* NO ARGUMENTS */
+#define PH7_LIB_CONFIG_THREAD_LEVEL_MULTI     5 /* NO ARGUMENTS */
 #define PH7_LIB_CONFIG_VFS                    6 /* ONE ARGUMENT: const ph7_vfs *pVfs */
 /*
  * Compile-time flags.
@@ -413,8 +413,8 @@ typedef sxi64 ph7_int64;
 #define PH7_CTX_WARNING  2 /* Call context Warning */
 #define PH7_CTX_NOTICE   3 /* Call context Notice */
 /* Current VFS structure version*/
-#define PH7_VFS_VERSION 2 
-/* 
+#define PH7_VFS_VERSION 2
+/*
  * PH7 Virtual File System (VFS).
  *
  * An instance of the ph7_vfs object defines the interface between the PH7 core
@@ -486,8 +486,8 @@ struct ph7_vfs
 	int (*xExec)(const char *,ph7_context *);        /* Execute an external program */
 };
 /* Current PH7 IO stream structure version. */
-#define PH7_IO_STREAM_VERSION 1 
-/* 
+#define PH7_IO_STREAM_VERSION 1
+/*
  * Possible open mode flags that can be passed to the xOpen() routine
  * of the underlying IO stream device .
  * Refer to the PH7 IO Stream C/C++ specification manual (http://ph7.symisc.net/io_stream_spec.html)
@@ -518,13 +518,13 @@ struct ph7_vfs
  * The file:// stream which perform very efficient disk IO and the php:// stream
  * which is a special stream that allow access various I/O streams (See the PHP official
  * documentation for more information on this stream).
- * A stream is referenced as: scheme://target 
+ * A stream is referenced as: scheme://target
  * scheme(string) - The name of the wrapper to be used. Examples include: file,http,https,ftp,
  * ftps, compress.zlib, compress.bz2, and php. If no wrapper is specified,the function default
- * is used (typically file://). 
+ * is used (typically file://).
  * target - Depends on the device used. For filesystem related streams this is typically a path
  * and filename of the desired file.For network related streams this is typically a hostname,often
- * with a path appended. 
+ * with a path appended.
  * IO stream devices are registered using a call to ph7_vm_config() with a configuration verb
  * set to PH7_VM_CONFIG_IO_STREAM.
  * Currently the PH7 development team is working on the implementation of the http:// and ftp://
@@ -540,7 +540,7 @@ struct ph7_io_stream
 	int  (*xOpenDir)(const char *,ph7_value *,void **);    /* Open directory handle */
 	void (*xClose)(void *);                                /* Close file handle */
 	void (*xCloseDir)(void *);                             /* Close directory handle */
-	ph7_int64 (*xRead)(void *,void *,ph7_int64);           /* Read from the open stream */         
+	ph7_int64 (*xRead)(void *,void *,ph7_int64);           /* Read from the open stream */
 	int (*xReadDir)(void *,ph7_context *);                 /* Read entry from directory handle */
 	ph7_int64 (*xWrite)(void *,const void *,ph7_int64);    /* Write to the open stream */
 	int (*xSeek)(void *,ph7_int64,int);                    /* Seek on the open stream */
@@ -551,10 +551,10 @@ struct ph7_io_stream
 	int (*xSync)(void *);                                  /* Flush open stream data */
 	int (*xStat)(void *,ph7_value *,ph7_value *);          /* Stat an open stream handle */
 };
-/* 
+/*
  * C-API-REF: Please refer to the official documentation for interfaces
- * purpose and expected parameters. 
- */ 
+ * purpose and expected parameters.
+ */
 /* Engine Handling Interfaces */
 PH7_APIEXPORT int ph7_init(ph7 **ppEngine);
 PH7_APIEXPORT int ph7_config(ph7 *pEngine,int nConfigOp,...);

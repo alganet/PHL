@@ -14,7 +14,7 @@
  * and introduced as an extension to the PHP programming language is due to the confusion
  * introduced by the standard PHP comparison operators ('==' or '===') especially if you
  * are comparing strings with numbers.
- * Take the following example: 
+ * Take the following example:
  * var_dump( 0xFF == '255' ); // bool(true) ???
  * // use the type equal operator by adding a single space to one of the operand
  * var_dump( '255  ' === '255' ); //bool(true) depending on the PHP version
@@ -22,7 +22,7 @@
  * will internally convert the two operands to numbers and then a numeric comparison is performed.
  * This is what the PHP language reference manual says:
  * If you compare a number with a string or the comparison involves numerical strings, then each
- * string is converted to a number and the comparison performed numerically. 
+ * string is converted to a number and the comparison performed numerically.
  * Bummer, if you ask me,this is broken, badly broken. I mean,the programmer cannot dictate
  * it's comparison rule, it's the underlying engine who decides in it's place and perform
  * the internal conversion. In most cases,PHP developers wants simple string comparison and they
@@ -50,7 +50,7 @@
  * A comma expression contains two operands of any type separated by a comma and has left-to-right
  * associativity. The left operand is fully evaluated, possibly producing side effects, and its
  * value, if there is one, is discarded. The right operand is then evaluated. The type and value
- * of the result of a comma expression are those of its right operand, after the usual unary conversions. 
+ * of the result of a comma expression are those of its right operand, after the usual unary conversions.
  * Any number of expressions separated by commas can form a single expression because the comma operator
  * is associative. The use of the comma operator guarantees that the sub-expressions will be evaluated
  * in left-to-right order, and the value of the last becomes the value of the entire expression.
@@ -59,7 +59,7 @@
  * of $a and $b. Keep-in mind that all theses operations are done in a single expression using
  * the comma operator to create side effect.
  * $a = 25,$b = $a << 1 ,test();
- * //Output the value of $a and $b 
+ * //Output the value of $a and $b
  * function test(){
  *	 global $a,$b;
  *	 echo "\$a = $a \$b= $b\n"; // You should see: $a = 25 $b = 50
@@ -97,10 +97,10 @@
  * into variables or returned from functions.
  * PHP takes expressions much further, in the same way many other languages do. PHP is an expression-oriented language
  * in the sense that almost everything is an expression. Consider the example we've already dealt with, '$a = 5'.
- * It's easy to see that there are two values involved here, the value of the integer constant '5', and the value 
+ * It's easy to see that there are two values involved here, the value of the integer constant '5', and the value
  * of $a which is being updated to 5 as well. But the truth is that there's one additional value involved here
  * and that's the value of the assignment itself. The assignment itself evaluates to the assigned value, in this case 5.
- * In practice, it means that '$a = 5', regardless of what it does, is an expression with the value 5. Thus, writing 
+ * In practice, it means that '$a = 5', regardless of what it does, is an expression with the value 5. Thus, writing
  * something like '$b = ($a = 5)' is like writing '$a = 5; $b = 5;' (a semicolon marks the end of a statement).
  * Since assignments are parsed in a right to left order, you can also write '$b = $a = 5'.
  * Another good example of expression orientation is pre- and post-increment and decrement.
@@ -109,7 +109,7 @@
  * and post-increment. Both pre-increment and post-increment essentially increment the variable, and the effect
  * on the variable is identical. The difference is with the value of the increment expression. Pre-increment, which is written
  * '++$variable', evaluates to the incremented value (PHP increments the variable before reading its value, thus the name 'pre-increment').
- * Post-increment, which is written '$variable++' evaluates to the original value of $variable, before it was incremented 
+ * Post-increment, which is written '$variable++' evaluates to the original value of $variable, before it was incremented
  * (PHP increments the variable after reading its value, thus the name 'post-increment').
  * A very common type of expressions are comparison expressions. These expressions evaluate to either FALSE or TRUE.
  * PHP supports > (bigger than), >= (bigger than or equal to), == (equal), != (not equal), < (smaller than) and <= (smaller than or equal to).
@@ -131,13 +131,13 @@
  * $first ? $second : $third
  * ?>
  * If the value of the first subexpression is TRUE (non-zero), then the second subexpression is evaluated, and that is the result
- * of the conditional expression. Otherwise, the third subexpression is evaluated, and that is the value. 
+ * of the conditional expression. Otherwise, the third subexpression is evaluated, and that is the value.
  */
 /* Operators associativity */
 #define EXPR_OP_ASSOC_LEFT   0x01 /* Left associative operator */
 #define EXPR_OP_ASSOC_RIGHT  0x02 /* Right associative operator */
 #define EXPR_OP_NON_ASSOC    0x04 /* Non-associative operator */
-/* 
+/*
  * Operators table
  * This table is sorted by operators priority (highest to lowest) according
  * the PHP language reference manual.
@@ -244,7 +244,7 @@ static const ph7_expr_op aOpTable[] = {
 static const ph7_expr_op sFCallOp = {{"(",sizeof(char)}, EXPR_OP_FUNC_CALL, 2, EXPR_OP_ASSOC_LEFT , PH7_OP_CALL};
 /*
  * Check if the given token is a potential operator or not.
- * This function is called by the lexer each time it extract a token that may 
+ * This function is called by the lexer each time it extract a token that may
  * look like an operator.
  * Return a structure [i.e: ph7_expr_op instnace ] that describe the operator on success.
  * Otherwise NULL.
@@ -283,7 +283,7 @@ PH7_PRIVATE const ph7_expr_op *  PH7_ExprExtractOperator(SyString *pStr,SyToken 
 					/* Unary opertors have prcedence here over binary operators */
 					return &aOpTable[n];
 				}
-			
+
 			}
 		}
 		++n; /* Next operator in the table */
@@ -324,7 +324,7 @@ PH7_PRIVATE void PH7_DelimitNestedTokens(SyToken *pIn,SyToken *pEnd,sxu32 nTokSt
  * Retrun TRUE if the given ID represent a language construct [i.e: print,echo..]. FALSE otherwise.
  * Note on reserved keywords.
  *  According to the PHP language reference manual:
- *   These words have special meaning in PHP. Some of them represent things which look like 
+ *   These words have special meaning in PHP. Some of them represent things which look like
  *   functions, some look like constants, and so on--but they're not, really: they are language
  *   constructs. You cannot use any of the following words as constants, class names, function
  *   or method names. Using them as variable names is generally OK, but could lead to confusion.
@@ -344,7 +344,7 @@ PH7_PRIVATE int PH7_IsLangConstruct(sxu32 nKeyID,sxu8 bCheckFunc)
 		}
 	}
 	/* Not a language construct */
-	return FALSE; 
+	return FALSE;
 }
 /*
  * Make sure we are dealing with a valid expression tree.
@@ -404,7 +404,7 @@ static sxi32 ExprVerifyNodes(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nN
 				const ph7_expr_op *pOp,*pEnd;
 				int iNest = 1;
 				sxi32 j=i+1;
-				/* 
+				/*
 				 * Dirty Hack: $a{'x'} == > $a['x']
 				 */
 				apNode[i]->pStart->nType &= ~PH7_TK_OCB /*'{'*/;
@@ -499,7 +499,7 @@ static sxi32 ExprVerifyNodes(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nN
 	return SXRET_OK;
 }
 /*
- * Collect and assemble tokens holding a namespace path [i.e: namespace\to\const] 
+ * Collect and assemble tokens holding a namespace path [i.e: namespace\to\const]
  * or a simple literal [i.e: PHP_EOL].
  */
 static void ExprAssembleLiteral(SyToken **ppCur,SyToken *pEnd)
@@ -529,11 +529,11 @@ static void ExprAssembleLiteral(SyToken **ppCur,SyToken *pEnd)
  *  According to the PHP language reference manual:
  *  Anonymous functions, also known as closures, allow the creation of functions
  *  which have no specified name. They are most useful as the value of callback
- *  parameters, but they have many other uses. 
+ *  parameters, but they have many other uses.
  *  Closures may also inherit variables from the parent scope. Any such variables
  *  must be declared in the function header. Inheriting variables from the parent
  *  scope is not the same as using global variables. Global variables exist in the global scope
- *  which is the same no matter what function is executing. The parent scope of a closure is the 
+ *  which is the same no matter what function is executing. The parent scope of a closure is the
  *  function in which the closure was declared (not necessarily the function it was called from).
  *
  * Some example:
@@ -549,8 +549,8 @@ static void ExprAssembleLiteral(SyToken **ppCur,SyToken *pEnd)
  * };
  * // This is our range of numbers
  * $numbers = range(1, 5);
- * // Use the Annonymous function as a callback here to 
- * // double the size of each element in our 
+ * // Use the Annonymous function as a callback here to
+ * // double the size of each element in our
  * // range
  * $new_numbers = array_map($double, $numbers);
  * print implode(' ', $new_numbers);
@@ -629,7 +629,7 @@ static sxi32 ExprAssembleAnnon(ph7_gen_state *pGen,SyToken **ppCur,SyToken *pEnd
 		rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Syntax error while declaring annonymous function,missing '{'");
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
-		}			
+		}
 	}
 	rc = SXRET_OK;
 Synchronize:
@@ -641,7 +641,7 @@ Synchronize:
  * Extract a single expression node from the input.
  * On success store the freshly extractd node in ppNode.
  * When errors,PH7 take care of generating the appropriate error message.
- * An expression node can be a variable [i.e: $var],an operator [i.e: ++] 
+ * An expression node can be a variable [i.e: $var],an operator [i.e: ++]
  * an annonymous function [i.e: function(){ return "Hello"; }, a double/single
  * quoted string, a heredoc/nowdoc,a literal [i.e: PHP_EOL],a namespace path
  * [i.e: namespaces\path\to..],a array/list [i.e: array(4,5,6)] and so on.
@@ -705,7 +705,7 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode)
 				 ExprAssembleLiteral(&pCur,pGen->pEnd);
 				 pNode->xCode = PH7_CompileLiteral;
 			 }else{
-				 pCur += 2; 
+				 pCur += 2;
 				 /* Collect array/list tokens */
 				 PH7_DelimitNestedTokens(pCur,pGen->pEnd,PH7_TK_LPAREN /* '(' */, PH7_TK_RPAREN /* ')' */,&pCur);
 				 if( pCur < pGen->pEnd ){
@@ -718,7 +718,7 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode)
 						 rc = SXERR_SYNTAX;
 					 }
 					 SyMemBackendPoolFree(&pGen->pVm->sAllocator,pNode);
-					 return rc; 
+					 return rc;
 				 }
 				 pNode->xCode = (nKeyword == PH7_TKWRD_LIST) ? PH7_CompileList : PH7_CompileArray;
 				 if( pNode->xCode == PH7_CompileList ){
@@ -730,7 +730,7 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode)
 							 rc = SXERR_SYNTAX;
 						 }
 						 SyMemBackendPoolFree(&pGen->pVm->sAllocator,pNode);
-						 return rc; 
+						 return rc;
 					 }
 				 }
 			 }
@@ -745,7 +745,7 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode)
 				 rc = ExprAssembleAnnon(&(*pGen),&pCur,pGen->pEnd);
 				 if( rc != SXRET_OK ){
 					 SyMemBackendPoolFree(&pGen->pVm->sAllocator,pNode);
-					 return rc; 
+					 return rc;
 				 }
 				 pNode->xCode = PH7_CompileAnnonFunc;
 			  }
@@ -1093,7 +1093,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 					 if( rc != SXERR_ABORT ){
 						 rc = SXERR_SYNTAX;
 					 }
-					 return rc; 
+					 return rc;
 				 }
 				 if(  iLeft < 0 || !NODE_ISTERM(iLeft) /*|| ( apNode[iLeft]->pOp && apNode[iLeft]->pOp->iPrec != 2)*/ ){
 					 /* Syntax error */
@@ -1226,7 +1226,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				  * Example:
 				  *   clone $pObj;
 				  *   clone obj(); // function obj(){ return new Class(); }
-				  *   clone $a['object']; // $a = array('object' => new Class());   
+				  *   clone $a['object']; // $a = array('object' => new Class());
 				  */
 				 if( apNode[iLeft]->pOp == 0 ){
 					 if( apNode[iLeft]->xCode != PH7_CompileVariable  ){
@@ -1236,7 +1236,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 						 if( rc != SXERR_ABORT ){
 							 rc = SXERR_SYNTAX;
 						 }
-						 return rc; 
+						 return rc;
 					 }
 				 }
 			 }else{
@@ -1252,7 +1252,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 						 if( rc != SXERR_ABORT ){
 							 rc = SXERR_SYNTAX;
 						 }
-						 return rc; 
+						 return rc;
 					 }
 				 }
 			 }
@@ -1274,7 +1274,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				 || apNode[iLeft]->xCode == PH7_CompileVariable) ){
 					 /* Link the node to the tree */
 					 pNode->pLeft = apNode[iLeft];
-					 apNode[iLeft] = 0; 
+					 apNode[iLeft] = 0;
 			 }
 		  }
 		 iLeft = iCur;
@@ -1335,7 +1335,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 			  /* Save terminal position */
 			  iLeft = iCur;
 		  }
-	  }	 
+	  }
 	 /* Process left and non-associative binary operators [i.e: *,/,&&,||...]*/
 	 for( i = 7 ; i < 17 ; i++ ){
 		 iLeft = -1;
@@ -1356,7 +1356,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 					 if( rc != SXERR_ABORT ){
 						 rc = SXERR_SYNTAX;
 					 }
-					 return rc; 
+					 return rc;
 				 }
 				 if( pNode->pOp->iOp == EXPR_OP_REF ){
 					 sxi32  iTmp;
@@ -1367,18 +1367,18 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 						 if( rc != SXERR_ABORT ){
 							 rc = SXERR_SYNTAX;
 						 }
-						 return rc; 
+						 return rc;
 					 }
 					 if( apNode[iLeft]->pOp == 0 || apNode[iLeft]->pOp->iOp != EXPR_OP_SUBSCRIPT /*$a[] =& 14*/) {
 						 if(  ExprIsModifiableValue(apNode[iRight],TRUE) == FALSE ){
-							 if( apNode[iRight]->pOp == 0 ||  (apNode[iRight]->pOp->iOp != EXPR_OP_NEW /* new */ 
+							 if( apNode[iRight]->pOp == 0 ||  (apNode[iRight]->pOp->iOp != EXPR_OP_NEW /* new */
 								 && apNode[iRight]->pOp->iOp != EXPR_OP_CLONE /* clone */) ){
 									 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
 										 "Reference operator '&' require a variable not a constant expression as it's right operand");
 									 if( rc != SXERR_ABORT ){
 										 rc = SXERR_SYNTAX;
 									 }
-									 return rc; 
+									 return rc;
 							 }
 						 }
 					 }
@@ -1395,7 +1395,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 			 iLeft = iCur;
 		 }
 	 }
-	 /* Handle the ternary operator. (expr1) ? (expr2) : (expr3) 
+	 /* Handle the ternary operator. (expr1) ? (expr2) : (expr3)
 	  * Note that we do not need a precedence loop here since
 	  * we are dealing with a single operator.
 	  */
@@ -1471,7 +1471,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 		  }
 		  iLeft = iCur;
 	  }
-	 /* Process right associative binary operators [i.e: '=','+=','/='] 
+	 /* Process right associative binary operators [i.e: '=','+=','/=']
 	  * Note: All right associative binary operators have precedence 18
 	  * so there is no need for a precedence loop here.
 	  */
@@ -1503,7 +1503,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 					 if( rc != SXERR_ABORT ){
 						 rc = SXERR_SYNTAX;
 					 }
-					 return rc; 
+					 return rc;
 				 }
 			 }
 			 /* Link the node to the tree (Reverse) */
@@ -1533,7 +1533,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 					 if( rc != SXERR_ABORT ){
 						 rc = SXERR_SYNTAX;
 					 }
-					 return rc;  
+					 return rc;
 				 }
 				 /* Link the node to the tree */
 				 pNode->pLeft = apNode[iLeft];
@@ -1551,7 +1551,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				  if( rc != SXERR_ABORT ){
 					  rc = SXERR_SYNTAX;
 				  }
-				  return rc;  
+				  return rc;
 			 }
 			 apNode[0] = apNode[iCur];
 			 apNode[iCur] = 0;

@@ -18,7 +18,7 @@
  *
  * Most systems appear to do this simply by assigning ariables and without
  * the extra range tests.
- * But there are reports that windows throws an expection if the floating 
+ * But there are reports that windows throws an expection if the floating
  * point value is out of range.
  */
 static sxi64 MemObjRealToInt(ph7_value *pObj)
@@ -53,7 +53,7 @@ static sxi64 MemObjRealToInt(ph7_value *pObj)
 #endif
 }
 /*
- * Convert a raw token value typically a stream of digit [i.e: hex,octal,binary or decimal] 
+ * Convert a raw token value typically a stream of digit [i.e: hex,octal,binary or decimal]
  * to a 64-bit integer.
  */
 PH7_PRIVATE sxi64 PH7_TokenValueToInt64(SyString *pVal)
@@ -93,7 +93,7 @@ static sxi64 MemObjStringToInt(ph7_value *pObj)
 {
 	SyString sVal;
 	SyStringInitFromBuf(&sVal,SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob));
-	return PH7_TokenValueToInt64(&sVal);	
+	return PH7_TokenValueToInt64(&sVal);
 }
 /*
  * Call a magic class method [i.e: __toString(),__toInt(),...]
@@ -126,7 +126,7 @@ static sxi32 MemObjCallClassCastMethod(
  * If pObj is an integer, then the value is exact. If pObj is
  * a floating-point then  the value returned is the integer part.
  * If pObj is a string, then we make an attempt to convert it into
- * a integer and return that. 
+ * a integer and return that.
  * If pObj represents a NULL value, return 0.
  */
 static sxi64 MemObjIntValue(ph7_value *pObj)
@@ -146,7 +146,7 @@ static sxi64 MemObjIntValue(ph7_value *pObj)
 		sxu32 n = pMap->nEntry;
 		PH7_HashmapUnref(pMap);
 		/* Return total number of entries in the hashmap */
-		return n; 
+		return n;
 	}else if( iFlags & MEMOBJ_OBJ ){
 		ph7_value sResult;
 		sxi64 iVal = 1;
@@ -175,7 +175,7 @@ static sxi64 MemObjIntValue(ph7_value *pObj)
  * integer then the integer  is promoted to real and that value
  * is returned.
  * If pObj is a string, then we make an attempt to convert it
- * into a real and return that. 
+ * into a real and return that.
  * If pObj represents a NULL value, return 0.0
  */
 static ph7_real MemObjRealValue(ph7_value *pObj)
@@ -236,7 +236,7 @@ static ph7_real MemObjRealValue(ph7_value *pObj)
 	/* NOT REACHED  */
 	return 0;
 }
-/* 
+/*
  * Return the string representation of a given ph7_value.
  * This function never fail and always return SXRET_OK.
  */
@@ -289,11 +289,11 @@ static sxi32 MemObjStringValue(SyBlob *pOut,ph7_value *pObj,sxu8 bStrictBool)
  * the real 0.0 (zero).
  * the empty string,a stream of zero [i.e: "0","00","000",...] and the string
  * "false".
- * an array with zero elements. 
+ * an array with zero elements.
  */
 static sxi32 MemObjBooleanValue(ph7_value *pObj)
 {
-	sxi32 iFlags;	
+	sxi32 iFlags;
 	iFlags = pObj->iFlags;
 	if (iFlags & MEMOBJ_REAL ){
 #ifdef PH7_OMIT_FLOATING_POINT
@@ -447,7 +447,7 @@ PH7_PRIVATE sxi32 PH7_MemObjToNull(ph7_value *pObj)
  * Convert a ph7_value to type array.Invalidate any prior representations.
   * According to the PHP language reference manual.
   *   For any of the types: integer, float, string, boolean converting a value
-  *   to an array results in an array with a single element with index zero 
+  *   to an array results in an array with a single element with index zero
   *   and the value of the scalar which was converted.
   */
 PH7_PRIVATE sxi32 PH7_MemObjToHashmap(ph7_value *pObj)
@@ -460,10 +460,10 @@ PH7_PRIVATE sxi32 PH7_MemObjToHashmap(ph7_value *pObj)
 			return SXERR_MEM;
 		}
 		if( (pObj->iFlags & (MEMOBJ_NULL|MEMOBJ_RES)) == 0 ){
-			/* 
+			/*
 			 * According to the PHP language reference manual.
 			 *   For any of the types: integer, float, string, boolean converting a value
-			 *   to an array results in an array with a single element with index zero 
+			 *   to an array results in an array with a single element with index zero
 			 *   and the value of the scalar which was converted.
 			 */
 			if( pObj->iFlags & MEMOBJ_OBJ ){
@@ -541,15 +541,15 @@ PH7_PRIVATE sxi32 PH7_MemObjToObject(ph7_value *pObj)
 	return SXRET_OK;
 }
 /*
- * Return a pointer to the appropriate convertion method associated 
- * with the given type. 
+ * Return a pointer to the appropriate convertion method associated
+ * with the given type.
  * Note on type juggling.
  * Accoding to the PHP language reference manual
  *  PHP does not require (or support) explicit type definition in variable
  *  declaration; a variable's type is determined by the context in which
- *  the variable is used. That is to say, if a string value is assigned 
+ *  the variable is used. That is to say, if a string value is assigned
  *  to variable $var, $var becomes a string. If an integer value is then
- *  assigned to $var, it becomes an integer. 
+ *  assigned to $var, it becomes an integer.
  */
 PH7_PRIVATE ProcMemObjCast PH7_MemObjCastMethod(sxi32 iFlags)
 {
@@ -645,7 +645,7 @@ PH7_PRIVATE sxi32 PH7_MemObjIsEmpty(ph7_value *pObj)
  * Convert a ph7_value so that it has types MEMOBJ_REAL or MEMOBJ_INT
  * or both.
  * Invalidate any prior representations. Every effort is made to force
- * the conversion, even if the input is a string that does not look 
+ * the conversion, even if the input is a string that does not look
  * completely like a number.Convert as much of the string as we can
  * and ignore the rest.
  */
@@ -938,7 +938,7 @@ PH7_PRIVATE sxi32 PH7_MemObjRelease(ph7_value *pObj)
  * $x = "php"; 	string 	FALSE 	FALSE 	TRUE 	TRUE
  * $x = "true"; string 	FALSE 	FALSE 	TRUE 	TRUE
  * $x = "false"; string 	FALSE 	FALSE 	TRUE 	TRUE
- *      Loose comparisons with == 
+ *      Loose comparisons with ==
  * TRUE 	FALSE 	1 	0 	-1 	"1" 	"0" 	"-1" 	NULL 	array() 	"php" 	""
  * TRUE 	TRUE 	FALSE 	TRUE 	FALSE 	TRUE 	TRUE 	FALSE 	TRUE 	FALSE 	FALSE 	TRUE 	FALSE
  * FALSE 	FALSE 	TRUE 	FALSE 	TRUE 	FALSE 	FALSE 	TRUE 	FALSE 	TRUE 	TRUE 	FALSE 	TRUE
@@ -952,7 +952,7 @@ PH7_PRIVATE sxi32 PH7_MemObjRelease(ph7_value *pObj)
  * array() 	FALSE 	TRUE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	TRUE 	TRUE 	FALSE 	FALSE
  * "php" 	TRUE 	FALSE 	FALSE 	TRUE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	TRUE 	FALSE
  * "" 	FALSE 	TRUE 	FALSE 	TRUE 	FALSE 	FALSE 	FALSE 	FALSE 	TRUE 	FALSE 	FALSE 	TRUE
- *    Strict comparisons with === 
+ *    Strict comparisons with ===
  * TRUE 	FALSE 	1 	0 	-1 	"1" 	"0" 	"-1" 	NULL 	array() 	"php" 	""
  * TRUE 	TRUE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE
  * FALSE 	FALSE 	TRUE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE
@@ -961,7 +961,7 @@ PH7_PRIVATE sxi32 PH7_MemObjRelease(ph7_value *pObj)
  * -1 	FALSE 	FALSE 	FALSE 	FALSE 	TRUE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE
  * "1" 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	TRUE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE
  * "0" 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	TRUE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE
- * "-1" 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	TRUE 	FALSE 	FALSE 	FALSE 	FALSE 
+ * "-1" 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	TRUE 	FALSE 	FALSE 	FALSE 	FALSE
  * NULL 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	TRUE 	FALSE 	FALSE 	FALSE
  * array() 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	TRUE 	FALSE 	FALSE
  * "php" 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	TRUE 	FALSE
@@ -969,7 +969,7 @@ PH7_PRIVATE sxi32 PH7_MemObjRelease(ph7_value *pObj)
  */
 PH7_PRIVATE sxi32 PH7_MemObjCmp(ph7_value *pObj1,ph7_value *pObj2,int bStrict,int iNest)
 {
-	sxi32 iComb; 
+	sxi32 iComb;
 	sxi32 rc;
 	if( bStrict ){
 		sxi32 iF1,iF2;
@@ -1076,7 +1076,7 @@ Numeric:
 			if( (pObj1->iFlags & MEMOBJ_REAL) == 0 ){
 				PH7_MemObjToReal(pObj1);
 			}
-			r1 = pObj1->rVal;	
+			r1 = pObj1->rVal;
 			if( (pObj2->iFlags & MEMOBJ_REAL) == 0 ){
 				PH7_MemObjToReal(pObj2);
 			}
@@ -1104,8 +1104,8 @@ Numeric:
  * Perform an addition operation of two ph7_values.
  * The reason this function is implemented here rather than 'vm.c'
  * is that the '+' operator is overloaded.
- * That is,the '+' operator is used for arithmetic operation and also 
- * used for operation on arrays [i.e: union]. When used with an array 
+ * That is,the '+' operator is used for arithmetic operation and also
+ * used for operation on arrays [i.e: union]. When used with an array
  * The + operator returns the right-hand array appended to the left-hand array.
  * For keys that exist in both arrays, the elements from the left-hand array
  * will be used, and the matching elements from the right-hand array will
@@ -1148,7 +1148,7 @@ PH7_PRIVATE sxi32 PH7_MemObjAdd(ph7_value *pObj1,ph7_value *pObj2,int bAddStore)
 			if( bAddStore ){
 				/* Do not duplicate the hashmap,use the left one since its an add&store operation.
 				 */
-				if( (pObj1->iFlags & MEMOBJ_HASHMAP) == 0 ){				
+				if( (pObj1->iFlags & MEMOBJ_HASHMAP) == 0 ){
 					/* Force a hashmap cast */
 					rc = PH7_MemObjToHashmap(pObj1);
 					if( rc != SXRET_OK ){
@@ -1197,7 +1197,7 @@ PH7_PRIVATE sxi32 PH7_MemObjAdd(ph7_value *pObj1,ph7_value *pObj2,int bAddStore)
 	return SXRET_OK;
 }
 /*
- * Return a printable representation of the type of a given 
+ * Return a printable representation of the type of a given
  * ph7_value.
  */
 PH7_PRIVATE const char * PH7_MemObjTypeDump(ph7_value *pVal)

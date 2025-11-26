@@ -1,6 +1,6 @@
 /*
  * Compile this file together with the ph7 engine source code to generate
- * the simple PH7 CGI interpreter executable. For example: 
+ * the simple PH7 CGI interpreter executable. For example:
  *  gcc -D PH7_ENABLE_MATH_FUNC -o ph7 ph7_cgi.c ph7.c -lm
  *
  * The PH7 CGI interpreter (ph7_cgi.c) is based on PH7 interpreter (ph7_interp.c).
@@ -18,7 +18,7 @@ static void CgiHeader()
 	puts("X-Powered-By: " PH7_SIG "\r");
 	puts("Content-type: text/html; charset=UTF-8\r\n\r");
 }
-/* 
+/*
  * Display an error message and exit.
  */
 static void Fatal(int status, const char *zMsg)
@@ -75,7 +75,7 @@ static int Output_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUs
 	return PH7_OK;
 }
 /*
- * Main program: Compile and execute the PHP file. 
+ * Main program: Compile and execute the PHP file.
  */
 int main(int argc,char **argv)
 {

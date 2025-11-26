@@ -1,6 +1,6 @@
 /*
  * Compile this file together with the ph7 engine source code to generate
- * the executable. For example: 
+ * the executable. For example:
  *  gcc -W -Wall -O6 -o ph7_test ph7_intro.c ph7.c
 */
 /*
@@ -42,7 +42,7 @@
 #include <stdlib.h>
 /* Make sure this header file is available.*/
 #include "ph7.h"
-/* 
+/*
  * Display an error message and exit.
  */
 static void Fatal(const char *zMsg)
@@ -64,18 +64,18 @@ static void Fatal(const char *zMsg)
  */
 static int Output_Consumer(const void *pOutput, unsigned int nOutputLen, void *pUserData /* Unused */)
 {
-	/* 
+	/*
 	 * Note that it's preferable to use the write() system call to display the output
 	 * rather than using the libc printf() which everybody now is extremely slow.
 	 */
-	printf("%.*s", 
-		nOutputLen, 
+	printf("%.*s",
+		nOutputLen,
 		(const char *)pOutput /* Not null terminated */
 		);
 	/* All done, VM output was redirected to STDOUT */
 	return PH7_OK;
 }
-/* 
+/*
  * Main program: Compile and execute the PHP program defined above.
  */
 int main(void)
@@ -96,7 +96,7 @@ int main(void)
 	rc = ph7_compile_v2(
 		pEngine,  /* PH7 engine */
 		PHP_PROG, /* PHP test program */
-		-1        /* Compute input length automatically*/, 
+		-1        /* Compute input length automatically*/,
 		&pVm,     /* OUT: Compiled PHP program */
 		0         /* IN: Compile flags */
 		);
@@ -105,9 +105,9 @@ int main(void)
 			const char *zErrLog;
 			int nLen;
 			/* Extract error log */
-			ph7_config(pEngine, 
-				PH7_CONFIG_ERR_LOG, 
-				&zErrLog, 
+			ph7_config(pEngine,
+				PH7_CONFIG_ERR_LOG,
+				&zErrLog,
 				&nLen
 				);
 			if( nLen > 0 ){
@@ -123,8 +123,8 @@ int main(void)
 	 * We will install the VM output consumer callback defined above
 	 * so that we can consume the VM output and redirect it to STDOUT.
 	 */
-	rc = ph7_vm_config(pVm, 
-		PH7_VM_CONFIG_OUTPUT, 
+	rc = ph7_vm_config(pVm,
+		PH7_VM_CONFIG_OUTPUT,
 		Output_Consumer,    /* Output Consumer callback */
 		0                   /* Callback private data */
 		);

@@ -56,7 +56,7 @@ struct JumpFixup
 	/* The following fields are only used by the goto statement */
 	SyString sLabel;    /* Label name */
 	ph7_vm_func *pFunc; /* Compiled function inside which the goto was emitted. NULL otherwise */
-	sxu32 nLine;        /* Track line number */ 
+	sxu32 nLine;        /* Track line number */
 };
 /*
  * Each language construct is represented by an instance
@@ -239,7 +239,7 @@ static sxi32 GenStateLeaveBlock(ph7_gen_state *pGen,GenBlock **ppBlock)
 		*ppBlock = pBlock;
 	}else{
 		/* Safely release the block */
-		GenStateFreeBlock(&(*pBlock));	
+		GenStateFreeBlock(&(*pBlock));
 	}
 	return SXRET_OK;
 }
@@ -279,7 +279,7 @@ static sxu32 GenStateFixJumps(GenBlock *pBlock,sxi32 nJumpType,sxu32 nJumpDest)
 {
 	JumpFixup *aFix;
 	VmInstr *pInstr;
-	sxu32 nFixed; 
+	sxu32 nFixed;
 	sxu32 n;
 	/* Point to the jump fixup table */
 	aFix = (JumpFixup *)SySetBasePtr(&pBlock->aJumpFix);
@@ -396,7 +396,7 @@ static ph7_value * GenStateInstallNumLiteral(ph7_gen_state *pGen,sxu32 *pIdx)
 		return 0;
 	}
 	*pIdx = nIdx;
-	/* TODO(chems): Create a numeric table (64bit int keys) same as 
+	/* TODO(chems): Create a numeric table (64bit int keys) same as
 	 * the constant string iterals table [optimization purposes].
 	 */
 	return pObj;
@@ -411,9 +411,9 @@ static sxi32 GenStateCompileChunk(ph7_gen_state *pGen,sxi32 iFlags);
  * Notes on the integer type.
  *  According to the PHP language reference manual
  *  Integers can be specified in decimal (base 10), hexadecimal (base 16), octal (base 8)
- *  or binary (base 2) notation, optionally preceded by a sign (- or +). 
- *  To use octal notation, precede the number with a 0 (zero). To use hexadecimal 
- *  notation precede the number with 0x. To use binary notation precede the number with 0b. 
+ *  or binary (base 2) notation, optionally preceded by a sign (- or +).
+ *  To use octal notation, precede the number with a 0 (zero). To use hexadecimal
+ *  notation precede the number with 0x. To use binary notation precede the number with 0b.
  * Symisc eXtension to the integer type.
  *  PH7 introduced platform-independant 64-bit integer unlike the standard PHP engine
  *  where the size of an integer is platform-dependent.That is,the size of an integer
@@ -460,9 +460,9 @@ static sxi32 PH7_CompileNumLiteral(ph7_gen_state *pGen,sxi32 iCompileFlag)
  *   The simplest way to specify a string is to enclose it in single quotes (the character ' ).
  *   To specify a literal single quote, escape it with a backslash (\). To specify a literal
  *   backslash, double it (\\). All other instances of backslash will be treated as a literal
- *   backslash: this means that the other escape sequences you might be used to, such as \r 
+ *   backslash: this means that the other escape sequences you might be used to, such as \r
  *   or \n, will be output literally as specified rather than having any special meaning.
- * 
+ *
  */
 PH7_PRIVATE sxi32 PH7_CompileSimpleString(ph7_gen_state *pGen,sxi32 iCompileFlag)
 {
@@ -542,12 +542,12 @@ PH7_PRIVATE sxi32 PH7_CompileSimpleString(ph7_gen_state *pGen,sxi32 iCompileFlag
  *  Nowdocs are to single-quoted strings what heredocs are to double-quoted strings.
  *  A nowdoc is specified similarly to a heredoc, but no parsing is done inside a nowdoc.
  *  The construct is ideal for embedding PHP code or other large blocks of text without the
- *  need for escaping. It shares some features in common with the SGML <![CDATA[ ]]> 
+ *  need for escaping. It shares some features in common with the SGML <![CDATA[ ]]>
  *  construct, in that it declares a block of text which is not for parsing.
  *  A nowdoc is identified with the same <<< sequence used for heredocs, but the identifier
- *  which follows is enclosed in single quotes, e.g. <<<'EOT'. All the rules for heredoc 
+ *  which follows is enclosed in single quotes, e.g. <<<'EOT'. All the rules for heredoc
  *  identifiers also apply to nowdoc identifiers, especially those regarding the appearance
- *  of the closing identifier. 
+ *  of the closing identifier.
  */
 static sxi32 PH7_CompileNowDoc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 {
@@ -587,9 +587,9 @@ static sxi32 PH7_CompileNowDoc(ph7_gen_state *pGen,sxi32 iCompileFlag)
  *   the end of the name.
  *   Similarly, an array index or an object property can be parsed. With array indices, the closing
  *   square bracket (]) marks the end of the index. The same rules apply to object properties
- *   as to simple variables. 
+ *   as to simple variables.
  *  Complex (curly) syntax
- *   This isn't called complex because the syntax is complex, but because it allows for the use 
+ *   This isn't called complex because the syntax is complex, but because it allows for the use
  *   of complex expressions.
  *   Any scalar variable, array element or object property with a string representation can be
  *   included via this syntax. Simply write the expression the same way as it would appear outside
@@ -666,7 +666,7 @@ static ph7_value * GenStateNewStrObj(ph7_gen_state *pGen,sxi32 *pCount)
  *  If this rule is broken and the closing identifier is not "clean", it will not be considered a closing
  *  identifier, and PHP will continue looking for one. If a proper closing identifier is not found before
  *  the end of the current file, a parse error will result at the last line.
- *  Heredocs can not be used for initializing class properties. 
+ *  Heredocs can not be used for initializing class properties.
  * Double quoted
  *  If the string is enclosed in double-quotes ("), PHP will interpret more escape sequences for special characters:
  *  Escaped characters Sequence 	Meaning
@@ -689,7 +689,7 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen)
 	SyString *pStr = &pGen->pIn->sData; /* Raw token value */
 	const char *zIn,*zCur,*zEnd;
 	ph7_value *pObj = 0;
-	sxi32 iCons;	
+	sxi32 iCons;
 	sxi32 rc;
 	/* Delimit the string */
 	zIn  = pStr->zString;
@@ -998,7 +998,7 @@ static sxi32 PH7_CompileHereDoc(ph7_gen_state *pGen,sxi32 iCompileFlag)
  *  A value can be any PHP type.
  *  If a key is not specified for a value, the maximum of the integer indices is taken
  *  and the new key will be that value plus 1. If a key that already has an assigned value
- *  is specified, that value will be overwritten. 
+ *  is specified, that value will be overwritten.
  */
 static sxi32 GenStateCompileArrayEntry(
 	ph7_gen_state *pGen, /* Code generator state */
@@ -1057,7 +1057,7 @@ static sxi32 GenStateArrayNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRoot
  *   values to keys. This type is optimized for several different uses; it can
  *   be treated as an array, list (vector), hash table (an implementation of a map)
  *   dictionary, collection, stack, queue, and probably more. As array values can be
- *   other arrays, trees and multidimensional arrays are also possible. 
+ *   other arrays, trees and multidimensional arrays are also possible.
  */
 PH7_PRIVATE sxi32 PH7_CompileArray(ph7_gen_state *pGen,sxi32 iCompileFlag)
 {
@@ -1096,7 +1096,7 @@ PH7_PRIVATE sxi32 PH7_CompileArray(ph7_gen_state *pGen,sxi32 iCompileFlag)
 			if( pCur->nType & PH7_TK_LPAREN /*'('*/ ){
 				iNest++;
 			}else if( pCur->nType & PH7_TK_RPAREN /*')'*/ ){
-				/* Don't worry about mismatched parenthesis here,the expression 
+				/* Don't worry about mismatched parenthesis here,the expression
 				 * parser will shortly detect any syntax error.
 				 */
 				iNest--;
@@ -1202,7 +1202,7 @@ static sxi32 GenStateListNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRoot)
  *  list() is used to assign a list of variables in one operation.
  *  Description
  *   array list (mixed $varname [, mixed $... ] )
- *   Like array(), this is not really a function, but a language construct. 
+ *   Like array(), this is not really a function, but a language construct.
  *   list() is used to assign a list of variables in one operation.
  *  Parameters
  *   $varname: A variable.
@@ -1344,7 +1344,7 @@ PH7_PRIVATE sxi32 PH7_CompileLangConstruct(ph7_gen_state *pGen,sxi32 iCompileFla
 		SyToken *pTmp,*pNext = 0;
 		/* Compile arguments one after one */
 		pTmp = pGen->pEnd;
-		/* Symisc eXtension to the PHP programming language: 
+		/* Symisc eXtension to the PHP programming language:
 		 * 'echo' can be used in the context of a function which
 		 *  mean that the following expression is valid:
 		 *      fopen('file.txt','r') or echo "IO error";
@@ -1358,7 +1358,7 @@ PH7_PRIVATE sxi32 PH7_CompileLangConstruct(ph7_gen_state *pGen,sxi32 iCompileFla
 					return SXERR_ABORT;
 				}
 				if( rc != SXERR_EMPTY ){
-					/* Ticket 1433-008: Optimization #1: Consume input directly 
+					/* Ticket 1433-008: Optimization #1: Consume input directly
 					 * without the overhead of a function call.
 					 * This is a very powerful optimization that improve
 					 * performance greatly.
@@ -1373,7 +1373,7 @@ PH7_PRIVATE sxi32 PH7_CompileLangConstruct(ph7_gen_state *pGen,sxi32 iCompileFla
 			pGen->pIn = pNext;
 		}
 		/* Restore token stream */
-		pGen->pEnd = pTmp;	
+		pGen->pEnd = pTmp;
 	}else{
 		sxi32 nArg = 0;
 		sxu32 nIdx = 0;
@@ -1411,8 +1411,8 @@ PH7_PRIVATE sxi32 PH7_CompileLangConstruct(ph7_gen_state *pGen,sxi32 iCompileFla
  *  Variable names follow the same rules as other labels in PHP. A valid variable name starts
  *  with a letter or underscore, followed by any number of letters, numbers, or underscores.
  *  As a regular expression, it would be expressed thus: '[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*'
- *  Note: For our purposes here, a letter is a-z, A-Z, and the bytes from 127 through 255 (0x7f-0xff). 
- *  Note: $this is a special variable that can't be assigned. 
+ *  Note: For our purposes here, a letter is a-z, A-Z, and the bytes from 127 through 255 (0x7f-0xff).
+ *  Note: $this is a special variable that can't be assigned.
  *  By default, variables are always assigned by value. That is to say, when you assign an expression
  *  to a variable, the entire value of the original expression is copied into the destination variable.
  *  This means, for instance, that after assigning one variable's value to another, changing one of those
@@ -1510,7 +1510,7 @@ static sxi32 GenStateLoadLiteral(ph7_gen_state *pGen)
 {
 	SyToken *pToken = pGen->pIn;
 	ph7_value *pObj;
-	SyString *pStr;	
+	SyString *pStr;
 	sxu32 nIdx;
 	/* Extract token value */
 	pStr = &pToken->sData;
@@ -1544,7 +1544,7 @@ static sxi32 GenStateLoadLiteral(ph7_gen_state *pGen)
 			return SXRET_OK;
 	}else if( (pStr->nByte == sizeof("__FUNCTION__") - 1 &&
 		SyMemcmp(pStr->zString,"__FUNCTION__",sizeof("__FUNCTION__")-1) == 0) ||
-		(pStr->nByte == sizeof("__METHOD__") - 1 && 
+		(pStr->nByte == sizeof("__METHOD__") - 1 &&
 		SyMemcmp(pStr->zString,"__METHOD__",sizeof("__METHOD__")-1) == 0) ){
 			GenBlock *pBlock = pGen->pCurrent;
 			/* TICKET 1433-004: __FUNCTION__/__METHOD__ constants must be resolved at compile time,not run time */
@@ -1612,7 +1612,7 @@ static sxi32 GenStateResolveNamespaceLiteral(ph7_gen_state *pGen)
 		pGen->pIn++; /* Ignore the token */
 	}
 	/* Load literal */
-	rc = GenStateLoadLiteral(&(*pGen));	
+	rc = GenStateLoadLiteral(&(*pGen));
 	return rc;
 }
 /*
@@ -1669,7 +1669,7 @@ static int GenStateIsReservedConstant(SyString *pName)
  *  A constant is case-sensitive by default. By convention, constant identifiers are always uppercase.
  *  The name of a constant follows the same rules as any label in PHP. A valid constant name starts
  *  with a letter or underscore, followed by any number of letters, numbers, or underscores.
- *  As a regular expression it would be expressed thusly: [a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]* 
+ *  As a regular expression it would be expressed thusly: [a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*
  *  Syntax
  *  You can define a constant by using the define()-function or by using the const keyword outside
  *  a class definition. Once a constant is defined, it can never be changed or undefined.
@@ -1677,7 +1677,7 @@ static int GenStateIsReservedConstant(SyString *pName)
  *  you should not prepend a constant with a $. You can also use the function constant() to read
  *  a constant's value if you wish to obtain the constant's name dynamically. Use get_defined_constants()
  *  to get a list of all defined constants.
- * 
+ *
  * Symisc eXtension.
  *  PH7 allow any complex expression to be associated with the constant while the zend engine
  *  would allow only simple scalar value.
@@ -1738,7 +1738,7 @@ static sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 	rc = PH7_CompileExpr(&(*pGen),0,0);
 	/* Emit the done instruction */
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,(rc != SXERR_EMPTY ? 1 : 0),0,0,0);
-	PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer); 
+	PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
 	if( rc == SXERR_ABORT ){
 		/* Don't worry about freeing memory, everything will be released shortly */
 		return SXERR_ABORT;
@@ -1765,11 +1765,11 @@ Synchronize:
  *  and continue execution at the condition evaluation and then the beginning of the next
  *  iteration.
  *  Note: Note that in PHP the switch statement is considered a looping structure for
- *  the purposes of continue. 
+ *  the purposes of continue.
  *  continue accepts an optional numeric argument which tells it how many levels
  *  of enclosing loops it should skip to the end of.
  *  Note:
- *   continue 0; and continue 1; is the same as running continue;. 
+ *   continue 0; and continue 1; is the same as running continue;.
  */
 static sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 {
@@ -1783,7 +1783,7 @@ static sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 	pGen->pIn++;
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_NUM) ){
 		/* optional numeric argument which tells us how many levels
-		 * of enclosing loops we should skip to the end of. 
+		 * of enclosing loops we should skip to the end of.
 		 */
 		iLevel = (sxi32)PH7_TokenValueToInt64(&pGen->pIn->sData);
 		if( iLevel < 2 ){
@@ -1804,9 +1804,9 @@ static sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 		sxu32 nInstrIdx = 0;
 		if( pLoop->iFlags & GEN_BLOCK_SWITCH ){
 			/* According to the PHP language reference manual
-			 *  Note that unlike some other languages, the continue statement applies to switch 
+			 *  Note that unlike some other languages, the continue statement applies to switch
 			 *  and acts similar to break. If you have a switch inside a loop and wish to continue
-			 *  to the next iteration of the outer loop, use continue 2. 
+			 *  to the next iteration of the outer loop, use continue 2.
 			 */
 			rc = PH7_VmEmitInstr(pGen->pVm,PH7_OP_JMP,0,0,0,&nInstrIdx);
 			if( rc == SXRET_OK ){
@@ -1837,7 +1837,7 @@ static sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
  *  break ends execution of the current for, foreach, while, do-while or switch
  *  structure.
  *  break accepts an optional numeric argument which tells it how many nested
- *  enclosing structures are to be broken out of. 
+ *  enclosing structures are to be broken out of.
  */
 static sxi32 PH7_CompileBreak(ph7_gen_state *pGen)
 {
@@ -1851,7 +1851,7 @@ static sxi32 PH7_CompileBreak(ph7_gen_state *pGen)
 	pGen->pIn++;
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_NUM) ){
 		/* optional numeric argument which tells us how many levels
-		 * of enclosing loops we should skip to the end of. 
+		 * of enclosing loops we should skip to the end of.
 		 */
 		iLevel = (sxi32)PH7_TokenValueToInt64(&pGen->pIn->sData);
 		if( iLevel < 2 ){
@@ -1869,7 +1869,7 @@ static sxi32 PH7_CompileBreak(ph7_gen_state *pGen)
 			return SXERR_ABORT;
 		}
 	}else{
-		sxu32 nInstrIdx; 
+		sxu32 nInstrIdx;
 		rc = PH7_VmEmitInstr(pGen->pVm,PH7_OP_JMP,0,0,0,&nInstrIdx);
 		if( rc == SXRET_OK ){
 			/* Fix the jump later when the jump destination is resolved */
@@ -1949,7 +1949,7 @@ static sxi32 PH7_CompileLabel(ph7_gen_state *pGen)
  *   is given as goto followed by the desired target label. This is not a full unrestricted goto.
  *   The target label must be within the same file and context, meaning that you cannot jump out
  *   of a function or method, nor can you jump into one. You also cannot jump into any sort of loop
- *   or switch structure. You may jump out of these, and a common use is to use a goto in place 
+ *   or switch structure. You may jump out of these, and a common use is to use a goto in place
  *   of a multi-level break
  */
 static sxi32 PH7_CompileGoto(ph7_gen_state *pGen)
@@ -2026,7 +2026,7 @@ static sxi32 PH7_CompileGoto(ph7_gen_state *pGen)
 static sxi32 GenStateNextChunk(ph7_gen_state *pGen)
 {
 	ph7_value *pRawObj; /* Raw chunk [i.e: HTML,XML...] */
-	sxu32 nRawObj;   
+	sxu32 nRawObj;
 	sxu32 nObjIdx;
 	/* Consume raw chunks verbatim without any processing until we get
 	 * a PHP block.
@@ -2129,7 +2129,7 @@ static sxi32 PH7_CompileBlock(
 				return SXERR_ABORT;
 			}
 		}
-		GenStateLeaveBlock(&(*pGen),0);		
+		GenStateLeaveBlock(&(*pGen),0);
 	}else if( (pGen->pIn->nType & PH7_TK_COLON /* ':' */) && nKeywordEnd > 0 ){
 		pGen->pIn++;
 		rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_STD,PH7_VmInstrLength(pGen->pVm),0,0);
@@ -2153,7 +2153,7 @@ static sxi32 PH7_CompileBlock(
 				}
 			}
 			if( pGen->pIn->nType & PH7_TK_KEYWORD ){
-				sxi32 nKwrd; 
+				sxi32 nKwrd;
 				/* Keyword found */
 				nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
 				if( nKwrd == nKeywordEnd ||
@@ -2171,7 +2171,7 @@ static sxi32 PH7_CompileBlock(
 				return SXERR_ABORT;
 			}
 		}
-		GenStateLeaveBlock(&(*pGen),0);	
+		GenStateLeaveBlock(&(*pGen),0);
 	}else{
 		/* Compile a single statement */
 		rc = GenStateCompileChunk(&(*pGen),PH7_COMPILE_SINGLE_STMT);
@@ -2205,7 +2205,7 @@ static sxi32 PH7_CompileBlock(
  *   endwhile;
  */
 static sxi32 PH7_CompileWhile(ph7_gen_state *pGen)
-{ 
+{
 	GenBlock *pWhileBlock = 0;
 	SyToken *pTmp,*pEnd = 0;
 	sxu32 nFalseJump;
@@ -2213,7 +2213,7 @@ static sxi32 PH7_CompileWhile(ph7_gen_state *pGen)
 	sxi32 rc;
 	nLine = pGen->pIn->nLine;
 	/* Jump the 'while' keyword */
-	pGen->pIn++;    
+	pGen->pIn++;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
 		/* Syntax error */
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected '(' after 'while' keyword");
@@ -2224,7 +2224,7 @@ static sxi32 PH7_CompileWhile(ph7_gen_state *pGen)
 		goto Synchronize;
 	}
 	/* Jump the left parenthesis '(' */
-	pGen->pIn++; 
+	pGen->pIn++;
 	/* Create the loop block */
 	rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_LOOP,PH7_VmInstrLength(pGen->pVm),0,&pWhileBlock);
 	if( rc != SXRET_OK ){
@@ -2278,7 +2278,7 @@ static sxi32 PH7_CompileWhile(ph7_gen_state *pGen)
 	/* Statement successfully compiled */
 	return SXRET_OK;
 Synchronize:
-	/* Synchronize with the first semi-colon ';' so we can avoid 
+	/* Synchronize with the first semi-colon ';' so we can avoid
 	 * compiling this erroneous block.
 	 */
 	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_SEMI|PH7_TK_OCB)) == 0 ){
@@ -2292,7 +2292,7 @@ Synchronize:
  *  do-while loops are very similar to while loops, except the truth expression is checked
  *  at the end of each iteration instead of in the beginning. The main difference from regular
  *  while loops is that the first iteration of a do-while loop is guaranteed to run
- *  (the truth expression is only checked at the end of the iteration), whereas it may not 
+ *  (the truth expression is only checked at the end of the iteration), whereas it may not
  *  necessarily run with a regular while loop (the truth expression is checked at the beginning
  *  of each iteration, if it evaluates to FALSE right from the beginning, the loop execution
  *  would end immediately).
@@ -2312,7 +2312,7 @@ static sxi32 PH7_CompileDoWhile(ph7_gen_state *pGen)
 	sxi32 rc;
 	nLine = pGen->pIn->nLine;
 	/* Jump the 'do' keyword */
-	pGen->pIn++;   
+	pGen->pIn++;
 	/* Create the loop block */
 	rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_LOOP,PH7_VmInstrLength(pGen->pVm),0,&pDoBlock);
 	if( rc != SXRET_OK ){
@@ -2338,7 +2338,7 @@ static sxi32 PH7_CompileDoWhile(ph7_gen_state *pGen)
 			goto Synchronize;
 	}
 	/* Jump the 'while' keyword */
-	pGen->pIn++;    
+	pGen->pIn++;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
 		/* Syntax error */
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected '(' after 'while' keyword");
@@ -2349,7 +2349,7 @@ static sxi32 PH7_CompileDoWhile(ph7_gen_state *pGen)
 		goto Synchronize;
 	}
 	/* Jump the left parenthesis '(' */
-	pGen->pIn++; 
+	pGen->pIn++;
 	/* Delimit the condition */
 	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN /* '(' */,PH7_TK_RPAREN /* ')' */,&pEnd);
 	if( pGen->pIn == pEnd || pEnd >= pGen->pEnd ){
@@ -2405,7 +2405,7 @@ static sxi32 PH7_CompileDoWhile(ph7_gen_state *pGen)
 	/* Statement successfully compiled */
 	return SXRET_OK;
 Synchronize:
-	/* Synchronize with the first semi-colon ';' so we can avoid 
+	/* Synchronize with the first semi-colon ';' so we can avoid
 	 * compiling this erroneous block.
 	 */
 	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_SEMI|PH7_TK_OCB)) == 0 ){
@@ -2442,7 +2442,7 @@ static sxi32 PH7_CompileFor(ph7_gen_state *pGen)
 	sxi32 rc;
 	nLine = pGen->pIn->nLine;
 	/* Jump the 'for' keyword */
-	pGen->pIn++;    
+	pGen->pIn++;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
 		/* Syntax error */
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected '(' after 'for' keyword");
@@ -2453,7 +2453,7 @@ static sxi32 PH7_CompileFor(ph7_gen_state *pGen)
 		return SXRET_OK;
 	}
 	/* Jump the left parenthesis '(' */
-	pGen->pIn++; 
+	pGen->pIn++;
 	/* Delimit the init-expr;condition;post-expr */
 	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN /* '(' */,PH7_TK_RPAREN /* ')' */,&pEnd);
 	if( pGen->pIn == pEnd || pEnd >= pGen->pEnd ){
@@ -2612,7 +2612,7 @@ static sxi32 GenStateForEachNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRo
  *    statement
  *  foreach (array_expression as $key => $value)
  *   statement
- *  The first form loops over the array given by array_expression. On each loop, the value 
+ *  The first form loops over the array given by array_expression. On each loop, the value
  *  of the current element is assigned to $value and the internal array pointer is advanced
  *  by one (so on the next loop, you'll be looking at the next element).
  *  The second form does the same thing, except that the current element's key will be assigned
@@ -2625,10 +2625,10 @@ static sxi32 GenStateForEachNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRo
  *  itself. foreach has some side effects on the array pointer. Don't rely on the array pointer during
  *  or after the foreach without resetting it.
  *  You can easily modify array's elements by preceding $value with &. This will assign reference instead
- *  of copying the value. 
+ *  of copying the value.
  */
 static sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
-{ 
+{
 	SyToken *pCur,*pTmp,*pEnd = 0;
 	GenBlock *pForeachBlock = 0;
 	ph7_foreach_info *pInfo;
@@ -2638,7 +2638,7 @@ static sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 	sxi32 rc;
 	nLine = pGen->pIn->nLine;
 	/* Jump the 'foreach' keyword */
-	pGen->pIn++;    
+	pGen->pIn++;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
 		/* Syntax error */
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"foreach: Expected '('");
@@ -2649,7 +2649,7 @@ static sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 		goto Synchronize;
 	}
 	/* Jump the left parenthesis '(' */
-	pGen->pIn++; 
+	pGen->pIn++;
 	/* Create the loop block */
 	rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_LOOP,PH7_VmInstrLength(pGen->pVm),0,&pForeachBlock);
 	if( rc != SXRET_OK ){
@@ -2711,7 +2711,7 @@ static sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 		pGen->pIn++;
 	}
 	pCur++; /* Jump the 'as' keyword */
-	pGen->pIn = pCur; 
+	pGen->pIn = pCur;
 	if( pGen->pIn >= pEnd ){
 		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"foreach: Missing $key => $value pair");
 		if( rc == SXERR_ABORT ){
@@ -2808,7 +2808,7 @@ static sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 	/* Statement successfully compiled */
 	return SXRET_OK;
 Synchronize:
-	/* Synchronize with the first semi-colon ';' so we can avoid 
+	/* Synchronize with the first semi-colon ';' so we can avoid
 	 * compiling this erroneous block.
 	 */
 	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_SEMI|PH7_TK_OCB)) == 0 ){
@@ -2820,7 +2820,7 @@ Synchronize:
  * Compile the infamous if/elseif/else if/else statements.
  * According to the PHP language reference
  *  The if construct is one of the most important features of many languages PHP included.
- *  It allows for conditional execution of code fragments. PHP features an if structure 
+ *  It allows for conditional execution of code fragments. PHP features an if structure
  *  that is similar to that of C:
  *  if (expr)
  *   statement
@@ -2857,7 +2857,7 @@ static sxi32 PH7_CompileIf(ph7_gen_state *pGen)
 	sxi32 rc;
 	/* Jump the 'if' keyword */
 	pGen->pIn++;
-	pToken = pGen->pIn; 
+	pToken = pGen->pIn;
 	/* Create the conditional block */
 	rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_COND,PH7_VmInstrLength(pGen->pVm),0,&pCondBlock);
 	if( rc != SXRET_OK ){
@@ -2878,7 +2878,7 @@ static sxi32 PH7_CompileIf(ph7_gen_state *pGen)
 			goto Synchronize;
 		}
 		/* Jump the left parenthesis '(' */
-		pToken++; 
+		pToken++;
 		/* Delimit the condition */
 		PH7_DelimitNestedTokens(pToken,pGen->pEnd,PH7_TK_LPAREN /* '(' */,PH7_TK_RPAREN /* ')' */,&pEnd);
 		if( pToken >= pEnd || (pEnd->nType & PH7_TK_RPAREN) == 0 ){
@@ -2951,7 +2951,7 @@ static sxi32 PH7_CompileIf(ph7_gen_state *pGen)
 			pGen->pIn++;
 			rc = PH7_CompileBlock(&(*pGen),PH7_TKWRD_ENDIF);
 			if( rc == SXERR_ABORT ){
-				
+
 				return SXERR_ABORT;
 			}
 	}
@@ -2983,7 +2983,7 @@ Synchronize:
  *   {
  *    global $a, $b;
  *    $b = $a + $b;
- *   } 
+ *   }
  *   Sum();
  *   echo $b;
  *  ?>
@@ -3055,7 +3055,7 @@ static sxi32 PH7_CompileGlobal(ph7_gen_state *pGen)
  *  from within the main script file, then script execution end.
  *  Note that since return() is a language construct and not a function, the parentheses
  *  surrounding its arguments are not required. It is common to leave them out, and you actually
- *  should do so as PHP has less work to do in this case. 
+ *  should do so as PHP has less work to do in this case.
  *  Note: If no parameter is supplied, then the parentheses must be omitted and NULL will be returned.
  */
 static sxi32 PH7_CompileReturn(ph7_gen_state *pGen)
@@ -3080,7 +3080,7 @@ static sxi32 PH7_CompileReturn(ph7_gen_state *pGen)
 /*
  * Compile the die/exit language construct.
  * The role of these constructs is to terminate execution of the script.
- * Shutdown functions will always be executed even if exit() is called. 
+ * Shutdown functions will always be executed even if exit() is called.
  */
 static sxi32 PH7_CompileHalt(ph7_gen_state *pGen)
 {
@@ -3130,7 +3130,7 @@ static sxi32 PH7_CompileEcho(ph7_gen_state *pGen)
 		pGen->pIn = pNext;
 	}
 	/* Restore token stream */
-	pGen->pEnd = pTmp;	
+	pGen->pEnd = pTmp;
 	return SXRET_OK;
 }
 /*
@@ -3240,7 +3240,7 @@ static sxi32 PH7_CompileStatic(ph7_gen_state *pGen)
 	return SXRET_OK;
 Synchronize:
 	/* Synchronize with the first semi-colon ';',so we can avoid compiling this erroneous
-	 * statement. 
+	 * statement.
 	 */
 	while(pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) ==  0 ){
 		pGen->pIn++;
@@ -3291,12 +3291,12 @@ static sxi32 PH7_CompileVar(ph7_gen_state *pGen)
  *  programming world.
  *  In the PHP world, namespaces are designed to solve two problems that authors of libraries and applications
  *  encounter when creating re-usable code elements such as classes or functions:
- *  Name collisions between code you create, and internal PHP classes/functions/constants or third-party 
+ *  Name collisions between code you create, and internal PHP classes/functions/constants or third-party
  *  classes/functions/constants.
- *  Ability to alias (or shorten) Extra_Long_Names designed to alleviate the first problem, improving 
+ *  Ability to alias (or shorten) Extra_Long_Names designed to alleviate the first problem, improving
  *  readability of source code.
  *  PHP Namespaces provide a way in which to group related classes, interfaces, functions and constants.
- *  Here is an example of namespace syntax in PHP: 
+ *  Here is an example of namespace syntax in PHP:
  *       namespace my\name; // see "Defining Namespaces" section
  *       class MyClass {}
  *       function myfunction() {}
@@ -3308,7 +3308,7 @@ static sxi32 PH7_CompileVar(ph7_gen_state *pGen)
  *       $d = __NAMESPACE__ . '\MYCONST';
  *       echo constant($d);
  * NOTE
- *  AS OF THIS VERSION NAMESPACE SUPPORT IS DISABLED. IF YOU NEED A WORKING VERSION THAT IMPLEMENT 
+ *  AS OF THIS VERSION NAMESPACE SUPPORT IS DISABLED. IF YOU NEED A WORKING VERSION THAT IMPLEMENT
  *  NAMESPACE,PLEASE CONTACT SYMISC SYSTEMS VIA contact@symisc.net.
  */
 static sxi32 PH7_CompileNamespace(ph7_gen_state *pGen)
@@ -3356,7 +3356,7 @@ static sxi32 PH7_CompileNamespace(ph7_gen_state *pGen)
  *  a function or constant is not supported.
  *  In PHP, aliasing is accomplished with the 'use' operator.
  * NOTE
- *  AS OF THIS VERSION NAMESPACE SUPPORT IS DISABLED. IF YOU NEED A WORKING VERSION THAT IMPLEMENT 
+ *  AS OF THIS VERSION NAMESPACE SUPPORT IS DISABLED. IF YOU NEED A WORKING VERSION THAT IMPLEMENT
  *  NAMESPACE,PLEASE CONTACT SYMISC SYSTEMS VIA contact@symisc.net.
  */
 static sxi32 PH7_CompileUse(ph7_gen_state *pGen)
@@ -3499,7 +3499,7 @@ Synchro:
  *       var_dump($a);
  *      }
  *     //call test without args
- *      test(); 
+ *      test();
  * 2 -) Full type hinting: (Arguments are automatically casted to the desired type)
  *      Example:
  *           function a(string $a){} function b(int $a,string $c,float $d){}
@@ -3530,7 +3530,7 @@ Synchro:
  * 	    var_dump($a);
  *	  }
  *	  foo('This is a great feature'); // a is a string [first foo]
- *	  foo(52); // a is integer [second foo] 
+ *	  foo(52); // a is integer [second foo]
  *    foo(array(14,__TIME__,__DATE__)); // a is an array [third foo]
  * Please refer to the official documentation for more information on the powerful extension
  * introduced by the PH7 engine.
@@ -3548,7 +3548,7 @@ static sxi32 GenStateProcessArgValue(ph7_gen_state *pGen,ph7_vm_func_arg *pArg,S
 	rc = PH7_CompileExpr(&(*pGen),0,0);
 	/* Emit the done instruction */
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,(rc != SXERR_EMPTY ? 1 : 0),0,0,0);
-	PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer); 
+	PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
 	RE_SWAP_DELIMITER(pGen);
 	if( rc == SXERR_ABORT ){
 		return SXERR_ABORT;
@@ -3651,7 +3651,7 @@ static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyTo
 			pIn++;
 		}
 		if( pIn >= pEnd || (pIn->nType & PH7_TK_DOLLAR) == 0 || &pIn[1] >= pEnd || (pIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
-			/* Invalid argument */ 
+			/* Invalid argument */
 			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"Invalid argument name");
 			return rc;
 		}
@@ -3739,7 +3739,7 @@ static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyTo
 			}
 		}else{
 			/* No type is associated with this parameter which mean
-			 * that this function is not condidate for overloading. 
+			 * that this function is not condidate for overloading.
 			 */
 			SyBlobRelease(&sSig);
 		}
@@ -3805,14 +3805,14 @@ static sxi32 GenStateCompileFuncBody(
  *  Function names follow the same rules as other labels in PHP. A valid function name
  *  starts with a letter or underscore, followed by any number of letters, numbers, or
  *  underscores. As a regular expression, it would be expressed thus:
- *     [a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*. 
+ *     [a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*.
  *  Functions need not be defined before they are referenced.
  *  All functions and classes in PHP have the global scope - they can be called outside
  *  a function even if they were defined inside and vice versa.
  *  It is possible to call recursive functions in PHP. However avoid recursive function/method
- *  calls with over 32-64 recursion levels. 
- * 
- * PH7 have introduced powerful extension including full type hinting, function overloading, 
+ *  calls with over 32-64 recursion levels.
+ *
+ * PH7 have introduced powerful extension including full type hinting, function overloading,
  * complex agrument values and more. Please refer to the official documentation for more information
  * on these extension.
  */
@@ -3871,7 +3871,7 @@ static sxi32 GenStateCompileFunc(
 	if( bHandleClosure ){
 		ph7_vm_func_closure_env sEnv;
 		int got_this = 0; /* TRUE if $this have been seen */
-		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) 
+		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD)
 			&& SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_USE ){
 				sxu32 nLine = pGen->pIn->nLine;
 				/* Closure,record environment variable */
@@ -3916,7 +3916,7 @@ static sxi32 GenStateCompileFunc(
 							break;
 							/* TICKET 1433-95: No need for the else block below.*/
 					}else{
-						SyString *pName; 
+						SyString *pName;
 						char *zDup;
 						/* Duplicate variable name */
 						pName = &pGen->pIn[1].sData;
@@ -3927,7 +3927,7 @@ static sxi32 GenStateCompileFunc(
 							sEnv.iFlags = iFlags;
 							PH7_MemObjInit(pGen->pVm,&sEnv.sValue);
 							SyStringInitFromBuf(&sEnv.sName,zDup,pName->nByte);
-							if( !got_this && pName->nByte == sizeof("this")-1 && 
+							if( !got_this && pName->nByte == sizeof("this")-1 &&
 								SyMemcmp((const void *)zDup,(const void *)"this",sizeof("this")-1) == 0 ){
 									got_this = 1;
 							}
@@ -3945,7 +3945,7 @@ static sxi32 GenStateCompileFunc(
 					}
 				}
 				if( !got_this ){
-					/* Make the $this variable [Current processed Object (class instance)]  
+					/* Make the $this variable [Current processed Object (class instance)]
 					 * available to the closure environment.
 					 */
 					SyZero(&sEnv,sizeof(ph7_vm_func_closure_env));
@@ -4046,7 +4046,7 @@ static sxi32 PH7_CompileFunction(ph7_gen_state *pGen)
  *  Class members declared public can be accessed everywhere.
  *  Members declared protected can be accessed only within the class
  *  itself and by inherited and parent classes. Members declared as private
- *  may only be accessed by the class that defines the member. 
+ *  may only be accessed by the class that defines the member.
  */
 static sxi32 GetProtectionLevel(sxi32 nKeyword)
 {
@@ -4062,16 +4062,16 @@ static sxi32 GetProtectionLevel(sxi32 nKeyword)
  * Compile a class constant.
  * According to the PHP language reference manual
  *  Class Constants
- *   It is possible to define constant values on a per-class basis remaining 
+ *   It is possible to define constant values on a per-class basis remaining
  *   the same and unchangeable. Constants differ from normal variables in that
  *   you don't use the $ symbol to declare or use them.
  *   The value must be a constant expression, not (for example) a variable,
  *   a property, a result of a mathematical operation, or a function call.
- *   It's also possible for interfaces to have constants. 
+ *   It's also possible for interfaces to have constants.
  * Symisc eXtension.
  *  PH7 allow any complex expression to be associated with the constant while
  *  the zend engine would allow only simple scalar value.
- *  Example: 
+ *  Example:
  *   class Test{
  *        const MyConst = "Hello"."world: ".rand_str(3); //concatenation operation + Function call
  *   };
@@ -4145,7 +4145,7 @@ loop:
 	}
 	/* Emit the done instruction */
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,1,0,0,0);
-	PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer); 
+	PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
 	if( rc == SXERR_ABORT ){
 		/* Don't worry about freeing memory, everything will be released shortly */
 		return SXERR_ABORT;
@@ -4194,11 +4194,11 @@ Synchronize:
  *  of the keywords public, protected, or private, followed by a normal variable
  *  declaration. This declaration may include an initialization, but this initialization
  *  must be a constant value--that is, it must be able to be evaluated at compile time
- *  and must not depend on run-time information in order to be evaluated. 
+ *  and must not depend on run-time information in order to be evaluated.
  * Symisc eXtension.
  *  PH7 allow any complex expression to be associated with the attribute while
  *  the zend engine would allow only simple scalar value.
- *  Example: 
+ *  Example:
  *   class Test{
  *        public static $myVar = "Hello"."world: ".rand_str(3); //concatenation operation + Function call
  *   };
@@ -4302,7 +4302,7 @@ Synchronize:
  *
  * Refer to the official documentation for more information
  * on the powerful extension introduced by the PH7 engine
- * to the OO subsystem such as full type hinting,method 
+ * to the OO subsystem such as full type hinting,method
  * overloading and many more.
  */
 static sxi32 GenStateCompileClassMethod(
@@ -4442,7 +4442,7 @@ Synchronize:
  *   a class must implement, without having to define how these methods are handled.
  *   Interfaces are defined using the interface keyword, in the same way as a standard
  *   class, but without any of the methods having their contents defined.
- *   All methods declared in an interface must be public, this is the nature of an interface. 
+ *   All methods declared in an interface must be public, this is the nature of an interface.
  */
 static sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 {
@@ -4531,7 +4531,7 @@ static sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 	/* Swap token stream */
 	pTmp = pGen->pEnd;
 	pGen->pEnd = pEnd;
-	/* Start the parse process 
+	/* Start the parse process
 	 * Note (According to the PHP reference manual):
 	 *  Only constants and function signatures(without body) are allowed.
 	 *  Only 'public' visibility is allowed.
@@ -4610,7 +4610,7 @@ static sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 				iFlags |= PH7_CLASS_ATTR_STATIC;
 				/* Advance the stream cursor */
 				pGen->pIn++;
-				if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 
+				if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0
 					|| SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_FUNCTION ){
 						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 							"Expecting method signature inside interface '%z'",pName);
@@ -4659,7 +4659,7 @@ done:
  *  of letters, numbers, or underscores. As a regular expression, it would be expressed
  *  thus: [a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*.
  *  A class may contain its own constants, variables (called "properties"), and functions
- *  (called "methods"). 
+ *  (called "methods").
  */
 static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 {
@@ -4924,7 +4924,7 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 					/* Mark the whole class as abstract */
 					pClass->iFlags |= PH7_CLASS_ABSTRACT;
 					/* Advance the stream cursor */
-					pGen->pIn++; 
+					pGen->pIn++;
 					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
 						nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
 						if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
@@ -4932,12 +4932,12 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 							pGen->pIn++; /* Jump the visibility token */
 						}
 					}
-					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) && 
+					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) &&
 						SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_STATIC ){
 							/* Static method */
 							iAttrflags |= PH7_CLASS_ATTR_STATIC;
 							pGen->pIn++; /* Jump the static keyword */
-					}					
+					}
 					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ||
 						SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_FUNCTION ){
 							rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
@@ -4968,7 +4968,7 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 							iAttrflags |= PH7_CLASS_ATTR_STATIC;
 							pGen->pIn++; /* Jump the static keyword */
 					}
-					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 || 
+					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ||
 						SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_FUNCTION ){
 							rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 								"Unexpected token '%z',Expecting method declaration after 'final' keyword inside class '%z'",
@@ -5058,16 +5058,16 @@ done:
 /*
  * Compile a user-defined abstract class.
  *  According to the PHP language reference manual
- *   PHP 5 introduces abstract classes and methods. Classes defined as abstract 
+ *   PHP 5 introduces abstract classes and methods. Classes defined as abstract
  *   may not be instantiated, and any class that contains at least one abstract
- *   method must also be abstract. Methods defined as abstract simply declare 
+ *   method must also be abstract. Methods defined as abstract simply declare
  *   the method's signature - they cannot define the implementation.
  *   When inheriting from an abstract class, all methods marked abstract in the parent's
  *   class declaration must be defined by the child; additionally, these methods must be
  *   defined with the same (or a less restricted) visibility. For example, if the abstract
  *   method is defined as protected, the function implementation must be defined as either
  *   protected or public, but not private. Furthermore the signatures of the methods must
- *   match, i.e. the type hints and the number of required arguments must be the same. 
+ *   match, i.e. the type hints and the number of required arguments must be the same.
  *   This also applies to constructors as of PHP 5.4. Before 5.4 constructor signatures
  *   could differ.
  */
@@ -5083,7 +5083,7 @@ static sxi32 PH7_CompileAbstractClass(ph7_gen_state *pGen)
  *  According to the PHP language reference manual
  *    PHP 5 introduces the final keyword, which prevents child classes from overriding
  *    a method by prefixing the definition with final. If the class itself is being defined
- *    final then it cannot be extended. 
+ *    final then it cannot be extended.
  */
 static sxi32 PH7_CompileFinalClass(ph7_gen_state *pGen)
 {
@@ -5099,7 +5099,7 @@ static sxi32 PH7_CompileFinalClass(ph7_gen_state *pGen)
  *   by a class name, followed by a pair of curly braces which enclose
  *   the definitions of the properties and methods belonging to the class.
  *   A class may contain its own constants, variables (called "properties")
- *   and functions (called "methods"). 
+ *   and functions (called "methods").
  */
 static sxi32 PH7_CompileClass(ph7_gen_state *pGen)
 {
@@ -5112,9 +5112,9 @@ static sxi32 PH7_CompileClass(ph7_gen_state *pGen)
  *  According to the PHP language reference manual
  *    An exception can be thrown, and caught ("catched") within PHP. Code may be surrounded
  *    in a try block, to facilitate the catching of potential exceptions. Each try must have
- *    at least one corresponding catch block. Multiple catch blocks can be used to catch 
+ *    at least one corresponding catch block. Multiple catch blocks can be used to catch
  *    different classes of exceptions. Normal execution (when no exception is thrown within
- *    the try block, or when a catch matching the thrown exception's class is not present) 
+ *    the try block, or when a catch matching the thrown exception's class is not present)
  *    will continue after that last catch block defined in sequence. Exceptions can be thrown
  *    (or re-thrown) within a catch block.
  *    When an exception is thrown, code following the statement will not be executed, and PHP
@@ -5122,7 +5122,7 @@ static sxi32 PH7_CompileClass(ph7_gen_state *pGen)
  *    Fatal Error will be issued with an "Uncaught Exception ..." message, unless a handler has
  *    been defined with set_exception_handler().
  *    The thrown object must be an instance of the Exception class or a subclass of Exception.
- *    Trying to throw an object that is not will result in a PHP Fatal Error. 
+ *    Trying to throw an object that is not will result in a PHP Fatal Error.
  */
 /*
  * Expression tree validator callback associated with the 'throw' statement.
@@ -5345,7 +5345,7 @@ static sxi32 PH7_CompileTry(ph7_gen_state *pGen)
 	/* Leave the block */
 	GenStateLeaveBlock(&(*pGen),0);
 	/* Compile the catch block */
-	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 || 
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ||
 		SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_CATCH ){
 			SyToken *pTok = pGen->pIn;
 			if( pTok >= pGen->pEnd ){
@@ -5482,7 +5482,7 @@ static sxi32 GenStateCompileCaseExpr(ph7_gen_state *pGen,ph7_case_expr *pExpr)
 	rc = PH7_CompileExpr(&(*pGen),0,0);
 	/* Emit the done instruction */
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,(rc != SXERR_EMPTY ? 1 : 0),0,0,0);
-	PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer); 
+	PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
 	/* Update token stream */
 	pGen->pIn  = pEnd;
 	pGen->pEnd = pTmp;
@@ -5500,8 +5500,8 @@ static sxi32 GenStateCompileCaseExpr(ph7_gen_state *pGen,ph7_case_expr *pExpr)
  *  This is exactly what the switch statement is for.
  *  Note: Note that unlike some other languages, the continue statement applies to switch and acts
  *  similar to break. If you have a switch inside a loop and wish to continue to the next iteration
- *  of the outer loop, use continue 2. 
- *  Note that switch/case does loose comparision. 
+ *  of the outer loop, use continue 2.
+ *  Note that switch/case does loose comparision.
  *  It is important to understand how the switch statement is executed in order to avoid mistakes.
  *  The switch statement executes line by line (actually, statement by statement).
  *  In the beginning, no code is executed. Only when a case statement is found with a value that
@@ -5512,7 +5512,7 @@ static sxi32 GenStateCompileCaseExpr(ph7_gen_state *pGen,ph7_case_expr *pExpr)
  *  case statement. In an elseif statement, the condition is evaluated again. If your condition
  *  is more complicated than a simple compare and/or is in a tight loop, a switch may be faster.
  *  The statement list for a case can also be empty, which simply passes control into the statement
- *  list for the next case. 
+ *  list for the next case.
  *  The case expression may be any expression that evaluates to a simple type, that is, integer
  *  or floating-point numbers and strings.
  */
@@ -5526,7 +5526,7 @@ static sxi32 PH7_CompileSwitch(ph7_gen_state *pGen)
 	sxi32 rc;
 	nLine = pGen->pIn->nLine;
 	/* Jump the 'switch' keyword */
-	pGen->pIn++;    
+	pGen->pIn++;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
 		/* Syntax error */
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected '(' after 'switch' keyword");
@@ -5537,7 +5537,7 @@ static sxi32 PH7_CompileSwitch(ph7_gen_state *pGen)
 		goto Synchronize;
 	}
 	/* Jump the left parenthesis '(' */
-	pGen->pIn++; 
+	pGen->pIn++;
 	pEnd = 0; /* cc warning */
 	/* Create the loop block */
 	rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_LOOP|GEN_BLOCK_SWITCH,
@@ -5601,7 +5601,7 @@ static sxi32 PH7_CompileSwitch(ph7_gen_state *pGen)
 	if( pSwitch == 0 ){
 		/* Abort compilation */
 		PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"Fatal, PH7 is running out of memory");
-		return SXERR_ABORT; 
+		return SXERR_ABORT;
 	}
 	/* Zero the structure */
 	SyZero(pSwitch,sizeof(ph7_switch));
@@ -5651,7 +5651,7 @@ static sxi32 PH7_CompileSwitch(ph7_gen_state *pGen)
 			 *  that wasn't matched by the other cases.
 			 */
 			if( pSwitch->nDefault > 0 ){
-				/* Default case already compiled */ 
+				/* Default case already compiled */
 				rc = PH7_GenCompileError(&(*pGen),E_WARNING,pGen->pIn->nLine,"Switch: 'default' case already compiled");
 				if( rc == SXERR_ABORT ){
 					return SXERR_ABORT;
@@ -5887,7 +5887,7 @@ static sxi32 GenStateEmitExprCode(
 			if( pInstr ){
 				if( pInstr->iOp == PH7_OP_LOAD_IDX ){
 					/* Array insertion by reference [i.e: $pArray[] =& $some_var; ]
-					 * We have to convert the STORE_REF instruction into STORE_IDX_REF 
+					 * We have to convert the STORE_REF instruction into STORE_IDX_REF
 					 */
 					iVmOp = PH7_OP_STORE_IDX_REF;
 					iP1 = pInstr->iP1;
@@ -5945,7 +5945,7 @@ static sxi32 GenStateEmitExprCode(
  *  Expressions are the most important building stones of PHP.
  *  In PHP, almost anything you write is an expression.
  *  The simplest yet most accurate way to define an expression
- *  is "anything that has a value". 
+ *  is "anything that has a value".
  * If something goes wrong while compiling the expression,this
  * function takes care of generating the appropriate error
  * message.
@@ -6144,9 +6144,9 @@ static int GenStateisLangConstruct(sxu32 nKeyword)
 	rc = PH7_IsLangConstruct(nKeyword,TRUE);
 	if( rc == FALSE ){
 		if( nKeyword == PH7_TKWRD_SELF || nKeyword == PH7_TKWRD_PARENT || nKeyword == PH7_TKWRD_STATIC
-			/*|| nKeyword == PH7_TKWRD_CLASS || nKeyword == PH7_TKWRD_FINAL || nKeyword == PH7_TKWRD_EXTENDS 
-			  || nKeyword == PH7_TKWRD_ABSTRACT || nKeyword == PH7_TKWRD_INTERFACE 
-			  || nKeyword == PH7_TKWRD_PUBLIC || nKeyword == PH7_TKWRD_PROTECTED 
+			/*|| nKeyword == PH7_TKWRD_CLASS || nKeyword == PH7_TKWRD_FINAL || nKeyword == PH7_TKWRD_EXTENDS
+			  || nKeyword == PH7_TKWRD_ABSTRACT || nKeyword == PH7_TKWRD_INTERFACE
+			  || nKeyword == PH7_TKWRD_PUBLIC || nKeyword == PH7_TKWRD_PROTECTED
 			  || nKeyword == PH7_TKWRD_PRIVATE || nKeyword == PH7_TKWRD_IMPLEMENTS
 			*/
 			){

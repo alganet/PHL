@@ -1,11 +1,11 @@
 /*
  * Compile this file together with the ph7 engine source code to generate
- * the simple PH7 interpreter executable. For example: 
+ * the simple PH7 interpreter executable. For example:
  *  gcc -W -Wall -O6 -D PH7_ENABLE_MATH_FUNC -o ph7 ph7_interp.c ph7.c
  */
 /*
  * The PH7 interpreter is a simple stand-alone PHP interpreter that allows
- * the user to enter and execute PHP files against a PH7 engine. 
+ * the user to enter and execute PHP files against a PH7 engine.
  * To start the ph7 program, just type "ph7" followed by the name of the PHP file
  * to compile and execute. That is, the first argument is to the interpreter, the rest
  * are scripts arguments, press "Enter" and the PHP code will be executed.
@@ -18,7 +18,7 @@
  *    ph7 scripts/mp3_tag.php /usr/local/path/to/my_mp3s
  *
  * The PH7 interpreter package includes more than 70 PHP scripts to test ranging from
- * simple hello world programs to XML processing, ZIP archive extracting, MP3 tag extracting, 
+ * simple hello world programs to XML processing, ZIP archive extracting, MP3 tag extracting,
  * UUID generation, JSON encoding/decoding, INI processing, Base32 encoding/decoding and many
  * more. These scripts are available in the scripts directory from the zip archive.
  */
@@ -31,7 +31,7 @@
 #include <stdlib.h>
 /* Make sure this header file is available.*/
 #include "ph7.h"
-/* 
+/*
  * Display an error message and exit.
  */
 static void Fatal(const char *zMsg)
@@ -107,7 +107,7 @@ static int Output_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUs
 	return PH7_OK;
 }
 /*
- * Main program: Compile and execute the PHP file. 
+ * Main program: Compile and execute the PHP file.
  */
 int main(int argc,char **argv)
 {

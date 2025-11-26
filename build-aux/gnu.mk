@@ -5,7 +5,7 @@
 
 # Platform abstraction
 OBJ_SUFFIX = .o
-BIN_SUFFIX = 
+BIN_SUFFIX =
 
 CC ?= cc
 TARGET ?= $(shell CC=$(CC) ./build-aux/get_target.sh)

@@ -8,7 +8,7 @@
  * This file implement a virtual file systems (VFS) for the PH7 engine.
  */
 /*
- * Given a string containing the path of a file or directory, this function 
+ * Given a string containing the path of a file or directory, this function
  * return the parent directory's path.
  */
 PH7_PRIVATE const char * PH7_ExtractDirName(const char *zPath,int nByte,int *pLen)
@@ -1264,7 +1264,7 @@ static int PH7_vfs_lstat(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *   The variable name.
  * Return
  *  Returns the value of the environment variable varname, or FALSE if the environment
- * variable varname does not exist. 
+ * variable varname does not exist.
  */
 static int PH7_vfs_getenv(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -1306,7 +1306,7 @@ static int PH7_vfs_getenv(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $setting
  *   The setting, like "FOO=BAR"
  * Return
- *  TRUE on success or FALSE on failure.  
+ *  TRUE on success or FALSE on failure.
  */
 static int PH7_vfs_putenv(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -1379,7 +1379,7 @@ static int PH7_vfs_putenv(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *   The touch time. If time is not supplied, the current system time is used.
  * $atime
  *   If present, the access time of the given filename is set to the value of atime.
- *   Otherwise, it is set to the value passed to the time parameter. If neither are 
+ *   Otherwise, it is set to the value passed to the time parameter. If neither are
  *   present, the current system time is used.
  * Return
  *  TRUE on success or FALSE on failure.
@@ -1436,7 +1436,7 @@ static int PH7_vfs_touch(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  On Windows, both slash (/) and backslash (\) are used as directory separator character.
  *  In other environments, it is the forward slash (/).
  * Return
- *  The path of the parent directory. If there are no slashes in path, a dot ('.') 
+ *  The path of the parent directory. If there are no slashes in path, a dot ('.')
  *  is returned, indicating the current directory.
  */
 static int PH7_builtin_dirname(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -1472,7 +1472,7 @@ static int PH7_builtin_dirname(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * $suffix
  *  If the name component ends in suffix this will also be cut off.
  * Return
- *  The base name of the given path. 
+ *  The base name of the given path.
  */
 static int PH7_builtin_basename(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -1530,8 +1530,8 @@ static int PH7_builtin_basename(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *      PATHINFO_DIRNAME, PATHINFO_BASENAME, PATHINFO_EXTENSION or PATHINFO_FILENAME.
  * Return
  *  If the options parameter is not passed, an associative array containing the following
- *  elements is returned: dirname, basename, extension (if any), and filename. 
- *  If options is present, returns a string containing the requested element. 
+ *  elements is returned: dirname, basename, extension (if any), and filename.
+ *  If options is present, returns a string containing the requested element.
  */
 typedef struct path_info path_info;
 struct path_info
@@ -1739,7 +1739,7 @@ static int PH7_builtin_pathinfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 typedef unsigned char u8;
 /* An array to map all upper-case characters into their corresponding
-** lower-case character. 
+** lower-case character.
 **
 ** SQLite only considers US-ASCII (or EBCDIC) characters.  We do not
 ** handle case conversions for the UTF character set since the tables
@@ -1934,7 +1934,7 @@ static int Glob(const unsigned char *zPattern,const unsigned char *zString,int i
  *    FNM_PERIOD 	Leading period in string must be exactly matched by period in the given pattern.
  *    FNM_CASEFOLD 	Caseless match.
  * Return
- *  TRUE if there is a match, FALSE otherwise. 
+ *  TRUE if there is a match, FALSE otherwise.
  */
 static int PH7_builtin_fnmatch(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -1975,7 +1975,7 @@ static int PH7_builtin_fnmatch(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * $string
  *  The tested string.
  * Return
- *  TRUE if there is a match, FALSE otherwise. 
+ *  TRUE if there is a match, FALSE otherwise.
  * Note that this a symisc eXtension.
  */
 static int PH7_builtin_strglob(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -2136,7 +2136,7 @@ static int PH7_vfs_sys_get_temp_dir(ph7_context *pCtx,int nArg,ph7_value **apArg
 		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
 			"IO routine(%s) not implemented in the underlying VFS",
 			ph7_function_name(pCtx)
-			);		
+			);
 		return PH7_OK;
 	}
 	/* Perform the requested operation */
@@ -2163,7 +2163,7 @@ static int PH7_vfs_get_current_user(ph7_context *pCtx,int nArg,ph7_value **apArg
 		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
 			"IO routine(%s) not implemented in the underlying VFS",
 			ph7_function_name(pCtx)
-			);		
+			);
 		/* Set a dummy username */
 		ph7_result_string(pCtx,"unknown",sizeof("unknown")-1);
 		return PH7_OK;
@@ -2410,7 +2410,7 @@ struct io_private
 };
 #define IO_PRIVATE_MAGIC 0xFEAC14
 /* Make sure we are dealing with a valid io_private instance */
-#define IO_PRIVATE_INVALID(IO) ( IO == 0 || IO->iMagic != IO_PRIVATE_MAGIC ) 
+#define IO_PRIVATE_INVALID(IO) ( IO == 0 || IO->iMagic != IO_PRIVATE_MAGIC )
 /* Forward declaration */
 static void ResetIOPrivate(io_private *pDev);
 /*
@@ -2464,7 +2464,7 @@ static int PH7_builtin_ftruncate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* IO result */
 	ph7_result_bool(pCtx,rc == PH7_OK);
-	return PH7_OK;	
+	return PH7_OK;
 }
 /*
  * int fseek(resource $handle,int $offset[,int $whence = SEEK_SET ])
@@ -2489,7 +2489,7 @@ static int PH7_builtin_fseek(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const ph7_io_stream *pStream;
 	io_private *pDev;
 	ph7_int64 iOfft;
-	int whence;  
+	int whence;
 	int rc;
 	if( nArg < 2 || !ph7_value_is_resource(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
@@ -2530,7 +2530,7 @@ static int PH7_builtin_fseek(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* IO result */
 	ph7_result_int(pCtx,rc == PH7_OK ? 0 : - 1);
-	return PH7_OK;	
+	return PH7_OK;
 }
 /*
  * int64 ftell(resource $handle)
@@ -2577,7 +2577,7 @@ static int PH7_builtin_ftell(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	iOfft = pStream->xTell(pDev->pHandle);
 	/* IO result */
 	ph7_result_int64(pCtx,iOfft);
-	return PH7_OK;	
+	return PH7_OK;
 }
 /*
  * bool rewind(resource $handle)
@@ -2626,7 +2626,7 @@ static int PH7_builtin_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* IO result */
 	ph7_result_bool(pCtx,rc == PH7_OK);
-	return PH7_OK;	
+	return PH7_OK;
 }
 /*
  * bool fflush(resource $handle)
@@ -2671,7 +2671,7 @@ static int PH7_builtin_fflush(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	rc = pStream->xSync(pDev->pHandle);
 	/* IO result */
 	ph7_result_bool(pCtx,rc == PH7_OK);
-	return PH7_OK;	
+	return PH7_OK;
 }
 /*
  * bool feof(resource $handle)
@@ -2730,11 +2730,11 @@ static int PH7_builtin_feof(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* EOF or not */
 	ph7_result_bool(pCtx,rc == SXERR_EOF);
-	return PH7_OK;	
+	return PH7_OK;
 }
 /*
  * Read n bytes from the underlying IO stream device.
- * Return total numbers of bytes readen on success. A number < 1 on failure 
+ * Return total numbers of bytes readen on success. A number < 1 on failure
  * [i.e: IO error ] or EOF.
  */
 static ph7_int64 StreamRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
@@ -2863,7 +2863,7 @@ static ph7_int64 StreamReadLine(io_private *pDev,const char **pzData,ph7_int64 n
  * Notes on stream:
  * According to the PHP reference manual.
  * In its simplest definition, a stream is a resource object which exhibits streamable behavior.
- * That is, it can be read from or written to in a linear fashion, and may be able to fseek() 
+ * That is, it can be read from or written to in a linear fashion, and may be able to fseek()
  * to an arbitrary locations within the stream.
  * A wrapper is additional code which tells the stream how to handle specific protocols/encodings.
  * For example, the http wrapper knows how to translate a URL into an HTTP/1.0 request for a file
@@ -2873,7 +2873,7 @@ static ph7_int64 StreamReadLine(io_private *pDev,const char **pzData,ph7_int64 n
  *   If no wrapper is specified, the function default is used (typically file://).
  *   target - Depends on the wrapper used. For filesystem related streams this is typically a path
  *  and filename of the desired file. For network related streams this is typically a hostname, often
- *  with a path appended. 
+ *  with a path appended.
  *
  * Note that PH7 IO streams looks like PHP streams but their implementation differ greately.
  * Please refer to the official documentation for a full discussion.
@@ -2993,7 +2993,7 @@ PH7_PRIVATE void PH7_StreamCloseHandle(const ph7_io_stream *pStream,void *pHandl
  *   The file pointer.
  * Return
  *  Returns a string containing a single character read from the file
- *  pointed to by handle. Returns FALSE on EOF. 
+ *  pointed to by handle. Returns FALSE on EOF.
  * WARNING
  *  This operation is extremely slow.Avoid using it.
  */
@@ -3037,7 +3037,7 @@ static int PH7_builtin_fgetc(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Return the string holding the character */
 		ph7_result_string(pCtx,(const char *)&c,sizeof(char));
 	}
-	return PH7_OK;	
+	return PH7_OK;
 }
 /*
  * string fgets(resource $handle[,int64 $length ])
@@ -3049,7 +3049,7 @@ static int PH7_builtin_fgetc(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  Reading ends when length - 1 bytes have been read, on a newline
  *  (which is included in the return value), or on EOF (whichever comes first).
  *  If no length is specified, it will keep reading from the stream until it reaches
- *  the end of the line. 
+ *  the end of the line.
  * Return
  *  Returns a string of up to length - 1 bytes read from the file pointed to by handle.
  *  If there is no more data to read in the file pointer, then FALSE is returned.
@@ -3100,7 +3100,7 @@ static int PH7_builtin_fgets(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Return the freshly extracted line */
 		ph7_result_string(pCtx,zLine,(int)n);
 	}
-	return PH7_OK;	
+	return PH7_OK;
 }
 /*
  * string fread(resource $handle,int64 $length)
@@ -3111,7 +3111,7 @@ static int PH7_builtin_fgets(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * $length
  *  Up to length number of bytes read.
  * Return
- *  The data readen on success or FALSE on failure. 
+ *  The data readen on success or FALSE on failure.
  */
 static int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -3156,7 +3156,7 @@ static int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Allocate enough buffer */
 	pBuf = ph7_context_alloc_chunk(pCtx,(unsigned int)nLen,FALSE,FALSE);
 	if( pBuf == 0 ){
-		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");			
+		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -3171,10 +3171,10 @@ static int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Release the buffer */
 	ph7_context_free_chunk(pCtx,pBuf);
-	return PH7_OK;	
+	return PH7_OK;
 }
 /*
- * array fgetcsv(resource $handle [, int $length = 0 
+ * array fgetcsv(resource $handle [, int $length = 0
  *         [,string $delimiter = ','[,string $enclosure = '"'[,string $escape='\\']]]])
  * Gets line from file pointer and parse for CSV fields.
  * Parameters
@@ -3184,7 +3184,7 @@ static int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  Reading ends when length - 1 bytes have been read, on a newline
  *  (which is included in the return value), or on EOF (whichever comes first).
  *  If no length is specified, it will keep reading from the stream until it reaches
- *  the end of the line. 
+ *  the end of the line.
  * $delimiter
  *   Set the field delimiter (one character only).
  * $enclosure
@@ -3283,7 +3283,7 @@ static int PH7_builtin_fgetcsv(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Return the freshly created array  */
 		ph7_result_value(pCtx,pArray);
 	}
-	return PH7_OK;	
+	return PH7_OK;
 }
 /*
  * string fgetss(resource $handle [,int $length [,string $allowable_tags ]])
@@ -3295,12 +3295,12 @@ static int PH7_builtin_fgetcsv(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  Reading ends when length - 1 bytes have been read, on a newline
  *  (which is included in the return value), or on EOF (whichever comes first).
  *  If no length is specified, it will keep reading from the stream until it reaches
- *  the end of the line. 
+ *  the end of the line.
  * $allowable_tags
- *  You can use the optional second parameter to specify tags which should not be stripped. 
+ *  You can use the optional second parameter to specify tags which should not be stripped.
  * Return
- *  Returns a string of up to length - 1 bytes read from the file pointed to by 
- *  handle, with all HTML and PHP code stripped. If an error occurs, returns FALSE. 
+ *  Returns a string of up to length - 1 bytes read from the file pointed to by
+ *  handle, with all HTML and PHP code stripped. If an error occurs, returns FALSE.
  */
 static int PH7_builtin_fgetss(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -3353,7 +3353,7 @@ static int PH7_builtin_fgetss(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Process data just read */
 		PH7_StripTagsFromString(pCtx,zLine,(int)n,zTaglist,nTaglen);
 	}
-	return PH7_OK;	
+	return PH7_OK;
 }
 /*
  * string readdir(resource $dir_handle)
@@ -3627,7 +3627,7 @@ static int PH7_builtin_readfile(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * string file_get_contents(string $filename[,bool $use_include_path = false 
+ * string file_get_contents(string $filename[,bool $use_include_path = false
  *         [, resource $context [, int $offset = -1 [, int $maxlen ]]]])
  *  Reads entire file into a string.
  * Parameters
@@ -3641,7 +3641,7 @@ static int PH7_builtin_readfile(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $offset
  *   The offset where the reading starts on the original stream.
  *  $maxlen
- *    Maximum length of data read. The default is to read until end of file 
+ *    Maximum length of data read. The default is to read until end of file
  *    is reached. Note that this parameter is applied to the stream processed by the filters.
  * Return
  *   The function returns the read data or FALSE on failure.
@@ -3655,7 +3655,7 @@ static int PH7_builtin_file_get_contents(ph7_context *pCtx,int nArg,ph7_value **
 	char zBuf[8192];
 	void *pHandle;
 	int nLen;
-	
+
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting a file path");
@@ -3740,7 +3740,7 @@ static int PH7_builtin_file_get_contents(ph7_context *pCtx,int nArg,ph7_value **
  * context
  *  A context stream resource.
  * Return
- *  The function returns the number of bytes that were written to the file, or FALSE on failure. 
+ *  The function returns the number of bytes that were written to the file, or FALSE on failure.
  */
 static int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -3752,7 +3752,7 @@ static int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_value **
 	void *pHandle;
 	int iFlags;
 	int nLen;
-	
+
 	if( nArg < 2 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting a file path");
@@ -3837,11 +3837,11 @@ static int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_value **
  *  $flags
  *   The optional parameter flags can be one, or more, of the following constants:
  *   FILE_USE_INCLUDE_PATH
- *       Search for the file in the include_path. 
+ *       Search for the file in the include_path.
  *   FILE_IGNORE_NEW_LINES
- *       Do not add newline at the end of each array element 
+ *       Do not add newline at the end of each array element
  *   FILE_SKIP_EMPTY_LINES
- *       Skip empty lines 
+ *       Skip empty lines
  *  $context
  *   A context stream resource.
  * Return
@@ -3857,7 +3857,7 @@ static int PH7_builtin_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_int64 n;
 	int iFlags;
 	int nLen;
-	
+
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting a file path");
@@ -3922,7 +3922,7 @@ static int PH7_builtin_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		zEnd = &zBuf[n];
 		if( iFlags & 0x02 /* FILE_IGNORE_NEW_LINES */ ){
 			/* Ignore trailig lines */
-			while( zPtr < zEnd && (zEnd[-1] == '\n' 
+			while( zPtr < zEnd && (zEnd[-1] == '\n'
 #ifdef __WINNT__
 				|| zEnd[-1] == '\r'
 #endif
@@ -3960,8 +3960,8 @@ static int PH7_builtin_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $source
  *   Path to the source file.
  *  $dest
- *   The destination path. If dest is a URL, the copy operation 
- *   may fail if the wrapper does not support overwriting of existing files. 
+ *   The destination path. If dest is a URL, the copy operation
+ *   may fail if the wrapper does not support overwriting of existing files.
  *  $context
  *   A context stream resource.
  * Return
@@ -3969,7 +3969,7 @@ static int PH7_builtin_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 static int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const ph7_io_stream *pSin,*pSout;	
+	const ph7_io_stream *pSin,*pSout;
 	const char *zFile;
 	char zBuf[8192];
 	void *pIn,*pOut;
@@ -4113,7 +4113,7 @@ static int PH7_builtin_fstat(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *   The string that is to be written.
  *  $length
  *   If the length argument is given, writing will stop after length bytes have been written
- *   or the end of string is reached, whichever comes first. 
+ *   or the end of string is reached, whichever comes first.
  * Return
  *  Returns the number of bytes written, or FALSE on error.
  */
@@ -4231,7 +4231,7 @@ static int PH7_builtin_flock(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  Output all remaining data on a file pointer.
  * Parameters
  *  $handle
- *   The file pointer. 
+ *   The file pointer.
  * Return
  *  Total number of characters read from handle and passed through
  *  to the output on success or FALSE on failure.
@@ -4297,7 +4297,7 @@ struct csv_data
 	io_private *pDev; /* Open stream handle */
 	int iCount;       /* Counter */
 };
-/* 
+/*
  * The following callback is used by the fputcsv() function inorder to iterate
  * throw array entries and output CSV data based on the current key and it's
  * associated data.
@@ -4320,7 +4320,7 @@ static int csv_write_callback(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 	}
 	n = 1;
 	c2 = 0;
-	if( SyByteFind(zData,(sxu32)nLen,pData->delimiter,0) == SXRET_OK || 
+	if( SyByteFind(zData,(sxu32)nLen,pData->delimiter,0) == SXRET_OK ||
 		SyByteFind(zData,(sxu32)nLen,pData->enclosure,&n) == SXRET_OK ){
 			c2 = 1;
 			if( n == 0 ){
@@ -4588,9 +4588,9 @@ static int PH7_builtin_vfprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *          to zero length. If the file does not exist, attempt to create it.
  *   'w+' 	Open for reading and writing; place the file pointer at the beginning of the file and truncate
  *              the file to zero length. If the file does not exist, attempt to create it.
- *   'a' 	Open for writing only; place the file pointer at the end of the file. If the file does not 
+ *   'a' 	Open for writing only; place the file pointer at the end of the file. If the file does not
  *         exist, attempt to create it.
- *   'a+' 	Open for reading and writing; place the file pointer at the end of the file. If the file does 
+ *   'a+' 	Open for reading and writing; place the file pointer at the end of the file. If the file does
  *          not exist, attempt to create it.
  *   'x' 	Create and open for writing only; place the file pointer at the beginning of the file. If the file
  *         already exists,
@@ -4604,7 +4604,7 @@ static int PH7_builtin_vfprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *          This may be useful if it's desired to get an advisory lock (see flock()) before attempting to modify the file
  *          as using 'w' could truncate the file before the lock was obtained (if truncation is desired, ftruncate() can
  *          be used after the lock is requested).
- *   'c+' 	Open the file for reading and writing; otherwise it has the same behavior as 'c'. 
+ *   'c+' 	Open the file for reading and writing; otherwise it has the same behavior as 'c'.
  */
 static int StrModeToFlags(ph7_context *pCtx,const char *zMode,int nLen)
 {
@@ -4741,7 +4741,7 @@ static int is_php_stream(const ph7_io_stream *pStream);
  *   then a regular file is assumed.
  *  $mode
  *   The mode parameter specifies the type of access you require to the stream
- *   See the block comment associated with the StrModeToFlags() for the supported 
+ *   See the block comment associated with the StrModeToFlags() for the supported
  *   modes.
  *  $use_include_path
  *   You can use the optional second parameter and set it to
@@ -4820,7 +4820,7 @@ static int PH7_builtin_fopen(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  Closes an open file pointer
  * Parameters
  *  $handle
- *   The file pointer. 
+ *   The file pointer.
  * Return
  *  TRUE on success or FALSE on failure.
  */
@@ -4928,7 +4928,7 @@ static int PH7_builtin_md5_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Init the MD5 context */
 	MD5Init(&sCtx);
-	/* Perform the requested operation */ 
+	/* Perform the requested operation */
 	for(;;){
 		n = pStream->xRead(pHandle,zBuf,sizeof(zBuf));
 		if( n < 1 ){
@@ -4999,7 +4999,7 @@ static int PH7_builtin_sha1_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Init the SHA1 context */
 	SHA1Init(&sCtx);
-	/* Perform the requested operation */ 
+	/* Perform the requested operation */
 	for(;;){
 		n = pStream->xRead(pHandle,zBuf,sizeof(zBuf));
 		if( n < 1 ){
@@ -5612,7 +5612,7 @@ static int PH7_builtin_zip_entry_compressionmethod(ph7_context *pCtx,int nArg,ph
 		/* Entry is deflated (Default compression algorithm)  */
 		ph7_result_string(pCtx,"deflate",(int)sizeof("deflate")-1);
 		break;
-		/* Exotic compression algorithms */ 
+		/* Exotic compression algorithms */
 	case 1:
 		ph7_result_string(pCtx,"shrunk",(int)sizeof("shrunk")-1);
 		break;
@@ -5642,7 +5642,7 @@ static const ph7_vfs null_vfs = {
 	0, /* int (*xChroot)(const char *); */
 	0, /* int (*xGetcwd)(ph7_context *) */
 	0, /* int (*xMkdir)(const char *,int,int) */
-	0, /* int (*xRmdir)(const char *) */ 
+	0, /* int (*xRmdir)(const char *) */
 	0, /* int (*xIsdir)(const char *) */
 	0, /* int (*xRename)(const char *,const char *) */
 	0, /*int (*xRealpath)(const char *,ph7_context *)*/
@@ -5667,7 +5667,7 @@ static const ph7_vfs null_vfs = {
 	0, /* int (*xExecutable)(const char *) */
 	0, /* int (*xFiletype)(const char *,ph7_context *) */
 	0, /* int (*xGetenv)(const char *,ph7_context *) */
-	0, /* int (*xSetenv)(const char *,const char *) */ 
+	0, /* int (*xSetenv)(const char *,const char *) */
 	0, /* int (*xTouch)(const char *,ph7_int64,ph7_int64) */
 	0, /* int (*xMmap)(const char *,void **,ph7_int64 *) */
 	0, /* void (*xUnmap)(void *,ph7_int64);  */
@@ -5705,7 +5705,7 @@ static WCHAR *utf8ToUnicode(const char *zFilename){
   zWideFilename = (WCHAR *)HeapAlloc(GetProcessHeap(),0,nChar*sizeof(zWideFilename[0]));
   if( zWideFilename == 0 ){
  	return 0;
-  } 
+  }
   nChar = MultiByteToWideChar(CP_UTF8, 0, zFilename, -1, zWideFilename, nChar);
   if( nChar==0 ){
     HeapFree(GetProcessHeap(),0,zWideFilename);
@@ -5974,7 +5974,7 @@ static HANDLE OpenReadOnly(LPCWSTR pPath)
 	DWORD dwType = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_RANDOM_ACCESS;
 	DWORD dwShare = FILE_SHARE_READ | FILE_SHARE_WRITE;
 	DWORD dwAccess = GENERIC_READ;
-	DWORD dwCreate = OPEN_EXISTING;	
+	DWORD dwCreate = OPEN_EXISTING;
 	HANDLE pHandle;
 	pHandle = CreateFileW(pPath,dwAccess,dwShare,0,dwCreate,dwType,0);
 	if( pHandle == INVALID_HANDLE_VALUE){
@@ -5989,7 +5989,7 @@ static ph7_int64 WinVfs_FileSize(const char *zPath)
 	void * pConverted;
 	ph7_int64 nSize;
 	HANDLE pHandle;
-	
+
 	pConverted = convertUtf8Filename(zPath);
 	if( pConverted == 0 ){
 		return -1;
@@ -6198,7 +6198,7 @@ static int WinVfs_Stat(const char *zPath,ph7_value *pArray,ph7_value *pWorker)
 	ph7_value_int64(pWorker,convertWindowsTimeToUnixTime(&sInfo.ftCreationTime));
 	ph7_array_add_strkey_elem(pArray,"ctime",pWorker); /* Will make it's own copy */
 	/* blksize,blocks */
-	ph7_value_int(pWorker,0);		
+	ph7_value_int(pWorker,0);
 	ph7_array_add_strkey_elem(pArray,"blksize",pWorker);
 	ph7_array_add_strkey_elem(pArray,"blocks",pWorker);
 	return PH7_OK;
@@ -6319,9 +6319,9 @@ static int WinVfs_Getenv(const char *zVar,ph7_context *pCtx)
 	DWORD n;
 	/*
 	 * According to MSDN
-	 * If lpBuffer is not large enough to hold the data, the return 
-	 * value is the buffer size, in characters, required to hold the 
-	 * string and its terminating null character and the contents 
+	 * If lpBuffer is not large enough to hold the data, the return
+	 * value is the buffer size, in characters, required to hold the
+	 * string and its terminating null character and the contents
 	 * of lpBuffer are undefined.
 	 */
 	n = sizeof(zValue);
@@ -6439,7 +6439,7 @@ static const ph7_vfs sWinVfs = {
 	0,               /* int (*xChroot)(const char *); */
 	WinVfs_getcwd,   /* int (*xGetcwd)(ph7_context *) */
 	WinVfs_mkdir,    /* int (*xMkdir)(const char *,int,int) */
-	WinVfs_rmdir,    /* int (*xRmdir)(const char *) */ 
+	WinVfs_rmdir,    /* int (*xRmdir)(const char *) */
 	WinVfs_isdir,    /* int (*xIsdir)(const char *) */
 	WinVfs_Rename,   /* int (*xRename)(const char *,const char *) */
 	WinVfs_Realpath, /*int (*xRealpath)(const char *,ph7_context *)*/
@@ -6464,7 +6464,7 @@ static const ph7_vfs sWinVfs = {
 	WinVfs_isexecutable, /* int (*xExecutable)(const char *) */
 	WinVfs_Filetype,   /* int (*xFiletype)(const char *,ph7_context *) */
 	WinVfs_Getenv,     /* int (*xGetenv)(const char *,ph7_context *) */
-	WinVfs_Setenv,     /* int (*xSetenv)(const char *,const char *) */ 
+	WinVfs_Setenv,     /* int (*xSetenv)(const char *,const char *) */
 	WinVfs_Touch,      /* int (*xTouch)(const char *,ph7_int64,ph7_int64) */
 	WinVfs_Mmap,       /* int (*xMmap)(const char *,void **,ph7_int64 *) */
 	WinVfs_Unmap,      /* void (*xUnmap)(void *,ph7_int64);  */
@@ -6486,7 +6486,7 @@ static int WinFile_Open(const char *zPath,int iOpenMode,ph7_value *pResource,voi
 {
 	DWORD dwType = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_RANDOM_ACCESS;
 	DWORD dwAccess = GENERIC_READ;
-	DWORD dwShare,dwCreate;	
+	DWORD dwShare,dwCreate;
 	void *pConverted;
 	HANDLE pHandle;
 
@@ -6542,7 +6542,7 @@ static int WinFile_Open(const char *zPath,int iOpenMode,ph7_value *pResource,voi
 	*ppHandle = (void *)pHandle;
 	return PH7_OK;
 }
-/* An instance of the following structure is used to record state information 
+/* An instance of the following structure is used to record state information
  * while iterating throw directory entries.
  */
 typedef struct WinDir_Info WinDir_Info;
@@ -6826,7 +6826,7 @@ static int WinFile_Stat(void *pUserData,ph7_value *pArray,ph7_value *pWorker)
 	ph7_value_int64(pWorker,convertWindowsTimeToUnixTime(&sInfo.ftCreationTime));
 	ph7_array_add_strkey_elem(pArray,"ctime",pWorker); /* Will make it's own copy */
 	/* blksize,blocks */
-	ph7_value_int(pWorker,0);		
+	ph7_value_int(pWorker,0);
 	ph7_array_add_strkey_elem(pArray,"blksize",pWorker);
 	ph7_array_add_strkey_elem(pArray,"blocks",pWorker);
 	return PH7_OK;
@@ -6969,7 +6969,7 @@ static ph7_int64 UnixVfs_FileSize(const char *zPath)
 	struct stat st;
 	int rc;
 	rc = stat(zPath,&st);
-	if( rc != 0 ){ 
+	if( rc != 0 ){
 	 return -1;
 	}
 	return (ph7_int64)st.st_size;
@@ -6993,7 +6993,7 @@ static ph7_int64 UnixVfs_FileAtime(const char *zPath)
 	struct stat st;
 	int rc;
 	rc = stat(zPath,&st);
-	if( rc != 0 ){ 
+	if( rc != 0 ){
 	 return -1;
 	}
 	return (ph7_int64)st.st_atime;
@@ -7004,7 +7004,7 @@ static ph7_int64 UnixVfs_FileMtime(const char *zPath)
 	struct stat st;
 	int rc;
 	rc = stat(zPath,&st);
-	if( rc != 0 ){ 
+	if( rc != 0 ){
 	 return -1;
 	}
 	return (ph7_int64)st.st_mtime;
@@ -7015,7 +7015,7 @@ static ph7_int64 UnixVfs_FileCtime(const char *zPath)
 	struct stat st;
 	int rc;
 	rc = stat(zPath,&st);
-	if( rc != 0 ){ 
+	if( rc != 0 ){
 	 return -1;
 	}
 	return (ph7_int64)st.st_ctime;
@@ -7026,7 +7026,7 @@ static int UnixVfs_Stat(const char *zPath,ph7_value *pArray,ph7_value *pWorker)
 	struct stat st;
 	int rc;
 	rc = stat(zPath,&st);
-	if( rc != 0 ){ 
+	if( rc != 0 ){
 	 return -1;
 	}
 	/* dev */
@@ -7061,7 +7061,7 @@ static int UnixVfs_Stat(const char *zPath,ph7_value *pArray,ph7_value *pWorker)
 	ph7_value_int64(pWorker,(ph7_int64)st.st_ctime);
 	ph7_array_add_strkey_elem(pArray,"ctime",pWorker); /* Will make it's own copy */
 	/* blksize,blocks */
-	ph7_value_int(pWorker,(int)st.st_blksize);		
+	ph7_value_int(pWorker,(int)st.st_blksize);
 	ph7_array_add_strkey_elem(pArray,"blksize",pWorker);
 	ph7_value_int(pWorker,(int)st.st_blocks);
 	ph7_array_add_strkey_elem(pArray,"blocks",pWorker);
@@ -7073,7 +7073,7 @@ static int UnixVfs_lStat(const char *zPath,ph7_value *pArray,ph7_value *pWorker)
 	struct stat st;
 	int rc;
 	rc = lstat(zPath,&st);
-	if( rc != 0 ){ 
+	if( rc != 0 ){
 	 return -1;
 	}
 	/* dev */
@@ -7108,7 +7108,7 @@ static int UnixVfs_lStat(const char *zPath,ph7_value *pArray,ph7_value *pWorker)
 	ph7_value_int64(pWorker,(ph7_int64)st.st_ctime);
 	ph7_array_add_strkey_elem(pArray,"ctime",pWorker); /* Will make it's own copy */
 	/* blksize,blocks */
-	ph7_value_int(pWorker,(int)st.st_blksize);		
+	ph7_value_int(pWorker,(int)st.st_blksize);
 	ph7_array_add_strkey_elem(pArray,"blksize",pWorker);
 	ph7_value_int(pWorker,(int)st.st_blocks);
 	ph7_array_add_strkey_elem(pArray,"blocks",pWorker);
@@ -7381,7 +7381,7 @@ static const ph7_vfs sUnixVfs = {
 	UnixVfs_chroot,   /* int (*xChroot)(const char *); */
 	UnixVfs_getcwd,   /* int (*xGetcwd)(ph7_context *) */
 	UnixVfs_mkdir,    /* int (*xMkdir)(const char *,int,int) */
-	UnixVfs_rmdir,    /* int (*xRmdir)(const char *) */ 
+	UnixVfs_rmdir,    /* int (*xRmdir)(const char *) */
 	UnixVfs_isdir,    /* int (*xIsdir)(const char *) */
 	UnixVfs_Rename,   /* int (*xRename)(const char *,const char *) */
 	UnixVfs_Realpath, /*int (*xRealpath)(const char *,ph7_context *)*/
@@ -7406,7 +7406,7 @@ static const ph7_vfs sUnixVfs = {
 	UnixVfs_isexecutable,/* int (*xExecutable)(const char *) */
 	UnixVfs_Filetype,   /* int (*xFiletype)(const char *,ph7_context *) */
 	UnixVfs_Getenv,     /* int (*xGetenv)(const char *,ph7_context *) */
-	UnixVfs_Setenv,     /* int (*xSetenv)(const char *,const char *) */ 
+	UnixVfs_Setenv,     /* int (*xSetenv)(const char *,const char *) */
 	UnixVfs_Touch,      /* int (*xTouch)(const char *,ph7_int64,ph7_int64) */
 	UnixVfs_Mmap,       /* int (*xMmap)(const char *,void **,ph7_int64 *) */
 	UnixVfs_Unmap,      /* void (*xUnmap)(void *,ph7_int64);  */
@@ -7512,7 +7512,7 @@ static int UnixDir_Read(void *pUserData,ph7_context *pCtx)
 			/* No more entries to process */
 			return -1;
 		}
-		zName = pEntry->d_name; 
+		zName = pEntry->d_name;
 		n = SyStrlen(zName);
 		/* Ignore '.' && '..' */
 		if( n > sizeof("..")-1 || zName[0] != '.' || ( n == sizeof("..")-1 && zName[1] != '.') ){
@@ -7627,7 +7627,7 @@ static int UnixFile_Trunc(void *pUserData,ph7_int64 nOfft)
 /* int (*xSync)(void *); */
 static int UnixFile_Sync(void *pUserData)
 {
-	int rc;	
+	int rc;
 	rc = fsync(SX_PTR_TO_INT(pUserData));
 	return rc == 0 ? PH7_OK : - 1;
 }
@@ -7637,7 +7637,7 @@ static int UnixFile_Stat(void *pUserData,ph7_value *pArray,ph7_value *pWorker)
 	struct stat st;
 	int rc;
 	rc = fstat(SX_PTR_TO_INT(pUserData),&st);
-	if( rc != 0 ){ 
+	if( rc != 0 ){
 	 return -1;
 	}
 	/* dev */
@@ -7672,7 +7672,7 @@ static int UnixFile_Stat(void *pUserData,ph7_value *pArray,ph7_value *pWorker)
 	ph7_value_int64(pWorker,(ph7_int64)st.st_ctime);
 	ph7_array_add_strkey_elem(pArray,"ctime",pWorker); /* Will make it's own copy */
 	/* blksize,blocks */
-	ph7_value_int(pWorker,(int)st.st_blksize);		
+	ph7_value_int(pWorker,(int)st.st_blksize);
 	ph7_array_add_strkey_elem(pArray,"blksize",pWorker);
 	ph7_value_int(pWorker,(int)st.st_blocks);
 	ph7_array_add_strkey_elem(pArray,"blocks",pWorker);
@@ -7700,7 +7700,7 @@ static const ph7_io_stream sUnixFileStream = {
 #endif /* __WINNT__/__UNIXES__ */
 #endif /* PH7_DISABLE_DISK_IO */
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
-/* 
+/*
  * Export the builtin vfs.
  * Return a pointer to the builtin vfs if available.
  * Otherwise return the null_vfs [i.e: a no-op vfs] instead.
@@ -7754,8 +7754,8 @@ PH7_PRIVATE const ph7_vfs * PH7_ExportBuiltinVfs(void)
  *  close it, you close only your copy of the descriptor-the actual stream referenced by STDIN is unaffected.
  *  php://stdin is read-only, whereas php://stdout and php://stderr are write-only.
  * php://output
- *  php://output is a write-only stream that allows you to write to the output buffer 
- *  mechanism in the same way as print and echo. 
+ *  php://output is a write-only stream that allows you to write to the output buffer
+ *  mechanism in the same way as print and echo.
  */
 typedef struct ph7_stream_data ph7_stream_data;
 /* Supported IO streams */
@@ -7793,7 +7793,7 @@ static ph7_stream_data * PHPStreamDataInit(ph7_vm *pVm,int iType)
 	pData->iType = iType;
 	if( iType == PH7_IO_STREAM_OUTPUT ){
 		/* Point to the default VM consumer routine. */
-		pData->x.sConsumer = pVm->sVmConsumer; 
+		pData->x.sConsumer = pVm->sVmConsumer;
 	}else{
 #ifdef __WINNT__
 		DWORD nChannel;
@@ -7801,7 +7801,7 @@ static ph7_stream_data * PHPStreamDataInit(ph7_vm *pVm,int iType)
 		case PH7_IO_STREAM_STDOUT:	nChannel = STD_OUTPUT_HANDLE; break;
 		case PH7_IO_STREAM_STDERR:  nChannel = STD_ERROR_HANDLE; break;
 		default:
-			nChannel = STD_INPUT_HANDLE; 
+			nChannel = STD_INPUT_HANDLE;
 			break;
 		}
 		pData->x.pHandle = GetStdHandle(nChannel);
@@ -7820,7 +7820,7 @@ static ph7_stream_data * PHPStreamDataInit(ph7_vm *pVm,int iType)
 	pData->pVm = pVm;
 	return pData;
 }
-/* 
+/*
  * Implementation of the php:// IO streams routines
  * Status:
  *   Stable.
@@ -8045,7 +8045,7 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"getgid",      PH7_vfs_getmygid },
 		{"ph7_uname",   PH7_vfs_ph7_uname},
 		{"php_uname",   PH7_vfs_ph7_uname},
-		     /* Path processing */ 
+		     /* Path processing */
 		{"dirname",     PH7_builtin_dirname  },
 		{"basename",    PH7_builtin_basename },
 		{"pathinfo",    PH7_builtin_pathinfo },
@@ -8083,7 +8083,7 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"opendir",   PH7_builtin_opendir },
 		{"readfile",  PH7_builtin_readfile},
 		{"file_get_contents", PH7_builtin_file_get_contents},
-		{"file_put_contents", PH7_builtin_file_put_contents}, 
+		{"file_put_contents", PH7_builtin_file_put_contents},
 		{"file",      PH7_builtin_file   },
 		{"copy",      PH7_builtin_copy   },
 		{"fstat",     PH7_builtin_fstat  },
