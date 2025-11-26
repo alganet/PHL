@@ -9,9 +9,9 @@ BIN_SUFFIX = .exe
 
 CC = cl
 TARGET = x86_64-windows-msvc
-CFLAGS = /nologo /Fd$(BUILD_DIR:/=\)\ph7.pdb /I src /I src/ph7 /W4 /Ox $(PH7_DEFINES:-=/)
+CFLAGS = /nologo /Fd$(BUILD_DIR:/=\)\ph7.pdb /I src /I src/sx /I src/ph7 /W4 /Ox $(PH7_DEFINES:-=/)
 LDFLAGS = /nologo /link advapi32.lib /subsystem:console /entry:mainCRTStartup
-COVERAGE_CFLAGS = /nologo /Fd$(BUILD_DIR:/=\)\coverage\ph7-coverage.pdb /I src /I src/ph7 /W4 /Od /Zi $(PH7_DEFINES:-=/) /DPH7_DEBUG
+COVERAGE_CFLAGS = /nologo /Fd$(BUILD_DIR:/=\)\coverage\ph7-coverage.pdb /I src /I src/sx /I src/ph7 /W4 /Od /Zi $(PH7_DEFINES:-=/) /DPH7_DEBUG
 
 PHP_BIN = php$(BIN_SUFFIX)
 

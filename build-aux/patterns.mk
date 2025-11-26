@@ -21,3 +21,9 @@ $(BUILD_DIR)/coverage/src:
 {src/phl}.c{$(BUILD_DIR)/coverage/src/phl}.obj:
     @if not exist "$(BUILD_DIR)/coverage/src/phl" mkdir "$(BUILD_DIR)/coverage/src/phl"
     $(CC) $(COVERAGE_CFLAGS) /Fo"$@" /c $<
+{src/sx}.c{$(BUILD_DIR)/src/sx}.obj:
+    @if not exist "$(BUILD_DIR)/src/sx" mkdir "$(BUILD_DIR)/src/sx"
+    $(CC) $(CFLAGS) /Fo"$@" /c $<
+{src/sx}.c{$(BUILD_DIR)/coverage/src/sx}.obj:
+    @if not exist "$(BUILD_DIR)/coverage/src/sx" mkdir "$(BUILD_DIR)/coverage/src/sx"
+    $(CC) $(COVERAGE_CFLAGS) /Fo"$@" /c $<
