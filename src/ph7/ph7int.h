@@ -64,7 +64,7 @@ typedef double             sxreal;
 #define SXI32_HIGH      0x7FFFFFFF
 #define SXU32_HIGH      0xFFFFFFFF
 #define SXI64_HIGH      0x7FFFFFFFFFFFFFFF
-#define SXU64_HIGH      0xFFFFFFFFFFFFFFFF 
+#define SXU64_HIGH      0xFFFFFFFFFFFFFFFF
 #if !defined(TRUE)
 #define TRUE 1
 #endif
@@ -75,13 +75,13 @@ typedef double             sxreal;
  * The following macros are used to cast pointers to integers and
  * integers to pointers.
  */
-#if defined(__PTRDIFF_TYPE__)  
+#if defined(__PTRDIFF_TYPE__)
 # define SX_INT_TO_PTR(X)  ((void*)(__PTRDIFF_TYPE__)(X))
 # define SX_PTR_TO_INT(X)  ((int)(__PTRDIFF_TYPE__)(X))
-#elif !defined(__GNUC__)    
+#elif !defined(__GNUC__)
 # define SX_INT_TO_PTR(X)  ((void*)&((char*)0)[X])
 # define SX_PTR_TO_INT(X)  ((int)(((char*)X)-(char*)0))
-#else                       
+#else
 # define SX_INT_TO_PTR(X)  ((void*)(X))
 # define SX_PTR_TO_INT(X)  ((int)(X))
 #endif
@@ -146,7 +146,7 @@ typedef sxi32 (*ProcHashSum)(const void *,sxu32,unsigned char *,sxu32);
 typedef sxi32 (*ProcSort)(void *,sxu32,sxu32,ProcCmp);
 #define MACRO_LIST_PUSH(Head,Item)\
 	Item->pNext = Head;\
-	Head = Item; 
+	Head = Item;
 #define MACRO_LD_PUSH(Head,Item)\
 	if( Head == 0 ){\
 		Head = Item;\
@@ -167,18 +167,18 @@ typedef sxi32 (*ProcSort)(void *,sxu32,sxu32,ProcCmp);
 struct SySet
 {
 	SyMemBackend *pAllocator; /* Memory backend */
-	void *pBase;              /* Base pointer */	
+	void *pBase;              /* Base pointer */
 	sxu32 nUsed;              /* Total number of used slots  */
 	sxu32 nSize;              /* Total number of available slots */
 	sxu32 eSize;              /* Size of a single slot */
-	sxu32 nCursor;	          /* Loop cursor */	
+	sxu32 nCursor;	          /* Loop cursor */
 	void *pUserData;          /* User private data associated with this container */
 };
 #define SySetBasePtr(S)           ((S)->pBase)
 #define SySetBasePtrJump(S,OFFT)  (&((char *)(S)->pBase)[OFFT*(S)->eSize])
 #define SySetUsed(S)              ((S)->nUsed)
 #define SySetSize(S)              ((S)->nSize)
-#define SySetElemSize(S)          ((S)->eSize) 
+#define SySetElemSize(S)          ((S)->eSize)
 #define SySetCursor(S)            ((S)->nCursor)
 #define SySetGetAllocator(S)      ((S)->pAllocator)
 #define SySetSetUserData(S,DATA)  ((S)->pUserData = DATA)
@@ -411,7 +411,7 @@ struct SyToken
 struct SyStream
 {
 	const unsigned char *zInput; /* Complete text of the input */
-	const unsigned char *zText; /* Current input we are processing */	
+	const unsigned char *zText; /* Current input we are processing */
 	const unsigned char *zEnd; /* End of input marker */
 	sxu32  nLine; /* Total number of processed lines */
 	sxu32  nIgn; /* Total number of ignored tokens */
@@ -467,8 +467,8 @@ struct SyLex
 }
 /* Rely on the standard ctype */
 #include <ctype.h>
-#define SyToUpper(c) toupper(c) 
-#define SyToLower(c) tolower(c) 
+#define SyToUpper(c) toupper(c)
+#define SyToLower(c) tolower(c)
 #define SyisUpper(c) isupper(c)
 #define SyisLower(c) islower(c)
 #define SyisSpace(c) isspace(c)
@@ -483,7 +483,7 @@ struct SyLex
 #define SyisAscii(c) isascii(c)
 #define SyisAlphaNum(c) isalnum(c)
 #define SyisGraph(c)     isgraph(c)
-#define SyDigToHex(c)    "0123456789ABCDEF"[c & 0x0F] 		
+#define SyDigToHex(c)    "0123456789ABCDEF"[c & 0x0F]
 #define SyDigToInt(c)     ((c < 0xc0 && SyisDigit(c))? (c - '0') : 0 )
 #define SyCharToUpper(c)  ((c < 0xc0 && SyisLower(c))? SyToUpper(c) : c)
 #define SyCharToLower(c)  ((c < 0xc0 && SyisUpper(c))? SyToLower(c) : c)
@@ -527,7 +527,7 @@ struct SyLex
 		(RAW)->nByte--;\
 	}
 #ifndef PH7_DISABLE_BUILTIN_FUNC
-/* 
+/*
  * An XML raw text,CDATA,tag name and son is parsed out and stored
  * in an instance of the following structure.
  */
@@ -553,7 +553,7 @@ typedef sxi32 (*ProcXMLNameSpaceEnd)(SyXMLRawStr *,void *);
 typedef sxi32 (*ProcXMLEndDocument)(void *);
 /* XML processing control flags */
 #define SXML_ENABLE_NAMESPACE	    0x01 /* Parse XML with namespace support enbaled */
-#define SXML_ENABLE_QUERY		    0x02 /* Not used */	
+#define SXML_ENABLE_QUERY		    0x02 /* Not used */
 #define SXML_OPTION_CASE_FOLDING    0x04 /* Controls whether case-folding is enabled for this XML parser */
 #define SXML_OPTION_SKIP_TAGSTART   0x08 /* Specify how many characters should be skipped in the beginning of a tag name.*/
 #define SXML_OPTION_SKIP_WHITE      0x10 /* Whether to skip values consisting of whitespace characters. */
@@ -583,7 +583,7 @@ enum xml_err_code{
     SXML_ERROR_UNCLOSED_CDATA_SECTION,
     SXML_ERROR_EXTERNAL_ENTITY_HANDLING
 };
-/* Each active XML SAX parser is represented by an instance 
+/* Each active XML SAX parser is represented by an instance
  * of the following structure.
  */
 typedef struct SyXMLParser SyXMLParser;
@@ -636,7 +636,7 @@ struct SyXMLParser
  	sxu32 nCentralSize;	/* Central directory size(ZIP only. Otherwise Zero) */
 	void *pUserData;    /* Upper layer private data */
 	sxu32 nMagic;       /* Sanity check */
-	
+
  };
 #define SXARCH_MAGIC	0xDEAD635A
 #define SXARCH_INVALID(ARCH)            (ARCH == 0  || ARCH->nMagic != SXARCH_MAGIC)
@@ -650,7 +650,7 @@ struct SyXMLParser
  * of the following structure.
  */
  struct SyArchiveEntry
- { 	
+ {
  	sxu32 nByte;         /* Contents size before compression */
  	sxu32 nByteCompr;    /* Contents size after compression */
 	sxu32 nReadCount;    /* Read counter */
@@ -665,12 +665,12 @@ struct SyXMLParser
  	SyArchiveEntry *pNextName;    /* Next entry with the same name */
 	SyArchiveEntry *pNext,*pPrev; /* Next and previous entry in the list */
 	sxu32 nHash;     /* Hash of the entry name */
- 	void *pUserData; /* User data */ 
+ 	void *pUserData; /* User data */
 	sxu32 nMagic;    /* Sanity check */
  };
  /*
  * Extra flags for extending the file local header
- */ 
+ */
 #define SXZIP_EXTRA_TIMESTAMP	0x001	/* Extended UNIX timestamp */
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
 #ifndef PH7_DISABLE_HASH_FUNC
@@ -700,7 +700,7 @@ struct SHA1Context {
 struct ph7_value
 {
 	ph7_real rVal;      /* Real value */
-	union{              
+	union{
 		sxi64 iVal;     /* Integer value */
 		void *pOther;   /* Other values (Object, Array, Resource, Namespace, etc.) */
 	}x;
@@ -718,14 +718,14 @@ struct ph7_value
 #define MEMOBJ_NULL      0x020  /* Memory value is NULL */
 #define MEMOBJ_HASHMAP   0x040  /* Memory value is a hashmap aka 'array' in the PHP jargon */
 #define MEMOBJ_OBJ       0x080  /* Memory value is an object [i.e: class instance] */
-#define MEMOBJ_RES       0x100  /* Memory value is a resource [User private data] */ 
+#define MEMOBJ_RES       0x100  /* Memory value is a resource [User private data] */
 #define MEMOBJ_REFERENCE 0x400  /* Memory value hold a reference (64-bit index) of another ph7_value */
 /* Mask of all known types */
-#define MEMOBJ_ALL (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES) 
+#define MEMOBJ_ALL (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)
 /* Scalar variables
  * According to the PHP language reference manual
  *  Scalar variables are those containing an integer, float, string or boolean.
- *  Types array, object and resource are not scalar. 
+ *  Types array, object and resource are not scalar.
  */
 #define MEMOBJ_SCALAR (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL)
 #define MEMOBJ_AUX (MEMOBJ_REFERENCE)
@@ -741,7 +741,7 @@ typedef struct ph7_output_consumer ph7_output_consumer;
 typedef struct ph7_user_func ph7_user_func;
 typedef struct ph7_conf ph7_conf;
 /*
- * An instance of the following structure store the default VM output 
+ * An instance of the following structure store the default VM output
  * consumer and it's private data.
  * Client-programs can register their own output consumer callback
  * via the [PH7_VM_CONFIG_OUTPUT] configuration directive.
@@ -800,7 +800,7 @@ typedef int (*ProchHostFunction)(ph7_context *,int,ph7_value **);
 /*
  * Each installed foreign function is recored in an instance of the following
  * structure.
- * Please refer to the official documentation for more information on how 
+ * Please refer to the official documentation for more information on how
  * to create/install foreign functions.
  */
 struct ph7_user_func
@@ -823,7 +823,7 @@ struct ph7_context
 	SySet sVar;             /* Container of dynamically allocated ph7_values
 							 * [i.e: Garbage collection purposes.]
 							 */
-	SySet sChunk;           /* Track dynamically allocated chunks [ph7_aux_data instance]. 
+	SySet sChunk;           /* Track dynamically allocated chunks [ph7_aux_data instance].
 							 * [i.e: Garbage collection purposes.]
 							 */
 	ph7_vm *pVm;            /* Virtual machine that own this context */
@@ -847,7 +847,7 @@ struct ph7_hashmap_node
 	ph7_hashmap_node *pNext,*pPrev;               /* Link to other entries [i.e: linear traversal] */
 	ph7_hashmap_node *pNextCollide,*pPrevCollide; /* Collision chain */
 };
-/* 
+/*
  * Each active hashmap aka array in the PHP jargon is represented
  * by an instance of the following structure.
  */
@@ -870,7 +870,7 @@ struct ph7_hashmap
  * Those instructions are used to implement the 'foreach'
  * statement.
  * This structure is made available to these instructions
- * as the P3 operand. 
+ * as the P3 operand.
  */
 struct ph7_foreach_info
 {
@@ -885,7 +885,7 @@ struct ph7_foreach_step
 	/* Iterate on those values */
 	union {
 		ph7_hashmap *pMap;          /* Hashmap [i.e: array in the PHP jargon] iteration
-									 * Ex: foreach(array(1,2,3) as $key=>$value){} 
+									 * Ex: foreach(array(1,2,3) as $key=>$value){}
 									 */
 		ph7_class_instance *pThis;  /* Class instance [i.e: object] iteration */
 	}xIter;
@@ -926,15 +926,15 @@ typedef sxi32 (*ProcNodeConstruct)(ph7_gen_state *,sxi32);
  * Each supported operator [i.e: +, -, ==, *, %, >>, >=, new, etc.] is represented
  * by an instance of the following structure.
  * The PH7 parser does not use any external tools and is 100% handcoded.
- * That is, the PH7 parser is thread-safe ,full reentrant, produce consistant 
+ * That is, the PH7 parser is thread-safe ,full reentrant, produce consistant
  * compile-time errrors and at least 7 times faster than the standard PHP parser.
  */
 struct ph7_expr_op
 {
 	SyString sOp;   /* String representation of the operator [i.e: "+","*","=="...] */
 	sxi32 iOp;      /* Operator ID */
-	sxi32 iPrec;    /* Operator precedence: 1 == Highest */ 
-	sxi32 iAssoc;   /* Operator associativity (either left,right or non-associative) */ 
+	sxi32 iPrec;    /* Operator precedence: 1 == Highest */
+	sxi32 iAssoc;   /* Operator associativity (either left,right or non-associative) */
 	sxi32 iVmOp;    /* VM OP code for this operator [i.e: PH7_OP_EQ,PH7_OP_LT,PH7_OP_MUL...]*/
 };
 /*
@@ -968,7 +968,7 @@ struct GenBlock
 	sxi32 iFlags;         /* Block control flags (see below) */
 	SySet aJumpFix;       /* Jump fixup (JumpFixup instance) */
 	void *pUserData;      /* Upper layer private data */
-	/* The following two fields are used only when compiling 
+	/* The following two fields are used only when compiling
 	 * the 'do..while()' language construct.
 	 */
 	sxu8 bPostContinue;    /* TRUE when compiling the do..while() statement */
@@ -977,7 +977,7 @@ struct GenBlock
 /*
  * Code generator state is remembered in an instance of the following
  * structure. We put the information in this structure and pass around
- * a pointer to this structure, rather than pass around  all of the 
+ * a pointer to this structure, rather than pass around  all of the
  * information separately. This helps reduce the number of  arguments
  * to generator functions.
  * This structure is used only during compile-time and have no meaning
@@ -1045,11 +1045,11 @@ struct ph7_vm_func_arg
  * any complex default value associated with them unlike the standard
  * PHP engine.
  * Example:
- *   static $rand_str = 'PH7'.rand_str(3); // Concatenate 'PH7' with 
+ *   static $rand_str = 'PH7'.rand_str(3); // Concatenate 'PH7' with
  *                                         // a random three characters(English alphabet)
  *   var_dump($rand_str);
  *   //You should see something like this
- *   string(6 'PH7awt');   
+ *   string(6 'PH7awt');
  */
 struct ph7_vm_func_static_var
 {
@@ -1058,7 +1058,7 @@ struct ph7_vm_func_static_var
 	sxu32 nIdx;       /* Object index in the global memory object container */
 };
 /*
- * Each imported variable from the outside closure environnment is recoded 
+ * Each imported variable from the outside closure environnment is recoded
  * in an instance of the following structure.
  */
 struct ph7_vm_func_closure_env
@@ -1140,7 +1140,7 @@ typedef struct ph7_class_attr   ph7_class_attr;
 struct ph7_class
 {
 	ph7_class *pBase;     /* Base class if any */
-	SyHash hDerived;      /* Derived [child] classes */ 
+	SyHash hDerived;      /* Derived [child] classes */
 	SyString sName;       /* Class full qualified name */
 	sxi32 iFlags;         /* Class configuration flags [i.e: final, interface, abstract, etc.]  */
 	SyHash hAttr;         /* Class attributes [i.e: variables and constants] */
@@ -1157,7 +1157,7 @@ struct ph7_class
 /* Class attribute/methods/constants protection levels */
 #define PH7_CLASS_PROT_PUBLIC     1 /* public */
 #define PH7_CLASS_PROT_PROTECTED  2 /* protected */
-#define PH7_CLASS_PROT_PRIVATE    3 /* private */    
+#define PH7_CLASS_PROT_PRIVATE    3 /* private */
 /*
  * each class attribute (variable, constants) is parsed out and stored
  * in an instance of the following structure.
@@ -1176,7 +1176,7 @@ struct ph7_class_attr
 #define PH7_CLASS_ATTR_CONSTANT     0x002  /* Constant attribute */
 #define PH7_CLASS_ATTR_ABSTRACT     0x004  /* Abstract method */
 #define PH7_CLASS_ATTR_FINAL        0x008  /* Final method */
-/* 
+/*
  * Each class method is parsed out and stored in an instance of the following
  * structure.
  * PH7 introduced some powerfull extensions to the PHP 5 programming
@@ -1196,7 +1196,7 @@ struct ph7_class_method
     sxu32 nLine;         /* Line on which this method was defined */
 };
 /*
- * Each active object (class instance) is represented by an instance of 
+ * Each active object (class instance) is represented by an instance of
  * the following structure.
  */
 struct ph7_class_instance
@@ -1221,7 +1221,7 @@ struct VmInstr
 	sxu32 iP2; /* Second operand (Often the jump destination) */
 	void *p3;  /* Third operand (Often Upper layer private data) */
 };
-/* Each active class instance attribute is represented by an instance 
+/* Each active class instance attribute is represented by an instance
  * of the following structure.
  */
 typedef struct VmClassAttr VmClassAttr;
@@ -1244,7 +1244,7 @@ struct ph7_exception_block
 	SyString sThis;  /* Instance name [i.e: $e..] */
 	SySet sByteCode; /* Block compiled instructions */
 };
-/* 
+/*
  * Context for the exception mechanism.
  */
 struct ph7_exception
@@ -1283,13 +1283,13 @@ struct ph7_switch
 #define PH7_ASSERT_BAIL       0x04  /* Terminate execution on failed assertions */
 #define PH7_ASSERT_QUIET_EVAL 0x08  /* Not used */
 #define PH7_ASSERT_CALLBACK   0x10  /* Callback to call on failed assertions */
-/* 
+/*
  * error_log() consumer function signature.
  * Refer to the [PH7_VM_CONFIG_ERR_LOG_HANDLER] configuration directive
  * for more information on how to register an error_log consumer().
  */
 typedef void (*ProcErrLog)(const char *,int,const char *,const char *);
-/* 
+/*
  * An instance of the following structure hold the bytecode instructions
  * resulting from compiling a PHP script.
  * This structure contains the complete state of the virtual machine.
@@ -1350,7 +1350,7 @@ struct ph7_vm
 	sxu32 nRefSize;            /* apRefObj[] size */
 	sxu32 nRefUsed;            /* Total entries in apRefObj[] */
 	SySet aSelf;               /* 'self' stack used for static member access [i.e: self::MyConstant] */
-	ph7_hashmap *pGlobal;      /* $GLOBALS hashmap */ 
+	ph7_hashmap *pGlobal;      /* $GLOBALS hashmap */
 	sxu32 nGlobalIdx;          /* $GLOBALS index */
 	sxi32 iExitStatus;         /* Script exit status */
 	ph7_gen_state sCodeGen;    /* Code generator module */
@@ -1369,7 +1369,7 @@ struct ph7_vm
  */
 enum iErrCode
 {
-	E_ERROR             = 1,   /* Fatal run-time errors. These indicate errors that can not be recovered 
+	E_ERROR             = 1,   /* Fatal run-time errors. These indicate errors that can not be recovered
 							    * from, such as a memory allocation problem. Execution of the script is
 							    * halted.
 								* The only fatal error under PH7 is an out-of-memory. All others erros
@@ -1377,24 +1377,24 @@ enum iErrCode
 							    */
 	E_WARNING           = 2,   /* Run-time warnings (non-fatal errors). Execution of the script is not halted.  */
 	E_PARSE             = 4,   /* Compile-time parse errors. Parse errors should only be generated by the parser.*/
-	E_NOTICE            = 8,   /* Run-time notices. Indicate that the script encountered something that could 
-							    * indicate an error, but could also happen in the normal course of running a script. 
+	E_NOTICE            = 8,   /* Run-time notices. Indicate that the script encountered something that could
+							    * indicate an error, but could also happen in the normal course of running a script.
 							    */
 	E_CORE_WARNING      = 16,  /* Fatal errors that occur during PHP's initial startup. This is like an E_ERROR
-							    * except it is generated by the core of PHP. 
+							    * except it is generated by the core of PHP.
 							    */
 	E_USER_ERROR        = 256,  /* User-generated error message.*/
 	E_USER_WARNING      = 512,  /* User-generated warning message.*/
-	E_USER_NOTICE       = 1024, /* User-generated notice message.*/ 
+	E_USER_NOTICE       = 1024, /* User-generated notice message.*/
 	E_STRICT            = 2048, /* Enable to have PHP suggest changes to your code which will ensure the best interoperability
 								 * and forward compatibility of your code.
 								 */
-	E_RECOVERABLE_ERROR = 4096, /* Catchable fatal error. It indicates that a probably dangerous error occured, but did not 
+	E_RECOVERABLE_ERROR = 4096, /* Catchable fatal error. It indicates that a probably dangerous error occured, but did not
 								 * leave the Engine in an unstable state. If the error is not caught by a user defined handle
 								 * the application aborts as it was an E_ERROR.
 								 */
 	E_DEPRECATED        = 8192, /* Run-time notices. Enable this to receive warnings about code that will not
-								 * work in future versions.  
+								 * work in future versions.
 								 */
 	E_USER_DEPRECATED   = 16384, /* User-generated warning message. */
 	E_ALL               = 32767  /* All errors and warnings */
@@ -1412,7 +1412,7 @@ enum ph7_vm_op {
   PH7_OP_HALT,         /* Halt */
   PH7_OP_LOAD,         /* Load memory object */
   PH7_OP_LOADC,        /* Load constant */
-  PH7_OP_LOAD_IDX,     /* Load array entry */   
+  PH7_OP_LOAD_IDX,     /* Load array entry */
   PH7_OP_LOAD_MAP,     /* Load hashmap('array') */
   PH7_OP_LOAD_LIST,    /* Load list */
   PH7_OP_LOAD_CLOSURE, /* Load closure */
@@ -1420,7 +1420,7 @@ enum ph7_vm_op {
   PH7_OP_JMP,          /* Unconditional jump */
   PH7_OP_JZ,           /* Jump on zero (FALSE jump) */
   PH7_OP_JNZ,          /* Jump on non-zero (TRUE jump) */
-  PH7_OP_POP,          /* Stack POP */ 
+  PH7_OP_POP,          /* Stack POP */
   PH7_OP_CAT,          /* Concatenation */
   PH7_OP_CVT_INT,      /* Integer cast */
   PH7_OP_CVT_STR,      /* String cast */
@@ -1505,7 +1505,7 @@ enum ph7_expr_id {
 	EXPR_OP_SUBSCRIPT, /* []: Subscripting */
 	EXPR_OP_FUNC_CALL, /* func_call() */
 	EXPR_OP_INCR,      /* ++ */
-	EXPR_OP_DECR,      /* -- */ 
+	EXPR_OP_DECR,      /* -- */
 	EXPR_OP_BITNOT,    /* ~ */
 	EXPR_OP_UMINUS,    /* Unary minus  */
 	EXPR_OP_UPLUS,     /* Unary plus */
@@ -1595,7 +1595,7 @@ enum ph7_expr_id {
  * These words have special meaning in PHP. Some of them represent things which look like
  * functions, some look like constants, and so on, but they're not, really: they are language constructs.
  * You cannot use any of the following words as constants, class names, function or method names.
- * Using them as variable names is generally OK, but could lead to confusion. 
+ * Using them as variable names is generally OK, but could lead to confusion.
  */
 #define PH7_TKWRD_EXTENDS      1 /* extends */
 #define PH7_TKWRD_ENDSWITCH    2 /* endswitch */
@@ -1658,7 +1658,7 @@ enum ph7_expr_id {
 #define PH7_TKWRD_CATCH        53 /* catch */
 #define PH7_TKWRD_RETURN       54 /* return */
 #define PH7_TKWRD_UNSET        0x2000 /* unset: MUST BE A POWER OF TWO  */
-#define PH7_TKWRD_XOR          0x4000 /* xor: MUST BE A POWER OF TWO  */ 
+#define PH7_TKWRD_XOR          0x4000 /* xor: MUST BE A POWER OF TWO  */
 #define PH7_TKWRD_BREAK        55 /* break */
 #define PH7_TKWRD_GOTO         56 /* goto */
 #define PH7_TKWRD_BOOL         0x8000  /* bool:  MUST BE A POWER OF TWO */
@@ -1683,9 +1683,9 @@ enum json_err_code{
 #define JSON_HEX_APOS          0x04  /* All ' are converted to \u0027. */
 #define JSON_HEX_QUOT          0x08  /* All " are converted to \u0022. */
 #define JSON_FORCE_OBJECT      0x10  /* Outputs an object rather than an array */
-#define JSON_NUMERIC_CHECK     0x20  /* Encodes numeric strings as numbers. */ 
+#define JSON_NUMERIC_CHECK     0x20  /* Encodes numeric strings as numbers. */
 #define JSON_BIGINT_AS_STRING  0x40  /* Not used */
-#define JSON_PRETTY_PRINT      0x80  /* Use whitespace in returned data to format it.*/ 
+#define JSON_PRETTY_PRINT      0x80  /* Use whitespace in returned data to format it.*/
 #define JSON_UNESCAPED_SLASHES 0x100 /* Don't escape '/' */
 #define JSON_UNESCAPED_UNICODE 0x200 /* Not used */
 /* memobj.c function prototypes */
@@ -1826,7 +1826,7 @@ PH7_PRIVATE sxi32 PH7_HashmapDump(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,in
 PH7_PRIVATE sxi32 PH7_HashmapWalk(ph7_hashmap *pMap,int (*xWalk)(ph7_value *,ph7_value *,void *),void *pUserData);
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 PH7_PRIVATE int PH7_HashmapValuesToSet(ph7_hashmap *pMap,SySet *pOut);
-/* builtin.c function prototypes */ 
+/* builtin.c function prototypes */
 PH7_PRIVATE sxi32 PH7_InputFormat(int (*xConsumer)(ph7_context *,const char *,int,void *),
 	ph7_context *pCtx,const char *zIn,int nByte,int nArg,ph7_value **apArg,void *pUserData,int vf);
 PH7_PRIVATE sxi32 PH7_ProcessCsv(const char *zInput,int nByte,int delim,int encl,
@@ -1959,7 +1959,7 @@ PH7_PRIVATE sxi32 SySetRelease(SySet *pSet);
 PH7_PRIVATE sxi32 SySetReset(SySet *pSet);
 PH7_PRIVATE sxi32 SySetResetCursor(SySet *pSet);
 PH7_PRIVATE sxi32 SySetGetNextEntry(SySet *pSet,void **ppEntry);
-#ifndef PH7_DISABLE_BUILTIN_FUNC 
+#ifndef PH7_DISABLE_BUILTIN_FUNC
 PH7_PRIVATE void * SySetPeekCurrentEntry(SySet *pSet);
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
 PH7_PRIVATE sxi32 SySetTruncate(SySet *pSet,sxu32 nNewSize);

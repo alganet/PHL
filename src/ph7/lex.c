@@ -5,7 +5,7 @@
  */
 #include "ph7int.h"
 /*
- * This file implement an efficient hand-coded,thread-safe and full-reentrant 
+ * This file implement an efficient hand-coded,thread-safe and full-reentrant
  * lexical analyzer/Tokenizer for the PH7 engine.
  */
 /* Forward declaration */
@@ -76,7 +76,7 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 		pStr->nByte = (sxu32)((const char *)pStream->zText-pStr->zString);
 		nKeyword = KeywordCode(pStr->zString,(int)pStr->nByte);
 		if( nKeyword != PH7_TK_ID ){
-			if( nKeyword & 
+			if( nKeyword &
 				(PH7_TKWRD_NEW|PH7_TKWRD_CLONE|PH7_TKWRD_AND|PH7_TKWRD_XOR|PH7_TKWRD_OR|PH7_TKWRD_INSTANCEOF|PH7_TKWRD_SEQ|PH7_TKWRD_SNE) ){
 					/* Alpha stream operators [i.e: new,clone,and,instanceof,eq,ne,or,xor],save the operator instance for later processing */
 					pToken->pUserData = (void *)PH7_ExprExtractOperator(pStr,0);
@@ -94,14 +94,14 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 	}else{
 		sxi32 c;
 		/* Non-alpha stream */
-		if( pStream->zText[0] == '#' || 
+		if( pStream->zText[0] == '#' ||
 			( pStream->zText[0] == '/' &&  &pStream->zText[1] < pStream->zEnd && pStream->zText[1] == '/') ){
 				pStream->zText++;
 				/* Inline comments */
 				while( pStream->zText < pStream->zEnd && pStream->zText[0] != '\n' ){
 					pStream->zText++;
 				}
-				/* Tell the upper-layer to ignore this token */ 
+				/* Tell the upper-layer to ignore this token */
 				return SXERR_CONTINUE;
 		}else if( pStream->zText[0] == '/' && &pStream->zText[1] < pStream->zEnd && pStream->zText[1] == '*' ){
 			pStream->zText += 2;
@@ -194,13 +194,13 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 		case '$': pToken->nType = PH7_TK_DOLLAR; break;
 		case '{': pToken->nType = PH7_TK_OCB;    break;
 		case '}': pToken->nType = PH7_TK_CCB;    break;
-		case '(': pToken->nType = PH7_TK_LPAREN; break; 
-		case '[': pToken->nType |= PH7_TK_OSB;   break; /* Bitwise operation here,since the square bracket token '[' 
+		case '(': pToken->nType = PH7_TK_LPAREN; break;
+		case '[': pToken->nType |= PH7_TK_OSB;   break; /* Bitwise operation here,since the square bracket token '['
 														 * is a potential operator [i.e: subscripting] */
 		case ']': pToken->nType = PH7_TK_CSB;    break;
 		case ')': {
 			SySet *pTokSet = pStream->pSet;
-			/* Assemble type cast operators [i.e: (int),(float),(bool)...] */ 
+			/* Assemble type cast operators [i.e: (int),(float),(bool)...] */
 			if( pTokSet->nUsed >= 2 ){
 				SyToken *pTmp;
 				/* Peek the last recongnized token */
@@ -387,7 +387,7 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 						SyStringInitFromBuf(pStr,"=&",sizeof("=&")-1);
 						/* Update token stream */
 						pStream->zText = &zCur[1];
-						pStream->nLine += nLine; 
+						pStream->nLine += nLine;
 					}
 				}
 			}
@@ -639,23 +639,23 @@ static sxu32 KeywordCode(const char *z, int n){
      310, 315, 319, 324, 325, 327
   };
   static const sxu32 aCode[84] = {
-    PH7_TKWRD_EXTENDS,   PH7_TKWRD_ENDSWITCH,   PH7_TKWRD_SWITCH,    PH7_TKWRD_PRINT,   PH7_TKWRD_INT, 
-    PH7_TKWRD_REQONCE,   PH7_TKWRD_REQUIRE,     PH7_TKWRD_SEQ,       PH7_TKWRD_ENDDEC,    PH7_TKWRD_DECLARE,   
-    PH7_TKWRD_RETURN,    PH7_TKWRD_NAMESPACE,   PH7_TKWRD_ECHO,      PH7_TKWRD_OBJECT,    PH7_TKWRD_THROW, 
-    PH7_TKWRD_BOOL,      PH7_TKWRD_BOOL,        PH7_TKWRD_AND,       PH7_TKWRD_DEFAULT,   PH7_TKWRD_TRY, 
-    PH7_TKWRD_CASE,      PH7_TKWRD_SELF,        PH7_TKWRD_FINAL,     PH7_TKWRD_LIST,      PH7_TKWRD_STATIC,  
-    PH7_TKWRD_CLONE,     PH7_TKWRD_SNE,         PH7_TKWRD_NEW,       PH7_TKWRD_CONST,     PH7_TKWRD_STRING,  
-    PH7_TKWRD_GLOBAL,    PH7_TKWRD_USE,         PH7_TKWRD_ELIF,      PH7_TKWRD_ELSE,      PH7_TKWRD_IF,  
-    PH7_TKWRD_FLOAT,     PH7_TKWRD_VAR,         PH7_TKWRD_ARRAY,     PH7_TKWRD_AND,       PH7_TKWRD_DIE, 
-    PH7_TKWRD_ECHO,      PH7_TKWRD_USE,         PH7_TKWRD_ECHO,      PH7_TKWRD_ABSTRACT,  PH7_TKWRD_CLASS, 
-    PH7_TKWRD_AS,        PH7_TKWRD_CONTINUE,    PH7_TKWRD_ENDIF,     PH7_TKWRD_FUNCTION,  PH7_TKWRD_DIE, 
+    PH7_TKWRD_EXTENDS,   PH7_TKWRD_ENDSWITCH,   PH7_TKWRD_SWITCH,    PH7_TKWRD_PRINT,   PH7_TKWRD_INT,
+    PH7_TKWRD_REQONCE,   PH7_TKWRD_REQUIRE,     PH7_TKWRD_SEQ,       PH7_TKWRD_ENDDEC,    PH7_TKWRD_DECLARE,
+    PH7_TKWRD_RETURN,    PH7_TKWRD_NAMESPACE,   PH7_TKWRD_ECHO,      PH7_TKWRD_OBJECT,    PH7_TKWRD_THROW,
+    PH7_TKWRD_BOOL,      PH7_TKWRD_BOOL,        PH7_TKWRD_AND,       PH7_TKWRD_DEFAULT,   PH7_TKWRD_TRY,
+    PH7_TKWRD_CASE,      PH7_TKWRD_SELF,        PH7_TKWRD_FINAL,     PH7_TKWRD_LIST,      PH7_TKWRD_STATIC,
+    PH7_TKWRD_CLONE,     PH7_TKWRD_SNE,         PH7_TKWRD_NEW,       PH7_TKWRD_CONST,     PH7_TKWRD_STRING,
+    PH7_TKWRD_GLOBAL,    PH7_TKWRD_USE,         PH7_TKWRD_ELIF,      PH7_TKWRD_ELSE,      PH7_TKWRD_IF,
+    PH7_TKWRD_FLOAT,     PH7_TKWRD_VAR,         PH7_TKWRD_ARRAY,     PH7_TKWRD_AND,       PH7_TKWRD_DIE,
+    PH7_TKWRD_ECHO,      PH7_TKWRD_USE,         PH7_TKWRD_ECHO,      PH7_TKWRD_ABSTRACT,  PH7_TKWRD_CLASS,
+    PH7_TKWRD_AS,        PH7_TKWRD_CONTINUE,    PH7_TKWRD_ENDIF,     PH7_TKWRD_FUNCTION,  PH7_TKWRD_DIE,
     PH7_TKWRD_ENDWHILE,  PH7_TKWRD_WHILE,       PH7_TKWRD_EVAL,      PH7_TKWRD_DO,        PH7_TKWRD_EXIT,
-    PH7_TKWRD_GOTO,      PH7_TKWRD_IMPLEMENTS,  PH7_TKWRD_INCONCE,   PH7_TKWRD_INCLUDE,   PH7_TKWRD_EMPTY, 
-    PH7_TKWRD_INSTANCEOF,PH7_TKWRD_INTERFACE,   PH7_TKWRD_INT,       PH7_TKWRD_ENDFOR,    PH7_TKWRD_END4EACH,    
-    PH7_TKWRD_FOR,       PH7_TKWRD_FOREACH,     PH7_TKWRD_OR,        PH7_TKWRD_ISSET,     PH7_TKWRD_PARENT,  
-    PH7_TKWRD_PRIVATE,   PH7_TKWRD_PROTECTED,   PH7_TKWRD_PUBLIC,    PH7_TKWRD_CATCH,     PH7_TKWRD_UNSET, 
+    PH7_TKWRD_GOTO,      PH7_TKWRD_IMPLEMENTS,  PH7_TKWRD_INCONCE,   PH7_TKWRD_INCLUDE,   PH7_TKWRD_EMPTY,
+    PH7_TKWRD_INSTANCEOF,PH7_TKWRD_INTERFACE,   PH7_TKWRD_INT,       PH7_TKWRD_ENDFOR,    PH7_TKWRD_END4EACH,
+    PH7_TKWRD_FOR,       PH7_TKWRD_FOREACH,     PH7_TKWRD_OR,        PH7_TKWRD_ISSET,     PH7_TKWRD_PARENT,
+    PH7_TKWRD_PRIVATE,   PH7_TKWRD_PROTECTED,   PH7_TKWRD_PUBLIC,    PH7_TKWRD_CATCH,     PH7_TKWRD_UNSET,
     PH7_TKWRD_XOR,       PH7_TKWRD_ARRAY,       PH7_TKWRD_AS,        PH7_TKWRD_ARRAY,     PH7_TKWRD_EXIT,
-    PH7_TKWRD_UNSET,     PH7_TKWRD_XOR,         PH7_TKWRD_OR,        PH7_TKWRD_BREAK 
+    PH7_TKWRD_UNSET,     PH7_TKWRD_XOR,         PH7_TKWRD_OR,        PH7_TKWRD_BREAK
   };
   int h, i;
   if( n<2 ) return PH7_TK_ID;
@@ -758,13 +758,13 @@ static sxu32 KeywordCode(const char *z, int n){
  *  A third way to delimit strings is the heredoc syntax: <<<. After this operator, an identifier
  *  is provided, then a newline. The string itself follows, and then the same identifier again
  *  to close the quotation.
- *  The closing identifier must begin in the first column of the line. Also, the identifier must 
- *  follow the same naming rules as any other label in PHP: it must contain only alphanumeric 
- *  characters and underscores, and must start with a non-digit character or underscore. 
+ *  The closing identifier must begin in the first column of the line. Also, the identifier must
+ *  follow the same naming rules as any other label in PHP: it must contain only alphanumeric
+ *  characters and underscores, and must start with a non-digit character or underscore.
  *  Heredoc text behaves just like a double-quoted string, without the double quotes.
  *  This means that quotes in a heredoc do not need to be escaped, but the escape codes listed
  *  above can still be used. Variables are expanded, but the same care must be taken when expressing
- *  complex variables inside a heredoc as with strings. 
+ *  complex variables inside a heredoc as with strings.
  *  Nowdocs are to single-quoted strings what heredocs are to double-quoted strings.
  *  A nowdoc is specified similarly to a heredoc, but no parsing is done inside a nowdoc.
  *  The construct is ideal for embedding PHP code or other large blocks of text without the need
@@ -772,7 +772,7 @@ static sxu32 KeywordCode(const char *z, int n){
  *  it declares a block of text which is not for parsing.
  *  A nowdoc is identified with the same <<< sequence used for heredocs, but the identifier which follows
  *  is enclosed in single quotes, e.g. <<<'EOT'. All the rules for heredoc identifiers also apply to nowdoc
- *  identifiers, especially those regarding the appearance of the closing identifier. 
+ *  identifiers, especially those regarding the appearance of the closing identifier.
  * Symisc Extension:
  * The closing delimiter can now start with a digit or undersocre or it can be an UTF-8 stream.
  * Example:
@@ -904,7 +904,7 @@ static sxi32 LexExtractHeredoc(SyStream *pStream,SyToken *pToken)
 }
 /*
  * Tokenize a raw PHP input.
- * This is the public tokenizer called by most code generator routines. 
+ * This is the public tokenizer called by most code generator routines.
  */
 PH7_PRIVATE sxi32 PH7_TokenizePHP(const char *zInput,sxu32 nLen,sxu32 nLineStart,SySet *pOut)
 {
@@ -931,7 +931,7 @@ PH7_PRIVATE sxi32 PH7_TokenizePHP(const char *zInput,sxu32 nLen,sxu32 nLineStart
  *   to start and stop interpreting the code between them. Parsing in this manner allows
  *   PHP to be embedded in all sorts of different documents, as everything outside of a pair
  *   of opening and closing tags is ignored by the PHP parser. Most of the time you will see
- *   PHP embedded in HTML documents, as in this example. 
+ *   PHP embedded in HTML documents, as in this example.
  *   <?php echo 'While this is going to be parsed.'; ?>
  *   <p>This will also be ignored.</p>
  *   You can also use more advanced structures:
@@ -951,7 +951,7 @@ PH7_PRIVATE sxi32 PH7_TokenizePHP(const char *zInput,sxu32 nLen,sxu32 nLineStart
  * whatever it finds (except for an immediately following newline - see instruction separation ) until it hits
  * another opening tag. The example given here is contrived, of course, but for outputting large blocks of text
  * dropping out of PHP parsing mode is generally more efficient than sending all of the text through echo() or print().
- * There are four different pairs of opening and closing tags which can be used in PHP. Three of those, <?php ?> 
+ * There are four different pairs of opening and closing tags which can be used in PHP. Three of those, <?php ?>
  * <script language="php"> </script>  and <? ?> are always available. The other two are short tags and ASP style
  * tags, and can be turned on and off from the php.ini configuration file. As such, while some people find short tags
  * and ASP style tags convenient, they are less portable, and generally not recommended.
@@ -1002,7 +1002,7 @@ PH7_PRIVATE sxi32 PH7_TokenizeRawText(const char *zInput,sxu32 nLen,SySet *pOut)
 					if( zIn[0] == '?' ){
 						zIn++;
 						if( (sxu32)(zEnd - zIn) >= sizeof("php")-1 &&  SyStrnicmp(zIn,"php",sizeof("php")-1) == 0 ){
-							/* opening tag: <?php */ 
+							/* opening tag: <?php */
 							zIn += sizeof("php")-1;
 						}
 						/* Look for the closing tag '?>' */
@@ -1125,7 +1125,7 @@ PH7_PRIVATE sxi32 PH7_TokenizeRawText(const char *zInput,sxu32 nLen,SySet *pOut)
 				continue;
 			}
 			zIn++;
-			
+
 			if ( zIn >= zEnd )
 				break;
 		}
@@ -1147,6 +1147,6 @@ PH7_PRIVATE sxi32 PH7_TokenizeRawText(const char *zInput,sxu32 nLen,SySet *pOut)
 			zIn += sCtag.nByte;
 		}
 	} /* For(;;) */
-	
+
  	return SXRET_OK;
 }

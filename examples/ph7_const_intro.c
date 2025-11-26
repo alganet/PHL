@@ -1,6 +1,6 @@
 /*
  * Compile this file together with the ph7 engine source code to generate
- * the executable. For example: 
+ * the executable. For example:
  *  gcc -W -Wall -O6 -o ph7_test ph7_const_intro.c ph7.c
  */
 /*
@@ -24,7 +24,7 @@
  * Make sure you have the latest release of the PH7 engine
  * from:
  *  http://ph7.symisc.net/downloads.html
- * Make sure this header file is available. 
+ * Make sure this header file is available.
  */
 #include "ph7.h"
 /*
@@ -60,9 +60,9 @@ static void TIME_Constant(ph7_value *pValue, void *pUserData)
 	time(&tt);
 	pLocal = localtime(&tt);
 	/* Expand the current time now */
-	ph7_value_string_format(pValue, "%02d:%02d:%02d", 
-		pLocal->tm_hour, 
-		pLocal->tm_min, 
+	ph7_value_string_format(pValue, "%02d:%02d:%02d",
+		pLocal->tm_hour,
+		pLocal->tm_min,
 		pLocal->tm_sec
 		);
 }
@@ -103,7 +103,7 @@ static void OS_Constant(ph7_value *pValue, void *pUserData)
  "?>"
 #include <stdio.h>
 #include <stdlib.h>
-/* 
+/*
  * Display an error message and exit.
  */
 static void Fatal(const char *zMsg)
@@ -156,8 +156,8 @@ static int Output_Consumer(const void *pOutput, unsigned int nOutputLen, void *p
 	/* All done, VM output was redirected to STDOUT */
 	return PH7_OK;
 }
-/* 
- * Main program: Register the constants defined above, compile and execute 
+/*
+ * Main program: Register the constants defined above, compile and execute
  * our PHP test program.
  */
 int main(void)
@@ -178,7 +178,7 @@ int main(void)
 	rc = ph7_compile_v2(
 		pEngine,  /* PH7 engine */
 		PHP_PROG, /* PHP test program */
-		-1        /* Compute input length automatically*/, 
+		-1        /* Compute input length automatically*/,
 		&pVm,     /* OUT: Compiled PHP program */
 		0         /* IN: Compile flags */
 		);
@@ -187,9 +187,9 @@ int main(void)
 			const char *zErrLog;
 			int nLen;
 			/* Extract error log */
-			ph7_config(pEngine, 
-				PH7_CONFIG_ERR_LOG, 
-				&zErrLog, 
+			ph7_config(pEngine,
+				PH7_CONFIG_ERR_LOG,
+				&zErrLog,
 				&nLen
 				);
 			if( nLen > 0 ){
@@ -219,8 +219,8 @@ int main(void)
 	 * Configure our VM:
 	 *  Install the VM output consumer callback defined above.
 	 */
-	rc = ph7_vm_config(pVm, 
-		PH7_VM_CONFIG_OUTPUT, 
+	rc = ph7_vm_config(pVm,
+		PH7_VM_CONFIG_OUTPUT,
 		Output_Consumer,    /* Output Consumer callback */
 		0                   /* Callback private data */
 		);

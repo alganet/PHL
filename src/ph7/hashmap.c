@@ -33,13 +33,13 @@ static sxu32 BinHash(const void *pSrc,sxu32 nLen)
 		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;
 		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;
 		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;
-	}	
+	}
 	return nH;
 }
 /*
  * Return the total number of entries in a given hashmap.
  * If bRecurisve is set to TRUE then recurse on hashmap entries.
- * If the nesting limit is reached,this function abort immediately. 
+ * If the nesting limit is reached,this function abort immediately.
  */
 static sxi64 HashmapCount(ph7_hashmap *pMap,int bRecursive,int iRecCount)
 {
@@ -417,9 +417,9 @@ static sxi32 HashmapLookupBlobKey(
 		if( pNode == 0 ){
 			break;
 		}
-		if( pNode->iType == HASHMAP_BLOB_NODE 
+		if( pNode->iType == HASHMAP_BLOB_NODE
 			&& pNode->nHash == nHash
-			&& SyBlobLength(&pNode->xKey.sKey) == nKeyLen 
+			&& SyBlobLength(&pNode->xKey.sKey) == nKeyLen
 			&& SyMemcmp(SyBlobData(&pNode->xKey.sKey),pKey,nKeyLen) == 0 ){
 				/* Node found */
 				if( ppNode ){
@@ -434,7 +434,7 @@ static sxi32 HashmapLookupBlobKey(
 	return SXERR_NOTFOUND;
 }
 /*
- * Check if the given BLOB key looks like a decimal number. 
+ * Check if the given BLOB key looks like a decimal number.
  * Retrurn TRUE on success.FALSE otherwise.
  */
 static int HashmapIsIntKey(SyBlob *pKey)
@@ -581,7 +581,7 @@ IntKey:
 		rc = HashmapInsertIntKey(&(*pMap),pKey->x.iVal,&(*pVal),0,FALSE);
 		if( rc == SXRET_OK ){
 			if( pKey->x.iVal >= pMap->iNextIdx ){
-				/* Increment the automatic index */ 
+				/* Increment the automatic index */
 				pMap->iNextIdx = pKey->x.iVal + 1;
 				/* Make sure the automatic index is not reserved */
 				while( SXRET_OK == HashmapLookupIntKey(&(*pMap),pMap->iNextIdx,0) ){
@@ -608,7 +608,7 @@ IntKey:
  * Insert a given key and it's associated value (foreign index) in the given
  * hashmap.
  * This is insertion by reference so be careful to mark the node
- * with the HASHMAP_NODE_FOREIGN_OBJ flag being set. 
+ * with the HASHMAP_NODE_FOREIGN_OBJ flag being set.
  * The insertion by reference is triggered when the following
  * expression is encountered.
  * $var = 10;
@@ -617,7 +617,7 @@ IntKey:
  *  $a[] =& $var;
  * That is,$var is a foreign ph7_value and the $a array have no control
  * over it's contents.
- * Note that the node that hold the foreign ph7_value is automatically 
+ * Note that the node that hold the foreign ph7_value is automatically
  * removed when the foreign ph7_value is unset.
  * Example:
  *  $var = 10;
@@ -682,7 +682,7 @@ IntKey:
 		rc = HashmapInsertIntKey(&(*pMap),pKey->x.iVal,0,nRefIdx,TRUE);
 		if( rc == SXRET_OK ){
 			if( pKey->x.iVal >= pMap->iNextIdx ){
-				/* Increment the automatic index */ 
+				/* Increment the automatic index */
 				pMap->iNextIdx = pKey->x.iVal + 1;
 				/* Make sure the automatic index is not reserved */
 				while( SXRET_OK == HashmapLookupIntKey(&(*pMap),pMap->iNextIdx,0) ){
@@ -805,7 +805,7 @@ static void HashmapRehashIntNode(ph7_hashmap_node *pEntry)
  * Perform a linear search on a given hashmap.
  * Write a pointer to the target node on success.
  * Otherwise SXERR_NOTFOUND is returned on failure.
- * Refer to [array_intersect(),array_diff(),in_array(),...] implementations 
+ * Refer to [array_intersect(),array_diff(),in_array(),...] implementations
  * for more information.
  */
 static int HashmapFindValue(
@@ -866,11 +866,11 @@ static int HashmapFindValue(
 	return SXERR_NOTFOUND;
 }
 /*
- * Perform a linear search on a given hashmap but use an user-defined callback 
+ * Perform a linear search on a given hashmap but use an user-defined callback
  * for values comparison.
  * Write a pointer to the target node on success.
  * Otherwise SXERR_NOTFOUND is returned on failure.
- * Refer to [array_uintersect(),array_udiff()...] implementations 
+ * Refer to [array_uintersect(),array_udiff()...] implementations
  * for more information.
  */
 static int HashmapFindValueByCallback(
@@ -934,7 +934,7 @@ static int HashmapFindValueByCallback(
  *  Array Operators Example 	Name 	Result
  *  $a + $b 	Union 	Union of $a and $b.
  *  $a == $b 	Equality 	TRUE if $a and $b have the same key/value pairs.
- *  $a === $b 	Identity 	TRUE if $a and $b have the same key/value pairs in the same 
+ *  $a === $b 	Identity 	TRUE if $a and $b have the same key/value pairs in the same
  *                          order and of the same types.
  *  $a != $b 	Inequality 	TRUE if $a is not equal to $b.
  *  $a <> $b 	Inequality 	TRUE if $a is not equal to $b.
@@ -1079,7 +1079,7 @@ static sxi32 HashmapDuplicateNode(
  *  will overwrite the previous one. If, however, the arrays contain numeric keys
  *  the later value will not overwrite the original value, but will be appended.
  *  Values in the input array with numeric keys will be renumbered with incrementing
- *  keys starting from zero in the result array. 
+ *  keys starting from zero in the result array.
  */
 static sxi32 HashmapMerge(ph7_hashmap *pSrc,ph7_hashmap *pDest)
 {
@@ -1126,10 +1126,10 @@ static sxi32 HashmapMerge(ph7_hashmap *pSrc,ph7_hashmap *pDest)
  *  array, its value will be replaced by the value from the second array. If the key
  *  exists in the second array, and not the first, it will be created in the first array.
  *  If a key only exists in the first array, it will be left as is. If several arrays
- *  are passed for replacement, they will be processed in order, the later arrays 
+ *  are passed for replacement, they will be processed in order, the later arrays
  *  overwriting the previous values.
  *  array_replace() is not recursive : it will replace values in the first array
- *  by whatever type is in the second array. 
+ *  by whatever type is in the second array.
  */
 static sxi32 HashmapOverwrite(ph7_hashmap *pSrc,ph7_hashmap *pDest)
 {
@@ -1500,7 +1500,7 @@ PH7_PRIVATE sxi32 PH7_HashmapInsert(
 	if( pVal && (pVal->iFlags & MEMOBJ_HASHMAP) && (ph7_hashmap *)pVal->x.pOther == pMap->pVm->pGlobal ){
 		/*
 		 * TICKET 1433-35: Insertion in the $GLOBALS array is forbidden.
-		 */ 
+		 */
 		PH7_VmThrowError(pMap->pVm,0,PH7_CTX_ERR,"$GLOBALS is a read-only array,insertion is forbidden");
 		return SXRET_OK;
 	}
@@ -1511,7 +1511,7 @@ PH7_PRIVATE sxi32 PH7_HashmapInsert(
  * Insert a given key and it's associated value (foreign index) in the given
  * hashmap.
  * This is insertion by reference so be careful to mark the node
- * with the HASHMAP_NODE_FOREIGN_OBJ flag being set. 
+ * with the HASHMAP_NODE_FOREIGN_OBJ flag being set.
  * The insertion by reference is triggered when the following
  * expression is encountered.
  * $var = 10;
@@ -1520,7 +1520,7 @@ PH7_PRIVATE sxi32 PH7_HashmapInsert(
  *  $a[] =& $var;
  * That is,$var is a foreign ph7_value and the $a array have no control
  * over it's contents.
- * Note that the node that hold the foreign ph7_value is automatically 
+ * Note that the node that hold the foreign ph7_value is automatically
  * removed when the foreign ph7_value is unset.
  * Example:
  *  $var = 10;
@@ -1544,7 +1544,7 @@ PH7_PRIVATE sxi32 PH7_HashmapInsertByRef(
 	if( nRefIdx == pMap->pVm->nGlobalIdx ){
 		/*
 		 * TICKET 1433-35: Insertion in the $GLOBALS array is forbidden.
-		 */ 
+		 */
 		PH7_VmThrowError(pMap->pVm,0,PH7_CTX_ERR,"$GLOBALS is a read-only array,insertion is forbidden");
 		return SXRET_OK;
 	}
@@ -1737,7 +1737,7 @@ static sxi32 HashmapMergeSort(ph7_hashmap *pMap,ProcNodeCmp xCmp,void *pCmpData)
 	pMap->pCur = pMap->pFirst;
 	return SXRET_OK;
 }
-/* 
+/*
  * Node comparison callback.
  * used-by: [sort(),asort(),...]
  */
@@ -2042,7 +2042,7 @@ static void HashmapSortRehash(ph7_hashmap *pMap)
  *   SORT_STRING - compare items as strings
  * Return
  *  TRUE on success or FALSE on failure.
- * 
+ *
  */
 static int ph7_hashmap_sort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -2132,7 +2132,7 @@ static int ph7_hashmap_asort(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *   SORT_NUMERIC - compare items numerically
  *   SORT_STRING - compare items as strings
  * Return
- *  TRUE on success or FALSE on failure. 
+ *  TRUE on success or FALSE on failure.
  */
 static int ph7_hashmap_arsort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -2444,13 +2444,13 @@ static int ph7_hashmap_uksort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 }
 /*
  * bool shuffle(array &$array)
- *  shuffles (randomizes the order of the elements in) an array. 
+ *  shuffles (randomizes the order of the elements in) an array.
  * Parameters
  *  $array
  *   The input array.
  * Return
  *  TRUE on success or FALSE on failure.
- * 
+ *
  */
 static int ph7_hashmap_shuffle(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -2483,7 +2483,7 @@ static int ph7_hashmap_shuffle(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *   The array or the object.
  * $mode
  *  If the optional mode parameter is set to COUNT_RECURSIVE (or 1), count()
- *  will recursively count the array. This is particularly useful for counting 
+ *  will recursively count the array. This is particularly useful for counting
  *  all the elements of a multidimensional array. count() does not detect infinite
  *  recursion.
  * Return
@@ -2714,7 +2714,7 @@ static sxi32 HashmapCurrentValue(ph7_context *pCtx,ph7_hashmap *pMap,int iDirect
 			ph7_result_bool(pCtx,0);
 			return PH7_OK;
 		}
-	}		
+	}
 	/* Point to the desired element */
 	pVal = HashmapExtractNodeValue(pCur);
 	if( pVal ){
@@ -2732,8 +2732,8 @@ static sxi32 HashmapCurrentValue(ph7_context *pCtx,ph7_hashmap *pMap,int iDirect
  * Return
  *  The current() function simply returns the value of the array element that's currently
  *  being pointed to by the internal pointer. It does not move the pointer in any way.
- *  If the internal pointer points beyond the end of the elements list or the array 
- *  is empty, current() returns FALSE. 
+ *  If the internal pointer points beyond the end of the elements list or the array
+ *  is empty, current() returns FALSE.
  */
 static int ph7_hashmap_current(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -2757,9 +2757,9 @@ static int ph7_hashmap_current(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Parameter
  *  $input: The input array.
  * Return
- *  next() behaves like current(), with one difference. It advances the internal array 
- *  pointer one place forward before returning the element value. That means it returns 
- *  the next array value and advances the internal array pointer by one. 
+ *  next() behaves like current(), with one difference. It advances the internal array
+ *  pointer one place forward before returning the element value. That means it returns
+ *  the next array value and advances the internal array pointer by one.
  */
 static int ph7_hashmap_next(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -2777,7 +2777,7 @@ static int ph7_hashmap_next(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	HashmapCurrentValue(&(*pCtx),(ph7_hashmap *)apArg[0]->x.pOther,1);
 	return PH7_OK;
 }
-/* 
+/*
  * value prev(array $input)
  *  Rewind the internal array pointer.
  * Parameter
@@ -2785,7 +2785,7 @@ static int ph7_hashmap_next(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Return
  *  Returns the array value in the previous place that's pointed
  *  to by the internal array pointer, or FALSE if there are no more
- *  elements. 
+ *  elements.
  */
 static int ph7_hashmap_prev(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -2803,13 +2803,13 @@ static int ph7_hashmap_prev(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	HashmapCurrentValue(&(*pCtx),(ph7_hashmap *)apArg[0]->x.pOther,-1);
 	return PH7_OK;
 }
-/* 
+/*
  * value end(array $input)
  *  Set the internal pointer of an array to its last element.
  * Parameter
  *  $input: The input array.
  * Return
- *  Returns the value of the last element or FALSE for empty array. 
+ *  Returns the value of the last element or FALSE for empty array.
  */
 static int ph7_hashmap_end(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -2833,13 +2833,13 @@ static int ph7_hashmap_end(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	HashmapCurrentValue(&(*pCtx),pMap,0);
 	return PH7_OK;
 }
-/* 
+/*
  * value reset(array $array )
  *  Set the internal pointer of an array to its first element.
  * Parameter
  *  $input: The input array.
  * Return
- *  Returns the value of the first array element,or FALSE if the array is empty. 
+ *  Returns the value of the first array element,or FALSE if the array is empty.
  */
 static int ph7_hashmap_reset(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -2872,8 +2872,8 @@ static int ph7_hashmap_reset(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Return
  *  The key() function simply returns the key of the array element that's currently
  *  being pointed to by the internal pointer. It does not move the pointer in any way.
- *  If the internal pointer points beyond the end of the elements list or the array 
- *  is empty, key() returns NULL. 
+ *  If the internal pointer points beyond the end of the elements list or the array
+ *  is empty, key() returns NULL.
  */
 static int ph7_hashmap_simple_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -2914,11 +2914,11 @@ static int ph7_hashmap_simple_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $input
  *    The input array.
  * Return
- *  Returns the current key and value pair from the array array. This pair is returned 
- *  in a four-element array, with the keys 0, 1, key, and value. Elements 0 and key 
+ *  Returns the current key and value pair from the array array. This pair is returned
+ *  in a four-element array, with the keys 0, 1, key, and value. Elements 0 and key
  *  contain the key name of the array element, and 1 and value contain the data.
  *  If the internal pointer for the array points past the end of the array contents
- *  each() returns FALSE. 
+ *  each() returns FALSE.
  */
 static int ph7_hashmap_each(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -3093,7 +3093,7 @@ static int ph7_hashmap_values(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * $search_value
  *   If specified, then only keys containing these values are returned.
  * $strict
- *   Determines if strict comparison (===) should be used during the search. 
+ *   Determines if strict comparison (===) should be used during the search.
  * Return
  *  An array of all the keys in input or NULL on failure.
  */
@@ -3275,7 +3275,7 @@ static int ph7_hashmap_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		PH7_HashmapDup(pSrc,pMap);
 	}else{
 		/* Simple insertion */
-		PH7_HashmapInsert(pMap,0/* Automatic index assign*/,apArg[0]); 
+		PH7_HashmapInsert(pMap,0/* Automatic index assign*/,apArg[0]);
 	}
 	/* Return the duplicated array */
 	ph7_result_value(pCtx,pArray);
@@ -3316,12 +3316,12 @@ static int ph7_hashmap_erase(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *    If offset is non-negative, the sequence will start at that offset in the array.
  *    If offset is negative, the sequence will start that far from the end of the array.
  * $length (optional)
- *    If length is given and is positive, then the sequence will have that many elements 
- *    in it. If length is given and is negative then the sequence will stop that many 
+ *    If length is given and is positive, then the sequence will have that many elements
+ *    in it. If length is given and is negative then the sequence will stop that many
  *   elements from the end of the array. If it is omitted, then the sequence will have
  *   everything from offset up until the end of the array.
  * $preserve_keys (optional)
- *    Note that array_slice() will reorder and reset the array indices by default. 
+ *    Note that array_slice() will reorder and reset the array indices by default.
  *    You can change this behaviour by setting preserve_keys to TRUE.
  * Return
  *   The new slice.
@@ -3411,24 +3411,24 @@ static int ph7_hashmap_slice(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $array
  *    The input array.
  * $offset
- *    If offset is positive then the start of removed portion is at that offset from 
+ *    If offset is positive then the start of removed portion is at that offset from
  *    the beginning of the input array. If offset is negative then it starts that far
- *    from the end of the input array. 
+ *    from the end of the input array.
  * $length (optional)
  *    If length is omitted, removes everything from offset to the end of the array.
  *    If length is specified and is positive, then that many elements will be removed.
- *    If length is specified and is negative then the end of the removed portion will 
+ *    If length is specified and is negative then the end of the removed portion will
  *    be that many elements from the end of the array.
  * $replacement (optional)
- *  If replacement array is specified, then the removed elements are replaced 
+ *  If replacement array is specified, then the removed elements are replaced
  *  with elements from this array.
- *  If offset and length are such that nothing is removed, then the elements 
+ *  If offset and length are such that nothing is removed, then the elements
  *  from the replacement array are inserted in the place specified by the offset.
  *  Note that keys in replacement array are not preserved.
  *  If replacement is just one element it is not necessary to put array() around
  *  it, unless the element is an array itself, an object or NULL.
  * Return
- *   A new array consisting of the extracted elements. 
+ *   A new array consisting of the extracted elements.
  */
 static int ph7_hashmap_splice(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -3567,7 +3567,7 @@ static int ph7_hashmap_in_array(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		bStrict = ph7_value_to_bool(apArg[2]);
 	}
 	if( !ph7_value_is_array(apArg[1]) ){
-		/* haystack must be an array,perform a standard comparison */ 
+		/* haystack must be an array,perform a standard comparison */
 		rc = ph7_value_compare(pNeedle,apArg[1],bStrict);
 		/* Set the comparison result */
 		ph7_result_bool(pCtx,rc == 0);
@@ -3588,11 +3588,11 @@ static int ph7_hashmap_in_array(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * $haystack
  *   The array.
  * $strict
- *  If the third parameter strict is set to TRUE then the array_search() function 
+ *  If the third parameter strict is set to TRUE then the array_search() function
  *  will search for identical elements in the haystack. This means it will also check
  *  the types of the needle in the haystack, and objects must be the same instance.
  * Return
- *  Returns the key for needle if it is found in the array, FALSE otherwise. 
+ *  Returns the key for needle if it is found in the array, FALSE otherwise.
  */
 static int ph7_hashmap_search(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -3667,7 +3667,7 @@ static int ph7_hashmap_search(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $array1
  *    The array to compare from
  *  $array2
- *    An array to compare against 
+ *    An array to compare against
  *  $...
  *   More arrays to compare against
  * Return
@@ -3745,13 +3745,13 @@ static int ph7_hashmap_diff(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $array1
  *    The array to compare from
  *  $array2
- *    An array to compare against 
+ *    An array to compare against
  *  $...
  *   More arrays to compare against.
  * $callback
  *  The callback comparison function.
  *  The comparison function must return an integer less than, equal to, or greater than zero
- *  if the first argument is considered to be respectively less than, equal to, or greater 
+ *  if the first argument is considered to be respectively less than, equal to, or greater
  *  than the second.
  *     int callback ( mixed $a, mixed $b )
  * Return
@@ -3832,7 +3832,7 @@ static int ph7_hashmap_udiff(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $array1
  *    The array to compare from
  *  $array2
- *    An array to compare against 
+ *    An array to compare against
  *  $...
  *   More arrays to compare against
  * Return
@@ -3922,7 +3922,7 @@ static int ph7_hashmap_diff_assoc(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $array1
  *    The array to compare from
  *  $array2
- *    An array to compare against 
+ *    An array to compare against
  *  $...
  *   More arrays to compare against.
  *  $key_compare_func
@@ -4019,7 +4019,7 @@ static int ph7_hashmap_diff_uassoc(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $array1
  *    The array to compare from
  *  $array2
- *    An array to compare against 
+ *    An array to compare against
  *  $...
  *   More arrays to compare against
  * Return
@@ -4077,7 +4077,7 @@ static int ph7_hashmap_diff_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			if( rc == SXRET_OK ){
 				/* Key exists,break immediately */
 				break;
-			}	
+			}
 		}
 		if( i >= nArg ){
 			/* Perform the insertion */
@@ -4098,7 +4098,7 @@ static int ph7_hashmap_diff_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $array1
  *    The array to compare from
  *  $array2
- *    An array to compare against 
+ *    An array to compare against
  *  $...
  *   More arrays to compare against
  * Return
@@ -4177,7 +4177,7 @@ static int ph7_hashmap_intersect(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $array1
  *    The array to compare from
  *  $array2
- *    An array to compare against 
+ *    An array to compare against
  *  $...
  *   More arrays to compare against
  * Return
@@ -4267,7 +4267,7 @@ static int ph7_hashmap_intersect_assoc(ph7_context *pCtx,int nArg,ph7_value **ap
  *  $array1
  *    The array to compare from
  *  $array2
- *    An array to compare against 
+ *    An array to compare against
  *  $...
  *   More arrays to compare against
  * Return
@@ -4325,7 +4325,7 @@ static int ph7_hashmap_intersect_key(ph7_context *pCtx,int nArg,ph7_value **apAr
 			if( rc != SXRET_OK ){
 				/* Key does not exists,break immediately */
 				break;
-			}	
+			}
 		}
 		if( i >= nArg ){
 			/* Perform the insertion */
@@ -4346,13 +4346,13 @@ static int ph7_hashmap_intersect_key(ph7_context *pCtx,int nArg,ph7_value **apAr
  *  $array1
  *    The array to compare from
  *  $array2
- *    An array to compare against 
+ *    An array to compare against
  *  $...
  *   More arrays to compare against
  * $callback
  *  The callback comparison function.
  *  The comparison function must return an integer less than, equal to, or greater than zero
- *  if the first argument is considered to be respectively less than, equal to, or greater 
+ *  if the first argument is considered to be respectively less than, equal to, or greater
  *  than the second.
  *     int callback ( mixed $a, mixed $b )
  * Return
@@ -4370,7 +4370,7 @@ static int ph7_hashmap_uintersect(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	sxi32 rc;
 	sxu32 n;
 	int i;
-	
+
 	if( nArg < 2 || !ph7_value_is_array(apArg[0]) ){
 		/* Missing/Invalid arguments,return NULL */
 		ph7_result_null(pCtx);
@@ -4526,7 +4526,7 @@ static int ph7_hashmap_fill_keys(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Return
  *  Returns the combined array. Otherwise FALSE if the number of elements
  *  for each array isn't equal or if one of the given arguments is
- *  not an array. 
+ *  not an array.
  */
 static int ph7_hashmap_combine(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -4636,7 +4636,7 @@ static int ph7_hashmap_reverse(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *       SORT_NUMERIC - compare items numerically
  *       SORT_STRING - compare items as strings
  *       SORT_LOCALE_STRING - compare items as
- * Return 
+ * Return
  *  Filtered array or NULL on failure.
  */
 static int ph7_hashmap_unique(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -4742,7 +4742,7 @@ static int ph7_hashmap_flip(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			}
 			/* Perform the insertion */
 			ph7_array_add_elem(pArray,pKey,&sVal);
-			/* Safely release the value because each inserted entry 
+			/* Safely release the value because each inserted entry
 			 * have it's own private copy of the value.
 			 */
 			PH7_MemObjRelease(&sVal);
@@ -4818,7 +4818,7 @@ static void Int64Sum(ph7_context *pCtx,ph7_hashmap *pMap)
 	/* Return sum */
 	ph7_result_int64(pCtx,nSum);
 }
-/* number array_sum(array $array ) 
+/* number array_sum(array $array )
  * (See block-coment above)
  */
 static int ph7_hashmap_sum(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -5084,8 +5084,8 @@ static int ph7_hashmap_rand(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *   When set to TRUE keys will be preserved. Default is FALSE which will reindex
  *   the chunk numerically.
  * Return
- *  Returns a multidimensional numerically indexed array, starting with 
- *  zero, with each dimension containing size elements. 
+ *  Returns a multidimensional numerically indexed array, starting with
+ *  zero, with each dimension containing size elements.
  */
 static int ph7_hashmap_chunk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -5350,9 +5350,9 @@ static int ph7_hashmap_filter(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *   An array to run through the callback function.
  * Return
  *  Returns an array containing all the elements of arr1 after applying
- *  the callback function to each one. 
+ *  the callback function to each one.
  * NOTE:
- *  array_map() passes only a single value to the callback. 
+ *  array_map() passes only a single value to the callback.
  */
 static int ph7_hashmap_map(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -5413,11 +5413,11 @@ static int ph7_hashmap_map(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $function
  *  The callback function.
  * $initial
- *  If the optional initial is available, it will be used at the beginning 
+ *  If the optional initial is available, it will be used at the beginning
  *  of the process, or as a final result in case the array is empty.
  * Return
- *  Returns the resulting value. 
- *  If the array is empty and initial is not passed, array_reduce() returns NULL. 
+ *  Returns the resulting value.
+ *  If the array is empty and initial is not passed, array_reduce() returns NULL.
  */
 static int ph7_hashmap_reduce(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -5465,7 +5465,7 @@ static int ph7_hashmap_reduce(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  the first, and the key/index second.
  * Note:
  *  If funcname needs to be working with the actual values of the array,specify the first
- *  parameter of funcname as a reference. Then, any changes made to those elements will 
+ *  parameter of funcname as a reference. Then, any changes made to those elements will
  *  be made in the original array itself.
  * $userdata
  *  If the optional userdata parameter is supplied, it will be passed as the third parameter
@@ -5515,7 +5515,7 @@ static int ph7_hashmap_walk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * Apply a user function to every member of an array.(Recurse on array's). 
+ * Apply a user function to every member of an array.(Recurse on array's).
  * Refer to the [array_walk_recursive()] implementation for more information.
  */
 static int HashmapWalkRecursive(
@@ -5571,7 +5571,7 @@ static int HashmapWalkRecursive(
  *  the first, and the key/index second.
  * Note:
  *  If funcname needs to be working with the actual values of the array,specify the first
- *  parameter of funcname as a reference. Then, any changes made to those elements will 
+ *  parameter of funcname as a reference. Then, any changes made to those elements will
  *  be made in the original array itself.
  * $userdata
  *  If the optional userdata parameter is supplied, it will be passed as the third parameter
@@ -5675,9 +5675,9 @@ PH7_PRIVATE void PH7_RegisterHashmapFunctions(ph7_vm *pVm)
 /*
  * Dump a hashmap instance and it's entries and the store the dump in
  * the BLOB given as the first argument.
- * This function is typically invoked when the user issue a call to 
+ * This function is typically invoked when the user issue a call to
  * [var_dump(),var_export(),print_r(),...]
- * This function SXRET_OK on success. Any other return value including 
+ * This function SXRET_OK on success. Any other return value including
  * SXERR_LIMIT(infinite recursion) indicates failure.
  */
 PH7_PRIVATE sxi32 PH7_HashmapDump(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,int nTab,int nDepth)
@@ -5728,7 +5728,7 @@ PH7_PRIVATE sxi32 PH7_HashmapDump(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,in
 		SyBlobAppend(&(*pOut),"\r\n",sizeof("\r\n")-1);
 #else
 		SyBlobAppend(&(*pOut),"\n",sizeof(char));
-#endif		
+#endif
 		/* Dump node value */
 		pObj = HashmapExtractNodeValue(pEntry);
 		isRef = 0;
@@ -5753,9 +5753,9 @@ PH7_PRIVATE sxi32 PH7_HashmapDump(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,in
 	return rc;
 }
 /*
- * Iterate throw hashmap entries and invoke the given callback [i.e: xWalk()] for each 
+ * Iterate throw hashmap entries and invoke the given callback [i.e: xWalk()] for each
  * retrieved entry.
- * Note that argument are passed to the callback by copy. That is,any modification to 
+ * Note that argument are passed to the callback by copy. That is,any modification to
  * the entry value in the callback body will not alter the real value.
  * If the callback wishes to abort processing [i.e: it's invocation] it must return
  * a value different from PH7_OK.

@@ -1,6 +1,6 @@
 /*
  * Compile this file together with the ph7 engine source code to generate
- * the executable. For example: 
+ * the executable. For example:
  *  gcc -W -Wall -O6 -o ph7_test ph7_func_intro.c ph7.c
  */
 /*
@@ -93,10 +93,10 @@ int date_func(
 		/* Get the current time */
 		time(&tt);
 		pNow = localtime(&tt);
-		/* 
+		/*
 		 * Return the current date.
 		 */
-		ph7_result_string_format(pCtx, 
+		ph7_result_string_format(pCtx,
 			"%04d-%02d-%02d %02d:%02d:%02d", /* printf() style format */
 			pNow->tm_year + 1900, /* Year */
 			pNow->tm_mday,        /* Day of the month */
@@ -115,7 +115,7 @@ int date_func(
  *  This function expects a variable number of arguments which must be of type
  *  numeric (either integer or float or a string that looks like a number) and
  *  returns the sum of the given numbers.
- * Parameter 
+ * Parameter
  *   int $n1, n2, ... (Variable number of arguments)
  * Return value
  *   Integer64: Sum of the given numbers.
@@ -146,7 +146,7 @@ int sum_func(ph7_context *pCtx, int argc, ph7_value **argv)
 		/* Make sure we are dealing with a numeric argument */
 		if( !ph7_value_is_numeric(pVal) ){
 			/* Throw a notice and continue */
-			ph7_context_throw_error_format(pCtx, PH7_CTX_NOTICE, 
+			ph7_context_throw_error_format(pCtx, PH7_CTX_NOTICE,
 				"Arg[%d]: Expecting a numeric value", /* printf() style format */
 				i
 				);
@@ -174,7 +174,7 @@ int sum_func(ph7_context *pCtx, int argc, ph7_value **argv)
  *   Array holding the current system time.
  * Usage example
  * <?php
- *   var_dump( array_time_func() ); 
+ *   var_dump( array_time_func() );
  * ?>
  * When running you should see something like that:
  * array(3) {
@@ -215,7 +215,7 @@ int array_time_func(ph7_context *pCtx, int argc, ph7_value **argv)
 	 * that the populated array will make it's own private copy of the inserted
 	 * key(if available) and it's associated value.
 	 */
-	
+
 	ph7_value_int(pValue, pNow->tm_hour); /* Hour */
 	/* Insert the hour at the first available index */
 	ph7_array_add_elem(pArray, 0/* NULL: Assign an automatic index*/, pValue /* Will make it's own copy */);
@@ -252,7 +252,7 @@ int array_time_func(ph7_context *pCtx, int argc, ph7_value **argv)
  *   Associative array holding a copy of the 'struct tm' structure.
  * Usage example
  * <?php
- *   var_dump( array_date_func() ); 
+ *   var_dump( array_date_func() );
  * ?>
  * When running you should see something like that:
  * array(6) {
@@ -299,7 +299,7 @@ int array_date_func(ph7_context *pCtx, int argc, ph7_value **argv)
 	 * that the populated array will make it's own private copy of the inserted
 	 * key(if available) and it's associated value.
 	 */
-	
+
 	ph7_value_int(pValue, pNow->tm_year + 1900); /* Year */
 	/* Insert Year */
 	ph7_array_add_strkey_elem(pArray, "tm_year", pValue /* Will make it's own copy */);
@@ -349,7 +349,7 @@ int array_date_func(ph7_context *pCtx, int argc, ph7_value **argv)
  *   Array holding string characters.
  * Usage example
  * <?php
- *   var_dump( array_str_split('Hello') ); 
+ *   var_dump( array_str_split('Hello') );
  * ?>
  * When running you should see something like that:
  * array(5) {
@@ -421,7 +421,7 @@ int array_string_split_func(ph7_context *pCtx, int argc, ph7_value **argv)
 	 */
 	return PH7_OK;
 }
-/* 
+/*
  * Container for the foreign functions defined above.
  * These functions will be registered later using a call
  * to [ph7_create_function()].
@@ -430,11 +430,11 @@ static const struct foreign_func {
 	const char *zName; /* Name of the foreign function*/
 	int (*xProc)(ph7_context *, int, ph7_value **); /* Pointer to the C function performing the computation*/
 }aFunc[] = {
-	{"shift_func", shift_func}, 
-	{"date_func", date_func}, 
-	{"sum_func",  sum_func  }, 
-	{"array_time_func", array_time_func}, 
-	{"array_str_split", array_string_split_func}, 
+	{"shift_func", shift_func},
+	{"date_func", date_func},
+	{"sum_func",  sum_func  },
+	{"array_time_func", array_time_func},
+	{"array_str_split", array_string_split_func},
 	{"array_date_func", array_date_func}
 };
 /*
@@ -507,7 +507,7 @@ static const struct foreign_func {
  "?>"
 #include <stdio.h>
 #include <stdlib.h>
-/* 
+/*
  * Display an error message and exit.
  */
 static void Fatal(const char *zMsg)
@@ -560,8 +560,8 @@ static int Output_Consumer(const void *pOutput, unsigned int nOutputLen, void *p
 	/* All done, VM output was redirected to STDOUT */
 	return PH7_OK;
 }
-/* 
- * Main program: Register the foreign functions defined above, compile and execute 
+/*
+ * Main program: Register the foreign functions defined above, compile and execute
  * our PHP test program.
  */
 int main(void)
@@ -583,7 +583,7 @@ int main(void)
 	rc = ph7_compile_v2(
 		pEngine,  /* PH7 engine */
 		PHP_PROG, /* PHP test program */
-		-1        /* Compute input length automatically*/, 
+		-1        /* Compute input length automatically*/,
 		&pVm,     /* OUT: Compiled PHP program */
 		0         /* IN: Compile flags */
 		);
@@ -592,9 +592,9 @@ int main(void)
 			const char *zErrLog;
 			int nLen;
 			/* Extract error log */
-			ph7_config(pEngine, 
-				PH7_CONFIG_ERR_LOG, 
-				&zErrLog, 
+			ph7_config(pEngine,
+				PH7_CONFIG_ERR_LOG,
+				&zErrLog,
 				&nLen
 				);
 			if( nLen > 0 ){
@@ -605,7 +605,7 @@ int main(void)
 		/* Exit */
 		Fatal("Compile error");
 	}
-	/* Now we have our program compiled, it's time to register 
+	/* Now we have our program compiled, it's time to register
 	 * our foreign functions.
 	 */
 	for( i = 0 ; i < (int)sizeof(aFunc)/sizeof(aFunc[0]) ;  ++i ){
@@ -619,15 +619,15 @@ int main(void)
 	 * Configure our VM:
 	 *  Install the VM output consumer callback defined above.
 	 */
-	rc = ph7_vm_config(pVm, 
-		PH7_VM_CONFIG_OUTPUT, 
+	rc = ph7_vm_config(pVm,
+		PH7_VM_CONFIG_OUTPUT,
 		Output_Consumer,    /* Output Consumer callback */
 		0                   /* Callback private data */
 		);
 	if( rc != PH7_OK ){
 		Fatal("Error while installing the VM output consumer callback");
 	}
-	/* 
+	/*
 	 * Report run-time errors such as unexpected numbers of arguments and so on.
 	 */
 	ph7_vm_config(pVm, PH7_VM_CONFIG_ERR_REPORT);

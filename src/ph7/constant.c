@@ -264,7 +264,7 @@ static void PH7_E_COMPILE_ERROR_Const(ph7_value *pVal,void *pUserData)
 	SXUNUSED(pUserData);
 }
 /*
- * E_COMPILE_WARNING 
+ * E_COMPILE_WARNING
  * Expands 128
  */
 static void PH7_E_COMPILE_WARNING_Const(ph7_value *pVal,void *pUserData)
@@ -309,7 +309,7 @@ static void PH7_E_STRICT_Const(ph7_value *pVal,void *pUserData)
 	SXUNUSED(pUserData);
 }
 /*
- * E_RECOVERABLE_ERROR 
+ * E_RECOVERABLE_ERROR
  * Expands 4096
  */
 static void PH7_E_RECOVERABLE_ERROR_Const(ph7_value *pVal,void *pUserData)
@@ -327,7 +327,7 @@ static void PH7_E_DEPRECATED_Const(ph7_value *pVal,void *pUserData)
 	SXUNUSED(pUserData);
 }
 /*
- * E_USER_DEPRECATED 
+ * E_USER_DEPRECATED
  *   Expands 16384.
  */
 static void PH7_E_USER_DEPRECATED_Const(ph7_value *pVal,void *pUserData)
@@ -490,7 +490,7 @@ static void PH7_PHP_ROUND_HALF_ODD_Const(ph7_value *pVal,void *pUserData)
 }
 /*
  * DEBUG_BACKTRACE_PROVIDE_OBJECT
- *  Expand 0x01 
+ *  Expand 0x01
  * NOTE:
  *  The expanded value must be a power of two.
  */
@@ -501,7 +501,7 @@ static void PH7_DBPO_Const(ph7_value *pVal,void *pUserData)
 }
 /*
  * DEBUG_BACKTRACE_IGNORE_ARGS
- *  Expand 0x02 
+ *  Expand 0x02
  * NOTE:
  *  The expanded value must be a power of two.
  */
@@ -667,7 +667,7 @@ static void PH7_M_EULER_Const(ph7_value *pVal,void *pUserData)
 #endif /* PH7_DISABLE_BUILTIN_MATH */
 /*
  * DATE_ATOM
- *  Expand Atom (example: 2005-08-15T15:52:01+00:00) 
+ *  Expand Atom (example: 2005-08-15T15:52:01+00:00)
  */
 static void PH7_DATE_ATOM_Const(ph7_value *pVal,void *pUserData)
 {
@@ -676,7 +676,7 @@ static void PH7_DATE_ATOM_Const(ph7_value *pVal,void *pUserData)
 }
 /*
  * DATE_COOKIE
- *  HTTP Cookies (example: Monday, 15-Aug-05 15:52:01 UTC)  
+ *  HTTP Cookies (example: Monday, 15-Aug-05 15:52:01 UTC)
  */
 static void PH7_DATE_COOKIE_Const(ph7_value *pVal,void *pUserData)
 {
@@ -685,7 +685,7 @@ static void PH7_DATE_COOKIE_Const(ph7_value *pVal,void *pUserData)
 }
 /*
  * DATE_ISO8601
- *  ISO-8601 (example: 2005-08-15T15:52:01+0000) 
+ *  ISO-8601 (example: 2005-08-15T15:52:01+0000)
  */
 static void PH7_DATE_ISO8601_Const(ph7_value *pVal,void *pUserData)
 {
@@ -694,7 +694,7 @@ static void PH7_DATE_ISO8601_Const(ph7_value *pVal,void *pUserData)
 }
 /*
  * DATE_RFC822
- *  RFC 822 (example: Mon, 15 Aug 05 15:52:01 +0000) 
+ *  RFC 822 (example: Mon, 15 Aug 05 15:52:01 +0000)
  */
 static void PH7_DATE_RFC822_Const(ph7_value *pVal,void *pUserData)
 {
@@ -703,7 +703,7 @@ static void PH7_DATE_RFC822_Const(ph7_value *pVal,void *pUserData)
 }
 /*
  * DATE_RFC850
- *  RFC 850 (example: Monday, 15-Aug-05 15:52:01 UTC) 
+ *  RFC 850 (example: Monday, 15-Aug-05 15:52:01 UTC)
  */
 static void PH7_DATE_RFC850_Const(ph7_value *pVal,void *pUserData)
 {
@@ -712,7 +712,7 @@ static void PH7_DATE_RFC850_Const(ph7_value *pVal,void *pUserData)
 }
 /*
  * DATE_RFC1036
- *  RFC 1123 (example: Mon, 15 Aug 2005 15:52:01 +0000) 
+ *  RFC 1123 (example: Mon, 15 Aug 2005 15:52:01 +0000)
  */
 static void PH7_DATE_RFC1036_Const(ph7_value *pVal,void *pUserData)
 {
@@ -721,7 +721,7 @@ static void PH7_DATE_RFC1036_Const(ph7_value *pVal,void *pUserData)
 }
 /*
  * DATE_RFC1123
- *  RFC 1123 (example: Mon, 15 Aug 2005 15:52:01 +0000)  
+ *  RFC 1123 (example: Mon, 15 Aug 2005 15:52:01 +0000)
  */
 static void PH7_DATE_RFC1123_Const(ph7_value *pVal,void *pUserData)
 {
@@ -730,7 +730,7 @@ static void PH7_DATE_RFC1123_Const(ph7_value *pVal,void *pUserData)
 }
 /*
  * DATE_RFC2822
- *  RFC 2822 (Mon, 15 Aug 2005 15:52:01 +0000)  
+ *  RFC 2822 (Mon, 15 Aug 2005 15:52:01 +0000)
  */
 static void PH7_DATE_RFC2822_Const(ph7_value *pVal,void *pUserData)
 {
@@ -739,7 +739,7 @@ static void PH7_DATE_RFC2822_Const(ph7_value *pVal,void *pUserData)
 }
 /*
  * DATE_RSS
- *  RSS (Mon, 15 Aug 2005 15:52:01 +0000) 
+ *  RSS (Mon, 15 Aug 2005 15:52:01 +0000)
  */
 static void PH7_DATE_RSS_Const(ph7_value *pVal,void *pUserData)
 {
@@ -748,7 +748,7 @@ static void PH7_DATE_RSS_Const(ph7_value *pVal,void *pUserData)
 }
 /*
  * DATE_W3C
- *  World Wide Web Consortium (example: 2005-08-15T15:52:01+00:00) 
+ *  World Wide Web Consortium (example: 2005-08-15T15:52:01+00:00)
  */
 static void PH7_DATE_W3C_Const(ph7_value *pVal,void *pUserData)
 {
@@ -1901,7 +1901,7 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"PHP_ROUND_HALF_ODD",   PH7_PHP_ROUND_HALF_ODD_Const  },
 	{"DEBUG_BACKTRACE_IGNORE_ARGS", PH7_DBIA_Const  },
 	{"DEBUG_BACKTRACE_PROVIDE_OBJECT",PH7_DBPO_Const},
-#ifdef PH7_ENABLE_MATH_FUNC 
+#ifdef PH7_ENABLE_MATH_FUNC
 	{"M_PI",                 PH7_M_PI_Const         },
 	{"M_E",                  PH7_M_E_Const          },
 	{"M_LOG2E",              PH7_M_LOG2E_Const      },
@@ -2062,7 +2062,7 @@ static const ph7_builtin_constant aBuiltIn[] = {
 PH7_PRIVATE void PH7_RegisterBuiltInConstant(ph7_vm *pVm)
 {
 	sxu32 n;
-	/* 
+	/*
 	 * Note that all built-in constants have access to the ph7 virtual machine
 	 * that trigger the constant invocation as their private data.
 	 */

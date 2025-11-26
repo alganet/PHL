@@ -144,7 +144,7 @@ static SyMutex * UnixMutexNew(int nType)
 		{PTHREAD_MUTEX_INITIALIZER,SXMUTEX_TYPE_STATIC_6}
 	};
 	SyMutex *pMutex;
-	
+
 	if( nType == SXMUTEX_TYPE_FAST || nType == SXMUTEX_TYPE_RECURSIVE ){
 		pthread_mutexattr_t sRecursiveAttr;
   		/* Allocate a new mutex */
@@ -168,7 +168,7 @@ static SyMutex * UnixMutexNew(int nType)
 		pMutex = &aStaticMutexes[nType - 3];
 	}
   pMutex->nType = nType;
-  
+
   return pMutex;
 }
 static void UnixMutexRelease(SyMutex *pMutex)
@@ -260,7 +260,7 @@ static void * SyOSHeapRealloc(void *pOld,sxu32 nByte)
 #else
 	pNew = realloc(pOld,(size_t)nByte);
 #endif
-	return pNew;	
+	return pNew;
 }
 static void SyOSHeapFree(void *pPtr)
 {
@@ -283,7 +283,7 @@ PH7_PRIVATE sxu32 SyStrlen(const char *zSrc)
 		if( !zIn[0] ){ break; } zIn++;
 		if( !zIn[0] ){ break; } zIn++;
 		if( !zIn[0] ){ break; } zIn++;
-		if( !zIn[0] ){ break; } zIn++;	
+		if( !zIn[0] ){ break; } zIn++;
 	}
 	return (sxu32)(zIn - zSrc);
 }
@@ -291,7 +291,7 @@ PH7_PRIVATE sxi32 SyByteFind(const char *zStr,sxu32 nLen,sxi32 c,sxu32 *pPos)
 {
 	const char *zIn = zStr;
 	const char *zEnd;
-	
+
 	zEnd = &zIn[nLen];
 	for(;;){
 		if( zIn >= zEnd ){ break; }if( zIn[0] == c ){ if( pPos ){ *pPos = (sxu32)(zIn - zStr); } return SXRET_OK; } zIn++;
@@ -306,7 +306,7 @@ PH7_PRIVATE sxi32 SyByteFind2(const char *zStr,sxu32 nLen,sxi32 c,sxu32 *pPos)
 {
 	const char *zIn = zStr;
 	const char *zEnd;
-	
+
 	zEnd = &zIn[nLen - 1];
 	for( ;; ){
 		if( zEnd < zIn ){ break; } if( zEnd[0] == c ){ if( pPos ){ *pPos =  (sxu32)(zEnd - zIn);} return SXRET_OK; } zEnd--;
@@ -314,7 +314,7 @@ PH7_PRIVATE sxi32 SyByteFind2(const char *zStr,sxu32 nLen,sxi32 c,sxu32 *pPos)
 		if( zEnd < zIn ){ break; } if( zEnd[0] == c ){ if( pPos ){ *pPos =  (sxu32)(zEnd - zIn);} return SXRET_OK; } zEnd--;
 		if( zEnd < zIn ){ break; } if( zEnd[0] == c ){ if( pPos ){ *pPos =  (sxu32)(zEnd - zIn);} return SXRET_OK; } zEnd--;
 	}
-	return SXERR_NOTFOUND; 
+	return SXERR_NOTFOUND;
 }
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
 PH7_PRIVATE sxi32 SyByteListFind(const char *zSrc,sxu32 nLen,const char *zList,sxu32 *pFirstPos)
@@ -329,8 +329,8 @@ PH7_PRIVATE sxi32 SyByteListFind(const char *zSrc,sxu32 nLen,const char *zList,s
 		if( zIn >= zEnd ){ break; }	for(zPtr = zList ; (c = zPtr[0]) != 0 ; zPtr++ ){ if( zIn[0] == c ){ if( pFirstPos ){ *pFirstPos = (sxu32)(zIn - zSrc); } return SXRET_OK; } } zIn++;
 		if( zIn >= zEnd ){ break; }	for(zPtr = zList ; (c = zPtr[0]) != 0 ; zPtr++ ){ if( zIn[0] == c ){ if( pFirstPos ){ *pFirstPos = (sxu32)(zIn - zSrc); } return SXRET_OK; } } zIn++;
 		if( zIn >= zEnd ){ break; }	for(zPtr = zList ; (c = zPtr[0]) != 0 ; zPtr++ ){ if( zIn[0] == c ){ if( pFirstPos ){ *pFirstPos = (sxu32)(zIn - zSrc); } return SXRET_OK; } } zIn++;
-	}	
-	return SXERR_NOTFOUND; 
+	}
+	return SXERR_NOTFOUND;
 }
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 PH7_PRIVATE sxi32 SyStrncmp(const char *zLeft,const char *zRight,sxu32 nLen)
@@ -351,13 +351,13 @@ PH7_PRIVATE sxi32 SyStrncmp(const char *zLeft,const char *zRight,sxu32 nLen)
 		if( nLen <= 0 ){ return 0; } if( zP[0] == 0 || zQ[0] == 0 || zP[0] != zQ[0] ){ break; } zP++; zQ++; nLen--;
 	}
 	return (sxi32)(zP[0] - zQ[0]);
-}	
+}
 #endif
 PH7_PRIVATE sxi32 SyStrnicmp(const char *zLeft, const char *zRight,sxu32 SLen)
 {
   	register unsigned char *p = (unsigned char *)zLeft;
 	register unsigned char *q = (unsigned char *)zRight;
-	
+
 	if( SX_EMPTY_STR(p) || SX_EMPTY_STR(q) ){
 		return SX_EMPTY_STR(p)? SX_EMPTY_STR(q) ? 0 : -1 :1;
 	}
@@ -366,7 +366,7 @@ PH7_PRIVATE sxi32 SyStrnicmp(const char *zLeft, const char *zRight,sxu32 SLen)
 		if( !SLen ){ return 0; }if( !*p || !*q || SyCharToLower(*p) != SyCharToLower(*q) ){ break; }p++;q++;--SLen;
 		if( !SLen ){ return 0; }if( !*p || !*q || SyCharToLower(*p) != SyCharToLower(*q) ){ break; }p++;q++;--SLen;
 		if( !SLen ){ return 0; }if( !*p || !*q || SyCharToLower(*p) != SyCharToLower(*q) ){ break; }p++;q++;--SLen;
-		
+
 	}
 	return (sxi32)(SyCharToLower(p[0]) - SyCharToLower(q[0]));
 }
@@ -498,7 +498,7 @@ static void * MemBackendAlloc(SyMemBackend *pBackend,sxu32 nByte)
 	nByte += sizeof(SyMemBlock);
 	for(;;){
 		pBlock = (SyMemBlock *)pBackend->pMethods->xAlloc(nByte);
-		if( pBlock != 0 || pBackend->xMemError == 0 || nRetry > SXMEM_BACKEND_RETRY 
+		if( pBlock != 0 || pBackend->xMemError == 0 || nRetry > SXMEM_BACKEND_RETRY
 			|| SXERR_RETRY != pBackend->xMemError(pBackend->pUserData) ){
 				break;
 		}
@@ -666,7 +666,7 @@ PH7_PRIVATE sxi32 SyMemBackendDisbaleMutexing(SyMemBackend *pBackend)
 	}
 	SyMutexRelease(pBackend->pMutexMethods,pBackend->pMutex);
 	pBackend->pMutexMethods = 0;
-	pBackend->pMutex = 0; 
+	pBackend->pMutex = 0;
 	return SXRET_OK;
 }
 #endif
@@ -674,14 +674,14 @@ PH7_PRIVATE sxi32 SyMemBackendDisbaleMutexing(SyMemBackend *pBackend)
  * Memory pool allocator
  */
 #define SXMEM_POOL_MAGIC		0xDEAD
-#define SXMEM_POOL_MAXALLOC		(1<<(SXMEM_POOL_NBUCKETS+SXMEM_POOL_INCR)) 
+#define SXMEM_POOL_MAXALLOC		(1<<(SXMEM_POOL_NBUCKETS+SXMEM_POOL_INCR))
 #define SXMEM_POOL_MINALLOC		(1<<(SXMEM_POOL_INCR))
 static sxi32 MemPoolBucketAlloc(SyMemBackend *pBackend,sxu32 nBucket)
 {
 	char *zBucket,*zBucketEnd;
 	SyMemHeader *pHeader;
 	sxu32 nBucketSize;
-	
+
 	/* Allocate one big block first */
 	zBucket = (char *)MemBackendAlloc(&(*pBackend),SXMEM_POOL_MAXALLOC);
 	if( zBucket == 0 ){
@@ -698,10 +698,10 @@ static sxi32 MemPoolBucketAlloc(SyMemBackend *pBackend,sxu32 nBucket)
 		pHeader->pNext = (SyMemHeader *)&zBucket[nBucketSize];
 		/* Advance the cursor to the next available chunk */
 		pHeader = pHeader->pNext;
-		zBucket += nBucketSize;	
+		zBucket += nBucketSize;
 	}
 	pHeader->pNext = 0;
-	
+
 	return SXRET_OK;
 }
 static void * MemBackendPoolAlloc(SyMemBackend *pBackend,sxu32 nByte)
@@ -1246,7 +1246,7 @@ PH7_PRIVATE sxi32 SySetPut(SySet *pSet,const void *pItem)
 	}
 	zbase = (unsigned char *)pSet->pBase;
 	SX_MACRO_FAST_MEMCPY(pItem,&zbase[pSet->nUsed * pSet->eSize],pSet->eSize);
-	pSet->nUsed++;	
+	pSet->nUsed++;
 	return SXRET_OK;
 }
 PH7_PRIVATE sxi32 SySetAlloc(SySet *pSet,sxi32 nItem)
@@ -1263,7 +1263,7 @@ PH7_PRIVATE sxi32 SySetAlloc(SySet *pSet,sxi32 nItem)
 	}
 	pSet->nSize = nItem;
 	return SXRET_OK;
-} 
+}
 PH7_PRIVATE sxi32 SySetReset(SySet *pSet)
 {
 	pSet->nUsed   = 0;
@@ -1326,7 +1326,7 @@ PH7_PRIVATE void * SySetPeek(SySet *pSet)
 		return 0;
 	}
 	zBase = (const char *)pSet->pBase;
-	return (void *)&zBase[(pSet->nUsed - 1) * pSet->eSize]; 
+	return (void *)&zBase[(pSet->nUsed - 1) * pSet->eSize];
 }
 PH7_PRIVATE void * SySetPop(SySet *pSet)
 {
@@ -1337,7 +1337,7 @@ PH7_PRIVATE void * SySetPop(SySet *pSet)
 	}
 	zBase = (const char *)pSet->pBase;
 	pSet->nUsed--;
-	pData =  (void *)&zBase[pSet->nUsed * pSet->eSize]; 
+	pData =  (void *)&zBase[pSet->nUsed * pSet->eSize];
 	return pData;
 }
 PH7_PRIVATE void * SySetAt(SySet *pSet,sxu32 nIdx)
@@ -1348,7 +1348,7 @@ PH7_PRIVATE void * SySetAt(SySet *pSet,sxu32 nIdx)
 		return 0;
 	}
 	zBase = (const char *)pSet->pBase;
-	return (void *)&zBase[nIdx * pSet->eSize]; 
+	return (void *)&zBase[nIdx * pSet->eSize];
 }
 /* Private hash entry */
 struct SyHashEntry_Pr
@@ -1425,7 +1425,7 @@ static SyHashEntry_Pr * HashGetEntry(SyHash *pHash,const void *pKey,sxu32 nKeyLe
 		if( pEntry == 0 ){
 			break;
 		}
-		if( pEntry->nHash == nHash && pEntry->nKeyLen == nKeyLen && 
+		if( pEntry->nHash == nHash && pEntry->nKeyLen == nKeyLen &&
 			pHash->xCmp(pEntry->pKey,pKey,nKeyLen) == 0 ){
 				return pEntry;
 		}
@@ -1740,12 +1740,12 @@ PH7_PRIVATE sxi32 SyStrToInt32(const char *zSrc,sxu32 nLen,void * pOutVal,const 
 	}
 	/* Skip leading zero */
 	while(zSrc < zEnd && zSrc[0] == '0' ){
-		zSrc++; 
+		zSrc++;
 	}
 	i = 10;
 	if( (sxu32)(zEnd-zSrc) >= 10 ){
 		/* Handle overflow */
-		i = SyMemcmp(zSrc,(isNeg == TRUE) ? SXINT32_MIN_STR : SXINT32_MAX_STR,nLen) <= 0 ? 10 : 9; 
+		i = SyMemcmp(zSrc,(isNeg == TRUE) ? SXINT32_MIN_STR : SXINT32_MAX_STR,nLen) <= 0 ? 10 : 9;
 	}
 	for(;;){
 		if(zSrc >= zEnd || !i || !SyisDigit(zSrc[0])){ break; } nVal = nVal * 10 + ( zSrc[0] - '0' ) ; --i ; zSrc++;
@@ -1759,7 +1759,7 @@ PH7_PRIVATE sxi32 SyStrToInt32(const char *zSrc,sxu32 nLen,void * pOutVal,const 
 	}
 	if( zRest ){
 		*zRest = (char *)zSrc;
-	}	
+	}
 	if( pOutVal ){
 		if( isNeg == TRUE && nVal != 0 ){
 			nVal = -nVal;
@@ -1811,7 +1811,7 @@ PH7_PRIVATE sxi32 SyStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,const 
 	}
 	if( zRest ){
 		*zRest = (char *)zSrc;
-	}	
+	}
 	if( pOutVal ){
 		if( isNeg == TRUE && nVal != 0 ){
 			nVal = -nVal;
@@ -1840,7 +1840,7 @@ PH7_PRIVATE sxi32 SyHexToint(sxi32 c)
 	case 'E': case 'e': return 14;
 	case 'F': case 'f': return 15;
 	}
-	return -1; 	
+	return -1;
 }
 PH7_PRIVATE sxi32 SyHexStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,const char **zRest)
 {
@@ -1866,7 +1866,7 @@ PH7_PRIVATE sxi32 SyHexStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,con
 	if( zSrc < &zEnd[-2] && zSrc[0] == '0' && (zSrc[1] == 'x' || zSrc[1] == 'X') ){
 		/* Bypass hex prefix */
 		zSrc += sizeof(char) * 2;
-	}	
+	}
 	/* Skip leading zero */
 	while(zSrc < zEnd && zSrc[0] == '0' ){
 		zSrc++;
@@ -1880,7 +1880,7 @@ PH7_PRIVATE sxi32 SyHexStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,con
 	}
 	while( zSrc < zEnd && SyisSpace(zSrc[0]) ){
 		zSrc++;
-	}	
+	}
 	if( zRest ){
 		*zRest = zSrc;
 	}
@@ -1916,7 +1916,7 @@ PH7_PRIVATE sxi32 SyOctalStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,c
 	}
 	/* Skip leading zero */
 	while(zSrc < zEnd && zSrc[0] == '0' ){
-		zSrc++; 
+		zSrc++;
 	}
 	zIn = zSrc;
 	for(;;){
@@ -1931,7 +1931,7 @@ PH7_PRIVATE sxi32 SyOctalStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,c
 	}
 	if( zRest ){
 		*zRest = zSrc;
-	}	
+	}
 	if( pOutVal ){
 		if( isNeg == TRUE && nVal != 0 ){
 			nVal = -nVal;
@@ -1968,7 +1968,7 @@ PH7_PRIVATE sxi32 SyBinaryStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,
 	}
 	/* Skip leading zero */
 	while(zSrc < zEnd && zSrc[0] == '0' ){
-		zSrc++; 
+		zSrc++;
 	}
 	zIn = zSrc;
 	for(;;){
@@ -1983,7 +1983,7 @@ PH7_PRIVATE sxi32 SyBinaryStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,
 	}
 	if( zRest ){
 		*zRest = zSrc;
-	}	
+	}
 	if( pOutVal ){
 		if( isNeg == TRUE && nVal != 0 ){
 			nVal = -nVal;
@@ -2023,7 +2023,7 @@ PH7_PRIVATE sxi32 SyStrToReal(const char *zSrc,sxu32 nLen,void * pOutVal,const c
 #endif
 	zEnd = &zSrc[nLen];
 	while( zSrc < zEnd && SyisSpace(zSrc[0]) ){
-		zSrc++; 
+		zSrc++;
 	}
 	if( zSrc < zEnd && (zSrc[0] == '-' || zSrc[0] == '+' ) ){
 		neg =  zSrc[0] == '-' ? TRUE : FALSE ;
@@ -2048,13 +2048,13 @@ PH7_PRIVATE sxi32 SyStrToReal(const char *zSrc,sxu32 nLen,void * pOutVal,const c
 		Val /= dec;
 	}
 	if( neg == TRUE && Val != 0.0 ) {
-		Val = -Val ; 
+		Val = -Val ;
 	}
 	if( Lim <= 0 ){
 		/* jump overflow digit */
 		while( zSrc < zEnd ){
 			if( zSrc[0] == 'e' || zSrc[0] == 'E' ){
-				break;  
+				break;
 			}
 			zSrc++;
 		}
@@ -2074,8 +2074,8 @@ PH7_PRIVATE sxi32 SyStrToReal(const char *zSrc,sxu32 nLen,void * pOutVal,const c
 		if( neg  ){
 			if( exp > SXDBL_MIN_EXP_PLUS ) exp = SXDBL_MIN_EXP_PLUS ;
 		}else if ( exp > SXDBL_MAX_EXP ){
-			exp = SXDBL_MAX_EXP; 
-		}		
+			exp = SXDBL_MAX_EXP;
+		}
 		for( p = (sxreal *)aTab ; exp ; exp >>= 1 , p++ ){
 			if( exp & 01 ){
 				if( neg ){
@@ -2090,7 +2090,7 @@ PH7_PRIVATE sxi32 SyStrToReal(const char *zSrc,sxu32 nLen,void * pOutVal,const c
 		zSrc++;
 	}
 	if( zRest ){
-		*zRest = zSrc; 
+		*zRest = zSrc;
 	}
 	if( pOutVal ){
 		*(sxreal *)pOutVal = Val;
@@ -2109,21 +2109,21 @@ static sxu32 SyBinHash(const void *pSrc,sxu32 nLen)
 		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;
 		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;
 		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;
-	}	
+	}
 	return nH;
 }
 PH7_PRIVATE sxu32 SyStrHash(const void *pSrc,sxu32 nLen)
 {
 	register unsigned char *zIn = (unsigned char *)pSrc;
 	unsigned char *zEnd;
-	sxu32 nH = 5381;	
+	sxu32 nH = 5381;
 	zEnd = &zIn[nLen];
 	for(;;){
 		if( zIn >= zEnd ){ break; } nH = nH * 33 + SyToLower(zIn[0]); zIn++;
 		if( zIn >= zEnd ){ break; } nH = nH * 33 + SyToLower(zIn[0]); zIn++;
 		if( zIn >= zEnd ){ break; } nH = nH * 33 + SyToLower(zIn[0]); zIn++;
 		if( zIn >= zEnd ){ break; } nH = nH * 33 + SyToLower(zIn[0]); zIn++;
-	}	
+	}
 	return nH;
 }
 #ifndef PH7_DISABLE_BUILTIN_FUNC
@@ -2141,20 +2141,20 @@ PH7_PRIVATE sxi32 SyBase64Encode(const char *zSrc,sxu32 nLen,ProcConsumer xConsu
 #endif
 	for(i = 0; i + 2 < nLen; i += 3){
 		z64[0] = zBase64[(zIn[i] >> 2) & 0x3F];
-		z64[1] = zBase64[( ((zIn[i] & 0x03) << 4)   | (zIn[i+1] >> 4)) & 0x3F]; 
+		z64[1] = zBase64[( ((zIn[i] & 0x03) << 4)   | (zIn[i+1] >> 4)) & 0x3F];
 		z64[2] = zBase64[( ((zIn[i+1] & 0x0F) << 2) | (zIn[i + 2] >> 6) ) & 0x3F];
 		z64[3] = zBase64[ zIn[i + 2] & 0x3F];
-		
+
 		rc = xConsumer((const void *)z64,sizeof(z64),pUserData);
 		if( rc != SXRET_OK ){return SXERR_ABORT;}
 
-	}	
+	}
 	if ( i+1 < nLen ){
 		z64[0] = zBase64[(zIn[i] >> 2) & 0x3F];
-		z64[1] = zBase64[( ((zIn[i] & 0x03) << 4)   | (zIn[i+1] >> 4)) & 0x3F]; 
+		z64[1] = zBase64[( ((zIn[i] & 0x03) << 4)   | (zIn[i+1] >> 4)) & 0x3F];
 		z64[2] = zBase64[(zIn[i+1] & 0x0F) << 2 ];
 		z64[3] = '=';
-		
+
 		rc = xConsumer((const void *)z64,sizeof(z64),pUserData);
 		if( rc != SXRET_OK ){return SXERR_ABORT;}
 
@@ -2163,7 +2163,7 @@ PH7_PRIVATE sxi32 SyBase64Encode(const char *zSrc,sxu32 nLen,ProcConsumer xConsu
 		z64[1]   = zBase64[(zIn[i] & 0x03) << 4];
 		z64[2] = '=';
 		z64[3] = '=';
-		
+
 		rc = xConsumer((const void *)z64,sizeof(z64),pUserData);
 		if( rc != SXRET_OK ){return SXERR_ABORT;}
 	}
@@ -2244,7 +2244,7 @@ PH7_PRIVATE sxi32 SyLexInit(SyLex *pLex,SySet *pSet,ProcTokenizer xTokenizer,voi
 	pStream = &pLex->sStream;
 	pLex->xTokenizer = xTokenizer;
 	pLex->pUserData = pUserData;
-	
+
 	pStream->nLine = 1;
 	pStream->nIgn  = 0;
 	pStream->zText = pStream->zEnd = 0;
@@ -2350,7 +2350,7 @@ PH7_PRIVATE sxi32 SyUriEncode(const char *zSrc,sxu32 nLen,ProcConsumer xConsumer
 		}
 		if( zCur != zIn && SXRET_OK != (rc = xConsumer(zIn,(sxu32)(zCur-zIn),pUserData))){
 			break;
-		}		
+		}
 		if( c == ' ' ){
 			zOut[0] = '+';
 			rc = xConsumer((const void *)zOut,sizeof(unsigned char),pUserData);
@@ -2361,7 +2361,7 @@ PH7_PRIVATE sxi32 SyUriEncode(const char *zSrc,sxu32 nLen,ProcConsumer xConsumer
 		}
 		if( SXRET_OK != rc ){
 			break;
-		}				
+		}
 		zIn = &zCur[1]; zCur = zIn ;
 	}
 	return rc == SXRET_OK ? SXRET_OK : SXERR_ABORT;
@@ -2380,8 +2380,8 @@ static sxi32 SyAsciiToHex(sxi32 c)
 	if( c >= 'A' && c <= 'F') {
 		c += 10 - 'A';
 		return c;
-	}		
-	return 0; 
+	}
+	return 0;
 }
 PH7_PRIVATE sxi32 SyUriDecode(const char *zSrc,sxu32 nLen,ProcConsumer xConsumer,void *pUserData,int bUTF8)
 {
@@ -2456,7 +2456,7 @@ PH7_PRIVATE sxi32 SyUriDecode(const char *zSrc,sxu32 nLen,ProcConsumer xConsumer
 					SX_WRITE_UTF8(zOutPtr,c);
 				}
 			}
-			
+
 		}
 		/* Consume the decoded characters */
 		rc = xConsumer((const void *)zOut,(unsigned int)(zOutPtr-zOut),pUserData);
@@ -2469,7 +2469,7 @@ PH7_PRIVATE sxi32 SyUriDecode(const char *zSrc,sxu32 nLen,ProcConsumer xConsumer
 	return rc;
 }
 #ifndef PH7_DISABLE_BUILTIN_FUNC
-static const char *zEngDay[] = { 
+static const char *zEngDay[] = {
 	"Sunday","Monday","Tuesday","Wednesday",
 	"Thursday","Friday","Saturday"
 };
@@ -2512,7 +2512,7 @@ PH7_PRIVATE const char * SyTimeGetMonth(sxi32 iMonth)
 #define SXFMT_ERROR       9 /* Used to indicate no such conversion type */
 /* Extension by Symisc Systems */
 #define SXFMT_RAWSTR     13 /* %z Pointer to raw string (SyString *) */
-#define SXFMT_UNUSED     15 
+#define SXFMT_UNUSED     15
 /*
 ** Allowed values for SyFmtInfo.flags
 */
@@ -2544,13 +2544,13 @@ struct SyFmtConsumer
 	sxi32 nType; /* Type of the consumer see below */
 	sxi32 rc;	/* Consumer return value;Abort processing if rc != SXRET_OK */
  union{
-	struct{	
+	struct{
 	ProcConsumer xUserConsumer;
 	void *pUserData;
-	}sFunc;  
+	}sFunc;
 	SyBlob *pBlob;
- }uConsumer;	
-}; 
+ }uConsumer;
+};
 #ifndef SX_OMIT_FLOATINGPOINT
 static int getdigit(sxlongreal *val,int *cnt)
 {
@@ -2619,7 +2619,7 @@ static const SyFmtInfo aFmt[] = {
   char prefix;             /* Prefix character."+" or "-" or " " or '\0'.*/
   sxu8 errorflag = 0;      /* True if an error is encountered */
   sxu8 xtype;              /* Conversion paradigm */
-  char *zExtra;    
+  char *zExtra;
   static char spaces[] = "                                                  ";
 #define etSPACESIZE ((int)sizeof(spaces)-1)
 #ifndef SX_OMIT_FLOATINGPOINT
@@ -2658,7 +2658,7 @@ static const SyFmtInfo aFmt[] = {
       return errorflag > 0 ? SXERR_FORMAT : SXRET_OK;
     }
     /* Find out what flags are present */
-    flag_leftjustify = flag_plussign = flag_blanksign = 
+    flag_leftjustify = flag_plussign = flag_blanksign =
      flag_alternateform = flag_zeropad = 0;
     do{
       switch( c ){
@@ -2772,7 +2772,7 @@ static const SyFmtInfo aFmt[] = {
         if( longvalue==0 && infop->base==8 ) flag_alternateform = 0;
 #endif
         if( infop->flags & SXFLAG_SIGNED ){
-          if( longvalue<0 ){ 
+          if( longvalue<0 ){
             longvalue = -longvalue;
 			/* Ticket 1433-003 */
 			if( longvalue < 0 ){
@@ -3057,7 +3057,7 @@ static const SyFmtInfo aFmt[] = {
     }
   }/* End for loop over the format string */
   return errorflag ? SXERR_FORMAT : SXRET_OK;
-} 
+}
 static sxi32 FormatConsumer(const void *pSrc,unsigned int nLen,void *pData)
 {
 	SyFmtConsumer *pConsumer = (SyFmtConsumer *)pData;
@@ -3071,14 +3071,14 @@ static sxi32 FormatConsumer(const void *pSrc,unsigned int nLen,void *pData)
 			/* Blob consumer */
 			rc = SyBlobAppend(pConsumer->uConsumer.pBlob,pSrc,(sxu32)nLen);
 			break;
-		default: 
+		default:
 			/* Unknown consumer */
 			break;
 	}
 	/* Update total number of bytes consumed so far */
 	pConsumer->nLen += nLen;
 	pConsumer->rc = rc;
-	return rc;	
+	return rc;
 }
 static sxi32 FormatMount(sxi32 nType,void *pConsumer,ProcConsumer xUserCons,void *pUserData,sxu32 *pOutLen,const char *zFormat,va_list ap)
 {
@@ -3102,10 +3102,10 @@ static sxi32 FormatMount(sxi32 nType,void *pConsumer,ProcConsumer xUserCons,void
 		case SXFMT_CONS_BLOB:
 			sCons.uConsumer.pBlob = (SyBlob *)pConsumer;
 			break;
-		default: 
+		default:
 			return SXERR_UNKNOWN;
 	}
-	InternFormat(FormatConsumer,&sCons,zFormat,ap); 
+	InternFormat(FormatConsumer,&sCons,zFormat,ap);
 	if( pOutLen ){
 		*pOutLen = sCons.nLen;
 	}
@@ -3115,7 +3115,7 @@ PH7_PRIVATE sxi32 SyProcFormat(ProcConsumer xConsumer,void *pData,const char *zF
 {
 	va_list ap;
 	sxi32 rc;
-#if defined(UNTRUST)	
+#if defined(UNTRUST)
 	if( SX_EMPTY_STR(zFormat) ){
 		return SXERR_EMPTY;
 	}
@@ -3129,11 +3129,11 @@ PH7_PRIVATE sxu32 SyBlobFormat(SyBlob *pBlob,const char *zFormat,...)
 {
 	va_list ap;
 	sxu32 n;
-#if defined(UNTRUST)	
+#if defined(UNTRUST)
 	if( SX_EMPTY_STR(zFormat) ){
 		return 0;
 	}
-#endif			
+#endif
 	va_start(ap,zFormat);
 	FormatMount(SXFMT_CONS_BLOB,&(*pBlob),0,0,&n,zFormat,ap);
 	va_end(ap);
@@ -3142,11 +3142,11 @@ PH7_PRIVATE sxu32 SyBlobFormat(SyBlob *pBlob,const char *zFormat,...)
 PH7_PRIVATE sxu32 SyBlobFormatAp(SyBlob *pBlob,const char *zFormat,va_list ap)
 {
 	sxu32 n = 0; /* cc warning */
-#if defined(UNTRUST)	
+#if defined(UNTRUST)
 	if( SX_EMPTY_STR(zFormat) ){
 		return 0;
 	}
-#endif	
+#endif
 	FormatMount(SXFMT_CONS_BLOB,&(*pBlob),0,0,&n,zFormat,ap);
 	return n;
 }
@@ -3155,14 +3155,14 @@ PH7_PRIVATE sxu32 SyBufferFormat(char *zBuf,sxu32 nLen,const char *zFormat,...)
 	SyBlob sBlob;
 	va_list ap;
 	sxu32 n;
-#if defined(UNTRUST)	
+#if defined(UNTRUST)
 	if( SX_EMPTY_STR(zFormat) ){
 		return 0;
 	}
-#endif	
+#endif
 	if( SXRET_OK != SyBlobInitFromBuf(&sBlob,zBuf,nLen - 1) ){
 		return 0;
-	}		
+	}
 	va_start(ap,zFormat);
 	FormatMount(SXFMT_CONS_BLOB,&sBlob,0,0,0,zFormat,ap);
 	va_end(ap);
@@ -3179,13 +3179,13 @@ PH7_PRIVATE sxu32 SyBufferFormat(char *zBuf,sxu32 nLen,const char *zFormat,...)
 * @started 08/03/2010 21:32 FreeBSD
 * @finished	07/04/2010 23:24 Win32[VS8]
 */
-/* 
+/*
  * An XML raw text,CDATA,tag name is parsed out and stored
  * in an instance of the following structure.
  */
-typedef struct SyXMLRawStrNS SyXMLRawStrNS; 
+typedef struct SyXMLRawStrNS SyXMLRawStrNS;
 struct SyXMLRawStrNS
-{	
+{
 	/* Public field [Must match the SyXMLRawStr fields ] */
 	const char *zString; /* Raw text [UTF-8 ENCODED EXCEPT CDATA] [NOT NULL TERMINATED] */
 	sxu32 nByte; /* Text length */
@@ -3195,7 +3195,7 @@ struct SyXMLRawStrNS
 };
 /*
  * Lexer token codes
- * The following set of constants are the token value recognized 
+ * The following set of constants are the token value recognized
  * by the lexer when processing XML input.
  */
 #define SXML_TOK_INVALID	0xFFFF /* Invalid Token */
@@ -3518,7 +3518,7 @@ static sxi32 XMLProcessNamesSpace(SyXMLParser *pParse,SyXMLRawStrNS *pTag,SyToke
 		pPrefix->nByte = 0;
 		pPrefix->zString = ""; /* Empty string */
 	}else{
-		pPrefix->nByte   -= sizeof("xmlns")-1; 
+		pPrefix->nByte   -= sizeof("xmlns")-1;
 		pPrefix->zString += sizeof("xmlns")-1;
 		if( pPrefix->zString[0] != ':' ){
 			return SXRET_OK;
@@ -3668,7 +3668,7 @@ static sxi32 XMLProcessStartTag(SyXMLParser *pParse,SyToken *pToken,SyXMLRawStrN
 			}
 			return SXERR_SYNTAX;
 		}
-		while( sEntry.nByte > 0 && (unsigned char)zCur[sEntry.nByte - 1] < 0xc0 
+		while( sEntry.nByte > 0 && (unsigned char)zCur[sEntry.nByte - 1] < 0xc0
 			&& SyisSpace(zCur[sEntry.nByte - 1])){
 				sEntry.nByte--;
 		}
@@ -3748,7 +3748,7 @@ static void XMLExtactPI(SyToken *pToken,SyXMLRawStr *pTarget,SyXMLRawStr *pData,
 {
 	SyString *pIn = &pToken->sData;
 	const char *zIn,*zCur,*zEnd;
-	
+
 	pTarget->nLine = pData->nLine = pToken->nLine;
 	/* Nullify the entries first */
 	pTarget->zString = pData->zString = 0;
@@ -3822,7 +3822,7 @@ static void TokenToXMLString(SyToken *pTok,SyXMLRawStrNS *pOut)
 {
 	/* Remove leading and trailing white spaces first */
 	SyStringFullTrim(&pTok->sData);
-	pOut->zString = SyStringData(&pTok->sData); 
+	pOut->zString = SyStringData(&pTok->sData);
 	pOut->nByte = SyStringLength(&pTok->sData);
 }
 static sxi32 XMLExtractNS(SyXMLParser *pParse,SyToken *pToken,SyXMLRawStrNS *pTag,SyXMLRawStr *pnsUri)
@@ -3919,7 +3919,7 @@ static sxi32 XMLnsUnlink(SyXMLParser *pParse,SyXMLRawStrNS *pLast,SyToken *pToke
 	return SXRET_OK;
 }
 /* Process XML tokens */
-static sxi32  ProcessXML(SyXMLParser *pParse,SySet *pTagStack,SySet *pWorker)	
+static sxi32  ProcessXML(SyXMLParser *pParse,SySet *pTagStack,SySet *pWorker)
 {
 	SySet *pTokenSet = &pParse->sToken;
 	SyXMLRawStrNS sEntry;
@@ -3929,7 +3929,7 @@ static sxi32  ProcessXML(SyXMLParser *pParse,SySet *pTagStack,SySet *pWorker)
 	sxi32 rc;
 	/* Initialize fields */
 	bGotTag = 0;
-	/* Start processing */		
+	/* Start processing */
 	if( pParse->xStartDoc && (SXERR_ABORT == pParse->xStartDoc(pParse->pUserData)) ){
 		/* User callback request an operation abort */
 		return SXERR_ABORT;
@@ -3999,7 +3999,7 @@ static sxi32  ProcessXML(SyXMLParser *pParse,SySet *pTagStack,SySet *pWorker)
 				if( rc == SXERR_ABORT ){
 					return SXERR_ABORT;
 				}
-			}						 
+			}
 			break;
 						 }
 		case SXML_TOK_RAW:
@@ -4073,7 +4073,7 @@ static sxi32  ProcessXML(SyXMLParser *pParse,SySet *pTagStack,SySet *pWorker)
 					return SXERR_ABORT;
 				}
 			}
-			break;							  
+			break;
 							  }
 		case SXML_TOK_START_TAG:
 		case SXML_TOK_START_END:
@@ -4250,11 +4250,11 @@ PH7_PRIVATE sxi32 SyXMLParserRelease(SyXMLParser *pParser)
  * Zip File Format:
  *
  * Byte order: Little-endian
- * 
+ *
  * [Local file header + Compressed data [+ Extended local header]?]*
  * [Central directory]*
  * [End of central directory record]
- * 
+ *
  * Local file header:*
  * Offset   Length   Contents
  *  0      4 bytes  Local file header signature (0x04034b50)
@@ -4284,7 +4284,7 @@ PH7_PRIVATE sxi32 SyXMLParserRelease(SyXMLParser *pParser)
  * 0	  	2 bytes		Header ID (0x001 until 0xfb4a) see extended appnote from Info-zip
  * 2	  	2 bytes		Data size (g)
  * 		  	(g) bytes	(g) bytes of extra field
- * 
+ *
  * Central directory:*
  * Offset   Length   Contents
  *  0      4 bytes  Central file header signature (0x02014b50)
@@ -4330,7 +4330,7 @@ PH7_PRIVATE sxi32 SyXMLParserRelease(SyXMLParser *pParser)
  *          6 - The file is Imploded
  *          7 - Reserved for Tokenizing compression algorithm
  *          8 - The file is Deflated
- */ 
+ */
 
 #define SXMAKE_ZIP_WORKBUF	(SXU16_HIGH/2)	/* 32KB Initial working buffer size */
 #define SXMAKE_ZIP_EXTRACT_VER	0x000a	/* Version needed to extract */
@@ -4345,11 +4345,11 @@ PH7_PRIVATE sxi32 SyXMLParserRelease(SyXMLParser *pParser)
 #define SXZIP_LOCAL_EXT_HDRZ	16	/* Extended local header(footer) size */
 #define SXZIP_CENTRAL_HDRSZ		46	/* Central directory header size */
 #define SXZIP_END_CENTRAL_HDRSZ	22	/* End of central directory header size */
-	 
+
 #define SXARCHIVE_HASH_SIZE	64 /* Starting hash table size(MUST BE POWER OF 2)*/
 static sxi32 SyLittleEndianUnpack32(sxu32 *uNB,const unsigned char *buf,sxu32 Len)
 {
-	if( Len < sizeof(sxu32) ){ 
+	if( Len < sizeof(sxu32) ){
 		return SXERR_SHORT;
 	}
 	*uNB =  buf[0] + (buf[1] << 8) + (buf[2] << 16) + (buf[3] << 24);
@@ -4361,7 +4361,7 @@ static sxi32 SyLittleEndianUnpack16(sxu16 *pOut,const unsigned char *zBuf,sxu32 
 		return SXERR_SHORT;
 	}
 	*pOut = zBuf[0] + (zBuf[1] <<8);
-	
+
 	return SXRET_OK;
 }
 static sxi32 SyDosTimeFormat(sxu32 nDosDate,Sytm *pOut)
@@ -4455,12 +4455,12 @@ static sxi32 ArchiveHashInstallEntry(SyArchive *pArch,SyArchiveEntry *pEntry)
 }
  /*
   * Parse the End of central directory and report status
-  */ 
+  */
  static sxi32 ParseEndOfCentralDirectory(SyArchive *pArch,const unsigned char *zBuf)
  {
 	sxu32 nMagic = 0; /* cc -O6 warning */
  	sxi32 rc;
- 	
+
  	/* Sanity check */
  	rc = SyLittleEndianUnpack32(&nMagic,zBuf,sizeof(sxu32));
  	if( /* rc != SXRET_OK || */nMagic != SXZIP_END_CENTRAL_MAGIC ){
@@ -4481,25 +4481,25 @@ static sxi32 ArchiveHashInstallEntry(SyArchive *pArch,SyArchiveEntry *pEntry)
  	if( /*rc != SXRET_OK ||*/ pArch->nCentralSize > SXI32_HIGH ){
  		return SXERR_CORRUPT;
  	}
- 	
+
  	return SXRET_OK;
  }
  /*
   * Fill the zip entry with the appropriate information from the central directory
   */
 static sxi32 GetCentralDirectoryEntry(SyArchive *pArch,SyArchiveEntry *pEntry,const unsigned char *zCentral,sxu32 *pNextOffset)
- { 
+ {
  	SyString *pName = &pEntry->sFileName; /* File name */
  	sxu16 nDosDate,nDosTime;
 	sxu16 nComment = 0 ;
 	sxu32 nMagic = 0; /* cc -O6 warning */
-	sxi32 rc; 	
+	sxi32 rc;
 	nDosDate = nDosTime = 0; /* cc -O6 warning */
 	SXUNUSED(pArch);
  	/* Sanity check */
  	rc = SyLittleEndianUnpack32(&nMagic,zCentral,sizeof(sxu32));
  	if( /* rc != SXRET_OK || */ nMagic != SXZIP_CENTRAL_MAGIC ){
- 		rc = SXERR_CORRUPT; 		
+ 		rc = SXERR_CORRUPT;
  		/*
  		 * Try to recover by examing the next central directory record.
  		 * Dont worry here,there is no risk of an infinite loop since
@@ -4520,7 +4520,7 @@ static sxi32 GetCentralDirectoryEntry(SyArchive *pArch,SyArchiveEntry *pEntry,co
  	/* Extra information */
  	SyLittleEndianUnpack16(&pEntry->nExtra,&zCentral[30],sizeof(sxu16));
  	/* Comment length  */
- 	SyLittleEndianUnpack16(&nComment,&zCentral[32],sizeof(sxu16)); 	
+ 	SyLittleEndianUnpack16(&nComment,&zCentral[32],sizeof(sxu16));
  	/* Compression method 0 == stored / 8 == deflated */
  	rc = SyLittleEndianUnpack16(&pEntry->nComprMeth,&zCentral[10],sizeof(sxu16));
  	/* DOS Timestamp */
@@ -4535,31 +4535,31 @@ static sxi32 GetCentralDirectoryEntry(SyArchive *pArch,SyArchiveEntry *pEntry,co
  	rc = SyLittleEndianUnpack32(&pEntry->nByte,&zCentral[24],sizeof(sxu32));
  	if(  pEntry->nByte > SXI32_HIGH ){
  		rc = SXERR_BIG;
- 		goto update; 
- 	} 	
+ 		goto update;
+ 	}
  	/*
  	 * Content size after compression.
  	 * Note that if the file is stored pEntry->nByte should be equal to pEntry->nByteCompr
- 	 */ 
+ 	 */
  	rc = SyLittleEndianUnpack32(&pEntry->nByteCompr,&zCentral[20],sizeof(sxu32));
  	if( pEntry->nByteCompr > SXI32_HIGH ){
  		rc = SXERR_BIG;
- 		goto update; 
- 	} 	 	
+ 		goto update;
+ 	}
  	/* Finally grab the contents offset */
  	SyLittleEndianUnpack32(&pEntry->nOfft,&zCentral[42],sizeof(sxu32));
  	if( pEntry->nOfft > SXI32_HIGH ){
  		rc = SXERR_BIG;
  		goto update;
- 	} 	
+ 	}
   	 rc = SXRET_OK;
-update:	  
+update:
  	/* Update the offset to point to the next central directory record */
  	*pNextOffset =  SXZIP_CENTRAL_HDRSZ + pName->nByte + pEntry->nExtra + nComment;
  	return rc; /* Report failure or success */
 }
 static sxi32 ZipFixOffset(SyArchiveEntry *pEntry,void *pSrc)
-{	
+{
 	sxu16 nExtra,nNameLen;
 	unsigned char *zHdr;
 	nExtra = nNameLen = 0;
@@ -4575,8 +4575,8 @@ static sxi32 ZipFixOffset(SyArchiveEntry *pEntry,void *pSrc)
 	return SXRET_OK;
 }
 /*
- * Extract all valid entries from the central directory 
- */	 
+ * Extract all valid entries from the central directory
+ */
 static sxi32 ZipExtract(SyArchive *pArch,const unsigned char *zCentral,sxu32 nLen,void *pSrc)
 {
 	SyArchiveEntry *pEntry,*pDup;
@@ -4585,10 +4585,10 @@ static sxi32 ZipExtract(SyArchive *pArch,const unsigned char *zCentral,sxu32 nLe
 	SyString *pName;	        /* Entry name */
 	char *zName;
 	sxi32 rc;
-	
+
 	nOfft = nIncr = 0;
 	zEnd = &zCentral[nLen];
-	
+
 	for(;;){
 		if( &zCentral[nOfft] >= zEnd ){
 			break;
@@ -4598,7 +4598,7 @@ static sxi32 ZipExtract(SyArchive *pArch,const unsigned char *zCentral,sxu32 nLe
 		if( pEntry == 0 ){
 			break;
 		}
-		SyZero(pEntry,sizeof(SyArchiveEntry)); 
+		SyZero(pEntry,sizeof(SyArchiveEntry));
 		pEntry->nMagic = SXARCH_MAGIC;
 		nIncr = 0;
 		rc = GetCentralDirectoryEntry(&(*pArch),pEntry,&zCentral[nOfft],&nIncr);
@@ -4621,13 +4621,13 @@ static sxi32 ZipExtract(SyArchive *pArch,const unsigned char *zCentral,sxu32 nLe
 		pName->zString = (const char *)&zCentral[nOfft + SXZIP_CENTRAL_HDRSZ];
 		if( pName->nByte <= 0 || ( pEntry->nByte <= 0 && pName->zString[pName->nByte - 1] != '/') ){
 			/* Ignore zero length records (except folders) and records without names */
-			SyMemBackendPoolFree(pArch->pAllocator,pEntry); 
+			SyMemBackendPoolFree(pArch->pAllocator,pEntry);
 		 	nOfft += nIncr; /* Check next entry */
 			continue;
 		}
 		zName = SyMemBackendStrDup(pArch->pAllocator,pName->zString,pName->nByte);
  	 	if( zName == 0 ){
- 	 		 SyMemBackendPoolFree(pArch->pAllocator,pEntry); 
+ 	 		 SyMemBackendPoolFree(pArch->pAllocator,pEntry);
 		 	 nOfft += nIncr; /* Check next entry */
 			continue;
  	 	}
@@ -4642,13 +4642,13 @@ static sxi32 ZipExtract(SyArchive *pArch,const unsigned char *zCentral,sxu32 nLe
 		}else{
 			/* Insert in hashtable */
 			ArchiveHashInstallEntry(pArch,pEntry);
-		}	
+		}
 		nOfft += nIncr;	/* Check next record */
 	}
 	pArch->pCursor = pArch->pList;
-	
+
 	return pArch->nLoaded > 0 ? SXRET_OK : SXERR_EMPTY;
-} 						
+}
 PH7_PRIVATE sxi32 SyZipExtractFromBuf(SyArchive *pArch,const char *zBuf,sxu32 nLen)
  {
  	const unsigned char *zCentral,*zEnd;
@@ -4657,7 +4657,7 @@ PH7_PRIVATE sxi32 SyZipExtractFromBuf(SyArchive *pArch,const char *zBuf,sxu32 nL
  	if( SXARCH_INVALID(pArch) || zBuf == 0 ){
  		return SXERR_INVALID;
  	}
-#endif 	
+#endif
  	/* The miminal size of a zip archive:
  	 * LOCAL_HDR_SZ + CENTRAL_HDR_SZ + END_OF_CENTRAL_HDR_SZ
  	 * 		30				46				22
@@ -4665,19 +4665,19 @@ PH7_PRIVATE sxi32 SyZipExtractFromBuf(SyArchive *pArch,const char *zBuf,sxu32 nL
  	 if( nLen < SXZIP_LOCAL_HDRSZ + SXZIP_CENTRAL_HDRSZ + SXZIP_END_CENTRAL_HDRSZ ){
  	 	return SXERR_CORRUPT; /* Don't bother processing return immediately */
  	 }
- 	  		
+
  	zEnd = (unsigned char *)&zBuf[nLen - SXZIP_END_CENTRAL_HDRSZ];
  	/* Find the end of central directory */
  	while( ((sxu32)((unsigned char *)&zBuf[nLen] - zEnd) < (SXZIP_END_CENTRAL_HDRSZ + SXI16_HIGH)) &&
 		zEnd > (unsigned char *)zBuf && SyMemcmp(zEnd,"PK\005\006",sizeof(sxu32)) != 0 ){
  		zEnd--;
- 	} 	
+ 	}
  	/* Parse the end of central directory */
  	rc = ParseEndOfCentralDirectory(&(*pArch),zEnd);
  	if( rc != SXRET_OK ){
  		return rc;
- 	} 	
- 	
+ 	}
+
  	/* Find the starting offset of the central directory */
  	zCentral = &zEnd[-(sxi32)pArch->nCentralSize];
  	if( zCentral <= (unsigned char *)zBuf || SyMemcmp(zCentral,"PK\001\002",sizeof(sxu32)) != 0 ){
@@ -4713,7 +4713,7 @@ PH7_PRIVATE sxi32 SyArchiveInit(SyArchive *pArch,SyMemBackend *pAllocator,ProcHa
  	}
 #endif
  	SyZero(pArch,sizeof(SyArchive));
- 	/* Allocate a new hashtable */ 	
+ 	/* Allocate a new hashtable */
 	apHash = (SyArchiveEntry **)SyMemBackendAlloc(&(*pAllocator),SXARCHIVE_HASH_SIZE * sizeof(SyArchiveEntry *));
 	if( apHash == 0){
 		return SXERR_MEM;
@@ -4731,7 +4731,7 @@ PH7_PRIVATE sxi32 SyArchiveInit(SyArchive *pArch,SyMemBackend *pAllocator,ProcHa
  {
  	SyArchiveEntry *pDup = pEntry->pNextName;
  	SyArchiveEntry *pNextDup;
- 	
+
  	/* Release duplicates first since there are not stored in the hashtable */
  	for(;;){
  		if( pEntry->nDup == 0 ){
@@ -4740,19 +4740,19 @@ PH7_PRIVATE sxi32 SyArchiveInit(SyArchive *pArch,SyMemBackend *pAllocator,ProcHa
  		pNextDup = pDup->pNextName;
 		pDup->nMagic = 0x2661;
  		SyMemBackendFree(pAllocator,(void *)SyStringData(&pDup->sFileName));
- 		SyMemBackendPoolFree(pAllocator,pDup); 		
+ 		SyMemBackendPoolFree(pAllocator,pDup);
  		pDup = pNextDup;
  		pEntry->nDup--;
- 	} 		
+ 	}
 	pEntry->nMagic = 0x2661;
   	SyMemBackendFree(pAllocator,(void *)SyStringData(&pEntry->sFileName));
  	SyMemBackendPoolFree(pAllocator,pEntry);
  	return SXRET_OK;
- } 	
+ }
 PH7_PRIVATE sxi32 SyArchiveRelease(SyArchive *pArch)
  {
 	SyArchiveEntry *pEntry,*pNext;
- 	pEntry = pArch->pList; 	 	
+ 	pEntry = pArch->pList;
 	for(;;){
 		if( pArch->nLoaded < 1 ){
 			break;
@@ -4861,7 +4861,7 @@ PH7_PRIVATE sxi32 SyRandomnessInit(SyPRNGCtx *pCtx,ProcRandomSeed xSeed,void * p
   ** the first time this routine is called.The seed value does
   ** not need to contain a lot of randomness since we are not
   ** trying to do secure encryption or anything like that...
-  */	
+  */
 	if( xSeed == 0 ){
 		xSeed = SyOSUtilRandomSeed;
 	}
@@ -4880,7 +4880,7 @@ PH7_PRIVATE sxi32 SyRandomnessInit(SyPRNGCtx *pCtx,ProcRandomSeed xSeed,void * p
       pCtx->s[i] = t;
     }
 	pCtx->nMagic = SXPRNG_MAGIC;
-	
+
 	return SXRET_OK;
 }
 /*
@@ -4889,7 +4889,7 @@ PH7_PRIVATE sxi32 SyRandomnessInit(SyPRNGCtx *pCtx,ProcRandomSeed xSeed,void * p
 static sxu8 randomByte(SyPRNGCtx *pCtx)
 {
   sxu8 t;
-  
+
   /* Generate and return single random byte */
   pCtx->i++;
   t = pCtx->s[pCtx->i];
@@ -4912,12 +4912,12 @@ PH7_PRIVATE sxi32 SyRandomness(SyPRNGCtx *pCtx,void *pBuf,sxu32 nLen)
 		return SXERR_CORRUPT;
 	}
 	for(;;){
-		if( zBuf >= zEnd ){break;}	zBuf[0] = randomByte(pCtx);	zBuf++;	
-		if( zBuf >= zEnd ){break;}	zBuf[0] = randomByte(pCtx);	zBuf++;	
-		if( zBuf >= zEnd ){break;}	zBuf[0] = randomByte(pCtx);	zBuf++;	
-		if( zBuf >= zEnd ){break;}	zBuf[0] = randomByte(pCtx);	zBuf++;	
+		if( zBuf >= zEnd ){break;}	zBuf[0] = randomByte(pCtx);	zBuf++;
+		if( zBuf >= zEnd ){break;}	zBuf[0] = randomByte(pCtx);	zBuf++;
+		if( zBuf >= zEnd ){break;}	zBuf[0] = randomByte(pCtx);	zBuf++;
+		if( zBuf >= zEnd ){break;}	zBuf[0] = randomByte(pCtx);	zBuf++;
 	}
-	return SXRET_OK;  
+	return SXRET_OK;
 }
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 #ifndef PH7_DISABLE_HASH_FUNC
@@ -5106,7 +5106,7 @@ PH7_PRIVATE void MD5Update(MD5Context *ctx, const unsigned char *buf, unsigned i
         SyMemcpy(buf,ctx->in,len);
 }
 /*
- * Final wrapup - pad to 64-byte boundary with the bit pattern 
+ * Final wrapup - pad to 64-byte boundary with the bit pattern
  * 1 0* (64-bit count of bits processed, MSB-first)
  */
 PH7_PRIVATE void MD5Final(unsigned char digest[16], MD5Context *ctx){
@@ -5153,14 +5153,14 @@ PH7_PRIVATE void MD5Final(unsigned char digest[16], MD5Context *ctx){
 #undef F3
 #undef F4
 PH7_PRIVATE sxi32 MD5Init(MD5Context *pCtx)
-{	
+{
 	pCtx->buf[0] = 0x67452301;
     pCtx->buf[1] = 0xefcdab89;
     pCtx->buf[2] = 0x98badcfe;
     pCtx->buf[3] = 0x10325476;
     pCtx->bits[0] = 0;
     pCtx->bits[1] = 0;
-   
+
    return SXRET_OK;
 }
 PH7_PRIVATE sxi32 SyMD5Compute(const void *pIn,sxu32 nLen,unsigned char zDigest[16])
@@ -5168,7 +5168,7 @@ PH7_PRIVATE sxi32 SyMD5Compute(const void *pIn,sxu32 nLen,unsigned char zDigest[
 	MD5Context sCtx;
 	MD5Init(&sCtx);
 	MD5Update(&sCtx,(const unsigned char *)pIn,nLen);
-	MD5Final(zDigest,&sCtx);	
+	MD5Final(zDigest,&sCtx);
 	return SXRET_OK;
 }
 /*
@@ -5209,7 +5209,7 @@ PH7_PRIVATE sxi32 SyMD5Compute(const void *pIn,sxu32 nLen,unsigned char zDigest[
 /*
  * (R0+R1), R2, R3, R4 are the different operations (rounds) used in SHA1
  *
- * Rl0() for little-endian and Rb0() for big-endian.  Endianness is 
+ * Rl0() for little-endian and Rb0() for big-endian.  Endianness is
  * determined at run-time.
  */
 #define Rl0(v,w,x,y,z,i) \
@@ -5443,7 +5443,7 @@ static sxu32 SyCrc32Update(sxu32 crc32,const void *pSrc,sxu32 nLen)
 		if(zIn >= zEnd ){ break; } CRC32C(crc32,zIn[0]); zIn++;
 		if(zIn >= zEnd ){ break; } CRC32C(crc32,zIn[0]); zIn++;
 	}
-		
+
 	return crc32;
 }
 PH7_PRIVATE sxu32 SyCrc32(const void *pSrc,sxu32 nLen)
@@ -5475,7 +5475,7 @@ PH7_PRIVATE sxi32 SyBinToHexConsumer(const void *pIn,sxu32 nLen,ProcConsumer xCo
 		if( rc != SXRET_OK ){
 			return rc;
 		}
-		zIn++; 
+		zIn++;
 	}
 	return SXRET_OK;
 }

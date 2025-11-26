@@ -274,7 +274,7 @@ static int PH7_builtin_empty(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	ph7_result_bool(pCtx,res);
 	return PH7_OK;
-	
+
 }
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 #ifdef PH7_ENABLE_MATH_FUNC
@@ -620,7 +620,7 @@ static int PH7_builtin_atan2(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 static int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	int is_float;	
+	int is_float;
 	if( nArg < 1 ){
 		/* Missing argument,return 0 */
 		ph7_result_int(pCtx,0);
@@ -650,8 +650,8 @@ static int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $base: The optional logarithmic base to use. (only base-10 is supported)
  * Return
  *  The logarithm of arg to base, if given, or the natural logarithm.
- * Note: 
- *  only Natural log and base-10 log are supported. 
+ * Note:
+ *  only Natural log and base-10 log are supported.
  */
 static int PH7_builtin_log(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -707,7 +707,7 @@ static int PH7_builtin_log10(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Return
  *  base raised to the power of exp.
  *  If the result can be represented as integer it will be returned
- *  as type integer, else it will be returned as type float. 
+ *  as type integer, else it will be returned as type float.
  */
 static int PH7_builtin_pow(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -726,9 +726,9 @@ static int PH7_builtin_pow(ph7_context *pCtx,int nArg,ph7_value **apArg)
 }
 /*
  * float pi(void)
- *  Returns an approximation of pi. 
+ *  Returns an approximation of pi.
  * Note
- *  you can use the M_PI constant which yields identical results to pi(). 
+ *  you can use the M_PI constant which yields identical results to pi().
  * Return
  *  The value of pi as float.
  */
@@ -741,7 +741,7 @@ static int PH7_builtin_pi(ph7_context *pCtx,int nArg,ph7_value **apArg)
 }
 /*
  * float fmod(float $x,float $y)
- *  Returns the floating point remainder (modulo) of the division of the arguments. 
+ *  Returns the floating point remainder (modulo) of the division of the arguments.
  * Parameters
  * $x
  *  The dividend
@@ -752,7 +752,7 @@ static int PH7_builtin_pi(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 static int PH7_builtin_fmod(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	double x,y,r; 
+	double x,y,r;
 	if( nArg < 2 ){
 		/* Missing arguments */
 		ph7_result_double(pCtx,0);
@@ -769,7 +769,7 @@ static int PH7_builtin_fmod(ph7_context *pCtx,int nArg,ph7_value **apArg)
 }
 /*
  * float hypot(float $x,float $y)
- *  Calculate the length of the hypotenuse of a right-angle triangle . 
+ *  Calculate the length of the hypotenuse of a right-angle triangle .
  * Parameters
  * $x
  *  Length of first side
@@ -780,7 +780,7 @@ static int PH7_builtin_fmod(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 static int PH7_builtin_hypot(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	double x,y,r; 
+	double x,y,r;
 	if( nArg < 2 ){
 		/* Missing arguments */
 		ph7_result_double(pCtx,0);
@@ -831,7 +831,7 @@ static int PH7_builtin_round(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	r = ph7_value_to_double(apArg[0]);
 	/* If Y==0 and X will fit in a 64-bit int,
-     * handle the rounding directly.Otherwise 
+     * handle the rounding directly.Otherwise
 	 * use our own cutsom printf [i.e:SyBufferFormat()].
      */
   if( n==0 && r>=0 && r<LARGEST_INT64-1 ){
@@ -925,7 +925,7 @@ static int PH7_builtin_decbin(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $hex_string
  *   The hexadecimal string to convert
  * Return
- *  The decimal representation of hex_string 
+ *  The decimal representation of hex_string
  */
 static int PH7_builtin_hexdec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -978,7 +978,7 @@ static int PH7_builtin_hexdec(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $bin_string
  *   The binary string to convert
  * Return
- *  Returns the decimal equivalent of the binary number represented by the binary_string argument.  
+ *  Returns the decimal equivalent of the binary number represented by the binary_string argument.
  */
 static int PH7_builtin_bindec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -1013,7 +1013,7 @@ static int PH7_builtin_bindec(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $oct_string
  *   The octal string to convert
  * Return
- *  Returns the decimal equivalent of the octal number represented by the octal_string argument.  
+ *  Returns the decimal equivalent of the octal number represented by the octal_string argument.
  */
 static int PH7_builtin_octdec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -1072,7 +1072,7 @@ static int PH7_builtin_srand(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * $tobase
  *  The base to convert number to
  * Return
- *  Number converted to base tobase 
+ *  Number converted to base tobase
  */
 static int PH7_builtin_base_convert(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -1164,14 +1164,14 @@ static int PH7_builtin_base_convert(ph7_context *pCtx,int nArg,ph7_value **apArg
  *   If start denotes the position of this truncation or beyond, false will be returned.
  *   If length is given and is 0, FALSE or NULL an empty string will be returned.
  *   If length is omitted, the substring starting from start until the end of the string
- *   will be returned. 
+ *   will be returned.
  * Return
  *  Returns the extracted part of string, or FALSE on failure or an empty string.
  */
 static int PH7_builtin_substr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zSource,*zOfft;
-	int nOfft,nLen,nSrcLen;	
+	int nOfft,nLen,nSrcLen;
 	if( nArg < 2 ){
 		/* return FALSE */
 		ph7_result_bool(pCtx,0);
@@ -1188,7 +1188,7 @@ static int PH7_builtin_substr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Extract the offset */
 	nOfft = ph7_value_to_int(apArg[1]);
 	if( nOfft < 0 ){
-		zOfft = &zSource[nSrcLen+nOfft]; 
+		zOfft = &zSource[nSrcLen+nOfft];
 		if( zOfft < zSource ){
 			/* Invalid offset */
 			ph7_result_bool(pCtx,0);
@@ -1239,14 +1239,14 @@ static int PH7_builtin_substr(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  The start position for the comparison. If negative, it starts counting from
  *  the end of the string.
  * $length
- *  The length of the comparison. The default value is the largest of the length 
+ *  The length of the comparison. The default value is the largest of the length
  *  of the str compared to the length of main_str less the offset.
  * $case_insensitivity
  *  If case_insensitivity is TRUE, comparison is case insensitive.
  * Return
  *  Returns < 0 if main_str from position offset is less than str, > 0 if it is greater than
  *  str, and 0 if they are equal. If offset is equal to or greater than the length of main_str
- *  or length is set and is less than 1, substr_compare() prints a warning and returns FALSE. 
+ *  or length is set and is less than 1, substr_compare() prints a warning and returns FALSE.
  */
 static int PH7_builtin_substr_compare(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -1277,7 +1277,7 @@ static int PH7_builtin_substr_compare(ph7_context *pCtx,int nArg,ph7_value **apA
 	/* Extract the offset */
 	nOfft = ph7_value_to_int(apArg[2]);
 	if( nOfft < 0 ){
-		zOfft = &zSource[nSrcLen+nOfft]; 
+		zOfft = &zSource[nSrcLen+nOfft];
 		if( zOfft < zSource ){
 			/* Invalid offset */
 			ph7_result_bool(pCtx,0);
@@ -1469,7 +1469,7 @@ static int PH7_builtin_chunk_split(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  Quote string with slashes.
  *  Returns a string with backslashes before characters that need
  *  to be quoted in database queries etc. These characters are single
- *  quote ('), double quote ("), backslash (\) and NUL (the NULL byte). 
+ *  quote ('), double quote ("), backslash (\) and NUL (the NULL byte).
  * Parameter
  *  str: The string to be escaped.
  * Return
@@ -1540,8 +1540,8 @@ static int cSlashCheckMask(int c,const char *zMask,int nLen)
  *    The string to be escaped.
  *  $charlist:
  *    A list of characters to be escaped. If charlist contains characters \n, \r etc.
- *    they are converted in C-like style, while other non-alphanumeric characters 
- *    with ASCII codes lower than 32 and higher than 126 converted to octal representation. 
+ *    they are converted in C-like style, while other non-alphanumeric characters
+ *    with ASCII codes lower than 32 and higher than 126 converted to octal representation.
  * Return
  *  Returns the escaped string.
  * Note:
@@ -1646,7 +1646,7 @@ static int PH7_builtin_quotemeta(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  Un-quotes a quoted string.
  *  Returns a string with backslashes before characters that need
  *  to be quoted in database queries etc. These characters are single
- *  quote ('), double quote ("), backslash (\) and NUL (the NULL byte). 
+ *  quote ('), double quote ("), backslash (\) and NUL (the NULL byte).
  * Parameter
  *  $str
  *   The input string.
@@ -1844,11 +1844,11 @@ static int PH7_builtin_htmlspecialchars_decode(ph7_context *pCtx,int nArg,ph7_va
 		}else if( nLen >= (int)sizeof("&lt;")-1 && SyStrnicmp(zIn,"&lt;",sizeof("&lt;")-1) == 0 ){
 			/* &lt; ==> < */
 			ph7_result_string(pCtx,"<",(int)sizeof(char));
-			nJump = (int)sizeof("&lt;")-1; 
+			nJump = (int)sizeof("&lt;")-1;
 		}else if( nLen >= (int)sizeof("&gt;")-1 && SyStrnicmp(zIn,"&gt;",sizeof("&gt;")-1) == 0 ){
 			/* &gt; ==> '>' */
 			ph7_result_string(pCtx,">",(int)sizeof(char));
-			nJump = (int)sizeof("&gt;")-1; 
+			nJump = (int)sizeof("&gt;")-1;
 		}else if( nLen >= (int)sizeof("&quot;")-1 && SyStrnicmp(zIn,"&quot;",sizeof("&quot;")-1) == 0 ){
 			/* &quot; ==> '"' */
 			if( (iFlags & 0x04) == 0 /*ENT_NOQUOTES*/ ){
@@ -1879,14 +1879,14 @@ static int PH7_builtin_htmlspecialchars_decode(ph7_context *pCtx,int nArg,ph7_va
 	}
 	return PH7_OK;
 }
-/* HTML encoding/Decoding table 
+/* HTML encoding/Decoding table
  * Source: Symisc RunTime API.[chm@symisc.net]
  */
 static const char *azHtmlEscape[] = {
  	"&lt;","<","&gt;",">","&amp;","&","&quot;","\"","&#39;","'",
 	"&#33;","!","&#36;","$","&#35;","#","&#37;","%","&#40;","(",
 	"&#41;",")","&#123;","{","&#125;","}","&#61;","=","&#43;","+",
-	"&#63;","?","&#91;","[","&#93;","]","&#64;","@","&#44;","," 
+	"&#63;","?","&#91;","[","&#93;","]","&#64;","@","&#44;",","
  };
 /*
  * array get_html_translation_table(void)
@@ -1925,7 +1925,7 @@ static int PH7_builtin_get_html_translation_table(ph7_context *pCtx,int nArg,ph7
 		/* Reset the string cursor */
 		ph7_value_reset_string_cursor(pValue);
 	}
-	/* 
+	/*
 	 * Return the array.
 	 * Don't worry about freeing memory, everything will be automatically
 	 * released upon we return from this function.
@@ -2102,7 +2102,7 @@ static int PH7_builtin_strlen(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  str1: The first string
  *  str2: The second string
  * Return
- *  Returns < 0 if str1 is less than str2; > 0 if str1 is greater 
+ *  Returns < 0 if str1 is less than str2; > 0 if str1 is greater
  *  than str2, and 0 if they are equal.
  */
 static int PH7_builtin_strcmp(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -2130,7 +2130,7 @@ static int PH7_builtin_strcmp(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  str1: The first string
  *  str2: The second string
  * Return
- *  Returns < 0 if str1 is less than str2; > 0 if str1 is greater 
+ *  Returns < 0 if str1 is less than str2; > 0 if str1 is greater
  *  than str2, and 0 if they are equal.
  */
 static int PH7_builtin_strncmp(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -2164,7 +2164,7 @@ static int PH7_builtin_strncmp(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  str1: The first string
  *  str2: The second string
  * Return
- *  Returns < 0 if str1 is less than str2; > 0 if str1 is greater 
+ *  Returns < 0 if str1 is less than str2; > 0 if str1 is greater
  *  than str2, and 0 if they are equal.
  */
 static int PH7_builtin_strcasecmp(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -2193,7 +2193,7 @@ static int PH7_builtin_strcasecmp(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $str2: The second string
  *  $len:  The length of strings to be used in the comparison.
  * Return
- *  Returns < 0 if str1 is less than str2; > 0 if str1 is greater 
+ *  Returns < 0 if str1 is less than str2; > 0 if str1 is greater
  *  than str2, and 0 if they are equal.
  */
 static int PH7_builtin_strncasecmp(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -2287,7 +2287,7 @@ static int implode_callback(ph7_value *pKey,ph7_value *pValue,void *pUserData)
  *   The array of strings to implode.
  * Return
  *  Returns a string containing a string representation of all the array elements in the same
- *  order, with the glue string between each element. 
+ *  order, with the glue string between each element.
  */
 static int PH7_builtin_implode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -2404,8 +2404,8 @@ static int PH7_builtin_implode_recursive(ph7_context *pCtx,int nArg,ph7_value **
 }
 /*
  * array explode(string $delimiter,string $string[,int $limit ])
- *  Returns an array of strings, each of which is a substring of string 
- *  formed by splitting it on boundaries formed by the string delimiter. 
+ *  Returns an array of strings, each of which is a substring of string
+ *  formed by splitting it on boundaries formed by the string delimiter.
  * Parameters
  *  $delimiter
  *   The boundary string.
@@ -2419,10 +2419,10 @@ static int PH7_builtin_implode_recursive(ph7_context *pCtx,int nArg,ph7_value **
  * Returns
  *  Returns an array of strings created by splitting the string parameter
  *  on boundaries formed by the delimiter.
- *  If delimiter is an empty string (""), explode() will return FALSE. 
+ *  If delimiter is an empty string (""), explode() will return FALSE.
  *  If delimiter contains a value that is not contained in string and a negative
  *  limit is used, then an empty array will be returned, otherwise an array containing string
- *  will be returned. 
+ *  will be returned.
  * NOTE:
  *  Negative limit is not supported.
  */
@@ -2504,7 +2504,7 @@ static int PH7_builtin_explode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Return the freshly created array */
 	ph7_result_value(pCtx,pArray);
-	/* NOTE that every allocated ph7_value will be automatically 
+	/* NOTE that every allocated ph7_value will be automatically
 	 * released as soon we return from this foregin function.
 	 */
 	return PH7_OK;
@@ -2868,7 +2868,7 @@ static int PH7_builtin_strtoupper(ph7_context *pCtx,int nArg,ph7_value **apArg)
 /*
  * string ucfirst(string $str)
  *  Returns a string with the first character of str capitalized, if that
- *  character is alphabetic. 
+ *  character is alphabetic.
  * Parameters
  *  $str
  *   The input string.
@@ -3100,7 +3100,7 @@ static sxi32 iPatternMatch(const void *pText,sxu32 nLen,const void *pPattern,sxu
  * $needle
  *   Search pattern (must be a string).
  * $before_needle
- *   If TRUE, strstr() returns the part of the haystack before the first occurrence 
+ *   If TRUE, strstr() returns the part of the haystack before the first occurrence
  *   of the needle (excluding the needle).
  * Return
  *  Returns the portion of string, or FALSE if needle is not found.
@@ -3153,7 +3153,7 @@ static int PH7_builtin_strstr(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * $needle
  *   Search pattern (must be a string).
  * $before_needle
- *   If TRUE, strstr() returns the part of the haystack before the first occurrence 
+ *   If TRUE, strstr() returns the part of the haystack before the first occurrence
  *   of the needle (excluding the needle).
  * Return
  *  Returns the portion of string, or FALSE if needle is not found.
@@ -3329,7 +3329,7 @@ static int PH7_builtin_stripos(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *   Search pattern (must be a string).
  * $offset
  *   If specified, search will start this number of characters counted from the beginning
- *   of the string. If the value is negative, search will instead start from that many 
+ *   of the string. If the value is negative, search will instead start from that many
  *   characters from the end of the string, searching backwards.
  * Return
  *  Returns the position as an integer.If needle is not found, strrpos() will return FALSE.
@@ -3412,7 +3412,7 @@ static int PH7_builtin_strrpos(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *   Search pattern (must be a string).
  * $offset
  *   If specified, search will start this number of characters counted from the beginning
- *   of the string. If the value is negative, search will instead start from that many 
+ *   of the string. If the value is negative, search will instead start from that many
  *   characters from the end of the string, searching backwards.
  * Return
  *  Returns the position as an integer.If needle is not found, strrpos() will return FALSE.
@@ -3581,7 +3581,7 @@ static int PH7_builtin_strrev(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * string ucwords(string $string)
  *  Uppercase the first character of each word in a string.
  *  The definition of a word is any string of characters that is immediately after
- *  a whitespace (These are: space, form-feed, newline, carriage return, horizontal tab, and vertical tab). 
+ *  a whitespace (These are: space, form-feed, newline, carriage return, horizontal tab, and vertical tab).
  * Parameters
  *  $string
  *   The input string.
@@ -3767,7 +3767,7 @@ static int PH7_builtin_nl2br(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Format a given string and invoke the given callback on each processed chunk.
  *  According to the PHP reference manual.
  * The format string is composed of zero or more directives: ordinary characters
- * (excluding %) that are copied directly to the result, and conversion 
+ * (excluding %) that are copied directly to the result, and conversion
  * specifications, each of which results in fetching its own parameter.
  * This applies to both sprintf() and printf().
  * Each conversion specification consists of a percent sign (%), followed by one
@@ -3792,7 +3792,7 @@ static int PH7_builtin_nl2br(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *       b - the argument is treated as an integer, and presented as a binary number.
  *       c - the argument is treated as an integer, and presented as the character with that ASCII value.
  *       d - the argument is treated as an integer, and presented as a (signed) decimal number.
- *       e - the argument is treated as scientific notation (e.g. 1.2e+2). The precision specifier stands 
+ *       e - the argument is treated as scientific notation (e.g. 1.2e+2). The precision specifier stands
  * 	     for the number of digits after the decimal point.
  *       E - like %e but uses uppercase letter (e.g. 1.2E+2).
  *       u - the argument is treated as an integer, and presented as an unsigned decimal number.
@@ -3912,7 +3912,7 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 	int nArg,           /* Total argument of the given arguments */
 	ph7_value **apArg,  /* User arguments */
 	void *pUserData,    /* Last argument to xConsumer() */
-	int vf              /* TRUE if called from vfprintf,vsprintf context */ 
+	int vf              /* TRUE if called from vfprintf,vsprintf context */
 	)
 {
 	char spaces[] = "                                                  ";
@@ -3928,7 +3928,7 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 	ph7_value *pArg;         /* Current processed argument */
 	ph7_int64 iVal;
 	int precision;           /* Precision of the current field */
-	char *zExtra;  
+	char *zExtra;
 	int c,rc,n;
 	int length;              /* Length of the field */
 	int prefix;
@@ -3956,7 +3956,7 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 			break;
 		}
 		/* Find out what flags are present */
-		flag_leftjustify = flag_plussign = flag_blanksign = 
+		flag_leftjustify = flag_plussign = flag_blanksign =
 			flag_alternateform = flag_zeropad = 0;
 		zIn++; /* Jump the precent sign */
 		do{
@@ -3991,7 +3991,7 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 			/* Position specifer */
 			if( width > 0 ){
 				n = width;
-				if( vf && n > 0 ){ 
+				if( vf && n > 0 ){
 					n--;
 				}
 			}
@@ -4116,7 +4116,7 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
         if( iVal==0 && pInfo->base==8 ) flag_alternateform = 0;
 #endif
         if( pInfo->flags & PH7_FMT_FLAG_SIGNED ){
-          if( iVal<0 ){ 
+          if( iVal<0 ){
             iVal = -iVal;
 			/* Ticket 1433-003 */
 			if( iVal < 0 ){
@@ -4377,10 +4377,10 @@ static int sprintfConsumer(ph7_context *pCtx,const char *zInput,int nLen,void *p
  * string sprintf(string $format[,mixed $args [, mixed $... ]])
  *  Return a formatted string.
  * Parameters
- *  $format 
+ *  $format
  *    The format string (see block comment above)
  * Return
- *  A string produced according to the formatting string format. 
+ *  A string produced according to the formatting string format.
  */
 static int PH7_builtin_sprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -4558,7 +4558,7 @@ static int PH7_builtin_size_format(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	for(;;){
-		nRest = (sxi32)(iSize & 0x3FF); 
+		nRest = (sxi32)(iSize & 0x3FF);
 		iSize >>= 10;
 		c++;
 		if( (iSize & (~0 ^ 1023)) == 0 ){
@@ -5019,7 +5019,7 @@ PH7_PRIVATE sxi32 PH7_StripTagsFromString(ph7_context *pCtx,const char *zIn,int 
  *  $str
  *  The input string.
  * $allowable_tags
- *  You can use the optional second parameter to specify tags which should not be stripped. 
+ *  You can use the optional second parameter to specify tags which should not be stripped.
  * Return
  *  Returns the stripped string.
  */
@@ -5038,7 +5038,7 @@ static int PH7_builtin_strip_tags(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	zString = ph7_value_to_string(apArg[0],&nLen);
 	if( nArg > 1 && ph7_value_is_string(apArg[1]) ){
 		/* Allowed tag */
-		zTaglist = ph7_value_to_string(apArg[1],&nTaglen);		
+		zTaglist = ph7_value_to_string(apArg[1],&nTaglen);
 	}
 	/* Process input */
 	PH7_StripTagsFromString(pCtx,zString,nLen,zTaglist,nTaglen);
@@ -5093,7 +5093,7 @@ static int PH7_builtin_str_shuffle(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  If the optional split_length parameter is specified, the returned array
  *  will be broken down into chunks with each being split_length in length, otherwise
  *  each chunk will be one character in length. FALSE is returned if split_length is less than 1.
- *  If the split_length length exceeds the length of string, the entire string is returned 
+ *  If the split_length length exceeds the length of string, the entire string is returned
  *  as the first (and only) array element.
  */
 static int PH7_builtin_str_split(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -5158,7 +5158,7 @@ static int PH7_builtin_str_split(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Update position */
 		zString += split_len;
 	}
-	/* 
+	/*
 	 * Return the array.
 	 * Don't worry about freeing memory, everything will be automatically released
 	 * upon we return from this function.
@@ -5268,7 +5268,7 @@ static int LongestStringMask2(const char *zString,int nLen,const char *zMask,int
  *  The list of allowable characters.
  * $start
  *  The position in subject to start searching.
- *  If start is given and is non-negative, then strspn() will begin examining 
+ *  If start is given and is non-negative, then strspn() will begin examining
  *  subject at the start'th position. For instance, in the string 'abcdef', the character
  *  at position 0 is 'a', the character at position 2 is 'c', and so forth.
  *  If start is given and is negative, then strspn() will begin examining subject at the
@@ -5312,7 +5312,7 @@ static int PH7_builtin_strspn(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			const char *zBase = &zString[iLen + nOfft];
 			if( zBase > zString ){
 				iLen = (int)(&zString[iLen]-zBase);
-				zString = zBase;	
+				zString = zBase;
 			}else{
 				/* Invalid offset */
 				ph7_result_int(pCtx,0);
@@ -5360,7 +5360,7 @@ static int PH7_builtin_strspn(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  The list of not allowed characters.
  * $start
  *  The position in subject to start searching.
- *  If start is given and is non-negative, then strspn() will begin examining 
+ *  If start is given and is non-negative, then strspn() will begin examining
  *  subject at the start'th position. For instance, in the string 'abcdef', the character
  *  at position 0 is 'a', the character at position 2 is 'c', and so forth.
  *  If start is given and is negative, then strspn() will begin examining subject at the
@@ -5408,7 +5408,7 @@ static int PH7_builtin_strcspn(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			const char *zBase = &zString[iLen + nOfft];
 			if( zBase > zString ){
 				iLen = (int)(&zString[iLen]-zBase);
-				zString = zBase;	
+				zString = zBase;
 			}else{
 				/* Invalid offset */
 				ph7_result_int(pCtx,0);
@@ -5566,7 +5566,7 @@ static int PH7_builtin_soundex(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * $break
  *  The line is broken using the optional break parameter.
  * Return
- *  Returns the given string wrapped at the specified column. 
+ *  Returns the given string wrapped at the specified column.
  */
 static int PH7_builtin_wordwrap(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -5700,11 +5700,11 @@ struct strtok_aux_data
  *  "This is an example string" you could tokenize this string into its individual
  *  words by using the space character as the token.
  *  Note that only the first call to strtok uses the string argument. Every subsequent
- *  call to strtok only needs the token to use, as it keeps track of where it is in 
+ *  call to strtok only needs the token to use, as it keeps track of where it is in
  *  the current string. To start over, or to tokenize a new string you simply call strtok
  *  with the string argument again to initialize it. Note that you may put multiple tokens
- *  in the token parameter. The string will be tokenized when any one of the characters in 
- *  the argument are found. 
+ *  in the token parameter. The string will be tokenized when any one of the characters in
+ *  the argument are found.
  * Parameters
  *  $str
  *  The string being split up into smaller strings (tokens).
@@ -5717,7 +5717,7 @@ static int PH7_builtin_strtok(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	strtok_aux_data *pAux;
 	const char *zMask;
-	SyString sToken; 
+	SyString sToken;
 	int nMasklen;
 	sxi32 rc;
 	if( nArg < 2 ){
@@ -5769,7 +5769,7 @@ static int PH7_builtin_strtok(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		zMask = ph7_value_to_string(apArg[1],&nMasklen);
 		if( nMasklen < 1 ){
 			/* Set a default mask */
-#define TOK_MASK " \n\t\r\f" 
+#define TOK_MASK " \n\t\r\f"
 			zMask = TOK_MASK;
 			nMasklen = (int)sizeof(TOK_MASK) - 1;
 #undef TOK_MASK
@@ -5812,7 +5812,7 @@ static int PH7_builtin_strtok(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $input
  *   The input string.
  * $pad_length
- *   If the value of pad_length is negative, less than, or equal to the length of the input 
+ *   If the value of pad_length is negative, less than, or equal to the length of the input
  *   string, no padding takes place.
  * $pad_string
  *   Note:
@@ -5948,9 +5948,9 @@ struct str_replace_data
 	for(;;){\
 		if(ELEN < 1)break; SRC[OFFT] = ENTRY[0]; OFFT++; ENTRY++; --ELEN;\
 	}\
-} 
+}
 /*
- * Replace all occurrences of the search string at offset (nOfft) with the given 
+ * Replace all occurrences of the search string at offset (nOfft) with the given
  * replacement string [i.e: zReplace].
  */
 static int StringReplace(SyBlob *pWorker,sxu32 nOfft,int nLen,const char *zReplace,int nReplen)
@@ -5979,7 +5979,7 @@ static int StringReplace(SyBlob *pWorker,sxu32 nOfft,int nLen,const char *zRepla
 		n = SyBlobLength(pWorker);
 		SHIFTRANDINSERT(zInput,n,nOfft,zReplace,iRep);
 		SyBlobLength(pWorker) += nReplen;
-	}	
+	}
 	return SXRET_OK;
 }
 /*
@@ -6075,7 +6075,7 @@ static int StrReplaceWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
  *  to designate multiple replacements.
  * $subject
  *  The string or array being searched and replaced on, otherwise known as the haystack.
- *  If subject is an array, then the search and replace is performed with every entry 
+ *  If subject is an array, then the search and replace is performed with every entry
  *  of subject, and the return value is an array as well.
  * $count (Not used)
  *  If passed, this will be set to the number of replacements performed.
@@ -6217,7 +6217,7 @@ static int PH7_builtin_str_replace(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * $to
  *  The string replacing from.
  * $replace_pairs
- *  The replace_pairs parameter may be used instead of to and 
+ *  The replace_pairs parameter may be used instead of to and
  *  from, in which case it's an array in the form array('from' => 'to', ...).
  * Return
  *  The translated string.
@@ -6280,7 +6280,7 @@ static int PH7_builtin_strtr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				}
 			}
 			ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char));
-			
+
 		}
 	}
 	return PH7_OK;
@@ -6709,7 +6709,7 @@ static int PH7_builtin_ctype_digit(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *   The tested string.
  * Return
  *  Returns TRUE if every character in text is a hexadecimal 'digit', that is
- * a decimal digit or a character from [A-Fa-f] , FALSE otherwise. 
+ * a decimal digit or a character from [A-Fa-f] , FALSE otherwise.
  */
 static int PH7_builtin_ctype_xdigit(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -6757,7 +6757,7 @@ static int PH7_builtin_ctype_xdigit(ph7_context *pCtx,int nArg,ph7_value **apArg
  *   The tested string.
  * Return
  *  Returns TRUE if every character in text is printable and actually creates visible output
- * (no white space), FALSE otherwise. 
+ * (no white space), FALSE otherwise.
  */
 static int PH7_builtin_ctype_graph(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -6806,7 +6806,7 @@ static int PH7_builtin_ctype_graph(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Return
  *  Returns TRUE if every character in text will actually create output (including blanks).
  *  Returns FALSE if text contains control characters or characters that do not have any output
- *  or control function at all. 
+ *  or control function at all.
  */
 static int PH7_builtin_ctype_print(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -6903,7 +6903,7 @@ static int PH7_builtin_ctype_punct(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Return
  *  Returns TRUE if every character in text creates some sort of white space, FALSE otherwise.
  *  Besides the blank character this also includes tab, vertical tab, line feed, carriage return
- *  and form feed characters. 
+ *  and form feed characters.
  */
 static int PH7_builtin_ctype_space(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -6950,7 +6950,7 @@ static int PH7_builtin_ctype_space(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $text
  *   The tested string.
  * Return
- *  Returns TRUE if every character in text is a lowercase letter in the current locale. 
+ *  Returns TRUE if every character in text is a lowercase letter in the current locale.
  */
 static int PH7_builtin_ctype_lower(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -6993,7 +6993,7 @@ static int PH7_builtin_ctype_lower(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $text
  *   The tested string.
  * Return
- *  Returns TRUE if every character in text is a uppercase letter in the current locale. 
+ *  Returns TRUE if every character in text is a uppercase letter in the current locale.
  */
 static int PH7_builtin_ctype_upper(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -7037,7 +7037,7 @@ static int PH7_builtin_ctype_upper(ph7_context *pCtx,int nArg,ph7_value **apArg)
 #include <time.h>
 #ifdef __WINNT__
 /* GetSystemTime() */
-#include <Windows.h> 
+#include <Windows.h>
 #ifdef _WIN32_WCE
 /*
 ** WindowsCE does not have a localtime() function.  So create a
@@ -7098,17 +7098,17 @@ static int PH7_builtin_time(ph7_context *pCtx,int nArg,ph7_value **apArg)
   *   If used and set to TRUE, microtime() will return a float instead of a string
   *   as described in the return values section below.
   * Return
-  *  By default, microtime() returns a string in the form "msec sec", where sec 
-  *  is the current time measured in the number of seconds since the Unix 
+  *  By default, microtime() returns a string in the form "msec sec", where sec
+  *  is the current time measured in the number of seconds since the Unix
   *  epoch (0:00:00 January 1, 1970 GMT), and msec is the number of microseconds
   *  that have elapsed since sec expressed in seconds.
   *  If get_as_float is set to TRUE, then microtime() returns a float, which represents
-  *  the current time in seconds since the Unix epoch accurate to the nearest microsecond. 
+  *  the current time in seconds since the Unix epoch accurate to the nearest microsecond.
   */
 static int PH7_builtin_microtime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	int bFloat = 0;
-	sytime sTime;	
+	sytime sTime;
 #if defined(__UNIXES__)
 	struct timeval tv;
 	gettimeofday(&tv,0);
@@ -7141,7 +7141,7 @@ static int PH7_builtin_microtime(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *     In other words, it defaults to the value of time().
  * Returns
  *  Returns an associative array of information related to the timestamp.
- *  Elements from the returned associative array are as follows: 
+ *  Elements from the returned associative array are as follows:
  *   KEY                                                         VALUE
  * ---------                                                    -------
  * "seconds" 	Numeric representation of seconds 	            0 to 59
@@ -7154,7 +7154,7 @@ static int PH7_builtin_microtime(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * "yday" 	    Numeric representation of the day of the year   0 through 365
  * "weekday" 	A full textual representation of the day of the week 	Sunday through Saturday
  * "month" 	    A full textual representation of a month, such as January or March 	January through December
- * 0 	        Seconds since the Unix Epoch, similar to the values returned by time() and used by date(). 
+ * 0 	        Seconds since the Unix Epoch, similar to the values returned by time() and used by date().
  * NOTE:
  *   NULL is returned on failure.
  */
@@ -7258,7 +7258,7 @@ static int PH7_builtin_getdate(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *   When set to TRUE, a float instead of an array is returned.
  * Return
  *   By default an array is returned. If return_float is set, then
- *   a float is returned. 
+ *   a float is returned.
  */
 static int PH7_builtin_gettimeofday(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -7313,13 +7313,13 @@ static const int aISO8601[] = { 7 /* Sunday */,1 /* Monday */,2,3,4,5,6 };
  * Format a given date string.
  * Supported format: (Taken from PHP online docs)
  * character 	Description
- * d          Day of the month 
+ * d          Day of the month
  * D          A textual representation of a days
  * j          Day of the month without leading zeros
- * l          A full textual representation of the day of the week 	
- * N          ISO-8601 numeric representation of the day of the week 
+ * l          A full textual representation of the day of the week
+ * N          ISO-8601 numeric representation of the day of the week
  * w          Numeric representation of the day of the week
- * z          The day of the year (starting from 0) 	
+ * z          The day of the year (starting from 0)
  * F          A full textual representation of a month, such as January or March
  * m          Numeric representation of a month, with leading zeros 	01 through 12
  * M          A short textual representation of a month, three letters 	Jan through Dec
@@ -7566,7 +7566,7 @@ static sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pTm)
  * %A 	A full textual representation of the day
  * %d 	Two-digit day of the month (with leading zeros)
  * %e 	Day of the month, with a space preceding single digits.
- * %j 	Day of the year, 3 digits with leading zeros 
+ * %j 	Day of the year, 3 digits with leading zeros
  * %u 	ISO-8601 numeric representation of the day of the week 	1 (for Monday) though 7 (for Sunday)
  * %w 	Numeric representation of the day of the week 0 (for Sunday) through 6 (for Saturday)
  * %U 	Week number of the given year, starting with the first Sunday as the first week
@@ -7801,14 +7801,14 @@ static int PH7_Strftime(
  * string date(string $format [, int $timestamp = time() ] )
  *  Returns a string formatted according to the given format string using
  *  the given integer timestamp or the current time if no timestamp is given.
- *  In other words, timestamp is optional and defaults to the value of time(). 
+ *  In other words, timestamp is optional and defaults to the value of time().
  * Parameters
  *  $format
  *   The format of the outputted date string (See code above)
  * $timestamp
  *   The optional timestamp parameter is an integer Unix timestamp
  *   that defaults to the current local time if a timestamp is not given.
- *   In other words, it defaults to the value of time(). 
+ *   In other words, it defaults to the value of time().
  * Return
  *  A formatted date string. If a non-numeric value is used for timestamp, FALSE is returned.
  */
@@ -7868,7 +7868,7 @@ static int PH7_builtin_date(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * $timestamp
  *   The optional timestamp parameter is an integer Unix timestamp
  *   that defaults to the current local time if a timestamp is not given.
- *   In other words, it defaults to the value of time(). 
+ *   In other words, it defaults to the value of time().
  * Return
  * Returns a string formatted according format using the given timestamp
  * or the current local time if no timestamp is given.
@@ -7934,7 +7934,7 @@ static int PH7_builtin_strftime(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $timestamp
  *   The optional timestamp parameter is an integer Unix timestamp
  *   that defaults to the current local time if a timestamp is not given.
- *   In other words, it defaults to the value of time(). 
+ *   In other words, it defaults to the value of time().
  * Return
  *  A formatted date string. If a non-numeric value is used for timestamp, FALSE is returned.
  */
@@ -8057,7 +8057,7 @@ static int PH7_builtin_localtime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	if( nArg > 1 ){
-		isAssoc = ph7_value_to_bool(apArg[1]); 
+		isAssoc = ph7_value_to_bool(apArg[1]);
 	}
 	/* Fill the array */
 	/* Seconds */
@@ -8137,7 +8137,7 @@ static int PH7_builtin_localtime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 /*
  * int idate(string $format [, int $timestamp = time() ])
  *  Returns a number formatted according to the given format string
- *  using the given integer timestamp or the current local time if 
+ *  using the given integer timestamp or the current local time if
  *  no timestamp is given. In other words, timestamp is optional and defaults
  *  to the value of time().
  *  Unlike the function date(), idate() accepts just one char in the format
@@ -8163,9 +8163,9 @@ static int PH7_builtin_localtime(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * $timestamp
  *  The optional timestamp parameter is an integer Unix timestamp that defaults
  *  to the current local time if a timestamp is not given. In other words, it defaults
- *  to the value of time(). 
+ *  to the value of time().
  * Return
- *  An integer. 
+ *  An integer.
  */
 static int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -8302,9 +8302,9 @@ static int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * int mktime/gmmktime([ int $hour = date("H") [, int $minute = date("i") [, int $second = date("s") 
+ * int mktime/gmmktime([ int $hour = date("H") [, int $minute = date("i") [, int $second = date("s")
  *  [, int $month = date("n") [, int $day = date("j") [, int $year = date("Y") [, int $is_dst = -1 ]]]]]]] )
- *  Returns the Unix timestamp corresponding to the arguments given. This timestamp is a 64bit integer 
+ *  Returns the Unix timestamp corresponding to the arguments given. This timestamp is a 64bit integer
  *  containing the number of seconds between the Unix Epoch (January 1 1970 00:00:00 GMT) and the time
  *  specified.
  *  Arguments may be left out in order from right to left; any arguments thus omitted will be set to
@@ -8319,28 +8319,28 @@ static int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  the minute in the previous hour. Values greater than 59 reference the appropriate minute
  *  in the following hour(s).
  * $second
- *  The number of seconds relevant to the start of the minute. Negative values reference 
- *  the second in the previous minute. Values greater than 59 reference the appropriate 
+ *  The number of seconds relevant to the start of the minute. Negative values reference
+ *  the second in the previous minute. Values greater than 59 reference the appropriate
  * second in the following minute(s).
  * $month
  *  The number of the month relevant to the end of the previous year. Values 1 to 12 reference
  *  the normal calendar months of the year in question. Values less than 1 (including negative values)
  *  reference the months in the previous year in reverse order, so 0 is December, -1 is November)...
  * $day
- *  The number of the day relevant to the end of the previous month. Values 1 to 28, 29, 30 or 31 
+ *  The number of the day relevant to the end of the previous month. Values 1 to 28, 29, 30 or 31
  *  (depending upon the month) reference the normal days in the relevant month. Values less than 1
- *  (including negative values) reference the days in the previous month, so 0 is the last day 
+ *  (including negative values) reference the days in the previous month, so 0 is the last day
  *  of the previous month, -1 is the day before that, etc. Values greater than the number of days
  *  in the relevant month reference the appropriate day in the following month(s).
  * $year
  *  The number of the year, may be a two or four digit value, with values between 0-69 mapping
- *  to 2000-2069 and 70-100 to 1970-2000. On systems where time_t is a 32bit signed integer, as 
+ *  to 2000-2069 and 70-100 to 1970-2000. On systems where time_t is a 32bit signed integer, as
  *  most common today, the valid range for year is somewhere between 1901 and 2038.
  * $is_dst
  *  This parameter can be set to 1 if the time is during daylight savings time (DST), 0 if it is not,
- *  or -1 (the default) if it is unknown whether the time is within daylight savings time or not. 
+ *  or -1 (the default) if it is unknown whether the time is within daylight savings time or not.
  * Return
- *   mktime() returns the Unix timestamp of the arguments given. 
+ *   mktime() returns the Unix timestamp of the arguments given.
  *   If the arguments are invalid, the function returns FALSE
  */
 static int PH7_builtin_mktime(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -8422,7 +8422,7 @@ static int Consumer(const void *pData,unsigned int nLen,void *pUserData)
 }
 /*
  * string base64_encode(string $data)
- * string convert_uuencode(string $data)  
+ * string convert_uuencode(string $data)
  *  Encodes data with MIME base64
  * Parameter
  *  $data
@@ -8514,7 +8514,7 @@ static int PH7_builtin_urlencode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 /*
  * string urldecode(string $str)
  *  Decodes any %## encoding in the given string.
- *  Plus symbols ('+') are decoded to a space character. 
+ *  Plus symbols ('+') are decoded to a space character.
  * Parameter
  *  $data
  *    Input string.
@@ -8679,7 +8679,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "ctype_alpha", PH7_builtin_ctype_alpha },
 	{ "ctype_cntrl", PH7_builtin_ctype_cntrl },
 	{ "ctype_digit", PH7_builtin_ctype_digit },
-	{ "ctype_xdigit",PH7_builtin_ctype_xdigit}, 
+	{ "ctype_xdigit",PH7_builtin_ctype_xdigit},
 	{ "ctype_graph", PH7_builtin_ctype_graph },
 	{ "ctype_print", PH7_builtin_ctype_print },
 	{ "ctype_punct", PH7_builtin_ctype_punct },
@@ -8710,7 +8710,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
 };
 /*
- * Register the built-in functions defined above,the array functions 
+ * Register the built-in functions defined above,the array functions
  * defined in hashmap.c and the IO functions defined in vfs.c.
  */
 PH7_PRIVATE void PH7_RegisterBuiltInFunction(ph7_vm *pVm)
