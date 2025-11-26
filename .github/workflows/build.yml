@@ -109,8 +109,6 @@ jobs:
              --ignore-errors format \
              --output-file report/coverage.info
 
-        sed -i 's|SF:a/PHL/PHL/|SF:|g' report/coverage.info
-
         genhtml --quiet --include 'src/ph7/*'\
           --output-directory report/html report/coverage.info
 

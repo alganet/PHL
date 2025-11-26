@@ -26,9 +26,9 @@ function startElement($parser, $name, $attrs) {
         $current_filename = isset($attrs['filename']) ? $attrs['filename'] : '';
         // Fix path
         $current_filename = str_replace('\\', '/', $current_filename);
-        $pos = strpos($current_filename, 'PHL-build/');
+        $pos = strpos($current_filename, 'src/');
         if ($pos !== false) {
-            $current_filename = substr($current_filename, $pos + strlen('PHL-build/'));
+            $current_filename = substr($current_filename, $pos);
         }
         $current_data = array('lines' => array(), 'functions' => array());
     } elseif ($name == 'line' && $current_data !== null) {
