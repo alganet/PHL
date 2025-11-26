@@ -2,10 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7 / PHP: PHP_URL_PORT should exist
+ob_get_contents and ob_end_clean basic behavior
 --FILE--
 <?php
-echo PHP_URL_PORT . "\n";
+ob_start();
+echo "Hello";
+$c = ob_get_contents();
+ob_end_clean();
+echo $c . "\n";
 ?>
---EXPECTF--
-%d
+--EXPECT--
+Hello
