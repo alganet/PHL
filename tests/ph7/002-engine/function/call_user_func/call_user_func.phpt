@@ -2,10 +2,11 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7 / PHP: PHP_URL_PORT should exist
+call_user_func simple function
 --FILE--
 <?php
-echo PHP_URL_PORT . "\n";
+function cufdouble($x){ return $x * 2; }
+echo call_user_func('cufdouble', 4) . "\n";
 ?>
---EXPECTF--
-%d
+--EXPECT--
+8
