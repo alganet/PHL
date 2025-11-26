@@ -16,7 +16,14 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/constant$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/hashmap$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/lex$(OBJ_SUFFIX) \
-	$(BUILD_DIR)/src/ph7/lib$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/sx/sxmutex$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/sx/sxstr$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/sx/sxmem$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/sx/sxds$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/sx/sxutils$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/sx/sxlib$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/sx/sxfmt$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/sx/sxhash$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/memobj$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/oo$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/parse$(OBJ_SUFFIX) \

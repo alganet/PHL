@@ -9,9 +9,9 @@ BIN_SUFFIX =
 
 CC ?= cc
 TARGET ?= $(shell CC=$(CC) ./build-aux/get_target.sh)
-CFLAGS = -W -Wunused -Wall -Isrc/ph7 -Ofast $(PH7_DEFINES) -D__UNIXES__
+CFLAGS = -W -Wunused -Wall -Isrc/sx -Isrc/ph7 -Ofast $(PH7_DEFINES) -D__UNIXES__
 LDFLAGS = -lm -lpthread
-COVERAGE_CFLAGS = -W -Wunused -Wall -Isrc/ph7 -O0 $(PH7_DEFINES) -D__UNIXES__ -fprofile-arcs -ftest-coverage
+COVERAGE_CFLAGS = -W -Wunused -Wall -Isrc/sx -Isrc/ph7 -O0 $(PH7_DEFINES) -D__UNIXES__ -fprofile-arcs -ftest-coverage
 
 PHP_BIN ?= $(shell command -v php)$(BIN_SUFFIX)
 
@@ -34,7 +34,7 @@ $(BUILD_DIR)/coverage/coverage.info: .ALWAYS $(COVERAGE_BIN)
 	@$(COVERAGE_PHL_CMD)
 	@lcov --capture --rc geninfo_unexecuted_blocks=1 --quiet \
 		--ignore-errors unsupported,unsupported \
-		--include 'src/ph7/*' --directory $(BUILD_DIR) \
+		--include 'src/ph7/*' --include 'src/sx/*' --directory $(BUILD_DIR) \
 		--output-file $(BUILD_DIR)/coverage/coverage.info
 	@sed 's|SF:.*/src/|SF:src/|g' \
 		$(BUILD_DIR)/coverage/coverage.info > $(BUILD_DIR)/coverage/coverage.info.tmp \
@@ -43,7 +43,7 @@ $(BUILD_DIR)/coverage/coverage.info: .ALWAYS $(COVERAGE_BIN)
 
 $(BUILD_DIR)/coverage/html: .ALWAYS $(BUILD_DIR)/coverage/coverage.info
 	@genhtml \
-		--include 'src/ph7/*' $(BUILD_DIR)/coverage/coverage.info \
+		--include 'src/ph7/*' --include 'src/sx/*' $(BUILD_DIR)/coverage/coverage.info \
 		--output-directory $(BUILD_DIR)/coverage/html
 	@echo "Coverage report generated in $(BUILD_DIR)/coverage/html/index.html"
 
