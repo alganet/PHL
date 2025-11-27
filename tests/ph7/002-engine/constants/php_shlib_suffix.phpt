@@ -13,4 +13,3 @@ echo "PHP_SHLIB_SUFFIX=" . PHP_SHLIB_SUFFIX . "\n";
 ?>
 --EXPECT--
 PHP_SHLIB_SUFFIX=so
-

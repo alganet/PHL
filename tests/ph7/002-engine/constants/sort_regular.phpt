@@ -9,4 +9,3 @@ echo "SORT_REGULAR=" . SORT_REGULAR . "\n";
 ?>
 --EXPECTF--
 SORT_REGULAR=%d
-

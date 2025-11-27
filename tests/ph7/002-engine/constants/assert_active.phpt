@@ -14,4 +14,3 @@ echo "ASSERT_ACTIVE=" . ASSERT_ACTIVE . "\n";
 ?>
 --EXPECTF--
 ASSERT_ACTIVE=%d
-

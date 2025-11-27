@@ -9,4 +9,3 @@ echo "PHP_ROUND_HALF_UP=" . PHP_ROUND_HALF_UP . "\n";
 ?>
 --EXPECT--
 PHP_ROUND_HALF_UP=1
-

@@ -9,4 +9,3 @@ echo "GLOB_NOCHECK=" . GLOB_NOCHECK . "\n";
 ?>
 --EXPECTF--
 GLOB_NOCHECK=%d
-

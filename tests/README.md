@@ -24,6 +24,7 @@ Conventions & style
 - Tests are PHPT-format files with sections such as `--TEST--`, `--FILE--`, `--EXPECT--`/`--EXPECTF--` and (optionally) `--CLEAN--`.
 - All test files must include the `--CREDITS--` section at the top for SPDX compliance.
 - Prefer focused tests: each PHPT should exercise one behavior of one function or feature. Avoid huge grouped tests asserting many unrelated behaviors.
+- All test files end with a single trailing new line.
 - Naming:
   - Use a clear directory name matching the runtime function or subsystem (e.g., `function/addslashes/addslashes.phpt`).
   - For parser and engine infra tests that aren’t function-level, use descriptive group names (e.g., `function/xml_parser_create/xml_declaration_valid.phpt`).

@@ -14,4 +14,3 @@ echo "UTF8=" . UTF8 . "\n";
 ?>
 --EXPECTF--
 UTF8=%s
-

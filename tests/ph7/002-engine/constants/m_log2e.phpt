@@ -9,4 +9,3 @@ echo "M_LOG2E=" . sprintf('%.8f', M_LOG2E) . "\n";
 ?>
 --EXPECTF--
 M_LOG2E=1.44%d
-

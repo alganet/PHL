@@ -9,4 +9,3 @@ echo "FILE_APPEND=" . FILE_APPEND . "\n";
 ?>
 --EXPECTF--
 FILE_APPEND=%d
-

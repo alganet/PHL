@@ -9,4 +9,3 @@ echo "SORT_DESC=" . SORT_DESC . "\n";
 ?>
 --EXPECTF--
 SORT_DESC=%d
-
