@@ -16,4 +16,3 @@ echo implode(',', $c) . "\n";
 <?php
 unset($a, $b, $c);
 ?>
-

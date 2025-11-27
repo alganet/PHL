@@ -9,4 +9,3 @@ echo "LOCK_EX=" . LOCK_EX . "\n";
 ?>
 --EXPECTF--
 LOCK_EX=%d
-

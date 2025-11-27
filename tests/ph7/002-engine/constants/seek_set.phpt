@@ -9,4 +9,3 @@ echo "SEEK_SET=" . SEEK_SET . "\n";
 ?>
 --EXPECT--
 SEEK_SET=0
-

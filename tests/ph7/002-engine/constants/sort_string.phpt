@@ -9,4 +9,3 @@ echo "SORT_STRING=" . SORT_STRING . "\n";
 ?>
 --EXPECTF--
 SORT_STRING=%d
-
