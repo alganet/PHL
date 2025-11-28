@@ -5,25 +5,25 @@ SPDX-License-Identifier: BSD-3-Clause
 Interface test
 --FILE--
 <?php
-interface MyInterface {
+interface IMyInterface {
     public function method1();
     public function method2($param);
 }
 
-class MyClass implements MyInterface {
+class IMyClass implements IMyInterface {
     public function method1() {
         return "method1";
     }
-    
+
     public function method2($param) {
         return "method2: " . $param;
     }
 }
 
-$instance = new MyClass();
+$instance = new IMyClass();
 echo $instance->method1() . "\n";
 echo $instance->method2("test") . "\n";
-echo "Instance of interface: " . ($instance instanceof MyInterface ? "yes" : "no") . "\n";
+echo "Instance of interface: " . ($instance instanceof IMyInterface ? "yes" : "no") . "\n";
 ?>
 --EXPECT--
 method1
