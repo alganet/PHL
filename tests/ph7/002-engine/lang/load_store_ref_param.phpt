@@ -6,13 +6,13 @@ Pass-by-reference and load/store ref opcodes
 --FILE--
 <?php
 function set_val(&$x){ $x = 'set'; }
-function &get_ref(&$x){ return $x; }
+function &pass_get_ref(&$x){ return $x; }
 
 $var = 'orig';
 set_val($var);
 echo $var . "\n";
 
-$z = &get_ref($var);
+$z = &pass_get_ref($var);
 $z = 'changed';
 echo $var . "\n";
 
