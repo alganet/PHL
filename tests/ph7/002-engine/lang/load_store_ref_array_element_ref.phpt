@@ -7,8 +7,8 @@ Return a reference to an array element from a function and change it.
 <?php
 function &ref_elem(&$arr, $k){ return $arr[$k]; }
 $a = array('k' => 1);
-$b =& ref_elem($a, 'k');
-$b = 10;
+$b_ref =& ref_elem($a, 'k');
+$b_ref = 10;
 echo $a['k'] . "\n"; // 10 now
 
 // Store reference to array element into another array index
@@ -25,5 +25,5 @@ echo $arr2['x'] . "\n";
 
 --CLEAN--
 <?php
-unset($a, $b, $arr2);
+unset($a, $b_ref, $arr2);
 ?>
