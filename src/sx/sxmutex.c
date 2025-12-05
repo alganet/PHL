@@ -3,7 +3,8 @@
  * SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
  * SPDX-License-Identifier: BSD-3-Clause
  */
-#include "sxproto.h"
+#include "sxtypes.h"
+#include "sxmutex.h"
 #if defined(PH7_ENABLE_THREADS)
 #if defined(__WINNT__)
 #include <Windows.h>

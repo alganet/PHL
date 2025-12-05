@@ -3,9 +3,10 @@
  * SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
  * SPDX-License-Identifier: BSD-3-Clause
  */
-#include "sxproto.h"
-
-
+#include "sxtypes.h"
+#include "sxmacros.h"
+#include "sxutils.h"
+#include "sxstr.h"
 
 PH7_PRIVATE sxi32 SyStrIsNumeric(const char *zSrc,sxu32 nLen,sxu8 *pReal,const char  **pzTail)
 {

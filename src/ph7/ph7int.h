@@ -8,8 +8,27 @@
 /* Internal interface definitions for PH7. */
 #define PH7_PRIVATE
 #include "ph7.h"
-#include "sx.h"
-#include "sxproto.h"
+
+/* Granular SX library includes */
+#include "sxtypes.h"      /* Base types: sxi32, sxu32, sxptr, sxreal, etc. */
+#include "sxmacros.h"     /* SyString macros, linked list macros, byte operations */
+#include "sxset.h"        /* SySet and SyBlob structures */
+#include "sxmem.h"        /* SyMemBackend, SyMemBlock, SyMemHeader */
+#include "sxmutex.h"      /* Mutex types and macros */
+#include "sxhash.h"       /* Hash functions: SyBinHash, SyStrHash */
+#include "sxhashtable.h"  /* SyHash, SyHashEntry structures */
+#include "sxrand.h"       /* SyPRNGCtx structure */
+#include "sxlex.h"        /* SyLex, SyToken, SyStream structures */
+#include "sxfmt.h"        /* Formatting functions */
+#include "sxstr.h"        /* String functions */
+#include "sxutils.h"      /* Numeric parsing functions */
+#include "sxbase64.h"     /* Base64 encode/decode */
+#include "sxuri.h"        /* URI encode/decode */
+#include "sxtime.h"       /* Time utilities */
+#include "sxdigest.h"     /* MD5Context, SHA1Context, digest functions */
+#include "sxxml.h"        /* SyXMLParser, XML callbacks */
+#include "sxzip.h"        /* SyArchive, SyArchiveEntry */
+
 #ifndef PH7_PI
 /* Value of PI */
 #define PH7_PI 3.1415926535898

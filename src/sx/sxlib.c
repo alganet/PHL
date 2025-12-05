@@ -3,8 +3,16 @@
  * SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
  * SPDX-License-Identifier: BSD-3-Clause
  */
-
-#include "sxproto.h"
+#include "sxtypes.h"
+#include "sxmacros.h"
+#include "sxset.h"
+#include "sxmem.h"
+#include "sxhash.h"
+#include "sxlex.h"
+#include "sxbase64.h"
+#include "sxuri.h"
+#include "sxtime.h"
+#include "sxstr.h"
 
 PH7_PRIVATE sxu32 SyBinHash(const void *pSrc,sxu32 nLen)
 {
