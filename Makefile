@@ -10,12 +10,6 @@ COVERAGE_BIN = $(BUILD_DIR)/coverage/phl-coverage$(BIN_SUFFIX)
 
 # Object files
 OBJECTS = \
-	$(BUILD_DIR)/src/ph7/api$(OBJ_SUFFIX) \
-	$(BUILD_DIR)/src/ph7/builtin$(OBJ_SUFFIX) \
-	$(BUILD_DIR)/src/ph7/compile$(OBJ_SUFFIX) \
-	$(BUILD_DIR)/src/ph7/constant$(OBJ_SUFFIX) \
-	$(BUILD_DIR)/src/ph7/hashmap$(OBJ_SUFFIX) \
-	$(BUILD_DIR)/src/ph7/lex$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/sx/sxmutex$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/sx/sxstr$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/sx/sxmem$(OBJ_SUFFIX) \
@@ -23,7 +17,16 @@ OBJECTS = \
 	$(BUILD_DIR)/src/sx/sxutils$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/sx/sxlib$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/sx/sxfmt$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/sx/sxxml$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/sx/sxzip$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/sx/sxrand$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/sx/sxhash$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/api$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/builtin$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/compile$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/constant$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/hashmap$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/lex$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/memobj$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/oo$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/parse$(OBJ_SUFFIX) \

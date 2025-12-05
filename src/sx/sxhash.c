@@ -3,7 +3,10 @@
  * SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
  * SPDX-License-Identifier: BSD-3-Clause
  */
-#include "sxproto.h"
+#include "sxtypes.h"
+#include "sxmacros.h"
+#include "sxdigest.h"
+#include "sxstr.h"
 
 /*
  * This code implements the MD5 message-digest algorithm.
