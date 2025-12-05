@@ -14,13 +14,16 @@
 | src/ph7/vm.c                   | 49.81%   | 3598/7224   |
 | src/phl/phl.c                  | 39.19%   | 29/74       |
 | src/sx/sxds.c                  | 91.64%   | 263/287     |
-| src/sx/sxfmt.c                 | 41.50%   | 635/1530    |
+| src/sx/sxfmt.c                 | 64.57%   | 257/398     |
 | src/sx/sxhash.c                | 88.21%   | 232/263     |
 | src/sx/sxlib.c                 | 61.66%   | 156/253     |
 | src/sx/sxmem.c                 | 83.90%   | 422/503     |
 | src/sx/sxmutex.c               | 73.91%   | 68/92       |
+| src/sx/sxrand.c                | 85.51%   | 59/69       |
 | src/sx/sxstr.c                 | 69.39%   | 68/98       |
 | src/sx/sxutils.c               | 57.55%   | 202/351     |
+| src/sx/sxxml.c                 | 38.76%   | 300/774     |
+| src/sx/sxzip.c                 | 6.57%    | 19/289      |
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
