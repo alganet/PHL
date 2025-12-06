@@ -2300,7 +2300,15 @@ static int PH7_vfs_ph7_uname(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 #if defined(__WINNT__)
 	sVer.dwOSVersionInfoSize = sizeof(sVer);
+	/* GetVersionExW is deprecated in modern MSVC. Suppress deprecation for this call. */
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable:4996)
+#endif
 	if( TRUE != GetVersionExW(&sVer)){
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 		ph7_result_string(pCtx,zName,-1);
 		return PH7_OK;
 	}
@@ -2824,7 +2832,7 @@ static ph7_int64 StreamReadLine(io_private *pDev,const char **pzData,ph7_int64 n
 	 * limit is reached.
 	 */
 	for(;;){
-		n = pStream->xRead(pDev->pHandle,zBuf,(nMaxLen > 0 && nMaxLen < sizeof(zBuf)) ? nMaxLen : sizeof(zBuf));
+		n = pStream->xRead(pDev->pHandle,zBuf, (nMaxLen > 0 && nMaxLen < (ph7_int64)sizeof(zBuf)) ? nMaxLen : (ph7_int64)sizeof(zBuf));
 		if( n < 1 ){
 			/* EOF or IO error */
 			break;
@@ -3700,7 +3708,7 @@ static int PH7_builtin_file_get_contents(ph7_context *pCtx,int nArg,ph7_value **
 	nRead = 0;
 	for(;;){
 		n = pStream->xRead(pHandle,zBuf,
-			(nMaxlen > 0 && (nMaxlen < sizeof(zBuf))) ? nMaxlen : sizeof(zBuf));
+			(nMaxlen > 0 && (nMaxlen < (ph7_int64)sizeof(zBuf))) ? nMaxlen : (ph7_int64)sizeof(zBuf));
 		if( n < 1 ){
 			/* EOF or IO error,break immediately */
 			break;
@@ -5635,7 +5643,11 @@ static int PH7_builtin_zip_entry_compressionmethod(ph7_context *pCtx,int nArg,ph
 }
 #endif /* #ifndef PH7_DISABLE_BUILTIN_FUNC*/
 /* NULL VFS [i.e: a no-op VFS]*/
+#if defined(_MSC_VER)
 static const ph7_vfs null_vfs = {
+#else
+static const ph7_vfs null_vfs __attribute__((unused)) = {
+#endif
 	"null_vfs",
 	PH7_VFS_VERSION,
 	0, /* int (*xChdir)(const char *) */
@@ -6895,7 +6907,7 @@ static int UnixVfs_mkdir(const char *zPath,int mode,int recursive)
 {
 	int rc;
         rc = mkdir(zPath,mode);
-	recursive = 0; /* cc warning */
+	SXUNUSED(recursive); /* cc warning */
 	return rc == 0 ? PH7_OK : -1;
 }
 /* int (*xRmdir)(const char *) */
@@ -7482,7 +7494,7 @@ static int UnixDir_Open(const char *zPath,ph7_value *pResource,void **ppHandle)
 	/* Open the target directory */
 	pDir = opendir(zPath);
 	if( pDir == 0 ){
-		pResource = 0; /* Compiler warning */
+		SXUNUSED(pResource); /* Compiler warning */
 		return -1;
 	}
 	/* Save our structure */

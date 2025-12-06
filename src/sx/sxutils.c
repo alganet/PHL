@@ -29,10 +29,22 @@ PH7_PRIVATE sxi32 SyStrIsNumeric(const char *zSrc,sxu32 nLen,sxu8 *pReal,const c
 		*pReal = FALSE;
 	}
 	for(;;){
-		if( zSrc >= zEnd || (unsigned char)zSrc[0] >= 0xc0 || !SyisDigit(zSrc[0]) ){ break; } zSrc++;
-		if( zSrc >= zEnd || (unsigned char)zSrc[0] >= 0xc0 || !SyisDigit(zSrc[0]) ){ break; } zSrc++;
-		if( zSrc >= zEnd || (unsigned char)zSrc[0] >= 0xc0 || !SyisDigit(zSrc[0]) ){ break; } zSrc++;
-		if( zSrc >= zEnd || (unsigned char)zSrc[0] >= 0xc0 || !SyisDigit(zSrc[0]) ){ break; } zSrc++;
+		if( zSrc >= zEnd || (unsigned char)zSrc[0] >= 0xc0 || !SyisDigit(zSrc[0]) ){
+			break;
+		}
+		zSrc++;
+		if( zSrc >= zEnd || (unsigned char)zSrc[0] >= 0xc0 || !SyisDigit(zSrc[0]) ){
+			break;
+		}
+		zSrc++;
+		if( zSrc >= zEnd || (unsigned char)zSrc[0] >= 0xc0 || !SyisDigit(zSrc[0]) ){
+			break;
+		}
+		zSrc++;
+		if( zSrc >= zEnd || (unsigned char)zSrc[0] >= 0xc0 || !SyisDigit(zSrc[0]) ){
+			break;
+		}
+		zSrc++;
 	};
 	if( zSrc < zEnd && zSrc > zCur ){
 		int c = zSrc[0];
@@ -113,9 +125,30 @@ PH7_PRIVATE sxi32 SyStrToInt32(const char *zSrc,sxu32 nLen,void * pOutVal,const 
 	}
 	for(;;){
 		if(zSrc >= zEnd || !i || !SyisDigit(zSrc[0])){ break; } nVal = nVal * 10 + ( zSrc[0] - '0' ) ; --i ; zSrc++;
-		if(zSrc >= zEnd || !i || !SyisDigit(zSrc[0])){ break; } nVal = nVal * 10 + ( zSrc[0] - '0' ) ; --i ; zSrc++;
-		if(zSrc >= zEnd || !i || !SyisDigit(zSrc[0])){ break; } nVal = nVal * 10 + ( zSrc[0] - '0' ) ; --i ; zSrc++;
-		if(zSrc >= zEnd || !i || !SyisDigit(zSrc[0])){ break; } nVal = nVal * 10 + ( zSrc[0] - '0' ) ; --i ; zSrc++;
+		if(zSrc >= zEnd || !i || !SyisDigit(zSrc[0])){
+			break;
+		}
+		nVal = nVal * 10 + ( zSrc[0] - '0' );
+		--i;
+		zSrc++;
+		if(zSrc >= zEnd || !i || !SyisDigit(zSrc[0])){
+			break;
+		}
+		nVal = nVal * 10 + ( zSrc[0] - '0' );
+		--i;
+		zSrc++;
+		if(zSrc >= zEnd || !i || !SyisDigit(zSrc[0])){
+			break;
+		}
+		nVal = nVal * 10 + ( zSrc[0] - '0' );
+		--i;
+		zSrc++;
+		if(zSrc >= zEnd || !i || !SyisDigit(zSrc[0])){
+			break;
+		}
+		nVal = nVal * 10 + ( zSrc[0] - '0' );
+		--i;
+		zSrc++;
 	}
 	/* Skip trailing spaces */
 	while(zSrc < zEnd && SyisSpace(zSrc[0])){
@@ -237,10 +270,26 @@ PH7_PRIVATE sxi32 SyHexStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,con
 	}
 	zIn = zSrc;
 	for(;;){
-		if(zSrc >= zEnd || !SyisHex(zSrc[0]) || (int)(zSrc-zIn) > 15) break; nVal = nVal * 16 + SyHexToint(zSrc[0]);  zSrc++ ;
-		if(zSrc >= zEnd || !SyisHex(zSrc[0]) || (int)(zSrc-zIn) > 15) break; nVal = nVal * 16 + SyHexToint(zSrc[0]);  zSrc++ ;
-		if(zSrc >= zEnd || !SyisHex(zSrc[0]) || (int)(zSrc-zIn) > 15) break; nVal = nVal * 16 + SyHexToint(zSrc[0]);  zSrc++ ;
-		if(zSrc >= zEnd || !SyisHex(zSrc[0]) || (int)(zSrc-zIn) > 15) break; nVal = nVal * 16 + SyHexToint(zSrc[0]);  zSrc++ ;
+		if(zSrc >= zEnd || !SyisHex(zSrc[0]) || (int)(zSrc-zIn) > 15){
+			break;
+		}
+		nVal = nVal * 16 + SyHexToint(zSrc[0]);
+		zSrc++;
+		if(zSrc >= zEnd || !SyisHex(zSrc[0]) || (int)(zSrc-zIn) > 15){
+			break;
+		}
+		nVal = nVal * 16 + SyHexToint(zSrc[0]);
+		zSrc++;
+		if(zSrc >= zEnd || !SyisHex(zSrc[0]) || (int)(zSrc-zIn) > 15){
+			break;
+		}
+		nVal = nVal * 16 + SyHexToint(zSrc[0]);
+		zSrc++;
+		if(zSrc >= zEnd || !SyisHex(zSrc[0]) || (int)(zSrc-zIn) > 15){
+			break;
+		}
+		nVal = nVal * 16 + SyHexToint(zSrc[0]);
+		zSrc++;
 	}
 	while( zSrc < zEnd && SyisSpace(zSrc[0]) ){
 		zSrc++;
@@ -385,29 +434,104 @@ PH7_PRIVATE sxi32 SyStrToReal(const char *zSrc,sxu32 nLen,void * pOutVal,const c
 		return SXERR_EMPTY;
 	}
 #endif
+	/* Define local limits and end pointer used by the parsing loops */
 	zEnd = &zSrc[nLen];
-	while( zSrc < zEnd && SyisSpace(zSrc[0]) ){
-		zSrc++;
-	}
+	Lim = SXDBL_DIG;
+	/* Skip leading spaces */
+	while( zSrc < zEnd && SyisSpace(zSrc[0]) ) zSrc++;
+
+	/* Sign (if exists) */
 	if( zSrc < zEnd && (zSrc[0] == '-' || zSrc[0] == '+' ) ){
 		neg =  zSrc[0] == '-' ? TRUE : FALSE ;
 		zSrc++;
 	}
+
+	/* Integer part */
+	for(;;){
+		if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
+			break;
+		}
+		Val = Val * 10.0 + (zSrc[0] - '0');
+		zSrc++;
+		--Lim;
+		if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
+			break;
+		}
+		Val = Val * 10.0 + (zSrc[0] - '0');
+		zSrc++;
+		--Lim;
+		if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
+			break;
+		}
+		Val = Val * 10.0 + (zSrc[0] - '0');
+		zSrc++;
+		--Lim;
+		if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
+			break;
+		}
+		Val = Val * 10.0 + (zSrc[0] - '0');
+		zSrc++;
+		--Lim;
+	}
 	Lim = SXDBL_DIG ;
 	for(;;){
-		if(zSrc >= zEnd||!Lim||!SyisDigit(zSrc[0])) break ; Val = Val * 10.0 + (zSrc[0] - '0') ; zSrc++ ; --Lim;
-		if(zSrc >= zEnd||!Lim||!SyisDigit(zSrc[0])) break ; Val = Val * 10.0 + (zSrc[0] - '0') ; zSrc++ ; --Lim;
-		if(zSrc >= zEnd||!Lim||!SyisDigit(zSrc[0])) break ; Val = Val * 10.0 + (zSrc[0] - '0') ; zSrc++ ; --Lim;
-		if(zSrc >= zEnd||!Lim||!SyisDigit(zSrc[0])) break ; Val = Val * 10.0 + (zSrc[0] - '0') ; zSrc++ ; --Lim;
+		if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
+			break;
+		}
+		Val = Val * 10.0 + (zSrc[0] - '0');
+		zSrc++;
+		--Lim;
+		if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
+			break;
+		}
+		Val = Val * 10.0 + (zSrc[0] - '0');
+		zSrc++;
+		--Lim;
+		if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
+			break;
+		}
+		Val = Val * 10.0 + (zSrc[0] - '0');
+		zSrc++;
+		--Lim;
+		if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
+			break;
+		}
+		Val = Val * 10.0 + (zSrc[0] - '0');
+		zSrc++;
+		--Lim;
 	}
 	if( zSrc < zEnd && ( zSrc[0] == '.' || zSrc[0] == ',' ) ){
 		sxreal dec = 1.0;
 		zSrc++;
 		for(;;){
-			if(zSrc >= zEnd||!Lim||!SyisDigit(zSrc[0])) break ; Val = Val * 10.0 + (zSrc[0] - '0') ; dec *= 10.0; zSrc++ ;--Lim;
-			if(zSrc >= zEnd||!Lim||!SyisDigit(zSrc[0])) break ; Val = Val * 10.0 + (zSrc[0] - '0') ; dec *= 10.0; zSrc++ ;--Lim;
-			if(zSrc >= zEnd||!Lim||!SyisDigit(zSrc[0])) break ; Val = Val * 10.0 + (zSrc[0] - '0') ; dec *= 10.0; zSrc++ ;--Lim;
-			if(zSrc >= zEnd||!Lim||!SyisDigit(zSrc[0])) break ; Val = Val * 10.0 + (zSrc[0] - '0') ; dec *= 10.0; zSrc++ ;--Lim;
+			if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
+				break;
+			}
+			Val = Val * 10.0 + (zSrc[0] - '0');
+			dec *= 10.0;
+			zSrc++;
+			--Lim;
+			if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
+				break;
+			}
+			Val = Val * 10.0 + (zSrc[0] - '0');
+			dec *= 10.0;
+			zSrc++;
+			--Lim;
+			if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
+				break;
+			}
+			Val = Val * 10.0 + (zSrc[0] - '0');
+			dec *= 10.0;
+			zSrc++;
+			--Lim;
+			if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
+				break;
+			}
+			Val = Val * 10.0 + (zSrc[0] - '0');
+			dec *= 10.0;
+			zSrc++;
+			--Lim;
 		}
 		Val /= dec;
 	}

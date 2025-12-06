@@ -570,32 +570,32 @@ static sxi32 VmFrameLink(ph7_vm *pVm,SyString *pName)
  */
 static void VmLeaveFrame(ph7_vm *pVm)
 {
-	VmFrame *pFrame = pVm->pFrame;
-	if( pFrame ){
+		VmFrame *pCurFrame = pVm->pFrame;
+	if( pCurFrame ){
 		/* Unlink from the list of active VM frame */
-		pVm->pFrame = pFrame->pParent;
-		if( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) == 0 ){
+		pVm->pFrame = pCurFrame->pParent;
+		if( pCurFrame->pParent && (pCurFrame->iFlags & VM_FRAME_EXCEPTION) == 0 ){
 			VmSlot  *aSlot;
 			sxu32 n;
 			/* Restore local variable to the free pool so that they can be reused again */
-			aSlot = (VmSlot *)SySetBasePtr(&pFrame->sLocal);
-			for(n = 0 ; n < SySetUsed(&pFrame->sLocal) ; ++n ){
+			aSlot = (VmSlot *)SySetBasePtr(&pCurFrame->sLocal);
+			for(n = 0 ; n < SySetUsed(&pCurFrame->sLocal) ; ++n ){
 				/* Unset the local variable */
 				PH7_VmUnsetMemObj(&(*pVm),aSlot[n].nIdx,FALSE);
 			}
 			/* Remove local reference */
-			aSlot = (VmSlot *)SySetBasePtr(&pFrame->sRef);
-			for(n = 0 ; n < SySetUsed(&pFrame->sRef) ; ++n ){
+			aSlot = (VmSlot *)SySetBasePtr(&pCurFrame->sRef);
+			for(n = 0 ; n < SySetUsed(&pCurFrame->sRef) ; ++n ){
 				PH7_VmRefObjRemove(&(*pVm),aSlot[n].nIdx,(SyHashEntry *)aSlot[n].pUserData,0);
 			}
 		}
 		/* Release internal containers */
-		SyHashRelease(&pFrame->hVar);
-		SySetRelease(&pFrame->sArg);
-		SySetRelease(&pFrame->sLocal);
-		SySetRelease(&pFrame->sRef);
+		SyHashRelease(&pCurFrame->hVar);
+		SySetRelease(&pCurFrame->sArg);
+		SySetRelease(&pCurFrame->sLocal);
+		SySetRelease(&pCurFrame->sRef);
 		/* Release the whole structure */
-		SyMemBackendPoolFree(&pVm->sAllocator,pFrame);
+		SyMemBackendPoolFree(&pVm->sAllocator,pCurFrame);
 	}
 }
 /*
@@ -4440,8 +4440,9 @@ case PH7_OP_LOAD_REF: {
  * OP_STORE_REF * * P3
  * Perform an assignment operation by reference.
  */
-case PH7_OP_STORE_REF: {
-	SyString sName = { 0 , 0 };
+ case PH7_OP_STORE_REF: {
+	 SyString sName = { 0 , 0 };
+	 VmFrame *pFrameLocal;
 	SyHashEntry *pEntry;
 	sxu32 nIdx;
 #ifdef UNTRUST
@@ -4490,23 +4491,23 @@ case PH7_OP_STORE_REF: {
 		if( (pTos->iFlags & MEMOBJ_HASHMAP) && (pVm->pGlobal == (ph7_hashmap *)pTos->x.pOther) ){
 			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"$GLOBALS is a read-only array and therefore cannot be referenced");
 		}else{
-			VmFrame *pFrame = pVm->pFrame;
-			while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
+			pFrameLocal = pVm->pFrame;
+			while( pFrameLocal->pParent && (pFrameLocal->iFlags & VM_FRAME_EXCEPTION) ){
 				/* Safely ignore the exception frame */
-				pFrame = pFrame->pParent;
+				pFrameLocal = pFrameLocal->pParent;
 			}
 			/* Query the local frame */
-			pEntry = SyHashGet(&pFrame->hVar,(const void *)sName.zString,sName.nByte);
+			pEntry = SyHashGet(&pFrameLocal->hVar,(const void *)sName.zString,sName.nByte);
 			if( pEntry ){
 				VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Referenced variable name '%z' already exists",&sName);
 			}else{
-				rc = SyHashInsert(&pFrame->hVar,(const void *)sName.zString,sName.nByte,SX_INT_TO_PTR(nIdx));
-				if( pFrame->pParent == 0 ){
+				rc = SyHashInsert(&pFrameLocal->hVar,(const void *)sName.zString,sName.nByte,SX_INT_TO_PTR(nIdx));
+				if( pFrameLocal->pParent == 0 ){
 					/* Insert in the $GLOBALS array */
 					VmHashmapRefInsert(pVm->pGlobal,sName.zString,sName.nByte,nIdx);
 				}
 				if( rc == SXRET_OK ){
-					PH7_VmRefObjInstall(&(*pVm),nIdx,SyHashLastEntry(&pFrame->hVar),0,0);
+					PH7_VmRefObjInstall(&(*pVm),nIdx,SyHashLastEntry(&pFrameLocal->hVar),0,0);
 				}
 			}
 		}
@@ -4545,23 +4546,23 @@ case PH7_OP_UPLINK: {
  */
 case PH7_OP_LOAD_EXCEPTION: {
 	ph7_exception *pException = (ph7_exception *)pInstr->p3;
-	VmFrame *pFrame;
+	VmFrame *pFrameLocal;
 	SySetPut(&pVm->aException,(const void *)&pException);
 	/* Create the exception frame */
-	rc = VmEnterFrame(&(*pVm),0,0,&pFrame);
+	rc = VmEnterFrame(&(*pVm),0,0,&pFrameLocal);
 	if( rc != SXRET_OK ){
 		VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Fatal PH7 engine is runnig out of memory");
 		goto Abort;
 	}
 	/* Mark the special frame */
-	pFrame->iFlags |= VM_FRAME_EXCEPTION;
-	pFrame->iExceptionJump = pInstr->iP2;
+	pFrameLocal->iFlags |= VM_FRAME_EXCEPTION;
+	pFrameLocal->iExceptionJump = pInstr->iP2;
 	/* Point to the frame that trigger the exception */
-	pFrame = pFrame->pParent;
-	while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
-		pFrame = pFrame->pParent;
+	pFrameLocal = pFrameLocal->pParent;
+	while( pFrameLocal->pParent && (pFrameLocal->iFlags & VM_FRAME_EXCEPTION) ){
+		pFrameLocal = pFrameLocal->pParent;
 	}
-	pException->pFrame = pFrame;
+	pException->pFrame = pFrameLocal;
 	break;
 							}
 /*
@@ -4589,19 +4590,19 @@ case PH7_OP_POP_EXCEPTION: {
  * Throw an user exception.
  */
 case PH7_OP_THROW: {
-	VmFrame *pFrame = pVm->pFrame;
+	VmFrame *pFrameLocal = pVm->pFrame;
 	sxu32 nJump = pInstr->iP2;
 #ifdef UNTRUST
 	if( pTos < pStack ){
 		goto Abort;
 	}
 #endif
-	while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
+	while( pFrameLocal->pParent && (pFrameLocal->iFlags & VM_FRAME_EXCEPTION) ){
 		/* Safely ignore the exception frame */
-		pFrame = pFrame->pParent;
+		pFrameLocal = pFrameLocal->pParent;
 	}
 	/* Tell the upper layer that an exception was thrown */
-	pFrame->iFlags |= VM_FRAME_THROW;
+	pFrameLocal->iFlags |= VM_FRAME_THROW;
 	if( pTos->iFlags & MEMOBJ_OBJ ){
 		ph7_class_instance *pThis = (ph7_class_instance *)pTos->x.pOther;
 		ph7_class *pException;
@@ -4729,14 +4730,14 @@ case PH7_OP_FOREACH_STEP: {
 	ph7_foreach_info *pInfo = (ph7_foreach_info *)pInstr->p3;
 	ph7_foreach_step **apStep,*pStep;
 	ph7_value *pValue;
-	VmFrame *pFrame;
+	VmFrame *pFrameLocal;
 	/* Peek the last step */
 	apStep = (ph7_foreach_step **)SySetBasePtr(&pInfo->aStep);
 	pStep = apStep[SySetUsed(&pInfo->aStep) - 1];
-	pFrame = pVm->pFrame;
-	while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
+	pFrameLocal = pVm->pFrame;
+	while( pFrameLocal->pParent && (pFrameLocal->iFlags & VM_FRAME_EXCEPTION) ){
 		/* Safely ignore the exception frame */
-		pFrame = pFrame->pParent;
+		pFrameLocal = pFrameLocal->pParent;
 	}
 	if( pStep->iFlags & PH7_4EACH_STEP_HASHMAP ){
 		ph7_hashmap *pMap = pStep->xIter.pMap;
@@ -4748,7 +4749,7 @@ case PH7_OP_FOREACH_STEP: {
 			pc = pInstr->iP2 - 1; /* Jump to this destination */
 			if( pStep->iFlags & PH7_4EACH_STEP_REF ){
 				/* Break the reference with the last element */
-				SyHashDeleteEntry(&pFrame->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue),0);
+				SyHashDeleteEntry(&pFrameLocal->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue),0);
 			}
 			/* Automatically reset the loop cursor */
 			PH7_HashmapResetLoopCursor(pMap);
@@ -4766,11 +4767,11 @@ case PH7_OP_FOREACH_STEP: {
 			if( pStep->iFlags & PH7_4EACH_STEP_REF ){
 				SyHashEntry *pEntry;
 				/* Pass by reference */
-				pEntry = SyHashGet(&pFrame->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue));
+				pEntry = SyHashGet(&pFrameLocal->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue));
 				if( pEntry ){
 					pEntry->pUserData = SX_INT_TO_PTR(pNode->nValIdx);
 				}else{
-					SyHashInsert(&pFrame->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue),
+					SyHashInsert(&pFrameLocal->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue),
 						SX_INT_TO_PTR(pNode->nValIdx));
 				}
 			}else{
@@ -4799,7 +4800,7 @@ case PH7_OP_FOREACH_STEP: {
 			pc = pInstr->iP2 - 1; /* Jump to this destination */
 			if( pStep->iFlags & PH7_4EACH_STEP_REF ){
 				/* Break the reference with the last element */
-				SyHashDeleteEntry(&pFrame->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue),0);
+				SyHashDeleteEntry(&pFrameLocal->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue),0);
 			}
 			SyMemBackendPoolFree(&pVm->sAllocator,pStep);
 			SySetPop(&pInfo->aStep);
@@ -4821,11 +4822,11 @@ case PH7_OP_FOREACH_STEP: {
 			if( pAttrValue ){
 				if( pStep->iFlags & PH7_4EACH_STEP_REF ){
 					/* Pass by reference */
-					pEntry = SyHashGet(&pFrame->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue));
+					pEntry = SyHashGet(&pFrameLocal->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue));
 					if( pEntry ){
 						pEntry->pUserData = SX_INT_TO_PTR(pVmAttr->nIdx);
 					}else{
-						SyHashInsert(&pFrame->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue),
+						SyHashInsert(&pFrameLocal->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue),
 							SX_INT_TO_PTR(pVmAttr->nIdx));
 					}
 				}else{
@@ -5348,14 +5349,14 @@ case PH7_OP_CALL: {
 					}
 				}
 				if( pThis == 0  ){
-					VmFrame *pFrame = pVm->pFrame;
-					while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
+					VmFrame *pFrameLocal = pVm->pFrame;
+					while( pFrameLocal->pParent && (pFrameLocal->iFlags & VM_FRAME_EXCEPTION) ){
 						/* Safely ignore the exception frame */
-						pFrame = pFrame->pParent;
+						pFrameLocal = pFrameLocal->pParent;
 					}
-					if( pFrame->pParent ){
+					if( pFrameLocal->pParent ){
 						/* TICKET-1433-52: Make sure the '$this' variable is available to the current scope */
-						pThis = pFrame->pThis;
+						pThis = pFrameLocal->pThis;
 						if( pThis ){
 							pThis->iRef++;
 						}
@@ -5488,7 +5489,8 @@ case PH7_OP_CALL: {
 									PH7_MemObjRelease(pArg);
 								}
 							}else{
-								ph7_class_instance *pThis = (ph7_class_instance *)pArg->x.pOther;
+								/* reuse pThis declared in outer scope */
+								pThis = (ph7_class_instance *)pArg->x.pOther;
 								/* Make sure the object is an instance of the given class */
 								if( ! VmInstanceOf(pThis->pClass,pClass) ){
 									VmErrorFormat(&(*pVm),PH7_CTX_ERR,
@@ -5534,12 +5536,12 @@ case PH7_OP_CALL: {
 				}
 			}else{
 				char zName[32];
-				SyString sName;
+				SyString sArgName;
 				/* Set a dummy name */
-				sName.nByte = SyBufferFormat(zName,sizeof(zName),"[%u]apArg",n);
-				sName.zString = zName;
+				sArgName.nByte = SyBufferFormat(zName,sizeof(zName),"[%u]apArg",n);
+				sArgName.zString = zName;
 				/* Annonymous argument */
-				pObj = VmExtractMemObj(&(*pVm),&sName,TRUE,TRUE);
+				pObj = VmExtractMemObj(&(*pVm),&sArgName,TRUE,TRUE);
 			}
 			if( pObj ){
 				PH7_MemObjStore(pArg,pObj);
@@ -5556,10 +5558,10 @@ case PH7_OP_CALL: {
 		if( pVmFunc->iFlags & VM_FUNC_CLOSURE ){
 			ph7_vm_func_closure_env *aEnv,*pEnv;
 			ph7_value *pValue;
-			sxu32 n;
+			sxu32 iEnv;
 			aEnv = (ph7_vm_func_closure_env *)SySetBasePtr(&pVmFunc->aClosureEnv);
-			for(n = 0 ; n < SySetUsed(&pVmFunc->aClosureEnv) ; ++n ){
-				pEnv = &aEnv[n];
+			for(iEnv = 0 ; iEnv < SySetUsed(&pVmFunc->aClosureEnv) ; ++iEnv ){
+				pEnv = &aEnv[iEnv];
 				if( (pEnv->iFlags & VM_FUNC_ARG_IGNORE) && (pEnv->sValue.iFlags & MEMOBJ_NULL) ){
 					/* Do not install null value */
 					continue;
@@ -9606,7 +9608,7 @@ static sxi32 VmUncaughtException(
 	apArg[0] = &sArg;
 	/* Call the exception handler if available */
 	pVm->nExceptDepth++;
-	rc = PH7_VmCallUserFunction(&(*pVm),&pVm->aExceptionCB[1],1,apArg,0);
+	rc = PH7_VmCallUserFunction(&(*pVm),&pVm->aExceptionCB[1],nArg,apArg,0);
 	pVm->nExceptDepth--;
 	if( rc != SXRET_OK ){
 		SyString sName = { "Exception" , sizeof("Exception") - 1 };
@@ -13822,12 +13824,12 @@ PH7_PRIVATE ph7_class * PH7_VmExtractClass(
 {
 	SyHashEntry *pEntry;
 	ph7_class *pClass;
+		SXUNUSED(iNest);
 	/* Perform a hash lookup */
 	pEntry = SyHashGet(&pVm->hClass,(const void *)zName,nByte);
 
 	if( pEntry == 0 ){
 		/* No such entry,return NULL */
-		iNest = 0; /* cc warning */
 		return 0;
 	}
 	pClass = (ph7_class *)pEntry->pUserData;

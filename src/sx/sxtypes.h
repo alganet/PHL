@@ -75,7 +75,7 @@ typedef struct SySet SySet;
 /* Common utility macros */
 #define SX_ADDR(PTR)    ((sxptr)PTR)
 #define SX_ARRAYSIZE(X) (sizeof(X)/sizeof(X[0]))
-#define SXUNUSED(P)     (P = 0)
+#define SXUNUSED(P)     ((void)(P))
 #define SX_EMPTY(PTR)   (PTR == 0)
 #define SX_EMPTY_STR(STR) (STR == 0 || STR[0] == 0 )
 

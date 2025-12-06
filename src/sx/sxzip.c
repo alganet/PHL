@@ -227,13 +227,19 @@ static sxi32 ArchiveHashInstallEntry(SyArchive *pArch,SyArchiveEntry *pEntry)
 	sxu32 nMagic = 0; /* cc -O6 warning */
  	sxi32 rc;
 
- 	/* Sanity check */
- 	rc = SyLittleEndianUnpack32(&nMagic,zBuf,sizeof(sxu32));
- 	if( /* rc != SXRET_OK || */nMagic != SXZIP_END_CENTRAL_MAGIC ){
- 		return SXERR_CORRUPT;
- 	}
- 	/* # of entries */
- 	rc = SyLittleEndianUnpack16((sxu16 *)&pArch->nEntry,&zBuf[8],sizeof(sxu16));
+	 /* Sanity check */
+	 rc = SyLittleEndianUnpack32(&nMagic,zBuf,sizeof(sxu32));
+	 if( rc != SXRET_OK ){
+		 return SXERR_CORRUPT;
+	 }
+	 if( nMagic != SXZIP_END_CENTRAL_MAGIC ){
+		 return SXERR_CORRUPT;
+	 }
+	 /* # of entries */
+	 rc = SyLittleEndianUnpack16((sxu16 *)&pArch->nEntry,&zBuf[8],sizeof(sxu16));
+	 if( rc != SXRET_OK ){
+		 return SXERR_CORRUPT;
+	 }
  	if( /* rc != SXRET_OK || */ pArch->nEntry > SXI16_HIGH /* SXU16_HIGH */ ){
  		return SXERR_CORRUPT;
  	}

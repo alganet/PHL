@@ -975,8 +975,7 @@ PH7_PRIVATE sxi32 PH7_CompileString(ph7_gen_state *pGen,sxi32 iCompileFlag)
  */
 static sxi32 PH7_CompileHereDoc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 {
-	sxi32 rc;
-	rc = GenStateCompileString(&(*pGen));
+	GenStateCompileString(&(*pGen));
 	SXUNUSED(iCompileFlag); /* cc warning */
 	/* Compilation result */
 	return SXRET_OK;
@@ -1426,7 +1425,7 @@ PH7_PRIVATE sxi32 PH7_CompileLangConstruct(ph7_gen_state *pGen,sxi32 iCompileFla
  */
 PH7_PRIVATE sxi32 PH7_CompileVariable(ph7_gen_state *pGen,sxi32 iCompileFlag)
 {
-	sxu32 nLine = pGen->pIn->nLine;
+	sxu32 nLineLocal = pGen->pIn->nLine;
 	sxi32 iVv;
 	sxi32 iP1;
 	void *p3;
@@ -1438,7 +1437,7 @@ PH7_PRIVATE sxi32 PH7_CompileVariable(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	}
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD|PH7_TK_OCB/*'{'*/)) == 0 ){
 		/* Invalid variable name */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Invalid variable name");
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"Invalid variable name");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -1452,7 +1451,7 @@ PH7_PRIVATE sxi32 PH7_CompileVariable(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		pGen->pEnd--; /* Ignore the trailing curly */
 		if( pGen->pIn >= pGen->pEnd ){
 			/* Empty expression */
-			PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Invalid variable name");
+			PH7_GenCompileError(&(*pGen),E_ERROR,nLineLocal,"Invalid variable name");
 			return SXRET_OK;
 		}
 		/* Compile the expression holding the variable name */
@@ -1460,7 +1459,7 @@ PH7_PRIVATE sxi32 PH7_CompileVariable(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}else if( rc == SXERR_EMPTY ){
-			PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Missing variable name");
+			PH7_GenCompileError(&(*pGen),E_ERROR,nLineLocal,"Missing variable name");
 			return SXRET_OK;
 		}
 	}else{
@@ -1476,7 +1475,7 @@ PH7_PRIVATE sxi32 PH7_CompileVariable(ph7_gen_state *pGen,sxi32 iCompileFlag)
 			/* Duplicate name */
 			zName = SyMemBackendStrDup(&pGen->pVm->sAllocator,pName->zString,pName->nByte);
 			if( zName == 0 ){
-				PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 engine is running out of memory");
+				PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"Fatal, PH7 engine is running out of memory");
 				return SXERR_ABORT;
 			}
 			/* Install in the hashtable */
@@ -1576,15 +1575,15 @@ static sxi32 GenStateLoadLiteral(ph7_gen_state *pGen)
 	}
 	/* Query literal table */
 	if( SXRET_OK != GenStateFindLiteral(&(*pGen),&pToken->sData,&nIdx) ){
-		ph7_value *pObj;
+		ph7_value *pLitObj;
 		/* Unknown literal,install it in the literal table */
-		pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);
-		if( pObj == 0 ){
+		pLitObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);
+		if( pLitObj == 0 ){
 			PH7_GenCompileError(&(*pGen),E_ERROR,1,"PH7 engine is running out of memory");
 			return SXERR_ABORT;
 		}
-		PH7_MemObjInitFromString(pGen->pVm,pObj,&pToken->sData);
-		GenStateInstallLiteral(&(*pGen),pObj,nIdx);
+		PH7_MemObjInitFromString(pGen->pVm,pLitObj,&pToken->sData);
+		GenStateInstallLiteral(&(*pGen),pLitObj,nIdx);
 	}
 	/* Emit the load constant instruction */
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,1,nIdx,0,0);
@@ -1688,13 +1687,13 @@ static int GenStateIsReservedConstant(SyString *pName)
 static sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 {
 	SySet *pConsCode,*pInstrContainer;
-	sxu32 nLine = pGen->pIn->nLine;
+	sxu32 nLineLocal = pGen->pIn->nLine;
 	SyString *pName;
 	sxi32 rc;
 	pGen->pIn++; /* Jump the 'const' keyword */
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_SSTR|PH7_TK_DSTR|PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
 		/* Invalid constant name */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"const: Invalid constant name");
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"const: Invalid constant name");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -1706,7 +1705,7 @@ static sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 	/* Make sure the constant name isn't reserved */
 	if( GenStateIsReservedConstant(pName) ){
 		/* Reserved constant */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"const: Cannot redeclare a reserved constant '%z'",pName);
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"const: Cannot redeclare a reserved constant '%z'",pName);
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -1716,7 +1715,7 @@ static sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 	pGen->pIn++;
 	if(pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_EQUAL /* '=' */) == 0 ){
 		/* Invalid statement*/
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"const: Expected '=' after constant name");
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"const: Expected '=' after constant name");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -1727,7 +1726,7 @@ static sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 	/* Allocate a new constant value container */
 	pConsCode = (SySet *)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(SySet));
 	if( pConsCode == 0 ){
-		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 engine is running out of memory");
+		PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"Fatal, PH7 engine is running out of memory");
 		return SXERR_ABORT;
 	}
 	SySetInit(pConsCode,&pGen->pVm->sAllocator,sizeof(VmInstr));
@@ -1775,9 +1774,9 @@ static sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 {
 	GenBlock *pLoop; /* Target loop */
 	sxi32 iLevel;    /* How many nesting loop to skip */
-	sxu32 nLine;
+	sxu32 nLineLocal;
 	sxi32 rc;
-	nLine = pGen->pIn->nLine;
+	nLineLocal = pGen->pIn->nLine;
 	iLevel = 0;
 	/* Jump the 'continue' keyword */
 	pGen->pIn++;
@@ -1795,7 +1794,7 @@ static sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 	pLoop = GenStateFetchBlock(pGen->pCurrent,GEN_BLOCK_LOOP,iLevel);
 	if( pLoop == 0 ){
 		/* Illegal continue */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"A 'continue' statement may only be used within a loop or switch");
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"A 'continue' statement may only be used within a loop or switch");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -1843,9 +1842,7 @@ static sxi32 PH7_CompileBreak(ph7_gen_state *pGen)
 {
 	GenBlock *pLoop; /* Target loop */
 	sxi32 iLevel;    /* How many nesting loop to skip */
-	sxu32 nLine;
 	sxi32 rc;
-	nLine = pGen->pIn->nLine;
 	iLevel = 0;
 	/* Jump the 'break' keyword */
 	pGen->pIn++;
@@ -2098,8 +2095,9 @@ static sxi32 PH7_CompileBlock(
 	)
 {
 	sxi32 rc;
+	sxu32 nLine;
 	if( pGen->pIn->nType & PH7_TK_OCB /* '{' */ ){
-		sxu32 nLine = pGen->pIn->nLine;
+		nLine = pGen->pIn->nLine;
 		rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_STD,PH7_VmInstrLength(pGen->pVm),0,0);
 		if( rc != SXRET_OK ){
 			return SXERR_ABORT;
@@ -3254,8 +3252,9 @@ Synchronize:
  */
 static sxi32 PH7_CompileVar(ph7_gen_state *pGen)
 {
-	sxu32 nLine = pGen->pIn->nLine;
+	sxu32 nLine;
 	sxi32 rc;
+	nLine = pGen->pIn->nLine;
 	/* Jump the 'var' keyword */
 	pGen->pIn++;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_DOLLAR/*'$'*/) == 0 ){
@@ -3313,7 +3312,8 @@ static sxi32 PH7_CompileVar(ph7_gen_state *pGen)
  */
 static sxi32 PH7_CompileNamespace(ph7_gen_state *pGen)
 {
-	sxu32 nLine = pGen->pIn->nLine;
+	sxu32 nLine;
+	nLine = pGen->pIn->nLine;
 	sxi32 rc;
 	pGen->pIn++; /* Jump the 'namespace' keyword */
 	if( pGen->pIn >= pGen->pEnd ||
@@ -3361,7 +3361,8 @@ static sxi32 PH7_CompileNamespace(ph7_gen_state *pGen)
  */
 static sxi32 PH7_CompileUse(ph7_gen_state *pGen)
 {
-	sxu32 nLine = pGen->pIn->nLine;
+	sxu32 nLine;
+	nLine = pGen->pIn->nLine;
 	sxi32 rc;
 	pGen->pIn++; /* Jump the 'use' keyword */
 	/* Assemeble one or more real namespace path */
@@ -3595,13 +3596,12 @@ static sxi32 GenStateProcessArgValue(ph7_gen_state *pGen,ph7_vm_func_arg *pArg,S
 static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyToken *pEnd)
 {
 	ph7_vm_func_arg sArg; /* Current processed argument */
-	SyToken *pCur,*pIn;  /* Token stream */
+	SyToken *pIn;  /* Token stream */
 	SyBlob sSig;         /* Function signature */
 	char *zDup;          /* Copy of argument name */
 	sxi32 rc;
 
 	pIn = pGen->pIn;
-	pCur = 0;
 	SyBlobInit(&sSig,&pGen->pVm->sAllocator);
 	/* Process arguments one after one */
 	for(;;){
@@ -3631,12 +3631,12 @@ static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyTo
 				}
 			}else{
 				SyString *pName = &pIn->sData; /* Class name */
-				char *zDup;
+				char *zDupLocal;
 				/* Argument must be a class instance,record that*/
-				zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,pName->zString,pName->nByte);
-				if( zDup ){
+				zDupLocal = SyMemBackendStrDup(&pGen->pVm->sAllocator,pName->zString,pName->nByte);
+				if( zDupLocal ){
 					sArg.nType = SXU32_HIGH; /* 0xFFFFFFFF as sentinel */
-					SyStringInitFromBuf(&sArg.sClass,zDup,pName->nByte);
+					SyStringInitFromBuf(&sArg.sClass,zDupLocal,pName->nByte);
 				}
 			}
 			pIn++;
@@ -3873,11 +3873,11 @@ static sxi32 GenStateCompileFunc(
 		int got_this = 0; /* TRUE if $this have been seen */
 		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD)
 			&& SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_USE ){
-				sxu32 nLine = pGen->pIn->nLine;
+				sxu32 nLineLocal = pGen->pIn->nLine;
 				/* Closure,record environment variable */
 				pGen->pIn++;
 				if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
-					rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Closure: Unexpected token. Expecting a left parenthesis '('");
+					rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"Closure: Unexpected token. Expecting a left parenthesis '('");
 					if( rc == SXERR_ABORT ){
 						return SXERR_ABORT;
 					}
@@ -3885,23 +3885,23 @@ static sxi32 GenStateCompileFunc(
 				pGen->pIn++; /* Jump the left parenthesis or any other unexpected token */
 				/* Compile until we hit the first closing parenthesis */
 				while( pGen->pIn < pGen->pEnd ){
-					int iFlags = 0;
+					int iFlagsLocal = 0;
 					if( pGen->pIn->nType & PH7_TK_RPAREN ){
 						pGen->pIn++; /* Jump the closing parenthesis */
 						break;
 					}
-					nLine = pGen->pIn->nLine;
+					nLineLocal = pGen->pIn->nLine;
 					if( pGen->pIn->nType & PH7_TK_AMPER ){
 						/* Pass by reference,record that */
-						PH7_GenCompileError(pGen,E_WARNING,nLine,
+						PH7_GenCompileError(pGen,E_WARNING,nLineLocal,
 							"Closure: Pass by reference is disabled in the current release of the PH7 engine,PH7 is switching to pass by value"
 							);
-						iFlags = VM_FUNC_ARG_BY_REF;
+						iFlagsLocal = VM_FUNC_ARG_BY_REF;
 						pGen->pIn++;
 					}
 					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 || &pGen->pIn[1] >= pGen->pEnd
 						|| (pGen->pIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
-							rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+							rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,
 								"Closure: Unexpected token. Expecting a variable name");
 							if( rc == SXERR_ABORT ){
 								return SXERR_ABORT;
@@ -3916,18 +3916,18 @@ static sxi32 GenStateCompileFunc(
 							break;
 							/* TICKET 1433-95: No need for the else block below.*/
 					}else{
-						SyString *pName;
+						SyString *pNameLocal;
 						char *zDup;
 						/* Duplicate variable name */
-						pName = &pGen->pIn[1].sData;
-						zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,pName->zString,pName->nByte);
+						pNameLocal = &pGen->pIn[1].sData;
+						zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,pNameLocal->zString,pNameLocal->nByte);
 						if( zDup ){
 							/* Zero the structure */
 							SyZero(&sEnv,sizeof(ph7_vm_func_closure_env));
-							sEnv.iFlags = iFlags;
+							sEnv.iFlags = iFlagsLocal;
 							PH7_MemObjInit(pGen->pVm,&sEnv.sValue);
-							SyStringInitFromBuf(&sEnv.sName,zDup,pName->nByte);
-							if( !got_this && pName->nByte == sizeof("this")-1 &&
+							SyStringInitFromBuf(&sEnv.sName,zDup,pNameLocal->nByte);
+							if( !got_this && pNameLocal->nByte == sizeof("this")-1 &&
 								SyMemcmp((const void *)zDup,(const void *)"this",sizeof("this")-1) == 0 ){
 									got_this = 1;
 							}

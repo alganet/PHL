@@ -133,7 +133,6 @@ static const SyFmtInfo aFmt[] = {
   char prefix;             /* Prefix character."+" or "-" or " " or '\0'.*/
   sxu8 errorflag = 0;      /* True if an error is encountered */
   sxu8 xtype;              /* Conversion paradigm */
-  char *zExtra;
   static char spaces[] = "                                                  ";
 #define etSPACESIZE ((int)sizeof(spaces)-1)
 #ifndef SX_OMIT_FLOATINGPOINT
@@ -238,7 +237,7 @@ static const SyFmtInfo aFmt[] = {
         break;
       }
     }
-    zExtra = 0;
+    /* zExtra is not used in this code path. */
 
     /*
     ** At this point, variables are initialized as follows:
@@ -322,7 +321,7 @@ static const SyFmtInfo aFmt[] = {
             longvalue = longvalue/base;
           }while( longvalue>0 );
         }
-        length = &buf[SXFMT_BUFSIZ-1]-bufpt;
+        length = (int)(&buf[SXFMT_BUFSIZ-1]-bufpt);
         for(idx=precision-length; idx>0; idx--){
           *(--bufpt) = '0';                             /* Zero pad */
         }
@@ -334,7 +333,7 @@ static const SyFmtInfo aFmt[] = {
             for(pre=infop->prefix; (x=(*pre))!=0; pre++) *(--bufpt) = x;
           }
         }
-        length = &buf[SXFMT_BUFSIZ-1]-bufpt;
+        length = (int)(&buf[SXFMT_BUFSIZ-1]-bufpt);
         break;
       case SXFMT_FLOAT:
       case SXFMT_EXP:
@@ -443,7 +442,7 @@ static const SyFmtInfo aFmt[] = {
         /* The converted number is in buf[] and zero terminated.Output it.
         ** Note that the number is in the usual order, not reversed as with
         ** integer conversions.*/
-        length = bufpt-buf;
+        length = (int)(bufpt-buf);
         bufpt = buf;
 
         /* Special case:  Add leading zeros if the flag_zeropad flag is

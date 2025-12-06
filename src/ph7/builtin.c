@@ -834,9 +834,9 @@ static int PH7_builtin_round(ph7_context *pCtx,int nArg,ph7_value **apArg)
      * handle the rounding directly.Otherwise
 	 * use our own cutsom printf [i.e:SyBufferFormat()].
      */
-  if( n==0 && r>=0 && r<LARGEST_INT64-1 ){
+	if( n==0 && r>=0 && r < (double)(LARGEST_INT64-1) ){
     r = (double)((ph7_int64)(r+0.5));
-  }else if( n==0 && r<0 && (-r)<LARGEST_INT64-1 ){
+	}else if( n==0 && r<0 && (-r) < (double)(LARGEST_INT64-1) ){
     r = -(double)((ph7_int64)((-r)+0.5));
   }else{
 	  char zBuf[256];
@@ -1357,18 +1357,18 @@ static int PH7_builtin_substr_count(ph7_context *pCtx,int nArg,ph7_value **apArg
 		return PH7_OK;
 	}
 	if( nArg > 2 ){
-		int nOfft;
+		int iOfft;
 		/* Extract the offset */
-		nOfft = ph7_value_to_int(apArg[2]);
-		if( nOfft < 0 || nOfft > nTextlen ){
+		iOfft = ph7_value_to_int(apArg[2]);
+		if( iOfft < 0 || iOfft > nTextlen ){
 			/* Invalid offset,return zero */
 			ph7_result_int(pCtx,0);
 			return PH7_OK;
 		}
 		/* Point to the desired offset */
-		zText = &zText[nOfft];
+		zText = &zText[iOfft];
 		/* Adjust length */
-		nTextlen -= nOfft;
+		nTextlen -= iOfft;
 	}
 	/* Point to the end of the string */
 	zEnd = &zText[nTextlen];
@@ -3928,7 +3928,7 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 	ph7_value *pArg;         /* Current processed argument */
 	ph7_int64 iVal;
 	int precision;           /* Precision of the current field */
-	char *zExtra;
+	/* zExtra (unused) removed to prevent compiler warning. */
 	int c,rc,n;
 	int length;              /* Length of the field */
 	int prefix;
@@ -4037,7 +4037,7 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 		}
 		zBuf = zWorker; /* Point to the working buffer */
 		length = 0;
-		zExtra = 0;
+		/* zExtra previously assigned here; not used anywhere, removed. */
 		 /*
 		  ** At this point, variables are initialized as follows:
 		  **
@@ -4152,7 +4152,7 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
             iVal = iVal/base;
           }while( iVal>0 );
         }
-        length = &zWorker[PH7_FMT_BUFSIZ-1]-zBuf;
+		length = (int)(&zWorker[PH7_FMT_BUFSIZ-1]-zBuf);
         for(idx=precision-length; idx>0; idx--){
           *(--zBuf) = '0';                             /* Zero pad */
         }
@@ -4164,7 +4164,7 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
             for(pre=pInfo->prefix; (x=(*pre))!=0; pre++) *(--zBuf) = x;
           }
         }
-        length = &zWorker[PH7_FMT_BUFSIZ-1]-zBuf;
+		length = (int)(&zWorker[PH7_FMT_BUFSIZ-1]-zBuf);
 		break;
 		case PH7_FMT_FLOAT:
 		case PH7_FMT_EXP:
@@ -4742,15 +4742,15 @@ PH7_PRIVATE sxi32 PH7_ProcessCsv(
 			zIn++;
 		}
 		if( zIn > zPtr ){
-			int nByte = (int)(zIn-zPtr);
+			int nByteChunk = (int)(zIn-zPtr);
 			sxi32 rc;
 			/* Invoke the supllied callback */
 			if( zPtr[0] == encl ){
 				zPtr++;
-				nByte-=2;
+				nByteChunk-=2;
 			}
-			if( nByte > 0 ){
-				rc = xConsumer(zPtr,nByte,pUserData);
+			if( nByteChunk > 0 ){
+				rc = xConsumer(zPtr,nByteChunk,pUserData);
 				if( rc == SXERR_ABORT ){
 					/* User callback request an operation abort */
 					break;
@@ -5934,20 +5934,29 @@ struct str_replace_data
  */
 #define STRDEL(SRC,SLEN,OFFT,ILEN){\
 	for(;;){\
-		if( OFFT + ILEN >= SLEN ) break; SRC[OFFT] = SRC[OFFT+ILEN]; ++OFFT;\
+		if( OFFT + ILEN >= SLEN ) { break; }\
+		SRC[OFFT] = SRC[OFFT+ILEN];\
+		++OFFT;\
 	}\
 }
 /*
  * Shift right and insert algorithm.
  */
 #define SHIFTRANDINSERT(SRC,LEN,OFFT,ENTRY,ELEN){\
-	sxu32 INLEN = LEN - OFFT;\
-	for(;;){\
-	  if( LEN > 0 ){ LEN--; } if(INLEN < 1 ) break; SRC[LEN + ELEN] = SRC[LEN] ; --INLEN; \
-	}\
-	for(;;){\
-		if(ELEN < 1)break; SRC[OFFT] = ENTRY[0]; OFFT++; ENTRY++; --ELEN;\
-	}\
+		sxu32 INLEN = LEN - OFFT;\
+		for(;;){\
+			if( LEN > 0 ){ LEN--; }\
+			if(INLEN < 1 ) { break; }\
+			SRC[LEN + ELEN] = SRC[LEN];\
+			--INLEN; \
+		}\
+		for(;;){\
+				if(ELEN < 1) { break; }\
+				SRC[OFFT] = ENTRY[0];\
+				OFFT++;\
+				ENTRY++;\
+				--ELEN;\
+		}\
 }
 /*
  * Replace all occurrences of the search string at offset (nOfft) with the given
@@ -8272,8 +8281,8 @@ static int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		break;
 	case 'W': {
 		/* ISO-8601 week number of year, weeks starting on Monday */
-		static const int aISO8601[] = { 7 /* Sunday */,1 /* Monday */,2,3,4,5,6 };
-		iVal = aISO8601[sTm.tm_wday % 7 ];
+		static const int aISO8601_local[] = { 7 /* Sunday */,1 /* Monday */,2,3,4,5,6 };
+		iVal = aISO8601_local[sTm.tm_wday % 7 ];
 		break;
 			  }
 	case 'y':
@@ -8360,37 +8369,37 @@ static int PH7_builtin_mktime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		pTm = localtime(&t);
 	}
 	if( nArg > 0 ){
-		int iVal;
+		int iTmp;
 		/* Hour */
-		iVal = ph7_value_to_int(apArg[0]);
-		pTm->tm_hour = iVal;
+		iTmp = ph7_value_to_int(apArg[0]);
+		pTm->tm_hour = iTmp;
 		if( nArg > 1 ){
 			/* Minutes */
-			iVal = ph7_value_to_int(apArg[1]);
-			pTm->tm_min = iVal;
+			iTmp = ph7_value_to_int(apArg[1]);
+			pTm->tm_min = iTmp;
 			if( nArg > 2 ){
 				/* Seconds */
-				iVal = ph7_value_to_int(apArg[2]);
-				pTm->tm_sec = iVal;
+				iTmp = ph7_value_to_int(apArg[2]);
+				pTm->tm_sec = iTmp;
 				if( nArg > 3 ){
 					/* Month */
-					iVal = ph7_value_to_int(apArg[3]);
-					pTm->tm_mon = iVal - 1;
+					iTmp = ph7_value_to_int(apArg[3]);
+					pTm->tm_mon = iTmp - 1;
 					if( nArg > 4 ){
 						/* mday */
-						iVal = ph7_value_to_int(apArg[4]);
-						pTm->tm_mday = iVal;
+						iTmp = ph7_value_to_int(apArg[4]);
+						pTm->tm_mday = iTmp;
 						if( nArg > 5 ){
 							/* Year */
-							iVal = ph7_value_to_int(apArg[5]);
-							if( iVal > 1900 ){
-								iVal -= 1900;
+							iTmp = ph7_value_to_int(apArg[5]);
+							if( iTmp > 1900 ){
+								iTmp -= 1900;
 							}
-							pTm->tm_year = iVal;
+							pTm->tm_year = iTmp;
 							if( nArg > 6 ){
 								/* is_dst */
-								iVal = ph7_value_to_bool(apArg[6]);
-								pTm->tm_isdst = iVal;
+								iTmp = ph7_value_to_bool(apArg[6]);
+								pTm->tm_isdst = iTmp;
 							}
 						}
 					}

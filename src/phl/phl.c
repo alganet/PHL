@@ -92,6 +92,7 @@ static void Version(void)
  */
 static int Output_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUserData /* Unused */)
 {
+	(void)pUserData;
 #ifdef __WINNT__
 	BOOL rc;
 	rc = WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),pOutput,(DWORD)nOutputLen,0,0);
