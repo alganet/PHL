@@ -1918,14 +1918,13 @@ int ph7_value_string(ph7_value *pVal,const char *zString,int nLen)
 int ph7_value_string_format(ph7_value *pVal,const char *zFormat,...)
 {
 	va_list ap;
-	int rc;
 	if((pVal->iFlags & MEMOBJ_STRING) == 0 ){
 		/* Invalidate any prior representation */
 		PH7_MemObjRelease(pVal);
 		MemObjSetType(pVal,MEMOBJ_STRING);
 	}
 	va_start(ap,zFormat);
-	rc = SyBlobFormatAp(&pVal->sBlob,zFormat,ap);
+	(void)SyBlobFormatAp(&pVal->sBlob,zFormat,ap);
 	va_end(ap);
 	return PH7_OK;
 }

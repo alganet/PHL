@@ -166,25 +166,25 @@ static sxi32 XML_Tokenize(SyStream *pStream,SyToken *pToken,void *pUserData,void
 			}
 			if( XLEX_IN_LEN(pStream) >= sizeof("DOCTYPE") - 1 && SyMemcmp((const void *)pStream->zText,"DOCTYPE",sizeof("DOCTYPE")-1) == 0 ){
 				SyString sDelim = { ">" , sizeof(char) }; /* Default delimiter */
-				int c = 0;
+				int c0 = 0;
 				/* DOCTYPE */
 				pStream->zText += sizeof("DOCTYPE") - 1;
 				pStr->zString = (const char *)pStream->zText;
 				/* Check for element declaration */
 				while( pStream->zText < pStream->zEnd && pStream->zText[0] != '\n' ){
 					if( pStream->zText[0] >= 0xc0 || !SyisSpace(pStream->zText[0]) ){
-						c = pStream->zText[0];
-						if( c == '>' ){
+						c0 = pStream->zText[0];
+						if( c0 == '>' ){
 							break;
 						}
 					}
 					pStream->zText++;
 				}
-				if( c == '[' ){
+				if( c0 == '[' ){
 					/* Change the delimiter */
 					SyStringInitFromBuf(&sDelim,"]>",sizeof("]>")-1);
 				}
-				if( c != '>' ){
+				if( c0 != '>' ){
 					while( XLEX_IN_LEN(pStream) >= sDelim.nByte &&
 						SyMemcmp((const void *)pStream->zText,sDelim.zString,sDelim.nByte) != 0 ){
 							if( pStream->zText[0] == '\n' ){
@@ -209,8 +209,8 @@ static sxi32 XML_Tokenize(SyStream *pStream,SyToken *pToken,void *pUserData,void
 				pStream->zText += sDelim.nByte;
 				return SXRET_OK;
 			}
-		}else{
-			int c;
+			}else{
+			/* reuse function-scope variable 'c' declared at top of function */
 			c = pStream->zText[0];
 			rc = SXRET_OK;
 			pToken->nType = SXML_TOK_START_TAG;
