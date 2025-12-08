@@ -5702,6 +5702,7 @@ static const ph7_vfs null_vfs __attribute__((unused)) = {
  */
 /* What follows here is code that is specific to windows systems. */
 #include <Windows.h>
+#include <stdio.h> /* For popen/pclose pipe stream support */
 /*
 ** Convert a UTF-8 string to microsoft unicode (UTF-16?).
 **
@@ -6876,6 +6877,7 @@ static const ph7_io_stream sWinFileStream = {
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/file.h>
+#include <sys/wait.h>
 #include <pwd.h>
 #include <grp.h>
 #include <dirent.h>
@@ -7962,6 +7964,283 @@ static void PHPStreamData_Close(void *pHandle)
 	/* Free the instance */
 	SyMemBackendFree(&pVm->sAllocator,pData);
 }
+/*
+ * Pipe stream implementation for popen/pclose.
+ * This stream wraps the system's popen/pclose APIs to provide
+ * PHP-compatible process I/O functionality.
+ */
+typedef struct pipe_private pipe_private;
+struct pipe_private
+{
+	FILE *pFile;    /* Pipe file handle from popen */
+	ph7_vm *pVm;    /* VM that owns this instance */
+	int iMode;      /* Open mode: 'r' for read, 'w' for write */
+};
+/*
+ * Open a pipe to a process.
+ * This is called internally by popen(), not through the stream device interface.
+ */
+static pipe_private * PipeOpen(ph7_vm *pVm, const char *zCommand, const char *zMode)
+{
+	pipe_private *pPipe;
+	FILE *pFile;
+	if( pVm == 0 || zCommand == 0 || zMode == 0 ){
+		return 0;
+	}
+	/* Validate mode - only 'r' or 'w' allowed */
+	if( zMode[0] != 'r' && zMode[0] != 'w' ){
+		return 0;
+	}
+	/* Open the pipe using system popen */
+#ifdef __WINNT__
+	pFile = _popen(zCommand, zMode);
+#else
+	pFile = popen(zCommand, zMode);
+#endif
+	if( pFile == 0 ){
+		return 0;
+	}
+	/* Allocate pipe private structure */
+	pPipe = (pipe_private *)SyMemBackendAlloc(&pVm->sAllocator, sizeof(pipe_private));
+	if( pPipe == 0 ){
+		/* Out of memory, close the pipe */
+#ifdef __WINNT__
+		_pclose(pFile);
+#else
+		pclose(pFile);
+#endif
+		return 0;
+	}
+	/* Initialize the structure */
+	pPipe->pFile = pFile;
+	pPipe->pVm = pVm;
+	pPipe->iMode = zMode[0];
+	return pPipe;
+}
+/*
+ * Close a pipe and return the exit status of the process.
+ * Returns the exit status, or -1 on error.
+ */
+static int PipeClose(pipe_private *pPipe)
+{
+	int status;
+	ph7_vm *pVm;
+	if( pPipe == 0 || pPipe->pFile == 0 ){
+		return -1;
+	}
+	pVm = pPipe->pVm;
+	/* Close the pipe and get exit status */
+#ifdef __WINNT__
+	status = _pclose(pPipe->pFile);
+#else
+	status = pclose(pPipe->pFile);
+	/* On Unix, pclose returns the status from waitpid, need to extract exit code */
+	if( status != -1 ){
+		if( WIFEXITED(status) ){
+			status = WEXITSTATUS(status);
+		}else if( WIFSIGNALED(status) ){
+			/* Process was killed by a signal - use shell convention: 128 + signal number */
+			status = 128 + WTERMSIG(status);
+		}else{
+			/* Unknown termination reason */
+			status = -1;
+		}
+	}
+#endif
+	/* Free the structure */
+	SyMemBackendFree(&pVm->sAllocator, pPipe);
+	return status;
+}
+/*
+ * Pipe stream xClose implementation.
+ * Note: This is called by fclose(), not pclose().
+ * It closes the pipe but does not return the exit status.
+ */
+static void PipeStream_Close(void *pHandle)
+{
+	pipe_private *pPipe = (pipe_private *)pHandle;
+	if( pPipe ){
+		PipeClose(pPipe);
+	}
+}
+/*
+ * Pipe stream xRead implementation.
+ */
+static ph7_int64 PipeStream_Read(void *pHandle, void *pBuffer, ph7_int64 nDatatoRead)
+{
+	pipe_private *pPipe = (pipe_private *)pHandle;
+	size_t nRead;
+	if( pPipe == 0 || pPipe->pFile == 0 ){
+		return -1;
+	}
+	if( pPipe->iMode != 'r' ){
+		/* Cannot read from a write-only pipe */
+		return -1;
+	}
+	nRead = fread(pBuffer, 1, (size_t)nDatatoRead, pPipe->pFile);
+	if( nRead == 0 ){
+		if( feof(pPipe->pFile) ){
+			return 0; /* EOF */
+		}
+		return -1; /* Error */
+	}
+	return (ph7_int64)nRead;
+}
+/*
+ * Pipe stream xWrite implementation.
+ */
+static ph7_int64 PipeStream_Write(void *pHandle, const void *pBuf, ph7_int64 nWrite)
+{
+	pipe_private *pPipe = (pipe_private *)pHandle;
+	size_t nWritten;
+	if( pPipe == 0 || pPipe->pFile == 0 ){
+		return -1;
+	}
+	if( pPipe->iMode != 'w' ){
+		/* Cannot write to a read-only pipe */
+		return -1;
+	}
+	nWritten = fwrite(pBuf, 1, (size_t)nWrite, pPipe->pFile);
+	if( nWritten == 0 && nWrite > 0 ){
+		return -1; /* Error */
+	}
+	return (ph7_int64)nWritten;
+}
+/* Export the pipe:// stream (used internally, not registered as a URI scheme) */
+static const ph7_io_stream sPipe_Stream = {
+	"pipe",
+	PH7_IO_STREAM_VERSION,
+	0,  /* xOpen - not used, pipes opened via PipeOpen() */
+	0,  /* xOpenDir */
+	PipeStream_Close,  /* xClose */
+	0,  /* xCloseDir */
+	PipeStream_Read,   /* xRead */
+	0,  /* xReadDir */
+	PipeStream_Write,  /* xWrite */
+	0,  /* xSeek */
+	0,  /* xLock */
+	0,  /* xRewindDir */
+	0,  /* xTell */
+	0,  /* xTrunc */
+	0,  /* xSync */
+	0   /* xStat */
+};
+/*
+ * Return TRUE if we are dealing with the pipe:// stream.
+ * FALSE otherwise.
+ */
+static int is_pipe_stream(const ph7_io_stream *pStream)
+{
+	return pStream == &sPipe_Stream;
+}
+/*
+ * resource popen(string $command, string $mode)
+ *  Opens process file pointer.
+ * Parameters
+ *  $command
+ *   The command to execute. Passed to the system shell.
+ *  $mode
+ *   The mode parameter specifies the type of access you require to the stream.
+ *   'r' - Open for reading (read from the command's stdout).
+ *   'w' - Open for writing (write to the command's stdin).
+ * Return
+ *  Returns a file pointer on success, or FALSE on error.
+ */
+static int PH7_builtin_popen(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zCommand, *zMode;
+	pipe_private *pPipe;
+	io_private *pDev;
+	int nCmdLen, nModeLen;
+	if( nArg < 2 || !ph7_value_is_string(apArg[0]) || !ph7_value_is_string(apArg[1]) ){
+		/* Missing/Invalid arguments, return FALSE */
+		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Expecting a command string and mode");
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	/* Extract the command and mode */
+	zCommand = ph7_value_to_string(apArg[0], &nCmdLen);
+	zMode = ph7_value_to_string(apArg[1], &nModeLen);
+	if( nCmdLen < 1 ){
+		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Empty command");
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	if( nModeLen < 1 || (zMode[0] != 'r' && zMode[0] != 'w') ){
+		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Invalid mode, expected 'r' or 'w'");
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	/* Open the pipe */
+	pPipe = PipeOpen(pCtx->pVm, zCommand, zMode);
+	if( pPipe == 0 ){
+		/* Failed to open pipe */
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	/* Allocate an io_private instance to wrap the pipe */
+	pDev = (io_private *)ph7_context_alloc_chunk(pCtx, sizeof(io_private), TRUE, FALSE);
+	if( pDev == 0 ){
+		ph7_context_throw_error(pCtx, PH7_CTX_ERR, "PH7 is running out of memory");
+		PipeClose(pPipe);
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	/* Initialize the io_private structure */
+	InitIOPrivate(pCtx->pVm, &sPipe_Stream, pDev);
+	pDev->pHandle = pPipe;
+	/* Return the io_private instance as a resource */
+	ph7_result_resource(pCtx, pDev);
+	return PH7_OK;
+}
+/*
+ * int pclose(resource $handle)
+ *  Closes a process file pointer opened by popen() and returns the exit code.
+ * Parameters
+ *  $handle
+ *   The file pointer must be valid, and must have been returned by popen().
+ * Return
+ *  Returns the termination status of the process that was run, or -1 on error.
+ */
+static int PH7_builtin_pclose(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const ph7_io_stream *pStream;
+	pipe_private *pPipe;
+	io_private *pDev;
+	int status;
+	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+		/* Missing/Invalid arguments, return -1 */
+		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Expecting an IO handle");
+		ph7_result_int(pCtx, -1);
+		return PH7_OK;
+	}
+	/* Extract our private data */
+	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
+	/* Make sure we are dealing with a valid io_private instance */
+	if( IO_PRIVATE_INVALID(pDev) ){
+		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Expecting an IO handle");
+		ph7_result_int(pCtx, -1);
+		return PH7_OK;
+	}
+	/* Point to the target IO stream device */
+	pStream = pDev->pStream;
+	if( pStream == 0 || !is_pipe_stream(pStream) ){
+		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Expecting a pipe handle from popen()");
+		ph7_result_int(pCtx, -1);
+		return PH7_OK;
+	}
+	/* Get the pipe handle */
+	pPipe = (pipe_private *)pDev->pHandle;
+	/* Close the pipe and get exit status */
+	status = PipeClose(pPipe);
+	/* Release the IO private structure */
+	ReleaseIOPrivate(pCtx, pDev);
+	/* Invalidate the resource handle */
+	ph7_value_release(apArg[0]);
+	/* Return the exit status */
+	ph7_result_int(pCtx, status);
+	return PH7_OK;
+}
 /* Export the php:// stream */
 static const ph7_io_stream sPHP_Stream = {
 	"php",
@@ -8104,6 +8383,8 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"flock",     PH7_builtin_flock  },
 		{"fclose",    PH7_builtin_fclose },
 		{"fopen",     PH7_builtin_fopen  },
+		{"popen",     PH7_builtin_popen  },
+		{"pclose",    PH7_builtin_pclose },
 		{"fpassthru", PH7_builtin_fpassthru },
 		{"fputcsv",   PH7_builtin_fputcsv },
 		{"fprintf",   PH7_builtin_fprintf },
