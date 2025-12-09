@@ -3,19 +3,13 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Test pclose() function exit status
---SKIPIF--
-<?php
-if (!function_exists('popen') || !function_exists('pclose')) {
-    echo 'skip: popen/pclose functions not available';
-}
-?>
 --FILE--
 <?php
 echo "Testing pclose() exit status\n";
 
 // Test 1: Command that exits with status 0
 if (PHP_OS == 'WINNT') {
-    $cmd = 'cmd /c exit 0';
+    $cmd = 'exit /b 0';
 } else {
     $cmd = 'true';
 }
@@ -27,7 +21,7 @@ if ($fp !== false) {
 
 // Test 2: Command that exits with non-zero status
 if (PHP_OS == 'WINNT') {
-    $cmd = 'cmd /c exit 1';
+    $cmd = 'exit /b 1';
 } else {
     $cmd = 'false';
 }
@@ -39,7 +33,7 @@ if ($fp !== false) {
 
 // Test 3: Command that exits with status 42
 if (PHP_OS == 'WINNT') {
-    $cmd = 'cmd /c exit 42';
+    $cmd = 'exit /b 42';
 } else {
     $cmd = 'sh -c "exit 42"';
 }

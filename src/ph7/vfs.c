@@ -5703,6 +5703,8 @@ static const ph7_vfs null_vfs __attribute__((unused)) = {
 /* What follows here is code that is specific to windows systems. */
 #include <Windows.h>
 #include <stdio.h> /* For popen/pclose pipe stream support */
+#include <io.h>    /* For _open_osfhandle, _close */
+#include <fcntl.h> /* For _O_RDONLY, _O_WRONLY, _O_TEXT */
 /*
 ** Convert a UTF-8 string to microsoft unicode (UTF-16?).
 **
@@ -7975,7 +7977,167 @@ struct pipe_private
 	FILE *pFile;    /* Pipe file handle from popen */
 	ph7_vm *pVm;    /* VM that owns this instance */
 	int iMode;      /* Open mode: 'r' for read, 'w' for write */
+#ifdef __WINNT__
+	HANDLE hProcess; /* Process handle on Windows for proper waiting */
+	HANDLE hPipe;    /* Pipe handle (for cleanup) */
+#endif
 };
+
+#ifdef __WINNT__
+/*
+ * Custom Windows popen implementation using CreateProcess.
+ * This allows us to properly wait for process completion.
+ */
+static FILE* WinPopen(const char *zCommand, const char *zMode, HANDLE *phProcess, HANDLE *phPipe)
+{
+	HANDLE hReadPipe = NULL, hWritePipe = NULL;
+	HANDLE hChildStdoutRd = NULL, hChildStdoutWr = NULL;
+	HANDLE hChildStdinRd = NULL, hChildStdinWr = NULL;
+	SECURITY_ATTRIBUTES sa;
+	STARTUPINFOW si;
+	PROCESS_INFORMATION pi;
+	WCHAR *zWideCmd = NULL;
+	FILE *pFile = NULL;
+	int fd;
+	BOOL bRead = (zMode[0] == 'r');
+
+	/* Set up security attributes for pipe inheritance */
+	sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+	sa.bInheritHandle = TRUE;
+	sa.lpSecurityDescriptor = NULL;
+
+	/* Create pipes for child process I/O */
+	if( bRead ){
+		/* Reading from child's stdout */
+		if( !CreatePipe(&hChildStdoutRd, &hChildStdoutWr, &sa, 0) ){
+			return NULL;
+		}
+		/* Ensure read handle is not inherited */
+		SetHandleInformation(hChildStdoutRd, HANDLE_FLAG_INHERIT, 0);
+		hReadPipe = hChildStdoutRd;
+		*phPipe = hChildStdoutRd;
+	}else{
+		/* Writing to child's stdin */
+		if( !CreatePipe(&hChildStdinRd, &hChildStdinWr, &sa, 0) ){
+			return NULL;
+		}
+		/* Ensure write handle is not inherited */
+		SetHandleInformation(hChildStdinWr, HANDLE_FLAG_INHERIT, 0);
+		hWritePipe = hChildStdinWr;
+		*phPipe = hChildStdinWr;
+	}
+
+	/* Convert command to wide string */
+	{
+		int nLen = MultiByteToWideChar(CP_UTF8, 0, zCommand, -1, NULL, 0);
+		if( nLen <= 0 ){
+			goto cleanup_pipes;
+		}
+		zWideCmd = (WCHAR*)HeapAlloc(GetProcessHeap(), 0, nLen * sizeof(WCHAR));
+		if( !zWideCmd ){
+			goto cleanup_pipes;
+		}
+		MultiByteToWideChar(CP_UTF8, 0, zCommand, -1, zWideCmd, nLen);
+	}
+
+	/* Set up process startup info */
+	ZeroMemory(&si, sizeof(si));
+	si.cb = sizeof(si);
+	si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+	si.wShowWindow = SW_HIDE; /* Hide console window */
+	si.hStdInput = bRead ? GetStdHandle(STD_INPUT_HANDLE) : hChildStdinRd;
+	si.hStdOutput = bRead ? hChildStdoutWr : GetStdHandle(STD_OUTPUT_HANDLE);
+	si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+
+	ZeroMemory(&pi, sizeof(pi));
+
+	/* Create the child process */
+	if( !CreateProcessW(
+		NULL,           /* Application name */
+		zWideCmd,       /* Command line */
+		NULL,           /* Process security attributes */
+		NULL,           /* Thread security attributes */
+		TRUE,           /* Inherit handles */
+		CREATE_NO_WINDOW, /* Creation flags - no console window */
+		NULL,           /* Environment */
+		NULL,           /* Current directory */
+		&si,            /* Startup info */
+		&pi             /* Process info */
+	)){
+		goto cleanup_all;
+	}
+
+	/* Close handles we don't need in parent */
+	if( hChildStdoutWr ) CloseHandle(hChildStdoutWr);
+	if( hChildStdinRd ) CloseHandle(hChildStdinRd);
+
+	/* Close thread handle (we only need process handle) */
+	CloseHandle(pi.hThread);
+
+	/* Store process handle for later waiting */
+	*phProcess = pi.hProcess;
+
+	/* Convert OS handle to C file descriptor, then to FILE* */
+	fd = _open_osfhandle((intptr_t)(bRead ? hReadPipe : hWritePipe),
+	                     bRead ? _O_RDONLY | _O_TEXT : _O_WRONLY | _O_TEXT);
+	if( fd == -1 ){
+		CloseHandle(pi.hProcess);
+		*phProcess = NULL;
+		goto cleanup_all;
+	}
+
+	pFile = _fdopen(fd, zMode);
+	if( !pFile ){
+		_close(fd); /* This will also close the underlying handle */
+		CloseHandle(pi.hProcess);
+		*phProcess = NULL;
+		if( zWideCmd ) HeapFree(GetProcessHeap(), 0, zWideCmd);
+		return NULL;
+	}
+
+	HeapFree(GetProcessHeap(), 0, zWideCmd);
+	return pFile;
+
+cleanup_all:
+	if( zWideCmd ) HeapFree(GetProcessHeap(), 0, zWideCmd);
+cleanup_pipes:
+	if( hChildStdoutRd ) CloseHandle(hChildStdoutRd);
+	if( hChildStdoutWr ) CloseHandle(hChildStdoutWr);
+	if( hChildStdinRd ) CloseHandle(hChildStdinRd);
+	if( hChildStdinWr ) CloseHandle(hChildStdinWr);
+	return NULL;
+}
+
+/*
+ * Custom Windows pclose implementation that properly waits for process completion.
+ */
+static int WinPclose(FILE *pFile, HANDLE hProcess)
+{
+	DWORD dwExitCode = 0;
+	int status;
+
+	/* Close the FILE* (this closes the pipe) */
+	fclose(pFile);
+
+	if( hProcess ){
+		/* Wait for the process to complete */
+		WaitForSingleObject(hProcess, INFINITE);
+
+		if( GetExitCodeProcess(hProcess, &dwExitCode) ){
+			status = (int)dwExitCode;
+		}else{
+			status = -1;
+		}
+
+		/* Close process handle */
+		CloseHandle(hProcess);
+	}else{
+		status = -1;
+	}
+
+	return status;
+}
+#endif /* __WINNT__ */
 /*
  * Open a pipe to a process.
  * This is called internally by popen(), not through the stream device interface.
@@ -7994,7 +8156,8 @@ static pipe_private * PipeOpen(ph7_vm *pVm, const char *zCommand, const char *zM
 	/* Open the pipe using system popen */
 #ifdef __WINNT__
 	{
-		const char *zShellPrefix = "cmd.exe /s /c \""; /* will form: cmd.exe /s /c "<command>" */
+		/* Build cmd.exe command wrapper */
+		const char *zShellPrefix = "cmd.exe /c \"";
 		const char *zShellSuffix = "\"";
 		size_t nPrefix = strlen(zShellPrefix);
 		size_t nSuffix = strlen(zShellSuffix);
@@ -8003,12 +8166,12 @@ static pipe_private * PipeOpen(ph7_vm *pVm, const char *zCommand, const char *zM
 		for (size_t i = 0; i < nCmd; ++i) {
 			if (zCommand[i] == '"') nQuotes++;
 		}
-		size_t nCmdEsc = nCmd + nQuotes; /* each quote gets one extra '^' */
+		size_t nCmdEsc = nCmd + nQuotes;
 		char *zCmdEsc = (char *)SyMemBackendAlloc(&pVm->sAllocator, (sxu32)(nCmdEsc + 1));
 		if (zCmdEsc == NULL) {
 			return 0;
 		}
-		/* Fill escaped buffer */
+		/* Escape quotes in command */
 		size_t j = 0;
 		for (size_t i = 0; i < nCmd; ++i) {
 			char ch = zCommand[i];
@@ -8030,13 +8193,28 @@ static pipe_private * PipeOpen(ph7_vm *pVm, const char *zCommand, const char *zM
 		memcpy(zWinCmd + nPrefix, zCmdEsc, nCmdEsc);
 		memcpy(zWinCmd + nPrefix + nCmdEsc, zShellSuffix, nSuffix);
 		zWinCmd[nTotal - 1] = '\0';
-		pFile = _popen(zWinCmd, zMode);
+		/* Allocate pipe structure early so we can store handles */
+		pPipe = (pipe_private *)SyMemBackendAlloc(&pVm->sAllocator, sizeof(pipe_private));
+		if( pPipe == 0 ){
+			SyMemBackendFree(&pVm->sAllocator, zCmdEsc);
+			SyMemBackendFree(&pVm->sAllocator, zWinCmd);
+			return 0;
+		}
+		/* Use our custom WinPopen that properly tracks the process handle */
+		pFile = WinPopen(zWinCmd, zMode, &pPipe->hProcess, &pPipe->hPipe);
 		SyMemBackendFree(&pVm->sAllocator, zCmdEsc);
 		SyMemBackendFree(&pVm->sAllocator, zWinCmd);
+		if( pFile == 0 ){
+			SyMemBackendFree(&pVm->sAllocator, pPipe);
+			return 0;
+		}
+		/* Initialize remaining fields */
+		pPipe->pFile = pFile;
+		pPipe->pVm = pVm;
+		pPipe->iMode = zMode[0];
 	}
-#else
+#else /* Unix */
 	pFile = popen(zCommand, zMode);
-#endif
 	if( pFile == 0 ){
 		return 0;
 	}
@@ -8044,17 +8222,14 @@ static pipe_private * PipeOpen(ph7_vm *pVm, const char *zCommand, const char *zM
 	pPipe = (pipe_private *)SyMemBackendAlloc(&pVm->sAllocator, sizeof(pipe_private));
 	if( pPipe == 0 ){
 		/* Out of memory, close the pipe */
-#ifdef __WINNT__
-		_pclose(pFile);
-#else
 		pclose(pFile);
-#endif
 		return 0;
 	}
 	/* Initialize the structure */
 	pPipe->pFile = pFile;
 	pPipe->pVm = pVm;
 	pPipe->iMode = zMode[0];
+#endif
 	return pPipe;
 }
 /*
@@ -8071,7 +8246,8 @@ static int PipeClose(pipe_private *pPipe)
 	pVm = pPipe->pVm;
 	/* Close the pipe and get exit status */
 #ifdef __WINNT__
-	status = _pclose(pPipe->pFile);
+	/* Use our custom WinPclose that properly waits for process completion */
+	status = WinPclose(pPipe->pFile, pPipe->hProcess);
 #else
 	status = pclose(pPipe->pFile);
 	/* On Unix, pclose returns the status from waitpid, need to extract exit code */

@@ -3,12 +3,6 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Test popen() and pclose() functions
---SKIPIF--
-<?php
-if (!function_exists('popen') || !function_exists('pclose')) {
-    echo 'skip: popen/pclose functions not available';
-}
-?>
 --FILE--
 <?php
 echo "Testing popen() basic functionality\n";

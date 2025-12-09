@@ -33,6 +33,7 @@ $(COVERAGE_BIN): $(BUILD_DIR)/coverage $(COVERAGE_OBJECTS)
 $(BUILD_DIR)/coverage/coverage.info: .ALWAYS $(COVERAGE_BIN)
 	@OpenCppCoverage.exe --quiet \
 	--sources "$(MAKEDIR)\src" \
+	--cover_children \
 	--export_type cobertura:$(BUILD_DIR)/coverage/cobertura.xml \
 	-- $(COVERAGE_PHL_CMD)
 	@"$(COVERAGE_BIN)" \

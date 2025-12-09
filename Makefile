@@ -39,9 +39,10 @@ OBJECTS = \
 TEST_PHL_CMD = "$(PHL_BIN)" "tests/phpt.php" \
 	--target-executable "./$(PHL_BIN)" \
 	--target-dir tests
-TEST_PHP_CMD = "$(PHP_BIN)" "tests/phpt.php" \
+TEST_PHP_CMD = "$(PHL_BIN)" "tests/phpt.php" \
+	--target-executable "$(PHP_BIN)" \
 	--target-dir tests
-COVERAGE_PHL_CMD = "$(COVERAGE_BIN)" "tests/phpt.php" \
+COVERAGE_PHL_CMD = "$(PHL_BIN)" "tests/phpt.php" \
 	--target-executable "./$(COVERAGE_BIN)" \
 	--target-dir tests \
 	--output-format dot
@@ -72,7 +73,7 @@ $(BUILD_DIR)-test: $(PHL_BIN)
 	$(TEST_PHL_CMD)
 
 $(BUILD_DIR)-test-compat: $(PHL_BIN)
-	@"$(PHL_BIN)" --version
-	@$(TEST_PHL_CMD) --output-format dot
 	@"$(PHP_BIN)" --version
 	@$(TEST_PHP_CMD) --output-format dot
+	@"$(PHL_BIN)" --version
+	@$(TEST_PHL_CMD) --output-format dot
