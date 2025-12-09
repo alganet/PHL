@@ -53,9 +53,9 @@ wait
 mkdir -p "$workspace_dir/build/x86_64-windows-msvc"
 
 # Run build in temp directory via PowerShell
-(timeout 60s powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "
     Set-Location '$(wslpath -w "$tmpdir")';
-    Start-Process -NoNewWindow -Wait -FilePath cmd.exe -ArgumentList '/c build-aux\dev.bat $*'")
+    Start-Process -NoNewWindow -Wait -FilePath cmd.exe -ArgumentList '/c build-aux\dev.bat $*'"
 
 # Copy build artifacts back to workspace
 if test -d "$tmpdir/build/x86_64-windows-msvc"; then
