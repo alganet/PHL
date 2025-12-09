@@ -7993,7 +7993,47 @@ static pipe_private * PipeOpen(ph7_vm *pVm, const char *zCommand, const char *zM
 	}
 	/* Open the pipe using system popen */
 #ifdef __WINNT__
-	pFile = _popen(zCommand, zMode);
+	{
+		const char *zShellPrefix = "cmd.exe /s /c \""; /* will form: cmd.exe /s /c "<command>" */
+		const char *zShellSuffix = "\"";
+		size_t nPrefix = strlen(zShellPrefix);
+		size_t nSuffix = strlen(zShellSuffix);
+		size_t nCmd = strlen(zCommand);
+		size_t nQuotes = 0;
+		for (size_t i = 0; i < nCmd; ++i) {
+			if (zCommand[i] == '"') nQuotes++;
+		}
+		size_t nCmdEsc = nCmd + nQuotes; /* each quote gets one extra '^' */
+		char *zCmdEsc = (char *)SyMemBackendAlloc(&pVm->sAllocator, (sxu32)(nCmdEsc + 1));
+		if (zCmdEsc == NULL) {
+			return 0;
+		}
+		/* Fill escaped buffer */
+		size_t j = 0;
+		for (size_t i = 0; i < nCmd; ++i) {
+			char ch = zCommand[i];
+			if (ch == '"') {
+				zCmdEsc[j++] = '^';
+				zCmdEsc[j++] = '"';
+			} else {
+				zCmdEsc[j++] = ch;
+			}
+		}
+		zCmdEsc[j] = '\0';
+		size_t nTotal = nPrefix + nCmdEsc + nSuffix + 1;
+		char *zWinCmd = (char *)SyMemBackendAlloc(&pVm->sAllocator, (sxu32)nTotal);
+		if (zWinCmd == NULL) {
+			SyMemBackendFree(&pVm->sAllocator, zCmdEsc);
+			return 0;
+		}
+		memcpy(zWinCmd, zShellPrefix, nPrefix);
+		memcpy(zWinCmd + nPrefix, zCmdEsc, nCmdEsc);
+		memcpy(zWinCmd + nPrefix + nCmdEsc, zShellSuffix, nSuffix);
+		zWinCmd[nTotal - 1] = '\0';
+		pFile = _popen(zWinCmd, zMode);
+		SyMemBackendFree(&pVm->sAllocator, zCmdEsc);
+		SyMemBackendFree(&pVm->sAllocator, zWinCmd);
+	}
 #else
 	pFile = popen(zCommand, zMode);
 #endif

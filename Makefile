@@ -37,10 +37,12 @@ OBJECTS = \
 
 # Test and Coverage Logic
 TEST_PHL_CMD = "$(PHL_BIN)" "tests/phpt.php" \
+	--target-executable "./$(PHL_BIN)" \
 	--target-dir tests
 TEST_PHP_CMD = "$(PHP_BIN)" "tests/phpt.php" \
 	--target-dir tests
 COVERAGE_PHL_CMD = "$(COVERAGE_BIN)" "tests/phpt.php" \
+	--target-executable "./$(COVERAGE_BIN)" \
 	--target-dir tests \
 	--output-format dot
 

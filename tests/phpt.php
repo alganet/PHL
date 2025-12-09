@@ -234,6 +234,25 @@ function match_expectf_pattern($phpt_pattern, $phpt_output) {
     return true;
 }
 
+// Run a PHPT section file through an external target executable
+// Returns the combined stdout/stderr output as string, or false if popen() failed
+function run_file_with_target($phpt_target_executable, $phpt_file) {
+    $cmd = '"' . $phpt_target_executable . '" "' . $phpt_file . '" 2>&1';
+    $fp = popen($cmd, 'r');
+    if ($fp === false) {
+        // piped execution failed
+        return false;
+    }
+    $output = '';
+    while (!feof($fp)) {
+        $chunk = fgets($fp);
+        if ($chunk === false) break;
+        $output .= $chunk;
+    }
+    pclose($fp);
+    return $output;
+}
+
 // Find test files
 $phpt_files = find_files($phpt_target_dir, $phpt_file_extension, $phpt_filter);
 sort($phpt_files);
@@ -272,9 +291,17 @@ foreach ($phpt_files as $phpt_file) {
     $phpt_skip = false;
     if (isset($phpt_sections['skipif'])) {
         $phpt_skipif_path = $phpt_file . '.skipif';
-        ob_start();
-        include($phpt_skipif_path);
-        $phpt_skip_output = ob_get_clean();
+        if (!empty($phpt_target_executable)) {
+            $phpt_skip_output = run_file_with_target($phpt_target_executable, $phpt_skipif_path);
+            if ($phpt_skip_output === false) {
+                echo "# ERROR: Failed to spawn skipif for $phpt_skipif_path\n";
+                $phpt_skip_output = '';
+            }
+        } else {
+            ob_start();
+            include($phpt_skipif_path);
+            $phpt_skip_output = ob_get_clean();
+        }
         chdir($phpt_curdir);
         $phpt_skip_output = trim($phpt_skip_output);
         if (!empty($phpt_skip_output)) {
@@ -309,11 +336,19 @@ foreach ($phpt_files as $phpt_file) {
         } else {
             // Test execution
             $phpt_file_path = $phpt_file . '.file';
-            ob_start();
-            set_error_handler('handle_error');
-            include($phpt_file_path);
-            set_error_handler(null);
-            $phpt_output = ob_get_clean();
+            if (!empty($phpt_target_executable)) {
+                $phpt_output = run_file_with_target($phpt_target_executable, $phpt_file_path);
+                if ($phpt_output === false) {
+                    echo "# ERROR: Failed to spawn test for $phpt_file_path\n";
+                    $phpt_output = "";
+                }
+            } else {
+                ob_start();
+                set_error_handler('handle_error');
+                include($phpt_file_path);
+                set_error_handler(null);
+                $phpt_output = ob_get_clean();
+            }
             $phpt_output = str_replace("\r\n", "\n", $phpt_output);
             $phpt_output = str_replace("\r", "", $phpt_output);
             chdir($phpt_curdir);
@@ -363,9 +398,16 @@ foreach ($phpt_files as $phpt_file) {
     // CLEAN execution
     if (isset($phpt_sections['clean']) && $phpt_skip === false) {
         $phpt_clean_path = $phpt_file . '.clean';
-        ob_start();
-        include($phpt_clean_path);
-        ob_end_clean();
+        if (!empty($phpt_target_executable)) {
+            $phpt_clean_output = run_file_with_target($phpt_target_executable, $phpt_clean_path);
+            if ($phpt_clean_output === false) {
+                echo "# ERROR: Failed to spawn clean for $phpt_clean_path\n";
+            }
+        } else {
+            ob_start();
+            include($phpt_clean_path);
+            ob_end_clean();
+        }
         chdir($phpt_curdir);
     }
 
