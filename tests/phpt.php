@@ -237,7 +237,12 @@ function match_expectf_pattern($phpt_pattern, $phpt_output) {
 // Run a PHPT section file through an external target executable
 // Returns the combined stdout/stderr output as string, or false if popen() failed
 function run_file_with_target($phpt_target_executable, $phpt_file) {
-    $cmd = '"' . $phpt_target_executable . '" "' . $phpt_file . '" 2>&1';
+    if (PHP_OS === 'WINNT') {
+        $cmd = "set PHPT_TARGET_EXECUTABLE=" . $phpt_target_executable . " && ";
+    } else {
+        $cmd = 'PHPT_TARGET_EXECUTABLE=' . $phpt_target_executable . ' ';
+    }
+    $cmd .= '"' . $phpt_target_executable . '" "' . $phpt_file . '" 2>&1';
     $fp = popen($cmd, 'r');
     if ($fp === false) {
         // piped execution failed
@@ -267,6 +272,7 @@ $phpt_failed = 0;
 $phpt_skipped = 0;
 $phpt_nimp = 0;
 $phpt_count = 1;
+$phpt_failures = array();
 
 foreach ($phpt_files as $phpt_file) {
     $phpt_sections = parse_phpt_sections($phpt_file, $phpt_valid_sections);
@@ -373,16 +379,18 @@ foreach ($phpt_files as $phpt_file) {
                 }
                 $phpt_passed++;
             } else {
-                if ($phpt_output_format == "tap") {
-                    echo "not ok $phpt_count - $phpt_test_name\n";
-                    if (!empty($phpt_expectedf)) {
-                        echo "# Expected pattern: '$phpt_expectedf'\n";
-                    } else {
-                        echo "# Expected: '$phpt_expected'\n";
-                    }
-                    echo "# Actual: '$phpt_output'\n";
-                } else {
+                if ($phpt_output_format == "dot") {
                     echo "F";
+                    // Store failure details for summary at end
+                    $phpt_failures[] = array(
+                        'count' => $phpt_count,
+                        'name' => $phpt_test_name,
+                        'expected' => $phpt_expected,
+                        'expectedf' => $phpt_expectedf,
+                        'output' => $phpt_output
+                    );
+                } else {
+                    echo "not ok $phpt_count - $phpt_test_name\n";
                     if (!empty($phpt_expectedf)) {
                         echo "# Expected pattern: '$phpt_expectedf'\n";
                     } else {
@@ -437,6 +445,21 @@ if ($phpt_output_format == "tap") {
     echo "#  Total: $phpt_total tests\n";
 } else {
     echo " (" . ($phpt_passed + $phpt_skipped) . "/$phpt_total)\n";
+    // Display failure details for dot format
+    if (!empty($phpt_failures)) {
+        echo "\nFailures\n";
+        echo "--------\n";
+        foreach ($phpt_failures as $failure) {
+            echo "\nnot ok " . $failure['count'] . " - " . $failure['name'] . "\n";
+            if (!empty($failure['expectedf'])) {
+                echo "# Expected pattern: '" . $failure['expectedf'] . "'\n";
+            } else {
+                echo "# Expected: '" . $failure['expected'] . "'\n";
+            }
+            echo "# Actual: '" . $failure['output'] . "'\n";
+        }
+        echo "\n";
+    }
 }
 
 if ($phpt_total != ($phpt_passed + $phpt_failed + $phpt_skipped + $phpt_nimp)) {
