@@ -44,8 +44,7 @@ TEST_PHP_CMD = "$(PHL_BIN)" "tests/phpt.php" \
 	--target-dir tests
 COVERAGE_PHL_CMD = "$(PHL_BIN)" "tests/phpt.php" \
 	--target-executable "./$(COVERAGE_BIN)" \
-	--target-dir tests \
-	--output-format dot
+	--target-dir tests
 
 # --- POLYGLOT MAGIC BEGINS
 # \
@@ -62,10 +61,10 @@ include build-aux/rules.mk
 all: .ALWAYS $(PHL_BIN)
 build: .ALWAYS $(PHL_BIN)
 clean: .ALWAYS $(BUILD_DIR)-clean
-test: .ALWAYS $(BUILD_DIR)-test
-test-compat: .ALWAYS $(BUILD_DIR)-test-compat
-coverage: .ALWAYS $(BUILD_DIR)/coverage/coverage.info
-coverage-html: .ALWAYS $(BUILD_DIR)/coverage/html
+test: .ALWAYS $(PHL_BIN) $(BUILD_DIR)-test
+test-compat: .ALWAYS $(PHL_BIN) $(BUILD_DIR)-test-compat
+coverage: .ALWAYS $(PHL_BIN) $(COVERAGE_BIN) $(BUILD_DIR)/coverage/coverage.info
+coverage-html: .ALWAYS $(PHL_BIN) $(COVERAGE_BIN) $(BUILD_DIR)/coverage/html
 .ALWAYS:
 
 $(BUILD_DIR)-test: $(PHL_BIN)

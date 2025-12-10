@@ -42,6 +42,9 @@ jobs:
             os: windows-latest
             extension: .exe
           - make: build
+            name: arm64-apple-darwin
+            os: macos-latest
+          - make: build
             name: x86_64-apple-darwin
             os: macos-15-intel
     steps:
@@ -61,16 +64,16 @@ jobs:
       contents: read
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-15-intel]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         make: [test, test-compat, coverage]
         include:
           - os: ubuntu-latest
             name: x86_64-linux-gnu
+          - os: macos-latest
+            name: arm64-apple-darwin
           - os: windows-latest
             name: x86_64-windows-msvc
             extension: .exe
-          - os: macos-15-intel
-            name: x86_64-apple-darwin
     steps:
     - uses: actions/checkout@v6
     - uses: ./.github/actions/setup-action
@@ -105,7 +108,7 @@ jobs:
 
         lcov --add-tracefile artifact/coverage-x86_64-linux-gnu/coverage/coverage.info \
              --add-tracefile artifact/coverage-x86_64-windows-msvc/coverage/coverage.info \
-             --add-tracefile artifact/coverage-x86_64-apple-darwin/coverage/coverage.info \
+             --add-tracefile artifact/coverage-arm64-apple-darwin/coverage/coverage.info \
              --ignore-errors format \
              --output-file report/coverage.info
 

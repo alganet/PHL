@@ -15,9 +15,9 @@ runs:
     - if: runner.os == 'macOS'
       uses: tecolicom/actions-use-homebrew-tools@v1
       with:
-        tools: lcov
+        tools: lcov php
         cache: yes
-        key: brewcache-1.0
+        key: brewcache-2.0
     - if: runner.os == 'Windows'
       uses: microsoft/setup-msbuild@v2
     - if: runner.os == 'Windows'
