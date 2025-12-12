@@ -51,8 +51,9 @@ static void Fatal(const char *zMsg)
  */
 static void Help(void)
 {
-	puts("phl [-h|--help|-b|-v|--version] path/to/php_file [script args]");
+	puts("phl [-h|--help|-b|-v|--version|-r code] path/to/php_file [script args]");
 	puts("\t-b: Dump PH7 byte-code instructions");
+	puts("\t-r code: Run code from command line (no tags needed)");
 	puts("\t-v, --version: Display version information and exit");
 	puts("\t-h, --help: Display this message and exit");
 	/* Exit immediately */
@@ -119,6 +120,8 @@ int main(int argc,char **argv)
 	ph7 *pEngine; /* PH7 engine */
 	ph7_vm *pVm;  /* Compiled PHP program */
 	int dump_vm = 0;    /* Dump VM instructions if TRUE */
+	int run_code = 0;    /* Run inline code if TRUE */
+	const char *zRunCode = 0; /* Inline code string */
 	int n;              /* Script arguments */
 	int rc;
 	/* Process interpreter arguments first*/
@@ -144,6 +147,14 @@ int main(int argc,char **argv)
 		if( c == 'b' ){
 			/* Dump byte-code instructions */
 			dump_vm = 1;
+		}else if( c == 'r' ){
+			/* Run inline PHP code from next argument (php -r style) */
+			if( n + 1 >= argc ){
+				/* Missing code argument */
+				Fatal("Missing code argument for -r");
+			}
+			zRunCode = argv[++n];
+			run_code = 1;
 		}else if( c == 'v' ){
 			/* Display version */
 			Version();
@@ -152,7 +163,7 @@ int main(int argc,char **argv)
 			Help();
 		}
 	}
-	if( n >= argc ){
+	if( n >= argc && !run_code ){
 		puts("Missing PHP file to compile");
 		Help();
 	}
@@ -178,20 +189,39 @@ int main(int argc,char **argv)
 		0 /* NULL: Callback Private data */
 		);
 	/* Now,it's time to compile our PHP file */
-	rc = ph7_compile_file(
-		pEngine, /* PH7 Engine */
-		argv[n], /* Path to the PHP file to compile */
-		&pVm,    /* OUT: Compiled PHP program */
-		0        /* IN: Compile flags */
-		);
-	if( rc != PH7_OK ){ /* Compile error */
-		if( rc == PH7_IO_ERR ){
-			Fatal("IO error while opening the target file");
-		}else if( rc == PH7_VM_ERR ){
-			Fatal("VM initialization error");
-		}else{
-			/* Compile-time error, your output (STDOUT) should display the error messages */
-			Fatal("Compile error");
+	if( run_code ){
+		/* Compile inline PHP code string (PHP only - no tags needed) */
+		rc = ph7_compile_v2(
+			pEngine, /* PH7 Engine */
+			zRunCode, /* Source code */
+			-1,       /* Let API compute length */
+			&pVm,     /* OUT: Compiled PHP program */
+			PH7_PHP_ONLY /* Inline PHP, no tags expected */
+			);
+		if( rc != PH7_OK ){ /* Compile error */
+			if( rc == PH7_VM_ERR ){
+				Fatal("VM initialization error");
+			}else{
+				/* Compile-time error, your output (STDOUT) should display the error messages */
+				Fatal("Compile error");
+			}
+		}
+	}else{
+		rc = ph7_compile_file(
+			pEngine, /* PH7 Engine */
+			argv[n], /* Path to the PHP file to compile */
+			&pVm,    /* OUT: Compiled PHP program */
+			0        /* IN: Compile flags */
+			);
+		if( rc != PH7_OK ){ /* Compile error */
+			if( rc == PH7_IO_ERR ){
+				Fatal("IO error while opening the target file");
+			}else if( rc == PH7_VM_ERR ){
+				Fatal("VM initialization error");
+			}else{
+				/* Compile-time error, your output (STDOUT) should display the error messages */
+				Fatal("Compile error");
+			}
 		}
 	}
 	/*
@@ -207,11 +237,19 @@ int main(int argc,char **argv)
 	if( rc != PH7_OK ){
 		Fatal("Error while installing the VM output consumer callback");
 	}
-	/* Register script agruments so we can access them later using the $argv[]
-	 * array from the compiled PHP program.
+	/* Register script arguments so we can access them later using the $argv[]
+	 * array from the compiled PHP program. For regular file execution we need
+	 * to register the arguments after the script file, while for inline code
+	 * (-r) the arguments start at the current index.
 	 */
-	for( n = n + 1; n < argc ; ++n ){
-		ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,argv[n]/* Argument value */);
+	if( run_code ){
+		for( ; n < argc ; ++n ){
+			ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,argv[n]/* Argument value */);
+		}
+	}else{
+		for( n = n + 1; n < argc ; ++n ){
+			ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,argv[n]/* Argument value */);
+		}
 	}
 	/* Report script run-time errors (now default behavior) */
 	ph7_vm_config(pVm,PH7_VM_CONFIG_ERR_REPORT);
