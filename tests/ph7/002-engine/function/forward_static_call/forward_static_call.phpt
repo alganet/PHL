@@ -18,7 +18,4 @@ echo CallProxy::f() . "\n";
 --EXPECT--
 20
 
---CLEAN--
-<?php
-// nothing to cleanup
-?>
+
