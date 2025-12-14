@@ -21,7 +21,6 @@ tests/
 ```
 
 Conventions & style
-- Tests are PHPT-format files with sections such as `--TEST--`, `--FILE--`, `--EXPECT--`/`--EXPECTF--` and (optionally) `--CLEAN--`.
 - All test files must include the `--CREDITS--` section at the top for SPDX compliance.
 - Prefer focused tests: each PHPT should exercise one behavior of one function or feature. Avoid huge grouped tests asserting many unrelated behaviors.
 - All test files end with a single trailing new line.
@@ -31,12 +30,15 @@ Conventions & style
   - Individual functions may require one or more specialized PHPT files; place them in the function's folder (for example, `function/addslashes/addslashes.phpt` and `function/addslashes/addslashes_multibyte.phpt`).
 
 How to add a test
-1. Create a directory under the correct scope: `tests/ph7/002-engine/function/<function>/`.
-2. Add a single PHPT file named `<function>.phpt` with the minimal `--TEST--`, `--FILE--` and `--EXPECT--` sections.
+1. Create a directory under the correct scope. For example, `tests/ph7/002-engine/function/<function>/` if the target is a function.
+2. Add a single PHPT file named `<function>.phpt` with the minimal `--CREDITS--`, `--TEST--`, `--FILE--` and `--EXPECT--` sections.
 3. Run compatibility and coverage checks (see below).
 
 Minimal PHPT example
 ```
+--CREDITS--
+SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
+SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 addslashes escapes single quote
 --FILE--
@@ -56,16 +58,17 @@ Running & verifying tests
 
 Notes and tips
 - Keep tests minimal: one core behavior per test file. Prefer many focused tests to a few large ones.
-- When you move or rename tests, update expected outputs that depend on basename (for example, `basename($errfile)` used by error handler tests).
+- Keep happy paths separate from error or invalid scenarios. Example: `acos.phpt` (happy path), `acos_invalid.phpt` (invalid argument).
 - If a test must differ per runtime, prefer to create a complementary test under the same function dir and mark differences with `--EXPECTF--` patterns.
+- PHL and PHP error output differs drastically, use `--SKIPIF--` with `<?php if (function_exists('zend_version')) echo 'skip'; ?>` to skip testing on Zend PHP.
+- Avoid using `var_dump`, `var_export`, `json_encode` and similar value-printing functions, since they differ between PHL and PHP. Check the values and print verification messages instead.
 
 Best Practices
 - Use `--CREDITS--` on new PHPT files with SPDX metadata.
-- Add a `--CLEAN--` section to unset variables, close resources and remove temporary files so tests do not pollute the runner context.
-- Use `--SKIPIF--` to skip tests that depend on features not available in the current runtime (e.g. PH7-only constants or functions).
-- Prefer `--EXPECTF--` or numeric formatting (e.g., `sprintf`) when runtime differences (precision, platform behavior) may cause failures.
+- Add a `--CLEAN--` section to close resources and remove temporary files.
 - Use `tempnam(sys_get_temp_dir(), 'ph7_')` for temporary files and clean them in `--CLEAN--`.
 - For Windows vs Unix differences, use `PHP_OS` to branch or skip.
+- Use `--EXPECTF--` with the `%d` (digits) and `%s` (string) placeholder for tests that could fail due to dynamic output (file names, different precision values, etc).
 
 Maintainers
 - If you’re not sure where to put a test — ask in the project's issue tracker or reach out to the maintainers.
