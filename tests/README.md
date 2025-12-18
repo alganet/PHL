@@ -12,12 +12,15 @@ tests/
 │  └─ 002-engine/         # Engine-level tests (internal API & builtin tests)
 │     ├─ array/           # Tests that exercise PHL's hashmap implementation
 │     ├─ constants/       # Per-constant tests (each constant gets a file)
-│     ├─ function/        # Per-function tests (each function gets a folder)
+│     ├─ error/           # Errors (mostly PHL specific, not PHP)
+│     ├─ lang/            # Language parsing, features, etc (one behavior per file)
 │     │─ oo/              # Object-oriented tests for classes, interfaces, etc
+│     ├─ function/        # Per-function tests (each function gets a folder)
 │     │  ├─ addslashes/addslashes.phpt
 │     │  ├─ file_put_contents/file_put_contents.phpt
 │     │  ├─ file_put_contents/file_put_contents_zend_win.phpt
 │     │  └─ ...etc.
+│     └─ ...etc.
 ```
 
 Conventions & style

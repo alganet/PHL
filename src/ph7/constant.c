@@ -681,7 +681,7 @@ static void PH7_DATE_ATOM_Const(ph7_value *pVal,void *pUserData)
 static void PH7_DATE_COOKIE_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_string(pVal,"l, d-M-y H:i:s T",-1/*Compute length automatically*/);
+	ph7_value_string(pVal,"l, d-M-Y H:i:s T",-1/*Compute length automatically*/);
 }
 /*
  * DATE_ISO8601

@@ -216,6 +216,42 @@ function match_expectf_pattern($phpt_pattern, $phpt_output) {
                 while ($phpt_o < $phpt_output_len && !ctype_space($phpt_output[$phpt_o])) {
                     $phpt_o++;
                 }
+            } elseif ($phpt_pattern[$phpt_p] === 'f') {
+                // Match a float: optional sign, digits, optional decimal, optional exponent
+                if ($phpt_o >= $phpt_output_len) {
+                    return false;
+                }
+                // Optional sign
+                if ($phpt_output[$phpt_o] === '+' || $phpt_output[$phpt_o] === '-') {
+                    $phpt_o++;
+                }
+                // Digits before decimal
+                if ($phpt_o >= $phpt_output_len || !ctype_digit($phpt_output[$phpt_o])) {
+                    return false;
+                }
+                while ($phpt_o < $phpt_output_len && ctype_digit($phpt_output[$phpt_o])) {
+                    $phpt_o++;
+                }
+                // Optional decimal part
+                if ($phpt_o < $phpt_output_len && $phpt_output[$phpt_o] === '.') {
+                    $phpt_o++;
+                    while ($phpt_o < $phpt_output_len && ctype_digit($phpt_output[$phpt_o])) {
+                        $phpt_o++;
+                    }
+                }
+                // Optional exponent
+                if ($phpt_o < $phpt_output_len && ($phpt_output[$phpt_o] === 'e' || $phpt_output[$phpt_o] === 'E')) {
+                    $phpt_o++;
+                    if ($phpt_o < $phpt_output_len && ($phpt_output[$phpt_o] === '+' || $phpt_output[$phpt_o] === '-')) {
+                        $phpt_o++;
+                    }
+                    if ($phpt_o >= $phpt_output_len || !ctype_digit($phpt_output[$phpt_o])) {
+                        return false;
+                    }
+                    while ($phpt_o < $phpt_output_len && ctype_digit($phpt_output[$phpt_o])) {
+                        $phpt_o++;
+                    }
+                }
             } else {
                 return false; // unknown % sequence
             }
