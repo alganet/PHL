@@ -11,7 +11,3 @@ echo $k . PHP_EOL;
 ?>
 --EXPECT--
 a
---CLEAN--
-<?php
-unset($a);
-?>
