@@ -1,0 +1,17 @@
+--CREDITS--
+SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
+SPDX-License-Identifier: BSD-3-Clause
+--TEST--
+xml_parser_set_option with XML_OPTION_TARGET_ENCODING
+--SKIPIF--
+<?php if (function_exists('zend_version')) echo 'skip'; ?>
+--FILE--
+<?php
+$parser = xml_parser_create();
+xml_parser_set_option($parser, XML_OPTION_TARGET_ENCODING, 'UTF-8');
+xml_parse($parser, "<root></root>", true);
+xml_parser_free($parser);
+echo "OK";
+?>
+--EXPECT--
+OK

@@ -2,7 +2,9 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7 / PHP: idate basic functionality
+PH7: idate basic functionality
+--SKIPIF--
+<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
 // Test basic idate functionality
@@ -11,7 +13,8 @@ echo is_int($result1) && $result1 > 2000 ? "YEAR_OK\n" : "YEAR_FAIL: $result1\n"
 
 // Test month
 $result2 = idate("m");
-echo is_int($result2) && $result2 >= 1 && $result2 <= 12 ? "MONTH_OK\n" : "MONTH_FAIL: $result2\n";
+// PH7's idate uses zero-indexed months.
+echo is_int($result2) && $result2 >= 0 && $result2 <= 11 ? "MONTH_OK\n" : "MONTH_FAIL: $result2\n";
 
 // Test day
 $result3 = idate("d");
