@@ -17,5 +17,5 @@ fclose($fp);
 echo $out;
 ?>
 --EXPECTF--
-PHL %d.%d.%d (cli) (built %s %d %d %d:%d:%d)
+PHL %d.%d.%d (cli) (built %s  %d %d %d:%d:%d)
 Copyright (c) 2011-2014 Symisc Systems, 2025 Alexandre Gomes Gaigalas
