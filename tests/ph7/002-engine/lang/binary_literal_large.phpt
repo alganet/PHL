@@ -2,12 +2,10 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-class var property compiles
+Large binary literal
 --FILE--
 <?php
-class C { var $x = 5; }
-$o = new C();
-echo $o->x;
+echo 0b11111111111111111111111111111111;
 ?>
 --EXPECT--
-5
+4294967295
