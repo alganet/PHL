@@ -2,18 +2,17 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Division by zero in expressions
+PH7: str_pad with negative length returns the string unchanged
 --SKIPIF--
 <?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
-$result = 10 / 0;
-echo "Result: $result\n";
+$result = str_pad("test", -5);
+if ($result === "test") {
+    echo "PASS";
+} else {
+    echo "FAIL";
+}
 ?>
---EXPECTF--
-%s Error: Division by zero
-Result: 1
---CLEAN--
-<?php
-unset($result);
-?>
+--EXPECT--
+PASS

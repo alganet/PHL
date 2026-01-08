@@ -1,19 +1,18 @@
 --CREDITS--
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
---TEST--
-Division by zero in expressions
 --SKIPIF--
 <?php if (function_exists('zend_version')) echo 'skip'; ?>
+--TEST--
+dechex with no arguments
 --FILE--
 <?php
-$result = 10 / 0;
-echo "Result: $result\n";
+$result = dechex();
+if ($result === null) {
+    echo "NULL\n";
+} else {
+    echo "NOT NULL\n";
+}
 ?>
---EXPECTF--
-%s Error: Division by zero
-Result: 1
---CLEAN--
-<?php
-unset($result);
-?>
+--EXPECT--
+NULL

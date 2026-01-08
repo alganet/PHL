@@ -2,18 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Division by zero in expressions
+PH7: str_replace with array containing empty string key
 --SKIPIF--
 <?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
-$result = 10 / 0;
-echo "Result: $result\n";
+// Test str_replace with array containing empty key
+$result = str_replace(array('', 'l'), array('x', 'L'), 'hello');
+var_dump($result);
 ?>
---EXPECTF--
-%s Error: Division by zero
-Result: 1
---CLEAN--
-<?php
-unset($result);
-?>
+--EXPECT--
+string(5 'hexxo')

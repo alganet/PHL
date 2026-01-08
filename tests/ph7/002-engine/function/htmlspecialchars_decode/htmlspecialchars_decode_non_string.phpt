@@ -2,18 +2,17 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Division by zero in expressions
+PH7: htmlspecialchars_decode with non-string argument returns NULL
 --SKIPIF--
 <?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
-$result = 10 / 0;
-echo "Result: $result\n";
+$result = htmlspecialchars_decode(123);
+if ($result === null) {
+    echo "PASS";
+} else {
+    echo "FAIL";
+}
 ?>
---EXPECTF--
-%s Error: Division by zero
-Result: 1
---CLEAN--
-<?php
-unset($result);
-?>
+--EXPECT--
+PASS

@@ -2,18 +2,13 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Division by zero in expressions
+PH7: str_replace with insufficient replace array elements
 --SKIPIF--
 <?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
-$result = 10 / 0;
-echo "Result: $result\n";
+$result = str_replace(array('a', 'b'), array('x'), 'ab');
+echo $result . "\n";
 ?>
---EXPECTF--
-%s Error: Division by zero
-Result: 1
---CLEAN--
-<?php
-unset($result);
-?>
+--EXPECT--
+x
