@@ -2,18 +2,16 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Division by zero in expressions
+vsprintf with format flags (left justify, blank sign)
 --SKIPIF--
 <?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
-$result = 10 / 0;
-echo "Result: $result\n";
+// Left justify flag
+echo vsprintf('%-10s', array('left')) . "\n";
+// Blank sign flag
+echo vsprintf('% 10s', array('blank')) . "\n";
 ?>
---EXPECTF--
-%s Error: Division by zero
-Result: 1
---CLEAN--
-<?php
-unset($result);
-?>
+--EXPECT--
+left      
+     blank

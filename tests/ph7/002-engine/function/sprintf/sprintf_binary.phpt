@@ -2,15 +2,11 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7 / PHP: empty('') returns true
+sprintf supports format with width and precision
 --FILE--
 <?php
-$val = '';
-echo "empty_true=" . (empty($val) ? 'true' : 'false') . "\n";
+$ret = sprintf('%10.5s', 'Hello World');
+echo "padded=" . $ret . "\n";
 ?>
 --EXPECT--
-empty_true=true
---CLEAN--
-<?php
-unset($val);
-?>
+padded=     Hello
