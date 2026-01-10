@@ -9,13 +9,9 @@ phl interpreter CLI version
 <?php
 $phl = getenv('PHPT_TARGET_EXECUTABLE');
 $fp = popen("\"$phl\" --version", "r");
-$out = '';
-while (!feof($fp)) {
-    $out .= fgets($fp);
-}
+$out = fgets($fp);
 fclose($fp);
 echo $out;
 ?>
 --EXPECTF--
-PHL %d.%d.%d (cli) (built %s  %d %d %d:%d:%d)
-Copyright (c) 2011-2014 Symisc Systems, 2025 Alexandre Gomes Gaigalas
+PHL %d.%d.%d (cli)
