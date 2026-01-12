@@ -1,14 +1,18 @@
 --CREDITS--
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
---TEST--
-Namespace with invalid token after path
 --SKIPIF--
 <?php if (function_exists('zend_version')) echo 'skip'; ?>
+--TEST--
+unexpected closing curly brace
 --FILE--
 <?php
-namespace my\ns 123;
-echo "should not reach here\n";
+if (true) {
+    echo 1;
+}
+echo 2;
+}
 ?>
 --EXPECTF--
-%s 2 Error: Namespace: Unexpected token '123',expecting ';' or '{'
+%s 6 Error: Syntax error: Unexpected token '}'
+Compile error
