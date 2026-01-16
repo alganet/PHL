@@ -112,7 +112,7 @@ jobs:
              --ignore-errors format \
              --output-file report/coverage.info
 
-        genhtml --quiet --include 'src/ph7/*'\
+        genhtml --quiet --include 'src/*'\
           --output-directory report/html report/coverage.info
 
         ./artifact/coverage-x86_64-linux-gnu/coverage/phl-coverage \
