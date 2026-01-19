@@ -9,16 +9,16 @@ BIN_SUFFIX =
 
 CC ?= cc
 TARGET ?= $(shell CC=$(CC) ./build-aux/get_target.sh)
-CFLAGS = -W -Wunused -Wall -Isrc/sx -Isrc/ph7 -Ofast $(PH7_DEFINES) -D__UNIXES__
+full_CFLAGS = -W -Wunused -Wall -Isrc/sx -Isrc/ph7 -Ofast $(PH7_DEFINES) -D__UNIXES__
 LDFLAGS = -lm -lpthread
-COVERAGE_CFLAGS = -W -Wunused -Wall -Isrc/sx -Isrc/ph7 -O0 $(PH7_DEFINES) -D__UNIXES__ -fprofile-arcs -ftest-coverage
+coverage_CFLAGS = -W -Wunused -Wall -Isrc/sx -Isrc/ph7 -O0 $(PH7_DEFINES) -D__UNIXES__ -fprofile-arcs -ftest-coverage
 
 PHP_BIN ?= $(shell command -v php)$(BIN_SUFFIX)
 
 FULL_OBJECTS = $(patsubst $(BUILD_DIR)/src/%,$(BUILD_DIR)/full/src/%,$(OBJECTS))
 
 $(FULL_PHL_BIN): $(FULL_OBJECTS)
-	$(CC) $(CFLAGS) -o $@ $(FULL_OBJECTS) $(LDFLAGS)
+	$(CC) $(full_CFLAGS) -o $@ $(FULL_OBJECTS) $(LDFLAGS)
 
 $(BUILD_DIR)-clean:
 	-@rm -rf $(BUILD_DIR)
@@ -30,7 +30,7 @@ COVERAGE_LDFLAGS = $(LDFLAGS)
 COVERAGE_OBJECTS = $(patsubst $(BUILD_DIR)/src/%,$(BUILD_DIR)/coverage/src/%,$(OBJECTS))
 
 $(COVERAGE_PHL_BIN): $(COVERAGE_OBJECTS)
-	$(CC) $(COVERAGE_CFLAGS) -o $@ $(COVERAGE_OBJECTS) $(COVERAGE_LDFLAGS)
+	$(CC) $(coverage_CFLAGS) -o $@ $(COVERAGE_OBJECTS) $(COVERAGE_LDFLAGS)
 
 $(BUILD_DIR)/coverage/coverage.info: .ALWAYS $(COVERAGE_PHL_BIN)
 	@$(COVERAGE_PHL_CMD)
