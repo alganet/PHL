@@ -33,7 +33,7 @@ runs:
         path: build/${{ inputs.name }}
 
     - if: inputs.artifacts_from != '' && (contains(inputs.name, '-linux') || contains(inputs.name, '-darwin'))
-      run: chmod +x build/${{ inputs.name }}/phl${{ inputs.extension }}
+      run: chmod +x build/${{ inputs.name }}/full/phl${{ inputs.extension }}
       shell: bash
 
     - if: contains(inputs.name, '-linux') || contains(inputs.name, '-darwin')

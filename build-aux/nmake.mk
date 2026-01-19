@@ -15,8 +15,10 @@ COVERAGE_CFLAGS = /nologo /Fd$(BUILD_DIR:/=\)\coverage\ph7-coverage.pdb /I src /
 
 PHP_BIN = php$(BIN_SUFFIX)
 
-$(PHL_BIN): $(BUILD_DIR) $(OBJECTS)
-	$(CC) $(CFLAGS) /Fe$@ $(OBJECTS) $(LDFLAGS)
+FULL_OBJECTS = $(OBJECTS:/src/=/full/src/)
+
+$(FULL_PHL_BIN): $(BUILD_DIR) $(FULL_OBJECTS)
+	$(CC) $(CFLAGS) /Fe$@ $(FULL_OBJECTS) $(LDFLAGS)
 
 $(BUILD_DIR)-clean:
 	-@rd /s /q $(BUILD_DIR:/=\) 2>nul
@@ -27,7 +29,7 @@ $(BUILD_DIR)-clean:
 COVERAGE_LDFLAGS = /nologo /link advapi32.lib dbghelp.lib /subsystem:console /entry:mainCRTStartup
 COVERAGE_OBJECTS = $(OBJECTS:/src/=/coverage/src/)
 
-$(COVERAGE_BIN): $(BUILD_DIR)/coverage $(COVERAGE_OBJECTS)
+$(COVERAGE_PHL_BIN): $(BUILD_DIR)/coverage $(COVERAGE_OBJECTS)
 	$(CC) $(COVERAGE_CFLAGS) /Fe$@ $(COVERAGE_OBJECTS) $(COVERAGE_LDFLAGS)
 
 $(BUILD_DIR)/coverage/coverage.info: .ALWAYS
@@ -37,10 +39,10 @@ $(BUILD_DIR)/coverage/coverage.info: .ALWAYS
 	--cover_children \
 	--export_type cobertura:$(BUILD_DIR)/coverage/cobertura.xml \
 	-- $(COVERAGE_PHL_CMD)
-	@"$(PHL_BIN)" \
+	@"$(FULL_PHL_BIN)" \
 		"build-aux/cobertura_xml_to_lcov_info.php" \
 		"$(BUILD_DIR)/coverage/cobertura.xml" > "$(BUILD_DIR)/coverage/coverage.info"
-	@"$(PHL_BIN)" \
+	@"$(FULL_PHL_BIN)" \
 		"build-aux/lcov_info_to_text.php" \
 		"$(BUILD_DIR)/coverage/coverage.info"
 
