@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 # Common definitions
-default: all
+default: full
 BUILD_DIR = build/$(TARGET)
 PH7_DEFINES = -DPH7_ENABLE_MATH_FUNC -DPH7_ENABLE_THREADS
-PHL_BIN = $(BUILD_DIR)/phl$(BIN_SUFFIX)
-COVERAGE_BIN = $(BUILD_DIR)/coverage/phl-coverage$(BIN_SUFFIX)
+FULL_PHL_BIN = $(BUILD_DIR)/full/phl$(BIN_SUFFIX)
+COVERAGE_PHL_BIN = $(BUILD_DIR)/coverage/phl$(BIN_SUFFIX)
 
 # Object files
 OBJECTS = \
@@ -36,14 +36,14 @@ OBJECTS = \
 
 
 # Test and Coverage Logic
-TEST_PHL_CMD = "$(PHL_BIN)" "tests/phpt.php" \
-	--target-executable "./$(PHL_BIN)" \
+TEST_PHL_CMD = "$(FULL_PHL_BIN)" "tests/phpt.php" \
+	--target-executable "./$(FULL_PHL_BIN)" \
 	--target-dir tests
-TEST_PHP_CMD = "$(PHL_BIN)" "tests/phpt.php" \
+TEST_PHP_CMD = "$(FULL_PHL_BIN)" "tests/phpt.php" \
 	--target-executable "$(PHP_BIN)" \
 	--target-dir tests
-COVERAGE_PHL_CMD = "$(PHL_BIN)" "tests/phpt.php" \
-	--target-executable "./$(COVERAGE_BIN)" \
+COVERAGE_PHL_CMD = "$(FULL_PHL_BIN)" "tests/phpt.php" \
+	--target-executable "./$(COVERAGE_PHL_BIN)" \
 	--target-dir tests
 
 # --- POLYGLOT MAGIC BEGINS
@@ -58,21 +58,20 @@ include build-aux/rules.mk
 !endif
 # --- POLYGLOT MAGIC ENDS
 
-all: .ALWAYS $(PHL_BIN)
-build: .ALWAYS $(PHL_BIN)
+full: .ALWAYS $(FULL_PHL_BIN)
 clean: .ALWAYS $(BUILD_DIR)-clean
-test: .ALWAYS $(PHL_BIN) $(BUILD_DIR)-test
-test-compat: .ALWAYS $(PHL_BIN) $(BUILD_DIR)-test-compat
-coverage: .ALWAYS $(PHL_BIN) $(COVERAGE_BIN) $(BUILD_DIR)/coverage/coverage.info
-coverage-html: .ALWAYS $(PHL_BIN) $(COVERAGE_BIN) $(BUILD_DIR)/coverage/html
+test: .ALWAYS $(FULL_PHL_BIN) $(BUILD_DIR)-test
+test-compat: .ALWAYS $(FULL_PHL_BIN) $(BUILD_DIR)-test-compat
+coverage: .ALWAYS $(FULL_PHL_BIN) $(COVERAGE_PHL_BIN) $(BUILD_DIR)/coverage/coverage.info
+coverage-html: .ALWAYS $(FULL_PHL_BIN) $(COVERAGE_PHL_BIN) $(BUILD_DIR)/coverage/html
 .ALWAYS:
 
-$(BUILD_DIR)-test: $(PHL_BIN)
-	@"$(PHL_BIN)" --version
+$(BUILD_DIR)-test: $(FULL_PHL_BIN)
+	@"$(FULL_PHL_BIN)" --version
 	$(TEST_PHL_CMD)
 
-$(BUILD_DIR)-test-compat: $(PHL_BIN)
+$(BUILD_DIR)-test-compat: $(FULL_PHL_BIN)
 	@"$(PHP_BIN)" --version
 	@$(TEST_PHP_CMD) --output-format dot
-	@"$(PHL_BIN)" --version
+	@"$(FULL_PHL_BIN)" --version
 	@$(TEST_PHL_CMD) --output-format dot

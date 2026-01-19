@@ -3,26 +3,28 @@
 
 $(BUILD_DIR):
     @if not exist "$(BUILD_DIR)" mkdir "$(BUILD_DIR)"
-$(BUILD_DIR)/src:
-    @if not exist "$(BUILD_DIR)/src" mkdir "$(BUILD_DIR)/src"
+$(BUILD_DIR)/full:
+    @if not exist "$(BUILD_DIR)/full" mkdir "$(BUILD_DIR)/full"
+$(BUILD_DIR)/full/src:
+    @if not exist "$(BUILD_DIR)/full/src" mkdir "$(BUILD_DIR)/full/src"
 $(BUILD_DIR)/coverage:
     @if not exist "$(BUILD_DIR)/coverage" mkdir "$(BUILD_DIR)/coverage"
 $(BUILD_DIR)/coverage/src:
     @if not exist "$(BUILD_DIR)/coverage/src" mkdir "$(BUILD_DIR)/coverage/src"
-{src/ph7}.c{$(BUILD_DIR)/src/ph7}.obj:
-    @if not exist "$(BUILD_DIR)/src/ph7" mkdir "$(BUILD_DIR)/src/ph7"
+{src/ph7}.c{$(BUILD_DIR)/full/src/ph7}.obj:
+    @if not exist "$(BUILD_DIR)/full/src/ph7" mkdir "$(BUILD_DIR)/full/src/ph7"
     $(CC) $(CFLAGS) /Fo"$@" /c $<
 {src/ph7}.c{$(BUILD_DIR)/coverage/src/ph7}.obj:
     @if not exist "$(BUILD_DIR)/coverage/src/ph7" mkdir "$(BUILD_DIR)/coverage/src/ph7"
     $(CC) $(COVERAGE_CFLAGS) /Fo"$@" /c $<
-{src/phl}.c{$(BUILD_DIR)/src/phl}.obj:
-    @if not exist "$(BUILD_DIR)/src/phl" mkdir "$(BUILD_DIR)/src/phl"
+{src/phl}.c{$(BUILD_DIR)/full/src/phl}.obj:
+    @if not exist "$(BUILD_DIR)/full/src/phl" mkdir "$(BUILD_DIR)/full/src/phl"
     $(CC) $(CFLAGS) /Fo"$@" /c $<
 {src/phl}.c{$(BUILD_DIR)/coverage/src/phl}.obj:
     @if not exist "$(BUILD_DIR)/coverage/src/phl" mkdir "$(BUILD_DIR)/coverage/src/phl"
     $(CC) $(COVERAGE_CFLAGS) /Fo"$@" /c $<
-{src/sx}.c{$(BUILD_DIR)/src/sx}.obj:
-    @if not exist "$(BUILD_DIR)/src/sx" mkdir "$(BUILD_DIR)/src/sx"
+{src/sx}.c{$(BUILD_DIR)/full/src/sx}.obj:
+    @if not exist "$(BUILD_DIR)/full/src/sx" mkdir "$(BUILD_DIR)/full/src/sx"
     $(CC) $(CFLAGS) /Fo"$@" /c $<
 {src/sx}.c{$(BUILD_DIR)/coverage/src/sx}.obj:
     @if not exist "$(BUILD_DIR)/coverage/src/sx" mkdir "$(BUILD_DIR)/coverage/src/sx"

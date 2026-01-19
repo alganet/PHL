@@ -27,24 +27,24 @@ on:
       - '.github/workflows/build.yml'
 
 jobs:
-  build:
+  full:
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
     strategy:
       matrix:
         include:
-          - make: build
+          - make: full
             name: x86_64-linux-gnu
             os: ubuntu-latest
-          - make: build
+          - make: full
             name: x86_64-windows-msvc
             os: windows-latest
             extension: .exe
-          - make: build
+          - make: full
             name: arm64-apple-darwin
             os: macos-latest
-          - make: build
+          - make: full
             name: x86_64-apple-darwin
             os: macos-15-intel
     steps:
@@ -59,7 +59,7 @@ jobs:
 
   qa:
     runs-on: ${{ matrix.os }}
-    needs: build
+    needs: full
     permissions:
       contents: read
     strategy:
@@ -83,7 +83,7 @@ jobs:
         make: ${{ matrix.make }}
         extension: ${{ matrix.extension }}
         artifacts: ${{ contains(matrix.make, 'coverage') && 'true' || 'false' }}
-        artifacts_from: build
+        artifacts_from: full
 
   report:
     runs-on: ubuntu-latest
@@ -104,7 +104,7 @@ jobs:
     - name: Coverage report
       run: |
         mkdir -p report
-        chmod +x artifact/coverage-x86_64-linux-gnu/coverage/phl-coverage
+        chmod +x artifact/coverage-x86_64-linux-gnu/coverage/phl
 
         lcov --add-tracefile artifact/coverage-x86_64-linux-gnu/coverage/coverage.info \
              --add-tracefile artifact/coverage-x86_64-windows-msvc/coverage/coverage.info \
@@ -115,14 +115,14 @@ jobs:
         genhtml --quiet --include 'src/*'\
           --output-directory report/html report/coverage.info
 
-        ./artifact/coverage-x86_64-linux-gnu/coverage/phl-coverage \
+        ./artifact/coverage-x86_64-linux-gnu/coverage/phl \
           build-aux/lcov_info_to_text.php --content=all\
             report/coverage.info > report/coverage.md
 
         echo "### Coverage" >> report/summary.md
         echo "" >> report/summary.md
 
-        ./artifact/coverage-x86_64-linux-gnu/coverage/phl-coverage \
+        ./artifact/coverage-x86_64-linux-gnu/coverage/phl \
           build-aux/lcov_info_to_text.php --content=summary\
             report/coverage.info >> report/summary.md
 

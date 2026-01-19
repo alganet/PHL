@@ -15,8 +15,10 @@ COVERAGE_CFLAGS = -W -Wunused -Wall -Isrc/sx -Isrc/ph7 -O0 $(PH7_DEFINES) -D__UN
 
 PHP_BIN ?= $(shell command -v php)$(BIN_SUFFIX)
 
-$(PHL_BIN): $(OBJECTS)
-	$(CC) $(CFLAGS) -o $@ $(OBJECTS) $(LDFLAGS)
+FULL_OBJECTS = $(patsubst $(BUILD_DIR)/src/%,$(BUILD_DIR)/full/src/%,$(OBJECTS))
+
+$(FULL_PHL_BIN): $(FULL_OBJECTS)
+	$(CC) $(CFLAGS) -o $@ $(FULL_OBJECTS) $(LDFLAGS)
 
 $(BUILD_DIR)-clean:
 	-@rm -rf $(BUILD_DIR)
@@ -25,12 +27,12 @@ $(BUILD_DIR)-clean:
 # --------
 
 COVERAGE_LDFLAGS = $(LDFLAGS)
-COVERAGE_OBJECTS = $(patsubst $(BUILD_DIR)/src/%,$(BUILD_DIR)/coverage/src/%,$(OBJECTS:.o=.o))
+COVERAGE_OBJECTS = $(patsubst $(BUILD_DIR)/src/%,$(BUILD_DIR)/coverage/src/%,$(OBJECTS))
 
-$(COVERAGE_BIN): $(COVERAGE_OBJECTS)
+$(COVERAGE_PHL_BIN): $(COVERAGE_OBJECTS)
 	$(CC) $(COVERAGE_CFLAGS) -o $@ $(COVERAGE_OBJECTS) $(COVERAGE_LDFLAGS)
 
-$(BUILD_DIR)/coverage/coverage.info: .ALWAYS $(COVERAGE_BIN)
+$(BUILD_DIR)/coverage/coverage.info: .ALWAYS $(COVERAGE_PHL_BIN)
 	@$(COVERAGE_PHL_CMD)
 	@lcov --capture --rc geninfo_unexecuted_blocks=1 --quiet \
 		--ignore-errors unsupported,unsupported \
@@ -39,7 +41,7 @@ $(BUILD_DIR)/coverage/coverage.info: .ALWAYS $(COVERAGE_BIN)
 	@sed 's|SF:.*/src/|SF:src/|g' \
 		$(BUILD_DIR)/coverage/coverage.info > $(BUILD_DIR)/coverage/coverage.info.tmp \
 			&& mv -f $(BUILD_DIR)/coverage/coverage.info.tmp $(BUILD_DIR)/coverage/coverage.info
-	@$(PHL_BIN) ./build-aux/lcov_info_to_text.php $(BUILD_DIR)/coverage/coverage.info
+	@$(FULL_PHL_BIN) ./build-aux/lcov_info_to_text.php $(BUILD_DIR)/coverage/coverage.info
 
 $(BUILD_DIR)/coverage/html: .ALWAYS $(BUILD_DIR)/coverage/coverage.info
 	@genhtml \
