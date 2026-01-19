@@ -3,7 +3,7 @@
 
 $(BUILD_DIR)/full/src/%.o: src/%.c
 	@mkdir -p $(@D)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(full_CFLAGS) -c $< -o $@
 $(BUILD_DIR)/coverage/src/%.o: src/%.c
 	@mkdir -p $(@D)
-	$(CC) $(COVERAGE_CFLAGS) -c $< -o $@
+	$(CC) $(coverage_CFLAGS) -c $< -o $@

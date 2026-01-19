@@ -9,16 +9,16 @@ BIN_SUFFIX = .exe
 
 CC = cl
 TARGET = x86_64-windows-msvc
-CFLAGS = /nologo /Fd$(BUILD_DIR:/=\)\ph7.pdb /I src /I src/sx /I src/ph7 /W4 /Ox $(PH7_DEFINES:-=/)
+full_CFLAGS = /nologo /Fd$(BUILD_DIR:/=\)\ph7.pdb /I src /I src/sx /I src/ph7 /W4 /Ox $(PH7_DEFINES:-=/)
 LDFLAGS = /nologo /link advapi32.lib /subsystem:console /entry:mainCRTStartup
-COVERAGE_CFLAGS = /nologo /Fd$(BUILD_DIR:/=\)\coverage\ph7-coverage.pdb /I src /I src/sx /I src/ph7 /W4 /Od /Zi $(PH7_DEFINES:-=/) /DPH7_DEBUG
+coverage_CFLAGS = /nologo /Fd$(BUILD_DIR:/=\)\coverage\ph7-coverage.pdb /I src /I src/sx /I src/ph7 /W4 /Od /Zi $(PH7_DEFINES:-=/) /DPH7_DEBUG
 
 PHP_BIN = php$(BIN_SUFFIX)
 
 FULL_OBJECTS = $(OBJECTS:/src/=/full/src/)
 
 $(FULL_PHL_BIN): $(BUILD_DIR) $(FULL_OBJECTS)
-	$(CC) $(CFLAGS) /Fe$@ $(FULL_OBJECTS) $(LDFLAGS)
+	$(CC) $(full_CFLAGS) /Fe$@ $(FULL_OBJECTS) $(LDFLAGS)
 
 $(BUILD_DIR)-clean:
 	-@rd /s /q $(BUILD_DIR:/=\) 2>nul
@@ -30,7 +30,7 @@ COVERAGE_LDFLAGS = /nologo /link advapi32.lib dbghelp.lib /subsystem:console /en
 COVERAGE_OBJECTS = $(OBJECTS:/src/=/coverage/src/)
 
 $(COVERAGE_PHL_BIN): $(BUILD_DIR)/coverage $(COVERAGE_OBJECTS)
-	$(CC) $(COVERAGE_CFLAGS) /Fe$@ $(COVERAGE_OBJECTS) $(COVERAGE_LDFLAGS)
+	$(CC) $(coverage_CFLAGS) /Fe$@ $(COVERAGE_OBJECTS) $(COVERAGE_LDFLAGS)
 
 $(BUILD_DIR)/coverage/coverage.info: .ALWAYS
 	@OpenCppCoverage.exe --quiet \
