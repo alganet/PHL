@@ -2,14 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-negative integer returns positive
+positive integer returns same value
 --FILE--
 <?php
-$val = abs(-5);
+$val = abs(7);
 echo "abs=" . $val . "\n";
 ?>
 --EXPECT--
-abs=5
+abs=7
 --CLEAN--
 <?php
 unset($val);

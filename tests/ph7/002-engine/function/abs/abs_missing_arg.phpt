@@ -2,9 +2,7 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: abs missing argument returns integer 0
---SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+missing argument returns zero
 --FILE--
 <?php
 if (abs() === 0) {
@@ -15,3 +13,6 @@ if (abs() === 0) {
 ?>
 --EXPECT--
 true
+--CLEAN--
+<?php
+?>
