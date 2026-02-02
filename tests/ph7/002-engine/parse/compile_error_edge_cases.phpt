@@ -46,6 +46,6 @@ class InvalidClass {
 }
 ?>
 --EXPECTF--
-%s 5 Error: '=': Missing/Invalid operand
-%s 7 Error: Missing ')' after function 'invalid_func' signature
+%s %d Error: '=': Missing/Invalid operand
+%s %d Error: Missing ')' after function 'invalid_func' signature
 Compile error

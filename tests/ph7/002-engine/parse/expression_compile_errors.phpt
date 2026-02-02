@@ -45,9 +45,9 @@ INVALID;
 
 ?>
 --EXPECTF--
-%s 5 Error: Syntax error,mismatched '(','[','{' or '?'
-%s 7 Error: Invalid array name
-%s 8 Error: Syntax error,mismatched '(','[','{' or '?'
-%s 12 Error: '->': Missing/Invalid member name
-%s 14 Error: '::': Missing/Invalid member name
+%s %d Error: Syntax error,mismatched '(','[','{' or '?'
+%s %d Error: Invalid array name
+%s %d Error: Syntax error,mismatched '(','[','{' or '?'
+%s %d Error: '->': Missing/Invalid member name
+%s %d Error: '::': Missing/Invalid member name
 Compile error

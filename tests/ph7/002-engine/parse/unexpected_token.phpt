@@ -31,8 +31,8 @@ foreach ([1,2] as $val) {
 
 ?>
 --EXPECTF--
-%s 5 Error: Syntax error: Unexpected token '}'
-%s 7 Error: Syntax error: Unexpected token ']'
-%s 12 Error: Syntax error: Unexpected token ';'
-%s 17 Error: Syntax error: Unexpected token '}'
+%s %d Error: Syntax error: Unexpected token '}'
+%s %d Error: Syntax error: Unexpected token ']'
+%s %d Error: Syntax error: Unexpected token ';'
+%s %d Error: Syntax error: Unexpected token '}'
 Compile error

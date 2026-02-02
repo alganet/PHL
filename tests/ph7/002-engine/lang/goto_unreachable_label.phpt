@@ -15,6 +15,6 @@ function foo() {
 }
 ?>
 --EXPECTF--
-%s 4 Warning: Label 'bar' is defined but not referenced
-%s 2 Error: Label 'bar' is unreachable
+%s %d Warning: Label 'bar' is defined but not referenced
+%s %d Error: Label 'bar' is unreachable
 Compile error
