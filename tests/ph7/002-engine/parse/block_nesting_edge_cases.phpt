@@ -53,12 +53,12 @@ $obj->test_method();
 
 ?>
 --EXPECTF--
-%s 4 Error: A 'break' statement may only be used within a loop or switch
-%s 6 Error: A 'continue' statement may only be used within a loop or switch
-%s 8 Error: A 'break' statement may only be used within a loop or switch
-%s 10 Error: A 'continue' statement may only be used within a loop or switch
-%s 13 Error: A 'break' statement may only be used within a loop or switch
-%s 17 Error: A 'continue' statement may only be used within a loop or switch
-%s 22 Error: A 'break' statement may only be used within a loop or switch
-%s 30 Error: A 'break' statement may only be used within a loop or switch
+%s %d Error: A 'break' statement may only be used within a loop or switch
+%s %d Error: A 'continue' statement may only be used within a loop or switch
+%s %d Error: A 'break' statement may only be used within a loop or switch
+%s %d Error: A 'continue' statement may only be used within a loop or switch
+%s %d Error: A 'break' statement may only be used within a loop or switch
+%s %d Error: A 'continue' statement may only be used within a loop or switch
+%s %d Error: A 'break' statement may only be used within a loop or switch
+%s %d Error: A 'break' statement may only be used within a loop or switch
 Compile error

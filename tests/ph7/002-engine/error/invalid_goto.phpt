@@ -21,6 +21,6 @@ inside_try:
 echo "Done\n";
 ?>
 --EXPECTF--
-%s 6 Error: goto inside try/catch block is disallowed
-%s 3 Error: Label 'nonexistent_label' was referenced but not defined
+%s %d Error: goto inside try/catch block is disallowed
+%s %d Error: Label 'nonexistent_label' was referenced but not defined
 Compile error

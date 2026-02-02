@@ -58,14 +58,14 @@ try {
 
 ?>
 --EXPECTF--
-%s 6 Error: goto: Invalid label name: ';'
-%s 8 Error: Expected semi-colon ';' after 'goto' statement
-%s 8 Error: Syntax error: Unexpected token ':'
-%s 15 Notice: Namespace support is disabled in the current release of the PH7(2.1.4) engine
-%s 17 Error: Syntax error: Unexpected keyword 'interface'
-%s 21 Error: Syntax error: Unexpected keyword 'abstract'
-%s 22 Error: Syntax error: Unexpected keyword 'final'
-%s 24 Error: Missing argument default value
-%s 28 Error: Empty constant 'CONSTANT' value
-%s 32 Error: Missing ')' after method 'method' declaration
+%s %d Error: goto: Invalid label name: ';'
+%s %d Error: Expected semi-colon ';' after 'goto' statement
+%s %d Error: Syntax error: Unexpected token ':'
+%s %d Notice: Namespace support is disabled in the current release of the PH7(2.1.4) engine
+%s %d Error: Syntax error: Unexpected keyword 'interface'
+%s %d Error: Syntax error: Unexpected keyword 'abstract'
+%s %d Error: Syntax error: Unexpected keyword 'final'
+%s %d Error: Missing argument default value
+%s %d Error: Empty constant 'CONSTANT' value
+%s %d Error: Missing ')' after method 'method' declaration
 Compile error

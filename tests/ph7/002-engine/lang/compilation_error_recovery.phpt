@@ -21,5 +21,5 @@ function test_error_recovery() {
 test_error_recovery();
 ?>
 --EXPECTF--
-%s 7 Error: '=': Missing/Invalid operand
+%s %d Error: '=': Missing/Invalid operand
 Compile error

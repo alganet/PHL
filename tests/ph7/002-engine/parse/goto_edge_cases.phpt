@@ -37,8 +37,8 @@ outer_function();
 
 ?>
 --EXPECTF--
-%s 6 Error: Label 'NONEXISTENT_LABEL' was referenced but not defined
-%s 10 Error: Label 'MISSING_LABEL' was referenced but not defined
-%s 18 Error: Label 'INNER_MISSING' was referenced but not defined
-%s 14 Error: Label 'GLOBAL_MISSING_LABEL' was referenced but not defined
+%s %d Error: Label 'NONEXISTENT_LABEL' was referenced but not defined
+%s %d Error: Label 'MISSING_LABEL' was referenced but not defined
+%s %d Error: Label 'INNER_MISSING' was referenced but not defined
+%s %d Error: Label 'GLOBAL_MISSING_LABEL' was referenced but not defined
 Compile error

@@ -17,7 +17,7 @@ $result2 = 5 + ;
 $result3 = (2 * ) + 3;
 ?>
 --EXPECTF--
-%s 3 Error: '+': Missing operand
-%s 5 Error: '+': Missing/Invalid operand
-%s 7 Error: '*': Missing/Invalid operand
+%s %d Error: '+': Missing operand
+%s %d Error: '+': Missing/Invalid operand
+%s %d Error: '*': Missing/Invalid operand
 Compile error

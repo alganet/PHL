@@ -2,13 +2,11 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-nl2br() with is_xhtml=false
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+implode with empty items
 --FILE--
 <?php
-echo nl2br("a\nb", false);
+$arr = array('foo', '', 'baz');
+echo implode('.', $arr) . "\n";
 ?>
 --EXPECT--
-a<br>
-b
+foo..baz

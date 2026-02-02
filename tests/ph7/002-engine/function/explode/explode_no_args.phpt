@@ -8,7 +8,7 @@ explode with no arguments
 --FILE--
 <?php
 $result = explode();
-echo $result === false ? 'PASS' : 'FAIL';
+echo $result === false ? 'EXPLODE_NO_ARGS:PASS' : 'EXPLODE_NO_ARGS:FAIL';
 ?>
 --EXPECT--
-PASS
+EXPLODE_NO_ARGS:PASS

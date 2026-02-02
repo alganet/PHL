@@ -2240,6 +2240,7 @@ struct implode_data {
  */
 static int implode_callback(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 {
+	SXUNUSED(pKey);
 	struct implode_data *pData = (struct implode_data *)pUserData;
 	const char *zData;
 	int nLen;
@@ -2261,18 +2262,16 @@ static int implode_callback(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 	}
 	/* Extract the string representation of the entry value */
 	zData = ph7_value_to_string(pValue,&nLen);
+	/* Manage separator insertion: always mark first seen; append separator for subsequent items */
+	if( pData->bFirst ){
+		pData->bFirst = 0;
+	}else if( pData->nSeplen > 0 ){
+		/* append the separator first */
+		ph7_result_string(pData->pCtx,pData->zSep,pData->nSeplen);
+	}
+	/* Append the value if non-empty; empty values are represented by the separators */
 	if( nLen > 0 ){
-		if( pData->nSeplen > 0 ){
-			if( !pData->bFirst ){
-				/* append the separator first */
-				ph7_result_string(pData->pCtx,pData->zSep,pData->nSeplen);
-			}else{
-				pData->bFirst = 0;
-			}
-		}
 		ph7_result_string(pData->pCtx,zData,nLen);
-	}else{
-		SXUNUSED(pKey); /* cc warning */
 	}
 	return PH7_OK;
 }
@@ -2321,15 +2320,14 @@ static int PH7_builtin_implode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			int nLen;
 			/* Extract the string representation of the ph7 value */
 			zData = ph7_value_to_string(apArg[i],&nLen);
+			/* Manage separator insertion regardless of string length */
+			if( imp_data.bFirst ){
+				imp_data.bFirst = 0;
+			}else if( imp_data.nSeplen > 0 ){
+				ph7_result_string(pCtx, imp_data.zSep, imp_data.nSeplen);
+			}
+			/* Append the value if non-empty; empty values are represented by the separators */
 			if( nLen > 0 ){
-				if( imp_data.nSeplen > 0 ){
-					if( !imp_data.bFirst ){
-						/* append the separator first */
-						ph7_result_string(pCtx,imp_data.zSep,imp_data.nSeplen);
-					}else{
-						imp_data.bFirst = 0;
-					}
-				}
 				ph7_result_string(pCtx,zData,nLen);
 			}
 		}
@@ -2386,15 +2384,14 @@ static int PH7_builtin_implode_recursive(ph7_context *pCtx,int nArg,ph7_value **
 			int nLen;
 			/* Extract the string representation of the ph7 value */
 			zData = ph7_value_to_string(apArg[i],&nLen);
+			/* Manage separator insertion regardless of string length */
+			if( imp_data.bFirst ){
+				imp_data.bFirst = 0;
+			}else if( imp_data.nSeplen > 0 ){
+				ph7_result_string(pCtx, imp_data.zSep, imp_data.nSeplen);
+			}
+			/* Append the value if non-empty; empty values are represented by the separators */
 			if( nLen > 0 ){
-				if( imp_data.nSeplen > 0 ){
-					if( !imp_data.bFirst ){
-						/* append the separator first */
-						ph7_result_string(pCtx,imp_data.zSep,imp_data.nSeplen);
-					}else{
-						imp_data.bFirst = 0;
-					}
-				}
 				ph7_result_string(pCtx,zData,nLen);
 			}
 		}
@@ -2449,8 +2446,17 @@ static int PH7_builtin_explode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Extract the string */
 	zString = ph7_value_to_string(apArg[1],&nStrlen);
 	if( nStrlen < 1 ){
-		/* Empty delimiter,return FALSE */
-		ph7_result_bool(pCtx,0);
+		/* Empty string: return an array with a single empty element (PHP behavior) */
+		ph7_value *pArrayTmp = ph7_context_new_array(pCtx);
+		ph7_value *pValueTmp = ph7_context_new_scalar(pCtx);
+		if( pArrayTmp == 0 || pValueTmp == 0 ){
+			/* Out of memory,return FALSE */
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		ph7_value_string(pValueTmp, "", 0);
+		ph7_array_add_elem(pArrayTmp, 0 /* Automatic index assign */, pValueTmp);
+		ph7_result_value(pCtx, pArrayTmp);
 		return PH7_OK;
 	}
 	/* Point to the end of the string */
@@ -2477,26 +2483,18 @@ static int PH7_builtin_explode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Start exploding */
 	for(;;){
-		if( zString >= zEnd ){
-			/* No more entry to process */
-			break;
-		}
 		rc = SyBlobSearch(zString,(sxu32)(zEnd-zString),zDelim,nDelim,&nOfft);
 		if( rc != SXRET_OK || iLimit <= (int)ph7_array_count(pArray) ){
-			/* Limit reached,insert the rest of the string and break */
-			if( zEnd > zString ){
-				ph7_value_string(pValue,zString,(int)(zEnd-zString));
-				ph7_array_add_elem(pArray,0/* Automatic index assign*/,pValue);
-			}
+			/* Limit reached or no more delimiter; insert the rest (may be empty) and break */
+			ph7_value_string(pValue, zString, (int)(zEnd - zString));
+			ph7_array_add_elem(pArray, 0/* Automatic index assign */, pValue);
 			break;
 		}
 		/* Point to the desired offset */
 		zCur = &zString[nOfft];
-		if( zCur > zString ){
-			/* Perform the store operation */
-			ph7_value_string(pValue,zString,(int)(zCur-zString));
-			ph7_array_add_elem(pArray,0/* Automatic index assign*/,pValue);
-		}
+		/* Perform the store operation (may be empty) */
+		ph7_value_string(pValue, zString, (int)(zCur - zString));
+		ph7_array_add_elem(pArray, 0/* Automatic index assign */, pValue);
 		/* Point beyond the delimiter */
 		zString = &zCur[nDelim];
 		/* Reset the cursor */
@@ -3712,7 +3710,7 @@ static int PH7_builtin_str_repeat(ph7_context *pCtx,int nArg,ph7_value **apArg)
 static int PH7_builtin_nl2br(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zIn,*zCur,*zEnd;
-	int is_xhtml = 0;
+	int is_xhtml = 1; /* Default to XHTML-style '<br/>' like PHP */
 	int nLen;
 	if( nArg < 1 ){
 		/* Missing arguments,return the empty string */
@@ -3746,10 +3744,11 @@ static int PH7_builtin_nl2br(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			break;
 		}
 		/* Output the HTML line break */
+		/* Follow PHP semantics: if is_xhtml is true, use '<br/>' (legacy without space), otherwise use '<br>' */
 		if( is_xhtml ){
-			ph7_result_string(pCtx,"<br>",(int)sizeof("<br>")-1);
-		}else{
 			ph7_result_string(pCtx,"<br/>",(int)sizeof("<br/>")-1);
+		}else{
+			ph7_result_string(pCtx,"<br>",(int)sizeof("<br>")-1);
 		}
 		zCur = zIn;
 		/* Append trailing line */

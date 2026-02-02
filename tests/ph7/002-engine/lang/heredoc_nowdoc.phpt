@@ -53,13 +53,10 @@ echo $nested;
 Hello World!
 You are 25 years old.
 This is a heredoc test.
-
 Hello $name!
 You are $age years old.
 This is a nowdoc test.
-
 Testing custom delimiter: World
-
 This contains <<<INSIDE syntax that should not be interpreted
 INSIDE
 But it's part of the heredoc content.

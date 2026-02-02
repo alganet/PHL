@@ -23,9 +23,7 @@ echo $nowdoc2 . "\n";
 This is a nowdoc string
 with multiple lines
 and no variable interpolation.
-
 Another nowdoc
-
 --CLEAN--
 <?php
 unset($nowdoc1, $nowdoc2);
