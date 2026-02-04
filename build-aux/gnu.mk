@@ -42,10 +42,3 @@ $(BUILD_DIR)/coverage/coverage.info: .ALWAYS $(COVERAGE_PHL_BIN)
 		$(BUILD_DIR)/coverage/coverage.info > $(BUILD_DIR)/coverage/coverage.info.tmp \
 			&& mv -f $(BUILD_DIR)/coverage/coverage.info.tmp $(BUILD_DIR)/coverage/coverage.info
 	@$(FULL_PHL_BIN) ./build-aux/lcov_info_to_text.php $(BUILD_DIR)/coverage/coverage.info
-
-$(BUILD_DIR)/coverage/html: .ALWAYS $(BUILD_DIR)/coverage/coverage.info
-	@genhtml \
-		--include 'src/ph7/*' --include 'src/sx/*' --include 'src/phl/*' $(BUILD_DIR)/coverage/coverage.info \
-		--output-directory $(BUILD_DIR)/coverage/html
-	@echo "Coverage report generated in $(BUILD_DIR)/coverage/html/index.html"
-
