@@ -63,7 +63,7 @@ clean: .ALWAYS $(BUILD_DIR)-clean
 test: .ALWAYS $(FULL_PHL_BIN) $(BUILD_DIR)-test
 test-compat: .ALWAYS $(FULL_PHL_BIN) $(BUILD_DIR)-test-compat
 coverage: .ALWAYS $(FULL_PHL_BIN) $(COVERAGE_PHL_BIN) $(BUILD_DIR)/coverage/coverage.info
-coverage-html: .ALWAYS $(FULL_PHL_BIN) $(COVERAGE_PHL_BIN) $(BUILD_DIR)/coverage/html
+coverage-md: .ALWAYS $(FULL_PHL_BIN) $(COVERAGE_PHL_BIN) $(BUILD_DIR)/coverage/markdown
 .ALWAYS:
 
 $(BUILD_DIR)-test: $(FULL_PHL_BIN)
@@ -75,3 +75,9 @@ $(BUILD_DIR)-test-compat: $(FULL_PHL_BIN)
 	@$(TEST_PHP_CMD) --output-format dot
 	@"$(FULL_PHL_BIN)" --version
 	@$(TEST_PHL_CMD) --output-format dot
+
+$(BUILD_DIR)/coverage/markdown:
+	@"$(FULL_PHL_BIN)" \
+		"build-aux/lcov_to_markdown.php" \
+		--output-dir="$(BUILD_DIR)/coverage/markdown" \
+		"$(BUILD_DIR)/coverage/coverage.info"

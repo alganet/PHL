@@ -45,9 +45,3 @@ $(BUILD_DIR)/coverage/coverage.info: .ALWAYS
 	@"$(FULL_PHL_BIN)" \
 		"build-aux/lcov_info_to_text.php" \
 		"$(BUILD_DIR)/coverage/coverage.info"
-
-$(BUILD_DIR)/coverage/html: .ALWAYS
-	-@OpenCppCoverage.exe --quiet \
-	--sources $(MAKEDIR)/src \
-	--export_type html:$(BUILD_DIR)/coverage/html \
-	-- $(COVERAGE_PHL_CMD)

@@ -119,6 +119,10 @@ jobs:
           build-aux/lcov_info_to_text.php --content=all\
             report/coverage.info > report/coverage.md
 
+        ./artifact/coverage-x86_64-linux-gnu/coverage/phl \
+          build-aux/lcov_to_markdown.php --output-dir=report \
+            report/coverage.info
+
         echo "### Coverage" >> report/summary.md
         echo "" >> report/summary.md
 
@@ -142,8 +146,8 @@ jobs:
 
     - uses: actions/upload-artifact@v6
       with:
-        name: report
-        path: report
+        name: report-html
+        path: report/html
 
     - name: Coverage history
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -156,10 +160,12 @@ jobs:
         git fetch origin coverage
         git checkout coverage
         git pull --ff-only origin coverage || true
-        # Copy latest coverage artifacts
-        cp -f report/coverage.info .
-        cp -f report/coverage.md . || true
-        git add coverage.info coverage.md || true
+        # Copy all contents of report/ to .
+        cp -rf report/* . || true
+        # Don't need the html/ directory in the repo
+        rm -rf html || true
+        # git add markdown and info files in current dir and subdirs
+        find . -type f \( -name '*.info' -o -name '*.md' \) -print0 | xargs -0 -r git add || true
         if git diff --cached --quiet; then
           echo "No changes to commit"
         else
