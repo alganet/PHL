@@ -37,11 +37,20 @@ $(BUILD_DIR)/coverage/coverage.info: .ALWAYS
 	--sources "$(MAKEDIR)\src" \
 	--excluded_sources "$(MAKEDIR)\src\minidump.h" \
 	--cover_children \
-	--export_type cobertura:$(BUILD_DIR)/coverage/cobertura.xml \
-	-- $(COVERAGE_PHL_CMD)
+	--export_type cobertura:$(BUILD_DIR)/coverage/smoke.xml \
+	-- $(COVERAGE_SMOKE_PHL_CMD)
+
+	@OpenCppCoverage.exe --quiet \
+	--sources "$(MAKEDIR)\src" \
+	--excluded_sources "$(MAKEDIR)\src\minidump.h" \
+	--cover_children \
+	--export_type cobertura:$(BUILD_DIR)/coverage/integration.xml \
+	-- $(COVERAGE_INTEGRATION_PHL_CMD)
 	@"$(FULL_PHL_BIN)" \
 		"build-aux/cobertura_xml_to_lcov_info.php" \
-		"$(BUILD_DIR)/coverage/cobertura.xml" > "$(BUILD_DIR)/coverage/coverage.info"
+		"$(BUILD_DIR)/coverage/smoke.xml" \
+		"$(BUILD_DIR)/coverage/integration.xml" \
+		> "$(BUILD_DIR)/coverage/coverage.info"
 	@"$(FULL_PHL_BIN)" \
 		"build-aux/lcov_info_to_text.php" \
 		"$(BUILD_DIR)/coverage/coverage.info"

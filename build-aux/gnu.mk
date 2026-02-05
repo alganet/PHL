@@ -33,7 +33,8 @@ $(COVERAGE_PHL_BIN): $(COVERAGE_OBJECTS)
 	$(CC) $(coverage_CFLAGS) -o $@ $(COVERAGE_OBJECTS) $(COVERAGE_LDFLAGS)
 
 $(BUILD_DIR)/coverage/coverage.info: .ALWAYS $(COVERAGE_PHL_BIN)
-	@$(COVERAGE_PHL_CMD)
+	@$(COVERAGE_SMOKE_PHL_CMD)
+	@$(COVERAGE_INTEGRATION_PHL_CMD)
 	@lcov --capture --rc geninfo_unexecuted_blocks=1 --quiet \
 		--ignore-errors unsupported,unsupported \
 		--include 'src/ph7/*' --include 'src/sx/*' --include 'src/phl/*' --directory $(BUILD_DIR) \

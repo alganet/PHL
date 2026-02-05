@@ -63,5 +63,5 @@ if test -d "$tmpdir/build/x86_64-windows-msvc"; then
     rsync -a --delete "$tmpdir/build/x86_64-windows-msvc/" "$workspace_dir/build/x86_64-windows-msvc/" &
 fi
 
-rsync -a "$tmpdir/build-aux" "$workspace_dir/" &
+rsync -a --exclude "*dev.cmd" "$tmpdir/build-aux" "$workspace_dir/" &
 wait

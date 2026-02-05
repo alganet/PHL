@@ -1,0 +1,21 @@
+--CREDITS--
+SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
+SPDX-License-Identifier: BSD-3-Clause
+--TEST--
+PH7: is_int() with no arguments returns false
+--SKIPIF--
+<?php if (function_exists('zend_version')) echo 'skip'; ?>
+--FILE--
+<?php
+// Calling is_int with no arguments should return false
+if (is_int() === false) {
+    echo "true";
+} else {
+    echo "false";
+}
+?>
+--EXPECT--
+true
+--CLEAN--
+<?php
+

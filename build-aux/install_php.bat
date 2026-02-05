@@ -4,7 +4,7 @@
 
 :: Script to download and install the latest Windows PHP release
 
-set "PHP_VERSION=8.4.15"
+set "PHP_VERSION=8.4.16"
 set "PHP_ZIP=php-%PHP_VERSION%-nts-Win32-vs17-x64.zip"
 set "PHP_DIR=%~dp0\..\php"
 set "URL=https://windows.php.net/downloads/releases/%PHP_ZIP%"
