@@ -36,15 +36,22 @@ OBJECTS = \
 
 
 # Test and Coverage Logic
-TEST_PHL_CMD = "$(FULL_PHL_BIN)" "tests/phpt.php" \
+TEST_SMOKE_PHL_CMD = "$(FULL_PHL_BIN)" "tests/phpt.php" \
+	--target-dir tests/ph7/001-smoke
+TEST_SMOKE_PHP_CMD = "$(PHP_BIN)" "tests/phpt.php" \
+	--target-dir tests/ph7/001-smoke
+COVERAGE_SMOKE_PHL_CMD = "$(COVERAGE_PHL_BIN)" "tests/phpt.php" \
+	--target-dir tests/ph7/001-smoke
+
+TEST_INTEGRATION_PHL_CMD = "$(FULL_PHL_BIN)" "tests/phpt.php" \
 	--target-executable "./$(FULL_PHL_BIN)" \
-	--target-dir tests
-TEST_PHP_CMD = "$(FULL_PHL_BIN)" "tests/phpt.php" \
+	--target-dir tests/ph7/002-integration
+TEST_INTEGRATION_PHP_CMD = "$(FULL_PHL_BIN)" "tests/phpt.php" \
 	--target-executable "$(PHP_BIN)" \
-	--target-dir tests
-COVERAGE_PHL_CMD = "$(FULL_PHL_BIN)" "tests/phpt.php" \
+	--target-dir tests/ph7/002-integration
+COVERAGE_INTEGRATION_PHL_CMD = "$(FULL_PHL_BIN)" "tests/phpt.php" \
 	--target-executable "./$(COVERAGE_PHL_BIN)" \
-	--target-dir tests
+	--target-dir tests/ph7/002-integration
 
 # --- POLYGLOT MAGIC BEGINS
 # \
@@ -60,24 +67,39 @@ include build-aux/rules.mk
 
 full: .ALWAYS $(FULL_PHL_BIN)
 clean: .ALWAYS $(BUILD_DIR)-clean
-test: .ALWAYS $(FULL_PHL_BIN) $(BUILD_DIR)-test
-test-compat: .ALWAYS $(FULL_PHL_BIN) $(BUILD_DIR)-test-compat
+test: .ALWAYS test-smoke test-integration
+test-compat: .ALWAYS test-smoke-compat test-integration-compat
+test-smoke: .ALWAYS $(FULL_PHL_BIN) $(BUILD_DIR)-test-smoke
+test-smoke-compat: .ALWAYS $(FULL_PHL_BIN) $(BUILD_DIR)-test-smoke-compat
+test-integration: .ALWAYS $(FULL_PHL_BIN) $(BUILD_DIR)-test-integration
+test-integration-compat: .ALWAYS $(FULL_PHL_BIN) $(BUILD_DIR)-test-integration-compat
 coverage: .ALWAYS $(FULL_PHL_BIN) $(COVERAGE_PHL_BIN) $(BUILD_DIR)/coverage/coverage.info
 coverage-md: .ALWAYS $(FULL_PHL_BIN) $(COVERAGE_PHL_BIN) $(BUILD_DIR)/coverage/markdown
 .ALWAYS:
 
-$(BUILD_DIR)-test: $(FULL_PHL_BIN)
+$(BUILD_DIR)-test-smoke: $(FULL_PHL_BIN)
 	@"$(FULL_PHL_BIN)" --version
-	$(TEST_PHL_CMD)
+	$(TEST_SMOKE_PHL_CMD) --output-format dot
 
-$(BUILD_DIR)-test-compat: $(FULL_PHL_BIN)
+$(BUILD_DIR)-test-smoke-compat: $(FULL_PHL_BIN)
 	@"$(PHP_BIN)" --version
-	@$(TEST_PHP_CMD) --output-format dot
+	@$(TEST_SMOKE_PHP_CMD) --output-format dot
 	@"$(FULL_PHL_BIN)" --version
-	@$(TEST_PHL_CMD) --output-format dot
+	@$(TEST_SMOKE_PHL_CMD) --output-format dot
+
+$(BUILD_DIR)-test-integration: $(FULL_PHL_BIN)
+	@"$(FULL_PHL_BIN)" --version
+	$(TEST_INTEGRATION_PHL_CMD) --output-format dot
+
+$(BUILD_DIR)-test-integration-compat: $(FULL_PHL_BIN)
+	@"$(PHP_BIN)" --version
+	@$(TEST_INTEGRATION_PHP_CMD) --output-format dot
+	@"$(FULL_PHL_BIN)" --version
+	@$(TEST_INTEGRATION_PHL_CMD) --output-format dot
 
 $(BUILD_DIR)/coverage/markdown:
 	@"$(FULL_PHL_BIN)" \
 		"build-aux/lcov_to_markdown.php" \
 		--output-dir="$(BUILD_DIR)/coverage/markdown" \
 		"$(BUILD_DIR)/coverage/coverage.info"
+
