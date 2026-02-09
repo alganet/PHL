@@ -5,7 +5,7 @@ SPDX-License-Identifier: BSD-3-Clause
 PH7 / PHP: PHP_EOL value (ordinal of first char)
 --FILE--
 <?php
-$ord = ord(PHP_EOL);
+$ord = ord(substr(PHP_EOL, 0, 1));
 if (PHP_OS == 'WINNT') {
     if ($ord == 13) {
         echo "ok";
