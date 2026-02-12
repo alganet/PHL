@@ -1,14 +1,27 @@
 # SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 # SPDX-License-Identifier: BSD-3-Clause
 
-# Common definitions
-default: full
-BUILD_DIR = build/$(TARGET)
-PH7_DEFINES = -DPH7_ENABLE_MATH_FUNC -DPH7_ENABLE_THREADS
-FULL_PHL_BIN = $(BUILD_DIR)/full/phl$(BIN_SUFFIX)
-COVERAGE_PHL_BIN = $(BUILD_DIR)/coverage/phl$(BIN_SUFFIX)
+# --- Mode system (defaults to "full") ---
+# Usage: make MODE=full | make MODE=tiny | make MODE=coverage
+MODE = full
 
-# Object files
+# --- Mode definitions ---
+# Each mode declares: <mode>_DEFINES  <mode>_EXTRA_CFLAGS (optional)
+full_DEFINES      = -DPH7_ENABLE_MATH_FUNC -DPH7_ENABLE_THREADS
+full_EXTRA_CFLAGS =
+
+tiny_DEFINES      = -DPH7_OMIT_FLOATING_POINT -DPH7_DISABLE_HASH_FUNC -DPH7_DISABLE_BUILTIN_FUNC -DPH7_DISABLE_DISK_IO
+tiny_EXTRA_CFLAGS =
+
+coverage_DEFINES      = -DPH7_ENABLE_MATH_FUNC -DPH7_ENABLE_THREADS
+coverage_EXTRA_CFLAGS =
+
+# --- Derived variables ---
+BUILD_DIR = build/$(TARGET)
+PHL_BIN = $(BUILD_DIR)/$(MODE)/phl$(BIN_SUFFIX)
+TOOL_BIN = $(BUILD_DIR)/full/phl$(BIN_SUFFIX)
+
+# Object files (mode-neutral paths, rewritten per-mode by platform includes)
 OBJECTS = \
 	$(BUILD_DIR)/src/sx/sxmutex$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/sx/sxstr$(OBJ_SUFFIX) \
@@ -35,23 +48,20 @@ OBJECTS = \
 	$(BUILD_DIR)/src/phl/phl$(OBJ_SUFFIX)
 
 
-# Test and Coverage Logic
-TEST_SMOKE_PHL_CMD = "$(FULL_PHL_BIN)" "tests/phpt.php" \
+# --- Test commands ---
+TEST_SMOKE_CMD = "$(PHL_BIN)" "tests/phpt.php" \
 	--target-dir tests/ph7/001-smoke
 TEST_SMOKE_PHP_CMD = "$(PHP_BIN)" "tests/phpt.php" \
 	--target-dir tests/ph7/001-smoke
-COVERAGE_SMOKE_PHL_CMD = "$(COVERAGE_PHL_BIN)" "tests/phpt.php" \
-	--target-dir tests/ph7/001-smoke
 
-TEST_INTEGRATION_PHL_CMD = "$(FULL_PHL_BIN)" "tests/phpt.php" \
-	--target-executable "./$(FULL_PHL_BIN)" \
+TEST_INTEGRATION_CMD = "$(PHL_BIN)" "tests/phpt.php" \
+	--target-executable "$(PHL_BIN)" \
 	--target-dir tests/ph7/002-integration
-TEST_INTEGRATION_PHP_CMD = "$(FULL_PHL_BIN)" "tests/phpt.php" \
+TEST_INTEGRATION_PHP_CMD = "$(PHP_BIN)" "tests/phpt.php" \
 	--target-executable "$(PHP_BIN)" \
 	--target-dir tests/ph7/002-integration
-COVERAGE_INTEGRATION_PHL_CMD = "$(FULL_PHL_BIN)" "tests/phpt.php" \
-	--target-executable "./$(COVERAGE_PHL_BIN)" \
-	--target-dir tests/ph7/002-integration
+
+default: build
 
 # --- POLYGLOT MAGIC BEGINS
 # \
@@ -65,41 +75,42 @@ include build-aux/rules.mk
 !endif
 # --- POLYGLOT MAGIC ENDS
 
-full: .ALWAYS $(FULL_PHL_BIN)
+build: .ALWAYS $(PHL_BIN)
+	"$(PHL_BIN)" --version
+
 clean: .ALWAYS $(BUILD_DIR)-clean
 test: .ALWAYS test-smoke test-integration
 test-compat: .ALWAYS test-smoke-compat test-integration-compat
-test-smoke: .ALWAYS $(FULL_PHL_BIN) $(BUILD_DIR)-test-smoke
-test-smoke-compat: .ALWAYS $(FULL_PHL_BIN) $(BUILD_DIR)-test-smoke-compat
-test-integration: .ALWAYS $(FULL_PHL_BIN) $(BUILD_DIR)-test-integration
-test-integration-compat: .ALWAYS $(FULL_PHL_BIN) $(BUILD_DIR)-test-integration-compat
-coverage: .ALWAYS $(FULL_PHL_BIN) $(COVERAGE_PHL_BIN) $(BUILD_DIR)/coverage/coverage.info
-coverage-md: .ALWAYS $(FULL_PHL_BIN) $(COVERAGE_PHL_BIN) $(BUILD_DIR)/coverage/markdown
+test-smoke: .ALWAYS $(PHL_BIN) $(BUILD_DIR)-test-smoke
+test-smoke-compat: .ALWAYS $(PHL_BIN) $(BUILD_DIR)-test-smoke-compat
+test-integration: .ALWAYS $(PHL_BIN) $(BUILD_DIR)-test-integration
+test-integration-compat: .ALWAYS $(PHL_BIN) $(BUILD_DIR)-test-integration-compat
+coverage-report: .ALWAYS $(PHL_BIN) $(BUILD_DIR)/coverage/coverage.info
+coverage-md: .ALWAYS $(PHL_BIN) $(BUILD_DIR)/coverage/markdown
 .ALWAYS:
 
-$(BUILD_DIR)-test-smoke: $(FULL_PHL_BIN)
-	@"$(FULL_PHL_BIN)" --version
-	$(TEST_SMOKE_PHL_CMD) --output-format dot
+$(BUILD_DIR)-test-smoke: $(PHL_BIN)
+	@"$(PHL_BIN)" --version
+	$(TEST_SMOKE_CMD) 
 
-$(BUILD_DIR)-test-smoke-compat: $(FULL_PHL_BIN)
+$(BUILD_DIR)-test-smoke-compat: $(PHL_BIN)
 	@"$(PHP_BIN)" --version
-	@$(TEST_SMOKE_PHP_CMD) --output-format dot
-	@"$(FULL_PHL_BIN)" --version
-	@$(TEST_SMOKE_PHL_CMD) --output-format dot
+	@$(TEST_SMOKE_PHP_CMD) 
+	@"$(PHL_BIN)" --version
+	@$(TEST_SMOKE_CMD) 
 
-$(BUILD_DIR)-test-integration: $(FULL_PHL_BIN)
-	@"$(FULL_PHL_BIN)" --version
-	$(TEST_INTEGRATION_PHL_CMD) --output-format dot
+$(BUILD_DIR)-test-integration: $(PHL_BIN)
+	@"$(PHL_BIN)" --version
+	$(TEST_INTEGRATION_CMD) 
 
-$(BUILD_DIR)-test-integration-compat: $(FULL_PHL_BIN)
+$(BUILD_DIR)-test-integration-compat: $(PHL_BIN)
 	@"$(PHP_BIN)" --version
-	@$(TEST_INTEGRATION_PHP_CMD) --output-format dot
-	@"$(FULL_PHL_BIN)" --version
-	@$(TEST_INTEGRATION_PHL_CMD) --output-format dot
+	@$(TEST_INTEGRATION_PHP_CMD) 
+	@"$(PHL_BIN)" --version
+	@$(TEST_INTEGRATION_CMD) 
 
 $(BUILD_DIR)/coverage/markdown:
-	@"$(FULL_PHL_BIN)" \
+	@"$(PHL_BIN)" \
 		"build-aux/lcov_to_markdown.php" \
 		--output-dir="$(BUILD_DIR)/coverage/markdown" \
 		"$(BUILD_DIR)/coverage/coverage.info"
-

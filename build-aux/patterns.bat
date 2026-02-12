@@ -4,6 +4,7 @@
 setlocal enabledelayedexpansion
 
 :: Script to generate NMake rules for source files
+:: Usage: patterns.bat full tiny coverage
 
 set MODES=%*
 set SRC_DIR=src
@@ -21,10 +22,16 @@ set BUILD_DIR=$^(BUILD_DIR^)
 for %%X in (%MODES%) do (
     set DIR_VAR=%%X
     set DIR_VALUE=$^(BUILD_DIR^)/%%X
+    
     >> "%OUTFILE%" echo !DIR_VALUE!:
     >> "%OUTFILE%" echo     @if not exist "!DIR_VALUE!" mkdir "!DIR_VALUE!"
     >> "%OUTFILE%" echo !DIR_VALUE!/!SRC_DIR!:
     >> "%OUTFILE%" echo     @if not exist "!DIR_VALUE!/!SRC_DIR!" mkdir "!DIR_VALUE!/!SRC_DIR!"
+
+    >> "%OUTFILE%" echo !DIR_VALUE!/phl$^(BIN_SUFFIX^): $^(OBJECTS:/src/=/%%X/src/^)
+    >> "%OUTFILE%" echo     @if not exist "!DIR_VALUE!" mkdir "!DIR_VALUE!"
+    >> "%OUTFILE%" echo     $^(CC^) $^(%%X_CFLAGS^) /Fe$@ $^** $^(%%X_LDFLAGS^)
+    >> "%OUTFILE%" echo.
 
     for /f "delims=" %%D in ('dir /s /b /ad "%SRC_DIR%"') do (
         set SRC=%%D

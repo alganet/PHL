@@ -27,24 +27,37 @@ on:
       - '.github/workflows/build.yml'
 
 jobs:
-  full:
+  build:
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
     strategy:
       matrix:
         include:
-          - make: full
+          - mode: full
             name: x86_64-linux-gnu
             os: ubuntu-latest
-          - make: full
+          - mode: full
             name: x86_64-windows-msvc
             os: windows-latest
             extension: .exe
-          - make: full
+          - mode: full
             name: arm64-apple-darwin
             os: macos-latest
-          - make: full
+          - mode: full
+            name: x86_64-apple-darwin
+            os: macos-15-intel
+          - mode: tiny
+            name: x86_64-linux-gnu
+            os: ubuntu-latest
+          - mode: tiny
+            name: x86_64-windows-msvc
+            os: windows-latest
+            extension: .exe
+          - mode: tiny
+            name: arm64-apple-darwin
+            os: macos-latest
+          - mode: tiny
             name: x86_64-apple-darwin
             os: macos-15-intel
     steps:
@@ -53,13 +66,13 @@ jobs:
     - uses: ./.github/actions/make-action
       with:
         name: ${{ matrix.name }}
-        make: ${{ matrix.make }}
+        mode: ${{ matrix.mode }}
         extension: ${{ matrix.extension }}
         artifacts: 'true'
 
   qa:
     runs-on: ${{ matrix.os }}
-    needs: full
+    needs: build
     permissions:
       contents: read
     strategy:
@@ -80,10 +93,12 @@ jobs:
     - uses: ./.github/actions/make-action
       with:
         name: ${{ matrix.name }}
-        make: ${{ matrix.make }}
+        mode: ${{ matrix.make == 'coverage' && 'coverage' || 'full' }}
+        make: ${{ matrix.make == 'coverage' && 'coverage-report' || matrix.make }}
         extension: ${{ matrix.extension }}
-        artifacts: ${{ contains(matrix.make, 'coverage') && 'true' || 'false' }}
-        artifacts_from: full
+        artifacts: ${{ matrix.make == 'coverage' && 'true' || 'false' }}
+        artifacts_from: build
+        artifacts_from_mode: full
 
   report:
     runs-on: ubuntu-latest
@@ -97,36 +112,36 @@ jobs:
         fetch-depth: 0
         persist-credentials: true
     - uses: ./.github/actions/setup-action
-    - uses: actions/download-artifact@v7
+    - uses: actions/download-artifact@v4
       with:
-        pattern: coverage-*
+        pattern: coverage-report-*
         path: artifact
     - name: Coverage report
       run: |
         mkdir -p report
-        chmod +x artifact/coverage-x86_64-linux-gnu/coverage/phl
+        chmod +x artifact/coverage-report-x86_64-linux-gnu/coverage/phl
 
-        lcov --add-tracefile artifact/coverage-x86_64-linux-gnu/coverage/coverage.info \
-             --add-tracefile artifact/coverage-x86_64-windows-msvc/coverage/coverage.info \
-             --add-tracefile artifact/coverage-arm64-apple-darwin/coverage/coverage.info \
+        lcov --add-tracefile artifact/coverage-report-x86_64-linux-gnu/coverage/coverage.info \
+             --add-tracefile artifact/coverage-report-x86_64-windows-msvc/coverage/coverage.info \
+             --add-tracefile artifact/coverage-report-arm64-apple-darwin/coverage/coverage.info \
              --ignore-errors format \
              --output-file report/coverage.info
 
         genhtml --quiet --include 'src/*'\
           --output-directory report/html report/coverage.info
 
-        ./artifact/coverage-x86_64-linux-gnu/coverage/phl \
+        ./artifact/coverage-report-x86_64-linux-gnu/coverage/phl \
           build-aux/lcov_info_to_text.php --content=all\
             report/coverage.info > report/coverage.md
 
-        ./artifact/coverage-x86_64-linux-gnu/coverage/phl \
+        ./artifact/coverage-report-x86_64-linux-gnu/coverage/phl \
           build-aux/lcov_to_markdown.php --output-dir=report \
             report/coverage.info
 
         echo "### Coverage" >> report/summary.md
         echo "" >> report/summary.md
 
-        ./artifact/coverage-x86_64-linux-gnu/coverage/phl \
+        ./artifact/coverage-report-x86_64-linux-gnu/coverage/phl \
           build-aux/lcov_info_to_text.php --content=summary\
             report/coverage.info >> report/summary.md
 
@@ -158,7 +173,7 @@ jobs:
         # checked out with 'persist-credentials: true' (default) so we can push.
         git fetch origin coverage
         # Clean artifacts from local repo to avoid conflicts with git checkout
-        rm -f artifact/coverage-*/coverage/coverage.info
+        rm -f artifact/coverage-report-*/coverage/coverage.info
         git checkout coverage
         git pull --ff-only origin coverage || true
         # Copy all contents of report/ to .

@@ -37,7 +37,12 @@ PH7_PRIVATE void SHA1Final(SHA1Context *context, unsigned char digest[20]);
 PH7_PRIVATE sxi32 SySha1Compute(const void *pIn,sxu32 nLen,unsigned char zDigest[20]);
 
 PH7_PRIVATE sxu32 SyCrc32(const void *pSrc,sxu32 nLen);
-PH7_PRIVATE sxi32 SyBinToHexConsumer(const void *pIn,sxu32 nLen,ProcConsumer xConsumer,void *pConsumerData);
 #endif /* PH7_DISABLE_HASH_FUNC */
+
+/* SyBinToHexConsumer is a general helper (used by bin2hex, md5_file, etc.)
+ * Declare it regardless of PH7_DISABLE_HASH_FUNC so callers that remain
+ * available in reduced builds still see the prototype.
+ */
+PH7_PRIVATE sxi32 SyBinToHexConsumer(const void *pIn,sxu32 nLen,ProcConsumer xConsumer,void *pConsumerData);
 
 #endif /* __SXDIGEST_H__ */

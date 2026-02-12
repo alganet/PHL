@@ -45,9 +45,10 @@ PH7_PRIVATE const char * PH7_ExtractDirName(const char *zPath,int nByte,int *pLe
 	return zPath;
 }
 /*
- * Omit the vfs layer implementation from the built if the PH7_DISABLE_BUILTIN_FUNC directive is defined.
+ * Compile the VFS implementations when builtins are enabled OR when disk I/O
+ * is explicitly enabled (i.e. PH7_DISABLE_DISK_IO is NOT defined).
  */
-#ifndef PH7_DISABLE_BUILTIN_FUNC
+#ifndef PH7_DISABLE_DISK_IO
 /*
  * bool chdir(string $directory)
  *  Change the current directory.
@@ -1427,8 +1428,10 @@ static int PH7_vfs_touch(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Status:
  *    Stable.
  */
+#ifndef PH7_DISABLE_BUILTIN_FUNC
 /*
  * string dirname(string $path)
+
  *  Returns parent directory's path.
  * Parameters
  * $path
@@ -1734,6 +1737,7 @@ static int PH7_builtin_pathinfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
 }
 /*
  * Globbing implementation extracted from the sqlite3 source tree.
+
  * Original author: D. Richard Hipp (http://www.sqlite.org)
  * Status: Public Domain
  */
@@ -1997,8 +2001,10 @@ static int PH7_builtin_strglob(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_result_bool(pCtx,rc);
 	return PH7_OK;
 }
+#endif /* PH7_DISABLE_BUILTIN_FUNC */
 /*
  * bool link(string $target,string $link)
+
  *  Create a hard link.
  * Parameters
  *  $target
@@ -5116,8 +5122,10 @@ struct zip_raw_data
 #define ZIP_RAW_DATA_MEMBUF 2 /* ZIP raw data stored in a dynamically
                                * allocated memory chunk.
 							   */
+#ifndef PH7_DISABLE_BUILTIN_FUNC
  /*
   * mixed zip_open(string $filename)
+
   *  Opens a new zip archive for reading.
   * Parameters
   *  $filename
@@ -5641,7 +5649,8 @@ static int PH7_builtin_zip_entry_compressionmethod(ph7_context *pCtx,int nArg,ph
 	}
 	return PH7_OK;
 }
-#endif /* #ifndef PH7_DISABLE_BUILTIN_FUNC*/
+#endif /* PH7_DISABLE_BUILTIN_FUNC */
+#endif /* PH7_DISABLE_BUILTIN_FUNC || PH7_DISABLE_DISK_IO */
 /* NULL VFS [i.e: a no-op VFS]*/
 #if defined(_MSC_VER)
 static const ph7_vfs null_vfs = {
@@ -5692,7 +5701,7 @@ static const ph7_vfs null_vfs __attribute__((unused)) = {
 	0, /* void (*xUsername)(ph7_context *) */
 	0  /* int (*xExec)(const char *,ph7_context *) */
 };
-#ifndef PH7_DISABLE_BUILTIN_FUNC
+#if !defined(PH7_DISABLE_BUILTIN_FUNC) || !defined(PH7_DISABLE_DISK_IO)
 #ifndef PH7_DISABLE_DISK_IO
 #ifdef __WINNT__
 /*
@@ -7715,7 +7724,7 @@ static const ph7_io_stream sUnixFileStream = {
 };
 #endif /* __WINNT__/__UNIXES__ */
 #endif /* PH7_DISABLE_DISK_IO */
-#endif /* PH7_DISABLE_BUILTIN_FUNC */
+#endif /* PH7_DISABLE_BUILTIN_FUNC || PH7_DISABLE_DISK_IO */
 /*
  * Export the builtin vfs.
  * Return a pointer to the builtin vfs if available.
@@ -7728,7 +7737,7 @@ static const ph7_io_stream sUnixFileStream = {
  */
 PH7_PRIVATE const ph7_vfs * PH7_ExportBuiltinVfs(void)
 {
-#ifndef PH7_DISABLE_BUILTIN_FUNC
+#if !defined(PH7_DISABLE_BUILTIN_FUNC) || !defined(PH7_DISABLE_DISK_IO)
 #ifdef PH7_DISABLE_DISK_IO
 	return &null_vfs;
 #else
@@ -7742,9 +7751,9 @@ PH7_PRIVATE const ph7_vfs * PH7_ExportBuiltinVfs(void)
 #endif /*PH7_DISABLE_DISK_IO*/
 #else
 	return &null_vfs;
-#endif /* PH7_DISABLE_BUILTIN_FUNC */
+#endif /* PH7_DISABLE_BUILTIN_FUNC || PH7_DISABLE_DISK_IO */
 }
-#ifndef PH7_DISABLE_BUILTIN_FUNC
+#if !defined(PH7_DISABLE_BUILTIN_FUNC) || !defined(PH7_DISABLE_DISK_IO)
 #ifndef PH7_DISABLE_DISK_IO
 /*
  * The following defines are mostly used by the UNIX built and have
@@ -8501,9 +8510,13 @@ static int is_php_stream(const ph7_io_stream *pStream)
  */
 PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 {
-#ifndef PH7_DISABLE_BUILTIN_FUNC
-	      /* VFS functions */
-	static const ph7_builtin_func aVfsFunc[] = {
+	/*
+	 * Disk I/O routines are independent of PH7_DISABLE_BUILTIN_FUNC.
+	 * Register them unless PH7_DISABLE_DISK_IO is explicitly defined.
+	 */
+#ifndef PH7_DISABLE_DISK_IO
+	/* VFS: disk I/O related functions */
+	static const ph7_builtin_func aVfsDiskFunc[] = {
 		{"chdir",   PH7_vfs_chdir   },
 		{"chroot",  PH7_vfs_chroot  },
 		{"getcwd",  PH7_vfs_getcwd  },
@@ -8551,27 +8564,11 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"getmygid",    PH7_vfs_getmygid },
 		{"getgid",      PH7_vfs_getmygid },
 		{"ph7_uname",   PH7_vfs_ph7_uname},
-		{"php_uname",   PH7_vfs_ph7_uname},
-		     /* Path processing */
-		{"dirname",     PH7_builtin_dirname  },
-		{"basename",    PH7_builtin_basename },
-		{"pathinfo",    PH7_builtin_pathinfo },
-		{"strglob",     PH7_builtin_strglob  },
-		{"fnmatch",     PH7_builtin_fnmatch  },
-		     /* ZIP processing */
-		{"zip_open",    PH7_builtin_zip_open },
-		{"zip_close",   PH7_builtin_zip_close},
-		{"zip_read",    PH7_builtin_zip_read },
-		{"zip_entry_open", PH7_builtin_zip_entry_open },
-		{"zip_entry_close",PH7_builtin_zip_entry_close},
-		{"zip_entry_name", PH7_builtin_zip_entry_name },
-		{"zip_entry_filesize",      PH7_builtin_zip_entry_filesize       },
-		{"zip_entry_compressedsize",PH7_builtin_zip_entry_compressedsize },
-		{"zip_entry_read", PH7_builtin_zip_entry_read },
-		{"zip_entry_reset_read_cursor",PH7_builtin_zip_entry_reset_read_cursor},
-		{"zip_entry_compressionmethod",PH7_builtin_zip_entry_compressionmethod}
+		{"php_uname",   PH7_vfs_ph7_uname}
 	};
-	    /* IO stream functions */
+	/* IO stream / file operation functions (disk-related)
+	 * md5_file/sha1_file are controlled only by PH7_DISABLE_HASH_FUNC.
+	 */
 	static const ph7_builtin_func aIOFunc[] = {
 		{"ftruncate", PH7_builtin_ftruncate },
 		{"fseek",     PH7_builtin_fseek  },
@@ -8613,15 +8610,49 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 	};
 	const ph7_io_stream *pFileStream = 0;
 	sxu32 n = 0;
-	/* Register the functions defined above */
-	for( n = 0 ; n < SX_ARRAYSIZE(aVfsFunc) ; ++n ){
-		ph7_create_function(&(*pVm),aVfsFunc[n].zName,aVfsFunc[n].xFunc,(void *)pVm->pEngine->pVfs);
+	/* Register disk-related functions */
+	for( n = 0 ; n < SX_ARRAYSIZE(aVfsDiskFunc) ; ++n ){
+		ph7_create_function(&(*pVm),aVfsDiskFunc[n].zName,aVfsDiskFunc[n].xFunc,(void *)pVm->pEngine->pVfs);
 	}
 	for( n = 0 ; n < SX_ARRAYSIZE(aIOFunc) ; ++n ){
 		ph7_create_function(&(*pVm),aIOFunc[n].zName,aIOFunc[n].xFunc,pVm);
 	}
+#else
+	SXUNUSED(pVm);
+#endif /* PH7_DISABLE_DISK_IO */
+
+	/*
+	 * Register non-disk helper builtins only when PH7_DISABLE_BUILTIN_FUNC
+	 * is not set (preserve previous behavior for those helpers).
+	 */
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+	static const ph7_builtin_func aVfsHelperFunc[] = {
+		/* Path processing */
+		{"dirname",     PH7_builtin_dirname  },
+		{"basename",    PH7_builtin_basename },
+		{"pathinfo",    PH7_builtin_pathinfo },
+		{"strglob",     PH7_builtin_strglob  },
+		{"fnmatch",     PH7_builtin_fnmatch  },
+		/* ZIP processing */
+		{"zip_open",    PH7_builtin_zip_open },
+		{"zip_close",   PH7_builtin_zip_close},
+		{"zip_read",    PH7_builtin_zip_read },
+		{"zip_entry_open", PH7_builtin_zip_entry_open },
+		{"zip_entry_close",PH7_builtin_zip_entry_close},
+		{"zip_entry_name", PH7_builtin_zip_entry_name },
+		{"zip_entry_filesize",      PH7_builtin_zip_entry_filesize       },
+		{"zip_entry_compressedsize",PH7_builtin_zip_entry_compressedsize },
+		{"zip_entry_read", PH7_builtin_zip_entry_read },
+		{"zip_entry_reset_read_cursor",PH7_builtin_zip_entry_reset_read_cursor},
+		{"zip_entry_compressionmethod",PH7_builtin_zip_entry_compressionmethod}
+	};
+	for( n = 0 ; n < SX_ARRAYSIZE(aVfsHelperFunc) ; ++n ){
+		ph7_create_function(&(*pVm),aVfsHelperFunc[n].zName,aVfsHelperFunc[n].xFunc,pVm);
+	}
+#endif /* PH7_DISABLE_BUILTIN_FUNC */
+
+	/* Install streams if disk I/O is enabled */
 #ifndef PH7_DISABLE_DISK_IO
-	/* Register the file stream if available */
 #ifdef __WINNT__
 	pFileStream = &sWinFileStream;
 #elif defined(__UNIXES__)
@@ -8629,14 +8660,12 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 #endif
 	/* Install the php:// stream */
 	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sPHP_Stream);
-#endif /* PH7_DISABLE_DISK_IO */
 	if( pFileStream ){
 		/* Install the file:// stream */
 		ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,pFileStream);
 	}
-#else
-   SXUNUSED(pVm); /* cc warning */
-#endif /* PH7_DISABLE_BUILTIN_FUNC */
+#endif /* PH7_DISABLE_DISK_IO */
+
 	return SXRET_OK;
 }
 /*
@@ -8644,7 +8673,6 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
  */
 PH7_PRIVATE void * PH7_ExportStdin(ph7_vm *pVm)
 {
-#ifndef PH7_DISABLE_BUILTIN_FUNC
 #ifndef PH7_DISABLE_DISK_IO
 	if( pVm->pStdin == 0  ){
 		io_private *pIn;
@@ -8664,9 +8692,6 @@ PH7_PRIVATE void * PH7_ExportStdin(ph7_vm *pVm)
 		return pVm->pStdin;
 	}
 #else
-	return 0;
-#endif
-#else
 	SXUNUSED(pVm); /* cc warning */
 	return 0;
 #endif
@@ -8676,7 +8701,6 @@ PH7_PRIVATE void * PH7_ExportStdin(ph7_vm *pVm)
  */
 PH7_PRIVATE void * PH7_ExportStdout(ph7_vm *pVm)
 {
-#ifndef PH7_DISABLE_BUILTIN_FUNC
 #ifndef PH7_DISABLE_DISK_IO
 	if( pVm->pStdout == 0  ){
 		io_private *pOut;
@@ -8696,9 +8720,6 @@ PH7_PRIVATE void * PH7_ExportStdout(ph7_vm *pVm)
 		return pVm->pStdout;
 	}
 #else
-	return 0;
-#endif
-#else
 	SXUNUSED(pVm); /* cc warning */
 	return 0;
 #endif
@@ -8708,7 +8729,6 @@ PH7_PRIVATE void * PH7_ExportStdout(ph7_vm *pVm)
  */
 PH7_PRIVATE void * PH7_ExportStderr(ph7_vm *pVm)
 {
-#ifndef PH7_DISABLE_BUILTIN_FUNC
 #ifndef PH7_DISABLE_DISK_IO
 	if( pVm->pStderr == 0  ){
 		io_private *pErr;
@@ -8727,9 +8747,6 @@ PH7_PRIVATE void * PH7_ExportStderr(ph7_vm *pVm)
 		/* NULL or STDERR */
 		return pVm->pStderr;
 	}
-#else
-	return 0;
-#endif
 #else
 	SXUNUSED(pVm); /* cc warning */
 	return 0;

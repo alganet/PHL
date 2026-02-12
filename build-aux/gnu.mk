@@ -9,16 +9,30 @@ BIN_SUFFIX =
 
 CC ?= cc
 TARGET ?= $(shell CC=$(CC) ./build-aux/get_target.sh)
-full_CFLAGS = -W -Wunused -Wall -Isrc/sx -Isrc/ph7 -Ofast $(PH7_DEFINES) -D__UNIXES__
-LDFLAGS = -lm -lpthread
-coverage_CFLAGS = -W -Wunused -Wall -Isrc/sx -Isrc/ph7 -O0 $(PH7_DEFINES) -D__UNIXES__ -fprofile-arcs -ftest-coverage
+
+# Base flags shared by all modes
+BASE_CFLAGS = -W -Wunused -Wall -Isrc/sx -Isrc/ph7 -D__UNIXES__
+
+# Per-mode optimization and instrumentation
+full_OPT_CFLAGS     = -Ofast
+tiny_OPT_CFLAGS     = -Oz
+coverage_OPT_CFLAGS = -O0 -fprofile-arcs -ftest-coverage
+
+full_LDFLAGS = -lm -lpthread
+tiny_LDFLAGS = 
+coverage_LDFLAGS = -lm -lpthread -fprofile-arcs -ftest-coverage
+
+PH7_DEFINES = $($(MODE)_DEFINES)
+MODE_EXTRA_CFLAGS = $($(MODE)_EXTRA_CFLAGS)
+MODE_CFLAGS = $(BASE_CFLAGS) $($(MODE)_OPT_CFLAGS) $(PH7_DEFINES) $(MODE_EXTRA_CFLAGS)
+MODE_LDFLAGS = $($(MODE)_LDFLAGS)
 
 PHP_BIN ?= $(shell command -v php)$(BIN_SUFFIX)
 
-FULL_OBJECTS = $(patsubst $(BUILD_DIR)/src/%,$(BUILD_DIR)/full/src/%,$(OBJECTS))
+MODE_OBJECTS = $(patsubst $(BUILD_DIR)/src/%,$(BUILD_DIR)/$(MODE)/src/%,$(OBJECTS))
 
-$(FULL_PHL_BIN): $(FULL_OBJECTS)
-	$(CC) $(full_CFLAGS) -o $@ $(FULL_OBJECTS) $(LDFLAGS)
+$(PHL_BIN): $(MODE_OBJECTS)
+	$(CC) $(MODE_CFLAGS) -o $@ $(MODE_OBJECTS) $(MODE_LDFLAGS)
 
 $(BUILD_DIR)-clean:
 	-@rm -rf $(BUILD_DIR)
@@ -26,15 +40,9 @@ $(BUILD_DIR)-clean:
 # COVERAGE
 # --------
 
-COVERAGE_LDFLAGS = $(LDFLAGS)
-COVERAGE_OBJECTS = $(patsubst $(BUILD_DIR)/src/%,$(BUILD_DIR)/coverage/src/%,$(OBJECTS))
-
-$(COVERAGE_PHL_BIN): $(COVERAGE_OBJECTS)
-	$(CC) $(coverage_CFLAGS) -o $@ $(COVERAGE_OBJECTS) $(COVERAGE_LDFLAGS)
-
-$(BUILD_DIR)/coverage/coverage.info: .ALWAYS $(COVERAGE_PHL_BIN)
-	@$(COVERAGE_SMOKE_PHL_CMD)
-	@$(COVERAGE_INTEGRATION_PHL_CMD)
+$(BUILD_DIR)/coverage/coverage.info: .ALWAYS $(PHL_BIN)
+	@$(TEST_SMOKE_CMD)
+	@$(TEST_INTEGRATION_CMD)
 	@lcov --capture --rc geninfo_unexecuted_blocks=1 --quiet \
 		--ignore-errors unsupported,unsupported \
 		--include 'src/ph7/*' --include 'src/sx/*' --include 'src/phl/*' --directory $(BUILD_DIR) \
@@ -42,4 +50,4 @@ $(BUILD_DIR)/coverage/coverage.info: .ALWAYS $(COVERAGE_PHL_BIN)
 	@sed 's|SF:.*/src/|SF:src/|g' \
 		$(BUILD_DIR)/coverage/coverage.info > $(BUILD_DIR)/coverage/coverage.info.tmp \
 			&& mv -f $(BUILD_DIR)/coverage/coverage.info.tmp $(BUILD_DIR)/coverage/coverage.info
-	@$(FULL_PHL_BIN) ./build-aux/lcov_info_to_text.php $(BUILD_DIR)/coverage/coverage.info
+	@$(PHL_BIN) ./build-aux/lcov_info_to_text.php $(BUILD_DIR)/coverage/coverage.info

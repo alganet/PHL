@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 # This file must support nmake.exe
+# Note: nmake does not support $($(VAR)) recursive expansion.
+# Per-mode CFLAGS and link rules are generated in patterns.mk.
 
 # Platform abstraction
 OBJ_SUFFIX = .obj
@@ -9,16 +11,26 @@ BIN_SUFFIX = .exe
 
 CC = cl
 TARGET = x86_64-windows-msvc
-full_CFLAGS = /nologo /Fd$(BUILD_DIR:/=\)\ph7.pdb /I src /I src/sx /I src/ph7 /W4 /Ox $(PH7_DEFINES:-=/)
-LDFLAGS = /nologo /link advapi32.lib /subsystem:console /entry:mainCRTStartup
-coverage_CFLAGS = /nologo /Fd$(BUILD_DIR:/=\)\coverage\ph7-coverage.pdb /I src /I src/sx /I src/ph7 /W4 /Od /Zi $(PH7_DEFINES:-=/) /DPH7_DEBUG
+
+# Base flags shared by all modes
+BASE_CFLAGS = /nologo /I src /I src/sx /I src/ph7 /W4
+
+# Per-mode CFLAGS (used by patterns.mk generated rules)
+full_CFLAGS = $(BASE_CFLAGS) /Ox $(full_DEFINES:-=/) $(full_EXTRA_CFLAGS) /Fd$(BUILD_DIR:/=\)\ph7.pdb
+tiny_CFLAGS = $(BASE_CFLAGS) /Os $(tiny_DEFINES:-=/) $(tiny_EXTRA_CFLAGS) /Fd$(BUILD_DIR:/=\)\ph7.pdb
+coverage_CFLAGS = $(BASE_CFLAGS) /Od /Zi $(coverage_DEFINES:-=/) $(coverage_EXTRA_CFLAGS) /DPH7_DEBUG /Fd$(BUILD_DIR:/=\)\coverage\ph7-coverage.pdb
+
+# Per-mode LDFLAGS (used by patterns.mk generated link rules)
+full_LDFLAGS = /nologo /link advapi32.lib /subsystem:console /entry:mainCRTStartup
+tiny_LDFLAGS = /nologo /link advapi32.lib /subsystem:console /entry:mainCRTStartup
+coverage_LDFLAGS = /nologo /link advapi32.lib dbghelp.lib /subsystem:console /entry:mainCRTStartup
+
+LDFLAGS = $(full_LDFLAGS)
 
 PHP_BIN = php$(BIN_SUFFIX)
 
-FULL_OBJECTS = $(OBJECTS:/src/=/full/src/)
-
-$(FULL_PHL_BIN): $(BUILD_DIR) $(FULL_OBJECTS)
-	$(CC) $(full_CFLAGS) /Fe$@ $(FULL_OBJECTS) $(LDFLAGS)
+# NOTE: The $(PHL_BIN) rule and patterns are provided by patterns.mk
+# to avoid complex IF selections and nested macro expansions in NMake.
 
 $(BUILD_DIR)-clean:
 	-@rd /s /q $(BUILD_DIR:/=\) 2>nul
@@ -26,31 +38,25 @@ $(BUILD_DIR)-clean:
 # COVERAGE
 # --------
 
-COVERAGE_LDFLAGS = /nologo /link advapi32.lib dbghelp.lib /subsystem:console /entry:mainCRTStartup
-COVERAGE_OBJECTS = $(OBJECTS:/src/=/coverage/src/)
-
-$(COVERAGE_PHL_BIN): $(BUILD_DIR)/coverage $(COVERAGE_OBJECTS)
-	$(CC) $(coverage_CFLAGS) /Fe$@ $(COVERAGE_OBJECTS) $(COVERAGE_LDFLAGS)
-
 $(BUILD_DIR)/coverage/coverage.info: .ALWAYS
 	@OpenCppCoverage.exe --quiet \
 	--sources "$(MAKEDIR)\src" \
 	--excluded_sources "$(MAKEDIR)\src\minidump.h" \
 	--cover_children \
 	--export_type cobertura:$(BUILD_DIR)/coverage/smoke.xml \
-	-- $(COVERAGE_SMOKE_PHL_CMD)
+	-- $(TEST_SMOKE_CMD)
 
 	@OpenCppCoverage.exe --quiet \
 	--sources "$(MAKEDIR)\src" \
 	--excluded_sources "$(MAKEDIR)\src\minidump.h" \
 	--cover_children \
 	--export_type cobertura:$(BUILD_DIR)/coverage/integration.xml \
-	-- $(COVERAGE_INTEGRATION_PHL_CMD)
-	@"$(FULL_PHL_BIN)" \
+	-- $(TEST_INTEGRATION_CMD)
+	@"$(PHL_BIN)" \
 		"build-aux/cobertura_xml_to_lcov_info.php" \
 		"$(BUILD_DIR)/coverage/smoke.xml" \
 		"$(BUILD_DIR)/coverage/integration.xml" \
 		> "$(BUILD_DIR)/coverage/coverage.info"
-	@"$(FULL_PHL_BIN)" \
+	@"$(PHL_BIN)" \
 		"build-aux/lcov_info_to_text.php" \
 		"$(BUILD_DIR)/coverage/coverage.info"

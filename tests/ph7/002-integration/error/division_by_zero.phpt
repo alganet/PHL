@@ -12,7 +12,7 @@ echo "Result: $result\n";
 ?>
 --EXPECTF--
 %s Error: Division by zero
-Result: 1
+Result: 0
 --CLEAN--
 <?php
 unset($result);

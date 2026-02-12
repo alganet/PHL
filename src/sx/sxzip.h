@@ -9,10 +9,10 @@
 #include "sxtypes.h"
 #include "sxmem.h"
 
-#ifndef PH7_DISABLE_BUILTIN_FUNC
+#if !defined(PH7_DISABLE_BUILTIN_FUNC) || !defined(PH7_DISABLE_DISK_IO)
 /*
  * --------------
- * Archive extractor:
+ * Archive extractor (available when disk I/O is enabled):
  * --------------
  * Each open ZIP/TAR archive is identified by an instance of the following structure.
  * That is, a process can open one or more archives and manipulates them in thread safe

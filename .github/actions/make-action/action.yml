@@ -8,16 +8,25 @@ inputs:
   name:
     description: 'The build name (e.g., x86_64-linux-gnu). Will be used to determine OS.'
     required: true
+  mode:
+    description: 'The build mode (e.g., full, tiny, coverage).'
+    required: false
+    default: 'full'
   make:
     description: 'The make command to run (e.g., test, test-compat, or empty for build). Will be used to name artifacts.'
-    required: true
+    required: false
+    default: ''
   extension:
     description: 'File extension for the binary (e.g., .exe for Windows)'
     required: false
     default: ''
   artifacts_from:
-    description: 'Job name to restore artifact from. If set, downloads artifact with name {artifacts_from}-{name}.'
+    description: 'Job name to restore artifact from. If set, downloads artifact with name {artifacts_from_mode}-{name}.'
     required: false
+  artifacts_from_mode:
+    description: 'The mode of the artifact to restore.'
+    required: false
+    default: 'full'
   artifacts:
     description: 'Whether to upload the build artifacts.'
     required: false
@@ -27,26 +36,26 @@ runs:
   steps:
     - if: inputs.artifacts_from != ''
       name: Download artifact
-      uses: actions/download-artifact@v6
+      uses: actions/download-artifact@v4
       with:
-        name: ${{ inputs.artifacts_from }}-${{ inputs.name }}
+        name: ${{ inputs.artifacts_from_mode }}-${{ inputs.name }}
         path: build/${{ inputs.name }}
 
     - if: inputs.artifacts_from != '' && (contains(inputs.name, '-linux') || contains(inputs.name, '-darwin'))
-      run: chmod +x build/${{ inputs.name }}/full/phl${{ inputs.extension }}
+      run: chmod +x build/${{ inputs.name }}/${{ inputs.artifacts_from_mode }}/phl${{ inputs.extension }}
       shell: bash
 
     - if: contains(inputs.name, '-linux') || contains(inputs.name, '-darwin')
-      run: make ${{ inputs.make }}
+      run: make MODE=${{ inputs.mode }} ${{ inputs.make }}
       shell: bash
 
     - if: contains(inputs.name, '-windows')
-      run: build-aux/dev.bat nmake /nologo ${{ inputs.make }}
+      run: build-aux/dev.bat nmake /nologo MODE=${{ inputs.mode }} ${{ inputs.make }}
       shell: cmd
 
     - if: inputs.artifacts == 'true'
       name: Upload artifact
       uses: actions/upload-artifact@v5
       with:
-        name: ${{ inputs.make }}-${{ inputs.name }}
+        name: ${{ (inputs.make == '' || inputs.make == 'build') && inputs.mode || inputs.make }}-${{ inputs.name }}
         path: build/${{ inputs.name }}
