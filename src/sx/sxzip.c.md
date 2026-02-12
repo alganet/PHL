@@ -124,54 +124,54 @@ Coverage: 219/293 lines (74.74%)
 |    - |  114 |  |
 |    - |  115 | `#define SXARCHIVE_HASH_SIZE	64 /* Starting hash table size(MUST BE POWER OF 2)*/` |
 |  154 |  116 | `static sxi32 SyLittleEndianUnpack32(sxu32 *uNB,const unsigned char *buf,sxu32 Len)` |
-|    1 |  117 |  |
-|  155 |  118 | `	if( Len < sizeof(sxu32) ){` |
+|    2 |  117 |  |
+|  156 |  118 | `	if( Len < sizeof(sxu32) ){` |
 |  ! 0 |  119 | `		return SXERR_SHORT;` |
 |    - |  120 | `	}` |
-|  155 |  121 | `	*uNB =  buf[0] + (buf[1] << 8) + (buf[2] << 16) + (buf[3] << 24);` |
-|  155 |  122 | `	return SXRET_OK;` |
-|   78 |  123 |  |
+|  156 |  121 | `	*uNB =  buf[0] + (buf[1] << 8) + (buf[2] << 16) + (buf[3] << 24);` |
+|  156 |  122 | `	return SXRET_OK;` |
+|   79 |  123 |  |
 |  156 |  124 | `static sxi32 SyLittleEndianUnpack16(sxu16 *pOut,const unsigned char *zBuf,sxu32 nLen)` |
-|    1 |  125 |  |
-|  157 |  126 | `	if( nLen < sizeof(sxu16) ){` |
+|    2 |  125 |  |
+|  158 |  126 | `	if( nLen < sizeof(sxu16) ){` |
 |  ! 0 |  127 | `		return SXERR_SHORT;` |
 |    - |  128 | `	}` |
-|  157 |  129 | `	*pOut = zBuf[0] + (zBuf[1] <<8);` |
+|  158 |  129 | `	*pOut = zBuf[0] + (zBuf[1] <<8);` |
 |    - |  130 |  |
-|  157 |  131 | `	return SXRET_OK;` |
-|   79 |  132 |  |
+|  158 |  131 | `	return SXRET_OK;` |
+|   80 |  132 |  |
 |   18 |  133 | `static sxi32 SyDosTimeFormat(sxu32 nDosDate,Sytm *pOut)` |
-|    1 |  134 |  |
+|    2 |  134 |  |
 |    - |  135 | `	sxu16 nDate;` |
 |    - |  136 | `	sxu16 nTime;` |
-|   19 |  137 | `	nDate = nDosDate >> 16;` |
-|   19 |  138 | `	nTime = nDosDate & 0xFFFF;` |
-|   19 |  139 | `	pOut->tm_isdst  = 0;` |
-|   19 |  140 | `	pOut->tm_year 	= 1980 + (nDate >> 9);` |
-|   19 |  141 | `	pOut->tm_mon	= (nDate % (1<<9))>>5;` |
-|   19 |  142 | `	pOut->tm_mday	= (nDate % (1<<9))&0x1F;` |
-|   19 |  143 | `	pOut->tm_hour	= nTime >> 11;` |
-|   19 |  144 | `	pOut->tm_min	= (nTime % (1<<11)) >> 5;` |
-|   19 |  145 | `	pOut->tm_sec	= ((nTime % (1<<11))& 0x1F )<<1;` |
-|   19 |  146 | `	return SXRET_OK;` |
-|    1 |  147 |  |
+|   20 |  137 | `	nDate = nDosDate >> 16;` |
+|   20 |  138 | `	nTime = nDosDate & 0xFFFF;` |
+|   20 |  139 | `	pOut->tm_isdst  = 0;` |
+|   20 |  140 | `	pOut->tm_year 	= 1980 + (nDate >> 9);` |
+|   20 |  141 | `	pOut->tm_mon	= (nDate % (1<<9))>>5;` |
+|   20 |  142 | `	pOut->tm_mday	= (nDate % (1<<9))&0x1F;` |
+|   20 |  143 | `	pOut->tm_hour	= nTime >> 11;` |
+|   20 |  144 | `	pOut->tm_min	= (nTime % (1<<11)) >> 5;` |
+|   20 |  145 | `	pOut->tm_sec	= ((nTime % (1<<11))& 0x1F )<<1;` |
+|   20 |  146 | `	return SXRET_OK;` |
+|    2 |  147 |  |
 |    - |  148 | `/*` |
 |    - |  149 | ` * Archive hashtable manager` |
 |    - |  150 | ` */` |
 |   14 |  151 | `static sxi32 ArchiveHashGetEntry(SyArchive *pArch,const char *zName,sxu32 nLen,SyArchiveEntry **ppEntry)` |
-|    1 |  152 |  |
+|    2 |  152 |  |
 |    - |  153 | `	SyArchiveEntry *pBucketEntry;` |
 |    - |  154 | `	SyString sEntry;` |
 |    - |  155 | `	sxu32 nHash;` |
 |    - |  156 |  |
-|   15 |  157 | `	nHash = pArch->xHash(zName,nLen);` |
-|   15 |  158 | `	pBucketEntry = pArch->apHash[nHash & (pArch->nSize - 1)];` |
+|   16 |  157 | `	nHash = pArch->xHash(zName,nLen);` |
+|   16 |  158 | `	pBucketEntry = pArch->apHash[nHash & (pArch->nSize - 1)];` |
 |    - |  159 |  |
-|   15 |  160 | `	SyStringInitFromBuf(&sEntry,zName,nLen);` |
+|   16 |  160 | `	SyStringInitFromBuf(&sEntry,zName,nLen);` |
 |    - |  161 |  |
 |    7 |  162 | `	for(;;){` |
-|   15 |  163 | `		if( pBucketEntry == 0 ){` |
-|   15 |  164 | `			break;` |
+|   16 |  163 | `		if( pBucketEntry == 0 ){` |
+|   16 |  164 | `			break;` |
 |    - |  165 | `		}` |
 |  ! 0 |  166 | `		if( nHash == pBucketEntry->nHash && pArch->xCmp(&sEntry,&pBucketEntry->sFileName) == 0 ){` |
 |  ! 0 |  167 | `			if( ppEntry ){` |
@@ -181,16 +181,16 @@ Coverage: 219/293 lines (74.74%)
 |    - |  171 | `		}` |
 |  ! 0 |  172 | `		pBucketEntry = pBucketEntry->pNextHash;` |
 |  ! 0 |  173 | `	}` |
-|   15 |  174 | `	return SXERR_NOTFOUND;` |
-|    8 |  175 |  |
+|   16 |  174 | `	return SXERR_NOTFOUND;` |
+|    9 |  175 |  |
 |   14 |  176 | `static void ArchiveHashBucketInstall(SyArchiveEntry **apTable,sxu32 nBucket,SyArchiveEntry *pEntry)` |
-|    1 |  177 |  |
-|   15 |  178 | `	pEntry->pNextHash = apTable[nBucket];` |
-|   15 |  179 | `	if( apTable[nBucket] != 0 ){` |
+|    2 |  177 |  |
+|   16 |  178 | `	pEntry->pNextHash = apTable[nBucket];` |
+|   16 |  179 | `	if( apTable[nBucket] != 0 ){` |
 |  ! 0 |  180 | `		apTable[nBucket]->pPrevHash = pEntry;` |
 |  ! 0 |  181 | `	}` |
-|   15 |  182 | `	apTable[nBucket] = pEntry;` |
-|   15 |  183 |  |
+|   16 |  182 | `	apTable[nBucket] = pEntry;` |
+|   16 |  183 |  |
 |  ! 0 |  184 | `static sxi32 ArchiveHashGrowTable(SyArchive *pArch)` |
 |  ! 0 |  185 |  |
 |  ! 0 |  186 | `	sxu32 nNewSize = pArch->nSize * 2;` |
@@ -217,70 +217,70 @@ Coverage: 219/293 lines (74.74%)
 |  ! 0 |  207 | `	return SXRET_OK;` |
 |  ! 0 |  208 |  |
 |   14 |  209 | `static sxi32 ArchiveHashInstallEntry(SyArchive *pArch,SyArchiveEntry *pEntry)` |
-|    1 |  210 |  |
-|   15 |  211 | `	if( pArch->nLoaded > pArch->nSize * 3 ){` |
+|    2 |  210 |  |
+|   16 |  211 | `	if( pArch->nLoaded > pArch->nSize * 3 ){` |
 |  ! 0 |  212 | `		ArchiveHashGrowTable(&(*pArch));` |
 |  ! 0 |  213 | `	}` |
-|   15 |  214 | `	pEntry->nHash = pArch->xHash(SyStringData(&pEntry->sFileName),SyStringLength(&pEntry->sFileName));` |
+|   16 |  214 | `	pEntry->nHash = pArch->xHash(SyStringData(&pEntry->sFileName),SyStringLength(&pEntry->sFileName));` |
 |    - |  215 | `	/* Install the entry in its bucket */` |
-|   15 |  216 | `	ArchiveHashBucketInstall(pArch->apHash,pEntry->nHash & (pArch->nSize - 1),pEntry);` |
-|   15 |  217 | `	MACRO_LD_PUSH(pArch->pList,pEntry);` |
-|   15 |  218 | `	pArch->nLoaded++;` |
+|   16 |  216 | `	ArchiveHashBucketInstall(pArch->apHash,pEntry->nHash & (pArch->nSize - 1),pEntry);` |
+|   16 |  217 | `	MACRO_LD_PUSH(pArch->pList,pEntry);` |
+|   16 |  218 | `	pArch->nLoaded++;` |
 |    - |  219 |  |
-|   15 |  220 | `	return SXRET_OK;` |
-|    1 |  221 |  |
+|   16 |  220 | `	return SXRET_OK;` |
+|    2 |  221 |  |
 |    - |  222 | ` /*` |
 |    - |  223 | `  * Parse the End of central directory and report status` |
 |    - |  224 | `  */` |
 |   24 |  225 | ` static sxi32 ParseEndOfCentralDirectory(SyArchive *pArch,const unsigned char *zBuf)` |
-|    1 |  226 | ` {` |
-|   25 |  227 | `	sxu32 nMagic = 0; /* cc -O6 warning */` |
+|    2 |  226 | ` {` |
+|   26 |  227 | `	sxu32 nMagic = 0; /* cc -O6 warning */` |
 |    - |  228 | ` 	sxi32 rc;` |
 |    - |  229 |  |
 |    - |  230 | `	 /* Sanity check */` |
-|   25 |  231 | `	 rc = SyLittleEndianUnpack32(&nMagic,zBuf,sizeof(sxu32));` |
-|   25 |  232 | `	 if( rc != SXRET_OK ){` |
+|   26 |  231 | `	 rc = SyLittleEndianUnpack32(&nMagic,zBuf,sizeof(sxu32));` |
+|   26 |  232 | `	 if( rc != SXRET_OK ){` |
 |  ! 0 |  233 | `		 return SXERR_CORRUPT;` |
 |    - |  234 | `	 }` |
-|   25 |  235 | `	 if( nMagic != SXZIP_END_CENTRAL_MAGIC ){` |
+|   26 |  235 | `	 if( nMagic != SXZIP_END_CENTRAL_MAGIC ){` |
 |    5 |  236 | `		 return SXERR_CORRUPT;` |
 |    - |  237 | `	 }` |
 |    - |  238 | `	 /* # of entries */` |
-|   21 |  239 | `	 rc = SyLittleEndianUnpack16((sxu16 *)&pArch->nEntry,&zBuf[8],sizeof(sxu16));` |
-|   21 |  240 | `	 if( rc != SXRET_OK ){` |
+|   22 |  239 | `	 rc = SyLittleEndianUnpack16((sxu16 *)&pArch->nEntry,&zBuf[8],sizeof(sxu16));` |
+|   22 |  240 | `	 if( rc != SXRET_OK ){` |
 |  ! 0 |  241 | `		 return SXERR_CORRUPT;` |
 |    - |  242 | `	 }` |
-|   21 |  243 | ` 	if( /* rc != SXRET_OK \|\| */ pArch->nEntry > SXI16_HIGH /* SXU16_HIGH */ ){` |
+|   22 |  243 | ` 	if( /* rc != SXRET_OK \|\| */ pArch->nEntry > SXI16_HIGH /* SXU16_HIGH */ ){` |
 |  ! 0 |  244 | ` 		return SXERR_CORRUPT;` |
 |    - |  245 | ` 	}` |
 |    - |  246 | ` 	/* Size of central directory */` |
-|   21 |  247 | ` 	rc = SyLittleEndianUnpack32(&pArch->nCentralSize,&zBuf[12],sizeof(sxu32));` |
-|   21 |  248 | ` 	if( /*rc != SXRET_OK \|\|*/ pArch->nCentralSize > SXI32_HIGH ){` |
+|   22 |  247 | ` 	rc = SyLittleEndianUnpack32(&pArch->nCentralSize,&zBuf[12],sizeof(sxu32));` |
+|   22 |  248 | ` 	if( /*rc != SXRET_OK \|\|*/ pArch->nCentralSize > SXI32_HIGH ){` |
 |  ! 0 |  249 | ` 		return SXERR_CORRUPT;` |
 |    - |  250 | ` 	}` |
 |    - |  251 | ` 	/* Starting offset of central directory */` |
-|   21 |  252 | ` 	rc = SyLittleEndianUnpack32(&pArch->nCentralOfft,&zBuf[16],sizeof(sxu32));` |
-|   21 |  253 | ` 	if( /*rc != SXRET_OK \|\|*/ pArch->nCentralSize > SXI32_HIGH ){` |
+|   22 |  252 | ` 	rc = SyLittleEndianUnpack32(&pArch->nCentralOfft,&zBuf[16],sizeof(sxu32));` |
+|   22 |  253 | ` 	if( /*rc != SXRET_OK \|\|*/ pArch->nCentralSize > SXI32_HIGH ){` |
 |  ! 0 |  254 | ` 		return SXERR_CORRUPT;` |
 |    - |  255 | ` 	}` |
 |    - |  256 |  |
-|   21 |  257 | ` 	return SXRET_OK;` |
-|   13 |  258 | ` }` |
+|   22 |  257 | ` 	return SXRET_OK;` |
+|   14 |  258 | ` }` |
 |    - |  259 | ` /*` |
 |    - |  260 | `  * Fill the zip entry with the appropriate information from the central directory` |
 |    - |  261 | `  */` |
 |   18 |  262 | `static sxi32 GetCentralDirectoryEntry(SyArchive *pArch,SyArchiveEntry *pEntry,const unsigned char *zCentral,sxu32 *pNextOffset)` |
-|    1 |  263 | ` {` |
-|   19 |  264 | ` 	SyString *pName = &pEntry->sFileName; /* File name */` |
+|    2 |  263 | ` {` |
+|   20 |  264 | ` 	SyString *pName = &pEntry->sFileName; /* File name */` |
 |    - |  265 | ` 	sxu16 nDosDate,nDosTime;` |
-|   19 |  266 | `	sxu16 nComment = 0 ;` |
-|   19 |  267 | `	sxu32 nMagic = 0; /* cc -O6 warning */` |
+|   20 |  266 | `	sxu16 nComment = 0 ;` |
+|   20 |  267 | `	sxu32 nMagic = 0; /* cc -O6 warning */` |
 |    - |  268 | `	sxi32 rc;` |
-|   19 |  269 | `	nDosDate = nDosTime = 0; /* cc -O6 warning */` |
+|   20 |  269 | `	nDosDate = nDosTime = 0; /* cc -O6 warning */` |
 |    9 |  270 | `	SXUNUSED(pArch);` |
 |    - |  271 | ` 	/* Sanity check */` |
-|   19 |  272 | ` 	rc = SyLittleEndianUnpack32(&nMagic,zCentral,sizeof(sxu32));` |
-|   19 |  273 | ` 	if( /* rc != SXRET_OK \|\| */ nMagic != SXZIP_CENTRAL_MAGIC ){` |
+|   20 |  272 | ` 	rc = SyLittleEndianUnpack32(&nMagic,zCentral,sizeof(sxu32));` |
+|   20 |  273 | ` 	if( /* rc != SXRET_OK \|\| */ nMagic != SXZIP_CENTRAL_MAGIC ){` |
 |  ! 0 |  274 | ` 		rc = SXERR_CORRUPT;` |
 |    - |  275 | ` 		/*` |
 |    - |  276 | ` 		 * Try to recover by examining the next central directory record.` |
@@ -294,28 +294,28 @@ Coverage: 219/293 lines (74.74%)
 |    - |  284 | ` 	/*` |
 |    - |  285 | ` 	 * entry name length` |
 |    - |  286 | ` 	 */` |
-|   19 |  287 | ` 	SyLittleEndianUnpack16((sxu16 *)&pName->nByte,&zCentral[28],sizeof(sxu16));` |
-|   19 |  288 | ` 	if( pName->nByte > SXI16_HIGH /* SXU16_HIGH */){` |
+|   20 |  287 | ` 	SyLittleEndianUnpack16((sxu16 *)&pName->nByte,&zCentral[28],sizeof(sxu16));` |
+|   20 |  288 | ` 	if( pName->nByte > SXI16_HIGH /* SXU16_HIGH */){` |
 |  ! 0 |  289 | ` 		 rc = SXERR_BIG;` |
 |  ! 0 |  290 | ` 		 goto update;` |
 |    - |  291 | ` 	}` |
 |    - |  292 | ` 	/* Extra information */` |
-|   19 |  293 | ` 	SyLittleEndianUnpack16(&pEntry->nExtra,&zCentral[30],sizeof(sxu16));` |
+|   20 |  293 | ` 	SyLittleEndianUnpack16(&pEntry->nExtra,&zCentral[30],sizeof(sxu16));` |
 |    - |  294 | ` 	/* Comment length  */` |
-|   19 |  295 | ` 	SyLittleEndianUnpack16(&nComment,&zCentral[32],sizeof(sxu16));` |
+|   20 |  295 | ` 	SyLittleEndianUnpack16(&nComment,&zCentral[32],sizeof(sxu16));` |
 |    - |  296 | ` 	/* Compression method 0 == stored / 8 == deflated */` |
-|   19 |  297 | ` 	rc = SyLittleEndianUnpack16(&pEntry->nComprMeth,&zCentral[10],sizeof(sxu16));` |
+|   20 |  297 | ` 	rc = SyLittleEndianUnpack16(&pEntry->nComprMeth,&zCentral[10],sizeof(sxu16));` |
 |    - |  298 | ` 	/* DOS Timestamp */` |
-|   19 |  299 | ` 	SyLittleEndianUnpack16(&nDosTime,&zCentral[12],sizeof(sxu16));` |
-|   19 |  300 | ` 	SyLittleEndianUnpack16(&nDosDate,&zCentral[14],sizeof(sxu16));` |
-|   19 |  301 | ` 	SyDosTimeFormat((nDosDate << 16 \| nDosTime),&pEntry->sFmt);` |
+|   20 |  299 | ` 	SyLittleEndianUnpack16(&nDosTime,&zCentral[12],sizeof(sxu16));` |
+|   20 |  300 | ` 	SyLittleEndianUnpack16(&nDosDate,&zCentral[14],sizeof(sxu16));` |
+|   20 |  301 | ` 	SyDosTimeFormat((nDosDate << 16 \| nDosTime),&pEntry->sFmt);` |
 |    - |  302 | `	/* Little hack to fix month index  */` |
-|   19 |  303 | `	pEntry->sFmt.tm_mon--;` |
+|   20 |  303 | `	pEntry->sFmt.tm_mon--;` |
 |    - |  304 | ` 	/* CRC32 */` |
-|   19 |  305 | ` 	rc = SyLittleEndianUnpack32(&pEntry->nCrc,&zCentral[16],sizeof(sxu32));` |
+|   20 |  305 | ` 	rc = SyLittleEndianUnpack32(&pEntry->nCrc,&zCentral[16],sizeof(sxu32));` |
 |    - |  306 | ` 	/* Content size before compression */` |
-|   19 |  307 | ` 	rc = SyLittleEndianUnpack32(&pEntry->nByte,&zCentral[24],sizeof(sxu32));` |
-|   19 |  308 | ` 	if(  pEntry->nByte > SXI32_HIGH ){` |
+|   20 |  307 | ` 	rc = SyLittleEndianUnpack32(&pEntry->nByte,&zCentral[24],sizeof(sxu32));` |
+|   20 |  308 | ` 	if(  pEntry->nByte > SXI32_HIGH ){` |
 |  ! 0 |  309 | ` 		rc = SXERR_BIG;` |
 |  ! 0 |  310 | ` 		goto update;` |
 |    - |  311 | ` 	}` |
@@ -323,44 +323,44 @@ Coverage: 219/293 lines (74.74%)
 |    - |  313 | ` 	 * Content size after compression.` |
 |    - |  314 | ` 	 * Note that if the file is stored pEntry->nByte should be equal to pEntry->nByteCompr` |
 |    - |  315 | ` 	 */` |
-|   19 |  316 | ` 	rc = SyLittleEndianUnpack32(&pEntry->nByteCompr,&zCentral[20],sizeof(sxu32));` |
-|   19 |  317 | ` 	if( pEntry->nByteCompr > SXI32_HIGH ){` |
+|   20 |  316 | ` 	rc = SyLittleEndianUnpack32(&pEntry->nByteCompr,&zCentral[20],sizeof(sxu32));` |
+|   20 |  317 | ` 	if( pEntry->nByteCompr > SXI32_HIGH ){` |
 |  ! 0 |  318 | ` 		rc = SXERR_BIG;` |
 |  ! 0 |  319 | ` 		goto update;` |
 |    - |  320 | ` 	}` |
 |    - |  321 | ` 	/* Finally grab the contents offset */` |
-|   19 |  322 | ` 	SyLittleEndianUnpack32(&pEntry->nOfft,&zCentral[42],sizeof(sxu32));` |
-|   19 |  323 | ` 	if( pEntry->nOfft > SXI32_HIGH ){` |
+|   20 |  322 | ` 	SyLittleEndianUnpack32(&pEntry->nOfft,&zCentral[42],sizeof(sxu32));` |
+|   20 |  323 | ` 	if( pEntry->nOfft > SXI32_HIGH ){` |
 |  ! 0 |  324 | ` 		rc = SXERR_BIG;` |
 |  ! 0 |  325 | ` 		goto update;` |
 |    - |  326 | ` 	}` |
-|   19 |  327 | `  	 rc = SXRET_OK;` |
+|   20 |  327 | `  	 rc = SXRET_OK;` |
 |    9 |  328 | `update:` |
 |    - |  329 | ` 	/* Update the offset to point to the next central directory record */` |
-|   19 |  330 | ` 	*pNextOffset =  SXZIP_CENTRAL_HDRSZ + pName->nByte + pEntry->nExtra + nComment;` |
-|   19 |  331 | ` 	return rc; /* Report failure or success */` |
-|    1 |  332 |  |
+|   20 |  330 | ` 	*pNextOffset =  SXZIP_CENTRAL_HDRSZ + pName->nByte + pEntry->nExtra + nComment;` |
+|   20 |  331 | ` 	return rc; /* Report failure or success */` |
+|    2 |  332 |  |
 |   18 |  333 | `static sxi32 ZipFixOffset(SyArchiveEntry *pEntry,void *pSrc)` |
-|    1 |  334 |  |
+|    2 |  334 |  |
 |    - |  335 | `	sxu16 nExtra,nNameLen;` |
 |    - |  336 | `	unsigned char *zHdr;` |
-|   19 |  337 | `	nExtra = nNameLen = 0;` |
-|   19 |  338 | `	zHdr = (unsigned char *)pSrc;` |
-|   19 |  339 | `	zHdr = &zHdr[pEntry->nOfft];` |
-|   19 |  340 | `	if( SyMemcmp(zHdr,"PK\003\004",sizeof(sxu32)) != 0 ){` |
+|   20 |  337 | `	nExtra = nNameLen = 0;` |
+|   20 |  338 | `	zHdr = (unsigned char *)pSrc;` |
+|   20 |  339 | `	zHdr = &zHdr[pEntry->nOfft];` |
+|   20 |  340 | `	if( SyMemcmp(zHdr,"PK\003\004",sizeof(sxu32)) != 0 ){` |
 |    5 |  341 | `		return SXERR_CORRUPT;` |
 |    - |  342 | `	}` |
-|   15 |  343 | `	SyLittleEndianUnpack16(&nNameLen,&zHdr[26],sizeof(sxu16));` |
-|   15 |  344 | `	SyLittleEndianUnpack16(&nExtra,&zHdr[28],sizeof(sxu16));` |
+|   16 |  343 | `	SyLittleEndianUnpack16(&nNameLen,&zHdr[26],sizeof(sxu16));` |
+|   16 |  344 | `	SyLittleEndianUnpack16(&nExtra,&zHdr[28],sizeof(sxu16));` |
 |    - |  345 | `	/* Fix contents offset */` |
-|   15 |  346 | `	pEntry->nOfft += SXZIP_LOCAL_HDRSZ + nExtra + nNameLen;` |
-|   15 |  347 | `	return SXRET_OK;` |
-|   10 |  348 |  |
+|   16 |  346 | `	pEntry->nOfft += SXZIP_LOCAL_HDRSZ + nExtra + nNameLen;` |
+|   16 |  347 | `	return SXRET_OK;` |
+|   11 |  348 |  |
 |    - |  349 | `/*` |
 |    - |  350 | ` * Extract all valid entries from the central directory` |
 |    - |  351 | ` */` |
 |   18 |  352 | `static sxi32 ZipExtract(SyArchive *pArch,const unsigned char *zCentral,sxu32 nLen,void *pSrc)` |
-|    1 |  353 |  |
+|    2 |  353 |  |
 |    - |  354 | `	SyArchiveEntry *pEntry,*pDup;` |
 |    - |  355 | `	const unsigned char *zEnd ; /* End of central directory */` |
 |    - |  356 | `	sxu32 nIncr,nOfft;          /* Central Offset */` |
@@ -368,27 +368,27 @@ Coverage: 219/293 lines (74.74%)
 |    - |  358 | `	char *zName;` |
 |    - |  359 | `	sxi32 rc;` |
 |    - |  360 |  |
-|   19 |  361 | `	nOfft = nIncr = 0;` |
-|   19 |  362 | `	zEnd = &zCentral[nLen];` |
+|   20 |  361 | `	nOfft = nIncr = 0;` |
+|   20 |  362 | `	zEnd = &zCentral[nLen];` |
 |    - |  363 |  |
 |   16 |  364 | `	for(;;){` |
-|   33 |  365 | `		if( &zCentral[nOfft] >= zEnd ){` |
-|   15 |  366 | `			break;` |
+|   34 |  365 | `		if( &zCentral[nOfft] >= zEnd ){` |
+|   16 |  366 | `			break;` |
 |    - |  367 | `		}` |
 |    - |  368 | `		/* Add a new entry */` |
-|   19 |  369 | `		pEntry = (SyArchiveEntry *)SyMemBackendPoolAlloc(pArch->pAllocator,sizeof(SyArchiveEntry));` |
-|   19 |  370 | `		if( pEntry == 0 ){` |
+|   20 |  369 | `		pEntry = (SyArchiveEntry *)SyMemBackendPoolAlloc(pArch->pAllocator,sizeof(SyArchiveEntry));` |
+|   20 |  370 | `		if( pEntry == 0 ){` |
 |  ! 0 |  371 | `			break;` |
 |    - |  372 | `		}` |
-|   19 |  373 | `		SyZero(pEntry,sizeof(SyArchiveEntry));` |
-|   19 |  374 | `		pEntry->nMagic = SXARCH_MAGIC;` |
-|   19 |  375 | `		nIncr = 0;` |
-|   19 |  376 | `		rc = GetCentralDirectoryEntry(&(*pArch),pEntry,&zCentral[nOfft],&nIncr);` |
-|   19 |  377 | `		if( rc == SXRET_OK ){` |
+|   20 |  373 | `		SyZero(pEntry,sizeof(SyArchiveEntry));` |
+|   20 |  374 | `		pEntry->nMagic = SXARCH_MAGIC;` |
+|   20 |  375 | `		nIncr = 0;` |
+|   20 |  376 | `		rc = GetCentralDirectoryEntry(&(*pArch),pEntry,&zCentral[nOfft],&nIncr);` |
+|   20 |  377 | `		if( rc == SXRET_OK ){` |
 |    - |  378 | `			/* Fix the starting record offset so we can access entry contents correctly */` |
-|   19 |  379 | `			rc = ZipFixOffset(pEntry,pSrc);` |
+|   20 |  379 | `			rc = ZipFixOffset(pEntry,pSrc);` |
 |    9 |  380 | `		}` |
-|   19 |  381 | `		if(rc != SXRET_OK ){` |
+|   20 |  381 | `		if(rc != SXRET_OK ){` |
 |    5 |  382 | `			sxu32 nJmp = 0;` |
 |    5 |  383 | `			SyMemBackendPoolFree(pArch->pAllocator,pEntry);` |
 |    - |  384 | `			/* Try to recover by brute-forcing for a valid central directory record */` |
@@ -399,40 +399,40 @@ Coverage: 219/293 lines (74.74%)
 |    - |  389 | `			}` |
 |    5 |  390 | `			break; /* Giving up,archive is hopelessly corrupted */` |
 |    - |  391 | `		}` |
-|   15 |  392 | `		pName = &pEntry->sFileName;` |
-|   15 |  393 | `		pName->zString = (const char *)&zCentral[nOfft + SXZIP_CENTRAL_HDRSZ];` |
-|   15 |  394 | `		if( pName->nByte <= 0 \|\| ( pEntry->nByte <= 0 && pName->zString[pName->nByte - 1] != '/') ){` |
+|   16 |  392 | `		pName = &pEntry->sFileName;` |
+|   16 |  393 | `		pName->zString = (const char *)&zCentral[nOfft + SXZIP_CENTRAL_HDRSZ];` |
+|   16 |  394 | `		if( pName->nByte <= 0 \|\| ( pEntry->nByte <= 0 && pName->zString[pName->nByte - 1] != '/') ){` |
 |    - |  395 | `			/* Ignore zero length records (except folders) and records without names */` |
 |  ! 0 |  396 | `			SyMemBackendPoolFree(pArch->pAllocator,pEntry);` |
 |  ! 0 |  397 | `		 	nOfft += nIncr; /* Check next entry */` |
 |  ! 0 |  398 | `			continue;` |
 |    - |  399 | `		}` |
-|   15 |  400 | `		zName = SyMemBackendStrDup(pArch->pAllocator,pName->zString,pName->nByte);` |
-|   15 |  401 | ` 	 	if( zName == 0 ){` |
+|   16 |  400 | `		zName = SyMemBackendStrDup(pArch->pAllocator,pName->zString,pName->nByte);` |
+|   16 |  401 | ` 	 	if( zName == 0 ){` |
 |  ! 0 |  402 | ` 	 		 SyMemBackendPoolFree(pArch->pAllocator,pEntry);` |
 |  ! 0 |  403 | `		 	 nOfft += nIncr; /* Check next entry */` |
 |  ! 0 |  404 | `			continue;` |
 |    - |  405 | ` 	 	}` |
-|   15 |  406 | `		pName->zString = (const char *)zName;` |
+|   16 |  406 | `		pName->zString = (const char *)zName;` |
 |    - |  407 | `		/* Check for duplicates */` |
-|   15 |  408 | `		rc = ArchiveHashGetEntry(&(*pArch),pName->zString,pName->nByte,&pDup);` |
-|   15 |  409 | `		if( rc == SXRET_OK ){` |
+|   16 |  408 | `		rc = ArchiveHashGetEntry(&(*pArch),pName->zString,pName->nByte,&pDup);` |
+|   16 |  409 | `		if( rc == SXRET_OK ){` |
 |    - |  410 | `			/* Another entry with the same name exists ; link them together */` |
 |  ! 0 |  411 | `			pEntry->pNextName = pDup->pNextName;` |
 |  ! 0 |  412 | `			pDup->pNextName = pEntry;` |
 |  ! 0 |  413 | `			pDup->nDup++;` |
 |  ! 0 |  414 | `		}else{` |
 |    - |  415 | `			/* Insert in hashtable */` |
-|   15 |  416 | `			ArchiveHashInstallEntry(pArch,pEntry);` |
+|   16 |  416 | `			ArchiveHashInstallEntry(pArch,pEntry);` |
 |    - |  417 | `		}` |
-|   15 |  418 | `		nOfft += nIncr;	/* Check next record */` |
-|    1 |  419 | `	}` |
-|   19 |  420 | `	pArch->pCursor = pArch->pList;` |
+|   16 |  418 | `		nOfft += nIncr;	/* Check next record */` |
+|    2 |  419 | `	}` |
+|   20 |  420 | `	pArch->pCursor = pArch->pList;` |
 |    - |  421 |  |
-|   19 |  422 | `	return pArch->nLoaded > 0 ? SXRET_OK : SXERR_EMPTY;` |
-|    1 |  423 |  |
+|   20 |  422 | `	return pArch->nLoaded > 0 ? SXRET_OK : SXERR_EMPTY;` |
+|    2 |  423 |  |
 |   28 |  424 | `PH7_PRIVATE sxi32 SyZipExtractFromBuf(SyArchive *pArch,const char *zBuf,sxu32 nLen)` |
-|    1 |  425 | ` {` |
+|    2 |  425 | ` {` |
 |    - |  426 | ` 	const unsigned char *zCentral,*zEnd;` |
 |    - |  427 | ` 	sxi32 rc;` |
 |    - |  428 | `#if defined(UNTRUST)` |
@@ -444,25 +444,25 @@ Coverage: 219/293 lines (74.74%)
 |    - |  434 | ` 	 * LOCAL_HDR_SZ + CENTRAL_HDR_SZ + END_OF_CENTRAL_HDR_SZ` |
 |    - |  435 | ` 	 * 		30				46				22` |
 |    - |  436 | ` 	 */` |
-|   29 |  437 | ` 	 if( nLen < SXZIP_LOCAL_HDRSZ + SXZIP_CENTRAL_HDRSZ + SXZIP_END_CENTRAL_HDRSZ ){` |
+|   30 |  437 | ` 	 if( nLen < SXZIP_LOCAL_HDRSZ + SXZIP_CENTRAL_HDRSZ + SXZIP_END_CENTRAL_HDRSZ ){` |
 |    5 |  438 | ` 	 	return SXERR_CORRUPT; /* Don't bother processing return immediately */` |
 |    - |  439 | ` 	 }` |
 |    - |  440 |  |
-|   25 |  441 | ` 	zEnd = (unsigned char *)&zBuf[nLen - SXZIP_END_CENTRAL_HDRSZ];` |
+|   26 |  441 | ` 	zEnd = (unsigned char *)&zBuf[nLen - SXZIP_END_CENTRAL_HDRSZ];` |
 |    - |  442 | ` 	/* Find the end of central directory */` |
 |  414 |  443 | ` 	while( ((sxu32)((unsigned char *)&zBuf[nLen] - zEnd) < (SXZIP_END_CENTRAL_HDRSZ + SXI16_HIGH)) &&` |
-|  584 |  444 | `		zEnd > (unsigned char *)zBuf && SyMemcmp(zEnd,"PK\005\006",sizeof(sxu32)) != 0 ){` |
+|  585 |  444 | `		zEnd > (unsigned char *)zBuf && SyMemcmp(zEnd,"PK\005\006",sizeof(sxu32)) != 0 ){` |
 |  367 |  445 | ` 		zEnd--;` |
 |    1 |  446 | ` 	}` |
 |    - |  447 | ` 	/* Parse the end of central directory */` |
-|   25 |  448 | ` 	rc = ParseEndOfCentralDirectory(&(*pArch),zEnd);` |
-|   25 |  449 | ` 	if( rc != SXRET_OK ){` |
+|   26 |  448 | ` 	rc = ParseEndOfCentralDirectory(&(*pArch),zEnd);` |
+|   26 |  449 | ` 	if( rc != SXRET_OK ){` |
 |    5 |  450 | ` 		return rc;` |
 |    - |  451 | ` 	}` |
 |    - |  452 |  |
 |    - |  453 | ` 	/* Find the starting offset of the central directory */` |
-|   21 |  454 | ` 	zCentral = &zEnd[-(sxi32)pArch->nCentralSize];` |
-|   21 |  455 | ` 	if( zCentral <= (unsigned char *)zBuf \|\| SyMemcmp(zCentral,"PK\001\002",sizeof(sxu32)) != 0 ){` |
+|   22 |  454 | ` 	zCentral = &zEnd[-(sxi32)pArch->nCentralSize];` |
+|   22 |  455 | ` 	if( zCentral <= (unsigned char *)zBuf \|\| SyMemcmp(zCentral,"PK\001\002",sizeof(sxu32)) != 0 ){` |
 |    3 |  456 | ` 		if( pArch->nCentralOfft >= nLen ){` |
 |    - |  457 | `			/* Corrupted central directory offset */` |
 |  ! 0 |  458 | ` 			return SXERR_CORRUPT;` |
@@ -474,9 +474,9 @@ Coverage: 219/293 lines (74.74%)
 |    - |  464 | ` 		}` |
 |    - |  465 | ` 		/* Fall thru and extract all valid entries from the central directory */` |
 |  ! 0 |  466 | ` 	}` |
-|   19 |  467 | ` 	rc = ZipExtract(&(*pArch),zCentral,(sxu32)(zEnd - zCentral),(void *)zBuf);` |
-|   19 |  468 | ` 	return rc;` |
-|   15 |  469 | ` }` |
+|   20 |  467 | ` 	rc = ZipExtract(&(*pArch),zCentral,(sxu32)(zEnd - zCentral),(void *)zBuf);` |
+|   20 |  468 | ` 	return rc;` |
+|   16 |  469 | ` }` |
 |    - |  470 | `/*` |
 |    - |  471 | `  * Default comparison function.` |
 |    - |  472 | `  */` |
@@ -487,37 +487,37 @@ Coverage: 219/293 lines (74.74%)
 |  ! 0 |  477 | `	 return rc;` |
 |  ! 0 |  478 | ` }` |
 |   30 |  479 | `PH7_PRIVATE sxi32 SyArchiveInit(SyArchive *pArch,SyMemBackend *pAllocator,ProcHash xHash,ProcRawStrCmp xCmp)` |
-|    1 |  480 | ` {` |
+|    2 |  480 | ` {` |
 |    - |  481 | `	SyArchiveEntry **apHash;` |
 |    - |  482 | `#if defined(UNTRUST)` |
 |    - |  483 | ` 	if( pArch == 0 ){` |
 |    - |  484 | ` 		return SXERR_EMPTY;` |
 |    - |  485 | ` 	}` |
 |    - |  486 | `#endif` |
-|   31 |  487 | ` 	SyZero(pArch,sizeof(SyArchive));` |
+|   32 |  487 | ` 	SyZero(pArch,sizeof(SyArchive));` |
 |    - |  488 | ` 	/* Allocate a new hashtable */` |
-|   31 |  489 | `	apHash = (SyArchiveEntry **)SyMemBackendAlloc(&(*pAllocator),SXARCHIVE_HASH_SIZE * sizeof(SyArchiveEntry *));` |
-|   31 |  490 | `	if( apHash == 0){` |
+|   32 |  489 | `	apHash = (SyArchiveEntry **)SyMemBackendAlloc(&(*pAllocator),SXARCHIVE_HASH_SIZE * sizeof(SyArchiveEntry *));` |
+|   32 |  490 | `	if( apHash == 0){` |
 |  ! 0 |  491 | `		return SXERR_MEM;` |
 |    - |  492 | `	}` |
-|   31 |  493 | `	SyZero(apHash,SXARCHIVE_HASH_SIZE * sizeof(SyArchiveEntry *));` |
-|   31 |  494 | `	pArch->apHash = apHash;` |
-|   31 |  495 | `	pArch->xHash  = xHash ? xHash : SyBinHash;` |
-|   31 |  496 | `	pArch->xCmp   = xCmp ? xCmp : ArchiveHashCmp;` |
-|   31 |  497 | `	pArch->nSize  = SXARCHIVE_HASH_SIZE;` |
-|   31 |  498 | ` 	pArch->pAllocator = &(*pAllocator);` |
-|   31 |  499 | ` 	pArch->nMagic = SXARCH_MAGIC;` |
-|   31 |  500 | ` 	return SXRET_OK;` |
-|   16 |  501 | ` }` |
+|   32 |  493 | `	SyZero(apHash,SXARCHIVE_HASH_SIZE * sizeof(SyArchiveEntry *));` |
+|   32 |  494 | `	pArch->apHash = apHash;` |
+|   32 |  495 | `	pArch->xHash  = xHash ? xHash : SyBinHash;` |
+|   32 |  496 | `	pArch->xCmp   = xCmp ? xCmp : ArchiveHashCmp;` |
+|   32 |  497 | `	pArch->nSize  = SXARCHIVE_HASH_SIZE;` |
+|   32 |  498 | ` 	pArch->pAllocator = &(*pAllocator);` |
+|   32 |  499 | ` 	pArch->nMagic = SXARCH_MAGIC;` |
+|   32 |  500 | ` 	return SXRET_OK;` |
+|   17 |  501 | ` }` |
 |   14 |  502 | ` static sxi32 ArchiveReleaseEntry(SyMemBackend *pAllocator,SyArchiveEntry *pEntry)` |
-|    1 |  503 | ` {` |
-|   15 |  504 | ` 	SyArchiveEntry *pDup = pEntry->pNextName;` |
+|    2 |  503 | ` {` |
+|   16 |  504 | ` 	SyArchiveEntry *pDup = pEntry->pNextName;` |
 |    - |  505 | ` 	SyArchiveEntry *pNextDup;` |
 |    - |  506 |  |
 |    - |  507 | ` 	/* Release duplicates first since there are not stored in the hashtable */` |
 |    7 |  508 | ` 	for(;;){` |
-|   15 |  509 | ` 		if( pEntry->nDup == 0 ){` |
-|   15 |  510 | ` 			break;` |
+|   16 |  509 | ` 		if( pEntry->nDup == 0 ){` |
+|   16 |  510 | ` 			break;` |
 |    - |  511 | ` 		}` |
 |  ! 0 |  512 | ` 		pNextDup = pDup->pNextName;` |
 |  ! 0 |  513 | `		pDup->nMagic = 0x2661;` |
@@ -526,48 +526,48 @@ Coverage: 219/293 lines (74.74%)
 |  ! 0 |  516 | ` 		pDup = pNextDup;` |
 |  ! 0 |  517 | ` 		pEntry->nDup--;` |
 |  ! 0 |  518 | ` 	}` |
-|   15 |  519 | `	pEntry->nMagic = 0x2661;` |
-|   15 |  520 | `  	SyMemBackendFree(pAllocator,(void *)SyStringData(&pEntry->sFileName));` |
-|   15 |  521 | ` 	SyMemBackendPoolFree(pAllocator,pEntry);` |
-|   15 |  522 | ` 	return SXRET_OK;` |
-|    1 |  523 | ` }` |
+|   16 |  519 | `	pEntry->nMagic = 0x2661;` |
+|   16 |  520 | `  	SyMemBackendFree(pAllocator,(void *)SyStringData(&pEntry->sFileName));` |
+|   16 |  521 | ` 	SyMemBackendPoolFree(pAllocator,pEntry);` |
+|   16 |  522 | ` 	return SXRET_OK;` |
+|    2 |  523 | ` }` |
 |   14 |  524 | `PH7_PRIVATE sxi32 SyArchiveRelease(SyArchive *pArch)` |
-|    1 |  525 | ` {` |
+|    2 |  525 | ` {` |
 |    - |  526 | `	SyArchiveEntry *pEntry,*pNext;` |
-|   15 |  527 | ` 	pEntry = pArch->pList;` |
+|   16 |  527 | ` 	pEntry = pArch->pList;` |
 |   14 |  528 | `	for(;;){` |
-|   29 |  529 | `		if( pArch->nLoaded < 1 ){` |
-|   15 |  530 | `			break;` |
+|   30 |  529 | `		if( pArch->nLoaded < 1 ){` |
+|   16 |  530 | `			break;` |
 |    - |  531 | `		}` |
-|   15 |  532 | `		pNext = pEntry->pNext;` |
-|   15 |  533 | `		MACRO_LD_REMOVE(pArch->pList,pEntry);` |
-|   15 |  534 | `		ArchiveReleaseEntry(pArch->pAllocator,pEntry);` |
-|   15 |  535 | `		pEntry = pNext;` |
-|   15 |  536 | `		pArch->nLoaded--;` |
-|    1 |  537 | `	}` |
-|   15 |  538 | `	SyMemBackendFree(pArch->pAllocator,pArch->apHash);` |
-|   15 |  539 | `	pArch->pCursor = 0;` |
-|   15 |  540 | `	pArch->nMagic = 0x2626;` |
-|   15 |  541 | `	return SXRET_OK;` |
-|    1 |  542 | ` }` |
+|   16 |  532 | `		pNext = pEntry->pNext;` |
+|   16 |  533 | `		MACRO_LD_REMOVE(pArch->pList,pEntry);` |
+|   16 |  534 | `		ArchiveReleaseEntry(pArch->pAllocator,pEntry);` |
+|   16 |  535 | `		pEntry = pNext;` |
+|   16 |  536 | `		pArch->nLoaded--;` |
+|    2 |  537 | `	}` |
+|   16 |  538 | `	SyMemBackendFree(pArch->pAllocator,pArch->apHash);` |
+|   16 |  539 | `	pArch->pCursor = 0;` |
+|   16 |  540 | `	pArch->nMagic = 0x2626;` |
+|   16 |  541 | `	return SXRET_OK;` |
+|    2 |  542 | ` }` |
 |   14 |  543 | ` PH7_PRIVATE sxi32 SyArchiveResetLoopCursor(SyArchive *pArch)` |
-|    1 |  544 | ` {` |
-|   15 |  545 | `	pArch->pCursor = pArch->pList;` |
-|   15 |  546 | `	return SXRET_OK;` |
-|    1 |  547 | ` }` |
+|    2 |  544 | ` {` |
+|   16 |  545 | `	pArch->pCursor = pArch->pList;` |
+|   16 |  546 | `	return SXRET_OK;` |
+|    2 |  547 | ` }` |
 |    8 |  548 | ` PH7_PRIVATE sxi32 SyArchiveGetNextEntry(SyArchive *pArch,SyArchiveEntry **ppEntry)` |
-|    1 |  549 | ` {` |
+|    2 |  549 | ` {` |
 |    - |  550 | `	SyArchiveEntry *pNext;` |
-|    9 |  551 | `	if( pArch->pCursor == 0 ){` |
+|   10 |  551 | `	if( pArch->pCursor == 0 ){` |
 |    - |  552 | `		/* Rewind the cursor */` |
 |  ! 0 |  553 | `		pArch->pCursor = pArch->pList;` |
 |  ! 0 |  554 | `		return SXERR_EOF;` |
 |    - |  555 | `	}` |
-|    9 |  556 | `	*ppEntry = pArch->pCursor;` |
-|    9 |  557 | `	 pNext = pArch->pCursor->pNext;` |
+|   10 |  556 | `	*ppEntry = pArch->pCursor;` |
+|   10 |  557 | `	 pNext = pArch->pCursor->pNext;` |
 |    - |  558 | `	 /* Advance the cursor to the next entry */` |
-|    9 |  559 | `	 pArch->pCursor = pNext;` |
-|    9 |  560 | `	 return SXRET_OK;` |
-|    5 |  561 | `  }` |
+|   10 |  559 | `	 pArch->pCursor = pNext;` |
+|   10 |  560 | `	 return SXRET_OK;` |
+|    6 |  561 | `  }` |
 |    - |  562 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
 |    - |  563 |  |
