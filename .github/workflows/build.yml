@@ -150,7 +150,6 @@ jobs:
         path: report/html
 
     - name: Coverage history
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
       run: |
         set -euo pipefail
         git config user.name "github-actions[bot]"
@@ -158,6 +157,8 @@ jobs:
         # Assumes the 'coverage' branch already exists and that actions/checkout
         # checked out with 'persist-credentials: true' (default) so we can push.
         git fetch origin coverage
+        # Clean artifacts from local repo to avoid conflicts with git checkout
+        rm -f artifact/coverage-*/coverage/coverage.info
         git checkout coverage
         git pull --ff-only origin coverage || true
         # Copy all contents of report/ to .
@@ -166,6 +167,11 @@ jobs:
         rm -rf html report || true
         # git add markdown and info files in current dir and subdirs
         find . -type f \( -name '*.info' -o -name '*.md' \) -print0 | xargs -0 -r git add || true
+
+    - name: Coverage push
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: |
+        set -euo pipefail
         if git diff --cached --quiet; then
           echo "No changes to commit"
         else
