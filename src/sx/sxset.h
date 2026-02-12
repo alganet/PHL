@@ -87,8 +87,8 @@ PH7_PRIVATE sxi32 SyBlobDup(SyBlob *pSrc,SyBlob *pDest);
 PH7_PRIVATE sxi32 SyBlobCmp(SyBlob *pLeft,SyBlob *pRight);
 PH7_PRIVATE sxi32 SyBlobReset(SyBlob *pBlob);
 PH7_PRIVATE sxi32 SyBlobRelease(SyBlob *pBlob);
-#ifndef PH7_DISABLE_BUILTIN_FUNC
+#if !defined(PH7_DISABLE_BUILTIN_FUNC) || !defined(PH7_DISABLE_DISK_IO)
 PH7_PRIVATE sxi32 SyBlobSearch(const void *pBlob,sxu32 nLen,const void *pPattern,sxu32 pLen,sxu32 *pOfft);
-#endif
+#endif /* PH7_DISABLE_BUILTIN_FUNC || PH7_DISABLE_DISK_IO */
 
 #endif /* __SXSET_H__ */

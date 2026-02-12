@@ -3725,7 +3725,7 @@ case PH7_OP_DIV:{
 	b = pTos->rVal;
 	if( b == 0 ){
 		/* Division by zero */
-		r = 0;
+		pNos->rVal = 0;
 		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Division by zero");
 		/* goto Abort; */
 	}else{
@@ -10760,9 +10760,9 @@ static sxi32 VmExecIncludedFile(
 	/* Release the working buffer */
 	SyBlobRelease(&sContents);
 #else
-	pCtx = 0; /* cc warning */
-	pPath = 0;
-	IncludeOnce = 0;
+	SXUNUSED(pCtx); /* cc warning */
+	SXUNUSED(pPath);
+	SXUNUSED(IncludeOnce);
 	rc = SXERR_IO;
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
 	return rc;
@@ -14136,7 +14136,7 @@ PH7_PRIVATE sxi32 PH7_VmRefObjRemove(
 	}
 	return SXRET_OK;
 }
-#ifndef PH7_DISABLE_BUILTIN_FUNC
+#if !defined(PH7_DISABLE_BUILTIN_FUNC) || !defined(PH7_DISABLE_DISK_IO)
 /*
  * Extract the IO stream device associated with a given scheme.
  * Return a pointer to an instance of ph7_io_stream when the scheme
@@ -14192,7 +14192,7 @@ PH7_PRIVATE const ph7_io_stream * PH7_VmGetStreamDevice(
 	/* No such stream,return NULL */
 	return 0;
 }
-#endif /* PH7_DISABLE_BUILTIN_FUNC */
+#endif /* PH7_DISABLE_BUILTIN_FUNC || PH7_DISABLE_DISK_IO */
 /*
  * Section:
  *    HTTP/URI related routines.

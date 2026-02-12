@@ -8,6 +8,7 @@
 #include "sxdigest.h"
 #include "sxstr.h"
 
+#ifndef PH7_DISABLE_HASH_FUNC
 /*
  * This code implements the MD5 message-digest algorithm.
  * The algorithm is due to Ron Rivest.This code was
@@ -449,6 +450,7 @@ PH7_PRIVATE sxi32 SySha1Compute(const void *pIn,sxu32 nLen,unsigned char zDigest
 	SHA1Final(&sCtx,zDigest);
 	return SXRET_OK;
 }
+#endif /* PH7_DISABLE_HASH_FUNC */
 static const sxu32 crc32_table[] = {
 	0x00000000, 0x77073096, 0xee0e612c, 0x990951ba,
 	0x076dc419, 0x706af48f, 0xe963a535, 0x9e6495a3,

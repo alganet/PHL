@@ -9,9 +9,9 @@
 #include "sxtypes.h"
 
 /* Time utility function prototypes */
-#ifndef PH7_DISABLE_BUILTIN_FUNC
+#if !defined(PH7_DISABLE_BUILTIN_FUNC) || !defined(PH7_DISABLE_DISK_IO)
 PH7_PRIVATE const char *SyTimeGetDay(sxi32 iDay);
 PH7_PRIVATE const char *SyTimeGetMonth(sxi32 iMonth);
-#endif /* PH7_DISABLE_BUILTIN_FUNC */
+#endif /* PH7_DISABLE_BUILTIN_FUNC || PH7_DISABLE_DISK_IO */
 
 #endif /* __SXTIME_H__ */

@@ -277,10 +277,19 @@ static int PH7_builtin_empty(ph7_context *pCtx,int nArg,ph7_value **apArg)
 
 }
 #ifndef PH7_DISABLE_BUILTIN_FUNC
+#define PH7_NEED_BUILTIN_REG 1
+#endif
+#ifndef PH7_DISABLE_DISK_IO
+#define PH7_NEED_FMT_AND_INI 1
+#endif
+
+#ifdef PH7_NEED_BUILTIN_REG
 #ifdef PH7_ENABLE_MATH_FUNC
+
 /*
  * Section:
  *    Math Functions.
+
  * Status:
  *    Stable.
  */
@@ -1074,7 +1083,11 @@ static int PH7_builtin_srand(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Return
  *  Number converted to base tobase
  */
+#endif /* PH7_NEED_BUILTIN_REG */
+#ifdef PH7_NEED_FMT_AND_INI
 static int PH7_builtin_base_convert(ph7_context *pCtx,int nArg,ph7_value **apArg)
+
+
 {
 	int nLen,iFbase,iTobase;
 	const char *zNum;
@@ -1137,6 +1150,8 @@ static int PH7_builtin_base_convert(ph7_context *pCtx,int nArg,ph7_value **apArg
 	}
 	return PH7_OK;
 }
+#endif /* PH7_NEED_FMT_AND_INI */
+#ifdef PH7_NEED_BUILTIN_REG
 /*
  * Section:
  *    String handling Functions.
@@ -3009,6 +3024,7 @@ static int HashConsumer(const void *pData,unsigned int nLen,void *pUserData)
 	ph7_result_string((ph7_context *)pUserData,(const char *)pData,(int)nLen);
 	return SXRET_OK;
 }
+
 /*
  * string bin2hex(string $str)
  *  Convert binary data into hexadecimal representation.
@@ -3038,6 +3054,7 @@ static int PH7_builtin_bin2hex(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	SyBinToHexConsumer((const void *)zString,(sxu32)nLen,HashConsumer,pCtx);
 	return PH7_OK;
 }
+
 /* Search callback signature */
 typedef sxi32 (*ProcStringMatch)(const void *,sxu32,const void *,sxu32,sxu32 *);
 /*
@@ -3804,9 +3821,8 @@ static int PH7_builtin_nl2br(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *       x - the argument is treated as an integer and presented as a hexadecimal number (with lowercase letters).
  *       X - the argument is treated as an integer and presented as a hexadecimal number (with uppercase letters).
  */
-/*
- * This implementation is based on the one found in the SQLite3 source tree.
- */
+#endif /* PH7_NEED_BUILTIN_REG */
+#ifdef PH7_NEED_FMT_AND_INI
 #define PH7_FMT_BUFSIZ 1024 /* Conversion buffer size */
 /*
 ** Conversion types fall into various categories as defined by the
@@ -3821,6 +3837,7 @@ static int PH7_builtin_nl2br(ph7_context *pCtx,int nArg,ph7_value **apArg)
 #define PH7_FMT_PERCENT     7 /* Percent symbol.%% */
 #define PH7_FMT_CHARX       8 /* Characters.%c */
 #define PH7_FMT_ERROR       9 /* Used to indicate no such conversion type */
+
 /*
 ** Allowed values for ph7_fmt_info.flags
 */
@@ -4522,6 +4539,8 @@ static int PH7_builtin_vsprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	SySetRelease(&sArg);
 	return PH7_OK;
 }
+#endif /* PH7_NEED_FMT_AND_INI */
+#ifdef PH7_NEED_BUILTIN_REG
 /*
  * Symisc eXtension.
  * string size_format(int64 $size)
@@ -4700,8 +4719,11 @@ static int PH7_builtin_crc32(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 #endif /* PH7_DISABLE_HASH_FUNC */
+#endif /* PH7_NEED_BUILTIN_REG */
+#ifdef PH7_NEED_FMT_AND_INI
 /*
  * Parse a CSV string and invoke the supplied callback for each processed xhunk.
+
  */
 PH7_PRIVATE sxi32 PH7_ProcessCsv(
 	const char *zInput, /* Raw input */
@@ -5043,8 +5065,11 @@ static int PH7_builtin_strip_tags(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	PH7_StripTagsFromString(pCtx,zString,nLen,zTaglist,nTaglen);
 	return PH7_OK;
 }
+#endif /* PH7_NEED_FMT_AND_INI */
+#ifdef PH7_NEED_BUILTIN_REG
 /*
  * string str_shuffle(string $str)
+
  *  Randomly shuffles a string.
  * Parameters
  *  $str
@@ -6293,8 +6318,11 @@ static int PH7_builtin_strtr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	return PH7_OK;
 }
+#endif /* PH7_NEED_BUILTIN_REG */
+#ifdef PH7_NEED_FMT_AND_INI
 /*
  * Parse an INI string.
+
  * According to wikipedia
  *  The INI file format is an informal standard for configuration files for some platforms or software.
  *  INI files are simple text files with a basic structure composed of "sections" and "properties".
@@ -6524,6 +6552,10 @@ static int PH7_builtin_parse_ini_string(ph7_context *pCtx,int nArg,ph7_value **a
 	PH7_ParseIniString(pCtx,zIni,(sxu32)nByte,(nArg > 1) ? ph7_value_to_bool(apArg[1]) : 0);
 	return PH7_OK;
 }
+#endif /* PH7_NEED_FMT_AND_INI */
+
+#ifdef PH7_NEED_BUILTIN_REG
+
 /*
  * Ctype Functions.
  * Status:
@@ -8549,7 +8581,7 @@ static int PH7_builtin_urldecode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	SyUriDecode(zIn,(sxu32)nLen,Consumer,pCtx,TRUE);
 	return PH7_OK;
 }
-#endif /* PH7_DISABLE_BUILTIN_FUNC */
+#endif /* PH7_NEED_BUILTIN_REG */
 /* Table of the built-in functions */
 static const ph7_builtin_func aBuiltInFunc[] = {
 	   /* Variable handling functions */
@@ -8572,7 +8604,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "intval"     , PH7_builtin_intval      },
 	{ "strval"     , PH7_builtin_strval      },
 	{ "empty"      , PH7_builtin_empty       },
-#ifndef PH7_DISABLE_BUILTIN_FUNC
+#ifdef PH7_NEED_BUILTIN_REG
 #ifdef PH7_ENABLE_MATH_FUNC
 	   /* Math functions */
 	{ "abs"  ,    PH7_builtin_abs          },
@@ -8606,8 +8638,13 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "octdec", PH7_builtin_octdec         },
 	{ "srand",  PH7_builtin_srand          },
 	{ "mt_srand",PH7_builtin_srand         },
+#endif /* PH7_NEED_BUILTIN_REG */
+#ifdef PH7_NEED_FMT_AND_INI
 	{ "base_convert", PH7_builtin_base_convert },
+#endif /* PH7_NEED_FMT_AND_INI */
+#ifdef PH7_NEED_BUILTIN_REG
 	   /* String handling functions */
+
 	{ "substr",          PH7_builtin_substr     },
 	{ "substr_compare",  PH7_builtin_substr_compare },
 	{ "substr_count",    PH7_builtin_substr_count },
@@ -8657,18 +8694,29 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "ucwords",      PH7_builtin_ucwords    },
 	{ "str_repeat",   PH7_builtin_str_repeat },
 	{ "nl2br",        PH7_builtin_nl2br      },
+#endif /* PH7_NEED_BUILTIN_REG */
+#ifdef PH7_NEED_FMT_AND_INI
 	{ "sprintf",      PH7_builtin_sprintf    },
 	{ "printf",       PH7_builtin_printf     },
 	{ "vprintf",      PH7_builtin_vprintf    },
 	{ "vsprintf",     PH7_builtin_vsprintf   },
+#endif /* PH7_NEED_FMT_AND_INI */
+#ifdef PH7_NEED_BUILTIN_REG
 	{ "size_format",  PH7_builtin_size_format},
-#if !defined(PH7_DISABLE_HASH_FUNC)
+
+
+#ifndef PH7_DISABLE_HASH_FUNC
 	{ "md5",          PH7_builtin_md5       },
 	{ "sha1",         PH7_builtin_sha1      },
 	{ "crc32",        PH7_builtin_crc32     },
 #endif /* PH7_DISABLE_HASH_FUNC */
+#endif /* PH7_NEED_BUILTIN_REG */
+#ifdef PH7_NEED_FMT_AND_INI
 	{ "str_getcsv",   PH7_builtin_str_getcsv },
 	{ "strip_tags",   PH7_builtin_strip_tags },
+#endif /* PH7_NEED_FMT_AND_INI */
+#ifdef PH7_NEED_BUILTIN_REG
+
 	{ "str_shuffle",  PH7_builtin_str_shuffle},
 	{ "str_split",    PH7_builtin_str_split  },
 	{ "strspn",       PH7_builtin_strspn     },
@@ -8681,7 +8729,12 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "str_replace",  PH7_builtin_str_replace},
 	{ "str_ireplace", PH7_builtin_str_replace},
 	{ "strtr",        PH7_builtin_strtr      },
+#endif /* PH7_NEED_BUILTIN_REG */
+#ifdef PH7_NEED_FMT_AND_INI
 	{ "parse_ini_string", PH7_builtin_parse_ini_string},
+#endif /* PH7_NEED_FMT_AND_INI */
+#ifdef PH7_NEED_BUILTIN_REG
+
 	         /* Ctype functions */
 	{ "ctype_alnum", PH7_builtin_ctype_alnum },
 	{ "ctype_alpha", PH7_builtin_ctype_alpha },
@@ -8715,7 +8768,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "urldecode",    PH7_builtin_urldecode },
 	{ "rawurlencode", PH7_builtin_urlencode },
 	{ "rawurldecode", PH7_builtin_urldecode },
-#endif /* PH7_DISABLE_BUILTIN_FUNC */
+#endif /* PH7_NEED_BUILTIN_REG */
 };
 /*
  * Register the built-in functions defined above,the array functions
