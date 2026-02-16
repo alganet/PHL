@@ -74,23 +74,23 @@ Coverage: 610/704 lines (86.65%)
 |       - |   64 | `	}` |
 |   41184 |   65 | `	if( pVal->zString[0] == '0' ){` |
 |       - |   66 | `		sxi32 c;` |
-|   16182 |   67 | `		if( pVal->nByte == sizeof(char) ){` |
+|   16184 |   67 | `		if( pVal->nByte == sizeof(char) ){` |
 |   16120 |   68 | `			return 0;` |
 |       - |   69 | `		}` |
-|      63 |   70 | `		c = pVal->zString[1];` |
-|      63 |   71 | `		if( c  == 'x' \|\| c == 'X' ){` |
+|      65 |   70 | `		c = pVal->zString[1];` |
+|      65 |   71 | `		if( c  == 'x' \|\| c == 'X' ){` |
 |       - |   72 | `			/* Hex digit stream */` |
 |      13 |   73 | `			SyHexStrToInt64(pVal->zString,pVal->nByte,(void *)&iVal,0);` |
-|      57 |   74 | `		}else if( c == 'b' \|\| c == 'B' ){` |
+|      59 |   74 | `		}else if( c == 'b' \|\| c == 'B' ){` |
 |       - |   75 | `			/* Binary digit stream */` |
 |      31 |   76 | `			SyBinaryStrToInt64(pVal->zString,pVal->nByte,(void *)&iVal,0);` |
 |      16 |   77 | `		}else{` |
 |       - |   78 | `			/* Octal digit stream */` |
-|      21 |   79 | `			SyOctalStrToInt64(pVal->zString,pVal->nByte,(void *)&iVal,0);` |
+|      23 |   79 | `			SyOctalStrToInt64(pVal->zString,pVal->nByte,(void *)&iVal,0);` |
 |       - |   80 | `		}` |
-|      32 |   81 | `	}else{` |
+|      33 |   81 | `	}else{` |
 |       - |   82 | `		/* Decimal digit stream */` |
-|   25004 |   83 | `		SyStrToInt64(pVal->zString,pVal->nByte,(void *)&iVal,0);` |
+|   25002 |   83 | `		SyStrToInt64(pVal->zString,pVal->nByte,(void *)&iVal,0);` |
 |       - |   84 | `	}` |
 |   25066 |   85 | `	return iVal;` |
 |   20593 |   86 |  |
@@ -716,16 +716,16 @@ Coverage: 610/704 lines (86.65%)
 |       - |  706 | `/*` |
 |       - |  707 | ` * Initialize a ph7_value to the null type.` |
 |       - |  708 | ` */` |
-| 2375830 |  709 | `PH7_PRIVATE sxi32 PH7_MemObjInit(ph7_vm *pVm,ph7_value *pObj)` |
+| 2375834 |  709 | `PH7_PRIVATE sxi32 PH7_MemObjInit(ph7_vm *pVm,ph7_value *pObj)` |
 |       2 |  710 |  |
 |       - |  711 | `	/* Zero the structure */` |
-| 2375832 |  712 | `	SyZero(pObj,sizeof(ph7_value));` |
+| 2375836 |  712 | `	SyZero(pObj,sizeof(ph7_value));` |
 |       - |  713 | `	/* Initialize fields */` |
-| 2375832 |  714 | `	pObj->pVm = pVm;` |
-| 2375832 |  715 | `	SyBlobInit(&pObj->sBlob,&pVm->sAllocator);` |
+| 2375836 |  714 | `	pObj->pVm = pVm;` |
+| 2375836 |  715 | `	SyBlobInit(&pObj->sBlob,&pVm->sAllocator);` |
 |       - |  716 | `	/* Set the NULL type */` |
-| 2375832 |  717 | `	pObj->iFlags = MEMOBJ_NULL;` |
-| 2375832 |  718 | `	return SXRET_OK;` |
+| 2375836 |  717 | `	pObj->iFlags = MEMOBJ_NULL;` |
+| 2375836 |  718 | `	return SXRET_OK;` |
 |       2 |  719 |  |
 |       - |  720 | `/*` |
 |       - |  721 | ` * Initialize a ph7_value to the integer type.` |
@@ -1100,9 +1100,9 @@ Coverage: 610/704 lines (86.65%)
 |     ! 0 | 1090 | `		}else{` |
 |       - | 1091 | `			/* Integer comparison */` |
 |  186380 | 1092 | `			if( pObj1->x.iVal > pObj2->x.iVal ){` |
-|    1636 | 1093 | `				return 1;` |
-|  184746 | 1094 | `			}else if( pObj1->x.iVal < pObj2->x.iVal ){` |
-|  182202 | 1095 | `				return -1;` |
+|    1632 | 1093 | `				return 1;` |
+|  184750 | 1094 | `			}else if( pObj1->x.iVal < pObj2->x.iVal ){` |
+|  182206 | 1095 | `				return -1;` |
 |       - | 1096 | `			}` |
 |    2546 | 1097 | `			return 0;` |
 |       - | 1098 | `		}` |

@@ -144,12 +144,12 @@ Coverage: 59/69 lines (85.51%)
 |  35746 |  134 | `	if(pCtx->nMagic != SXPRNG_MAGIC ){` |
 |    ! 0 |  135 | `		return SXERR_CORRUPT;` |
 |      - |  136 | `	}` |
-|  53168 |  137 | `	for(;;){` |
+|  53164 |  137 | `	for(;;){` |
 | 106334 |  138 | `		if( zBuf >= zEnd ){break;}	zBuf[0] = randomByte(pCtx);	zBuf++;` |
 | 105214 |  139 | `		if( zBuf >= zEnd ){break;}	zBuf[0] = randomByte(pCtx);	zBuf++;` |
 | 105214 |  140 | `		if( zBuf >= zEnd ){break;}	zBuf[0] = randomByte(pCtx);	zBuf++;` |
 |  70614 |  141 | `		if( zBuf >= zEnd ){break;}	zBuf[0] = randomByte(pCtx);	zBuf++;` |
 |      2 |  142 | `	}` |
 |  35746 |  143 | `	return SXRET_OK;` |
-|  17875 |  144 |  |
+|  17873 |  144 |  |
 |      - |  145 |  |

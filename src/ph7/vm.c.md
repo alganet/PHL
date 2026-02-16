@@ -13894,10 +13894,10 @@ Coverage: 5093/7224 lines (70.50%)
 |        - | 13884 | ` * Default hash function used by the reference table` |
 |        - | 13885 | ` * for lookup/insertion operations.` |
 |        - | 13886 | ` */` |
-|  2730852 | 13887 | `static sxu32 VmRefHash(sxu32 nIdx)` |
+|  2730868 | 13887 | `static sxu32 VmRefHash(sxu32 nIdx)` |
 |        2 | 13888 |  |
 |        - | 13889 | `	/* Calculate the hash based on the memory object index */` |
-|  2730854 | 13890 | `	return nIdx ^ (nIdx << 8) ^ (nIdx >> 8);` |
+|  2730870 | 13890 | `	return nIdx ^ (nIdx << 8) ^ (nIdx >> 8);` |
 |        2 | 13891 |  |
 |        - | 13892 | `/*` |
 |        - | 13893 | ` * Check if a memory object [i.e: a variable] is already installed` |
@@ -13919,16 +13919,16 @@ Coverage: 5093/7224 lines (70.50%)
 |  1781438 | 13909 | `	nBucket = VmRefHash(nObjIdx) & (pVm->nRefSize - 1);` |
 |        - | 13910 | `	/* Perform the lookup */` |
 |  1781438 | 13911 | `	pRef = pVm->apRefObj[nBucket];` |
-|  5238189 | 13912 | `	for(;;){` |
-| 10470044 | 13913 | `		if( pRef == 0 ){` |
+|  5238452 | 13912 | `	for(;;){` |
+| 10470307 | 13913 | `		if( pRef == 0 ){` |
 |   650258 | 13914 | `			break;` |
 |        - | 13915 | `		}` |
-|  9819788 | 13916 | `		if( pRef->nIdx == nObjIdx ){` |
+|  9820051 | 13916 | `		if( pRef->nIdx == nObjIdx ){` |
 |        - | 13917 | `			/* Entry found */` |
 |  1131182 | 13918 | `			return pRef;` |
 |        - | 13919 | `		}` |
 |        - | 13920 | `		/* Point to the next entry */` |
-|  8688608 | 13921 | `		pRef = pRef->pNextCollide;` |
+|  8688871 | 13921 | `		pRef = pRef->pNextCollide;` |
 |        2 | 13922 | `	}` |
 |        - | 13923 | `	/* No such entry,return NULL */` |
 |   650258 | 13924 | `	return 0;` |
@@ -13984,8 +13984,8 @@ Coverage: 5093/7224 lines (70.50%)
 |        - | 13974 | `	/* Insert the entry */` |
 |   601070 | 13975 | `	pRef->pNextCollide = pVm->apRefObj[nBucket];` |
 |   601070 | 13976 | `	if( pVm->apRefObj[nBucket] ){` |
-|   569236 | 13977 | `		pVm->apRefObj[nBucket]->pPrevCollide = pRef;` |
-|   284269 | 13978 | `	}` |
+|   569340 | 13977 | `		pVm->apRefObj[nBucket]->pPrevCollide = pRef;` |
+|   284373 | 13978 | `	}` |
 |   601070 | 13979 | `	pVm->apRefObj[nBucket] = pRef;` |
 |   601070 | 13980 | `	MACRO_LD_PUSH(pVm->pRefList,pRef);` |
 |   601070 | 13981 | `	pVm->nRefUsed++;` |
@@ -14023,13 +14023,13 @@ Coverage: 5093/7224 lines (70.50%)
 |     2439 | 14013 | `		}` |
 |   268145 | 14014 | `	}` |
 |   585698 | 14015 | `	if( pRef->pPrevCollide ){` |
-|   333640 | 14016 | `		pRef->pPrevCollide->pNextCollide = pRef->pNextCollide;` |
-|   166908 | 14017 | `	}else{` |
-|   252060 | 14018 | `		pVm->apRefObj[VmRefHash(pRef->nIdx) & (pVm->nRefSize - 1)] = pRef->pNextCollide;` |
+|   333624 | 14016 | `		pRef->pPrevCollide->pNextCollide = pRef->pNextCollide;` |
+|   166892 | 14017 | `	}else{` |
+|   252076 | 14018 | `		pVm->apRefObj[VmRefHash(pRef->nIdx) & (pVm->nRefSize - 1)] = pRef->pNextCollide;` |
 |        - | 14019 | `	}` |
 |   585698 | 14020 | `	if( pRef->pNextCollide ){` |
-|   547927 | 14021 | `		pRef->pNextCollide->pPrevCollide = pRef->pPrevCollide;` |
-|   273412 | 14022 | `	}` |
+|   548047 | 14021 | `		pRef->pNextCollide->pPrevCollide = pRef->pPrevCollide;` |
+|   273532 | 14022 | `	}` |
 |   585698 | 14023 | `	MACRO_LD_REMOVE(pVm->pRefList,pRef);` |
 |        - | 14024 | `	/* Release the node */` |
 |   585698 | 14025 | `	SySetRelease(&pRef->aReference);` |
@@ -14169,14 +14169,14 @@ Coverage: 5093/7224 lines (70.50%)
 |        - | 14159 | `	/* Check if a scheme [i.e: file://,http://,zip://...] is available */` |
 |    18206 | 14160 | `	zNext = zCur = zIn = *pzDevice;` |
 |    18206 | 14161 | `	zEnd = &zIn[nByte];` |
-|  1104393 | 14162 | `	while( zIn < zEnd ){` |
-|  1086191 | 14163 | `		if( zIn < &zEnd[-3]/*://*/ && zIn[0] == ':' && zIn[1] == '/' && zIn[2] == '/' ){` |
+|  1104396 | 14162 | `	while( zIn < zEnd ){` |
+|  1086194 | 14163 | `		if( zIn < &zEnd[-3]/*://*/ && zIn[0] == ':' && zIn[1] == '/' && zIn[2] == '/' ){` |
 |        - | 14164 | `			/* Got one */` |
 |        3 | 14165 | `			zNext = &zIn[sizeof("://")-1];` |
 |        3 | 14166 | `			break;` |
 |        - | 14167 | `		}` |
 |        - | 14168 | `		/* Advance the cursor */` |
-|  1086189 | 14169 | `		zIn++;` |
+|  1086192 | 14169 | `		zIn++;` |
 |        2 | 14170 | `	}` |
 |    18206 | 14171 | `	if( zIn >= zEnd ){` |
 |        - | 14172 | `		/* No such scheme,return the default stream */` |
