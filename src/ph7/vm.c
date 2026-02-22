@@ -947,6 +947,9 @@ static sxi32 VmEvalChunk(ph7_vm *pVm,ph7_context *pCtx,SyString *pChunk,int iFla
 	"   return $this->file.' '.$this->line.' '.$this->code.' '.$this->message;"\
     "}"\
 	"}"\
+	"class Error extends Exception { }"\
+	"class TypeError extends Error { }"\
+	"class ArgumentCountError extends TypeError { }"\
 	"class ErrorException extends Exception { "\
 	"protected $severity;"\
 	"public function __construct(string $message = null,"\
@@ -2156,6 +2159,9 @@ static sxi32 VmByteCodeDump(
 static int VmObConsumer(const void *pData,unsigned int nDataLen,void *pUserData);
 static sxi32 VmUncaughtException(ph7_vm *pVm,ph7_class_instance *pThis);
 static sxi32 VmThrowException(ph7_vm *pVm,ph7_class_instance *pThis);
+static int VmMiniBacktrace(ph7_vm *pVm,SyBlob *pOut);
+static void VmGetFrameContext(ph7_vm *pVm,const char **pzFuncName,int *pnFuncLen);
+static sxi32 VmReportUncaughtException(ph7_vm *pVm,const char *zClass,sxu32 nClass,const char *zMsg,sxu32 nMsg,const char *zFuncName,int nFuncLen);
 /*
  * Consume a generated run-time error message by invoking the VM output
  * consumer callback.
@@ -2357,6 +2363,195 @@ PH7_PRIVATE sxi32 PH7_VmThrowErrorAp(ph7_vm *pVm,SyString *pFuncName,sxi32 iErr,
 {
 	sxi32 rc;
 	rc = VmThrowErrorAp(&(*pVm),&(*pFuncName),iErr,zFormat,ap);
+	return rc;
+}
+/*
+ * Resolve function context from the current frame.
+ */
+static void VmGetFrameContext(ph7_vm *pVm,const char **pzFuncName,int *pnFuncLen)
+{
+	VmFrame *pFrame;
+	ph7_vm_func *pFunc;
+	*pzFuncName = 0;
+	*pnFuncLen = 0;
+	pFrame = pVm->pFrame;
+	if( pFrame == 0 ){
+		return;
+	}
+	while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
+		pFrame = pFrame->pParent;
+	}
+	if( pFrame->pParent == 0 ){
+		return;
+	}
+	pFunc = (ph7_vm_func *)pFrame->pUserData;
+	if( pFunc == 0 ){
+		return;
+	}
+	*pzFuncName = pFunc->sName.zString;
+	*pnFuncLen = (int)pFunc->sName.nByte;
+}
+/*
+ * Emit a PHP-compatible uncaught exception message and stack trace.
+ */
+static sxi32 VmReportUncaughtException(ph7_vm *pVm,const char *zClass,sxu32 nClass,const char *zMsg,sxu32 nMsg,const char *zFuncName,int nFuncLen)
+{
+	SyBlob sOut;
+	SyString *pFile;
+	if( !pVm->bErrReport ){
+		return PH7_OK;
+	}
+	if( zClass == 0 || nClass == 0 ){
+		zClass = "Exception";
+		nClass = (sxu32)sizeof("Exception") - 1;
+	}
+	if( zMsg == 0 ){
+		zMsg = "Unknown exception";
+		nMsg = (sxu32)sizeof("Unknown exception") - 1;
+	}
+	if( zFuncName == 0 || nFuncLen <= 0 ){
+		VmGetFrameContext(pVm,&zFuncName,&nFuncLen);
+	}
+	pFile = (SyString *)SySetPeek(&pVm->aFiles);
+	SyBlobInit(&sOut,&pVm->sAllocator);
+	SyBlobAppend(&sOut,"PHP Fatal error:  Uncaught ",sizeof("PHP Fatal error:  Uncaught ")-1);
+	SyBlobAppend(&sOut,zClass,nClass);
+	SyBlobAppend(&sOut,": ",sizeof(": ")-1);
+	SyBlobAppend(&sOut,zMsg,nMsg);
+	if( pFile ){
+		SyBlobAppend(&sOut," in ",sizeof(" in ")-1);
+		SyBlobAppend(&sOut,pFile->zString,pFile->nByte);
+		SyBlobAppend(&sOut,":1",sizeof(":1")-1);
+	}
+	SyBlobAppend(&sOut,"\nStack trace:\n",sizeof("\nStack trace:\n")-1);
+	if( pFile ){
+		SyBlobAppend(&sOut,"#0 ",sizeof("#0 ")-1);
+		SyBlobAppend(&sOut,pFile->zString,pFile->nByte);
+		if( zFuncName && nFuncLen > 0 ){
+			SyBlobFormat(&sOut,"(1): %.*s()\n",nFuncLen,zFuncName);
+		}else{
+			SyBlobAppend(&sOut,"(1): {main}\n",sizeof("(1): {main}\n")-1);
+		}
+	}else if( zFuncName && nFuncLen > 0 ){
+		SyBlobFormat(&sOut,"#0 [internal function]: %.*s()\n",nFuncLen,zFuncName);
+	}else{
+		SyBlobAppend(&sOut,"#0 {main}\n",sizeof("#0 {main}\n")-1);
+	}
+	SyBlobAppend(&sOut,"#1 {main}",sizeof("#1 {main}")-1);
+	if( pFile ){
+		SyBlobAppend(&sOut,"\n",sizeof("\n")-1);
+		SyBlobAppend(&sOut,"  thrown in ",sizeof("  thrown in ")-1);
+		SyBlobAppend(&sOut,pFile->zString,pFile->nByte);
+		SyBlobAppend(&sOut," on line 1",sizeof(" on line 1")-1);
+	}
+	VmCallErrorHandler(pVm,&sOut);
+	SyBlobRelease(&sOut);
+	return PH7_ABORT;
+}
+/*
+ * Throw an internal exception instance that can be intercepted by try/catch.
+ */
+PH7_PRIVATE sxi32 PH7_VmThrowException(ph7_context *pCtx,const char *zClass,const char *zFormat,...)
+{
+	ph7_vm *pVm;
+	ph7_class *pClass;
+	ph7_class_instance *pThis;
+	ph7_class_method *pCons;
+	ph7_value sArg;
+	ph7_value *apArg[1];
+	SyBlob sMsg;
+	SyString sMsgStr;
+	VmFrame *pFrame;
+	va_list ap;
+	sxi32 rc;
+
+	if( pCtx == 0 || pCtx->pVm == 0 ){
+		return PH7_ABORT;
+	}
+	pVm = pCtx->pVm;
+	if( zClass == 0 || zClass[0] == 0 ){
+		zClass = "Error";
+	}
+	pClass = PH7_VmExtractClass(&(*pVm),zClass,SyStrlen(zClass),TRUE,0);
+	if( pClass == 0 ){
+		return PH7_VmThrowExceptionTrace(pCtx,zClass,
+			"Cannot throw internal exception, class '%s' is not available",
+			zClass
+			);
+	}
+	pThis = PH7_NewClassInstance(&(*pVm),pClass);
+	if( pThis == 0 ){
+		return PH7_VmThrowExceptionTrace(pCtx,zClass,
+			"Cannot throw internal exception, PH7 is running out of memory"
+			);
+	}
+
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	va_start(ap,zFormat);
+	SyBlobFormatAp(&sMsg,zFormat,ap);
+	va_end(ap);
+
+	pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);
+	if( pCons ){
+		SyStringInitFromBuf(&sMsgStr,(const char *)SyBlobData(&sMsg),SyBlobLength(&sMsg));
+		PH7_MemObjInitFromString(&(*pVm),&sArg,&sMsgStr);
+		apArg[0] = &sArg;
+		PH7_VmCallClassMethod(&(*pVm),pThis,pCons,0,1,apArg);
+		PH7_MemObjRelease(&sArg);
+	}
+	SyBlobRelease(&sMsg);
+
+	pFrame = pVm->pFrame;
+	if( pFrame ){
+		while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
+			pFrame = pFrame->pParent;
+		}
+		pFrame->iFlags |= VM_FRAME_THROW;
+	}
+	rc = VmThrowException(&(*pVm),pThis);
+	PH7_ClassInstanceUnref(pThis);
+	if( rc == SXERR_ABORT ){
+		return PH7_ABORT;
+	}
+	return PH7_EXCEPTION;
+}
+/*
+ * Throw an internal error as a PHP-like uncaught exception message with stack trace.
+ * This is intentionally separate from PH7_VmThrowError*() to allow gradual migration.
+ */
+PH7_PRIVATE sxi32 PH7_VmThrowExceptionTrace(ph7_context *pCtx,const char *zClass,const char *zFormat,...)
+{
+	ph7_vm *pVm;
+	SyBlob sMsg;
+	const char *zFuncName = 0;
+	int nFuncLen = 0;
+	va_list ap;
+	sxi32 rc;
+
+	if( pCtx == 0 || pCtx->pVm == 0 ){
+		return PH7_OK;
+	}
+	pVm = pCtx->pVm;
+	if( zClass == 0 || zClass[0] == 0 ){
+		zClass = "Error";
+	}
+
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+
+	va_start(ap,zFormat);
+	SyBlobFormatAp(&sMsg,zFormat,ap);
+	va_end(ap);
+
+	if( pCtx->pFunc ){
+		zFuncName = pCtx->pFunc->sName.zString;
+		nFuncLen = (int)pCtx->pFunc->sName.nByte;
+	}
+	if( zFuncName == 0 || nFuncLen <= 0 ){
+		VmGetFrameContext(pVm,&zFuncName,&nFuncLen);
+	}
+	rc = VmReportUncaughtException(pVm,zClass,SyStrlen(zClass),
+		(const char *)SyBlobData(&sMsg),SyBlobLength(&sMsg),zFuncName,nFuncLen);
+	SyBlobRelease(&sMsg);
 	return rc;
 }
 /*
@@ -5721,6 +5916,8 @@ case PH7_OP_CALL: {
 		VmReleaseCallContext(&sCtx);
 		if( rc == PH7_ABORT ){
 			goto Abort;
+		}else if( rc == PH7_EXCEPTION ){
+			goto Exception;
 		}
 		if( pInstr->iP1 > 0 ){
 			/* Pop function name and arguments */
@@ -9611,31 +9808,41 @@ static sxi32 VmUncaughtException(
 	rc = PH7_VmCallUserFunction(&(*pVm),&pVm->aExceptionCB[1],nArg,apArg,0);
 	pVm->nExceptDepth--;
 	if( rc != SXRET_OK ){
-		SyString sName = { "Exception" , sizeof("Exception") - 1 };
-		SyString sFuncName = { "Global",sizeof("Global") - 1 };
-		VmFrame *pFrame = pVm->pFrame;
-		/* No available handler,generate a fatal error */
+		SyBlob sMsgBuf;
+		const char *zClass = "Exception";
+		sxu32 nClass = (sxu32)sizeof("Exception") - 1;
+		const char *zMsg;
+		sxu32 nMsg;
+		const char *zFuncName;
+		int nFuncLen;
+		SyBlobInit(&sMsgBuf,&pVm->sAllocator);
 		if( pThis ){
-			SyStringDupPtr(&sName,&pThis->pClass->sName);
-		}
-		while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
-			/* Ignore exception frames */
-			pFrame = pFrame->pParent;
-		}
-		if( pFrame->pParent ){
-			if( pFrame->iFlags & VM_FRAME_CATCH ){
-				SyStringInitFromBuf(&sFuncName,"Catch_block",sizeof("Catch_block")-1);
-			}else{
-				ph7_vm_func *pFunc = (ph7_vm_func *)pFrame->pUserData;
-				if( pFunc ){
-					SyStringDupPtr(&sFuncName,&pFunc->sName);
+			ph7_class_method *pGetMessage;
+			ph7_value sMsg;
+			const char *zTmp;
+			int nTmp;
+			zClass = pThis->pClass->sName.zString;
+			nClass = pThis->pClass->sName.nByte;
+			pGetMessage = PH7_ClassExtractMethod(pThis->pClass,"getMessage",sizeof("getMessage")-1);
+			if( pGetMessage ){
+				PH7_MemObjInit(pVm,&sMsg);
+				if( PH7_VmCallClassMethod(&(*pVm),pThis,pGetMessage,&sMsg,0,0) == SXRET_OK ){
+					zTmp = ph7_value_to_string(&sMsg,&nTmp);
+					if( zTmp && nTmp > 0 ){
+						SyBlobAppend(&sMsgBuf,zTmp,(sxu32)nTmp);
+					}
 				}
+				PH7_MemObjRelease(&sMsg);
 			}
 		}
-		/* Generate a listing */
-		VmErrorFormat(&(*pVm),PH7_CTX_ERR,
-			"Uncaught exception '%z' in the '%z' frame context",
-			&sName,&sFuncName);
+		if( SyBlobLength(&sMsgBuf) == 0 ){
+			SyBlobAppend(&sMsgBuf,"Unknown exception",sizeof("Unknown exception")-1);
+		}
+		zMsg = (const char *)SyBlobData(&sMsgBuf);
+		nMsg = (sxu32)SyBlobLength(&sMsgBuf);
+		VmGetFrameContext(pVm,&zFuncName,&nFuncLen);
+		VmReportUncaughtException(pVm,zClass,nClass,zMsg,nMsg,zFuncName,nFuncLen);
+		SyBlobRelease(&sMsgBuf);
 		/* Tell the upper layer to stop VM execution immediately  */
 		rc = SXERR_ABORT;
 	}

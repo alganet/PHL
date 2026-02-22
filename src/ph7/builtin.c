@@ -630,12 +630,33 @@ static int PH7_builtin_atan2(ph7_context *pCtx,int nArg,ph7_value **apArg)
 static int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	int is_float;
-	if( nArg < 1 ){
-		/* Missing argument,return 0 */
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
+	/* PHP requires exactly one argument. */
+	if( nArg != 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"abs() expects exactly 1 argument, %d given",
+			nArg
+			);
 	}
+
+	/* Numeric strings with decimal/exponent are treated as real values. */
 	is_float = ph7_value_is_float(apArg[0]);
+	if( !is_float && ph7_value_is_string(apArg[0]) ){
+		int len;
+		sxu8 bReal = FALSE;
+		const char *zStr = ph7_value_to_string(apArg[0], &len);
+		sxi32 rcNum;
+		rcNum = SyStrIsNumeric(zStr, len, &bReal, 0);
+		if( rcNum != SXRET_OK ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"abs(): Argument #1 ($num) must be of type int|float, string given"
+				);
+		}
+		if( bReal ){
+			is_float = 1;
+		}
+	}
 	if( is_float ){
 		double r,x;
 		x = ph7_value_to_double(apArg[0]);
