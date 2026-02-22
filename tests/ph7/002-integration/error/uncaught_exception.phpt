@@ -10,7 +10,9 @@ uncaught exception error
 throw new Exception("test exception");
 ?>
 --EXPECTF--
-%s Error: Uncaught exception 'Exception' in the 'Global' frame context
+%s Fatal error:  Uncaught Exception: test exception in %s
 --CLEAN--
 <?php
+
+?>
 
