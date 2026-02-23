@@ -2,16 +2,16 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-acos with no arguments
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+acos(2) should produce NaN
 --FILE--
 <?php
-$result = acos();
-echo $result === 0 ? "0" : "not 0";
+// NaN compares unequal to itself
+$result = acos(2);
+echo $result != $result ? "OK" : "FAIL:" . $result;
 ?>
 --EXPECT--
-0
+OK
 --CLEAN--
 <?php
 unset($result);
+?>

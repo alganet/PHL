@@ -397,15 +397,33 @@ static int PH7_builtin_cos(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 static int PH7_builtin_acos(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	double r,x;
-	if( nArg < 1 ){
-		/* Missing argument,return 0 */
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
+	double r, x;
+	/* PHP enforces exactly one argument and a floatable parameter. */
+	if( nArg != 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"acos() expects exactly 1 argument, %d given",
+			nArg
+			);
 	}
+	/* Type checking: reject non-numeric values (arrays, objects, resources, strings)
+	 * PHP8 reports a TypeError for wrong types.  Numeric strings are allowed but
+	 * the float conversion will handle them. */
+	if( !ph7_value_is_numeric(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"acos(): Argument #1 ($num) must be of type float, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	/* Convert to double now that we know it's numeric. */
 	x = ph7_value_to_double(apArg[0]);
-	/* Perform the requested operation */
-	r = acos(x);
+	/* Handle domain error ourselves.  PHP returns NAN for |x|>1. */
+	if( x < -1.0 || x > 1.0 ){
+		r = NAN;
+	}else{
+		r = acos(x);
+	}
 	/* store the result back */
 	ph7_result_double(pCtx,r);
 	return PH7_OK;
@@ -4220,8 +4238,26 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 		}else{
 			realvalue = ph7_value_to_double(pArg);
 		}
-        if( precision<0 ) precision = 6;         /* Set default precision */
-        if( precision>PH7_FMT_BUFSIZ-40) precision = PH7_FMT_BUFSIZ-40;
+		/* Special-case NaN and infinities since the normal formatting logic
+		 * below assumes a finite positive realvalue. */
+		if( PH7_IS_NAN(realvalue) ){
+			zBuf = "NAN";
+			length = 3;
+			break;
+		}
+		if( PH7_IS_INF(realvalue) ){
+			/* Infinity prints as INF or -INF depending on sign. */
+			if( realvalue < 0.0 ){
+				zBuf = "-INF";
+				length = 4;
+			}else{
+				zBuf = "INF";
+				length = 3;
+			}
+			break;
+		}
+		if( precision<0 ) precision = 6;         /* Set default precision */
+		if( precision>PH7_FMT_BUFSIZ-40) precision = PH7_FMT_BUFSIZ-40;
         if( realvalue<0.0 ){
           realvalue = -realvalue;
           prefix = '-';

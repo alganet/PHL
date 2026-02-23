@@ -3,8 +3,24 @@
  * SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
  * SPDX-License-Identifier: BSD-3-Clause
  */
-#include "ph7int.h"
-/* This file handle low-level stuff related to indexed memory objects [i.e: ph7_value] */
+#include "ph7int.h" /* This file handle low-level stuff related to indexed memory objects [i.e: ph7_value] */
+
+/* Provide PHP-style type names for values.  This utility may be reused
+ * by any subsystem that works with ph7_value.
+ */
+PH7_PRIVATE const char *ph7_type_name(ph7_value *pVal)
+{
+	if( ph7_value_is_null(pVal) ) return "null";
+	if( ph7_value_is_bool(pVal) ) return "bool";
+	if( ph7_value_is_int(pVal) ) return "int";
+	if( ph7_value_is_float(pVal) ) return "float";
+	if( ph7_value_is_string(pVal) ) return "string";
+	if( ph7_value_is_array(pVal) ) return "array";
+	if( ph7_value_is_object(pVal) ) return "object";
+	if( ph7_value_is_resource(pVal) ) return "resource";
+	return "unknown";
+}
+
 /*
  * Notes on memory objects [i.e: ph7_value].
  * Internally, the PH7 virtual machine manipulates nearly all PHP values
@@ -243,7 +259,18 @@ static ph7_real MemObjRealValue(ph7_value *pObj)
 static sxi32 MemObjStringValue(SyBlob *pOut,ph7_value *pObj,sxu8 bStrictBool)
 {
 	if( pObj->iFlags & MEMOBJ_REAL ){
-		SyBlobFormat(&(*pOut),"%.15g",pObj->rVal);
+		/* Handle special floating-point values first */
+		if( PH7_IS_NAN(pObj->rVal) ){
+			SyBlobAppend(&(*pOut),"NAN",3);
+		}else if( PH7_IS_INF(pObj->rVal) ){
+			if( pObj->rVal < 0.0 ){
+				SyBlobAppend(&(*pOut),"-INF",4);
+			}else{
+				SyBlobAppend(&(*pOut),"INF",3);
+			}
+		}else{
+			SyBlobFormat(&(*pOut),"%.15g",pObj->rVal);
+		}
 	}else if( pObj->iFlags & MEMOBJ_INT ){
 		SyBlobFormat(&(*pOut),"%qd",pObj->x.iVal);
 		/* %qd (BSD quad) is equivalent to %lld in the libc printf */
@@ -1081,6 +1108,17 @@ Numeric:
 				PH7_MemObjToReal(pObj2);
 			}
 			r2 = pObj2->rVal;
+			if( PH7_IS_NAN(r1) || PH7_IS_NAN(r2) ){
+				/*
+				 * Keep a strict three-way comparator contract even for NaN values.
+				 * For ordering purposes, NaN compares equal to NaN and greater than
+				 * any non-NaN numeric value.
+				 */
+				if( PH7_IS_NAN(r1) ){
+					return PH7_IS_NAN(r2) ? 0 : 1;
+				}
+				return -1;
+			}
 			if( r1 > r2 ){
 				return 1;
 			}else if( r1 < r2 ){
