@@ -373,6 +373,12 @@ static sxi32 GenStateFindLiteral(ph7_gen_state *pGen,const SyString *pValue,sxu3
 /*
  * Install a given constant index in the literal table.
  * In order to be installed, the ph7_value must be of type string.
+ *
+ * NOTE: empty strings are deliberately omitted here.  The VM reserves a
+ * single shared constant for "" during initialization (pVm->nEmptyStringIdx)
+ * and the compiler emits a LOADC referencing that slot whenever an empty
+ * literal is encountered.  This keeps the literal hash from growing when
+ * many "" literals appear in user code.
  */
 static sxi32 GenStateInstallLiteral(ph7_gen_state *pGen,ph7_value *pObj,sxu32 nIdx)
 {
@@ -475,8 +481,9 @@ PH7_PRIVATE sxi32 PH7_CompileSimpleString(ph7_gen_state *pGen,sxi32 iCompileFlag
 	zIn  = pStr->zString;
 	zEnd = &zIn[pStr->nByte];
 	if( zIn >= zEnd ){
-		/* Empty string,load NULL */
-		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,0,0,0);
+		/* Empty string constant: just use the pre‑allocated index from the VM
+		 * rather than reserving a new object each time. */
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,pGen->pVm->nEmptyStringIdx,0,0);
 		return SXRET_OK;
 	}
 	if( SXRET_OK == GenStateFindLiteral(&(*pGen),pStr,&nIdx) ){
@@ -695,8 +702,11 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen)
 	zIn  = pStr->zString;
 	zEnd = &zIn[pStr->nByte];
 	if( zIn >= zEnd ){
-		/* Empty string,load NULL */
-		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,0,0,0);
+		/* Empty string: use the shared constant reserved at VM initialization.
+		 * This avoids creating a new literal for every occurrence and keeps the
+		 * literal table from growing when many "" literals appear in the source.
+		 */
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,pGen->pVm->nEmptyStringIdx,0,0);
 		return SXRET_OK;
 	}
 	zCur = 0;

@@ -71,7 +71,7 @@ echo "Array edge case operations test completed\n";
 --EXPECT--
 Large array created with 3000 elements
 Test array after insertions/deletions: 162 elements
-Edge keys array: 2 elements
+Edge keys array: 3 elements
 Nested array created
 Merged array: 200 elements
 Numeric string keys array: 200 elements

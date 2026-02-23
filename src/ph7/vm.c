@@ -1328,6 +1328,15 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 		goto Err;
 	}
 	PH7_MemObjInitFromBool(pVm,pObj,0);
+	/* Install a shared empty string constant so that every "" literal can
+	 * reuse the same slot rather than allocating a new one.
+	 * This mirrors the NULL/TRUE/FALSE handling above. */
+	pObj = PH7_ReserveConstObj(&(*pVm),&pVm->nEmptyStringIdx);
+	if( pObj == 0 ){
+		rc = SXERR_MEM;
+		goto Err;
+	}
+	PH7_MemObjInitFromString(pVm,pObj,0);
 	/* Create the global frame */
 	rc = VmEnterFrame(&(*pVm),0,0,0);
 	if( rc != SXRET_OK ){

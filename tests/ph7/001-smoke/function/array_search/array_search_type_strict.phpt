@@ -1,8 +1,6 @@
 --CREDITS--
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --TEST--
 array_search with strict type checking
 --FILE--
@@ -30,9 +28,9 @@ echo "Strict string '0': " . ($result === 3 ? "PASS" : "FAIL") . "\n";
 $result = array_search(null, $array, true);
 echo "Strict null: " . ($result === 4 ? "PASS" : "FAIL") . "\n";
 
-// Strict search for empty string (finds null in PH7)
+// Strict search for empty string (now distinct from null)
 $result = array_search('', $array, true);
-echo "Strict empty string: " . ($result === 4 ? "PASS" : "FAIL") . "\n";
+echo "Strict empty string: " . ($result === 5 ? "PASS" : "FAIL") . "\n";
 
 // Strict search for non-existent value
 $result = array_search(999, $array, true);
