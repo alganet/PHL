@@ -4,7 +4,12 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 phl interpreter CLI bytecode dump
 --SKIPIF--
-<?php if (function_exists('zend_version')) { echo "skip"; } ?>
+<?php
+// Only run under PHL; PHP has its own "phl" binary unrelated to this test.
+if (!defined('PH7_VERSION')) {
+    echo "skip";
+}
+?>
 --FILE--
 <?php
 $phl = getenv('PHPT_TARGET_EXECUTABLE');
@@ -20,9 +25,9 @@ echo $out;
 ====================================================
 PH7 VM Dump
 ====================================================
-LOADC              0       98        0 [0]
+LOADC              0       99        0 [0]
 CONSUME            1        0        0 [1]
-LOADC              0       99        0 [2]
+LOADC              0      100        0 [2]
 CONSUME            1        0        0 [3]
 DONE               0        0        0 [4]
 Hello World!

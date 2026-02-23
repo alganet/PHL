@@ -1533,12 +1533,35 @@ static int PH7_builtin_addslashes(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zCur,*zIn,*zEnd;
 	int nLen;
-	if( nArg < 1 ){
-		/* Nothing to process,retun NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	/* PHP enforces exactly one argument. */
+	if( nArg != 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"addslashes() expects exactly 1 argument, %d given",
+			nArg
+			);
 	}
-	/* Extract the string to process */
+	/* Reject explicit NULL right away.  With the compiler fix above,
+	 * string literals (including the empty string) are represented as real
+	 * strings, so this check won’t fire for "" anymore. */
+	if( ph7_value_is_null(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"addslashes(): Argument #1 ($string) must be of type string, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	/* Arrays, objects and resources should raise a TypeError like PHP */
+	if( ph7_value_is_array(apArg[0]) ||
+	    ph7_value_is_object(apArg[0]) ||
+	    ph7_value_is_resource(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"addslashes(): Argument #1 ($string) must be of type string, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	/* Convert to string representation first and obtain length. */
 	zIn  = ph7_value_to_string(apArg[0],&nLen);
 	if( nLen < 1 ){
 		/* Return the empty string */
@@ -1553,7 +1576,8 @@ static int PH7_builtin_addslashes(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			break;
 		}
 		zCur = zIn;
-		while( zIn < zEnd && zIn[0] != '\'' && zIn[0] != '"' && zIn[0] != '\\' ){
+		/* scan until a character that needs escaping (', ", \\, or NUL) */
+		while( zIn < zEnd && zIn[0] != '\'' && zIn[0] != '"' && zIn[0] != '\\' && zIn[0] != '\0' ){
 			zIn++;
 		}
 		if( zIn > zCur ){
@@ -1562,7 +1586,12 @@ static int PH7_builtin_addslashes(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 		if( zIn < zEnd ){
 			int c = zIn[0];
-			ph7_result_string_format(pCtx,"\\%c",c);
+			if( c == '\0' ){
+				/* PHP escapes NUL as "\\0" (two characters) */
+				ph7_result_string(pCtx,"\\0",2);
+			}else{
+				ph7_result_string_format(pCtx,"\\%c",c);
+			}
 		}
 		zIn++;
 	}
@@ -1786,6 +1815,11 @@ static int PH7_builtin_htmlspecialchars(ph7_context *pCtx,int nArg,ph7_value **a
 	}
 	/* Extract the target string */
 	zIn = ph7_value_to_string(apArg[0],&nLen);
+	/* Return early when the input is empty, mirroring PHP's behavior. */
+	if( nLen == 0 ){
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
 	zEnd = &zIn[nLen];
 	/* Extract the flags if available */
 	if( nArg > 1 ){
@@ -2011,6 +2045,11 @@ static int PH7_builtin_htmlentities(ph7_context *pCtx,int nArg,ph7_value **apArg
 	}
 	/* Extract the target string */
 	zIn = ph7_value_to_string(apArg[0],&nLen);
+	/* Handle empty string up front */
+	if( nLen == 0 ){
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
 	zEnd = &zIn[nLen];
 	/* Extract the flags if available */
 	if( nArg > 1 ){
@@ -3654,8 +3693,8 @@ static int PH7_builtin_ucwords(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Extract the target string */
 	zIn = ph7_value_to_string(apArg[0],&nLen);
 	if( nLen < 1 ){
-		/* Empty string Return null */
-		ph7_result_null(pCtx);
+		/* Empty string – match PHP semantics */
+		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
 	/* Perform the requested operation */
