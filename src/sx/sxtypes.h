@@ -79,6 +79,29 @@ typedef struct SySet SySet;
 #define SX_EMPTY(PTR)   (PTR == 0)
 #define SX_EMPTY_STR(STR) (STR == 0 || STR[0] == 0 )
 
+/*
+ * Floating-point classification helpers using bitwise inspection of the
+ * IEEE-754 representation.  These work regardless of optimization level and
+ * do not depend on the math library.  Values are treated as double because
+ * all engine code currently uses 64‑bit reals.
+ */
+SX_STATIC_INLINE int PH7_IS_NAN_DOUBLE(double v){
+    union { double d; sxu64 u; } u;
+    u.d = v;
+    return ((u.u & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL)
+           && ((u.u & 0x000fffffffffffffULL) != 0);
+}
+SX_STATIC_INLINE int PH7_IS_INF_DOUBLE(double v){
+    union { double d; sxu64 u; } u;
+    sxu64 abs;
+    u.d = v;
+    abs = u.u & 0x7fffffffffffffffULL;
+    return abs == 0x7ff0000000000000ULL;
+}
+
+/* convenience macros cast to double */
+#define PH7_IS_NAN(x) PH7_IS_NAN_DOUBLE((double)(x))
+#define PH7_IS_INF(x) PH7_IS_INF_DOUBLE((double)(x))
 /* Time constants */
 #define SX_MSEC_PER_SEC  (1000)          /* Millisec per seconds */
 #define SX_USEC_PER_SEC  (1000000)       /* Microsec per seconds */

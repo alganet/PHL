@@ -2,15 +2,15 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-acos with array argument
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+acos(-2) should produce NaN
 --FILE--
 <?php
-echo acos(array(1)) . "\n";
+$result = acos(-2);
+echo $result != $result ? "OK" : "FAIL:" . $result;
 ?>
 --EXPECT--
-0
+OK
 --CLEAN--
 <?php
-
+unset($result);
+?>

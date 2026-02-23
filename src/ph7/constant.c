@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "ph7int.h"
+#include <math.h> /* For NAN/INFINITY macros */
 /* This file implement built-in constants for the PH7 engine. */
 /*
  * PH7_VERSION
@@ -98,6 +99,25 @@ static void PH7_PATHSEP_Const(ph7_value *pVal,void *pUnused)
 	ph7_value_string(pVal,":",(int)sizeof(char));
 #endif
 }
+
+/*
+ * NAN constant: floating-point Not-A-Number
+ */
+static void PH7_NAN_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_double(pVal,(double)NAN);
+}
+
+/*
+ * INF constant: positive infinity
+ */
+static void PH7_INF_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_double(pVal,(double)INFINITY);
+}
+
 #ifndef __WINNT__
 #include <time.h>
 #endif
@@ -1919,6 +1939,8 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"M_SQRT1_2",            PH7_M_SQRT1_2_Const    },
 	{"M_LNPI",               PH7_M_LNPI_Const       },
 	{"M_EULER",              PH7_M_EULER_Const      },
+	{"NAN",                  PH7_NAN_Const          },
+	{"INF",                  PH7_INF_Const          },
 #endif /* PH7_ENABLE_MATH_FUNC */
 	{"DATE_ATOM",            PH7_DATE_ATOM_Const    },
 	{"DATE_COOKIE",          PH7_DATE_COOKIE_Const  },

@@ -340,6 +340,29 @@ static const SyFmtInfo aFmt[] = {
       case SXFMT_GENERIC:
 #ifndef SX_OMIT_FLOATINGPOINT
 		realvalue = va_arg(ap,double);
+        /* handle NaN/Infinity specially before any arithmetic */
+        if( PH7_IS_NAN(realvalue) ){
+            /* lowercase nan consistent with libc */
+            buf[0] = 'n'; buf[1] = 'a'; buf[2] = 'n';
+            /* the value has no sign; make sure prefix is clear */
+            prefix = 0;
+            bufpt = buf + 3;
+            goto float_done;
+        }
+        if( PH7_IS_INF(realvalue) ){
+            if( realvalue < 0.0 ){
+                /* negative infinity should be signed via prefix */
+                prefix = '-';
+                buf[0] = 'i'; buf[1] = 'n'; buf[2] = 'f';
+                bufpt = buf + 3;
+            }else{
+                /* positive infinity treated like a plain value */
+                prefix = 0;
+                buf[0] = 'i'; buf[1] = 'n'; buf[2] = 'f';
+                bufpt = buf + 3;
+            }
+            goto float_done;
+        }
         if( precision<0 ) precision = 6;         /* Set default precision */
         if( precision>SXFMT_BUFSIZ-40) precision = SXFMT_BUFSIZ-40;
         if( realvalue<0.0 ){
@@ -368,9 +391,9 @@ static const SyFmtInfo aFmt[] = {
           while( realvalue<1e-8 && exp>=-350 ){ realvalue *= 1e8; exp-=8; }
           while( realvalue<1.0 && exp>=-350 ){ realvalue *= 10.0; exp--; }
           if( exp>350 || exp<-350 ){
-            bufpt = "NaN";
-            length = 3;
-            break;
+            buf[0] = 'n'; buf[1] = 'a'; buf[2] = 'n';
+            bufpt = buf + 3;
+            goto float_done;
           }
         }
         bufpt = buf;
@@ -439,6 +462,7 @@ static const SyFmtInfo aFmt[] = {
             *(bufpt++) = (char)(exp%10+'0');                     /* 1's digit */
           }
         }
+        float_done:
         /* The converted number is in buf[] and zero terminated.Output it.
         ** Note that the number is in the usual order, not reversed as with
         ** integer conversions.*/

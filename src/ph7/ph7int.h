@@ -9,6 +9,9 @@
 #define PH7_PRIVATE
 #include "ph7.h"
 
+/* Return a human-readable PHP type name for a memory object value. */
+PH7_PRIVATE const char *ph7_type_name(ph7_value *pVal);
+
 /* Granular SX library includes */
 #include "sxtypes.h"      /* Base types: sxi32, sxu32, sxptr, sxreal, etc. */
 #include "sxmacros.h"     /* SyString macros, linked list macros, byte operations */

@@ -36,6 +36,20 @@ typedef struct SyMutex SyMutex;
 /* Signature of the consumer routine */
 typedef int (*ProcConsumer)(const void *,unsigned int,void *);
 
+/*
+ * Inline compatibility wrapper.
+ * C89/C90 builds fall back to plain static functions.
+ */
+#ifndef SX_STATIC_INLINE
+#if defined(_MSC_VER) || defined(__GNUC__)
+#define SX_STATIC_INLINE static __inline
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
+#define SX_STATIC_INLINE static inline
+#else
+#define SX_STATIC_INLINE static
+#endif
+#endif
+
 /* String structure */
 struct SyString
 {

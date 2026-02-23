@@ -108,6 +108,20 @@ struct VmShutdownCB
 };
 /* Uncaught exception code value */
 #define PH7_EXCEPTION -255
+
+/*
+ * Return TRUE if either operand is a NaN real value.
+ */
+static sxi32 VmIsUnorderedCmp(ph7_value *pLeft,ph7_value *pRight)
+{
+	if( (pLeft->iFlags & MEMOBJ_REAL) && PH7_IS_NAN(pLeft->rVal) ){
+		return TRUE;
+	}
+	if( (pRight->iFlags & MEMOBJ_REAL) && PH7_IS_NAN(pRight->rVal) ){
+		return TRUE;
+	}
+	return FALSE;
+}
 /*
  * Each parsed URI is recorded and stored in an instance of the following structure.
  * This structure and it's related routines are taken verbatim from the xHT project
@@ -4362,7 +4376,9 @@ case PH7_OP_NEQ: {
 	}
 #endif
 	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);
-	if( pInstr->iOp == PH7_OP_EQ ){
+	if( VmIsUnorderedCmp(pNos,pTos) ){
+		rc = pInstr->iOp == PH7_OP_EQ ? 0 : 1;
+	}else if( pInstr->iOp == PH7_OP_EQ ){
 		rc = rc == 0;
 	}else{
 		rc = rc != 0;
@@ -4398,7 +4414,12 @@ case PH7_OP_TEQ: {
 		goto Abort;
 	}
 #endif
-	rc = PH7_MemObjCmp(pNos,pTos,TRUE,0) == 0;
+	rc = PH7_MemObjCmp(pNos,pTos,TRUE,0);
+	if( VmIsUnorderedCmp(pNos,pTos) ){
+		rc = 0;
+	}else{
+		rc = rc == 0;
+	}
 	VmPopOperand(&pTos,1);
 	if( !pInstr->iP2 ){
 		/* Push comparison result without taking the jump */
@@ -4432,7 +4453,12 @@ case PH7_OP_TNE: {
 		goto Abort;
 	}
 #endif
-	rc = PH7_MemObjCmp(pNos,pTos,TRUE,0) != 0;
+	rc = PH7_MemObjCmp(pNos,pTos,TRUE,0);
+	if( VmIsUnorderedCmp(pNos,pTos) ){
+		rc = 1;
+	}else{
+		rc = rc != 0;
+	}
 	VmPopOperand(&pTos,1);
 	if( !pInstr->iP2 ){
 		/* Push comparison result without taking the jump */
@@ -4477,7 +4503,9 @@ case PH7_OP_LE: {
 	}
 #endif
 	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);
-	if( pInstr->iOp == PH7_OP_LE ){
+	if( VmIsUnorderedCmp(pNos,pTos) ){
+		rc = 0;
+	}else if( pInstr->iOp == PH7_OP_LE ){
 		rc = rc < 1;
 	}else{
 		rc = rc < 0;
@@ -4526,7 +4554,9 @@ case PH7_OP_GE: {
 	}
 #endif
 	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);
-	if( pInstr->iOp == PH7_OP_GE ){
+	if( VmIsUnorderedCmp(pNos,pTos) ){
+		rc = 0;
+	}else if( pInstr->iOp == PH7_OP_GE ){
 		rc = rc >= 0;
 	}else{
 		rc = rc > 0;
