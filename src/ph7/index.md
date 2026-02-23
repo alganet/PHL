@@ -1,13 +1,13 @@
 # src/ph7/
 
-Coverage: 20922/27173 lines (77.00%)
+Coverage: 20934/27195 lines (76.98%)
 
 [Up](../index.md)
 
 | Name | Rate | Hit/Total |
 |:---|---:|---:|
 |[api.c](api.c.md)|70.36%|736/1046|
-|[builtin.c](builtin.c.md)|85.13%|3703/4350|
+|[builtin.c](builtin.c.md)|85.18%|3720/4367|
 |[compile.c](compile.c.md)|74.02%|2644/3572|
 |[constant.c](constant.c.md)|99.51%|1007/1012|
 |[hashmap.c](hashmap.c.md)|80.46%|2319/2882|
@@ -16,4 +16,4 @@ Coverage: 20922/27173 lines (77.00%)
 |[oo.c](oo.c.md)|85.75%|361/421|
 |[parse.c](parse.c.md)|86.86%|820/944|
 |[vfs.c](vfs.c.md)|68.56%|2855/4164|
-|[vm.c](vm.c.md)|70.70%|5225/7390|
+|[vm.c](vm.c.md)|70.59%|5220/7395|

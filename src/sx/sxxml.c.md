@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 531/774 lines (68.60%)
+Coverage: 533/774 lines (68.86%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -999,7 +999,7 @@ Coverage: 531/774 lines (68.60%)
 |   85 |  989 | `	pParser->nFlags = iFlags;` |
 |   85 |  990 | `	return SXRET_OK;` |
 |    1 |  991 |  |
-|   72 |  992 | `PH7_PRIVATE sxi32 SyXMLParserSetEventHandler(SyXMLParser *pParser,` |
+|   74 |  992 | `PH7_PRIVATE sxi32 SyXMLParserSetEventHandler(SyXMLParser *pParser,` |
 |    - |  993 | `	void *pUserData,` |
 |    - |  994 | `	ProcXMLStartTagHandler xStartTag,` |
 |    - |  995 | `	ProcXMLTextHandler xRaw,` |
@@ -1013,58 +1013,58 @@ Coverage: 531/774 lines (68.60%)
 |    - | 1003 | `	ProcXMLNameSpaceEnd   xNameSpaceEnd` |
 |    1 | 1004 | `	){` |
 |    - | 1005 | `	/* Install user callbacks */` |
-|   73 | 1006 | `	if( xErr ){` |
-|   73 | 1007 | `		pParser->xError = xErr;` |
-|   36 | 1008 | `	}` |
-|   73 | 1009 | `	if( xStartDoc ){` |
+|   75 | 1006 | `	if( xErr ){` |
+|   75 | 1007 | `		pParser->xError = xErr;` |
+|   37 | 1008 | `	}` |
+|   75 | 1009 | `	if( xStartDoc ){` |
 |  ! 0 | 1010 | `		pParser->xStartDoc = xStartDoc;` |
 |  ! 0 | 1011 | `	}` |
-|   73 | 1012 | `	if( xStartTag ){` |
-|   73 | 1013 | `		pParser->xStartTag = xStartTag;` |
-|   36 | 1014 | `	}` |
-|   73 | 1015 | `	if( xRaw ){` |
-|   73 | 1016 | `		pParser->xRaw = xRaw;` |
-|   36 | 1017 | `	}` |
-|   73 | 1018 | `	if( xEndTag ){` |
-|   73 | 1019 | `		pParser->xEndTag = xEndTag;` |
-|   36 | 1020 | `	}` |
-|   73 | 1021 | `	if( xPi ){` |
-|   73 | 1022 | `		pParser->xPi = xPi;` |
-|   36 | 1023 | `	}` |
-|   73 | 1024 | `	if( xEndDoc ){` |
+|   75 | 1012 | `	if( xStartTag ){` |
+|   75 | 1013 | `		pParser->xStartTag = xStartTag;` |
+|   37 | 1014 | `	}` |
+|   75 | 1015 | `	if( xRaw ){` |
+|   75 | 1016 | `		pParser->xRaw = xRaw;` |
+|   37 | 1017 | `	}` |
+|   75 | 1018 | `	if( xEndTag ){` |
+|   75 | 1019 | `		pParser->xEndTag = xEndTag;` |
+|   37 | 1020 | `	}` |
+|   75 | 1021 | `	if( xPi ){` |
+|   75 | 1022 | `		pParser->xPi = xPi;` |
+|   37 | 1023 | `	}` |
+|   75 | 1024 | `	if( xEndDoc ){` |
 |  ! 0 | 1025 | `		pParser->xEndDoc = xEndDoc;` |
 |  ! 0 | 1026 | `	}` |
-|   73 | 1027 | `	if( xDoctype ){` |
+|   75 | 1027 | `	if( xDoctype ){` |
 |  ! 0 | 1028 | `		pParser->xDoctype = xDoctype;` |
 |  ! 0 | 1029 | `	}` |
-|   73 | 1030 | `	if( xNameSpace ){` |
-|   73 | 1031 | `		pParser->xNameSpace	= xNameSpace;` |
-|   36 | 1032 | `	}` |
-|   73 | 1033 | `	if( xNameSpaceEnd ){` |
-|   73 | 1034 | `		pParser->xNameSpaceEnd = xNameSpaceEnd;` |
-|   36 | 1035 | `	}` |
-|   73 | 1036 | `	pParser->pUserData = pUserData;` |
-|   73 | 1037 | `	return SXRET_OK;` |
+|   75 | 1030 | `	if( xNameSpace ){` |
+|   75 | 1031 | `		pParser->xNameSpace	= xNameSpace;` |
+|   37 | 1032 | `	}` |
+|   75 | 1033 | `	if( xNameSpaceEnd ){` |
+|   75 | 1034 | `		pParser->xNameSpaceEnd = xNameSpaceEnd;` |
+|   37 | 1035 | `	}` |
+|   75 | 1036 | `	pParser->pUserData = pUserData;` |
+|   75 | 1037 | `	return SXRET_OK;` |
 |    1 | 1038 |  |
 |    - | 1039 | `/* Process an XML chunk */` |
-|   72 | 1040 | `PH7_PRIVATE sxi32 SyXMLProcess(SyXMLParser *pParser,const char *zInput,sxu32 nByte)` |
+|   74 | 1040 | `PH7_PRIVATE sxi32 SyXMLProcess(SyXMLParser *pParser,const char *zInput,sxu32 nByte)` |
 |    1 | 1041 |  |
 |    - | 1042 | `	SySet sTagStack;` |
 |    - | 1043 | `	SySet sWorker;` |
 |    - | 1044 | `	sxi32 rc;` |
 |    - | 1045 | `	/* Initialize working sets */` |
-|   73 | 1046 | `	SySetInit(&sWorker,pParser->pAllocator,sizeof(SyXMLRawStr)); /* Tag container */` |
-|   73 | 1047 | `	SySetInit(&sTagStack,pParser->pAllocator,sizeof(SyXMLRawStrNS)); /* Tag stack */` |
+|   75 | 1046 | `	SySetInit(&sWorker,pParser->pAllocator,sizeof(SyXMLRawStr)); /* Tag container */` |
+|   75 | 1047 | `	SySetInit(&sTagStack,pParser->pAllocator,sizeof(SyXMLRawStrNS)); /* Tag stack */` |
 |    - | 1048 | `	/* Tokenize the entire input */` |
-|   73 | 1049 | `	rc = SyLexTokenizeInput(&pParser->sLex,zInput,nByte,0,0,0);` |
-|   73 | 1050 | `	if( rc == SXERR_ABORT ){` |
+|   75 | 1049 | `	rc = SyLexTokenizeInput(&pParser->sLex,zInput,nByte,0,0,0);` |
+|   75 | 1050 | `	if( rc == SXERR_ABORT ){` |
 |    - | 1051 | `		/* Tokenize callback request an operation abort */` |
 |   21 | 1052 | `		return SXERR_ABORT;` |
 |    - | 1053 | `	}` |
-|   53 | 1054 | `	if( SySetUsed(&pParser->sToken) < 1 ){` |
+|   55 | 1054 | `	if( SySetUsed(&pParser->sToken) < 1 ){` |
 |    - | 1055 | `		/* Nothing to process [i.e: white spaces] */` |
-|  ! 0 | 1056 | `		rc = SXRET_OK;` |
-|  ! 0 | 1057 | `	}else{` |
+|    3 | 1056 | `		rc = SXRET_OK;` |
+|    2 | 1057 | `	}else{` |
 |    - | 1058 | `		/* Process XML Tokens */` |
 |   53 | 1059 | `		rc = ProcessXML(&(*pParser),&sTagStack,&sWorker);` |
 |   53 | 1060 | `		if( pParser->nFlags & SXML_ENABLE_NAMESPACE ){` |
@@ -1085,11 +1085,11 @@ Coverage: 531/774 lines (68.60%)
 |    2 | 1075 | `		}` |
 |    - | 1076 | `	}` |
 |    - | 1077 | `	/* Clean-up the mess left behind */` |
-|   53 | 1078 | `	SySetRelease(&sWorker);` |
-|   53 | 1079 | `	SySetRelease(&sTagStack);` |
+|   55 | 1078 | `	SySetRelease(&sWorker);` |
+|   55 | 1079 | `	SySetRelease(&sTagStack);` |
 |    - | 1080 | `	/* Processing result */` |
-|   53 | 1081 | `	return rc;` |
-|   37 | 1082 |  |
+|   55 | 1081 | `	return rc;` |
+|   38 | 1082 |  |
 |   84 | 1083 | `PH7_PRIVATE sxi32 SyXMLParserRelease(SyXMLParser *pParser)` |
 |    1 | 1084 |  |
 |   85 | 1085 | `	SyLexRelease(&pParser->sLex);` |
