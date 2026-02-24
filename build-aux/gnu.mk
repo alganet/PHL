@@ -11,10 +11,10 @@ CC ?= cc
 TARGET ?= $(shell CC=$(CC) ./build-aux/get_target.sh)
 
 # Base flags shared by all modes
-BASE_CFLAGS = -W -Wunused -Wall -Isrc/sx -Isrc/ph7 -D__UNIXES__
+BASE_CFLAGS = -W -Wunused -Wall -Werror -Isrc/sx -Isrc/ph7 -D__UNIXES__
 
 # Per-mode optimization and instrumentation
-full_OPT_CFLAGS     = -Ofast
+full_OPT_CFLAGS     = -O3 -ffast-math
 tiny_OPT_CFLAGS     = -Oz
 coverage_OPT_CFLAGS = -O0 -fprofile-arcs -ftest-coverage
 

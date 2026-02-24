@@ -418,9 +418,9 @@ static int PH7_builtin_acos(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Convert to double now that we know it's numeric. */
 	x = ph7_value_to_double(apArg[0]);
-	/* Handle domain error ourselves.  PHP returns NAN for |x|>1. */
+	/* Handle domain error ourselves.  PHP returns NaN for |x|>1. */
 	if( x < -1.0 || x > 1.0 ){
-		r = NAN;
+		r = PH7_NAN_VALUE();
 	}else{
 		r = acos(x);
 	}

@@ -102,6 +102,32 @@ SX_STATIC_INLINE int PH7_IS_INF_DOUBLE(double v){
 /* convenience macros cast to double */
 #define PH7_IS_NAN(x) PH7_IS_NAN_DOUBLE((double)(x))
 #define PH7_IS_INF(x) PH7_IS_INF_DOUBLE((double)(x))
+
+/*
+ * Helper routines to produce NaN and Infinity values without relying on the
+ * standard library macros (NAN/INFINITY).  On some toolchains, those macros
+ * expand to builtins that trigger warnings when floating-point operations
+ * are compiled with NaN/Infinity support disabled (see -Wnan-infinity-disabled
+ * on newer clang versions).  The previous implementation used a volatile
+ * division to avoid compile-time folding, but MSVC emits C4723 (“potential
+ * divide by 0”) for those expressions.  Instead construct the value from a
+ * known IEEE‑754 bit pattern which is safe on all platforms.
+ */
+SX_STATIC_INLINE double PH7_NAN_VALUE(void){
+    /* Use a static constant union to avoid undefined behaviour from
+     * reading a different member than was last written.  Some compilers
+     * (clang on macOS in particular) may optimize away the write when the
+     * union is local, resulting in a zero value and therefore an integer
+     * constant being produced.  A static initializer guarantees the bit
+     * pattern is stored in memory and the double is read back correctly.
+     */
+    static const union { sxu64 u; double d; } u = { 0x7ff8000000000000ULL };
+    return u.d;
+}
+SX_STATIC_INLINE double PH7_INF_VALUE(void){
+    static const union { sxu64 u; double d; } u = { 0x7ff0000000000000ULL };
+    return u.d;
+}
 /* Time constants */
 #define SX_MSEC_PER_SEC  (1000)          /* Millisec per seconds */
 #define SX_USEC_PER_SEC  (1000000)       /* Microsec per seconds */
