@@ -8555,11 +8555,11 @@ Coverage: 5220/7395 lines (70.59%)
 |        - |  8545 | ` * PH7 use it's own private PRNG which is based on the one` |
 |        - |  8546 | ` * used by te SQLite3 library.` |
 |        - |  8547 | ` */` |
-|     1051 |  8548 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
+|     1048 |  8548 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
 |        2 |  8549 |  |
 |        - |  8550 | `	sxu32 iNum;` |
-|     1053 |  8551 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
-|     1053 |  8552 | `	return iNum;` |
+|     1050 |  8551 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
+|     1050 |  8552 | `	return iNum;` |
 |        2 |  8553 |  |
 |        - |  8554 | `/*` |
 |        - |  8555 | ` * Generate a random string (English Alphabet) of length nLen.` |
@@ -14140,10 +14140,10 @@ Coverage: 5220/7395 lines (70.59%)
 |        - | 14130 | ` * Default hash function used by the reference table` |
 |        - | 14131 | ` * for lookup/insertion operations.` |
 |        - | 14132 | ` */` |
-|  2789528 | 14133 | `static sxu32 VmRefHash(sxu32 nIdx)` |
+|  2789526 | 14133 | `static sxu32 VmRefHash(sxu32 nIdx)` |
 |        2 | 14134 |  |
 |        - | 14135 | `	/* Calculate the hash based on the memory object index */` |
-|  2789530 | 14136 | `	return nIdx ^ (nIdx << 8) ^ (nIdx >> 8);` |
+|  2789528 | 14136 | `	return nIdx ^ (nIdx << 8) ^ (nIdx >> 8);` |
 |        2 | 14137 |  |
 |        - | 14138 | `/*` |
 |        - | 14139 | ` * Check if a memory object [i.e: a variable] is already installed` |
@@ -14165,16 +14165,16 @@ Coverage: 5220/7395 lines (70.59%)
 |  1820220 | 14155 | `	nBucket = VmRefHash(nObjIdx) & (pVm->nRefSize - 1);` |
 |        - | 14156 | `	/* Perform the lookup */` |
 |  1820220 | 14157 | `	pRef = pVm->apRefObj[nBucket];` |
-|  5305413 | 14158 | `	for(;;){` |
-| 10601230 | 14159 | `		if( pRef == 0 ){` |
+|  5305470 | 14158 | `	for(;;){` |
+| 10601344 | 14159 | `		if( pRef == 0 ){` |
 |   664540 | 14160 | `			break;` |
 |        - | 14161 | `		}` |
-|  9936692 | 14162 | `		if( pRef->nIdx == nObjIdx ){` |
+|  9936806 | 14162 | `		if( pRef->nIdx == nObjIdx ){` |
 |        - | 14163 | `			/* Entry found */` |
 |  1155682 | 14164 | `			return pRef;` |
 |        - | 14165 | `		}` |
 |        - | 14166 | `		/* Point to the next entry */` |
-|  8781012 | 14167 | `		pRef = pRef->pNextCollide;` |
+|  8781126 | 14167 | `		pRef = pRef->pNextCollide;` |
 |        2 | 14168 | `	}` |
 |        - | 14169 | `	/* No such entry,return NULL */` |
 |   664540 | 14170 | `	return 0;` |
@@ -14230,8 +14230,8 @@ Coverage: 5220/7395 lines (70.59%)
 |        - | 14220 | `	/* Insert the entry */` |
 |   614268 | 14221 | `	pRef->pNextCollide = pVm->apRefObj[nBucket];` |
 |   614268 | 14222 | `	if( pVm->apRefObj[nBucket] ){` |
-|   574125 | 14223 | `		pVm->apRefObj[nBucket]->pPrevCollide = pRef;` |
-|   287542 | 14224 | `	}` |
+|   574157 | 14223 | `		pVm->apRefObj[nBucket]->pPrevCollide = pRef;` |
+|   287558 | 14224 | `	}` |
 |   614268 | 14225 | `	pVm->apRefObj[nBucket] = pRef;` |
 |   614268 | 14226 | `	MACRO_LD_PUSH(pVm->pRefList,pRef);` |
 |   614268 | 14227 | `	pVm->nRefUsed++;` |
@@ -14269,13 +14269,13 @@ Coverage: 5220/7395 lines (70.59%)
 |     2439 | 14259 | `		}` |
 |   273846 | 14260 | `	}` |
 |   598316 | 14261 | `	if( pRef->pPrevCollide ){` |
-|   340510 | 14262 | `		pRef->pPrevCollide->pNextCollide = pRef->pNextCollide;` |
-|   170773 | 14263 | `	}else{` |
-|   257808 | 14264 | `		pVm->apRefObj[VmRefHash(pRef->nIdx) & (pVm->nRefSize - 1)] = pRef->pNextCollide;` |
+|   340512 | 14262 | `		pRef->pPrevCollide->pNextCollide = pRef->pNextCollide;` |
+|   170774 | 14263 | `	}else{` |
+|   257806 | 14264 | `		pVm->apRefObj[VmRefHash(pRef->nIdx) & (pVm->nRefSize - 1)] = pRef->pNextCollide;` |
 |        - | 14265 | `	}` |
 |   598316 | 14266 | `	if( pRef->pNextCollide ){` |
-|   552485 | 14267 | `		pRef->pNextCollide->pPrevCollide = pRef->pPrevCollide;` |
-|   276707 | 14268 | `	}` |
+|   552467 | 14267 | `		pRef->pNextCollide->pPrevCollide = pRef->pPrevCollide;` |
+|   276698 | 14268 | `	}` |
 |   598316 | 14269 | `	MACRO_LD_REMOVE(pVm->pRefList,pRef);` |
 |        - | 14270 | `	/* Release the node */` |
 |   598316 | 14271 | `	SySetRelease(&pRef->aReference);` |

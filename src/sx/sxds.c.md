@@ -146,15 +146,15 @@ Coverage: 272/287 lines (94.77%)
 |   634088 |  136 | `	pData =  (void *)&zBase[pSet->nUsed * pSet->eSize];` |
 |   634088 |  137 | `	return pData;` |
 |   355323 |  138 |  |
-|  5277142 |  139 | `PH7_PRIVATE void * SySetAt(SySet *pSet,sxu32 nIdx)` |
+|  5277148 |  139 | `PH7_PRIVATE void * SySetAt(SySet *pSet,sxu32 nIdx)` |
 |        2 |  140 |  |
 |        - |  141 | `	const char *zBase;` |
-|  5277144 |  142 | `	if( nIdx >= pSet->nUsed ){` |
+|  5277150 |  142 | `	if( nIdx >= pSet->nUsed ){` |
 |        - |  143 | `		/* Out of range */` |
 |      ! 0 |  144 | `		return 0;` |
 |        - |  145 | `	}` |
-|  5277144 |  146 | `	zBase = (const char *)pSet->pBase;` |
-|  5277144 |  147 | `	return (void *)&zBase[nIdx * pSet->eSize];` |
+|  5277150 |  146 | `	zBase = (const char *)pSet->pBase;` |
+|  5277150 |  147 | `	return (void *)&zBase[nIdx * pSet->eSize];` |
 |  2638765 |  148 |  |
 |        - |  149 | `/* Private hash entry */` |
 |        - |  150 | `struct SyHashEntry_Pr` |
@@ -225,15 +225,15 @@ Coverage: 272/287 lines (94.77%)
 |        - |  215 |  |
 |  6286202 |  216 | `	nHash = pHash->xHash(pKey,nKeyLen);` |
 |  6286202 |  217 | `	pEntry = pHash->apBucket[nHash & (pHash->nBucketSize - 1)];` |
-|  5617426 |  218 | `	for(;;){` |
-| 11147033 |  219 | `		if( pEntry == 0 ){` |
+|  5602650 |  218 | `	for(;;){` |
+| 11151956 |  219 | `		if( pEntry == 0 ){` |
 |  3386054 |  220 | `			break;` |
 |        - |  221 | `		}` |
-|  9210925 |  222 | `		if( pEntry->nHash == nHash && pEntry->nKeyLen == nKeyLen &&` |
+|  9215848 |  222 | `		if( pEntry->nHash == nHash && pEntry->nKeyLen == nKeyLen &&` |
 |  2900152 |  223 | `			pHash->xCmp(pEntry->pKey,pKey,nKeyLen) == 0 ){` |
 |  2900150 |  224 | `				return pEntry;` |
 |        - |  225 | `		}` |
-|  4860833 |  226 | `		pEntry = pEntry->pNextCollide;` |
+|  4865756 |  226 | `		pEntry = pEntry->pNextCollide;` |
 |        2 |  227 | `	}` |
 |        - |  228 | `	/* Entry not found */` |
 |  3386054 |  229 | `	return 0;` |
@@ -377,8 +377,8 @@ Coverage: 272/287 lines (94.77%)
 |  1093922 |  367 | `		iBucket = pEntry->nHash & (nNewSize - 1);` |
 |  1093922 |  368 | `		pEntry->pNextCollide = apNew[iBucket];` |
 |  1093922 |  369 | `		if( apNew[iBucket] != 0 ){` |
-|   525354 |  370 | `			apNew[iBucket]->pPrevCollide = pEntry;` |
-|   262678 |  371 | `		}` |
+|   525356 |  370 | `			apNew[iBucket]->pPrevCollide = pEntry;` |
+|   262674 |  371 | `		}` |
 |  1093922 |  372 | `		apNew[iBucket] = pEntry;` |
 |        - |  373 | `		/* Point to the next entry */` |
 |  1093922 |  374 | `		pEntry = pEntry->pNext;` |
@@ -395,8 +395,8 @@ Coverage: 272/287 lines (94.77%)
 |        - |  385 | `	/* Insert the entry in its corresponding bucket */` |
 |   996870 |  386 | `	pEntry->pNextCollide = pHash->apBucket[iBucket];` |
 |   996870 |  387 | `	if( pHash->apBucket[iBucket] != 0 ){` |
-|   668518 |  388 | `		pHash->apBucket[iBucket]->pPrevCollide = pEntry;` |
-|   334261 |  389 | `	}` |
+|   668527 |  388 | `		pHash->apBucket[iBucket]->pPrevCollide = pEntry;` |
+|   334287 |  389 | `	}` |
 |   996870 |  390 | `	pHash->apBucket[iBucket] = pEntry;` |
 |        - |  391 | `	/* Link to the entry list */` |
 |   996870 |  392 | `	MACRO_LD_PUSH(pHash->pList,pEntry);` |

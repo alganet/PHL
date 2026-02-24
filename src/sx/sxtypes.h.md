@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 10/10 lines (100.00%)
+Coverage: 16/16 lines (100.00%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -112,23 +112,49 @@ Coverage: 10/10 lines (100.00%)
 |    - |  102 | `/* convenience macros cast to double */` |
 |    - |  103 | `#define PH7_IS_NAN(x) PH7_IS_NAN_DOUBLE((double)(x))` |
 |    - |  104 | `#define PH7_IS_INF(x) PH7_IS_INF_DOUBLE((double)(x))` |
-|    - |  105 | `/* Time constants */` |
-|    - |  106 | `#define SX_MSEC_PER_SEC  (1000)          /* Millisec per seconds */` |
-|    - |  107 | `#define SX_USEC_PER_SEC  (1000000)       /* Microsec per seconds */` |
-|    - |  108 | `#define SX_NSEC_PER_SEC  (1000000000)    /* Nanosec per seconds */` |
-|    - |  109 |  |
-|    - |  110 | `/* High resolution timer */` |
-|    - |  111 | `typedef struct sytime sytime;` |
-|    - |  112 | `struct sytime` |
-|    - |  113 |  |
-|    - |  114 | `	long tm_sec;   /* seconds */` |
-|    - |  115 | `	long tm_usec;  /* microseconds */` |
-|    - |  116 | `};` |
-|    - |  117 |  |
-|    - |  118 | `/* Define PH7_PRIVATE for lib internal functions */` |
-|    - |  119 | `#ifndef PH7_PRIVATE` |
-|    - |  120 | `#define PH7_PRIVATE` |
-|    - |  121 | `#endif` |
-|    - |  122 |  |
-|    - |  123 | `#endif /* __SXTYPES_H__ */` |
-|    - |  124 |  |
+|    - |  105 |  |
+|    - |  106 | `/*` |
+|    - |  107 | ` * Helper routines to produce NaN and Infinity values without relying on the` |
+|    - |  108 | ` * standard library macros (NAN/INFINITY).  On some toolchains, those macros` |
+|    - |  109 | ` * expand to builtins that trigger warnings when floating-point operations` |
+|    - |  110 | ` * are compiled with NaN/Infinity support disabled (see -Wnan-infinity-disabled` |
+|    - |  111 | ` * on newer clang versions).  The previous implementation used a volatile` |
+|    - |  112 | ` * division to avoid compile-time folding, but MSVC emits C4723 (“potential` |
+|    - |  113 | ` * divide by 0”) for those expressions.  Instead construct the value from a` |
+|    - |  114 | ` * known IEEE‑754 bit pattern which is safe on all platforms.` |
+|    - |  115 | ` */` |
+|   41 |  116 | `SX_STATIC_INLINE double PH7_NAN_VALUE(void){` |
+|    - |  117 | `    /* Use a static constant union to avoid undefined behaviour from` |
+|    - |  118 | `     * reading a different member than was last written.  Some compilers` |
+|    - |  119 | `     * (clang on macOS in particular) may optimize away the write when the` |
+|    - |  120 | `     * union is local, resulting in a zero value and therefore an integer` |
+|    - |  121 | `     * constant being produced.  A static initializer guarantees the bit` |
+|    - |  122 | `     * pattern is stored in memory and the double is read back correctly.` |
+|    - |  123 | `     */` |
+|    - |  124 | `    static const union { sxu64 u; double d; } u = { 0x7ff8000000000000ULL };` |
+|   41 |  125 | `    return u.d;` |
+|    1 |  126 |  |
+|    5 |  127 | `SX_STATIC_INLINE double PH7_INF_VALUE(void){` |
+|    - |  128 | `    static const union { sxu64 u; double d; } u = { 0x7ff0000000000000ULL };` |
+|    5 |  129 | `    return u.d;` |
+|    1 |  130 |  |
+|    - |  131 | `/* Time constants */` |
+|    - |  132 | `#define SX_MSEC_PER_SEC  (1000)          /* Millisec per seconds */` |
+|    - |  133 | `#define SX_USEC_PER_SEC  (1000000)       /* Microsec per seconds */` |
+|    - |  134 | `#define SX_NSEC_PER_SEC  (1000000000)    /* Nanosec per seconds */` |
+|    - |  135 |  |
+|    - |  136 | `/* High resolution timer */` |
+|    - |  137 | `typedef struct sytime sytime;` |
+|    - |  138 | `struct sytime` |
+|    - |  139 |  |
+|    - |  140 | `	long tm_sec;   /* seconds */` |
+|    - |  141 | `	long tm_usec;  /* microseconds */` |
+|    - |  142 | `};` |
+|    - |  143 |  |
+|    - |  144 | `/* Define PH7_PRIVATE for lib internal functions */` |
+|    - |  145 | `#ifndef PH7_PRIVATE` |
+|    - |  146 | `#define PH7_PRIVATE` |
+|    - |  147 | `#endif` |
+|    - |  148 |  |
+|    - |  149 | `#endif /* __SXTYPES_H__ */` |
+|    - |  150 |  |

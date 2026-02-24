@@ -428,9 +428,9 @@ Coverage: 3720/4367 lines (85.18%)
 |      - |  418 | `	}` |
 |      - |  419 | `	/* Convert to double now that we know it's numeric. */` |
 |     17 |  420 | `	x = ph7_value_to_double(apArg[0]);` |
-|      - |  421 | `	/* Handle domain error ourselves.  PHP returns NAN for \|x\|>1. */` |
+|      - |  421 | `	/* Handle domain error ourselves.  PHP returns NaN for \|x\|>1. */` |
 |     17 |  422 | `	if( x < -1.0 \|\| x > 1.0 ){` |
-|      5 |  423 | `		r = NAN;` |
+|      5 |  423 | `		r = PH7_NAN_VALUE();` |
 |      3 |  424 | `	}else{` |
 |     13 |  425 | `		r = acos(x);` |
 |      - |  426 | `	}` |
