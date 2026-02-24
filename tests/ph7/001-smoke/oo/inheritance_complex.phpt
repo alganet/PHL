@@ -62,4 +62,4 @@ Dog instanceof Animal: yes
 Cat instanceof Animal: yes
 --CLEAN--
 <?php
-unset($this, $dog, $cat);
+unset($dog, $cat);

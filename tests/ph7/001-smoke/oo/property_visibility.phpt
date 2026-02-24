@@ -83,4 +83,4 @@ Parent protected modified by child: modified_by_child
 Property visibility test completed (PHL enforces visibility with errors and empty returns)
 --CLEAN--
 <?php
-unset($this, $test, $child);
+unset($test, $child);

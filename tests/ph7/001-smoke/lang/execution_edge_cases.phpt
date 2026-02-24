@@ -72,7 +72,7 @@ $scope_result = test_scope();
 echo "Scope test: $global_var, $scope_result\n";
 
 // Test 6: Complex object operations
-class TestClass {
+class ExecutionEdgeCasesTestClass {
     public $property = "initial";
     private $private_prop = "private";
 
@@ -81,11 +81,11 @@ class TestClass {
     }
 
     public function __toString() {
-        return "TestClass: " . $this->property;
+        return "ExecutionEdgeCasesTestClass: " . $this->property;
     }
 }
 
-$obj = new TestClass();
+$obj = new ExecutionEdgeCasesTestClass();
 $obj->property = "modified";
 $method_result = $obj->method("test");
 echo "Object operations: $method_result\n";
@@ -138,4 +138,4 @@ Type juggling: 163.43
 Execution edge cases test completed
 --CLEAN--
 <?php
-unset($count, $value, $result, $exception_test, $fib_result, $global_var, $local_var, $ref_var, $scope_result, $obj, $method_result, $array, $refs, $func_name, $var_name, $$var_name, $code, $included_result, $int_val, $string_val, $bool_val, $float_val, $mixed_ops);
+unset($count, $value, $result, $exception_test, $fib_result, $global_var, $local_var, $ref_var, $scope_result, $obj, $method_result, $array, $refs, $func_name, $var_name, $code, $included_result, $int_val, $string_val, $bool_val, $float_val, $mixed_ops);

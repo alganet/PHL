@@ -12,4 +12,3 @@ acos("foo");
 --CLEAN--
 <?php
 
-?>

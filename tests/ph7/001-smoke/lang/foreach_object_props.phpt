@@ -5,11 +5,11 @@ SPDX-License-Identifier: BSD-3-Clause
 Foreach iteration on object properties
 --FILE--
 <?php
-class A {
+class ForeachObjectPropsA {
     public $a = 7;
     public $b = 9;
 }
-$o = new A();
+$o = new ForeachObjectPropsA();
 foreach($o as $k => $v){
     echo $k . ':' . $v . "\n";
 }

@@ -5,14 +5,12 @@ SPDX-License-Identifier: BSD-3-Clause
 is_null function
 --FILE--
 <?php
-var_dump(is_null(null));
-var_dump(is_null(0));
-var_dump(is_null(""));
+echo is_null(null) ? "TRUE" : "FALSE";
+echo is_null(0) ? "TRUE" : "FALSE";
+echo is_null("") ? "TRUE" : "FALSE";
 ?>
 --EXPECT--
-bool(TRUE)
-bool(FALSE)
-bool(FALSE)
+TRUEFALSEFALSE
 --CLEAN--
 <?php
 

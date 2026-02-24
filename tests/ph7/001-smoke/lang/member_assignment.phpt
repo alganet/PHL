@@ -5,10 +5,10 @@ SPDX-License-Identifier: BSD-3-Clause
 Member assignment
 --FILE--
 <?php
-class Test {
+class MemberAssignmentTest {
     public $prop;
 }
-$obj = new Test();
+$obj = new MemberAssignmentTest();
 $obj->prop = 'value';
 echo $obj->prop . "\n";
 ?>

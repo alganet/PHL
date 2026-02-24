@@ -5,12 +5,12 @@ SPDX-License-Identifier: BSD-3-Clause
 Object comparison functionality
 --FILE--
 <?php
-class TestClass {
+class ObjectCompareTestClass {
     public $attr = "value";
 }
 
-$obj1 = new TestClass();
-$obj2 = new TestClass();
+$obj1 = new ObjectCompareTestClass();
+$obj2 = new ObjectCompareTestClass();
 $obj3 = $obj1; // Same instance
 
 // Test identical objects

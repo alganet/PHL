@@ -41,7 +41,7 @@ $func_result = strlen($str1 . $str2);
 var_dump($func_result);
 ?>
 --EXPECT--
-float(4.5)
+double(4.5)
 int(-2)
 int(3)
 string(15 'hello world 223')

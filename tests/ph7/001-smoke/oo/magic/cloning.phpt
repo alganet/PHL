@@ -48,4 +48,4 @@ After modification - Original array: 999,2,3
 After modification - Clone array: 3,2,1
 --CLEAN--
 <?php
-unset($this, $original, $clone);
+unset($original, $clone);

@@ -51,4 +51,4 @@ class InvalidClass {
 Compile error
 --CLEAN--
 <?php
-unset($a, $arr, $result, $value, $$);
+unset($a, $arr, $result, $value);

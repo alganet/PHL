@@ -50,16 +50,20 @@ OBJECTS = \
 
 # --- Test commands ---
 TEST_SMOKE_CMD = "$(PHL_BIN)" "tests/phpt.php" \
-	--target-dir tests/ph7/001-smoke
+	--target-dir tests/ph7/001-smoke \
+	--output-format dot
 TEST_SMOKE_PHP_CMD = "$(PHP_BIN)" "tests/phpt.php" \
-	--target-dir tests/ph7/001-smoke
+	--target-dir tests/ph7/001-smoke \
+	--output-format dot
 
 TEST_INTEGRATION_CMD = "$(PHL_BIN)" "tests/phpt.php" \
 	--target-executable "$(PHL_BIN)" \
-	--target-dir tests/ph7/002-integration
-TEST_INTEGRATION_PHP_CMD = "$(PHP_BIN)" "tests/phpt.php" \
+	--target-dir tests/ph7/002-integration \
+	--output-format dot
+TEST_INTEGRATION_PHP_CMD = "$(PHL_BIN)" "tests/phpt.php" \
 	--target-executable "$(PHP_BIN)" \
-	--target-dir tests/ph7/002-integration
+	--target-dir tests/ph7/002-integration \
+	--output-format dot
 
 default: build
 
@@ -90,24 +94,24 @@ coverage-md: .ALWAYS $(PHL_BIN) $(BUILD_DIR)/coverage/markdown
 .ALWAYS:
 
 $(BUILD_DIR)-test-smoke: $(PHL_BIN)
-	@"$(PHL_BIN)" --version
+	"$(PHL_BIN)" --version
 	$(TEST_SMOKE_CMD) 
 
 $(BUILD_DIR)-test-smoke-compat: $(PHL_BIN)
-	@"$(PHP_BIN)" --version
-	@$(TEST_SMOKE_PHP_CMD) 
-	@"$(PHL_BIN)" --version
-	@$(TEST_SMOKE_CMD) 
+	"$(PHP_BIN)" --version
+	$(TEST_SMOKE_PHP_CMD)
+	"$(PHL_BIN)" --version
+	$(TEST_SMOKE_CMD)
 
 $(BUILD_DIR)-test-integration: $(PHL_BIN)
-	@"$(PHL_BIN)" --version
+	"$(PHL_BIN)" --version
 	$(TEST_INTEGRATION_CMD) 
 
 $(BUILD_DIR)-test-integration-compat: $(PHL_BIN)
-	@"$(PHP_BIN)" --version
-	@$(TEST_INTEGRATION_PHP_CMD) 
-	@"$(PHL_BIN)" --version
-	@$(TEST_INTEGRATION_CMD) 
+	"$(PHP_BIN)" --version
+	$(TEST_INTEGRATION_PHP_CMD) 
+	"$(PHL_BIN)" --version
+	$(TEST_INTEGRATION_CMD) 
 
 $(BUILD_DIR)/coverage/markdown:
 	@"$(PHL_BIN)" \

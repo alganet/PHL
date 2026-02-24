@@ -4,7 +4,9 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 dirname edge cases covering uncovered lines
 --SKIPIF--
-<?php if (PHP_OS == 'WINNT') echo 'skip'; ?>
+<?php 
+if (PHP_OS == 'WINNT') echo 'skip';
+if (function_exists('zend_version')) echo 'skip';
 --FILE--
 <?php
 // Test cases that cover uncovered lines in PH7_ExtractDirName

@@ -8,7 +8,7 @@ Object comparison edge cases and complex comparison logic
 // Test object comparison edge cases that exercise OO comparison logic
 // This covers various object comparison scenarios
 
-class TestClass {
+class ObjectComparisonTestClass {
     public $value;
     public $name;
 
@@ -27,9 +27,9 @@ class OtherClass {
 }
 
 // Test basic equality
-$obj1 = new TestClass(5, 'test');
-$obj2 = new TestClass(5, 'test');
-$obj3 = new TestClass(5, 'different');
+$obj1 = new ObjectComparisonTestClass(5, 'test');
+$obj2 = new ObjectComparisonTestClass(5, 'test');
+$obj3 = new ObjectComparisonTestClass(5, 'different');
 
 echo "Same values, same class: " . (($obj1 == $obj2) ? 'equal' : 'not equal') . "\n";
 echo "Same values, different names: " . (($obj1 == $obj3) ? 'equal' : 'not equal') . "\n";
@@ -43,17 +43,17 @@ $other = new OtherClass(5);
 echo "Different classes same value: " . (($obj1 == $other) ? 'equal' : 'not equal') . "\n";
 
 // Test with null values
-class NullTestClass {
+class NullObjectComparisonTestClass {
     public $val1 = null;
     public $val2 = null;
 }
 
-$null1 = new NullTestClass();
-$null2 = new NullTestClass();
+$null1 = new NullObjectComparisonTestClass();
+$null2 = new NullObjectComparisonTestClass();
 echo "Null values comparison: " . (($null1 == $null2) ? 'equal' : 'not equal') . "\n";
 
 // Test with arrays in objects
-class ArrayTestClass {
+class ArrayObjectComparisonTestClass {
     public $arr;
 
     public function __construct($arr) {
@@ -61,8 +61,8 @@ class ArrayTestClass {
     }
 }
 
-$arrObj1 = new ArrayTestClass(array(1, 2, 3));
-$arrObj2 = new ArrayTestClass(array(1, 2, 3));
+$arrObj1 = new ArrayObjectComparisonTestClass(array(1, 2, 3));
+$arrObj2 = new ArrayObjectComparisonTestClass(array(1, 2, 3));
 echo "Array comparison: " . (($arrObj1 == $arrObj2) ? 'equal' : 'not equal') . "\n";
 ?>
 --EXPECT--
@@ -75,4 +75,4 @@ Null values comparison: equal
 Array comparison: equal
 --CLEAN--
 <?php
-unset($this, $obj1, $obj2, $obj3, $other, $null1, $null2, $arrObj1, $arrObj2);
+unset($obj1, $obj2, $obj3, $other, $null1, $null2, $arrObj1, $arrObj2);

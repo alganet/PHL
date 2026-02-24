@@ -12,17 +12,17 @@ try {
 }
 
 try {
-  function foo() {
-    throw new Exception("in foo");
+  function exception_throw_and_catch_func() {
+    throw new Exception("in exception_throw_and_catch_func");
   }
-  foo();
+  exception_throw_and_catch_func();
 } catch (Exception $e) {
   echo "caught: " . $e->getMessage() . "\n";
 }
 ?>
 --EXPECT--
 caught: hello
-caught: in foo
+caught: in exception_throw_and_catch_func
 --CLEAN--
 <?php
 

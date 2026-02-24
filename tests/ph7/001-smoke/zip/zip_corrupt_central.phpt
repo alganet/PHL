@@ -6,9 +6,9 @@ Test open corrupted zip (bad local and central headers, no recovery)
 --SKIPIF--
 <?php
 /* Only run on PH7/PHL */
-if (function_exists('zend_version')) { die("skip: not PH7\n"); }
+if (function_exists('zend_version')) { print("skip: not PH7\n"); }
 if (!function_exists('zip_open')) {
-    die("skip zip_open not available\n");
+    print("skip zip_open not available\n");
 }
 ?>
 --FILE--

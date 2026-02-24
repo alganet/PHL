@@ -5,14 +5,14 @@ SPDX-License-Identifier: BSD-3-Clause
 Class instance iteration and attribute access
 --FILE--
 <?php
-class TestClass {
+class ClassInstanceWalkTest {
     public $public1 = 'pub1';
     public $public2 = 'pub2';
     protected $protected1 = 'prot1';
     private $private1 = 'priv1';
 }
 
-$obj = new TestClass();
+$obj = new ClassInstanceWalkTest();
 
 // Test iteration over object properties (exercises PH7_ClassInstanceWalk)
 $props = array();
@@ -40,7 +40,7 @@ Iteration worked: yes
 public1 exists: yes
 private1 exists: yes
 Dynamic access: pub2
-get_class: TestClass
+get_class: ClassInstanceWalkTest
 --CLEAN--
 <?php
 unset($obj, $props, $dynProp);

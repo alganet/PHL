@@ -8,7 +8,7 @@ Test embedded base64 zip using zip_open/zip_entry functions
 /* Skip on Zend PHP (this test targets the PH7/PHL zip implementation) */
 if (function_exists('zend_version')) { echo "skip: not PH7\n"; }
 if (!function_exists('zip_open')) {
-    die("skip zip_open not available\n");
+    print("skip zip_open not available\n");
 }
 ?>
 --FILE--

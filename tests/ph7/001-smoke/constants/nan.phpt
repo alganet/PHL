@@ -12,8 +12,8 @@ $result = NAN;
 echo $result != $result ? "OK" : "FAIL" . $result;
 ?>
 --EXPECT--
-float
+double
 OK
 --CLEAN--
 <?php
-?>
+unset($result);

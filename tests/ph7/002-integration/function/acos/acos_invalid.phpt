@@ -10,7 +10,6 @@ acos();
 ?>
 --EXPECTF--
 %s Fatal error:  Uncaught ArgumentCountError: acos() expects exactly 1 argument, %d given in %s
-
 --CLEAN--
 <?php
 

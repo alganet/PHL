@@ -9,8 +9,6 @@ abs();
 ?>
 --EXPECTF--
 %s Fatal error:  Uncaught ArgumentCountError: abs() expects exactly 1 argument, %d given in %s
-
 --CLEAN--
 <?php
 
-?>

@@ -14,5 +14,3 @@ throw new Exception("test exception");
 --CLEAN--
 <?php
 
-?>
-

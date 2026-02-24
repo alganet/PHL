@@ -11,7 +11,6 @@ addslashes(NULL);
 ?>
 --EXPECTF--
 %s Fatal error:  Uncaught TypeError: addslashes(): Argument #1 ($string) must be of type string, %s given in %s
-
 --CLEAN--
 <?php
 

@@ -18,10 +18,10 @@ $arr = array(1, 2, 3);
 echo "Array length: " . count($arr) . "\n";
 
 // Test function call
-function test_func($x, $y) {
+function expression_parsing_edge_cases_func($x, $y) {
     return $x + $y;
 }
-echo "Function call: " . test_func(3, 4) . "\n";
+echo "Function call: " . expression_parsing_edge_cases_func(3, 4) . "\n";
 
 // Test string concatenation
 $str1 = "Hello";
