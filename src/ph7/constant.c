@@ -4,7 +4,6 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "ph7int.h"
-#include <math.h> /* For NAN/INFINITY macros */
 /* This file implement built-in constants for the PH7 engine. */
 /*
  * PH7_VERSION
@@ -100,13 +99,15 @@ static void PH7_PATHSEP_Const(ph7_value *pVal,void *pUnused)
 #endif
 }
 
+#if defined(PH7_ENABLE_MATH_FUNC)
 /*
  * NAN constant: floating-point Not-A-Number
  */
 static void PH7_NAN_Const(ph7_value *pVal,void *pUnused)
 {
 	SXUNUSED(pUnused);
-	ph7_value_double(pVal,(double)NAN);
+	/* avoid the NAN macro (see https://github.com/ph7/phl/issues/...) */
+	ph7_value_double(pVal, PH7_NAN_VALUE());
 }
 
 /*
@@ -115,8 +116,10 @@ static void PH7_NAN_Const(ph7_value *pVal,void *pUnused)
 static void PH7_INF_Const(ph7_value *pVal,void *pUnused)
 {
 	SXUNUSED(pUnused);
-	ph7_value_double(pVal,(double)INFINITY);
+	/* similarly avoid the INFINITY macro */
+	ph7_value_double(pVal, PH7_INF_VALUE());
 }
+#endif /* PH7_ENABLE_MATH_FUNC */
 
 #ifndef __WINNT__
 #include <time.h>

@@ -13,7 +13,7 @@ CC = cl
 TARGET = x86_64-windows-msvc
 
 # Base flags shared by all modes
-BASE_CFLAGS = /nologo /I src /I src/sx /I src/ph7 /W4
+BASE_CFLAGS = /nologo /I src /I src/sx /I src/ph7 /W4 /WX
 
 # Per-mode CFLAGS (used by patterns.mk generated rules)
 full_CFLAGS = $(BASE_CFLAGS) /Ox $(full_DEFINES:-=/) $(full_EXTRA_CFLAGS) /Fd$(BUILD_DIR:/=\)\ph7.pdb
