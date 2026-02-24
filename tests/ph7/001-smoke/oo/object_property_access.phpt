@@ -5,13 +5,13 @@ SPDX-License-Identifier: BSD-3-Clause
 Object property access
 --FILE--
 <?php
-class TestClass {
+class ObjectPropertyAccessTestClass {
     public $publicProp = "public";
     private $privateProp = "private";
     protected $protectedProp = "protected";
 }
 
-$obj = new TestClass();
+$obj = new ObjectPropertyAccessTestClass();
 echo $obj->publicProp . "\n";
 echo "Object created successfully\n";
 ?>

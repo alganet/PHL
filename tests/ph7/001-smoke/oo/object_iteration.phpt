@@ -5,13 +5,13 @@ SPDX-License-Identifier: BSD-3-Clause
 Object property iteration
 --FILE--
 <?php
-class TestClass {
+class ObjectIterationTestClass {
     public $a = 1;
     public $b = 2;
     public $c = 3;
 }
 
-$obj = new TestClass();
+$obj = new ObjectIterationTestClass();
 $sum = 0;
 foreach ($obj as $key => $value) {
     $sum += $value;

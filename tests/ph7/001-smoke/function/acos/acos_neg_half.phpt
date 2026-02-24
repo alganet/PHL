@@ -18,4 +18,3 @@ OK
 --CLEAN--
 <?php
 unset($result, $two_pi_third);
-?>

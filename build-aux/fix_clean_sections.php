@@ -45,6 +45,14 @@ function lint_test_file($file) {
             if ($paren_pos !== false) {
                 $var_part = substr($var_part, 0, $paren_pos);
             }
+            // clean variable variables $$
+            if (substr($var_part, 0, 2) === '$$') {
+                $var_part = substr($var_part, 1);
+            }
+            // clean $this
+            if (substr($var_part, 0, 5) === '$this') {
+                continue;
+            }
             if (substr($var_part, 0, 1) === '$') {
                 $var_name = trim(substr($var_part, 1));
                 if ($var_name !== '') {

@@ -20,4 +20,4 @@ $b = clone $a;
 %s Error: Object clone limit reached,no more call to __clone()
 --CLEAN--
 <?php
-unset($this, $a, $b);
+unset($a, $b);

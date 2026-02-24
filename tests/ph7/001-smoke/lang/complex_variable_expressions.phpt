@@ -21,12 +21,12 @@ $result = ($a[0] + $$var) * 2;
 echo "Complex expression result: $result\n";
 
 // Test with function calls and variable variables
-function test_func() {
+function complex_variable_expressions_func() {
     return 'func_result';
 }
 
-$func_name = 'test_func';
-$call_func = 'test_func';
+$func_name = 'complex_variable_expressions_func';
+$call_func = 'complex_variable_expressions_func';
 echo "Function variable call: " . $call_func() . "\n";
 
 echo "Test completed successfully\n";
@@ -40,4 +40,4 @@ Function variable call: func_result
 Test completed successfully
 --CLEAN--
 <?php
-unset($a, ${'var'}, $${'var'}, $result, $func_name, $call_func);
+unset($a, ${'var'}, $result, $func_name, $call_func);

@@ -8,13 +8,13 @@ Class with method using float
 // Test class with method using float
 // Covers OO functionality (oo.c various lines)
 
-class Test {
+class ClassFloatTest {
     public function getPi() {
         return 3.14159;
     }
 }
 
-$o = new Test();
+$o = new ClassFloatTest();
 echo $o->getPi();
 ?>
 --EXPECT--

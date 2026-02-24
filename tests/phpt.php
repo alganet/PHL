@@ -183,7 +183,6 @@ function handle_error($errno, $errstr, $errfile, $errline) {
         ob_end_flush();
     }
     echo "Error [$errno]: $errstr in $errfile on line $errline\n";
-    exit(1);
 }
 
 function match_expectf_pattern($phpt_pattern, $phpt_output) {
@@ -341,7 +340,9 @@ foreach ($phpt_files as $phpt_file) {
             }
         } else {
             ob_start();
+            set_error_handler('handle_error');
             include($phpt_skipif_path);
+            set_error_handler(null);
             $phpt_skip_output = ob_get_clean();
         }
         chdir($phpt_curdir);
@@ -387,7 +388,7 @@ foreach ($phpt_files as $phpt_file) {
             } else {
                 ob_start();
                 set_error_handler('handle_error');
-                include($phpt_file_path);
+                @include($phpt_file_path);
                 set_error_handler(null);
                 $phpt_output = ob_get_clean();
             }

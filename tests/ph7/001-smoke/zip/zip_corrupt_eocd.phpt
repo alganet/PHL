@@ -7,10 +7,10 @@ Test open corrupted zip (bad end-of-central directory)
 <?php
 /* Only run on PH7/PHL (behavior differs on Zend PHP) */
 if (function_exists('zend_version')) {
-    die("skip: not PH7\n");
+    print("skip: not PH7\n");
 }
 if (!function_exists('zip_open')) {
-    die("skip zip_open not available\n");
+    print("skip zip_open not available\n");
 }
 ?>
 --FILE--

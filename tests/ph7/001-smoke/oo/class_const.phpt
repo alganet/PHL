@@ -5,8 +5,8 @@ SPDX-License-Identifier: BSD-3-Clause
 Class constant compilation
 --FILE--
 <?php
-class A { const C = 42; }
-echo A::C . "\n";
+class ClassConstTest { const C = 42; }
+echo ClassConstTest::C . "\n";
 ?>
 --EXPECT--
 42

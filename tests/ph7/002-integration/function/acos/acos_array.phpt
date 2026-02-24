@@ -12,4 +12,3 @@ acos(array(1));
 --CLEAN--
 <?php
 
-?>

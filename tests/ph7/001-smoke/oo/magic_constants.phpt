@@ -15,7 +15,7 @@ class BaseClass {
     }
 }
 
-class ChildClass extends BaseClass {
+class MagicChildClass extends BaseClass {
     public function getParentClassName() {
         return parent::class;
     }
@@ -29,7 +29,7 @@ class ChildClass extends BaseClass {
     }
 }
 
-class GrandChildClass extends ChildClass {
+class GrandMagicChildClass extends MagicChildClass {
 }
 
 echo "Testing ::class constant...\n";
@@ -41,23 +41,23 @@ echo "Base static::class: " . $base->getStaticClassName() . "\n";
 echo "BaseClass::class: " . BaseClass::class . "\n";
 
 // Test with child class
-$child = new ChildClass();
+$child = new MagicChildClass();
 echo "Child parent::class: " . $child->getParentClassName() . "\n";
 echo "Child self::class: " . $child->getSelfClassName() . "\n";
 echo "Child static::class: " . $child->getStaticClassName() . "\n";
-echo "ChildClass::class: " . ChildClass::class . "\n";
+echo "MagicChildClass::class: " . MagicChildClass::class . "\n";
 
 // Test static::class with inheritance
-$grand = new GrandChildClass();
+$grand = new GrandMagicChildClass();
 echo "GrandChild static::class (from Base): " . $grand->getStaticClassName() . "\n";
 echo "GrandChild self::class (from Child): " . $grand->getSelfClassName() . "\n";
-echo "GrandChildClass::class: " . GrandChildClass::class . "\n";
+echo "GrandMagicChildClass::class: " . GrandMagicChildClass::class . "\n";
 
 // Test with direct class reference (no instance)
 echo "Direct class reference tests:\n";
 echo "BaseClass::class = " . BaseClass::class . "\n";
-echo "ChildClass::class = " . ChildClass::class . "\n";
-echo "GrandChildClass::class = " . GrandChildClass::class . "\n";
+echo "MagicChildClass::class = " . MagicChildClass::class . "\n";
+echo "GrandMagicChildClass::class = " . GrandMagicChildClass::class . "\n";
 
 echo "::class constant test completed\n";
 ?>
@@ -67,16 +67,16 @@ Base self::class: BaseClass
 Base static::class: BaseClass
 BaseClass::class: BaseClass
 Child parent::class: BaseClass
-Child self::class: ChildClass
-Child static::class: ChildClass
-ChildClass::class: ChildClass
-GrandChild static::class (from Base): GrandChildClass
-GrandChild self::class (from Child): ChildClass
-GrandChildClass::class: GrandChildClass
+Child self::class: MagicChildClass
+Child static::class: MagicChildClass
+MagicChildClass::class: MagicChildClass
+GrandChild static::class (from Base): GrandMagicChildClass
+GrandChild self::class (from Child): MagicChildClass
+GrandMagicChildClass::class: GrandMagicChildClass
 Direct class reference tests:
 BaseClass::class = BaseClass
-ChildClass::class = ChildClass
-GrandChildClass::class = GrandChildClass
+MagicChildClass::class = MagicChildClass
+GrandMagicChildClass::class = GrandMagicChildClass
 ::class constant test completed
 --CLEAN--
 <?php

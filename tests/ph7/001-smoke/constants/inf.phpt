@@ -11,8 +11,8 @@ echo gettype(INF) . "\n";
 echo INF > 1 ? "OK" : "FAIL";
 ?>
 --EXPECT--
-float
+double
 OK
 --CLEAN--
 <?php
-?>
+

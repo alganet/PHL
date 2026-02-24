@@ -9,7 +9,6 @@ addslashes(array());
 ?>
 --EXPECTF--
 %s Fatal error:  Uncaught TypeError: addslashes(): Argument #1 ($string) must be of type string, array given in %s
-
 --CLEAN--
 <?php
 

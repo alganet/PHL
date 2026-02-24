@@ -12,5 +12,3 @@ echo abs(true) . "," . abs(false);
 --CLEAN--
 <?php
 
-?>
-

@@ -14,4 +14,3 @@ echo abs(NULL) . "\n";
 --CLEAN--
 <?php
 
-?>

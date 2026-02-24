@@ -5,11 +5,11 @@ SPDX-License-Identifier: BSD-3-Clause
 Object comparison of same instance with == operator
 --FILE--
 <?php
-class TestClass {
+class ObjectCompareSameInstanceClass {
     public $value = 10;
 }
 
-$obj = new TestClass();
+$obj = new ObjectCompareSameInstanceClass();
 
 // Compare object with itself using ==
 $self_equal = ($obj == $obj);

@@ -1246,7 +1246,7 @@ PH7_PRIVATE const char * PH7_MemObjTypeDump(ph7_value *pVal)
 	}else if( pVal->iFlags & MEMOBJ_INT ){
 		zType = "int";
 	}else if( pVal->iFlags & MEMOBJ_REAL ){
-		zType = "float";
+		zType = "double";
 	}else if( pVal->iFlags & MEMOBJ_STRING ){
 		zType = "string";
 	}else if( pVal->iFlags & MEMOBJ_BOOL ){

@@ -5,14 +5,14 @@ SPDX-License-Identifier: BSD-3-Clause
 Object property access and walk functionality
 --FILE--
 <?php
-class TestClass {
+class ObjectWalkTestClass {
     public $public_var = 'public_value';
     protected $protected_var = 'protected_value';
     private $private_var = 'private_value';
     public $another = 'another_value';
 }
 
-$obj = new TestClass();
+$obj = new ObjectWalkTestClass();
 
 // Access public properties (exercises ph7_object_fetch_attr)
 echo $obj->public_var . "\n";

@@ -5,11 +5,11 @@ SPDX-License-Identifier: BSD-3-Clause
 Class with complex attribute
 --FILE--
 <?php
-class TestClass {
+class ClassComplexAttributeTest {
     public $value = 25 << 1 + 3;
 }
 
-$instance = new TestClass();
+$instance = new ClassComplexAttributeTest();
 echo $instance->value;
 ?>
 --EXPECT--

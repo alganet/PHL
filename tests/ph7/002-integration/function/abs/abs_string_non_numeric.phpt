@@ -11,4 +11,3 @@ abs("abc");
 --CLEAN--
 <?php
 
-?>

@@ -14,8 +14,8 @@ Namespace separator operator testing (PHL compatible)
 echo "backslash in string: \\test\n";
 
 // Test class instantiation with our own simple class
-class TestClass {}
-$obj = new TestClass();
+class NamespaceSeparatorTestClass {}
+$obj = new NamespaceSeparatorTestClass();
 echo get_class($obj) . "\n";
 
 // Test other lexer features that might be uncovered
@@ -35,7 +35,7 @@ echo "Lexer test completed\n";
 ?>
 --EXPECT--
 backslash in string: \test
-TestClass
+NamespaceSeparatorTestClass
 Testing other lexer features:
 1
 7

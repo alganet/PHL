@@ -106,7 +106,6 @@ static void PH7_PATHSEP_Const(ph7_value *pVal,void *pUnused)
 static void PH7_NAN_Const(ph7_value *pVal,void *pUnused)
 {
 	SXUNUSED(pUnused);
-	/* avoid the NAN macro (see https://github.com/ph7/phl/issues/...) */
 	ph7_value_double(pVal, PH7_NAN_VALUE());
 }
 

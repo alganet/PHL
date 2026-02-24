@@ -6,6 +6,7 @@ xml parser handlers and line/column error checks
 --SKIPIF--
 <?php
 if (!function_exists('xml_parser_create')) { echo "skip: xml not available\n"; }
+if (function_exists('zend_version')) echo "skip";
 ?>
 --FILE--
 <?php

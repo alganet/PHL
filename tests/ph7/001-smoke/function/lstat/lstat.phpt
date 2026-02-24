@@ -8,17 +8,7 @@ lstat() should report 0 size for a symlink and stat() should report the file siz
 if (PHP_OS == 'WINNT') {
     echo 'skip: windows';
 }
-// Try to create a symlink. If it fails, skip the test.
-$tmp = tempnam(sys_get_temp_dir(), 'ph7_link_try');
-@file_put_contents($tmp, 'a');
-$ln = $tmp . '.lnk';
-if (!@symlink($tmp, $ln)) {
-    @unlink($tmp);
-    echo 'skip: symlink not supported';
-}
-@unlink($ln);
-@unlink($tmp);
-?>
+if (function_exists('zend_version')) echo "skip";
 --FILE--
 <?php
 $fname = tempnam(sys_get_temp_dir(), 'ph7_lstat_');

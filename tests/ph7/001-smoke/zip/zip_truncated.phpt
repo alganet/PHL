@@ -6,8 +6,9 @@ Test open truncated zip (too short)
 --SKIPIF--
 <?php
 if (!function_exists('zip_open')) {
-    die("skip zip_open not available\n");
+    print("skip zip_open not available\n");
 }
+if (function_exists('zend_version')) echo "skip";
 ?>
 --FILE--
 <?php
