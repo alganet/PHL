@@ -374,6 +374,13 @@ foreach ($phpt_files as $phpt_file) {
                 echo "not ok $phpt_count - $phpt_test_name # TODO no runner support\n";
             } else {
                 echo "F";
+                $phpt_failures[] = array(
+                    'count' => $phpt_count,
+                    'name' => $phpt_test_name,
+                    'error' => 'Unsupported phpt sections: ' . implode(', ', array_map('strtoupper', array_filter($phpt_not_implemented, function($section) use ($phpt_sections) {
+                        return isset($phpt_sections[$section]) && !empty(trim($phpt_sections[$section]));
+                    })))
+                );
             }
             $phpt_nimp++;
         } else {
@@ -487,6 +494,11 @@ if ($phpt_output_format == "tap") {
         echo "\nFailures\n";
         echo "--------\n";
         foreach ($phpt_failures as $failure) {
+            if (isset($failure['error'])) {
+                echo "\nnot ok " . $failure['count'] . " - " . $failure['name'] . "\n";
+                echo "# ERROR: " . $failure['error'] . "\n";
+                continue;
+            }
             echo "\nnot ok " . $failure['count'] . " - " . $failure['name'] . "\n";
             if (!empty($failure['expectedf'])) {
                 echo "# Expected pattern: '" . $failure['expectedf'] . "'\n";
