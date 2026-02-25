@@ -9,8 +9,6 @@ floor();
 ?>
 --EXPECTF--
 %s Fatal error:  Uncaught ArgumentCountError: floor() expects exactly 1 argument, %d given in %s
-
 --CLEAN--
 <?php
 
-?>

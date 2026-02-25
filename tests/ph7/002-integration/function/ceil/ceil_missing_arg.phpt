@@ -9,8 +9,6 @@ ceil();
 ?>
 --EXPECTF--
 %s Fatal error:  Uncaught ArgumentCountError: ceil() expects exactly 1 argument, %d given in %s
-
 --CLEAN--
 <?php
 
-?>

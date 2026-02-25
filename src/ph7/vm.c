@@ -964,6 +964,7 @@ static sxi32 VmEvalChunk(ph7_vm *pVm,ph7_context *pCtx,SyString *pChunk,int iFla
 	"class Error extends Exception { }"\
 	"class TypeError extends Error { }"\
 	"class ArgumentCountError extends TypeError { }"\
+	"class ValueError extends Error { }"\
 	"class ErrorException extends Exception { "\
 	"protected $severity;"\
 	"public function __construct(string $message = null,"\

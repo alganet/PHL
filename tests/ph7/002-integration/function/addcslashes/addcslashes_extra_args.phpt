@@ -12,4 +12,3 @@ addcslashes('a','b','c');
 --CLEAN--
 <?php
 
-

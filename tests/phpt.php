@@ -179,9 +179,6 @@ function find_files($phpt_dir, $phpt_extension, $phpt_filter = '') {
 }
 
 function handle_error($errno, $errstr, $errfile, $errline) {
-    if (ob_get_level() > 0) {
-        ob_end_flush();
-    }
     echo "Error [$errno]: $errstr in $errfile on line $errline\n";
 }
 

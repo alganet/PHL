@@ -31,4 +31,4 @@ lstat_size=%d
 <?php
 @unlink($sym);
 @unlink($fname);
-unset($tmp, $ln, $fname, $sym, $ok, $st, $l);
+unset($fname, $sym, $ok, $st, $l);
