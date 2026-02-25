@@ -24,19 +24,19 @@ Coverage: 228/253 lines (90.12%)
 |        - |   14 | `#include "sxtime.h"` |
 |        - |   15 | `#include "sxstr.h"` |
 |        - |   16 |  |
-|  7265498 |   17 | `PH7_PRIVATE sxu32 SyBinHash(const void *pSrc,sxu32 nLen)` |
+|  7265638 |   17 | `PH7_PRIVATE sxu32 SyBinHash(const void *pSrc,sxu32 nLen)` |
 |        2 |   18 |  |
-|  7265500 |   19 | `	register unsigned char *zIn = (unsigned char *)pSrc;` |
+|  7265640 |   19 | `	register unsigned char *zIn = (unsigned char *)pSrc;` |
 |        - |   20 | `	unsigned char *zEnd;` |
-|  7265500 |   21 | `	sxu32 nH = 5381;` |
-|  7265500 |   22 | `	zEnd = &zIn[nLen];` |
-| 11521680 |   23 | `	for(;;){` |
-| 23041954 |   24 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
-| 21456306 |   25 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
-| 19366442 |   26 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
-| 17244988 |   27 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+|  7265640 |   21 | `	sxu32 nH = 5381;` |
+|  7265640 |   22 | `	zEnd = &zIn[nLen];` |
+| 11521877 |   23 | `	for(;;){` |
+| 23042348 |   24 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+| 21456678 |   25 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+| 19366760 |   26 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+| 17245288 |   27 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
 |        2 |   28 | `	}` |
-|  7265500 |   29 | `	return nH;` |
+|  7265640 |   29 | `	return nH;` |
 |        2 |   30 |  |
 |    29756 |   31 | `PH7_PRIVATE sxu32 SyStrHash(const void *pSrc,sxu32 nLen)` |
 |        2 |   32 |  |
@@ -193,32 +193,32 @@ Coverage: 228/253 lines (90.12%)
 |     9208 |  183 | `	pStream->zText = pStream->zInput = (const unsigned char *)zInput;` |
 |        - |  184 | `	/* Point to the end of the input */` |
 |     9208 |  185 | `	pStream->zEnd = &pStream->zInput[nLen];` |
-|  1339950 |  186 | `	for(;;){` |
-|  2679902 |  187 | `		if( pStream->zText >= pStream->zEnd ){` |
+|  1340192 |  186 | `	for(;;){` |
+|  2680386 |  187 | `		if( pStream->zText >= pStream->zEnd ){` |
 |        - |  188 | `			/* End of the input reached */` |
 |     9182 |  189 | `			break;` |
 |        - |  190 | `		}` |
-|  2670722 |  191 | `		zCur = pStream->zText;` |
+|  2671206 |  191 | `		zCur = pStream->zText;` |
 |        - |  192 | `		/* Call the tokenizer callback */` |
-|  2670722 |  193 | `		rc = pLex->xTokenizer(pStream,&sToken,pLex->pUserData,pCtxData);` |
-|  2670722 |  194 | `		if( rc != SXRET_OK && rc != SXERR_CONTINUE ){` |
+|  2671206 |  193 | `		rc = pLex->xTokenizer(pStream,&sToken,pLex->pUserData,pCtxData);` |
+|  2671206 |  194 | `		if( rc != SXRET_OK && rc != SXERR_CONTINUE ){` |
 |        - |  195 | `			/* Tokenizer callback request an operation abort */` |
 |       28 |  196 | `			if( rc == SXERR_ABORT ){` |
 |       28 |  197 | `				return SXERR_ABORT;` |
 |        - |  198 | `			}` |
 |      ! 0 |  199 | `			break;` |
 |        - |  200 | `		}` |
-|  2670696 |  201 | `		if( rc == SXERR_CONTINUE ){` |
+|  2671180 |  201 | `		if( rc == SXERR_CONTINUE ){` |
 |        - |  202 | `			/* Request to ignore this token */` |
 |    34840 |  203 | `			pStream->nIgn++;` |
-|  2653277 |  204 | `		}else if( pLex->pTokenSet  ){` |
+|  2653761 |  204 | `		}else if( pLex->pTokenSet  ){` |
 |        - |  205 | `			/* Put the token in the set */` |
-|  2635858 |  206 | `			rc = SySetPut(pLex->pTokenSet,(const void *)&sToken);` |
-|  2635858 |  207 | `			if( rc != SXRET_OK ){` |
+|  2636342 |  206 | `			rc = SySetPut(pLex->pTokenSet,(const void *)&sToken);` |
+|  2636342 |  207 | `			if( rc != SXRET_OK ){` |
 |      ! 0 |  208 | `				break;` |
 |        - |  209 | `			}` |
-|  1317928 |  210 | `		}` |
-|  2670696 |  211 | `		if( zCur >= pStream->zText ){` |
+|  1318170 |  210 | `		}` |
+|  2671180 |  211 | `		if( zCur >= pStream->zText ){` |
 |        - |  212 | `			/* Automatic advance of the stream cursor */` |
 |      ! 0 |  213 | `			pStream->zText = &zCur[1];` |
 |      ! 0 |  214 | `		}` |

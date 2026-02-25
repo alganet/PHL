@@ -318,7 +318,7 @@ Coverage: 5220/7395 lines (70.59%)
 |        - |   308 | `/*` |
 |        - |   309 | ` * Initialize a VM function.` |
 |        - |   310 | ` */` |
-|    52688 |   311 | `PH7_PRIVATE sxi32 PH7_VmInitFuncState(` |
+|    52692 |   311 | `PH7_PRIVATE sxi32 PH7_VmInitFuncState(` |
 |        - |   312 | `	ph7_vm *pVm,        /* Target VM */` |
 |        - |   313 | `	ph7_vm_func *pFunc, /* Target Fucntion */` |
 |        - |   314 | `	const char *zName,  /* Function name */` |
@@ -328,22 +328,22 @@ Coverage: 5220/7395 lines (70.59%)
 |        - |   318 | `	)` |
 |        2 |   319 |  |
 |        - |   320 | `	/* Zero the structure */` |
-|    52690 |   321 | `	SyZero(pFunc,sizeof(ph7_vm_func));` |
+|    52694 |   321 | `	SyZero(pFunc,sizeof(ph7_vm_func));` |
 |        - |   322 | `	/* Initialize structure fields */` |
 |        - |   323 | `	/* Arguments container */` |
-|    52690 |   324 | `	SySetInit(&pFunc->aArgs,&pVm->sAllocator,sizeof(ph7_vm_func_arg));` |
+|    52694 |   324 | `	SySetInit(&pFunc->aArgs,&pVm->sAllocator,sizeof(ph7_vm_func_arg));` |
 |        - |   325 | `	/* Static variable container */` |
-|    52690 |   326 | `	SySetInit(&pFunc->aStatic,&pVm->sAllocator,sizeof(ph7_vm_func_static_var));` |
+|    52694 |   326 | `	SySetInit(&pFunc->aStatic,&pVm->sAllocator,sizeof(ph7_vm_func_static_var));` |
 |        - |   327 | `	/* Bytecode container */` |
-|    52690 |   328 | `	SySetInit(&pFunc->aByteCode,&pVm->sAllocator,sizeof(VmInstr));` |
+|    52694 |   328 | `	SySetInit(&pFunc->aByteCode,&pVm->sAllocator,sizeof(VmInstr));` |
 |        - |   329 | `    /* Preallocate some instruction slots */` |
-|    52690 |   330 | `	SySetAlloc(&pFunc->aByteCode,0x10);` |
+|    52694 |   330 | `	SySetAlloc(&pFunc->aByteCode,0x10);` |
 |        - |   331 | `	/* Closure environment */` |
-|    52690 |   332 | `	SySetInit(&pFunc->aClosureEnv,&pVm->sAllocator,sizeof(ph7_vm_func_closure_env));` |
-|    52690 |   333 | `	pFunc->iFlags = iFlags;` |
-|    52690 |   334 | `	pFunc->pUserData = pUserData;` |
-|    52690 |   335 | `	SyStringInitFromBuf(&pFunc->sName,zName,nByte);` |
-|    52690 |   336 | `	return SXRET_OK;` |
+|    52694 |   332 | `	SySetInit(&pFunc->aClosureEnv,&pVm->sAllocator,sizeof(ph7_vm_func_closure_env));` |
+|    52694 |   333 | `	pFunc->iFlags = iFlags;` |
+|    52694 |   334 | `	pFunc->pUserData = pUserData;` |
+|    52694 |   335 | `	SyStringInitFromBuf(&pFunc->sName,zName,nByte);` |
+|    52694 |   336 | `	return SXRET_OK;` |
 |        2 |   337 |  |
 |        - |   338 | `/*` |
 |        - |   339 | ` * Install a user defined function in the corresponding VM container.` |
@@ -404,7 +404,7 @@ Coverage: 5220/7395 lines (70.59%)
 |        - |   394 | `/*` |
 |        - |   395 | ` * Instruction builder interface.` |
 |        - |   396 | ` */` |
-|  1329512 |   397 | `PH7_PRIVATE sxi32 PH7_VmEmitInstr(` |
+|  1329784 |   397 | `PH7_PRIVATE sxi32 PH7_VmEmitInstr(` |
 |        - |   398 | `	ph7_vm *pVm,  /* Target VM */` |
 |        - |   399 | `	sxi32 iOp,    /* Operation to perform */` |
 |        - |   400 | `	sxi32 iP1,    /* First operand */` |
@@ -416,72 +416,72 @@ Coverage: 5220/7395 lines (70.59%)
 |        - |   406 | `	VmInstr sInstr;` |
 |        - |   407 | `	sxi32 rc;` |
 |        - |   408 | `	/* Fill the VM instruction */` |
-|  1329514 |   409 | `	sInstr.iOp = (sxu8)iOp;` |
-|  1329514 |   410 | `	sInstr.iP1 = iP1;` |
-|  1329514 |   411 | `	sInstr.iP2 = iP2;` |
-|  1329514 |   412 | `	sInstr.p3  = p3;` |
-|  1329514 |   413 | `	if( pIndex ){` |
+|  1329786 |   409 | `	sInstr.iOp = (sxu8)iOp;` |
+|  1329786 |   410 | `	sInstr.iP1 = iP1;` |
+|  1329786 |   411 | `	sInstr.iP2 = iP2;` |
+|  1329786 |   412 | `	sInstr.p3  = p3;` |
+|  1329786 |   413 | `	if( pIndex ){` |
 |        - |   414 | `		/* Instruction index in the bytecode array */` |
-|    79994 |   415 | `		*pIndex = SySetUsed(pVm->pByteContainer);` |
-|    39996 |   416 | `	}` |
+|    80006 |   415 | `		*pIndex = SySetUsed(pVm->pByteContainer);` |
+|    40002 |   416 | `	}` |
 |        - |   417 | `	/* Finally,record the instruction */` |
-|  1329514 |   418 | `	rc = SySetPut(pVm->pByteContainer,(const void *)&sInstr);` |
-|  1329514 |   419 | `	if( rc != SXRET_OK ){` |
+|  1329786 |   418 | `	rc = SySetPut(pVm->pByteContainer,(const void *)&sInstr);` |
+|  1329786 |   419 | `	if( rc != SXRET_OK ){` |
 |      ! 0 |   420 | `		PH7_GenCompileError(&pVm->sCodeGen,E_ERROR,1,"Fatal,Cannot emit instruction due to a memory failure");` |
 |        - |   421 | `		/* Fall throw */` |
 |      ! 0 |   422 | `	}` |
-|  1329514 |   423 | `	return rc;` |
+|  1329786 |   423 | `	return rc;` |
 |        2 |   424 |  |
 |        - |   425 | `/*` |
 |        - |   426 | ` * Swap the current bytecode container with the given one.` |
 |        - |   427 | ` */` |
-|   128196 |   428 | `PH7_PRIVATE sxi32 PH7_VmSetByteCodeContainer(ph7_vm *pVm,SySet *pContainer)` |
+|   128204 |   428 | `PH7_PRIVATE sxi32 PH7_VmSetByteCodeContainer(ph7_vm *pVm,SySet *pContainer)` |
 |        2 |   429 |  |
-|   128198 |   430 | `	if( pContainer == 0 ){` |
+|   128206 |   430 | `	if( pContainer == 0 ){` |
 |        - |   431 | `		/* Point to the default container */` |
 |      ! 0 |   432 | `		pVm->pByteContainer = &pVm->aByteCode;` |
 |      ! 0 |   433 | `	}else{` |
 |        - |   434 | `		/* Change container */` |
-|   128198 |   435 | `		pVm->pByteContainer = &(*pContainer);` |
+|   128206 |   435 | `		pVm->pByteContainer = &(*pContainer);` |
 |        - |   436 | `	}` |
-|   128198 |   437 | `	return SXRET_OK;` |
+|   128206 |   437 | `	return SXRET_OK;` |
 |        2 |   438 |  |
 |        - |   439 | `/*` |
 |        - |   440 | ` * Return the current bytecode container.` |
 |        - |   441 | ` */` |
-|    64098 |   442 | `PH7_PRIVATE SySet * PH7_VmGetByteCodeContainer(ph7_vm *pVm)` |
+|    64102 |   442 | `PH7_PRIVATE SySet * PH7_VmGetByteCodeContainer(ph7_vm *pVm)` |
 |        2 |   443 |  |
-|    64100 |   444 | `	return pVm->pByteContainer;` |
+|    64104 |   444 | `	return pVm->pByteContainer;` |
 |        2 |   445 |  |
 |        - |   446 | `/*` |
 |        - |   447 | ` * Extract the VM instruction rooted at nIndex.` |
 |        - |   448 | ` */` |
-|    78680 |   449 | `PH7_PRIVATE VmInstr * PH7_VmGetInstr(ph7_vm *pVm,sxu32 nIndex)` |
+|    78688 |   449 | `PH7_PRIVATE VmInstr * PH7_VmGetInstr(ph7_vm *pVm,sxu32 nIndex)` |
 |        2 |   450 |  |
 |        - |   451 | `	VmInstr *pInstr;` |
-|    78682 |   452 | `	pInstr = (VmInstr *)SySetAt(pVm->pByteContainer,nIndex);` |
-|    78682 |   453 | `	return pInstr;` |
+|    78690 |   452 | `	pInstr = (VmInstr *)SySetAt(pVm->pByteContainer,nIndex);` |
+|    78690 |   453 | `	return pInstr;` |
 |        2 |   454 |  |
 |        - |   455 | `/*` |
 |        - |   456 | ` * Return the total number of VM instructions recorded so far.` |
 |        - |   457 | ` */` |
-|   384710 |   458 | `PH7_PRIVATE sxu32 PH7_VmInstrLength(ph7_vm *pVm)` |
+|   384742 |   458 | `PH7_PRIVATE sxu32 PH7_VmInstrLength(ph7_vm *pVm)` |
 |        2 |   459 |  |
-|   384712 |   460 | `	return SySetUsed(pVm->pByteContainer);` |
+|   384744 |   460 | `	return SySetUsed(pVm->pByteContainer);` |
 |        2 |   461 |  |
 |        - |   462 | `/*` |
 |        - |   463 | ` * Pop the last VM instruction.` |
 |        - |   464 | ` */` |
-|    75302 |   465 | `PH7_PRIVATE VmInstr * PH7_VmPopInstr(ph7_vm *pVm)` |
+|    75306 |   465 | `PH7_PRIVATE VmInstr * PH7_VmPopInstr(ph7_vm *pVm)` |
 |        2 |   466 |  |
-|    75304 |   467 | `	return (VmInstr *)SySetPop(pVm->pByteContainer);` |
+|    75308 |   467 | `	return (VmInstr *)SySetPop(pVm->pByteContainer);` |
 |        2 |   468 |  |
 |        - |   469 | `/*` |
 |        - |   470 | ` * Peek the last VM instruction.` |
 |        - |   471 | ` */` |
-|   201420 |   472 | `PH7_PRIVATE VmInstr * PH7_VmPeekInstr(ph7_vm *pVm)` |
+|   201452 |   472 | `PH7_PRIVATE VmInstr * PH7_VmPeekInstr(ph7_vm *pVm)` |
 |        2 |   473 |  |
-|   201422 |   474 | `	return (VmInstr *)SySetPeek(pVm->pByteContainer);` |
+|   201454 |   474 | `	return (VmInstr *)SySetPeek(pVm->pByteContainer);` |
 |        2 |   475 |  |
 |     2700 |   476 | `PH7_PRIVATE VmInstr * PH7_VmPeekNextInstr(ph7_vm *pVm)` |
 |        2 |   477 |  |
@@ -878,25 +878,25 @@ Coverage: 5220/7395 lines (70.59%)
 |        - |   868 | ` * Reserve a constant memory object.` |
 |        - |   869 | ` * Return a pointer to the raw ph7_value on success. NULL on failure.` |
 |        - |   870 | ` */` |
-|   153154 |   871 | `PH7_PRIVATE ph7_value * PH7_ReserveConstObj(ph7_vm *pVm,sxu32 *pIndex)` |
+|   153194 |   871 | `PH7_PRIVATE ph7_value * PH7_ReserveConstObj(ph7_vm *pVm,sxu32 *pIndex)` |
 |        2 |   872 |  |
 |        - |   873 | `	ph7_value *pObj;` |
 |        - |   874 | `	sxi32 rc;` |
-|   153156 |   875 | `	if( pIndex ){` |
+|   153196 |   875 | `	if( pIndex ){` |
 |        - |   876 | `		/* Object index in the object table */` |
-|   149436 |   877 | `		*pIndex = SySetUsed(&pVm->aLitObj);` |
-|    74717 |   878 | `	}` |
+|   149476 |   877 | `		*pIndex = SySetUsed(&pVm->aLitObj);` |
+|    74737 |   878 | `	}` |
 |        - |   879 | `	/* Reserve a slot for the new object */` |
-|   153156 |   880 | `	rc = SySetPut(&pVm->aLitObj,(const void *)zDummy);` |
-|   153156 |   881 | `	if( rc != SXRET_OK ){` |
+|   153196 |   880 | `	rc = SySetPut(&pVm->aLitObj,(const void *)zDummy);` |
+|   153196 |   881 | `	if( rc != SXRET_OK ){` |
 |        - |   882 | `		/* If the supplied memory subsystem is so sick that we are unable to allocate` |
 |        - |   883 | `		 * a tiny chunk of memory, there is no much we can do here.` |
 |        - |   884 | `		 */` |
 |      ! 0 |   885 | `		return 0;` |
 |        - |   886 | `	}` |
-|   153156 |   887 | `	pObj = (ph7_value *)SySetPeek(&pVm->aLitObj);` |
-|   153156 |   888 | `	return pObj;` |
-|    76579 |   889 |  |
+|   153196 |   887 | `	pObj = (ph7_value *)SySetPeek(&pVm->aLitObj);` |
+|   153196 |   888 | `	return pObj;` |
+|    76599 |   889 |  |
 |        - |   890 | `/*` |
 |        - |   891 | ` * Reserve a memory object.` |
 |        - |   892 | ` * Return a pointer to the raw ph7_value on success. NULL on failure.` |
@@ -1417,9 +1417,9 @@ Coverage: 5220/7395 lines (70.59%)
 |      ! 0 |  1407 | `		return 0;` |
 |        - |  1408 | `	}` |
 |        - |  1409 | `	/* Initialize the operand stack */` |
-|  1250792 |  1410 | `	while( nInstr > 0 ){` |
-|  1231274 |  1411 | `		PH7_MemObjInit(&(*pVm),&pStack[nInstr - 1]);` |
-|  1231274 |  1412 | `		--nInstr;` |
+|  1250992 |  1410 | `	while( nInstr > 0 ){` |
+|  1231474 |  1411 | `		PH7_MemObjInit(&(*pVm),&pStack[nInstr - 1]);` |
+|  1231474 |  1412 | `		--nInstr;` |
 |        2 |  1413 | `	}` |
 |        - |  1414 | `	/* Ready for bytecode execution */` |
 |    19520 |  1415 | `	return pStack;` |
@@ -8555,11 +8555,11 @@ Coverage: 5220/7395 lines (70.59%)
 |        - |  8545 | ` * PH7 use it's own private PRNG which is based on the one` |
 |        - |  8546 | ` * used by te SQLite3 library.` |
 |        - |  8547 | ` */` |
-|     1055 |  8548 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
+|     1052 |  8548 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
 |        2 |  8549 |  |
 |        - |  8550 | `	sxu32 iNum;` |
-|     1057 |  8551 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
-|     1057 |  8552 | `	return iNum;` |
+|     1054 |  8551 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
+|     1054 |  8552 | `	return iNum;` |
 |        2 |  8553 |  |
 |        - |  8554 | `/*` |
 |        - |  8555 | ` * Generate a random string (English Alphabet) of length nLen.` |
