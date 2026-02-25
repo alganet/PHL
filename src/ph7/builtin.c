@@ -1697,15 +1697,44 @@ static int PH7_builtin_addcslashes(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zCur,*zIn,*zEnd,*zMask;
 	int nLen,nMask;
-	if( nArg < 1 ){
-		/* Nothing to process,retun NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	/* PHP enforces exactly two arguments. */
+	if( nArg != 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"addcslashes() expects exactly 2 arguments, %d given",
+			nArg
+			);
+	}
+	/* First argument must be a string-ish value.  NULL is treated as an
+	 * explicit type error (we mirror addslashes behavior). */
+	if( ph7_value_is_null(apArg[0]) ||
+	    ph7_value_is_array(apArg[0]) ||
+	    ph7_value_is_object(apArg[0]) ||
+	    ph7_value_is_resource(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"addcslashes(): Argument #1 ($string) must be of type string, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	/* Second argument must be a string.  NULL is explicitly rejected as a
+	 * TypeError (PHP only emits a deprecation).  Arrays/objects/resources
+	 * also trigger a TypeError. */
+	if( ph7_value_is_null(apArg[1]) ||
+	    ph7_value_is_array(apArg[1]) ||
+	    ph7_value_is_object(apArg[1]) ||
+	    ph7_value_is_resource(apArg[1]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"addcslashes(): Argument #2 ($characters) must be of type string, %s given",
+			ph7_type_name(apArg[1])
+			);
 	}
 	/* Extract the string to process */
 	zIn  = ph7_value_to_string(apArg[0],&nLen);
-	if( nLen < 1 || nArg < 2 ){
-		/* Return the string untouched */
+	/* NULL would never reach here due to the check above. */
+	if( nLen < 1 ){
+		/* Empty string returns itself. */
 		ph7_result_string(pCtx,zIn,nLen);
 		return PH7_OK;
 	}
@@ -1727,8 +1756,23 @@ static int PH7_builtin_addcslashes(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			ph7_result_string(pCtx,zCur,(int)(zIn-zCur));
 		}
 		if( zIn < zEnd ){
-			int c = zIn[0];
-			if( c > 126 || (c < 32 && (!SyisAlphaNum(c)/*EBCDIC*/ && !SyisSpace(c))) ){
+			/* Make sure we treat the byte as unsigned to avoid negative values
+			 * on platforms where char is signed. */
+			int c = (unsigned char)zIn[0];
+			/* Handle special C-like escapes for common control characters first.
+			 * PHP outputs "\n" "\r" "\t" "\v" "\f" when those chars are
+			 * in the mask. NUL is left to the octal conversion below. */
+			if( c == '\n' ){
+				ph7_result_string(pCtx,"\\n",2);
+			}else if( c == '\r' ){
+				ph7_result_string(pCtx,"\\r",2);
+			}else if( c == '\t' ){
+				ph7_result_string(pCtx,"\\t",2);
+			}else if( c == '\v' ){
+				ph7_result_string(pCtx,"\\v",2);
+			}else if( c == '\f' ){
+				ph7_result_string(pCtx,"\\f",2);
+			}else if( c > 126 || (c < 32 && (!SyisAlphaNum(c)/*EBCDIC*/ && !SyisSpace(c))) ){
 				/* Convert to octal */
 				ph7_result_string_format(pCtx,"\\%o",c);
 			}else{
