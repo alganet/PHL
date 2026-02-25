@@ -12,4 +12,3 @@ floor("foo");
 --CLEAN--
 <?php
 
-?>

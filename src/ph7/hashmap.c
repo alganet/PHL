@@ -735,8 +735,14 @@ static sxi32 HashmapInsertNode(ph7_hashmap *pMap,ph7_hashmap_node *pNode,int bPr
 		}
 	}else{
 		/* Blob key */
-		rc = HashmapInsertBlobKey(&(*pMap),SyBlobData(&pNode->xKey.sKey),
-			SyBlobLength(&pNode->xKey.sKey),pObj,0,FALSE);
+		if( !bPreserve ){
+			/* treat it like an automatically-indexed element, drop the
+			 * original string key entirely */
+			rc = HashmapInsert(&(*pMap),0,pObj);
+		}else{
+			rc = HashmapInsertBlobKey(&(*pMap),SyBlobData(&pNode->xKey.sKey),
+				SyBlobLength(&pNode->xKey.sKey),pObj,0,FALSE);
+		}
 	}
 	return rc;
 }
@@ -5096,10 +5102,21 @@ static int ph7_hashmap_chunk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	sxu32 nChunk;
 	sxu32 nSize;
 	sxu32 n;
-	if( nArg < 2 || !ph7_value_is_array(apArg[0]) ){
-		/* Invalid arguments,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	/* Argument count and types follow PHP semantics. */
+	if( nArg < 2 ){
+		/* fewer than required arguments -> ArgumentCountError */
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_chunk() expects at least 2 arguments, %d given",
+			nArg
+			);
+	}
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_chunk(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
 	}
 	/* Create a new array */
 	pArray = ph7_context_new_array(pCtx);
@@ -5109,11 +5126,54 @@ static int ph7_hashmap_chunk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Point to the internal representation of the input hashmap */
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
-	/* Extract the chunk size */
-	nSize = (sxu32)ph7_value_to_int(apArg[1]);
-	if( nSize < 1 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	/* Extract and validate the chunk size argument. */
+	/* Reject types that cannot be sensibly converted to an integer. */
+	if( ph7_value_is_array(apArg[1]) || ph7_value_is_object(apArg[1]) ||
+		ph7_value_is_resource(apArg[1]) || ph7_value_is_null(apArg[1]) ||
+		ph7_value_is_bool(apArg[1]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_chunk(): Argument #2 ($length) must be of type int, %s given",
+			ph7_type_name(apArg[1])
+			);
+	}
+	/* Strings that are non-numeric also produce a TypeError. */
+	if( ph7_value_is_string(apArg[1]) ){
+		int len;
+		sxu8 bReal = FALSE;
+		const char *zStr = ph7_value_to_string(apArg[1], &len);
+			if( SyStrIsNumeric(zStr, len, &bReal, 0) != SXRET_OK || bReal ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_chunk(): Argument #2 ($length) must be of type int, string given"
+				);
+		}
+	}
+	/* If the value is a float with a fractional component, refuse it.
+	 * PHP currently warns but may become an error in the future; we
+	 * enforce that policy now so PHL behaviour is strict. */
+	if( ph7_value_is_float(apArg[1]) ){
+		double d = ph7_value_to_double(apArg[1]);
+		sxi64 i = (sxi64)d;
+		if( d != (double)i ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_chunk(): Argument #2 ($length) must be of type int, float given"
+				);
+		}
+	}
+	/* Convert using ph7_value_to_int; now that float fractions are
+	 * eliminated, this will not produce a warning. */
+	{
+		sxi64 nSizeSigned = ph7_value_to_int(apArg[1]);
+		if( nSizeSigned < 1 ){
+			/* size <= 0 -> ValueError */
+			return PH7_VmThrowException(pCtx,
+				"ValueError",
+				"array_chunk(): Argument #2 ($length) must be greater than 0"
+				);
+		}
+		nSize = (sxu32)nSizeSigned;
 	}
 	if( nSize >= pMap->nEntry ){
 		/* Return the whole array */
@@ -5123,6 +5183,19 @@ static int ph7_hashmap_chunk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	bPreserve = 0;
 	if( nArg > 2 ){
+		/* The third argument has a bool type hint in PHP.  Values that
+		 * cannot be sensibly converted (arrays, objects, resources) are
+		 * rejected with a TypeError.  Scalars and null coerce to bool
+		 * normally, matching PHP behaviour. */
+		if( ph7_value_is_array(apArg[2]) ||
+			ph7_value_is_object(apArg[2]) ||
+			ph7_value_is_resource(apArg[2]) ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_chunk(): Argument #3 ($preserve_keys) must be of type bool, %s given",
+				ph7_type_name(apArg[2])
+				);
+		}
 		bPreserve = ph7_value_to_bool(apArg[2]);
 	}
 	/* Start processing */
@@ -5132,9 +5205,14 @@ static int ph7_hashmap_chunk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	n = pMap->nEntry;
 	for( ;; ){
 		if( n < 1 ){
-			if( nChunk > 0 ){
-				/* Insert the last chunk */
-				ph7_array_add_elem(pArray,0,pChunk); /* Will have it's own copy */
+			/* When the loop terminates we may still have a current chunk
+			 * that hasn't been added to the result array.  The previous
+			 * implementation only pushed it if nChunk>0 which dropped the
+			 * final chunk when the input size was an exact multiple of
+			 * the chunk length.  Always append the pending chunk if it
+			 * exists. */
+			if( pChunk ){
+				ph7_array_add_elem(pArray,0,pChunk); /* Will have its own copy */
 			}
 			break;
 		}

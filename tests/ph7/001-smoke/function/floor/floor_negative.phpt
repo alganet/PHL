@@ -13,4 +13,3 @@ floor=-3
 --CLEAN--
 <?php
 unset($val);
-?>

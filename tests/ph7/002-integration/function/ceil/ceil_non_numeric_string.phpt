@@ -10,8 +10,6 @@ ceil("foo");
 ?>
 --EXPECTF--
 %s Fatal error:  Uncaught TypeError: ceil(): Argument #1 ($num) must be of type int|float, string given in %s
-
 --CLEAN--
 <?php
 
-?>

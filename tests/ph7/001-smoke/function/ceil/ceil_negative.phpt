@@ -13,4 +13,3 @@ ceil=-2
 --CLEAN--
 <?php
 unset($val);
-?>
