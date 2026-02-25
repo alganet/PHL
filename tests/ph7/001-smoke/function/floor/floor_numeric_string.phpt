@@ -2,16 +2,15 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-ceil with no arguments
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+floor("2.9") should accept numeric strings and return 2
 --FILE--
 <?php
-$result = ceil();
-echo $result;
+$val = floor("2.9");
+echo "floor=" . (int)$val . "\n";
 ?>
 --EXPECT--
-0
+floor=2
 --CLEAN--
 <?php
-unset($result);
+unset($val);
+?>
