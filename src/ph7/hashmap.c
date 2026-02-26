@@ -4633,27 +4633,103 @@ static int ph7_hashmap_fill(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_value *pArray;
 	int i,nEntry;
-	if( nArg < 3 ){
-		/* Missing arguments,return NULL */
-		ph7_result_null(pCtx);
+
+	/* PHP enforces argument count and type checks. */
+	if( nArg != 3 ){
+		/* wrong number of arguments -> ArgumentCountError */
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_fill() expects exactly 3 arguments, %d given",
+			nArg
+			);
+	}
+
+	/* Argument #1: start index must be convertible to int. */
+	if( ph7_value_is_array(apArg[0]) || ph7_value_is_object(apArg[0]) ||
+		ph7_value_is_resource(apArg[0]) || ph7_value_is_null(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_fill(): Argument #1 ($start_index) must be of type int, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	if( ph7_value_is_string(apArg[0]) ){
+		int len;
+		sxu8 bReal = FALSE;
+		const char *zStr = ph7_value_to_string(apArg[0], &len);
+		if( SyStrIsNumeric(zStr, len, &bReal, 0) != SXRET_OK || bReal ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_fill(): Argument #1 ($start_index) must be of type int, string given"
+				);
+		}
+	}
+
+	/* Argument #2: count must be convertible to non-negative int. */
+	if( ph7_value_is_array(apArg[1]) || ph7_value_is_object(apArg[1]) ||
+		ph7_value_is_resource(apArg[1]) || ph7_value_is_null(apArg[1]) ||
+		ph7_value_is_bool(apArg[1]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_fill(): Argument #2 ($count) must be of type int, %s given",
+			ph7_type_name(apArg[1])
+			);
+	}
+	if( ph7_value_is_string(apArg[1]) ){
+		int len;
+		sxu8 bReal = FALSE;
+		const char *zStr = ph7_value_to_string(apArg[1], &len);
+		if( SyStrIsNumeric(zStr, len, &bReal, 0) != SXRET_OK || bReal ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_fill(): Argument #2 ($count) must be of type int, string given"
+				);
+		}
+	}
+	/* Floats with a fractional component are rejected like PHP warns.
+	 * We treat them as TypeError for stricter compliance. */
+	if( ph7_value_is_float(apArg[1]) ){
+		double d = ph7_value_to_double(apArg[1]);
+		sxi64 iv = (sxi64)d;
+		if( d != (double)iv ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_fill(): Argument #2 ($count) must be of type int, float given"
+				);
+		}
+	}
+
+	/* Total number of entries to insert */
+	nEntry = ph7_value_to_int(apArg[1]);
+	/* Reject negative counts with a ValueError like PHP. */
+	if( nEntry < 0 ){
+		return PH7_VmThrowException(pCtx,
+			"ValueError",
+			"array_fill(): Argument #2 ($count) must be greater than or equal to 0"
+			);
+	}
+
+	/* If zero elements were requested, return an empty array without allocating */
+	if( nEntry == 0 ){
+		ph7_result_value(pCtx, ph7_context_new_array(pCtx));
 		return PH7_OK;
 	}
+
 	/* Create a new array */
 	pArray = ph7_context_new_array(pCtx);
 	if( pArray == 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	/* Total number of entries to insert */
-	nEntry = ph7_value_to_int(apArg[1]);
-	/* Insert the first entry alone because it have it's own key */
-	ph7_array_add_intkey_elem(pArray,ph7_value_to_int(apArg[0]),apArg[2]);
+
+	/* Insert the first entry alone because it has its own key */
+	ph7_array_add_intkey_elem(pArray, ph7_value_to_int(apArg[0]), apArg[2]);
 	/* Repeat insertion of the desired value */
 	for( i = 1 ; i < nEntry ; i++ ){
-		ph7_array_add_elem(pArray,0/*Automatic index assign */,apArg[2]);
+		ph7_array_add_elem(pArray, 0/*Automatic index assign */, apArg[2]);
 	}
 	/* Return the filled array */
-	ph7_result_value(pCtx,pArray);
+	ph7_result_value(pCtx, pArray);
 	return PH7_OK;
 }
 /*
