@@ -5684,19 +5684,31 @@ static int ph7_hashmap_filter(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	sResult.nIdx = SXU32_HIGH; /* Mark as constant */
 	/* Perform the requested operation */
 	for( n = 0 ; n < pMap->nEntry ; n++ ){
-		/* Extract node value */
+		/* Extract node value (may be NULL if allocation failed) */
 		pValue = HashmapExtractNodeValue(pEntry);
-		if( nArg > 1 && pValue ){
-			/* Invoke the given callback */
+		if( pValue == 0 ){
+			/* Can happen if SySetAt() failed earlier; drop the entry. */
 			keep = FALSE;
-			rc = PH7_VmCallUserFunction(pMap->pVm,apArg[1],1,&pValue,&sResult);
-			if( rc == SXRET_OK ){
-				/* Perform a boolean cast */
-				keep = ph7_value_to_bool(&sResult);
+		}else if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){
+			/* A callback was supplied (and is not NULL). Only invoke it
+			 * if it is actually callable. Otherwise we simply drop the
+			 * element which matches the legacy behaviour where
+			 * PH7_VmCallUserFunction() would return SXERR_INVALID.
+			 */
+			keep = FALSE;
+			if( ph7_value_is_callable(apArg[1]) ){
+				rc = PH7_VmCallUserFunction(pMap->pVm,apArg[1],1,&pValue,&sResult);
+				if( rc == SXRET_OK ){
+					/* Perform a boolean cast */
+					keep = ph7_value_to_bool(&sResult);
+				}
+				PH7_MemObjRelease(&sResult);
 			}
-			PH7_MemObjRelease(&sResult);
 		}else{
-			/* No available callback,check for empty item */
+			/* No callback provided or callback explicitly NULL: use default
+			 * behaviour where "empty" values are removed. This also covers
+			 * the case where the callback argument is missing entirely.
+			 */
 			keep = !PH7_MemObjIsEmpty(pValue);
 		}
 		if( keep ){
