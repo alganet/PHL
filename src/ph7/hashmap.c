@@ -3714,10 +3714,32 @@ static int ph7_hashmap_diff(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	sxi32 rc;
 	sxu32 n;
 	int i;
-	if( nArg < 1 || !ph7_value_is_array(apArg[0]) ){
-		/* Missing arguments,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	/* Validate arguments to mimic PHP behaviour. Earlier versions simply
+	 * returned NULL when the caller passed invalid parameters which made
+	 * debugging difficult. */
+	if( nArg < 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_diff() expects at least 1 argument, %d given",
+			nArg
+			);
+	}
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_diff(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	for(i = 1 ; i < nArg ; i++){
+		if( !ph7_value_is_array(apArg[i]) ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_diff(): Argument #%d must be of type array, %s given",
+				i + 1,
+				ph7_type_name(apArg[i])
+				);
+		}
 	}
 	if( nArg == 1 ){
 		/* Return the first array since we cannot perform a diff */
@@ -3879,10 +3901,32 @@ static int ph7_hashmap_diff_assoc(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	sxi32 rc;
 	sxu32 n;
 	int i;
-	if( nArg < 1 || !ph7_value_is_array(apArg[0]) ){
-		/* Missing arguments,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	/* Ensure the argument list is valid, emitting the same errors PHP
+	 * would produce. This makes behaviour predictable and allows the
+	 * accompanying integration tests to pass. */
+	if( nArg < 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_diff_assoc() expects at least 1 argument, %d given",
+			nArg
+			);
+	}
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_diff_assoc(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	for(i = 1 ; i < nArg ; i++){
+		if( !ph7_value_is_array(apArg[i]) ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_diff_assoc(): Argument #%d must be of type array, %s given",
+				i + 1,
+				ph7_type_name(apArg[i])
+				);
+		}
 	}
 	if( nArg == 1 ){
 		/* Return the first array since we cannot perform a diff */
@@ -3902,15 +3946,14 @@ static int ph7_hashmap_diff_assoc(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	n = pSrc->nEntry;
 	pN1 = pN2 = 0;
 	for(;;){
+		int keep;
 		if( n < 1 ){
 			break;
 		}
+		/* assume the element should be kept until we find a match */
+		keep = 1;
 		for( i = 1 ; i < nArg ; i++ ){
-			if( !ph7_value_is_array(apArg[i])) {
-				/* ignore */
-				continue;
-			}
-			/* Point to the internal representation of the hashmap */
+			/* all arguments have been validated already, so cast directly */
 			pMap = (ph7_hashmap *)apArg[i]->x.pOther;
 			/* Perform a key lookup first */
 			if( pEntry->iType == HASHMAP_INT_NODE ){
@@ -3919,21 +3962,25 @@ static int ph7_hashmap_diff_assoc(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				rc = HashmapLookupBlobKey(pMap,SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey),&pN1);
 			}
 			if( rc != SXRET_OK ){
-				/* No such key,break immediately */
-				break;
+				/* this array does not contain the key, continue checking others */
+				continue;
 			}
-			/* Extract node value */
+			/* key exists; check that value stored in the matching node is equal */
 			pVal = HashmapExtractNodeValue(pEntry);
 			if( pVal ){
-				/* Perform the lookup */
-				rc = HashmapFindValue(pMap,pVal,&pN2,TRUE);
-				if( rc != SXRET_OK || pN1 != pN2 ){
-					/* Value does not exist */
-					break;
+				/* directly compare with value at pN1 rather than searching again */
+				ph7_value *pVal2 = HashmapExtractNodeValue(pN1);
+				if( pVal2 ){
+					sxi32 cmp = PH7_MemObjCmp(pVal, pVal2, TRUE, 0);
+					if( cmp == 0 ){
+						/* identical key+value found in one of the arrays => drop it */
+						keep = 0;
+						break;
+					}
 				}
 			}
 		}
-		if( i < nArg ){
+		if( keep ){
 			/* Perform the insertion */
 			HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);
 		}
@@ -3966,24 +4013,75 @@ static int ph7_hashmap_diff_assoc(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 static int ph7_hashmap_diff_uassoc(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_hashmap_node *pN1,*pN2,*pEntry;
+	ph7_hashmap_node *pEntry;
 	ph7_hashmap *pSrc,*pMap;
 	ph7_value *pCallback;
 	ph7_value *pArray;
-	ph7_value *pVal;
 	sxi32 rc;
 	sxu32 n;
 	int i;
 
-	if( nArg < 2 || !ph7_value_is_array(apArg[0]) ){
-		/* Missing/Invalid arguments,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	/* Argument validation mimicking PHP errors. */
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_diff_uassoc() expects at least 2 arguments, %d given",
+			nArg
+			);
 	}
-	/* Point to the callback */
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_diff_uassoc(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	/* Intermediate arguments (except last) must be arrays. Last argument is
+	 * expected to be a callback. */
+	for(i = 1 ; i < nArg - 1; i++){
+		if( !ph7_value_is_array(apArg[i]) ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_diff_uassoc(): Argument #%d must be of type array, %s given",
+				i + 1,
+				ph7_type_name(apArg[i])
+				);
+		}
+	}
+	/* Point to the callback value */
 	pCallback = apArg[nArg - 1];
+	if( !ph7_value_is_callable(pCallback) ){
+		/* Compose an error message that closely matches PHP output. When the
+		 * argument is an array of the wrong shape we include an extra clause.
+		 * If the value is neither array nor string, PHP says "no array or
+		 * string given" which we also reproduce. */
+		if( ph7_value_is_array(pCallback) ){
+			/* ARRAY CALLBACK must have exactly two members */
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_diff_uassoc(): Argument #%d must be a valid callback, array callback must have exactly two members",
+				nArg
+				);
+		}
+		if( !ph7_value_is_string(pCallback) ){
+			/* neither array nor string */
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_diff_uassoc(): Argument #%d must be a valid callback, no array or string given",
+				nArg
+				);
+		}
+		/* Fallback for string (non-callable) or other leftover cases */
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_diff_uassoc(): Argument #%d must be a valid callback, %s given",
+			nArg,
+			ph7_type_name(pCallback)
+			);
+	}
 	if( nArg == 2 ){
-		/* Return the first array since we cannot perform a diff */
+		/* If we only have the first array and the callback, just return the
+		 * input array. */
 		ph7_result_value(pCtx,apArg[0]);
 		return PH7_OK;
 	}
@@ -3998,40 +4096,77 @@ static int ph7_hashmap_diff_uassoc(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Perform the diff */
 	pEntry = pSrc->pFirst;
 	n = pSrc->nEntry;
-	pN1 = pN2 = 0; /* cc warning */
 	for(;;){
+		int keep;
 		if( n < 1 ){
 			break;
 		}
+		keep = 1;
 		for( i = 1 ; i < nArg - 1; i++ ){
-			if( !ph7_value_is_array(apArg[i])) {
-				/* ignore */
-				continue;
-			}
-			/* Point to the internal representation of the hashmap */
+			/* each of these must already be arrays thanks to earlier validation */
 			pMap = (ph7_hashmap *)apArg[i]->x.pOther;
-			/* Perform a key lookup first */
-			if( pEntry->iType == HASHMAP_INT_NODE ){
-				rc = HashmapLookupIntKey(pMap,pEntry->xKey.iKey,&pN1);
-			}else{
-				rc = HashmapLookupBlobKey(pMap,SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey),&pN1);
-			}
-			if( rc != SXRET_OK ){
-				/* No such key,break immediately */
-				break;
-			}
-			/* Extract node value */
-			pVal = HashmapExtractNodeValue(pEntry);
-			if( pVal ){
-				/* Invoke the user callback */
-				rc = HashmapFindValueByCallback(pMap,pVal,pCallback,&pN2);
-				if( rc != SXRET_OK || pN1 != pN2 ){
-					/* Value does not exist */
-					break;
+			/* we must compare keys via callback, not by direct lookup */
+			ph7_hashmap_node *pIt = pMap->pFirst;
+			while( pIt ){
+				/* build temporary key values for callback */
+				ph7_value key1, key2, result;
+				/* initialise only once using the appropriate helper */
+				if( pEntry->iType == HASHMAP_INT_NODE ){
+					PH7_MemObjInitFromInt(pMap->pVm,&key1,pEntry->xKey.iKey);
+				}else{
+					SyString sStr;
+					SyStringInitFromBuf(&sStr,
+						SyBlobData(&pEntry->xKey.sKey),
+						SyBlobLength(&pEntry->xKey.sKey));
+					PH7_MemObjInitFromString(pMap->pVm,&key1,&sStr);
 				}
+				if( pIt->iType == HASHMAP_INT_NODE ){
+					PH7_MemObjInitFromInt(pMap->pVm,&key2,pIt->xKey.iKey);
+				}else{
+					SyString sStr;
+					SyStringInitFromBuf(&sStr,
+						SyBlobData(&pIt->xKey.sKey),
+						SyBlobLength(&pIt->xKey.sKey));
+					PH7_MemObjInitFromString(pMap->pVm,&key2,&sStr);
+				}
+				PH7_MemObjInit(pMap->pVm,&result);
+				/* call user callback with (key1, key2) */
+				{
+					ph7_value *apK[2];
+					apK[0] = &key1;
+					apK[1] = &key2;
+					rc = PH7_VmCallUserFunction(pMap->pVm,pCallback,2,apK,&result);
+				}
+				if( rc == SXRET_OK ){
+					if( (result.iFlags & MEMOBJ_INT) == 0 ){
+						PH7_MemObjToInteger(&result);
+					}
+					if( result.x.iVal == 0 ){
+						/* keys considered equal by callback; now compare values */
+						ph7_value *pVal1 = HashmapExtractNodeValue(pEntry);
+						ph7_value *pVal2 = HashmapExtractNodeValue(pIt);
+						if( pVal1 && pVal2 ){
+							if( PH7_MemObjCmp(pVal1,pVal2,TRUE,0) == 0 ){
+								keep = 0;
+								PH7_MemObjRelease(&result);
+								/* release keys too before breaking */
+								PH7_MemObjRelease(&key1);
+								PH7_MemObjRelease(&key2);
+								break;
+							}
+						}
+					}
+				}
+				PH7_MemObjRelease(&result);
+				PH7_MemObjRelease(&key1);
+				PH7_MemObjRelease(&key2);
+				/* move to next node */
+				pIt = pIt->pPrev;
+				if( keep == 0 ) break;
 			}
+			if( keep == 0 ) break;
 		}
-		if( i < (nArg-1) ){
+		if( keep ){
 			/* Perform the insertion */
 			HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);
 		}
@@ -4066,10 +4201,32 @@ static int ph7_hashmap_diff_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	sxi32 rc;
 	sxu32 n;
 	int i;
-	if( nArg < 1 || !ph7_value_is_array(apArg[0]) ){
-		/* Missing arguments,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	/* Validate arguments to mirror PHP behaviour. Previously invalid inputs
+	 * would quietly return NULL which is inconsistent with other hashmap
+	 * helpers. */
+	if( nArg < 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_diff_key() expects at least 1 argument, %d given",
+			nArg
+			);
+	}
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_diff_key(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	for(i = 1 ; i < nArg ; i++){
+		if( !ph7_value_is_array(apArg[i]) ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_diff_key(): Argument #%d must be of type array, %s given",
+				i + 1,
+				ph7_type_name(apArg[i])
+				);
+		}
 	}
 	if( nArg == 1 ){
 		/* Return the first array since we cannot perform a diff */
