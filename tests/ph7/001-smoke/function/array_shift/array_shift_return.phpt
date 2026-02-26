@@ -10,3 +10,6 @@ echo array_shift($a) . PHP_EOL;
 ?>
 --EXPECT--
 first
+--CLEAN--
+<?php
+unset($a);

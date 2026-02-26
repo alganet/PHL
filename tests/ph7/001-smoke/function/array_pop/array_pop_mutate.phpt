@@ -11,3 +11,6 @@ echo implode(',', $a) . PHP_EOL;
 ?>
 --EXPECT--
 x,y
+--CLEAN--
+<?php
+unset($a);

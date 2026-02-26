@@ -10,3 +10,6 @@ array_shift($a);
 ?>
 --EXPECTF--
 %s Fatal error:  Uncaught TypeError: array_shift(): Argument #1 ($array) must be of type array, string given in %s
+--CLEAN--
+<?php
+unset($a);

@@ -9,3 +9,6 @@ array_shift();
 ?>
 --EXPECTF--
 %s Fatal error:  Uncaught ArgumentCountError: array_shift() expects exactly 1 argument, %d given in %s
+--CLEAN--
+<?php
+

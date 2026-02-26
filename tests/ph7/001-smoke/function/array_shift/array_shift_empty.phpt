@@ -11,3 +11,6 @@ echo (is_null($val) ? 'NULL' : $val) . PHP_EOL;
 ?>
 --EXPECT--
 NULL
+--CLEAN--
+<?php
+unset($b, $val);
