@@ -4540,24 +4540,40 @@ static int ph7_hashmap_combine(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_hashmap *pKey,*pValue;
 	ph7_value *pArray;
 	sxu32 n;
-	if( nArg < 2 ){
-		/* Missing arguments,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	/* PHP enforces argument count and type checks. */
+	if( nArg != 2 ){
+		/* wrong number of arguments -> ArgumentCountError */
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_combine() expects exactly 2 arguments, %d given",
+			nArg
+			);
 	}
-	/* Make sure we are dealing with a valid hashmap */
-	if( !ph7_value_is_array(apArg[0]) || !ph7_value_is_array(apArg[1]) ){
-		/* Invalid argument,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	/* Validate argument types individually so we can report the correct
+	 * argument index in the error message. */
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_combine(): Argument #1 ($keys) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	if( !ph7_value_is_array(apArg[1]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_combine(): Argument #2 ($values) must be of type array, %s given",
+			ph7_type_name(apArg[1])
+			);
 	}
 	/* Point to the internal representation of the input hashmaps */
 	pKey   = (ph7_hashmap *)apArg[0]->x.pOther;
 	pValue = (ph7_hashmap *)apArg[1]->x.pOther;
 	if( pKey->nEntry != pValue->nEntry ){
-		/* Array length differs,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+		/* Length mismatch -> ValueError */
+		return PH7_VmThrowException(pCtx,
+			"ValueError",
+			"array_combine(): Argument #1 ($keys) and argument #2 ($values) must have the same number of elements"
+			);
 	}
 	/* Create a new array */
 	pArray = ph7_context_new_array(pCtx);
@@ -4569,7 +4585,24 @@ static int ph7_hashmap_combine(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	pKe = pKey->pFirst;
 	pVe = pValue->pFirst;
 	for( n = 0 ; n < pKey->nEntry ; n++ ){
-		ph7_array_add_elem(pArray,HashmapExtractNodeValue(pKe),HashmapExtractNodeValue(pVe));
+		ph7_value *pKeyVal = HashmapExtractNodeValue(pKe);
+		ph7_value *pValVal = HashmapExtractNodeValue(pVe);
+		/* PHP treats floats used as keys in array_combine differently than
+		 * ordinary offset access: the float is stringified rather than
+		 * truncated.  To emulate this behavior we create a temporary copy of
+		 * the value when it is a float and convert the copy to string.  The
+		 * original array must not be mutated. */
+		ph7_value *pKeyCopy = pKeyVal;
+		if( ph7_value_is_float(pKeyVal) ){
+			ph7_value *pTmpKey = ph7_context_new_scalar(pCtx);
+			if( pTmpKey ){
+				PH7_MemObjStore(pKeyVal,pTmpKey);
+				/* Convert copy to string so it becomes "1.5" or "2" etc. */
+				PH7_MemObjToString(pTmpKey);
+				pKeyCopy = pTmpKey;
+			}
+		}
+		ph7_array_add_elem(pArray,pKeyCopy,pValVal);
 		/* Point to the next entry */
 		pKe = pKe->pPrev; /* Reverse link */
 		pVe = pVe->pPrev;
