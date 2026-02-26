@@ -10,3 +10,6 @@ echo array_pop($a) . PHP_EOL;
 ?>
 --EXPECT--
 z
+--CLEAN--
+<?php
+unset($a);

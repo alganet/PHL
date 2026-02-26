@@ -9,3 +9,6 @@ array_shift('foo');
 ?>
 --EXPECTF--
 %s Fatal error:  Uncaught Error: array_shift(): Argument #1 ($array) could not be passed by reference in %s
+--CLEAN--
+<?php
+

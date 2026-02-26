@@ -10,3 +10,6 @@ array_pop($a, 123);
 ?>
 --EXPECTF--
 %s Fatal error:  Uncaught ArgumentCountError: array_pop() expects exactly 1 argument, %d given in %s
+--CLEAN--
+<?php
+unset($a);
