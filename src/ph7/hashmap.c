@@ -2561,20 +2561,33 @@ static int ph7_hashmap_key_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)
 static int ph7_hashmap_pop(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_hashmap *pMap;
-	if( nArg < 1 ){
-		/* Missing arguments,return null */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	/* PHP requires exactly one argument and it must be passed by reference */
+	if( nArg != 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_pop() expects exactly 1 argument, %d given",
+			nArg
+			);
+	}
+	/* Passing a constant (including literals) or non-variable triggers the same
+	 * error message as official PHP. Check the index to detect constants. */
+	if( apArg[0]->nIdx == SXU32_HIGH ){
+		return PH7_VmThrowException(pCtx,
+			"Error",
+			"array_pop(): Argument #1 ($array) could not be passed by reference"
+			);
 	}
 	/* Make sure we are dealing with a valid hashmap */
 	if( !ph7_value_is_array(apArg[0]) ){
-		/* Invalid argument,return null */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_pop(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
 	}
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	if( pMap->nEntry < 1 ){
-		/* Noting to pop,return NULL */
+		/* Nothing to pop,return NULL */
 		ph7_result_null(pCtx);
 	}else{
 		ph7_hashmap_node *pLast = pMap->pLast;
@@ -2644,16 +2657,28 @@ static int ph7_hashmap_push(ph7_context *pCtx,int nArg,ph7_value **apArg)
 static int ph7_hashmap_shift(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_hashmap *pMap;
-	if( nArg < 1 ){
-		/* Missing arguments,return null */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	/* PHP requires exactly one argument and it must be passed by reference */
+	if( nArg != 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_shift() expects exactly 1 argument, %d given",
+			nArg
+			);
+	}
+	/* Detect constants or literals, which cannot be passed by reference. */
+	if( apArg[0]->nIdx == SXU32_HIGH ){
+		return PH7_VmThrowException(pCtx,
+			"Error",
+			"array_shift(): Argument #1 ($array) could not be passed by reference"
+			);
 	}
 	/* Make sure we are dealing with a valid hashmap */
 	if( !ph7_value_is_array(apArg[0]) ){
-		/* Invalid argument,return null */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_shift(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
 	}
 	/* Point to the internal representation of the hashmap */
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
