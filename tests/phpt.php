@@ -180,6 +180,7 @@ function find_files($phpt_dir, $phpt_extension, $phpt_filter = '') {
 
 function handle_error($errno, $errstr, $errfile, $errline) {
     echo "Error [$errno]: $errstr in $errfile on line $errline\n";
+    return true;
 }
 
 function match_expectf_pattern($phpt_pattern, $phpt_output) {

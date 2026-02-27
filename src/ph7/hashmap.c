@@ -5004,16 +5004,24 @@ static int ph7_hashmap_flip(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_value *pKey;
 	ph7_value sVal;
 	sxu32 n;
-	if( nArg < 1 ){
-		/* Missing arguments,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+
+	/* PHP requires exactly one argument */
+	if( nArg != 1 ){
+		/* Use ArgumentCountError like other array helpers */
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_flip() expects exactly 1 argument, %d given",
+			nArg
+			);
 	}
 	/* Make sure we are dealing with a valid hashmap */
 	if( !ph7_value_is_array(apArg[0]) ){
-		/* Invalid argument,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		/* Type mismatch -> TypeError */
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_flip(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
 	}
 	/* Point to the internal representation of the input hashmap */
 	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;
@@ -5026,23 +5034,35 @@ static int ph7_hashmap_flip(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Start processing */
 	pEntry = pSrc->pFirst;
 	for( n = 0 ; n < pSrc->nEntry ; n++ ){
-		/* Extract the node value */
+		/* Extract the node value (will become a key in the result) */
 		pKey = HashmapExtractNodeValue(pEntry);
-		if( pKey && (pKey->iFlags & MEMOBJ_NULL) == 0){
-			/* Prepare the value for insertion */
-			if( pEntry->iType == HASHMAP_INT_NODE ){
-				PH7_MemObjInitFromInt(pSrc->pVm,&sVal,pEntry->xKey.iKey);
+		if( pKey ){
+			/* NULL values are not valid keys either, PHP emits a warning */
+			if( pKey->iFlags & MEMOBJ_NULL ){
+				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
+					"array_flip(): Can only flip string and integer values, entry skipped"
+					);
+			}else if( (pKey->iFlags & MEMOBJ_INT) || (pKey->iFlags & MEMOBJ_STRING) ){
+				/* Prepare the value for insertion (original key) */
+				if( pEntry->iType == HASHMAP_INT_NODE ){
+					PH7_MemObjInitFromInt(pSrc->pVm,&sVal,pEntry->xKey.iKey);
+				}else{
+					SyString sStr;
+					SyStringInitFromBuf(&sStr,SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey));
+					PH7_MemObjInitFromString(pSrc->pVm,&sVal,&sStr);
+				}
+				/* Perform the insertion */
+				ph7_array_add_elem(pArray,pKey,&sVal);
+				/* Safely release the value because each inserted entry
+				 * has its own private copy of the value.
+				 */
+				PH7_MemObjRelease(&sVal);
 			}else{
-				SyString sStr;
-				SyStringInitFromBuf(&sStr,SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey));
-				PH7_MemObjInitFromString(pSrc->pVm,&sVal,&sStr);
+				/* Unsupported value type -> emit warning and skip the entry */
+				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
+					"array_flip(): Can only flip string and integer values, entry skipped"
+					);
 			}
-			/* Perform the insertion */
-			ph7_array_add_elem(pArray,pKey,&sVal);
-			/* Safely release the value because each inserted entry
-			 * have it's own private copy of the value.
-			 */
-			PH7_MemObjRelease(&sVal);
 		}
 		/* Point to the next entry */
 		pEntry = pEntry->pPrev; /* Reverse link */

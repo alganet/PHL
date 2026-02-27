@@ -2,18 +2,18 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-array_flip should swap keys and values; duplicates keep last key
+array_flip basic behaviour with duplicate values
 --FILE--
 <?php
 $a = array('a' => 'v1', 'b' => 'v2', 'c' => 'v1');
 $flip = array_flip($a);
-// v1 => 'c' (last), v2 => 'b'
-echo ($flip['v1'] === 'c' ? 'ok' : 'fail') . PHP_EOL;
-echo ($flip['v2'] === 'b' ? 'ok' : 'fail') . PHP_EOL;
+// the earlier and later v1 should leave the last key,
+// and v2 should map to 'b'.
+$ok = ($flip['v1'] === 'c' && $flip['v2'] === 'b');
+echo $ok ? "PASS" : "FAIL";
 ?>
 --EXPECT--
-ok
-ok
+PASS
 --CLEAN--
 <?php
-unset($a, $flip);
+unset($a, $flip, $ok);
