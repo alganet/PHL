@@ -4644,7 +4644,10 @@ static int ph7_hashmap_fill(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			);
 	}
 
-	/* Argument #1: start index must be convertible to int. */
+	/* Argument #1: start index must be convertible to int.  Accept booleans,
+	 * floats, and numeric strings (including those with decimal point) by
+	 * allowing them through the conversion.  Only arrays, objects, resources
+	 * and NULLs are rejected outright. */
 	if( ph7_value_is_array(apArg[0]) || ph7_value_is_object(apArg[0]) ||
 		ph7_value_is_resource(apArg[0]) || ph7_value_is_null(apArg[0]) ){
 		return PH7_VmThrowException(pCtx,
@@ -4657,18 +4660,26 @@ static int ph7_hashmap_fill(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		int len;
 		sxu8 bReal = FALSE;
 		const char *zStr = ph7_value_to_string(apArg[0], &len);
-		if( SyStrIsNumeric(zStr, len, &bReal, 0) != SXRET_OK || bReal ){
+		if( SyStrIsNumeric(zStr, len, &bReal, 0) != SXRET_OK ){
+			/* Non‑numeric string is an error. */
 			return PH7_VmThrowException(pCtx,
 				"TypeError",
 				"array_fill(): Argument #1 ($start_index) must be of type int, string given"
 				);
 		}
+		if( bReal ){
+			/* float-string -> deprecation warning */
+			ph7_context_throw_error_format(pCtx, E_DEPRECATED,
+				"Implicit conversion from float-string \"%s\" to int loses precision",
+				zStr
+				);
+		}
 	}
 
-	/* Argument #2: count must be convertible to non-negative int. */
+	/* Argument #2: count must be convertible to non-negative int.  Allow booleans,
+	 * floats and numeric strings; reject arrays, objects, resources and NULL. */
 	if( ph7_value_is_array(apArg[1]) || ph7_value_is_object(apArg[1]) ||
-		ph7_value_is_resource(apArg[1]) || ph7_value_is_null(apArg[1]) ||
-		ph7_value_is_bool(apArg[1]) ){
+		ph7_value_is_resource(apArg[1]) || ph7_value_is_null(apArg[1]) ){
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_fill(): Argument #2 ($count) must be of type int, %s given",
@@ -4679,22 +4690,23 @@ static int ph7_hashmap_fill(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		int len;
 		sxu8 bReal = FALSE;
 		const char *zStr = ph7_value_to_string(apArg[1], &len);
-		if( SyStrIsNumeric(zStr, len, &bReal, 0) != SXRET_OK || bReal ){
+		if( SyStrIsNumeric(zStr, len, &bReal, 0) != SXRET_OK ){
 			return PH7_VmThrowException(pCtx,
 				"TypeError",
 				"array_fill(): Argument #2 ($count) must be of type int, string given"
 				);
 		}
 	}
-	/* Floats with a fractional component are rejected like PHP warns.
-	 * We treat them as TypeError for stricter compliance. */
+	/* Note: booleans and floats (including fractional) are now accepted; they
+	 * will be converted by ph7_value_to_int below. */
 	if( ph7_value_is_float(apArg[1]) ){
 		double d = ph7_value_to_double(apArg[1]);
-		sxi64 iv = (sxi64)d;
-		if( d != (double)iv ){
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"array_fill(): Argument #2 ($count) must be of type int, float given"
+		/* avoid hiding outer 'i' (loop index) */
+		sxi64 i64 = (sxi64)d;
+		if( d != (double)i64 ){
+			ph7_context_throw_error_format(pCtx, E_DEPRECATED,
+				"Implicit conversion from float %g to int loses precision",
+				d
 				);
 		}
 	}
@@ -5448,28 +5460,37 @@ static int ph7_hashmap_chunk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			ph7_type_name(apArg[1])
 			);
 	}
-	/* Strings that are non-numeric also produce a TypeError. */
+	/* Strings that are non-numeric produce a TypeError.  Numeric
+	 * strings are permitted; however those representing floats lose
+	 * precision and PHP emits a deprecation warning. */
 	if( ph7_value_is_string(apArg[1]) ){
 		int len;
 		sxu8 bReal = FALSE;
 		const char *zStr = ph7_value_to_string(apArg[1], &len);
-			if( SyStrIsNumeric(zStr, len, &bReal, 0) != SXRET_OK || bReal ){
+		if( SyStrIsNumeric(zStr, len, &bReal, 0) != SXRET_OK ){
 			return PH7_VmThrowException(pCtx,
 				"TypeError",
 				"array_chunk(): Argument #2 ($length) must be of type int, string given"
 				);
 		}
+		if( bReal ){
+			/* float-string -> warn but allow */
+			ph7_context_throw_error_format(pCtx, E_DEPRECATED,
+				"Implicit conversion from float-string \"%s\" to int loses precision",
+				zStr
+				);
+		}
 	}
-	/* If the value is a float with a fractional component, refuse it.
-	 * PHP currently warns but may become an error in the future; we
-	 * enforce that policy now so PHL behaviour is strict. */
+	/* If the value is a float with a fractional component, emit a
+	 * deprecation warning but continue.  The following conversion occurs
+	 * later via ph7_value_to_int. */
 	if( ph7_value_is_float(apArg[1]) ){
 		double d = ph7_value_to_double(apArg[1]);
 		sxi64 i = (sxi64)d;
 		if( d != (double)i ){
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"array_chunk(): Argument #2 ($length) must be of type int, float given"
+			ph7_context_throw_error_format(pCtx, E_DEPRECATED,
+				"Implicit conversion from float %g to int loses precision",
+				d
 				);
 		}
 	}
@@ -5710,20 +5731,33 @@ static int ph7_hashmap_filter(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			/* Can happen if SySetAt() failed earlier; drop the entry. */
 			keep = FALSE;
 		}else if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){
-			/* A callback was supplied (and is not NULL). Only invoke it
-			 * if it is actually callable. Otherwise we simply drop the
-			 * element which matches the legacy behaviour where
-			 * PH7_VmCallUserFunction() would return SXERR_INVALID.
-			 */
-			keep = FALSE;
-			if( ph7_value_is_callable(apArg[1]) ){
-				rc = PH7_VmCallUserFunction(pMap->pVm,apArg[1],1,&pValue,&sResult);
-				if( rc == SXRET_OK ){
-					/* Perform a boolean cast */
-					keep = ph7_value_to_bool(&sResult);
+			/* Callback was supplied (not NULL).  PHP 8 throws a
+				* TypeError when the value is not callable or null; prior PH7
+				* silently dropped the element.  Emit similar message. */
+			if( !ph7_value_is_callable(apArg[1]) ){
+				if( ph7_value_is_string(apArg[1]) ){
+					int len;
+					const char *zName = ph7_value_to_string(apArg[1], &len);
+					return PH7_VmThrowException(pCtx,
+						"TypeError",
+						"array_filter(): Argument #2 ($callback) must be a valid callback or null, function \"%s\" not found or invalid function name",
+						zName
+						);
+				}else{
+					return PH7_VmThrowException(pCtx,
+						"TypeError",
+						"array_filter(): Argument #2 ($callback) must be a valid callback or null, %s given",
+						ph7_type_name(apArg[1])
+						);
 				}
-				PH7_MemObjRelease(&sResult);
 			}
+			keep = FALSE;
+			rc = PH7_VmCallUserFunction(pMap->pVm,apArg[1],1,&pValue,&sResult);
+			if( rc == SXRET_OK ){
+				/* Perform a boolean cast */
+				keep = ph7_value_to_bool(&sResult);
+			}
+			PH7_MemObjRelease(&sResult);
 		}else{
 			/* No callback provided or callback explicitly NULL: use default
 			 * behaviour where "empty" values are removed. This also covers

@@ -1604,15 +1604,14 @@ static int PH7_builtin_addslashes(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			nArg
 			);
 	}
-	/* Reject explicit NULL right away.  With the compiler fix above,
-	 * string literals (including the empty string) are represented as real
-	 * strings, so this check won’t fire for "" anymore. */
+	/* NULL is deprecated and treated as an empty string; other invalid
+	 * types still produce a TypeError. */
 	if( ph7_value_is_null(apArg[0]) ){
-		return PH7_VmThrowException(pCtx,
-			"TypeError",
-			"addslashes(): Argument #1 ($string) must be of type string, %s given",
-			ph7_type_name(apArg[0])
+		PH7_VmThrowError(pCtx->pVm,0,
+			E_DEPRECATED,
+			"addslashes(): Passing null to parameter #1 ($string) of type string is deprecated"
 			);
+		/* fall through so conversion below yields empty string */
 	}
 	/* Arrays, objects and resources should raise a TypeError like PHP */
 	if( ph7_value_is_array(apArg[0]) ||
@@ -1668,6 +1667,22 @@ static int cSlashCheckMask(int c,const char *zMask,int nLen)
 {
 	const char *zEnd = &zMask[nLen];
 	while( zMask < zEnd ){
+		/* Support range syntax A..Z where A and Z are literal bytes.  The
+		 * original PH7 implementation ignored ranges; tests rely on them so
+		 * provide a simple on-the-fly check here. */
+		if( zMask + 3 < zEnd && zMask[1] == '.' && zMask[2] == '.' ){
+			int lo = (unsigned char)zMask[0];
+			int hi = (unsigned char)zMask[3];
+			if( lo > hi ){
+				int tmp = lo; lo = hi; hi = tmp;
+			}
+			if( c >= lo && c <= hi ){
+				return 1;
+			}
+			/* consume the range specifier */
+			zMask += 4;
+			continue;
+		}
 		if( zMask[0] == c ){
 			/* Character present,return TRUE */
 			return 1;
@@ -1705,25 +1720,36 @@ static int PH7_builtin_addcslashes(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			nArg
 			);
 	}
-	/* First argument must be a string-ish value.  NULL is treated as an
-	 * explicit type error (we mirror addslashes behavior). */
-	if( ph7_value_is_null(apArg[0]) ||
-	    ph7_value_is_array(apArg[0]) ||
-	    ph7_value_is_object(apArg[0]) ||
-	    ph7_value_is_resource(apArg[0]) ){
+	/* First argument must be a string-ish value.  NULL is deprecated and
+	 * treated as the empty string (PHP 8.1). */
+	if( ph7_value_is_null(apArg[0]) ){
+		/* Emit deprecation only once, similar to PHP behaviour. */
+		PH7_VmThrowError(pCtx->pVm,0,/* iErr will be patched to 8192 below */
+			E_DEPRECATED,
+			"addcslashes(): Passing null to parameter #1 ($string) of type string is deprecated"
+			);
+		/* treat as empty string; fall through to conversion logic */
+	} else if( ph7_value_is_array(apArg[0]) ||
+	          ph7_value_is_object(apArg[0]) ||
+	          ph7_value_is_resource(apArg[0]) ){
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"addcslashes(): Argument #1 ($string) must be of type string, %s given",
 			ph7_type_name(apArg[0])
 			);
 	}
-	/* Second argument must be a string.  NULL is explicitly rejected as a
-	 * TypeError (PHP only emits a deprecation).  Arrays/objects/resources
-	 * also trigger a TypeError. */
-	if( ph7_value_is_null(apArg[1]) ||
-	    ph7_value_is_array(apArg[1]) ||
-	    ph7_value_is_object(apArg[1]) ||
-	    ph7_value_is_resource(apArg[1]) ){
+	/* Second argument must be a string.  NULL is deprecated and treated as
+	 * an empty mask per PHP semantics.  Arrays/objects/resources still
+	 * trigger a TypeError. */
+	if( ph7_value_is_null(apArg[1]) ){
+		PH7_VmThrowError(pCtx->pVm,0,
+			E_DEPRECATED,
+			"addcslashes(): Passing null to parameter #2 ($characters) of type string is deprecated"
+			);
+		/* allow through so it becomes empty string below */
+	} else if( ph7_value_is_array(apArg[1]) ||
+	          ph7_value_is_object(apArg[1]) ||
+	          ph7_value_is_resource(apArg[1]) ){
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"addcslashes(): Argument #2 ($characters) must be of type string, %s given",
@@ -1773,8 +1799,9 @@ static int PH7_builtin_addcslashes(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			}else if( c == '\f' ){
 				ph7_result_string(pCtx,"\\f",2);
 			}else if( c > 126 || (c < 32 && (!SyisAlphaNum(c)/*EBCDIC*/ && !SyisSpace(c))) ){
-				/* Convert to octal */
-				ph7_result_string_format(pCtx,"\\%o",c);
+				/* Convert to octal.  PHP always emits three-digit zero-padded
+				 * octal escapes (\001 not \1). */
+				ph7_result_string_format(pCtx,"\\%03o",c);
 			}else{
 				ph7_result_string_format(pCtx,"\\%c",c);
 			}

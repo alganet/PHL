@@ -2213,7 +2213,7 @@ static sxi32 VmCallErrorHandler(ph7_vm *pVm,SyBlob *pMsg)
  * Refer to the implementation of [ph7_context_throw_error()] for additional
  * information.
  */
-static sxi32 VmInvokeErrorHandler(ph7_vm *pVm, sxi32 iErr, const char *zMessage, SyString *pFile, sxi32 iLine)
+static sxi32 VmInvokeErrorHandler(ph7_vm *pVm, sxi32 iErr, const char *zMessage, sxi32 nLen, SyString *pFile, sxi32 iLine)
 {
 	if( ph7_value_is_callable(&pVm->aErrCB[1]) ){
 		ph7_value apArg[4];
@@ -2222,8 +2222,9 @@ static sxi32 VmInvokeErrorHandler(ph7_vm *pVm, sxi32 iErr, const char *zMessage,
 		SyString sErr;
 		/* Prepare arguments */
 		PH7_MemObjInitFromInt(pVm,&apArg[0],iErr);
-		SyStringInitFromBuf(&sErr,zMessage,SyStrlen(zMessage));
-		PH7_MemObjInitFromString(pVm,&apArg[1],&sErr);
+			/* use explicit message length to avoid reading past buffer */
+			SyStringInitFromBuf(&sErr,zMessage,nLen);
+			PH7_MemObjInitFromString(pVm,&apArg[1],&sErr);
 		if( pFile ){
 			SyStringInitFromBuf(&sErr,pFile->zString,pFile->nByte);
 			PH7_MemObjInitFromString(pVm,&apArg[2],&sErr);
@@ -2280,12 +2281,20 @@ PH7_PRIVATE sxi32 PH7_VmThrowError(
 		SyBlobAppend(pWorker,pFile->zString,pFile->nByte);
 		SyBlobAppend(pWorker,(const void *)" ",sizeof(char));
 	}
+	/* Default prefix is "Error:".  Only the built-in warning/notice
+	 * severities adjust the textual prefix.  Do not modify the raw error
+	 * code; user handlers rely on seeing the original value (e.g. 8192 for
+	 * E_DEPRECATED). */
 	zErr = "Error: ";
 	switch(iErr){
-	case PH7_CTX_WARNING: zErr = "Warning: "; break;
-	case PH7_CTX_NOTICE:  zErr = "Notice: ";  break;
+	case PH7_CTX_WARNING:
+		zErr = "Warning: ";
+		break;
+	case PH7_CTX_NOTICE:
+		zErr = "Notice: ";
+		break;
 	default:
-		iErr = PH7_CTX_ERR;
+		/* keep iErr unchanged */
 		break;
 	}
 	SyBlobAppend(pWorker,zErr,SyStrlen(zErr));
@@ -2295,8 +2304,8 @@ PH7_PRIVATE sxi32 PH7_VmThrowError(
 		SyBlobAppend(pWorker,"(): ",sizeof("(): ")-1);
 	}
 	SyBlobAppend(pWorker,zMessage,SyStrlen(zMessage));
-	/* Check for user error handler */
-	if( VmInvokeErrorHandler(pVm, iErr, zMessage, pFile, 0) ){
+	/* Check for user error handler.  compute length of C string */
+	if( VmInvokeErrorHandler(pVm, iErr, zMessage, (sxi32)SyStrlen(zMessage), pFile, 0) ){
 		rc = VmCallErrorHandler(&(*pVm),pWorker);
 	}
 	return rc;
@@ -2332,12 +2341,19 @@ static sxi32 VmThrowErrorAp(
 		SyBlobAppend(pWorker,pFile->zString,pFile->nByte);
 		SyBlobAppend(pWorker,(const void *)" ",sizeof(char));
 	}
+	/* Default prefix is "Error:".  Only WARNING/NOTICE use a special
+	 * prefix; leave other error codes untouched so the handler receives
+	 * the correct errno value. */
 	zErr = "Error: ";
 	switch(iErr){
-	case PH7_CTX_WARNING: zErr = "Warning: "; break;
-	case PH7_CTX_NOTICE:  zErr = "Notice: ";  break;
+	case PH7_CTX_WARNING:
+		zErr = "Warning: ";
+		break;
+	case PH7_CTX_NOTICE:
+		zErr = "Notice: ";
+		break;
 	default:
-		iErr = PH7_CTX_ERR;
+		/* do not change iErr */
 		break;
 	}
 	SyBlobAppend(pWorker,zErr,SyStrlen(zErr));
@@ -2350,7 +2366,7 @@ static sxi32 VmThrowErrorAp(
 	SyBlobInit(&sMsg, &pVm->sAllocator);
 	SyBlobFormatAp(&sMsg,zFormat,ap);
 	/* Check if a user error handler is installed */
-	if( VmInvokeErrorHandler(pVm, iErr, (const char *)SyBlobData(&sMsg), pFile, 0) ){
+	if( VmInvokeErrorHandler(pVm, iErr, (const char *)SyBlobData(&sMsg), (sxi32)SyBlobLength(&sMsg), pFile, 0) ){
 		/* No handler or handler returned TRUE, normal processing */
 		SyBlobAppend(pWorker,SyBlobData(&sMsg),SyBlobLength(&sMsg));
 		rc = VmCallErrorHandler(&(*pVm),pWorker);
