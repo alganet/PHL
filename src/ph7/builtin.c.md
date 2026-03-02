@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 3761/4411 lines (85.26%)
+Coverage: 3759/4411 lines (85.22%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -8420,23 +8420,23 @@ Coverage: 3761/4411 lines (85.26%)
 |      - | 8410 | ` * Return` |
 |      - | 8411 | ` *  An integer.` |
 |      - | 8412 | ` */` |
-|     40 | 8413 | `static int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     42 | 8413 | `static int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      2 | 8414 |  |
 |      - | 8415 | `	const char *zFormat;` |
-|     42 | 8416 | `	ph7_int64 iVal = 0;` |
+|     44 | 8416 | `	ph7_int64 iVal = 0;` |
 |      - | 8417 | `	int nLen;` |
 |      - | 8418 | `	Sytm sTm;` |
-|     42 | 8419 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|     44 | 8419 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
 |      - | 8420 | `		/* Missing/Invalid argument,return -1 */` |
 |      5 | 8421 | `		ph7_result_int(pCtx,-1);` |
 |      5 | 8422 | `		return PH7_OK;` |
 |      - | 8423 | `	}` |
-|     42 | 8424 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
-|     42 | 8425 | `	if( nLen < 1 ){` |
+|     40 | 8424 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
+|     40 | 8425 | `	if( nLen < 1 ){` |
 |      - | 8426 | `		/* Don't bother processing return -1*/` |
 |    ! 0 | 8427 | `		ph7_result_int(pCtx,-1);` |
 |    ! 0 | 8428 | `	}` |
-|     42 | 8429 | `	if( nArg < 2 ){` |
+|     40 | 8429 | `	if( nArg < 2 ){` |
 |      - | 8430 | `#ifdef __WINNT__` |
 |      - | 8431 | `		SYSTEMTIME sOS;` |
 |      2 | 8432 | `		GetSystemTime(&sOS);` |
@@ -8444,11 +8444,11 @@ Coverage: 3761/4411 lines (85.26%)
 |      - | 8434 | `#else` |
 |      - | 8435 | `		struct tm *pTm;` |
 |      - | 8436 | `		time_t t;` |
-|     30 | 8437 | `		time(&t);` |
-|     30 | 8438 | `		pTm = localtime(&t);` |
-|     30 | 8439 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
+|     28 | 8437 | `		time(&t);` |
+|     28 | 8438 | `		pTm = localtime(&t);` |
+|     28 | 8439 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
 |      - | 8440 | `#endif` |
-|     18 | 8441 | `	}else{` |
+|     16 | 8441 | `	}else{` |
 |      - | 8442 | `		/* Use the given timestamp */` |
 |      - | 8443 | `		time_t t;` |
 |      - | 8444 | `		struct tm *pTm;` |
@@ -8465,7 +8465,7 @@ Coverage: 3761/4411 lines (85.26%)
 |     11 | 8455 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
 |      - | 8456 | `	}` |
 |      - | 8457 | `	/* Perform the requested operation */` |
-|     42 | 8458 | `	switch(zFormat[0]){` |
+|     40 | 8458 | `	switch(zFormat[0]){` |
 |      2 | 8459 | `	case 'd':` |
 |      - | 8460 | `		/* Day of the month */` |
 |      5 | 8461 | `		iVal = sTm.tm_mday;` |
@@ -8508,12 +8508,12 @@ Coverage: 3761/4411 lines (85.26%)
 |      1 | 8498 | `	case 't':{` |
 |      - | 8499 | `		/*Days in current month*/` |
 |      - | 8500 | `		static const int aMonDays[] = {31,29,31,30,31,30,31,31,30,31,30,31 };` |
-|      5 | 8501 | `		int nDays = aMonDays[sTm.tm_mon % 12 ];` |
-|      5 | 8502 | `		if( sTm.tm_mon == 1 /* 'February' */ && !IS_LEAP_YEAR(sTm.tm_year) ){` |
-|      3 | 8503 | `			nDays = 28;` |
-|      1 | 8504 | `		}` |
-|      7 | 8505 | `		iVal = nDays;` |
-|      7 | 8506 | `		break;` |
+|      3 | 8501 | `		int nDays = aMonDays[sTm.tm_mon % 12 ];` |
+|      3 | 8502 | `		if( sTm.tm_mon == 1 /* 'February' */ && !IS_LEAP_YEAR(sTm.tm_year) ){` |
+|    ! 0 | 8503 | `			nDays = 28;` |
+|    ! 0 | 8504 | `		}` |
+|      3 | 8505 | `		iVal = nDays;` |
+|      3 | 8506 | `		break;` |
 |      - | 8507 | `			 }` |
 |      1 | 8508 | `	case 'U':` |
 |      - | 8509 | `		/*Seconds since the Unix Epoch*/` |
