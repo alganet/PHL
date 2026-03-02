@@ -261,30 +261,30 @@ Coverage: 820/944 lines (86.86%)
 |        - |  251 | ` * Note that the function take care of handling ambiguity [i.e: whether we are dealing with` |
 |        - |  252 | ` * a binary minus or unary minus.]` |
 |        - |  253 | ` */` |
-|   377364 |  254 | `PH7_PRIVATE const ph7_expr_op *  PH7_ExprExtractOperator(SyString *pStr,SyToken *pLast)` |
+|   369914 |  254 | `PH7_PRIVATE const ph7_expr_op *  PH7_ExprExtractOperator(SyString *pStr,SyToken *pLast)` |
 |        2 |  255 |  |
-|   377366 |  256 | `	sxu32 n = 0;` |
+|   369916 |  256 | `	sxu32 n = 0;` |
 |        - |  257 | `	sxi32 rc;` |
 |        - |  258 | `	/* Do a linear lookup on the operators table */` |
-|  5898850 |  259 | `	for(;;){` |
-| 11797702 |  260 | `		if( n >= SX_ARRAYSIZE(aOpTable) ){` |
+|  5785302 |  259 | `	for(;;){` |
+| 11570606 |  260 | `		if( n >= SX_ARRAYSIZE(aOpTable) ){` |
 |      ! 0 |  261 | `			break;` |
 |        - |  262 | `		}` |
-| 11797702 |  263 | `		if( SyisAlpha(aOpTable[n].sOp.zString[0]) ){` |
+| 11570606 |  263 | `		if( SyisAlpha(aOpTable[n].sOp.zString[0]) ){` |
 |        - |  264 | `			/* TICKET 1433-012: Alpha stream operators [i.e: and,or,xor,new...] */` |
-|  1485536 |  265 | `			rc = SyStringCmp(pStr,&aOpTable[n].sOp,SyStrnicmp);` |
-|   742769 |  266 | `		}else{` |
-| 10312168 |  267 | `			rc = SyStringCmp(pStr,&aOpTable[n].sOp,SyMemcmp);` |
+|  1456846 |  265 | `			rc = SyStringCmp(pStr,&aOpTable[n].sOp,SyStrnicmp);` |
+|   728424 |  266 | `		}else{` |
+| 10113762 |  267 | `			rc = SyStringCmp(pStr,&aOpTable[n].sOp,SyMemcmp);` |
 |        - |  268 | `		}` |
-| 11797702 |  269 | `		if( rc == 0 ){` |
-|   377810 |  270 | `			if( aOpTable[n].sOp.nByte != sizeof(char) \|\| (aOpTable[n].iOp != EXPR_OP_UMINUS && aOpTable[n].iOp != EXPR_OP_UPLUS) \|\| pLast == 0 ){` |
+| 11570606 |  269 | `		if( rc == 0 ){` |
+|   370360 |  270 | `			if( aOpTable[n].sOp.nByte != sizeof(char) \|\| (aOpTable[n].iOp != EXPR_OP_UMINUS && aOpTable[n].iOp != EXPR_OP_UPLUS) \|\| pLast == 0 ){` |
 |        - |  271 | `				/* There is no ambiguity here,simply return the first operator seen */` |
-|   377106 |  272 | `				return &aOpTable[n];` |
+|   369654 |  272 | `				return &aOpTable[n];` |
 |        - |  273 | `			}` |
 |        - |  274 | `			/* Handle ambiguity */` |
-|      706 |  275 | `			if( pLast->nType & (PH7_TK_LPAREN/*'('*/\|PH7_TK_OCB/*'{'*/\|PH7_TK_OSB/*'['*/\|PH7_TK_COLON/*:*/\|PH7_TK_COMMA/*,'*/) ){` |
+|      708 |  275 | `			if( pLast->nType & (PH7_TK_LPAREN/*'('*/\|PH7_TK_OCB/*'{'*/\|PH7_TK_OSB/*'['*/\|PH7_TK_COLON/*:*/\|PH7_TK_COMMA/*,'*/) ){` |
 |        - |  276 | `				/* Unary opertors have prcedence here over binary operators */` |
-|      150 |  277 | `				return &aOpTable[n];` |
+|      152 |  277 | `				return &aOpTable[n];` |
 |        - |  278 | `			}` |
 |      558 |  279 | `			if( pLast->nType & PH7_TK_OP ){` |
 |      122 |  280 | `				const ph7_expr_op *pOp = (const ph7_expr_op *)pLast->pUserData;` |
@@ -296,40 +296,40 @@ Coverage: 820/944 lines (86.86%)
 |        - |  286 |  |
 |        4 |  287 | `			}` |
 |      222 |  288 | `		}` |
-| 11420338 |  289 | `		++n; /* Next operator in the table */` |
+| 11200692 |  289 | `		++n; /* Next operator in the table */` |
 |        2 |  290 | `	}` |
 |        - |  291 | `	/* No such operator */` |
 |      ! 0 |  292 | `	return 0;` |
-|   188684 |  293 |  |
+|   184959 |  293 |  |
 |        - |  294 | `/*` |
 |        - |  295 | ` * Delimit a set of token stream.` |
 |        - |  296 | ` * This function take care of handling the nesting level and stops when it hit` |
 |        - |  297 | ` * the end of the input or the ending token is found and the nesting level is zero.` |
 |        - |  298 | ` */` |
-|   161362 |  299 | `PH7_PRIVATE void PH7_DelimitNestedTokens(SyToken *pIn,SyToken *pEnd,sxu32 nTokStart,sxu32 nTokEnd,SyToken **ppEnd)` |
+|   158016 |  299 | `PH7_PRIVATE void PH7_DelimitNestedTokens(SyToken *pIn,SyToken *pEnd,sxu32 nTokStart,sxu32 nTokEnd,SyToken **ppEnd)` |
 |        2 |  300 |  |
-|   161364 |  301 | `	SyToken *pCur = pIn;` |
-|   161364 |  302 | `	sxi32 iNest = 1;` |
-|   936620 |  303 | `	for(;;){` |
-|  1873242 |  304 | `		if( pCur >= pEnd ){` |
+|   158018 |  301 | `	SyToken *pCur = pIn;` |
+|   158018 |  302 | `	sxi32 iNest = 1;` |
+|   916959 |  303 | `	for(;;){` |
+|  1833920 |  304 | `		if( pCur >= pEnd ){` |
 |       90 |  305 | `			break;` |
 |        - |  306 | `		}` |
-|  1873154 |  307 | `		if( pCur->nType & nTokStart ){` |
+|  1833832 |  307 | `		if( pCur->nType & nTokStart ){` |
 |        - |  308 | `			/* Increment nesting level */` |
-|   106292 |  309 | `			iNest++;` |
-|  1820009 |  310 | `		}else if( pCur->nType & nTokEnd ){` |
+|   104066 |  309 | `			iNest++;` |
+|  1781800 |  310 | `		}else if( pCur->nType & nTokEnd ){` |
 |        - |  311 | `			/* Decrement nesting level */` |
-|   267566 |  312 | `			iNest--;` |
-|   267566 |  313 | `			if( iNest <= 0 ){` |
-|   161276 |  314 | `				break;` |
+|   261994 |  312 | `			iNest--;` |
+|   261994 |  313 | `			if( iNest <= 0 ){` |
+|   157930 |  314 | `				break;` |
 |        - |  315 | `			}` |
-|    53145 |  316 | `		}` |
+|    52032 |  316 | `		}` |
 |        - |  317 | `		/* Advance cursor */` |
-|  1711880 |  318 | `		pCur++;` |
+|  1675904 |  318 | `		pCur++;` |
 |        2 |  319 | `	}` |
 |        - |  320 | `	/* Point to the end of the chunk */` |
-|   161364 |  321 | `	*ppEnd = pCur;` |
-|   161364 |  322 |  |
+|   158018 |  321 | `	*ppEnd = pCur;` |
+|   158018 |  322 |  |
 |        - |  323 | `/*` |
 |        - |  324 | ` * Retrun TRUE if the given ID represent a language construct [i.e: print,echo..]. FALSE otherwise.` |
 |        - |  325 | ` * Note on reserved keywords.` |
@@ -339,76 +339,76 @@ Coverage: 820/944 lines (86.86%)
 |        - |  329 | ` *   constructs. You cannot use any of the following words as constants, class names, function` |
 |        - |  330 | ` *   or method names. Using them as variable names is generally OK, but could lead to confusion.` |
 |        - |  331 | ` */` |
-|    11868 |  332 | `PH7_PRIVATE int PH7_IsLangConstruct(sxu32 nKeyID,sxu8 bCheckFunc)` |
+|    11712 |  332 | `PH7_PRIVATE int PH7_IsLangConstruct(sxu32 nKeyID,sxu8 bCheckFunc)` |
 |        2 |  333 |  |
-|    17740 |  334 | `	if( nKeyID == PH7_TKWRD_ECHO \|\| nKeyID == PH7_TKWRD_PRINT \|\| nKeyID == PH7_TKWRD_INCLUDE` |
-|    11779 |  335 | `		\|\| nKeyID == PH7_TKWRD_INCONCE \|\| nKeyID == PH7_TKWRD_REQUIRE \|\| nKeyID == PH7_TKWRD_REQONCE` |
+|    17506 |  334 | `	if( nKeyID == PH7_TKWRD_ECHO \|\| nKeyID == PH7_TKWRD_PRINT \|\| nKeyID == PH7_TKWRD_INCLUDE` |
+|    11623 |  335 | `		\|\| nKeyID == PH7_TKWRD_INCONCE \|\| nKeyID == PH7_TKWRD_REQUIRE \|\| nKeyID == PH7_TKWRD_REQONCE` |
 |        - |  336 | `		){` |
 |      138 |  337 | `			return TRUE;` |
 |        - |  338 | `	}` |
-|    11734 |  339 | `	if( bCheckFunc ){` |
-|     1968 |  340 | `		if(  nKeyID == PH7_TKWRD_ISSET \|\| nKeyID == PH7_TKWRD_UNSET \|\| nKeyID == PH7_TKWRD_EVAL` |
+|    11578 |  339 | `	if( bCheckFunc ){` |
+|     1970 |  340 | `		if(  nKeyID == PH7_TKWRD_ISSET \|\| nKeyID == PH7_TKWRD_UNSET \|\| nKeyID == PH7_TKWRD_EVAL` |
 |       33 |  341 | `			\|\| nKeyID == PH7_TKWRD_EMPTY \|\| nKeyID == PH7_TKWRD_ARRAY \|\| nKeyID == PH7_TKWRD_LIST` |
 |       21 |  342 | `			\|\| /* TICKET 1433-012 */ nKeyID == PH7_TKWRD_NEW \|\| nKeyID == PH7_TKWRD_CLONE  ){` |
-|     1958 |  343 | `				return TRUE;` |
+|     1960 |  343 | `				return TRUE;` |
 |        - |  344 | `		}` |
 |        4 |  345 | `	}` |
 |        - |  346 | `	/* Not a language construct */` |
-|     9778 |  347 | `	return FALSE;` |
-|     5936 |  348 |  |
+|     9620 |  347 | `	return FALSE;` |
+|     5858 |  348 |  |
 |        - |  349 | `/*` |
 |        - |  350 | ` * Make sure we are dealing with a valid expression tree.` |
 |        - |  351 | ` * This function check for balanced parenthesis,braces,brackets and so on.` |
 |        - |  352 | ` * When errors,PH7 take care of generating the appropriate error message.` |
 |        - |  353 | ` * Return SXRET_OK on success. Any other return value indicates syntax error.` |
 |        - |  354 | ` */` |
-|   312560 |  355 | `static sxi32 ExprVerifyNodes(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nNode)` |
+|   306424 |  355 | `static sxi32 ExprVerifyNodes(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nNode)` |
 |        2 |  356 |  |
 |        - |  357 | `	sxi32 iParen,iSquare,iQuesty,iBraces;` |
 |        - |  358 | `	sxi32 i,rc;` |
 |        - |  359 |  |
-|   312562 |  360 | `	if( nNode > 0 && apNode[0]->pOp && (apNode[0]->pOp->iOp == EXPR_OP_ADD \|\| apNode[0]->pOp->iOp == EXPR_OP_SUB) ){` |
+|   306426 |  360 | `	if( nNode > 0 && apNode[0]->pOp && (apNode[0]->pOp->iOp == EXPR_OP_ADD \|\| apNode[0]->pOp->iOp == EXPR_OP_SUB) ){` |
 |        - |  361 | `		/* Fix and mark as an unary not binary plus/minus operator */` |
 |        7 |  362 | `		apNode[0]->pOp = PH7_ExprExtractOperator(&apNode[0]->pStart->sData,0);` |
 |        7 |  363 | `		apNode[0]->pStart->pUserData = (void *)apNode[0]->pOp;` |
 |        3 |  364 | `	}` |
-|   312562 |  365 | `	iParen = iSquare = iQuesty = iBraces = 0;` |
-|  1681044 |  366 | `	for( i = 0 ; i < nNode ; ++i ){` |
-|  1368514 |  367 | `		if( apNode[i]->pStart->nType & PH7_TK_LPAREN /*'('*/){` |
-|   141126 |  368 | `			if( i > 0 && ( apNode[i-1]->xCode == PH7_CompileVariable \|\| apNode[i-1]->xCode == PH7_CompileLiteral \|\|` |
-|     8232 |  369 | `				(apNode[i - 1]->pStart->nType & (PH7_TK_ID\|PH7_TK_KEYWORD\|PH7_TK_SSTR\|PH7_TK_DSTR\|PH7_TK_RPAREN/*')'*/\|PH7_TK_CSB/*']'*/\|PH7_TK_CCB/*'}'*/))) ){` |
+|   306426 |  365 | `	iParen = iSquare = iQuesty = iBraces = 0;` |
+|  1648150 |  366 | `	for( i = 0 ; i < nNode ; ++i ){` |
+|  1341756 |  367 | `		if( apNode[i]->pStart->nType & PH7_TK_LPAREN /*'('*/){` |
+|   138376 |  368 | `			if( i > 0 && ( apNode[i-1]->xCode == PH7_CompileVariable \|\| apNode[i-1]->xCode == PH7_CompileLiteral \|\|` |
+|     8072 |  369 | `				(apNode[i - 1]->pStart->nType & (PH7_TK_ID\|PH7_TK_KEYWORD\|PH7_TK_SSTR\|PH7_TK_DSTR\|PH7_TK_RPAREN/*')'*/\|PH7_TK_CSB/*']'*/\|PH7_TK_CCB/*'}'*/))) ){` |
 |        - |  370 | `					/* Ticket 1433-033: Take care to ignore alpha-stream [i.e: or,xor] operators followed by an opening parenthesis */` |
-|   128116 |  371 | `					if( (apNode[i - 1]->pStart->nType & PH7_TK_OP) == 0 ){` |
+|   125622 |  371 | `					if( (apNode[i - 1]->pStart->nType & PH7_TK_OP) == 0 ){` |
 |        - |  372 | `						/* We are dealing with a postfix [i.e: function call]  operator` |
 |        - |  373 | `						 * not a simple left parenthesis. Mark the node.` |
 |        - |  374 | `						 */` |
-|   128116 |  375 | `						apNode[i]->pStart->nType \|= PH7_TK_OP;` |
-|   128116 |  376 | `						apNode[i]->pStart->pUserData = (void *)&sFCallOp; /* Function call operator */` |
-|   128116 |  377 | `						apNode[i]->pOp = &sFCallOp;` |
-|    64057 |  378 | `					}` |
-|    64057 |  379 | `			}` |
-|   141126 |  380 | `			iParen++;` |
-|  1297952 |  381 | `		}else if( apNode[i]->pStart->nType & PH7_TK_RPAREN/*')*/){` |
-|   141122 |  382 | `			if( iParen <= 0 ){` |
+|   125622 |  375 | `						apNode[i]->pStart->nType \|= PH7_TK_OP;` |
+|   125622 |  376 | `						apNode[i]->pStart->pUserData = (void *)&sFCallOp; /* Function call operator */` |
+|   125622 |  377 | `						apNode[i]->pOp = &sFCallOp;` |
+|    62810 |  378 | `					}` |
+|    62810 |  379 | `			}` |
+|   138376 |  380 | `			iParen++;` |
+|  1272569 |  381 | `		}else if( apNode[i]->pStart->nType & PH7_TK_RPAREN/*')*/){` |
+|   138372 |  382 | `			if( iParen <= 0 ){` |
 |        9 |  383 | `				rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[i]->pStart->nLine,"Syntax error: Unexpected token ')'");` |
 |        9 |  384 | `				if( rc != SXERR_ABORT ){` |
 |        9 |  385 | `					rc = SXERR_SYNTAX;` |
 |        4 |  386 | `				}` |
 |        9 |  387 | `				return rc;` |
 |        - |  388 | `			}` |
-|   141114 |  389 | `			iParen--;` |
-|  1156826 |  390 | `		}else if( apNode[i]->pStart->nType & PH7_TK_OSB /*'['*/){` |
-|    35482 |  391 | `			iSquare++;` |
-|  1068530 |  392 | `		}else if (apNode[i]->pStart->nType & PH7_TK_CSB /*']'*/){` |
-|    35496 |  393 | `			if( iSquare <= 0 ){` |
+|   138364 |  389 | `			iParen--;` |
+|  1134193 |  390 | `		}else if( apNode[i]->pStart->nType & PH7_TK_OSB /*'['*/){` |
+|    34748 |  391 | `			iSquare++;` |
+|  1047639 |  392 | `		}else if (apNode[i]->pStart->nType & PH7_TK_CSB /*']'*/){` |
+|    34762 |  393 | `			if( iSquare <= 0 ){` |
 |        7 |  394 | `				rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[i]->pStart->nLine,"Syntax error: Unexpected token ']'");` |
 |        7 |  395 | `				if( rc != SXERR_ABORT ){` |
 |        7 |  396 | `					rc = SXERR_SYNTAX;` |
 |        3 |  397 | `				}` |
 |        7 |  398 | `				return rc;` |
 |        - |  399 | `			}` |
-|    35490 |  400 | `			iSquare--;` |
-|  1033040 |  401 | `		}else if( apNode[i]->pStart->nType & PH7_TK_OCB /*'{'*/){` |
+|    34756 |  400 | `			iSquare--;` |
+|  1012883 |  401 | `		}else if( apNode[i]->pStart->nType & PH7_TK_OCB /*'{'*/){` |
 |       14 |  402 | `			iBraces++;` |
 |       14 |  403 | `			if( i > 0 && ( apNode[i - 1]->xCode == PH7_CompileVariable \|\| (apNode[i - 1]->pStart->nType & PH7_TK_CSB/*]*/)) ){` |
 |        - |  404 | `				const ph7_expr_op *pOp,*pEnd;` |
@@ -455,7 +455,7 @@ Coverage: 820/944 lines (86.86%)
 |        5 |  445 | `				}` |
 |        - |  446 |  |
 |        7 |  447 | `			}` |
-|  1015290 |  448 | `		}else if (apNode[i]->pStart->nType & PH7_TK_CCB /*'}'*/){` |
+|   995500 |  448 | `		}else if (apNode[i]->pStart->nType & PH7_TK_CCB /*'}'*/){` |
 |       15 |  449 | `			if( iBraces <= 0 ){` |
 |       13 |  450 | `				rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[i]->pStart->nLine,"Syntax error: Unexpected token '}'");` |
 |       13 |  451 | `				if( rc != SXERR_ABORT ){` |
@@ -464,7 +464,7 @@ Coverage: 820/944 lines (86.86%)
 |       13 |  454 | `				return rc;` |
 |        - |  455 | `			}` |
 |        3 |  456 | `			iBraces--;` |
-|  1015271 |  457 | `		}else if ( apNode[i]->pStart->nType & PH7_TK_COLON ){` |
+|   995481 |  457 | `		}else if ( apNode[i]->pStart->nType & PH7_TK_COLON ){` |
 |     1542 |  458 | `			if( iQuesty <= 0 ){` |
 |        5 |  459 | `				rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[i]->pStart->nLine,"Syntax error: Unexpected token ':'");` |
 |        5 |  460 | `				if( rc != SXERR_ABORT ){` |
@@ -473,12 +473,12 @@ Coverage: 820/944 lines (86.86%)
 |        5 |  463 | `				return rc;` |
 |        - |  464 | `			}` |
 |     1538 |  465 | `			iQuesty--;` |
-|  1014498 |  466 | `		}else if( apNode[i]->pStart->nType & PH7_TK_OP ){` |
-|   296420 |  467 | `			const ph7_expr_op *pOp = (const ph7_expr_op *)apNode[i]->pOp;` |
-|   296420 |  468 | `			if( pOp->iOp == EXPR_OP_QUESTY ){` |
+|   994708 |  466 | `		}else if( apNode[i]->pStart->nType & PH7_TK_OP ){` |
+|   290632 |  467 | `			const ph7_expr_op *pOp = (const ph7_expr_op *)apNode[i]->pOp;` |
+|   290632 |  468 | `			if( pOp->iOp == EXPR_OP_QUESTY ){` |
 |     1540 |  469 | `				iQuesty++;` |
-|   295651 |  470 | `			}else if( i > 0 && (pOp->iOp == EXPR_OP_UMINUS \|\| pOp->iOp == EXPR_OP_UPLUS)){` |
-|      254 |  471 | `				if( apNode[i-1]->xCode == PH7_CompileVariable \|\| apNode[i-1]->xCode == PH7_CompileLiteral ){` |
+|   289863 |  470 | `			}else if( i > 0 && (pOp->iOp == EXPR_OP_UMINUS \|\| pOp->iOp == EXPR_OP_UPLUS)){` |
+|      256 |  471 | `				if( apNode[i-1]->xCode == PH7_CompileVariable \|\| apNode[i-1]->xCode == PH7_CompileLiteral ){` |
 |       11 |  472 | `					sxi32 iExprOp = EXPR_OP_SUB; /* Binary minus */` |
 |       11 |  473 | `					sxu32 n = 0;` |
 |       11 |  474 | `					if( pOp->iOp == EXPR_OP_UPLUS ){` |
@@ -496,42 +496,42 @@ Coverage: 820/944 lines (86.86%)
 |       11 |  486 | `					apNode[i]->pOp = pOp;` |
 |       11 |  487 | `					apNode[i]->pStart->pUserData = (void *)pOp;` |
 |        5 |  488 | `				}` |
-|      126 |  489 | `			}` |
-|   148209 |  490 | `		}` |
-|   684243 |  491 | `	}` |
-|   312532 |  492 | `	if( iParen != 0 \|\| iSquare != 0 \|\| iQuesty != 0 \|\| iBraces != 0){` |
+|      127 |  489 | `			}` |
+|   145315 |  490 | `		}` |
+|   670864 |  491 | `	}` |
+|   306396 |  492 | `	if( iParen != 0 \|\| iSquare != 0 \|\| iQuesty != 0 \|\| iBraces != 0){` |
 |       17 |  493 | `		rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[0]->pStart->nLine,"Syntax error,mismatched '(','[','{' or '?'");` |
 |       17 |  494 | `		if( rc != SXERR_ABORT ){` |
 |       17 |  495 | `			rc = SXERR_SYNTAX;` |
 |        8 |  496 | `		}` |
 |       17 |  497 | `		return rc;` |
 |        - |  498 | `	}` |
-|   312516 |  499 | `	return SXRET_OK;` |
-|   156282 |  500 |  |
+|   306380 |  499 | `	return SXRET_OK;` |
+|   153214 |  500 |  |
 |        - |  501 | `/*` |
 |        - |  502 | ` * Collect and assemble tokens holding a namespace path [i.e: namespace\to\const]` |
 |        - |  503 | ` * or a simple literal [i.e: PHP_EOL].` |
 |        - |  504 | ` */` |
-|   247718 |  505 | `static void ExprAssembleLiteral(SyToken **ppCur,SyToken *pEnd)` |
+|   242730 |  505 | `static void ExprAssembleLiteral(SyToken **ppCur,SyToken *pEnd)` |
 |        2 |  506 |  |
-|   247720 |  507 | `	SyToken *pIn = *ppCur;` |
+|   242732 |  507 | `	SyToken *pIn = *ppCur;` |
 |        - |  508 | `	/* Jump the first literal seen */` |
-|   247720 |  509 | `	if( (pIn->nType & PH7_TK_NSSEP) == 0 ){` |
-|   247718 |  510 | `		pIn++;` |
-|   123858 |  511 | `	}` |
-|   123864 |  512 | `	for(;;){` |
-|   247730 |  513 | `		if(pIn < pEnd && (pIn->nType & PH7_TK_NSSEP) ){` |
+|   242732 |  509 | `	if( (pIn->nType & PH7_TK_NSSEP) == 0 ){` |
+|   242730 |  510 | `		pIn++;` |
+|   121364 |  511 | `	}` |
+|   121370 |  512 | `	for(;;){` |
+|   242742 |  513 | `		if(pIn < pEnd && (pIn->nType & PH7_TK_NSSEP) ){` |
 |       11 |  514 | `			pIn++;` |
 |       11 |  515 | `			if(pIn < pEnd && (pIn->nType & (PH7_TK_ID\|PH7_TK_KEYWORD)) ){` |
 |       11 |  516 | `				pIn++;` |
 |        5 |  517 | `			}` |
 |        6 |  518 | `		}else{` |
-|   123861 |  519 | `			break;` |
+|   121367 |  519 | `			break;` |
 |        - |  520 | `		}` |
 |        1 |  521 | `	}` |
 |        - |  522 | `	/* Synchronize pointers */` |
-|   247720 |  523 | `	*ppCur = pIn;` |
-|   247720 |  524 |  |
+|   242732 |  523 | `	*ppCur = pIn;` |
+|   242732 |  524 |  |
 |        - |  525 | `/*` |
 |        - |  526 | ` * Collect and assemble tokens holding annonymous functions/closure body.` |
 |        - |  527 | ` * When errors,PH7 take care of generating the appropriate error message.` |
@@ -656,40 +656,40 @@ Coverage: 820/944 lines (86.86%)
 |        - |  646 | ` * quoted string, a heredoc/nowdoc,a literal [i.e: PHP_EOL],a namespace path` |
 |        - |  647 | ` * [i.e: namespaces\path\to..],a array/list [i.e: array(4,5,6)] and so on.` |
 |        - |  648 | ` */` |
-|  1368658 |  649 | `static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode)` |
+|  1341900 |  649 | `static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode)` |
 |        2 |  650 |  |
 |        - |  651 | `	ph7_expr_node *pNode;` |
 |        - |  652 | `	SyToken *pCur;` |
 |        - |  653 | `	sxi32 rc;` |
 |        - |  654 | `	/* Allocate a new node */` |
-|  1368660 |  655 | `	pNode = (ph7_expr_node *)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(ph7_expr_node));` |
-|  1368660 |  656 | `	if( pNode == 0 ){` |
+|  1341902 |  655 | `	pNode = (ph7_expr_node *)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(ph7_expr_node));` |
+|  1341902 |  656 | `	if( pNode == 0 ){` |
 |        - |  657 | `		/* If the supplied memory subsystem is so sick that we are unable to allocate` |
 |        - |  658 | `		 * a tiny chunk of memory, there is no much we can do here.` |
 |        - |  659 | `		 */` |
 |      ! 0 |  660 | `		return SXERR_MEM;` |
 |        - |  661 | `	}` |
 |        - |  662 | `	/* Zero the structure */` |
-|  1368660 |  663 | `	SyZero(pNode,sizeof(ph7_expr_node));` |
-|  1368660 |  664 | `	SySetInit(&pNode->aNodeArgs,&pGen->pVm->sAllocator,sizeof(ph7_expr_node **));` |
+|  1341902 |  663 | `	SyZero(pNode,sizeof(ph7_expr_node));` |
+|  1341902 |  664 | `	SySetInit(&pNode->aNodeArgs,&pGen->pVm->sAllocator,sizeof(ph7_expr_node **));` |
 |        - |  665 | `	/* Point to the head of the token stream */` |
-|  1368660 |  666 | `	pCur = pNode->pStart = pGen->pIn;` |
+|  1341902 |  666 | `	pCur = pNode->pStart = pGen->pIn;` |
 |        - |  667 | `	/* Start collecting tokens */` |
-|  1368660 |  668 | `	if( pCur->nType & PH7_TK_OP ){` |
+|  1341902 |  668 | `	if( pCur->nType & PH7_TK_OP ){` |
 |        - |  669 | `		/* Point to the instance that describe this operator */` |
-|   331938 |  670 | `		pNode->pOp = (const ph7_expr_op *)pCur->pUserData;` |
+|   325416 |  670 | `		pNode->pOp = (const ph7_expr_op *)pCur->pUserData;` |
 |        - |  671 | `		/* Advance the stream cursor */` |
-|   331938 |  672 | `		pCur++;` |
-|  1202692 |  673 | `	}else if( pCur->nType & PH7_TK_DOLLAR ){` |
+|   325416 |  672 | `		pCur++;` |
+|  1179195 |  673 | `	}else if( pCur->nType & PH7_TK_DOLLAR ){` |
 |        - |  674 | `		/* Isolate variable */` |
-|   749214 |  675 | `		while( pCur < pGen->pEnd && (pCur->nType & PH7_TK_DOLLAR) ){` |
-|   374614 |  676 | `			pCur++; /* Variable variable */` |
+|   734126 |  675 | `		while( pCur < pGen->pEnd && (pCur->nType & PH7_TK_DOLLAR) ){` |
+|   367070 |  676 | `			pCur++; /* Variable variable */` |
 |        2 |  677 | `		}` |
-|   374602 |  678 | `		if( pCur < pGen->pEnd ){` |
-|   374602 |  679 | `			if (pCur->nType & (PH7_TK_ID\|PH7_TK_KEYWORD) ){` |
+|   367058 |  678 | `		if( pCur < pGen->pEnd ){` |
+|   367058 |  679 | `			if (pCur->nType & (PH7_TK_ID\|PH7_TK_KEYWORD) ){` |
 |        - |  680 | `				/* Variable name */` |
-|   374574 |  681 | `				pCur++;` |
-|   187316 |  682 | `			}else if( pCur->nType & PH7_TK_OCB /* '{' */ ){` |
+|   367030 |  681 | `				pCur++;` |
+|   183544 |  682 | `			}else if( pCur->nType & PH7_TK_OCB /* '{' */ ){` |
 |       22 |  683 | `				pCur++;` |
 |        - |  684 | `				/* Dynamic variable name,Collect until the next non nested '}' */` |
 |       22 |  685 | `				PH7_DelimitNestedTokens(pCur,pGen->pEnd,PH7_TK_OCB, PH7_TK_CCB,&pCur);` |
@@ -704,23 +704,23 @@ Coverage: 820/944 lines (86.86%)
 |        5 |  694 | `					return rc;` |
 |        - |  695 | `				}` |
 |        8 |  696 | `			}` |
-|   187298 |  697 | `		}` |
-|   374598 |  698 | `		pNode->xCode = PH7_CompileVariable;` |
-|   849422 |  699 | `	 }else if( pCur->nType & PH7_TK_KEYWORD ){` |
-|    15530 |  700 | `		 sxu32 nKeyword = (sxu32)SX_PTR_TO_INT(pCur->pUserData);` |
-|    15530 |  701 | `		 if( nKeyword == PH7_TKWRD_ARRAY \|\|  nKeyword == PH7_TKWRD_LIST ){` |
+|   183526 |  697 | `		}` |
+|   367054 |  698 | `		pNode->xCode = PH7_CompileVariable;` |
+|   832958 |  699 | `	 }else if( pCur->nType & PH7_TK_KEYWORD ){` |
+|    15276 |  700 | `		 sxu32 nKeyword = (sxu32)SX_PTR_TO_INT(pCur->pUserData);` |
+|    15276 |  701 | `		 if( nKeyword == PH7_TKWRD_ARRAY \|\|  nKeyword == PH7_TKWRD_LIST ){` |
 |        - |  702 | `			 /* List/Array node */` |
-|     5584 |  703 | `			 if( &pCur[1] >= pGen->pEnd \|\| (pCur[1].nType & PH7_TK_LPAREN) == 0 ){` |
+|     5488 |  703 | `			 if( &pCur[1] >= pGen->pEnd \|\| (pCur[1].nType & PH7_TK_LPAREN) == 0 ){` |
 |        - |  704 | `				 /* Assume a literal */` |
 |       17 |  705 | `				 ExprAssembleLiteral(&pCur,pGen->pEnd);` |
 |       17 |  706 | `				 pNode->xCode = PH7_CompileLiteral;` |
 |        9 |  707 | `			 }else{` |
-|     5568 |  708 | `				 pCur += 2;` |
+|     5472 |  708 | `				 pCur += 2;` |
 |        - |  709 | `				 /* Collect array/list tokens */` |
-|     5568 |  710 | `				 PH7_DelimitNestedTokens(pCur,pGen->pEnd,PH7_TK_LPAREN /* '(' */, PH7_TK_RPAREN /* ')' */,&pCur);` |
-|     5568 |  711 | `				 if( pCur < pGen->pEnd ){` |
-|     5566 |  712 | `					 pCur++;` |
-|     2784 |  713 | `				 }else{` |
+|     5472 |  710 | `				 PH7_DelimitNestedTokens(pCur,pGen->pEnd,PH7_TK_LPAREN /* '(' */, PH7_TK_RPAREN /* ')' */,&pCur);` |
+|     5472 |  711 | `				 if( pCur < pGen->pEnd ){` |
+|     5470 |  712 | `					 pCur++;` |
+|     2736 |  713 | `				 }else{` |
 |        - |  714 | `					 /* Syntax error */` |
 |        4 |  715 | `					 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,` |
 |        1 |  716 | `						 "%s: Missing closing parenthesis ')'",nKeyword == PH7_TKWRD_LIST ? "list" : "array");` |
@@ -730,8 +730,8 @@ Coverage: 820/944 lines (86.86%)
 |        3 |  720 | `					 SyMemBackendPoolFree(&pGen->pVm->sAllocator,pNode);` |
 |        3 |  721 | `					 return rc;` |
 |        - |  722 | `				 }` |
-|     5566 |  723 | `				 pNode->xCode = (nKeyword == PH7_TKWRD_LIST) ? PH7_CompileList : PH7_CompileArray;` |
-|     5566 |  724 | `				 if( pNode->xCode == PH7_CompileList ){` |
+|     5470 |  723 | `				 pNode->xCode = (nKeyword == PH7_TKWRD_LIST) ? PH7_CompileList : PH7_CompileArray;` |
+|     5470 |  724 | `				 if( pNode->xCode == PH7_CompileList ){` |
 |       28 |  725 | `					 ph7_expr_op *pOp = (pCur < pGen->pEnd) ? (ph7_expr_op *)pCur->pUserData : 0;` |
 |       28 |  726 | `					 if( pCur >= pGen->pEnd \|\| (pCur->nType & PH7_TK_OP) == 0  \|\| pOp == 0 \|\| pOp->iVmOp != PH7_OP_STORE /*'='*/){` |
 |        - |  727 | `						 /* Syntax error */` |
@@ -744,7 +744,7 @@ Coverage: 820/944 lines (86.86%)
 |        - |  734 | `					 }` |
 |       12 |  735 | `				 }` |
 |        2 |  736 | `			 }` |
-|    12737 |  737 | `		 }else if( nKeyword == PH7_TKWRD_FUNCTION ){` |
+|    12531 |  737 | `		 }else if( nKeyword == PH7_TKWRD_FUNCTION ){` |
 |        - |  738 | `			 /* Annonymous function */` |
 |      104 |  739 | `			  if( &pCur[1] >= pGen->pEnd ){` |
 |        - |  740 | `				 /* Assume a literal */` |
@@ -759,24 +759,24 @@ Coverage: 820/944 lines (86.86%)
 |        - |  749 | `				 }` |
 |       80 |  750 | `				 pNode->xCode = PH7_CompileAnnonFunc;` |
 |        2 |  751 | `			  }` |
-|     9885 |  752 | `		 }else if( PH7_IsLangConstruct(nKeyword,FALSE) == TRUE && &pCur[1] < pGen->pEnd ){` |
+|     9727 |  752 | `		 }else if( PH7_IsLangConstruct(nKeyword,FALSE) == TRUE && &pCur[1] < pGen->pEnd ){` |
 |        - |  753 | `			 /* Language constructs [i.e: print,echo,die...] require special handling */` |
 |       74 |  754 | `			 PH7_DelimitNestedTokens(pCur,pGen->pEnd,PH7_TK_LPAREN\|PH7_TK_OCB\|PH7_TK_OSB, PH7_TK_RPAREN\|PH7_TK_CCB\|PH7_TK_CSB,&pCur);` |
 |       74 |  755 | `			 pNode->xCode = PH7_CompileLangConstruct;` |
 |       38 |  756 | `		 }else{` |
 |        - |  757 | `			 /* Assume a literal */` |
-|     9774 |  758 | `			 ExprAssembleLiteral(&pCur,pGen->pEnd);` |
-|     9774 |  759 | `			 pNode->xCode = PH7_CompileLiteral;` |
+|     9616 |  758 | `			 ExprAssembleLiteral(&pCur,pGen->pEnd);` |
+|     9616 |  759 | `			 pNode->xCode = PH7_CompileLiteral;` |
 |        2 |  760 | `		 }` |
-|   654346 |  761 | `	 }else if( pCur->nType & (PH7_TK_NSSEP\|PH7_TK_ID) ){` |
+|   641781 |  761 | `	 }else if( pCur->nType & (PH7_TK_NSSEP\|PH7_TK_ID) ){` |
 |        - |  762 | `		 /* Constants,function name,namespace path,class name... */` |
-|   237932 |  763 | `		 ExprAssembleLiteral(&pCur,pGen->pEnd);` |
-|   237932 |  764 | `		 pNode->xCode = PH7_CompileLiteral;` |
-|   118967 |  765 | `	 }else{` |
-|   408666 |  766 | `		 if( (pCur->nType & (PH7_TK_LPAREN\|PH7_TK_RPAREN\|PH7_TK_COMMA\|PH7_TK_COLON\|PH7_TK_CSB\|PH7_TK_OCB\|PH7_TK_CCB)) == 0 ){` |
+|   233102 |  763 | `		 ExprAssembleLiteral(&pCur,pGen->pEnd);` |
+|   233102 |  764 | `		 pNode->xCode = PH7_CompileLiteral;` |
+|   116552 |  765 | `	 }else{` |
+|   401058 |  766 | `		 if( (pCur->nType & (PH7_TK_LPAREN\|PH7_TK_RPAREN\|PH7_TK_COMMA\|PH7_TK_COLON\|PH7_TK_CSB\|PH7_TK_OCB\|PH7_TK_CCB)) == 0 ){` |
 |        - |  767 | `			 /* Point to the code generator routine */` |
-|    89346 |  768 | `			 pNode->xCode = PH7_GetNodeHandler(pCur->nType);` |
-|    89346 |  769 | `			 if( pNode->xCode == 0 ){` |
+|    87972 |  768 | `			 pNode->xCode = PH7_GetNodeHandler(pCur->nType);` |
+|    87972 |  769 | `			 if( pNode->xCode == 0 ){` |
 |        3 |  770 | `				 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"Syntax error: Unexpected token '%z'",&pNode->pStart->sData);` |
 |        3 |  771 | `				 if( rc != SXERR_ABORT ){` |
 |        3 |  772 | `					 rc = SXERR_SYNTAX;` |
@@ -784,122 +784,122 @@ Coverage: 820/944 lines (86.86%)
 |        3 |  774 | `				 SyMemBackendPoolFree(&pGen->pVm->sAllocator,pNode);` |
 |        3 |  775 | `				 return rc;` |
 |        - |  776 | `			 }` |
-|    44671 |  777 | `		 }` |
+|    43984 |  777 | `		 }` |
 |        - |  778 | `		/* Advance the stream cursor */` |
-|   408664 |  779 | `		pCur++;` |
+|   401056 |  779 | `		pCur++;` |
 |        - |  780 | `	 }` |
 |        - |  781 | `	/* Point to the end of the token stream */` |
-|  1368626 |  782 | `	pNode->pEnd = pCur;` |
+|  1341868 |  782 | `	pNode->pEnd = pCur;` |
 |        - |  783 | `	/* Save the node for later processing */` |
-|  1368626 |  784 | `	*ppNode = pNode;` |
+|  1341868 |  784 | `	*ppNode = pNode;` |
 |        - |  785 | `	/* Synchronize cursors */` |
-|  1368626 |  786 | `	pGen->pIn = pCur;` |
-|  1368626 |  787 | `	return SXRET_OK;` |
-|   684331 |  788 |  |
+|  1341868 |  786 | `	pGen->pIn = pCur;` |
+|  1341868 |  787 | `	return SXRET_OK;` |
+|   670952 |  788 |  |
 |        - |  789 | `/*` |
 |        - |  790 | ` * Point to the next expression that should be evaluated shortly.` |
 |        - |  791 | ` * The cursor stops when it hit a comma ',' or a semi-colon and the nesting` |
 |        - |  792 | ` * level is zero.` |
 |        - |  793 | ` */` |
-|    24528 |  794 | `PH7_PRIVATE sxi32 PH7_GetNextExpr(SyToken *pStart,SyToken *pEnd,SyToken **ppNext)` |
+|    24420 |  794 | `PH7_PRIVATE sxi32 PH7_GetNextExpr(SyToken *pStart,SyToken *pEnd,SyToken **ppNext)` |
 |        2 |  795 |  |
-|    24530 |  796 | `	SyToken *pCur = pStart;` |
-|    24530 |  797 | `	sxi32 iNest = 0;` |
-|    24530 |  798 | `	if( pCur >= pEnd \|\| (pCur->nType & PH7_TK_SEMI/*';'*/) ){` |
+|    24422 |  796 | `	SyToken *pCur = pStart;` |
+|    24422 |  797 | `	sxi32 iNest = 0;` |
+|    24422 |  798 | `	if( pCur >= pEnd \|\| (pCur->nType & PH7_TK_SEMI/*';'*/) ){` |
 |        - |  799 | `		/* Last expression */` |
-|    14010 |  800 | `		return SXERR_EOF;` |
+|    13908 |  800 | `		return SXERR_EOF;` |
 |        - |  801 | `	}` |
-|    55050 |  802 | `	while( pCur < pEnd ){` |
-|    54190 |  803 | `		if( (pCur->nType & (PH7_TK_COMMA/*','*/\|PH7_TK_SEMI/*';'*/)) && iNest <= 0){` |
-|     9662 |  804 | `			break;` |
+|    55182 |  802 | `	while( pCur < pEnd ){` |
+|    54322 |  803 | `		if( (pCur->nType & (PH7_TK_COMMA/*','*/\|PH7_TK_SEMI/*';'*/)) && iNest <= 0){` |
+|     9656 |  804 | `			break;` |
 |        - |  805 | `		}` |
-|    44530 |  806 | `		if( pCur->nType & (PH7_TK_LPAREN/*'('*/\|PH7_TK_OSB/*'['*/\|PH7_TK_OCB/*'{'*/) ){` |
-|     3328 |  807 | `			iNest++;` |
-|    42867 |  808 | `		}else if( pCur->nType & (PH7_TK_RPAREN/*')'*/\|PH7_TK_CSB/*']'*/\|PH7_TK_CCB/*'}*/) ){` |
-|     3330 |  809 | `			iNest--;` |
-|     1664 |  810 | `		}` |
-|    44530 |  811 | `		pCur++;` |
+|    44668 |  806 | `		if( pCur->nType & (PH7_TK_LPAREN/*'('*/\|PH7_TK_OSB/*'['*/\|PH7_TK_OCB/*'{'*/) ){` |
+|     3350 |  807 | `			iNest++;` |
+|    42994 |  808 | `		}else if( pCur->nType & (PH7_TK_RPAREN/*')'*/\|PH7_TK_CSB/*']'*/\|PH7_TK_CCB/*'}*/) ){` |
+|     3352 |  809 | `			iNest--;` |
+|     1675 |  810 | `		}` |
+|    44668 |  811 | `		pCur++;` |
 |        2 |  812 | `	}` |
-|    10522 |  813 | `	*ppNext = pCur;` |
-|    10522 |  814 | `	return SXRET_OK;` |
-|    12266 |  815 |  |
+|    10516 |  813 | `	*ppNext = pCur;` |
+|    10516 |  814 | `	return SXRET_OK;` |
+|    12212 |  815 |  |
 |        - |  816 | `/*` |
 |        - |  817 | ` * Free an expression tree.` |
 |        - |  818 | ` */` |
-|  1190106 |  819 | `static void ExprFreeTree(ph7_gen_state *pGen,ph7_expr_node *pNode)` |
+|  1166724 |  819 | `static void ExprFreeTree(ph7_gen_state *pGen,ph7_expr_node *pNode)` |
 |        2 |  820 |  |
-|  1190108 |  821 | `	if( pNode->pLeft ){` |
+|  1166726 |  821 | `	if( pNode->pLeft ){` |
 |        - |  822 | `		/* Release the left tree */` |
-|   446520 |  823 | `		ExprFreeTree(&(*pGen),pNode->pLeft);` |
-|   223259 |  824 | `	}` |
-|  1190108 |  825 | `	if( pNode->pRight ){` |
+|   437652 |  823 | `		ExprFreeTree(&(*pGen),pNode->pLeft);` |
+|   218825 |  824 | `	}` |
+|  1166726 |  825 | `	if( pNode->pRight ){` |
 |        - |  826 | `		/* Release the right tree */` |
-|   252956 |  827 | `		ExprFreeTree(&(*pGen),pNode->pRight);` |
-|   126477 |  828 | `	}` |
-|  1190108 |  829 | `	if( pNode->pCond ){` |
+|   247922 |  827 | `		ExprFreeTree(&(*pGen),pNode->pRight);` |
+|   123960 |  828 | `	}` |
+|  1166726 |  829 | `	if( pNode->pCond ){` |
 |        - |  830 | `		/* Release the conditional tree used by the ternary operator */` |
 |     1536 |  831 | `		ExprFreeTree(&(*pGen),pNode->pCond);` |
 |      767 |  832 | `	}` |
-|  1190108 |  833 | `	if( SySetUsed(&pNode->aNodeArgs) > 0 ){` |
+|  1166726 |  833 | `	if( SySetUsed(&pNode->aNodeArgs) > 0 ){` |
 |        - |  834 | `		ph7_expr_node **apArg;` |
 |        - |  835 | `		sxu32 n;` |
 |        - |  836 | `		/* Release node arguments */` |
-|   136838 |  837 | `		apArg = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);` |
-|   287044 |  838 | `		for( n = 0 ; n < SySetUsed(&pNode->aNodeArgs) ; ++n ){` |
-|   150208 |  839 | `			ExprFreeTree(&(*pGen),apArg[n]);` |
-|    75105 |  840 | `		}` |
-|   136838 |  841 | `		SySetRelease(&pNode->aNodeArgs);` |
-|    68418 |  842 | `	}` |
+|   134154 |  837 | `		apArg = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);` |
+|   281528 |  838 | `		for( n = 0 ; n < SySetUsed(&pNode->aNodeArgs) ; ++n ){` |
+|   147376 |  839 | `			ExprFreeTree(&(*pGen),apArg[n]);` |
+|    73689 |  840 | `		}` |
+|   134154 |  841 | `		SySetRelease(&pNode->aNodeArgs);` |
+|    67076 |  842 | `	}` |
 |        - |  843 | `	/* Finally,release this node */` |
-|  1190108 |  844 | `	SyMemBackendPoolFree(&pGen->pVm->sAllocator,pNode);` |
-|  1190108 |  845 |  |
+|  1166726 |  844 | `	SyMemBackendPoolFree(&pGen->pVm->sAllocator,pNode);` |
+|  1166726 |  845 |  |
 |        - |  846 | `/*` |
 |        - |  847 | ` * Free an expression tree.` |
 |        - |  848 | ` * This function is a wrapper around ExprFreeTree() defined above.` |
 |        - |  849 | ` */` |
-|   312594 |  850 | `PH7_PRIVATE sxi32 PH7_ExprFreeTree(ph7_gen_state *pGen,SySet *pNodeSet)` |
+|   306458 |  850 | `PH7_PRIVATE sxi32 PH7_ExprFreeTree(ph7_gen_state *pGen,SySet *pNodeSet)` |
 |        2 |  851 |  |
 |        - |  852 | `	ph7_expr_node **apNode;` |
 |        - |  853 | `	sxu32 n;` |
-|   312596 |  854 | `	apNode = (ph7_expr_node **)SySetBasePtr(pNodeSet);` |
-|  1681220 |  855 | `	for( n = 0  ; n < SySetUsed(pNodeSet) ; ++n ){` |
-|  1368626 |  856 | `		if( apNode[n] ){` |
-|   312900 |  857 | `			ExprFreeTree(&(*pGen),apNode[n]);` |
-|   156449 |  858 | `		}` |
-|   684314 |  859 | `	}` |
-|   312596 |  860 | `	return SXRET_OK;` |
+|   306460 |  854 | `	apNode = (ph7_expr_node **)SySetBasePtr(pNodeSet);` |
+|  1648326 |  855 | `	for( n = 0  ; n < SySetUsed(pNodeSet) ; ++n ){` |
+|  1341868 |  856 | `		if( apNode[n] ){` |
+|   306764 |  857 | `			ExprFreeTree(&(*pGen),apNode[n]);` |
+|   153381 |  858 | `		}` |
+|   670935 |  859 | `	}` |
+|   306460 |  860 | `	return SXRET_OK;` |
 |        2 |  861 |  |
 |        - |  862 | `/*` |
 |        - |  863 | ` * Check if the given node is a modifialbe l/r-value.` |
 |        - |  864 | ` * Return TRUE if modifiable.FALSE otherwise.` |
 |        - |  865 | ` */` |
-|   110764 |  866 | `static int ExprIsModifiableValue(ph7_expr_node *pNode,sxu8 bFunc)` |
+|   108526 |  866 | `static int ExprIsModifiableValue(ph7_expr_node *pNode,sxu8 bFunc)` |
 |        2 |  867 |  |
 |        - |  868 | `	sxi32 iExprOp;` |
-|   110766 |  869 | `	if( pNode->pOp == 0 ){` |
-|    74444 |  870 | `		return pNode->xCode == PH7_CompileVariable ? TRUE : FALSE;` |
+|   108528 |  869 | `	if( pNode->pOp == 0 ){` |
+|    72974 |  870 | `		return pNode->xCode == PH7_CompileVariable ? TRUE : FALSE;` |
 |        - |  871 | `	}` |
-|    36324 |  872 | `	iExprOp = pNode->pOp->iOp;` |
-|    36324 |  873 | `	if( iExprOp == EXPR_OP_ARROW /*'->' */ \|\| iExprOp == EXPR_OP_DC /*'::'*/ ){` |
-|    25534 |  874 | `			return TRUE;` |
+|    35556 |  872 | `	iExprOp = pNode->pOp->iOp;` |
+|    35556 |  873 | `	if( iExprOp == EXPR_OP_ARROW /*'->' */ \|\| iExprOp == EXPR_OP_DC /*'::'*/ ){` |
+|    24990 |  874 | `			return TRUE;` |
 |        - |  875 | `	}` |
-|    10792 |  876 | `	if( iExprOp == EXPR_OP_SUBSCRIPT/*'[]'*/ ){` |
-|    10788 |  877 | `		if( pNode->pLeft->pOp ) {` |
+|    10568 |  876 | `	if( iExprOp == EXPR_OP_SUBSCRIPT/*'[]'*/ ){` |
+|    10564 |  877 | `		if( pNode->pLeft->pOp ) {` |
 |        2 |  878 | `			if( pNode->pLeft->pOp->iOp != EXPR_OP_SUBSCRIPT /*'['*/ && pNode->pLeft->pOp->iOp != EXPR_OP_ARROW /*'->'*/` |
 |        2 |  879 | `				&& pNode->pLeft->pOp->iOp != EXPR_OP_DC /*'::'*/){` |
 |      ! 0 |  880 | `				return FALSE;` |
 |        1 |  881 | `			}` |
-|    10787 |  882 | `		}else if( pNode->pLeft->xCode != PH7_CompileVariable ){` |
+|    10563 |  882 | `		}else if( pNode->pLeft->xCode != PH7_CompileVariable ){` |
 |      ! 0 |  883 | `			return FALSE;` |
 |        - |  884 | `		}` |
-|    10788 |  885 | `		return TRUE;` |
+|    10564 |  885 | `		return TRUE;` |
 |        - |  886 | `	}` |
 |        5 |  887 | `	if( bFunc && iExprOp == EXPR_OP_FUNC_CALL ){` |
 |        5 |  888 | `		return TRUE;` |
 |        - |  889 | `	}` |
 |        - |  890 | `	/* Not a modifiable l or r-value */` |
 |      ! 0 |  891 | `	return FALSE;` |
-|    55384 |  892 |  |
+|    54265 |  892 |  |
 |        - |  893 | `/* Forward declaration */` |
 |        - |  894 | `static sxi32 ExprMakeTree(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nToken);` |
 |        - |  895 | `/* Macro to check if the given node is a terminal */` |
@@ -908,44 +908,44 @@ Coverage: 820/944 lines (86.86%)
 |        - |  898 | ` * Buid an expression tree for each given function argument.` |
 |        - |  899 | ` * When errors,PH7 take care of generating the appropriate error message.` |
 |        - |  900 | ` */` |
-|   108890 |  901 | `static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7_expr_node **apNode,sxi32 nToken)` |
+|   106780 |  901 | `static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7_expr_node **apNode,sxi32 nToken)` |
 |        2 |  902 |  |
 |        - |  903 | `	sxi32 iNest,iCur,iNode;` |
 |        - |  904 | `	sxi32 rc;` |
 |        - |  905 | `	/* Process function arguments from left to right */` |
-|   108892 |  906 | `	iCur = 0;` |
-|   115574 |  907 | `	for(;;){` |
-|   231150 |  908 | `		if( iCur >= nToken ){` |
+|   106782 |  906 | `	iCur = 0;` |
+|   113390 |  907 | `	for(;;){` |
+|   226782 |  908 | `		if( iCur >= nToken ){` |
 |        - |  909 | `			/* No more arguments to process */` |
-|   108890 |  910 | `			break;` |
+|   106780 |  910 | `			break;` |
 |        - |  911 | `		}` |
-|   122262 |  912 | `		iNode = iCur;` |
-|   122262 |  913 | `		iNest = 0;` |
-|   295164 |  914 | `		while( iCur < nToken ){` |
-|   186276 |  915 | `			if( apNode[iCur] ){` |
-|   186276 |  916 | `				if( (apNode[iCur]->pStart->nType & PH7_TK_COMMA) && apNode[iCur]->pLeft == 0 && iNest <= 0 ){` |
-|     6688 |  917 | `					break;` |
-|   172904 |  918 | `				}else if( apNode[iCur]->pStart->nType & (PH7_TK_LPAREN\|PH7_TK_OSB\|PH7_TK_OCB) ){` |
-|     9724 |  919 | `					iNest++;` |
-|   168043 |  920 | `				}else if( apNode[iCur]->pStart->nType & (PH7_TK_RPAREN\|PH7_TK_CCB\|PH7_TK_CSB) ){` |
-|     9724 |  921 | `					iNest--;` |
-|     4861 |  922 | `				}` |
-|    86451 |  923 | `			}` |
-|   172904 |  924 | `			iCur++;` |
+|   120004 |  912 | `		iNode = iCur;` |
+|   120004 |  913 | `		iNest = 0;` |
+|   289684 |  914 | `		while( iCur < nToken ){` |
+|   182906 |  915 | `			if( apNode[iCur] ){` |
+|   182906 |  916 | `				if( (apNode[iCur]->pStart->nType & PH7_TK_COMMA) && apNode[iCur]->pLeft == 0 && iNest <= 0 ){` |
+|     6614 |  917 | `					break;` |
+|   169682 |  918 | `				}else if( apNode[iCur]->pStart->nType & (PH7_TK_LPAREN\|PH7_TK_OSB\|PH7_TK_OCB) ){` |
+|     9540 |  919 | `					iNest++;` |
+|   164913 |  920 | `				}else if( apNode[iCur]->pStart->nType & (PH7_TK_RPAREN\|PH7_TK_CCB\|PH7_TK_CSB) ){` |
+|     9540 |  921 | `					iNest--;` |
+|     4769 |  922 | `				}` |
+|    84840 |  923 | `			}` |
+|   169682 |  924 | `			iCur++;` |
 |        2 |  925 | `		}` |
-|   122262 |  926 | `		if( iCur > iNode ){` |
-|   122258 |  927 | `			if( apNode[iNode] && (apNode[iNode]->pStart->nType & PH7_TK_AMPER /*'&'*/) && ((iCur - iNode) == 2)` |
+|   120004 |  926 | `		if( iCur > iNode ){` |
+|   120000 |  927 | `			if( apNode[iNode] && (apNode[iNode]->pStart->nType & PH7_TK_AMPER /*'&'*/) && ((iCur - iNode) == 2)` |
 |        2 |  928 | `				&& apNode[iNode+1]->xCode == PH7_CompileVariable ){` |
 |      ! 0 |  929 | `					PH7_GenCompileError(&(*pGen),E_WARNING,apNode[iNode]->pStart->nLine,` |
 |        - |  930 | `						"call-time pass-by-reference is depreceated");` |
 |      ! 0 |  931 | `					ExprFreeTree(&(*pGen),apNode[iNode]);` |
 |      ! 0 |  932 | `					apNode[iNode] = 0;` |
 |      ! 0 |  933 | `			}` |
-|   122260 |  934 | `			ExprMakeTree(&(*pGen),&apNode[iNode],iCur-iNode);` |
-|   122260 |  935 | `			if( apNode[iNode] ){` |
+|   120002 |  934 | `			ExprMakeTree(&(*pGen),&apNode[iNode],iCur-iNode);` |
+|   120002 |  935 | `			if( apNode[iNode] ){` |
 |        - |  936 | `				/* Put a pointer to the root of the tree in the arguments set */` |
-|   122260 |  937 | `				SySetPut(&pOp->aNodeArgs,(const void *)&apNode[iNode]);` |
-|    61131 |  938 | `			}else{` |
+|   120002 |  937 | `				SySetPut(&pOp->aNodeArgs,(const void *)&apNode[iNode]);` |
+|    60002 |  938 | `			}else{` |
 |        - |  939 | `				/* Empty function argument */` |
 |      ! 0 |  940 | `				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pOp->pStart->nLine,"Empty function argument");` |
 |      ! 0 |  941 | `				if( rc != SXERR_ABORT ){` |
@@ -953,7 +953,7 @@ Coverage: 820/944 lines (86.86%)
 |      ! 0 |  943 | `				}` |
 |      ! 0 |  944 | `				return rc;` |
 |        - |  945 | `			}` |
-|    61131 |  946 | `		}else{` |
+|    60002 |  946 | `		}else{` |
 |        3 |  947 | `			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pOp->pStart->nLine,"Missing function argument");` |
 |        3 |  948 | `			if( rc != SXERR_ABORT ){` |
 |        3 |  949 | `				rc = SXERR_SYNTAX;` |
@@ -961,9 +961,9 @@ Coverage: 820/944 lines (86.86%)
 |        3 |  951 | `			return rc;` |
 |        - |  952 | `		}` |
 |        - |  953 | `		/* Jump trailing comma */` |
-|   122260 |  954 | `		if( iCur < nToken && apNode[iCur] && (apNode[iCur]->pStart->nType & PH7_TK_COMMA) ){` |
-|    13372 |  955 | `			iCur++;` |
-|    13372 |  956 | `			if( iCur >= nToken ){` |
+|   120002 |  954 | `		if( iCur < nToken && apNode[iCur] && (apNode[iCur]->pStart->nType & PH7_TK_COMMA) ){` |
+|    13224 |  955 | `			iCur++;` |
+|    13224 |  956 | `			if( iCur >= nToken ){` |
 |        - |  957 | `				/* missing function argument */` |
 |      ! 0 |  958 | `				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pOp->pStart->nLine,"Missing function argument");` |
 |      ! 0 |  959 | `				if( rc != SXERR_ABORT ){` |
@@ -971,74 +971,74 @@ Coverage: 820/944 lines (86.86%)
 |      ! 0 |  961 | `				}` |
 |      ! 0 |  962 | `				return rc;` |
 |        - |  963 | `			}` |
-|     6685 |  964 | `		}` |
+|     6611 |  964 | `		}` |
 |        2 |  965 | `	}` |
-|   108890 |  966 | `	return SXRET_OK;` |
-|    54447 |  967 |  |
+|   106780 |  966 | `	return SXRET_OK;` |
+|    53392 |  967 |  |
 |        - |  968 | ` /*` |
 |        - |  969 | `  * Create an expression tree from an array of tokens.` |
 |        - |  970 | `  * If successful, the root of the tree is stored in apNode[0].` |
 |        - |  971 | `  * When errors,PH7 take care of generating the appropriate error message.` |
 |        - |  972 | `  */` |
-|   480472 |  973 | ` static sxi32 ExprMakeTree(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nToken)` |
+|   471216 |  973 | ` static sxi32 ExprMakeTree(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nToken)` |
 |        2 |  974 | ` {` |
 |        - |  975 | `	 sxi32 i,iLeft,iRight;` |
 |        - |  976 | `	 ph7_expr_node *pNode;` |
 |        - |  977 | `	 sxi32 iCur;` |
 |        - |  978 | `	 sxi32 rc;` |
-|   480474 |  979 | `	 if( nToken <= 0 \|\| (nToken == 1 && apNode[0]->xCode) ){` |
+|   471218 |  979 | `	 if( nToken <= 0 \|\| (nToken == 1 && apNode[0]->xCode) ){` |
 |        - |  980 | `		 /* TICKET 1433-17: self evaluating node */` |
-|   208240 |  981 | `		 return SXRET_OK;` |
+|   204388 |  981 | `		 return SXRET_OK;` |
 |        - |  982 | `	 }` |
 |        - |  983 | `	 /* Process expressions enclosed in parenthesis first */` |
-|  1623924 |  984 | `	 for( iCur =  0 ; iCur < nToken ; ++iCur ){` |
+|  1592074 |  984 | `	 for( iCur =  0 ; iCur < nToken ; ++iCur ){` |
 |        - |  985 | `		 sxi32 iNest;` |
 |        - |  986 | `		 /* Note that, we use strict comparison here '!=' instead of the bitwise and '&' operator` |
 |        - |  987 | `		  * since the LPAREN token can also be an operator [i.e: Function call].` |
 |        - |  988 | `		  */` |
-|  1351692 |  989 | `		 if( apNode[iCur] == 0 \|\| apNode[iCur]->pStart->nType != PH7_TK_LPAREN ){` |
-|  1338692 |  990 | `			 continue;` |
+|  1325246 |  989 | `		 if( apNode[iCur] == 0 \|\| apNode[iCur]->pStart->nType != PH7_TK_LPAREN ){` |
+|  1312502 |  990 | `			 continue;` |
 |        - |  991 | `		 }` |
-|    13002 |  992 | `		 iNest = 1;` |
-|    13002 |  993 | `		 iLeft = iCur;` |
+|    12746 |  992 | `		 iNest = 1;` |
+|    12746 |  993 | `		 iLeft = iCur;` |
 |        - |  994 | `		 /* Find the closing parenthesis */` |
-|    13002 |  995 | `		 iCur++;` |
-|    74958 |  996 | `		 while( iCur < nToken ){` |
-|    74958 |  997 | `			 if( apNode[iCur] ){` |
-|    74958 |  998 | `				 if( apNode[iCur]->pStart->nType & PH7_TK_RPAREN /* ')' */){` |
+|    12746 |  995 | `		 iCur++;` |
+|    73518 |  996 | `		 while( iCur < nToken ){` |
+|    73518 |  997 | `			 if( apNode[iCur] ){` |
+|    73518 |  998 | `				 if( apNode[iCur]->pStart->nType & PH7_TK_RPAREN /* ')' */){` |
 |        - |  999 | `					 /* Decrement nesting level */` |
-|    20966 | 1000 | `					 iNest--;` |
-|    20966 | 1001 | `					 if( iNest <= 0 ){` |
-|    13002 | 1002 | `						 break;` |
+|    20550 | 1000 | `					 iNest--;` |
+|    20550 | 1001 | `					 if( iNest <= 0 ){` |
+|    12746 | 1002 | `						 break;` |
 |        2 | 1003 | `					 }` |
-|    57976 | 1004 | `				 }else if( apNode[iCur]->pStart->nType & PH7_TK_LPAREN /* '(' */ ){` |
+|    56872 | 1004 | `				 }else if( apNode[iCur]->pStart->nType & PH7_TK_LPAREN /* '(' */ ){` |
 |        - | 1005 | `					 /* Increment nesting level */` |
-|     7966 | 1006 | `					 iNest++;` |
-|     3982 | 1007 | `				 }` |
-|    30978 | 1008 | `			 }` |
-|    61958 | 1009 | `			 iCur++;` |
+|     7806 | 1006 | `					 iNest++;` |
+|     3902 | 1007 | `				 }` |
+|    30386 | 1008 | `			 }` |
+|    60774 | 1009 | `			 iCur++;` |
 |        2 | 1010 | `		 }` |
-|    13002 | 1011 | `		 if( iCur - iLeft > 1 ){` |
+|    12746 | 1011 | `		 if( iCur - iLeft > 1 ){` |
 |        - | 1012 | `			 /* Recurse and process this expression */` |
-|    13002 | 1013 | `			 rc = ExprMakeTree(&(*pGen),&apNode[iLeft + 1],iCur - iLeft - 1);` |
-|    13002 | 1014 | `			 if( rc != SXRET_OK ){` |
+|    12746 | 1013 | `			 rc = ExprMakeTree(&(*pGen),&apNode[iLeft + 1],iCur - iLeft - 1);` |
+|    12746 | 1014 | `			 if( rc != SXRET_OK ){` |
 |        3 | 1015 | `				 return rc;` |
 |        - | 1016 | `			 }` |
-|     6499 | 1017 | `		 }` |
+|     6371 | 1017 | `		 }` |
 |        - | 1018 | `		 /* Free the left and right nodes */` |
-|    13000 | 1019 | `		 ExprFreeTree(&(*pGen),apNode[iLeft]);` |
-|    13000 | 1020 | `		 ExprFreeTree(&(*pGen),apNode[iCur]);` |
-|    13000 | 1021 | `		 apNode[iLeft] = 0;` |
-|    13000 | 1022 | `		 apNode[iCur] = 0;` |
-|     6501 | 1023 | `	 }` |
+|    12744 | 1019 | `		 ExprFreeTree(&(*pGen),apNode[iLeft]);` |
+|    12744 | 1020 | `		 ExprFreeTree(&(*pGen),apNode[iCur]);` |
+|    12744 | 1021 | `		 apNode[iLeft] = 0;` |
+|    12744 | 1022 | `		 apNode[iCur] = 0;` |
+|     6373 | 1023 | `	 }` |
 |        - | 1024 | `	  /* Process expressions enclosed in braces */` |
-|  1695496 | 1025 | `	 for( iCur =  0 ; iCur < nToken ; ++iCur ){` |
+|  1662270 | 1025 | `	 for( iCur =  0 ; iCur < nToken ; ++iCur ){` |
 |        - | 1026 | `		 sxi32 iNest;` |
 |        - | 1027 | `		 /* Note that, we use strict comparison here '!=' instead of the bitwise and '&' operator` |
 |        - | 1028 | `		  * since the OCB '{' token can also be an operator [i.e: subscripting].` |
 |        - | 1029 | `		  */` |
-|  1426630 | 1030 | `		 if( apNode[iCur] == 0 \|\| apNode[iCur]->pStart->nType != PH7_TK_OCB ){` |
-|  1426628 | 1031 | `			 continue;` |
+|  1398744 | 1030 | `		 if( apNode[iCur] == 0 \|\| apNode[iCur]->pStart->nType != PH7_TK_OCB ){` |
+|  1398742 | 1031 | `			 continue;` |
 |        - | 1032 | `		 }` |
 |        3 | 1033 | `		 iNest = 1;` |
 |        3 | 1034 | `		 iLeft = iCur;` |
@@ -1073,31 +1073,31 @@ Coverage: 820/944 lines (86.86%)
 |      ! 0 | 1063 | `		 apNode[iCur] = 0;` |
 |      ! 0 | 1064 | `	 }` |
 |        - | 1065 | `	 /* Handle postfix [i.e: function call,subscripting,member access] operators with precedence 2 */` |
-|   268868 | 1066 | `	 iLeft = -1;` |
-|  1695468 | 1067 | `	 for( iCur = 0 ; iCur < nToken ; ++iCur ){` |
-|  1426612 | 1068 | `		 if( apNode[iCur] == 0 ){` |
-|   510706 | 1069 | `			 continue;` |
+|   263528 | 1066 | `	 iLeft = -1;` |
+|  1662242 | 1067 | `	 for( iCur = 0 ; iCur < nToken ; ++iCur ){` |
+|  1398726 | 1068 | `		 if( apNode[iCur] == 0 ){` |
+|   500878 | 1069 | `			 continue;` |
 |        - | 1070 | `		 }` |
-|   915908 | 1071 | `		 pNode = apNode[iCur];` |
-|   915908 | 1072 | `		 if( pNode->pOp && pNode->pOp->iPrec == 2 && pNode->pLeft == 0  ){` |
-|   220932 | 1073 | `			 if( pNode->pOp->iOp == EXPR_OP_FUNC_CALL ){` |
+|   897850 | 1071 | `		 pNode = apNode[iCur];` |
+|   897850 | 1072 | `		 if( pNode->pOp && pNode->pOp->iPrec == 2 && pNode->pLeft == 0  ){` |
+|   216488 | 1073 | `			 if( pNode->pOp->iOp == EXPR_OP_FUNC_CALL ){` |
 |        - | 1074 | `				 /* Collect function arguments */` |
-|   128112 | 1075 | `				 sxi32 iPtr = 0;` |
-|   128112 | 1076 | `				 sxi32 nFuncTok = 0;` |
-|   442498 | 1077 | `				 while( nFuncTok + iCur < nToken ){` |
-|   442498 | 1078 | `					 if( apNode[nFuncTok+iCur] ){` |
-|   442498 | 1079 | `						 if( apNode[nFuncTok+iCur]->pStart->nType & PH7_TK_LPAREN /*'('*/ ){` |
-|   130024 | 1080 | `							 iPtr++;` |
-|   377487 | 1081 | `						 }else if ( apNode[nFuncTok+iCur]->pStart->nType & PH7_TK_RPAREN /*')'*/){` |
-|   130024 | 1082 | `							 iPtr--;` |
-|   130024 | 1083 | `							 if( iPtr <= 0 ){` |
-|   128112 | 1084 | `								 break;` |
+|   125618 | 1075 | `				 sxi32 iPtr = 0;` |
+|   125618 | 1076 | `				 sxi32 nFuncTok = 0;` |
+|   434140 | 1077 | `				 while( nFuncTok + iCur < nToken ){` |
+|   434140 | 1078 | `					 if( apNode[nFuncTok+iCur] ){` |
+|   434140 | 1079 | `						 if( apNode[nFuncTok+iCur]->pStart->nType & PH7_TK_LPAREN /*'('*/ ){` |
+|   127506 | 1080 | `							 iPtr++;` |
+|   370388 | 1081 | `						 }else if ( apNode[nFuncTok+iCur]->pStart->nType & PH7_TK_RPAREN /*')'*/){` |
+|   127506 | 1082 | `							 iPtr--;` |
+|   127506 | 1083 | `							 if( iPtr <= 0 ){` |
+|   125618 | 1084 | `								 break;` |
 |        - | 1085 | `							 }` |
-|      956 | 1086 | `						 }` |
-|   157193 | 1087 | `					 }` |
-|   314388 | 1088 | `					 nFuncTok++;` |
+|      944 | 1086 | `						 }` |
+|   154261 | 1087 | `					 }` |
+|   308524 | 1088 | `					 nFuncTok++;` |
 |        2 | 1089 | `				 }` |
-|   128112 | 1090 | `				 if( nFuncTok + iCur >= nToken ){` |
+|   125618 | 1090 | `				 if( nFuncTok + iCur >= nToken ){` |
 |        - | 1091 | `					 /* Syntax error */` |
 |      ! 0 | 1092 | `					 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"Missing right parenthesis ')'");` |
 |      ! 0 | 1093 | `					 if( rc != SXERR_ABORT ){` |
@@ -1105,7 +1105,7 @@ Coverage: 820/944 lines (86.86%)
 |      ! 0 | 1095 | `					 }` |
 |      ! 0 | 1096 | `					 return rc;` |
 |        - | 1097 | `				 }` |
-|   128112 | 1098 | `				 if(  iLeft < 0 \|\| !NODE_ISTERM(iLeft) /*\|\| ( apNode[iLeft]->pOp && apNode[iLeft]->pOp->iPrec != 2)*/ ){` |
+|   125618 | 1098 | `				 if(  iLeft < 0 \|\| !NODE_ISTERM(iLeft) /*\|\| ( apNode[iLeft]->pOp && apNode[iLeft]->pOp->iPrec != 2)*/ ){` |
 |        - | 1099 | `					 /* Syntax error */` |
 |      ! 0 | 1100 | `					 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"Invalid function name");` |
 |      ! 0 | 1101 | `					 if( rc != SXERR_ABORT ){` |
@@ -1113,26 +1113,26 @@ Coverage: 820/944 lines (86.86%)
 |      ! 0 | 1103 | `					 }` |
 |      ! 0 | 1104 | `					 return rc;` |
 |        - | 1105 | `				 }` |
-|   128112 | 1106 | `				 if( nFuncTok > 1 ){` |
+|   125618 | 1106 | `				 if( nFuncTok > 1 ){` |
 |        - | 1107 | `					 /* Process function arguments */` |
-|   108892 | 1108 | `					 rc = ExprProcessFuncArguments(&(*pGen),pNode,&apNode[iCur+1],nFuncTok-1);` |
-|   108892 | 1109 | `					 if( rc != SXRET_OK ){` |
+|   106782 | 1108 | `					 rc = ExprProcessFuncArguments(&(*pGen),pNode,&apNode[iCur+1],nFuncTok-1);` |
+|   106782 | 1109 | `					 if( rc != SXRET_OK ){` |
 |        3 | 1110 | `						 return rc;` |
 |        - | 1111 | `					 }` |
-|    54444 | 1112 | `				 }` |
+|    53389 | 1112 | `				 }` |
 |        - | 1113 | `				 /* Link the node to the tree */` |
-|   128110 | 1114 | `				 pNode->pLeft = apNode[iLeft];` |
-|   128110 | 1115 | `				 apNode[iLeft] = 0;` |
-|   442490 | 1116 | `				 for( iPtr = 1; iPtr <= nFuncTok ; iPtr++ ){` |
-|   314382 | 1117 | `					 apNode[iCur+iPtr] = 0;` |
-|   157192 | 1118 | `				 }` |
-|   156876 | 1119 | `			 }else if (pNode->pOp->iOp == EXPR_OP_SUBSCRIPT ){` |
+|   125616 | 1114 | `				 pNode->pLeft = apNode[iLeft];` |
+|   125616 | 1115 | `				 apNode[iLeft] = 0;` |
+|   434132 | 1116 | `				 for( iPtr = 1; iPtr <= nFuncTok ; iPtr++ ){` |
+|   308518 | 1117 | `					 apNode[iCur+iPtr] = 0;` |
+|   154260 | 1118 | `				 }` |
+|   153679 | 1119 | `			 }else if (pNode->pOp->iOp == EXPR_OP_SUBSCRIPT ){` |
 |        - | 1120 | `				 /* Subscripting */` |
-|    35490 | 1121 | `				 sxi32 iArrTok = iCur + 1;` |
-|    35490 | 1122 | `				 sxi32 iNest = 1;` |
-|    35506 | 1123 | `				 if(  iLeft < 0 \|\| apNode[iLeft] == 0 \|\| (apNode[iLeft]->pOp == 0 && (apNode[iLeft]->xCode != PH7_CompileVariable &&` |
+|    34756 | 1121 | `				 sxi32 iArrTok = iCur + 1;` |
+|    34756 | 1122 | `				 sxi32 iNest = 1;` |
+|    34773 | 1123 | `				 if(  iLeft < 0 \|\| apNode[iLeft] == 0 \|\| (apNode[iLeft]->pOp == 0 && (apNode[iLeft]->xCode != PH7_CompileVariable &&` |
 |        2 | 1124 | `					 apNode[iLeft]->xCode != PH7_CompileSimpleString && apNode[iLeft]->xCode != PH7_CompileString ) ) \|\|` |
-|    35488 | 1125 | `					 ( apNode[iLeft]->pOp && apNode[iLeft]->pOp->iPrec != 2 /* postfix */) ){` |
+|    34754 | 1125 | `					 ( apNode[iLeft]->pOp && apNode[iLeft]->pOp->iPrec != 2 /* postfix */) ){` |
 |        - | 1126 | `						 /* Syntax error */` |
 |        5 | 1127 | `						 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"Invalid array name");` |
 |        5 | 1128 | `						 if( rc != SXERR_ABORT ){` |
@@ -1141,44 +1141,44 @@ Coverage: 820/944 lines (86.86%)
 |        5 | 1131 | `						 return rc;` |
 |        - | 1132 | `				 }` |
 |        - | 1133 | `				 /* Collect index tokens */` |
-|    63540 | 1134 | `				 while( iArrTok < nToken ){` |
-|    63540 | 1135 | `					 if( apNode[iArrTok] ){` |
-|    63508 | 1136 | `						 if( apNode[iArrTok]->pOp && apNode[iArrTok]->pOp->iOp == EXPR_OP_SUBSCRIPT &&  apNode[iArrTok]->pLeft == 0){` |
+|    62232 | 1134 | `				 while( iArrTok < nToken ){` |
+|    62232 | 1135 | `					 if( apNode[iArrTok] ){` |
+|    62200 | 1136 | `						 if( apNode[iArrTok]->pOp && apNode[iArrTok]->pOp->iOp == EXPR_OP_SUBSCRIPT &&  apNode[iArrTok]->pLeft == 0){` |
 |        - | 1137 | `							 /* Increment nesting level */` |
 |      ! 0 | 1138 | `							 iNest++;` |
-|    63508 | 1139 | `						 }else if( apNode[iArrTok]->pStart->nType & PH7_TK_CSB /*']'*/){` |
+|    62200 | 1139 | `						 }else if( apNode[iArrTok]->pStart->nType & PH7_TK_CSB /*']'*/){` |
 |        - | 1140 | `							 /* Decrement nesting level */` |
-|    35486 | 1141 | `							 iNest--;` |
-|    35486 | 1142 | `							 if( iNest <= 0 ){` |
-|    35486 | 1143 | `								 break;` |
+|    34752 | 1141 | `							 iNest--;` |
+|    34752 | 1142 | `							 if( iNest <= 0 ){` |
+|    34752 | 1143 | `								 break;` |
 |        - | 1144 | `							 }` |
 |      ! 0 | 1145 | `						 }` |
-|    14011 | 1146 | `					 }` |
-|    28056 | 1147 | `					 ++iArrTok;` |
+|    13724 | 1146 | `					 }` |
+|    27482 | 1147 | `					 ++iArrTok;` |
 |        2 | 1148 | `				 }` |
-|    35486 | 1149 | `				 if( iArrTok > iCur + 1 ){` |
+|    34752 | 1149 | `				 if( iArrTok > iCur + 1 ){` |
 |        - | 1150 | `					 /* Recurse and process this expression */` |
-|    27950 | 1151 | `					 rc = ExprMakeTree(&(*pGen),&apNode[iCur+1],iArrTok - iCur - 1);` |
-|    27950 | 1152 | `					 if( rc != SXRET_OK ){` |
+|    27376 | 1151 | `					 rc = ExprMakeTree(&(*pGen),&apNode[iCur+1],iArrTok - iCur - 1);` |
+|    27376 | 1152 | `					 if( rc != SXRET_OK ){` |
 |      ! 0 | 1153 | `						 return rc;` |
 |        - | 1154 | `					 }` |
 |        - | 1155 | `					 /* Link the node to it's index */` |
-|    27950 | 1156 | `					 SySetPut(&pNode->aNodeArgs,(const void *)&apNode[iCur+1]);` |
-|    13974 | 1157 | `				 }` |
+|    27376 | 1156 | `					 SySetPut(&pNode->aNodeArgs,(const void *)&apNode[iCur+1]);` |
+|    13687 | 1157 | `				 }` |
 |        - | 1158 | `				 /* Link the node to the tree */` |
-|    35486 | 1159 | `				 pNode->pLeft = apNode[iLeft];` |
-|    35486 | 1160 | `				 pNode->pRight = 0;` |
-|    35486 | 1161 | `				 apNode[iLeft] = 0;` |
-|    99024 | 1162 | `				 for( iNest = iCur + 1 ; iNest <= iArrTok ; ++iNest ){` |
-|    63540 | 1163 | `					 apNode[iNest] = 0;` |
-|    31771 | 1164 | `				 }` |
-|    17744 | 1165 | `			 }else{` |
+|    34752 | 1159 | `				 pNode->pLeft = apNode[iLeft];` |
+|    34752 | 1160 | `				 pNode->pRight = 0;` |
+|    34752 | 1161 | `				 apNode[iLeft] = 0;` |
+|    96982 | 1162 | `				 for( iNest = iCur + 1 ; iNest <= iArrTok ; ++iNest ){` |
+|    62232 | 1163 | `					 apNode[iNest] = 0;` |
+|    31117 | 1164 | `				 }` |
+|    17377 | 1165 | `			 }else{` |
 |        - | 1166 | `				 /* Member access operators [i.e: '->','::'] */` |
-|    57334 | 1167 | `				  iRight = iCur + 1;` |
-|    57334 | 1168 | `				 while( iRight < nToken && apNode[iRight] == 0 ){` |
+|    56118 | 1167 | `				  iRight = iCur + 1;` |
+|    56118 | 1168 | `				 while( iRight < nToken && apNode[iRight] == 0 ){` |
 |      ! 0 | 1169 | `					 iRight++;` |
 |      ! 0 | 1170 | `				 }` |
-|    57334 | 1171 | `				 if( iRight >= nToken \|\| iLeft < 0 \|\| !NODE_ISTERM(iRight) \|\| !NODE_ISTERM(iLeft) ){` |
+|    56118 | 1171 | `				 if( iRight >= nToken \|\| iLeft < 0 \|\| !NODE_ISTERM(iRight) \|\| !NODE_ISTERM(iLeft) ){` |
 |        - | 1172 | `					 /* Syntax error */` |
 |        5 | 1173 | `					 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"'%z': Missing/Invalid member name",&pNode->pOp->sOp);` |
 |        5 | 1174 | `					 if( rc != SXERR_ABORT ){` |
@@ -1187,9 +1187,9 @@ Coverage: 820/944 lines (86.86%)
 |        5 | 1177 | `					 return rc;` |
 |        - | 1178 | `				 }` |
 |        - | 1179 | `				 /* Link the node to the tree */` |
-|    57330 | 1180 | `				 pNode->pLeft = apNode[iLeft];` |
-|    57330 | 1181 | `				 if( pNode->pOp->iOp == EXPR_OP_ARROW /*'->'*/ && pNode->pLeft->pOp == 0 &&` |
-|    57270 | 1182 | `					 pNode->pLeft->xCode != PH7_CompileVariable ){` |
+|    56114 | 1180 | `				 pNode->pLeft = apNode[iLeft];` |
+|    56114 | 1181 | `				 if( pNode->pOp->iOp == EXPR_OP_ARROW /*'->'*/ && pNode->pLeft->pOp == 0 &&` |
+|    56054 | 1182 | `					 pNode->pLeft->xCode != PH7_CompileVariable ){` |
 |        - | 1183 | `						 /* Syntax error */` |
 |      ! 0 | 1184 | `						 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,` |
 |      ! 0 | 1185 | `							 "'%z': Expecting a variable as left operand",&pNode->pOp->sOp);` |
@@ -1198,26 +1198,26 @@ Coverage: 820/944 lines (86.86%)
 |      ! 0 | 1188 | `						 }` |
 |      ! 0 | 1189 | `						 return rc;` |
 |        - | 1190 | `				 }` |
-|    57330 | 1191 | `				 pNode->pRight = apNode[iRight];` |
-|    57330 | 1192 | `				 apNode[iLeft] = apNode[iRight] = 0;` |
+|    56114 | 1191 | `				 pNode->pRight = apNode[iRight];` |
+|    56114 | 1192 | `				 apNode[iLeft] = apNode[iRight] = 0;` |
 |        - | 1193 | `			 }` |
-|   110460 | 1194 | `		 }` |
-|   915898 | 1195 | `		 iLeft = iCur;` |
-|   457950 | 1196 | `	 }` |
+|   108238 | 1194 | `		 }` |
+|   897840 | 1195 | `		 iLeft = iCur;` |
+|   448921 | 1196 | `	 }` |
 |        - | 1197 | `	 /* Handle left associative (new, clone) operators */` |
-|  1695436 | 1198 | `	 for( iCur = 0 ; iCur < nToken ; ++iCur ){` |
-|  1426580 | 1199 | `		 if( apNode[iCur] == 0 ){` |
-|   734868 | 1200 | `			 continue;` |
+|  1662210 | 1198 | `	 for( iCur = 0 ; iCur < nToken ; ++iCur ){` |
+|  1398694 | 1199 | `		 if( apNode[iCur] == 0 ){` |
+|   720532 | 1200 | `			 continue;` |
 |        - | 1201 | `		 }` |
-|   691714 | 1202 | `		 pNode = apNode[iCur];` |
-|   691714 | 1203 | `		 if( pNode->pOp && pNode->pOp->iPrec == 1 && pNode->pLeft == 0 ){` |
+|   678164 | 1202 | `		 pNode = apNode[iCur];` |
+|   678164 | 1203 | `		 if( pNode->pOp && pNode->pOp->iPrec == 1 && pNode->pLeft == 0 ){` |
 |        - | 1204 | `			 SyToken *pToken;` |
 |        - | 1205 | `			 /* Get the left node */` |
-|     3244 | 1206 | `			 iLeft = iCur + 1;` |
-|     6464 | 1207 | `			 while( iLeft < nToken && apNode[iLeft] == 0 ){` |
-|     3222 | 1208 | `				 iLeft++;` |
+|     3180 | 1206 | `			 iLeft = iCur + 1;` |
+|     6336 | 1207 | `			 while( iLeft < nToken && apNode[iLeft] == 0 ){` |
+|     3158 | 1208 | `				 iLeft++;` |
 |        2 | 1209 | `			 }` |
-|     3244 | 1210 | `			 if( iLeft >= nToken \|\| !NODE_ISTERM(iLeft) ){` |
+|     3180 | 1210 | `			 if( iLeft >= nToken \|\| !NODE_ISTERM(iLeft) ){` |
 |        - | 1211 | `				  /* Syntax error */` |
 |      ! 0 | 1212 | `				 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"'%z': Expecting class constructor call",` |
 |      ! 0 | 1213 | `					 &pNode->pOp->sOp);` |
@@ -1227,7 +1227,7 @@ Coverage: 820/944 lines (86.86%)
 |      ! 0 | 1217 | `				 return rc;` |
 |        - | 1218 | `			 }` |
 |        - | 1219 | `			 /* Make sure the operand are of a valid type */` |
-|     3244 | 1220 | `			 if( pNode->pOp->iOp == EXPR_OP_CLONE ){` |
+|     3180 | 1220 | `			 if( pNode->pOp->iOp == EXPR_OP_CLONE ){` |
 |        - | 1221 | `				 /* Clone:` |
 |        - | 1222 | `				  * Symisc eXtension: 'clone' accepts now as it's left operand:` |
 |        - | 1223 | `				  *  ++ function call (including annonymous)` |
@@ -1251,7 +1251,7 @@ Coverage: 820/944 lines (86.86%)
 |        7 | 1241 | `				 }` |
 |       10 | 1242 | `			 }else{` |
 |        - | 1243 | `				 /* New */` |
-|     3228 | 1244 | `				 if( apNode[iLeft]->pOp == 0 ){` |
+|     3164 | 1244 | `				 if( apNode[iLeft]->pOp == 0 ){` |
 |       10 | 1245 | `					 ProcNodeConstruct xCons = apNode[iLeft]->xCode;` |
 |       10 | 1246 | `					 if( xCons != PH7_CompileVariable && xCons != PH7_CompileLiteral && xCons != PH7_CompileSimpleString){` |
 |      ! 0 | 1247 | `						 pToken = apNode[iLeft]->pStart;` |
@@ -1267,37 +1267,37 @@ Coverage: 820/944 lines (86.86%)
 |        4 | 1257 | `				 }` |
 |        - | 1258 | `			 }` |
 |        - | 1259 | `			  /* Link the node to the tree */` |
-|     3244 | 1260 | `			 pNode->pLeft = apNode[iLeft];` |
-|     3244 | 1261 | `			 apNode[iLeft] = 0;` |
-|     3244 | 1262 | `			 pNode->pRight = 0; /* Paranoid */` |
-|     1621 | 1263 | `		 }` |
-|   345858 | 1264 | `	 }` |
+|     3180 | 1260 | `			 pNode->pLeft = apNode[iLeft];` |
+|     3180 | 1261 | `			 apNode[iLeft] = 0;` |
+|     3180 | 1262 | `			 pNode->pRight = 0; /* Paranoid */` |
+|     1589 | 1263 | `		 }` |
+|   339083 | 1264 | `	 }` |
 |        - | 1265 | `	  /* Handle post/pre icrement/decrement [i.e: ++/--] operators with precedence 3 */` |
-|   268858 | 1266 | `	 iLeft = -1;` |
-|  1695436 | 1267 | `	 for( iCur = 0 ; iCur < nToken ; ++iCur ){` |
-|  1424898 | 1268 | `		 if( apNode[iCur] == 0 ){` |
-|   734868 | 1269 | `			 continue;` |
+|   263518 | 1266 | `	 iLeft = -1;` |
+|  1662210 | 1267 | `	 for( iCur = 0 ; iCur < nToken ; ++iCur ){` |
+|  1397044 | 1268 | `		 if( apNode[iCur] == 0 ){` |
+|   720532 | 1269 | `			 continue;` |
 |        - | 1270 | `		 }` |
-|   690032 | 1271 | `		 pNode = apNode[iCur];` |
-|   690032 | 1272 | `		 if( pNode->pOp && pNode->pOp->iPrec == 3 && pNode->pLeft == 0){` |
-|     4508 | 1273 | `			 if( iLeft >= 0 && ((apNode[iLeft]->pOp && apNode[iLeft]->pOp->iPrec == 2 /* Postfix */)` |
-|     1694 | 1274 | `				 \|\| apNode[iLeft]->xCode == PH7_CompileVariable) ){` |
+|   676514 | 1271 | `		 pNode = apNode[iCur];` |
+|   676514 | 1272 | `		 if( pNode->pOp && pNode->pOp->iPrec == 3 && pNode->pLeft == 0){` |
+|     4412 | 1273 | `			 if( iLeft >= 0 && ((apNode[iLeft]->pOp && apNode[iLeft]->pOp->iPrec == 2 /* Postfix */)` |
+|     1662 | 1274 | `				 \|\| apNode[iLeft]->xCode == PH7_CompileVariable) ){` |
 |        - | 1275 | `					 /* Link the node to the tree */` |
-|     1690 | 1276 | `					 pNode->pLeft = apNode[iLeft];` |
-|     1690 | 1277 | `					 apNode[iLeft] = 0;` |
-|      844 | 1278 | `			 }` |
-|     3094 | 1279 | `		  }` |
-|   691714 | 1280 | `		 iLeft = iCur;` |
-|   345858 | 1281 | `	  }` |
-|   270540 | 1282 | `	 iLeft = -1;` |
-|  1697118 | 1283 | `	 for( iCur = nToken -  1 ; iCur >= 0 ; iCur-- ){` |
-|  1426580 | 1284 | `		 if( apNode[iCur] == 0 ){` |
-|   736556 | 1285 | `			 continue;` |
+|     1658 | 1276 | `					 pNode->pLeft = apNode[iLeft];` |
+|     1658 | 1277 | `					 apNode[iLeft] = 0;` |
+|      828 | 1278 | `			 }` |
+|     3030 | 1279 | `		  }` |
+|   678164 | 1280 | `		 iLeft = iCur;` |
+|   339083 | 1281 | `	  }` |
+|   265168 | 1282 | `	 iLeft = -1;` |
+|  1663860 | 1283 | `	 for( iCur = nToken -  1 ; iCur >= 0 ; iCur-- ){` |
+|  1398694 | 1284 | `		 if( apNode[iCur] == 0 ){` |
+|   722188 | 1285 | `			 continue;` |
 |        - | 1286 | `		 }` |
-|   690026 | 1287 | `		 pNode = apNode[iCur];` |
-|   690026 | 1288 | `		 if( pNode->pOp && pNode->pOp->iPrec == 3 && pNode->pLeft == 0){` |
-|     4500 | 1289 | `			 if( iLeft < 0 \|\| (apNode[iLeft]->pOp == 0 && apNode[iLeft]->xCode != PH7_CompileVariable)` |
-|     4502 | 1290 | `				 \|\| ( apNode[iLeft]->pOp && apNode[iLeft]->pOp->iPrec != 2 /* Postfix */) ){` |
+|   676508 | 1287 | `		 pNode = apNode[iCur];` |
+|   676508 | 1288 | `		 if( pNode->pOp && pNode->pOp->iPrec == 3 && pNode->pLeft == 0){` |
+|     4404 | 1289 | `			 if( iLeft < 0 \|\| (apNode[iLeft]->pOp == 0 && apNode[iLeft]->xCode != PH7_CompileVariable)` |
+|     4406 | 1290 | `				 \|\| ( apNode[iLeft]->pOp && apNode[iLeft]->pOp->iPrec != 2 /* Postfix */) ){` |
 |        - | 1291 | `					 /* Syntax error */` |
 |      ! 0 | 1292 | `					 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"'%z' operator needs l-value",&pNode->pOp->sOp);` |
 |      ! 0 | 1293 | `					 if( rc != SXERR_ABORT ){` |
@@ -1306,24 +1306,24 @@ Coverage: 820/944 lines (86.86%)
 |      ! 0 | 1296 | `					 return rc;` |
 |        - | 1297 | `			 }` |
 |        - | 1298 | `			 /* Link the node to the tree */` |
-|     4502 | 1299 | `			 pNode->pLeft = apNode[iLeft];` |
-|     4502 | 1300 | `			 apNode[iLeft] = 0;` |
+|     4406 | 1299 | `			 pNode->pLeft = apNode[iLeft];` |
+|     4406 | 1300 | `			 apNode[iLeft] = 0;` |
 |        - | 1301 | `			 /* Mark as pre-increment/decrement node */` |
-|     4502 | 1302 | `			 pNode->iFlags \|= EXPR_NODE_PRE_INCR;` |
-|     2250 | 1303 | `		  }` |
-|   690026 | 1304 | `		 iLeft = iCur;` |
-|   345014 | 1305 | `	 }` |
+|     4406 | 1302 | `			 pNode->iFlags \|= EXPR_NODE_PRE_INCR;` |
+|     2202 | 1303 | `		  }` |
+|   676508 | 1304 | `		 iLeft = iCur;` |
+|   338255 | 1305 | `	 }` |
 |        - | 1306 | `	 /* Handle right associative unary and cast operators [i.e: !,(string),~...]  with precedence 4*/` |
-|   270540 | 1307 | `	  iLeft = 0;` |
-|  1697112 | 1308 | `	  for( iCur = nToken -  1 ; iCur >= 0 ; iCur-- ){` |
-|  1426576 | 1309 | `		  if( apNode[iCur] ){` |
-|   685522 | 1310 | `			  pNode = apNode[iCur];` |
-|   685522 | 1311 | `			  if( pNode->pOp && pNode->pOp->iPrec == 4 && pNode->pLeft == 0){` |
-|    20546 | 1312 | `				  if( iLeft > 0 ){` |
+|   265168 | 1307 | `	  iLeft = 0;` |
+|  1663854 | 1308 | `	  for( iCur = nToken -  1 ; iCur >= 0 ; iCur-- ){` |
+|  1398690 | 1309 | `		  if( apNode[iCur] ){` |
+|   672100 | 1310 | `			  pNode = apNode[iCur];` |
+|   672100 | 1311 | `			  if( pNode->pOp && pNode->pOp->iPrec == 4 && pNode->pLeft == 0){` |
+|    20132 | 1312 | `				  if( iLeft > 0 ){` |
 |        - | 1313 | `					  /* Link the node to the tree */` |
-|    20544 | 1314 | `					  pNode->pLeft = apNode[iLeft];` |
-|    20544 | 1315 | `					  apNode[iLeft] = 0;` |
-|    20544 | 1316 | `					  if( pNode->pLeft && pNode->pLeft->pOp && pNode->pLeft->pOp->iPrec > 4 ){` |
+|    20130 | 1314 | `					  pNode->pLeft = apNode[iLeft];` |
+|    20130 | 1315 | `					  apNode[iLeft] = 0;` |
+|    20130 | 1316 | `					  if( pNode->pLeft && pNode->pLeft->pOp && pNode->pLeft->pOp->iPrec > 4 ){` |
 |        5 | 1317 | `						  if( pNode->pLeft->pLeft == 0 \|\| pNode->pLeft->pRight == 0 ){` |
 |        - | 1318 | `							   /* Syntax error */` |
 |      ! 0 | 1319 | `							  rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pLeft->pStart->nLine,"'%z': Missing operand",&pNode->pLeft->pOp->sOp);` |
@@ -1333,7 +1333,7 @@ Coverage: 820/944 lines (86.86%)
 |      ! 0 | 1323 | `							  return rc;` |
 |        - | 1324 | `						  }` |
 |        2 | 1325 | `					  }` |
-|    10273 | 1326 | `				  }else{` |
+|    10066 | 1326 | `				  }else{` |
 |        - | 1327 | `					  /* Syntax error */` |
 |        3 | 1328 | `					  rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"'%z': Missing operand",&pNode->pOp->sOp);` |
 |        3 | 1329 | `					  if( rc != SXERR_ABORT ){` |
@@ -1341,26 +1341,26 @@ Coverage: 820/944 lines (86.86%)
 |        1 | 1331 | `					  }` |
 |        3 | 1332 | `					  return rc;` |
 |        - | 1333 | `				  }` |
-|    10271 | 1334 | `			  }` |
+|    10064 | 1334 | `			  }` |
 |        - | 1335 | `			  /* Save terminal position */` |
-|   685520 | 1336 | `			  iLeft = iCur;` |
-|   342759 | 1337 | `		  }` |
-|   713288 | 1338 | `	  }` |
+|   672098 | 1336 | `			  iLeft = iCur;` |
+|   336048 | 1337 | `		  }` |
+|   699345 | 1338 | `	  }` |
 |        - | 1339 | `	 /* Process left and non-associative binary operators [i.e: *,/,&&,\|\|...]*/` |
-|  2975642 | 1340 | `	 for( i = 7 ; i < 17 ; i++ ){` |
-|  2705134 | 1341 | `		 iLeft = -1;` |
-| 16970268 | 1342 | `		 for( iCur = 0 ; iCur < nToken ; ++iCur ){` |
-| 14265164 | 1343 | `			 if( apNode[iCur] == 0 ){` |
-|  8678378 | 1344 | `				 continue;` |
+|  2916550 | 1340 | `	 for( i = 7 ; i < 17 ; i++ ){` |
+|  2651414 | 1341 | `		 iLeft = -1;` |
+| 16637688 | 1342 | `		 for( iCur = 0 ; iCur < nToken ; ++iCur ){` |
+| 13986304 | 1343 | `			 if( apNode[iCur] == 0 ){` |
+|  8509906 | 1344 | `				 continue;` |
 |        - | 1345 | `			 }` |
-|  5586788 | 1346 | `			 pNode = apNode[iCur];` |
-|  5586788 | 1347 | `			 if( pNode->pOp && pNode->pOp->iPrec == i && pNode->pLeft == 0 ){` |
+|  5476400 | 1346 | `			 pNode = apNode[iCur];` |
+|  5476400 | 1347 | `			 if( pNode->pOp && pNode->pOp->iPrec == i && pNode->pLeft == 0 ){` |
 |        - | 1348 | `				 /* Get the right node */` |
-|    83358 | 1349 | `				 iRight = iCur + 1;` |
-|   111272 | 1350 | `				 while( iRight < nToken && apNode[iRight] == 0 ){` |
-|    27916 | 1351 | `					 iRight++;` |
+|    81778 | 1349 | `				 iRight = iCur + 1;` |
+|   109162 | 1350 | `				 while( iRight < nToken && apNode[iRight] == 0 ){` |
+|    27386 | 1351 | `					 iRight++;` |
 |        2 | 1352 | `				 }` |
-|    83358 | 1353 | `				 if( iRight >= nToken \|\| iLeft < 0 \|\| !NODE_ISTERM(iRight) \|\| !NODE_ISTERM(iLeft) ){` |
+|    81778 | 1353 | `				 if( iRight >= nToken \|\| iLeft < 0 \|\| !NODE_ISTERM(iRight) \|\| !NODE_ISTERM(iLeft) ){` |
 |        - | 1354 | `					 /* Syntax error */` |
 |       29 | 1355 | `					 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"'%z': Missing/Invalid operand",&pNode->pOp->sOp);` |
 |       29 | 1356 | `					 if( rc != SXERR_ABORT ){` |
@@ -1368,7 +1368,7 @@ Coverage: 820/944 lines (86.86%)
 |       14 | 1358 | `					 }` |
 |       29 | 1359 | `					 return rc;` |
 |        - | 1360 | `				 }` |
-|    83330 | 1361 | `				 if( pNode->pOp->iOp == EXPR_OP_REF ){` |
+|    81750 | 1361 | `				 if( pNode->pOp->iOp == EXPR_OP_REF ){` |
 |        - | 1362 | `					 sxi32  iTmp;` |
 |        - | 1363 | `					 /* Reference operator [i.e: '&=' ]*/` |
 |       42 | 1364 | `					 if( ExprIsModifiableValue(apNode[iLeft],FALSE) == FALSE \|\| (apNode[iLeft]->pOp && apNode[iLeft]->pOp->iVmOp == PH7_OP_MEMBER /*->,::*/) ){` |
@@ -1398,24 +1398,24 @@ Coverage: 820/944 lines (86.86%)
 |       42 | 1388 | `					 iLeft = iTmp;` |
 |       20 | 1389 | `				 }` |
 |        - | 1390 | `				 /* Link the node to the tree */` |
-|    83330 | 1391 | `				 pNode->pLeft = apNode[iLeft];` |
-|    83330 | 1392 | `				 pNode->pRight = apNode[iRight];` |
-|    83330 | 1393 | `				 apNode[iLeft] = apNode[iRight] = 0;` |
-|    41664 | 1394 | `			 }` |
-|  5586760 | 1395 | `			 iLeft = iCur;` |
-|  2793381 | 1396 | `		 }` |
-|  1352554 | 1397 | `	 }` |
+|    81750 | 1391 | `				 pNode->pLeft = apNode[iLeft];` |
+|    81750 | 1392 | `				 pNode->pRight = apNode[iRight];` |
+|    81750 | 1393 | `				 apNode[iLeft] = apNode[iRight] = 0;` |
+|    40874 | 1394 | `			 }` |
+|  5476372 | 1395 | `			 iLeft = iCur;` |
+|  2738187 | 1396 | `		 }` |
+|  1325694 | 1397 | `	 }` |
 |        - | 1398 | `	 /* Handle the ternary operator. (expr1) ? (expr2) : (expr3)` |
 |        - | 1399 | `	  * Note that we do not need a precedence loop here since` |
 |        - | 1400 | `	  * we are dealing with a single operator.` |
 |        - | 1401 | `	  */` |
-|   270510 | 1402 | `	  iLeft = -1;` |
-|  1690362 | 1403 | `	  for( iCur = 0 ; iCur < nToken ; ++iCur ){` |
-|  1421390 | 1404 | `		  if( apNode[iCur] == 0 ){` |
-|   927746 | 1405 | `			  continue;` |
+|   265138 | 1402 | `	  iLeft = -1;` |
+|  1657104 | 1403 | `	  for( iCur = 0 ; iCur < nToken ; ++iCur ){` |
+|  1393504 | 1404 | `		  if( apNode[iCur] == 0 ){` |
+|   909708 | 1405 | `			  continue;` |
 |        - | 1406 | `		  }` |
-|   493646 | 1407 | `		  pNode = apNode[iCur];` |
-|   493646 | 1408 | `		  if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_QUESTY && pNode->pLeft == 0 ){` |
+|   483798 | 1407 | `		  pNode = apNode[iCur];` |
+|   483798 | 1408 | `		  if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_QUESTY && pNode->pLeft == 0 ){` |
 |     1538 | 1409 | `			  sxi32 iNest = 1;` |
 |     1538 | 1410 | `			  if( iLeft < 0 \|\| !NODE_ISTERM(iLeft) ){` |
 |        - | 1411 | `				  /* Missing condition */` |
@@ -1479,25 +1479,25 @@ Coverage: 820/944 lines (86.86%)
 |     1536 | 1469 | `			  apNode[iLeft] = 0;` |
 |     1536 | 1470 | `			  break;` |
 |        - | 1471 | `		  }` |
-|   492110 | 1472 | `		  iLeft = iCur;` |
-|   246056 | 1473 | `	  }` |
+|   482262 | 1472 | `		  iLeft = iCur;` |
+|   241132 | 1473 | `	  }` |
 |        - | 1474 | `	 /* Process right associative binary operators [i.e: '=','+=','/=']` |
 |        - | 1475 | `	  * Note: All right associative binary operators have precedence 18` |
 |        - | 1476 | `	  * so there is no need for a precedence loop here.` |
 |        - | 1477 | `	  */` |
-|   270508 | 1478 | `	 iRight = -1;` |
-|  1696918 | 1479 | `	 for( iCur = nToken -  1 ; iCur >= 0 ; iCur--){` |
-|  1426452 | 1480 | `		 if( apNode[iCur] == 0 ){` |
-|  1045084 | 1481 | `			 continue;` |
+|   265136 | 1478 | `	 iRight = -1;` |
+|  1663660 | 1479 | `	 for( iCur = nToken -  1 ; iCur >= 0 ; iCur--){` |
+|  1398566 | 1480 | `		 if( apNode[iCur] == 0 ){` |
+|  1024808 | 1481 | `			 continue;` |
 |        - | 1482 | `		 }` |
-|   381370 | 1483 | `		 pNode = apNode[iCur];` |
-|   381370 | 1484 | `		 if( pNode->pOp && pNode->pOp->iPrec == 18 && pNode->pLeft == 0 ){` |
+|   373760 | 1483 | `		 pNode = apNode[iCur];` |
+|   373760 | 1484 | `		 if( pNode->pOp && pNode->pOp->iPrec == 18 && pNode->pLeft == 0 ){` |
 |        - | 1485 | `			 /* Get the left node */` |
-|   110736 | 1486 | `			 iLeft = iCur - 1;` |
-|   150366 | 1487 | `			 while( iLeft >= 0 && apNode[iLeft] == 0 ){` |
-|    39632 | 1488 | `				 iLeft--;` |
+|   108498 | 1486 | `			 iLeft = iCur - 1;` |
+|   147296 | 1487 | `			 while( iLeft >= 0 && apNode[iLeft] == 0 ){` |
+|    38800 | 1488 | `				 iLeft--;` |
 |        2 | 1489 | `			 }` |
-|   110736 | 1490 | `			 if( iLeft < 0 \|\| iRight < 0 \|\| !NODE_ISTERM(iRight) \|\| !NODE_ISTERM(iLeft) ){` |
+|   108498 | 1490 | `			 if( iLeft < 0 \|\| iRight < 0 \|\| !NODE_ISTERM(iRight) \|\| !NODE_ISTERM(iLeft) ){` |
 |        - | 1491 | `				 /* Syntax error */` |
 |       39 | 1492 | `				 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"'%z': Missing/Invalid operand",&pNode->pOp->sOp);` |
 |       39 | 1493 | `				 if( rc != SXERR_ABORT ){` |
@@ -1505,7 +1505,7 @@ Coverage: 820/944 lines (86.86%)
 |       18 | 1495 | `				 }` |
 |       39 | 1496 | `				 return rc;` |
 |        - | 1497 | `			 }` |
-|   110698 | 1498 | `			 if( ExprIsModifiableValue(apNode[iLeft],FALSE) == FALSE ){` |
+|   108460 | 1498 | `			 if( ExprIsModifiableValue(apNode[iLeft],FALSE) == FALSE ){` |
 |       28 | 1499 | `				 if( pNode->pOp->iVmOp != PH7_OP_STORE \|\| apNode[iLeft]->xCode != PH7_CompileList ){` |
 |        - | 1500 | `					 /* Left operand must be a modifiable l-value */` |
 |        4 | 1501 | `					 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,` |
@@ -1517,21 +1517,21 @@ Coverage: 820/944 lines (86.86%)
 |        - | 1507 | `				 }` |
 |       12 | 1508 | `			 }` |
 |        - | 1509 | `			 /* Link the node to the tree (Reverse) */` |
-|   110696 | 1510 | `			 pNode->pLeft = apNode[iRight];` |
-|   110696 | 1511 | `			 pNode->pRight = apNode[iLeft];` |
-|   110696 | 1512 | `			 apNode[iLeft] = apNode[iRight] = 0;` |
-|    55347 | 1513 | `		 }` |
-|   381330 | 1514 | `		 iRight = iCur;` |
-|   190666 | 1515 | `	 }` |
+|   108458 | 1510 | `			 pNode->pLeft = apNode[iRight];` |
+|   108458 | 1511 | `			 pNode->pRight = apNode[iLeft];` |
+|   108458 | 1512 | `			 apNode[iLeft] = apNode[iRight] = 0;` |
+|    54228 | 1513 | `		 }` |
+|   373720 | 1514 | `		 iRight = iCur;` |
+|   186861 | 1515 | `	 }` |
 |        - | 1516 | `	 /* Process left associative binary operators that have the lowest precedence [i.e: and,or,xor] */` |
-|  1352332 | 1517 | `	 for( i = 19 ; i < 23 ; i++ ){` |
-|  1081866 | 1518 | `		 iLeft = -1;` |
-|  6787498 | 1519 | `		 for( iCur = 0 ; iCur < nToken ; ++iCur ){` |
-|  5705634 | 1520 | `			 if( apNode[iCur] == 0 ){` |
-|  4623348 | 1521 | `				 continue;` |
+|  1325472 | 1517 | `	 for( i = 19 ; i < 23 ; i++ ){` |
+|  1060378 | 1518 | `		 iLeft = -1;` |
+|  6654466 | 1519 | `		 for( iCur = 0 ; iCur < nToken ; ++iCur ){` |
+|  5594090 | 1520 | `			 if( apNode[iCur] == 0 ){` |
+|  4533292 | 1521 | `				 continue;` |
 |        - | 1522 | `			 }` |
-|  1082288 | 1523 | `			 pNode = apNode[iCur];` |
-|  1082288 | 1524 | `			 if( pNode->pOp && pNode->pOp->iPrec == i && pNode->pLeft == 0 ){` |
+|  1060800 | 1523 | `			 pNode = apNode[iCur];` |
+|  1060800 | 1524 | `			 if( pNode->pOp && pNode->pOp->iPrec == i && pNode->pLeft == 0 ){` |
 |        - | 1525 | `				 /* Get the right node */` |
 |       72 | 1526 | `				 iRight = iCur + 1;` |
 |      110 | 1527 | `				 while( iRight < nToken && apNode[iRight] == 0 ){` |
@@ -1550,57 +1550,57 @@ Coverage: 820/944 lines (86.86%)
 |       72 | 1540 | `				 pNode->pRight = apNode[iRight];` |
 |       72 | 1541 | `				 apNode[iLeft] = apNode[iRight] = 0;` |
 |       35 | 1542 | `			 }` |
-|  1082288 | 1543 | `			 iLeft = iCur;` |
-|   541145 | 1544 | `		 }` |
-|   540934 | 1545 | `	 }` |
+|  1060800 | 1543 | `			 iLeft = iCur;` |
+|   530401 | 1544 | `		 }` |
+|   530190 | 1545 | `	 }` |
 |        - | 1546 | `	 /* Point to the root of the expression tree */` |
-|  1426378 | 1547 | `	 for( iCur = 1 ; iCur < nToken ; ++iCur ){` |
-|  1155934 | 1548 | `		 if( apNode[iCur] ){` |
-|   244392 | 1549 | `			 if( (apNode[iCur]->pOp \|\| apNode[iCur]->xCode ) && apNode[0] != 0){` |
+|  1398492 | 1547 | `	 for( iCur = 1 ; iCur < nToken ; ++iCur ){` |
+|  1133420 | 1548 | `		 if( apNode[iCur] ){` |
+|   239562 | 1549 | `			 if( (apNode[iCur]->pOp \|\| apNode[iCur]->xCode ) && apNode[0] != 0){` |
 |       24 | 1550 | `				 rc = PH7_GenCompileError(pGen,E_ERROR,apNode[iCur]->pStart->nLine,"Unexpected token '%z'",&apNode[iCur]->pStart->sData);` |
 |       24 | 1551 | `				  if( rc != SXERR_ABORT ){` |
 |       24 | 1552 | `					  rc = SXERR_SYNTAX;` |
 |       11 | 1553 | `				  }` |
 |       24 | 1554 | `				  return rc;` |
 |        - | 1555 | `			 }` |
-|   244370 | 1556 | `			 apNode[0] = apNode[iCur];` |
-|   244370 | 1557 | `			 apNode[iCur] = 0;` |
-|   122184 | 1558 | `		 }` |
-|   577957 | 1559 | `	 }` |
-|   270446 | 1560 | `	 return SXRET_OK;` |
-|   239397 | 1561 | ` }` |
+|   239540 | 1556 | `			 apNode[0] = apNode[iCur];` |
+|   239540 | 1557 | `			 apNode[iCur] = 0;` |
+|   119769 | 1558 | `		 }` |
+|   566700 | 1559 | `	 }` |
+|   265074 | 1560 | `	 return SXRET_OK;` |
+|   234785 | 1561 | ` }` |
 |        - | 1562 | ` /*` |
 |        - | 1563 | `  * Build an expression tree from the freshly extracted raw tokens.` |
 |        - | 1564 | `  * If successful, the root of the tree is stored in ppRoot.` |
 |        - | 1565 | `  * When errors,PH7 take care of generating the appropriate error message.` |
 |        - | 1566 | `  * This is the public interface used by the most code generator routines.` |
 |        - | 1567 | `  */` |
-|   312594 | 1568 | `PH7_PRIVATE sxi32 PH7_ExprMakeTree(ph7_gen_state *pGen,SySet *pExprNode,ph7_expr_node **ppRoot)` |
+|   306458 | 1568 | `PH7_PRIVATE sxi32 PH7_ExprMakeTree(ph7_gen_state *pGen,SySet *pExprNode,ph7_expr_node **ppRoot)` |
 |        2 | 1569 |  |
 |        - | 1570 | `	ph7_expr_node **apNode;` |
 |        - | 1571 | `	ph7_expr_node *pNode;` |
 |        - | 1572 | `	sxi32 rc;` |
 |        - | 1573 | `	/* Reset node container */` |
-|   312596 | 1574 | `	SySetReset(pExprNode);` |
-|   312596 | 1575 | `	pNode = 0; /* Prevent compiler warning */` |
+|   306460 | 1574 | `	SySetReset(pExprNode);` |
+|   306460 | 1575 | `	pNode = 0; /* Prevent compiler warning */` |
 |        - | 1576 | `	/* Extract nodes one after one until we hit the end of the input */` |
-|  1681220 | 1577 | `	while( pGen->pIn < pGen->pEnd ){` |
-|  1368660 | 1578 | `		rc = ExprExtractNode(&(*pGen),&pNode);` |
-|  1368660 | 1579 | `		if( rc != SXRET_OK ){` |
+|  1648326 | 1577 | `	while( pGen->pIn < pGen->pEnd ){` |
+|  1341902 | 1578 | `		rc = ExprExtractNode(&(*pGen),&pNode);` |
+|  1341902 | 1579 | `		if( rc != SXRET_OK ){` |
 |       35 | 1580 | `			return rc;` |
 |        - | 1581 | `		}` |
 |        - | 1582 | `		/* Save the extracted node */` |
-|  1368626 | 1583 | `		SySetPut(pExprNode,(const void *)&pNode);` |
+|  1341868 | 1583 | `		SySetPut(pExprNode,(const void *)&pNode);` |
 |        2 | 1584 | `	}` |
-|   312562 | 1585 | `	if( SySetUsed(pExprNode) < 1 ){` |
+|   306426 | 1585 | `	if( SySetUsed(pExprNode) < 1 ){` |
 |        - | 1586 | `		/* Empty expression [i.e: A semi-colon;] */` |
 |      ! 0 | 1587 | `		*ppRoot = 0;` |
 |      ! 0 | 1588 | `		return SXRET_OK;` |
 |        - | 1589 | `	}` |
-|   312562 | 1590 | `	apNode = (ph7_expr_node **)SySetBasePtr(pExprNode);` |
+|   306426 | 1590 | `	apNode = (ph7_expr_node **)SySetBasePtr(pExprNode);` |
 |        - | 1591 | `	/* Make sure we are dealing with valid nodes */` |
-|   312562 | 1592 | `	rc = ExprVerifyNodes(&(*pGen),apNode,(sxi32)SySetUsed(pExprNode));` |
-|   312562 | 1593 | `	if( rc != SXRET_OK ){` |
+|   306426 | 1592 | `	rc = ExprVerifyNodes(&(*pGen),apNode,(sxi32)SySetUsed(pExprNode));` |
+|   306426 | 1593 | `	if( rc != SXRET_OK ){` |
 |        - | 1594 | `		/* Don't worry about freeing memory,upper layer will` |
 |        - | 1595 | `		 * cleanup the mess left behind.` |
 |        - | 1596 | `		 */` |
@@ -1608,14 +1608,14 @@ Coverage: 820/944 lines (86.86%)
 |       47 | 1598 | `		return rc;` |
 |        - | 1599 | `	}` |
 |        - | 1600 | `	/* Build the tree */` |
-|   312516 | 1601 | `	rc = ExprMakeTree(&(*pGen),apNode,(sxi32)SySetUsed(pExprNode));` |
-|   312516 | 1602 | `	if( rc != SXRET_OK ){` |
+|   306380 | 1601 | `	rc = ExprMakeTree(&(*pGen),apNode,(sxi32)SySetUsed(pExprNode));` |
+|   306380 | 1602 | `	if( rc != SXRET_OK ){` |
 |        - | 1603 | `		/* Something goes wrong [i.e: Syntax error] */` |
 |       84 | 1604 | `		*ppRoot = 0;` |
 |       84 | 1605 | `		return rc;` |
 |        - | 1606 | `	}` |
 |        - | 1607 | `	/* Point to the root of the tree */` |
-|   312434 | 1608 | `	*ppRoot = apNode[0];` |
-|   312434 | 1609 | `	return SXRET_OK;` |
-|   156299 | 1610 |  |
+|   306298 | 1608 | `	*ppRoot = apNode[0];` |
+|   306298 | 1609 | `	return SXRET_OK;` |
+|   153231 | 1610 |  |
 |        - | 1611 |  |
