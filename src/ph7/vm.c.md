@@ -8556,11 +8556,11 @@ Coverage: 5223/7395 lines (70.63%)
 |        - |  8546 | ` * PH7 use it's own private PRNG which is based on the one` |
 |        - |  8547 | ` * used by te SQLite3 library.` |
 |        - |  8548 | ` */` |
-|     1314 |  8549 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
+|     1312 |  8549 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
 |        2 |  8550 |  |
 |        - |  8551 | `	sxu32 iNum;` |
-|     1316 |  8552 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
-|     1316 |  8553 | `	return iNum;` |
+|     1314 |  8552 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
+|     1314 |  8553 | `	return iNum;` |
 |        2 |  8554 |  |
 |        - |  8555 | `/*` |
 |        - |  8556 | ` * Generate a random string (English Alphabet) of length nLen.` |
