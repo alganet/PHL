@@ -112,7 +112,7 @@ jobs:
         fetch-depth: 0
         persist-credentials: true
     - uses: ./.github/actions/setup-action
-    - uses: actions/download-artifact@v7
+    - uses: actions/download-artifact@v8
       with:
         pattern: coverage-report-*
         path: artifact
