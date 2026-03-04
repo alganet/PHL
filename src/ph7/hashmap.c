@@ -4745,7 +4745,7 @@ static int ph7_hashmap_fill(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * array array_fill_keys(array $input,var $value)
+ * array array_fill_keys(array $input,mixed $value)
  *  Fill an array with values, specifying keys.
  * Parameters
  *  $input
@@ -4753,7 +4753,9 @@ static int ph7_hashmap_fill(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  $value
  *    Value to use for filling.
  * Return
- *  The filled array or null on failure.
+ *  The filled array.
+ * Throws
+ *  ValueError if $input is not an array.
  */
 static int ph7_hashmap_fill_keys(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -4761,16 +4763,21 @@ static int ph7_hashmap_fill_keys(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_hashmap *pSrc;
 	ph7_value *pArray;
 	sxu32 n;
-	if( nArg < 2 ){
-		/* Missing arguments,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	/* PHP enforces exactly 2 arguments. */
+	if( nArg != 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_fill_keys() expects exactly 2 arguments, %d given",
+			nArg
+			);
 	}
 	/* Make sure we are dealing with a valid hashmap */
 	if( !ph7_value_is_array(apArg[0]) ){
-		/* Invalid argument,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_fill_keys(): Argument #1 ($keys) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
 	}
 	/* Point to the internal representation of the input hashmap */
 	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;
