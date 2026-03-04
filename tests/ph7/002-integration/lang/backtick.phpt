@@ -10,7 +10,7 @@ backtick quoted string
 echo `echo test`;
 ?>
 --EXPECTF--
-%s 2 Notice: Command line invocation is disabled in the current release of the PH7(2.1.4) engine
+%s 2 Notice:  Command line invocation is disabled in the current release of the PH7(2.1.4) engine
 --CLEAN--
 <?php
 

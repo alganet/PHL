@@ -58,16 +58,16 @@ try {
 
 ?>
 --EXPECTF--
-%s %d Error: goto: Invalid label name: ';'
-%s %d Error: Expected semi-colon ';' after 'goto' statement
-%s %d Error: Syntax error: Unexpected token ':'
-%s %d Notice: Namespace support is disabled in the current release of the PH7(2.1.4) engine
-%s %d Error: Syntax error: Unexpected keyword 'interface'
-%s %d Error: Syntax error: Unexpected keyword 'abstract'
-%s %d Error: Syntax error: Unexpected keyword 'final'
-%s %d Error: Missing argument default value
-%s %d Error: Empty constant 'CONSTANT' value
-%s %d Error: Missing ')' after method 'method' declaration
+%s %d Error:  goto: Invalid label name: ';'
+%s %d Error:  Expected semi-colon ';' after 'goto' statement
+%s %d Error:  Syntax error: Unexpected token ':'
+%s %d Notice:  Namespace support is disabled in the current release of the PH7(2.1.4) engine
+%s %d Error:  Syntax error: Unexpected keyword 'interface'
+%s %d Error:  Syntax error: Unexpected keyword 'abstract'
+%s %d Error:  Syntax error: Unexpected keyword 'final'
+%s %d Error:  Missing argument default value
+%s %d Error:  Empty constant 'CONSTANT' value
+%s %d Error:  Missing ')' after method 'method' declaration
 Compile error
 --CLEAN--
 <?php

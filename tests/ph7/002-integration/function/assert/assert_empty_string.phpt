@@ -14,7 +14,7 @@ $result = assert('');
 if ($result) { echo "empty_string_true\n"; } else { echo "empty_string_false\n"; }
 ?>
 --EXPECTF--
-%s Warning: assert(): Assertion failed
+%s Warning:  assert(): Assertion failed
 empty_string_false
 --CLEAN--
 <?php

@@ -16,7 +16,7 @@ $res = @zip_open($fn);
 echo (is_resource($res) ? 'open_ok' : 'open_failed') . PHP_EOL;
 ?>
 --EXPECTF--
-%s Error: zip_open(): IO error while opening %s
+%s Error:  zip_open(): IO error while opening %s
 open_failed
 --CLEAN--
 <?php

@@ -11,8 +11,8 @@ for($i=0$i<10; $i++) {
 }
 ?>
 --EXPECTF--
-%s 2 Error: Unexpected token '<'
-%s 2 Error: for: Expected ';' after conditionals expressions
+%s 2 Error:  Unexpected token '<'
+%s 2 Error:  for: Expected ';' after conditionals expressions
 Compile error
 --CLEAN--
 <?php

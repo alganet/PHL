@@ -12,8 +12,8 @@ const 456 = 789;
 echo "Should not reach here\n";
 ?>
 --EXPECTF--
-%s 2 Error: Invalid function name
-%s 3 Error: const: Invalid constant name
+%s 2 Error:  Invalid function name
+%s 3 Error:  const: Invalid constant name
 Compile error
 --CLEAN--
 <?php

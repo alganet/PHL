@@ -11,8 +11,8 @@ $a = [1];
 echo $a];
 ?>
 --EXPECTF--
-%s 2 Error: Invalid array name
-%s 3 Error: Syntax error: Unexpected token ']'
+%s 2 Error:  Invalid array name
+%s 3 Error:  Syntax error: Unexpected token ']'
 Compile error
 --CLEAN--
 <?php

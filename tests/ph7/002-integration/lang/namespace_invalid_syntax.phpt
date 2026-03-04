@@ -11,7 +11,7 @@ namespace 123;
 echo "should not reach here\n";
 ?>
 --EXPECTF--
-%s 2 Error: Namespace: Unexpected token '123'
+%s 2 Error:  Namespace: Unexpected token '123'
 --CLEAN--
 <?php
 

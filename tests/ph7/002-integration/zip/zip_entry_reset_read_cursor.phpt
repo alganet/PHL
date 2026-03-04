@@ -47,9 +47,9 @@ unlink($fn);
 ?>
 --EXPECTF--
 bool(TRUE)
-%s Error: zip_entry_reset_read_cursor(): Expecting a ZIP archive entry
+%s Error:  zip_entry_reset_read_cursor(): Expecting a ZIP archive entry
 bool(FALSE)
-%s Error: zip_entry_reset_read_cursor(): Expecting a ZIP archive entry
+%s Error:  zip_entry_reset_read_cursor(): Expecting a ZIP archive entry
 bool(FALSE)
 --CLEAN--
 <?php

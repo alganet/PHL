@@ -15,8 +15,8 @@ function foo() {
 }
 ?>
 --EXPECTF--
-%s %d Warning: Label 'bar' is defined but not referenced
-%s %d Error: Label 'bar' is unreachable
+%s %d Warning:  Label 'bar' is defined but not referenced
+%s %d Error:  Label 'bar' is unreachable
 Compile error
 --CLEAN--
 <?php

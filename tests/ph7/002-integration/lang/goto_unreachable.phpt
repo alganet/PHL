@@ -14,7 +14,7 @@ function foo() {
 echo "ok";
 ?>
 --EXPECTF--
-%s %d Error: Label 'bar' is unreachable
+%s %d Error:  Label 'bar' is unreachable
 Compile error
 --CLEAN--
 <?php

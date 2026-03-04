@@ -12,7 +12,7 @@ function gen() {
 }
 ?>
 --EXPECTF--
-%s 3 Error: Unexpected token '1'
+%s 3 Error:  Unexpected token '1'
 Compile error
 --CLEAN--
 <?php

@@ -11,7 +11,7 @@ declare(encoding='UTF-8');
 echo "OK";
 ?>
 --EXPECTF--
-%s 2 Notice: the declare construct is a no-op in the current release of the PH7(2.1.4) engine
+%s 2 Notice:  the declare construct is a no-op in the current release of the PH7(2.1.4) engine
 OK
 --CLEAN--
 <?php

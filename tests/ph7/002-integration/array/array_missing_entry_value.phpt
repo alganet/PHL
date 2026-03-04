@@ -10,7 +10,7 @@ array with missing entry value
 $a = array(key => );
 ?>
 --EXPECTF--
-%s 2 Error: array(): Missing entry value
+%s 2 Error:  array(): Missing entry value
 Compile error
 --CLEAN--
 <?php

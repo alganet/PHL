@@ -10,7 +10,7 @@ Missing closing parenthesis in expression
 echo (1 + 2;
 ?>
 --EXPECTF--
-%s %d Error: Syntax error,mismatched '(','[','{' or '?'
+%s %d Error:  Syntax error,mismatched '(','[','{' or '?'
 Compile error
 --CLEAN--
 <?php

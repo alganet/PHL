@@ -13,9 +13,9 @@ const false = 3;
 echo "Should not reach here\n";
 ?>
 --EXPECTF--
-%s 2 Error: const: Cannot redeclare a reserved constant 'null'
-%s 3 Error: const: Cannot redeclare a reserved constant 'true'
-%s 4 Error: const: Cannot redeclare a reserved constant 'false'
+%s 2 Error:  const: Cannot redeclare a reserved constant 'null'
+%s 3 Error:  const: Cannot redeclare a reserved constant 'true'
+%s 4 Error:  const: Cannot redeclare a reserved constant 'false'
 Compile error
 --CLEAN--
 <?php

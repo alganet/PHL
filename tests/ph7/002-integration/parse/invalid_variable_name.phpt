@@ -11,7 +11,7 @@ Invalid variable name compilation error
 $1 = 5;
 ?>
 --EXPECTF--
-%s 3 Error: '=': Left operand must be a modifiable l-value
+%s 3 Error:  '=': Left operand must be a modifiable l-value
 Compile error
 --CLEAN--
 <?php

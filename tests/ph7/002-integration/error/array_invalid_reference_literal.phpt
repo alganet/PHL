@@ -10,7 +10,7 @@ PHL: array with invalid reference to literal
 $a = array(&1);
 ?>
 --EXPECTF--
-%s 2 Error: array(): Expecting a variable after reference operator '&'
+%s 2 Error:  array(): Expecting a variable after reference operator '&'
 Compile error
 --CLEAN--
 <?php

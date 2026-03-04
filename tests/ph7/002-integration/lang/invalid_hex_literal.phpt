@@ -11,7 +11,7 @@ $a = 0xG;
 echo "Should not reach here\n";
 ?>
 --EXPECTF--
-%s 2 Error: Unexpected token 'G'
+%s 2 Error:  Unexpected token 'G'
 Compile error
 --CLEAN--
 <?php

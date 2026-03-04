@@ -10,7 +10,7 @@ PHL: break statement outside loop or switch
 break;
 ?>
 --EXPECTF--
-%s 2 Error: A 'break' statement may only be used within a loop or switch
+%s 2 Error:  A 'break' statement may only be used within a loop or switch
 Compile error
 --CLEAN--
 <?php

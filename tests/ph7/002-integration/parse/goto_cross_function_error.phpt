@@ -15,8 +15,8 @@ function foo() {
 goto LABEL;
 ?>
 --EXPECTF--
-%s %d Warning: Label 'LABEL' is defined but not referenced
-%s %d Error: Label 'LABEL' is unreachable
+%s %d Warning:  Label 'LABEL' is defined but not referenced
+%s %d Error:  Label 'LABEL' is unreachable
 Compile error
 --CLEAN--
 <?php

@@ -31,10 +31,10 @@ foreach ([1,2] as $val) {
 
 ?>
 --EXPECTF--
-%s %d Error: Syntax error: Unexpected token '}'
-%s %d Error: Syntax error: Unexpected token ']'
-%s %d Error: Syntax error: Unexpected token ';'
-%s %d Error: Syntax error: Unexpected token '}'
+%s %d Error:  Syntax error: Unexpected token '}'
+%s %d Error:  Syntax error: Unexpected token ']'
+%s %d Error:  Syntax error: Unexpected token ';'
+%s %d Error:  Syntax error: Unexpected token '}'
 Compile error
 --CLEAN--
 <?php

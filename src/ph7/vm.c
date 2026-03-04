@@ -2285,13 +2285,13 @@ PH7_PRIVATE sxi32 PH7_VmThrowError(
 	 * severities adjust the textual prefix.  Do not modify the raw error
 	 * code; user handlers rely on seeing the original value (e.g. 8192 for
 	 * E_DEPRECATED). */
-	zErr = "Error: ";
+	zErr = "Error:  ";
 	switch(iErr){
 	case PH7_CTX_WARNING:
-		zErr = "Warning: ";
+		zErr = "Warning:  ";
 		break;
 	case PH7_CTX_NOTICE:
-		zErr = "Notice: ";
+		zErr = "Notice:  ";
 		break;
 	default:
 		/* keep iErr unchanged */
@@ -2344,13 +2344,13 @@ static sxi32 VmThrowErrorAp(
 	/* Default prefix is "Error:".  Only WARNING/NOTICE use a special
 	 * prefix; leave other error codes untouched so the handler receives
 	 * the correct errno value. */
-	zErr = "Error: ";
+	zErr = "Error:  ";
 	switch(iErr){
 	case PH7_CTX_WARNING:
-		zErr = "Warning: ";
+		zErr = "Warning:  ";
 		break;
 	case PH7_CTX_NOTICE:
-		zErr = "Notice: ";
+		zErr = "Notice:  ";
 		break;
 	default:
 		/* do not change iErr */
