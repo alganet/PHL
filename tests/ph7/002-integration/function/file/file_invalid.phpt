@@ -28,11 +28,11 @@ if ($result === false) {
 }
 ?>
 --EXPECTF--
-%s Warning: file(): Expecting a file path
+%s Warning:  file(): Expecting a file path
 no_args: %d
-%s Error: file(): IO error while opening '/nonexistent/path/file.txt'
+%s Error:  file(): IO error while opening '/nonexistent/path/file.txt'
 invalid_path: false
-%s Warning: file(): Expecting a file path
+%s Warning:  file(): Expecting a file path
 array_arg: false
 --CLEAN--
 <?php

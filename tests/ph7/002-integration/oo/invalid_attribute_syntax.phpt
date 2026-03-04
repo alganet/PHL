@@ -12,7 +12,7 @@ class TestClass {
 }
 ?>
 --EXPECTF--
-%s 3 Error: Expected '=' or ';' after attribute name 'var'
+%s 3 Error:  Expected '=' or ';' after attribute name 'var'
 Compile error
 --CLEAN--
 <?php

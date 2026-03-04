@@ -26,9 +26,9 @@ if ($cloned2 === null) {
 }
 ?>
 --EXPECTF--
-%s Error: Clone: Expecting a class instance as left operand,PH7 is loading NULL
+%s Error:  Clone: Expecting a class instance as left operand,PH7 is loading NULL
 Clone scalar returned null
-%s Error: Clone: Expecting a class instance as left operand,PH7 is loading NULL
+%s Error:  Clone: Expecting a class instance as left operand,PH7 is loading NULL
 Clone null returned null
 --CLEAN--
 <?php

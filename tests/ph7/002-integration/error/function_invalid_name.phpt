@@ -10,7 +10,7 @@ Invalid function name
 function 123() {}
 ?>
 --EXPECTF--
-%s 2 Error: Invalid function name
+%s 2 Error:  Invalid function name
 Compile error
 --CLEAN--
 <?php

@@ -12,7 +12,7 @@ $f = function {
 };
 ?>
 --EXPECTF--
-%s 2 Error: Missing opening parenthesis '(' while declaring annonymous function
+%s 2 Error:  Missing opening parenthesis '(' while declaring annonymous function
 Compile error
 --CLEAN--
 <?php

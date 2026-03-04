@@ -16,7 +16,7 @@ unterminated
 }
 ?>
 --EXPECTF--
-%s 2 Error: Missing closing braces '}'
+%s 2 Error:  Missing closing braces '}'
 Compile error
 --CLEAN--
 <?php

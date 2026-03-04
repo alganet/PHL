@@ -11,7 +11,7 @@ use MyNamespace\MyClass;
 echo "use test\n";
 ?>
 --EXPECTF--
-%s 2 Notice: Namespace support is disabled in the current release of the PH7(2.1.4) engine
+%s 2 Notice:  Namespace support is disabled in the current release of the PH7(2.1.4) engine
 use test
 --CLEAN--
 <?php

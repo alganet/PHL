@@ -11,7 +11,7 @@ use 123;
 echo "should not reach here\n";
 ?>
 --EXPECTF--
-%s 2 Error: use statement: Unexpected token '123',expecting ';'
+%s 2 Error:  use statement: Unexpected token '123',expecting ';'
 --CLEAN--
 <?php
 

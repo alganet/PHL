@@ -30,21 +30,21 @@ $s = ;
 $t = ;
 ?>
 --EXPECTF--
-%s 3 Error: '=': Missing/Invalid operand
-%s 4 Error: '=': Missing/Invalid operand
-%s 5 Error: '=': Missing/Invalid operand
-%s 6 Error: '=': Missing/Invalid operand
-%s 7 Error: '=': Missing/Invalid operand
-%s 8 Error: '=': Missing/Invalid operand
-%s 9 Error: '=': Missing/Invalid operand
-%s 10 Error: '=': Missing/Invalid operand
-%s 11 Error: '=': Missing/Invalid operand
-%s 12 Error: '=': Missing/Invalid operand
-%s 13 Error: '=': Missing/Invalid operand
-%s 14 Error: '=': Missing/Invalid operand
-%s 15 Error: '=': Missing/Invalid operand
-%s 16 Error: '=': Missing/Invalid operand
-%s 17 Error: '=': Missing/Invalid operand
+%s 3 Error:  '=': Missing/Invalid operand
+%s 4 Error:  '=': Missing/Invalid operand
+%s 5 Error:  '=': Missing/Invalid operand
+%s 6 Error:  '=': Missing/Invalid operand
+%s 7 Error:  '=': Missing/Invalid operand
+%s 8 Error:  '=': Missing/Invalid operand
+%s 9 Error:  '=': Missing/Invalid operand
+%s 10 Error:  '=': Missing/Invalid operand
+%s 11 Error:  '=': Missing/Invalid operand
+%s 12 Error:  '=': Missing/Invalid operand
+%s 13 Error:  '=': Missing/Invalid operand
+%s 14 Error:  '=': Missing/Invalid operand
+%s 15 Error:  '=': Missing/Invalid operand
+%s 16 Error:  '=': Missing/Invalid operand
+%s 17 Error:  '=': Missing/Invalid operand
 %s 18 Error count limit reached,PH7 is aborting compilation
 Compile error
 --CLEAN--

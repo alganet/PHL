@@ -17,7 +17,7 @@ if ($result) { echo "string_false_ok\n"; } else { echo "string_false_failed\n"; 
 ?>
 --EXPECTF--
 string_true_ok
-%s Warning: assert(): Assertion failed
+%s Warning:  assert(): Assertion failed
 string_false_failed
 --CLEAN--
 <?php

@@ -6524,7 +6524,7 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 	}
 	rc = SXRET_OK;
 	/* Format the error message */
-	SyBlobFormat(pWorker,"%u %s: ",nLine,zErr);
+	SyBlobFormat(pWorker,"%u %s:  ",nLine,zErr);
 	va_start(ap,zFormat);
 	SyBlobFormatAp(pWorker,zFormat,ap);
 	va_end(ap);

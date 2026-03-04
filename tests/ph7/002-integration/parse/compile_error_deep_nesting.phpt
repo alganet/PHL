@@ -102,15 +102,15 @@ echo "deep";
 }
 ?>
 --EXPECTF--
-%s 11 Error: Missing closing braces '}'
-%s 10 Error: Missing closing braces '}'
-%s 9 Error: Missing closing braces '}'
-%s 8 Error: Missing closing braces '}'
-%s 7 Error: Missing closing braces '}'
-%s 6 Error: Missing closing braces '}'
-%s 5 Error: Missing closing braces '}'
-%s 4 Error: Missing closing braces '}'
-%s 3 Error: Missing closing braces '}'
+%s 11 Error:  Missing closing braces '}'
+%s 10 Error:  Missing closing braces '}'
+%s 9 Error:  Missing closing braces '}'
+%s 8 Error:  Missing closing braces '}'
+%s 7 Error:  Missing closing braces '}'
+%s 6 Error:  Missing closing braces '}'
+%s 5 Error:  Missing closing braces '}'
+%s 4 Error:  Missing closing braces '}'
+%s 3 Error:  Missing closing braces '}'
 Compile error
 --CLEAN--
 <?php

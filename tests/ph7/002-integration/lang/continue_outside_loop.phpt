@@ -12,7 +12,7 @@ continue;
 echo "After continue\n";
 ?>
 --EXPECTF--
-%s 3 Error: A 'continue' statement may only be used within a loop or switch
+%s 3 Error:  A 'continue' statement may only be used within a loop or switch
 Compile error
 --CLEAN--
 <?php

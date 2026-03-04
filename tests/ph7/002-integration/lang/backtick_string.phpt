@@ -12,7 +12,7 @@ Backtick quoted string processing
 echo `echo "test"`;
 ?>
 --EXPECTF--
-%s 4 Notice: Command line invocation is disabled in the current release of the %s
+%s 4 Notice:  Command line invocation is disabled in the current release of the %s
 --CLEAN--
 <?php
 

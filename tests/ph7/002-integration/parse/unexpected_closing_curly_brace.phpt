@@ -14,7 +14,7 @@ echo 2;
 }
 ?>
 --EXPECTF--
-%s 6 Error: Syntax error: Unexpected token '}'
+%s 6 Error:  Syntax error: Unexpected token '}'
 Compile error
 --CLEAN--
 <?php

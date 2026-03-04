@@ -10,7 +10,7 @@ PHL: missing variable name
 $a = ${};
 ?>
 --EXPECTF--
-%s 2 Error: Invalid variable name
+%s 2 Error:  Invalid variable name
 Compile error
 --CLEAN--
 <?php

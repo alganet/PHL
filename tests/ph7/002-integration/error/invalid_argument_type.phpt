@@ -10,7 +10,7 @@ function with invalid argument type
 function foo(echo $a) {
 }
 --EXPECTF--
-%s 2 Warning: Invalid argument type 'echo',Automatic cast will not be performed
+%s 2 Warning:  Invalid argument type 'echo',Automatic cast will not be performed
 --CLEAN--
 <?php
 

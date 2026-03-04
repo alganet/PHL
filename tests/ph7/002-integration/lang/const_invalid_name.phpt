@@ -10,7 +10,7 @@ PHL: Invalid constant name in const declaration
 const 123;
 ?>
 --EXPECTF--
-%s 2 Error: const: Invalid constant name
+%s 2 Error:  const: Invalid constant name
 Compile error
 --CLEAN--
 <?php

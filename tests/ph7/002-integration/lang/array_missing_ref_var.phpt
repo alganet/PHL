@@ -14,7 +14,7 @@ if (function_exists('zend_version')) {
 $x = array(&);
 ?>
 --EXPECTF--
-%s 2 Error: array(): Missing referenced variable
+%s 2 Error:  array(): Missing referenced variable
 Compile error
 --CLEAN--
 <?php

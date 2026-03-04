@@ -10,7 +10,7 @@ undefined function call warning
 nonexistent_function();
 ?>
 --EXPECTF--
-%s Warning: Call to undefined function 'nonexistent_function',NULL will be returned
+%s Warning:  Call to undefined function 'nonexistent_function',NULL will be returned
 --CLEAN--
 <?php
 

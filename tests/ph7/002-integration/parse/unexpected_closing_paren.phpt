@@ -10,7 +10,7 @@ unexpected closing parenthesis
 echo 1);
 ?>
 --EXPECTF--
-%s 2 Error: Syntax error: Unexpected token ')'
+%s 2 Error:  Syntax error: Unexpected token ')'
 Compile error
 --CLEAN--
 <?php

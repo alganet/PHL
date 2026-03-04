@@ -14,7 +14,7 @@ if (function_exists('zend_version')) {
 $x = array(0 => );
 ?>
 --EXPECTF--
-%s 2 Error: array(): Missing entry value
+%s 2 Error:  array(): Missing entry value
 Compile error
 --CLEAN--
 <?php

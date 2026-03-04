@@ -12,7 +12,7 @@ Syntax error in anonymous function with parameters but missing opening brace '{'
 $func = function($x) ;
 ?>
 --EXPECTF--
-%s %d Error: Syntax error while declaring annonymous function
+%s %d Error:  Syntax error while declaring annonymous function
 Compile error
 --CLEAN--
 <?php

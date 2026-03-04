@@ -14,7 +14,7 @@ $result = user_error("Test error", E_USER_NOTICE);
 if ($result) { echo "user_error_ok\n"; } else { echo "user_error_failed\n"; }
 ?>
 --EXPECTF--
-%s Notice: Test error
+%s Notice:  Test error
 user_error_ok
 --CLEAN--
 <?php

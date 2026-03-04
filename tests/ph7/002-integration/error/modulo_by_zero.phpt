@@ -11,7 +11,7 @@ $result = 10 % 0;
 echo "Result: $result\n";
 ?>
 --EXPECTF--
-%s Error: Division by zero %s
+%s Error:  Division by zero %s
 Result: 0
 --CLEAN--
 <?php

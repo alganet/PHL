@@ -10,7 +10,7 @@ Syntax error: Unexpected token ':'
 echo 1 : 2;
 ?>
 --EXPECTF--
-%s 2 Error: Syntax error: Unexpected token ':'
+%s 2 Error:  Syntax error: Unexpected token ':'
 Compile error
 --CLEAN--
 <?php

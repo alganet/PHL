@@ -46,8 +46,8 @@ class InvalidClass {
 }
 ?>
 --EXPECTF--
-%s %d Error: '=': Missing/Invalid operand
-%s %d Error: Missing ')' after function 'invalid_func' signature
+%s %d Error:  '=': Missing/Invalid operand
+%s %d Error:  Missing ')' after function 'invalid_func' signature
 Compile error
 --CLEAN--
 <?php

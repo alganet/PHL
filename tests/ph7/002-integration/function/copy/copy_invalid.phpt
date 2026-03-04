@@ -24,13 +24,13 @@ $result = copy("source.txt", array("dest"));
 echo "invalid_dest: $result\n";
 ?>
 --EXPECTF--
-%s Warning: copy(): Expecting a source and a destination path
+%s Warning:  copy(): Expecting a source and a destination path
 no_args: 
-%s Warning: copy(): Expecting a source and a destination path
+%s Warning:  copy(): Expecting a source and a destination path
 one_arg: 
-%s Error: copy(): IO error while opening source: '/nonexistent/source.txt'
+%s Error:  copy(): IO error while opening source: '/nonexistent/source.txt'
 invalid_source: 
-%s Warning: copy(): Expecting a source and a destination path
+%s Warning:  copy(): Expecting a source and a destination path
 invalid_dest:
 --CLEAN--
 <?php

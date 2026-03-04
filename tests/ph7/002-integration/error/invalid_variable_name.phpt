@@ -11,7 +11,7 @@ $result = $(;
 echo "Result: $result\n";
 ?>
 --EXPECTF--
-%s 2 Error: Syntax error,mismatched '(','[','{' or '?'
+%s 2 Error:  Syntax error,mismatched '(','[','{' or '?'
 Compile error
 --CLEAN--
 <?php

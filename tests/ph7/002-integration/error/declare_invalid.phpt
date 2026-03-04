@@ -12,7 +12,7 @@ declare ticks=1) {
 }
 ?>
 --EXPECTF--
-%s 2 Error: declare: Expecting opening parenthesis '('
+%s 2 Error:  declare: Expecting opening parenthesis '('
 Compile error
 --CLEAN--
 <?php

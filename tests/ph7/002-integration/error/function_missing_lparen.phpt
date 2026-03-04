@@ -10,7 +10,7 @@ Expected '(' after function name
 function foo {}
 ?>
 --EXPECTF--
-%s 2 Error: Expected '(' after function name 'foo'
+%s 2 Error:  Expected '(' after function name 'foo'
 Compile error
 --CLEAN--
 <?php

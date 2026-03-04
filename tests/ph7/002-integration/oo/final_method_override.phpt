@@ -19,7 +19,7 @@ class B extends A {
 }
 ?>
 --EXPECTF--
-%s 6 Error: Cannot Overwrite final method 'A:f' inside child class 'B'
+%s 6 Error:  Cannot Overwrite final method 'A:f' inside child class 'B'
 Compile error
 --CLEAN--
 <?php

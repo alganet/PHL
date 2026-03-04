@@ -11,7 +11,7 @@ $a = $1;
 echo "Should not reach here\n";
 ?>
 --EXPECTF--
-%s 2 Error: Unexpected token '1'
+%s 2 Error:  Unexpected token '1'
 Compile error
 --CLEAN--
 <?php

@@ -11,7 +11,7 @@ goto nonexistent;
 echo "this should not be reached\n";
 ?>
 --EXPECTF--
-%s 2 Error: Label 'nonexistent' was referenced but not defined
+%s 2 Error:  Label 'nonexistent' was referenced but not defined
 Compile error
 --CLEAN--
 <?php

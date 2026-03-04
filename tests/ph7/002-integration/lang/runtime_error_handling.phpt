@@ -15,7 +15,7 @@ $result = nonexistent_function_12345();
 echo "Test completed\n";
 ?>
 --EXPECTF--
-%s Warning: Call to undefined function 'nonexistent_function_12345',NULL will be returned
+%s Warning:  Call to undefined function 'nonexistent_function_12345',NULL will be returned
 Test completed
 --CLEAN--
 <?php

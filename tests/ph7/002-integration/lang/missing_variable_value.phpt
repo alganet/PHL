@@ -13,7 +13,7 @@ $var = ;
 echo "Should not reach here\n";
 ?>
 --EXPECTF--
-%s 3 Error: '=': Missing/Invalid operand
+%s 3 Error:  '=': Missing/Invalid operand
 Compile error
 --CLEAN--
 <?php

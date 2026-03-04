@@ -18,7 +18,7 @@ if ($undef === null) { echo "undefined_ok\n"; } else { echo "undefined_failed\n"
 ?>
 --EXPECTF--
 defined_ok
-%s Notice: constant(): 'UNDEFINED_CONST': Undefined constant
+%s Notice:  constant(): 'UNDEFINED_CONST': Undefined constant
 undefined_ok
 --CLEAN--
 <?php

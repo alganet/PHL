@@ -5107,7 +5107,7 @@ static void DoubleSum(ph7_context *pCtx,ph7_hashmap *pMap)
 	pEntry = pMap->pFirst;
 	for( n = 0 ; n < pMap->nEntry ; n++ ){
 		pObj = HashmapExtractNodeValue(pEntry);
-		if( pObj && (pObj->iFlags & (MEMOBJ_NULL|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)) == 0){
+		if( pObj ){
 			if( pObj->iFlags & MEMOBJ_REAL ){
 				dSum += pObj->rVal;
 			}else if( pObj->iFlags & (MEMOBJ_INT|MEMOBJ_BOOL) ){
@@ -5118,7 +5118,17 @@ static void DoubleSum(ph7_context *pCtx,ph7_hashmap *pMap)
 					SyStrToReal((const char *)SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),(void *)&dv,0);
 					dSum += dv;
 				}
+			}else if( pObj->iFlags & MEMOBJ_HASHMAP ){
+				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
+					"array_sum(): Addition is not supported on type array");
+			}else if( pObj->iFlags & MEMOBJ_OBJ ){
+				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
+					"array_sum(): Addition is not supported on type object");
+			}else if( pObj->iFlags & MEMOBJ_RES ){
+				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
+					"array_sum(): Addition is not supported on type resource");
 			}
+			/* NULL is silently treated as 0 (matches PHP) */
 		}
 		/* Point to the next entry */
 		pEntry = pEntry->pPrev; /* Reverse link */
@@ -5135,10 +5145,8 @@ static void Int64Sum(ph7_context *pCtx,ph7_hashmap *pMap)
 	pEntry = pMap->pFirst;
 	for( n = 0 ; n < pMap->nEntry ; n++ ){
 		pObj = HashmapExtractNodeValue(pEntry);
-		if( pObj && (pObj->iFlags & (MEMOBJ_NULL|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)) == 0){
-			if( pObj->iFlags & MEMOBJ_REAL ){
-				nSum += (sxi64)pObj->rVal;
-			}else if( pObj->iFlags & (MEMOBJ_INT|MEMOBJ_BOOL) ){
+		if( pObj ){
+			if( pObj->iFlags & (MEMOBJ_INT|MEMOBJ_BOOL) ){
 				nSum += pObj->x.iVal;
 			}else if( pObj->iFlags & MEMOBJ_STRING ){
 				if( SyBlobLength(&pObj->sBlob) > 0 ){
@@ -5146,7 +5154,17 @@ static void Int64Sum(ph7_context *pCtx,ph7_hashmap *pMap)
 					SyStrToInt64((const char *)SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),(void *)&nv,0);
 					nSum += nv;
 				}
+			}else if( pObj->iFlags & MEMOBJ_HASHMAP ){
+				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
+					"array_sum(): Addition is not supported on type array");
+			}else if( pObj->iFlags & MEMOBJ_OBJ ){
+				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
+					"array_sum(): Addition is not supported on type object");
+			}else if( pObj->iFlags & MEMOBJ_RES ){
+				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
+					"array_sum(): Addition is not supported on type resource");
 			}
+			/* NULL is silently treated as 0 (matches PHP) */
 		}
 		/* Point to the next entry */
 		pEntry = pEntry->pPrev; /* Reverse link */
@@ -5159,18 +5177,27 @@ static void Int64Sum(ph7_context *pCtx,ph7_hashmap *pMap)
  */
 static int ph7_hashmap_sum(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	ph7_hashmap_node *pEntry;
 	ph7_hashmap *pMap;
 	ph7_value *pObj;
-	if( nArg < 1 ){
-		/* Missing arguments,return 0 */
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
+	int useDouble = 0;
+	sxu32 n;
+	/* PHP requires exactly one argument */
+	if( nArg != 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_sum() expects exactly 1 argument, %d given",
+			nArg
+			);
 	}
 	/* Make sure we are dealing with a valid hashmap */
 	if( !ph7_value_is_array(apArg[0]) ){
-		/* Invalid argument,return 0 */
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
+		/* Type mismatch -> TypeError */
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_sum(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
 	}
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	if( pMap->nEntry < 1 ){
@@ -5178,15 +5205,35 @@ static int ph7_hashmap_sum(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
 	}
-	/* If the first element is of type float,then perform floating
-	 * point computaion.Otherwise switch to int64 computaion.
+	/* Scan all elements: if any value is a float, use floating-point
+	 * arithmetic for the entire sum (matches PHP behaviour).
 	 */
-	pObj = HashmapExtractNodeValue(pMap->pFirst);
-	if( pObj == 0 ){
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
+	pEntry = pMap->pFirst;
+	for( n = 0 ; n < pMap->nEntry ; n++ ){
+		pObj = HashmapExtractNodeValue(pEntry);
+		if( pObj ){
+			if( pObj->iFlags & MEMOBJ_REAL ){
+				useDouble = 1;
+				break;
+			}
+			if( pObj->iFlags & MEMOBJ_STRING ){
+				const char *zStr = (const char *)SyBlobData(&pObj->sBlob);
+				sxu32 nLen = SyBlobLength(&pObj->sBlob);
+				sxu32 i;
+				for( i = 0 ; i < nLen ; i++ ){
+					if( zStr[i] == '.' || zStr[i] == 'e' || zStr[i] == 'E' ){
+						useDouble = 1;
+						break;
+					}
+				}
+				if( useDouble ){
+					break;
+				}
+			}
+		}
+		pEntry = pEntry->pPrev;
 	}
-	if( pObj->iFlags & MEMOBJ_REAL ){
+	if( useDouble ){
 		DoubleSum(pCtx,pMap);
 	}else{
 		Int64Sum(pCtx,pMap);

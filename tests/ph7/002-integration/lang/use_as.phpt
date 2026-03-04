@@ -11,7 +11,7 @@ use MyNamespace\MyClass as MyAlias;
 echo "use as test\n";
 ?>
 --EXPECTF--
-%s 2 Notice: Namespace support is disabled in the current release of the PH7(2.1.4) engine
+%s 2 Notice:  Namespace support is disabled in the current release of the PH7(2.1.4) engine
 use as test
 --CLEAN--
 <?php

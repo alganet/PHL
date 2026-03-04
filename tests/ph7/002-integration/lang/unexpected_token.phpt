@@ -12,7 +12,7 @@ if (function_exists('zend_version')) echo 'skip';
 echo 1 + * 2;
 ?>
 --EXPECTF--
-%s 2 Error: '*': Missing/Invalid operand
+%s 2 Error:  '*': Missing/Invalid operand
 Compile error
 --CLEAN--
 <?php

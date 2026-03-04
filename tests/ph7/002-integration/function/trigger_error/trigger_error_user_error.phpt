@@ -16,7 +16,7 @@ echo "after_error\n";
 ?>
 --EXPECTF--
 before_error
-%s Error: Fatal error
+%s Error:  Fatal error
 --CLEAN--
 <?php
 
