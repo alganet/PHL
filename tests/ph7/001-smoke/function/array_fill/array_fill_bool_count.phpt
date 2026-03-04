@@ -11,3 +11,6 @@ echo count(array_fill(0, false, 'x')) . "\n";
 --EXPECT--
 1
 0
+--CLEAN--
+<?php
+

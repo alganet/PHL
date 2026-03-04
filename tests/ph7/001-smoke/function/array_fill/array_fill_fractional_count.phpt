@@ -13,3 +13,6 @@ Error [8192]: Implicit conversion from float 2.5 to int loses precision in %s on
 CNT1=2
 Error [8192]: Implicit conversion from float -0.1 to int loses precision in %s on line %d
 CNT2=0
+--CLEAN--
+<?php
+
