@@ -2533,16 +2533,37 @@ static int ph7_hashmap_count(ph7_context *pCtx,int nArg,ph7_value **apArg)
 static int ph7_hashmap_key_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	sxi32 rc;
-	if( nArg < 2 ){
-		/* Missing arguments,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	if( nArg != 2 ){
+		/* PHP requires exactly two arguments */
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_key_exists() expects exactly 2 arguments, %d given",
+			nArg
+			);
 	}
 	/* Make sure we are dealing with a valid hashmap */
 	if( !ph7_value_is_array(apArg[1]) ){
-		/* Invalid argument,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+		/* Type mismatch -> TypeError */
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_key_exists(): Argument #2 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[1])
+			);
+	}
+	/* Emit deprecation warnings matching PHP behaviour */
+	if( apArg[0]->iFlags & MEMOBJ_NULL ){
+		ph7_context_throw_error_format(pCtx,8192,
+			"Using null as the key parameter for array_key_exists() is deprecated, "
+			"use an empty string instead"
+			);
+	}else if( apArg[0]->iFlags & MEMOBJ_REAL ){
+		ph7_real rVal = apArg[0]->rVal;
+		if( rVal != (ph7_real)(sxi64)rVal ){
+			ph7_context_throw_error_format(pCtx,8192,
+				"Implicit conversion from float %g to int loses precision"
+				,rVal
+				);
+		}
 	}
 	/* Perform the lookup */
 	rc = PH7_HashmapLookup((ph7_hashmap *)apArg[1]->x.pOther,apArg[0],0);
