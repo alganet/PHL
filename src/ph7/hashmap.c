@@ -2623,15 +2623,27 @@ static int ph7_hashmap_push(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	sxi32 rc;
 	int i;
 	if( nArg < 1 ){
-		/* Missing arguments,return 0 */
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_push() expects at least 1 argument, %d given",
+			nArg
+			);
+	}
+	/* Passing a constant (including literals) or non-variable triggers the same
+	 * error message as official PHP. Check the index to detect constants. */
+	if( apArg[0]->nIdx == SXU32_HIGH ){
+		return PH7_VmThrowException(pCtx,
+			"Error",
+			"array_push(): Argument #1 ($array) could not be passed by reference"
+			);
 	}
 	/* Make sure we are dealing with a valid hashmap */
 	if( !ph7_value_is_array(apArg[0]) ){
-		/* Invalid argument,return 0 */
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_push(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
 	}
 	/* Point to the internal representation of the input hashmap */
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
