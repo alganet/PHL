@@ -5695,10 +5695,19 @@ static int ph7_hashmap_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_hashmap *pMap;
 	ph7_value *pArray;
 	int nEntry;
-	if( nArg < 3 || !ph7_value_is_array(apArg[0]) ){
-		/* Invalid arguments,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	if( nArg != 3 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_pad() expects exactly 3 arguments, %d given",
+			nArg
+			);
+	}
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_pad(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
 	}
 	/* Create a new array */
 	pArray = ph7_context_new_array(pCtx);
@@ -5712,9 +5721,6 @@ static int ph7_hashmap_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	nEntry = ph7_value_to_int(apArg[1]);
 	if( nEntry < 0 ){
 		nEntry = -nEntry;
-		if( nEntry > 1048576 ){
-			nEntry = 1048576; /* Limit imposed by PHP */
-		}
 		if( nEntry > (int)pMap->nEntry ){
 			nEntry -= (int)pMap->nEntry;
 			/* Insert given items first */
@@ -5728,9 +5734,6 @@ static int ph7_hashmap_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			PH7_HashmapDup(pMap,(ph7_hashmap *)pArray->x.pOther);
 		}
 	}else if( nEntry > 0 ){
-		if( nEntry > 1048576 ){
-			nEntry = 1048576; /* Limit imposed by PHP */
-		}
 		if( nEntry > (int)pMap->nEntry ){
 			nEntry -= (int)pMap->nEntry;
 			/* Merge the two arrays first */
@@ -5743,6 +5746,9 @@ static int ph7_hashmap_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}else{
 			PH7_HashmapDup(pMap,(ph7_hashmap *)pArray->x.pOther);
 		}
+	}else{
+		/* nEntry == 0: return a copy of the input array */
+		PH7_HashmapDup(pMap,(ph7_hashmap *)pArray->x.pOther);
 	}
 	/* Return the new array */
 	ph7_result_value(pCtx,pArray);
