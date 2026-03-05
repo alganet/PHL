@@ -3668,17 +3668,31 @@ static int ph7_hashmap_search(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	sxu32 n;
 	int rc;
 	if( nArg < 2 ){
-		/* Missing argument,return FALSE*/
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+		/* Missing argument,throw ArgumentCountError */
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_search() expects at least 2 arguments, %d given",
+			nArg
+			);
 	}
 	bStrict = FALSE;
 	if( !ph7_value_is_array(apArg[1]) ){
-		/* hasystack must be an array,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+		/* haystack must be an array,throw TypeError */
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_search(): Argument #2 ($haystack) must be of type array, %s given",
+			ph7_type_name(apArg[1])
+			);
 	}
-	if( nArg > 2 && ph7_value_is_bool(apArg[2]) ){
+	if( nArg > 2 ){
+		/* In PHP, non-scalar values for a bool-hinted parameter raise TypeError */
+		if( ph7_value_is_array(apArg[2]) || ph7_value_is_object(apArg[2]) || ph7_value_is_resource(apArg[2]) ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_search(): Argument #3 ($strict) must be of type bool, %s given",
+				ph7_type_name(apArg[2])
+				);
+		}
 		bStrict = ph7_value_to_bool(apArg[2]);
 	}
 	/* Point to the internal representation of the internal hashmap */
