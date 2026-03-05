@@ -140,7 +140,7 @@ Coverage: 77/92 lines (83.70%)
 |     - |  130 | `	pthread_mutex_t sMutex;` |
 |     - |  131 | `	sxu32 nType;` |
 |     - |  132 | `};` |
-|  9114 |  133 | `static SyMutex * UnixMutexNew(int nType)` |
+|  9210 |  133 | `static SyMutex * UnixMutexNew(int nType)` |
 |     - |  134 |  |
 |     - |  135 | `	static SyMutex aStaticMutexes[] = {` |
 |     - |  136 | `		{PTHREAD_MUTEX_INITIALIZER,SXMUTEX_TYPE_STATIC_1},` |
@@ -152,47 +152,47 @@ Coverage: 77/92 lines (83.70%)
 |     - |  142 | `	};` |
 |     - |  143 | `	SyMutex *pMutex;` |
 |     - |  144 |  |
-| 12890 |  145 | `	if( nType == SXMUTEX_TYPE_FAST \|\| nType == SXMUTEX_TYPE_RECURSIVE ){` |
+| 13026 |  145 | `	if( nType == SXMUTEX_TYPE_FAST \|\| nType == SXMUTEX_TYPE_RECURSIVE ){` |
 |     - |  146 | `		pthread_mutexattr_t sRecursiveAttr;` |
 |     - |  147 | `  		/* Allocate a new mutex */` |
-|  7552 |  148 | `  		pMutex = (SyMutex *)malloc(sizeof(SyMutex));` |
-|  7552 |  149 | `  		if( pMutex == 0 ){` |
+|  7632 |  148 | `  		pMutex = (SyMutex *)malloc(sizeof(SyMutex));` |
+|  7632 |  149 | `  		if( pMutex == 0 ){` |
 |   ! 0 |  150 | `  			return 0;` |
 |     - |  151 | `  		}` |
-|  7552 |  152 | `  		if( nType == SXMUTEX_TYPE_RECURSIVE ){` |
-|  2866 |  153 | `  			pthread_mutexattr_init(&sRecursiveAttr);` |
-|  2866 |  154 | `  			pthread_mutexattr_settype(&sRecursiveAttr,PTHREAD_MUTEX_RECURSIVE);` |
-|  1433 |  155 | `  		}` |
-|  7552 |  156 | `  		pthread_mutex_init(&pMutex->sMutex,nType == SXMUTEX_TYPE_RECURSIVE ? &sRecursiveAttr : 0 );` |
-|  7552 |  157 | `		if(	nType == SXMUTEX_TYPE_RECURSIVE ){` |
-|  2866 |  158 | `   			pthread_mutexattr_destroy(&sRecursiveAttr);` |
-|  1433 |  159 | `		}` |
-|  3776 |  160 | `	}else{` |
+|  7632 |  152 | `  		if( nType == SXMUTEX_TYPE_RECURSIVE ){` |
+|  2898 |  153 | `  			pthread_mutexattr_init(&sRecursiveAttr);` |
+|  2898 |  154 | `  			pthread_mutexattr_settype(&sRecursiveAttr,PTHREAD_MUTEX_RECURSIVE);` |
+|  1449 |  155 | `  		}` |
+|  7632 |  156 | `  		pthread_mutex_init(&pMutex->sMutex,nType == SXMUTEX_TYPE_RECURSIVE ? &sRecursiveAttr : 0 );` |
+|  7632 |  157 | `		if(	nType == SXMUTEX_TYPE_RECURSIVE ){` |
+|  2898 |  158 | `   			pthread_mutexattr_destroy(&sRecursiveAttr);` |
+|  1449 |  159 | `		}` |
+|  3816 |  160 | `	}else{` |
 |     - |  161 | `		/* Use a pre-allocated static mutex */` |
-|  1562 |  162 | `		if( nType > SXMUTEX_TYPE_STATIC_6 ){` |
+|  1578 |  162 | `		if( nType > SXMUTEX_TYPE_STATIC_6 ){` |
 |   ! 0 |  163 | `			nType = SXMUTEX_TYPE_STATIC_6;` |
 |   ! 0 |  164 | `		}` |
-|  1562 |  165 | `		pMutex = &aStaticMutexes[nType - 3];` |
+|  1578 |  165 | `		pMutex = &aStaticMutexes[nType - 3];` |
 |     - |  166 | `	}` |
-|  9114 |  167 | `  pMutex->nType = nType;` |
+|  9210 |  167 | `  pMutex->nType = nType;` |
 |     - |  168 |  |
-|  9114 |  169 | `  return pMutex;` |
-|  4557 |  170 |  |
-|  3374 |  171 | `static void UnixMutexRelease(SyMutex *pMutex)` |
+|  9210 |  169 | `  return pMutex;` |
+|  4605 |  170 |  |
+|  3406 |  171 | `static void UnixMutexRelease(SyMutex *pMutex)` |
 |     - |  172 |  |
-|  3374 |  173 | `	if( pMutex->nType == SXMUTEX_TYPE_FAST \|\| pMutex->nType == SXMUTEX_TYPE_RECURSIVE ){` |
-|  3374 |  174 | `		pthread_mutex_destroy(&pMutex->sMutex);` |
-|  3374 |  175 | `		free(pMutex);` |
-|  1687 |  176 | `	}` |
-|  3374 |  177 |  |
-| 18494 |  178 | `static void UnixMutexEnter(SyMutex *pMutex)` |
+|  3406 |  173 | `	if( pMutex->nType == SXMUTEX_TYPE_FAST \|\| pMutex->nType == SXMUTEX_TYPE_RECURSIVE ){` |
+|  3406 |  174 | `		pthread_mutex_destroy(&pMutex->sMutex);` |
+|  3406 |  175 | `		free(pMutex);` |
+|  1703 |  176 | `	}` |
+|  3406 |  177 |  |
+| 18702 |  178 | `static void UnixMutexEnter(SyMutex *pMutex)` |
 |     - |  179 |  |
-| 18494 |  180 | `	pthread_mutex_lock(&pMutex->sMutex);` |
-| 18494 |  181 |  |
-| 18486 |  182 | `static void UnixMutexLeave(SyMutex *pMutex)` |
+| 18702 |  180 | `	pthread_mutex_lock(&pMutex->sMutex);` |
+| 18702 |  181 |  |
+| 18694 |  182 | `static void UnixMutexLeave(SyMutex *pMutex)` |
 |     - |  183 |  |
-| 18486 |  184 | `	pthread_mutex_unlock(&pMutex->sMutex);` |
-| 18486 |  185 |  |
+| 18694 |  184 | `	pthread_mutex_unlock(&pMutex->sMutex);` |
+| 18694 |  185 |  |
 |     - |  186 | `/* Export pthread mutex interfaces */` |
 |     - |  187 | `static const SyMutexMethods sPthreadMutexMethods = {` |
 |     - |  188 |  |
@@ -203,9 +203,9 @@ Coverage: 77/92 lines (83.70%)
 |     - |  193 |  |
 |     - |  194 | `	UnixMutexLeave     /* xLeave() */` |
 |     - |  195 | `};` |
-|  1562 |  196 | `PH7_PRIVATE const SyMutexMethods * SyMutexExportMethods(void)` |
+|  1578 |  196 | `PH7_PRIVATE const SyMutexMethods * SyMutexExportMethods(void)` |
 |     - |  197 |  |
-|  1562 |  198 | `	return &sPthreadMutexMethods;` |
+|  1578 |  198 | `	return &sPthreadMutexMethods;` |
 |     - |  199 |  |
 |     - |  200 | `#else` |
 |     - |  201 | `/* Host application must register their own mutex subsystem if the target` |
