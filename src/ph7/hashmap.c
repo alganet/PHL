@@ -4940,18 +4940,22 @@ static int ph7_hashmap_reverse(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	int bPreserve;
 	sxu32 n;
 	if( nArg < 1 ){
-		/* Missing arguments,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_reverse() expects at least 1 argument, %d given",
+			nArg
+			);
 	}
 	/* Make sure we are dealing with a valid hashmap */
 	if( !ph7_value_is_array(apArg[0]) ){
-		/* Invalid argument,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_reverse(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
 	}
 	bPreserve = FALSE;
-	if( nArg > 1 && ph7_value_is_bool(apArg[1]) ){
+	if( nArg > 1 ){
 		bPreserve = ph7_value_to_bool(apArg[1]);
 	}
 	/* Point to the internal representation of the input hashmap */
@@ -4965,7 +4969,9 @@ static int ph7_hashmap_reverse(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Perform the requested operation */
 	pEntry = pSrc->pLast;
 	for( n = 0 ; n < pSrc->nEntry ; n++ ){
-		HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,bPreserve);
+		/* String keys are always preserved; preserve_keys only affects int keys */
+		int bKeep = (pEntry->iType == HASHMAP_INT_NODE) ? bPreserve : TRUE;
+		HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,bKeep);
 		/* Point to the previous entry */
 		pEntry = pEntry->pNext; /* Reverse link */
 	}
