@@ -2,15 +2,15 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-array_search should find NULL values in arrays (special NULL comparison)
+array_search strict mode finds null value
 --FILE--
 <?php
 $a = array('a' => null, 'b' => 1);
-$k = array_search(null, $a, true); // strict search for null
-echo $k . PHP_EOL;
+$r = array_search(null, $a, true);
+echo $r === 'a' ? 'ok' : 'fail';
 ?>
 --EXPECT--
-a
+ok
 --CLEAN--
 <?php
-unset($a, $k);
+unset($a, $r);
