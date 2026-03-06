@@ -4351,8 +4351,9 @@ static int ph7_hashmap_diff_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *   More arrays to compare against
  * Return
  *  Returns an array containing all of the values in array1 whose values exist
- *  in all of the parameters. .
- * Note that NULL is returned on failure.
+ *  in all of the parameters.
+ * Throws ArgumentCountError if no arguments are given.
+ * Throws TypeError if any argument is not an array.
  */
 static int ph7_hashmap_intersect(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -4363,10 +4364,29 @@ static int ph7_hashmap_intersect(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	sxi32 rc;
 	sxu32 n;
 	int i;
-	if( nArg < 1 || !ph7_value_is_array(apArg[0]) ){
-		/* Missing arguments,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	if( nArg < 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_intersect() expects at least 1 argument, %d given",
+			nArg
+			);
+	}
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_intersect(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	for( i = 1 ; i < nArg ; i++ ){
+		if( !ph7_value_is_array(apArg[i]) ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_intersect(): Argument #%d must be of type array, %s given",
+				i + 1,
+				ph7_type_name(apArg[i])
+				);
+		}
 	}
 	if( nArg == 1 ){
 		/* Return the first array since we cannot perform a diff */
@@ -4392,10 +4412,6 @@ static int ph7_hashmap_intersect(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		pVal = HashmapExtractNodeValue(pEntry);
 		if( pVal ){
 			for( i = 1 ; i < nArg ; i++ ){
-				if( !ph7_value_is_array(apArg[i])) {
-					/* ignore */
-					continue;
-				}
 				/* Point to the internal representation of the hashmap */
 				pMap = (ph7_hashmap *)apArg[i]->x.pOther;
 				/* Perform the lookup */
