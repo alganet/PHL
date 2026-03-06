@@ -275,10 +275,17 @@ static sxi32 MemObjStringValue(SyBlob *pOut,ph7_value *pObj,sxu8 bStrictBool)
 		SyBlobFormat(&(*pOut),"%qd",pObj->x.iVal);
 		/* %qd (BSD quad) is equivalent to %lld in the libc printf */
 	}else if( pObj->iFlags & MEMOBJ_BOOL ){
-		if( pObj->x.iVal ){
-			SyBlobAppend(&(*pOut),"TRUE",sizeof("TRUE")-1);
+		if( bStrictBool ){
+			/* Actual string cast: true -> "1", false -> "" (like PHP) */
+			if( pObj->x.iVal ){
+				SyBlobAppend(&(*pOut),"1",sizeof("1")-1);
+			}
+			/* false produces empty string, nothing to append */
 		}else{
-			if( !bStrictBool ){
+			/* Display path (var_dump, print_r): show TRUE/FALSE */
+			if( pObj->x.iVal ){
+				SyBlobAppend(&(*pOut),"TRUE",sizeof("TRUE")-1);
+			}else{
 				SyBlobAppend(&(*pOut),"FALSE",sizeof("FALSE")-1);
 			}
 		}

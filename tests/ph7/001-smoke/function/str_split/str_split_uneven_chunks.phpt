@@ -2,13 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-str_split splits a string into chunks of length 1
+str_split with length that does not divide evenly has shorter last chunk
 --FILE--
 <?php
-echo implode(':', str_split('abc', 1)) . "\n";
+$r = str_split("hello", 2);
+echo $r[0] . ":" . $r[1] . ":" . $r[2] . PHP_EOL;
 ?>
 --EXPECT--
-a:b:c
+he:ll:o
 --CLEAN--
 <?php
-
+unset($r);
