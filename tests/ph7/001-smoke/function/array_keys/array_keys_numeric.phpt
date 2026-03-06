@@ -2,16 +2,15 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7 / PHP: array_keys returns list of keys for associative arrays
+array_keys returns numeric indices for indexed array
 --FILE--
 <?php
-$a = array('x' => 1, 'y' => 2, 'z' => 3);
+$a = array('a', 'b', 'c');
 $k = array_keys($a);
-// print keys separated by comma
-echo implode(',', $k) . "\n";
+echo implode(',', $k);
 ?>
 --EXPECT--
-x,y,z
+0,1,2
 --CLEAN--
 <?php
 unset($a, $k);
