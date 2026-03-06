@@ -3173,15 +3173,20 @@ static int ph7_hashmap_keys(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	sxi32 rc;
 	sxu32 n;
 	if( nArg < 1 ){
-		/* Missing arguments,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		/* Missing argument,throw ArgumentCountError */
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_keys() expects at least 1 argument, 0 given"
+			);
 	}
 	/* Make sure we are dealing with a valid hashmap */
 	if( !ph7_value_is_array(apArg[0]) ){
-		/* Invalid argument,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		/* haystack must be an array,throw TypeError */
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_keys(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
 	}
 	/* Point to the internal representation of the input hashmap */
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
@@ -3192,7 +3197,15 @@ static int ph7_hashmap_keys(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	bStrict = FALSE;
-	if( nArg > 2 && ph7_value_is_bool(apArg[2]) ){
+	if( nArg > 2 ){
+		/* In PHP, non-scalar values for a bool-hinted parameter raise TypeError */
+		if( ph7_value_is_array(apArg[2]) || ph7_value_is_object(apArg[2]) || ph7_value_is_resource(apArg[2]) ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_keys(): Argument #3 ($strict) must be of type bool, %s given",
+				ph7_type_name(apArg[2])
+				);
+		}
 		bStrict = ph7_value_to_bool(apArg[2]);
 	}
 	/* Perform the requested operation */
@@ -3212,7 +3225,7 @@ static int ph7_hashmap_keys(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				PH7_MemObjLoad(pValue,&sVal);
 				/* Filter key */
 				rc = ph7_value_compare(&sVal,apArg[1],bStrict);
-				PH7_MemObjRelease(pValue);
+				PH7_MemObjRelease(&sVal);
 			}
 		}
 		if( rc == 0 ){
