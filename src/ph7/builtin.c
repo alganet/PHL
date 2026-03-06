@@ -5339,16 +5339,20 @@ static int PH7_builtin_str_shuffle(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * array str_split(string $string[,int $split_length = 1 ])
  *  Convert a string to an array.
  * Parameters
- * $str
+ * $string
  *  The input string.
  * $split_length
  *  Maximum length of the chunk.
  * Return
- *  If the optional split_length parameter is specified, the returned array
- *  will be broken down into chunks with each being split_length in length, otherwise
- *  each chunk will be one character in length. FALSE is returned if split_length is less than 1.
- *  If the split_length length exceeds the length of string, the entire string is returned
+ *  Returns an array of chunks. Each chunk is split_length characters long,
+ *  except possibly the last one which may be shorter.
+ *  If split_length exceeds the string length, the entire string is returned
  *  as the first (and only) array element.
+ *  An empty string returns an empty array.
+ * Errors
+ *  ArgumentCountError if no arguments are given.
+ *  TypeError if $string is an array, object or resource.
+ *  ValueError if $split_length is less than 1.
  */
 static int PH7_builtin_str_split(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -5357,27 +5361,35 @@ static int PH7_builtin_str_split(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	int split_len;
 	int nLen;
 	if( nArg < 1 ){
-		/* Missing arguments,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"str_split() expects at least 1 argument, %d given",
+			nArg
+			);
+	}
+	/* Arrays, objects and resources should raise a TypeError like PHP */
+	if( ph7_value_is_array(apArg[0]) ||
+	    ph7_value_is_object(apArg[0]) ||
+	    ph7_value_is_resource(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"str_split(): Argument #1 ($string) must be of type string, %s given",
+			ph7_type_name(apArg[0])
+			);
 	}
 	/* Point to the target string */
 	zString = ph7_value_to_string(apArg[0],&nLen);
-	if( nLen < 1 ){
-		/* Nothing to process,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
 	split_len = (int)sizeof(char);
 	if( nArg > 1 ){
 		/* Split length */
 		split_len = ph7_value_to_int(apArg[1]);
 		if( split_len < 1 ){
-			/* Invalid length,return FALSE */
-			ph7_result_bool(pCtx,0);
-			return PH7_OK;
+			return PH7_VmThrowException(pCtx,
+				"ValueError",
+				"str_split(): Argument #2 ($length) must be greater than 0"
+				);
 		}
-		if( split_len > nLen ){
+		if( split_len > nLen && nLen > 0 ){
 			split_len = nLen;
 		}
 	}
