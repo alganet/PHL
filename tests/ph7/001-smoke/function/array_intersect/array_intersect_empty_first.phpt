@@ -2,16 +2,16 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-array_intersect returns items present in all arrays (value comparison)
+array_intersect with empty first array returns empty array
 --FILE--
 <?php
-$a = array(1,2,3,4);
-$b = array(3,4,5);
+$a = array();
+$b = array(1, 2, 3);
 $c = array_intersect($a, $b);
-echo implode(',', array_values($c)) . PHP_EOL; // 3,4
+echo count($c) === 0 ? 'empty' : 'not empty';
 ?>
 --EXPECT--
-3,4
+empty
 --CLEAN--
 <?php
 unset($a, $b, $c);
