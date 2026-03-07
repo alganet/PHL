@@ -3273,26 +3273,21 @@ static int ph7_hashmap_same(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * array array_merge(array $array1,...)
+ * array array_merge(array ...$arrays)
  *  Merge one or more arrays.
  * Parameters
- *  $array1
- *    Initial array to merge.
- *  ...
- *   More array to merge.
+ *  ...$arrays
+ *   Variable list of arrays to merge. Each argument must be an array;
+ *   passing a non-array argument throws a TypeError.
  * Return
- *  The resulting array.
+ *  The resulting merged array. Returns an empty array when called
+ *  with no arguments.
  */
 static int ph7_hashmap_merge(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_hashmap *pMap,*pSrc;
 	ph7_value *pArray;
 	int i;
-	if( nArg < 1 ){
-		/* Missing arguments,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
 	/* Create a new array */
 	pArray = ph7_context_new_array(pCtx);
 	if( pArray == 0 ){
@@ -3305,8 +3300,13 @@ static int ph7_hashmap_merge(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	for( i = 0 ; i < nArg ; i++ ){
 		/* Make sure we are dealing with a valid hashmap */
 		if( !ph7_value_is_array(apArg[i]) ){
-			/* Insert scalar value */
-			ph7_array_add_elem(pArray,0,apArg[i]);
+			/* Type mismatch -> TypeError */
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_merge(): Argument #%d must be of type array, %s given",
+				i + 1,
+				ph7_type_name(apArg[i])
+				);
 		}else{
 			pSrc = (ph7_hashmap *)apArg[i]->x.pOther;
 			/* Merge the two hashmaps */
