@@ -2,17 +2,16 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-array_diff returns values not present in second array
+array_diff with empty first array returns empty array
 --FILE--
 <?php
-$a = array(1, 2, 3, 4);
-$b = array(3, 4, 5);
+$a = array();
+$b = array(1, 2, 3);
 $c = array_diff($a, $b);
-foreach ($c as $k => $v) echo "$k:$v,";
-echo PHP_EOL;
+echo count($c) === 0 ? 'empty' : 'not empty';
 ?>
 --EXPECT--
-0:1,1:2,
+empty
 --CLEAN--
 <?php
 unset($a, $b, $c);

@@ -2,17 +2,16 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-array_diff returns values not present in second array
+array_diff with single array returns that array
 --FILE--
 <?php
-$a = array(1, 2, 3, 4);
-$b = array(3, 4, 5);
-$c = array_diff($a, $b);
-foreach ($c as $k => $v) echo "$k:$v,";
+$a = array(1, 2, 3);
+$r = array_diff($a);
+foreach ($r as $k => $v) echo "$k:$v,";
 echo PHP_EOL;
 ?>
 --EXPECT--
-0:1,1:2,
+0:1,1:2,2:3,
 --CLEAN--
 <?php
-unset($a, $b, $c);
+unset($a, $r);

@@ -3825,10 +3825,6 @@ static int ph7_hashmap_diff(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		pVal = HashmapExtractNodeValue(pEntry);
 		if( pVal ){
 			for( i = 1 ; i < nArg ; i++ ){
-				if( !ph7_value_is_array(apArg[i])) {
-					/* ignore */
-					continue;
-				}
 				/* Point to the internal representation of the hashmap */
 				pMap = (ph7_hashmap *)apArg[i]->x.pOther;
 				/* Perform the lookup */
