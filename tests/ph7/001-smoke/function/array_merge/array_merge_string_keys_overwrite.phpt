@@ -2,16 +2,16 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7 / PHP: array_merge merges arrays preserving numeric keys order
+array_merge overwrites string keys with later values
 --FILE--
 <?php
-$a = array(1, 2);
-$b = array(3, 4);
+$a = array('k' => 'first');
+$b = array('k' => 'second');
 $c = array_merge($a, $b);
-echo implode(',', $c) . "\n";
+echo $c['k'];
 ?>
 --EXPECT--
-1,2,3,4
+second
 --CLEAN--
 <?php
 unset($a, $b, $c);
