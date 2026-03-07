@@ -2,22 +2,20 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-array_intersect_key with integer keys returns matching entries
+array_intersect_key includes entries where keys match but values differ
 --FILE--
 <?php
-$a = array(10 => 'a', 20 => 'b', 30 => 'c');
-$b = array(10 => 'x', 40 => 'y');
+$a = array("a" => "green", "b" => "brown");
+$b = array("a" => "red", "b" => "yellow");
 $r = array_intersect_key($a, $b);
 echo count($r), PHP_EOL;
-echo isset($r[10]) ? '1' : '0', PHP_EOL;
-echo isset($r[20]) ? '1' : '0', PHP_EOL;
-echo $r[10], PHP_EOL;
+echo $r["a"], PHP_EOL;
+echo $r["b"], PHP_EOL;
 ?>
 --EXPECT--
-1
-1
-0
-a
+2
+green
+brown
 --CLEAN--
 <?php
 unset($a, $b, $r);

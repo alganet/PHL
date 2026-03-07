@@ -4535,13 +4535,11 @@ static int ph7_hashmap_intersect_assoc(ph7_context *pCtx,int nArg,ph7_value **ap
 	return PH7_OK;
 }
 /*
- * array array_intersect_key(array $array1 ,array $array2,...)
+ * array array_intersect_key(array $array1 ,...)
  *  Computes the intersection of arrays using keys for comparison.
  * Parameters
  *  $array1
  *    The array to compare from
- *  $array2
- *    An array to compare against
  *  $...
  *   More arrays to compare against
  * Return
@@ -4557,13 +4555,32 @@ static int ph7_hashmap_intersect_key(ph7_context *pCtx,int nArg,ph7_value **apAr
 	sxi32 rc;
 	sxu32 n;
 	int i;
-	if( nArg < 1 || !ph7_value_is_array(apArg[0]) ){
-		/* Missing arguments,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	if( nArg < 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_intersect_key() expects at least 1 argument, %d given",
+			nArg
+			);
+	}
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_intersect_key(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	for( i = 1 ; i < nArg ; i++ ){
+		if( !ph7_value_is_array(apArg[i]) ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_intersect_key(): Argument #%d must be of type array, %s given",
+				i + 1,
+				ph7_type_name(apArg[i])
+				);
+		}
 	}
 	if( nArg == 1 ){
-		/* Return the first array since we cannot perform a diff */
+		/* Return the first array since we cannot perform an intersection */
 		ph7_result_value(pCtx,apArg[0]);
 		return PH7_OK;
 	}
@@ -4575,7 +4592,7 @@ static int ph7_hashmap_intersect_key(ph7_context *pCtx,int nArg,ph7_value **apAr
 	}
 	/* Point to the internal representation of the main hashmap */
 	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;
-	/* Perfrom the intersection */
+	/* Perform the intersection */
 	pEntry = pSrc->pFirst;
 	n = pSrc->nEntry;
 	for(;;){
@@ -4583,10 +4600,6 @@ static int ph7_hashmap_intersect_key(ph7_context *pCtx,int nArg,ph7_value **apAr
 			break;
 		}
 		for( i = 1 ; i < nArg ; i++ ){
-			if( !ph7_value_is_array(apArg[i])) {
-				/* ignore */
-				continue;
-			}
 			pMap = (ph7_hashmap *)apArg[i]->x.pOther;
 			if( pEntry->iType == HASHMAP_BLOB_NODE ){
 				SyBlob *pKey = &pEntry->xKey.sKey;
@@ -4597,7 +4610,7 @@ static int ph7_hashmap_intersect_key(ph7_context *pCtx,int nArg,ph7_value **apAr
 				rc = HashmapLookupIntKey(pMap,pEntry->xKey.iKey,0);
 			}
 			if( rc != SXRET_OK ){
-				/* Key does not exists,break immediately */
+				/* Key does not exist, break immediately */
 				break;
 			}
 		}
