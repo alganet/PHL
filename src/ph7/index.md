@@ -1,6 +1,6 @@
 # src/ph7/
 
-Coverage: 21306/27499 lines (77.48%)
+Coverage: 21313/27499 lines (77.50%)
 
 [Up](../index.md)
 
@@ -16,4 +16,4 @@ Coverage: 21306/27499 lines (77.48%)
 |[oo.c](oo.c.md)|85.75%|361/421|
 |[parse.c](parse.c.md)|86.86%|820/944|
 |[vfs.c](vfs.c.md)|68.47%|2851/4164|
-|[vm.c](vm.c.md)|70.65%|5229/7401|
+|[vm.c](vm.c.md)|70.75%|5236/7401|
