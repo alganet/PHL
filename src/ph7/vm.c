@@ -1122,7 +1122,8 @@ static sxi32 VmEvalChunk(ph7_vm *pVm,ph7_context *pCtx,SyString *pChunk,int iFla
    "   return $zDir.DIRECTORY_SEPARATOR.$zPrefix.rand_str(12);"\
    "}"\
    "function array_unshift(&$pArray ){"\
-   " if( func_num_args() < 1 || !is_array($pArray) ){  return 0; }"\
+   " if( func_num_args() < 1 ){ throw new ArgumentCountError('array_unshift() expects at least 1 argument, 0 given'); }"\
+   " if( !is_array($pArray) ){ throw new TypeError('array_unshift(): Argument #1 ($array) must be of type array, ' . gettype($pArray) . ' given'); }"\
    "/* Copy arguments */"\
    "$nArgs = func_num_args();"\
    "$pNew = array();"\
