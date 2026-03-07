@@ -5052,20 +5052,19 @@ static int ph7_hashmap_reverse(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * array array_unique(array $array[,int $sort_flags = SORT_STRING ])
- *  Removes duplicate values from an array
- * Parameter
+ * array array_unique(array $array, int $flags = SORT_STRING)
+ *  Removes duplicate values from an array.
+ * Parameters
  *  $array
  *   The input array.
- *  $sort_flags
- *    The optional second parameter sort_flags may be used to modify the sorting behavior using these values:
- *    Sorting type flags:
- *       SORT_REGULAR - compare items normally (don't change types)
- *       SORT_NUMERIC - compare items numerically
- *       SORT_STRING - compare items as strings
- *       SORT_LOCALE_STRING - compare items as
+ *  $flags
+ *   The optional second parameter may be used to modify the comparison
+ *   behavior using these values:
+ *     SORT_REGULAR - compare items normally (don't change types)
+ *     SORT_NUMERIC - compare items numerically
+ *     SORT_STRING  - compare items as strings
  * Return
- *  Filtered array or NULL on failure.
+ *  The filtered array.
  */
 static int ph7_hashmap_unique(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -5077,20 +5076,30 @@ static int ph7_hashmap_unique(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	sxi32 rc;
 	sxu32 n;
 	if( nArg < 1 ){
-		/* Missing arguments,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		/* Missing arguments, throw ArgumentCountError */
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_unique() expects at least 1 argument, 0 given"
+			);
+	}
+	if( nArg > 2 ){
+		/* Too many arguments, throw ArgumentCountError */
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_unique() expects at most 2 arguments, %d given",
+			nArg
+			);
 	}
 	/* Make sure we are dealing with a valid hashmap */
 	if( !ph7_value_is_array(apArg[0]) ){
-		/* Invalid argument,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		/* Type mismatch, throw TypeError */
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_unique(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
 	}
 	bStrict = FALSE;
-	if( nArg > 1 ){
-		bStrict = ph7_value_to_int(apArg[1]) == 3 /* SORT_REGULAR */ ? 1 : 0;
-	}
 	/* Point to the internal representation of the input hashmap */
 	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;
 	/* Create a new array */
