@@ -3100,12 +3100,13 @@ static int ph7_hashmap_range(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * array array_values(array $input)
- *   Returns all the values from the input array and indexes numerically the array.
+ * array array_values(array $array)
+ *  Return all the values of an array, indexed numerically.
  * Parameters
- *   input: The input array.
+ *  $array
+ *   The input array.
  * Return
- *  An indexed array of values or NULL on failure.
+ *  An indexed array of values or NULL on allocation failure.
  */
 static int ph7_hashmap_values(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -3114,16 +3115,22 @@ static int ph7_hashmap_values(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_value *pArray;
 	ph7_value *pObj;
 	sxu32 n;
-	if( nArg < 1 ){
-		/* Missing arguments,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	if( nArg != 1 ){
+		/* Wrong argument count, throw ArgumentCountError */
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_values() expects exactly 1 argument, %d given",
+			nArg
+			);
 	}
 	/* Make sure we are dealing with a valid hashmap */
 	if( !ph7_value_is_array(apArg[0]) ){
-		/* Invalid argument,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		/* Type mismatch, throw TypeError */
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_values(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
 	}
 	/* Point to the internal representation that describe the input hashmap */
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
