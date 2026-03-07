@@ -2,22 +2,16 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-array_intersect_key with integer keys returns matching entries
+array_intersect_key with no common keys returns empty array
 --FILE--
 <?php
-$a = array(10 => 'a', 20 => 'b', 30 => 'c');
-$b = array(10 => 'x', 40 => 'y');
+$a = array("a" => 1, "b" => 2);
+$b = array("c" => 3, "d" => 4);
 $r = array_intersect_key($a, $b);
 echo count($r), PHP_EOL;
-echo isset($r[10]) ? '1' : '0', PHP_EOL;
-echo isset($r[20]) ? '1' : '0', PHP_EOL;
-echo $r[10], PHP_EOL;
 ?>
 --EXPECT--
-1
-1
 0
-a
 --CLEAN--
 <?php
 unset($a, $b, $r);
