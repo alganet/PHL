@@ -3391,7 +3391,7 @@ static int ph7_hashmap_erase(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * array array_slice(array $array,int $offset [,int $length [, bool $preserve_keys = false ]])
+ * array array_slice(array $array, int $offset [, ?int $length = null [, bool $preserve_keys = false ]])
  *  Extract a slice of the array.
  * Parameters
  *  $array
@@ -3399,11 +3399,11 @@ static int ph7_hashmap_erase(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * $offset
  *    If offset is non-negative, the sequence will start at that offset in the array.
  *    If offset is negative, the sequence will start that far from the end of the array.
- * $length (optional)
+ * $length (optional, nullable)
  *    If length is given and is positive, then the sequence will have that many elements
  *    in it. If length is given and is negative then the sequence will stop that many
- *   elements from the end of the array. If it is omitted, then the sequence will have
- *   everything from offset up until the end of the array.
+ *    elements from the end of the array. If it is omitted or NULL, then the sequence
+ *    will have everything from offset up until the end of the array.
  * $preserve_keys (optional)
  *    Note that array_slice() will reorder and reset the array indices by default.
  *    You can change this behaviour by setting preserve_keys to TRUE.
@@ -3418,10 +3418,57 @@ static int ph7_hashmap_slice(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	int iLength,iOfft;
 	int bPreserve;
 	sxi32 rc;
-	if( nArg < 2 || !ph7_value_is_array(apArg[0]) ){
-		/* Missing/Invalid arguments,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_slice() expects at least 2 arguments, %d given",
+			nArg
+			);
+	}
+	if( nArg > 4 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_slice() expects at most 4 arguments, %d given",
+			nArg
+			);
+	}
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_slice(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	/* Validate $offset type: reject string, array, object, resource */
+	if( ph7_value_is_string(apArg[1]) || ph7_value_is_array(apArg[1]) ||
+		ph7_value_is_object(apArg[1]) || ph7_value_is_resource(apArg[1]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_slice(): Argument #2 ($offset) must be of type int, %s given",
+			ph7_type_name(apArg[1])
+			);
+	}
+	/* Validate $length type if provided: nullable int */
+	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){
+		if( ph7_value_is_string(apArg[2]) || ph7_value_is_array(apArg[2]) ||
+			ph7_value_is_object(apArg[2]) || ph7_value_is_resource(apArg[2]) ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_slice(): Argument #3 ($length) must be of type ?int, %s given",
+				ph7_type_name(apArg[2])
+				);
+		}
+	}
+	/* Validate $preserve_keys type if provided: reject array, object, resource */
+	if( nArg > 3 ){
+		if( ph7_value_is_array(apArg[3]) || ph7_value_is_object(apArg[3]) ||
+			ph7_value_is_resource(apArg[3]) ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_slice(): Argument #4 ($preserve_keys) must be of type bool, %s given",
+				ph7_type_name(apArg[3])
+				);
+		}
 	}
 	/* Point the internal representation of the target array */
 	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;
@@ -3430,24 +3477,36 @@ static int ph7_hashmap_slice(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	iOfft = ph7_value_to_int(apArg[1]);
 	if( iOfft < 0 ){
 		iOfft = (int)pSrc->nEntry + iOfft;
+		if( iOfft < 0 ){
+			iOfft = 0;
+		}
 	}
-	if( iOfft < 0 || iOfft > (int)pSrc->nEntry ){
-		/* Invalid offset,return the last entry */
-		iOfft = (int)pSrc->nEntry - 1;
+	if( iOfft >= (int)pSrc->nEntry ){
+		/* Offset past end of array, return empty array */
+		pArray = ph7_context_new_array(pCtx);
+		if( pArray == 0 ){
+			ph7_result_null(pCtx);
+			return PH7_OK;
+		}
+		ph7_result_value(pCtx,pArray);
+		return PH7_OK;
 	}
-	/* Get the length */
+	/* Get the length: NULL means "all remaining" (same as omitting) */
 	iLength = (int)pSrc->nEntry - iOfft;
-	if( nArg > 2 ){
+	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){
 		iLength = ph7_value_to_int(apArg[2]);
 		if( iLength < 0 ){
 			iLength = ((int)pSrc->nEntry + iLength) - iOfft;
 		}
-		if( iLength < 0 || iOfft + iLength >= (int)pSrc->nEntry ){
+		if( iLength < 0 ){
+			iLength = 0;
+		}
+		if( iOfft + iLength > (int)pSrc->nEntry ){
 			iLength = (int)pSrc->nEntry - iOfft;
 		}
-		if( nArg > 3 && ph7_value_is_bool(apArg[3]) ){
-			bPreserve = ph7_value_to_bool(apArg[3]);
-		}
+	}
+	if( nArg > 3 ){
+		bPreserve = ph7_value_to_bool(apArg[3]);
 	}
 	/* Create a new array */
 	pArray = ph7_context_new_array(pCtx);
@@ -3476,7 +3535,11 @@ static int ph7_hashmap_slice(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( iLength < 1 ){
 			break;
 		}
-		rc = HashmapInsertNode(pMap,pCur,bPreserve);
+		/* String keys are always preserved; preserve_keys only affects int keys */
+		{
+			int bKeep = (pCur->iType == HASHMAP_INT_NODE) ? bPreserve : TRUE;
+			rc = HashmapInsertNode(pMap,pCur,bKeep);
+		}
 		if( rc != SXRET_OK ){
 			break;
 		}
