@@ -6109,16 +6109,16 @@ static int ph7_hashmap_map(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * value array_reduce(array $input,callback $function[, value $initial = NULL ])
+ * value array_reduce(array $array, callable $callback[, value $initial = NULL])
  *  Iteratively reduce the array to a single value using a callback function.
  * Parameters
- *  $input
+ *  $array
  *   The input array.
- *  $function
- *  The callback function.
- * $initial
- *  If the optional initial is available, it will be used at the beginning
- *  of the process, or as a final result in case the array is empty.
+ *  $callback
+ *   The callback function. Signature: callback(mixed $carry, mixed $item): mixed
+ *  $initial
+ *   If the optional initial is available, it will be used at the beginning
+ *   of the process, or as a final result in case the array is empty.
  * Return
  *  Returns the resulting value.
  *  If the array is empty and initial is not passed, array_reduce() returns NULL.
@@ -6130,10 +6130,49 @@ static int ph7_hashmap_reduce(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_value *pValue;
 	ph7_value sResult;
 	sxu32 n;
-	if( nArg < 2 || !ph7_value_is_array(apArg[0]) ){
-		/* Invalid/Missing arguments,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_reduce() expects at least 2 arguments, %d given",
+			nArg
+			);
+	}
+	if( nArg > 3 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_reduce() expects at most 3 arguments, %d given",
+			nArg
+			);
+	}
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_reduce(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	if( !ph7_value_is_callable(apArg[1]) ){
+		if( ph7_value_is_string(apArg[1]) ){
+			const char *zFunc = ph7_value_to_string(apArg[1],0);
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_reduce(): Argument #2 ($callback) must be a valid callback, "
+				"function \"%s\" not found or invalid function name",
+				zFunc
+				);
+		}
+		if( ph7_value_is_array(apArg[1]) ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_reduce(): Argument #2 ($callback) must be a valid callback, "
+				"array callback must have exactly two members"
+				);
+		}
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_reduce(): Argument #2 ($callback) must be a valid callback, "
+			"no array or string given"
+			);
 	}
 	/* Point to the internal representation of the input hashmap */
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
