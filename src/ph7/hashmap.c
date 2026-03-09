@@ -5897,7 +5897,9 @@ static int ph7_hashmap_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  More arrays from which elements will be extracted.
  *  Values from later arrays overwrite the previous values.
  * Return
- *  Returns an array, or NULL if an error occurs.
+ *  Returns an array.
+ *  Throws ArgumentCountError if no arguments are given.
+ *  Throws TypeError if any argument is not an array.
  */
 static int ph7_hashmap_replace(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -5905,9 +5907,17 @@ static int ph7_hashmap_replace(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_value *pArray;
 	int i;
 	if( nArg < 1 ){
-		/* Invalid arguments,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_replace() expects at least 1 argument, 0 given"
+			);
+	}
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_replace(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
 	}
 	/* Create a new array */
 	pArray = ph7_context_new_array(pCtx);
@@ -5915,10 +5925,19 @@ static int ph7_hashmap_replace(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	/* Perform the requested operation */
-	for( i = 0 ; i < nArg ; i++ ){
+	/* Overwrite from the first array */
+	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
+	HashmapOverwrite(pMap,(ph7_hashmap *)pArray->x.pOther);
+	/* Perform the requested operation for remaining arrays */
+	for( i = 1 ; i < nArg ; i++ ){
 		if( !ph7_value_is_array(apArg[i]) ){
-			continue;
+			/* Type mismatch -> TypeError */
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_replace(): Argument #%d must be of type array, %s given",
+				i + 1,
+				ph7_type_name(apArg[i])
+				);
 		}
 		/* Point to the internal representation of the input hashmap */
 		pMap = (ph7_hashmap *)apArg[i]->x.pOther;
