@@ -6020,29 +6020,55 @@ static int ph7_hashmap_filter(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * array array_map(callback $callback,array $arr1)
- *  Applies the callback to the elements of the given arrays.
+ * array array_map(?callable $callback, array $array)
+ *  Applies the callback to the elements of the given array.
  * Parameters
  *  $callback
- *   Callback function to run for each element in each array.
- * $arr1
+ *   A callable to run for each element in the array, or NULL for the
+ *   identity function (returns the array unchanged).
+ *  $array
  *   An array to run through the callback function.
  * Return
- *  Returns an array containing all the elements of arr1 after applying
- *  the callback function to each one.
- * NOTE:
- *  array_map() passes only a single value to the callback.
+ *  Returns an array containing the results of applying the callback
+ *  function to each element of $array.
  */
 static int ph7_hashmap_map(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_value *pArray,*pValue,sKey,sResult;
 	ph7_hashmap_node *pEntry;
 	ph7_hashmap *pMap;
+	int bNullCallback;
 	sxu32 n;
-	if( nArg < 2 || !ph7_value_is_array(apArg[1]) ){
-		/* Invalid arguments,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_map() expects at least 2 arguments, %d given",
+			nArg
+			);
+	}
+	if( !ph7_value_is_array(apArg[1]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_map(): Argument #2 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[1])
+			);
+	}
+	bNullCallback = ph7_value_is_null(apArg[0]);
+	if( !bNullCallback && !ph7_value_is_callable(apArg[0]) ){
+		if( ph7_value_is_string(apArg[0]) ){
+			const char *zFunc = ph7_value_to_string(apArg[0],0);
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_map(): Argument #1 ($callback) must be a valid callback or null, "
+				"function \"%s\" not found or invalid function name",
+				zFunc
+				);
+		}
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_map(): Argument #1 ($callback) must be a valid callback or null, "
+			"no array or string given"
+			);
 	}
 	/* Create a new array */
 	pArray = ph7_context_new_array(pCtx);
@@ -6059,18 +6085,17 @@ static int ph7_hashmap_map(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Perform the requested operation */
 	pEntry = pMap->pFirst;
 	for( n = 0 ; n < pMap->nEntry ; n++ ){
-		/* Extrcat the node value */
+		/* Extract the node value */
 		pValue = HashmapExtractNodeValue(pEntry);
 		if( pValue ){
-			sxi32 rc;
-			/* Invoke the supplied callback */
-			rc = PH7_VmCallUserFunction(pMap->pVm,apArg[0],1,&pValue,&sResult);
 			/* Extract the node key */
 			PH7_HashmapExtractNodeKey(pEntry,&sKey);
-			if( rc != SXRET_OK ){
-				/* An error occured while invoking the supplied callback [i.e: not defined] */
-				ph7_array_add_elem(pArray,&sKey,pValue); /* Keep the same value */
+			if( bNullCallback ){
+				/* NULL callback: identity function, keep original value */
+				ph7_array_add_elem(pArray,&sKey,pValue);
 			}else{
+				/* Invoke the supplied callback */
+				PH7_VmCallUserFunction(pMap->pVm,apArg[0],1,&pValue,&sResult);
 				/* Insert the callback return value */
 				ph7_array_add_elem(pArray,&sKey,&sResult);
 			}
