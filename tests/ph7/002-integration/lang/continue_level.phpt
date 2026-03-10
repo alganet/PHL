@@ -21,4 +21,4 @@ echo $result;
 i0 j0 j1 j2 i1 i2 j0 j1 j2
 --CLEAN--
 <?php
-unset($result, $result .);
+unset($result);

@@ -21,4 +21,4 @@ echo $out;
 foo
 --CLEAN--
 <?php
-unset($phl, $fp, $out, $out .);
+unset($phl, $fp, $out);

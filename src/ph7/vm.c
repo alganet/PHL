@@ -6566,7 +6566,7 @@ PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)
 		}
 	}else if( pValue->iFlags & MEMOBJ_HASHMAP ){
 		ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;
-		if( pMap->nEntry > 1 ){
+		if( pMap->nEntry == 2 ){
 			ph7_class *pClass;
 			ph7_value *pV;
 			/* Extract the target class */

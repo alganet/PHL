@@ -24,4 +24,4 @@ phl [-h|--help|-b|-v|--version|-r code] path/to/php_file [script args]
 	-h, --help: Display this message and exit
 --CLEAN--
 <?php
-unset($phl, $fp, $out, $out .);
+unset($phl, $fp, $out);

@@ -20,4 +20,4 @@ echo $out;
 __FILE__=:MEMORY:
 --CLEAN--
 <?php
-unset($phl, $fp, $out, $out .);
+unset($phl, $fp, $out);
