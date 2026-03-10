@@ -231,7 +231,12 @@ struct ph7_hashmap
 	sxu32 (*xBlobHash)(const void *,sxu32); /* Hash function for blob_keys */
 	sxi64 iNextIdx;               /* Next available automatically assigned index */
 	sxi32 iRef;                   /* Reference count */
+	sxi32 iFlags;                 /* Control flags (see HASHMAP_* below) */
 };
+/*
+ * Hashmap control flags.
+ */
+#define HASHMAP_COUNTING 0x01 /* Set during recursive count to detect cycles */
 /* An instance of the following structure is the context
  * for the FOREACH_STEP/FOREACH_INIT VM instructions.
  * Those instructions are used to implement the 'foreach'

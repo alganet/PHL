@@ -38,10 +38,12 @@ static sxu32 BinHash(const void *pSrc,sxu32 nLen)
 }
 /*
  * Return the total number of entries in a given hashmap.
- * If bRecurisve is set to TRUE then recurse on hashmap entries.
- * If the nesting limit is reached,this function abort immediately.
+ * If bRecursive is set to TRUE then recurse on hashmap entries.
+ * Self-referential arrays are detected via the HASHMAP_COUNTING flag;
+ * when a cycle is found the nested array is skipped and *pCycleDetected
+ * is set to TRUE so the caller can emit a warning.
  */
-static sxi64 HashmapCount(ph7_hashmap *pMap,int bRecursive,int iRecCount)
+static sxi64 HashmapCount(ph7_hashmap *pMap,int bRecursive,int *pCycleDetected)
 {
 	sxi64 iCount = 0;
 	if( !bRecursive ){
@@ -51,6 +53,8 @@ static sxi64 HashmapCount(ph7_hashmap *pMap,int bRecursive,int iRecCount)
 		ph7_hashmap_node *pEntry = pMap->pLast;
 		ph7_value *pElem;
 		sxu32 n = 0;
+		/* Mark this map as being counted */
+		pMap->iFlags |= HASHMAP_COUNTING;
 		for(;;){
 			if( n >= pMap->nEntry ){
 				break;
@@ -59,20 +63,23 @@ static sxi64 HashmapCount(ph7_hashmap *pMap,int bRecursive,int iRecCount)
 			pElem = (ph7_value *)SySetAt(&pMap->pVm->aMemObj,pEntry->nValIdx);
 			if( pElem ){
 				if( pElem->iFlags & MEMOBJ_HASHMAP ){
-					if( iRecCount > 31 ){
-						/* Nesting limit reached */
-						return iCount;
+					ph7_hashmap *pSub = (ph7_hashmap *)pElem->x.pOther;
+					if( pSub->iFlags & HASHMAP_COUNTING ){
+						/* Cycle detected — skip this entry */
+						if( pCycleDetected ){
+							*pCycleDetected = TRUE;
+						}
+					}else{
+						iCount += HashmapCount(pSub,TRUE,pCycleDetected);
 					}
-					/* Recurse */
-					iRecCount++;
-					iCount += HashmapCount((ph7_hashmap *)pElem->x.pOther,TRUE,iRecCount);
-					iRecCount--;
 				}
 			}
 			/* Point to the next entry */
 			pEntry = pEntry->pNext;
 			++n;
 		}
+		/* Clear the counting flag */
+		pMap->iFlags &= ~HASHMAP_COUNTING;
 		/* Update count */
 		iCount += pMap->nEntry;
 	}
@@ -2490,32 +2497,50 @@ static int ph7_hashmap_shuffle(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * $mode
  *  If the optional mode parameter is set to COUNT_RECURSIVE (or 1), count()
  *  will recursively count the array. This is particularly useful for counting
- *  all the elements of a multidimensional array. count() does not detect infinite
- *  recursion.
+ *  all the elements of a multidimensional array.
  * Return
  *  Returns the number of elements in the array.
  */
 static int ph7_hashmap_count(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	int bRecursive = FALSE;
+	int bCycleDetected = FALSE;
 	sxi64 iCount;
 	if( nArg < 1 ){
-		/* Missing arguments,return 0 */
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"count() expects at least 1 argument, 0 given"
+			);
+	}
+	if( nArg > 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"count() expects at most 2 arguments, %d given",
+			nArg
+			);
 	}
 	if( !ph7_value_is_array(apArg[0]) ){
-		/* TICKET 1433-19: Handle objects */
-		int res = !ph7_value_is_null(apArg[0]);
-		ph7_result_int(pCtx,res);
-		return PH7_OK;
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"count(): Argument #1 ($value) must be of type Countable|array, %s given",
+			ph7_type_name(apArg[0])
+			);
 	}
 	if( nArg > 1 ){
-		/* Recursive count? */
-		bRecursive = ph7_value_to_int(apArg[1]) == 1 /* COUNT_RECURSIVE */;
+		sxi32 iMode = ph7_value_to_int(apArg[1]);
+		if( iMode != 0 /* COUNT_NORMAL */ && iMode != 1 /* COUNT_RECURSIVE */ ){
+			return PH7_VmThrowException(pCtx,
+				"ValueError",
+				"count(): Argument #2 ($mode) must be either COUNT_NORMAL or COUNT_RECURSIVE"
+				);
+		}
+		bRecursive = iMode == 1;
 	}
 	/* Count */
-	iCount = HashmapCount((ph7_hashmap *)apArg[0]->x.pOther,bRecursive,0);
+	iCount = HashmapCount((ph7_hashmap *)apArg[0]->x.pOther,bRecursive,&bCycleDetected);
+	if( bCycleDetected ){
+		PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,"count(): Recursion detected");
+	}
 	ph7_result_int64(pCtx,iCount);
 	return PH7_OK;
 }
