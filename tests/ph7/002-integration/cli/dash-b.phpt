@@ -33,4 +33,4 @@ DONE               0        0        0 [4]
 Hello World!
 --CLEAN--
 <?php
-unset($phl, $fp, $out, $out .);
+unset($phl, $fp, $out);

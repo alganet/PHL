@@ -25,4 +25,4 @@ echo $result;
 Compile error
 --CLEAN--
 <?php
-unset($result, $result .);
+unset($result);

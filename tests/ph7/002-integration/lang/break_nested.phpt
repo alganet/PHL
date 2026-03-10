@@ -21,4 +21,4 @@ echo $result;
 00 01 02 10 end
 --CLEAN--
 <?php
-unset($result, $result .);
+unset($result);

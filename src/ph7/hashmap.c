@@ -6279,21 +6279,21 @@ static int ph7_hashmap_reduce(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * bool array_walk(array &$array,callback $funcname [, value $userdata ] )
+ * bool array_walk(array &$array, callback $funcname [, mixed $userdata])
  *  Apply a user function to every member of an array.
  * Parameters
  *  $array
  *   The input array.
- * $funcname
- *  Typically, funcname takes on two parameters.The array parameter's value being
- *  the first, and the key/index second.
+ *  $funcname
+ *   Typically, funcname takes on two parameters. The array parameter's value being
+ *   the first, and the key/index second.
  * Note:
- *  If funcname needs to be working with the actual values of the array,specify the first
+ *  If funcname needs to be working with the actual values of the array, specify the first
  *  parameter of funcname as a reference. Then, any changes made to those elements will
  *  be made in the original array itself.
- * $userdata
- *  If the optional userdata parameter is supplied, it will be passed as the third parameter
- *  to the callback funcname.
+ *  $userdata
+ *   If the optional userdata parameter is supplied, it will be passed as the third parameter
+ *   to the callback funcname.
  * Return
  *  Returns TRUE on success or FALSE on failure.
  */
@@ -6302,12 +6302,50 @@ static int ph7_hashmap_walk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_value *pValue,*pUserData,sKey;
 	ph7_hashmap_node *pEntry;
 	ph7_hashmap *pMap;
-	sxi32 rc;
 	sxu32 n;
-	if( nArg < 2 || !ph7_value_is_array(apArg[0]) ){
-		/* Invalid/Missing arguments,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_walk() expects at least 2 arguments, %d given",
+			nArg
+			);
+	}
+	if( nArg > 3 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_walk() expects at most 3 arguments, %d given",
+			nArg
+			);
+	}
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_walk(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	if( !ph7_value_is_callable(apArg[1]) ){
+		if( ph7_value_is_string(apArg[1]) ){
+			const char *zFunc = ph7_value_to_string(apArg[1],0);
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_walk(): Argument #2 ($callback) must be a valid callback, "
+				"function \"%s\" not found or invalid function name",
+				zFunc
+				);
+		}
+		if( ph7_value_is_array(apArg[1]) ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_walk(): Argument #2 ($callback) must be a valid callback, "
+				"array callback must have exactly two members"
+				);
+		}
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_walk(): Argument #2 ($callback) must be a valid callback, "
+			"no array or string given"
+			);
 	}
 	pUserData = nArg > 2 ? apArg[2] : 0;
 	/* Point to the internal representation of the input hashmap */
@@ -6323,18 +6361,13 @@ static int ph7_hashmap_walk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			/* Extract the entry key */
 			PH7_HashmapExtractNodeKey(pEntry,&sKey);
 			/* Invoke the supplied callback */
-			rc = PH7_VmCallUserFunctionAp(pMap->pVm,apArg[1],0,pValue,&sKey,pUserData,0);
+			PH7_VmCallUserFunctionAp(pMap->pVm,apArg[1],0,pValue,&sKey,pUserData,0);
 			PH7_MemObjRelease(&sKey);
-			if( rc != SXRET_OK ){
-				/* An error occured while invoking the supplied callback [i.e: not defined] */
-				ph7_result_bool(pCtx,0); /* return FALSE */
-				return PH7_OK;
-			}
 		}
 		/* Point to the next entry */
 		pEntry = pEntry->pPrev; /* Reverse link */
 	}
-	/* All done,return TRUE */
+	/* All done, return TRUE */
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
@@ -6342,7 +6375,7 @@ static int ph7_hashmap_walk(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Apply a user function to every member of an array.(Recurse on array's).
  * Refer to the [array_walk_recursive()] implementation for more information.
  */
-static int HashmapWalkRecursive(
+static void HashmapWalkRecursive(
 	ph7_hashmap *pMap,    /* Target hashmap */
 	ph7_value *pCallback, /* User callback */
 	ph7_value *pUserData, /* Callback private data */
@@ -6351,9 +6384,8 @@ static int HashmapWalkRecursive(
 {
 	ph7_hashmap_node *pEntry;
 	ph7_value *pValue,sKey;
-	sxi32 rc;
 	sxu32 n;
-	/* Iterate throw hashmap entries */
+	/* Iterate through hashmap entries */
 	PH7_MemObjInit(pMap->pVm,&sKey);
 	sKey.nIdx = SXU32_HIGH; /* Mark as constant */
 	pEntry = pMap->pFirst;
@@ -6372,52 +6404,86 @@ static int HashmapWalkRecursive(
 				/* Extract the node key */
 				PH7_HashmapExtractNodeKey(pEntry,&sKey);
 				/* Invoke the supplied callback */
-				rc = PH7_VmCallUserFunctionAp(pMap->pVm,pCallback,0,pValue,&sKey,pUserData,0);
+				PH7_VmCallUserFunctionAp(pMap->pVm,pCallback,0,pValue,&sKey,pUserData,0);
 				PH7_MemObjRelease(&sKey);
-				if( rc != SXRET_OK ){
-					return rc;
-				}
 			}
 		}
 		/* Point to the next entry */
 		pEntry = pEntry->pPrev; /* Reverse link */
 	}
-	return SXRET_OK;
 }
 /*
- * bool array_walk_recursive(array &$array,callback $funcname [, value $userdata ] )
+ * bool array_walk_recursive(array &$array, callback $funcname [, mixed $userdata])
  *  Apply a user function recursively to every member of an array.
  * Parameters
  *  $array
  *   The input array.
- * $funcname
- *  Typically, funcname takes on two parameters.The array parameter's value being
- *  the first, and the key/index second.
+ *  $funcname
+ *   Typically, funcname takes on two parameters. The array parameter's value being
+ *   the first, and the key/index second.
  * Note:
- *  If funcname needs to be working with the actual values of the array,specify the first
+ *  If funcname needs to be working with the actual values of the array, specify the first
  *  parameter of funcname as a reference. Then, any changes made to those elements will
  *  be made in the original array itself.
- * $userdata
- *  If the optional userdata parameter is supplied, it will be passed as the third parameter
- *  to the callback funcname.
+ *  $userdata
+ *   If the optional userdata parameter is supplied, it will be passed as the third parameter
+ *   to the callback funcname.
  * Return
  *  Returns TRUE on success or FALSE on failure.
  */
 static int ph7_hashmap_walk_recursive(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_hashmap *pMap;
-	sxi32 rc;
-	if( nArg < 2 || !ph7_value_is_array(apArg[0]) ){
-		/* Invalid/Missing arguments,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_walk_recursive() expects at least 2 arguments, %d given",
+			nArg
+			);
+	}
+	if( nArg > 3 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_walk_recursive() expects at most 3 arguments, %d given",
+			nArg
+			);
+	}
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_walk_recursive(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	if( !ph7_value_is_callable(apArg[1]) ){
+		if( ph7_value_is_string(apArg[1]) ){
+			const char *zFunc = ph7_value_to_string(apArg[1],0);
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_walk_recursive(): Argument #2 ($callback) must be a valid callback, "
+				"function \"%s\" not found or invalid function name",
+				zFunc
+				);
+		}
+		if( ph7_value_is_array(apArg[1]) ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_walk_recursive(): Argument #2 ($callback) must be a valid callback, "
+				"array callback must have exactly two members"
+				);
+		}
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_walk_recursive(): Argument #2 ($callback) must be a valid callback, "
+			"no array or string given"
+			);
 	}
 	/* Point to the internal representation of the input hashmap */
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	/* Perform the desired operation */
-	rc = HashmapWalkRecursive(pMap,apArg[1],nArg > 2 ? apArg[2] : 0,0);
-	/* All done */
-	ph7_result_bool(pCtx,rc == SXRET_OK);
+	HashmapWalkRecursive(pMap,apArg[1],nArg > 2 ? apArg[2] : 0,0);
+	/* All done, return TRUE */
+	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
 /*

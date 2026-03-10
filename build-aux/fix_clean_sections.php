@@ -24,7 +24,7 @@ function lint_test_file($file) {
             $parts = explode('=', $line, 2);
             $var_part = trim($parts[0]);
             // clean += etc
-            $var_part = rtrim($var_part, '+-*/%&|^<>');
+            $var_part = rtrim($var_part, '.+-*/%&|^<>');
             // clean array access (without preg_replace for simplicity)
             $bracket_pos = strpos($var_part, '[');
             if ($bracket_pos !== false) {
