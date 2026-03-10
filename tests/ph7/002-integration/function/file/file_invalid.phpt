@@ -9,27 +9,19 @@ file with invalid arguments
 <?php
 // Test with no arguments
 $result = file();
-echo "no_args: " . count($result) . "\n";
+echo "no_args: " . (is_array($result) ? count($result) : "false") . "\n";
 
 // Test with invalid file path
 $result = file("/nonexistent/path/file.txt");
-if ($result === false) {
-    echo "invalid_path: false\n";
-} else {
-    echo "invalid_path: " . count($result) . "\n";
-}
+echo "invalid_path: " . (is_array($result) ? count($result) : "false") . "\n";
 
 // Test with array argument
 $result = file(array("test"));
-if ($result === false) {
-    echo "array_arg: false\n";
-} else {
-    echo "array_arg: " . count($result) . "\n";
-}
+echo "array_arg: " . (is_array($result) ? count($result) : "false") . "\n";
 ?>
 --EXPECTF--
 %s Warning:  file(): Expecting a file path
-no_args: %d
+no_args: false
 %s Error:  file(): IO error while opening '/nonexistent/path/file.txt'
 invalid_path: false
 %s Warning:  file(): Expecting a file path
