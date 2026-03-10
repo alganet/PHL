@@ -3552,92 +3552,142 @@ static int ph7_hashmap_slice(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * array array_splice(array $array,int $offset [,int $length [,value $replacement ]])
+ * Move the last node in the hashmap linked list to immediately after pAfter
+ * in iteration order.  If pAfter is NULL the node is moved to the very
+ * beginning (becomes the new pFirst).
+ */
+static void HashmapMoveLastAfter(ph7_hashmap *pMap,ph7_hashmap_node *pAfter)
+{
+	ph7_hashmap_node *pNode;
+	ph7_hashmap_node *pOldNext;
+	pNode = pMap->pLast;
+	if( pNode == 0 ){
+		return;
+	}
+	if( pNode->pNext == 0 ){
+		/* Only node in the list, nothing to move */
+		return;
+	}
+	if( pAfter != 0 && pAfter->pPrev == pNode ){
+		/* Already in the correct position */
+		return;
+	}
+	/* Unlink pNode from the end of the list */
+	pMap->pLast = pNode->pNext;
+	pMap->pLast->pPrev = 0;
+	/* Insert pNode after pAfter in iteration order */
+	if( pAfter == 0 ){
+		/* Insert at the very beginning, before pFirst */
+		pNode->pNext = 0;
+		pNode->pPrev = pMap->pFirst;
+		if( pMap->pFirst ){
+			pMap->pFirst->pNext = pNode;
+		}
+		pMap->pFirst = pNode;
+	}else{
+		pOldNext = pAfter->pPrev;
+		pNode->pPrev = pOldNext;
+		pNode->pNext = pAfter;
+		pAfter->pPrev = pNode;
+		if( pOldNext ){
+			pOldNext->pNext = pNode;
+		}else{
+			pMap->pLast = pNode;
+		}
+	}
+}
+/*
+ * array array_splice(array $array, int $offset [, int $length [, value $replacement]])
  *  Remove a portion of the array and replace it with something else.
  * Parameters
  *  $array
  *    The input array.
- * $offset
- *    If offset is positive then the start of removed portion is at that offset from
- *    the beginning of the input array. If offset is negative then it starts that far
- *    from the end of the input array.
- * $length (optional)
- *    If length is omitted, removes everything from offset to the end of the array.
- *    If length is specified and is positive, then that many elements will be removed.
- *    If length is specified and is negative then the end of the removed portion will
- *    be that many elements from the end of the array.
- * $replacement (optional)
- *  If replacement array is specified, then the removed elements are replaced
- *  with elements from this array.
- *  If offset and length are such that nothing is removed, then the elements
- *  from the replacement array are inserted in the place specified by the offset.
- *  Note that keys in replacement array are not preserved.
- *  If replacement is just one element it is not necessary to put array() around
- *  it, unless the element is an array itself, an object or NULL.
+ *  $offset
+ *    If offset is positive then the start of removed portion is at that offset
+ *    from the beginning of the input array.  If offset is negative then it
+ *    starts that far from the end of the input array.  If the absolute value of
+ *    a negative offset exceeds the array length, offset is clamped to 0.  If a
+ *    positive offset exceeds the array length, offset is clamped to the array
+ *    length (i.e. nothing is removed, but replacement is appended).
+ *  $length (optional)
+ *    If length is omitted, removes everything from offset to the end of the
+ *    array.  If length is specified and is positive, then that many elements
+ *    will be removed.  If length is specified and is negative then the end of
+ *    the removed portion will be that many elements from the end of the array.
+ *    If the resulting length is negative it is clamped to 0.
+ *  $replacement (optional)
+ *    If replacement array is specified, then the removed elements are replaced
+ *    with elements from this array.
+ *    If offset and length are such that nothing is removed, then the elements
+ *    from the replacement array are inserted in the place specified by the
+ *    offset.
+ *    Note that keys in replacement array are not preserved.
+ *    If replacement is just one element it is not necessary to put array()
+ *    around it, unless the element is an array itself, an object or NULL.
  * Return
  *   A new array consisting of the extracted elements.
  */
 static int ph7_hashmap_splice(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_hashmap_node *pCur,*pPrev,*pRnode;
-	ph7_value *pArray,*pRvalue,*pOld;
+	ph7_hashmap_node *pCur,*pPrev,*pRnode,*pInsertAfter,*pNewNode;
+	ph7_value *pArray,*pRvalue;
 	ph7_hashmap *pMap,*pSrc,*pRep;
-	int iLength,iOfft;
+	int iLength,iOfft,i;
 	sxi32 rc;
-	if( nArg < 2 || !ph7_value_is_array(apArg[0]) ){
-		/* Missing/Invalid arguments,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_splice() expects at least 2 arguments, %d given",
+			nArg
+			);
 	}
-	/* Point the internal representation of the target array */
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_splice(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	/* Point to the internal representation of the target array */
 	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;
-	/* Get the offset */
+	/* Get the offset and clamp to valid range */
 	iOfft = ph7_value_to_int(apArg[1]);
 	if( iOfft < 0 ){
 		iOfft = (int)pSrc->nEntry + iOfft;
+		if( iOfft < 0 ){
+			iOfft = 0;
+		}
+	}else if( iOfft > (int)pSrc->nEntry ){
+		iOfft = (int)pSrc->nEntry;
 	}
-	if( iOfft < 0 || iOfft > (int)pSrc->nEntry ){
-		/* Invalid offset,remove the last entry */
-		iOfft = (int)pSrc->nEntry - 1;
-	}
-	/* Get the length */
+	/* Get the length and clamp to valid range.
+	 * NULL means "all remaining" (same as omitting the argument). */
 	iLength = (int)pSrc->nEntry - iOfft;
-	if( nArg > 2 ){
+	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){
 		iLength = ph7_value_to_int(apArg[2]);
 		if( iLength < 0 ){
 			iLength = ((int)pSrc->nEntry + iLength) - iOfft;
+			if( iLength < 0 ){
+				iLength = 0;
+			}
 		}
-		if( iLength < 0 || iOfft + iLength >= (int)pSrc->nEntry ){
+		if( iOfft + iLength > (int)pSrc->nEntry ){
 			iLength = (int)pSrc->nEntry - iOfft;
 		}
 	}
-	/* Create a new array */
+	/* Create the result array for removed elements */
 	pArray = ph7_context_new_array(pCtx);
 	if( pArray == 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	if( iLength < 1 ){
-		/* Don't bother processing,return the empty array */
-		ph7_result_value(pCtx,pArray);
-		return PH7_OK;
-	}
-	/* Point to the desired entry */
-	pCur = pSrc->pFirst;
-	for(;;){
-		if( iOfft < 1 ){
-			break;
-		}
-		/* Point to the next entry */
-		pCur = pCur->pPrev; /* Reverse link */
-		iOfft--;
-	}
+	/* Get replacement array if provided */
 	pRep = 0;
 	if( nArg > 3 ){
 		if( !ph7_value_is_array(apArg[3]) ){
 			/* Perform an array cast */
 			PH7_MemObjToHashmap(apArg[3]);
-			if(ph7_value_is_array(apArg[3])){
+			if( ph7_value_is_array(apArg[3]) ){
 				pRep = (ph7_hashmap *)apArg[3]->x.pOther;
 			}
 		}else{
@@ -3648,36 +3698,48 @@ static int ph7_hashmap_splice(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			pRep->pCur = pRep->pFirst;
 		}
 	}
-	/* Point to the internal representation of the hashmap */
+	/* Early return if nothing to remove and no replacement */
+	if( iLength < 1 && pRep == 0 ){
+		ph7_result_value(pCtx,pArray);
+		return PH7_OK;
+	}
+	/* Navigate to the offset position */
+	pCur = pSrc->pFirst;
+	for( i = 0 ; i < iOfft && pCur ; i++ ){
+		pCur = pCur->pPrev; /* Reverse link */
+	}
+	/* Save the node just before the splice range as the insertion anchor.
+	 * pCur->pNext is the backward link (previous node in iteration order).
+	 * If pCur is NULL (offset == nEntry), the anchor is the last node. */
+	pInsertAfter = (pCur != 0) ? pCur->pNext : pSrc->pLast;
+	/* Remove nodes in the splice range and copy them to the result array */
 	pMap = (ph7_hashmap *)pArray->x.pOther;
-	for(;;){
-		if( iLength < 1 ){
-			break;
-		}
+	for( i = 0 ; i < iLength && pCur ; i++ ){
 		pPrev = pCur->pPrev;
 		rc = HashmapInsertNode(pMap,pCur,FALSE);
-		if( pRep && (pRnode = PH7_HashmapGetNextEntry(pRep)) != 0 ){
-			/* Extract node value */
-			pRvalue = HashmapExtractNodeValue(pRnode);
-			/* Replace the old node */
-			pOld = HashmapExtractNodeValue(pCur);
-			if( pRvalue && pOld ){
-				PH7_MemObjStore(pRvalue,pOld);
-			}
-		}else{
-			/* Unlink the node from the source hashmap */
-			PH7_HashmapUnlinkNode(pCur,TRUE);
-		}
+		PH7_HashmapUnlinkNode(pCur,TRUE);
 		if( rc != SXRET_OK ){
 			break;
 		}
-		/* Point to the next entry */
 		pCur = pPrev; /* Reverse link */
-		iLength--;
 	}
+	/* Insert replacement elements at the correct position */
 	if( pRep ){
-		while((pRnode = PH7_HashmapGetNextEntry(pRep)) != 0 ){
-			HashmapInsertNode(pSrc,pRnode,FALSE);
+		ph7_value sSafeVal;
+		while( (pRnode = PH7_HashmapGetNextEntry(pRep)) != 0 ){
+			pRvalue = HashmapExtractNodeValue(pRnode);
+			if( pRvalue ){
+				/* Make a stack copy before inserting.  HashmapInsert() may
+				 * grow the VM memobj pool, which would invalidate pRvalue
+				 * since it points into that same pool. */
+				sSafeVal = *pRvalue;
+				rc = HashmapInsert(pSrc,0,&sSafeVal);
+				if( rc == SXRET_OK && pSrc->pLast != 0 ){
+					pNewNode = pSrc->pLast;
+					HashmapMoveLastAfter(pSrc,pInsertAfter);
+					pInsertAfter = pNewNode;
+				}
+			}
 		}
 	}
 	/* Return the freshly created array */
