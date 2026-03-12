@@ -2,13 +2,13 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-chr returns char from ASCII code
+chr(49) returns "1"
 --FILE--
 <?php
-echo chr(65) . "\n";
+echo chr(49) . "\n";
 ?>
 --EXPECT--
-A
+1
 --CLEAN--
 <?php
 

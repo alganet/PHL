@@ -249,10 +249,16 @@ function match_expectf_pattern($phpt_pattern, $phpt_output) {
                         $phpt_o++;
                     }
                 }
+            } elseif ($phpt_pattern[$phpt_p] === '%') {
+                // Literal % match (escaped as %%)
+                if ($phpt_o >= $phpt_output_len || $phpt_output[$phpt_o] !== '%') {
+                    return false;
+                }
+                $phpt_o++;
             } else {
                 return false; // unknown % sequence
             }
-            $phpt_p++; // move past d or s
+            $phpt_p++; // move past d, s, f, or %
         } else {
             // Literal character match
             if ($phpt_o >= $phpt_output_len || $phpt_pattern[$phpt_p] !== $phpt_output[$phpt_o]) {
