@@ -3174,27 +3174,50 @@ static int PH7_builtin_lcfirst(ph7_context *pCtx,int nArg,ph7_value **apArg)
 /*
  * int ord(string $string)
  *  Returns the ASCII value of the first character of string.
+ *  Passing null, an empty string, or a multi-byte string emits
+ *  E_DEPRECATED to match PHP 8.4+ behaviour.
  * Parameters
- *  $str
+ *  $string
  *   The input string.
- * Returns.
+ * Returns
  *  The ASCII value as an integer.
  */
 static int PH7_builtin_ord(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zString;
 	int nLen,c;
-	if( nArg < 1 ){
-		/* Missing arguments,return -1 */
-		ph7_result_int(pCtx,-1);
-		return PH7_OK;
+	/* PHP requires exactly one argument. */
+	if( nArg != 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"ord() expects exactly 1 argument, %d given",
+			nArg
+			);
+	}
+	/* Passing null is deprecated (E_DEPRECATED).  PHP emits this before
+	 * the empty-string deprecation, so we check null first. */
+	if( ph7_value_is_null(apArg[0]) ){
+		PH7_VmThrowError(pCtx->pVm,0,E_DEPRECATED,
+			"ord(): Passing null to parameter #1 ($character) "
+			"of type string is deprecated"
+			);
 	}
 	/* Extract the target string */
 	zString = ph7_value_to_string(apArg[0],&nLen);
 	if( nLen < 1 ){
-		/* Empty string,return -1 */
-		ph7_result_int(pCtx,-1);
+		/* Empty string is deprecated (E_DEPRECATED). */
+		PH7_VmThrowError(pCtx->pVm,0,E_DEPRECATED,
+			"ord(): Providing an empty string is deprecated"
+			);
+		ph7_result_int(pCtx,0);
 		return PH7_OK;
+	}
+	/* A string longer than one byte is deprecated (E_DEPRECATED). */
+	if( nLen > 1 ){
+		PH7_VmThrowError(pCtx->pVm,0,E_DEPRECATED,
+			"ord(): Providing a string that is not one byte long "
+			"is deprecated. Use ord($str[0]) instead"
+			);
 	}
 	/* Extract the ASCII value of the first character */
 	c = (unsigned char)zString[0];
