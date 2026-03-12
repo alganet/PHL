@@ -2,14 +2,15 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-ord('') returns 0 with deprecation
+ord(null) returns 0 with deprecation
 --SKIPIF--
 <?php if (function_exists('zend_version')) echo 'skip';
 --FILE--
 <?php
-echo ord('') . "\n";
+echo ord(null) . "\n";
 ?>
 --EXPECTF--
+Error [%d]: ord(): Passing null to parameter #1 ($character) of type string is deprecated in %s on line %d
 Error [%d]: ord(): Providing an empty string is deprecated in %s on line %d
 0
 --CLEAN--
