@@ -3197,32 +3197,66 @@ static int PH7_builtin_ord(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Extract the ASCII value of the first character */
-	c = zString[0];
+	c = (unsigned char)zString[0];
 	/* Return that value */
 	ph7_result_int(pCtx,c);
 	return PH7_OK;
 }
 /*
- * string chr(int $ascii)
- *  Returns a one-character string containing the character specified by ascii.
+ * string chr(int $codepoint)
+ *  Returns a one-character string containing the character specified
+ *  by the given codepoint.  Any integer is accepted; values outside
+ *  the [0, 255] range emit an E_DEPRECATED and are masked with & 0xFF.
  * Parameters
- *  $ascii
- *   The ascii code.
- * Returns.
- *  The specified character.
+ *  $codepoint
+ *   An integer codepoint.  Values outside 0-255 are deprecated and
+ *   will be constrained to a single byte.
+ * Returns
+ *  A single-character string.
  */
 static int PH7_builtin_chr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	int c;
-	if( nArg < 1 ){
-		/* Missing arguments,return null */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	unsigned char ch;
+	/* PHP requires exactly one argument. */
+	if( nArg != 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"chr() expects exactly 1 argument, %d given",
+			nArg
+			);
 	}
-	/* Extract the ASCII value */
+	/* Implicit float-to-int conversion loses precision (E_DEPRECATED).
+	 * PHP does not prefix this message with "chr():", so we call
+	 * PH7_VmThrowError() with a NULL function name to avoid the
+	 * automatic prefix that ph7_context_throw_error*() would add. */
+	if( ph7_value_is_float(apArg[0]) ){
+		char zBuf[120];
+		SyBufferFormat(zBuf,sizeof(zBuf),
+			"Implicit conversion from float %g to int loses precision",
+			ph7_value_to_double(apArg[0])
+			);
+		PH7_VmThrowError(pCtx->pVm,0,E_DEPRECATED,zBuf);
+	}
+	/* Extract the codepoint. */
 	c = ph7_value_to_int(apArg[0]);
+	/* Out-of-range codepoint (E_DEPRECATED), then mask to a single byte.
+	 * PHP includes "chr(): " in the $errstr passed to set_error_handler,
+	 * so we embed the prefix in the message and pass NULL as the function
+	 * name to avoid the API double-prefixing it. */
+	if( c < 0 || c > 255 ){
+		PH7_VmThrowError(pCtx->pVm,0,
+			E_DEPRECATED,
+			"chr(): Providing a value not in-between 0 and 255 is deprecated, "
+			"this is because a byte value must be in the [0, 255] interval. "
+			"The value used will be constrained using % 256"
+			);
+	}
+	/* Store in an unsigned char to avoid endian-dependent behaviour
+	 * when taking the address of a wider int. */
+	ch = (unsigned char)(c & 0xFF);
 	/* Return the specified character */
-	ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char));
+	ph7_result_string(pCtx,(const char *)&ch,(int)sizeof(char));
 	return PH7_OK;
 }
 /*
