@@ -46,6 +46,8 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/vfs$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_builtin_class$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/vm_builtin_getopt$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/vm_builtin_ob$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_http$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_json$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_xml$(OBJ_SUFFIX) \
