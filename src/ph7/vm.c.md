@@ -7174,11 +7174,11 @@ Coverage: 3897/5143 lines (75.77%)
 |        - |  7164 | ` * PH7 use it's own private PRNG which is based on the one` |
 |        - |  7165 | ` * used by te SQLite3 library.` |
 |        - |  7166 | ` */` |
-|     1744 |  7167 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
+|     1746 |  7167 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
 |        2 |  7168 |  |
 |        - |  7169 | `	sxu32 iNum;` |
-|     1746 |  7170 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
-|     1746 |  7171 | `	return iNum;` |
+|     1748 |  7170 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
+|     1748 |  7171 | `	return iNum;` |
 |        2 |  7172 |  |
 |        - |  7173 | `/*` |
 |        - |  7174 | ` * Generate a random string (English Alphabet) of length nLen.` |
@@ -10415,14 +10415,14 @@ Coverage: 3897/5143 lines (75.77%)
 |        - | 10405 | `	/* Check if a scheme [i.e: file://,http://,zip://...] is available */` |
 |    21930 | 10406 | `	zNext = zCur = zIn = *pzDevice;` |
 |    21930 | 10407 | `	zEnd = &zIn[nByte];` |
-|  1394797 | 10408 | `	while( zIn < zEnd ){` |
-|  1372871 | 10409 | `		if( zIn < &zEnd[-3]/*://*/ && zIn[0] == ':' && zIn[1] == '/' && zIn[2] == '/' ){` |
+|  1394794 | 10408 | `	while( zIn < zEnd ){` |
+|  1372868 | 10409 | `		if( zIn < &zEnd[-3]/*://*/ && zIn[0] == ':' && zIn[1] == '/' && zIn[2] == '/' ){` |
 |        - | 10410 | `			/* Got one */` |
 |        3 | 10411 | `			zNext = &zIn[sizeof("://")-1];` |
 |        3 | 10412 | `			break;` |
 |        - | 10413 | `		}` |
 |        - | 10414 | `		/* Advance the cursor */` |
-|  1372869 | 10415 | `		zIn++;` |
+|  1372866 | 10415 | `		zIn++;` |
 |        2 | 10416 | `	}` |
 |    21930 | 10417 | `	if( zIn >= zEnd ){` |
 |        - | 10418 | `		/* No such scheme,return the default stream */` |

@@ -28,7 +28,7 @@ Coverage: 82/98 lines (83.67%)
 |  6481472 |   18 | `	for(;;){` |
 | 12960127 |   19 | `		if( !zIn[0] ){ break; } zIn++;` |
 | 12123262 |   20 | `		if( !zIn[0] ){ break; } zIn++;` |
-| 11170078 |   21 | `		if( !zIn[0] ){ break; } zIn++;` |
+| 11170076 |   21 | `		if( !zIn[0] ){ break; } zIn++;` |
 |  9799236 |   22 | `		if( !zIn[0] ){ break; } zIn++;` |
 |        2 |   23 | `	}` |
 |  3940320 |   24 | `	return (sxu32)(zIn - zSrc);` |
