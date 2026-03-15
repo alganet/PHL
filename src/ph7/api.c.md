@@ -1610,20 +1610,20 @@ Coverage: 742/1046 lines (70.94%)
 |       - | 1600 | ` * [CAPIREF: ph7_array_add_intkey_elem()]` |
 |       - | 1601 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1602 | ` */` |
-|     256 | 1603 | `int ph7_array_add_intkey_elem(ph7_value *pArray,int iKey,ph7_value *pValue)` |
+|     248 | 1603 | `int ph7_array_add_intkey_elem(ph7_value *pArray,int iKey,ph7_value *pValue)` |
 |       1 | 1604 |  |
 |       - | 1605 | `	ph7_value sKey;` |
 |       - | 1606 | `	int rc;` |
 |       - | 1607 | `	/* Make sure we are dealing with a valid hashmap */` |
-|     257 | 1608 | `	if( (pArray->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
+|     249 | 1608 | `	if( (pArray->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
 |     ! 0 | 1609 | `		return PH7_CORRUPT;` |
 |       - | 1610 | `	}` |
-|     257 | 1611 | `	PH7_MemObjInitFromInt(pArray->pVm,&sKey,iKey);` |
+|     249 | 1611 | `	PH7_MemObjInitFromInt(pArray->pVm,&sKey,iKey);` |
 |       - | 1612 | `	/* Perform the insertion */` |
-|     257 | 1613 | `	rc = PH7_HashmapInsert((ph7_hashmap *)pArray->x.pOther,&sKey,&(*pValue));` |
-|     257 | 1614 | `	PH7_MemObjRelease(&sKey);` |
-|     257 | 1615 | `	return rc;` |
-|     129 | 1616 |  |
+|     249 | 1613 | `	rc = PH7_HashmapInsert((ph7_hashmap *)pArray->x.pOther,&sKey,&(*pValue));` |
+|     249 | 1614 | `	PH7_MemObjRelease(&sKey);` |
+|     249 | 1615 | `	return rc;` |
+|     125 | 1616 |  |
 |       - | 1617 | `/*` |
 |       - | 1618 | ` * [CAPIREF: ph7_array_count()]` |
 |       - | 1619 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
@@ -1857,13 +1857,13 @@ Coverage: 742/1046 lines (70.94%)
 |       - | 1847 | ` * [CAPIREF: ph7_value_int64()]` |
 |       - | 1848 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1849 | ` */` |
-|   10594 | 1850 | `int ph7_value_int64(ph7_value *pVal,ph7_int64 iValue)` |
+|   10586 | 1850 | `int ph7_value_int64(ph7_value *pVal,ph7_int64 iValue)` |
 |       2 | 1851 |  |
 |       - | 1852 | `	/* Invalidate any prior representation */` |
-|   10596 | 1853 | `	PH7_MemObjRelease(pVal);` |
-|   10596 | 1854 | `	pVal->x.iVal = iValue;` |
-|   10596 | 1855 | `	MemObjSetType(pVal,MEMOBJ_INT);` |
-|   10596 | 1856 | `	return PH7_OK;` |
+|   10588 | 1853 | `	PH7_MemObjRelease(pVal);` |
+|   10588 | 1854 | `	pVal->x.iVal = iValue;` |
+|   10588 | 1855 | `	MemObjSetType(pVal,MEMOBJ_INT);` |
+|   10588 | 1856 | `	return PH7_OK;` |
 |       2 | 1857 |  |
 |       - | 1858 | `/*` |
 |       - | 1859 | ` * [CAPIREF: ph7_value_bool()]` |

@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 3790/4440 lines (85.36%)
+Coverage: 3332/3748 lines (88.90%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -7378,1720 +7378,346 @@ Coverage: 3790/4440 lines (85.36%)
 |     11 | 7368 | `	ph7_result_bool(pCtx,0);` |
 |     11 | 7369 | `	return PH7_OK;` |
 |     10 | 7370 |  |
-|      - | 7371 | `/*` |
-|      - | 7372 | ` * Date/Time functions` |
-|      - | 7373 | ` * Status:` |
-|      - | 7374 | ` *    Devel.` |
-|      - | 7375 | ` */` |
-|      - | 7376 | `#include <time.h>` |
-|      - | 7377 | `#ifdef __WINNT__` |
-|      - | 7378 | `/* GetSystemTime() */` |
-|      - | 7379 | `#include <Windows.h>` |
-|      - | 7380 | `#ifdef _WIN32_WCE` |
-|      - | 7381 | `/*` |
-|      - | 7382 | `** WindowsCE does not have a localtime() function.  So create a` |
-|      - | 7383 | `** substitute.` |
-|      - | 7384 | `** Taken from the SQLite3 source tree.` |
-|      - | 7385 | `** Status: Public domain` |
-|      - | 7386 | `*/` |
-|      - | 7387 | `struct tm *__cdecl localtime(const time_t *t)` |
-|      - | 7388 |  |
-|      - | 7389 | `  static struct tm y;` |
-|      - | 7390 | `  FILETIME uTm, lTm;` |
-|      - | 7391 | `  SYSTEMTIME pTm;` |
-|      - | 7392 | `  ph7_int64 t64;` |
-|      - | 7393 | `  t64 = *t;` |
-|      - | 7394 | `  t64 = (t64 + 11644473600)*10000000;` |
-|      - | 7395 | `  uTm.dwLowDateTime = (DWORD)(t64 & 0xFFFFFFFF);` |
-|      - | 7396 | `  uTm.dwHighDateTime= (DWORD)(t64 >> 32);` |
-|      - | 7397 | `  FileTimeToLocalFileTime(&uTm,&lTm);` |
-|      - | 7398 | `  FileTimeToSystemTime(&lTm,&pTm);` |
-|      - | 7399 | `  y.tm_year = pTm.wYear - 1900;` |
-|      - | 7400 | `  y.tm_mon = pTm.wMonth - 1;` |
-|      - | 7401 | `  y.tm_wday = pTm.wDayOfWeek;` |
-|      - | 7402 | `  y.tm_mday = pTm.wDay;` |
-|      - | 7403 | `  y.tm_hour = pTm.wHour;` |
-|      - | 7404 | `  y.tm_min = pTm.wMinute;` |
-|      - | 7405 | `  y.tm_sec = pTm.wSecond;` |
-|      - | 7406 | `  return &y;` |
-|      - | 7407 |  |
-|      - | 7408 | `#endif /*_WIN32_WCE */` |
-|      - | 7409 | `#elif defined(__UNIXES__)` |
-|      - | 7410 | `#include <sys/time.h>` |
-|      - | 7411 | `#endif /* __WINNT__*/` |
-|      - | 7412 | ` /*` |
-|      - | 7413 | `  * int64 time(void)` |
-|      - | 7414 | `  *  Current Unix timestamp` |
-|      - | 7415 | `  * Parameters` |
-|      - | 7416 | `  *  None.` |
-|      - | 7417 | `  * Return` |
-|      - | 7418 | `  *  Returns the current time measured in the number of seconds` |
-|      - | 7419 | `  *  since the Unix Epoch (January 1 1970 00:00:00 GMT).` |
-|      - | 7420 | `  */` |
-|      8 | 7421 | `static int PH7_builtin_time(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 7422 |  |
-|      - | 7423 | `	time_t tt;` |
-|      4 | 7424 | `	SXUNUSED(nArg); /* cc warning */` |
-|      4 | 7425 | `	SXUNUSED(apArg);` |
-|      - | 7426 | `	/* Extract the current time */` |
-|      9 | 7427 | `	time(&tt);` |
-|      - | 7428 | `	/* Return as 64-bit integer */` |
-|      9 | 7429 | `	ph7_result_int64(pCtx,(ph7_int64)tt);` |
-|      9 | 7430 | `	return  PH7_OK;` |
-|      1 | 7431 |  |
-|      - | 7432 | `/*` |
-|      - | 7433 | `  * string/float microtime([ bool $get_as_float = false ])` |
-|      - | 7434 | `  *  microtime() returns the current Unix timestamp with microseconds.` |
-|      - | 7435 | `  * Parameters` |
-|      - | 7436 | `  *  $get_as_float` |
-|      - | 7437 | `  *   If used and set to TRUE, microtime() will return a float instead of a string` |
-|      - | 7438 | `  *   as described in the return values section below.` |
-|      - | 7439 | `  * Return` |
-|      - | 7440 | `  *  By default, microtime() returns a string in the form "msec sec", where sec` |
-|      - | 7441 | `  *  is the current time measured in the number of seconds since the Unix` |
-|      - | 7442 | `  *  epoch (0:00:00 January 1, 1970 GMT), and msec is the number of microseconds` |
-|      - | 7443 | `  *  that have elapsed since sec expressed in seconds.` |
-|      - | 7444 | `  *  If get_as_float is set to TRUE, then microtime() returns a float, which represents` |
-|      - | 7445 | `  *  the current time in seconds since the Unix epoch accurate to the nearest microsecond.` |
-|      - | 7446 | `  */` |
-|     20 | 7447 | `static int PH7_builtin_microtime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 7448 |  |
-|     21 | 7449 | `	int bFloat = 0;` |
-|      - | 7450 | `	sytime sTime;` |
-|      - | 7451 | `#if defined(__UNIXES__)` |
-|      - | 7452 | `	struct timeval tv;` |
-|     20 | 7453 | `	gettimeofday(&tv,0);` |
-|     20 | 7454 | `	sTime.tm_sec  = (long)tv.tv_sec;` |
-|     20 | 7455 | `	sTime.tm_usec = (long)tv.tv_usec;` |
-|      - | 7456 | `#else` |
-|      - | 7457 | `	time_t tt;` |
-|      1 | 7458 | `	time(&tt);` |
-|      1 | 7459 | `	sTime.tm_sec  = (long)tt;` |
-|      1 | 7460 | `	sTime.tm_usec = (long)(tt%SX_USEC_PER_SEC);` |
-|      - | 7461 | `#endif /* __UNIXES__ */` |
-|     21 | 7462 | `	if( nArg > 0 ){` |
-|     17 | 7463 | `		bFloat = ph7_value_to_bool(apArg[0]);` |
-|      8 | 7464 | `	}` |
-|     21 | 7465 | `	if( bFloat ){` |
-|      - | 7466 | `		/* Return as float */` |
-|     17 | 7467 | `		ph7_result_double(pCtx,(double)sTime.tm_sec);` |
-|      9 | 7468 | `	}else{` |
-|      - | 7469 | `		/* Return as string */` |
-|      5 | 7470 | `		ph7_result_string_format(pCtx,"%ld %ld",sTime.tm_usec,sTime.tm_sec);` |
-|      - | 7471 | `	}` |
-|     21 | 7472 | `	return PH7_OK;` |
-|      1 | 7473 |  |
-|      - | 7474 | `/*` |
-|      - | 7475 | ` * array getdate ([ int $timestamp = time() ])` |
-|      - | 7476 | ` *  Get date/time information.` |
-|      - | 7477 | ` * Parameter` |
-|      - | 7478 | ` *  $timestamp: The optional timestamp parameter is an integer Unix timestamp` |
-|      - | 7479 | ` *     that defaults to the current local time if a timestamp is not given.` |
-|      - | 7480 | ` *     In other words, it defaults to the value of time().` |
-|      - | 7481 | ` * Returns` |
-|      - | 7482 | ` *  Returns an associative array of information related to the timestamp.` |
-|      - | 7483 | ` *  Elements from the returned associative array are as follows:` |
-|      - | 7484 | ` *   KEY                                                         VALUE` |
-|      - | 7485 | ` * ---------                                                    -------` |
-|      - | 7486 | ` * "seconds" 	Numeric representation of seconds 	            0 to 59` |
-|      - | 7487 | ` * "minutes" 	Numeric representation of minutes 	            0 to 59` |
-|      - | 7488 | ` * "hours" 	    Numeric representation of hours 	            0 to 23` |
-|      - | 7489 | ` * "mday" 	    Numeric representation of the day of the month 	1 to 31` |
-|      - | 7490 | ` * "wday" 	    Numeric representation of the day of the week 	0 (for Sunday) through 6 (for Saturday)` |
-|      - | 7491 | ` * "mon" 	    Numeric representation of a month 	            1 through 12` |
-|      - | 7492 | ` * "year" 	    A full numeric representation of a year,        4 digits 	Examples: 1999 or 2003` |
-|      - | 7493 | ` * "yday" 	    Numeric representation of the day of the year   0 through 365` |
-|      - | 7494 | ` * "weekday" 	A full textual representation of the day of the week 	Sunday through Saturday` |
-|      - | 7495 | ` * "month" 	    A full textual representation of a month, such as January or March 	January through December` |
-|      - | 7496 | ` * 0 	        Seconds since the Unix Epoch, similar to the values returned by time() and used by date().` |
-|      - | 7497 | ` * NOTE:` |
-|      - | 7498 | ` *   NULL is returned on failure.` |
-|      - | 7499 | ` */` |
-|      8 | 7500 | `static int PH7_builtin_getdate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 7501 |  |
-|      - | 7502 | `	ph7_value *pValue,*pArray;` |
-|      - | 7503 | `	Sytm sTm;` |
-|      9 | 7504 | `	if( nArg < 1 ){` |
-|      - | 7505 | `#ifdef __WINNT__` |
-|      - | 7506 | `		SYSTEMTIME sOS;` |
-|      1 | 7507 | `		GetSystemTime(&sOS);` |
-|      1 | 7508 | `		SYSTEMTIME_TO_SYTM(&sOS,&sTm);` |
-|      - | 7509 | `#else` |
-|      - | 7510 | `		struct tm *pTm;` |
-|      - | 7511 | `		time_t t;` |
-|      4 | 7512 | `		time(&t);` |
-|      4 | 7513 | `		pTm = localtime(&t);` |
-|      4 | 7514 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|      - | 7515 | `#endif` |
-|      3 | 7516 | `	}else{` |
-|      - | 7517 | `		/* Use the given timestamp */` |
-|      - | 7518 | `		time_t t;` |
-|      - | 7519 | `		struct tm *pTm;` |
-|      - | 7520 | `#ifdef __WINNT__` |
-|      - | 7521 | `#ifdef _MSC_VER` |
-|      - | 7522 | `#if _MSC_VER >= 1400 /* Visual Studio 2005 and up */` |
-|      - | 7523 | `#pragma warning(disable:4996) /* _CRT_SECURE...*/` |
-|      - | 7524 | `#endif` |
-|      - | 7525 | `#endif` |
-|      - | 7526 | `#endif` |
-|      5 | 7527 | `		if( ph7_value_is_int(apArg[0]) ){` |
-|      5 | 7528 | `			t = (time_t)ph7_value_to_int64(apArg[0]);` |
-|      5 | 7529 | `			pTm = localtime(&t);` |
-|      5 | 7530 | `			if( pTm == 0 ){` |
-|    ! 0 | 7531 | `				time(&t);` |
-|    ! 0 | 7532 | `			}` |
-|      3 | 7533 | `		}else{` |
-|    ! 0 | 7534 | `			time(&t);` |
-|      - | 7535 | `		}` |
-|      5 | 7536 | `		pTm = localtime(&t);` |
-|      5 | 7537 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|      - | 7538 | `	}` |
-|      - | 7539 | `	/* Element value */` |
-|      9 | 7540 | `	pValue = ph7_context_new_scalar(pCtx);` |
-|      9 | 7541 | `	if( pValue == 0 ){` |
-|      - | 7542 | `		/* Return NULL */` |
-|    ! 0 | 7543 | `		ph7_result_null(pCtx);` |
-|    ! 0 | 7544 | `		return PH7_OK;` |
-|      - | 7545 | `	}` |
-|      - | 7546 | `	/* Create a new array */` |
-|      9 | 7547 | `	pArray = ph7_context_new_array(pCtx);` |
-|      9 | 7548 | `	if( pArray == 0 ){` |
-|      - | 7549 | `		/* Return NULL */` |
-|    ! 0 | 7550 | `		ph7_result_null(pCtx);` |
-|    ! 0 | 7551 | `		return PH7_OK;` |
-|      - | 7552 | `	}` |
-|      - | 7553 | `	/* Fill the array */` |
-|      - | 7554 | `	/* Seconds */` |
-|      9 | 7555 | `	ph7_value_int(pValue,sTm.tm_sec);` |
-|      9 | 7556 | `	ph7_array_add_strkey_elem(pArray,"seconds",pValue);` |
-|      - | 7557 | `	/* Minutes */` |
-|      9 | 7558 | `	ph7_value_int(pValue,sTm.tm_min);` |
-|      9 | 7559 | `	ph7_array_add_strkey_elem(pArray,"minutes",pValue);` |
-|      - | 7560 | `	/* Hours */` |
-|      9 | 7561 | `	ph7_value_int(pValue,sTm.tm_hour);` |
-|      9 | 7562 | `	ph7_array_add_strkey_elem(pArray,"hours",pValue);` |
-|      - | 7563 | `	/* mday */` |
-|      9 | 7564 | `	ph7_value_int(pValue,sTm.tm_mday);` |
-|      9 | 7565 | `	ph7_array_add_strkey_elem(pArray,"mday",pValue);` |
-|      - | 7566 | `	/* wday */` |
-|      9 | 7567 | `	ph7_value_int(pValue,sTm.tm_wday);` |
-|      9 | 7568 | `	ph7_array_add_strkey_elem(pArray,"wday",pValue);` |
-|      - | 7569 | `	/* mon */` |
-|      9 | 7570 | `	ph7_value_int(pValue,sTm.tm_mon+1);` |
-|      9 | 7571 | `	ph7_array_add_strkey_elem(pArray,"mon",pValue);` |
-|      - | 7572 | `	/* year */` |
-|      9 | 7573 | `	ph7_value_int(pValue,sTm.tm_year);` |
-|      9 | 7574 | `	ph7_array_add_strkey_elem(pArray,"year",pValue);` |
-|      - | 7575 | `	/* yday */` |
-|      9 | 7576 | `	ph7_value_int(pValue,sTm.tm_yday);` |
-|      9 | 7577 | `	ph7_array_add_strkey_elem(pArray,"yday",pValue);` |
-|      - | 7578 | `	/* Weekday */` |
-|      9 | 7579 | `	ph7_value_string(pValue,SyTimeGetDay(sTm.tm_wday),-1);` |
-|      9 | 7580 | `	ph7_array_add_strkey_elem(pArray,"weekday",pValue);` |
-|      - | 7581 | `	/* Month */` |
-|      9 | 7582 | `	ph7_value_reset_string_cursor(pValue);` |
-|      9 | 7583 | `	ph7_value_string(pValue,SyTimeGetMonth(sTm.tm_mon),-1);` |
-|      9 | 7584 | `	ph7_array_add_strkey_elem(pArray,"month",pValue);` |
-|      - | 7585 | `	/* Seconds since the epoch */` |
-|      9 | 7586 | `	ph7_value_int64(pValue,(ph7_int64)time(0));` |
-|      9 | 7587 | `	ph7_array_add_intkey_elem(pArray,0 /* Index zero */,pValue);` |
-|      - | 7588 | `	/* Return the freshly created array */` |
-|      9 | 7589 | `	ph7_result_value(pCtx,pArray);` |
-|      9 | 7590 | `	return PH7_OK;` |
-|      5 | 7591 |  |
-|      - | 7592 | `/*` |
-|      - | 7593 | ` * mixed gettimeofday([ bool $return_float = false ] )` |
-|      - | 7594 | ` *   Returns an associative array containing the data returned from the system call.` |
-|      - | 7595 | ` * Parameters` |
-|      - | 7596 | ` *  $return_float` |
-|      - | 7597 | ` *   When set to TRUE, a float instead of an array is returned.` |
-|      - | 7598 | ` * Return` |
-|      - | 7599 | ` *   By default an array is returned. If return_float is set, then` |
-|      - | 7600 | ` *   a float is returned.` |
-|      - | 7601 | ` */` |
-|      4 | 7602 | `static int PH7_builtin_gettimeofday(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 7603 |  |
-|      5 | 7604 | `	int bFloat = 0;` |
-|      - | 7605 | `	sytime sTime;` |
-|      - | 7606 | `#if defined(__UNIXES__)` |
-|      - | 7607 | `	struct timeval tv;` |
-|      4 | 7608 | `	gettimeofday(&tv,0);` |
-|      4 | 7609 | `	sTime.tm_sec  = (long)tv.tv_sec;` |
-|      4 | 7610 | `	sTime.tm_usec = (long)tv.tv_usec;` |
-|      - | 7611 | `#else` |
-|      - | 7612 | `	time_t tt;` |
-|      1 | 7613 | `	time(&tt);` |
-|      1 | 7614 | `	sTime.tm_sec  = (long)tt;` |
-|      1 | 7615 | `	sTime.tm_usec = (long)(tt%SX_USEC_PER_SEC);` |
-|      - | 7616 | `#endif /* __UNIXES__ */` |
-|      5 | 7617 | `	if( nArg > 0 ){` |
-|      5 | 7618 | `		bFloat = ph7_value_to_bool(apArg[0]);` |
-|      2 | 7619 | `	}` |
-|      5 | 7620 | `	if( bFloat ){` |
-|      - | 7621 | `		/* Return as float */` |
-|      3 | 7622 | `		ph7_result_double(pCtx,(double)sTime.tm_sec);` |
-|      2 | 7623 | `	}else{` |
-|      - | 7624 | `		/* Return an associative array */` |
-|      - | 7625 | `		ph7_value *pValue,*pArray;` |
-|      - | 7626 | `		/* Create a new array */` |
-|      3 | 7627 | `		pArray = ph7_context_new_array(pCtx);` |
-|      - | 7628 | `		/* Element value */` |
-|      3 | 7629 | `		pValue = ph7_context_new_scalar(pCtx);` |
-|      3 | 7630 | `		if( pValue == 0 \|\| pArray == 0 ){` |
-|      - | 7631 | `			/* Return NULL */` |
-|    ! 0 | 7632 | `			ph7_result_null(pCtx);` |
-|    ! 0 | 7633 | `			return PH7_OK;` |
-|      - | 7634 | `		}` |
-|      - | 7635 | `		/* Fill the array */` |
-|      - | 7636 | `		/* sec */` |
-|      3 | 7637 | `		ph7_value_int64(pValue,sTime.tm_sec);` |
-|      3 | 7638 | `		ph7_array_add_strkey_elem(pArray,"sec",pValue);` |
-|      - | 7639 | `		/* usec */` |
-|      3 | 7640 | `		ph7_value_int64(pValue,sTime.tm_usec);` |
-|      3 | 7641 | `		ph7_array_add_strkey_elem(pArray,"usec",pValue);` |
-|      - | 7642 | `		/* Return the array */` |
-|      3 | 7643 | `		ph7_result_value(pCtx,pArray);` |
-|      - | 7644 | `	}` |
-|      5 | 7645 | `	return PH7_OK;` |
-|      3 | 7646 |  |
-|      - | 7647 | `/* Check if the given year is leap or not */` |
-|      - | 7648 | `#define IS_LEAP_YEAR(YEAR)	(YEAR % 400 ? ( YEAR % 100 ? ( YEAR % 4 ? 0 : 1 ) : 0 ) : 1)` |
-|      - | 7649 | `/* ISO-8601 numeric representation of the day of the week */` |
-|      - | 7650 | `static const int aISO8601[] = { 7 /* Sunday */,1 /* Monday */,2,3,4,5,6 };` |
-|      - | 7651 | `/*` |
-|      - | 7652 | ` * Format a given date string.` |
-|      - | 7653 | ` * Supported format: (Taken from PHP online docs)` |
-|      - | 7654 | ` * character 	Description` |
-|      - | 7655 | ` * d          Day of the month` |
-|      - | 7656 | ` * D          A textual representation of a days` |
-|      - | 7657 | ` * j          Day of the month without leading zeros` |
-|      - | 7658 | ` * l          A full textual representation of the day of the week` |
-|      - | 7659 | ` * N          ISO-8601 numeric representation of the day of the week` |
-|      - | 7660 | ` * w          Numeric representation of the day of the week` |
-|      - | 7661 | ` * z          The day of the year (starting from 0)` |
-|      - | 7662 | ` * F          A full textual representation of a month, such as January or March` |
-|      - | 7663 | ` * m          Numeric representation of a month, with leading zeros 	01 through 12` |
-|      - | 7664 | ` * M          A short textual representation of a month, three letters 	Jan through Dec` |
-|      - | 7665 | ` * n          Numeric representation of a month, without leading zeros 	1 through 12` |
-|      - | 7666 | ` * t          Number of days in the given month 	28 through 31` |
-|      - | 7667 | ` * L          Whether it's a leap year 	1 if it is a leap year, 0 otherwise.` |
-|      - | 7668 | ` * o          ISO-8601 year number. This has the same value as Y, except that if the ISO week number` |
-|      - | 7669 | ` *            (W) belongs to the previous or next year, that year is used instead. (added in PHP 5.1.0) Examples: 1999 or 2003` |
-|      - | 7670 | ` * Y          A full numeric representation of a year, 4 digits 	Examples: 1999 or 2003` |
-|      - | 7671 | ` * y          A two digit representation of a year 	Examples: 99 or 03` |
-|      - | 7672 | ` * a          Lowercase Ante meridiem and Post meridiem 	am or pm` |
-|      - | 7673 | ` * A          Uppercase Ante meridiem and Post meridiem 	AM or PM` |
-|      - | 7674 | ` * g          12-hour format of an hour without leading zeros 	1 through 12` |
-|      - | 7675 | ` * G          24-hour format of an hour without leading zeros 	0 through 23` |
-|      - | 7676 | ` * h          12-hour format of an hour with leading zeros 	01 through 12` |
-|      - | 7677 | ` * H          24-hour format of an hour with leading zeros 	00 through 23` |
-|      - | 7678 | ` * i          Minutes with leading zeros 	00 to 59` |
-|      - | 7679 | ` * s          Seconds, with leading zeros 	00 through 59` |
-|      - | 7680 | ` * u          Microseconds Example: 654321` |
-|      - | 7681 | ` * e          Timezone identifier 	Examples: UTC, GMT, Atlantic/Azores` |
-|      - | 7682 | ` * I          (capital i) Whether or not the date is in daylight saving time 	1 if Daylight Saving Time, 0 otherwise.` |
-|      - | 7683 | ` * r          RFC 2822 formatted date 	Example: Thu, 21 Dec 2000 16:01:07 +0200` |
-|      - | 7684 | ` * U          Seconds since the Unix Epoch (January 1 1970 00:00:00 GMT)` |
-|      - | 7685 | ` * S          English ordinal suffix for the day of the month, 2 characters` |
-|      - | 7686 | ` * O          Difference to Greenwich time (GMT) in hours` |
-|      - | 7687 | ` * Z          Timezone offset in seconds. The offset for timezones west of UTC is always negative, and for those` |
-|      - | 7688 | ` *            east of UTC is always positive.` |
-|      - | 7689 | ` * c         ISO 8601 date` |
-|      - | 7690 | ` */` |
-|     46 | 7691 | `static sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pTm)` |
-|      1 | 7692 |  |
-|     47 | 7693 | `	const char *zEnd = &zIn[nLen];` |
-|      - | 7694 | `	const char *zCur;` |
-|      - | 7695 | `	/* Start the format process */` |
-|     78 | 7696 | `	for(;;){` |
-|    157 | 7697 | `		if( zIn >= zEnd ){` |
-|      - | 7698 | `			/* No more input to process */` |
-|     47 | 7699 | `			break;` |
-|      - | 7700 | `		}` |
-|    111 | 7701 | `		switch(zIn[0]){` |
-|      7 | 7702 | `		case 'd':` |
-|      - | 7703 | `			/* Day of the month, 2 digits with leading zeros */` |
-|     15 | 7704 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_mday);` |
-|     15 | 7705 | `			break;` |
-|    ! 0 | 7706 | `		case 'D':` |
-|      - | 7707 | `			/*A textual representation of a day, three letters*/` |
-|    ! 0 | 7708 | `			zCur = SyTimeGetDay(pTm->tm_wday);` |
-|    ! 0 | 7709 | `			ph7_result_string(pCtx,zCur,3);` |
-|    ! 0 | 7710 | `			break;` |
-|    ! 0 | 7711 | `		case 'j':` |
-|      - | 7712 | `			/*	Day of the month without leading zeros */` |
-|    ! 0 | 7713 | `			ph7_result_string_format(pCtx,"%d",pTm->tm_mday);` |
-|    ! 0 | 7714 | `			break;` |
-|      2 | 7715 | `		case 'l':` |
-|      - | 7716 | `			/* A full textual representation of the day of the week */` |
-|      5 | 7717 | `			zCur = SyTimeGetDay(pTm->tm_wday);` |
-|      5 | 7718 | `			ph7_result_string(pCtx,zCur,-1/*Compute length automatically*/);` |
-|      5 | 7719 | `			break;` |
-|    ! 0 | 7720 | `		case 'N':{` |
-|      - | 7721 | `			/* ISO-8601 numeric representation of the day of the week */` |
-|    ! 0 | 7722 | `			ph7_result_string_format(pCtx,"%d",aISO8601[pTm->tm_wday % 7 ]);` |
-|    ! 0 | 7723 | `			break;` |
-|      - | 7724 | `				 }` |
-|    ! 0 | 7725 | `		case 'w':` |
-|      - | 7726 | `			/*Numeric representation of the day of the week*/` |
-|    ! 0 | 7727 | `			ph7_result_string_format(pCtx,"%d",pTm->tm_wday);` |
-|    ! 0 | 7728 | `			break;` |
-|    ! 0 | 7729 | `		case 'z':` |
-|      - | 7730 | `			/*The day of the year*/` |
-|    ! 0 | 7731 | `			ph7_result_string_format(pCtx,"%d",pTm->tm_yday);` |
-|    ! 0 | 7732 | `			break;` |
-|      2 | 7733 | `		case 'F':` |
-|      - | 7734 | `			/*A full textual representation of a month, such as January or March*/` |
-|      5 | 7735 | `			zCur = SyTimeGetMonth(pTm->tm_mon);` |
-|      5 | 7736 | `			ph7_result_string(pCtx,zCur,-1/*Compute length automatically*/);` |
-|      5 | 7737 | `			break;` |
-|      7 | 7738 | `		case 'm':` |
-|      - | 7739 | `			/*Numeric representation of a month, with leading zeros*/` |
-|     15 | 7740 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_mon + 1);` |
-|     15 | 7741 | `			break;` |
-|    ! 0 | 7742 | `		case 'M':` |
-|      - | 7743 | `			/*A short textual representation of a month, three letters*/` |
-|    ! 0 | 7744 | `			zCur = SyTimeGetMonth(pTm->tm_mon);` |
-|    ! 0 | 7745 | `			ph7_result_string(pCtx,zCur,3);` |
-|    ! 0 | 7746 | `			break;` |
-|    ! 0 | 7747 | `		case 'n':` |
-|      - | 7748 | `			/*Numeric representation of a month, without leading zeros*/` |
-|    ! 0 | 7749 | `			ph7_result_string_format(pCtx,"%d",pTm->tm_mon + 1);` |
-|    ! 0 | 7750 | `			break;` |
-|    ! 0 | 7751 | `		case 't':{` |
-|      - | 7752 | `			static const int aMonDays[] = {31,29,31,30,31,30,31,31,30,31,30,31 };` |
-|    ! 0 | 7753 | `			int nDays = aMonDays[pTm->tm_mon % 12 ];` |
-|    ! 0 | 7754 | `			if( pTm->tm_mon == 1 /* 'February' */ && !IS_LEAP_YEAR(pTm->tm_year) ){` |
-|    ! 0 | 7755 | `				nDays = 28;` |
-|    ! 0 | 7756 | `			}` |
-|      - | 7757 | `			/*Number of days in the given month*/` |
-|    ! 0 | 7758 | `			ph7_result_string_format(pCtx,"%d",nDays);` |
-|    ! 0 | 7759 | `			break;` |
-|      - | 7760 | `				 }` |
-|    ! 0 | 7761 | `		case 'L':{` |
-|    ! 0 | 7762 | `			int isLeap = IS_LEAP_YEAR(pTm->tm_year);` |
-|      - | 7763 | `			/* Whether it's a leap year */` |
-|    ! 0 | 7764 | `			ph7_result_string_format(pCtx,"%d",isLeap);` |
-|    ! 0 | 7765 | `			break;` |
-|      - | 7766 | `				 }` |
-|    ! 0 | 7767 | `		case 'o':` |
-|      - | 7768 | `			/* ISO-8601 year number.*/` |
-|    ! 0 | 7769 | `			ph7_result_string_format(pCtx,"%4d",pTm->tm_year);` |
-|    ! 0 | 7770 | `			break;` |
-|      9 | 7771 | `		case 'Y':` |
-|      - | 7772 | `			/*	A full numeric representation of a year, 4 digits */` |
-|     19 | 7773 | `			ph7_result_string_format(pCtx,"%4d",pTm->tm_year);` |
-|     19 | 7774 | `			break;` |
-|    ! 0 | 7775 | `		case 'y':` |
-|      - | 7776 | `			/*A two digit representation of a year*/` |
-|    ! 0 | 7777 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_year%100);` |
-|    ! 0 | 7778 | `			break;` |
-|    ! 0 | 7779 | `		case 'a':` |
-|      - | 7780 | `			/*	Lowercase Ante meridiem and Post meridiem */` |
-|    ! 0 | 7781 | `			ph7_result_string(pCtx,pTm->tm_hour > 12 ? "pm" : "am",2);` |
-|    ! 0 | 7782 | `			break;` |
-|    ! 0 | 7783 | `		case 'A':` |
-|      - | 7784 | `			/*	Uppercase Ante meridiem and Post meridiem */` |
-|    ! 0 | 7785 | `			ph7_result_string(pCtx,pTm->tm_hour > 12 ? "PM" : "AM",2);` |
-|    ! 0 | 7786 | `			break;` |
-|    ! 0 | 7787 | `		case 'g':` |
-|      - | 7788 | `			/*	12-hour format of an hour without leading zeros*/` |
-|    ! 0 | 7789 | `			ph7_result_string_format(pCtx,"%d",1+(pTm->tm_hour%12));` |
-|    ! 0 | 7790 | `			break;` |
-|    ! 0 | 7791 | `		case 'G':` |
-|      - | 7792 | `			/* 24-hour format of an hour without leading zeros */` |
-|    ! 0 | 7793 | `			ph7_result_string_format(pCtx,"%d",pTm->tm_hour);` |
-|    ! 0 | 7794 | `			break;` |
-|    ! 0 | 7795 | `		case 'h':` |
-|      - | 7796 | `			/* 12-hour format of an hour with leading zeros */` |
-|    ! 0 | 7797 | `			ph7_result_string_format(pCtx,"%02d",1+(pTm->tm_hour%12));` |
-|    ! 0 | 7798 | `			break;` |
-|      3 | 7799 | `		case 'H':` |
-|      - | 7800 | `			/*	24-hour format of an hour with leading zeros */` |
-|      7 | 7801 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_hour);` |
-|      7 | 7802 | `			break;` |
-|      3 | 7803 | `		case 'i':` |
-|      - | 7804 | `			/* 	Minutes with leading zeros */` |
-|      7 | 7805 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_min);` |
-|      7 | 7806 | `			break;` |
-|      3 | 7807 | `		case 's':` |
-|      - | 7808 | `			/* 	second with leading zeros */` |
-|      7 | 7809 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_sec);` |
-|      7 | 7810 | `			break;` |
-|    ! 0 | 7811 | `		case 'u':` |
-|      - | 7812 | `			/* 	Microseconds */` |
-|    ! 0 | 7813 | `			ph7_result_string_format(pCtx,"%u",pTm->tm_sec * SX_USEC_PER_SEC);` |
-|    ! 0 | 7814 | `			break;` |
-|    ! 0 | 7815 | `		case 'S':{` |
-|      - | 7816 | `			/* English ordinal suffix for the day of the month, 2 characters */` |
-|      - | 7817 | `			static const char zSuffix[] = "thstndrdthththththth";` |
-|    ! 0 | 7818 | `			int v = pTm->tm_mday;` |
-|    ! 0 | 7819 | `			ph7_result_string(pCtx,&zSuffix[2 * (int)(v / 10 % 10 != 1 ? v % 10 : 0)],(int)sizeof(char) * 2);` |
-|    ! 0 | 7820 | `			break;` |
-|      - | 7821 | `				 }` |
-|    ! 0 | 7822 | `		case 'e':` |
-|      - | 7823 | `			/* 	Timezone identifier */` |
-|    ! 0 | 7824 | `			zCur = pTm->tm_zone;` |
-|    ! 0 | 7825 | `			if( zCur == 0 ){` |
-|      - | 7826 | `				/* Assume GMT */` |
-|    ! 0 | 7827 | `				zCur = "GMT";` |
-|    ! 0 | 7828 | `			}` |
-|    ! 0 | 7829 | `			ph7_result_string(pCtx,zCur,-1);` |
-|    ! 0 | 7830 | `			break;` |
-|    ! 0 | 7831 | `		case 'I':` |
-|      - | 7832 | `			/* Whether or not the date is in daylight saving time */` |
-|      - | 7833 | `#ifdef __WINNT__` |
-|      - | 7834 | `#ifdef _MSC_VER` |
-|      - | 7835 | `#ifndef _WIN32_WCE` |
-|    ! 0 | 7836 | `			_get_daylight(&pTm->tm_isdst);` |
-|      - | 7837 | `#endif` |
-|      - | 7838 | `#endif` |
-|      - | 7839 | `#endif` |
-|    ! 0 | 7840 | `			ph7_result_string_format(pCtx,"%d",pTm->tm_isdst == 1);` |
-|    ! 0 | 7841 | `			break;` |
-|    ! 0 | 7842 | `		case 'r':` |
-|      - | 7843 | `			/* RFC 2822 formatted date 	Example: Thu, 21 Dec 2000 16:01:07 */` |
-|    ! 0 | 7844 | `			ph7_result_string_format(pCtx,"%.3s, %02d %.3s %4d %02d:%02d:%02d",` |
-|    ! 0 | 7845 | `				SyTimeGetDay(pTm->tm_wday),` |
-|    ! 0 | 7846 | `				pTm->tm_mday,` |
-|    ! 0 | 7847 | `				SyTimeGetMonth(pTm->tm_mon),` |
-|    ! 0 | 7848 | `				pTm->tm_year,` |
-|    ! 0 | 7849 | `				pTm->tm_hour,` |
-|    ! 0 | 7850 | `				pTm->tm_min,` |
-|    ! 0 | 7851 | `				pTm->tm_sec` |
-|      - | 7852 | `				);` |
-|    ! 0 | 7853 | `			break;` |
-|    ! 0 | 7854 | `		case 'U':{` |
-|      - | 7855 | `			time_t tt;` |
-|      - | 7856 | `			/* Seconds since the Unix Epoch */` |
-|    ! 0 | 7857 | `			time(&tt);` |
-|    ! 0 | 7858 | `			ph7_result_string_format(pCtx,"%u",(unsigned int)tt);` |
-|    ! 0 | 7859 | `			break;` |
-|      - | 7860 | `				 }` |
-|    ! 0 | 7861 | `		case 'O':` |
-|      - | 7862 | `		case 'P':` |
-|      - | 7863 | `			/* Difference to Greenwich time (GMT) in hours */` |
-|    ! 0 | 7864 | `			ph7_result_string_format(pCtx,"%+05d",pTm->tm_gmtoff);` |
-|    ! 0 | 7865 | `			break;` |
-|    ! 0 | 7866 | `		case 'Z':` |
-|      - | 7867 | `			/* Timezone offset in seconds. The offset for timezones west of UTC` |
-|      - | 7868 | `			 * is always negative, and for those east of UTC is always positive.` |
-|      - | 7869 | `			 */` |
-|    ! 0 | 7870 | `			ph7_result_string_format(pCtx,"%+05d",pTm->tm_gmtoff);` |
-|    ! 0 | 7871 | `			break;` |
-|      1 | 7872 | `		case 'c':` |
-|      - | 7873 | `			/* 	ISO 8601 date */` |
-|      4 | 7874 | `			ph7_result_string_format(pCtx,"%4d-%02d-%02dT%02d:%02d:%02d%+05d",` |
-|      1 | 7875 | `				pTm->tm_year,` |
-|      2 | 7876 | `				pTm->tm_mon+1,` |
-|      1 | 7877 | `				pTm->tm_mday,` |
-|      1 | 7878 | `				pTm->tm_hour,` |
-|      1 | 7879 | `				pTm->tm_min,` |
-|      1 | 7880 | `				pTm->tm_sec,` |
-|      1 | 7881 | `				pTm->tm_gmtoff` |
-|      - | 7882 | `				);` |
-|      3 | 7883 | `			break;` |
-|      1 | 7884 | `		case '\\':` |
-|      3 | 7885 | `			zIn++;` |
-|      - | 7886 | `			/* Expand verbatim */` |
-|      3 | 7887 | `			if( zIn < zEnd ){` |
-|      3 | 7888 | `				ph7_result_string(pCtx,zIn,(int)sizeof(char));` |
-|      1 | 7889 | `			}` |
-|      3 | 7890 | `			break;` |
-|     17 | 7891 | `		default:` |
-|      - | 7892 | `			/* Unknown format specifer,expand verbatim */` |
-|     35 | 7893 | `			ph7_result_string(pCtx,zIn,(int)sizeof(char));` |
-|     34 | 7894 | `			break;` |
-|      - | 7895 | `		}` |
-|      - | 7896 | `		/* Point to the next character */` |
-|    111 | 7897 | `		zIn++;` |
-|      1 | 7898 | `	}` |
-|     47 | 7899 | `	return SXRET_OK;` |
-|      1 | 7900 |  |
-|      - | 7901 | `/*` |
-|      - | 7902 | ` * PH7 implementation of the strftime() function.` |
-|      - | 7903 | ` * The following formats are supported:` |
-|      - | 7904 | ` * %a 	An abbreviated textual representation of the day` |
-|      - | 7905 | ` * %A 	A full textual representation of the day` |
-|      - | 7906 | ` * %d 	Two-digit day of the month (with leading zeros)` |
-|      - | 7907 | ` * %e 	Day of the month, with a space preceding single digits.` |
-|      - | 7908 | ` * %j 	Day of the year, 3 digits with leading zeros` |
-|      - | 7909 | ` * %u 	ISO-8601 numeric representation of the day of the week 	1 (for Monday) though 7 (for Sunday)` |
-|      - | 7910 | ` * %w 	Numeric representation of the day of the week 0 (for Sunday) through 6 (for Saturday)` |
-|      - | 7911 | ` * %U 	Week number of the given year, starting with the first Sunday as the first week` |
-|      - | 7912 | ` * %V 	ISO-8601:1988 week number of the given year, starting with the first week of the year with at least` |
-|      - | 7913 | ` *   4 weekdays, with Monday being the start of the week.` |
-|      - | 7914 | ` * %W 	A numeric representation of the week of the year` |
-|      - | 7915 | ` * %b 	Abbreviated month name, based on the locale` |
-|      - | 7916 | ` * %B 	Full month name, based on the locale` |
-|      - | 7917 | ` * %h 	Abbreviated month name, based on the locale (an alias of %b)` |
-|      - | 7918 | ` * %m 	Two digit representation of the month` |
-|      - | 7919 | ` * %C 	Two digit representation of the century (year divided by 100, truncated to an integer)` |
-|      - | 7920 | ` * %g 	Two digit representation of the year going by ISO-8601:1988 standards (see %V)` |
-|      - | 7921 | ` * %G 	The full four-digit version of %g` |
-|      - | 7922 | ` * %y 	Two digit representation of the year` |
-|      - | 7923 | ` * %Y 	Four digit representation for the year` |
-|      - | 7924 | ` * %H 	Two digit representation of the hour in 24-hour format` |
-|      - | 7925 | ` * %I 	Two digit representation of the hour in 12-hour format` |
-|      - | 7926 | ` * %l (lower-case 'L') 	Hour in 12-hour format, with a space preceeding single digits` |
-|      - | 7927 | ` * %M 	Two digit representation of the minute` |
-|      - | 7928 | ` * %p 	UPPER-CASE 'AM' or 'PM' based on the given time` |
-|      - | 7929 | ` * %P 	lower-case 'am' or 'pm' based on the given time` |
-|      - | 7930 | ` * %r 	Same as "%I:%M:%S %p"` |
-|      - | 7931 | ` * %R 	Same as "%H:%M"` |
-|      - | 7932 | ` * %S 	Two digit representation of the second` |
-|      - | 7933 | ` * %T 	Same as "%H:%M:%S"` |
-|      - | 7934 | ` * %X 	Preferred time representation based on locale, without the date` |
-|      - | 7935 | ` * %z 	Either the time zone offset from UTC or the abbreviation` |
-|      - | 7936 | ` * %Z 	The time zone offset/abbreviation option NOT given by %z` |
-|      - | 7937 | ` * %c 	Preferred date and time stamp based on local` |
-|      - | 7938 | ` * %D 	Same as "%m/%d/%y"` |
-|      - | 7939 | ` * %F 	Same as "%Y-%m-%d"` |
-|      - | 7940 | ` * %s 	Unix Epoch Time timestamp (same as the time() function)` |
-|      - | 7941 | ` * %x 	Preferred date representation based on locale, without the time` |
-|      - | 7942 | ` * %n 	A newline character ("\n")` |
-|      - | 7943 | ` * %t 	A Tab character ("\t")` |
-|      - | 7944 | ` * %% 	A literal percentage character ("%")` |
-|      - | 7945 | ` */` |
-|     16 | 7946 | `static int PH7_Strftime(` |
-|      - | 7947 | `	ph7_context *pCtx,  /* Call context */` |
-|      - | 7948 | `	const char *zIn,    /* Input string */` |
-|      - | 7949 | `	int nLen,           /* Input length */` |
-|      - | 7950 | `	Sytm *pTm           /* Parse of the given time */` |
-|      - | 7951 | `	)` |
-|      1 | 7952 |  |
-|     17 | 7953 | `	const char *zCur,*zEnd = &zIn[nLen];` |
-|      - | 7954 | `	int c;` |
-|      - | 7955 | `	/* Start the format process */` |
-|     18 | 7956 | `	for(;;){` |
-|     37 | 7957 | `		zCur = zIn;` |
-|     41 | 7958 | `		while(zIn < zEnd && zIn[0] != '%' ){` |
-|      5 | 7959 | `			zIn++;` |
-|      1 | 7960 | `		}` |
-|     37 | 7961 | `		if( zIn > zCur ){` |
-|      - | 7962 | `			/* Consume input verbatim */` |
-|      5 | 7963 | `			ph7_result_string(pCtx,zCur,(int)(zIn-zCur));` |
-|      2 | 7964 | `		}` |
-|     37 | 7965 | `		zIn++; /* Jump the percent sign */` |
-|     37 | 7966 | `		if( zIn >= zEnd ){` |
-|      - | 7967 | `			/* No more input to process */` |
-|     17 | 7968 | `			break;` |
-|      - | 7969 | `		}` |
-|     21 | 7970 | `		c = zIn[0];` |
-|      - | 7971 | `		/* Act according to the current specifer */` |
-|     21 | 7972 | `		switch(c){` |
-|    ! 0 | 7973 | `		case '%':` |
-|      - | 7974 | `			/* A literal percentage character ("%") */` |
-|    ! 0 | 7975 | `			ph7_result_string(pCtx,"%",(int)sizeof(char));` |
-|    ! 0 | 7976 | `			break;` |
-|    ! 0 | 7977 | `		case 't':` |
-|      - | 7978 | `			/* A Tab character */` |
-|    ! 0 | 7979 | `			ph7_result_string(pCtx,"\t",(int)sizeof(char));` |
-|    ! 0 | 7980 | `			break;` |
-|    ! 0 | 7981 | `		case 'n':` |
-|      - | 7982 | `			/* A newline character */` |
-|    ! 0 | 7983 | `			ph7_result_string(pCtx,"\n",(int)sizeof(char));` |
-|    ! 0 | 7984 | `			break;` |
-|      1 | 7985 | `		case 'a':` |
-|      - | 7986 | `			/* An abbreviated textual representation of the day */` |
-|      3 | 7987 | `			ph7_result_string(pCtx,SyTimeGetDay(pTm->tm_wday),(int)sizeof(char)*3);` |
-|      3 | 7988 | `			break;` |
-|    ! 0 | 7989 | `		case 'A':` |
-|      - | 7990 | `			/* A full textual representation of the day */` |
-|    ! 0 | 7991 | `			ph7_result_string(pCtx,SyTimeGetDay(pTm->tm_wday),-1/*Compute length automatically*/);` |
-|    ! 0 | 7992 | `			break;` |
-|    ! 0 | 7993 | `		case 'e':` |
-|      - | 7994 | `			/* Day of the month, 2 digits with leading space for single digit*/` |
-|    ! 0 | 7995 | `			ph7_result_string_format(pCtx,"%2d",pTm->tm_mday);` |
-|    ! 0 | 7996 | `			break;` |
-|      2 | 7997 | `		case 'd':` |
-|      - | 7998 | `			/* Two-digit day of the month (with leading zeros) */` |
-|      5 | 7999 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_mon+1);` |
-|      5 | 8000 | `			break;` |
-|    ! 0 | 8001 | `		case 'j':` |
-|      - | 8002 | `			/*The day of the year,3 digits with leading zeros*/` |
-|    ! 0 | 8003 | `			ph7_result_string_format(pCtx,"%03d",pTm->tm_yday);` |
-|    ! 0 | 8004 | `			break;` |
-|    ! 0 | 8005 | `		case 'u':` |
-|      - | 8006 | `			/* ISO-8601 numeric representation of the day of the week */` |
-|    ! 0 | 8007 | `			ph7_result_string_format(pCtx,"%d",aISO8601[pTm->tm_wday % 7 ]);` |
-|    ! 0 | 8008 | `			break;` |
-|    ! 0 | 8009 | `		case 'w':` |
-|      - | 8010 | `			/* Numeric representation of the day of the week */` |
-|    ! 0 | 8011 | `			ph7_result_string_format(pCtx,"%d",pTm->tm_wday);` |
-|    ! 0 | 8012 | `			break;` |
-|    ! 0 | 8013 | `		case 'b':` |
-|      - | 8014 | `		case 'h':` |
-|      - | 8015 | `			/*A short textual representation of a month, three letters (Not based on locale)*/` |
-|    ! 0 | 8016 | `			ph7_result_string(pCtx,SyTimeGetMonth(pTm->tm_mon),(int)sizeof(char)*3);` |
-|    ! 0 | 8017 | `			break;` |
-|    ! 0 | 8018 | `		case 'B':` |
-|      - | 8019 | `			/* Full month name (Not based on locale) */` |
-|    ! 0 | 8020 | `			ph7_result_string(pCtx,SyTimeGetMonth(pTm->tm_mon),-1/*Compute length automatically*/);` |
-|    ! 0 | 8021 | `			break;` |
-|      2 | 8022 | `		case 'm':` |
-|      - | 8023 | `			/*Numeric representation of a month, with leading zeros*/` |
-|      5 | 8024 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_mon + 1);` |
-|      5 | 8025 | `			break;` |
-|    ! 0 | 8026 | `		case 'C':` |
-|      - | 8027 | `			/* Two digit representation of the century */` |
-|    ! 0 | 8028 | `			ph7_result_string_format(pCtx,"%2d",pTm->tm_year/100);` |
-|    ! 0 | 8029 | `			break;` |
-|    ! 0 | 8030 | `		case 'y':` |
-|      - | 8031 | `		case 'g':` |
-|      - | 8032 | `			/* Two digit representation of the year */` |
-|    ! 0 | 8033 | `			ph7_result_string_format(pCtx,"%2d",pTm->tm_year%100);` |
-|    ! 0 | 8034 | `			break;` |
-|      2 | 8035 | `		case 'Y':` |
-|      - | 8036 | `		case 'G':` |
-|      - | 8037 | `			/* Four digit representation of the year */` |
-|      5 | 8038 | `			ph7_result_string_format(pCtx,"%4d",pTm->tm_year);` |
-|      5 | 8039 | `			break;` |
-|    ! 0 | 8040 | `		case 'I':` |
-|      - | 8041 | `			/* 12-hour format of an hour with leading zeros */` |
-|    ! 0 | 8042 | `			ph7_result_string_format(pCtx,"%02d",1+(pTm->tm_hour%12));` |
-|    ! 0 | 8043 | `			break;` |
-|    ! 0 | 8044 | `		case 'l':` |
-|      - | 8045 | `			/* 12-hour format of an hour with leading space */` |
-|    ! 0 | 8046 | `			ph7_result_string_format(pCtx,"%2d",1+(pTm->tm_hour%12));` |
-|    ! 0 | 8047 | `			break;` |
-|      1 | 8048 | `		case 'H':` |
-|      - | 8049 | `			/* 24-hour format of an hour with leading zeros */` |
-|      3 | 8050 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_hour);` |
-|      3 | 8051 | `			break;` |
-|      1 | 8052 | `		case 'M':` |
-|      - | 8053 | `			/* Minutes with leading zeros */` |
-|      3 | 8054 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_min);` |
-|      3 | 8055 | `			break;` |
-|    ! 0 | 8056 | `		case 'S':` |
-|      - | 8057 | `			/* Seconds with leading zeros */` |
-|    ! 0 | 8058 | `			ph7_result_string_format(pCtx,"%02d",pTm->tm_sec);` |
-|    ! 0 | 8059 | `			break;` |
-|    ! 0 | 8060 | `		case 'z':` |
-|      - | 8061 | `		case 'Z':` |
-|      - | 8062 | `			/* 	Timezone identifier */` |
-|    ! 0 | 8063 | `			zCur = pTm->tm_zone;` |
-|    ! 0 | 8064 | `			if( zCur == 0 ){` |
-|      - | 8065 | `				/* Assume GMT */` |
-|    ! 0 | 8066 | `				zCur = "GMT";` |
-|    ! 0 | 8067 | `			}` |
-|    ! 0 | 8068 | `			ph7_result_string(pCtx,zCur,-1);` |
-|    ! 0 | 8069 | `			break;` |
-|    ! 0 | 8070 | `		case 'T':` |
-|      - | 8071 | `		case 'X':` |
-|      - | 8072 | `			/* Same as "%H:%M:%S" */` |
-|    ! 0 | 8073 | `			ph7_result_string_format(pCtx,"%02d:%02d:%02d",pTm->tm_hour,pTm->tm_min,pTm->tm_sec);` |
-|    ! 0 | 8074 | `			break;` |
-|    ! 0 | 8075 | `		case 'R':` |
-|      - | 8076 | `			/* Same as "%H:%M" */` |
-|    ! 0 | 8077 | `			ph7_result_string_format(pCtx,"%02d:%02d",pTm->tm_hour,pTm->tm_min);` |
-|    ! 0 | 8078 | `			break;` |
-|    ! 0 | 8079 | `		case 'P':` |
-|      - | 8080 | `			/*	Lowercase Ante meridiem and Post meridiem */` |
-|    ! 0 | 8081 | `			ph7_result_string(pCtx,pTm->tm_hour > 12 ? "pm" : "am",(int)sizeof(char)*2);` |
-|    ! 0 | 8082 | `			break;` |
-|    ! 0 | 8083 | `		case 'p':` |
-|      - | 8084 | `			/*	Uppercase Ante meridiem and Post meridiem */` |
-|    ! 0 | 8085 | `			ph7_result_string(pCtx,pTm->tm_hour > 12 ? "PM" : "AM",(int)sizeof(char)*2);` |
-|    ! 0 | 8086 | `			break;` |
-|    ! 0 | 8087 | `		case 'r':` |
-|      - | 8088 | `			/* Same as "%I:%M:%S %p" */` |
-|    ! 0 | 8089 | `			ph7_result_string_format(pCtx,"%02d:%02d:%02d %s",` |
-|    ! 0 | 8090 | `				1+(pTm->tm_hour%12),` |
-|    ! 0 | 8091 | `				pTm->tm_min,` |
-|    ! 0 | 8092 | `				pTm->tm_sec,` |
-|    ! 0 | 8093 | `				pTm->tm_hour > 12 ? "PM" : "AM"` |
-|      - | 8094 | `				);` |
-|    ! 0 | 8095 | `			break;` |
-|      1 | 8096 | `		case 'D':` |
-|      - | 8097 | `		case 'x':` |
-|      - | 8098 | `			/* Same as "%m/%d/%y" */` |
-|      4 | 8099 | `			ph7_result_string_format(pCtx,"%02d/%02d/%02d",` |
-|      2 | 8100 | `				pTm->tm_mon+1,` |
-|      1 | 8101 | `				pTm->tm_mday,` |
-|      2 | 8102 | `				pTm->tm_year%100` |
-|      - | 8103 | `				);` |
-|      3 | 8104 | `			break;` |
-|    ! 0 | 8105 | `		case 'F':` |
-|      - | 8106 | `			/* Same as "%Y-%m-%d" */` |
-|    ! 0 | 8107 | `			ph7_result_string_format(pCtx,"%d-%02d-%02d",` |
-|    ! 0 | 8108 | `				pTm->tm_year,` |
-|    ! 0 | 8109 | `				pTm->tm_mon+1,` |
-|    ! 0 | 8110 | `				pTm->tm_mday` |
-|      - | 8111 | `				);` |
-|    ! 0 | 8112 | `			break;` |
-|    ! 0 | 8113 | `		case 'c':` |
-|    ! 0 | 8114 | `			ph7_result_string_format(pCtx,"%d-%02d-%02d %02d:%02d:%02d",` |
-|    ! 0 | 8115 | `				pTm->tm_year,` |
-|    ! 0 | 8116 | `				pTm->tm_mon+1,` |
-|    ! 0 | 8117 | `				pTm->tm_mday,` |
-|    ! 0 | 8118 | `				pTm->tm_hour,` |
-|    ! 0 | 8119 | `				pTm->tm_min,` |
-|    ! 0 | 8120 | `				pTm->tm_sec` |
-|      - | 8121 | `				);` |
-|    ! 0 | 8122 | `			break;` |
-|    ! 0 | 8123 | `		case 's':{` |
-|      - | 8124 | `			time_t tt;` |
-|      - | 8125 | `			/* Seconds since the Unix Epoch */` |
-|    ! 0 | 8126 | `			time(&tt);` |
-|    ! 0 | 8127 | `			ph7_result_string_format(pCtx,"%u",(unsigned int)tt);` |
-|    ! 0 | 8128 | `			break;` |
-|      - | 8129 | `				 }` |
-|    ! 0 | 8130 | `		default:` |
-|      - | 8131 | `			/* unknown specifer,simply ignore*/` |
-|    ! 0 | 8132 | `			break;` |
-|      - | 8133 | `		}` |
-|      - | 8134 | `		/* Advance the cursor */` |
-|     21 | 8135 | `		zIn++;` |
-|      1 | 8136 | `	}` |
-|     17 | 8137 | `	return SXRET_OK;` |
-|      1 | 8138 |  |
-|      - | 8139 | `/*` |
-|      - | 8140 | ` * string date(string $format [, int $timestamp = time() ] )` |
-|      - | 8141 | ` *  Returns a string formatted according to the given format string using` |
-|      - | 8142 | ` *  the given integer timestamp or the current time if no timestamp is given.` |
-|      - | 8143 | ` *  In other words, timestamp is optional and defaults to the value of time().` |
-|      - | 8144 | ` * Parameters` |
-|      - | 8145 | ` *  $format` |
-|      - | 8146 | ` *   The format of the outputted date string (See code above)` |
-|      - | 8147 | ` * $timestamp` |
-|      - | 8148 | ` *   The optional timestamp parameter is an integer Unix timestamp` |
-|      - | 8149 | ` *   that defaults to the current local time if a timestamp is not given.` |
-|      - | 8150 | ` *   In other words, it defaults to the value of time().` |
-|      - | 8151 | ` * Return` |
-|      - | 8152 | ` *  A formatted date string. If a non-numeric value is used for timestamp, FALSE is returned.` |
-|      - | 8153 | ` */` |
-|     36 | 8154 | `static int PH7_builtin_date(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 8155 |  |
-|      - | 8156 | `	const char *zFormat;` |
-|      - | 8157 | `	int nLen;` |
-|      - | 8158 | `	Sytm sTm;` |
-|     37 | 8159 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
-|      - | 8160 | `		/* Missing/Invalid argument,return FALSE */` |
-|      5 | 8161 | `		ph7_result_bool(pCtx,0);` |
-|      5 | 8162 | `		return PH7_OK;` |
-|      - | 8163 | `	}` |
-|     33 | 8164 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
-|     33 | 8165 | `	if( nLen < 1 ){` |
-|      - | 8166 | `		/* Don't bother processing return the empty string */` |
-|    ! 0 | 8167 | `		ph7_result_string(pCtx,"",0);` |
-|    ! 0 | 8168 | `	}` |
-|     33 | 8169 | `	if( nArg < 2 ){` |
-|      - | 8170 | `#ifdef __WINNT__` |
-|      - | 8171 | `		SYSTEMTIME sOS;` |
-|      1 | 8172 | `		GetSystemTime(&sOS);` |
-|      1 | 8173 | `		SYSTEMTIME_TO_SYTM(&sOS,&sTm);` |
-|      - | 8174 | `#else` |
-|      - | 8175 | `		struct tm *pTm;` |
-|      - | 8176 | `		time_t t;` |
-|     30 | 8177 | `		time(&t);` |
-|     30 | 8178 | `		pTm = localtime(&t);` |
-|     30 | 8179 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|      - | 8180 | `#endif` |
-|     16 | 8181 | `	}else{` |
-|      - | 8182 | `		/* Use the given timestamp */` |
-|      - | 8183 | `		time_t t;` |
-|      - | 8184 | `		struct tm *pTm;` |
-|      3 | 8185 | `		if( ph7_value_is_int(apArg[1]) ){` |
-|      3 | 8186 | `			t = (time_t)ph7_value_to_int64(apArg[1]);` |
-|      3 | 8187 | `			pTm = localtime(&t);` |
-|      3 | 8188 | `			if( pTm == 0 ){` |
-|    ! 0 | 8189 | `				time(&t);` |
-|    ! 0 | 8190 | `			}` |
-|      2 | 8191 | `		}else{` |
-|    ! 0 | 8192 | `			time(&t);` |
-|      - | 8193 | `		}` |
-|      3 | 8194 | `		pTm = localtime(&t);` |
-|      3 | 8195 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|      - | 8196 | `	}` |
-|      - | 8197 | `	/* Format the given string */` |
-|     33 | 8198 | `	DateFormat(pCtx,zFormat,nLen,&sTm);` |
-|     33 | 8199 | `	return PH7_OK;` |
-|     19 | 8200 |  |
-|      - | 8201 | `/*` |
-|      - | 8202 | ` * string strftime(string $format [, int $timestamp = time() ] )` |
-|      - | 8203 | ` *  Format a local time/date (PLATFORM INDEPENDANT IMPLEENTATION NOT BASED ON LOCALE)` |
-|      - | 8204 | ` * Parameters` |
-|      - | 8205 | ` *  $format` |
-|      - | 8206 | ` *   The format of the outputted date string (See code above)` |
-|      - | 8207 | ` * $timestamp` |
-|      - | 8208 | ` *   The optional timestamp parameter is an integer Unix timestamp` |
-|      - | 8209 | ` *   that defaults to the current local time if a timestamp is not given.` |
-|      - | 8210 | ` *   In other words, it defaults to the value of time().` |
-|      - | 8211 | ` * Return` |
-|      - | 8212 | ` * Returns a string formatted according format using the given timestamp` |
-|      - | 8213 | ` * or the current local time if no timestamp is given.` |
-|      - | 8214 | ` */` |
-|     20 | 8215 | `static int PH7_builtin_strftime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 8216 |  |
-|      - | 8217 | `	const char *zFormat;` |
-|      - | 8218 | `	int nLen;` |
-|      - | 8219 | `	Sytm sTm;` |
-|     21 | 8220 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
-|      - | 8221 | `		/* Missing/Invalid argument,return FALSE */` |
-|      5 | 8222 | `		ph7_result_bool(pCtx,0);` |
-|      5 | 8223 | `		return PH7_OK;` |
-|      - | 8224 | `	}` |
-|     17 | 8225 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
-|     17 | 8226 | `	if( nLen < 1 ){` |
-|      - | 8227 | `		/* Don't bother processing return FALSE */` |
-|    ! 0 | 8228 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 8229 | `	}` |
-|     17 | 8230 | `	if( nArg < 2 ){` |
-|      - | 8231 | `#ifdef __WINNT__` |
-|      - | 8232 | `		SYSTEMTIME sOS;` |
-|      1 | 8233 | `		GetSystemTime(&sOS);` |
-|      1 | 8234 | `		SYSTEMTIME_TO_SYTM(&sOS,&sTm);` |
-|      - | 8235 | `#else` |
-|      - | 8236 | `		struct tm *pTm;` |
-|      - | 8237 | `		time_t t;` |
-|     14 | 8238 | `		time(&t);` |
-|     14 | 8239 | `		pTm = localtime(&t);` |
-|     14 | 8240 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|      - | 8241 | `#endif` |
-|      8 | 8242 | `	}else{` |
-|      - | 8243 | `		/* Use the given timestamp */` |
-|      - | 8244 | `		time_t t;` |
-|      - | 8245 | `		struct tm *pTm;` |
-|      3 | 8246 | `		if( ph7_value_is_int(apArg[1]) ){` |
-|      3 | 8247 | `			t = (time_t)ph7_value_to_int64(apArg[1]);` |
-|      3 | 8248 | `			pTm = localtime(&t);` |
-|      3 | 8249 | `			if( pTm == 0 ){` |
-|    ! 0 | 8250 | `				time(&t);` |
-|    ! 0 | 8251 | `			}` |
-|      2 | 8252 | `		}else{` |
-|    ! 0 | 8253 | `			time(&t);` |
-|      - | 8254 | `		}` |
-|      3 | 8255 | `		pTm = localtime(&t);` |
-|      3 | 8256 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|      - | 8257 | `	}` |
-|      - | 8258 | `	/* Format the given string */` |
-|     17 | 8259 | `	PH7_Strftime(pCtx,zFormat,nLen,&sTm);` |
-|     17 | 8260 | `	if( ph7_context_result_buf_length(pCtx) < 1 ){` |
-|      - | 8261 | `		/* Nothing was formatted,return FALSE */` |
-|    ! 0 | 8262 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 8263 | `	}` |
-|     17 | 8264 | `	return PH7_OK;` |
-|     11 | 8265 |  |
-|      - | 8266 | `/*` |
-|      - | 8267 | ` * string gmdate(string $format [, int $timestamp = time() ] )` |
-|      - | 8268 | ` *  Identical to the date() function except that the time returned` |
-|      - | 8269 | ` *  is Greenwich Mean Time (GMT).` |
-|      - | 8270 | ` * Parameters` |
-|      - | 8271 | ` *  $format` |
-|      - | 8272 | ` *  The format of the outputted date string (See code above)` |
-|      - | 8273 | ` *  $timestamp` |
-|      - | 8274 | ` *   The optional timestamp parameter is an integer Unix timestamp` |
-|      - | 8275 | ` *   that defaults to the current local time if a timestamp is not given.` |
-|      - | 8276 | ` *   In other words, it defaults to the value of time().` |
-|      - | 8277 | ` * Return` |
-|      - | 8278 | ` *  A formatted date string. If a non-numeric value is used for timestamp, FALSE is returned.` |
-|      - | 8279 | ` */` |
-|     16 | 8280 | `static int PH7_builtin_gmdate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 8281 |  |
-|      - | 8282 | `	const char *zFormat;` |
-|      - | 8283 | `	int nLen;` |
-|      - | 8284 | `	Sytm sTm;` |
-|     17 | 8285 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
-|      - | 8286 | `		/* Missing/Invalid argument,return FALSE */` |
-|      3 | 8287 | `		ph7_result_bool(pCtx,0);` |
-|      3 | 8288 | `		return PH7_OK;` |
-|      - | 8289 | `	}` |
-|     15 | 8290 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
-|     15 | 8291 | `	if( nLen < 1 ){` |
-|      - | 8292 | `		/* Don't bother processing return the empty string */` |
-|    ! 0 | 8293 | `		ph7_result_string(pCtx,"",0);` |
-|    ! 0 | 8294 | `	}` |
-|     15 | 8295 | `	if( nArg < 2 ){` |
-|      - | 8296 | `#ifdef __WINNT__` |
-|      - | 8297 | `		SYSTEMTIME sOS;` |
-|      1 | 8298 | `		GetSystemTime(&sOS);` |
-|      1 | 8299 | `		SYSTEMTIME_TO_SYTM(&sOS,&sTm);` |
-|      - | 8300 | `#else` |
-|      - | 8301 | `		struct tm *pTm;` |
-|      - | 8302 | `		time_t t;` |
-|     12 | 8303 | `		time(&t);` |
-|     12 | 8304 | `		pTm = gmtime(&t);` |
-|     12 | 8305 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|      - | 8306 | `#endif` |
-|      7 | 8307 | `	}else{` |
-|      - | 8308 | `		/* Use the given timestamp */` |
-|      - | 8309 | `		time_t t;` |
-|      - | 8310 | `		struct tm *pTm;` |
-|      3 | 8311 | `		if( ph7_value_is_int(apArg[1]) ){` |
-|      3 | 8312 | `			t = (time_t)ph7_value_to_int64(apArg[1]);` |
-|      3 | 8313 | `			pTm = gmtime(&t);` |
-|      3 | 8314 | `			if( pTm == 0 ){` |
-|    ! 0 | 8315 | `				time(&t);` |
-|    ! 0 | 8316 | `			}` |
-|      2 | 8317 | `		}else{` |
-|    ! 0 | 8318 | `			time(&t);` |
-|      - | 8319 | `		}` |
-|      3 | 8320 | `		pTm = gmtime(&t);` |
-|      3 | 8321 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|      - | 8322 | `	}` |
-|      - | 8323 | `	/* Format the given string */` |
-|     15 | 8324 | `	DateFormat(pCtx,zFormat,nLen,&sTm);` |
-|     15 | 8325 | `	return PH7_OK;` |
-|      9 | 8326 |  |
-|      - | 8327 | `/*` |
-|      - | 8328 | ` * array localtime([ int $timestamp = time() [, bool $is_associative = false ]])` |
-|      - | 8329 | ` *  Return the local time.` |
-|      - | 8330 | ` * Parameter` |
-|      - | 8331 | ` *  $timestamp: The optional timestamp parameter is an integer Unix timestamp` |
-|      - | 8332 | ` *     that defaults to the current local time if a timestamp is not given.` |
-|      - | 8333 | ` *     In other words, it defaults to the value of time().` |
-|      - | 8334 | ` * $is_associative` |
-|      - | 8335 | ` *   If set to FALSE or not supplied then the array is returned as a regular, numerically` |
-|      - | 8336 | ` *   indexed array. If the argument is set to TRUE then localtime() returns an associative` |
-|      - | 8337 | ` *   array containing all the different elements of the structure returned by the C function` |
-|      - | 8338 | ` *   call to localtime. The names of the different keys of the associative array are as follows:` |
-|      - | 8339 | ` *      "tm_sec" - seconds, 0 to 59` |
-|      - | 8340 | ` *      "tm_min" - minutes, 0 to 59` |
-|      - | 8341 | ` *      "tm_hour" - hours, 0 to 23` |
-|      - | 8342 | ` *      "tm_mday" - day of the month, 1 to 31` |
-|      - | 8343 | ` *      "tm_mon" - month of the year, 0 (Jan) to 11 (Dec)` |
-|      - | 8344 | ` *      "tm_year" - years since 1900` |
-|      - | 8345 | ` *      "tm_wday" - day of the week, 0 (Sun) to 6 (Sat)` |
-|      - | 8346 | ` *      "tm_yday" - day of the year, 0 to 365` |
-|      - | 8347 | ` *      "tm_isdst" - is daylight savings time in effect? Positive if yes, 0 if not, negative if unknown.` |
-|      - | 8348 | ` * Returns` |
-|      - | 8349 | ` *  An associative array of information related to the timestamp.` |
-|      - | 8350 | ` */` |
-|      8 | 8351 | `static int PH7_builtin_localtime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 8352 |  |
-|      - | 8353 | `	ph7_value *pValue,*pArray;` |
-|      9 | 8354 | `	int isAssoc = 0;` |
-|      - | 8355 | `	Sytm sTm;` |
-|      9 | 8356 | `	if( nArg < 1 ){` |
-|      - | 8357 | `#ifdef __WINNT__` |
-|      - | 8358 | `		SYSTEMTIME sOS;` |
-|      1 | 8359 | `		GetSystemTime(&sOS); /* TODO(chems): GMT not local */` |
-|      1 | 8360 | `		SYSTEMTIME_TO_SYTM(&sOS,&sTm);` |
-|      - | 8361 | `#else` |
-|      - | 8362 | `		struct tm *pTm;` |
-|      - | 8363 | `		time_t t;` |
-|      4 | 8364 | `		time(&t);` |
-|      4 | 8365 | `		pTm = localtime(&t);` |
-|      4 | 8366 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|      - | 8367 | `#endif` |
-|      3 | 8368 | `	}else{` |
-|      - | 8369 | `		/* Use the given timestamp */` |
-|      - | 8370 | `		time_t t;` |
-|      - | 8371 | `		struct tm *pTm;` |
-|      5 | 8372 | `		if( ph7_value_is_int(apArg[0]) ){` |
-|      5 | 8373 | `			t = (time_t)ph7_value_to_int64(apArg[0]);` |
-|      5 | 8374 | `			pTm = localtime(&t);` |
-|      5 | 8375 | `			if( pTm == 0 ){` |
-|    ! 0 | 8376 | `				time(&t);` |
-|    ! 0 | 8377 | `			}` |
-|      3 | 8378 | `		}else{` |
-|    ! 0 | 8379 | `			time(&t);` |
-|      - | 8380 | `		}` |
-|      5 | 8381 | `		pTm = localtime(&t);` |
-|      5 | 8382 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|      - | 8383 | `	}` |
-|      - | 8384 | `	/* Element value */` |
-|      9 | 8385 | `	pValue = ph7_context_new_scalar(pCtx);` |
-|      9 | 8386 | `	if( pValue == 0 ){` |
-|      - | 8387 | `		/* Return NULL */` |
-|    ! 0 | 8388 | `		ph7_result_null(pCtx);` |
-|    ! 0 | 8389 | `		return PH7_OK;` |
-|      - | 8390 | `	}` |
-|      - | 8391 | `	/* Create a new array */` |
-|      9 | 8392 | `	pArray = ph7_context_new_array(pCtx);` |
-|      9 | 8393 | `	if( pArray == 0 ){` |
-|      - | 8394 | `		/* Return NULL */` |
-|    ! 0 | 8395 | `		ph7_result_null(pCtx);` |
-|    ! 0 | 8396 | `		return PH7_OK;` |
-|      - | 8397 | `	}` |
-|      9 | 8398 | `	if( nArg > 1 ){` |
-|      3 | 8399 | `		isAssoc = ph7_value_to_bool(apArg[1]);` |
-|      1 | 8400 | `	}` |
-|      - | 8401 | `	/* Fill the array */` |
-|      - | 8402 | `	/* Seconds */` |
-|      9 | 8403 | `	ph7_value_int(pValue,sTm.tm_sec);` |
-|      9 | 8404 | `	if( isAssoc ){` |
-|      3 | 8405 | `		ph7_array_add_strkey_elem(pArray,"tm_sec",pValue);` |
-|      2 | 8406 | `	}else{` |
-|      7 | 8407 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
-|      - | 8408 | `	}` |
-|      - | 8409 | `	/* Minutes */` |
-|      9 | 8410 | `	ph7_value_int(pValue,sTm.tm_min);` |
-|      9 | 8411 | `	if( isAssoc ){` |
-|      3 | 8412 | `		ph7_array_add_strkey_elem(pArray,"tm_min",pValue);` |
-|      2 | 8413 | `	}else{` |
-|      7 | 8414 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
-|      - | 8415 | `	}` |
-|      - | 8416 | `	/* Hours */` |
-|      9 | 8417 | `	ph7_value_int(pValue,sTm.tm_hour);` |
-|      9 | 8418 | `	if( isAssoc ){` |
-|      3 | 8419 | `		ph7_array_add_strkey_elem(pArray,"tm_hour",pValue);` |
-|      2 | 8420 | `	}else{` |
-|      7 | 8421 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
-|      - | 8422 | `	}` |
-|      - | 8423 | `	/* mday */` |
-|      9 | 8424 | `	ph7_value_int(pValue,sTm.tm_mday);` |
-|      9 | 8425 | `	if( isAssoc ){` |
-|      3 | 8426 | `		ph7_array_add_strkey_elem(pArray,"tm_mday",pValue);` |
-|      2 | 8427 | `	}else{` |
-|      7 | 8428 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
-|      - | 8429 | `	}` |
-|      - | 8430 | `	/* mon */` |
-|      9 | 8431 | `	ph7_value_int(pValue,sTm.tm_mon);` |
-|      9 | 8432 | `	if( isAssoc ){` |
-|      3 | 8433 | `		ph7_array_add_strkey_elem(pArray,"tm_mon",pValue);` |
-|      2 | 8434 | `	}else{` |
-|      7 | 8435 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
-|      - | 8436 | `	}` |
-|      - | 8437 | `	/* year since 1900 */` |
-|      9 | 8438 | `	ph7_value_int(pValue,sTm.tm_year-1900);` |
-|      9 | 8439 | `	if( isAssoc ){` |
-|      3 | 8440 | `		ph7_array_add_strkey_elem(pArray,"tm_year",pValue);` |
-|      2 | 8441 | `	}else{` |
-|      7 | 8442 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
-|      - | 8443 | `	}` |
-|      - | 8444 | `	/* wday */` |
-|      9 | 8445 | `	ph7_value_int(pValue,sTm.tm_wday);` |
-|      9 | 8446 | `	if( isAssoc ){` |
-|      3 | 8447 | `		ph7_array_add_strkey_elem(pArray,"tm_wday",pValue);` |
-|      2 | 8448 | `	}else{` |
-|      7 | 8449 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
-|      - | 8450 | `	}` |
-|      - | 8451 | `	/* yday */` |
-|      9 | 8452 | `	ph7_value_int(pValue,sTm.tm_yday);` |
-|      9 | 8453 | `	if( isAssoc ){` |
-|      3 | 8454 | `		ph7_array_add_strkey_elem(pArray,"tm_yday",pValue);` |
-|      2 | 8455 | `	}else{` |
-|      7 | 8456 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
-|      - | 8457 | `	}` |
-|      - | 8458 | `	/* isdst */` |
-|      - | 8459 | `#ifdef __WINNT__` |
-|      - | 8460 | `#ifdef _MSC_VER` |
-|      - | 8461 | `#ifndef _WIN32_WCE` |
-|      1 | 8462 | `			_get_daylight(&sTm.tm_isdst);` |
-|      - | 8463 | `#endif` |
-|      - | 8464 | `#endif` |
-|      - | 8465 | `#endif` |
-|      9 | 8466 | `	ph7_value_int(pValue,sTm.tm_isdst);` |
-|      9 | 8467 | `	if( isAssoc ){` |
-|      3 | 8468 | `		ph7_array_add_strkey_elem(pArray,"tm_isdst",pValue);` |
-|      2 | 8469 | `	}else{` |
-|      7 | 8470 | `		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);` |
-|      - | 8471 | `	}` |
-|      - | 8472 | `	/* Return the array */` |
-|      9 | 8473 | `	ph7_result_value(pCtx,pArray);` |
-|      9 | 8474 | `	return PH7_OK;` |
-|      5 | 8475 |  |
-|      - | 8476 | `/*` |
-|      - | 8477 | ` * int idate(string $format [, int $timestamp = time() ])` |
-|      - | 8478 | ` *  Returns a number formatted according to the given format string` |
-|      - | 8479 | ` *  using the given integer timestamp or the current local time if` |
-|      - | 8480 | ` *  no timestamp is given. In other words, timestamp is optional and defaults` |
-|      - | 8481 | ` *  to the value of time().` |
-|      - | 8482 | ` *  Unlike the function date(), idate() accepts just one char in the format` |
-|      - | 8483 | ` *  parameter.` |
-|      - | 8484 | ` * $Parameters` |
-|      - | 8485 | ` *  Supported format` |
-|      - | 8486 | ` *   d 	Day of the month` |
-|      - | 8487 | ` *   h 	Hour (12 hour format)` |
-|      - | 8488 | ` *   H 	Hour (24 hour format)` |
-|      - | 8489 | ` *   i 	Minutes` |
-|      - | 8490 | ` *   I (uppercase i)1 if DST is activated, 0 otherwise` |
-|      - | 8491 | ` *   L (uppercase l) returns 1 for leap year, 0 otherwise` |
-|      - | 8492 | ` *   m 	Month number` |
-|      - | 8493 | ` *   s 	Seconds` |
-|      - | 8494 | ` *   t 	Days in current month` |
-|      - | 8495 | ` *   U 	Seconds since the Unix Epoch - January 1 1970 00:00:00 UTC - this is the same as time()` |
-|      - | 8496 | ` *   w 	Day of the week (0 on Sunday)` |
-|      - | 8497 | ` *   W 	ISO-8601 week number of year, weeks starting on Monday` |
-|      - | 8498 | ` *   y 	Year (1 or 2 digits - check note below)` |
-|      - | 8499 | ` *   Y 	Year (4 digits)` |
-|      - | 8500 | ` *   z 	Day of the year` |
-|      - | 8501 | ` *   Z 	Timezone offset in seconds` |
-|      - | 8502 | ` * $timestamp` |
-|      - | 8503 | ` *  The optional timestamp parameter is an integer Unix timestamp that defaults` |
-|      - | 8504 | ` *  to the current local time if a timestamp is not given. In other words, it defaults` |
-|      - | 8505 | ` *  to the value of time().` |
-|      - | 8506 | ` * Return` |
-|      - | 8507 | ` *  An integer.` |
-|      - | 8508 | ` */` |
-|     42 | 8509 | `static int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      2 | 8510 |  |
-|      - | 8511 | `	const char *zFormat;` |
-|     44 | 8512 | `	ph7_int64 iVal = 0;` |
-|      - | 8513 | `	int nLen;` |
-|      - | 8514 | `	Sytm sTm;` |
-|     44 | 8515 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
-|      - | 8516 | `		/* Missing/Invalid argument,return -1 */` |
-|      5 | 8517 | `		ph7_result_int(pCtx,-1);` |
-|      5 | 8518 | `		return PH7_OK;` |
-|      - | 8519 | `	}` |
-|     40 | 8520 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
-|     40 | 8521 | `	if( nLen < 1 ){` |
-|      - | 8522 | `		/* Don't bother processing return -1*/` |
-|    ! 0 | 8523 | `		ph7_result_int(pCtx,-1);` |
-|    ! 0 | 8524 | `	}` |
-|     40 | 8525 | `	if( nArg < 2 ){` |
-|      - | 8526 | `#ifdef __WINNT__` |
-|      - | 8527 | `		SYSTEMTIME sOS;` |
-|      2 | 8528 | `		GetSystemTime(&sOS);` |
-|      2 | 8529 | `		SYSTEMTIME_TO_SYTM(&sOS,&sTm);` |
-|      - | 8530 | `#else` |
-|      - | 8531 | `		struct tm *pTm;` |
-|      - | 8532 | `		time_t t;` |
-|     28 | 8533 | `		time(&t);` |
-|     28 | 8534 | `		pTm = localtime(&t);` |
-|     28 | 8535 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|      - | 8536 | `#endif` |
-|     16 | 8537 | `	}else{` |
-|      - | 8538 | `		/* Use the given timestamp */` |
-|      - | 8539 | `		time_t t;` |
-|      - | 8540 | `		struct tm *pTm;` |
-|     11 | 8541 | `		if( ph7_value_is_int(apArg[1]) ){` |
-|     11 | 8542 | `			t = (time_t)ph7_value_to_int64(apArg[1]);` |
-|     11 | 8543 | `			pTm = localtime(&t);` |
-|     11 | 8544 | `			if( pTm == 0 ){` |
-|    ! 0 | 8545 | `				time(&t);` |
-|    ! 0 | 8546 | `			}` |
-|      6 | 8547 | `		}else{` |
-|    ! 0 | 8548 | `			time(&t);` |
-|      - | 8549 | `		}` |
-|     11 | 8550 | `		pTm = localtime(&t);` |
-|     11 | 8551 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|      - | 8552 | `	}` |
-|      - | 8553 | `	/* Perform the requested operation */` |
-|     40 | 8554 | `	switch(zFormat[0]){` |
-|      2 | 8555 | `	case 'd':` |
-|      - | 8556 | `		/* Day of the month */` |
-|      5 | 8557 | `		iVal = sTm.tm_mday;` |
-|      5 | 8558 | `		break;` |
-|    ! 0 | 8559 | `	case 'h':` |
-|      - | 8560 | `		/*	Hour (12 hour format)*/` |
-|    ! 0 | 8561 | `		iVal = 1 + (sTm.tm_hour % 12);` |
-|    ! 0 | 8562 | `		break;` |
-|      1 | 8563 | `	case 'H':` |
-|      - | 8564 | `		/* Hour (24 hour format)*/` |
-|      3 | 8565 | `		iVal = sTm.tm_hour;` |
-|      3 | 8566 | `		break;` |
-|      1 | 8567 | `	case 'i':` |
-|      - | 8568 | `		/*Minutes*/` |
-|      3 | 8569 | `		iVal = sTm.tm_min;` |
-|      3 | 8570 | `		break;` |
-|      1 | 8571 | `	case 'I':` |
-|      - | 8572 | `		/*	returns 1 if DST is activated, 0 otherwise */` |
-|      - | 8573 | `#ifdef __WINNT__` |
-|      - | 8574 | `#ifdef _MSC_VER` |
-|      - | 8575 | `#ifndef _WIN32_WCE` |
-|      1 | 8576 | `			_get_daylight(&sTm.tm_isdst);` |
-|      - | 8577 | `#endif` |
-|      - | 8578 | `#endif` |
-|      - | 8579 | `#endif` |
-|      3 | 8580 | `		iVal = sTm.tm_isdst;` |
-|      3 | 8581 | `		break;` |
-|      1 | 8582 | `	case 'L':` |
-|      - | 8583 | `		/* 	returns 1 for leap year, 0 otherwise */` |
-|      3 | 8584 | `		iVal = IS_LEAP_YEAR(sTm.tm_year);` |
-|      3 | 8585 | `		break;` |
-|      2 | 8586 | `	case 'm':` |
-|      - | 8587 | `		/* Month number*/` |
-|      5 | 8588 | `		iVal = sTm.tm_mon;` |
-|      5 | 8589 | `		break;` |
-|      1 | 8590 | `	case 's':` |
-|      - | 8591 | `		/*Seconds*/` |
-|      3 | 8592 | `		iVal = sTm.tm_sec;` |
-|      3 | 8593 | `		break;` |
-|      1 | 8594 | `	case 't':{` |
-|      - | 8595 | `		/*Days in current month*/` |
-|      - | 8596 | `		static const int aMonDays[] = {31,29,31,30,31,30,31,31,30,31,30,31 };` |
-|      3 | 8597 | `		int nDays = aMonDays[sTm.tm_mon % 12 ];` |
-|      3 | 8598 | `		if( sTm.tm_mon == 1 /* 'February' */ && !IS_LEAP_YEAR(sTm.tm_year) ){` |
-|    ! 0 | 8599 | `			nDays = 28;` |
-|    ! 0 | 8600 | `		}` |
-|      3 | 8601 | `		iVal = nDays;` |
-|      3 | 8602 | `		break;` |
-|      - | 8603 | `			 }` |
-|      1 | 8604 | `	case 'U':` |
-|      - | 8605 | `		/*Seconds since the Unix Epoch*/` |
-|      3 | 8606 | `		iVal = (ph7_int64)time(0);` |
-|      3 | 8607 | `		break;` |
-|      1 | 8608 | `	case 'w':` |
-|      - | 8609 | `		/*	Day of the week (0 on Sunday) */` |
-|      3 | 8610 | `		iVal = sTm.tm_wday;` |
-|      3 | 8611 | `		break;` |
-|      1 | 8612 | `	case 'W': {` |
-|      - | 8613 | `		/* ISO-8601 week number of year, weeks starting on Monday */` |
-|      - | 8614 | `		static const int aISO8601_local[] = { 7 /* Sunday */,1 /* Monday */,2,3,4,5,6 };` |
-|      3 | 8615 | `		iVal = aISO8601_local[sTm.tm_wday % 7 ];` |
-|      3 | 8616 | `		break;` |
-|      - | 8617 | `			  }` |
-|    ! 0 | 8618 | `	case 'y':` |
-|      - | 8619 | `		/* Year (2 digits) */` |
-|    ! 0 | 8620 | `		iVal = sTm.tm_year % 100;` |
-|    ! 0 | 8621 | `		break;` |
-|      3 | 8622 | `	case 'Y':` |
-|      - | 8623 | `		/* Year (4 digits) */` |
-|      7 | 8624 | `		iVal = sTm.tm_year;` |
-|      7 | 8625 | `		break;` |
-|      1 | 8626 | `	case 'z':` |
-|      - | 8627 | `		/* Day of the year */` |
-|      3 | 8628 | `		iVal = sTm.tm_yday;` |
-|      3 | 8629 | `		break;` |
-|      1 | 8630 | `	case 'Z':` |
-|      - | 8631 | `		/*Timezone offset in seconds*/` |
-|      3 | 8632 | `		iVal = sTm.tm_gmtoff;` |
-|      3 | 8633 | `		break;` |
-|      1 | 8634 | `	default:` |
-|      - | 8635 | `		/* unknown format,throw a warning */` |
-|      3 | 8636 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Unknown date format token");` |
-|      2 | 8637 | `		break;` |
-|      - | 8638 | `	}` |
-|      - | 8639 | `	/* Return the time value */` |
-|     40 | 8640 | `	ph7_result_int64(pCtx,iVal);` |
-|     40 | 8641 | `	return PH7_OK;` |
-|     23 | 8642 |  |
-|      - | 8643 | `/*` |
-|      - | 8644 | ` * int mktime/gmmktime([ int $hour = date("H") [, int $minute = date("i") [, int $second = date("s")` |
-|      - | 8645 | ` *  [, int $month = date("n") [, int $day = date("j") [, int $year = date("Y") [, int $is_dst = -1 ]]]]]]] )` |
-|      - | 8646 | ` *  Returns the Unix timestamp corresponding to the arguments given. This timestamp is a 64bit integer` |
-|      - | 8647 | ` *  containing the number of seconds between the Unix Epoch (January 1 1970 00:00:00 GMT) and the time` |
-|      - | 8648 | ` *  specified.` |
-|      - | 8649 | ` *  Arguments may be left out in order from right to left; any arguments thus omitted will be set to` |
-|      - | 8650 | ` *  the current value according to the local date and time.` |
-|      - | 8651 | ` * Parameters` |
-|      - | 8652 | ` * $hour` |
-|      - | 8653 | ` *  The number of the hour relevant to the start of the day determined by month, day and year.` |
-|      - | 8654 | ` *  Negative values reference the hour before midnight of the day in question. Values greater` |
-|      - | 8655 | ` *  than 23 reference the appropriate hour in the following day(s).` |
-|      - | 8656 | ` * $minute` |
-|      - | 8657 | ` *  The number of the minute relevant to the start of the hour. Negative values reference` |
-|      - | 8658 | ` *  the minute in the previous hour. Values greater than 59 reference the appropriate minute` |
-|      - | 8659 | ` *  in the following hour(s).` |
-|      - | 8660 | ` * $second` |
-|      - | 8661 | ` *  The number of seconds relevant to the start of the minute. Negative values reference` |
-|      - | 8662 | ` *  the second in the previous minute. Values greater than 59 reference the appropriate` |
-|      - | 8663 | ` * second in the following minute(s).` |
-|      - | 8664 | ` * $month` |
-|      - | 8665 | ` *  The number of the month relevant to the end of the previous year. Values 1 to 12 reference` |
-|      - | 8666 | ` *  the normal calendar months of the year in question. Values less than 1 (including negative values)` |
-|      - | 8667 | ` *  reference the months in the previous year in reverse order, so 0 is December, -1 is November)...` |
-|      - | 8668 | ` * $day` |
-|      - | 8669 | ` *  The number of the day relevant to the end of the previous month. Values 1 to 28, 29, 30 or 31` |
-|      - | 8670 | ` *  (depending upon the month) reference the normal days in the relevant month. Values less than 1` |
-|      - | 8671 | ` *  (including negative values) reference the days in the previous month, so 0 is the last day` |
-|      - | 8672 | ` *  of the previous month, -1 is the day before that, etc. Values greater than the number of days` |
-|      - | 8673 | ` *  in the relevant month reference the appropriate day in the following month(s).` |
-|      - | 8674 | ` * $year` |
-|      - | 8675 | ` *  The number of the year, may be a two or four digit value, with values between 0-69 mapping` |
-|      - | 8676 | ` *  to 2000-2069 and 70-100 to 1970-2000. On systems where time_t is a 32bit signed integer, as` |
-|      - | 8677 | ` *  most common today, the valid range for year is somewhere between 1901 and 2038.` |
-|      - | 8678 | ` * $is_dst` |
-|      - | 8679 | ` *  This parameter can be set to 1 if the time is during daylight savings time (DST), 0 if it is not,` |
-|      - | 8680 | ` *  or -1 (the default) if it is unknown whether the time is within daylight savings time or not.` |
-|      - | 8681 | ` * Return` |
-|      - | 8682 | ` *   mktime() returns the Unix timestamp of the arguments given.` |
-|      - | 8683 | ` *   If the arguments are invalid, the function returns FALSE` |
-|      - | 8684 | ` */` |
-|      8 | 8685 | `static int PH7_builtin_mktime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 8686 |  |
-|      - | 8687 | `	const char *zFunction;` |
-|      9 | 8688 | `	ph7_int64 iVal = 0;` |
-|      - | 8689 | `	struct tm *pTm;` |
-|      - | 8690 | `	time_t t;` |
-|      - | 8691 | `	/* Extract function name */` |
-|      9 | 8692 | `	zFunction = ph7_function_name(pCtx);` |
-|      - | 8693 | `	/* Get the current time */` |
-|      9 | 8694 | `	time(&t);` |
-|      9 | 8695 | `	if( zFunction[0] == 'g' /* gmmktime */ ){` |
-|      3 | 8696 | `		pTm = gmtime(&t);` |
-|      2 | 8697 | `	}else{` |
-|      - | 8698 | `		/* localtime */` |
-|      7 | 8699 | `		pTm = localtime(&t);` |
-|      - | 8700 | `	}` |
-|      9 | 8701 | `	if( nArg > 0 ){` |
-|      - | 8702 | `		int iTmp;` |
-|      - | 8703 | `		/* Hour */` |
-|      9 | 8704 | `		iTmp = ph7_value_to_int(apArg[0]);` |
-|      9 | 8705 | `		pTm->tm_hour = iTmp;` |
-|      9 | 8706 | `		if( nArg > 1 ){` |
-|      - | 8707 | `			/* Minutes */` |
-|      9 | 8708 | `			iTmp = ph7_value_to_int(apArg[1]);` |
-|      9 | 8709 | `			pTm->tm_min = iTmp;` |
-|      9 | 8710 | `			if( nArg > 2 ){` |
-|      - | 8711 | `				/* Seconds */` |
-|      9 | 8712 | `				iTmp = ph7_value_to_int(apArg[2]);` |
-|      9 | 8713 | `				pTm->tm_sec = iTmp;` |
-|      9 | 8714 | `				if( nArg > 3 ){` |
-|      - | 8715 | `					/* Month */` |
-|      9 | 8716 | `					iTmp = ph7_value_to_int(apArg[3]);` |
-|      9 | 8717 | `					pTm->tm_mon = iTmp - 1;` |
-|      9 | 8718 | `					if( nArg > 4 ){` |
-|      - | 8719 | `						/* mday */` |
-|      9 | 8720 | `						iTmp = ph7_value_to_int(apArg[4]);` |
-|      9 | 8721 | `						pTm->tm_mday = iTmp;` |
-|      9 | 8722 | `						if( nArg > 5 ){` |
-|      - | 8723 | `							/* Year */` |
-|      9 | 8724 | `							iTmp = ph7_value_to_int(apArg[5]);` |
-|      9 | 8725 | `							if( iTmp > 1900 ){` |
-|      9 | 8726 | `								iTmp -= 1900;` |
-|      4 | 8727 | `							}` |
-|      9 | 8728 | `							pTm->tm_year = iTmp;` |
-|      9 | 8729 | `							if( nArg > 6 ){` |
-|      - | 8730 | `								/* is_dst */` |
-|    ! 0 | 8731 | `								iTmp = ph7_value_to_bool(apArg[6]);` |
-|    ! 0 | 8732 | `								pTm->tm_isdst = iTmp;` |
-|    ! 0 | 8733 | `							}` |
-|      4 | 8734 | `						}` |
-|      4 | 8735 | `					}` |
-|      4 | 8736 | `				}` |
-|      4 | 8737 | `			}` |
-|      4 | 8738 | `		}` |
-|      4 | 8739 | `	}` |
-|      - | 8740 | `	/* Make the time */` |
-|      9 | 8741 | `	iVal = (ph7_int64)mktime(pTm);` |
-|      - | 8742 | `	/* Return the timesatmp as a 64bit integer */` |
-|      9 | 8743 | `	ph7_result_int64(pCtx,iVal);` |
-|      9 | 8744 | `	return PH7_OK;` |
-|      1 | 8745 |  |
-|      - | 8746 | `/*` |
-|      - | 8747 | ` * Section:` |
-|      - | 8748 | ` *    URL handling Functions.` |
-|      - | 8749 | ` * Status:` |
-|      - | 8750 | ` *    Stable.` |
-|      - | 8751 | ` */` |
-|      - | 8752 | `/*` |
-|      - | 8753 | ` * Output consumer callback for the standard Symisc routines.` |
-|      - | 8754 | ` * [i.e: SyBase64Encode(),SyBase64Decode(),SyUriEncode(),...].` |
-|      - | 8755 | ` */` |
-|   1026 | 8756 | `static int Consumer(const void *pData,unsigned int nLen,void *pUserData)` |
-|      2 | 8757 |  |
-|      - | 8758 | `	/* Store in the call context result buffer */` |
-|   1028 | 8759 | `	ph7_result_string((ph7_context *)pUserData,(const char *)pData,(int)nLen);` |
-|   1028 | 8760 | `	return SXRET_OK;` |
-|      2 | 8761 |  |
-|      - | 8762 | `/*` |
-|      - | 8763 | ` * string base64_encode(string $data)` |
-|      - | 8764 | ` * string convert_uuencode(string $data)` |
-|      - | 8765 | ` *  Encodes data with MIME base64` |
-|      - | 8766 | ` * Parameter` |
-|      - | 8767 | ` *  $data` |
-|      - | 8768 | ` *    Data to encode` |
-|      - | 8769 | ` * Return` |
-|      - | 8770 | ` *  Encoded data or FALSE on failure.` |
-|      - | 8771 | ` */` |
-|     10 | 8772 | `static int PH7_builtin_base64_encode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 8773 |  |
-|      - | 8774 | `	const char *zIn;` |
-|      - | 8775 | `	int nLen;` |
-|     11 | 8776 | `	if( nArg < 1 ){` |
-|      - | 8777 | `		/* Missing arguments,return FALSE */` |
-|      5 | 8778 | `		ph7_result_bool(pCtx,0);` |
-|      5 | 8779 | `		return PH7_OK;` |
-|      - | 8780 | `	}` |
-|      - | 8781 | `	/* Extract the input string */` |
-|      7 | 8782 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
-|      7 | 8783 | `	if( nLen < 1 ){` |
-|      - | 8784 | `		/* Nothing to process,return FALSE */` |
-|    ! 0 | 8785 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 8786 | `		return PH7_OK;` |
-|      - | 8787 | `	}` |
-|      - | 8788 | `	/* Perform the BASE64 encoding */` |
-|      7 | 8789 | `	SyBase64Encode(zIn,(sxu32)nLen,Consumer,pCtx);` |
-|      7 | 8790 | `	return PH7_OK;` |
-|      6 | 8791 |  |
-|      - | 8792 | `/*` |
-|      - | 8793 | ` * string base64_decode(string $data)` |
-|      - | 8794 | ` * string convert_uudecode(string $data)` |
-|      - | 8795 | ` *  Decodes data encoded with MIME base64` |
-|      - | 8796 | ` * Parameter` |
-|      - | 8797 | ` *  $data` |
-|      - | 8798 | ` *    Encoded data.` |
-|      - | 8799 | ` * Return` |
-|      - | 8800 | ` *  Returns the original data or FALSE on failure.` |
-|      - | 8801 | ` */` |
-|     36 | 8802 | `static int PH7_builtin_base64_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      2 | 8803 |  |
-|      - | 8804 | `	const char *zIn;` |
-|      - | 8805 | `	int nLen;` |
-|     38 | 8806 | `	if( nArg < 1 ){` |
-|      - | 8807 | `		/* Missing arguments,return FALSE */` |
-|      3 | 8808 | `		ph7_result_bool(pCtx,0);` |
-|      3 | 8809 | `		return PH7_OK;` |
-|      - | 8810 | `	}` |
-|      - | 8811 | `	/* Extract the input string */` |
-|     36 | 8812 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
-|     36 | 8813 | `	if( nLen < 1 ){` |
-|      - | 8814 | `		/* Nothing to process,return FALSE */` |
-|      3 | 8815 | `		ph7_result_bool(pCtx,0);` |
-|      3 | 8816 | `		return PH7_OK;` |
-|      - | 8817 | `	}` |
-|      - | 8818 | `	/* Perform the BASE64 decoding */` |
-|     34 | 8819 | `	SyBase64Decode(zIn,(sxu32)nLen,Consumer,pCtx);` |
-|     34 | 8820 | `	return PH7_OK;` |
-|     20 | 8821 |  |
-|      - | 8822 | `/*` |
-|      - | 8823 | ` * string urlencode(string $str)` |
-|      - | 8824 | ` *  URL encoding` |
-|      - | 8825 | ` * Parameter` |
-|      - | 8826 | ` *  $data` |
-|      - | 8827 | ` *   Input string.` |
-|      - | 8828 | ` * Return` |
-|      - | 8829 | ` *  Returns a string in which all non-alphanumeric characters except -_. have` |
-|      - | 8830 | ` *  been replaced with a percent (%) sign followed by two hex digits and spaces` |
-|      - | 8831 | ` *  encoded as plus (+) signs.` |
-|      - | 8832 | ` */` |
-|      6 | 8833 | `static int PH7_builtin_urlencode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 8834 |  |
-|      - | 8835 | `	const char *zIn;` |
-|      - | 8836 | `	int nLen;` |
-|      7 | 8837 | `	if( nArg < 1 ){` |
-|      - | 8838 | `		/* Missing arguments,return FALSE */` |
-|      3 | 8839 | `		ph7_result_bool(pCtx,0);` |
-|      3 | 8840 | `		return PH7_OK;` |
-|      - | 8841 | `	}` |
-|      - | 8842 | `	/* Extract the input string */` |
-|      5 | 8843 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
-|      5 | 8844 | `	if( nLen < 1 ){` |
-|      - | 8845 | `		/* Nothing to process,return FALSE */` |
-|    ! 0 | 8846 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 8847 | `		return PH7_OK;` |
-|      - | 8848 | `	}` |
-|      - | 8849 | `	/* Perform the URL encoding */` |
-|      5 | 8850 | `	SyUriEncode(zIn,(sxu32)nLen,Consumer,pCtx);` |
-|      5 | 8851 | `	return PH7_OK;` |
-|      4 | 8852 |  |
-|      - | 8853 | `/*` |
-|      - | 8854 | ` * string urldecode(string $str)` |
-|      - | 8855 | ` *  Decodes any %## encoding in the given string.` |
-|      - | 8856 | ` *  Plus symbols ('+') are decoded to a space character.` |
-|      - | 8857 | ` * Parameter` |
-|      - | 8858 | ` *  $data` |
-|      - | 8859 | ` *    Input string.` |
-|      - | 8860 | ` * Return` |
-|      - | 8861 | ` *  Decoded URL or FALSE on failure.` |
-|      - | 8862 | ` */` |
-|      8 | 8863 | `static int PH7_builtin_urldecode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 8864 |  |
-|      - | 8865 | `	const char *zIn;` |
-|      - | 8866 | `	int nLen;` |
-|      9 | 8867 | `	if( nArg < 1 ){` |
-|      - | 8868 | `		/* Missing arguments,return FALSE */` |
-|      3 | 8869 | `		ph7_result_bool(pCtx,0);` |
-|      3 | 8870 | `		return PH7_OK;` |
-|      - | 8871 | `	}` |
-|      - | 8872 | `	/* Extract the input string */` |
-|      7 | 8873 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
-|      7 | 8874 | `	if( nLen < 1 ){` |
-|      - | 8875 | `		/* Nothing to process,return FALSE */` |
-|    ! 0 | 8876 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 8877 | `		return PH7_OK;` |
-|      - | 8878 | `	}` |
-|      - | 8879 | `	/* Perform the URL decoding */` |
-|      7 | 8880 | `	SyUriDecode(zIn,(sxu32)nLen,Consumer,pCtx,TRUE);` |
-|      7 | 8881 | `	return PH7_OK;` |
-|      5 | 8882 |  |
-|      - | 8883 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|      - | 8884 | `/* Table of the built-in functions */` |
-|      - | 8885 | `static const ph7_builtin_func aBuiltInFunc[] = {` |
-|      - | 8886 | `	   /* Variable handling functions */` |
-|      - | 8887 | `	{ "is_bool"    , PH7_builtin_is_bool     },` |
-|      - | 8888 | `	{ "is_float"   , PH7_builtin_is_float    },` |
-|      - | 8889 | `	{ "is_real"    , PH7_builtin_is_float    },` |
-|      - | 8890 | `	{ "is_double"  , PH7_builtin_is_float    },` |
-|      - | 8891 | `	{ "is_int"     , PH7_builtin_is_int      },` |
-|      - | 8892 | `	{ "is_integer" , PH7_builtin_is_int      },` |
-|      - | 8893 | `	{ "is_long"    , PH7_builtin_is_int      },` |
-|      - | 8894 | `	{ "is_string"  , PH7_builtin_is_string   },` |
-|      - | 8895 | `	{ "is_null"    , PH7_builtin_is_null     },` |
-|      - | 8896 | `	{ "is_numeric" , PH7_builtin_is_numeric  },` |
-|      - | 8897 | `	{ "is_scalar"  , PH7_builtin_is_scalar   },` |
-|      - | 8898 | `	{ "is_array"   , PH7_builtin_is_array    },` |
-|      - | 8899 | `	{ "is_object"  , PH7_builtin_is_object   },` |
-|      - | 8900 | `	{ "is_resource", PH7_builtin_is_resource },` |
-|      - | 8901 | `	{ "douleval"   , PH7_builtin_floatval    },` |
-|      - | 8902 | `	{ "floatval"   , PH7_builtin_floatval    },` |
-|      - | 8903 | `	{ "intval"     , PH7_builtin_intval      },` |
-|      - | 8904 | `	{ "strval"     , PH7_builtin_strval      },` |
-|      - | 8905 | `	{ "empty"      , PH7_builtin_empty       },` |
-|      - | 8906 | `#ifdef PH7_NEED_BUILTIN_REG` |
-|      - | 8907 | `#ifdef PH7_ENABLE_MATH_FUNC` |
-|      - | 8908 | `	   /* Math functions */` |
-|      - | 8909 | `	{ "abs"  ,    PH7_builtin_abs          },` |
-|      - | 8910 | `	{ "sqrt" ,    PH7_builtin_sqrt         },` |
-|      - | 8911 | `	{ "exp"  ,    PH7_builtin_exp          },` |
-|      - | 8912 | `	{ "floor",    PH7_builtin_floor        },` |
-|      - | 8913 | `	{ "cos"  ,    PH7_builtin_cos          },` |
-|      - | 8914 | `	{ "sin"  ,    PH7_builtin_sin          },` |
-|      - | 8915 | `	{ "acos" ,    PH7_builtin_acos         },` |
-|      - | 8916 | `	{ "asin" ,    PH7_builtin_asin         },` |
-|      - | 8917 | `	{ "cosh" ,    PH7_builtin_cosh         },` |
-|      - | 8918 | `	{ "sinh" ,    PH7_builtin_sinh         },` |
-|      - | 8919 | `	{ "ceil" ,    PH7_builtin_ceil         },` |
-|      - | 8920 | `	{ "tan"  ,    PH7_builtin_tan          },` |
-|      - | 8921 | `	{ "tanh" ,    PH7_builtin_tanh         },` |
-|      - | 8922 | `	{ "atan" ,    PH7_builtin_atan         },` |
-|      - | 8923 | `	{ "atan2",    PH7_builtin_atan2        },` |
-|      - | 8924 | `	{ "log"  ,    PH7_builtin_log          },` |
-|      - | 8925 | `	{ "log10" ,   PH7_builtin_log10        },` |
-|      - | 8926 | `	{ "pow"  ,    PH7_builtin_pow          },` |
-|      - | 8927 | `	{ "pi",       PH7_builtin_pi           },` |
-|      - | 8928 | `	{ "fmod",     PH7_builtin_fmod         },` |
-|      - | 8929 | `	{ "hypot",    PH7_builtin_hypot        },` |
-|      - | 8930 | `#endif /* PH7_ENABLE_MATH_FUNC */` |
-|      - | 8931 | `	{ "round",    PH7_builtin_round        },` |
-|      - | 8932 | `	{ "dechex", PH7_builtin_dechex         },` |
-|      - | 8933 | `	{ "decoct", PH7_builtin_decoct         },` |
-|      - | 8934 | `	{ "decbin", PH7_builtin_decbin         },` |
-|      - | 8935 | `	{ "hexdec", PH7_builtin_hexdec         },` |
-|      - | 8936 | `	{ "bindec", PH7_builtin_bindec         },` |
-|      - | 8937 | `	{ "octdec", PH7_builtin_octdec         },` |
-|      - | 8938 | `	{ "srand",  PH7_builtin_srand          },` |
-|      - | 8939 | `	{ "mt_srand",PH7_builtin_srand         },` |
-|      - | 8940 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|      - | 8941 | `#ifdef PH7_NEED_FMT_AND_INI` |
-|      - | 8942 | `	{ "base_convert", PH7_builtin_base_convert },` |
-|      - | 8943 | `#endif /* PH7_NEED_FMT_AND_INI */` |
-|      - | 8944 | `#ifdef PH7_NEED_BUILTIN_REG` |
-|      - | 8945 | `	   /* String handling functions */` |
-|      - | 8946 |  |
-|      - | 8947 | `	{ "substr",          PH7_builtin_substr     },` |
-|      - | 8948 | `	{ "substr_compare",  PH7_builtin_substr_compare },` |
-|      - | 8949 | `	{ "substr_count",    PH7_builtin_substr_count },` |
-|      - | 8950 | `	{ "chunk_split",     PH7_builtin_chunk_split},` |
-|      - | 8951 | `	{ "addslashes" ,     PH7_builtin_addslashes },` |
-|      - | 8952 | `	{ "addcslashes",     PH7_builtin_addcslashes},` |
-|      - | 8953 | `	{ "quotemeta",       PH7_builtin_quotemeta  },` |
-|      - | 8954 | `	{ "stripslashes",    PH7_builtin_stripslashes },` |
-|      - | 8955 | `	{ "htmlspecialchars",PH7_builtin_htmlspecialchars },` |
-|      - | 8956 | `	{ "htmlspecialchars_decode", PH7_builtin_htmlspecialchars_decode },` |
-|      - | 8957 | `	{ "get_html_translation_table",PH7_builtin_get_html_translation_table },` |
-|      - | 8958 | `	{ "htmlentities",PH7_builtin_htmlentities},` |
-|      - | 8959 | `	{ "html_entity_decode", PH7_builtin_html_entity_decode},` |
-|      - | 8960 | `	{ "strlen"     , PH7_builtin_strlen     },` |
-|      - | 8961 | `	{ "strcmp"     , PH7_builtin_strcmp     },` |
-|      - | 8962 | `	{ "strcoll"    , PH7_builtin_strcmp     },` |
-|      - | 8963 | `	{ "strncmp"    , PH7_builtin_strncmp    },` |
-|      - | 8964 | `	{ "strcasecmp" , PH7_builtin_strcasecmp },` |
-|      - | 8965 | `	{ "strncasecmp", PH7_builtin_strncasecmp},` |
-|      - | 8966 | `	{ "implode"    , PH7_builtin_implode    },` |
-|      - | 8967 | `	{ "join"       , PH7_builtin_implode    },` |
-|      - | 8968 | `	{ "implode_recursive" , PH7_builtin_implode_recursive },` |
-|      - | 8969 | `	{ "join_recursive"    , PH7_builtin_implode_recursive },` |
-|      - | 8970 | `	{ "explode"     , PH7_builtin_explode    },` |
-|      - | 8971 | `	{ "trim"        , PH7_builtin_trim       },` |
-|      - | 8972 | `	{ "rtrim"       , PH7_builtin_rtrim      },` |
-|      - | 8973 | `	{ "chop"        , PH7_builtin_rtrim      },` |
-|      - | 8974 | `	{ "ltrim"       , PH7_builtin_ltrim      },` |
-|      - | 8975 | `	{ "strtolower",   PH7_builtin_strtolower },` |
-|      - | 8976 | `	{ "mb_strtolower",PH7_builtin_strtolower }, /* Only UTF-8 encoding is supported */` |
-|      - | 8977 | `	{ "strtoupper",   PH7_builtin_strtoupper },` |
-|      - | 8978 | `	{ "mb_strtoupper",PH7_builtin_strtoupper }, /* Only UTF-8 encoding is supported */` |
-|      - | 8979 | `	{ "ucfirst",      PH7_builtin_ucfirst    },` |
-|      - | 8980 | `	{ "lcfirst",      PH7_builtin_lcfirst    },` |
-|      - | 8981 | `	{ "ord",          PH7_builtin_ord        },` |
-|      - | 8982 | `	{ "chr",          PH7_builtin_chr        },` |
-|      - | 8983 | `	{ "bin2hex",      PH7_builtin_bin2hex    },` |
-|      - | 8984 | `	{ "strstr",       PH7_builtin_strstr     },` |
-|      - | 8985 | `	{ "stristr",      PH7_builtin_stristr    },` |
-|      - | 8986 | `	{ "strchr",       PH7_builtin_strstr     },` |
-|      - | 8987 | `	{ "strpos",       PH7_builtin_strpos     },` |
-|      - | 8988 | `	{ "stripos",      PH7_builtin_stripos    },` |
-|      - | 8989 | `	{ "strrpos",      PH7_builtin_strrpos    },` |
-|      - | 8990 | `	{ "strripos",     PH7_builtin_strripos   },` |
-|      - | 8991 | `	{ "strrchr",      PH7_builtin_strrchr    },` |
-|      - | 8992 | `	{ "strrev",       PH7_builtin_strrev     },` |
-|      - | 8993 | `	{ "ucwords",      PH7_builtin_ucwords    },` |
-|      - | 8994 | `	{ "str_repeat",   PH7_builtin_str_repeat },` |
-|      - | 8995 | `	{ "nl2br",        PH7_builtin_nl2br      },` |
-|      - | 8996 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|      - | 8997 | `#ifdef PH7_NEED_FMT_AND_INI` |
-|      - | 8998 | `	{ "sprintf",      PH7_builtin_sprintf    },` |
-|      - | 8999 | `	{ "printf",       PH7_builtin_printf     },` |
-|      - | 9000 | `	{ "vprintf",      PH7_builtin_vprintf    },` |
-|      - | 9001 | `	{ "vsprintf",     PH7_builtin_vsprintf   },` |
-|      - | 9002 | `#endif /* PH7_NEED_FMT_AND_INI */` |
-|      - | 9003 | `#ifdef PH7_NEED_BUILTIN_REG` |
-|      - | 9004 | `	{ "size_format",  PH7_builtin_size_format},` |
-|      - | 9005 |  |
-|      - | 9006 |  |
-|      - | 9007 | `#ifndef PH7_DISABLE_HASH_FUNC` |
-|      - | 9008 | `	{ "md5",          PH7_builtin_md5       },` |
-|      - | 9009 | `	{ "sha1",         PH7_builtin_sha1      },` |
-|      - | 9010 | `	{ "crc32",        PH7_builtin_crc32     },` |
-|      - | 9011 | `#endif /* PH7_DISABLE_HASH_FUNC */` |
-|      - | 9012 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|      - | 9013 | `#ifdef PH7_NEED_FMT_AND_INI` |
-|      - | 9014 | `	{ "str_getcsv",   PH7_builtin_str_getcsv },` |
-|      - | 9015 | `	{ "strip_tags",   PH7_builtin_strip_tags },` |
-|      - | 9016 | `#endif /* PH7_NEED_FMT_AND_INI */` |
-|      - | 9017 | `#ifdef PH7_NEED_BUILTIN_REG` |
-|      - | 9018 |  |
-|      - | 9019 | `	{ "str_shuffle",  PH7_builtin_str_shuffle},` |
-|      - | 9020 | `	{ "str_split",    PH7_builtin_str_split  },` |
-|      - | 9021 | `	{ "strspn",       PH7_builtin_strspn     },` |
-|      - | 9022 | `	{ "strcspn",      PH7_builtin_strcspn    },` |
-|      - | 9023 | `	{ "strpbrk",      PH7_builtin_strpbrk    },` |
-|      - | 9024 | `	{ "soundex",      PH7_builtin_soundex    },` |
-|      - | 9025 | `	{ "wordwrap",     PH7_builtin_wordwrap   },` |
-|      - | 9026 | `	{ "strtok",       PH7_builtin_strtok     },` |
-|      - | 9027 | `	{ "str_pad",      PH7_builtin_str_pad    },` |
-|      - | 9028 | `	{ "str_replace",  PH7_builtin_str_replace},` |
-|      - | 9029 | `	{ "str_ireplace", PH7_builtin_str_replace},` |
-|      - | 9030 | `	{ "strtr",        PH7_builtin_strtr      },` |
-|      - | 9031 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|      - | 9032 | `#ifdef PH7_NEED_FMT_AND_INI` |
-|      - | 9033 | `	{ "parse_ini_string", PH7_builtin_parse_ini_string},` |
-|      - | 9034 | `#endif /* PH7_NEED_FMT_AND_INI */` |
-|      - | 9035 | `#ifdef PH7_NEED_BUILTIN_REG` |
-|      - | 9036 |  |
-|      - | 9037 | `	         /* Ctype functions */` |
-|      - | 9038 | `	{ "ctype_alnum", PH7_builtin_ctype_alnum },` |
-|      - | 9039 | `	{ "ctype_alpha", PH7_builtin_ctype_alpha },` |
-|      - | 9040 | `	{ "ctype_cntrl", PH7_builtin_ctype_cntrl },` |
-|      - | 9041 | `	{ "ctype_digit", PH7_builtin_ctype_digit },` |
-|      - | 9042 | `	{ "ctype_xdigit",PH7_builtin_ctype_xdigit},` |
-|      - | 9043 | `	{ "ctype_graph", PH7_builtin_ctype_graph },` |
-|      - | 9044 | `	{ "ctype_print", PH7_builtin_ctype_print },` |
-|      - | 9045 | `	{ "ctype_punct", PH7_builtin_ctype_punct },` |
-|      - | 9046 | `	{ "ctype_space", PH7_builtin_ctype_space },` |
-|      - | 9047 | `	{ "ctype_lower", PH7_builtin_ctype_lower },` |
-|      - | 9048 | `	{ "ctype_upper", PH7_builtin_ctype_upper },` |
-|      - | 9049 | `	         /* Time functions */` |
-|      - | 9050 | `	{ "time"    ,    PH7_builtin_time         },` |
-|      - | 9051 | `	{ "microtime",   PH7_builtin_microtime    },` |
-|      - | 9052 | `	{ "getdate" ,    PH7_builtin_getdate      },` |
-|      - | 9053 | `	{ "gettimeofday",PH7_builtin_gettimeofday },` |
-|      - | 9054 | `	{ "date",        PH7_builtin_date         },` |
-|      - | 9055 | `	{ "strftime",    PH7_builtin_strftime     },` |
-|      - | 9056 | `	{ "idate",       PH7_builtin_idate        },` |
-|      - | 9057 | `	{ "gmdate",      PH7_builtin_gmdate       },` |
-|      - | 9058 | `	{ "localtime",   PH7_builtin_localtime    },` |
-|      - | 9059 | `	{ "mktime",      PH7_builtin_mktime       },` |
-|      - | 9060 | `	{ "gmmktime",    PH7_builtin_mktime       },` |
-|      - | 9061 | `	        /* URL functions */` |
-|      - | 9062 | `	{ "base64_encode",PH7_builtin_base64_encode },` |
-|      - | 9063 | `	{ "base64_decode",PH7_builtin_base64_decode },` |
-|      - | 9064 | `	{ "convert_uuencode",PH7_builtin_base64_encode },` |
-|      - | 9065 | `	{ "convert_uudecode",PH7_builtin_base64_decode },` |
-|      - | 9066 | `	{ "urlencode",    PH7_builtin_urlencode },` |
-|      - | 9067 | `	{ "urldecode",    PH7_builtin_urldecode },` |
-|      - | 9068 | `	{ "rawurlencode", PH7_builtin_urlencode },` |
-|      - | 9069 | `	{ "rawurldecode", PH7_builtin_urldecode },` |
-|      - | 9070 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|      - | 9071 | `};` |
-|      - | 9072 | `/*` |
-|      - | 9073 | ` * Register the built-in functions defined above,the array functions` |
-|      - | 9074 | ` * defined in hashmap.c and the IO functions defined in vfs.c.` |
-|      - | 9075 | ` */` |
-|   1672 | 9076 | `PH7_PRIVATE void PH7_RegisterBuiltInFunction(ph7_vm *pVm)` |
-|      2 | 9077 |  |
-|      - | 9078 | `	sxu32 n;` |
-| 255818 | 9079 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltInFunc) ; ++n ){` |
-| 254146 | 9080 | `		ph7_create_function(&(*pVm),aBuiltInFunc[n].zName,aBuiltInFunc[n].xFunc,0);` |
-| 127074 | 9081 | `	}` |
-|      - | 9082 | `	/* Register hashmap functions [i.e: array_merge(),sort(),count(),array_diff(),...] */` |
-|   1674 | 9083 | `	PH7_RegisterHashmapFunctions(&(*pVm));` |
-|      - | 9084 | `	/* Register IO functions [i.e: fread(),fwrite(),chdir(),mkdir(),file(),...] */` |
-|   1674 | 9085 | `	PH7_RegisterIORoutine(&(*pVm));` |
-|   1674 | 9086 |  |
-|      - | 9087 |  |
+|      - | 7371 | `/* Date/Time functions moved to builtin_date.c */` |
+|      - | 7372 | `/*` |
+|      - | 7373 | ` * Section:` |
+|      - | 7374 | ` *    URL handling Functions.` |
+|      - | 7375 | ` * Status:` |
+|      - | 7376 | ` *    Stable.` |
+|      - | 7377 | ` */` |
+|      - | 7378 | `/*` |
+|      - | 7379 | ` * Output consumer callback for the standard Symisc routines.` |
+|      - | 7380 | ` * [i.e: SyBase64Encode(),SyBase64Decode(),SyUriEncode(),...].` |
+|      - | 7381 | ` */` |
+|   1026 | 7382 | `static int Consumer(const void *pData,unsigned int nLen,void *pUserData)` |
+|      2 | 7383 |  |
+|      - | 7384 | `	/* Store in the call context result buffer */` |
+|   1028 | 7385 | `	ph7_result_string((ph7_context *)pUserData,(const char *)pData,(int)nLen);` |
+|   1028 | 7386 | `	return SXRET_OK;` |
+|      2 | 7387 |  |
+|      - | 7388 | `/*` |
+|      - | 7389 | ` * string base64_encode(string $data)` |
+|      - | 7390 | ` * string convert_uuencode(string $data)` |
+|      - | 7391 | ` *  Encodes data with MIME base64` |
+|      - | 7392 | ` * Parameter` |
+|      - | 7393 | ` *  $data` |
+|      - | 7394 | ` *    Data to encode` |
+|      - | 7395 | ` * Return` |
+|      - | 7396 | ` *  Encoded data or FALSE on failure.` |
+|      - | 7397 | ` */` |
+|     10 | 7398 | `static int PH7_builtin_base64_encode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      1 | 7399 |  |
+|      - | 7400 | `	const char *zIn;` |
+|      - | 7401 | `	int nLen;` |
+|     11 | 7402 | `	if( nArg < 1 ){` |
+|      - | 7403 | `		/* Missing arguments,return FALSE */` |
+|      5 | 7404 | `		ph7_result_bool(pCtx,0);` |
+|      5 | 7405 | `		return PH7_OK;` |
+|      - | 7406 | `	}` |
+|      - | 7407 | `	/* Extract the input string */` |
+|      7 | 7408 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
+|      7 | 7409 | `	if( nLen < 1 ){` |
+|      - | 7410 | `		/* Nothing to process,return FALSE */` |
+|    ! 0 | 7411 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 7412 | `		return PH7_OK;` |
+|      - | 7413 | `	}` |
+|      - | 7414 | `	/* Perform the BASE64 encoding */` |
+|      7 | 7415 | `	SyBase64Encode(zIn,(sxu32)nLen,Consumer,pCtx);` |
+|      7 | 7416 | `	return PH7_OK;` |
+|      6 | 7417 |  |
+|      - | 7418 | `/*` |
+|      - | 7419 | ` * string base64_decode(string $data)` |
+|      - | 7420 | ` * string convert_uudecode(string $data)` |
+|      - | 7421 | ` *  Decodes data encoded with MIME base64` |
+|      - | 7422 | ` * Parameter` |
+|      - | 7423 | ` *  $data` |
+|      - | 7424 | ` *    Encoded data.` |
+|      - | 7425 | ` * Return` |
+|      - | 7426 | ` *  Returns the original data or FALSE on failure.` |
+|      - | 7427 | ` */` |
+|     36 | 7428 | `static int PH7_builtin_base64_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      2 | 7429 |  |
+|      - | 7430 | `	const char *zIn;` |
+|      - | 7431 | `	int nLen;` |
+|     38 | 7432 | `	if( nArg < 1 ){` |
+|      - | 7433 | `		/* Missing arguments,return FALSE */` |
+|      3 | 7434 | `		ph7_result_bool(pCtx,0);` |
+|      3 | 7435 | `		return PH7_OK;` |
+|      - | 7436 | `	}` |
+|      - | 7437 | `	/* Extract the input string */` |
+|     36 | 7438 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
+|     36 | 7439 | `	if( nLen < 1 ){` |
+|      - | 7440 | `		/* Nothing to process,return FALSE */` |
+|      3 | 7441 | `		ph7_result_bool(pCtx,0);` |
+|      3 | 7442 | `		return PH7_OK;` |
+|      - | 7443 | `	}` |
+|      - | 7444 | `	/* Perform the BASE64 decoding */` |
+|     34 | 7445 | `	SyBase64Decode(zIn,(sxu32)nLen,Consumer,pCtx);` |
+|     34 | 7446 | `	return PH7_OK;` |
+|     20 | 7447 |  |
+|      - | 7448 | `/*` |
+|      - | 7449 | ` * string urlencode(string $str)` |
+|      - | 7450 | ` *  URL encoding` |
+|      - | 7451 | ` * Parameter` |
+|      - | 7452 | ` *  $data` |
+|      - | 7453 | ` *   Input string.` |
+|      - | 7454 | ` * Return` |
+|      - | 7455 | ` *  Returns a string in which all non-alphanumeric characters except -_. have` |
+|      - | 7456 | ` *  been replaced with a percent (%) sign followed by two hex digits and spaces` |
+|      - | 7457 | ` *  encoded as plus (+) signs.` |
+|      - | 7458 | ` */` |
+|      6 | 7459 | `static int PH7_builtin_urlencode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      1 | 7460 |  |
+|      - | 7461 | `	const char *zIn;` |
+|      - | 7462 | `	int nLen;` |
+|      7 | 7463 | `	if( nArg < 1 ){` |
+|      - | 7464 | `		/* Missing arguments,return FALSE */` |
+|      3 | 7465 | `		ph7_result_bool(pCtx,0);` |
+|      3 | 7466 | `		return PH7_OK;` |
+|      - | 7467 | `	}` |
+|      - | 7468 | `	/* Extract the input string */` |
+|      5 | 7469 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
+|      5 | 7470 | `	if( nLen < 1 ){` |
+|      - | 7471 | `		/* Nothing to process,return FALSE */` |
+|    ! 0 | 7472 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 7473 | `		return PH7_OK;` |
+|      - | 7474 | `	}` |
+|      - | 7475 | `	/* Perform the URL encoding */` |
+|      5 | 7476 | `	SyUriEncode(zIn,(sxu32)nLen,Consumer,pCtx);` |
+|      5 | 7477 | `	return PH7_OK;` |
+|      4 | 7478 |  |
+|      - | 7479 | `/*` |
+|      - | 7480 | ` * string urldecode(string $str)` |
+|      - | 7481 | ` *  Decodes any %## encoding in the given string.` |
+|      - | 7482 | ` *  Plus symbols ('+') are decoded to a space character.` |
+|      - | 7483 | ` * Parameter` |
+|      - | 7484 | ` *  $data` |
+|      - | 7485 | ` *    Input string.` |
+|      - | 7486 | ` * Return` |
+|      - | 7487 | ` *  Decoded URL or FALSE on failure.` |
+|      - | 7488 | ` */` |
+|      8 | 7489 | `static int PH7_builtin_urldecode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      1 | 7490 |  |
+|      - | 7491 | `	const char *zIn;` |
+|      - | 7492 | `	int nLen;` |
+|      9 | 7493 | `	if( nArg < 1 ){` |
+|      - | 7494 | `		/* Missing arguments,return FALSE */` |
+|      3 | 7495 | `		ph7_result_bool(pCtx,0);` |
+|      3 | 7496 | `		return PH7_OK;` |
+|      - | 7497 | `	}` |
+|      - | 7498 | `	/* Extract the input string */` |
+|      7 | 7499 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
+|      7 | 7500 | `	if( nLen < 1 ){` |
+|      - | 7501 | `		/* Nothing to process,return FALSE */` |
+|    ! 0 | 7502 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 7503 | `		return PH7_OK;` |
+|      - | 7504 | `	}` |
+|      - | 7505 | `	/* Perform the URL decoding */` |
+|      7 | 7506 | `	SyUriDecode(zIn,(sxu32)nLen,Consumer,pCtx,TRUE);` |
+|      7 | 7507 | `	return PH7_OK;` |
+|      5 | 7508 |  |
+|      - | 7509 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|      - | 7510 | `/* Table of the built-in functions */` |
+|      - | 7511 | `static const ph7_builtin_func aBuiltInFunc[] = {` |
+|      - | 7512 | `	   /* Variable handling functions */` |
+|      - | 7513 | `	{ "is_bool"    , PH7_builtin_is_bool     },` |
+|      - | 7514 | `	{ "is_float"   , PH7_builtin_is_float    },` |
+|      - | 7515 | `	{ "is_real"    , PH7_builtin_is_float    },` |
+|      - | 7516 | `	{ "is_double"  , PH7_builtin_is_float    },` |
+|      - | 7517 | `	{ "is_int"     , PH7_builtin_is_int      },` |
+|      - | 7518 | `	{ "is_integer" , PH7_builtin_is_int      },` |
+|      - | 7519 | `	{ "is_long"    , PH7_builtin_is_int      },` |
+|      - | 7520 | `	{ "is_string"  , PH7_builtin_is_string   },` |
+|      - | 7521 | `	{ "is_null"    , PH7_builtin_is_null     },` |
+|      - | 7522 | `	{ "is_numeric" , PH7_builtin_is_numeric  },` |
+|      - | 7523 | `	{ "is_scalar"  , PH7_builtin_is_scalar   },` |
+|      - | 7524 | `	{ "is_array"   , PH7_builtin_is_array    },` |
+|      - | 7525 | `	{ "is_object"  , PH7_builtin_is_object   },` |
+|      - | 7526 | `	{ "is_resource", PH7_builtin_is_resource },` |
+|      - | 7527 | `	{ "douleval"   , PH7_builtin_floatval    },` |
+|      - | 7528 | `	{ "floatval"   , PH7_builtin_floatval    },` |
+|      - | 7529 | `	{ "intval"     , PH7_builtin_intval      },` |
+|      - | 7530 | `	{ "strval"     , PH7_builtin_strval      },` |
+|      - | 7531 | `	{ "empty"      , PH7_builtin_empty       },` |
+|      - | 7532 | `#ifdef PH7_NEED_BUILTIN_REG` |
+|      - | 7533 | `#ifdef PH7_ENABLE_MATH_FUNC` |
+|      - | 7534 | `	   /* Math functions */` |
+|      - | 7535 | `	{ "abs"  ,    PH7_builtin_abs          },` |
+|      - | 7536 | `	{ "sqrt" ,    PH7_builtin_sqrt         },` |
+|      - | 7537 | `	{ "exp"  ,    PH7_builtin_exp          },` |
+|      - | 7538 | `	{ "floor",    PH7_builtin_floor        },` |
+|      - | 7539 | `	{ "cos"  ,    PH7_builtin_cos          },` |
+|      - | 7540 | `	{ "sin"  ,    PH7_builtin_sin          },` |
+|      - | 7541 | `	{ "acos" ,    PH7_builtin_acos         },` |
+|      - | 7542 | `	{ "asin" ,    PH7_builtin_asin         },` |
+|      - | 7543 | `	{ "cosh" ,    PH7_builtin_cosh         },` |
+|      - | 7544 | `	{ "sinh" ,    PH7_builtin_sinh         },` |
+|      - | 7545 | `	{ "ceil" ,    PH7_builtin_ceil         },` |
+|      - | 7546 | `	{ "tan"  ,    PH7_builtin_tan          },` |
+|      - | 7547 | `	{ "tanh" ,    PH7_builtin_tanh         },` |
+|      - | 7548 | `	{ "atan" ,    PH7_builtin_atan         },` |
+|      - | 7549 | `	{ "atan2",    PH7_builtin_atan2        },` |
+|      - | 7550 | `	{ "log"  ,    PH7_builtin_log          },` |
+|      - | 7551 | `	{ "log10" ,   PH7_builtin_log10        },` |
+|      - | 7552 | `	{ "pow"  ,    PH7_builtin_pow          },` |
+|      - | 7553 | `	{ "pi",       PH7_builtin_pi           },` |
+|      - | 7554 | `	{ "fmod",     PH7_builtin_fmod         },` |
+|      - | 7555 | `	{ "hypot",    PH7_builtin_hypot        },` |
+|      - | 7556 | `#endif /* PH7_ENABLE_MATH_FUNC */` |
+|      - | 7557 | `	{ "round",    PH7_builtin_round        },` |
+|      - | 7558 | `	{ "dechex", PH7_builtin_dechex         },` |
+|      - | 7559 | `	{ "decoct", PH7_builtin_decoct         },` |
+|      - | 7560 | `	{ "decbin", PH7_builtin_decbin         },` |
+|      - | 7561 | `	{ "hexdec", PH7_builtin_hexdec         },` |
+|      - | 7562 | `	{ "bindec", PH7_builtin_bindec         },` |
+|      - | 7563 | `	{ "octdec", PH7_builtin_octdec         },` |
+|      - | 7564 | `	{ "srand",  PH7_builtin_srand          },` |
+|      - | 7565 | `	{ "mt_srand",PH7_builtin_srand         },` |
+|      - | 7566 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|      - | 7567 | `#ifdef PH7_NEED_FMT_AND_INI` |
+|      - | 7568 | `	{ "base_convert", PH7_builtin_base_convert },` |
+|      - | 7569 | `#endif /* PH7_NEED_FMT_AND_INI */` |
+|      - | 7570 | `#ifdef PH7_NEED_BUILTIN_REG` |
+|      - | 7571 | `	   /* String handling functions */` |
+|      - | 7572 |  |
+|      - | 7573 | `	{ "substr",          PH7_builtin_substr     },` |
+|      - | 7574 | `	{ "substr_compare",  PH7_builtin_substr_compare },` |
+|      - | 7575 | `	{ "substr_count",    PH7_builtin_substr_count },` |
+|      - | 7576 | `	{ "chunk_split",     PH7_builtin_chunk_split},` |
+|      - | 7577 | `	{ "addslashes" ,     PH7_builtin_addslashes },` |
+|      - | 7578 | `	{ "addcslashes",     PH7_builtin_addcslashes},` |
+|      - | 7579 | `	{ "quotemeta",       PH7_builtin_quotemeta  },` |
+|      - | 7580 | `	{ "stripslashes",    PH7_builtin_stripslashes },` |
+|      - | 7581 | `	{ "htmlspecialchars",PH7_builtin_htmlspecialchars },` |
+|      - | 7582 | `	{ "htmlspecialchars_decode", PH7_builtin_htmlspecialchars_decode },` |
+|      - | 7583 | `	{ "get_html_translation_table",PH7_builtin_get_html_translation_table },` |
+|      - | 7584 | `	{ "htmlentities",PH7_builtin_htmlentities},` |
+|      - | 7585 | `	{ "html_entity_decode", PH7_builtin_html_entity_decode},` |
+|      - | 7586 | `	{ "strlen"     , PH7_builtin_strlen     },` |
+|      - | 7587 | `	{ "strcmp"     , PH7_builtin_strcmp     },` |
+|      - | 7588 | `	{ "strcoll"    , PH7_builtin_strcmp     },` |
+|      - | 7589 | `	{ "strncmp"    , PH7_builtin_strncmp    },` |
+|      - | 7590 | `	{ "strcasecmp" , PH7_builtin_strcasecmp },` |
+|      - | 7591 | `	{ "strncasecmp", PH7_builtin_strncasecmp},` |
+|      - | 7592 | `	{ "implode"    , PH7_builtin_implode    },` |
+|      - | 7593 | `	{ "join"       , PH7_builtin_implode    },` |
+|      - | 7594 | `	{ "implode_recursive" , PH7_builtin_implode_recursive },` |
+|      - | 7595 | `	{ "join_recursive"    , PH7_builtin_implode_recursive },` |
+|      - | 7596 | `	{ "explode"     , PH7_builtin_explode    },` |
+|      - | 7597 | `	{ "trim"        , PH7_builtin_trim       },` |
+|      - | 7598 | `	{ "rtrim"       , PH7_builtin_rtrim      },` |
+|      - | 7599 | `	{ "chop"        , PH7_builtin_rtrim      },` |
+|      - | 7600 | `	{ "ltrim"       , PH7_builtin_ltrim      },` |
+|      - | 7601 | `	{ "strtolower",   PH7_builtin_strtolower },` |
+|      - | 7602 | `	{ "mb_strtolower",PH7_builtin_strtolower }, /* Only UTF-8 encoding is supported */` |
+|      - | 7603 | `	{ "strtoupper",   PH7_builtin_strtoupper },` |
+|      - | 7604 | `	{ "mb_strtoupper",PH7_builtin_strtoupper }, /* Only UTF-8 encoding is supported */` |
+|      - | 7605 | `	{ "ucfirst",      PH7_builtin_ucfirst    },` |
+|      - | 7606 | `	{ "lcfirst",      PH7_builtin_lcfirst    },` |
+|      - | 7607 | `	{ "ord",          PH7_builtin_ord        },` |
+|      - | 7608 | `	{ "chr",          PH7_builtin_chr        },` |
+|      - | 7609 | `	{ "bin2hex",      PH7_builtin_bin2hex    },` |
+|      - | 7610 | `	{ "strstr",       PH7_builtin_strstr     },` |
+|      - | 7611 | `	{ "stristr",      PH7_builtin_stristr    },` |
+|      - | 7612 | `	{ "strchr",       PH7_builtin_strstr     },` |
+|      - | 7613 | `	{ "strpos",       PH7_builtin_strpos     },` |
+|      - | 7614 | `	{ "stripos",      PH7_builtin_stripos    },` |
+|      - | 7615 | `	{ "strrpos",      PH7_builtin_strrpos    },` |
+|      - | 7616 | `	{ "strripos",     PH7_builtin_strripos   },` |
+|      - | 7617 | `	{ "strrchr",      PH7_builtin_strrchr    },` |
+|      - | 7618 | `	{ "strrev",       PH7_builtin_strrev     },` |
+|      - | 7619 | `	{ "ucwords",      PH7_builtin_ucwords    },` |
+|      - | 7620 | `	{ "str_repeat",   PH7_builtin_str_repeat },` |
+|      - | 7621 | `	{ "nl2br",        PH7_builtin_nl2br      },` |
+|      - | 7622 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|      - | 7623 | `#ifdef PH7_NEED_FMT_AND_INI` |
+|      - | 7624 | `	{ "sprintf",      PH7_builtin_sprintf    },` |
+|      - | 7625 | `	{ "printf",       PH7_builtin_printf     },` |
+|      - | 7626 | `	{ "vprintf",      PH7_builtin_vprintf    },` |
+|      - | 7627 | `	{ "vsprintf",     PH7_builtin_vsprintf   },` |
+|      - | 7628 | `#endif /* PH7_NEED_FMT_AND_INI */` |
+|      - | 7629 | `#ifdef PH7_NEED_BUILTIN_REG` |
+|      - | 7630 | `	{ "size_format",  PH7_builtin_size_format},` |
+|      - | 7631 |  |
+|      - | 7632 |  |
+|      - | 7633 | `#ifndef PH7_DISABLE_HASH_FUNC` |
+|      - | 7634 | `	{ "md5",          PH7_builtin_md5       },` |
+|      - | 7635 | `	{ "sha1",         PH7_builtin_sha1      },` |
+|      - | 7636 | `	{ "crc32",        PH7_builtin_crc32     },` |
+|      - | 7637 | `#endif /* PH7_DISABLE_HASH_FUNC */` |
+|      - | 7638 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|      - | 7639 | `#ifdef PH7_NEED_FMT_AND_INI` |
+|      - | 7640 | `	{ "str_getcsv",   PH7_builtin_str_getcsv },` |
+|      - | 7641 | `	{ "strip_tags",   PH7_builtin_strip_tags },` |
+|      - | 7642 | `#endif /* PH7_NEED_FMT_AND_INI */` |
+|      - | 7643 | `#ifdef PH7_NEED_BUILTIN_REG` |
+|      - | 7644 |  |
+|      - | 7645 | `	{ "str_shuffle",  PH7_builtin_str_shuffle},` |
+|      - | 7646 | `	{ "str_split",    PH7_builtin_str_split  },` |
+|      - | 7647 | `	{ "strspn",       PH7_builtin_strspn     },` |
+|      - | 7648 | `	{ "strcspn",      PH7_builtin_strcspn    },` |
+|      - | 7649 | `	{ "strpbrk",      PH7_builtin_strpbrk    },` |
+|      - | 7650 | `	{ "soundex",      PH7_builtin_soundex    },` |
+|      - | 7651 | `	{ "wordwrap",     PH7_builtin_wordwrap   },` |
+|      - | 7652 | `	{ "strtok",       PH7_builtin_strtok     },` |
+|      - | 7653 | `	{ "str_pad",      PH7_builtin_str_pad    },` |
+|      - | 7654 | `	{ "str_replace",  PH7_builtin_str_replace},` |
+|      - | 7655 | `	{ "str_ireplace", PH7_builtin_str_replace},` |
+|      - | 7656 | `	{ "strtr",        PH7_builtin_strtr      },` |
+|      - | 7657 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|      - | 7658 | `#ifdef PH7_NEED_FMT_AND_INI` |
+|      - | 7659 | `	{ "parse_ini_string", PH7_builtin_parse_ini_string},` |
+|      - | 7660 | `#endif /* PH7_NEED_FMT_AND_INI */` |
+|      - | 7661 | `#ifdef PH7_NEED_BUILTIN_REG` |
+|      - | 7662 |  |
+|      - | 7663 | `	         /* Ctype functions */` |
+|      - | 7664 | `	{ "ctype_alnum", PH7_builtin_ctype_alnum },` |
+|      - | 7665 | `	{ "ctype_alpha", PH7_builtin_ctype_alpha },` |
+|      - | 7666 | `	{ "ctype_cntrl", PH7_builtin_ctype_cntrl },` |
+|      - | 7667 | `	{ "ctype_digit", PH7_builtin_ctype_digit },` |
+|      - | 7668 | `	{ "ctype_xdigit",PH7_builtin_ctype_xdigit},` |
+|      - | 7669 | `	{ "ctype_graph", PH7_builtin_ctype_graph },` |
+|      - | 7670 | `	{ "ctype_print", PH7_builtin_ctype_print },` |
+|      - | 7671 | `	{ "ctype_punct", PH7_builtin_ctype_punct },` |
+|      - | 7672 | `	{ "ctype_space", PH7_builtin_ctype_space },` |
+|      - | 7673 | `	{ "ctype_lower", PH7_builtin_ctype_lower },` |
+|      - | 7674 | `	{ "ctype_upper", PH7_builtin_ctype_upper },` |
+|      - | 7675 | `	         /* Time functions */` |
+|      - | 7676 | `	{ "time"    ,    PH7_builtin_time         },` |
+|      - | 7677 | `	{ "microtime",   PH7_builtin_microtime    },` |
+|      - | 7678 | `	{ "getdate" ,    PH7_builtin_getdate      },` |
+|      - | 7679 | `	{ "gettimeofday",PH7_builtin_gettimeofday },` |
+|      - | 7680 | `	{ "date",        PH7_builtin_date         },` |
+|      - | 7681 | `	{ "strftime",    PH7_builtin_strftime     },` |
+|      - | 7682 | `	{ "idate",       PH7_builtin_idate        },` |
+|      - | 7683 | `	{ "gmdate",      PH7_builtin_gmdate       },` |
+|      - | 7684 | `	{ "localtime",   PH7_builtin_localtime    },` |
+|      - | 7685 | `	{ "mktime",      PH7_builtin_mktime       },` |
+|      - | 7686 | `	{ "gmmktime",    PH7_builtin_mktime       },` |
+|      - | 7687 | `	        /* URL functions */` |
+|      - | 7688 | `	{ "base64_encode",PH7_builtin_base64_encode },` |
+|      - | 7689 | `	{ "base64_decode",PH7_builtin_base64_decode },` |
+|      - | 7690 | `	{ "convert_uuencode",PH7_builtin_base64_encode },` |
+|      - | 7691 | `	{ "convert_uudecode",PH7_builtin_base64_decode },` |
+|      - | 7692 | `	{ "urlencode",    PH7_builtin_urlencode },` |
+|      - | 7693 | `	{ "urldecode",    PH7_builtin_urldecode },` |
+|      - | 7694 | `	{ "rawurlencode", PH7_builtin_urlencode },` |
+|      - | 7695 | `	{ "rawurldecode", PH7_builtin_urldecode },` |
+|      - | 7696 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|      - | 7697 | `};` |
+|      - | 7698 | `/*` |
+|      - | 7699 | ` * Register the built-in functions defined above,the array functions` |
+|      - | 7700 | ` * defined in hashmap.c and the IO functions defined in vfs.c.` |
+|      - | 7701 | ` */` |
+|   1672 | 7702 | `PH7_PRIVATE void PH7_RegisterBuiltInFunction(ph7_vm *pVm)` |
+|      2 | 7703 |  |
+|      - | 7704 | `	sxu32 n;` |
+| 255818 | 7705 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltInFunc) ; ++n ){` |
+| 254146 | 7706 | `		ph7_create_function(&(*pVm),aBuiltInFunc[n].zName,aBuiltInFunc[n].xFunc,0);` |
+| 127074 | 7707 | `	}` |
+|      - | 7708 | `	/* Register hashmap functions [i.e: array_merge(),sort(),count(),array_diff(),...] */` |
+|   1674 | 7709 | `	PH7_RegisterHashmapFunctions(&(*pVm));` |
+|      - | 7710 | `	/* Register IO functions [i.e: fread(),fwrite(),chdir(),mkdir(),file(),...] */` |
+|   1674 | 7711 | `	PH7_RegisterIORoutine(&(*pVm));` |
+|   1674 | 7712 |  |
+|      - | 7713 |  |
