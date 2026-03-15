@@ -45,6 +45,9 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/parse$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vfs$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/vm_http$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/vm_json$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/vm_xml$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/phl/phl$(OBJ_SUFFIX)
 
 
