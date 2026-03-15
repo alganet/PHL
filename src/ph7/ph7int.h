@@ -1381,6 +1381,14 @@ PH7_PRIVATE int PH7_builtin_zip_entry_compressedsize(ph7_context *pCtx,int nArg,
 PH7_PRIVATE int PH7_builtin_zip_entry_read(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_zip_entry_reset_read_cursor(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_zip_entry_compressionmethod(ph7_context *pCtx,int nArg,ph7_value **apArg);
+/* vfs_win.c / vfs_unix.c exported structs */
+#ifdef __WINNT__
+extern const ph7_vfs sWinVfs;
+extern const ph7_io_stream sWinFileStream;
+#elif defined(__UNIXES__)
+extern const ph7_vfs sUnixVfs;
+extern const ph7_io_stream sUnixFileStream;
+#endif
 PH7_PRIVATE int PH7_Utf8Read(
   const unsigned char *z,         /* First byte of UTF-8 character */
   const unsigned char *zTerm,     /* Pretend this byte is 0x00 */
