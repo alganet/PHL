@@ -381,7 +381,23 @@ typedef struct ph7_vm_func_closure_env ph7_vm_func_closure_env;
 typedef struct ph7_vm_func_static_var  ph7_vm_func_static_var;
 typedef struct ph7_vm_func_arg ph7_vm_func_arg;
 typedef struct ph7_vm_func ph7_vm_func;
-typedef struct VmFrame VmFrame; /* Forward declaration - full definition in vm.c */
+typedef struct VmFrame VmFrame;
+struct VmFrame
+{
+	VmFrame *pParent; /* Parent frame or NULL if global scope */
+	void *pUserData;  /* Upper layer private data associated with this frame */
+	ph7_class_instance *pThis; /* Current class instance [i.e: the '$this' variable].NULL otherwise */
+	SySet sLocal;     /* Local variables container (VmSlot instance) */
+	ph7_vm *pVm;      /* VM that own this frame */
+	SyHash hVar;      /* Variable hashtable for fast lookup */
+	SySet sArg;       /* Function arguments container */
+	SySet sRef;       /* Local reference table (VmSlot instance) */
+	sxi32 iFlags;     /* Frame configuration flags (See below)*/
+	sxu32 iExceptionJump; /* Exception jump destination */
+};
+#define VM_FRAME_EXCEPTION  0x01 /* Special Exception frame */
+#define VM_FRAME_THROW      0x02 /* An exception was thrown */
+#define VM_FRAME_CATCH      0x04 /* Catch frame */
 /*
  * Each collected function argument is recorded in an instance
  * of the following structure.
@@ -1262,6 +1278,29 @@ PH7_PRIVATE int vm_builtin_xml_error_string(ph7_context *pCtx,int nArg,ph7_value
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
 PH7_PRIVATE int vm_builtin_utf8_encode(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_utf8_decode(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE sxi32 VmLocalExec(ph7_vm *pVm,SySet *pByteCode,ph7_value *pResult);
+PH7_PRIVATE sxi32 VmErrorFormat(ph7_vm *pVm,sxi32 iErr,const char *zFormat,...);
+/* vm_builtin_class.c function prototypes */
+PH7_PRIVATE int PH7_VmInstanceOf(ph7_class *pThis,ph7_class *pClass);
+PH7_PRIVATE int PH7_VmClassMemberAccess(ph7_vm *pVm,ph7_class *pClass,const SyString *pAttrName,sxi32 iProtection,int bLog);
+PH7_PRIVATE ph7_class * PH7_VmExtractClassFromValue(ph7_vm *pVm,ph7_value *pArg);
+PH7_PRIVATE int vm_builtin_get_class(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_get_parent_class(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_get_called_class(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_property_exists(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_method_exists(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_class_exists(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_interface_exists(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_class_alias(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_get_declared_classes(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_get_declared_interfaces(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_get_class_methods(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_get_class_vars(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_get_object_vars(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_is_a(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_is_subclass_of(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_call_user_func(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_Utf8Read(
   const unsigned char *z,         /* First byte of UTF-8 character */
   const unsigned char *zTerm,     /* Pretend this byte is 0x00 */
