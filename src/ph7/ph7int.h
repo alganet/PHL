@@ -1062,6 +1062,82 @@ enum json_err_code{
 #define JSON_PRETTY_PRINT      0x80  /* Use whitespace in returned data to format it.*/
 #define JSON_UNESCAPED_SLASHES 0x100 /* Don't escape '/' */
 #define JSON_UNESCAPED_UNICODE 0x200 /* Not used */
+/*
+ * Each parsed URI is recorded and stored in an instance of the following structure.
+ */
+typedef struct SyhttpUri SyhttpUri;
+struct SyhttpUri
+{
+	SyString sHost;     /* Hostname or IP address */
+	SyString sPort;     /* Port number */
+	SyString sPath;     /* Mandatory resource path passed verbatim (Not decoded) */
+	SyString sQuery;    /* Query part */
+	SyString sFragment; /* Fragment part */
+	SyString sScheme;   /* Scheme */
+	SyString sUser;     /* Username */
+	SyString sPass;     /* Password */
+	SyString sRaw;      /* Raw URI */
+};
+/*
+ * An instance of the following structure is used to record all MIME headers seen
+ * during a HTTP interaction.
+ */
+typedef struct SyhttpHeader SyhttpHeader;
+struct SyhttpHeader
+{
+	SyString sName;    /* Header name [i.e:"Content-Type","Host","User-Agent"]. NOT NUL TERMINATED */
+	SyString sValue;   /* Header values [i.e: "text/html"]. NOT NUL TERMINATED */
+};
+/*
+ * Supported HTTP methods.
+ */
+#define HTTP_METHOD_GET  1 /* GET */
+#define HTTP_METHOD_HEAD 2 /* HEAD */
+#define HTTP_METHOD_POST 3 /* POST */
+#define HTTP_METHOD_PUT  4 /* PUT */
+#define HTTP_METHOD_OTHR 5 /* Other HTTP methods [i.e: DELETE,TRACE,OPTIONS...]*/
+/*
+ * Supported HTTP protocol version.
+ */
+#define HTTP_PROTO_10 1 /* HTTP/1.0 */
+#define HTTP_PROTO_11 2 /* HTTP/1.1 */
+/*
+ * XML engine handler IDs and structure.
+ */
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+enum ph7_xml_handler_id{
+	PH7_XML_START_TAG = 0, /* Start element handlers ID */
+	PH7_XML_END_TAG,       /* End element handler ID*/
+	PH7_XML_CDATA,         /* Character data handler ID*/
+	PH7_XML_PI,            /* Processing instruction (PI) handler ID*/
+	PH7_XML_DEF,           /* Default handler ID */
+	PH7_XML_UNPED,         /* Unparsed entity declaration handler */
+	PH7_XML_ND,            /* Notation declaration handler ID*/
+	PH7_XML_EER,           /* External entity reference handler */
+	PH7_XML_NS_START,      /* Start namespace declaration handler */
+	PH7_XML_NS_END         /* End namespace declaration handler */
+};
+#define XML_TOTAL_HANDLER (PH7_XML_NS_END + 1)
+typedef struct ph7_xml_engine ph7_xml_engine;
+struct ph7_xml_engine
+{
+	ph7_vm *pVm;         /* VM that own this instance */
+	ph7_context *pCtx;   /* Call context */
+	SyXMLParser sParser; /* Underlying XML parser */
+	ph7_value aCB[XML_TOTAL_HANDLER]; /* User-defined callbacks */
+	ph7_value sParserValue; /* ph7_value holding this instance which is forwarded
+							  * as the first argument to the user callbacks.
+							  */
+	int ns_sep;      /* Namespace separator */
+	SyBlob sErr;     /* Error message consumer */
+	sxi32 iErrCode;  /* Last error code */
+	sxi32 iNest;     /* Nesting level */
+	sxu32 nLine;     /* Last processed line */
+	sxu32 nMagic;    /* Magic number so that we avoid misuse  */
+};
+#define XML_ENGINE_MAGIC 0x851EFC52
+#define IS_INVALID_XML_ENGINE(XML) (XML == 0 || (XML)->nMagic != XML_ENGINE_MAGIC)
+#endif /* PH7_DISABLE_BUILTIN_FUNC */
 /* memobj.c function prototypes */
 PH7_PRIVATE sxi32 PH7_MemObjDump(SyBlob *pOut,ph7_value *pObj,int ShowType,int nTab,int nDepth,int isRef);
 PH7_PRIVATE const char * PH7_MemObjTypeDump(ph7_value *pVal);
@@ -1148,9 +1224,44 @@ PH7_PRIVATE void PH7_VmRandomString(ph7_vm *pVm,char *zBuf,int nLen);
 PH7_PRIVATE ph7_class * PH7_VmPeekTopClass(ph7_vm *pVm);
 PH7_PRIVATE ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm);
 PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke);
+PH7_PRIVATE ph7_value * PH7_VmExtractSuper(ph7_vm *pVm,const char *zName,sxu32 nByte);
+PH7_PRIVATE sxi32 PH7_VmHashmapInsert(ph7_hashmap *pMap,const char *zKey,int nKeylen,const char *zData,int nLen);
 #ifndef PH7_DISABLE_DISK_IO
 PH7_PRIVATE const ph7_io_stream * PH7_VmGetStreamDevice(ph7_vm *pVm,const char **pzDevice,int nByte);
 #endif /* PH7_DISABLE_BUILTIN_FUNC || PH7_DISABLE_DISK_IO */
+/* vm_http.c function prototypes */
+PH7_PRIVATE sxi32 PH7_VmHttpSplitURI(SyhttpUri *pOut,const char *zUri,sxu32 nLen);
+PH7_PRIVATE sxi32 PH7_VmHttpProcessRequest(ph7_vm *pVm,const char *zRequest,int nByte);
+/* vm_json.c function prototypes */
+PH7_PRIVATE int vm_builtin_json_encode(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_json_last_error(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_json_decode(ph7_context *pCtx,int nArg,ph7_value **apArg);
+/* vm_xml.c function prototypes */
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+PH7_PRIVATE int vm_builtin_xml_parser_create(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_xml_parser_create_ns(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_xml_parser_free(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_xml_set_element_handler(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_xml_set_character_data_handler(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_xml_set_default_handler(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_xml_set_end_namespace_decl_handler(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_xml_set_start_namespace_decl_handler(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_xml_set_processing_instruction_handler(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_xml_set_unparsed_entity_decl_handler(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_xml_set_notation_decl_handler(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_xml_set_external_entity_ref_handler(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_xml_get_current_line_number(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_xml_get_current_byte_index(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_xml_set_object(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_xml_get_current_column_number(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_xml_get_error_code(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_xml_parse(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_xml_parser_set_option(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_xml_parser_get_option(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_xml_error_string(ph7_context *pCtx,int nArg,ph7_value **apArg);
+#endif /* PH7_DISABLE_BUILTIN_FUNC */
+PH7_PRIVATE int vm_builtin_utf8_encode(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_utf8_decode(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_Utf8Read(
   const unsigned char *z,         /* First byte of UTF-8 character */
   const unsigned char *zTerm,     /* Pretend this byte is 0x00 */
