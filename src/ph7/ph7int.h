@@ -399,6 +399,15 @@ struct VmFrame
 #define VM_FRAME_THROW      0x02 /* An exception was thrown */
 #define VM_FRAME_CATCH      0x04 /* Catch frame */
 /*
+ * Output control buffer entry.
+ */
+typedef struct VmObEntry VmObEntry;
+struct VmObEntry
+{
+	ph7_value sCallback; /* User defined callback */
+	SyBlob sOB;          /* Output buffer consumer */
+};
+/*
  * Each collected function argument is recorded in an instance
  * of the following structure.
  * Note that as an extension, PH7 implements full type hinting
@@ -1301,6 +1310,21 @@ PH7_PRIVATE int vm_builtin_is_a(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_is_subclass_of(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_call_user_func(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_value **apArg);
+/* vm_builtin_ob.c function prototypes */
+PH7_PRIVATE int VmObConsumer(const void *pData,unsigned int nDataLen,void *pUserData);
+PH7_PRIVATE int vm_builtin_ob_clean(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_ob_end_clean(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_ob_get_contents(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_ob_get_clean(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_ob_get_length(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_ob_get_level(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_ob_start(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_ob_flush(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_ob_end_flush(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_ob_implicit_flush(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_ob_list_handlers(ph7_context *pCtx,int nArg,ph7_value **apArg);
+/* vm_builtin_getopt.c function prototypes */
+PH7_PRIVATE int vm_builtin_getopt(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_Utf8Read(
   const unsigned char *z,         /* First byte of UTF-8 character */
   const unsigned char *zTerm,     /* Pretend this byte is 0x00 */
