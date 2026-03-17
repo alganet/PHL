@@ -1064,25 +1064,37 @@ static sxi32 VmEvalChunk(ph7_vm *pVm,ph7_context *pCtx,SyString *pChunk,int iFla
 	"$pArray = array_merge($pNew,$pOld);"\
 	"return sizeof($pArray);"\
     "}"\
-	"function array_merge_recursive($array1, $array2){"\
-	"if( func_num_args() < 1 ){ return NULL; }"\
+	"function array_merge_recursive(){"\
+	" if( func_num_args() < 1 ){ return array(); }"\
     "$arrays = func_get_args();"\
     "$narrays = count($arrays);"\
-    "$ret = $arrays[0];"\
-    "for ($i = 1; $i < $narrays; $i++) {"\
-	 " if( array_same($ret,$arrays[$i]) ){ /* Same instance */continue;}"\
+    "$ret = array();"\
+    "for( $i = 0; $i < $narrays; $i++ ){"\
+	 " if( !is_array($arrays[$i]) ){"\
+	 "  throw new TypeError('array_merge_recursive(): Argument #'.($i + 1).' must be of type array, '.gettype($arrays[$i]).' given');"\
+	 " }"\
      " foreach ($arrays[$i] as $key => $value) {"\
-     "  if (((string) $key) === ((string) intval($key))) {"\
+     "  $keyIsInt = is_int($key) || (is_string($key) && (string)intval($key) === $key);"\
+     "  if( $keyIsInt ) {"\
      "   $ret[] = $value;"\
-     "  }else{"\
-     "  if (is_array($value) && isset($ret[$key]) ) {"\
-     "   $ret[$key] = array_merge_recursive($ret[$key], $value);"\
-     " }else {"\
-     "   $ret[$key] = $value;"\
+     "  } else {"\
+     "   if (array_key_exists($key, $ret)) {"\
+     "    $cur = $ret[$key];"\
+     "    if (is_array($cur) && is_array($value)) {"\
+     "     $ret[$key] = array_merge_recursive($cur, $value);"\
+     "    } elseif (is_array($cur)) {"\
+     "     $ret[$key] = array_merge_recursive($cur, array($value));"\
+     "    } elseif (is_array($value)) {"\
+     "     $ret[$key] = array_merge_recursive(array($cur), $value);"\
+     "    } else {"\
+     "     $ret[$key] = array($cur, $value);"\
+     "    }"\
+     "   } else {"\
+     "    $ret[$key] = $value;"\
+     "   }"\
      "  }"\
      " }"\
-     " }"\
-	 "}"\
+	 " }"\
 	 " return $ret;"\
     "}"\
 	"function max(){"\

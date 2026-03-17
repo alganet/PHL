@@ -21,13 +21,13 @@ while (!feof($fp)) {
 fclose($fp);
 echo $out;
 ?>
---EXPECT--
+--EXPECTF--
 ====================================================
 PH7 VM Dump
 ====================================================
-LOADC              0      104        0 [0]
+LOADC              0      %d        0 [0]
 CONSUME            1        0        0 [1]
-LOADC              0      105        0 [2]
+LOADC              0      %d        0 [2]
 CONSUME            1        0        0 [3]
 DONE               0        0        0 [4]
 Hello World!
