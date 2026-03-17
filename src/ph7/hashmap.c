@@ -4034,18 +4034,77 @@ static int ph7_hashmap_udiff(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	sxi32 rc;
 	sxu32 n;
 	int i;
-	if( nArg < 2 || !ph7_value_is_array(apArg[0]) ){
-		/* Missing/Invalid arguments,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+
+	/* Ensure the argument count matches PHP behaviour. */
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_udiff() expects at least 2 arguments, %d given",
+			nArg
+			);
 	}
-	/* Point to the callback */
-	pCallback = apArg[nArg - 1];
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_udiff(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+
 	if( nArg == 2 ){
-		/* Return the first array since we cannot perform a diff */
+		/* Only the original array and the callback were provided. */
+		/* Nevertheless, we still validate the callback after verifying any
+		 * intermediate array arguments to match PHP's left-to-right parameter
+		 * validation order.
+		 */
+	} else {
+		/* Ensure intermediary arguments are arrays (matches PHP strict typing). */
+		for( i = 1 ; i < nArg - 1; i++ ){
+			if( !ph7_value_is_array(apArg[i]) ){
+				return PH7_VmThrowException(pCtx,
+					"TypeError",
+					"array_udiff(): Argument #%d must be of type array, %s given",
+					i + 1,
+					ph7_type_name(apArg[i])
+					);
+			}
+		}
+	}
+
+	/* Identify the callback (always expected as the last argument). */
+	pCallback = apArg[nArg - 1];
+	/* Validate the callback to match PHP's error messages. */
+	if( !ph7_value_is_callable(pCallback) ){
+		if( ph7_value_is_array(pCallback) ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_udiff(): Argument #%d must be a valid callback, array callback must have exactly two members",
+				nArg
+				);
+		}
+		if( ph7_value_is_string(pCallback) ){
+			int len;
+			const char *zName = ph7_value_to_string(pCallback, &len);
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_udiff(): Argument #%d must be a valid callback, function \"%s\" not found or invalid function name",
+				nArg,
+				zName
+				);
+		}
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_udiff(): Argument #%d must be a valid callback, no array or string given",
+			nArg
+			);
+	}
+
+	if( nArg == 2 ){
+		/* Only the original array and the callback were provided. */
 		ph7_result_value(pCtx,apArg[0]);
 		return PH7_OK;
 	}
+
 	/* Create a new array */
 	pArray = ph7_context_new_array(pCtx);
 	if( pArray == 0 ){
@@ -4065,10 +4124,6 @@ static int ph7_hashmap_udiff(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		pVal = HashmapExtractNodeValue(pEntry);
 		if( pVal ){
 			for( i = 1 ; i < nArg - 1; i++ ){
-				if( !ph7_value_is_array(apArg[i])) {
-					/* ignore */
-					continue;
-				}
 				/* Point to the internal representation of the hashmap */
 				pMap = (ph7_hashmap *)apArg[i]->x.pOther;
 				/* Perform the lookup */
