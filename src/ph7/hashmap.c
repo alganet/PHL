@@ -4870,18 +4870,118 @@ static int ph7_hashmap_uintersect(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	sxu32 n;
 	int i;
 
-	if( nArg < 2 || !ph7_value_is_array(apArg[0]) ){
-		/* Missing/Invalid arguments,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	/* Ensure the argument count matches PHP behaviour. */
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_uintersect() expects at least 2 arguments, %d given",
+			nArg
+			);
 	}
-	/* Point to the callback */
-	pCallback = apArg[nArg - 1];
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_uintersect(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+
 	if( nArg == 2 ){
-		/* Return the first array since we cannot perform a diff */
+		/* Only the original array and the callback were provided. */
+		/* Validate the callback below in order to match PHP's parameter
+		 * validation ordering. */
+	} else {
+		/* Ensure intermediary arguments are arrays (matches PHP strict typing). */
+		for( i = 1 ; i < nArg - 1; i++ ){
+			if( !ph7_value_is_array(apArg[i]) ){
+				return PH7_VmThrowException(pCtx,
+					"TypeError",
+					"array_uintersect(): Argument #%d must be of type array, %s given",
+					i + 1,
+					ph7_type_name(apArg[i])
+					);
+			}
+		}
+	}
+
+	/* Identify the callback (always expected as the last argument). */
+	pCallback = apArg[nArg - 1];
+	/* Validate the callback to match PHP's error messages. */
+	if( !ph7_value_is_callable(pCallback) ){
+		if( ph7_value_is_array(pCallback) ){
+			/* PHP emits a special message when the array length is wrong.
+			 * If the array has two elements but is still not callable (e.g. missing
+			 * method / missing class), we must emit a more general error instead.
+			 */
+			ph7_hashmap *pCb = (ph7_hashmap *)pCallback->x.pOther;
+			if( pCb->nEntry != 2 ){
+				return PH7_VmThrowException(pCtx,
+					"TypeError",
+					"array_uintersect(): Argument #%d must be a valid callback, array callback must have exactly two members",
+					nArg
+					);
+			}
+			/* Try to provide a more precise error like PHP does for missing classes/methods. */
+			{
+				ph7_value *pKey = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pCb->pFirst->nValIdx);
+				ph7_value *pMethod = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pCb->pFirst->pPrev->nValIdx);
+				if( pKey && pMethod && (pMethod->iFlags & MEMOBJ_STRING) ){
+					int nMethodLen;
+					const char *zMethod = ph7_value_to_string(pMethod,&nMethodLen);
+					ph7_class *pClass = PH7_VmExtractClassFromValue(pCtx->pVm,pKey);
+					if( pClass ){
+						/* Class exists but method is missing. */
+						return PH7_VmThrowException(pCtx,
+							"TypeError",
+							"array_uintersect(): Argument #%d must be a valid callback, class %s does not have a method \"%s\"",
+							nArg,
+							(const char *)SyStringData(&pClass->sName),
+							zMethod
+							);
+					}
+					/* Class not found */
+					{
+						int nName;
+						const char *zName = ph7_value_to_string(pKey,&nName);
+						return PH7_VmThrowException(pCtx,
+							"TypeError",
+							"array_uintersect(): Argument #%d must be a valid callback, class \"%s\" not found",
+							nArg,
+							zName
+							);
+					}
+				}
+			}
+			/* Fallback message */
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_uintersect(): Argument #%d must be a valid callback, no array or string given",
+				nArg
+				);
+		}
+		if( ph7_value_is_string(pCallback) ){
+			int len;
+			const char *zName = ph7_value_to_string(pCallback, &len);
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_uintersect(): Argument #%d must be a valid callback, function \"%s\" not found or invalid function name",
+				nArg,
+				zName
+				);
+		}
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_uintersect(): Argument #%d must be a valid callback, no array or string given",
+			nArg
+			);
+	}
+
+	if( nArg == 2 ){
+		/* Only the original array and the callback were provided. */
 		ph7_result_value(pCtx,apArg[0]);
 		return PH7_OK;
 	}
+
 	/* Create a new array */
 	pArray = ph7_context_new_array(pCtx);
 	if( pArray == 0 ){
