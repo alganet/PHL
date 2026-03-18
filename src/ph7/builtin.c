@@ -2338,10 +2338,37 @@ static int PH7_builtin_bin2hex(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zString;
 	int nLen;
-	if( nArg < 1 ){
-		/* Missing arguments,return null */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	/* PHP 8 requires exactly one argument (ArgumentCountError). */
+	if( nArg != 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"bin2hex() expects exactly 1 argument, %d given",
+			nArg
+			);
+	}
+	/* In PHP 8, bin2hex() is strict about its parameter type.
+	 * Array/Resource values are not allowed and trigger a TypeError.
+	 * Objects without __toString() must also raise a TypeError.
+	 */
+	if( ph7_value_is_array(apArg[0]) || ph7_value_is_resource(apArg[0]) ||
+		( ph7_value_is_object(apArg[0]) &&
+		  ((ph7_class_instance *)apArg[0]->x.pOther) != 0 &&
+		  PH7_ClassExtractMethod(((ph7_class_instance *)apArg[0]->x.pOther)->pClass,
+			"__toString",sizeof("__toString")-1) == 0
+		)
+	){
+		const char *zType = ph7_type_name(apArg[0]);
+		if( ph7_value_is_object(apArg[0]) ){
+			ph7_class_instance *pInst = (ph7_class_instance *)apArg[0]->x.pOther;
+			if( pInst && pInst->pClass ){
+				zType = SyStringData(&pInst->pClass->sName);
+			}
+		}
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"bin2hex(): Argument #1 ($string) must be of type string, %s given",
+			zType
+			);
 	}
 	/* Extract the target string */
 	zString = ph7_value_to_string(apArg[0],&nLen);
