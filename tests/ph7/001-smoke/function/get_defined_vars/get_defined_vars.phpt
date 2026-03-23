@@ -5,12 +5,14 @@ SPDX-License-Identifier: BSD-3-Clause
 get_defined_vars returns variables in current scope
 --FILE--
 <?php
-$foo = 'bar';
-$vars = get_defined_vars();
-if (isset($vars['foo']) && $vars['foo'] === 'bar') echo "OK\n"; else echo "FAIL\n";
+function test_get_defined_vars() {
+    $foo = 'bar';
+    $vars = get_defined_vars();
+    if (isset($vars['foo']) && $vars['foo'] === 'bar') echo "OK\n"; else echo "FAIL\n";
+}
+test_get_defined_vars();
 ?>
 --EXPECT--
 OK
 --CLEAN--
 <?php
-unset($foo, $vars);

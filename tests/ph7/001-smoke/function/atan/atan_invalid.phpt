@@ -2,19 +2,17 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: atan missing argument returns integer 0
---SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+atan with non-numeric string throws TypeError
 --FILE--
 <?php
-if (atan() === 0) {
-    echo "true";
-} else {
-    echo "false";
+try {
+    atan("abc");
+} catch (TypeError $e) {
+    echo $e->getMessage();
 }
 ?>
---EXPECT--
-true
+--EXPECTF--
+atan(): Argument #1 ($num) must be of type float, string given
 --CLEAN--
 <?php
 
