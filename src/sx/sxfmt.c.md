@@ -95,7 +95,7 @@ Coverage: 291/413 lines (70.46%)
 |       - |   85 | ` * extended by Symisc Systems to fit its need.` |
 |       - |   86 | ` * Status: Public Domain` |
 |       - |   87 | ` */` |
-|  121882 |   88 | `static sxi32 InternFormat(ProcConsumer xConsumer,void *pUserData,const char *zFormat,va_list ap)` |
+|  122258 |   88 | `static sxi32 InternFormat(ProcConsumer xConsumer,void *pUserData,const char *zFormat,va_list ap)` |
 |       2 |   89 |  |
 |       - |   90 | `	/*` |
 |       - |   91 | `	 * The following table is searched linearly, so it is good to put the most frequently` |
@@ -141,7 +141,7 @@ Coverage: 291/413 lines (70.46%)
 |       - |  131 | `  const SyFmtInfo *infop;  /* Pointer to the appropriate info structure */` |
 |       - |  132 | `  char buf[SXFMT_BUFSIZ];  /* Conversion buffer */` |
 |       - |  133 | `  char prefix;             /* Prefix character."+" or "-" or " " or '\0'.*/` |
-|  121884 |  134 | `  sxu8 errorflag = 0;      /* True if an error is encountered */` |
+|  122260 |  134 | `  sxu8 errorflag = 0;      /* True if an error is encountered */` |
 |       - |  135 | `  sxu8 xtype;              /* Conversion paradigm */` |
 |       - |  136 | `  static char spaces[] = "                                                  ";` |
 |       - |  137 | `#define etSPACESIZE ((int)sizeof(spaces)-1)` |
@@ -156,23 +156,23 @@ Coverage: 291/413 lines (70.46%)
 |       - |  146 | `#endif` |
 |       - |  147 | `  int rc;` |
 |       - |  148 |  |
-|  121884 |  149 | `  length = 0;` |
-|  121884 |  150 | `  bufpt = 0;` |
-|  379054 |  151 | `  for(; (c=(*zFormat))!=0; ++zFormat){` |
-|  319192 |  152 | `    if( c!='%' ){` |
+|  122260 |  149 | `  length = 0;` |
+|  122260 |  150 | `  bufpt = 0;` |
+|  380546 |  151 | `  for(; (c=(*zFormat))!=0; ++zFormat){` |
+|  320662 |  152 | `    if( c!='%' ){` |
 |       - |  153 | `      unsigned int amt;` |
-|  243696 |  154 | `      bufpt = (char *)zFormat;` |
-|  243696 |  155 | `      amt = 1;` |
-|  414880 |  156 | `      while( (c=(*++zFormat))!='%' && c!=0 ) amt++;` |
-|  243696 |  157 | `	  rc = xConsumer((const void *)bufpt,amt,pUserData);` |
-|  243696 |  158 | `	  if( rc != SXRET_OK ){` |
+|  245100 |  154 | `      bufpt = (char *)zFormat;` |
+|  245100 |  155 | `      amt = 1;` |
+|  417274 |  156 | `      while( (c=(*++zFormat))!='%' && c!=0 ) amt++;` |
+|  245100 |  157 | `	  rc = xConsumer((const void *)bufpt,amt,pUserData);` |
+|  245100 |  158 | `	  if( rc != SXRET_OK ){` |
 |     ! 0 |  159 | `		  return SXERR_ABORT; /* Consumer routine request an operation abort */` |
 |       - |  160 | `	  }` |
-|  243696 |  161 | `      if( c==0 ){` |
-|   62022 |  162 | `		  return errorflag > 0 ? SXERR_FORMAT : SXRET_OK;` |
+|  245100 |  161 | `      if( c==0 ){` |
+|   62376 |  162 | `		  return errorflag > 0 ? SXERR_FORMAT : SXRET_OK;` |
 |       - |  163 | `	  }` |
-|   90837 |  164 | `    }` |
-|  257172 |  165 | `    if( (c=(*++zFormat))==0 ){` |
+|   91362 |  164 | `    }` |
+|  258288 |  165 | `    if( (c=(*++zFormat))==0 ){` |
 |     ! 0 |  166 | `      errorflag = 1;` |
 |     ! 0 |  167 | `	  rc = xConsumer("%",sizeof("%")-1,pUserData);` |
 |     ! 0 |  168 | `	  if( rc != SXRET_OK ){` |
@@ -181,21 +181,21 @@ Coverage: 291/413 lines (70.46%)
 |     ! 0 |  171 | `      return errorflag > 0 ? SXERR_FORMAT : SXRET_OK;` |
 |       - |  172 | `    }` |
 |       - |  173 | `    /* Find out what flags are present */` |
-|  257172 |  174 | `    flag_leftjustify = flag_plussign = flag_blanksign =` |
-|  257170 |  175 | `     flag_alternateform = flag_zeropad = 0;` |
-|  128585 |  176 | `    do{` |
-|  257282 |  177 | `      switch( c ){` |
+|  258288 |  174 | `    flag_leftjustify = flag_plussign = flag_blanksign =` |
+|  258286 |  175 | `     flag_alternateform = flag_zeropad = 0;` |
+|  129143 |  176 | `    do{` |
+|  258398 |  177 | `      switch( c ){` |
 |     ! 0 |  178 | `        case '-':   flag_leftjustify = 1;     c = 0;   break;` |
 |       3 |  179 | `        case '+':   flag_plussign = 1;        c = 0;   break;` |
 |     ! 0 |  180 | `        case ' ':   flag_blanksign = 1;       c = 0;   break;` |
 |      16 |  181 | `        case '#':   flag_alternateform = 1;   c = 0;   break;` |
 |      95 |  182 | `        case '0':   flag_zeropad = 1;         c = 0;   break;` |
-|  257170 |  183 | `        default:                                       break;` |
+|  258286 |  183 | `        default:                                       break;` |
 |       - |  184 | `      }` |
-|  257282 |  185 | `    }while( c==0 && (c=(*++zFormat))!=0 );` |
+|  258398 |  185 | `    }while( c==0 && (c=(*++zFormat))!=0 );` |
 |       - |  186 | `    /* Get the field width */` |
-|  257172 |  187 | `    width = 0;` |
-|  257172 |  188 | `    if( c=='*' ){` |
+|  258288 |  187 | `    width = 0;` |
+|  258288 |  188 | `    if( c=='*' ){` |
 |     ! 0 |  189 | `      width = va_arg(ap,int);` |
 |     ! 0 |  190 | `      if( width<0 ){` |
 |     ! 0 |  191 | `        flag_leftjustify = 1;` |
@@ -203,33 +203,33 @@ Coverage: 291/413 lines (70.46%)
 |     ! 0 |  193 | `      }` |
 |     ! 0 |  194 | `      c = *++zFormat;` |
 |     ! 0 |  195 | `    }else{` |
-|  257320 |  196 | `      while( c>='0' && c<='9' ){` |
+|  258436 |  196 | `      while( c>='0' && c<='9' ){` |
 |     150 |  197 | `        width = width*10 + c - '0';` |
 |     150 |  198 | `        c = *++zFormat;` |
 |       2 |  199 | `      }` |
 |       - |  200 | `    }` |
-|  257172 |  201 | `    if( width > SXFMT_BUFSIZ-10 ){` |
+|  258288 |  201 | `    if( width > SXFMT_BUFSIZ-10 ){` |
 |     ! 0 |  202 | `      width = SXFMT_BUFSIZ-10;` |
 |     ! 0 |  203 | `    }` |
 |       - |  204 | `    /* Get the precision */` |
-|  257172 |  205 | `	precision = -1;` |
-|  257172 |  206 | `    if( c=='.' ){` |
-|   60184 |  207 | `      precision = 0;` |
-|   60184 |  208 | `      c = *++zFormat;` |
-|   60184 |  209 | `      if( c=='*' ){` |
-|   60080 |  210 | `        precision = va_arg(ap,int);` |
-|   60080 |  211 | `        if( precision<0 ) precision = -precision;` |
-|   60080 |  212 | `        c = *++zFormat;` |
-|   30041 |  213 | `      }else{` |
+|  258288 |  205 | `	precision = -1;` |
+|  258288 |  206 | `    if( c=='.' ){` |
+|   60532 |  207 | `      precision = 0;` |
+|   60532 |  208 | `      c = *++zFormat;` |
+|   60532 |  209 | `      if( c=='*' ){` |
+|   60428 |  210 | `        precision = va_arg(ap,int);` |
+|   60428 |  211 | `        if( precision<0 ) precision = -precision;` |
+|   60428 |  212 | `        c = *++zFormat;` |
+|   30215 |  213 | `      }else{` |
 |     314 |  214 | `        while( c>='0' && c<='9' ){` |
 |     210 |  215 | `          precision = precision*10 + c - '0';` |
 |     210 |  216 | `          c = *++zFormat;` |
 |       2 |  217 | `        }` |
 |       - |  218 | `      }` |
-|   30091 |  219 | `    }` |
+|   30265 |  219 | `    }` |
 |       - |  220 | `    /* Get the conversion type modifier */` |
-|  257172 |  221 | `	flag_long = 0;` |
-|  257172 |  222 | `    if( c=='l' \|\| c == 'q' /* BSD quad (expect a 64-bit integer) */ ){` |
+|  258288 |  221 | `	flag_long = 0;` |
+|  258288 |  222 | `    if( c=='l' \|\| c == 'q' /* BSD quad (expect a 64-bit integer) */ ){` |
 |   52118 |  223 | `      flag_long = (c == 'q') ? 2 : 1;` |
 |   52118 |  224 | `      c = *++zFormat;` |
 |   52118 |  225 | `	  if( c == 'l' ){` |
@@ -238,15 +238,15 @@ Coverage: 291/413 lines (70.46%)
 |     ! 0 |  228 | `	  }` |
 |   26058 |  229 | `    }` |
 |       - |  230 | `    /* Fetch the info entry for the field */` |
-|  257172 |  231 | `    infop = 0;` |
-|  257172 |  232 | `    xtype = SXFMT_ERROR;` |
-| 1017122 |  233 | `	for(idx=0; idx< (int)SX_ARRAYSIZE(aFmt); idx++){` |
-| 1017122 |  234 | `      if( c==aFmt[idx].fmttype ){` |
-|  257172 |  235 | `        infop = &aFmt[idx];` |
-|  257172 |  236 | `		xtype = infop->type;` |
-|  257172 |  237 | `        break;` |
+|  258288 |  231 | `    infop = 0;` |
+|  258288 |  232 | `    xtype = SXFMT_ERROR;` |
+| 1022334 |  233 | `	for(idx=0; idx< (int)SX_ARRAYSIZE(aFmt); idx++){` |
+| 1022334 |  234 | `      if( c==aFmt[idx].fmttype ){` |
+|  258288 |  235 | `        infop = &aFmt[idx];` |
+|  258288 |  236 | `		xtype = infop->type;` |
+|  258288 |  237 | `        break;` |
 |       - |  238 | `      }` |
-|  379977 |  239 | `    }` |
+|  382025 |  239 | `    }` |
 |       - |  240 | `    /* zExtra is not used in this code path. */` |
 |       - |  241 |  |
 |       - |  242 | `    /*` |
@@ -267,9 +267,9 @@ Coverage: 291/413 lines (70.46%)
 |       - |  257 | `    **   xtype                       The class of the conversion.` |
 |       - |  258 | `    **   infop                       Pointer to the appropriate info struct.` |
 |       - |  259 | `    */` |
-|  257172 |  260 | `    switch( xtype ){` |
-|   26659 |  261 | `      case SXFMT_RADIX:` |
-|   53320 |  262 | `        if( flag_long > 0 ){` |
+|  258288 |  260 | `    switch( xtype ){` |
+|   26660 |  261 | `      case SXFMT_RADIX:` |
+|   53322 |  262 | `        if( flag_long > 0 ){` |
 |   52118 |  263 | `			if( flag_long > 1 ){` |
 |       - |  264 | `				/* BSD quad: expect a 64-bit integer */` |
 |   52110 |  265 | `				longvalue = va_arg(ap,sxi64);` |
@@ -277,25 +277,25 @@ Coverage: 291/413 lines (70.46%)
 |       9 |  267 | `				longvalue = va_arg(ap,sxlong);` |
 |       - |  268 | `			}` |
 |   26060 |  269 | `		}else{` |
-|    1204 |  270 | `			if( infop->flags & SXFLAG_SIGNED ){` |
-|     494 |  271 | `				longvalue = va_arg(ap,sxi32);` |
-|     248 |  272 | `			}else{` |
+|    1206 |  270 | `			if( infop->flags & SXFLAG_SIGNED ){` |
+|     496 |  271 | `				longvalue = va_arg(ap,sxi32);` |
+|     249 |  272 | `			}else{` |
 |     712 |  273 | `				longvalue = va_arg(ap,sxu32);` |
 |       - |  274 | `			}` |
 |       - |  275 | `		}` |
 |       - |  276 | `		/* Limit the precision to prevent overflowing buf[] during conversion */` |
-|   53320 |  277 | `      if( precision>SXFMT_BUFSIZ-40 ) precision = SXFMT_BUFSIZ-40;` |
+|   53322 |  277 | `      if( precision>SXFMT_BUFSIZ-40 ) precision = SXFMT_BUFSIZ-40;` |
 |       - |  278 | `#if 1` |
 |       - |  279 | `        /* For the format %#x, the value zero is printed "0" not "0x0".` |
 |       - |  280 | `        ** I think this is stupid.*/` |
-|   53320 |  281 | `        if( longvalue==0 ) flag_alternateform = 0;` |
+|   53322 |  281 | `        if( longvalue==0 ) flag_alternateform = 0;` |
 |       - |  282 | `#else` |
 |       - |  283 | `        /* More sensible: turn off the prefix for octal (to prevent "00"),` |
 |       - |  284 | `        ** but leave the prefix for hex.*/` |
 |       - |  285 | `        if( longvalue==0 && infop->base==8 ) flag_alternateform = 0;` |
 |       - |  286 | `#endif` |
-|   53320 |  287 | `        if( infop->flags & SXFLAG_SIGNED ){` |
-|   52600 |  288 | `          if( longvalue<0 ){` |
+|   53322 |  287 | `        if( infop->flags & SXFLAG_SIGNED ){` |
+|   52602 |  288 | `          if( longvalue<0 ){` |
 |      55 |  289 | `            longvalue = -longvalue;` |
 |       - |  290 | `			/* Ticket 1433-003 */` |
 |      55 |  291 | `			if( longvalue < 0 ){` |
@@ -303,10 +303,10 @@ Coverage: 291/413 lines (70.46%)
 |     ! 0 |  293 | `				longvalue= 0x7FFFFFFFFFFFFFFF;` |
 |     ! 0 |  294 | `			}` |
 |      55 |  295 | `            prefix = '-';` |
-|   52573 |  296 | `          }else if( flag_plussign )  prefix = '+';` |
-|   52544 |  297 | `          else if( flag_blanksign )  prefix = ' ';` |
-|   52544 |  298 | `          else                       prefix = 0;` |
-|   26301 |  299 | `        }else{` |
+|   52575 |  296 | `          }else if( flag_plussign )  prefix = '+';` |
+|   52546 |  297 | `          else if( flag_blanksign )  prefix = ' ';` |
+|   52546 |  298 | `          else                       prefix = 0;` |
+|   26302 |  299 | `        }else{` |
 |     722 |  300 | `			if( longvalue<0 ){` |
 |     ! 0 |  301 | `				longvalue = -longvalue;` |
 |       - |  302 | `				/* Ticket 1433-003 */` |
@@ -317,34 +317,34 @@ Coverage: 291/413 lines (70.46%)
 |     ! 0 |  307 | `			}` |
 |     722 |  308 | `			prefix = 0;` |
 |       - |  309 | `		}` |
-|   53320 |  310 | `        if( flag_zeropad && precision<width-(prefix!=0) ){` |
+|   53322 |  310 | `        if( flag_zeropad && precision<width-(prefix!=0) ){` |
 |      95 |  311 | `          precision = width-(prefix!=0);` |
 |      47 |  312 | `        }` |
-|   53320 |  313 | `        bufpt = &buf[SXFMT_BUFSIZ-1];` |
+|   53322 |  313 | `        bufpt = &buf[SXFMT_BUFSIZ-1];` |
 |       - |  314 | `        {` |
 |       - |  315 | `          register char *cset;      /* Use registers for speed */` |
 |       - |  316 | `          register int base;` |
-|   53320 |  317 | `          cset = infop->charset;` |
-|   53320 |  318 | `          base = infop->base;` |
-|   26659 |  319 | `          do{                                           /* Convert to ascii */` |
-|  168672 |  320 | `            *(--bufpt) = cset[longvalue%base];` |
-|  168672 |  321 | `            longvalue = longvalue/base;` |
-|  168672 |  322 | `          }while( longvalue>0 );` |
+|   53322 |  317 | `          cset = infop->charset;` |
+|   53322 |  318 | `          base = infop->base;` |
+|   26660 |  319 | `          do{                                           /* Convert to ascii */` |
+|  168670 |  320 | `            *(--bufpt) = cset[longvalue%base];` |
+|  168670 |  321 | `            longvalue = longvalue/base;` |
+|  168670 |  322 | `          }while( longvalue>0 );` |
 |       - |  323 | `        }` |
-|   53320 |  324 | `        length = (int)(&buf[SXFMT_BUFSIZ-1]-bufpt);` |
-|   53378 |  325 | `        for(idx=precision-length; idx>0; idx--){` |
+|   53322 |  324 | `        length = (int)(&buf[SXFMT_BUFSIZ-1]-bufpt);` |
+|   53380 |  325 | `        for(idx=precision-length; idx>0; idx--){` |
 |      59 |  326 | `          *(--bufpt) = '0';                             /* Zero pad */` |
 |      30 |  327 | `        }` |
-|   53320 |  328 | `        if( prefix ) *(--bufpt) = prefix;               /* Add sign */` |
-|   53320 |  329 | `        if( flag_alternateform && infop->prefix ){      /* Add "0" or "0x" */` |
+|   53322 |  328 | `        if( prefix ) *(--bufpt) = prefix;               /* Add sign */` |
+|   53322 |  329 | `        if( flag_alternateform && infop->prefix ){      /* Add "0" or "0x" */` |
 |       - |  330 | `          char *pre, x;` |
 |       5 |  331 | `          pre = infop->prefix;` |
 |       5 |  332 | `          if( *bufpt!=pre[0] ){` |
 |      13 |  333 | `            for(pre=infop->prefix; (x=(*pre))!=0; pre++) *(--bufpt) = x;` |
 |       2 |  334 | `          }` |
 |       2 |  335 | `        }` |
-|   53320 |  336 | `        length = (int)(&buf[SXFMT_BUFSIZ-1]-bufpt);` |
-|   53320 |  337 | `        break;` |
+|   53322 |  336 | `        length = (int)(&buf[SXFMT_BUFSIZ-1]-bufpt);` |
+|   53322 |  337 | `        break;` |
 |      58 |  338 | `      case SXFMT_FLOAT:` |
 |       - |  339 | `      case SXFMT_EXP:` |
 |       - |  340 | `      case SXFMT_GENERIC:` |
@@ -507,44 +507,44 @@ Coverage: 291/413 lines (70.46%)
 |       3 |  497 | `        bufpt = buf;` |
 |       3 |  498 | `        length = 1;` |
 |       3 |  499 | `        break;` |
-|    3781 |  500 | `      case SXFMT_CHARX:` |
-|    7564 |  501 | `        c = va_arg(ap,int);` |
-|    7564 |  502 | `		buf[0] = (char)c;` |
+|    3792 |  500 | `      case SXFMT_CHARX:` |
+|    7586 |  501 | `        c = va_arg(ap,int);` |
+|    7586 |  502 | `		buf[0] = (char)c;` |
 |       - |  503 | `		/* Limit the precision to prevent overflowing buf[] during conversion */` |
-|    7564 |  504 | `		if( precision>SXFMT_BUFSIZ-40 ) precision = SXFMT_BUFSIZ-40;` |
-|    7564 |  505 | `        if( precision>=0 ){` |
+|    7586 |  504 | `		if( precision>SXFMT_BUFSIZ-40 ) precision = SXFMT_BUFSIZ-40;` |
+|    7586 |  505 | `        if( precision>=0 ){` |
 |     ! 0 |  506 | `          for(idx=1; idx<precision; idx++) buf[idx] = (char)c;` |
 |     ! 0 |  507 | `          length = precision;` |
 |     ! 0 |  508 | `        }else{` |
-|    7564 |  509 | `          length =1;` |
+|    7586 |  509 | `          length =1;` |
 |       - |  510 | `        }` |
-|    7564 |  511 | `        bufpt = buf;` |
-|    7564 |  512 | `        break;` |
-|   30385 |  513 | `      case SXFMT_STRING:` |
-|   60772 |  514 | `        bufpt = va_arg(ap,char*);` |
-|   60772 |  515 | `        if( bufpt==0 ){` |
+|    7586 |  511 | `        bufpt = buf;` |
+|    7586 |  512 | `        break;` |
+|   30561 |  513 | `      case SXFMT_STRING:` |
+|   61124 |  514 | `        bufpt = va_arg(ap,char*);` |
+|   61124 |  515 | `        if( bufpt==0 ){` |
 |     ! 0 |  516 | `          bufpt = " ";` |
 |     ! 0 |  517 | `		  length = (int)sizeof(" ")-1;` |
 |     ! 0 |  518 | `		  break;` |
 |       - |  519 | `        }` |
-|   60772 |  520 | `		length = precision;` |
-|   60772 |  521 | `		if( precision < 0 ){` |
+|   61124 |  520 | `		length = precision;` |
+|   61124 |  521 | `		if( precision < 0 ){` |
 |       - |  522 | `			/* Symisc extension */` |
-|     696 |  523 | `			length = (int)SyStrlen(bufpt);` |
-|     347 |  524 | `		}` |
-|   60772 |  525 | `        if( precision>=0 && precision<length ) length = precision;` |
-|   60772 |  526 | `        break;` |
-|   67701 |  527 | `	case SXFMT_RAWSTR:{` |
+|     700 |  523 | `			length = (int)SyStrlen(bufpt);` |
+|     349 |  524 | `		}` |
+|   61124 |  525 | `        if( precision>=0 && precision<length ) length = precision;` |
+|   61124 |  526 | `        break;` |
+|   68071 |  527 | `	case SXFMT_RAWSTR:{` |
 |       - |  528 | `		/* Symisc extension */` |
-|  135404 |  529 | `		SyString *pStr = va_arg(ap,SyString *);` |
-|  135404 |  530 | `		if( pStr == 0 \|\| pStr->zString == 0 ){` |
+|  136144 |  529 | `		SyString *pStr = va_arg(ap,SyString *);` |
+|  136144 |  530 | `		if( pStr == 0 \|\| pStr->zString == 0 ){` |
 |     ! 0 |  531 | `			 bufpt = " ";` |
 |     ! 0 |  532 | `		     length = (int)sizeof(char);` |
 |     ! 0 |  533 | `		     break;` |
 |       - |  534 | `		}` |
-|  135404 |  535 | `		bufpt = (char *)pStr->zString;` |
-|  135404 |  536 | `		length = (int)pStr->nByte;` |
-|  135404 |  537 | `		break;` |
+|  136144 |  535 | `		bufpt = (char *)pStr->zString;` |
+|  136144 |  536 | `		length = (int)pStr->nByte;` |
+|  136144 |  537 | `		break;` |
 |       - |  538 | `					  }` |
 |     ! 0 |  539 | `      case SXFMT_ERROR:` |
 |     ! 0 |  540 | `        buf[0] = '?';` |
@@ -558,10 +558,10 @@ Coverage: 291/413 lines (70.46%)
 |       - |  548 | `    ** "length" characters long.The field width is "width".Do` |
 |       - |  549 | `    ** the output.` |
 |       - |  550 | `    */` |
-|  257172 |  551 | `    if( !flag_leftjustify ){` |
+|  258288 |  551 | `    if( !flag_leftjustify ){` |
 |       - |  552 | `      register int nspace;` |
-|  257172 |  553 | `      nspace = width-length;` |
-|  257172 |  554 | `      if( nspace>0 ){` |
+|  258288 |  553 | `      nspace = width-length;` |
+|  258288 |  554 | `      if( nspace>0 ){` |
 |      31 |  555 | `        while( nspace>=etSPACESIZE ){` |
 |     ! 0 |  556 | `			rc = xConsumer(spaces,etSPACESIZE,pUserData);` |
 |     ! 0 |  557 | `			if( rc != SXRET_OK ){` |
@@ -576,14 +576,14 @@ Coverage: 291/413 lines (70.46%)
 |       - |  566 | `			}` |
 |      15 |  567 | `		}` |
 |      15 |  568 | `      }` |
-|  128585 |  569 | `    }` |
-|  257172 |  570 | `    if( length>0 ){` |
-|  257172 |  571 | `		rc = xConsumer(bufpt,(unsigned int)length,pUserData);` |
-|  257172 |  572 | `		if( rc != SXRET_OK ){` |
+|  129143 |  569 | `    }` |
+|  258288 |  570 | `    if( length>0 ){` |
+|  258288 |  571 | `		rc = xConsumer(bufpt,(unsigned int)length,pUserData);` |
+|  258288 |  572 | `		if( rc != SXRET_OK ){` |
 |     ! 0 |  573 | `		  return SXERR_ABORT; /* Consumer routine request an operation abort */` |
 |       - |  574 | `		}` |
-|  128585 |  575 | `    }` |
-|  257172 |  576 | `    if( flag_leftjustify ){` |
+|  129143 |  575 | `    }` |
+|  258288 |  576 | `    if( flag_leftjustify ){` |
 |       - |  577 | `      register int nspace;` |
 |     ! 0 |  578 | `      nspace = width-length;` |
 |     ! 0 |  579 | `      if( nspace>0 ){` |
@@ -602,41 +602,41 @@ Coverage: 291/413 lines (70.46%)
 |     ! 0 |  592 | `		}` |
 |     ! 0 |  593 | `      }` |
 |     ! 0 |  594 | `    }` |
-|  128587 |  595 | `  }/* End for loop over the format string */` |
-|   59864 |  596 | `  return errorflag ? SXERR_FORMAT : SXRET_OK;` |
-|   60943 |  597 |  |
-|  500894 |  598 | `static sxi32 FormatConsumer(const void *pSrc,unsigned int nLen,void *pData)` |
+|  129145 |  595 | `  }/* End for loop over the format string */` |
+|   59886 |  596 | `  return errorflag ? SXERR_FORMAT : SXRET_OK;` |
+|   61131 |  597 |  |
+|  503414 |  598 | `static sxi32 FormatConsumer(const void *pSrc,unsigned int nLen,void *pData)` |
 |       2 |  599 |  |
-|  500896 |  600 | `	SyFmtConsumer *pConsumer = (SyFmtConsumer *)pData;` |
-|  500896 |  601 | `	sxi32 rc = SXERR_ABORT;` |
-|  500896 |  602 | `	switch(pConsumer->nType){` |
+|  503416 |  600 | `	SyFmtConsumer *pConsumer = (SyFmtConsumer *)pData;` |
+|  503416 |  601 | `	sxi32 rc = SXERR_ABORT;` |
+|  503416 |  602 | `	switch(pConsumer->nType){` |
 |      65 |  603 | `	case SXFMT_CONS_PROC:` |
 |       - |  604 | `			/* User callback */` |
 |     131 |  605 | `			rc = pConsumer->uConsumer.sFunc.xUserConsumer(pSrc,nLen,pConsumer->uConsumer.sFunc.pUserData);` |
 |     131 |  606 | `			break;` |
-|  250382 |  607 | `	case SXFMT_CONS_BLOB:` |
+|  251642 |  607 | `	case SXFMT_CONS_BLOB:` |
 |       - |  608 | `			/* Blob consumer */` |
-|  500766 |  609 | `			rc = SyBlobAppend(pConsumer->uConsumer.pBlob,pSrc,(sxu32)nLen);` |
-|  500764 |  610 | `			break;` |
+|  503286 |  609 | `			rc = SyBlobAppend(pConsumer->uConsumer.pBlob,pSrc,(sxu32)nLen);` |
+|  503284 |  610 | `			break;` |
 |     ! 0 |  611 | `		default:` |
 |       - |  612 | `			/* Unknown consumer */` |
 |     ! 0 |  613 | `			break;` |
 |       - |  614 | `	}` |
 |       - |  615 | `	/* Update total number of bytes consumed so far */` |
-|  500896 |  616 | `	pConsumer->nLen += nLen;` |
-|  500896 |  617 | `	pConsumer->rc = rc;` |
-|  500896 |  618 | `	return rc;` |
+|  503416 |  616 | `	pConsumer->nLen += nLen;` |
+|  503416 |  617 | `	pConsumer->rc = rc;` |
+|  503416 |  618 | `	return rc;` |
 |       2 |  619 |  |
-|  121882 |  620 | `static sxi32 FormatMount(sxi32 nType,void *pConsumer,ProcConsumer xUserCons,void *pUserData,sxu32 *pOutLen,const char *zFormat,va_list ap)` |
+|  122258 |  620 | `static sxi32 FormatMount(sxi32 nType,void *pConsumer,ProcConsumer xUserCons,void *pUserData,sxu32 *pOutLen,const char *zFormat,va_list ap)` |
 |       2 |  621 |  |
 |       - |  622 | `	SyFmtConsumer sCons;` |
-|  121884 |  623 | `	sCons.nType = nType;` |
-|  121884 |  624 | `	sCons.rc = SXRET_OK;` |
-|  121884 |  625 | `	sCons.nLen = 0;` |
-|  121884 |  626 | `	if( pOutLen ){` |
-|   61636 |  627 | `		*pOutLen = 0;` |
-|   30817 |  628 | `	}` |
-|  121884 |  629 | `	switch(nType){` |
+|  122260 |  623 | `	sCons.nType = nType;` |
+|  122260 |  624 | `	sCons.rc = SXRET_OK;` |
+|  122260 |  625 | `	sCons.nLen = 0;` |
+|  122260 |  626 | `	if( pOutLen ){` |
+|   61664 |  627 | `		*pOutLen = 0;` |
+|   30831 |  628 | `	}` |
+|  122260 |  629 | `	switch(nType){` |
 |       5 |  630 | `	case SXFMT_CONS_PROC:` |
 |       - |  631 | `#if defined(UNTRUST)` |
 |       - |  632 | `			if( xUserCons == 0 ){` |
@@ -646,18 +646,18 @@ Coverage: 291/413 lines (70.46%)
 |      11 |  636 | `			sCons.uConsumer.sFunc.xUserConsumer = xUserCons;` |
 |      11 |  637 | `			sCons.uConsumer.sFunc.pUserData	    = pUserData;` |
 |      11 |  638 | `		break;` |
-|   60936 |  639 | `		case SXFMT_CONS_BLOB:` |
-|  121874 |  640 | `			sCons.uConsumer.pBlob = (SyBlob *)pConsumer;` |
-|  121874 |  641 | `			break;` |
+|   61124 |  639 | `		case SXFMT_CONS_BLOB:` |
+|  122250 |  640 | `			sCons.uConsumer.pBlob = (SyBlob *)pConsumer;` |
+|  122250 |  641 | `			break;` |
 |     ! 0 |  642 | `		default:` |
 |     ! 0 |  643 | `			return SXERR_UNKNOWN;` |
 |       - |  644 | `	}` |
-|  121884 |  645 | `	InternFormat(FormatConsumer,&sCons,zFormat,ap);` |
-|  121884 |  646 | `	if( pOutLen ){` |
-|   61636 |  647 | `		*pOutLen = sCons.nLen;` |
-|   30817 |  648 | `	}` |
-|  121884 |  649 | `	return sCons.rc;` |
-|   60943 |  650 |  |
+|  122260 |  645 | `	InternFormat(FormatConsumer,&sCons,zFormat,ap);` |
+|  122260 |  646 | `	if( pOutLen ){` |
+|   61664 |  647 | `		*pOutLen = sCons.nLen;` |
+|   30831 |  648 | `	}` |
+|  122260 |  649 | `	return sCons.rc;` |
+|   61131 |  650 |  |
 |      10 |  651 | `PH7_PRIVATE sxi32 SyProcFormat(ProcConsumer xConsumer,void *pData,const char *zFormat,...)` |
 |       1 |  652 |  |
 |       - |  653 | `	va_list ap;` |
@@ -672,7 +672,7 @@ Coverage: 291/413 lines (70.46%)
 |      11 |  662 | `	va_end(ap);` |
 |      11 |  663 | `	return rc;` |
 |       1 |  664 |  |
-|   60512 |  665 | `PH7_PRIVATE sxu32 SyBlobFormat(SyBlob *pBlob,const char *zFormat,...)` |
+|   60534 |  665 | `PH7_PRIVATE sxu32 SyBlobFormat(SyBlob *pBlob,const char *zFormat,...)` |
 |       2 |  666 |  |
 |       - |  667 | `	va_list ap;` |
 |       - |  668 | `	sxu32 n;` |
@@ -681,23 +681,23 @@ Coverage: 291/413 lines (70.46%)
 |       - |  671 | `		return 0;` |
 |       - |  672 | `	}` |
 |       - |  673 | `#endif` |
-|   60514 |  674 | `	va_start(ap,zFormat);` |
-|   60514 |  675 | `	FormatMount(SXFMT_CONS_BLOB,&(*pBlob),0,0,&n,zFormat,ap);` |
-|   60514 |  676 | `	va_end(ap);` |
-|   60514 |  677 | `	return n;` |
+|   60536 |  674 | `	va_start(ap,zFormat);` |
+|   60536 |  675 | `	FormatMount(SXFMT_CONS_BLOB,&(*pBlob),0,0,&n,zFormat,ap);` |
+|   60536 |  676 | `	va_end(ap);` |
+|   60536 |  677 | `	return n;` |
 |       2 |  678 |  |
-|    1122 |  679 | `PH7_PRIVATE sxu32 SyBlobFormatAp(SyBlob *pBlob,const char *zFormat,va_list ap)` |
+|    1128 |  679 | `PH7_PRIVATE sxu32 SyBlobFormatAp(SyBlob *pBlob,const char *zFormat,va_list ap)` |
 |       2 |  680 |  |
-|    1124 |  681 | `	sxu32 n = 0; /* cc warning */` |
+|    1130 |  681 | `	sxu32 n = 0; /* cc warning */` |
 |       - |  682 | `#if defined(UNTRUST)` |
 |       - |  683 | `	if( SX_EMPTY_STR(zFormat) ){` |
 |       - |  684 | `		return 0;` |
 |       - |  685 | `	}` |
 |       - |  686 | `#endif` |
-|    1124 |  687 | `	FormatMount(SXFMT_CONS_BLOB,&(*pBlob),0,0,&n,zFormat,ap);` |
-|    1124 |  688 | `	return n;` |
+|    1130 |  687 | `	FormatMount(SXFMT_CONS_BLOB,&(*pBlob),0,0,&n,zFormat,ap);` |
+|    1130 |  688 | `	return n;` |
 |       2 |  689 |  |
-|   60238 |  690 | `PH7_PRIVATE sxu32 SyBufferFormat(char *zBuf,sxu32 nLen,const char *zFormat,...)` |
+|   60586 |  690 | `PH7_PRIVATE sxu32 SyBufferFormat(char *zBuf,sxu32 nLen,const char *zFormat,...)` |
 |       2 |  691 |  |
 |       - |  692 | `	SyBlob sBlob;` |
 |       - |  693 | `	va_list ap;` |
@@ -707,16 +707,16 @@ Coverage: 291/413 lines (70.46%)
 |       - |  697 | `		return 0;` |
 |       - |  698 | `	}` |
 |       - |  699 | `#endif` |
-|   60240 |  700 | `	if( SXRET_OK != SyBlobInitFromBuf(&sBlob,zBuf,nLen - 1) ){` |
+|   60588 |  700 | `	if( SXRET_OK != SyBlobInitFromBuf(&sBlob,zBuf,nLen - 1) ){` |
 |     ! 0 |  701 | `		return 0;` |
 |       - |  702 | `	}` |
-|   60240 |  703 | `	va_start(ap,zFormat);` |
-|   60240 |  704 | `	FormatMount(SXFMT_CONS_BLOB,&sBlob,0,0,0,zFormat,ap);` |
-|   60240 |  705 | `	va_end(ap);` |
-|   60240 |  706 | `	n = SyBlobLength(&sBlob);` |
+|   60588 |  703 | `	va_start(ap,zFormat);` |
+|   60588 |  704 | `	FormatMount(SXFMT_CONS_BLOB,&sBlob,0,0,0,zFormat,ap);` |
+|   60588 |  705 | `	va_end(ap);` |
+|   60588 |  706 | `	n = SyBlobLength(&sBlob);` |
 |       - |  707 | `	/* Append the null terminator */` |
-|   60240 |  708 | `	sBlob.mByte++;` |
-|   60240 |  709 | `	SyBlobAppend(&sBlob,"\0",sizeof(char));` |
-|   60240 |  710 | `	return n;` |
-|   30121 |  711 |  |
+|   60588 |  708 | `	sBlob.mByte++;` |
+|   60588 |  709 | `	SyBlobAppend(&sBlob,"\0",sizeof(char));` |
+|   60588 |  710 | `	return n;` |
+|   30295 |  711 |  |
 |       - |  712 |  |
