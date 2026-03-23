@@ -236,15 +236,33 @@ PH7_PRIVATE int PH7_builtin_sin(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int PH7_builtin_asin(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	double r,x;
-	if( nArg < 1 ){
-		/* Missing argument,return 0 */
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
+	double r, x;
+	/* PHP enforces exactly one argument and a floatable parameter. */
+	if( nArg != 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"asin() expects exactly 1 argument, %d given",
+			nArg
+			);
 	}
+	/* Type checking: reject non-numeric values (arrays, objects, resources, strings)
+	 * PHP8 reports a TypeError for wrong types.  Numeric strings are allowed but
+	 * the float conversion will handle them. */
+	if( !ph7_value_is_numeric(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"asin(): Argument #1 ($num) must be of type float, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	/* Convert to double now that we know it's numeric. */
 	x = ph7_value_to_double(apArg[0]);
-	/* Perform the requested operation */
-	r = asin(x);
+	/* Handle domain error ourselves.  PHP returns NaN for |x|>1. */
+	if( x < -1.0 || x > 1.0 ){
+		r = PH7_NAN_VALUE();
+	}else{
+		r = asin(x);
+	}
 	/* store the result back */
 	ph7_result_double(pCtx,r);
 	return PH7_OK;
