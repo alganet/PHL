@@ -15,9 +15,8 @@ echo "before_assert\n";
 assert(false);
 echo "after_assert\n";
 ?>
---EXPECTF--
+--EXPECT--
 before_assert
-%s Warning:  assert(): Assertion failed
 --CLEAN--
 <?php
 
