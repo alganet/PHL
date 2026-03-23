@@ -378,10 +378,22 @@ PH7_PRIVATE int PH7_builtin_tan(ph7_context *pCtx,int nArg,ph7_value **apArg)
 PH7_PRIVATE int PH7_builtin_atan(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	double r,x;
-	if( nArg < 1 ){
-		/* Missing argument,return 0 */
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
+	/* PHP enforces exactly one argument. */
+	if( nArg != 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"atan() expects exactly 1 argument, %d given",
+			nArg
+			);
+	}
+	/* Type checking: reject non-numeric values (arrays, objects, resources, non-numeric strings).
+	 * PHP 8 reports a TypeError for wrong types. */
+	if( !ph7_value_is_numeric(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"atan(): Argument #1 ($num) must be of type float, %s given",
+			ph7_type_name(apArg[0])
+			);
 	}
 	x = ph7_value_to_double(apArg[0]);
 	/* Perform the requested operation */
