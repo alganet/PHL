@@ -421,10 +421,13 @@ static sxi32 MemBackendPoolFree(SyMemBackend *pBackend,void * pChunk)
 	if( nBucket == SXU16_HIGH ){
 		/* Free the big block */
 		MemBackendFree(&(*pBackend),pHeader);
+	}else if( nBucket >= SXMEM_POOL_NBUCKETS + SXMEM_POOL_INCR ){
+		/* Corrupted or misused bucket index */
+		return SXERR_CORRUPT;
 	}else{
 		/* Return to the free list */
-		pHeader->pNext = pBackend->apPool[nBucket & 0x0f];
-		pBackend->apPool[nBucket & 0x0f] = pHeader;
+		pHeader->pNext = pBackend->apPool[nBucket];
+		pBackend->apPool[nBucket] = pHeader;
 	}
 	return SXRET_OK;
 }
