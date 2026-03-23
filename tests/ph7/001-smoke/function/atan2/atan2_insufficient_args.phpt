@@ -1,22 +1,15 @@
 --CREDITS--
-SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
+SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: atan2 with insufficient arguments returns 0
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+atan2 with negative values
 --FILE--
 <?php
-// Test atan2 with insufficient arguments
-$result = atan2(1.0);
-if ($result === 0) {
-    echo "PASS";
-} else {
-    echo "FAIL";
-}
+$val = atan2(-1, -1);
+echo "atan2=" . sprintf('%.8f', $val) . "\n";
 ?>
 --EXPECT--
-PASS
+atan2=-2.35619449
 --CLEAN--
 <?php
-unset($result);
+unset($val);
