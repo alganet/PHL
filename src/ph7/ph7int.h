@@ -676,7 +676,7 @@ struct ph7_switch
 };
 /* Assertion flags */
 #define PH7_ASSERT_DISABLE    0x01  /* Disable assertion */
-#define PH7_ASSERT_WARNING    0x02  /* Issue a warning for each failed assertion */
+#define PH7_ASSERT_WARNING    0x02  /* Deprecated in PHP 8: kept for constant compatibility only */
 #define PH7_ASSERT_BAIL       0x04  /* Terminate execution on failed assertions */
 #define PH7_ASSERT_QUIET_EVAL 0x08  /* Not used */
 #define PH7_ASSERT_CALLBACK   0x10  /* Callback to call on failed assertions */

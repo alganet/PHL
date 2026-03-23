@@ -891,6 +891,7 @@ static sxi32 VmEvalChunk(ph7_vm *pVm,ph7_context *pCtx,SyString *pChunk,int iFla
 	"class TypeError extends Error { }"\
 	"class ArgumentCountError extends TypeError { }"\
 	"class ValueError extends Error { }"\
+	"class AssertionError extends Error { }"\
 	"class ErrorException extends Exception { "\
 	"protected $severity;"\
 	"public function __construct(string $message = null,"\
@@ -1242,7 +1243,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->nMaxDepth = 16;
 #endif
 	/* Default assertion flags */
-	pVm->iAssertFlags = PH7_ASSERT_WARNING; /* Issue a warning for each failed assertion */
+	pVm->iAssertFlags = 0; /* PHP 8: no warning flag by default, AssertionError is thrown */
 	/* JSON return status */
 	pVm->json_rc = JSON_ERROR_NONE;
 	/* PRNG context */
@@ -7833,14 +7834,8 @@ static int vm_builtin_assert_options(ph7_context *pCtx,int nArg,ph7_value **apAr
 			}
 		}
 	}else if( iNew == PH7_ASSERT_WARNING ){
-		pVm->iAssertFlags &= ~PH7_ASSERT_WARNING;
-		if( nArg > 1 ){
-			iValue = ph7_value_to_bool(apArg[1]);
-			if( iValue ){
-				/* Issue a warning for each failed assertion */
-				pVm->iAssertFlags |= PH7_ASSERT_WARNING;
-			}
-		}
+		/* Deprecated in PHP 8: silently accept but ignore.
+		 * Assertion failure now always throws AssertionError. */
 	}else if( iNew == PH7_ASSERT_BAIL ){
 		pVm->iAssertFlags &= ~PH7_ASSERT_BAIL;
 		if( nArg > 1 ){
@@ -7874,37 +7869,30 @@ static int vm_builtin_assert_options(ph7_context *pCtx,int nArg,ph7_value **apAr
 static int vm_builtin_assert(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
-	ph7_value *pAssert;
 	int iFlags,iResult;
+	const char *zDesc;
+	/* PHP 8: ArgumentCountError if no arguments */
 	if( nArg < 1 ){
-		/* Missing arguments,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"assert() expects at least 1 argument, 0 given"
+			);
 	}
 	iFlags = pVm->iAssertFlags;
 	if( iFlags & PH7_ASSERT_DISABLE ){
-		/* Assertion is disabled,return FALSE */
-		ph7_result_bool(pCtx,0);
+		/* Assertion is disabled,return TRUE (PHP 8 behavior) */
+		ph7_result_bool(pCtx,1);
 		return PH7_OK;
 	}
-	pAssert = apArg[0];
-	iResult = 1; /* cc warning */
-	if( pAssert->iFlags & MEMOBJ_STRING ){
-		SyString sChunk;
-		SyStringInitFromBuf(&sChunk,SyBlobData(&pAssert->sBlob),SyBlobLength(&pAssert->sBlob));
-		if( sChunk.nByte > 0 ){
-			VmEvalChunk(pVm,pCtx,&sChunk,PH7_PHP_ONLY|PH7_PHP_EXPR,FALSE);
-			/* Extract evaluation result */
-			iResult = ph7_value_to_bool(pCtx->pRet);
-		}else{
-			iResult = 0;
-		}
-	}else{
-		/* Perform a boolean cast */
-		iResult = ph7_value_to_bool(apArg[0]);
-	}
+	/* PHP 8: No string evaluation.  All values are cast to boolean. */
+	iResult = ph7_value_to_bool(apArg[0]);
 	if( !iResult ){
 		/* Assertion failed */
+		/* Extract optional description */
+		zDesc = 0;
+		if( nArg > 1 && ph7_value_is_string(apArg[1]) ){
+			zDesc = ph7_value_to_string(apArg[1],0);
+		}
 		if( iFlags & PH7_ASSERT_CALLBACK ){
 			static const SyString sFileName = { ":Memory", sizeof(":Memory") - 1};
 			ph7_value sFile,sLine;
@@ -7920,23 +7908,32 @@ static int vm_builtin_assert(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			PH7_MemObjInitFromInt(pVm,&sLine,0);
 			apCbArg[0] = &sFile;
 			apCbArg[1] = &sLine;
-			apCbArg[2] = pAssert;
+			apCbArg[2] = apArg[0];
 			PH7_VmCallUserFunction(pVm,&pVm->sAssertCallback,3,apCbArg,0);
 			/* Clean-up the mess left behind */
 			PH7_MemObjRelease(&sFile);
 			PH7_MemObjRelease(&sLine);
 		}
-		if( iFlags & PH7_ASSERT_WARNING ){
-			/* Emit a warning */
-			ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Assertion failed");
-		}
 		if( iFlags & PH7_ASSERT_BAIL ){
 			/* Abort VM execution immediately */
 			return PH7_ABORT;
 		}
+		/* PHP 8: throw AssertionError by default */
+		if( zDesc && zDesc[0] != '\0' ){
+			return PH7_VmThrowException(pCtx,
+				"AssertionError",
+				"%s",
+				zDesc
+				);
+		}else{
+			return PH7_VmThrowException(pCtx,
+				"AssertionError",
+				"assert(false)"
+				);
+		}
 	}
-	/* Assertion result */
-	ph7_result_bool(pCtx,iResult);
+	/* Assertion passed */
+	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
 /*
