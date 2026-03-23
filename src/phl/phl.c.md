@@ -101,9 +101,9 @@ Coverage: 89/115 lines (77.39%)
 |    - |   91 | ` * This function is registered later via a call to ph7_vm_config()` |
 |    - |   92 | ` * with a configuration verb set to: PH7_VM_CONFIG_OUTPUT.` |
 |    - |   93 | ` */` |
-| 5598 |   94 | `static int Output_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUserData /* Unused */)` |
+| 5648 |   94 | `static int Output_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUserData /* Unused */)` |
 |    2 |   95 |  |
-| 2799 |   96 | `	(void)pUserData;` |
+| 2824 |   96 | `	(void)pUserData;` |
 |    - |   97 | `#ifdef __WINNT__` |
 |    - |   98 | `	BOOL rc;` |
 |    2 |   99 | `	rc = WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),pOutput,(DWORD)nOutputLen,0,0);` |
@@ -113,33 +113,33 @@ Coverage: 89/115 lines (77.39%)
 |    - |  103 | `	}` |
 |    - |  104 | `#else` |
 |    - |  105 | `	ssize_t nWr;` |
-| 5598 |  106 | `	nWr = write(STDOUT_FILENO,pOutput,nOutputLen);` |
-| 5598 |  107 | `	if( nWr < 0 ){` |
+| 5648 |  106 | `	nWr = write(STDOUT_FILENO,pOutput,nOutputLen);` |
+| 5648 |  107 | `	if( nWr < 0 ){` |
 |    - |  108 | `		/* Abort processing */` |
 |  ! 0 |  109 | `		return PH7_ABORT;` |
 |    - |  110 | `	}` |
 |    - |  111 | `#endif /* __WINT__ */` |
 |    - |  112 | `	/* All done,VM output was redirected to STDOUT */` |
-| 5600 |  113 | `	return PH7_OK;` |
-| 2801 |  114 |  |
+| 5650 |  113 | `	return PH7_OK;` |
+| 2826 |  114 |  |
 |    - |  115 | `/*` |
 |    - |  116 | ` * Main program: Compile and execute the PHP file.` |
 |    - |  117 | ` */` |
-| 2311 |  118 | `int main(int argc,char **argv)` |
+| 2343 |  118 | `int main(int argc,char **argv)` |
 |    2 |  119 |  |
 |    - |  120 | `	ph7 *pEngine; /* PH7 engine */` |
 |    - |  121 | `	ph7_vm *pVm;  /* Compiled PHP program */` |
-| 2313 |  122 | `	int dump_vm = 0;    /* Dump VM instructions if TRUE */` |
-| 2313 |  123 | `	int run_code = 0;    /* Run inline code if TRUE */` |
-| 2313 |  124 | `	const char *zRunCode = 0; /* Inline code string */` |
+| 2345 |  122 | `	int dump_vm = 0;    /* Dump VM instructions if TRUE */` |
+| 2345 |  123 | `	int run_code = 0;    /* Run inline code if TRUE */` |
+| 2345 |  124 | `	const char *zRunCode = 0; /* Inline code string */` |
 |    - |  125 | `	int n;              /* Script arguments */` |
 |    - |  126 | `	int rc;` |
 |    - |  127 | `	/* Process interpreter arguments first*/` |
-| 2325 |  128 | `	for(n = 1 ; n < argc ; ++n ){` |
+| 2357 |  128 | `	for(n = 1 ; n < argc ; ++n ){` |
 |    - |  129 | `		int c;` |
-| 2206 |  130 | `		if( argv[n][0] != '-' ){` |
+| 2238 |  130 | `		if( argv[n][0] != '-' ){` |
 |    - |  131 | `			/* No more interpreter arguments */` |
-| 2192 |  132 | `			break;` |
+| 2224 |  132 | `			break;` |
 |    - |  133 | `		}` |
 |    - |  134 | `		/* Check for long options */` |
 |   15 |  135 | `		if( argv[n][1] == '-' ){` |
@@ -173,7 +173,7 @@ Coverage: 89/115 lines (77.39%)
 |  ! 0 |  163 | `			Help();` |
 |    - |  164 | `		}` |
 |    6 |  165 | `	}` |
-| 2311 |  166 | `	if( n >= argc && !run_code ){` |
+| 2343 |  166 | `	if( n >= argc && !run_code ){` |
 |  ! 0 |  167 | `		puts("Missing PHP file to compile");` |
 |  ! 0 |  168 | `		Help();` |
 |  ! 0 |  169 | `	}` |
@@ -183,8 +183,8 @@ Coverage: 89/115 lines (77.39%)
 |    2 |  173 | `	CreateMiniDumpOnUnHandledException();` |
 |    - |  174 | `#endif` |
 |    - |  175 | `	/* Allocate a new PH7 engine instance */` |
-| 2079 |  176 | `	rc = ph7_init(&pEngine);` |
-| 2079 |  177 | `	if( rc != PH7_OK ){` |
+| 2111 |  176 | `	rc = ph7_init(&pEngine);` |
+| 2111 |  177 | `	if( rc != PH7_OK ){` |
 |    - |  178 | `		/*` |
 |    - |  179 | `		 * If the supplied memory subsystem is so sick that we are unable` |
 |    - |  180 | `		 * to allocate a tiny chunk of memory,there is no much we can do here.` |
@@ -194,12 +194,12 @@ Coverage: 89/115 lines (77.39%)
 |    - |  184 | `	/* Set an error log consumer callback. This callback [Output_Consumer()] will` |
 |    - |  185 | `	 * redirect all compile-time error messages to STDOUT.` |
 |    - |  186 | `	 */` |
-| 2079 |  187 | `	ph7_config(pEngine,PH7_CONFIG_ERR_OUTPUT,` |
+| 2111 |  187 | `	ph7_config(pEngine,PH7_CONFIG_ERR_OUTPUT,` |
 |    - |  188 | `		Output_Consumer, /* Error log consumer */` |
 |    - |  189 |  |
 |    - |  190 | `		);` |
 |    - |  191 | `	/* Now,it's time to compile our PHP file */` |
-| 2079 |  192 | `	if( run_code ){` |
+| 2111 |  192 | `	if( run_code ){` |
 |    - |  193 | `		/* Compile inline PHP code string (PHP only - no tags needed) */` |
 |    9 |  194 | `		rc = ph7_compile_v2(` |
 |    4 |  195 | `			pEngine, /* PH7 Engine */` |
@@ -217,13 +217,13 @@ Coverage: 89/115 lines (77.39%)
 |    - |  207 | `			}` |
 |  ! 0 |  208 | `		}` |
 |    5 |  209 | `	}else{` |
-| 2071 |  210 | `		rc = ph7_compile_file(` |
-|  975 |  211 | `			pEngine, /* PH7 Engine */` |
-| 2069 |  212 | `			argv[n], /* Path to the PHP file to compile */` |
+| 2103 |  210 | `		rc = ph7_compile_file(` |
+|  991 |  211 | `			pEngine, /* PH7 Engine */` |
+| 2101 |  212 | `			argv[n], /* Path to the PHP file to compile */` |
 |    - |  213 | `			&pVm,    /* OUT: Compiled PHP program */` |
 |    - |  214 |  |
 |    - |  215 | `			);` |
-| 2071 |  216 | `		if( rc != PH7_OK ){ /* Compile error */` |
+| 2103 |  216 | `		if( rc != PH7_OK ){ /* Compile error */` |
 |  239 |  217 | `			if( rc == PH7_IO_ERR ){` |
 |  ! 0 |  218 | `				Fatal("IO error while opening the target file");` |
 |  239 |  219 | `			}else if( rc == PH7_VM_ERR ){` |
@@ -239,12 +239,12 @@ Coverage: 89/115 lines (77.39%)
 |    - |  229 | `	 * We will install the VM output consumer callback defined above` |
 |    - |  230 | `	 * so that we can consume the VM output and redirect it to STDOUT.` |
 |    - |  231 | `	 */` |
-| 1960 |  232 | `	rc = ph7_vm_config(pVm,` |
+| 1992 |  232 | `	rc = ph7_vm_config(pVm,` |
 |    - |  233 | `		PH7_VM_CONFIG_OUTPUT,` |
 |    - |  234 | `		Output_Consumer,    /* Output Consumer callback */` |
 |    - |  235 |  |
 |    - |  236 | `		);` |
-| 1960 |  237 | `	if( rc != PH7_OK ){` |
+| 1992 |  237 | `	if( rc != PH7_OK ){` |
 |  ! 0 |  238 | `		Fatal("Error while installing the VM output consumer callback");` |
 |  ! 0 |  239 | `	}` |
 |    - |  240 | `	/* Register script arguments so we can access them later using the $argv[]` |
@@ -252,18 +252,18 @@ Coverage: 89/115 lines (77.39%)
 |    - |  242 | `	 * to register the arguments after the script file, while for inline code` |
 |    - |  243 | `	 * (-r) the arguments start at the current index.` |
 |    - |  244 | `	 */` |
-| 1960 |  245 | `	if( run_code ){` |
+| 1992 |  245 | `	if( run_code ){` |
 |   11 |  246 | `		for( ; n < argc ; ++n ){` |
 |    2 |  247 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,argv[n]/* Argument value */);` |
 |    1 |  248 | `		}` |
 |    5 |  249 | `	}else{` |
-| 1972 |  250 | `		for( n = n + 1; n < argc ; ++n ){` |
+| 2004 |  250 | `		for( n = n + 1; n < argc ; ++n ){` |
 |   22 |  251 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,argv[n]/* Argument value */);` |
 |   12 |  252 | `		}` |
 |    - |  253 | `	}` |
 |    - |  254 | `	/* Report script run-time errors (now default behavior) */` |
-| 1960 |  255 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_ERR_REPORT);` |
-| 1960 |  256 | `	if( dump_vm ){` |
+| 1992 |  255 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_ERR_REPORT);` |
+| 1992 |  256 | `	if( dump_vm ){` |
 |    - |  257 | `		/* Dump PH7 byte-code instructions */` |
 |    3 |  258 | `		ph7_vm_dump_v2(pVm,` |
 |    - |  259 | `			Output_Consumer, /* Dump consumer callback */` |
@@ -274,11 +274,11 @@ Coverage: 89/115 lines (77.39%)
 |    - |  264 | `	 * And finally, execute our program. Note that your output (STDOUT in our case)` |
 |    - |  265 | `	 * should display the result.` |
 |    - |  266 | `	 */` |
-| 1960 |  267 | `	ph7_vm_exec(pVm,0);` |
+| 1992 |  267 | `	ph7_vm_exec(pVm,0);` |
 |    - |  268 | `	/* All done, cleanup the mess left behind.` |
 |    - |  269 | `	*/` |
-| 1956 |  270 | `	ph7_vm_release(pVm);` |
-| 1956 |  271 | `	ph7_release(pEngine);` |
-| 1956 |  272 | `	return 0;` |
+| 1988 |  270 | `	ph7_vm_release(pVm);` |
+| 1988 |  271 | `	ph7_release(pEngine);` |
+| 1988 |  272 | `	return 0;` |
 |    2 |  273 |  |
 |    - |  274 |  |
