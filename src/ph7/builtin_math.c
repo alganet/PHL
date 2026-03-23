@@ -945,78 +945,96 @@ PH7_PRIVATE int PH7_builtin_srand(ph7_context *pCtx,int nArg,ph7_value **apArg)
 #ifndef PH7_DISABLE_DISK_IO
 /*
  * string base_convert(string $number,int $frombase,int $tobase)
- *  Convert a number between arbitrary bases.
+ *  Convert a number between arbitrary bases (2-36).
  * Parameters
  * $number
- *  The number to convert
+ *  The number to convert. Invalid characters are silently ignored.
  * $frombase
- *  The base number is in
+ *  The base number is in (2-36)
  * $tobase
- *  The base to convert number to
+ *  The base to convert number to (2-36)
  * Return
- *  Number converted to base tobase
+ *  Number converted to base tobase as a string
  */
 PH7_PRIVATE int PH7_builtin_base_convert(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	int nLen,iFbase,iTobase;
+	static const char zDigits[] = "0123456789abcdefghijklmnopqrstuvwxyz";
+	int nLen, iFbase, iTobase, i, c, dv;
 	const char *zNum;
 	ph7_int64 iNum;
-	if( nArg < 3 ){
-		/* Return the empty string*/
-		ph7_result_string(pCtx,"",0);
-		return PH7_OK;
+	char zBuf[128];
+	int idx;
+	if( nArg != 3 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"base_convert() expects exactly 3 arguments, %d given",
+			nArg
+		);
+	}
+	/* Type check: first argument must be scalar (not array/object) */
+	if( ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"base_convert(): Argument #1 ($num) must be of type string, array given"
+		);
+	}
+	if( ph7_value_is_object(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"base_convert(): Argument #1 ($num) must be of type string, %s given",
+			ph7_type_name(apArg[0])
+		);
 	}
 	/* Base numbers */
 	iFbase  = ph7_value_to_int(apArg[1]);
 	iTobase = ph7_value_to_int(apArg[2]);
-	if( ph7_value_is_string(apArg[0]) ){
-		/* Extract the target number */
-		zNum = ph7_value_to_string(apArg[0],&nLen);
-		if( nLen < 1 ){
-			/* Return the empty string*/
-			ph7_result_string(pCtx,"",0);
-			return PH7_OK;
-		}
-		/* Base conversion */
-		switch(iFbase){
-		case 16:
-			/* Hex */
-			SyHexStrToInt64(zNum,(sxu32)nLen,(void *)&iNum,0);
-			break;
-		case 8:
-			/* Octal */
-			SyOctalStrToInt64(zNum,(sxu32)nLen,(void *)&iNum,0);
-			break;
-		case 2:
-			/* Binary */
-			SyBinaryStrToInt64(zNum,(sxu32)nLen,(void *)&iNum,0);
-			break;
-		default:
-			/* Decimal */
-			SyStrToInt64(zNum,(sxu32)nLen,(void *)&iNum,0);
-			break;
-		}
-	}else{
-		iNum = ph7_value_to_int64(apArg[0]);
+	if( iFbase < 2 || iFbase > 36 ){
+		return PH7_VmThrowException(pCtx,
+			"ValueError",
+			"base_convert(): Argument #2 ($from_base) must be between 2 and 36 (inclusive)"
+		);
 	}
-	switch(iTobase){
-	case 16:
-		/* Hex */
-		ph7_result_string_format(pCtx,"%qx",iNum); /* Quad hex */
-		break;
-	case 8:
-		/* Octal */
-		ph7_result_string_format(pCtx,"%qo",iNum); /* Quad octal */
-		break;
-	case 2:
-		/* Binary */
-		ph7_result_string_format(pCtx,"%qB",iNum); /* Quad binary */
-		break;
-	default:
-		/* Decimal */
-		ph7_result_string_format(pCtx,"%qd",iNum); /* Quad decimal */
-		break;
+	if( iTobase < 2 || iTobase > 36 ){
+		return PH7_VmThrowException(pCtx,
+			"ValueError",
+			"base_convert(): Argument #3 ($to_base) must be between 2 and 36 (inclusive)"
+		);
 	}
+	/* Convert first argument to string */
+	zNum = ph7_value_to_string(apArg[0], &nLen);
+	/* Parse input: convert from source base to integer, ignoring invalid chars */
+	iNum = 0;
+	for( i = 0; i < nLen; i++ ){
+		c = zNum[i];
+		if( c >= '0' && c <= '9' ){
+			dv = c - '0';
+		}else if( c >= 'a' && c <= 'z' ){
+			dv = c - 'a' + 10;
+		}else if( c >= 'A' && c <= 'Z' ){
+			dv = c - 'A' + 10;
+		}else{
+			/* Invalid character, silently ignore */
+			continue;
+		}
+		if( dv >= iFbase ){
+			/* Digit out of range for this base, silently ignore */
+			continue;
+		}
+		iNum = iNum * iFbase + dv;
+	}
+	/* Convert integer to target base string */
+	if( iNum == 0 ){
+		ph7_result_string(pCtx, "0", 1);
+		return PH7_OK;
+	}
+	idx = (int)sizeof(zBuf) - 1;
+	zBuf[idx] = '\0';
+	while( iNum > 0 && idx > 0 ){
+		idx--;
+		zBuf[idx] = zDigits[(int)(iNum % iTobase)];
+		iNum = iNum / iTobase;
+	}
+	ph7_result_string(pCtx, &zBuf[idx], (int)(sizeof(zBuf) - 1 - idx));
 	return PH7_OK;
 }
 #endif /* PH7_DISABLE_DISK_IO */
