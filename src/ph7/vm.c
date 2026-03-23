@@ -5908,7 +5908,27 @@ case PH7_OP_CALL: {
 		if( rc == PH7_ABORT ){
 			goto Abort;
 		}else if( rc == PH7_EXCEPTION ){
-			goto Exception;
+			VmFrame *pFrm = pVm->pFrame;
+			while( pFrm->pParent && (pFrm->iFlags & VM_FRAME_EXCEPTION) ){
+				pFrm = pFrm->pParent;
+			}
+			if( pFrm->iFlags & VM_FRAME_THROW ){
+				/* Exception was NOT caught, propagate */
+				goto Exception;
+			}
+			/* Exception was caught: pop args and the result slot */
+			PH7_MemObjRelease(&sRet);
+			if( pInstr->iP1 > 0 ){
+				VmPopOperand(&pTos,pInstr->iP1);
+			}
+			/* Pop the call's return/name slot to restore pre-try stack */
+			VmPopOperand(&pTos,1);
+			/* Jump past the try/catch block via the exception frame */
+			pFrm = pVm->pFrame;
+			if( (pFrm->iFlags & VM_FRAME_EXCEPTION) && pFrm->iExceptionJump > 0 ){
+				pc = pFrm->iExceptionJump - 1;
+			}
+			break;
 		}
 		if( pInstr->iP1 > 0 ){
 			/* Pop function name and arguments */

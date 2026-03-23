@@ -6455,6 +6455,12 @@ PH7_PRIVATE sxi32 PH7_ResetCodeGenerator(
 	SySetReset(&pGen->aGoto);
 	SyBlobRelease(&pGen->sErrBuf);
 	SyBlobRelease(&pGen->sWorker);
+	/* Note: pGen->hVar and pGen->hLiteral are intentionally NOT reset here.
+	 * They intern variable names and literal strings that are referenced by
+	 * compiled bytecode (pInstr->p3) and runtime frame hash tables (pFrame->hVar).
+	 * Releasing them would either leak the interned strings or require freeing
+	 * memory still in use.  The entries use pool memory but are bounded by the
+	 * number of unique names, which is acceptable. */
 	/* Point to the global scope */
 	pBlock = pGen->pCurrent;
 	while( pBlock->pParent != 0 ){
