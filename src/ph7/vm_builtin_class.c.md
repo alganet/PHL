@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 365/435 lines (83.91%)
+Coverage: 363/435 lines (83.45%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -492,10 +492,10 @@ Coverage: 365/435 lines (83.91%)
 | 3454 |  482 | `	if( iProtection != PH7_CLASS_PROT_PUBLIC ){` |
 | 2890 |  483 | `		VmFrame *pFrame = pVm->pFrame;` |
 |    - |  484 | `		ph7_vm_func *pVmFunc;` |
-| 2910 |  485 | `		while( pFrame->pParent && (pFrame->iFlags & (VM_FRAME_EXCEPTION\|VM_FRAME_CATCH) ) ){` |
+| 2890 |  485 | `		while( pFrame->pParent && (pFrame->iFlags & (VM_FRAME_EXCEPTION\|VM_FRAME_CATCH) ) ){` |
 |    - |  486 | `			/* Safely ignore the exception frame */` |
-|   21 |  487 | `			pFrame = pFrame->pParent;` |
-|    1 |  488 | `		}` |
+|  ! 0 |  487 | `			pFrame = pFrame->pParent;` |
+|  ! 0 |  488 | `		}` |
 | 2890 |  489 | `		pVmFunc = (ph7_vm_func *)pFrame->pUserData;` |
 | 2890 |  490 | `		if( pVmFunc == 0 \|\| (pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) == 0 ){` |
 |    9 |  491 | `			goto dis; /* Access is forbidden */` |
