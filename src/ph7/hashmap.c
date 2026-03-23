@@ -1772,19 +1772,31 @@ static sxi32 HashmapCmpCallback1(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void 
 	PH7_HashmapExtractNodeValue(pB,&sB,FALSE);
 	if( iFlags == 5 ){
 		/* String cast */
+		const char *zA,*zB;
+		sxu32 nA,nB,nMin;
 		if( (sA.iFlags & MEMOBJ_STRING) == 0 ){
 			PH7_MemObjToString(&sA);
 		}
 		if( (sB.iFlags & MEMOBJ_STRING) == 0 ){
 			PH7_MemObjToString(&sB);
 		}
+		/* Lexicographic string comparison to avoid numeric string coercion */
+		zA = (const char *)SyBlobData(&sA.sBlob);
+		zB = (const char *)SyBlobData(&sB.sBlob);
+		nA = SyBlobLength(&sA.sBlob);
+		nB = SyBlobLength(&sB.sBlob);
+		nMin = nA < nB ? nA : nB;
+		rc = SyMemcmp(zA,zB,nMin);
+		if( rc == 0 ){
+			if( nA < nB ) rc = -1;
+			else if( nA > nB ) rc = 1;
+		}
 	}else{
 		/* Numeric cast */
 		PH7_MemObjToNumeric(&sA);
 		PH7_MemObjToNumeric(&sB);
+		rc = PH7_MemObjCmp(&sA,&sB,FALSE,0);
 	}
-	/* Perform the comparison */
-	rc = PH7_MemObjCmp(&sA,&sB,FALSE,0);
 	PH7_MemObjRelease(&sA);
 	PH7_MemObjRelease(&sB);
 	return rc;
@@ -2116,11 +2128,20 @@ static int ph7_hashmap_sort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 static int ph7_hashmap_asort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_hashmap *pMap;
-	/* Make sure we are dealing with a valid hashmap */
-	if( nArg < 1 || !ph7_value_is_array(apArg[0]) ){
-		/* Missing/Invalid arguments,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	/* PHP 8: ArgumentCountError if no arguments */
+	if( nArg < 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"asort() expects at least 1 argument, 0 given"
+			);
+	}
+	/* PHP 8: TypeError if first argument is not an array */
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"asort(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
 	}
 	/* Point to the internal representation of the input hashmap */
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
