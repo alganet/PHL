@@ -7802,10 +7802,11 @@ static int vm_builtin_var_export(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Parameter
  * $what
  *   ASSERT_ACTIVE          Enable assert() evaluation
- *   ASSERT_WARNING         Issue a warning for each failed assertion
+ *   ASSERT_WARNING         Deprecated, accepted as no-op
  *   ASSERT_BAIL            Terminate execution on failed assertions
- *   ASSERT_QUIET_EVAL      Not used
+ *   ASSERT_QUIET_EVAL      Deprecated, accepted as no-op (removed in PHP 8.0)
  *   ASSERT_CALLBACK        Callback to call on failed assertions
+ *   ASSERT_EXCEPTION       Always enabled in PHP 8
  * $value
  *   An optional new value for the option.
  * Return
@@ -7814,47 +7815,82 @@ static int vm_builtin_var_export(ph7_context *pCtx,int nArg,ph7_value **apArg)
 static int vm_builtin_assert_options(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
-	int iOld,iNew,iValue;
-	if( nArg < 1 || !ph7_value_is_int(apArg[0]) ){
-		/* Missing/Invalid arguments,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	int iOption;
+	/* PHP 8: ArgumentCountError if no arguments */
+	if( nArg < 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"assert_options() expects at least 1 argument, 0 given"
+			);
 	}
-	/* Save old assertion flags */
-	iOld = pVm->iAssertFlags;
-	/* Extract the new flags */
-	iNew = ph7_value_to_int(apArg[0]);
-	if( iNew == PH7_ASSERT_DISABLE ){
-		pVm->iAssertFlags &= ~PH7_ASSERT_DISABLE;
+	/* PHP 8: TypeError for non-scalar option types */
+	if( ph7_value_is_array(apArg[0]) || ph7_value_is_object(apArg[0])
+		|| ph7_value_is_resource(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"assert_options(): Argument #1 ($option) must be of type int, %s given",
+			ph7_value_is_array(apArg[0]) ? "array" :
+			ph7_value_is_object(apArg[0]) ? "object" : "resource"
+			);
+	}
+	iOption = ph7_value_to_int(apArg[0]);
+	/* PHP constant values: ASSERT_ACTIVE=1, ASSERT_CALLBACK=2,
+	 * ASSERT_BAIL=3, ASSERT_WARNING=4, ASSERT_EXCEPTION=5,
+	 * ASSERT_QUIET_EVAL=6 (deprecated) */
+	switch( iOption ){
+	case 1: /* ASSERT_ACTIVE */
+		/* Return old value: 1 if active (not disabled), 0 if disabled */
+		ph7_result_int(pCtx, (pVm->iAssertFlags & PH7_ASSERT_DISABLE) ? 0 : 1);
 		if( nArg > 1 ){
-			iValue = !ph7_value_to_bool(apArg[1]);
-			if( iValue ){
-				/* Disable assertion */
+			if( ph7_value_to_bool(apArg[1]) ){
+				pVm->iAssertFlags &= ~PH7_ASSERT_DISABLE;
+			}else{
 				pVm->iAssertFlags |= PH7_ASSERT_DISABLE;
 			}
 		}
-	}else if( iNew == PH7_ASSERT_WARNING ){
-		/* Deprecated in PHP 8: silently accept but ignore.
-		 * Assertion failure now always throws AssertionError. */
-	}else if( iNew == PH7_ASSERT_BAIL ){
-		pVm->iAssertFlags &= ~PH7_ASSERT_BAIL;
+		break;
+	case 2: /* ASSERT_CALLBACK */
+		/* Return old callback or null */
+		if( pVm->iAssertFlags & PH7_ASSERT_CALLBACK ){
+			ph7_result_value(pCtx, &pVm->sAssertCallback);
+		}else{
+			ph7_result_null(pCtx);
+		}
 		if( nArg > 1 ){
-			iValue = ph7_value_to_bool(apArg[1]);
-			if( iValue ){
-				/* Terminate execution on failed assertions */
-				pVm->iAssertFlags |= PH7_ASSERT_BAIL;
+			if( ph7_value_is_callable(apArg[1]) ){
+				PH7_MemObjStore(apArg[1],&pVm->sAssertCallback);
+				pVm->iAssertFlags |= PH7_ASSERT_CALLBACK;
+			}else{
+				pVm->iAssertFlags &= ~PH7_ASSERT_CALLBACK;
 			}
 		}
-	}else if( iNew == PH7_ASSERT_CALLBACK ){
-		pVm->iAssertFlags &= ~PH7_ASSERT_CALLBACK;
-		if( nArg > 1 && ph7_value_is_callable(apArg[1]) ){
-			/* Callback to call on failed assertions */
-			PH7_MemObjStore(apArg[1],&pVm->sAssertCallback);
-			pVm->iAssertFlags |= PH7_ASSERT_CALLBACK;
+		break;
+	case 3: /* ASSERT_BAIL */
+		ph7_result_int(pCtx, (pVm->iAssertFlags & PH7_ASSERT_BAIL) ? 1 : 0);
+		if( nArg > 1 ){
+			if( ph7_value_to_bool(apArg[1]) ){
+				pVm->iAssertFlags |= PH7_ASSERT_BAIL;
+			}else{
+				pVm->iAssertFlags &= ~PH7_ASSERT_BAIL;
+			}
 		}
+		break;
+	case 4: /* ASSERT_WARNING — deprecated, accept but no-op */
+		ph7_result_int(pCtx, 0);
+		break;
+	case 5: /* ASSERT_EXCEPTION — always enabled in PHP 8 */
+		ph7_result_int(pCtx, 1);
+		break;
+	case 6: /* ASSERT_QUIET_EVAL — removed in PHP 8.0, accept as no-op */
+		ph7_result_int(pCtx, 0);
+		break;
+	default:
+		/* PHP 8: ValueError for invalid option */
+		return PH7_VmThrowException(pCtx,
+			"ValueError",
+			"assert_options(): Argument #1 ($option) must be an ASSERT_* constant"
+			);
 	}
-	/* Return the old flags */
-	ph7_result_int(pCtx,iOld);
 	return PH7_OK;
 }
 /*

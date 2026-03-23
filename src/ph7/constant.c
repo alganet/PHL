@@ -1069,48 +1069,57 @@ static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)
 }
 /*
  * ASSERT_ACTIVE.
- *  Expand the value of PH7_ASSERT_ACTIVE defined in ph7Int.h
+ *  PHP ASSERT_ACTIVE = 1
  */
 static void PH7_ASSERT_ACTIVE_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,PH7_ASSERT_DISABLE);
-}
-/*
- * ASSERT_WARNING.
- *  Expand the value of PH7_ASSERT_WARNING defined in ph7Int.h
- */
-static void PH7_ASSERT_WARNING_Const(ph7_value *pVal,void *pUserData)
-{
-	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,PH7_ASSERT_WARNING);
-}
-/*
- * ASSERT_BAIL.
- *  Expand the value of PH7_ASSERT_BAIL defined in ph7Int.h
- */
-static void PH7_ASSERT_BAIL_Const(ph7_value *pVal,void *pUserData)
-{
-	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,PH7_ASSERT_BAIL);
-}
-/*
- * ASSERT_QUIET_EVAL.
- *  Expand the value of PH7_ASSERT_QUIET_EVAL defined in ph7Int.h
- */
-static void PH7_ASSERT_QUIET_EVAL_Const(ph7_value *pVal,void *pUserData)
-{
-	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,PH7_ASSERT_QUIET_EVAL);
+	ph7_value_int(pVal,1); /* PHP ASSERT_ACTIVE = 1 */
 }
 /*
  * ASSERT_CALLBACK.
- *  Expand the value of PH7_ASSERT_CALLBACK defined in ph7Int.h
+ *  PHP ASSERT_CALLBACK = 2
  */
 static void PH7_ASSERT_CALLBACK_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,PH7_ASSERT_CALLBACK);
+	ph7_value_int(pVal,2); /* PHP ASSERT_CALLBACK = 2 */
+}
+/*
+ * ASSERT_BAIL.
+ *  PHP ASSERT_BAIL = 3
+ */
+static void PH7_ASSERT_BAIL_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,3); /* PHP ASSERT_BAIL = 3 */
+}
+/*
+ * ASSERT_WARNING.
+ *  PHP ASSERT_WARNING = 4 (deprecated in PHP 8.3)
+ */
+static void PH7_ASSERT_WARNING_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,4); /* PHP ASSERT_WARNING = 4 */
+}
+/*
+ * ASSERT_EXCEPTION.
+ *  PHP ASSERT_EXCEPTION = 5 (deprecated in PHP 8.3)
+ */
+static void PH7_ASSERT_EXCEPTION_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,5); /* PHP ASSERT_EXCEPTION = 5 */
+}
+/*
+ * ASSERT_QUIET_EVAL.
+ *  Removed in PHP 8.0, kept for compatibility.
+ */
+static void PH7_ASSERT_QUIET_EVAL_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,6); /* Arbitrary value, removed in PHP 8 */
 }
 /*
  * SEEK_SET.
@@ -1990,10 +1999,11 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"PATHINFO_EXTENSION",   PH7_PATHINFO_EXTENSION_Const},
 	{"PATHINFO_FILENAME",    PH7_PATHINFO_FILENAME_Const },
 	{"ASSERT_ACTIVE",        PH7_ASSERT_ACTIVE_Const     },
-	{"ASSERT_WARNING",       PH7_ASSERT_WARNING_Const    },
-	{"ASSERT_BAIL",          PH7_ASSERT_BAIL_Const       },
-	{"ASSERT_QUIET_EVAL",    PH7_ASSERT_QUIET_EVAL_Const },
 	{"ASSERT_CALLBACK",      PH7_ASSERT_CALLBACK_Const   },
+	{"ASSERT_BAIL",          PH7_ASSERT_BAIL_Const       },
+	{"ASSERT_WARNING",       PH7_ASSERT_WARNING_Const    },
+	{"ASSERT_EXCEPTION",     PH7_ASSERT_EXCEPTION_Const  },
+	{"ASSERT_QUIET_EVAL",    PH7_ASSERT_QUIET_EVAL_Const },
 	{"SEEK_SET",             PH7_SEEK_SET_Const      },
 	{"SEEK_CUR",             PH7_SEEK_CUR_Const      },
 	{"SEEK_END",             PH7_SEEK_END_Const      },
