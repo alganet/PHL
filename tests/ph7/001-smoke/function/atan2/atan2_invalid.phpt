@@ -1,21 +1,16 @@
 --CREDITS--
-SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
+SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: atan2 missing arguments returns integer 0
---SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+atan2 returns float type
 --FILE--
 <?php
-// Calling atan2 with no arguments should return integer 0
-if (atan2() === 0) {
-    echo "true";
-} else {
-    echo "false";
-}
+$result = atan2(1, 1);
+echo is_float($result) ? "FLOAT" : "NOT_FLOAT";
+echo "\n";
 ?>
 --EXPECT--
-true
+FLOAT
 --CLEAN--
 <?php
-
+unset($result);

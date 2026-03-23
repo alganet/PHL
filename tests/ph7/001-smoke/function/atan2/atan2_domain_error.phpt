@@ -1,22 +1,18 @@
 --CREDITS--
-SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
+SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: atan2 with domain error (0,0 arguments)
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+atan2 with zero arguments returns float 0
 --FILE--
 <?php
-// Test atan2 with (0,0) arguments which produces NaN
-$result = atan2(0.0, 0.0);
-if ($result == 0.0) {
-    echo "PASS\n";
-} else {
-    echo "FAIL\n";
-}
+$result = atan2(0, 0);
+echo $result . "\n";
+echo is_float($result) ? "FLOAT" : "NOT_FLOAT";
+echo "\n";
 ?>
 --EXPECT--
-PASS
+0
+FLOAT
 --CLEAN--
 <?php
 unset($result);

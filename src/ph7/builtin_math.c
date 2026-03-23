@@ -437,10 +437,29 @@ PH7_PRIVATE int PH7_builtin_tanh(ph7_context *pCtx,int nArg,ph7_value **apArg)
 PH7_PRIVATE int PH7_builtin_atan2(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	double r,x,y;
-	if( nArg < 2 ){
-		/* Missing arguments,return 0 */
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
+	/* PHP enforces exactly two arguments. */
+	if( nArg != 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"atan2() expects exactly 2 arguments, %d given",
+			nArg
+			);
+	}
+	/* Type checking: reject non-numeric values for $y (argument #1). */
+	if( !ph7_value_is_numeric(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"atan2(): Argument #1 ($y) must be of type float, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	/* Type checking: reject non-numeric values for $x (argument #2). */
+	if( !ph7_value_is_numeric(apArg[1]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"atan2(): Argument #2 ($x) must be of type float, %s given",
+			ph7_type_name(apArg[1])
+			);
 	}
 	y = ph7_value_to_double(apArg[0]);
 	x = ph7_value_to_double(apArg[1]);
