@@ -892,8 +892,11 @@ static int ExprIsModifiableValue(ph7_expr_node *pNode,sxu8 bFunc)
 }
 /* Forward declaration */
 static sxi32 ExprMakeTree(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nToken);
-/* Macro to check if the given node is a terminal */
-#define NODE_ISTERM(NODE) (apNode[NODE] && (!apNode[NODE]->pOp || apNode[NODE]->pLeft ))
+/* Macro to check if the given node is a terminal.
+ * A node is a term if it has no operator, or has already been linked into an
+ * expression tree (pLeft set for binary ops, or pCond+pRight for a fully
+ * linked ternary/elvis node). */
+#define NODE_ISTERM(NODE) (apNode[NODE] && (!apNode[NODE]->pOp || apNode[NODE]->pLeft || (apNode[NODE]->pCond && apNode[NODE]->pRight) ))
 /*
  * Buid an expression tree for each given function argument.
  * When errors,PH7 take care of generating the appropriate error message.
@@ -1441,11 +1444,8 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				  /* Link the node to the tree */
 				  pNode->pLeft = apNode[iCur + 1];
 			  }else{
-				  rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"'%z': Missing 'then' expression",&pNode->pOp->sOp);
-				  if( rc != SXERR_ABORT ){
-					 rc = SXERR_SYNTAX;
-				 }
-				 return rc;
+				  /* Elvis operator (?:): pLeft stays NULL.
+				   * NODE_ISTERM() recognizes this node as complete via pCond. */
 			  }
 			  apNode[iCur + 1] = 0;
 			  if( iRight + 1 < nToken ){
