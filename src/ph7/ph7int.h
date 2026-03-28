@@ -369,6 +369,8 @@ struct ph7_gen_state
 	SySet aGoto;         /* Gotos table */
 	SyBlob sWorker;      /* General purpose working buffer */
 	SyBlob sErrBuf;      /* Error buffer */
+	SyBlob sNamespace;   /* Current namespace path (e.g. "App\\Models") */
+	SyHash hUseImports;  /* use imports: short alias -> FQN */
 	SyToken *pIn;        /* Current processed token */
 	SyToken *pEnd;       /* Last token in the stream */
 	sxu32 nErr;          /* Total number of compilation error */
@@ -710,6 +712,8 @@ struct ph7_vm
 	SyHash hConstant;           /* Host-application and user defined constants container */
 	SyHash hHostFunction;       /* Host-application installable functions */
 	SyHash hFunction;           /* Compiled functions */
+	SyBlob sNamespace;          /* Current namespace (e.g. "App\\Models") */
+	SyHash hUseImports;         /* Current use imports: short alias -> FQN */
 	SyHash hSuper;              /* Superglobals hashtable */
 	SyHash hPDO;                /* PDO installed drivers */
 	SyBlob sConsumer;           /* Default VM consumer [i.e Redirect all VM output to this blob] */
@@ -891,7 +895,8 @@ enum ph7_vm_op {
   PH7_OP_THROW,         /* Throw exception */
   PH7_OP_SWITCH,        /* Switch operation */
   PH7_OP_ERR_CTRL,     /* Error control */
-  PH7_OP_DUP           /* Duplicate top of stack */
+  PH7_OP_DUP,          /* Duplicate top of stack */
+  PH7_OP_NSSWITCH      /* Switch active namespace at runtime */
 };
 /* -- END-OF INSTRUCTIONS -- */
 /*

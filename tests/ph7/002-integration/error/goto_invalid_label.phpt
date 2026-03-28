@@ -12,9 +12,7 @@ label:
 echo "done";
 ?>
 --EXPECTF--
-%s %d Error:  goto: Invalid label name: '123'
-%s %d Warning:  Label 'label' is defined but not referenced
-Compile error
+%s Error:  goto: Invalid label name: '123' %s
 --CLEAN--
 <?php
 

@@ -11,8 +11,7 @@ Test ternary operator missing else syntax error
 $result = true ? "true";
 ?>
 --EXPECTF--
-%s 3 Error:  Syntax error,mismatched '(','[','{' or '?'
-Compile error
+%s Error:  Syntax error,mismatched '(','[','{' or '?' %s
 --CLEAN--
 <?php
 unset($result);

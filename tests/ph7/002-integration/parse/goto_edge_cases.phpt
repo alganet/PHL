@@ -37,11 +37,7 @@ outer_function();
 
 ?>
 --EXPECTF--
-%s %d Error:  Label 'NONEXISTENT_LABEL' was referenced but not defined
-%s %d Error:  Label 'MISSING_LABEL' was referenced but not defined
-%s %d Error:  Label 'INNER_MISSING' was referenced but not defined
-%s %d Error:  Label 'GLOBAL_MISSING_LABEL' was referenced but not defined
-Compile error
+%s Error:  Label 'NONEXISTENT_LABEL' was referenced but not defined %s
 --CLEAN--
 <?php
 

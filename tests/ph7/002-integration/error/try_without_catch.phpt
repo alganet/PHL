@@ -11,8 +11,7 @@ try {
 echo "hello";
 }
 --EXPECTF--
-%s 4 Error:  Try: Unexpected token '}',expecting 'catch' block
-Compile error
+%s Error:  Try: Unexpected token '}',expecting 'catch' block %s
 --CLEAN--
 <?php
 

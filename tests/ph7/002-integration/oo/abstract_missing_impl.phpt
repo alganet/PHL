@@ -16,7 +16,7 @@ class Child extends Base { }
 new Child();
 ?>
 --EXPECTF--
-%s %d Warning:  Abstract method 'Base:doSomething' must be defined inside child class 'Child'
+%s Warning:  Abstract method 'Base:doSomething' must be defined inside child class 'Child' %s
 --CLEAN--
 <?php
 

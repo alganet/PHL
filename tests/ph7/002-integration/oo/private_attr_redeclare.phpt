@@ -15,7 +15,7 @@ class B extends A {
 }
 ?>
 --EXPECTF--
-%s 6 Warning:  Private attribute 'A::attr' redeclared inside child class 'B'
+%s Warning:  Private attribute 'A::attr' redeclared inside child class 'B' %s
 --CLEAN--
 <?php
 

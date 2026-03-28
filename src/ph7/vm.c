@@ -263,6 +263,52 @@ PH7_PRIVATE sxi32 PH7_VmInitFuncState(
 	return SXRET_OK;
 }
 /*
+ * Namespace-aware function lookup.
+ * Resolution order: exact name -> use imports -> current NS\name -> global fallback.
+ * For functions (unlike classes), PHP falls back to global if not found in current NS.
+ */
+/*
+ * Namespace-aware lookup in a single hash table.
+ * Resolution order: exact name -> use imports -> current NS\name.
+ */
+static SyHashEntry * VmNsAwareHashLookup(ph7_vm *pVm,SyHash *pHash,const SyString *pName)
+{
+	SyHashEntry *pEntry;
+	/* 1. Try exact name */
+	pEntry = SyHashGet(pHash,(const void *)pName->zString,pName->nByte);
+	if( pEntry ){
+		return pEntry;
+	}
+	/* 2. Check use imports */
+	{
+		SyHashEntry *pImport;
+		pImport = SyHashGet(&pVm->hUseImports,(const void *)pName->zString,pName->nByte);
+		if( pImport ){
+			const char *zFQN = (const char *)pImport->pUserData;
+			sxu32 nFQN = (sxu32)SyStrlen(zFQN);
+			pEntry = SyHashGet(pHash,(const void *)zFQN,nFQN);
+			if( pEntry ){
+				return pEntry;
+			}
+		}
+	}
+	/* 3. Prepend current namespace */
+	if( SyBlobLength(&pVm->sNamespace) > 0 ){
+		SyBlob sFQN;
+		SyBlobInit(&sFQN,&pVm->sAllocator);
+		SyBlobAppend(&sFQN,SyBlobData(&pVm->sNamespace),SyBlobLength(&pVm->sNamespace));
+		SyBlobAppend(&sFQN,"\\",1);
+		SyBlobAppend(&sFQN,pName->zString,pName->nByte);
+		pEntry = SyHashGet(pHash,(const void *)SyBlobData(&sFQN),(sxu32)SyBlobLength(&sFQN));
+		SyBlobRelease(&sFQN);
+		if( pEntry ){
+			return pEntry;
+		}
+	}
+	/* Not found */
+	return 0;
+}
+/*
  * Install a user defined function in the corresponding VM container.
  */
 PH7_PRIVATE sxi32 PH7_VmInstallUserFunction(
@@ -1216,6 +1262,8 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SySetAlloc(&pVm->aLitObj,0xFF);
 	SyHashInit(&pVm->hHostFunction,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hFunction,&pVm->sAllocator,0,0);
+	SyBlobInit(&pVm->sNamespace,&pVm->sAllocator);
+	SyHashInit(&pVm->hUseImports,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hClass,&pVm->sAllocator,SyStrHash,SyStrnmicmp);
 	SyHashInit(&pVm->hConstant,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hSuper,&pVm->sAllocator,0,0);
@@ -2740,6 +2788,19 @@ case PH7_OP_DUP:
 	PH7_MemObjStore(pTos - 1,pTos);
 	break;
 /*
+ * NSSWITCH: * * P3
+ *
+ * Switch the active namespace at runtime.
+ * P3 points to the namespace string (pool-allocated, NULL for global).
+ */
+case PH7_OP_NSSWITCH:
+	SyBlobReset(&pVm->sNamespace);
+	if( pInstr->p3 ){
+		const char *zNs = (const char *)pInstr->p3;
+		SyBlobAppend(&pVm->sNamespace,zNs,SyStrlen(zNs));
+	}
+	break;
+/*
  * CVT_INT: * * *
  *
  * Force the top of the stack to be an integer.
@@ -2944,12 +3005,42 @@ case PH7_OP_LOADC: {
 				pTos->nIdx = SXU32_HIGH;
 				break;
 			}
+			/* Constant not found.  For qualified names (containing '\')
+			 * this is always an error — bare unqualified names still fall
+			 * through to string value for backward compatibility. */
+			{
+				const char *zLit = (const char *)SyBlobData(&pObj->sBlob);
+				sxu32 nLit = (sxu32)SyBlobLength(&pObj->sBlob);
+				sxu32 j;
+				for( j = 0; j < nLit; j++ ){
+					if( zLit[j] == '\\' ){
+						/* Qualified name: must be a real constant.
+						 * Format as PHP Fatal error to match PHP behavior. */
+						{
+							SyString *pErrFile = (SyString *)SySetPeek(&pVm->aFiles);
+							SyBlob sErr;
+							SyBlobInit(&sErr,&pVm->sAllocator);
+							SyBlobFormat(&sErr,"PHP Fatal error:  Uncaught Error: Undefined constant \"%.*s\"",nLit,zLit);
+							if( pErrFile ){
+								SyBlobFormat(&sErr," in %.*s:%u",pErrFile->nByte,pErrFile->zString,1);
+							}
+							SyBlobAppend(&sErr,"\n",1);
+							VmCallErrorHandler(&(*pVm),&sErr);
+							SyBlobRelease(&sErr);
+						}
+						MemObjSetType(pTos,MEMOBJ_NULL);
+						pTos->nIdx = SXU32_HIGH;
+						goto LoadC_Done;
+					}
+				}
+			}
 		}
 		PH7_MemObjLoad(pObj,pTos);
 	}else{
 		/* Set a NULL value */
 		MemObjSetType(pTos,MEMOBJ_NULL);
 	}
+LoadC_Done:
 	/* Mark as constant */
 	pTos->nIdx = SXU32_HIGH;
 	break;
@@ -5511,8 +5602,8 @@ case PH7_OP_CALL: {
 		break;
 	}
 	SyStringInitFromBuf(&sName,SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
-	/* Check for a compiled function first */
-	pEntry = SyHashGet(&pVm->hFunction,(const void *)sName.zString,sName.nByte);
+	/* Check for a compiled function first (namespace-aware) */
+	pEntry = VmNsAwareHashLookup(pVm,&pVm->hFunction,&sName);
 	if( pEntry ){
 		ph7_vm_func_arg *aFormalArg;
 		ph7_class_instance *pThis;
@@ -5892,8 +5983,28 @@ case PH7_OP_CALL: {
 		ph7_user_func *pFunc;
 		ph7_context sCtx;
 		ph7_value sRet;
-		/* Look for an installed foreign function */
+		/* Look for an installed foreign function.
+		 * Host functions are registered with short names (strlen, etc.).
+		 * If the CALL instruction's p3 is set (compiler-qualified name),
+		 * extract the short name (last component after \) and try that.
+		 * This implements PHP's global fallback for unqualified function
+		 * calls in namespaces. User-written qualified names (like
+		 * \Bogus\strlen) do NOT get this fallback. */
 		pEntry = SyHashGet(&pVm->hHostFunction,(const void *)sName.zString,sName.nByte);
+		if( pEntry == 0 && pInstr->p3 != 0 ){
+			/* Compiler-qualified: try short name as global fallback */
+			const char *zShort = sName.zString;
+			sxu32 i;
+			for( i = 0; i < sName.nByte; i++ ){
+				if( sName.zString[i] == '\\' ){
+					zShort = &sName.zString[i + 1];
+				}
+			}
+			if( zShort != sName.zString ){
+				sxu32 nShort = (sxu32)(sName.nByte - (sxu32)(zShort - sName.zString));
+				pEntry = SyHashGet(&pVm->hHostFunction,(const void *)zShort,nShort);
+			}
+		}
 		if( pEntry == 0 ){
 			/* Call to undefined function */
 			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Call to undefined function '%z',NULL will be returned",&sName);
@@ -6216,6 +6327,7 @@ static const char * VmInstrToString(sxi32 nOp)
 		                    zOp = "STORE_IDX_R"; break;
 	case PH7_OP_PULL:       zOp = "PULL       "; break;
 	case PH7_OP_DUP:        zOp = "DUP        "; break;
+	case PH7_OP_NSSWITCH:   zOp = "NSSWITCH   "; break;
 	case PH7_OP_SWAP:       zOp = "SWAP       "; break;
 	case PH7_OP_YIELD:      zOp = "YIELD      "; break;
 	case PH7_OP_CVT_BOOL:   zOp = "CVT_BOOL   "; break;
@@ -10151,30 +10263,25 @@ PH7_PRIVATE ph7_class * PH7_VmExtractClass(
 {
 	SyHashEntry *pEntry;
 	ph7_class *pClass;
-		SXUNUSED(iNest);
-	/* Perform a hash lookup */
-	pEntry = SyHashGet(&pVm->hClass,(const void *)zName,nByte);
-
+	SyString sName;
+	SXUNUSED(iNest);
+	/* Namespace-aware class lookup */
+	SyStringInitFromBuf(&sName,zName,nByte);
+	pEntry = VmNsAwareHashLookup(pVm,&pVm->hClass,&sName);
 	if( pEntry == 0 ){
-		/* No such entry,return NULL */
 		return 0;
 	}
 	pClass = (ph7_class *)pEntry->pUserData;
 	if( !iLoadable ){
-		/* Return the first class seen */
 		return pClass;
-	}else{
-		/* Check the collision list */
-		while(pClass){
-			if( (pClass->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_ABSTRACT)) == 0 ){
-				/* Class is loadable */
-				return pClass;
-			}
-			/* Point to the next entry */
-			pClass = pClass->pNextName;
-		}
 	}
-	/* No such loadable class */
+	/* Filter for loadable classes (skip interfaces/abstract) */
+	while(pClass){
+		if( (pClass->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_ABSTRACT)) == 0 ){
+			return pClass;
+		}
+		pClass = pClass->pNextName;
+	}
 	return 0;
 }
 /*

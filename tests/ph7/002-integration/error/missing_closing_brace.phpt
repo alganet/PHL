@@ -10,8 +10,7 @@ Syntax error: Missing closing brace in variable name
 $var = ${unclosed;
 ?>
 --EXPECTF--
-%s %d Error:  Syntax error: Missing closing brace '}'
-Compile error
+%s Error:  Syntax error: Missing closing brace '}' %s
 --CLEAN--
 <?php
 unset($var);

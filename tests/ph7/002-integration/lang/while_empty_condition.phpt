@@ -12,8 +12,7 @@ while () {
 }
 ?>
 --EXPECTF--
-%s 2 Error:  Expected expression after 'while' keyword
-Compile error
+%s Error:  Expected expression after 'while' keyword %s
 --CLEAN--
 <?php
 

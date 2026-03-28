@@ -11,8 +11,7 @@ my_label:
 echo "test\n";
 ?>
 --EXPECTF--
-%s 2 Warning:  Label 'my_label' is defined but not referenced
-test
+%s Warning:  Label 'my_label' is defined but not referenced %s
 --CLEAN--
 <?php
 

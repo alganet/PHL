@@ -13,9 +13,7 @@ goto label;
 label:
 echo "hello";
 --EXPECTF--
-%s 3 Error:  Label 'label' was referenced but not defined
-%s 5 Warning:  Label 'label' is defined but not referenced
-Compile error
+%s Error:  Label 'label' was referenced but not defined %s
 --CLEAN--
 <?php
 

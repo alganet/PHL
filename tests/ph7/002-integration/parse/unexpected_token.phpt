@@ -31,11 +31,7 @@ foreach ([1,2] as $val) {
 
 ?>
 --EXPECTF--
-%s %d Error:  Syntax error: Unexpected token '}'
-%s %d Error:  Syntax error: Unexpected token ']'
-%s %d Error:  Syntax error: Unexpected token ';'
-%s %d Error:  Syntax error: Unexpected token '}'
-Compile error
+%s Error:  Syntax error: Unexpected token '}' %s
 --CLEAN--
 <?php
 unset($a, $array, $func, $x);

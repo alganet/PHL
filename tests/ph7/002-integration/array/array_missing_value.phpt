@@ -10,8 +10,7 @@ PHL: array() with missing entry value should produce a compile error
 $x = array(1 => );
 ?>
 --EXPECTF--
-%s 2 Error:  array(): Missing entry value
-Compile error
+%s Error:  array(): Missing entry value %s
 --CLEAN--
 <?php
 unset($x);

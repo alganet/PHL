@@ -45,12 +45,7 @@ INVALID;
 
 ?>
 --EXPECTF--
-%s %d Error:  Syntax error,mismatched '(','[','{' or '?'
-%s %d Error:  Invalid array name
-%s %d Error:  Syntax error,mismatched '(','[','{' or '?'
-%s %d Error:  '->': Missing/Invalid member name
-%s %d Error:  '::': Missing/Invalid member name
-Compile error
+%s Error:  Syntax error,mismatched '(','[','{' or '?' %s
 --CLEAN--
 <?php
 unset($var, $array, $result, $obj);

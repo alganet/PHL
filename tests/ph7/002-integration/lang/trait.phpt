@@ -14,8 +14,7 @@ trait Hello {
 }
 ?>
 --EXPECTF--
-%s 3 Error:  Unexpected token 'function'
-Compile error
+%s Error:  Unexpected token 'function' %s
 --CLEAN--
 <?php
 

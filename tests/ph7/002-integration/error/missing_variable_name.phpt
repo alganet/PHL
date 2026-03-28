@@ -11,8 +11,7 @@ $result = ${;};
 echo "Result: $result\n";
 ?>
 --EXPECTF--
-%s 2 Error:  Missing variable name
-Compile error
+%s Error:  Missing variable name %s
 --CLEAN--
 <?php
 unset($result);
