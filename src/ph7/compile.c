@@ -5766,14 +5766,21 @@ static sxi32 GenStateEmitExprCode(
 			return rc;
 		}
 		nJz = nJmp = 0; /* cc -O6 warning */
-		/* Phase#2: Emit the false jump */
-		PH7_VmEmitInstr(pGen->pVm,PH7_OP_JZ,0,0,0,&nJz);
 		if( pNode->pLeft ){
+			/* Standard ternary: (expr) ? (then) : (else) */
+			/* Phase#2: Emit the false jump (pops condition) */
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_JZ,0,0,0,&nJz);
 			/* Phase#3: Compile the 'then' expression  */
 			rc = GenStateEmitExprCode(&(*pGen),pNode->pLeft,iFlags);
 			if( rc != SXRET_OK ){
 				return rc;
 			}
+		}else{
+			/* Elvis operator: (expr) ?: (else)
+			 * Duplicate condition so original value is the 'then' result.
+			 * JZ consumes the copy; original stays on stack if truthy. */
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_DUP,0,0,0,0);
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_JZ,0,0,0,&nJz);
 		}
 		/* Phase#4: Emit the unconditional jump */
 		PH7_VmEmitInstr(pGen->pVm,PH7_OP_JMP,0,0,0,&nJmp);
@@ -5781,6 +5788,10 @@ static sxi32 GenStateEmitExprCode(
 		pInstr = PH7_VmGetInstr(pGen->pVm,nJz);
 		if( pInstr ){
 			pInstr->iP2 = PH7_VmInstrLength(pGen->pVm);
+		}
+		if( !pNode->pLeft ){
+			/* Elvis operator: discard the falsy condition value before evaluating 'else' */
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
 		}
 		/* Phase#6: Compile the 'else' expression */
 		if( pNode->pRight ){

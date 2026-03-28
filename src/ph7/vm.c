@@ -2725,6 +2725,21 @@ case PH7_OP_POP: {
 	break;
 				 }
 /*
+ * DUP: * * *
+ *
+ * Duplicate the top of the stack.
+ */
+case PH7_OP_DUP:
+#ifdef UNTRUST
+	if( pTos < pStack ){
+		goto Abort;
+	}
+#endif
+	pTos++;
+	PH7_MemObjInit(pVm,pTos);
+	PH7_MemObjStore(pTos - 1,pTos);
+	break;
+/*
  * CVT_INT: * * *
  *
  * Force the top of the stack to be an integer.
@@ -6200,6 +6215,7 @@ static const char * VmInstrToString(sxi32 nOp)
 	case PH7_OP_STORE_IDX_REF:
 		                    zOp = "STORE_IDX_R"; break;
 	case PH7_OP_PULL:       zOp = "PULL       "; break;
+	case PH7_OP_DUP:        zOp = "DUP        "; break;
 	case PH7_OP_SWAP:       zOp = "SWAP       "; break;
 	case PH7_OP_YIELD:      zOp = "YIELD      "; break;
 	case PH7_OP_CVT_BOOL:   zOp = "CVT_BOOL   "; break;

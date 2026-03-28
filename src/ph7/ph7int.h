@@ -890,7 +890,8 @@ enum ph7_vm_op {
   PH7_OP_POP_EXCEPTION, /* POP an exception */
   PH7_OP_THROW,         /* Throw exception */
   PH7_OP_SWITCH,        /* Switch operation */
-  PH7_OP_ERR_CTRL      /* Error control */
+  PH7_OP_ERR_CTRL,     /* Error control */
+  PH7_OP_DUP           /* Duplicate top of stack */
 };
 /* -- END-OF INSTRUCTIONS -- */
 /*
