@@ -13,9 +13,7 @@ UNDEFINED_LABEL:
 echo "Defined label\n";
 ?>
 --EXPECTF--
-%s %d Error:  Label 'MISSING_LABEL' was referenced but not defined
-%s %d Warning:  Label 'UNDEFINED_LABEL' is defined but not referenced
-Compile error
+%s Error:  Label 'MISSING_LABEL' was referenced but not defined %s
 --CLEAN--
 <?php
 

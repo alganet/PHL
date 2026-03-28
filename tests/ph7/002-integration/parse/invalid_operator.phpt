@@ -10,8 +10,7 @@ Invalid operator parsing to cover uncovered lines in PH7_ExprExtractOperator
 $a invalid_op $b;
 ?>
 --EXPECTF--
-%s 2 Error:  Unexpected token 'invalid_op'
-Compile error
+%s Error:  Unexpected token 'invalid_op' %s
 --CLEAN--
 <?php
 

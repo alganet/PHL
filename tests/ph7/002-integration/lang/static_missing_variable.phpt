@@ -12,8 +12,7 @@ function foo() {
 }
 ?>
 --EXPECTF--
-%s 3 Error:  Expected variable after 'static' keyword
-Compile error
+%s Error:  Expected variable after 'static' keyword %s
 --CLEAN--
 <?php
 

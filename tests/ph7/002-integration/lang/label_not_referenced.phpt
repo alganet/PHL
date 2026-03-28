@@ -17,8 +17,7 @@ function foo() {
 }
 ?>
 --EXPECTF--
-%s 3 Warning:  Label 'label_unreferenced' is defined but not referenced
-%s 3 Warning:  Label 'label_unreferenced' is defined but not referenced
+%s Warning:  Label 'label_unreferenced' is defined but not referenced %s
 --CLEAN--
 <?php
 

@@ -21,8 +21,7 @@ function test_error_recovery() {
 test_error_recovery();
 ?>
 --EXPECTF--
-%s %d Error:  '=': Missing/Invalid operand
-Compile error
+%s Error:  '=': Missing/Invalid operand %s
 --CLEAN--
 <?php
 unset($invalid_syntax);

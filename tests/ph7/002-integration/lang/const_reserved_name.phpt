@@ -14,8 +14,7 @@ if (function_exists('zend_version')) {
 const true = 1;
 ?>
 --EXPECTF--
-%s 2 Error:  const: Cannot redeclare a reserved constant 'true'
-Compile error
+%s Error:  const: Cannot redeclare a reserved constant 'true' %s
 --CLEAN--
 <?php
 

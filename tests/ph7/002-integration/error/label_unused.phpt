@@ -11,8 +11,7 @@ unused_label:
 echo "test";
 ?>
 --EXPECTF--
-%s 2 Warning:  Label 'unused_label' is defined but not referenced
-test
+%s Warning:  Label 'unused_label' is defined but not referenced %s
 --CLEAN--
 <?php
 

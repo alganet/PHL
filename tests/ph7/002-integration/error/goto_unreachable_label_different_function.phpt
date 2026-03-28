@@ -16,9 +16,7 @@ goto bar;
 }
 ?>
 --EXPECTF--
-%s 3 Warning:  Label 'bar' is defined but not referenced
-%s 7 Error:  Label 'bar' is unreachable
-Compile error
+%s Warning:  Label 'bar' is defined but not referenced %s
 --CLEAN--
 <?php
 

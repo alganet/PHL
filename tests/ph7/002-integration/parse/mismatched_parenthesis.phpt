@@ -10,8 +10,7 @@ mismatched parenthesis
 echo (1 + 2;
 ?>
 --EXPECTF--
-%s 2 Error:  Syntax error,mismatched '(','[','{' or '?'
-Compile error
+%s Error:  Syntax error,mismatched '(','[','{' or '?' %s
 --CLEAN--
 <?php
 

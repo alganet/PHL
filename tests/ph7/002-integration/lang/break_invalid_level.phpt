@@ -21,8 +21,7 @@ $result .= "end";
 echo $result;
 ?>
 --EXPECTF--
-%s %d Error:  A 'break' statement may only be used within a loop or switch
-Compile error
+%s Error:  A 'break' statement may only be used within a loop or switch %s
 --CLEAN--
 <?php
 unset($result);

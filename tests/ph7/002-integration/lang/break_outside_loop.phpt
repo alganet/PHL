@@ -12,8 +12,7 @@ break;
 echo "After break\n";
 ?>
 --EXPECTF--
-%s 3 Error:  A 'break' statement may only be used within a loop or switch
-Compile error
+%s Error:  A 'break' statement may only be used within a loop or switch %s
 --CLEAN--
 <?php
 

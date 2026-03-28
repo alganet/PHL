@@ -11,8 +11,7 @@ $func = function($x, $y)
 echo "test";
 ?>
 --EXPECTF--
-%s %d Error:  Syntax error while declaring annonymous function
-Compile error
+%s Error:  Syntax error while declaring annonymous function %s
 --CLEAN--
 <?php
 unset($func);

@@ -1249,8 +1249,9 @@ PH7_PRIVATE sxi32 PH7_CompileList(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	/* Node successfully compiled */
 	return SXRET_OK;
 }
-/* Forward declaration */
+/* Forward declarations */
 static sxi32 GenStateCompileFunc(ph7_gen_state *pGen,SyString *pName,sxi32 iFlags,int bHandleClosure,ph7_vm_func **ppFunc);
+static int GenStateIsReservedConstant(SyString *pName);
 /*
  * Compile an annoynmous function or a closure.
  * According to the PHP language reference
@@ -1551,6 +1552,23 @@ static sxi32 GenStateLoadLiteral(ph7_gen_state *pGen)
 			/* Emit the load constant instruction */
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);
 			return SXRET_OK;
+	}else if( pStr->nByte == sizeof("__NAMESPACE__") - 1 &&
+		SyMemcmp(pStr->zString,"__NAMESPACE__",sizeof("__NAMESPACE__")-1) == 0 ){
+			/* __NAMESPACE__ magic constant: resolved at compile time */
+			pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);
+			if( pObj == 0 ){
+				PH7_GenCompileError(pGen,E_ERROR,pToken->nLine,"Fatal, PH7 engine is running out of memory");
+				return SXERR_ABORT;
+			}
+			if( SyBlobLength(&pGen->sNamespace) > 0 ){
+				SyString sNs;
+				SyStringInitFromBuf(&sNs,(const char *)SyBlobData(&pGen->sNamespace),SyBlobLength(&pGen->sNamespace));
+				PH7_MemObjInitFromString(pGen->pVm,pObj,&sNs);
+			}else{
+				PH7_MemObjInitFromString(pGen->pVm,pObj,0);
+			}
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);
+			return SXRET_OK;
 	}else if( (pStr->nByte == sizeof("__FUNCTION__") - 1 &&
 		SyMemcmp(pStr->zString,"__FUNCTION__",sizeof("__FUNCTION__")-1) == 0) ||
 		(pStr->nByte == sizeof("__METHOD__") - 1 &&
@@ -1600,27 +1618,68 @@ static sxi32 GenStateLoadLiteral(ph7_gen_state *pGen)
 	return SXRET_OK;
 }
 /*
- * Resolve a namespace path or simply load a literal:
- * As of this version namespace support is disabled. If you need
- * a working version that implement namespace,please contact
- * symisc systems via contact@symisc.net
+ * Resolve a namespace path or simply load a literal.
+ * If the token stream contains namespace separators (backslashes),
+ * assemble them into a single literal string (e.g. "Foo\Bar\Baz").
+ * Otherwise, load the simple literal directly.
  */
 static sxi32 GenStateResolveNamespaceLiteral(ph7_gen_state *pGen)
 {
-	int emit = 0;
 	sxi32 rc;
-	while( pGen->pIn < &pGen->pEnd[-1] ){
-		/* Emit a warning */
-		if( !emit ){
-			PH7_GenCompileError(&(*pGen),E_WARNING,pGen->pIn->nLine,
-				"Namespace support is disabled in the current release of the PH7(%s) engine",
-				ph7_lib_version()
-				);
-			emit = 1;
-		}
-		pGen->pIn++; /* Ignore the token */
+	if( pGen->pIn >= pGen->pEnd ){
+		return SXRET_OK;
 	}
-	/* Load literal */
+	/* Check if this is a multi-token namespace path */
+	if( pGen->pIn < &pGen->pEnd[-1] ){
+		/* Multiple tokens: assemble the full path into sWorker */
+		SyBlob *pWorker = &pGen->sWorker;
+		int isAbsolute = 0;
+		SyBlobReset(pWorker);
+		/* Check for leading backslash (absolute path) */
+		if( pGen->pIn->nType & PH7_TK_NSSEP ){
+			isAbsolute = 1;
+			pGen->pIn++; /* Skip leading backslash */
+		}
+		/* For relative qualified names in a namespace, prepend the NS */
+		if( !isAbsolute && SyBlobLength(&pGen->sNamespace) > 0 ){
+			SyBlobAppend(pWorker,SyBlobData(&pGen->sNamespace),SyBlobLength(&pGen->sNamespace));
+			SyBlobAppend(pWorker,"\\",1);
+		}
+		/* Collect all path components */
+		while( pGen->pIn <= &pGen->pEnd[-1] ){
+			if( pGen->pIn->nType & PH7_TK_NSSEP ){
+				SyBlobAppend(pWorker,"\\",1);
+			}else{
+				SyBlobAppend(pWorker,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);
+			}
+			if( pGen->pIn == &pGen->pEnd[-1] ){
+				pGen->pIn++;
+				break;
+			}
+			pGen->pIn++;
+		}
+		if( SyBlobLength(pWorker) > 0 ){
+			ph7_value *pObj;
+			SyString sPath;
+			sxu32 nIdx;
+			SyStringInitFromBuf(&sPath,(const char *)SyBlobData(pWorker),SyBlobLength(pWorker));
+			/* Install in the literal table */
+			if( SXRET_OK != GenStateFindLiteral(&(*pGen),&sPath,&nIdx) ){
+				pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);
+				if( pObj == 0 ){
+					PH7_GenCompileError(&(*pGen),E_ERROR,1,"PH7 engine is running out of memory");
+					return SXERR_ABORT;
+				}
+				PH7_MemObjInitFromString(pGen->pVm,pObj,&sPath);
+				GenStateInstallLiteral(&(*pGen),pObj,nIdx);
+			}
+			/* Emit the load constant instruction.
+			 * P1=1 means candidate for constant/function/class expansion. */
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,1,nIdx,0,0);
+			return SXRET_OK;
+		}
+	}
+	/* Single-token literal: load directly */
 	rc = GenStateLoadLiteral(&(*pGen));
 	return rc;
 }
@@ -3030,6 +3089,11 @@ static sxi32 PH7_CompileGlobal(ph7_gen_state *pGen)
 					if( rc == SXERR_ABORT ){
 						return SXERR_ABORT;
 					}else if(rc != SXERR_EMPTY ){
+						VmInstr *pLast = PH7_VmPeekInstr(pGen->pVm);
+						if( pLast && pLast->iOp == PH7_OP_LOADC ){
+							/* Variable name, not a constant */
+							pLast->iP1 = 0;
+						}
 						nExpr++;
 					}
 				}
@@ -3288,6 +3352,88 @@ static sxi32 PH7_CompileVar(ph7_gen_state *pGen)
 	return SXRET_OK;
 }
 /*
+ * Namespace-qualify a literal in-place for CALL/NEW instructions.
+ * Resolution: use imports -> current NS prefix. The VM handles global fallback.
+ * Only rewrites unqualified names (no backslash) when a namespace is active.
+ */
+/*
+ * Namespace-qualify a name for CALL/NEW instructions.
+ * Instead of mutating the interned literal (which would corrupt the literal
+ * hash and any shared references), this creates a new literal entry with the
+ * qualified name and updates the instruction's operand index.
+ *
+ * Resolution: use imports -> current NS prefix.
+ * Only rewrites unqualified names (no backslash) when a namespace is active.
+ * Returns the (possibly new) literal index.
+ */
+static sxu32 GenStateNsQualifyName(ph7_gen_state *pGen,sxu32 nOrigIdx)
+{
+	ph7_value *pLit;
+	const char *zLit;
+	SyString sQualified;
+	sxu32 nLit;
+	sxu32 k;
+	sxu32 nNewIdx;
+	int hasNsSep;
+	SyHashEntry *pImport;
+	ph7_value *pNew;
+	if( SyBlobLength(&pGen->sNamespace) == 0 ){
+		return nOrigIdx; /* Not in a namespace */
+	}
+	pLit = (ph7_value *)SySetAt(&pGen->pVm->aLitObj,nOrigIdx);
+	if( !pLit || !(pLit->iFlags & MEMOBJ_STRING) || SyBlobLength(&pLit->sBlob) == 0 ){
+		return nOrigIdx;
+	}
+	zLit = (const char *)SyBlobData(&pLit->sBlob);
+	nLit = (sxu32)SyBlobLength(&pLit->sBlob);
+	/* Skip if already qualified (contains backslash) */
+	hasNsSep = 0;
+	for( k = 0; k < nLit; k++ ){
+		if( zLit[k] == '\\' ){ hasNsSep = 1; break; }
+	}
+	if( hasNsSep ){
+		return nOrigIdx;
+	}
+	/* Build the qualified name into sWorker */
+	SyBlobReset(&pGen->sWorker);
+	/* Check use imports first */
+	pImport = SyHashGet(&pGen->hUseImports,(const void *)zLit,nLit);
+	if( pImport ){
+		const char *zFQN = (const char *)pImport->pUserData;
+		SyBlobAppend(&pGen->sWorker,zFQN,SyStrlen(zFQN));
+	}else{
+		/* Prepend current namespace */
+		SyBlobAppend(&pGen->sWorker,SyBlobData(&pGen->sNamespace),SyBlobLength(&pGen->sNamespace));
+		SyBlobAppend(&pGen->sWorker,"\\",1);
+		SyBlobAppend(&pGen->sWorker,zLit,nLit);
+	}
+	/* Look up or create a new literal for the qualified name */
+	SyStringInitFromBuf(&sQualified,(const char *)SyBlobData(&pGen->sWorker),SyBlobLength(&pGen->sWorker));
+	if( SXRET_OK == GenStateFindLiteral(&(*pGen),&sQualified,&nNewIdx) ){
+		return nNewIdx; /* Already interned */
+	}
+	pNew = PH7_ReserveConstObj(pGen->pVm,&nNewIdx);
+	if( pNew == 0 ){
+		return nOrigIdx; /* OOM, fall back to original */
+	}
+	PH7_MemObjInitFromString(pGen->pVm,pNew,&sQualified);
+	GenStateInstallLiteral(&(*pGen),pNew,nNewIdx);
+	return nNewIdx;
+}
+/*
+ * Build a fully-qualified name by prepending the current namespace to a short name.
+ * If no namespace is active, pOut receives a copy of the short name.
+ * The caller must release pOut when done.
+ */
+static void GenStateBuildFQN(ph7_gen_state *pGen,const SyString *pName,SyBlob *pOut)
+{
+	if( SyBlobLength(&pGen->sNamespace) > 0 ){
+		SyBlobAppend(pOut,SyBlobData(&pGen->sNamespace),SyBlobLength(&pGen->sNamespace));
+		SyBlobAppend(pOut,"\\",1);
+	}
+	SyBlobAppend(pOut,pName->zString,pName->nByte);
+}
+/*
  * Compile a namespace statement
  * According to the PHP language reference manual
  *  What are namespaces? In the broadest definition namespaces are a way of encapsulating items.
@@ -3320,39 +3466,75 @@ static sxi32 PH7_CompileVar(ph7_gen_state *pGen)
  *  AS OF THIS VERSION NAMESPACE SUPPORT IS DISABLED. IF YOU NEED A WORKING VERSION THAT IMPLEMENT
  *  NAMESPACE,PLEASE CONTACT SYMISC SYSTEMS VIA contact@symisc.net.
  */
+/*
+ * Return a PHP-style type name for a token, used in parse error messages.
+ */
+static const char * TokenTypeName(sxu32 nType)
+{
+	if( nType & PH7_TK_INTEGER ){ return "integer"; }
+	if( nType & PH7_TK_REAL ){ return "float"; }
+	if( nType & (PH7_TK_DSTR|PH7_TK_SSTR|PH7_TK_HEREDOC|PH7_TK_NOWDOC) ){ return "string"; }
+	if( nType & PH7_TK_KEYWORD ){ return "keyword"; }
+	if( nType & PH7_TK_ID ){ return "identifier"; }
+	if( nType & PH7_TK_DOLLAR ){ return "variable"; }
+	return "token";
+}
 static sxi32 PH7_CompileNamespace(ph7_gen_state *pGen)
 {
 	sxu32 nLine;
-	nLine = pGen->pIn->nLine;
 	sxi32 rc;
+	nLine = pGen->pIn->nLine;
 	pGen->pIn++; /* Jump the 'namespace' keyword */
-	if( pGen->pIn >= pGen->pEnd ||
-		(pGen->pIn->nType & (PH7_TK_NSSEP|PH7_TK_ID|PH7_TK_KEYWORD|PH7_TK_SEMI/*';'*/|PH7_TK_OCB/*'{'*/)) == 0 ){
-			SyToken *pTok = pGen->pIn;
-			if( pTok >= pGen->pEnd ){
-				pTok--;
-			}
-			/* Unexpected token */
-			rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Namespace: Unexpected token '%z'",&pTok->sData);
-			if( rc == SXERR_ABORT ){
-				return SXERR_ABORT;
-			}
+	/* Reset namespace and clear previous use imports */
+	SyBlobReset(&pGen->sNamespace);
+	SyHashRelease(&pGen->hUseImports);
+	SyHashInit(&pGen->hUseImports,&pGen->pVm->sAllocator,0,0);
+	if( pGen->pIn >= pGen->pEnd ){
+		/* Global namespace (bare "namespace;") */
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_NSSWITCH,0,0,0,0);
+		return SXRET_OK;
 	}
-	/* Ignore the path */
-	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_NSSEP/*'\'*/|PH7_TK_ID|PH7_TK_KEYWORD)) ){
+	if( pGen->pIn->nType & PH7_TK_SEMI ){
+		/* namespace; — switch to global namespace */
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_NSSWITCH,0,0,0,0);
+		return SXRET_OK;
+	}
+	if( pGen->pIn->nType & PH7_TK_OCB ){
+		/* namespace { } — global namespace block */
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_NSSWITCH,0,0,0,0);
+		return SXRET_OK;
+	}
+	/* Collect the namespace path: namespace Foo\Bar\Baz */
+	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_NSSEP|PH7_TK_ID|PH7_TK_KEYWORD)) ){
+		if( pGen->pIn->nType & PH7_TK_NSSEP ){
+			/* Append backslash separator */
+			if( SyBlobLength(&pGen->sNamespace) > 0 ){
+				SyBlobAppend(&pGen->sNamespace,"\\",1);
+			}
+		}else{
+			/* Append identifier */
+			SyBlobAppend(&pGen->sNamespace,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);
+		}
 		pGen->pIn++;
 	}
-	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_SEMI/*';'*/|PH7_TK_OCB/*'{'*/)) == 0 ){
-		/* Unexpected token */
-		rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
-			"Namespace: Unexpected token '%z',expecting ';' or '{'",&pGen->pIn->sData);
+	/* Emit a runtime namespace switch so the VM tracks the active namespace
+	 * at the correct program counter, not just the last one compiled. */
+	{
+		char *zNsDup = 0;
+		if( SyBlobLength(&pGen->sNamespace) > 0 ){
+			zNsDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+				(const char *)SyBlobData(&pGen->sNamespace),SyBlobLength(&pGen->sNamespace));
+		}
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_NSSWITCH,0,0,zNsDup,0);
+	}
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_SEMI|PH7_TK_OCB)) == 0 ){
+		rc = PH7_GenCompileError(&(*pGen),E_PARSE,nLine,
+			"syntax error, unexpected %s \"%z\", expecting \"{\"",
+			TokenTypeName(pGen->pIn->nType),&pGen->pIn->sData);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
 	}
-	/* Emit a warning */
-	PH7_GenCompileError(&(*pGen),E_WARNING,nLine,
-		"Namespace support is disabled in the current release of the PH7(%s) engine",ph7_lib_version());
 	return SXRET_OK;
 }
 /*
@@ -3372,54 +3554,77 @@ static sxi32 PH7_CompileNamespace(ph7_gen_state *pGen)
 static sxi32 PH7_CompileUse(ph7_gen_state *pGen)
 {
 	sxu32 nLine;
-	nLine = pGen->pIn->nLine;
 	sxi32 rc;
+	SyBlob sPath;
+	SyString sAlias;
+	SyToken *pLast;
+	char *zDup;
+	nLine = pGen->pIn->nLine;
 	pGen->pIn++; /* Jump the 'use' keyword */
-	/* Assemeble one or more real namespace path */
+	SyBlobInit(&sPath,&pGen->pVm->sAllocator);
+	/* Process one or more use declarations separated by commas */
 	for(;;){
 		if( pGen->pIn >= pGen->pEnd ){
 			break;
 		}
-		/* Ignore the path */
-		while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_NSSEP|PH7_TK_ID))  ){
+		SyBlobReset(&sPath);
+		pLast = 0;
+		/* Collect the full namespace path */
+		while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_NSSEP|PH7_TK_ID)) ){
+			if( pGen->pIn->nType & PH7_TK_ID ){
+				pLast = pGen->pIn;
+				if( SyBlobLength(&sPath) > 0 ){
+					SyBlobAppend(&sPath,"\\",1);
+				}
+				SyBlobAppend(&sPath,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);
+			}
 			pGen->pIn++;
 		}
-		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_COMMA/*','*/) ){
-			pGen->pIn++; /* Jump the comma and process the next path */
+		if( pLast == 0 ){
+			/* Empty path */
+			break;
+		}
+		/* Default alias is the last component of the path */
+		sAlias = pLast->sData;
+		/* Check for explicit alias: use Foo\Bar as Baz */
+		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD)
+			&& PH7_TKWRD_AS == SX_PTR_TO_INT(pGen->pIn->pUserData) ){
+			pGen->pIn++; /* Jump 'as' */
+			if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_ID) ){
+				sAlias = pGen->pIn->sData;
+				pGen->pIn++;
+			}
+		}
+		/* Register the import: alias -> FQN.
+		 * Strings are allocated from the VM pool allocator and freed
+		 * when the entire VM is released. SyHashRelease does not free
+		 * user-data, but pool memory is reclaimed in bulk at shutdown. */
+		zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+			(const char *)SyBlobData(&sPath),SyBlobLength(&sPath));
+		if( zDup ){
+			char *zAliasDup;
+			SyHashInsert(&pGen->hUseImports,sAlias.zString,sAlias.nByte,zDup);
+			/* Duplicate the alias key for the VM hash (token pointers may not survive to runtime) */
+			zAliasDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,sAlias.zString,sAlias.nByte);
+			if( zAliasDup ){
+				SyHashInsert(&pGen->pVm->hUseImports,zAliasDup,sAlias.nByte,zDup);
+			}
+		}
+		/* Check for comma (multiple use declarations) */
+		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_COMMA) ){
+			pGen->pIn++;
 		}else{
 			break;
 		}
 	}
-	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) && PH7_TKWRD_AS == SX_PTR_TO_INT(pGen->pIn->pUserData) ){
-		pGen->pIn++; /* Jump the 'as' keyword */
-		/* Compile one or more aliasses */
-		for(;;){
-			if( pGen->pIn >= pGen->pEnd ){
-				break;
-			}
-			while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_NSSEP|PH7_TK_ID)) ){
-				pGen->pIn++;
-			}
-			if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_COMMA/*','*/) ){
-				pGen->pIn++; /* Jump the comma and process the next alias */
-			}else{
-				break;
-			}
-		}
-	}
-	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI/*';'*/) == 0 ){
-		/* Unexpected token */
-		rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"use statement: Unexpected token '%z',expecting ';'",
-			&pGen->pIn->sData);
+	SyBlobRelease(&sPath);
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) == 0 ){
+		rc = PH7_GenCompileError(&(*pGen),E_PARSE,nLine,"syntax error, unexpected %s \"%z\"",
+			TokenTypeName(pGen->pIn->nType),&pGen->pIn->sData);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
 	}
-	/* Emit a notice */
-	PH7_GenCompileError(&(*pGen),E_NOTICE,nLine,
-		"Namespace support is disabled in the current release of the PH7(%s) engine",
-		ph7_lib_version()
-		);
 	return SXRET_OK;
 }
 /*
@@ -3860,14 +4065,28 @@ static sxi32 GenStateCompileFunc(
 	if( pFunc == 0 ){
 		goto OutOfMem;
 	}
-	/* function ID */
-	zName = SyMemBackendStrDup(&pGen->pVm->sAllocator,pName->zString,pName->nByte);
-	if( zName == 0 ){
-		/* Don't worry about freeing memory, everything will be released shortly */
-		goto OutOfMem;
+	/* Build the function name, prepending namespace if active */
+	if( SyBlobLength(&pGen->sNamespace) > 0 && !bHandleClosure ){
+		SyBlob sFQN;
+		sxu32 nLen;
+		SyBlobInit(&sFQN,&pGen->pVm->sAllocator);
+		SyBlobAppend(&sFQN,SyBlobData(&pGen->sNamespace),SyBlobLength(&pGen->sNamespace));
+		SyBlobAppend(&sFQN,"\\",1);
+		SyBlobAppend(&sFQN,pName->zString,pName->nByte);
+		nLen = (sxu32)SyBlobLength(&sFQN);
+		zName = SyMemBackendStrDup(&pGen->pVm->sAllocator,(const char *)SyBlobData(&sFQN),nLen);
+		SyBlobRelease(&sFQN);
+		if( zName == 0 ){
+			goto OutOfMem;
+		}
+		PH7_VmInitFuncState(pGen->pVm,pFunc,zName,nLen,iFlags,0);
+	}else{
+		zName = SyMemBackendStrDup(&pGen->pVm->sAllocator,pName->zString,pName->nByte);
+		if( zName == 0 ){
+			goto OutOfMem;
+		}
+		PH7_VmInitFuncState(pGen->pVm,pFunc,zName,pName->nByte,iFlags,0);
 	}
-	/* Initialize the function state */
-	PH7_VmInitFuncState(pGen->pVm,pFunc,zName,pName->nByte,iFlags,0);
 	if( pGen->pIn < pEnd ){
 		/* Collect function arguments */
 		rc = GenStateCollectFuncArgs(pFunc,&(*pGen),pEnd);
@@ -4468,8 +4687,15 @@ static sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 	pName = &pGen->pIn->sData;
 	/* Advance the stream cursor */
 	pGen->pIn++;
-	/* Obtain a raw class */
-	pClass = PH7_NewRawClass(pGen->pVm,pName,nLine);
+	/* Build FQN and obtain a raw class */ {
+		SyBlob sFQN;
+		SyString sFQNStr;
+		SyBlobInit(&sFQN,&pGen->pVm->sAllocator);
+		GenStateBuildFQN(pGen,pName,&sFQN);
+		SyStringInitFromBuf(&sFQNStr,(const char *)SyBlobData(&sFQN),SyBlobLength(&sFQN));
+		pClass = PH7_NewRawClass(pGen->pVm,&sFQNStr,nLine);
+		SyBlobRelease(&sFQN);
+	}
 	if( pClass == 0 ){
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
 		return SXERR_ABORT;
@@ -4701,8 +4927,15 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 	pName = &pGen->pIn->sData;
 	/* Advance the stream cursor */
 	pGen->pIn++;
-	/* Obtain a raw class */
-	pClass = PH7_NewRawClass(pGen->pVm,pName,nLine);
+	/* Build FQN and obtain a raw class */ {
+		SyBlob sFQN;
+		SyString sFQNStr;
+		SyBlobInit(&sFQN,&pGen->pVm->sAllocator);
+		GenStateBuildFQN(pGen,pName,&sFQN);
+		SyStringInitFromBuf(&sFQNStr,(const char *)SyBlobData(&sFQN),SyBlobLength(&sFQN));
+		pClass = PH7_NewRawClass(pGen->pVm,&sFQNStr,nLine);
+		SyBlobRelease(&sFQN);
+	}
 	if( pClass == 0 ){
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
 		return SXERR_ABORT;
@@ -5838,8 +6071,19 @@ static sxi32 GenStateEmitExprCode(
 			pInstr = PH7_VmPeekInstr(pGen->pVm);
 			if( pInstr ){
 				if ( pInstr->iOp == PH7_OP_LOADC ){
+					sxu32 nOrig = (sxu32)pInstr->iP2;
+					sxu32 nQual;
 					/* Prevent constant expansion */
 					pInstr->iP1 = 0;
+					/* Namespace-qualify the function name for CALL */
+					nQual = GenStateNsQualifyName(pGen,nOrig);
+					pInstr->iP2 = (sxi32)nQual;
+					if( nQual != nOrig ){
+						/* Name was compiler-qualified: flag CALL for host-function global fallback.
+						 * p3 = (void*)1 tells the VM it's safe to strip the NS prefix
+						 * and try the short name in hHostFunction. */
+						p3 = (void *)1;
+					}
 				}else if( pInstr->iOp == PH7_OP_MEMBER /* $a->b(1,2,3) */ || pInstr->iOp == PH7_OP_NEW ){
 					/* Method call,flag that */
 					pInstr->iP2 = 1;
@@ -5927,6 +6171,17 @@ static sxi32 GenStateEmitExprCode(
 				iP1 = 1;
 			}
 		}else if( iVmOp == PH7_OP_NEW ){
+			/* Namespace-qualify the class name for NEW */ {
+				VmInstr *pPeek = PH7_VmPeekInstr(pGen->pVm);
+				if( pPeek && pPeek->iOp == PH7_OP_CALL ){
+					pPeek = PH7_VmPeekNextInstr(pGen->pVm);
+				}
+				if( pPeek && pPeek->iOp == PH7_OP_LOADC ){
+					/* Prevent constant expansion for class name */
+					pPeek->iP1 = 0;
+					pPeek->iP2 = (sxi32)GenStateNsQualifyName(pGen,(sxu32)pPeek->iP2);
+				}
+			}
 			pInstr = PH7_VmPeekInstr(pGen->pVm);
 			if( pInstr && pInstr->iOp == PH7_OP_CALL ){
 				VmInstr *pPrev;
@@ -5937,7 +6192,20 @@ static sxi32 GenStateEmitExprCode(
 					(void)PH7_VmPopInstr(pGen->pVm);
 				}
 			}
+		}else if( iVmOp == PH7_OP_IS_A ){
+			/* instanceof: right operand is a class name, not a constant */
+			pInstr = PH7_VmPeekInstr(pGen->pVm);
+			if( pInstr && pInstr->iOp == PH7_OP_LOADC ){
+				pInstr->iP1 = 0;
+			}
 		}else if( iVmOp == PH7_OP_MEMBER){
+			/* Prevent constant expansion for member/property names.
+			 * The right child (member name) was just compiled — its LOADC
+			 * should not trigger constant lookup. */
+			pInstr = PH7_VmPeekInstr(pGen->pVm);
+			if( pInstr && pInstr->iOp == PH7_OP_LOADC ){
+				pInstr->iP1 = 0;
+			}
 			if( pNode->pOp->iOp == EXPR_OP_DC /* '::' */){
 				/* Static member access,remember that */
 				iP1 = 1;
@@ -6444,6 +6712,9 @@ PH7_PRIVATE sxi32 PH7_InitCodeGenerator(
 	SyBlobInit(&pGen->sErrBuf,&pVm->sAllocator);
 	/* General purpose working buffer */
 	SyBlobInit(&pGen->sWorker,&pVm->sAllocator);
+	/* Namespace state */
+	SyBlobInit(&pGen->sNamespace,&pVm->sAllocator);
+	SyHashInit(&pGen->hUseImports,&pVm->sAllocator,0,0);
 	/* Create the global scope */
 	GenStateInitBlock(pGen,&pGen->sGlobal,GEN_BLOCK_GLOBAL,PH7_VmInstrLength(&(*pVm)),0);
 	/* Point to the global scope */
@@ -6466,6 +6737,10 @@ PH7_PRIVATE sxi32 PH7_ResetCodeGenerator(
 	SySetReset(&pGen->aGoto);
 	SyBlobRelease(&pGen->sErrBuf);
 	SyBlobRelease(&pGen->sWorker);
+	SyBlobRelease(&pGen->sNamespace);
+	SyBlobInit(&pGen->sNamespace,&pVm->sAllocator);
+	SyHashRelease(&pGen->hUseImports);
+	SyHashInit(&pGen->hUseImports,&pVm->sAllocator,0,0);
 	/* Note: pGen->hVar and pGen->hLiteral are intentionally NOT reset here.
 	 * They intern variable names and literal strings that are referenced by
 	 * compiled bytecode (pInstr->p3) and runtime frame hash tables (pFrame->hVar).
@@ -6504,20 +6779,19 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 	SyBlobReset(pWorker);
 	/* Peek the processed file path if available */
 	pFile = (SyString *)SySetPeek(&pGen->pVm->aFiles);
-	if( pFile && pGen->xErr ){
-		/* Append file name */
-		SyBlobAppend(pWorker,pFile->zString,pFile->nByte);
-		SyBlobAppend(pWorker,(const void *)": ",sizeof(": ")-1);
-	}
 	if( nErrType == E_ERROR ){
 		/* Increment the error counter */
 		pGen->nErr++;
 		if( pGen->nErr > 15 ){
 			/* Error count limit reached */
 			if( pGen->xErr ){
-				SyBlobFormat(pWorker,"%u Error count limit reached,PH7 is aborting compilation\n",nLine);
+				SyBlobAppend(pWorker,"PHP ",4);
+				SyBlobFormat(pWorker,"Error:  Error count limit reached,PH7 is aborting compilation");
+				if( pFile ){
+					SyBlobFormat(pWorker," in %.*s on line %u",pFile->nByte,pFile->zString,nLine);
+				}
+				SyBlobAppend(pWorker,(const void *)"\n",sizeof(char));
 				if( SyBlobLength(pWorker) > 0 ){
-					/* Consume the generated error message */
 					pGen->xErr(SyBlobData(pWorker),SyBlobLength(pWorker),pGen->pErrData);
 				}
 			}
@@ -6540,11 +6814,15 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 		break;
 	}
 	rc = SXRET_OK;
-	/* Format the error message */
-	SyBlobFormat(pWorker,"%u %s:  ",nLine,zErr);
+	/* Format: PHP <severity>:  <message> in <file> on line <line> */
+	SyBlobAppend(pWorker,"PHP ",4);
+	SyBlobFormat(pWorker,"%s:  ",zErr);
 	va_start(ap,zFormat);
 	SyBlobFormatAp(pWorker,zFormat,ap);
 	va_end(ap);
+	if( pFile ){
+		SyBlobFormat(pWorker," in %.*s on line %u",pFile->nByte,pFile->zString,nLine);
+	}
 	/* Append a new line */
 	SyBlobAppend(pWorker,(const void *)"\n",sizeof(char));
 	if( SyBlobLength(pWorker) > 0 ){

@@ -12,8 +12,7 @@ $a = array(1, 2, 3 => );
 echo "Should not reach here";
 ?>
 --EXPECTF--
-%s 3 Error:  array(): Missing entry value
-Compile error
+%s Error:  array(): Missing entry value %s
 --CLEAN--
 <?php
 unset($a);

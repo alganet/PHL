@@ -10,8 +10,7 @@ Anonymous function syntax error: missing '{'
 $func = function() echo "test";
 ?>
 --EXPECTF--
-%s 2 Error:  Syntax error while declaring annonymous function
-Compile error
+%s Error:  Syntax error while declaring annonymous function %s
 --CLEAN--
 <?php
 unset($func);

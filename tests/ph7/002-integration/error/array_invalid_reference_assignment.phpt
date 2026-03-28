@@ -10,8 +10,7 @@ PHL: array with invalid reference to assignment
 $a = array(&$b = 1);
 ?>
 --EXPECTF--
-%s 2 Error:  array(): Expecting a variable/array member/function call after reference operator '&'
-Compile error
+%s Error:  array(): Expecting a variable/array member/function call after reference operator '&' %s
 --CLEAN--
 <?php
 unset($a);

@@ -75,8 +75,7 @@ class Child extends Parent implements {
 
 ?>
 --EXPECTF--
-%s %d Error:  Missing ')' after function 'invalid_func' signature
-Compile error
+%s Error:  Missing ')' after function 'invalid_func' signature %s
 --CLEAN--
 <?php
 unset($empty, $bad);

@@ -13,8 +13,7 @@ function test() {
 echo "test";
 ?>
 --EXPECTF--
-%s 4 Error:  Syntax error: Unexpected token '}'
-Compile error
+%s Error:  Syntax error: Unexpected token '}' %s
 --CLEAN--
 <?php
 

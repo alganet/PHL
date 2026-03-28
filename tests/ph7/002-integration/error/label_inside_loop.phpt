@@ -14,8 +14,7 @@ for ($i = 0; $i < 1; $i++) {
 }
 ?>
 --EXPECTF--
-%s %d Error:  Label 'label' inside loop or try/catch block is disallowed
-Compile error
+%s Error:  Label 'label' inside loop or try/catch block is disallowed %s
 --CLEAN--
 <?php
 

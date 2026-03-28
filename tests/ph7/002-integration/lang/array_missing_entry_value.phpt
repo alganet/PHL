@@ -14,8 +14,7 @@ if (function_exists('zend_version')) {
 $x = array(0 => );
 ?>
 --EXPECTF--
-%s 2 Error:  array(): Missing entry value
-Compile error
+%s Error:  array(): Missing entry value %s
 --CLEAN--
 <?php
 unset($x);

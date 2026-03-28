@@ -11,8 +11,7 @@ declare(ticks=1);
 echo "done\n";
 ?>
 --EXPECTF--
-%s 2 Notice:  the declare construct is a no-op in the current release of the PH7(2.1.4) engine
-done
+%s Notice:  the declare construct is a no-op in the current release of the PH7(2.1.4) engine %s
 --CLEAN--
 <?php
 
