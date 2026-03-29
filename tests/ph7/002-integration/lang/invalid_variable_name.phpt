@@ -11,7 +11,7 @@ $a = $1;
 echo "Should not reach here\n";
 ?>
 --EXPECTF--
-%s Error:  Unexpected token '1' %s
+%s Fatal error:  Unexpected token '1' %s
 --CLEAN--
 <?php
 unset($a);

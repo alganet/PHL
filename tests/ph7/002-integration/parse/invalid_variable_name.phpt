@@ -11,7 +11,7 @@ Invalid variable name compilation error
 $1 = 5;
 ?>
 --EXPECTF--
-%s Error:  '=': Left operand must be a modifiable l-value %s
+%s Fatal error:  '=': Left operand must be a modifiable l-value %s
 --CLEAN--
 <?php
 unset($1);

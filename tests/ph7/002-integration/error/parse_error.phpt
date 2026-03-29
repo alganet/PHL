@@ -15,7 +15,7 @@ function broken( { // syntax error: missing ) brace
     echo "should never print\n";
 ?>
 --EXPECTF--
-%s Error:  Missing ')' after function 'broken' signature %s
+%s Fatal error:  Missing ')' after function 'broken' signature %s
 --CLEAN--
 <?php
 

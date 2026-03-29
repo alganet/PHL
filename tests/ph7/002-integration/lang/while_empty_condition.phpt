@@ -12,7 +12,7 @@ while () {
 }
 ?>
 --EXPECTF--
-%s Error:  Expected expression after 'while' keyword %s
+%s Fatal error:  Expected expression after 'while' keyword %s
 --CLEAN--
 <?php
 

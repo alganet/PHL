@@ -546,6 +546,7 @@ struct ph7_class
 	SyHash hMethod;       /* Class methods */
 	sxu32 nLine;          /* Line number on which this class was declared */
 	SySet aInterface;     /* Implemented interface container */
+	SySet aTrait;         /* Used trait container */
 	ph7_class *pNextName; /* Next class [interface, abstract, etc.] with the same name */
 	int bMounted;         /* TRUE if class has been mounted (internal VM state) */
 };
@@ -553,6 +554,7 @@ struct ph7_class
 #define PH7_CLASS_FINAL       0x001 /* Class is final [cannot be extended] */
 #define PH7_CLASS_INTERFACE   0x002 /* Class is interface */
 #define PH7_CLASS_ABSTRACT    0x004 /* Class is abstract */
+#define PH7_CLASS_TRAIT       0x008 /* Class is a trait */
 /* Class attribute/methods/constants protection levels */
 #define PH7_CLASS_PROT_PUBLIC     1 /* public */
 #define PH7_CLASS_PROT_PROTECTED  2 /* protected */
@@ -1066,6 +1068,8 @@ enum ph7_expr_id {
 #define PH7_TKWRD_XOR          0x4000 /* xor: MUST BE A POWER OF TWO  */
 #define PH7_TKWRD_BREAK        55 /* break */
 #define PH7_TKWRD_GOTO         56 /* goto */
+#define PH7_TKWRD_TRAIT        57 /* trait */
+#define PH7_TKWRD_INSTEADOF    58 /* insteadof */
 #define PH7_TKWRD_BOOL         0x8000  /* bool:  MUST BE A POWER OF TWO */
 #define PH7_TKWRD_INT          0x10000  /* int:   MUST BE A POWER OF TWO */
 #define PH7_TKWRD_FLOAT        0x20000  /* float:  MUST BE A POWER OF TWO */
@@ -1415,6 +1419,7 @@ PH7_PRIVATE sxi32 PH7_CompileLiteral(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileSimpleString(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileString(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileArray(ph7_gen_state *pGen,sxi32 iCompileFlag);
+PH7_PRIVATE sxi32 PH7_CompileShortArray(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileList(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileAnnonFunc(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_InitCodeGenerator(ph7_vm *pVm,ProcConsumer xErr,void *pErrData);
@@ -1465,6 +1470,7 @@ PH7_PRIVATE ph7_class_attr   * PH7_ClassExtractAttribute(ph7_class *pClass,const
 PH7_PRIVATE sxi32 PH7_ClassInstallAttr(ph7_class *pClass,ph7_class_attr *pAttr);
 PH7_PRIVATE sxi32 PH7_ClassInstallMethod(ph7_class *pClass,ph7_class_method *pMeth);
 PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class *pBase);
+PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_class *pTrait);
 PH7_PRIVATE sxi32 PH7_ClassInterfaceInherit(ph7_class *pSub,ph7_class *pBase);
 PH7_PRIVATE sxi32 PH7_ClassImplement(ph7_class *pMain,ph7_class *pInterface);
 PH7_PRIVATE ph7_class_instance * PH7_NewClassInstance(ph7_vm *pVm,ph7_class *pClass);

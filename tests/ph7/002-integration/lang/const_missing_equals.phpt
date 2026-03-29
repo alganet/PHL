@@ -10,7 +10,7 @@ const without equals (covers compile.c lines 492,494)
 const MYCONST;
 ?>
 --EXPECTF--
-%s Error:  const: Expected '=' after constant name %s
+%s Fatal error:  const: Expected '=' after constant name %s
 --CLEAN--
 <?php
 

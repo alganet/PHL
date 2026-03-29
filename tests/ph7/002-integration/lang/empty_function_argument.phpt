@@ -10,7 +10,7 @@ PH7: Syntax error - mismatched parentheses
 echo ( 1 ;
 ?>
 --EXPECTF--
-%s Error:  Syntax error,mismatched '(','[','{' or '?' %s
+%s Fatal error:  Syntax error,mismatched '(','[','{' or '?' %s
 --CLEAN--
 <?php
 

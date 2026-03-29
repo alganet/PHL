@@ -12,7 +12,7 @@ echo "test";
 ]
 ?>
 --EXPECTF--
-%s Error:  Syntax error: Unexpected token ']' %s
+%s Fatal error:  Syntax error: Unexpected token ']' %s
 --CLEAN--
 <?php
 

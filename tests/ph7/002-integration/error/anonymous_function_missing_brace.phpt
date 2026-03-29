@@ -10,7 +10,7 @@ Syntax error: Missing opening brace in anonymous function
 $f = function();
 ?>
 --EXPECTF--
-%s Error:  Syntax error while declaring annonymous function %s
+%s Fatal error:  Syntax error while declaring annonymous function %s
 --CLEAN--
 <?php
 unset($f);

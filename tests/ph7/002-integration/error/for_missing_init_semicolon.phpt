@@ -11,7 +11,7 @@ for($i=0$i<10; $i++) {
 }
 ?>
 --EXPECTF--
-%s Error:  Unexpected token '<' %s
+%s Fatal error:  Unexpected token '<' %s
 --CLEAN--
 <?php
 

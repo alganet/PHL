@@ -12,7 +12,7 @@ label:
 echo "done";
 ?>
 --EXPECTF--
-%s Error:  goto: Invalid label name: '123' %s
+%s Fatal error:  goto: Invalid label name: '123' %s
 --CLEAN--
 <?php
 

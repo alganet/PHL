@@ -697,8 +697,8 @@ PH7_PRIVATE sxi32 VmMountUserClass(
 		}
 	}
 	/* Install class methods */
-	if( pClass->iFlags & PH7_CLASS_INTERFACE ){
-		/* Do not mount interface methods since they are signatures only.
+	if( pClass->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_TRAIT) ){
+		/* Do not mount interface/trait methods since they are not directly invocable.
 		 */
 		return SXRET_OK;
 	}
@@ -10303,9 +10303,9 @@ PH7_PRIVATE ph7_class * PH7_VmExtractClass(
 	if( !iLoadable ){
 		return pClass;
 	}
-	/* Filter for loadable classes (skip interfaces/abstract) */
+	/* Filter for loadable classes (skip interfaces/abstract/traits) */
 	while(pClass){
-		if( (pClass->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_ABSTRACT)) == 0 ){
+		if( (pClass->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_ABSTRACT|PH7_CLASS_TRAIT)) == 0 ){
 			return pClass;
 		}
 		pClass = pClass->pNextName;

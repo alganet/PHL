@@ -10,7 +10,7 @@ Syntax error: Invalid token after 'use' in anonymous function
 $f = function() use invalid { };
 ?>
 --EXPECTF--
-%s Error:  Syntax error while declaring annonymous function %s
+%s Fatal error:  Syntax error while declaring annonymous function %s
 --CLEAN--
 <?php
 unset($f);

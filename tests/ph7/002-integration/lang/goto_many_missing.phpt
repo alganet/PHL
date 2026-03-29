@@ -25,7 +25,7 @@ goto label15;
 goto label16;
 ?>
 --EXPECTF--
-%s Error:  Label 'label1' was referenced but not defined %s
+%s Fatal error:  Label 'label1' was referenced but not defined %s
 --CLEAN--
 <?php
 

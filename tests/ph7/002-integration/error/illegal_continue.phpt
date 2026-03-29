@@ -10,7 +10,7 @@ PHL: continue statement outside loop
 continue;
 ?>
 --EXPECTF--
-%s Error:  A 'continue' statement may only be used within a loop or switch %s
+%s Fatal error:  A 'continue' statement may only be used within a loop or switch %s
 --CLEAN--
 <?php
 

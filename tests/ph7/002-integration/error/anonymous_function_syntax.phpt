@@ -10,7 +10,7 @@ Syntax error: Missing opening parenthesis in anonymous function
 $f = function echo 1;
 ?>
 --EXPECTF--
-%s Error:  Missing opening parenthesis '(' while declaring annonymous function %s
+%s Fatal error:  Missing opening parenthesis '(' while declaring annonymous function %s
 --CLEAN--
 <?php
 unset($f);

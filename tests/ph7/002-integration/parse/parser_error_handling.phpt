@@ -58,7 +58,7 @@ try {
 
 ?>
 --EXPECTF--
-%s Error:  goto: Invalid label name: ';' %s
+%s Fatal error:  goto: Invalid label name: ';' %s
 --CLEAN--
 <?php
 

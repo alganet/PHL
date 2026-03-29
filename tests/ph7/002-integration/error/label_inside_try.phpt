@@ -16,7 +16,7 @@ try {
 }
 ?>
 --EXPECTF--
-%s Error:  Label 'label' inside loop or try/catch block is disallowed %s
+%s Fatal error:  Label 'label' inside loop or try/catch block is disallowed %s
 --CLEAN--
 <?php
 

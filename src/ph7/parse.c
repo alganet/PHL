@@ -364,6 +364,10 @@ static sxi32 ExprVerifyNodes(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nN
 	}
 	iParen = iSquare = iQuesty = iBraces = 0;
 	for( i = 0 ; i < nNode ; ++i ){
+		if( apNode[i]->xCode == PH7_CompileShortArray ){
+			/* Short array literal: brackets are self-contained, skip */
+			continue;
+		}
 		if( apNode[i]->pStart->nType & PH7_TK_LPAREN /*'('*/){
 			if( i > 0 && ( apNode[i-1]->xCode == PH7_CompileVariable || apNode[i-1]->xCode == PH7_CompileLiteral ||
 				(apNode[i - 1]->pStart->nType & (PH7_TK_ID|PH7_TK_KEYWORD|PH7_TK_SSTR|PH7_TK_DSTR|PH7_TK_RPAREN/*')'*/|PH7_TK_CSB/*']'*/|PH7_TK_CCB/*'}'*/))) ){
@@ -646,7 +650,7 @@ Synchronize:
  * quoted string, a heredoc/nowdoc,a literal [i.e: PHP_EOL],a namespace path
  * [i.e: namespaces\path\to..],a array/list [i.e: array(4,5,6)] and so on.
  */
-static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode)
+static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLastWasTerm)
 {
 	ph7_expr_node *pNode;
 	SyToken *pCur;
@@ -665,7 +669,25 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode)
 	/* Point to the head of the token stream */
 	pCur = pNode->pStart = pGen->pIn;
 	/* Start collecting tokens */
-	if( pCur->nType & PH7_TK_OP ){
+	if( (pCur->nType & PH7_TK_OSB) && !iLastWasTerm ){
+		/* PHP 5.4 short array syntax: [1, 2, 3] or ['key' => 'value'].
+		 * This '[' does not follow a term, so it is an array literal, not subscript.
+		 */
+		pCur++; /* Skip the opening '[' */
+		PH7_DelimitNestedTokens(pCur,pGen->pEnd,PH7_TK_OSB,PH7_TK_CSB,&pCur);
+		if( pCur < pGen->pEnd ){
+			pCur++; /* Skip past the closing ']' */
+		}else{
+			rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
+				"Short array: Missing closing bracket ']'");
+			if( rc != SXERR_ABORT ){
+				rc = SXERR_SYNTAX;
+			}
+			SyMemBackendPoolFree(&pGen->pVm->sAllocator,pNode);
+			return rc;
+		}
+		pNode->xCode = PH7_CompileShortArray;
+	}else if( pCur->nType & PH7_TK_OP ){
 		/* Point to the instance that describe this operator */
 		pNode->pOp = (const ph7_expr_op *)pCur->pUserData;
 		/* Advance the stream cursor */
@@ -1124,7 +1146,8 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				 sxi32 iArrTok = iCur + 1;
 				 sxi32 iNest = 1;
 				 if(  iLeft < 0 || apNode[iLeft] == 0 || (apNode[iLeft]->pOp == 0 && (apNode[iLeft]->xCode != PH7_CompileVariable &&
-					 apNode[iLeft]->xCode != PH7_CompileSimpleString && apNode[iLeft]->xCode != PH7_CompileString ) ) ||
+					 apNode[iLeft]->xCode != PH7_CompileSimpleString && apNode[iLeft]->xCode != PH7_CompileString &&
+					 apNode[iLeft]->xCode != PH7_CompileArray && apNode[iLeft]->xCode != PH7_CompileShortArray ) ) ||
 					 ( apNode[iLeft]->pOp && apNode[iLeft]->pOp->iPrec != 2 /* postfix */) ){
 						 /* Syntax error */
 						 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"Invalid array name");
@@ -1574,13 +1597,27 @@ PH7_PRIVATE sxi32 PH7_ExprMakeTree(ph7_gen_state *pGen,SySet *pExprNode,ph7_expr
 	SySetReset(pExprNode);
 	pNode = 0; /* Prevent compiler warning */
 	/* Extract nodes one after one until we hit the end of the input */
-	while( pGen->pIn < pGen->pEnd ){
-		rc = ExprExtractNode(&(*pGen),&pNode);
-		if( rc != SXRET_OK ){
-			return rc;
+	{
+		int iLastWasTerm = 0;
+		while( pGen->pIn < pGen->pEnd ){
+			rc = ExprExtractNode(&(*pGen),&pNode,iLastWasTerm);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+			/* Determine if this node is a term for short-array disambiguation */
+			if( pNode->xCode ){
+				/* Node with compile handler: variable, literal, string, array, etc. */
+				iLastWasTerm = 1;
+			}else if( pNode->pOp ){
+				/* Operator node */
+				iLastWasTerm = 0;
+			}else{
+				/* Delimiter: ')' and ']' end terms */
+				iLastWasTerm = (pNode->pStart->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB)) ? 1 : 0;
+			}
+			/* Save the extracted node */
+			SySetPut(pExprNode,(const void *)&pNode);
 		}
-		/* Save the extracted node */
-		SySetPut(pExprNode,(const void *)&pNode);
 	}
 	if( SySetUsed(pExprNode) < 1 ){
 		/* Empty expression [i.e: A semi-colon;] */

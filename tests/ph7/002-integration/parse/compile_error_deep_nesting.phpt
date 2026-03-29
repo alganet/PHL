@@ -102,7 +102,7 @@ echo "deep";
 }
 ?>
 --EXPECTF--
-%s Error:  Missing closing braces '}' %s
+%s Fatal error:  Missing closing braces '}' %s
 --CLEAN--
 <?php
 

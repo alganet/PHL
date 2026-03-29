@@ -10,7 +10,7 @@ Goto a missing label results in compile-time error
 goto missing_label;
 ?>
 --EXPECTF--
-%s Error:  Label 'missing_label' was referenced but not defined %s
+%s Fatal error:  Label 'missing_label' was referenced but not defined %s
 --CLEAN--
 <?php
 

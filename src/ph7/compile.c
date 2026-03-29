@@ -1060,15 +1060,11 @@ static sxi32 GenStateArrayNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRoot
 	return rc;
 }
 /*
- * Compile the 'array' language construct.
- *	 According to the PHP language reference manual
- *   An array in PHP is actually an ordered map. A map is a type that associates
- *   values to keys. This type is optimized for several different uses; it can
- *   be treated as an array, list (vector), hash table (an implementation of a map)
- *   dictionary, collection, stack, queue, and probably more. As array values can be
- *   other arrays, trees and multidimensional arrays are also possible.
+ * Compile the body of an array literal (shared by array() and short syntax []).
+ * Assumes pGen->pIn points to the first content token and pGen->pEnd points
+ * one past the last content token (i.e. the delimiters have been excluded).
  */
-PH7_PRIVATE sxi32 PH7_CompileArray(ph7_gen_state *pGen,sxi32 iCompileFlag)
+static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)
 {
 	sxi32 (*xValidator)(ph7_gen_state *,ph7_expr_node *); /* Expression tree validator callback */
 	SyToken *pKey,*pCur;
@@ -1076,12 +1072,7 @@ PH7_PRIVATE sxi32 PH7_CompileArray(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	sxi32 nPair = 0;
 	sxi32 iNest;
 	sxi32 rc;
-	/* Jump the 'array' keyword,the leading left parenthesis and the trailing parenthesis.
-	 */
-	pGen->pIn += 2;
-	pGen->pEnd--;
 	xValidator = 0;
-	SXUNUSED(iCompileFlag); /* cc warning */
 	for(;;){
 		/* Jump leading commas */
 		while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_COMMA) ){
@@ -1172,6 +1163,36 @@ PH7_PRIVATE sxi32 PH7_CompileArray(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_MAP,nPair * 2,0,0,0);
 	/* Node successfully compiled */
 	return SXRET_OK;
+}
+/*
+ * Compile the 'array' language construct.
+ *	 According to the PHP language reference manual
+ *   An array in PHP is actually an ordered map. A map is a type that associates
+ *   values to keys. This type is optimized for several different uses; it can
+ *   be treated as an array, list (vector), hash table (an implementation of a map)
+ *   dictionary, collection, stack, queue, and probably more. As array values can be
+ *   other arrays, trees and multidimensional arrays are also possible.
+ */
+PH7_PRIVATE sxi32 PH7_CompileArray(ph7_gen_state *pGen,sxi32 iCompileFlag)
+{
+	/* Jump the 'array' keyword and the leading '(', exclude trailing ')'. */
+	pGen->pIn += 2;
+	pGen->pEnd--;
+	SXUNUSED(iCompileFlag);
+	return GenStateCompileArrayBody(pGen);
+}
+/*
+ * Compile a short array literal using the PHP 5.4 bracket syntax.
+ * [1, 2, 3] is equivalent to array(1, 2, 3).
+ * ['key' => 'value'] is equivalent to array('key' => 'value').
+ */
+PH7_PRIVATE sxi32 PH7_CompileShortArray(ph7_gen_state *pGen,sxi32 iCompileFlag)
+{
+	/* Jump the leading '[', exclude trailing ']'. */
+	pGen->pIn++;
+	pGen->pEnd--;
+	SXUNUSED(iCompileFlag);
+	return GenStateCompileArrayBody(pGen);
 }
 /*
  * Expression tree validator callback for the 'list' language construct.
@@ -4925,6 +4946,13 @@ done:
  *  A class may contain its own constants, variables (called "properties"), and functions
  *  (called "methods").
  */
+/* Per-use-statement entry: the traits listed in one 'use' plus its optional { } block */
+typedef struct TraitUseEntry TraitUseEntry;
+struct TraitUseEntry {
+	SySet aTraits;             /* SySet of ph7_class* — traits in this use statement */
+	SyToken *pResolvStart;     /* Start of resolution block tokens (NULL if none) */
+	SyToken *pResolvEnd;       /* End of resolution block tokens */
+};
 static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 {
 	sxu32 nLine = pGen->pIn->nLine;
@@ -4932,6 +4960,7 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 	SyToken *pEnd,*pTmp;
 	sxi32 iProtection;
 	SySet aInterfaces;
+	SySet aUseEntries;
 	sxi32 iAttrflags;
 	SyString *pName;
 	sxi32 nKwrd;
@@ -4968,8 +4997,9 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
 		return SXERR_ABORT;
 	}
-	/* implemented interfaces container */
+	/* implemented interfaces and per-use-statement trait containers */
 	SySetInit(&aInterfaces,&pGen->pVm->sAllocator,sizeof(ph7_class *));
+	SySetInit(&aUseEntries,&pGen->pVm->sAllocator,sizeof(TraitUseEntry));
 	/* Assume a standalone class */
 	pBase = 0;
 	if( pGen->pIn < pGen->pEnd  && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
@@ -5129,6 +5159,68 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 		if( pGen->pIn->nType & PH7_TK_KEYWORD ){
 			/* Extract the current keyword */
 			nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
+			if( nKwrd == PH7_TKWRD_USE ){
+				/* Trait use: use TraitA, TraitB [{ ... }]; */
+				TraitUseEntry sUse;
+				SySetInit(&sUse.aTraits,&pGen->pVm->sAllocator,sizeof(ph7_class *));
+				sUse.pResolvStart = sUse.pResolvEnd = 0;
+				pGen->pIn++; /* Jump the 'use' keyword */
+				for(;;){
+					ph7_class *pTrait;
+					SyString *pTraitName;
+					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_ID) == 0 ){
+						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+							"Expected trait name after 'use' inside class '%z'",pName);
+						if( rc == SXERR_ABORT ){
+							return SXERR_ABORT;
+						}
+						break;
+					}
+					pTraitName = &pGen->pIn->sData;
+					/* Resolve trait name through namespace/imports */ {
+						SyBlob sResolved;
+						SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
+						GenStateResolveName(pGen,pTraitName,&sResolved);
+						pTrait = PH7_VmExtractClass(pGen->pVm,
+							(const char *)SyBlobData(&sResolved),(sxu32)SyBlobLength(&sResolved),FALSE,0);
+						SyBlobRelease(&sResolved);
+					}
+					/* Only traits are allowed */
+					while( pTrait && (pTrait->iFlags & PH7_CLASS_TRAIT) == 0 ){
+						pTrait = pTrait->pNextName;
+					}
+					if( pTrait == 0 ){
+						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+							"'%z' is not a trait",pTraitName);
+						if( rc == SXERR_ABORT ){
+							return SXERR_ABORT;
+						}
+					}else{
+						SySetPut(&sUse.aTraits,(const void *)&pTrait);
+					}
+					pGen->pIn++; /* Advance past trait name */
+					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_COMMA) == 0 ){
+						break;
+					}
+					pGen->pIn++; /* Jump the comma */
+				}
+				/* Expect semicolon or opening brace (for conflict resolution) */
+				if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OCB) ){
+					SyToken *pBlock;
+					pGen->pIn++; /* Jump '{' */
+					PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_OCB,PH7_TK_CCB,&pBlock);
+					sUse.pResolvStart = pGen->pIn;
+					sUse.pResolvEnd = pBlock;
+					if( pBlock < pGen->pEnd ){
+						pGen->pIn = &pBlock[1]; /* Skip past '}' */
+					}else{
+						pGen->pIn = pGen->pEnd;
+					}
+				}
+				SySetPut(&aUseEntries,(const void *)&sUse);
+				/* The semicolon will be consumed by the outer loop */
+				continue;
+			}
 			if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
 				iProtection = nKwrd;
 				pGen->pIn++; /* Jump the visibility token */
@@ -5309,6 +5401,220 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 			}
 		}
 	}
+	/* Apply collected traits (per use-statement) before installing the class.
+	 * Each use-statement carries its own set of traits and optional resolution block.
+	 */
+	{
+		TraitUseEntry *apUse;
+		sxu32 nU;
+		apUse = (TraitUseEntry *)SySetBasePtr(&aUseEntries);
+		for( nU = 0 ; nU < SySetUsed(&aUseEntries) ; nU++ ){
+			TraitUseEntry *pUse = &apUse[nU];
+			ph7_class **apTrait = (ph7_class **)SySetBasePtr(&pUse->aTraits);
+			sxu32 nTraits = SySetUsed(&pUse->aTraits);
+			int hasResolution = (pUse->pResolvStart && pUse->pResolvStart < pUse->pResolvEnd) ? 1 : 0;
+			sxu32 nT;
+			if( !hasResolution ){
+				/* No conflict resolution block: use standard trait application */
+				for( nT = 0 ; nT < nTraits ; nT++ ){
+					rc = PH7_ClassUseTrait(&(*pGen),pClass,apTrait[nT]);
+					if( rc != SXRET_OK ){
+						break;
+					}
+				}
+			}else{
+				/* With resolution block: copy attributes, record traits,
+				 * then use the block to resolve method conflicts.
+				 */
+				SyToken *pR;
+				for( nT = 0 ; nT < nTraits ; nT++ ){
+					ph7_class *pTR = apTrait[nT];
+					ph7_class_attr *pAR;
+					SyHashEntry *pER;
+					SyString *pNR;
+					SyHashResetLoopCursor(&pTR->hAttr);
+					while((pER = SyHashGetNextEntry(&pTR->hAttr)) != 0 ){
+						pAR = (ph7_class_attr *)pER->pUserData;
+						pNR = &pAR->sName;
+						if( SyHashGet(&pClass->hAttr,(const void *)pNR->zString,pNR->nByte) == 0 ){
+							SyHashInsert(&pClass->hAttr,(const void *)pNR->zString,pNR->nByte,pAR);
+						}
+					}
+					SySetPut(&pClass->aTrait,(const void *)&pTR);
+				}
+				/* Pass 1: process insteadof rules to install winning methods */
+				pR = pUse->pResolvStart;
+				while( pR < pUse->pResolvEnd ){
+					SyString sTrait,sMethod;
+					ph7_class *pSrcTrait;
+					ph7_class_method *pMeth;
+					sxi32 nRKwrd;
+					while( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_SEMI) ){ pR++; }
+					if( pR >= pUse->pResolvEnd ) break;
+					SyStringInitFromBuf(&sTrait,"",0);
+					SyStringInitFromBuf(&sMethod,"",0);
+					if( (pR->nType & PH7_TK_ID) == 0 ){ pR++; continue; }
+					sMethod = pR->sData;
+					pR++;
+					if( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_OP) ){
+						const ph7_expr_op *pOp = (const ph7_expr_op *)pR->pUserData;
+						if( pOp && pOp->iOp == EXPR_OP_DC ){
+							sTrait = sMethod;
+							pR++;
+							if( pR >= pUse->pResolvEnd || (pR->nType & PH7_TK_ID) == 0 ) break;
+							sMethod = pR->sData;
+							pR++;
+						}
+					}
+					if( pR >= pUse->pResolvEnd || (pR->nType & PH7_TK_KEYWORD) == 0 ){
+						while( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_SEMI) == 0 ){ pR++; }
+						continue;
+					}
+					nRKwrd = SX_PTR_TO_INT(pR->pUserData);
+					pR++;
+					if( nRKwrd == PH7_TKWRD_INSTEADOF && sTrait.nByte > 0 ){
+						pSrcTrait = 0;
+						for( nT = 0 ; nT < nTraits ; nT++ ){
+							SyString *pTN = &apTrait[nT]->sName;
+							if( pTN->nByte >= sTrait.nByte &&
+								SyMemcmp(&pTN->zString[pTN->nByte - sTrait.nByte],sTrait.zString,sTrait.nByte) == 0 ){
+								pSrcTrait = apTrait[nT];
+								break;
+							}
+						}
+						if( pSrcTrait ){
+							pMeth = PH7_ClassExtractMethod(pSrcTrait,sMethod.zString,sMethod.nByte);
+							if( pMeth ){
+								SyString *pMN = &pMeth->sFunc.sName;
+								if( SyHashGet(&pClass->hMethod,(const void *)pMN->zString,pMN->nByte) == 0 ){
+									SyHashInsert(&pClass->hMethod,(const void *)pMN->zString,pMN->nByte,pMeth);
+								}
+							}
+						}
+					}
+					while( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_SEMI) == 0 ){ pR++; }
+				}
+				/* Install remaining non-conflicting methods from this use's traits */
+				for( nT = 0 ; nT < nTraits ; nT++ ){
+					ph7_class_method *pMR;
+					SyHashEntry *pER;
+					SyString *pNR;
+					SyHashResetLoopCursor(&apTrait[nT]->hMethod);
+					while((pER = SyHashGetNextEntry(&apTrait[nT]->hMethod)) != 0 ){
+						pMR = (ph7_class_method *)pER->pUserData;
+						pNR = &pMR->sFunc.sName;
+						if( SyHashGet(&pClass->hMethod,(const void *)pNR->zString,pNR->nByte) == 0 ){
+							SyHashInsert(&pClass->hMethod,(const void *)pNR->zString,pNR->nByte,pMR);
+						}
+					}
+				}
+				/* Pass 2: process as rules (aliases and visibility changes) */
+				pR = pUse->pResolvStart;
+				while( pR < pUse->pResolvEnd ){
+					SyString sTrait,sMethod,sAlias;
+					ph7_class *pSrcTrait;
+					ph7_class_method *pMeth;
+					int hasQual = 0;
+					sxi32 nRKwrd;
+					while( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_SEMI) ){ pR++; }
+					if( pR >= pUse->pResolvEnd ) break;
+					SyStringInitFromBuf(&sTrait,"",0);
+					SyStringInitFromBuf(&sMethod,"",0);
+					SyStringInitFromBuf(&sAlias,"",0);
+					if( (pR->nType & PH7_TK_ID) == 0 ){ pR++; continue; }
+					sMethod = pR->sData;
+					pR++;
+					if( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_OP) ){
+						const ph7_expr_op *pOp = (const ph7_expr_op *)pR->pUserData;
+						if( pOp && pOp->iOp == EXPR_OP_DC ){
+							sTrait = sMethod;
+							hasQual = 1;
+							pR++;
+							if( pR >= pUse->pResolvEnd || (pR->nType & PH7_TK_ID) == 0 ) break;
+							sMethod = pR->sData;
+							pR++;
+						}
+					}
+					if( pR >= pUse->pResolvEnd || (pR->nType & PH7_TK_KEYWORD) == 0 ){
+						while( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_SEMI) == 0 ){ pR++; }
+						continue;
+					}
+					nRKwrd = SX_PTR_TO_INT(pR->pUserData);
+					pR++;
+					if( nRKwrd == PH7_TKWRD_AS ){
+						sxi32 iNewVis = -1;
+						if( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_KEYWORD) ){
+							sxi32 nAK = SX_PTR_TO_INT(pR->pUserData);
+							if( nAK == PH7_TKWRD_PUBLIC || nAK == PH7_TKWRD_PROTECTED || nAK == PH7_TKWRD_PRIVATE ){
+								iNewVis = nAK;
+								pR++;
+							}
+						}
+						if( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_ID) ){
+							sAlias = pR->sData;
+							pR++;
+						}
+						pMeth = 0;
+						if( hasQual ){
+							pSrcTrait = 0;
+							for( nT = 0 ; nT < nTraits ; nT++ ){
+								SyString *pTN = &apTrait[nT]->sName;
+								if( pTN->nByte >= sTrait.nByte &&
+									SyMemcmp(&pTN->zString[pTN->nByte - sTrait.nByte],sTrait.zString,sTrait.nByte) == 0 ){
+									pSrcTrait = apTrait[nT];
+									break;
+								}
+							}
+							if( pSrcTrait ){
+								pMeth = PH7_ClassExtractMethod(pSrcTrait,sMethod.zString,sMethod.nByte);
+							}
+						}else{
+							pMeth = PH7_ClassExtractMethod(pClass,sMethod.zString,sMethod.nByte);
+						}
+						if( pMeth ){
+							if( sAlias.nByte > 0 ){
+								/* Create a shallow copy of the method struct for the alias
+								 * so it can carry its own visibility without affecting the original.
+								 */
+								ph7_class_method *pAlias;
+								char *zAliasDup;
+								pAlias = (ph7_class_method *)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(ph7_class_method));
+								if( pAlias ){
+									SyMemcpy(pMeth,pAlias,sizeof(ph7_class_method));
+									if( iNewVis >= 0 ){
+										if( iNewVis == PH7_TKWRD_PUBLIC ) pAlias->iProtection = PH7_CLASS_PROT_PUBLIC;
+										else if( iNewVis == PH7_TKWRD_PROTECTED ) pAlias->iProtection = PH7_CLASS_PROT_PROTECTED;
+										else pAlias->iProtection = PH7_CLASS_PROT_PRIVATE;
+									}
+									zAliasDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,sAlias.zString,sAlias.nByte);
+									if( zAliasDup ){
+										SyHashInsert(&pClass->hMethod,(const void *)zAliasDup,sAlias.nByte,pAlias);
+									}
+								}
+							}else if( iNewVis >= 0 ){
+								/* Visibility-only change (no alias name): also needs a copy */
+								ph7_class_method *pCopy;
+								pCopy = (ph7_class_method *)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(ph7_class_method));
+								if( pCopy ){
+									SyString *pMN = &pMeth->sFunc.sName;
+									SyMemcpy(pMeth,pCopy,sizeof(ph7_class_method));
+									if( iNewVis == PH7_TKWRD_PUBLIC ) pCopy->iProtection = PH7_CLASS_PROT_PUBLIC;
+									else if( iNewVis == PH7_TKWRD_PROTECTED ) pCopy->iProtection = PH7_CLASS_PROT_PROTECTED;
+									else pCopy->iProtection = PH7_CLASS_PROT_PRIVATE;
+									/* Replace the method in the class hash */
+									SyHashDeleteEntry(&pClass->hMethod,(const void *)pMN->zString,pMN->nByte,0);
+									SyHashInsert(&pClass->hMethod,(const void *)pMN->zString,pMN->nByte,pCopy);
+								}
+							}
+						}
+						SXUNUSED(hasQual);
+					}
+					while( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_SEMI) == 0 ){ pR++; }
+				}
+			}
+			SySetRelease(&pUse->aTraits);
+		}
+	}
 	/* Install the class */
 	rc = PH7_VmInstallClass(pGen->pVm,pClass);
 	if( rc == SXRET_OK ){
@@ -5327,6 +5633,7 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 			}
 		}
 	}
+	SySetRelease(&aUseEntries);
 	SySetRelease(&aInterfaces);
 	if( rc != SXRET_OK ){
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
@@ -5374,6 +5681,232 @@ static sxi32 PH7_CompileFinalClass(ph7_gen_state *pGen)
 	pGen->pIn++; /* Jump the 'final' keyword */
 	rc = GenStateCompileClass(&(*pGen),PH7_CLASS_FINAL);
 	return rc;
+}
+/*
+ * Compile a user-defined trait.
+ *  Traits are similar to classes, but only intended to group functionality
+ *  in a fine-grained and consistent way. It is not possible to instantiate
+ *  a Trait on its own. Traits cannot extend or implement.
+ */
+static sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
+{
+	sxu32 nLine = pGen->pIn->nLine;
+	ph7_class *pClass;
+	SyToken *pEnd,*pTmp;
+	sxi32 iProtection;
+	sxi32 iAttrflags;
+	SyString *pName;
+	sxi32 nKwrd;
+	sxi32 rc;
+	/* Jump the 'trait' keyword */
+	pGen->pIn++;
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_ID) == 0 ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Invalid trait name");
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_OCB|PH7_TK_SEMI)) == 0 ){
+			pGen->pIn++;
+		}
+		return SXRET_OK;
+	}
+	/* Extract trait name */
+	pName = &pGen->pIn->sData;
+	pGen->pIn++;
+	/* Build FQN and obtain a raw class */ {
+		SyBlob sFQN;
+		SyString sFQNStr;
+		SyBlobInit(&sFQN,&pGen->pVm->sAllocator);
+		GenStateBuildFQN(pGen,pName,&sFQN);
+		SyStringInitFromBuf(&sFQNStr,(const char *)SyBlobData(&sFQN),SyBlobLength(&sFQN));
+		pClass = PH7_NewRawClass(pGen->pVm,&sFQNStr,nLine);
+		SyBlobRelease(&sFQN);
+	}
+	if( pClass == 0 ){
+		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
+		return SXERR_ABORT;
+	}
+	/* Traits cannot extend or implement; expect opening brace directly */
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_OCB) == 0 ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected '{' after trait '%z' declaration",pName);
+		SyMemBackendPoolFree(&pGen->pVm->sAllocator,pClass);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		return SXRET_OK;
+	}
+	pGen->pIn++; /* Jump the leading curly brace */
+	pEnd = 0;
+	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_OCB,PH7_TK_CCB,&pEnd);
+	if( pEnd >= pGen->pEnd ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Missing closing braces '}' after trait '%z' definition",pName);
+		SyMemBackendPoolFree(&pGen->pVm->sAllocator,pClass);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		return SXRET_OK;
+	}
+	/* Swap token stream */
+	pTmp = pGen->pEnd;
+	pGen->pEnd = pEnd;
+	/* Mark as trait */
+	pClass->iFlags = PH7_CLASS_TRAIT;
+	/* Parse the body: same as a normal class (methods, attributes, visibility modifiers) */
+	for(;;){
+		while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) ){
+			pGen->pIn++;
+		}
+		if( pGen->pIn >= pGen->pEnd ){
+			break;
+		}
+		if( (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR)) == 0 ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+				"Unexpected token '%z'. Expecting attribute declaration inside trait '%z'",
+				&pGen->pIn->sData,pName);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			goto done;
+		}
+		iProtection = PH7_TKWRD_PUBLIC;
+		iAttrflags = 0;
+		if( pGen->pIn->nType & PH7_TK_KEYWORD ){
+			nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
+			if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
+				iProtection = nKwrd;
+				pGen->pIn++;
+				if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR)) == 0 ){
+					rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+						"Unexpected token '%z'. Expecting attribute declaration inside trait '%z'",
+						&pGen->pIn->sData,pName);
+					if( rc == SXERR_ABORT ){
+						return SXERR_ABORT;
+					}
+					goto done;
+				}
+				if( pGen->pIn->nType & PH7_TK_DOLLAR ){
+					rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
+					if( rc != SXRET_OK ){
+						if( rc == SXERR_ABORT ){
+							return SXERR_ABORT;
+						}
+						goto done;
+					}
+					continue;
+				}
+				nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
+			}
+			if( nKwrd == PH7_TKWRD_CONST ){
+				rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+					"Traits cannot have constants");
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				goto done;
+			}else{
+				if( nKwrd == PH7_TKWRD_STATIC ){
+					iAttrflags |= PH7_CLASS_ATTR_STATIC;
+					pGen->pIn++;
+					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
+						nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
+						if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
+							iProtection = nKwrd;
+							pGen->pIn++;
+						}
+					}
+					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR)) == 0 ){
+						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+							"Unexpected token '%z',Expecting method or attribute declaration inside trait '%z'",
+							&pGen->pIn->sData,pName);
+						if( rc == SXERR_ABORT ){
+							return SXERR_ABORT;
+						}
+						goto done;
+					}
+					if( pGen->pIn->nType & PH7_TK_DOLLAR ){
+						rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
+						if( rc != SXRET_OK ){
+							if( rc == SXERR_ABORT ){
+								return SXERR_ABORT;
+							}
+							goto done;
+						}
+						continue;
+					}
+					nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
+				}else if( nKwrd == PH7_TKWRD_ABSTRACT ){
+					iAttrflags |= PH7_CLASS_ATTR_ABSTRACT;
+					pGen->pIn++;
+					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
+						nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
+						if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
+							iProtection = nKwrd;
+							pGen->pIn++;
+						}
+					}
+					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ||
+						SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_FUNCTION ){
+						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+							"Unexpected token '%z',Expecting method declaration after 'abstract' keyword inside trait '%z'",
+							&pGen->pIn->sData,pName);
+						if( rc == SXERR_ABORT ){
+							return SXERR_ABORT;
+						}
+						goto done;
+					}
+					nKwrd = PH7_TKWRD_FUNCTION;
+				}
+				if( nKwrd != PH7_TKWRD_FUNCTION && nKwrd != PH7_TKWRD_VAR ){
+					rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+						"Unexpected token '%z',Expecting method declaration inside trait '%z'",
+						&pGen->pIn->sData,pName);
+					if( rc == SXERR_ABORT ){
+						return SXERR_ABORT;
+					}
+					goto done;
+				}
+				if( nKwrd == PH7_TKWRD_VAR ){
+					pGen->pIn++;
+					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 ){
+						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+							"Expecting attribute declaration after 'var' keyword");
+						if( rc == SXERR_ABORT ){
+							return SXERR_ABORT;
+						}
+						goto done;
+					}
+					rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
+				}else{
+					rc = GenStateCompileClassMethod(&(*pGen),iProtection,iAttrflags,TRUE,pClass);
+				}
+				if( rc != SXRET_OK ){
+					if( rc == SXERR_ABORT ){
+						return SXERR_ABORT;
+					}
+					goto done;
+				}
+			}
+		}else{
+			rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
+			if( rc != SXRET_OK ){
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				goto done;
+			}
+		}
+	}
+	/* Install the trait */
+	rc = PH7_VmInstallClass(pGen->pVm,pClass);
+	if( rc != SXRET_OK ){
+		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
+		return SXERR_ABORT;
+	}
+done:
+	/* Point beyond the trait body */
+	pGen->pIn = &pEnd[1];
+	pGen->pEnd = pTmp;
+	return PH7_OK;
 }
 /*
  * Compile a user-defined class.
@@ -6490,6 +7023,8 @@ static ProcLangConstruct GenStateGetStatementHandler(
 			return PH7_CompileClassInterface;
 		}else if(nKeywordID == PH7_TKWRD_CLASS && (pLookahed->nType & PH7_TK_ID) ){
 			return PH7_CompileClass;
+		}else if(nKeywordID == PH7_TKWRD_TRAIT && (pLookahed->nType & PH7_TK_ID) ){
+			return PH7_CompileTrait;
 		}else if( nKeywordID == PH7_TKWRD_ABSTRACT && (pLookahed->nType & PH7_TK_KEYWORD)
 			&& SX_PTR_TO_INT(pLookahed->pUserData) == PH7_TKWRD_CLASS ){
 				return PH7_CompileAbstractClass;
@@ -6868,7 +7403,7 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 			/* Error count limit reached */
 			if( pGen->xErr ){
 				SyBlobAppend(pWorker,"PHP ",4);
-				SyBlobFormat(pWorker,"Error:  Error count limit reached,PH7 is aborting compilation");
+				SyBlobFormat(pWorker,"Fatal error:  Error count limit reached,PH7 is aborting compilation");
 				if( pFile ){
 					SyBlobFormat(pWorker," in %.*s on line %u",pFile->nByte,pFile->zString,nLine);
 				}
@@ -6886,6 +7421,7 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 		return SXRET_OK;
 	}
 	switch(nErrType){
+	case E_ERROR:   zErr = "Fatal error"; break;
 	case E_WARNING: zErr = "Warning";     break;
 	case E_PARSE:   zErr = "Parse error"; break;
 	case E_NOTICE:  zErr = "Notice";      break;

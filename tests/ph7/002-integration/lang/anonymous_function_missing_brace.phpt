@@ -13,7 +13,7 @@ Syntax error in anonymous function with malformed body
 $func = function() echo 'test';
 ?>
 --EXPECTF--
-%s Error:  Syntax error while declaring annonymous function %s
+%s Fatal error:  Syntax error while declaring annonymous function %s
 --CLEAN--
 <?php
 unset($func);

@@ -7,11 +7,10 @@ unexpected closing square bracket
 <?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
-$a = [1];
 echo $a];
 ?>
 --EXPECTF--
-%s Error:  Invalid array name %s
+%s Fatal error:  Syntax error: Unexpected token ']' %s
 --CLEAN--
 <?php
 unset($a);

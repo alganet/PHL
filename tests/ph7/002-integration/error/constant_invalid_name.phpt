@@ -10,7 +10,7 @@ const: Invalid constant name
 const 123 = 5;
 ?>
 --EXPECTF--
-%s Error:  const: Invalid constant name %s
+%s Fatal error:  const: Invalid constant name %s
 --CLEAN--
 <?php
 

@@ -34,6 +34,7 @@ PH7_PRIVATE ph7_class * PH7_NewRawClass(ph7_vm *pVm,const SyString *pName,sxu32 
 	SyHashInit(&pClass->hAttr,&pVm->sAllocator,0,0);
 	SyHashInit(&pClass->hDerived,&pVm->sAllocator,0,0);
 	SySetInit(&pClass->aInterface,&pVm->sAllocator,sizeof(ph7_class *));
+	SySetInit(&pClass->aTrait,&pVm->sAllocator,sizeof(ph7_class *));
 	pClass->nLine = nLine;
 	/* All done */
 	return pClass;
@@ -296,6 +297,73 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 	/* Mark as subclass */
 	pSub->pBase = pBase;
 	/* All done */
+	return SXRET_OK;
+}
+/*
+ * Apply a trait to a class: copy all methods and attributes from the trait
+ * into the target class. Unlike inheritance, traits copy ALL members including
+ * private ones. Members already defined in the class take precedence.
+ */
+PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_class *pTrait)
+{
+	ph7_class_method *pMeth;
+	ph7_class_attr *pAttr;
+	SyHashEntry *pEntry;
+	SyString *pName;
+	sxi32 rc;
+	/* Copy attributes from the trait */
+	SyHashResetLoopCursor(&pTrait->hAttr);
+	while((pEntry = SyHashGetNextEntry(&pTrait->hAttr)) != 0 ){
+		pAttr = (ph7_class_attr *)pEntry->pUserData;
+		pName = &pAttr->sName;
+		if( SyHashGet(&pClass->hAttr,(const void *)pName->zString,pName->nByte) != 0 ){
+			/* Class attribute takes precedence over trait attribute */
+			continue;
+		}
+		rc = SyHashInsert(&pClass->hAttr,(const void *)pName->zString,pName->nByte,pAttr);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	/* Copy methods from the trait */
+	SyHashResetLoopCursor(&pTrait->hMethod);
+	while((pEntry = SyHashGetNextEntry(&pTrait->hMethod)) != 0 ){
+		pMeth = (ph7_class_method *)pEntry->pUserData;
+		pName = &pMeth->sFunc.sName;
+		if( SyHashGet(&pClass->hMethod,(const void *)pName->zString,pName->nByte) != 0 ){
+			/* Method already exists in the class. Check if it came from another trait
+			 * (unresolved conflict) vs being defined by the class itself.
+			 */
+			ph7_class **apUsedTraits;
+			sxu32 nUsed,k;
+			apUsedTraits = (ph7_class **)SySetBasePtr(&pClass->aTrait);
+			nUsed = SySetUsed(&pClass->aTrait);
+			for(k = 0; k < nUsed; k++){
+				if( PH7_ClassExtractMethod(apUsedTraits[k],pName->zString,pName->nByte) != 0 ){
+					/* Two different traits define the same method with no resolution */
+					rc = PH7_GenCompileError(pGen,E_ERROR,pTrait->nLine,
+						"Trait method %z::%z has not been applied as %z::%z, "
+						"because of collision with %z::%z",
+						&pTrait->sName,pName,
+						&pClass->sName,pName,
+						&apUsedTraits[k]->sName,pName);
+					if( rc == SXERR_ABORT ){
+						return SXERR_ABORT;
+					}
+					break;
+				}
+			}
+			/* Class-defined method takes precedence */
+			continue;
+		}
+		rc = SyHashInsert(&pClass->hMethod,(const void *)pName->zString,pName->nByte,pMeth);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	/* Record trait in the class */
+	SySetPut(&pClass->aTrait,(const void *)&pTrait);
+	SXUNUSED(pGen);
 	return SXRET_OK;
 }
 /*
