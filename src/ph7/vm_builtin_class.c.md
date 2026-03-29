@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 363/435 lines (83.45%)
+Coverage: 365/435 lines (83.91%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -666,48 +666,48 @@ Coverage: 363/435 lines (83.45%)
 |    - |  656 | ` * This function returns TRUE if the given class is an implemented` |
 |    - |  657 | ` * interface.Otherwise FALSE is returned.` |
 |    - |  658 | ` */` |
-| 6724 |  659 | `static int VmQueryInterfaceSet(ph7_class *pClass,SySet *pSet)` |
+| 6732 |  659 | `static int VmQueryInterfaceSet(ph7_class *pClass,SySet *pSet)` |
 |    2 |  660 |  |
 |    - |  661 | `	ph7_class **apInterface;` |
 |    - |  662 | `	sxu32 n;` |
-| 6726 |  663 | `	if( SySetUsed(pSet) < 1 ){` |
+| 6734 |  663 | `	if( SySetUsed(pSet) < 1 ){` |
 |    - |  664 | `		/* Empty interface container */` |
-| 6724 |  665 | `		return FALSE;` |
+| 6728 |  665 | `		return FALSE;` |
 |    - |  666 | `	}` |
 |    - |  667 | `	/* Point to the set of implemented interfaces */` |
-|    3 |  668 | `	apInterface = (ph7_class **)SySetBasePtr(pSet);` |
+|    8 |  668 | `	apInterface = (ph7_class **)SySetBasePtr(pSet);` |
 |    - |  669 | `	/* Perform the lookup */` |
-|    3 |  670 | `	for( n = 0 ; n < SySetUsed(pSet) ; n++ ){` |
-|    3 |  671 | `		if( apInterface[n] == pClass ){` |
-|    3 |  672 | `			return TRUE;` |
+|   10 |  670 | `	for( n = 0 ; n < SySetUsed(pSet) ; n++ ){` |
+|    8 |  671 | `		if( apInterface[n] == pClass ){` |
+|    6 |  672 | `			return TRUE;` |
 |    - |  673 | `		}` |
-|  ! 0 |  674 | `	}` |
-|  ! 0 |  675 | `	return FALSE;` |
-| 3364 |  676 |  |
+|    2 |  674 | `	}` |
+|    3 |  675 | `	return FALSE;` |
+| 3368 |  676 |  |
 |    - |  677 | `/*` |
 |    - |  678 | ` * This function returns TRUE if the given class (first argument)` |
 |    - |  679 | ` * is an instance of the main class (second argument).` |
 |    - |  680 | ` * Otherwise FALSE is returned.` |
 |    - |  681 | ` */` |
-| 3020 |  682 | `PH7_PRIVATE int PH7_VmInstanceOf(ph7_class *pThis,ph7_class *pClass)` |
+| 3034 |  682 | `PH7_PRIVATE int PH7_VmInstanceOf(ph7_class *pThis,ph7_class *pClass)` |
 |    2 |  683 |  |
 |    - |  684 | `	ph7_class *pParent;` |
 |    - |  685 | `	sxi32 rc;` |
-| 3022 |  686 | `	if( pThis == pClass ){` |
+| 3036 |  686 | `	if( pThis == pClass ){` |
 |    - |  687 | `		/* Instance of the same class */` |
-|  144 |  688 | `		return TRUE;` |
+|  150 |  688 | `		return TRUE;` |
 |    - |  689 | `	}` |
 |    - |  690 | `	/* Check implemented interfaces */` |
-| 2880 |  691 | `	rc = VmQueryInterfaceSet(pClass,&pThis->aInterface);` |
-| 2880 |  692 | `	if( rc ){` |
-|    3 |  693 | `		return TRUE;` |
+| 2888 |  691 | `	rc = VmQueryInterfaceSet(pClass,&pThis->aInterface);` |
+| 2888 |  692 | `	if( rc ){` |
+|    6 |  693 | `		return TRUE;` |
 |    - |  694 | `	}` |
 |    - |  695 | `	/* Check parent classes */` |
-| 2878 |  696 | `	pParent = pThis->pBase;` |
-| 6724 |  697 | `	while( pParent ){` |
-| 6722 |  698 | `		if( pParent == pClass ){` |
+| 2884 |  696 | `	pParent = pThis->pBase;` |
+| 6730 |  697 | `	while( pParent ){` |
+| 6728 |  698 | `		if( pParent == pClass ){` |
 |    - |  699 | `			/* Same instance */` |
-| 2876 |  700 | `			return TRUE;` |
+| 2882 |  700 | `			return TRUE;` |
 |    - |  701 | `		}` |
 |    - |  702 | `		/* Check the implemented interfaces */` |
 | 3848 |  703 | `		rc = VmQueryInterfaceSet(pClass,&pParent->aInterface);` |
@@ -719,7 +719,7 @@ Coverage: 363/435 lines (83.45%)
 |    2 |  709 | `	}` |
 |    - |  710 | `	/* Not an instance of the the given class */` |
 |    3 |  711 | `	return FALSE;` |
-| 1512 |  712 |  |
+| 1519 |  712 |  |
 |    - |  713 | `/*` |
 |    - |  714 | ` * This function returns TRUE if the given class (first argument)` |
 |    - |  715 | ` * is a subclass of the main class (second argument).` |

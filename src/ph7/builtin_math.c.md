@@ -487,11 +487,11 @@ Coverage: 432/435 lines (99.31%)
 |    - |  477 | ` * Return` |
 |    - |  478 | ` *  The absolute value of number.` |
 |    - |  479 | ` */` |
-|  122 |  480 | `PH7_PRIVATE int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  124 |  480 | `PH7_PRIVATE int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    2 |  481 |  |
 |    - |  482 | `	int is_float;` |
 |    - |  483 | `	/* PHP requires exactly one argument. */` |
-|  124 |  484 | `	if( nArg != 1 ){` |
+|  126 |  484 | `	if( nArg != 1 ){` |
 |   11 |  485 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  486 | `			"ArgumentCountError",` |
 |    - |  487 | `			"abs() expects exactly 1 argument, %d given",` |
@@ -500,8 +500,8 @@ Coverage: 432/435 lines (99.31%)
 |    - |  490 | `	}` |
 |    - |  491 |  |
 |    - |  492 | `	/* Numeric strings with decimal/exponent are treated as real values. */` |
-|  118 |  493 | `	is_float = ph7_value_is_float(apArg[0]);` |
-|  118 |  494 | `	if( !is_float && ph7_value_is_string(apArg[0]) ){` |
+|  120 |  493 | `	is_float = ph7_value_is_float(apArg[0]);` |
+|  120 |  494 | `	if( !is_float && ph7_value_is_string(apArg[0]) ){` |
 |    - |  495 | `		int len;` |
 |   10 |  496 | `		sxu8 bReal = FALSE;` |
 |   10 |  497 | `		const char *zStr = ph7_value_to_string(apArg[0], &len);` |
@@ -517,7 +517,7 @@ Coverage: 432/435 lines (99.31%)
 |    5 |  507 | `			is_float = 1;` |
 |    2 |  508 | `		}` |
 |    3 |  509 | `	}` |
-|  116 |  510 | `	if( is_float ){` |
+|  118 |  510 | `	if( is_float ){` |
 |    - |  511 | `		double r,x;` |
 |   99 |  512 | `		x = ph7_value_to_double(apArg[0]);` |
 |    - |  513 | `		/* Perform the requested operation */` |
@@ -525,13 +525,13 @@ Coverage: 432/435 lines (99.31%)
 |   99 |  515 | `		ph7_result_double(pCtx,r);` |
 |   50 |  516 | `	}else{` |
 |    - |  517 | `		int r,x;` |
-|   18 |  518 | `		x = ph7_value_to_int(apArg[0]);` |
+|   20 |  518 | `		x = ph7_value_to_int(apArg[0]);` |
 |    - |  519 | `		/* Perform the requested operation */` |
-|   18 |  520 | `		r = abs(x);` |
-|   18 |  521 | `		ph7_result_int(pCtx,r);` |
+|   20 |  520 | `		r = abs(x);` |
+|   20 |  521 | `		ph7_result_int(pCtx,r);` |
 |    - |  522 | `	}` |
-|  116 |  523 | `	return PH7_OK;` |
-|   63 |  524 |  |
+|  118 |  523 | `	return PH7_OK;` |
+|   64 |  524 |  |
 |    - |  525 | `/*` |
 |    - |  526 | ` * float log(float $arg,[int/float $base])` |
 |    - |  527 | ` *  Natural logarithm.` |
