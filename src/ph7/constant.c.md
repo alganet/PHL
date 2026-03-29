@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 1012/1017 lines (99.51%)
+Coverage: 1006/1017 lines (98.92%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -34,22 +34,22 @@ Coverage: 1012/1017 lines (99.51%)
 |      - |   24 | ` * PHP_OS` |
 |      - |   25 | ` *  Expand the name of the host Operating System.` |
 |      - |   26 | ` */` |
-|   2364 |   27 | `static void PH7_OS_Const(ph7_value *pVal,void *pUnused)` |
+|   2370 |   27 | `static void PH7_OS_Const(ph7_value *pVal,void *pUnused)` |
 |      2 |   28 |  |
 |      - |   29 | `#if defined(__WINNT__)` |
 |      2 |   30 | `	ph7_value_string(pVal,"WINNT",(int)sizeof("WINNT")-1);` |
 |      - |   31 | `#elif defined(__UNIXES__)` |
 |      - |   32 | `	struct utsname sInfo;` |
-|   2364 |   33 | `	if( uname(&sInfo) != 0 ){` |
+|   2370 |   33 | `	if( uname(&sInfo) != 0 ){` |
 |    ! 0 |   34 | `		ph7_value_string(pVal,"Unix",(int)sizeof("Unix")-1);` |
 |    ! 0 |   35 | `	}else{` |
-|   2364 |   36 | `		ph7_value_string(pVal,sInfo.sysname,-1);` |
+|   2370 |   36 | `		ph7_value_string(pVal,sInfo.sysname,-1);` |
 |      - |   37 | `	}` |
 |      - |   38 | `#else` |
 |      - |   39 | `	ph7_value_string(pVal,"Host OS",(int)sizeof("Host OS")-1);` |
 |      - |   40 | `#endif` |
-|   1182 |   41 | `	SXUNUSED(pUnused);` |
-|   2366 |   42 |  |
+|   1185 |   41 | `	SXUNUSED(pUnused);` |
+|   2372 |   42 |  |
 |      - |   43 | `/*` |
 |      - |   44 | ` * PHP_EOL` |
 |      - |   45 | ` *  Expand the correct 'End Of Line' symbol for this platform.` |
@@ -1063,20 +1063,20 @@ Coverage: 1012/1017 lines (99.51%)
 |      - | 1053 | ` * PATHINFO_EXTENSION` |
 |      - | 1054 | ` *  Expand 3.` |
 |      - | 1055 | ` */` |
-|   4164 | 1056 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
+|   4168 | 1056 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
 |      2 | 1057 |  |
-|   2082 | 1058 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   4166 | 1059 | `	ph7_value_int(pVal,3);` |
-|   4166 | 1060 |  |
+|   2084 | 1058 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   4170 | 1059 | `	ph7_value_int(pVal,3);` |
+|   4170 | 1060 |  |
 |      - | 1061 | `/*` |
 |      - | 1062 | ` * PATHINFO_FILENAME` |
 |      - | 1063 | ` *  Expand 4.` |
 |      - | 1064 | ` */` |
-|   4160 | 1065 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
+|   4164 | 1065 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
 |      2 | 1066 |  |
-|   2080 | 1067 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   4162 | 1068 | `	ph7_value_int(pVal,4);` |
-|   4162 | 1069 |  |
+|   2082 | 1067 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   4166 | 1068 | `	ph7_value_int(pVal,4);` |
+|   4166 | 1069 |  |
 |      - | 1070 | `/*` |
 |      - | 1071 | ` * ASSERT_ACTIVE.` |
 |      - | 1072 | ` *  PHP ASSERT_ACTIVE = 1` |
@@ -1827,66 +1827,66 @@ Coverage: 1012/1017 lines (99.51%)
 |      - | 1817 | ` * static` |
 |      - | 1818 | ` *  Expand the name of the current class. 'static' otherwise.` |
 |      - | 1819 | ` */` |
-|     12 | 1820 | `static void PH7_static_Const(ph7_value *pVal,void *pUserData)` |
+|      6 | 1820 | `static void PH7_static_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1821 |  |
-|     13 | 1822 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
+|      7 | 1822 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
 |      - | 1823 | `	ph7_class *pClass;` |
 |      - | 1824 | `	/* Extract the target class if available */` |
-|     13 | 1825 | `	pClass = PH7_VmPeekTopClass(pVm);` |
-|     13 | 1826 | `	if( pClass ){` |
-|      9 | 1827 | `		SyString *pName = &pClass->sName;` |
+|      7 | 1825 | `	pClass = PH7_VmPeekTopClass(pVm);` |
+|      7 | 1826 | `	if( pClass ){` |
+|      3 | 1827 | `		SyString *pName = &pClass->sName;` |
 |      - | 1828 | `		/* Expand class name */` |
-|      9 | 1829 | `		ph7_value_string(pVal,pName->zString,(int)pName->nByte);` |
-|      5 | 1830 | `	}else{` |
+|      3 | 1829 | `		ph7_value_string(pVal,pName->zString,(int)pName->nByte);` |
+|      2 | 1830 | `	}else{` |
 |      - | 1831 | `		/* Expand 'static' */` |
 |      5 | 1832 | `		ph7_value_string(pVal,"static",sizeof("static")-1);` |
 |      - | 1833 | `	}` |
-|     13 | 1834 |  |
+|      7 | 1834 |  |
 |      - | 1835 | `/*` |
 |      - | 1836 | ` * self` |
 |      - | 1837 | ` * __CLASS__` |
 |      - | 1838 | ` *  Expand the name of the current class. NULL otherwise.` |
 |      - | 1839 | ` */` |
-|      8 | 1840 | `static void PH7_self_Const(ph7_value *pVal,void *pUserData)` |
+|      2 | 1840 | `static void PH7_self_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1841 |  |
-|      9 | 1842 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
+|      3 | 1842 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
 |      - | 1843 | `	ph7_class *pClass;` |
 |      - | 1844 |  |
 |      - | 1845 | `	/* Get the declaring class of the current method */` |
-|      9 | 1846 | `	pClass = PH7_VmPeekDeclaringClass(pVm);` |
-|      9 | 1847 | `	if( pClass == 0 ){` |
+|      3 | 1846 | `	pClass = PH7_VmPeekDeclaringClass(pVm);` |
+|      3 | 1847 | `	if( pClass == 0 ){` |
 |      - | 1848 | `		/* Not in a method, fall back to runtime class */` |
 |      3 | 1849 | `		pClass = PH7_VmPeekTopClass(pVm);` |
 |      1 | 1850 | `	}` |
 |      - | 1851 |  |
-|      9 | 1852 | `	if( pClass ){` |
-|      7 | 1853 | `		SyString *pName = &pClass->sName;` |
+|      3 | 1852 | `	if( pClass ){` |
+|    ! 0 | 1853 | `		SyString *pName = &pClass->sName;` |
 |      - | 1854 | `		/* Expand class name */` |
-|      7 | 1855 | `		ph7_value_string(pVal,pName->zString,(int)pName->nByte);` |
-|      4 | 1856 | `	}else{` |
+|    ! 0 | 1855 | `		ph7_value_string(pVal,pName->zString,(int)pName->nByte);` |
+|    ! 0 | 1856 | `	}else{` |
 |      - | 1857 | `		/* Expand null */` |
 |      3 | 1858 | `		ph7_value_null(pVal);` |
 |      - | 1859 | `	}` |
-|      9 | 1860 |  |
+|      3 | 1860 |  |
 |      - | 1861 | `/* parent` |
 |      - | 1862 | ` *  Expand the name of the parent class. NULL otherwise.` |
 |      - | 1863 | ` */` |
-|     10 | 1864 | `static void PH7_parent_Const(ph7_value *pVal,void *pUserData)` |
+|      2 | 1864 | `static void PH7_parent_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1865 |  |
-|     11 | 1866 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
+|      3 | 1866 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
 |      - | 1867 | `	ph7_class *pClass;` |
 |      - | 1868 |  |
 |      - | 1869 | `	/* Get the declaring class, then its parent */` |
-|     11 | 1870 | `	pClass = PH7_VmPeekDeclaringClass(pVm);` |
-|     15 | 1871 | `	if( pClass && pClass->pBase ){` |
-|      9 | 1872 | `		SyString *pName = &pClass->pBase->sName;` |
+|      3 | 1870 | `	pClass = PH7_VmPeekDeclaringClass(pVm);` |
+|      3 | 1871 | `	if( pClass && pClass->pBase ){` |
+|    ! 0 | 1872 | `		SyString *pName = &pClass->pBase->sName;` |
 |      - | 1873 | `		/* Expand parent class name */` |
-|      9 | 1874 | `		ph7_value_string(pVal,pName->zString,(int)pName->nByte);` |
-|      5 | 1875 | `	}else{` |
+|    ! 0 | 1874 | `		ph7_value_string(pVal,pName->zString,(int)pName->nByte);` |
+|    ! 0 | 1875 | `	}else{` |
 |      - | 1876 | `		/* Expand null */` |
 |      3 | 1877 | `		ph7_value_null(pVal);` |
 |      - | 1878 | `	}` |
-|     11 | 1879 |  |
+|      3 | 1879 |  |
 |      - | 1880 |  |
 |      - | 1881 | `/*` |
 |      - | 1882 | ` * Table of built-in constants.` |
@@ -2103,14 +2103,14 @@ Coverage: 1012/1017 lines (99.51%)
 |      - | 2093 | `/*` |
 |      - | 2094 | ` * Register the built-in constants defined above.` |
 |      - | 2095 | ` */` |
-|   2072 | 2096 | `PH7_PRIVATE void PH7_RegisterBuiltInConstant(ph7_vm *pVm)` |
+|   2078 | 2096 | `PH7_PRIVATE void PH7_RegisterBuiltInConstant(ph7_vm *pVm)` |
 |      2 | 2097 |  |
 |      - | 2098 | `	sxu32 n;` |
 |      - | 2099 | `	/*` |
 |      - | 2100 | `	 * Note that all built-in constants have access to the ph7 virtual machine` |
 |      - | 2101 | `	 * that trigger the constant invocation as their private data.` |
 |      - | 2102 | `	 */` |
-| 422690 | 2103 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltIn) ; ++n ){` |
-| 420618 | 2104 | `		ph7_create_constant(&(*pVm),aBuiltIn[n].zName,aBuiltIn[n].xExpand,&(*pVm));` |
-| 210310 | 2105 | `	}` |
-|   2074 | 2106 |  |
+| 423914 | 2103 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltIn) ; ++n ){` |
+| 421836 | 2104 | `		ph7_create_constant(&(*pVm),aBuiltIn[n].zName,aBuiltIn[n].xExpand,&(*pVm));` |
+| 210919 | 2105 | `	}` |
+|   2080 | 2106 |  |
