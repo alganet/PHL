@@ -45,7 +45,7 @@ INVALID;
 
 ?>
 --EXPECTF--
-%s Error:  Syntax error,mismatched '(','[','{' or '?' %s
+%s Fatal error:  Syntax error,mismatched '(','[','{' or '?' %s
 --CLEAN--
 <?php
 unset($var, $array, $result, $obj);

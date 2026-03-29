@@ -11,7 +11,7 @@ Test ternary operator missing condition syntax error
 $result = ? "true" : "false";
 ?>
 --EXPECTF--
-%s Error:  '?': Syntax error %s
+%s Fatal error:  '?': Syntax error %s
 --CLEAN--
 <?php
 unset($result);

@@ -13,7 +13,7 @@ $a = array(&$e + $f);
 echo "Should not reach here\n";
 ?>
 --EXPECTF--
-%s Error:  array(): Expecting a variable/array member/function call after reference operator '&' %s
+%s Fatal error:  array(): Expecting a variable/array member/function call after reference operator '&' %s
 --CLEAN--
 <?php
 unset($a);

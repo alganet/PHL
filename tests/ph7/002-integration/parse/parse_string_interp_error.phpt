@@ -11,7 +11,7 @@ $a = "${1+";
 echo "test";
 ?>
 --EXPECTF--
-%s Error:  Syntax error: Missing closing brace '}' %s
+%s Fatal error:  Syntax error: Missing closing brace '}' %s
 --CLEAN--
 <?php
 unset($a);

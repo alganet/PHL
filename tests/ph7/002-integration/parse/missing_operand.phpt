@@ -17,7 +17,7 @@ $result2 = 5 + ;
 $result3 = (2 * ) + 3;
 ?>
 --EXPECTF--
-%s Error:  '+': Missing operand %s
+%s Fatal error:  '+': Missing operand %s
 --CLEAN--
 <?php
 unset($result, $result2, $result3);

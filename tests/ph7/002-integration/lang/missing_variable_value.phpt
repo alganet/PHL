@@ -13,7 +13,7 @@ $var = ;
 echo "Should not reach here\n";
 ?>
 --EXPECTF--
-%s Error:  '=': Missing/Invalid operand %s
+%s Fatal error:  '=': Missing/Invalid operand %s
 --CLEAN--
 <?php
 unset($var);

@@ -10,7 +10,7 @@ List syntax error: missing closing parenthesis ')'
 $a = list(1,2 ;
 ?>
 --EXPECTF--
-%s Error:  list: Missing closing parenthesis ')' %s
+%s Fatal error:  list: Missing closing parenthesis ')' %s
 --CLEAN--
 <?php
 unset($a);

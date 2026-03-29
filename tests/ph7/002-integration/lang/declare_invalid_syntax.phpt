@@ -11,7 +11,7 @@ declare invalid;
 echo "should not reach here\n";
 ?>
 --EXPECTF--
-%s Error:  declare: Expecting opening parenthesis '(' %s
+%s Fatal error:  declare: Expecting opening parenthesis '(' %s
 --CLEAN--
 <?php
 

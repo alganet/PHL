@@ -10,7 +10,7 @@ Test unknown operator parsing
 $a @@ $b;
 ?>
 --EXPECTF--
-%s Error:  Unexpected token '@' %s
+%s Fatal error:  Unexpected token '@' %s
 --CLEAN--
 <?php
 

@@ -12,7 +12,7 @@ do {
 }
 ?>
 --EXPECTF--
-%s Error:  Missing 'while' statement after 'do' block %s
+%s Fatal error:  Missing 'while' statement after 'do' block %s
 --CLEAN--
 <?php
 

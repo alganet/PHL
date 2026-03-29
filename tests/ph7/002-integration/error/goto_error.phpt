@@ -14,7 +14,7 @@ global_label:
 goto undefined;
 undefined_label:
 --EXPECTF--
-%s Error:  Label 'global_label' was referenced but not defined %s
+%s Fatal error:  Label 'global_label' was referenced but not defined %s
 --CLEAN--
 <?php
 

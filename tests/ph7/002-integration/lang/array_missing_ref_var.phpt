@@ -14,7 +14,7 @@ if (function_exists('zend_version')) {
 $x = array(&);
 ?>
 --EXPECTF--
-%s Error:  array(): Missing referenced variable %s
+%s Fatal error:  array(): Missing referenced variable %s
 --CLEAN--
 <?php
 unset($x);

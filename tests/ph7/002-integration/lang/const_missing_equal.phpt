@@ -10,7 +10,7 @@ PHL: Missing '=' in const declaration
 const FOO;
 ?>
 --EXPECTF--
-%s Error:  const: Expected '=' after constant name %s
+%s Fatal error:  const: Expected '=' after constant name %s
 --CLEAN--
 <?php
 

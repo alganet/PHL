@@ -10,7 +10,7 @@ PH7: Syntax error in anonymous function declaration - invalid token after parame
 $func = function() if { };
 ?>
 --EXPECTF--
-%s Error:  Syntax error while declaring annonymous function %s
+%s Fatal error:  Syntax error while declaring annonymous function %s
 --CLEAN--
 <?php
 unset($func);

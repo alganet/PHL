@@ -10,7 +10,7 @@ array with missing entry value
 $a = array(key => );
 ?>
 --EXPECTF--
-%s Error:  array(): Missing entry value %s
+%s Fatal error:  array(): Missing entry value %s
 --CLEAN--
 <?php
 unset($a);

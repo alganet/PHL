@@ -10,7 +10,7 @@ PH7: Syntax error - unexpected token ')'
 echo ) 1;
 ?>
 --EXPECTF--
-%s Error:  Syntax error: Unexpected token ')' %s
+%s Fatal error:  Syntax error: Unexpected token ')' %s
 --CLEAN--
 <?php
 

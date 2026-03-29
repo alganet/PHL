@@ -749,6 +749,9 @@ static sxu32 KeywordCode(const char *z, int n){
       return aCode[i];
     }
   }
+  /* Linear fallback for keywords not in the auto-generated hash table */
+  if( n==5 && SyMemcmp(z,"trait",5)==0 ) return PH7_TKWRD_TRAIT;
+  if( n==9 && SyMemcmp(z,"insteadof",9)==0 ) return PH7_TKWRD_INSTEADOF;
   return PH7_TK_ID;
 }
 /* --- End of Automatically generated code --- */

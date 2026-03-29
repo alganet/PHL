@@ -17,7 +17,7 @@ label:
 echo "label\n";
 ?>
 --EXPECTF--
-%s Error:  goto inside try/catch block is disallowed %s
+%s Fatal error:  goto inside try/catch block is disallowed %s
 --CLEAN--
 <?php
 

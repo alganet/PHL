@@ -11,7 +11,7 @@ list() construct missing assignment operator error
 list();
 ?>
 --EXPECTF--
-%s Error:  list(): expecting '=' after construct %s
+%s Fatal error:  list(): expecting '=' after construct %s
 --CLEAN--
 <?php
 

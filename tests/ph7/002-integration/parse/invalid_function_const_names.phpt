@@ -12,7 +12,7 @@ const 456 = 789;
 echo "Should not reach here\n";
 ?>
 --EXPECTF--
-%s Error:  Invalid function name %s
+%s Fatal error:  Invalid function name %s
 --CLEAN--
 <?php
 

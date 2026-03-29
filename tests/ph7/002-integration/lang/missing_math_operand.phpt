@@ -10,7 +10,7 @@ PHL: invalid expression syntax triggers parse error
 $a = 1 + ;
 ?>
 --EXPECTF--
-%s Error:  '+': Missing/Invalid operand %s
+%s Fatal error:  '+': Missing/Invalid operand %s
 --CLEAN--
 <?php
 unset($a);

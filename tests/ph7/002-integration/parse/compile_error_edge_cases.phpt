@@ -46,7 +46,7 @@ class InvalidClass {
 }
 ?>
 --EXPECTF--
-%s Error:  '=': Missing/Invalid operand %s
+%s Fatal error:  '=': Missing/Invalid operand %s
 --CLEAN--
 <?php
 unset($a, $arr, $result, $value);

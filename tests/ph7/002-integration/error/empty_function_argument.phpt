@@ -10,7 +10,7 @@ Syntax error: Empty function argument
 func(, 2);
 ?>
 --EXPECTF--
-%s Error:  Missing function argument %s
+%s Fatal error:  Missing function argument %s
 --CLEAN--
 <?php
 

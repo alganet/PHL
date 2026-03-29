@@ -37,7 +37,7 @@ outer_function();
 
 ?>
 --EXPECTF--
-%s Error:  Label 'NONEXISTENT_LABEL' was referenced but not defined %s
+%s Fatal error:  Label 'NONEXISTENT_LABEL' was referenced but not defined %s
 --CLEAN--
 <?php
 

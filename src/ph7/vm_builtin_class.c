@@ -491,9 +491,24 @@ PH7_PRIVATE int PH7_VmClassMemberAccess(
 			goto dis; /* Access is forbidden */
 		}
 		if( iProtection == PH7_CLASS_PROT_PRIVATE ){
-			/* Must be the same instance */
-			if( (ph7_class *)pVmFunc->pUserData != pClass ){
-				goto dis; /* Access is forbidden */
+			/* Must be the same instance or a trait used by the class */
+			ph7_class *pCaller = (ph7_class *)pVmFunc->pUserData;
+			if( pCaller != pClass ){
+				/* Check if the caller is a trait used by pClass */
+				ph7_class **apTrait;
+				sxu32 nTrait,k;
+				int iFound = 0;
+				apTrait = (ph7_class **)SySetBasePtr(&pClass->aTrait);
+				nTrait = SySetUsed(&pClass->aTrait);
+				for(k = 0; k < nTrait; k++){
+					if( apTrait[k] == pCaller ){
+						iFound = 1;
+						break;
+					}
+				}
+				if( !iFound ){
+					goto dis; /* Access is forbidden */
+				}
 			}
 		}else{
 			/* Protected */
