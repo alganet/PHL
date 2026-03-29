@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 2915/3334 lines (87.43%)
+Coverage: 2916/3334 lines (87.46%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -25,26 +25,26 @@ Coverage: 2915/3334 lines (87.43%)
 |       - |   15 | `/*` |
 |       - |   16 | ` * Default hash function for int [i.e; 64-bit integer] keys.` |
 |       - |   17 | ` */` |
-| 2875564 |   18 | `static sxu32 IntHash(sxi64 iKey)` |
+| 2875888 |   18 | `static sxu32 IntHash(sxi64 iKey)` |
 |       2 |   19 |  |
-| 2875566 |   20 | `	return (sxu32)(iKey ^ (iKey << 8) ^ (iKey >> 8));` |
+| 2875890 |   20 | `	return (sxu32)(iKey ^ (iKey << 8) ^ (iKey >> 8));` |
 |       2 |   21 |  |
 |       - |   22 | `/*` |
 |       - |   23 | ` * Default hash function for string/BLOB keys.` |
 |       - |   24 | ` */` |
-|  256728 |   25 | `static sxu32 BinHash(const void *pSrc,sxu32 nLen)` |
+|  257104 |   25 | `static sxu32 BinHash(const void *pSrc,sxu32 nLen)` |
 |       2 |   26 |  |
-|  256730 |   27 | `	register unsigned char *zIn = (unsigned char *)pSrc;` |
+|  257106 |   27 | `	register unsigned char *zIn = (unsigned char *)pSrc;` |
 |       - |   28 | `	unsigned char *zEnd;` |
-|  256730 |   29 | `	sxu32 nH = 5381;` |
-|  256730 |   30 | `	zEnd = &zIn[nLen];` |
-|  291114 |   31 | `	for(;;){` |
-|  582230 |   32 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
-|  516030 |   33 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
-|  465282 |   34 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
-|  381386 |   35 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+|  257106 |   29 | `	sxu32 nH = 5381;` |
+|  257106 |   30 | `	zEnd = &zIn[nLen];` |
+|  291513 |   31 | `	for(;;){` |
+|  583028 |   32 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+|  516674 |   33 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+|  465866 |   34 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+|  381914 |   35 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
 |       2 |   36 | `	}` |
-|  256730 |   37 | `	return nH;` |
+|  257106 |   37 | `	return nH;` |
 |       2 |   38 |  |
 |       - |   39 | `/*` |
 |       - |   40 | ` * Return the total number of entries in a given hashmap.` |
@@ -100,69 +100,69 @@ Coverage: 2915/3334 lines (87.43%)
 |       - |   90 | ` * If something goes wrong [i.e: out of memory],this function return NULL.` |
 |       - |   91 | ` * Otherwise a fresh [ph7_hashmap_node] instance is returned.` |
 |       - |   92 | ` */` |
-| 2819824 |   93 | `static ph7_hashmap_node * HashmapNewIntNode(ph7_hashmap *pMap,sxi64 iKey,sxu32 nHash,sxu32 nValIdx)` |
+| 2820136 |   93 | `static ph7_hashmap_node * HashmapNewIntNode(ph7_hashmap *pMap,sxi64 iKey,sxu32 nHash,sxu32 nValIdx)` |
 |       2 |   94 |  |
 |       - |   95 | `	ph7_hashmap_node *pNode;` |
 |       - |   96 | `	/* Allocate a new node */` |
-| 2819826 |   97 | `	pNode = (ph7_hashmap_node *)SyMemBackendPoolAlloc(&pMap->pVm->sAllocator,sizeof(ph7_hashmap_node));` |
-| 2819826 |   98 | `	if( pNode == 0 ){` |
+| 2820138 |   97 | `	pNode = (ph7_hashmap_node *)SyMemBackendPoolAlloc(&pMap->pVm->sAllocator,sizeof(ph7_hashmap_node));` |
+| 2820138 |   98 | `	if( pNode == 0 ){` |
 |     ! 0 |   99 | `		return 0;` |
 |       - |  100 | `	}` |
 |       - |  101 | `	/* Zero the stucture */` |
-| 2819826 |  102 | `	SyZero(pNode,sizeof(ph7_hashmap_node));` |
+| 2820138 |  102 | `	SyZero(pNode,sizeof(ph7_hashmap_node));` |
 |       - |  103 | `	/* Fill in the structure */` |
-| 2819826 |  104 | `	pNode->pMap  = &(*pMap);` |
-| 2819826 |  105 | `	pNode->iType = HASHMAP_INT_NODE;` |
-| 2819826 |  106 | `	pNode->nHash = nHash;` |
-| 2819826 |  107 | `	pNode->xKey.iKey = iKey;` |
-| 2819826 |  108 | `	pNode->nValIdx  = nValIdx;` |
-| 2819826 |  109 | `	return pNode;` |
-| 1409914 |  110 |  |
+| 2820138 |  104 | `	pNode->pMap  = &(*pMap);` |
+| 2820138 |  105 | `	pNode->iType = HASHMAP_INT_NODE;` |
+| 2820138 |  106 | `	pNode->nHash = nHash;` |
+| 2820138 |  107 | `	pNode->xKey.iKey = iKey;` |
+| 2820138 |  108 | `	pNode->nValIdx  = nValIdx;` |
+| 2820138 |  109 | `	return pNode;` |
+| 1410070 |  110 |  |
 |       - |  111 | `/*` |
 |       - |  112 | ` * Allocate a new hashmap node with a BLOB key.` |
 |       - |  113 | ` * If something goes wrong [i.e: out of memory],this function return NULL.` |
 |       - |  114 | ` * Otherwise a fresh [ph7_hashmap_node] instance is returned.` |
 |       - |  115 | ` */` |
-|   90194 |  116 | `static ph7_hashmap_node * HashmapNewBlobNode(ph7_hashmap *pMap,const void *pKey,sxu32 nKeyLen,sxu32 nHash,sxu32 nValIdx)` |
+|   90338 |  116 | `static ph7_hashmap_node * HashmapNewBlobNode(ph7_hashmap *pMap,const void *pKey,sxu32 nKeyLen,sxu32 nHash,sxu32 nValIdx)` |
 |       2 |  117 |  |
 |       - |  118 | `	ph7_hashmap_node *pNode;` |
 |       - |  119 | `	/* Allocate a new node */` |
-|   90196 |  120 | `	pNode = (ph7_hashmap_node *)SyMemBackendPoolAlloc(&pMap->pVm->sAllocator,sizeof(ph7_hashmap_node));` |
-|   90196 |  121 | `	if( pNode == 0 ){` |
+|   90340 |  120 | `	pNode = (ph7_hashmap_node *)SyMemBackendPoolAlloc(&pMap->pVm->sAllocator,sizeof(ph7_hashmap_node));` |
+|   90340 |  121 | `	if( pNode == 0 ){` |
 |     ! 0 |  122 | `		return 0;` |
 |       - |  123 | `	}` |
 |       - |  124 | `	/* Zero the stucture */` |
-|   90196 |  125 | `	SyZero(pNode,sizeof(ph7_hashmap_node));` |
+|   90340 |  125 | `	SyZero(pNode,sizeof(ph7_hashmap_node));` |
 |       - |  126 | `	/* Fill in the structure */` |
-|   90196 |  127 | `	pNode->pMap  = &(*pMap);` |
-|   90196 |  128 | `	pNode->iType = HASHMAP_BLOB_NODE;` |
-|   90196 |  129 | `	pNode->nHash = nHash;` |
-|   90196 |  130 | `	SyBlobInit(&pNode->xKey.sKey,&pMap->pVm->sAllocator);` |
-|   90196 |  131 | `	SyBlobAppend(&pNode->xKey.sKey,pKey,nKeyLen);` |
-|   90196 |  132 | `	pNode->nValIdx = nValIdx;` |
-|   90196 |  133 | `	return pNode;` |
-|   45099 |  134 |  |
+|   90340 |  127 | `	pNode->pMap  = &(*pMap);` |
+|   90340 |  128 | `	pNode->iType = HASHMAP_BLOB_NODE;` |
+|   90340 |  129 | `	pNode->nHash = nHash;` |
+|   90340 |  130 | `	SyBlobInit(&pNode->xKey.sKey,&pMap->pVm->sAllocator);` |
+|   90340 |  131 | `	SyBlobAppend(&pNode->xKey.sKey,pKey,nKeyLen);` |
+|   90340 |  132 | `	pNode->nValIdx = nValIdx;` |
+|   90340 |  133 | `	return pNode;` |
+|   45171 |  134 |  |
 |       - |  135 | `/*` |
 |       - |  136 | ` * link a hashmap node to the given bucket index (last argument to this function).` |
 |       - |  137 | ` */` |
-| 2910018 |  138 | `static void HashmapNodeLink(ph7_hashmap *pMap,ph7_hashmap_node *pNode,sxu32 nBucketIdx)` |
+| 2910474 |  138 | `static void HashmapNodeLink(ph7_hashmap *pMap,ph7_hashmap_node *pNode,sxu32 nBucketIdx)` |
 |       2 |  139 |  |
 |       - |  140 | `	/* Link */` |
-| 2910020 |  141 | `	if( pMap->apBucket[nBucketIdx] != 0 ){` |
-| 2668306 |  142 | `		pNode->pNextCollide = pMap->apBucket[nBucketIdx];` |
-| 2668306 |  143 | `		pMap->apBucket[nBucketIdx]->pPrevCollide = pNode;` |
-| 1334152 |  144 | `	}` |
-| 2910020 |  145 | `	pMap->apBucket[nBucketIdx] = pNode;` |
+| 2910476 |  141 | `	if( pMap->apBucket[nBucketIdx] != 0 ){` |
+| 2668426 |  142 | `		pNode->pNextCollide = pMap->apBucket[nBucketIdx];` |
+| 2668426 |  143 | `		pMap->apBucket[nBucketIdx]->pPrevCollide = pNode;` |
+| 1334212 |  144 | `	}` |
+| 2910476 |  145 | `	pMap->apBucket[nBucketIdx] = pNode;` |
 |       - |  146 | `	/* Link to the map list */` |
-| 2910020 |  147 | `	if( pMap->pFirst == 0 ){` |
-|   42142 |  148 | `		pMap->pFirst = pMap->pLast = pNode;` |
+| 2910476 |  147 | `	if( pMap->pFirst == 0 ){` |
+|   42204 |  148 | `		pMap->pFirst = pMap->pLast = pNode;` |
 |       - |  149 | `		/* Point to the first inserted node */` |
-|   42142 |  150 | `		pMap->pCur = pNode;` |
-|   21072 |  151 | `	}else{` |
-| 2867880 |  152 | `		MACRO_LD_PUSH(pMap->pLast,pNode);` |
+|   42204 |  150 | `		pMap->pCur = pNode;` |
+|   21103 |  151 | `	}else{` |
+| 2868274 |  152 | `		MACRO_LD_PUSH(pMap->pLast,pNode);` |
 |       - |  153 | `	}` |
-| 2910020 |  154 | `	++pMap->nEntry;` |
-| 2910020 |  155 |  |
+| 2910476 |  154 | `	++pMap->nEntry;` |
+| 2910476 |  155 |  |
 |       - |  156 | `/*` |
 |       - |  157 | ` * Unlink a node from the hashmap.` |
 |       - |  158 | ` * If the node count reaches zero then release the whole hash-bucket.` |
@@ -214,20 +214,20 @@ Coverage: 2915/3334 lines (87.43%)
 |       - |  204 | `/*` |
 |       - |  205 | ` * Grow the hash-table and rehash all entries.` |
 |       - |  206 | ` */` |
-| 2910018 |  207 | `static sxi32 HashmapGrowBucket(ph7_hashmap *pMap)` |
+| 2910474 |  207 | `static sxi32 HashmapGrowBucket(ph7_hashmap *pMap)` |
 |       2 |  208 |  |
-| 2910020 |  209 | `	if( pMap->nEntry >= pMap->nSize * HASHMAP_FILL_FACTOR ){` |
-|   46060 |  210 | `		ph7_hashmap_node **apOld = pMap->apBucket;` |
+| 2910476 |  209 | `	if( pMap->nEntry >= pMap->nSize * HASHMAP_FILL_FACTOR ){` |
+|   46122 |  210 | `		ph7_hashmap_node **apOld = pMap->apBucket;` |
 |       - |  211 | `		ph7_hashmap_node *pEntry,**apNew;` |
-|   46060 |  212 | `		sxu32 nNew = pMap->nSize << 1;` |
+|   46122 |  212 | `		sxu32 nNew = pMap->nSize << 1;` |
 |       - |  213 | `		sxu32 nBucket;` |
 |       - |  214 | `		sxu32 n;` |
-|   46060 |  215 | `		if( nNew < 1 ){` |
-|   42142 |  216 | `			nNew = 16;` |
-|   21070 |  217 | `		}` |
+|   46122 |  215 | `		if( nNew < 1 ){` |
+|   42204 |  216 | `			nNew = 16;` |
+|   21101 |  217 | `		}` |
 |       - |  218 | `		/* Allocate a new bucket */` |
-|   46060 |  219 | `		apNew = (ph7_hashmap_node **)SyMemBackendAlloc(&pMap->pVm->sAllocator,nNew * sizeof(ph7_hashmap_node *));` |
-|   46060 |  220 | `		if( apNew == 0 ){` |
+|   46122 |  219 | `		apNew = (ph7_hashmap_node **)SyMemBackendAlloc(&pMap->pVm->sAllocator,nNew * sizeof(ph7_hashmap_node *));` |
+|   46122 |  220 | `		if( apNew == 0 ){` |
 |     ! 0 |  221 | `			if( pMap->nSize < 1 ){` |
 |     ! 0 |  222 | `				return SXERR_MEM; /* Fatal */` |
 |       - |  223 | `			}` |
@@ -235,13 +235,13 @@ Coverage: 2915/3334 lines (87.43%)
 |     ! 0 |  225 | `			return SXRET_OK;` |
 |       - |  226 | `		}` |
 |       - |  227 | `		/* Zero the table */` |
-|   46060 |  228 | `		SyZero((void *)apNew,nNew * sizeof(ph7_hashmap_node *));` |
+|   46122 |  228 | `		SyZero((void *)apNew,nNew * sizeof(ph7_hashmap_node *));` |
 |       - |  229 | `		/* Reflect the change */` |
-|   46060 |  230 | `		pMap->apBucket = apNew;` |
-|   46060 |  231 | `		pMap->nSize = nNew;` |
-|   46060 |  232 | `		if( apOld == 0 ){` |
+|   46122 |  230 | `		pMap->apBucket = apNew;` |
+|   46122 |  231 | `		pMap->nSize = nNew;` |
+|   46122 |  232 | `		if( apOld == 0 ){` |
 |       - |  233 | `			/* First allocated table [i.e: no entry],return immediately */` |
-|   42142 |  234 | `			return SXRET_OK;` |
+|   42204 |  234 | `			return SXRET_OK;` |
 |       - |  235 | `		}` |
 |       - |  236 | `		/* Rehash old entries */` |
 |    3920 |  237 | `		pEntry = pMap->pFirst;` |
@@ -266,106 +266,106 @@ Coverage: 2915/3334 lines (87.43%)
 |       - |  256 | `		/* Free the old table */` |
 |    3920 |  257 | `		SyMemBackendFree(&pMap->pVm->sAllocator,(void *)apOld);` |
 |    1959 |  258 | `	}` |
-| 2867880 |  259 | `	return SXRET_OK;` |
-| 1455011 |  260 |  |
+| 2868274 |  259 | `	return SXRET_OK;` |
+| 1455239 |  260 |  |
 |       - |  261 | `/*` |
 |       - |  262 | ` * Insert a 64-bit integer key and it's associated value (if any) in the given` |
 |       - |  263 | ` * hashmap.` |
 |       - |  264 | ` */` |
-| 2819824 |  265 | `static sxi32 HashmapInsertIntKey(ph7_hashmap *pMap,sxi64 iKey,ph7_value *pValue,sxu32 nRefIdx,int isForeign)` |
+| 2820136 |  265 | `static sxi32 HashmapInsertIntKey(ph7_hashmap *pMap,sxi64 iKey,ph7_value *pValue,sxu32 nRefIdx,int isForeign)` |
 |       2 |  266 |  |
 |       - |  267 | `	ph7_hashmap_node *pNode;` |
 |       - |  268 | `	sxu32 nIdx;` |
 |       - |  269 | `	sxu32 nHash;` |
 |       - |  270 | `	sxi32 rc;` |
-| 2819826 |  271 | `	if( !isForeign ){` |
+| 2820138 |  271 | `	if( !isForeign ){` |
 |       - |  272 | `		ph7_value *pObj;` |
 |       - |  273 | `		/* Reserve a ph7_value for the value */` |
-| 2819800 |  274 | `		pObj = PH7_ReserveMemObj(pMap->pVm);` |
-| 2819800 |  275 | `		if( pObj == 0 ){` |
+| 2820112 |  274 | `		pObj = PH7_ReserveMemObj(pMap->pVm);` |
+| 2820112 |  275 | `		if( pObj == 0 ){` |
 |     ! 0 |  276 | `			return SXERR_MEM;` |
 |       - |  277 | `		}` |
-| 2819800 |  278 | `		if( pValue ){` |
+| 2820112 |  278 | `		if( pValue ){` |
 |       - |  279 | `			/* Duplicate the value */` |
-| 2819800 |  280 | `			PH7_MemObjStore(pValue,pObj);` |
-| 1409899 |  281 | `		}` |
-| 2819800 |  282 | `		nIdx = pObj->nIdx;` |
-| 1409901 |  283 | `	}else{` |
+| 2820112 |  280 | `			PH7_MemObjStore(pValue,pObj);` |
+| 1410055 |  281 | `		}` |
+| 2820112 |  282 | `		nIdx = pObj->nIdx;` |
+| 1410057 |  283 | `	}else{` |
 |      27 |  284 | `		nIdx = nRefIdx;` |
 |       - |  285 | `	}` |
 |       - |  286 | `	/* Hash the key */` |
-| 2819826 |  287 | `	nHash = pMap->xIntHash(iKey);` |
+| 2820138 |  287 | `	nHash = pMap->xIntHash(iKey);` |
 |       - |  288 | `	/* Allocate a new int node */` |
-| 2819826 |  289 | `	pNode = HashmapNewIntNode(&(*pMap),iKey,nHash,nIdx);` |
-| 2819826 |  290 | `	if( pNode == 0 ){` |
+| 2820138 |  289 | `	pNode = HashmapNewIntNode(&(*pMap),iKey,nHash,nIdx);` |
+| 2820138 |  290 | `	if( pNode == 0 ){` |
 |     ! 0 |  291 | `		return SXERR_MEM;` |
 |       - |  292 | `	}` |
-| 2819826 |  293 | `	if( isForeign ){` |
+| 2820138 |  293 | `	if( isForeign ){` |
 |       - |  294 | `		/* Mark as a foregin entry */` |
 |      27 |  295 | `		pNode->iFlags \|= HASHMAP_NODE_FOREIGN_OBJ;` |
 |      13 |  296 | `	}` |
 |       - |  297 | `	/* Make sure the bucket is big enough to hold the new entry */` |
-| 2819826 |  298 | `	rc = HashmapGrowBucket(&(*pMap));` |
-| 2819826 |  299 | `	if( rc != SXRET_OK ){` |
+| 2820138 |  298 | `	rc = HashmapGrowBucket(&(*pMap));` |
+| 2820138 |  299 | `	if( rc != SXRET_OK ){` |
 |     ! 0 |  300 | `		SyMemBackendPoolFree(&pMap->pVm->sAllocator,pNode);` |
 |     ! 0 |  301 | `		return rc;` |
 |       - |  302 | `	}` |
 |       - |  303 | `	/* Perform the insertion */` |
-| 2819826 |  304 | `	HashmapNodeLink(&(*pMap),pNode,nHash & (pMap->nSize - 1));` |
+| 2820138 |  304 | `	HashmapNodeLink(&(*pMap),pNode,nHash & (pMap->nSize - 1));` |
 |       - |  305 | `	/* Install in the reference table */` |
-| 2819826 |  306 | `	PH7_VmRefObjInstall(pMap->pVm,nIdx,0,pNode,0);` |
+| 2820138 |  306 | `	PH7_VmRefObjInstall(pMap->pVm,nIdx,0,pNode,0);` |
 |       - |  307 | `	/* All done */` |
-| 2819826 |  308 | `	return SXRET_OK;` |
-| 1409914 |  309 |  |
+| 2820138 |  308 | `	return SXRET_OK;` |
+| 1410070 |  309 |  |
 |       - |  310 | `/*` |
 |       - |  311 | ` * Insert a BLOB key and it's associated value (if any) in the given` |
 |       - |  312 | ` * hashmap.` |
 |       - |  313 | ` */` |
-|   90194 |  314 | `static sxi32 HashmapInsertBlobKey(ph7_hashmap *pMap,const void *pKey,sxu32 nKeyLen,ph7_value *pValue,sxu32 nRefIdx,int isForeign)` |
+|   90338 |  314 | `static sxi32 HashmapInsertBlobKey(ph7_hashmap *pMap,const void *pKey,sxu32 nKeyLen,ph7_value *pValue,sxu32 nRefIdx,int isForeign)` |
 |       2 |  315 |  |
 |       - |  316 | `	ph7_hashmap_node *pNode;` |
 |       - |  317 | `	sxu32 nHash;` |
 |       - |  318 | `	sxu32 nIdx;` |
 |       - |  319 | `	sxi32 rc;` |
-|   90196 |  320 | `	if( !isForeign ){` |
+|   90340 |  320 | `	if( !isForeign ){` |
 |       - |  321 | `		ph7_value *pObj;` |
 |       - |  322 | `		/* Reserve a ph7_value for the value */` |
-|   62774 |  323 | `		pObj = PH7_ReserveMemObj(pMap->pVm);` |
-|   62774 |  324 | `		if( pObj == 0 ){` |
+|   62814 |  323 | `		pObj = PH7_ReserveMemObj(pMap->pVm);` |
+|   62814 |  324 | `		if( pObj == 0 ){` |
 |     ! 0 |  325 | `			return SXERR_MEM;` |
 |       - |  326 | `		}` |
-|   62774 |  327 | `		if( pValue ){` |
+|   62814 |  327 | `		if( pValue ){` |
 |       - |  328 | `			/* Duplicate the value */` |
-|   62774 |  329 | `			PH7_MemObjStore(pValue,pObj);` |
-|   31386 |  330 | `		}` |
-|   62774 |  331 | `		nIdx = pObj->nIdx;` |
-|   31388 |  332 | `	}else{` |
-|   27424 |  333 | `		nIdx = nRefIdx;` |
+|   62814 |  329 | `			PH7_MemObjStore(pValue,pObj);` |
+|   31406 |  330 | `		}` |
+|   62814 |  331 | `		nIdx = pObj->nIdx;` |
+|   31408 |  332 | `	}else{` |
+|   27528 |  333 | `		nIdx = nRefIdx;` |
 |       - |  334 | `	}` |
 |       - |  335 | `	/* Hash the key */` |
-|   90196 |  336 | `	nHash = pMap->xBlobHash(pKey,nKeyLen);` |
+|   90340 |  336 | `	nHash = pMap->xBlobHash(pKey,nKeyLen);` |
 |       - |  337 | `	/* Allocate a new blob node */` |
-|   90196 |  338 | `	pNode = HashmapNewBlobNode(&(*pMap),pKey,nKeyLen,nHash,nIdx);` |
-|   90196 |  339 | `	if( pNode == 0 ){` |
+|   90340 |  338 | `	pNode = HashmapNewBlobNode(&(*pMap),pKey,nKeyLen,nHash,nIdx);` |
+|   90340 |  339 | `	if( pNode == 0 ){` |
 |     ! 0 |  340 | `		return SXERR_MEM;` |
 |       - |  341 | `	}` |
-|   90196 |  342 | `	if( isForeign ){` |
+|   90340 |  342 | `	if( isForeign ){` |
 |       - |  343 | `		/* Mark as a foregin entry */` |
-|   27424 |  344 | `		pNode->iFlags \|= HASHMAP_NODE_FOREIGN_OBJ;` |
-|   13711 |  345 | `	}` |
+|   27528 |  344 | `		pNode->iFlags \|= HASHMAP_NODE_FOREIGN_OBJ;` |
+|   13763 |  345 | `	}` |
 |       - |  346 | `	/* Make sure the bucket is big enough to hold the new entry */` |
-|   90196 |  347 | `	rc = HashmapGrowBucket(&(*pMap));` |
-|   90196 |  348 | `	if( rc != SXRET_OK ){` |
+|   90340 |  347 | `	rc = HashmapGrowBucket(&(*pMap));` |
+|   90340 |  348 | `	if( rc != SXRET_OK ){` |
 |     ! 0 |  349 | `		SyMemBackendPoolFree(&pMap->pVm->sAllocator,pNode);` |
 |     ! 0 |  350 | `		return rc;` |
 |       - |  351 | `	}` |
 |       - |  352 | `	/* Perform the insertion */` |
-|   90196 |  353 | `	HashmapNodeLink(&(*pMap),pNode,nHash & (pMap->nSize - 1));` |
+|   90340 |  353 | `	HashmapNodeLink(&(*pMap),pNode,nHash & (pMap->nSize - 1));` |
 |       - |  354 | `	/* Install in the reference table */` |
-|   90196 |  355 | `	PH7_VmRefObjInstall(pMap->pVm,nIdx,0,pNode,0);` |
+|   90340 |  355 | `	PH7_VmRefObjInstall(pMap->pVm,nIdx,0,pNode,0);` |
 |       - |  356 | `	/* All done */` |
-|   90196 |  357 | `	return SXRET_OK;` |
-|   45099 |  358 |  |
+|   90340 |  357 | `	return SXRET_OK;` |
+|   45171 |  358 |  |
 |       - |  359 | `/*` |
 |       - |  360 | ` * Check if a given 64-bit integer key exists in the given hashmap.` |
 |       - |  361 | ` * Write a pointer to the target node on success. Otherwise` |
@@ -412,7 +412,7 @@ Coverage: 2915/3334 lines (87.43%)
 |       - |  402 | ` * Write a pointer to the target node on success. Otherwise` |
 |       - |  403 | ` * SXERR_NOTFOUND is returned on failure.` |
 |       - |  404 | ` */` |
-|  176766 |  405 | `static sxi32 HashmapLookupBlobKey(` |
+|  177024 |  405 | `static sxi32 HashmapLookupBlobKey(` |
 |       - |  406 | `	ph7_hashmap *pMap,          /* Target hashmap */` |
 |       - |  407 | `	const void *pKey,           /* Lookup key */` |
 |       - |  408 | `	sxu32 nKeyLen,              /* Key length in bytes */` |
@@ -421,84 +421,84 @@ Coverage: 2915/3334 lines (87.43%)
 |       2 |  411 |  |
 |       - |  412 | `	ph7_hashmap_node *pNode;` |
 |       - |  413 | `	sxu32 nHash;` |
-|  176768 |  414 | `	if( pMap->nEntry < 1 ){` |
+|  177026 |  414 | `	if( pMap->nEntry < 1 ){` |
 |       - |  415 | `		/* Don't bother hashing,there is no entry anyway */` |
-|   10234 |  416 | `		return SXERR_NOTFOUND;` |
+|   10260 |  416 | `		return SXERR_NOTFOUND;` |
 |       - |  417 | `	}` |
 |       - |  418 | `	/* Hash the key first */` |
-|  166536 |  419 | `	nHash = pMap->xBlobHash(pKey,nKeyLen);` |
+|  166768 |  419 | `	nHash = pMap->xBlobHash(pKey,nKeyLen);` |
 |       - |  420 | `	/* Point to the appropriate bucket */` |
-|  166536 |  421 | `	pNode = pMap->apBucket[nHash & (pMap->nSize - 1)];` |
+|  166768 |  421 | `	pNode = pMap->apBucket[nHash & (pMap->nSize - 1)];` |
 |       - |  422 | `	/* Perform the lookup */` |
-|  159424 |  423 | `	for(;;){` |
-|  318850 |  424 | `		if( pNode == 0 ){` |
-|  127274 |  425 | `			break;` |
+|  159574 |  423 | `	for(;;){` |
+|  319150 |  424 | `		if( pNode == 0 ){` |
+|  127464 |  425 | `			break;` |
 |       - |  426 | `		}` |
-|  211207 |  427 | `		if( pNode->iType == HASHMAP_BLOB_NODE` |
-|  190078 |  428 | `			&& pNode->nHash == nHash` |
-|  113921 |  429 | `			&& SyBlobLength(&pNode->xKey.sKey) == nKeyLen` |
-|   39264 |  430 | `			&& SyMemcmp(SyBlobData(&pNode->xKey.sKey),pKey,nKeyLen) == 0 ){` |
+|  211338 |  427 | `		if( pNode->iType == HASHMAP_BLOB_NODE` |
+|  190188 |  428 | `			&& pNode->nHash == nHash` |
+|  113997 |  429 | `			&& SyBlobLength(&pNode->xKey.sKey) == nKeyLen` |
+|   39306 |  430 | `			&& SyMemcmp(SyBlobData(&pNode->xKey.sKey),pKey,nKeyLen) == 0 ){` |
 |       - |  431 | `				/* Node found */` |
-|   39264 |  432 | `				if( ppNode ){` |
-|   39236 |  433 | `					*ppNode = pNode;` |
-|   19617 |  434 | `				}` |
-|   39264 |  435 | `				return SXRET_OK;` |
+|   39306 |  432 | `				if( ppNode ){` |
+|   39278 |  433 | `					*ppNode = pNode;` |
+|   19638 |  434 | `				}` |
+|   39306 |  435 | `				return SXRET_OK;` |
 |       - |  436 | `		}` |
 |       - |  437 | `		/* Follow the collision link */` |
-|  152316 |  438 | `		pNode = pNode->pNextCollide;` |
+|  152384 |  438 | `		pNode = pNode->pNextCollide;` |
 |       2 |  439 | `	}` |
 |       - |  440 | `	/* No such entry */` |
-|  127274 |  441 | `	return SXERR_NOTFOUND;` |
-|   88385 |  442 |  |
+|  127464 |  441 | `	return SXERR_NOTFOUND;` |
+|   88514 |  442 |  |
 |       - |  443 | `/*` |
 |       - |  444 | ` * Check if the given BLOB key looks like a decimal number.` |
 |       - |  445 | ` * Retrurn TRUE on success.FALSE otherwise.` |
 |       - |  446 | ` */` |
-|  176908 |  447 | `static int HashmapIsIntKey(SyBlob *pKey)` |
+|  177166 |  447 | `static int HashmapIsIntKey(SyBlob *pKey)` |
 |       2 |  448 |  |
-|  176910 |  449 | `	const char *zIn  = (const char *)SyBlobData(pKey);` |
-|  176910 |  450 | `	const char *zEnd = &zIn[SyBlobLength(pKey)];` |
-|  176910 |  451 | `	if( (int)(zEnd-zIn) > 1 && zIn[0] == '0' ){` |
+|  177168 |  449 | `	const char *zIn  = (const char *)SyBlobData(pKey);` |
+|  177168 |  450 | `	const char *zEnd = &zIn[SyBlobLength(pKey)];` |
+|  177168 |  451 | `	if( (int)(zEnd-zIn) > 1 && zIn[0] == '0' ){` |
 |       - |  452 | `		/* Octal not decimal number */` |
 |       5 |  453 | `		return FALSE;` |
 |       - |  454 | `	}` |
-|  176906 |  455 | `	if( (zIn[0] == '-' \|\| zIn[0] == '+') && &zIn[1] < zEnd ){` |
+|  177164 |  455 | `	if( (zIn[0] == '-' \|\| zIn[0] == '+') && &zIn[1] < zEnd ){` |
 |     ! 0 |  456 | `		zIn++;` |
 |     ! 0 |  457 | `	}` |
-|   88785 |  458 | `	for(;;){` |
-|  177572 |  459 | `		if( zIn >= zEnd ){` |
+|   88914 |  458 | `	for(;;){` |
+|  177830 |  459 | `		if( zIn >= zEnd ){` |
 |     233 |  460 | `			return TRUE;` |
 |       - |  461 | `		}` |
-|  177340 |  462 | `		if( (unsigned char)zIn[0] >= 0xc0 /* UTF-8 stream */  \|\| !SyisDigit(zIn[0]) ){` |
-|   88338 |  463 | `			break;` |
+|  177598 |  462 | `		if( (unsigned char)zIn[0] >= 0xc0 /* UTF-8 stream */  \|\| !SyisDigit(zIn[0]) ){` |
+|   88467 |  463 | `			break;` |
 |       - |  464 | `		}` |
 |     667 |  465 | `		zIn++;` |
 |       1 |  466 | `	}` |
 |       - |  467 | `	/* Key does not look like a decimal number */` |
-|  176674 |  468 | `	return FALSE;` |
-|   88456 |  469 |  |
+|  176932 |  468 | `	return FALSE;` |
+|   88585 |  469 |  |
 |       - |  470 | `/*` |
 |       - |  471 | ` * Check if a given key exists in the given hashmap.` |
 |       - |  472 | ` * Write a pointer to the target node on success.` |
 |       - |  473 | ` * Otherwise SXERR_NOTFOUND is returned on failure.` |
 |       - |  474 | ` */` |
-|   87316 |  475 | `static sxi32 HashmapLookup(` |
+|   87430 |  475 | `static sxi32 HashmapLookup(` |
 |       - |  476 | `	ph7_hashmap *pMap,          /* Target hashmap */` |
 |       - |  477 | `	ph7_value *pKey,            /* Lookup key */` |
 |       - |  478 | `	ph7_hashmap_node **ppNode   /* OUT: target node on success */` |
 |       - |  479 | `	)` |
 |       2 |  480 |  |
-|   87318 |  481 | `	ph7_hashmap_node *pNode = 0; /* cc -O6 warning */` |
+|   87432 |  481 | `	ph7_hashmap_node *pNode = 0; /* cc -O6 warning */` |
 |       - |  482 | `	sxi32 rc;` |
-|   87318 |  483 | `	if( pKey->iFlags & (MEMOBJ_STRING\|MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_RES) ){` |
-|   86554 |  484 | `		if( (pKey->iFlags & MEMOBJ_STRING) == 0 ){` |
+|   87432 |  483 | `	if( pKey->iFlags & (MEMOBJ_STRING\|MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_RES) ){` |
+|   86668 |  484 | `		if( (pKey->iFlags & MEMOBJ_STRING) == 0 ){` |
 |       - |  485 | `			/* Force a string cast */` |
 |     ! 0 |  486 | `			PH7_MemObjToString(&(*pKey));` |
 |     ! 0 |  487 | `		}` |
-|   86554 |  488 | `		if( SyBlobLength(&pKey->sBlob) > 0 && !HashmapIsIntKey(&pKey->sBlob) ){` |
+|   86668 |  488 | `		if( SyBlobLength(&pKey->sBlob) > 0 && !HashmapIsIntKey(&pKey->sBlob) ){` |
 |       - |  489 | `			/* Perform a blob lookup */` |
-|   86538 |  490 | `			rc = HashmapLookupBlobKey(&(*pMap),SyBlobData(&pKey->sBlob),SyBlobLength(&pKey->sBlob),&pNode);` |
-|   86538 |  491 | `			goto result;` |
+|   86652 |  490 | `			rc = HashmapLookupBlobKey(&(*pMap),SyBlobData(&pKey->sBlob),SyBlobLength(&pKey->sBlob),&pNode);` |
+|   86652 |  491 | `			goto result;` |
 |       - |  492 | `		}` |
 |       8 |  493 | `	}` |
 |       - |  494 | `	/* Perform an int lookup */` |
@@ -508,45 +508,45 @@ Coverage: 2915/3334 lines (87.43%)
 |      13 |  498 | `	}` |
 |       - |  499 | `	/* Perform an int lookup */` |
 |     782 |  500 | `	rc = HashmapLookupIntKey(&(*pMap),pKey->x.iVal,&pNode);` |
-|   43658 |  501 | `result:` |
-|   87318 |  502 | `	if( rc == SXRET_OK ){` |
+|   43715 |  501 | `result:` |
+|   87432 |  502 | `	if( rc == SXRET_OK ){` |
 |       - |  503 | `		/* Node found */` |
-|   39938 |  504 | `		if( ppNode ){` |
-|   39904 |  505 | `			*ppNode = pNode;` |
-|   19951 |  506 | `		}` |
-|   39938 |  507 | `		return SXRET_OK;` |
+|   39980 |  504 | `		if( ppNode ){` |
+|   39946 |  505 | `			*ppNode = pNode;` |
+|   19972 |  506 | `		}` |
+|   39980 |  507 | `		return SXRET_OK;` |
 |       - |  508 | `	}` |
 |       - |  509 | `	/* No such entry */` |
-|   47382 |  510 | `	return SXERR_NOTFOUND;` |
-|   43660 |  511 |  |
+|   47454 |  510 | `	return SXERR_NOTFOUND;` |
+|   43717 |  511 |  |
 |       - |  512 | `/*` |
 |       - |  513 | ` * Insert a given key and it's associated value (if any) in the given` |
 |       - |  514 | ` * hashmap.` |
 |       - |  515 | ` * If a node with the given key already exists in the database` |
 |       - |  516 | ` * then this function overwrite the old value.` |
 |       - |  517 | ` */` |
-| 2882360 |  518 | `static sxi32 HashmapInsert(` |
+| 2882712 |  518 | `static sxi32 HashmapInsert(` |
 |       - |  519 | `	ph7_hashmap *pMap, /* Target hashmap */` |
 |       - |  520 | `	ph7_value *pKey,   /* Lookup key  */` |
 |       - |  521 | `	ph7_value *pVal    /* Node value */` |
 |       - |  522 | `	)` |
 |       2 |  523 |  |
-| 2882362 |  524 | `	ph7_hashmap_node *pNode = 0;` |
-| 2882362 |  525 | `	sxi32 rc = SXRET_OK;` |
-| 2882362 |  526 | `	if( pKey && pKey->iFlags & (MEMOBJ_STRING\|MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_RES) ){` |
-|   62968 |  527 | `		if( (pKey->iFlags & MEMOBJ_STRING) == 0 ){` |
+| 2882714 |  524 | `	ph7_hashmap_node *pNode = 0;` |
+| 2882714 |  525 | `	sxi32 rc = SXRET_OK;` |
+| 2882714 |  526 | `	if( pKey && pKey->iFlags & (MEMOBJ_STRING\|MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_RES) ){` |
+|   63008 |  527 | `		if( (pKey->iFlags & MEMOBJ_STRING) == 0 ){` |
 |       - |  528 | `			/* Force a string cast */` |
 |       3 |  529 | `			PH7_MemObjToString(&(*pKey));` |
 |       1 |  530 | `		}` |
-|   62968 |  531 | `		if( SyBlobLength(&pKey->sBlob) < 1 \|\| HashmapIsIntKey(&pKey->sBlob) ){` |
+|   63008 |  531 | `		if( SyBlobLength(&pKey->sBlob) < 1 \|\| HashmapIsIntKey(&pKey->sBlob) ){` |
 |     256 |  532 | `			if(SyBlobLength(&pKey->sBlob) < 1){` |
 |       - |  533 | `				/* Automatic index assign */` |
 |      34 |  534 | `				pKey = 0;` |
 |      16 |  535 | `			}` |
 |     256 |  536 | `			goto IntKey;` |
 |       - |  537 | `		}` |
-|   94070 |  538 | `		if( SXRET_OK == HashmapLookupBlobKey(&(*pMap),SyBlobData(&pKey->sBlob),` |
-|   31356 |  539 | `			SyBlobLength(&pKey->sBlob),&pNode) ){` |
+|   94130 |  538 | `		if( SXRET_OK == HashmapLookupBlobKey(&(*pMap),SyBlobData(&pKey->sBlob),` |
+|   31376 |  539 | `			SyBlobLength(&pKey->sBlob),&pNode) ){` |
 |       - |  540 | `				/* Overwrite the old value */` |
 |       - |  541 | `				ph7_value *pElem;` |
 |      37 |  542 | `				pElem = (ph7_value *)SySetAt(&pMap->pVm->aMemObj,pNode->nValIdx);` |
@@ -560,17 +560,17 @@ Coverage: 2915/3334 lines (87.43%)
 |      18 |  550 | `				}` |
 |      37 |  551 | `				return SXRET_OK;` |
 |       - |  552 | `		}` |
-|   62678 |  553 | `		if( pMap == pMap->pVm->pGlobal ){` |
+|   62718 |  553 | `		if( pMap == pMap->pVm->pGlobal ){` |
 |       - |  554 | `			/* Forbidden */` |
 |       3 |  555 | `			PH7_VmThrowError(pMap->pVm,0,PH7_CTX_NOTICE,"$GLOBALS is a read-only array,insertion is forbidden");` |
 |       3 |  556 | `			return SXRET_OK;` |
 |       - |  557 | `		}` |
 |       - |  558 | `		/* Perform a blob-key insertion */` |
-|   62676 |  559 | `		rc = HashmapInsertBlobKey(&(*pMap),SyBlobData(&pKey->sBlob),SyBlobLength(&pKey->sBlob),&(*pVal),0,FALSE);` |
-|   62676 |  560 | `		return rc;` |
+|   62716 |  559 | `		rc = HashmapInsertBlobKey(&(*pMap),SyBlobData(&pKey->sBlob),SyBlobLength(&pKey->sBlob),&(*pVal),0,FALSE);` |
+|   62716 |  560 | `		return rc;` |
 |       - |  561 | `	}` |
-| 1409697 |  562 | `IntKey:` |
-| 2819650 |  563 | `	if( pKey ){` |
+| 1409853 |  562 | `IntKey:` |
+| 2819962 |  563 | `	if( pKey ){` |
 |   23270 |  564 | `		if((pKey->iFlags & MEMOBJ_INT) == 0 ){` |
 |       - |  565 | `			/* Force an integer cast */` |
 |     251 |  566 | `			PH7_MemObjToInteger(pKey);` |
@@ -607,20 +607,20 @@ Coverage: 2915/3334 lines (87.43%)
 |   11492 |  597 | `			}` |
 |   11610 |  598 | `		}` |
 |   11612 |  599 | `	}else{` |
-| 2796382 |  600 | `		if( pMap == pMap->pVm->pGlobal ){` |
+| 2796694 |  600 | `		if( pMap == pMap->pVm->pGlobal ){` |
 |       - |  601 | `			/* Forbidden */` |
 |       3 |  602 | `			PH7_VmThrowError(pMap->pVm,0,PH7_CTX_NOTICE,"$GLOBALS is a read-only array,insertion is forbidden");` |
 |       3 |  603 | `			return SXRET_OK;` |
 |       - |  604 | `		}` |
 |       - |  605 | `		/* Assign an automatic index */` |
-| 2796380 |  606 | `		rc = HashmapInsertIntKey(&(*pMap),pMap->iNextIdx,&(*pVal),0,FALSE);` |
-| 2796380 |  607 | `		if( rc == SXRET_OK ){` |
-| 2796380 |  608 | `			++pMap->iNextIdx;` |
-| 1398189 |  609 | `		}` |
+| 2796692 |  606 | `		rc = HashmapInsertIntKey(&(*pMap),pMap->iNextIdx,&(*pVal),0,FALSE);` |
+| 2796692 |  607 | `		if( rc == SXRET_OK ){` |
+| 2796692 |  608 | `			++pMap->iNextIdx;` |
+| 1398345 |  609 | `		}` |
 |       - |  610 | `	}` |
 |       - |  611 | `	/* Insertion result */` |
-| 2819600 |  612 | `	return rc;` |
-| 1441182 |  613 |  |
+| 2819912 |  612 | `	return rc;` |
+| 1441358 |  613 |  |
 |       - |  614 | `/*` |
 |       - |  615 | ` * Insert a given key and it's associated value (foreign index) in the given` |
 |       - |  616 | ` * hashmap.` |
@@ -648,28 +648,28 @@ Coverage: 2915/3334 lines (87.43%)
 |       - |  638 | ` * If a node with the given key already exists in the database` |
 |       - |  639 | ` * then this function overwrite the old value.` |
 |       - |  640 | ` */` |
-|   27454 |  641 | `static sxi32 HashmapInsertByRef(` |
+|   27558 |  641 | `static sxi32 HashmapInsertByRef(` |
 |       - |  642 | `	ph7_hashmap *pMap,   /* Target hashmap */` |
 |       - |  643 | `	ph7_value *pKey,     /* Lookup key */` |
 |       - |  644 | `	sxu32 nRefIdx        /* Foreign ph7_value index */` |
 |       - |  645 | `	)` |
 |       2 |  646 |  |
-|   27456 |  647 | `	ph7_hashmap_node *pNode = 0;` |
-|   27456 |  648 | `	sxi32 rc = SXRET_OK;` |
-|   27456 |  649 | `	if( pKey && pKey->iFlags & (MEMOBJ_STRING\|MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_RES) ){` |
-|   27430 |  650 | `		if( (pKey->iFlags & MEMOBJ_STRING) == 0 ){` |
+|   27560 |  647 | `	ph7_hashmap_node *pNode = 0;` |
+|   27560 |  648 | `	sxi32 rc = SXRET_OK;` |
+|   27560 |  649 | `	if( pKey && pKey->iFlags & (MEMOBJ_STRING\|MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_RES) ){` |
+|   27534 |  650 | `		if( (pKey->iFlags & MEMOBJ_STRING) == 0 ){` |
 |       - |  651 | `			/* Force a string cast */` |
 |     ! 0 |  652 | `			PH7_MemObjToString(&(*pKey));` |
 |     ! 0 |  653 | `		}` |
-|   27430 |  654 | `		if( SyBlobLength(&pKey->sBlob) < 1 \|\| HashmapIsIntKey(&pKey->sBlob) ){` |
+|   27534 |  654 | `		if( SyBlobLength(&pKey->sBlob) < 1 \|\| HashmapIsIntKey(&pKey->sBlob) ){` |
 |     ! 0 |  655 | `			if(SyBlobLength(&pKey->sBlob) < 1){` |
 |       - |  656 | `				/* Automatic index assign */` |
 |     ! 0 |  657 | `				pKey = 0;` |
 |     ! 0 |  658 | `			}` |
 |     ! 0 |  659 | `			goto IntKey;` |
 |       - |  660 | `		}` |
-|   41144 |  661 | `		if( SXRET_OK == HashmapLookupBlobKey(&(*pMap),SyBlobData(&pKey->sBlob),` |
-|   13714 |  662 | `			SyBlobLength(&pKey->sBlob),&pNode) ){` |
+|   41300 |  661 | `		if( SXRET_OK == HashmapLookupBlobKey(&(*pMap),SyBlobData(&pKey->sBlob),` |
+|   13766 |  662 | `			SyBlobLength(&pKey->sBlob),&pNode) ){` |
 |       - |  663 | `				/* Overwrite */` |
 |       7 |  664 | `				PH7_VmRefObjRemove(pMap->pVm,pNode->nValIdx,0,pNode);` |
 |       7 |  665 | `				pNode->nValIdx = nRefIdx;` |
@@ -678,8 +678,8 @@ Coverage: 2915/3334 lines (87.43%)
 |       7 |  668 | `				return SXRET_OK;` |
 |       - |  669 | `		}` |
 |       - |  670 | `		/* Perform a blob-key insertion */` |
-|   27424 |  671 | `		rc = HashmapInsertBlobKey(&(*pMap),SyBlobData(&pKey->sBlob),SyBlobLength(&pKey->sBlob),0,nRefIdx,TRUE);` |
-|   27424 |  672 | `		return rc;` |
+|   27528 |  671 | `		rc = HashmapInsertBlobKey(&(*pMap),SyBlobData(&pKey->sBlob),SyBlobLength(&pKey->sBlob),0,nRefIdx,TRUE);` |
+|   27528 |  672 | `		return rc;` |
 |       - |  673 | `	}` |
 |      13 |  674 | `IntKey:` |
 |      27 |  675 | `	if( pKey ){` |
@@ -716,16 +716,16 @@ Coverage: 2915/3334 lines (87.43%)
 |       - |  706 | `	}` |
 |       - |  707 | `	/* Insertion result */` |
 |      27 |  708 | `	return rc;` |
-|   13729 |  709 |  |
+|   13781 |  709 |  |
 |       - |  710 | `/*` |
 |       - |  711 | ` * Extract node value.` |
 |       - |  712 | ` */` |
-|  962074 |  713 | `static ph7_value * HashmapExtractNodeValue(ph7_hashmap_node *pNode)` |
+|  962697 |  713 | `static ph7_value * HashmapExtractNodeValue(ph7_hashmap_node *pNode)` |
 |       2 |  714 |  |
 |       - |  715 | `	/* Point to the desired object */` |
 |       - |  716 | `	ph7_value *pObj;` |
-|  962076 |  717 | `	pObj = (ph7_value *)SySetAt(&pNode->pMap->pVm->aMemObj,pNode->nValIdx);` |
-|  962076 |  718 | `	return pObj;` |
+|  962699 |  717 | `	pObj = (ph7_value *)SySetAt(&pNode->pMap->pVm->aMemObj,pNode->nValIdx);` |
+|  962699 |  718 | `	return pObj;` |
 |       2 |  719 |  |
 |       - |  720 | `/*` |
 |       - |  721 | ` * Insert a node in the given hashmap.` |
@@ -771,11 +771,11 @@ Coverage: 2915/3334 lines (87.43%)
 |       - |  761 | ` * of the [PH7_MemObjCmp()] function defined in memobj.c or the official` |
 |       - |  762 | ` * documenation.` |
 |       - |  763 | ` */` |
-|   40875 |  764 | `static sxi32 HashmapNodeCmp(ph7_hashmap_node *pLeft,ph7_hashmap_node *pRight,int bStrict)` |
+|   40909 |  764 | `static sxi32 HashmapNodeCmp(ph7_hashmap_node *pLeft,ph7_hashmap_node *pRight,int bStrict)` |
 |       2 |  765 |  |
 |       - |  766 | `	ph7_value sObj1,sObj2;` |
 |       - |  767 | `	sxi32 rc;` |
-|   40877 |  768 | `	if( pLeft == pRight ){` |
+|   40911 |  768 | `	if( pLeft == pRight ){` |
 |       - |  769 | `		/*` |
 |       - |  770 | `		 * Same node.Refer to the sort() implementation defined` |
 |       - |  771 | `		 * below for more information on this sceanario.` |
@@ -783,47 +783,47 @@ Coverage: 2915/3334 lines (87.43%)
 |     ! 0 |  773 | `		return 0;` |
 |       - |  774 | `	}` |
 |       - |  775 | `	/* Do the comparison */` |
-|   40877 |  776 | `	PH7_MemObjInit(pLeft->pMap->pVm,&sObj1);` |
-|   40877 |  777 | `	PH7_MemObjInit(pLeft->pMap->pVm,&sObj2);` |
-|   40877 |  778 | `	PH7_HashmapExtractNodeValue(pLeft,&sObj1,FALSE);` |
-|   40877 |  779 | `	PH7_HashmapExtractNodeValue(pRight,&sObj2,FALSE);` |
-|   40877 |  780 | `	rc = PH7_MemObjCmp(&sObj1,&sObj2,bStrict,0);` |
-|   40877 |  781 | `	PH7_MemObjRelease(&sObj1);` |
-|   40877 |  782 | `	PH7_MemObjRelease(&sObj2);` |
-|   40877 |  783 | `	return rc;` |
-|   20476 |  784 |  |
+|   40911 |  776 | `	PH7_MemObjInit(pLeft->pMap->pVm,&sObj1);` |
+|   40911 |  777 | `	PH7_MemObjInit(pLeft->pMap->pVm,&sObj2);` |
+|   40911 |  778 | `	PH7_HashmapExtractNodeValue(pLeft,&sObj1,FALSE);` |
+|   40911 |  779 | `	PH7_HashmapExtractNodeValue(pRight,&sObj2,FALSE);` |
+|   40911 |  780 | `	rc = PH7_MemObjCmp(&sObj1,&sObj2,bStrict,0);` |
+|   40911 |  781 | `	PH7_MemObjRelease(&sObj1);` |
+|   40911 |  782 | `	PH7_MemObjRelease(&sObj2);` |
+|   40911 |  783 | `	return rc;` |
+|   20495 |  784 |  |
 |       - |  785 | `/*` |
 |       - |  786 | ` * Rehash a node with a 64-bit integer key.` |
 |       - |  787 | ` * Refer to [merge_sort(),array_shift()] implementations for more information.` |
 |       - |  788 | ` */` |
-|    9046 |  789 | `static void HashmapRehashIntNode(ph7_hashmap_node *pEntry)` |
+|    9058 |  789 | `static void HashmapRehashIntNode(ph7_hashmap_node *pEntry)` |
 |       2 |  790 |  |
-|    9048 |  791 | `	ph7_hashmap *pMap = pEntry->pMap;` |
+|    9060 |  791 | `	ph7_hashmap *pMap = pEntry->pMap;` |
 |       - |  792 | `	sxu32 nBucket;` |
 |       - |  793 | `	/* Remove old collision links */` |
-|    9048 |  794 | `	if( pEntry->pPrevCollide ){` |
-|    7206 |  795 | `		pEntry->pPrevCollide->pNextCollide = pEntry->pNextCollide;` |
-|    3598 |  796 | `	}else{` |
-|    1844 |  797 | `		pMap->apBucket[pEntry->nHash & (pMap->nSize - 1)] = pEntry->pNextCollide;` |
+|    9060 |  794 | `	if( pEntry->pPrevCollide ){` |
+|    7225 |  795 | `		pEntry->pPrevCollide->pNextCollide = pEntry->pNextCollide;` |
+|    3608 |  796 | `	}else{` |
+|    1837 |  797 | `		pMap->apBucket[pEntry->nHash & (pMap->nSize - 1)] = pEntry->pNextCollide;` |
 |       - |  798 | `	}` |
-|    9048 |  799 | `	if( pEntry->pNextCollide ){` |
-|     721 |  800 | `		pEntry->pNextCollide->pPrevCollide = pEntry->pPrevCollide;` |
-|     365 |  801 | `	}` |
-|    9048 |  802 | `	pEntry->pNextCollide = pEntry->pPrevCollide = 0;` |
+|    9060 |  799 | `	if( pEntry->pNextCollide ){` |
+|     722 |  800 | `		pEntry->pNextCollide->pPrevCollide = pEntry->pPrevCollide;` |
+|     366 |  801 | `	}` |
+|    9060 |  802 | `	pEntry->pNextCollide = pEntry->pPrevCollide = 0;` |
 |       - |  803 | `	/* Compute the new hash */` |
-|    9048 |  804 | `	pEntry->nHash = pMap->xIntHash(pMap->iNextIdx);` |
-|    9048 |  805 | `	pEntry->xKey.iKey = pMap->iNextIdx;` |
-|    9048 |  806 | `	nBucket = pEntry->nHash & (pMap->nSize - 1);` |
+|    9060 |  804 | `	pEntry->nHash = pMap->xIntHash(pMap->iNextIdx);` |
+|    9060 |  805 | `	pEntry->xKey.iKey = pMap->iNextIdx;` |
+|    9060 |  806 | `	nBucket = pEntry->nHash & (pMap->nSize - 1);` |
 |       - |  807 | `	/* Link to the new bucket */` |
-|    9048 |  808 | `	pEntry->pNextCollide = pMap->apBucket[nBucket];` |
-|    9048 |  809 | `	if( pMap->apBucket[nBucket] ){` |
-|    7371 |  810 | `		pMap->apBucket[nBucket]->pPrevCollide = pEntry;` |
-|    3686 |  811 | `	}` |
-|    9048 |  812 | `	pEntry->pNextCollide = pMap->apBucket[nBucket];` |
-|    9048 |  813 | `	pMap->apBucket[nBucket] = pEntry;` |
+|    9060 |  808 | `	pEntry->pNextCollide = pMap->apBucket[nBucket];` |
+|    9060 |  809 | `	if( pMap->apBucket[nBucket] ){` |
+|    7392 |  810 | `		pMap->apBucket[nBucket]->pPrevCollide = pEntry;` |
+|    3697 |  811 | `	}` |
+|    9060 |  812 | `	pEntry->pNextCollide = pMap->apBucket[nBucket];` |
+|    9060 |  813 | `	pMap->apBucket[nBucket] = pEntry;` |
 |       - |  814 | `	/* Increment the automatic index */` |
-|    9048 |  815 | `	pMap->iNextIdx++;` |
-|    9048 |  816 |  |
+|    9060 |  815 | `	pMap->iNextIdx++;` |
+|    9060 |  816 |  |
 |       - |  817 | `/*` |
 |       - |  818 | ` * Perform a linear search on a given hashmap.` |
 |       - |  819 | ` * Write a pointer to the target node on success.` |
@@ -831,7 +831,7 @@ Coverage: 2915/3334 lines (87.43%)
 |       - |  821 | ` * Refer to [array_intersect(),array_diff(),in_array(),...] implementations` |
 |       - |  822 | ` * for more information.` |
 |       - |  823 | ` */` |
-|   22804 |  824 | `static int HashmapFindValue(` |
+|   22834 |  824 | `static int HashmapFindValue(` |
 |       - |  825 | `	ph7_hashmap *pMap,   /* Target hashmap */` |
 |       - |  826 | `	ph7_value *pNeedle,  /* Lookup key */` |
 |       - |  827 | `	ph7_hashmap_node **ppNode, /* OUT: target node on success  */` |
@@ -844,18 +844,18 @@ Coverage: 2915/3334 lines (87.43%)
 |       - |  834 | `	sxi32 rc;` |
 |       - |  835 | `	sxu32 n;` |
 |       - |  836 | `	/* Perform a linear search since we cannot sort the hashmap based on values */` |
-|   22806 |  837 | `	pEntry = pMap->pFirst;` |
-|   22806 |  838 | `	n = pMap->nEntry;` |
-|   22806 |  839 | `	PH7_MemObjInit(pMap->pVm,&sVal);` |
-|   22806 |  840 | `	PH7_MemObjInit(pMap->pVm,&sNeedle);` |
-|   54677 |  841 | `	for(;;){` |
-|  109358 |  842 | `		if( n < 1 ){` |
+|   22836 |  837 | `	pEntry = pMap->pFirst;` |
+|   22836 |  838 | `	n = pMap->nEntry;` |
+|   22836 |  839 | `	PH7_MemObjInit(pMap->pVm,&sVal);` |
+|   22836 |  840 | `	PH7_MemObjInit(pMap->pVm,&sNeedle);` |
+|   54752 |  841 | `	for(;;){` |
+|  109505 |  842 | `		if( n < 1 ){` |
 |      99 |  843 | `			break;` |
 |       - |  844 | `		}` |
 |       - |  845 | `		/* Extract node value */` |
-|  109260 |  846 | `		pVal = HashmapExtractNodeValue(pEntry);` |
-|  109260 |  847 | `		if( pVal ){` |
-|  109260 |  848 | `			if( (pVal->iFlags\|pNeedle->iFlags) & MEMOBJ_NULL ){` |
+|  109407 |  846 | `		pVal = HashmapExtractNodeValue(pEntry);` |
+|  109407 |  847 | `		if( pVal ){` |
+|  109407 |  848 | `			if( (pVal->iFlags\|pNeedle->iFlags) & MEMOBJ_NULL ){` |
 |     ! 0 |  849 | `				sxi32 iF1 = pVal->iFlags&~MEMOBJ_AUX;` |
 |     ! 0 |  850 | `				sxi32 iF2 = pNeedle->iFlags&~MEMOBJ_AUX;` |
 |     ! 0 |  851 | `				if( iF1 == iF2 ){` |
@@ -867,27 +867,27 @@ Coverage: 2915/3334 lines (87.43%)
 |       - |  857 | `				}` |
 |     ! 0 |  858 | `			}else{` |
 |       - |  859 | `				/* Duplicate value */` |
-|  109260 |  860 | `				PH7_MemObjLoad(pVal,&sVal);` |
-|  109260 |  861 | `				PH7_MemObjLoad(pNeedle,&sNeedle);` |
-|  109260 |  862 | `				rc = PH7_MemObjCmp(&sNeedle,&sVal,bStrict,0);` |
-|  109260 |  863 | `				PH7_MemObjRelease(&sVal);` |
-|  109260 |  864 | `				PH7_MemObjRelease(&sNeedle);` |
-|  109260 |  865 | `				if( rc == 0 ){` |
-|   22708 |  866 | `					if( ppNode ){` |
+|  109407 |  860 | `				PH7_MemObjLoad(pVal,&sVal);` |
+|  109407 |  861 | `				PH7_MemObjLoad(pNeedle,&sNeedle);` |
+|  109407 |  862 | `				rc = PH7_MemObjCmp(&sNeedle,&sVal,bStrict,0);` |
+|  109407 |  863 | `				PH7_MemObjRelease(&sVal);` |
+|  109407 |  864 | `				PH7_MemObjRelease(&sNeedle);` |
+|  109407 |  865 | `				if( rc == 0 ){` |
+|   22738 |  866 | `					if( ppNode ){` |
 |      23 |  867 | `						*ppNode = pEntry;` |
 |      11 |  868 | `					}` |
 |       - |  869 | `					/* Match found*/` |
-|   22708 |  870 | `					return SXRET_OK;` |
+|   22738 |  870 | `					return SXRET_OK;` |
 |       - |  871 | `				}` |
 |       - |  872 | `			}` |
-|   43275 |  873 | `		}` |
+|   43335 |  873 | `		}` |
 |       - |  874 | `		/* Point to the next entry */` |
-|   86554 |  875 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|   86554 |  876 | `		n--;` |
+|   86671 |  875 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|   86671 |  876 | `		n--;` |
 |       2 |  877 | `	}` |
 |       - |  878 | `	/* No such entry */` |
 |      99 |  879 | `	return SXERR_NOTFOUND;` |
-|   11404 |  880 |  |
+|   11419 |  880 |  |
 |       - |  881 | `/*` |
 |       - |  882 | ` * Perform a linear search on a given hashmap but use an user-defined callback` |
 |       - |  883 | ` * for values comparison.` |
@@ -1061,18 +1061,18 @@ Coverage: 2915/3334 lines (87.43%)
 |       - | 1051 | ` * Duplicate a hashmap node.` |
 |       - | 1052 | ` * This function is used by HashmapMerge, HashmapOverwrite and PH7_HashmapDup.` |
 |       - | 1053 | ` */` |
-|  472606 | 1054 | `static sxi32 HashmapDuplicateNode(` |
+|  472624 | 1054 | `static sxi32 HashmapDuplicateNode(` |
 |       - | 1055 | `	ph7_hashmap *pDest,` |
 |       - | 1056 | `	ph7_hashmap_node *pEntry,` |
 |       - | 1057 | `	ph7_value *pVal,` |
 |       - | 1058 | `	int iAction /* 0: Merge, 1: Overwrite, 2: Dup */` |
 |       - | 1059 | `	)` |
 |       2 | 1060 |  |
-|  472608 | 1061 | `	ph7_value sSafeVal = *pVal;` |
+|  472626 | 1061 | `	ph7_value sSafeVal = *pVal;` |
 |       - | 1062 | `	ph7_value sKey;` |
 |       - | 1063 | `	sxi32 rc;` |
 |       - | 1064 |  |
-|  472608 | 1065 | `	if( pEntry->iType == HASHMAP_BLOB_NODE ){` |
+|  472626 | 1065 | `	if( pEntry->iType == HASHMAP_BLOB_NODE ){` |
 |       - | 1066 | `		/* Blob key insertion */` |
 |      41 | 1067 | `		PH7_MemObjInitFromString(pDest->pVm,&sKey,0);` |
 |      41 | 1068 | `		PH7_MemObjStringAppend(&sKey,(const char *)SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey));` |
@@ -1080,9 +1080,9 @@ Coverage: 2915/3334 lines (87.43%)
 |      41 | 1070 | `		PH7_MemObjRelease(&sKey);` |
 |      21 | 1071 | `	}else{` |
 |       - | 1072 | `		/* Int key */` |
-|  472568 | 1073 | `		if( iAction == 0 ){ /* Merge */` |
-|  472488 | 1074 | `			rc = HashmapInsert(pDest,0/* Automatic index assign */,&sSafeVal);` |
-|  236325 | 1075 | `		}else if( iAction == 1 ){ /* Overwrite */` |
+|  472586 | 1073 | `		if( iAction == 0 ){ /* Merge */` |
+|  472506 | 1074 | `			rc = HashmapInsert(pDest,0/* Automatic index assign */,&sSafeVal);` |
+|  236334 | 1075 | `		}else if( iAction == 1 ){ /* Overwrite */` |
 |      32 | 1076 | `			PH7_MemObjInitFromInt(pDest->pVm,&sKey,pEntry->xKey.iKey);` |
 |      32 | 1077 | `			rc = PH7_HashmapInsert(pDest,&sKey,&sSafeVal);` |
 |      32 | 1078 | `			PH7_MemObjRelease(&sKey);` |
@@ -1090,7 +1090,7 @@ Coverage: 2915/3334 lines (87.43%)
 |      52 | 1080 | `			rc = HashmapInsertIntKey(pDest,pEntry->xKey.iKey,&sSafeVal,0,FALSE);` |
 |       - | 1081 | `		}` |
 |       - | 1082 | `	}` |
-|  472608 | 1083 | `	return rc;` |
+|  472626 | 1083 | `	return rc;` |
 |       2 | 1084 |  |
 |       - | 1085 | `/*` |
 |       - | 1086 | ` * Merge two hashmaps.` |
@@ -1119,25 +1119,25 @@ Coverage: 2915/3334 lines (87.43%)
 |       - | 1109 | `	/* Point to the first inserted entry in the source */` |
 |    1790 | 1110 | `	pEntry = pSrc->pFirst;` |
 |       - | 1111 | `	/* Perform the merge */` |
-|  474292 | 1112 | `	for( n = 0 ; n < pSrc->nEntry ; ++n ){` |
+|  474310 | 1112 | `	for( n = 0 ; n < pSrc->nEntry ; ++n ){` |
 |       - | 1113 | `		/* Extract the node value */` |
-|  472504 | 1114 | `		pVal = HashmapExtractNodeValue(pEntry);` |
-|  472504 | 1115 | `		if( pVal ){` |
+|  472522 | 1114 | `		pVal = HashmapExtractNodeValue(pEntry);` |
+|  472522 | 1115 | `		if( pVal ){` |
 |       - | 1116 | `			/* Make a local copy of the value.` |
 |       - | 1117 | `			 * The insertion call below may trigger a memory pool reallocation` |
 |       - | 1118 | `			 * which will invalidate the 'pVal' pointer since it points` |
 |       - | 1119 | `			 * to the old pool.` |
 |       - | 1120 | `			 */` |
-|  472504 | 1121 | `			rc = HashmapDuplicateNode(pDest,pEntry,pVal,0);` |
-|  236253 | 1122 | `		}else{` |
+|  472522 | 1121 | `			rc = HashmapDuplicateNode(pDest,pEntry,pVal,0);` |
+|  236262 | 1122 | `		}else{` |
 |     ! 0 | 1123 | `			rc = SXRET_OK;` |
 |       - | 1124 | `		}` |
-|  472504 | 1125 | `		if( rc != SXRET_OK ){` |
+|  472522 | 1125 | `		if( rc != SXRET_OK ){` |
 |     ! 0 | 1126 | `			return rc;` |
 |       - | 1127 | `		}` |
 |       - | 1128 | `		/* Point to the next entry */` |
-|  472504 | 1129 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|  236253 | 1130 | `	}` |
+|  472522 | 1129 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|  236262 | 1130 | `	}` |
 |    1790 | 1131 | `	return SXRET_OK;` |
 |     896 | 1132 |  |
 |       - | 1133 | `/*` |
@@ -1311,7 +1311,7 @@ Coverage: 2915/3334 lines (87.43%)
 |       - | 1301 | ` * Allocate a new hashmap.` |
 |       - | 1302 | ` * Return a pointer to the freshly allocated hashmap on success.NULL otherwise.` |
 |       - | 1303 | ` */` |
-|   66270 | 1304 | `PH7_PRIVATE ph7_hashmap * PH7_NewHashmap(` |
+|   66428 | 1304 | `PH7_PRIVATE ph7_hashmap * PH7_NewHashmap(` |
 |       - | 1305 | `	ph7_vm *pVm,              /* VM that trigger the hashmap creation */` |
 |       - | 1306 | `	sxu32 (*xIntHash)(sxi64), /* Hash function for int keys.NULL otherwise*/` |
 |       - | 1307 | `	sxu32 (*xBlobHash)(const void *,sxu32) /* Hash function for BLOB keys.NULL otherwise */` |
@@ -1319,20 +1319,20 @@ Coverage: 2915/3334 lines (87.43%)
 |       2 | 1309 |  |
 |       - | 1310 | `	ph7_hashmap *pMap;` |
 |       - | 1311 | `	/* Allocate a new instance */` |
-|   66272 | 1312 | `	pMap = (ph7_hashmap *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_hashmap));` |
-|   66272 | 1313 | `	if( pMap == 0 ){` |
+|   66430 | 1312 | `	pMap = (ph7_hashmap *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_hashmap));` |
+|   66430 | 1313 | `	if( pMap == 0 ){` |
 |     ! 0 | 1314 | `		return 0;` |
 |       - | 1315 | `	}` |
 |       - | 1316 | `	/* Zero the structure */` |
-|   66272 | 1317 | `	SyZero(pMap,sizeof(ph7_hashmap));` |
+|   66430 | 1317 | `	SyZero(pMap,sizeof(ph7_hashmap));` |
 |       - | 1318 | `	/* Fill in the structure */` |
-|   66272 | 1319 | `	pMap->pVm = &(*pVm);` |
-|   66272 | 1320 | `	pMap->iRef = 1;` |
+|   66430 | 1319 | `	pMap->pVm = &(*pVm);` |
+|   66430 | 1320 | `	pMap->iRef = 1;` |
 |       - | 1321 | `	/* Default hash functions */` |
-|   66272 | 1322 | `	pMap->xIntHash  = xIntHash ? xIntHash : IntHash;` |
-|   66272 | 1323 | `	pMap->xBlobHash = xBlobHash ? xBlobHash : BinHash;` |
-|   66272 | 1324 | `	return pMap;` |
-|   33137 | 1325 |  |
+|   66430 | 1322 | `	pMap->xIntHash  = xIntHash ? xIntHash : IntHash;` |
+|   66430 | 1323 | `	pMap->xBlobHash = xBlobHash ? xBlobHash : BinHash;` |
+|   66430 | 1324 | `	return pMap;` |
+|   33216 | 1325 |  |
 |       - | 1326 | `/*` |
 |       - | 1327 | ` * Install superglobals in the given virtual machine.` |
 |       - | 1328 | ` * Note on superglobals.` |
@@ -1353,7 +1353,7 @@ Coverage: 2915/3334 lines (87.43%)
 |       - | 1343 | `*    $_REQUEST` |
 |       - | 1344 | `*    $_ENV` |
 |       - | 1345 | `*/` |
-|    2168 | 1346 | `PH7_PRIVATE sxi32 PH7_HashmapCreateSuper(ph7_vm *pVm)` |
+|    2178 | 1346 | `PH7_PRIVATE sxi32 PH7_HashmapCreateSuper(ph7_vm *pVm)` |
 |       2 | 1347 |  |
 |       - | 1348 | `	static const char * azSuper[] = {` |
 |       - | 1349 | `		"_SERVER",   /* $_SERVER */` |
@@ -1373,163 +1373,163 @@ Coverage: 2915/3334 lines (87.43%)
 |       - | 1363 | `	sxi32 rc;` |
 |       - | 1364 | `	sxu32 n;` |
 |       - | 1365 | `	/* Allocate a new hashmap for the $GLOBALS array */` |
-|    2170 | 1366 | `	pMap = PH7_NewHashmap(&(*pVm),0,0);` |
-|    2170 | 1367 | `	if( pMap == 0 ){` |
+|    2180 | 1366 | `	pMap = PH7_NewHashmap(&(*pVm),0,0);` |
+|    2180 | 1367 | `	if( pMap == 0 ){` |
 |     ! 0 | 1368 | `		return SXERR_MEM;` |
 |       - | 1369 | `	}` |
-|    2170 | 1370 | `	pVm->pGlobal = pMap;` |
+|    2180 | 1370 | `	pVm->pGlobal = pMap;` |
 |       - | 1371 | `	/* Reserve a ph7_value for the $GLOBALS array*/` |
-|    2170 | 1372 | `	pObj = PH7_ReserveMemObj(&(*pVm));` |
-|    2170 | 1373 | `	if( pObj == 0 ){` |
+|    2180 | 1372 | `	pObj = PH7_ReserveMemObj(&(*pVm));` |
+|    2180 | 1373 | `	if( pObj == 0 ){` |
 |     ! 0 | 1374 | `		return SXERR_MEM;` |
 |       - | 1375 | `	}` |
-|    2170 | 1376 | `	PH7_MemObjInitFromArray(&(*pVm),pObj,pMap);` |
+|    2180 | 1376 | `	PH7_MemObjInitFromArray(&(*pVm),pObj,pMap);` |
 |       - | 1377 | `	/* Record object index */` |
-|    2170 | 1378 | `	pVm->nGlobalIdx = pObj->nIdx;` |
+|    2180 | 1378 | `	pVm->nGlobalIdx = pObj->nIdx;` |
 |       - | 1379 | `	/* Install the special $GLOBALS array */` |
-|    2170 | 1380 | `	rc = SyHashInsert(&pVm->hSuper,(const void *)"GLOBALS",sizeof("GLOBALS")-1,SX_INT_TO_PTR(pVm->nGlobalIdx));` |
-|    2170 | 1381 | `	if( rc != SXRET_OK ){` |
+|    2180 | 1380 | `	rc = SyHashInsert(&pVm->hSuper,(const void *)"GLOBALS",sizeof("GLOBALS")-1,SX_INT_TO_PTR(pVm->nGlobalIdx));` |
+|    2180 | 1381 | `	if( rc != SXRET_OK ){` |
 |     ! 0 | 1382 | `		return rc;` |
 |       - | 1383 | `	}` |
 |       - | 1384 | `	/* Install superglobals now */` |
-|   23850 | 1385 | `	for( n =  0 ; n < SX_ARRAYSIZE(azSuper)  ; n++ ){` |
+|   23960 | 1385 | `	for( n =  0 ; n < SX_ARRAYSIZE(azSuper)  ; n++ ){` |
 |       - | 1386 | `		ph7_value *pSuper;` |
 |       - | 1387 | `		/* Request an empty array */` |
-|   21682 | 1388 | `		pSuper = ph7_new_array(&(*pVm));` |
-|   21682 | 1389 | `		if( pSuper == 0 ){` |
+|   21782 | 1388 | `		pSuper = ph7_new_array(&(*pVm));` |
+|   21782 | 1389 | `		if( pSuper == 0 ){` |
 |     ! 0 | 1390 | `			return SXERR_MEM;` |
 |       - | 1391 | `		}` |
 |       - | 1392 | `		/* Install */` |
-|   21682 | 1393 | `		rc = ph7_vm_config(&(*pVm),PH7_VM_CONFIG_CREATE_SUPER,azSuper[n]/* Super-global name*/,pSuper/* Super-global value */);` |
-|   21682 | 1394 | `		if( rc != SXRET_OK ){` |
+|   21782 | 1393 | `		rc = ph7_vm_config(&(*pVm),PH7_VM_CONFIG_CREATE_SUPER,azSuper[n]/* Super-global name*/,pSuper/* Super-global value */);` |
+|   21782 | 1394 | `		if( rc != SXRET_OK ){` |
 |     ! 0 | 1395 | `			return rc;` |
 |       - | 1396 | `		}` |
 |       - | 1397 | `		/* Release the value now it have been installed */` |
-|   21682 | 1398 | `		ph7_release_value(&(*pVm),pSuper);` |
-|   10842 | 1399 | `	}` |
+|   21782 | 1398 | `		ph7_release_value(&(*pVm),pSuper);` |
+|   10892 | 1399 | `	}` |
 |       - | 1400 | `	/* Set some $_SERVER entries */` |
-|    2170 | 1401 | `	pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
+|    2180 | 1401 | `	pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
 |       - | 1402 | `	/*` |
 |       - | 1403 | `	 * 'SCRIPT_FILENAME'` |
 |       - | 1404 | `	 * The absolute pathname of the currently executing script.` |
 |       - | 1405 | `	 */` |
-|    4334 | 1406 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,` |
+|    4354 | 1406 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,` |
 |       - | 1407 | `		"SCRIPT_FILENAME",` |
-|    1084 | 1408 | `		pFile ? pFile->zString : ":Memory:",` |
-|    2164 | 1409 | `		pFile ? pFile->nByte : sizeof(":Memory:") - 1` |
+|    1089 | 1408 | `		pFile ? pFile->zString : ":Memory:",` |
+|    2174 | 1409 | `		pFile ? pFile->nByte : sizeof(":Memory:") - 1` |
 |       - | 1410 | `		);` |
 |       - | 1411 | `	/* All done,all super-global are installed now */` |
-|    2170 | 1412 | `	return SXRET_OK;` |
-|    1086 | 1413 |  |
+|    2180 | 1412 | `	return SXRET_OK;` |
+|    1091 | 1413 |  |
 |       - | 1414 | `/*` |
 |       - | 1415 | ` * Release a hashmap.` |
 |       - | 1416 | ` */` |
-|   42264 | 1417 | `PH7_PRIVATE sxi32 PH7_HashmapRelease(ph7_hashmap *pMap,int FreeDS)` |
+|   42312 | 1417 | `PH7_PRIVATE sxi32 PH7_HashmapRelease(ph7_hashmap *pMap,int FreeDS)` |
 |       2 | 1418 |  |
 |       - | 1419 | `	ph7_hashmap_node *pEntry,*pNext;` |
-|   42266 | 1420 | `	ph7_vm *pVm = pMap->pVm;` |
+|   42314 | 1420 | `	ph7_vm *pVm = pMap->pVm;` |
 |       - | 1421 | `	sxu32 n;` |
-|   42266 | 1422 | `	if( pMap == pVm->pGlobal ){` |
+|   42314 | 1422 | `	if( pMap == pVm->pGlobal ){` |
 |       - | 1423 | `		/* Cannot delete the $GLOBALS array */` |
 |     ! 0 | 1424 | `		PH7_VmThrowError(pMap->pVm,0,PH7_CTX_NOTICE,"$GLOBALS is a read-only array,deletion is forbidden");` |
 |     ! 0 | 1425 | `		return SXRET_OK;` |
 |       - | 1426 | `	}` |
 |       - | 1427 | `	/* Start the release process */` |
-|   42266 | 1428 | `	n = 0;` |
-|   42266 | 1429 | `	pEntry = pMap->pFirst;` |
-| 1458632 | 1430 | `	for(;;){` |
-| 2917266 | 1431 | `		if( n >= pMap->nEntry ){` |
-|   42266 | 1432 | `			break;` |
+|   42314 | 1428 | `	n = 0;` |
+|   42314 | 1429 | `	pEntry = pMap->pFirst;` |
+| 1458824 | 1430 | `	for(;;){` |
+| 2917650 | 1431 | `		if( n >= pMap->nEntry ){` |
+|   42314 | 1432 | `			break;` |
 |       - | 1433 | `		}` |
-| 2875002 | 1434 | `		pNext = pEntry->pPrev; /* Reverse link */` |
+| 2875338 | 1434 | `		pNext = pEntry->pPrev; /* Reverse link */` |
 |       - | 1435 | `		/* Remove the reference from the foreign table */` |
-| 2875002 | 1436 | `		PH7_VmRefObjRemove(pVm,pEntry->nValIdx,0,pEntry);` |
-| 2875002 | 1437 | `		if( (pEntry->iFlags & HASHMAP_NODE_FOREIGN_OBJ) == 0 ){` |
+| 2875338 | 1436 | `		PH7_VmRefObjRemove(pVm,pEntry->nValIdx,0,pEntry);` |
+| 2875338 | 1437 | `		if( (pEntry->iFlags & HASHMAP_NODE_FOREIGN_OBJ) == 0 ){` |
 |       - | 1438 | `			/* Restore the ph7_value to the free list */` |
-| 2874994 | 1439 | `			PH7_VmUnsetMemObj(pVm,pEntry->nValIdx,FALSE);` |
-| 1437496 | 1440 | `		}` |
+| 2875330 | 1439 | `			PH7_VmUnsetMemObj(pVm,pEntry->nValIdx,FALSE);` |
+| 1437664 | 1440 | `		}` |
 |       - | 1441 | `		/* Release the node */` |
-| 2875002 | 1442 | `		if( pEntry->iType == HASHMAP_BLOB_NODE ){` |
-|   59860 | 1443 | `			SyBlobRelease(&pEntry->xKey.sKey);` |
-|   29929 | 1444 | `		}` |
-| 2875002 | 1445 | `		SyMemBackendPoolFree(&pVm->sAllocator,pEntry);` |
+| 2875338 | 1442 | `		if( pEntry->iType == HASHMAP_BLOB_NODE ){` |
+|   59890 | 1443 | `			SyBlobRelease(&pEntry->xKey.sKey);` |
+|   29944 | 1444 | `		}` |
+| 2875338 | 1445 | `		SyMemBackendPoolFree(&pVm->sAllocator,pEntry);` |
 |       - | 1446 | `		/* Point to the next entry */` |
-| 2875002 | 1447 | `		pEntry = pNext;` |
-| 2875002 | 1448 | `		n++;` |
+| 2875338 | 1447 | `		pEntry = pNext;` |
+| 2875338 | 1448 | `		n++;` |
 |       2 | 1449 | `	}` |
-|   42266 | 1450 | `	if( pMap->nEntry > 0 ){` |
+|   42314 | 1450 | `	if( pMap->nEntry > 0 ){` |
 |       - | 1451 | `		/* Release the hash bucket */` |
-|   37604 | 1452 | `		SyMemBackendFree(&pVm->sAllocator,pMap->apBucket);` |
-|   18801 | 1453 | `	}` |
-|   42266 | 1454 | `	if( FreeDS ){` |
+|   37646 | 1452 | `		SyMemBackendFree(&pVm->sAllocator,pMap->apBucket);` |
+|   18822 | 1453 | `	}` |
+|   42314 | 1454 | `	if( FreeDS ){` |
 |       - | 1455 | `		/* Free the whole instance */` |
-|   42250 | 1456 | `		SyMemBackendPoolFree(&pVm->sAllocator,pMap);` |
-|   21126 | 1457 | `	}else{` |
+|   42298 | 1456 | `		SyMemBackendPoolFree(&pVm->sAllocator,pMap);` |
+|   21150 | 1457 | `	}else{` |
 |       - | 1458 | `		/* Keep the instance but reset it's fields */` |
 |      17 | 1459 | `		pMap->apBucket = 0;` |
 |      17 | 1460 | `		pMap->iNextIdx = 0;` |
 |      17 | 1461 | `		pMap->nEntry = pMap->nSize = 0;` |
 |      17 | 1462 | `		pMap->pFirst = pMap->pLast = pMap->pCur = 0;` |
 |       - | 1463 | `	}` |
-|   42266 | 1464 | `	return SXRET_OK;` |
-|   21134 | 1465 |  |
+|   42314 | 1464 | `	return SXRET_OK;` |
+|   21158 | 1465 |  |
 |       - | 1466 | `/*` |
 |       - | 1467 | ` * Decrement the reference count of a given hashmap.` |
 |       - | 1468 | ` * If the count reaches zero which mean no more variables` |
 |       - | 1469 | ` * are pointing to this hashmap,then release the whole instance.` |
 |       - | 1470 | ` */` |
-|  479616 | 1471 | `PH7_PRIVATE void  PH7_HashmapUnref(ph7_hashmap *pMap)` |
+|  480220 | 1471 | `PH7_PRIVATE void  PH7_HashmapUnref(ph7_hashmap *pMap)` |
 |       2 | 1472 |  |
-|  479618 | 1473 | `	ph7_vm *pVm = pMap->pVm;` |
+|  480222 | 1473 | `	ph7_vm *pVm = pMap->pVm;` |
 |       - | 1474 | `	/* TICKET 1432-49: $GLOBALS is not subject to garbage collection */` |
-|  479618 | 1475 | `	pMap->iRef--;` |
-|  479618 | 1476 | `	if( pMap->iRef < 1 && pMap != pVm->pGlobal){` |
-|   42250 | 1477 | `		PH7_HashmapRelease(pMap,TRUE);` |
-|   21124 | 1478 | `	}` |
-|  479618 | 1479 |  |
+|  480222 | 1475 | `	pMap->iRef--;` |
+|  480222 | 1476 | `	if( pMap->iRef < 1 && pMap != pVm->pGlobal){` |
+|   42298 | 1477 | `		PH7_HashmapRelease(pMap,TRUE);` |
+|   21148 | 1478 | `	}` |
+|  480222 | 1479 |  |
 |       - | 1480 | `/*` |
 |       - | 1481 | ` * Check if a given key exists in the given hashmap.` |
 |       - | 1482 | ` * Write a pointer to the target node on success.` |
 |       - | 1483 | ` * Otherwise SXERR_NOTFOUND is returned on failure.` |
 |       - | 1484 | ` */` |
-|   87334 | 1485 | `PH7_PRIVATE sxi32 PH7_HashmapLookup(` |
+|   87448 | 1485 | `PH7_PRIVATE sxi32 PH7_HashmapLookup(` |
 |       - | 1486 | `	ph7_hashmap *pMap,        /* Target hashmap */` |
 |       - | 1487 | `	ph7_value *pKey,          /* Lookup key */` |
 |       - | 1488 | `	ph7_hashmap_node **ppNode /* OUT: Target node on success */` |
 |       - | 1489 | `	)` |
 |       2 | 1490 |  |
 |       - | 1491 | `	sxi32 rc;` |
-|   87336 | 1492 | `	if( pMap->nEntry < 1 ){` |
+|   87450 | 1492 | `	if( pMap->nEntry < 1 ){` |
 |       - | 1493 | `		/* TICKET 1433-25: Don't bother hashing,the hashmap is empty anyway.` |
 |       - | 1494 | `		 */` |
 |      19 | 1495 | `		return SXERR_NOTFOUND;` |
 |       - | 1496 | `	}` |
-|   87318 | 1497 | `	rc = HashmapLookup(&(*pMap),&(*pKey),ppNode);` |
-|   87318 | 1498 | `	return rc;` |
-|   43669 | 1499 |  |
+|   87432 | 1497 | `	rc = HashmapLookup(&(*pMap),&(*pKey),ppNode);` |
+|   87432 | 1498 | `	return rc;` |
+|   43726 | 1499 |  |
 |       - | 1500 | `/*` |
 |       - | 1501 | ` * Insert a given key and it's associated value (if any) in the given` |
 |       - | 1502 | ` * hashmap.` |
 |       - | 1503 | ` * If a node with the given key already exists in the database` |
 |       - | 1504 | ` * then this function overwrite the old value.` |
 |       - | 1505 | ` */` |
-| 2409662 | 1506 | `PH7_PRIVATE sxi32 PH7_HashmapInsert(` |
+| 2409996 | 1506 | `PH7_PRIVATE sxi32 PH7_HashmapInsert(` |
 |       - | 1507 | `	ph7_hashmap *pMap, /* Target hashmap */` |
 |       - | 1508 | `	ph7_value *pKey,   /* Lookup key */` |
 |       - | 1509 | `	ph7_value *pVal    /* Node value.NULL otherwise */` |
 |       - | 1510 | `	)` |
 |       2 | 1511 |  |
 |       - | 1512 | `	sxi32 rc;` |
-| 2409664 | 1513 | `	if( pVal && (pVal->iFlags & MEMOBJ_HASHMAP) && (ph7_hashmap *)pVal->x.pOther == pMap->pVm->pGlobal ){` |
+| 2409998 | 1513 | `	if( pVal && (pVal->iFlags & MEMOBJ_HASHMAP) && (ph7_hashmap *)pVal->x.pOther == pMap->pVm->pGlobal ){` |
 |       - | 1514 | `		/*` |
 |       - | 1515 | `		 * TICKET 1433-35: Insertion in the $GLOBALS array is forbidden.` |
 |       - | 1516 | `		 */` |
 |     ! 0 | 1517 | `		PH7_VmThrowError(pMap->pVm,0,PH7_CTX_ERR,"$GLOBALS is a read-only array,insertion is forbidden");` |
 |     ! 0 | 1518 | `		return SXRET_OK;` |
 |       - | 1519 | `	}` |
-| 2409664 | 1520 | `	rc = HashmapInsert(&(*pMap),&(*pKey),&(*pVal));` |
-| 2409664 | 1521 | `	return rc;` |
-| 1204833 | 1522 |  |
+| 2409998 | 1520 | `	rc = HashmapInsert(&(*pMap),&(*pKey),&(*pVal));` |
+| 2409998 | 1521 | `	return rc;` |
+| 1205000 | 1522 |  |
 |       - | 1523 | `/*` |
 |       - | 1524 | ` * Insert a given key and it's associated value (foreign index) in the given` |
 |       - | 1525 | ` * hashmap.` |
@@ -1557,82 +1557,82 @@ Coverage: 2915/3334 lines (87.43%)
 |       - | 1547 | ` * If a node with the given key already exists in the database` |
 |       - | 1548 | ` * then this function overwrite the old value.` |
 |       - | 1549 | ` */` |
-|   27454 | 1550 | `PH7_PRIVATE sxi32 PH7_HashmapInsertByRef(` |
+|   27558 | 1550 | `PH7_PRIVATE sxi32 PH7_HashmapInsertByRef(` |
 |       - | 1551 | `	ph7_hashmap *pMap, /* Target hashmap */` |
 |       - | 1552 | `	ph7_value *pKey,   /* Lookup key */` |
 |       - | 1553 | `	sxu32 nRefIdx      /* Foreign ph7_value index */` |
 |       - | 1554 | `	)` |
 |       2 | 1555 |  |
 |       - | 1556 | `	sxi32 rc;` |
-|   27456 | 1557 | `	if( nRefIdx == pMap->pVm->nGlobalIdx ){` |
+|   27560 | 1557 | `	if( nRefIdx == pMap->pVm->nGlobalIdx ){` |
 |       - | 1558 | `		/*` |
 |       - | 1559 | `		 * TICKET 1433-35: Insertion in the $GLOBALS array is forbidden.` |
 |       - | 1560 | `		 */` |
 |     ! 0 | 1561 | `		PH7_VmThrowError(pMap->pVm,0,PH7_CTX_ERR,"$GLOBALS is a read-only array,insertion is forbidden");` |
 |     ! 0 | 1562 | `		return SXRET_OK;` |
 |       - | 1563 | `	}` |
-|   27456 | 1564 | `	rc = HashmapInsertByRef(&(*pMap),&(*pKey),nRefIdx);` |
-|   27456 | 1565 | `	return rc;` |
-|   13729 | 1566 |  |
+|   27560 | 1564 | `	rc = HashmapInsertByRef(&(*pMap),&(*pKey),nRefIdx);` |
+|   27560 | 1565 | `	return rc;` |
+|   13781 | 1566 |  |
 |       - | 1567 | `/*` |
 |       - | 1568 | ` * Reset the node cursor of a given hashmap.` |
 |       - | 1569 | ` */` |
-|   18868 | 1570 | `PH7_PRIVATE void PH7_HashmapResetLoopCursor(ph7_hashmap *pMap)` |
+|   18892 | 1570 | `PH7_PRIVATE void PH7_HashmapResetLoopCursor(ph7_hashmap *pMap)` |
 |       2 | 1571 |  |
 |       - | 1572 | `	/* Reset the loop cursor */` |
-|   18870 | 1573 | `	pMap->pCur = pMap->pFirst;` |
-|   18870 | 1574 |  |
+|   18894 | 1573 | `	pMap->pCur = pMap->pFirst;` |
+|   18894 | 1574 |  |
 |       - | 1575 | `/*` |
 |       - | 1576 | ` * Return a pointer to the node currently pointed by the node cursor.` |
 |       - | 1577 | ` * If the cursor reaches the end of the list,then this function` |
 |       - | 1578 | ` * return NULL.` |
 |       - | 1579 | ` * Note that the node cursor is automatically advanced by this function.` |
 |       - | 1580 | ` */` |
-|  151474 | 1581 | `PH7_PRIVATE ph7_hashmap_node * PH7_HashmapGetNextEntry(ph7_hashmap *pMap)` |
+|  151708 | 1581 | `PH7_PRIVATE ph7_hashmap_node * PH7_HashmapGetNextEntry(ph7_hashmap *pMap)` |
 |       2 | 1582 |  |
-|  151476 | 1583 | `	ph7_hashmap_node *pCur = pMap->pCur;` |
-|  151476 | 1584 | `	if( pCur == 0 ){` |
+|  151710 | 1583 | `	ph7_hashmap_node *pCur = pMap->pCur;` |
+|  151710 | 1584 | `	if( pCur == 0 ){` |
 |       - | 1585 | `		/* End of the list,return null */` |
-|    9456 | 1586 | `		return 0;` |
+|    9468 | 1586 | `		return 0;` |
 |       - | 1587 | `	}` |
 |       - | 1588 | `	/* Advance the node cursor */` |
-|  142022 | 1589 | `	pMap->pCur = pCur->pPrev; /* Reverse link */` |
-|  142022 | 1590 | `	return pCur;` |
-|   75739 | 1591 |  |
+|  142244 | 1589 | `	pMap->pCur = pCur->pPrev; /* Reverse link */` |
+|  142244 | 1590 | `	return pCur;` |
+|   75856 | 1591 |  |
 |       - | 1592 | `/*` |
 |       - | 1593 | ` * Extract a node value.` |
 |       - | 1594 | ` */` |
-|  356400 | 1595 | `PH7_PRIVATE void PH7_HashmapExtractNodeValue(ph7_hashmap_node *pNode,ph7_value *pValue,int bStore)` |
+|  356858 | 1595 | `PH7_PRIVATE void PH7_HashmapExtractNodeValue(ph7_hashmap_node *pNode,ph7_value *pValue,int bStore)` |
 |       2 | 1596 |  |
-|  356402 | 1597 | `	ph7_value *pEntry = HashmapExtractNodeValue(pNode);` |
-|  356402 | 1598 | `	if( pEntry ){` |
-|  356402 | 1599 | `		if( bStore ){` |
-|  142066 | 1600 | `			PH7_MemObjStore(pEntry,pValue);` |
-|   71034 | 1601 | `		}else{` |
-|  214338 | 1602 | `			PH7_MemObjLoad(pEntry,pValue);` |
+|  356860 | 1597 | `	ph7_value *pEntry = HashmapExtractNodeValue(pNode);` |
+|  356860 | 1598 | `	if( pEntry ){` |
+|  356860 | 1599 | `		if( bStore ){` |
+|  142288 | 1600 | `			PH7_MemObjStore(pEntry,pValue);` |
+|   71145 | 1601 | `		}else{` |
+|  214574 | 1602 | `			PH7_MemObjLoad(pEntry,pValue);` |
 |       - | 1603 | `		}` |
-|  178275 | 1604 | `	}else{` |
+|  178508 | 1604 | `	}else{` |
 |     ! 0 | 1605 | `		PH7_MemObjRelease(pValue);` |
 |       - | 1606 | `	}` |
-|  356402 | 1607 |  |
+|  356860 | 1607 |  |
 |       - | 1608 | `/*` |
 |       - | 1609 | ` * Extract a node key.` |
 |       - | 1610 | ` */` |
-|   93208 | 1611 | `PH7_PRIVATE void PH7_HashmapExtractNodeKey(ph7_hashmap_node *pNode,ph7_value *pKey)` |
+|   93334 | 1611 | `PH7_PRIVATE void PH7_HashmapExtractNodeKey(ph7_hashmap_node *pNode,ph7_value *pKey)` |
 |       2 | 1612 |  |
 |       - | 1613 | `	/* Fill with the current key */` |
-|   93210 | 1614 | `	if( pNode->iType == HASHMAP_INT_NODE ){` |
-|   92934 | 1615 | `		if( SyBlobLength(&pKey->sBlob) > 0 ){` |
+|   93336 | 1614 | `	if( pNode->iType == HASHMAP_INT_NODE ){` |
+|   93060 | 1615 | `		if( SyBlobLength(&pKey->sBlob) > 0 ){` |
 |      13 | 1616 | `			SyBlobRelease(&pKey->sBlob);` |
 |       6 | 1617 | `		}` |
-|   92934 | 1618 | `		pKey->x.iVal = pNode->xKey.iKey;` |
-|   92934 | 1619 | `		MemObjSetType(pKey,MEMOBJ_INT);` |
-|   46468 | 1620 | `	}else{` |
+|   93060 | 1618 | `		pKey->x.iVal = pNode->xKey.iKey;` |
+|   93060 | 1619 | `		MemObjSetType(pKey,MEMOBJ_INT);` |
+|   46531 | 1620 | `	}else{` |
 |     278 | 1621 | `		SyBlobReset(&pKey->sBlob);` |
 |     278 | 1622 | `		SyBlobAppend(&pKey->sBlob,SyBlobData(&pNode->xKey.sKey),SyBlobLength(&pNode->xKey.sKey));` |
 |     278 | 1623 | `		MemObjSetType(pKey,MEMOBJ_STRING);` |
 |       - | 1624 | `	}` |
-|   93210 | 1625 |  |
+|   93336 | 1625 |  |
 |       - | 1626 | `#ifndef PH7_DISABLE_DISK_IO` |
 |       - | 1627 | `/*` |
 |       - | 1628 | ` * Store the address of nodes value in the given container.` |
@@ -1680,35 +1680,35 @@ Coverage: 2915/3334 lines (87.43%)
 |       - | 1670 | `**   The "next","prev" pointers for elements in the lists a and b are` |
 |       - | 1671 | `**   changed.` |
 |       - | 1672 | `*/` |
-|   27030 | 1673 | `static ph7_hashmap_node * HashmapNodeMerge(ph7_hashmap_node *pA,ph7_hashmap_node *pB,ProcNodeCmp xCmp,void *pCmpData)` |
+|   27042 | 1673 | `static ph7_hashmap_node * HashmapNodeMerge(ph7_hashmap_node *pA,ph7_hashmap_node *pB,ProcNodeCmp xCmp,void *pCmpData)` |
 |       2 | 1674 |  |
 |       - | 1675 | `	ph7_hashmap_node result,*pTail;` |
 |       - | 1676 | `    /* Prevent compiler warning */` |
-|   27032 | 1677 | `	result.pNext = result.pPrev = 0;` |
-|   27032 | 1678 | `	pTail = &result;` |
-|   67993 | 1679 | `	while( pA && pB ){` |
-|   40963 | 1680 | `		if( xCmp(pA,pB,pCmpData) <= 0 ){` |
-|   26869 | 1681 | `			pTail->pPrev = pA;` |
-|   26869 | 1682 | `			pA->pNext = pTail;` |
-|   26869 | 1683 | `			pTail = pA;` |
-|   26869 | 1684 | `			pA = pA->pPrev;` |
-|   13433 | 1685 | `		}else{` |
-|   14096 | 1686 | `			pTail->pPrev = pB;` |
-|   14096 | 1687 | `			pB->pNext = pTail;` |
-|   14096 | 1688 | `			pTail = pB;` |
-|   14096 | 1689 | `			pB = pB->pPrev;` |
+|   27044 | 1677 | `	result.pNext = result.pPrev = 0;` |
+|   27044 | 1678 | `	pTail = &result;` |
+|   68037 | 1679 | `	while( pA && pB ){` |
+|   40995 | 1680 | `		if( xCmp(pA,pB,pCmpData) <= 0 ){` |
+|   26882 | 1681 | `			pTail->pPrev = pA;` |
+|   26882 | 1682 | `			pA->pNext = pTail;` |
+|   26882 | 1683 | `			pTail = pA;` |
+|   26882 | 1684 | `			pA = pA->pPrev;` |
+|   13439 | 1685 | `		}else{` |
+|   14115 | 1686 | `			pTail->pPrev = pB;` |
+|   14115 | 1687 | `			pB->pNext = pTail;` |
+|   14115 | 1688 | `			pTail = pB;` |
+|   14115 | 1689 | `			pB = pB->pPrev;` |
 |       - | 1690 | `		}` |
 |       2 | 1691 | `	}` |
-|   27032 | 1692 | `	if( pA ){` |
-|   20084 | 1693 | `		pTail->pPrev = pA;` |
-|   20084 | 1694 | `		pA->pNext = pTail;` |
-|   16997 | 1695 | `	}else if( pB ){` |
-|    6750 | 1696 | `		pTail->pPrev = pB;` |
-|    6750 | 1697 | `		pB->pNext = pTail;` |
-|    3370 | 1698 | `	}else{` |
-|     202 | 1699 | `		pTail->pPrev = pTail->pNext = 0;` |
+|   27044 | 1692 | `	if( pA ){` |
+|   20086 | 1693 | `		pTail->pPrev = pA;` |
+|   20086 | 1694 | `		pA->pNext = pTail;` |
+|   17009 | 1695 | `	}else if( pB ){` |
+|    6756 | 1696 | `		pTail->pPrev = pB;` |
+|    6756 | 1697 | `		pB->pNext = pTail;` |
+|    3372 | 1698 | `	}else{` |
+|     206 | 1699 | `		pTail->pPrev = pTail->pNext = 0;` |
 |       - | 1700 | `	}` |
-|   27032 | 1701 | `	return result.pPrev;` |
+|   27044 | 1701 | `	return result.pPrev;` |
 |       2 | 1702 |  |
 |       - | 1703 | `/*` |
 |       - | 1704 | `** Inputs:` |
@@ -1729,20 +1729,20 @@ Coverage: 2915/3334 lines (87.43%)
 |     612 | 1719 | `	SyZero(a,sizeof(a));` |
 |       - | 1720 | `	/* Point to the first inserted entry */` |
 |     612 | 1721 | `	pIn = pMap->pFirst;` |
-|    9778 | 1722 | `	while( pIn ){` |
-|    9168 | 1723 | `		p = pIn;` |
-|    9168 | 1724 | `		pIn = p->pPrev;` |
-|    9168 | 1725 | `		p->pPrev = 0;` |
-|   17288 | 1726 | `		for(i=0; i<N_SORT_BUCKET-1; i++){` |
-|   17288 | 1727 | `			if( a[i]==0 ){` |
-|    9168 | 1728 | `				a[i] = p;` |
-|    9168 | 1729 | `				break;` |
+|    9790 | 1722 | `	while( pIn ){` |
+|    9180 | 1723 | `		p = pIn;` |
+|    9180 | 1724 | `		pIn = p->pPrev;` |
+|    9180 | 1725 | `		p->pPrev = 0;` |
+|   17312 | 1726 | `		for(i=0; i<N_SORT_BUCKET-1; i++){` |
+|   17312 | 1727 | `			if( a[i]==0 ){` |
+|    9180 | 1728 | `				a[i] = p;` |
+|    9180 | 1729 | `				break;` |
 |     ! 0 | 1730 | `			}else{` |
-|    8122 | 1731 | `				p = HashmapNodeMerge(a[i],p,xCmp,pCmpData);` |
-|    8122 | 1732 | `				a[i] = 0;` |
+|    8134 | 1731 | `				p = HashmapNodeMerge(a[i],p,xCmp,pCmpData);` |
+|    8134 | 1732 | `				a[i] = 0;` |
 |       - | 1733 | `			}` |
-|    4062 | 1734 | `		}` |
-|    9168 | 1735 | `		if( i==N_SORT_BUCKET-1 ){` |
+|    4068 | 1734 | `		}` |
+|    9180 | 1735 | `		if( i==N_SORT_BUCKET-1 ){` |
 |       - | 1736 | `			/* To get here, there need to be 2^(N_SORT_BUCKET) elements in he input list.` |
 |       - | 1737 | `			 * But that is impossible.` |
 |       - | 1738 | `			 */` |
@@ -1764,15 +1764,15 @@ Coverage: 2915/3334 lines (87.43%)
 |       - | 1754 | ` * Node comparison callback.` |
 |       - | 1755 | ` * used-by: [sort(),asort(),...]` |
 |       - | 1756 | ` */` |
-|   40831 | 1757 | `static sxi32 HashmapCmpCallback1(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
+|   40865 | 1757 | `static sxi32 HashmapCmpCallback1(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
 |       2 | 1758 |  |
 |       - | 1759 | `	ph7_value sA,sB;` |
 |       - | 1760 | `	sxi32 iFlags;` |
 |       - | 1761 | `	int rc;` |
-|   40833 | 1762 | `	if( pCmpData == 0 ){` |
+|   40867 | 1762 | `	if( pCmpData == 0 ){` |
 |       - | 1763 | `		/* Perform a standard comparison */` |
-|   40809 | 1764 | `		rc = HashmapNodeCmp(pA,pB,FALSE);` |
-|   40809 | 1765 | `		return rc;` |
+|   40843 | 1764 | `		rc = HashmapNodeCmp(pA,pB,FALSE);` |
+|   40843 | 1765 | `		return rc;` |
 |       - | 1766 | `	}` |
 |      26 | 1767 | `	iFlags = SX_PTR_TO_INT(pCmpData);` |
 |       - | 1768 | `	/* Duplicate node values */` |
@@ -1810,7 +1810,7 @@ Coverage: 2915/3334 lines (87.43%)
 |      26 | 1800 | `	PH7_MemObjRelease(&sA);` |
 |      26 | 1801 | `	PH7_MemObjRelease(&sB);` |
 |      26 | 1802 | `	return rc;` |
-|   20454 | 1803 |  |
+|   20473 | 1803 |  |
 |       - | 1804 | `/*` |
 |       - | 1805 | ` * Node comparison callback: Compare nodes by keys only.` |
 |       - | 1806 | ` * used-by: [ksort()]` |
@@ -2028,17 +2028,17 @@ Coverage: 2915/3334 lines (87.43%)
 |       - | 2018 | ` * Node comparison callback: Random node comparison.` |
 |       - | 2019 | ` * used-by: [shuffle()]` |
 |       - | 2020 | ` */` |
-|      16 | 2021 | `static sxi32 HashmapCmpCallback7(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
+|      14 | 2021 | `static sxi32 HashmapCmpCallback7(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
 |       1 | 2022 |  |
 |       - | 2023 | `	sxu32 n;` |
-|       9 | 2024 | `	SXUNUSED(pB); /* cc warning */` |
-|       9 | 2025 | `	SXUNUSED(pCmpData);` |
+|       7 | 2024 | `	SXUNUSED(pB); /* cc warning */` |
+|       7 | 2025 | `	SXUNUSED(pCmpData);` |
 |       - | 2026 | `	/* Grab a random number */` |
-|      17 | 2027 | `	n = PH7_VmRandomNum(pA->pMap->pVm);` |
+|      15 | 2027 | `	n = PH7_VmRandomNum(pA->pMap->pVm);` |
 |       - | 2028 | `	/* if the random number is odd then the first node 'pA' is greater then` |
 |       - | 2029 | `	 * the second node 'pB'. Otherwise the reverse is assumed.` |
 |       - | 2030 | `	 */` |
-|      17 | 2031 | `	return n&1 ? 1 : -1;` |
+|      15 | 2031 | `	return n&1 ? 1 : -1;` |
 |       1 | 2032 |  |
 |       - | 2033 | `/*` |
 |       - | 2034 | ` * Rehash all nodes keys after a merge-sort have been applied.` |
@@ -2052,22 +2052,22 @@ Coverage: 2915/3334 lines (87.43%)
 |     564 | 2042 | `	pLast = p = pMap->pFirst;` |
 |     564 | 2043 | `	pMap->iNextIdx = 0; /* Reset the automatic index */` |
 |     564 | 2044 | `	i = 0;` |
-|    4779 | 2045 | `	for( ;; ){` |
-|    9560 | 2046 | `		if( i >= pMap->nEntry ){` |
+|    4785 | 2045 | `	for( ;; ){` |
+|    9572 | 2046 | `		if( i >= pMap->nEntry ){` |
 |     564 | 2047 | `			pMap->pLast = pLast; /* Fix the last link broken by the merge-sort */` |
 |     564 | 2048 | `			break;` |
 |       - | 2049 | `		}` |
-|    8998 | 2050 | `		if( p->iType == HASHMAP_BLOB_NODE ){` |
+|    9010 | 2050 | `		if( p->iType == HASHMAP_BLOB_NODE ){` |
 |       - | 2051 | `			/* Do not maintain index association as requested by the PHP specification */` |
 |       5 | 2052 | `			SyBlobRelease(&p->xKey.sKey);` |
 |       - | 2053 | `			/* Change key type */` |
 |       5 | 2054 | `			p->iType = HASHMAP_INT_NODE;` |
 |       2 | 2055 | `		}` |
-|    8998 | 2056 | `		HashmapRehashIntNode(p);` |
+|    9010 | 2056 | `		HashmapRehashIntNode(p);` |
 |       - | 2057 | `		/* Point to the next entry */` |
-|    8998 | 2058 | `		i++;` |
-|    8998 | 2059 | `		pLast = p;` |
-|    8998 | 2060 | `		p = p->pPrev; /* Reverse link */` |
+|    9010 | 2058 | `		i++;` |
+|    9010 | 2059 | `		pLast = p;` |
+|    9010 | 2060 | `		p = p->pPrev; /* Reverse link */` |
 |       2 | 2061 | `	}` |
 |     564 | 2062 |  |
 |       - | 2063 | `/*` |
@@ -2532,8 +2532,8 @@ Coverage: 2915/3334 lines (87.43%)
 |       - | 2522 | `		/* Do the merge sort */` |
 |       3 | 2523 | `		HashmapMergeSort(pMap,HashmapCmpCallback7,0);` |
 |       - | 2524 | `		/* Fix the last link broken by the merge */` |
-|       9 | 2525 | `		while(pMap->pLast->pPrev){` |
-|       7 | 2526 | `			pMap->pLast = pMap->pLast->pPrev;` |
+|      11 | 2525 | `		while(pMap->pLast->pPrev){` |
+|       9 | 2526 | `			pMap->pLast = pMap->pLast->pPrev;` |
 |       1 | 2527 | `		}` |
 |       1 | 2528 | `	}` |
 |       - | 2529 | `	/* All done,return TRUE */` |
@@ -3837,22 +3837,22 @@ Coverage: 2915/3334 lines (87.43%)
 |       - | 3827 | ` *  If the third parameter strict is set to TRUE then the in_array() function` |
 |       - | 3828 | ` *  will also check the types of the needle in the haystack.` |
 |       - | 3829 | ` */` |
-|   22612 | 3830 | `static int ph7_hashmap_in_array(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   22642 | 3830 | `static int ph7_hashmap_in_array(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |       2 | 3831 |  |
 |       - | 3832 | `	ph7_value *pNeedle;` |
 |       - | 3833 | `	int bStrict;` |
 |       - | 3834 | `	int rc;` |
-|   22614 | 3835 | `	if( nArg < 2 ){` |
+|   22644 | 3835 | `	if( nArg < 2 ){` |
 |       - | 3836 | `		/* Missing argument,return FALSE */` |
 |     ! 0 | 3837 | `		ph7_result_bool(pCtx,0);` |
 |     ! 0 | 3838 | `		return PH7_OK;` |
 |       - | 3839 | `	}` |
-|   22614 | 3840 | `	pNeedle = apArg[0];` |
-|   22614 | 3841 | `	bStrict = 0;` |
-|   22614 | 3842 | `	if( nArg > 2 ){` |
+|   22644 | 3840 | `	pNeedle = apArg[0];` |
+|   22644 | 3841 | `	bStrict = 0;` |
+|   22644 | 3842 | `	if( nArg > 2 ){` |
 |       5 | 3843 | `		bStrict = ph7_value_to_bool(apArg[2]);` |
 |       2 | 3844 | `	}` |
-|   22614 | 3845 | `	if( !ph7_value_is_array(apArg[1]) ){` |
+|   22644 | 3845 | `	if( !ph7_value_is_array(apArg[1]) ){` |
 |       - | 3846 | `		/* haystack must be an array,perform a standard comparison */` |
 |     ! 0 | 3847 | `		rc = ph7_value_compare(pNeedle,apArg[1],bStrict);` |
 |       - | 3848 | `		/* Set the comparison result */` |
@@ -3860,11 +3860,11 @@ Coverage: 2915/3334 lines (87.43%)
 |     ! 0 | 3850 | `		return PH7_OK;` |
 |       - | 3851 | `	}` |
 |       - | 3852 | `	/* Perform the lookup */` |
-|   22614 | 3853 | `	rc = HashmapFindValue((ph7_hashmap *)apArg[1]->x.pOther,pNeedle,0,bStrict);` |
+|   22644 | 3853 | `	rc = HashmapFindValue((ph7_hashmap *)apArg[1]->x.pOther,pNeedle,0,bStrict);` |
 |       - | 3854 | `	/* Lookup result */` |
-|   22614 | 3855 | `	ph7_result_bool(pCtx,rc == SXRET_OK);` |
-|   22614 | 3856 | `	return PH7_OK;` |
-|   11308 | 3857 |  |
+|   22644 | 3855 | `	ph7_result_bool(pCtx,rc == SXRET_OK);` |
+|   22644 | 3856 | `	return PH7_OK;` |
+|   11323 | 3857 |  |
 |       - | 3858 | `/*` |
 |       - | 3859 | ` * value array_search(value $needle,array $haystack[,bool $strict = false ])` |
 |       - | 3860 | ` *  Searches the array for a given value and returns the corresponding key if successful.` |
@@ -5869,9 +5869,9 @@ Coverage: 2915/3334 lines (87.43%)
 |       - | 5859 | `		 * Note that we perform a linear lookup here (later version must change this)` |
 |       - | 5860 | `		 */` |
 |       5 | 5861 | `		if( nEntry > pMap->nEntry / 2 ){` |
-|       2 | 5862 | `			pNode = pMap->pLast;` |
-|       2 | 5863 | `			nEntry = pMap->nEntry - nEntry;` |
-|       2 | 5864 | `			if( nEntry > 1 ){` |
+|       3 | 5862 | `			pNode = pMap->pLast;` |
+|       3 | 5863 | `			nEntry = pMap->nEntry - nEntry;` |
+|       3 | 5864 | `			if( nEntry > 1 ){` |
 |     ! 0 | 5865 | `				for(;;){` |
 |     ! 0 | 5866 | `					if( nEntry == 0 ){` |
 |     ! 0 | 5867 | `						break;` |
@@ -5881,15 +5881,15 @@ Coverage: 2915/3334 lines (87.43%)
 |     ! 0 | 5871 | `					nEntry--;` |
 |     ! 0 | 5872 | `				}` |
 |     ! 0 | 5873 | `			}` |
-|     ! 0 | 5874 | `		}else{` |
+|       2 | 5874 | `		}else{` |
 |       3 | 5875 | `			pNode = pMap->pFirst;` |
-|       3 | 5876 | `			for(;;){` |
-|       4 | 5877 | `				if( nEntry == 0 ){` |
+|       2 | 5876 | `			for(;;){` |
+|       5 | 5877 | `				if( nEntry == 0 ){` |
 |       3 | 5878 | `					break;` |
 |       - | 5879 | `				}` |
 |       - | 5880 | `				/* Point to the next entry */` |
-|       2 | 5881 | `				pNode = pNode->pPrev; /* Reverse link */` |
-|       2 | 5882 | `				nEntry--;` |
+|       3 | 5881 | `				pNode = pNode->pPrev; /* Reverse link */` |
+|       3 | 5882 | `				nEntry--;` |
 |       1 | 5883 | `			}` |
 |       - | 5884 | `		}` |
 |       5 | 5885 | `		if( pNode->iType == HASHMAP_INT_NODE ){` |
@@ -6787,13 +6787,13 @@ Coverage: 2915/3334 lines (87.43%)
 |       - | 6777 | `/*` |
 |       - | 6778 | ` * Register the built-in hashmap functions defined above.` |
 |       - | 6779 | ` */` |
-|    2168 | 6780 | `PH7_PRIVATE void PH7_RegisterHashmapFunctions(ph7_vm *pVm)` |
+|    2178 | 6780 | `PH7_PRIVATE void PH7_RegisterHashmapFunctions(ph7_vm *pVm)` |
 |       2 | 6781 |  |
 |       - | 6782 | `	sxu32 n;` |
-|  134418 | 6783 | `	for( n = 0 ; n < SX_ARRAYSIZE(aHashmapFunc) ; n++ ){` |
-|  132250 | 6784 | `		ph7_create_function(&(*pVm),aHashmapFunc[n].zName,aHashmapFunc[n].xFunc,0);` |
-|   66126 | 6785 | `	}` |
-|    2170 | 6786 |  |
+|  135038 | 6783 | `	for( n = 0 ; n < SX_ARRAYSIZE(aHashmapFunc) ; n++ ){` |
+|  132860 | 6784 | `		ph7_create_function(&(*pVm),aHashmapFunc[n].zName,aHashmapFunc[n].xFunc,0);` |
+|   66431 | 6785 | `	}` |
+|    2180 | 6786 |  |
 |       - | 6787 | `/*` |
 |       - | 6788 | ` * Dump a hashmap instance and it's entries and the store the dump in` |
 |       - | 6789 | ` * the BLOB given as the first argument.` |
@@ -6883,7 +6883,7 @@ Coverage: 2915/3334 lines (87.43%)
 |       - | 6873 | ` * a value different from PH7_OK.` |
 |       - | 6874 | ` * Refer to [ph7_array_walk()] for more information.` |
 |       - | 6875 | ` */` |
-|   22880 | 6876 | `PH7_PRIVATE sxi32 PH7_HashmapWalk(` |
+|   22910 | 6876 | `PH7_PRIVATE sxi32 PH7_HashmapWalk(` |
 |       - | 6877 | `	ph7_hashmap *pMap, /* Target hashmap */` |
 |       - | 6878 | `	int (*xWalk)(ph7_value *,ph7_value *,void *), /* Walker callback */` |
 |       - | 6879 | `	void *pUserData /* Last argument to xWalk() */` |
@@ -6894,33 +6894,33 @@ Coverage: 2915/3334 lines (87.43%)
 |       - | 6884 | `	sxi32 rc;` |
 |       - | 6885 | `	sxu32 n;` |
 |       - | 6886 | `	/* Initialize walker parameter */` |
-|   22882 | 6887 | `	rc = SXRET_OK;` |
-|   22882 | 6888 | `	PH7_MemObjInit(pMap->pVm,&sKey);` |
-|   22882 | 6889 | `	PH7_MemObjInit(pMap->pVm,&sValue);` |
-|   22882 | 6890 | `	n = pMap->nEntry;` |
-|   22882 | 6891 | `	pEntry = pMap->pFirst;` |
+|   22912 | 6887 | `	rc = SXRET_OK;` |
+|   22912 | 6888 | `	PH7_MemObjInit(pMap->pVm,&sKey);` |
+|   22912 | 6889 | `	PH7_MemObjInit(pMap->pVm,&sValue);` |
+|   22912 | 6890 | `	n = pMap->nEntry;` |
+|   22912 | 6891 | `	pEntry = pMap->pFirst;` |
 |       - | 6892 | `	/* Start the iteration process */` |
-|   57781 | 6893 | `	for(;;){` |
-|  115564 | 6894 | `		if( n < 1 ){` |
-|   22882 | 6895 | `			break;` |
+|   57859 | 6893 | `	for(;;){` |
+|  115720 | 6894 | `		if( n < 1 ){` |
+|   22912 | 6895 | `			break;` |
 |       - | 6896 | `		}` |
 |       - | 6897 | `		/* Extract a copy of the key and a copy the current value */` |
-|   92684 | 6898 | `		PH7_HashmapExtractNodeKey(pEntry,&sKey);` |
-|   92684 | 6899 | `		PH7_HashmapExtractNodeValue(pEntry,&sValue,FALSE);` |
+|   92810 | 6898 | `		PH7_HashmapExtractNodeKey(pEntry,&sKey);` |
+|   92810 | 6899 | `		PH7_HashmapExtractNodeValue(pEntry,&sValue,FALSE);` |
 |       - | 6900 | `		/* Invoke the user callback */` |
-|   92684 | 6901 | `		rc = xWalk(&sKey,&sValue,pUserData);` |
+|   92810 | 6901 | `		rc = xWalk(&sKey,&sValue,pUserData);` |
 |       - | 6902 | `		/* Release the copy of the key and the value */` |
-|   92684 | 6903 | `		PH7_MemObjRelease(&sKey);` |
-|   92684 | 6904 | `		PH7_MemObjRelease(&sValue);` |
-|   92684 | 6905 | `		if( rc != PH7_OK ){` |
+|   92810 | 6903 | `		PH7_MemObjRelease(&sKey);` |
+|   92810 | 6904 | `		PH7_MemObjRelease(&sValue);` |
+|   92810 | 6905 | `		if( rc != PH7_OK ){` |
 |       - | 6906 | `			/* Callback request an operation abort */` |
 |     ! 0 | 6907 | `			return SXERR_ABORT;` |
 |       - | 6908 | `		}` |
 |       - | 6909 | `		/* Point to the next entry */` |
-|   92684 | 6910 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|   92684 | 6911 | `		n--;` |
+|   92810 | 6910 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|   92810 | 6911 | `		n--;` |
 |       2 | 6912 | `	}` |
 |       - | 6913 | `	/* All done */` |
-|   22882 | 6914 | `	return SXRET_OK;` |
-|   11442 | 6915 |  |
+|   22912 | 6914 | `	return SXRET_OK;` |
+|   11457 | 6915 |  |
 |       - | 6916 |  |
