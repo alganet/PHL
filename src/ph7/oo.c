@@ -314,10 +314,39 @@ PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_cl
 	/* Copy attributes from the trait */
 	SyHashResetLoopCursor(&pTrait->hAttr);
 	while((pEntry = SyHashGetNextEntry(&pTrait->hAttr)) != 0 ){
+		SyHashEntry *pExisting;
 		pAttr = (ph7_class_attr *)pEntry->pUserData;
 		pName = &pAttr->sName;
-		if( SyHashGet(&pClass->hAttr,(const void *)pName->zString,pName->nByte) != 0 ){
-			/* Class attribute takes precedence over trait attribute */
+		pExisting = SyHashGet(&pClass->hAttr,(const void *)pName->zString,pName->nByte);
+		if( pExisting != 0 ){
+			/* Attribute already exists. Check if it came from another trait
+			 * and whether the definitions are compatible (same defaults).
+			 */
+			ph7_class **apUsedTraits;
+			sxu32 nUsed,k;
+			apUsedTraits = (ph7_class **)SySetBasePtr(&pClass->aTrait);
+			nUsed = SySetUsed(&pClass->aTrait);
+			for(k = 0; k < nUsed; k++){
+				ph7_class_attr *pOther;
+				pOther = PH7_ClassExtractAttribute(apUsedTraits[k],pName->zString,pName->nByte);
+				if( pOther ){
+					/* Two traits define the same property — check if defaults differ */
+					ph7_class_attr *pClassAttr = (ph7_class_attr *)pExisting->pUserData;
+					if( SySetUsed(&pAttr->aByteCode) != SySetUsed(&pClassAttr->aByteCode) ||
+						(SySetUsed(&pAttr->aByteCode) > 0 &&
+						 SyMemcmp(SySetBasePtr(&pAttr->aByteCode),SySetBasePtr(&pClassAttr->aByteCode),
+							SySetUsed(&pAttr->aByteCode) * SySetElemSize(&pAttr->aByteCode)) != 0) ){
+						rc = PH7_GenCompileError(pGen,E_ERROR,pAttr->nLine,
+							"%z and %z define the same property ($%z) in the composition of %z. "
+							"However, the definition differs and is considered incompatible",
+							&apUsedTraits[k]->sName,&pTrait->sName,pName,&pClass->sName);
+						if( rc == SXERR_ABORT ){
+							return SXERR_ABORT;
+						}
+					}
+					break;
+				}
+			}
 			continue;
 		}
 		rc = SyHashInsert(&pClass->hAttr,(const void *)pName->zString,pName->nByte,pAttr);

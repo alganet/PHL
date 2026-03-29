@@ -5772,6 +5772,49 @@ static sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 		iAttrflags = 0;
 		if( pGen->pIn->nType & PH7_TK_KEYWORD ){
 			nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
+			if( nKwrd == PH7_TKWRD_USE ){
+				/* Trait uses another trait: use OtherTrait; */
+				pGen->pIn++; /* Jump 'use' */
+				for(;;){
+					ph7_class *pUsedTrait;
+					SyString *pUsedName;
+					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_ID) == 0 ){
+						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+							"Expected trait name after 'use' inside trait '%z'",pName);
+						if( rc == SXERR_ABORT ){
+							return SXERR_ABORT;
+						}
+						break;
+					}
+					pUsedName = &pGen->pIn->sData;
+					{
+						SyBlob sResolved;
+						SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
+						GenStateResolveName(pGen,pUsedName,&sResolved);
+						pUsedTrait = PH7_VmExtractClass(pGen->pVm,
+							(const char *)SyBlobData(&sResolved),(sxu32)SyBlobLength(&sResolved),FALSE,0);
+						SyBlobRelease(&sResolved);
+					}
+					while( pUsedTrait && (pUsedTrait->iFlags & PH7_CLASS_TRAIT) == 0 ){
+						pUsedTrait = pUsedTrait->pNextName;
+					}
+					if( pUsedTrait == 0 ){
+						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+							"'%z' is not a trait",pUsedName);
+						if( rc == SXERR_ABORT ){
+							return SXERR_ABORT;
+						}
+					}else{
+						PH7_ClassUseTrait(&(*pGen),pClass,pUsedTrait);
+					}
+					pGen->pIn++;
+					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_COMMA) == 0 ){
+						break;
+					}
+					pGen->pIn++;
+				}
+				continue;
+			}
 			if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
 				iProtection = nKwrd;
 				pGen->pIn++;
