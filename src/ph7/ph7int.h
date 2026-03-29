@@ -654,6 +654,9 @@ struct ph7_exception
 	SySet sEntry;   /* Compiled 'catch' blocks (ph7_exception_block instance)
 				     * container.
 					 */
+	SySet sFinally; /* Compiled 'finally' block bytecode (VmInstr instances) */
+	int iHasFinally;/* TRUE if a finally block was compiled */
+	int iFinallyDone;/* TRUE if the finally block was already executed */
 	VmFrame *pFrame; /* Frame that trigger the exception */
 };
 /* Forward reference */
@@ -727,6 +730,7 @@ struct ph7_vm
 	SySet aOB;                  /* Stackable output buffers */
 	SySet aShutdown;            /* Stack of shutdown user callbacks */
 	SySet aException;           /* Stack of loaded exception */
+	ph7_class_instance *pPendingException; /* Exception deferred past a finally block */
 	SySet aIOstream;            /* Installed IO stream container */
 	const ph7_io_stream *pDefStream; /* Default IO stream [i.e: typically this is the 'file://' stream] */
 	ph7_value sExec;           /* Compiled script return value [Can be extracted via the PH7_VM_CONFIG_EXEC_VALUE directive]*/
@@ -1070,6 +1074,7 @@ enum ph7_expr_id {
 #define PH7_TKWRD_GOTO         56 /* goto */
 #define PH7_TKWRD_TRAIT        57 /* trait */
 #define PH7_TKWRD_INSTEADOF    58 /* insteadof */
+#define PH7_TKWRD_FINALLY      59 /* finally */
 #define PH7_TKWRD_BOOL         0x8000  /* bool:  MUST BE A POWER OF TWO */
 #define PH7_TKWRD_INT          0x10000  /* int:   MUST BE A POWER OF TWO */
 #define PH7_TKWRD_FLOAT        0x20000  /* float:  MUST BE A POWER OF TWO */

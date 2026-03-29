@@ -6167,6 +6167,7 @@ Mem:
 static sxi32 PH7_CompileTry(ph7_gen_state *pGen)
 {
 	ph7_exception *pException;
+	sxu32 nLine = pGen->pIn->nLine;
 	GenBlock *pTry;
 	sxu32 nJmpIdx;
 	sxi32 rc;
@@ -6181,6 +6182,9 @@ static sxi32 PH7_CompileTry(ph7_gen_state *pGen)
 	SyZero(pException,sizeof(ph7_exception));
 	/* Initialize fields */
 	SySetInit(&pException->sEntry,&pGen->pVm->sAllocator,sizeof(ph7_exception_block));
+	SySetInit(&pException->sFinally,&pGen->pVm->sAllocator,sizeof(VmInstr));
+	pException->iHasFinally = 0;
+	pException->iFinallyDone = 0;
 	pException->pVm = pGen->pVm;
 	/* Create the try block */
 	rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_EXCEPTION,PH7_VmInstrLength(pGen->pVm),0,&pTry);
@@ -6203,34 +6207,59 @@ static sxi32 PH7_CompileTry(ph7_gen_state *pGen)
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP_EXCEPTION,0,0,pException,0);
 	/* Leave the block */
 	GenStateLeaveBlock(&(*pGen),0);
-	/* Compile the catch block */
-	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ||
-		SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_CATCH ){
-			SyToken *pTok = pGen->pIn;
-			if( pTok >= pGen->pEnd ){
-				pTok--; /* Point back */
+	/* Compile catch block(s) — at least one catch or finally is required */
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) &&
+		SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_CATCH ){
+		/* Compile one or more catch blocks */
+		for(;;){
+			if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0
+				|| SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_CATCH ){
+					break;
 			}
-			/* Unexpected token */
-			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pTok->nLine,
-				"Try: Unexpected token '%z',expecting 'catch' block",&pTok->sData);
+			rc = PH7_CompileCatch(&(*pGen),pException);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
-			return SXRET_OK;
-	}
-	/* Compile one or more catch blocks */
-	for(;;){
-		if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0
-			|| SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_CATCH ){
-				/* No more blocks */
-				break;
 		}
-		/* Compile the catch block */
-		rc = PH7_CompileCatch(&(*pGen),pException);
+	}
+	/* Compile optional finally block */
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) &&
+		SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_FINALLY ){
+		SySet *pInstrContainer;
+		GenBlock *pFinBlock;
+		pGen->pIn++; /* Jump the 'finally' keyword */
+		/* Create the finally block for jump fixup bookkeeping */
+		rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_EXCEPTION,PH7_VmInstrLength(pGen->pVm),0,&pFinBlock);
+		if( rc != SXRET_OK ){
+			return SXERR_ABORT;
+		}
+		/* Swap bytecode container */
+		pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
+		PH7_VmSetByteCodeContainer(pGen->pVm,&pException->sFinally);
+		/* Compile the finally body */
+		rc = PH7_CompileBlock(&(*pGen),0);
+		if( rc == SXERR_ABORT ){
+			PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
+			return SXERR_ABORT;
+		}
+		/* Fix forward jumps now the destination is resolved */
+		GenStateFixJumps(pFinBlock,-1,PH7_VmInstrLength(pGen->pVm));
+		/* Emit DONE to terminate the finally block */
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,0,0,0,0);
+		/* Leave the block */
+		GenStateLeaveBlock(&(*pGen),0);
+		/* Restore the default container */
+		PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
+		pException->iHasFinally = 1;
+	}
+	/* Must have at least one catch or finally */
+	if( SySetUsed(&pException->sEntry) == 0 && !pException->iHasFinally ){
+		rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+			"Cannot use try without catch or finally");
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
- 	}
+	}
 	return SXRET_OK;
 }
 /*

@@ -2,16 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-try without catch
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+try without catch or finally
 --FILE--
 <?php
 try {
 echo "hello";
 }
 --EXPECTF--
-%s Fatal error:  Try: Unexpected token '}',expecting 'catch' block %s
+%s %s %s  Cannot use try without catch or finally %s
 --CLEAN--
 <?php
 

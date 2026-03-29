@@ -1231,6 +1231,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SySetInit(&pVm->aSelf,&pVm->sAllocator,sizeof(ph7_class *));
 	SySetInit(&pVm->aShutdown,&pVm->sAllocator,sizeof(VmShutdownCB));
 	SySetInit(&pVm->aException,&pVm->sAllocator,sizeof(ph7_exception *));
+	pVm->pPendingException = 0;
 	/* Configuration containers */
 	SySetInit(&pVm->aFiles,&pVm->sAllocator,sizeof(SyString));
 	SySetInit(&pVm->aPaths,&pVm->sAllocator,sizeof(SyString));
@@ -4810,6 +4811,8 @@ case PH7_OP_UPLINK: {
 case PH7_OP_LOAD_EXCEPTION: {
 	ph7_exception *pException = (ph7_exception *)pInstr->p3;
 	VmFrame *pFrameLocal;
+	/* Reset per-entry state so finally runs on each iteration */
+	pException->iFinallyDone = 0;
 	SySetPut(&pVm->aException,(const void *)&pException);
 	/* Create the exception frame */
 	rc = VmEnterFrame(&(*pVm),0,0,&pFrameLocal);
@@ -4845,6 +4848,15 @@ case PH7_OP_POP_EXCEPTION: {
 	pException->pFrame = 0;
 	/* Leave the exception frame */
 	VmLeaveFrame(&(*pVm));
+	/* Execute the finally block if present and not already executed by catch path */
+	if( pException->iHasFinally && !pException->iFinallyDone ){
+		sxi32 rcFinally;
+		pException->iFinallyDone = 1;
+		rcFinally = VmLocalExec(&(*pVm),&pException->sFinally,0);
+		if( rcFinally == SXERR_ABORT ){
+			goto Abort;
+		}
+	}
 	break;
 							}
 
@@ -8755,46 +8767,129 @@ static sxi32 VmThrowException(
 	/* Execute the cached block if available */
 	if( pCatch == 0 ){
 		sxi32 rc;
+		/* No catch matched. Execute finally, then propagate to outer try/catch. */
+		if( pException && pException->iHasFinally ){
+			pException->iFinallyDone = 1;
+			rc = VmLocalExec(&(*pVm),&pException->sFinally,0);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+		}
+		/* Check if there is an outer exception handler on the stack */
+		if( SySetUsed(&pVm->aException) > 0 ){
+			/* Re-throw to the outer handler */
+			return VmThrowException(&(*pVm),pThis);
+		}
+		/* No outer handler. If the handlers were temporarily hidden
+		 * (catch body re-throw with finally pending), defer the
+		 * exception instead of reporting it uncaught.
+		 */
+		if( pVm->pPendingException == 0 && pThis ){
+			/* Check if we are inside a catch execution with hidden handlers
+			 * by looking for a catch frame on the stack.
+			 */
+			VmFrame *pF = pVm->pFrame;
+			int inCatch = 0;
+			while( pF ){
+				if( pF->iFlags & VM_FRAME_CATCH ){
+					inCatch = 1;
+					break;
+				}
+				pF = pF->pParent;
+			}
+			if( inCatch ){
+				/* Defer — will be re-thrown after finally runs */
+				pThis->iRef++;
+				pVm->pPendingException = pThis;
+				return SXRET_OK;
+			}
+		}
+		/* Truly uncaught */
 		rc = VmUncaughtException(&(*pVm),pThis);
 		if( rc == SXRET_OK && pException ){
 			VmFrame *pFrame = pVm->pFrame;
 			while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
-				/* Safely ignore the exception frame */
 				pFrame = pFrame->pParent;
 			}
 			if( pException->pFrame == pFrame ){
-				/* Tell the upper layer that the exception was caught */
 				pFrame->iFlags &= ~VM_FRAME_THROW;
 			}
 		}
 		return rc;
 	}else{
 		VmFrame *pFrame = pVm->pFrame;
+		ph7_exception **apSaved = 0;
+		sxu32 nSavedCount;
 		sxi32 rc;
 		while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
-			/* Safely ignore the exception frame */
 			pFrame = pFrame->pParent;
 		}
 		if( pException->pFrame == pFrame ){
-			/* Tell the upper layer that the exception was caught */
 			pFrame->iFlags &= ~VM_FRAME_THROW;
+		}
+		/* Temporarily hide outer exception handlers so that if the catch
+		 * body re-throws, the exception does not immediately propagate past
+		 * our finally block. We save the stack contents and restore after.
+		 */
+		nSavedCount = SySetUsed(&pVm->aException);
+		if( nSavedCount > 0 ){
+			apSaved = (ph7_exception **)SyMemBackendAlloc(&pVm->sAllocator,
+				nSavedCount * sizeof(ph7_exception *));
+			if( apSaved ){
+				SyMemcpy(SySetBasePtr(&pVm->aException),apSaved,
+					nSavedCount * sizeof(ph7_exception *));
+				SySetReset(&pVm->aException);
+			}
 		}
 		/* Create a private frame first */
 		rc = VmEnterFrame(&(*pVm),0,0,&pFrame);
 		if( rc == SXRET_OK ){
-			/* Mark as catch frame */
 			ph7_value *pObj = VmExtractMemObj(&(*pVm),&pCatch->sThis,FALSE,TRUE);
 			pFrame->iFlags |= VM_FRAME_CATCH;
 			if( pObj ){
-				/* Install the exception instance */
-				pThis->iRef++; /* Increment reference count */
+				pThis->iRef++;
 				pObj->x.pOther = pThis;
 				MemObjSetType(pObj,MEMOBJ_OBJ);
 			}
-			/* Exceute the block */
-			VmLocalExec(&(*pVm),&pCatch->sByteCode,0);
+			/* Execute the catch block */
+			rc = VmLocalExec(&(*pVm),&pCatch->sByteCode,0);
 			/* Leave the frame */
 			VmLeaveFrame(&(*pVm));
+		}
+		/* Restore the outer exception handlers */
+		if( apSaved ){
+			sxu32 k;
+			/* Any new entries pushed during catch execution (from nested
+			 * try blocks inside the catch body) are already consumed.
+			 * Restore the original outer entries.
+			 */
+			SySetReset(&pVm->aException);
+			for(k = 0; k < nSavedCount; k++){
+				SySetPut(&pVm->aException,(const void *)&apSaved[k]);
+			}
+			SyMemBackendFree(&pVm->sAllocator,apSaved);
+		}
+		/* Execute the finally block after catch */
+		if( pException->iHasFinally ){
+			pException->iFinallyDone = 1;
+			{
+				sxi32 rcf = VmLocalExec(&(*pVm),&pException->sFinally,0);
+				if( rcf == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+			}
+		}
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		/* If the catch body re-threw, the exception was deferred in
+		 * pPendingException (because outer handlers were hidden).
+		 * Now that finally has run and handlers are restored, re-throw.
+		 */
+		if( pVm->pPendingException ){
+			ph7_class_instance *pReThrow = pVm->pPendingException;
+			pVm->pPendingException = 0;
+			return VmThrowException(&(*pVm),pReThrow);
 		}
 	}
 	/* TICKET 1433-60: Do not release the 'pException' pointer since it may
