@@ -268,47 +268,6 @@ PH7_PRIVATE sxi32 PH7_VmInitFuncState(
  * For functions (unlike classes), PHP falls back to global if not found in current NS.
  */
 /*
- * Namespace-aware lookup in a single hash table.
- * Resolution order: exact name -> use imports -> current NS\name.
- */
-static SyHashEntry * VmNsAwareHashLookup(ph7_vm *pVm,SyHash *pHash,const SyString *pName)
-{
-	SyHashEntry *pEntry;
-	/* 1. Try exact name */
-	pEntry = SyHashGet(pHash,(const void *)pName->zString,pName->nByte);
-	if( pEntry ){
-		return pEntry;
-	}
-	/* 2. Check use imports */
-	{
-		SyHashEntry *pImport;
-		pImport = SyHashGet(&pVm->hUseImports,(const void *)pName->zString,pName->nByte);
-		if( pImport ){
-			const char *zFQN = (const char *)pImport->pUserData;
-			sxu32 nFQN = (sxu32)SyStrlen(zFQN);
-			pEntry = SyHashGet(pHash,(const void *)zFQN,nFQN);
-			if( pEntry ){
-				return pEntry;
-			}
-		}
-	}
-	/* 3. Prepend current namespace */
-	if( SyBlobLength(&pVm->sNamespace) > 0 ){
-		SyBlob sFQN;
-		SyBlobInit(&sFQN,&pVm->sAllocator);
-		SyBlobAppend(&sFQN,SyBlobData(&pVm->sNamespace),SyBlobLength(&pVm->sNamespace));
-		SyBlobAppend(&sFQN,"\\",1);
-		SyBlobAppend(&sFQN,pName->zString,pName->nByte);
-		pEntry = SyHashGet(pHash,(const void *)SyBlobData(&sFQN),(sxu32)SyBlobLength(&sFQN));
-		SyBlobRelease(&sFQN);
-		if( pEntry ){
-			return pEntry;
-		}
-	}
-	/* Not found */
-	return 0;
-}
-/*
  * Install a user defined function in the corresponding VM container.
  */
 PH7_PRIVATE sxi32 PH7_VmInstallUserFunction(
@@ -2962,9 +2921,21 @@ case PH7_OP_IS_A:{
 			/* Instance already loaded */
 			pClass = ((ph7_class_instance *)pTos->x.pOther)->pClass;
 		}else if( pTos->iFlags & MEMOBJ_STRING && SyBlobLength(&pTos->sBlob) > 0 ){
-			/* Perform the query */
-			pClass = PH7_VmExtractClass(&(*pVm),(const char *)SyBlobData(&pTos->sBlob),
-				SyBlobLength(&pTos->sBlob),FALSE,0);
+			const char *zCls = (const char *)SyBlobData(&pTos->sBlob);
+			sxu32 nCls = (sxu32)SyBlobLength(&pTos->sBlob);
+			/* Handle self/static/parent keywords */
+			if( nCls == 4 && SyMemcmp(zCls,"self",4) == 0 ){
+				pClass = PH7_VmPeekDeclaringClass(&(*pVm));
+			}else if( nCls == 6 && SyMemcmp(zCls,"static",6) == 0 ){
+				pClass = PH7_VmPeekTopClass(&(*pVm));
+			}else if( nCls == 6 && SyMemcmp(zCls,"parent",6) == 0 ){
+				ph7_class *pSelf = PH7_VmPeekDeclaringClass(&(*pVm));
+				if( pSelf && pSelf->pBase ){
+					pClass = pSelf->pBase;
+				}
+			}else{
+				pClass = PH7_VmExtractClass(&(*pVm),zCls,nCls,FALSE,0);
+			}
 		}
 		if( pClass ){
 			/* Perform the query */
@@ -5266,8 +5237,21 @@ case PH7_OP_MEMBER: {
 			}else{
 				/* Try to extract the target class */
 				if( SyBlobLength(&pNos->sBlob) > 0 ){
-					pClass = PH7_VmExtractClass(&(*pVm),(const char *)SyBlobData(&pNos->sBlob),
-						SyBlobLength(&pNos->sBlob),FALSE,0);
+					const char *zCls = (const char *)SyBlobData(&pNos->sBlob);
+					sxu32 nCls = (sxu32)SyBlobLength(&pNos->sBlob);
+					/* Handle self/static/parent keywords */
+					if( nCls == 4 && SyMemcmp(zCls,"self",4) == 0 ){
+						pClass = PH7_VmPeekDeclaringClass(&(*pVm));
+					}else if( nCls == 6 && SyMemcmp(zCls,"static",6) == 0 ){
+						pClass = PH7_VmPeekTopClass(&(*pVm));
+					}else if( nCls == 6 && SyMemcmp(zCls,"parent",6) == 0 ){
+						ph7_class *pSelf = PH7_VmPeekDeclaringClass(&(*pVm));
+						if( pSelf && pSelf->pBase ){
+							pClass = pSelf->pBase;
+						}
+					}else{
+						pClass = PH7_VmExtractClass(&(*pVm),zCls,nCls,FALSE,0);
+					}
 				}
 			}
 			if( pClass == 0 ){
@@ -5403,15 +5387,17 @@ case PH7_OP_NEW: {
 		pClass = ((ph7_class_instance *)pTos->x.pOther)->pClass;
 	}
 	if( pClass == 0 ){
-		/* No such class */
-		VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Class '%.*s' is not defined,PH7 is loading NULL",
+		/* No such class — fatal error, stop execution (matches PHP behavior) */
+		VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Class '%.*s' is not defined",
 			SyBlobLength(&pTos->sBlob),(const char *)SyBlobData(&pTos->sBlob)
 			);
+		/* Release the class operand and any constructor arguments, then abort */
 		PH7_MemObjRelease(pTos);
 		if( pInstr->iP1 > 0 ){
 			/* Pop given arguments */
 			VmPopOperand(&pTos,pInstr->iP1);
 		}
+		goto Abort;
 	}else{
 		ph7_class_method *pCons;
 		/* Create a new class instance */
@@ -5602,8 +5588,36 @@ case PH7_OP_CALL: {
 		break;
 	}
 	SyStringInitFromBuf(&sName,SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
-	/* Check for a compiled function first (namespace-aware) */
-	pEntry = VmNsAwareHashLookup(pVm,&pVm->hFunction,&sName);
+	/* Check for a compiled function first.
+	 * Static names are already namespace-qualified by the compiler.
+	 * Dynamic names (from variables) use exact match only, matching PHP behavior. */
+	pEntry = SyHashGet(&pVm->hFunction,(const void *)sName.zString,sName.nByte);
+	/* If the compiler qualified this call with a namespace (pInstr->p3 != 0)
+	 * and the namespaced function is not found, retry with the global name
+	 * (strip the namespace prefix up to the last backslash) before falling
+	 * back to host functions. This mirrors PHP's lookup order for unqualified
+	 * function calls inside namespaces. */
+	if( pEntry == 0 && pInstr->p3 != 0 ){
+		const char *zFunc;
+		const char *zEnd;
+		const char *z;
+		SyString sGlobal;
+		zFunc = sName.zString;
+		zEnd  = zFunc + sName.nByte;
+		z = zEnd;
+		/* Find last namespace separator */
+		while( z > zFunc ){
+			if( z[-1] == '\\' ){
+				break;
+			}
+			z--;
+		}
+		if( z > zFunc && z < zEnd ){
+			/* Retry lookup using the unqualified/global function name */
+			SyStringInitFromBuf(&sGlobal,z,(sxu32)(zEnd - z));
+			pEntry = SyHashGet(&pVm->hFunction,(const void *)sGlobal.zString,sGlobal.nByte);
+		}
+	}
 	if( pEntry ){
 		ph7_vm_func_arg *aFormalArg;
 		ph7_class_instance *pThis;
@@ -9583,6 +9597,7 @@ static sxi32 VmEvalChunk(
 	)
 {
 	SySet *pByteCode,aByteCode;
+	SyBlob sSavedNs;
 	ProcConsumer xErr = 0;
 	void *pErrData = 0;
 	/* Initialize bytecode container */
@@ -9595,6 +9610,15 @@ static sxi32 VmEvalChunk(
 		pErrData = pVm->pEngine->xConf.pErrData;
 	}
 	PH7_ResetCodeGenerator(pVm,xErr,pErrData);
+	/* Save and reset VM namespace state for the new compilation unit.
+	 * Each included file has its own namespace scope; after execution,
+	 * the caller's namespace is restored. */
+	SyBlobInit(&sSavedNs,&pVm->sAllocator);
+	SyBlobDup(&pVm->sNamespace,&sSavedNs);
+	if( bTrueReturn ){
+		/* Include/require: start in a fresh (global) namespace scope. */
+		SyBlobReset(&pVm->sNamespace);
+	}
 	/* Swap bytecode container */
 	pByteCode = pVm->pByteContainer;
 	pVm->pByteContainer = &aByteCode;
@@ -9652,6 +9676,10 @@ Cleanup:
 	/* Cleanup the mess left behind */
 	pVm->pByteContainer = pByteCode;
 	SySetRelease(&aByteCode);
+	/* Restore caller's namespace state */
+	SyBlobReset(&pVm->sNamespace);
+	SyBlobDup(&sSavedNs,&pVm->sNamespace);
+	SyBlobRelease(&sSavedNs);
 	return SXRET_OK;
 }
 /*
@@ -10263,11 +10291,11 @@ PH7_PRIVATE ph7_class * PH7_VmExtractClass(
 {
 	SyHashEntry *pEntry;
 	ph7_class *pClass;
-	SyString sName;
 	SXUNUSED(iNest);
-	/* Namespace-aware class lookup */
-	SyStringInitFromBuf(&sName,zName,nByte);
-	pEntry = VmNsAwareHashLookup(pVm,&pVm->hClass,&sName);
+	/* Exact class lookup.
+	 * Static names are already namespace-qualified by the compiler.
+	 * Dynamic names (from variables) use exact match only, matching PHP behavior. */
+	pEntry = SyHashGet(&pVm->hClass,(const void *)zName,nByte);
 	if( pEntry == 0 ){
 		return 0;
 	}

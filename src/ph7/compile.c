@@ -3421,6 +3421,27 @@ static sxu32 GenStateNsQualifyName(ph7_gen_state *pGen,sxu32 nOrigIdx)
 	return nNewIdx;
 }
 /*
+ * Resolve a class/function name at compile time through use imports and current namespace.
+ * Writes the resolved FQN into pOut. Caller must release pOut.
+ */
+static void GenStateResolveName(ph7_gen_state *pGen,const SyString *pName,SyBlob *pOut)
+{
+	SyHashEntry *pImport;
+	/* Check use imports first */
+	pImport = SyHashGet(&pGen->hUseImports,(const void *)pName->zString,pName->nByte);
+	if( pImport ){
+		const char *zFQN = (const char *)pImport->pUserData;
+		SyBlobAppend(pOut,zFQN,SyStrlen(zFQN));
+		return;
+	}
+	/* Prepend current namespace if active */
+	if( SyBlobLength(&pGen->sNamespace) > 0 ){
+		SyBlobAppend(pOut,SyBlobData(&pGen->sNamespace),SyBlobLength(&pGen->sNamespace));
+		SyBlobAppend(pOut,"\\",1);
+	}
+	SyBlobAppend(pOut,pName->zString,pName->nByte);
+}
+/*
  * Build a fully-qualified name by prepending the current namespace to a short name.
  * If no namespace is active, pOut receives a copy of the short name.
  * The caller must release pOut when done.
@@ -4723,7 +4744,14 @@ static sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 				return SXRET_OK;
 			}
 			pBaseName = &pGen->pIn->sData;
-			pBase = PH7_VmExtractClass(pGen->pVm,pBaseName->zString,pBaseName->nByte,FALSE,0);
+			{
+				SyBlob sResolved;
+				SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
+				GenStateResolveName(pGen,pBaseName,&sResolved);
+				pBase = PH7_VmExtractClass(pGen->pVm,
+					(const char *)SyBlobData(&sResolved),(sxu32)SyBlobLength(&sResolved),FALSE,0);
+				SyBlobRelease(&sResolved);
+			}
 			/* Only interfaces is allowed */
 			while( pBase && (pBase->iFlags & PH7_CLASS_INTERFACE) == 0 ){
 				pBase = pBase->pNextName;
@@ -4961,10 +4989,16 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 				}
 				return SXRET_OK;
 			}
-			/* Extract base class name */
+			/* Extract base class name and resolve through namespace/imports */
 			pBaseName = &pGen->pIn->sData;
-			/* Perform the query */
-			pBase = PH7_VmExtractClass(pGen->pVm,pBaseName->zString,pBaseName->nByte,FALSE,0);
+			{
+				SyBlob sResolved;
+				SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
+				GenStateResolveName(pGen,pBaseName,&sResolved);
+				pBase = PH7_VmExtractClass(pGen->pVm,
+					(const char *)SyBlobData(&sResolved),(sxu32)SyBlobLength(&sResolved),FALSE,0);
+				SyBlobRelease(&sResolved);
+			}
 			/* Interfaces are not allowed */
 			while( pBase && (pBase->iFlags & PH7_CLASS_INTERFACE) ){
 				pBase = pBase->pNextName;
@@ -5006,10 +5040,16 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 					}
 					break;
 				}
-				/* Extract interface name */
+				/* Extract interface name and resolve through namespace/imports */
 				pIntName = &pGen->pIn->sData;
-				/* Make sure the interface is already defined */
-				pInterface = PH7_VmExtractClass(pGen->pVm,pIntName->zString,pIntName->nByte,FALSE,0);
+				{
+					SyBlob sResolved;
+					SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
+					GenStateResolveName(pGen,pIntName,&sResolved);
+					pInterface = PH7_VmExtractClass(pGen->pVm,
+						(const char *)SyBlobData(&sResolved),(sxu32)SyBlobLength(&sResolved),FALSE,0);
+					SyBlobRelease(&sResolved);
+				}
 				/* Only interfaces are allowed */
 				while( pInterface && (pInterface->iFlags & PH7_CLASS_INTERFACE) == 0 ){
 					pInterface = pInterface->pNextName;
@@ -6114,6 +6154,29 @@ static sxi32 GenStateEmitExprCode(
 	}
 	rc = SXRET_OK;
 	nJmpIdx = 0;
+	/* For :: (static member access), namespace-qualify the class name (left operand).
+	 * The left child was just compiled; its LOADC is the last instruction.
+	 * Skip self/static/parent — these are keywords, not class names. */
+	if( iVmOp == PH7_OP_MEMBER && pNode->pOp->iOp == EXPR_OP_DC ){
+		pInstr = PH7_VmPeekInstr(pGen->pVm);
+		if( pInstr && pInstr->iOp == PH7_OP_LOADC ){
+			ph7_value *pLitCheck = (ph7_value *)SySetAt(&pGen->pVm->aLitObj,(sxu32)pInstr->iP2);
+			int isSpecial = 0;
+			if( pLitCheck && (pLitCheck->iFlags & MEMOBJ_STRING) ){
+				const char *z = (const char *)SyBlobData(&pLitCheck->sBlob);
+				sxu32 n = (sxu32)SyBlobLength(&pLitCheck->sBlob);
+				if( (n == 4 && SyMemcmp(z,"self",4) == 0) ||
+					(n == 6 && SyMemcmp(z,"static",6) == 0) ||
+					(n == 6 && SyMemcmp(z,"parent",6) == 0) ){
+					isSpecial = 1;
+				}
+			}
+			pInstr->iP1 = 0;
+			if( !isSpecial ){
+				pInstr->iP2 = (sxi32)GenStateNsQualifyName(pGen,(sxu32)pInstr->iP2);
+			}
+		}
+	}
 	/* Generate code for the right tree */
 	if( pNode->pRight ){
 		if( iVmOp == PH7_OP_LAND ){
@@ -6193,10 +6256,25 @@ static sxi32 GenStateEmitExprCode(
 				}
 			}
 		}else if( iVmOp == PH7_OP_IS_A ){
-			/* instanceof: right operand is a class name, not a constant */
+			/* instanceof: right operand is a class name, not a constant.
+			 * Namespace-qualify it, but skip self/static/parent. */
 			pInstr = PH7_VmPeekInstr(pGen->pVm);
 			if( pInstr && pInstr->iOp == PH7_OP_LOADC ){
+				ph7_value *pLitChk = (ph7_value *)SySetAt(&pGen->pVm->aLitObj,(sxu32)pInstr->iP2);
+				int isSpecialIs = 0;
+				if( pLitChk && (pLitChk->iFlags & MEMOBJ_STRING) ){
+					const char *z = (const char *)SyBlobData(&pLitChk->sBlob);
+					sxu32 n = (sxu32)SyBlobLength(&pLitChk->sBlob);
+					if( (n == 4 && SyMemcmp(z,"self",4) == 0) ||
+						(n == 6 && SyMemcmp(z,"static",6) == 0) ||
+						(n == 6 && SyMemcmp(z,"parent",6) == 0) ){
+						isSpecialIs = 1;
+					}
+				}
 				pInstr->iP1 = 0;
+				if( !isSpecialIs ){
+					pInstr->iP2 = (sxi32)GenStateNsQualifyName(pGen,(sxu32)pInstr->iP2);
+				}
 			}
 		}else if( iVmOp == PH7_OP_MEMBER){
 			/* Prevent constant expansion for member/property names.
@@ -6650,6 +6728,10 @@ PH7_PRIVATE sxi32 PH7_CompileScript(
 		goto cleanup;
 	}
 	nObjIdx = 0;
+	/* Each compilation unit starts in the global namespace.
+	 * Emit NSSWITCH(NULL) so the VM resets namespace state at runtime,
+	 * preventing namespace bleeding across include()d files. */
+	PH7_VmEmitInstr(pVm,PH7_OP_NSSWITCH,0,0,0,0);
 	/* Start the compilation process */
 	for(;;){
 		if( pCodeGen->pRawIn >= pCodeGen->pRawEnd ){
