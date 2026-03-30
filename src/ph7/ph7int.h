@@ -261,6 +261,7 @@ struct ph7_foreach_step
 									 */
 		ph7_class_instance *pThis;  /* Class instance [i.e: object] iteration */
 	}xIter;
+	ph7_class_instance *pOwner;     /* IteratorAggregate: keeps aggregate alive during foreach */
 };
 /* Foreach step control flags */
 #define PH7_4EACH_STEP_HASHMAP 0x001 /* Hashmap iteration */
@@ -558,6 +559,7 @@ struct ph7_class
 #define PH7_CLASS_INTERFACE   0x002 /* Class is interface */
 #define PH7_CLASS_ABSTRACT    0x004 /* Class is abstract */
 #define PH7_CLASS_TRAIT       0x008 /* Class is a trait */
+#define PH7_CLASS_TRAIT_VISITING 0x010 /* Trait is currently being applied (cycle detection) */
 /* Class attribute/methods/constants protection levels */
 #define PH7_CLASS_PROT_PUBLIC     1 /* public */
 #define PH7_CLASS_PROT_PROTECTED  2 /* protected */

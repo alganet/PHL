@@ -3706,6 +3706,16 @@ static sxi32 PH7_CompileUse(ph7_gen_state *pGen)
 				pGen->pIn++;
 			}
 		}
+		/* Check for duplicate import alias */
+		if( SyHashGet(&pGen->hUseImports,sAlias.zString,sAlias.nByte) != 0 ){
+			rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+				"Cannot use %.*s as %z because the name is already in use",
+				(int)SyBlobLength(&sPath),(const char *)SyBlobData(&sPath),&sAlias);
+			if( rc == SXERR_ABORT ){
+				SyBlobRelease(&sPath);
+				return SXERR_ABORT;
+			}
+		}
 		/* Register the import: alias -> FQN.
 		 * Strings are allocated from the VM pool allocator and freed
 		 * when the entire VM is released. SyHashRelease does not free
@@ -5023,6 +5033,83 @@ struct TraitUseEntry {
 	SyToken *pResolvEnd;       /* End of resolution block tokens */
 };
 /*
+ * Validate that methods implementing interface contracts have compatible
+ * signatures: public visibility and at least as many parameters as declared.
+ */
+static sxi32 GenStateCheckInterfaceSignatures(ph7_gen_state *pGen,ph7_class *pClass)
+{
+	ph7_class **apIface;
+	sxu32 nIface,i;
+	sxi32 rc;
+	if( pClass->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_TRAIT) ){
+		return SXRET_OK;
+	}
+	apIface = (ph7_class **)SySetBasePtr(&pClass->aInterface);
+	nIface = SySetUsed(&pClass->aInterface);
+	for(i = 0; i < nIface; i++){
+		ph7_class *pIface = apIface[i];
+		SyHashEntry *pEntry;
+		SyHashResetLoopCursor(&pIface->hMethod);
+		while((pEntry = SyHashGetNextEntry(&pIface->hMethod)) != 0 ){
+			ph7_class_method *pIfaceMeth = (ph7_class_method *)pEntry->pUserData;
+			ph7_class_method *pImplMeth;
+			SyString *pMName = &pIfaceMeth->sFunc.sName;
+			/* Find the implementing method in the class */
+			pImplMeth = PH7_ClassExtractMethod(pClass,pMName->zString,pMName->nByte);
+			if( pImplMeth == 0 || (pImplMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) ){
+				continue; /* Missing implementations caught by GenStateCheckAbstractMethods */
+			}
+			/* Check visibility: interface methods must be implemented as public */
+			if( pImplMeth->iProtection != PH7_CLASS_PROT_PUBLIC ){
+				rc = PH7_GenCompileError(pGen,E_ERROR,pImplMeth->nLine,
+					"Access level to %z::%z() must be public (as in class %z)",
+					&pClass->sName,pMName,&pIface->sName);
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+			}
+			/* Check parameter count: implementation must accept at least as many parameters */
+			{
+				sxu32 nIfaceArgs = SySetUsed(&pIfaceMeth->sFunc.aArgs);
+				sxu32 nImplArgs = SySetUsed(&pImplMeth->sFunc.aArgs);
+				if( nImplArgs < nIfaceArgs ){
+					SyBlob sImplSig, sIfaceSig;
+					ph7_vm_func_arg *aArgs;
+					sxu32 j;
+					SyBlobInit(&sImplSig,&pGen->pVm->sAllocator);
+					SyBlobInit(&sIfaceSig,&pGen->pVm->sAllocator);
+					/* Build implementing method signature */
+					aArgs = (ph7_vm_func_arg *)SySetBasePtr(&pImplMeth->sFunc.aArgs);
+					for(j = 0; j < nImplArgs; j++){
+						if( j > 0 ) SyBlobAppend(&sImplSig,", ",2);
+						SyBlobAppend(&sImplSig,"$",1);
+						SyBlobAppend(&sImplSig,aArgs[j].sName.zString,aArgs[j].sName.nByte);
+					}
+					/* Build interface method signature */
+					aArgs = (ph7_vm_func_arg *)SySetBasePtr(&pIfaceMeth->sFunc.aArgs);
+					for(j = 0; j < nIfaceArgs; j++){
+						if( j > 0 ) SyBlobAppend(&sIfaceSig,", ",2);
+						SyBlobAppend(&sIfaceSig,"$",1);
+						SyBlobAppend(&sIfaceSig,aArgs[j].sName.zString,aArgs[j].sName.nByte);
+					}
+					rc = PH7_GenCompileError(pGen,E_ERROR,pImplMeth->nLine,
+						"Declaration of %z::%z(%.*s) must be compatible with %z::%z(%.*s)",
+						&pClass->sName,pMName,
+						(int)SyBlobLength(&sImplSig),(const char *)SyBlobData(&sImplSig),
+						&pIface->sName,pMName,
+						(int)SyBlobLength(&sIfaceSig),(const char *)SyBlobData(&sIfaceSig));
+					SyBlobRelease(&sImplSig);
+					SyBlobRelease(&sIfaceSig);
+					if( rc == SXERR_ABORT ){
+						return SXERR_ABORT;
+					}
+				}
+			}
+		}
+	}
+	return SXRET_OK;
+}
+/*
  * Check that a concrete class has no remaining abstract methods.
  * If it does, emit a PHP-compatible fatal error listing them all.
  */
@@ -5850,6 +5937,15 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 			rc = PH7_ClassImplement(pClass,apInterface[n]);
 			if( rc != SXRET_OK ){
 				break;
+			}
+		}
+		/* Validate interface method signatures (visibility and parameter count) */
+		if( rc == SXRET_OK ){
+			sxi32 rcCheck = GenStateCheckInterfaceSignatures(&(*pGen),pClass);
+			if( rcCheck == SXERR_ABORT ){
+				SySetRelease(&aUseEntries);
+				SySetRelease(&aInterfaces);
+				return SXERR_ABORT;
 			}
 		}
 		/* Check for unimplemented abstract methods in concrete classes */
