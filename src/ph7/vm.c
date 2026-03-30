@@ -4993,19 +4993,63 @@ case PH7_OP_FOREACH_INIT: {
 						PH7_VmCallClassMethod(&(*pVm),pThis,pRewind,0,0,0);
 					}
 				}else{
-					/* Plain object iteration via hAttr */
-					SyHashResetLoopCursor(&pThis->hAttr);
-					pStep->iFlags |= PH7_4EACH_STEP_OBJECT;
-					pStep->xIter.pThis = pThis;
-					pThis->iRef++;
+					/* Check if the object implements IteratorAggregate */
+					ph7_class *pIterAggClass;
+					pIterAggClass = PH7_VmExtractClass(&(*pVm),"IteratorAggregate",
+						sizeof("IteratorAggregate")-1,FALSE,0);
+					if( pIterAggClass && PH7_VmInstanceOf(pThis->pClass,pIterAggClass) ){
+						/* Call getIterator() and use the returned Iterator object */
+						ph7_class_method *pGetIter;
+						int iterAggOk = 0;
+						pGetIter = PH7_ClassExtractMethod(pThis->pClass,"getIterator",sizeof("getIterator")-1);
+						if( pGetIter ){
+							ph7_value sResult;
+							PH7_MemObjInit(&(*pVm),&sResult);
+							PH7_VmCallClassMethod(&(*pVm),pThis,pGetIter,&sResult,0,0);
+							if( (sResult.iFlags & MEMOBJ_OBJ) && sResult.x.pOther ){
+								ph7_class_instance *pIterObj = (ph7_class_instance *)sResult.x.pOther;
+								if( pIteratorClass && PH7_VmInstanceOf(pIterObj->pClass,pIteratorClass) ){
+									ph7_class_method *pRewind;
+									pStep->iFlags |= PH7_4EACH_STEP_ITERATOR|PH7_4EACH_STEP_FIRST;
+									pStep->xIter.pThis = pIterObj;
+									pIterObj->iRef++;
+									/* Retain the aggregate so it lives for the duration of the foreach */
+									pStep->pOwner = pThis;
+									pThis->iRef++;
+									pRewind = PH7_ClassExtractMethod(pIterObj->pClass,"rewind",sizeof("rewind")-1);
+									if( pRewind ){
+										PH7_VmCallClassMethod(&(*pVm),pIterObj,pRewind,0,0,0);
+									}
+									iterAggOk = 1;
+								}
+							}
+							PH7_MemObjRelease(&sResult);
+						}
+						if( !iterAggOk ){
+							/* getIterator() failed or returned non-Iterator: abort this foreach */
+							PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
+								"Object returned by getIterator() must implement Iterator");
+							SyMemBackendPoolFree(&pVm->sAllocator,pStep);
+							pStep = 0; /* Signal: do not store this step */
+							pc = pInstr->iP2 - 1;
+						}
+					}else{
+						/* Plain object iteration via hAttr */
+						SyHashResetLoopCursor(&pThis->hAttr);
+						pStep->iFlags |= PH7_4EACH_STEP_OBJECT;
+						pStep->xIter.pThis = pThis;
+						pThis->iRef++;
+					}
 				}
 			}
 		}
-		if( SXRET_OK != SySetPut(&pInfo->aStep,(const void *)&pStep) ){
-			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"PH7 is running out of memory while preparing the 'foreach' step");
-			SyMemBackendPoolFree(&pVm->sAllocator,pStep);
-			/* Jump out of the loop */
-			pc = pInstr->iP2 - 1;
+		if( pStep ){
+			if( SXRET_OK != SySetPut(&pInfo->aStep,(const void *)&pStep) ){
+				PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"PH7 is running out of memory while preparing the 'foreach' step");
+				SyMemBackendPoolFree(&pVm->sAllocator,pStep);
+				/* Jump out of the loop */
+				pc = pInstr->iP2 - 1;
+			}
 		}
 	}
 	VmPopOperand(&pTos,1);
@@ -5101,6 +5145,10 @@ case PH7_OP_FOREACH_STEP: {
 		if( !isValid ){
 			/* Iterator exhausted */
 			pc = pInstr->iP2 - 1;
+			/* Release the aggregate owner if this was an IteratorAggregate foreach */
+			if( pStep->pOwner ){
+				PH7_ClassInstanceUnref(pStep->pOwner);
+			}
 			SyMemBackendPoolFree(&pVm->sAllocator,pStep);
 			SySetPop(&pInfo->aStep);
 			PH7_ClassInstanceUnref(pThis);

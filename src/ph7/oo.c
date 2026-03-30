@@ -303,6 +303,17 @@ PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_cl
 	SyHashEntry *pEntry;
 	SyString *pName;
 	sxi32 rc;
+	/* Detect cyclic trait composition (e.g. trait A { use B; } trait B { use A; }) */
+	if( pTrait->iFlags & PH7_CLASS_TRAIT_VISITING ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,pTrait->nLine,
+			"Trait circular reference detected: %z is already being applied",&pTrait->sName);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		return SXRET_OK;
+	}
+	pTrait->iFlags |= PH7_CLASS_TRAIT_VISITING;
+	rc = SXRET_OK;
 	/* Copy attributes from the trait */
 	SyHashResetLoopCursor(&pTrait->hAttr);
 	while((pEntry = SyHashGetNextEntry(&pTrait->hAttr)) != 0 ){
@@ -333,7 +344,7 @@ PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_cl
 							"However, the definition differs and is considered incompatible",
 							&apUsedTraits[k]->sName,&pTrait->sName,pName,&pClass->sName);
 						if( rc == SXERR_ABORT ){
-							return SXERR_ABORT;
+							goto cleanup;
 						}
 					}
 					break;
@@ -343,7 +354,7 @@ PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_cl
 		}
 		rc = SyHashInsert(&pClass->hAttr,(const void *)pName->zString,pName->nByte,pAttr);
 		if( rc != SXRET_OK ){
-			return rc;
+			goto cleanup;
 		}
 	}
 	/* Copy methods from the trait */
@@ -369,7 +380,7 @@ PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_cl
 						&pClass->sName,pName,
 						&apUsedTraits[k]->sName,pName);
 					if( rc == SXERR_ABORT ){
-						return SXERR_ABORT;
+						goto cleanup;
 					}
 					break;
 				}
@@ -379,13 +390,16 @@ PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_cl
 		}
 		rc = SyHashInsert(&pClass->hMethod,(const void *)pName->zString,pName->nByte,pMeth);
 		if( rc != SXRET_OK ){
-			return rc;
+			goto cleanup;
 		}
 	}
 	/* Record trait in the class */
 	SySetPut(&pClass->aTrait,(const void *)&pTrait);
+cleanup:
+	/* Always clear visiting flag, even on error paths */
+	pTrait->iFlags &= ~PH7_CLASS_TRAIT_VISITING;
 	SXUNUSED(pGen);
-	return SXRET_OK;
+	return rc;
 }
 /*
  * Inherit an object interface from another object interface.
