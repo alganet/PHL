@@ -267,6 +267,9 @@ struct ph7_foreach_step
 #define PH7_4EACH_STEP_OBJECT  0x002 /* Object  iteration */
 #define PH7_4EACH_STEP_KEY     0x004 /* Make Key available */
 #define PH7_4EACH_STEP_REF     0x008 /* Pass value by reference not copy */
+#define PH7_4EACH_STEP_LIST    0x010 /* Value target is list() — destructure */
+#define PH7_4EACH_STEP_ITERATOR 0x020 /* Object implements Iterator */
+#define PH7_4EACH_STEP_FIRST    0x040 /* First iteration (skip next() call) */
 /*
  * Each PH7 engine is identified by an instance of the following structure.
  * Please refer to the official documentation for more information

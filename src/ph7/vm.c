@@ -4979,12 +4979,26 @@ case PH7_OP_FOREACH_INIT: {
 				pMap->iRef++;
 			}else{
 				ph7_class_instance *pThis = (ph7_class_instance *)pTos->x.pOther;
-				/* Reset the loop cursor */
-				SyHashResetLoopCursor(&pThis->hAttr);
-				/* Mark the step */
-				pStep->iFlags |= PH7_4EACH_STEP_OBJECT;
-				pStep->xIter.pThis = pThis;
-				pThis->iRef++;
+				ph7_class *pIteratorClass;
+				/* Check if the object implements Iterator */
+				pIteratorClass = PH7_VmExtractClass(&(*pVm),"Iterator",sizeof("Iterator")-1,FALSE,0);
+				if( pIteratorClass && PH7_VmInstanceOf(pThis->pClass,pIteratorClass) ){
+					/* Iterator-based iteration: call rewind() */
+					ph7_class_method *pRewind;
+					pStep->iFlags |= PH7_4EACH_STEP_ITERATOR|PH7_4EACH_STEP_FIRST;
+					pStep->xIter.pThis = pThis;
+					pThis->iRef++;
+					pRewind = PH7_ClassExtractMethod(pThis->pClass,"rewind",sizeof("rewind")-1);
+					if( pRewind ){
+						PH7_VmCallClassMethod(&(*pVm),pThis,pRewind,0,0,0);
+					}
+				}else{
+					/* Plain object iteration via hAttr */
+					SyHashResetLoopCursor(&pThis->hAttr);
+					pStep->iFlags |= PH7_4EACH_STEP_OBJECT;
+					pStep->xIter.pThis = pThis;
+					pThis->iRef++;
+				}
 			}
 		}
 		if( SXRET_OK != SySetPut(&pInfo->aStep,(const void *)&pStep) ){
@@ -5055,6 +5069,66 @@ case PH7_OP_FOREACH_STEP: {
 				if( pValue ){
 					PH7_HashmapExtractNodeValue(pNode,pValue,TRUE);
 				}
+			}
+		}
+	}else if( pStep->iFlags & PH7_4EACH_STEP_ITERATOR ){
+		/* Iterator-based iteration.
+		 * Sequence: on first call just check valid/current/key.
+		 * On subsequent calls, advance with next() first, then check.
+		 */
+		ph7_class_instance *pThis = pStep->xIter.pThis;
+		ph7_class_method *pMethod;
+		ph7_value sResult;
+		int isValid = 0;
+		/* Call next() to advance — but skip on the first iteration */
+		if( pStep->iFlags & PH7_4EACH_STEP_FIRST ){
+			pStep->iFlags &= ~PH7_4EACH_STEP_FIRST;
+		}else{
+			pMethod = PH7_ClassExtractMethod(pThis->pClass,"next",sizeof("next")-1);
+			if( pMethod ){
+				PH7_VmCallClassMethod(&(*pVm),pThis,pMethod,0,0,0);
+			}
+		}
+		/* Call valid() */
+		PH7_MemObjInit(pVm,&sResult);
+		pMethod = PH7_ClassExtractMethod(pThis->pClass,"valid",sizeof("valid")-1);
+		if( pMethod ){
+			PH7_VmCallClassMethod(&(*pVm),pThis,pMethod,&sResult,0,0);
+			PH7_MemObjToBool(&sResult);
+			isValid = (sResult.x.iVal != 0);
+		}
+		PH7_MemObjRelease(&sResult);
+		if( !isValid ){
+			/* Iterator exhausted */
+			pc = pInstr->iP2 - 1;
+			SyMemBackendPoolFree(&pVm->sAllocator,pStep);
+			SySetPop(&pInfo->aStep);
+			PH7_ClassInstanceUnref(pThis);
+		}else{
+			/* Call current() to get value */
+			PH7_MemObjInit(pVm,&sResult);
+			pMethod = PH7_ClassExtractMethod(pThis->pClass,"current",sizeof("current")-1);
+			if( pMethod ){
+				PH7_VmCallClassMethod(&(*pVm),pThis,pMethod,&sResult,0,0);
+			}
+			pValue = VmExtractMemObj(&(*pVm),&pInfo->sValue,FALSE,TRUE);
+			if( pValue ){
+				PH7_MemObjStore(&sResult,pValue);
+			}
+			PH7_MemObjRelease(&sResult);
+			/* Call key() if needed */
+			if( (pStep->iFlags & PH7_4EACH_STEP_KEY) && SyStringLength(&pInfo->sKey) > 0 ){
+				ph7_value sKey;
+				PH7_MemObjInit(pVm,&sKey);
+				pMethod = PH7_ClassExtractMethod(pThis->pClass,"key",sizeof("key")-1);
+				if( pMethod ){
+					PH7_VmCallClassMethod(&(*pVm),pThis,pMethod,&sKey,0,0);
+				}
+				pValue = VmExtractMemObj(&(*pVm),&pInfo->sKey,FALSE,TRUE);
+				if( pValue ){
+					PH7_MemObjStore(&sKey,pValue);
+				}
+				PH7_MemObjRelease(&sKey);
 			}
 		}
 	}else{

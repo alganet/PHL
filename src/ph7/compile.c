@@ -2718,6 +2718,7 @@ static sxi32 GenStateForEachNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRo
 static sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 {
 	SyToken *pCur,*pTmp,*pEnd = 0;
+	SyToken *pListStart = 0,*pListEnd = 0;
 	GenBlock *pForeachBlock = 0;
 	ph7_foreach_info *pInfo;
 	sxu32 nFalseJump;
@@ -2858,16 +2859,60 @@ static sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 		/* Pass by reference  */
 		pInfo->iFlags |= PH7_4EACH_STEP_REF;
 	}
-	/* Compile the expression holding the value name */
-	rc = PH7_CompileExpr(&(*pGen),0,GenStateForEachNodeValidator);
-	if( rc == SXERR_ABORT ){
-		/* Don't worry about freeing memory, everything will be released shortly */
-		return SXERR_ABORT;
-	}
-	pInstr = PH7_VmPopInstr(pGen->pVm);
-	if( pInstr->p3 ){
-		/* Record value name */
-		SyStringInitFromBuf(&pInfo->sValue,pInstr->p3,SyStrlen((const char *)pInstr->p3));
+	/* Check if the value target is list() */
+	if( (pGen->pIn->nType & PH7_TK_KEYWORD) &&
+		SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_LIST ){
+		/* foreach ($arr as list($a, $b)) — list unpacking.
+		 * Save the list() token range; we'll compile it after FOREACH_STEP.
+		 */
+		static int iForeachListCnt = 0;
+		char zTmp[128];
+		sxu32 nLen;
+		char *zDup;
+		nLen = (sxu32)SyBufferFormat(zTmp,sizeof(zTmp),"[__foreach_list_%d__]",iForeachListCnt++);
+		zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,zTmp,nLen);
+		if( zDup == 0 ){
+			PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Fatal, PH7 engine is running out of memory");
+			return SXERR_ABORT;
+		}
+		SyStringInitFromBuf(&pInfo->sValue,zDup,nLen);
+		/* Save list() token boundaries */
+		pListStart = pGen->pIn;
+		/* Advance past list(...) — validate parentheses */
+		pGen->pIn++; /* Jump 'list' keyword */
+		if( pGen->pIn >= pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn < pEnd ? pGen->pIn->nLine : nLine,
+				"foreach: Expected '(' after 'list'");
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			goto Synchronize;
+		}
+		pGen->pIn++; /* Jump '(' */
+		PH7_DelimitNestedTokens(pGen->pIn,pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pListEnd);
+		if( pListEnd >= pEnd ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+				"foreach: Missing closing ')' after list");
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			goto Synchronize;
+		}
+		pGen->pIn = &pListEnd[1]; /* Past ')' */
+		pListEnd = pGen->pIn;
+		pInfo->iFlags |= PH7_4EACH_STEP_LIST;
+	}else{
+		/* Compile the expression holding the value name */
+		rc = PH7_CompileExpr(&(*pGen),0,GenStateForEachNodeValidator);
+		if( rc == SXERR_ABORT ){
+			/* Don't worry about freeing memory, everything will be released shortly */
+			return SXERR_ABORT;
+		}
+		pInstr = PH7_VmPopInstr(pGen->pVm);
+		if( pInstr->p3 ){
+			/* Record value name */
+			SyStringInitFromBuf(&pInfo->sValue,pInstr->p3,SyStrlen((const char *)pInstr->p3));
+		}
 	}
 	/* Emit the 'FOREACH_INIT' instruction */
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_FOREACH_INIT,0,0,pInfo,&nFalseJump);
@@ -2879,6 +2924,30 @@ static sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_FOREACH_STEP,0,0,pInfo,&nFalseJump);
 	/* Save the instruction index so we can fix it later when the jump destination is resolved */
 	GenStateNewJumpFixup(pForeachBlock,PH7_OP_FOREACH_STEP,nFalseJump);
+	/* If list() unpacking, emit bytecode to destructure the temp variable */
+	if( (pInfo->iFlags & PH7_4EACH_STEP_LIST) && pListStart && pListEnd ){
+		SyToken *pSavedIn,*pSavedEnd;
+		/* Load the temporary variable holding the current value onto the stack.
+		 * The LOAD_LIST handler expects the array below the variable entries.
+		 */
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD,0,0,(void *)SyStringData(&pInfo->sValue),0);
+		/* Compile list(...) body directly — this pushes variables and emits LOAD_LIST.
+		 * We position the tokens at the list keyword so PH7_CompileList picks up
+		 * the opening '(' and the variable names inside.
+		 */
+		pSavedIn = pGen->pIn;
+		pSavedEnd = pGen->pEnd;
+		pGen->pIn = pListStart;
+		pGen->pEnd = pListEnd;
+		rc = PH7_CompileList(&(*pGen),0);
+		pGen->pIn = pSavedIn;
+		pGen->pEnd = pSavedEnd;
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		/* Pop the list result (LOAD_LIST leaves the assigned values on stack) */
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
+	}
 	/* Compile the loop body */
 	pGen->pIn = &pEnd[1];
 	pGen->pEnd = pTmp;
