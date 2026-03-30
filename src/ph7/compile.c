@@ -4958,7 +4958,7 @@ static sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 				goto done;
 			}
 		}else{
-			sxi32 iFlags = 0;
+			sxi32 iFlags = PH7_CLASS_ATTR_ABSTRACT; /* Interface methods are implicitly abstract */
 			if( nKwrd == PH7_TKWRD_STATIC ){
 				/* Static method,record that */
 				iFlags |= PH7_CLASS_ATTR_STATIC;
@@ -4975,8 +4975,8 @@ static sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 						goto done;
 				}
 			}
-			/* Process method signature */
-			rc = GenStateCompileClassMethod(&(*pGen),0,FALSE/* Only method signature*/,iFlags,pClass);
+			/* Process method signature (no body for interface methods) */
+			rc = GenStateCompileClassMethod(&(*pGen),0,iFlags,FALSE,pClass);
 			if( rc != SXRET_OK ){
 				if( rc == SXERR_ABORT ){
 					return SXERR_ABORT;
@@ -5022,6 +5022,157 @@ struct TraitUseEntry {
 	SyToken *pResolvStart;     /* Start of resolution block tokens (NULL if none) */
 	SyToken *pResolvEnd;       /* End of resolution block tokens */
 };
+/*
+ * Check that a concrete class has no remaining abstract methods.
+ * If it does, emit a PHP-compatible fatal error listing them all.
+ */
+static sxi32 GenStateCheckAbstractMethods(ph7_gen_state *pGen,ph7_class *pClass)
+{
+	ph7_class_method *pMeth;
+	SyHashEntry *pEntry;
+	sxu32 nAbstract;
+	SyBlob sMsg;
+	sxi32 rc;
+	/* Abstract classes, interfaces, and traits may have unimplemented methods */
+	if( pClass->iFlags & (PH7_CLASS_ABSTRACT|PH7_CLASS_INTERFACE|PH7_CLASS_TRAIT) ){
+		return SXRET_OK;
+	}
+	/* Count abstract methods */
+	nAbstract = 0;
+	SyHashResetLoopCursor(&pClass->hMethod);
+	while((pEntry = SyHashGetNextEntry(&pClass->hMethod)) != 0 ){
+		pMeth = (ph7_class_method *)pEntry->pUserData;
+		if( pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT ){
+			nAbstract++;
+		}
+	}
+	if( nAbstract == 0 ){
+		return SXRET_OK;
+	}
+	/* Build the error message listing all abstract methods with origins */
+	SyBlobInit(&sMsg,&pGen->pVm->sAllocator);
+	SyBlobFormat(&sMsg,"Class %z contains %u abstract method%s and must therefore "
+		"be declared abstract or implement the remaining method%s (",
+		&pClass->sName,nAbstract,
+		(nAbstract > 1 ? "s" : ""),
+		(nAbstract > 1 ? "s" : ""));
+	/* Second pass: list methods with origins */
+	{
+		sxu32 nListed = 0;
+		SyHashResetLoopCursor(&pClass->hMethod);
+		while((pEntry = SyHashGetNextEntry(&pClass->hMethod)) != 0 ){
+			ph7_class *pOrigin = 0;
+			SyString *pMName;
+			pMeth = (ph7_class_method *)pEntry->pUserData;
+			if( (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) == 0 ){
+				continue;
+			}
+			pMName = &pMeth->sFunc.sName;
+			if( nListed > 0 ){
+				SyBlobAppend(&sMsg,", ",2);
+			}
+			/* Find the origin of this abstract method.
+			 * PHP priority: interfaces (walking ancestors and interface
+			 * inheritance chains) take precedence for interface-declared
+			 * methods. Abstract class methods only win when the class
+			 * itself declared the abstract method (not inherited from
+			 * an interface). Trait methods are adopted into the using
+			 * class's namespace.
+			 */
+			{
+				ph7_class **apIface;
+				ph7_class **apTrait;
+				ph7_class *pWalk;
+				sxu32 i;
+				/* 1. Check parent chain for a natively-declared abstract method
+				 * (one that was written in the class body, not inherited from an
+				 * interface). PHP attributes origin to the declaring class.
+				 */
+				if( pClass->pBase ){
+					pWalk = pClass->pBase;
+					while( pWalk ){
+						ph7_class_method *pParentMeth;
+						pParentMeth = PH7_ClassExtractMethod(pWalk,pMName->zString,pMName->nByte);
+						if( pParentMeth && (pParentMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) ){
+							/* Exclude methods that came from an interface anywhere
+							 * in this class's ancestor chain.
+							 */
+							int fromIface = 0;
+							ph7_class *pAnc = pWalk;
+							while( pAnc ){
+								ph7_class **apPI;
+								sxu32 j;
+								apPI = (ph7_class **)SySetBasePtr(&pAnc->aInterface);
+								for(j = 0; j < SySetUsed(&pAnc->aInterface); j++){
+									if( PH7_ClassExtractMethod(apPI[j],pMName->zString,pMName->nByte) ){
+										fromIface = 1;
+										break;
+									}
+								}
+								if( fromIface ) break;
+								pAnc = pAnc->pBase;
+							}
+							if( !fromIface ){
+								pOrigin = pWalk;
+								break;
+							}
+						}
+						pWalk = pWalk->pBase;
+					}
+				}
+				/* 2. Check interfaces on class and all ancestors, walking
+				 * each interface's own parent chain for the deepest origin.
+				 */
+				if( !pOrigin ){
+					pWalk = pClass;
+					while( pWalk && !pOrigin ){
+						apIface = (ph7_class **)SySetBasePtr(&pWalk->aInterface);
+						for(i = 0; i < SySetUsed(&pWalk->aInterface); i++){
+							ph7_class *pIface = apIface[i];
+							ph7_class *pDeepest = 0;
+							while( pIface ){
+								if( PH7_ClassExtractMethod(pIface,pMName->zString,pMName->nByte) ){
+									pDeepest = pIface;
+								}
+								pIface = pIface->pBase;
+							}
+							if( pDeepest ){
+								pOrigin = pDeepest;
+								break;
+							}
+						}
+						pWalk = pWalk->pBase;
+					}
+				}
+				/* 3. Trait methods are adopted into the class namespace in PHP */
+				if( !pOrigin ){
+					apTrait = (ph7_class **)SySetBasePtr(&pClass->aTrait);
+					for(i = 0; i < SySetUsed(&pClass->aTrait); i++){
+						if( PH7_ClassExtractMethod(apTrait[i],pMName->zString,pMName->nByte) ){
+							pOrigin = pClass;
+							break;
+						}
+					}
+				}
+			}
+			if( pOrigin ){
+				SyBlobFormat(&sMsg,"%z::%z",&pOrigin->sName,pMName);
+			}else{
+				/* Origin is the class itself (trait method adopted into class namespace) */
+				SyBlobFormat(&sMsg,"%z::%z",&pClass->sName,pMName);
+			}
+			nListed++;
+		}
+	}
+	SyBlobAppend(&sMsg,")",1);
+	rc = PH7_GenCompileError(pGen,E_ERROR,pClass->nLine,"%.*s",
+		(int)SyBlobLength(&sMsg),(const char *)SyBlobData(&sMsg));
+	SyBlobRelease(&sMsg);
+	if( rc == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
+	return SXRET_OK;
+}
 static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 {
 	sxu32 nLine = pGen->pIn->nLine;
@@ -5699,6 +5850,15 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 			rc = PH7_ClassImplement(pClass,apInterface[n]);
 			if( rc != SXRET_OK ){
 				break;
+			}
+		}
+		/* Check for unimplemented abstract methods in concrete classes */
+		if( rc == SXRET_OK ){
+			sxi32 rcCheck = GenStateCheckAbstractMethods(&(*pGen),pClass);
+			if( rcCheck == SXERR_ABORT ){
+				SySetRelease(&aUseEntries);
+				SySetRelease(&aInterfaces);
+				return SXERR_ABORT;
 			}
 		}
 	}

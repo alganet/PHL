@@ -277,14 +277,6 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 				}
 			}
 			continue;
-		}else{
-			if( pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT ){
-				/* Abstract method must be defined in the child class */
-				PH7_GenCompileError(&(*pGen),E_WARNING,pMeth->nLine,
-					"Abstract method '%z:%z' must be defined inside child class '%z'",
-					&pBase->sName,pName,&pSub->sName);
-				continue;
-			}
 		}
 		/* Install the method */
 		if( pMeth->iProtection != PH7_CLASS_PROT_PRIVATE ){
@@ -486,10 +478,27 @@ PH7_PRIVATE sxi32 PH7_ClassImplement(ph7_class *pMain,ph7_class *pInterface)
 	}
 	/* Install in the interface container */
 	SySetPut(&pMain->aInterface,(const void *)&pInterface);
-	/* TICKET 1433-49/1: Symisc eXtension
-	 *  A class may not implemnt all declared interface methods,so there
-	 *  is no need for a method installer loop here.
+	/* Install interface method stubs into the implementing class.
+	 * Methods already defined in the class take precedence (they satisfy
+	 * the interface contract). Stubs retain PH7_CLASS_ATTR_ABSTRACT so
+	 * the unified check in GenStateCheckAbstractMethods catches missing ones.
 	 */
+	{
+		ph7_class_method *pMeth;
+		SyHashEntry *pMEntry;
+		SyString *pMName;
+		SyHashResetLoopCursor(&pInterface->hMethod);
+		while((pMEntry = SyHashGetNextEntry(&pInterface->hMethod)) != 0 ){
+			pMeth = (ph7_class_method *)pMEntry->pUserData;
+			pMName = &pMeth->sFunc.sName;
+			if( SyHashGet(&pMain->hMethod,(const void *)pMName->zString,pMName->nByte) == 0 ){
+				rc = SyHashInsert(&pMain->hMethod,(const void *)pMName->zString,pMName->nByte,pMeth);
+				if( rc != SXRET_OK ){
+					return rc;
+				}
+			}
+		}
+	}
 	return SXRET_OK;
 }
 /*
