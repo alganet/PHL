@@ -16,15 +16,16 @@
 | src/ph7/vfs_unix.c             | 88.06%   | 376/427     |
 | src/ph7/vfs_win.c              | 75.43%   | 485/643     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
-| src/ph7/vm.c                   | 77.48%   | 4201/5422   |
+| src/ph7/vm.c                   | 77.58%   | 4228/5450   |
 | src/ph7/vm_builtin_class.c     | 84.30%   | 376/446     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
 | src/ph7/vm_builtin_ob.c        | 76.21%   | 157/206     |
 | src/ph7/vm_http.c              | 68.02%   | 302/444     |
+| src/ph7/vm_http_response.c     | 42.35%   | 108/255     |
 | src/ph7/vm_json.c              | 62.12%   | 264/425     |
 | src/ph7/vm_xml.c               | 73.70%   | 426/578     |
 | src/phl/phl.c                  | 76.16%   | 115/151     |
-| src/phl/server.c               | 61.54%   | 192/312     |
+| src/phl/server.c               | 62.43%   | 226/362     |
 | src/sx/sxds.c                  | 94.77%   | 272/287     |
 | src/sx/sxfmt.c                 | 70.46%   | 291/413     |
 | src/sx/sxhash.c                | 90.49%   | 238/263     |
@@ -40,6 +41,6 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 78.92%   | 26264/33280 |
-| Functions                      | 97.36%   | 1330/1366   |
+| Lines                          | 78.64%   | 26433/33613 |
+| Functions                      | 97.03%   | 1341/1382   |
 
