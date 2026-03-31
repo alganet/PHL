@@ -1474,7 +1474,7 @@ PH7_PRIVATE sxi32 PH7_CompileLangConstruct(ph7_gen_state *pGen,sxi32 iCompileFla
 	}else{
 		sxi32 nArg = 0;
 		sxu32 nIdx = 0;
-		rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_RDONLY_LOAD/* Do not create variable if inexistant */,0);
+		rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_RDONLY_LOAD,0);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}else if(rc != SXERR_EMPTY ){
@@ -7476,6 +7476,72 @@ PH7_PRIVATE ProcNodeConstruct PH7_GetNodeHandler(sxu32 nNodeType)
 	return 0;
 }
 /*
+ * Compile an unset() statement.
+ * unset($var, $arr[$key], ...);
+ * Each argument is compiled with EXPR_FLAG_LOAD_IDX_STORE so that
+ * PH7_OP_LOAD_IDX emits iP2=1, triggering COW separation on the
+ * parent array before extracting the element to unset.
+ */
+static sxi32 PH7_CompileUnset(ph7_gen_state *pGen)
+{
+	SyToken *pTmp,*pEnd,*pNext = 0;
+	sxu32 nIdx = 0;
+	SyString sName;
+	sxi32 rc;
+	/* Jump the 'unset' keyword */
+	pGen->pIn++;
+	/* Save delimiter */
+	pTmp = pGen->pEnd;
+	/* Skip optional opening parenthesis and find the matching close */
+	pEnd = pTmp; /* Default: scan to statement end */
+	if( pGen->pIn < pTmp && (pGen->pIn->nType & PH7_TK_LPAREN) ){
+		/* Find matching ')' — start scanning AFTER the '(' */
+		SyToken *pClose;
+		pGen->pIn++;   /* Skip '(' */
+		PH7_DelimitNestedTokens(pGen->pIn,pTmp,PH7_TK_LPAREN,PH7_TK_RPAREN,&pClose);
+		pEnd = pClose; /* Stop at ')' */
+	}
+	SyStringInitFromBuf(&sName,"unset",sizeof("unset")-1);
+	/* Resolve the 'unset' builtin name once */
+	if( SXRET_OK != GenStateFindLiteral(&(*pGen),&sName,&nIdx) ){
+		ph7_value *pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);
+		if( pObj == 0 ){
+			return SXERR_ABORT;
+		}
+		PH7_MemObjInitFromString(pGen->pVm,pObj,&sName);
+		GenStateInstallLiteral(&(*pGen),pObj,nIdx);
+	}
+	/* Compile each comma-separated argument */
+	while( SXRET_OK == PH7_GetNextExpr(pGen->pIn,pEnd,&pNext) ){
+		if( pGen->pIn < pNext ){
+			pGen->pEnd = pNext;
+			rc = PH7_CompileExpr(&(*pGen),
+				EXPR_FLAG_RDONLY_LOAD|EXPR_FLAG_LOAD_IDX_STORE,0);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			if( rc != SXERR_EMPTY ){
+				/* Emit call for this single argument */
+				PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);
+				PH7_VmEmitInstr(pGen->pVm,PH7_OP_CALL,1,0,0,0);
+				PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
+			}
+		}
+		/* Jump trailing commas */
+		while( pNext < pEnd && (pNext->nType & PH7_TK_COMMA) ){
+			pNext++;
+		}
+		pGen->pIn = pNext;
+	}
+	/* Skip past the closing ')' if present */
+	if( pGen->pIn < pTmp && (pGen->pIn->nType & PH7_TK_RPAREN) ){
+		pGen->pIn++;
+	}
+	/* Restore token stream */
+	pGen->pEnd = pTmp;
+	return SXRET_OK;
+}
+/*
  * PHP Language construct table.
  */
 static const LangConstruct aLangConstruct[] = {
@@ -7501,7 +7567,8 @@ static const LangConstruct aLangConstruct[] = {
 	{ PH7_TKWRD_VAR,      PH7_CompileVar      }, /* var statement */
 	{ PH7_TKWRD_NAMESPACE, PH7_CompileNamespace }, /* namespace statement */
 	{ PH7_TKWRD_USE,      PH7_CompileUse      },  /* use statement */
-	{ PH7_TKWRD_DECLARE,  PH7_CompileDeclare  }   /* declare statement */
+	{ PH7_TKWRD_DECLARE,  PH7_CompileDeclare  },  /* declare statement */
+	{ PH7_TKWRD_UNSET,    PH7_CompileUnset   }   /* unset statement */
 };
 /*
  * Return a pointer to the statement handler routine associated

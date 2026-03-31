@@ -1201,8 +1201,8 @@ PH7_PRIVATE sxi32 PH7_MemObjAdd(ph7_value *pObj1,ph7_value *pObj2,int bAddStore)
 						return rc;
 					}
 				}
-				/* Point to the structure that describe the hashmap */
-				pMap = (ph7_hashmap *)pObj1->x.pOther;
+				/* COW separate before in-place mutation */
+				pMap = PH7_HashmapCowSeparate(pObj1->pVm,pObj1);
 			}else{
 				/* Create a new hashmap */
 				pMap = PH7_NewHashmap(pObj1->pVm,0,0);

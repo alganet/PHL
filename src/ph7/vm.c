@@ -3258,6 +3258,13 @@ case PH7_OP_LOAD_IDX: {
 	}
 	rc = SXERR_NOTFOUND; /* Assume the index is invalid */
 	if( pTos->iFlags & MEMOBJ_HASHMAP ){
+		if( pInstr->iP2 ){
+			/* Write-context access (iP2 = create-if-missing).  COW-separate
+			 * the parent so nested writes like $b[0][0] = 99 don't leak
+			 * through shared outer arrays.  Read-only loads (iP2 == 0) must
+			 * NOT separate — that would defeat COW on every element read. */
+			PH7_HashmapCowSeparate(&(*pVm),pTos);
+		}
 		/* Point to the hashmap */
 		pMap = (ph7_hashmap *)pTos->x.pOther;
 		if( pIdx ){
@@ -3446,10 +3453,38 @@ case PH7_OP_STORE_IDX_REF: {
 	}
 	nIdx = pTos->nIdx;
 	if( pTos->iFlags & MEMOBJ_HASHMAP ){
-		/* Hashmap already loaded */
-		pMap = (ph7_hashmap *)pTos->x.pOther;
+		/* Hashmap already loaded on stack — COW separate the backing variable.
+		 * The stack holds a temporary ref (from LOAD), so undo it before
+		 * checking true sharing count, then re-add after separation. */
+		if( nIdx != SXU32_HIGH ){
+			ph7_value *pBacking = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
+			if( pBacking && (pBacking->iFlags & MEMOBJ_HASHMAP) ){
+				ph7_hashmap *pCur = (ph7_hashmap *)pTos->x.pOther;
+				/* Only adjust refcount / perform COW if the backing variable
+				 * is still sharing the same hashmap instance. This mirrors
+				 * the guard used by PH7_OP_LOAD_IDX and avoids corrupting
+				 * refcounts if the backing array was already separated. */
+				if( pBacking->x.pOther == (void *)pCur ){
+					pCur->iRef--;  /* Undo stack ref to reveal true sharing count */
+					pMap = PH7_HashmapCowSeparate(&(*pVm),pBacking);
+					pMap->iRef++;  /* Re-add stack ref */
+					pTos->x.pOther = pMap;
+				}else{
+					/* Backing variable no longer points at pCur: skip COW here
+					 * and operate on the hashmap currently on the stack. */
+					pMap = pCur;
+				}
+			}else{
+				pMap = (ph7_hashmap *)pTos->x.pOther;
+			}
+		}else{
+			pMap = (ph7_hashmap *)pTos->x.pOther;
+		}
 		if( pMap->iRef < 2 ){
-			/* TICKET 1433-48: Prevent garbage collection */
+			/* TICKET 1433-48: Prevent garbage collection during insertion.
+			 * This inflation is safe with COW: VmPopOperand below will call
+			 * PH7_HashmapUnref, bringing iRef back down. Between here and there,
+			 * no code checks iRef for COW decisions. */
 			pMap->iRef = 2;
 		}
 	}else{
@@ -3504,7 +3539,8 @@ case PH7_OP_STORE_IDX_REF: {
 				goto Abort;
 			}
 		}
-		pMap = (ph7_hashmap *)pObj->x.pOther;
+		/* COW separate the backing variable before mutation */
+		pMap = PH7_HashmapCowSeparate(&(*pVm),pObj);
 	}
 	VmPopOperand(&pTos,1);
 	/* Phase#2: Perform the insertion */
@@ -4991,7 +5027,25 @@ case PH7_OP_FOREACH_INIT: {
 			/* Prepare the step */
 			pStep->iFlags = pInfo->iFlags;
 			if( pTos->iFlags & MEMOBJ_HASHMAP ){
-				ph7_hashmap *pMap = (ph7_hashmap *)pTos->x.pOther;
+				ph7_hashmap *pMap;
+				/* COW: For by-reference foreach, eagerly separate the
+				 * source array so mutations don't affect other sharers. */
+				if( (pStep->iFlags & PH7_4EACH_STEP_REF) && pTos->nIdx != SXU32_HIGH ){
+					ph7_value *pBacking = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx);
+					if( pBacking && (pBacking->iFlags & MEMOBJ_HASHMAP) ){
+						ph7_hashmap *pCur = (ph7_hashmap *)pTos->x.pOther;
+						/* Only adjust refcounts/separate if the backing
+						 * variable still points at the same hashmap as
+						 * the stack value. */
+						if( pBacking->x.pOther == (void *)pCur ){
+							pCur->iRef--;
+							PH7_HashmapCowSeparate(&(*pVm),pBacking);
+							pTos->x.pOther = pBacking->x.pOther;
+							((ph7_hashmap *)pTos->x.pOther)->iRef++;
+						}
+					}
+				}
+				pMap = (ph7_hashmap *)pTos->x.pOther;
 				/* Reset the internal loop cursor */
 				PH7_HashmapResetLoopCursor(pMap);
 				/* Mark the step */
