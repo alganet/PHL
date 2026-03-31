@@ -36,11 +36,11 @@ Coverage: 376/427 lines (88.06%)
 |     - |   26 | `#include <stdio.h>` |
 |     - |   27 | `#include <stdlib.h>` |
 |     - |   28 | `/* int (*xchdir)(const char *) */` |
-| 10166 |   29 | `static int UnixVfs_chdir(const char *zPath)` |
+| 10184 |   29 | `static int UnixVfs_chdir(const char *zPath)` |
 |     - |   30 |  |
 |     - |   31 | `  int rc;` |
-| 10166 |   32 | `  rc = chdir(zPath);` |
-| 10166 |   33 | `  return rc == 0 ? PH7_OK : -1;` |
+| 10184 |   32 | `  rc = chdir(zPath);` |
+| 10184 |   33 | `  return rc == 0 ? PH7_OK : -1;` |
 |     - |   34 |  |
 |     - |   35 | `/* int (*xGetcwd)(ph7_context *) */` |
 |    20 |   36 | `static int UnixVfs_getcwd(ph7_context *pCtx)` |
@@ -56,32 +56,32 @@ Coverage: 376/427 lines (88.06%)
 |    20 |   46 | `	return PH7_OK;` |
 |    10 |   47 |  |
 |     - |   48 | `/* int (*xMkdir)(const char *,int,int) */` |
-|     6 |   49 | `static int UnixVfs_mkdir(const char *zPath,int mode,int recursive)` |
+|    12 |   49 | `static int UnixVfs_mkdir(const char *zPath,int mode,int recursive)` |
 |     - |   50 |  |
 |     - |   51 | `	int rc;` |
-|     6 |   52 | `        rc = mkdir(zPath,mode);` |
-|     3 |   53 | `	SXUNUSED(recursive); /* cc warning */` |
-|     6 |   54 | `	return rc == 0 ? PH7_OK : -1;` |
+|    12 |   52 | `        rc = mkdir(zPath,mode);` |
+|     6 |   53 | `	SXUNUSED(recursive); /* cc warning */` |
+|    12 |   54 | `	return rc == 0 ? PH7_OK : -1;` |
 |     - |   55 |  |
 |     - |   56 | `/* int (*xRmdir)(const char *) */` |
-|     8 |   57 | `static int UnixVfs_rmdir(const char *zPath)` |
+|    14 |   57 | `static int UnixVfs_rmdir(const char *zPath)` |
 |     - |   58 |  |
 |     - |   59 | `	int rc;` |
-|     8 |   60 | `	rc = rmdir(zPath);` |
-|     8 |   61 | `	return rc == 0 ? PH7_OK : -1;` |
+|    14 |   60 | `	rc = rmdir(zPath);` |
+|    14 |   61 | `	return rc == 0 ? PH7_OK : -1;` |
 |     - |   62 |  |
 |     - |   63 | `/* int (*xIsdir)(const char *) */` |
-|  6054 |   64 | `static int UnixVfs_isdir(const char *zPath)` |
+|  6064 |   64 | `static int UnixVfs_isdir(const char *zPath)` |
 |     - |   65 |  |
 |     - |   66 | `	struct stat st;` |
 |     - |   67 | `	int rc;` |
-|  6054 |   68 | `	rc = stat(zPath,&st);` |
-|  6054 |   69 | `	if( rc != 0 ){` |
+|  6064 |   68 | `	rc = stat(zPath,&st);` |
+|  6064 |   69 | `	if( rc != 0 ){` |
 |     4 |   70 | `	 return -1;` |
 |     - |   71 | `	}` |
-|  6050 |   72 | `	rc = S_ISDIR(st.st_mode);` |
-|  6050 |   73 | `	return rc ? PH7_OK : -1 ;` |
-|  3027 |   74 |  |
+|  6060 |   72 | `	rc = S_ISDIR(st.st_mode);` |
+|  6060 |   73 | `	return rc ? PH7_OK : -1 ;` |
+|  3032 |   74 |  |
 |     - |   75 | `/* int (*xRename)(const char *,const char *) */` |
 |     2 |   76 | `static int UnixVfs_Rename(const char *zOld,const char *zNew)` |
 |     - |   77 |  |
@@ -109,17 +109,17 @@ Coverage: 376/427 lines (88.06%)
 |     - |   99 | `#endif` |
 |     2 |  100 |  |
 |     - |  101 | `/* int (*xSleep)(unsigned int) */` |
-|     4 |  102 | `static int UnixVfs_Sleep(unsigned int uSec)` |
+|    16 |  102 | `static int UnixVfs_Sleep(unsigned int uSec)` |
 |     - |  103 |  |
-|     4 |  104 | `	usleep(uSec);` |
-|     4 |  105 | `	return PH7_OK;` |
+|    16 |  104 | `	usleep(uSec);` |
+|    16 |  105 | `	return PH7_OK;` |
 |     - |  106 |  |
 |     - |  107 | `/* int (*xUnlink)(const char *) */` |
-| 21842 |  108 | `static int UnixVfs_unlink(const char *zPath)` |
+| 21876 |  108 | `static int UnixVfs_unlink(const char *zPath)` |
 |     - |  109 |  |
 |     - |  110 | `	int rc;` |
-| 21842 |  111 | `	rc = unlink(zPath);` |
-| 21842 |  112 | `	return rc == 0 ? PH7_OK : -1 ;` |
+| 21876 |  111 | `	rc = unlink(zPath);` |
+| 21876 |  112 | `	return rc == 0 ? PH7_OK : -1 ;` |
 |     - |  113 |  |
 |     - |  114 | `/* int (*xFileExists)(const char *) */` |
 |    44 |  115 | `static int UnixVfs_FileExists(const char *zPath)` |
@@ -327,17 +327,17 @@ Coverage: 376/427 lines (88.06%)
 |     - |  317 | `#endif /* PH7_UNIX_STATIC_BUILD */` |
 |     2 |  318 |  |
 |     - |  319 | `/* int (*xIsfile)(const char *) */` |
-|  4342 |  320 | `static int UnixVfs_isfile(const char *zPath)` |
+|  4348 |  320 | `static int UnixVfs_isfile(const char *zPath)` |
 |     - |  321 |  |
 |     - |  322 | `	struct stat st;` |
 |     - |  323 | `	int rc;` |
-|  4342 |  324 | `	rc = stat(zPath,&st);` |
-|  4342 |  325 | `	if( rc != 0 ){` |
+|  4348 |  324 | `	rc = stat(zPath,&st);` |
+|  4348 |  325 | `	if( rc != 0 ){` |
 |     2 |  326 | `	 return -1;` |
 |     - |  327 | `	}` |
-|  4340 |  328 | `	rc = S_ISREG(st.st_mode);` |
-|  4340 |  329 | `	return rc ? PH7_OK : -1 ;` |
-|  2171 |  330 |  |
+|  4346 |  328 | `	rc = S_ISREG(st.st_mode);` |
+|  4346 |  329 | `	return rc ? PH7_OK : -1 ;` |
+|  2174 |  330 |  |
 |     - |  331 | `/* int (*xIslink)(const char *) */` |
 |     4 |  332 | `static int UnixVfs_islink(const char *zPath)` |
 |     - |  333 |  |
@@ -400,16 +400,16 @@ Coverage: 376/427 lines (88.06%)
 |     4 |  390 | `	return PH7_OK;` |
 |     2 |  391 |  |
 |     - |  392 | `/* int (*xGetenv)(const char *,ph7_context *) */` |
-|    16 |  393 | `static int UnixVfs_Getenv(const char *zVar,ph7_context *pCtx)` |
+|    22 |  393 | `static int UnixVfs_Getenv(const char *zVar,ph7_context *pCtx)` |
 |     - |  394 |  |
 |     - |  395 | `	char *zEnv;` |
-|    16 |  396 | `	zEnv = getenv(zVar);` |
-|    16 |  397 | `	if( zEnv == 0 ){` |
+|    22 |  396 | `	zEnv = getenv(zVar);` |
+|    22 |  397 | `	if( zEnv == 0 ){` |
 |   ! 0 |  398 | `	  return -1;` |
 |     - |  399 | `	}` |
-|    16 |  400 | `	ph7_result_string(pCtx,zEnv,-1/*Compute length automatically*/);` |
-|    16 |  401 | `	return PH7_OK;` |
-|     8 |  402 |  |
+|    22 |  400 | `	ph7_result_string(pCtx,zEnv,-1/*Compute length automatically*/);` |
+|    22 |  401 | `	return PH7_OK;` |
+|    11 |  402 |  |
 |     - |  403 | `/* int (*xSetenv)(const char *,const char *) */` |
 |     2 |  404 | `static int UnixVfs_Setenv(const char *zName,const char *zValue)` |
 |     - |  405 |  |
@@ -418,39 +418,39 @@ Coverage: 376/427 lines (88.06%)
 |     2 |  408 | `   return rc == 0 ? PH7_OK : -1;` |
 |     - |  409 |  |
 |     - |  410 | `/* int (*xMmap)(const char *,void **,ph7_int64 *) */` |
-|  2572 |  411 | `static int UnixVfs_Mmap(const char *zPath,void **ppMap,ph7_int64 *pSize)` |
+|  2592 |  411 | `static int UnixVfs_Mmap(const char *zPath,void **ppMap,ph7_int64 *pSize)` |
 |     - |  412 |  |
 |     - |  413 | `	struct stat st;` |
 |     - |  414 | `	void *pMap;` |
 |     - |  415 | `	int fd;` |
 |     - |  416 | `	int rc;` |
 |     - |  417 | `	/* Open the file in a read-only mode */` |
-|  2572 |  418 | `	fd = open(zPath,O_RDONLY);` |
-|  2572 |  419 | `	if( fd < 0 ){` |
+|  2592 |  418 | `	fd = open(zPath,O_RDONLY);` |
+|  2592 |  419 | `	if( fd < 0 ){` |
 |     2 |  420 | `		return -1;` |
 |     - |  421 | `	}` |
 |     - |  422 | `	/* stat the handle */` |
-|  2570 |  423 | `	fstat(fd,&st);` |
+|  2590 |  423 | `	fstat(fd,&st);` |
 |     - |  424 | `	/* Obtain a memory view of the whole file */` |
-|  2570 |  425 | `	pMap = mmap(0,st.st_size,PROT_READ,MAP_PRIVATE\|MAP_FILE,fd,0);` |
-|  2570 |  426 | `	rc = PH7_OK;` |
-|  2570 |  427 | `	if( pMap == MAP_FAILED ){` |
+|  2590 |  425 | `	pMap = mmap(0,st.st_size,PROT_READ,MAP_PRIVATE\|MAP_FILE,fd,0);` |
+|  2590 |  426 | `	rc = PH7_OK;` |
+|  2590 |  427 | `	if( pMap == MAP_FAILED ){` |
 |   ! 0 |  428 | `		rc = -1;` |
 |   ! 0 |  429 | `	}else{` |
 |     - |  430 | `		/* Point to the memory view */` |
-|  2570 |  431 | `		*ppMap = pMap;` |
-|  2570 |  432 | `		*pSize = (ph7_int64)st.st_size;` |
+|  2590 |  431 | `		*ppMap = pMap;` |
+|  2590 |  432 | `		*pSize = (ph7_int64)st.st_size;` |
 |     - |  433 | `	}` |
-|  2570 |  434 | `	close(fd);` |
-|  2570 |  435 | `	return rc;` |
-|  1286 |  436 |  |
+|  2590 |  434 | `	close(fd);` |
+|  2590 |  435 | `	return rc;` |
+|  1296 |  436 |  |
 |     - |  437 | `/* void (*xUnmap)(void *,ph7_int64)  */` |
-|  2570 |  438 | `static void UnixVfs_Unmap(void *pView,ph7_int64 nSize)` |
+|  2590 |  438 | `static void UnixVfs_Unmap(void *pView,ph7_int64 nSize)` |
 |     - |  439 |  |
-|  2570 |  440 | `	munmap(pView,(size_t)nSize);` |
-|  2570 |  441 |  |
+|  2590 |  440 | `	munmap(pView,(size_t)nSize);` |
+|  2590 |  441 |  |
 |     - |  442 | `/* void (*xTempDir)(ph7_context *) */` |
-|   166 |  443 | `static void UnixVfs_TempDir(ph7_context *pCtx)` |
+|   172 |  443 | `static void UnixVfs_TempDir(ph7_context *pCtx)` |
 |     - |  444 |  |
 |     - |  445 | `	static const char *azDirs[] = {` |
 |     - |  446 | `     "/var/tmp",` |
@@ -460,28 +460,28 @@ Coverage: 376/427 lines (88.06%)
 |     - |  450 | `  unsigned int i;` |
 |     - |  451 | `  struct stat buf;` |
 |     - |  452 | `  const char *zDir;` |
-|   166 |  453 | `  zDir = getenv("TMPDIR");` |
-|   166 |  454 | `  if( zDir && zDir[0] != 0 && !access(zDir,07) ){` |
-|    83 |  455 | `	  ph7_result_string(pCtx,zDir,-1);` |
-|    83 |  456 | `	  return;` |
+|   172 |  453 | `  zDir = getenv("TMPDIR");` |
+|   172 |  454 | `  if( zDir && zDir[0] != 0 && !access(zDir,07) ){` |
+|    86 |  455 | `	  ph7_result_string(pCtx,zDir,-1);` |
+|    86 |  456 | `	  return;` |
 |     - |  457 | `  }` |
-|    83 |  458 | `  for(i=0; i<sizeof(azDirs)/sizeof(azDirs[0]); i++){` |
-|    83 |  459 | `	zDir=azDirs[i];` |
-|    83 |  460 | `    if( zDir==0 ) continue;` |
-|    83 |  461 | `    if( stat(zDir, &buf) ) continue;` |
-|    83 |  462 | `    if( !S_ISDIR(buf.st_mode) ) continue;` |
-|    83 |  463 | `    if( access(zDir, 07) ) continue;` |
+|    86 |  458 | `  for(i=0; i<sizeof(azDirs)/sizeof(azDirs[0]); i++){` |
+|    86 |  459 | `	zDir=azDirs[i];` |
+|    86 |  460 | `    if( zDir==0 ) continue;` |
+|    86 |  461 | `    if( stat(zDir, &buf) ) continue;` |
+|    86 |  462 | `    if( !S_ISDIR(buf.st_mode) ) continue;` |
+|    86 |  463 | `    if( access(zDir, 07) ) continue;` |
 |     - |  464 | `    /* Got one */` |
-|    83 |  465 | `	ph7_result_string(pCtx,zDir,-1);` |
-|    83 |  466 | `	return;` |
+|    86 |  465 | `	ph7_result_string(pCtx,zDir,-1);` |
+|    86 |  466 | `	return;` |
 |     - |  467 | `  }` |
 |     - |  468 | `  /* Default temp dir */` |
 |   ! 0 |  469 | `  ph7_result_string(pCtx,"/tmp",(int)sizeof("/tmp")-1);` |
-|    83 |  470 |  |
+|    86 |  470 |  |
 |     - |  471 | `/* unsigned int (*xProcessId)(void) */` |
-|     4 |  472 | `static unsigned int UnixVfs_ProcessId(void)` |
+|    16 |  472 | `static unsigned int UnixVfs_ProcessId(void)` |
 |     - |  473 |  |
-|     4 |  474 | `	return (unsigned int)getpid();` |
+|    16 |  474 | `	return (unsigned int)getpid();` |
 |     - |  475 |  |
 |     - |  476 | `/* int (*xUid)(void) */` |
 |     2 |  477 | `static int UnixVfs_uid(void)` |
@@ -587,40 +587,40 @@ Coverage: 376/427 lines (88.06%)
 |     - |  577 | `/* UNIX File IO */` |
 |     - |  578 | `#define PH7_UNIX_OPEN_MODE	0640 /* Default open mode */` |
 |     - |  579 | `/* int (*xOpen)(const char *,int,ph7_value *,void **) */` |
-| 22458 |  580 | `static int UnixFile_Open(const char *zPath,int iOpenMode,ph7_value *pResource,void **ppHandle)` |
+| 22486 |  580 | `static int UnixFile_Open(const char *zPath,int iOpenMode,ph7_value *pResource,void **ppHandle)` |
 |     - |  581 |  |
-| 22458 |  582 | `	int iOpen = O_RDONLY;` |
+| 22486 |  582 | `	int iOpen = O_RDONLY;` |
 |     - |  583 | `	int fd;` |
 |     - |  584 | `	/* Set the desired flags according to the open mode */` |
-| 22458 |  585 | `	if( iOpenMode & PH7_IO_OPEN_CREATE ){` |
+| 22486 |  585 | `	if( iOpenMode & PH7_IO_OPEN_CREATE ){` |
 |     - |  586 | `		/* Open existing file, or create if it doesn't exist */` |
-| 10384 |  587 | `		iOpen = O_CREAT;` |
-| 10384 |  588 | `		if( iOpenMode & PH7_IO_OPEN_TRUNC ){` |
+| 10406 |  587 | `		iOpen = O_CREAT;` |
+| 10406 |  588 | `		if( iOpenMode & PH7_IO_OPEN_TRUNC ){` |
 |     - |  589 | `			/* If the specified file exists and is writable, the function overwrites the file */` |
-| 10384 |  590 | `			iOpen \|= O_TRUNC;` |
-|  5192 |  591 | `			SXUNUSED(pResource); /* cc warning */` |
-|  5192 |  592 | `		}` |
-| 17266 |  593 | `	}else if( iOpenMode & PH7_IO_OPEN_EXCL ){` |
+| 10406 |  590 | `			iOpen \|= O_TRUNC;` |
+|  5203 |  591 | `			SXUNUSED(pResource); /* cc warning */` |
+|  5203 |  592 | `		}` |
+| 17283 |  593 | `	}else if( iOpenMode & PH7_IO_OPEN_EXCL ){` |
 |     - |  594 | `		/* Creates a new file, only if it does not already exist.` |
 |     - |  595 | `		* If the file exists, it fails.` |
 |     - |  596 | `		*/` |
 |   ! 0 |  597 | `		iOpen = O_CREAT\|O_EXCL;` |
-| 12074 |  598 | `	}else if( iOpenMode & PH7_IO_OPEN_TRUNC ){` |
+| 12080 |  598 | `	}else if( iOpenMode & PH7_IO_OPEN_TRUNC ){` |
 |     - |  599 | `		/* Opens a file and truncates it so that its size is zero bytes` |
 |     - |  600 | `		 * The file must exist.` |
 |     - |  601 | `		 */` |
 |   ! 0 |  602 | `		iOpen = O_RDWR\|O_TRUNC;` |
 |   ! 0 |  603 | `	}` |
-| 22458 |  604 | `	if( iOpenMode & PH7_IO_OPEN_RDWR ){` |
+| 22486 |  604 | `	if( iOpenMode & PH7_IO_OPEN_RDWR ){` |
 |     - |  605 | `		/* Read+Write access */` |
-| 10368 |  606 | `		iOpen &= ~O_RDONLY;` |
-| 10368 |  607 | `		iOpen \|= O_RDWR;` |
-| 17274 |  608 | `	}else if( iOpenMode & PH7_IO_OPEN_WRONLY ){` |
+| 10390 |  606 | `		iOpen &= ~O_RDONLY;` |
+| 10390 |  607 | `		iOpen \|= O_RDWR;` |
+| 17291 |  608 | `	}else if( iOpenMode & PH7_IO_OPEN_WRONLY ){` |
 |     - |  609 | `		/* Write only access */` |
 |    22 |  610 | `		iOpen &= ~O_RDONLY;` |
 |    22 |  611 | `		iOpen \|= O_WRONLY;` |
 |    11 |  612 | `	}` |
-| 22458 |  613 | `	if( iOpenMode & PH7_IO_OPEN_APPEND ){` |
+| 22486 |  613 | `	if( iOpenMode & PH7_IO_OPEN_APPEND ){` |
 |     - |  614 | `		/* Append mode */` |
 |   ! 0 |  615 | `		iOpen \|= O_APPEND;` |
 |   ! 0 |  616 | `	}` |
@@ -631,106 +631,106 @@ Coverage: 376/427 lines (88.06%)
 |     - |  621 | `	}` |
 |     - |  622 | `#endif` |
 |     - |  623 | `	/* Open the file now */` |
-| 22458 |  624 | `	fd = open(zPath,iOpen,PH7_UNIX_OPEN_MODE);` |
-| 22458 |  625 | `	if( fd < 0 ){` |
+| 22486 |  624 | `	fd = open(zPath,iOpen,PH7_UNIX_OPEN_MODE);` |
+| 22486 |  625 | `	if( fd < 0 ){` |
 |     - |  626 | `		/* IO error */` |
 |     8 |  627 | `		return -1;` |
 |     - |  628 | `	}` |
 |     - |  629 | `	/* Save the handle */` |
-| 22450 |  630 | `	*ppHandle = SX_INT_TO_PTR(fd);` |
-| 22450 |  631 | `	return PH7_OK;` |
-| 11229 |  632 |  |
+| 22478 |  630 | `	*ppHandle = SX_INT_TO_PTR(fd);` |
+| 22478 |  631 | `	return PH7_OK;` |
+| 11243 |  632 |  |
 |     - |  633 | `/* int (*xOpenDir)(const char *,ph7_value *,void **) */` |
-|   858 |  634 | `static int UnixDir_Open(const char *zPath,ph7_value *pResource,void **ppHandle)` |
+|   860 |  634 | `static int UnixDir_Open(const char *zPath,ph7_value *pResource,void **ppHandle)` |
 |     - |  635 |  |
 |     - |  636 | `	DIR *pDir;` |
 |     - |  637 | `	/* Open the target directory */` |
-|   858 |  638 | `	pDir = opendir(zPath);` |
-|   858 |  639 | `	if( pDir == 0 ){` |
+|   860 |  638 | `	pDir = opendir(zPath);` |
+|   860 |  639 | `	if( pDir == 0 ){` |
 |   ! 0 |  640 | `		SXUNUSED(pResource); /* Compiler warning */` |
 |   ! 0 |  641 | `		return -1;` |
 |     - |  642 | `	}` |
 |     - |  643 | `	/* Save our structure */` |
-|   858 |  644 | `	*ppHandle = pDir;` |
-|   858 |  645 | `	return PH7_OK;` |
-|   429 |  646 |  |
+|   860 |  644 | `	*ppHandle = pDir;` |
+|   860 |  645 | `	return PH7_OK;` |
+|   430 |  646 |  |
 |     - |  647 | `/* void (*xCloseDir)(void *) */` |
-|   858 |  648 | `static void UnixDir_Close(void *pUserData)` |
+|   860 |  648 | `static void UnixDir_Close(void *pUserData)` |
 |     - |  649 |  |
-|   858 |  650 | `	closedir((DIR *)pUserData);` |
-|   858 |  651 |  |
+|   860 |  650 | `	closedir((DIR *)pUserData);` |
+|   860 |  651 |  |
 |     - |  652 | `/* void (*xClose)(void *); */` |
-| 22448 |  653 | `static void UnixFile_Close(void *pUserData)` |
+| 22476 |  653 | `static void UnixFile_Close(void *pUserData)` |
 |     - |  654 |  |
-| 22448 |  655 | `	close(SX_PTR_TO_INT(pUserData));` |
-| 22448 |  656 |  |
+| 22476 |  655 | `	close(SX_PTR_TO_INT(pUserData));` |
+| 22476 |  656 |  |
 |     - |  657 | `/* int (*xReadDir)(void *,ph7_context *) */` |
-|  6052 |  658 | `static int UnixDir_Read(void *pUserData,ph7_context *pCtx)` |
+|  6062 |  658 | `static int UnixDir_Read(void *pUserData,ph7_context *pCtx)` |
 |     - |  659 |  |
-|  6052 |  660 | `	DIR *pDir = (DIR *)pUserData;` |
+|  6062 |  660 | `	DIR *pDir = (DIR *)pUserData;` |
 |     - |  661 | `	struct dirent *pEntry;` |
-|  6052 |  662 | `	char *zName = 0; /* cc warning */` |
-|  6052 |  663 | `	sxu32 n = 0;` |
-|  3886 |  664 | `	for(;;){` |
-|  7768 |  665 | `		pEntry = readdir(pDir);` |
-|  7768 |  666 | `		if( pEntry == 0 ){` |
+|  6062 |  662 | `	char *zName = 0; /* cc warning */` |
+|  6062 |  663 | `	sxu32 n = 0;` |
+|  3893 |  664 | `	for(;;){` |
+|  7782 |  665 | `		pEntry = readdir(pDir);` |
+|  7782 |  666 | `		if( pEntry == 0 ){` |
 |     - |  667 | `			/* No more entries to process */` |
-|   856 |  668 | `			return -1;` |
+|   858 |  668 | `			return -1;` |
 |     - |  669 | `		}` |
-|  6912 |  670 | `		zName = pEntry->d_name;` |
-|  6912 |  671 | `		n = SyStrlen(zName);` |
+|  6924 |  670 | `		zName = pEntry->d_name;` |
+|  6924 |  671 | `		n = SyStrlen(zName);` |
 |     - |  672 | `		/* Ignore '.' && '..' */` |
-|  6912 |  673 | `		if( n > sizeof("..")-1 \|\| zName[0] != '.' \|\| ( n == sizeof("..")-1 && zName[1] != '.') ){` |
-|  2598 |  674 | `			break;` |
+|  6924 |  673 | `		if( n > sizeof("..")-1 \|\| zName[0] != '.' \|\| ( n == sizeof("..")-1 && zName[1] != '.') ){` |
+|  2602 |  674 | `			break;` |
 |     - |  675 | `		}` |
 |     - |  676 | `		/* Next entry */` |
 |     - |  677 | `	}` |
 |     - |  678 | `	/* Return the current file name */` |
-|  5196 |  679 | `	ph7_result_string(pCtx,zName,(int)n);` |
-|  5196 |  680 | `	return PH7_OK;` |
-|  3026 |  681 |  |
+|  5204 |  679 | `	ph7_result_string(pCtx,zName,(int)n);` |
+|  5204 |  680 | `	return PH7_OK;` |
+|  3031 |  681 |  |
 |     - |  682 | `/* void (*xRewindDir)(void *) */` |
 |     2 |  683 | `static void UnixDir_Rewind(void *pUserData)` |
 |     - |  684 |  |
 |     2 |  685 | `	rewinddir((DIR *)pUserData);` |
 |     2 |  686 |  |
 |     - |  687 | `/* ph7_int64 (*xRead)(void *,void *,ph7_int64); */` |
-| 24082 |  688 | `static ph7_int64 UnixFile_Read(void *pUserData,void *pBuffer,ph7_int64 nDatatoRead)` |
+| 24094 |  688 | `static ph7_int64 UnixFile_Read(void *pUserData,void *pBuffer,ph7_int64 nDatatoRead)` |
 |     - |  689 |  |
 |     - |  690 | `	ssize_t nRd;` |
-| 24082 |  691 | `	nRd = read(SX_PTR_TO_INT(pUserData),pBuffer,(size_t)nDatatoRead);` |
-| 24082 |  692 | `	if( nRd < 1 ){` |
+| 24094 |  691 | `	nRd = read(SX_PTR_TO_INT(pUserData),pBuffer,(size_t)nDatatoRead);` |
+| 24094 |  692 | `	if( nRd < 1 ){` |
 |     - |  693 | `		/* EOF or IO error */` |
-| 12036 |  694 | `		return -1;` |
+| 12042 |  694 | `		return -1;` |
 |     - |  695 | `	}` |
-| 12046 |  696 | `	return (ph7_int64)nRd;` |
-| 12041 |  697 |  |
+| 12052 |  696 | `	return (ph7_int64)nRd;` |
+| 12047 |  697 |  |
 |     - |  698 | `/* ph7_int64 (*xWrite)(void *,const void *,ph7_int64); */` |
-| 10406 |  699 | `static ph7_int64 UnixFile_Write(void *pUserData,const void *pBuffer,ph7_int64 nWrite)` |
+| 10428 |  699 | `static ph7_int64 UnixFile_Write(void *pUserData,const void *pBuffer,ph7_int64 nWrite)` |
 |     - |  700 |  |
-| 10406 |  701 | `	const char *zData = (const char *)pBuffer;` |
-| 10406 |  702 | `	int fd = SX_PTR_TO_INT(pUserData);` |
+| 10428 |  701 | `	const char *zData = (const char *)pBuffer;` |
+| 10428 |  702 | `	int fd = SX_PTR_TO_INT(pUserData);` |
 |     - |  703 | `	ph7_int64 nCount;` |
 |     - |  704 | `	ssize_t nWr;` |
-| 10406 |  705 | `	nCount = 0;` |
-| 10406 |  706 | `	for(;;){` |
-| 20812 |  707 | `		if( nWrite < 1 ){` |
-| 10406 |  708 | `			break;` |
+| 10428 |  705 | `	nCount = 0;` |
+| 10428 |  706 | `	for(;;){` |
+| 20856 |  707 | `		if( nWrite < 1 ){` |
+| 10428 |  708 | `			break;` |
 |     - |  709 | `		}` |
-| 10406 |  710 | `		nWr = write(fd,zData,(size_t)nWrite);` |
-| 10406 |  711 | `		if( nWr < 1 ){` |
+| 10428 |  710 | `		nWr = write(fd,zData,(size_t)nWrite);` |
+| 10428 |  711 | `		if( nWr < 1 ){` |
 |     - |  712 | `			/* IO error */` |
 |   ! 0 |  713 | `			break;` |
 |     - |  714 | `		}` |
-| 10406 |  715 | `		nWrite -= nWr;` |
-| 10406 |  716 | `		nCount += nWr;` |
-| 10406 |  717 | `		zData += nWr;` |
+| 10428 |  715 | `		nWrite -= nWr;` |
+| 10428 |  716 | `		nCount += nWr;` |
+| 10428 |  717 | `		zData += nWr;` |
 |     - |  718 | `	}` |
-| 10406 |  719 | `	if( nWrite > 0 ){` |
+| 10428 |  719 | `	if( nWrite > 0 ){` |
 |   ! 0 |  720 | `		return -1;` |
 |     - |  721 | `	}` |
-| 10406 |  722 | `	return nCount;` |
-|  5203 |  723 |  |
+| 10428 |  722 | `	return nCount;` |
+|  5214 |  723 |  |
 |     - |  724 | `/* int (*xSeek)(void *,ph7_int64,int) */` |
 |     6 |  725 | `static int UnixFile_Seek(void *pUserData,ph7_int64 iOfft,int whence)` |
 |     - |  726 |  |
