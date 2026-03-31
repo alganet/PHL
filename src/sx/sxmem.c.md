@@ -55,23 +55,23 @@ Coverage: 431/505 lines (85.35%)
 |  10931408 |   45 |  |
 |         - |   46 |  |
 |         - |   47 |  |
-|  18948330 |   48 | `PH7_PRIVATE void SyZero(void *pSrc,sxu32 nSize)` |
+|  18948320 |   48 | `PH7_PRIVATE void SyZero(void *pSrc,sxu32 nSize)` |
 |         2 |   49 |  |
-|  18948332 |   50 | `	register unsigned char *zSrc = (unsigned char *)pSrc;` |
+|  18948322 |   50 | `	register unsigned char *zSrc = (unsigned char *)pSrc;` |
 |         - |   51 | `	unsigned char *zEnd;` |
 |         - |   52 | `#if defined(UNTRUST)` |
 |         - |   53 | `	if( zSrc == 0 \|\| nSize <= 0 ){` |
 |         - |   54 | `		return ;` |
 |         - |   55 | `	}` |
 |         - |   56 | `#endif` |
-|  18948332 |   57 | `	zEnd = &zSrc[nSize];` |
-| 248994897 |   58 | `	for(;;){` |
-| 497986110 |   59 | `		if( zSrc >= zEnd ){break;} zSrc[0] = 0; zSrc++;` |
-| 479037784 |   60 | `		if( zSrc >= zEnd ){break;} zSrc[0] = 0; zSrc++;` |
-| 479037782 |   61 | `		if( zSrc >= zEnd ){break;} zSrc[0] = 0; zSrc++;` |
-| 479037782 |   62 | `		if( zSrc >= zEnd ){break;} zSrc[0] = 0; zSrc++;` |
+|  18948322 |   57 | `	zEnd = &zSrc[nSize];` |
+| 248994783 |   58 | `	for(;;){` |
+| 497985920 |   59 | `		if( zSrc >= zEnd ){break;} zSrc[0] = 0; zSrc++;` |
+| 479037604 |   60 | `		if( zSrc >= zEnd ){break;} zSrc[0] = 0; zSrc++;` |
+| 479037602 |   61 | `		if( zSrc >= zEnd ){break;} zSrc[0] = 0; zSrc++;` |
+| 479037602 |   62 | `		if( zSrc >= zEnd ){break;} zSrc[0] = 0; zSrc++;` |
 |         2 |   63 | `	}` |
-|  18948332 |   64 |  |
+|  18948322 |   64 |  |
 |  16620997 |   65 | `PH7_PRIVATE sxi32 SyMemcmp(const void *pB1,const void *pB2,sxu32 nSize)` |
 |         2 |   66 |  |
 |         - |   67 | `	sxi32 rc;` |
@@ -84,19 +84,19 @@ Coverage: 431/505 lines (85.35%)
 |  32737418 |   74 | `	SX_MACRO_FAST_CMP(pB1,pB2,nSize,rc);` |
 |  16620915 |   75 | `	return rc;` |
 |   8311072 |   76 |  |
-|   9117690 |   77 | `PH7_PRIVATE sxu32 SyMemcpy(const void *pSrc,void *pDest,sxu32 nLen)` |
+|   9117678 |   77 | `PH7_PRIVATE sxu32 SyMemcpy(const void *pSrc,void *pDest,sxu32 nLen)` |
 |         2 |   78 |  |
 |         - |   79 | `#if defined(UNTRUST)` |
 |         - |   80 | `	if( pSrc == 0 \|\| pDest == 0 ){` |
 |         - |   81 | `		return 0;` |
 |         - |   82 | `	}` |
 |         - |   83 | `#endif` |
-|   9117692 |   84 | `	if( pSrc == (const void *)pDest ){` |
+|   9117680 |   84 | `	if( pSrc == (const void *)pDest ){` |
 |       ! 0 |   85 | `		return nLen;` |
 |         - |   86 | `	}` |
-|  74463805 |   87 | `	SX_MACRO_FAST_MEMCPY(pSrc,pDest,nLen);` |
-|   9117692 |   88 | `	return nLen;` |
-|   4559078 |   89 |  |
+|  74463709 |   87 | `	SX_MACRO_FAST_MEMCPY(pSrc,pDest,nLen);` |
+|   9117680 |   88 | `	return nLen;` |
+|   4559070 |   89 |  |
 |  10941922 |   90 | `static void * MemOSAlloc(sxu32 nBytes)` |
 |         2 |   91 |  |
 |         - |   92 | `	sxu32 *pChunk;` |
@@ -219,18 +219,18 @@ Coverage: 431/505 lines (85.35%)
 |       ! 0 |  209 | `		return 0;` |
 |         - |  210 | `	}` |
 |    701932 |  211 | `	if( pNew != pBlock ){` |
-|    625217 |  212 | `		if( pPrev == 0 ){` |
-|    489881 |  213 | `			pBackend->pBlocks = pNew;` |
-|    266612 |  214 | `		}else{` |
-|    135338 |  215 | `			pPrev->pNext = pNew;` |
+|    625667 |  212 | `		if( pPrev == 0 ){` |
+|    490357 |  213 | `			pBackend->pBlocks = pNew;` |
+|    267088 |  214 | `		}else{` |
+|    135312 |  215 | `			pPrev->pNext = pNew;` |
 |         - |  216 | `		}` |
-|    625217 |  217 | `		if( pNext ){` |
-|    625205 |  218 | `			pNext->pPrev = pNew;` |
-|    334153 |  219 | `		}` |
+|    625667 |  217 | `		if( pNext ){` |
+|    625654 |  218 | `			pNext->pPrev = pNew;` |
+|    334602 |  219 | `		}` |
 |         - |  220 | `#if defined(UNTRUST)` |
 |         - |  221 | `		pNew->nGuard = SXMEM_BACKEND_MAGIC;` |
 |         - |  222 | `#endif` |
-|    334158 |  223 | `	}` |
+|    334608 |  223 | `	}` |
 |    701932 |  224 | `	return (void *)&pNew[1];` |
 |   4151368 |  225 |  |
 |   8302714 |  226 | `PH7_PRIVATE void * SyMemBackendRealloc(SyMemBackend *pBackend,void * pOld,sxu32 nByte)` |
@@ -697,18 +697,18 @@ Coverage: 431/505 lines (85.35%)
 |     74678 |  687 | `	pBlob->nFlags = SXBLOB_LOCKED\|SXBLOB_STATIC;` |
 |     74678 |  688 | `	return SXRET_OK;` |
 |         2 |  689 |  |
-|   6377164 |  690 | `PH7_PRIVATE sxi32 SyBlobInit(SyBlob *pBlob,SyMemBackend *pAllocator)` |
+|   6377154 |  690 | `PH7_PRIVATE sxi32 SyBlobInit(SyBlob *pBlob,SyMemBackend *pAllocator)` |
 |         2 |  691 |  |
 |         - |  692 | `#if defined(UNTRUST)` |
 |         - |  693 | `	if( pBlob == 0  ){` |
 |         - |  694 | `		return SXERR_EMPTY;` |
 |         - |  695 | `	}` |
 |         - |  696 | `#endif` |
-|   6377166 |  697 | `	pBlob->pBlob = 0;` |
-|   6377166 |  698 | `	pBlob->mByte = pBlob->nByte	= 0;` |
-|   6377166 |  699 | `	pBlob->pAllocator = &(*pAllocator);` |
-|   6377166 |  700 | `	pBlob->nFlags = 0;` |
-|   6377166 |  701 | `	return SXRET_OK;` |
+|   6377156 |  697 | `	pBlob->pBlob = 0;` |
+|   6377156 |  698 | `	pBlob->mByte = pBlob->nByte	= 0;` |
+|   6377156 |  699 | `	pBlob->pAllocator = &(*pAllocator);` |
+|   6377156 |  700 | `	pBlob->nFlags = 0;` |
+|   6377156 |  701 | `	return SXRET_OK;` |
 |         2 |  702 |  |
 |   2458032 |  703 | `PH7_PRIVATE sxi32 SyBlobReadOnly(SyBlob *pBlob,const void *pData,sxu32 nByte)` |
 |         2 |  704 |  |
@@ -844,15 +844,15 @@ Coverage: 431/505 lines (85.35%)
 |      3770 |  834 | `	}` |
 |   3574670 |  835 | `	return SXRET_OK;` |
 |         2 |  836 |  |
-|   9571484 |  837 | `PH7_PRIVATE sxi32 SyBlobRelease(SyBlob *pBlob)` |
+|   9571472 |  837 | `PH7_PRIVATE sxi32 SyBlobRelease(SyBlob *pBlob)` |
 |         2 |  838 |  |
-|   9571486 |  839 | `	if( (pBlob->nFlags & (SXBLOB_STATIC\|SXBLOB_RDONLY)) == 0 && pBlob->mByte > 0 ){` |
+|   9571474 |  839 | `	if( (pBlob->nFlags & (SXBLOB_STATIC\|SXBLOB_RDONLY)) == 0 && pBlob->mByte > 0 ){` |
 |   4248644 |  840 | `		SyMemBackendFree(pBlob->pAllocator,pBlob->pBlob);` |
 |   2124343 |  841 | `	}` |
-|   9571486 |  842 | `	pBlob->pBlob = 0;` |
-|   9571486 |  843 | `	pBlob->nByte = pBlob->mByte = 0;` |
-|   9571486 |  844 | `	pBlob->nFlags = 0;` |
-|   9571486 |  845 | `	return SXRET_OK;` |
+|   9571474 |  842 | `	pBlob->pBlob = 0;` |
+|   9571474 |  843 | `	pBlob->nByte = pBlob->mByte = 0;` |
+|   9571474 |  844 | `	pBlob->nFlags = 0;` |
+|   9571474 |  845 | `	return SXRET_OK;` |
 |         2 |  846 |  |
 |         - |  847 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
 |    113708 |  848 | `PH7_PRIVATE sxi32 SyBlobSearch(const void *pBlob,sxu32 nLen,const void *pPattern,sxu32 pLen,sxu32 *pOfft)` |
