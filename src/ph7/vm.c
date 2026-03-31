@@ -2563,6 +2563,7 @@ static sxi32 VmByteCodeExec(
 	VmInstr *pInstr;
 	ph7_value *pTos;
 	SySet aArg;
+	sxu32 nExceptionBase; /* Exception stack depth at entry (for finally drain guard) */
 	sxi32 pc;
 	sxi32 rc;
 	/* Argument container */
@@ -2572,6 +2573,7 @@ static sxi32 VmByteCodeExec(
 	}else{
 		pTos = &pStack[nTos];
 	}
+	nExceptionBase = SySetUsed(&pVm->aException);
 	pc = 0;
 	/* Execute as much as we can */
 	for(;;){
@@ -2610,6 +2612,29 @@ case PH7_OP_DONE:
 	}else if( pLastRef ){
 		/* Nothing referenced */
 		*pLastRef = SXU32_HIGH;
+	}
+	/* Execute pending finally blocks for any try/catch contexts pushed during
+	 * this execution. When 'return' is used inside a try block,
+	 * PH7_OP_POP_EXCEPTION is bypassed. We must run finally blocks before
+	 * returning. Only drain entries above nExceptionBase to avoid interfering
+	 * with exception contexts from an outer VmByteCodeExec invocation.
+	 * This runs AFTER storing the return value so that 'return' in a finally
+	 * block can override it.
+	 */
+	while( SySetUsed(&pVm->aException) > nExceptionBase ){
+		ph7_exception **apExc = (ph7_exception **)SySetBasePtr(&pVm->aException);
+		ph7_exception *pExc = apExc[SySetUsed(&pVm->aException) - 1];
+		(void)SySetPop(&pVm->aException);
+		pExc->pFrame = 0;
+		VmLeaveFrame(&(*pVm));
+		if( pExc->iHasFinally && !pExc->iFinallyDone ){
+			pExc->iFinallyDone = 1;
+			/* Pass pResult so that 'return' inside finally can override the value */
+			rc = VmLocalExec(&(*pVm),&pExc->sFinally,pResult);
+			if( rc == SXERR_ABORT ){
+				goto Abort;
+			}
+		}
 	}
 	goto Done;
 /*
@@ -5376,6 +5401,10 @@ case PH7_OP_MEMBER: {
 					/* Handle self/static/parent keywords */
 					if( nCls == 4 && SyMemcmp(zCls,"self",4) == 0 ){
 						pClass = PH7_VmPeekDeclaringClass(&(*pVm));
+						if( pClass && (pClass->iFlags & PH7_CLASS_TRAIT) ){
+							/* In a trait method, self:: resolves to the using class */
+							pClass = PH7_VmPeekTopClass(&(*pVm));
+						}
 					}else if( nCls == 6 && SyMemcmp(zCls,"static",6) == 0 ){
 						pClass = PH7_VmPeekTopClass(&(*pVm));
 					}else if( nCls == 6 && SyMemcmp(zCls,"parent",6) == 0 ){
