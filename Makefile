@@ -21,8 +21,8 @@ BUILD_DIR = build/$(TARGET)
 PHL_BIN = $(BUILD_DIR)/$(MODE)/phl$(BIN_SUFFIX)
 TOOL_BIN = $(BUILD_DIR)/full/phl$(BIN_SUFFIX)
 
-# Object files (mode-neutral paths, rewritten per-mode by platform includes)
-OBJECTS = \
+# Engine objects (platform-independent core, shared by all modes)
+ENGINE_OBJECTS = \
 	$(BUILD_DIR)/src/sx/sxmutex$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/sx/sxstr$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/sx/sxmem$(OBJ_SUFFIX) \
@@ -56,10 +56,16 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/vm_http$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_http_response$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_json$(OBJ_SUFFIX) \
-	$(BUILD_DIR)/src/ph7/vm_xml$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/vm_xml$(OBJ_SUFFIX)
+
+# Host platform objects (CLI, networking, server)
+HOST_OBJECTS = \
 	$(BUILD_DIR)/src/ph7/net$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/phl/phl$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/phl/server$(OBJ_SUFFIX)
+
+# Combined object list
+OBJECTS = $(ENGINE_OBJECTS) $(HOST_OBJECTS)
 
 
 # --- Test commands ---

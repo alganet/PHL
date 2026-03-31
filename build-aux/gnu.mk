@@ -19,7 +19,7 @@ tiny_OPT_CFLAGS     = -Oz
 coverage_OPT_CFLAGS = -O0 -fprofile-arcs -ftest-coverage
 
 full_LDFLAGS = -lm -lpthread
-tiny_LDFLAGS = 
+tiny_LDFLAGS =
 coverage_LDFLAGS = -lm -lpthread -fprofile-arcs -ftest-coverage
 
 PH7_DEFINES = $($(MODE)_DEFINES)
