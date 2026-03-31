@@ -5,7 +5,6 @@ SPDX-License-Identifier: BSD-3-Clause
 Built-in server serves PHP script with correct superglobals
 --SKIPIF--
 <?php
-if (function_exists('zend_version')) { echo "skip"; }
 $fp = popen("curl --version 2>/dev/null", "r");
 $out = fgets($fp);
 fclose($fp);

@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Built-in server serves static files with correct content
+http_response_code() works in server mode (set/get and HTTP status)
 --SKIPIF--
 <?php
 $fp = popen("curl --version 2>/dev/null", "r");
@@ -14,37 +14,43 @@ if (strlen($out) == 0) { echo "skip curl not available"; }
 <?php
 $phl = getenv('PHPT_TARGET_EXECUTABLE');
 $tmpdir = sys_get_temp_dir() . '/phl_srvtest_' . getmypid();
-$port = 19300 + (getmypid() % 100);
+$port = 19700 + (getmypid() % 100);
 mkdir($tmpdir);
-file_put_contents($tmpdir . '/hello.txt', 'static content here');
+$script = '<?php
+echo http_response_code() . "\n";
+echo http_response_code(201) . "\n";
+echo http_response_code() . "\n";
+';
+file_put_contents($tmpdir . '/t.php', $script);
 
 $fp = popen('"' . $phl . '" -S localhost:' . $port . ' -t "' . $tmpdir . '" >/dev/null 2>&1 & echo $!', 'r');
 $pid = trim(fgets($fp));
 fclose($fp);
 usleep(500000);
 
-$fp2 = popen('curl -s http://localhost:' . $port . '/hello.txt 2>/dev/null', 'r');
+$fp2 = popen('curl -s http://localhost:' . $port . '/t.php 2>/dev/null', 'r');
 $out = '';
 while (!feof($fp2)) { $out .= fgets($fp2); }
 fclose($fp2);
 
-$fp3 = popen('curl -s -o /dev/null -w "%{content_type}" http://localhost:' . $port . '/hello.txt 2>/dev/null', 'r');
-$ct = '';
-while (!feof($fp3)) { $ct .= fgets($fp3); }
+$fp3 = popen('curl -s -o /dev/null -w "%{http_code}" http://localhost:' . $port . '/t.php 2>/dev/null', 'r');
+$code = '';
+while (!feof($fp3)) { $code .= fgets($fp3); }
 fclose($fp3);
 
 echo trim($out) . "\n";
-// Check content-type starts with text/plain (PHP adds charset, PHL doesn't)
-echo (strpos(trim($ct), 'text/plain') === 0) ? "text/plain" : trim($ct);
+echo "status:" . trim($code);
 
 popen('kill ' . $pid . ' 2>/dev/null', 'r');
 usleep(200000);
-unlink($tmpdir . '/hello.txt');
+unlink($tmpdir . '/t.php');
 rmdir($tmpdir);
 ?>
 --EXPECT--
-static content here
-text/plain
+200
+200
+201
+status:201
 --CLEAN--
 <?php
-unset($phl, $tmpdir, $port, $fp, $pid, $fp2, $fp3, $out, $ct);
+unset($phl, $tmpdir, $port, $script, $fp, $pid, $fp2, $fp3, $out, $code);
