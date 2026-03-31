@@ -1211,6 +1211,75 @@ PH7_PRIVATE sxi32 PH7_HashmapDup(ph7_hashmap *pSrc,ph7_hashmap *pDest)
 	return SXRET_OK;
 }
 /*
+ * Copy-on-write separation for arrays.
+ * If the hashmap inside pValue has iRef > 1 (shared), duplicate it so that
+ * pValue owns a private copy. The original map's refcount is decremented.
+ * Returns the (possibly new) hashmap pointer.
+ */
+PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue)
+{
+	ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;
+	ph7_hashmap *pNew;
+	ph7_value *pBacking;
+	if( pMap->iRef < 2 ){
+		/* Sole owner, no separation needed */
+		return pMap;
+	}
+	if( pMap == pVm->pGlobal ){
+		/* Never separate $GLOBALS */
+		return pMap;
+	}
+	/* If this value is a stack copy of a named variable, separate the
+	 * backing variable instead so the change persists after the stack
+	 * frame is popped. */
+	if( pValue->nIdx != SXU32_HIGH ){
+		pBacking = (ph7_value *)SySetAt(&pVm->aMemObj,pValue->nIdx);
+		if( pBacking && pBacking != pValue
+			&& (pBacking->iFlags & MEMOBJ_HASHMAP)
+			&& (ph7_hashmap *)pBacking->x.pOther == pMap ){
+			/* Undo the stack ref to reveal true sharing count */
+			pMap->iRef--;
+			if( pMap->iRef < 2 ){
+				/* After undoing stack ref, sole owner — no separation */
+				pMap->iRef++;
+				return pMap;
+			}
+			pNew = PH7_NewHashmap(pVm,0,0);
+			if( pNew == 0 ){
+				pMap->iRef++;
+				return pMap;
+			}
+			if( PH7_HashmapDup(pMap,pNew) != SXRET_OK ){
+				/* Dup failed (OOM) — discard partial copy, restore state */
+				PH7_HashmapRelease(pNew,TRUE);
+				pMap->iRef++;
+				return pMap;
+			}
+			pNew->iNextIdx = pMap->iNextIdx;
+			pMap->iRef--;  /* Backing variable no longer references old map */
+			pBacking->x.pOther = pNew;
+			/* Update the stack value to match */
+			pValue->x.pOther = pNew;
+			pNew->iRef++;  /* +1 for stack (pValue); iRef=1 from NewHashmap covers pBacking */
+			return pNew;
+		}
+	}
+	pNew = PH7_NewHashmap(pVm,0,0);
+	if( pNew == 0 ){
+		/* Allocation failure — fall through with shared map */
+		return pMap;
+	}
+	if( PH7_HashmapDup(pMap,pNew) != SXRET_OK ){
+		/* Dup failed (OOM) — discard partial copy, keep original */
+		PH7_HashmapRelease(pNew,TRUE);
+		return pMap;
+	}
+	pNew->iNextIdx = pMap->iNextIdx;
+	pMap->iRef--;
+	pValue->x.pOther = pNew;
+	return pNew;
+}
+/*
  * Perform the union of two hashmaps.
  * This operation is performed only if the user uses the '+' operator
  * with a variable holding an array as follows:
@@ -2091,6 +2160,7 @@ static int ph7_hashmap_sort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Point to the internal representation of the input hashmap */
+	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	if( pMap->nEntry > 1 ){
 		sxi32 iCmpFlags = 0;
@@ -2144,6 +2214,7 @@ static int ph7_hashmap_asort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			);
 	}
 	/* Point to the internal representation of the input hashmap */
+	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	if( pMap->nEntry > 1 ){
 		sxi32 iCmpFlags = 0;
@@ -2199,6 +2270,7 @@ static int ph7_hashmap_arsort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			);
 	}
 	/* Point to the internal representation of the input hashmap */
+	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	if( pMap->nEntry > 1 ){
 		sxi32 iCmpFlags = 0;
@@ -2245,6 +2317,7 @@ static int ph7_hashmap_ksort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Point to the internal representation of the input hashmap */
+	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	if( pMap->nEntry > 1 ){
 		sxi32 iCmpFlags = 0;
@@ -2291,6 +2364,7 @@ static int ph7_hashmap_krsort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Point to the internal representation of the input hashmap */
+	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	if( pMap->nEntry > 1 ){
 		sxi32 iCmpFlags = 0;
@@ -2337,6 +2411,7 @@ static int ph7_hashmap_rsort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Point to the internal representation of the input hashmap */
+	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	if( pMap->nEntry > 1 ){
 		sxi32 iCmpFlags = 0;
@@ -2380,6 +2455,7 @@ static int ph7_hashmap_usort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Point to the internal representation of the input hashmap */
+	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	if( pMap->nEntry > 1 ){
 		ph7_value *pCallback = 0;
@@ -2426,6 +2502,7 @@ static int ph7_hashmap_uasort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Point to the internal representation of the input hashmap */
+	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	if( pMap->nEntry > 1 ){
 		ph7_value *pCallback = 0;
@@ -2474,6 +2551,7 @@ static int ph7_hashmap_uksort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Point to the internal representation of the input hashmap */
+	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	if( pMap->nEntry > 1 ){
 		ph7_value *pCallback = 0;
@@ -2517,6 +2595,7 @@ static int ph7_hashmap_shuffle(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Point to the internal representation of the input hashmap */
+	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	if( pMap->nEntry > 1 ){
 		/* Do the merge sort */
@@ -2673,6 +2752,7 @@ static int ph7_hashmap_pop(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			ph7_type_name(apArg[0])
 			);
 	}
+	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	if( pMap->nEntry < 1 ){
 		/* Nothing to pop,return NULL */
@@ -2734,6 +2814,7 @@ static int ph7_hashmap_push(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			);
 	}
 	/* Point to the internal representation of the input hashmap */
+	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	/* Start pushing given values */
 	for( i = 1 ; i < nArg ; ++i ){
@@ -2781,6 +2862,7 @@ static int ph7_hashmap_shift(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			);
 	}
 	/* Point to the internal representation of the hashmap */
+	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	if( pMap->nEntry < 1 ){
 		/* Empty hashmap,return NULL */
@@ -3452,6 +3534,7 @@ static int ph7_hashmap_erase(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Point to the target hashmap */
+	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	/* Erase */
 	PH7_HashmapRelease(pMap,FALSE);
@@ -3716,6 +3799,7 @@ static int ph7_hashmap_splice(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			);
 	}
 	/* Point to the internal representation of the target array */
+	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;
 	/* Get the offset and clamp to valid range */
 	iOfft = ph7_value_to_int(apArg[1]);
@@ -6571,6 +6655,7 @@ static int ph7_hashmap_walk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	pUserData = nArg > 2 ? apArg[2] : 0;
 	/* Point to the internal representation of the input hashmap */
+	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	PH7_MemObjInit(pMap->pVm,&sKey);
 	sKey.nIdx = SXU32_HIGH; /* Mark as constant */
@@ -6701,6 +6786,7 @@ static int ph7_hashmap_walk_recursive(ph7_context *pCtx,int nArg,ph7_value **apA
 			);
 	}
 	/* Point to the internal representation of the input hashmap */
+	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	/* Perform the desired operation */
 	HashmapWalkRecursive(pMap,apArg[1],nArg > 2 ? apArg[2] : 0,0);
