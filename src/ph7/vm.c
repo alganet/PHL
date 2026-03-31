@@ -443,6 +443,8 @@ static VmFrame * VmNewFrame(
 	SySetInit(&pFrame->sRef,&pVm->sAllocator,sizeof(VmSlot));
 	return pFrame;
 }
+/* Forward declaration */
+static VmFrame * VmSkipExceptionFrames(VmFrame *pFrame);
 /*
  * Enter a VM frame.
  */
@@ -480,10 +482,7 @@ static sxi32 VmFrameLink(ph7_vm *pVm,SyString *pName)
 	sxi32 rc;
 	/* Point to the upper frame */
 	pFrame = pVm->pFrame;
-	while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
-		/* Safely ignore the exception frame */
-		pFrame = pFrame->pParent;
-	}
+	pFrame = VmSkipExceptionFrames(pFrame);
 	pTarget = pFrame;
 	pFrame = pTarget->pParent;
 	while( pFrame ){
@@ -543,6 +542,18 @@ static void VmLeaveFrame(ph7_vm *pVm)
 		/* Release the whole structure */
 		SyMemBackendPoolFree(&pVm->sAllocator,pCurFrame);
 	}
+}
+/*
+ * Skip exception frames to reach the nearest non-exception frame.
+ * Exception frames are transparent wrappers pushed by try/catch and
+ * should be skipped when looking for the real execution context.
+ */
+static VmFrame * VmSkipExceptionFrames(VmFrame *pFrame)
+{
+	while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
+		pFrame = pFrame->pParent;
+	}
+	return pFrame;
 }
 /*
  * Compare two functions signature and return the comparison result.
@@ -1640,10 +1651,7 @@ static ph7_value * VmExtractMemObj(
 	sxi32 rc;
 	/* Point to the top active frame */
 	pFrame = pVm->pFrame;
-	while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
-		/* Safely ignore the exception frame */
-		pFrame = pFrame->pParent; /* Parent frame */
-	}
+	pFrame = VmSkipExceptionFrames(pFrame);
 	/* Perform the lookup */
 	if( pName == 0 || pName->nByte < 1 ){
 		static const SyString sAnnon = { " " , sizeof(char) };
@@ -2361,9 +2369,7 @@ static void VmGetFrameContext(ph7_vm *pVm,const char **pzFuncName,int *pnFuncLen
 	if( pFrame == 0 ){
 		return;
 	}
-	while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
-		pFrame = pFrame->pParent;
-	}
+	pFrame = VmSkipExceptionFrames(pFrame);
 	if( pFrame->pParent == 0 ){
 		return;
 	}
@@ -2486,9 +2492,7 @@ PH7_PRIVATE sxi32 PH7_VmThrowException(ph7_context *pCtx,const char *zClass,cons
 
 	pFrame = pVm->pFrame;
 	if( pFrame ){
-		while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
-			pFrame = pFrame->pParent;
-		}
+		pFrame = VmSkipExceptionFrames(pFrame);
 		pFrame->iFlags |= VM_FRAME_THROW;
 	}
 	rc = VmThrowException(&(*pVm),pThis);
@@ -4781,10 +4785,7 @@ case PH7_OP_LOAD_REF: {
 			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"$GLOBALS is a read-only array and therefore cannot be referenced");
 		}else{
 			pFrameLocal = pVm->pFrame;
-			while( pFrameLocal->pParent && (pFrameLocal->iFlags & VM_FRAME_EXCEPTION) ){
-				/* Safely ignore the exception frame */
-				pFrameLocal = pFrameLocal->pParent;
-			}
+			pFrameLocal = VmSkipExceptionFrames(pFrameLocal);
 			/* Query the local frame */
 			pEntry = SyHashGet(&pFrameLocal->hVar,(const void *)sName.zString,sName.nByte);
 			if( pEntry ){
@@ -4850,9 +4851,7 @@ case PH7_OP_LOAD_EXCEPTION: {
 	pFrameLocal->iExceptionJump = pInstr->iP2;
 	/* Point to the frame that trigger the exception */
 	pFrameLocal = pFrameLocal->pParent;
-	while( pFrameLocal->pParent && (pFrameLocal->iFlags & VM_FRAME_EXCEPTION) ){
-		pFrameLocal = pFrameLocal->pParent;
-	}
+	pFrameLocal = VmSkipExceptionFrames(pFrameLocal);
 	pException->pFrame = pFrameLocal;
 	break;
 							}
@@ -4897,10 +4896,7 @@ case PH7_OP_THROW: {
 		goto Abort;
 	}
 #endif
-	while( pFrameLocal->pParent && (pFrameLocal->iFlags & VM_FRAME_EXCEPTION) ){
-		/* Safely ignore the exception frame */
-		pFrameLocal = pFrameLocal->pParent;
-	}
+	pFrameLocal = VmSkipExceptionFrames(pFrameLocal);
 	/* Tell the upper layer that an exception was thrown */
 	pFrameLocal->iFlags |= VM_FRAME_THROW;
 	if( pTos->iFlags & MEMOBJ_OBJ ){
@@ -5093,10 +5089,7 @@ case PH7_OP_FOREACH_STEP: {
 	apStep = (ph7_foreach_step **)SySetBasePtr(&pInfo->aStep);
 	pStep = apStep[SySetUsed(&pInfo->aStep) - 1];
 	pFrameLocal = pVm->pFrame;
-	while( pFrameLocal->pParent && (pFrameLocal->iFlags & VM_FRAME_EXCEPTION) ){
-		/* Safely ignore the exception frame */
-		pFrameLocal = pFrameLocal->pParent;
-	}
+	pFrameLocal = VmSkipExceptionFrames(pFrameLocal);
 	if( pStep->iFlags & PH7_4EACH_STEP_HASHMAP ){
 		ph7_hashmap *pMap = pStep->xIter.pMap;
 		ph7_hashmap_node *pNode;
@@ -5819,10 +5812,7 @@ case PH7_OP_CALL: {
 				}
 				if( pThis == 0  ){
 					VmFrame *pFrameLocal = pVm->pFrame;
-					while( pFrameLocal->pParent && (pFrameLocal->iFlags & VM_FRAME_EXCEPTION) ){
-						/* Safely ignore the exception frame */
-						pFrameLocal = pFrameLocal->pParent;
-					}
+					pFrameLocal = VmSkipExceptionFrames(pFrameLocal);
 					if( pFrameLocal->pParent ){
 						/* TICKET-1433-52: Make sure the '$this' variable is available to the current scope */
 						pThis = pFrameLocal->pThis;
@@ -6212,9 +6202,7 @@ case PH7_OP_CALL: {
 			goto Abort;
 		}else if( rc == PH7_EXCEPTION ){
 			VmFrame *pFrm = pVm->pFrame;
-			while( pFrm->pParent && (pFrm->iFlags & VM_FRAME_EXCEPTION) ){
-				pFrm = pFrm->pParent;
-			}
+			pFrm = VmSkipExceptionFrames(pFrm);
 			if( pFrm->iFlags & VM_FRAME_THROW ){
 				/* Exception was NOT caught, propagate */
 				goto Exception;
@@ -6601,10 +6589,7 @@ static int vm_builtin_func_num_args(ph7_context *pCtx,int nArg,ph7_value **apArg
 	pVm = pCtx->pVm;
 	/* Current frame */
 	pFrame = pVm->pFrame;
-	while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
-		/* Safely ignore the exception frame */
-		pFrame = pFrame->pParent;
-	}
+	pFrame = VmSkipExceptionFrames(pFrame);
 	if( pFrame->pParent == 0 ){
 		SXUNUSED(nArg);
 		SXUNUSED(apArg);
@@ -6635,10 +6620,7 @@ static int vm_builtin_func_get_arg(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	pVm = pCtx->pVm;
 	/* Current frame */
 	pFrame = pVm->pFrame;
-	while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
-		/* Safely ignore the exception frame */
-		pFrame = pFrame->pParent;
-	}
+	pFrame = VmSkipExceptionFrames(pFrame);
 	if( nArg < 1 || pFrame->pParent == 0 ){
 		/* Global frame or Missing arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Called in the global scope");
@@ -6687,10 +6669,7 @@ static int vm_builtin_func_get_args_byref(ph7_context *pCtx,int nArg,ph7_value *
 	sxu32 n;
 	/* Point to the current frame */
 	pFrame = pCtx->pVm->pFrame;
-	while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
-		/* Safely ignore the exception frame */
-		pFrame = pFrame->pParent;
-	}
+	pFrame = VmSkipExceptionFrames(pFrame);
 	if( pFrame->pParent == 0 ){
 		/* Global frame,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Called in the global scope");
@@ -6733,10 +6712,7 @@ static int vm_builtin_func_get_args(ph7_context *pCtx,int nArg,ph7_value **apArg
 	sxu32 n;
 	/* Point to the current frame */
 	pFrame = pCtx->pVm->pFrame;
-	while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
-		/* Safely ignore the exception frame */
-		pFrame = pFrame->pParent;
-	}
+	pFrame = VmSkipExceptionFrames(pFrame);
 	if( pFrame->pParent == 0 ){
 		/* Global frame,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Called in the global scope");
@@ -7051,9 +7027,7 @@ PH7_PRIVATE ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm)
 	ph7_vm_func *pVmFunc;
 
 	/* Skip exception frames to find the actual method frame */
-	while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
-		pFrame = pFrame->pParent;
-	}
+	pFrame = VmSkipExceptionFrames(pFrame);
 
 	/* Check if we're in a method context */
 	if( pFrame->pParent ){
@@ -8655,10 +8629,7 @@ static int vm_builtin_debug_backtrace(ph7_context *pCtx,int nArg,ph7_value **apA
 		VmFrame *pFrame = pVm->pFrame;
 		ph7_vm_func *pFunc;
 		ph7_value *pArg;
-		while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
-			/* Safely ignore the exception frame */
-			pFrame = pFrame->pParent;
-		}
+		pFrame = VmSkipExceptionFrames(pFrame);
 		pFunc = (ph7_vm_func *)pFrame->pUserData;
 		if( pFrame->pParent && pFunc ){
 			ph7_value_string(pValue,pFunc->sName.zString,(int)pFunc->sName.nByte);
@@ -8724,10 +8695,7 @@ static int VmMiniBacktrace(
 	ph7_class *pClass;
 	SyString *pFile;
 	/* Called function */
-	while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
-		/* Safely ignore the exception frame */
-		pFrame = pFrame->pParent;
-	}
+	pFrame = VmSkipExceptionFrames(pFrame);
 	pFunc = (ph7_vm_func *)pFrame->pUserData;
 	SyBlobAppend(pOut,"[",sizeof(char));
 	if( pFrame->pParent && pFunc ){
@@ -8878,7 +8846,35 @@ static sxi32 VmUncaughtException(
 	return rc;
 }
 /*
- * Throw an user exception.
+ * Throw a user exception.
+ *
+ * Exception dispatch follows this sequence:
+ *
+ * 1. Walk the exception stack (pVm->aException) from top to find a
+ *    try/catch whose catch block matches the exception class.
+ *
+ * 2. If NO catch matches:
+ *    a. Run finally (if present) for the current try block.
+ *    b. If outer handlers exist on the stack, re-throw recursively.
+ *    c. If we're inside a catch body (VM_FRAME_CATCH on frame stack)
+ *       whose outer handlers were temporarily hidden, DEFER the
+ *       exception in pVm->pPendingException instead of reporting it
+ *       uncaught. It will be re-thrown after finally runs (step 3d).
+ *    d. Otherwise, report as truly uncaught.
+ *
+ * 3. If a catch DOES match:
+ *    a. Temporarily HIDE all outer exception handlers by saving the
+ *       aException stack and resetting it. This prevents a re-throw
+ *       inside the catch body from immediately propagating past our
+ *       finally block.
+ *    b. Execute the catch body via VmLocalExec in a VM_FRAME_CATCH
+ *       frame. If the catch body throws, dispatch recurses but finds
+ *       no handlers (they're hidden), so the exception is deferred
+ *       in pPendingException (step 2c).
+ *    c. Restore outer handlers from the saved copy.
+ *    d. Run finally (if present).
+ *    e. If pPendingException is set (catch re-threw), re-throw it now
+ *       that handlers are restored and finally has run.
  */
 static sxi32 VmThrowException(
 	ph7_vm *pVm,              /* Target VM */
@@ -8959,9 +8955,7 @@ static sxi32 VmThrowException(
 		rc = VmUncaughtException(&(*pVm),pThis);
 		if( rc == SXRET_OK && pException ){
 			VmFrame *pFrame = pVm->pFrame;
-			while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
-				pFrame = pFrame->pParent;
-			}
+			pFrame = VmSkipExceptionFrames(pFrame);
 			if( pException->pFrame == pFrame ){
 				pFrame->iFlags &= ~VM_FRAME_THROW;
 			}
@@ -8972,9 +8966,7 @@ static sxi32 VmThrowException(
 		ph7_exception **apSaved = 0;
 		sxu32 nSavedCount;
 		sxi32 rc;
-		while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
-			pFrame = pFrame->pParent;
-		}
+		pFrame = VmSkipExceptionFrames(pFrame);
 		if( pException->pFrame == pFrame ){
 			pFrame->iFlags &= ~VM_FRAME_THROW;
 		}
@@ -10767,10 +10759,7 @@ PH7_PRIVATE sxi32 PH7_VmRefObjInstall(
 		/* Install the entry */
 		VmRefObjInsert(&(*pVm),pRef);
 	}
-	while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){
-		/* Safely ignore the exception frame */
-		pFrame = pFrame->pParent;
-	}
+	pFrame = VmSkipExceptionFrames(pFrame);
 	if( pFrame->pParent != 0 && pEntry ){
 		VmSlot sRef;
 		/* Local frame,record referenced entry so that it can
