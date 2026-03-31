@@ -48,13 +48,13 @@ Coverage: 89/115 lines (77.39%)
 |    - |   38 | `/*` |
 |    - |   39 | ` * Display an error message and exit.` |
 |    - |   40 | ` */` |
-|  258 |   41 | `static void Fatal(const char *zMsg)` |
+|  262 |   41 | `static void Fatal(const char *zMsg)` |
 |    1 |   42 |  |
-|  259 |   43 | `	puts(zMsg);` |
+|  263 |   43 | `	puts(zMsg);` |
 |    - |   44 | `	/* Shutdown the library */` |
-|  259 |   45 | `	ph7_lib_shutdown();` |
+|  263 |   45 | `	ph7_lib_shutdown();` |
 |    - |   46 | `	/* Exit immediately */` |
-|  259 |   47 | `	exit(0);` |
+|  263 |   47 | `	exit(0);` |
 |  ! 0 |   48 |  |
 |    - |   49 | `/*` |
 |    - |   50 | ` * Display the banner,a help message and exit.` |
@@ -101,9 +101,9 @@ Coverage: 89/115 lines (77.39%)
 |    - |   91 | ` * This function is registered later via a call to ph7_vm_config()` |
 |    - |   92 | ` * with a configuration verb set to: PH7_VM_CONFIG_OUTPUT.` |
 |    - |   93 | ` */` |
-| 6646 |   94 | `static int Output_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUserData /* Unused */)` |
+| 6710 |   94 | `static int Output_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUserData /* Unused */)` |
 |    2 |   95 |  |
-| 3323 |   96 | `	(void)pUserData;` |
+| 3355 |   96 | `	(void)pUserData;` |
 |    - |   97 | `#ifdef __WINNT__` |
 |    - |   98 | `	BOOL rc;` |
 |    2 |   99 | `	rc = WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),pOutput,(DWORD)nOutputLen,0,0);` |
@@ -113,33 +113,33 @@ Coverage: 89/115 lines (77.39%)
 |    - |  103 | `	}` |
 |    - |  104 | `#else` |
 |    - |  105 | `	ssize_t nWr;` |
-| 6646 |  106 | `	nWr = write(STDOUT_FILENO,pOutput,nOutputLen);` |
-| 6646 |  107 | `	if( nWr < 0 ){` |
+| 6710 |  106 | `	nWr = write(STDOUT_FILENO,pOutput,nOutputLen);` |
+| 6710 |  107 | `	if( nWr < 0 ){` |
 |    - |  108 | `		/* Abort processing */` |
 |  ! 0 |  109 | `		return PH7_ABORT;` |
 |    - |  110 | `	}` |
 |    - |  111 | `#endif /* __WINT__ */` |
 |    - |  112 | `	/* All done,VM output was redirected to STDOUT */` |
-| 6648 |  113 | `	return PH7_OK;` |
-| 3325 |  114 |  |
+| 6712 |  113 | `	return PH7_OK;` |
+| 3357 |  114 |  |
 |    - |  115 | `/*` |
 |    - |  116 | ` * Main program: Compile and execute the PHP file.` |
 |    - |  117 | ` */` |
-| 2631 |  118 | `int main(int argc,char **argv)` |
+| 2677 |  118 | `int main(int argc,char **argv)` |
 |    2 |  119 |  |
 |    - |  120 | `	ph7 *pEngine; /* PH7 engine */` |
 |    - |  121 | `	ph7_vm *pVm;  /* Compiled PHP program */` |
-| 2633 |  122 | `	int dump_vm = 0;    /* Dump VM instructions if TRUE */` |
-| 2633 |  123 | `	int run_code = 0;    /* Run inline code if TRUE */` |
-| 2633 |  124 | `	const char *zRunCode = 0; /* Inline code string */` |
+| 2679 |  122 | `	int dump_vm = 0;    /* Dump VM instructions if TRUE */` |
+| 2679 |  123 | `	int run_code = 0;    /* Run inline code if TRUE */` |
+| 2679 |  124 | `	const char *zRunCode = 0; /* Inline code string */` |
 |    - |  125 | `	int n;              /* Script arguments */` |
 |    - |  126 | `	int rc;` |
 |    - |  127 | `	/* Process interpreter arguments first*/` |
-| 2645 |  128 | `	for(n = 1 ; n < argc ; ++n ){` |
+| 2691 |  128 | `	for(n = 1 ; n < argc ; ++n ){` |
 |    - |  129 | `		int c;` |
-| 2516 |  130 | `		if( argv[n][0] != '-' ){` |
+| 2560 |  130 | `		if( argv[n][0] != '-' ){` |
 |    - |  131 | `			/* No more interpreter arguments */` |
-| 2502 |  132 | `			break;` |
+| 2546 |  132 | `			break;` |
 |    - |  133 | `		}` |
 |    - |  134 | `		/* Check for long options */` |
 |   15 |  135 | `		if( argv[n][1] == '-' ){` |
@@ -173,7 +173,7 @@ Coverage: 89/115 lines (77.39%)
 |  ! 0 |  163 | `			Help();` |
 |    - |  164 | `		}` |
 |    6 |  165 | `	}` |
-| 2631 |  166 | `	if( n >= argc && !run_code ){` |
+| 2677 |  166 | `	if( n >= argc && !run_code ){` |
 |  ! 0 |  167 | `		puts("Missing PHP file to compile");` |
 |  ! 0 |  168 | `		Help();` |
 |  ! 0 |  169 | `	}` |
@@ -183,8 +183,8 @@ Coverage: 89/115 lines (77.39%)
 |    2 |  173 | `	CreateMiniDumpOnUnHandledException();` |
 |    - |  174 | `#endif` |
 |    - |  175 | `	/* Allocate a new PH7 engine instance */` |
-| 2379 |  176 | `	rc = ph7_init(&pEngine);` |
-| 2379 |  177 | `	if( rc != PH7_OK ){` |
+| 2421 |  176 | `	rc = ph7_init(&pEngine);` |
+| 2421 |  177 | `	if( rc != PH7_OK ){` |
 |    - |  178 | `		/*` |
 |    - |  179 | `		 * If the supplied memory subsystem is so sick that we are unable` |
 |    - |  180 | `		 * to allocate a tiny chunk of memory,there is no much we can do here.` |
@@ -194,12 +194,12 @@ Coverage: 89/115 lines (77.39%)
 |    - |  184 | `	/* Set an error log consumer callback. This callback [Output_Consumer()] will` |
 |    - |  185 | `	 * redirect all compile-time error messages to STDOUT.` |
 |    - |  186 | `	 */` |
-| 2379 |  187 | `	ph7_config(pEngine,PH7_CONFIG_ERR_OUTPUT,` |
+| 2421 |  187 | `	ph7_config(pEngine,PH7_CONFIG_ERR_OUTPUT,` |
 |    - |  188 | `		Output_Consumer, /* Error log consumer */` |
 |    - |  189 |  |
 |    - |  190 | `		);` |
 |    - |  191 | `	/* Now,it's time to compile our PHP file */` |
-| 2379 |  192 | `	if( run_code ){` |
+| 2421 |  192 | `	if( run_code ){` |
 |    - |  193 | `		/* Compile inline PHP code string (PHP only - no tags needed) */` |
 |    9 |  194 | `		rc = ph7_compile_v2(` |
 |    4 |  195 | `			pEngine, /* PH7 Engine */` |
@@ -217,34 +217,34 @@ Coverage: 89/115 lines (77.39%)
 |    - |  207 | `			}` |
 |  ! 0 |  208 | `		}` |
 |    5 |  209 | `	}else{` |
-| 2371 |  210 | `		rc = ph7_compile_file(` |
-| 1120 |  211 | `			pEngine, /* PH7 Engine */` |
-| 2369 |  212 | `			argv[n], /* Path to the PHP file to compile */` |
+| 2413 |  210 | `		rc = ph7_compile_file(` |
+| 1140 |  211 | `			pEngine, /* PH7 Engine */` |
+| 2411 |  212 | `			argv[n], /* Path to the PHP file to compile */` |
 |    - |  213 | `			&pVm,    /* OUT: Compiled PHP program */` |
 |    - |  214 |  |
 |    - |  215 | `			);` |
-| 2371 |  216 | `		if( rc != PH7_OK ){ /* Compile error */` |
-|  259 |  217 | `			if( rc == PH7_IO_ERR ){` |
+| 2413 |  216 | `		if( rc != PH7_OK ){ /* Compile error */` |
+|  263 |  217 | `			if( rc == PH7_IO_ERR ){` |
 |  ! 0 |  218 | `				Fatal("IO error while opening the target file");` |
-|  259 |  219 | `			}else if( rc == PH7_VM_ERR ){` |
+|  263 |  219 | `			}else if( rc == PH7_VM_ERR ){` |
 |  ! 0 |  220 | `				Fatal("VM initialization error");` |
 |  ! 0 |  221 | `			}else{` |
 |    - |  222 | `				/* Compile-time error, your output (STDOUT) should display the error messages */` |
-|  259 |  223 | `				Fatal("Compile error");` |
+|  263 |  223 | `				Fatal("Compile error");` |
 |    - |  224 | `			}` |
-|  129 |  225 | `		}` |
+|  131 |  225 | `		}` |
 |    - |  226 | `	}` |
 |    - |  227 | `	/*` |
 |    - |  228 | `	 * Now we have our script compiled,it's time to configure our VM.` |
 |    - |  229 | `	 * We will install the VM output consumer callback defined above` |
 |    - |  230 | `	 * so that we can consume the VM output and redirect it to STDOUT.` |
 |    - |  231 | `	 */` |
-| 2250 |  232 | `	rc = ph7_vm_config(pVm,` |
+| 2290 |  232 | `	rc = ph7_vm_config(pVm,` |
 |    - |  233 | `		PH7_VM_CONFIG_OUTPUT,` |
 |    - |  234 | `		Output_Consumer,    /* Output Consumer callback */` |
 |    - |  235 |  |
 |    - |  236 | `		);` |
-| 2250 |  237 | `	if( rc != PH7_OK ){` |
+| 2290 |  237 | `	if( rc != PH7_OK ){` |
 |  ! 0 |  238 | `		Fatal("Error while installing the VM output consumer callback");` |
 |  ! 0 |  239 | `	}` |
 |    - |  240 | `	/* Register script arguments so we can access them later using the $argv[]` |
@@ -252,18 +252,18 @@ Coverage: 89/115 lines (77.39%)
 |    - |  242 | `	 * to register the arguments after the script file, while for inline code` |
 |    - |  243 | `	 * (-r) the arguments start at the current index.` |
 |    - |  244 | `	 */` |
-| 2250 |  245 | `	if( run_code ){` |
+| 2290 |  245 | `	if( run_code ){` |
 |   11 |  246 | `		for( ; n < argc ; ++n ){` |
 |    2 |  247 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,argv[n]/* Argument value */);` |
 |    1 |  248 | `		}` |
 |    5 |  249 | `	}else{` |
-| 2262 |  250 | `		for( n = n + 1; n < argc ; ++n ){` |
+| 2302 |  250 | `		for( n = n + 1; n < argc ; ++n ){` |
 |   22 |  251 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,argv[n]/* Argument value */);` |
 |   12 |  252 | `		}` |
 |    - |  253 | `	}` |
 |    - |  254 | `	/* Report script run-time errors (now default behavior) */` |
-| 2250 |  255 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_ERR_REPORT);` |
-| 2250 |  256 | `	if( dump_vm ){` |
+| 2290 |  255 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_ERR_REPORT);` |
+| 2290 |  256 | `	if( dump_vm ){` |
 |    - |  257 | `		/* Dump PH7 byte-code instructions */` |
 |    3 |  258 | `		ph7_vm_dump_v2(pVm,` |
 |    - |  259 | `			Output_Consumer, /* Dump consumer callback */` |
@@ -274,11 +274,11 @@ Coverage: 89/115 lines (77.39%)
 |    - |  264 | `	 * And finally, execute our program. Note that your output (STDOUT in our case)` |
 |    - |  265 | `	 * should display the result.` |
 |    - |  266 | `	 */` |
-| 2250 |  267 | `	ph7_vm_exec(pVm,0);` |
+| 2290 |  267 | `	ph7_vm_exec(pVm,0);` |
 |    - |  268 | `	/* All done, cleanup the mess left behind.` |
 |    - |  269 | `	*/` |
-| 2246 |  270 | `	ph7_vm_release(pVm);` |
-| 2246 |  271 | `	ph7_release(pEngine);` |
-| 2246 |  272 | `	return 0;` |
+| 2286 |  270 | `	ph7_vm_release(pVm);` |
+| 2286 |  271 | `	ph7_release(pEngine);` |
+| 2286 |  272 | `	return 0;` |
 |    2 |  273 |  |
 |    - |  274 |  |
