@@ -1239,23 +1239,49 @@ static sxi32 GenStateListNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRoot)
  *  Return Values
  *   The assigned array.
  */
+/* Nested list entry recorded during first pass of PH7_CompileList */
+struct NestedListEntry {
+	sxi32 nIndex;        /* Position in the outer list (0-based) */
+	SyToken *pStart;     /* Token range: 'list' keyword */
+	SyToken *pEnd;       /* Token range: past closing ')' */
+};
 PH7_PRIVATE sxi32 PH7_CompileList(ph7_gen_state *pGen,sxi32 iCompileFlag)
 {
+	SySet sNested; /* Dynamically-sized container of NestedListEntry */
 	SyToken *pNext;
 	sxi32 nExpr;
 	sxi32 rc;
 	nExpr = 0;
+	SySetInit(&sNested,&pGen->pVm->sAllocator,sizeof(struct NestedListEntry));
 	/* Jump the 'list' keyword,the leading left parenthesis and the trailing parenthesis */
 	pGen->pIn += 2;
 	pGen->pEnd--;
 	SXUNUSED(iCompileFlag); /* cc warning */
 	while( SXRET_OK == PH7_GetNextExpr(pGen->pIn,pGen->pEnd,&pNext) ){
 		if( pGen->pIn < pNext ){
-			/* Compile the expression holding the variable */
-			rc = GenStateCompileArrayEntry(&(*pGen),pGen->pIn,pNext,EXPR_FLAG_LOAD_IDX_STORE,GenStateListNodeValidator);
-			if( rc != SXRET_OK ){
-				/* Do not bother compiling this expression, it's broken anyway */
-				return SXRET_OK;
+			/* Check for nested list() */
+			if( (pGen->pIn->nType & PH7_TK_KEYWORD) &&
+				SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_LIST ){
+				/* Record this nested list for post-processing */
+				SyToken *pListEnd = 0;
+				if( &pGen->pIn[1] < pNext && (pGen->pIn[1].nType & PH7_TK_LPAREN) ){
+					PH7_DelimitNestedTokens(pGen->pIn+2,pNext,PH7_TK_LPAREN,PH7_TK_RPAREN,&pListEnd);
+				}
+				if( pListEnd ){
+					struct NestedListEntry sEntry;
+					sEntry.nIndex = nExpr;
+					sEntry.pStart = pGen->pIn;
+					sEntry.pEnd = pListEnd + 1;
+					SySetPut(&sNested,(const void *)&sEntry);
+				}
+				/* Emit NULL placeholder — outer LOAD_LIST will skip this index */
+				PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,0,0,0);
+			}else{
+				/* Compile the expression holding the variable */
+				rc = GenStateCompileArrayEntry(&(*pGen),pGen->pIn,pNext,EXPR_FLAG_LOAD_IDX_STORE,GenStateListNodeValidator);
+				if( rc != SXRET_OK ){
+					return SXRET_OK;
+				}
 			}
 		}else{
 			/* Empty entry,load NULL */
@@ -1267,6 +1293,46 @@ PH7_PRIVATE sxi32 PH7_CompileList(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	}
 	/* Emit the LOAD_LIST instruction */
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_LIST,nExpr,0,0,0);
+	/* After LOAD_LIST, the source array is still on the stack top.
+	 * For each nested list() entry, emit code to extract the sub-array
+	 * at the corresponding index and recursively destructure it.
+	 */
+	if( SySetUsed(&sNested) > 0 ){
+		struct NestedListEntry *apNested = (struct NestedListEntry *)SySetBasePtr(&sNested);
+		sxu32 i;
+		for(i = 0; i < SySetUsed(&sNested); i++){
+			SyToken *pSavedIn = pGen->pIn;
+			SyToken *pSavedEnd = pGen->pEnd;
+			ph7_value *pIdx;
+			sxu32 nConstIdx;
+			/* DUP the source array (it's on stack top) */
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_DUP,0,0,0,0);
+			/* Push the integer index for this nested entry */
+			pIdx = PH7_ReserveConstObj(pGen->pVm,&nConstIdx);
+			if( pIdx == 0 ){
+				PH7_GenCompileError(&(*pGen),E_ERROR,0,"Fatal, PH7 engine is running out of memory");
+				SySetRelease(&sNested);
+				return SXERR_ABORT;
+			}
+			PH7_MemObjInitFromInt(pGen->pVm,pIdx,(sxi64)apNested[i].nIndex);
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nConstIdx,0,0);
+			/* LOAD_IDX: pop index, replace DUP'd source with source[index] */
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_IDX,1,0,0,0);
+			/* Recursively compile the inner list() */
+			pGen->pIn = apNested[i].pStart;
+			pGen->pEnd = apNested[i].pEnd;
+			rc = PH7_CompileList(&(*pGen),0);
+			pGen->pIn = pSavedIn;
+			pGen->pEnd = pSavedEnd;
+			if( rc == SXERR_ABORT ){
+				SySetRelease(&sNested);
+				return SXERR_ABORT;
+			}
+			/* Pop the leftover source[index] from the inner LOAD_LIST */
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
+		}
+	}
+	SySetRelease(&sNested);
 	/* Node successfully compiled */
 	return SXRET_OK;
 }
@@ -1860,6 +1926,34 @@ Synchronize:
  *  Note:
  *   continue 0; and continue 1; is the same as running continue;.
  */
+/*
+ * Emit PH7_OP_POP_EXCEPTION for each exception block between the current
+ * block and the target loop block. This ensures finally blocks run when
+ * break/continue crosses a try boundary.
+ *
+ * Stop walking at catch/finally blocks (GEN_BLOCK_EXCEPTION without pUserData):
+ * those are compiled into separate bytecode containers executed via VmLocalExec,
+ * so we must not emit POP_EXCEPTION for the parent try from inside them.
+ */
+static void GenStateEmitExceptionPopForBreak(ph7_gen_state *pGen,GenBlock *pTarget)
+{
+	GenBlock *pBlock = pGen->pCurrent;
+	while( pBlock && pBlock != pTarget ){
+		if( pBlock->iFlags & GEN_BLOCK_EXCEPTION ){
+			if( pBlock->pUserData ){
+				/* This is a try block with an exception context — emit POP_EXCEPTION */
+				PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP_EXCEPTION,0,0,pBlock->pUserData,0);
+			}else{
+				/* This is a catch/finally block compiled into a separate bytecode
+				 * container. Stop here — we cannot cross into the parent try's
+				 * exception context from a sub-execution.
+				 */
+				break;
+			}
+		}
+		pBlock = pBlock->pParent;
+	}
+}
 static sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 {
 	GenBlock *pLoop; /* Target loop */
@@ -1891,6 +1985,8 @@ static sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 		}
 	}else{
 		sxu32 nInstrIdx = 0;
+		/* Emit POP_EXCEPTION for any try blocks between here and the loop */
+		GenStateEmitExceptionPopForBreak(&(*pGen),pLoop);
 		if( pLoop->iFlags & GEN_BLOCK_SWITCH ){
 			/* According to the PHP language reference manual
 			 *  Note that unlike some other languages, the continue statement applies to switch
@@ -1957,6 +2053,8 @@ static sxi32 PH7_CompileBreak(ph7_gen_state *pGen)
 		}
 	}else{
 		sxu32 nInstrIdx;
+		/* Emit POP_EXCEPTION for any try blocks between here and the loop */
+		GenStateEmitExceptionPopForBreak(&(*pGen),pLoop);
 		rc = PH7_VmEmitInstr(pGen->pVm,PH7_OP_JMP,0,0,0,&nInstrIdx);
 		if( rc == SXRET_OK ){
 			/* Fix the jump later when the jump destination is resolved */
@@ -5068,11 +5166,27 @@ static sxi32 GenStateCheckInterfaceSignatures(ph7_gen_state *pGen,ph7_class *pCl
 					return SXERR_ABORT;
 				}
 			}
-			/* Check parameter count: implementation must accept at least as many parameters */
+			/* Check parameter compatibility: implementation must accept at least as many
+			 * required parameters. Extra parameters are allowed only if they have defaults.
+			 */
 			{
 				sxu32 nIfaceArgs = SySetUsed(&pIfaceMeth->sFunc.aArgs);
 				sxu32 nImplArgs = SySetUsed(&pImplMeth->sFunc.aArgs);
+				int sigError = 0;
 				if( nImplArgs < nIfaceArgs ){
+					sigError = 1;
+				}else if( nImplArgs > nIfaceArgs ){
+					/* Extra parameters must all have default values */
+					ph7_vm_func_arg *aImplArgs = (ph7_vm_func_arg *)SySetBasePtr(&pImplMeth->sFunc.aArgs);
+					sxu32 k;
+					for(k = nIfaceArgs; k < nImplArgs; k++){
+						if( SySetUsed(&aImplArgs[k].aByteCode) == 0 ){
+							sigError = 1;
+							break;
+						}
+					}
+				}
+				if( sigError ){
 					SyBlob sImplSig, sIfaceSig;
 					ph7_vm_func_arg *aArgs;
 					sxu32 j;
@@ -6516,6 +6630,8 @@ static sxi32 PH7_CompileTry(ph7_gen_state *pGen)
 	if( rc != SXRET_OK ){
 		return SXERR_ABORT;
 	}
+	/* Store exception pointer so break/continue can emit POP_EXCEPTION */
+	pTry->pUserData = pException;
 	/* Emit the 'LOAD_EXCEPTION' instruction */
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_EXCEPTION,0,0,pException,&nJmpIdx);
 	/* Fix the jump later when the destination is resolved */
