@@ -21,9 +21,9 @@ tiny_CFLAGS = $(BASE_CFLAGS) /Os $(tiny_DEFINES:-=/) $(tiny_EXTRA_CFLAGS) /Fd$(B
 coverage_CFLAGS = $(BASE_CFLAGS) /Od /Zi $(coverage_DEFINES:-=/) $(coverage_EXTRA_CFLAGS) /DPH7_DEBUG /Fd$(BUILD_DIR:/=\)\coverage\ph7-coverage.pdb
 
 # Per-mode LDFLAGS (used by patterns.mk generated link rules)
-full_LDFLAGS = /nologo /link advapi32.lib /subsystem:console /entry:mainCRTStartup
+full_LDFLAGS = /nologo /link advapi32.lib ws2_32.lib /subsystem:console /entry:mainCRTStartup
 tiny_LDFLAGS = /nologo /link advapi32.lib /subsystem:console /entry:mainCRTStartup
-coverage_LDFLAGS = /nologo /link advapi32.lib dbghelp.lib /subsystem:console /entry:mainCRTStartup
+coverage_LDFLAGS = /nologo /link advapi32.lib dbghelp.lib ws2_32.lib /subsystem:console /entry:mainCRTStartup
 
 LDFLAGS = $(full_LDFLAGS)
 
