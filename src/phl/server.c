@@ -273,6 +273,92 @@ static void SendError(ph7_socket sock, int iStatus, const char *zStatus)
 	SendResponse(sock, iStatus, zStatus, "text/html", zBody, nBody);
 }
 /*
+ * Map a status code to a reason phrase.
+ */
+static const char *StatusReason(int iStatus)
+{
+	switch( iStatus ){
+	case 200: return "OK";
+	case 201: return "Created";
+	case 204: return "No Content";
+	case 301: return "Moved Permanently";
+	case 302: return "Found";
+	case 304: return "Not Modified";
+	case 400: return "Bad Request";
+	case 401: return "Unauthorized";
+	case 403: return "Forbidden";
+	case 404: return "Not Found";
+	case 405: return "Method Not Allowed";
+	case 500: return "Internal Server Error";
+	case 502: return "Bad Gateway";
+	case 503: return "Service Unavailable";
+	default:  return "";
+	}
+}
+/*
+ * Send an HTTP response using the VM's response headers and status code.
+ * Falls back to Content-Type: text/html if the script didn't set one.
+ */
+/*
+ * State passed to the response header callback.
+ */
+typedef struct VmResponseCtx VmResponseCtx;
+struct VmResponseCtx {
+	ph7_socket sock;
+	int bHasContentType;
+};
+static int VmResponseHeaderCB(const char *zName, unsigned int nName,
+							   const char *zValue, unsigned int nValue,
+							   void *pUserData)
+{
+	VmResponseCtx *pCtx = (VmResponseCtx *)pUserData;
+	char zLine[512];
+	int nLine;
+	nLine = snprintf(zLine, sizeof(zLine), "%.*s: %.*s\r\n",
+		(int)nName, zName, (int)nValue, zValue);
+	if( nLine > (int)sizeof(zLine) ) nLine = (int)sizeof(zLine);
+	PH7_NetSendAll(pCtx->sock, zLine, nLine);
+	if( nName == 12 && SyStrnicmp(zName, "Content-Type", 12) == 0 ){
+		pCtx->bHasContentType = 1;
+	}
+	return PH7_OK;
+}
+static void SendVmResponse(ph7_socket sock, ph7_vm *pVm,
+							const void *pBody, int nBodyLen)
+{
+	int iStatus;
+	VmResponseCtx sCtx;
+	char zLine[512];
+	int nLine;
+	iStatus = 200;
+	ph7_vm_config(pVm, PH7_VM_CONFIG_RESPONSE_STATUS, &iStatus);
+	/* Status line */
+	nLine = snprintf(zLine, sizeof(zLine), "HTTP/1.1 %d %s\r\n", iStatus, StatusReason(iStatus));
+	if( nLine > (int)sizeof(zLine) ) nLine = (int)sizeof(zLine);
+	PH7_NetSendAll(sock, zLine, nLine);
+	/* Script-set headers via callback */
+	sCtx.sock = sock;
+	sCtx.bHasContentType = 0;
+	ph7_vm_config(pVm, PH7_VM_CONFIG_RESPONSE_HEADERS, VmResponseHeaderCB, &sCtx);
+	/* Default Content-Type if not set by the script */
+	if( !sCtx.bHasContentType ){
+		PH7_NetSendAll(sock, "Content-Type: text/html\r\n", 25);
+	}
+	/* Standard headers */
+	nLine = snprintf(zLine, sizeof(zLine),
+		"Content-Length: %d\r\n"
+		"Connection: close\r\n"
+		"Server: PHL/" PH7_VERSION "\r\n"
+		"\r\n",
+		nBodyLen);
+	if( nLine > (int)sizeof(zLine) ) nLine = (int)sizeof(zLine);
+	PH7_NetSendAll(sock, zLine, nLine);
+	/* Body */
+	if( pBody && nBodyLen > 0 ){
+		PH7_NetSendAll(sock, pBody, nBodyLen);
+	}
+}
+/*
  * Serve a static file.
  */
 static void ServeStaticFile(ph7_socket sock, const char *zPath, long nFileSize)
@@ -420,8 +506,8 @@ static void ExecutePhpScript(ph7 *pEngine, ph7_socket client,
 	pOutput = 0;
 	nOutputLen = 0;
 	ph7_vm_config(pVm, PH7_VM_CONFIG_EXTRACT_OUTPUT, &pOutput, &nOutputLen);
-	/* Send the response */
-	SendResponse(client, 200, "OK", "text/html", pOutput, (int)nOutputLen);
+	/* Send the response using VM-set headers and status code */
+	SendVmResponse(client, pVm, pOutput, (int)nOutputLen);
 	ph7_vm_release(pVm);
 }
 /*
@@ -475,7 +561,7 @@ static int HandleRequest(ph7 *pEngine, ph7_socket client,
 				pOutput = 0;
 				nOutputLen = 0;
 				ph7_vm_config(pVm, PH7_VM_CONFIG_EXTRACT_OUTPUT, &pOutput, &nOutputLen);
-				SendResponse(client, 200, "OK", "text/html", pOutput, (int)nOutputLen);
+				SendVmResponse(client, pVm, pOutput, (int)nOutputLen);
 				ph7_vm_release(pVm);
 				return 200;
 			}

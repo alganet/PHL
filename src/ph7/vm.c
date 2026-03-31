@@ -1248,6 +1248,9 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SySetInit(&pVm->aPaths,&pVm->sAllocator,sizeof(SyString));
 	SySetInit(&pVm->aIncluded,&pVm->sAllocator,sizeof(SyString));
 	SySetInit(&pVm->aOB,&pVm->sAllocator,sizeof(VmObEntry));
+	SySetInit(&pVm->aResponseHeaders,&pVm->sAllocator,sizeof(VmResponseHeader));
+	pVm->iResponseStatus = 200;
+	pVm->bHeadersSent = 0;
 	SySetInit(&pVm->aIOstream,&pVm->sAllocator,sizeof(ph7_io_stream *));
 	/* Error callbacks containers */
 	PH7_MemObjInit(&(*pVm),&pVm->aExceptionCB[0]);
@@ -1340,6 +1343,20 @@ PH7_PRIVATE sxi32 PH7_VmBlobConsumer(
 	 /* Store the output in an internal BLOB */
 	 rc = SyBlobAppend((SyBlob *)pUserData,pOut,nLen);
 	 return rc;
+}
+/*
+ * Track output length and mark headers as sent when output reaches
+ * a real external consumer (not the internal blob or OB buffer).
+ */
+static void VmTrackOutput(ph7_vm *pVm, sxu32 nLen)
+{
+	ProcConsumer xCons = pVm->sVmConsumer.xConsumer;
+	if( xCons != VmObConsumer ){
+		pVm->nOutputLen += nLen;
+		if( !pVm->bHeadersSent && xCons != PH7_VmBlobConsumer ){
+			pVm->bHeadersSent = 1;
+		}
+	}
 }
 #define VM_STACK_GUARD 16
 /*
@@ -1436,6 +1453,8 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	PH7_RegisterBuiltInConstant(&(*pVm));
 	/* Register built-in functions [i.e: is_null(), array_diff(), strlen(), etc.] */
 	PH7_RegisterBuiltInFunction(&(*pVm));
+	/* Register HTTP response functions [i.e: header(), http_response_code(), etc.] */
+	PH7_RegisterHttpResponseFunctions(&(*pVm));
 	/* Initialize and install static and constants class attributes */
 	SyHashResetLoopCursor(&pVm->hClass);
 	while((pEntry = SyHashGetNextEntry(&pVm->hClass)) != 0 ){
@@ -1460,6 +1479,11 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	/* TICKET 1433-003: As of this version, the VM is automatically reset */
 	SyBlobReset(&pVm->sConsumer);
 	PH7_MemObjRelease(&pVm->sExec);
+	/* Reset HTTP response state (frees header strings) */
+	PH7_VmReleaseResponseHeaders(pVm);
+	pVm->iResponseStatus = 200;
+	pVm->bHeadersSent = 0;
+	pVm->bHttpContext = 0;
 	/* Set the ready flag */
 	pVm->nMagic = PH7_VM_RUN;
 	return SXRET_OK;
@@ -2075,8 +2099,39 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 		}
 		/* Process the request */
 		rc = PH7_VmHttpProcessRequest(&(*pVm),zRequest,nByte);
+		/* Mark this VM as operating in HTTP context only on success */
+		if( rc == SXRET_OK ){
+			pVm->bHttpContext = 1;
+		}
 		break;
 									}
+	case PH7_VM_CONFIG_RESPONSE_STATUS: {
+		/* Extract HTTP response status code */
+		int *pStatus = va_arg(ap, int *);
+		if( pStatus ){
+			*pStatus = pVm->iResponseStatus;
+		}
+		break;
+										}
+	case PH7_VM_CONFIG_RESPONSE_HEADERS: {
+		/* Iterate response headers via callback */
+		typedef int (*ProcHeaderConsumer)(const char *,unsigned int,const char *,unsigned int,void *);
+		ProcHeaderConsumer xCallback = va_arg(ap, ProcHeaderConsumer);
+		void *pUserData = va_arg(ap, void *);
+		if( xCallback ){
+			VmResponseHeader *aHdr = (VmResponseHeader *)SySetBasePtr(&pVm->aResponseHeaders);
+			sxu32 k, nHdr = SySetUsed(&pVm->aResponseHeaders);
+			for( k = 0; k < nHdr; k++ ){
+				rc = xCallback(aHdr[k].sName.zString, aHdr[k].sName.nByte,
+							   aHdr[k].sValue.zString, aHdr[k].sValue.nByte,
+							   pUserData);
+				if( rc != PH7_OK ){
+					break;
+				}
+			}
+		}
+		break;
+										 }
 	default:
 		/* Unknown configuration option */
 		rc = SXERR_UNKNOWN;
@@ -2153,10 +2208,7 @@ static sxi32 VmCallErrorHandler(ph7_vm *pVm,SyBlob *pMsg)
 #endif
 	/* Invoke the output consumer callback */
 	rc = pCons->xConsumer(SyBlobData(pMsg),SyBlobLength(pMsg),pCons->pUserData);
-	if( pCons->xConsumer != VmObConsumer ){
-		/* Increment output length */
-		pVm->nOutputLen += SyBlobLength(pMsg);
-	}
+	VmTrackOutput(pVm, SyBlobLength(pMsg));
 	return rc;
 }
 /*
@@ -2662,10 +2714,7 @@ case PH7_OP_HALT:
 				/* Output the exit message */
 				pVm->sVmConsumer.xConsumer(SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob),
 					pVm->sVmConsumer.pUserData);
-				if( pVm->sVmConsumer.xConsumer != VmObConsumer ){
-					/* Increment output length */
-					pVm->nOutputLen += SyBlobLength(&pTos->sBlob);
-				}
+				VmTrackOutput(pVm, SyBlobLength(&pTos->sBlob));
 			}
 		}else if(pTos->iFlags & MEMOBJ_INT ){
 			/* Record exit status */
@@ -6305,10 +6354,7 @@ case PH7_OP_CONSUME: {
 			/*SyBlobNullAppend(&pOut->sBlob);*/
 			/* Invoke the output consumer callback */
 			rc = pCons->xConsumer(SyBlobData(&pOut->sBlob),SyBlobLength(&pOut->sBlob),pCons->pUserData);
-			if( pCons->xConsumer != VmObConsumer ){
-				/* Increment output length */
-				pVm->nOutputLen += SyBlobLength(&pOut->sBlob);
-			}
+			VmTrackOutput(pVm, SyBlobLength(&pOut->sBlob));
 			SyBlobRelease(&pOut->sBlob);
 			if( rc == SXERR_ABORT ){
 				/* Output consumer callback request an operation abort. */
@@ -6450,10 +6496,7 @@ PH7_PRIVATE sxi32 PH7_VmOutputConsume(
 	/* Call the output consumer */
 	if( pString->nByte > 0 ){
 		rc = pCons->xConsumer((const void *)pString->zString,pString->nByte,pCons->pUserData);
-		if( pCons->xConsumer != VmObConsumer ){
-			/* Increment output length */
-			pVm->nOutputLen += pString->nByte;
-		}
+		VmTrackOutput(pVm, pString->nByte);
 	}
 	return rc;
 }
@@ -6479,10 +6522,7 @@ PH7_PRIVATE sxi32 PH7_VmOutputConsumeAp(
 		/* Consume the formatted message */
 		rc = pCons->xConsumer(SyBlobData(&sWorker),SyBlobLength(&sWorker),pCons->pUserData);
 	}
-	if( pCons->xConsumer != VmObConsumer ){
-		/* Increment output length */
-		pVm->nOutputLen += SyBlobLength(&sWorker);
-	}
+	VmTrackOutput(pVm, SyBlobLength(&sWorker));
 	/* Release the working buffer */
 	SyBlobRelease(&sWorker);
 	return rc;
@@ -7762,10 +7802,7 @@ static int vm_builtin_echo(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		zData = ph7_value_to_string(apArg[i],&nDataLen);
 		if( nDataLen > 0 ){
 			rc = pVm->sVmConsumer.xConsumer((const void *)zData,(unsigned int)nDataLen,pVm->sVmConsumer.pUserData);
-			if( pVm->sVmConsumer.xConsumer != VmObConsumer ){
-				/* Increment output length */
-				pVm->nOutputLen += nDataLen;
-			}
+			VmTrackOutput(pVm, (sxu32)nDataLen);
 			if( rc == SXERR_ABORT ){
 				/* Output consumer callback request an operation abort */
 				return PH7_ABORT;
@@ -7796,10 +7833,7 @@ static int vm_builtin_print(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		zData = ph7_value_to_string(apArg[i],&nDataLen);
 		if( nDataLen > 0 ){
 			rc = pVm->sVmConsumer.xConsumer((const void *)zData,(unsigned int)nDataLen,pVm->sVmConsumer.pUserData);
-			if( pVm->sVmConsumer.xConsumer != VmObConsumer ){
-				/* Increment output length */
-				pVm->nOutputLen += nDataLen;
-			}
+			VmTrackOutput(pVm, (sxu32)nDataLen);
 			if( rc == SXERR_ABORT ){
 				/* Output consumer callback request an operation abort */
 				return PH7_ABORT;

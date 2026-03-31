@@ -414,6 +414,16 @@ struct VmObEntry
 	SyBlob sOB;          /* Output buffer consumer */
 };
 /*
+ * HTTP response header entry.
+ * Stored in ph7_vm.aResponseHeaders (a SySet of VmResponseHeader).
+ */
+typedef struct VmResponseHeader VmResponseHeader;
+struct VmResponseHeader
+{
+	SyString sName;   /* Header name (e.g. "Content-Type"), case-preserving */
+	SyString sValue;  /* Header value (e.g. "text/html") */
+};
+/*
  * Each collected function argument is recorded in an instance
  * of the following structure.
  * Note that as an extension, PH7 implements full type hinting
@@ -733,6 +743,10 @@ struct ph7_vm
 	SySet aPaths;               /* Set of import paths */
 	SySet aIncluded;            /* Set of included files */
 	SySet aOB;                  /* Stackable output buffers */
+	SySet aResponseHeaders;     /* HTTP response headers (VmResponseHeader entries) */
+	int iResponseStatus;        /* HTTP response status code (default 200) */
+	int bHeadersSent;           /* TRUE once non-OB output has been emitted */
+	int bHttpContext;           /* TRUE when an HTTP request has been fed (server/CGI mode) */
 	SySet aShutdown;            /* Stack of shutdown user callbacks */
 	SySet aException;           /* Stack of loaded exception */
 	ph7_class_instance *pPendingException; /* Exception deferred past a finally block */
@@ -1277,6 +1291,9 @@ PH7_PRIVATE const ph7_io_stream * PH7_VmGetStreamDevice(ph7_vm *pVm,const char *
 /* vm_http.c function prototypes */
 PH7_PRIVATE sxi32 PH7_VmHttpSplitURI(SyhttpUri *pOut,const char *zUri,sxu32 nLen);
 PH7_PRIVATE sxi32 PH7_VmHttpProcessRequest(ph7_vm *pVm,const char *zRequest,int nByte);
+/* vm_http_response.c function prototypes */
+PH7_PRIVATE void PH7_RegisterHttpResponseFunctions(ph7_vm *pVm);
+PH7_PRIVATE void PH7_VmReleaseResponseHeaders(ph7_vm *pVm);
 /* net.c types and function prototypes */
 #ifdef PH7_ENABLE_NET
 #ifdef __WINNT__
