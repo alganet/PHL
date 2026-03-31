@@ -1277,6 +1277,31 @@ PH7_PRIVATE const ph7_io_stream * PH7_VmGetStreamDevice(ph7_vm *pVm,const char *
 /* vm_http.c function prototypes */
 PH7_PRIVATE sxi32 PH7_VmHttpSplitURI(SyhttpUri *pOut,const char *zUri,sxu32 nLen);
 PH7_PRIVATE sxi32 PH7_VmHttpProcessRequest(ph7_vm *pVm,const char *zRequest,int nByte);
+/* net.c types and function prototypes */
+#ifdef PH7_ENABLE_NET
+#ifdef __WINNT__
+#include <winsock2.h>
+typedef SOCKET ph7_socket;
+typedef int ph7_socklen;
+#define PH7_NET_INVALID_SOCKET INVALID_SOCKET
+#else
+typedef int ph7_socket;
+typedef unsigned int ph7_socklen;
+#define PH7_NET_INVALID_SOCKET (-1)
+#endif
+struct sockaddr; /* Forward declaration */
+PH7_PRIVATE int PH7_NetInit(void);
+PH7_PRIVATE void PH7_NetCleanup(void);
+PH7_PRIVATE ph7_socket PH7_NetListen(const char *zHost,int iPort,int iBacklog);
+PH7_PRIVATE ph7_socket PH7_NetAccept(ph7_socket listenSock,struct sockaddr *pAddr,ph7_socklen *pAddrLen);
+PH7_PRIVATE int PH7_NetRecv(ph7_socket sock,void *pBuf,int nLen,int flags);
+PH7_PRIVATE int PH7_NetSend(ph7_socket sock,const void *pBuf,int nLen,int flags);
+PH7_PRIVATE int PH7_NetSendAll(ph7_socket sock,const void *pBuf,int nLen);
+PH7_PRIVATE void PH7_NetClose(ph7_socket sock);
+PH7_PRIVATE void PH7_NetSetTimeout(ph7_socket sock,int iMilliseconds);
+PH7_PRIVATE void PH7_NetAddrToString(const struct sockaddr *pAddr,char *zBuf,int nBufLen);
+PH7_PRIVATE int PH7_NetAddrPort(const struct sockaddr *pAddr);
+#endif /* PH7_ENABLE_NET */
 /* vm_json.c function prototypes */
 PH7_PRIVATE int vm_builtin_json_encode(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_json_last_error(ph7_context *pCtx,int nArg,ph7_value **apArg);

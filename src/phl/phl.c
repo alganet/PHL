@@ -31,6 +31,9 @@
 #include <string.h>
 /* Make sure this header file is available.*/
 #include "ph7.h"
+#ifdef PHL_ENABLE_SERVER
+#include "server.h"
+#endif
 #if defined(__WINNT__) && defined(PH7_DEBUG)
 #define MINIDUMP_IMPLEMENTATION
 #include "minidump.h"
@@ -52,8 +55,15 @@ static void Fatal(const char *zMsg)
 static void Help(void)
 {
 	puts("phl [-h|--help|-b|-v|--version|-r code] path/to/php_file [script args]");
+#ifdef PHL_ENABLE_SERVER
+	puts("phl -S host:port [-t docroot] [router.php]");
+#endif
 	puts("\t-b: Dump PH7 byte-code instructions");
 	puts("\t-r code: Run code from command line (no tags needed)");
+#ifdef PHL_ENABLE_SERVER
+	puts("\t-S host:port: Start the built-in development server");
+	puts("\t-t docroot: Document root for the server (default: current directory)");
+#endif
 	puts("\t-v, --version: Display version information and exit");
 	puts("\t-h, --help: Display this message and exit");
 	/* Exit immediately */
@@ -122,6 +132,11 @@ int main(int argc,char **argv)
 	int dump_vm = 0;    /* Dump VM instructions if TRUE */
 	int run_code = 0;    /* Run inline code if TRUE */
 	const char *zRunCode = 0; /* Inline code string */
+#ifdef PHL_ENABLE_SERVER
+	int server_mode = 0;        /* Start built-in server if TRUE */
+	const char *zServerAddr = 0; /* host:port string */
+	const char *zDocRoot = ".";  /* Document root */
+#endif
 	int n;              /* Script arguments */
 	int rc;
 	/* Process interpreter arguments first*/
@@ -155,6 +170,27 @@ int main(int argc,char **argv)
 			}
 			zRunCode = argv[++n];
 			run_code = 1;
+		}else if( c == 'S' ){
+			/* Start built-in development server */
+#ifdef PHL_ENABLE_SERVER
+			if( n + 1 >= argc ){
+				Fatal("Missing host:port argument for -S");
+			}
+			zServerAddr = argv[++n];
+			server_mode = 1;
+#else
+			Fatal("Built-in server not available (compiled without PHL_ENABLE_SERVER)");
+#endif
+		}else if( c == 't' ){
+			/* Set document root for the server */
+#ifdef PHL_ENABLE_SERVER
+			if( n + 1 >= argc ){
+				Fatal("Missing docroot argument for -t");
+			}
+			zDocRoot = argv[++n];
+#else
+			Fatal("Built-in server not available (compiled without PHL_ENABLE_SERVER)");
+#endif
 		}else if( c == 'v' ){
 			/* Display version */
 			Version();
@@ -163,6 +199,34 @@ int main(int argc,char **argv)
 			Help();
 		}
 	}
+#ifdef PHL_ENABLE_SERVER
+	if( server_mode ){
+		/* Parse host:port from zServerAddr */
+		char zHost[256];
+		int iPort = 0;
+		const char *zColon;
+		const char *zRouter = 0;
+		zColon = strrchr(zServerAddr, ':');
+		if( zColon == 0 ){
+			Fatal("Invalid address format. Use host:port (e.g., localhost:8080)");
+		}
+		{
+			int nHostLen = (int)(zColon - zServerAddr);
+			if( nHostLen >= (int)sizeof(zHost) ) nHostLen = (int)sizeof(zHost) - 1;
+			memcpy(zHost, zServerAddr, nHostLen);
+			zHost[nHostLen] = 0;
+		}
+		iPort = atoi(zColon + 1);
+		if( iPort <= 0 || iPort > 65535 ){
+			Fatal("Invalid port number");
+		}
+		/* Check for optional router script */
+		if( n < argc ){
+			zRouter = argv[n];
+		}
+		return phl_serve(zHost, iPort, zDocRoot, zRouter);
+	}
+#endif
 	if( n >= argc && !run_code ){
 		puts("Missing PHP file to compile");
 		Help();

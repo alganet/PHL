@@ -18,8 +18,11 @@ echo $out;
 ?>
 --EXPECT--
 phl [-h|--help|-b|-v|--version|-r code] path/to/php_file [script args]
+phl -S host:port [-t docroot] [router.php]
 	-b: Dump PH7 byte-code instructions
 	-r code: Run code from command line (no tags needed)
+	-S host:port: Start the built-in development server
+	-t docroot: Document root for the server (default: current directory)
 	-v, --version: Display version information and exit
 	-h, --help: Display this message and exit
 --CLEAN--

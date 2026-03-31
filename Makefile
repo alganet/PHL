@@ -7,13 +7,13 @@ MODE = full
 
 # --- Mode definitions ---
 # Each mode declares: <mode>_DEFINES  <mode>_EXTRA_CFLAGS (optional)
-full_DEFINES      = -DPH7_ENABLE_MATH_FUNC -DPH7_ENABLE_THREADS
+full_DEFINES      = -DPH7_ENABLE_MATH_FUNC -DPH7_ENABLE_THREADS -DPH7_ENABLE_NET -DPHL_ENABLE_SERVER
 full_EXTRA_CFLAGS =
 
 tiny_DEFINES      = -DPH7_OMIT_FLOATING_POINT -DPH7_DISABLE_HASH_FUNC -DPH7_DISABLE_BUILTIN_FUNC -DPH7_DISABLE_DISK_IO
 tiny_EXTRA_CFLAGS =
 
-coverage_DEFINES      = -DPH7_ENABLE_MATH_FUNC -DPH7_ENABLE_THREADS
+coverage_DEFINES      = -DPH7_ENABLE_MATH_FUNC -DPH7_ENABLE_THREADS -DPH7_ENABLE_NET -DPHL_ENABLE_SERVER
 coverage_EXTRA_CFLAGS =
 
 # --- Derived variables ---
@@ -56,7 +56,9 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/vm_http$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_json$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_xml$(OBJ_SUFFIX) \
-	$(BUILD_DIR)/src/phl/phl$(OBJ_SUFFIX)
+	$(BUILD_DIR)/src/ph7/net$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/phl/phl$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/phl/server$(OBJ_SUFFIX)
 
 
 # --- Test commands ---
