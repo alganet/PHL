@@ -8,9 +8,13 @@
 
 #include "sxtypes.h"
 
-/* Memory pool constants */
+/* Memory pool constants (overridable for embedded/constrained builds) */
+#ifndef SXMEM_POOL_INCR
 #define SXMEM_POOL_INCR       3
+#endif
+#ifndef SXMEM_POOL_NBUCKETS
 #define SXMEM_POOL_NBUCKETS   12
+#endif
 #define SXMEM_BACKEND_MAGIC   0xBAC3E67D
 #define SXMEM_BACKEND_CORRUPT(BACKEND) (BACKEND == 0 || BACKEND->nMagic != SXMEM_BACKEND_MAGIC)
 #define SXMEM_BACKEND_RETRY   3

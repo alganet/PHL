@@ -39,7 +39,7 @@ static sxi32 SyOSUtilRandomSeed(void *pBuf,sxu32 nLen,void *pUnused)
 	pid_t pid;
 	int fd;
 #else
-	char zGarbage[128]; /* Yes,keep this buffer uninitialized */
+	char zGarbage[128];
 #endif
 	SXUNUSED(pUnused);
 #ifdef __WINNT__
@@ -66,7 +66,7 @@ static sxi32 SyOSUtilRandomSeed(void *pBuf,sxu32 nLen,void *pUnused)
 		gettimeofday((struct timeval *)&zBuf[sizeof(pid_t)],0);
 	}
 #else
-	/* Fill with uninitialized data */
+	SyZero(zGarbage,sizeof(zGarbage));
 	SyMemcpy(zGarbage,zBuf,SXMIN(nLen,sizeof(zGarbage)));
 #endif
 	return SXRET_OK;

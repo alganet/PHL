@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
+# SPDX-License-Identifier: BSD-3-Clause
+
+name: FreeRTOS
+permissions: {}
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'ports/freertos/**'
+      - 'build-aux/get_freertos.sh'
+      - '.github/workflows/freertos.yml'
+  pull_request:
+    branches: [ main, dev ]
+    paths:
+      - 'src/**'
+      - 'ports/freertos/**'
+      - 'build-aux/get_freertos.sh'
+      - '.github/workflows/freertos.yml'
+
+jobs:
+  freertos:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Install toolchain
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi qemu-system-arm
+
+    - name: Fetch FreeRTOS dependencies
+      run: ./build-aux/get_freertos.sh
+
+    - name: Build firmware
+      run: make -C ports/freertos
+
+    - name: Run PHP tests in QEMU
+      run: |
+        timeout 60 qemu-system-arm \
+          -machine mps2-an385 \
+          -cpu cortex-m3 \
+          -kernel ports/freertos/build/phl-freertos.elf \
+          -monitor none \
+          -nographic \
+          -semihosting \
+          -serial stdio 2>&1 | tee qemu-output.txt || true
+        echo "--- Output ---"
+        cat qemu-output.txt
+        grep -q "ALL TESTS PASSED" qemu-output.txt
