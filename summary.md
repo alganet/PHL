@@ -3,8 +3,8 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 77.72%   | 27528/35421 |
-| Functions                      | 94.94%   | 1388/1462   |
+| Lines                          | 77.82%   | 27656/35538 |
+| Functions                      | 95.01%   | 1389/1462   |
 
 
-Details: https://github.com/alganet/PHL/actions/runs/23978203984
+Details: https://github.com/alganet/PHL/actions/runs/23981355837
