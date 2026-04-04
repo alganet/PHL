@@ -854,6 +854,17 @@ PH7_PRIVATE ph7_value * VmReserveMemObj(ph7_vm *pVm,sxu32 *pIndex)
 }
 /* Forward declaration */
 static sxi32 VmEvalChunk(ph7_vm *pVm,ph7_context *pCtx,SyString *pChunk,int iFlags,int bTrueReturn);
+/* Forward declarations for Fiber C functions */
+static int vm_builtin_Fiber_suspend(ph7_context *pCtx, int nArg, ph7_value **apArg);
+static int vm_builtin_Fiber_construct(ph7_context *pCtx, int nArg, ph7_value **apArg);
+static int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **apArg);
+static int vm_builtin_Fiber_resume(ph7_context *pCtx, int nArg, ph7_value **apArg);
+static int vm_builtin_Fiber_getReturn(ph7_context *pCtx, int nArg, ph7_value **apArg);
+static int vm_builtin_Fiber_isStarted(ph7_context *pCtx, int nArg, ph7_value **apArg);
+static int vm_builtin_Fiber_isRunning(ph7_context *pCtx, int nArg, ph7_value **apArg);
+static int vm_builtin_Fiber_isSuspended(ph7_context *pCtx, int nArg, ph7_value **apArg);
+static int vm_builtin_Fiber_isTerminated(ph7_context *pCtx, int nArg, ph7_value **apArg);
+static int vm_builtin_Fiber_destruct(ph7_context *pCtx, int nArg, ph7_value **apArg);
 /*
  * Built-in classes/interfaces and some functions that cannot be implemented
  * directly as foreign functions.
@@ -907,6 +918,7 @@ static sxi32 VmEvalChunk(ph7_vm *pVm,ph7_context *pCtx,SyString *pChunk,int iFla
 	"class TypeError extends Error { }"\
 	"class ArgumentCountError extends TypeError { }"\
 	"class ValueError extends Error { }"\
+	"class FiberError extends Error { }"\
 	"class AssertionError extends Error { }"\
 	"class ErrorException extends Exception { "\
 	"protected $severity;"\
@@ -972,6 +984,20 @@ static sxi32 VmEvalChunk(ph7_vm *pVm,ph7_context *pCtx,SyString *pChunk,int iFla
 	"    closedir($this->handle);"\
 	"    $this->handle = null;"\
 	"}"\
+	"}"\
+	"class Fiber {"\
+	"  private $__ctx;"\
+	"  private $__callable;"\
+	"  public function __construct($callable){ __fiber_construct($this,$callable); }"\
+	"  public function start(){ return __fiber_start($this, func_get_args()); }"\
+	"  public function resume($value = null){ return __fiber_resume($this,$value); }"\
+	"  public function getReturn(){ return __fiber_getReturn($this); }"\
+	"  public function isStarted(){ return __fiber_isStarted($this); }"\
+	"  public function isRunning(){ return __fiber_isRunning($this); }"\
+	"  public function isSuspended(){ return __fiber_isSuspended($this); }"\
+	"  public function isTerminated(){ return __fiber_isTerminated($this); }"\
+	"  public static function suspend($value = null){ return __fiber_suspend($value); }"\
+	"  public function __destruct(){ __fiber_destruct($this); }"\
 	"}"\
 	"class stdClass{"\
 	"  public $value;"\
@@ -1315,6 +1341,19 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyStringInitFromBuf(&sBuiltin,PH7_BUILTIN_LIB,sizeof(PH7_BUILTIN_LIB)-1);
 	/* Compile the built-in library */
 	VmEvalChunk(&(*pVm),0,&sBuiltin,PH7_PHP_ONLY,FALSE);
+	/* Cache the Fiber class pointer for fast dispatch */
+	pVm->pFiberClass = PH7_VmExtractClass(pVm,"Fiber",5,0,0);
+	/* Register Fiber internal C functions */
+	ph7_create_function(pVm,"__fiber_suspend",vm_builtin_Fiber_suspend,0);
+	ph7_create_function(pVm,"__fiber_construct",vm_builtin_Fiber_construct,0);
+	ph7_create_function(pVm,"__fiber_start",vm_builtin_Fiber_start,0);
+	ph7_create_function(pVm,"__fiber_resume",vm_builtin_Fiber_resume,0);
+	ph7_create_function(pVm,"__fiber_getReturn",vm_builtin_Fiber_getReturn,0);
+	ph7_create_function(pVm,"__fiber_isStarted",vm_builtin_Fiber_isStarted,0);
+	ph7_create_function(pVm,"__fiber_isRunning",vm_builtin_Fiber_isRunning,0);
+	ph7_create_function(pVm,"__fiber_isSuspended",vm_builtin_Fiber_isSuspended,0);
+	ph7_create_function(pVm,"__fiber_isTerminated",vm_builtin_Fiber_isTerminated,0);
+	ph7_create_function(pVm,"__fiber_destruct",vm_builtin_Fiber_destruct,0);
 	/* Reset the code generator */
 	PH7_ResetCodeGenerator(&(*pVm),pEngine->xConf.xErr,pEngine->xConf.pErrData);
 	return SXRET_OK;
@@ -2594,6 +2633,27 @@ PH7_PRIVATE sxi32 PH7_VmThrowExceptionTrace(ph7_context *pCtx,const char *zClass
 	return rc;
 }
 /*
+ * Save the execution state of a fiber/generator context.
+ * This may be called multiple times as PH7_SUSPEND propagates up through
+ * nested VmByteCodeExec calls. Each level overwrites pc/nTos with its own
+ * values, so the last (outermost) call wins — which is the fiber's own level.
+ * Frame detachment is NOT done here; it's handled by VmStartCtx/VmResumeCtx
+ * when VmByteCodeExec returns.
+ */
+static sxi32 VmSuspendCtx(
+	ph7_vm *pVm,
+	ph7_exec_ctx *pCtx,
+	sxi32 pc,
+	sxi32 nTos
+	)
+{
+	(void)pVm; /* unused — frame detach moved to VmStartCtx/VmResumeCtx */
+	pCtx->pc = pc;
+	pCtx->nTos = nTos;
+	pCtx->iState = PH7_CTX_STATE_SUSPENDED;
+	return PH7_SUSPEND;
+}
+/*
  * Execute as much of a PH7 bytecode program as we can then return.
  *
  * [PH7_VmMakeReady()] must be called before this routine in order to
@@ -2613,7 +2673,8 @@ static sxi32 VmByteCodeExec(
 	int nTos,            /* Top entry in the operand stack (usually -1) */
 	ph7_value *pResult,  /* Store program return value here. NULL otherwise */
 	sxu32 *pLastRef,     /* Last referenced ph7_value index */
-	int is_callback      /* TRUE if we are executing a callback */
+	int is_callback,     /* TRUE if we are executing a callback */
+	sxi32 nPc            /* Starting program counter (0 for normal, >0 for resume) */
 	)
 {
 	VmInstr *pInstr;
@@ -2630,7 +2691,7 @@ static sxi32 VmByteCodeExec(
 		pTos = &pStack[nTos];
 	}
 	nExceptionBase = SySetUsed(&pVm->aException);
-	pc = 0;
+	pc = nPc;
 	/* Execute as much as we can */
 	for(;;){
 		/* Fetch the instruction to execute */
@@ -6185,7 +6246,7 @@ case PH7_OP_CALL: {
 		/* Increment nesting level */
 		pVm->nRecursionDepth++;
 		/* Execute function body */
-		rc = VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(&pVmFunc->aByteCode),pFrameStack,-1,pTos,&n,FALSE);
+		rc = VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(&pVmFunc->aByteCode),pFrameStack,-1,pTos,&n,FALSE,0);
 		/* Decrement nesting level */
 		pVm->nRecursionDepth--;
 		if( pSelf ){
@@ -6246,6 +6307,14 @@ case PH7_OP_CALL: {
 		if( rc == PH7_ABORT ){
 			/* Abort processing immeditaley */
 			goto Abort;
+		}else if( rc == PH7_SUSPEND && pVm->pActiveCtx ){
+			/* A Fiber::suspend() was called somewhere inside this function.
+			 * Re-save the fiber's state at THIS level (the fiber's body),
+			 * overwriting the state saved by the inner level.
+			 * pTos points to the result slot (not yet written).
+			 * Save nTos one below so resume pushes at the result slot. */
+			VmSuspendCtx(pVm, pVm->pActiveCtx, pc + 1, (sxi32)(pTos - pStack) - 1);
+			goto Suspend;
 		}else if( rc == PH7_EXCEPTION ){
 			goto Exception;
 		}
@@ -6324,6 +6393,22 @@ case PH7_OP_CALL: {
 			}
 			break;
 		}
+		if( rc == PH7_SUSPEND && pVm->pActiveCtx ){
+			/* Fiber::suspend() was called from within a fiber.
+			 * Pop arguments (like normal path) but don't push a return value.
+			 * Propagate PH7_SUSPEND up. If this is the fiber's own
+			 * VmByteCodeExec, the CALL was to a foreign function directly
+			 * and we need to save state here. If it's a nested call (method
+			 * body), the user-function path above will handle re-saving. */
+			PH7_MemObjRelease(&sRet);
+			if( pInstr->iP1 > 0 ){
+				VmPopOperand(&pTos,pInstr->iP1);
+			}
+			/* Save fiber state: pc+1 is the instruction after this CALL.
+			 * nTos is one below pTos so resume pushes at the return-value slot. */
+			VmSuspendCtx(pVm,pVm->pActiveCtx,pc + 1,(sxi32)(pTos - pStack) - 1);
+			goto Suspend;
+		}
 		if( pInstr->iP1 > 0 ){
 			/* Pop function name and arguments */
 			VmPopOperand(&pTos,pInstr->iP1);
@@ -6373,6 +6458,9 @@ case PH7_OP_CONSUME: {
 Done:
 	SySetRelease(&aArg);
 	return SXRET_OK;
+Suspend:
+	SySetRelease(&aArg);
+	return PH7_SUSPEND;
 Abort:
 	SySetRelease(&aArg);
 	while( pTos >= pStack ){
@@ -6403,7 +6491,7 @@ PH7_PRIVATE sxi32 VmLocalExec(ph7_vm *pVm,SySet *pByteCode,ph7_value *pResult)
 		return SXERR_MEM;
 	}
 	/* Execute the program */
-	rc = VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(pByteCode),pStack,-1,&(*pResult),0,FALSE);
+	rc = VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(pByteCode),pStack,-1,&(*pResult),0,FALSE,0);
 	/* Free the operand stack */
 	SyMemBackendFree(&pVm->sAllocator,pStack);
 	/* Execution result */
@@ -6470,7 +6558,7 @@ PH7_PRIVATE sxi32 PH7_VmByteCodeExec(ph7_vm *pVm)
 	/* Set the execution magic number  */
 	pVm->nMagic = PH7_VM_EXEC;
 	/* Execute the program */
-	VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(pVm->pByteContainer),pVm->aOps,-1,&pVm->sExec,0,FALSE);
+	VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(pVm->pByteContainer),pVm->aOps,-1,&pVm->sExec,0,FALSE,0);
 	/* Invoke any shutdown callbacks */
 	VmInvokeShutdownCallbacks(&(*pVm));
 	/*
@@ -6480,6 +6568,766 @@ PH7_PRIVATE sxi32 PH7_VmByteCodeExec(ph7_vm *pVm)
 	 */
 	return SXRET_OK;
 }
+/* ======================== Fiber Infrastructure ======================== */
+/*
+ * Allocate and initialize a new execution context for a fiber.
+ * The context is in CREATED state and ready to be started.
+ */
+static ph7_exec_ctx * VmNewExecCtx(ph7_vm *pVm, ph7_vm_func *pFunc)
+{
+	ph7_exec_ctx *pCtx;
+	ph7_value *pStack;
+	VmFrame *pFrame;
+	pCtx = (ph7_exec_ctx *)SyMemBackendPoolAlloc(&pVm->sAllocator, sizeof(ph7_exec_ctx));
+	if( pCtx == 0 ){
+		return 0;
+	}
+	SyZero(pCtx, sizeof(ph7_exec_ctx));
+	pCtx->pVm = pVm;
+	pCtx->pFunc = pFunc;
+	pCtx->iState = PH7_CTX_STATE_CREATED;
+	pCtx->nTos = -1; /* Empty stack — matches VmByteCodeExec convention */
+	pCtx->pc = 0;
+	PH7_MemObjInit(pVm, &pCtx->sSuspendValue);
+	PH7_MemObjInit(pVm, &pCtx->sRetValue);
+	/* Allocate a private operand stack */
+	pStack = VmNewOperandStack(pVm, SySetUsed(&pFunc->aByteCode));
+	if( pStack == 0 ){
+		SyMemBackendPoolFree(&pVm->sAllocator, pCtx);
+		return 0;
+	}
+	pCtx->pStack = pStack;
+	/* Create a detached frame for the fiber */
+	pFrame = VmNewFrame(pVm, pFunc, 0);
+	if( pFrame == 0 ){
+		SyMemBackendFree(&pVm->sAllocator, pStack);
+		SyMemBackendPoolFree(&pVm->sAllocator, pCtx);
+		return 0;
+	}
+	pCtx->pFrame = pFrame;
+	return pCtx;
+}
+/*
+ * Start executing a fiber context for the first time.
+ */
+static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
+{
+	ph7_exec_ctx *pOldCtx;
+	sxi32 rc;
+	if( pCtx->iState != PH7_CTX_STATE_CREATED ){
+		return SXERR_INVALID;
+	}
+	/* Attach the fiber's frame to the VM frame chain */
+	pCtx->pFrame->pParent = pVm->pFrame;
+	pVm->pFrame = pCtx->pFrame;
+	/* Save and set the active context */
+	pOldCtx = pVm->pActiveCtx;
+	pVm->pActiveCtx = pCtx;
+	pCtx->iState = PH7_CTX_STATE_RUNNING;
+	pCtx->nExceptionBase = SySetUsed(&pVm->aException);
+	pVm->nRecursionDepth++;
+	/* Execute from the beginning */
+	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),
+		pCtx->pStack, -1, &pCtx->sRetValue, 0, FALSE, 0);
+	pVm->nRecursionDepth--;
+	/* Restore the previous context */
+	pVm->pActiveCtx = pOldCtx;
+	if( rc == PH7_SUSPEND ){
+		/* Fiber suspended. Detach the fiber's frame from the VM chain. */
+		pVm->pFrame = pCtx->pFrame->pParent;
+		pCtx->pFrame->pParent = 0;
+		if( pResult ){
+			PH7_MemObjStore(&pCtx->sSuspendValue, pResult);
+		}
+		return SXRET_OK;
+	}
+	/* Detach frame */
+	if( pVm->pFrame == pCtx->pFrame ){
+		pVm->pFrame = pCtx->pFrame->pParent;
+		pCtx->pFrame->pParent = 0;
+	}
+	if( rc == PH7_ABORT ){
+		pCtx->iState = PH7_CTX_STATE_CLOSED;
+		return PH7_ABORT;
+	}
+	if( rc == PH7_EXCEPTION ){
+		pCtx->iState = PH7_CTX_STATE_CLOSED;
+		return PH7_EXCEPTION;
+	}
+	/* Normal completion */
+	pCtx->iState = PH7_CTX_STATE_COMPLETED;
+	if( pResult ){
+		PH7_MemObjStore(&pCtx->sRetValue, pResult);
+	}
+	return SXRET_OK;
+}
+/*
+ * Resume a suspended fiber context.
+ */
+static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValue, ph7_value *pResult)
+{
+	ph7_exec_ctx *pOldCtx;
+	sxi32 rc;
+	if( pCtx->iState != PH7_CTX_STATE_SUSPENDED ){
+		return SXERR_INVALID;
+	}
+	/* Push the resume value onto the fiber's operand stack.
+	 * This makes it appear as the return value of Fiber::suspend() from
+	 * the fiber's perspective. nTos was saved one below the return-value slot. */
+	if( pResumeValue ){
+		PH7_MemObjStore(pResumeValue, &pCtx->pStack[pCtx->nTos + 1]);
+	}else{
+		PH7_MemObjRelease(&pCtx->pStack[pCtx->nTos + 1]);
+	}
+	pCtx->nTos++;
+	/* Re-attach the fiber's frame to the VM frame chain */
+	pCtx->pFrame->pParent = pVm->pFrame;
+	pVm->pFrame = pCtx->pFrame;
+	/* Save and set the active context */
+	pOldCtx = pVm->pActiveCtx;
+	pVm->pActiveCtx = pCtx;
+	pCtx->iState = PH7_CTX_STATE_RUNNING;
+	pVm->nRecursionDepth++;
+	/* Resume execution from saved PC */
+	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),
+		pCtx->pStack, pCtx->nTos, &pCtx->sRetValue, 0, FALSE, pCtx->pc);
+	pVm->nRecursionDepth--;
+	/* Restore the previous context */
+	pVm->pActiveCtx = pOldCtx;
+	if( rc == PH7_SUSPEND ){
+		/* Fiber suspended again. Detach the fiber's frame. */
+		pVm->pFrame = pCtx->pFrame->pParent;
+		pCtx->pFrame->pParent = 0;
+		if( pResult ){
+			PH7_MemObjStore(&pCtx->sSuspendValue, pResult);
+		}
+		return SXRET_OK;
+	}
+	/* Detach frame */
+	if( pVm->pFrame == pCtx->pFrame ){
+		pVm->pFrame = pCtx->pFrame->pParent;
+		pCtx->pFrame->pParent = 0;
+	}
+	if( rc == PH7_ABORT ){
+		pCtx->iState = PH7_CTX_STATE_CLOSED;
+		return PH7_ABORT;
+	}
+	if( rc == PH7_EXCEPTION ){
+		pCtx->iState = PH7_CTX_STATE_CLOSED;
+		return PH7_EXCEPTION;
+	}
+	/* Normal completion */
+	pCtx->iState = PH7_CTX_STATE_COMPLETED;
+	if( pResult ){
+		PH7_MemObjStore(&pCtx->sRetValue, pResult);
+	}
+	return SXRET_OK;
+}
+/*
+ * Release an execution context and all its resources.
+ */
+static void VmReleaseExecCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx)
+{
+	if( pCtx == 0 ){
+		return;
+	}
+	if( pCtx->iState == PH7_CTX_STATE_RUNNING ){
+		/* Cannot destroy a fiber that is currently executing */
+		return;
+	}
+	pCtx->iState = PH7_CTX_STATE_CLOSED;
+	/* Release values */
+	PH7_MemObjRelease(&pCtx->sSuspendValue);
+	PH7_MemObjRelease(&pCtx->sRetValue);
+	/* Release the frame if it's detached (not in the VM chain) */
+	if( pCtx->pFrame ){
+		VmSlot *aSlot;
+		sxu32 n;
+		/* Free local variables */
+		aSlot = (VmSlot *)SySetBasePtr(&pCtx->pFrame->sLocal);
+		for( n = 0; n < SySetUsed(&pCtx->pFrame->sLocal); ++n ){
+			PH7_VmUnsetMemObj(pVm, aSlot[n].nIdx, FALSE);
+		}
+		/* Remove local references */
+		aSlot = (VmSlot *)SySetBasePtr(&pCtx->pFrame->sRef);
+		for( n = 0; n < SySetUsed(&pCtx->pFrame->sRef); ++n ){
+			PH7_VmRefObjRemove(pVm, aSlot[n].nIdx, (SyHashEntry *)aSlot[n].pUserData, 0);
+		}
+		SyHashRelease(&pCtx->pFrame->hVar);
+		SySetRelease(&pCtx->pFrame->sArg);
+		SySetRelease(&pCtx->pFrame->sLocal);
+		SySetRelease(&pCtx->pFrame->sRef);
+		SyMemBackendPoolFree(&pVm->sAllocator, pCtx->pFrame);
+		pCtx->pFrame = 0;
+	}
+	/* Release individual operand stack entries (decrement refcounts,
+	 * free string buffers, etc.) before bulk-freeing the stack memory.
+	 * Matches the cleanup pattern at the Abort: label in VmByteCodeExec. */
+	if( pCtx->pStack ){
+		if( pCtx->nTos >= 0 ){
+			ph7_value *pTos = &pCtx->pStack[pCtx->nTos];
+			while( pTos >= pCtx->pStack ){
+				PH7_MemObjRelease(pTos);
+				pTos--;
+			}
+		}
+		SyMemBackendFree(&pVm->sAllocator, pCtx->pStack);
+		pCtx->pStack = 0;
+	}
+	/* Free the context itself */
+	SyMemBackendPoolFree(&pVm->sAllocator, pCtx);
+}
+/*
+ * Helper: extract the ph7_exec_ctx from a Fiber class instance.
+ * Returns NULL if the object is not a Fiber or has no context.
+ */
+static ph7_exec_ctx * VmFiberExtractCtx(ph7_vm *pVm, ph7_value *pFiberObj)
+{
+	ph7_class_instance *pThis;
+	SyString sAttr;
+	ph7_value *pAttr;
+	if( (pFiberObj->iFlags & MEMOBJ_OBJ) == 0 ){
+		return 0;
+	}
+	pThis = (ph7_class_instance *)pFiberObj->x.pOther;
+	if( pThis->pClass != pVm->pFiberClass ){
+		return 0;
+	}
+	SyStringInitFromBuf(&sAttr, "__ctx", 5);
+	pAttr = PH7_ClassInstanceFetchAttr(pThis, &sAttr);
+	if( pAttr == 0 || (pAttr->iFlags & MEMOBJ_RES) == 0 ){
+		return 0;
+	}
+	return (ph7_exec_ctx *)pAttr->x.pOther;
+}
+/*
+ * Fiber::suspend($value = null) — static method.
+ * Suspends the currently running fiber and passes $value to the caller.
+ */
+static int vm_builtin_Fiber_suspend(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	if( pVm->pActiveCtx == 0 ){
+		return PH7_VmThrowException(pCtx, "FiberError",
+			"Cannot suspend outside of a fiber");
+	}
+	if( nArg > 0 ){
+		PH7_MemObjStore(apArg[0], &pVm->pActiveCtx->sSuspendValue);
+	}else{
+		PH7_MemObjRelease(&pVm->pActiveCtx->sSuspendValue);
+	}
+	return PH7_SUSPEND;
+}
+/*
+ * __fiber_construct($this, $callable) — validate and store the callable.
+ * Actual resolution is deferred to start() so that overload selection
+ * and closure-environment binding happen with the correct argument context.
+ */
+static int vm_builtin_Fiber_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis;
+	ph7_value *pAttr;
+	SyString sAttrName;
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx, "FiberError",
+			"Fiber::__construct() expects a callable argument");
+	}
+	if( (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+		return PH7_VmThrowException(pCtx, "FiberError",
+			"Fiber::__construct(): invalid $this");
+	}
+	pThis = (ph7_class_instance *)apArg[0]->x.pOther;
+	if( pThis->pClass != pCtx->pVm->pFiberClass ){
+		return PH7_VmThrowException(pCtx, "FiberError",
+			"Fiber::__construct(): $this is not a Fiber instance");
+	}
+	/* Basic validation: callable must be a string or closure (object) */
+	if( (apArg[1]->iFlags & (MEMOBJ_STRING|MEMOBJ_OBJ)) == 0 ){
+		return PH7_VmThrowException(pCtx, "FiberError",
+			"Fiber::__construct() expects a callable (string or closure)");
+	}
+	/* Store callable in $this->__callable for deferred resolution at start() */
+	SyStringInitFromBuf(&sAttrName, "__callable", 10);
+	pAttr = PH7_ClassInstanceFetchAttr(pThis, &sAttrName);
+	if( pAttr ){
+		PH7_MemObjStore(apArg[1], pAttr);
+	}
+	return PH7_OK;
+}
+/*
+ * Resolve the callable stored in a Fiber's $__callable attribute.
+ * Returns the resolved ph7_vm_func* or NULL on failure (with exception thrown).
+ * If the callable is a closure (object), *ppThis is set to the closure instance
+ * so that start() can bind it as $this for the closure environment.
+ */
+static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instance *pFiberObj,
+	ph7_class_instance **ppThis)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_value *pCallable;
+	SyString sAttrName;
+	*ppThis = 0;
+	SyStringInitFromBuf(&sAttrName, "__callable", 10);
+	pCallable = PH7_ClassInstanceFetchAttr(pFiberObj, &sAttrName);
+	if( pCallable == 0 || (pCallable->iFlags & (MEMOBJ_STRING|MEMOBJ_OBJ)) == 0 ){
+		PH7_VmThrowException(pCtx, "FiberError", "Fiber has no valid callable");
+		return 0;
+	}
+	if( pCallable->iFlags & MEMOBJ_STRING ){
+		/* String callable — look up in user functions with overload support */
+		SyString sName;
+		SyHashEntry *pEntry;
+		ph7_vm_func *pFunc;
+		SyStringInitFromBuf(&sName, SyBlobData(&pCallable->sBlob), SyBlobLength(&pCallable->sBlob));
+		pEntry = SyHashGet(&pVm->hFunction, sName.zString, sName.nByte);
+		if( pEntry == 0 ){
+			PH7_VmThrowException(pCtx, "FiberError",
+				"Fiber callable '%.*s' not found", (int)sName.nByte, sName.zString);
+			return 0;
+		}
+		pFunc = (ph7_vm_func *)pEntry->pUserData;
+		return pFunc;
+	}else{
+		/* Object callable (closure) — resolve __invoke method */
+		ph7_class_instance *pClosure = (ph7_class_instance *)pCallable->x.pOther;
+		ph7_class_method *pMethod = PH7_ClassExtractMethod(pClosure->pClass, "__invoke",
+			sizeof("__invoke") - 1);
+		if( pMethod == 0 ){
+			PH7_VmThrowException(pCtx, "FiberError",
+				"Fiber callable object has no __invoke method");
+			return 0;
+		}
+		*ppThis = pClosure;
+		return &pMethod->sFunc;
+	}
+}
+/*
+ * Install arguments into a fiber's frame using the same semantics as PH7_OP_CALL:
+ * type casting, pass-by-reference handling, default values, and closure environment.
+ * The fiber's frame must be at the top of pVm->pFrame when this is called.
+ */
+static sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
+	ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg)
+{
+	ph7_vm_func *pFunc = pExecCtx->pFunc;
+	ph7_vm_func_arg *aFormalArg;
+	sxu32 nFormal, n;
+	VmSlot sSlot;
+	sxi32 rc;
+	/* Install $this for closure callables */
+	if( pClosureThis ){
+		static const SyString sThis = { "this", sizeof("this") - 1 };
+		ph7_value *pObj = VmExtractMemObj(pVm, &sThis, FALSE, TRUE);
+		if( pObj ){
+			pObj->x.pOther = pClosureThis;
+			MemObjSetType(pObj, MEMOBJ_OBJ);
+		}
+	}
+	/* Install static variables */
+	if( SySetUsed(&pFunc->aStatic) > 0 ){
+		ph7_vm_func_static_var *aStatic;
+		ph7_value *pVal;
+		aStatic = (ph7_vm_func_static_var *)SySetBasePtr(&pFunc->aStatic);
+		for( n = 0; n < SySetUsed(&pFunc->aStatic); ++n ){
+			pVal = VmReserveMemObj(pVm, &sSlot.nIdx);
+			if( pVal ){
+				sSlot.pUserData = 0;
+				SySetPut(&pExecCtx->pFrame->sLocal, &sSlot);
+				SyHashInsert(&pExecCtx->pFrame->hVar, aStatic[n].sName.zString,
+					aStatic[n].sName.nByte, SX_INT_TO_PTR(sSlot.nIdx));
+				if( SySetUsed(&aStatic[n].aByteCode) > 0 ){
+					VmLocalExec(pVm, &aStatic[n].aByteCode, pVal);
+				}
+			}
+		}
+	}
+	/* Install arguments with type casting and default values (matching OP_CALL) */
+	aFormalArg = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);
+	nFormal = SySetUsed(&pFunc->aArgs);
+	for( n = 0; n < nFormal; n++ ){
+		ph7_value *pObj;
+		if( n < (sxu32)nArg ){
+			/* Argument provided — install with type casting */
+			pObj = VmExtractMemObj(pVm, &aFormalArg[n].sName, FALSE, TRUE);
+			if( pObj ){
+				PH7_MemObjStore(apArg[n], pObj);
+				/* Type casting */
+				if( aFormalArg[n].nType > 0 && aFormalArg[n].nType != SXU32_HIGH ){
+					if( (pObj->iFlags & aFormalArg[n].nType) == 0 ){
+						ProcMemObjCast xCast = PH7_MemObjCastMethod(aFormalArg[n].nType);
+						if( xCast ){
+							xCast(pObj);
+						}
+					}
+				}
+				sSlot.nIdx = pObj->nIdx;
+				sSlot.pUserData = 0;
+				SySetPut(&pExecCtx->pFrame->sArg, &sSlot);
+			}
+		}else if( SySetUsed(&aFormalArg[n].aByteCode) > 0 ){
+			/* Default value */
+			pObj = VmExtractMemObj(pVm, &aFormalArg[n].sName, FALSE, TRUE);
+			if( pObj ){
+				rc = VmLocalExec(pVm, &aFormalArg[n].aByteCode, pObj);
+				if( rc == SXERR_ABORT ){
+					return rc;
+				}
+				if( aFormalArg[n].nType > 0 && aFormalArg[n].nType != SXU32_HIGH ){
+					if( (pObj->iFlags & aFormalArg[n].nType) == 0 ){
+						ProcMemObjCast xCast = PH7_MemObjCastMethod(aFormalArg[n].nType);
+						if( xCast ){
+							xCast(pObj);
+						}
+					}
+				}
+				sSlot.nIdx = pObj->nIdx;
+				sSlot.pUserData = 0;
+				SySetPut(&pExecCtx->pFrame->sArg, &sSlot);
+			}
+		}
+	}
+	/* Install closure environment (captured variables) */
+	if( pFunc->iFlags & VM_FUNC_CLOSURE ){
+		ph7_vm_func_closure_env *aEnv, *pEnv;
+		ph7_value *pValue;
+		sxu32 iEnv;
+		aEnv = (ph7_vm_func_closure_env *)SySetBasePtr(&pFunc->aClosureEnv);
+		for( iEnv = 0; iEnv < SySetUsed(&pFunc->aClosureEnv); ++iEnv ){
+			pEnv = &aEnv[iEnv];
+			if( (pEnv->iFlags & VM_FUNC_ARG_IGNORE) && (pEnv->sValue.iFlags & MEMOBJ_NULL) ){
+				continue;
+			}
+			pValue = VmExtractMemObj(pVm, &pEnv->sName, FALSE, TRUE);
+			if( pValue == 0 ){
+				continue;
+			}
+			PH7_MemObjRelease(pValue);
+			PH7_MemObjStore(&pEnv->sValue, pValue);
+		}
+	}
+	return SXRET_OK;
+}
+/*
+ * Fiber->start(...$args) — resolve callable, create exec context, install
+ * arguments/closure-env/$this (matching OP_CALL semantics), and start.
+ * apArg[0] = $this, apArg[1] = func_get_args() array
+ */
+static int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis;
+	ph7_class_instance *pClosureThis;
+	ph7_exec_ctx *pExecCtx;
+	ph7_vm_func *pFunc;
+	ph7_value sResult;
+	ph7_value *pCtxAttr;
+	SyString sAttrName;
+	sxi32 rc;
+	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+		return PH7_VmThrowException(pCtx, "FiberError", "Fiber::start() requires $this");
+	}
+	pThis = (ph7_class_instance *)apArg[0]->x.pOther;
+	/* Check if already started (has a __ctx) */
+	pExecCtx = VmFiberExtractCtx(pVm, apArg[0]);
+	if( pExecCtx != 0 ){
+		return PH7_VmThrowException(pCtx, "FiberError",
+			"Cannot start a fiber that has already been started");
+	}
+	/* Resolve callable */
+	pFunc = VmFiberResolveCallable(pCtx, pThis, &pClosureThis);
+	if( pFunc == 0 ){
+		return PH7_EXCEPTION;
+	}
+	/* Create execution context now that we know the function */
+	pExecCtx = VmNewExecCtx(pVm, pFunc);
+	if( pExecCtx == 0 ){
+		return PH7_VmThrowException(pCtx, "FiberError",
+			"Fiber::start(): out of memory");
+	}
+	/* Store context in $this->__ctx */
+	SyStringInitFromBuf(&sAttrName, "__ctx", 5);
+	pCtxAttr = PH7_ClassInstanceFetchAttr(pThis, &sAttrName);
+	if( pCtxAttr ){
+		pCtxAttr->x.pOther = pExecCtx;
+		MemObjSetType(pCtxAttr, MEMOBJ_RES);
+	}
+	/* Temporarily attach the fiber's frame to the VM chain so that
+	 * VmExtractMemObj (used by VmFiberSetupFrame) installs variables
+	 * into the fiber's frame, not the caller's. */
+	pExecCtx->pFrame->pParent = pVm->pFrame;
+	pVm->pFrame = pExecCtx->pFrame;
+	/* Unpack the args array and install into the frame */
+	{
+		ph7_value **apValues = 0;
+		int nActual = 0;
+		if( nArg >= 2 && (apArg[1]->iFlags & MEMOBJ_HASHMAP) ){
+			ph7_hashmap *pMap = (ph7_hashmap *)apArg[1]->x.pOther;
+			ph7_hashmap_node *pNode;
+			sxu32 nCount = pMap->nEntry;
+			if( nCount > 0 ){
+				sxu32 idx = 0;
+				apValues = (ph7_value **)SyMemBackendAlloc(&pVm->sAllocator,
+					nCount * sizeof(ph7_value *));
+				if( apValues ){
+					pNode = pMap->pFirst;
+					while( pNode && idx < nCount ){
+						apValues[idx] = (ph7_value *)SySetAt(&pVm->aMemObj, pNode->nValIdx);
+						idx++;
+						pNode = pNode->pPrev;
+					}
+					nActual = (int)idx;
+				}
+			}
+		}
+		rc = VmFiberSetupFrame(pVm, pExecCtx, pClosureThis, nActual, apValues);
+		if( apValues ){
+			SyMemBackendFree(&pVm->sAllocator, apValues);
+		}
+	}
+	/* Detach the frame — VmStartCtx will re-attach it */
+	pVm->pFrame = pExecCtx->pFrame->pParent;
+	pExecCtx->pFrame->pParent = 0;
+	if( rc != SXRET_OK ){
+		return PH7_ABORT;
+	}
+	PH7_MemObjInit(pVm, &sResult);
+	rc = VmStartCtx(pVm, pExecCtx, &sResult);
+	if( rc == PH7_ABORT ){
+		PH7_MemObjRelease(&sResult);
+		return PH7_ABORT;
+	}
+	if( rc == PH7_EXCEPTION ){
+		PH7_MemObjRelease(&sResult);
+		return PH7_EXCEPTION;
+	}
+	ph7_result_value(pCtx, &sResult);
+	PH7_MemObjRelease(&sResult);
+	return PH7_OK;
+}
+/*
+ * Fiber->resume($value = null) — resume a suspended fiber.
+ */
+static int vm_builtin_Fiber_resume(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_exec_ctx *pExecCtx;
+	ph7_value sResult;
+	ph7_value *pResumeVal;
+	sxi32 rc;
+	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+		ph7_context_throw_error(pCtx, PH7_CTX_ERR, "Fiber::resume() requires $this");
+		return PH7_OK;
+	}
+	pExecCtx = VmFiberExtractCtx(pVm, apArg[0]);
+	if( pExecCtx == 0 ){
+		ph7_context_throw_error(pCtx, PH7_CTX_ERR, "Invalid Fiber object");
+		return PH7_OK;
+	}
+	if( pExecCtx->iState != PH7_CTX_STATE_SUSPENDED ){
+		return PH7_VmThrowException(pCtx, "FiberError",
+			"Cannot resume a fiber that is not suspended");
+	}
+	pResumeVal = (nArg > 1) ? apArg[1] : 0;
+	PH7_MemObjInit(pVm, &sResult);
+	rc = VmResumeCtx(pVm, pExecCtx, pResumeVal, &sResult);
+	if( rc == PH7_ABORT ){
+		PH7_MemObjRelease(&sResult);
+		return PH7_ABORT;
+	}
+	if( rc == PH7_EXCEPTION ){
+		PH7_MemObjRelease(&sResult);
+		return PH7_EXCEPTION;
+	}
+	ph7_result_value(pCtx, &sResult);
+	PH7_MemObjRelease(&sResult);
+	return PH7_OK;
+}
+/*
+ * Fiber->getReturn() — get the fiber's return value after it has terminated.
+ */
+static int vm_builtin_Fiber_getReturn(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_exec_ctx *pExecCtx;
+	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pExecCtx = VmFiberExtractCtx(pVm, apArg[0]);
+	if( pExecCtx == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	if( pExecCtx->iState != PH7_CTX_STATE_COMPLETED ){
+		if( pExecCtx->iState == PH7_CTX_STATE_CREATED ){
+			return PH7_VmThrowException(pCtx, "FiberError",
+				"Cannot get fiber return value: The fiber has not been started");
+		}
+		return PH7_VmThrowException(pCtx, "FiberError",
+			"Cannot get fiber return value: The fiber has not returned");
+	}
+	ph7_result_value(pCtx, &pExecCtx->sRetValue);
+	return PH7_OK;
+}
+/*
+ * Fiber->isStarted() / isRunning() / isSuspended() / isTerminated()
+ */
+static int vm_builtin_Fiber_isStarted(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_exec_ctx *pExecCtx;
+	if( nArg < 1 ){ ph7_result_bool(pCtx, 0); return PH7_OK; }
+	pExecCtx = VmFiberExtractCtx(pCtx->pVm, apArg[0]);
+	ph7_result_bool(pCtx, pExecCtx && pExecCtx->iState != PH7_CTX_STATE_CREATED);
+	return PH7_OK;
+}
+static int vm_builtin_Fiber_isRunning(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_exec_ctx *pExecCtx;
+	if( nArg < 1 ){ ph7_result_bool(pCtx, 0); return PH7_OK; }
+	pExecCtx = VmFiberExtractCtx(pCtx->pVm, apArg[0]);
+	ph7_result_bool(pCtx, pExecCtx && pExecCtx->iState == PH7_CTX_STATE_RUNNING);
+	return PH7_OK;
+}
+static int vm_builtin_Fiber_isSuspended(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_exec_ctx *pExecCtx;
+	if( nArg < 1 ){ ph7_result_bool(pCtx, 0); return PH7_OK; }
+	pExecCtx = VmFiberExtractCtx(pCtx->pVm, apArg[0]);
+	ph7_result_bool(pCtx, pExecCtx && pExecCtx->iState == PH7_CTX_STATE_SUSPENDED);
+	return PH7_OK;
+}
+static int vm_builtin_Fiber_isTerminated(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_exec_ctx *pExecCtx;
+	if( nArg < 1 ){ ph7_result_bool(pCtx, 0); return PH7_OK; }
+	pExecCtx = VmFiberExtractCtx(pCtx->pVm, apArg[0]);
+	ph7_result_bool(pCtx, pExecCtx && pExecCtx->iState == PH7_CTX_STATE_COMPLETED);
+	return PH7_OK;
+}
+/*
+ * Fiber->__destruct() — clean up the execution context.
+ */
+static int vm_builtin_Fiber_destruct(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_exec_ctx *pExecCtx;
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	pExecCtx = VmFiberExtractCtx(pVm, apArg[0]);
+	if( pExecCtx ){
+		VmReleaseExecCtx(pVm, pExecCtx);
+		/* Clear the attribute so double-free is prevented */
+		if( apArg[0]->iFlags & MEMOBJ_OBJ ){
+			ph7_class_instance *pThis = (ph7_class_instance *)apArg[0]->x.pOther;
+			SyString sAttrName;
+			ph7_value *pAttr;
+			SyStringInitFromBuf(&sAttrName, "__ctx", 5);
+			pAttr = PH7_ClassInstanceFetchAttr(pThis, &sAttrName);
+			if( pAttr ){
+				PH7_MemObjRelease(pAttr);
+			}
+		}
+	}
+	return PH7_OK;
+}
+/* ======================== Fiber Public API Helpers ======================== */
+PH7_PRIVATE int PH7_VmIsFiber(ph7_vm *pVm, ph7_value *pVal)
+{
+	ph7_class_instance *pThis;
+	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 ) return 0;
+	pThis = (ph7_class_instance *)pVal->x.pOther;
+	return pThis->pClass == pVm->pFiberClass;
+}
+PH7_PRIVATE sxi32 PH7_VmFiberStart(ph7_vm *pVm, ph7_value *pFiber, int nArg, ph7_value **apArg, ph7_value *pResult)
+{
+	ph7_class_instance *pThis;
+	ph7_class_instance *pClosureThis = 0;
+	ph7_exec_ctx *pCtx;
+	ph7_vm_func *pFunc;
+	ph7_value *pCallable;
+	ph7_value *pCtxAttr;
+	SyString sAttrName;
+	/* Must not already be started */
+	pCtx = VmFiberExtractCtx(pVm, pFiber);
+	if( pCtx != 0 ){
+		return SXERR_INVALID;
+	}
+	if( (pFiber->iFlags & MEMOBJ_OBJ) == 0 ){
+		return SXERR_INVALID;
+	}
+	pThis = (ph7_class_instance *)pFiber->x.pOther;
+	/* Get the callable */
+	SyStringInitFromBuf(&sAttrName, "__callable", 10);
+	pCallable = PH7_ClassInstanceFetchAttr(pThis, &sAttrName);
+	if( pCallable == 0 ){
+		return SXERR_INVALID;
+	}
+	/* Resolve callable */
+	if( pCallable->iFlags & MEMOBJ_STRING ){
+		SyString sName;
+		SyHashEntry *pEntry;
+		SyStringInitFromBuf(&sName, SyBlobData(&pCallable->sBlob), SyBlobLength(&pCallable->sBlob));
+		pEntry = SyHashGet(&pVm->hFunction, sName.zString, sName.nByte);
+		if( pEntry == 0 ){
+			return SXERR_NOTFOUND;
+		}
+		pFunc = (ph7_vm_func *)pEntry->pUserData;
+	}else if( pCallable->iFlags & MEMOBJ_OBJ ){
+		ph7_class_instance *pClosure = (ph7_class_instance *)pCallable->x.pOther;
+		ph7_class_method *pMethod = PH7_ClassExtractMethod(pClosure->pClass, "__invoke",
+			sizeof("__invoke") - 1);
+		if( pMethod == 0 ){
+			return SXERR_INVALID;
+		}
+		pClosureThis = pClosure;
+		pFunc = &pMethod->sFunc;
+	}else{
+		return SXERR_INVALID;
+	}
+	/* Create context */
+	pCtx = VmNewExecCtx(pVm, pFunc);
+	if( pCtx == 0 ){
+		return SXERR_MEM;
+	}
+	/* Store in __ctx */
+	SyStringInitFromBuf(&sAttrName, "__ctx", 5);
+	pCtxAttr = PH7_ClassInstanceFetchAttr(pThis, &sAttrName);
+	if( pCtxAttr ){
+		pCtxAttr->x.pOther = pCtx;
+		MemObjSetType(pCtxAttr, MEMOBJ_RES);
+	}
+	/* Set up frame with args */
+	pCtx->pFrame->pParent = pVm->pFrame;
+	pVm->pFrame = pCtx->pFrame;
+	VmFiberSetupFrame(pVm, pCtx, pClosureThis, nArg, apArg);
+	pVm->pFrame = pCtx->pFrame->pParent;
+	pCtx->pFrame->pParent = 0;
+	return VmStartCtx(pVm, pCtx, pResult);
+}
+PH7_PRIVATE sxi32 PH7_VmFiberResume(ph7_vm *pVm, ph7_value *pFiber, ph7_value *pSendValue, ph7_value *pResult)
+{
+	ph7_exec_ctx *pCtx = VmFiberExtractCtx(pVm, pFiber);
+	if( pCtx == 0 ) return SXERR_INVALID;
+	return VmResumeCtx(pVm, pCtx, pSendValue, pResult);
+}
+PH7_PRIVATE int PH7_VmFiberIsSuspended(ph7_vm *pVm, ph7_value *pFiber)
+{
+	ph7_exec_ctx *pCtx = VmFiberExtractCtx(pVm, pFiber);
+	return pCtx && pCtx->iState == PH7_CTX_STATE_SUSPENDED;
+}
+PH7_PRIVATE int PH7_VmFiberIsTerminated(ph7_vm *pVm, ph7_value *pFiber)
+{
+	ph7_exec_ctx *pCtx = VmFiberExtractCtx(pVm, pFiber);
+	return pCtx && pCtx->iState == PH7_CTX_STATE_COMPLETED;
+}
+PH7_PRIVATE ph7_value * PH7_VmFiberReturnValue(ph7_vm *pVm, ph7_value *pFiber)
+{
+	ph7_exec_ctx *pCtx = VmFiberExtractCtx(pVm, pFiber);
+	if( pCtx == 0 || pCtx->iState != PH7_CTX_STATE_COMPLETED ) return 0;
+	return &pCtx->sRetValue;
+}
+/* ======================== End Fiber Infrastructure ======================== */
 /*
  * Invoke the installed VM output consumer callback to consume
  * the desired message.
@@ -7198,7 +8046,7 @@ PH7_PRIVATE sxi32 PH7_VmCallClassMethod(
 	aInstr[1].iP2 = 0;
 	aInstr[1].p3  = 0;
 	/* Execute the method body (if available) */
-	VmByteCodeExec(&(*pVm),aInstr,aStack,iCursor,pResult,0,TRUE);
+	VmByteCodeExec(&(*pVm),aInstr,aStack,iCursor,pResult,0,TRUE,0);
 	/* Clean up the mess left behind */
 	SyMemBackendFree(&pVm->sAllocator,aStack);
 	return PH7_OK;
@@ -7314,7 +8162,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunction(
 	aInstr[1].iP2 = 0;
 	aInstr[1].p3  = 0;
 	/* Execute the function body (if available) */
-	VmByteCodeExec(&(*pVm),aInstr,aStack,nArg,pResult,0,TRUE);
+	VmByteCodeExec(&(*pVm),aInstr,aStack,nArg,pResult,0,TRUE,0);
 	/* Clean up the mess left behind */
 	SyMemBackendFree(&pVm->sAllocator,aStack);
 	return PH7_OK;

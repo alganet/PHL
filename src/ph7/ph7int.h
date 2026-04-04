@@ -405,6 +405,32 @@ struct VmFrame
 #define VM_FRAME_THROW      0x02 /* An exception was thrown */
 #define VM_FRAME_CATCH      0x04 /* Catch frame */
 /*
+ * Suspendable execution context.
+ * Used by Fiber and Generator to save/restore execution state.
+ */
+typedef struct ph7_exec_ctx ph7_exec_ctx;
+/* Execution context states */
+#define PH7_CTX_STATE_CREATED    0  /* Allocated but never started */
+#define PH7_CTX_STATE_RUNNING    1  /* Currently executing */
+#define PH7_CTX_STATE_SUSPENDED  2  /* Paused at suspend point */
+#define PH7_CTX_STATE_COMPLETED  3  /* Returned normally */
+#define PH7_CTX_STATE_CLOSED     4  /* Destroyed */
+struct ph7_exec_ctx
+{
+	ph7_vm *pVm;              /* Owning VM */
+	ph7_vm_func *pFunc;       /* The function being executed */
+	VmFrame *pFrame;          /* Detached execution frame */
+	ph7_value *pStack;        /* Private operand stack */
+	sxi32 nTos;               /* Saved top-of-stack index */
+	sxi32 pc;                 /* Saved program counter (resume point) */
+	sxi32 iState;             /* One of PH7_CTX_STATE_* */
+	ph7_value sSuspendValue;  /* Value passed out via Fiber::suspend() */
+	ph7_value sRetValue;      /* Final return value */
+	sxu32 nExceptionBase;     /* Exception stack depth at entry */
+};
+/* Special return code from VmByteCodeExec signaling fiber suspension */
+#define PH7_SUSPEND  0x100
+/*
  * Output control buffer entry.
  */
 typedef struct VmObEntry VmObEntry;
@@ -494,6 +520,7 @@ struct ph7_vm_func_closure_env
 #define VM_FUNC_CLASS_METHOD 0x008 /* VM function is in fact a class method */
 #define VM_FUNC_CLOSURE      0x010 /* VM function is a closure */
 #define VM_FUNC_ARG_IGNORE   0x020 /* Do not install argument in the current frame */
+#define VM_FUNC_GENERATOR    0x040 /* VM function is a generator (contains yield) */
 /*
  * Each user defined function is parsed out and stored in an instance
  * of the following structure.
@@ -782,6 +809,8 @@ struct ph7_vm
 	sxu32 nEmptyStringIdx;
 	sxi32 iExitStatus;         /* Script exit status */
 	ph7_gen_state sCodeGen;    /* Code generator module */
+	ph7_exec_ctx *pActiveCtx;  /* Currently executing fiber/generator context (NULL in normal code) */
+	ph7_class *pFiberClass;    /* Cached Fiber class pointer for fast dispatch */
 	ph7_vm *pNext,*pPrev;      /* List of active VM's */
 	sxu32 nMagic;              /* Sanity check against misuse */
 };
@@ -1262,6 +1291,13 @@ PH7_PRIVATE sxi32 PH7_VmDump(ph7_vm *pVm,ProcConsumer xConsumer,void *pUserData)
 PH7_PRIVATE sxi32 PH7_VmInit(ph7_vm *pVm,ph7 *pEngine);
 PH7_PRIVATE sxi32 PH7_VmConfigure(ph7_vm *pVm,sxi32 nOp,va_list ap);
 PH7_PRIVATE sxi32 PH7_VmByteCodeExec(ph7_vm *pVm);
+/* Fiber API helpers (used by api.c) */
+PH7_PRIVATE int PH7_VmIsFiber(ph7_vm *pVm, ph7_value *pVal);
+PH7_PRIVATE sxi32 PH7_VmFiberStart(ph7_vm *pVm, ph7_value *pFiber, int nArg, ph7_value **apArg, ph7_value *pResult);
+PH7_PRIVATE sxi32 PH7_VmFiberResume(ph7_vm *pVm, ph7_value *pFiber, ph7_value *pSendValue, ph7_value *pResult);
+PH7_PRIVATE int PH7_VmFiberIsSuspended(ph7_vm *pVm, ph7_value *pFiber);
+PH7_PRIVATE int PH7_VmFiberIsTerminated(ph7_vm *pVm, ph7_value *pFiber);
+PH7_PRIVATE ph7_value * PH7_VmFiberReturnValue(ph7_vm *pVm, ph7_value *pFiber);
 PH7_PRIVATE sxi32 PH7_VmRelease(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmMakeReady(ph7_vm *pVm);
