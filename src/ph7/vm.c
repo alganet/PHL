@@ -865,6 +865,23 @@ static int vm_builtin_Fiber_isRunning(ph7_context *pCtx, int nArg, ph7_value **a
 static int vm_builtin_Fiber_isSuspended(ph7_context *pCtx, int nArg, ph7_value **apArg);
 static int vm_builtin_Fiber_isTerminated(ph7_context *pCtx, int nArg, ph7_value **apArg);
 static int vm_builtin_Fiber_destruct(ph7_context *pCtx, int nArg, ph7_value **apArg);
+/* Forward declarations for Fiber/Generator infrastructure */
+static ph7_exec_ctx * VmNewExecCtx(ph7_vm *pVm, ph7_vm_func *pFunc);
+static void VmReleaseExecCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx);
+static sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
+	ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg);
+/* Forward declarations for Generator helpers and C functions */
+static ph7_generator * VmNewGenerator(ph7_vm *pVm, ph7_exec_ctx *pCtx);
+static void VmReleaseGenerator(ph7_vm *pVm, ph7_generator *pGen);
+static int vm_builtin_Generator_rewind(ph7_context *pCtx, int nArg, ph7_value **apArg);
+static int vm_builtin_Generator_valid(ph7_context *pCtx, int nArg, ph7_value **apArg);
+static int vm_builtin_Generator_current(ph7_context *pCtx, int nArg, ph7_value **apArg);
+static int vm_builtin_Generator_key(ph7_context *pCtx, int nArg, ph7_value **apArg);
+static int vm_builtin_Generator_next(ph7_context *pCtx, int nArg, ph7_value **apArg);
+static int vm_builtin_Generator_send(ph7_context *pCtx, int nArg, ph7_value **apArg);
+static int vm_builtin_Generator_throw(ph7_context *pCtx, int nArg, ph7_value **apArg);
+static int vm_builtin_Generator_getReturn(ph7_context *pCtx, int nArg, ph7_value **apArg);
+static int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_value **apArg);
 /*
  * Built-in classes/interfaces and some functions that cannot be implemented
  * directly as foreign functions.
@@ -998,6 +1015,18 @@ static int vm_builtin_Fiber_destruct(ph7_context *pCtx, int nArg, ph7_value **ap
 	"  public function isTerminated(){ return __fiber_isTerminated($this); }"\
 	"  public static function suspend($value = null){ return __fiber_suspend($value); }"\
 	"  public function __destruct(){ __fiber_destruct($this); }"\
+	"}"\
+	"class Generator implements Iterator {"\
+	"  private $__ctx;"\
+	"  public function current(){ return __gen_current($this); }"\
+	"  public function key(){ return __gen_key($this); }"\
+	"  public function next(){ return __gen_next($this); }"\
+	"  public function rewind(){ return __gen_rewind($this); }"\
+	"  public function valid(){ return __gen_valid($this); }"\
+	"  public function send($value = null){ return __gen_send($this,$value); }"\
+	"  public function throw($exception){ return __gen_throw($this,$exception); }"\
+	"  public function getReturn(){ return __gen_getReturn($this); }"\
+	"  public function __destruct(){ __gen_destruct($this); }"\
 	"}"\
 	"class stdClass{"\
 	"  public $value;"\
@@ -1354,6 +1383,17 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	ph7_create_function(pVm,"__fiber_isSuspended",vm_builtin_Fiber_isSuspended,0);
 	ph7_create_function(pVm,"__fiber_isTerminated",vm_builtin_Fiber_isTerminated,0);
 	ph7_create_function(pVm,"__fiber_destruct",vm_builtin_Fiber_destruct,0);
+	/* Cache the Generator class pointer and register generator functions */
+	pVm->pGeneratorClass = PH7_VmExtractClass(pVm,"Generator",9,0,0);
+	ph7_create_function(pVm,"__gen_rewind",vm_builtin_Generator_rewind,0);
+	ph7_create_function(pVm,"__gen_valid",vm_builtin_Generator_valid,0);
+	ph7_create_function(pVm,"__gen_current",vm_builtin_Generator_current,0);
+	ph7_create_function(pVm,"__gen_key",vm_builtin_Generator_key,0);
+	ph7_create_function(pVm,"__gen_next",vm_builtin_Generator_next,0);
+	ph7_create_function(pVm,"__gen_send",vm_builtin_Generator_send,0);
+	ph7_create_function(pVm,"__gen_throw",vm_builtin_Generator_throw,0);
+	ph7_create_function(pVm,"__gen_getReturn",vm_builtin_Generator_getReturn,0);
+	ph7_create_function(pVm,"__gen_destruct",vm_builtin_Generator_destruct,0);
 	/* Reset the code generator */
 	PH7_ResetCodeGenerator(&(*pVm),pEngine->xConf.xErr,pEngine->xConf.pErrData);
 	return SXRET_OK;
@@ -5800,6 +5840,14 @@ case PH7_OP_CLONE: {
 	}
 	/* Point to the source */
 	pSrc = (ph7_class_instance *)pTos->x.pOther;
+	/* Generator and Fiber objects are not cloneable (matches PHP) */
+	if( pSrc->pClass == pVm->pGeneratorClass || pSrc->pClass == pVm->pFiberClass ){
+		VmErrorFormat(&(*pVm),PH7_CTX_ERR,
+			"Trying to clone an uncloneable object of class '%z'",
+			&pSrc->pClass->sName);
+		PH7_MemObjRelease(pTos);
+		break;
+	}
 	/* Perform the clone operation */
 	pClone = PH7_CloneClassInstance(pSrc);
 	PH7_MemObjRelease(pTos);
@@ -5860,6 +5908,57 @@ case PH7_OP_SWITCH: {
 	}
 	break;
 					}
+/*
+ * OP_YIELD P1 P2 *
+ *  Yield a value from a generator function.
+ *  P1=1 if value on stack, P1=0 for bare yield.
+ *  P2=1 if key=>value syntax (key below value on stack).
+ */
+case PH7_OP_YIELD: {
+	ph7_generator *pGen;
+	if( pVm->pActiveCtx == 0 || pVm->pActiveCtx->pPrivate == 0 ){
+		VmErrorFormat(&(*pVm), PH7_CTX_ERR, "Cannot use yield outside of a generator");
+		goto Abort;
+	}
+	pGen = (ph7_generator *)pVm->pActiveCtx->pPrivate;
+	if( pInstr->iP2 ){
+		/* yield $key => $value: value on top, key below */
+#ifdef UNTRUST
+		if( pTos < &pStack[1] ) goto Abort;
+#endif
+		PH7_MemObjStore(pTos, &pGen->sYieldValue);
+		VmPopOperand(&pTos, 1);
+		PH7_MemObjStore(pTos, &pGen->sYieldKey);
+		VmPopOperand(&pTos, 1);
+		/* If explicit key is integer, advance iImplicitKey past it (PHP compat) */
+		if( pGen->sYieldKey.iFlags & MEMOBJ_INT ){
+			sxi64 nKey = pGen->sYieldKey.x.iVal;
+			if( nKey >= pGen->iImplicitKey ){
+				pGen->iImplicitKey = nKey + 1;
+			}
+		}
+	}else if( pInstr->iP1 ){
+		/* yield $value */
+#ifdef UNTRUST
+		if( pTos < pStack ) goto Abort;
+#endif
+		PH7_MemObjStore(pTos, &pGen->sYieldValue);
+		VmPopOperand(&pTos, 1);
+		/* Auto-increment key */
+		PH7_MemObjRelease(&pGen->sYieldKey);
+		pGen->sYieldKey.x.iVal = pGen->iImplicitKey++;
+		MemObjSetType(&pGen->sYieldKey, MEMOBJ_INT);
+	}else{
+		/* Bare yield — null value, auto-increment key */
+		PH7_MemObjRelease(&pGen->sYieldValue);
+		PH7_MemObjRelease(&pGen->sYieldKey);
+		pGen->sYieldKey.x.iVal = pGen->iImplicitKey++;
+		MemObjSetType(&pGen->sYieldKey, MEMOBJ_INT);
+	}
+	/* Suspend execution — resume will push the send() value as the yield result */
+	VmSuspendCtx(pVm, pVm->pActiveCtx, pc + 1, (sxi32)(pTos - pStack));
+	goto Suspend;
+}
 /*
  * OP_CALL P1 * *
  *  Call a PHP or a foreign function and push the return value of the called
@@ -6030,6 +6129,89 @@ case PH7_OP_CALL: {
 		if( pVmFunc->pNextName ){
 			/* Function is candidate for overloading,select the appropriate function to call */
 			pVmFunc = VmOverload(&(*pVm),pVmFunc,pArg,(int)(pTos-pArg));
+		}
+		if( pVmFunc->iFlags & VM_FUNC_GENERATOR ){
+			/* Generator function: return a Generator object instead of executing */
+			ph7_exec_ctx *pExecCtx;
+			ph7_generator *pGenerator;
+			ph7_class_instance *pGenObj;
+			ph7_value *pCtxAttr;
+			SyString sAttrName;
+			ph7_value **apCallArgs;
+			int nCallArgs, iArg;
+			/* Collect arguments from the operand stack */
+			nCallArgs = (int)(pTos - pArg);
+			apCallArgs = 0;
+			if( nCallArgs > 0 ){
+				apCallArgs = (ph7_value **)SyMemBackendAlloc(&pVm->sAllocator,
+					nCallArgs * sizeof(ph7_value *));
+				if( apCallArgs == 0 ){
+					/* OOM: fall back to zero args rather than NULL-deref */
+					nCallArgs = 0;
+				}else{
+					for( iArg = 0; iArg < nCallArgs; iArg++ ){
+						apCallArgs[iArg] = &pArg[iArg];
+					}
+				}
+			}
+			/* Create execution context and generator wrapper */
+			pExecCtx = VmNewExecCtx(pVm, pVmFunc);
+			if( pExecCtx == 0 ){
+				if( apCallArgs ) SyMemBackendFree(&pVm->sAllocator, apCallArgs);
+				VmErrorFormat(&(*pVm), PH7_CTX_ERR,
+					"Out of memory while creating generator for '%z'", &pVmFunc->sName);
+				break;
+			}
+			pGenerator = VmNewGenerator(pVm, pExecCtx);
+			if( pGenerator == 0 ){
+				VmReleaseExecCtx(pVm, pExecCtx);
+				if( apCallArgs ) SyMemBackendFree(&pVm->sAllocator, apCallArgs);
+				VmErrorFormat(&(*pVm), PH7_CTX_ERR,
+					"Out of memory while creating generator for '%z'", &pVmFunc->sName);
+				break;
+			}
+			/* Set up the frame with arguments, closure env, $this */
+			pExecCtx->pFrame->pParent = pVm->pFrame;
+			pVm->pFrame = pExecCtx->pFrame;
+			rc = VmFiberSetupFrame(pVm, pExecCtx, pThis, nCallArgs, apCallArgs);
+			pVm->pFrame = pExecCtx->pFrame->pParent;
+			pExecCtx->pFrame->pParent = 0;
+			if( apCallArgs ){
+				SyMemBackendFree(&pVm->sAllocator, apCallArgs);
+			}
+			if( rc != SXRET_OK ){
+				VmReleaseGenerator(pVm, pGenerator);
+				if( pThis ){
+					PH7_ClassInstanceUnref(pThis);
+				}
+				if( rc == SXERR_ABORT ){
+					goto Abort;
+				}
+				break;
+			}
+			/* Create Generator class instance */
+			pGenObj = PH7_NewClassInstance(pVm, pVm->pGeneratorClass);
+			if( pGenObj == 0 ){
+				VmReleaseGenerator(pVm, pGenerator);
+				break;
+			}
+			/* Store generator in __ctx attribute */
+			SyStringInitFromBuf(&sAttrName, "__ctx", 5);
+			pCtxAttr = PH7_ClassInstanceFetchAttr(pGenObj, &sAttrName);
+			if( pCtxAttr ){
+				pCtxAttr->x.pOther = pGenerator;
+				MemObjSetType(pCtxAttr, MEMOBJ_RES);
+			}
+			/* Pop args and function name, push Generator object */
+			PH7_MemObjRelease(pTos);
+			pTos = &pTos[-pInstr->iP1];
+			pTos->x.pOther = pGenObj;
+			MemObjSetType(pTos, MEMOBJ_OBJ);
+			pGenObj->iRef++;
+			if( pThis ){
+				PH7_ClassInstanceUnref(pThis);
+			}
+			break;
 		}
 		/* Extract the formal argument set */
 		aFormalArg = (ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs);
@@ -6914,13 +7096,14 @@ static sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 	sxu32 nFormal, n;
 	VmSlot sSlot;
 	sxi32 rc;
-	/* Install $this for closure callables */
+	/* Install $this for closure/method callables */
 	if( pClosureThis ){
 		static const SyString sThis = { "this", sizeof("this") - 1 };
 		ph7_value *pObj = VmExtractMemObj(pVm, &sThis, FALSE, TRUE);
 		if( pObj ){
 			pObj->x.pOther = pClosureThis;
 			MemObjSetType(pObj, MEMOBJ_OBJ);
+			pClosureThis->iRef++; /* Take a strong reference; frame teardown will unref */
 		}
 	}
 	/* Install static variables */
@@ -7327,6 +7510,277 @@ PH7_PRIVATE ph7_value * PH7_VmFiberReturnValue(ph7_vm *pVm, ph7_value *pFiber)
 	if( pCtx == 0 || pCtx->iState != PH7_CTX_STATE_COMPLETED ) return 0;
 	return &pCtx->sRetValue;
 }
+/* ======================== Generator Infrastructure ======================== */
+/*
+ * Allocate a new generator wrapper around an execution context.
+ */
+static ph7_generator * VmNewGenerator(ph7_vm *pVm, ph7_exec_ctx *pCtx)
+{
+	ph7_generator *pGen;
+	pGen = (ph7_generator *)SyMemBackendPoolAlloc(&pVm->sAllocator, sizeof(ph7_generator));
+	if( pGen == 0 ){
+		return 0;
+	}
+	SyZero(pGen, sizeof(ph7_generator));
+	pGen->pCtx = pCtx;
+	pGen->iImplicitKey = 0;
+	PH7_MemObjInit(pVm, &pGen->sYieldValue);
+	PH7_MemObjInit(pVm, &pGen->sYieldKey);
+	/* Link the generator back to the exec context */
+	pCtx->pPrivate = pGen;
+	return pGen;
+}
+/*
+ * Release a generator and its execution context.
+ */
+static void VmReleaseGenerator(ph7_vm *pVm, ph7_generator *pGen)
+{
+	if( pGen == 0 ){
+		return;
+	}
+	PH7_MemObjRelease(&pGen->sYieldValue);
+	PH7_MemObjRelease(&pGen->sYieldKey);
+	if( pGen->pCtx ){
+		pGen->pCtx->pPrivate = 0;
+		VmReleaseExecCtx(pVm, pGen->pCtx);
+		pGen->pCtx = 0;
+	}
+	SyMemBackendPoolFree(&pVm->sAllocator, pGen);
+}
+/*
+ * Extract ph7_generator from a Generator class instance.
+ */
+static ph7_generator * VmGeneratorExtractCtx(ph7_vm *pVm, ph7_value *pGenObj)
+{
+	ph7_class_instance *pThis;
+	SyString sAttr;
+	ph7_value *pAttr;
+	if( (pGenObj->iFlags & MEMOBJ_OBJ) == 0 ){
+		return 0;
+	}
+	pThis = (ph7_class_instance *)pGenObj->x.pOther;
+	if( pThis->pClass != pVm->pGeneratorClass ){
+		return 0;
+	}
+	SyStringInitFromBuf(&sAttr, "__ctx", 5);
+	pAttr = PH7_ClassInstanceFetchAttr(pThis, &sAttr);
+	if( pAttr == 0 || (pAttr->iFlags & MEMOBJ_RES) == 0 ){
+		return 0;
+	}
+	return (ph7_generator *)pAttr->x.pOther;
+}
+/*
+ * Generator::rewind() — start if CREATED, no-op otherwise.
+ */
+static int vm_builtin_Generator_rewind(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_generator *pGen;
+	sxi32 rc;
+	if( nArg < 1 ) return PH7_OK;
+	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);
+	if( pGen == 0 ) return PH7_OK;
+	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){
+		rc = VmStartCtx(pCtx->pVm, pGen->pCtx, 0);
+		if( rc == PH7_ABORT ) return PH7_ABORT;
+		if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;
+	}
+	return PH7_OK;
+}
+/*
+ * Generator::valid() — true if suspended at a yield point.
+ */
+static int vm_builtin_Generator_valid(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_generator *pGen;
+	if( nArg < 1 ){ ph7_result_bool(pCtx, 0); return PH7_OK; }
+	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);
+	ph7_result_bool(pCtx, pGen && pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED);
+	return PH7_OK;
+}
+/*
+ * Generator::current() — return the last yielded value.
+ * Auto-starts the generator on first access (like PHP).
+ */
+static int vm_builtin_Generator_current(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_generator *pGen;
+	sxi32 rc;
+	if( nArg < 1 ){ ph7_result_null(pCtx); return PH7_OK; }
+	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);
+	if( pGen == 0 ){ ph7_result_null(pCtx); return PH7_OK; }
+	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){
+		rc = VmStartCtx(pCtx->pVm, pGen->pCtx, 0);
+		if( rc == PH7_ABORT ) return PH7_ABORT;
+		if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;
+	}
+	if( pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){
+		ph7_result_value(pCtx, &pGen->sYieldValue);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+/*
+ * Generator::key() — return the last yielded key.
+ * Auto-starts the generator on first access (like PHP).
+ */
+static int vm_builtin_Generator_key(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_generator *pGen;
+	sxi32 rc;
+	if( nArg < 1 ){ ph7_result_null(pCtx); return PH7_OK; }
+	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);
+	if( pGen == 0 ){ ph7_result_null(pCtx); return PH7_OK; }
+	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){
+		rc = VmStartCtx(pCtx->pVm, pGen->pCtx, 0);
+		if( rc == PH7_ABORT ) return PH7_ABORT;
+		if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;
+	}
+	if( pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){
+		ph7_result_value(pCtx, &pGen->sYieldKey);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+/*
+ * Generator::next() — advance to the next yield point.
+ */
+static int vm_builtin_Generator_next(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_generator *pGen;
+	sxi32 rc;
+	if( nArg < 1 ) return PH7_OK;
+	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);
+	if( pGen == 0 ) return PH7_OK;
+	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){
+		rc = VmStartCtx(pCtx->pVm, pGen->pCtx, 0);
+	}else if( pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){
+		rc = VmResumeCtx(pCtx->pVm, pGen->pCtx, 0, 0);
+	}else{
+		return PH7_OK;
+	}
+	if( rc == PH7_ABORT ) return PH7_ABORT;
+	if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;
+	return PH7_OK;
+}
+/*
+ * Generator::send($value) — resume and send a value into the generator.
+ */
+static int vm_builtin_Generator_send(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_generator *pGen;
+	ph7_value *pSendVal;
+	sxi32 rc;
+	if( nArg < 1 ) return PH7_OK;
+	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);
+	if( pGen == 0 ){ ph7_result_null(pCtx); return PH7_OK; }
+	pSendVal = (nArg > 1) ? apArg[1] : 0;
+	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){
+		/* First send starts the generator; sent value is ignored per PHP semantics */
+		rc = VmStartCtx(pCtx->pVm, pGen->pCtx, 0);
+	}else if( pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){
+		rc = VmResumeCtx(pCtx->pVm, pGen->pCtx, pSendVal, 0);
+	}else{
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	if( rc == PH7_ABORT ) return PH7_ABORT;
+	if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;
+	if( pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){
+		ph7_result_value(pCtx, &pGen->sYieldValue);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+/*
+ * Generator::throw($exception) — throw an exception into the generator.
+ *
+ * TODO: Full PHP semantics require injecting the exception at the yield
+ * point so the generator's own try/catch can handle it. This needs a
+ * pending-exception field on ph7_exec_ctx and a check at the start of
+ * VmByteCodeExec resume. For now we close the generator and propagate
+ * the exception to the caller.
+ */
+static int vm_builtin_Generator_throw(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_generator *pGen;
+	const char *zMsg;
+	int nLen;
+	if( nArg < 2 ) return PH7_OK;
+	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);
+	if( pGen == 0 ) return PH7_OK;
+	if( pGen->pCtx->iState == PH7_CTX_STATE_COMPLETED ||
+		pGen->pCtx->iState == PH7_CTX_STATE_CLOSED ){
+		return PH7_VmThrowException(pCtx, "Error",
+			"Cannot throw into a closed generator");
+	}
+	/* Close the generator. Re-throw the exception properly via
+	 * PH7_VmThrowException so that VM_FRAME_THROW is set and the
+	 * exception dispatch path works correctly. Extract the message
+	 * from the passed exception object if possible. */
+	pGen->pCtx->iState = PH7_CTX_STATE_CLOSED;
+	zMsg = "Unknown exception thrown into generator";
+	nLen = 0;
+	if( apArg[1]->iFlags & MEMOBJ_OBJ ){
+		/* Try to get the exception's message */
+		SyString sAttr;
+		ph7_value *pMsgAttr;
+		SyStringInitFromBuf(&sAttr, "message", 7);
+		pMsgAttr = PH7_ClassInstanceFetchAttr(
+			(ph7_class_instance *)apArg[1]->x.pOther, &sAttr);
+		if( pMsgAttr && (pMsgAttr->iFlags & MEMOBJ_STRING) ){
+			zMsg = (const char *)SyBlobData(&pMsgAttr->sBlob);
+			nLen = (int)SyBlobLength(&pMsgAttr->sBlob);
+		}
+	}else if( apArg[1]->iFlags & MEMOBJ_STRING ){
+		zMsg = (const char *)SyBlobData(&apArg[1]->sBlob);
+		nLen = (int)SyBlobLength(&apArg[1]->sBlob);
+	}
+	(void)nLen;
+	return PH7_VmThrowException(pCtx, "Exception", "%s", zMsg);
+}
+/*
+ * Generator::getReturn() — get the return value after the generator has finished.
+ */
+static int vm_builtin_Generator_getReturn(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_generator *pGen;
+	if( nArg < 1 ){ ph7_result_null(pCtx); return PH7_OK; }
+	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);
+	if( pGen == 0 ){ ph7_result_null(pCtx); return PH7_OK; }
+	if( pGen->pCtx->iState != PH7_CTX_STATE_COMPLETED ){
+		return PH7_VmThrowException(pCtx, "Error",
+			"Cannot get return value of a generator that hasn't returned");
+	}
+	ph7_result_value(pCtx, &pGen->pCtx->sRetValue);
+	return PH7_OK;
+}
+/*
+ * Generator::__destruct() — clean up.
+ */
+static int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_generator *pGen;
+	if( nArg < 1 ) return PH7_OK;
+	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);
+	if( pGen ){
+		VmReleaseGenerator(pCtx->pVm, pGen);
+		if( apArg[0]->iFlags & MEMOBJ_OBJ ){
+			ph7_class_instance *pThis = (ph7_class_instance *)apArg[0]->x.pOther;
+			SyString sAttrName;
+			ph7_value *pAttr;
+			SyStringInitFromBuf(&sAttrName, "__ctx", 5);
+			pAttr = PH7_ClassInstanceFetchAttr(pThis, &sAttrName);
+			if( pAttr ){
+				PH7_MemObjRelease(pAttr);
+			}
+		}
+	}
+	return PH7_OK;
+}
+/* ======================== End Generator Infrastructure ======================== */
 /* ======================== End Fiber Infrastructure ======================== */
 /*
  * Invoke the installed VM output consumer callback to consume

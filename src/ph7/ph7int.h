@@ -424,12 +424,25 @@ struct ph7_exec_ctx
 	sxi32 nTos;               /* Saved top-of-stack index */
 	sxi32 pc;                 /* Saved program counter (resume point) */
 	sxi32 iState;             /* One of PH7_CTX_STATE_* */
-	ph7_value sSuspendValue;  /* Value passed out via Fiber::suspend() */
+	ph7_value sSuspendValue;  /* Value passed out via Fiber::suspend() / yield */
 	ph7_value sRetValue;      /* Final return value */
 	sxu32 nExceptionBase;     /* Exception stack depth at entry */
+	void *pPrivate;           /* Generator wrapper (ph7_generator*) or NULL for fibers */
 };
 /* Special return code from VmByteCodeExec signaling fiber suspension */
 #define PH7_SUSPEND  0x100
+/*
+ * Generator wrapper around ph7_exec_ctx.
+ * Adds yield key tracking on top of the suspendable execution context.
+ */
+typedef struct ph7_generator ph7_generator;
+struct ph7_generator
+{
+	ph7_exec_ctx *pCtx;       /* Execution context (allocated separately) */
+	ph7_value sYieldValue;    /* Last yielded value (for current()) */
+	ph7_value sYieldKey;      /* Last yielded key (for key()) */
+	sxi64 iImplicitKey;       /* Auto-increment key counter */
+};
 /*
  * Output control buffer entry.
  */
@@ -811,6 +824,7 @@ struct ph7_vm
 	ph7_gen_state sCodeGen;    /* Code generator module */
 	ph7_exec_ctx *pActiveCtx;  /* Currently executing fiber/generator context (NULL in normal code) */
 	ph7_class *pFiberClass;    /* Cached Fiber class pointer for fast dispatch */
+	ph7_class *pGeneratorClass; /* Cached Generator class pointer */
 	ph7_vm *pNext,*pPrev;      /* List of active VM's */
 	sxu32 nMagic;              /* Sanity check against misuse */
 };
@@ -1123,6 +1137,7 @@ enum ph7_expr_id {
 #define PH7_TKWRD_TRAIT        57 /* trait */
 #define PH7_TKWRD_INSTEADOF    58 /* insteadof */
 #define PH7_TKWRD_FINALLY      59 /* finally */
+#define PH7_TKWRD_YIELD        60 /* yield */
 #define PH7_TKWRD_BOOL         0x8000  /* bool:  MUST BE A POWER OF TWO */
 #define PH7_TKWRD_INT          0x10000  /* int:   MUST BE A POWER OF TWO */
 #define PH7_TKWRD_FLOAT        0x20000  /* float:  MUST BE A POWER OF TWO */
@@ -1502,6 +1517,7 @@ PH7_PRIVATE sxi32 PH7_ExprFreeTree(ph7_gen_state *pGen,SySet *pNodeSet);
 /* compile.c function prototypes */
 PH7_PRIVATE ProcNodeConstruct PH7_GetNodeHandler(sxu32 nNodeType);
 PH7_PRIVATE sxi32 PH7_CompileLangConstruct(ph7_gen_state *pGen,sxi32 iCompileFlag);
+PH7_PRIVATE sxi32 PH7_CompileYield(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileVariable(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileLiteral(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileSimpleString(ph7_gen_state *pGen,sxi32 iCompileFlag);

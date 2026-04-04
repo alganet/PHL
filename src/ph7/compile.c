@@ -3338,6 +3338,69 @@ static sxi32 PH7_CompileReturn(ph7_gen_state *pGen)
 	return SXRET_OK;
 }
 /*
+ * Compile a yield expression.
+ * Called from the expression code generator when a yield node is encountered.
+ * Handles: yield, yield $value, yield $key => $value
+ * The yield expression evaluates to the value passed via Generator::send().
+ */
+PH7_PRIVATE sxi32 PH7_CompileYield(ph7_gen_state *pGen, sxi32 iCompileFlag)
+{
+	SyToken *pTmp, *pSplit;
+	sxi32 iP1 = 0; /* 1 if value present */
+	sxi32 iP2 = 0; /* 1 if key => value */
+	sxi32 rc;
+	(void)iCompileFlag;
+	/* pGen->pIn points to 'yield' keyword, skip it */
+	pGen->pIn++;
+	/* Now pGen->pIn points to the first token after 'yield'
+	 * pGen->pEnd points to the delimiter (;, ), ], etc.) */
+	if( pGen->pIn >= pGen->pEnd ){
+		/* Bare yield — no value */
+		PH7_VmEmitInstr(pGen->pVm, PH7_OP_YIELD, 0, 0, 0, 0);
+		return SXRET_OK;
+	}
+	/* Scan for '=>' at nesting level 0 to detect key => value syntax */
+	pSplit = 0;
+	{
+		SyToken *pCur = pGen->pIn;
+		sxi32 nNest = 0;
+		while( pCur < pGen->pEnd ){
+			if( pCur->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+				nNest++;
+			}else if( pCur->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+				nNest--;
+			}else if( nNest == 0 && (pCur->nType & PH7_TK_ARRAY_OP) ){
+				pSplit = pCur;
+				break;
+			}
+			pCur++;
+		}
+	}
+	pTmp = pGen->pEnd;
+	if( pSplit ){
+		/* yield $key => $value */
+		pGen->pEnd = pSplit;
+		rc = PH7_CompileExpr(pGen, 0, 0);
+		if( rc == SXERR_ABORT ) return SXERR_ABORT;
+		pGen->pIn = pSplit + 1; /* Skip '=>' */
+		pGen->pEnd = pTmp;
+		rc = PH7_CompileExpr(pGen, 0, 0);
+		if( rc == SXERR_ABORT ) return SXERR_ABORT;
+		iP1 = 1;
+		iP2 = 1;
+	}else{
+		/* yield $value */
+		rc = PH7_CompileExpr(pGen, 0, 0);
+		if( rc == SXERR_ABORT ) return SXERR_ABORT;
+		if( rc != SXERR_EMPTY ){
+			iP1 = 1;
+		}
+	}
+	pGen->pEnd = pTmp;
+	PH7_VmEmitInstr(pGen->pVm, PH7_OP_YIELD, iP1, iP2, 0, 0);
+	return SXRET_OK;
+}
+/*
  * Compile the die/exit language construct.
  * The role of these constructs is to terminate execution of the script.
  * Shutdown functions will always be executed even if exit() is called.
@@ -4229,6 +4292,17 @@ static sxi32 GenStateCompileFuncBody(
 	if( rc == SXERR_ABORT ){
 		/* Don't worry about freeing memory, everything will be released shortly */
 		return SXERR_ABORT;
+	}
+	/* Scan for yield opcodes to detect generator functions */
+	{
+		VmInstr *aInstr = (VmInstr *)SySetBasePtr(&pFunc->aByteCode);
+		sxu32 i;
+		for( i = 0; i < SySetUsed(&pFunc->aByteCode); i++ ){
+			if( aInstr[i].iOp == PH7_OP_YIELD ){
+				pFunc->iFlags |= VM_FUNC_GENERATOR;
+				break;
+			}
+		}
 	}
 	/* All done, function body compiled */
 	return SXRET_OK;
@@ -7626,6 +7700,7 @@ static int GenStateisLangConstruct(sxu32 nKeyword)
 	rc = PH7_IsLangConstruct(nKeyword,TRUE);
 	if( rc == FALSE ){
 		if( nKeyword == PH7_TKWRD_SELF || nKeyword == PH7_TKWRD_PARENT || nKeyword == PH7_TKWRD_STATIC
+			|| nKeyword == PH7_TKWRD_YIELD
 			/*|| nKeyword == PH7_TKWRD_CLASS || nKeyword == PH7_TKWRD_FINAL || nKeyword == PH7_TKWRD_EXTENDS
 			  || nKeyword == PH7_TKWRD_ABSTRACT || nKeyword == PH7_TKWRD_INTERFACE
 			  || nKeyword == PH7_TKWRD_PUBLIC || nKeyword == PH7_TKWRD_PROTECTED
