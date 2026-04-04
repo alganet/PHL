@@ -4324,6 +4324,89 @@ static sxi32 GenStateCompileFuncBody(
  * complex agrument values and more. Please refer to the official documentation for more information
  * on these extension.
  */
+/*
+ * Case-insensitive comparison for type names (PHP type names are case-insensitive).
+ */
+static int SyMemcmpNoCase(const char *zA, const char *zB, sxu32 n)
+{
+	sxu32 i;
+	for( i = 0; i < n; i++ ){
+		int a = zA[i], b = zB[i];
+		if( a >= 'A' && a <= 'Z' ) a += 0x20;
+		if( b >= 'A' && b <= 'Z' ) b += 0x20;
+		if( a != b ) return a - b;
+	}
+	return 0;
+}
+/*
+ * Helper: set the return type to a class/self/parent/static sentinel.
+ */
+static void GenStateSetReturnClass(ph7_gen_state *pGen, ph7_vm_func *pFunc, const char *zName, sxu32 nByte)
+{
+	char *zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator, zName, nByte);
+	if( zDup ){
+		pFunc->nReturnType = SXU32_HIGH;
+		SyStringInitFromBuf(&pFunc->sReturnClass, zDup, nByte);
+	}
+}
+/*
+ * Parse a return type declaration (`: type`) after a function/method signature.
+ * pGen->pIn should point to the token after `)`.
+ * Sets pFunc->nReturnType and pFunc->sReturnClass.
+ * Handles: `: int`, `: string`, `: bool`, `: float`, `: array`, `: void`,
+ *          `: self`, `: parent`, `: static`, `: ClassName`, and nullable `: ?type`.
+ */
+static void GenStateParseReturnType(ph7_gen_state *pGen, ph7_vm_func *pFunc)
+{
+	SyToken *pCur = pGen->pIn;
+	pFunc->nReturnType = 0;
+	SyStringInitFromBuf(&pFunc->sReturnClass, 0, 0);
+	if( pCur >= pGen->pEnd || (pCur->nType & PH7_TK_COLON) == 0 ){
+		return; /* No return type */
+	}
+	pCur++; /* Skip ':' */
+	if( pCur >= pGen->pEnd ){
+		pGen->pIn = pCur;
+		return;
+	}
+	/* Handle nullable prefix '?' (tokenized as PH7_TK_OP with '?' operator) */
+	if( (pCur->nType & PH7_TK_OP) && pCur->sData.nByte == 1 && pCur->sData.zString[0] == '?' ){
+		pCur++;
+		if( pCur >= pGen->pEnd ){
+			pGen->pIn = pCur;
+			return;
+		}
+	}
+	if( pCur->nType & PH7_TK_KEYWORD ){
+		sxu32 nKey = (sxu32)(SX_PTR_TO_INT(pCur->pUserData));
+		if( nKey & PH7_TKWRD_ARRAY ){
+			pFunc->nReturnType = MEMOBJ_HASHMAP;
+		}else if( nKey & PH7_TKWRD_BOOL ){
+			pFunc->nReturnType = MEMOBJ_BOOL;
+		}else if( nKey & PH7_TKWRD_INT ){
+			pFunc->nReturnType = MEMOBJ_INT;
+		}else if( nKey & PH7_TKWRD_STRING ){
+			pFunc->nReturnType = MEMOBJ_STRING;
+		}else if( nKey & PH7_TKWRD_FLOAT ){
+			pFunc->nReturnType = MEMOBJ_REAL;
+		}else if( nKey == PH7_TKWRD_SELF || nKey == PH7_TKWRD_PARENT || nKey == PH7_TKWRD_STATIC ){
+			/* self/parent/static — store as class sentinel */
+			GenStateSetReturnClass(pGen, pFunc, pCur->sData.zString, pCur->sData.nByte);
+		}
+		pCur++;
+	}else if( pCur->nType & PH7_TK_ID ){
+		SyString *pType = &pCur->sData;
+		if( pType->nByte == 4 && SyMemcmpNoCase(pType->zString, "void", 4) == 0 ){
+			pFunc->nReturnType = MEMOBJ_VOID;
+		}else{
+			/* Class/interface name */
+			GenStateSetReturnClass(pGen, pFunc, pType->zString, pType->nByte);
+		}
+		pCur++;
+	}
+	pGen->pIn = pCur;
+}
+
 static sxi32 GenStateCompileFunc(
 	ph7_gen_state *pGen, /* Code generator state */
 	SyString *pName,     /* Function name. NULL otherwise */
@@ -4388,8 +4471,9 @@ static sxi32 GenStateCompileFunc(
 			return SXERR_ABORT;
 		}
 	}
-	/* Compile function body */
+	/* Point past ')' and parse optional return type ': type' */
 	pGen->pIn = &pEnd[1];
+	GenStateParseReturnType(pGen, pFunc);
 	if( bHandleClosure ){
 		ph7_vm_func_closure_env sEnv;
 		int got_this = 0; /* TRUE if $this have been seen */
@@ -4922,8 +5006,9 @@ static sxi32 GenStateCompileClassMethod(
 			return SXERR_ABORT;
 		}
 	}
-	/* Point beyond method signature */
+	/* Point past ')' and parse optional return type ': type' */
 	pGen->pIn = &pEnd[1];
+	GenStateParseReturnType(pGen, &pMeth->sFunc);
 	if( doBody ){
 		/* Compile method body */
 		rc = GenStateCompileFuncBody(&(*pGen),&pMeth->sFunc);

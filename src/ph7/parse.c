@@ -589,6 +589,18 @@ static sxi32 ExprAssembleAnnon(ph7_gen_state *pGen,SyToken **ppCur,SyToken *pEnd
 		goto Synchronize;
 	}
 	pIn++; /* Jump the trailing parenthesis */
+	/* Skip optional return type declaration ': [?] type' */
+	if( pIn < pEnd && (pIn->nType & PH7_TK_COLON) ){
+		pIn++; /* Skip ':' */
+		/* Skip optional '?' nullable prefix */
+		if( pIn < pEnd && (pIn->nType & PH7_TK_OP) && pIn->sData.nByte == 1 && pIn->sData.zString[0] == '?' ){
+			pIn++;
+		}
+		/* Skip the type name (keyword or identifier) */
+		if( pIn < pEnd && (pIn->nType & (PH7_TK_KEYWORD|PH7_TK_ID)) ){
+			pIn++;
+		}
+	}
 	if( pIn->nType & PH7_TK_KEYWORD ){
 		sxu32 nKey = SX_PTR_TO_INT(pIn->pUserData);
 		/* Check if we are dealing with a closure */
