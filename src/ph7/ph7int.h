@@ -825,6 +825,9 @@ struct ph7_vm
 	ph7_exec_ctx *pActiveCtx;  /* Currently executing fiber/generator context (NULL in normal code) */
 	ph7_class *pFiberClass;    /* Cached Fiber class pointer for fast dispatch */
 	ph7_class *pGeneratorClass; /* Cached Generator class pointer */
+#ifdef PH7_ENABLE_PCRE
+	int iPcreLastError;        /* preg_last_error() return value */
+#endif
 	ph7_vm *pNext,*pPrev;      /* List of active VM's */
 	sxu32 nMagic;              /* Sanity check against misuse */
 };
@@ -1345,6 +1348,11 @@ PH7_PRIVATE sxi32 PH7_VmHttpProcessRequest(ph7_vm *pVm,const char *zRequest,int 
 /* vm_http_response.c function prototypes */
 PH7_PRIVATE void PH7_RegisterHttpResponseFunctions(ph7_vm *pVm);
 PH7_PRIVATE void PH7_VmReleaseResponseHeaders(ph7_vm *pVm);
+/* vm_pcre.c function prototypes */
+#ifdef PH7_ENABLE_PCRE
+PH7_PRIVATE void PH7_RegisterPcreFunctions(ph7_vm *pVm);
+PH7_PRIVATE void PH7_RegisterPcreConstants(ph7_vm *pVm);
+#endif /* PH7_ENABLE_PCRE */
 /* net.c types and function prototypes */
 #ifdef PH7_ENABLE_NET
 #ifdef __WINNT__

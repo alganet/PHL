@@ -59,6 +59,29 @@ if errorlevel 1 (
     )
 )
 
+:: Check if vcpkg is available (for PCRE2)
+set "vcpkg_root="
+if defined VCPKG_ROOT (
+    if exist "%VCPKG_ROOT%\vcpkg.exe" (
+        set "vcpkg_root=%VCPKG_ROOT%"
+    )
+)
+if not defined vcpkg_root (
+    if exist "%~dp0..\vcpkg\vcpkg.exe" (
+        set "vcpkg_root=%~dp0..\vcpkg"
+    )
+)
+if not defined vcpkg_root (
+    where vcpkg.exe >nul 2>nul
+    if not errorlevel 1 (
+        for /f "delims=" %%i in ('where vcpkg.exe') do set "vcpkg_root=%%~dpi"
+    )
+)
+if not defined vcpkg_root (
+    echo Warning: vcpkg not found. PCRE functions will not be available.
+    echo To install it, run build-aux\install_vcpkg.bat.
+)
+
 :: Check if php is in the PATH
 where php.exe >nul 2>nul
 if errorlevel 1 (
@@ -82,6 +105,9 @@ if defined php_path (
 )
 if defined opencppcoverage_path (
     echo set "PATH=%%PATH%%;%opencppcoverage_path%" >> %dev_cmd%
+)
+if defined vcpkg_root (
+    echo set "VCPKG_ROOT=%vcpkg_root%" >> %dev_cmd%
 )
 echo cd .. >> %dev_cmd%
 echo %%* >> %dev_cmd%
