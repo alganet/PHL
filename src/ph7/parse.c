@@ -756,6 +756,13 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 					 }
 				 }
 			 }
+		 }else if( nKeyword == PH7_TKWRD_YIELD ){
+			 /* yield expression: collect tokens for the yielded value(s) */
+			 pCur++; /* Skip 'yield' keyword */
+			 PH7_DelimitNestedTokens(pCur,pGen->pEnd,
+				 PH7_TK_LPAREN|PH7_TK_OCB|PH7_TK_OSB,
+				 PH7_TK_RPAREN|PH7_TK_CCB|PH7_TK_CSB,&pCur);
+			 pNode->xCode = PH7_CompileYield;
 		 }else if( nKeyword == PH7_TKWRD_FUNCTION ){
 			 /* Annonymous function */
 			  if( &pCur[1] >= pGen->pEnd ){
