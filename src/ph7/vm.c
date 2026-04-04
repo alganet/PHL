@@ -4581,6 +4581,90 @@ case PH7_OP_LOR: {
 	MemObjSetType(pTos,MEMOBJ_BOOL);
 	break;
 				 }
+/*
+ * OP_NULLC: * * *
+ * Null coalescing operator '??'.
+ * Pop two values (left=pNos, right=pTos). If left is not NULL, push left.
+ * Otherwise push right. This is equivalent to: isset($a) ? $a : $b
+ */
+/*
+ * OP_NULLC: * P2 *
+ * Short-circuit null coalescing '??'.
+ * If TOS is NOT null, jump to P2 (keeping TOS — the non-null value).
+ * If TOS IS null, pop it and fall through to evaluate the RHS.
+ */
+case PH7_OP_NULLC: {
+#ifdef UNTRUST
+	if( pTos < pStack ){
+		goto Abort;
+	}
+#endif
+	if( (pTos->iFlags & MEMOBJ_NULL) == 0 ){
+		/* Left is not null — keep it and skip the RHS */
+		pc = pInstr->iP2 - 1; /* Jump (will be incremented by the loop) */
+	}else{
+		/* Left is null — discard it, fall through to evaluate RHS */
+		VmPopOperand(&pTos, 1);
+	}
+	break;
+}
+/*
+ * OP_SPREAD: * * *
+ * Argument unpacking.  TOS must be an array (hashmap).
+ * Replace TOS with the array's individual elements pushed onto the stack.
+ * Accumulates the net stack growth in pVm->iSpreadExtra so the next CALL
+ * can adjust its argument count (the CALL may not be the next instruction).
+ */
+case PH7_OP_SPREAD: {
+#ifdef UNTRUST
+	if( pTos < pStack ){
+		goto Abort;
+	}
+#endif
+	if( pTos->iFlags & MEMOBJ_HASHMAP ){
+		ph7_hashmap *pMap = (ph7_hashmap *)pTos->x.pOther;
+		sxu32 nEntry = pMap->nEntry;
+		if( nEntry == 0 ){
+			/* Empty array — remove from stack */
+			VmPopOperand(&pTos, 1);
+			pVm->iSpreadExtra--; /* One expression produced zero args */
+		}else if( pVm->iSpreadExtra + (sxi32)(nEntry - 1) >= VM_STACK_GUARD ){
+			/* Safety: refuse to expand beyond the stack guard margin */
+			VmErrorFormat(&(*pVm), PH7_CTX_ERR,
+				"Argument unpacking: cumulative expansion exceeds stack guard (%d)",
+				VM_STACK_GUARD);
+		}else{
+			ph7_hashmap_node *pNode2;
+			ph7_value *pElem;
+			sxu32 i;
+			/* Overwrite TOS with first element */
+			pNode2 = pMap->pFirst;
+			pElem = (ph7_value *)SySetAt(&pVm->aMemObj, pNode2->nValIdx);
+			PH7_MemObjRelease(pTos);
+			if( pElem ){
+				PH7_MemObjLoad(pElem, pTos);
+			}
+			pTos->nIdx = SXU32_HIGH;
+			/* Traverse in insertion order (pPrev is the forward link
+			 * in PHL's circular doubly-linked hashmap node list). */
+			pNode2 = pNode2->pPrev;
+			/* Push remaining elements */
+			for( i = 1; i < nEntry; i++ ){
+				pTos++;
+				PH7_MemObjInit(pVm, pTos);
+				pTos->nIdx = SXU32_HIGH;
+				pElem = (ph7_value *)SySetAt(&pVm->aMemObj, pNode2->nValIdx);
+				if( pElem ){
+					PH7_MemObjLoad(pElem, pTos);
+				}
+				pNode2 = pNode2->pPrev;
+			}
+			pVm->iSpreadExtra += (sxi32)(nEntry - 1);
+		}
+	}
+	/* else: not an array — leave as-is (single arg) */
+	break;
+}
 /* OP_LXOR: * * *
  *
  * Pop two values off the stack. Take the logical XOR of the
@@ -5972,7 +6056,10 @@ case PH7_OP_YIELD: {
  *  function on the stack.
  */
 case PH7_OP_CALL: {
-	ph7_value *pArg = &pTos[-pInstr->iP1];
+	sxi32 nCallArgs = pInstr->iP1 + pVm->iSpreadExtra;
+	ph7_value *pArg;
+	pVm->iSpreadExtra = 0; /* Always reset, even if zero */
+	pArg = &pTos[-nCallArgs];
 	SyHashEntry *pEntry;
 	SyString sName;
 	/* Extract function name */
@@ -5989,8 +6076,8 @@ case PH7_OP_CALL: {
 			PH7_VmCallUserFunction(pVm,pTos,(int)SySetUsed(&aArg),(ph7_value **)SySetBasePtr(&aArg),&sResult);
 			SySetReset(&aArg);
 			/* Pop given arguments */
-			if( pInstr->iP1 > 0 ){
-				VmPopOperand(&pTos,pInstr->iP1);
+			if( nCallArgs > 0 ){
+				VmPopOperand(&pTos,nCallArgs);
 			}
 			/* Copy result */
 			PH7_MemObjStore(&sResult,pTos);
@@ -6005,8 +6092,8 @@ case PH7_OP_CALL: {
 				VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Invalid function name,NULL will be returned");
 			}
 			/* Pop given arguments */
-			if( pInstr->iP1 > 0 ){
-				VmPopOperand(&pTos,pInstr->iP1);
+			if( nCallArgs > 0 ){
+				VmPopOperand(&pTos,nCallArgs);
 			}
 			/* Assume a null return value so that the program continue it's execution normally */
 			PH7_MemObjRelease(pTos);
@@ -6094,7 +6181,7 @@ case PH7_OP_CALL: {
 				VmPopOperand(&pTos,1);
 				PH7_MemObjRelease(pTos);
 				/* Synchronize pointers */
-				pArg = &pTos[-pInstr->iP1];
+				pArg = &pTos[-nCallArgs];
 				/* TICKET 1433-50: This is a very very unlikely scenario that occurs when the 'genius'
 				 * user have already computed the random generated unique class method name
 				 * and tries to call it outside it's context [i.e: global scope]. In that
@@ -6109,8 +6196,8 @@ case PH7_OP_CALL: {
 					if( pMeth && pMeth->iProtection != PH7_CLASS_PROT_PUBLIC ){
 						if( !PH7_VmClassMemberAccess(&(*pVm),pSelf,&pVmFunc->sName,pMeth->iProtection,TRUE) ){
 							/* Pop given arguments */
-							if( pInstr->iP1 > 0 ){
-								VmPopOperand(&pTos,pInstr->iP1);
+							if( nCallArgs > 0 ){
+								VmPopOperand(&pTos,nCallArgs);
 							}
 							/* Assume a null return value so that the program continue it's execution normally */
 							PH7_MemObjRelease(pTos);
@@ -6126,8 +6213,8 @@ case PH7_OP_CALL: {
 				"Recursion limit reached while invoking user function '%z',PH7 will set a NULL return value",
 				&pVmFunc->sName);
 			/* Pop given arguments */
-			if( pInstr->iP1 > 0 ){
-				VmPopOperand(&pTos,pInstr->iP1);
+			if( nCallArgs > 0 ){
+				VmPopOperand(&pTos,nCallArgs);
 			}
 			/* Assume a null return value so that the program continue it's execution normally */
 			PH7_MemObjRelease(pTos);
@@ -6145,18 +6232,18 @@ case PH7_OP_CALL: {
 			ph7_value *pCtxAttr;
 			SyString sAttrName;
 			ph7_value **apCallArgs;
-			int nCallArgs, iArg;
+			int nGenArgs, iArg;
 			/* Collect arguments from the operand stack */
-			nCallArgs = (int)(pTos - pArg);
+			nGenArgs = (int)(pTos - pArg);
 			apCallArgs = 0;
-			if( nCallArgs > 0 ){
+			if( nGenArgs > 0 ){
 				apCallArgs = (ph7_value **)SyMemBackendAlloc(&pVm->sAllocator,
-					nCallArgs * sizeof(ph7_value *));
+					nGenArgs * sizeof(ph7_value *));
 				if( apCallArgs == 0 ){
 					/* OOM: fall back to zero args rather than NULL-deref */
-					nCallArgs = 0;
+					nGenArgs = 0;
 				}else{
-					for( iArg = 0; iArg < nCallArgs; iArg++ ){
+					for( iArg = 0; iArg < nGenArgs; iArg++ ){
 						apCallArgs[iArg] = &pArg[iArg];
 					}
 				}
@@ -6180,7 +6267,7 @@ case PH7_OP_CALL: {
 			/* Set up the frame with arguments, closure env, $this */
 			pExecCtx->pFrame->pParent = pVm->pFrame;
 			pVm->pFrame = pExecCtx->pFrame;
-			rc = VmFiberSetupFrame(pVm, pExecCtx, pThis, nCallArgs, apCallArgs);
+			rc = VmFiberSetupFrame(pVm, pExecCtx, pThis, nGenArgs, apCallArgs);
 			pVm->pFrame = pExecCtx->pFrame->pParent;
 			pExecCtx->pFrame->pParent = 0;
 			if( apCallArgs ){
@@ -6211,7 +6298,7 @@ case PH7_OP_CALL: {
 			}
 			/* Pop args and function name, push Generator object */
 			PH7_MemObjRelease(pTos);
-			pTos = &pTos[-pInstr->iP1];
+			pTos = &pTos[-nCallArgs];
 			pTos->x.pOther = pGenObj;
 			MemObjSetType(pTos, MEMOBJ_OBJ);
 			pGenObj->iRef++;
@@ -6230,8 +6317,8 @@ case PH7_OP_CALL: {
 				"PH7 is running out of memory while calling function '%z',NULL will be returned",
 				&pVmFunc->sName);
 			/* Pop given arguments */
-			if( pInstr->iP1 > 0 ){
-				VmPopOperand(&pTos,pInstr->iP1);
+			if( nCallArgs > 0 ){
+				VmPopOperand(&pTos,nCallArgs);
 			}
 			/* Assume a null return value so that the program continue it's execution normally */
 			PH7_MemObjRelease(pTos);
@@ -6276,16 +6363,46 @@ case PH7_OP_CALL: {
 		/* Push arguments in the local frame */
 		n = 0;
 		while( pArg < pTos ){
+			if( n < SySetUsed(&pVmFunc->aArgs) && (aFormalArg[n].iFlags & VM_FUNC_ARG_VARIADIC) ){
+				/* Variadic parameter: collect all remaining args into an array */
+				pObj = VmExtractMemObj(&(*pVm),&aFormalArg[n].sName,FALSE,TRUE);
+				if( pObj ){
+					/* Initialize as empty array */
+					PH7_MemObjToHashmap(pObj);
+					{
+						ph7_hashmap *pMap = (ph7_hashmap *)pObj->x.pOther;
+						while( pArg < pTos ){
+							/* Apply type coercion to each element if the variadic has a type hint */
+							if( aFormalArg[n].nType > 0 && aFormalArg[n].nType != SXU32_HIGH
+								&& (pArg->iFlags & aFormalArg[n].nType) == 0 ){
+								ProcMemObjCast xCast = PH7_MemObjCastMethod(aFormalArg[n].nType);
+								if( xCast ){
+									xCast(pArg);
+								}
+							}
+							PH7_HashmapInsert(pMap, 0, pArg);
+							pArg++;
+						}
+					}
+					sArg.nIdx = pObj->nIdx;
+					sArg.pUserData = 0;
+					SySetPut(&pFrame->sArg,(const void *)&sArg);
+				}
+				break; /* All remaining args consumed */
+			}
 			if( n < SySetUsed(&pVmFunc->aArgs) ){
-				if( (pArg->iFlags & MEMOBJ_NULL) && SySetUsed(&aFormalArg[n].aByteCode) > 0 ){
-					/* NULL values are redirected to default arguments */
+				if( (pArg->iFlags & MEMOBJ_NULL) && SySetUsed(&aFormalArg[n].aByteCode) > 0
+					&& !(aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) ){
+					/* NULL values are redirected to default arguments (but not for nullable types) */
 					rc = VmLocalExec(&(*pVm),&aFormalArg[n].aByteCode,pArg);
 					if( rc == PH7_ABORT ){
 						goto Abort;
 					}
 				}
-				/* Make sure the given arguments are of the correct type */
-				if( aFormalArg[n].nType > 0 ){
+				/* Make sure the given arguments are of the correct type.
+				 * Nullable types (?type) allow null through without coercion. */
+				if( aFormalArg[n].nType > 0
+					&& !((aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) && (pArg->iFlags & MEMOBJ_NULL)) ){
 					if ( aFormalArg[n].nType == SXU32_HIGH ){
 						/* Argument must be a class instance [i.e: object] */
 						SyString *pName = &aFormalArg[n].sClass;
@@ -6388,8 +6505,20 @@ case PH7_OP_CALL: {
 				PH7_MemObjStore(&pEnv->sValue,pValue);
 			}
 		}
-		/* Process default values */
+		/* Process default values for remaining formal parameters */
 		while( n < SySetUsed(&pVmFunc->aArgs) ){
+			if( aFormalArg[n].iFlags & VM_FUNC_ARG_VARIADIC ){
+				/* Variadic parameter with no extra args — create empty array */
+				pObj = VmExtractMemObj(&(*pVm),&aFormalArg[n].sName,FALSE,TRUE);
+				if( pObj ){
+					PH7_MemObjToHashmap(pObj);
+					sArg.nIdx = pObj->nIdx;
+					sArg.pUserData = 0;
+					SySetPut(&pFrame->sArg,(const void *)&sArg);
+				}
+				n++;
+				break; /* Variadic is always last */
+			}
 			if( SySetUsed(&aFormalArg[n].aByteCode) > 0 ){
 				pObj = VmExtractMemObj(&(*pVm),&aFormalArg[n].sName,FALSE,TRUE);
 				if( pObj ){
@@ -6416,15 +6545,15 @@ case PH7_OP_CALL: {
 		 * does not return anything.
 		 */
 		PH7_MemObjRelease(pTos);
-		pTos = &pTos[-pInstr->iP1];
+		pTos = &pTos[-nCallArgs];
 		/* Allocate a new operand stack and evaluate the function body */
 		pFrameStack = VmNewOperandStack(&(*pVm),SySetUsed(&pVmFunc->aByteCode));
 		if( pFrameStack == 0 ){
 			/* Raise exception: Out of memory */
 			VmErrorFormat(&(*pVm),PH7_CTX_ERR,"PH7 is running out of memory while calling function '%z',NULL will be returned",
 				&pVmFunc->sName);
-			if( pInstr->iP1 > 0 ){
-				VmPopOperand(&pTos,pInstr->iP1);
+			if( nCallArgs > 0 ){
+				VmPopOperand(&pTos,nCallArgs);
 			}
 			break;
 		}
@@ -7898,6 +8027,8 @@ static const char * VmInstrToString(sxi32 nOp)
 	case PH7_OP_NSSWITCH:   zOp = "NSSWITCH   "; break;
 	case PH7_OP_SWAP:       zOp = "SWAP       "; break;
 	case PH7_OP_YIELD:      zOp = "YIELD      "; break;
+	case PH7_OP_NULLC:      zOp = "NULLC      "; break;
+	case PH7_OP_SPREAD:     zOp = "SPREAD     "; break;
 	case PH7_OP_CVT_BOOL:   zOp = "CVT_BOOL   "; break;
 	case PH7_OP_CVT_NULL:   zOp = "CVT_NULL   "; break;
 	case PH7_OP_CVT_ARRAY:  zOp = "CVT_ARRAY  "; break;

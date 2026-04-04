@@ -477,7 +477,11 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 			}
 			break;
 		case '.':
-			if( pStream->zText < pStream->zEnd && pStream->zText[0] == '=' ){
+			if( pStream->zText + 1 < pStream->zEnd && pStream->zText[0] == '.' && pStream->zText[1] == '.' ){
+				/* Ellipsis: ... */
+				pStream->zText += 2;
+				pToken->nType = PH7_TK_ELLIPSIS;
+			}else if( pStream->zText < pStream->zEnd && pStream->zText[0] == '=' ){
 				/* Current operator: .= */
 				pStream->zText++;
 			}
@@ -524,6 +528,12 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 					/* Current operator: >= */
 					pStream->zText++;
 				}
+			}
+			break;
+		case '?':
+			if( pStream->zText < pStream->zEnd && pStream->zText[0] == '?' ){
+				/* Null coalescing operator: ?? */
+				pStream->zText++;
 			}
 			break;
 		default:

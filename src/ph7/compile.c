@@ -3833,6 +3833,13 @@ static sxi32 PH7_CompileUse(ph7_gen_state *pGen)
 	char *zDup;
 	nLine = pGen->pIn->nLine;
 	pGen->pIn++; /* Jump the 'use' keyword */
+	/* Skip 'function' or 'const' keyword after 'use' (PHP 5.6+) */
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
+		sxu32 nKey = (sxu32)(SX_PTR_TO_INT(pGen->pIn->pUserData));
+		if( nKey == PH7_TKWRD_FUNCTION || nKey == PH7_TKWRD_CONST ){
+			pGen->pIn++;
+		}
+	}
 	SyBlobInit(&sPath,&pGen->pVm->sAllocator);
 	/* Process one or more use declarations separated by commas */
 	for(;;){
@@ -4108,7 +4115,16 @@ static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyTo
 		}
 		SyZero(&sArg,sizeof(ph7_vm_func_arg));
 		SySetInit(&sArg.aByteCode,&pGen->pVm->sAllocator,sizeof(VmInstr));
-		if( pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD) ){
+		/* Detect nullable prefix '?' on type hints */
+		if( pIn < pEnd && (pIn->nType & PH7_TK_OP) && pIn->sData.nByte == 1 && pIn->sData.zString[0] == '?' ){
+			sArg.iFlags |= VM_FUNC_ARG_NULLABLE;
+			pIn++;
+		}
+		/* Skip leading namespace separator '\' on FQN type hints like \Throwable */
+		if( pIn < pEnd && (pIn->nType & PH7_TK_NSSEP) ){
+			pIn++;
+		}
+		if( pIn < pEnd && (pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) ){
 			if( pIn->nType & PH7_TK_KEYWORD ){
 				sxu32 nKey = (sxu32)(SX_PTR_TO_INT(pIn->pUserData));
 				if( nKey & PH7_TKWRD_ARRAY ){
@@ -4144,7 +4160,12 @@ static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyTo
 		}
 		if( pIn->nType & PH7_TK_AMPER ){
 			/* Pass by reference,record that */
-			sArg.iFlags = VM_FUNC_ARG_BY_REF;
+			sArg.iFlags |= VM_FUNC_ARG_BY_REF;
+			pIn++;
+		}
+		if( pIn < pEnd && (pIn->nType & PH7_TK_ELLIPSIS) ){
+			/* Variadic parameter: ...$args */
+			sArg.iFlags |= VM_FUNC_ARG_VARIADIC;
 			pIn++;
 		}
 		if( pIn >= pEnd || (pIn->nType & PH7_TK_DOLLAR) == 0 || &pIn[1] >= pEnd || (pIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
@@ -7292,6 +7313,7 @@ static sxi32 GenStateEmitExprCode(
 	if( pNode->pLeft ){
 		if( iVmOp == PH7_OP_CALL ){
 			ph7_expr_node **apNode;
+			int hasSpread = 0;
 			sxi32 n;
 			/* Recurse and generate bytecodes for function arguments */
 			apNode = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);
@@ -7302,9 +7324,15 @@ static sxi32 GenStateEmitExprCode(
 				if( rc != SXRET_OK ){
 					return rc;
 				}
+				if( apNode[n]->iFlags & EXPR_NODE_SPREAD ){
+					/* Emit spread opcode to unpack this array argument */
+					PH7_VmEmitInstr(pGen->pVm, PH7_OP_SPREAD, 0, 0, 0, 0);
+					hasSpread = 1;
+				}
 			}
 			/* Total number of given arguments */
 			iP1 = (sxi32)SySetUsed(&pNode->aNodeArgs);
+			iP2 = hasSpread;
 			/* Remove stale flags now */
 			iFlags &= ~EXPR_FLAG_RDONLY_LOAD;
 		}
@@ -7390,6 +7418,10 @@ static sxi32 GenStateEmitExprCode(
 		}else if (iVmOp == PH7_OP_LOR ){
 			/* Emit the true jump so we can short-circuit the logical or*/
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_JNZ,1/* Keep the value on the stack */,0,0,&nJmpIdx);
+		}else if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_NULLC ){
+			/* Null coalescing: if LHS is not null, jump past RHS */
+			iVmOp = 0; /* No binary operator to emit */
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_NULLC,0,0,0,&nJmpIdx);
 		}else if( pNode->pOp->iPrec == 18 /* Combined binary operators [i.e: =,'.=','+=',*=' ...] precedence */ ){
 			iFlags |= EXPR_FLAG_LOAD_IDX_STORE;
 		}
@@ -7501,12 +7533,12 @@ static sxi32 GenStateEmitExprCode(
 		}
 		/* Finally,emit the VM instruction associated with this operator */
 		PH7_VmEmitInstr(pGen->pVm,iVmOp,iP1,iP2,p3,0);
-		if( nJmpIdx > 0 ){
-			/* Fix short-circuited jumps now the destination is resolved */
-			pInstr = PH7_VmGetInstr(pGen->pVm,nJmpIdx);
-			if( pInstr ){
-				pInstr->iP2 = PH7_VmInstrLength(pGen->pVm);
-			}
+	}
+	if( nJmpIdx > 0 ){
+		/* Fix short-circuited jumps now the destination is resolved */
+		pInstr = PH7_VmGetInstr(pGen->pVm,nJmpIdx);
+		if( pInstr ){
+			pInstr->iP2 = PH7_VmInstrLength(pGen->pVm);
 		}
 	}
 	return rc;
