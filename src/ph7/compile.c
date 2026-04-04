@@ -4786,7 +4786,7 @@ static sxi32 GenStateCompileClassMethod(
 		/* Jump the '&' token */
 		pGen->pIn++;
 	}
-	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_ID)) == 0 ){
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
 		/* Invalid method name */
 		rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Invalid method name");
 		if( rc == SXERR_ABORT ){

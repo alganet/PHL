@@ -2062,3 +2062,58 @@ int ph7_value_is_empty(ph7_value *pVal)
 	rc = PH7_MemObjIsEmpty(pVal);
 	return rc;
 }
+/*
+ * [CAPIREF: ph7_value_is_fiber()]
+ * Check if a value holds a Fiber instance.
+ */
+int ph7_value_is_fiber(ph7_value *pVal)
+{
+	if( pVal == 0 || pVal->pVm == 0 ) return 0;
+	return PH7_VmIsFiber(pVal->pVm, pVal);
+}
+/*
+ * [CAPIREF: ph7_fiber_start()]
+ * Start a Fiber, passing arguments to the callable.
+ */
+int ph7_fiber_start(ph7_value *pFiber, int nArg, ph7_value **apArg, ph7_value *pResult)
+{
+	if( pFiber == 0 || pFiber->pVm == 0 ) return SXERR_CORRUPT;
+	return PH7_VmFiberStart(pFiber->pVm, pFiber, nArg, apArg, pResult);
+}
+/*
+ * [CAPIREF: ph7_fiber_resume()]
+ * Resume a suspended Fiber, optionally sending a value.
+ */
+int ph7_fiber_resume(ph7_value *pFiber, ph7_value *pSendValue, ph7_value *pResult)
+{
+	if( pFiber == 0 || pFiber->pVm == 0 ) return SXERR_CORRUPT;
+	return PH7_VmFiberResume(pFiber->pVm, pFiber, pSendValue, pResult);
+}
+/*
+ * [CAPIREF: ph7_fiber_is_suspended()]
+ * Check if a Fiber is currently suspended.
+ */
+int ph7_fiber_is_suspended(ph7_value *pFiber)
+{
+	if( pFiber == 0 || pFiber->pVm == 0 ) return 0;
+	return PH7_VmFiberIsSuspended(pFiber->pVm, pFiber);
+}
+/*
+ * [CAPIREF: ph7_fiber_is_terminated()]
+ * Check if a Fiber has completed execution.
+ */
+int ph7_fiber_is_terminated(ph7_value *pFiber)
+{
+	if( pFiber == 0 || pFiber->pVm == 0 ) return 0;
+	return PH7_VmFiberIsTerminated(pFiber->pVm, pFiber);
+}
+/*
+ * [CAPIREF: ph7_fiber_return_value()]
+ * Get the return value of a terminated Fiber.
+ * Returns NULL if the Fiber has not terminated.
+ */
+ph7_value * ph7_fiber_return_value(ph7_value *pFiber)
+{
+	if( pFiber == 0 || pFiber->pVm == 0 ) return 0;
+	return PH7_VmFiberReturnValue(pFiber->pVm, pFiber);
+}

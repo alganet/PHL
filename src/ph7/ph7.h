@@ -492,6 +492,13 @@ PH7_APIEXPORT int ph7_value_is_array(ph7_value *pVal);
 PH7_APIEXPORT int ph7_value_is_object(ph7_value *pVal);
 PH7_APIEXPORT int ph7_value_is_resource(ph7_value *pVal);
 PH7_APIEXPORT int ph7_value_is_empty(ph7_value *pVal);
+/* Fiber Interfaces */
+PH7_APIEXPORT int ph7_value_is_fiber(ph7_value *pVal);
+PH7_APIEXPORT int ph7_fiber_start(ph7_value *pFiber,int nArg,ph7_value **apArg,ph7_value *pResult);
+PH7_APIEXPORT int ph7_fiber_resume(ph7_value *pFiber,ph7_value *pSendValue,ph7_value *pResult);
+PH7_APIEXPORT int ph7_fiber_is_suspended(ph7_value *pFiber);
+PH7_APIEXPORT int ph7_fiber_is_terminated(ph7_value *pFiber);
+PH7_APIEXPORT ph7_value * ph7_fiber_return_value(ph7_value *pFiber);
 /* Global Library Management Interfaces */
 PH7_APIEXPORT int ph7_lib_init(void);
 PH7_APIEXPORT int ph7_lib_config(int nConfigOp,...);
