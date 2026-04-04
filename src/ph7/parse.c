@@ -214,9 +214,12 @@ static const ph7_expr_op aOpTable[] = {
 	{ {"&&",sizeof(char)*2}, EXPR_OP_LAND,15, EXPR_OP_ASSOC_LEFT, PH7_OP_LAND},
 	/* Precedence 16,left-associative */
 	{ {"||",sizeof(char)*2}, EXPR_OP_LOR, 16, EXPR_OP_ASSOC_LEFT, PH7_OP_LOR},
+	                      /* Null coalescing operator */
+	/* Precedence 16 (same as ||),right-associative */
+	{ {"??",sizeof(char)*2}, EXPR_OP_NULLC,  16, EXPR_OP_ASSOC_RIGHT, 0 /* short-circuit, handled in codegen */},
 	                      /* Ternary operator */
 	/* Precedence 17,left-associative */
-    { {"?",sizeof(char)}, EXPR_OP_QUESTY, 17, EXPR_OP_ASSOC_LEFT, 0},
+    { {"?",sizeof(char)},    EXPR_OP_QUESTY, 17, EXPR_OP_ASSOC_LEFT, 0},
 	                     /* Combined binary operators */
 	/* Precedence 18,right-associative */
 	{ {"=",sizeof(char)},     EXPR_OP_ASSIGN,     18,  EXPR_OP_ASSOC_RIGHT, PH7_OP_STORE},
@@ -681,6 +684,18 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 	/* Point to the head of the token stream */
 	pCur = pNode->pStart = pGen->pIn;
 	/* Start collecting tokens */
+	if( pCur->nType & PH7_TK_ELLIPSIS ){
+		/* Argument unpacking: ...$expr — skip '...' and extract the expression.
+		 * Mark the node so that the code generator emits PH7_OP_SPREAD after it. */
+		pCur++;
+		pGen->pIn = pCur;
+		SyMemBackendPoolFree(&pGen->pVm->sAllocator, pNode);
+		rc = ExprExtractNode(pGen, ppNode, iLastWasTerm);
+		if( rc == SXRET_OK && *ppNode ){
+			(*ppNode)->iFlags |= EXPR_NODE_SPREAD;
+		}
+		return rc;
+	}
 	if( (pCur->nType & PH7_TK_OSB) && !iLastWasTerm ){
 		/* PHP 5.4 short array syntax: [1, 2, 3] or ['key' => 'value'].
 		 * This '[' does not follow a term, so it is an array literal, not subscript.

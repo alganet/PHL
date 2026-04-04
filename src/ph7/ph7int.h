@@ -332,6 +332,7 @@ struct ph7_expr_node
 };
 /* Node Construct flags */
 #define EXPR_NODE_PRE_INCR 0x01 /* Pre-icrement/decrement [i.e: ++$i,--$j] node */
+#define EXPR_NODE_SPREAD   0x02 /* Argument unpacking: ...$expr */
 /*
  * A block of instructions is recorded in an instance of the following structure.
  * This structure is used only during compile-time and have no meaning
@@ -535,6 +536,8 @@ struct ph7_vm_func_closure_env
 #define VM_FUNC_CLOSURE      0x010 /* VM function is a closure */
 #define VM_FUNC_ARG_IGNORE   0x020 /* Do not install argument in the current frame */
 #define VM_FUNC_GENERATOR    0x040 /* VM function is a generator (contains yield) */
+#define VM_FUNC_ARG_VARIADIC 0x080 /* Argument is variadic (...$args) */
+#define VM_FUNC_ARG_NULLABLE 0x100 /* Argument type is nullable (?type) */
 /*
  * Each user defined function is parsed out and stored in an instance
  * of the following structure.
@@ -823,6 +826,7 @@ struct ph7_vm
 	sxu32 nGlobalIdx;          /* $GLOBALS index */
 	/* Index of the shared empty-string literal reserved at VM init */
 	sxu32 nEmptyStringIdx;
+	sxi32 iSpreadExtra;        /* Cumulative extra args from PH7_OP_SPREAD (reset by CALL) */
 	sxi32 iExitStatus;         /* Script exit status */
 	ph7_gen_state sCodeGen;    /* Code generator module */
 	ph7_exec_ctx *pActiveCtx;  /* Currently executing fiber/generator context (NULL in normal code) */
@@ -970,7 +974,9 @@ enum ph7_vm_op {
   PH7_OP_SWITCH,        /* Switch operation */
   PH7_OP_ERR_CTRL,     /* Error control */
   PH7_OP_DUP,          /* Duplicate top of stack */
-  PH7_OP_NSSWITCH      /* Switch active namespace at runtime */
+  PH7_OP_NSSWITCH,     /* Switch active namespace at runtime */
+  PH7_OP_NULLC,         /* Null coalescing ?? */
+  PH7_OP_SPREAD         /* Mark TOS for argument unpacking (...$arr) */
 };
 /* -- END-OF INSTRUCTIONS -- */
 /*
@@ -1018,6 +1024,7 @@ enum ph7_expr_id {
 	EXPR_OP_LOR,       /* Logical or  '||','or'*/
 	EXPR_OP_LXOR,      /* Logical xor 'xor' */
 	EXPR_OP_QUESTY,    /* Ternary operator '?' */
+	EXPR_OP_NULLC,     /* Null coalescing '??' */
 	EXPR_OP_ASSIGN,    /* Assignment '=' */
 	EXPR_OP_ADD_ASSIGN, /* Combined operator: += */
 	EXPR_OP_SUB_ASSIGN, /* Combined operator: -= */
@@ -1068,7 +1075,8 @@ enum ph7_expr_id {
 #define PH7_TK_AMPER     0x0200000 /* Ampersand '&' */
 #define PH7_TK_EQUAL     0x0400000 /* Equal '=' */
 #define PH7_TK_ARRAY_OP  0x0800000 /* Array operator '=>' */
-#define PH7_TK_OTHER     0x1000000 /* Other symbols */
+#define PH7_TK_ELLIPSIS  0x1000000 /* Ellipsis '...' */
+#define PH7_TK_OTHER     0x2000000 /* Other symbols */
 /*
  * PHP keyword.
  * These words have special meaning in PHP. Some of them represent things which look like

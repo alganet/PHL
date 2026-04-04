@@ -1,5 +1,8 @@
 build
 build-aux/dev.cmd
 vcpkg
+vendor
+composer.json
+composer.lock
 php
 .tmp
