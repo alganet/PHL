@@ -1,6 +1,6 @@
 # src/ph7/
 
-Coverage: 23859/30510 lines (78.20%)
+Coverage: 24348/31326 lines (77.72%)
 
 [Up](../index.md)
 
@@ -22,11 +22,12 @@ Coverage: 23859/30510 lines (78.20%)
 |[vfs_unix.c](vfs_unix.c.md)|88.06%|376/427|
 |[vfs_win.c](vfs_win.c.md)|75.43%|485/643|
 |[vfs_zip.c](vfs_zip.c.md)|58.24%|152/261|
-|[vm.c](vm.c.md)|74.92%|4707/6283|
+|[vm.c](vm.c.md)|74.92%|4709/6285|
 |[vm_builtin_class.c](vm_builtin_class.c.md)|84.30%|376/446|
 |[vm_builtin_getopt.c](vm_builtin_getopt.c.md)|24.71%|42/170|
 |[vm_builtin_ob.c](vm_builtin_ob.c.md)|76.21%|157/206|
 |[vm_http.c](vm_http.c.md)|68.02%|302/444|
 |[vm_http_response.c](vm_http_response.c.md)|42.35%|108/255|
 |[vm_json.c](vm_json.c.md)|62.12%|264/425|
+|[vm_pcre.c](vm_pcre.c.md)|59.83%|487/814|
 |[vm_xml.c](vm_xml.c.md)|73.70%|426/578|

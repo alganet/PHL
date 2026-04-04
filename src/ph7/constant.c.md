@@ -34,22 +34,22 @@ Coverage: 1006/1017 lines (98.92%)
 |      - |   24 | ` * PHP_OS` |
 |      - |   25 | ` *  Expand the name of the host Operating System.` |
 |      - |   26 | ` */` |
-|   2780 |   27 | `static void PH7_OS_Const(ph7_value *pVal,void *pUnused)` |
+|   2820 |   27 | `static void PH7_OS_Const(ph7_value *pVal,void *pUnused)` |
 |      2 |   28 |  |
 |      - |   29 | `#if defined(__WINNT__)` |
 |      2 |   30 | `	ph7_value_string(pVal,"WINNT",(int)sizeof("WINNT")-1);` |
 |      - |   31 | `#elif defined(__UNIXES__)` |
 |      - |   32 | `	struct utsname sInfo;` |
-|   2780 |   33 | `	if( uname(&sInfo) != 0 ){` |
+|   2820 |   33 | `	if( uname(&sInfo) != 0 ){` |
 |    ! 0 |   34 | `		ph7_value_string(pVal,"Unix",(int)sizeof("Unix")-1);` |
 |    ! 0 |   35 | `	}else{` |
-|   2780 |   36 | `		ph7_value_string(pVal,sInfo.sysname,-1);` |
+|   2820 |   36 | `		ph7_value_string(pVal,sInfo.sysname,-1);` |
 |      - |   37 | `	}` |
 |      - |   38 | `#else` |
 |      - |   39 | `	ph7_value_string(pVal,"Host OS",(int)sizeof("Host OS")-1);` |
 |      - |   40 | `#endif` |
-|   1390 |   41 | `	SXUNUSED(pUnused);` |
-|   2782 |   42 |  |
+|   1410 |   41 | `	SXUNUSED(pUnused);` |
+|   2822 |   42 |  |
 |      - |   43 | `/*` |
 |      - |   44 | ` * PHP_EOL` |
 |      - |   45 | ` *  Expand the correct 'End Of Line' symbol for this platform.` |
@@ -1063,20 +1063,20 @@ Coverage: 1006/1017 lines (98.92%)
 |      - | 1053 | ` * PATHINFO_EXTENSION` |
 |      - | 1054 | ` *  Expand 3.` |
 |      - | 1055 | ` */` |
-|   4404 | 1056 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
+|   4424 | 1056 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
 |      2 | 1057 |  |
-|   2202 | 1058 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   4406 | 1059 | `	ph7_value_int(pVal,3);` |
-|   4406 | 1060 |  |
+|   2212 | 1058 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   4426 | 1059 | `	ph7_value_int(pVal,3);` |
+|   4426 | 1060 |  |
 |      - | 1061 | `/*` |
 |      - | 1062 | ` * PATHINFO_FILENAME` |
 |      - | 1063 | ` *  Expand 4.` |
 |      - | 1064 | ` */` |
-|   4400 | 1065 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
+|   4420 | 1065 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
 |      2 | 1066 |  |
-|   2200 | 1067 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   4402 | 1068 | `	ph7_value_int(pVal,4);` |
-|   4402 | 1069 |  |
+|   2210 | 1067 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   4422 | 1068 | `	ph7_value_int(pVal,4);` |
+|   4422 | 1069 |  |
 |      - | 1070 | `/*` |
 |      - | 1071 | ` * ASSERT_ACTIVE.` |
 |      - | 1072 | ` *  PHP ASSERT_ACTIVE = 1` |
@@ -1234,20 +1234,20 @@ Coverage: 1006/1017 lines (98.92%)
 |      - | 1224 | ` * SCANDIR_SORT_ASCENDING` |
 |      - | 1225 | ` *  Expand 0` |
 |      - | 1226 | ` */` |
-|   1730 | 1227 | `static void PH7_SCANDIR_SORT_ASCENDING_Const(ph7_value *pVal,void *pUserData)` |
+|   1754 | 1227 | `static void PH7_SCANDIR_SORT_ASCENDING_Const(ph7_value *pVal,void *pUserData)` |
 |      2 | 1228 |  |
-|    865 | 1229 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   1732 | 1230 | `	ph7_value_int(pVal,0);` |
-|   1732 | 1231 |  |
+|    877 | 1229 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   1756 | 1230 | `	ph7_value_int(pVal,0);` |
+|   1756 | 1231 |  |
 |      - | 1232 | `/*` |
 |      - | 1233 | ` * SCANDIR_SORT_DESCENDING` |
 |      - | 1234 | ` *  Expand 1` |
 |      - | 1235 | ` */` |
-|    866 | 1236 | `static void PH7_SCANDIR_SORT_DESCENDING_Const(ph7_value *pVal,void *pUserData)` |
+|    878 | 1236 | `static void PH7_SCANDIR_SORT_DESCENDING_Const(ph7_value *pVal,void *pUserData)` |
 |      2 | 1237 |  |
-|    433 | 1238 | `	SXUNUSED(pUserData); /* cc warning */` |
-|    868 | 1239 | `	ph7_value_int(pVal,1);` |
-|    868 | 1240 |  |
+|    439 | 1238 | `	SXUNUSED(pUserData); /* cc warning */` |
+|    880 | 1239 | `	ph7_value_int(pVal,1);` |
+|    880 | 1240 |  |
 |      - | 1241 | `/*` |
 |      - | 1242 | ` * SCANDIR_SORT_NONE` |
 |      - | 1243 | ` *  Expand 2` |
@@ -2103,14 +2103,14 @@ Coverage: 1006/1017 lines (98.92%)
 |      - | 2093 | `/*` |
 |      - | 2094 | ` * Register the built-in constants defined above.` |
 |      - | 2095 | ` */` |
-|   2476 | 2096 | `PH7_PRIVATE void PH7_RegisterBuiltInConstant(ph7_vm *pVm)` |
+|   2516 | 2096 | `PH7_PRIVATE void PH7_RegisterBuiltInConstant(ph7_vm *pVm)` |
 |      2 | 2097 |  |
 |      - | 2098 | `	sxu32 n;` |
 |      - | 2099 | `	/*` |
 |      - | 2100 | `	 * Note that all built-in constants have access to the ph7 virtual machine` |
 |      - | 2101 | `	 * that trigger the constant invocation as their private data.` |
 |      - | 2102 | `	 */` |
-| 505106 | 2103 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltIn) ; ++n ){` |
-| 502630 | 2104 | `		ph7_create_constant(&(*pVm),aBuiltIn[n].zName,aBuiltIn[n].xExpand,&(*pVm));` |
-| 251316 | 2105 | `	}` |
-|   2478 | 2106 |  |
+| 513266 | 2103 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltIn) ; ++n ){` |
+| 510750 | 2104 | `		ph7_create_constant(&(*pVm),aBuiltIn[n].zName,aBuiltIn[n].xExpand,&(*pVm));` |
+| 255376 | 2105 | `	}` |
+|   2518 | 2106 |  |
