@@ -1,3 +1,5 @@
 build
 build-aux/dev.cmd
+vcpkg
+php
 .tmp

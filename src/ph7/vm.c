@@ -1534,6 +1534,11 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	PH7_RegisterBuiltInFunction(&(*pVm));
 	/* Register HTTP response functions [i.e: header(), http_response_code(), etc.] */
 	PH7_RegisterHttpResponseFunctions(&(*pVm));
+#ifdef PH7_ENABLE_PCRE
+	/* Register PCRE functions [i.e: preg_match(), preg_replace(), etc.] */
+	PH7_RegisterPcreFunctions(&(*pVm));
+	PH7_RegisterPcreConstants(&(*pVm));
+#endif
 	/* Initialize and install static and constants class attributes */
 	SyHashResetLoopCursor(&pVm->hClass);
 	while((pEntry = SyHashGetNextEntry(&pVm->hClass)) != 0 ){

@@ -12,6 +12,15 @@ BIN_SUFFIX = .exe
 CC = cl
 TARGET = x86_64-windows-msvc
 
+# PCRE2 via vcpkg (set VCPKG_ROOT or use default GitHub Actions path)
+!IF "$(VCPKG_ROOT)" != ""
+VCPKG_INSTALLED = $(VCPKG_ROOT)\installed\x64-windows-static
+!ELSE
+VCPKG_INSTALLED = C:\vcpkg\installed\x64-windows-static
+!ENDIF
+PCRE2_CFLAGS = /I "$(VCPKG_INSTALLED)\include"
+PCRE2_LIBS = "$(VCPKG_INSTALLED)\lib\pcre2-8.lib"
+
 # Base flags shared by all modes
 BASE_CFLAGS = /nologo /I src /I src/sx /I src/ph7 /W4 /WX
 
@@ -21,9 +30,9 @@ tiny_CFLAGS = $(BASE_CFLAGS) /Os $(tiny_DEFINES:-=/) $(tiny_EXTRA_CFLAGS) /Fd$(B
 coverage_CFLAGS = $(BASE_CFLAGS) /Od /Zi $(coverage_DEFINES:-=/) $(coverage_EXTRA_CFLAGS) /DPH7_DEBUG /Fd$(BUILD_DIR:/=\)\coverage\ph7-coverage.pdb
 
 # Per-mode LDFLAGS (used by patterns.mk generated link rules)
-full_LDFLAGS = /nologo /link advapi32.lib ws2_32.lib /subsystem:console /entry:mainCRTStartup
+full_LDFLAGS = /nologo /link advapi32.lib ws2_32.lib $(PCRE2_LIBS) /subsystem:console /entry:mainCRTStartup
 tiny_LDFLAGS = /nologo /link advapi32.lib /subsystem:console /entry:mainCRTStartup
-coverage_LDFLAGS = /nologo /link advapi32.lib dbghelp.lib ws2_32.lib /subsystem:console /entry:mainCRTStartup
+coverage_LDFLAGS = /nologo /link advapi32.lib dbghelp.lib ws2_32.lib $(PCRE2_LIBS) /subsystem:console /entry:mainCRTStartup
 
 LDFLAGS = $(full_LDFLAGS)
 

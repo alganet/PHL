@@ -25,7 +25,15 @@ tmpdir="$wsl_temp/PHL-build"
 
 case "${1:-}" in
     "wipe")
+        # Preserve vcpkg installation across wipes
+        if test -d "$tmpdir/vcpkg"; then
+            mv "$tmpdir/vcpkg" "$wsl_temp/PHL-vcpkg-save"
+        fi
         rm -rf "$tmpdir" build-aux/dev.cmd
+        if test -d "$wsl_temp/PHL-vcpkg-save"; then
+            mkdir -p "$tmpdir"
+            mv "$wsl_temp/PHL-vcpkg-save" "$tmpdir/vcpkg"
+        fi
         exit 0
         ;;
     "run")

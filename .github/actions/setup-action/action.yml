@@ -10,16 +10,19 @@ runs:
     - if: runner.os == 'Linux'
       uses: awalsh128/cache-apt-pkgs-action@latest
       with:
-        packages: lcov
-        version: 1.0
+        packages: lcov libpcre2-dev
+        version: 1.1
     - if: runner.os == 'macOS'
       uses: tecolicom/actions-use-homebrew-tools@v1
       with:
-        tools: lcov php
+        tools: lcov php pcre2
         cache: yes
-        key: brewcache-2.0
+        key: brewcache-2.1
     - if: runner.os == 'Windows'
       uses: microsoft/setup-msbuild@v2
+    - if: runner.os == 'Windows'
+      shell: cmd
+      run: vcpkg install pcre2:x64-windows-static
     - if: runner.os == 'Windows'
       uses: actions/cache@v4
       id: cache-opencppcoverage
