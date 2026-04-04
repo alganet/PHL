@@ -86,6 +86,7 @@ struct ph7_value
 #define MEMOBJ_HASHMAP   0x040  /* Memory value is a hashmap aka 'array' in the PHP jargon */
 #define MEMOBJ_OBJ       0x080  /* Memory value is an object [i.e: class instance] */
 #define MEMOBJ_RES       0x100  /* Memory value is a resource [User private data] */
+#define MEMOBJ_VOID      0x200  /* Pseudo-type: function must not return a value */
 #define MEMOBJ_REFERENCE 0x400  /* Memory value hold a reference (64-bit index) of another ph7_value */
 /* Mask of all known types */
 #define MEMOBJ_ALL (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)
@@ -554,6 +555,8 @@ struct ph7_vm_func
 						  * (Refer to the official docuemntation for more information
 						  *  on this powerfull feature)
 						  */
+	sxu32 nReturnType;   /* Return type hint (MEMOBJ_* constant, MEMOBJ_VOID, or SXU32_HIGH for class) */
+	SyString sReturnClass; /* Class name when nReturnType == SXU32_HIGH */
 	void *pUserData;     /* Upper layer private data associated with this instance */
 	ph7_vm_func *pNextName; /* Next VM function with the same name as this one */
 };

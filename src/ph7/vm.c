@@ -3493,6 +3493,8 @@ case PH7_OP_LOAD_CLOSURE:{
 		pClosure->iFlags = pFunc->iFlags;
 		pClosure->pUserData = pFunc->pUserData;
 		pClosure->sSignature = pFunc->sSignature;
+		pClosure->nReturnType = pFunc->nReturnType;
+		pClosure->sReturnClass = pFunc->sReturnClass;
 		SyStringInitFromBuf(&pClosure->sName,zName,mLen);
 		/* Register the closure */
 		PH7_VmInstallUserFunction(pVm,pClosure,0);
