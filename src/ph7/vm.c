@@ -77,6 +77,16 @@ struct VmShutdownCB
 	ph7_value aArg[10];   /* Callback arguments (10 maximum arguments) */
 	int nArg;             /* Total number of given arguments */
 };
+/*
+ * Each installed autoload callback (registered using [spl_autoload_register()] )
+ * is stored in an instance of the following structure.
+ * Refer to the implementation of [spl_autoload_register()] for more information.
+ */
+typedef struct VmAutoloadCB VmAutoloadCB;
+struct VmAutoloadCB
+{
+	ph7_value sCallback; /* Autoload callback (string or [obj,method] array) */
+};
 /* Uncaught exception code value */
 #define PH7_EXCEPTION -255
 
@@ -1296,6 +1306,8 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SySetInit(&pVm->aFreeObj,&pVm->sAllocator,sizeof(VmSlot));
 	SySetInit(&pVm->aSelf,&pVm->sAllocator,sizeof(ph7_class *));
 	SySetInit(&pVm->aShutdown,&pVm->sAllocator,sizeof(VmShutdownCB));
+	SySetInit(&pVm->aAutoload,&pVm->sAllocator,sizeof(VmAutoloadCB));
+	SyHashInit(&pVm->hAutoloadActive,&pVm->sAllocator,0,0);
 	SySetInit(&pVm->aException,&pVm->sAllocator,sizeof(ph7_exception *));
 	pVm->pPendingException = 0;
 	/* Configuration containers */
@@ -11872,6 +11884,249 @@ static int vm_builtin_require_once(ph7_context *pCtx,int nArg,ph7_value **apArg)
 /* Getopt builtins moved to vm_builtin_getopt.c */
 /* JSON encoding/decoding routines moved to vm_json.c */
 /* XML processing and UTF-8 routines moved to vm_xml.c */
+/*
+ * Section:
+ *  SPL Autoloading functions.
+ * Status:
+ *  Stable.
+ */
+/*
+ * bool spl_autoload_register([ callable $callback [, bool $throw = true [, bool $prepend = false ]]])
+ *  Register given function as __autoload() implementation.
+ * Parameters
+ *  callback
+ *   The autoload function being registered. If no parameter is provided,
+ *   then the default implementation of spl_autoload() will be registered.
+ *  throw
+ *   This parameter specifies whether spl_autoload_register() should throw
+ *   exceptions on error. (Ignored in this implementation — always succeeds.)
+ *  prepend
+ *   If true, spl_autoload_register() will prepend the autoloader on the
+ *   autoload stack instead of appending it.
+ * Return
+ *  TRUE on success, FALSE on failure.
+ */
+static int vm_builtin_spl_autoload_register(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	VmAutoloadCB sEntry;
+	ph7_vm *pVm = pCtx->pVm;
+	int iPrepend = 0;
+	sxu32 n;
+	if( nArg < 1 ){
+		/* No callback provided — register default spl_autoload.
+		 * Store the string "spl_autoload" as the callback. */
+		/* Check for duplicates first */
+		for( n = 0 ; n < SySetUsed(&pVm->aAutoload) ; ++n ){
+			VmAutoloadCB *pExisting = (VmAutoloadCB *)SySetAt(&pVm->aAutoload,n);
+			if( pExisting && (pExisting->sCallback.iFlags & MEMOBJ_STRING)
+				&& SyBlobLength(&pExisting->sCallback.sBlob) == sizeof("spl_autoload")-1
+				&& SyMemcmp(SyBlobData(&pExisting->sCallback.sBlob),"spl_autoload",sizeof("spl_autoload")-1) == 0 ){
+				ph7_result_bool(pCtx,1);
+				return SXRET_OK;
+			}
+		}
+		SyZero(&sEntry,sizeof(VmAutoloadCB));
+		PH7_MemObjInit(pVm,&sEntry.sCallback);
+		PH7_MemObjStringAppend(&sEntry.sCallback,"spl_autoload",sizeof("spl_autoload")-1);
+		SySetPut(&pVm->aAutoload,(const void *)&sEntry);
+		ph7_result_bool(pCtx,1);
+		return SXRET_OK;
+	}
+	/* Validate that the callback is callable */
+	if( !PH7_VmIsCallable(pVm,apArg[0],TRUE) ){
+		int iThrow = 1; /* Default: throw on error */
+		if( nArg >= 2 ){
+			iThrow = ph7_value_to_bool(apArg[1]);
+		}
+		if( iThrow ){
+			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+				"Argument is not callable");
+		}
+		ph7_result_bool(pCtx,0);
+		return SXRET_OK;
+	}
+	/* Check for duplicates */
+	for( n = 0 ; n < SySetUsed(&pVm->aAutoload) ; ++n ){
+		VmAutoloadCB *pExisting = (VmAutoloadCB *)SySetAt(&pVm->aAutoload,n);
+		if( pExisting && PH7_MemObjCmp(&pExisting->sCallback,apArg[0],TRUE,0) == 0 ){
+			/* Already registered */
+			ph7_result_bool(pCtx,1);
+			return SXRET_OK;
+		}
+	}
+	/* Check prepend flag */
+	if( nArg >= 3 ){
+		iPrepend = ph7_value_to_bool(apArg[2]);
+	}
+	/* Store the callback */
+	SyZero(&sEntry,sizeof(VmAutoloadCB));
+	PH7_MemObjInit(pVm,&sEntry.sCallback);
+	PH7_MemObjStore(apArg[0],&sEntry.sCallback);
+	if( iPrepend && SySetUsed(&pVm->aAutoload) > 0 ){
+		/* Prepend: shift existing entries and insert at position 0.
+		 * We do this by appending first, then rotating the array. */
+		sxu32 nTotal = SySetUsed(&pVm->aAutoload);
+		VmAutoloadCB *aBase;
+		SySetPut(&pVm->aAutoload,(const void *)&sEntry);
+		/* Rotate: move last entry to front */
+		aBase = (VmAutoloadCB *)SySetBasePtr(&pVm->aAutoload);
+		if( aBase ){
+			VmAutoloadCB sTemp;
+			sxu32 i;
+			SyMemcpy(&aBase[nTotal],&sTemp,sizeof(VmAutoloadCB));
+			for( i = nTotal ; i > 0 ; i-- ){
+				SyMemcpy(&aBase[i-1],&aBase[i],sizeof(VmAutoloadCB));
+			}
+			SyMemcpy(&sTemp,&aBase[0],sizeof(VmAutoloadCB));
+		}
+	}else{
+		SySetPut(&pVm->aAutoload,(const void *)&sEntry);
+	}
+	ph7_result_bool(pCtx,1);
+	return SXRET_OK;
+}
+/*
+ * bool spl_autoload_unregister(callable $callback)
+ *  Unregister a given function as __autoload() implementation.
+ * Parameters
+ *  callback
+ *   The autoload function being unregistered.
+ * Return
+ *  TRUE on success, FALSE on failure.
+ */
+static int vm_builtin_spl_autoload_unregister(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	sxu32 n,nEntry;
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,0);
+		return SXRET_OK;
+	}
+	nEntry = SySetUsed(&pVm->aAutoload);
+	for( n = 0 ; n < nEntry ; ++n ){
+		VmAutoloadCB *pEntry = (VmAutoloadCB *)SySetAt(&pVm->aAutoload,n);
+		if( pEntry && PH7_MemObjCmp(&pEntry->sCallback,apArg[0],TRUE,0) == 0 ){
+			/* Found — remove by shifting remaining entries down */
+			VmAutoloadCB *aBase = (VmAutoloadCB *)SySetBasePtr(&pVm->aAutoload);
+			sxu32 i;
+			PH7_MemObjRelease(&pEntry->sCallback);
+			for( i = n ; i + 1 < nEntry ; i++ ){
+				SyMemcpy(&aBase[i+1],&aBase[i],sizeof(VmAutoloadCB));
+			}
+			/* Pop the now-duplicate tail entry via the SySet API */
+			SySetPop(&pVm->aAutoload);
+			ph7_result_bool(pCtx,1);
+			return SXRET_OK;
+		}
+	}
+	ph7_result_bool(pCtx,0);
+	return SXRET_OK;
+}
+/*
+ * array spl_autoload_functions(void)
+ *  Return all registered __autoload() functions.
+ * Return
+ *  An array of all registered autoload functions. If no function is registered,
+ *  an empty array is returned.
+ */
+static int vm_builtin_spl_autoload_functions(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_value *pArray;
+	sxu32 n,nEntry;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	pArray = ph7_context_new_array(pCtx);
+	if( pArray == 0 ){
+		ph7_result_null(pCtx);
+		return SXRET_OK;
+	}
+	nEntry = SySetUsed(&pVm->aAutoload);
+	for( n = 0 ; n < nEntry ; ++n ){
+		VmAutoloadCB *pEntry = (VmAutoloadCB *)SySetAt(&pVm->aAutoload,n);
+		if( pEntry ){
+			ph7_array_add_elem(pArray,0/* Automatic index */,&pEntry->sCallback);
+		}
+	}
+	ph7_result_value(pCtx,pArray);
+	return SXRET_OK;
+}
+/*
+ * void spl_autoload(string $class [, string $file_extensions = ".php,.inc" ])
+ *  Default implementation of __autoload().
+ *  Converts namespace separators to directory separators, lowercases the class
+ *  name, and tries to include a file with each of the given extensions.
+ * Parameters
+ *  class
+ *   The class name being searched.
+ *  file_extensions
+ *   Comma-separated list of file extensions to try.
+ */
+static int vm_builtin_spl_autoload(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zClass,*zExt,*zEnd,*zCur;
+	SyBlob sPath;
+	int nClass;
+	sxi32 rc;
+	if( nArg < 1 ){
+		return SXRET_OK;
+	}
+	zClass = ph7_value_to_string(apArg[0],&nClass);
+	if( nClass < 1 ){
+		return SXRET_OK;
+	}
+	/* Default extensions */
+	zExt = ".php,.inc";
+	if( nArg >= 2 ){
+		int nExt;
+		zExt = ph7_value_to_string(apArg[1],&nExt);
+		if( nExt < 1 ){
+			zExt = ".php,.inc";
+		}
+	}
+	SyBlobInit(&sPath,&pCtx->pVm->sAllocator);
+	/* Iterate over comma-separated extensions */
+	zEnd = zExt + SyStrlen(zExt);
+	zCur = zExt;
+	while( zCur < zEnd ){
+		const char *zComma;
+		SyString sFile;
+		int i;
+		/* Find next comma or end */
+		zComma = zCur;
+		while( zComma < zEnd && *zComma != ',' ){
+			zComma++;
+		}
+		/* Build path: lowercase class name with \ -> / , then append extension */
+		SyBlobReset(&sPath);
+		for( i = 0 ; i < nClass ; i++ ){
+			char c = zClass[i];
+			if( c == '\\' ){
+				c = '/';
+			}else if( c >= 'A' && c <= 'Z' ){
+				c = c + ('a' - 'A');
+			}
+			SyBlobAppend(&sPath,(const void *)&c,1);
+		}
+		/* Append extension */
+		SyBlobAppend(&sPath,(const void *)zCur,(sxu32)(zComma - zCur));
+		/* Try to include the file */
+		SyStringInitFromBuf(&sFile,(const char *)SyBlobData(&sPath),SyBlobLength(&sPath));
+		rc = VmExecIncludedFile(pCtx,&sFile,FALSE);
+		if( rc == SXRET_OK ){
+			/* File included successfully */
+			SyBlobRelease(&sPath);
+			return SXRET_OK;
+		}
+		/* Move past the comma */
+		zCur = zComma;
+		if( zCur < zEnd && *zCur == ',' ){
+			zCur++;
+		}
+	}
+	SyBlobRelease(&sPath);
+	return SXRET_OK;
+}
 /* Table of built-in VM functions. */
 static const ph7_builtin_func aVmFunc[] = {
 	{ "func_num_args"  , vm_builtin_func_num_args },
@@ -11908,6 +12163,11 @@ static const ph7_builtin_func aVmFunc[] = {
 	{ "get_object_vars",         vm_builtin_get_object_vars   },
 	{ "is_subclass_of",          vm_builtin_is_subclass_of    },
 	{ "is_a", vm_builtin_is_a },
+	   /* SPL Autoloading */
+	{ "spl_autoload_register",   vm_builtin_spl_autoload_register   },
+	{ "spl_autoload_unregister", vm_builtin_spl_autoload_unregister },
+	{ "spl_autoload_functions",  vm_builtin_spl_autoload_functions  },
+	{ "spl_autoload",            vm_builtin_spl_autoload            },
 	   /* Random numbers/strings generators */
 	{ "rand",          vm_builtin_rand            },
 	{ "mt_rand",       vm_builtin_rand            },
@@ -12042,6 +12302,88 @@ static sxi32 VmRegisterSpecialFunction(ph7_vm *pVm)
 	return SXRET_OK;
 }
 /*
+ * Helper: Apply loadable filter to a class pointer.
+ * Returns the first concrete (non-interface, non-abstract, non-trait) class
+ * in the name collision chain, or NULL if none qualifies.
+ */
+static ph7_class * VmFilterLoadableClass(ph7_class *pClass,sxi32 iLoadable)
+{
+	if( !iLoadable ){
+		return pClass;
+	}
+	while(pClass){
+		if( (pClass->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_ABSTRACT|PH7_CLASS_TRAIT)) == 0 ){
+			return pClass;
+		}
+		pClass = pClass->pNextName;
+	}
+	return 0;
+}
+/*
+ * Trigger the autoload mechanism for a class that was not found.
+ * Iterates through registered spl_autoload callbacks, calling each one
+ * with the class name. After each callback, checks if the class is now
+ * registered in the VM's class table.
+ * Returns a pointer to the class on success, NULL on failure.
+ * Uses hAutoloadActive to prevent infinite recursion.
+ */
+static ph7_class * VmTriggerAutoload(ph7_vm *pVm,const char *zName,sxu32 nByte,sxi32 iLoadable)
+{
+	VmAutoloadCB *pEntry;
+	ph7_value sArg,sResult;
+	SyHashEntry *pHashEntry;
+	ph7_class *pClass;
+	sxu32 n,nEntry;
+	nEntry = SySetUsed(&pVm->aAutoload);
+	if( nEntry < 1 ){
+		return 0;
+	}
+	/* Reentrancy guard: check if this class is already being autoloaded */
+	if( SyHashGet(&pVm->hAutoloadActive,(const void *)zName,nByte) != 0 ){
+		return 0; /* Already in progress, prevent infinite recursion */
+	}
+	/* Mark this class as being autoloaded */
+	SyHashInsert(&pVm->hAutoloadActive,(const void *)zName,nByte,0);
+	/* Prepare the class name argument */
+	PH7_MemObjInit(pVm,&sArg);
+	PH7_MemObjInit(pVm,&sResult);
+	PH7_MemObjStringAppend(&sArg,zName,nByte);
+	pClass = 0;
+	for( n = 0 ; n < nEntry ; ++n ){
+		ph7_value *apArg[1];
+		pEntry = (VmAutoloadCB *)SySetAt(&pVm->aAutoload,n);
+		if( pEntry == 0 ){
+			continue;
+		}
+		apArg[0] = &sArg;
+		if( PH7_VmCallUserFunction(pVm,&pEntry->sCallback,1,apArg,&sResult) != SXRET_OK ){
+			/* Callback could not be invoked — skip to next autoloader */
+			continue;
+		}
+		/* Check if the class is now available */
+		pHashEntry = SyHashGet(&pVm->hClass,(const void *)zName,nByte);
+		if( pHashEntry ){
+			pClass = VmFilterLoadableClass((ph7_class *)pHashEntry->pUserData,iLoadable);
+			if( pClass ){
+				break;
+			}
+		}
+	}
+	PH7_MemObjRelease(&sArg);
+	PH7_MemObjRelease(&sResult);
+	/* Remove reentrancy guard */
+	SyHashDeleteEntry(&pVm->hAutoloadActive,(const void *)zName,nByte,0);
+	return pClass;
+}
+/*
+ * Trigger autoload for external callers (e.g. class_exists).
+ * Same as VmTriggerAutoload but exposed as PH7_PRIVATE.
+ */
+PH7_PRIVATE ph7_class * PH7_VmTriggerAutoload(ph7_vm *pVm,const char *zName,sxu32 nByte,sxi32 iLoadable)
+{
+	return VmTriggerAutoload(pVm,zName,nByte,iLoadable);
+}
+/*
  * Check if the given name refer to an installed class.
  * Return a pointer to that class on success. NULL on failure.
  */
@@ -12063,20 +12405,11 @@ PH7_PRIVATE ph7_class * PH7_VmExtractClass(
 	 * Dynamic names (from variables) use exact match only, matching PHP behavior. */
 	pEntry = SyHashGet(&pVm->hClass,(const void *)zName,nByte);
 	if( pEntry == 0 ){
-		return 0;
+		/* Class not found in hash table — try autoload before giving up */
+		return VmTriggerAutoload(pVm,zName,nByte,iLoadable);
 	}
 	pClass = (ph7_class *)pEntry->pUserData;
-	if( !iLoadable ){
-		return pClass;
-	}
-	/* Filter for loadable classes (skip interfaces/abstract/traits) */
-	while(pClass){
-		if( (pClass->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_ABSTRACT|PH7_CLASS_TRAIT)) == 0 ){
-			return pClass;
-		}
-		pClass = pClass->pNextName;
-	}
-	return 0;
+	return VmFilterLoadableClass(pClass,iLoadable);
 }
 /*
  * Reference Table Implementation
