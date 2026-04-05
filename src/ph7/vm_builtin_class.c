@@ -216,16 +216,39 @@ PH7_PRIVATE int vm_builtin_method_exists(ph7_context *pCtx,int nArg,ph7_value **
  */
 PH7_PRIVATE int vm_builtin_class_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	int res = 0; /* Assume class does not exists */
+	int res = 0; /* Assume class does not exist */
 	if( nArg > 0 ){
+		SyHashEntry *pEntry = 0;
 		const char *zName;
 		int nLen;
+		int iAutoload = 1; /* Default: autoload enabled */
 		/* Extract given name */
 		zName = ph7_value_to_string(apArg[0],&nLen);
-		/* Perform a hashlookup */
-		if( nLen > 0 && SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen) != 0 ){
-			/* class is available */
-			res = 1;
+		if( nArg >= 2 ){
+			iAutoload = ph7_value_to_bool(apArg[1]);
+		}
+		if( nLen > 0 ){
+			/* Perform a hash lookup first */
+			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);
+		}
+		if( pEntry == 0 && nLen > 0 && iAutoload ){
+			/* Try autoload, then re-check */
+			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,(sxu32)nLen,FALSE);
+			if( pClass ){
+				pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);
+			}
+		}
+		if( pEntry ){
+			/* Walk the collision chain: return TRUE only for concrete or abstract classes,
+			 * not for interfaces or traits (matching PHP behavior). */
+			ph7_class *pClass = (ph7_class *)pEntry->pUserData;
+			while( pClass ){
+				if( (pClass->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_TRAIT)) == 0 ){
+					res = 1;
+					break;
+				}
+				pClass = pClass->pNextName;
+			}
 		}
 	}
 	ph7_result_bool(pCtx,res);
@@ -245,16 +268,27 @@ PH7_PRIVATE int vm_builtin_class_exists(ph7_context *pCtx,int nArg,ph7_value **a
  */
 PH7_PRIVATE int vm_builtin_interface_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	int res = 0; /* Assume class does not exists */
+	int res = 0; /* Assume interface does not exist */
 	if( nArg > 0 ){
 		SyHashEntry *pEntry = 0;
 		const char *zName;
 		int nLen;
+		int iAutoload = 1; /* Default: autoload enabled */
 		/* Extract given name */
 		zName = ph7_value_to_string(apArg[0],&nLen);
-		/* Perform a hashlookup */
+		if( nArg >= 2 ){
+			iAutoload = ph7_value_to_bool(apArg[1]);
+		}
+		/* Perform a hash lookup */
 		if( nLen > 0 ){
 			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);
+		}
+		if( pEntry == 0 && nLen > 0 && iAutoload ){
+			/* Try autoload — pass iLoadable=FALSE so we get interfaces too */
+			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,(sxu32)nLen,FALSE);
+			if( pClass ){
+				pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);
+			}
 		}
 		if( pEntry ){
 			ph7_class *pClass = (ph7_class *)pEntry->pUserData;
