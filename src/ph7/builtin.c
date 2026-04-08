@@ -259,6 +259,29 @@ static int PH7_builtin_strval(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
+ * bool boolval($var)
+ *  Get the boolean value of a variable.
+ * Parameter
+ *  $var: The variable being processed.
+ * Return
+ *  the bool value of a variable.
+ */
+static int PH7_builtin_boolval(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	int bVal;
+	if( nArg != 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"boolval() expects exactly 1 argument, %d given",
+			nArg
+			);
+	}
+	/* Perform the cast */
+	bVal = ph7_value_to_bool(apArg[0]);
+	ph7_result_bool(pCtx,bVal);
+	return PH7_OK;
+}
+/*
  * bool empty($var)
  *  Determine whether a variable is empty.
  * Parameters
@@ -6586,6 +6609,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "floatval"   , PH7_builtin_floatval    },
 	{ "intval"     , PH7_builtin_intval      },
 	{ "strval"     , PH7_builtin_strval      },
+	{ "boolval"    , PH7_builtin_boolval     },
 	{ "empty"      , PH7_builtin_empty       },
 #ifdef PH7_NEED_BUILTIN_REG
 #ifdef PH7_ENABLE_MATH_FUNC
@@ -6613,6 +6637,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "hypot",    PH7_builtin_hypot        },
 #endif /* PH7_ENABLE_MATH_FUNC */
 	{ "round",    PH7_builtin_round        },
+	{ "intdiv",   PH7_builtin_intdiv       },
 	{ "dechex", PH7_builtin_dechex         },
 	{ "decoct", PH7_builtin_decoct         },
 	{ "decbin", PH7_builtin_decbin         },

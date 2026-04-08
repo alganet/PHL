@@ -947,6 +947,8 @@ static int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_value 
 	"class ValueError extends Error { }"\
 	"class FiberError extends Error { }"\
 	"class AssertionError extends Error { }"\
+	"class ArithmeticError extends Error { }"\
+	"class DivisionByZeroError extends ArithmeticError { }"\
 	"class ErrorException extends Exception { "\
 	"protected $severity;"\
 	"public function __construct(string $message = null,"\
