@@ -42,4 +42,4 @@ missing
 42
 --CLEAN--
 <?php
-
+unset($a, $b, $c, $d, $e, $x, $y, $arr);

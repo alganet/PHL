@@ -2,21 +2,16 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Short array syntax: in foreach
+Short array syntax: empty array
 --FILE--
 <?php
-foreach ([10, 20, 30] as $v) {
-    echo $v, "\n";
-}
-foreach (['a' => 1, 'b' => 2] as $k => $v) {
-    echo "$k=$v\n";
-}
+$a = [];
+echo count($a), "\n";
+echo is_array($a) ? "yes" : "no", "\n";
 ?>
 --EXPECT--
-10
-20
-30
-a=1
-b=2
+0
+yes
 --CLEAN--
 <?php
+unset($a);

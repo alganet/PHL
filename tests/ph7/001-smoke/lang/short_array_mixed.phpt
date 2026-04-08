@@ -24,3 +24,4 @@ echo count($c), "\n";
 4
 --CLEAN--
 <?php
+unset($a,$b,$c);

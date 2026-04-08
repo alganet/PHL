@@ -22,3 +22,4 @@ echo $a[2][1][1], "\n";
 6
 --CLEAN--
 <?php
+unset($a);

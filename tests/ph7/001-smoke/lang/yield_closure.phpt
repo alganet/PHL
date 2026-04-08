@@ -24,3 +24,4 @@ foreach ($gen(4) as $v) {
 16
 --CLEAN--
 <?php
+unset($gen,$i,$n,$v);
