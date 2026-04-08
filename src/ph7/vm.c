@@ -1299,6 +1299,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyHashInit(&pVm->hFunction,&pVm->sAllocator,0,0);
 	SyBlobInit(&pVm->sNamespace,&pVm->sAllocator);
 	SyHashInit(&pVm->hUseImports,&pVm->sAllocator,0,0);
+	SyHashInit(&pVm->hUseConstImports,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hClass,&pVm->sAllocator,SyStrHash,SyStrnmicmp);
 	SyHashInit(&pVm->hConstant,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hSuper,&pVm->sAllocator,0,0);
@@ -2955,7 +2956,22 @@ case PH7_OP_NSSWITCH:
 		const char *zNs = (const char *)pInstr->p3;
 		SyBlobAppend(&pVm->sNamespace,zNs,SyStrlen(zNs));
 	}
+	/* Clear namespace-scoped use-const imports */
+	SyHashRelease(&pVm->hUseConstImports);
+	SyHashInit(&pVm->hUseConstImports,&pVm->sAllocator,0,0);
 	break;
+/* OP_USECONST P1 * P3
+ * Register a use-const import at runtime. P1 is the alias length,
+ * P3 points to a two-pointer array: [0]=alias, [1]=FQN.
+ * This is namespace-scoped: NSSWITCH clears all imports.
+ */
+case PH7_OP_USECONST: {
+	char **azPair = (char **)pInstr->p3;
+	if( azPair ){
+		SyHashInsert(&pVm->hUseConstImports,azPair[0],(sxu32)pInstr->iP1,azPair[1]);
+	}
+	break;
+				}
 /*
  * CVT_INT: * * *
  *
@@ -3160,6 +3176,25 @@ case PH7_OP_LOADC: {
 	if( (pObj = (ph7_value *)SySetAt(&pVm->aLitObj,pInstr->iP2)) != 0 ){
 		if( pInstr->iP1 == 1 && SyBlobLength(&pObj->sBlob) <= 64 ){
 			SyHashEntry *pEntry;
+			/* Check use const imports first — imports take precedence */
+			{
+				SyHashEntry *pConstImport;
+				pConstImport = SyHashGet(&pVm->hUseConstImports,
+					SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob));
+				if( pConstImport ){
+					const char *zFQN = (const char *)pConstImport->pUserData;
+					pEntry = SyHashGet(&pVm->hConstant,zFQN,SyStrlen(zFQN));
+					if( pEntry ){
+						ph7_constant *pCons = (ph7_constant *)pEntry->pUserData;
+						MemObjSetType(pTos,MEMOBJ_NULL);
+						SyBlobReset(&pTos->sBlob);
+						pCons->xExpand(pTos,pCons->pUserData);
+						pTos->nIdx = SXU32_HIGH;
+						break;
+					}
+					/* Import found but constant not defined — fall through */
+				}
+			}
 			/* Candidate for expansion via user defined callbacks */
 			pEntry = SyHashGet(&pVm->hConstant,SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob));
 			if( pEntry ){
@@ -3173,33 +3208,49 @@ case PH7_OP_LOADC: {
 				pTos->nIdx = SXU32_HIGH;
 				break;
 			}
-			/* Constant not found.  For qualified names (containing '\')
-			 * this is always an error — bare unqualified names still fall
-			 * through to string value for backward compatibility. */
+			/* Constant not found by bare name.  If a namespace is active and
+			 * the name is unqualified, try namespace\name (PHP resolution order:
+			 * use-const imports → current NS → global → string fallback). */
 			{
 				const char *zLit = (const char *)SyBlobData(&pObj->sBlob);
 				sxu32 nLit = (sxu32)SyBlobLength(&pObj->sBlob);
 				sxu32 j;
+				int isQualified = 0;
 				for( j = 0; j < nLit; j++ ){
-					if( zLit[j] == '\\' ){
-						/* Qualified name: must be a real constant.
-						 * Format as PHP Fatal error to match PHP behavior. */
-						{
-							SyString *pErrFile = (SyString *)SySetPeek(&pVm->aFiles);
-							SyBlob sErr;
-							SyBlobInit(&sErr,&pVm->sAllocator);
-							SyBlobFormat(&sErr,"PHP Fatal error:  Uncaught Error: Undefined constant \"%.*s\"",nLit,zLit);
-							if( pErrFile ){
-								SyBlobFormat(&sErr," in %.*s:%u",pErrFile->nByte,pErrFile->zString,1);
-							}
-							SyBlobAppend(&sErr,"\n",1);
-							VmCallErrorHandler(&(*pVm),&sErr);
-							SyBlobRelease(&sErr);
-						}
+					if( zLit[j] == '\\' ){ isQualified = 1; break; }
+				}
+				if( !isQualified && SyBlobLength(&pVm->sNamespace) > 0 ){
+					/* Try current_namespace\name */
+					SyBlobReset(&pVm->sWorker);
+					SyBlobAppend(&pVm->sWorker,SyBlobData(&pVm->sNamespace),SyBlobLength(&pVm->sNamespace));
+					SyBlobAppend(&pVm->sWorker,"\\",1);
+					SyBlobAppend(&pVm->sWorker,zLit,nLit);
+					pEntry = SyHashGet(&pVm->hConstant,SyBlobData(&pVm->sWorker),SyBlobLength(&pVm->sWorker));
+					if( pEntry ){
+						ph7_constant *pCons = (ph7_constant *)pEntry->pUserData;
 						MemObjSetType(pTos,MEMOBJ_NULL);
+						SyBlobReset(&pTos->sBlob);
+						pCons->xExpand(pTos,pCons->pUserData);
 						pTos->nIdx = SXU32_HIGH;
-						goto LoadC_Done;
+						break;
 					}
+					/* Not in current namespace either — fall through to global/string */
+				}
+				if( isQualified ){
+					/* Qualified name: must be a real constant. */
+					SyString *pErrFile = (SyString *)SySetPeek(&pVm->aFiles);
+					SyBlob sErr;
+					SyBlobInit(&sErr,&pVm->sAllocator);
+					SyBlobFormat(&sErr,"PHP Fatal error:  Uncaught Error: Undefined constant \"%.*s\"",nLit,zLit);
+					if( pErrFile ){
+						SyBlobFormat(&sErr," in %.*s:%u",pErrFile->nByte,pErrFile->zString,1);
+					}
+					SyBlobAppend(&sErr,"\n",1);
+					VmCallErrorHandler(&(*pVm),&sErr);
+					SyBlobRelease(&sErr);
+					MemObjSetType(pTos,MEMOBJ_NULL);
+					pTos->nIdx = SXU32_HIGH;
+					goto LoadC_Done;
 				}
 			}
 		}
@@ -8067,6 +8118,7 @@ static const char * VmInstrToString(sxi32 nOp)
 	case PH7_OP_PULL:       zOp = "PULL       "; break;
 	case PH7_OP_DUP:        zOp = "DUP        "; break;
 	case PH7_OP_NSSWITCH:   zOp = "NSSWITCH   "; break;
+	case PH7_OP_USECONST:   zOp = "USECONST   "; break;
 	case PH7_OP_SWAP:       zOp = "SWAP       "; break;
 	case PH7_OP_YIELD:      zOp = "YIELD      "; break;
 	case PH7_OP_NULLC:      zOp = "NULLC      "; break;
