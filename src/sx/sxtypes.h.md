@@ -95,18 +95,18 @@ Coverage: 16/16 lines (100.00%)
 |    - |   85 | ` * do not depend on the math library.  Values are treated as double because` |
 |    - |   86 | ` * all engine code currently uses 64‑bit reals.` |
 |    - |   87 | ` */` |
-| 1050 |   88 | `SX_STATIC_INLINE int PH7_IS_NAN_DOUBLE(double v){` |
+| 1058 |   88 | `SX_STATIC_INLINE int PH7_IS_NAN_DOUBLE(double v){` |
 |    - |   89 | `    union { double d; sxu64 u; } u;` |
-| 1050 |   90 | `    u.d = v;` |
-| 1116 |   91 | `    return ((u.u & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL)` |
-| 1048 |   92 | `           && ((u.u & 0x000fffffffffffffULL) != 0);` |
+| 1058 |   90 | `    u.d = v;` |
+| 1124 |   91 | `    return ((u.u & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL)` |
+| 1056 |   92 | `           && ((u.u & 0x000fffffffffffffULL) != 0);` |
 |    2 |   93 |  |
-|  390 |   94 | `SX_STATIC_INLINE int PH7_IS_INF_DOUBLE(double v){` |
+|  398 |   94 | `SX_STATIC_INLINE int PH7_IS_INF_DOUBLE(double v){` |
 |    - |   95 | `    union { double d; sxu64 u; } u;` |
 |    - |   96 | `    sxu64 abs;` |
-|  390 |   97 | `    u.d = v;` |
-|  390 |   98 | `    abs = u.u & 0x7fffffffffffffffULL;` |
-|  390 |   99 | `    return abs == 0x7ff0000000000000ULL;` |
+|  398 |   97 | `    u.d = v;` |
+|  398 |   98 | `    abs = u.u & 0x7fffffffffffffffULL;` |
+|  398 |   99 | `    return abs == 0x7ff0000000000000ULL;` |
 |    2 |  100 |  |
 |    - |  101 |  |
 |    - |  102 | `/* convenience macros cast to double */` |

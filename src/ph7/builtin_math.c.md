@@ -599,21 +599,21 @@ Coverage: 432/435 lines (99.31%)
 |    - |  589 | ` *  If the result can be represented as integer it will be returned` |
 |    - |  590 | ` *  as type integer, else it will be returned as type float.` |
 |    - |  591 | ` */` |
-|    8 |  592 | `PH7_PRIVATE int PH7_builtin_pow(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   10 |  592 | `PH7_PRIVATE int PH7_builtin_pow(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  593 |  |
 |    - |  594 | `	double r,x,y;` |
-|    9 |  595 | `	if( nArg < 1 ){` |
+|   11 |  595 | `	if( nArg < 1 ){` |
 |    - |  596 | `		/* Missing argument,return 0 */` |
 |    5 |  597 | `		ph7_result_int(pCtx,0);` |
 |    5 |  598 | `		return PH7_OK;` |
 |    - |  599 | `	}` |
-|    5 |  600 | `	x = ph7_value_to_double(apArg[0]);` |
-|    5 |  601 | `	y = ph7_value_to_double(apArg[1]);` |
+|    7 |  600 | `	x = ph7_value_to_double(apArg[0]);` |
+|    7 |  601 | `	y = ph7_value_to_double(apArg[1]);` |
 |    - |  602 | `	/* Perform the requested operation */` |
-|    5 |  603 | `	r = pow(x,y);` |
-|    5 |  604 | `	ph7_result_double(pCtx,r);` |
-|    5 |  605 | `	return PH7_OK;` |
-|    5 |  606 |  |
+|    7 |  603 | `	r = pow(x,y);` |
+|    7 |  604 | `	ph7_result_double(pCtx,r);` |
+|    7 |  605 | `	return PH7_OK;` |
+|    6 |  606 |  |
 |    - |  607 | `/*` |
 |    - |  608 | ` * float pi(void)` |
 |    - |  609 | ` *  Returns an approximation of pi.` |
@@ -749,20 +749,20 @@ Coverage: 432/435 lines (99.31%)
 |    - |  739 | ` * Return` |
 |    - |  740 | ` *  Hexadecimal string representation of number` |
 |    - |  741 | ` */` |
-|    6 |  742 | `PH7_PRIVATE int PH7_builtin_dechex(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    8 |  742 | `PH7_PRIVATE int PH7_builtin_dechex(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  743 |  |
 |    - |  744 | `	int iVal;` |
-|    7 |  745 | `	if( nArg < 1 ){` |
+|    9 |  745 | `	if( nArg < 1 ){` |
 |    - |  746 | `		/* Missing arguments,return null */` |
 |    5 |  747 | `		ph7_result_null(pCtx);` |
 |    5 |  748 | `		return PH7_OK;` |
 |    - |  749 | `	}` |
 |    - |  750 | `	/* Extract the given number */` |
-|    3 |  751 | `	iVal = ph7_value_to_int(apArg[0]);` |
+|    5 |  751 | `	iVal = ph7_value_to_int(apArg[0]);` |
 |    - |  752 | `	/* Format */` |
-|    3 |  753 | `	ph7_result_string_format(pCtx,"%x",iVal);` |
-|    3 |  754 | `	return PH7_OK;` |
-|    4 |  755 |  |
+|    5 |  753 | `	ph7_result_string_format(pCtx,"%x",iVal);` |
+|    5 |  754 | `	return PH7_OK;` |
+|    5 |  755 |  |
 |    - |  756 | `/*` |
 |    - |  757 | ` * string decoct(int $number)` |
 |    - |  758 | ` *  Decimal to Octal.` |
@@ -795,20 +795,20 @@ Coverage: 432/435 lines (99.31%)
 |    - |  785 | ` * Return` |
 |    - |  786 | ` *  Binary string representation of number` |
 |    - |  787 | ` */` |
-|    4 |  788 | `PH7_PRIVATE int PH7_builtin_decbin(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    6 |  788 | `PH7_PRIVATE int PH7_builtin_decbin(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  789 |  |
 |    - |  790 | `	int iVal;` |
-|    5 |  791 | `	if( nArg < 1 ){` |
+|    7 |  791 | `	if( nArg < 1 ){` |
 |    - |  792 | `		/* Missing arguments,return null */` |
 |    3 |  793 | `		ph7_result_null(pCtx);` |
 |    3 |  794 | `		return PH7_OK;` |
 |    - |  795 | `	}` |
 |    - |  796 | `	/* Extract the given number */` |
-|    3 |  797 | `	iVal = ph7_value_to_int(apArg[0]);` |
+|    5 |  797 | `	iVal = ph7_value_to_int(apArg[0]);` |
 |    - |  798 | `	/* Format */` |
-|    3 |  799 | `	ph7_result_string_format(pCtx,"%B",iVal);` |
-|    3 |  800 | `	return PH7_OK;` |
-|    3 |  801 |  |
+|    5 |  799 | `	ph7_result_string_format(pCtx,"%B",iVal);` |
+|    5 |  800 | `	return PH7_OK;` |
+|    4 |  801 |  |
 |    - |  802 | `/*` |
 |    - |  803 | ` * int64 hexdec(string $hex_string)` |
 |    - |  804 | ` *  Hexadecimal to decimal.` |
@@ -871,32 +871,32 @@ Coverage: 432/435 lines (99.31%)
 |    - |  861 | ` * Return` |
 |    - |  862 | ` *  Returns the decimal equivalent of the binary number represented by the binary_string argument.` |
 |    - |  863 | ` */` |
-|   12 |  864 | `PH7_PRIVATE int PH7_builtin_bindec(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   14 |  864 | `PH7_PRIVATE int PH7_builtin_bindec(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  865 |  |
 |    - |  866 | `	const char *zString;` |
 |    - |  867 | `	ph7_int64 iVal;` |
 |    - |  868 | `	int nLen;` |
-|   13 |  869 | `	if( nArg < 1 ){` |
+|   15 |  869 | `	if( nArg < 1 ){` |
 |    - |  870 | `		/* Missing arguments,return -1 */` |
 |    5 |  871 | `		ph7_result_int(pCtx,-1);` |
 |    5 |  872 | `		return PH7_OK;` |
 |    - |  873 | `	}` |
-|    9 |  874 | `	iVal = 0;` |
-|    9 |  875 | `	if( ph7_value_is_string(apArg[0]) ){` |
+|   11 |  874 | `	iVal = 0;` |
+|   11 |  875 | `	if( ph7_value_is_string(apArg[0]) ){` |
 |    - |  876 | `		/* Extract the given string */` |
-|    7 |  877 | `		zString = ph7_value_to_string(apArg[0],&nLen);` |
-|    7 |  878 | `		if( nLen > 0 ){` |
+|    9 |  877 | `		zString = ph7_value_to_string(apArg[0],&nLen);` |
+|    9 |  878 | `		if( nLen > 0 ){` |
 |    - |  879 | `			/* Perform a binary cast */` |
-|    5 |  880 | `			SyBinaryStrToInt64(zString,(sxu32)nLen,(void *)&iVal,0);` |
-|    2 |  881 | `		}` |
-|    4 |  882 | `	}else{` |
+|    7 |  880 | `			SyBinaryStrToInt64(zString,(sxu32)nLen,(void *)&iVal,0);` |
+|    3 |  881 | `		}` |
+|    5 |  882 | `	}else{` |
 |    - |  883 | `		/* Extract as a 64-bit integer */` |
 |    3 |  884 | `		iVal = ph7_value_to_int64(apArg[0]);` |
 |    - |  885 | `	}` |
 |    - |  886 | `	/* Return the number */` |
-|    9 |  887 | `	ph7_result_int64(pCtx,iVal);` |
-|    9 |  888 | `	return PH7_OK;` |
-|    7 |  889 |  |
+|   11 |  887 | `	ph7_result_int64(pCtx,iVal);` |
+|   11 |  888 | `	return PH7_OK;` |
+|    8 |  889 |  |
 |    - |  890 | `/*` |
 |    - |  891 | ` * int64 octdec(string $oct_string)` |
 |    - |  892 | ` *  Octal to decimal.` |
