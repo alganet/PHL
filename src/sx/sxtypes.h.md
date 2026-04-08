@@ -95,11 +95,11 @@ Coverage: 16/16 lines (100.00%)
 |    - |   85 | ` * do not depend on the math library.  Values are treated as double because` |
 |    - |   86 | ` * all engine code currently uses 64‑bit reals.` |
 |    - |   87 | ` */` |
-| 1058 |   88 | `SX_STATIC_INLINE int PH7_IS_NAN_DOUBLE(double v){` |
+| 1108 |   88 | `SX_STATIC_INLINE int PH7_IS_NAN_DOUBLE(double v){` |
 |    - |   89 | `    union { double d; sxu64 u; } u;` |
-| 1058 |   90 | `    u.d = v;` |
-| 1124 |   91 | `    return ((u.u & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL)` |
-| 1056 |   92 | `           && ((u.u & 0x000fffffffffffffULL) != 0);` |
+| 1108 |   90 | `    u.d = v;` |
+| 1183 |   91 | `    return ((u.u & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL)` |
+| 1106 |   92 | `           && ((u.u & 0x000fffffffffffffULL) != 0);` |
 |    2 |   93 |  |
 |  398 |   94 | `SX_STATIC_INLINE int PH7_IS_INF_DOUBLE(double v){` |
 |    - |   95 | `    union { double d; sxu64 u; } u;` |
@@ -123,7 +123,7 @@ Coverage: 16/16 lines (100.00%)
 |    - |  113 | ` * divide by 0”) for those expressions.  Instead construct the value from a` |
 |    - |  114 | ` * known IEEE‑754 bit pattern which is safe on all platforms.` |
 |    - |  115 | ` */` |
-|   49 |  116 | `SX_STATIC_INLINE double PH7_NAN_VALUE(void){` |
+|   57 |  116 | `SX_STATIC_INLINE double PH7_NAN_VALUE(void){` |
 |    - |  117 | `    /* Use a static constant union to avoid undefined behaviour from` |
 |    - |  118 | `     * reading a different member than was last written.  Some compilers` |
 |    - |  119 | `     * (clang on macOS in particular) may optimize away the write when the` |
@@ -132,7 +132,7 @@ Coverage: 16/16 lines (100.00%)
 |    - |  122 | `     * pattern is stored in memory and the double is read back correctly.` |
 |    - |  123 | `     */` |
 |    - |  124 | `    static const union { sxu64 u; double d; } u = { 0x7ff8000000000000ULL };` |
-|   49 |  125 | `    return u.d;` |
+|   57 |  125 | `    return u.d;` |
 |    1 |  126 |  |
 |   21 |  127 | `SX_STATIC_INLINE double PH7_INF_VALUE(void){` |
 |    - |  128 | `    static const union { sxu64 u; double d; } u = { 0x7ff0000000000000ULL };` |
