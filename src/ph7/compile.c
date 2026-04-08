@@ -1339,6 +1339,7 @@ PH7_PRIVATE sxi32 PH7_CompileList(ph7_gen_state *pGen,sxi32 iCompileFlag)
 /* Forward declarations */
 static sxi32 GenStateCompileFunc(ph7_gen_state *pGen,SyString *pName,sxi32 iFlags,int bHandleClosure,ph7_vm_func **ppFunc);
 static int GenStateIsReservedConstant(SyString *pName);
+static void GenStateBuildFQN(ph7_gen_state *pGen,const SyString *pName,SyBlob *pOut);
 /*
  * Compile an annoynmous function or a closure.
  * According to the PHP language reference
@@ -1899,8 +1900,16 @@ static sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 		return SXERR_ABORT;
 	}
 	SySetSetUserData(pConsCode,pGen->pVm);
-	/* Register the constant */
-	rc = PH7_VmRegisterConstant(pGen->pVm,pName,PH7_VmExpandConstantValue,pConsCode);
+	/* Register the constant with namespace-qualified name */
+	{
+		SyBlob sFQN;
+		SyString sFQNStr;
+		SyBlobInit(&sFQN,&pGen->pVm->sAllocator);
+		GenStateBuildFQN(pGen,pName,&sFQN);
+		SyStringInitFromBuf(&sFQNStr,(const char *)SyBlobData(&sFQN),SyBlobLength(&sFQN));
+		rc = PH7_VmRegisterConstant(pGen->pVm,&sFQNStr,PH7_VmExpandConstantValue,pConsCode);
+		SyBlobRelease(&sFQN);
+	}
 	if( rc != SXRET_OK ){
 		SySetRelease(pConsCode);
 		SyMemBackendPoolFree(&pGen->pVm->sAllocator,pConsCode);
@@ -3608,16 +3617,21 @@ static sxi32 PH7_CompileVar(ph7_gen_state *pGen)
  * Only rewrites unqualified names (no backslash) when a namespace is active.
  */
 /*
- * Namespace-qualify a name for CALL/NEW instructions.
+ * Namespace-qualify a name for CALL/NEW/instanceof instructions.
  * Instead of mutating the interned literal (which would corrupt the literal
  * hash and any shared references), this creates a new literal entry with the
  * qualified name and updates the instruction's operand index.
  *
- * Resolution: use imports -> current NS prefix.
- * Only rewrites unqualified names (no backslash) when a namespace is active.
+ * Resolution order:
+ *   1. Check the given import table (pImports) — matches even outside namespaces.
+ *   2. If no import matches and a namespace is active, prepend the current NS.
+ *   3. Otherwise return the original literal index unchanged.
+ *
+ * If pFromImport is non-NULL, *pFromImport is set to 1 when the resolution
+ * came from an import (step 1) and 0 otherwise.
  * Returns the (possibly new) literal index.
  */
-static sxu32 GenStateNsQualifyName(ph7_gen_state *pGen,sxu32 nOrigIdx)
+static sxu32 GenStateNsQualifyName(ph7_gen_state *pGen,sxu32 nOrigIdx,SyHash *pImports,int *pFromImport)
 {
 	ph7_value *pLit;
 	const char *zLit;
@@ -3628,8 +3642,8 @@ static sxu32 GenStateNsQualifyName(ph7_gen_state *pGen,sxu32 nOrigIdx)
 	int hasNsSep;
 	SyHashEntry *pImport;
 	ph7_value *pNew;
-	if( SyBlobLength(&pGen->sNamespace) == 0 ){
-		return nOrigIdx; /* Not in a namespace */
+	if( pFromImport ){
+		*pFromImport = 0;
 	}
 	pLit = (ph7_value *)SySetAt(&pGen->pVm->aLitObj,nOrigIdx);
 	if( !pLit || !(pLit->iFlags & MEMOBJ_STRING) || SyBlobLength(&pLit->sBlob) == 0 ){
@@ -3645,14 +3659,19 @@ static sxu32 GenStateNsQualifyName(ph7_gen_state *pGen,sxu32 nOrigIdx)
 	if( hasNsSep ){
 		return nOrigIdx;
 	}
-	/* Build the qualified name into sWorker */
+	/* Check use imports first (works even outside namespaces) */
 	SyBlobReset(&pGen->sWorker);
-	/* Check use imports first */
-	pImport = SyHashGet(&pGen->hUseImports,(const void *)zLit,nLit);
+	pImport = SyHashGet(pImports,(const void *)zLit,nLit);
 	if( pImport ){
 		const char *zFQN = (const char *)pImport->pUserData;
 		SyBlobAppend(&pGen->sWorker,zFQN,SyStrlen(zFQN));
+		if( pFromImport ){
+			*pFromImport = 1;
+		}
 	}else{
+		if( SyBlobLength(&pGen->sNamespace) == 0 ){
+			return nOrigIdx; /* Not in a namespace and no import match */
+		}
 		/* Prepend current namespace */
 		SyBlobAppend(&pGen->sWorker,SyBlobData(&pGen->sNamespace),SyBlobLength(&pGen->sNamespace));
 		SyBlobAppend(&pGen->sWorker,"\\",1);
@@ -3761,6 +3780,10 @@ static sxi32 PH7_CompileNamespace(ph7_gen_state *pGen)
 	SyBlobReset(&pGen->sNamespace);
 	SyHashRelease(&pGen->hUseImports);
 	SyHashInit(&pGen->hUseImports,&pGen->pVm->sAllocator,0,0);
+	SyHashRelease(&pGen->hUseFuncImports);
+	SyHashInit(&pGen->hUseFuncImports,&pGen->pVm->sAllocator,0,0);
+	SyHashRelease(&pGen->hUseConstImports);
+	SyHashInit(&pGen->hUseConstImports,&pGen->pVm->sAllocator,0,0);
 	if( pGen->pIn >= pGen->pEnd ){
 		/* Global namespace (bare "namespace;") */
 		PH7_VmEmitInstr(pGen->pVm,PH7_OP_NSSWITCH,0,0,0,0);
@@ -3831,14 +3854,37 @@ static sxi32 PH7_CompileUse(ph7_gen_state *pGen)
 	SyString sAlias;
 	SyToken *pLast;
 	char *zDup;
+	int iUseType; /* 0=class, 1=function, 2=const */
+	SyHash *pGenHash;   /* Compile-time import table */
+	SyHash *pVmHash;    /* Runtime import table (NULL if not needed) */
 	nLine = pGen->pIn->nLine;
 	pGen->pIn++; /* Jump the 'use' keyword */
-	/* Skip 'function' or 'const' keyword after 'use' (PHP 5.6+) */
+	/* Detect 'function' or 'const' keyword after 'use' (PHP 5.6+) */
+	iUseType = 0;
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
 		sxu32 nKey = (sxu32)(SX_PTR_TO_INT(pGen->pIn->pUserData));
-		if( nKey == PH7_TKWRD_FUNCTION || nKey == PH7_TKWRD_CONST ){
+		if( nKey == PH7_TKWRD_FUNCTION ){
+			iUseType = 1;
+			pGen->pIn++;
+		}else if( nKey == PH7_TKWRD_CONST ){
+			iUseType = 2;
 			pGen->pIn++;
 		}
+	}
+	/* Select target hash tables based on import type */
+	switch( iUseType ){
+		case 1:
+			pGenHash = &pGen->hUseFuncImports;
+			pVmHash = 0; /* Function imports resolved at compile time only */
+			break;
+		case 2:
+			pGenHash = &pGen->hUseConstImports;
+			pVmHash = 0; /* Const imports use PH7_OP_USECONST for runtime scoping */
+			break;
+		default:
+			pGenHash = &pGen->hUseImports;
+			pVmHash = &pGen->pVm->hUseImports;
+			break;
 	}
 	SyBlobInit(&sPath,&pGen->pVm->sAllocator);
 	/* Process one or more use declarations separated by commas */
@@ -3874,8 +3920,8 @@ static sxi32 PH7_CompileUse(ph7_gen_state *pGen)
 				pGen->pIn++;
 			}
 		}
-		/* Check for duplicate import alias */
-		if( SyHashGet(&pGen->hUseImports,sAlias.zString,sAlias.nByte) != 0 ){
+		/* Check for duplicate import alias (per-type) */
+		if( SyHashGet(pGenHash,sAlias.zString,sAlias.nByte) != 0 ){
 			rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
 				"Cannot use %.*s as %z because the name is already in use",
 				(int)SyBlobLength(&sPath),(const char *)SyBlobData(&sPath),&sAlias);
@@ -3891,12 +3937,30 @@ static sxi32 PH7_CompileUse(ph7_gen_state *pGen)
 		zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
 			(const char *)SyBlobData(&sPath),SyBlobLength(&sPath));
 		if( zDup ){
-			char *zAliasDup;
-			SyHashInsert(&pGen->hUseImports,sAlias.zString,sAlias.nByte,zDup);
-			/* Duplicate the alias key for the VM hash (token pointers may not survive to runtime) */
-			zAliasDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,sAlias.zString,sAlias.nByte);
-			if( zAliasDup ){
-				SyHashInsert(&pGen->pVm->hUseImports,zAliasDup,sAlias.nByte,zDup);
+			SyHashInsert(pGenHash,sAlias.zString,sAlias.nByte,zDup);
+			if( pVmHash ){
+				/* Class imports: populate VM table directly (class resolution
+				 * is compile-time only, the VM copy is kept for legacy reasons). */
+				char *zAliasDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,sAlias.zString,sAlias.nByte);
+				if( zAliasDup ){
+					SyHashInsert(pVmHash,zAliasDup,sAlias.nByte,zDup);
+				}
+			}
+			if( iUseType == 2 ){
+				/* Const imports: emit a runtime instruction so imports are
+				 * namespace-scoped (NSSWITCH clears the VM table). */
+				char *zAliasDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,sAlias.zString,sAlias.nByte);
+				if( zAliasDup ){
+					/* Encode alias length in iP1, alias string in p3 is not enough —
+					 * we need both alias and FQN.  Pack them: iP1=alias length,
+					 * iP2 unused, p3 points to a two-pointer struct. */
+					char **azPair = (char **)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(char*)*2);
+					if( azPair ){
+						azPair[0] = zAliasDup;
+						azPair[1] = zDup;
+						PH7_VmEmitInstr(pGen->pVm,PH7_OP_USECONST,(sxi32)sAlias.nByte,0,azPair,0);
+					}
+				}
 			}
 		}
 		/* Check for comma (multiple use declarations) */
@@ -7348,14 +7412,24 @@ static sxi32 GenStateEmitExprCode(
 					sxu32 nQual;
 					/* Prevent constant expansion */
 					pInstr->iP1 = 0;
-					/* Namespace-qualify the function name for CALL */
-					nQual = GenStateNsQualifyName(pGen,nOrig);
-					pInstr->iP2 = (sxi32)nQual;
-					if( nQual != nOrig ){
-						/* Name was compiler-qualified: flag CALL for host-function global fallback.
-						 * p3 = (void*)1 tells the VM it's safe to strip the NS prefix
-						 * and try the short name in hHostFunction. */
-						p3 = (void *)1;
+					/* Namespace-qualify the function name for CALL.
+					 * Only check function imports — class imports must NOT
+					 * affect function resolution.  For `new Foo()`, the CALL
+					 * handler fires before NEW; we store the original literal
+					 * index in the CALL instruction's iP2 so the NEW handler
+					 * can recover the unqualified name and re-qualify with
+					 * class imports. */ {
+						int fromImport = 0;
+						nQual = GenStateNsQualifyName(pGen,nOrig,&pGen->hUseFuncImports,&fromImport);
+						pInstr->iP2 = (sxi32)nQual;
+						if( nQual != nOrig ){
+							/* Store original literal index in CALL's iP2 so the
+							 * NEW handler can recover the unqualified name. */
+							iP2 = (sxi32)(nOrig + 1); /* +1 to distinguish from default 0 */
+							if( !fromImport ){
+								p3 = (void *)1;
+							}
+						}
 					}
 				}else if( pInstr->iOp == PH7_OP_MEMBER /* $a->b(1,2,3) */ || pInstr->iOp == PH7_OP_NEW ){
 					/* Method call,flag that */
@@ -7406,7 +7480,7 @@ static sxi32 GenStateEmitExprCode(
 			}
 			pInstr->iP1 = 0;
 			if( !isSpecial ){
-				pInstr->iP2 = (sxi32)GenStateNsQualifyName(pGen,(sxu32)pInstr->iP2);
+				pInstr->iP2 = (sxi32)GenStateNsQualifyName(pGen,(sxu32)pInstr->iP2,&pGen->hUseImports,0);
 			}
 			/* Foo::class — resolve at compile time. The LOADC already holds the
 			 * namespace-qualified name. self/static/parent need runtime resolution. */
@@ -7482,13 +7556,23 @@ static sxi32 GenStateEmitExprCode(
 		}else if( iVmOp == PH7_OP_NEW ){
 			/* Namespace-qualify the class name for NEW */ {
 				VmInstr *pPeek = PH7_VmPeekInstr(pGen->pVm);
+				VmInstr *pCallInstr = 0;
 				if( pPeek && pPeek->iOp == PH7_OP_CALL ){
+					pCallInstr = pPeek;
 					pPeek = PH7_VmPeekNextInstr(pGen->pVm);
 				}
 				if( pPeek && pPeek->iOp == PH7_OP_LOADC ){
-					/* Prevent constant expansion for class name */
+					sxu32 nLitForClass;
+					/* If the CALL handler already qualified the name using
+					 * function imports, recover the original unqualified
+					 * literal so we can re-qualify with class imports. */
+					if( pCallInstr && pCallInstr->iP2 > 0 ){
+						nLitForClass = (sxu32)(pCallInstr->iP2 - 1); /* undo +1 encoding */
+					}else{
+						nLitForClass = (sxu32)pPeek->iP2;
+					}
 					pPeek->iP1 = 0;
-					pPeek->iP2 = (sxi32)GenStateNsQualifyName(pGen,(sxu32)pPeek->iP2);
+					pPeek->iP2 = (sxi32)GenStateNsQualifyName(pGen,nLitForClass,&pGen->hUseImports,0);
 				}
 			}
 			pInstr = PH7_VmPeekInstr(pGen->pVm);
@@ -7519,7 +7603,7 @@ static sxi32 GenStateEmitExprCode(
 				}
 				pInstr->iP1 = 0;
 				if( !isSpecialIs ){
-					pInstr->iP2 = (sxi32)GenStateNsQualifyName(pGen,(sxu32)pInstr->iP2);
+					pInstr->iP2 = (sxi32)GenStateNsQualifyName(pGen,(sxu32)pInstr->iP2,&pGen->hUseImports,0);
 				}
 			}
 		}else if( iVmOp == PH7_OP_MEMBER){
@@ -8113,6 +8197,8 @@ PH7_PRIVATE sxi32 PH7_InitCodeGenerator(
 	/* Namespace state */
 	SyBlobInit(&pGen->sNamespace,&pVm->sAllocator);
 	SyHashInit(&pGen->hUseImports,&pVm->sAllocator,0,0);
+	SyHashInit(&pGen->hUseFuncImports,&pVm->sAllocator,0,0);
+	SyHashInit(&pGen->hUseConstImports,&pVm->sAllocator,0,0);
 	/* Create the global scope */
 	GenStateInitBlock(pGen,&pGen->sGlobal,GEN_BLOCK_GLOBAL,PH7_VmInstrLength(&(*pVm)),0);
 	/* Point to the global scope */
@@ -8139,6 +8225,10 @@ PH7_PRIVATE sxi32 PH7_ResetCodeGenerator(
 	SyBlobInit(&pGen->sNamespace,&pVm->sAllocator);
 	SyHashRelease(&pGen->hUseImports);
 	SyHashInit(&pGen->hUseImports,&pVm->sAllocator,0,0);
+	SyHashRelease(&pGen->hUseFuncImports);
+	SyHashInit(&pGen->hUseFuncImports,&pVm->sAllocator,0,0);
+	SyHashRelease(&pGen->hUseConstImports);
+	SyHashInit(&pGen->hUseConstImports,&pVm->sAllocator,0,0);
 	/* Note: pGen->hVar and pGen->hLiteral are intentionally NOT reset here.
 	 * They intern variable names and literal strings that are referenced by
 	 * compiled bytecode (pInstr->p3) and runtime frame hash tables (pFrame->hVar).
