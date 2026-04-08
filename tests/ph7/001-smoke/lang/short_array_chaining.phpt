@@ -22,3 +22,4 @@ y
 3
 --CLEAN--
 <?php
+unset($a);

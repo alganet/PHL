@@ -16,3 +16,4 @@ echo $a['z'], "\n";
 30
 --CLEAN--
 <?php
+unset($a);
