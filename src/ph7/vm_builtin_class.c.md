@@ -14,11 +14,11 @@ Coverage: 400/476 lines (84.03%)
 |    - |    4 | ` * SPDX-License-Identifier: BSD-3-Clause` |
 |    - |    5 | ` */` |
 |    - |    6 | `#include "ph7int.h"` |
-|   18 |    7 | `PH7_PRIVATE int vm_builtin_get_class(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   20 |    7 | `PH7_PRIVATE int vm_builtin_get_class(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    2 |    8 |  |
 |    - |    9 | `	ph7_class *pClass;` |
 |    - |   10 | `	SyString *pName;` |
-|   20 |   11 | `	if( nArg < 1 ){` |
+|   22 |   11 | `	if( nArg < 1 ){` |
 |    - |   12 | `		/* Check if we are inside a class */` |
 |  ! 0 |   13 | `		pClass = PH7_VmPeekTopClass(pCtx->pVm);` |
 |  ! 0 |   14 | `		if( pClass ){` |
@@ -31,17 +31,17 @@ Coverage: 400/476 lines (84.03%)
 |    - |   21 | `		}` |
 |  ! 0 |   22 | `	}else{` |
 |    - |   23 | `		/* Extract the target class */` |
-|   20 |   24 | `		pClass = PH7_VmExtractClassFromValue(pCtx->pVm,apArg[0]);` |
-|   20 |   25 | `		if( pClass ){` |
-|   18 |   26 | `			pName = &pClass->sName;` |
+|   22 |   24 | `		pClass = PH7_VmExtractClassFromValue(pCtx->pVm,apArg[0]);` |
+|   22 |   25 | `		if( pClass ){` |
+|   20 |   26 | `			pName = &pClass->sName;` |
 |    - |   27 | `			/* Return the class name */` |
-|   18 |   28 | `			ph7_result_string(pCtx,pName->zString,(int)pName->nByte);` |
-|   10 |   29 | `		}else{` |
+|   20 |   28 | `			ph7_result_string(pCtx,pName->zString,(int)pName->nByte);` |
+|   11 |   29 | `		}else{` |
 |    - |   30 | `			/* Not a class instance,return FALSE */` |
 |    3 |   31 | `			ph7_result_bool(pCtx,0);` |
 |    - |   32 | `		}` |
 |    - |   33 | `	}` |
-|   20 |   34 | `	return PH7_OK;` |
+|   22 |   34 | `	return PH7_OK;` |
 |    2 |   35 |  |
 |    - |   36 | `/*` |
 |    - |   37 | ` * string get_parent_class([object $object = NULL ] )` |
@@ -120,13 +120,13 @@ Coverage: 400/476 lines (84.03%)
 |    - |  110 | ` * The given value must be of type object [i.e: class instance] or` |
 |    - |  111 | ` * string which hold the class name.` |
 |    - |  112 | ` */` |
-|   86 |  113 | `PH7_PRIVATE ph7_class * PH7_VmExtractClassFromValue(ph7_vm *pVm,ph7_value *pArg)` |
+|   88 |  113 | `PH7_PRIVATE ph7_class * PH7_VmExtractClassFromValue(ph7_vm *pVm,ph7_value *pArg)` |
 |    2 |  114 |  |
-|   88 |  115 | `	ph7_class *pClass = 0;` |
-|   88 |  116 | `	if( ph7_value_is_object(pArg) ){` |
+|   90 |  115 | `	ph7_class *pClass = 0;` |
+|   90 |  116 | `	if( ph7_value_is_object(pArg) ){` |
 |    - |  117 | `		/* Class instance already loaded,no need to perform a lookup */` |
-|   48 |  118 | `		pClass = ((ph7_class_instance *)pArg->x.pOther)->pClass;` |
-|   65 |  119 | `	}else if( ph7_value_is_string(pArg) ){` |
+|   50 |  118 | `		pClass = ((ph7_class_instance *)pArg->x.pOther)->pClass;` |
+|   66 |  119 | `	}else if( ph7_value_is_string(pArg) ){` |
 |    - |  120 | `		const char *zClass;` |
 |    - |  121 | `		int nLen;` |
 |    - |  122 | `		/* Extract class name */` |
@@ -141,7 +141,7 @@ Coverage: 400/476 lines (84.03%)
 |   15 |  131 | `			}` |
 |   19 |  132 | `		}` |
 |   19 |  133 | `	}` |
-|   88 |  134 | `	return pClass;` |
+|   90 |  134 | `	return pClass;` |
 |    2 |  135 |  |
 |    - |  136 | `/*` |
 |    - |  137 | ` * bool property_exists(mixed $class,string $property)` |

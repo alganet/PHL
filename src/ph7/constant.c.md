@@ -77,11 +77,11 @@ Coverage: 1006/1017 lines (98.92%)
 |      - |   67 | ` * PHP_INT_SIZE` |
 |      - |   68 | ` * Expand the size in bytes of a 64-bit integer.` |
 |      - |   69 | ` */` |
-|      2 |   70 | `static void PH7_INTSIZE_Const(ph7_value *pVal,void *pUnused)` |
+|      4 |   70 | `static void PH7_INTSIZE_Const(ph7_value *pVal,void *pUnused)` |
 |      1 |   71 |  |
-|      1 |   72 | `	SXUNUSED(pUnused);` |
-|      3 |   73 | `	ph7_value_int64(pVal,sizeof(sxi64));` |
-|      3 |   74 |  |
+|      2 |   72 | `	SXUNUSED(pUnused);` |
+|      5 |   73 | `	ph7_value_int64(pVal,sizeof(sxi64));` |
+|      5 |   74 |  |
 |      - |   75 | `/*` |
 |      - |   76 | ` * DIRECTORY_SEPARATOR.` |
 |      - |   77 | ` * Expand the directory separator character.` |
@@ -1063,20 +1063,20 @@ Coverage: 1006/1017 lines (98.92%)
 |      - | 1053 | ` * PATHINFO_EXTENSION` |
 |      - | 1054 | ` *  Expand 3.` |
 |      - | 1055 | ` */` |
-|   4516 | 1056 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
+|   4536 | 1056 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
 |      2 | 1057 |  |
-|   2258 | 1058 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   4518 | 1059 | `	ph7_value_int(pVal,3);` |
-|   4518 | 1060 |  |
+|   2268 | 1058 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   4538 | 1059 | `	ph7_value_int(pVal,3);` |
+|   4538 | 1060 |  |
 |      - | 1061 | `/*` |
 |      - | 1062 | ` * PATHINFO_FILENAME` |
 |      - | 1063 | ` *  Expand 4.` |
 |      - | 1064 | ` */` |
-|   4510 | 1065 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
+|   4530 | 1065 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
 |      2 | 1066 |  |
-|   2255 | 1067 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   4512 | 1068 | `	ph7_value_int(pVal,4);` |
-|   4512 | 1069 |  |
+|   2265 | 1067 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   4532 | 1068 | `	ph7_value_int(pVal,4);` |
+|   4532 | 1069 |  |
 |      - | 1070 | `/*` |
 |      - | 1071 | ` * ASSERT_ACTIVE.` |
 |      - | 1072 | ` *  PHP ASSERT_ACTIVE = 1` |

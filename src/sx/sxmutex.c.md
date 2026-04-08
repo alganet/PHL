@@ -185,14 +185,14 @@ Coverage: 77/92 lines (83.70%)
 |  5408 |  175 | `		free(pMutex);` |
 |  2704 |  176 | `	}` |
 |  5408 |  177 |  |
-| 31964 |  178 | `static void UnixMutexEnter(SyMutex *pMutex)` |
+| 31966 |  178 | `static void UnixMutexEnter(SyMutex *pMutex)` |
 |     - |  179 |  |
-| 31964 |  180 | `	pthread_mutex_lock(&pMutex->sMutex);` |
-| 31964 |  181 |  |
-| 31956 |  182 | `static void UnixMutexLeave(SyMutex *pMutex)` |
+| 31966 |  180 | `	pthread_mutex_lock(&pMutex->sMutex);` |
+| 31966 |  181 |  |
+| 31958 |  182 | `static void UnixMutexLeave(SyMutex *pMutex)` |
 |     - |  183 |  |
-| 31956 |  184 | `	pthread_mutex_unlock(&pMutex->sMutex);` |
-| 31956 |  185 |  |
+| 31958 |  184 | `	pthread_mutex_unlock(&pMutex->sMutex);` |
+| 31958 |  185 |  |
 |     - |  186 | `/* Export pthread mutex interfaces */` |
 |     - |  187 | `static const SyMutexMethods sPthreadMutexMethods = {` |
 |     - |  188 |  |
