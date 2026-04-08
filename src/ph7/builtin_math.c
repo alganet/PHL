@@ -731,6 +731,87 @@ PH7_PRIVATE int PH7_builtin_round(ph7_context *pCtx,int nArg,ph7_value **apArg)
   return PH7_OK;
 }
 /*
+ * int intdiv(int $a, int $b)
+ *  Integer division.
+ * Parameters
+ *  $a
+ *   Number to be divided.
+ *  $b
+ *   Number which divides the $a.
+ * Return
+ *  The integer quotient of the division of $a by $b.
+ */
+PH7_PRIVATE int PH7_builtin_intdiv(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi64 a,b;
+	/* PHP requires exactly two arguments. */
+	if( nArg != 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"intdiv() expects exactly 2 arguments, %d given",
+			nArg
+			);
+	}
+	/* Type-check argument 1 */
+	if( ph7_value_is_array(apArg[0]) || ph7_value_is_object(apArg[0])
+		|| ph7_value_is_resource(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"intdiv(): Argument #1 ($num1) must be of type int, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	if( ph7_value_is_string(apArg[0]) ){
+		int len;
+		const char *zStr = ph7_value_to_string(apArg[0], &len);
+		if( SyStrIsNumeric(zStr, (sxu32)len, 0, 0) != SXRET_OK ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"intdiv(): Argument #1 ($num1) must be of type int, string given"
+				);
+		}
+	}
+	/* Type-check argument 2 */
+	if( ph7_value_is_array(apArg[1]) || ph7_value_is_object(apArg[1])
+		|| ph7_value_is_resource(apArg[1]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"intdiv(): Argument #2 ($num2) must be of type int, %s given",
+			ph7_type_name(apArg[1])
+			);
+	}
+	if( ph7_value_is_string(apArg[1]) ){
+		int len;
+		const char *zStr = ph7_value_to_string(apArg[1], &len);
+		if( SyStrIsNumeric(zStr, (sxu32)len, 0, 0) != SXRET_OK ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"intdiv(): Argument #2 ($num2) must be of type int, string given"
+				);
+		}
+	}
+	/* Convert both arguments to int64 */
+	a = ph7_value_to_int64(apArg[0]);
+	b = ph7_value_to_int64(apArg[1]);
+	/* Check for division by zero */
+	if( b == 0 ){
+		return PH7_VmThrowException(pCtx,
+			"DivisionByZeroError",
+			"Division by zero"
+			);
+	}
+	/* Check for overflow: PHP_INT_MIN / -1 */
+	if( a == SMALLEST_INT64 && b == -1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArithmeticError",
+			"Division of PHP_INT_MIN by -1 is not an integer"
+			);
+	}
+	/* Perform integer division */
+	ph7_result_int64(pCtx, a / b);
+	return PH7_OK;
+}
+/*
  * string dechex(int $number)
  *  Decimal to hexadecimal.
  * Parameters
