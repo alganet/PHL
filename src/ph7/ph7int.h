@@ -924,6 +924,7 @@ enum ph7_vm_op {
   PH7_OP_LE,           /* Less or equal '<=' */
   PH7_OP_GT,           /* Greater than '>' */
   PH7_OP_GE,           /* Greater or equal '>=' */
+  PH7_OP_SPACESHIP,    /* Spaceship '<=>' */
   PH7_OP_EQ,           /* Equal '==' */
   PH7_OP_NEQ,          /* Not equal '!=' */
   PH7_OP_TEQ,          /* Type equal '===' */
@@ -1012,6 +1013,7 @@ enum ph7_expr_id {
 	EXPR_OP_LE,        /* Less equal */
 	EXPR_OP_GT,        /* Greater than */
 	EXPR_OP_GE,        /* Greater equal */
+	EXPR_OP_SPACESHIP, /* Spaceship <=> */
 	EXPR_OP_EQ,        /* Equal == */
 	EXPR_OP_NE,        /* Not equal != <> */
 	EXPR_OP_TEQ,       /* Type equal === */

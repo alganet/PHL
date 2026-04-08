@@ -4934,6 +4934,35 @@ case PH7_OP_GE: {
 	}
 	break;
 				}
+/* OP_SPACESHIP * * *
+ *
+ * Pop the top two elements from the stack. Push an integer result:
+ *   -1 if left < right
+ *    0 if left == right
+ *    1 if left > right
+ * Uses loose comparison (type juggling), same as <, >, ==.
+ */
+case PH7_OP_SPACESHIP: {
+	ph7_value *pNos = &pTos[-1];
+#ifdef UNTRUST
+	if( pNos < pStack ){
+		goto Abort;
+	}
+#endif
+	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);
+	if( VmIsUnorderedCmp(pNos,pTos) ){
+		/* NaN involved: PHP returns 1 for all NaN spaceship comparisons */
+		rc = 1;
+	}else{
+		/* Normalize to exactly -1, 0, or 1 */
+		rc = (rc > 0) - (rc < 0);
+	}
+	VmPopOperand(&pTos,1);
+	PH7_MemObjRelease(pTos);
+	pTos->x.iVal = rc;
+	MemObjSetType(pTos,MEMOBJ_INT);
+	break;
+				}
 /* OP_SEQ P1 P2 *
  * Strict string comparison.
  * Pop the top two elements from the stack. If they are equal (pure text comparison)
@@ -8020,6 +8049,7 @@ static const char * VmInstrToString(sxi32 nOp)
 	case PH7_OP_LE:         zOp = "LE         "; break;
 	case PH7_OP_GT:         zOp = "GT         "; break;
 	case PH7_OP_GE:         zOp = "GE         "; break;
+	case PH7_OP_SPACESHIP:  zOp = "SPACESHIP  "; break;
 	case PH7_OP_EQ:         zOp = "EQ         "; break;
 	case PH7_OP_NEQ:        zOp = "NEQ        "; break;
 	case PH7_OP_TEQ:        zOp = "TEQ        "; break;
