@@ -405,12 +405,12 @@ Coverage: 432/435 lines (99.31%)
 |    4 |  395 | `			ph7_type_name(apArg[0])` |
 |    - |  396 | `			);` |
 |    - |  397 | `	}` |
-|   34 |  398 | `	x = ph7_value_to_double(apArg[0]);` |
+|   33 |  398 | `	x = ph7_value_to_double(apArg[0]);` |
 |    - |  399 | `	/* Perform the requested operation */` |
-|   34 |  400 | `	r = atan(x);` |
+|   33 |  400 | `	r = atan(x);` |
 |    - |  401 | `	/* store the result back */` |
-|   34 |  402 | `	ph7_result_double(pCtx,r);` |
-|   34 |  403 | `	return PH7_OK;` |
+|   33 |  402 | `	ph7_result_double(pCtx,r);` |
+|   33 |  403 | `	return PH7_OK;` |
 |   25 |  404 |  |
 |    - |  405 | `/*` |
 |    - |  406 | ` * float tanh(float $arg )` |
@@ -471,13 +471,13 @@ Coverage: 432/435 lines (99.31%)
 |    2 |  461 | `			ph7_type_name(apArg[1])` |
 |    - |  462 | `			);` |
 |    - |  463 | `	}` |
-|   48 |  464 | `	y = ph7_value_to_double(apArg[0]);` |
-|   48 |  465 | `	x = ph7_value_to_double(apArg[1]);` |
+|   47 |  464 | `	y = ph7_value_to_double(apArg[0]);` |
+|   47 |  465 | `	x = ph7_value_to_double(apArg[1]);` |
 |    - |  466 | `	/* Perform the requested operation */` |
-|   48 |  467 | `	r = atan2(y,x);` |
+|   47 |  467 | `	r = atan2(y,x);` |
 |    - |  468 | `	/* store the result back */` |
-|   48 |  469 | `	ph7_result_double(pCtx,r);` |
-|   48 |  470 | `	return PH7_OK;` |
+|   47 |  469 | `	ph7_result_double(pCtx,r);` |
+|   47 |  470 | `	return PH7_OK;` |
 |   32 |  471 |  |
 |    - |  472 | `/*` |
 |    - |  473 | ` * float/int64 abs(float/int64 $arg )` |
