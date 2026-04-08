@@ -7408,6 +7408,15 @@ static sxi32 GenStateEmitExprCode(
 			if( !isSpecial ){
 				pInstr->iP2 = (sxi32)GenStateNsQualifyName(pGen,(sxu32)pInstr->iP2);
 			}
+			/* Foo::class — resolve at compile time. The LOADC already holds the
+			 * namespace-qualified name. self/static/parent need runtime resolution. */
+			if( !isSpecial && pNode->pRight && pNode->pRight->pStart ){
+				SyToken *pRightTok = pNode->pRight->pStart;
+				if( (pRightTok->nType & PH7_TK_KEYWORD) &&
+				    SX_PTR_TO_INT(pRightTok->pUserData) == PH7_TKWRD_CLASS ){
+					return SXRET_OK;
+				}
+			}
 		}
 	}
 	/* Generate code for the right tree */
