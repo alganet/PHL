@@ -547,8 +547,8 @@ PH7_PRIVATE int PH7_VmClassMemberAccess(
 		}else{
 			/* Protected */
 			ph7_class *pBase = (ph7_class *)pVmFunc->pUserData;
-			/* Must be a derived class */
-			if( !PH7_VmInstanceOf(pClass,pBase) ){
+			/* Must be in the same class hierarchy */
+			if( !PH7_VmInstanceOf(pClass,pBase) && !PH7_VmInstanceOf(pBase,pClass) ){
 				goto dis; /* Access is forbidden */
 			}
 		}

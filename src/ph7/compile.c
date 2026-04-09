@@ -5340,9 +5340,35 @@ static sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 		/* Extract the current keyword */
 		nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
 		if( nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
-			/* Emit a warning and switch to public visibility */
-			PH7_GenCompileError(&(*pGen),E_WARNING,pGen->pIn->nLine,"interface: Access type must be public");
-			nKwrd = PH7_TKWRD_PUBLIC;
+			/* Fatal error: interface members must be public (PHP 7.1-8.0 behavior).
+			 * Peek ahead to distinguish constant vs method and extract the member name. */
+			const char *zKind = "member";
+			SyString *pMemberName = 0;
+			if( (pGen->pIn + 1) < pGen->pEnd ){
+				sxi32 nNext = SX_PTR_TO_INT((pGen->pIn + 1)->pUserData);
+				if( nNext == PH7_TKWRD_CONST ){
+					zKind = "constant";
+					if( (pGen->pIn + 2) < pGen->pEnd && ((pGen->pIn + 2)->nType & PH7_TK_ID) ){
+						pMemberName = &(pGen->pIn + 2)->sData;
+					}
+				}else if( nNext == PH7_TKWRD_FUNCTION ){
+					zKind = "method";
+					if( (pGen->pIn + 2) < pGen->pEnd && ((pGen->pIn + 2)->nType & PH7_TK_ID) ){
+						pMemberName = &(pGen->pIn + 2)->sData;
+					}
+				}
+			}
+			if( pMemberName ){
+				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
+					"Access type for interface %s %z::%z must be public",zKind,pName,pMemberName);
+			}else{
+				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
+					"Access type for interface %s must be public",zKind);
+			}
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			goto done;
 		}
 		if( nKwrd != PH7_TKWRD_PUBLIC && nKwrd != PH7_TKWRD_FUNCTION && nKwrd != PH7_TKWRD_CONST && nKwrd != PH7_TKWRD_STATIC ){
 			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
