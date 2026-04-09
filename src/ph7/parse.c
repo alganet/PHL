@@ -368,8 +368,8 @@ static sxi32 ExprVerifyNodes(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nN
 	}
 	iParen = iSquare = iQuesty = iBraces = 0;
 	for( i = 0 ; i < nNode ; ++i ){
-		if( apNode[i]->xCode == PH7_CompileShortArray ){
-			/* Short array literal: brackets are self-contained, skip */
+		if( apNode[i]->xCode == PH7_CompileShortArray || apNode[i]->xCode == PH7_CompileShortList ){
+			/* Short array/list literal: brackets are self-contained, skip */
 			continue;
 		}
 		if( apNode[i]->pStart->nType & PH7_TK_LPAREN /*'('*/){
@@ -714,7 +714,19 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 			SyMemBackendPoolFree(&pGen->pVm->sAllocator,pNode);
 			return rc;
 		}
-		pNode->xCode = PH7_CompileShortArray;
+		/* Check if ']' is followed by '=' — if so, this is symmetric array
+		 * destructuring (PHP 7.1 short list syntax), not an array literal.
+		 */
+		if( pCur < pGen->pEnd && (pCur->nType & PH7_TK_OP) ){
+			ph7_expr_op *pOp = (ph7_expr_op *)pCur->pUserData;
+			if( pOp && pOp->iVmOp == PH7_OP_STORE ){
+				pNode->xCode = PH7_CompileShortList;
+			}else{
+				pNode->xCode = PH7_CompileShortArray;
+			}
+		}else{
+			pNode->xCode = PH7_CompileShortArray;
+		}
 	}else if( pCur->nType & PH7_TK_OP ){
 		/* Point to the instance that describe this operator */
 		pNode->pOp = (const ph7_expr_op *)pCur->pUserData;
@@ -1554,7 +1566,8 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				 return rc;
 			 }
 			 if( ExprIsModifiableValue(apNode[iLeft],FALSE) == FALSE ){
-				 if( pNode->pOp->iVmOp != PH7_OP_STORE || apNode[iLeft]->xCode != PH7_CompileList ){
+				 if( pNode->pOp->iVmOp != PH7_OP_STORE ||
+					 (apNode[iLeft]->xCode != PH7_CompileList && apNode[iLeft]->xCode != PH7_CompileShortList) ){
 					 /* Left operand must be a modifiable l-value */
 					 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
 						 "'%z': Left operand must be a modifiable l-value",&pNode->pOp->sOp);
