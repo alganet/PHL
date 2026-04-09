@@ -649,9 +649,11 @@ static ph7_vm_func * VmOverload(
 			/* Float */
 			c = 'f';
 		}else if( aArg[j].iFlags & MEMOBJ_OBJ ){
-			/* Class instance */
+			/* Class instance — prefix with 'o' to match formal object/class signatures */
+			int marker = 'o';
 			ph7_class *pClass = ((ph7_class_instance *)aArg[j].x.pOther)->pClass;
 			SyString *pName = &pClass->sName;
+			SyBlobAppend(&sSig,(const void *)&marker,sizeof(char));
 			SyBlobAppend(&sSig,(const void *)pName->zString,pName->nByte);
 			c = -1;
 		}
@@ -2492,6 +2494,53 @@ PH7_PRIVATE sxi32 VmErrorFormat(ph7_vm *pVm,sxi32 iErr,const char *zFormat,...)
 	rc = VmThrowErrorAp(&(*pVm),0,iErr,zFormat,ap);
 	va_end(ap);
 	return rc;
+}
+/*
+ * Throw a TypeError exception from within the VM execution loop.
+ * Used for user-defined function type hint violations (e.g. object type hint).
+ */
+static sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,SyString *pFuncName,sxu32 nArg,SyString *pArgName,const char *zExpected,const char *zGiven)
+{
+	ph7_class *pClass;
+	ph7_class_instance *pThis;
+	ph7_class_method *pCons;
+	ph7_value sArg;
+	ph7_value *apArg[1];
+	SyBlob sMsg;
+	SyString sMsgStr;
+	VmFrame *pFrame;
+	sxi32 rc;
+	pClass = PH7_VmExtractClass(&(*pVm),"TypeError",sizeof("TypeError")-1,TRUE,0);
+	if( pClass == 0 ){
+		return PH7_ABORT;
+	}
+	pThis = PH7_NewClassInstance(&(*pVm),pClass);
+	if( pThis == 0 ){
+		return PH7_ABORT;
+	}
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	SyBlobFormat(&sMsg,"%z(): Argument #%u ($%z) must be of type %s, %s given",
+		pFuncName,nArg,pArgName,zExpected,zGiven);
+	pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);
+	if( pCons ){
+		SyStringInitFromBuf(&sMsgStr,(const char *)SyBlobData(&sMsg),SyBlobLength(&sMsg));
+		PH7_MemObjInitFromString(&(*pVm),&sArg,&sMsgStr);
+		apArg[0] = &sArg;
+		PH7_VmCallClassMethod(&(*pVm),pThis,pCons,0,1,apArg);
+		PH7_MemObjRelease(&sArg);
+	}
+	SyBlobRelease(&sMsg);
+	pFrame = pVm->pFrame;
+	if( pFrame ){
+		pFrame = VmSkipExceptionFrames(pFrame);
+		pFrame->iFlags |= VM_FRAME_THROW;
+	}
+	rc = VmThrowException(&(*pVm),pThis);
+	PH7_ClassInstanceUnref(pThis);
+	if( rc == SXERR_ABORT ){
+		return PH7_ABORT;
+	}
+	return PH7_EXCEPTION;
 }
 /*
  * Format and throw a run-time error and invoke the supplied VM output consumer callback.
@@ -6539,12 +6588,29 @@ case PH7_OP_CALL: {
 					{
 						ph7_hashmap *pMap = (ph7_hashmap *)pObj->x.pOther;
 						while( pArg < pTos ){
-							/* Apply type coercion to each element if the variadic has a type hint */
+							/* Apply type coercion to each element if the variadic has a type hint.
+							 * Nullable types (?type) allow null through without coercion. */
 							if( aFormalArg[n].nType > 0 && aFormalArg[n].nType != SXU32_HIGH
+								&& !((aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) && (pArg->iFlags & MEMOBJ_NULL))
 								&& (pArg->iFlags & aFormalArg[n].nType) == 0 ){
-								ProcMemObjCast xCast = PH7_MemObjCastMethod(aFormalArg[n].nType);
-								if( xCast ){
-									xCast(pArg);
+								if( aFormalArg[n].nType == MEMOBJ_OBJ ){
+									/* object type hint on variadic: reject non-objects with TypeError */
+									rc = VmThrowTypeErrorForArg(&(*pVm),&pVmFunc->sName,n+1,
+										&aFormalArg[n].sName,"object",ph7_type_name(pArg));
+									if( rc == PH7_ABORT ){
+										goto Abort;
+									}
+									/* Skip function body, route through normal cleanup */
+									PH7_MemObjRelease(pTos);
+									pTos = &pTos[-nCallArgs];
+									pFrameStack = 0;
+									rc = PH7_EXCEPTION;
+									goto SkipFuncBody;
+								}else{
+									ProcMemObjCast xCast = PH7_MemObjCastMethod(aFormalArg[n].nType);
+									if( xCast ){
+										xCast(pArg);
+									}
 								}
 							}
 							PH7_HashmapInsert(pMap, 0, pArg);
@@ -6597,9 +6663,24 @@ case PH7_OP_CALL: {
 							}
 						}
 					}else if( ((pArg->iFlags & aFormalArg[n].nType) == 0) ){
-						ProcMemObjCast xCast = PH7_MemObjCastMethod(aFormalArg[n].nType);
-						/* Cast to the desired type */
-						xCast(pArg);
+						if( aFormalArg[n].nType == MEMOBJ_OBJ ){
+							/* object type hint: reject non-objects with TypeError */
+							rc = VmThrowTypeErrorForArg(&(*pVm),&pVmFunc->sName,n+1,
+								&aFormalArg[n].sName,"object",ph7_type_name(pArg));
+							if( rc == PH7_ABORT ){
+								goto Abort;
+							}
+							/* Skip function body, route through normal cleanup */
+							PH7_MemObjRelease(pTos);
+							pTos = &pTos[-nCallArgs];
+							pFrameStack = 0;
+							rc = PH7_EXCEPTION;
+							goto SkipFuncBody;
+						}else{
+							ProcMemObjCast xCast = PH7_MemObjCastMethod(aFormalArg[n].nType);
+							/* Cast to the desired type */
+							xCast(pArg);
+						}
 					}
 				}
 				if( aFormalArg[n].iFlags & VM_FUNC_ARG_BY_REF ){
@@ -6699,7 +6780,8 @@ case PH7_OP_CALL: {
 					sArg.pUserData = 0;
 					SySetPut(&pFrame->sArg,(const void *)&sArg);
 					/* Make sure the default argument is of the correct type */
-					if( aFormalArg[n].nType > 0 && ((pObj->iFlags & aFormalArg[n].nType) == 0) ){
+					if( aFormalArg[n].nType > 0 && aFormalArg[n].nType != MEMOBJ_OBJ
+						&& ((pObj->iFlags & aFormalArg[n].nType) == 0) ){
 						ProcMemObjCast xCast = PH7_MemObjCastMethod(aFormalArg[n].nType);
 						/* Cast to the desired type */
 						xCast(pObj);
@@ -6724,14 +6806,17 @@ case PH7_OP_CALL: {
 			}
 			break;
 		}
+SkipFuncBody:
 		if( pSelf ){
 			/* Push class name */
 			SySetPut(&pVm->aSelf,(const void *)&pSelf);
 		}
 		/* Increment nesting level */
 		pVm->nRecursionDepth++;
-		/* Execute function body */
-		rc = VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(&pVmFunc->aByteCode),pFrameStack,-1,pTos,&n,FALSE,0);
+		if( rc != PH7_EXCEPTION ){
+			/* Execute function body */
+			rc = VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(&pVmFunc->aByteCode),pFrameStack,-1,pTos,&n,FALSE,0);
+		}
 		/* Decrement nesting level */
 		pVm->nRecursionDepth--;
 		if( pSelf ){
@@ -6785,8 +6870,10 @@ case PH7_OP_CALL: {
 				}
 			}
 		}
-		/* Free the operand stack */
-		SyMemBackendFree(&pVm->sAllocator,pFrameStack);
+		/* Free the operand stack (NULL when function body was skipped) */
+		if( pFrameStack ){
+			SyMemBackendFree(&pVm->sAllocator,pFrameStack);
+		}
 		/* Leave the frame */
 		VmLeaveFrame(&(*pVm));
 		if( rc == PH7_ABORT ){
