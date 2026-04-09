@@ -6842,6 +6842,7 @@ static sxi32 PH7_CompileCatch(ph7_gen_state *pGen,ph7_exception *pException)
 	sxu32 nLine = pGen->pIn->nLine;
 	ph7_exception_block sCatch;
 	SySet *pInstrContainer;
+	SyString sClassName;
 	GenBlock *pCatch;
 	SyToken *pToken;
 	SyString *pName;
@@ -6851,31 +6852,93 @@ static sxi32 PH7_CompileCatch(ph7_gen_state *pGen,ph7_exception *pException)
 	/* Zero the structure */
 	SyZero(&sCatch,sizeof(ph7_exception_block));
 	/* Initialize fields */
+	SySetInit(&sCatch.aClasses,&pException->pVm->sAllocator,sizeof(SyString));
 	SySetInit(&sCatch.sByteCode,&pException->pVm->sAllocator,sizeof(VmInstr));
-	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 /*(*/ ||
-		&pGen->pIn[1] >= pGen->pEnd || (pGen->pIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 /*(*/ ){
 			/* Unexpected token,break immediately */
 			pToken = pGen->pIn;
 			if( pToken >= pGen->pEnd ){
 				pToken--;
 			}
-			rc = PH7_GenCompileError(pGen,E_ERROR,pToken->nLine,
-				"Catch: Unexpected token '%z',excpecting class name",&pToken->sData);
+			rc = PH7_GenCompileError(pGen,E_PARSE,pToken->nLine,
+				"syntax error, unexpected %s \"%z\"",
+				TokenTypeName(pToken->nType),&pToken->sData);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
 			return SXERR_INVALID;
 	}
-	/* Extract the exception class */
+	/* Extract the exception class(es) — supports multi-catch: catch (A | B $e) */
 	pGen->pIn++; /* Jump the left parenthesis '(' */
-	/* Duplicate class name */
-	pName = &pGen->pIn->sData;
-	zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,pName->zString,pName->nByte);
-	if( zDup == 0 ){
-		goto Mem;
+	for(;;){
+		int isAbsolute = 0;
+		SyBlob sName;
+		SyBlobInit(&sName,&pGen->pVm->sAllocator);
+		/* Accept optional leading '\' for fully-qualified names */
+		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_NSSEP) ){
+			isAbsolute = 1;
+			pGen->pIn++;
+		}
+		if( pGen->pIn >= pGen->pEnd ||
+			(pGen->pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
+			SyBlobRelease(&sName);
+			pToken = pGen->pIn;
+			if( pToken >= pGen->pEnd ){
+				pToken--;
+			}
+			rc = PH7_GenCompileError(pGen,E_PARSE,pToken->nLine,
+				"syntax error, unexpected %s \"%z\"",
+				TokenTypeName(pToken->nType),&pToken->sData);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			return SXERR_INVALID;
+		}
+		/* Collect namespace-qualified name: ID [\ ID]* */
+		SyBlobAppend(&sName,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);
+		pGen->pIn++;
+		while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_NSSEP) &&
+			&pGen->pIn[1] < pGen->pEnd && (pGen->pIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) ){
+			SyBlobAppend(&sName,"\\",1);
+			pGen->pIn++; /* Skip '\' separator */
+			SyBlobAppend(&sName,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);
+			pGen->pIn++;
+		}
+		/* Resolve through namespace/imports for non-absolute names */
+		if( !isAbsolute ){
+			SyString sRaw;
+			SyBlob sResolved;
+			SyStringInitFromBuf(&sRaw,(const char *)SyBlobData(&sName),SyBlobLength(&sName));
+			SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
+			GenStateResolveName(pGen,&sRaw,&sResolved);
+			zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+				(const char *)SyBlobData(&sResolved),SyBlobLength(&sResolved));
+			SyStringInitFromBuf(&sClassName,zDup,SyBlobLength(&sResolved));
+			SyBlobRelease(&sResolved);
+		}else{
+			/* Absolute name: use as-is without namespace prefix */
+			zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+				(const char *)SyBlobData(&sName),SyBlobLength(&sName));
+			SyStringInitFromBuf(&sClassName,zDup,SyBlobLength(&sName));
+		}
+		SyBlobRelease(&sName);
+		if( zDup == 0 ){
+			goto Mem;
+		}
+		rc = SySetPut(&sCatch.aClasses,(const void *)&sClassName);
+		if( rc != SXRET_OK ){
+			goto Mem;
+		}
+		/* Check for '|' (multi-catch separator) */
+		if( pGen->pIn < pGen->pEnd &&
+			(pGen->pIn->nType & PH7_TK_OP) &&
+			pGen->pIn->sData.nByte == 1 &&
+			pGen->pIn->sData.zString[0] == '|' ){
+			pGen->pIn++; /* Consume the '|' */
+			continue;
+		}
+		break;
 	}
-	SyStringInitFromBuf(&sCatch.sClass,zDup,pName->nByte);
-	pGen->pIn++;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 /*$*/ ||
 		&pGen->pIn[1] >= pGen->pEnd || (pGen->pIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
 			/* Unexpected token,break immediately */
@@ -6883,8 +6946,9 @@ static sxi32 PH7_CompileCatch(ph7_gen_state *pGen,ph7_exception *pException)
 			if( pToken >= pGen->pEnd ){
 				pToken--;
 			}
-			rc = PH7_GenCompileError(pGen,E_ERROR,pToken->nLine,
-				"Catch: Unexpected token '%z',expecting variable name",&pToken->sData);
+			rc = PH7_GenCompileError(pGen,E_PARSE,pToken->nLine,
+				"syntax error, unexpected %s \"%z\"",
+				TokenTypeName(pToken->nType),&pToken->sData);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
@@ -6905,8 +6969,9 @@ static sxi32 PH7_CompileCatch(ph7_gen_state *pGen,ph7_exception *pException)
 		if( pToken >= pGen->pEnd ){
 			pToken--;
 		}
-		rc = PH7_GenCompileError(pGen,E_ERROR,pToken->nLine,
-			"Catch: Unexpected token '%z',expecting right parenthesis ')'",&pToken->sData);
+		rc = PH7_GenCompileError(pGen,E_PARSE,pToken->nLine,
+			"syntax error, unexpected %s \"%z\"",
+			TokenTypeName(pToken->nType),&pToken->sData);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}

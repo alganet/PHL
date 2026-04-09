@@ -704,7 +704,7 @@ typedef struct ph7_exception_block ph7_exception_block;
 typedef struct ph7_exception ph7_exception;
 struct ph7_exception_block
 {
-	SyString sClass; /* Exception class name [i.e: Exception,MyException...] */
+	SySet aClasses;  /* Exception class names (SyString instances) for multi-catch */
 	SyString sThis;  /* Instance name [i.e: $e..] */
 	SySet sByteCode; /* Block compiled instructions */
 };
