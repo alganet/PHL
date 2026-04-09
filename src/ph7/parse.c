@@ -1008,15 +1008,18 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				/* Put a pointer to the root of the tree in the arguments set */
 				SySetPut(&pOp->aNodeArgs,(const void *)&apNode[iNode]);
 			}else{
-				/* Empty function argument */
-				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pOp->pStart->nLine,"Empty function argument");
+				/* No expression before comma */
+				rc = PH7_GenCompileError(&(*pGen),E_PARSE,
+					(iCur < nToken && apNode[iCur]) ? apNode[iCur]->pStart->nLine : pOp->pStart->nLine,
+					"syntax error, unexpected token \",\"");
 				if( rc != SXERR_ABORT ){
 					rc = SXERR_SYNTAX;
 				}
 				return rc;
 			}
 		}else{
-			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pOp->pStart->nLine,"Missing function argument");
+			/* Comma with no preceding argument */
+			rc = PH7_GenCompileError(&(*pGen),E_PARSE,apNode[iCur]->pStart->nLine,"syntax error, unexpected token \",\"");
 			if( rc != SXERR_ABORT ){
 				rc = SXERR_SYNTAX;
 			}
@@ -1026,12 +1029,8 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 		if( iCur < nToken && apNode[iCur] && (apNode[iCur]->pStart->nType & PH7_TK_COMMA) ){
 			iCur++;
 			if( iCur >= nToken ){
-				/* missing function argument */
-				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pOp->pStart->nLine,"Missing function argument");
-				if( rc != SXERR_ABORT ){
-					rc = SXERR_SYNTAX;
-				}
-				return rc;
+				/* Trailing comma after last argument */
+				break;
 			}
 		}
 	}
