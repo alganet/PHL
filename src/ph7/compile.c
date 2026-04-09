@@ -4277,6 +4277,8 @@ static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyTo
 					sArg.nType = MEMOBJ_STRING;
 				}else if( nKey & PH7_TKWRD_FLOAT ){
 					sArg.nType = MEMOBJ_REAL;
+				}else if( nKey & PH7_TKWRD_OBJECT ){
+					sArg.nType = MEMOBJ_OBJ;
 				}else{
 					PH7_GenCompileError(&(*pGen),E_WARNING,pGen->pIn->nLine,
 						"Invalid argument type '%z',Automatic cast will not be performed",
@@ -4363,7 +4365,9 @@ static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyTo
 		/* Append argument signature */
 		if( sArg.nType > 0 ){
 			if( SyStringLength(&sArg.sClass) > 0 ){
-				/* Class name */
+				/* Class name — prefix with 'o' so generic object hint is a prefix match */
+				int marker = 'o';
+				SyBlobAppend(&sSig,(const void *)&marker,sizeof(char));
 				SyBlobAppend(&sSig,SyStringData(&sArg.sClass),SyStringLength(&sArg.sClass));
 			}else{
 				int c;
@@ -4389,6 +4393,10 @@ static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyTo
 				case MEMOBJ_STRING:
 					/* String */
 					c = 's';
+					break;
+				case MEMOBJ_OBJ:
+					/* Object */
+					c = 'o';
 					break;
 				default:
 					break;
@@ -4550,6 +4558,8 @@ static void GenStateParseReturnType(ph7_gen_state *pGen, ph7_vm_func *pFunc)
 			pFunc->nReturnType = MEMOBJ_STRING;
 		}else if( nKey & PH7_TKWRD_FLOAT ){
 			pFunc->nReturnType = MEMOBJ_REAL;
+		}else if( nKey & PH7_TKWRD_OBJECT ){
+			pFunc->nReturnType = MEMOBJ_OBJ;
 		}else if( nKey == PH7_TKWRD_SELF || nKey == PH7_TKWRD_PARENT || nKey == PH7_TKWRD_STATIC ){
 			/* self/parent/static — store as class sentinel */
 			GenStateSetReturnClass(pGen, pFunc, pCur->sData.zString, pCur->sData.nByte);
