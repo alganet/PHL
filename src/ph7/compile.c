@@ -1239,13 +1239,19 @@ static sxi32 GenStateListNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRoot)
  *  Return Values
  *   The assigned array.
  */
-/* Nested list entry recorded during first pass of PH7_CompileList */
+/* Nested list entry recorded during first pass of list body compilation */
 struct NestedListEntry {
 	sxi32 nIndex;        /* Position in the outer list (0-based) */
-	SyToken *pStart;     /* Token range: 'list' keyword */
-	SyToken *pEnd;       /* Token range: past closing ')' */
+	SyToken *pStart;     /* Token range: start of nested construct */
+	SyToken *pEnd;       /* Token range: past closing delimiter */
+	sxi32 isShort;       /* 1 if [...] form, 0 if list(...) form */
 };
-PH7_PRIVATE sxi32 PH7_CompileList(ph7_gen_state *pGen,sxi32 iCompileFlag)
+/*
+ * Shared body for list() and short list [...] compilation.
+ * Assumes pGen->pIn and pGen->pEnd are already positioned past
+ * the opening delimiter and before the closing delimiter.
+ */
+static sxi32 GenStateCompileListBody(ph7_gen_state *pGen)
 {
 	SySet sNested; /* Dynamically-sized container of NestedListEntry */
 	SyToken *pNext;
@@ -1253,10 +1259,6 @@ PH7_PRIVATE sxi32 PH7_CompileList(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	sxi32 rc;
 	nExpr = 0;
 	SySetInit(&sNested,&pGen->pVm->sAllocator,sizeof(struct NestedListEntry));
-	/* Jump the 'list' keyword,the leading left parenthesis and the trailing parenthesis */
-	pGen->pIn += 2;
-	pGen->pEnd--;
-	SXUNUSED(iCompileFlag); /* cc warning */
 	while( SXRET_OK == PH7_GetNextExpr(pGen->pIn,pGen->pEnd,&pNext) ){
 		if( pGen->pIn < pNext ){
 			/* Check for nested list() */
@@ -1272,6 +1274,21 @@ PH7_PRIVATE sxi32 PH7_CompileList(ph7_gen_state *pGen,sxi32 iCompileFlag)
 					sEntry.nIndex = nExpr;
 					sEntry.pStart = pGen->pIn;
 					sEntry.pEnd = pListEnd + 1;
+					sEntry.isShort = 0;
+					SySetPut(&sNested,(const void *)&sEntry);
+				}
+				/* Emit NULL placeholder — outer LOAD_LIST will skip this index */
+				PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,0,0,0);
+			}else if( pGen->pIn->nType & PH7_TK_OSB ){
+				/* Nested short destructuring [...] */
+				SyToken *pBracketEnd = 0;
+				PH7_DelimitNestedTokens(pGen->pIn+1,pNext,PH7_TK_OSB,PH7_TK_CSB,&pBracketEnd);
+				if( pBracketEnd ){
+					struct NestedListEntry sEntry;
+					sEntry.nIndex = nExpr;
+					sEntry.pStart = pGen->pIn;
+					sEntry.pEnd = pBracketEnd + 1;
+					sEntry.isShort = 1;
 					SySetPut(&sNested,(const void *)&sEntry);
 				}
 				/* Emit NULL placeholder — outer LOAD_LIST will skip this index */
@@ -1280,6 +1297,7 @@ PH7_PRIVATE sxi32 PH7_CompileList(ph7_gen_state *pGen,sxi32 iCompileFlag)
 				/* Compile the expression holding the variable */
 				rc = GenStateCompileArrayEntry(&(*pGen),pGen->pIn,pNext,EXPR_FLAG_LOAD_IDX_STORE,GenStateListNodeValidator);
 				if( rc != SXRET_OK ){
+					SySetRelease(&sNested);
 					return SXRET_OK;
 				}
 			}
@@ -1294,7 +1312,7 @@ PH7_PRIVATE sxi32 PH7_CompileList(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	/* Emit the LOAD_LIST instruction */
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_LIST,nExpr,0,0,0);
 	/* After LOAD_LIST, the source array is still on the stack top.
-	 * For each nested list() entry, emit code to extract the sub-array
+	 * For each nested entry, emit code to extract the sub-array
 	 * at the corresponding index and recursively destructure it.
 	 */
 	if( SySetUsed(&sNested) > 0 ){
@@ -1316,12 +1334,19 @@ PH7_PRIVATE sxi32 PH7_CompileList(ph7_gen_state *pGen,sxi32 iCompileFlag)
 			}
 			PH7_MemObjInitFromInt(pGen->pVm,pIdx,(sxi64)apNested[i].nIndex);
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nConstIdx,0,0);
-			/* LOAD_IDX: pop index, replace DUP'd source with source[index] */
-			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_IDX,1,0,0,0);
-			/* Recursively compile the inner list() */
+			/* LOAD_IDX: pop index, replace DUP'd source with source[index].
+			 * iP2=2 signals the VM to emit an "Undefined array key" warning
+			 * when the key is missing (PHP-compatible list destructuring).
+			 */
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_IDX,1,2,0,0);
+			/* Recursively compile the inner list */
 			pGen->pIn = apNested[i].pStart;
 			pGen->pEnd = apNested[i].pEnd;
-			rc = PH7_CompileList(&(*pGen),0);
+			if( apNested[i].isShort ){
+				rc = PH7_CompileShortList(&(*pGen),0);
+			}else{
+				rc = PH7_CompileList(&(*pGen),0);
+			}
 			pGen->pIn = pSavedIn;
 			pGen->pEnd = pSavedEnd;
 			if( rc == SXERR_ABORT ){
@@ -1335,6 +1360,22 @@ PH7_PRIVATE sxi32 PH7_CompileList(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	SySetRelease(&sNested);
 	/* Node successfully compiled */
 	return SXRET_OK;
+}
+PH7_PRIVATE sxi32 PH7_CompileList(ph7_gen_state *pGen,sxi32 iCompileFlag)
+{
+	/* Jump the 'list' keyword, the leading '(' and exclude trailing ')' */
+	pGen->pIn += 2;
+	pGen->pEnd--;
+	SXUNUSED(iCompileFlag);
+	return GenStateCompileListBody(pGen);
+}
+PH7_PRIVATE sxi32 PH7_CompileShortList(ph7_gen_state *pGen,sxi32 iCompileFlag)
+{
+	/* Jump the leading '[', exclude trailing ']'. */
+	pGen->pIn++;
+	pGen->pEnd--;
+	SXUNUSED(iCompileFlag);
+	return GenStateCompileListBody(pGen);
 }
 /* Forward declarations */
 static sxi32 GenStateCompileFunc(ph7_gen_state *pGen,SyString *pName,sxi32 iFlags,int bHandleClosure,ph7_vm_func **ppFunc);
@@ -3008,6 +3049,37 @@ static sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 		pGen->pIn = &pListEnd[1]; /* Past ')' */
 		pListEnd = pGen->pIn;
 		pInfo->iFlags |= PH7_4EACH_STEP_LIST;
+	}else if( pGen->pIn->nType & PH7_TK_OSB ){
+		/* foreach ($arr as [$a, $b]) — short list unpacking.
+		 * Save the [...] token range; we'll compile it after FOREACH_STEP.
+		 */
+		static int iForeachShortListCnt = 0;
+		char zTmp[128];
+		sxu32 nLen;
+		char *zDup;
+		nLen = (sxu32)SyBufferFormat(zTmp,sizeof(zTmp),"[__foreach_slist_%d__]",iForeachShortListCnt++);
+		zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,zTmp,nLen);
+		if( zDup == 0 ){
+			PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Fatal, PH7 engine is running out of memory");
+			return SXERR_ABORT;
+		}
+		SyStringInitFromBuf(&pInfo->sValue,zDup,nLen);
+		/* Save [...] token boundaries */
+		pListStart = pGen->pIn;
+		/* Advance past [...] */
+		pGen->pIn++; /* Jump '[' */
+		PH7_DelimitNestedTokens(pGen->pIn,pEnd,PH7_TK_OSB,PH7_TK_CSB,&pListEnd);
+		if( pListEnd >= pEnd ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+				"foreach: Missing closing ']' after short list");
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			goto Synchronize;
+		}
+		pGen->pIn = &pListEnd[1]; /* Past ']' */
+		pListEnd = pGen->pIn;
+		pInfo->iFlags |= PH7_4EACH_STEP_LIST;
 	}else{
 		/* Compile the expression holding the value name */
 		rc = PH7_CompileExpr(&(*pGen),0,GenStateForEachNodeValidator);
@@ -3038,15 +3110,19 @@ static sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 		 * The LOAD_LIST handler expects the array below the variable entries.
 		 */
 		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD,0,0,(void *)SyStringData(&pInfo->sValue),0);
-		/* Compile list(...) body directly — this pushes variables and emits LOAD_LIST.
-		 * We position the tokens at the list keyword so PH7_CompileList picks up
-		 * the opening '(' and the variable names inside.
+		/* Compile list/short-list body directly — this pushes variables and emits LOAD_LIST.
+		 * We position the tokens at the construct start so the appropriate compiler
+		 * picks up the delimiter and the variable names inside.
 		 */
 		pSavedIn = pGen->pIn;
 		pSavedEnd = pGen->pEnd;
 		pGen->pIn = pListStart;
 		pGen->pEnd = pListEnd;
-		rc = PH7_CompileList(&(*pGen),0);
+		if( pListStart->nType & PH7_TK_OSB ){
+			rc = PH7_CompileShortList(&(*pGen),0);
+		}else{
+			rc = PH7_CompileList(&(*pGen),0);
+		}
 		pGen->pIn = pSavedIn;
 		pGen->pEnd = pSavedEnd;
 		if( rc == SXERR_ABORT ){
@@ -7510,12 +7586,17 @@ static sxi32 GenStateEmitExprCode(
 		}
 		rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iFlags);
 		if( iVmOp == PH7_OP_STORE ){
-			pInstr = PH7_VmPeekInstr(pGen->pVm);
-			if( pInstr ){
-				if( pInstr->iOp == PH7_OP_LOAD_LIST ){
-					/* Hide the STORE instruction */
-					iVmOp = 0;
-				}else if(pInstr->iOp == PH7_OP_MEMBER ){
+			if( pNode->pRight && (pNode->pRight->xCode == PH7_CompileList ||
+				pNode->pRight->xCode == PH7_CompileShortList) ){
+				/* list()/[] destructuring handles assignment internally via LOAD_LIST;
+				 * suppress the STORE instruction entirely.  This check uses the node's
+				 * compile handler rather than peeking at the last opcode, because nested
+				 * list entries emit extra instructions (DUP, LOAD_IDX, POP) after the
+				 * outer LOAD_LIST, which would fool an opcode-based check.
+				 */
+				iVmOp = 0;
+			}else if( (pInstr = PH7_VmPeekInstr(pGen->pVm)) != 0 ){
+				if(pInstr->iOp == PH7_OP_MEMBER ){
 					/* Perform a member store operation [i.e: $this->x = 50] */
 					iP2 = 1;
 				}else{

@@ -3397,13 +3397,46 @@ case PH7_OP_LOAD_LIST: {
 						/* Store node value */
 						PH7_HashmapExtractNodeValue(pNode,pObj,TRUE);
 					}else{
-						/* Nullify the variable */
+						/* Undefined array key */
+						char zMsg[128];
+						SyBufferFormat(zMsg,sizeof(zMsg),"Undefined array key %d",(int)sKey.x.iVal);
+						PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,zMsg);
 						PH7_MemObjRelease(pObj);
 					}
 				}
 			}
 			sKey.x.iVal++; /* Next numeric index */
 			pEntry++;
+		}
+	}else{
+		/* Source is not an array */
+		ph7_value *pObj;
+		while( pEntry <= pTos ){
+			if( pEntry->nIdx != SXU32_HIGH ){
+				if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nIdx)) != 0 ){
+					PH7_MemObjRelease(pObj);
+				}
+			}
+			pEntry++;
+		}
+		if( (pTos[-pInstr->iP1].iFlags & (MEMOBJ_NULL|MEMOBJ_BOOL)) == 0 ){
+			/* Emit PHP-compatible warning with type name */
+			const char *zType = "unknown";
+			sxi32 iFlags = pTos[-pInstr->iP1].iFlags;
+			char zMsg[256];
+			if( iFlags & MEMOBJ_STRING ){
+				zType = "string";
+			}else if( iFlags & MEMOBJ_INT ){
+				zType = "int";
+			}else if( iFlags & MEMOBJ_REAL ){
+				zType = "float";
+			}else if( iFlags & MEMOBJ_OBJ ){
+				zType = "object";
+			}else if( iFlags & MEMOBJ_RES ){
+				zType = "resource";
+			}
+			SyBufferFormat(zMsg,sizeof(zMsg),"Cannot use %s as array",zType);
+			PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,zMsg);
 		}
 	}
 	VmPopOperand(&pTos,pInstr->iP1);
@@ -3467,7 +3500,7 @@ case PH7_OP_LOAD_IDX: {
 		}
 		break;
 	}
-	if( pInstr->iP2 && (pTos->iFlags & MEMOBJ_HASHMAP) == 0 ){
+	if( pInstr->iP2 == 1 && (pTos->iFlags & MEMOBJ_HASHMAP) == 0 ){
 		if( pTos->nIdx != SXU32_HIGH ){
 			ph7_value *pObj;
 			if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
@@ -3478,7 +3511,7 @@ case PH7_OP_LOAD_IDX: {
 	}
 	rc = SXERR_NOTFOUND; /* Assume the index is invalid */
 	if( pTos->iFlags & MEMOBJ_HASHMAP ){
-		if( pInstr->iP2 ){
+		if( pInstr->iP2 == 1 ){
 			/* Write-context access (iP2 = create-if-missing).  COW-separate
 			 * the parent so nested writes like $b[0][0] = 99 don't leak
 			 * through shared outer arrays.  Read-only loads (iP2 == 0) must
@@ -3491,7 +3524,7 @@ case PH7_OP_LOAD_IDX: {
 			/* Load the desired entry */
 			rc = PH7_HashmapLookup(pMap,pIdx,&pNode);
 		}
-		if( rc != SXRET_OK && pInstr->iP2 ){
+		if( rc != SXRET_OK && pInstr->iP2 == 1 ){
 			/* Create a new empty entry */
 			rc = PH7_HashmapInsert(pMap,pIdx,0);
 			if( rc == SXRET_OK ){
@@ -3499,6 +3532,15 @@ case PH7_OP_LOAD_IDX: {
 				pNode = pMap->pLast;
 			}
 		}
+	}
+	if( rc != SXRET_OK && pInstr->iP2 == 2 && pIdx ){
+		/* List destructuring context: emit PHP-compatible warning for missing key */
+		char zMsg[128];
+		if( (pIdx->iFlags & MEMOBJ_INT) == 0 ){
+			PH7_MemObjToInteger(pIdx);
+		}
+		SyBufferFormat(zMsg,sizeof(zMsg),"Undefined array key %d",(int)pIdx->x.iVal);
+		PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,zMsg);
 	}
 	if( pIdx ){
 		PH7_MemObjRelease(pIdx);
