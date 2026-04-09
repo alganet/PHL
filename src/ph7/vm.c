@@ -5763,7 +5763,7 @@ case PH7_OP_MEMBER: {
 				if( pObjAttr ){
 					ph7_value *pValue = 0; /* cc warning */
 					/* Check attribute access */
-					if( PH7_VmClassMemberAccess(&(*pVm),pClass,&pObjAttr->pAttr->sName,pObjAttr->pAttr->iProtection,TRUE) ){
+					if( PH7_VmClassMemberAccess(&(*pVm),pClass,&pObjAttr->pAttr->sName,pObjAttr->pAttr->iProtection,FALSE) ){
 						/* Load attribute */
 						pValue = (ph7_value *)SySetAt(&pVm->aMemObj,pObjAttr->nIdx);
 						if( pValue ){
@@ -5783,6 +5783,17 @@ case PH7_OP_MEMBER: {
 								}
 							}
 						}
+					}else{
+						/* Throw Error exception (PHP-compatible).
+						 * Build message before unref — pObjAttr belongs to pThis->hAttr. */
+						char zMsg[256];
+						const char *zVis = pObjAttr->pAttr->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected";
+						SyBufferFormat(zMsg,sizeof(zMsg),"Cannot access %s property %.*s::$%.*s",
+							zVis,(int)pClass->sName.nByte,pClass->sName.zString,
+							(int)pObjAttr->pAttr->sName.nByte,pObjAttr->pAttr->sName.zString);
+						PH7_ClassInstanceUnref(pThis);
+						VmReportUncaughtException(&(*pVm),"Error",5,zMsg,(sxu32)SyStrlen(zMsg),0,0);
+						goto Abort;
 					}
 				}
 				/* Safely unreference the object */
@@ -5925,7 +5936,7 @@ case PH7_OP_MEMBER: {
 							}else{
 								ph7_value *pValue;
 								/* Check if the access to the attribute is allowed */
-								if( PH7_VmClassMemberAccess(&(*pVm),pClass,&pAttr->sName,pAttr->iProtection,TRUE) ){
+								if( PH7_VmClassMemberAccess(&(*pVm),pClass,&pAttr->sName,pAttr->iProtection,FALSE) ){
 									/* Load the desired attribute */
 									pValue = (ph7_value *)SySetAt(&pVm->aMemObj,pAttr->nIdx);
 									if( pValue ){
@@ -5935,6 +5946,21 @@ case PH7_OP_MEMBER: {
 											pTos->nIdx = pAttr->nIdx;
 										}
 									}
+								}else{
+									/* Throw Error exception (PHP-compatible) */
+									char zMsg[256];
+									const char *zVis = pAttr->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected";
+									if( pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT ){
+										SyBufferFormat(zMsg,sizeof(zMsg),"Cannot access %s constant %.*s::%.*s",
+											zVis,(int)pClass->sName.nByte,pClass->sName.zString,
+											(int)pAttr->sName.nByte,pAttr->sName.zString);
+									}else{
+										SyBufferFormat(zMsg,sizeof(zMsg),"Cannot access %s property %.*s::$%.*s",
+											zVis,(int)pClass->sName.nByte,pClass->sName.zString,
+											(int)pAttr->sName.nByte,pAttr->sName.zString);
+									}
+									VmReportUncaughtException(&(*pVm),"Error",5,zMsg,(sxu32)SyStrlen(zMsg),0,0);
+									goto Abort;
 								}
 							}
 						}
@@ -6330,14 +6356,19 @@ case PH7_OP_CALL: {
 					/* Check if the call is allowed */
 					pMeth = PH7_ClassExtractMethod(pSelf,pVmFunc->sName.zString,pVmFunc->sName.nByte);
 					if( pMeth && pMeth->iProtection != PH7_CLASS_PROT_PUBLIC ){
-						if( !PH7_VmClassMemberAccess(&(*pVm),pSelf,&pVmFunc->sName,pMeth->iProtection,TRUE) ){
+						if( !PH7_VmClassMemberAccess(&(*pVm),pSelf,&pVmFunc->sName,pMeth->iProtection,FALSE) ){
+							/* Throw Error exception (PHP-compatible) */
+							char zMsg[256];
+							const char *zVis = pMeth->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected";
+							SyBufferFormat(zMsg,sizeof(zMsg),"Call to %s method %.*s::%.*s() from global scope",
+								zVis,(int)pSelf->sName.nByte,pSelf->sName.zString,
+								(int)pVmFunc->sName.nByte,pVmFunc->sName.zString);
 							/* Pop given arguments */
 							if( nCallArgs > 0 ){
 								VmPopOperand(&pTos,nCallArgs);
 							}
-							/* Assume a null return value so that the program continue it's execution normally */
-							PH7_MemObjRelease(pTos);
-							break;
+							VmReportUncaughtException(&(*pVm),"Error",5,zMsg,(sxu32)SyStrlen(zMsg),0,0);
+							goto Abort;
 						}
 					}
 				}
