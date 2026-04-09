@@ -10588,21 +10588,33 @@ static sxi32 VmThrowException(
 	if( SySetUsed(&pVm->aException) > 0 ){
 		ph7_exception_block *aCatch;
 		ph7_class *pClass;
-		sxu32 j;
+		SyString *aNames;
+		sxu32 nNames;
+		int matched;
+		sxu32 j,k;
 		/* Locate the appropriate block to execute */
 		pException = apException[SySetUsed(&pVm->aException) - 1];
 		(void)SySetPop(&pVm->aException);
 		aCatch = (ph7_exception_block *)SySetBasePtr(&pException->sEntry);
 		for( j = 0 ; j < SySetUsed(&pException->sEntry) ; ++j ){
-			SyString *pName = &aCatch[j].sClass;
-			/* Extract the target class */
-			pClass = PH7_VmExtractClass(&(*pVm),pName->zString,pName->nByte,TRUE,0);
-			if( pClass == 0 ){
-				/* No such class */
-				continue;
+			/* Iterate over all class names in this catch block (multi-catch support) */
+			aNames = (SyString *)SySetBasePtr(&aCatch[j].aClasses);
+			nNames = SySetUsed(&aCatch[j].aClasses);
+			matched = 0;
+			for( k = 0 ; k < nNames ; ++k ){
+				/* Extract the target class */
+				pClass = PH7_VmExtractClass(&(*pVm),aNames[k].zString,aNames[k].nByte,TRUE,0);
+				if( pClass == 0 ){
+					/* No such class */
+					continue;
+				}
+				if( PH7_VmInstanceOf(pThis->pClass,pClass) ){
+					matched = 1;
+					break;
+				}
 			}
-			if( PH7_VmInstanceOf(pThis->pClass,pClass) ){
-				/* Catch block found,break immeditaley */
+			if( matched ){
+				/* Catch block found,break immediately */
 				pCatch = &aCatch[j];
 				break;
 			}
