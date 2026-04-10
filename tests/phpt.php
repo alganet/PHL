@@ -184,7 +184,8 @@ function handle_error($errno, $errstr, $errfile, $errline) {
 }
 
 function match_expectf_pattern($phpt_pattern, $phpt_output) {
-    // Handle %d (digits) and %s (non-whitespace strings) without regex
+    // Handle %d (digits), %s (non-whitespace), %f (floats), %A (any chars
+    // including empty, lazy) and %% (literal percent) without regex.
     $phpt_pattern_len = strlen($phpt_pattern);
     $phpt_output_len = strlen($phpt_output);
     $phpt_p = 0; // pattern position
@@ -195,6 +196,20 @@ function match_expectf_pattern($phpt_pattern, $phpt_output) {
             $phpt_p++; // move past %
             if ($phpt_p >= $phpt_pattern_len) {
                 return false; // incomplete % sequence
+            }
+
+            if ($phpt_pattern[$phpt_p] === 'A') {
+                // Match any characters (possibly empty) lazily: try the
+                // shortest advance of the output cursor for which the rest
+                // of the pattern matches the rest of the output.
+                $phpt_p++; // move past 'A'
+                $phpt_rest_pattern = substr($phpt_pattern, $phpt_p);
+                for ($phpt_i = $phpt_o; $phpt_i <= $phpt_output_len; $phpt_i++) {
+                    if (match_expectf_pattern($phpt_rest_pattern, substr($phpt_output, $phpt_i))) {
+                        return true;
+                    }
+                }
+                return false;
             }
 
             if ($phpt_pattern[$phpt_p] === 'd') {

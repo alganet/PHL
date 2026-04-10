@@ -1163,6 +1163,7 @@ enum ph7_expr_id {
 #define PH7_TKWRD_INSTEADOF    58 /* insteadof */
 #define PH7_TKWRD_FINALLY      59 /* finally */
 #define PH7_TKWRD_YIELD        60 /* yield */
+#define PH7_TKWRD_FN           61 /* fn (PHP 7.4 arrow function) */
 #define PH7_TKWRD_BOOL         0x8000  /* bool:  MUST BE A POWER OF TWO */
 #define PH7_TKWRD_INT          0x10000  /* int:   MUST BE A POWER OF TWO */
 #define PH7_TKWRD_FLOAT        0x20000  /* float:  MUST BE A POWER OF TWO */
@@ -1561,6 +1562,7 @@ PH7_PRIVATE sxi32 PH7_CompileShortArray(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileList(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileShortList(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileAnnonFunc(ph7_gen_state *pGen,sxi32 iCompileFlag);
+PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_InitCodeGenerator(ph7_vm *pVm,ProcConsumer xErr,void *pErrData);
 PH7_PRIVATE sxi32 PH7_ResetCodeGenerator(ph7_vm *pVm,ProcConsumer xErr,void *pErrData);
 PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 nLine,const char *zFormat,...);

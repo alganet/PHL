@@ -664,6 +664,83 @@ Synchronize:
 	return rc;
 }
 /*
+ * Assemble a PHP 7.4 arrow function token range:
+ *    [static] fn [&] ( params ) [: [?] type] => expression
+ * On entry *ppCur points at 'static' or 'fn'. On exit *ppCur points just
+ * past the body expression — the body ends at the first top-level comma,
+ * semicolon, or unbalanced closing delimiter.
+ */
+static sxi32 ExprAssembleArrowFunc(ph7_gen_state *pGen,SyToken **ppCur,SyToken *pEnd)
+{
+	SyToken *pIn = *ppCur;
+	sxu32 nLine;
+	sxi32 rc;
+	int iNest;
+	nLine = pIn->nLine;
+	/* Optional 'static' prefix */
+	if( pIn < pEnd && (pIn->nType & PH7_TK_KEYWORD)
+		&& SX_PTR_TO_INT(pIn->pUserData) == PH7_TKWRD_STATIC ){
+		pIn++;
+	}
+	/* Expect 'fn' (dispatch in ExprExtractNode guarantees this) */
+	if( pIn >= pEnd || (pIn->nType & PH7_TK_KEYWORD) == 0
+		|| SX_PTR_TO_INT(pIn->pUserData) != PH7_TKWRD_FN ){
+		rc = SXERR_SYNTAX;
+		goto Synchronize;
+	}
+	pIn++; /* Jump 'fn' */
+	SXUNUSED(nLine);
+	SXUNUSED(pGen);
+	/* Optional '&' for return-by-reference */
+	if( pIn < pEnd && (pIn->nType & PH7_TK_AMPER) ){
+		pIn++;
+	}
+	/* The compile phase (PH7_CompileArrowFunc) performs the authoritative
+	 * structural validation and emits PHP-compatible parse errors. Here we
+	 * just scan token boundaries so the expression node's pEnd covers the
+	 * whole `[static] fn(...) [:T] => body` range, even if malformed. */
+	if( pIn < pEnd && (pIn->nType & PH7_TK_LPAREN) ){
+		pIn++; /* '(' */
+		PH7_DelimitNestedTokens(pIn,pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pIn);
+		if( pIn < pEnd ){
+			pIn++; /* ')' */
+		}
+	}
+	/* Optional return type ': [?] type' */
+	if( pIn < pEnd && (pIn->nType & PH7_TK_COLON) ){
+		pIn++;
+		if( pIn < pEnd && (pIn->nType & PH7_TK_OP)
+			&& pIn->sData.nByte == 1 && pIn->sData.zString[0] == '?' ){
+			pIn++;
+		}
+		if( pIn < pEnd && (pIn->nType & (PH7_TK_KEYWORD|PH7_TK_ID)) ){
+			pIn++;
+		}
+	}
+	/* Consume '=>' if present; the compile pass diagnoses absence */
+	if( pIn < pEnd && (pIn->nType & PH7_TK_ARRAY_OP) ){
+		pIn++;
+	}
+	/* Scan body until first top-level ',' ';' ')' ']' '}' */
+	iNest = 0;
+	while( pIn < pEnd ){
+		if( iNest == 0 && (pIn->nType &
+			(PH7_TK_COMMA|PH7_TK_SEMI|PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB)) ){
+			break;
+		}
+		if( pIn->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+			iNest++;
+		}else if( pIn->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+			iNest--;
+		}
+		pIn++;
+	}
+	rc = SXRET_OK;
+Synchronize:
+	*ppCur = pIn;
+	return rc;
+}
+/*
  * Extract a single expression node from the input.
  * On success store the freshly extractd node in ppNode.
  * When errors,PH7 take care of generating the appropriate error message.
@@ -824,6 +901,17 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 				 }
 				 pNode->xCode = PH7_CompileAnnonFunc;
 			  }
+		 }else if( nKeyword == PH7_TKWRD_FN
+			|| ( nKeyword == PH7_TKWRD_STATIC && &pCur[1] < pGen->pEnd
+				 && (pCur[1].nType & PH7_TK_KEYWORD)
+				 && SX_PTR_TO_INT(pCur[1].pUserData) == PH7_TKWRD_FN ) ){
+			 /* PHP 7.4 arrow function: fn(...) => expr or static fn(...) => expr */
+			 rc = ExprAssembleArrowFunc(&(*pGen),&pCur,pGen->pEnd);
+			 if( rc != SXRET_OK ){
+				 SyMemBackendPoolFree(&pGen->pVm->sAllocator,pNode);
+				 return rc;
+			 }
+			 pNode->xCode = PH7_CompileArrowFunc;
 		 }else if( PH7_IsLangConstruct(nKeyword,FALSE) == TRUE && &pCur[1] < pGen->pEnd ){
 			 /* Language constructs [i.e: print,echo,die...] require special handling */
 			 PH7_DelimitNestedTokens(pCur,pGen->pEnd,PH7_TK_LPAREN|PH7_TK_OCB|PH7_TK_OSB, PH7_TK_RPAREN|PH7_TK_CCB|PH7_TK_CSB,&pCur);
