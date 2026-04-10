@@ -12,7 +12,7 @@ $result = base_convert('G', 16, 10);
 var_dump($result);
 ?>
 --EXPECT--
-string(1 '0')
+string(1) "0"
 --CLEAN--
 <?php
 unset($result);

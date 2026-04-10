@@ -935,56 +935,69 @@ static sxi32 LexExtractHeredoc(SyStream *pStream,SyToken *pToken)
 	zIn++;
 	/* Isolate the delimited string */
 	sStr.zString = (const char *)zIn;
-	/* Go and found the closing delimiter */
-	for(;;){
-		/* Synchronize with the next line */
-		while( zIn < zEnd && zIn[0] != '\n' ){
-			zIn++;
-		}
-		if( zIn >= zEnd ){
-			/* End of the input reached, break immediately */
-			pStream->zText = pStream->zEnd;
-			break;
-		}
-		pStream->nLine++; /* Increment line counter */
-		zIn++;
-		if( (sxu32)(zEnd - zIn) >= sDelim.nByte && SyMemcmp((const void *)sDelim.zString,(const void *)zIn,sDelim.nByte) == 0 ){
-			zPtr = &zIn[sDelim.nByte];
-			while( zPtr < zEnd && zPtr[0] < 0xc0 && SyisSpace(zPtr[0]) && zPtr[0] != '\n' ){
-				zPtr++;
+	/* PHP 7.3 flexible heredoc/nowdoc: the closing marker may be preceded
+	 * by whitespace (spaces/tabs), and may be followed by any non-identifier
+	 * character. The indent count is recorded in pToken->pUserData and the
+	 * compile phase strips it from each body line. */
+	{
+		const unsigned char *zMarkerLine = zIn; /* Start of marker's line (set on match) */
+		sxu32 nIndent = 0;
+		for(;;){
+			const unsigned char *zLineStart = zIn;
+			/* Skip leading space/tab on this line */
+			while( zIn < zEnd && (zIn[0] == ' ' || zIn[0] == '\t') ){
+				zIn++;
 			}
-			if( zPtr >= zEnd ){
-				/* End of input */
-				pStream->zText = zPtr;
-				break;
-			}
-			if( zPtr[0] == ';' ){
-				const unsigned char *zCur = zPtr;
-				zPtr++;
-				while( zPtr < zEnd && zPtr[0] < 0xc0 && SyisSpace(zPtr[0]) && zPtr[0] != '\n' ){
-					zPtr++;
+			if( (sxu32)(zEnd - zIn) >= sDelim.nByte
+				&& SyMemcmp((const void *)sDelim.zString,(const void *)zIn,sDelim.nByte) == 0 ){
+				int bIdentCont;
+				zPtr = &zIn[sDelim.nByte];
+				/* Disambiguate: next byte must not continue an identifier.
+				 * A leading byte >= 0xc0 starts a multi-byte UTF-8 sequence,
+				 * which PHP identifiers may contain, so treat it as ident. */
+				if( zPtr >= zEnd ){
+					bIdentCont = 0;
+				}else if( zPtr[0] >= 0xc0 ){
+					bIdentCont = 1;
+				}else{
+					bIdentCont = (SyisAlphaNum(zPtr[0]) || zPtr[0] == '_');
 				}
-				if( zPtr >= zEnd || zPtr[0] == '\n' ){
-					/* Closing delimiter found,break immediately */
-					pStream->zText = zCur; /* Keep the semi-colon */
+				if( !bIdentCont ){
+					/* Closing marker found */
+					nIndent = (sxu32)(zIn - zLineStart);
+					zMarkerLine = zLineStart;
+					pStream->zText = zPtr; /* Cursor right after identifier */
 					break;
 				}
-			}else if( zPtr[0] == '\n' ){
-				/* Closing delimiter found,break immediately */
-				pStream->zText = zPtr; /* Synchronize with the stream cursor */
+			}
+			/* Not the closing marker on this line; walk to next newline */
+			while( zIn < zEnd && zIn[0] != '\n' ){
+				zIn++;
+			}
+			if( zIn >= zEnd ){
+				/* End of input without finding the closing marker */
+				pStream->zText = pStream->zEnd;
+				zMarkerLine = zIn;
 				break;
 			}
-			/* Synchronize pointers and continue searching */
-			zIn = zPtr;
+			pStream->nLine++;
+			zIn++;
 		}
-	} /* For(;;) */
-	/* Get the delimited string length */
-	sStr.nByte = (sxu32)((const char *)zIn-sStr.zString);
-	/* Record token type and length */
-	pToken->nType = bNowDoc ? PH7_TK_NOWDOC : PH7_TK_HEREDOC;
-	SyStringDupPtr(&pToken->sData,&sStr);
-	/* Remove trailing white spaces */
-	SyStringRightTrim(&pToken->sData);
+		/* Body runs from sStr.zString up to just before the marker line */
+		sStr.nByte = (sxu32)((const char *)zMarkerLine - sStr.zString);
+		pToken->nType = bNowDoc ? PH7_TK_NOWDOC : PH7_TK_HEREDOC;
+		SyStringDupPtr(&pToken->sData,&sStr);
+		/* Strip exactly one line terminator that precedes the marker's line. */
+		if( pToken->sData.nByte > 0
+			&& pToken->sData.zString[pToken->sData.nByte - 1] == '\n' ){
+			pToken->sData.nByte--;
+			if( pToken->sData.nByte > 0
+				&& pToken->sData.zString[pToken->sData.nByte - 1] == '\r' ){
+				pToken->sData.nByte--;
+			}
+		}
+		pToken->pUserData = SX_INT_TO_PTR(nIndent);
+	}
 	/* All done */
 	return SXRET_OK;
 }

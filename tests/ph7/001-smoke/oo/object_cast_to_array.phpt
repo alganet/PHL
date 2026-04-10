@@ -20,11 +20,11 @@ var_dump($array);
 --EXPECT--
 array(3) {
  [publicVar] =>
-  string(6 'public')
+  string(6) "public"
  [privateVar] =>
-  string(7 'private')
+  string(7) "private"
  [protectedVar] =>
-  string(9 'protected')
+  string(9) "protected"
  }
 --CLEAN--
 <?php

@@ -11,7 +11,7 @@ $result = str_repeat("a", -1);
 var_dump($result);
 ?>
 --EXPECT--
-string(0 '')
+string(0) ""
 --CLEAN--
 <?php
 unset($result);

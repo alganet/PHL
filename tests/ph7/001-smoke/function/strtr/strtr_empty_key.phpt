@@ -12,7 +12,7 @@ $result = strtr('hello', array('' => 'x', 'l' => 'L'));
 var_dump($result);
 ?>
 --EXPECT--
-string(5 'heLlo')
+string(5) "heLlo"
 --CLEAN--
 <?php
 unset($result);

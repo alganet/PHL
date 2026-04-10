@@ -705,6 +705,103 @@ PH7_PRIVATE sxi32 PH7_CompileSimpleString(ph7_gen_state *pGen,sxi32 iCompileFlag
 	return SXRET_OK;
 }
 /*
+ * PHP 7.3 flexible heredoc/nowdoc closing-marker indent stripping.
+ *
+ * When the lexer matched the closing marker with leading whitespace on its
+ * own line, it stored the indent count in pGen->pIn->pUserData. The marker's
+ * indent prefix bytes sit immediately after the stripped body (at
+ * pIn->sData.zString + pIn->sData.nByte + 1 for LF, +2 for CRLF) in the
+ * original source buffer — the buffer is stable through compilation.
+ *
+ * For each body line, we remove exactly `nIndent` leading bytes that must
+ * byte-for-byte match the marker's prefix. Empty lines (0 bytes or bare \r)
+ * bypass validation. Mismatches raise the exact PHP 7.3+ parse errors:
+ *   - "Invalid body indentation level (expecting an indentation level of
+ *     at least N)" — line too short, or first differing byte is not
+ *     whitespace.
+ *   - "Invalid indentation - tabs and spaces cannot be mixed" — first
+ *     differing byte is whitespace but differs from the marker prefix.
+ */
+static sxi32 GenStateStripHeredocIndent(ph7_gen_state *pGen, SyString *pOut)
+{
+	SyString *pIn = &pGen->pIn->sData;
+	sxu32 nIndent = (sxu32)SX_PTR_TO_INT(pGen->pIn->pUserData);
+	const char *zPrefix;
+	const char *z, *zEnd;
+	char *zBuf, *zDst;
+	if( nIndent == 0 ){
+		/* Legacy column-0 marker: zero-copy fast path */
+		*pOut = *pIn;
+		return SXRET_OK;
+	}
+	/* Recover the marker indent prefix from the original source buffer.
+	 * Skip the terminator the lexer stripped: one '\n' plus an optional
+	 * preceding '\r'. Note: when the body is empty (pIn->nByte == 0) the
+	 * lexer stripped nothing, so this offset is one byte past the true
+	 * marker-indent start. That is harmless — the strip loop below never
+	 * runs (z == zEnd), and zPrefix is never dereferenced. */
+	zPrefix = pIn->zString + pIn->nByte;
+	if( zPrefix[0] == '\r' && zPrefix[1] == '\n' ){
+		zPrefix += 2;
+	}else{
+		zPrefix += 1;
+	}
+	/* Allocate scratch buffer sized to the original body (always enough). */
+	zBuf = (char *)SyMemBackendAlloc(&pGen->pVm->sAllocator, pIn->nByte + 1);
+	if( zBuf == 0 ){
+		PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"PH7 engine is running out of memory");
+		return SXERR_ABORT;
+	}
+	zDst = zBuf;
+	z = pIn->zString;
+	zEnd = z + pIn->nByte;
+	while( z < zEnd ){
+		const char *zLine = z;
+		sxu32 nLine;
+		int bEmpty;
+		while( z < zEnd && z[0] != '\n' ){
+			z++;
+		}
+		nLine = (sxu32)(z - zLine);
+		bEmpty = (nLine == 0) || (nLine == 1 && zLine[0] == '\r');
+		if( !bEmpty ){
+			sxu32 i;
+			if( nLine < nIndent ){
+				PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
+					"Invalid body indentation level (expecting an indentation level of at least %u)",
+					nIndent);
+				return SXERR_ABORT;
+			}
+			for( i = 0; i < nIndent; i++ ){
+				if( zLine[i] != zPrefix[i] ){
+					unsigned char c = (unsigned char)zLine[i];
+					if( c == ' ' || c == '\t' ){
+						PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
+							"Invalid indentation - tabs and spaces cannot be mixed");
+					}else{
+						PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
+							"Invalid body indentation level (expecting an indentation level of at least %u)",
+							nIndent);
+					}
+					return SXERR_ABORT;
+				}
+			}
+			SyMemcpy((const void *)(zLine + nIndent), (void *)zDst, nLine - nIndent);
+			zDst += nLine - nIndent;
+		}else if( nLine == 1 ){
+			/* Preserve the stray '\r' on an otherwise empty line */
+			*zDst++ = '\r';
+		}
+		if( z < zEnd ){
+			*zDst++ = '\n';
+			z++;
+		}
+	}
+	pOut->zString = zBuf;
+	pOut->nByte = (sxu32)(zDst - zBuf);
+	return SXRET_OK;
+}
+/*
  * Compile a nowdoc string.
  * According to the PHP language reference manual:
  *
@@ -718,11 +815,18 @@ PH7_PRIVATE sxi32 PH7_CompileSimpleString(ph7_gen_state *pGen,sxi32 iCompileFlag
  *  identifiers also apply to nowdoc identifiers, especially those regarding the appearance
  *  of the closing identifier.
  */
-static sxi32 PH7_CompileNowDoc(ph7_gen_state *pGen,sxi32 iCompileFlag)
+PH7_PRIVATE sxi32 PH7_CompileNowDoc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 {
-	SyString *pStr = &pGen->pIn->sData; /* Constant string literal */
+	SyString sStripped;
+	SyString *pStr;
 	ph7_value *pObj;
 	sxu32 nIdx;
+	sxi32 rc;
+	rc = GenStateStripHeredocIndent(&(*pGen), &sStripped);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	pStr = &sStripped;
 	nIdx = 0; /* Prevent compiler warning */
 	if( pStr->nByte <= 0 ){
 		/* Empty string,load NULL */
@@ -1145,12 +1249,24 @@ PH7_PRIVATE sxi32 PH7_CompileString(ph7_gen_state *pGen,sxi32 iCompileFlag)
  * Compile a Heredoc string.
  *  See the block-comment above for more information.
  */
-static sxi32 PH7_CompileHereDoc(ph7_gen_state *pGen,sxi32 iCompileFlag)
+PH7_PRIVATE sxi32 PH7_CompileHereDoc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 {
-	GenStateCompileString(&(*pGen));
+	SyString sOrig, sStripped;
+	sxi32 rc;
+	rc = GenStateStripHeredocIndent(&(*pGen), &sStripped);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* Temporarily swap in the dedented body so GenStateCompileString
+	 * (which reads pGen->pIn->sData directly) sees the stripped content.
+	 * Restore before returning so downstream code that references pIn is
+	 * unaffected, including on the error path. */
+	sOrig = pGen->pIn->sData;
+	pGen->pIn->sData = sStripped;
+	rc = GenStateCompileString(&(*pGen));
+	pGen->pIn->sData = sOrig;
 	SXUNUSED(iCompileFlag); /* cc warning */
-	/* Compilation result */
-	return SXRET_OK;
+	return rc;
 }
 /*
  * Compile an array entry whether it is a key or a value.

@@ -16,9 +16,9 @@ $result3 = base_convert();
 var_dump($result3);
 ?>
 --EXPECT--
-string(0 '')
-string(0 '')
-string(0 '')
+string(0) ""
+string(0) ""
+string(0) ""
 --CLEAN--
 <?php
 unset($result, $result2, $result3);

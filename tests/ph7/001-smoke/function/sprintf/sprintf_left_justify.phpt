@@ -16,7 +16,7 @@ $ret = sprintf("%-10s", "Hi");
 var_dump($ret);
 ?>
 --EXPECTF--
-string(10 'Hi        ')
+string(10) "Hi        "
 --CLEAN--
 <?php
 unset($ret);

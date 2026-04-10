@@ -43,7 +43,7 @@ var_dump($result6); // int(13) - (10 + ((5 % 3) * 2) - 1)
 --EXPECT--
 bool(TRUE)
 int(7)
-string(9 'Value: 17')
+string(9) "Value: 17"
 int(12)
 int(14)
 int(13)

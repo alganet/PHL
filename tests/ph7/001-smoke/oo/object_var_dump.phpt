@@ -21,7 +21,7 @@ echo $output;
 --EXPECTF--
 object(TestClass) {
  ['public_attr'] =>
-  string(4 'test')
+  string(4) "test"
  ['private_attr'] =>
   int(42)
  }
