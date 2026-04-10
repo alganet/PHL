@@ -601,6 +601,10 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 			if( pStream->zText < pStream->zEnd && pStream->zText[0] == '?' ){
 				/* Null coalescing operator: ?? */
 				pStream->zText++;
+				if( pStream->zText < pStream->zEnd && pStream->zText[0] == '=' ){
+					/* Null coalescing assignment operator (PHP 7.4) */
+					pStream->zText++;
+				}
 			}
 			break;
 		default:

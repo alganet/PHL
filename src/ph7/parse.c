@@ -235,6 +235,12 @@ static const ph7_expr_op aOpTable[] = {
 	{ {"^=",sizeof(char)*2},  EXPR_OP_XOR_ASSIGN, 18,  EXPR_OP_ASSOC_RIGHT, PH7_OP_BXOR_STORE },
 	{ {"<<=",sizeof(char)*3}, EXPR_OP_SHL_ASSIGN, 18,  EXPR_OP_ASSOC_RIGHT, PH7_OP_SHL_STORE },
 	{ {">>=",sizeof(char)*3}, EXPR_OP_SHR_ASSIGN, 18,  EXPR_OP_ASSOC_RIGHT, PH7_OP_SHR_STORE },
+	/* The escape in the literal below avoids the C trigraph for two question
+	 * marks followed by '=' (which preprocesses to '#'). Do not collapse it
+	 * back to a raw three-char literal — under -Wtrigraphs the build will
+	 * either warn or be rewritten silently. The same applies anywhere else
+	 * in this file: keep one of the question marks escaped. */
+	{ {"?\?=",sizeof(char)*3},EXPR_OP_NULLC_ASSIGN,18, EXPR_OP_ASSOC_RIGHT, PH7_OP_NULLC_STORE },
 	/* Precedence 19,left-associative */
 	{ {"and",sizeof("and")-1},   EXPR_OP_LAND, 19, EXPR_OP_ASSOC_LEFT, PH7_OP_LAND},
 	/* Precedence 20,left-associative */
@@ -1558,7 +1564,13 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 			 }
 			 if( iLeft < 0 || iRight < 0 || !NODE_ISTERM(iRight) || !NODE_ISTERM(iLeft) ){
 				 /* Syntax error */
-				 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"'%z': Missing/Invalid operand",&pNode->pOp->sOp);
+				 if( pNode->pOp->iOp == EXPR_OP_NULLC_ASSIGN ){
+					 /* PHP-compatible parse error for a malformed null coalescing assignment */
+					 rc = PH7_GenCompileError(pGen,E_PARSE,pNode->pStart->nLine,
+						 "syntax error, unexpected token \"%z\"",&pNode->pOp->sOp);
+				 }else{
+					 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"'%z': Missing/Invalid operand",&pNode->pOp->sOp);
+				 }
 				 if( rc != SXERR_ABORT ){
 					 rc = SXERR_SYNTAX;
 				 }
@@ -1568,8 +1580,14 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				 if( pNode->pOp->iVmOp != PH7_OP_STORE ||
 					 (apNode[iLeft]->xCode != PH7_CompileList && apNode[iLeft]->xCode != PH7_CompileShortList) ){
 					 /* Left operand must be a modifiable l-value */
-					 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
-						 "'%z': Left operand must be a modifiable l-value",&pNode->pOp->sOp);
+					 if( pNode->pOp->iOp == EXPR_OP_NULLC_ASSIGN ){
+						 /* PHP-compatible parse error for a non-lvalue LHS to null coalescing assignment */
+						 rc = PH7_GenCompileError(pGen,E_PARSE,pNode->pStart->nLine,
+							 "syntax error, unexpected token \"%z\"",&pNode->pOp->sOp);
+					 }else{
+						 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
+							 "'%z': Left operand must be a modifiable l-value",&pNode->pOp->sOp);
+					 }
 					 if( rc != SXERR_ABORT ){
 						 rc = SXERR_SYNTAX;
 					 }
