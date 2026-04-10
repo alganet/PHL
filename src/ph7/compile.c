@@ -412,6 +412,9 @@ static ph7_value * GenStateInstallNumLiteral(ph7_gen_state *pGen,sxu32 *pIdx)
  */
 /* Forward declaration */
 static sxi32 GenStateCompileChunk(ph7_gen_state *pGen,sxi32 iFlags);
+static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyToken *pEnd);
+static void GenStateParseReturnType(ph7_gen_state *pGen, ph7_vm_func *pFunc);
+static const char * TokenTypeName(sxu32 nType);
 /*
  * Stack-scratch size for stripping PHP 7.4 numeric separators. A typical
  * literal (INT64_MAX decimal is 19 digits, binary 64-bit with per-nibble
@@ -1371,6 +1374,51 @@ static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)
 			if( (pCur->nType & PH7_TK_ARRAY_OP) && iNest <= 0 ){
 				break;
 			}
+			/* Arrow function (PHP 7.4): 'fn(...) =>' or 'static fn(...) =>'.
+			 * The '=>' inside an arrow function is not an array key/value
+			 * separator — it introduces the expression body. Skip past the
+			 * signature so the body scan sees no false '=>'.
+			 */
+			if( iNest == 0 && (pCur->nType & PH7_TK_KEYWORD) ){
+				sxu32 nKw = (sxu32)SX_PTR_TO_INT(pCur->pUserData);
+				SyToken *pFn = pCur;
+				if( nKw == PH7_TKWRD_STATIC && &pCur[1] < pGen->pIn
+					&& (pCur[1].nType & PH7_TK_KEYWORD)
+					&& SX_PTR_TO_INT(pCur[1].pUserData) == PH7_TKWRD_FN ){
+					pFn = &pCur[1];
+					nKw = PH7_TKWRD_FN;
+				}
+				if( nKw == PH7_TKWRD_FN ){
+					pCur = pFn + 1; /* past 'fn' */
+					if( pCur < pGen->pIn && (pCur->nType & PH7_TK_AMPER) ){
+						pCur++;
+					}
+					if( pCur < pGen->pIn && (pCur->nType & PH7_TK_LPAREN) ){
+						pCur++;
+						PH7_DelimitNestedTokens(pCur,pGen->pIn,
+							PH7_TK_LPAREN,PH7_TK_RPAREN,&pCur);
+						if( pCur < pGen->pIn ){
+							pCur++;
+						}
+					}
+					if( pCur < pGen->pIn && (pCur->nType & PH7_TK_COLON) ){
+						pCur++;
+						if( pCur < pGen->pIn && (pCur->nType & PH7_TK_OP)
+							&& pCur->sData.nByte == 1
+							&& pCur->sData.zString[0] == '?' ){
+							pCur++;
+						}
+						if( pCur < pGen->pIn
+							&& (pCur->nType & (PH7_TK_KEYWORD|PH7_TK_ID)) ){
+							pCur++;
+						}
+					}
+					/* The rest of the entry is the arrow function body — no
+					 * outer key to extract. Stop the scan here. */
+					pCur = pGen->pIn;
+					break;
+				}
+			}
 			if( pCur->nType & PH7_TK_LPAREN /*'('*/ ){
 				iNest++;
 			}else if( pCur->nType & PH7_TK_RPAREN /*')'*/ ){
@@ -1724,6 +1772,513 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);
 	}
 	/* Node successfully compiled */
+	return SXRET_OK;
+}
+/*
+ * Add a free variable to the arrow function's closure environment, unless
+ * it is 'this' (handled separately), is shadowed by a parameter at any
+ * enclosing arrow level, or has already been captured.
+ */
+static sxi32 GenStateArrowAddCapture(
+	ph7_gen_state *pGen,
+	ph7_vm_func *pFunc,
+	const char *zName,
+	sxu32 nByte,
+	SyString *aShadow,
+	sxu32 nShadow)
+{
+	ph7_vm_func_closure_env sEnv;
+	ph7_vm_func_closure_env *aEnv;
+	sxu32 n, nEnv;
+	char *zDup;
+	if( nByte == 0 ){
+		return SXRET_OK;
+	}
+	if( nByte == sizeof("this")-1
+		&& SyMemcmp(zName,"this",sizeof("this")-1) == 0 ){
+		return SXRET_OK;
+	}
+	for( n = 0 ; n < nShadow ; n++ ){
+		if( SyStringLength(&aShadow[n]) == nByte
+			&& SyMemcmp(SyStringData(&aShadow[n]),zName,nByte) == 0 ){
+			return SXRET_OK;
+		}
+	}
+	aEnv = (ph7_vm_func_closure_env *)SySetBasePtr(&pFunc->aClosureEnv);
+	nEnv = SySetUsed(&pFunc->aClosureEnv);
+	for( n = 0 ; n < nEnv ; n++ ){
+		if( SyStringLength(&aEnv[n].sName) == nByte
+			&& SyMemcmp(SyStringData(&aEnv[n].sName),zName,nByte) == 0 ){
+			return SXRET_OK;
+		}
+	}
+	zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,zName,nByte);
+	if( zDup == 0 ){
+		return SXERR_ABORT;
+	}
+	SyZero(&sEnv,sizeof(ph7_vm_func_closure_env));
+	sEnv.iFlags = 0;
+	PH7_MemObjInit(pGen->pVm,&sEnv.sValue);
+	SyStringInitFromBuf(&sEnv.sName,zDup,nByte);
+	SySetPut(&pFunc->aClosureEnv,(const void *)&sEnv);
+	return SXRET_OK;
+}
+/*
+ * Walk the raw body of a double-quoted string or heredoc, extracting every
+ * unescaped $<identifier> reference. The semantics mirror the "simple
+ * syntax" path in GenStateCompileString: `$name`, `{$name}`, `$obj->prop`,
+ * `$arr[...]`, `{$arr['k']}` all capture only the leading identifier.
+ */
+static sxi32 GenStateArrowScanInterpolatedString(
+	ph7_gen_state *pGen,
+	ph7_vm_func *pFunc,
+	const char *zIn,
+	const char *zEnd,
+	SyString *aShadow,
+	sxu32 nShadow)
+{
+	sxi32 rc;
+	while( zIn < zEnd ){
+		if( zIn[0] == '\\' ){
+			zIn++;
+			if( zIn < zEnd ){
+				zIn++;
+			}
+			continue;
+		}
+		if( zIn[0] == '$' && &zIn[1] < zEnd
+			&& ((unsigned char)zIn[1] >= 0xc0
+				|| SyisAlpha(zIn[1]) || zIn[1] == '_') ){
+			const char *zName;
+			zIn++; /* skip '$' */
+			zName = zIn;
+			while( zIn < zEnd ){
+				unsigned char c = (unsigned char)zIn[0];
+				if( c >= 0xc0 ){
+					zIn++;
+					while( zIn < zEnd
+						&& (((unsigned char)zIn[0] & 0xc0) == 0x80) ){
+						zIn++;
+					}
+					continue;
+				}
+				if( !SyisAlphaNum(zIn[0]) && zIn[0] != '_' ){
+					break;
+				}
+				zIn++;
+			}
+			if( zIn > zName ){
+				rc = GenStateArrowAddCapture(pGen,pFunc,zName,
+					(sxu32)(zIn - zName),aShadow,nShadow);
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+			}
+			continue;
+		}
+		zIn++;
+	}
+	return SXRET_OK;
+}
+/*
+ * Scan the body token range of an arrow function for free-variable
+ * references and record them in pFunc's closure environment. Handles:
+ *   - plain $<id> pairs
+ *   - variables inside "..." and heredocs (via interpolation scan)
+ *   - nested arrow functions: descends into the inner body with the inner
+ *     parameters added to the shadow list, so a variable referenced by a
+ *     nested arrow that is not the inner's parameter is captured by the
+ *     OUTER (enabling transitive capture), while the inner's own params
+ *     are never mistakenly captured.
+ */
+static sxi32 GenStateArrowCaptureScan(
+	ph7_gen_state *pGen,
+	ph7_vm_func *pFunc,
+	SyToken *pStart,
+	SyToken *pEnd,
+	SyString *aShadow,
+	sxu32 nShadow)
+{
+	SyToken *pScan = pStart;
+	sxi32 rc;
+	while( pScan < pEnd ){
+		if( pScan->nType & (PH7_TK_DSTR|PH7_TK_HEREDOC) ){
+			rc = GenStateArrowScanInterpolatedString(pGen,pFunc,
+				pScan->sData.zString,
+				pScan->sData.zString + pScan->sData.nByte,
+				aShadow,nShadow);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			pScan++;
+			continue;
+		}
+		if( pScan->nType & PH7_TK_KEYWORD ){
+			sxu32 nKw = (sxu32)SX_PTR_TO_INT(pScan->pUserData);
+			SyToken *pFnKw = pScan;
+			if( nKw == PH7_TKWRD_STATIC && &pScan[1] < pEnd
+				&& (pScan[1].nType & PH7_TK_KEYWORD)
+				&& SX_PTR_TO_INT(pScan[1].pUserData) == PH7_TKWRD_FN ){
+				pFnKw = &pScan[1];
+				nKw = PH7_TKWRD_FN;
+			}
+			if( nKw == PH7_TKWRD_FN ){
+				SyToken *pInnerSigStart;
+				SyToken *pInnerSigEnd;
+				SyToken *pInnerBodyEnd;
+				SyString *aInnerShadow;
+				sxu32 nInnerShadow;
+				sxu32 nInnerParamMax;
+				SyToken *p;
+				int iNestInner;
+				pScan = pFnKw + 1; /* past 'fn' */
+				if( pScan < pEnd && (pScan->nType & PH7_TK_AMPER) ){
+					pScan++;
+				}
+				if( pScan >= pEnd || (pScan->nType & PH7_TK_LPAREN) == 0 ){
+					pScan++;
+					continue;
+				}
+				pInnerSigStart = ++pScan; /* past '(' */
+				PH7_DelimitNestedTokens(pScan,pEnd,
+					PH7_TK_LPAREN,PH7_TK_RPAREN,&pInnerSigEnd);
+				if( pInnerSigEnd >= pEnd ){
+					pScan = pEnd;
+					continue;
+				}
+				/* Build an augmented shadow list: inherited + inner params */
+				nInnerParamMax = 0;
+				for( p = pInnerSigStart ; p < pInnerSigEnd ; p++ ){
+					if( p->nType & PH7_TK_DOLLAR ){
+						nInnerParamMax++;
+					}
+				}
+				aInnerShadow = (SyString *)SyMemBackendPoolAlloc(
+					&pGen->pVm->sAllocator,
+					sizeof(SyString) * (nShadow + nInnerParamMax + 1));
+				if( aInnerShadow == 0 ){
+					return SXERR_ABORT;
+				}
+				nInnerShadow = 0;
+				for( ; nInnerShadow < nShadow ; nInnerShadow++ ){
+					aInnerShadow[nInnerShadow] = aShadow[nInnerShadow];
+				}
+				for( p = pInnerSigStart ; p < pInnerSigEnd ; p++ ){
+					if( (p->nType & PH7_TK_DOLLAR) == 0 ){
+						continue;
+					}
+					if( &p[1] >= pInnerSigEnd ){
+						break;
+					}
+					if( (p[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
+						continue;
+					}
+					aInnerShadow[nInnerShadow++] = p[1].sData;
+				}
+				pScan = &pInnerSigEnd[1]; /* past ')' */
+				if( pScan < pEnd && (pScan->nType & PH7_TK_COLON) ){
+					pScan++;
+					if( pScan < pEnd && (pScan->nType & PH7_TK_OP)
+						&& pScan->sData.nByte == 1
+						&& pScan->sData.zString[0] == '?' ){
+						pScan++;
+					}
+					if( pScan < pEnd
+						&& (pScan->nType & (PH7_TK_KEYWORD|PH7_TK_ID)) ){
+						pScan++;
+					}
+				}
+				if( pScan < pEnd && (pScan->nType & PH7_TK_ARRAY_OP) ){
+					pScan++; /* past '=>' */
+				}
+				pInnerBodyEnd = pScan;
+				iNestInner = 0;
+				while( pInnerBodyEnd < pEnd ){
+					if( iNestInner == 0 && (pInnerBodyEnd->nType &
+						(PH7_TK_COMMA|PH7_TK_SEMI|PH7_TK_RPAREN
+						 |PH7_TK_CSB|PH7_TK_CCB)) ){
+						break;
+					}
+					if( pInnerBodyEnd->nType &
+						(PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+						iNestInner++;
+					}else if( pInnerBodyEnd->nType &
+						(PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+						iNestInner--;
+					}
+					pInnerBodyEnd++;
+				}
+				/* Scan the inner arrow's default-parameter VALUES as part of
+				 * the outer's body: a default value is evaluated at call time
+				 * in the outer frame, so any free variable it references is
+				 * an outer capture. We must NOT scan the parameter-name
+				 * declarations themselves (e.g. '$x' in `fn($x = 10) => ...`)
+				 * or those names leak into the outer's closure environment.
+				 *
+				 * Walk the signature argument-by-argument, splitting on
+				 * top-level commas, and for each argument scan only the token
+				 * range after the '=' sign. */
+				{
+					SyToken *pArgStart = pInnerSigStart;
+					while( pArgStart < pInnerSigEnd ){
+						SyToken *pArgEnd = pArgStart;
+						SyToken *pEq = 0;
+						int iNestArg = 0;
+						while( pArgEnd < pInnerSigEnd ){
+							if( iNestArg == 0
+								&& (pArgEnd->nType & PH7_TK_COMMA) ){
+								break;
+							}
+							if( pArgEnd->nType &
+								(PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+								iNestArg++;
+							}else if( pArgEnd->nType &
+								(PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+								iNestArg--;
+							}
+							if( pEq == 0 && iNestArg == 0
+								&& (pArgEnd->nType & PH7_TK_EQUAL) ){
+								pEq = pArgEnd;
+							}
+							pArgEnd++;
+						}
+						if( pEq && (pEq + 1) < pArgEnd ){
+							rc = GenStateArrowCaptureScan(pGen,pFunc,
+								pEq + 1,pArgEnd,aShadow,nShadow);
+							if( rc == SXERR_ABORT ){
+								return SXERR_ABORT;
+							}
+						}
+						pArgStart = pArgEnd;
+						if( pArgStart < pInnerSigEnd
+							&& (pArgStart->nType & PH7_TK_COMMA) ){
+							pArgStart++;
+						}
+					}
+				}
+				rc = GenStateArrowCaptureScan(pGen,pFunc,
+					pScan,pInnerBodyEnd,aInnerShadow,nInnerShadow);
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				pScan = pInnerBodyEnd;
+				continue;
+			}
+		}
+		if( (pScan->nType & PH7_TK_DOLLAR) == 0 ){
+			pScan++;
+			continue;
+		}
+		{
+			/* Walk past variable-variable chains ($$x) to the base name. */
+			SyToken *pDollar = pScan;
+			while( &pDollar[1] < pEnd
+				&& (pDollar[1].nType & PH7_TK_DOLLAR) ){
+				pDollar++;
+			}
+			if( &pDollar[1] >= pEnd ){
+				break;
+			}
+			if( (pDollar[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
+				pScan = pDollar + 1;
+				continue;
+			}
+			rc = GenStateArrowAddCapture(pGen,pFunc,
+				pDollar[1].sData.zString,pDollar[1].sData.nByte,
+				aShadow,nShadow);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			pScan = pDollar + 2;
+		}
+	}
+	return SXRET_OK;
+}
+/*
+ * Compile a PHP 7.4 arrow function: [static] fn([params]) [: ret_type] => expr
+ * Arrow functions are always closures that auto-capture enclosing-scope
+ * variables by value. The body is a single expression that acts as an
+ * implicit return. Unless prefixed with 'static', the enclosing object's
+ * $this is also made available.
+ */
+PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
+{
+	ph7_vm_func *pFunc;
+	ph7_vm_func_closure_env sEnv;
+	GenBlock *pBlock;
+	SySet *pInstrContainer;
+	SyToken *pSigEnd;      /* Token just past ')' of the parameter list */
+	SyToken *pBodyStart;   /* First token after '=>' */
+	SyToken *pBodyEnd;     /* Token just past the last body token */
+	SyToken *pSavedEnd;
+	ph7_vm_func_arg *aArgs;
+	char zName[512];
+	static int iCnt = 1;
+	char *zDup;
+	sxu32 nLen;
+	sxu32 nLine;
+	sxi32 iFlags = 0;
+	int bStatic = 0;
+	sxi32 rc;
+	sxu32 n;
+	SXUNUSED(iCompileFlag); /* cc warning */
+
+	nLine = pGen->pIn->nLine;
+	/* Optional 'static' prefix */
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD)
+		&& SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_STATIC ){
+		bStatic = 1;
+		pGen->pIn++;
+	}
+	/* 'fn' keyword (guaranteed by ExprExtractNode's dispatch) */
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0
+		|| SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_FN ){
+		PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+			"Arrow function: expected 'fn' keyword");
+		return SXERR_SYNTAX;
+	}
+	pGen->pIn++; /* Jump 'fn' */
+	/* Optional '&' — return by reference */
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_AMPER) ){
+		iFlags |= VM_FUNC_REF_RETURN;
+		pGen->pIn++;
+	}
+	/* Expect '(' */
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
+		if( pGen->pIn < pGen->pEnd ){
+			PH7_GenCompileError(&(*pGen),E_PARSE,pGen->pIn->nLine,
+				"syntax error, unexpected %s \"%z\", expecting \"(\"",
+				TokenTypeName(pGen->pIn->nType),&pGen->pIn->sData);
+		}else{
+			PH7_GenCompileError(&(*pGen),E_PARSE,nLine,
+				"syntax error, unexpected end of file, expecting \"(\"");
+		}
+		return SXERR_SYNTAX;
+	}
+	pGen->pIn++; /* Jump '(' */
+	/* Delimit the parameter list */
+	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pSigEnd);
+	if( pSigEnd >= pGen->pEnd ){
+		PH7_GenCompileError(&(*pGen),E_PARSE,nLine,
+			"syntax error, unexpected end of file, expecting \")\"");
+		return SXERR_SYNTAX;
+	}
+	/* Allocate the function state */
+	pFunc = (ph7_vm_func *)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(ph7_vm_func));
+	if( pFunc == 0 ){
+		PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+			"Fatal, PH7 engine is running out of memory");
+		return SXERR_ABORT;
+	}
+	/* Generate a unique lambda name */
+	nLen = SyBufferFormat(zName,sizeof(zName),"[lambda_%d]",iCnt++);
+	while( SyHashGet(&pGen->pVm->hFunction,zName,nLen) != 0 && nLen < sizeof(zName) - 2 ){
+		nLen = SyBufferFormat(zName,sizeof(zName),"[lambda_%d]",iCnt++);
+	}
+	zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,zName,nLen);
+	if( zDup == 0 ){
+		PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+			"Fatal, PH7 engine is running out of memory");
+		return SXERR_ABORT;
+	}
+	PH7_VmInitFuncState(pGen->pVm,pFunc,zDup,nLen,iFlags,0);
+	/* Collect function arguments */
+	if( pGen->pIn < pSigEnd ){
+		rc = GenStateCollectFuncArgs(pFunc,&(*pGen),pSigEnd);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+	}
+	/* Point past ')' and parse optional return type */
+	pGen->pIn = &pSigEnd[1];
+	GenStateParseReturnType(pGen,pFunc);
+	/* Expect '=>' */
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_ARRAY_OP) == 0 ){
+		if( pGen->pIn < pGen->pEnd ){
+			PH7_GenCompileError(&(*pGen),E_PARSE,pGen->pIn->nLine,
+				"syntax error, unexpected %s \"%z\", expecting \"=>\"",
+				TokenTypeName(pGen->pIn->nType),&pGen->pIn->sData);
+		}else{
+			PH7_GenCompileError(&(*pGen),E_PARSE,nLine,
+				"syntax error, unexpected end of file, expecting \"=>\"");
+		}
+		return SXERR_SYNTAX;
+	}
+	pGen->pIn++; /* Jump '=>' */
+	pBodyStart = pGen->pIn;
+	pBodyEnd = pGen->pEnd;
+	/* Build the initial shadow list from the arrow's own parameters, then
+	 * recursively collect free-variable references from the body. The scan
+	 * handles plain $<id>, interpolated strings/heredocs, and nested arrow
+	 * functions with proper parameter shadowing for transitive capture. */
+	aArgs = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);
+	{
+		SyString *aShadow = 0;
+		sxu32 nShadow = SySetUsed(&pFunc->aArgs);
+		if( nShadow > 0 ){
+			aShadow = (SyString *)SyMemBackendPoolAlloc(
+				&pGen->pVm->sAllocator,sizeof(SyString) * nShadow);
+			if( aShadow == 0 ){
+				PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+					"Fatal, PH7 engine is running out of memory");
+				return SXERR_ABORT;
+			}
+			for( n = 0 ; n < nShadow ; n++ ){
+				aShadow[n] = aArgs[n].sName;
+			}
+		}
+		rc = GenStateArrowCaptureScan(pGen,pFunc,pBodyStart,pBodyEnd,
+			aShadow,nShadow);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+	}
+	/* Unless declared static, auto-capture $this so arrow functions used
+	 * inside methods can reference it. Flagged VM_FUNC_ARG_IGNORE so the
+	 * captured value is silently dropped when the enclosing scope has no
+	 * $this. */
+	if( !bStatic ){
+		char *zThisDup;
+		zThisDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,"this",sizeof("this")-1);
+		if( zThisDup == 0 ){
+			PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+				"Fatal, PH7 engine is running out of memory");
+			return SXERR_ABORT;
+		}
+		SyZero(&sEnv,sizeof(ph7_vm_func_closure_env));
+		sEnv.iFlags = VM_FUNC_ARG_IGNORE;
+		PH7_MemObjInit(pGen->pVm,&sEnv.sValue);
+		SyStringInitFromBuf(&sEnv.sName,zThisDup,sizeof("this")-1);
+		SySetPut(&pFunc->aClosureEnv,(const void *)&sEnv);
+	}
+	/* Arrow functions are always closures */
+	pFunc->iFlags |= VM_FUNC_CLOSURE;
+	/* Compile the body expression as an implicit return */
+	rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_PROTECTED|GEN_BLOCK_FUNC,
+		PH7_VmInstrLength(pGen->pVm),pFunc,&pBlock);
+	if( rc != SXRET_OK ){
+		PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+			"PH7 engine is running out-of-memory");
+		return SXERR_ABORT;
+	}
+	pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
+	PH7_VmSetByteCodeContainer(pGen->pVm,&pFunc->aByteCode);
+	pSavedEnd = pGen->pEnd;
+	pGen->pIn = pBodyStart;
+	pGen->pEnd = pBodyEnd;
+	rc = PH7_CompileExpr(&(*pGen),0,0);
+	if( rc == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
+	/* Emit implicit return: OP_DONE with p1=1 means 'value on stack' */
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,(rc != SXERR_EMPTY ? 1 : 0),0,0,0);
+	PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
+	GenStateLeaveBlock(&(*pGen),0);
+	/* Restore cursors; caller will re-synchronize via the node's pEnd */
+	pGen->pIn = pBodyEnd;
+	pGen->pEnd = pSavedEnd;
+	/* Emit the load-closure instruction */
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_CLOSURE,0,0,pFunc,0);
 	return SXRET_OK;
 }
 /*
@@ -8410,6 +8965,12 @@ static ProcLangConstruct GenStateGetStatementHandler(
 					/* 'static' (class context),return null */
 					return 0;
 				}
+			}
+			if( nKeywordID == PH7_TKWRD_STATIC && pLookahed
+				&& (pLookahed->nType & PH7_TK_KEYWORD)
+				&& SX_PTR_TO_INT(pLookahed->pUserData) == PH7_TKWRD_FN ){
+				/* 'static fn(...)' arrow function — compile as expression */
+				return 0;
 			}
 			/* Return a pointer to the handler.
 			*/

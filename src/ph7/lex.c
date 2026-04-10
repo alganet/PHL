@@ -75,6 +75,14 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 		/* Record token length */
 		pStr->nByte = (sxu32)((const char *)pStream->zText-pStr->zString);
 		nKeyword = KeywordCode(pStr->zString,(int)pStr->nByte);
+		/* PHP 7.4: 'fn' is a keyword reserved for arrow functions.
+		 * The auto-generated perfect hash above doesn't know about it,
+		 * so intercept the 'fn' identifier here.
+		 */
+		if( nKeyword == PH7_TK_ID && pStr->nByte == 2
+			&& pStr->zString[0] == 'f' && pStr->zString[1] == 'n' ){
+			nKeyword = PH7_TKWRD_FN;
+		}
 		if( nKeyword != PH7_TK_ID ){
 			if( nKeyword &
 				(PH7_TKWRD_NEW|PH7_TKWRD_CLONE|PH7_TKWRD_AND|PH7_TKWRD_XOR|PH7_TKWRD_OR|PH7_TKWRD_INSTANCEOF|PH7_TKWRD_SEQ|PH7_TKWRD_SNE) ){
