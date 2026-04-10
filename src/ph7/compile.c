@@ -7689,6 +7689,51 @@ static sxi32 GenStateEmitExprCode(
 		return SXERR_ABORT;
 	}
 	iVmOp = pNode->pOp->iVmOp;
+	if( pNode->pOp->iOp == EXPR_OP_NULLC_ASSIGN ){
+		sxu32 nJmp = 0;
+		VmInstr *pInstrFix;
+		/* Null coalescing assignment requires a custom compile order: the LHS
+		 * target (pRight for prec-18 right-assoc ops) must be evaluated first
+		 * so we can short-circuit the RHS when LHS is non-null. Pass
+		 * EXPR_FLAG_LOAD_IDX_STORE so subscript LHS auto-vivifies and the
+		 * stack slot carries a writable nIdx. */
+		if( pNode->pRight ){
+			rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iFlags|EXPR_FLAG_LOAD_IDX_STORE);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+			/* Optimisation: if the outermost LHS access is a subscript, demote
+			 * its LOAD_IDX from write-context (iP2=1, eager COW separation +
+			 * insert) to peek-mode (iP2=3, separate-only-on-null/missing). On
+			 * the common "already set" path the upcoming NULLC_JMP will skip
+			 * the store, so the parent array does not need to be copied at
+			 * all. Inner levels of a nested LHS keep iP2=1 so the separation
+			 * cascade for the actual write path stays correct. */
+			pInstrFix = PH7_VmPeekInstr(pGen->pVm);
+			if( pInstrFix && pInstrFix->iOp == PH7_OP_LOAD_IDX && pInstrFix->iP2 == 1 ){
+				pInstrFix->iP2 = 3;
+			}
+		}
+		/* Short-circuit: if LHS is non-null, jump past the RHS + store. */
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_NULLC_JMP,0,0,0,&nJmp);
+		/* Compile the RHS value (pLeft for prec-18 right-assoc). */
+		if( pNode->pLeft ){
+			rc = GenStateEmitExprCode(&(*pGen),pNode->pLeft,iFlags);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+		}
+		/* Store RHS into LHS's memobj slot; leave RHS as the result on stack. */
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_NULLC_STORE,0,0,0,0);
+		/* Patch the short-circuit jump to land after the store. */
+		if( nJmp > 0 ){
+			pInstrFix = PH7_VmGetInstr(pGen->pVm,nJmp);
+			if( pInstrFix ){
+				pInstrFix->iP2 = PH7_VmInstrLength(pGen->pVm);
+			}
+		}
+		return SXRET_OK;
+	}
 	if( pNode->pOp->iOp == EXPR_OP_QUESTY ){
 		sxu32 nJz,nJmp;
 		/* Ternary operator require special handling */

@@ -3549,7 +3549,7 @@ case PH7_OP_LOAD_IDX: {
 		}
 		break;
 	}
-	if( pInstr->iP2 == 1 && (pTos->iFlags & MEMOBJ_HASHMAP) == 0 ){
+	if( (pInstr->iP2 == 1 || pInstr->iP2 == 3) && (pTos->iFlags & MEMOBJ_HASHMAP) == 0 ){
 		if( pTos->nIdx != SXU32_HIGH ){
 			ph7_value *pObj;
 			if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
@@ -3573,7 +3573,35 @@ case PH7_OP_LOAD_IDX: {
 			/* Load the desired entry */
 			rc = PH7_HashmapLookup(pMap,pIdx,&pNode);
 		}
-		if( rc != SXRET_OK && pInstr->iP2 == 1 ){
+		if( pInstr->iP2 == 3 ){
+			/* Null coalescing assign peek mode: separate only when we will
+			 * actually write back. If the looked-up value is non-null, the
+			 * caller's NULLC_JMP will short-circuit and no store happens, so
+			 * the parent can stay shared. If the value is null or the key is
+			 * missing, separate and re-lookup so the upcoming NULLC_STORE
+			 * writes into our own copy. Inner levels of a nested LHS still
+			 * use iP2 == 1 (eager separation), which keeps the cascade
+			 * correct for the outermost write. */
+			int needWrite = (rc != SXRET_OK);
+			if( !needWrite && pNode ){
+				ph7_value *pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx);
+				if( pVal == 0 || (pVal->iFlags & MEMOBJ_NULL) ){
+					needWrite = 1;
+				}
+			}
+			if( needWrite ){
+				PH7_HashmapCowSeparate(&(*pVm),pTos);
+				if( pMap != (ph7_hashmap *)pTos->x.pOther ){
+					/* The map was actually copied — re-lookup so pNode points
+					 * into the new map's storage. */
+					pMap = (ph7_hashmap *)pTos->x.pOther;
+					if( pIdx ){
+						rc = PH7_HashmapLookup(pMap,pIdx,&pNode);
+					}
+				}
+			}
+		}
+		if( rc != SXRET_OK && (pInstr->iP2 == 1 || pInstr->iP2 == 3) ){
 			/* Create a new empty entry */
 			rc = PH7_HashmapInsert(pMap,pIdx,0);
 			if( rc == SXRET_OK ){
@@ -4762,6 +4790,51 @@ case PH7_OP_NULLC: {
 		/* Left is null — discard it, fall through to evaluate RHS */
 		VmPopOperand(&pTos, 1);
 	}
+	break;
+}
+/*
+ * OP_NULLC_JMP: * P2 *
+ * Null coalescing assignment short-circuit.
+ * If TOS is NOT null, jump to P2 (keeping TOS as the expression result).
+ * If TOS IS null, fall through with TOS retained — it carries the LHS's
+ * nIdx so the upcoming NULLC_STORE can write back into the variable slot.
+ */
+case PH7_OP_NULLC_JMP: {
+#ifdef UNTRUST
+	if( pTos < pStack ){
+		goto Abort;
+	}
+#endif
+	if( (pTos->iFlags & MEMOBJ_NULL) == 0 ){
+		pc = pInstr->iP2 - 1; /* Jump (will be incremented by the loop) */
+	}
+	break;
+}
+/*
+ * OP_NULLC_STORE: * * *
+ * Null coalescing assignment store.
+ * Stack: [..., LHS_null(nIdx=X), RHS_value]. Store RHS into aMemObj[X],
+ * replace pNos with the RHS value, pop pTos. Leaves the RHS value as the
+ * expression result.
+ */
+case PH7_OP_NULLC_STORE: {
+	ph7_value *pNos = &pTos[-1];
+	ph7_value *pObj;
+	sxu32 nIdx;
+#ifdef UNTRUST
+	if( pNos < pStack ){
+		goto Abort;
+	}
+#endif
+	nIdx = pNos->nIdx;
+	if( nIdx == SXU32_HIGH ){
+		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
+			"Cannot perform assignment on a constant class attribute");
+	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx)) != 0 ){
+		PH7_MemObjStore(pTos,pObj);
+	}
+	PH7_MemObjStore(pTos,pNos);
+	VmPopOperand(&pTos,1);
 	break;
 }
 /*
@@ -8284,6 +8357,8 @@ static const char * VmInstrToString(sxi32 nOp)
 	case PH7_OP_SWAP:       zOp = "SWAP       "; break;
 	case PH7_OP_YIELD:      zOp = "YIELD      "; break;
 	case PH7_OP_NULLC:      zOp = "NULLC      "; break;
+	case PH7_OP_NULLC_JMP:  zOp = "NULLC_JMP  "; break;
+	case PH7_OP_NULLC_STORE:zOp = "NULLC_STORE"; break;
 	case PH7_OP_SPREAD:     zOp = "SPREAD     "; break;
 	case PH7_OP_CVT_BOOL:   zOp = "CVT_BOOL   "; break;
 	case PH7_OP_CVT_NULL:   zOp = "CVT_NULL   "; break;

@@ -983,6 +983,8 @@ enum ph7_vm_op {
   PH7_OP_NSSWITCH,     /* Switch active namespace at runtime */
   PH7_OP_USECONST,     /* Register a use-const import at runtime */
   PH7_OP_NULLC,         /* Null coalescing ?? */
+  PH7_OP_NULLC_JMP,     /* Null coalescing assign short-circuit jump */
+  PH7_OP_NULLC_STORE,   /* Null coalescing assign store */
   PH7_OP_SPREAD         /* Mark TOS for argument unpacking (...$arr) */
 };
 /* -- END-OF INSTRUCTIONS -- */
@@ -1045,6 +1047,7 @@ enum ph7_expr_id {
 	EXPR_OP_XOR_ASSIGN, /* Combined operator: ^= */
 	EXPR_OP_SHL_ASSIGN, /* Combined operator: <<= */
 	EXPR_OP_SHR_ASSIGN, /* Combined operator: >>= */
+	EXPR_OP_NULLC_ASSIGN, /* Combined operator: null coalescing assign */
 	EXPR_OP_COMMA       /* Comma expression */
 };
 /*
