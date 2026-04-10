@@ -122,19 +122,43 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 			return SXERR_CONTINUE;
 		}else if( SyisDigit(pStream->zText[0]) ){
 			pStream->zText++;
-			/* Decimal digit stream */
+			/* PHP 7.4: handle underscore separator immediately following the first digit.
+			 * Check pStream->zText < pStream->zEnd BEFORE forming pStream->zText + 1 so
+			 * we never compute a pointer past one-past-end. */
+			if( pStream->zText < pStream->zEnd
+				&& pStream->zText[0] == '_'
+				&& pStream->zText + 1 < pStream->zEnd
+				&& pStream->zText[1] < 0xc0
+				&& SyisDigit(pStream->zText[1]) ){
+				pStream->zText++; /* swallow underscore between two digits */
+			}
+			/* Decimal digit stream (PHP 7.4: underscore separator allowed between two digits) */
 			while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){
 				pStream->zText++;
+				if( pStream->zText < pStream->zEnd
+					&& pStream->zText[0] == '_'
+					&& pStream->zText + 1 < pStream->zEnd
+					&& pStream->zText[1] < 0xc0
+					&& SyisDigit(pStream->zText[1]) ){
+					pStream->zText++; /* swallow underscore between two digits */
+				}
 			}
 			/* Mark the token as integer until we encounter a real number */
 			pToken->nType = PH7_TK_INTEGER;
 			if( pStream->zText < pStream->zEnd ){
 				c = pStream->zText[0];
 				if( c == '.' ){
-					/* Real number */
+					/* Real number (PHP 7.4: underscore separator allowed between two digits) */
 					pStream->zText++;
 					while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){
 						pStream->zText++;
+						if( pStream->zText < pStream->zEnd
+							&& pStream->zText[0] == '_'
+							&& pStream->zText + 1 < pStream->zEnd
+							&& pStream->zText[1] < 0xc0
+							&& SyisDigit(pStream->zText[1]) ){
+							pStream->zText++;
+						}
 					}
 					if( pStream->zText < pStream->zEnd ){
 						c = pStream->zText[0];
@@ -148,6 +172,13 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 								}
 								while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){
 									pStream->zText++;
+									if( pStream->zText < pStream->zEnd
+										&& pStream->zText[0] == '_'
+										&& pStream->zText + 1 < pStream->zEnd
+										&& pStream->zText[1] < 0xc0
+										&& SyisDigit(pStream->zText[1]) ){
+										pStream->zText++;
+									}
 								}
 							}
 						}
@@ -165,21 +196,53 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 						}
 						while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){
 							pStream->zText++;
+							if( pStream->zText < pStream->zEnd
+								&& pStream->zText[0] == '_'
+								&& pStream->zText + 1 < pStream->zEnd
+								&& pStream->zText[1] < 0xc0
+								&& SyisDigit(pStream->zText[1]) ){
+								pStream->zText++;
+							}
 						}
 					}
 					pToken->nType = PH7_TK_REAL;
 				}else if( c == 'x' || c == 'X' ){
-					/* Hex digit stream */
+					/* Hex digit stream (PHP 7.4: underscore separator allowed between two digits) */
 					pStream->zText++;
 					while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisHex(pStream->zText[0]) ){
 						pStream->zText++;
+						if( pStream->zText < pStream->zEnd
+							&& pStream->zText[0] == '_'
+							&& pStream->zText + 1 < pStream->zEnd
+							&& pStream->zText[1] < 0xc0
+							&& SyisHex(pStream->zText[1]) ){
+							pStream->zText++;
+						}
 					}
 				}else if(c  == 'b' || c == 'B' ){
-					/* Binary digit stream */
+					/* Binary digit stream (PHP 7.4: underscore separator allowed between two digits) */
 					pStream->zText++;
 					while( pStream->zText < pStream->zEnd && (pStream->zText[0] == '0' || pStream->zText[0] == '1') ){
 						pStream->zText++;
+						if( pStream->zText < pStream->zEnd
+							&& pStream->zText[0] == '_'
+							&& pStream->zText + 1 < pStream->zEnd
+							&& (pStream->zText[1] == '0' || pStream->zText[1] == '1') ){
+							pStream->zText++;
+						}
 					}
+				}
+			}
+			/* PHP 7.4: absorb a trailing malformed underscore run into the
+			 * numeric token so the compile phase can emit a PHP-compatible
+			 * "syntax error, unexpected identifier" parse error. Valid
+			 * separators were already consumed by the per-loop peek logic
+			 * above, so an underscore here is always misplaced. */
+			if( pStream->zText < pStream->zEnd && pStream->zText[0] == '_' ){
+				pStream->zText++;
+				while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0
+					&& (SyisAlphaNum(pStream->zText[0]) || pStream->zText[0] == '_') ){
+					pStream->zText++;
 				}
 			}
 			/* Record token length */
