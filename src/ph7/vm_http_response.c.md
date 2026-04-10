@@ -404,7 +404,7 @@ Coverage: 108/255 lines (42.35%)
 |     - |  394 | `/*` |
 |     - |  395 | ` * Register all HTTP response functions with the VM.` |
 |     - |  396 | ` */` |
-|  2362 |  397 | `PH7_PRIVATE void PH7_RegisterHttpResponseFunctions(ph7_vm *pVm)` |
+|  2390 |  397 | `PH7_PRIVATE void PH7_RegisterHttpResponseFunctions(ph7_vm *pVm)` |
 |     2 |  398 |  |
 |     - |  399 | `	static const ph7_builtin_func aFunc[] = {` |
 |     - |  400 | `		{ "header",             vm_builtin_header             },` |
@@ -416,8 +416,8 @@ Coverage: 108/255 lines (42.35%)
 |     - |  406 | `		{ "setrawcookie",       vm_builtin_setrawcookie       },` |
 |     - |  407 | `	};` |
 |     - |  408 | `	sxu32 n;` |
-| 18898 |  409 | `	for( n = 0; n < SX_ARRAYSIZE(aFunc); n++ ){` |
-| 16536 |  410 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
-|  8269 |  411 | `	}` |
-|  2364 |  412 |  |
+| 19122 |  409 | `	for( n = 0; n < SX_ARRAYSIZE(aFunc); n++ ){` |
+| 16732 |  410 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
+|  8367 |  411 | `	}` |
+|  2392 |  412 |  |
 |     - |  413 |  |

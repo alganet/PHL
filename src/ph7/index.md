@@ -1,6 +1,6 @@
 # src/ph7/
 
-Coverage: 25132/32153 lines (78.16%)
+Coverage: 25296/32311 lines (78.29%)
 
 [Up](../index.md)
 
@@ -10,10 +10,10 @@ Coverage: 25132/32153 lines (78.16%)
 |[builtin.c](builtin.c.md)|87.76%|2941/3351|
 |[builtin_date.c](builtin_date.c.md)|66.09%|456/690|
 |[builtin_math.c](builtin_math.c.md)|96.79%|452/467|
-|[compile.c](compile.c.md)|77.27%|3791/4906|
+|[compile.c](compile.c.md)|77.66%|3890/5009|
 |[constant.c](constant.c.md)|98.92%|1006/1017|
-|[hashmap.c](hashmap.c.md)|87.33%|2963/3393|
-|[lex.c](lex.c.md)|94.84%|643/678|
+|[hashmap.c](hashmap.c.md)|87.44%|2967/3393|
+|[lex.c](lex.c.md)|95.23%|698/733|
 |[memobj.c](memobj.c.md)|87.98%|644/732|
 |[net.c](net.c.md)|50.48%|53/105|
 |[oo.c](oo.c.md)|87.22%|430/493|
@@ -22,7 +22,7 @@ Coverage: 25132/32153 lines (78.16%)
 |[vfs_unix.c](vfs_unix.c.md)|88.06%|376/427|
 |[vfs_win.c](vfs_win.c.md)|75.43%|485/643|
 |[vfs_zip.c](vfs_zip.c.md)|58.24%|152/261|
-|[vm.c](vm.c.md)|76.29%|5129/6723|
+|[vm.c](vm.c.md)|76.38%|5135/6723|
 |[vm_builtin_class.c](vm_builtin_class.c.md)|84.24%|401/476|
 |[vm_builtin_getopt.c](vm_builtin_getopt.c.md)|24.71%|42/170|
 |[vm_builtin_ob.c](vm_builtin_ob.c.md)|76.21%|157/206|
