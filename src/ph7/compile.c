@@ -413,6 +413,152 @@ static ph7_value * GenStateInstallNumLiteral(ph7_gen_state *pGen,sxu32 *pIdx)
 /* Forward declaration */
 static sxi32 GenStateCompileChunk(ph7_gen_state *pGen,sxi32 iFlags);
 /*
+ * Stack-scratch size for stripping PHP 7.4 numeric separators. A typical
+ * literal (INT64_MAX decimal is 19 digits, binary 64-bit with per-nibble
+ * separators is ~80 chars) fits comfortably, so the fast path never touches
+ * the heap. The language itself imposes no upper bound on the length of a
+ * well-formed literal — the stripper falls back to a VM-allocator buffer
+ * for anything larger, so correctness is preserved even for pathological
+ * inputs like a thousand-digit number.
+ */
+#define GEN_NUM_SCRATCH 128
+/*
+ * Return TRUE if c is a valid digit for the given numeric base.
+ *   base 16 => SyisHex (0-9, a-f, A-F)
+ *   base  2 => 0 or 1
+ *   base 10 => SyisDigit (0-9, also used for octal literals which share the
+ *              decimal scan in the lexer)
+ */
+static int GenStateIsBaseDigit(int c, int base)
+{
+	if( base == 16 ){ return SyisHex(c); }
+	if( base == 2 ){ return c == '0' || c == '1'; }
+	return SyisDigit(c);
+}
+/*
+ * Given the raw text of a numeric literal token, locate a misplaced PHP 7.4
+ * underscore separator so the caller can report the malformed portion with
+ * the exact wording PHP uses:
+ *
+ *   syntax error, unexpected identifier "X"
+ *
+ * The lexer guarantees that every underscore it consumed as a separator is
+ * surrounded by valid base digits; anything else sits in the trailing run
+ * absorbed by the lexer specifically to let this validator see and report
+ * it. That invariant means the malformed span is exactly [bad .. nByte) —
+ * no forward rescan needed.
+ *
+ * Returns 1 and fills pBadStart / pBadLen when the literal is malformed;
+ * returns 0 when it is well-formed.
+ */
+static int GenStateFindBadNumericSeparator(
+	const SyString *pRaw, const char **pBadStart, sxu32 *pBadLen)
+{
+	const char *z = pRaw->zString;
+	sxu32 n = pRaw->nByte;
+	int base = 10;
+	sxu32 i, start;
+	if( n < 2 ) return 0;
+	if( z[0] == '0' && (z[1] == 'x' || z[1] == 'X') ){
+		base = 16;
+	}else if( z[0] == '0' && (z[1] == 'b' || z[1] == 'B') ){
+		base = 2;
+	}
+	for( i = 0; i < n; ++i ){
+		if( z[i] != '_' ) continue;
+		if( i > 0 && i + 1 < n
+			&& GenStateIsBaseDigit((unsigned char)z[i-1], base)
+			&& GenStateIsBaseDigit((unsigned char)z[i+1], base) ){
+			continue; /* well-placed separator */
+		}
+		/* First misplaced underscore — the lexer already absorbed the full
+		 * malformed tail, so it runs from here to the end of the token. */
+		start = i;
+		if( start > 0 && (z[start-1] == 'x' || z[start-1] == 'X'
+			|| z[start-1] == 'b' || z[start-1] == 'B') ){
+			start--; /* include the base letter for 0x_... / 0b_... */
+		}
+		*pBadStart = &z[start];
+		*pBadLen = n - start;
+		return 1;
+	}
+	return 0;
+}
+/*
+ * Emit the shared "syntax error, unexpected identifier" parse error when a
+ * numeric-literal token contains a misplaced PHP 7.4 separator. Returns
+ * SXRET_OK when the token is well-formed; on error propagates whatever
+ * PH7_GenCompileError returned (SXERR_ABORT when the error count is
+ * exhausted, otherwise the error is reported and SXERR_SYNTAX is returned
+ * so callers can bail from the current construct).
+ */
+static sxi32 GenStateValidateNumericSeparator(ph7_gen_state *pGen, SyToken *pToken)
+{
+	const char *zBad = 0;
+	sxu32 nBad = 0;
+	SyString sBad;
+	sxi32 rc;
+	if( !GenStateFindBadNumericSeparator(&pToken->sData, &zBad, &nBad) ){
+		return SXRET_OK;
+	}
+	SyStringInitFromBuf(&sBad, zBad, nBad);
+	rc = PH7_GenCompileError(pGen, E_PARSE, pToken->nLine,
+		"syntax error, unexpected identifier \"%z\"", &sBad);
+	if( rc == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
+	return SXERR_SYNTAX;
+}
+/*
+ * Strip PHP 7.4 numeric literal separators (underscores between digits) from
+ * a numeric token's text and yield a SyString suitable for the low-level
+ * converters (SyStrToInt64 / SyStrToReal / etc.).
+ *
+ * Fast path: if the token contains no '_', *pOut aliases pToken with no copy
+ * and *pzAlloc is set to NULL.
+ * Stack path: if the cleaned bytes fit in zScratch, they are written there
+ * and *pzAlloc is set to NULL.
+ * Heap path: for literals larger than the scratch buffer, a fresh buffer is
+ * allocated from pAlloc, returned via *pzAlloc, and must be released by the
+ * caller with SyMemBackendFree once the converter is done.
+ *
+ * Returns SXRET_OK on success, SXERR_ABORT on allocator failure (in which
+ * case *pOut is left untouched and the caller must not read it).
+ */
+static sxi32 GenStateStripNumericSeparators(
+	SyMemBackend *pAlloc,
+	const SyString *pToken,
+	char *zScratch, sxu32 nScratch,
+	SyString *pOut, char **pzAlloc)
+{
+	sxu32 i, j;
+	int hasUnderscore = 0;
+	char *zBuf;
+	*pzAlloc = 0;
+	for( i = 0; i < pToken->nByte; ++i ){
+		if( pToken->zString[i] == '_' ){ hasUnderscore = 1; break; }
+	}
+	if( !hasUnderscore ){
+		SyStringDupPtr(pOut, pToken);
+		return SXRET_OK;
+	}
+	if( pToken->nByte <= nScratch ){
+		zBuf = zScratch;
+	}else{
+		zBuf = (char *)SyMemBackendAlloc(pAlloc, pToken->nByte);
+		if( zBuf == 0 ){
+			return SXERR_ABORT;
+		}
+		*pzAlloc = zBuf;
+	}
+	j = 0;
+	for( i = 0; i < pToken->nByte; ++i ){
+		if( pToken->zString[i] != '_' ){ zBuf[j++] = pToken->zString[i]; }
+	}
+	SyStringInitFromBuf(pOut, zBuf, j);
+	return SXRET_OK;
+}
+/*
  * Compile a numeric [i.e: integer or real] literal.
  * Notes on the integer type.
  *  According to the PHP language reference manual
@@ -432,13 +578,27 @@ static sxi32 PH7_CompileNumLiteral(ph7_gen_state *pGen,sxi32 iCompileFlag)
 {
 	SyToken *pToken = pGen->pIn; /* Raw token */
 	sxu32 nIdx = 0;
+	char zScratch[GEN_NUM_SCRATCH];
+	char *zAlloc = 0;
+	SyString sNum;
+	sxi32 rc;
+	SXUNUSED(iCompileFlag); /* cc warning */
+	rc = GenStateValidateNumericSeparator(pGen, pToken);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	rc = GenStateStripNumericSeparators(&pGen->pVm->sAllocator, &pToken->sData,
+		zScratch, sizeof(zScratch), &sNum, &zAlloc);
+	if( rc != SXRET_OK ){
+		return SXERR_ABORT;
+	}
 	if( pToken->nType & PH7_TK_INTEGER ){
 		ph7_value *pObj;
 		sxi64 iValue;
-		iValue = PH7_TokenValueToInt64(&pToken->sData);
+		iValue = PH7_TokenValueToInt64(&sNum);
 		pObj = GenStateInstallNumLiteral(&(*pGen),&nIdx);
 		if( pObj == 0 ){
-			SXUNUSED(iCompileFlag); /* cc warning */
+			if( zAlloc ){ SyMemBackendFree(&pGen->pVm->sAllocator, zAlloc); }
 			return SXERR_ABORT;
 		}
 		PH7_MemObjInitFromInt(pGen->pVm,pObj,iValue);
@@ -449,11 +609,13 @@ static sxi32 PH7_CompileNumLiteral(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);
 		if( pObj == 0 ){
 			PH7_GenCompileError(&(*pGen),E_ERROR,1,"PH7 engine is running out of memory");
+			if( zAlloc ){ SyMemBackendFree(&pGen->pVm->sAllocator, zAlloc); }
 			return SXERR_ABORT;
 		}
-		PH7_MemObjInitFromString(pGen->pVm,pObj,&pToken->sData);
+		PH7_MemObjInitFromString(pGen->pVm,pObj,&sNum);
 		PH7_MemObjToReal(pObj);
 	}
+	if( zAlloc ){ SyMemBackendFree(&pGen->pVm->sAllocator, zAlloc); }
 	/* Emit the load constant instruction */
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);
 	/* Node successfully compiled */
@@ -2018,7 +2180,22 @@ static sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 		/* optional numeric argument which tells us how many levels
 		 * of enclosing loops we should skip to the end of.
 		 */
-		iLevel = (sxi32)PH7_TokenValueToInt64(&pGen->pIn->sData);
+		char zScratch[GEN_NUM_SCRATCH];
+		char *zAlloc = 0;
+		SyString sNum;
+		rc = GenStateValidateNumericSeparator(pGen, pGen->pIn);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		if( rc == SXRET_OK ){
+			rc = GenStateStripNumericSeparators(&pGen->pVm->sAllocator,
+				&pGen->pIn->sData, zScratch, sizeof(zScratch), &sNum, &zAlloc);
+			if( rc != SXRET_OK ){
+				return SXERR_ABORT;
+			}
+			iLevel = (sxi32)PH7_TokenValueToInt64(&sNum);
+			if( zAlloc ){ SyMemBackendFree(&pGen->pVm->sAllocator, zAlloc); }
+		}
 		if( iLevel < 2 ){
 			iLevel = 0;
 		}
@@ -2086,7 +2263,22 @@ static sxi32 PH7_CompileBreak(ph7_gen_state *pGen)
 		/* optional numeric argument which tells us how many levels
 		 * of enclosing loops we should skip to the end of.
 		 */
-		iLevel = (sxi32)PH7_TokenValueToInt64(&pGen->pIn->sData);
+		char zScratch[GEN_NUM_SCRATCH];
+		char *zAlloc = 0;
+		SyString sNum;
+		rc = GenStateValidateNumericSeparator(pGen, pGen->pIn);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		if( rc == SXRET_OK ){
+			rc = GenStateStripNumericSeparators(&pGen->pVm->sAllocator,
+				&pGen->pIn->sData, zScratch, sizeof(zScratch), &sNum, &zAlloc);
+			if( rc != SXRET_OK ){
+				return SXERR_ABORT;
+			}
+			iLevel = (sxi32)PH7_TokenValueToInt64(&sNum);
+			if( zAlloc ){ SyMemBackendFree(&pGen->pVm->sAllocator, zAlloc); }
+		}
 		if( iLevel < 2 ){
 			iLevel = 0;
 		}
