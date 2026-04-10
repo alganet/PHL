@@ -16,7 +16,7 @@ var_dump($arr);
 %s Notice:  Missing constructor argument 1($v) for class 'stdClass'
 array(1) {
  [Object] =>
-  string(5 'value')
+  string(5) "value"
  }
 --CLEAN--
 <?php

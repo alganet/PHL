@@ -1310,20 +1310,22 @@ PH7_PRIVATE sxi32 PH7_MemObjDump(
 			if((pObj->iFlags & MEMOBJ_STRING) == 0 ){
 				MemObjStringValue(&(*pOut),&(*pObj),FALSE);
 			}else{
-				/* Append length first */
+				/* PHP format: string(N) "content" */
 				if( ShowType ){
-					SyBlobFormat(&(*pOut),"%u '",SyBlobLength(&pObj->sBlob));
+					SyBlobFormat(&(*pOut),"%u) \"",SyBlobLength(&pObj->sBlob));
 				}
 				if( SyBlobLength(pContents) > 0 ){
 					SyBlobAppend(&(*pOut),SyBlobData(pContents),SyBlobLength(pContents));
 				}
 				if( ShowType ){
-					SyBlobAppend(&(*pOut),"'",sizeof(char));
+					SyBlobAppend(&(*pOut),"\"",sizeof(char));
 				}
 			}
 		}
 		if( ShowType ){
-			if( (pObj->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ)) == 0 ){
+			/* Strings already emitted their own ')' as part of the
+			 * "N) \"content\"" format above. */
+			if( (pObj->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_STRING)) == 0 ){
 				SyBlobAppend(&(*pOut),")",sizeof(char));
 			}
 		}

@@ -12,7 +12,7 @@ $result = str_replace(array('', 'l'), array('x', 'L'), 'hello');
 var_dump($result);
 ?>
 --EXPECT--
-string(5 'hexxo')
+string(5) "hexxo"
 --CLEAN--
 <?php
 unset($result);

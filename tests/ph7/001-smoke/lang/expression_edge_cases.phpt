@@ -44,7 +44,7 @@ var_dump($func_result);
 double(4.5)
 int(-2)
 int(3)
-string(15 'hello world 223')
+string(15) "hello world 223"
 int(5)
 int(10)
 --CLEAN--
