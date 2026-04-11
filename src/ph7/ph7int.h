@@ -493,6 +493,18 @@ struct ph7_vm_func_arg
 	sxu32 nType;         /* Type of this argument [i.e: array, int, string, float, object, etc.] */
 	SyString sClass;     /* Class name if the argument expect a class instance [i.e: function foo(BaseClass $bar){} ] */
 	sxi32 iFlags;        /* Configuration flags */
+	SySet aUnionAlts;    /* Union type alternatives (ph7_type_alt). Empty unless VM_FUNC_ARG_UNION is set. */
+	SyString sTypeName;  /* Original type text for error messages, normalized in canonical PHP order */
+};
+/*
+ * One alternative within a union type declaration. Used by parameters,
+ * return types, and properties when the declaration is `T1|T2|...`.
+ */
+typedef struct ph7_type_alt ph7_type_alt;
+struct ph7_type_alt
+{
+	sxu32 nType;     /* MEMOBJ_* bitmask, or SXU32_HIGH for a class/interface alternative */
+	SyString sClass; /* Class/interface name when nType == SXU32_HIGH */
 };
 /*
  * Each static variable is parsed out and remembered in an instance
@@ -539,7 +551,9 @@ struct ph7_vm_func_closure_env
 #define VM_FUNC_ARG_IGNORE   0x020 /* Do not install argument in the current frame */
 #define VM_FUNC_GENERATOR    0x040 /* VM function is a generator (contains yield) */
 #define VM_FUNC_ARG_VARIADIC 0x080 /* Argument is variadic (...$args) */
-#define VM_FUNC_ARG_NULLABLE 0x100 /* Argument type is nullable (?type) */
+#define VM_FUNC_ARG_NULLABLE 0x100 /* Argument type is nullable (?type or T|null) */
+#define VM_FUNC_ARG_UNION    0x200 /* Argument has a union type (use aUnionAlts) */
+/* next free bit: 0x400 */
 /*
  * Each user defined function is parsed out and stored in an instance
  * of the following structure.
@@ -562,6 +576,8 @@ struct ph7_vm_func
 						  */
 	sxu32 nReturnType;   /* Return type hint (MEMOBJ_* constant, MEMOBJ_VOID, or SXU32_HIGH for class) */
 	SyString sReturnClass; /* Class name when nReturnType == SXU32_HIGH */
+	SySet aReturnUnion;  /* Return-type union alternatives (ph7_type_alt). Empty unless union return. */
+	SyString sReturnTypeName; /* Original return-type text for error messages, in canonical PHP order */
 	void *pUserData;     /* Upper layer private data associated with this instance */
 	ph7_vm_func *pNextName; /* Next VM function with the same name as this one */
 };
@@ -636,7 +652,8 @@ struct ph7_class_attr
 	sxu32 nLine;         /* Line number on which this attribute was defined */
 	sxu32 nType;         /* Declared type: MEMOBJ_* bitmask, SXU32_HIGH for class, 0 = untyped */
 	SyString sClass;     /* Class/interface name when nType == SXU32_HIGH */
-	SyString sTypeName;  /* Original type text for error messages (e.g. "?int", "Foo") */
+	SyString sTypeName;  /* Original type text for error messages (e.g. "?int", "Foo", "string|int") */
+	SySet aUnionAlts;    /* Union alternatives (ph7_type_alt). Empty unless PH7_CLASS_ATTR_UNION is set. */
 	ph7_class *pDeclClass; /* Class that originally declared this attribute */
 };
 /* Attribute configuration */
@@ -645,7 +662,9 @@ struct ph7_class_attr
 #define PH7_CLASS_ATTR_ABSTRACT     0x004  /* Abstract method */
 #define PH7_CLASS_ATTR_FINAL        0x008  /* Final method */
 #define PH7_CLASS_ATTR_TYPED        0x010  /* Property has an explicit declared type */
-#define PH7_CLASS_ATTR_NULLABLE     0x020  /* Type has nullable '?' prefix */
+#define PH7_CLASS_ATTR_NULLABLE     0x020  /* Type allows null (?type prefix or T|null union) */
+#define PH7_CLASS_ATTR_UNION        0x040  /* Property has a union type (use aUnionAlts) */
+/* next free bit: 0x080 */
 /*
  * Each class method is parsed out and stored in an instance of the following
  * structure.

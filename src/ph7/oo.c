@@ -61,6 +61,7 @@ PH7_PRIVATE ph7_class_attr * PH7_NewClassAttr(ph7_vm *pVm,const SyString *pName,
 	}
 	/* Initialize fields */
 	SySetInit(&pAttr->aByteCode,&pVm->sAllocator,sizeof(VmInstr));
+	SySetInit(&pAttr->aUnionAlts,&pVm->sAllocator,sizeof(ph7_type_alt));
 	SyStringInitFromBuf(&pAttr->sName,zName,pName->nByte);
 	pAttr->iProtection = iProtection;
 	pAttr->nIdx = SXU32_HIGH;

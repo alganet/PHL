@@ -599,16 +599,32 @@ static sxi32 ExprAssembleAnnon(ph7_gen_state *pGen,SyToken **ppCur,SyToken *pEnd
 		goto Synchronize;
 	}
 	pIn++; /* Jump the trailing parenthesis */
-	/* Skip optional return type declaration ': [?] type' */
+	/* Skip optional return type declaration ': [?] type ( | type )*' */
 	if( pIn < pEnd && (pIn->nType & PH7_TK_COLON) ){
 		pIn++; /* Skip ':' */
 		/* Skip optional '?' nullable prefix */
 		if( pIn < pEnd && (pIn->nType & PH7_TK_OP) && pIn->sData.nByte == 1 && pIn->sData.zString[0] == '?' ){
 			pIn++;
 		}
-		/* Skip the type name (keyword or identifier) */
+		/* Skip the first type (allow leading '\' and namespace path) */
+		if( pIn < pEnd && (pIn->nType & PH7_TK_NSSEP) ){ pIn++; }
 		if( pIn < pEnd && (pIn->nType & (PH7_TK_KEYWORD|PH7_TK_ID)) ){
 			pIn++;
+			while( pIn + 1 < pEnd && (pIn->nType & PH7_TK_NSSEP) && (pIn[1].nType & PH7_TK_ID) ){
+				pIn += 2;
+			}
+		}
+		/* Skip union alternatives ( | type )* */
+		while( pIn < pEnd && (pIn->nType & PH7_TK_OP) && pIn->sData.nByte == 1
+			&& pIn->sData.zString[0] == '|' ){
+			pIn++;
+			if( pIn < pEnd && (pIn->nType & PH7_TK_NSSEP) ){ pIn++; }
+			if( pIn < pEnd && (pIn->nType & (PH7_TK_KEYWORD|PH7_TK_ID)) ){
+				pIn++;
+				while( pIn + 1 < pEnd && (pIn->nType & PH7_TK_NSSEP) && (pIn[1].nType & PH7_TK_ID) ){
+					pIn += 2;
+				}
+			}
 		}
 	}
 	if( pIn->nType & PH7_TK_KEYWORD ){
@@ -706,15 +722,30 @@ static sxi32 ExprAssembleArrowFunc(ph7_gen_state *pGen,SyToken **ppCur,SyToken *
 			pIn++; /* ')' */
 		}
 	}
-	/* Optional return type ': [?] type' */
+	/* Optional return type ': [?] type ( | type )*' */
 	if( pIn < pEnd && (pIn->nType & PH7_TK_COLON) ){
 		pIn++;
 		if( pIn < pEnd && (pIn->nType & PH7_TK_OP)
 			&& pIn->sData.nByte == 1 && pIn->sData.zString[0] == '?' ){
 			pIn++;
 		}
+		if( pIn < pEnd && (pIn->nType & PH7_TK_NSSEP) ){ pIn++; }
 		if( pIn < pEnd && (pIn->nType & (PH7_TK_KEYWORD|PH7_TK_ID)) ){
 			pIn++;
+			while( pIn + 1 < pEnd && (pIn->nType & PH7_TK_NSSEP) && (pIn[1].nType & PH7_TK_ID) ){
+				pIn += 2;
+			}
+		}
+		while( pIn < pEnd && (pIn->nType & PH7_TK_OP) && pIn->sData.nByte == 1
+			&& pIn->sData.zString[0] == '|' ){
+			pIn++;
+			if( pIn < pEnd && (pIn->nType & PH7_TK_NSSEP) ){ pIn++; }
+			if( pIn < pEnd && (pIn->nType & (PH7_TK_KEYWORD|PH7_TK_ID)) ){
+				pIn++;
+				while( pIn + 1 < pEnd && (pIn->nType & PH7_TK_NSSEP) && (pIn[1].nType & PH7_TK_ID) ){
+					pIn += 2;
+				}
+			}
 		}
 	}
 	/* Consume '=>' if present; the compile pass diagnoses absence */
