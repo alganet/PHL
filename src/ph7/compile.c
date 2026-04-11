@@ -413,7 +413,20 @@ static ph7_value * GenStateInstallNumLiteral(ph7_gen_state *pGen,sxu32 *pIdx)
 /* Forward declaration */
 static sxi32 GenStateCompileChunk(ph7_gen_state *pGen,sxi32 iFlags);
 static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyToken *pEnd);
-static void GenStateParseReturnType(ph7_gen_state *pGen, ph7_vm_func *pFunc);
+/* Forward decl: union type parser is defined later in this file. */
+static sxi32 GenStateParseUnionTypeDecl(
+	ph7_gen_state *pGen,
+	sxu32 *pnType,
+	SyString *pClass,
+	SySet *pAlts,
+	sxi32 *piTypeFlags,
+	SyString *pTypeText,
+	int iNullableFlag,
+	int iUnionFlag,
+	int bAllowVoid,
+	sxu32 nLine
+);
+static sxi32 GenStateParseReturnType(ph7_gen_state *pGen, ph7_vm_func *pFunc);
 static const char * TokenTypeName(sxu32 nType);
 /*
  * Stack-scratch size for stripping PHP 7.4 numeric separators. A typical
@@ -2191,7 +2204,12 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	}
 	/* Point past ')' and parse optional return type */
 	pGen->pIn = &pSigEnd[1];
-	GenStateParseReturnType(pGen,pFunc);
+	rc = GenStateParseReturnType(pGen,pFunc);
+	if( rc == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}else if( rc == SXERR_SYNTAX ){
+		return SXERR_SYNTAX;
+	}
 	/* Expect '=>' */
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_ARRAY_OP) == 0 ){
 		if( pGen->pIn < pGen->pEnd ){
@@ -5118,46 +5136,39 @@ static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyTo
 		}
 		SyZero(&sArg,sizeof(ph7_vm_func_arg));
 		SySetInit(&sArg.aByteCode,&pGen->pVm->sAllocator,sizeof(VmInstr));
-		/* Detect nullable prefix '?' on type hints */
-		if( pIn < pEnd && (pIn->nType & PH7_TK_OP) && pIn->sData.nByte == 1 && pIn->sData.zString[0] == '?' ){
-			sArg.iFlags |= VM_FUNC_ARG_NULLABLE;
-			pIn++;
-		}
-		/* Skip leading namespace separator '\' on FQN type hints like \Throwable */
-		if( pIn < pEnd && (pIn->nType & PH7_TK_NSSEP) ){
-			pIn++;
-		}
-		if( pIn < pEnd && (pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) ){
-			if( pIn->nType & PH7_TK_KEYWORD ){
-				sxu32 nKey = (sxu32)(SX_PTR_TO_INT(pIn->pUserData));
-				if( nKey & PH7_TKWRD_ARRAY ){
-					sArg.nType = MEMOBJ_HASHMAP;
-				}else if( nKey & PH7_TKWRD_BOOL ){
-					sArg.nType = MEMOBJ_BOOL;
-				}else if( nKey & PH7_TKWRD_INT ){
-					sArg.nType = MEMOBJ_INT;
-				}else if( nKey & PH7_TKWRD_STRING ){
-					sArg.nType = MEMOBJ_STRING;
-				}else if( nKey & PH7_TKWRD_FLOAT ){
-					sArg.nType = MEMOBJ_REAL;
-				}else if( nKey & PH7_TKWRD_OBJECT ){
-					sArg.nType = MEMOBJ_OBJ;
-				}else{
-					PH7_GenCompileError(&(*pGen),E_WARNING,pGen->pIn->nLine,
-						"Invalid argument type '%z',Automatic cast will not be performed",
+		SySetInit(&sArg.aUnionAlts,&pGen->pVm->sAllocator,sizeof(ph7_type_alt));
+		SyStringInitFromBuf(&sArg.sTypeName,0,0);
+		/* Parse optional type hint (single, nullable shorthand, or union) */
+		if( pIn < pEnd && (pIn->nType & PH7_TK_DOLLAR) == 0
+			&& (pIn->nType & PH7_TK_AMPER) == 0
+			&& (pIn->nType & PH7_TK_ELLIPSIS) == 0 ){
+			sxu32 nLineLocal = pIn->nLine;
+			sxi32 iTFlags = 0;
+			pGen->pIn = pIn;
+			rc = GenStateParseUnionTypeDecl(
+				pGen, &sArg.nType, &sArg.sClass, &sArg.aUnionAlts,
+				&iTFlags, &sArg.sTypeName,
+				VM_FUNC_ARG_NULLABLE, VM_FUNC_ARG_UNION,
+				/* bAllowVoid */ 0,
+						nLineLocal);
+			pIn = pGen->pIn;
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}else if( rc == SXERR_CORRUPT ){
+				/* Error already reported by GenStateParseUnionTypeDecl */
+				return SXERR_SYNTAX;
+			}else if( rc == SXERR_SYNTAX ){
+				if( pIn < pEnd ){
+					PH7_GenCompileError(pGen,E_PARSE,pIn->nLine,
+						"syntax error, unexpected token \"%z\", expecting variable",
 						&pIn->sData);
+				}else{
+					PH7_GenCompileError(pGen,E_PARSE,nLineLocal,
+						"syntax error, unexpected end of file");
 				}
-			}else{
-				SyString *pName = &pIn->sData; /* Class name */
-				char *zDupLocal;
-				/* Argument must be a class instance,record that*/
-				zDupLocal = SyMemBackendStrDup(&pGen->pVm->sAllocator,pName->zString,pName->nByte);
-				if( zDupLocal ){
-					sArg.nType = SXU32_HIGH; /* 0xFFFFFFFF as sentinel */
-					SyStringInitFromBuf(&sArg.sClass,zDupLocal,pName->nByte);
-				}
+				return SXERR_SYNTAX;
 			}
-			pIn++;
+			sArg.iFlags |= iTFlags;
 		}
 		if( pIn >= pEnd ){
 			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"Missing argument name");
@@ -5371,74 +5382,471 @@ static int SyMemcmpNoCase(const char *zA, const char *zB, sxu32 n)
 	return 0;
 }
 /*
- * Helper: set the return type to a class/self/parent/static sentinel.
+ * Internal type-atom kinds used during union type parsing.
+ * Negative values are sentinels that never collide with MEMOBJ_* bitmasks
+ * (which are positive bit values stored in sxu32).
  */
-static void GenStateSetReturnClass(ph7_gen_state *pGen, ph7_vm_func *pFunc, const char *zName, sxu32 nByte)
+#define UTA_NULL_FLAG  ((sxu32)0xFFFFFFF0)  /* the literal `null` keyword */
+#define UTA_VOID_FLAG  ((sxu32)0xFFFFFFF1)  /* the `void` keyword */
+#define UTA_NEVER_FLAG ((sxu32)0xFFFFFFF2)  /* the `never` keyword */
+
+/* Maximum number of alternatives in a single union type declaration.
+ * Picked to be larger than any union type seen in real PHP codebases
+ * (typical max is 4-6, with the largest internal PHP unions around 8).
+ * The atom array lives on the parser stack, so the cost is bounded:
+ * 32 * sizeof(PhlTypeAtom) ≈ 1 KiB. */
+#define PHL_UNION_MAX_ALTS 32
+
+typedef struct PhlTypeAtom PhlTypeAtom;
+struct PhlTypeAtom {
+	sxu32 nType;       /* MEMOBJ_*, SXU32_HIGH (class), or UTA_* sentinel */
+	SyString sClass;   /* class name when nType == SXU32_HIGH */
+	const char *zCanon;/* canonical lowercase name for scalar/builtin atoms */
+	sxu32 nCanon;
+};
+
+/*
+ * Parse a single type atom (one alternative of a union, or a complete
+ * single type). Recognises scalar keywords, `array`, `object`, `null`,
+ * `void`, `never`, `self`, `parent`, and class names (possibly namespaced).
+ * pGen->pIn must point at the first token of the atom; on success it
+ * is advanced past the atom. The previous nullable `?` prefix must
+ * already be consumed by the caller.
+ */
+static sxi32 GenStateParseOneTypeAtom(ph7_gen_state *pGen, PhlTypeAtom *pOut)
 {
-	char *zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator, zName, nByte);
-	if( zDup ){
-		pFunc->nReturnType = SXU32_HIGH;
-		SyStringInitFromBuf(&pFunc->sReturnClass, zDup, nByte);
+	SyToken *pIn = pGen->pIn;
+	SyZero(pOut, sizeof(*pOut));
+	SyStringInitFromBuf(&pOut->sClass, 0, 0);
+	if( pIn >= pGen->pEnd ){
+		return SXERR_SYNTAX;
+	}
+	/* Optional leading namespace separator '\' on FQN class types */
+	if( pIn->nType & PH7_TK_NSSEP ){
+		pIn++;
+		if( pIn >= pGen->pEnd ){
+			return SXERR_SYNTAX;
+		}
+	}
+	if( (pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
+		return SXERR_SYNTAX;
+	}
+	if( pIn->nType & PH7_TK_KEYWORD ){
+		sxu32 nKey = (sxu32)(SX_PTR_TO_INT(pIn->pUserData));
+		if( nKey & PH7_TKWRD_ARRAY ){
+			pOut->nType = MEMOBJ_HASHMAP; pOut->zCanon = "array"; pOut->nCanon = 5;
+		}else if( nKey & PH7_TKWRD_BOOL ){
+			pOut->nType = MEMOBJ_BOOL; pOut->zCanon = "bool"; pOut->nCanon = 4;
+		}else if( nKey & PH7_TKWRD_INT ){
+			pOut->nType = MEMOBJ_INT; pOut->zCanon = "int"; pOut->nCanon = 3;
+		}else if( nKey & PH7_TKWRD_STRING ){
+			pOut->nType = MEMOBJ_STRING; pOut->zCanon = "string"; pOut->nCanon = 6;
+		}else if( nKey & PH7_TKWRD_FLOAT ){
+			pOut->nType = MEMOBJ_REAL; pOut->zCanon = "float"; pOut->nCanon = 5;
+		}else if( nKey & PH7_TKWRD_OBJECT ){
+			pOut->nType = MEMOBJ_OBJ; pOut->zCanon = "object"; pOut->nCanon = 6;
+		}else if( nKey == PH7_TKWRD_SELF || nKey == PH7_TKWRD_PARENT
+				|| nKey == PH7_TKWRD_STATIC ){
+			pOut->nType = SXU32_HIGH;
+			pOut->sClass = pIn->sData;
+		}else{
+			return SXERR_SYNTAX;
+		}
+		pIn++;
+	}else{
+		/* Identifier — `null`, `void`, `never`, or class name (possibly
+		 * namespaced as a\b\c). Match the well-known names case-insensitively. */
+		SyString *pT = &pIn->sData;
+		if( pT->nByte == 4 && SyMemcmpNoCase(pT->zString, "null", 4) == 0 ){
+			pOut->nType = UTA_NULL_FLAG; pOut->zCanon = "null"; pOut->nCanon = 4;
+			pIn++;
+		}else if( pT->nByte == 4 && SyMemcmpNoCase(pT->zString, "void", 4) == 0 ){
+			pOut->nType = UTA_VOID_FLAG; pOut->zCanon = "void"; pOut->nCanon = 4;
+			pIn++;
+		}else if( pT->nByte == 5 && SyMemcmpNoCase(pT->zString, "never", 5) == 0 ){
+			pOut->nType = UTA_NEVER_FLAG; pOut->zCanon = "never"; pOut->nCanon = 5;
+			pIn++;
+		}else{
+			/* Class / interface name; consume namespace path a\b\c */
+			SyToken *pFirst = pIn;
+			SyToken *pLast = pIn;
+			pOut->nType = SXU32_HIGH;
+			pOut->sClass = pIn->sData;
+			pIn++;
+			while( pIn + 1 < pGen->pEnd && (pIn->nType & PH7_TK_NSSEP)
+				&& (pIn[1].nType & PH7_TK_ID) ){
+				pLast = &pIn[1];
+				pIn += 2;
+			}
+			if( pLast != pFirst ){
+				const char *zFirst = pFirst->sData.zString;
+				const char *zEnd = pLast->sData.zString + pLast->sData.nByte;
+				pOut->sClass.zString = zFirst;
+				pOut->sClass.nByte = (sxu32)(zEnd - zFirst);
+			}
+		}
+	}
+	pGen->pIn = pIn;
+	return SXRET_OK;
+}
+
+/*
+ * Build the canonical PHP-formatted type text into pBlob from a list of
+ * atoms. Order matches PHP's `zend_type` rendering:
+ *   classes (in declaration order) | object | array | string | int | float | bool [| null]
+ * If exactly one non-null atom is present and bNullable is true, the
+ * shorthand `?T` form is emitted instead of `T|null`.
+ */
+static void GenBuildUnionTypeText(SyBlob *pBlob, PhlTypeAtom *aAtoms, int nAtoms, int bNullable)
+{
+	int i;
+	int nNonNull = 0;
+	for( i = 0; i < nAtoms; i++ ){
+		if( aAtoms[i].nType != UTA_NULL_FLAG ){
+			nNonNull++;
+		}
+	}
+	if( nNonNull == 1 && bNullable ){
+		/* Shorthand: ?T */
+		for( i = 0; i < nAtoms; i++ ){
+			if( aAtoms[i].nType == UTA_NULL_FLAG ) continue;
+			SyBlobAppend(pBlob, "?", 1);
+			if( aAtoms[i].nType == SXU32_HIGH ){
+				SyBlobAppend(pBlob, aAtoms[i].sClass.zString, aAtoms[i].sClass.nByte);
+			}else{
+				SyBlobAppend(pBlob, aAtoms[i].zCanon, aAtoms[i].nCanon);
+			}
+			return;
+		}
+	}
+	{
+		int bFirst = 1;
+		/* 1) Classes in declaration order */
+		for( i = 0; i < nAtoms; i++ ){
+			if( aAtoms[i].nType == SXU32_HIGH ){
+				if( !bFirst ) SyBlobAppend(pBlob, "|", 1);
+				SyBlobAppend(pBlob, aAtoms[i].sClass.zString, aAtoms[i].sClass.nByte);
+				bFirst = 0;
+			}
+		}
+		/* 2) Built-ins in canonical order */
+		{
+			static const sxu32 aOrder[] = { MEMOBJ_OBJ, MEMOBJ_HASHMAP, MEMOBJ_STRING,
+				MEMOBJ_INT, MEMOBJ_REAL, MEMOBJ_BOOL };
+			int k;
+			for( k = 0; k < (int)(sizeof(aOrder)/sizeof(aOrder[0])); k++ ){
+				for( i = 0; i < nAtoms; i++ ){
+					if( aAtoms[i].nType == aOrder[k] ){
+						if( !bFirst ) SyBlobAppend(pBlob, "|", 1);
+						SyBlobAppend(pBlob, aAtoms[i].zCanon, aAtoms[i].nCanon);
+						bFirst = 0;
+						break;
+					}
+				}
+			}
+		}
+		/* 3) null suffix */
+		if( bNullable ){
+			if( !bFirst ) SyBlobAppend(pBlob, "|", 1);
+			SyBlobAppend(pBlob, "null", 4);
+		}
 	}
 }
+
+/*
+ * Parse an entire (possibly union) type declaration starting at pGen->pIn.
+ *
+ * Outputs:
+ *   *pnType, *pClass — single-type fast path: filled when there is exactly
+ *     one non-null atom AND no union flag is set. nType is MEMOBJ_*, or
+ *     SXU32_HIGH for a class.  pClass receives the duplicated class name.
+ *   *pAlts            — populated only when this is a true union (≥2
+ *     non-null alternatives, OR ≥1 class+null union, etc). The set must
+ *     already be initialized by the caller (allocator set, etc).
+ *   *piTypeFlags      — receives PH7_CLASS_ATTR_NULLABLE / VM_FUNC_ARG_NULLABLE
+ *     (caller maps), and PH7_CLASS_ATTR_UNION / VM_FUNC_ARG_UNION when union.
+ *     The two flag values are passed in via iNullableFlag/iUnionFlag.
+ *   *pTypeText        — duplicated canonical type text for error messages.
+ *
+ * Returns SXRET_OK on success, SXERR_SYNTAX on bad type syntax, or
+ * SXERR_ABORT on fatal compile errors.
+ */
+static sxi32 GenStateParseUnionTypeDecl(
+	ph7_gen_state *pGen,
+	sxu32 *pnType,
+	SyString *pClass,
+	SySet *pAlts,
+	sxi32 *piTypeFlags,
+	SyString *pTypeText,
+	int iNullableFlag,
+	int iUnionFlag,
+	int bAllowVoid,
+	sxu32 nLine
+){
+	PhlTypeAtom aAtoms[PHL_UNION_MAX_ALTS];
+	int nAtoms = 0;
+	int bShortNullable = 0;
+	int bExplicitNull = 0;
+	sxi32 rc;
+	*pnType = 0;
+	if( pClass ) SyStringInitFromBuf(pClass, 0, 0);
+	*piTypeFlags = 0;
+	if( pTypeText ) SyStringInitFromBuf(pTypeText, 0, 0);
+
+	if( pGen->pIn >= pGen->pEnd ){
+		return SXRET_OK;
+	}
+	/* Optional `?` shorthand prefix */
+	if( (pGen->pIn->nType & PH7_TK_OP) && pGen->pIn->sData.nByte == 1
+	 && pGen->pIn->sData.zString[0] == '?' ){
+		bShortNullable = 1;
+		pGen->pIn++;
+		if( pGen->pIn >= pGen->pEnd ){
+			return SXERR_SYNTAX;
+		}
+	}
+	/* First atom is mandatory */
+	rc = GenStateParseOneTypeAtom(pGen, &aAtoms[0]);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	nAtoms = 1;
+	/* Subsequent atoms separated by `|` */
+	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OP)
+		&& pGen->pIn->sData.nByte == 1 && pGen->pIn->sData.zString[0] == '|' ){
+		if( bShortNullable ){
+			/* Match PHP's wording — `?T|X` is rejected as a parse error.
+			 * Return SXERR_CORRUPT as a sentinel meaning "syntax error
+			 * already reported" so callers skip their own error emission. */
+			rc = PH7_GenCompileError(pGen, E_PARSE, pGen->pIn->nLine,
+				"syntax error, unexpected token \"|\", expecting variable");
+			return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_CORRUPT;
+		}
+		if( nAtoms >= PHL_UNION_MAX_ALTS ){
+			rc = PH7_GenCompileError(pGen, E_ERROR, nLine,
+				"Too many alternatives in union type (limit %d)", PHL_UNION_MAX_ALTS);
+			return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_SYNTAX;
+		}
+		pGen->pIn++; /* skip `|` */
+		rc = GenStateParseOneTypeAtom(pGen, &aAtoms[nAtoms]);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		nAtoms++;
+	}
+	/* Validation pass.
+	 *
+	 * Order matters: the union-membership checks for void/never run *before*
+	 * the duplicate scan, and `void` standalone-ness is checked *before* the
+	 * `?void` check below — reordering them would let `?void` slip through.
+	 */
+	{
+		int i, j;
+		int bHasNonNull = 0;
+		for( i = 0; i < nAtoms; i++ ){
+			if( aAtoms[i].nType == UTA_VOID_FLAG ){
+				if( nAtoms > 1 ){
+					PH7_GenCompileError(pGen, E_ERROR, nLine,
+						"Void can only be used as a standalone type");
+					return SXERR_SYNTAX;
+				}
+				if( !bAllowVoid ){
+					PH7_GenCompileError(pGen, E_ERROR, nLine,
+						"void cannot be used here");
+					return SXERR_SYNTAX;
+				}
+				if( bShortNullable ){
+					PH7_GenCompileError(pGen, E_ERROR, nLine,
+						"Void type cannot be nullable");
+					return SXERR_SYNTAX;
+				}
+			}
+			if( aAtoms[i].nType == UTA_NEVER_FLAG ){
+				/* `never` is parsed but not yet implemented in the type
+				 * system. Reject it explicitly rather than silently aliasing
+				 * to `void` — the two have different semantics (never =
+				 * does not return), and folding them would mislead any
+				 * future return-enforcement work. */
+				if( nAtoms > 1 ){
+					PH7_GenCompileError(pGen, E_ERROR, nLine,
+						"never can only be used as a standalone type");
+					return SXERR_SYNTAX;
+				}
+				PH7_GenCompileError(pGen, E_ERROR, nLine,
+					"never type is not yet implemented");
+				return SXERR_SYNTAX;
+			}
+			if( aAtoms[i].nType == UTA_NULL_FLAG ){
+				bExplicitNull = 1;
+			}else{
+				bHasNonNull = 1;
+			}
+			/* Duplicate detection */
+			for( j = 0; j < i; j++ ){
+				int bDup = 0;
+				if( aAtoms[i].nType == aAtoms[j].nType ){
+					if( aAtoms[i].nType == SXU32_HIGH ){
+						if( aAtoms[i].sClass.nByte == aAtoms[j].sClass.nByte
+						 && SyMemcmpNoCase(aAtoms[i].sClass.zString,
+								aAtoms[j].sClass.zString,
+								aAtoms[i].sClass.nByte) == 0 ){
+							bDup = 1;
+						}
+					}else{
+						bDup = 1;
+					}
+				}
+				if( bDup ){
+					const char *zName;
+					sxu32 nName;
+					if( aAtoms[i].nType == SXU32_HIGH ){
+						zName = aAtoms[i].sClass.zString;
+						nName = aAtoms[i].sClass.nByte;
+					}else{
+						zName = aAtoms[i].zCanon;
+						nName = aAtoms[i].nCanon;
+					}
+					PH7_GenCompileError(pGen, E_ERROR, nLine,
+						"Duplicate type %.*s is redundant", (int)nName, zName);
+					return SXERR_SYNTAX;
+				}
+			}
+		}
+		if( !bHasNonNull && bExplicitNull ){
+			PH7_GenCompileError(pGen, E_ERROR, nLine,
+				"Null can not be used as a standalone type");
+			return SXERR_SYNTAX;
+		}
+	}
+	/* Compute nullability flag */
+	if( bShortNullable || bExplicitNull ){
+		*piTypeFlags |= iNullableFlag;
+	}
+	/* Build canonical type text */
+	if( pTypeText ){
+		SyBlob sBlob;
+		SyBlobInit(&sBlob, &pGen->pVm->sAllocator);
+		GenBuildUnionTypeText(&sBlob, aAtoms, nAtoms,
+			(bShortNullable || bExplicitNull) ? 1 : 0);
+		if( SyBlobLength(&sBlob) > 0 ){
+			char *zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+				(const char *)SyBlobData(&sBlob), SyBlobLength(&sBlob));
+			if( zDup ){
+				SyStringInitFromBuf(pTypeText, zDup, SyBlobLength(&sBlob));
+			}
+		}
+		SyBlobRelease(&sBlob);
+	}
+	/* Decide single-type vs union storage. A "union" is anything with more
+	 * than one non-null atom, OR a single class atom + null. Single scalar
+	 * + null collapses to the existing nullable single-type fast path. */
+	{
+		int nNonNull = 0;
+		int iNonNullIdx = -1;
+		int i;
+		for( i = 0; i < nAtoms; i++ ){
+			if( aAtoms[i].nType != UTA_NULL_FLAG ){
+				nNonNull++;
+				iNonNullIdx = i;
+			}
+		}
+		if( nNonNull <= 1 ){
+			/* Fast path: store as single type. */
+			if( iNonNullIdx >= 0 ){
+				PhlTypeAtom *pA = &aAtoms[iNonNullIdx];
+				if( pA->nType == SXU32_HIGH ){
+					char *zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+						pA->sClass.zString, pA->sClass.nByte);
+					if( zDup == 0 ) return SXERR_ABORT;
+					*pnType = SXU32_HIGH;
+					if( pClass ) SyStringInitFromBuf(pClass, zDup, pA->sClass.nByte);
+				}else if( pA->nType == UTA_VOID_FLAG ){
+					*pnType = MEMOBJ_VOID;
+				}else{
+					/* UTA_NEVER_FLAG never reaches here — the validation
+					 * pass above rejects it as not-yet-implemented. */
+					*pnType = pA->nType;
+				}
+			}
+		}else{
+			/* True union — populate the alts set, leave *pnType = 0. */
+			*piTypeFlags |= iUnionFlag;
+			for( i = 0; i < nAtoms; i++ ){
+				ph7_type_alt sAlt;
+				if( aAtoms[i].nType == UTA_NULL_FLAG ) continue;
+				SyZero(&sAlt, sizeof(sAlt));
+				if( aAtoms[i].nType == SXU32_HIGH ){
+					char *zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+						aAtoms[i].sClass.zString, aAtoms[i].sClass.nByte);
+					if( zDup == 0 ) return SXERR_ABORT;
+					sAlt.nType = SXU32_HIGH;
+					SyStringInitFromBuf(&sAlt.sClass, zDup, aAtoms[i].sClass.nByte);
+				}else{
+					sAlt.nType = aAtoms[i].nType;
+					SyStringInitFromBuf(&sAlt.sClass, 0, 0);
+				}
+				SySetPut(pAlts, (const void *)&sAlt);
+			}
+		}
+	}
+	return SXRET_OK;
+}
+
 /*
  * Parse a return type declaration (`: type`) after a function/method signature.
  * pGen->pIn should point to the token after `)`.
  * Sets pFunc->nReturnType and pFunc->sReturnClass.
  * Handles: `: int`, `: string`, `: bool`, `: float`, `: array`, `: void`,
- *          `: self`, `: parent`, `: static`, `: ClassName`, and nullable `: ?type`.
+ *          `: self`, `: parent`, `: static`, `: ClassName`, nullable `: ?type`,
+ *          and union types `: T|U`.
  */
-static void GenStateParseReturnType(ph7_gen_state *pGen, ph7_vm_func *pFunc)
+static sxi32 GenStateParseReturnType(ph7_gen_state *pGen, ph7_vm_func *pFunc)
 {
-	SyToken *pCur = pGen->pIn;
+	sxi32 iFlags = 0;
+	sxi32 rc;
+	sxu32 nLine;
 	pFunc->nReturnType = 0;
 	SyStringInitFromBuf(&pFunc->sReturnClass, 0, 0);
-	if( pCur >= pGen->pEnd || (pCur->nType & PH7_TK_COLON) == 0 ){
-		return; /* No return type */
+	SyStringInitFromBuf(&pFunc->sReturnTypeName, 0, 0);
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_COLON) == 0 ){
+		return SXRET_OK;
 	}
-	pCur++; /* Skip ':' */
-	if( pCur >= pGen->pEnd ){
-		pGen->pIn = pCur;
-		return;
+	pGen->pIn++; /* Skip ':' */
+	if( pGen->pIn >= pGen->pEnd ){
+		return SXRET_OK;
 	}
-	/* Handle nullable prefix '?' (tokenized as PH7_TK_OP with '?' operator) */
-	if( (pCur->nType & PH7_TK_OP) && pCur->sData.nByte == 1 && pCur->sData.zString[0] == '?' ){
-		pCur++;
-		if( pCur >= pGen->pEnd ){
-			pGen->pIn = pCur;
-			return;
-		}
+	nLine = pGen->pIn->nLine;
+	rc = GenStateParseUnionTypeDecl(
+		pGen,
+		&pFunc->nReturnType,
+		&pFunc->sReturnClass,
+		&pFunc->aReturnUnion,
+		&iFlags,
+		&pFunc->sReturnTypeName,
+		/* iNullableFlag */ 0, /* nullability for returns rides on aReturnUnion contents only */
+		/* iUnionFlag */ 0,
+		/* bAllowVoid */ 1,
+		nLine);
+	(void)iFlags;
+	if( rc == SXERR_ABORT ){
+		return SXERR_ABORT;
 	}
-	if( pCur->nType & PH7_TK_KEYWORD ){
-		sxu32 nKey = (sxu32)(SX_PTR_TO_INT(pCur->pUserData));
-		if( nKey & PH7_TKWRD_ARRAY ){
-			pFunc->nReturnType = MEMOBJ_HASHMAP;
-		}else if( nKey & PH7_TKWRD_BOOL ){
-			pFunc->nReturnType = MEMOBJ_BOOL;
-		}else if( nKey & PH7_TKWRD_INT ){
-			pFunc->nReturnType = MEMOBJ_INT;
-		}else if( nKey & PH7_TKWRD_STRING ){
-			pFunc->nReturnType = MEMOBJ_STRING;
-		}else if( nKey & PH7_TKWRD_FLOAT ){
-			pFunc->nReturnType = MEMOBJ_REAL;
-		}else if( nKey & PH7_TKWRD_OBJECT ){
-			pFunc->nReturnType = MEMOBJ_OBJ;
-		}else if( nKey == PH7_TKWRD_SELF || nKey == PH7_TKWRD_PARENT || nKey == PH7_TKWRD_STATIC ){
-			/* self/parent/static — store as class sentinel */
-			GenStateSetReturnClass(pGen, pFunc, pCur->sData.zString, pCur->sData.nByte);
-		}
-		pCur++;
-	}else if( pCur->nType & PH7_TK_ID ){
-		SyString *pType = &pCur->sData;
-		if( pType->nByte == 4 && SyMemcmpNoCase(pType->zString, "void", 4) == 0 ){
-			pFunc->nReturnType = MEMOBJ_VOID;
+	if( rc == SXERR_CORRUPT ){
+		/* Error already reported */
+		return SXERR_SYNTAX;
+	}
+	if( rc == SXERR_SYNTAX ){
+		if( pGen->pIn < pGen->pEnd ){
+			PH7_GenCompileError(pGen, E_PARSE, pGen->pIn->nLine,
+				"syntax error, unexpected token \"%z\" in return type declaration",
+				&pGen->pIn->sData);
 		}else{
-			/* Class/interface name */
-			GenStateSetReturnClass(pGen, pFunc, pType->zString, pType->nByte);
+			PH7_GenCompileError(pGen, E_PARSE, nLine,
+				"syntax error, unexpected end of file in return type declaration");
 		}
-		pCur++;
+		return SXERR_SYNTAX;
 	}
-	pGen->pIn = pCur;
+	return SXRET_OK;
 }
 
 static sxi32 GenStateCompileFunc(
@@ -5507,7 +5915,14 @@ static sxi32 GenStateCompileFunc(
 	}
 	/* Point past ')' and parse optional return type ': type' */
 	pGen->pIn = &pEnd[1];
-	GenStateParseReturnType(pGen, pFunc);
+	{
+		sxi32 rcRt = GenStateParseReturnType(pGen, pFunc);
+		if( rcRt == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}else if( rcRt == SXERR_SYNTAX ){
+			return SXERR_SYNTAX;
+		}
+	}
 	if( bHandleClosure ){
 		ph7_vm_func_closure_env sEnv;
 		int got_this = 0; /* TRUE if $this have been seen */
@@ -5884,6 +6299,17 @@ static int GenStateLooksLikeTypedProperty(SyToken *pStart,SyToken *pEnd)
 	while( p + 1 < pEnd && (p->nType & PH7_TK_NSSEP) && (p[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) ){
 		p += 2;
 	}
+	/* Consume any `| Type` union alternatives */
+	while( p < pEnd && (p->nType & PH7_TK_OP) && p->sData.nByte == 1
+		&& p->sData.zString[0] == '|' ){
+		p++;
+		if( p < pEnd && (p->nType & PH7_TK_NSSEP) ){ p++; }
+		if( p >= pEnd || (p->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ) return 0;
+		p++;
+		while( p + 1 < pEnd && (p->nType & PH7_TK_NSSEP) && (p[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) ){
+			p += 2;
+		}
+	}
 	if( p >= pEnd ) return 0;
 	return (p->nType & PH7_TK_DOLLAR) ? 1 : 0;
 }
@@ -5911,122 +6337,32 @@ static sxi32 GenStateParsePropertyType(
 	sxu32 *pnType,
 	SyString *pClass,
 	sxi32 *piTypeFlags,
-	SyString *pTypeText
+	SyString *pTypeText,
+	SySet *pAlts
 ){
-	SyToken *pIn = pGen->pIn;
-	SyToken *pTypeStart = pIn;
-	int bNullable = 0;
-	sxu32 nType = 0;
-	SyString sClassName;
-	int bHaveClass = 0;
-	SyStringInitFromBuf(&sClassName,0,0);
-	if( pIn >= pGen->pEnd ){
+	sxi32 iFlags = 0;
+	sxi32 rc;
+	if( pGen->pIn >= pGen->pEnd ){
 		return SXRET_OK;
 	}
 	/* If the first token is '$', there's no type */
-	if( pIn->nType & PH7_TK_DOLLAR ){
+	if( pGen->pIn->nType & PH7_TK_DOLLAR ){
 		return SXRET_OK;
 	}
-	/* Optional nullable prefix '?' */
-	if( (pIn->nType & PH7_TK_OP) && pIn->sData.nByte == 1 && pIn->sData.zString[0] == '?' ){
-		bNullable = 1;
-		pIn++;
-		if( pIn >= pGen->pEnd ){
-			return SXERR_SYNTAX;
-		}
+	rc = GenStateParseUnionTypeDecl(
+		pGen, pnType, pClass, pAlts, &iFlags, pTypeText,
+		PH7_CLASS_ATTR_NULLABLE,
+		PH7_CLASS_ATTR_UNION,
+		/* bAllowVoid */ 0,
+		pGen->pIn->nLine);
+	if( rc != SXRET_OK ){
+		return rc;
 	}
-	/* Skip leading namespace separator '\' */
-	if( pIn < pGen->pEnd && (pIn->nType & PH7_TK_NSSEP) ){
-		pIn++;
-	}
-	if( pIn >= pGen->pEnd || (pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
+	/* Verify next token is '$' (start of property name) */
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 ){
 		return SXERR_SYNTAX;
 	}
-	if( pIn->nType & PH7_TK_KEYWORD ){
-		sxu32 nKey = (sxu32)(SX_PTR_TO_INT(pIn->pUserData));
-		if( nKey & PH7_TKWRD_ARRAY ){
-			nType = MEMOBJ_HASHMAP;
-		}else if( nKey & PH7_TKWRD_BOOL ){
-			nType = MEMOBJ_BOOL;
-		}else if( nKey & PH7_TKWRD_INT ){
-			nType = MEMOBJ_INT;
-		}else if( nKey & PH7_TKWRD_STRING ){
-			nType = MEMOBJ_STRING;
-		}else if( nKey & PH7_TKWRD_FLOAT ){
-			nType = MEMOBJ_REAL;
-		}else if( nKey & PH7_TKWRD_OBJECT ){
-			nType = MEMOBJ_OBJ;
-		}else if( nKey == PH7_TKWRD_SELF || nKey == PH7_TKWRD_PARENT ){
-			/* self/parent — treat as class type with that literal name */
-			nType = SXU32_HIGH;
-			sClassName = pIn->sData;
-			bHaveClass = 1;
-		}else{
-			/* Unknown keyword as type — treat as syntax error for properties */
-			return SXERR_SYNTAX;
-		}
-		pIn++;
-	}else{
-		/* Class / interface name (identifier). Consume namespace path a\b\c
-		 * and grow sClassName to span the full qualified name rather than
-		 * only the first segment. */
-		SyToken *pFirst = pIn;
-		SyToken *pLast = pIn;
-		sClassName = pIn->sData;
-		nType = SXU32_HIGH;
-		bHaveClass = 1;
-		pIn++;
-		while( pIn + 1 < pGen->pEnd && (pIn->nType & PH7_TK_NSSEP) && (pIn[1].nType & PH7_TK_ID) ){
-			pLast = &pIn[1];
-			pIn += 2;
-		}
-		if( pLast != pFirst ){
-			const char *zFirst = pFirst->sData.zString;
-			const char *zEnd = pLast->sData.zString + pLast->sData.nByte;
-			sClassName.zString = zFirst;
-			sClassName.nByte = (sxu32)(zEnd - zFirst);
-		}
-	}
-	/* Verify the next token is '$' — otherwise this wasn't a property type */
-	if( pIn >= pGen->pEnd || (pIn->nType & PH7_TK_DOLLAR) == 0 ){
-		return SXERR_SYNTAX;
-	}
-	/* Commit */
-	*pnType = nType;
-	*piTypeFlags = PH7_CLASS_ATTR_TYPED;
-	if( bNullable ){
-		*piTypeFlags |= PH7_CLASS_ATTR_NULLABLE;
-	}
-	if( bHaveClass ){
-		char *zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,sClassName.zString,sClassName.nByte);
-		if( zDup == 0 ){
-			return SXERR_ABORT;
-		}
-		SyStringInitFromBuf(pClass,zDup,sClassName.nByte);
-	}
-	if( pTypeText ){
-		const char *zStart = pTypeStart->sData.zString;
-		const char *zEnd = pIn->sData.zString; /* points at '$' */
-		sxu32 nLen;
-		char *zDupTxt;
-		if( zEnd > zStart ){
-			nLen = (sxu32)(zEnd - zStart);
-			/* Strip trailing whitespace that may separate the type from '$' */
-			while( nLen > 0 && (zStart[nLen-1] == ' ' || zStart[nLen-1] == '\t'
-				|| zStart[nLen-1] == '\n' || zStart[nLen-1] == '\r') ){
-				nLen--;
-			}
-		}else{
-			nLen = pTypeStart->sData.nByte;
-		}
-		zDupTxt = SyMemBackendStrDup(&pGen->pVm->sAllocator,zStart,nLen);
-		if( zDupTxt ){
-			SyStringInitFromBuf(pTypeText,zDupTxt,nLen);
-		}else{
-			SyStringInitFromBuf(pTypeText,0,0);
-		}
-	}
-	pGen->pIn = pIn;
+	*piTypeFlags = iFlags | PH7_CLASS_ATTR_TYPED;
 	return SXRET_OK;
 }
 
@@ -6039,9 +6375,11 @@ static sxi32 GenStateCompileClassAttr(ph7_gen_state *pGen,sxi32 iProtection,sxi3
 	sxu32 nType = 0;
 	SyString sTypeClass;
 	SyString sTypeText;
+	SySet aUnionAlts;
 	sxi32 iTypeFlags = 0;
 	SyStringInitFromBuf(&sTypeClass,0,0);
 	SyStringInitFromBuf(&sTypeText,0,0);
+	SySetInit(&aUnionAlts,&pGen->pVm->sAllocator,sizeof(ph7_type_alt));
 	/* Extract visibility level */
 	iProtection = GetProtectionLevel(iProtection);
 	/* Parse optional type hint (typed properties, PHP 7.4+) */
@@ -6053,17 +6391,24 @@ static sxi32 GenStateCompileClassAttr(ph7_gen_state *pGen,sxi32 iProtection,sxi3
 		 && pTypeTok->sData.zString[0] == '?' && pTypeTok + 1 < pGen->pEnd ){
 			pTypeTok = pTypeTok + 1;
 		}
-		/* Reject disallowed property types up front: void, callable, never,
-		 * mixed, and iterable (the last is not yet implemented in PHL — we
-		 * reject explicitly rather than silently fall through to a class
-		 * name lookup that would resolve to NULL). */
+		/* Reject disallowed standalone property types up front (when there's
+		 * no `|` ahead): void, callable, never, mixed, iterable. The union
+		 * parser also rejects void/never inside unions; here we only catch
+		 * the simple single-token form so the existing single-type error
+		 * messages stay intact. */
 		if( pTypeTok->nType & PH7_TK_ID ){
 			SyString *pT = &pTypeTok->sData;
-			if( (pT->nByte == 4 && SyMemcmpNoCase(pT->zString,"void",4) == 0)
+			SyToken *pAfter = pTypeTok + 1;
+			int bSingle = (pAfter >= pGen->pEnd
+				|| (pAfter->nType & PH7_TK_DOLLAR)
+				|| !((pAfter->nType & PH7_TK_OP) && pAfter->sData.nByte == 1
+					&& pAfter->sData.zString[0] == '|'));
+			if( bSingle && (
+				 (pT->nByte == 4 && SyMemcmpNoCase(pT->zString,"void",4) == 0)
 			 || (pT->nByte == 5 && SyMemcmpNoCase(pT->zString,"never",5) == 0)
 			 || (pT->nByte == 5 && SyMemcmpNoCase(pT->zString,"mixed",5) == 0)
 			 || (pT->nByte == 8 && SyMemcmpNoCase(pT->zString,"callable",8) == 0)
-			 || (pT->nByte == 8 && SyMemcmpNoCase(pT->zString,"iterable",8) == 0) ){
+			 || (pT->nByte == 8 && SyMemcmpNoCase(pT->zString,"iterable",8) == 0)) ){
 				rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 					"Property cannot have type %z",pT);
 				if( rc == SXERR_ABORT ){
@@ -6072,8 +6417,11 @@ static sxi32 GenStateCompileClassAttr(ph7_gen_state *pGen,sxi32 iProtection,sxi3
 				goto Synchronize;
 			}
 		}
-		rc = GenStateParsePropertyType(pGen,&nType,&sTypeClass,&iTypeFlags,&sTypeText);
-		if( rc == SXERR_SYNTAX ){
+		rc = GenStateParsePropertyType(pGen,&nType,&sTypeClass,&iTypeFlags,&sTypeText,&aUnionAlts);
+		if( rc == SXERR_CORRUPT ){
+			/* Error already reported by GenStateParseUnionTypeDecl */
+			goto Synchronize;
+		}else if( rc == SXERR_SYNTAX ){
 			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 				"Invalid property type or declaration near '%z'",
 				&pGen->pIn->sData);
@@ -6126,6 +6474,18 @@ loop:
 		pAttr->nType = nType;
 		pAttr->sClass = sTypeClass;
 		pAttr->sTypeName = sTypeText;
+		if( iTypeFlags & PH7_CLASS_ATTR_UNION ){
+			/* Copy the parsed alternatives into the attribute. The class-name
+			 * SyStrings inside each ph7_type_alt point to memory owned by the
+			 * VM allocator (SyMemBackendStrDup'd in GenStateParseUnionTypeDecl),
+			 * so it's safe for multiple attrs in a multi-decl chain to share
+			 * the same backing strings — they outlive the temporary set. */
+			sxu32 i;
+			for( i = 0; i < SySetUsed(&aUnionAlts); i++ ){
+				ph7_type_alt *pSrc = (ph7_type_alt *)SySetAt(&aUnionAlts, i);
+				SySetPut(&pAttr->aUnionAlts, (const void *)pSrc);
+			}
+		}
 	}
 	if( pGen->pIn->nType & PH7_TK_EQUAL /*'='*/ ){
 		SySet *pInstrContainer;
@@ -6172,12 +6532,14 @@ loop:
 			}
 		}
 	}
+	SySetRelease(&aUnionAlts);
 	return SXRET_OK;
 Synchronize:
 	/* Synchronize with the first semi-colon */
 	while(pGen->pIn < pGen->pEnd && ((pGen->pIn->nType & PH7_TK_SEMI/*';'*/) == 0) ){
 		pGen->pIn++;
 	}
+	SySetRelease(&aUnionAlts);
 	return SXERR_CORRUPT;
 }
 /*
@@ -6285,7 +6647,14 @@ static sxi32 GenStateCompileClassMethod(
 	}
 	/* Point past ')' and parse optional return type ': type' */
 	pGen->pIn = &pEnd[1];
-	GenStateParseReturnType(pGen, &pMeth->sFunc);
+	{
+		sxi32 rcRt = GenStateParseReturnType(pGen, &pMeth->sFunc);
+		if( rcRt == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}else if( rcRt == SXERR_SYNTAX ){
+			goto Synchronize;
+		}
+	}
 	if( doBody ){
 		/* Compile method body */
 		rc = GenStateCompileFuncBody(&(*pGen),&pMeth->sFunc);

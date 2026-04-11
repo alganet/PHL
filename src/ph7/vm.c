@@ -267,6 +267,8 @@ PH7_PRIVATE sxi32 PH7_VmInitFuncState(
 	SySetAlloc(&pFunc->aByteCode,0x10);
 	/* Closure environment */
 	SySetInit(&pFunc->aClosureEnv,&pVm->sAllocator,sizeof(ph7_vm_func_closure_env));
+	/* Return-type union alternatives (empty unless declared as a union) */
+	SySetInit(&pFunc->aReturnUnion,&pVm->sAllocator,sizeof(ph7_type_alt));
 	pFunc->iFlags = iFlags;
 	pFunc->pUserData = pUserData;
 	SyStringInitFromBuf(&pFunc->sName,zName,nByte);
@@ -2679,6 +2681,159 @@ static int VmStringIsStrictNumeric(ph7_value *pValue)
 }
 
 /*
+ * Numeric-string classification used by union weak-mode coercion. Returns:
+ *   1 if the string is a strictly-numeric integer (no fraction, no exponent)
+ *   2 if it's strictly numeric with a fractional/exponent part (i.e. float)
+ *   0 if it's not strictly numeric.
+ */
+static int VmStringNumericKind(ph7_value *pValue)
+{
+	const char *z, *zEnd, *zTail;
+	sxu32 n;
+	sxu8 bReal = 0;
+	sxi32 rc;
+	if( (pValue->iFlags & MEMOBJ_STRING) == 0 ){
+		return 0;
+	}
+	z = (const char *)SyBlobData(&pValue->sBlob);
+	n = SyBlobLength(&pValue->sBlob);
+	zEnd = z + n;
+	if( n == 0 ) return 0;
+	zTail = 0;
+	rc = SyStrIsNumeric(z,n,&bReal,&zTail);
+	if( rc != SXRET_OK || zTail == 0 ) return 0;
+	while( zTail < zEnd && SyisSpace(zTail[0]) ) zTail++;
+	if( zTail != zEnd ) return 0;
+	return bReal ? 2 : 1;
+}
+
+/*
+ * Try to coerce *pValue* to fit one of the alternatives in *pAlts* using
+ * PHP 8 weak-mode union semantics. Returns SXRET_OK on accept (pValue may
+ * have been mutated by the cast), SXERR_INVALID on reject. Caller is
+ * responsible for the actual TypeError throw.
+ *
+ * The class match for object values consults the active VM self-stack to
+ * resolve `self`/`parent` aliases when present.
+ */
+static sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, int bNullable)
+{
+	sxu32 i;
+	ph7_type_alt *aAlts;
+	int bHasArray, bHasObjAlt, bHasClassAlt;
+	int bHasInt, bHasFloat, bHasString, bHasBool;
+	if( pValue->iFlags & MEMOBJ_NULL ){
+		return bNullable ? SXRET_OK : SXERR_INVALID;
+	}
+	aAlts = (ph7_type_alt *)SySetBasePtr(pAlts);
+	bHasArray = bHasObjAlt = bHasClassAlt = 0;
+	bHasInt = bHasFloat = bHasString = bHasBool = 0;
+	for( i = 0; i < SySetUsed(pAlts); i++ ){
+		if( aAlts[i].nType == SXU32_HIGH ) bHasClassAlt = 1;
+		else if( aAlts[i].nType == MEMOBJ_OBJ ) bHasObjAlt = 1;
+		else if( aAlts[i].nType == MEMOBJ_HASHMAP ) bHasArray = 1;
+		else if( aAlts[i].nType == MEMOBJ_INT ) bHasInt = 1;
+		else if( aAlts[i].nType == MEMOBJ_REAL ) bHasFloat = 1;
+		else if( aAlts[i].nType == MEMOBJ_STRING ) bHasString = 1;
+		else if( aAlts[i].nType == MEMOBJ_BOOL ) bHasBool = 1;
+	}
+	/* Object handling */
+	if( pValue->iFlags & MEMOBJ_OBJ ){
+		if( bHasObjAlt ) return SXRET_OK;
+		if( bHasClassAlt ){
+			ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
+			ph7_class *pSelfNow = 0;
+			if( SySetUsed(&pVm->aSelf) > 0 ){
+				ph7_class **apSelf = (ph7_class **)SySetBasePtr(&pVm->aSelf);
+				pSelfNow = apSelf[SySetUsed(&pVm->aSelf)-1];
+			}
+			for( i = 0; i < SySetUsed(pAlts); i++ ){
+				ph7_class *pExpected;
+				SyString *pCN;
+				if( aAlts[i].nType != SXU32_HIGH ) continue;
+				pCN = &aAlts[i].sClass;
+				if( pCN->nByte == 4 && SyMemcmp(pCN->zString,"self",4) == 0 ){
+					pExpected = pSelfNow;
+				}else if( pCN->nByte == 6 && SyMemcmp(pCN->zString,"parent",6) == 0 ){
+					pExpected = pSelfNow ? pSelfNow->pBase : 0;
+				}else{
+					pExpected = PH7_VmExtractClass(pVm,pCN->zString,pCN->nByte,TRUE,0);
+				}
+				if( pExpected && PH7_VmInstanceOf(pInst->pClass,pExpected) ){
+					return SXRET_OK;
+				}
+			}
+		}
+		return SXERR_INVALID;
+	}
+	/* Array handling */
+	if( pValue->iFlags & MEMOBJ_HASHMAP ){
+		return bHasArray ? SXRET_OK : SXERR_INVALID;
+	}
+	/* Scalar handling — exact match first */
+	if( pValue->iFlags & MEMOBJ_INT ){
+		if( bHasInt ) return SXRET_OK;
+	}
+	if( pValue->iFlags & MEMOBJ_REAL ){
+		if( bHasFloat ) return SXRET_OK;
+	}
+	if( pValue->iFlags & MEMOBJ_STRING ){
+		if( bHasString ) return SXRET_OK;
+	}
+	if( pValue->iFlags & MEMOBJ_BOOL ){
+		if( bHasBool ) return SXRET_OK;
+	}
+	/* Weak coercion preference order: int > float > string > bool.
+	 * Numeric-string handling distinguishes integer-shaped from float-shaped
+	 * to match PHP's union RFC. */
+	{
+		int kind = VmStringNumericKind(pValue);
+		if( bHasInt ){
+			/* int target accepts: bool, int (already exact), float w/o fraction,
+			 * numeric-string-int. Float→int with fraction loses info → skip. */
+			if( pValue->iFlags & MEMOBJ_BOOL ){
+				PH7_MemObjToInteger(pValue);
+				return SXRET_OK;
+			}
+			if( pValue->iFlags & MEMOBJ_REAL ){
+				ph7_real r = pValue->rVal;
+				if( r == (ph7_real)(sxi64)r ){
+					PH7_MemObjToInteger(pValue);
+					return SXRET_OK;
+				}
+			}
+			if( kind == 1 ){
+				PH7_MemObjToInteger(pValue);
+				return SXRET_OK;
+			}
+		}
+		if( bHasFloat ){
+			if( pValue->iFlags & (MEMOBJ_BOOL|MEMOBJ_INT) ){
+				PH7_MemObjToReal(pValue);
+				return SXRET_OK;
+			}
+			if( kind == 1 || kind == 2 ){
+				PH7_MemObjToReal(pValue);
+				return SXRET_OK;
+			}
+		}
+		if( bHasString ){
+			if( pValue->iFlags & (MEMOBJ_BOOL|MEMOBJ_INT|MEMOBJ_REAL) ){
+				PH7_MemObjToString(pValue);
+				return SXRET_OK;
+			}
+		}
+		if( bHasBool ){
+			if( pValue->iFlags & (MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_STRING) ){
+				PH7_MemObjToBool(pValue);
+				return SXRET_OK;
+			}
+		}
+	}
+	return SXERR_INVALID;
+}
+
+/*
  * Format the class name of an object-typed ph7_value into a small caller
  * buffer, for use in TypeError messages. Returns the buffer pointer.
  */
@@ -2703,6 +2858,21 @@ static sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pVal
 	pAttr = pVmAttr->pAttr;
 	if( pAttr == 0 || (pAttr->iFlags & PH7_CLASS_ATTR_TYPED) == 0 ){
 		return SXRET_OK;
+	}
+	/* Union type: dispatch to the shared coercion helper. */
+	if( pAttr->iFlags & PH7_CLASS_ATTR_UNION ){
+		sxi32 rc = VmCoerceToUnion(pVm, pValue, &pAttr->aUnionAlts,
+			(pAttr->iFlags & PH7_CLASS_ATTR_NULLABLE) ? 1 : 0);
+		if( rc == SXRET_OK ){
+			pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
+			return SXRET_OK;
+		}
+		if( pValue->iFlags & MEMOBJ_OBJ ){
+			char zBuf[128];
+			return VmThrowPropertyTypeError(pVm,pVmAttr,
+				VmFormatValueClassName(pValue,zBuf,sizeof(zBuf)));
+		}
+		return VmThrowPropertyTypeError(pVm,pVmAttr,ph7_type_name(pValue));
 	}
 	/* NULL handling: allowed only if the type is nullable. */
 	if( pValue->iFlags & MEMOBJ_NULL ){
@@ -4005,6 +4175,8 @@ case PH7_OP_LOAD_CLOSURE:{
 		pClosure->sSignature = pFunc->sSignature;
 		pClosure->nReturnType = pFunc->nReturnType;
 		pClosure->sReturnClass = pFunc->sReturnClass;
+		pClosure->aReturnUnion = pFunc->aReturnUnion;
+		pClosure->sReturnTypeName = pFunc->sReturnTypeName;
 		SyStringInitFromBuf(&pClosure->sName,zName,mLen);
 		/* Register the closure */
 		PH7_VmInstallUserFunction(pVm,pClosure,0);
@@ -7079,6 +7251,45 @@ case PH7_OP_CALL: {
 					{
 						ph7_hashmap *pMap = (ph7_hashmap *)pObj->x.pOther;
 						while( pArg < pTos ){
+							/* Variadic union type: per-element coercion via the shared helper.
+							 *
+							 * TODO: PHP reports the runtime element index here
+							 * ("Argument #3 must be...") but we report the formal-arg
+							 * index (always n+1, the position of the variadic). The
+							 * non-union variadic path below has the same limitation;
+							 * fixing both wants a separate counter for elements
+							 * already packed into the variadic array. */
+							if( aFormalArg[n].iFlags & VM_FUNC_ARG_UNION ){
+								sxi32 rcU = VmCoerceToUnion(pVm, pArg, &aFormalArg[n].aUnionAlts,
+									(aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) ? 1 : 0);
+								if( rcU != SXRET_OK ){
+									const char *zGiven;
+									char zBuf[128];
+									if( pArg->iFlags & MEMOBJ_OBJ ){
+										zGiven = VmFormatValueClassName(pArg,zBuf,sizeof(zBuf));
+									}else if( pArg->iFlags & MEMOBJ_NULL ){
+										zGiven = "null";
+									}else{
+										zGiven = ph7_type_name(pArg);
+									}
+									rc = VmThrowTypeErrorForArg(&(*pVm),&pVmFunc->sName,n+1,
+										&aFormalArg[n].sName,
+										SyStringLength(&aFormalArg[n].sTypeName) > 0
+											? aFormalArg[n].sTypeName.zString : "union",
+										zGiven);
+									if( rc == PH7_ABORT ){
+										goto Abort;
+									}
+									PH7_MemObjRelease(pTos);
+									pTos = &pTos[-nCallArgs];
+									pFrameStack = 0;
+									rc = PH7_EXCEPTION;
+									goto SkipFuncBody;
+								}
+								PH7_HashmapInsert(pMap, 0, pArg);
+								pArg++;
+								continue;
+							}
 							/* Apply type coercion to each element if the variadic has a type hint.
 							 * Nullable types (?type) allow null through without coercion. */
 							if( aFormalArg[n].nType > 0 && aFormalArg[n].nType != SXU32_HIGH
@@ -7123,6 +7334,35 @@ case PH7_OP_CALL: {
 						goto Abort;
 					}
 				}
+				/* Union type: dispatch to the shared coercion helper. */
+				if( aFormalArg[n].iFlags & VM_FUNC_ARG_UNION ){
+					sxi32 rcU = VmCoerceToUnion(pVm, pArg, &aFormalArg[n].aUnionAlts,
+						(aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) ? 1 : 0);
+					if( rcU != SXRET_OK ){
+						const char *zGiven;
+						char zBuf[128];
+						if( pArg->iFlags & MEMOBJ_OBJ ){
+							zGiven = VmFormatValueClassName(pArg,zBuf,sizeof(zBuf));
+						}else if( pArg->iFlags & MEMOBJ_NULL ){
+							zGiven = "null";
+						}else{
+							zGiven = ph7_type_name(pArg);
+						}
+						rc = VmThrowTypeErrorForArg(&(*pVm),&pVmFunc->sName,n+1,
+							&aFormalArg[n].sName,
+							SyStringLength(&aFormalArg[n].sTypeName) > 0
+								? aFormalArg[n].sTypeName.zString : "union",
+							zGiven);
+						if( rc == PH7_ABORT ){
+							goto Abort;
+						}
+						PH7_MemObjRelease(pTos);
+						pTos = &pTos[-nCallArgs];
+						pFrameStack = 0;
+						rc = PH7_EXCEPTION;
+						goto SkipFuncBody;
+					}
+				}else
 				/* Make sure the given arguments are of the correct type.
 				 * Nullable types (?type) allow null through without coercion. */
 				if( aFormalArg[n].nType > 0
