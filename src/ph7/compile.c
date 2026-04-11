@@ -5846,15 +5846,253 @@ Synchronize:
  *   Refer to the official documentation for more information on the powerful extension
  *   introduced by the PH7 engine to the OO subsystem.
  */
+/*
+ * Lookahead: return TRUE if the tokens starting at pStart look like a typed
+ * property declaration — i.e. an optional '?', optional '\', one or more
+ * ID/keyword tokens (possibly separated by '\' for namespace paths), followed
+ * by a '$'. This is used by the class-body dispatcher to decide whether to
+ * route into the typed-attribute path vs. fall through to method/const/etc.
+ */
+static int GenStateLooksLikeTypedProperty(SyToken *pStart,SyToken *pEnd)
+{
+	SyToken *p = pStart;
+	if( p >= pEnd ) return 0;
+	if( (p->nType & PH7_TK_OP) && p->sData.nByte == 1 && p->sData.zString[0] == '?' ){
+		p++;
+		if( p >= pEnd ) return 0;
+	}
+	if( p->nType & PH7_TK_NSSEP ){
+		p++;
+		if( p >= pEnd ) return 0;
+	}
+	if( (p->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
+		return 0;
+	}
+	/* Reject class-body modifier keywords that aren't types. Visibility
+	 * (public/private/protected) has already been consumed by the caller,
+	 * but static/final/abstract may still appear here for the initial
+	 * dispatch site. */
+	if( p->nType & PH7_TK_KEYWORD ){
+		sxu32 k = (sxu32)(SX_PTR_TO_INT(p->pUserData));
+		if( k == PH7_TKWRD_FUNCTION || k == PH7_TKWRD_VAR || k == PH7_TKWRD_CONST
+		 || k == PH7_TKWRD_STATIC || k == PH7_TKWRD_FINAL || k == PH7_TKWRD_ABSTRACT ){
+			return 0;
+		}
+	}
+	p++;
+	/* Consume optional namespace path */
+	while( p + 1 < pEnd && (p->nType & PH7_TK_NSSEP) && (p[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) ){
+		p += 2;
+	}
+	if( p >= pEnd ) return 0;
+	return (p->nType & PH7_TK_DOLLAR) ? 1 : 0;
+}
+
+/*
+ * Parse an optional property type hint starting at pGen->pIn. On return,
+ * pGen->pIn points at the '$' token if a type was present (or is unchanged
+ * if not). Recognized forms:
+ *   ?Type, array, bool, int, float, string, object,
+ *   self, parent, \Ns\ClassName, ClassName
+ * The 'iterable' pseudo-type is not yet supported and is rejected earlier
+ * by GenStateCompileClassAttr along with void/never/mixed/callable.
+ * Returns SXRET_OK on successful parse (type or no type), SXERR_SYNTAX
+ * on unrecoverable error.
+ *
+ * When a type is parsed:
+ *   *pnType is set to MEMOBJ_* (or SXU32_HIGH for class types)
+ *   *pClass is set to the class name (for class types)
+ *   *piTypeFlags receives PH7_CLASS_ATTR_TYPED and optionally NULLABLE
+ *   *pTypeText is set to the original text span of the type
+ * Otherwise they are left unchanged (so multi-decl reuse works).
+ */
+static sxi32 GenStateParsePropertyType(
+	ph7_gen_state *pGen,
+	sxu32 *pnType,
+	SyString *pClass,
+	sxi32 *piTypeFlags,
+	SyString *pTypeText
+){
+	SyToken *pIn = pGen->pIn;
+	SyToken *pTypeStart = pIn;
+	int bNullable = 0;
+	sxu32 nType = 0;
+	SyString sClassName;
+	int bHaveClass = 0;
+	SyStringInitFromBuf(&sClassName,0,0);
+	if( pIn >= pGen->pEnd ){
+		return SXRET_OK;
+	}
+	/* If the first token is '$', there's no type */
+	if( pIn->nType & PH7_TK_DOLLAR ){
+		return SXRET_OK;
+	}
+	/* Optional nullable prefix '?' */
+	if( (pIn->nType & PH7_TK_OP) && pIn->sData.nByte == 1 && pIn->sData.zString[0] == '?' ){
+		bNullable = 1;
+		pIn++;
+		if( pIn >= pGen->pEnd ){
+			return SXERR_SYNTAX;
+		}
+	}
+	/* Skip leading namespace separator '\' */
+	if( pIn < pGen->pEnd && (pIn->nType & PH7_TK_NSSEP) ){
+		pIn++;
+	}
+	if( pIn >= pGen->pEnd || (pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
+		return SXERR_SYNTAX;
+	}
+	if( pIn->nType & PH7_TK_KEYWORD ){
+		sxu32 nKey = (sxu32)(SX_PTR_TO_INT(pIn->pUserData));
+		if( nKey & PH7_TKWRD_ARRAY ){
+			nType = MEMOBJ_HASHMAP;
+		}else if( nKey & PH7_TKWRD_BOOL ){
+			nType = MEMOBJ_BOOL;
+		}else if( nKey & PH7_TKWRD_INT ){
+			nType = MEMOBJ_INT;
+		}else if( nKey & PH7_TKWRD_STRING ){
+			nType = MEMOBJ_STRING;
+		}else if( nKey & PH7_TKWRD_FLOAT ){
+			nType = MEMOBJ_REAL;
+		}else if( nKey & PH7_TKWRD_OBJECT ){
+			nType = MEMOBJ_OBJ;
+		}else if( nKey == PH7_TKWRD_SELF || nKey == PH7_TKWRD_PARENT ){
+			/* self/parent — treat as class type with that literal name */
+			nType = SXU32_HIGH;
+			sClassName = pIn->sData;
+			bHaveClass = 1;
+		}else{
+			/* Unknown keyword as type — treat as syntax error for properties */
+			return SXERR_SYNTAX;
+		}
+		pIn++;
+	}else{
+		/* Class / interface name (identifier). Consume namespace path a\b\c
+		 * and grow sClassName to span the full qualified name rather than
+		 * only the first segment. */
+		SyToken *pFirst = pIn;
+		SyToken *pLast = pIn;
+		sClassName = pIn->sData;
+		nType = SXU32_HIGH;
+		bHaveClass = 1;
+		pIn++;
+		while( pIn + 1 < pGen->pEnd && (pIn->nType & PH7_TK_NSSEP) && (pIn[1].nType & PH7_TK_ID) ){
+			pLast = &pIn[1];
+			pIn += 2;
+		}
+		if( pLast != pFirst ){
+			const char *zFirst = pFirst->sData.zString;
+			const char *zEnd = pLast->sData.zString + pLast->sData.nByte;
+			sClassName.zString = zFirst;
+			sClassName.nByte = (sxu32)(zEnd - zFirst);
+		}
+	}
+	/* Verify the next token is '$' — otherwise this wasn't a property type */
+	if( pIn >= pGen->pEnd || (pIn->nType & PH7_TK_DOLLAR) == 0 ){
+		return SXERR_SYNTAX;
+	}
+	/* Commit */
+	*pnType = nType;
+	*piTypeFlags = PH7_CLASS_ATTR_TYPED;
+	if( bNullable ){
+		*piTypeFlags |= PH7_CLASS_ATTR_NULLABLE;
+	}
+	if( bHaveClass ){
+		char *zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,sClassName.zString,sClassName.nByte);
+		if( zDup == 0 ){
+			return SXERR_ABORT;
+		}
+		SyStringInitFromBuf(pClass,zDup,sClassName.nByte);
+	}
+	if( pTypeText ){
+		const char *zStart = pTypeStart->sData.zString;
+		const char *zEnd = pIn->sData.zString; /* points at '$' */
+		sxu32 nLen;
+		char *zDupTxt;
+		if( zEnd > zStart ){
+			nLen = (sxu32)(zEnd - zStart);
+			/* Strip trailing whitespace that may separate the type from '$' */
+			while( nLen > 0 && (zStart[nLen-1] == ' ' || zStart[nLen-1] == '\t'
+				|| zStart[nLen-1] == '\n' || zStart[nLen-1] == '\r') ){
+				nLen--;
+			}
+		}else{
+			nLen = pTypeStart->sData.nByte;
+		}
+		zDupTxt = SyMemBackendStrDup(&pGen->pVm->sAllocator,zStart,nLen);
+		if( zDupTxt ){
+			SyStringInitFromBuf(pTypeText,zDupTxt,nLen);
+		}else{
+			SyStringInitFromBuf(pTypeText,0,0);
+		}
+	}
+	pGen->pIn = pIn;
+	return SXRET_OK;
+}
+
 static sxi32 GenStateCompileClassAttr(ph7_gen_state *pGen,sxi32 iProtection,sxi32 iFlags,ph7_class *pClass)
 {
 	sxu32 nLine = pGen->pIn->nLine;
 	ph7_class_attr *pAttr;
 	SyString *pName;
 	sxi32 rc;
+	sxu32 nType = 0;
+	SyString sTypeClass;
+	SyString sTypeText;
+	sxi32 iTypeFlags = 0;
+	SyStringInitFromBuf(&sTypeClass,0,0);
+	SyStringInitFromBuf(&sTypeText,0,0);
 	/* Extract visibility level */
 	iProtection = GetProtectionLevel(iProtection);
+	/* Parse optional type hint (typed properties, PHP 7.4+) */
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 ){
+		SyToken *pTypeTok = pGen->pIn;
+		/* A leading '?' is part of the type, look past it when sniffing the
+		 * type keyword for the disallowed list. */
+		if( (pTypeTok->nType & PH7_TK_OP) && pTypeTok->sData.nByte == 1
+		 && pTypeTok->sData.zString[0] == '?' && pTypeTok + 1 < pGen->pEnd ){
+			pTypeTok = pTypeTok + 1;
+		}
+		/* Reject disallowed property types up front: void, callable, never,
+		 * mixed, and iterable (the last is not yet implemented in PHL — we
+		 * reject explicitly rather than silently fall through to a class
+		 * name lookup that would resolve to NULL). */
+		if( pTypeTok->nType & PH7_TK_ID ){
+			SyString *pT = &pTypeTok->sData;
+			if( (pT->nByte == 4 && SyMemcmpNoCase(pT->zString,"void",4) == 0)
+			 || (pT->nByte == 5 && SyMemcmpNoCase(pT->zString,"never",5) == 0)
+			 || (pT->nByte == 5 && SyMemcmpNoCase(pT->zString,"mixed",5) == 0)
+			 || (pT->nByte == 8 && SyMemcmpNoCase(pT->zString,"callable",8) == 0)
+			 || (pT->nByte == 8 && SyMemcmpNoCase(pT->zString,"iterable",8) == 0) ){
+				rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+					"Property cannot have type %z",pT);
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				goto Synchronize;
+			}
+		}
+		rc = GenStateParsePropertyType(pGen,&nType,&sTypeClass,&iTypeFlags,&sTypeText);
+		if( rc == SXERR_SYNTAX ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+				"Invalid property type or declaration near '%z'",
+				&pGen->pIn->sData);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			goto Synchronize;
+		}else if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+	}
 loop:
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected '$' at start of property name");
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		goto Synchronize;
+	}
 	pGen->pIn++; /* Jump the dollar sign */
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_ID)) == 0 ){
 		/* Invalid attribute name */
@@ -5879,10 +6117,15 @@ loop:
 		goto Synchronize;
 	}
 	/* Allocate a new class attribute */
-	pAttr = PH7_NewClassAttr(pGen->pVm,pName,nLine,iProtection,iFlags);
+	pAttr = PH7_NewClassAttr(pGen->pVm,pName,nLine,iProtection,iFlags|iTypeFlags);
 	if( pAttr == 0 ){
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 engine is running out of memory");
 		return SXERR_ABORT;
+	}
+	if( iTypeFlags & PH7_CLASS_ATTR_TYPED ){
+		pAttr->nType = nType;
+		pAttr->sClass = sTypeClass;
+		pAttr->sTypeName = sTypeText;
 	}
 	if( pGen->pIn->nType & PH7_TK_EQUAL /*'='*/ ){
 		SySet *pInstrContainer;
@@ -6864,7 +7107,8 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 			if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
 				iProtection = nKwrd;
 				pGen->pIn++; /* Jump the visibility token */
-				if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR)) == 0 ){
+				if( pGen->pIn >= pGen->pEnd
+					|| (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR|PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP)) == 0 ){
 					rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 						"Unexpected token '%z'. Expecting attribute declaration inside class '%z'",
 						&pGen->pIn->sData,pName);
@@ -6875,7 +7119,18 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 					goto done;
 				}
 				if( pGen->pIn->nType & PH7_TK_DOLLAR ){
-					/* Attribute declaration */
+					/* Attribute declaration (untyped) */
+					rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
+					if( rc != SXRET_OK ){
+						if( rc == SXERR_ABORT ){
+							return SXERR_ABORT;
+						}
+						goto done;
+					}
+					continue;
+				}
+				if( GenStateLooksLikeTypedProperty(pGen->pIn,pGen->pEnd) ){
+					/* Typed attribute declaration (PHP 7.4+) */
 					rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
 					if( rc != SXRET_OK ){
 						if( rc == SXERR_ABORT ){
@@ -6910,7 +7165,8 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 							pGen->pIn++; /* Jump the visibility token */
 						}
 					}
-					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR)) == 0 ){
+					if( pGen->pIn >= pGen->pEnd
+						|| (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR|PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP)) == 0 ){
 						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 							"Unexpected token '%z',Expecting method,attribute or constant declaration inside class '%z'",
 							&pGen->pIn->sData,pName);
@@ -6922,6 +7178,17 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 					}
 					if( pGen->pIn->nType & PH7_TK_DOLLAR ){
 						/* Attribute declaration */
+						rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
+						if( rc != SXRET_OK ){
+							if( rc == SXERR_ABORT ){
+								return SXERR_ABORT;
+							}
+							goto done;
+						}
+						continue;
+					}
+					if( GenStateLooksLikeTypedProperty(pGen->pIn,pGen->pEnd) ){
+						/* Typed static attribute declaration */
 						rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
 						if( rc != SXRET_OK ){
 							if( rc == SXERR_ABORT ){
@@ -7476,7 +7743,8 @@ static sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 			if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
 				iProtection = nKwrd;
 				pGen->pIn++;
-				if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR)) == 0 ){
+				if( pGen->pIn >= pGen->pEnd
+					|| (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR|PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP)) == 0 ){
 					rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 						"Unexpected token '%z'. Expecting attribute declaration inside trait '%z'",
 						&pGen->pIn->sData,pName);
@@ -7486,6 +7754,16 @@ static sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 					goto done;
 				}
 				if( pGen->pIn->nType & PH7_TK_DOLLAR ){
+					rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
+					if( rc != SXRET_OK ){
+						if( rc == SXERR_ABORT ){
+							return SXERR_ABORT;
+						}
+						goto done;
+					}
+					continue;
+				}
+				if( GenStateLooksLikeTypedProperty(pGen->pIn,pGen->pEnd) ){
 					rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
 					if( rc != SXRET_OK ){
 						if( rc == SXERR_ABORT ){
@@ -7515,7 +7793,8 @@ static sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 							pGen->pIn++;
 						}
 					}
-					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR)) == 0 ){
+					if( pGen->pIn >= pGen->pEnd
+						|| (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR|PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP)) == 0 ){
 						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 							"Unexpected token '%z',Expecting method or attribute declaration inside trait '%z'",
 							&pGen->pIn->sData,pName);
@@ -7525,6 +7804,16 @@ static sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 						goto done;
 					}
 					if( pGen->pIn->nType & PH7_TK_DOLLAR ){
+						rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
+						if( rc != SXRET_OK ){
+							if( rc == SXERR_ABORT ){
+								return SXERR_ABORT;
+							}
+							goto done;
+						}
+						continue;
+					}
+					if( GenStateLooksLikeTypedProperty(pGen->pIn,pGen->pEnd) ){
 						rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
 						if( rc != SXRET_OK ){
 							if( rc == SXERR_ABORT ){
