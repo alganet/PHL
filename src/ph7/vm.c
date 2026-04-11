@@ -717,6 +717,29 @@ PH7_PRIVATE sxi32 VmMountUserClass(
 			pAttr->nIdx = pMemObj->nIdx;
 			/* Install static attribute in the reference table */
 			PH7_VmRefObjInstall(&(*pVm),pMemObj->nIdx,0,0,VM_REF_IDX_KEEP);
+			/* If this is a typed static property, register the slot so the
+			 * STORE path can enforce the declared type. We allocate a tiny
+			 * VmClassAttr to uniformize with instance properties; the key
+			 * points at its own nIdx field (stable for the VM lifetime). */
+			if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
+				VmClassAttr *pVmAttrS = (VmClassAttr *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(VmClassAttr));
+				if( pVmAttrS == 0 ){
+					return SXERR_MEM;
+				}
+				pVmAttrS->pAttr = pAttr;
+				pVmAttrS->nIdx = pMemObj->nIdx;
+				pVmAttrS->iState = 0;
+				pVmAttrS->pOwner = pClass;
+				/* Static typed property with no default starts uninitialized */
+				if( SySetUsed(&pAttr->aByteCode) == 0
+				 && (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){
+					pVmAttrS->iState |= VM_CLASS_ATTR_UNINIT;
+				}
+				if( SyHashInsert(&pVm->hTypedSlot,(const void *)&pVmAttrS->nIdx,sizeof(sxu32),pVmAttrS) != SXRET_OK ){
+					SyMemBackendPoolFree(&pVm->sAllocator,pVmAttrS);
+					return SXERR_MEM;
+				}
+			}
 		}
 	}
 	/* Install class methods */
@@ -783,9 +806,15 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 				return SXERR_MEM;
 			}
 			pVmAttr->nIdx = pMemObj->nIdx;
+			pVmAttr->iState = 0;
+			pVmAttr->pOwner = pClass;
 			if( SySetUsed(&pAttr->aByteCode) > 0 ){
 				/* Initialize attribute default value (any complex expression) */
 				VmLocalExec(&(*pVm),&pAttr->aByteCode,pMemObj);
+			}else if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
+				/* Typed property without a default: mark uninitialized. Reading
+				 * it before the first write is an Error in PHP 7.4+. */
+				pVmAttr->iState |= VM_CLASS_ATTR_UNINIT;
 			}
 			rc = SyHashInsert(&pObj->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),pVmAttr);
 			if( rc != SXRET_OK ){
@@ -799,9 +828,26 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 			}
 			/* Install attribute in the reference table */
 			PH7_VmRefObjInstall(&(*pVm),pMemObj->nIdx,0,0,VM_REF_IDX_KEEP);
+			/* Register typed property slot for assignment-time enforcement.
+			 * On failure roll back the just-installed hAttr entry and the
+			 * reserved memobj so the caller sees a consistent instance. */
+			if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
+				rc = SyHashInsert(&pVm->hTypedSlot,(const void *)&pVmAttr->nIdx,sizeof(sxu32),pVmAttr);
+				if( rc != SXRET_OK ){
+					VmSlot sSlot;
+					SyHashDeleteEntry(&pObj->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),0);
+					sSlot.nIdx = pMemObj->nIdx;
+					sSlot.pUserData = 0;
+					SySetPut(&pVm->aFreeObj,(const void *)&sSlot);
+					SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
+					return SXERR_MEM;
+				}
+			}
 		}else{
 			/* Install static/constant attribute */
 			pVmAttr->nIdx = pAttr->nIdx;
+			pVmAttr->iState = 0;
+			pVmAttr->pOwner = pClass;
 			rc = SyHashInsert(&pObj->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),pVmAttr);
 			if( rc != SXRET_OK ){
 				SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
@@ -1313,6 +1359,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SySetInit(&pVm->aShutdown,&pVm->sAllocator,sizeof(VmShutdownCB));
 	SySetInit(&pVm->aAutoload,&pVm->sAllocator,sizeof(VmAutoloadCB));
 	SyHashInit(&pVm->hAutoloadActive,&pVm->sAllocator,0,0);
+	SyHashInit(&pVm->hTypedSlot,&pVm->sAllocator,0,0);
 	SySetInit(&pVm->aException,&pVm->sAllocator,sizeof(ph7_exception *));
 	pVm->pPendingException = 0;
 	/* Configuration containers */
@@ -2479,6 +2526,266 @@ static sxi32 VmThrowErrorAp(
 	return rc;
 }
 /*
+ * Throw a PHP-compatible TypeError whose message describes a failed typed
+ * property assignment. Called from the STORE path when coercion is not
+ * possible.
+ */
+static sxi32 VmThrowPropertyTypeError(ph7_vm *pVm,VmClassAttr *pVmAttr,const char *zGiven)
+{
+	ph7_class *pClass;
+	ph7_class_attr *pAttr = pVmAttr->pAttr;
+	ph7_class_instance *pThis;
+	ph7_class_method *pCons;
+	ph7_value sArg;
+	ph7_value *apArg[1];
+	SyBlob sMsg;
+	SyString sMsgStr;
+	VmFrame *pFrame;
+	sxi32 rc;
+	pClass = PH7_VmExtractClass(&(*pVm),"TypeError",sizeof("TypeError")-1,TRUE,0);
+	if( pClass == 0 ){
+		return PH7_ABORT;
+	}
+	pThis = PH7_NewClassInstance(&(*pVm),pClass);
+	if( pThis == 0 ){
+		return PH7_ABORT;
+	}
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	/* Prefer the declaring class over the runtime instance class so that an
+	 * inherited typed property reports its original owner, matching PHP. */
+	{
+		ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pVmAttr->pOwner;
+		if( pOwner ){
+			SyBlobFormat(&sMsg,"Cannot assign %s to property %z::$%z of type %z",
+				zGiven,&pOwner->sName,&pAttr->sName,&pAttr->sTypeName);
+		}else{
+			SyBlobFormat(&sMsg,"Cannot assign %s to property $%z of type %z",
+				zGiven,&pAttr->sName,&pAttr->sTypeName);
+		}
+	}
+	pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);
+	if( pCons ){
+		SyStringInitFromBuf(&sMsgStr,(const char *)SyBlobData(&sMsg),SyBlobLength(&sMsg));
+		PH7_MemObjInitFromString(&(*pVm),&sArg,&sMsgStr);
+		apArg[0] = &sArg;
+		PH7_VmCallClassMethod(&(*pVm),pThis,pCons,0,1,apArg);
+		PH7_MemObjRelease(&sArg);
+	}
+	SyBlobRelease(&sMsg);
+	pFrame = pVm->pFrame;
+	if( pFrame ){
+		pFrame = VmSkipExceptionFrames(pFrame);
+		pFrame->iFlags |= VM_FRAME_THROW;
+	}
+	rc = VmThrowException(&(*pVm),pThis);
+	PH7_ClassInstanceUnref(pThis);
+	if( rc == SXERR_ABORT ){
+		return PH7_ABORT;
+	}
+	return PH7_EXCEPTION;
+}
+
+/*
+ * Throw a PHP-compatible Error for reading an uninitialized typed property.
+ */
+static sxi32 VmThrowUninitializedPropertyError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr)
+{
+	ph7_class *pErrClass;
+	ph7_class_instance *pThis;
+	ph7_class_method *pCons;
+	ph7_value sArg;
+	ph7_value *apArg[1];
+	SyBlob sMsg;
+	SyString sMsgStr;
+	VmFrame *pFrame;
+	sxi32 rc;
+	pErrClass = PH7_VmExtractClass(&(*pVm),"Error",sizeof("Error")-1,TRUE,0);
+	if( pErrClass == 0 ){
+		return PH7_ABORT;
+	}
+	pThis = PH7_NewClassInstance(&(*pVm),pErrClass);
+	if( pThis == 0 ){
+		return PH7_ABORT;
+	}
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	{
+		ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+		const char *zKind = (pAttr->iFlags & PH7_CLASS_ATTR_STATIC) ? "static property" : "property";
+		SyBlobFormat(&sMsg,"Typed %s %z::$%z must not be accessed before initialization",
+			zKind,&pOwner->sName,&pAttr->sName);
+	}
+	pCons = PH7_ClassExtractMethod(pErrClass,"__construct",sizeof("__construct")-1);
+	if( pCons ){
+		SyStringInitFromBuf(&sMsgStr,(const char *)SyBlobData(&sMsg),SyBlobLength(&sMsg));
+		PH7_MemObjInitFromString(&(*pVm),&sArg,&sMsgStr);
+		apArg[0] = &sArg;
+		PH7_VmCallClassMethod(&(*pVm),pThis,pCons,0,1,apArg);
+		PH7_MemObjRelease(&sArg);
+	}
+	SyBlobRelease(&sMsg);
+	pFrame = pVm->pFrame;
+	if( pFrame ){
+		pFrame = VmSkipExceptionFrames(pFrame);
+		pFrame->iFlags |= VM_FRAME_THROW;
+	}
+	rc = VmThrowException(&(*pVm),pThis);
+	PH7_ClassInstanceUnref(pThis);
+	if( rc == SXERR_ABORT ){
+		return PH7_ABORT;
+	}
+	return PH7_EXCEPTION;
+}
+
+/*
+ * Enforce a typed-property assignment. On entry pValue holds the incoming
+ * value. For scalar types it may be coerced in place (PHP 7.4 weak mode).
+ * For class types, instanceof is verified.
+ *
+ * Returns SXRET_OK on success (value may have been coerced), PH7_EXCEPTION
+ * after throwing TypeError, or PH7_ABORT on fatal error.
+ */
+/*
+ * PHP-strict numeric-string check used by typed-property enforcement.
+ * Returns TRUE only if the entire string (optionally surrounded by
+ * whitespace, with optional sign) is a valid numeric literal. Unlike the
+ * permissive is_numeric() implementation which accepts leading-numeric
+ * strings like "43x", this mirrors PHP's rules for coercing to int/float.
+ */
+static int VmStringIsStrictNumeric(ph7_value *pValue)
+{
+	const char *z, *zEnd, *zTail;
+	sxu32 n;
+	sxu8 bReal;
+	sxi32 rc;
+	if( (pValue->iFlags & MEMOBJ_STRING) == 0 ){
+		return 0;
+	}
+	z = (const char *)SyBlobData(&pValue->sBlob);
+	n = SyBlobLength(&pValue->sBlob);
+	zEnd = z + n;
+	if( n == 0 ){
+		return 0;
+	}
+	zTail = 0;
+	rc = SyStrIsNumeric(z,n,&bReal,&zTail);
+	if( rc != SXRET_OK || zTail == 0 ){
+		return 0;
+	}
+	/* Trailing whitespace is allowed by PHP, trailing anything else is not. */
+	while( zTail < zEnd && SyisSpace(zTail[0]) ){
+		zTail++;
+	}
+	return zTail == zEnd ? 1 : 0;
+}
+
+/*
+ * Format the class name of an object-typed ph7_value into a small caller
+ * buffer, for use in TypeError messages. Returns the buffer pointer.
+ */
+static const char *VmFormatValueClassName(ph7_value *pValue,char *zBuf,sxu32 nBuf)
+{
+	ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
+	SyBufferFormat(zBuf,nBuf,"%.*s",
+		(int)pInst->pClass->sName.nByte,pInst->pClass->sName.zString);
+	return zBuf;
+}
+
+static sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValue)
+{
+	SyHashEntry *pSlot;
+	VmClassAttr *pVmAttr;
+	ph7_class_attr *pAttr;
+	pSlot = SyHashGet(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32));
+	if( pSlot == 0 ){
+		return SXRET_OK; /* Not a typed slot */
+	}
+	pVmAttr = (VmClassAttr *)pSlot->pUserData;
+	pAttr = pVmAttr->pAttr;
+	if( pAttr == 0 || (pAttr->iFlags & PH7_CLASS_ATTR_TYPED) == 0 ){
+		return SXRET_OK;
+	}
+	/* NULL handling: allowed only if the type is nullable. */
+	if( pValue->iFlags & MEMOBJ_NULL ){
+		if( pAttr->iFlags & PH7_CLASS_ATTR_NULLABLE ){
+			pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
+			return SXRET_OK;
+		}
+		return VmThrowPropertyTypeError(pVm,pVmAttr,"null");
+	}
+	/* Bare 'object' type hint: accept any class instance, reject non-objects.
+	 * Must be checked before the generic scalar branch since MEMOBJ_OBJ is
+	 * otherwise treated as "scalar, not array" and would be rejected. */
+	if( pAttr->nType == MEMOBJ_OBJ ){
+		if( pValue->iFlags & MEMOBJ_OBJ ){
+			pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
+			return SXRET_OK;
+		}
+		return VmThrowPropertyTypeError(pVm,pVmAttr,ph7_type_name(pValue));
+	}
+	if( pAttr->nType == SXU32_HIGH ){
+		/* Class / interface type. Resolve self/parent relative to the class
+		 * currently active on the self-stack. */
+		ph7_class *pExpected = 0;
+		SyString *pClassName = &pAttr->sClass;
+		ph7_class *pSelfNow = 0;
+		if( SySetUsed(&pVm->aSelf) > 0 ){
+			ph7_class **apSelf = (ph7_class **)SySetBasePtr(&pVm->aSelf);
+			pSelfNow = apSelf[SySetUsed(&pVm->aSelf)-1];
+		}
+		if( pClassName->nByte == 4 && SyMemcmp(pClassName->zString,"self",4) == 0 ){
+			pExpected = pSelfNow;
+		}else if( pClassName->nByte == 6 && SyMemcmp(pClassName->zString,"parent",6) == 0 ){
+			pExpected = pSelfNow ? pSelfNow->pBase : 0;
+		}else{
+			pExpected = PH7_VmExtractClass(&(*pVm),pClassName->zString,pClassName->nByte,TRUE,0);
+		}
+		if( (pValue->iFlags & MEMOBJ_OBJ) == 0 ){
+			return VmThrowPropertyTypeError(pVm,pVmAttr,ph7_type_name(pValue));
+		}
+		if( pExpected ){
+			ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
+			if( !PH7_VmInstanceOf(pInst->pClass,pExpected) ){
+				char zBuf[128];
+				return VmThrowPropertyTypeError(pVm,pVmAttr,
+					VmFormatValueClassName(pValue,zBuf,sizeof(zBuf)));
+			}
+		}
+		pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
+		return SXRET_OK;
+	}
+	/* Scalar type. PHP 7.4 weak mode: attempt coercion using the same cast
+	 * helpers used by function-argument hints. Reject object→scalar. */
+	if( pValue->iFlags & MEMOBJ_OBJ ){
+		char zBuf[128];
+		return VmThrowPropertyTypeError(pVm,pVmAttr,
+			VmFormatValueClassName(pValue,zBuf,sizeof(zBuf)));
+	}
+	if( (pValue->iFlags & pAttr->nType) == 0 ){
+		ProcMemObjCast xCast = PH7_MemObjCastMethod(pAttr->nType);
+		if( xCast ){
+			/* Reject array<->scalar coercion to match PHP strictness */
+			if( pAttr->nType == MEMOBJ_HASHMAP && (pValue->iFlags & MEMOBJ_HASHMAP) == 0 ){
+				return VmThrowPropertyTypeError(pVm,pVmAttr,ph7_type_name(pValue));
+			}
+			if( pAttr->nType != MEMOBJ_HASHMAP && (pValue->iFlags & MEMOBJ_HASHMAP) ){
+				return VmThrowPropertyTypeError(pVm,pVmAttr,ph7_type_name(pValue));
+			}
+			/* PHP weak mode: reject string->int/float unless the string is
+			 * strictly numeric. Silent coercion of "abc" or "43x" to 0/43
+			 * would hide bugs and diverges from PHP's TypeError. */
+			if( (pAttr->nType == MEMOBJ_INT || pAttr->nType == MEMOBJ_REAL)
+			 && (pValue->iFlags & MEMOBJ_STRING)
+			 && !VmStringIsStrictNumeric(pValue) ){
+				return VmThrowPropertyTypeError(pVm,pVmAttr,"string");
+			}
+			xCast(pValue);
+		}
+	}
+	pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
+	return SXRET_OK;
+}
+
+/*
  * Format and throw a run-time error and invoke the supplied VM output consumer callback.
  * Refer to the implementation of [ph7_context_throw_error_format()] for additional
  * information.
@@ -2801,6 +3108,25 @@ static sxi32 VmByteCodeExec(
 	}
 	nExceptionBase = SySetUsed(&pVm->aException);
 	pc = nPc;
+/*
+ * Typed-property enforcement helper for compound stores. Called before
+ * PH7_MemObjStore writes into a member memobj slot. On failure throws a
+ * PHP TypeError and either jumps to the nearest catch block or propagates
+ * out of the VM loop. Must be used inside a case of the main switch.
+ */
+#define PH7_ENFORCE_TYPED_STORE(nIdxArg, pSrcArg) \
+	{ \
+		sxi32 _rcT = VmEnforcePropertyTypeOnStore(&(*pVm),(nIdxArg),(pSrcArg)); \
+		if( _rcT == PH7_ABORT ){ goto Abort; } \
+		if( _rcT == PH7_EXCEPTION ){ \
+			VmFrame *_pFrmT = pVm->pFrame; \
+			if( _pFrmT && (_pFrmT->iFlags & VM_FRAME_EXCEPTION) && _pFrmT->iExceptionJump > 0 ){ \
+				pc = _pFrmT->iExceptionJump - 1; \
+				break; \
+			} \
+			goto Exception; \
+		} \
+	}
 	/* Execute as much as we can */
 	for(;;){
 		/* Fetch the instruction to execute */
@@ -3728,6 +4054,7 @@ case PH7_OP_STORE: {
 #endif
 	if( pInstr->iP2 ){
 		sxu32 nIdx;
+		sxi32 rcT;
 		/* Member store operation */
 		nIdx = pTos->nIdx;
 		VmPopOperand(&pTos,1);
@@ -3736,6 +4063,26 @@ case PH7_OP_STORE: {
 				"Cannot perform assignment on a constant class attribute,PH7 is loading NULL");
 			pTos->nIdx = SXU32_HIGH;
 		}else{
+			/* Enforce typed property declaration if any. May coerce the
+			 * incoming value in place (weak mode) or throw TypeError. */
+			rcT = VmEnforcePropertyTypeOnStore(&(*pVm),nIdx,pTos);
+			if( rcT == PH7_ABORT ){
+				goto Abort;
+			}
+			if( rcT == PH7_EXCEPTION ){
+				/* TypeError was thrown. Pop the rejected rvalue and hand
+				 * control to the nearest catch block if any, otherwise
+				 * propagate out of the VM loop. */
+				VmPopOperand(&pTos,1);
+				{
+					VmFrame *pFrm2 = pVm->pFrame;
+					if( pFrm2 && (pFrm2->iFlags & VM_FRAME_EXCEPTION) && pFrm2->iExceptionJump > 0 ){
+						pc = pFrm2->iExceptionJump - 1;
+						break;
+					}
+				}
+				goto Exception;
+			}
 			/* Point to the desired memory object */
 			pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
 			if( pObj ){
@@ -4120,6 +4467,7 @@ case PH7_OP_MUL_STORE: {
 		if( pTos->nIdx == SXU32_HIGH ){
 			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
 		}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+			PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 			PH7_MemObjStore(pNos,pObj);
 		}
 	}
@@ -4165,6 +4513,7 @@ case PH7_OP_ADD_STORE:{
 	if( nIdx == SXU32_HIGH ){
 		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
 	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx)) != 0 ){
+		PH7_ENFORCE_TYPED_STORE(nIdx,pTos);
 		PH7_MemObjStore(pTos,pObj);
 	}
 	/* Ticket 1433-35: Perform a stack dup */
@@ -4259,6 +4608,7 @@ case PH7_OP_SUB_STORE: {
 	if( pTos->nIdx == SXU32_HIGH ){
 		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
 	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 		PH7_MemObjStore(pNos,pObj);
 	}
 	VmPopOperand(&pTos,1);
@@ -4346,6 +4696,7 @@ case PH7_OP_MOD_STORE: {
 	if( pTos->nIdx == SXU32_HIGH ){
 		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
 	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 		PH7_MemObjStore(pNos,pObj);
 	}
 	VmPopOperand(&pTos,1);
@@ -4436,6 +4787,7 @@ case PH7_OP_DIV_STORE:{
 	if( pTos->nIdx == SXU32_HIGH ){
 		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
 	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 		PH7_MemObjStore(pNos,pObj);
 	}
 	VmPopOperand(&pTos,1);
@@ -4548,6 +4900,7 @@ case PH7_OP_BXOR_STORE:{
 	if( pTos->nIdx == SXU32_HIGH ){
 		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
 	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 		PH7_MemObjStore(pNos,pObj);
 	}
 	VmPopOperand(&pTos,1);
@@ -4644,6 +4997,7 @@ case PH7_OP_SHR_STORE: {
 	if( pTos->nIdx == SXU32_HIGH ){
 		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
 	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 		PH7_MemObjStore(pNos,pObj);
 	}
 	VmPopOperand(&pTos,1);
@@ -4714,6 +5068,7 @@ case PH7_OP_CAT_STORE:{
 	if( pTos->nIdx == SXU32_HIGH ){
 		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
 	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pTos);
 		PH7_MemObjStore(pTos,pObj);
 	}
 	PH7_MemObjStore(pTos,pNos);
@@ -4831,6 +5186,7 @@ case PH7_OP_NULLC_STORE: {
 		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
 			"Cannot perform assignment on a constant class attribute");
 	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx)) != 0 ){
+		PH7_ENFORCE_TYPED_STORE(nIdx,pTos);
 		PH7_MemObjStore(pTos,pObj);
 	}
 	PH7_MemObjStore(pTos,pNos);
@@ -5886,6 +6242,34 @@ case PH7_OP_MEMBER: {
 					ph7_value *pValue = 0; /* cc warning */
 					/* Check attribute access */
 					if( PH7_VmClassMemberAccess(&(*pVm),pClass,&pObjAttr->pAttr->sName,pObjAttr->pAttr->iProtection,FALSE) ){
+						/* PHP 7.4+: reading an uninitialized typed property is an Error.
+						 * We can only raise it on a real read, not when the slot is the
+						 * LHS of an assignment — peek at the next instruction to decide.
+						 * Safe: the compiler always emits a terminating PH7_OP_DONE, so
+						 * pInstr+1 is in-bounds while we are inside a non-DONE opcode. */
+						if( (pObjAttr->iState & VM_CLASS_ATTR_UNINIT)
+						 && (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_TYPED) ){
+							VmInstr *pNext = pInstr + 1;
+							int bIsLhs = 0;
+							if( pNext->iOp == PH7_OP_STORE && pNext->iP2 ){
+								bIsLhs = 1;
+							}
+							if( !bIsLhs ){
+								sxi32 rcU = VmThrowUninitializedPropertyError(&(*pVm),pClass,pObjAttr->pAttr);
+								PH7_ClassInstanceUnref(pThis);
+								if( rcU == PH7_ABORT ){
+									goto Abort;
+								}
+								{
+									VmFrame *pFrm2 = pVm->pFrame;
+									if( pFrm2 && (pFrm2->iFlags & VM_FRAME_EXCEPTION) && pFrm2->iExceptionJump > 0 ){
+										pc = pFrm2->iExceptionJump - 1;
+										break;
+									}
+								}
+								goto Exception;
+							}
+						}
 						/* Load attribute */
 						pValue = (ph7_value *)SySetAt(&pVm->aMemObj,pObjAttr->nIdx);
 						if( pValue ){
@@ -6059,6 +6443,40 @@ case PH7_OP_MEMBER: {
 								ph7_value *pValue;
 								/* Check if the access to the attribute is allowed */
 								if( PH7_VmClassMemberAccess(&(*pVm),pClass,&pAttr->sName,pAttr->iProtection,FALSE) ){
+									/* PHP 7.4+: uninitialized typed static read.
+									 * Same LHS-of-store peek as the instance path. */
+									if( (pAttr->iFlags & PH7_CLASS_ATTR_TYPED) != 0
+									 && (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){
+										SyHashEntry *pS = SyHashGet(&pVm->hTypedSlot,
+											(const void *)&pAttr->nIdx,sizeof(sxu32));
+										if( pS ){
+											VmClassAttr *pV = (VmClassAttr *)pS->pUserData;
+											if( pV && (pV->iState & VM_CLASS_ATTR_UNINIT) ){
+												VmInstr *pNext = pInstr + 1;
+												int bIsLhs = 0;
+												if( pNext->iOp == PH7_OP_STORE && pNext->iP2 ){
+													bIsLhs = 1;
+												}
+												if( !bIsLhs ){
+													sxi32 rcU = VmThrowUninitializedPropertyError(&(*pVm),pClass,pAttr);
+													if( pThis ){
+														PH7_ClassInstanceUnref(pThis);
+													}
+													if( rcU == PH7_ABORT ){
+														goto Abort;
+													}
+													{
+														VmFrame *pFrm2 = pVm->pFrame;
+														if( pFrm2 && (pFrm2->iFlags & VM_FRAME_EXCEPTION) && pFrm2->iExceptionJump > 0 ){
+															pc = pFrm2->iExceptionJump - 1;
+															break;
+														}
+													}
+													goto Exception;
+												}
+											}
+										}
+									}
 									/* Load the desired attribute */
 									pValue = (ph7_value *)SySetAt(&pVm->aMemObj,pAttr->nIdx);
 									if( pValue ){

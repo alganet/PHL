@@ -169,6 +169,12 @@ PH7_PRIVATE sxi32 PH7_ClassInstallAttr(ph7_class *pClass,ph7_class_attr *pAttr)
 {
 	SyString *pName = &pAttr->sName;
 	sxi32 rc;
+	/* Remember where this attribute was originally declared so that later
+	 * inheritance/trait copies still know the declaring class (needed for
+	 * PHP-compatible error messages on typed properties). */
+	if( pAttr->pDeclClass == 0 ){
+		pAttr->pDeclClass = pClass;
+	}
 	rc = SyHashInsert(&pClass->hAttr,(const void *)pName->zString,pName->nByte,pAttr);
 	return rc;
 }
@@ -813,6 +819,13 @@ static void PH7_ClassInstanceRelease(ph7_class_instance *pThis)
 	while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
 		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
 		if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
+			/* Drop any typed-property enforcement slot registered for this
+			 * memobj. Must happen before the memobj is returned to the free
+			 * list so a future recycled slot does not inherit the stale entry. */
+			if( pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
+				SyHashDeleteEntry(&pVm->hTypedSlot,
+					(const void *)&pVmAttr->nIdx,sizeof(sxu32),0);
+			}
 			PH7_VmUnsetMemObj(pVm,pVmAttr->nIdx,TRUE);
 		}
 		SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);

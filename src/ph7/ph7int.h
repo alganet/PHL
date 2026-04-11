@@ -634,12 +634,18 @@ struct ph7_class_attr
 	SySet aByteCode;     /* Compiled attribute body */
 	sxu32 nIdx;          /* Attribute index */
 	sxu32 nLine;         /* Line number on which this attribute was defined */
+	sxu32 nType;         /* Declared type: MEMOBJ_* bitmask, SXU32_HIGH for class, 0 = untyped */
+	SyString sClass;     /* Class/interface name when nType == SXU32_HIGH */
+	SyString sTypeName;  /* Original type text for error messages (e.g. "?int", "Foo") */
+	ph7_class *pDeclClass; /* Class that originally declared this attribute */
 };
 /* Attribute configuration */
 #define PH7_CLASS_ATTR_STATIC       0x001  /* Static attribute */
 #define PH7_CLASS_ATTR_CONSTANT     0x002  /* Constant attribute */
 #define PH7_CLASS_ATTR_ABSTRACT     0x004  /* Abstract method */
 #define PH7_CLASS_ATTR_FINAL        0x008  /* Final method */
+#define PH7_CLASS_ATTR_TYPED        0x010  /* Property has an explicit declared type */
+#define PH7_CLASS_ATTR_NULLABLE     0x020  /* Type has nullable '?' prefix */
 /*
  * Each class method is parsed out and stored in an instance of the following
  * structure.
@@ -693,7 +699,10 @@ struct VmClassAttr
 {
 	ph7_class_attr *pAttr; /* Class attribute */
 	sxu32 nIdx;            /* Memory object index */
+	sxi32 iState;          /* Per-instance state: VM_CLASS_ATTR_UNINIT */
+	ph7_class *pOwner;     /* Class that declares this attribute (for error msgs) */
 };
+#define VM_CLASS_ATTR_UNINIT  0x01 /* Typed property never written (PHP 7.4+) */
  /* Forward reference */
 typedef struct VmRefObj VmRefObj;
 /*
@@ -799,6 +808,7 @@ struct ph7_vm
 	SySet aShutdown;            /* Stack of shutdown user callbacks */
 	SySet aAutoload;            /* Stack of spl_autoload callbacks */
 	SyHash hAutoloadActive;     /* Classes currently being autoloaded (reentrancy guard) */
+	SyHash hTypedSlot;          /* memobj nIdx -> VmClassAttr* for typed property enforcement */
 	SySet aException;           /* Stack of loaded exception */
 	ph7_class_instance *pPendingException; /* Exception deferred past a finally block */
 	SySet aIOstream;            /* Installed IO stream container */
