@@ -469,14 +469,18 @@ static sxi32 ExprVerifyNodes(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nN
 			}
 			iBraces--;
 		}else if ( apNode[i]->pStart->nType & PH7_TK_COLON ){
-			if( iQuesty <= 0 ){
+			if( iQuesty > 0 ){
+				iQuesty--;
+			}else if( iParen <= 0 ){
+				/* Colon outside parentheses with no matching '?' — syntax error.
+				 * Colons inside parentheses may be named arguments (name: value)
+				 * and are validated later by ExprProcessFuncArguments. */
 				rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[i]->pStart->nLine,"Syntax error: Unexpected token ':'");
 				if( rc != SXERR_ABORT ){
 					rc = SXERR_SYNTAX;
 				}
 				return rc;
 			}
-			iQuesty--;
 		}else if( apNode[i]->pStart->nType & PH7_TK_OP ){
 			const ph7_expr_op *pOp = (const ph7_expr_op *)apNode[i]->pOp;
 			if( pOp->iOp == EXPR_OP_QUESTY ){
@@ -1121,6 +1125,36 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 			iCur++;
 		}
 		if( iCur > iNode ){
+			SyString sArgName = {0, 0};
+			/* Check for named argument pattern: identifier ':' expr.
+			 * PHP allows reserved keywords as parameter names (e.g. function
+			 * f($class){}), so accept PH7_TK_KEYWORD labels here too. */
+			if( (iCur - iNode) >= 2
+				&& apNode[iNode]
+				&& (apNode[iNode]->pStart->nType & (PH7_TK_ID|PH7_TK_KEYWORD))
+				&& apNode[iNode]->xCode == PH7_CompileLiteral
+				&& apNode[iNode+1]
+				&& (apNode[iNode+1]->pStart->nType & PH7_TK_COLON) ){
+				/* Named argument detected: save name, free ID and colon nodes */
+				sArgName = apNode[iNode]->pStart->sData;
+				ExprFreeTree(&(*pGen),apNode[iNode]);
+				apNode[iNode] = 0;
+				ExprFreeTree(&(*pGen),apNode[iNode+1]);
+				apNode[iNode+1] = 0;
+				iNode += 2;
+				/* Guard: the value expression must not be empty.  Catches
+				 * degenerate forms like f(a:) or f(a:,b:1). */
+				if( iNode >= iCur ){
+					rc = PH7_GenCompileError(&(*pGen),E_PARSE,
+						pOp->pStart->nLine,
+						"syntax error, expected expression after named argument '%z:'",
+						&sArgName);
+					if( rc != SXERR_ABORT ){
+						rc = SXERR_SYNTAX;
+					}
+					return rc;
+				}
+			}
 			if( apNode[iNode] && (apNode[iNode]->pStart->nType & PH7_TK_AMPER /*'&'*/) && ((iCur - iNode) == 2)
 				&& apNode[iNode+1]->xCode == PH7_CompileVariable ){
 					PH7_GenCompileError(&(*pGen),E_WARNING,apNode[iNode]->pStart->nLine,
@@ -1130,6 +1164,10 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 			}
 			ExprMakeTree(&(*pGen),&apNode[iNode],iCur-iNode);
 			if( apNode[iNode] ){
+				if( sArgName.nByte > 0 ){
+					apNode[iNode]->iFlags |= EXPR_NODE_NAMED_ARG;
+					apNode[iNode]->sArgName = sArgName;
+				}
 				/* Put a pointer to the root of the tree in the arguments set */
 				SySetPut(&pOp->aNodeArgs,(const void *)&apNode[iNode]);
 			}else{

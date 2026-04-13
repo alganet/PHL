@@ -328,11 +328,13 @@ struct ph7_expr_node
 	sxi32 iFlags;            /* Node construct flags */
 	ProcNodeConstruct xCode; /* C routine responsible of compiling this node */
 	SySet aNodeArgs;         /* Node arguments. Only used by postfix operators [i.e: function call]*/
+	SyString sArgName;       /* Named argument label (empty if positional) */
 	ph7_expr_node *pCond;    /* Condition: Only used by the ternary operator '?:' */
 };
 /* Node Construct flags */
-#define EXPR_NODE_PRE_INCR 0x01 /* Pre-icrement/decrement [i.e: ++$i,--$j] node */
-#define EXPR_NODE_SPREAD   0x02 /* Argument unpacking: ...$expr */
+#define EXPR_NODE_PRE_INCR    0x01 /* Pre-icrement/decrement [i.e: ++$i,--$j] node */
+#define EXPR_NODE_SPREAD      0x02 /* Argument unpacking: ...$expr */
+#define EXPR_NODE_NAMED_ARG   0x04 /* Named argument: name: $expr */
 /*
  * A block of instructions is recorded in an instance of the following structure.
  * This structure is used only during compile-time and have no meaning
@@ -709,6 +711,18 @@ struct VmInstr
 	sxi32 iP1; /* First operand */
 	sxu32 iP2; /* Second operand (Often the jump destination) */
 	void *p3;  /* Third operand (Often Upper layer private data) */
+};
+/*
+ * Named-argument metadata attached to PH7_OP_CALL instructions via p3.
+ * Also carries the namespace-qualification flag formerly stored as p3=(void*)1.
+ */
+typedef struct VmCallArgMap VmCallArgMap;
+struct VmCallArgMap
+{
+	sxu8 bHasNamed;      /* 1 if any argument uses name: syntax */
+	sxu8 bIsNamespaced;  /* 1 if compiler namespace-qualified the call */
+	sxu32 nTotal;        /* Total number of compile-time arguments */
+	SyString *aNames;    /* Array of nTotal names. nByte==0 means positional. */
 };
 /* Each active class instance attribute is represented by an instance
  * of the following structure.

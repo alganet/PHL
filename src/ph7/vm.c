@@ -930,6 +930,9 @@ static ph7_exec_ctx * VmNewExecCtx(ph7_vm *pVm, ph7_vm_func *pFunc);
 static void VmReleaseExecCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx);
 static sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 	ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg);
+static sxi32 VmCallClassMethodWithMap(ph7_vm *pVm, ph7_class_instance *pThis,
+	ph7_class_method *pMethod, ph7_value *pResult, int nArg,
+	ph7_value **apArg, VmCallArgMap *pMap);
 /* Forward declarations for Generator helpers and C functions */
 static ph7_generator * VmNewGenerator(ph7_vm *pVm, ph7_exec_ctx *pCtx);
 static void VmReleaseGenerator(ph7_vm *pVm, ph7_generator *pGen);
@@ -3020,6 +3023,17 @@ static sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,SyString *pFuncName,sxu32 nArg,S
 	return PH7_EXCEPTION;
 }
 /*
+ * Report a fatal named-argument error.
+ * Outputs a PHP-compatible "Uncaught Error:" message and aborts execution.
+ */
+static sxi32 VmThrowNamedArgError(ph7_vm *pVm,const char *zMsg,sxu32 nMsg)
+{
+	const char *zFunc = 0;
+	int nFunc = 0;
+	VmGetFrameContext(pVm,&zFunc,&nFunc);
+	return VmReportUncaughtException(pVm,"Error",5,zMsg,nMsg,zFunc,nFunc);
+}
+/*
  * Format and throw a run-time error and invoke the supplied VM output consumer callback.
  * Refer to the implementation of [ph7_context_throw_error_format()] for additional
  * information.
@@ -3238,6 +3252,91 @@ static sxi32 VmSuspendCtx(
 	pCtx->nTos = nTos;
 	pCtx->iState = PH7_CTX_STATE_SUSPENDED;
 	return PH7_SUSPEND;
+}
+/*
+ * Resolve named-argument mapping.
+ *
+ * For each actual argument in the call, determine which formal parameter it
+ * maps to (by name or by position).  On success, aSlot[i] contains the
+ * formal-parameter index for actual arg i, -1 if it overflows into the
+ * variadic collector, or -2 if still unresolved.  aUsed[k] is set to 1 for
+ * every formal parameter that received a value.
+ *
+ * Returns SXRET_OK on success.  On error (duplicate, unknown parameter,
+ * positional-overlaps-named) it calls VmThrowNamedArgError and returns
+ * PH7_ABORT so the caller can jump to its Abort label.
+ */
+static sxi32 VmResolveNamedArgs(
+	ph7_vm *pVm,
+	VmCallArgMap *pMap,           /* Named-arg metadata from the instruction */
+	ph7_vm_func_arg *aFormalArg,  /* Formal parameter array */
+	sxu32 nNonVariadic,           /* Number of non-variadic formal params */
+	sxi32 iVariadicIdx,           /* Index of the variadic param, or -1 */
+	sxu32 nActual,                /* Number of actual arguments on the stack */
+	sxi32 *aSlot,                 /* OUT: mapping actual->formal */
+	sxu8  *aUsed                  /* OUT: which formals are used */
+)
+{
+	sxi32 posIdx = 0;
+	sxu32 i;
+	char zErrMsg[256];
+	SyZero(aUsed, nNonVariadic * sizeof(sxu8));
+	for( i = 0; i < nActual; i++ ){
+		aSlot[i] = -2;
+	}
+	for( i = 0; i < nActual; i++ ){
+		if( i < pMap->nTotal && pMap->aNames[i].nByte > 0 ){
+			/* Named argument — find formal by name */
+			int found = 0;
+			sxu32 k;
+			for( k = 0; k < nNonVariadic; k++ ){
+				if( aFormalArg[k].sName.nByte == pMap->aNames[i].nByte
+					&& SyMemcmp(aFormalArg[k].sName.zString,
+						pMap->aNames[i].zString,
+						pMap->aNames[i].nByte) == 0 ){
+					if( aUsed[k] ){
+						SyBufferFormat(zErrMsg,sizeof(zErrMsg),
+							"Named parameter $%.*s overwrites previous argument",
+							(int)pMap->aNames[i].nByte,pMap->aNames[i].zString);
+						VmThrowNamedArgError(&(*pVm),zErrMsg,(sxu32)SyStrlen(zErrMsg));
+						return PH7_ABORT;
+					}
+					aSlot[i] = (sxi32)k;
+					aUsed[k] = 1;
+					found = 1;
+					break;
+				}
+			}
+			if( !found ){
+				if( iVariadicIdx >= 0 ){
+					aSlot[i] = -1; /* goes to variadic with string key */
+				}else{
+					SyBufferFormat(zErrMsg,sizeof(zErrMsg),
+						"Unknown named parameter $%.*s",
+						(int)pMap->aNames[i].nByte,pMap->aNames[i].zString);
+					VmThrowNamedArgError(&(*pVm),zErrMsg,(sxu32)SyStrlen(zErrMsg));
+					return PH7_ABORT;
+				}
+			}
+		}else{
+			/* Positional argument */
+			if( (sxu32)posIdx < nNonVariadic ){
+				if( aUsed[posIdx] ){
+					SyBufferFormat(zErrMsg,sizeof(zErrMsg),
+						"Named parameter $%.*s overwrites previous argument",
+						(int)aFormalArg[posIdx].sName.nByte,aFormalArg[posIdx].sName.zString);
+					VmThrowNamedArgError(&(*pVm),zErrMsg,(sxu32)SyStrlen(zErrMsg));
+					return PH7_ABORT;
+				}
+				aSlot[i] = posIdx;
+				aUsed[posIdx] = 1;
+			}else if( iVariadicIdx >= 0 ){
+				aSlot[i] = -1; /* overflow to variadic */
+			}
+			posIdx++;
+		}
+	}
+	return SXRET_OK;
 }
 /*
  * Execute as much of a PH7 bytecode program as we can then return.
@@ -6747,17 +6846,23 @@ case PH7_OP_NEW: {
 			pCons = PH7_ClassExtractMethod(pClass,pName->zString,pName->nByte);
 		}
 		if( pCons ){
-			/* Call the class constructor */
+			/* Call the class constructor.  Collect args in stack order and
+			 * forward any VmCallArgMap from the NEW instruction so the
+			 * receiving OP_CALL path runs its named-argument matching
+			 * (including variadic string-key packing). */
+			VmCallArgMap *pNewMap = (VmCallArgMap *)pInstr->p3;
 			SySetReset(&aArg);
 			while( pArg < pTos ){
 				SySetPut(&aArg,(const void *)&pArg);
 				pArg++;
 			}
-			if( pVm->bErrReport ){
+			if( pVm->bErrReport && !(pNewMap && pNewMap->bHasNamed) ){
 				ph7_vm_func_arg *pFuncArg;
 				sxu32 n;
 				n = SySetUsed(&aArg);
-				/* Emit a notice for missing arguments */
+				/* Emit a notice for missing arguments (positional-only:
+				 * for named args the missing-arg check happens downstream
+				 * after resolution). */
 				while( n < SySetUsed(&pCons->sFunc.aArgs) ){
 					pFuncArg = (ph7_vm_func_arg *)SySetAt(&pCons->sFunc.aArgs,n);
 					if( pFuncArg ){
@@ -6769,7 +6874,7 @@ case PH7_OP_NEW: {
 					n++;
 				}
 			}
-			PH7_VmCallClassMethod(&(*pVm),pNew,pCons,0,(int)SySetUsed(&aArg),(ph7_value **)SySetBasePtr(&aArg));
+			VmCallClassMethodWithMap(&(*pVm),pNew,pCons,0,(int)SySetUsed(&aArg),(ph7_value **)SySetBasePtr(&aArg),pNewMap);
 			/* TICKET 1433-52: Unsetting $this in the constructor body */
 			if( pNew->iRef < 1 ){
 				pNew->iRef = 1;
@@ -6979,12 +7084,14 @@ case PH7_OP_CALL: {
 	 * Static names are already namespace-qualified by the compiler.
 	 * Dynamic names (from variables) use exact match only, matching PHP behavior. */
 	pEntry = SyHashGet(&pVm->hFunction,(const void *)sName.zString,sName.nByte);
-	/* If the compiler qualified this call with a namespace (pInstr->p3 != 0)
-	 * and the namespaced function is not found, retry with the global name
-	 * (strip the namespace prefix up to the last backslash) before falling
-	 * back to host functions. This mirrors PHP's lookup order for unqualified
-	 * function calls inside namespaces. */
-	if( pEntry == 0 && pInstr->p3 != 0 ){
+	/* If the compiler qualified this call with a namespace, and the namespaced
+	 * function is not found, retry with the global name (strip the namespace
+	 * prefix up to the last backslash) before falling back to host functions.
+	 * This mirrors PHP's lookup order for unqualified function calls inside
+	 * namespaces. The namespace flag is stored in VmCallArgMap.bIsNamespaced. */
+	{
+	VmCallArgMap *pCallMap = (VmCallArgMap *)pInstr->p3;
+	if( pEntry == 0 && pCallMap && pCallMap->bIsNamespaced ){
 		const char *zFunc;
 		const char *zEnd;
 		const char *z;
@@ -7005,6 +7112,7 @@ case PH7_OP_CALL: {
 			pEntry = SyHashGet(&pVm->hFunction,(const void *)sGlobal.zString,sGlobal.nByte);
 		}
 	}
+	} /* end VmCallArgMap namespace scope */
 	if( pEntry ){
 		ph7_vm_func_arg *aFormalArg;
 		ph7_class_instance *pThis;
@@ -7122,8 +7230,63 @@ case PH7_OP_CALL: {
 					/* OOM: fall back to zero args rather than NULL-deref */
 					nGenArgs = 0;
 				}else{
-					for( iArg = 0; iArg < nGenArgs; iArg++ ){
-						apCallArgs[iArg] = &pArg[iArg];
+					VmCallArgMap *pGenMap = (VmCallArgMap *)pInstr->p3;
+					int didReorder = 0;
+					if( pGenMap && pGenMap->bHasNamed ){
+						/* Named-argument reordering for generator */
+						ph7_vm_func_arg *aFA = (ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs);
+						sxu32 nF = SySetUsed(&pVmFunc->aArgs);
+						sxu32 nNV = nF;
+						sxi32 iVIdx = -1;
+						sxi32 *aGSlot;
+						sxu8 *aGUsed;
+						sxu32 gi;
+						for( gi = 0; gi < nF; gi++ ){
+							if( aFA[gi].iFlags & VM_FUNC_ARG_VARIADIC ){ nNV = gi; iVIdx = (sxi32)gi; break; }
+						}
+						aGSlot = (sxi32 *)SyMemBackendAlloc(&pVm->sAllocator,
+							(sxu32)nGenArgs * sizeof(sxi32) + nNV * sizeof(sxu8));
+						if( aGSlot ){
+							aGUsed = (sxu8 *)&aGSlot[nGenArgs];
+							rc = VmResolveNamedArgs(&(*pVm),pGenMap,aFA,nNV,iVIdx,
+								(sxu32)nGenArgs,aGSlot,aGUsed);
+							if( rc == PH7_ABORT ){
+								SyMemBackendFree(&pVm->sAllocator, aGSlot);
+								SyMemBackendFree(&pVm->sAllocator, apCallArgs);
+								goto Abort;
+							}
+							/* Build apCallArgs in formal-parameter order, then
+							 * append overflow (variadic / positional beyond
+							 * formals) so downstream sees every argument. */
+							{
+								int nOut = 0;
+								for( gi = 0; gi < nNV; gi++ ){
+									sxu32 gj;
+									for( gj = 0; gj < (sxu32)nGenArgs; gj++ ){
+										if( aGSlot[gj] == (sxi32)gi ){
+											apCallArgs[nOut++] = &pArg[gj];
+											break;
+										}
+									}
+								}
+								for( gi = 0; gi < (sxu32)nGenArgs; gi++ ){
+									if( aGSlot[gi] == -1 || aGSlot[gi] == -2 ){
+										apCallArgs[nOut++] = &pArg[gi];
+									}
+								}
+								nGenArgs = nOut;
+							}
+							SyMemBackendFree(&pVm->sAllocator, aGSlot);
+							didReorder = 1;
+						}
+						/* If aGSlot allocation failed, fall through to
+						 * positional fill below — preserves arg order rather
+						 * than passing an uninitialized apCallArgs. */
+					}
+					if( !didReorder ){
+						for( iArg = 0; iArg < nGenArgs; iArg++ ){
+							apCallArgs[iArg] = &pArg[iArg];
+						}
 					}
 				}
 			}
@@ -7240,6 +7403,248 @@ case PH7_OP_CALL: {
 			}
 		}
 		/* Push arguments in the local frame */
+		{
+		VmCallArgMap *pCallMap3 = (VmCallArgMap *)pInstr->p3;
+		if( pCallMap3 && pCallMap3->bHasNamed ){
+			/* ============================================================
+			 * Named-argument matching path (PHP 8.0)
+			 *
+			 * Resolve each actual argument to its formal parameter by name
+			 * or position, then install them in the frame.
+			 * ============================================================ */
+			sxu32 nFormal = SySetUsed(&pVmFunc->aArgs);
+			sxu32 nActual = (sxu32)(pTos - pArg);
+			sxi32 iVariadicIdx = -1;
+			sxu32 nNonVariadic;
+			sxi32 *aSlot;
+			sxu8  *aUsed;
+			sxu32 i;
+			/* Find variadic parameter index */
+			for( i = 0; i < nFormal; i++ ){
+				if( aFormalArg[i].iFlags & VM_FUNC_ARG_VARIADIC ){
+					iVariadicIdx = (sxi32)i;
+					break;
+				}
+			}
+			nNonVariadic = iVariadicIdx >= 0 ? (sxu32)iVariadicIdx : nFormal;
+			/* Allocate mapping arrays */
+			aSlot = (sxi32 *)SyMemBackendAlloc(&pVm->sAllocator,
+				nActual * sizeof(sxi32) + nNonVariadic * sizeof(sxu8));
+			if( aSlot == 0 ){
+				VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Out of memory during named argument resolution");
+				goto Abort;
+			}
+			aUsed = (sxu8 *)&aSlot[nActual];
+			/* Resolve named arguments to formal parameters */
+			rc = VmResolveNamedArgs(&(*pVm),pCallMap3,aFormalArg,
+				nNonVariadic,iVariadicIdx,nActual,aSlot,aUsed);
+			if( rc == PH7_ABORT ){
+				SyMemBackendFree(&pVm->sAllocator, aSlot);
+				goto Abort;
+			}
+			/* Pass 2: install arguments into the frame by formal parameter order */
+			for( n = 0; n < nNonVariadic; n++ ){
+				/* Find the stack arg mapped to formal n */
+				sxi32 iSrc = -1;
+				for( i = 0; i < nActual; i++ ){
+					if( aSlot[i] == (sxi32)n ){
+						iSrc = (sxi32)i;
+						break;
+					}
+				}
+				if( iSrc >= 0 ){
+					/* Argument was provided — install with type checking */
+					ph7_value *pVal = &pArg[iSrc];
+					/* NULL-to-default redirect (existing behavior) */
+					if( (pVal->iFlags & MEMOBJ_NULL) && SySetUsed(&aFormalArg[n].aByteCode) > 0
+						&& !(aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) ){
+						rc = VmLocalExec(&(*pVm),&aFormalArg[n].aByteCode,pVal);
+						if( rc == PH7_ABORT ) goto Abort;
+					}
+					/* Type checking: union types */
+					if( aFormalArg[n].iFlags & VM_FUNC_ARG_UNION ){
+						sxi32 rcU = VmCoerceToUnion(pVm, pVal, &aFormalArg[n].aUnionAlts,
+							(aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) ? 1 : 0);
+						if( rcU != SXRET_OK ){
+							const char *zGiven;
+							char zBuf[128];
+							if( pVal->iFlags & MEMOBJ_OBJ ){
+								zGiven = VmFormatValueClassName(pVal,zBuf,sizeof(zBuf));
+							}else if( pVal->iFlags & MEMOBJ_NULL ){
+								zGiven = "null";
+							}else{
+								zGiven = ph7_type_name(pVal);
+							}
+							rc = VmThrowTypeErrorForArg(&(*pVm),&pVmFunc->sName,n+1,
+								&aFormalArg[n].sName,
+								SyStringLength(&aFormalArg[n].sTypeName) > 0
+									? aFormalArg[n].sTypeName.zString : "union",
+								zGiven);
+							if( rc == PH7_ABORT ) goto Abort;
+							SyMemBackendFree(&pVm->sAllocator, aSlot);
+							PH7_MemObjRelease(pTos);
+							pTos = &pTos[-nCallArgs];
+							pFrameStack = 0;
+							rc = PH7_EXCEPTION;
+							goto SkipFuncBody;
+						}
+					}else if( aFormalArg[n].nType > 0
+						&& !((aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) && (pVal->iFlags & MEMOBJ_NULL)) ){
+						/* Scalar/class type checking */
+						if( aFormalArg[n].nType == SXU32_HIGH ){
+							SyString *pName = &aFormalArg[n].sClass;
+							ph7_class *pClass = PH7_VmExtractClass(&(*pVm),pName->zString,pName->nByte,TRUE,0);
+							if( pClass ){
+								if( (pVal->iFlags & MEMOBJ_OBJ) == 0 ){
+									if( (pVal->iFlags & MEMOBJ_NULL) == 0 ){
+										VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
+											"Function '%z()':Argument %u must be an object of type '%z',PH7 is loading NULL instead",
+											&pVmFunc->sName,n+1,pName);
+										PH7_MemObjRelease(pVal);
+									}
+								}else{
+									ph7_class_instance *pInst = (ph7_class_instance *)pVal->x.pOther;
+									if( !PH7_VmInstanceOf(pInst->pClass,pClass) ){
+										VmErrorFormat(&(*pVm),PH7_CTX_ERR,
+											"Function '%z()':Argument %u must be an object of type '%z',PH7 is loading NULL instead",
+											&pVmFunc->sName,n+1,pName);
+										PH7_MemObjRelease(pVal);
+									}
+								}
+							}
+						}else if( (pVal->iFlags & aFormalArg[n].nType) == 0 ){
+							if( aFormalArg[n].nType == MEMOBJ_OBJ ){
+								rc = VmThrowTypeErrorForArg(&(*pVm),&pVmFunc->sName,n+1,
+									&aFormalArg[n].sName,"object",ph7_type_name(pVal));
+								if( rc == PH7_ABORT ) goto Abort;
+								SyMemBackendFree(&pVm->sAllocator, aSlot);
+								PH7_MemObjRelease(pTos);
+								pTos = &pTos[-nCallArgs];
+								pFrameStack = 0;
+								rc = PH7_EXCEPTION;
+								goto SkipFuncBody;
+							}else{
+								ProcMemObjCast xCast = PH7_MemObjCastMethod(aFormalArg[n].nType);
+								if( xCast ) xCast(pVal);
+							}
+						}
+					}
+					/* Install: by reference or by value */
+					if( aFormalArg[n].iFlags & VM_FUNC_ARG_BY_REF ){
+						if( pVal->nIdx == SXU32_HIGH ){
+							if( (pVal->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_NULL)) == 0 ){
+								VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
+									"Function '%z',%d argument: Pass by reference,expecting a variable not a "
+									"constant,PH7 is switching to pass by value",&pVmFunc->sName,n+1);
+							}
+							pObj = VmExtractMemObj(&(*pVm),&aFormalArg[n].sName,FALSE,TRUE);
+						}else{
+							SyHashEntry *pRefEntry = SyHashGet(&pFrame->hVar,
+								SyStringData(&aFormalArg[n].sName),SyStringLength(&aFormalArg[n].sName));
+							if( pRefEntry == 0 ){
+								SyHashInsert(&pFrame->hVar,SyStringData(&aFormalArg[n].sName),
+									SyStringLength(&aFormalArg[n].sName),SX_INT_TO_PTR(pVal->nIdx));
+								sArg.nIdx = pVal->nIdx;
+								sArg.pUserData = 0;
+								SySetPut(&pFrame->sArg,(const void *)&sArg);
+							}
+							pObj = 0;
+						}
+					}else{
+						pObj = VmExtractMemObj(&(*pVm),&aFormalArg[n].sName,FALSE,TRUE);
+					}
+					if( pObj ){
+						PH7_MemObjStore(pVal,pObj);
+						sArg.nIdx = pObj->nIdx;
+						sArg.pUserData = 0;
+						SySetPut(&pFrame->sArg,(const void *)&sArg);
+					}
+				}else{
+					/* Argument was NOT provided — use default or leave unset */
+					if( aFormalArg[n].iFlags & VM_FUNC_ARG_VARIADIC ){
+						/* Should not reach here; variadic handled separately below */
+					}else if( SySetUsed(&aFormalArg[n].aByteCode) > 0 ){
+						pObj = VmExtractMemObj(&(*pVm),&aFormalArg[n].sName,FALSE,TRUE);
+						if( pObj ){
+							rc = VmLocalExec(&(*pVm),&aFormalArg[n].aByteCode,pObj);
+							if( rc == PH7_ABORT ) goto Abort;
+							sArg.nIdx = pObj->nIdx;
+							sArg.pUserData = 0;
+							SySetPut(&pFrame->sArg,(const void *)&sArg);
+							if( aFormalArg[n].nType > 0 && aFormalArg[n].nType != MEMOBJ_OBJ
+								&& (pObj->iFlags & aFormalArg[n].nType) == 0 ){
+								ProcMemObjCast xCast = PH7_MemObjCastMethod(aFormalArg[n].nType);
+								if( xCast ) xCast(pObj);
+							}
+						}
+					}
+					/* else: required param missing — leave unset (matches existing behavior) */
+				}
+			}
+			/* Handle variadic parameter */
+			if( iVariadicIdx >= 0 ){
+				pObj = VmExtractMemObj(&(*pVm),&aFormalArg[iVariadicIdx].sName,FALSE,TRUE);
+				if( pObj ){
+					PH7_MemObjToHashmap(pObj);
+					{
+						ph7_hashmap *pVarMap = (ph7_hashmap *)pObj->x.pOther;
+						for( i = 0; i < nActual; i++ ){
+							if( aSlot[i] == -1 ){
+								if( i < pCallMap3->nTotal && pCallMap3->aNames[i].nByte > 0 ){
+									/* Named variadic entry: insert with string key */
+									ph7_value sKey;
+									PH7_MemObjInit(pVm, &sKey);
+									PH7_MemObjStringAppend(&sKey,
+										pCallMap3->aNames[i].zString,
+										(sxu32)pCallMap3->aNames[i].nByte);
+									PH7_HashmapInsert(pVarMap, &sKey, &pArg[i]);
+									PH7_MemObjRelease(&sKey);
+								}else{
+									/* Positional variadic entry */
+									PH7_HashmapInsert(pVarMap, 0, &pArg[i]);
+								}
+							}
+						}
+					}
+					sArg.nIdx = pObj->nIdx;
+					sArg.pUserData = 0;
+					SySetPut(&pFrame->sArg,(const void *)&sArg);
+				}
+			}else{
+				/* No variadic — preserve unresolved positional overflow
+				 * (aSlot[i] == -2) as anonymous frame args so
+				 * func_get_args() / func_num_args() still see them, matching
+				 * the positional-only path's behavior. */
+				sxu32 nAnon = nNonVariadic;
+				for( i = 0; i < nActual; i++ ){
+					if( aSlot[i] == -2 ){
+						char zAnonBuf[32];
+						SyString sAnonName;
+						sAnonName.nByte = SyBufferFormat(zAnonBuf,sizeof(zAnonBuf),
+							"[%u]apArg",nAnon);
+						sAnonName.zString = zAnonBuf;
+						pObj = VmExtractMemObj(&(*pVm),&sAnonName,TRUE,TRUE);
+						if( pObj ){
+							PH7_MemObjStore(&pArg[i],pObj);
+							sArg.nIdx = pObj->nIdx;
+							sArg.pUserData = 0;
+							SySetPut(&pFrame->sArg,(const void *)&sArg);
+						}
+						nAnon++;
+					}
+				}
+			}
+			/* Release all stack arguments */
+			for( i = 0; i < nActual; i++ ){
+				PH7_MemObjRelease(&pArg[i]);
+			}
+			SyMemBackendFree(&pVm->sAllocator, aSlot);
+			/* Set n to nFormal so the defaults loop below is skipped */
+			n = nFormal;
+		}else{
+		/* ============================================================
+		 * Positional-only matching path (original)
+		 * ============================================================ */
 		n = 0;
 		while( pArg < pTos ){
 			if( n < SySetUsed(&pVmFunc->aArgs) && (aFormalArg[n].iFlags & VM_FUNC_ARG_VARIADIC) ){
@@ -7462,6 +7867,7 @@ case PH7_OP_CALL: {
 			pArg++;
 			++n;
 		}
+		} /* end named vs positional branch */
 		/* Set up closure environment */
 		if( pVmFunc->iFlags & VM_FUNC_CLOSURE ){
 			ph7_vm_func_closure_env *aEnv,*pEnv;
@@ -7521,6 +7927,7 @@ case PH7_OP_CALL: {
 			}
 			++n;
 		}
+		} /* end VmCallArgMap scope */
 		/* Pop arguments,function name from the operand stack and assume the function
 		 * does not return anything.
 		 */
@@ -7627,13 +8034,13 @@ SkipFuncBody:
 		ph7_value sRet;
 		/* Look for an installed foreign function.
 		 * Host functions are registered with short names (strlen, etc.).
-		 * If the CALL instruction's p3 is set (compiler-qualified name),
-		 * extract the short name (last component after \) and try that.
-		 * This implements PHP's global fallback for unqualified function
-		 * calls in namespaces. User-written qualified names (like
-		 * \Bogus\strlen) do NOT get this fallback. */
+		 * If the compiler namespace-qualified the name, extract the short
+		 * name (last component after \) and try that. This implements PHP's
+		 * global fallback for unqualified function calls in namespaces. */
 		pEntry = SyHashGet(&pVm->hHostFunction,(const void *)sName.zString,sName.nByte);
-		if( pEntry == 0 && pInstr->p3 != 0 ){
+		{
+		VmCallArgMap *pCallMap2 = (VmCallArgMap *)pInstr->p3;
+		if( pEntry == 0 && pCallMap2 && pCallMap2->bIsNamespaced ){
 			/* Compiler-qualified: try short name as global fallback */
 			const char *zShort = sName.zString;
 			sxu32 i;
@@ -7647,6 +8054,7 @@ SkipFuncBody:
 				pEntry = SyHashGet(&pVm->hHostFunction,(const void *)zShort,nShort);
 			}
 		}
+		} /* end VmCallArgMap namespace scope */
 		if( pEntry == 0 ){
 			/* Call to undefined function */
 			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Call to undefined function '%z',NULL will be returned",&sName);
@@ -9571,6 +9979,60 @@ PH7_PRIVATE ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm)
  * Return SXRET_OK if the method was successfuly called.Any other
  * return value indicates failure.
  */
+/*
+ * Internal variant of PH7_VmCallClassMethod that threads a VmCallArgMap
+ * through to the synthetic CALL instruction.  Used by the NEW handler so
+ * that constructor calls with named arguments reach the named-arg path
+ * (with variadic string-key packing) rather than the positional path.
+ */
+static sxi32 VmCallClassMethodWithMap(
+	ph7_vm *pVm,
+	ph7_class_instance *pThis,
+	ph7_class_method *pMethod,
+	ph7_value *pResult,
+	int nArg,
+	ph7_value **apArg,
+	VmCallArgMap *pMap
+	)
+{
+	ph7_value *aStack;
+	VmInstr aInstr[2];
+	int iCursor;
+	int i;
+	aStack = VmNewOperandStack(&(*pVm),2+nArg);
+	if( aStack == 0 ){
+		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
+			"PH7 is running out of memory while invoking class method");
+		return SXERR_MEM;
+	}
+	for( i = 0 ; i < nArg ; i++ ){
+		PH7_MemObjLoad(apArg[i],&aStack[i]);
+		aStack[i].nIdx = apArg[i]->nIdx;
+	}
+	iCursor = nArg + 1;
+	if( pThis ){
+		pThis->iRef++;
+		aStack[i].x.pOther = pThis;
+		aStack[i].iFlags = MEMOBJ_OBJ;
+	}
+	aStack[i].nIdx = SXU32_HIGH;
+	i++;
+	SyBlobReset(&aStack[i].sBlob);
+	SyBlobAppend(&aStack[i].sBlob,(const void *)SyStringData(&pMethod->sVmName),SyStringLength(&pMethod->sVmName));
+	aStack[i].iFlags = MEMOBJ_STRING;
+	aStack[i].nIdx = SXU32_HIGH;
+	aInstr[0].iOp = PH7_OP_CALL;
+	aInstr[0].iP1 = nArg;
+	aInstr[0].iP2 = 0;
+	aInstr[0].p3  = (void *)pMap; /* forward named-arg metadata */
+	aInstr[1].iOp = PH7_OP_DONE;
+	aInstr[1].iP1 = 1;
+	aInstr[1].iP2 = 0;
+	aInstr[1].p3  = 0;
+	VmByteCodeExec(&(*pVm),aInstr,aStack,iCursor,pResult,0,TRUE,0);
+	SyMemBackendFree(&pVm->sAllocator,aStack);
+	return PH7_OK;
+}
 PH7_PRIVATE sxi32 PH7_VmCallClassMethod(
 	ph7_vm *pVm,               /* Target VM */
 	ph7_class_instance *pThis, /* Target class instance [i.e: Object in the PHP jargon]*/
@@ -9580,57 +10042,7 @@ PH7_PRIVATE sxi32 PH7_VmCallClassMethod(
 	ph7_value **apArg          /* Method arguments */
 	)
 {
-	ph7_value *aStack;
-	VmInstr aInstr[2];
-	int iCursor;
-	int i;
-	/* Create a new operand stack */
-	aStack = VmNewOperandStack(&(*pVm),2/* Method name + Aux data */+nArg);
-	if( aStack == 0 ){
-		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
-			"PH7 is running out of memory while invoking class method");
-		return SXERR_MEM;
-	}
-	/* Fill the operand stack with the given arguments */
-	for( i = 0 ; i < nArg ; i++ ){
-		PH7_MemObjLoad(apArg[i],&aStack[i]);
-		/*
-		 * Symisc eXtension:
-		 *  Parameters to [call_user_func()] can be passed by reference.
-		 */
-		aStack[i].nIdx = apArg[i]->nIdx;
-	}
-	iCursor = nArg + 1;
-	if( pThis ){
-		/*
-		 * Push the class instance so that the '$this' variable will be available.
-		 */
-		pThis->iRef++; /* Increment reference count */
-		aStack[i].x.pOther = pThis;
-		aStack[i].iFlags = MEMOBJ_OBJ;
-	}
-	aStack[i].nIdx = SXU32_HIGH; /* Mark as constant */
-	i++;
-	/* Push method name */
-	SyBlobReset(&aStack[i].sBlob);
-	SyBlobAppend(&aStack[i].sBlob,(const void *)SyStringData(&pMethod->sVmName),SyStringLength(&pMethod->sVmName));
-	aStack[i].iFlags = MEMOBJ_STRING;
-	aStack[i].nIdx = SXU32_HIGH;
-	/* Emit the CALL istruction */
-	aInstr[0].iOp = PH7_OP_CALL;
-	aInstr[0].iP1 = nArg; /* Total number of given arguments */
-	aInstr[0].iP2 = 0;
-	aInstr[0].p3  = 0;
-	/* Emit the DONE instruction */
-	aInstr[1].iOp = PH7_OP_DONE;
-	aInstr[1].iP1 = 1;   /* Extract method return value */
-	aInstr[1].iP2 = 0;
-	aInstr[1].p3  = 0;
-	/* Execute the method body (if available) */
-	VmByteCodeExec(&(*pVm),aInstr,aStack,iCursor,pResult,0,TRUE,0);
-	/* Clean up the mess left behind */
-	SyMemBackendFree(&pVm->sAllocator,aStack);
-	return PH7_OK;
+	return VmCallClassMethodWithMap(pVm,pThis,pMethod,pResult,nArg,apArg,0);
 }
 /*
  * Call a user defined or foreign function where the name of the function
