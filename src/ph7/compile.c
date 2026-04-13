@@ -9121,12 +9121,29 @@ static sxi32 GenStateEmitExprCode(
 		if( iVmOp == PH7_OP_CALL ){
 			ph7_expr_node **apNode;
 			int hasSpread = 0;
+			int hasNamed = 0;
+			sxi32 nArgs;
 			sxi32 n;
 			/* Recurse and generate bytecodes for function arguments */
 			apNode = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);
+			nArgs = (sxi32)SySetUsed(&pNode->aNodeArgs);
+			/* Validate: no positional arguments after named arguments */
+			{
+				int seenNamed = 0;
+				for( n = 0; n < nArgs; ++n ){
+					if( apNode[n]->iFlags & EXPR_NODE_NAMED_ARG ){
+						seenNamed = 1;
+						hasNamed = 1;
+					}else if( seenNamed && !(apNode[n]->iFlags & EXPR_NODE_SPREAD) ){
+						rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[n]->pStart->nLine,
+							"Cannot use positional argument after named argument");
+						return SXERR_SYNTAX;
+					}
+				}
+			}
 			/* Read-only load */
 			iFlags |= EXPR_FLAG_RDONLY_LOAD;
-			for( n = 0 ; n < (sxi32)SySetUsed(&pNode->aNodeArgs) ; ++n ){
+			for( n = 0 ; n < nArgs ; ++n ){
 				rc = GenStateEmitExprCode(&(*pGen),apNode[n],iFlags&~EXPR_FLAG_LOAD_IDX_STORE);
 				if( rc != SXRET_OK ){
 					return rc;
@@ -9138,8 +9155,41 @@ static sxi32 GenStateEmitExprCode(
 				}
 			}
 			/* Total number of given arguments */
-			iP1 = (sxi32)SySetUsed(&pNode->aNodeArgs);
+			iP1 = nArgs;
 			iP2 = hasSpread;
+			/* Build VmCallArgMap if named arguments are present.
+			 * Deep-copy name strings so they survive token stream cleanup. */
+			if( hasNamed ){
+				sxu32 nStrBytes = 0;
+				char *zBuf;
+				for( n = 0; n < nArgs; ++n ){
+					if( apNode[n]->iFlags & EXPR_NODE_NAMED_ARG ){
+						nStrBytes += (sxu32)apNode[n]->sArgName.nByte;
+					}
+				}
+				{
+				sxu32 mapSize = sizeof(VmCallArgMap) + nArgs * sizeof(SyString) + nStrBytes;
+				VmCallArgMap *pMap = (VmCallArgMap *)SyMemBackendAlloc(
+					&pGen->pVm->sAllocator, mapSize);
+				if( pMap ){
+					SyZero(pMap, mapSize);
+					pMap->bHasNamed = 1;
+					pMap->nTotal = (sxu32)nArgs;
+					pMap->aNames = (SyString *)&pMap[1];
+					zBuf = (char *)&pMap->aNames[nArgs]; /* string storage after SyString array */
+					for( n = 0; n < nArgs; ++n ){
+						if( apNode[n]->iFlags & EXPR_NODE_NAMED_ARG ){
+							sxu32 nb = (sxu32)apNode[n]->sArgName.nByte;
+							SyMemcpy(apNode[n]->sArgName.zString, zBuf, nb);
+							SyStringInitFromBuf(&pMap->aNames[n], zBuf, nb);
+							zBuf += nb;
+						}
+						/* else: aNames[n] remains {NULL, 0} for positional */
+					}
+					p3 = (void *)pMap;
+				}
+				}
+			}
 			/* Remove stale flags now */
 			iFlags &= ~EXPR_FLAG_RDONLY_LOAD;
 		}
@@ -9170,7 +9220,18 @@ static sxi32 GenStateEmitExprCode(
 							 * NEW handler can recover the unqualified name. */
 							iP2 = (sxi32)(nOrig + 1); /* +1 to distinguish from default 0 */
 							if( !fromImport ){
-								p3 = (void *)1;
+								/* Mark as namespace-qualified via VmCallArgMap */
+								if( p3 == 0 ){
+									VmCallArgMap *pMap = (VmCallArgMap *)SyMemBackendAlloc(
+										&pGen->pVm->sAllocator, sizeof(VmCallArgMap));
+									if( pMap ){
+										SyZero(pMap, sizeof(VmCallArgMap));
+										p3 = (void *)pMap;
+									}
+								}
+								if( p3 ){
+									((VmCallArgMap *)p3)->bIsNamespaced = 1;
+								}
 							}
 						}
 					}
@@ -9328,8 +9389,11 @@ static sxi32 GenStateEmitExprCode(
 				VmInstr *pPrev;
 				pPrev = PH7_VmPeekNextInstr(pGen->pVm);
 				if( pPrev == 0 || pPrev->iOp != PH7_OP_MEMBER ){
-					/* Pop the call instruction */
+					/* Pop the call instruction, preserve named-arg map */
 					iP1 = pInstr->iP1;
+					if( pInstr->p3 ){
+						p3 = pInstr->p3; /* Transfer VmCallArgMap to NEW */
+					}
 					(void)PH7_VmPopInstr(pGen->pVm);
 				}
 			}
