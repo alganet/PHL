@@ -843,6 +843,7 @@ static sxu32 KeywordCode(const char *z, int n){
   if( n==9 && SyMemcmp(z,"insteadof",9)==0 ) return PH7_TKWRD_INSTEADOF;
   if( n==7 && SyMemcmp(z,"finally",7)==0 ) return PH7_TKWRD_FINALLY;
   if( n==5 && SyMemcmp(z,"yield",5)==0 ) return PH7_TKWRD_YIELD;
+  if( n==5 && SyMemcmp(z,"match",5)==0 ) return PH7_TKWRD_MATCH;
   return PH7_TK_ID;
 }
 /* --- End of Automatically generated code --- */

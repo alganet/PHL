@@ -1431,6 +1431,30 @@ static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)
 					pCur = pGen->pIn;
 					break;
 				}
+				/* Match expression (PHP 8.0): 'match (subject) { ... }'.
+				 * The '=>' inside match arms is not an array key/value separator —
+				 * it introduces each arm's result expression. Skip past the full
+				 * match span so the outer scan sees no false '=>'. */
+				if( nKw == PH7_TKWRD_MATCH ){
+					pCur++; /* past 'match' */
+					if( pCur < pGen->pIn && (pCur->nType & PH7_TK_LPAREN) ){
+						pCur++;
+						PH7_DelimitNestedTokens(pCur,pGen->pIn,
+							PH7_TK_LPAREN,PH7_TK_RPAREN,&pCur);
+						if( pCur < pGen->pIn ){
+							pCur++;
+						}
+					}
+					if( pCur < pGen->pIn && (pCur->nType & PH7_TK_OCB) ){
+						pCur++;
+						PH7_DelimitNestedTokens(pCur,pGen->pIn,
+							PH7_TK_OCB,PH7_TK_CCB,&pCur);
+						if( pCur < pGen->pIn ){
+							pCur++;
+						}
+					}
+					continue;
+				}
 			}
 			if( pCur->nType & PH7_TK_LPAREN /*'('*/ ){
 				iNest++;
@@ -2297,6 +2321,229 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	pGen->pEnd = pSavedEnd;
 	/* Emit the load-closure instruction */
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_CLOSURE,0,0,pFunc,0);
+	return SXRET_OK;
+}
+/*
+ * Compile a single arm's expression range into a freshly-allocated
+ * sub-bytecode container. The caller supplies the token range [pStart, pEnd).
+ * The sub-bytecode is terminated with OP_DONE so VmLocalExec returns the
+ * expression's value.
+ */
+static sxi32 GenStateCompileMatchSubExpr(ph7_gen_state *pGen,
+	SyToken *pStart,SyToken *pStop,SySet *pOut)
+{
+	SySet *pInstrContainer;
+	SyToken *pTmpIn,*pTmpEnd;
+	sxi32 rc;
+	pTmpIn  = pGen->pIn;
+	pTmpEnd = pGen->pEnd;
+	pGen->pIn  = pStart;
+	pGen->pEnd = pStop;
+	pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
+	PH7_VmSetByteCodeContainer(pGen->pVm,pOut);
+	rc = PH7_CompileExpr(&(*pGen),0,0);
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,(rc != SXERR_EMPTY ? 1 : 0),0,0,0);
+	PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
+	pGen->pIn  = pTmpIn;
+	pGen->pEnd = pTmpEnd;
+	if( rc == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
+	if( rc == SXERR_EMPTY ){
+		return SXERR_EMPTY;
+	}
+	return SXRET_OK;
+}
+/*
+ * Compile a PHP 8.0 match expression:
+ *     match(subject){ cond_list => result, ..., default => result }
+ * Match is an expression — on exit the match result is on top of the stack.
+ * Strict comparison (===) is used between the subject and each condition.
+ * No fallthrough. If no arm matches and no default is present, a fatal
+ * Uncaught UnhandledMatchError is raised at runtime.
+ */
+/*
+ * Emit a parse error for match and propagate SXERR_ABORT if the error
+ * count limit has been reached. Otherwise returns SXERR_SYNTAX so the
+ * caller can bail out of the current expression.
+ */
+static sxi32 GenStateMatchError(ph7_gen_state *pGen,sxu32 nLine,const char *zFmt,...)
+{
+	va_list ap;
+	sxi32 rc;
+	SyBlob sMsg;
+	SyBlobInit(&sMsg,&pGen->pVm->sAllocator);
+	va_start(ap,zFmt);
+	SyBlobFormatAp(&sMsg,zFmt,ap);
+	va_end(ap);
+	SyBlobAppend(&sMsg,"",1); /* NUL-terminate */
+	rc = PH7_GenCompileError(pGen,E_PARSE,nLine,"%s",(const char *)SyBlobData(&sMsg));
+	SyBlobRelease(&sMsg);
+	if( rc == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
+	return SXERR_SYNTAX;
+}
+/*
+ * Scan a top-level token range inside a match body, stopping at the first
+ * token whose type is in stopMask (not counting nested parens/brackets/braces).
+ * Returns the stop token pointer (or pEnd if none found).
+ */
+static SyToken * GenStateMatchScanTopLevel(SyToken *pStart,SyToken *pEnd,sxu32 stopMask)
+{
+	SyToken *pCur = pStart;
+	int iNest = 0;
+	while( pCur < pEnd ){
+		if( pCur->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+			iNest++;
+		}else if( pCur->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+			iNest--;
+		}else if( iNest == 0 && (pCur->nType & stopMask) ){
+			return pCur;
+		}
+		pCur++;
+	}
+	return pEnd;
+}
+PH7_PRIVATE sxi32 PH7_CompileMatch(ph7_gen_state *pGen,sxi32 iCompileFlag)
+{
+	ph7_match *pMatch;
+	SyToken *pSubjEnd,*pBodyEnd,*pSavedEnd;
+	int bHasDefault = 0;
+	sxu32 nLine;
+	sxi32 rc;
+	SXUNUSED(iCompileFlag);
+	nLine = pGen->pIn->nLine;
+	pGen->pIn++; /* Jump 'match' (dispatch in ExprExtractNode guarantees this token) */
+	/* Expect '(' */
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
+		return GenStateMatchError(pGen,nLine,
+			"syntax error, unexpected %s, expecting \"(\"",
+			pGen->pIn < pGen->pEnd ? "token" : "end of file");
+	}
+	pGen->pIn++; /* Jump '(' */
+	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pSubjEnd);
+	if( pSubjEnd >= pGen->pEnd ){
+		return GenStateMatchError(pGen,nLine,
+			"syntax error, unexpected end of file, expecting \")\"");
+	}
+	if( pGen->pIn >= pSubjEnd ){
+		return GenStateMatchError(pGen,nLine,
+			"syntax error, unexpected \")\", expecting match subject");
+	}
+	/* Compile subject inline — result stays on the caller's operand stack */
+	pSavedEnd = pGen->pEnd;
+	pGen->pEnd = pSubjEnd;
+	rc = PH7_CompileExpr(&(*pGen),0,0);
+	if( rc == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
+	pGen->pEnd = pSavedEnd;
+	pGen->pIn = &pSubjEnd[1]; /* Jump ')' */
+	/* Expect '{' */
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_OCB) == 0 ){
+		return GenStateMatchError(pGen,
+			pGen->pIn < pGen->pEnd ? pGen->pIn->nLine : nLine,
+			"syntax error, expecting \"{\" after match subject");
+	}
+	pGen->pIn++; /* Jump '{' */
+	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_OCB,PH7_TK_CCB,&pBodyEnd);
+	if( pBodyEnd >= pGen->pEnd ){
+		return GenStateMatchError(pGen,nLine,
+			"syntax error, unexpected end of file, expecting \"}\"");
+	}
+	/* Allocate ph7_match container */
+	pMatch = (ph7_match *)SyMemBackendAlloc(&pGen->pVm->sAllocator,sizeof(ph7_match));
+	if( pMatch == 0 ){
+		PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+			"Fatal, PH7 engine is running out of memory");
+		return SXERR_ABORT;
+	}
+	SyZero(pMatch,sizeof(ph7_match));
+	SySetInit(&pMatch->aArms,&pGen->pVm->sAllocator,sizeof(ph7_match_arm));
+	/* Iterate arms */
+	while( pGen->pIn < pBodyEnd ){
+		ph7_match_arm sArm;
+		SyToken *pArrow,*pCondStart,*pResStart,*pResEnd;
+		sxu32 nArmLine = pGen->pIn->nLine;
+		SyZero(&sArm,sizeof(ph7_match_arm));
+		SySetInit(&sArm.aConds,&pGen->pVm->sAllocator,sizeof(SySet));
+		SySetInit(&sArm.aResult,&pGen->pVm->sAllocator,sizeof(VmInstr));
+		/* 'default' arm? */
+		if( (pGen->pIn->nType & PH7_TK_KEYWORD)
+			&& SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_DEFAULT ){
+			if( bHasDefault ){
+				rc = PH7_GenCompileError(pGen,E_ERROR,nArmLine,
+					"Match expressions may only contain one default arm");
+				return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
+			}
+			sArm.bDefault = 1;
+			bHasDefault = 1;
+			pGen->pIn++;
+			if( pGen->pIn >= pBodyEnd || (pGen->pIn->nType & PH7_TK_ARRAY_OP) == 0 ){
+				return GenStateMatchError(pGen,nArmLine,
+					"syntax error, expecting \"=>\" after 'default'");
+			}
+			pGen->pIn++; /* Jump '=>' */
+		}else{
+			/* Condition list: cond (',' cond)* '=>' */
+			pCondStart = pGen->pIn;
+			pArrow = GenStateMatchScanTopLevel(pGen->pIn,pBodyEnd,
+				PH7_TK_ARRAY_OP|PH7_TK_COMMA);
+			while( pArrow < pBodyEnd && (pArrow->nType & PH7_TK_COMMA) ){
+				SySet sCondBc;
+				if( pCondStart >= pArrow ){
+					return GenStateMatchError(pGen,nArmLine,
+						"syntax error, empty match condition expression");
+				}
+				SySetInit(&sCondBc,&pGen->pVm->sAllocator,sizeof(VmInstr));
+				rc = GenStateCompileMatchSubExpr(pGen,pCondStart,pArrow,&sCondBc);
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				SySetPut(&sArm.aConds,(const void *)&sCondBc);
+				pCondStart = &pArrow[1]; /* Skip ',' */
+				pArrow = GenStateMatchScanTopLevel(pCondStart,pBodyEnd,
+					PH7_TK_ARRAY_OP|PH7_TK_COMMA);
+			}
+			if( pArrow >= pBodyEnd || (pArrow->nType & PH7_TK_ARRAY_OP) == 0 ){
+				return GenStateMatchError(pGen,nArmLine,
+					"syntax error, expecting \"=>\" in match arm");
+			}
+			if( pCondStart >= pArrow ){
+				return GenStateMatchError(pGen,nArmLine,
+					"syntax error, empty match condition expression");
+			}
+			{
+				SySet sCondBc;
+				SySetInit(&sCondBc,&pGen->pVm->sAllocator,sizeof(VmInstr));
+				rc = GenStateCompileMatchSubExpr(pGen,pCondStart,pArrow,&sCondBc);
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				SySetPut(&sArm.aConds,(const void *)&sCondBc);
+			}
+			pGen->pIn = &pArrow[1]; /* Jump '=>' */
+		}
+		/* Compile result expression: up to top-level ',' or body end */
+		pResStart = pGen->pIn;
+		pResEnd = GenStateMatchScanTopLevel(pGen->pIn,pBodyEnd,PH7_TK_COMMA);
+		if( pResStart >= pResEnd ){
+			return GenStateMatchError(pGen,nArmLine,
+				"syntax error, expected expression after \"=>\"");
+		}
+		rc = GenStateCompileMatchSubExpr(pGen,pResStart,pResEnd,&sArm.aResult);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		pGen->pIn = pResEnd;
+		if( pGen->pIn < pBodyEnd && (pGen->pIn->nType & PH7_TK_COMMA) ){
+			pGen->pIn++; /* Skip trailing ',' */
+		}
+		SySetPut(&pMatch->aArms,(const void *)&sArm);
+	}
+	pGen->pIn = &pBodyEnd[1]; /* Jump '}' */
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_MATCH,0,0,pMatch,0);
 	return SXRET_OK;
 }
 /*
