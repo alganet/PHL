@@ -786,6 +786,22 @@ struct ph7_switch
 	sxu32 nOut;       /* First instruction to execute after this statement */
 	sxu32 nDefault;   /* First instruction to execute in the default block */
 };
+/*
+ * Each arm of a PHP 8.0 match expression is compiled into
+ * an instance of the following structure.
+ */
+typedef struct ph7_match_arm ph7_match_arm;
+typedef struct ph7_match     ph7_match;
+struct ph7_match_arm
+{
+	SySet aConds;   /* SySet of SySet (VmInstr) — one compiled bytecode block per condition value */
+	SySet aResult;  /* Compiled bytecode of the arm's result expression */
+	int   bDefault; /* 1 if this is the 'default' arm */
+};
+struct ph7_match
+{
+	SySet aArms;    /* SySet of ph7_match_arm */
+};
 /* Assertion flags */
 #define PH7_ASSERT_DISABLE    0x01  /* Disable assertion */
 #define PH7_ASSERT_WARNING    0x02  /* Deprecated in PHP 8: kept for constant compatibility only */
@@ -1021,6 +1037,7 @@ enum ph7_vm_op {
   PH7_OP_POP_EXCEPTION, /* POP an exception */
   PH7_OP_THROW,         /* Throw exception */
   PH7_OP_SWITCH,        /* Switch operation */
+  PH7_OP_MATCH,         /* Match expression (PHP 8.0) */
   PH7_OP_ERR_CTRL,     /* Error control */
   PH7_OP_DUP,          /* Duplicate top of stack */
   PH7_OP_NSSWITCH,     /* Switch active namespace at runtime */
@@ -1207,6 +1224,7 @@ enum ph7_expr_id {
 #define PH7_TKWRD_FINALLY      59 /* finally */
 #define PH7_TKWRD_YIELD        60 /* yield */
 #define PH7_TKWRD_FN           61 /* fn (PHP 7.4 arrow function) */
+#define PH7_TKWRD_MATCH        62 /* match (PHP 8.0 match expression) */
 #define PH7_TKWRD_BOOL         0x8000  /* bool:  MUST BE A POWER OF TWO */
 #define PH7_TKWRD_INT          0x10000  /* int:   MUST BE A POWER OF TWO */
 #define PH7_TKWRD_FLOAT        0x20000  /* float:  MUST BE A POWER OF TWO */
@@ -1606,6 +1624,7 @@ PH7_PRIVATE sxi32 PH7_CompileList(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileShortList(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileAnnonFunc(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag);
+PH7_PRIVATE sxi32 PH7_CompileMatch(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_InitCodeGenerator(ph7_vm *pVm,ProcConsumer xErr,void *pErrData);
 PH7_PRIVATE sxi32 PH7_ResetCodeGenerator(ph7_vm *pVm,ProcConsumer xErr,void *pErrData);
 PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 nLine,const char *zFormat,...);

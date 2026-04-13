@@ -776,6 +776,46 @@ Synchronize:
 	return rc;
 }
 /*
+ * Scan token boundaries of a PHP 8.0 match expression:
+ *     match '(' <subject> ')' '{' <arms> '}'
+ * The compile pass (PH7_CompileMatch) performs authoritative validation
+ * and emits PHP-compatible parse errors. Here we just advance past the
+ * closing '}' so the expression node's pEnd covers the entire span.
+ */
+static sxi32 ExprAssembleMatch(ph7_gen_state *pGen,SyToken **ppCur,SyToken *pEnd)
+{
+	SyToken *pIn = *ppCur;
+	sxi32 rc;
+	SXUNUSED(pGen);
+	/* Expect 'match' (dispatch in ExprExtractNode guarantees this) */
+	if( pIn >= pEnd || (pIn->nType & PH7_TK_KEYWORD) == 0
+		|| SX_PTR_TO_INT(pIn->pUserData) != PH7_TKWRD_MATCH ){
+		rc = SXERR_SYNTAX;
+		goto Synchronize;
+	}
+	pIn++; /* Jump 'match' */
+	/* Optional '(' subject ')' */
+	if( pIn < pEnd && (pIn->nType & PH7_TK_LPAREN) ){
+		pIn++;
+		PH7_DelimitNestedTokens(pIn,pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pIn);
+		if( pIn < pEnd ){
+			pIn++; /* ')' */
+		}
+	}
+	/* Optional '{' arms '}' */
+	if( pIn < pEnd && (pIn->nType & PH7_TK_OCB) ){
+		pIn++;
+		PH7_DelimitNestedTokens(pIn,pEnd,PH7_TK_OCB,PH7_TK_CCB,&pIn);
+		if( pIn < pEnd ){
+			pIn++; /* '}' */
+		}
+	}
+	rc = SXRET_OK;
+Synchronize:
+	*ppCur = pIn;
+	return rc;
+}
+/*
  * Extract a single expression node from the input.
  * On success store the freshly extractd node in ppNode.
  * When errors,PH7 take care of generating the appropriate error message.
@@ -947,6 +987,14 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 				 return rc;
 			 }
 			 pNode->xCode = PH7_CompileArrowFunc;
+		 }else if( nKeyword == PH7_TKWRD_MATCH ){
+			 /* PHP 8.0 match expression: match(subject){ cond => result, ... } */
+			 rc = ExprAssembleMatch(&(*pGen),&pCur,pGen->pEnd);
+			 if( rc != SXRET_OK ){
+				 SyMemBackendPoolFree(&pGen->pVm->sAllocator,pNode);
+				 return rc;
+			 }
+			 pNode->xCode = PH7_CompileMatch;
 		 }else if( PH7_IsLangConstruct(nKeyword,FALSE) == TRUE && &pCur[1] < pGen->pEnd ){
 			 /* Language constructs [i.e: print,echo,die...] require special handling */
 			 PH7_DelimitNestedTokens(pCur,pGen->pEnd,PH7_TK_LPAREN|PH7_TK_OCB|PH7_TK_OSB, PH7_TK_RPAREN|PH7_TK_CCB|PH7_TK_CSB,&pCur);

@@ -6979,6 +6979,86 @@ case PH7_OP_SWITCH: {
 	break;
 					}
 /*
+ * OP_MATCH * * P3
+ *  PHP 8.0 match expression. P3 points to a ph7_match struct holding
+ *  the compiled arms. On entry, the subject is on top of the stack.
+ *  On exit, the stack slot holds the matched arm's result value.
+ *  Comparison is strict (===). No fallthrough. When no arm matches and
+ *  no default is present, a fatal UnhandledMatchError is raised.
+ */
+case PH7_OP_MATCH: {
+	ph7_match *pMatch = (ph7_match *)pInstr->p3;
+	ph7_match_arm *aArm,*pArm,*pDefault = 0;
+	ph7_value sSubject,sCond,sResult;
+	sxu32 i,j,nArm,nCond;
+	int matched = 0;
+#ifdef UNTRUST
+	if( pMatch == 0 || pTos < pStack ){
+		goto Abort;
+	}
+#endif
+	aArm = (ph7_match_arm *)SySetBasePtr(&pMatch->aArms);
+	nArm = SySetUsed(&pMatch->aArms);
+	PH7_MemObjInit(pVm,&sSubject);
+	PH7_MemObjInit(pVm,&sCond);
+	PH7_MemObjInit(pVm,&sResult);
+	PH7_MemObjLoad(pTos,&sSubject);
+	for( i = 0; i < nArm && !matched; ++i ){
+		pArm = &aArm[i];
+		if( pArm->bDefault ){
+			pDefault = pArm;
+			continue;
+		}
+		nCond = SySetUsed(&pArm->aConds);
+		for( j = 0; j < nCond; ++j ){
+			SySet *pCondBc = (SySet *)SySetAt(&pArm->aConds,j);
+			if( pCondBc == 0 ){
+				continue;
+			}
+			VmLocalExec(pVm,pCondBc,&sCond);
+			rc = PH7_MemObjCmp(&sSubject,&sCond,TRUE /* strict */,0);
+			PH7_MemObjRelease(&sCond);
+			if( rc == 0 ){
+				VmLocalExec(pVm,&pArm->aResult,&sResult);
+				matched = 1;
+				break;
+			}
+		}
+	}
+	if( !matched && pDefault ){
+		VmLocalExec(pVm,&pDefault->aResult,&sResult);
+		matched = 1;
+	}
+	if( !matched ){
+		const char *zType = "unknown";
+		char zMsg[128];
+		sxu32 nMsg;
+		switch(sSubject.iFlags & MEMOBJ_ALL){
+		case MEMOBJ_NULL:   zType = "null";   break;
+		case MEMOBJ_BOOL:   zType = "bool";   break;
+		case MEMOBJ_INT:    zType = "int";    break;
+		case MEMOBJ_REAL:   zType = "float";  break;
+		case MEMOBJ_STRING: zType = "string"; break;
+		case MEMOBJ_HASHMAP:zType = "array";  break;
+		case MEMOBJ_OBJ:    zType = "object"; break;
+		case MEMOBJ_RES:    zType = "resource"; break;
+		default: break;
+		}
+		nMsg = SyBufferFormat(zMsg,sizeof(zMsg),
+			"Unhandled match case of type %s",zType);
+		VmReportUncaughtException(&(*pVm),"UnhandledMatchError",
+			sizeof("UnhandledMatchError")-1,zMsg,nMsg,0,0);
+		PH7_MemObjRelease(&sSubject);
+		PH7_MemObjRelease(&sResult);
+		goto Abort;
+	}
+	PH7_MemObjRelease(&sSubject);
+	/* Replace subject on TOS with the arm result */
+	PH7_MemObjStore(&sResult,pTos);
+	PH7_MemObjRelease(&sResult);
+	break;
+					}
+/*
  * OP_YIELD P1 P2 *
  *  Yield a value from a generator function.
  *  P1=1 if value on stack, P1=0 for bare yield.
@@ -9456,6 +9536,7 @@ static const char * VmInstrToString(sxi32 nOp)
 	case PH7_OP_ERR_CTRL:   zOp = "ERR_CTRL   "; break;
 	case PH7_OP_IS_A:       zOp = "IS_A       "; break;
 	case PH7_OP_SWITCH:     zOp = "SWITCH     "; break;
+	case PH7_OP_MATCH:      zOp = "MATCH      "; break;
 	case PH7_OP_LOAD_EXCEPTION:
 		                    zOp = "LOAD_EXCEP "; break;
 	case PH7_OP_POP_EXCEPTION:
