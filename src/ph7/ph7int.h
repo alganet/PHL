@@ -375,6 +375,7 @@ struct ph7_gen_state
 	void *pErrData;      /* Third argument to xErr() */
 	SySet aLabel;        /* Label table */
 	SySet aGoto;         /* Gotos table */
+	SySet aNullsafeJmp;  /* Pending NULLSAFE_JMP instruction indices (sxu32) */
 	SyBlob sWorker;      /* General purpose working buffer */
 	SyBlob sErrBuf;      /* Error buffer */
 	SyBlob sNamespace;   /* Current namespace path (e.g. "App\\Models") */
@@ -1045,6 +1046,7 @@ enum ph7_vm_op {
   PH7_OP_NULLC,         /* Null coalescing ?? */
   PH7_OP_NULLC_JMP,     /* Null coalescing assign short-circuit jump */
   PH7_OP_NULLC_STORE,   /* Null coalescing assign store */
+  PH7_OP_NULLSAFE_JMP,  /* Nullsafe (?->) short-circuit jump */
   PH7_OP_SPREAD         /* Mark TOS for argument unpacking (...$arr) */
 };
 /* -- END-OF INSTRUCTIONS -- */
@@ -1055,6 +1057,7 @@ enum ph7_expr_id {
 	EXPR_OP_NEW = 1,   /* new */
 	EXPR_OP_CLONE,     /* clone */
 	EXPR_OP_ARROW,     /* -> */
+	EXPR_OP_NULLSAFE_ARROW, /* ?-> (PHP 8.0 nullsafe) */
 	EXPR_OP_DC,        /* :: */
 	EXPR_OP_SUBSCRIPT, /* []: Subscripting */
 	EXPR_OP_FUNC_CALL, /* func_call() */
@@ -1604,6 +1607,7 @@ PH7_PRIVATE int PH7_Utf8Read(
 /* parse.c function prototypes */
 PH7_PRIVATE int PH7_IsLangConstruct(sxu32 nKeyID,sxu8 bCheckFunc);
 PH7_PRIVATE sxi32 PH7_ExprMakeTree(ph7_gen_state *pGen,SySet *pExprNode,ph7_expr_node **ppRoot);
+PH7_PRIVATE int PH7_ExprContainsNullsafe(ph7_expr_node *pNode);
 PH7_PRIVATE sxi32 PH7_GetNextExpr(SyToken *pStart,SyToken *pEnd,SyToken **ppNext);
 PH7_PRIVATE void PH7_DelimitNestedTokens(SyToken *pIn,SyToken *pEnd,sxu32 nTokStart,sxu32 nTokEnd,SyToken **ppEnd);
 PH7_PRIVATE const ph7_expr_op * PH7_ExprExtractOperator(SyString *pStr,SyToken *pLast);

@@ -155,6 +155,7 @@ static const ph7_expr_op aOpTable[] = {
 	                              /* Postfix operators */
 	/* Precedence 2(Highest),left-associative */
 	{ {"->",sizeof(char)*2}, EXPR_OP_ARROW,     2, EXPR_OP_ASSOC_LEFT , PH7_OP_MEMBER},
+	{ {"?->",sizeof(char)*3},EXPR_OP_NULLSAFE_ARROW, 2, EXPR_OP_ASSOC_LEFT, PH7_OP_MEMBER},
 	{ {"::",sizeof(char)*2}, EXPR_OP_DC,        2, EXPR_OP_ASSOC_LEFT , PH7_OP_MEMBER},
 	{ {"[",sizeof(char)},    EXPR_OP_SUBSCRIPT, 2, EXPR_OP_ASSOC_LEFT , PH7_OP_LOAD_IDX},
 	/* Precedence 3,non-associative  */
@@ -1106,6 +1107,29 @@ PH7_PRIVATE sxi32 PH7_ExprFreeTree(ph7_gen_state *pGen,SySet *pNodeSet)
 	return SXRET_OK;
 }
 /*
+ * Return TRUE if any node in the expression subtree is the nullsafe
+ * operator `?->`.  Used by write-context checks to reject assignments,
+ * references, and unset() that target any link of a nullsafe chain
+ * (PHP 8.0 makes this a fatal parse error:
+ * "Can't use nullsafe operator in write context").
+ */
+PH7_PRIVATE int PH7_ExprContainsNullsafe(ph7_expr_node *pNode)
+{
+	if( pNode == 0 ){
+		return 0;
+	}
+	if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_NULLSAFE_ARROW ){
+		return 1;
+	}
+	if( PH7_ExprContainsNullsafe(pNode->pLeft) ){
+		return 1;
+	}
+	if( PH7_ExprContainsNullsafe(pNode->pRight) ){
+		return 1;
+	}
+	return 0;
+}
+/*
  * Check if the given node is a modifialbe l/r-value.
  * Return TRUE if modifiable.FALSE otherwise.
  */
@@ -1462,7 +1486,8 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				 }
 				 /* Link the node to the tree */
 				 pNode->pLeft = apNode[iLeft];
-				 if( pNode->pOp->iOp == EXPR_OP_ARROW /*'->'*/ && pNode->pLeft->pOp == 0 &&
+				 if( (pNode->pOp->iOp == EXPR_OP_ARROW /*'->'*/ || pNode->pOp->iOp == EXPR_OP_NULLSAFE_ARROW /*'?->'*/)
+					 && pNode->pLeft->pOp == 0 &&
 					 pNode->pLeft->xCode != PH7_CompileVariable ){
 						 /* Syntax error */
 						 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
@@ -1645,6 +1670,18 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				 if( pNode->pOp->iOp == EXPR_OP_REF ){
 					 sxi32  iTmp;
 					 /* Reference operator [i.e: '&=' ]*/
+					 /* PHP 8.0: `&$a?->b` is a parse error — references
+					  * cannot target a nullsafe chain anywhere. Check the
+					  * right operand first since EXPR_OP_REF's operand order
+					  * is swapped below. */
+					 if( PH7_ExprContainsNullsafe(apNode[iRight]) ){
+						 rc = PH7_GenCompileError(pGen,E_PARSE,pNode->pStart->nLine,
+							 "Can't use nullsafe operator in write context");
+						 if( rc != SXERR_ABORT ){
+							 rc = SXERR_SYNTAX;
+						 }
+						 return rc;
+					 }
 					 if( ExprIsModifiableValue(apNode[iLeft],FALSE) == FALSE || (apNode[iLeft]->pOp && apNode[iLeft]->pOp->iVmOp == PH7_OP_MEMBER /*->,::*/) ){
 						 /* Left operand must be a modifiable l-value */
 						 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"'&': Left operand must be a modifiable l-value");
@@ -1777,6 +1814,19 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				 }else{
 					 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"'%z': Missing/Invalid operand",&pNode->pOp->sOp);
 				 }
+				 if( rc != SXERR_ABORT ){
+					 rc = SXERR_SYNTAX;
+				 }
+				 return rc;
+			 }
+			 /* PHP 8.0: reject any nullsafe link in an assignment LHS,
+			  * including deeper chains like $a?->b->c = 1 and
+			  * $a?->b[0] = 1 where the outer op is '->' or '[' but the
+			  * chain still contains a `?->` that cannot participate in
+			  * a write. */
+			 if( PH7_ExprContainsNullsafe(apNode[iLeft]) ){
+				 rc = PH7_GenCompileError(pGen,E_PARSE,pNode->pStart->nLine,
+					 "Can't use nullsafe operator in write context");
 				 if( rc != SXERR_ABORT ){
 					 rc = SXERR_SYNTAX;
 				 }

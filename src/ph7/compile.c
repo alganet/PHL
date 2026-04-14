@@ -9232,6 +9232,42 @@ Synchronize:
 	return SXRET_OK;
 }
 /*
+ * Chain operators participate in a postfix member-access chain.
+ * A `?->` emitted inside such a chain must short-circuit to the end of
+ * the chain, not just past its own member access. Any non-chain ancestor
+ * terminates the chain and is where pending NULLSAFE_JMP targets are patched.
+ */
+#define GEN_IS_CHAIN_OP(iOp) \
+  ((iOp) == EXPR_OP_ARROW || (iOp) == EXPR_OP_NULLSAFE_ARROW || \
+   (iOp) == EXPR_OP_DC    || (iOp) == EXPR_OP_SUBSCRIPT     || \
+   (iOp) == EXPR_OP_FUNC_CALL)
+
+/*
+ * Patch every pending NULLSAFE_JMP recorded after the given baseline so
+ * that it jumps to the current end-of-emission instruction. Then drop the
+ * patched entries from the pending set.
+ */
+static void GenStatePatchNullsafeJumps(ph7_gen_state *pGen, sxu32 nBaseline)
+{
+	sxu32 nCur = SySetUsed(&pGen->aNullsafeJmp);
+	sxu32 nTarget;
+	sxu32 *aIdx;
+	sxu32 i;
+	if( nCur <= nBaseline ){
+		return;
+	}
+	aIdx = (sxu32 *)SySetBasePtr(&pGen->aNullsafeJmp);
+	nTarget = PH7_VmInstrLength(pGen->pVm);
+	for( i = nBaseline ; i < nCur ; ++i ){
+		VmInstr *pInstr = PH7_VmGetInstr(pGen->pVm, aIdx[i]);
+		if( pInstr ){
+			pInstr->iP2 = (sxi32)nTarget;
+		}
+	}
+	SySetTruncate(&pGen->aNullsafeJmp, nBaseline);
+}
+
+/*
  * Generate bytecode for a given expression tree.
  * If something goes wrong while generating bytecode
  * for the expression tree (A very unlikely scenario)
@@ -9251,6 +9287,8 @@ static sxi32 GenStateEmitExprCode(
 	void *p3  = 0;
 	sxi32 iVmOp;
 	sxi32 rc;
+	int bIsChainOp = 0; /* Set below once we know pNode->pOp */
+	sxu32 nRhsNsBase = 0;
 	if( pNode->xCode ){
 		SyToken *pTmpIn,*pTmpEnd;
 		/* Compile node */
@@ -9267,6 +9305,7 @@ static sxi32 GenStateEmitExprCode(
 	iVmOp = pNode->pOp->iVmOp;
 	if( pNode->pOp->iOp == EXPR_OP_NULLC_ASSIGN ){
 		sxu32 nJmp = 0;
+		sxu32 nNcNsBase;
 		VmInstr *pInstrFix;
 		/* Null coalescing assignment requires a custom compile order: the LHS
 		 * target (pRight for prec-18 right-assoc ops) must be evaluated first
@@ -9274,10 +9313,12 @@ static sxi32 GenStateEmitExprCode(
 		 * EXPR_FLAG_LOAD_IDX_STORE so subscript LHS auto-vivifies and the
 		 * stack slot carries a writable nIdx. */
 		if( pNode->pRight ){
+			nNcNsBase = SySetUsed(&pGen->aNullsafeJmp);
 			rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iFlags|EXPR_FLAG_LOAD_IDX_STORE);
 			if( rc != SXRET_OK ){
 				return rc;
 			}
+			GenStatePatchNullsafeJumps(pGen, nNcNsBase);
 			/* Optimisation: if the outermost LHS access is a subscript, demote
 			 * its LOAD_IDX from write-context (iP2=1, eager COW separation +
 			 * insert) to peek-mode (iP2=3, separate-only-on-null/missing). On
@@ -9294,10 +9335,12 @@ static sxi32 GenStateEmitExprCode(
 		PH7_VmEmitInstr(pGen->pVm,PH7_OP_NULLC_JMP,0,0,0,&nJmp);
 		/* Compile the RHS value (pLeft for prec-18 right-assoc). */
 		if( pNode->pLeft ){
+			nNcNsBase = SySetUsed(&pGen->aNullsafeJmp);
 			rc = GenStateEmitExprCode(&(*pGen),pNode->pLeft,iFlags);
 			if( rc != SXRET_OK ){
 				return rc;
 			}
+			GenStatePatchNullsafeJumps(pGen, nNcNsBase);
 		}
 		/* Store RHS into LHS's memobj slot; leave RHS as the result on stack. */
 		PH7_VmEmitInstr(pGen->pVm,PH7_OP_NULLC_STORE,0,0,0,0);
@@ -9312,22 +9355,30 @@ static sxi32 GenStateEmitExprCode(
 	}
 	if( pNode->pOp->iOp == EXPR_OP_QUESTY ){
 		sxu32 nJz,nJmp;
+		sxu32 nTernaryNsBase;
 		/* Ternary operator require special handling */
 		/* Phase#1: Compile the condition */
+		nTernaryNsBase = SySetUsed(&pGen->aNullsafeJmp);
 		rc = GenStateEmitExprCode(&(*pGen),pNode->pCond,iFlags);
 		if( rc != SXRET_OK ){
 			return rc;
 		}
+		/* Ternary is not a chain operator: any nullsafe jumps emitted while
+		 * compiling the condition must short-circuit to the end of the
+		 * condition expression, not leak past the ternary. */
+		GenStatePatchNullsafeJumps(pGen, nTernaryNsBase);
 		nJz = nJmp = 0; /* cc -O6 warning */
 		if( pNode->pLeft ){
 			/* Standard ternary: (expr) ? (then) : (else) */
 			/* Phase#2: Emit the false jump (pops condition) */
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_JZ,0,0,0,&nJz);
 			/* Phase#3: Compile the 'then' expression  */
+			nTernaryNsBase = SySetUsed(&pGen->aNullsafeJmp);
 			rc = GenStateEmitExprCode(&(*pGen),pNode->pLeft,iFlags);
 			if( rc != SXRET_OK ){
 				return rc;
 			}
+			GenStatePatchNullsafeJumps(pGen, nTernaryNsBase);
 		}else{
 			/* Elvis operator: (expr) ?: (else)
 			 * Duplicate condition so original value is the 'then' result.
@@ -9348,10 +9399,12 @@ static sxi32 GenStateEmitExprCode(
 		}
 		/* Phase#6: Compile the 'else' expression */
 		if( pNode->pRight ){
+			nTernaryNsBase = SySetUsed(&pGen->aNullsafeJmp);
 			rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iFlags);
 			if( rc != SXRET_OK ){
 				return rc;
 			}
+			GenStatePatchNullsafeJumps(pGen, nTernaryNsBase);
 		}
 		if( nJmp > 0 ){
 			/* Phase#7: Fix the unconditional jump */
@@ -9363,8 +9416,10 @@ static sxi32 GenStateEmitExprCode(
 		/* All done */
 		return SXRET_OK;
 	}
+	bIsChainOp = GEN_IS_CHAIN_OP(pNode->pOp->iOp);
 	/* Generate code for the left tree */
 	if( pNode->pLeft ){
+		sxu32 nLhsNsBase = SySetUsed(&pGen->aNullsafeJmp);
 		if( iVmOp == PH7_OP_CALL ){
 			ph7_expr_node **apNode;
 			int hasSpread = 0;
@@ -9391,10 +9446,13 @@ static sxi32 GenStateEmitExprCode(
 			/* Read-only load */
 			iFlags |= EXPR_FLAG_RDONLY_LOAD;
 			for( n = 0 ; n < nArgs ; ++n ){
+				sxu32 nArgNsBase = SySetUsed(&pGen->aNullsafeJmp);
 				rc = GenStateEmitExprCode(&(*pGen),apNode[n],iFlags&~EXPR_FLAG_LOAD_IDX_STORE);
 				if( rc != SXRET_OK ){
 					return rc;
 				}
+				/* Each argument is an independent nullsafe scope. */
+				GenStatePatchNullsafeJumps(pGen, nArgNsBase);
 				if( apNode[n]->iFlags & EXPR_NODE_SPREAD ){
 					/* Emit spread opcode to unpack this array argument */
 					PH7_VmEmitInstr(pGen->pVm, PH7_OP_SPREAD, 0, 0, 0, 0);
@@ -9443,6 +9501,11 @@ static sxi32 GenStateEmitExprCode(
 		rc = GenStateEmitExprCode(&(*pGen),pNode->pLeft,iFlags);
 		if( rc != SXRET_OK ){
 			return rc;
+		}
+		if( !bIsChainOp ){
+			/* Non-chain parent: any nullsafe jumps produced by the LHS sub-tree
+			 * target the end of that LHS chain, which is right here. */
+			GenStatePatchNullsafeJumps(pGen, nLhsNsBase);
 		}
 		if( iVmOp == PH7_OP_CALL ){
 			pInstr = PH7_VmPeekInstr(pGen->pVm);
@@ -9493,10 +9556,13 @@ static sxi32 GenStateEmitExprCode(
 			/* Recurse and generate bytecodes for array index */
 			apNode = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);
 			for( n = 0 ; n < (sxi32)SySetUsed(&pNode->aNodeArgs) ; ++n ){
+				sxu32 nIdxNsBase = SySetUsed(&pGen->aNullsafeJmp);
 				rc = GenStateEmitExprCode(&(*pGen),apNode[n],iFlags&~EXPR_FLAG_LOAD_IDX_STORE);
 				if( rc != SXRET_OK ){
 					return rc;
 				}
+				/* Each subscript index is an independent nullsafe scope. */
+				GenStatePatchNullsafeJumps(pGen, nIdxNsBase);
 			}
 			if( SySetUsed(&pNode->aNodeArgs) > 0 ){
 				iP1 = 1; /* Node have an index associated with it */
@@ -9556,10 +9622,26 @@ static sxi32 GenStateEmitExprCode(
 			/* Null coalescing: if LHS is not null, jump past RHS */
 			iVmOp = 0; /* No binary operator to emit */
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_NULLC,0,0,0,&nJmpIdx);
+		}else if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_NULLSAFE_ARROW ){
+			/* Nullsafe operator `?->` (PHP 8.0): if LHS is null, short-circuit
+			 * the entire containing postfix chain to null. The jump target is
+			 * patched later by the innermost non-chain ancestor (or by
+			 * PH7_CompileExpr at the outer boundary). Leaves NULL on the stack
+			 * when taken; otherwise falls through, leaving the object on stack
+			 * so the PH7_OP_MEMBER that follows can consume it. */
+			sxu32 nNsJmp = 0;
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_NULLSAFE_JMP,0,0,0,&nNsJmp);
+			SySetPut(&pGen->aNullsafeJmp,(const void *)&nNsJmp);
 		}else if( pNode->pOp->iPrec == 18 /* Combined binary operators [i.e: =,'.=','+=',*=' ...] precedence */ ){
 			iFlags |= EXPR_FLAG_LOAD_IDX_STORE;
 		}
+		nRhsNsBase = SySetUsed(&pGen->aNullsafeJmp);
 		rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iFlags);
+		if( !bIsChainOp ){
+			/* Non-chain parent: RHS nullsafe chain ends here, before the
+			 * operator instruction is emitted. */
+			GenStatePatchNullsafeJumps(pGen, nRhsNsBase);
+		}
 		if( iVmOp == PH7_OP_STORE ){
 			if( pNode->pRight && (pNode->pRight->xCode == PH7_CompileList ||
 				pNode->pRight->xCode == PH7_CompileShortList) ){
@@ -9718,9 +9800,13 @@ static sxi32 PH7_CompileExpr(
 	sxi32 nExpr;
 	sxi32 iNest;
 	sxi32 rc;
+	sxu32 nNullsafeBase;
 	/* Initialize worker variables */
 	nExpr = 0;
 	pRoot = 0;
+	/* Any nullsafe jumps still pending belong to an outer scope; isolate
+	 * this expression so its `?->` short-circuits don't leak out. */
+	nNullsafeBase = SySetUsed(&pGen->aNullsafeJmp);
 	SySetInit(&sExprNode,&pGen->pVm->sAllocator,sizeof(ph7_expr_node *));
 	SySetAlloc(&sExprNode,0x10);
 	rc = SXRET_OK;
@@ -9775,6 +9861,9 @@ static sxi32 PH7_CompileExpr(
 			if( rc != SXERR_ABORT ){
 				/* Generate code for the given tree */
 				rc = GenStateEmitExprCode(&(*pGen),pRoot,iFlags);
+				/* Patch any unresolved nullsafe jumps emitted by this
+				 * expression so they short-circuit to its end. */
+				GenStatePatchNullsafeJumps(pGen, nNullsafeBase);
 			}
 			nExpr = 1;
 		}
@@ -9819,6 +9908,22 @@ PH7_PRIVATE ProcNodeConstruct PH7_GetNodeHandler(sxu32 nNodeType)
 	return 0;
 }
 /*
+ * Tree validator for unset() arguments — rejects any `?->` node in
+ * the argument expression with PHP's "Can't use nullsafe operator
+ * in write context" parse error.
+ */
+static sxi32 GenStateUnsetValidator(ph7_gen_state *pGen, ph7_expr_node *pNode)
+{
+	sxi32 rc;
+	if( !PH7_ExprContainsNullsafe(pNode) ){
+		return SXRET_OK;
+	}
+	rc = PH7_GenCompileError(pGen,E_PARSE,
+		pNode ? pNode->pStart->nLine : 1,
+		"Can't use nullsafe operator in write context");
+	return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
+}
+/*
  * Compile an unset() statement.
  * unset($var, $arr[$key], ...);
  * Each argument is compiled with EXPR_FLAG_LOAD_IDX_STORE so that
@@ -9859,7 +9964,8 @@ static sxi32 PH7_CompileUnset(ph7_gen_state *pGen)
 		if( pGen->pIn < pNext ){
 			pGen->pEnd = pNext;
 			rc = PH7_CompileExpr(&(*pGen),
-				EXPR_FLAG_RDONLY_LOAD|EXPR_FLAG_LOAD_IDX_STORE,0);
+				EXPR_FLAG_RDONLY_LOAD|EXPR_FLAG_LOAD_IDX_STORE,
+				GenStateUnsetValidator);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
@@ -10135,6 +10241,7 @@ static sxi32 PH7_CompilePHP(
 	/* Reset container */
 	SySetReset(&pGen->aGoto);
 	SySetReset(&pGen->aLabel);
+	SySetReset(&pGen->aNullsafeJmp);
 	/* Compilation result */
 	return rc;
 }
@@ -10253,6 +10360,7 @@ PH7_PRIVATE sxi32 PH7_InitCodeGenerator(
 	pGen->pErrData = pErrData;
 	SySetInit(&pGen->aLabel,&pVm->sAllocator,sizeof(Label));
 	SySetInit(&pGen->aGoto,&pVm->sAllocator,sizeof(JumpFixup));
+	SySetInit(&pGen->aNullsafeJmp,&pVm->sAllocator,sizeof(sxu32));
 	SyHashInit(&pGen->hLiteral,&pVm->sAllocator,0,0);
 	SyHashInit(&pGen->hVar,&pVm->sAllocator,0,0);
 	/* Error log buffer */
@@ -10284,6 +10392,7 @@ PH7_PRIVATE sxi32 PH7_ResetCodeGenerator(
 	/* Reset state */
 	SySetReset(&pGen->aLabel);
 	SySetReset(&pGen->aGoto);
+	SySetReset(&pGen->aNullsafeJmp);
 	SyBlobRelease(&pGen->sErrBuf);
 	SyBlobRelease(&pGen->sWorker);
 	SyBlobRelease(&pGen->sNamespace);
