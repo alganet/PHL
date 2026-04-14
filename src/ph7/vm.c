@@ -5443,6 +5443,27 @@ case PH7_OP_NULLC_JMP: {
  * replace pNos with the RHS value, pop pTos. Leaves the RHS value as the
  * expression result.
  */
+/*
+ * OP_NULLSAFE_JMP: * P2 *
+ * Nullsafe object operator short-circuit (PHP 8.0 `?->`).
+ * Peek TOS (the object operand): if it is null, jump to P2 leaving NULL
+ * on the stack as the result of the entire containing postfix chain. If
+ * non-null, fall through without modifying the stack so the following
+ * PH7_OP_MEMBER can consume the object as usual.
+ */
+case PH7_OP_NULLSAFE_JMP: {
+#ifdef UNTRUST
+	if( pTos < pStack ){
+		goto Abort;
+	}
+#endif
+	if( (pTos->iFlags & MEMOBJ_NULL) || pTos->iFlags == 0 ){
+		/* Object operand is NULL (or uninitialized) — short-circuit. The
+		 * NULL slot already on TOS becomes the chain's final value. */
+		pc = pInstr->iP2 - 1; /* Jump (will be incremented by the loop) */
+	}
+	break;
+}
 case PH7_OP_NULLC_STORE: {
 	ph7_value *pNos = &pTos[-1];
 	ph7_value *pObj;
@@ -9505,6 +9526,7 @@ static const char * VmInstrToString(sxi32 nOp)
 	case PH7_OP_NULLC:      zOp = "NULLC      "; break;
 	case PH7_OP_NULLC_JMP:  zOp = "NULLC_JMP  "; break;
 	case PH7_OP_NULLC_STORE:zOp = "NULLC_STORE"; break;
+	case PH7_OP_NULLSAFE_JMP:zOp = "NULLSAFE_JMP"; break;
 	case PH7_OP_SPREAD:     zOp = "SPREAD     "; break;
 	case PH7_OP_CVT_BOOL:   zOp = "CVT_BOOL   "; break;
 	case PH7_OP_CVT_NULL:   zOp = "CVT_NULL   "; break;

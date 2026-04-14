@@ -613,6 +613,10 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 					/* Null coalescing assignment operator (PHP 7.4) */
 					pStream->zText++;
 				}
+			}else if( (pStream->zEnd - pStream->zText) >= 2
+				&& pStream->zText[0] == '-' && pStream->zText[1] == '>' ){
+				/* Nullsafe object operator (PHP 8.0): ?-> */
+				pStream->zText += 2;
 			}
 			break;
 		default:
