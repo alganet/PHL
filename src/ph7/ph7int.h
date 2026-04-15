@@ -1051,6 +1051,9 @@ enum ph7_vm_op {
   PH7_OP_NULLSAFE_JMP,  /* Nullsafe (?->) short-circuit jump */
   PH7_OP_SPREAD         /* Mark TOS for argument unpacking (...$arr) */
 };
+/* LOADC.iP1 bit flags */
+#define PH7_LOADC_EXPAND   0x01 /* Candidate for constant/function/class expansion */
+#define PH7_LOADC_ABSOLUTE 0x02 /* Fully-qualified — skip namespace prefixing */
 /* -- END-OF INSTRUCTIONS -- */
 /*
  * Expression Operators ID.
