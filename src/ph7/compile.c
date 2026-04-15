@@ -2312,8 +2312,13 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	if( rc == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
-	/* Emit implicit return: OP_DONE with p1=1 means 'value on stack' */
+	/* Emit implicit return: OP_DONE with p1=1 means 'value on stack'.
+	 * Any throw-expression inside the body needs a valid jump target and a
+	 * stack-balanced exit path — point its fixup at a separate OP_DONE with
+	 * p1=0 emitted below, which does not pop the (absent) return value. */
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,(rc != SXERR_EMPTY ? 1 : 0),0,0,0);
+	GenStateFixJumps(pGen->pCurrent,PH7_OP_THROW,PH7_VmInstrLength(pGen->pVm));
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,0,0,0,0);
 	PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
 	GenStateLeaveBlock(&(*pGen),0);
 	/* Restore cursors; caller will re-synchronize via the node's pEnd */
@@ -2334,6 +2339,7 @@ static sxi32 GenStateCompileMatchSubExpr(ph7_gen_state *pGen,
 {
 	SySet *pInstrContainer;
 	SyToken *pTmpIn,*pTmpEnd;
+	GenBlock *pArmBlock;
 	sxi32 rc;
 	pTmpIn  = pGen->pIn;
 	pTmpEnd = pGen->pEnd;
@@ -2341,8 +2347,24 @@ static sxi32 GenStateCompileMatchSubExpr(ph7_gen_state *pGen,
 	pGen->pEnd = pStop;
 	pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
 	PH7_VmSetByteCodeContainer(pGen->pVm,pOut);
+	/* Enter a local FUNC block so any throw-expression fixups register on it
+	 * (and not on an outer try/catch whose instruction indices live in a
+	 * different bytecode container). We resolve those fixups to a trailing
+	 * OP_DONE p1=0 below so a throw inside a match arm cleanly terminates
+	 * the sub-bytecode while leaving VM_FRAME_THROW set for propagation. */
+	rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_PROTECTED|GEN_BLOCK_FUNC,
+		PH7_VmInstrLength(pGen->pVm),0,&pArmBlock);
+	if( rc != SXRET_OK ){
+		PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
+		pGen->pIn  = pTmpIn;
+		pGen->pEnd = pTmpEnd;
+		return SXERR_ABORT;
+	}
 	rc = PH7_CompileExpr(&(*pGen),0,0);
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,(rc != SXERR_EMPTY ? 1 : 0),0,0,0);
+	GenStateFixJumps(pArmBlock,PH7_OP_THROW,PH7_VmInstrLength(pGen->pVm));
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,0,0,0,0);
+	GenStateLeaveBlock(&(*pGen),0);
 	PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
 	pGen->pIn  = pTmpIn;
 	pGen->pEnd = pTmpEnd;
@@ -8820,14 +8842,24 @@ static sxi32 GenStateThrowNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRoot
 {
 	sxi32 rc = SXRET_OK;
 	if( pRoot->pOp ){
-		if( pRoot->pOp->iOp != EXPR_OP_SUBSCRIPT /* $a[] */ && pRoot->pOp->iOp != EXPR_OP_NEW /* new Exception() */
-			&& pRoot->pOp->iOp != EXPR_OP_ARROW /* -> */ && pRoot->pOp->iOp != EXPR_OP_DC /* :: */){
-			/* Unexpected expression */
+		switch( pRoot->pOp->iOp ){
+		case EXPR_OP_NEW:            /* new Exception() */
+		case EXPR_OP_ARROW:          /* $obj->prop */
+		case EXPR_OP_NULLSAFE_ARROW: /* $obj?->prop */
+		case EXPR_OP_DC:             /* Cls::$p or Cls::m() */
+		case EXPR_OP_SUBSCRIPT:      /* $arr[0] */
+		case EXPR_OP_FUNC_CALL:      /* fn() or $obj->m() */
+			break;
+		default:
+			/* Runtime will still reject non-Throwable values; the set above
+			 * covers the common shapes and gives a friendlier compile error
+			 * for obvious mistakes like `throw 5`. */
 			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pRoot->pStart? pRoot->pStart->nLine : 0,
 				"throw: Expecting an exception class instance");
 			if( rc != SXERR_ABORT ){
 				rc = SXERR_INVALID;
 			}
+			break;
 		}
 	}else if( pRoot->xCode != PH7_CompileVariable ){
 		/* Unexpected expression */
@@ -8872,6 +8904,53 @@ static sxi32 PH7_CompileThrow(ph7_gen_state *pGen)
 	/* Emit the throw instruction */
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_THROW,0,0,0,&nIdx);
 	/* Emit the jump */
+	GenStateNewJumpFixup(pBlock,PH7_OP_THROW,nIdx);
+	return SXRET_OK;
+}
+/*
+ * Compile a PHP 8.0 'throw' expression.
+ * Called from the expression code generator when a 'throw' keyword is
+ * encountered in an expression context (e.g. `$x ?? throw new E()`).
+ * Reuses PH7_OP_THROW and the throw-statement's jump-fixup machinery;
+ * the validator guarantees the operand is a valid exception target.
+ */
+PH7_PRIVATE sxi32 PH7_CompileThrowExpr(ph7_gen_state *pGen, sxi32 iCompileFlag)
+{
+	sxu32 nLine = pGen->pIn->nLine;
+	GenBlock *pBlock;
+	sxu32 nIdx;
+	sxi32 rc;
+	(void)iCompileFlag;
+	pGen->pIn++; /* Skip 'throw' */
+	if( pGen->pIn >= pGen->pEnd ){
+		rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+			"throw: Expecting an exception class instance");
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		return SXRET_OK;
+	}
+	rc = PH7_CompileExpr(&(*pGen),0,GenStateThrowNodeValidator);
+	if( rc == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
+	if( rc == SXERR_EMPTY ){
+		rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+			"throw: Expecting an exception class instance");
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		return SXRET_OK;
+	}
+	/* Walk up to nearest exception/function block for the jump target */
+	pBlock = pGen->pCurrent;
+	while( pBlock->pParent ){
+		if( pBlock->iFlags & (GEN_BLOCK_EXCEPTION|GEN_BLOCK_FUNC) ){
+			break;
+		}
+		pBlock = pBlock->pParent;
+	}
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_THROW,0,0,0,&nIdx);
 	GenStateNewJumpFixup(pBlock,PH7_OP_THROW,nIdx);
 	return SXRET_OK;
 }
