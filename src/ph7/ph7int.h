@@ -498,6 +498,7 @@ struct ph7_vm_func_arg
 	sxi32 iFlags;        /* Configuration flags */
 	SySet aUnionAlts;    /* Union type alternatives (ph7_type_alt). Empty unless VM_FUNC_ARG_UNION is set. */
 	SyString sTypeName;  /* Original type text for error messages, normalized in canonical PHP order */
+	sxi32 iPromoteVis;   /* PH7_CLASS_PROT_* when VM_FUNC_ARG_PROMOTED is set */
 };
 /*
  * One alternative within a union type declaration. Used by parameters,
@@ -556,7 +557,8 @@ struct ph7_vm_func_closure_env
 #define VM_FUNC_ARG_VARIADIC 0x080 /* Argument is variadic (...$args) */
 #define VM_FUNC_ARG_NULLABLE 0x100 /* Argument type is nullable (?type or T|null) */
 #define VM_FUNC_ARG_UNION    0x200 /* Argument has a union type (use aUnionAlts) */
-/* next free bit: 0x400 */
+#define VM_FUNC_ARG_PROMOTED 0x400 /* Constructor promoted property (iPromoteVis holds visibility) */
+/* next free bit: 0x800 */
 /*
  * Each user defined function is parsed out and stored in an instance
  * of the following structure.

@@ -412,7 +412,7 @@ static ph7_value * GenStateInstallNumLiteral(ph7_gen_state *pGen,sxu32 *pIdx)
  */
 /* Forward declaration */
 static sxi32 GenStateCompileChunk(ph7_gen_state *pGen,sxi32 iFlags);
-static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyToken *pEnd);
+static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyToken *pEnd,int bCtorCtx,int bAbstractCtx);
 /* Forward decl: union type parser is defined later in this file. */
 static sxi32 GenStateParseUnionTypeDecl(
 	ph7_gen_state *pGen,
@@ -2221,7 +2221,7 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	PH7_VmInitFuncState(pGen->pVm,pFunc,zDup,nLen,iFlags,0);
 	/* Collect function arguments */
 	if( pGen->pIn < pSigEnd ){
-		rc = GenStateCollectFuncArgs(pFunc,&(*pGen),pSigEnd);
+		rc = GenStateCollectFuncArgs(pFunc,&(*pGen),pSigEnd,0,0);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -5365,7 +5365,7 @@ static sxi32 GenStateProcessArgValue(ph7_gen_state *pGen,ph7_vm_func_arg *pArg,S
  * complex agrument values.Please refer to the official documentation for more information
  * on these extension.
  */
-static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyToken *pEnd)
+static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyToken *pEnd,int bCtorCtx,int bAbstractCtx)
 {
 	ph7_vm_func_arg sArg; /* Current processed argument */
 	SyToken *pIn;  /* Token stream */
@@ -5385,6 +5385,34 @@ static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyTo
 		SySetInit(&sArg.aByteCode,&pGen->pVm->sAllocator,sizeof(VmInstr));
 		SySetInit(&sArg.aUnionAlts,&pGen->pVm->sAllocator,sizeof(ph7_type_alt));
 		SyStringInitFromBuf(&sArg.sTypeName,0,0);
+		/* Parse optional visibility modifier (constructor property promotion, PHP 8.0+) */
+		if( pIn < pEnd && (pIn->nType & PH7_TK_KEYWORD) ){
+			sxu32 nKw = (sxu32)SX_PTR_TO_INT(pIn->pUserData);
+			if( nKw == PH7_TKWRD_PUBLIC || nKw == PH7_TKWRD_PROTECTED || nKw == PH7_TKWRD_PRIVATE ){
+				if( !bCtorCtx ){
+					if( bAbstractCtx ){
+						rc = PH7_GenCompileError(pGen,E_ERROR,pIn->nLine,
+							"Cannot declare promoted property in an abstract constructor");
+					}else{
+						rc = PH7_GenCompileError(pGen,E_ERROR,pIn->nLine,
+							"Cannot declare promoted property outside a constructor");
+					}
+					if( rc == SXERR_ABORT ){
+						return SXERR_ABORT;
+					}
+					return SXERR_SYNTAX;
+				}
+				sArg.iFlags |= VM_FUNC_ARG_PROMOTED;
+				if( nKw == PH7_TKWRD_PRIVATE ){
+					sArg.iPromoteVis = PH7_CLASS_PROT_PRIVATE;
+				}else if( nKw == PH7_TKWRD_PROTECTED ){
+					sArg.iPromoteVis = PH7_CLASS_PROT_PROTECTED;
+				}else{
+					sArg.iPromoteVis = PH7_CLASS_PROT_PUBLIC;
+				}
+				pIn++;
+			}
+		}
 		/* Parse optional type hint (single, nullable shorthand, or union) */
 		if( pIn < pEnd && (pIn->nType & PH7_TK_DOLLAR) == 0
 			&& (pIn->nType & PH7_TK_AMPER) == 0
@@ -5564,6 +5592,68 @@ static sxi32 GenStateCompileFuncBody(
 	/* Swap bytecode containers */
 	pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
 	PH7_VmSetByteCodeContainer(pGen->pVm,&pFunc->aByteCode);
+	/* Emit constructor property promotion prologue:
+	 *   $this->NAME = $NAME;
+	 * for each promoted parameter. Runtime typed-property store enforcement
+	 * happens through the normal PH7_OP_MEMBER/PH7_OP_STORE path. */
+	{
+		sxu32 nArg = SySetUsed(&pFunc->aArgs);
+		sxu32 i;
+		for( i = 0; i < nArg; i++ ){
+			ph7_vm_func_arg *pArg = (ph7_vm_func_arg *)SySetAt(&pFunc->aArgs,i);
+			char *zSrc;
+			sxu32 nSrc,nName;
+			SySet sToken;
+			SyToken *pTmpIn,*pTmpEnd;
+			sxi32 rcPromote;
+			if( (pArg->iFlags & VM_FUNC_ARG_PROMOTED) == 0 ){
+				continue;
+			}
+			/* Build "$this->NAME = $NAME" in a buffer owned by the VM allocator.
+			 * Tokens keep pointers into this buffer (identifier names are not
+			 * copied), so it must outlive the function — never free it. The
+			 * buffer is null-terminated because PH7_OP_LOAD reads the variable
+			 * name via SyStrlen() on the token's sData pointer. */
+			nName = SyStringLength(&pArg->sName);
+			nSrc = (sizeof("$this->") - 1) + nName + (sizeof(" = $") - 1) + nName;
+			zSrc = (char *)SyMemBackendAlloc(&pGen->pVm->sAllocator,nSrc + 1);
+			if( zSrc == 0 ){
+				PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
+				GenStateLeaveBlock(&(*pGen),0);
+				PH7_GenCompileError(pGen,E_ERROR,1,"PH7 engine is running out of memory");
+				return SXERR_ABORT;
+			}
+			{
+				char *z = zSrc;
+				SyMemcpy("$this->",z,sizeof("$this->")-1);
+				z += sizeof("$this->")-1;
+				SyMemcpy(SyStringData(&pArg->sName),z,nName);
+				z += nName;
+				SyMemcpy(" = $",z,sizeof(" = $")-1);
+				z += sizeof(" = $")-1;
+				SyMemcpy(SyStringData(&pArg->sName),z,nName);
+				z += nName;
+				*z = 0;
+			}
+			SySetInit(&sToken,&pGen->pVm->sAllocator,sizeof(SyToken));
+			PH7_TokenizePHP(zSrc,nSrc,1,&sToken);
+			pTmpIn = pGen->pIn;
+			pTmpEnd = pGen->pEnd;
+			pGen->pIn = (SyToken *)SySetBasePtr(&sToken);
+			pGen->pEnd = &pGen->pIn[SySetUsed(&sToken)];
+			rcPromote = PH7_CompileExpr(&(*pGen),0,0);
+			pGen->pIn = pTmpIn;
+			pGen->pEnd = pTmpEnd;
+			SySetRelease(&sToken);
+			if( rcPromote == SXERR_ABORT ){
+				PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
+				GenStateLeaveBlock(&(*pGen),0);
+				return SXERR_ABORT;
+			}
+			/* Discard the assignment result — this is a statement expression. */
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
+		}
+	}
 	/* Compile the body */
 	PH7_CompileBlock(&(*pGen),0);
 	/* Fix exception jumps now the destination is resolved */
@@ -6154,7 +6244,7 @@ static sxi32 GenStateCompileFunc(
 	}
 	if( pGen->pIn < pEnd ){
 		/* Collect function arguments */
-		rc = GenStateCollectFuncArgs(pFunc,&(*pGen),pEnd);
+		rc = GenStateCollectFuncArgs(pFunc,&(*pGen),pEnd,0,0);
 		if( rc == SXERR_ABORT ){
 			/* Don't worry about freeing memory, everything will be released shortly */
 			return SXERR_ABORT;
@@ -6613,6 +6703,101 @@ static sxi32 GenStateParsePropertyType(
 	return SXRET_OK;
 }
 
+/*
+ * Return TRUE if a parsed type atom — identified by (nType, sClass) as
+ * produced by GenStateParseUnionTypeDecl — names a pseudo-type that PHP
+ * forbids on properties. `callable`, `mixed`, and `iterable` are parsed
+ * as class-name atoms (SXU32_HIGH, sClass = the keyword) because they
+ * are not recognized scalar keywords; `void` and `never` are rejected
+ * by the type parser itself before reaching here.
+ *
+ * On TRUE, *pzName / *pnName point at a static canonical spelling for
+ * use in the error message.
+ */
+static int GenStateIsDisallowedPropertyAtom(
+	sxu32 nType,
+	const SyString *pClass,
+	const char **pzName,
+	sxu32 *pnName)
+{
+	const char *z;
+	sxu32 n;
+	if( nType != SXU32_HIGH || pClass == 0 || pClass->nByte == 0 ){
+		return 0;
+	}
+	z = pClass->zString;
+	n = pClass->nByte;
+	if( n == 8 && SyMemcmpNoCase(z,"callable",8) == 0 ){
+		*pzName = "callable"; *pnName = 8; return 1;
+	}
+	if( n == 5 && SyMemcmpNoCase(z,"mixed",5) == 0 ){
+		*pzName = "mixed"; *pnName = 5; return 1;
+	}
+	if( n == 8 && SyMemcmpNoCase(z,"iterable",8) == 0 ){
+		*pzName = "iterable"; *pnName = 8; return 1;
+	}
+	return 0;
+}
+
+/*
+ * Validate a parsed property type (main atom + any union alternatives)
+ * against the disallowed-pseudo-types list. Emits a PHP-compatible
+ * "Property C::$x cannot have type T" error on rejection, where T is
+ * the full canonical type text (matching PHP's error wording for
+ * unions like `callable|int`).
+ *
+ * Returns SXRET_OK if the type is acceptable, SXERR_SYNTAX on rejection
+ * (error already emitted), or SXERR_ABORT on error-count overflow.
+ */
+static sxi32 GenStateValidatePropertyType(
+	ph7_gen_state *pGen,
+	ph7_class *pClass,
+	const SyString *pPropName,
+	sxu32 nType,
+	const SyString *pTypeClass,
+	const SyString *pTypeText,
+	SySet *pUnionAlts,
+	sxu32 nLine)
+{
+	const char *zBad = 0;
+	sxu32 nBad = 0;
+	SyString sFallback;
+	const SyString *pBad;
+	sxi32 rc;
+	int bDisallowed = 0;
+	if( GenStateIsDisallowedPropertyAtom(nType,pTypeClass,&zBad,&nBad) ){
+		bDisallowed = 1;
+	}else if( pUnionAlts ){
+		sxu32 i;
+		for( i = 0; i < SySetUsed(pUnionAlts); i++ ){
+			ph7_type_alt *pAlt = (ph7_type_alt *)SySetAt(pUnionAlts,i);
+			if( GenStateIsDisallowedPropertyAtom(pAlt->nType,&pAlt->sClass,&zBad,&nBad) ){
+				bDisallowed = 1;
+				break;
+			}
+		}
+	}
+	if( !bDisallowed ){
+		return SXRET_OK;
+	}
+	/* Prefer the full canonical type text (PHP prints `callable|int` for
+	 * a union, not just the offending atom). Fall back to the atom's own
+	 * canonical spelling if the type text is unavailable. */
+	if( pTypeText && SyStringLength(pTypeText) > 0 ){
+		pBad = pTypeText;
+	}else{
+		SyStringInitFromBuf(&sFallback,zBad,nBad);
+		pBad = &sFallback;
+	}
+	rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+		"Property %z::$%z cannot have type %z",
+		&pClass->sName,pPropName,pBad);
+	if( rc == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
+	return SXERR_SYNTAX;
+}
+
 static sxi32 GenStateCompileClassAttr(ph7_gen_state *pGen,sxi32 iProtection,sxi32 iFlags,ph7_class *pClass)
 {
 	sxu32 nLine = pGen->pIn->nLine;
@@ -6631,39 +6816,6 @@ static sxi32 GenStateCompileClassAttr(ph7_gen_state *pGen,sxi32 iProtection,sxi3
 	iProtection = GetProtectionLevel(iProtection);
 	/* Parse optional type hint (typed properties, PHP 7.4+) */
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 ){
-		SyToken *pTypeTok = pGen->pIn;
-		/* A leading '?' is part of the type, look past it when sniffing the
-		 * type keyword for the disallowed list. */
-		if( (pTypeTok->nType & PH7_TK_OP) && pTypeTok->sData.nByte == 1
-		 && pTypeTok->sData.zString[0] == '?' && pTypeTok + 1 < pGen->pEnd ){
-			pTypeTok = pTypeTok + 1;
-		}
-		/* Reject disallowed standalone property types up front (when there's
-		 * no `|` ahead): void, callable, never, mixed, iterable. The union
-		 * parser also rejects void/never inside unions; here we only catch
-		 * the simple single-token form so the existing single-type error
-		 * messages stay intact. */
-		if( pTypeTok->nType & PH7_TK_ID ){
-			SyString *pT = &pTypeTok->sData;
-			SyToken *pAfter = pTypeTok + 1;
-			int bSingle = (pAfter >= pGen->pEnd
-				|| (pAfter->nType & PH7_TK_DOLLAR)
-				|| !((pAfter->nType & PH7_TK_OP) && pAfter->sData.nByte == 1
-					&& pAfter->sData.zString[0] == '|'));
-			if( bSingle && (
-				 (pT->nByte == 4 && SyMemcmpNoCase(pT->zString,"void",4) == 0)
-			 || (pT->nByte == 5 && SyMemcmpNoCase(pT->zString,"never",5) == 0)
-			 || (pT->nByte == 5 && SyMemcmpNoCase(pT->zString,"mixed",5) == 0)
-			 || (pT->nByte == 8 && SyMemcmpNoCase(pT->zString,"callable",8) == 0)
-			 || (pT->nByte == 8 && SyMemcmpNoCase(pT->zString,"iterable",8) == 0)) ){
-				rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-					"Property cannot have type %z",pT);
-				if( rc == SXERR_ABORT ){
-					return SXERR_ABORT;
-				}
-				goto Synchronize;
-			}
-		}
 		rc = GenStateParsePropertyType(pGen,&nType,&sTypeClass,&iTypeFlags,&sTypeText,&aUnionAlts);
 		if( rc == SXERR_CORRUPT ){
 			/* Error already reported by GenStateParseUnionTypeDecl */
@@ -6707,6 +6859,28 @@ loop:
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected '=' or ';' after attribute name '%z'",pName);
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
+			return SXERR_ABORT;
+		}
+		goto Synchronize;
+	}
+	/* Reject disallowed pseudo-types (callable/mixed/iterable) on the main
+	 * type atom or any union alternative. void/never are already rejected
+	 * by the type parser. */
+	if( iTypeFlags & PH7_CLASS_ATTR_TYPED ){
+		rc = GenStateValidatePropertyType(pGen,pClass,pName,nType,&sTypeClass,
+			&sTypeText,
+			(iTypeFlags & PH7_CLASS_ATTR_UNION) ? &aUnionAlts : 0,nLine);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}else if( rc != SXRET_OK ){
+			goto Synchronize;
+		}
+	}
+	/* Reject redeclaration (catches clash with an earlier promoted property). */
+	if( PH7_ClassExtractAttribute(pClass,pName->zString,pName->nByte) != 0 ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+			"Cannot redeclare %z::$%z",&pClass->sName,pName);
+		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
 		goto Synchronize;
@@ -6885,11 +7059,24 @@ static sxi32 GenStateCompileClassMethod(
 		}
 		goto Synchronize;
 	}
-	if( pGen->pIn < pEnd ){
-		/* Collect method arguments */
-		rc = GenStateCollectFuncArgs(&pMeth->sFunc,&(*pGen),pEnd);
-		if( rc == SXERR_ABORT ){
-			return SXERR_ABORT;
+	{
+		int bIsCtor = 0;
+		int bAbstractCtor = 0;
+		if( (pName->nByte == sizeof("__construct") - 1
+				&& SyMemcmp(pName->zString,"__construct",sizeof("__construct") - 1) == 0)
+		 || SyStringCmp(pName,&pClass->sName,SyMemcmp) == 0 ){
+			if( iFlags & PH7_CLASS_ATTR_ABSTRACT ){
+				bAbstractCtor = 1;
+			}else{
+				bIsCtor = 1;
+			}
+		}
+		if( pGen->pIn < pEnd ){
+			/* Collect method arguments */
+			rc = GenStateCollectFuncArgs(&pMeth->sFunc,&(*pGen),pEnd,bIsCtor,bAbstractCtor);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
 		}
 	}
 	/* Point past ')' and parse optional return type ': type' */
@@ -6900,6 +7087,84 @@ static sxi32 GenStateCompileClassMethod(
 			return SXERR_ABORT;
 		}else if( rcRt == SXERR_SYNTAX ){
 			goto Synchronize;
+		}
+	}
+	/* Install promoted constructor properties as class attributes. Runtime
+	 * property init/typecheck is handled by the generic typed-property path
+	 * since we mint real ph7_class_attr entries. */
+	{
+		sxu32 nArg = SySetUsed(&pMeth->sFunc.aArgs);
+		sxu32 i;
+		for( i = 0; i < nArg; i++ ){
+			ph7_vm_func_arg *pArg = (ph7_vm_func_arg *)SySetAt(&pMeth->sFunc.aArgs,i);
+			ph7_class_attr *pAttr;
+			sxi32 iAttrFlags = 0;
+			if( (pArg->iFlags & VM_FUNC_ARG_PROMOTED) == 0 ){
+				continue;
+			}
+			if( pArg->iFlags & VM_FUNC_ARG_VARIADIC ){
+				rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+					"Cannot declare variadic promoted property");
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				goto Synchronize;
+			}
+			/* Reject the same disallowed pseudo-types (callable/mixed/iterable)
+			 * that GenStateCompileClassAttr rejects — including when they
+			 * appear as an alternative of a union type. */
+			if( pArg->nType > 0 || SyStringLength(&pArg->sClass) > 0
+			 || (pArg->iFlags & VM_FUNC_ARG_UNION) ){
+				rc = GenStateValidatePropertyType(pGen,pClass,&pArg->sName,
+					pArg->nType,&pArg->sClass,&pArg->sTypeName,
+					(pArg->iFlags & VM_FUNC_ARG_UNION) ? &pArg->aUnionAlts : 0,
+					nLine);
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}else if( rc != SXRET_OK ){
+					goto Synchronize;
+				}
+			}
+			/* Reject duplicate property (explicit property declared earlier with same name). */
+			if( PH7_ClassExtractAttribute(pClass,SyStringData(&pArg->sName),SyStringLength(&pArg->sName)) != 0 ){
+				rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+					"Cannot redeclare %z::$%z",&pClass->sName,&pArg->sName);
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				goto Synchronize;
+			}
+			if( pArg->nType > 0 || SyStringLength(&pArg->sClass) > 0 ){
+				iAttrFlags |= PH7_CLASS_ATTR_TYPED;
+			}
+			if( pArg->iFlags & VM_FUNC_ARG_NULLABLE ){
+				iAttrFlags |= PH7_CLASS_ATTR_NULLABLE;
+			}
+			if( pArg->iFlags & VM_FUNC_ARG_UNION ){
+				iAttrFlags |= PH7_CLASS_ATTR_UNION;
+			}
+			pAttr = PH7_NewClassAttr(pGen->pVm,&pArg->sName,nLine,pArg->iPromoteVis,iAttrFlags);
+			if( pAttr == 0 ){
+				PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
+				return SXERR_ABORT;
+			}
+			if( iAttrFlags & PH7_CLASS_ATTR_TYPED ){
+				pAttr->nType = pArg->nType;
+				pAttr->sClass = pArg->sClass;
+				pAttr->sTypeName = pArg->sTypeName;
+				if( iAttrFlags & PH7_CLASS_ATTR_UNION ){
+					sxu32 k;
+					for( k = 0; k < SySetUsed(&pArg->aUnionAlts); k++ ){
+						ph7_type_alt *pSrc = (ph7_type_alt *)SySetAt(&pArg->aUnionAlts,k);
+						SySetPut(&pAttr->aUnionAlts,(const void *)pSrc);
+					}
+				}
+			}
+			rc = PH7_ClassInstallAttr(pClass,pAttr);
+			if( rc != SXRET_OK ){
+				PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
+				return SXERR_ABORT;
+			}
 		}
 	}
 	if( doBody ){
