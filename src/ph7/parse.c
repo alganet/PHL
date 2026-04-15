@@ -996,6 +996,15 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 				 return rc;
 			 }
 			 pNode->xCode = PH7_CompileMatch;
+		 }else if( nKeyword == PH7_TKWRD_THROW ){
+			 /* PHP 8.0 throw expression: throw <expr>
+			  * Consume the 'throw' keyword and all tokens up to the enclosing
+			  * close delimiter; PH7_CompileThrowExpr will reparse the body. */
+			 pCur++; /* Skip 'throw' */
+			 PH7_DelimitNestedTokens(pCur,pGen->pEnd,
+				 PH7_TK_LPAREN|PH7_TK_OCB|PH7_TK_OSB,
+				 PH7_TK_RPAREN|PH7_TK_CCB|PH7_TK_CSB,&pCur);
+			 pNode->xCode = PH7_CompileThrowExpr;
 		 }else if( PH7_IsLangConstruct(nKeyword,FALSE) == TRUE && &pCur[1] < pGen->pEnd ){
 			 /* Language constructs [i.e: print,echo,die...] require special handling */
 			 PH7_DelimitNestedTokens(pCur,pGen->pEnd,PH7_TK_LPAREN|PH7_TK_OCB|PH7_TK_OSB, PH7_TK_RPAREN|PH7_TK_CCB|PH7_TK_CSB,&pCur);
