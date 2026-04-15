@@ -413,6 +413,7 @@ static ph7_value * GenStateInstallNumLiteral(ph7_gen_state *pGen,sxu32 *pIdx)
 /* Forward declaration */
 static sxi32 GenStateCompileChunk(ph7_gen_state *pGen,sxi32 iFlags);
 static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyToken *pEnd,int bCtorCtx,int bAbstractCtx);
+static sxi32 GenStateParseClassReference(ph7_gen_state *pGen,SyBlob *pFqn);
 /* Forward decl: union type parser is defined later in this file. */
 static sxi32 GenStateParseUnionTypeDecl(
 	ph7_gen_state *pGen,
@@ -2923,8 +2924,11 @@ static sxi32 GenStateResolveNamespaceLiteral(ph7_gen_state *pGen)
 				GenStateInstallLiteral(&(*pGen),pObj,nIdx);
 			}
 			/* Emit the load constant instruction.
-			 * P1=1 means candidate for constant/function/class expansion. */
-			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,1,nIdx,0,0);
+			 * iP1 bit 0 (PH7_LOADC_EXPAND): candidate for constant/function/class expansion.
+			 * iP1 bit 1 (PH7_LOADC_ABSOLUTE): fully-qualified; skip namespace prefixing. */
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,
+				isAbsolute ? (PH7_LOADC_EXPAND|PH7_LOADC_ABSOLUTE) : PH7_LOADC_EXPAND,
+				nIdx,0,0);
 			return SXRET_OK;
 		}
 	}
@@ -7265,44 +7269,41 @@ static sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 	if( pGen->pIn < pGen->pEnd  && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
 		nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
 		if( nKwrd == PH7_TKWRD_EXTENDS /* interface b extends a */ ){
-			SyString *pBaseName;
+			SyBlob sResolved;
+			SyString sBaseName;
+			sxu32 nRefLine;
 			/* Extract base interface */
 			pGen->pIn++;
-			if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_ID) == 0 ){
-				/* Syntax error */
+			nRefLine = (pGen->pIn < pGen->pEnd) ? pGen->pIn->nLine : nLine;
+			SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
+			if( GenStateParseClassReference(pGen,&sResolved) != SXRET_OK ){
+				SyBlobRelease(&sResolved);
 				rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 					"Expected 'interface_name' after 'extends' keyword inside interface '%z'",
 					pName);
 				SyMemBackendPoolFree(&pGen->pVm->sAllocator,pClass);
 				if( rc == SXERR_ABORT ){
-					/* Error count limit reached,abort immediately */
 					return SXERR_ABORT;
 				}
 				return SXRET_OK;
 			}
-			pBaseName = &pGen->pIn->sData;
-			{
-				SyBlob sResolved;
-				SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
-				GenStateResolveName(pGen,pBaseName,&sResolved);
-				pBase = PH7_VmExtractClass(pGen->pVm,
-					(const char *)SyBlobData(&sResolved),(sxu32)SyBlobLength(&sResolved),FALSE,0);
-				SyBlobRelease(&sResolved);
-			}
+			pBase = PH7_VmExtractClass(pGen->pVm,
+				(const char *)SyBlobData(&sResolved),(sxu32)SyBlobLength(&sResolved),FALSE,0);
+			SyStringInitFromBuf(&sBaseName,
+				(const char *)SyBlobData(&sResolved),SyBlobLength(&sResolved));
 			/* Only interfaces is allowed */
 			while( pBase && (pBase->iFlags & PH7_CLASS_INTERFACE) == 0 ){
 				pBase = pBase->pNextName;
 			}
 			if( pBase == 0 ){
-				/* Inexistant interface */
-				rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,"Inexistant base interface '%z'",pBaseName);
+				rc = PH7_GenCompileError(pGen,E_ERROR,nRefLine,
+					"Nonexistent base interface '%z'",&sBaseName);
 				if( rc == SXERR_ABORT ){
-					/* Error count limit reached,abort immediately */
+					SyBlobRelease(&sResolved);
 					return SXERR_ABORT;
 				}
 			}
-			/* Advance the stream cursor */
-			pGen->pIn++;
+			SyBlobRelease(&sResolved);
 		}
 	}
 	if( pGen->pIn >= pGen->pEnd  || (pGen->pIn->nType & PH7_TK_OCB /*'{'*/) == 0 ){
@@ -7739,6 +7740,103 @@ static sxi32 GenStateCheckAbstractMethods(ph7_gen_state *pGen,ph7_class *pClass)
 	}
 	return SXRET_OK;
 }
+/*
+ * Parse a class/interface name reference from the current token stream.
+ * Handles an optional leading '\' (absolute) and multi-segment namespaced
+ * names (`Foo\Bar\Baz`). On success, writes the resolved FQN into pFqn
+ * (which must be an initialized, empty SyBlob) and advances pGen->pIn past
+ * the last consumed token. Returns SXRET_OK on success, SXERR_INVALID if
+ * the stream has no valid name at the current position (pGen->pIn is left
+ * untouched in that case so the caller can produce its own diagnostic).
+ */
+static sxi32 GenStateParseClassReference(ph7_gen_state *pGen,SyBlob *pFqn)
+{
+	int isAbsolute = 0;
+	SyToken *pStart = pGen->pIn;
+	SyBlob sName;
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_NSSEP) ){
+		isAbsolute = 1;
+		pGen->pIn++;
+	}
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
+		pGen->pIn = pStart;
+		return SXERR_INVALID;
+	}
+	SyBlobInit(&sName,&pGen->pVm->sAllocator);
+	SyBlobAppend(&sName,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);
+	pGen->pIn++;
+	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_NSSEP) &&
+		&pGen->pIn[1] < pGen->pEnd && (pGen->pIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) ){
+		SyBlobAppend(&sName,"\\",1);
+		pGen->pIn++;
+		SyBlobAppend(&sName,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);
+		pGen->pIn++;
+	}
+	if( isAbsolute ){
+		SyBlobAppend(pFqn,(const char *)SyBlobData(&sName),SyBlobLength(&sName));
+	}else{
+		SyString sRaw;
+		SyStringInitFromBuf(&sRaw,(const char *)SyBlobData(&sName),SyBlobLength(&sName));
+		GenStateResolveName(pGen,&sRaw,pFqn);
+	}
+	SyBlobRelease(&sName);
+	return SXRET_OK;
+}
+/*
+ * Return TRUE if pInterface is Throwable or transitively extends Throwable.
+ * Walks both the interface `extends` chain (pBase) and any parent-interface
+ * set (aInterface). Depth is counted for every traversal step — recursion
+ * through aInterface *and* sibling iteration through pBase — so a cycle in
+ * either direction cannot run unbounded.
+ */
+#define PH7_THROWABLE_WALK_MAX_DEPTH 64
+static int GenStateInterfaceIsThrowableAt(ph7_class *pInterface,int iDepth)
+{
+	ph7_class **apParent;
+	sxu32 n;
+	while( pInterface ){
+		if( iDepth > PH7_THROWABLE_WALK_MAX_DEPTH ){
+			return FALSE;
+		}
+		if( pInterface->sName.nByte == sizeof("Throwable")-1 &&
+			SyMemcmp(pInterface->sName.zString,"Throwable",sizeof("Throwable")-1) == 0 ){
+			return TRUE;
+		}
+		apParent = (ph7_class **)SySetBasePtr(&pInterface->aInterface);
+		for( n = 0 ; n < SySetUsed(&pInterface->aInterface) ; ++n ){
+			if( GenStateInterfaceIsThrowableAt(apParent[n],iDepth+1) ){
+				return TRUE;
+			}
+		}
+		pInterface = pInterface->pBase;
+		iDepth++;
+	}
+	return FALSE;
+}
+static int GenStateInterfaceIsThrowable(ph7_class *pInterface)
+{
+	return GenStateInterfaceIsThrowableAt(pInterface,0);
+}
+/*
+ * Return TRUE if pBase is (or transitively extends) the Exception or Error
+ * base class. Used to enforce that user classes can only acquire Throwable
+ * via `extends Exception` / `extends Error`, matching PHP 7+ behavior.
+ */
+static int GenStateClassIsExceptionOrError(ph7_class *pBase)
+{
+	while( pBase ){
+		if( pBase->sName.nByte == sizeof("Exception")-1 &&
+			SyMemcmp(pBase->sName.zString,"Exception",sizeof("Exception")-1) == 0 ){
+			return TRUE;
+		}
+		if( pBase->sName.nByte == sizeof("Error")-1 &&
+			SyMemcmp(pBase->sName.zString,"Error",sizeof("Error")-1) == 0 ){
+			return TRUE;
+		}
+		pBase = pBase->pBase;
+	}
+	return FALSE;
+}
 static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 {
 	sxu32 nLine = pGen->pIn->nLine;
@@ -7789,41 +7887,38 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 	/* Assume a standalone class */
 	pBase = 0;
 	if( pGen->pIn < pGen->pEnd  && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
-		SyString *pBaseName;
 		nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
 		if( nKwrd == PH7_TKWRD_EXTENDS /* class b extends a */ ){
-			pGen->pIn++; /* Advance the stream cursor */
-			if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_ID) == 0 ){
-				/* Syntax error */
+			SyBlob sResolved;
+			SyString sBaseName;
+			sxu32 nRefLine;
+			pGen->pIn++; /* Advance past 'extends' */
+			nRefLine = (pGen->pIn < pGen->pEnd) ? pGen->pIn->nLine : nLine;
+			SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
+			if( GenStateParseClassReference(pGen,&sResolved) != SXRET_OK ){
+				SyBlobRelease(&sResolved);
 				rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 					"Expected 'class_name' after 'extends' keyword inside class '%z'",
 					pName);
 				SyMemBackendPoolFree(&pGen->pVm->sAllocator,pClass);
 				if( rc == SXERR_ABORT ){
-					/* Error count limit reached,abort immediately */
 					return SXERR_ABORT;
 				}
 				return SXRET_OK;
 			}
-			/* Extract base class name and resolve through namespace/imports */
-			pBaseName = &pGen->pIn->sData;
-			{
-				SyBlob sResolved;
-				SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
-				GenStateResolveName(pGen,pBaseName,&sResolved);
-				pBase = PH7_VmExtractClass(pGen->pVm,
-					(const char *)SyBlobData(&sResolved),(sxu32)SyBlobLength(&sResolved),FALSE,0);
-				SyBlobRelease(&sResolved);
-			}
+			pBase = PH7_VmExtractClass(pGen->pVm,
+				(const char *)SyBlobData(&sResolved),(sxu32)SyBlobLength(&sResolved),FALSE,0);
+			SyStringInitFromBuf(&sBaseName,
+				(const char *)SyBlobData(&sResolved),SyBlobLength(&sResolved));
 			/* Interfaces are not allowed */
 			while( pBase && (pBase->iFlags & PH7_CLASS_INTERFACE) ){
 				pBase = pBase->pNextName;
 			}
 			if( pBase == 0 ){
-				/* Inexistant base class */
-				rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,"Inexistant base class '%z'",pBaseName);
+				rc = PH7_GenCompileError(pGen,E_ERROR,nRefLine,
+					"Nonexistent base class '%z'",&sBaseName);
 				if( rc == SXERR_ABORT ){
-					/* Error count limit reached,abort immediately */
+					SyBlobRelease(&sResolved);
 					return SXERR_ABORT;
 				}
 			}else{
@@ -7831,58 +7926,78 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 					rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 						"Class '%z' may not inherit from final class '%z'",pName,&pBase->sName);
 					if( rc == SXERR_ABORT ){
-						/* Error count limit reached,abort immediately */
+						SyBlobRelease(&sResolved);
 						return SXERR_ABORT;
 					}
 				}
 			}
-			/* Advance the stream cursor */
-			pGen->pIn++;
+			SyBlobRelease(&sResolved);
 		}
 		if (pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) && SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_IMPLEMENTS ){
 			ph7_class *pInterface;
-			SyString *pIntName;
 			/* Interface implementation */
 			pGen->pIn++; /* Advance the stream cursor */
 			for(;;){
-				if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_ID) == 0 ){
-					/* Syntax error */
+				SyBlob sResolved;
+				SyString sIntName;
+				sxu32 nRefLine;
+				nRefLine = (pGen->pIn < pGen->pEnd) ? pGen->pIn->nLine : nLine;
+				SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
+				if( GenStateParseClassReference(pGen,&sResolved) != SXRET_OK ){
+					SyBlobRelease(&sResolved);
 					rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 						"Expected 'interface_name' after 'implements' keyword inside class '%z' declaration",
 						pName);
 					if( rc == SXERR_ABORT ){
-						/* Error count limit reached,abort immediately */
 						return SXERR_ABORT;
 					}
 					break;
 				}
-				/* Extract interface name and resolve through namespace/imports */
-				pIntName = &pGen->pIn->sData;
-				{
-					SyBlob sResolved;
-					SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
-					GenStateResolveName(pGen,pIntName,&sResolved);
-					pInterface = PH7_VmExtractClass(pGen->pVm,
-						(const char *)SyBlobData(&sResolved),(sxu32)SyBlobLength(&sResolved),FALSE,0);
-					SyBlobRelease(&sResolved);
-				}
+				pInterface = PH7_VmExtractClass(pGen->pVm,
+					(const char *)SyBlobData(&sResolved),(sxu32)SyBlobLength(&sResolved),FALSE,0);
+				SyStringInitFromBuf(&sIntName,
+					(const char *)SyBlobData(&sResolved),SyBlobLength(&sResolved));
 				/* Only interfaces are allowed */
 				while( pInterface && (pInterface->iFlags & PH7_CLASS_INTERFACE) == 0 ){
 					pInterface = pInterface->pNextName;
 				}
 				if( pInterface == 0 ){
-					/* Inexistant interface */
-					rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,"Inexistant base interface '%z'",pIntName);
+					rc = PH7_GenCompileError(pGen,E_ERROR,nRefLine,
+						"Nonexistent base interface '%z'",&sIntName);
 					if( rc == SXERR_ABORT ){
-						/* Error count limit reached,abort immediately */
+						SyBlobRelease(&sResolved);
 						return SXERR_ABORT;
 					}
 				}else{
-					/* Register interface */
-					SySetPut(&aInterfaces,(const void *)&pInterface);
+					/* Reject user classes that try to implement Throwable
+					 * directly (or via an interface that extends Throwable)
+					 * unless they already extend Exception or Error.
+					 * Exception and Error themselves are compiled from the
+					 * built-in library and are exempt by FQN — a namespaced
+					 * `Foo\Exception` is a different class and not exempt. */
+					SyString *pFqn = &pClass->sName;
+					int bIsExceptionOrError =
+						(pFqn->nByte == sizeof("Exception")-1 &&
+						 SyMemcmp(pFqn->zString,"Exception",sizeof("Exception")-1) == 0) ||
+						(pFqn->nByte == sizeof("Error")-1 &&
+						 SyMemcmp(pFqn->zString,"Error",sizeof("Error")-1) == 0);
+					if( GenStateInterfaceIsThrowable(pInterface) &&
+						!GenStateClassIsExceptionOrError(pBase) &&
+						!bIsExceptionOrError ){
+						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+							"Class %z cannot implement interface Throwable, extend Exception or Error instead",
+							&pClass->sName);
+						if( rc == SXERR_ABORT ){
+							SyBlobRelease(&sResolved);
+							return SXERR_ABORT;
+						}
+						/* Skip registration so the follow-up abstract-method
+						 * check does not produce a duplicate fatal. */
+					}else{
+						SySetPut(&aInterfaces,(const void *)&pInterface);
+					}
 				}
-				/* Advance the stream cursor */
-				pGen->pIn++;
+				SyBlobRelease(&sResolved);
 				if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_COMMA) == 0 ){
 					break;
 				}
@@ -8993,17 +9108,10 @@ static sxi32 PH7_CompileCatch(ph7_gen_state *pGen,ph7_exception *pException)
 	/* Extract the exception class(es) — supports multi-catch: catch (A | B $e) */
 	pGen->pIn++; /* Jump the left parenthesis '(' */
 	for(;;){
-		int isAbsolute = 0;
-		SyBlob sName;
-		SyBlobInit(&sName,&pGen->pVm->sAllocator);
-		/* Accept optional leading '\' for fully-qualified names */
-		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_NSSEP) ){
-			isAbsolute = 1;
-			pGen->pIn++;
-		}
-		if( pGen->pIn >= pGen->pEnd ||
-			(pGen->pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
-			SyBlobRelease(&sName);
+		SyBlob sResolved;
+		SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
+		if( GenStateParseClassReference(pGen,&sResolved) != SXRET_OK ){
+			SyBlobRelease(&sResolved);
 			pToken = pGen->pIn;
 			if( pToken >= pGen->pEnd ){
 				pToken--;
@@ -9016,34 +9124,12 @@ static sxi32 PH7_CompileCatch(ph7_gen_state *pGen,ph7_exception *pException)
 			}
 			return SXERR_INVALID;
 		}
-		/* Collect namespace-qualified name: ID [\ ID]* */
-		SyBlobAppend(&sName,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);
-		pGen->pIn++;
-		while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_NSSEP) &&
-			&pGen->pIn[1] < pGen->pEnd && (pGen->pIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) ){
-			SyBlobAppend(&sName,"\\",1);
-			pGen->pIn++; /* Skip '\' separator */
-			SyBlobAppend(&sName,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);
-			pGen->pIn++;
-		}
-		/* Resolve through namespace/imports for non-absolute names */
-		if( !isAbsolute ){
-			SyString sRaw;
-			SyBlob sResolved;
-			SyStringInitFromBuf(&sRaw,(const char *)SyBlobData(&sName),SyBlobLength(&sName));
-			SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
-			GenStateResolveName(pGen,&sRaw,&sResolved);
-			zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
-				(const char *)SyBlobData(&sResolved),SyBlobLength(&sResolved));
-			SyStringInitFromBuf(&sClassName,zDup,SyBlobLength(&sResolved));
-			SyBlobRelease(&sResolved);
-		}else{
-			/* Absolute name: use as-is without namespace prefix */
-			zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
-				(const char *)SyBlobData(&sName),SyBlobLength(&sName));
-			SyStringInitFromBuf(&sClassName,zDup,SyBlobLength(&sName));
-		}
-		SyBlobRelease(&sName);
+		/* Persist the FQN beyond this function — aClasses outlives the
+		 * transient SyBlob allocation. */
+		zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+			(const char *)SyBlobData(&sResolved),SyBlobLength(&sResolved));
+		SyStringInitFromBuf(&sClassName,zDup,SyBlobLength(&sResolved));
+		SyBlobRelease(&sResolved);
 		if( zDup == 0 ){
 			goto Mem;
 		}
@@ -9857,15 +9943,20 @@ static sxi32 GenStateEmitExprCode(
 				if ( pInstr->iOp == PH7_OP_LOADC ){
 					sxu32 nOrig = (sxu32)pInstr->iP2;
 					sxu32 nQual;
-					/* Prevent constant expansion */
-					pInstr->iP1 = 0;
-					/* Namespace-qualify the function name for CALL.
-					 * Only check function imports — class imports must NOT
-					 * affect function resolution.  For `new Foo()`, the CALL
-					 * handler fires before NEW; we store the original literal
-					 * index in the CALL instruction's iP2 so the NEW handler
-					 * can recover the unqualified name and re-qualify with
-					 * class imports. */ {
+					int bAbsolute = (pInstr->iP1 & PH7_LOADC_ABSOLUTE) != 0;
+					/* Prevent constant expansion but preserve the absolute flag
+					 * so the later NEW handler (if any) can see it. */
+					pInstr->iP1 &= ~PH7_LOADC_EXPAND;
+					/* Namespace-qualify the function name for CALL, unless the
+					 * literal is absolute (`\Foo(...)`). Only check function
+					 * imports — class imports must NOT affect function
+					 * resolution. For `new Foo()`, the CALL handler fires
+					 * before NEW; we store the original literal index in the
+					 * CALL instruction's iP2 so the NEW handler can recover
+					 * the unqualified name and re-qualify with class imports. */
+					if( bAbsolute ){
+						pInstr->iP2 = (sxi32)nOrig;
+					}else{
 						int fromImport = 0;
 						nQual = GenStateNsQualifyName(pGen,nOrig,&pGen->hUseFuncImports,&fromImport);
 						pInstr->iP2 = (sxi32)nQual;
@@ -10044,6 +10135,7 @@ static sxi32 GenStateEmitExprCode(
 					pPeek = PH7_VmPeekNextInstr(pGen->pVm);
 				}
 				if( pPeek && pPeek->iOp == PH7_OP_LOADC ){
+					int bAbsolute = (pPeek->iP1 & PH7_LOADC_ABSOLUTE) != 0;
 					sxu32 nLitForClass;
 					/* If the CALL handler already qualified the name using
 					 * function imports, recover the original unqualified
@@ -10054,7 +10146,11 @@ static sxi32 GenStateEmitExprCode(
 						nLitForClass = (sxu32)pPeek->iP2;
 					}
 					pPeek->iP1 = 0;
-					pPeek->iP2 = (sxi32)GenStateNsQualifyName(pGen,nLitForClass,&pGen->hUseImports,0);
+					if( !bAbsolute ){
+						pPeek->iP2 = (sxi32)GenStateNsQualifyName(pGen,nLitForClass,&pGen->hUseImports,0);
+					}else{
+						pPeek->iP2 = (sxi32)nLitForClass;
+					}
 				}
 			}
 			pInstr = PH7_VmPeekInstr(pGen->pVm);
@@ -10072,10 +10168,11 @@ static sxi32 GenStateEmitExprCode(
 			}
 		}else if( iVmOp == PH7_OP_IS_A ){
 			/* instanceof: right operand is a class name, not a constant.
-			 * Namespace-qualify it, but skip self/static/parent. */
+			 * Namespace-qualify it, but skip self/static/parent and absolute refs. */
 			pInstr = PH7_VmPeekInstr(pGen->pVm);
 			if( pInstr && pInstr->iOp == PH7_OP_LOADC ){
 				ph7_value *pLitChk = (ph7_value *)SySetAt(&pGen->pVm->aLitObj,(sxu32)pInstr->iP2);
+				int bAbsolute = (pInstr->iP1 & PH7_LOADC_ABSOLUTE) != 0;
 				int isSpecialIs = 0;
 				if( pLitChk && (pLitChk->iFlags & MEMOBJ_STRING) ){
 					const char *z = (const char *)SyBlobData(&pLitChk->sBlob);
@@ -10087,7 +10184,7 @@ static sxi32 GenStateEmitExprCode(
 					}
 				}
 				pInstr->iP1 = 0;
-				if( !isSpecialIs ){
+				if( !isSpecialIs && !bAbsolute ){
 					pInstr->iP2 = (sxi32)GenStateNsQualifyName(pGen,(sxu32)pInstr->iP2,&pGen->hUseImports,0);
 				}
 			}

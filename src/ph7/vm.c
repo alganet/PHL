@@ -950,14 +950,24 @@ static int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_value 
  * directly as foreign functions.
  */
 #define PH7_BUILTIN_LIB \
-	"class Exception { "\
-    "protected $message = 'Unknown exception';"\
+	"interface Throwable {"\
+	"public function getMessage();"\
+	"public function getCode();"\
+	"public function getFile();"\
+	"public function getLine();"\
+	"public function getTrace();"\
+	"public function getTraceAsString();"\
+	"public function getPrevious();"\
+	"public function __toString();"\
+	"}"\
+	"class Exception implements Throwable { "\
+    "protected $message = '';"\
     "protected $code = 0;"\
     "protected $file;"\
     "protected $line;"\
     "protected $trace;"\
     "protected $previous;"\
-	"public function __construct($message = null, $code = 0, Exception $previous = null){"\
+	"public function __construct($message = null, $code = 0, Throwable $previous = null){"\
 	"   if( isset($message) ){"\
 	"	  $this->message = $message;"\
 	"   }"\
@@ -994,7 +1004,50 @@ static int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_value 
 	"   return $this->file.' '.$this->line.' '.$this->code.' '.$this->message;"\
     "}"\
 	"}"\
-	"class Error extends Exception { }"\
+	"class Error implements Throwable { "\
+    "protected $message = '';"\
+    "protected $code = 0;"\
+    "protected $file;"\
+    "protected $line;"\
+    "protected $trace;"\
+    "protected $previous;"\
+	"public function __construct($message = null, $code = 0, Throwable $previous = null){"\
+	"   if( isset($message) ){"\
+	"	  $this->message = $message;"\
+	"   }"\
+	"   $this->code = $code;"\
+	"   $this->file = __FILE__;"\
+	"   $this->line = __LINE__;"\
+	"   $this->trace = debug_backtrace();"\
+	"   if( isset($previous) ){"\
+	"     $this->previous = $previous;"\
+	"   }"\
+	"}"\
+	"public function getMessage(){"\
+	"   return $this->message;"\
+	"}"\
+	"public function getCode(){"\
+	"  return $this->code;"\
+	"}"\
+	"public function getFile(){"\
+	"  return $this->file;"\
+	"}"\
+	"public function getLine(){"\
+	"  return $this->line;"\
+	"}"\
+	"public function getTrace(){"\
+	"   return $this->trace;"\
+	"}"\
+	"public function getTraceAsString(){"\
+	"  return debug_string_backtrace();"\
+	"}"\
+	"public function getPrevious(){"\
+	"    return $this->previous;"\
+	"}"\
+	"public function __toString(){"\
+	"   return $this->file.' '.$this->line.' '.$this->code.' '.$this->message;"\
+	"}"\
+	"}"\
 	"class TypeError extends Error { }"\
 	"class ArgumentCountError extends TypeError { }"\
 	"class ValueError extends Error { }"\
@@ -1005,7 +1058,7 @@ static int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_value 
 	"class ErrorException extends Exception { "\
 	"protected $severity;"\
 	"public function __construct(string $message = null,"\
-	"int $code = 0,int $severity = 1,string $filename = __FILE__ ,int $lineno = __LINE__ ,Exception $previous = null){"\
+	"int $code = 0,int $severity = 1,string $filename = __FILE__ ,int $lineno = __LINE__ ,Throwable $previous = null){"\
 	"   if( isset($message) ){"\
 	"	  $this->message = $message;"\
 	"   }"\
@@ -3085,10 +3138,6 @@ static sxi32 VmReportUncaughtException(ph7_vm *pVm,const char *zClass,sxu32 nCla
 		zClass = "Exception";
 		nClass = (sxu32)sizeof("Exception") - 1;
 	}
-	if( zMsg == 0 ){
-		zMsg = "Unknown exception";
-		nMsg = (sxu32)sizeof("Unknown exception") - 1;
-	}
 	if( zFuncName == 0 || nFuncLen <= 0 ){
 		VmGetFrameContext(pVm,&zFuncName,&nFuncLen);
 	}
@@ -3096,8 +3145,10 @@ static sxi32 VmReportUncaughtException(ph7_vm *pVm,const char *zClass,sxu32 nCla
 	SyBlobInit(&sOut,&pVm->sAllocator);
 	SyBlobAppend(&sOut,"PHP Fatal error:  Uncaught ",sizeof("PHP Fatal error:  Uncaught ")-1);
 	SyBlobAppend(&sOut,zClass,nClass);
-	SyBlobAppend(&sOut,": ",sizeof(": ")-1);
-	SyBlobAppend(&sOut,zMsg,nMsg);
+	if( zMsg && nMsg > 0 ){
+		SyBlobAppend(&sOut,": ",sizeof(": ")-1);
+		SyBlobAppend(&sOut,zMsg,nMsg);
+	}
 	if( pFile ){
 		SyBlobAppend(&sOut," in ",sizeof(" in ")-1);
 		SyBlobAppend(&sOut,pFile->zString,pFile->nByte);
@@ -3820,7 +3871,7 @@ case PH7_OP_LOADC: {
 	/* Reserve a room */
 	pTos++;
 	if( (pObj = (ph7_value *)SySetAt(&pVm->aLitObj,pInstr->iP2)) != 0 ){
-		if( pInstr->iP1 == 1 && SyBlobLength(&pObj->sBlob) <= 64 ){
+		if( (pInstr->iP1 & PH7_LOADC_EXPAND) && SyBlobLength(&pObj->sBlob) <= 64 ){
 			SyHashEntry *pEntry;
 			/* Check use const imports first — imports take precedence */
 			{
@@ -3856,13 +3907,14 @@ case PH7_OP_LOADC: {
 			}
 			/* Constant not found by bare name.  If a namespace is active and
 			 * the name is unqualified, try namespace\name (PHP resolution order:
-			 * use-const imports → current NS → global → string fallback). */
+			 * use-const imports → current NS → global → string fallback).
+			 * Absolute references (\NAME) skip the NS fallback too. */
 			{
 				const char *zLit = (const char *)SyBlobData(&pObj->sBlob);
 				sxu32 nLit = (sxu32)SyBlobLength(&pObj->sBlob);
 				sxu32 j;
-				int isQualified = 0;
-				for( j = 0; j < nLit; j++ ){
+				int isQualified = (pInstr->iP1 & PH7_LOADC_ABSOLUTE) != 0;
+				for( j = 0; !isQualified && j < nLit; j++ ){
 					if( zLit[j] == '\\' ){ isQualified = 1; break; }
 				}
 				if( !isQualified && SyBlobLength(&pVm->sNamespace) > 0 ){
@@ -6084,16 +6136,45 @@ case PH7_OP_THROW: {
 	pFrameLocal->iFlags |= VM_FRAME_THROW;
 	if( pTos->iFlags & MEMOBJ_OBJ ){
 		ph7_class_instance *pThis = (ph7_class_instance *)pTos->x.pOther;
-		ph7_class *pException;
-		/* Make sure the loaded object is an instance of the 'Exception' base class.
-		 */
-		pException = PH7_VmExtractClass(&(*pVm),"Exception",sizeof("Exception")-1,TRUE,0);
-		if( pException == 0 || !PH7_VmInstanceOf(pThis->pClass,pException) ){
-			/* Exceptions must be valid objects derived from the Exception base class */
-			rc = VmUncaughtException(&(*pVm),pThis);
-			if( rc == SXERR_ABORT ){
-				/* Abort processing immediately */
-				goto Abort;
+		ph7_class *pThrowable;
+		/* Thrown object must implement the Throwable interface (PHP 7+). */
+		pThrowable = PH7_VmExtractClass(&(*pVm),"Throwable",sizeof("Throwable")-1,FALSE,0);
+		if( pThrowable == 0 || !PH7_VmInstanceOf(pThis->pClass,pThrowable) ){
+			/* Not a Throwable: replace with Error(msg) matching PHP behavior.
+			 * Error::__construct is defined in the built-in library and
+			 * cannot realistically fail, so we do not check its return. */
+			ph7_class *pErrorClass = PH7_VmExtractClass(&(*pVm),"Error",sizeof("Error")-1,TRUE,0);
+			ph7_class_instance *pErrInst = 0;
+			if( pErrorClass ){
+				pErrInst = PH7_NewClassInstance(&(*pVm),pErrorClass);
+			}
+			if( pErrInst ){
+				ph7_class_method *pCons;
+				pCons = PH7_ClassExtractMethod(pErrorClass,"__construct",sizeof("__construct")-1);
+				if( pCons ){
+					ph7_value sArg;
+					ph7_value *apArg[1];
+					SyString sMsgStr;
+					static const char zErrMsg[] =
+						"Cannot throw objects that do not implement Throwable";
+					SyStringInitFromBuf(&sMsgStr,zErrMsg,sizeof(zErrMsg)-1);
+					PH7_MemObjInit(pVm,&sArg);
+					PH7_MemObjInitFromString(pVm,&sArg,&sMsgStr);
+					apArg[0] = &sArg;
+					PH7_VmCallClassMethod(&(*pVm),pErrInst,pCons,0,1,apArg);
+					PH7_MemObjRelease(&sArg);
+				}
+				rc = VmThrowException(&(*pVm),pErrInst);
+				PH7_ClassInstanceUnref(pErrInst);
+				if( rc == SXERR_ABORT ){
+					goto Abort;
+				}
+			}else{
+				/* Bootstrap failure — fall back to uncaught reporting */
+				rc = VmUncaughtException(&(*pVm),pThis);
+				if( rc == SXERR_ABORT ){
+					goto Abort;
+				}
 			}
 		}else{
 			/* Throw the exception */
@@ -11863,9 +11944,6 @@ static sxi32 VmUncaughtException(
 				PH7_MemObjRelease(&sMsg);
 			}
 		}
-		if( SyBlobLength(&sMsgBuf) == 0 ){
-			SyBlobAppend(&sMsgBuf,"Unknown exception",sizeof("Unknown exception")-1);
-		}
 		zMsg = (const char *)SyBlobData(&sMsgBuf);
 		nMsg = (sxu32)SyBlobLength(&sMsgBuf);
 		VmGetFrameContext(pVm,&zFuncName,&nFuncLen);
@@ -11937,10 +12015,12 @@ static sxi32 VmThrowException(
 			nNames = SySetUsed(&aCatch[j].aClasses);
 			matched = 0;
 			for( k = 0 ; k < nNames ; ++k ){
-				/* Extract the target class */
-				pClass = PH7_VmExtractClass(&(*pVm),aNames[k].zString,aNames[k].nByte,TRUE,0);
-				if( pClass == 0 ){
-					/* No such class */
+				/* Extract the target class or interface (iLoadable=FALSE so
+				 * interfaces like Throwable are resolvable as catch targets).
+				 * Traits are never instance-compatible, so skip them explicitly. */
+				pClass = PH7_VmExtractClass(&(*pVm),aNames[k].zString,aNames[k].nByte,FALSE,0);
+				if( pClass == 0 || (pClass->iFlags & PH7_CLASS_TRAIT) ){
+					/* No such class, or trait — cannot match */
 					continue;
 				}
 				if( PH7_VmInstanceOf(pThis->pClass,pClass) ){
