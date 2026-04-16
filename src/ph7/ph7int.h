@@ -585,6 +585,7 @@ struct ph7_vm_func
 	SyString sReturnClass; /* Class name when nReturnType == SXU32_HIGH */
 	SySet aReturnUnion;  /* Return-type union alternatives (ph7_type_alt). Empty unless union return. */
 	SyString sReturnTypeName; /* Original return-type text for error messages, in canonical PHP order */
+	sxu8 bStrictTypes;   /* 1 if defining file declared strict_types=1 (governs return-value coercion) */
 	void *pUserData;     /* Upper layer private data associated with this instance */
 	ph7_vm_func *pNextName; /* Next VM function with the same name as this one */
 };
@@ -726,6 +727,7 @@ struct VmCallArgMap
 {
 	sxu8 bHasNamed;      /* 1 if any argument uses name: syntax */
 	sxu8 bIsNamespaced;  /* 1 if compiler namespace-qualified the call */
+	sxu8 bStrict;        /* 1 if the call site's file declared strict_types=1 */
 	sxu32 nTotal;        /* Total number of compile-time arguments */
 	SyString *aNames;    /* Array of nTotal names. nByte==0 means positional. */
 };

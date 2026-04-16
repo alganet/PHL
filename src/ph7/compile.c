@@ -410,6 +410,30 @@ static ph7_value * GenStateInstallNumLiteral(ph7_gen_state *pGen,sxu32 *pIdx)
 /*
  * Implementation of the PHP language constructs.
  */
+/*
+ * Ensure the about-to-be-emitted CALL/NEW opcode carries a VmCallArgMap
+ * that reflects the caller file's strict_types mode. Returns the (possibly
+ * newly allocated and zero-initialized) map pointer. In weak-mode files
+ * this is a no-op and the caller's p3 is returned unchanged.
+ *
+ * NOTE: on allocation failure the call reverts to weak semantics rather
+ * than aborting compilation — out-of-memory during a map allocation is
+ * vanishingly unlikely and silently dropping to weak mode matches the
+ * surrounding callsites' zero-check fallback pattern.
+ */
+static void *GenStateAttachStrictFlag(ph7_gen_state *pGen, void *p3)
+{
+	VmCallArgMap *pMap;
+	if( !pGen->bStrictTypes ) return p3;
+	if( p3 == 0 ){
+		pMap = (VmCallArgMap *)SyMemBackendAlloc(&pGen->pVm->sAllocator,sizeof(VmCallArgMap));
+		if( pMap == 0 ) return 0;
+		SyZero(pMap,sizeof(VmCallArgMap));
+		p3 = (void *)pMap;
+	}
+	((VmCallArgMap *)p3)->bStrict = 1;
+	return p3;
+}
 /* Forward declaration */
 static sxi32 GenStateCompileChunk(ph7_gen_state *pGen,sxi32 iFlags);
 static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyToken *pEnd,int bCtorCtx,int bAbstractCtx);
@@ -2658,7 +2682,7 @@ PH7_PRIVATE sxi32 PH7_CompileLangConstruct(ph7_gen_state *pGen,sxi32 iCompileFla
 		}
 		/* Emit the call instruction */
 		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);
-		PH7_VmEmitInstr(pGen->pVm,PH7_OP_CALL,nArg,0,0,0);
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_CALL,nArg,0,GenStateAttachStrictFlag(pGen,0),0);
 	}
 	/* Node successfully compiled */
 	return SXRET_OK;
@@ -10323,6 +10347,11 @@ static sxi32 GenStateEmitExprCode(
 				}
 			}
 		}
+		/* Tag CALL/NEW sites with the caller file's strict_types flag.
+		 * This is the primary emit path for user-visible calls. */
+		if( iVmOp == PH7_OP_CALL || iVmOp == PH7_OP_NEW ){
+			p3 = GenStateAttachStrictFlag(pGen,p3);
+		}
 		/* Finally,emit the VM instruction associated with this operator */
 		PH7_VmEmitInstr(pGen->pVm,iVmOp,iP1,iP2,p3,0);
 	}
@@ -10530,7 +10559,7 @@ static sxi32 PH7_CompileUnset(ph7_gen_state *pGen)
 			if( rc != SXERR_EMPTY ){
 				/* Emit call for this single argument */
 				PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);
-				PH7_VmEmitInstr(pGen->pVm,PH7_OP_CALL,1,0,0,0);
+				PH7_VmEmitInstr(pGen->pVm,PH7_OP_CALL,1,0,GenStateAttachStrictFlag(pGen,0),0);
 				PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
 			}
 		}
