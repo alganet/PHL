@@ -4,20 +4,20 @@
 | src/ph7/builtin.c              | 87.76%   | 2941/3351   |
 | src/ph7/builtin_date.c         | 66.09%   | 456/690     |
 | src/ph7/builtin_math.c         | 96.79%   | 452/467     |
-| src/ph7/compile.c              | 78.92%   | 4980/6310   |
+| src/ph7/compile.c              | 79.05%   | 5044/6381   |
 | src/ph7/constant.c             | 98.92%   | 1006/1017   |
-| src/ph7/hashmap.c              | 87.39%   | 2965/3393   |
+| src/ph7/hashmap.c              | 87.42%   | 2966/3393   |
 | src/ph7/lex.c                  | 95.34%   | 716/751     |
 | src/ph7/memobj.c               | 88.80%   | 650/732     |
 | src/ph7/net.c                  | 50.48%   | 53/105      |
 | src/ph7/oo.c                   | 87.62%   | 439/501     |
-| src/ph7/parse.c                | 84.84%   | 1002/1181   |
+| src/ph7/parse.c                | 86.20%   | 1018/1181   |
 | src/ph7/vfs.c                  | 64.88%   | 1838/2833   |
 | src/ph7/vfs_unix.c             | 88.06%   | 376/427     |
 | src/ph7/vfs_win.c              | 75.43%   | 485/643     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
-| src/ph7/vm.c                   | 76.93%   | 5792/7529   |
-| src/ph7/vm_builtin_class.c     | 84.24%   | 401/476     |
+| src/ph7/vm.c                   | 77.12%   | 5818/7544   |
+| src/ph7/vm_builtin_class.c     | 84.45%   | 402/476     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
 | src/ph7/vm_builtin_ob.c        | 76.21%   | 157/206     |
 | src/ph7/vm_http.c              | 68.02%   | 302/444     |
@@ -42,6 +42,6 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 78.55%   | 30366/38656 |
-| Functions                      | 95.29%   | 1438/1509   |
+| Lines                          | 78.66%   | 30474/38742 |
+| Functions                      | 95.31%   | 1442/1513   |
 
