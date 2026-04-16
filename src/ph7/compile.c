@@ -5237,10 +5237,24 @@ static sxi32 PH7_CompileUse(ph7_gen_state *pGen)
  *
  * Well,actually this language construct is a NO-OP in the current release of the PH7 engine.
  */
+/*
+ * Match a directive name against a known literal (case-insensitive).
+ */
+static int DeclareNameIs(SyString *pName, const char *zWant, sxu32 nWant)
+{
+	return SyStringLength(pName) == nWant
+	    && SyStrnicmp(SyStringData(pName), zWant, nWant) == 0;
+}
+
 static sxi32 PH7_CompileDeclare(ph7_gen_state *pGen)
 {
 	sxu32 nLine = pGen->pIn->nLine;
-	SyToken *pEnd = 0; /* cc warning */
+	SyToken *pBodyEnd = 0;
+	SyToken *pBodyStart;
+	SyToken *pCursor;
+	int bHasStrictTypes;
+	int bBlockForm;
+	int bPlacementOk;
 	sxi32 rc;
 	pGen->pIn++; /* Jump the 'declare' keyword */
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 /*'('*/ ){
@@ -5251,29 +5265,132 @@ static sxi32 PH7_CompileDeclare(ph7_gen_state *pGen)
 		goto Synchro;
 	}
 	pGen->pIn++; /* Jump the left parenthesis */
-	/* Delimit the directive */
-	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN/*'('*/,PH7_TK_RPAREN/*')'*/,&pEnd);
-	if( pEnd >= pGen->pEnd ){
+	pBodyStart = pGen->pIn;
+	/* Delimit the directive body (between the outer '(' and its matching ')'). */
+	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN/*'('*/,PH7_TK_RPAREN/*')'*/,&pBodyEnd);
+	if( pBodyEnd >= pGen->pEnd ){
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"declare: Missing closing parenthesis ')'");
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
 		return SXRET_OK;
 	}
-	/* Update the cursor */
-	pGen->pIn = &pEnd[1];
-	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_SEMI/*';'*/|PH7_TK_OCB/*'{'*/)) == 0  ){
+	/* Update the cursor past the closing ')'. pBodyStart..pBodyEnd (exclusive)
+	 * now delimits the comma-separated directive list. */
+	pGen->pIn = &pBodyEnd[1];
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_SEMI/*';'*/|PH7_TK_OCB/*'{'*/)) == 0 ){
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"declare: Expecting ';' or '{' after directive");
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
 	}
-	/* TICKET 1433-81: This construct is disabled in the current release of the PH7 engine. */
-	PH7_GenCompileError(&(*pGen),E_NOTICE,nLine, /* Emit a notice */
-		"the declare construct is a no-op in the current release of the PH7(%s) engine",
-		ph7_lib_version()
-		);
-	/*All done */
+	bBlockForm = ( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OCB) ) ? 1 : 0;
+	bPlacementOk = ( pGen->pCurrent == &pGen->sGlobal && !pGen->bStrictTypesLocked );
+	bHasStrictTypes = 0;
+	/* First pass: scan directive names to detect any strict_types occurrence.
+	 * PHP applies strict_types placement and block-form rules as long as the
+	 * directive appears anywhere in the list, before validating values. */
+	pCursor = pBodyStart;
+	while( pCursor < pBodyEnd ){
+		if( (pCursor->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) != 0 ){
+			if( DeclareNameIs(&pCursor->sData, "strict_types", sizeof("strict_types")-1) ){
+				bHasStrictTypes = 1;
+				break;
+			}
+		}
+		pCursor++;
+	}
+	if( bHasStrictTypes && bBlockForm ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+			"strict_types declaration must not use block mode");
+		if( rc == SXERR_ABORT ) return SXERR_ABORT;
+		return SXRET_OK;
+	}
+	if( bHasStrictTypes && !bPlacementOk ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+			"strict_types declaration must be the very first statement in the script");
+		if( rc == SXERR_ABORT ) return SXERR_ABORT;
+		return SXRET_OK;
+	}
+	/* Second pass: iterate comma-separated directives and apply each. */
+	pCursor = pBodyStart;
+	while( pCursor < pBodyEnd ){
+		SyToken *pNameTok;
+		SyToken *pEqTok;
+		SyToken *pValTok;
+		SyString *pDirName;
+		int bIsStrict;
+		int iStrictValue;
+		pNameTok = pCursor;
+		if( (pNameTok->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+				"declare: Expecting a directive name");
+			if( rc == SXERR_ABORT ) return SXERR_ABORT;
+			return SXRET_OK;
+		}
+		pEqTok = pNameTok + 1;
+		if( pEqTok >= pBodyEnd || (pEqTok->nType & PH7_TK_EQUAL) == 0 ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+				"declare: Expecting '=' after directive name");
+			if( rc == SXERR_ABORT ) return SXERR_ABORT;
+			return SXRET_OK;
+		}
+		pValTok = pEqTok + 1;
+		if( pValTok >= pBodyEnd ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+				"declare: Expecting value after '='");
+			if( rc == SXERR_ABORT ) return SXERR_ABORT;
+			return SXRET_OK;
+		}
+		pDirName = &pNameTok->sData;
+		bIsStrict = DeclareNameIs(pDirName, "strict_types", sizeof("strict_types")-1);
+		if( bIsStrict ){
+			/* strict_types value must be a literal 0 or 1 (integer). PHP
+			 * distinguishes non-literal (bareword) from other bad values. */
+			if( (pValTok->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) != 0 ){
+				rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+					"declare(strict_types) value must be a literal");
+				if( rc == SXERR_ABORT ) return SXERR_ABORT;
+				return SXRET_OK;
+			}
+			iStrictValue = -1;
+			if( pValTok->nType & PH7_TK_INTEGER ){
+				const char *zv = SyStringData(&pValTok->sData);
+				sxu32 nv = SyStringLength(&pValTok->sData);
+				if( nv == 1 && zv[0] == '0' ) iStrictValue = 0;
+				else if( nv == 1 && zv[0] == '1' ) iStrictValue = 1;
+			}
+			if( iStrictValue != 0 && iStrictValue != 1 ){
+				rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+					"strict_types declaration must have 0 or 1 as its value");
+				if( rc == SXERR_ABORT ) return SXERR_ABORT;
+				return SXRET_OK;
+			}
+			pGen->bStrictTypes = (sxi8)iStrictValue;
+		}else{
+			/* Other directives (ticks, encoding, or unknown) remain no-ops —
+			 * preserve the legacy notice so callers relying on the old
+			 * behavior don't regress. */
+			PH7_GenCompileError(&(*pGen),E_NOTICE,nLine,
+				"the declare construct is a no-op in the current release of the PH7(%s) engine",
+				ph7_lib_version()
+				);
+		}
+		pCursor = pValTok + 1;
+		/* Consume separating comma (or end). */
+		if( pCursor < pBodyEnd ){
+			if( (pCursor->nType & PH7_TK_COMMA) == 0 ){
+				rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+					"declare: Expecting ',' or ')' after directive value");
+				if( rc == SXERR_ABORT ) return SXERR_ABORT;
+				return SXRET_OK;
+			}
+			pCursor++;
+		}
+	}
+	/* Declares never lock the first-statement rule: PHP allows another
+	 * declare(strict_types) to follow immediately, or a declare(ticks)
+	 * to precede strict_types. Only non-declare statements lock. */
 	return SXRET_OK;
 Synchro:
 	/* Sycnhronize with the first semi-colon ';' or curly braces '{' */
@@ -10548,9 +10665,23 @@ static sxi32 GenStateCompileChunk(
 	sxi32 rc;
 	rc = SXRET_OK; /* Prevent compiler warning */
 	for(;;){
+		int bStmtIsDeclare = 0;
 		if( pGen->pIn >= pGen->pEnd ){
 			/* No more input to process */
 			break;
+		}
+		/* Peek to detect a top-level `declare` so the strict_types lock
+		 * below doesn't fire before the directive has a chance to run. */
+		if( pGen->pIn->nType & PH7_TK_KEYWORD ){
+			sxu32 nPeek = (sxu32)SX_PTR_TO_INT(pGen->pIn->pUserData);
+			if( nPeek == PH7_TKWRD_DECLARE ){
+				bStmtIsDeclare = 1;
+			}
+		}
+		if( !bStmtIsDeclare && pGen->pCurrent == &pGen->sGlobal ){
+			/* Any non-declare top-level statement locks the strict_types
+			 * directive: it's now too late for declare(strict_types=1). */
+			pGen->bStrictTypesLocked = 1;
 		}
 		if( pGen->pIn->nType & PH7_TK_OCB /* '{' */ ){
 			/* Compile block */
@@ -10703,11 +10834,20 @@ PH7_PRIVATE sxi32 PH7_CompileScript(
 	sxu32 nObjIdx;
 	sxi32 nRawObj;
 	int is_expr;
+	sxi8 bSavedStrict;
+	sxi8 bSavedStrictLocked;
 	sxi32 rc;
 	if( pScript->nByte < 1 ){
 		/* Nothing to compile */
 		return PH7_OK;
 	}
+	/* Each compiled file has its own strict_types scope. Save the outer
+	 * file's flags so include/require restore them on return. */
+	pCodeGen = &pVm->sCodeGen;
+	bSavedStrict = pCodeGen->bStrictTypes;
+	bSavedStrictLocked = pCodeGen->bStrictTypesLocked;
+	pCodeGen->bStrictTypes = 0;
+	pCodeGen->bStrictTypesLocked = 0;
 	/* Initialize the tokens containers */
 	SySetInit(&aRawToken,&pVm->sAllocator,sizeof(SyToken));
 	SySetInit(&aPhpToken,&pVm->sAllocator,sizeof(SyToken));
@@ -10730,7 +10870,6 @@ PH7_PRIVATE sxi32 PH7_CompileScript(
 		SySetAlloc(&aRawToken,32);
 		PH7_TokenizeRawText(pScript->zString,pScript->nByte,&aRawToken);
 	}
-	pCodeGen = &pVm->sCodeGen;
 	/* Process high-level tokens */
 	pCodeGen->pRawIn = (SyToken *)SySetBasePtr(&aRawToken);
 	pCodeGen->pRawEnd = &pCodeGen->pRawIn[SySetUsed(&aRawToken)];
@@ -10781,6 +10920,9 @@ PH7_PRIVATE sxi32 PH7_CompileScript(
 cleanup:
 	SySetRelease(&aRawToken);
 	SySetRelease(&aPhpToken);
+	/* Restore outer file's strict_types scope */
+	pCodeGen->bStrictTypes = bSavedStrict;
+	pCodeGen->bStrictTypesLocked = bSavedStrictLocked;
 	return rc;
 }
 /*

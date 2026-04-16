@@ -388,6 +388,8 @@ struct ph7_gen_state
 	SyToken *pRawIn;     /* Current processed raw token */
 	SyToken *pRawEnd;    /* Last raw token in the stream */
 	SySet   *pTokenSet;  /* Token containers */
+	sxi8 bStrictTypes;       /* Current file's strict_types mode (0 = weak/unset, 1 = strict) */
+	sxi8 bStrictTypesLocked; /* 1 once the current file has emitted any non-declare top-level statement */
 };
 /* Forward references */
 typedef struct ph7_vm_func_closure_env ph7_vm_func_closure_env;
