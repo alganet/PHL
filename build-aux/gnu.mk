@@ -18,7 +18,7 @@ PCRE2_CFLAGS := $(shell pkg-config --cflags libpcre2-8 2>/dev/null)
 PCRE2_LIBS   := $(shell pkg-config --libs   libpcre2-8 2>/dev/null)
 
 # Per-mode optimization and instrumentation
-full_OPT_CFLAGS     = -O3 -ffast-math
+full_OPT_CFLAGS     = -O3
 tiny_OPT_CFLAGS     = -Oz
 coverage_OPT_CFLAGS = -O0 -fprofile-arcs -ftest-coverage
 
