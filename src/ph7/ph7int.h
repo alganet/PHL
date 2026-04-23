@@ -335,6 +335,7 @@ struct ph7_expr_node
 #define EXPR_NODE_PRE_INCR    0x01 /* Pre-icrement/decrement [i.e: ++$i,--$j] node */
 #define EXPR_NODE_SPREAD      0x02 /* Argument unpacking: ...$expr */
 #define EXPR_NODE_NAMED_ARG   0x04 /* Named argument: name: $expr */
+#define EXPR_NODE_PARENS      0x08 /* Root of a parenthesized sub-expression */
 /*
  * A block of instructions is recorded in an instance of the following structure.
  * This structure is used only during compile-time and have no meaning
@@ -985,6 +986,7 @@ enum ph7_vm_op {
   PH7_OP_MUL,          /* Multiplication '*' */
   PH7_OP_DIV,          /* Division '/' */
   PH7_OP_MOD,          /* Modulus '%' */
+  PH7_OP_POW,          /* Exponentiation '**' */
   PH7_OP_ADD,          /* Add '+' */
   PH7_OP_SUB,          /* Sub '-' */
   PH7_OP_SHL,          /* Left shift '<<' */
@@ -1023,6 +1025,7 @@ enum ph7_vm_op {
   PH7_OP_MUL_STORE,    /* Mul and store '*=' */
   PH7_OP_DIV_STORE,    /* Div and store '/=' */
   PH7_OP_MOD_STORE,    /* Mod and store '%=' */
+  PH7_OP_POW_STORE,    /* Pow and store '**=' */
   PH7_OP_CAT_STORE,    /* Cat and store '.=' */
   PH7_OP_SHL_STORE,    /* Shift left and store '>>=' */
   PH7_OP_SHR_STORE,    /* Shift right and store '<<=' */
@@ -1082,6 +1085,7 @@ enum ph7_expr_id {
 	EXPR_OP_MUL,       /* Multiplication */
 	EXPR_OP_DIV,       /* division */
 	EXPR_OP_MOD,       /* Modulus */
+	EXPR_OP_POW,       /* Exponentiation ** */
 	EXPR_OP_ADD,       /* Addition */
 	EXPR_OP_SUB,       /* Substraction */
 	EXPR_OP_DOT,       /* Concatenation */
@@ -1113,6 +1117,7 @@ enum ph7_expr_id {
 	EXPR_OP_MUL_ASSIGN, /* Combined operator: *= */
 	EXPR_OP_DIV_ASSIGN, /* Combined operator: /= */
 	EXPR_OP_MOD_ASSIGN, /* Combined operator: %= */
+	EXPR_OP_POW_ASSIGN, /* Combined operator: **= */
 	EXPR_OP_DOT_ASSIGN, /* Combined operator: .= */
 	EXPR_OP_AND_ASSIGN, /* Combined operator: &= */
 	EXPR_OP_OR_ASSIGN,  /* Combined operator: |= */

@@ -177,6 +177,8 @@ static const ph7_expr_op aOpTable[] = {
 	{ {"(object)", sizeof("(object)")-1}, EXPR_OP_TYPECAST, 4, EXPR_OP_ASSOC_RIGHT, PH7_OP_CVT_OBJ  },
 	{ {"(unset)",  sizeof("(unset)")-1 }, EXPR_OP_TYPECAST, 4, EXPR_OP_ASSOC_RIGHT, PH7_OP_CVT_NULL },
 	                           /* Binary operators */
+	/* Precedence 5,right-associative: exponentiation (PHP 5.6) */
+	{ {"**",sizeof(char)*2}, EXPR_OP_POW, 5, EXPR_OP_ASSOC_RIGHT, PH7_OP_POW},
 	/* Precedence 7,left-associative */
 	{ {"instanceof",sizeof("instanceof")-1}, EXPR_OP_INSTOF, 7, EXPR_OP_NON_ASSOC, PH7_OP_IS_A},
 	{ {"*",sizeof(char)}, EXPR_OP_MUL, 7, EXPR_OP_ASSOC_LEFT , PH7_OP_MUL},
@@ -231,6 +233,7 @@ static const ph7_expr_op aOpTable[] = {
 	{ {"*=",sizeof(char)*2},  EXPR_OP_MUL_ASSIGN, 18,  EXPR_OP_ASSOC_RIGHT, PH7_OP_MUL_STORE },
 	{ {"/=",sizeof(char)*2},  EXPR_OP_DIV_ASSIGN, 18,  EXPR_OP_ASSOC_RIGHT, PH7_OP_DIV_STORE },
 	{ {"%=",sizeof(char)*2},  EXPR_OP_MOD_ASSIGN, 18,  EXPR_OP_ASSOC_RIGHT, PH7_OP_MOD_STORE },
+	{ {"**=",sizeof(char)*3}, EXPR_OP_POW_ASSIGN, 18,  EXPR_OP_ASSOC_RIGHT, PH7_OP_POW_STORE },
 	{ {"&=",sizeof(char)*2},  EXPR_OP_AND_ASSIGN, 18,  EXPR_OP_ASSOC_RIGHT, PH7_OP_BAND_STORE },
 	{ {"|=",sizeof(char)*2},  EXPR_OP_OR_ASSIGN,  18,  EXPR_OP_ASSOC_RIGHT, PH7_OP_BOR_STORE  },
 	{ {"^=",sizeof(char)*2},  EXPR_OP_XOR_ASSIGN, 18,  EXPR_OP_ASSOC_RIGHT, PH7_OP_BXOR_STORE },
@@ -1324,10 +1327,20 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 			 iCur++;
 		 }
 		 if( iCur - iLeft > 1 ){
+			 sxi32 j;
 			 /* Recurse and process this expression */
 			 rc = ExprMakeTree(&(*pGen),&apNode[iLeft + 1],iCur - iLeft - 1);
 			 if( rc != SXRET_OK ){
 				 return rc;
+			 }
+			 /* Mark the subtree root as coming from an explicit parenthesised
+			  * group. Consumed by the ** precedence-5 phase so it does not
+			  * hoist a unary operator that the user explicitly isolated. */
+			 for( j = iLeft + 1 ; j < iCur ; ++j ){
+				 if( apNode[j] ){
+					 apNode[j]->iFlags |= EXPR_NODE_PARENS;
+					 break;
+				 }
 			 }
 		 }
 		 /* Free the left and right nodes */
@@ -1654,6 +1667,77 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 			  iLeft = iCur;
 		  }
 	  }
+	 /* Process right-associative binary operators at precedence 5 (**):
+	  * PHP's exponentiation is right-associative (2**3**2 == 512) and binds
+	  * tighter than *. Walk right-to-left so the rightmost ** collapses first,
+	  * yielding a right-leaning tree. */
+	 for( iCur = nToken - 1 ; iCur >= 0 ; --iCur ){
+		 if( apNode[iCur] == 0 ){
+			 continue;
+		 }
+		 pNode = apNode[iCur];
+		 if( pNode->pOp && pNode->pOp->iPrec == 5 && pNode->pLeft == 0 ){
+			 sxi32 iL, iR;
+			 /* Find the right operand */
+			 iR = -1;
+			 {
+				 sxi32 j;
+				 for( j = iCur + 1 ; j < nToken ; ++j ){
+					 if( apNode[j] ){ iR = j; break; }
+				 }
+			 }
+			 /* Find the left operand */
+			 iL = -1;
+			 {
+				 sxi32 j;
+				 for( j = iCur - 1 ; j >= 0 ; --j ){
+					 if( apNode[j] ){ iL = j; break; }
+				 }
+			 }
+			 if( iR < 0 || iL < 0 || !NODE_ISTERM(iR) || !NODE_ISTERM(iL) ){
+				 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
+					 "'%z': Missing/Invalid operand",&pNode->pOp->sOp);
+				 if( rc != SXERR_ABORT ){
+					 rc = SXERR_SYNTAX;
+				 }
+				 return rc;
+			 }
+			 pNode->pLeft  = apNode[iL];
+			 pNode->pRight = apNode[iR];
+			 apNode[iL] = 0;
+			 apNode[iR] = 0;
+			 /* PHP compat: ** binds tighter than unary -,+,~,!,(cast).
+			  * The unary phase already attached its operand (pLeft) before
+			  * we ran, so `-X ** Y` currently looks like (-X) ** Y. Push
+			  * the ** beneath the deepest unary so we get -(X ** Y). For
+			  * chains (e.g. `- -2 ** 2`), preserve the original unary order
+			  * — the outer unary must remain on top. Stop at parentheses or
+			  * at the error-suppression operator '@', which PHP leaves
+			  * wrapping the whole expression. */
+			 if( pNode->pLeft && pNode->pLeft->pOp
+				 && pNode->pLeft->pOp->iPrec == 4
+				 && pNode->pLeft->pOp->iOp != EXPR_OP_ALT
+				 && pNode->pLeft->pLeft != 0
+				 && (pNode->pLeft->iFlags & EXPR_NODE_PARENS) == 0 ){
+				 ph7_expr_node *pHead = pNode->pLeft;
+				 ph7_expr_node *pTail = pHead;
+				 /* Walk down to the innermost hoistable unary — the one
+				  * whose pLeft is a term or a parenthesised subtree. */
+				 while( pTail->pLeft
+					 && pTail->pLeft->pOp
+					 && pTail->pLeft->pOp->iPrec == 4
+					 && pTail->pLeft->pOp->iOp != EXPR_OP_ALT
+					 && pTail->pLeft->pLeft != 0
+					 && (pTail->pLeft->iFlags & EXPR_NODE_PARENS) == 0 ){
+					 pTail = pTail->pLeft;
+				 }
+				 /* Splice pNode (**) between pTail and its former operand. */
+				 pNode->pLeft = pTail->pLeft;
+				 pTail->pLeft = pNode;
+				 apNode[iCur] = pHead;
+			 }
+		 }
+	 }
 	 /* Process left and non-associative binary operators [i.e: *,/,&&,||...]*/
 	 for( i = 7 ; i < 17 ; i++ ){
 		 iLeft = -1;

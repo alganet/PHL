@@ -6,6 +6,52 @@
 #include "ph7int.h"
 #include <stddef.h>
 #include <stdlib.h>
+#ifndef PH7_OMIT_FLOATING_POINT
+#include <math.h>
+#endif
+/* Signed 64-bit multiplication with overflow detection. GCC/Clang expose
+ * __builtin_mul_overflow; MSVC does not, so we fall back to a portable
+ * UB-free bound-check implementation. Sets *pR to the wrapped product and
+ * returns non-zero on overflow. The fallback never divides a potentially-
+ * overflowed intermediate: all divisions are of compile-time constants
+ * (LARGEST_INT64/SMALLEST_INT64) by a factor already proven not to be -1,
+ * and the product itself is computed via unsigned multiplication to avoid
+ * signed-overflow UB. */
+#if defined(__GNUC__) || defined(__clang__)
+#define VmMulOverflow64(a,b,pR) __builtin_mul_overflow((a),(b),(pR))
+#else
+static int VmMulOverflow64(sxi64 a, sxi64 b, sxi64 *pR)
+{
+	*pR = (sxi64)((sxu64)a * (sxu64)b);
+	/* Factors of 0 or ±1 never overflow; handle up front so the divisions
+	 * below are guaranteed safe (no SMALLEST_INT64 / -1, no /0). */
+	if( a == 0 || b == 0 || a == 1 || b == 1 ){
+		return 0;
+	}
+	if( a == -1 ){
+		return b == SMALLEST_INT64;
+	}
+	if( b == -1 ){
+		return a == SMALLEST_INT64;
+	}
+	/* |a|,|b| >= 2 and neither is -1.  Bound check against the MAX/MIN
+	 * thresholds.  No division by -1 is possible here, and the quotients
+	 * of compile-time constants by {a,b} always fit in sxi64. */
+	if( a > 0 ){
+		if( b > 0 ){
+			return a > LARGEST_INT64 / b;
+		}else{
+			return b < SMALLEST_INT64 / a;
+		}
+	}else{
+		if( b > 0 ){
+			return a < SMALLEST_INT64 / b;
+		}else{
+			return b < LARGEST_INT64 / a;
+		}
+	}
+}
+#endif
 /*
  * The code in this file implements execution method of the PH7 Virtual Machine.
  * The PH7 compiler (implemented in 'compiler.c' and 'parse.c') generates a bytecode program
@@ -5098,6 +5144,128 @@ case PH7_OP_MUL_STORE: {
 		MemObjSetType(pNos,MEMOBJ_INT);
 	}
 	if( pInstr->iOp == PH7_OP_MUL_STORE ){
+		ph7_value *pObj;
+		if( pTos->nIdx == SXU32_HIGH ){
+			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
+		}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+			PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
+			PH7_MemObjStore(pNos,pObj);
+		}
+	}
+	VmPopOperand(&pTos,1);
+	break;
+				 }
+/* OP_POW * * *
+ * OP_POW_STORE * * *
+ *
+ * Pop the top two elements from the stack, raise the second to the
+ * power of the first, and push the result. PHP semantics: int**int
+ * stays integer iff the exponent is non-negative and the exact result
+ * fits in sxi64; otherwise the result is a double.
+ */
+case PH7_OP_POW:
+case PH7_OP_POW_STORE: {
+	ph7_value *pNos = &pTos[-1];
+	int bStore = (pInstr->iOp == PH7_OP_POW_STORE);
+	/* Operand order convention (matches DIV/SUB_STORE):
+	 *   POW:       base = pNos (evaluated first),   exp = pTos
+	 *   POW_STORE: base = pTos (lvalue, last),       exp = pNos
+	 */
+	ph7_value *pBase = bStore ? pTos : pNos;
+	ph7_value *pExp  = bStore ? pNos : pTos;
+#ifndef PH7_OMIT_FLOATING_POINT
+	int bBothInt;
+	int usedInt = 0;
+	ph7_real a, b, r;
+#endif
+	sxi64 base_i = 0, exp_i = 0;
+#ifdef UNTRUST
+	if( pNos < pStack ){
+		goto Abort;
+	}
+#endif
+	PH7_MemObjToNumeric(pTos);
+	PH7_MemObjToNumeric(pNos);
+#ifndef PH7_OMIT_FLOATING_POINT
+	bBothInt = ((pTos->iFlags & MEMOBJ_REAL) == 0) &&
+	           ((pNos->iFlags & MEMOBJ_REAL) == 0);
+	if( bBothInt ){
+		base_i = pBase->x.iVal;
+		exp_i  = pExp->x.iVal;
+	}
+	if( (pBase->iFlags & MEMOBJ_REAL) == 0 ){
+		PH7_MemObjToReal(pBase);
+	}
+	if( (pExp->iFlags & MEMOBJ_REAL) == 0 ){
+		PH7_MemObjToReal(pExp);
+	}
+	a = pBase->rVal;
+	b = pExp->rVal;
+	r = pow(a, b);
+	/* Match PHP: int**non-negative-int stays int when the exact result
+	 * fits in sxi64. Use exponentiation by squaring with overflow checks
+	 * rather than casting the double back, because the boundary 2^63 is
+	 * representable as double but not as signed int64. */
+	if( bBothInt && exp_i >= 0 ){
+		sxi64 result_i = 1;
+		sxi64 cur_base = base_i;
+		sxi64 cur_exp  = exp_i;
+		int overflow = 0;
+		while( cur_exp > 0 ){
+			if( cur_exp & 1 ){
+				if( VmMulOverflow64(result_i, cur_base, &result_i) ){
+					overflow = 1;
+					break;
+				}
+			}
+			cur_exp >>= 1;
+			if( cur_exp > 0 ){
+				if( VmMulOverflow64(cur_base, cur_base, &cur_base) ){
+					overflow = 1;
+					break;
+				}
+			}
+		}
+		if( !overflow ){
+			pNos->x.iVal = result_i;
+			MemObjSetType(pNos, MEMOBJ_INT);
+			usedInt = 1;
+		}
+	}
+	if( !usedInt ){
+		pNos->rVal = r;
+		MemObjSetType(pNos, MEMOBJ_REAL);
+	}
+#else
+	/* PH7_OMIT_FLOATING_POINT: integer-only build. No libm / no pow().
+	 * Exponentiation by squaring with silent wrap on overflow, matching
+	 * the integer-wrap semantics of PH7_OP_MUL in the same build mode.
+	 * Negative exponents yield 0 since fractional results cannot be
+	 * represented. */
+	base_i = pBase->x.iVal;
+	exp_i  = pExp->x.iVal;
+	{
+		sxi64 result_i = 1;
+		sxi64 cur_base = base_i;
+		sxi64 cur_exp  = exp_i;
+		if( cur_exp < 0 ){
+			result_i = 0;
+		}else{
+			while( cur_exp > 0 ){
+				if( cur_exp & 1 ){
+					result_i *= cur_base;
+				}
+				cur_exp >>= 1;
+				if( cur_exp > 0 ){
+					cur_base *= cur_base;
+				}
+			}
+		}
+		pNos->x.iVal = result_i;
+		MemObjSetType(pNos, MEMOBJ_INT);
+	}
+#endif /* PH7_OMIT_FLOATING_POINT */
+	if( bStore ){
 		ph7_value *pObj;
 		if( pTos->nIdx == SXU32_HIGH ){
 			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
