@@ -1706,17 +1706,19 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 			 pNode->pRight = apNode[iR];
 			 apNode[iL] = 0;
 			 apNode[iR] = 0;
-			 /* PHP compat: ** binds tighter than unary -,+,~,!,(cast).
+			 /* PHP compat: ** binds tighter than unary -,+,~,!,(cast),@.
 			  * The unary phase already attached its operand (pLeft) before
 			  * we ran, so `-X ** Y` currently looks like (-X) ** Y. Push
 			  * the ** beneath the deepest unary so we get -(X ** Y). For
 			  * chains (e.g. `- -2 ** 2`), preserve the original unary order
-			  * — the outer unary must remain on top. Stop at parentheses or
-			  * at the error-suppression operator '@', which PHP leaves
-			  * wrapping the whole expression. */
+			  * — the outermost unary stays outermost. The error-suppression
+			  * operator '@' is treated identically to the other unaries:
+			  * PHP also parses `**` as tighter than `@`, so `@-2 ** 2` must
+			  * become `@(-(2 ** 2))`, with `@` simply passing through. Stop
+			  * the walk at parenthesised sub-trees so explicitly isolated
+			  * operands are respected. */
 			 if( pNode->pLeft && pNode->pLeft->pOp
 				 && pNode->pLeft->pOp->iPrec == 4
-				 && pNode->pLeft->pOp->iOp != EXPR_OP_ALT
 				 && pNode->pLeft->pLeft != 0
 				 && (pNode->pLeft->iFlags & EXPR_NODE_PARENS) == 0 ){
 				 ph7_expr_node *pHead = pNode->pLeft;
@@ -1726,7 +1728,6 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				 while( pTail->pLeft
 					 && pTail->pLeft->pOp
 					 && pTail->pLeft->pOp->iPrec == 4
-					 && pTail->pLeft->pOp->iOp != EXPR_OP_ALT
 					 && pTail->pLeft->pLeft != 0
 					 && (pTail->pLeft->iFlags & EXPR_NODE_PARENS) == 0 ){
 					 pTail = pTail->pLeft;
