@@ -39,6 +39,11 @@ echo -(-2) ** 3, "\n";       // -((-2)**3) = -(-8) = 8
 // ! has lower precedence than ** in PHP — hoist still gives the right answer
 echo !2 ** 2 ? "T" : "F", "\n";  // !(2**2) = !4 = false
 
+// Error-suppression '@' acts as a passthrough unary: ** still binds tighter
+echo @-2 ** 2, "\n";         // @(-(2**2)) = @(-4) = -4
+echo @(-2) ** 2, "\n";       // @((-2)**2) = @(4) = 4  (parens block hoist)
+echo -@2 ** 2, "\n";         // -(@(2**2)) = -(@(4)) = -4
+
 // Negative exponent yields float
 echo 2 ** -2, "\n";          // 0.25
 
@@ -78,6 +83,9 @@ echo "2" ** "10", "\n";      // 1024
 -8
 8
 F
+-4
+4
+-4
 0.25
 9
 25
