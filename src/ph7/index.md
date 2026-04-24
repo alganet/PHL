@@ -1,6 +1,6 @@
 # src/ph7/
 
-Coverage: 27693/35180 lines (78.72%)
+Coverage: 27691/35178 lines (78.72%)
 
 [Up](../index.md)
 
@@ -17,7 +17,7 @@ Coverage: 27693/35180 lines (78.72%)
 |[memobj.c](memobj.c.md)|88.80%|650/732|
 |[net.c](net.c.md)|50.48%|53/105|
 |[oo.c](oo.c.md)|87.62%|439/501|
-|[parse.c](parse.c.md)|86.19%|1061/1231|
+|[parse.c](parse.c.md)|86.17%|1059/1229|
 |[vfs.c](vfs.c.md)|64.88%|1838/2833|
 |[vfs_unix.c](vfs_unix.c.md)|88.06%|376/427|
 |[vfs_win.c](vfs_win.c.md)|75.43%|485/643|
