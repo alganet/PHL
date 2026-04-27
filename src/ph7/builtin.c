@@ -2624,6 +2624,206 @@ static int PH7_builtin_strpos(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
+ * Validate and resolve a single string-typed parameter for str_contains/
+ * str_starts_with/str_ends_with. Emits an E_DEPRECATED notice for null
+ * (matching PHP 8.1+; falls through with an empty string), and throws
+ * TypeError for arrays, resources, and objects without __toString.
+ *
+ * For objects with __toString, invokes the method directly into pTmp and
+ * uses its raw byte buffer. This preserves empty results, which the
+ * engine's MemObjStringValue otherwise replaces with the literal "Object".
+ *
+ * On success, pzOut/pnOut point at the resolved byte buffer; the buffer
+ * is valid until pTmp is released or pArg is mutated.
+ */
+static sxi32 StrPredicateResolveArg(
+	ph7_context *pCtx,
+	ph7_value *pArg,
+	const char *zFunc,
+	int iArgNum,
+	const char *zParamName,
+	const char *zNullMsg,
+	ph7_value *pTmp,
+	const char **pzOut,
+	int *pnOut
+){
+	if( ph7_value_is_null(pArg) ){
+		PH7_VmThrowError(pCtx->pVm,0,E_DEPRECATED,zNullMsg);
+		*pzOut = "";
+		*pnOut = 0;
+		return PH7_OK;
+	}
+	if( ph7_value_is_array(pArg) || ph7_value_is_resource(pArg) ||
+	    ( ph7_value_is_object(pArg) &&
+	      ((ph7_class_instance *)pArg->x.pOther) != 0 &&
+	      PH7_ClassExtractMethod(((ph7_class_instance *)pArg->x.pOther)->pClass,
+	        "__toString",sizeof("__toString")-1) == 0
+	    )
+	){
+		const char *zType = ph7_type_name(pArg);
+		if( ph7_value_is_object(pArg) ){
+			ph7_class_instance *pInst = (ph7_class_instance *)pArg->x.pOther;
+			if( pInst && pInst->pClass ){
+				zType = SyStringData(&pInst->pClass->sName);
+			}
+		}
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"%s(): Argument #%d (%s) must be of type string, %s given",
+			zFunc, iArgNum, zParamName, zType
+			);
+	}
+	if( ph7_value_is_object(pArg) ){
+		ph7_class_instance *pInst = (ph7_class_instance *)pArg->x.pOther;
+		ph7_class_method *pMethod = PH7_ClassExtractMethod(pInst->pClass,
+			"__toString",sizeof("__toString")-1);
+		PH7_VmCallClassMethod(pCtx->pVm,pInst,pMethod,pTmp,0,0);
+		*pzOut = (const char *)SyBlobData(&pTmp->sBlob);
+		*pnOut = (int)SyBlobLength(&pTmp->sBlob);
+		return PH7_OK;
+	}
+	*pzOut = ph7_value_to_string(pArg,pnOut);
+	return PH7_OK;
+}
+/*
+ * bool str_contains(string $haystack, string $needle)
+ *  Determine if a string contains a given substring (PHP 8.0).
+ * Return
+ *  TRUE if needle occurs in haystack. An empty needle always returns TRUE.
+ */
+static int PH7_builtin_str_contains(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zHaystack,*zNeedle;
+	int nHayLen,nNeedleLen;
+	ph7_value sHayTmp,sNeedleTmp;
+	sxi32 rc;
+	if( nArg != 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"str_contains() expects exactly 2 arguments, %d given",
+			nArg
+			);
+	}
+	PH7_MemObjInit(pCtx->pVm,&sHayTmp);
+	PH7_MemObjInit(pCtx->pVm,&sNeedleTmp);
+	rc = StrPredicateResolveArg(pCtx,apArg[0],"str_contains",1,"$haystack",
+		"str_contains(): Passing null to parameter #1 ($haystack) "
+		"of type string is deprecated",
+		&sHayTmp,&zHaystack,&nHayLen);
+	if( rc != PH7_OK ) goto out;
+	rc = StrPredicateResolveArg(pCtx,apArg[1],"str_contains",2,"$needle",
+		"str_contains(): Passing null to parameter #2 ($needle) "
+		"of type string is deprecated",
+		&sNeedleTmp,&zNeedle,&nNeedleLen);
+	if( rc != PH7_OK ) goto out;
+	if( nNeedleLen < 1 ){
+		ph7_result_bool(pCtx,1);
+	}else if( nHayLen < nNeedleLen ){
+		ph7_result_bool(pCtx,0);
+	}else{
+		sxi32 srch = SyBlobSearch((const void *)zHaystack,(sxu32)nHayLen,
+		                          (const void *)zNeedle,(sxu32)nNeedleLen,0);
+		ph7_result_bool(pCtx,srch == SXRET_OK ? 1 : 0);
+	}
+	rc = PH7_OK;
+out:
+	PH7_MemObjRelease(&sHayTmp);
+	PH7_MemObjRelease(&sNeedleTmp);
+	return rc;
+}
+/*
+ * bool str_starts_with(string $haystack, string $needle)
+ *  Check if a string starts with a given substring (PHP 8.0).
+ * Return
+ *  TRUE if haystack begins with needle. An empty needle always returns TRUE.
+ *  Comparison is binary-safe (uses SyMemcmp, not SyStrncmp).
+ */
+static int PH7_builtin_str_starts_with(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zHaystack,*zNeedle;
+	int nHayLen,nNeedleLen;
+	ph7_value sHayTmp,sNeedleTmp;
+	sxi32 rc;
+	if( nArg != 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"str_starts_with() expects exactly 2 arguments, %d given",
+			nArg
+			);
+	}
+	PH7_MemObjInit(pCtx->pVm,&sHayTmp);
+	PH7_MemObjInit(pCtx->pVm,&sNeedleTmp);
+	rc = StrPredicateResolveArg(pCtx,apArg[0],"str_starts_with",1,"$haystack",
+		"str_starts_with(): Passing null to parameter #1 ($haystack) "
+		"of type string is deprecated",
+		&sHayTmp,&zHaystack,&nHayLen);
+	if( rc != PH7_OK ) goto out;
+	rc = StrPredicateResolveArg(pCtx,apArg[1],"str_starts_with",2,"$needle",
+		"str_starts_with(): Passing null to parameter #2 ($needle) "
+		"of type string is deprecated",
+		&sNeedleTmp,&zNeedle,&nNeedleLen);
+	if( rc != PH7_OK ) goto out;
+	if( nNeedleLen < 1 ){
+		ph7_result_bool(pCtx,1);
+	}else if( nHayLen < nNeedleLen ){
+		ph7_result_bool(pCtx,0);
+	}else{
+		ph7_result_bool(pCtx,
+			SyMemcmp(zHaystack,zNeedle,(sxu32)nNeedleLen) == 0 ? 1 : 0);
+	}
+	rc = PH7_OK;
+out:
+	PH7_MemObjRelease(&sHayTmp);
+	PH7_MemObjRelease(&sNeedleTmp);
+	return rc;
+}
+/*
+ * bool str_ends_with(string $haystack, string $needle)
+ *  Check if a string ends with a given substring (PHP 8.0).
+ * Return
+ *  TRUE if haystack ends with needle. An empty needle always returns TRUE.
+ *  Comparison is binary-safe (uses SyMemcmp, not SyStrncmp).
+ */
+static int PH7_builtin_str_ends_with(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zHaystack,*zNeedle;
+	int nHayLen,nNeedleLen;
+	ph7_value sHayTmp,sNeedleTmp;
+	sxi32 rc;
+	if( nArg != 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"str_ends_with() expects exactly 2 arguments, %d given",
+			nArg
+			);
+	}
+	PH7_MemObjInit(pCtx->pVm,&sHayTmp);
+	PH7_MemObjInit(pCtx->pVm,&sNeedleTmp);
+	rc = StrPredicateResolveArg(pCtx,apArg[0],"str_ends_with",1,"$haystack",
+		"str_ends_with(): Passing null to parameter #1 ($haystack) "
+		"of type string is deprecated",
+		&sHayTmp,&zHaystack,&nHayLen);
+	if( rc != PH7_OK ) goto out;
+	rc = StrPredicateResolveArg(pCtx,apArg[1],"str_ends_with",2,"$needle",
+		"str_ends_with(): Passing null to parameter #2 ($needle) "
+		"of type string is deprecated",
+		&sNeedleTmp,&zNeedle,&nNeedleLen);
+	if( rc != PH7_OK ) goto out;
+	if( nNeedleLen < 1 ){
+		ph7_result_bool(pCtx,1);
+	}else if( nHayLen < nNeedleLen ){
+		ph7_result_bool(pCtx,0);
+	}else{
+		ph7_result_bool(pCtx,
+			SyMemcmp(zHaystack + (nHayLen - nNeedleLen),zNeedle,(sxu32)nNeedleLen) == 0 ? 1 : 0);
+	}
+	rc = PH7_OK;
+out:
+	PH7_MemObjRelease(&sHayTmp);
+	PH7_MemObjRelease(&sNeedleTmp);
+	return rc;
+}
+/*
  * int stripos(string $haystack,string $needle [,int $offset = 0 ] )
  *  Case-insensitive strpos.
  * Parameters
@@ -6701,6 +6901,9 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "strrev",       PH7_builtin_strrev     },
 	{ "ucwords",      PH7_builtin_ucwords    },
 	{ "str_repeat",   PH7_builtin_str_repeat },
+	{ "str_contains", PH7_builtin_str_contains },
+	{ "str_starts_with", PH7_builtin_str_starts_with },
+	{ "str_ends_with", PH7_builtin_str_ends_with },
 	{ "nl2br",        PH7_builtin_nl2br      },
 #endif /* PH7_NEED_BUILTIN_REG */
 #ifdef PH7_NEED_FMT_AND_INI
