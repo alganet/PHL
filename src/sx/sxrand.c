@@ -20,6 +20,13 @@
 #define SXPRNG_MAGIC	0x13C4
 #ifdef __WINNT__
 #include <windows.h>
+#include <bcrypt.h>
+#ifndef BCRYPT_USE_SYSTEM_PREFERRED_RNG
+#define BCRYPT_USE_SYSTEM_PREFERRED_RNG 0x00000002
+#endif
+#ifndef BCRYPT_SUCCESS
+#define BCRYPT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
+#endif
 #endif
 #ifdef __UNIXES__
 #include <sys/types.h>
@@ -29,6 +36,14 @@
 #include <errno.h>
 #include <time.h>
 #include <sys/time.h>
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+#include <stdlib.h> /* arc4random_buf */
+#define SX_HAVE_ARC4RANDOM 1
+#endif
+#if defined(__linux__)
+#include <sys/random.h> /* getrandom */
+#define SX_HAVE_GETRANDOM 1
+#endif
 #endif
 static sxi32 SyOSUtilRandomSeed(void *pBuf,sxu32 nLen,void *pUnused)
 {
@@ -141,4 +156,70 @@ PH7_PRIVATE sxi32 SyRandomness(SyPRNGCtx *pCtx,void *pBuf,sxu32 nLen)
 		if( zBuf >= zEnd ){break;}	zBuf[0] = randomByte(pCtx);	zBuf++;
 	}
 	return SXRET_OK;
+}
+#if defined(__UNIXES__) && !defined(SX_HAVE_ARC4RANDOM)
+static sxi32 SyReadDevUrandom(unsigned char *zBuf,sxu32 nLen)
+{
+	int fd;
+	sxu32 nRead = 0;
+	fd = open("/dev/urandom",O_RDONLY);
+	if( fd < 0 ){
+		return SXERR_IO;
+	}
+	while( nRead < nLen ){
+		ssize_t n = read(fd,&zBuf[nRead],nLen - nRead);
+		if( n > 0 ){
+			nRead += (sxu32)n;
+			continue;
+		}
+		if( n < 0 && errno == EINTR ){
+			continue;
+		}
+		close(fd);
+		return SXERR_IO;
+	}
+	close(fd);
+	return SXRET_OK;
+}
+#endif
+PH7_PRIVATE sxi32 SyOSCSPRNG(void *pBuf,sxu32 nLen)
+{
+	unsigned char *zBuf = (unsigned char *)pBuf;
+#if defined(UNTRUST)
+	if( pBuf == 0 || nLen == 0 ){
+		return SXERR_EMPTY;
+	}
+#endif
+#ifdef __WINNT__
+	if( BCRYPT_SUCCESS(BCryptGenRandom(NULL,zBuf,(ULONG)nLen,BCRYPT_USE_SYSTEM_PREFERRED_RNG)) ){
+		return SXRET_OK;
+	}
+	return SXERR_IO;
+#elif defined(SX_HAVE_ARC4RANDOM)
+	arc4random_buf(zBuf,(size_t)nLen);
+	return SXRET_OK;
+#elif defined(SX_HAVE_GETRANDOM)
+	{
+		sxu32 nDone = 0;
+		while( nDone < nLen ){
+			ssize_t n = getrandom(&zBuf[nDone],nLen - nDone,0);
+			if( n > 0 ){
+				nDone += (sxu32)n;
+				continue;
+			}
+			if( n < 0 && errno == EINTR ){
+				continue;
+			}
+			/* getrandom unavailable (ENOSYS) or other error: fall back */
+			return SyReadDevUrandom(zBuf,nLen);
+		}
+		return SXRET_OK;
+	}
+#elif defined(__UNIXES__)
+	return SyReadDevUrandom(zBuf,nLen);
+#else
+	(void)zBuf;
+	(void)nLen;
+	return SXERR_IO;
+#endif
 }

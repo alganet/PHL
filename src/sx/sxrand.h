@@ -31,4 +31,13 @@ typedef sxi32 (*ProcRandomSeed)(void *,unsigned int,void *);
 PH7_PRIVATE sxi32 SyRandomnessInit(SyPRNGCtx *pCtx,ProcRandomSeed xSeed,void *pUserData);
 PH7_PRIVATE sxi32 SyRandomness(SyPRNGCtx *pCtx,void *pBuf,sxu32 nLen);
 
+/*
+ * Fill pBuf with nLen bytes drawn directly from the OS cryptographically
+ * secure RNG (arc4random_buf on macOS/BSD, getrandom/urandom on Linux,
+ * BCryptGenRandom on Windows). Returns SXRET_OK on full fill, SXERR_IO
+ * on failure. Never returns partial data. Under UNTRUST builds, also
+ * returns SXERR_EMPTY when pBuf is NULL or nLen is 0.
+ */
+PH7_PRIVATE sxi32 SyOSCSPRNG(void *pBuf,sxu32 nLen);
+
 #endif /* __SXRAND_H__ */
