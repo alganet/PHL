@@ -11232,6 +11232,173 @@ static int vm_builtin_rand_str(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_result_string(pCtx,zString,iLen); /* Will make it's own copy */
 	return SXRET_OK;
 }
+/*
+ * Reject non-numeric values (array/object/resource and non-numeric strings)
+ * the same way intdiv() does. Returns SXRET_OK if the value is acceptable as
+ * an int (PHP coerces float and numeric string silently).
+ */
+static int VmRandomCheckIntArg(ph7_context *pCtx,ph7_value *pArg,const char *zFunc,int iArgPos,const char *zParamName)
+{
+	if( ph7_value_is_array(pArg) || ph7_value_is_object(pArg)
+		|| ph7_value_is_resource(pArg) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"%s(): Argument #%d (%s) must be of type int, %s given",
+			zFunc,iArgPos,zParamName,
+			ph7_type_name(pArg)
+			);
+	}
+	if( ph7_value_is_string(pArg) ){
+		int len;
+		const char *zStr = ph7_value_to_string(pArg, &len);
+		if( SyStrIsNumeric(zStr, (sxu32)len, 0, 0) != SXRET_OK ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"%s(): Argument #%d (%s) must be of type int, string given",
+				zFunc,iArgPos,zParamName
+				);
+		}
+	}
+	return SXRET_OK;
+}
+/*
+ * int random_int(int $min, int $max)
+ *  Generate a cryptographically secure pseudo-random integer in [$min, $max].
+ *  Mirrors PHP 7.0+ random_int(). Uses the OS CSPRNG via SyOSCSPRNG().
+ *  Distribution is uniform via rejection sampling against the smallest
+ *  power-of-two mask covering the range.
+ */
+static int vm_builtin_random_int(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi64 iMin,iMax;
+	sxu64 uRange,uMask,uResult;
+	unsigned int nAttempt;
+	int rc;
+	if( nArg != 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"random_int() expects exactly 2 arguments, %d given",
+			nArg
+			);
+	}
+	rc = VmRandomCheckIntArg(pCtx,apArg[0],"random_int",1,"$min");
+	if( rc != SXRET_OK ){ return rc; }
+	rc = VmRandomCheckIntArg(pCtx,apArg[1],"random_int",2,"$max");
+	if( rc != SXRET_OK ){ return rc; }
+	iMin = ph7_value_to_int64(apArg[0]);
+	iMax = ph7_value_to_int64(apArg[1]);
+	if( iMin > iMax ){
+		return PH7_VmThrowException(pCtx,
+			"ValueError",
+			"random_int(): Argument #1 ($min) must be less than or equal to argument #2 ($max)"
+			);
+	}
+	if( iMin == iMax ){
+		ph7_result_int64(pCtx,iMin);
+		return SXRET_OK;
+	}
+	uRange = (sxu64)iMax - (sxu64)iMin;
+	uMask = uRange;
+	uMask |= uMask >> 1;
+	uMask |= uMask >> 2;
+	uMask |= uMask >> 4;
+	uMask |= uMask >> 8;
+	uMask |= uMask >> 16;
+	uMask |= uMask >> 32;
+	uResult = 0;
+	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){
+		/* Always draw a full 8 bytes so endianness of the cast doesn't matter
+		 * (a 4-byte fill into a sxu64 would land in the high half on big-endian
+		 * and the low-half mask would always read 0). */
+		sxu64 uDraw;
+		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){
+			/* PHP 8.2+ would throw Random\RandomException here; that class
+			 * is not yet registered in PHL (see PLAN.md item 6.13). */
+			return PH7_VmThrowException(pCtx,
+				"Exception",
+				"Cannot gather sufficient random data"
+				);
+		}
+		uDraw &= uMask;
+		if( uDraw <= uRange ){
+			uResult = uDraw;
+			break;
+		}
+	}
+	if( nAttempt >= 50 ){
+		return PH7_VmThrowException(pCtx,
+			"Exception",
+			"Cannot gather sufficient random data"
+			);
+	}
+	ph7_result_int64(pCtx,(sxi64)((sxu64)iMin + uResult));
+	return SXRET_OK;
+}
+/*
+ * string random_bytes(int $length)
+ *  Generate $length cryptographically secure random bytes via SyOSCSPRNG().
+ *  Mirrors PHP 7.0+ random_bytes().
+ */
+static int vm_builtin_random_bytes(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi64 iLen;
+	unsigned char zStack[256];
+	void *pBuf;
+	int rc;
+	int bHeap = 0;
+	if( nArg != 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"random_bytes() expects exactly 1 argument, %d given",
+			nArg
+			);
+	}
+	rc = VmRandomCheckIntArg(pCtx,apArg[0],"random_bytes",1,"$length");
+	if( rc != SXRET_OK ){ return rc; }
+	iLen = ph7_value_to_int64(apArg[0]);
+	if( iLen < 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ValueError",
+			"random_bytes(): Argument #1 ($length) must be greater than 0"
+			);
+	}
+	/* The PH7 allocator and ph7_result_string both take sxu32/int sizes,
+	 * so we can't honor a length above 2 GiB. Reject early rather than
+	 * silently truncating via the (sxu32) cast below. */
+	if( iLen > 0x7FFFFFFF ){
+		return PH7_VmThrowException(pCtx,
+			"ValueError",
+			"random_bytes(): Argument #1 ($length) is too large"
+			);
+	}
+	if( iLen <= (sxi64)sizeof(zStack) ){
+		pBuf = zStack;
+	}else{
+		pBuf = SyMemBackendAlloc(&pCtx->pVm->sAllocator,(sxu32)iLen);
+		if( pBuf == 0 ){
+			return PH7_VmThrowException(pCtx,
+				"Exception",
+				"random_bytes(): Failed to allocate %qd bytes",
+				iLen
+				);
+		}
+		bHeap = 1;
+	}
+	if( SyOSCSPRNG(pBuf,(sxu32)iLen) != SXRET_OK ){
+		if( bHeap ){
+			SyMemBackendFree(&pCtx->pVm->sAllocator,pBuf);
+		}
+		return PH7_VmThrowException(pCtx,
+			"Exception",
+			"Cannot gather sufficient random data"
+			);
+	}
+	ph7_result_string(pCtx,(const char *)pBuf,(int)iLen);
+	if( bHeap ){
+		SyMemBackendFree(&pCtx->pVm->sAllocator,pBuf);
+	}
+	return SXRET_OK;
+}
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 #if !defined(PH7_DISABLE_HASH_FUNC)
 /* Unique ID private data */
@@ -14282,6 +14449,8 @@ static const ph7_builtin_func aVmFunc[] = {
 	{ "rand_str",      vm_builtin_rand_str        },
 	{ "getrandmax",    vm_builtin_getrandmax      },
 	{ "mt_getrandmax", vm_builtin_getrandmax      },
+	{ "random_int",    vm_builtin_random_int      },
+	{ "random_bytes",  vm_builtin_random_bytes    },
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 #if !defined(PH7_DISABLE_HASH_FUNC)
 	{ "uniqid",        vm_builtin_uniqid          },
