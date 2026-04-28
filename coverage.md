@@ -6,7 +6,7 @@
 | src/ph7/builtin_math.c         | 96.79%   | 452/467     |
 | src/ph7/compile.c              | 79.24%   | 5138/6484   |
 | src/ph7/constant.c             | 98.92%   | 1006/1017   |
-| src/ph7/hashmap.c              | 87.39%   | 2965/3393   |
+| src/ph7/hashmap.c              | 87.42%   | 2966/3393   |
 | src/ph7/lex.c                  | 95.38%   | 723/758     |
 | src/ph7/memobj.c               | 88.80%   | 650/732     |
 | src/ph7/net.c                  | 50.48%   | 53/105      |
@@ -16,7 +16,7 @@
 | src/ph7/vfs_unix.c             | 88.06%   | 376/427     |
 | src/ph7/vfs_win.c              | 75.43%   | 485/643     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
-| src/ph7/vm.c                   | 76.85%   | 6027/7843   |
+| src/ph7/vm.c                   | 76.92%   | 6098/7928   |
 | src/ph7/vm_builtin_class.c     | 84.45%   | 402/476     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
 | src/ph7/vm_builtin_ob.c        | 76.21%   | 157/206     |
@@ -33,7 +33,7 @@
 | src/sx/sxlib.c                 | 90.12%   | 228/253     |
 | src/sx/sxmem.c                 | 85.54%   | 432/505     |
 | src/sx/sxmutex.c               | 83.70%   | 77/92       |
-| src/sx/sxrand.c                | 85.51%   | 59/69       |
+| src/sx/sxrand.c                | 71.15%   | 74/104      |
 | src/sx/sxstr.c                 | 93.88%   | 92/98       |
 | src/sx/sxtypes.h               | 100.00%  | 16/16       |
 | src/sx/sxutils.c               | 75.51%   | 336/445     |
@@ -42,6 +42,6 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 78.69%   | 30928/39303 |
-| Functions                      | 95.34%   | 1453/1524   |
+| Lines                          | 78.67%   | 31015/39423 |
+| Functions                      | 95.29%   | 1457/1529   |
 
