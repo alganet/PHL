@@ -1481,10 +1481,10 @@ static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)
 					continue;
 				}
 			}
-			if( pCur->nType & PH7_TK_LPAREN /*'('*/ ){
+			if( pCur->nType & (PH7_TK_LPAREN/*'('*/|PH7_TK_OSB/*'['*/|PH7_TK_OCB/*'{'*/) ){
 				iNest++;
-			}else if( pCur->nType & PH7_TK_RPAREN /*')'*/ ){
-				/* Don't worry about mismatched parenthesis here,the expression
+			}else if( pCur->nType & (PH7_TK_RPAREN/*')'*/|PH7_TK_CSB/*']'*/|PH7_TK_CCB/*'}'*/) ){
+				/* Don't worry about mismatched brackets here,the expression
 				 * parser will shortly detect any syntax error.
 				 */
 				iNest--;
