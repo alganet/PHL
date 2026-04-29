@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Magic method __invoke (PH7 does not support arguments)
+Magic method __invoke
 --FILE--
 <?php
 class FooInvoke {
