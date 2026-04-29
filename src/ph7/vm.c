@@ -982,6 +982,9 @@ static sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 static sxi32 VmCallClassMethodWithMap(ph7_vm *pVm, ph7_class_instance *pThis,
 	ph7_class_method *pMethod, ph7_value *pResult, int nArg,
 	ph7_value **apArg, VmCallArgMap *pMap);
+static sxi32 VmCallObjectInvoke(ph7_vm *pVm, ph7_class_instance *pThis,
+	int nArg, ph7_value **apArg, ph7_value *pResult, VmCallArgMap *pMap);
+static sxi32 VmRaiseNotCallable(ph7_vm *pVm, ph7_class_instance *pThis);
 /* Forward declarations for Generator helpers and C functions */
 static ph7_generator * VmNewGenerator(ph7_vm *pVm, ph7_exec_ctx *pCtx);
 static void VmReleaseGenerator(ph7_vm *pVm, ph7_generator *pGen);
@@ -7723,15 +7726,53 @@ case PH7_OP_CALL: {
 			/* Copy result */
 			PH7_MemObjStore(&sResult,pTos);
 			PH7_MemObjRelease(&sResult);
-		}else{
-			if( pTos->iFlags & MEMOBJ_OBJ ){
-				ph7_class_instance *pThis = (ph7_class_instance *)pTos->x.pOther;
-				/* Call the magic method '__invoke' if available */
-				PH7_ClassInstanceCallMagicMethod(&(*pVm),pThis->pClass,pThis,"__invoke",sizeof("__invoke")-1,0);
-			}else{
-				/* Raise exception: Invalid function name */
-				VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Invalid function name,NULL will be returned");
+		}else if( pTos->iFlags & MEMOBJ_OBJ ){
+			ph7_class_instance *pThis = (ph7_class_instance *)pTos->x.pOther;
+			ph7_value sResult;
+			sxi32 rcInv;
+			SySetReset(&aArg);
+			while( pArg < pTos ){
+				SySetPut(&aArg,(const void *)&pArg);
+				pArg++;
 			}
+			PH7_MemObjInit(pVm,&sResult);
+			rcInv = VmCallObjectInvoke(&(*pVm),pThis,
+				(int)SySetUsed(&aArg),
+				(ph7_value **)SySetBasePtr(&aArg),
+				&sResult,
+				(VmCallArgMap *)pInstr->p3);
+			SySetReset(&aArg);
+			if( nCallArgs > 0 ){
+				VmPopOperand(&pTos,nCallArgs);
+			}
+			if( rcInv == SXERR_INVALID ){
+				/* No __invoke: raise a catchable Error and route through try/catch.
+				 * sResult was already released by VmCallObjectInvoke.
+				 * Pin pThis: the release below would otherwise drop the last ref
+				 * to a temporary callable like (new Plain())(...), freeing the
+				 * instance before VmRaiseNotCallable reads its class name. */
+				pThis->iRef++;
+				PH7_MemObjRelease(pTos);
+				rc = VmRaiseNotCallable(&(*pVm),pThis);
+				PH7_ClassInstanceUnref(pThis);
+				if( rc == SXERR_ABORT ){
+					goto Abort;
+				}
+				{
+					VmFrame *pFrm2 = pVm->pFrame;
+					if( pFrm2 && (pFrm2->iFlags & VM_FRAME_EXCEPTION)
+					 && pFrm2->iExceptionJump > 0 ){
+						pc = pFrm2->iExceptionJump - 1;
+						break;
+					}
+				}
+				goto Exception;
+			}
+			PH7_MemObjStore(&sResult,pTos);
+			PH7_MemObjRelease(&sResult);
+		}else{
+			/* Raise exception: Invalid function name */
+			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Invalid function name,NULL will be returned");
 			/* Pop given arguments */
 			if( nCallArgs > 0 ){
 				VmPopOperand(&pTos,nCallArgs);
@@ -10421,21 +10462,15 @@ PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)
 {
 	int res = 0;
 	if( pValue->iFlags & MEMOBJ_OBJ ){
-		/* Call the magic method __invoke if available */
+		/* PHP semantics: an object is callable iff its class declares __invoke
+		 * (inherited methods count). The CallInvoke flag is unused — it
+		 * formerly invoked __invoke as a runtime predicate, which is not
+		 * standard PHP behavior. */
 		ph7_class_instance *pThis = (ph7_class_instance *)pValue->x.pOther;
-		ph7_class_method *pMethod;
-		pMethod = PH7_ClassExtractMethod(pThis->pClass,"__invoke",sizeof("__invoke")-1);
-		if( pMethod && CallInvoke ){
-			ph7_value sResult;
-			sxi32 rc;
-			/* Invoke the magic method and extract the result */
-			PH7_MemObjInit(pVm,&sResult);
-			rc = PH7_VmCallClassMethod(pVm,pThis,pMethod,&sResult,0,0);
-			if( rc == SXRET_OK && (sResult.iFlags & (MEMOBJ_BOOL|MEMOBJ_INT)) ){
-				res = sResult.x.iVal != 0;
-			}
-			PH7_MemObjRelease(&sResult);
+		if( PH7_ClassExtractMethod(pThis->pClass,"__invoke",sizeof("__invoke")-1) ){
+			res = 1;
 		}
+		(void)CallInvoke;
 	}else if( pValue->iFlags & MEMOBJ_HASHMAP ){
 		ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;
 		if( pMap->nEntry == 2 ){
@@ -10753,6 +10788,103 @@ PH7_PRIVATE sxi32 PH7_VmCallClassMethod(
 	return VmCallClassMethodWithMap(pVm,pThis,pMethod,pResult,nArg,apArg,0);
 }
 /*
+ * Dispatch a call to an object's __invoke magic method, forwarding arguments
+ * and the return value. Used by the PH7_OP_CALL object-callable branch and by
+ * PH7_VmCallUserFunction so that $obj(...), call_user_func($obj, ...) and
+ * call_user_func_array($obj, [...]) all reach __invoke uniformly.
+ *
+ * Visibility is intentionally not checked: PHP allows private/protected
+ * __invoke to be invoked via $obj() from any scope, and PHL's existing
+ * is_callable / closure-invoke paths follow the same rule.
+ *
+ * pMap forwards the call-site VmCallArgMap so named-argument resolution and
+ * strict_types coercion work for $obj(...) the same way they do for normal
+ * function calls. Pass 0 from C-API call sites (call_user_func and friends),
+ * which receive arguments positionally and don't carry a strict-types context.
+ *
+ * Returns SXRET_OK on success, SXERR_INVALID if __invoke is missing.
+ */
+static sxi32 VmCallObjectInvoke(
+	ph7_vm *pVm,
+	ph7_class_instance *pThis,
+	int nArg,
+	ph7_value **apArg,
+	ph7_value *pResult,
+	VmCallArgMap *pMap
+	)
+{
+	ph7_class_method *pMethod;
+	pMethod = PH7_ClassExtractMethod(pThis->pClass,"__invoke",sizeof("__invoke")-1);
+	if( pMethod == 0 ){
+		if( pResult ){
+			PH7_MemObjRelease(pResult);
+		}
+		return SXERR_INVALID;
+	}
+	return VmCallClassMethodWithMap(pVm,pThis,pMethod,pResult,nArg,apArg,pMap);
+}
+/*
+ * Raise a catchable Error("Object of type X is not callable") when an object
+ * is invoked as a function but lacks __invoke. Mirrors the OP_THROW pattern
+ * (vm.c PH7_OP_THROW): build the Error instance, mark the current frame as
+ * throwing, dispatch via VmThrowException so the nearest try/catch can handle
+ * it. Caller is responsible for the post-throw control flow (iExceptionJump
+ * lookup or 'goto Exception').
+ *
+ * Returns the result of VmThrowException (SXRET_OK on handled exception,
+ * SXERR_ABORT on abort), or SXERR_ABORT if the Error class itself cannot
+ * be bootstrapped — in which case an uncaught fatal has already been
+ * reported.
+ */
+static sxi32 VmRaiseNotCallable(ph7_vm *pVm, ph7_class_instance *pThis)
+{
+	ph7_class *pErrorClass;
+	ph7_class_instance *pErrInst = 0;
+	ph7_class_method *pCons;
+	VmFrame *pThrowFrame;
+	char zMsg[256];
+	int nMsg;
+	sxi32 rc;
+	nMsg = SyBufferFormat(zMsg,sizeof(zMsg),
+		"Object of type %.*s is not callable",
+		(int)pThis->pClass->sName.nByte,
+		pThis->pClass->sName.zString);
+	pErrorClass = PH7_VmExtractClass(pVm,"Error",sizeof("Error")-1,TRUE,0);
+	if( pErrorClass ){
+		pErrInst = PH7_NewClassInstance(pVm,pErrorClass);
+	}
+	if( pErrInst == 0 ){
+		/* Bootstrap failure: Error class is part of the built-in library and
+		 * should always be available, so this branch is effectively unreachable.
+		 * Degrade to an uncaught fatal report so the failure is at least
+		 * visible to the user. */
+		VmReportUncaughtException(pVm,"Error",5,zMsg,(sxu32)nMsg,0,0);
+		return SXERR_ABORT;
+	}
+	pCons = PH7_ClassExtractMethod(pErrorClass,"__construct",sizeof("__construct")-1);
+	if( pCons ){
+		ph7_value sArg;
+		ph7_value *apMsg[1];
+		SyString sMsgStr;
+		SyStringInitFromBuf(&sMsgStr,zMsg,(sxu32)nMsg);
+		PH7_MemObjInit(pVm,&sArg);
+		PH7_MemObjInitFromString(pVm,&sArg,&sMsgStr);
+		apMsg[0] = &sArg;
+		PH7_VmCallClassMethod(pVm,pErrInst,pCons,0,1,apMsg);
+		PH7_MemObjRelease(&sArg);
+	}
+	/* Else: Error::__construct is part of the built-in library and should
+	 * always be present; if it isn't, the thrown exception still surfaces
+	 * with an empty getMessage() rather than crashing. */
+	pThrowFrame = VmSkipExceptionFrames(pVm->pFrame);
+	if( pThrowFrame ){
+		pThrowFrame->iFlags |= VM_FRAME_THROW;
+	}
+	rc = VmThrowException(pVm,pErrInst);
+	PH7_ClassInstanceUnref(pErrInst);
+	return rc;
+}
+/*
  * Call a user defined or foreign function where the name of the function
  * is stored in the pFunc parameter and the given arguments are stored
  * in the apArg[] array.
@@ -10770,6 +10902,14 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunction(
 	ph7_value *aStack;
 	VmInstr aInstr[2];
 	int i;
+	if( pFunc->iFlags & MEMOBJ_OBJ ){
+		/* Object callable: dispatch through __invoke when available.
+		 * No VmCallArgMap: call_user_func / array_map / usort and the C API
+		 * pass arguments positionally and inherit no strict-types context. */
+		return VmCallObjectInvoke(&(*pVm),
+			(ph7_class_instance *)pFunc->x.pOther,
+			nArg,apArg,pResult,0);
+	}
 	if((pFunc->iFlags & (MEMOBJ_STRING|MEMOBJ_HASHMAP)) == 0 ){
 		/* Don't bother processing,it's invalid anyway */
 		if( pResult ){
