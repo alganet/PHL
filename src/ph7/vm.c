@@ -149,6 +149,40 @@ static sxi32 VmIsUnorderedCmp(ph7_value *pLeft,ph7_value *pRight)
 	}
 	return FALSE;
 }
+/*
+ * Return TRUE if the value should take the Perl-style string-increment path:
+ * any MEMOBJ_STRING that is empty, or whose contents are not a complete
+ * number (matching PHP's is_numeric semantics — the whole string must parse
+ * as a number, with optional surrounding whitespace).  Strings with a
+ * numeric prefix followed by non-whitespace bytes (e.g. "5foo") take the
+ * Perl path, like PHP.  Strict numeric strings ("5", "1.5", "5e2", "  5  ")
+ * still go through the existing numeric coercion.
+ */
+static int VmStringWantsPerlIncr(ph7_value *pVal)
+{
+	SyString sStr;
+	sxu8 bReal = FALSE;
+	const char *zTail = 0;
+	const char *zEnd;
+	if( (pVal->iFlags & MEMOBJ_STRING) == 0 ){
+		return FALSE;
+	}
+	SyStringInitFromBuf(&sStr,SyBlobData(&pVal->sBlob),SyBlobLength(&pVal->sBlob));
+	if( sStr.nByte == 0 ){
+		return TRUE;
+	}
+	if( SyStrIsNumeric(sStr.zString,sStr.nByte,&bReal,&zTail) != SXRET_OK ){
+		return TRUE;
+	}
+	/* SyStrIsNumeric accepts a leading numeric prefix; require the
+	 * remainder to be whitespace only so leading-numeric junk like "5foo"
+	 * still takes the Perl path. */
+	zEnd = sStr.zString + sStr.nByte;
+	while( zTail < zEnd && (unsigned char)*zTail < 0xc0 && SyisSpace(*zTail) ){
+		zTail++;
+	}
+	return zTail < zEnd;
+}
 /* SyhttpUri, SyhttpHeader and HTTP method/protocol defines moved to ph7int.h */
 /*
  * Register a constant and it's associated expansion callback so that
@@ -4944,33 +4978,60 @@ case PH7_OP_INCR:
 		if( pTos->nIdx != SXU32_HIGH ){
 			ph7_value *pObj;
 			if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
-				/* Force a numeric cast */
-				PH7_MemObjToNumeric(pObj);
-				if( pObj->iFlags & MEMOBJ_REAL ){
-					pObj->rVal++;
-					/* Try to get an integer representation */
-					PH7_MemObjTryInteger(pTos);
+				if( VmStringWantsPerlIncr(pObj) ){
+					/* Perl-style string increment.
+					 * Post-increment: pTos may alias pObj's buffer via SXBLOB_RDONLY
+					 * (set by PH7_MemObjLoad).  Force ownership so the upcoming
+					 * mutation of pObj doesn't bleed into pTos's old-value view. */
+					if( pInstr->iP1 == 0 ){
+						SyBlobNullAppend(&pTos->sBlob);
+					}
+					PH7_MemObjStringIncrement(pObj);
+					if( pInstr->iP1 ){
+						/* Pre-increment: deep-copy pObj into pTos. */
+						PH7_MemObjStore(pObj,pTos);
+					}
 				}else{
-					pObj->x.iVal++;
-					MemObjSetType(pTos,MEMOBJ_INT);
-				}
-				if( pInstr->iP1 ){
-					/* Pre-icrement */
-					PH7_MemObjStore(pObj,pTos);
+					/* Numeric coercion. Post-increment must preserve pTos's
+					 * original value: pTos may alias pObj's blob via
+					 * SXBLOB_RDONLY (set by PH7_MemObjLoad), and
+					 * PH7_MemObjToNumeric calls SyBlobRelease on a STRING
+					 * pObj. Force pTos to take ownership of its blob first
+					 * so its old-value view survives the coercion. */
+					if( pInstr->iP1 == 0 && (pTos->iFlags & MEMOBJ_STRING) ){
+						SyBlobNullAppend(&pTos->sBlob);
+					}
+					/* Force a numeric cast on the variable */
+					PH7_MemObjToNumeric(pObj);
+					if( pObj->iFlags & MEMOBJ_REAL ){
+						pObj->rVal++;
+					}else{
+						pObj->x.iVal++;
+					}
+					if( pInstr->iP1 ){
+						/* Pre-increment: result is the new value. */
+						PH7_MemObjStore(pObj,pTos);
+					}
+					/* Post-increment: pTos retains the old value (a string
+					 * for "5"++, an int/float for direct numeric operands). */
 				}
 			}
 		}else{
 			if( pInstr->iP1 ){
-				/* Force a numeric cast */
-				PH7_MemObjToNumeric(pTos);
-				/* Pre-increment */
-				if( pTos->iFlags & MEMOBJ_REAL ){
-					pTos->rVal++;
-					/* Try to get an integer representation */
-					PH7_MemObjTryInteger(pTos);
+				if( VmStringWantsPerlIncr(pTos) ){
+					PH7_MemObjStringIncrement(pTos);
 				}else{
-					pTos->x.iVal++;
-					MemObjSetType(pTos,MEMOBJ_INT);
+					/* Force a numeric cast */
+					PH7_MemObjToNumeric(pTos);
+					/* Pre-increment */
+					if( pTos->iFlags & MEMOBJ_REAL ){
+						pTos->rVal++;
+						/* Try to get an integer representation */
+						PH7_MemObjTryInteger(pTos);
+					}else{
+						pTos->x.iVal++;
+						MemObjSetType(pTos,MEMOBJ_INT);
+					}
 				}
 			}
 		}

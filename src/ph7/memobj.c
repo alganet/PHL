@@ -726,6 +726,97 @@ PH7_PRIVATE sxi32 PH7_MemObjToNumeric(ph7_value *pObj)
 	return SXRET_OK;
 }
 /*
+ * Apply Perl-style increment to a string ph7_value in place.
+ * Walks the bytes right-to-left: digits 0-8 / letters a-y, A-Y bump in
+ * place; '9' wraps to '0' with carry; 'z' to 'a'; 'Z' to 'A'. A non-
+ * alphanumeric byte stops the walk without prepending. If carry survives
+ * past index 0, prepend '1', 'a', or 'A' depending on the class of the
+ * last carried character. Empty strings become "1".
+ *
+ * Caller must ensure pObj is MEMOBJ_STRING and not a numeric string;
+ * this routine never reclassifies the type, so a result like "e0" stays
+ * a string even though it looks numeric.
+ */
+PH7_PRIVATE sxi32 PH7_MemObjStringIncrement(ph7_value *pObj)
+{
+	enum CarryClass { CARRY_NONE = 0, CARRY_LOWER, CARRY_UPPER, CARRY_DIGIT };
+	enum CarryClass last_class = CARRY_NONE;
+	sxu32 nLen, pos;
+	sxu8 *zStr;
+	int carry = 1;
+	int ch;
+	/* Force ownership: the blob may be SXBLOB_RDONLY (e.g., from
+	 * PH7_MemObjLoad), in which case BlobPrepareGrow copies on demand
+	 * and clears the flag.  On an already-owned blob with spare capacity
+	 * (the common case under PHL's growth allocator), this is a no-op
+	 * append; on an exact-fit owned blob it triggers a single realloc. */
+	if( SyBlobLength(&pObj->sBlob) > 0 ){
+		SyBlobNullAppend(&pObj->sBlob);
+	}
+	nLen = SyBlobLength(&pObj->sBlob);
+	if( nLen == 0 ){
+		SyBlobAppend(&pObj->sBlob,"1",sizeof(char));
+		return SXRET_OK;
+	}
+	zStr = (sxu8 *)SyBlobData(&pObj->sBlob);
+	pos = nLen;
+	while( pos > 0 ){
+		pos--;
+		ch = zStr[pos];
+		if( ch >= 'a' && ch <= 'z' ){
+			if( ch == 'z' ){
+				zStr[pos] = 'a';
+				last_class = CARRY_LOWER;
+				continue;
+			}
+			zStr[pos]++;
+			carry = 0;
+			break;
+		}else if( ch >= 'A' && ch <= 'Z' ){
+			if( ch == 'Z' ){
+				zStr[pos] = 'A';
+				last_class = CARRY_UPPER;
+				continue;
+			}
+			zStr[pos]++;
+			carry = 0;
+			break;
+		}else if( ch >= '0' && ch <= '9' ){
+			if( ch == '9' ){
+				zStr[pos] = '0';
+				last_class = CARRY_DIGIT;
+				continue;
+			}
+			zStr[pos]++;
+			carry = 0;
+			break;
+		}else{
+			/* non-alphanumeric: stop without prepending */
+			carry = 0;
+			break;
+		}
+	}
+	if( carry ){
+		sxu8 prepend;
+		sxu32 i;
+		switch( last_class ){
+			case CARRY_LOWER: prepend = (sxu8)'a'; break;
+			case CARRY_UPPER: prepend = (sxu8)'A'; break;
+			default:          prepend = (sxu8)'1'; break;
+		}
+		/* Append a sentinel byte to grow nByte by 1 (capacity grows too). */
+		SyBlobAppend(&pObj->sBlob,"\0",sizeof(char));
+		zStr = (sxu8 *)SyBlobData(&pObj->sBlob);
+		nLen = SyBlobLength(&pObj->sBlob);
+		/* Shift right by 1, walking from the end so overlapping is safe. */
+		for( i = nLen - 1; i > 0; i-- ){
+			zStr[i] = zStr[i - 1];
+		}
+		zStr[0] = prepend;
+	}
+	return SXRET_OK;
+}
+/*
  * Try a get an integer representation of the given ph7_value.
  * If the ph7_value is not of type real,this function is a no-op.
  */
