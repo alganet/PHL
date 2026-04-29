@@ -3279,6 +3279,83 @@ static sxi32 VmThrowTypeErrorForReturn(ph7_vm *pVm,SyString *pFuncName,const cha
 	return PH7_EXCEPTION;
 }
 /*
+ * Format the "X given" portion of error messages following PHP's value-name
+ * convention: "true"/"false" for booleans, class name for objects, otherwise
+ * the bare type name. zBuf must hold at least 64 bytes.
+ */
+static const char * VmValueGivenName(ph7_value *pVal,char *zBuf,sxu32 nBuf)
+{
+	if( pVal->iFlags & MEMOBJ_BOOL ){
+		return pVal->x.iVal ? "true" : "false";
+	}
+	if( pVal->iFlags & MEMOBJ_OBJ ){
+		ph7_class_instance *pThis = (ph7_class_instance *)pVal->x.pOther;
+		if( pThis && pThis->pClass ){
+			SyString *pName = &pThis->pClass->sName;
+			sxu32 n = pName->nByte;
+			if( n >= nBuf ){
+				n = nBuf - 1;
+			}
+			SyMemcpy(pName->zString,zBuf,n);
+			zBuf[n] = 0;
+			return zBuf;
+		}
+		return "object";
+	}
+	return ph7_type_name(pVal);
+}
+/*
+ * Throw a PHP-compatible Error when array unpacking ('...$expr') receives a
+ * non-array value at runtime. Matches the message and class PHP raises
+ * ("Only arrays and Traversables can be unpacked, X given"). The class is
+ * \TypeError for objects, \Error otherwise — matching PHP's distinction.
+ */
+static sxi32 VmThrowSpreadError(ph7_vm *pVm,ph7_value *pBad)
+{
+	ph7_class *pClass;
+	ph7_class_instance *pThis;
+	ph7_class_method *pCons;
+	ph7_value sArg;
+	ph7_value *apArg[1];
+	SyBlob sMsg;
+	SyString sMsgStr;
+	VmFrame *pFrame;
+	sxi32 rc;
+	const char *zErrClass = (pBad->iFlags & MEMOBJ_OBJ) ? "TypeError" : "Error";
+	char zNameBuf[64];
+	const char *zGiven = VmValueGivenName(pBad,zNameBuf,sizeof(zNameBuf));
+	pClass = PH7_VmExtractClass(&(*pVm),zErrClass,SyStrlen(zErrClass),TRUE,0);
+	if( pClass == 0 ){
+		return PH7_ABORT;
+	}
+	pThis = PH7_NewClassInstance(&(*pVm),pClass);
+	if( pThis == 0 ){
+		return PH7_ABORT;
+	}
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	SyBlobFormat(&sMsg,"Only arrays and Traversables can be unpacked, %s given",zGiven);
+	pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);
+	if( pCons ){
+		SyStringInitFromBuf(&sMsgStr,(const char *)SyBlobData(&sMsg),SyBlobLength(&sMsg));
+		PH7_MemObjInitFromString(&(*pVm),&sArg,&sMsgStr);
+		apArg[0] = &sArg;
+		PH7_VmCallClassMethod(&(*pVm),pThis,pCons,0,1,apArg);
+		PH7_MemObjRelease(&sArg);
+	}
+	SyBlobRelease(&sMsg);
+	pFrame = pVm->pFrame;
+	if( pFrame ){
+		pFrame = VmSkipExceptionFrames(pFrame);
+		pFrame->iFlags |= VM_FRAME_THROW;
+	}
+	rc = VmThrowException(&(*pVm),pThis);
+	PH7_ClassInstanceUnref(pThis);
+	if( rc == SXERR_ABORT ){
+		return PH7_ABORT;
+	}
+	return PH7_EXCEPTION;
+}
+/*
  * Enforce the declared return type of *pFunc* against the value returned
  * (or NULL if the function returned without a value). Mutates *pValue* to
  * perform allowed widening (int->float) or weak-mode coercion. On
@@ -4426,9 +4503,30 @@ case PH7_OP_LOAD_MAP: {
 	}
 	if( pInstr->iP1 > 0 ){
 		ph7_value *pEntry = &pTos[-pInstr->iP1+1]; /* Point to the first entry */
+		sxi32 rcSpread = SXRET_OK;
 		/* Perform the insertion */
 		while( pEntry < pTos ){
-			if( pEntry[1].iFlags & MEMOBJ_REFERENCE ){
+			if( pEntry[1].iFlags & MEMOBJ_AUX_SPREAD ){
+				/* Array unpacking: '...$expr'. Merge entries with PHP 8.1
+				 * semantics — string keys preserved (later wins), int keys
+				 * renumbered. Same routine that backs array_merge. */
+				if( pEntry[1].iFlags & MEMOBJ_HASHMAP ){
+					sxi32 rcMerge = PH7_HashmapMerge((ph7_hashmap *)pEntry[1].x.pOther,pMap);
+					if( rcMerge != SXRET_OK ){
+						/* Merge failure (OOM): match the PH7_NewHashmap OOM
+						 * path — emit fatal and abort, leaving no partial
+						 * map dangling. */
+						VmErrorFormat(&(*pVm),PH7_CTX_ERR,
+							"Fatal, PH7 engine is running out of memory while spreading array at instruction #:%d",pc);
+						rcSpread = PH7_ABORT;
+						break;
+					}
+				}else{
+					/* Throw a catchable Error matching PHP semantics. */
+					rcSpread = VmThrowSpreadError(&(*pVm),&pEntry[1]);
+					break;
+				}
+			}else if( pEntry[1].iFlags & MEMOBJ_REFERENCE ){
 				/* Insertion by reference */
 				PH7_HashmapInsertByRef(pMap,
 					(pEntry->iFlags & MEMOBJ_NULL) ? 0 /* Automatic index assign */ : pEntry,
@@ -4446,6 +4544,21 @@ case PH7_OP_LOAD_MAP: {
 		}
 		/* Pop P1 elements */
 		VmPopOperand(&pTos,pInstr->iP1);
+		if( rcSpread != SXRET_OK ){
+			/* Discard the partially-built map and propagate the exception. */
+			PH7_HashmapRelease(pMap,TRUE);
+			if( rcSpread == PH7_ABORT ){
+				goto Abort;
+			}
+			{
+				VmFrame *pFrm2 = pVm->pFrame;
+				if( pFrm2 && (pFrm2->iFlags & VM_FRAME_EXCEPTION) && pFrm2->iExceptionJump > 0 ){
+					pc = pFrm2->iExceptionJump - 1;
+					break;
+				}
+			}
+			goto Exception;
+		}
 	}
 	/* Push the hashmap */
 	pTos++;
@@ -6136,6 +6249,20 @@ case PH7_OP_SPREAD: {
 		}
 	}
 	/* else: not an array — leave as-is (single arg) */
+	break;
+}
+/*
+ * OP_FLAG_SPREAD: * * *
+ * Mark the value at TOS as a spread source for the next LOAD_MAP.
+ * Used by array literal unpacking '[...$arr]'.
+ */
+case PH7_OP_FLAG_SPREAD: {
+#ifdef UNTRUST
+	if( pTos < pStack ){
+		goto Abort;
+	}
+#endif
+	pTos->iFlags |= MEMOBJ_AUX_SPREAD;
 	break;
 }
 /* OP_LXOR: * * *
@@ -10235,6 +10362,7 @@ static const char * VmInstrToString(sxi32 nOp)
 	case PH7_OP_NULLC_STORE:zOp = "NULLC_STORE"; break;
 	case PH7_OP_NULLSAFE_JMP:zOp = "NULLSAFE_JMP"; break;
 	case PH7_OP_SPREAD:     zOp = "SPREAD     "; break;
+	case PH7_OP_FLAG_SPREAD:zOp = "FLAG_SPREAD"; break;
 	case PH7_OP_CVT_BOOL:   zOp = "CVT_BOOL   "; break;
 	case PH7_OP_CVT_NULL:   zOp = "CVT_NULL   "; break;
 	case PH7_OP_CVT_ARRAY:  zOp = "CVT_ARRAY  "; break;

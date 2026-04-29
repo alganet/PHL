@@ -88,6 +88,7 @@ struct ph7_value
 #define MEMOBJ_RES       0x100  /* Memory value is a resource [User private data] */
 #define MEMOBJ_VOID      0x200  /* Pseudo-type: function must not return a value */
 #define MEMOBJ_REFERENCE 0x400  /* Memory value hold a reference (64-bit index) of another ph7_value */
+#define MEMOBJ_AUX_SPREAD 0x800 /* Stack-only marker: this value is a spread source for the next LOAD_MAP */
 /* Mask of all known types */
 #define MEMOBJ_ALL (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)
 /* Scalar variables
@@ -96,7 +97,7 @@ struct ph7_value
  *  Types array, object and resource are not scalar.
  */
 #define MEMOBJ_SCALAR (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL)
-#define MEMOBJ_AUX (MEMOBJ_REFERENCE)
+#define MEMOBJ_AUX (MEMOBJ_REFERENCE|MEMOBJ_AUX_SPREAD)
 /*
  * The following macro clear the current ph7_value type and replace
  * it with the given one.
@@ -1056,7 +1057,8 @@ enum ph7_vm_op {
   PH7_OP_NULLC_JMP,     /* Null coalescing assign short-circuit jump */
   PH7_OP_NULLC_STORE,   /* Null coalescing assign store */
   PH7_OP_NULLSAFE_JMP,  /* Nullsafe (?->) short-circuit jump */
-  PH7_OP_SPREAD         /* Mark TOS for argument unpacking (...$arr) */
+  PH7_OP_SPREAD,        /* Mark TOS for argument unpacking (...$arr) */
+  PH7_OP_FLAG_SPREAD    /* Flag TOS as a spread source for the next LOAD_MAP */
 };
 /* LOADC.iP1 bit flags */
 #define PH7_LOADC_EXPAND   0x01 /* Candidate for constant/function/class expansion */
@@ -1661,6 +1663,7 @@ PH7_PRIVATE void  PH7_HashmapUnref(ph7_hashmap *pMap);
 PH7_PRIVATE sxi32 PH7_HashmapLookup(ph7_hashmap *pMap,ph7_value *pKey,ph7_hashmap_node **ppNode);
 PH7_PRIVATE sxi32 PH7_HashmapInsert(ph7_hashmap *pMap,ph7_value *pKey,ph7_value *pVal);
 PH7_PRIVATE sxi32 PH7_HashmapInsertByRef(ph7_hashmap *pMap,ph7_value *pKey,sxu32 nRefIdx);
+PH7_PRIVATE sxi32 PH7_HashmapMerge(ph7_hashmap *pSrc,ph7_hashmap *pDest);
 PH7_PRIVATE sxi32 PH7_HashmapUnion(ph7_hashmap *pLeft,ph7_hashmap *pRight);
 PH7_PRIVATE void PH7_HashmapUnlinkNode(ph7_hashmap_node *pNode,int bRestore);
 PH7_PRIVATE sxi32 PH7_HashmapDup(ph7_hashmap *pSrc,ph7_hashmap *pDest);
