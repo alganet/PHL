@@ -1590,6 +1590,16 @@ PH7_PRIVATE sxi32 PH7_HashmapInsert(
 	return rc;
 }
 /*
+ * Merge entries of pSrc into pDest using PHP merge semantics:
+ *   - String keys overwrite same-key entries in pDest.
+ *   - Integer keys are renumbered with the destination's auto-index.
+ * This is the same routine that backs array_merge().
+ */
+PH7_PRIVATE sxi32 PH7_HashmapMerge(ph7_hashmap *pSrc,ph7_hashmap *pDest)
+{
+	return HashmapMerge(&(*pSrc),&(*pDest));
+}
+/*
  * Insert a given key and it's associated value (foreign index) in the given
  * hashmap.
  * This is insertion by reference so be careful to mark the node
