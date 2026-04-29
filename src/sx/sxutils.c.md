@@ -18,7 +18,7 @@ Coverage: 336/445 lines (75.51%)
 |      - |    8 | `#include "sxutils.h"` |
 |      - |    9 | `#include "sxstr.h"` |
 |      - |   10 |  |
-| 393404 |   11 | `PH7_PRIVATE sxi32 SyStrIsNumeric(const char *zSrc,sxu32 nLen,sxu8 *pReal,const char  **pzTail)` |
+| 393580 |   11 | `PH7_PRIVATE sxi32 SyStrIsNumeric(const char *zSrc,sxu32 nLen,sxu8 *pReal,const char  **pzTail)` |
 |      2 |   12 |  |
 |      - |   13 | `	const char *zCur,*zEnd;` |
 |      - |   14 | `#ifdef UNTRUST` |
@@ -26,25 +26,25 @@ Coverage: 336/445 lines (75.51%)
 |      - |   16 | `		return SXERR_EMPTY;` |
 |      - |   17 | `	}` |
 |      - |   18 | `#endif` |
-| 393406 |   19 | `	zEnd = &zSrc[nLen];` |
+| 393582 |   19 | `	zEnd = &zSrc[nLen];` |
 |      - |   20 | `	/* Jump leading white spaces */` |
-| 393414 |   21 | `	while( zSrc < zEnd && (unsigned char)zSrc[0] < 0xc0  && SyisSpace(zSrc[0]) ){` |
-|      9 |   22 | `		zSrc++;` |
+| 393598 |   21 | `	while( zSrc < zEnd && (unsigned char)zSrc[0] < 0xc0  && SyisSpace(zSrc[0]) ){` |
+|     17 |   22 | `		zSrc++;` |
 |      1 |   23 | `	}` |
-| 393406 |   24 | `	if( zSrc < zEnd && (zSrc[0] == '+' \|\| zSrc[0] == '-') ){` |
+| 393582 |   24 | `	if( zSrc < zEnd && (zSrc[0] == '+' \|\| zSrc[0] == '-') ){` |
 |     86 |   25 | `		zSrc++;` |
 |     42 |   26 | `	}` |
-| 393406 |   27 | `	zCur = zSrc;` |
-| 393406 |   28 | `	if( pReal ){` |
-|    140 |   29 | `		*pReal = FALSE;` |
-|     69 |   30 | `	}` |
-| 196700 |   31 | `	for(;;){` |
-| 393406 |   32 | `		if( zSrc >= zEnd \|\| (unsigned char)zSrc[0] >= 0xc0 \|\| !SyisDigit(zSrc[0]) ){` |
-| 196634 |   33 | `			break;` |
+| 393582 |   27 | `	zCur = zSrc;` |
+| 393582 |   28 | `	if( pReal ){` |
+|    204 |   29 | `		*pReal = FALSE;` |
+|    101 |   30 | `	}` |
+| 196778 |   31 | `	for(;;){` |
+| 393582 |   32 | `		if( zSrc >= zEnd \|\| (unsigned char)zSrc[0] >= 0xc0 \|\| !SyisDigit(zSrc[0]) ){` |
+| 196701 |   33 | `			break;` |
 |      - |   34 | `		}` |
-|    138 |   35 | `		zSrc++;` |
-|    138 |   36 | `		if( zSrc >= zEnd \|\| (unsigned char)zSrc[0] >= 0xc0 \|\| !SyisDigit(zSrc[0]) ){` |
-|     45 |   37 | `			break;` |
+|    160 |   35 | `		zSrc++;` |
+|    160 |   36 | `		if( zSrc >= zEnd \|\| (unsigned char)zSrc[0] >= 0xc0 \|\| !SyisDigit(zSrc[0]) ){` |
+|     56 |   37 | `			break;` |
 |      - |   38 | `		}` |
 |     52 |   39 | `		zSrc++;` |
 |     52 |   40 | `		if( zSrc >= zEnd \|\| (unsigned char)zSrc[0] >= 0xc0 \|\| !SyisDigit(zSrc[0]) ){` |
@@ -56,18 +56,18 @@ Coverage: 336/445 lines (75.51%)
 |      - |   46 | `		}` |
 |    ! 0 |   47 | `		zSrc++;` |
 |    ! 0 |   48 | `	};` |
-| 393406 |   49 | `	if( zSrc < zEnd && zSrc > zCur ){` |
-|     40 |   50 | `		int c = zSrc[0];` |
-|     40 |   51 | `		if( c == '.' ){` |
-|     32 |   52 | `			zSrc++;` |
-|     32 |   53 | `			if( pReal ){` |
-|     24 |   54 | `				*pReal = TRUE;` |
-|     11 |   55 | `			}` |
-|     32 |   56 | `			if( pzTail ){` |
-|     30 |   57 | `				while( zSrc < zEnd && (unsigned char)zSrc[0] < 0xc0 && SyisDigit(zSrc[0]) ){` |
-|     20 |   58 | `					zSrc++;` |
+| 393582 |   49 | `	if( zSrc < zEnd && zSrc > zCur ){` |
+|     54 |   50 | `		int c = zSrc[0];` |
+|     54 |   51 | `		if( c == '.' ){` |
+|     40 |   52 | `			zSrc++;` |
+|     40 |   53 | `			if( pReal ){` |
+|     32 |   54 | `				*pReal = TRUE;` |
+|     15 |   55 | `			}` |
+|     40 |   56 | `			if( pzTail ){` |
+|     38 |   57 | `				while( zSrc < zEnd && (unsigned char)zSrc[0] < 0xc0 && SyisDigit(zSrc[0]) ){` |
+|     24 |   58 | `					zSrc++;` |
 |      2 |   59 | `				}` |
-|     12 |   60 | `				if( zSrc < zEnd && (zSrc[0] == 'e' \|\| zSrc[0] == 'E') ){` |
+|     16 |   60 | `				if( zSrc < zEnd && (zSrc[0] == 'e' \|\| zSrc[0] == 'E') ){` |
 |    ! 0 |   61 | `					zSrc++;` |
 |    ! 0 |   62 | `					if( zSrc < zEnd && (zSrc[0] == '+' \|\| zSrc[0] == '-') ){` |
 |    ! 0 |   63 | `						zSrc++;` |
@@ -76,8 +76,8 @@ Coverage: 336/445 lines (75.51%)
 |    ! 0 |   66 | `						zSrc++;` |
 |    ! 0 |   67 | `					}` |
 |    ! 0 |   68 | `				}` |
-|      7 |   69 | `			}` |
-|     25 |   70 | `		}else if( c == 'e' \|\| c == 'E' ){` |
+|      9 |   69 | `			}` |
+|     35 |   70 | `		}else if( c == 'e' \|\| c == 'E' ){` |
 |    ! 0 |   71 | `			zSrc++;` |
 |    ! 0 |   72 | `			if( pReal ){` |
 |    ! 0 |   73 | `				*pReal = TRUE;` |
@@ -91,12 +91,12 @@ Coverage: 336/445 lines (75.51%)
 |    ! 0 |   81 | `				}` |
 |    ! 0 |   82 | `			}` |
 |    ! 0 |   83 | `		}` |
-|     19 |   84 | `	}` |
-| 393406 |   85 | `	if( pzTail ){` |
+|     26 |   84 | `	}` |
+| 393582 |   85 | `	if( pzTail ){` |
 |      - |   86 | `		/* Point to the non numeric part */` |
-|     38 |   87 | `		*pzTail = zSrc;` |
-|     18 |   88 | `	}` |
-| 393406 |   89 | `	return zSrc > zCur ? SXRET_OK /* String prefix is numeric */ : SXERR_INVALID /* Not a digit stream */;` |
+|     92 |   87 | `		*pzTail = zSrc;` |
+|     45 |   88 | `	}` |
+| 393582 |   89 | `	return zSrc > zCur ? SXRET_OK /* String prefix is numeric */ : SXERR_INVALID /* Not a digit stream */;` |
 |      2 |   90 |  |
 |      - |   91 | `#define SXINT32_MIN_STR		"2147483648"` |
 |      - |   92 | `#define SXINT32_MAX_STR		"2147483647"` |
@@ -175,9 +175,9 @@ Coverage: 336/445 lines (75.51%)
 |      5 |  165 | `	}` |
 |     11 |  166 | `	return (zSrc >= zEnd) ? SXRET_OK : SXERR_SYNTAX;` |
 |      1 |  167 |  |
-|  61646 |  168 | `PH7_PRIVATE sxi32 SyStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,const char **zRest)` |
+|  61657 |  168 | `PH7_PRIVATE sxi32 SyStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,const char **zRest)` |
 |      2 |  169 |  |
-|  61648 |  170 | `	int isNeg = FALSE;` |
+|  61659 |  170 | `	int isNeg = FALSE;` |
 |      - |  171 | `	const char *zEnd;` |
 |      - |  172 | `	sxi64 nVal;` |
 |      - |  173 | `	sxi16 i;` |
@@ -189,66 +189,66 @@ Coverage: 336/445 lines (75.51%)
 |      - |  179 | `		return SXERR_EMPTY;` |
 |      - |  180 | `	}` |
 |      - |  181 | `#endif` |
-|  61648 |  182 | `	zEnd = &zSrc[nLen];` |
-|  61652 |  183 | `	while(zSrc < zEnd && SyisSpace(zSrc[0]) ){` |
-|      5 |  184 | `		zSrc++;` |
+|  61659 |  182 | `	zEnd = &zSrc[nLen];` |
+|  61667 |  183 | `	while(zSrc < zEnd && SyisSpace(zSrc[0]) ){` |
+|      9 |  184 | `		zSrc++;` |
 |      1 |  185 | `	}` |
-|  61648 |  186 | `	if( zSrc < zEnd && ( zSrc[0] == '-' \|\| zSrc[0] == '+' ) ){` |
+|  61659 |  186 | `	if( zSrc < zEnd && ( zSrc[0] == '-' \|\| zSrc[0] == '+' ) ){` |
 |      3 |  187 | `		isNeg = (zSrc[0] == '-') ? TRUE :FALSE;` |
 |      3 |  188 | `		zSrc++;` |
 |      1 |  189 | `	}` |
 |      - |  190 | `	/* Skip leading zero */` |
-|  61648 |  191 | `	while(zSrc < zEnd && zSrc[0] == '0' ){` |
+|  61659 |  191 | `	while(zSrc < zEnd && zSrc[0] == '0' ){` |
 |    ! 0 |  192 | `		zSrc++;` |
 |    ! 0 |  193 | `	}` |
-|  61648 |  194 | `	i = 19;` |
-|  61648 |  195 | `	if( (sxu32)(zEnd-zSrc) >= 19 ){` |
+|  61659 |  194 | `	i = 19;` |
+|  61659 |  195 | `	if( (sxu32)(zEnd-zSrc) >= 19 ){` |
 |     11 |  196 | `		i = SyMemcmp(zSrc,isNeg ? SXINT64_MIN_STR : SXINT64_MAX_STR,19) <= 0 ? 19 : 18 ;` |
 |      5 |  197 | `	}` |
-|  61648 |  198 | `	nVal = 0;` |
-|  31044 |  199 | `	for(;;){` |
-|  62090 |  200 | `		if(zSrc >= zEnd \|\| !i \|\| !SyisDigit(zSrc[0])){ break; } nVal = nVal * 10 + ( zSrc[0] - '0' ) ; --i ; zSrc++;` |
-|  61914 |  201 | `		if(zSrc >= zEnd \|\| !i \|\| !SyisDigit(zSrc[0])){ break; } nVal = nVal * 10 + ( zSrc[0] - '0' ) ; --i ; zSrc++;` |
-|   8476 |  202 | `		if(zSrc >= zEnd \|\| !i \|\| !SyisDigit(zSrc[0])){ break; } nVal = nVal * 10 + ( zSrc[0] - '0' ) ; --i ; zSrc++;` |
+|  61659 |  198 | `	nVal = 0;` |
+|  31049 |  199 | `	for(;;){` |
+|  62101 |  200 | `		if(zSrc >= zEnd \|\| !i \|\| !SyisDigit(zSrc[0])){ break; } nVal = nVal * 10 + ( zSrc[0] - '0' ) ; --i ; zSrc++;` |
+|  61925 |  201 | `		if(zSrc >= zEnd \|\| !i \|\| !SyisDigit(zSrc[0])){ break; } nVal = nVal * 10 + ( zSrc[0] - '0' ) ; --i ; zSrc++;` |
+|   8475 |  202 | `		if(zSrc >= zEnd \|\| !i \|\| !SyisDigit(zSrc[0])){ break; } nVal = nVal * 10 + ( zSrc[0] - '0' ) ; --i ; zSrc++;` |
 |   1024 |  203 | `		if(zSrc >= zEnd \|\| !i \|\| !SyisDigit(zSrc[0])){ break; } nVal = nVal * 10 + ( zSrc[0] - '0' ) ; --i ; zSrc++;` |
 |      1 |  204 | `	}` |
 |      - |  205 | `	/* Skip trailing spaces */` |
-|  61652 |  206 | `	while(zSrc < zEnd && SyisSpace(zSrc[0])){` |
-|      5 |  207 | `		zSrc++;` |
+|  61667 |  206 | `	while(zSrc < zEnd && SyisSpace(zSrc[0])){` |
+|      9 |  207 | `		zSrc++;` |
 |      1 |  208 | `	}` |
-|  61648 |  209 | `	if( zRest ){` |
+|  61659 |  209 | `	if( zRest ){` |
 |    ! 0 |  210 | `		*zRest = (char *)zSrc;` |
 |    ! 0 |  211 | `	}` |
-|  61648 |  212 | `	if( pOutVal ){` |
-|  61648 |  213 | `		if( isNeg == TRUE && nVal != 0 ){` |
+|  61659 |  212 | `	if( pOutVal ){` |
+|  61659 |  213 | `		if( isNeg == TRUE && nVal != 0 ){` |
 |      3 |  214 | `			nVal = -nVal;` |
 |      1 |  215 | `		}` |
-|  61648 |  216 | `		*(sxi64 *)pOutVal = nVal;` |
-|  30823 |  217 | `	}` |
-|  61648 |  218 | `	return (zSrc >= zEnd) ? SXRET_OK : SXERR_SYNTAX;` |
+|  61659 |  216 | `		*(sxi64 *)pOutVal = nVal;` |
+|  30828 |  217 | `	}` |
+|  61659 |  218 | `	return (zSrc >= zEnd) ? SXRET_OK : SXERR_SYNTAX;` |
 |      2 |  219 |  |
-|   1212 |  220 | `PH7_PRIVATE sxi32 SyHexToint(sxi32 c)` |
+|   1264 |  220 | `PH7_PRIVATE sxi32 SyHexToint(sxi32 c)` |
 |      1 |  221 |  |
-|   1213 |  222 | `	switch(c){` |
+|   1265 |  222 | `	switch(c){` |
 |    495 |  223 | `	case '0': return 0;` |
-|     47 |  224 | `	case '1': return 1;` |
+|     61 |  224 | `	case '1': return 1;` |
 |     25 |  225 | `	case '2': return 2;` |
-|     41 |  226 | `	case '3': return 3;` |
+|     53 |  226 | `	case '3': return 3;` |
 |     53 |  227 | `	case '4': return 4;` |
 |     27 |  228 | `	case '5': return 5;` |
-|     27 |  229 | `	case '6': return 6;` |
+|     29 |  229 | `	case '6': return 6;` |
 |     11 |  230 | `	case '7': return 7;` |
 |     19 |  231 | `	case '8': return 8;` |
 |     29 |  232 | `	case '9': return 9;` |
-|     57 |  233 | `	case 'A': case 'a': return 10;` |
+|     69 |  233 | `	case 'A': case 'a': return 10;` |
 |     21 |  234 | `	case 'B': case 'b': return 11;` |
-|     49 |  235 | `	case 'C': case 'c': return 12;` |
+|     61 |  235 | `	case 'C': case 'c': return 12;` |
 |     23 |  236 | `	case 'D': case 'd': return 13;` |
 |     35 |  237 | `	case 'E': case 'e': return 14;` |
 |    269 |  238 | `	case 'F': case 'f': return 15;` |
 |      - |  239 | `	}` |
 |    ! 0 |  240 | `	return -1;` |
-|    607 |  241 |  |
+|    633 |  241 |  |
 |     92 |  242 | `PH7_PRIVATE sxi32 SyHexStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,const char **zRest)` |
 |      1 |  243 |  |
 |      - |  244 | `	const char *zIn,*zEnd;` |
@@ -315,11 +315,11 @@ Coverage: 336/445 lines (75.51%)
 |     46 |  305 | `	}` |
 |     93 |  306 | `	return zSrc >= zEnd ? SXRET_OK : SXERR_SYNTAX;` |
 |      1 |  307 |  |
-|     66 |  308 | `PH7_PRIVATE sxi32 SyOctalStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,const char **zRest)` |
+|     67 |  308 | `PH7_PRIVATE sxi32 SyOctalStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,const char **zRest)` |
 |      1 |  309 |  |
 |      - |  310 | `	const char *zIn,*zEnd;` |
-|     67 |  311 | `	int isNeg = FALSE;` |
-|     67 |  312 | `	sxi64 nVal = 0;` |
+|     68 |  311 | `	int isNeg = FALSE;` |
+|     68 |  312 | `	sxi64 nVal = 0;` |
 |      - |  313 | `	int c;` |
 |      - |  314 | `#if defined(UNTRUST)` |
 |      - |  315 | `	if( SX_EMPTY_STR(zSrc) ){` |
@@ -329,39 +329,39 @@ Coverage: 336/445 lines (75.51%)
 |      - |  319 | `		return SXERR_EMPTY;` |
 |      - |  320 | `	}` |
 |      - |  321 | `#endif` |
-|     67 |  322 | `	zEnd = &zSrc[nLen];` |
-|     67 |  323 | `	while(zSrc < zEnd && SyisSpace(zSrc[0]) ){` |
+|     68 |  322 | `	zEnd = &zSrc[nLen];` |
+|     68 |  323 | `	while(zSrc < zEnd && SyisSpace(zSrc[0]) ){` |
 |    ! 0 |  324 | `		zSrc++;` |
 |    ! 0 |  325 | `	}` |
-|     67 |  326 | `	if( zSrc < zEnd && ( zSrc[0] == '-' \|\| zSrc[0] == '+' ) ){` |
+|     68 |  326 | `	if( zSrc < zEnd && ( zSrc[0] == '-' \|\| zSrc[0] == '+' ) ){` |
 |    ! 0 |  327 | `		isNeg = (zSrc[0] == '-') ? TRUE :FALSE;` |
 |    ! 0 |  328 | `		zSrc++;` |
 |    ! 0 |  329 | `	}` |
 |      - |  330 | `	/* Skip leading zero */` |
-|    127 |  331 | `	while(zSrc < zEnd && zSrc[0] == '0' ){` |
-|     61 |  332 | `		zSrc++;` |
+|    130 |  331 | `	while(zSrc < zEnd && zSrc[0] == '0' ){` |
+|     63 |  332 | `		zSrc++;` |
 |      1 |  333 | `	}` |
-|     67 |  334 | `	zIn = zSrc;` |
-|     33 |  335 | `	for(;;){` |
-|     67 |  336 | `		if(zSrc >= zEnd \|\| !SyisDigit(zSrc[0])){ break; } if( (c=zSrc[0]-'0') > 7 \|\| (int)(zSrc-zIn) > 20){ break;} nVal = nVal * 8 +  c; zSrc++;` |
+|     68 |  334 | `	zIn = zSrc;` |
+|     34 |  335 | `	for(;;){` |
+|     68 |  336 | `		if(zSrc >= zEnd \|\| !SyisDigit(zSrc[0])){ break; } if( (c=zSrc[0]-'0') > 7 \|\| (int)(zSrc-zIn) > 20){ break;} nVal = nVal * 8 +  c; zSrc++;` |
 |     67 |  337 | `		if(zSrc >= zEnd \|\| !SyisDigit(zSrc[0])){ break; } if( (c=zSrc[0]-'0') > 7 \|\| (int)(zSrc-zIn) > 20){ break;} nVal = nVal * 8 +  c; zSrc++;` |
 |     59 |  338 | `		if(zSrc >= zEnd \|\| !SyisDigit(zSrc[0])){ break; } if( (c=zSrc[0]-'0') > 7 \|\| (int)(zSrc-zIn) > 20){ break;} nVal = nVal * 8 +  c; zSrc++;` |
 |     41 |  339 | `		if(zSrc >= zEnd \|\| !SyisDigit(zSrc[0])){ break; } if( (c=zSrc[0]-'0') > 7 \|\| (int)(zSrc-zIn) > 20){ break;} nVal = nVal * 8 +  c; zSrc++;` |
 |    ! 0 |  340 | `	}` |
 |      - |  341 | `	/* Skip trailing spaces */` |
-|     67 |  342 | `	while(zSrc < zEnd && SyisSpace(zSrc[0])){` |
+|     68 |  342 | `	while(zSrc < zEnd && SyisSpace(zSrc[0])){` |
 |    ! 0 |  343 | `		zSrc++;` |
 |    ! 0 |  344 | `	}` |
-|     67 |  345 | `	if( zRest ){` |
+|     68 |  345 | `	if( zRest ){` |
 |    ! 0 |  346 | `		*zRest = zSrc;` |
 |    ! 0 |  347 | `	}` |
-|     67 |  348 | `	if( pOutVal ){` |
-|     67 |  349 | `		if( isNeg == TRUE && nVal != 0 ){` |
+|     68 |  348 | `	if( pOutVal ){` |
+|     68 |  349 | `		if( isNeg == TRUE && nVal != 0 ){` |
 |    ! 0 |  350 | `			nVal = -nVal;` |
 |    ! 0 |  351 | `		}` |
-|     67 |  352 | `		*(sxi64 *)pOutVal = nVal;` |
-|     33 |  353 | `	}` |
-|     67 |  354 | `	return (zSrc >= zEnd) ? SXRET_OK : SXERR_SYNTAX;` |
+|     68 |  352 | `		*(sxi64 *)pOutVal = nVal;` |
+|     34 |  353 | `	}` |
+|     68 |  354 | `	return (zSrc >= zEnd) ? SXRET_OK : SXERR_SYNTAX;` |
 |      1 |  355 |  |
 |    286 |  356 | `PH7_PRIVATE sxi32 SyBinaryStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,const char **zRest)` |
 |      1 |  357 |  |
@@ -415,7 +415,7 @@ Coverage: 336/445 lines (75.51%)
 |    143 |  405 | `	}` |
 |    287 |  406 | `	return (zSrc >= zEnd) ? SXRET_OK : SXERR_SYNTAX;` |
 |      1 |  407 |  |
-|    548 |  408 | `PH7_PRIVATE sxi32 SyStrToReal(const char *zSrc,sxu32 nLen,void * pOutVal,const char **zRest)` |
+|    556 |  408 | `PH7_PRIVATE sxi32 SyStrToReal(const char *zSrc,sxu32 nLen,void * pOutVal,const char **zRest)` |
 |      2 |  409 |  |
 |      - |  410 | `#define SXDBL_DIG        15` |
 |      - |  411 | `#define SXDBL_MAX_EXP    308` |
@@ -431,11 +431,11 @@ Coverage: 336/445 lines (75.51%)
 |      - |  421 | `	1.0e128,` |
 |      - |  422 | `	1.0e256` |
 |      - |  423 | `	};` |
-|    550 |  424 | `	sxu8 neg = FALSE;` |
-|    550 |  425 | `	sxreal Val = 0.0;` |
+|    558 |  424 | `	sxu8 neg = FALSE;` |
+|    558 |  425 | `	sxreal Val = 0.0;` |
 |      - |  426 | `	const char *zEnd;` |
 |      - |  427 | `	sxi32 Lim,exp;` |
-|    550 |  428 | `	sxreal *p = 0;` |
+|    558 |  428 | `	sxreal *p = 0;` |
 |      - |  429 | `#ifdef UNTRUST` |
 |      - |  430 | `	if( SX_EMPTY_STR(zSrc)  ){` |
 |      - |  431 | `		if( pOutVal ){` |
@@ -445,27 +445,27 @@ Coverage: 336/445 lines (75.51%)
 |      - |  435 | `	}` |
 |      - |  436 | `#endif` |
 |      - |  437 | `	/* Define local limits and end pointer used by the parsing loops */` |
-|    550 |  438 | `	zEnd = &zSrc[nLen];` |
-|    550 |  439 | `	Lim = SXDBL_DIG;` |
+|    558 |  438 | `	zEnd = &zSrc[nLen];` |
+|    558 |  439 | `	Lim = SXDBL_DIG;` |
 |      - |  440 | `	/* Skip leading spaces */` |
-|    554 |  441 | `	while( zSrc < zEnd && SyisSpace(zSrc[0]) ) zSrc++;` |
+|    562 |  441 | `	while( zSrc < zEnd && SyisSpace(zSrc[0]) ) zSrc++;` |
 |      - |  442 |  |
 |      - |  443 | `	/* Sign (if exists) */` |
-|    550 |  444 | `	if( zSrc < zEnd && (zSrc[0] == '-' \|\| zSrc[0] == '+' ) ){` |
+|    558 |  444 | `	if( zSrc < zEnd && (zSrc[0] == '-' \|\| zSrc[0] == '+' ) ){` |
 |      7 |  445 | `		neg =  zSrc[0] == '-' ? TRUE : FALSE ;` |
 |      7 |  446 | `		zSrc++;` |
 |      3 |  447 | `	}` |
 |      - |  448 |  |
 |      - |  449 | `	/* Integer part */` |
-|    288 |  450 | `	for(;;){` |
-|    578 |  451 | `		if(zSrc >= zEnd \|\| !Lim \|\| !SyisDigit(zSrc[0])){` |
+|    292 |  450 | `	for(;;){` |
+|    586 |  451 | `		if(zSrc >= zEnd \|\| !Lim \|\| !SyisDigit(zSrc[0])){` |
 |     15 |  452 | `			break;` |
 |      - |  453 | `		}` |
-|    550 |  454 | `		Val = Val * 10.0 + (zSrc[0] - '0');` |
-|    550 |  455 | `		zSrc++;` |
-|    550 |  456 | `		--Lim;` |
-|    550 |  457 | `		if(zSrc >= zEnd \|\| !Lim \|\| !SyisDigit(zSrc[0])){` |
-|    255 |  458 | `			break;` |
+|    558 |  454 | `		Val = Val * 10.0 + (zSrc[0] - '0');` |
+|    558 |  455 | `		zSrc++;` |
+|    558 |  456 | `		--Lim;` |
+|    558 |  457 | `		if(zSrc >= zEnd \|\| !Lim \|\| !SyisDigit(zSrc[0])){` |
+|    259 |  458 | `			break;` |
 |      - |  459 | `		}` |
 |     43 |  460 | `		Val = Val * 10.0 + (zSrc[0] - '0');` |
 |     43 |  461 | `		zSrc++;` |
@@ -483,10 +483,10 @@ Coverage: 336/445 lines (75.51%)
 |     29 |  473 | `		zSrc++;` |
 |     29 |  474 | `		--Lim;` |
 |      1 |  475 | `	}` |
-|    550 |  476 | `	Lim = SXDBL_DIG ;` |
-|    274 |  477 | `	for(;;){` |
-|    550 |  478 | `		if(zSrc >= zEnd \|\| !Lim \|\| !SyisDigit(zSrc[0])){` |
-|    276 |  479 | `			break;` |
+|    558 |  476 | `	Lim = SXDBL_DIG ;` |
+|    278 |  477 | `	for(;;){` |
+|    558 |  478 | `		if(zSrc >= zEnd \|\| !Lim \|\| !SyisDigit(zSrc[0])){` |
+|    280 |  479 | `			break;` |
 |      - |  480 | `		}` |
 |    ! 0 |  481 | `		Val = Val * 10.0 + (zSrc[0] - '0');` |
 |    ! 0 |  482 | `		zSrc++;` |
@@ -510,19 +510,19 @@ Coverage: 336/445 lines (75.51%)
 |    ! 0 |  500 | `		zSrc++;` |
 |    ! 0 |  501 | `		--Lim;` |
 |    ! 0 |  502 | `	}` |
-|    550 |  503 | `	if( zSrc < zEnd && ( zSrc[0] == '.' \|\| zSrc[0] == ',' ) ){` |
-|    516 |  504 | `		sxreal dec = 1.0;` |
-|    516 |  505 | `		zSrc++;` |
-|    345 |  506 | `		for(;;){` |
-|    692 |  507 | `			if(zSrc >= zEnd \|\| !Lim \|\| !SyisDigit(zSrc[0])){` |
+|    558 |  503 | `	if( zSrc < zEnd && ( zSrc[0] == '.' \|\| zSrc[0] == ',' ) ){` |
+|    524 |  504 | `		sxreal dec = 1.0;` |
+|    524 |  505 | `		zSrc++;` |
+|    349 |  506 | `		for(;;){` |
+|    700 |  507 | `			if(zSrc >= zEnd \|\| !Lim \|\| !SyisDigit(zSrc[0])){` |
 |     24 |  508 | `				break;` |
 |      - |  509 | `			}` |
-|    646 |  510 | `			Val = Val * 10.0 + (zSrc[0] - '0');` |
-|    646 |  511 | `			dec *= 10.0;` |
-|    646 |  512 | `			zSrc++;` |
-|    646 |  513 | `			--Lim;` |
-|    646 |  514 | `			if(zSrc >= zEnd \|\| !Lim \|\| !SyisDigit(zSrc[0])){` |
-|    154 |  515 | `				break;` |
+|    654 |  510 | `			Val = Val * 10.0 + (zSrc[0] - '0');` |
+|    654 |  511 | `			dec *= 10.0;` |
+|    654 |  512 | `			zSrc++;` |
+|    654 |  513 | `			--Lim;` |
+|    654 |  514 | `			if(zSrc >= zEnd \|\| !Lim \|\| !SyisDigit(zSrc[0])){` |
+|    158 |  515 | `				break;` |
 |      - |  516 | `			}` |
 |    342 |  517 | `			Val = Val * 10.0 + (zSrc[0] - '0');` |
 |    342 |  518 | `			dec *= 10.0;` |
@@ -543,12 +543,12 @@ Coverage: 336/445 lines (75.51%)
 |    177 |  533 | `			zSrc++;` |
 |    177 |  534 | `			--Lim;` |
 |      1 |  535 | `		}` |
-|    516 |  536 | `		Val /= dec;` |
-|    257 |  537 | `	}` |
-|    550 |  538 | `	if( neg == TRUE && Val != 0.0 ) {` |
+|    524 |  536 | `		Val /= dec;` |
+|    261 |  537 | `	}` |
+|    558 |  538 | `	if( neg == TRUE && Val != 0.0 ) {` |
 |      7 |  539 | `		Val = -Val ;` |
 |      3 |  540 | `	}` |
-|    550 |  541 | `	if( Lim <= 0 ){` |
+|    558 |  541 | `	if( Lim <= 0 ){` |
 |      - |  542 | `		/* jump overflow digit */` |
 |     69 |  543 | `		while( zSrc < zEnd ){` |
 |     41 |  544 | `			if( zSrc[0] == 'e' \|\| zSrc[0] == 'E' ){` |
@@ -557,8 +557,8 @@ Coverage: 336/445 lines (75.51%)
 |     41 |  547 | `			zSrc++;` |
 |      1 |  548 | `		}` |
 |     14 |  549 | `	}` |
-|    550 |  550 | `	neg = FALSE;` |
-|    550 |  551 | `	if( zSrc < zEnd && ( zSrc[0] == 'e' \|\| zSrc[0] == 'E' ) ){` |
+|    558 |  550 | `	neg = FALSE;` |
+|    558 |  551 | `	if( zSrc < zEnd && ( zSrc[0] == 'e' \|\| zSrc[0] == 'E' ) ){` |
 |     61 |  552 | `		zSrc++;` |
 |     61 |  553 | `		if( zSrc < zEnd && ( zSrc[0] == '-' \|\| zSrc[0] == '+') ){` |
 |     21 |  554 | `			neg = zSrc[0] == '-' ? TRUE : FALSE ;` |
@@ -584,15 +584,15 @@ Coverage: 336/445 lines (75.51%)
 |     51 |  574 | `			}` |
 |     90 |  575 | `		}` |
 |     30 |  576 | `	}` |
-|    550 |  577 | `	while( zSrc < zEnd && SyisSpace(zSrc[0]) ){` |
+|    558 |  577 | `	while( zSrc < zEnd && SyisSpace(zSrc[0]) ){` |
 |    ! 0 |  578 | `		zSrc++;` |
 |    ! 0 |  579 | `	}` |
-|    550 |  580 | `	if( zRest ){` |
+|    558 |  580 | `	if( zRest ){` |
 |    ! 0 |  581 | `		*zRest = zSrc;` |
 |    ! 0 |  582 | `	}` |
-|    550 |  583 | `	if( pOutVal ){` |
-|    550 |  584 | `		*(sxreal *)pOutVal = Val;` |
-|    274 |  585 | `	}` |
-|    550 |  586 | `	return zSrc >= zEnd ? SXRET_OK : SXERR_SYNTAX;` |
+|    558 |  583 | `	if( pOutVal ){` |
+|    558 |  584 | `		*(sxreal *)pOutVal = Val;` |
+|    278 |  585 | `	}` |
+|    558 |  586 | `	return zSrc >= zEnd ? SXRET_OK : SXERR_SYNTAX;` |
 |      2 |  587 |  |
 |      - |  588 |  |

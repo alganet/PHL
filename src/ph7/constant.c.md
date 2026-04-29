@@ -353,11 +353,11 @@ Coverage: 1006/1017 lines (98.92%)
 |      - |  343 | ` * E_DEPRECATED` |
 |      - |  344 | ` * Expands 8192` |
 |      - |  345 | ` */` |
-|     22 |  346 | `static void PH7_E_DEPRECATED_Const(ph7_value *pVal,void *pUserData)` |
+|     24 |  346 | `static void PH7_E_DEPRECATED_Const(ph7_value *pVal,void *pUserData)` |
 |      2 |  347 |  |
-|     24 |  348 | `	ph7_value_int(pVal,8192);` |
-|     11 |  349 | `	SXUNUSED(pUserData);` |
-|     24 |  350 |  |
+|     26 |  348 | `	ph7_value_int(pVal,8192);` |
+|     12 |  349 | `	SXUNUSED(pUserData);` |
+|     26 |  350 |  |
 |      - |  351 | `/*` |
 |      - |  352 | ` * E_USER_DEPRECATED` |
 |      - |  353 | ` *   Expands 16384.` |
@@ -1063,20 +1063,20 @@ Coverage: 1006/1017 lines (98.92%)
 |      - | 1053 | ` * PATHINFO_EXTENSION` |
 |      - | 1054 | ` *  Expand 3.` |
 |      - | 1055 | ` */` |
-|   5358 | 1056 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
+|   5360 | 1056 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
 |      2 | 1057 |  |
-|   2679 | 1058 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   5360 | 1059 | `	ph7_value_int(pVal,3);` |
-|   5360 | 1060 |  |
+|   2680 | 1058 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   5362 | 1059 | `	ph7_value_int(pVal,3);` |
+|   5362 | 1060 |  |
 |      - | 1061 | `/*` |
 |      - | 1062 | ` * PATHINFO_FILENAME` |
 |      - | 1063 | ` *  Expand 4.` |
 |      - | 1064 | ` */` |
-|   5350 | 1065 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
+|   5352 | 1065 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
 |      2 | 1066 |  |
-|   2675 | 1067 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   5352 | 1068 | `	ph7_value_int(pVal,4);` |
-|   5352 | 1069 |  |
+|   2676 | 1067 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   5354 | 1068 | `	ph7_value_int(pVal,4);` |
+|   5354 | 1069 |  |
 |      - | 1070 | `/*` |
 |      - | 1071 | ` * ASSERT_ACTIVE.` |
 |      - | 1072 | ` *  PHP ASSERT_ACTIVE = 1` |
