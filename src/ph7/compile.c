@@ -1388,6 +1388,7 @@ static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)
 	sxi32 (*xValidator)(ph7_gen_state *,ph7_expr_node *); /* Expression tree validator callback */
 	SyToken *pKey,*pCur;
 	sxi32 iEmitRef = 0;
+	sxi32 iSpread = 0;
 	sxi32 nPair = 0;
 	sxi32 iNest;
 	sxi32 rc;
@@ -1534,17 +1535,39 @@ static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)
 				return SXRET_OK;
 			}
 		}
+		/* Detect array unpack: '...$expr' as the entry value (PHP 7.4+, with
+		 * string-key support since PHP 8.1). The parser strips the '...' inside
+		 * ExprExtractNode; we only need to know it's there so we can emit
+		 * PH7_OP_FLAG_SPREAD after the value, instructing LOAD_MAP to merge the
+		 * resulting hashmap rather than insert it as a scalar entry. */
+		iSpread = (pCur < pGen->pIn && (pCur->nType & PH7_TK_ELLIPSIS)) ? 1 : 0;
+		if( iSpread && (rc != SXERR_EMPTY || iEmitRef) ){
+			/* '[k => ...$a]' and '[&...$a]' are syntax errors in PHP — the
+			 * '...' token cannot follow either '=>' or '&' inside an array
+			 * literal. Emit the same Parse-error wording PHP uses so the
+			 * output is engine-portable. */
+			rc = PH7_GenCompileError(&(*pGen),E_PARSE,pCur->nLine,
+				"syntax error, unexpected token \"...\"");
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			return SXRET_OK;
+		}
 		/* Compile indice value */
 		rc = GenStateCompileArrayEntry(&(*pGen),pCur,pGen->pIn,EXPR_FLAG_RDONLY_LOAD/*Do not create the variable if inexistant*/,xValidator);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
-		if( iEmitRef ){
+		if( iSpread ){
+			/* Mark the value on TOS as a spread source; LOAD_MAP merges it. */
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_FLAG_SPREAD,0,0,0,0);
+		}else if( iEmitRef ){
 			/* Emit the load reference instruction */
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_REF,0,0,0,0);
 		}
 		xValidator = 0;
 		iEmitRef = 0;
+		iSpread = 0;
 		nPair++;
 	}
 	/* Emit the load map instruction */
