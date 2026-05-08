@@ -18,30 +18,49 @@ if exist "%~dp0%dev_cmd%" (
     exit /b %errorlevel%
 )
 
-:: Calculate next year for checking future VS versions
-for /f %%a in ('powershell -NoProfile -Command "(Get-Date).Year"') do set year=%%a
-set /a next_year=%year% + 1
-
-:: Check if nmake.exe is in PATH
+:: Locate vcvarsall.bat. Try in order:
+::   (1) nmake already in PATH (developer prompt)
+::   (2) vswhere.exe — Microsoft's official VS locator, ships with every
+::       VS Installer; works for all layouts (year-based "2022" or
+::       version-based "18", BuildTools-only, Preview, etc.)
+::   (3) Hardcoded directory walk as a last resort. Covers both the
+::       legacy year-based (Microsoft Visual Studio\2017..\) and the
+::       new version-based (Microsoft Visual Studio\17, 18, ...) schemes
+::       Microsoft introduced with VS 2026.
 set "vcvars_path="
 where nmake.exe >nul 2>nul
-if errorlevel 1 (
-    :: Search for vcvarsall.bat in Visual Studio installations
+if not errorlevel 1 goto :have_vc
+
+set "vswhere=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+if not exist "%vswhere%" set "vswhere=%ProgramFiles%\Microsoft Visual Studio\Installer\vswhere.exe"
+if exist "%vswhere%" (
+    for /f "usebackq tokens=*" %%i in (`"%vswhere%" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
+        if exist "%%i\VC\Auxiliary\Build\vcvarsall.bat" set "vcvars_path=%%i\VC\Auxiliary\Build\vcvarsall.bat"
+    )
+)
+
+if not defined vcvars_path (
     for %%P in ("%ProgramFiles%" "%ProgramFiles(x86)%") do (
-        for /L %%V in (2015,1,%next_year%) do (
-            for %%E in ("BuildTools" "Community" "Professional" "Enterprise") do (
-                if exist "%%~P\Microsoft Visual Studio\%%V\%%~E\VC\Auxiliary\Build\vcvarsall.bat" (
-                    set "vcvars_path=%%~P\Microsoft Visual Studio\%%V\%%~E\VC\Auxiliary\Build\vcvarsall.bat"
+        for %%V in ("2017" "2019" "2022" "2025" "2026" "15" "16" "17" "18" "19") do (
+            for %%E in ("BuildTools" "Community" "Professional" "Enterprise" "Preview") do (
+                if exist "%%~P\Microsoft Visual Studio\%%~V\%%~E\VC\Auxiliary\Build\vcvarsall.bat" (
+                    set "vcvars_path=%%~P\Microsoft Visual Studio\%%~V\%%~E\VC\Auxiliary\Build\vcvarsall.bat"
                 )
             )
         )
     )
-    if not defined vcvars_path (
-        echo Error: Visual Studio not found.
-        echo Please install Visual Studio with C++ build tools and the Windows SDK.
-        exit /b 1
-    )
 )
+
+if not defined vcvars_path (
+    echo Error: Visual Studio not found.
+    echo Searched:
+    echo   nmake.exe in PATH
+    echo   vswhere.exe at "%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+    echo   "%%ProgramFiles%%\Microsoft Visual Studio\^(year or major-version^)\^<edition^>\VC\Auxiliary\Build\vcvarsall.bat"
+    echo Please install Visual Studio with C++ build tools and the Windows SDK.
+    exit /b 1
+)
+:have_vc
 
 :: Check if OpenCppCoverage is in the PATH
 set "opencppcoverage_path="
