@@ -701,6 +701,10 @@ PH7_PRIVATE int vm_builtin_get_object_vars(ph7_context *pCtx,int nArg,ph7_value 
 	 */
 	return PH7_OK;
 }
+/* Bound on `extends` chain depth — matches PH7_THROWABLE_WALK_MAX_DEPTH in
+ * compile.c. Defends against compiler cycles even though interface cycle
+ * detection should reject them up front. */
+#define PH7_INTERFACE_WALK_MAX_DEPTH 64
 /*
  * This function returns TRUE if the given class is an implemented
  * interface.Otherwise FALSE is returned.
@@ -715,10 +719,17 @@ static int VmQueryInterfaceSet(ph7_class *pClass,SySet *pSet)
 	}
 	/* Point to the set of implemented interfaces */
 	apInterface = (ph7_class **)SySetBasePtr(pSet);
-	/* Perform the lookup */
+	/* Perform the lookup, walking each interface's parent chain so that
+	 * Iterator extends Traversable (and similar) is recognized. */
 	for( n = 0 ; n < SySetUsed(pSet) ; n++ ){
-		if( apInterface[n] == pClass ){
-			return TRUE;
+		ph7_class *pIface = apInterface[n];
+		int iDepth = 0;
+		while( pIface && iDepth <= PH7_INTERFACE_WALK_MAX_DEPTH ){
+			if( pIface == pClass ){
+				return TRUE;
+			}
+			pIface = pIface->pBase;
+			iDepth++;
 		}
 	}
 	return FALSE;

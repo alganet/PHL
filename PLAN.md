@@ -347,14 +347,20 @@ Verified `get_declared_interfaces()`: **4 interfaces** (`Serializable`, `Iterato
 **Effort:** **M**
 
 ### 6.2 `ArrayAccess`, `Countable`, `Stringable`, `Traversable`, `UnitEnum`, `BackedEnum` interfaces
-**Status:** Missing. Verified `interface_exists("Countable")` and `interface_exists("ArrayAccess")` → false; `Stringable` also missing.
-**Scope:**
-- `ArrayAccess` — hook `[]` on objects into `offsetGet`/`offsetSet`/`offsetExists`/`offsetUnset`. Requires VM changes.
-- `Countable` — let `count()` call `->count()` when implemented.
-- `Stringable` (PHP 8.0) — auto-implemented when `__toString` present.
-- `Traversable` — empty interface used as type hint; extends `Iterator`/`IteratorAggregate`.
-- `UnitEnum`/`BackedEnum` — needed for enums (1.12).
-**Effort:** **M**
+**Status:** Implemented for the dispatch surface listed below. `interface_exists()` returns true for all six; `Iterator`/`IteratorAggregate` now `extends Traversable`; `Stringable` is auto-implemented for any class declaring `__toString` (including the built-in `Exception`/`Error` classes).
+**Implemented:**
+- `ArrayAccess` — `$obj[$k]` (offsetGet), `$obj[$k]=$v` and `$obj[]=$v` (offsetSet), `isset($obj[$k])` (offsetExists), `unset($obj[$k])` (offsetUnset). VM hooks live in `PH7_OP_LOAD_IDX`/`PH7_OP_STORE_IDX` (vm.c). Compiler routes `isset` and `unset` arguments via new iP2 codes 4 and 5.
+- `Countable` — `count($obj)` dispatches to `->count()`.
+- `Stringable` — auto-added to any class with `__toString`, at compile time.
+- `Traversable` — empty marker; `Iterator`/`IteratorAggregate` extend it; `instanceof Traversable` walks the parent-interface chain (`PH7_VmInstanceOf`).
+- `UnitEnum`/`BackedEnum` — declared as marker interfaces; full enum support is §1.12.
+**Out of scope (deferred):**
+- Nested ArrayAccess writes (`$obj['a']['b'] = 1`) — requires ref-semantic offsetGet return.
+- ArrayAccess `STORE_IDX_REF` (`$x =& $obj[$k]`) — runtime path is defended (throws "Cannot assign by reference to overloaded object") but the compiler rejects it earlier as "Reference operator require a variable not a constant", so the runtime guard is unreachable from valid PHP source.
+**Effort:** **M** (done).
+**Notes:**
+- `empty($obj[$k])` routes through `offsetExists` first, then `offsetGet` only when the key exists. New iP2=6 code added.
+- Subscripting a non-ArrayAccess object now throws a real `Error` (`Cannot use object of type X as array`) for read, write, isset, unset, and empty contexts — matches PHP. New `VmThrowFromVm` helper near `PH7_VmThrowException` factors the throw machinery (Error class lookup, instance construct, `VmThrowException`).
 
 ### 6.3 DateTime class family — PHP 5.2+
 **Status:** Missing. `new DateTime()` → "Class 'DateTime' is not defined".

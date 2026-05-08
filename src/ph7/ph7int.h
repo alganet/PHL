@@ -905,6 +905,17 @@ struct ph7_vm
 	ph7_exec_ctx *pActiveCtx;  /* Currently executing fiber/generator context (NULL in normal code) */
 	ph7_class *pFiberClass;    /* Cached Fiber class pointer for fast dispatch */
 	ph7_class *pGeneratorClass; /* Cached Generator class pointer */
+	ph7_class *pArrayAccessClass; /* Cached ArrayAccess interface pointer */
+	ph7_class *pCountableClass;   /* Cached Countable interface pointer */
+	ph7_class *pStringableClass;  /* Cached Stringable interface pointer */
+	/* Pending null-coalesce-assign target on an ArrayAccess subscript.
+	 * Set by LOAD_IDX iP2=3 when the key is missing on an ArrayAccess
+	 * object; consumed by NULLC_STORE so it can dispatch to offsetSet
+	 * instead of writing through the (synthetic) pNos->nIdx. NULLC_STORE
+	 * always clears it, matched or not. */
+	ph7_class_instance *pCoalesceObj;
+	ph7_value sCoalesceKey;
+	int bCoalesceArmed;
 #ifdef PH7_ENABLE_PCRE
 	int iPcreLastError;        /* preg_last_error() return value */
 #endif
