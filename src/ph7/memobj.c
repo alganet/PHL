@@ -1341,10 +1341,12 @@ PH7_PRIVATE const char * PH7_MemObjTypeDump(ph7_value *pVal)
 	const char *zType = "";
 	if( pVal->iFlags & MEMOBJ_NULL ){
 		zType = "null";
+	}else if( pVal->iFlags & MEMOBJ_REAL ){
+		/* REAL is authoritative over a cached MEMOBJ_INT: an integer-valued
+		 * real (e.g. 1.0) is reported as "double", matching PHP's gettype(). */
+		zType = "double";
 	}else if( pVal->iFlags & MEMOBJ_INT ){
 		zType = "int";
-	}else if( pVal->iFlags & MEMOBJ_REAL ){
-		zType = "double";
 	}else if( pVal->iFlags & MEMOBJ_STRING ){
 		zType = "string";
 	}else if( pVal->iFlags & MEMOBJ_BOOL ){
@@ -1381,8 +1383,13 @@ PH7_PRIVATE sxi32 PH7_MemObjDump(
 		if( isRef ){
 			SyBlobAppend(&(*pOut),"&",sizeof(char));
 		}
-		/* Get value type first */
-		zType = PH7_MemObjTypeDump(pObj);
+		/* Get value type first. var_dump() labels reals "float" (PHP), whereas
+		 * gettype()/PH7_MemObjTypeDump use the legacy "double" spelling. */
+		if( (pObj->iFlags & MEMOBJ_REAL) && (pObj->iFlags & MEMOBJ_NULL) == 0 ){
+			zType = "float";
+		}else{
+			zType = PH7_MemObjTypeDump(pObj);
+		}
 		SyBlobAppend(&(*pOut),zType,SyStrlen(zType));
 	}
 	if((pObj->iFlags & MEMOBJ_NULL) == 0 ){

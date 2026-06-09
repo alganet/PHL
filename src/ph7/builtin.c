@@ -63,7 +63,10 @@ static int PH7_builtin_is_int(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	int res = 0; /* Assume false by default */
 	if( nArg > 0 ){
-		res = ph7_value_is_int(apArg[0]);
+		/* Strict PHP identity: a float is never an int, even when it holds an
+		 * integer value (1.0). An integer-valued real carries both MEMOBJ_INT
+		 * (cached) and MEMOBJ_REAL, so REAL must be excluded here. */
+		res = ph7_value_is_int(apArg[0]) && !ph7_value_is_float(apArg[0]);
 	}
 	/* Query result */
 	ph7_result_bool(pCtx,res);

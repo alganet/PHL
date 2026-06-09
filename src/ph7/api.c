@@ -1966,6 +1966,11 @@ int ph7_value_release(ph7_value *pVal)
  */
 int ph7_value_is_int(ph7_value *pVal)
 {
+	/* TRUE whenever an integer representation is available, including an
+	 * integer-valued real (which caches its int in MEMOBJ_INT; see
+	 * PH7_MemObjTryInteger). Internal arg-extraction relies on this lenient form to
+	 * accept a float where PHP would coerce. PHP's strict is_int() — which must
+	 * reject floats — lives in the is_int() builtin (PH7_builtin_is_int). */
 	return (pVal->iFlags & MEMOBJ_INT) ? TRUE : FALSE;
 }
 /*
