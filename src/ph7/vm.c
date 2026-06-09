@@ -1046,6 +1046,26 @@ static int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_value 
 	"public function getPrevious();"\
 	"public function __toString();"\
 	"}"\
+	"interface Traversable {}"\
+	"interface ArrayAccess {"\
+	"public function offsetExists($offset);"\
+	"public function offsetGet($offset);"\
+	"public function offsetSet($offset, $value);"\
+	"public function offsetUnset($offset);"\
+	"}"\
+	"interface Countable {"\
+	"public function count();"\
+	"}"\
+	"interface Stringable {"\
+	"public function __toString();"\
+	"}"\
+	"interface UnitEnum {"\
+	"public static function cases();"\
+	"}"\
+	"interface BackedEnum extends UnitEnum {"\
+	"public static function from($value);"\
+	"public static function tryFrom($value);"\
+	"}"\
 	"class Exception implements Throwable { "\
     "protected $message = '';"\
     "protected $code = 0;"\
@@ -1161,14 +1181,14 @@ static int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_value 
 	"   return $this->severity;"\
     "}"\
 	"}"\
-	"interface Iterator {"\
+	"interface Iterator extends Traversable {"\
 	"public function current();"\
 	"public function key();"\
 	"public function next();"\
 	"public function rewind();"\
 	"public function valid();"\
 	"}"\
-	"interface IteratorAggregate {"\
+	"interface IteratorAggregate extends Traversable {"\
 	"public function getIterator();"\
 	"}"\
 	"interface Serializable {"\
@@ -1580,6 +1600,14 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	VmEvalChunk(&(*pVm),0,&sBuiltin,PH7_PHP_ONLY,FALSE);
 	/* Cache the Fiber class pointer for fast dispatch */
 	pVm->pFiberClass = PH7_VmExtractClass(pVm,"Fiber",5,0,0);
+	/* Cache built-in interface pointers used on hot dispatch paths */
+	pVm->pArrayAccessClass = PH7_VmExtractClass(pVm,"ArrayAccess",sizeof("ArrayAccess")-1,0,0);
+	pVm->pCountableClass   = PH7_VmExtractClass(pVm,"Countable",sizeof("Countable")-1,0,0);
+	pVm->pStringableClass  = PH7_VmExtractClass(pVm,"Stringable",sizeof("Stringable")-1,0,0);
+	/* Initialize null-coalesce-assign scratch slot */
+	pVm->pCoalesceObj = 0;
+	pVm->bCoalesceArmed = 0;
+	PH7_MemObjInit(pVm,&pVm->sCoalesceKey);
 	/* Register Fiber internal C functions */
 	ph7_create_function(pVm,"__fiber_suspend",vm_builtin_Fiber_suspend,0);
 	ph7_create_function(pVm,"__fiber_construct",vm_builtin_Fiber_construct,0);
@@ -3628,6 +3656,78 @@ static sxi32 VmReportUncaughtException(ph7_vm *pVm,const char *zClass,sxu32 nCla
 	return PH7_ABORT;
 }
 /*
+ * Disarm the null-coalesce-assign scratch slot armed by LOAD_IDX iP2=3.
+ *
+ * Arming holds a ref on the cached ArrayAccess instance so it survives the
+ * intervening RHS evaluation until NULLC_STORE consumes it. Anything that
+ * abandons that store path before NULLC_STORE runs — an exception thrown
+ * while evaluating the RHS, a re-arm for a different target — must disarm
+ * here, both to release the leaked instance ref/key and to stop a later
+ * unrelated NULLC_STORE from dispatching offsetSet() on the stale slot.
+ */
+static void VmCoalesceDisarm(ph7_vm *pVm)
+{
+	if( pVm->bCoalesceArmed ){
+		if( pVm->pCoalesceObj ){
+			PH7_ClassInstanceUnref(pVm->pCoalesceObj);
+		}
+		PH7_MemObjRelease(&pVm->sCoalesceKey);
+		pVm->pCoalesceObj = 0;
+		pVm->bCoalesceArmed = 0;
+	}
+}
+/*
+ * Throw a PHP-compatible exception of the named class from inside the VM
+ * bytecode dispatch loop (where no ph7_context is available). The message
+ * is a literal, non-formatted string; callers that need formatting should
+ * build the SyBlob themselves and pass its data + length.
+ *
+ * Returns SXERR_ABORT if the throw machinery itself fails, SXRET_OK on
+ * successful throw (the caller should typically `goto Abort` afterwards if
+ * the surrounding opcode cannot continue). Mirrors the inline pattern in
+ * PH7_OP_THROW (see "case PH7_OP_THROW").
+ */
+static sxi32 VmThrowFromVm(
+	ph7_vm *pVm,
+	const char *zClass,
+	const char *zMsg,
+	sxu32 nMsg
+){
+	ph7_class *pClass;
+	ph7_class_instance *pThis;
+	ph7_class_method *pCons;
+	VmFrame *pFrame;
+	sxi32 rc;
+	pClass = PH7_VmExtractClass(pVm,zClass,SyStrlen(zClass),TRUE,0);
+	if( pClass == 0 ){
+		return SXERR_ABORT;
+	}
+	pThis = PH7_NewClassInstance(pVm,pClass);
+	if( pThis == 0 ){
+		return SXERR_ABORT;
+	}
+	pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);
+	if( pCons ){
+		ph7_value sArg;
+		ph7_value *apArg[1];
+		SyString sMsgStr;
+		SyStringInitFromBuf(&sMsgStr,zMsg,nMsg);
+		PH7_MemObjInit(pVm,&sArg);
+		PH7_MemObjInitFromString(pVm,&sArg,&sMsgStr);
+		apArg[0] = &sArg;
+		PH7_VmCallClassMethod(pVm,pThis,pCons,0,1,apArg);
+		PH7_MemObjRelease(&sArg);
+	}
+	pFrame = pVm->pFrame;
+	if( pFrame ){
+		pFrame = VmSkipExceptionFrames(pFrame);
+		pFrame->iFlags |= VM_FRAME_THROW;
+	}
+	rc = VmThrowException(pVm,pThis);
+	PH7_ClassInstanceUnref(pThis);
+	return rc;
+}
+/*
  * Throw an internal exception instance that can be intercepted by try/catch.
  */
 PH7_PRIVATE sxi32 PH7_VmThrowException(ph7_context *pCtx,const char *zClass,const char *zFormat,...)
@@ -4704,7 +4804,168 @@ case PH7_OP_LOAD_IDX: {
 		}
 		break;
 	}
-	if( (pInstr->iP2 == 1 || pInstr->iP2 == 3) && (pTos->iFlags & MEMOBJ_HASHMAP) == 0 ){
+	if( pTos->iFlags & MEMOBJ_OBJ ){
+		/* Object subscript: ArrayAccess dispatch.
+		 * iP2 codes:
+		 *   0 = read       → offsetGet
+		 *   3 = ?? peek    → offsetExists; offsetGet on hit; arm coalesce
+		 *                    target on miss for the upcoming NULLC_STORE
+		 *   4 = isset()    → offsetExists
+		 *   5 = unset()    → offsetUnset
+		 *   6 = empty()    → offsetExists, then offsetGet on hit */
+		ph7_class_instance *pInst = (ph7_class_instance *)pTos->x.pOther;
+		ph7_class *pArrayAccess = pVm->pArrayAccessClass;
+		if( pArrayAccess && pInst && PH7_VmInstanceOf(pInst->pClass,pArrayAccess) ){
+			ph7_class_method *pMeth;
+			ph7_value sResult;
+			ph7_value *apArg[1];
+			if( (pInstr->iP2 == 0 || pInstr->iP2 == 3) && pIdx == 0 ){
+				/* `$obj[]` read — PHP rejects this. */
+				PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,
+					"Cannot use [] for reading");
+				PH7_MemObjRelease(pTos);
+				pTos->nIdx = SXU32_HIGH;
+				break;
+			}
+			PH7_MemObjInit(&(*pVm),&sResult);
+			if( pInstr->iP2 == 4 || pInstr->iP2 == 6 || pInstr->iP2 == 3 ){
+				/* isset, empty, and ??= all start with offsetExists. */
+				pMeth = PH7_ClassExtractMethod(pInst->pClass,
+					"offsetExists",sizeof("offsetExists")-1);
+				apArg[0] = pIdx;
+				if( pMeth ){
+					PH7_VmCallClassMethod(&(*pVm),pInst,pMeth,&sResult,pIdx ? 1 : 0,apArg);
+				}
+			}else if( pInstr->iP2 == 5 ){
+				pMeth = PH7_ClassExtractMethod(pInst->pClass,
+					"offsetUnset",sizeof("offsetUnset")-1);
+				apArg[0] = pIdx;
+				if( pMeth ){
+					PH7_VmCallClassMethod(&(*pVm),pInst,pMeth,&sResult,pIdx ? 1 : 0,apArg);
+				}
+			}else{
+				pMeth = PH7_ClassExtractMethod(pInst->pClass,
+					"offsetGet",sizeof("offsetGet")-1);
+				apArg[0] = pIdx;
+				if( pMeth ){
+					PH7_VmCallClassMethod(&(*pVm),pInst,pMeth,&sResult,pIdx ? 1 : 0,apArg);
+				}
+			}
+			if( pInstr->iP2 == 4 ){
+				/* isset: push MEMOBJ_BOOL so vm_builtin_isset reports the
+				 * right truth value AND skips its "Expecting a variable not
+				 * a constant" warning (keyed on MEMOBJ_BOOL). */
+				int bExists = ph7_value_to_bool(&sResult);
+				PH7_MemObjRelease(pTos);
+				pTos->nIdx = SXU32_HIGH;
+				if( bExists ){
+					MemObjSetType(pTos,MEMOBJ_BOOL);
+					pTos->x.iVal = 1;
+				}else{
+					MemObjSetType(pTos,MEMOBJ_NULL);
+				}
+			}else if( pInstr->iP2 == 5 ){
+				/* offsetUnset return is discarded; push NULL so the trailing
+				 * vm_builtin_unset is a harmless no-op. */
+				PH7_MemObjRelease(pTos);
+				pTos->nIdx = SXU32_HIGH;
+				MemObjSetType(pTos,MEMOBJ_NULL);
+			}else if( pInstr->iP2 == 6 ){
+				/* empty: if offsetExists is false, push NULL so empty=true
+				 * without calling offsetGet. If true, call offsetGet and
+				 * push the value so PH7_builtin_empty evaluates emptiness. */
+				int bExists = ph7_value_to_bool(&sResult);
+				PH7_MemObjRelease(&sResult);
+				PH7_MemObjRelease(pTos);
+				pTos->nIdx = SXU32_HIGH;
+				if( !bExists ){
+					MemObjSetType(pTos,MEMOBJ_NULL);
+				}else{
+					ph7_class_method *pGet = PH7_ClassExtractMethod(pInst->pClass,
+						"offsetGet",sizeof("offsetGet")-1);
+					ph7_value sValue;
+					PH7_MemObjInit(&(*pVm),&sValue);
+					apArg[0] = pIdx;
+					if( pGet ){
+						PH7_VmCallClassMethod(&(*pVm),pInst,pGet,&sValue,pIdx ? 1 : 0,apArg);
+					}
+					PH7_MemObjStore(&sValue,pTos);
+					PH7_MemObjRelease(&sValue);
+				}
+				if( pIdx ){ PH7_MemObjRelease(pIdx); }
+				break; /* skip the duplicate sResult release below */
+			}else if( pInstr->iP2 == 3 ){
+				/* ?? null-coalesce peek: emulate PHP semantics —
+				 *   if !offsetExists OR offsetGet() === null → arm
+				 *     coalesce slot (NULLC_STORE will call offsetSet)
+				 *     and push NULL.
+				 *   else → push offsetGet's value (NULLC_JMP skips). */
+				int bExists = ph7_value_to_bool(&sResult);
+				int bShouldArm = !bExists;
+				ph7_value sValue;
+				PH7_MemObjRelease(&sResult);
+				/* Reset any prior arming defensively */
+				VmCoalesceDisarm(pVm);
+				PH7_MemObjInit(&(*pVm),&sValue);
+				if( bExists ){
+					ph7_class_method *pGet = PH7_ClassExtractMethod(pInst->pClass,
+						"offsetGet",sizeof("offsetGet")-1);
+					apArg[0] = pIdx;
+					if( pGet ){
+						PH7_VmCallClassMethod(&(*pVm),pInst,pGet,&sValue,pIdx ? 1 : 0,apArg);
+					}
+					if( sValue.iFlags & MEMOBJ_NULL ){
+						bShouldArm = 1;
+					}
+				}
+				PH7_MemObjRelease(pTos);
+				pTos->nIdx = SXU32_HIGH;
+				if( bShouldArm ){
+					/* Arm: remember (object, key) so NULLC_STORE dispatches
+					 * to offsetSet. Hold a ref on the instance to survive
+					 * intervening expression evaluation. */
+					MemObjSetType(pTos,MEMOBJ_NULL);
+					if( pIdx ){
+						PH7_MemObjStore(pIdx,&pVm->sCoalesceKey);
+					}
+					pVm->pCoalesceObj = pInst;
+					pInst->iRef++;
+					pVm->bCoalesceArmed = 1;
+				}else{
+					PH7_MemObjStore(&sValue,pTos);
+				}
+				PH7_MemObjRelease(&sValue);
+				if( pIdx ){ PH7_MemObjRelease(pIdx); }
+				break;
+			}else{
+				/* offsetGet: replace pTos with the returned value. */
+				PH7_MemObjRelease(pTos);
+				PH7_MemObjStore(&sResult,pTos);
+				pTos->nIdx = SXU32_HIGH;
+			}
+			PH7_MemObjRelease(&sResult);
+			if( pIdx ){
+				PH7_MemObjRelease(pIdx);
+			}
+			break;
+		}
+		/* Object without ArrayAccess: PHP throws fatal Error in all subscript
+		 * contexts (read, isset, unset, empty). Match it. */
+		if( pInst ){
+			char zMsg[256];
+			SyString *pName = &pInst->pClass->sName;
+			sxu32 nMsg = SyBufferFormat(zMsg,sizeof(zMsg),
+				"Cannot use object of type %.*s as array",
+				(int)pName->nByte,pName->zString);
+			rc = VmThrowFromVm(pVm,"Error",zMsg,nMsg);
+			if( pIdx ){ PH7_MemObjRelease(pIdx); }
+			PH7_MemObjRelease(pTos);
+			pTos->nIdx = SXU32_HIGH;
+			if( rc == SXERR_ABORT ){ goto Abort; }
+			break;
+		}
+	}
+	if( (pInstr->iP2 == 1 || pInstr->iP2 == 3 || pInstr->iP2 == 5) && (pTos->iFlags & MEMOBJ_HASHMAP) == 0 ){
 		if( pTos->nIdx != SXU32_HIGH ){
 			ph7_value *pObj;
 			if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
@@ -4715,11 +4976,13 @@ case PH7_OP_LOAD_IDX: {
 	}
 	rc = SXERR_NOTFOUND; /* Assume the index is invalid */
 	if( pTos->iFlags & MEMOBJ_HASHMAP ){
-		if( pInstr->iP2 == 1 ){
+		if( pInstr->iP2 == 1 || pInstr->iP2 == 5 ){
 			/* Write-context access (iP2 = create-if-missing).  COW-separate
 			 * the parent so nested writes like $b[0][0] = 99 don't leak
 			 * through shared outer arrays.  Read-only loads (iP2 == 0) must
-			 * NOT separate — that would defeat COW on every element read. */
+			 * NOT separate — that would defeat COW on every element read.
+			 * iP2=5 is unset-context, treated like iP2=1 for arrays so the
+			 * trailing unset() builtin can drop the slot via pTos->nIdx. */
 			PH7_HashmapCowSeparate(&(*pVm),pTos);
 		}
 		/* Point to the hashmap */
@@ -4756,7 +5019,7 @@ case PH7_OP_LOAD_IDX: {
 				}
 			}
 		}
-		if( rc != SXRET_OK && (pInstr->iP2 == 1 || pInstr->iP2 == 3) ){
+		if( rc != SXRET_OK && (pInstr->iP2 == 1 || pInstr->iP2 == 3 || pInstr->iP2 == 5) ){
 			/* Create a new empty entry */
 			rc = PH7_HashmapInsert(pMap,pIdx,0);
 			if( rc == SXRET_OK ){
@@ -4971,6 +5234,73 @@ case PH7_OP_STORE_IDX_REF: {
 		pKey = 0;
 	}
 	nIdx = pTos->nIdx;
+	{
+		/* ArrayAccess::offsetSet dispatch.
+		 * Container may be on the stack as MEMOBJ_OBJ, or referenced via
+		 * the backing variable slot at nIdx. */
+		ph7_class_instance *pInst = 0;
+		if( pTos->iFlags & MEMOBJ_OBJ ){
+			pInst = (ph7_class_instance *)pTos->x.pOther;
+		}else if( nIdx != SXU32_HIGH ){
+			ph7_value *pBacking = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
+			if( pBacking && (pBacking->iFlags & MEMOBJ_OBJ) ){
+				pInst = (ph7_class_instance *)pBacking->x.pOther;
+			}
+		}
+		if( pInst ){
+			ph7_class *pArrayAccess = pVm->pArrayAccessClass;
+			if( pArrayAccess && PH7_VmInstanceOf(pInst->pClass,pArrayAccess) ){
+				ph7_class_method *pMeth;
+				ph7_value sNullKey;
+				ph7_value *apArg[2];
+				if( pInstr->iOp == PH7_OP_STORE_IDX_REF ){
+					PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
+						"Cannot assign by reference to overloaded object");
+					if( pKey ){ PH7_MemObjRelease(pKey); }
+					VmPopOperand(&pTos,2); /* container + value */
+					break;
+				}
+				pMeth = PH7_ClassExtractMethod(pInst->pClass,
+					"offsetSet",sizeof("offsetSet")-1);
+				/* Pop container; pTos now points to the value */
+				VmPopOperand(&pTos,1);
+				if( pKey == 0 ){
+					PH7_MemObjInit(&(*pVm),&sNullKey);
+					apArg[0] = &sNullKey;
+				}else{
+					apArg[0] = pKey;
+				}
+				apArg[1] = pTos;
+				if( pMeth ){
+					PH7_VmCallClassMethod(&(*pVm),pInst,pMeth,0,2,apArg);
+				}
+				if( pKey ){
+					PH7_MemObjRelease(pKey);
+				}else{
+					PH7_MemObjRelease(&sNullKey);
+				}
+				/* Pop the value */
+				VmPopOperand(&pTos,1);
+				break;
+			}
+			/* Object without ArrayAccess: PHP throws a fatal Error rather
+			 * than silently coercing the object into a hashmap (which is
+			 * what the legacy PH7 fall-through would do via MemObjToHashmap
+			 * a few lines below). Match PHP. */
+			{
+				char zMsg[256];
+				SyString *pName = &pInst->pClass->sName;
+				sxu32 nMsg = SyBufferFormat(zMsg,sizeof(zMsg),
+					"Cannot use object of type %.*s as array",
+					(int)pName->nByte,pName->zString);
+				rc = VmThrowFromVm(pVm,"Error",zMsg,nMsg);
+				if( pKey ){ PH7_MemObjRelease(pKey); }
+				VmPopOperand(&pTos,2); /* container + value */
+				if( rc == SXERR_ABORT ){ goto Abort; }
+				break;
+			}
+		}
+	}
 	if( pTos->iFlags & MEMOBJ_HASHMAP ){
 		/* Hashmap already loaded on stack — COW separate the backing variable.
 		 * The stack holds a temporary ref (from LOAD), so undo it before
@@ -6182,6 +6512,26 @@ case PH7_OP_NULLC_STORE: {
 		goto Abort;
 	}
 #endif
+	/* ArrayAccess null-coalesce-assign target: the preceding LOAD_IDX iP2=3
+	 * armed pVm with the (object, key) on a missing key. Dispatch to
+	 * offsetSet instead of writing through the synthetic pNos->nIdx. */
+	if( pVm->bCoalesceArmed && pVm->pCoalesceObj ){
+		ph7_class_instance *pInst = pVm->pCoalesceObj;
+		ph7_class_method *pSet = PH7_ClassExtractMethod(pInst->pClass,
+			"offsetSet",sizeof("offsetSet")-1);
+		ph7_value *apArg[2];
+		apArg[0] = &pVm->sCoalesceKey;
+		apArg[1] = pTos;
+		if( pSet ){
+			PH7_VmCallClassMethod(&(*pVm),pInst,pSet,0,2,apArg);
+		}
+		/* Leave RHS as the expression result (replace pNos with pTos). */
+		PH7_MemObjStore(pTos,pNos);
+		VmPopOperand(&pTos,1);
+		/* Disarm and release the cached instance ref + key. */
+		VmCoalesceDisarm(pVm);
+		break;
+	}
 	nIdx = pNos->nIdx;
 	if( nIdx == SXU32_HIGH ){
 		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
@@ -11948,7 +12298,10 @@ static int vm_builtin_isset(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	for( i = 0 ; i < nArg ; ++i ){
 		pObj = apArg[i];
 		if( pObj->nIdx == SXU32_HIGH ){
-			if( (pObj->iFlags & MEMOBJ_NULL) == 0 ){
+			/* Skip the "expecting a variable" warning for MEMOBJ_BOOL —
+			 * synthesized by LOAD_IDX iP2=4 (ArrayAccess::offsetExists) and
+			 * by anyone passing a bool literal (rare, harmless). */
+			if( (pObj->iFlags & (MEMOBJ_NULL|MEMOBJ_BOOL)) == 0 ){
 				/* Not so fatal,Throw a warning */
 				ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting a variable not a constant");
 			}
@@ -13014,6 +13367,10 @@ static sxi32 VmThrowException(
 	ph7_exception_block *pCatch; /* Catch block to execute */
 	ph7_exception **apException;
 	ph7_exception *pException;
+	/* An in-flight throw abandons any pending null-coalesce-assign store:
+	 * disarm so the RHS-evaluation throw can't leave the slot live for a
+	 * later unrelated NULLC_STORE (stale offsetSet) or leak the instance ref. */
+	VmCoalesceDisarm(pVm);
 	/* Point to the stack of loaded exceptions */
 	apException = (ph7_exception **)SySetBasePtr(&pVm->aException);
 	pException = 0;

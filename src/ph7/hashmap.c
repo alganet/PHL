@@ -2650,13 +2650,9 @@ static int ph7_hashmap_count(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			nArg
 			);
 	}
-	if( !ph7_value_is_array(apArg[0]) ){
-		return PH7_VmThrowException(pCtx,
-			"TypeError",
-			"count(): Argument #1 ($value) must be of type Countable|array, %s given",
-			ph7_type_name(apArg[0])
-			);
-	}
+	/* PHP validates $mode right after parsing, before the type dispatch, so
+	 * an invalid mode raises ValueError whether $value is an array or a
+	 * Countable object (the mode is then ignored for the Countable path). */
 	if( nArg > 1 ){
 		sxi32 iMode = ph7_value_to_int(apArg[1]);
 		if( iMode != 0 /* COUNT_NORMAL */ && iMode != 1 /* COUNT_RECURSIVE */ ){
@@ -2666,6 +2662,30 @@ static int ph7_hashmap_count(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				);
 		}
 		bRecursive = iMode == 1;
+	}
+	if( !ph7_value_is_array(apArg[0]) ){
+		/* Countable object: dispatch to ->count() */
+		if( apArg[0]->iFlags & MEMOBJ_OBJ ){
+			ph7_class_instance *pInst = (ph7_class_instance *)apArg[0]->x.pOther;
+			ph7_class *pCountable = pCtx->pVm->pCountableClass;
+			if( pCountable && PH7_VmInstanceOf(pInst->pClass,pCountable) ){
+				ph7_class_method *pMeth = PH7_ClassExtractMethod(pInst->pClass,
+					"count",sizeof("count")-1);
+				if( pMeth ){
+					ph7_value sResult;
+					PH7_MemObjInit(pCtx->pVm,&sResult);
+					PH7_VmCallClassMethod(pCtx->pVm,pInst,pMeth,&sResult,0,0);
+					ph7_result_int64(pCtx,ph7_value_to_int64(&sResult));
+					PH7_MemObjRelease(&sResult);
+					return PH7_OK;
+				}
+			}
+		}
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"count(): Argument #1 ($value) must be of type Countable|array, %s given",
+			ph7_type_name(apArg[0])
+			);
 	}
 	/* Count */
 	iCount = HashmapCount((ph7_hashmap *)apArg[0]->x.pOther,bRecursive,&bCycleDetected);

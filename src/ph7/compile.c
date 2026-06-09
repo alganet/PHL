@@ -91,6 +91,9 @@ struct LangConstruct
 #define EXPR_FLAG_LOAD_IDX_STORE    0x001 /* Set the iP2 flag when dealing with the LOAD_IDX instruction */
 #define EXPR_FLAG_RDONLY_LOAD       0x002 /* Read-only load, refer to the 'PH7_OP_LOAD' VM instruction for more information */
 #define EXPR_FLAG_COMMA_STATEMENT   0x004 /* Treat comma expression as a single statement (used by class attributes) */
+#define EXPR_FLAG_LOAD_IDX_ISSET    0x008 /* LOAD_IDX argument is the LHS of isset() — emit iP2=4 (offsetExists) */
+#define EXPR_FLAG_LOAD_IDX_UNSET    0x010 /* LOAD_IDX argument is the LHS of unset() — emit iP2=5 (offsetUnset) */
+#define EXPR_FLAG_LOAD_IDX_EMPTY    0x020 /* LOAD_IDX argument is the LHS of empty() — emit iP2=6 (offsetExists+offsetGet) */
 /* Forward declaration */
 static sxi32 PH7_CompileExpr(ph7_gen_state *pGen,sxi32 iFlags,sxi32 (*xTreeValidator)(ph7_gen_state *,ph7_expr_node *));
 /*
@@ -8721,6 +8724,29 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 				break;
 			}
 		}
+		/* Auto-implement Stringable when class declares __toString (PHP 8.0+).
+		 * Skip interfaces/traits and classes that already implement it explicitly. */
+		if( rc == SXRET_OK
+		 && (pClass->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_TRAIT)) == 0
+		 && SyHashGet(&pClass->hMethod,"__toString",sizeof("__toString")-1) != 0 ){
+			ph7_class *pStringable = PH7_VmExtractClass(pGen->pVm,
+				"Stringable",sizeof("Stringable")-1,FALSE,0);
+			if( pStringable ){
+				ph7_class **apImpl = (ph7_class **)SySetBasePtr(&pClass->aInterface);
+				sxu32 nImpl = SySetUsed(&pClass->aInterface);
+				sxu32 i;
+				int bAlready = 0;
+				for( i = 0 ; i < nImpl ; i++ ){
+					if( apImpl[i] == pStringable ){
+						bAlready = 1;
+						break;
+					}
+				}
+				if( !bAlready ){
+					PH7_ClassImplement(pClass,pStringable);
+				}
+			}
+		}
 		/* Validate interface method signatures (visibility and parameter count) */
 		if( rc == SXRET_OK ){
 			sxi32 rcCheck = GenStateCheckInterfaceSignatures(&(*pGen),pClass);
@@ -10039,6 +10065,20 @@ static sxi32 GenStateEmitExprCode(
 			}
 			/* Read-only load */
 			iFlags |= EXPR_FLAG_RDONLY_LOAD;
+			/* Route subscript-argument LOAD_IDX through a special iP2 code
+			 * for the language constructs `isset` and `empty` so ArrayAccess
+			 * objects dispatch to the right method (offsetExists for both;
+			 * empty also needs offsetGet to evaluate emptiness on hits). */
+			if( pNode->pLeft && pNode->pLeft->pStart ){
+				SyString *pCallName = &pNode->pLeft->pStart->sData;
+				if( pCallName->nByte == 5
+				 && SyStrnicmp(pCallName->zString,"isset",5) == 0 ){
+					iFlags |= EXPR_FLAG_LOAD_IDX_ISSET;
+				}else if( pCallName->nByte == 5
+				 && SyStrnicmp(pCallName->zString,"empty",5) == 0 ){
+					iFlags |= EXPR_FLAG_LOAD_IDX_EMPTY;
+				}
+			}
 			for( n = 0 ; n < nArgs ; ++n ){
 				sxu32 nArgNsBase = SySetUsed(&pGen->aNullsafeJmp);
 				rc = GenStateEmitExprCode(&(*pGen),apNode[n],iFlags&~EXPR_FLAG_LOAD_IDX_STORE);
@@ -10152,11 +10192,14 @@ static sxi32 GenStateEmitExprCode(
 		}else if( iVmOp == PH7_OP_LOAD_IDX ){
 			ph7_expr_node **apNode;
 			sxi32 n;
+			sxi32 iChildMask = ~(EXPR_FLAG_LOAD_IDX_STORE
+				|EXPR_FLAG_LOAD_IDX_ISSET|EXPR_FLAG_LOAD_IDX_UNSET
+				|EXPR_FLAG_LOAD_IDX_EMPTY);
 			/* Recurse and generate bytecodes for array index */
 			apNode = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);
 			for( n = 0 ; n < (sxi32)SySetUsed(&pNode->aNodeArgs) ; ++n ){
 				sxu32 nIdxNsBase = SySetUsed(&pGen->aNullsafeJmp);
-				rc = GenStateEmitExprCode(&(*pGen),apNode[n],iFlags&~EXPR_FLAG_LOAD_IDX_STORE);
+				rc = GenStateEmitExprCode(&(*pGen),apNode[n],iFlags&iChildMask);
 				if( rc != SXRET_OK ){
 					return rc;
 				}
@@ -10166,7 +10209,19 @@ static sxi32 GenStateEmitExprCode(
 			if( SySetUsed(&pNode->aNodeArgs) > 0 ){
 				iP1 = 1; /* Node have an index associated with it */
 			}
-			if( iFlags & EXPR_FLAG_LOAD_IDX_STORE ){
+			if( iFlags & EXPR_FLAG_LOAD_IDX_ISSET ){
+				/* offsetExists for ArrayAccess; peek-only for arrays */
+				iP2 = 4;
+			}else if( iFlags & EXPR_FLAG_LOAD_IDX_UNSET ){
+				/* offsetUnset for ArrayAccess; auto-vivify+load for arrays
+				 * so the trailing unset() builtin can drop the slot. */
+				iP2 = 5;
+			}else if( iFlags & EXPR_FLAG_LOAD_IDX_EMPTY ){
+				/* offsetExists+offsetGet for ArrayAccess so empty() can
+				 * short-circuit on missing keys without invoking offsetGet
+				 * unnecessarily; peek-only for arrays (same as iP2=0). */
+				iP2 = 6;
+			}else if( iFlags & EXPR_FLAG_LOAD_IDX_STORE ){
 				/* Create an empty entry when the desired index is not found */
 				iP2 = 1;
 			}
@@ -10574,7 +10629,7 @@ static sxi32 PH7_CompileUnset(ph7_gen_state *pGen)
 		if( pGen->pIn < pNext ){
 			pGen->pEnd = pNext;
 			rc = PH7_CompileExpr(&(*pGen),
-				EXPR_FLAG_RDONLY_LOAD|EXPR_FLAG_LOAD_IDX_STORE,
+				EXPR_FLAG_RDONLY_LOAD|EXPR_FLAG_LOAD_IDX_UNSET,
 				GenStateUnsetValidator);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
