@@ -5448,6 +5448,11 @@ case PH7_OP_INCR:
 					PH7_MemObjToNumeric(pObj);
 					if( pObj->iFlags & MEMOBJ_REAL ){
 						pObj->rVal++;
+						/* Refresh the cached integer (x.iVal/MEMOBJ_INT) so it
+						 * stays consistent with the new rVal; otherwise (int)$a,
+						 * ===, intdiv() etc. read a stale int for an
+						 * integer-valued real. */
+						PH7_MemObjTryInteger(pObj);
 					}else{
 						pObj->x.iVal++;
 					}
@@ -5493,37 +5498,62 @@ case PH7_OP_DECR:
 		goto Abort;
 	}
 #endif
+	/* NULL stays excluded: PHP leaves `--` on null untouched (no-op). */
 	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_NULL)) == 0 ){
-		/* Force a numeric cast */
-		PH7_MemObjToNumeric(pTos);
 		if( pTos->nIdx != SXU32_HIGH ){
 			ph7_value *pObj;
 			if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
-				/* Force a numeric cast */
-				PH7_MemObjToNumeric(pObj);
-				if( pObj->iFlags & MEMOBJ_REAL ){
-					pObj->rVal--;
-					/* Try to get an integer representation */
-					PH7_MemObjTryInteger(pTos);
+				if( VmStringWantsPerlIncr(pObj) ){
+					/* PHP has no string decrement: `--` on a non-numeric string
+					 * is a no-op (unlike `++`, which is Perl-style). Leave pObj
+					 * unchanged; the result is simply that unchanged value. */
+					if( pInstr->iP1 ){
+						/* Pre-decrement: result is the (unchanged) value. */
+						PH7_MemObjStore(pObj,pTos);
+					}
+					/* Post-decrement: pTos already holds the old value. */
 				}else{
-					pObj->x.iVal--;
-					MemObjSetType(pTos,MEMOBJ_INT);
-				}
-				if( pInstr->iP1 ){
-					/* Pre-icrement */
-					PH7_MemObjStore(pObj,pTos);
+					/* Numeric coercion. Mirror INCR's aliasing care: a
+					 * post-decrement must preserve pTos's original value, which
+					 * may alias pObj's blob via SXBLOB_RDONLY (PH7_MemObjLoad).
+					 * Force pTos to own its blob before coercing pObj. */
+					if( pInstr->iP1 == 0 && (pTos->iFlags & MEMOBJ_STRING) ){
+						SyBlobNullAppend(&pTos->sBlob);
+					}
+					PH7_MemObjToNumeric(pObj);
+					if( pObj->iFlags & MEMOBJ_REAL ){
+						pObj->rVal--;
+						/* Refresh the cached integer (x.iVal/MEMOBJ_INT) so it
+						 * stays consistent with the new rVal; otherwise (int)$a,
+						 * ===, intdiv() etc. read a stale int for an
+						 * integer-valued real. */
+						PH7_MemObjTryInteger(pObj);
+					}else{
+						pObj->x.iVal--;
+					}
+					if( pInstr->iP1 ){
+						/* Pre-decrement: result is the new value. */
+						PH7_MemObjStore(pObj,pTos);
+					}
+					/* Post-decrement: pTos retains the old value. */
 				}
 			}
 		}else{
 			if( pInstr->iP1 ){
-				/* Pre-increment */
-				if( pTos->iFlags & MEMOBJ_REAL ){
-					pTos->rVal--;
-					/* Try to get an integer representation */
-					PH7_MemObjTryInteger(pTos);
+				if( VmStringWantsPerlIncr(pTos) ){
+					/* Non-numeric string, no lvalue: no-op (value unchanged). */
 				}else{
-					pTos->x.iVal--;
-					MemObjSetType(pTos,MEMOBJ_INT);
+					/* Force a numeric cast */
+					PH7_MemObjToNumeric(pTos);
+					/* Pre-decrement */
+					if( pTos->iFlags & MEMOBJ_REAL ){
+						pTos->rVal--;
+						/* Keep the cached int consistent with the new rVal. */
+						PH7_MemObjTryInteger(pTos);
+					}else{
+						pTos->x.iVal--;
+						MemObjSetType(pTos,MEMOBJ_INT);
+					}
 				}
 			}
 		}
