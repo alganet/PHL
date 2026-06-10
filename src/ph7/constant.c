@@ -15,6 +15,41 @@ static void PH7_VER_Const(ph7_value *pVal,void *pUnused)
 	SXUNUSED(pUnused);
 	ph7_value_string(pVal,ph7_lib_signature(),-1/*Compute length automatically*/);
 }
+/*
+ * PHP_VERSION, PHP_MAJOR_VERSION, PHP_MINOR_VERSION, PHP_RELEASE_VERSION,
+ * PHP_EXTRA_VERSION, PHP_VERSION_ID
+ *   Expand the PHP-compatibility version PHL advertises (see PHP_COMPAT_* in ph7.h).
+ */
+static void PH7_PHPVerConst(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_string(pVal,PHP_COMPAT_VERSION,(int)sizeof(PHP_COMPAT_VERSION)-1);
+}
+static void PH7_PHPMajorConst(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int64(pVal,PHP_COMPAT_MAJOR_VERSION);
+}
+static void PH7_PHPMinorConst(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int64(pVal,PHP_COMPAT_MINOR_VERSION);
+}
+static void PH7_PHPReleaseConst(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int64(pVal,PHP_COMPAT_RELEASE_VERSION);
+}
+static void PH7_PHPExtraConst(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_string(pVal,PHP_COMPAT_EXTRA_VERSION,(int)sizeof(PHP_COMPAT_EXTRA_VERSION)-1);
+}
+static void PH7_PHPVerIdConst(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int64(pVal,PHP_COMPAT_VERSION_ID);
+}
 #ifdef __WINNT__
 #include <Windows.h>
 #elif defined(__UNIXES__)
@@ -1885,6 +1920,12 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"PH7_VERSION",          PH7_VER_Const      },
 	{"PH7_ENGINE",           PH7_VER_Const      },
 	{"__PH7__",              PH7_VER_Const      },
+	{"PHP_VERSION",          PH7_PHPVerConst    },
+	{"PHP_MAJOR_VERSION",    PH7_PHPMajorConst  },
+	{"PHP_MINOR_VERSION",    PH7_PHPMinorConst  },
+	{"PHP_RELEASE_VERSION",  PH7_PHPReleaseConst},
+	{"PHP_EXTRA_VERSION",    PH7_PHPExtraConst  },
+	{"PHP_VERSION_ID",       PH7_PHPVerIdConst  },
 	{"PHP_OS",               PH7_OS_Const       },
 	{"PHP_EOL",              PH7_EOL_Const      },
 	{"PHP_INT_MAX",          PH7_INTMAX_Const   },

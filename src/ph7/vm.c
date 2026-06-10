@@ -13683,6 +13683,41 @@ static int vm_builtin_ph7_version(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
+ * string phpversion([ string $extension ])
+ *  Returns the PHP-compatibility version PHL advertises (see PHP_COMPAT_VERSION).
+ * Parameters
+ *  $extension (optional): an extension name. PHL has no extension registry, so any
+ *  argument yields NULL (PHP returns FALSE for an unknown extension).
+ * Return
+ *  The PHP-compat version string, or NULL when called with an extension argument.
+ */
+static int vm_builtin_phpversion(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(apArg); /* cc warning */
+	if( nArg > 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	ph7_result_string(pCtx,PHP_COMPAT_VERSION,(int)sizeof(PHP_COMPAT_VERSION) - 1);
+	return PH7_OK;
+}
+/*
+ * string php_sapi_name(void)
+ *  Returns the type of interface (SAPI) PHL is running under.
+ * Parameters
+ *  None
+ * Return
+ *  "cli-server" while serving an HTTP request via the built-in -S server, "cli" otherwise.
+ */
+static int vm_builtin_php_sapi_name(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zSapi = pCtx->pVm->bHttpContext ? "cli-server" : "cli";
+	SXUNUSED(nArg);
+	SXUNUSED(apArg); /* cc warning */
+	ph7_result_string(pCtx,zSapi,-1);
+	return PH7_OK;
+}
+/*
  * PH7 release information HTML page used by the ph7info() and ph7credits() functions.
  */
  #define PH7_HTML_PAGE_HEADER "<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\">"\
@@ -15329,6 +15364,8 @@ static const ph7_builtin_func aVmFunc[] = {
 	{ "debug_string_backtrace",vm_builtin_debug_string_backtrace },
 	  /* Release info */
 	{"ph7version",       vm_builtin_ph7_version  },
+	{"phpversion",       vm_builtin_phpversion    },
+	{"php_sapi_name",    vm_builtin_php_sapi_name },
 	{"ph7credits",       vm_builtin_ph7_credits  },
 	{"ph7info",          vm_builtin_ph7_credits  },
 	{"ph7_info",         vm_builtin_ph7_credits  },
