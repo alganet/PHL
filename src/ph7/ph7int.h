@@ -909,6 +909,10 @@ struct ph7_vm
 								* array_uintersect families) can abort and propagate
 								* PH7_EXCEPTION. */
 	sxi32 iExitStatus;         /* Script exit status */
+	sxu8 bHaltRequested;       /* Set by exit/die (OP_HALT or the builtin) so the halt
+								* cascades out of nested execution units (include/require/
+								* eval chunks) instead of hard-exiting the process; the
+								* top-level executor then runs shutdown callbacks normally. */
 	ph7_gen_state sCodeGen;    /* Code generator module */
 	ph7_exec_ctx *pActiveCtx;  /* Currently executing fiber/generator context (NULL in normal code) */
 	ph7_class *pFiberClass;    /* Cached Fiber class pointer for fast dispatch */

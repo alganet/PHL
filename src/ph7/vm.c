@@ -4130,11 +4130,11 @@ case PH7_OP_HALT:
 		/* Nothing referenced */
 		*pLastRef = SXU32_HIGH;
 	}
-	/* Check if we're in an included file context */
-	if( SySetUsed(&pVm->aFiles) > 0 ){
-		/* Terminate the entire process */
-		exit(pVm->iExitStatus);
-	}
+	/* Request a VM-wide halt so the abort cascades out of any enclosing
+	 * include/require/eval execution unit; shutdown callbacks then run
+	 * at the top level (PHP semantics) instead of hard-exiting here.
+	 */
+	pVm->bHaltRequested = 1;
 	goto Abort;
 /*
  * JMP: * P2 *
@@ -9616,6 +9616,11 @@ static void VmInvokeShutdownCallbacks(ph7_vm *pVm)
 	for( i = 0 ; i < (int)SX_ARRAYSIZE(apArg) ; i++ ){
 		apArg[i] = 0;
 	}
+	/* A halt that led us here is consumed; a fresh one set by a callback
+	 * (i.e. exit() inside a shutdown function) skips the remaining
+	 * callbacks, mirroring PHP.
+	 */
+	pVm->bHaltRequested = 0;
 	for( n = 0 ; n < nEntry ; ++n ){
 		pEntry = (VmShutdownCB *)SySetAt(&pVm->aShutdown,n);
 		if( pEntry ){
@@ -9638,6 +9643,10 @@ static void VmInvokeShutdownCallbacks(ph7_vm *pVm)
 				for( i = 0 ; i < pEntry->nArg ; ++i ){
 					PH7_MemObjRelease(apArg[i]);
 				}
+			}
+			if( pVm->bHaltRequested ){
+				/* exit() inside the callback: skip the remaining callbacks */
+				break;
 			}
 		}
 	}
@@ -12380,12 +12389,10 @@ static int vm_builtin_exit(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			pCtx->pVm->iExitStatus = iExitStatus;
 		}
 	}
-	/* Check if we are in an included file */
-	if( SySetUsed(&pCtx->pVm->aFiles) > 0 ){
-		/* Exit the entire process */
-		exit(pCtx->pVm->iExitStatus);
-	}
-	/* Abort processing immediately */
+	/* Request a VM-wide halt (see PH7_OP_HALT) and abort processing
+	 * immediately; the abort unwinds enclosing frames and execution units.
+	 */
+	pCtx->pVm->bHaltRequested = 1;
 	return PH7_ABORT;
 }
 /*
@@ -14560,6 +14567,10 @@ static int vm_builtin_eval(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Eval the chunk */
 	VmEvalChunk(pCtx->pVm,&(*pCtx),&sChunk,PH7_PHP_ONLY,FALSE);
+	if( pCtx->pVm->bHaltRequested ){
+		/* exit/die inside the evaluated chunk: cascade the halt */
+		return PH7_ABORT;
+	}
 	return SXRET_OK;
 }
 /*
@@ -14840,6 +14851,10 @@ static int vm_builtin_include(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"IO error while importing: '%z'",&sFile);
 		ph7_result_bool(pCtx,0);
 	}
+	if( pCtx->pVm->bHaltRequested ){
+		/* exit/die inside the included file: cascade the halt */
+		return PH7_ABORT;
+	}
 	return SXRET_OK;
 }
 /*
@@ -14879,6 +14894,10 @@ static int vm_builtin_include_once(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"IO error while importing: '%z'",&sFile);
 		ph7_result_bool(pCtx,0);
  	}
+	if( pCtx->pVm->bHaltRequested ){
+		/* exit/die inside the included file: cascade the halt */
+		return PH7_ABORT;
+	}
 	return SXRET_OK;
 }
 /*
@@ -14911,6 +14930,10 @@ static int vm_builtin_require(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Fatal,abort VM execution immediately */
 		ph7_context_throw_error_format(pCtx,PH7_CTX_ERR,"Fatal IO error while importing: '%z'",&sFile);
 		ph7_result_bool(pCtx,0);
+		return PH7_ABORT;
+	}
+	if( pCtx->pVm->bHaltRequested ){
+		/* exit/die inside the included file: cascade the halt */
 		return PH7_ABORT;
 	}
 	return SXRET_OK;
@@ -14950,6 +14973,10 @@ static int vm_builtin_require_once(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Fatal,abort VM execution immediately */
 		ph7_context_throw_error_format(pCtx,PH7_CTX_ERR,"Fatal IO error while importing: '%z'",&sFile);
 		ph7_result_bool(pCtx,0);
+		return PH7_ABORT;
+	}
+	if( pCtx->pVm->bHaltRequested ){
+		/* exit/die inside the included file: cascade the halt */
 		return PH7_ABORT;
 	}
 	return SXRET_OK;
