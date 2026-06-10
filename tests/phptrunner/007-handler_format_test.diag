@@ -1,0 +1,13 @@
+--CREDITS--
+SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
+SPDX-License-Identifier: BSD-3-Clause
+--TEST--
+Wrapper mode normalizes error output across engines
+--FILE--
+<?php
+trigger_error("diag message", E_USER_WARNING);
+echo "after_error\n";
+?>
+--EXPECTF--
+Error [%d]: diag message in %s on line %d
+after_error

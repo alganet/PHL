@@ -6,3 +6,13 @@ composer.json
 composer.lock
 php
 .tmp
+*.phpt.file
+*.phpt.skipif
+*.phpt.clean
+*.phpt.output
+*.phpt.expect
+*.diag.file
+*.diag.skipif
+*.diag.clean
+*.diag.output
+*.diag.expect

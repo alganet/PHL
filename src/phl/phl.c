@@ -84,6 +84,7 @@ static void Version(void)
 #else
 /* Assume UNIX */
 #include <unistd.h>
+#include <limits.h>
 #endif
 /*
  * The following define is used by the UNIX built and have
@@ -92,6 +93,37 @@ static void Version(void)
 #ifndef STDOUT_FILENO
 #define STDOUT_FILENO	1
 #endif
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
+static char zPhlBinaryPath[PATH_MAX];
+/*
+ * Expand callback for the PHP_BINARY constant.
+ * pUserData points to the resolved binary path.
+ */
+static void PHL_PhpBinaryConst(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_string(pVal,(const char *)pUserData,-1);
+}
+/*
+ * Resolve the absolute path of the running interpreter.
+ * Falls back to argv[0] verbatim (e.g. bare PATH invocation):
+ * consumers spawning it again go through the shell, which re-resolves it.
+ */
+static const char * PHL_ResolveBinaryPath(const char *zArgv0)
+{
+#ifdef __WINNT__
+	DWORD nLen = GetModuleFileNameA(0,zPhlBinaryPath,(DWORD)sizeof(zPhlBinaryPath));
+	if( nLen > 0 && nLen < sizeof(zPhlBinaryPath) ){
+		return zPhlBinaryPath;
+	}
+#else
+	if( realpath(zArgv0,zPhlBinaryPath) != 0 ){
+		return zPhlBinaryPath;
+	}
+#endif
+	return zArgv0;
+}
 /*
  * VM output consumer callback.
  * Each time the virtual machine generates some outputs,the following
@@ -301,6 +333,9 @@ int main(int argc,char **argv)
 	if( rc != PH7_OK ){
 		Fatal("Error while installing the VM output consumer callback");
 	}
+	/* Define PHP_BINARY: absolute path of this interpreter */
+	ph7_create_constant(pVm,"PHP_BINARY",PHL_PhpBinaryConst,
+		(void *)PHL_ResolveBinaryPath(argv[0]));
 	/* Register script arguments so we can access them later using the $argv[]
 	 * array from the compiled PHP program. For regular file execution we need
 	 * to register the arguments after the script file, while for inline code
@@ -328,10 +363,14 @@ int main(int argc,char **argv)
 	 * And finally, execute our program. Note that your output (STDOUT in our case)
 	 * should display the result.
 	 */
-	ph7_vm_exec(pVm,0);
-	/* All done, cleanup the mess left behind.
-	*/
-	ph7_vm_release(pVm);
-	ph7_release(pEngine);
-	return 0;
+	{
+		int iExitStatus = 0;
+		ph7_vm_exec(pVm,&iExitStatus);
+		/* All done, cleanup the mess left behind.
+		*/
+		ph7_vm_release(pVm);
+		ph7_release(pEngine);
+		/* Propagate the script exit status (set via exit()/die()) */
+		return iExitStatus;
+	}
 }
