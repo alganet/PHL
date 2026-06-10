@@ -1038,7 +1038,14 @@ static int PH7_builtin_preg_replace_callback(ph7_context *pCtx, int nArg, ph7_va
 		/* Call the callback */
 		PH7_MemObjInit(pCtx->pVm, &sResult);
 		apCbArg[0] = pMatchArr;
-		PH7_VmCallUserFunction(pCtx->pVm, apArg[1], 1, apCbArg, &sResult);
+		if( PH7_VmCallUserFunction(pCtx->pVm, apArg[1], 1, apCbArg, &sResult) == PH7_EXCEPTION ){
+			/* The callback raised: propagate so the dispatcher unwinds. */
+			PH7_MemObjRelease(&sResult);
+			ph7_context_release_value(pCtx, pMatchArr);
+			SyBlobRelease(&sOut);
+			pcre2_match_data_free(pMatchData);
+			return PH7_EXCEPTION;
+		}
 		/* Get replacement string from callback result */
 		zReplacement = ph7_value_to_string(&sResult, &nReplLen);
 		SyBlobAppend(&sOut, zReplacement, (sxu32)nReplLen);

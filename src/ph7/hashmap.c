@@ -1058,9 +1058,36 @@ static sxi32 HashmapDuplicateNode(
 	int iAction /* 0: Merge, 1: Overwrite, 2: Dup */
 	)
 {
-	ph7_value sSafeVal = *pVal;
+	ph7_value sSafeVal;
 	ph7_value sKey;
 	sxi32 rc;
+
+	if( pEntry->iFlags & HASHMAP_NODE_FOREIGN_OBJ ){
+		/* The source node holds a reference to a foreign ph7_value (e.g: [&$x]).
+		 * Re-insert it by reference so the reference survives the duplication
+		 * instead of being flattened to a value copy. This keeps spread
+		 * ([...$a]), array_merge(), array_replace() and array copies in sync
+		 * with PHP semantics. */
+		sxu32 nRefIdx = pEntry->nValIdx;
+		if( pEntry->iType == HASHMAP_BLOB_NODE ){
+			PH7_MemObjInitFromString(pDest->pVm,&sKey,0);
+			PH7_MemObjStringAppend(&sKey,(const char *)SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey));
+			rc = HashmapInsertByRef(pDest,&sKey,nRefIdx);
+			PH7_MemObjRelease(&sKey);
+		}else{
+			if( iAction == 0 ){ /* Merge: automatic index assign */
+				rc = HashmapInsertByRef(pDest,0,nRefIdx);
+			}else if( iAction == 1 ){ /* Overwrite: keep the int key */
+				PH7_MemObjInitFromInt(pDest->pVm,&sKey,pEntry->xKey.iKey);
+				rc = HashmapInsertByRef(pDest,&sKey,nRefIdx);
+				PH7_MemObjRelease(&sKey);
+			}else{ /* Dup: preserve the int key */
+				rc = HashmapInsertIntKey(pDest,pEntry->xKey.iKey,0,nRefIdx,TRUE);
+			}
+		}
+		return rc;
+	}
+	sSafeVal = *pVal;
 
 	if( pEntry->iType == HASHMAP_BLOB_NODE ){
 		/* Blob key insertion */
@@ -1985,6 +2012,11 @@ static sxi32 HashmapCmpCallback4(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void 
 	sxi32 rc;
 	/* Point to the desired callback */
 	pCallback = (ph7_value *)pCmpData;
+	if( pA->pMap->pVm->iCmpCallbackExc ){
+		/* A previous comparison already raised: stop invoking the callback so
+		 * the exception is not thrown again, and let the sort wind down. */
+		return 0;
+	}
 	/* initialize the result value */
 	PH7_MemObjInit(pA->pMap->pVm,&sResult);
 	/* Extract nodes values */
@@ -1994,7 +2026,12 @@ static sxi32 HashmapCmpCallback4(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void 
 	apArg[1] = pV2;
 	/* Invoke the callback */
 	rc = PH7_VmCallUserFunction(pA->pMap->pVm,pCallback,2,apArg,&sResult);
-	if( rc != SXRET_OK ){
+	if( rc == PH7_EXCEPTION ){
+		/* The comparator raised: flag it so the sort driver aborts and
+		 * propagates, and order this pair arbitrarily for the rest of the run. */
+		pA->pMap->pVm->iCmpCallbackExc = 1;
+		rc = 0;
+	}else if( rc != SXRET_OK ){
 		/* An error occured while calling user defined function [i.e: not defined] */
 		rc = -1; /* Set a dummy result */
 	}else{
@@ -2062,6 +2099,11 @@ static sxi32 HashmapCmpCallback6(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void 
 	sxi32 rc;
 	/* Point to the desired callback */
 	pCallback = (ph7_value *)pCmpData;
+	if( pA->pMap->pVm->iCmpCallbackExc ){
+		/* A previous comparison already raised: stop invoking the callback so
+		 * the exception is not thrown again, and let the sort wind down. */
+		return 0;
+	}
 	/* initialize the result value */
 	PH7_MemObjInit(pA->pMap->pVm,&sResult);
 	PH7_MemObjInit(pA->pMap->pVm,&sK1);
@@ -2076,7 +2118,12 @@ static sxi32 HashmapCmpCallback6(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void 
 	sK2.nIdx = SXU32_HIGH;
 	/* Invoke the callback */
 	rc = PH7_VmCallUserFunction(pA->pMap->pVm,pCallback,2,apArg,&sResult);
-	if( rc != SXRET_OK ){
+	if( rc == PH7_EXCEPTION ){
+		/* The comparator raised: flag it so the sort driver aborts and
+		 * propagates, and order this pair arbitrarily for the rest of the run. */
+		pA->pMap->pVm->iCmpCallbackExc = 1;
+		rc = 0;
+	}else if( rc != SXRET_OK ){
 		/* An error occured while calling user defined function [i.e: not defined] */
 		rc = -1; /* Set a dummy result */
 	}else{
@@ -2479,9 +2526,15 @@ static int ph7_hashmap_usort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			xCmp = HashmapCmpCallback1;
 		}
 		/* Do the merge sort */
+		pCtx->pVm->iCmpCallbackExc = 0;
 		HashmapMergeSort(pMap,xCmp,pCallback);
 		/* Rehash [Do not maintain index association as requested by the PHP specification] */
 		HashmapSortRehash(pMap);
+		if( pCtx->pVm->iCmpCallbackExc ){
+			/* The comparison callback raised: propagate so the dispatcher unwinds. */
+			pCtx->pVm->iCmpCallbackExc = 0;
+			return PH7_EXCEPTION;
+		}
 	}
 	/* All done,return TRUE */
 	ph7_result_bool(pCtx,1);
@@ -2526,10 +2579,16 @@ static int ph7_hashmap_uasort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			xCmp = HashmapCmpCallback1;
 		}
 		/* Do the merge sort */
+		pCtx->pVm->iCmpCallbackExc = 0;
 		HashmapMergeSort(pMap,xCmp,pCallback);
 		/* Fix the last link broken by the merge */
 		while(pMap->pLast->pPrev){
 			pMap->pLast = pMap->pLast->pPrev;
+		}
+		if( pCtx->pVm->iCmpCallbackExc ){
+			/* The comparison callback raised: propagate so the dispatcher unwinds. */
+			pCtx->pVm->iCmpCallbackExc = 0;
+			return PH7_EXCEPTION;
 		}
 	}
 	/* All done,return TRUE */
@@ -2575,10 +2634,16 @@ static int ph7_hashmap_uksort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			xCmp = HashmapCmpCallback2;
 		}
 		/* Do the merge sort */
+		pCtx->pVm->iCmpCallbackExc = 0;
 		HashmapMergeSort(pMap,xCmp,pCallback);
 		/* Fix the last link broken by the merge */
 		while(pMap->pLast->pPrev){
 			pMap->pLast = pMap->pLast->pPrev;
+		}
+		if( pCtx->pVm->iCmpCallbackExc ){
+			/* The comparison callback raised: propagate so the dispatcher unwinds. */
+			pCtx->pVm->iCmpCallbackExc = 0;
+			return PH7_EXCEPTION;
 		}
 	}
 	/* All done,return TRUE */
@@ -6414,6 +6479,11 @@ static int ph7_hashmap_filter(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			}
 			keep = FALSE;
 			rc = PH7_VmCallUserFunction(pMap->pVm,apArg[1],1,&pValue,&sResult);
+			if( rc == PH7_EXCEPTION ){
+				/* The callback raised: propagate so the dispatcher unwinds. */
+				PH7_MemObjRelease(&sResult);
+				return PH7_EXCEPTION;
+			}
 			if( rc == SXRET_OK ){
 				/* Perform a boolean cast */
 				keep = ph7_value_to_bool(&sResult);
@@ -6437,37 +6507,39 @@ static int ph7_hashmap_filter(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * array array_map(?callable $callback, array $array)
- *  Applies the callback to the elements of the given array.
+ * array array_map(?callable $callback, array $array, array ...$arrays)
+ *  Applies the callback to the elements of the given arrays.
  * Parameters
  *  $callback
- *   A callable to run for each element in the array, or NULL for the
- *   identity function (returns the array unchanged).
+ *   A callable to run for each element in each array, or NULL. With a single
+ *   array and a NULL callback this is the identity function (the array is
+ *   returned unchanged); with several arrays and a NULL callback the arrays
+ *   are zipped together.
  *  $array
- *   An array to run through the callback function.
+ *   The first array to run through the callback function.
+ *  $arrays
+ *   Zero or more additional arrays to process in parallel.
  * Return
- *  Returns an array containing the results of applying the callback
- *  function to each element of $array.
+ *  Returns an array containing the results of applying the callback function.
+ *  With a single array the keys are preserved; with several arrays the result
+ *  is re-indexed and the iteration runs to the length of the longest array,
+ *  padding shorter arrays with NULL.
  */
 static int ph7_hashmap_map(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_value *pArray,*pValue,sKey,sResult;
 	ph7_hashmap_node *pEntry;
 	ph7_hashmap *pMap;
+	ph7_vm *pVm;
 	int bNullCallback;
+	sxi32 rc;
+	int i;
 	sxu32 n;
 	if( nArg < 2 ){
 		return PH7_VmThrowException(pCtx,
 			"ArgumentCountError",
 			"array_map() expects at least 2 arguments, %d given",
 			nArg
-			);
-	}
-	if( !ph7_value_is_array(apArg[1]) ){
-		return PH7_VmThrowException(pCtx,
-			"TypeError",
-			"array_map(): Argument #2 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[1])
 			);
 	}
 	bNullCallback = ph7_value_is_null(apArg[0]);
@@ -6487,41 +6559,140 @@ static int ph7_hashmap_map(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			"no array or string given"
 			);
 	}
+	/* Every remaining argument must be an array */
+	for( i = 1 ; i < nArg ; i++ ){
+		if( !ph7_value_is_array(apArg[i]) ){
+			if( i == 1 ){
+				return PH7_VmThrowException(pCtx,
+					"TypeError",
+					"array_map(): Argument #2 ($array) must be of type array, %s given",
+					ph7_type_name(apArg[1])
+					);
+			}
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_map(): Argument #%d must be of type array, %s given",
+				i+1,ph7_type_name(apArg[i])
+				);
+		}
+	}
+	pVm = pCtx->pVm;
 	/* Create a new array */
 	pArray = ph7_context_new_array(pCtx);
 	if( pArray == 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	/* Point to the internal representation of the input hashmap */
-	pMap = (ph7_hashmap *)apArg[1]->x.pOther;
-	PH7_MemObjInit(pMap->pVm,&sResult);
-	PH7_MemObjInit(pMap->pVm,&sKey);
+	PH7_MemObjInit(pVm,&sResult);
+	PH7_MemObjInit(pVm,&sKey);
 	sResult.nIdx = SXU32_HIGH; /* Mark as constant */
 	sKey.nIdx    = SXU32_HIGH; /* Mark as constant */
-	/* Perform the requested operation */
-	pEntry = pMap->pFirst;
-	for( n = 0 ; n < pMap->nEntry ; n++ ){
-		/* Extract the node value */
-		pValue = HashmapExtractNodeValue(pEntry);
-		if( pValue ){
-			/* Extract the node key */
-			PH7_HashmapExtractNodeKey(pEntry,&sKey);
-			if( bNullCallback ){
-				/* NULL callback: identity function, keep original value */
-				ph7_array_add_elem(pArray,&sKey,pValue);
-			}else{
-				/* Invoke the supplied callback */
-				PH7_VmCallUserFunction(pMap->pVm,apArg[0],1,&pValue,&sResult);
-				/* Insert the callback return value */
-				ph7_array_add_elem(pArray,&sKey,&sResult);
+	if( nArg == 2 ){
+		/* Single-array mode: keys are preserved (PHP semantics). */
+		pMap = (ph7_hashmap *)apArg[1]->x.pOther;
+		pEntry = pMap->pFirst;
+		for( n = 0 ; n < pMap->nEntry ; n++ ){
+			/* Extract the node value */
+			pValue = HashmapExtractNodeValue(pEntry);
+			if( pValue ){
+				/* Extract the node key */
+				PH7_HashmapExtractNodeKey(pEntry,&sKey);
+				if( bNullCallback ){
+					/* NULL callback: identity function, keep original value */
+					ph7_array_add_elem(pArray,&sKey,pValue);
+				}else{
+					/* Invoke the supplied callback */
+					rc = PH7_VmCallUserFunction(pVm,apArg[0],1,&pValue,&sResult);
+					if( rc == PH7_EXCEPTION ){
+						/* Callback raised: abort and let the foreign-function
+						 * dispatcher unwind through the nearest try/catch. */
+						PH7_MemObjRelease(&sKey);
+						PH7_MemObjRelease(&sResult);
+						return PH7_EXCEPTION;
+					}
+					/* Insert the callback return value */
+					ph7_array_add_elem(pArray,&sKey,&sResult);
+				}
+				PH7_MemObjRelease(&sKey);
+				PH7_MemObjRelease(&sResult);
 			}
+			/* Point to the next entry */
+			pEntry = pEntry->pPrev; /* Reverse link */
+		}
+	}else{
+		/* Multi-array mode: walk every array in parallel to the length of the
+		 * longest one, pad shorter arrays with NULL, and re-index the result. */
+		int nArrays = nArg - 1;
+		ph7_hashmap_node **apCur;
+		ph7_value **apCallArg;
+		ph7_value sNull;
+		sxu32 nMax = 0;
+		apCur     = (ph7_hashmap_node **)SyMemBackendAlloc(&pVm->sAllocator,(sxu32)(nArrays*sizeof(ph7_hashmap_node *)));
+		apCallArg = (ph7_value **)SyMemBackendAlloc(&pVm->sAllocator,(sxu32)(nArrays*sizeof(ph7_value *)));
+		if( apCur == 0 || apCallArg == 0 ){
+			if( apCur ){ SyMemBackendFree(&pVm->sAllocator,apCur); }
+			if( apCallArg ){ SyMemBackendFree(&pVm->sAllocator,apCallArg); }
 			PH7_MemObjRelease(&sKey);
 			PH7_MemObjRelease(&sResult);
+			ph7_result_value(pCtx,pArray);
+			return PH7_OK;
 		}
-		/* Point to the next entry */
-		pEntry = pEntry->pPrev; /* Reverse link */
+		PH7_MemObjInit(pVm,&sNull); /* shared NULL pad for short arrays */
+		sNull.nIdx = SXU32_HIGH;
+		for( i = 0 ; i < nArrays ; i++ ){
+			pMap = (ph7_hashmap *)apArg[i+1]->x.pOther;
+			apCur[i] = pMap->pFirst;
+			if( pMap->nEntry > nMax ){
+				nMax = pMap->nEntry;
+			}
+		}
+		for( n = 0 ; n < nMax ; n++ ){
+			ph7_value *pZip = 0;
+			if( bNullCallback ){
+				/* zip: each result element is an array of the i-th values */
+				pZip = ph7_context_new_array(pCtx);
+			}
+			for( i = 0 ; i < nArrays ; i++ ){
+				ph7_value *pv = &sNull;
+				if( apCur[i] ){
+					ph7_value *pNodeVal = HashmapExtractNodeValue(apCur[i]);
+					if( pNodeVal ){
+						pv = pNodeVal;
+					}
+					apCur[i] = apCur[i]->pPrev; /* Reverse link */
+				}
+				if( bNullCallback ){
+					if( pZip ){
+						ph7_array_add_elem(pZip,0,pv);
+					}
+				}else{
+					apCallArg[i] = pv;
+				}
+			}
+			if( bNullCallback ){
+				if( pZip ){
+					ph7_array_add_elem(pArray,0,pZip);
+				}
+			}else{
+				rc = PH7_VmCallUserFunction(pVm,apArg[0],nArrays,apCallArg,&sResult);
+				if( rc == PH7_EXCEPTION ){
+					SyMemBackendFree(&pVm->sAllocator,apCur);
+					SyMemBackendFree(&pVm->sAllocator,apCallArg);
+					PH7_MemObjRelease(&sNull);
+					PH7_MemObjRelease(&sKey);
+					PH7_MemObjRelease(&sResult);
+					return PH7_EXCEPTION;
+				}
+				ph7_array_add_elem(pArray,0,&sResult);
+				PH7_MemObjRelease(&sResult);
+			}
+		}
+		SyMemBackendFree(&pVm->sAllocator,apCur);
+		SyMemBackendFree(&pVm->sAllocator,apCallArg);
+		PH7_MemObjRelease(&sNull);
 	}
+	PH7_MemObjRelease(&sKey);
+	PH7_MemObjRelease(&sResult);
 	ph7_result_value(pCtx,pArray);
 	return PH7_OK;
 }
@@ -6546,6 +6717,7 @@ static int ph7_hashmap_reduce(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_hashmap *pMap;
 	ph7_value *pValue;
 	ph7_value sResult;
+	sxi32 rc;
 	sxu32 n;
 	if( nArg < 2 ){
 		return PH7_VmThrowException(pCtx,
@@ -6606,7 +6778,12 @@ static int ph7_hashmap_reduce(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Extract the node value */
 		pValue = HashmapExtractNodeValue(pEntry);
 		/* Invoke the supplied callback */
-		PH7_VmCallUserFunctionAp(pMap->pVm,apArg[1],&sResult,&sResult,pValue,0);
+		rc = PH7_VmCallUserFunctionAp(pMap->pVm,apArg[1],&sResult,&sResult,pValue,0);
+		if( rc == PH7_EXCEPTION ){
+			/* The callback raised: propagate so the dispatcher unwinds. */
+			PH7_MemObjRelease(&sResult);
+			return PH7_EXCEPTION;
+		}
 		/* Point to the next entry */
 		pEntry = pEntry->pPrev; /* Reverse link */
 	}
@@ -6695,11 +6872,16 @@ static int ph7_hashmap_walk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Extract the node value */
 		pValue = HashmapExtractNodeValue(pEntry);
 		if( pValue ){
+			sxi32 rcW;
 			/* Extract the entry key */
 			PH7_HashmapExtractNodeKey(pEntry,&sKey);
 			/* Invoke the supplied callback */
-			PH7_VmCallUserFunctionAp(pMap->pVm,apArg[1],0,pValue,&sKey,pUserData,0);
+			rcW = PH7_VmCallUserFunctionAp(pMap->pVm,apArg[1],0,pValue,&sKey,pUserData,0);
 			PH7_MemObjRelease(&sKey);
+			if( rcW == PH7_EXCEPTION ){
+				/* The callback raised: propagate so the dispatcher unwinds. */
+				return PH7_EXCEPTION;
+			}
 		}
 		/* Point to the next entry */
 		pEntry = pEntry->pPrev; /* Reverse link */
@@ -6712,7 +6894,7 @@ static int ph7_hashmap_walk(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Apply a user function to every member of an array.(Recurse on array's).
  * Refer to the [array_walk_recursive()] implementation for more information.
  */
-static void HashmapWalkRecursive(
+static sxi32 HashmapWalkRecursive(
 	ph7_hashmap *pMap,    /* Target hashmap */
 	ph7_value *pCallback, /* User callback */
 	ph7_value *pUserData, /* Callback private data */
@@ -6721,6 +6903,7 @@ static void HashmapWalkRecursive(
 {
 	ph7_hashmap_node *pEntry;
 	ph7_value *pValue,sKey;
+	sxi32 rc;
 	sxu32 n;
 	/* Iterate through hashmap entries */
 	PH7_MemObjInit(pMap->pVm,&sKey);
@@ -6734,20 +6917,28 @@ static void HashmapWalkRecursive(
 				if( iNest < 32 ){
 					/* Recurse */
 					iNest++;
-					HashmapWalkRecursive((ph7_hashmap *)pValue->x.pOther,pCallback,pUserData,iNest);
+					rc = HashmapWalkRecursive((ph7_hashmap *)pValue->x.pOther,pCallback,pUserData,iNest);
 					iNest--;
+					if( rc == PH7_EXCEPTION ){
+						return PH7_EXCEPTION;
+					}
 				}
 			}else{
 				/* Extract the node key */
 				PH7_HashmapExtractNodeKey(pEntry,&sKey);
 				/* Invoke the supplied callback */
-				PH7_VmCallUserFunctionAp(pMap->pVm,pCallback,0,pValue,&sKey,pUserData,0);
+				rc = PH7_VmCallUserFunctionAp(pMap->pVm,pCallback,0,pValue,&sKey,pUserData,0);
 				PH7_MemObjRelease(&sKey);
+				if( rc == PH7_EXCEPTION ){
+					/* The callback raised: propagate so the dispatcher unwinds. */
+					return PH7_EXCEPTION;
+				}
 			}
 		}
 		/* Point to the next entry */
 		pEntry = pEntry->pPrev; /* Reverse link */
 	}
+	return PH7_OK;
 }
 /*
  * bool array_walk_recursive(array &$array, callback $funcname [, mixed $userdata])
@@ -6819,7 +7010,10 @@ static int ph7_hashmap_walk_recursive(ph7_context *pCtx,int nArg,ph7_value **apA
 	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	/* Perform the desired operation */
-	HashmapWalkRecursive(pMap,apArg[1],nArg > 2 ? apArg[2] : 0,0);
+	if( HashmapWalkRecursive(pMap,apArg[1],nArg > 2 ? apArg[2] : 0,0) == PH7_EXCEPTION ){
+		/* A callback raised: propagate so the dispatcher unwinds. */
+		return PH7_EXCEPTION;
+	}
 	/* All done, return TRUE */
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;

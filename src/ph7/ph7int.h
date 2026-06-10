@@ -36,6 +36,10 @@ PH7_PRIVATE const char *ph7_type_name(ph7_value *pVal);
 /* Value of PI */
 #define PH7_PI 3.1415926535898
 #endif
+/* Uncaught/in-flight exception code value. A foreign function (built-in) that
+ * propagates a callback-raised exception returns this so the OP_CALL dispatcher
+ * unwinds through the nearest try/catch. */
+#define PH7_EXCEPTION -255
 /*
  * Constants for the largest and smallest possible 64-bit signed integers.
  * These macros are designed to work correctly on both 32-bit and 64-bit
@@ -900,6 +904,9 @@ struct ph7_vm
 	/* Index of the shared empty-string literal reserved at VM init */
 	sxu32 nEmptyStringIdx;
 	sxi32 iSpreadExtra;        /* Cumulative extra args from PH7_OP_SPREAD (reset by CALL) */
+	sxi32 iCmpCallbackExc;     /* Set when a sort comparison callback raised an exception
+								* so the sort driver (usort/uasort/uksort) can abort and
+								* propagate PH7_EXCEPTION. */
 	sxi32 iExitStatus;         /* Script exit status */
 	ph7_gen_state sCodeGen;    /* Code generator module */
 	ph7_exec_ctx *pActiveCtx;  /* Currently executing fiber/generator context (NULL in normal code) */

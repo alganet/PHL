@@ -133,8 +133,6 @@ struct VmAutoloadCB
 {
 	ph7_value sCallback; /* Autoload callback (string or [obj,method] array) */
 };
-/* Uncaught exception code value */
-#define PH7_EXCEPTION -255
 
 /*
  * Return TRUE if either operand is a NaN real value.
@@ -649,6 +647,25 @@ static VmFrame * VmSkipExceptionFrames(VmFrame *pFrame)
 		pFrame = pFrame->pParent;
 	}
 	return pFrame;
+}
+/*
+ * After a callee invoked from an OP_CALL site (object __invoke, an array
+ * callable, or a NEW constructor) returns PH7_EXCEPTION, decide how the current
+ * frame unwinds. The catch body, if any, already ran in-place inside
+ * VmThrowException. Returns TRUE and sets *pResumePc to the post-try resume
+ * point when THIS frame's own try caught the exception; returns FALSE to signal
+ * the caller to propagate (goto Exception) so the exception unwinds through
+ * intermediate frames that have no local handler.
+ */
+static int VmCalleeExceptionResume(ph7_vm *pVm,sxi32 *pResumePc)
+{
+	VmFrame *pFrame = pVm->pFrame;
+	if( (pFrame->iFlags & VM_FRAME_EXCEPTION) && pFrame->iExceptionJump > 0
+	 && !(pFrame->iFlags & VM_FRAME_THROW) ){
+		*pResumePc = (sxi32)pFrame->iExceptionJump - 1;
+		return TRUE;
+	}
+	return FALSE;
 }
 /*
  * Compare two functions signature and return the comparison result.
@@ -8004,6 +8021,7 @@ case PH7_OP_NEW: {
 			 * receiving OP_CALL path runs its named-argument matching
 			 * (including variadic string-key packing). */
 			VmCallArgMap *pNewMap = (VmCallArgMap *)pInstr->p3;
+			sxi32 rcCons;
 			SySetReset(&aArg);
 			while( pArg < pTos ){
 				SySetPut(&aArg,(const void *)&pArg);
@@ -8027,10 +8045,32 @@ case PH7_OP_NEW: {
 					n++;
 				}
 			}
-			VmCallClassMethodWithMap(&(*pVm),pNew,pCons,0,(int)SySetUsed(&aArg),(ph7_value **)SySetBasePtr(&aArg),pNewMap);
+			rcCons = VmCallClassMethodWithMap(&(*pVm),pNew,pCons,0,(int)SySetUsed(&aArg),(ph7_value **)SySetBasePtr(&aArg),pNewMap);
 			/* TICKET 1433-52: Unsetting $this in the constructor body */
 			if( pNew->iRef < 1 ){
 				pNew->iRef = 1;
+			}
+			if( rcCons == PH7_ABORT || rcCons == PH7_EXCEPTION ){
+				/* The constructor raised: the half-constructed object must not
+				 * become the NEW result. Drop our reference so it is destroyed.
+				 * The class-name operand (and any leftover args) are released by
+				 * the Abort/Exception unwind, or explicitly on the resume path. */
+				sxi32 iResumePc;
+				PH7_ClassInstanceUnref(pNew);
+				if( rcCons == PH7_ABORT ){
+					goto Abort;
+				}
+				if( VmCalleeExceptionResume(pVm,&iResumePc) ){
+					/* This frame's own try caught it in-place: tidy the stack
+					 * (pop ctor args + release the class-name slot) and resume. */
+					if( pInstr->iP1 > 0 ){
+						VmPopOperand(&pTos,pInstr->iP1);
+					}
+					PH7_MemObjRelease(pTos);
+					pc = iResumePc;
+					break;
+				}
+				goto Exception;
 			}
 		}
 		if( pInstr->iP1 > 0 ){
@@ -8278,6 +8318,7 @@ case PH7_OP_CALL: {
 	if( (pTos->iFlags & MEMOBJ_STRING) == 0 ){
 		if( pTos->iFlags & MEMOBJ_HASHMAP ){
 			ph7_value sResult;
+			sxi32 rcArr;
 			SySetReset(&aArg);
 			while( pArg < pTos ){
 				SySetPut(&aArg,(const void *)&pArg);
@@ -8285,11 +8326,27 @@ case PH7_OP_CALL: {
 			}
 			PH7_MemObjInit(pVm,&sResult);
 			/* May be a class instance and it's static method */
-			PH7_VmCallUserFunction(pVm,pTos,(int)SySetUsed(&aArg),(ph7_value **)SySetBasePtr(&aArg),&sResult);
+			rcArr = PH7_VmCallUserFunction(pVm,pTos,(int)SySetUsed(&aArg),(ph7_value **)SySetBasePtr(&aArg),&sResult);
 			SySetReset(&aArg);
 			/* Pop given arguments */
 			if( nCallArgs > 0 ){
 				VmPopOperand(&pTos,nCallArgs);
+			}
+			if( rcArr == PH7_ABORT ){
+				PH7_MemObjRelease(&sResult);
+				goto Abort;
+			}
+			if( rcArr == PH7_EXCEPTION ){
+				/* An array callable ([$obj,'m']()) raised: resume after this frame's
+				 * try if it caught the exception in-place, otherwise propagate. */
+				sxi32 iResumePc;
+				PH7_MemObjRelease(&sResult);
+				if( VmCalleeExceptionResume(pVm,&iResumePc) ){
+					PH7_MemObjRelease(pTos);
+					pc = iResumePc;
+					break;
+				}
+				goto Exception;
 			}
 			/* Copy result */
 			PH7_MemObjStore(&sResult,pTos);
@@ -8333,6 +8390,24 @@ case PH7_OP_CALL: {
 						pc = pFrm2->iExceptionJump - 1;
 						break;
 					}
+				}
+				goto Exception;
+			}
+			if( rcInv == PH7_ABORT ){
+				PH7_MemObjRelease(&sResult);
+				goto Abort;
+			}
+			if( rcInv == PH7_EXCEPTION ){
+				/* __invoke raised. The catch body (if any) already ran in-place
+				 * inside VmThrowException. If THIS frame's own try caught it,
+				 * resume after the try/catch; otherwise propagate so the
+				 * exception unwinds through intermediate frames with no handler. */
+				sxi32 iResumePc;
+				PH7_MemObjRelease(&sResult);
+				if( VmCalleeExceptionResume(pVm,&iResumePc) ){
+					PH7_MemObjRelease(pTos);
+					pc = iResumePc;
+					break;
 				}
 				goto Exception;
 			}
@@ -11311,6 +11386,7 @@ static sxi32 VmCallClassMethodWithMap(
 	VmInstr aInstr[2];
 	int iCursor;
 	int i;
+	sxi32 rc;
 	aStack = VmNewOperandStack(&(*pVm),2+nArg);
 	if( aStack == 0 ){
 		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
@@ -11341,9 +11417,11 @@ static sxi32 VmCallClassMethodWithMap(
 	aInstr[1].iP1 = 1;
 	aInstr[1].iP2 = 0;
 	aInstr[1].p3  = 0;
-	VmByteCodeExec(&(*pVm),aInstr,aStack,iCursor,pResult,0,TRUE,0,0);
+	rc = VmByteCodeExec(&(*pVm),aInstr,aStack,iCursor,pResult,0,TRUE,0,0);
 	SyMemBackendFree(&pVm->sAllocator,aStack);
-	return PH7_OK;
+	/* Propagate the real exec status (PH7_EXCEPTION / PH7_ABORT) so callers
+	 * can unwind instead of continuing past a method that raised. */
+	return rc;
 }
 PH7_PRIVATE sxi32 PH7_VmCallClassMethod(
 	ph7_vm *pVm,               /* Target VM */
@@ -11572,10 +11650,14 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunction(
 	aInstr[1].iP2 = 0;
 	aInstr[1].p3  = 0;
 	/* Execute the function body (if available) */
-	VmByteCodeExec(&(*pVm),aInstr,aStack,nArg,pResult,0,TRUE,0,0);
-	/* Clean up the mess left behind */
-	SyMemBackendFree(&pVm->sAllocator,aStack);
-	return PH7_OK;
+	{
+		sxi32 rcExec;
+		rcExec = VmByteCodeExec(&(*pVm),aInstr,aStack,nArg,pResult,0,TRUE,0,0);
+		/* Clean up the mess left behind */
+		SyMemBackendFree(&pVm->sAllocator,aStack);
+		/* Propagate PH7_EXCEPTION/PH7_ABORT so a callback that raised unwinds. */
+		return rcExec;
+	}
 }
 /*
  * Call a user defined or foreign function whith a varibale number

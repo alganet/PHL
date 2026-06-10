@@ -868,6 +868,12 @@ PH7_PRIVATE int vm_builtin_call_user_func(ph7_context *pCtx,int nArg,ph7_value *
 	sResult.nIdx = SXU32_HIGH; /* Mark as constant */
 	/* Try to invoke the callback */
 	rc = PH7_VmCallUserFunction(pCtx->pVm,apArg[0],nArg - 1,&apArg[1],&sResult);
+	if( rc == PH7_EXCEPTION ){
+		/* The callback raised: propagate so the OP_CALL dispatcher unwinds
+		 * through the nearest try/catch instead of returning FALSE. */
+		PH7_MemObjRelease(&sResult);
+		return PH7_EXCEPTION;
+	}
 	if( rc != SXRET_OK ){
 		/* An error occured while invoking the given callback [i.e: not defined] */
 		ph7_result_bool(pCtx,0); /* return false */
@@ -919,6 +925,12 @@ PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_v
 	}
 	/* Try to invoke the callback */
 	rc = PH7_VmCallUserFunction(pCtx->pVm,apArg[0],(int)SySetUsed(&aArg),(ph7_value **)SySetBasePtr(&aArg),&sResult);
+	if( rc == PH7_EXCEPTION ){
+		/* The callback raised: propagate so the OP_CALL dispatcher unwinds. */
+		PH7_MemObjRelease(&sResult);
+		SySetRelease(&aArg);
+		return PH7_EXCEPTION;
+	}
 	if( rc != SXRET_OK ){
 		/* An error occured while invoking the given callback [i.e: not defined] */
 		ph7_result_bool(pCtx,0); /* return false */
