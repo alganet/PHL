@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 426/578 lines (73.70%)
+Coverage: 392/578 lines (67.82%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -1310,42 +1310,42 @@ Coverage: 426/578 lines (73.70%)
 |    - | 1300 | ` * Return` |
 |    - | 1301 | ` *  An UTF-8 encoded string.` |
 |    - | 1302 | ` */` |
-|    2 | 1303 | `PH7_PRIVATE int vm_builtin_utf8_encode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 | 1304 |  |
+|  ! 0 | 1303 | `PH7_PRIVATE int vm_builtin_utf8_encode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  ! 0 | 1304 |  |
 |    - | 1305 | `	const unsigned char *zIn,*zEnd;` |
 |    - | 1306 | `	int nByte,c,e;` |
-|    3 | 1307 | `	if( nArg < 1 ){` |
+|  ! 0 | 1307 | `	if( nArg < 1 ){` |
 |    - | 1308 | `		/* Missing arguments,return null */` |
 |  ! 0 | 1309 | `		ph7_result_null(pCtx);` |
 |  ! 0 | 1310 | `		return PH7_OK;` |
 |    - | 1311 | `	}` |
 |    - | 1312 | `	/* Extract the target string */` |
-|    3 | 1313 | `	zIn = (const unsigned char *)ph7_value_to_string(apArg[0],&nByte);` |
-|    3 | 1314 | `	if( nByte < 1 ){` |
+|  ! 0 | 1313 | `	zIn = (const unsigned char *)ph7_value_to_string(apArg[0],&nByte);` |
+|  ! 0 | 1314 | `	if( nByte < 1 ){` |
 |    - | 1315 | `		/* Empty string,return null */` |
 |  ! 0 | 1316 | `		ph7_result_null(pCtx);` |
 |  ! 0 | 1317 | `		return PH7_OK;` |
 |    - | 1318 | `	}` |
-|    3 | 1319 | `	zEnd = &zIn[nByte];` |
+|  ! 0 | 1319 | `	zEnd = &zIn[nByte];` |
 |    - | 1320 | `	/* Start the encoding process */` |
-|    2 | 1321 | `	for(;;){` |
-|    5 | 1322 | `		if( zIn >= zEnd ){` |
+|  ! 0 | 1321 | `	for(;;){` |
+|  ! 0 | 1322 | `		if( zIn >= zEnd ){` |
 |    - | 1323 | `			/* End of input */` |
-|    3 | 1324 | `			break;` |
+|  ! 0 | 1324 | `			break;` |
 |    - | 1325 | `		}` |
-|    3 | 1326 | `		c = zIn[0];` |
+|  ! 0 | 1326 | `		c = zIn[0];` |
 |    - | 1327 | `		/* Advance the stream cursor */` |
-|    3 | 1328 | `		zIn++;` |
+|  ! 0 | 1328 | `		zIn++;` |
 |    - | 1329 | `		/* Encode */` |
-|    3 | 1330 | `		if( c<0x00080 ){` |
+|  ! 0 | 1330 | `		if( c<0x00080 ){` |
 |  ! 0 | 1331 | `			e = (c&0xFF);` |
 |  ! 0 | 1332 | `			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));` |
-|    3 | 1333 | `		}else if( c<0x00800 ){` |
-|    3 | 1334 | `			e = 0xC0 + ((c>>6)&0x1F);` |
-|    3 | 1335 | `			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));` |
-|    3 | 1336 | `			e = 0x80 + (c & 0x3F);` |
-|    3 | 1337 | `			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));` |
-|    1 | 1338 | `		}else if( c<0x10000 ){` |
+|  ! 0 | 1333 | `		}else if( c<0x00800 ){` |
+|  ! 0 | 1334 | `			e = 0xC0 + ((c>>6)&0x1F);` |
+|  ! 0 | 1335 | `			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));` |
+|  ! 0 | 1336 | `			e = 0x80 + (c & 0x3F);` |
+|  ! 0 | 1337 | `			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));` |
+|  ! 0 | 1338 | `		}else if( c<0x10000 ){` |
 |  ! 0 | 1339 | `			e = 0xE0 + ((c>>12)&0x0F);` |
 |  ! 0 | 1340 | `			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));` |
 |  ! 0 | 1341 | `			e = 0x80 + ((c>>6) & 0x3F);` |
@@ -1362,10 +1362,10 @@ Coverage: 426/578 lines (73.70%)
 |  ! 0 | 1352 | `			e = 0x80 + (c & 0x3F);` |
 |  ! 0 | 1353 | `			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));` |
 |    - | 1354 | `		}` |
-|    1 | 1355 | `	}` |
+|  ! 0 | 1355 | `	}` |
 |    - | 1356 | `	/* All done */` |
-|    3 | 1357 | `	return PH7_OK;` |
-|    2 | 1358 |  |
+|  ! 0 | 1357 | `	return PH7_OK;` |
+|  ! 0 | 1358 |  |
 |    - | 1359 | `/*` |
 |    - | 1360 | ` * UTF-8 decoding routine extracted from the sqlite3 source tree.` |
 |    - | 1361 | ` * Original author: D. Richard Hipp (http://www.sqlite.org)` |
@@ -1423,15 +1423,15 @@ Coverage: 426/578 lines (73.70%)
 |    - | 1413 | `        \|\| (c&0xFFFFF800)==0xD800                          \` |
 |    - | 1414 | `        \|\| (c&0xFFFFFFFE)==0xFFFE ){  c = 0xFFFD; }        \` |
 |    - | 1415 | `  }` |
-|  150 | 1416 | `PH7_PRIVATE int PH7_Utf8Read(` |
+|  148 | 1416 | `PH7_PRIVATE int PH7_Utf8Read(` |
 |    - | 1417 | `  const unsigned char *z,         /* First byte of UTF-8 character */` |
 |    - | 1418 | `  const unsigned char *zTerm,     /* Pretend this byte is 0x00 */` |
 |    - | 1419 | `  const unsigned char **pzNext    /* Write first byte past UTF-8 char here */` |
 |    1 | 1420 | `){` |
 |    - | 1421 | `  int c;` |
-|  153 | 1422 | `  READ_UTF8(z, zTerm, c);` |
-|  151 | 1423 | `  *pzNext = z;` |
-|  151 | 1424 | `  return c;` |
+|  149 | 1422 | `  READ_UTF8(z, zTerm, c);` |
+|  149 | 1423 | `  *pzNext = z;` |
+|  149 | 1424 | `  return c;` |
 |    1 | 1425 |  |
 |    - | 1426 | `/*` |
 |    - | 1427 | ` * string utf8_decode(string $data)` |
@@ -1442,31 +1442,31 @@ Coverage: 426/578 lines (73.70%)
 |    - | 1432 | ` * Return` |
 |    - | 1433 | ` *  Unicode decoded string or NULL on failure.` |
 |    - | 1434 | ` */` |
-|    2 | 1435 | `PH7_PRIVATE int vm_builtin_utf8_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 | 1436 |  |
+|  ! 0 | 1435 | `PH7_PRIVATE int vm_builtin_utf8_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  ! 0 | 1436 |  |
 |    - | 1437 | `	const unsigned char *zIn,*zEnd;` |
 |    - | 1438 | `	int nByte,c;` |
-|    3 | 1439 | `	if( nArg < 1 ){` |
+|  ! 0 | 1439 | `	if( nArg < 1 ){` |
 |    - | 1440 | `		/* Missing arguments,return null */` |
 |  ! 0 | 1441 | `		ph7_result_null(pCtx);` |
 |  ! 0 | 1442 | `		return PH7_OK;` |
 |    - | 1443 | `	}` |
 |    - | 1444 | `	/* Extract the target string */` |
-|    3 | 1445 | `	zIn = (const unsigned char *)ph7_value_to_string(apArg[0],&nByte);` |
-|    3 | 1446 | `	if( nByte < 1 ){` |
+|  ! 0 | 1445 | `	zIn = (const unsigned char *)ph7_value_to_string(apArg[0],&nByte);` |
+|  ! 0 | 1446 | `	if( nByte < 1 ){` |
 |    - | 1447 | `		/* Empty string,return null */` |
 |  ! 0 | 1448 | `		ph7_result_null(pCtx);` |
 |  ! 0 | 1449 | `		return PH7_OK;` |
 |    - | 1450 | `	}` |
-|    3 | 1451 | `	zEnd = &zIn[nByte];` |
+|  ! 0 | 1451 | `	zEnd = &zIn[nByte];` |
 |    - | 1452 | `	/* Start the decoding process */` |
-|    5 | 1453 | `	while( zIn < zEnd ){` |
-|    3 | 1454 | `		c = PH7_Utf8Read(zIn,zEnd,&zIn);` |
-|    3 | 1455 | `		if( c == 0x0 ){` |
+|  ! 0 | 1453 | `	while( zIn < zEnd ){` |
+|  ! 0 | 1454 | `		c = PH7_Utf8Read(zIn,zEnd,&zIn);` |
+|  ! 0 | 1455 | `		if( c == 0x0 ){` |
 |  ! 0 | 1456 | `			break;` |
 |    - | 1457 | `		}` |
-|    3 | 1458 | `		ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char));` |
-|    1 | 1459 | `	}` |
-|    3 | 1460 | `	return PH7_OK;` |
-|    2 | 1461 |  |
+|  ! 0 | 1458 | `		ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char));` |
+|  ! 0 | 1459 | `	}` |
+|  ! 0 | 1460 | `	return PH7_OK;` |
+|  ! 0 | 1461 |  |
 |    - | 1462 |  |
