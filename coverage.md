@@ -6,8 +6,8 @@
 | src/ph7/builtin_math.c         | 96.79%   | 452/467     |
 | src/ph7/compile.c              | 79.45%   | 5187/6529   |
 | src/ph7/constant.c             | 98.92%   | 1006/1017   |
-| src/ph7/hashmap.c              | 87.45%   | 2982/3410   |
-| src/ph7/lex.c                  | 95.38%   | 723/758     |
+| src/ph7/hashmap.c              | 87.05%   | 3079/3537   |
+| src/ph7/lex.c                  | 95.51%   | 724/758     |
 | src/ph7/memobj.c               | 88.92%   | 706/794     |
 | src/ph7/net.c                  | 50.48%   | 53/105      |
 | src/ph7/oo.c                   | 86.83%   | 435/501     |
@@ -16,14 +16,14 @@
 | src/ph7/vfs_unix.c             | 88.06%   | 376/427     |
 | src/ph7/vfs_win.c              | 75.43%   | 485/643     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
-| src/ph7/vm.c                   | 77.77%   | 6470/8319   |
-| src/ph7/vm_builtin_class.c     | 84.65%   | 408/482     |
+| src/ph7/vm.c                   | 77.93%   | 6515/8360   |
+| src/ph7/vm_builtin_class.c     | 84.87%   | 415/489     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
 | src/ph7/vm_builtin_ob.c        | 76.21%   | 157/206     |
 | src/ph7/vm_http.c              | 68.02%   | 302/444     |
 | src/ph7/vm_http_response.c     | 42.35%   | 108/255     |
 | src/ph7/vm_json.c              | 62.12%   | 264/425     |
-| src/ph7/vm_pcre.c              | 59.83%   | 487/814     |
+| src/ph7/vm_pcre.c              | 59.46%   | 487/819     |
 | src/ph7/vm_xml.c               | 73.70%   | 426/578     |
 | src/phl/phl.c                  | 76.16%   | 115/151     |
 | src/phl/server.c               | 62.43%   | 226/362     |
@@ -42,6 +42,6 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 78.91%   | 31519/39944 |
-| Functions                      | 95.32%   | 1466/1538   |
+| Lines                          | 78.93%   | 31669/40124 |
+| Functions                      | 95.32%   | 1467/1539   |
 
