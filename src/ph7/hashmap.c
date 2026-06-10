@@ -898,6 +898,11 @@ static int HashmapFindValueByCallback(
 	ph7_value *apArg[2];    /* Callback arguments */
 	sxi32 rc;
 	sxu32 n;
+	if( pMap->pVm->iCmpCallbackExc ){
+		/* A previous comparison already raised: stop invoking the callback so the
+		 * exception is not thrown again, and let the caller wind down. */
+		return SXERR_NOTFOUND;
+	}
 	/* Perform a linear search since we cannot sort the array based on values */
 	pEntry = pMap->pFirst;
 	n = pMap->nEntry;
@@ -915,6 +920,13 @@ static int HashmapFindValueByCallback(
 			/* Invoke the user callback */
 			apArg[1] = pVal; /* Second argument to the callback */
 			rc = PH7_VmCallUserFunction(pMap->pVm,pCallback,2,apArg,&sResult);
+			if( rc == PH7_EXCEPTION ){
+				/* The callback raised: flag it so the caller aborts and propagates,
+				 * and report no match for the rest of the run. */
+				pMap->pVm->iCmpCallbackExc = 1;
+				PH7_MemObjRelease(&sResult);
+				return SXERR_NOTFOUND;
+			}
 			if( rc == SXRET_OK ){
 				/* Extract callback result */
 				if( (sResult.iFlags & MEMOBJ_INT) == 0 ){
@@ -4337,6 +4349,7 @@ static int ph7_hashmap_udiff(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Perform the diff */
 	pEntry = pSrc->pFirst;
 	n = pSrc->nEntry;
+	pCtx->pVm->iCmpCallbackExc = 0;
 	for(;;){
 		if( n < 1 ){
 			break;
@@ -4353,6 +4366,12 @@ static int ph7_hashmap_udiff(ph7_context *pCtx,int nArg,ph7_value **apArg)
 					/* Value exist */
 					break;
 				}
+			}
+			if( pCtx->pVm->iCmpCallbackExc ){
+				/* The comparison callback raised: propagate so the dispatcher
+				 * unwinds, before any spurious insertion into the result. */
+				pCtx->pVm->iCmpCallbackExc = 0;
+				return PH7_EXCEPTION;
 			}
 			if( i >= (nArg - 1)){
 				/* Perform the insertion */
@@ -4625,6 +4644,17 @@ static int ph7_hashmap_diff_uassoc(ph7_context *pCtx,int nArg,ph7_value **apArg)
 					apK[0] = &key1;
 					apK[1] = &key2;
 					rc = PH7_VmCallUserFunction(pMap->pVm,pCallback,2,apK,&result);
+				}
+				if( rc == PH7_EXCEPTION ){
+					/* The key comparison callback raised. Unlike array_udiff/
+					 * array_uintersect (which signal back from
+					 * HashmapFindValueByCallback via pVm->iCmpCallbackExc), this
+					 * function invokes the callback inline, so it cleans up its own
+					 * temporaries and propagates the exception directly. */
+					PH7_MemObjRelease(&result);
+					PH7_MemObjRelease(&key1);
+					PH7_MemObjRelease(&key2);
+					return PH7_EXCEPTION;
 				}
 				if( rc == SXRET_OK ){
 					if( (result.iFlags & MEMOBJ_INT) == 0 ){
@@ -5214,6 +5244,7 @@ static int ph7_hashmap_uintersect(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Perform the intersection */
 	pEntry = pSrc->pFirst;
 	n = pSrc->nEntry;
+	pCtx->pVm->iCmpCallbackExc = 0;
 	for(;;){
 		if( n < 1 ){
 			break;
@@ -5239,6 +5270,11 @@ static int ph7_hashmap_uintersect(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				/* Perform the insertion */
 				HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);
 			}
+		}
+		if( pCtx->pVm->iCmpCallbackExc ){
+			/* The comparison callback raised: propagate so the dispatcher unwinds. */
+			pCtx->pVm->iCmpCallbackExc = 0;
+			return PH7_EXCEPTION;
 		}
 		/* Point to the next entry */
 		pEntry = pEntry->pPrev; /* Reverse link */

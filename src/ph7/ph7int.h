@@ -904,9 +904,10 @@ struct ph7_vm
 	/* Index of the shared empty-string literal reserved at VM init */
 	sxu32 nEmptyStringIdx;
 	sxi32 iSpreadExtra;        /* Cumulative extra args from PH7_OP_SPREAD (reset by CALL) */
-	sxi32 iCmpCallbackExc;     /* Set when a sort comparison callback raised an exception
-								* so the sort driver (usort/uasort/uksort) can abort and
-								* propagate PH7_EXCEPTION. */
+	sxi32 iCmpCallbackExc;     /* Set when a comparison callback raised an exception so the
+								* driver (usort/uasort/uksort and the array_udiff/
+								* array_uintersect families) can abort and propagate
+								* PH7_EXCEPTION. */
 	sxi32 iExitStatus;         /* Script exit status */
 	ph7_gen_state sCodeGen;    /* Code generator module */
 	ph7_exec_ctx *pActiveCtx;  /* Currently executing fiber/generator context (NULL in normal code) */
