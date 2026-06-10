@@ -37,6 +37,17 @@
  */
 #define PH7_SIG "PH7/2.1.4"
 /*
+ * PHP-compatibility version reported to scripts (PHP_VERSION, phpversion(), ...).
+ * PHL targets PHP 8.x semantics; these advertise that target so framework version
+ * gates take the right branch. Keep the string and the numeric pieces in sync.
+ */
+#define PHP_COMPAT_VERSION         "8.5.0"
+#define PHP_COMPAT_MAJOR_VERSION   8
+#define PHP_COMPAT_MINOR_VERSION   5
+#define PHP_COMPAT_RELEASE_VERSION 0
+#define PHP_COMPAT_EXTRA_VERSION   ""
+#define PHP_COMPAT_VERSION_ID      80500
+/*
  * PH7 identification in the Symisc source tree:
  * Each particular check-in of a particular software released
  * by symisc systems have an unique identifier associated with it.
