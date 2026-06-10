@@ -751,11 +751,11 @@ Coverage: 452/467 lines (96.79%)
 |    - |  741 | ` * Return` |
 |    - |  742 | ` *  The integer quotient of the division of $a by $b.` |
 |    - |  743 | ` */` |
-|   18 |  744 | `PH7_PRIVATE int PH7_builtin_intdiv(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   20 |  744 | `PH7_PRIVATE int PH7_builtin_intdiv(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    2 |  745 |  |
 |    - |  746 | `	sxi64 a,b;` |
 |    - |  747 | `	/* PHP requires exactly two arguments. */` |
-|   20 |  748 | `	if( nArg != 2 ){` |
+|   22 |  748 | `	if( nArg != 2 ){` |
 |    4 |  749 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  750 | `			"ArgumentCountError",` |
 |    - |  751 | `			"intdiv() expects exactly 2 arguments, %d given",` |
@@ -763,15 +763,15 @@ Coverage: 452/467 lines (96.79%)
 |    - |  753 | `			);` |
 |    - |  754 | `	}` |
 |    - |  755 | `	/* Type-check argument 1 */` |
-|   16 |  756 | `	if( ph7_value_is_array(apArg[0]) \|\| ph7_value_is_object(apArg[0])` |
-|   18 |  757 | `		\|\| ph7_value_is_resource(apArg[0]) ){` |
+|   18 |  756 | `	if( ph7_value_is_array(apArg[0]) \|\| ph7_value_is_object(apArg[0])` |
+|   20 |  757 | `		\|\| ph7_value_is_resource(apArg[0]) ){` |
 |  ! 0 |  758 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  759 | `			"TypeError",` |
 |    - |  760 | `			"intdiv(): Argument #1 ($num1) must be of type int, %s given",` |
 |  ! 0 |  761 | `			ph7_type_name(apArg[0])` |
 |    - |  762 | `			);` |
 |    - |  763 | `	}` |
-|   18 |  764 | `	if( ph7_value_is_string(apArg[0]) ){` |
+|   20 |  764 | `	if( ph7_value_is_string(apArg[0]) ){` |
 |    - |  765 | `		int len;` |
 |  ! 0 |  766 | `		const char *zStr = ph7_value_to_string(apArg[0], &len);` |
 |  ! 0 |  767 | `		if( SyStrIsNumeric(zStr, (sxu32)len, 0, 0) != SXRET_OK ){` |
@@ -782,15 +782,15 @@ Coverage: 452/467 lines (96.79%)
 |    - |  772 | `		}` |
 |  ! 0 |  773 | `	}` |
 |    - |  774 | `	/* Type-check argument 2 */` |
-|   16 |  775 | `	if( ph7_value_is_array(apArg[1]) \|\| ph7_value_is_object(apArg[1])` |
-|   18 |  776 | `		\|\| ph7_value_is_resource(apArg[1]) ){` |
+|   18 |  775 | `	if( ph7_value_is_array(apArg[1]) \|\| ph7_value_is_object(apArg[1])` |
+|   20 |  776 | `		\|\| ph7_value_is_resource(apArg[1]) ){` |
 |  ! 0 |  777 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  778 | `			"TypeError",` |
 |    - |  779 | `			"intdiv(): Argument #2 ($num2) must be of type int, %s given",` |
 |  ! 0 |  780 | `			ph7_type_name(apArg[1])` |
 |    - |  781 | `			);` |
 |    - |  782 | `	}` |
-|   18 |  783 | `	if( ph7_value_is_string(apArg[1]) ){` |
+|   20 |  783 | `	if( ph7_value_is_string(apArg[1]) ){` |
 |    - |  784 | `		int len;` |
 |  ! 0 |  785 | `		const char *zStr = ph7_value_to_string(apArg[1], &len);` |
 |  ! 0 |  786 | `		if( SyStrIsNumeric(zStr, (sxu32)len, 0, 0) != SXRET_OK ){` |
@@ -801,26 +801,26 @@ Coverage: 452/467 lines (96.79%)
 |    - |  791 | `		}` |
 |  ! 0 |  792 | `	}` |
 |    - |  793 | `	/* Convert both arguments to int64 */` |
-|   18 |  794 | `	a = ph7_value_to_int64(apArg[0]);` |
-|   18 |  795 | `	b = ph7_value_to_int64(apArg[1]);` |
+|   20 |  794 | `	a = ph7_value_to_int64(apArg[0]);` |
+|   20 |  795 | `	b = ph7_value_to_int64(apArg[1]);` |
 |    - |  796 | `	/* Check for division by zero */` |
-|   18 |  797 | `	if( b == 0 ){` |
+|   20 |  797 | `	if( b == 0 ){` |
 |    3 |  798 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  799 | `			"DivisionByZeroError",` |
 |    - |  800 | `			"Division by zero"` |
 |    - |  801 | `			);` |
 |    - |  802 | `	}` |
 |    - |  803 | `	/* Check for overflow: PHP_INT_MIN / -1 */` |
-|   16 |  804 | `	if( a == SMALLEST_INT64 && b == -1 ){` |
+|   18 |  804 | `	if( a == SMALLEST_INT64 && b == -1 ){` |
 |    3 |  805 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  806 | `			"ArithmeticError",` |
 |    - |  807 | `			"Division of PHP_INT_MIN by -1 is not an integer"` |
 |    - |  808 | `			);` |
 |    - |  809 | `	}` |
 |    - |  810 | `	/* Perform integer division */` |
-|   13 |  811 | `	ph7_result_int64(pCtx, a / b);` |
-|   13 |  812 | `	return PH7_OK;` |
-|   11 |  813 |  |
+|   15 |  811 | `	ph7_result_int64(pCtx, a / b);` |
+|   15 |  812 | `	return PH7_OK;` |
+|   12 |  813 |  |
 |    - |  814 | `/*` |
 |    - |  815 | ` * string dechex(int $number)` |
 |    - |  816 | ` *  Decimal to hexadecimal.` |
