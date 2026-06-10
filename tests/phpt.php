@@ -79,7 +79,10 @@ while (!empty($phpt_args)) {
             echo "Usage: " . $phpt_script_name . " [options]\n";
             echo "\n";
             echo "Options:\n";
-            echo "  --target-executable <exe>  Path to the executable being tested (mandatory)\n";
+            echo "  --target-executable <exe>  Path to the executable being tested. Omit to run\n";
+            echo "                             tests in-process (fast); the in-process corpus must\n";
+            echo "                             not call exit/die or pollute the interpreter\n";
+            echo "                             (see tests/phptrunner/README.md).\n";
             echo "  --target-timeout <sec>     Timeout for each test in seconds (default: 1)\n";
             echo "  --target-dir <dir>         Directory containing test files (default: directory of this script)\n";
             echo "  --file-extension <ext>     File extension for test files (default: phpt)\n";
@@ -114,6 +117,28 @@ if ($phpt_output_format != "tap" && $phpt_output_format != "dot") {
 if ($phpt_output_format == "tap") {
     echo "Tap Version 13\n";
 }
+
+// Abort guard. Tests run in-process by default (fast; the smoke corpus is
+// curated to never exit/die or pollute the interpreter). If a test does kill
+// the interpreter, this shutdown function turns the otherwise-silent
+// truncation into a loud TAP "Bail out!" with a nonzero exit status.
+$phpt_run_complete = false;
+$phpt_current_test = '';
+function phpt_abort_guard() {
+    global $phpt_run_complete, $phpt_current_test, $phpt_count;
+    if (!$phpt_run_complete) {
+        // The aborted test left its ob_start() buffer open; discard it so the
+        // Bail out! line reaches stdout instead of the dangling buffer.
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        echo "\nBail out! Test run aborted at test #$phpt_count ($phpt_current_test).\n";
+        echo "# A test terminated the interpreter (exit/die?). In-process tests must not\n";
+        echo "# do that; move it to tests/ph7/002-integration and run with --target-executable.\n";
+        exit(1);
+    }
+}
+register_shutdown_function('phpt_abort_guard');
 
 function parse_phpt_sections($phpt_path, $phpt_valid_sections) {
     // Read file and normalize line endings to LF
@@ -346,6 +371,7 @@ foreach ($phpt_files as $phpt_file) {
     }
 
     $phpt_test_name = $phpt_file;
+    $phpt_current_test = $phpt_file;
 
     // SKIPIF check
     $phpt_skip = false;
@@ -491,6 +517,9 @@ foreach ($phpt_files as $phpt_file) {
     @unlink($phpt_file . '.output');
     @unlink($phpt_file . '.expect');
 }
+
+// The loop completed normally; tell the abort guard not to fire.
+$phpt_run_complete = true;
 
 if ($phpt_output_format == "tap") {
     echo "# Incomplete Tests\n";

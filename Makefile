@@ -64,6 +64,10 @@ OBJECTS = \
 
 
 # --- Test commands ---
+# Smoke tests omit --target-executable so they run in-process (fast). That is
+# safe only because the smoke corpus never calls exit/die or pollutes the
+# interpreter; tests that need process isolation live in 002-integration and
+# pass --target-executable below.
 TEST_SMOKE_CMD = "$(PHL_BIN)" "tests/phpt.php" \
 	--target-dir tests/ph7/001-smoke \
 	--output-format dot
