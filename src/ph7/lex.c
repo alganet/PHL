@@ -102,7 +102,72 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 	}else{
 		sxi32 c;
 		/* Non-alpha stream */
-		if( pStream->zText[0] == '#' ||
+		if( pStream->zText[0] == '#' && &pStream->zText[1] < pStream->zEnd && pStream->zText[1] == '[' ){
+			sxu32 nDepth = 1;
+			/* PHP 8 attribute group '#[ ... ]': skip the whole balanced group as
+			 * trivia (attributes are not stored yet). Brackets inside string
+			 * literals and comments must not affect the depth count. An
+			 * unterminated group is silently consumed up to EOF, consistent
+			 * with unterminated block comments below.
+			 */
+			pStream->zText += 2;
+			while( pStream->zText < pStream->zEnd && nDepth > 0 ){
+				sxi32 d = pStream->zText[0];
+				if( d == '[' ){
+					nDepth++;
+				}else if( d == ']' ){
+					nDepth--;
+				}else if( d == '\'' || d == '"' ){
+					/* String literal: scan for the matching unescaped quote */
+					pStream->zText++;
+					while( pStream->zText < pStream->zEnd ){
+						if( pStream->zText[0] == '\\' && &pStream->zText[1] < pStream->zEnd ){
+							if( pStream->zText[1] == '\n' ){
+								pStream->nLine++;
+							}
+							pStream->zText += 2;
+							continue;
+						}
+						if( pStream->zText[0] == d ){
+							break;
+						}
+						if( pStream->zText[0] == '\n' ){
+							pStream->nLine++;
+						}
+						pStream->zText++;
+					}
+					if( pStream->zText >= pStream->zEnd ){
+						break; /* Unterminated string literal */
+					}
+					/* Fall through: consume the closing quote below */
+				}else if( d == '#' || (d == '/' && &pStream->zText[1] < pStream->zEnd && pStream->zText[1] == '/') ){
+					/* Inline comment inside the group */
+					while( pStream->zText < pStream->zEnd && pStream->zText[0] != '\n' ){
+						pStream->zText++;
+					}
+					continue; /* Let the outer loop count the newline */
+				}else if( d == '/' && &pStream->zText[1] < pStream->zEnd && pStream->zText[1] == '*' ){
+					/* Block comment inside the group */
+					pStream->zText += 2;
+					while( pStream->zText < pStream->zEnd ){
+						if( pStream->zText[0] == '*' && &pStream->zText[1] < pStream->zEnd && pStream->zText[1] == '/' ){
+							pStream->zText += 2;
+							break;
+						}
+						if( pStream->zText[0] == '\n' ){
+							pStream->nLine++;
+						}
+						pStream->zText++;
+					}
+					continue;
+				}else if( d == '\n' ){
+					pStream->nLine++;
+				}
+				pStream->zText++;
+			}
+			/* Tell the upper-layer to ignore this token */
+			return SXERR_CONTINUE;
+		}else if( pStream->zText[0] == '#' ||
 			( pStream->zText[0] == '/' &&  &pStream->zText[1] < pStream->zEnd && pStream->zText[1] == '/') ){
 				pStream->zText++;
 				/* Inline comments */
