@@ -7055,6 +7055,295 @@ static int ph7_hashmap_walk_recursive(ph7_context *pCtx,int nArg,ph7_value **apA
 	return PH7_OK;
 }
 /*
+ * bool array_is_list(array $array)
+ *  Checks whether a given array is a list: its keys consist of consecutive
+ *  integers starting at 0. An empty array is a list.
+ * Return
+ *  TRUE if the array is a list, FALSE otherwise.
+ */
+static int ph7_hashmap_is_list(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_hashmap_node *pNode;
+	ph7_hashmap *pMap;
+	sxi64 iExpect;
+	sxu32 n;
+	if( nArg < 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_is_list() expects exactly 1 argument, 0 given"
+			);
+	}
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_is_list(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
+	pNode = pMap->pFirst;
+	iExpect = 0;
+	for( n = 0 ; n < pMap->nEntry ; ++n ){
+		if( pNode->iType != HASHMAP_INT_NODE || pNode->xKey.iKey != iExpect ){
+			/* A non-integer key or a gap in the sequence: not a list */
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		++iExpect;
+		pNode = pNode->pPrev; /* Reverse link */
+	}
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/*
+ * Fetch the element identified by 'pKey' from 'pRow' which may be either an
+ * array (hashmap lookup) or an object (public attribute lookup). Used by
+ * array_column() for both the column value and the index key.
+ * Returns a borrowed pointer to the value, or NULL when the row is not a
+ * container or the key is absent.
+ */
+static ph7_value * HashmapColumnFetch(ph7_vm *pVm,ph7_value *pRow,ph7_value *pKey)
+{
+	if( ph7_value_is_array(pRow) ){
+		ph7_hashmap_node *pNode;
+		if( PH7_HashmapLookup((ph7_hashmap *)pRow->x.pOther,pKey,&pNode) == SXRET_OK ){
+			return HashmapExtractNodeValue(pNode);
+		}
+	}else if( ph7_value_is_object(pRow) ){
+		ph7_value sName;
+		const char *zName;
+		ph7_value *pAttr;
+		/* Stringify a *copy* of the key (objects address attributes by name);
+		 * never mutate pKey itself or the array-lookup path would break. */
+		PH7_MemObjInit(pVm,&sName);
+		PH7_MemObjStore(pKey,&sName);
+		zName = ph7_value_to_string(&sName,0); /* NUL-terminated */
+		pAttr = ph7_object_fetch_attr(pRow,zName);
+		PH7_MemObjRelease(&sName);
+		return pAttr;
+	}
+	return 0;
+}
+/*
+ * array array_column(array $array, int|string|null $column_key, int|string|null $index_key = null)
+ *  Returns the values from a single column of the input, identified by
+ *  $column_key. Optionally indexes the result by the $index_key column.
+ *  A NULL $column_key collects the whole row. Rows missing the column are
+ *  skipped; rows missing the index key are appended with a numeric key.
+ *  Each row may be an array or an object.
+ */
+static int ph7_hashmap_column(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_hashmap_node *pNode;
+	ph7_hashmap *pMap;
+	ph7_value *pArray;
+	ph7_value *pRow;
+	ph7_value *pCol;
+	ph7_value *pIdx;
+	int bWantCol;
+	int bWantIdx;
+	sxu32 n;
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_column() expects at least 2 arguments, %d given",
+			nArg
+			);
+	}
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_column(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
+	pArray = ph7_context_new_array(pCtx);
+	if( pArray == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	/* A NULL column_key means "collect the entire row". */
+	bWantCol = !ph7_value_is_null(apArg[1]);
+	bWantIdx = (nArg > 2 && !ph7_value_is_null(apArg[2]));
+	pNode = pMap->pFirst;
+	for( n = 0 ; n < pMap->nEntry ; ++n ){
+		pRow = HashmapExtractNodeValue(pNode);
+		pNode = pNode->pPrev; /* Advance now so 'continue' is safe */
+		if( pRow == 0 ){
+			continue;
+		}
+		if( bWantCol ){
+			pCol = HashmapColumnFetch(pMap->pVm,pRow,apArg[1]);
+			if( pCol == 0 ){
+				/* Row lacks the requested column: skip it (PHP semantics). */
+				continue;
+			}
+		}else{
+			pCol = pRow;
+		}
+		pIdx = bWantIdx ? HashmapColumnFetch(pMap->pVm,pRow,apArg[2]) : 0;
+		if( pIdx ){
+			ph7_array_add_elem(pArray,pIdx,pCol);
+		}else{
+			ph7_array_add_elem(pArray,0,pCol); /* Auto-index */
+		}
+	}
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/*
+ * Shared core for array_find/array_find_key/array_any/array_all (PHP 8.4).
+ * Invokes $callback($value, $key) over each entry and reports the first node
+ * whose truthiness equals 'bWant'. Propagates a callback exception as
+ * PH7_EXCEPTION; sets *ppMatch to the matching node (or NULL if none).
+ */
+static sxi32 HashmapCallbackSearch(
+	ph7_context *pCtx,int nArg,ph7_value **apArg,
+	const char *zName,            /* Function name for diagnostics */
+	int bWant,                    /* Truthiness being hunted for */
+	ph7_hashmap_node **ppMatch    /* OUT: first matching node or NULL */
+	)
+{
+	ph7_hashmap_node *pEntry;
+	ph7_hashmap *pMap;
+	ph7_value *pValue;
+	ph7_value *apCbArg[2];
+	ph7_value sKey;
+	ph7_value sResult;
+	sxi32 rc;
+	sxu32 n;
+	*ppMatch = 0;
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"%s() expects exactly 2 arguments, %d given",
+			zName,nArg
+			);
+	}
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"%s(): Argument #1 ($array) must be of type array, %s given",
+			zName,ph7_type_name(apArg[0])
+			);
+	}
+	if( !ph7_value_is_callable(apArg[1]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"%s(): Argument #2 ($callback) must be a valid callback, %s given",
+			zName,ph7_type_name(apArg[1])
+			);
+	}
+	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
+	pEntry = pMap->pFirst;
+	PH7_MemObjInit(pMap->pVm,&sKey);
+	sKey.nIdx = SXU32_HIGH;    /* Mark as constant */
+	PH7_MemObjInit(pMap->pVm,&sResult);
+	sResult.nIdx = SXU32_HIGH; /* Mark as constant */
+	for( n = 0 ; n < pMap->nEntry ; ++n ){
+		pValue = HashmapExtractNodeValue(pEntry);
+		if( pValue ){
+			/* The callback receives ($value, $key). */
+			PH7_HashmapExtractNodeKey(pEntry,&sKey);
+			apCbArg[0] = pValue;
+			apCbArg[1] = &sKey;
+			rc = PH7_VmCallUserFunction(pMap->pVm,apArg[1],2,apCbArg,&sResult);
+			if( rc == PH7_EXCEPTION ){
+				/* The callback raised: propagate so the dispatcher unwinds. */
+				PH7_MemObjRelease(&sKey);
+				PH7_MemObjRelease(&sResult);
+				return PH7_EXCEPTION;
+			}
+			if( rc == SXRET_OK && (ph7_value_to_bool(&sResult) ? 1 : 0) == bWant ){
+				*ppMatch = pEntry;
+				break;
+			}
+		}
+		pEntry = pEntry->pPrev; /* Reverse link */
+	}
+	PH7_MemObjRelease(&sKey);
+	PH7_MemObjRelease(&sResult);
+	return PH7_OK;
+}
+/*
+ * mixed array_find(array $array, callable $callback)
+ *  Returns the value of the first element for which $callback($value,$key)
+ *  is truthy, or NULL if none match.
+ */
+static int ph7_hashmap_find(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_hashmap_node *pMatch;
+	ph7_value *pVal;
+	sxi32 rc;
+	rc = HashmapCallbackSearch(pCtx,nArg,apArg,"array_find",1,&pMatch);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	if( pMatch && (pVal = HashmapExtractNodeValue(pMatch)) != 0 ){
+		ph7_result_value(pCtx,pVal);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+/*
+ * mixed array_find_key(array $array, callable $callback)
+ *  Returns the key of the first element for which $callback($value,$key)
+ *  is truthy, or NULL if none match.
+ */
+static int ph7_hashmap_find_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_hashmap_node *pMatch;
+	sxi32 rc;
+	rc = HashmapCallbackSearch(pCtx,nArg,apArg,"array_find_key",1,&pMatch);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	if( pMatch == 0 ){
+		ph7_result_null(pCtx);
+	}else if( pMatch->iType == HASHMAP_INT_NODE ){
+		ph7_result_int64(pCtx,pMatch->xKey.iKey);
+	}else{
+		ph7_result_string(pCtx,
+			(const char *)SyBlobData(&pMatch->xKey.sKey),
+			(int)SyBlobLength(&pMatch->xKey.sKey));
+	}
+	return PH7_OK;
+}
+/*
+ * bool array_any(array $array, callable $callback)
+ *  Returns TRUE if $callback($value,$key) is truthy for at least one element.
+ *  FALSE for an empty array.
+ */
+static int ph7_hashmap_any(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_hashmap_node *pMatch;
+	sxi32 rc;
+	rc = HashmapCallbackSearch(pCtx,nArg,apArg,"array_any",1,&pMatch);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	ph7_result_bool(pCtx,pMatch != 0);
+	return PH7_OK;
+}
+/*
+ * bool array_all(array $array, callable $callback)
+ *  Returns TRUE if $callback($value,$key) is truthy for every element (and for
+ *  an empty array). Hunts for the first falsy element: its absence means "all".
+ */
+static int ph7_hashmap_all(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_hashmap_node *pMatch;
+	sxi32 rc;
+	rc = HashmapCallbackSearch(pCtx,nArg,apArg,"array_all",0,&pMatch);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	ph7_result_bool(pCtx,pMatch == 0);
+	return PH7_OK;
+}
+/*
  * Table of hashmap functions.
  */
 static const ph7_builtin_func aHashmapFunc[] = {
@@ -7096,6 +7385,12 @@ static const ph7_builtin_func aHashmapFunc[] = {
 	{"array_replace",     ph7_hashmap_replace },
 	{"array_filter",      ph7_hashmap_filter  },
 	{"array_map",         ph7_hashmap_map     },
+	{"array_column",      ph7_hashmap_column  },
+	{"array_is_list",     ph7_hashmap_is_list },
+	{"array_find",        ph7_hashmap_find    },
+	{"array_find_key",    ph7_hashmap_find_key},
+	{"array_any",         ph7_hashmap_any     },
+	{"array_all",         ph7_hashmap_all     },
 	{"array_reduce",      ph7_hashmap_reduce  },
 	{"array_walk",        ph7_hashmap_walk    },
 	{"array_walk_recursive", ph7_hashmap_walk_recursive },
