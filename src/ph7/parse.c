@@ -1200,7 +1200,15 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 			if( apNode[iCur] ){
 				if( (apNode[iCur]->pStart->nType & PH7_TK_COMMA) && apNode[iCur]->pLeft == 0 && iNest <= 0 ){
 					break;
-				}else if( apNode[iCur]->pStart->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+				}else if( (apNode[iCur]->pStart->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB))
+					&& apNode[iCur]->xCode != PH7_CompileShortArray
+					&& apNode[iCur]->xCode != PH7_CompileShortList ){
+					/* A short-array/short-list literal ([...]) is extracted as a single
+					 * self-contained node that already consumed its matching ']', so its
+					 * opening '[' has no separate closing node to balance iNest. Treat it
+					 * as a term, not an opening bracket, otherwise iNest stays >0 and the
+					 * following comma is never seen as an argument separator (collapsing
+					 * e.g. array_merge([1],[2]) to just [2]). */
 					iNest++;
 				}else if( apNode[iCur]->pStart->nType & (PH7_TK_RPAREN|PH7_TK_CCB|PH7_TK_CSB) ){
 					iNest--;
