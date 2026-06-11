@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 295/427 lines (69.09%)
+Coverage: 336/487 lines (68.99%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -275,548 +275,649 @@ Coverage: 295/427 lines (69.09%)
 |    - |  265 | ` *  JSON_ERROR_SYNTAX          Syntax error.` |
 |    - |  266 | ` *  JSON_ERROR_UTF8_CHECK      Malformed UTF-8 characters.` |
 |    - |  267 | ` */` |
-|    8 |  268 | `PH7_PRIVATE int vm_builtin_json_last_error(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   10 |  268 | `PH7_PRIVATE int vm_builtin_json_last_error(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    2 |  269 |  |
-|   10 |  270 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   12 |  270 | `	ph7_vm *pVm = pCtx->pVm;` |
 |    - |  271 | `	/* Return the error code */` |
-|   10 |  272 | `	ph7_result_int(pCtx,pVm->json_rc);` |
-|    4 |  273 | `	SXUNUSED(nArg); /* cc warning */` |
-|    4 |  274 | `	SXUNUSED(apArg);` |
-|   10 |  275 | `	return PH7_OK;` |
+|   12 |  272 | `	ph7_result_int(pCtx,pVm->json_rc);` |
+|    5 |  273 | `	SXUNUSED(nArg); /* cc warning */` |
+|    5 |  274 | `	SXUNUSED(apArg);` |
+|   12 |  275 | `	return PH7_OK;` |
 |    2 |  276 |  |
-|    - |  277 | `/* Possible tokens from the JSON tokenization process */` |
-|    - |  278 | `#define JSON_TK_TRUE    0x001 /* Boolean true */` |
-|    - |  279 | `#define JSON_TK_FALSE   0x002 /* Boolean false */` |
-|    - |  280 | `#define JSON_TK_STR     0x004 /* String enclosed in double quotes */` |
-|    - |  281 | `#define JSON_TK_NULL    0x008 /* null */` |
-|    - |  282 | `#define JSON_TK_NUM     0x010 /* Numeric */` |
-|    - |  283 | `#define JSON_TK_OCB     0x020 /* Open curly braces '{' */` |
-|    - |  284 | `#define JSON_TK_CCB     0x040 /* Closing curly braces '}' */` |
-|    - |  285 | `#define JSON_TK_OSB     0x080 /* Open square bracke '[' */` |
-|    - |  286 | `#define JSON_TK_CSB     0x100 /* Closing square bracket ']' */` |
-|    - |  287 | `#define JSON_TK_COLON   0x200 /* Single colon ':' */` |
-|    - |  288 | `#define JSON_TK_COMMA   0x400 /* Single comma ',' */` |
-|    - |  289 | `#define JSON_TK_INVALID 0x800 /* Unexpected token */` |
-|    - |  290 | `/*` |
-|    - |  291 | ` * Tokenize an entire JSON input.` |
-|    - |  292 | ` * Get a single low-level token from the input file.` |
-|    - |  293 | ` * Update the stream pointer so that it points to the first` |
-|    - |  294 | ` * character beyond the extracted token.` |
-|    - |  295 | ` */` |
-|   86 |  296 | `static sxi32 VmJsonTokenize(SyStream *pStream,SyToken *pToken,void *pUserData,void *pCtxData)` |
-|    2 |  297 |  |
-|   88 |  298 | `	int *pJsonErr = (int *)pUserData;` |
-|    - |  299 | `	SyString *pStr;` |
-|    - |  300 | `	int c;` |
-|    - |  301 | `	/* Ignore leading white spaces */` |
-|   92 |  302 | `	while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisSpace(pStream->zText[0]) ){` |
-|    - |  303 | `		/* Advance the stream cursor */` |
-|    6 |  304 | `		if( pStream->zText[0] == '\n' ){` |
-|    - |  305 | `			/* Update line counter */` |
-|  ! 0 |  306 | `			pStream->nLine++;` |
-|  ! 0 |  307 | `		}` |
-|    6 |  308 | `		pStream->zText++;` |
-|    2 |  309 | `	}` |
-|   88 |  310 | `	if( pStream->zText >= pStream->zEnd ){` |
-|    - |  311 | `		/* End of input reached */` |
-|  ! 0 |  312 | `		SXUNUSED(pCtxData); /* cc warning */` |
-|  ! 0 |  313 | `		return SXERR_EOF;` |
-|    - |  314 | `	}` |
-|    - |  315 | `	/* Record token starting position and line */` |
-|   88 |  316 | `	pToken->nLine = pStream->nLine;` |
-|   88 |  317 | `	pToken->pUserData = 0;` |
-|   88 |  318 | `	pStr = &pToken->sData;` |
-|   88 |  319 | `	SyStringInitFromBuf(pStr,pStream->zText,0);` |
-|  110 |  320 | `	if( pStream->zText[0] == '{' \|\| pStream->zText[0] == '[' \|\| pStream->zText[0] == '}' \|\| pStream->zText[0] == ']'` |
-|   63 |  321 | `		\|\| pStream->zText[0] == ':' \|\| pStream->zText[0] == ',' ){` |
-|    - |  322 | `			/* Single character */` |
-|   52 |  323 | `			c = pStream->zText[0];` |
-|    - |  324 | `			/* Set token type */` |
-|   52 |  325 | `			switch(c){` |
-|    7 |  326 | `			case '[': pToken->nType = JSON_TK_OSB;   break;` |
-|   12 |  327 | `			case '{': pToken->nType = JSON_TK_OCB;   break;` |
-|    8 |  328 | `			case '}': pToken->nType = JSON_TK_CCB;   break;` |
-|    7 |  329 | `			case ']': pToken->nType = JSON_TK_CSB;   break;` |
-|   12 |  330 | `			case ':': pToken->nType = JSON_TK_COLON; break;` |
-|   13 |  331 | `			case ',': pToken->nType = JSON_TK_COMMA; break;` |
-|  ! 0 |  332 | `			default:` |
-|  ! 0 |  333 | `				break;` |
-|    - |  334 | `			}` |
-|    - |  335 | `			/* Advance the stream cursor */` |
-|   52 |  336 | `			pStream->zText++;` |
-|   63 |  337 | `	}else if( pStream->zText[0] == '"') {` |
-|    - |  338 | `		/* JSON string */` |
-|   18 |  339 | `		pStream->zText++;` |
-|   18 |  340 | `		pStr->zString++;` |
-|    - |  341 | `		/* Delimit the string */` |
-|   56 |  342 | `		while( pStream->zText < pStream->zEnd ){` |
-|   56 |  343 | `			if( pStream->zText[0] == '"' && pStream->zText[-1] != '\\' ){` |
-|   18 |  344 | `				break;` |
-|    - |  345 | `			}` |
-|   40 |  346 | `			if( pStream->zText[0] == '\n' ){` |
-|    - |  347 | `				/* Update line counter */` |
-|  ! 0 |  348 | `				pStream->nLine++;` |
-|  ! 0 |  349 | `			}` |
-|   40 |  350 | `			pStream->zText++;` |
-|    2 |  351 | `		}` |
-|   18 |  352 | `		if( pStream->zText >= pStream->zEnd ){` |
-|    - |  353 | `			/* Missing closing '"' */` |
-|  ! 0 |  354 | `			pToken->nType = JSON_TK_INVALID;` |
-|  ! 0 |  355 | `			*pJsonErr = JSON_ERROR_SYNTAX;` |
-|  ! 0 |  356 | `		}else{` |
-|   18 |  357 | `			pToken->nType = JSON_TK_STR;` |
-|   18 |  358 | `			pStream->zText++; /* Jump the closing double quotes */` |
-|    2 |  359 | `		}` |
-|   30 |  360 | `	}else if( pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){` |
-|    - |  361 | `		/* Number */` |
-|   15 |  362 | `		pStream->zText++;` |
-|   15 |  363 | `		pToken->nType = JSON_TK_NUM;` |
-|   15 |  364 | `		while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){` |
-|  ! 0 |  365 | `			pStream->zText++;` |
-|  ! 0 |  366 | `		}` |
-|   15 |  367 | `		if( pStream->zText < pStream->zEnd ){` |
-|   15 |  368 | `			c = pStream->zText[0];` |
-|   15 |  369 | `			if( c == '.' ){` |
-|    - |  370 | `					/* Real number */` |
-|  ! 0 |  371 | `					pStream->zText++;` |
-|  ! 0 |  372 | `					while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){` |
-|  ! 0 |  373 | `						pStream->zText++;` |
-|  ! 0 |  374 | `					}` |
-|  ! 0 |  375 | `					if( pStream->zText < pStream->zEnd ){` |
-|  ! 0 |  376 | `						c = pStream->zText[0];` |
-|  ! 0 |  377 | `						if( c=='e' \|\| c=='E' ){` |
-|  ! 0 |  378 | `							pStream->zText++;` |
-|  ! 0 |  379 | `							if( pStream->zText < pStream->zEnd ){` |
-|  ! 0 |  380 | `								c = pStream->zText[0];` |
-|  ! 0 |  381 | `								if( c =='+' \|\| c=='-' ){` |
-|  ! 0 |  382 | `									pStream->zText++;` |
-|  ! 0 |  383 | `								}` |
-|  ! 0 |  384 | `								while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){` |
-|  ! 0 |  385 | `									pStream->zText++;` |
-|  ! 0 |  386 | `								}` |
-|  ! 0 |  387 | `							}` |
-|  ! 0 |  388 | `						}` |
-|  ! 0 |  389 | `					}` |
-|   15 |  390 | `				}else if( c=='e' \|\| c=='E' ){` |
-|    - |  391 | `					/* Real number */` |
-|  ! 0 |  392 | `					pStream->zText++;` |
-|  ! 0 |  393 | `					if( pStream->zText < pStream->zEnd ){` |
-|  ! 0 |  394 | `						c = pStream->zText[0];` |
-|  ! 0 |  395 | `						if( c =='+' \|\| c=='-' ){` |
-|  ! 0 |  396 | `							pStream->zText++;` |
-|  ! 0 |  397 | `						}` |
-|  ! 0 |  398 | `						while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){` |
-|  ! 0 |  399 | `							pStream->zText++;` |
-|  ! 0 |  400 | `						}` |
-|  ! 0 |  401 | `					}` |
-|  ! 0 |  402 | `				}` |
-|    8 |  403 | `			}` |
-|   18 |  404 | `	}else if( XLEX_IN_LEN(pStream) >= sizeof("true") -1 &&` |
-|    6 |  405 | `		SyStrnicmp((const char *)pStream->zText,"true",sizeof("true")-1) == 0 ){` |
-|    - |  406 | `			/* boolean true */` |
-|  ! 0 |  407 | `			pToken->nType = JSON_TK_TRUE;` |
-|    - |  408 | `			/* Advance the stream cursor */` |
-|  ! 0 |  409 | `			pStream->zText += sizeof("true")-1;` |
-|   11 |  410 | `	}else if( XLEX_IN_LEN(pStream) >= sizeof("false") -1 &&` |
-|    6 |  411 | `		SyStrnicmp((const char *)pStream->zText,"false",sizeof("false")-1) == 0 ){` |
-|    - |  412 | `			/* boolean false */` |
-|  ! 0 |  413 | `			pToken->nType = JSON_TK_FALSE;` |
-|    - |  414 | `			/* Advance the stream cursor */` |
-|  ! 0 |  415 | `			pStream->zText += sizeof("false")-1;` |
-|   11 |  416 | `	}else if( XLEX_IN_LEN(pStream) >= sizeof("null") -1 &&` |
-|    6 |  417 | `		SyStrnicmp((const char *)pStream->zText,"null",sizeof("null")-1) == 0 ){` |
-|    - |  418 | `			/* NULL */` |
-|  ! 0 |  419 | `			pToken->nType = JSON_TK_NULL;` |
-|    - |  420 | `			/* Advance the stream cursor */` |
-|  ! 0 |  421 | `			pStream->zText += sizeof("null")-1;` |
-|  ! 0 |  422 | `	}else{` |
-|    - |  423 | `		/* Unexpected token */` |
-|    8 |  424 | `		pToken->nType = JSON_TK_INVALID;` |
-|    - |  425 | `		/* Advance the stream cursor */` |
-|    8 |  426 | `		pStream->zText++;` |
-|    8 |  427 | `		*pJsonErr = JSON_ERROR_SYNTAX;` |
-|    - |  428 | `		/* Abort processing immediatley */` |
-|    8 |  429 | `		return SXERR_ABORT;` |
-|    - |  430 | `	}` |
-|    - |  431 | `	/* record token length */` |
-|   82 |  432 | `	pStr->nByte = (sxu32)((const char *)pStream->zText-pStr->zString);` |
-|   82 |  433 | `	if( pToken->nType == JSON_TK_STR ){` |
-|   18 |  434 | `		pStr->nByte--;` |
-|    8 |  435 | `	}` |
-|    - |  436 | `	/* Return to the lexer */` |
-|   82 |  437 | `	return SXRET_OK;` |
-|   45 |  438 |  |
-|    - |  439 | `/*` |
-|    - |  440 | ` * JSON decoded input consumer callback signature.` |
-|    - |  441 | ` */` |
-|    - |  442 | `typedef int (*ProcJsonConsumer)(ph7_context *,ph7_value *,ph7_value *,void *);` |
-|    - |  443 | `/*` |
-|    - |  444 | ` * JSON decoder state is kept in the following structure.` |
-|    - |  445 | ` */` |
-|    - |  446 | `typedef struct json_decoder json_decoder;` |
-|    - |  447 | `struct json_decoder` |
-|    - |  448 |  |
-|    - |  449 | `	ph7_context *pCtx; /* Call context */` |
-|    - |  450 | `	ProcJsonConsumer xConsumer; /* Consumer callback */` |
-|    - |  451 | `	void *pUserData;   /* Last argument to xConsumer() */` |
-|    - |  452 | `	int iFlags;        /* Configuration flags */` |
-|    - |  453 | `	SyToken *pIn;      /* Token stream */` |
-|    - |  454 | `	SyToken *pEnd;     /* End of the token stream */` |
-|    - |  455 | `	int rec_depth;     /* Recursion limit */` |
-|    - |  456 | `	int rec_count;     /* Current nesting level */` |
-|    - |  457 | `	int *pErr;         /* JSON decoding error if any */` |
-|    - |  458 | `};` |
-|    - |  459 | `#define JSON_DECODE_ASSOC 0x01 /* Decode a JSON object as an associative array */` |
-|    - |  460 | `/* Forward declaration */` |
-|    - |  461 | `static int VmJsonArrayDecoder(ph7_context *pCtx,ph7_value *pKey,ph7_value *pWorker,void *pUserData);` |
-|    - |  462 | `/*` |
-|    - |  463 | ` * Dequote [i.e: Resolve all backslash escapes ] a JSON string and store` |
-|    - |  464 | ` * the result in the given ph7_value.` |
-|    - |  465 | ` */` |
-|   16 |  466 | `static void VmJsonDequoteString(const SyString *pStr,ph7_value *pWorker)` |
-|    2 |  467 |  |
-|   18 |  468 | `	const char *zIn = pStr->zString;` |
-|   18 |  469 | `	const char *zEnd = &pStr->zString[pStr->nByte];` |
-|    - |  470 | `	const char *zCur;` |
-|    - |  471 | `	int c;` |
-|    - |  472 | `	/* Mark the value as a string */` |
-|   18 |  473 | `	ph7_value_string(pWorker,"",0); /* Empty string */` |
-|    8 |  474 | `	for(;;){` |
-|   18 |  475 | `		zCur = zIn;` |
-|   56 |  476 | `		while( zIn < zEnd && zIn[0] != '\\' ){` |
-|   40 |  477 | `			zIn++;` |
-|    2 |  478 | `		}` |
-|   18 |  479 | `		if( zIn > zCur ){` |
-|    - |  480 | `			/* Append chunk verbatim */` |
-|   18 |  481 | `			ph7_value_string(pWorker,zCur,(int)(zIn-zCur));` |
-|    8 |  482 | `		}` |
-|   18 |  483 | `		zIn++;` |
-|   18 |  484 | `		if( zIn >= zEnd ){` |
-|    - |  485 | `			/* End of the input reached */` |
-|   18 |  486 | `			break;` |
-|    - |  487 | `		}` |
-|  ! 0 |  488 | `		c = zIn[0];` |
-|    - |  489 | `		/* Unescape the character */` |
-|  ! 0 |  490 | `		switch(c){` |
-|  ! 0 |  491 | `		case '"':  ph7_value_string(pWorker,(const char *)&c,(int)sizeof(char)); break;` |
-|  ! 0 |  492 | `		case '\\': ph7_value_string(pWorker,(const char *)&c,(int)sizeof(char)); break;` |
-|  ! 0 |  493 | `		case 'n':  ph7_value_string(pWorker,"\n",(int)sizeof(char)); break;` |
-|  ! 0 |  494 | `		case 'r':  ph7_value_string(pWorker,"\r",(int)sizeof(char)); break;` |
-|  ! 0 |  495 | `		case 't':  ph7_value_string(pWorker,"\t",(int)sizeof(char)); break;` |
-|  ! 0 |  496 | `		case 'f':  ph7_value_string(pWorker,"\f",(int)sizeof(char)); break;` |
-|  ! 0 |  497 | `		default:` |
-|  ! 0 |  498 | `			ph7_value_string(pWorker,(const char *)&c,(int)sizeof(char));` |
-|  ! 0 |  499 | `			break;` |
-|    - |  500 | `		}` |
-|    - |  501 | `		/* Advance the stream cursor */` |
-|  ! 0 |  502 | `		zIn++;` |
-|  ! 0 |  503 | `	}` |
-|   18 |  504 |  |
-|    - |  505 | `/*` |
-|    - |  506 | ` * Returns a ph7_value holding the image of a JSON string. In other word perform a JSON decoding operation.` |
-|    - |  507 | ` * According to wikipedia` |
-|    - |  508 | ` * JSON's basic types are:` |
-|    - |  509 | ` *   Number (double precision floating-point format in JavaScript, generally depends on implementation)` |
-|    - |  510 | ` *   String (double-quoted Unicode, with backslash escaping)` |
-|    - |  511 | ` *   Boolean (true or false)` |
-|    - |  512 | ` *   Array (an ordered sequence of values, comma-separated and enclosed in square brackets; the values` |
-|    - |  513 | ` *    do not need to be of the same type)` |
-|    - |  514 | ` *   Object (an unordered collection of key:value pairs with the ':' character separating the key` |
-|    - |  515 | ` *     and the value, comma-separated and enclosed in curly braces; the keys must be strings and should` |
-|    - |  516 | ` *     be distinct from each other)` |
-|    - |  517 | ` *   null (empty)` |
-|    - |  518 | ` * Non-significant white space may be added freely around the "structural characters" (i.e. the brackets "[{]}", colon ":" and comma ",").` |
-|    - |  519 | ` */` |
-|   34 |  520 | `static sxi32 VmJsonDecode(` |
-|    - |  521 | `	json_decoder *pDecoder, /* JSON decoder */` |
-|    - |  522 | `	ph7_value *pArrayKey    /* Key for the decoded array */` |
-|    2 |  523 | `	){` |
-|    - |  524 | `	ph7_value *pWorker; /* Worker variable */` |
-|    - |  525 | `	sxi32 rc;` |
-|    - |  526 | `	/* Check if we do not nest to much */` |
-|   36 |  527 | `	if( pDecoder->rec_count >= pDecoder->rec_depth ){` |
-|    - |  528 | `		/* Nesting limit reached,abort decoding immediately */` |
-|  ! 0 |  529 | `		*pDecoder->pErr = JSON_ERROR_DEPTH;` |
-|  ! 0 |  530 | `		return SXERR_ABORT;` |
-|    - |  531 | `	}` |
-|   36 |  532 | `	if( pDecoder->pIn->nType & (JSON_TK_STR\|JSON_TK_TRUE\|JSON_TK_FALSE\|JSON_TK_NULL\|JSON_TK_NUM) ){` |
-|    - |  533 | `		/* Scalar value */` |
-|   22 |  534 | `		pWorker = ph7_context_new_scalar(pDecoder->pCtx);` |
-|   22 |  535 | `		if( pWorker == 0 ){` |
-|  ! 0 |  536 | `			ph7_context_throw_error(pDecoder->pCtx,PH7_CTX_ERR,"PH7 is running out of memory");` |
-|    - |  537 | `			/* Abort the decoding operation immediately */` |
-|  ! 0 |  538 | `			return SXERR_ABORT;` |
-|    - |  539 | `		}` |
-|    - |  540 | `		/* Reflect the JSON image */` |
-|   22 |  541 | `		if( pDecoder->pIn->nType & JSON_TK_NULL ){` |
-|    - |  542 | `			/* Nullify the value.*/` |
-|  ! 0 |  543 | `			ph7_value_null(pWorker);` |
-|   22 |  544 | `		}else if( pDecoder->pIn->nType & (JSON_TK_TRUE\|JSON_TK_FALSE) ){` |
-|    - |  545 | `			/* Boolean value */` |
-|  ! 0 |  546 | `			ph7_value_bool(pWorker,(pDecoder->pIn->nType & JSON_TK_TRUE) ? 1 : 0 );` |
-|   22 |  547 | `		}else if( pDecoder->pIn->nType & JSON_TK_NUM ){` |
-|   15 |  548 | `			SyString *pStr = &pDecoder->pIn->sData;` |
-|    - |  549 | `			/*` |
-|    - |  550 | `			 * Numeric value.` |
-|    - |  551 | `			 * Get a string representation first then try to get a numeric` |
-|    - |  552 | `			 * value.` |
-|    - |  553 | `			 */` |
-|   15 |  554 | `			ph7_value_string(pWorker,pStr->zString,(int)pStr->nByte);` |
-|    - |  555 | `			/* Obtain a numeric representation */` |
-|   15 |  556 | `			PH7_MemObjToNumeric(pWorker);` |
-|    8 |  557 | `		}else{` |
-|    - |  558 | `			/* Dequote the string */` |
-|    8 |  559 | `			VmJsonDequoteString(&pDecoder->pIn->sData,pWorker);` |
-|    - |  560 | `		}` |
-|    - |  561 | `		/* Invoke the consumer callback */` |
-|   22 |  562 | `		rc = pDecoder->xConsumer(pDecoder->pCtx,pArrayKey,pWorker,pDecoder->pUserData);` |
-|   22 |  563 | `		if( rc == SXERR_ABORT ){` |
-|  ! 0 |  564 | `			return SXERR_ABORT;` |
-|    - |  565 | `		}` |
-|    - |  566 | `		/* All done,advance the stream cursor */` |
-|   22 |  567 | `		pDecoder->pIn++;` |
-|   26 |  568 | `	}else if( pDecoder->pIn->nType & JSON_TK_OSB /*'[' */) {` |
-|    - |  569 | `		ProcJsonConsumer xOld;` |
-|    - |  570 | `		void *pOld;` |
-|    - |  571 | `		/* Array representation*/` |
-|    7 |  572 | `		pDecoder->pIn++;` |
-|    - |  573 | `		/* Create a working array */` |
-|    7 |  574 | `		pWorker = ph7_context_new_array(pDecoder->pCtx);` |
-|    7 |  575 | `		if( pWorker == 0 ){` |
-|  ! 0 |  576 | `			ph7_context_throw_error(pDecoder->pCtx,PH7_CTX_ERR,"PH7 is running out of memory");` |
-|    - |  577 | `			/* Abort the decoding operation immediately */` |
-|  ! 0 |  578 | `			return SXERR_ABORT;` |
-|    - |  579 | `		}` |
-|    - |  580 | `		/* Save the old consumer */` |
-|    7 |  581 | `		xOld = pDecoder->xConsumer;` |
-|    7 |  582 | `		pOld = pDecoder->pUserData;` |
-|    - |  583 | `		/* Set the new consumer */` |
-|    7 |  584 | `		pDecoder->xConsumer = VmJsonArrayDecoder;` |
-|    7 |  585 | `		pDecoder->pUserData = pWorker;` |
-|    - |  586 | `		/* Decode the array */` |
-|   10 |  587 | `		for(;;){` |
-|    - |  588 | `			/* Jump trailing comma. Note that the standard PHP engine will not let you` |
-|    - |  589 | `			 * do this.` |
-|    - |  590 | `			 */` |
-|   29 |  591 | `			while( (pDecoder->pIn < pDecoder->pEnd) && (pDecoder->pIn->nType & JSON_TK_COMMA) ){` |
-|    9 |  592 | `				pDecoder->pIn++;` |
-|    1 |  593 | `			}` |
-|   21 |  594 | `			if( pDecoder->pIn >= pDecoder->pEnd \|\| (pDecoder->pIn->nType & JSON_TK_CSB) /*']'*/ ){` |
-|    7 |  595 | `				if( pDecoder->pIn < pDecoder->pEnd ){` |
-|    7 |  596 | `					pDecoder->pIn++; /* Jump the trailing ']' */` |
-|    3 |  597 | `				}` |
-|    7 |  598 | `				break;` |
-|    - |  599 | `			}` |
-|    - |  600 | `			/* Recurse and decode the entry */` |
-|   15 |  601 | `			pDecoder->rec_count++;` |
-|   15 |  602 | `			rc = VmJsonDecode(pDecoder,0);` |
-|   15 |  603 | `			pDecoder->rec_count--;` |
-|   15 |  604 | `			if( rc == SXERR_ABORT ){` |
-|    - |  605 | `				/* Abort processing immediately */` |
-|  ! 0 |  606 | `				return SXERR_ABORT;` |
-|    - |  607 | `			}` |
-|    - |  608 | `			/*The cursor is automatically advanced by the VmJsonDecode() function */` |
-|   15 |  609 | `			if( (pDecoder->pIn < pDecoder->pEnd) &&` |
-|   14 |  610 | `				((pDecoder->pIn->nType & (JSON_TK_CSB/*']'*/\|JSON_TK_COMMA/*','*/))==0) ){` |
-|    - |  611 | `					/* Unexpected token,abort immediatley */` |
-|  ! 0 |  612 | `					*pDecoder->pErr = JSON_ERROR_SYNTAX;` |
-|  ! 0 |  613 | `					return SXERR_ABORT;` |
-|    - |  614 | `			}` |
-|    1 |  615 | `		}` |
-|    - |  616 | `		/* Restore the old consumer */` |
-|    7 |  617 | `		pDecoder->xConsumer = xOld;` |
-|    7 |  618 | `		pDecoder->pUserData = pOld;` |
-|    - |  619 | `		/* Invoke the old consumer on the decoded array */` |
-|    7 |  620 | `		xOld(pDecoder->pCtx,pArrayKey,pWorker,pOld);` |
-|   13 |  621 | `	}else if( pDecoder->pIn->nType & JSON_TK_OCB /*'{' */) {` |
-|    - |  622 | `		ProcJsonConsumer xOld;` |
-|    - |  623 | `		ph7_value *pKey;` |
-|    - |  624 | `		void *pOld;` |
-|    - |  625 | `		/* Object representation*/` |
-|   10 |  626 | `		pDecoder->pIn++;` |
-|    - |  627 | `		/* Return the object as an associative array */` |
-|   10 |  628 | `		if( (pDecoder->iFlags & JSON_DECODE_ASSOC) == 0 ){` |
-|    3 |  629 | `			ph7_context_throw_error(pDecoder->pCtx,PH7_CTX_WARNING,` |
-|    - |  630 | `				"JSON Objects are always returned as an associative array"` |
-|    - |  631 | `				);` |
-|    1 |  632 | `		}` |
-|    - |  633 | `		/* Create a working array */` |
-|   10 |  634 | `		pWorker = ph7_context_new_array(pDecoder->pCtx);` |
-|   10 |  635 | `		pKey = ph7_context_new_scalar(pDecoder->pCtx);` |
-|   10 |  636 | `		if( pWorker == 0 \|\| pKey == 0){` |
-|  ! 0 |  637 | `			ph7_context_throw_error(pDecoder->pCtx,PH7_CTX_ERR,"PH7 is running out of memory");` |
-|    - |  638 | `			/* Abort the decoding operation immediately */` |
-|  ! 0 |  639 | `			return SXERR_ABORT;` |
-|    - |  640 | `		}` |
-|    - |  641 | `		/* Save the old consumer */` |
-|   10 |  642 | `		xOld = pDecoder->xConsumer;` |
-|   10 |  643 | `		pOld = pDecoder->pUserData;` |
-|    - |  644 | `		/* Set the new consumer */` |
-|   10 |  645 | `		pDecoder->xConsumer = VmJsonArrayDecoder;` |
-|   10 |  646 | `		pDecoder->pUserData = pWorker;` |
-|    - |  647 | `		/* Decode the object */` |
-|    9 |  648 | `		for(;;){` |
-|    - |  649 | `			/* Jump trailing comma. Note that the standard PHP engine will not let you` |
-|    - |  650 | `			 * do this.` |
-|    - |  651 | `			 */` |
-|   24 |  652 | `			while( (pDecoder->pIn < pDecoder->pEnd) && (pDecoder->pIn->nType & JSON_TK_COMMA) ){` |
-|    5 |  653 | `				pDecoder->pIn++;` |
-|    1 |  654 | `			}` |
-|   20 |  655 | `			if( pDecoder->pIn >= pDecoder->pEnd \|\| (pDecoder->pIn->nType & JSON_TK_CCB) /*'}'*/ ){` |
-|   10 |  656 | `				if( pDecoder->pIn < pDecoder->pEnd ){` |
-|    8 |  657 | `					pDecoder->pIn++; /* Jump the trailing ']' */` |
-|    3 |  658 | `				}` |
-|   10 |  659 | `				break;` |
-|    - |  660 | `			}` |
-|   10 |  661 | `			if( (pDecoder->pIn->nType & JSON_TK_STR) == 0 \|\| &pDecoder->pIn[1] >= pDecoder->pEnd` |
-|   12 |  662 | `				\|\| (pDecoder->pIn[1].nType & JSON_TK_COLON) == 0){` |
-|    - |  663 | `					/* Syntax error,return immediately */` |
-|  ! 0 |  664 | `					*pDecoder->pErr = JSON_ERROR_SYNTAX;` |
-|  ! 0 |  665 | `					return SXERR_ABORT;` |
-|    - |  666 | `			}` |
-|    - |  667 | `			/* Dequote the key */` |
-|   12 |  668 | `			VmJsonDequoteString(&pDecoder->pIn->sData,pKey);` |
-|    - |  669 | `			/* Jump the key and the colon */` |
-|   12 |  670 | `			pDecoder->pIn += 2;` |
-|    - |  671 | `			/* Recurse and decode the value */` |
-|   12 |  672 | `			pDecoder->rec_count++;` |
-|   12 |  673 | `			rc = VmJsonDecode(pDecoder,pKey);` |
-|   12 |  674 | `			pDecoder->rec_count--;` |
-|   12 |  675 | `			if( rc == SXERR_ABORT ){` |
-|    - |  676 | `				/* Abort processing immediately */` |
-|  ! 0 |  677 | `				return SXERR_ABORT;` |
-|    - |  678 | `			}` |
-|    - |  679 | `			/* Reset the internal buffer of the key */` |
-|   12 |  680 | `			ph7_value_reset_string_cursor(pKey);` |
-|    - |  681 | `			/*The cursor is automatically advanced by the VmJsonDecode() function */` |
-|    2 |  682 | `		}` |
-|    - |  683 | `		/* Restore the old consumer */` |
-|   10 |  684 | `		pDecoder->xConsumer = xOld;` |
-|   10 |  685 | `		pDecoder->pUserData = pOld;` |
-|    - |  686 | `		/* Invoke the old consumer on the decoded object*/` |
-|   10 |  687 | `		xOld(pDecoder->pCtx,pArrayKey,pWorker,pOld);` |
-|    - |  688 | `		/* Release the key */` |
-|   10 |  689 | `		ph7_context_release_value(pDecoder->pCtx,pKey);` |
-|    6 |  690 | `	}else{` |
-|    - |  691 | `		/* Unexpected token */` |
-|  ! 0 |  692 | `		return SXERR_ABORT; /* Abort immediately */` |
-|    - |  693 | `	}` |
-|    - |  694 | `	/* Release the worker variable */` |
-|   36 |  695 | `	ph7_context_release_value(pDecoder->pCtx,pWorker);` |
-|   36 |  696 | `	return SXRET_OK;` |
-|   19 |  697 |  |
-|    - |  698 | `/*` |
-|    - |  699 | ` * The following JSON decoder callback is invoked each time` |
-|    - |  700 | ` * a JSON array representation [i.e: [15,"hello",FALSE] ]` |
-|    - |  701 | ` * is being decoded.` |
-|    - |  702 | ` */` |
-|   24 |  703 | `static int VmJsonArrayDecoder(ph7_context *pCtx,ph7_value *pKey,ph7_value *pWorker,void *pUserData)` |
-|    2 |  704 |  |
-|   26 |  705 | `	ph7_value *pArray = (ph7_value *)pUserData;` |
-|    - |  706 | `	/* Insert the entry */` |
-|   26 |  707 | `	ph7_array_add_elem(pArray,pKey,pWorker); /* Will make it's own copy */` |
-|   12 |  708 | `	SXUNUSED(pCtx); /* cc warning */` |
-|    - |  709 | `	/* All done */` |
-|   26 |  710 | `	return SXRET_OK;` |
-|    2 |  711 |  |
-|    - |  712 | `/*` |
-|    - |  713 | ` * Standard JSON decoder callback.` |
-|    - |  714 | ` */` |
-|   10 |  715 | `static int VmJsonDefaultDecoder(ph7_context *pCtx,ph7_value *pKey,ph7_value *pWorker,void *pUserData)` |
-|    2 |  716 |  |
-|    - |  717 | `	/* Return the value directly */` |
-|   12 |  718 | `	ph7_result_value(pCtx,pWorker); /* Will make it's own copy */` |
-|    5 |  719 | `	SXUNUSED(pKey); /* cc warning */` |
-|    5 |  720 | `	SXUNUSED(pUserData);` |
-|    - |  721 | `	/* All done */` |
-|   12 |  722 | `	return SXRET_OK;` |
-|    2 |  723 |  |
-|    - |  724 | `/*` |
-|    - |  725 | ` * mixed json_decode(string $json[,bool $assoc = false[,int $depth = 32[,int $options = 0 ]]])` |
-|    - |  726 | ` *  Takes a JSON encoded string and converts it into a PHP variable.` |
-|    - |  727 | ` * Parameters` |
-|    - |  728 | ` *  $json` |
-|    - |  729 | ` *    The json string being decoded.` |
-|    - |  730 | ` * $assoc` |
-|    - |  731 | ` *   When TRUE, returned objects will be converted into associative arrays.` |
-|    - |  732 | ` * $depth` |
-|    - |  733 | ` *   User specified recursion depth.` |
-|    - |  734 | ` * $options` |
-|    - |  735 | ` *   Bitmask of JSON decode options. Currently only JSON_BIGINT_AS_STRING is supported` |
-|    - |  736 | ` * (default is to cast large integers as floats)` |
-|    - |  737 | ` * Return` |
-|    - |  738 | ` *  The value encoded in json in appropriate PHP type. Values true, false and null (case-insensitive)` |
-|    - |  739 | ` *  are returned as TRUE, FALSE and NULL respectively. NULL is returned if the json cannot be decoded` |
-|    - |  740 | ` *  or if the encoded data is deeper than the recursion limit.` |
-|    - |  741 | ` */` |
-|   18 |  742 | `PH7_PRIVATE int vm_builtin_json_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    2 |  743 |  |
-|   20 |  744 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    - |  745 | `	json_decoder sDecoder;` |
-|    - |  746 | `	const char *zIn;` |
-|    - |  747 | `	SySet sToken;` |
-|    - |  748 | `	SyLex sLex;` |
-|    - |  749 | `	int nByte;` |
-|    - |  750 | `	sxi32 rc;` |
-|   20 |  751 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
-|    - |  752 | `		/* Missing/Invalid arguments, return NULL */` |
-|  ! 0 |  753 | `		ph7_result_null(pCtx);` |
-|  ! 0 |  754 | `		return PH7_OK;` |
-|    - |  755 | `	}` |
-|    - |  756 | `	/* Extract the JSON string */` |
-|   20 |  757 | `	zIn = ph7_value_to_string(apArg[0],&nByte);` |
-|   20 |  758 | `	if( nByte < 1 ){` |
-|    - |  759 | `		/* Empty string,return NULL */` |
-|    3 |  760 | `		ph7_result_null(pCtx);` |
-|    3 |  761 | `		return PH7_OK;` |
-|    - |  762 | `	}` |
-|    - |  763 | `	/* Clear JSON error code */` |
-|   18 |  764 | `	pVm->json_rc = JSON_ERROR_NONE;` |
-|    - |  765 | `	/* Tokenize the input */` |
-|   18 |  766 | `	SySetInit(&sToken,&pVm->sAllocator,sizeof(SyToken));` |
-|   18 |  767 | `	SyLexInit(&sLex,&sToken,VmJsonTokenize,&pVm->json_rc);` |
-|   18 |  768 | `	SyLexTokenizeInput(&sLex,zIn,(sxu32)nByte,0,0,0);` |
-|   18 |  769 | `	if( pVm->json_rc != JSON_ERROR_NONE ){` |
-|    - |  770 | `		/* Something goes wrong while tokenizing input. [i.e: Unexpected token] */` |
-|    8 |  771 | `		SyLexRelease(&sLex);` |
-|    8 |  772 | `		SySetRelease(&sToken);` |
-|    - |  773 | `		/* return NULL */` |
-|    8 |  774 | `		ph7_result_null(pCtx);` |
-|    8 |  775 | `		return PH7_OK;` |
-|    - |  776 | `	}` |
-|    - |  777 | `	/* Fill the decoder */` |
-|   12 |  778 | `	sDecoder.pCtx = pCtx;` |
-|   12 |  779 | `	sDecoder.pErr = &pVm->json_rc;` |
-|   12 |  780 | `	sDecoder.pIn = (SyToken *)SySetBasePtr(&sToken);` |
-|   12 |  781 | `	sDecoder.pEnd = &sDecoder.pIn[SySetUsed(&sToken)];` |
-|   12 |  782 | `	sDecoder.iFlags = 0;` |
-|   12 |  783 | `	if( nArg > 1 && ph7_value_to_bool(apArg[1]) != 0 ){` |
-|    - |  784 | `		/* Returned objects will be converted into associative arrays */` |
-|   10 |  785 | `		sDecoder.iFlags \|= JSON_DECODE_ASSOC;` |
-|    4 |  786 | `	}` |
-|   12 |  787 | `	sDecoder.rec_depth = 32;` |
-|   12 |  788 | `	if( nArg > 2 && ph7_value_is_int(apArg[2]) ){` |
-|  ! 0 |  789 | `		int nDepth = ph7_value_to_int(apArg[2]);` |
-|  ! 0 |  790 | `		if( nDepth > 1 && nDepth < 32 ){` |
-|  ! 0 |  791 | `			sDecoder.rec_depth = nDepth;` |
-|  ! 0 |  792 | `		}` |
-|  ! 0 |  793 | `	}` |
-|   12 |  794 | `	sDecoder.rec_count = 0;` |
-|    - |  795 | `	/* Set a default consumer */` |
-|   12 |  796 | `	sDecoder.xConsumer = VmJsonDefaultDecoder;` |
-|   12 |  797 | `	sDecoder.pUserData = 0;` |
-|    - |  798 | `	/* Decode the raw JSON input */` |
-|   12 |  799 | `	rc = VmJsonDecode(&sDecoder,0);` |
-|   12 |  800 | `	if( rc == SXERR_ABORT \|\|  pVm->json_rc != JSON_ERROR_NONE ){` |
-|    - |  801 | `		/*` |
-|    - |  802 | `		 * Something goes wrong while decoding JSON input.Return NULL.` |
-|    - |  803 | `		 */` |
-|  ! 0 |  804 | `		ph7_result_null(pCtx);` |
-|  ! 0 |  805 | `	}` |
-|    - |  806 | `	/* Clean-up the mess left behind */` |
-|   12 |  807 | `	SyLexRelease(&sLex);` |
-|   12 |  808 | `	SySetRelease(&sToken);` |
-|    - |  809 | `	/* All done */` |
-|   12 |  810 | `	return PH7_OK;` |
-|   11 |  811 |  |
-|    - |  812 |  |
+|    - |  277 | `/*` |
+|    - |  278 | ` * string json_last_error_msg(void)` |
+|    - |  279 | ` *  Returns the error string of the last JSON encoding/decoding operation.` |
+|    - |  280 | ` * Parameters` |
+|    - |  281 | ` *  None` |
+|    - |  282 | ` * Return` |
+|    - |  283 | ` *  Returns the human-readable message corresponding to the last json_last_error()` |
+|    - |  284 | ` *  code, or "No error" if no error has occurred.` |
+|    - |  285 | ` */` |
+|    4 |  286 | `PH7_PRIVATE int vm_builtin_json_last_error_msg(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1 |  287 |  |
+|    5 |  288 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    - |  289 | `	const char *zMsg;` |
+|    5 |  290 | `	switch( pVm->json_rc ){` |
+|    1 |  291 | `	case JSON_ERROR_NONE:` |
+|    3 |  292 | `		zMsg = "No error";` |
+|    3 |  293 | `		break;` |
+|  ! 0 |  294 | `	case JSON_ERROR_DEPTH:` |
+|  ! 0 |  295 | `		zMsg = "Maximum stack depth exceeded";` |
+|  ! 0 |  296 | `		break;` |
+|  ! 0 |  297 | `	case JSON_ERROR_STATE_MISMATCH:` |
+|  ! 0 |  298 | `		zMsg = "State mismatch (invalid or malformed JSON)";` |
+|  ! 0 |  299 | `		break;` |
+|  ! 0 |  300 | `	case JSON_ERROR_CTRL_CHAR:` |
+|  ! 0 |  301 | `		zMsg = "Control character error, possibly incorrectly encoded";` |
+|  ! 0 |  302 | `		break;` |
+|    1 |  303 | `	case JSON_ERROR_SYNTAX:` |
+|    3 |  304 | `		zMsg = "Syntax error";` |
+|    3 |  305 | `		break;` |
+|  ! 0 |  306 | `	case JSON_ERROR_UTF8:` |
+|  ! 0 |  307 | `		zMsg = "Malformed UTF-8 characters, possibly incorrectly encoded";` |
+|  ! 0 |  308 | `		break;` |
+|  ! 0 |  309 | `	default:` |
+|  ! 0 |  310 | `		zMsg = "Unknown error";` |
+|  ! 0 |  311 | `		break;` |
+|    - |  312 | `	}` |
+|    5 |  313 | `	ph7_result_string(pCtx,zMsg,-1/* Compute length automatically */);` |
+|    2 |  314 | `	SXUNUSED(nArg); /* cc warning */` |
+|    2 |  315 | `	SXUNUSED(apArg);` |
+|    5 |  316 | `	return PH7_OK;` |
+|    1 |  317 |  |
+|    - |  318 | `/* Possible tokens from the JSON tokenization process */` |
+|    - |  319 | `#define JSON_TK_TRUE    0x001 /* Boolean true */` |
+|    - |  320 | `#define JSON_TK_FALSE   0x002 /* Boolean false */` |
+|    - |  321 | `#define JSON_TK_STR     0x004 /* String enclosed in double quotes */` |
+|    - |  322 | `#define JSON_TK_NULL    0x008 /* null */` |
+|    - |  323 | `#define JSON_TK_NUM     0x010 /* Numeric */` |
+|    - |  324 | `#define JSON_TK_OCB     0x020 /* Open curly braces '{' */` |
+|    - |  325 | `#define JSON_TK_CCB     0x040 /* Closing curly braces '}' */` |
+|    - |  326 | `#define JSON_TK_OSB     0x080 /* Open square bracke '[' */` |
+|    - |  327 | `#define JSON_TK_CSB     0x100 /* Closing square bracket ']' */` |
+|    - |  328 | `#define JSON_TK_COLON   0x200 /* Single colon ':' */` |
+|    - |  329 | `#define JSON_TK_COMMA   0x400 /* Single comma ',' */` |
+|    - |  330 | `#define JSON_TK_INVALID 0x800 /* Unexpected token */` |
+|    - |  331 | `/*` |
+|    - |  332 | ` * Tokenize an entire JSON input.` |
+|    - |  333 | ` * Get a single low-level token from the input file.` |
+|    - |  334 | ` * Update the stream pointer so that it points to the first` |
+|    - |  335 | ` * character beyond the extracted token.` |
+|    - |  336 | ` */` |
+|  144 |  337 | `static sxi32 VmJsonTokenize(SyStream *pStream,SyToken *pToken,void *pUserData,void *pCtxData)` |
+|    2 |  338 |  |
+|  146 |  339 | `	int *pJsonErr = (int *)pUserData;` |
+|    - |  340 | `	SyString *pStr;` |
+|    - |  341 | `	int c;` |
+|    - |  342 | `	/* Ignore leading white spaces */` |
+|  150 |  343 | `	while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisSpace(pStream->zText[0]) ){` |
+|    - |  344 | `		/* Advance the stream cursor */` |
+|    6 |  345 | `		if( pStream->zText[0] == '\n' ){` |
+|    - |  346 | `			/* Update line counter */` |
+|  ! 0 |  347 | `			pStream->nLine++;` |
+|  ! 0 |  348 | `		}` |
+|    6 |  349 | `		pStream->zText++;` |
+|    2 |  350 | `	}` |
+|  146 |  351 | `	if( pStream->zText >= pStream->zEnd ){` |
+|    - |  352 | `		/* End of input reached */` |
+|  ! 0 |  353 | `		SXUNUSED(pCtxData); /* cc warning */` |
+|  ! 0 |  354 | `		return SXERR_EOF;` |
+|    - |  355 | `	}` |
+|    - |  356 | `	/* Record token starting position and line */` |
+|  146 |  357 | `	pToken->nLine = pStream->nLine;` |
+|  146 |  358 | `	pToken->pUserData = 0;` |
+|  146 |  359 | `	pStr = &pToken->sData;` |
+|  146 |  360 | `	SyStringInitFromBuf(pStr,pStream->zText,0);` |
+|  183 |  361 | `	if( pStream->zText[0] == '{' \|\| pStream->zText[0] == '[' \|\| pStream->zText[0] == '}' \|\| pStream->zText[0] == ']'` |
+|  102 |  362 | `		\|\| pStream->zText[0] == ':' \|\| pStream->zText[0] == ',' ){` |
+|    - |  363 | `			/* Single character */` |
+|   84 |  364 | `			c = pStream->zText[0];` |
+|    - |  365 | `			/* Set token type */` |
+|   84 |  366 | `			switch(c){` |
+|    9 |  367 | `			case '[': pToken->nType = JSON_TK_OSB;   break;` |
+|   20 |  368 | `			case '{': pToken->nType = JSON_TK_OCB;   break;` |
+|   16 |  369 | `			case '}': pToken->nType = JSON_TK_CCB;   break;` |
+|    9 |  370 | `			case ']': pToken->nType = JSON_TK_CSB;   break;` |
+|   20 |  371 | `			case ':': pToken->nType = JSON_TK_COLON; break;` |
+|   17 |  372 | `			case ',': pToken->nType = JSON_TK_COMMA; break;` |
+|  ! 0 |  373 | `			default:` |
+|  ! 0 |  374 | `				break;` |
+|    - |  375 | `			}` |
+|    - |  376 | `			/* Advance the stream cursor */` |
+|   84 |  377 | `			pStream->zText++;` |
+|  105 |  378 | `	}else if( pStream->zText[0] == '"') {` |
+|    - |  379 | `		/* JSON string */` |
+|   26 |  380 | `		pStream->zText++;` |
+|   26 |  381 | `		pStr->zString++;` |
+|    - |  382 | `		/* Delimit the string */` |
+|   72 |  383 | `		while( pStream->zText < pStream->zEnd ){` |
+|   72 |  384 | `			if( pStream->zText[0] == '"' && pStream->zText[-1] != '\\' ){` |
+|   26 |  385 | `				break;` |
+|    - |  386 | `			}` |
+|   48 |  387 | `			if( pStream->zText[0] == '\n' ){` |
+|    - |  388 | `				/* Update line counter */` |
+|  ! 0 |  389 | `				pStream->nLine++;` |
+|  ! 0 |  390 | `			}` |
+|   48 |  391 | `			pStream->zText++;` |
+|    2 |  392 | `		}` |
+|   26 |  393 | `		if( pStream->zText >= pStream->zEnd ){` |
+|    - |  394 | `			/* Missing closing '"' */` |
+|  ! 0 |  395 | `			pToken->nType = JSON_TK_INVALID;` |
+|  ! 0 |  396 | `			*pJsonErr = JSON_ERROR_SYNTAX;` |
+|  ! 0 |  397 | `		}else{` |
+|   26 |  398 | `			pToken->nType = JSON_TK_STR;` |
+|   26 |  399 | `			pStream->zText++; /* Jump the closing double quotes */` |
+|    2 |  400 | `		}` |
+|   52 |  401 | `	}else if( pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){` |
+|    - |  402 | `		/* Number */` |
+|   27 |  403 | `		pStream->zText++;` |
+|   27 |  404 | `		pToken->nType = JSON_TK_NUM;` |
+|   27 |  405 | `		while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){` |
+|  ! 0 |  406 | `			pStream->zText++;` |
+|  ! 0 |  407 | `		}` |
+|   27 |  408 | `		if( pStream->zText < pStream->zEnd ){` |
+|   27 |  409 | `			c = pStream->zText[0];` |
+|   27 |  410 | `			if( c == '.' ){` |
+|    - |  411 | `					/* Real number */` |
+|  ! 0 |  412 | `					pStream->zText++;` |
+|  ! 0 |  413 | `					while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){` |
+|  ! 0 |  414 | `						pStream->zText++;` |
+|  ! 0 |  415 | `					}` |
+|  ! 0 |  416 | `					if( pStream->zText < pStream->zEnd ){` |
+|  ! 0 |  417 | `						c = pStream->zText[0];` |
+|  ! 0 |  418 | `						if( c=='e' \|\| c=='E' ){` |
+|  ! 0 |  419 | `							pStream->zText++;` |
+|  ! 0 |  420 | `							if( pStream->zText < pStream->zEnd ){` |
+|  ! 0 |  421 | `								c = pStream->zText[0];` |
+|  ! 0 |  422 | `								if( c =='+' \|\| c=='-' ){` |
+|  ! 0 |  423 | `									pStream->zText++;` |
+|  ! 0 |  424 | `								}` |
+|  ! 0 |  425 | `								while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){` |
+|  ! 0 |  426 | `									pStream->zText++;` |
+|  ! 0 |  427 | `								}` |
+|  ! 0 |  428 | `							}` |
+|  ! 0 |  429 | `						}` |
+|  ! 0 |  430 | `					}` |
+|   27 |  431 | `				}else if( c=='e' \|\| c=='E' ){` |
+|    - |  432 | `					/* Real number */` |
+|  ! 0 |  433 | `					pStream->zText++;` |
+|  ! 0 |  434 | `					if( pStream->zText < pStream->zEnd ){` |
+|  ! 0 |  435 | `						c = pStream->zText[0];` |
+|  ! 0 |  436 | `						if( c =='+' \|\| c=='-' ){` |
+|  ! 0 |  437 | `							pStream->zText++;` |
+|  ! 0 |  438 | `						}` |
+|  ! 0 |  439 | `						while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){` |
+|  ! 0 |  440 | `							pStream->zText++;` |
+|  ! 0 |  441 | `						}` |
+|  ! 0 |  442 | `					}` |
+|  ! 0 |  443 | `				}` |
+|   14 |  444 | `			}` |
+|   33 |  445 | `	}else if( XLEX_IN_LEN(pStream) >= sizeof("true") -1 &&` |
+|   12 |  446 | `		SyStrnicmp((const char *)pStream->zText,"true",sizeof("true")-1) == 0 ){` |
+|    - |  447 | `			/* boolean true */` |
+|  ! 0 |  448 | `			pToken->nType = JSON_TK_TRUE;` |
+|    - |  449 | `			/* Advance the stream cursor */` |
+|  ! 0 |  450 | `			pStream->zText += sizeof("true")-1;` |
+|   20 |  451 | `	}else if( XLEX_IN_LEN(pStream) >= sizeof("false") -1 &&` |
+|   12 |  452 | `		SyStrnicmp((const char *)pStream->zText,"false",sizeof("false")-1) == 0 ){` |
+|    - |  453 | `			/* boolean false */` |
+|  ! 0 |  454 | `			pToken->nType = JSON_TK_FALSE;` |
+|    - |  455 | `			/* Advance the stream cursor */` |
+|  ! 0 |  456 | `			pStream->zText += sizeof("false")-1;` |
+|   20 |  457 | `	}else if( XLEX_IN_LEN(pStream) >= sizeof("null") -1 &&` |
+|   12 |  458 | `		SyStrnicmp((const char *)pStream->zText,"null",sizeof("null")-1) == 0 ){` |
+|    - |  459 | `			/* NULL */` |
+|  ! 0 |  460 | `			pToken->nType = JSON_TK_NULL;` |
+|    - |  461 | `			/* Advance the stream cursor */` |
+|  ! 0 |  462 | `			pStream->zText += sizeof("null")-1;` |
+|  ! 0 |  463 | `	}else{` |
+|    - |  464 | `		/* Unexpected token */` |
+|   14 |  465 | `		pToken->nType = JSON_TK_INVALID;` |
+|    - |  466 | `		/* Advance the stream cursor */` |
+|   14 |  467 | `		pStream->zText++;` |
+|   14 |  468 | `		*pJsonErr = JSON_ERROR_SYNTAX;` |
+|    - |  469 | `		/* Abort processing immediatley */` |
+|   14 |  470 | `		return SXERR_ABORT;` |
+|    - |  471 | `	}` |
+|    - |  472 | `	/* record token length */` |
+|  134 |  473 | `	pStr->nByte = (sxu32)((const char *)pStream->zText-pStr->zString);` |
+|  134 |  474 | `	if( pToken->nType == JSON_TK_STR ){` |
+|   26 |  475 | `		pStr->nByte--;` |
+|   12 |  476 | `	}` |
+|    - |  477 | `	/* Return to the lexer */` |
+|  134 |  478 | `	return SXRET_OK;` |
+|   74 |  479 |  |
+|    - |  480 | `/*` |
+|    - |  481 | ` * JSON decoded input consumer callback signature.` |
+|    - |  482 | ` */` |
+|    - |  483 | `typedef int (*ProcJsonConsumer)(ph7_context *,ph7_value *,ph7_value *,void *);` |
+|    - |  484 | `/*` |
+|    - |  485 | ` * JSON decoder state is kept in the following structure.` |
+|    - |  486 | ` */` |
+|    - |  487 | `typedef struct json_decoder json_decoder;` |
+|    - |  488 | `struct json_decoder` |
+|    - |  489 |  |
+|    - |  490 | `	ph7_context *pCtx; /* Call context */` |
+|    - |  491 | `	ProcJsonConsumer xConsumer; /* Consumer callback */` |
+|    - |  492 | `	void *pUserData;   /* Last argument to xConsumer() */` |
+|    - |  493 | `	int iFlags;        /* Configuration flags */` |
+|    - |  494 | `	SyToken *pIn;      /* Token stream */` |
+|    - |  495 | `	SyToken *pEnd;     /* End of the token stream */` |
+|    - |  496 | `	int rec_depth;     /* Recursion limit */` |
+|    - |  497 | `	int rec_count;     /* Current nesting level */` |
+|    - |  498 | `	int *pErr;         /* JSON decoding error if any */` |
+|    - |  499 | `};` |
+|    - |  500 | `#define JSON_DECODE_ASSOC 0x01 /* Decode a JSON object as an associative array */` |
+|    - |  501 | `/* Forward declaration */` |
+|    - |  502 | `static int VmJsonArrayDecoder(ph7_context *pCtx,ph7_value *pKey,ph7_value *pWorker,void *pUserData);` |
+|    - |  503 | `/*` |
+|    - |  504 | ` * Dequote [i.e: Resolve all backslash escapes ] a JSON string and store` |
+|    - |  505 | ` * the result in the given ph7_value.` |
+|    - |  506 | ` */` |
+|   24 |  507 | `static void VmJsonDequoteString(const SyString *pStr,ph7_value *pWorker)` |
+|    2 |  508 |  |
+|   26 |  509 | `	const char *zIn = pStr->zString;` |
+|   26 |  510 | `	const char *zEnd = &pStr->zString[pStr->nByte];` |
+|    - |  511 | `	const char *zCur;` |
+|    - |  512 | `	int c;` |
+|    - |  513 | `	/* Mark the value as a string */` |
+|   26 |  514 | `	ph7_value_string(pWorker,"",0); /* Empty string */` |
+|   12 |  515 | `	for(;;){` |
+|   26 |  516 | `		zCur = zIn;` |
+|   72 |  517 | `		while( zIn < zEnd && zIn[0] != '\\' ){` |
+|   48 |  518 | `			zIn++;` |
+|    2 |  519 | `		}` |
+|   26 |  520 | `		if( zIn > zCur ){` |
+|    - |  521 | `			/* Append chunk verbatim */` |
+|   26 |  522 | `			ph7_value_string(pWorker,zCur,(int)(zIn-zCur));` |
+|   12 |  523 | `		}` |
+|   26 |  524 | `		zIn++;` |
+|   26 |  525 | `		if( zIn >= zEnd ){` |
+|    - |  526 | `			/* End of the input reached */` |
+|   26 |  527 | `			break;` |
+|    - |  528 | `		}` |
+|  ! 0 |  529 | `		c = zIn[0];` |
+|    - |  530 | `		/* Unescape the character */` |
+|  ! 0 |  531 | `		switch(c){` |
+|  ! 0 |  532 | `		case '"':  ph7_value_string(pWorker,(const char *)&c,(int)sizeof(char)); break;` |
+|  ! 0 |  533 | `		case '\\': ph7_value_string(pWorker,(const char *)&c,(int)sizeof(char)); break;` |
+|  ! 0 |  534 | `		case 'n':  ph7_value_string(pWorker,"\n",(int)sizeof(char)); break;` |
+|  ! 0 |  535 | `		case 'r':  ph7_value_string(pWorker,"\r",(int)sizeof(char)); break;` |
+|  ! 0 |  536 | `		case 't':  ph7_value_string(pWorker,"\t",(int)sizeof(char)); break;` |
+|  ! 0 |  537 | `		case 'f':  ph7_value_string(pWorker,"\f",(int)sizeof(char)); break;` |
+|  ! 0 |  538 | `		default:` |
+|  ! 0 |  539 | `			ph7_value_string(pWorker,(const char *)&c,(int)sizeof(char));` |
+|  ! 0 |  540 | `			break;` |
+|    - |  541 | `		}` |
+|    - |  542 | `		/* Advance the stream cursor */` |
+|  ! 0 |  543 | `		zIn++;` |
+|  ! 0 |  544 | `	}` |
+|   26 |  545 |  |
+|    - |  546 | `/*` |
+|    - |  547 | ` * Returns a ph7_value holding the image of a JSON string. In other word perform a JSON decoding operation.` |
+|    - |  548 | ` * According to wikipedia` |
+|    - |  549 | ` * JSON's basic types are:` |
+|    - |  550 | ` *   Number (double precision floating-point format in JavaScript, generally depends on implementation)` |
+|    - |  551 | ` *   String (double-quoted Unicode, with backslash escaping)` |
+|    - |  552 | ` *   Boolean (true or false)` |
+|    - |  553 | ` *   Array (an ordered sequence of values, comma-separated and enclosed in square brackets; the values` |
+|    - |  554 | ` *    do not need to be of the same type)` |
+|    - |  555 | ` *   Object (an unordered collection of key:value pairs with the ':' character separating the key` |
+|    - |  556 | ` *     and the value, comma-separated and enclosed in curly braces; the keys must be strings and should` |
+|    - |  557 | ` *     be distinct from each other)` |
+|    - |  558 | ` *   null (empty)` |
+|    - |  559 | ` * Non-significant white space may be added freely around the "structural characters" (i.e. the brackets "[{]}", colon ":" and comma ",").` |
+|    - |  560 | ` */` |
+|   56 |  561 | `static sxi32 VmJsonDecode(` |
+|    - |  562 | `	json_decoder *pDecoder, /* JSON decoder */` |
+|    - |  563 | `	ph7_value *pArrayKey    /* Key for the decoded array */` |
+|    2 |  564 | `	){` |
+|    - |  565 | `	ph7_value *pWorker; /* Worker variable */` |
+|    - |  566 | `	sxi32 rc;` |
+|    - |  567 | `	/* Check if we do not nest to much */` |
+|   58 |  568 | `	if( pDecoder->rec_count >= pDecoder->rec_depth ){` |
+|    - |  569 | `		/* Nesting limit reached,abort decoding immediately */` |
+|  ! 0 |  570 | `		*pDecoder->pErr = JSON_ERROR_DEPTH;` |
+|  ! 0 |  571 | `		return SXERR_ABORT;` |
+|    - |  572 | `	}` |
+|   58 |  573 | `	if( pDecoder->pIn->nType & (JSON_TK_STR\|JSON_TK_TRUE\|JSON_TK_FALSE\|JSON_TK_NULL\|JSON_TK_NUM) ){` |
+|    - |  574 | `		/* Scalar value */` |
+|   34 |  575 | `		pWorker = ph7_context_new_scalar(pDecoder->pCtx);` |
+|   34 |  576 | `		if( pWorker == 0 ){` |
+|  ! 0 |  577 | `			ph7_context_throw_error(pDecoder->pCtx,PH7_CTX_ERR,"PH7 is running out of memory");` |
+|    - |  578 | `			/* Abort the decoding operation immediately */` |
+|  ! 0 |  579 | `			return SXERR_ABORT;` |
+|    - |  580 | `		}` |
+|    - |  581 | `		/* Reflect the JSON image */` |
+|   34 |  582 | `		if( pDecoder->pIn->nType & JSON_TK_NULL ){` |
+|    - |  583 | `			/* Nullify the value.*/` |
+|  ! 0 |  584 | `			ph7_value_null(pWorker);` |
+|   34 |  585 | `		}else if( pDecoder->pIn->nType & (JSON_TK_TRUE\|JSON_TK_FALSE) ){` |
+|    - |  586 | `			/* Boolean value */` |
+|  ! 0 |  587 | `			ph7_value_bool(pWorker,(pDecoder->pIn->nType & JSON_TK_TRUE) ? 1 : 0 );` |
+|   34 |  588 | `		}else if( pDecoder->pIn->nType & JSON_TK_NUM ){` |
+|   27 |  589 | `			SyString *pStr = &pDecoder->pIn->sData;` |
+|    - |  590 | `			/*` |
+|    - |  591 | `			 * Numeric value.` |
+|    - |  592 | `			 * Get a string representation first then try to get a numeric` |
+|    - |  593 | `			 * value.` |
+|    - |  594 | `			 */` |
+|   27 |  595 | `			ph7_value_string(pWorker,pStr->zString,(int)pStr->nByte);` |
+|    - |  596 | `			/* Obtain a numeric representation */` |
+|   27 |  597 | `			PH7_MemObjToNumeric(pWorker);` |
+|   14 |  598 | `		}else{` |
+|    - |  599 | `			/* Dequote the string */` |
+|    8 |  600 | `			VmJsonDequoteString(&pDecoder->pIn->sData,pWorker);` |
+|    - |  601 | `		}` |
+|    - |  602 | `		/* Invoke the consumer callback */` |
+|   34 |  603 | `		rc = pDecoder->xConsumer(pDecoder->pCtx,pArrayKey,pWorker,pDecoder->pUserData);` |
+|   34 |  604 | `		if( rc == SXERR_ABORT ){` |
+|  ! 0 |  605 | `			return SXERR_ABORT;` |
+|    - |  606 | `		}` |
+|    - |  607 | `		/* All done,advance the stream cursor */` |
+|   34 |  608 | `		pDecoder->pIn++;` |
+|   42 |  609 | `	}else if( pDecoder->pIn->nType & JSON_TK_OSB /*'[' */) {` |
+|    - |  610 | `		ProcJsonConsumer xOld;` |
+|    - |  611 | `		void *pOld;` |
+|    - |  612 | `		/* Array representation*/` |
+|    9 |  613 | `		pDecoder->pIn++;` |
+|    - |  614 | `		/* Create a working array */` |
+|    9 |  615 | `		pWorker = ph7_context_new_array(pDecoder->pCtx);` |
+|    9 |  616 | `		if( pWorker == 0 ){` |
+|  ! 0 |  617 | `			ph7_context_throw_error(pDecoder->pCtx,PH7_CTX_ERR,"PH7 is running out of memory");` |
+|    - |  618 | `			/* Abort the decoding operation immediately */` |
+|  ! 0 |  619 | `			return SXERR_ABORT;` |
+|    - |  620 | `		}` |
+|    - |  621 | `		/* Save the old consumer */` |
+|    9 |  622 | `		xOld = pDecoder->xConsumer;` |
+|    9 |  623 | `		pOld = pDecoder->pUserData;` |
+|    - |  624 | `		/* Set the new consumer */` |
+|    9 |  625 | `		pDecoder->xConsumer = VmJsonArrayDecoder;` |
+|    9 |  626 | `		pDecoder->pUserData = pWorker;` |
+|    - |  627 | `		/* Decode the array */` |
+|   14 |  628 | `		for(;;){` |
+|    - |  629 | `			/* Jump trailing comma. Note that the standard PHP engine will not let you` |
+|    - |  630 | `			 * do this.` |
+|    - |  631 | `			 */` |
+|   41 |  632 | `			while( (pDecoder->pIn < pDecoder->pEnd) && (pDecoder->pIn->nType & JSON_TK_COMMA) ){` |
+|   13 |  633 | `				pDecoder->pIn++;` |
+|    1 |  634 | `			}` |
+|   29 |  635 | `			if( pDecoder->pIn >= pDecoder->pEnd \|\| (pDecoder->pIn->nType & JSON_TK_CSB) /*']'*/ ){` |
+|    9 |  636 | `				if( pDecoder->pIn < pDecoder->pEnd ){` |
+|    9 |  637 | `					pDecoder->pIn++; /* Jump the trailing ']' */` |
+|    4 |  638 | `				}` |
+|    9 |  639 | `				break;` |
+|    - |  640 | `			}` |
+|    - |  641 | `			/* Recurse and decode the entry */` |
+|   21 |  642 | `			pDecoder->rec_count++;` |
+|   21 |  643 | `			rc = VmJsonDecode(pDecoder,0);` |
+|   21 |  644 | `			pDecoder->rec_count--;` |
+|   21 |  645 | `			if( rc == SXERR_ABORT ){` |
+|    - |  646 | `				/* Abort processing immediately */` |
+|  ! 0 |  647 | `				return SXERR_ABORT;` |
+|    - |  648 | `			}` |
+|    - |  649 | `			/*The cursor is automatically advanced by the VmJsonDecode() function */` |
+|   21 |  650 | `			if( (pDecoder->pIn < pDecoder->pEnd) &&` |
+|   20 |  651 | `				((pDecoder->pIn->nType & (JSON_TK_CSB/*']'*/\|JSON_TK_COMMA/*','*/))==0) ){` |
+|    - |  652 | `					/* Unexpected token,abort immediatley */` |
+|  ! 0 |  653 | `					*pDecoder->pErr = JSON_ERROR_SYNTAX;` |
+|  ! 0 |  654 | `					return SXERR_ABORT;` |
+|    - |  655 | `			}` |
+|    1 |  656 | `		}` |
+|    - |  657 | `		/* Restore the old consumer */` |
+|    9 |  658 | `		pDecoder->xConsumer = xOld;` |
+|    9 |  659 | `		pDecoder->pUserData = pOld;` |
+|    - |  660 | `		/* Invoke the old consumer on the decoded array */` |
+|    9 |  661 | `		xOld(pDecoder->pCtx,pArrayKey,pWorker,pOld);` |
+|   22 |  662 | `	}else if( pDecoder->pIn->nType & JSON_TK_OCB /*'{' */) {` |
+|    - |  663 | `		ProcJsonConsumer xOld;` |
+|    - |  664 | `		ph7_value *pKey;` |
+|    - |  665 | `		void *pOld;` |
+|    - |  666 | `		/* Object representation*/` |
+|   18 |  667 | `		pDecoder->pIn++;` |
+|    - |  668 | `		/* Return the object as an associative array */` |
+|   18 |  669 | `		if( (pDecoder->iFlags & JSON_DECODE_ASSOC) == 0 ){` |
+|    3 |  670 | `			ph7_context_throw_error(pDecoder->pCtx,PH7_CTX_WARNING,` |
+|    - |  671 | `				"JSON Objects are always returned as an associative array"` |
+|    - |  672 | `				);` |
+|    1 |  673 | `		}` |
+|    - |  674 | `		/* Create a working array */` |
+|   18 |  675 | `		pWorker = ph7_context_new_array(pDecoder->pCtx);` |
+|   18 |  676 | `		pKey = ph7_context_new_scalar(pDecoder->pCtx);` |
+|   18 |  677 | `		if( pWorker == 0 \|\| pKey == 0){` |
+|  ! 0 |  678 | `			ph7_context_throw_error(pDecoder->pCtx,PH7_CTX_ERR,"PH7 is running out of memory");` |
+|    - |  679 | `			/* Abort the decoding operation immediately */` |
+|  ! 0 |  680 | `			return SXERR_ABORT;` |
+|    - |  681 | `		}` |
+|    - |  682 | `		/* Save the old consumer */` |
+|   18 |  683 | `		xOld = pDecoder->xConsumer;` |
+|   18 |  684 | `		pOld = pDecoder->pUserData;` |
+|    - |  685 | `		/* Set the new consumer */` |
+|   18 |  686 | `		pDecoder->xConsumer = VmJsonArrayDecoder;` |
+|   18 |  687 | `		pDecoder->pUserData = pWorker;` |
+|    - |  688 | `		/* Decode the object */` |
+|   17 |  689 | `		for(;;){` |
+|    - |  690 | `			/* Jump trailing comma. Note that the standard PHP engine will not let you` |
+|    - |  691 | `			 * do this.` |
+|    - |  692 | `			 */` |
+|   40 |  693 | `			while( (pDecoder->pIn < pDecoder->pEnd) && (pDecoder->pIn->nType & JSON_TK_COMMA) ){` |
+|    5 |  694 | `				pDecoder->pIn++;` |
+|    1 |  695 | `			}` |
+|   36 |  696 | `			if( pDecoder->pIn >= pDecoder->pEnd \|\| (pDecoder->pIn->nType & JSON_TK_CCB) /*'}'*/ ){` |
+|   18 |  697 | `				if( pDecoder->pIn < pDecoder->pEnd ){` |
+|   16 |  698 | `					pDecoder->pIn++; /* Jump the trailing ']' */` |
+|    7 |  699 | `				}` |
+|   18 |  700 | `				break;` |
+|    - |  701 | `			}` |
+|   18 |  702 | `			if( (pDecoder->pIn->nType & JSON_TK_STR) == 0 \|\| &pDecoder->pIn[1] >= pDecoder->pEnd` |
+|   20 |  703 | `				\|\| (pDecoder->pIn[1].nType & JSON_TK_COLON) == 0){` |
+|    - |  704 | `					/* Syntax error,return immediately */` |
+|  ! 0 |  705 | `					*pDecoder->pErr = JSON_ERROR_SYNTAX;` |
+|  ! 0 |  706 | `					return SXERR_ABORT;` |
+|    - |  707 | `			}` |
+|    - |  708 | `			/* Dequote the key */` |
+|   20 |  709 | `			VmJsonDequoteString(&pDecoder->pIn->sData,pKey);` |
+|    - |  710 | `			/* Jump the key and the colon */` |
+|   20 |  711 | `			pDecoder->pIn += 2;` |
+|    - |  712 | `			/* Recurse and decode the value */` |
+|   20 |  713 | `			pDecoder->rec_count++;` |
+|   20 |  714 | `			rc = VmJsonDecode(pDecoder,pKey);` |
+|   20 |  715 | `			pDecoder->rec_count--;` |
+|   20 |  716 | `			if( rc == SXERR_ABORT ){` |
+|    - |  717 | `				/* Abort processing immediately */` |
+|  ! 0 |  718 | `				return SXERR_ABORT;` |
+|    - |  719 | `			}` |
+|    - |  720 | `			/* Reset the internal buffer of the key */` |
+|   20 |  721 | `			ph7_value_reset_string_cursor(pKey);` |
+|    - |  722 | `			/*The cursor is automatically advanced by the VmJsonDecode() function */` |
+|    2 |  723 | `		}` |
+|    - |  724 | `		/* Restore the old consumer */` |
+|   18 |  725 | `		pDecoder->xConsumer = xOld;` |
+|   18 |  726 | `		pDecoder->pUserData = pOld;` |
+|    - |  727 | `		/* Invoke the old consumer on the decoded object*/` |
+|   18 |  728 | `		xOld(pDecoder->pCtx,pArrayKey,pWorker,pOld);` |
+|    - |  729 | `		/* Release the key */` |
+|   18 |  730 | `		ph7_context_release_value(pDecoder->pCtx,pKey);` |
+|   10 |  731 | `	}else{` |
+|    - |  732 | `		/* Unexpected token */` |
+|  ! 0 |  733 | `		return SXERR_ABORT; /* Abort immediately */` |
+|    - |  734 | `	}` |
+|    - |  735 | `	/* Release the worker variable */` |
+|   58 |  736 | `	ph7_context_release_value(pDecoder->pCtx,pWorker);` |
+|   58 |  737 | `	return SXRET_OK;` |
+|   30 |  738 |  |
+|    - |  739 | `/*` |
+|    - |  740 | ` * The following JSON decoder callback is invoked each time` |
+|    - |  741 | ` * a JSON array representation [i.e: [15,"hello",FALSE] ]` |
+|    - |  742 | ` * is being decoded.` |
+|    - |  743 | ` */` |
+|   38 |  744 | `static int VmJsonArrayDecoder(ph7_context *pCtx,ph7_value *pKey,ph7_value *pWorker,void *pUserData)` |
+|    2 |  745 |  |
+|   40 |  746 | `	ph7_value *pArray = (ph7_value *)pUserData;` |
+|    - |  747 | `	/* Insert the entry */` |
+|   40 |  748 | `	ph7_array_add_elem(pArray,pKey,pWorker); /* Will make it's own copy */` |
+|   19 |  749 | `	SXUNUSED(pCtx); /* cc warning */` |
+|    - |  750 | `	/* All done */` |
+|   40 |  751 | `	return SXRET_OK;` |
+|    2 |  752 |  |
+|    - |  753 | `/*` |
+|    - |  754 | ` * Standard JSON decoder callback.` |
+|    - |  755 | ` */` |
+|   18 |  756 | `static int VmJsonDefaultDecoder(ph7_context *pCtx,ph7_value *pKey,ph7_value *pWorker,void *pUserData)` |
+|    2 |  757 |  |
+|    - |  758 | `	/* Return the value directly */` |
+|   20 |  759 | `	ph7_result_value(pCtx,pWorker); /* Will make it's own copy */` |
+|    9 |  760 | `	SXUNUSED(pKey); /* cc warning */` |
+|    9 |  761 | `	SXUNUSED(pUserData);` |
+|    - |  762 | `	/* All done */` |
+|   20 |  763 | `	return SXRET_OK;` |
+|    2 |  764 |  |
+|    - |  765 | `/*` |
+|    - |  766 | ` * mixed json_decode(string $json[,bool $assoc = false[,int $depth = 32[,int $options = 0 ]]])` |
+|    - |  767 | ` *  Takes a JSON encoded string and converts it into a PHP variable.` |
+|    - |  768 | ` * Parameters` |
+|    - |  769 | ` *  $json` |
+|    - |  770 | ` *    The json string being decoded.` |
+|    - |  771 | ` * $assoc` |
+|    - |  772 | ` *   When TRUE, returned objects will be converted into associative arrays.` |
+|    - |  773 | ` * $depth` |
+|    - |  774 | ` *   User specified recursion depth.` |
+|    - |  775 | ` * $options` |
+|    - |  776 | ` *   Bitmask of JSON decode options. Currently only JSON_BIGINT_AS_STRING is supported` |
+|    - |  777 | ` * (default is to cast large integers as floats)` |
+|    - |  778 | ` * Return` |
+|    - |  779 | ` *  The value encoded in json in appropriate PHP type. Values true, false and null (case-insensitive)` |
+|    - |  780 | ` *  are returned as TRUE, FALSE and NULL respectively. NULL is returned if the json cannot be decoded` |
+|    - |  781 | ` *  or if the encoded data is deeper than the recursion limit.` |
+|    - |  782 | ` */` |
+|    - |  783 | `/*` |
+|    - |  784 | ` * Tokenize and decode a JSON input. Shared core of json_decode() and json_validate().` |
+|    - |  785 | ` * On success the decoded value is delivered through the default decoder (i.e: it becomes` |
+|    - |  786 | ` * the call-context result, which json_validate's caller then overwrites with a boolean).` |
+|    - |  787 | ` * Returns the resulting JSON error code (pVm->json_rc): JSON_ERROR_NONE on success, a` |
+|    - |  788 | ` * non-zero json_err_code otherwise. A generic decoder abort without a specific code` |
+|    - |  789 | ` * (e.g: out of memory) is reported as JSON_ERROR_SYNTAX so callers can branch on a single` |
+|    - |  790 | ` * value, preserving the original "abort \|\| error => failure" json_decode semantics.` |
+|    - |  791 | ` */` |
+|   30 |  792 | `static int VmJsonDecodeInput(ph7_context *pCtx,const char *zIn,int nByte,int iAssoc,int nDepth)` |
+|    2 |  793 |  |
+|   32 |  794 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    - |  795 | `	json_decoder sDecoder;` |
+|    - |  796 | `	SySet sToken;` |
+|    - |  797 | `	SyLex sLex;` |
+|    - |  798 | `	sxi32 rc;` |
+|    - |  799 | `	/* Clear JSON error code */` |
+|   32 |  800 | `	pVm->json_rc = JSON_ERROR_NONE;` |
+|    - |  801 | `	/* Tokenize the input */` |
+|   32 |  802 | `	SySetInit(&sToken,&pVm->sAllocator,sizeof(SyToken));` |
+|   32 |  803 | `	SyLexInit(&sLex,&sToken,VmJsonTokenize,&pVm->json_rc);` |
+|   32 |  804 | `	SyLexTokenizeInput(&sLex,zIn,(sxu32)nByte,0,0,0);` |
+|   32 |  805 | `	if( pVm->json_rc != JSON_ERROR_NONE ){` |
+|    - |  806 | `		/* Something goes wrong while tokenizing input. [i.e: Unexpected token] */` |
+|   14 |  807 | `		SyLexRelease(&sLex);` |
+|   14 |  808 | `		SySetRelease(&sToken);` |
+|   14 |  809 | `		return pVm->json_rc;` |
+|    - |  810 | `	}` |
+|    - |  811 | `	/* Fill the decoder */` |
+|   20 |  812 | `	sDecoder.pCtx = pCtx;` |
+|   20 |  813 | `	sDecoder.pErr = &pVm->json_rc;` |
+|   20 |  814 | `	sDecoder.pIn = (SyToken *)SySetBasePtr(&sToken);` |
+|   20 |  815 | `	sDecoder.pEnd = &sDecoder.pIn[SySetUsed(&sToken)];` |
+|   20 |  816 | `	sDecoder.iFlags = 0;` |
+|   20 |  817 | `	if( iAssoc ){` |
+|    - |  818 | `		/* Returned objects will be converted into associative arrays */` |
+|   18 |  819 | `		sDecoder.iFlags \|= JSON_DECODE_ASSOC;` |
+|    8 |  820 | `	}` |
+|   20 |  821 | `	sDecoder.rec_depth = 32;` |
+|   20 |  822 | `	if( nDepth > 1 && nDepth < 32 ){` |
+|  ! 0 |  823 | `		sDecoder.rec_depth = nDepth;` |
+|  ! 0 |  824 | `	}` |
+|   20 |  825 | `	sDecoder.rec_count = 0;` |
+|    - |  826 | `	/* Set a default consumer */` |
+|   20 |  827 | `	sDecoder.xConsumer = VmJsonDefaultDecoder;` |
+|   20 |  828 | `	sDecoder.pUserData = 0;` |
+|    - |  829 | `	/* Decode the raw JSON input */` |
+|   20 |  830 | `	rc = VmJsonDecode(&sDecoder,0);` |
+|   20 |  831 | `	if( rc == SXERR_ABORT && pVm->json_rc == JSON_ERROR_NONE ){` |
+|    - |  832 | `		/* Generic abort with no specific code: treat as a syntax error */` |
+|  ! 0 |  833 | `		pVm->json_rc = JSON_ERROR_SYNTAX;` |
+|  ! 0 |  834 | `	}` |
+|    - |  835 | `	/* Clean-up the mess left behind */` |
+|   20 |  836 | `	SyLexRelease(&sLex);` |
+|   20 |  837 | `	SySetRelease(&sToken);` |
+|   20 |  838 | `	return pVm->json_rc;` |
+|   17 |  839 |  |
+|   22 |  840 | `PH7_PRIVATE int vm_builtin_json_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    2 |  841 |  |
+|    - |  842 | `	const char *zIn;` |
+|    - |  843 | `	int nByte;` |
+|   24 |  844 | `	int iAssoc = 0;` |
+|   24 |  845 | `	int nDepth = 32;` |
+|   24 |  846 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|    - |  847 | `		/* Missing/Invalid arguments, return NULL */` |
+|  ! 0 |  848 | `		ph7_result_null(pCtx);` |
+|  ! 0 |  849 | `		return PH7_OK;` |
+|    - |  850 | `	}` |
+|    - |  851 | `	/* Extract the JSON string */` |
+|   24 |  852 | `	zIn = ph7_value_to_string(apArg[0],&nByte);` |
+|   24 |  853 | `	if( nByte < 1 ){` |
+|    - |  854 | `		/* Empty string,return NULL */` |
+|    3 |  855 | `		ph7_result_null(pCtx);` |
+|    3 |  856 | `		return PH7_OK;` |
+|    - |  857 | `	}` |
+|   22 |  858 | `	if( nArg > 1 && ph7_value_to_bool(apArg[1]) != 0 ){` |
+|   12 |  859 | `		iAssoc = 1;` |
+|    5 |  860 | `	}` |
+|   22 |  861 | `	if( nArg > 2 && ph7_value_is_int(apArg[2]) ){` |
+|  ! 0 |  862 | `		nDepth = ph7_value_to_int(apArg[2]);` |
+|  ! 0 |  863 | `	}` |
+|    - |  864 | `	/* Decode the raw JSON input.The default consumer sets the decoded value as the` |
+|    - |  865 | `	 * call-context result; on failure we replace it with NULL. */` |
+|   22 |  866 | `	if( VmJsonDecodeInput(pCtx,zIn,nByte,iAssoc,nDepth) != JSON_ERROR_NONE ){` |
+|    - |  867 | `		/* Something goes wrong while decoding JSON input.Return NULL. */` |
+|   10 |  868 | `		ph7_result_null(pCtx);` |
+|    4 |  869 | `	}` |
+|    - |  870 | `	/* All done */` |
+|   22 |  871 | `	return PH7_OK;` |
+|   13 |  872 |  |
+|    - |  873 | `/*` |
+|    - |  874 | ` * bool json_validate(string $json[,int $depth = 512[,int $flags = 0]])` |
+|    - |  875 | ` *  Validates whether a string is valid JSON without materializing a value.` |
+|    - |  876 | ` * Parameters` |
+|    - |  877 | ` *  $json   The string to validate.` |
+|    - |  878 | ` *  $depth  Maximum nesting depth (clamped to the engine limit of 32).` |
+|    - |  879 | ` *  $flags  Bitmask of decode options (currently none are implemented; accepted/ignored).` |
+|    - |  880 | ` * Return` |
+|    - |  881 | ` *  TRUE if the string is valid JSON, FALSE otherwise. Updates json_last_error().` |
+|    - |  882 | ` */` |
+|   12 |  883 | `PH7_PRIVATE int vm_builtin_json_validate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1 |  884 |  |
+|   13 |  885 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    - |  886 | `	const char *zIn;` |
+|    - |  887 | `	int nByte;` |
+|   13 |  888 | `	int nDepth = 32;` |
+|   13 |  889 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|    - |  890 | `		/* Missing/Invalid argument: not valid JSON */` |
+|  ! 0 |  891 | `		pVm->json_rc = JSON_ERROR_SYNTAX;` |
+|  ! 0 |  892 | `		ph7_result_bool(pCtx,0);` |
+|  ! 0 |  893 | `		return PH7_OK;` |
+|    - |  894 | `	}` |
+|    - |  895 | `	/* Extract the JSON string */` |
+|   13 |  896 | `	zIn = ph7_value_to_string(apArg[0],&nByte);` |
+|   13 |  897 | `	if( nByte < 1 ){` |
+|    - |  898 | `		/* The empty string is not valid JSON (unlike json_decode, which returns NULL` |
+|    - |  899 | `		 * silently, json_validate must record the syntax error) */` |
+|    3 |  900 | `		pVm->json_rc = JSON_ERROR_SYNTAX;` |
+|    3 |  901 | `		ph7_result_bool(pCtx,0);` |
+|    3 |  902 | `		return PH7_OK;` |
+|    - |  903 | `	}` |
+|   11 |  904 | `	if( nArg > 1 && ph7_value_is_int(apArg[1]) ){` |
+|  ! 0 |  905 | `		nDepth = ph7_value_to_int(apArg[1]);` |
+|  ! 0 |  906 | `	}` |
+|    - |  907 | `	/* apArg[2] ($flags) is accepted and ignored: no decode flag is implemented.` |
+|    - |  908 | `	 * Decode in associative mode so the "objects are returned as an array" warning is` |
+|    - |  909 | `	 * not raised - the decoded value is discarded, only its validity matters. */` |
+|   11 |  910 | `	ph7_result_bool(pCtx,VmJsonDecodeInput(pCtx,zIn,nByte,1,nDepth) == JSON_ERROR_NONE);` |
+|   11 |  911 | `	return PH7_OK;` |
+|    7 |  912 |  |
+|    - |  913 |  |

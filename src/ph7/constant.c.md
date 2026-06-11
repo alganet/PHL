@@ -1098,20 +1098,20 @@ Coverage: 1036/1047 lines (98.95%)
 |      - | 1088 | ` * PATHINFO_EXTENSION` |
 |      - | 1089 | ` *  Expand 3.` |
 |      - | 1090 | ` */` |
-|   5540 | 1091 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
+|   5544 | 1091 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
 |      2 | 1092 |  |
-|   2770 | 1093 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   5542 | 1094 | `	ph7_value_int(pVal,3);` |
-|   5542 | 1095 |  |
+|   2772 | 1093 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   5546 | 1094 | `	ph7_value_int(pVal,3);` |
+|   5546 | 1095 |  |
 |      - | 1096 | `/*` |
 |      - | 1097 | ` * PATHINFO_FILENAME` |
 |      - | 1098 | ` *  Expand 4.` |
 |      - | 1099 | ` */` |
-|   5532 | 1100 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
+|   5536 | 1100 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
 |      2 | 1101 |  |
-|   2766 | 1102 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   5534 | 1103 | `	ph7_value_int(pVal,4);` |
-|   5534 | 1104 |  |
+|   2768 | 1102 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   5538 | 1103 | `	ph7_value_int(pVal,4);` |
+|   5538 | 1104 |  |
 |      - | 1105 | `/*` |
 |      - | 1106 | ` * ASSERT_ACTIVE.` |
 |      - | 1107 | ` *  PHP ASSERT_ACTIVE = 1` |
@@ -1269,20 +1269,20 @@ Coverage: 1036/1047 lines (98.95%)
 |      - | 1259 | ` * SCANDIR_SORT_ASCENDING` |
 |      - | 1260 | ` *  Expand 0` |
 |      - | 1261 | ` */` |
-|   1850 | 1262 | `static void PH7_SCANDIR_SORT_ASCENDING_Const(ph7_value *pVal,void *pUserData)` |
+|   1858 | 1262 | `static void PH7_SCANDIR_SORT_ASCENDING_Const(ph7_value *pVal,void *pUserData)` |
 |      2 | 1263 |  |
-|    925 | 1264 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   1852 | 1265 | `	ph7_value_int(pVal,0);` |
-|   1852 | 1266 |  |
+|    929 | 1264 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   1860 | 1265 | `	ph7_value_int(pVal,0);` |
+|   1860 | 1266 |  |
 |      - | 1267 | `/*` |
 |      - | 1268 | ` * SCANDIR_SORT_DESCENDING` |
 |      - | 1269 | ` *  Expand 1` |
 |      - | 1270 | ` */` |
-|    926 | 1271 | `static void PH7_SCANDIR_SORT_DESCENDING_Const(ph7_value *pVal,void *pUserData)` |
+|    930 | 1271 | `static void PH7_SCANDIR_SORT_DESCENDING_Const(ph7_value *pVal,void *pUserData)` |
 |      2 | 1272 |  |
-|    463 | 1273 | `	SXUNUSED(pUserData); /* cc warning */` |
-|    928 | 1274 | `	ph7_value_int(pVal,1);` |
-|    928 | 1275 |  |
+|    465 | 1273 | `	SXUNUSED(pUserData); /* cc warning */` |
+|    932 | 1274 | `	ph7_value_int(pVal,1);` |
+|    932 | 1275 |  |
 |      - | 1276 | `/*` |
 |      - | 1277 | ` * SCANDIR_SORT_NONE` |
 |      - | 1278 | ` *  Expand 2` |
@@ -1844,11 +1844,11 @@ Coverage: 1036/1047 lines (98.95%)
 |      - | 1834 | ` * JSON_ERROR_SYNTAX.` |
 |      - | 1835 | ` *   Expand the value of JSON_ERROR_SYNTAX defined in ph7Int.h.` |
 |      - | 1836 | ` */` |
-|      2 | 1837 | `static void PH7_JSON_ERROR_SYNTAX_Const(ph7_value *pVal,void *pUserData)` |
+|      4 | 1837 | `static void PH7_JSON_ERROR_SYNTAX_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1838 |  |
-|      1 | 1839 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1840 | `	ph7_value_int(pVal,JSON_ERROR_SYNTAX);` |
-|      3 | 1841 |  |
+|      2 | 1839 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      5 | 1840 | `	ph7_value_int(pVal,JSON_ERROR_SYNTAX);` |
+|      5 | 1841 |  |
 |      - | 1842 | `/*` |
 |      - | 1843 | ` * JSON_ERROR_UTF8.` |
 |      - | 1844 | ` *   Expand the value of JSON_ERROR_UTF8 defined in ph7Int.h.` |
