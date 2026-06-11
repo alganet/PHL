@@ -25,6 +25,7 @@ struct json_private_data
 	int isObject;      /* True if the current array level is encoded as a JSON object */
 	int iFlags;        /* JSON encoding flags */
 	int nRecCount;     /* Recursion count */
+	int exc;           /* True if a jsonSerialize() callback threw an exception */
 };
 /*
  * Returns the JSON representation of a value.In other word perform a JSON encoding operation.
@@ -138,14 +139,44 @@ static sxi32 VmJsonEncode(
 			ph7_result_string(pCtx,(const char *)&d,(int)sizeof(char));
 			pData->isObject = savedObject;
 		}else if( ph7_value_is_object(pIn) ){
-			/* Encode the class instance */
-			pData->isFirst = 1;
-			/* Append the curly braces */
-			ph7_result_string(pCtx,"{",(int)sizeof(char));
-			/* Iterate throw class attribute */
-			ph7_object_walk(pIn,VmJsonObjectEncode,pData);
-			/* Append the closing curly braces  */
-			ph7_result_string(pCtx,"}",(int)sizeof(char));
+			ph7_class_instance *pThis = (ph7_class_instance *)pIn->x.pOther;
+			ph7_vm *pVm = pIn->pVm;
+			ph7_class_method *pMethod = 0;
+			/* If the object implements JsonSerializable, encode the value
+			 * returned by jsonSerialize() instead of its public properties. */
+			if( pVm->pJsonSerializableClass
+				&& PH7_VmInstanceOf(pThis->pClass,pVm->pJsonSerializableClass) ){
+				pMethod = PH7_ClassExtractMethod(pThis->pClass,"jsonSerialize",sizeof("jsonSerialize")-1);
+			}
+			if( pMethod ){
+				ph7_value sResult;
+				sxi32 rc;
+				PH7_MemObjInit(pVm,&sResult);
+				rc = PH7_VmCallClassMethod(pVm,pThis,pMethod,&sResult,0,0);
+				if( rc == PH7_EXCEPTION ){
+					/* Let jsonSerialize()'s throw propagate */
+					PH7_MemObjRelease(&sResult);
+					pData->exc = 1;
+					return PH7_EXCEPTION;
+				}
+				/* Encode the returned value [scalar/array/object] */
+				pData->nRecCount++;
+				VmJsonEncode(&sResult,pData);
+				pData->nRecCount--;
+				PH7_MemObjRelease(&sResult);
+				if( pData->exc ){
+					return PH7_EXCEPTION;
+				}
+			}else{
+				/* Encode the class instance */
+				pData->isFirst = 1;
+				/* Append the curly braces */
+				ph7_result_string(pCtx,"{",(int)sizeof(char));
+				/* Iterate throw class attribute */
+				ph7_object_walk(pIn,VmJsonObjectEncode,pData);
+				/* Append the closing curly braces  */
+				ph7_result_string(pCtx,"}",(int)sizeof(char));
+			}
 		}else{
 			/* Can't happen */
 			ph7_result_string(pCtx,"null",(int)sizeof("null")-1);
@@ -160,8 +191,8 @@ static sxi32 VmJsonEncode(
 static int VmJsonArrayEncode(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 {
 	json_private_data *pJson = (json_private_data *)pUserData;
-	if( pJson->nRecCount > 31 ){
-		/* Recursion limit reached,return immediately */
+	if( pJson->nRecCount > 31 || pJson->exc ){
+		/* Recursion limit reached or a callback threw,return immediately */
 		return PH7_OK;
 	}
 	if( !pJson->isFirst ){
@@ -191,8 +222,8 @@ static int VmJsonArrayEncode(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 static int VmJsonObjectEncode(const char *zAttr,ph7_value *pValue,void *pUserData)
 {
 	json_private_data *pJson = (json_private_data *)pUserData;
-	if( pJson->nRecCount > 31 ){
-		/* Recursion limit reached,return immediately */
+	if( pJson->nRecCount > 31 || pJson->exc ){
+		/* Recursion limit reached or a callback threw,return immediately */
 		return PH7_OK;
 	}
 	if( !pJson->isFirst ){
@@ -232,6 +263,7 @@ static int VmJsonObjectEncode(const char *zAttr,ph7_value *pValue,void *pUserDat
 PH7_PRIVATE int vm_builtin_json_encode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	json_private_data sJson;
+	sxi32 rc;
 	if( nArg < 1 ){
 		/* Missing arguments,return FALSE */
 		ph7_result_bool(pCtx,0);
@@ -242,12 +274,17 @@ PH7_PRIVATE int vm_builtin_json_encode(ph7_context *pCtx,int nArg,ph7_value **ap
 	sJson.pCtx = pCtx;
 	sJson.isFirst = 1;
 	sJson.iFlags = 0;
+	sJson.exc = 0;
 	if( nArg > 1 && ph7_value_is_int(apArg[1]) ){
 		/* Extract option flags */
 		sJson.iFlags = ph7_value_to_int(apArg[1]);
 	}
 	/* Perform the encoding operation */
-	VmJsonEncode(apArg[0],&sJson);
+	rc = VmJsonEncode(apArg[0],&sJson);
+	if( rc == PH7_EXCEPTION || sJson.exc ){
+		/* A jsonSerialize() callback threw — propagate so the exception unwinds */
+		return PH7_EXCEPTION;
+	}
 	/* All done */
 	return PH7_OK;
 }
