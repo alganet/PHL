@@ -7061,12 +7061,28 @@ static int ph7_hashmap_walk_recursive(ph7_context *pCtx,int nArg,ph7_value **apA
  * Return
  *  TRUE if the array is a list, FALSE otherwise.
  */
+/*
+ * Return TRUE if the given hashmap is a "list" [i.e: its keys are the
+ * consecutive integers 0,1,2,... with no gaps]. An empty map is a list.
+ * Shared by array_is_list() and the JSON encoder (vm_json.c).
+ */
+PH7_PRIVATE int PH7_HashmapIsList(ph7_hashmap *pMap)
+{
+	ph7_hashmap_node *pNode = pMap->pFirst;
+	sxi64 iExpect = 0;
+	sxu32 n;
+	for( n = 0 ; n < pMap->nEntry ; ++n ){
+		if( pNode->iType != HASHMAP_INT_NODE || pNode->xKey.iKey != iExpect ){
+			/* A non-integer key or a gap in the sequence: not a list */
+			return 0;
+		}
+		++iExpect;
+		pNode = pNode->pPrev; /* Reverse link */
+	}
+	return 1;
+}
 static int ph7_hashmap_is_list(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_hashmap_node *pNode;
-	ph7_hashmap *pMap;
-	sxi64 iExpect;
-	sxu32 n;
 	if( nArg < 1 ){
 		return PH7_VmThrowException(pCtx,
 			"ArgumentCountError",
@@ -7080,19 +7096,7 @@ static int ph7_hashmap_is_list(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			ph7_type_name(apArg[0])
 			);
 	}
-	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
-	pNode = pMap->pFirst;
-	iExpect = 0;
-	for( n = 0 ; n < pMap->nEntry ; ++n ){
-		if( pNode->iType != HASHMAP_INT_NODE || pNode->xKey.iKey != iExpect ){
-			/* A non-integer key or a gap in the sequence: not a list */
-			ph7_result_bool(pCtx,0);
-			return PH7_OK;
-		}
-		++iExpect;
-		pNode = pNode->pPrev; /* Reverse link */
-	}
-	ph7_result_bool(pCtx,1);
+	ph7_result_bool(pCtx,PH7_HashmapIsList((ph7_hashmap *)apArg[0]->x.pOther));
 	return PH7_OK;
 }
 /*
