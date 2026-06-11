@@ -1076,6 +1076,9 @@ static int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_value 
 	"interface Stringable {"\
 	"public function __toString();"\
 	"}"\
+	"interface JsonSerializable {"\
+	"public function jsonSerialize();"\
+	"}"\
 	"interface UnitEnum {"\
 	"public static function cases();"\
 	"}"\
@@ -1621,6 +1624,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->pArrayAccessClass = PH7_VmExtractClass(pVm,"ArrayAccess",sizeof("ArrayAccess")-1,0,0);
 	pVm->pCountableClass   = PH7_VmExtractClass(pVm,"Countable",sizeof("Countable")-1,0,0);
 	pVm->pStringableClass  = PH7_VmExtractClass(pVm,"Stringable",sizeof("Stringable")-1,0,0);
+	pVm->pJsonSerializableClass = PH7_VmExtractClass(pVm,"JsonSerializable",sizeof("JsonSerializable")-1,0,0);
 	/* Initialize null-coalesce-assign scratch slot */
 	pVm->pCoalesceObj = 0;
 	pVm->bCoalesceArmed = 0;
@@ -3447,13 +3451,23 @@ static sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value *pVa
 		return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,"void",zGiven);
 	}
 	/* Function fell off the end without an explicit return: PHP implicitly
-	 * returns null. For a typed non-nullable return, that's a TypeError. */
+	 * returns null. For a typed non-nullable return (including `mixed`, which
+	 * requires an explicit returned value), that's a TypeError. */
 	if( pValue == 0 ){
 		const char *zExpected = "value";
 		if( SyStringLength(&pFunc->sReturnTypeName) > 0 ){
 			zExpected = VmSyStringToCStr(&pFunc->sReturnTypeName, zTypeBuf, sizeof(zTypeBuf));
 		}
 		return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,zExpected,"null");
+	}
+	/* `mixed` accepts any explicitly returned value, including null. It is
+	 * parsed as a class-name atom (SXU32_HIGH, sReturnClass = "mixed") since
+	 * it is not a scalar keyword, so short-circuit it here before the null /
+	 * class-type checks below — which would otherwise demand an object. */
+	if( pFunc->nReturnType == SXU32_HIGH
+	 && pFunc->sReturnClass.nByte == 5
+	 && SyStrnicmp(pFunc->sReturnClass.zString,"mixed",5) == 0 ){
+		return SXRET_OK;
 	}
 	/* Union return type — delegate. The function has no flag for nullable
 	 * unions; a null alternative is represented inside aReturnUnion, so pass
@@ -4037,7 +4051,14 @@ case PH7_OP_DONE:
 	 * the fiber start/resume paths) set pEnforceRetFunc, so this branch is
 	 * skipped for default-value bytecode, class-method mini-programs,
 	 * callback trampolines, and the main script. */
-	if( pEnforceRetFunc && pEnforceRetFunc->nReturnType > 0 ){
+	if( pEnforceRetFunc && pEnforceRetFunc->nReturnType > 0
+	 && !(VmSkipExceptionFrames(pVm->pFrame)->iFlags & VM_FRAME_THROW) ){
+		/* The VM_FRAME_THROW guard skips enforcement when the function is
+		 * unwinding because an exception was thrown (the compiler routes an
+		 * uncaught throw to this terminal OP_DONE): PHP does not type-check a
+		 * value the function never actually returned, so enforcing here would
+		 * raise a spurious "Return value must be of type X" over the real
+		 * exception. */
 		ph7_value *pRetVal = 0;
 		if( pInstr->iP1 && pTos >= pStack ){
 			pRetVal = pTos;

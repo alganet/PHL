@@ -920,6 +920,7 @@ struct ph7_vm
 	ph7_class *pArrayAccessClass; /* Cached ArrayAccess interface pointer */
 	ph7_class *pCountableClass;   /* Cached Countable interface pointer */
 	ph7_class *pStringableClass;  /* Cached Stringable interface pointer */
+	ph7_class *pJsonSerializableClass; /* Cached JsonSerializable interface pointer */
 	/* Pending null-coalesce-assign target on an ArrayAccess subscript.
 	 * Set by LOAD_IDX iP2=3 when the key is missing on an ArrayAccess
 	 * object; consumed by NULLC_STORE so it can dispatch to offsetSet
