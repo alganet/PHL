@@ -11916,8 +11916,8 @@ static int vm_builtin_get_defined_constants(ph7_context *pCtx,int nArg,ph7_value
  */
 /*
  * Generate a random 32-bit unsigned integer.
- * PH7 use it's own private PRNG which is based on the one
- * used by te SQLite3 library.
+ * PH7 uses its own private PRNG (the SQLite3-derived RC4 generator
+ * implemented in src/sx/sxrand.c).
  */
 PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)
 {
@@ -11928,8 +11928,8 @@ PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)
 /*
  * Generate a random string (English Alphabet) of length nLen.
  * Note that the generated string is NOT null terminated.
- * PH7 use it's own private PRNG which is based on the one used
- * by te SQLite3 library.
+ * PH7 uses its own private PRNG (the SQLite3-derived RC4 generator
+ * implemented in src/sx/sxrand.c).
  */
 PH7_PRIVATE void PH7_VmRandomString(ph7_vm *pVm,char *zBuf,int nLen)
 {

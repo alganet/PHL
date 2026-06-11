@@ -101,6 +101,9 @@
 	}\
 }
 
+/* SPDX-SnippetBegin */
+/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */
+/* SPDX-License-Identifier: blessing */
 /*
 ** Notes on UTF-8 (According to SQLite3 authors):
 **
@@ -134,6 +137,7 @@
     *zOut++ = 0x80 + (sxu8)(c & 0x3F);                 \
   }                                                    \
 }
+/* SPDX-SnippetEnd */
 
 /* Rely on the standard ctype */
 #include <ctype.h>

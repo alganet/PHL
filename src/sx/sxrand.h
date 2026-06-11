@@ -8,6 +8,9 @@
 
 #include "sxtypes.h"
 
+/* SPDX-SnippetBegin */
+/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */
+/* SPDX-License-Identifier: blessing */
 /*
  * An instance of the following structure define a single context
  * for an Pseudo Random Number Generator.
@@ -24,6 +27,7 @@ struct SyPRNGCtx
     unsigned char s[256];   /* State variables */
     sxu16 nMagic;           /* Sanity check */
 };
+/* SPDX-SnippetEnd */
 
 typedef sxi32 (*ProcRandomSeed)(void *,unsigned int,void *);
 

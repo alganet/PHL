@@ -1356,6 +1356,9 @@ PH7_PRIVATE int vm_builtin_utf8_encode(ph7_context *pCtx,int nArg,ph7_value **ap
 	/* All done */
 	return PH7_OK;
 }
+/* SPDX-SnippetBegin */
+/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */
+/* SPDX-License-Identifier: blessing */
 /*
  * UTF-8 decoding routine extracted from the sqlite3 source tree.
  * Original author: D. Richard Hipp (http://www.sqlite.org)
@@ -1423,6 +1426,7 @@ PH7_PRIVATE int PH7_Utf8Read(
   *pzNext = z;
   return c;
 }
+/* SPDX-SnippetEnd */
 /*
  * string utf8_decode(string $data)
  *  This function decodes data, assumed to be UTF-8 encoded, to unicode.

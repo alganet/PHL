@@ -5105,6 +5105,9 @@ static int PH7_builtin_strpbrk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	return PH7_OK;
 }
+/* SPDX-SnippetBegin */
+/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */
+/* SPDX-License-Identifier: blessing */
 /*
  * string soundex(string $str)
  *  Calculate the soundex key of a string.
@@ -5162,6 +5165,7 @@ static int PH7_builtin_soundex(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	return PH7_OK;
 }
+/* SPDX-SnippetEnd */
 /*
  * string wordwrap(string $str[,int $width = 75[,string $break = "\n"]])
  *  Wraps a string to a given number of characters.
