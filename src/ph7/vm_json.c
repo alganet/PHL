@@ -274,6 +274,47 @@ PH7_PRIVATE int vm_builtin_json_last_error(ph7_context *pCtx,int nArg,ph7_value 
 	SXUNUSED(apArg);
 	return PH7_OK;
 }
+/*
+ * string json_last_error_msg(void)
+ *  Returns the error string of the last JSON encoding/decoding operation.
+ * Parameters
+ *  None
+ * Return
+ *  Returns the human-readable message corresponding to the last json_last_error()
+ *  code, or "No error" if no error has occurred.
+ */
+PH7_PRIVATE int vm_builtin_json_last_error_msg(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	const char *zMsg;
+	switch( pVm->json_rc ){
+	case JSON_ERROR_NONE:
+		zMsg = "No error";
+		break;
+	case JSON_ERROR_DEPTH:
+		zMsg = "Maximum stack depth exceeded";
+		break;
+	case JSON_ERROR_STATE_MISMATCH:
+		zMsg = "State mismatch (invalid or malformed JSON)";
+		break;
+	case JSON_ERROR_CTRL_CHAR:
+		zMsg = "Control character error, possibly incorrectly encoded";
+		break;
+	case JSON_ERROR_SYNTAX:
+		zMsg = "Syntax error";
+		break;
+	case JSON_ERROR_UTF8:
+		zMsg = "Malformed UTF-8 characters, possibly incorrectly encoded";
+		break;
+	default:
+		zMsg = "Unknown error";
+		break;
+	}
+	ph7_result_string(pCtx,zMsg,-1/* Compute length automatically */);
+	SXUNUSED(nArg); /* cc warning */
+	SXUNUSED(apArg);
+	return PH7_OK;
+}
 /* Possible tokens from the JSON tokenization process */
 #define JSON_TK_TRUE    0x001 /* Boolean true */
 #define JSON_TK_FALSE   0x002 /* Boolean false */
@@ -739,15 +780,69 @@ static int VmJsonDefaultDecoder(ph7_context *pCtx,ph7_value *pKey,ph7_value *pWo
  *  are returned as TRUE, FALSE and NULL respectively. NULL is returned if the json cannot be decoded
  *  or if the encoded data is deeper than the recursion limit.
  */
-PH7_PRIVATE int vm_builtin_json_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+/*
+ * Tokenize and decode a JSON input. Shared core of json_decode() and json_validate().
+ * On success the decoded value is delivered through the default decoder (i.e: it becomes
+ * the call-context result, which json_validate's caller then overwrites with a boolean).
+ * Returns the resulting JSON error code (pVm->json_rc): JSON_ERROR_NONE on success, a
+ * non-zero json_err_code otherwise. A generic decoder abort without a specific code
+ * (e.g: out of memory) is reported as JSON_ERROR_SYNTAX so callers can branch on a single
+ * value, preserving the original "abort || error => failure" json_decode semantics.
+ */
+static int VmJsonDecodeInput(ph7_context *pCtx,const char *zIn,int nByte,int iAssoc,int nDepth)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	json_decoder sDecoder;
-	const char *zIn;
 	SySet sToken;
 	SyLex sLex;
-	int nByte;
 	sxi32 rc;
+	/* Clear JSON error code */
+	pVm->json_rc = JSON_ERROR_NONE;
+	/* Tokenize the input */
+	SySetInit(&sToken,&pVm->sAllocator,sizeof(SyToken));
+	SyLexInit(&sLex,&sToken,VmJsonTokenize,&pVm->json_rc);
+	SyLexTokenizeInput(&sLex,zIn,(sxu32)nByte,0,0,0);
+	if( pVm->json_rc != JSON_ERROR_NONE ){
+		/* Something goes wrong while tokenizing input. [i.e: Unexpected token] */
+		SyLexRelease(&sLex);
+		SySetRelease(&sToken);
+		return pVm->json_rc;
+	}
+	/* Fill the decoder */
+	sDecoder.pCtx = pCtx;
+	sDecoder.pErr = &pVm->json_rc;
+	sDecoder.pIn = (SyToken *)SySetBasePtr(&sToken);
+	sDecoder.pEnd = &sDecoder.pIn[SySetUsed(&sToken)];
+	sDecoder.iFlags = 0;
+	if( iAssoc ){
+		/* Returned objects will be converted into associative arrays */
+		sDecoder.iFlags |= JSON_DECODE_ASSOC;
+	}
+	sDecoder.rec_depth = 32;
+	if( nDepth > 1 && nDepth < 32 ){
+		sDecoder.rec_depth = nDepth;
+	}
+	sDecoder.rec_count = 0;
+	/* Set a default consumer */
+	sDecoder.xConsumer = VmJsonDefaultDecoder;
+	sDecoder.pUserData = 0;
+	/* Decode the raw JSON input */
+	rc = VmJsonDecode(&sDecoder,0);
+	if( rc == SXERR_ABORT && pVm->json_rc == JSON_ERROR_NONE ){
+		/* Generic abort with no specific code: treat as a syntax error */
+		pVm->json_rc = JSON_ERROR_SYNTAX;
+	}
+	/* Clean-up the mess left behind */
+	SyLexRelease(&sLex);
+	SySetRelease(&sToken);
+	return pVm->json_rc;
+}
+PH7_PRIVATE int vm_builtin_json_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zIn;
+	int nByte;
+	int iAssoc = 0;
+	int nDepth = 32;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid arguments, return NULL */
 		ph7_result_null(pCtx);
@@ -760,52 +855,58 @@ PH7_PRIVATE int vm_builtin_json_decode(ph7_context *pCtx,int nArg,ph7_value **ap
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	/* Clear JSON error code */
-	pVm->json_rc = JSON_ERROR_NONE;
-	/* Tokenize the input */
-	SySetInit(&sToken,&pVm->sAllocator,sizeof(SyToken));
-	SyLexInit(&sLex,&sToken,VmJsonTokenize,&pVm->json_rc);
-	SyLexTokenizeInput(&sLex,zIn,(sxu32)nByte,0,0,0);
-	if( pVm->json_rc != JSON_ERROR_NONE ){
-		/* Something goes wrong while tokenizing input. [i.e: Unexpected token] */
-		SyLexRelease(&sLex);
-		SySetRelease(&sToken);
-		/* return NULL */
+	if( nArg > 1 && ph7_value_to_bool(apArg[1]) != 0 ){
+		iAssoc = 1;
+	}
+	if( nArg > 2 && ph7_value_is_int(apArg[2]) ){
+		nDepth = ph7_value_to_int(apArg[2]);
+	}
+	/* Decode the raw JSON input.The default consumer sets the decoded value as the
+	 * call-context result; on failure we replace it with NULL. */
+	if( VmJsonDecodeInput(pCtx,zIn,nByte,iAssoc,nDepth) != JSON_ERROR_NONE ){
+		/* Something goes wrong while decoding JSON input.Return NULL. */
 		ph7_result_null(pCtx);
+	}
+	/* All done */
+	return PH7_OK;
+}
+/*
+ * bool json_validate(string $json[,int $depth = 512[,int $flags = 0]])
+ *  Validates whether a string is valid JSON without materializing a value.
+ * Parameters
+ *  $json   The string to validate.
+ *  $depth  Maximum nesting depth (clamped to the engine limit of 32).
+ *  $flags  Bitmask of decode options (currently none are implemented; accepted/ignored).
+ * Return
+ *  TRUE if the string is valid JSON, FALSE otherwise. Updates json_last_error().
+ */
+PH7_PRIVATE int vm_builtin_json_validate(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	const char *zIn;
+	int nByte;
+	int nDepth = 32;
+	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+		/* Missing/Invalid argument: not valid JSON */
+		pVm->json_rc = JSON_ERROR_SYNTAX;
+		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Fill the decoder */
-	sDecoder.pCtx = pCtx;
-	sDecoder.pErr = &pVm->json_rc;
-	sDecoder.pIn = (SyToken *)SySetBasePtr(&sToken);
-	sDecoder.pEnd = &sDecoder.pIn[SySetUsed(&sToken)];
-	sDecoder.iFlags = 0;
-	if( nArg > 1 && ph7_value_to_bool(apArg[1]) != 0 ){
-		/* Returned objects will be converted into associative arrays */
-		sDecoder.iFlags |= JSON_DECODE_ASSOC;
+	/* Extract the JSON string */
+	zIn = ph7_value_to_string(apArg[0],&nByte);
+	if( nByte < 1 ){
+		/* The empty string is not valid JSON (unlike json_decode, which returns NULL
+		 * silently, json_validate must record the syntax error) */
+		pVm->json_rc = JSON_ERROR_SYNTAX;
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
 	}
-	sDecoder.rec_depth = 32;
-	if( nArg > 2 && ph7_value_is_int(apArg[2]) ){
-		int nDepth = ph7_value_to_int(apArg[2]);
-		if( nDepth > 1 && nDepth < 32 ){
-			sDecoder.rec_depth = nDepth;
-		}
+	if( nArg > 1 && ph7_value_is_int(apArg[1]) ){
+		nDepth = ph7_value_to_int(apArg[1]);
 	}
-	sDecoder.rec_count = 0;
-	/* Set a default consumer */
-	sDecoder.xConsumer = VmJsonDefaultDecoder;
-	sDecoder.pUserData = 0;
-	/* Decode the raw JSON input */
-	rc = VmJsonDecode(&sDecoder,0);
-	if( rc == SXERR_ABORT ||  pVm->json_rc != JSON_ERROR_NONE ){
-		/*
-		 * Something goes wrong while decoding JSON input.Return NULL.
-		 */
-		ph7_result_null(pCtx);
-	}
-	/* Clean-up the mess left behind */
-	SyLexRelease(&sLex);
-	SySetRelease(&sToken);
-	/* All done */
+	/* apArg[2] ($flags) is accepted and ignored: no decode flag is implemented.
+	 * Decode in associative mode so the "objects are returned as an array" warning is
+	 * not raised - the decoded value is discarded, only its validity matters. */
+	ph7_result_bool(pCtx,VmJsonDecodeInput(pCtx,zIn,nByte,1,nDepth) == JSON_ERROR_NONE);
 	return PH7_OK;
 }
