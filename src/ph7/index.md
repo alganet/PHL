@@ -1,6 +1,6 @@
 # src/ph7/
 
-Coverage: 28732/36350 lines (79.04%)
+Coverage: 28761/36354 lines (79.11%)
 
 [Up](../index.md)
 
@@ -12,7 +12,7 @@ Coverage: 28732/36350 lines (79.04%)
 |[builtin_math.c](builtin_math.c.md)|96.79%|452/467|
 |[compile.c](compile.c.md)|79.45%|5187/6529|
 |[constant.c](constant.c.md)|98.95%|1036/1047|
-|[hashmap.c](hashmap.c.md)|86.97%|3225/3708|
+|[hashmap.c](hashmap.c.md)|86.95%|3226/3710|
 |[lex.c](lex.c.md)|93.33%|755/809|
 |[memobj.c](memobj.c.md)|88.92%|706/794|
 |[net.c](net.c.md)|50.48%|53/105|
@@ -28,6 +28,6 @@ Coverage: 28732/36350 lines (79.04%)
 |[vm_builtin_ob.c](vm_builtin_ob.c.md)|76.21%|157/206|
 |[vm_http.c](vm_http.c.md)|68.02%|302/444|
 |[vm_http_response.c](vm_http_response.c.md)|42.35%|108/255|
-|[vm_json.c](vm_json.c.md)|62.82%|267/425|
+|[vm_json.c](vm_json.c.md)|69.09%|295/427|
 |[vm_pcre.c](vm_pcre.c.md)|59.46%|487/819|
 |[vm_xml.c](vm_xml.c.md)|67.82%|392/578|

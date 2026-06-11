@@ -1098,20 +1098,20 @@ Coverage: 1036/1047 lines (98.95%)
 |      - | 1088 | ` * PATHINFO_EXTENSION` |
 |      - | 1089 | ` *  Expand 3.` |
 |      - | 1090 | ` */` |
-|   5534 | 1091 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
+|   5540 | 1091 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
 |      2 | 1092 |  |
-|   2767 | 1093 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   5536 | 1094 | `	ph7_value_int(pVal,3);` |
-|   5536 | 1095 |  |
+|   2770 | 1093 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   5542 | 1094 | `	ph7_value_int(pVal,3);` |
+|   5542 | 1095 |  |
 |      - | 1096 | `/*` |
 |      - | 1097 | ` * PATHINFO_FILENAME` |
 |      - | 1098 | ` *  Expand 4.` |
 |      - | 1099 | ` */` |
-|   5526 | 1100 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
+|   5532 | 1100 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
 |      2 | 1101 |  |
-|   2763 | 1102 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   5528 | 1103 | `	ph7_value_int(pVal,4);` |
-|   5528 | 1104 |  |
+|   2766 | 1102 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   5534 | 1103 | `	ph7_value_int(pVal,4);` |
+|   5534 | 1104 |  |
 |      - | 1105 | `/*` |
 |      - | 1106 | ` * ASSERT_ACTIVE.` |
 |      - | 1107 | ` *  PHP ASSERT_ACTIVE = 1` |
@@ -1754,11 +1754,11 @@ Coverage: 1036/1047 lines (98.95%)
 |      - | 1744 | ` * JSON_FORCE_OBJECT.` |
 |      - | 1745 | ` *   Expand the value of JSON_FORCE_OBJECT defined in ph7Int.h.` |
 |      - | 1746 | ` */` |
-|      2 | 1747 | `static void PH7_JSON_FORCE_OBJECT_Const(ph7_value *pVal,void *pUserData)` |
+|      4 | 1747 | `static void PH7_JSON_FORCE_OBJECT_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1748 |  |
-|      1 | 1749 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1750 | `	ph7_value_int(pVal,JSON_FORCE_OBJECT);` |
-|      3 | 1751 |  |
+|      2 | 1749 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      5 | 1750 | `	ph7_value_int(pVal,JSON_FORCE_OBJECT);` |
+|      5 | 1751 |  |
 |      - | 1752 | `/*` |
 |      - | 1753 | ` * JSON_NUMERIC_CHECK.` |
 |      - | 1754 | ` *   Expand the value of JSON_NUMERIC_CHECK defined in ph7Int.h.` |
