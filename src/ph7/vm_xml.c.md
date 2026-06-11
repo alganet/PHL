@@ -1366,107 +1366,111 @@ Coverage: 392/578 lines (67.82%)
 |    - | 1356 | `	/* All done */` |
 |  ! 0 | 1357 | `	return PH7_OK;` |
 |  ! 0 | 1358 |  |
-|    - | 1359 | `/*` |
-|    - | 1360 | ` * UTF-8 decoding routine extracted from the sqlite3 source tree.` |
-|    - | 1361 | ` * Original author: D. Richard Hipp (http://www.sqlite.org)` |
-|    - | 1362 | ` * Status: Public Domain` |
-|    - | 1363 | ` */` |
-|    - | 1364 | `/*` |
-|    - | 1365 | `** This lookup table is used to help decode the first byte of` |
-|    - | 1366 | `** a multi-byte UTF8 character.` |
-|    - | 1367 | `*/` |
-|    - | 1368 | `static const unsigned char UtfTrans1[] = {` |
-|    - | 1369 |  |
-|    - | 1370 |  |
-|    - | 1371 |  |
+|    - | 1359 | `/* SPDX-SnippetBegin */` |
+|    - | 1360 | `/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */` |
+|    - | 1361 | `/* SPDX-License-Identifier: blessing */` |
+|    - | 1362 | `/*` |
+|    - | 1363 | ` * UTF-8 decoding routine extracted from the sqlite3 source tree.` |
+|    - | 1364 | ` * Original author: D. Richard Hipp (http://www.sqlite.org)` |
+|    - | 1365 | ` * Status: Public Domain` |
+|    - | 1366 | ` */` |
+|    - | 1367 | `/*` |
+|    - | 1368 | `** This lookup table is used to help decode the first byte of` |
+|    - | 1369 | `** a multi-byte UTF8 character.` |
+|    - | 1370 | `*/` |
+|    - | 1371 | `static const unsigned char UtfTrans1[] = {` |
 |    - | 1372 |  |
 |    - | 1373 |  |
 |    - | 1374 |  |
 |    - | 1375 |  |
 |    - | 1376 |  |
-|    - | 1377 | `};` |
-|    - | 1378 | `/*` |
-|    - | 1379 | `** Translate a single UTF-8 character.  Return the unicode value.` |
-|    - | 1380 | `**` |
-|    - | 1381 | `** During translation, assume that the byte that zTerm points` |
-|    - | 1382 | `** is a 0x00.` |
+|    - | 1377 |  |
+|    - | 1378 |  |
+|    - | 1379 |  |
+|    - | 1380 | `};` |
+|    - | 1381 | `/*` |
+|    - | 1382 | `** Translate a single UTF-8 character.  Return the unicode value.` |
 |    - | 1383 | `**` |
-|    - | 1384 | `** Write a pointer to the next unread byte back into *pzNext.` |
-|    - | 1385 | `**` |
-|    - | 1386 | `** Notes On Invalid UTF-8:` |
-|    - | 1387 | `**` |
-|    - | 1388 | `**  *  This routine never allows a 7-bit character (0x00 through 0x7f) to` |
-|    - | 1389 | `**     be encoded as a multi-byte character.  Any multi-byte character that` |
-|    - | 1390 | `**     attempts to encode a value between 0x00 and 0x7f is rendered as 0xfffd.` |
-|    - | 1391 | `**` |
-|    - | 1392 | `**  *  This routine never allows a UTF16 surrogate value to be encoded.` |
-|    - | 1393 | `**     If a multi-byte character attempts to encode a value between` |
-|    - | 1394 | `**     0xd800 and 0xe000 then it is rendered as 0xfffd.` |
-|    - | 1395 | `**` |
-|    - | 1396 | `**  *  Bytes in the range of 0x80 through 0xbf which occur as the first` |
-|    - | 1397 | `**     byte of a character are interpreted as single-byte characters` |
-|    - | 1398 | `**     and rendered as themselves even though they are technically` |
-|    - | 1399 | `**     invalid characters.` |
-|    - | 1400 | `**` |
-|    - | 1401 | `**  *  This routine accepts an infinite number of different UTF8 encodings` |
-|    - | 1402 | `**     for unicode values 0x80 and greater.  It do not change over-length` |
-|    - | 1403 | `**     encodings to 0xfffd as some systems recommend.` |
-|    - | 1404 | `*/` |
-|    - | 1405 | `#define READ_UTF8(zIn, zTerm, c)                           \` |
-|    - | 1406 | `  c = *(zIn++);                                            \` |
-|    - | 1407 | `  if( c>=0xc0 ){                                           \` |
-|    - | 1408 | `    c = UtfTrans1[c-0xc0];                                 \` |
-|    - | 1409 | `    while( zIn!=zTerm && (*zIn & 0xc0)==0x80 ){            \` |
-|    - | 1410 | `      c = (c<<6) + (0x3f & *(zIn++));                      \` |
-|    - | 1411 | `    }                                                      \` |
-|    - | 1412 | `    if( c<0x80                                             \` |
-|    - | 1413 | `        \|\| (c&0xFFFFF800)==0xD800                          \` |
-|    - | 1414 | `        \|\| (c&0xFFFFFFFE)==0xFFFE ){  c = 0xFFFD; }        \` |
-|    - | 1415 | `  }` |
-|  148 | 1416 | `PH7_PRIVATE int PH7_Utf8Read(` |
-|    - | 1417 | `  const unsigned char *z,         /* First byte of UTF-8 character */` |
-|    - | 1418 | `  const unsigned char *zTerm,     /* Pretend this byte is 0x00 */` |
-|    - | 1419 | `  const unsigned char **pzNext    /* Write first byte past UTF-8 char here */` |
-|    1 | 1420 | `){` |
-|    - | 1421 | `  int c;` |
-|  149 | 1422 | `  READ_UTF8(z, zTerm, c);` |
-|  149 | 1423 | `  *pzNext = z;` |
-|  149 | 1424 | `  return c;` |
-|    1 | 1425 |  |
-|    - | 1426 | `/*` |
-|    - | 1427 | ` * string utf8_decode(string $data)` |
-|    - | 1428 | ` *  This function decodes data, assumed to be UTF-8 encoded, to unicode.` |
-|    - | 1429 | ` * Parameters` |
-|    - | 1430 | ` * data` |
-|    - | 1431 | ` *  An UTF-8 encoded string.` |
-|    - | 1432 | ` * Return` |
-|    - | 1433 | ` *  Unicode decoded string or NULL on failure.` |
-|    - | 1434 | ` */` |
-|  ! 0 | 1435 | `PH7_PRIVATE int vm_builtin_utf8_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|  ! 0 | 1436 |  |
-|    - | 1437 | `	const unsigned char *zIn,*zEnd;` |
-|    - | 1438 | `	int nByte,c;` |
-|  ! 0 | 1439 | `	if( nArg < 1 ){` |
-|    - | 1440 | `		/* Missing arguments,return null */` |
-|  ! 0 | 1441 | `		ph7_result_null(pCtx);` |
-|  ! 0 | 1442 | `		return PH7_OK;` |
-|    - | 1443 | `	}` |
-|    - | 1444 | `	/* Extract the target string */` |
-|  ! 0 | 1445 | `	zIn = (const unsigned char *)ph7_value_to_string(apArg[0],&nByte);` |
-|  ! 0 | 1446 | `	if( nByte < 1 ){` |
-|    - | 1447 | `		/* Empty string,return null */` |
-|  ! 0 | 1448 | `		ph7_result_null(pCtx);` |
-|  ! 0 | 1449 | `		return PH7_OK;` |
-|    - | 1450 | `	}` |
-|  ! 0 | 1451 | `	zEnd = &zIn[nByte];` |
-|    - | 1452 | `	/* Start the decoding process */` |
-|  ! 0 | 1453 | `	while( zIn < zEnd ){` |
-|  ! 0 | 1454 | `		c = PH7_Utf8Read(zIn,zEnd,&zIn);` |
-|  ! 0 | 1455 | `		if( c == 0x0 ){` |
-|  ! 0 | 1456 | `			break;` |
-|    - | 1457 | `		}` |
-|  ! 0 | 1458 | `		ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char));` |
-|  ! 0 | 1459 | `	}` |
-|  ! 0 | 1460 | `	return PH7_OK;` |
-|  ! 0 | 1461 |  |
-|    - | 1462 |  |
+|    - | 1384 | `** During translation, assume that the byte that zTerm points` |
+|    - | 1385 | `** is a 0x00.` |
+|    - | 1386 | `**` |
+|    - | 1387 | `** Write a pointer to the next unread byte back into *pzNext.` |
+|    - | 1388 | `**` |
+|    - | 1389 | `** Notes On Invalid UTF-8:` |
+|    - | 1390 | `**` |
+|    - | 1391 | `**  *  This routine never allows a 7-bit character (0x00 through 0x7f) to` |
+|    - | 1392 | `**     be encoded as a multi-byte character.  Any multi-byte character that` |
+|    - | 1393 | `**     attempts to encode a value between 0x00 and 0x7f is rendered as 0xfffd.` |
+|    - | 1394 | `**` |
+|    - | 1395 | `**  *  This routine never allows a UTF16 surrogate value to be encoded.` |
+|    - | 1396 | `**     If a multi-byte character attempts to encode a value between` |
+|    - | 1397 | `**     0xd800 and 0xe000 then it is rendered as 0xfffd.` |
+|    - | 1398 | `**` |
+|    - | 1399 | `**  *  Bytes in the range of 0x80 through 0xbf which occur as the first` |
+|    - | 1400 | `**     byte of a character are interpreted as single-byte characters` |
+|    - | 1401 | `**     and rendered as themselves even though they are technically` |
+|    - | 1402 | `**     invalid characters.` |
+|    - | 1403 | `**` |
+|    - | 1404 | `**  *  This routine accepts an infinite number of different UTF8 encodings` |
+|    - | 1405 | `**     for unicode values 0x80 and greater.  It do not change over-length` |
+|    - | 1406 | `**     encodings to 0xfffd as some systems recommend.` |
+|    - | 1407 | `*/` |
+|    - | 1408 | `#define READ_UTF8(zIn, zTerm, c)                           \` |
+|    - | 1409 | `  c = *(zIn++);                                            \` |
+|    - | 1410 | `  if( c>=0xc0 ){                                           \` |
+|    - | 1411 | `    c = UtfTrans1[c-0xc0];                                 \` |
+|    - | 1412 | `    while( zIn!=zTerm && (*zIn & 0xc0)==0x80 ){            \` |
+|    - | 1413 | `      c = (c<<6) + (0x3f & *(zIn++));                      \` |
+|    - | 1414 | `    }                                                      \` |
+|    - | 1415 | `    if( c<0x80                                             \` |
+|    - | 1416 | `        \|\| (c&0xFFFFF800)==0xD800                          \` |
+|    - | 1417 | `        \|\| (c&0xFFFFFFFE)==0xFFFE ){  c = 0xFFFD; }        \` |
+|    - | 1418 | `  }` |
+|  148 | 1419 | `PH7_PRIVATE int PH7_Utf8Read(` |
+|    - | 1420 | `  const unsigned char *z,         /* First byte of UTF-8 character */` |
+|    - | 1421 | `  const unsigned char *zTerm,     /* Pretend this byte is 0x00 */` |
+|    - | 1422 | `  const unsigned char **pzNext    /* Write first byte past UTF-8 char here */` |
+|    1 | 1423 | `){` |
+|    - | 1424 | `  int c;` |
+|  149 | 1425 | `  READ_UTF8(z, zTerm, c);` |
+|  149 | 1426 | `  *pzNext = z;` |
+|  149 | 1427 | `  return c;` |
+|    1 | 1428 |  |
+|    - | 1429 | `/* SPDX-SnippetEnd */` |
+|    - | 1430 | `/*` |
+|    - | 1431 | ` * string utf8_decode(string $data)` |
+|    - | 1432 | ` *  This function decodes data, assumed to be UTF-8 encoded, to unicode.` |
+|    - | 1433 | ` * Parameters` |
+|    - | 1434 | ` * data` |
+|    - | 1435 | ` *  An UTF-8 encoded string.` |
+|    - | 1436 | ` * Return` |
+|    - | 1437 | ` *  Unicode decoded string or NULL on failure.` |
+|    - | 1438 | ` */` |
+|  ! 0 | 1439 | `PH7_PRIVATE int vm_builtin_utf8_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  ! 0 | 1440 |  |
+|    - | 1441 | `	const unsigned char *zIn,*zEnd;` |
+|    - | 1442 | `	int nByte,c;` |
+|  ! 0 | 1443 | `	if( nArg < 1 ){` |
+|    - | 1444 | `		/* Missing arguments,return null */` |
+|  ! 0 | 1445 | `		ph7_result_null(pCtx);` |
+|  ! 0 | 1446 | `		return PH7_OK;` |
+|    - | 1447 | `	}` |
+|    - | 1448 | `	/* Extract the target string */` |
+|  ! 0 | 1449 | `	zIn = (const unsigned char *)ph7_value_to_string(apArg[0],&nByte);` |
+|  ! 0 | 1450 | `	if( nByte < 1 ){` |
+|    - | 1451 | `		/* Empty string,return null */` |
+|  ! 0 | 1452 | `		ph7_result_null(pCtx);` |
+|  ! 0 | 1453 | `		return PH7_OK;` |
+|    - | 1454 | `	}` |
+|  ! 0 | 1455 | `	zEnd = &zIn[nByte];` |
+|    - | 1456 | `	/* Start the decoding process */` |
+|  ! 0 | 1457 | `	while( zIn < zEnd ){` |
+|  ! 0 | 1458 | `		c = PH7_Utf8Read(zIn,zEnd,&zIn);` |
+|  ! 0 | 1459 | `		if( c == 0x0 ){` |
+|  ! 0 | 1460 | `			break;` |
+|    - | 1461 | `		}` |
+|  ! 0 | 1462 | `		ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char));` |
+|  ! 0 | 1463 | `	}` |
+|  ! 0 | 1464 | `	return PH7_OK;` |
+|  ! 0 | 1465 |  |
+|    - | 1466 |  |

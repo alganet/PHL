@@ -11926,20 +11926,20 @@ Coverage: 6541/8388 lines (77.98%)
 |        - | 11916 | ` */` |
 |        - | 11917 | `/*` |
 |        - | 11918 | ` * Generate a random 32-bit unsigned integer.` |
-|        - | 11919 | ` * PH7 use it's own private PRNG which is based on the one` |
-|        - | 11920 | ` * used by te SQLite3 library.` |
+|        - | 11919 | ` * PH7 uses its own private PRNG (the SQLite3-derived RC4 generator` |
+|        - | 11920 | ` * implemented in src/sx/sxrand.c).` |
 |        - | 11921 | ` */` |
-|     2892 | 11922 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
+|     2890 | 11922 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
 |        2 | 11923 |  |
 |        - | 11924 | `	sxu32 iNum;` |
-|     2894 | 11925 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
-|     2894 | 11926 | `	return iNum;` |
+|     2892 | 11925 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
+|     2892 | 11926 | `	return iNum;` |
 |        2 | 11927 |  |
 |        - | 11928 | `/*` |
 |        - | 11929 | ` * Generate a random string (English Alphabet) of length nLen.` |
 |        - | 11930 | ` * Note that the generated string is NOT null terminated.` |
-|        - | 11931 | ` * PH7 use it's own private PRNG which is based on the one used` |
-|        - | 11932 | ` * by te SQLite3 library.` |
+|        - | 11931 | ` * PH7 uses its own private PRNG (the SQLite3-derived RC4 generator` |
+|        - | 11932 | ` * implemented in src/sx/sxrand.c).` |
 |        - | 11933 | ` */` |
 |   232888 | 11934 | `PH7_PRIVATE void PH7_VmRandomString(ph7_vm *pVm,char *zBuf,int nLen)` |
 |        2 | 11935 |  |
@@ -12116,12 +12116,12 @@ Coverage: 6541/8388 lines (77.98%)
 |      225 | 12106 | `	uMask \|= uMask >> 16;` |
 |      225 | 12107 | `	uMask \|= uMask >> 32;` |
 |      225 | 12108 | `	uResult = 0;` |
-|      344 | 12109 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
+|      372 | 12109 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
 |        - | 12110 | `		/* Always draw a full 8 bytes so endianness of the cast doesn't matter` |
 |        - | 12111 | `		 * (a 4-byte fill into a sxu64 would land in the high half on big-endian` |
 |        - | 12112 | `		 * and the low-half mask would always read 0). */` |
 |        - | 12113 | `		sxu64 uDraw;` |
-|      344 | 12114 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
+|      372 | 12114 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
 |        - | 12115 | `			/* PHP 8.2+ would throw Random\RandomException here; that class` |
 |        - | 12116 | `			 * is not yet registered in PHL (see PLAN.md item 6.13). */` |
 |      ! 0 | 12117 | `			return PH7_VmThrowException(pCtx,` |
@@ -12129,12 +12129,12 @@ Coverage: 6541/8388 lines (77.98%)
 |        - | 12119 | `				"Cannot gather sufficient random data"` |
 |        - | 12120 | `				);` |
 |        - | 12121 | `		}` |
-|      344 | 12122 | `		uDraw &= uMask;` |
-|      344 | 12123 | `		if( uDraw <= uRange ){` |
+|      372 | 12122 | `		uDraw &= uMask;` |
+|      372 | 12123 | `		if( uDraw <= uRange ){` |
 |      225 | 12124 | `			uResult = uDraw;` |
 |      225 | 12125 | `			break;` |
 |        - | 12126 | `		}` |
-|       60 | 12127 | `	}` |
+|       61 | 12127 | `	}` |
 |      225 | 12128 | `	if( nAttempt >= 50 ){` |
 |      ! 0 | 12129 | `		return PH7_VmThrowException(pCtx,` |
 |        - | 12130 | `			"Exception",` |
@@ -15868,14 +15868,14 @@ Coverage: 6541/8388 lines (77.98%)
 |        - | 15858 | `	/* Check if a scheme [i.e: file://,http://,zip://...] is available */` |
 |    28952 | 15859 | `	zNext = zCur = zIn = *pzDevice;` |
 |    28952 | 15860 | `	zEnd = &zIn[nByte];` |
-|  1848000 | 15861 | `	while( zIn < zEnd ){` |
-|  1819052 | 15862 | `		if( zIn < &zEnd[-3]/*://*/ && zIn[0] == ':' && zIn[1] == '/' && zIn[2] == '/' ){` |
+|  1848008 | 15861 | `	while( zIn < zEnd ){` |
+|  1819060 | 15862 | `		if( zIn < &zEnd[-3]/*://*/ && zIn[0] == ':' && zIn[1] == '/' && zIn[2] == '/' ){` |
 |        - | 15863 | `			/* Got one */` |
 |        3 | 15864 | `			zNext = &zIn[sizeof("://")-1];` |
 |        3 | 15865 | `			break;` |
 |        - | 15866 | `		}` |
 |        - | 15867 | `		/* Advance the cursor */` |
-|  1819050 | 15868 | `		zIn++;` |
+|  1819058 | 15868 | `		zIn++;` |
 |        2 | 15869 | `	}` |
 |    28952 | 15870 | `	if( zIn >= zEnd ){` |
 |        - | 15871 | `		/* No such scheme,return the default stream */` |

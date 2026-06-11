@@ -25,11 +25,11 @@ Coverage: 92/98 lines (93.88%)
 |        - |   15 | `		return 0;` |
 |        - |   16 | `	}` |
 |        - |   17 | `#endif` |
-|  9482105 |   18 | `	for(;;){` |
-| 18960962 |   19 | `		if( !zIn[0] ){ break; } zIn++;` |
-| 17723311 |   20 | `		if( !zIn[0] ){ break; } zIn++;` |
-| 16297988 |   21 | `		if( !zIn[0] ){ break; } zIn++;` |
-| 14483980 |   22 | `		if( !zIn[0] ){ break; } zIn++;` |
+|  9482106 |   18 | `	for(;;){` |
+| 18960951 |   19 | `		if( !zIn[0] ){ break; } zIn++;` |
+| 17723314 |   20 | `		if( !zIn[0] ){ break; } zIn++;` |
+| 16297979 |   21 | `		if( !zIn[0] ){ break; } zIn++;` |
+| 14483979 |   22 | `		if( !zIn[0] ){ break; } zIn++;` |
 |        2 |   23 | `	}` |
 |  5561834 |   24 | `	return (sxu32)(zIn - zSrc);` |
 |        2 |   25 |  |
@@ -134,11 +134,11 @@ Coverage: 92/98 lines (93.88%)
 |      ! 0 |  124 | `		nLen = SyStrlen(zSrc);` |
 |      ! 0 |  125 | `	}` |
 |  2552906 |  126 | `	zEnd = &zBuf[nDestLen - 1]; /* reserve a room for the null terminator */` |
-|  4356837 |  127 | `	for(;;){` |
-|  8713531 |  128 | `		if( zBuf >= zEnd \|\| nLen == 0 ){ break;} zBuf[0] = zIn[0]; zIn++; zBuf++; nLen--;` |
-|  8047569 |  129 | `		if( zBuf >= zEnd \|\| nLen == 0 ){ break;} zBuf[0] = zIn[0]; zIn++; zBuf++; nLen--;` |
-|  7405283 |  130 | `		if( zBuf >= zEnd \|\| nLen == 0 ){ break;} zBuf[0] = zIn[0]; zIn++; zBuf++; nLen--;` |
-|  6783795 |  131 | `		if( zBuf >= zEnd \|\| nLen == 0 ){ break;} zBuf[0] = zIn[0]; zIn++; zBuf++; nLen--;` |
+|  4356838 |  127 | `	for(;;){` |
+|  8713532 |  128 | `		if( zBuf >= zEnd \|\| nLen == 0 ){ break;} zBuf[0] = zIn[0]; zIn++; zBuf++; nLen--;` |
+|  8047574 |  129 | `		if( zBuf >= zEnd \|\| nLen == 0 ){ break;} zBuf[0] = zIn[0]; zIn++; zBuf++; nLen--;` |
+|  7405284 |  130 | `		if( zBuf >= zEnd \|\| nLen == 0 ){ break;} zBuf[0] = zIn[0]; zIn++; zBuf++; nLen--;` |
+|  6783796 |  131 | `		if( zBuf >= zEnd \|\| nLen == 0 ){ break;} zBuf[0] = zIn[0]; zIn++; zBuf++; nLen--;` |
 |        2 |  132 | `	}` |
 |  2552906 |  133 | `	zBuf[0] = 0;` |
 |  2552906 |  134 | `	return (sxu32)(zBuf-(unsigned char *)zDest);` |
