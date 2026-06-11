@@ -5659,7 +5659,7 @@ static pipe_private * PipeOpen(ph7_vm *pVm, const char *zCommand, const char *zM
 		pPipe->pVm = pVm;
 		pPipe->iMode = zMode[0];
 	}
-#else /* Unix */
+#elif defined(__UNIXES__) /* Unix */
 	pFile = popen(zCommand, zMode);
 	if( pFile == 0 ){
 		return 0;
@@ -5675,6 +5675,9 @@ static pipe_private * PipeOpen(ph7_vm *pVm, const char *zCommand, const char *zM
 	pPipe->pFile = pFile;
 	pPipe->pVm = pVm;
 	pPipe->iMode = zMode[0];
+#else /* OS_OTHER: no process pipes on this platform */
+	(void)pFile;
+	return 0;
 #endif
 	return pPipe;
 }
@@ -5694,7 +5697,7 @@ static int PipeClose(pipe_private *pPipe)
 #ifdef __WINNT__
 	/* Use our custom WinPclose that properly waits for process completion */
 	status = WinPclose(pPipe->pFile, pPipe->hProcess);
-#else
+#elif defined(__UNIXES__)
 	status = pclose(pPipe->pFile);
 	/* On Unix, pclose returns the status from waitpid, need to extract exit code */
 	if( status != -1 ){
@@ -5708,6 +5711,8 @@ static int PipeClose(pipe_private *pPipe)
 			status = -1;
 		}
 	}
+#else /* OS_OTHER: no process pipes on this platform */
+	status = -1;
 #endif
 	/* Free the structure */
 	SyMemBackendFree(&pVm->sAllocator, pPipe);
