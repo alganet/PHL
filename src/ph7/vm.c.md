@@ -11929,11 +11929,11 @@ Coverage: 6541/8388 lines (77.98%)
 |        - | 11919 | ` * PH7 use it's own private PRNG which is based on the one` |
 |        - | 11920 | ` * used by te SQLite3 library.` |
 |        - | 11921 | ` */` |
-|     2895 | 11922 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
+|     2891 | 11922 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
 |        2 | 11923 |  |
 |        - | 11924 | `	sxu32 iNum;` |
-|     2897 | 11925 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
-|     2897 | 11926 | `	return iNum;` |
+|     2893 | 11925 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
+|     2893 | 11926 | `	return iNum;` |
 |        2 | 11927 |  |
 |        - | 11928 | `/*` |
 |        - | 11929 | ` * Generate a random string (English Alphabet) of length nLen.` |
@@ -12116,12 +12116,12 @@ Coverage: 6541/8388 lines (77.98%)
 |      225 | 12106 | `	uMask \|= uMask >> 16;` |
 |      225 | 12107 | `	uMask \|= uMask >> 32;` |
 |      225 | 12108 | `	uResult = 0;` |
-|      353 | 12109 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
+|      351 | 12109 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
 |        - | 12110 | `		/* Always draw a full 8 bytes so endianness of the cast doesn't matter` |
 |        - | 12111 | `		 * (a 4-byte fill into a sxu64 would land in the high half on big-endian` |
 |        - | 12112 | `		 * and the low-half mask would always read 0). */` |
 |        - | 12113 | `		sxu64 uDraw;` |
-|      353 | 12114 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
+|      351 | 12114 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
 |        - | 12115 | `			/* PHP 8.2+ would throw Random\RandomException here; that class` |
 |        - | 12116 | `			 * is not yet registered in PHL (see PLAN.md item 6.13). */` |
 |      ! 0 | 12117 | `			return PH7_VmThrowException(pCtx,` |
@@ -12129,12 +12129,12 @@ Coverage: 6541/8388 lines (77.98%)
 |        - | 12119 | `				"Cannot gather sufficient random data"` |
 |        - | 12120 | `				);` |
 |        - | 12121 | `		}` |
-|      353 | 12122 | `		uDraw &= uMask;` |
-|      353 | 12123 | `		if( uDraw <= uRange ){` |
+|      351 | 12122 | `		uDraw &= uMask;` |
+|      351 | 12123 | `		if( uDraw <= uRange ){` |
 |      225 | 12124 | `			uResult = uDraw;` |
 |      225 | 12125 | `			break;` |
 |        - | 12126 | `		}` |
-|       62 | 12127 | `	}` |
+|       58 | 12127 | `	}` |
 |      225 | 12128 | `	if( nAttempt >= 50 ){` |
 |      ! 0 | 12129 | `		return PH7_VmThrowException(pCtx,` |
 |        - | 12130 | `			"Exception",` |
@@ -15594,10 +15594,10 @@ Coverage: 6541/8388 lines (77.98%)
 |        - | 15584 | ` * Default hash function used by the reference table` |
 |        - | 15585 | ` * for lookup/insertion operations.` |
 |        - | 15586 | ` */` |
-| 17496852 | 15587 | `static sxu32 VmRefHash(sxu32 nIdx)` |
+| 17497017 | 15587 | `static sxu32 VmRefHash(sxu32 nIdx)` |
 |        2 | 15588 |  |
 |        - | 15589 | `	/* Calculate the hash based on the memory object index */` |
-| 17496854 | 15590 | `	return nIdx ^ (nIdx << 8) ^ (nIdx >> 8);` |
+| 17497019 | 15590 | `	return nIdx ^ (nIdx << 8) ^ (nIdx >> 8);` |
 |        2 | 15591 |  |
 |        - | 15592 | `/*` |
 |        - | 15593 | ` * Check if a memory object [i.e: a variable] is already installed` |
@@ -15620,15 +15620,15 @@ Coverage: 6541/8388 lines (77.98%)
 |        - | 15610 | `	/* Perform the lookup */` |
 |  9517408 | 15611 | `	pRef = pVm->apRefObj[nBucket];` |
 | 20878919 | 15612 | `	for(;;){` |
-| 41748421 | 15613 | `		if( pRef == 0 ){` |
+| 41747395 | 15613 | `		if( pRef == 0 ){` |
 |  3296916 | 15614 | `			break;` |
 |        - | 15615 | `		}` |
-| 38451507 | 15616 | `		if( pRef->nIdx == nObjIdx ){` |
+| 38450481 | 15616 | `		if( pRef->nIdx == nObjIdx ){` |
 |        - | 15617 | `			/* Entry found */` |
 |  6220494 | 15618 | `			return pRef;` |
 |        - | 15619 | `		}` |
 |        - | 15620 | `		/* Point to the next entry */` |
-| 32231015 | 15621 | `		pRef = pRef->pNextCollide;` |
+| 32229989 | 15621 | `		pRef = pRef->pNextCollide;` |
 |        2 | 15622 | `	}` |
 |        - | 15623 | `	/* No such entry,return NULL */` |
 |  3296916 | 15624 | `	return 0;` |
@@ -15684,7 +15684,7 @@ Coverage: 6541/8388 lines (77.98%)
 |        - | 15674 | `	/* Insert the entry */` |
 |  3192216 | 15675 | `	pRef->pNextCollide = pVm->apRefObj[nBucket];` |
 |  3192216 | 15676 | `	if( pVm->apRefObj[nBucket] ){` |
-|  2607706 | 15677 | `		pVm->apRefObj[nBucket]->pPrevCollide = pRef;` |
+|  2607623 | 15677 | `		pVm->apRefObj[nBucket]->pPrevCollide = pRef;` |
 |  1303819 | 15678 | `	}` |
 |  3192216 | 15679 | `	pVm->apRefObj[nBucket] = pRef;` |
 |  3192216 | 15680 | `	MACRO_LD_PUSH(pVm->pRefList,pRef);` |
@@ -15723,12 +15723,12 @@ Coverage: 6541/8388 lines (77.98%)
 |     3405 | 15713 | `		}` |
 |  1520359 | 15714 | `	}` |
 |  3151100 | 15715 | `	if( pRef->pPrevCollide ){` |
-|  1207370 | 15716 | `		pRef->pPrevCollide->pNextCollide = pRef->pNextCollide;` |
+|  1207205 | 15716 | `		pRef->pPrevCollide->pNextCollide = pRef->pNextCollide;` |
 |   604214 | 15717 | `	}else{` |
-|  1943732 | 15718 | `		pVm->apRefObj[VmRefHash(pRef->nIdx) & (pVm->nRefSize - 1)] = pRef->pNextCollide;` |
+|  1943897 | 15718 | `		pVm->apRefObj[VmRefHash(pRef->nIdx) & (pVm->nRefSize - 1)] = pRef->pNextCollide;` |
 |        - | 15719 | `	}` |
 |  3151100 | 15720 | `	if( pRef->pNextCollide ){` |
-|  1794863 | 15721 | `		pRef->pNextCollide->pPrevCollide = pRef->pPrevCollide;` |
+|  1794852 | 15721 | `		pRef->pNextCollide->pPrevCollide = pRef->pPrevCollide;` |
 |   897423 | 15722 | `	}` |
 |  3151100 | 15723 | `	MACRO_LD_REMOVE(pVm->pRefList,pRef);` |
 |        - | 15724 | `	/* Release the node */` |
