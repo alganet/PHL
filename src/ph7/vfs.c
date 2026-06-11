@@ -1740,6 +1740,9 @@ static int PH7_builtin_pathinfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	return PH7_OK;
 }
+/* SPDX-SnippetBegin */
+/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */
+/* SPDX-License-Identifier: blessing */
 /*
  * Globbing implementation extracted from the sqlite3 source tree.
 
@@ -1915,6 +1918,7 @@ static int patternCompare(
   }
   return *zString==0;
 }
+/* SPDX-SnippetEnd */
 /*
  * Wrapper around patternCompare() defined above.
  * See block comment above for more information.

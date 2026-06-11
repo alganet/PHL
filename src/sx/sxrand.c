@@ -86,6 +86,9 @@ static sxi32 SyOSUtilRandomSeed(void *pBuf,sxu32 nLen,void *pUnused)
 #endif
 	return SXRET_OK;
 }
+/* SPDX-SnippetBegin */
+/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */
+/* SPDX-License-Identifier: blessing */
 PH7_PRIVATE sxi32 SyRandomnessInit(SyPRNGCtx *pCtx,ProcRandomSeed xSeed,void * pUserData)
 {
 	char zSeed[256];
@@ -157,6 +160,7 @@ PH7_PRIVATE sxi32 SyRandomness(SyPRNGCtx *pCtx,void *pBuf,sxu32 nLen)
 	}
 	return SXRET_OK;
 }
+/* SPDX-SnippetEnd */
 #if defined(__UNIXES__) && !defined(SX_HAVE_ARC4RANDOM)
 static sxi32 SyReadDevUrandom(unsigned char *zBuf,sxu32 nLen)
 {

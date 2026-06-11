@@ -15,6 +15,9 @@
 #include <stdio.h> /* For popen/pclose pipe stream support */
 #include <io.h>    /* For _open_osfhandle, _close */
 #include <fcntl.h> /* For _O_RDONLY, _O_WRONLY, _O_TEXT */
+/* SPDX-SnippetBegin */
+/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */
+/* SPDX-License-Identifier: blessing */
 /*
 ** Convert a UTF-8 string to microsoft unicode (UTF-16?).
 **
@@ -73,6 +76,7 @@ static char *unicodeToUtf8(const WCHAR *zWideFilename){
   }
   return zFilename;
 }
+/* SPDX-SnippetEnd */
 /* int (*xchdir)(const char *) */
 static int WinVfs_chdir(const char *zPath)
 {

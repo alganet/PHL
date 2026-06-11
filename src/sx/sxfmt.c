@@ -65,6 +65,9 @@ struct SyFmtConsumer
 	SyBlob *pBlob;
  }uConsumer;
 };
+/* SPDX-SnippetBegin */
+/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */
+/* SPDX-License-Identifier: blessing */
 #ifndef SX_OMIT_FLOATINGPOINT
 static int getdigit(sxlongreal *val,int *cnt)
 {
@@ -595,6 +598,7 @@ static const SyFmtInfo aFmt[] = {
   }/* End for loop over the format string */
   return errorflag ? SXERR_FORMAT : SXRET_OK;
 }
+/* SPDX-SnippetEnd */
 static sxi32 FormatConsumer(const void *pSrc,unsigned int nLen,void *pData)
 {
 	SyFmtConsumer *pConsumer = (SyFmtConsumer *)pData;

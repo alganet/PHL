@@ -1767,6 +1767,9 @@ PH7_PRIVATE int PH7_HashmapValuesToSet(ph7_hashmap *pMap,SySet *pOut)
 	return (int)SySetUsed(pOut);
 }
 #endif /* PH7_DISABLE_BUILTIN_FUNC || PH7_DISABLE_DISK_IO */
+/* SPDX-SnippetBegin */
+/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */
+/* SPDX-License-Identifier: blessing */
 /*
  * Merge sort.
  * The merge sort implementation is based on the one found in the SQLite3 source tree.
@@ -1868,6 +1871,7 @@ static sxi32 HashmapMergeSort(ph7_hashmap *pMap,ProcNodeCmp xCmp,void *pCmpData)
 	pMap->pCur = pMap->pFirst;
 	return SXRET_OK;
 }
+/* SPDX-SnippetEnd */
 /*
  * Node comparison callback.
  * used-by: [sort(),asort(),...]

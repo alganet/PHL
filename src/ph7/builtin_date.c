@@ -22,6 +22,9 @@
 /* GetSystemTime() */
 #include <Windows.h>
 #ifdef _WIN32_WCE
+/* SPDX-SnippetBegin */
+/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */
+/* SPDX-License-Identifier: blessing */
 /*
 ** WindowsCE does not have a localtime() function.  So create a
 ** substitute.
@@ -49,6 +52,7 @@ struct tm *__cdecl localtime(const time_t *t)
   y.tm_sec = pTm.wSecond;
   return &y;
 }
+/* SPDX-SnippetEnd */
 #endif /*_WIN32_WCE */
 #elif defined(__UNIXES__)
 #include <sys/time.h>
