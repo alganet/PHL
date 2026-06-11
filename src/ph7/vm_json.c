@@ -22,6 +22,7 @@ struct json_private_data
 {
 	ph7_context *pCtx; /* Call context */
 	int isFirst;       /* True if first encoded entry */
+	int isObject;      /* True if the current array level is encoded as a JSON object */
 	int iFlags;        /* JSON encoding flags */
 	int nRecCount;     /* Recursion count */
 };
@@ -118,20 +119,24 @@ static sxi32 VmJsonEncode(
 				ph7_result_string(pCtx,"\"",(int)sizeof(char));
 			}
 		}else if( ph7_value_is_array(pIn) ){
-			int c = '[',d = ']';
+			/* An array encodes as a JSON array iff it is a "list" [consecutive
+			 * 0-based int keys]; otherwise [or under JSON_FORCE_OBJECT] as an
+			 * object with stringified keys (PHP semantics). */
+			int isObject = (iFlags & JSON_FORCE_OBJECT)
+				|| !PH7_HashmapIsList((ph7_hashmap *)pIn->x.pOther);
+			int savedObject = pData->isObject; /* restore for sibling entries after recursion */
+			int c = isObject ? '{' : '[';
+			int d = isObject ? '}' : ']';
 			/* Encode the array */
+			pData->isObject = isObject;
 			pData->isFirst = 1;
-			if( iFlags & JSON_FORCE_OBJECT ){
-				/* Outputs an object rather than an array */
-				c = '{';
-				d = '}';
-			}
 			/* Append the square bracket or curly braces */
 			ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char));
 			/* Iterate throw array entries */
 			ph7_array_walk(pIn,VmJsonArrayEncode,pData);
 			/* Append the closing square bracket or curly braces */
 			ph7_result_string(pCtx,(const char *)&d,(int)sizeof(char));
+			pData->isObject = savedObject;
 		}else if( ph7_value_is_object(pIn) ){
 			/* Encode the class instance */
 			pData->isFirst = 1;
@@ -163,7 +168,7 @@ static int VmJsonArrayEncode(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 		/* Append the colon first */
 		ph7_result_string(pJson->pCtx,",",(int)sizeof(char));
 	}
-	if( pJson->iFlags & JSON_FORCE_OBJECT ){
+	if( pJson->isObject ){
 		/* Outputs an object rather than an array */
 		const char *zKey;
 		int nByte;
