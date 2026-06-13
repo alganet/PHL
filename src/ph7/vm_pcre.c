@@ -250,11 +250,18 @@ static pcre2_code *PcreCompile(
 /*
  * Write a value back to the caller's variable through the stack slot's nIdx.
  *
- * PHL limitation: if the caller passes an undefined variable (e.g. bare $m
- * without prior assignment), nIdx is SXU32_HIGH and the write-back is a
- * no-op — the caller's variable stays null.  Workaround: initialize the
- * variable before the call ($m = null;).  PHP does not have this limitation
- * because it creates the variable via the & reference mechanism.
+ * For a plain positional variable argument the call compiler auto-vivifies
+ * known by-reference out-params (see GenStateByRefBuiltinMask in compile.c),
+ * so even a bare undefined variable (e.g. preg_match($p,$s,$m) with $m never
+ * assigned) arrives with a real nIdx and is written back here, matching PHP's
+ * reference semantics.
+ *
+ * nIdx stays SXU32_HIGH and the write-back to the caller is skipped (the value
+ * still lands in the local stack slot) when the argument is not a plain lvalue
+ * variable: a literal, a function-call result, an array/property subscript
+ * (element vivification is not wired), or any variable in a call that also uses
+ * named or spread arguments (compile-time positions no longer map to the
+ * runtime arg slots, so the compiler conservatively does not vivify).
  */
 static void PcreStoreByRef(ph7_vm *pVm, ph7_value *pArg, ph7_value *pNewVal)
 {

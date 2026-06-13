@@ -9888,6 +9888,80 @@ static void GenStatePatchNullsafeJumps(ph7_gen_state *pGen, sxu32 nBaseline)
 }
 
 /*
+ * By-reference out-parameters of builtin functions.
+ *
+ * PH7 foreign/builtin functions carry no parameter signature, so the call
+ * compiler cannot otherwise know that e.g. preg_match()'s 3rd argument
+ * ($matches) is passed by reference. Without that knowledge an *undefined*
+ * variable argument is compiled as a read-only load (EXPR_FLAG_RDONLY_LOAD)
+ * and reaches the builtin tagged nIdx == SXU32_HIGH, so the builtin's write-
+ * back is a silent no-op — the caller's variable stays null unless it was
+ * pre-initialised. This table maps a builtin name to a bitmask of the argument
+ * positions it writes back through, letting the caller auto-vivify just those
+ * argument variables (PHP's exact "passing an undefined var by reference
+ * creates it" behaviour).
+ *
+ * Bit N (1u<<N) set => the argument at position N is by reference. Out-params
+ * live at low indices, so a 32-bit mask is sufficient.
+ */
+static sxu32 GenStateByRefBuiltinMask(SyString *pName)
+{
+	static const struct {
+		const char *zName;
+		sxu32 nByte;
+		sxu32 mask;
+	} aByRef[] = {
+		{ "preg_match",            10, 1u<<2 },  /* $matches (apArg[2]) */
+		{ "preg_match_all",        14, 1u<<2 },  /* $matches (apArg[2]) */
+		{ "preg_replace",          12, 1u<<4 },  /* &$count  (apArg[4]) */
+		{ "preg_replace_callback", 21, 1u<<4 },  /* &$count  (apArg[4]) */
+	};
+	sxu32 i;
+	if( pName == 0 || pName->zString == 0 || pName->nByte == 0 ){
+		return 0;
+	}
+	for( i = 0 ; i < SX_ARRAYSIZE(aByRef) ; ++i ){
+		if( pName->nByte == aByRef[i].nByte
+		 && SyStrnicmp(pName->zString, aByRef[i].zName, pName->nByte) == 0 ){
+			return aByRef[i].mask;
+		}
+	}
+	return 0;
+}
+/*
+ * Recover the bare global-builtin name from a call's callee node.
+ *
+ * Handles the unqualified form `preg_match(...)` (a single PH7_TK_ID token) and
+ * the absolute single-component form `\preg_match(...)` (a leading PH7_TK_NSSEP
+ * then one identifier) — both resolve to the global builtin. A deeper-qualified
+ * name (`Foo\preg_match`, `\Foo\bar`) is a *different* function, so no name is
+ * returned for it. pEnd is exclusive (one past the last name token). Returns
+ * {NULL,0} in *pOut when the callee is not a plain global function name.
+ */
+static void GenStateCallBuiltinName(ph7_expr_node *pLeft, SyString *pOut)
+{
+	SyToken *p, *pEnd;
+	pOut->zString = 0;
+	pOut->nByte = 0;
+	if( pLeft == 0 || pLeft->pStart == 0 || pLeft->pEnd == 0 ){
+		return;
+	}
+	p = pLeft->pStart;
+	pEnd = pLeft->pEnd;
+	/* Optional single leading namespace separator (absolute path). */
+	if( p < pEnd && (p->nType & PH7_TK_NSSEP) ){
+		p++;
+	}
+	if( p >= pEnd || (p->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
+		return;
+	}
+	/* Must be a single component: nothing follows the name token. */
+	if( p + 1 != pEnd ){
+		return;
+	}
+	*pOut = p->sData;
+}
+/*
  * Generate bytecode for a given expression tree.
  * If something goes wrong while generating bytecode
  * for the expression tree (A very unlikely scenario)
@@ -10044,6 +10118,8 @@ static sxi32 GenStateEmitExprCode(
 			ph7_expr_node **apNode;
 			int hasSpread = 0;
 			int hasNamed = 0;
+			int bAnySpread = 0;
+			sxu32 byRefMask = 0;
 			sxi32 nArgs;
 			sxi32 n;
 			/* Recurse and generate bytecodes for function arguments */
@@ -10056,7 +10132,9 @@ static sxi32 GenStateEmitExprCode(
 					if( apNode[n]->iFlags & EXPR_NODE_NAMED_ARG ){
 						seenNamed = 1;
 						hasNamed = 1;
-					}else if( seenNamed && !(apNode[n]->iFlags & EXPR_NODE_SPREAD) ){
+					}else if( apNode[n]->iFlags & EXPR_NODE_SPREAD ){
+						bAnySpread = 1;
+					}else if( seenNamed ){
 						rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[n]->pStart->nLine,
 							"Cannot use positional argument after named argument");
 						return SXERR_SYNTAX;
@@ -10078,10 +10156,27 @@ static sxi32 GenStateEmitExprCode(
 				 && SyStrnicmp(pCallName->zString,"empty",5) == 0 ){
 					iFlags |= EXPR_FLAG_LOAD_IDX_EMPTY;
 				}
+				/* Auto-vivify by-reference out-params of known builtins so an
+				 * undefined variable argument (e.g. preg_match($p,$s,$m) with
+				 * $m never assigned) gets a real memobj slot for the builtin to
+				 * write back through. Skipped when spread/named args are present:
+				 * the compile-time positional index no longer maps to the
+				 * runtime apArg[] slot (and spread elements can't be by-ref). */
+				if( !bAnySpread && !hasNamed ){
+					SyString sBuiltin;
+					GenStateCallBuiltinName(pNode->pLeft, &sBuiltin);
+					byRefMask = GenStateByRefBuiltinMask(&sBuiltin);
+				}
 			}
 			for( n = 0 ; n < nArgs ; ++n ){
 				sxu32 nArgNsBase = SySetUsed(&pGen->aNullsafeJmp);
-				rc = GenStateEmitExprCode(&(*pGen),apNode[n],iFlags&~EXPR_FLAG_LOAD_IDX_STORE);
+				sxi32 iArgFlags = iFlags & ~EXPR_FLAG_LOAD_IDX_STORE;
+				/* For a by-ref argument position, drop the read-only flag so the
+				 * variable is created if absent (PH7_OP_LOAD iP1=0 => bCreate). */
+				if( n < 31 && (byRefMask & (1u<<n)) ){
+					iArgFlags &= ~EXPR_FLAG_RDONLY_LOAD;
+				}
+				rc = GenStateEmitExprCode(&(*pGen),apNode[n],iArgFlags);
 				if( rc != SXRET_OK ){
 					return rc;
 				}
