@@ -1201,6 +1201,20 @@ static int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_value 
 	"   return $this->severity;"\
     "}"\
 	"}"\
+	"/* SPL exceptions: thin tree, inherit Exception's ctor+getters. Roots first. */"\
+	"class LogicException extends Exception { }"\
+	"class RuntimeException extends Exception { }"\
+	"class BadFunctionCallException extends LogicException { }"\
+	"class BadMethodCallException extends BadFunctionCallException { }"\
+	"class DomainException extends LogicException { }"\
+	"class InvalidArgumentException extends LogicException { }"\
+	"class LengthException extends LogicException { }"\
+	"class OutOfRangeException extends LogicException { }"\
+	"class OutOfBoundsException extends RuntimeException { }"\
+	"class OverflowException extends RuntimeException { }"\
+	"class RangeException extends RuntimeException { }"\
+	"class UnderflowException extends RuntimeException { }"\
+	"class UnexpectedValueException extends RuntimeException { }"\
 	"interface Iterator extends Traversable {"\
 	"public function current();"\
 	"public function key();"\
