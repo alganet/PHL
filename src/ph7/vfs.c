@@ -5069,6 +5069,7 @@ static int PH7_builtin_parse_ini_file(ph7_context *pCtx,int nArg,ph7_value **apA
 	SyBlob sContents;
 	void *pHandle;
 	int nLen;
+	sxi32 rc = PH7_OK;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting a file path");
@@ -5098,15 +5099,16 @@ static int PH7_builtin_parse_ini_file(ph7_context *pCtx,int nArg,ph7_value **apA
 		/* Empty buffer,return FALSE */
 		ph7_result_bool(pCtx,0);
 	}else{
-		/* Process the raw INI buffer */
-		PH7_ParseIniString(pCtx,(const char *)SyBlobData(&sContents),SyBlobLength(&sContents),
+		/* Process the raw INI buffer; capture an OOM abort to propagate below */
+		rc = PH7_ParseIniString(pCtx,(const char *)SyBlobData(&sContents),SyBlobLength(&sContents),
 			nArg > 1 ? ph7_value_to_bool(apArg[1]) : 0);
 	}
 	/* Close the stream */
 	PH7_StreamCloseHandle(pStream,pHandle);
 	/* Release the working buffer */
 	SyBlobRelease(&sContents);
-	return PH7_OK;
+	/* Propagate an OOM abort so the fatal actually halts the VM */
+	return rc;
 }
 /* ZIP archive processing moved to vfs_zip.c */
 #endif /* PH7_DISABLE_BUILTIN_FUNC || PH7_DISABLE_DISK_IO */

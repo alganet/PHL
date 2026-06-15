@@ -171,6 +171,7 @@ typedef sxi64 ph7_int64;
 #define PH7_CONFIG_ERR_OUTPUT    1  /* TWO ARGUMENTS: int (*xConsumer)(const void *pOut,unsigned int nLen,void *pUserData),void *pUserData */
 #define PH7_CONFIG_ERR_ABORT     2  /* RESERVED FOR FUTURE USE */
 #define PH7_CONFIG_ERR_LOG       3  /* TWO ARGUMENTS: const char **pzBuf,int *pLen */
+#define PH7_CONFIG_MAX_ALLOC     4  /* ONE ARGUMENT: unsigned int nMaxByte (per-allocation cap in bytes; 0 = unlimited). Inherited by VMs created afterwards. */
 /*
  * Virtual Machine Configuration Commands.
  *

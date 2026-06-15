@@ -3259,8 +3259,9 @@ static int PH7_builtin_str_repeat(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Append the copy */
 		rc = ph7_result_string(pCtx,zIn,nLen);
 		if( rc != PH7_OK ){
-			/* Out of memory,break immediately */
-			break;
+			/* Allocation failed: surface a fatal instead of returning a
+			 * silently-truncated string with a success status. */
+			return PH7_ContextMemoryError(pCtx);
 		}
 		nMul--;
 	}
@@ -4439,9 +4440,8 @@ static int PH7_builtin_str_getcsv(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Create our array */
 	pArray = ph7_context_new_array(pCtx);
 	if( pArray == 0 ){
-		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		/* Surface a fatal instead of silently returning null on OOM */
+		return PH7_ContextMemoryError(pCtx);
 	}
 	/* Parse the raw input */
 	PH7_ProcessCsv(zInput,nLen,delim,encl,escape,PH7_CsvConsumer,pArray);
@@ -5539,6 +5539,7 @@ struct str_replace_data
 	/* The following two fields are only used by the str_replace function */
 	SySet *pCollector;  /* Argument collector*/
 	ph7_context *pCtx;  /* Call context */
+	sxi32 rc;           /* Carries an allocation failure (SXERR_MEM) out of a walker */
 };
 /*
  * Remove a substring.
@@ -5591,8 +5592,9 @@ static int StringReplace(SyBlob *pWorker,sxu32 nOfft,int nLen,const char *zRepla
 		 */
 		rc = SyBlobAppend(pWorker,0/* Grow without an append operation*/,(sxu32)nReplen);
 		if( rc != SXRET_OK ){
-			/* Simply ignore any memory failure problem */
-			return SXRET_OK;
+			/* Propagate the allocation failure so the caller can raise a fatal
+			 * instead of returning a partially-replaced string as success. */
+			return rc;
 		}
 		/* Perform the insertion now */
 		zInput = (char *)SyBlobData(pWorker);
@@ -5637,7 +5639,12 @@ static int StringReplaceWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
 	/* Extract the replace string */
 	zReplace = ph7_value_to_string(pData,&nLen);
 	/* Perform the replace process */
-	StringReplace(pWorker,nOfft,tLen,zReplace,nLen);
+	rc = StringReplace(pWorker,nOfft,tLen,zReplace,nLen);
+	if( rc != SXRET_OK ){
+		/* Allocation failure: carry it out and stop the walk */
+		pRepData->rc = rc;
+		return rc;
+	}
 	/* All done */
 	return PH7_OK;
 }
@@ -5662,9 +5669,10 @@ static int StrReplaceWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
 			TRUE /* Release the chunk automatically,upon this context is destroyd */
 			);
 		if( zDup == 0 ){
-			/* Ignore any memory failure problem */
-			ph7_context_throw_error(pRep->pCtx,PH7_CTX_ERR,"PH7 is running out of memory");
-			return PH7_OK;
+			/* Allocation failure: carry it out and stop the walk so the caller
+			 * raises a fatal instead of silently dropping a search/replace term. */
+			pRep->rc = SXERR_MEM;
+			return SXERR_MEM;
 		}
 		SyMemcpy(zIn,zDup,(sxu32)nByte);
 		/* Save the chunk */
@@ -5765,6 +5773,13 @@ static int PH7_builtin_str_replace(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Save for later processing */
 		SySetPut(&sReplace,(const void *)&sTemp);
 	}
+	/* Surface a collector allocation failure (StrReplaceWalker) as a fatal */
+	if( sRep.rc != SXRET_OK ){
+		SySetRelease(&sSearch);
+		SySetRelease(&sReplace);
+		SyBlobRelease(&sWorker);
+		return PH7_ContextMemoryError(pCtx);
+	}
 	/* Reset loop cursors */
 	SySetResetCursor(&sSearch);
 	SySetResetCursor(&sReplace);
@@ -5813,16 +5828,26 @@ static int PH7_builtin_str_replace(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				break;
 			}
 			/* Perform the replace operation */
-			StringReplace(&sWorker,nCount+nOfft,(int)pSearch->nByte,pReplace->zString,(int)pReplace->nByte);
+			rc = StringReplace(&sWorker,nCount+nOfft,(int)pSearch->nByte,pReplace->zString,(int)pReplace->nByte);
+			if( rc != SXRET_OK ){
+				/* Allocation failure: surface a fatal instead of a partial result */
+				SySetRelease(&sSearch);
+				SySetRelease(&sReplace);
+				SyBlobRelease(&sWorker);
+				return PH7_ContextMemoryError(pCtx);
+			}
 			/* Increment offset counter */
 			nCount += nOfft + pReplace->nByte;
 		}
 	}
 	/* All done,clean-up the mess left behind */
-	ph7_result_string(pCtx,(const char *)SyBlobData(&sWorker),(int)SyBlobLength(&sWorker));
+	rc = ph7_result_string(pCtx,(const char *)SyBlobData(&sWorker),(int)SyBlobLength(&sWorker));
 	SySetRelease(&sSearch);
 	SySetRelease(&sReplace);
 	SyBlobRelease(&sWorker);
+	if( rc != PH7_OK ){
+		return PH7_ContextMemoryError(pCtx);
+	}
 	return PH7_OK;
 }
 /*
@@ -5861,6 +5886,7 @@ static int PH7_builtin_strtr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	if( nArg == 2 && ph7_value_is_array(apArg[1]) ){
 		str_replace_data sRepData;
 		SyBlob sWorker;
+		sxi32 rc;
 		/* Initilaize the working buffer */
 		SyBlobInit(&sWorker,&pCtx->pVm->sAllocator);
 		/* Copy raw string */
@@ -5868,13 +5894,22 @@ static int PH7_builtin_strtr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Init our replace data instance */
 		sRepData.pWorker = &sWorker;
 		sRepData.xMatch = SyBlobSearch;
+		sRepData.rc = SXRET_OK;
 		/* Iterate throw array entries and perform the replace operation.*/
 		ph7_array_walk(apArg[1],StringReplaceWalker,&sRepData);
+		if( sRepData.rc != SXRET_OK ){
+			/* Allocation failure during replacement: surface a fatal */
+			SyBlobRelease(&sWorker);
+			return PH7_ContextMemoryError(pCtx);
+		}
 		/* All done, return the result string */
-		ph7_result_string(pCtx,(const char *)SyBlobData(&sWorker),
+		rc = ph7_result_string(pCtx,(const char *)SyBlobData(&sWorker),
 			(int)SyBlobLength(&sWorker)); /* Will make it's own copy */
 		/* Clean-up */
 		SyBlobRelease(&sWorker);
+		if( rc != PH7_OK ){
+			return PH7_ContextMemoryError(pCtx);
+		}
 	}else{
 		int i,flen,tlen,c,iOfft;
 		const char *zFrom,*zTo;
@@ -5943,11 +5978,8 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 	pWorker = ph7_context_new_scalar(pCtx);
 	pValue = ph7_context_new_scalar(pCtx);
 	if( pArray == 0 || pWorker == 0 || pValue == 0){
-		/* Out of memory */
-		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");
-		/* Return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+		/* Out of memory: surface a fatal instead of returning FALSE */
+		return PH7_ContextMemoryError(pCtx);
 	}
 	SyHashInit(&sHash,&pCtx->pVm->sAllocator,0,0);
 	pCur = pArray;
@@ -6135,9 +6167,8 @@ static int PH7_builtin_parse_ini_string(ph7_context *pCtx,int nArg,ph7_value **a
 	}
 	/* Extract the raw INI buffer */
 	zIni = ph7_value_to_string(apArg[0],&nByte);
-	/* Process the INI buffer*/
-	PH7_ParseIniString(pCtx,zIni,(sxu32)nByte,(nArg > 1) ? ph7_value_to_bool(apArg[1]) : 0);
-	return PH7_OK;
+	/* Process the INI buffer; propagate an OOM abort so the fatal actually halts */
+	return PH7_ParseIniString(pCtx,zIni,(sxu32)nByte,(nArg > 1) ? ph7_value_to_bool(apArg[1]) : 0);
 }
 #endif /* PH7_NEED_FMT_AND_INI */
 

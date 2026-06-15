@@ -42,7 +42,7 @@ static struct Global_Data
 	ph7 *pEngines;                          /* List of active engine */
 	sxu32 nMagic;                           /* Sanity check against library misuse */
 }sMPGlobal = {
-	{0,0,0,0,0,0,0,0,{0}},
+	{0,0,0,0,0,0,0,0,0,{0}},
 #if defined(PH7_ENABLE_THREADS)
 	0,
 	0,
@@ -118,6 +118,14 @@ static sxi32 EngineConfig(ph7 *pEngine,sxi32 nOp,va_list ap)
 	case PH7_CONFIG_ERR_ABORT:
 		/* Reserved for future use */
 		break;
+	case PH7_CONFIG_MAX_ALLOC: {
+		/* Per-allocation cap in bytes (0 = unlimited). VMs created afterwards
+		 * inherit it via SyMemBackendInitFromParent. Primarily a test/embedding
+		 * knob to exercise out-of-memory paths deterministically. */
+		unsigned int nMax = va_arg(ap,unsigned int);
+		pEngine->sAllocator.nMaxRequest = (sxu32)nMax;
+		break;
+								}
 	default:
 		/* Unknown configuration verb */
 		rc = PH7_CORRUPT;
@@ -1907,7 +1915,9 @@ int ph7_value_string(ph7_value *pVal,const char *zString,int nLen)
 			/* Compute length automatically */
 			nLen = (int)SyStrlen(zString);
 		}
-		SyBlobAppend(&pVal->sBlob,(const void *)zString,(sxu32)nLen);
+		/* Propagate allocation failure (SXERR_MEM) instead of silently
+		 * fabricating a truncated success — callers can surface an OOM fatal. */
+		return SyBlobAppend(&pVal->sBlob,(const void *)zString,(sxu32)nLen);
 	}
 	return PH7_OK;
 }
@@ -1918,15 +1928,17 @@ int ph7_value_string(ph7_value *pVal,const char *zString,int nLen)
 int ph7_value_string_format(ph7_value *pVal,const char *zFormat,...)
 {
 	va_list ap;
+	int rc;
 	if((pVal->iFlags & MEMOBJ_STRING) == 0 ){
 		/* Invalidate any prior representation */
 		PH7_MemObjRelease(pVal);
 		MemObjSetType(pVal,MEMOBJ_STRING);
 	}
 	va_start(ap,zFormat);
-	(void)SyBlobFormatAp(&pVal->sBlob,zFormat,ap);
+	rc = SyBlobFormatAp(&pVal->sBlob,zFormat,ap);
 	va_end(ap);
-	return PH7_OK;
+	/* Propagate allocation failure rather than reporting a truncated success. */
+	return rc;
 }
 /*
  * [CAPIREF: ph7_value_reset_string_cursor()]
