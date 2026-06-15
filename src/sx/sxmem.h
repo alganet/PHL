@@ -48,6 +48,9 @@ struct SyMemBackend
 	void *pUserData;               /* First arg to xMemError() */
 	SyMutex *pMutex;               /* Per instance mutex */
 	sxu32 nMagic;                  /* Sanity check against misuse */
+	sxu32 nMaxRequest;             /* Per-allocation cap in bytes (0 = unlimited); fails
+	                                * any single alloc/realloc larger than this. Used to
+	                                * exercise out-of-memory paths deterministically. */
 	SyMemHeader *apPool[SXMEM_POOL_NBUCKETS+SXMEM_POOL_INCR]; /* Pool of memory chunks */
 };
 

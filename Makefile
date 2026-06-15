@@ -84,6 +84,17 @@ TEST_INTEGRATION_PHP_CMD = "$(PHL_BIN)" "tests/phpt.php" \
 	--target-dir tests/ph7/002-integration \
 	--output-format dot
 
+# Stress / fault-injection tests (opt-in; NOT part of `make test`). These run in
+# child-process mode under a small per-allocation cap (PHL_MAX_ALLOC) so a
+# deliberately oversized allocation deterministically triggers the out-of-memory
+# paths. The cap is per-request (not cumulative), so the runner and the small
+# tests run normally while only the oversized allocations fail. Long-term these
+# migrate to per-test `--INI-- memory_limit=...` once php.ini lands.
+TEST_STRESS_CMD = PHL_MAX_ALLOC=1048576 "$(PHL_BIN)" "tests/phpt.php" \
+	--target-executable "$(PHL_BIN)" \
+	--target-dir tests/ph7/003-stress \
+	--output-format dot
+
 default: build
 
 # --- POLYGLOT MAGIC BEGINS
@@ -104,6 +115,7 @@ build: .ALWAYS $(PHL_BIN)
 clean: .ALWAYS $(BUILD_DIR)-clean
 test: .ALWAYS test-smoke test-integration
 test-compat: .ALWAYS test-smoke-compat test-integration-compat
+test-stress: .ALWAYS $(PHL_BIN) $(BUILD_DIR)-test-stress
 test-smoke: .ALWAYS $(PHL_BIN) $(BUILD_DIR)-test-smoke
 test-smoke-compat: .ALWAYS $(PHL_BIN) $(BUILD_DIR)-test-smoke-compat
 test-integration: .ALWAYS $(PHL_BIN) $(BUILD_DIR)-test-integration
@@ -124,7 +136,12 @@ $(BUILD_DIR)-test-smoke-compat: $(PHL_BIN)
 
 $(BUILD_DIR)-test-integration: $(PHL_BIN)
 	"$(PHL_BIN)" --version
-	$(TEST_INTEGRATION_CMD) 
+	$(TEST_INTEGRATION_CMD)
+
+# Opt-in stress/fault-injection suite (POSIX shell; sets PHL_MAX_ALLOC inline).
+$(BUILD_DIR)-test-stress: $(PHL_BIN)
+	"$(PHL_BIN)" --version
+	$(TEST_STRESS_CMD)
 
 $(BUILD_DIR)-test-integration-compat: $(PHL_BIN)
 	"$(PHP_BIN)" --version

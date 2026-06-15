@@ -2655,6 +2655,33 @@ PH7_PRIVATE sxi32 PH7_VmThrowError(
 	return rc;
 }
 /*
+ * Raise an out-of-memory fatal and request a clean VM halt.
+ *
+ * This is the single choke point for surfacing an allocation failure that would
+ * otherwise produce a silently-wrong result (a truncated string/array returned
+ * with a success status). It mirrors PHP's non-catchable OOM fatal: it emits a
+ * fatal-level diagnostic, sets a nonzero process exit status, and requests a
+ * VM-wide halt that unwinds via the OP_CALL/abort path — which still runs
+ * register_shutdown_function() callbacks (see PH7_VmByteCodeExec). Callers
+ * return the value of this function (PH7_ABORT) directly, or `goto Abort` after
+ * calling it from a VM op.
+ */
+PH7_PRIVATE sxi32 PH7_VmMemoryError(ph7_vm *pVm)
+{
+	PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"PH7 is running out of memory");
+	/* Non-catchable, terminate with a PHP-like fatal exit status */
+	pVm->iExitStatus = 255;
+	pVm->bHaltRequested = 1;
+	return PH7_ABORT;
+}
+/*
+ * Context wrapper around PH7_VmMemoryError() for foreign/builtin functions.
+ */
+PH7_PRIVATE sxi32 PH7_ContextMemoryError(ph7_context *pCtx)
+{
+	return PH7_VmMemoryError(pCtx->pVm);
+}
+/*
  * Format and throw a run-time error and invoke the supplied VM output consumer callback.
  * Refer to the implementation of [ph7_context_throw_error_format()] for additional
  * information.
@@ -6409,7 +6436,11 @@ case PH7_OP_CAT:{
 		}
 		/* Perform the concatenation */
 		if( SyBlobLength(&pCur->sBlob) > 0 ){
-			PH7_MemObjStringAppend(pNos,(const char *)SyBlobData(&pCur->sBlob),SyBlobLength(&pCur->sBlob));
+			if( PH7_MemObjStringAppend(pNos,(const char *)SyBlobData(&pCur->sBlob),SyBlobLength(&pCur->sBlob)) != SXRET_OK ){
+				/* Allocation failure: raise a fatal instead of a truncated concat */
+				PH7_VmMemoryError(&(*pVm));
+				goto Abort;
+			}
 		}
 		SyBlobRelease(&pCur->sBlob);
 		pCur++;
@@ -6440,7 +6471,12 @@ case PH7_OP_CAT_STORE:{
 	}
 	/* Perform the concatenation (Reverse order) */
 	if( SyBlobLength(&pNos->sBlob) > 0 ){
-		PH7_MemObjStringAppend(pTos,(const char *)SyBlobData(&pNos->sBlob),SyBlobLength(&pNos->sBlob));
+		if( PH7_MemObjStringAppend(pTos,(const char *)SyBlobData(&pNos->sBlob),SyBlobLength(&pNos->sBlob)) != SXRET_OK ){
+			/* Allocation failure: raise a fatal before committing the store so
+			 * no partially-concatenated value is written to the lvalue. */
+			PH7_VmMemoryError(&(*pVm));
+			goto Abort;
+		}
 	}
 	/* Perform the store operation */
 	if( pTos->nIdx == SXU32_HIGH ){
@@ -9491,6 +9527,10 @@ SkipFuncBody:
 		/* Release the call context */
 		VmReleaseCallContext(&sCtx);
 		if( rc == PH7_ABORT ){
+			/* Release the (possibly partially-built) result slot before unwinding;
+			 * the Abort: label only frees the operand stack, not this local
+			 * (mirrors the PH7_EXCEPTION branch below). */
+			PH7_MemObjRelease(&sRet);
 			goto Abort;
 		}else if( rc == PH7_EXCEPTION ){
 			VmFrame *pFrm = pVm->pFrame;

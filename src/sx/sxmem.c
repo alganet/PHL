@@ -143,6 +143,12 @@ static void * MemBackendAlloc(SyMemBackend *pBackend,sxu32 nByte)
 	 * leaks.
 	 */
 	nByte += sizeof(SyMemBlock);
+	/* Enforce the optional per-allocation cap (0 = unlimited). A capped failure
+	 * returns NULL just like a genuine OS failure, driving the normal SXERR_MEM
+	 * propagation; the retry callback is intentionally skipped (hard limit). */
+	if( pBackend->nMaxRequest && nByte > pBackend->nMaxRequest ){
+		return 0;
+	}
 	for(;;){
 		pBlock = (SyMemBlock *)pBackend->pMethods->xAlloc(nByte);
 		if( pBlock != 0 || pBackend->xMemError == 0 || nRetry > SXMEM_BACKEND_RETRY
@@ -195,6 +201,10 @@ static void * MemBackendRealloc(SyMemBackend *pBackend,void * pOld,sxu32 nByte)
 	}
 #endif
 	nByte += sizeof(SyMemBlock);
+	/* Enforce the optional per-allocation cap (0 = unlimited); see MemBackendAlloc. */
+	if( pBackend->nMaxRequest && nByte > pBackend->nMaxRequest ){
+		return 0;
+	}
 	pPrev = pBlock->pPrev;
 	pNext = pBlock->pNext;
 	for(;;){
@@ -570,6 +580,7 @@ PH7_PRIVATE sxi32 SyMemBackendInitFromParent(SyMemBackend *pBackend,SyMemBackend
 	pBackend->pMethods  = pParent->pMethods;
 	pBackend->xMemError = pParent->xMemError;
 	pBackend->pUserData = pParent->pUserData;
+	pBackend->nMaxRequest = pParent->nMaxRequest;
 	bInheritMutex = pParent->pMutexMethods ? TRUE : FALSE;
 	if( bInheritMutex ){
 		pBackend->pMutexMethods = pParent->pMutexMethods;

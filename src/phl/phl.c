@@ -284,6 +284,25 @@ int main(int argc,char **argv)
 		Output_Consumer, /* Error log consumer */
 		0 /* NULL: Callback Private data */
 		);
+	/* Optional per-allocation memory cap (PHL_MAX_ALLOC=bytes). Used to
+	 * deterministically exercise out-of-memory paths (see tests/ph7/003-stress).
+	 * Clamp to a floor above the pool bucket size (SXMEM_POOL_MAXALLOC, 32 KB)
+	 * so the engine can still start; VMs inherit it at creation. */
+	{
+		const char *zMaxAlloc = getenv("PHL_MAX_ALLOC");
+		if( zMaxAlloc ){
+			unsigned long uMax = strtoul(zMaxAlloc,0,10);
+			if( uMax > 0 ){
+				if( uMax < 65536UL ){
+					uMax = 65536UL; /* floor: keep above the pool bucket size */
+				}
+				if( uMax > 0xFFFFFFFFUL ){
+					uMax = 0xFFFFFFFFUL; /* clamp: nMaxRequest is a 32-bit byte count */
+				}
+				ph7_config(pEngine,PH7_CONFIG_MAX_ALLOC,(unsigned int)uMax);
+			}
+		}
+	}
 	/* Now,it's time to compile our PHP file */
 	if( run_code ){
 		/* Compile inline PHP code string (PHP only - no tags needed) */

@@ -3341,14 +3341,16 @@ static int ph7_hashmap_range(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Create the new array */
 	pArray = ph7_context_new_array(pCtx);
 	if( pArray == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		return PH7_ContextMemoryError(pCtx);
 	}
 	/* Start filling */
 	while( iOfft <= iLimit ){
 		ph7_value_int64(pValue,iOfft);
 		/* Perform the insertion */
-		ph7_array_add_elem(pArray,0/* Automatic index assign*/,pValue);
+		if( ph7_array_add_elem(pArray,0/* Automatic index assign*/,pValue) != SXRET_OK ){
+			/* Allocation failure: surface a fatal instead of a partial array */
+			return PH7_ContextMemoryError(pCtx);
+		}
 		/* Increment */
 		iOfft += iStep;
 	}
@@ -5402,15 +5404,19 @@ static int ph7_hashmap_fill(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Create a new array */
 	pArray = ph7_context_new_array(pCtx);
 	if( pArray == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		return PH7_ContextMemoryError(pCtx);
 	}
 
 	/* Insert the first entry alone because it has its own key */
-	ph7_array_add_intkey_elem(pArray, ph7_value_to_int(apArg[0]), apArg[2]);
+	if( ph7_array_add_intkey_elem(pArray, ph7_value_to_int(apArg[0]), apArg[2]) != SXRET_OK ){
+		return PH7_ContextMemoryError(pCtx);
+	}
 	/* Repeat insertion of the desired value */
 	for( i = 1 ; i < nEntry ; i++ ){
-		ph7_array_add_elem(pArray, 0/*Automatic index assign */, apArg[2]);
+		if( ph7_array_add_elem(pArray, 0/*Automatic index assign */, apArg[2]) != SXRET_OK ){
+			/* Allocation failure: surface a fatal instead of a partial array */
+			return PH7_ContextMemoryError(pCtx);
+		}
 	}
 	/* Return the filled array */
 	ph7_result_value(pCtx, pArray);
@@ -6346,8 +6352,7 @@ static int ph7_hashmap_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Create a new array */
 	pArray = ph7_context_new_array(pCtx);
 	if( pArray == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		return PH7_ContextMemoryError(pCtx);
 	}
 	/* Point to the internal representation of the input hashmap */
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
@@ -6359,7 +6364,9 @@ static int ph7_hashmap_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			nEntry -= (int)pMap->nEntry;
 			/* Insert given items first */
 			while( nEntry > 0 ){
-				ph7_array_add_elem(pArray,0,apArg[2]);
+				if( ph7_array_add_elem(pArray,0,apArg[2]) != SXRET_OK ){
+					return PH7_ContextMemoryError(pCtx);
+				}
 				nEntry--;
 			}
 			/* Merge the two arrays */
@@ -6374,7 +6381,9 @@ static int ph7_hashmap_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			HashmapMerge(pMap,(ph7_hashmap *)pArray->x.pOther);
 			/* Insert given items */
 			while( nEntry > 0 ){
-				ph7_array_add_elem(pArray,0,apArg[2]);
+				if( ph7_array_add_elem(pArray,0,apArg[2]) != SXRET_OK ){
+					return PH7_ContextMemoryError(pCtx);
+				}
 				nEntry--;
 			}
 		}else{
