@@ -182,6 +182,10 @@ static int VmStringWantsPerlIncr(ph7_value *pVal)
 	return zTail < zEnd;
 }
 /* SyhttpUri, SyhttpHeader and HTTP method/protocol defines moved to ph7int.h */
+/* Constant expander used by define(); used below to recognise user-defined
+ * (vs. host/built-in) constants so their owned value object can be freed when
+ * a define() overwrites them. */
+static void VmExpandUserConstant(ph7_value *pVal,void *pUserData);
 /*
  * Register a constant and it's associated expansion callback so that
  * it can be expanded from the target PHP program.
@@ -210,6 +214,14 @@ PH7_PRIVATE sxi32 PH7_VmRegisterConstant(
 	if( pEntry ){
 		/* Overwrite the old definition and return immediately */
 		pCons = (ph7_constant *)pEntry->pUserData;
+		/* A user-defined (define()) constant owns a heap ph7_value as its
+		 * pUserData; free it before overwriting so repeated define()s — e.g.
+		 * the same script re-run on a reused VM — don't leak the old value. */
+		if( pCons->xExpand == VmExpandUserConstant && pCons->pUserData
+		 && pCons->pUserData != pUserData ){
+			PH7_MemObjRelease((ph7_value *)pCons->pUserData);
+			SyMemBackendPoolFree(&pVm->sAllocator,pCons->pUserData);
+		}
 		pCons->xExpand = xExpand;
 		pCons->pUserData = pUserData;
 		return SXRET_OK;
@@ -785,15 +797,22 @@ static ph7_vm_func * VmOverload(
  * Mount a compiled class into the freshly created vitual machine so that
  * it can be instanciated from the executed PHP script.
  */
-PH7_PRIVATE sxi32 VmMountUserClass(
+/*
+ * Reserve and initialize the static/constant attribute slots of a class.
+ * This is the per-execution part of mounting a class: every static/const
+ * attribute gets a fresh memory object, its default initializer is run, the
+ * slot is pinned in the reference table (VM_REF_IDX_KEEP) and typed static
+ * properties register their enforcement slot. It is factored out of
+ * VmMountUserClass() so that ph7_vm_reset() can rebuild these slots on a VM
+ * reuse without re-installing the (compile-time) methods.
+ */
+static sxi32 VmMountUserClassAttrs(
 	ph7_vm *pVm,      /* Target VM */
-	ph7_class *pClass /* Class to be mounted */
+	ph7_class *pClass /* Class whose static/const attributes are mounted */
 	)
 {
-	ph7_class_method *pMeth;
 	ph7_class_attr *pAttr;
 	SyHashEntry *pEntry;
-	sxi32 rc;
 	/* Reset the loop cursor */
 	SyHashResetLoopCursor(&pClass->hAttr);
 	/* Process only static and constant attribute */
@@ -843,6 +862,21 @@ PH7_PRIVATE sxi32 VmMountUserClass(
 				}
 			}
 		}
+	}
+	return SXRET_OK;
+}
+PH7_PRIVATE sxi32 VmMountUserClass(
+	ph7_vm *pVm,      /* Target VM */
+	ph7_class *pClass /* Class to be mounted */
+	)
+{
+	ph7_class_method *pMeth;
+	SyHashEntry *pEntry;
+	sxi32 rc;
+	/* Reserve/initialize the static and constant attribute slots */
+	rc = VmMountUserClassAttrs(&(*pVm),pClass);
+	if( rc != SXRET_OK ){
+		return rc;
 	}
 	/* Install class methods */
 	if( pClass->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_TRAIT) ){
@@ -1793,6 +1827,12 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 		/* Don't worry about freeing memory, everything will be released shortly */
 		return rc;
 	}
+	/* Snapshot the runtime object-pool watermark. Everything reserved from this
+	 * index up (the $GLOBALS array, the superglobals, class static/const slots and
+	 * every object/variable created during execution) is per-exec state that
+	 * ph7_vm_reset() releases and truncates away before rebuilding; everything
+	 * below it is compile-time/init state that survives a reset. */
+	pVm->nSuperBaseline = SySetUsed(&pVm->aMemObj);
 	/* Create superglobals [i.e: $GLOBALS, $_GET, $_POST...] */
 	rc = PH7_HashmapCreateSuper(&(*pVm));
 	if( rc != SXRET_OK ){
@@ -1810,7 +1850,11 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	PH7_RegisterPcreFunctions(&(*pVm));
 	PH7_RegisterPcreConstants(&(*pVm));
 #endif
-	/* Initialize and install static and constants class attributes */
+	/* Initialize and install static and constants class attributes.
+	 * NOTE: the per-exec object graph created from nSuperBaseline onward (the
+	 * global frame via VmEnterFrame above, the superglobals via CreateSuper, and
+	 * these class static/const slots) is rebuilt on every ph7_vm_reset() — keep
+	 * that function in sync when changing what is reserved here. */
 	SyHashResetLoopCursor(&pVm->hClass);
 	while((pEntry = SyHashGetNextEntry(&pVm->hClass)) != 0 ){
 		rc = VmMountUserClass(&(*pVm),(ph7_class *)pEntry->pUserData);
@@ -1824,21 +1868,275 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	return SXRET_OK;
 }
 /*
- * Reset a Virtual Machine to it's initial state.
+ * Tear down the whole reference table. Unlinks every referenced object,
+ * deleting the hash entries (frame variables) and array nodes it points at.
+ * Called by ph7_vm_reset() while the frames and the object pool are still
+ * intact: doing it first means a later release of a by-ref array does not leave
+ * a dangling node pointer in some other object's reference record.
+ */
+static void VmResetRefTable(ph7_vm *pVm)
+{
+	/* VmRefObjUnlink splices each node out of its apRefObj bucket and decrements
+	 * nRefUsed, so draining the list leaves the bucket array empty and nRefUsed
+	 * at 0 — no extra clearing needed. The bucket array and nRefSize survive. */
+	while( pVm->pRefList ){
+		VmRefObjUnlink(&(*pVm),pVm->pRefList);
+	}
+}
+/*
+ * Release a standing per-exec ph7_value slot and re-initialise it to NULL.
+ * The reset idiom for the VM's long-lived value fields (return value, the
+ * error/exception handler callbacks, the assertion callback, the coalesce key).
+ */
+static void VmReinitMemObj(ph7_vm *pVm,ph7_value *pObj)
+{
+	PH7_MemObjRelease(pObj);
+	PH7_MemObjInit(&(*pVm),pObj);
+}
+/*
+ * Reset a function's static-variable sentinels to SXU32_HIGH so the next call
+ * re-reserves their slots and re-runs the initializers (PHP's per-request reset
+ * of statics).
+ */
+static void VmResetFuncStatics(ph7_vm_func *pFunc)
+{
+	ph7_vm_func_static_var *aStatic = (ph7_vm_func_static_var *)SySetBasePtr(&pFunc->aStatic);
+	sxu32 k;
+	for( k = 0 ; k < SySetUsed(&pFunc->aStatic) ; ++k ){
+		aStatic[k].nIdx = SXU32_HIGH;
+	}
+}
+/*
+ * Reset per-execution function-table state in a single pass over hFunction:
+ *  - run-time closures (VM_FUNC_CLOSURE) are freed. Closure templates are never
+ *    installed in hFunction (see compile.c) and closure names are unique, so any
+ *    such entry is a standalone instance created by OP_LOAD_CLOSURE; it owns its
+ *    captured environment values, its name buffer and its structure (the
+ *    bytecode/args/static sets are shared with the template and must NOT be
+ *    freed). Its template-shared static sentinels are reset too.
+ *  - every other function (and its pNextName overloads, including class methods)
+ *    has its static sentinels reset.
+ * The head flag of each entry fully classifies it, so one walk handles both.
+ * Deleting the just-returned entry mid-walk is safe: SyHashGetNextEntry advances
+ * the cursor past it before returning and the delete never touches the cursor.
+ */
+static void VmResetFunctionState(ph7_vm *pVm)
+{
+	SyHashEntry *pEntry;
+	SyHashResetLoopCursor(&pVm->hFunction);
+	while( (pEntry = SyHashGetNextEntry(&pVm->hFunction)) != 0 ){
+		ph7_vm_func *pFunc = (ph7_vm_func *)pEntry->pUserData;
+		if( pFunc && (pFunc->iFlags & VM_FUNC_CLOSURE) ){
+			/* Standalone run-time closure: reset its (template-shared) statics,
+			 * release its captured-by-value environment, then free the entry,
+			 * name buffer and structure. */
+			ph7_vm_func_closure_env *aEnv = (ph7_vm_func_closure_env *)SySetBasePtr(&pFunc->aClosureEnv);
+			const char *zName = SyStringData(&pFunc->sName);
+			sxu32 k;
+			VmResetFuncStatics(pFunc);
+			for( k = 0 ; k < SySetUsed(&pFunc->aClosureEnv) ; ++k ){
+				PH7_MemObjRelease(&aEnv[k].sValue);
+			}
+			SySetRelease(&pFunc->aClosureEnv);
+			/* SyHashDeleteEntry2 frees only the entry, not the key buffer. */
+			SyHashDeleteEntry2(pEntry);
+			if( zName ){
+				SyMemBackendFree(&pVm->sAllocator,(void *)zName);
+			}
+			SyMemBackendPoolFree(&pVm->sAllocator,pFunc);
+			continue;
+		}
+		/* Named function: reset statics for every overload sharing this name. */
+		while( pFunc ){
+			VmResetFuncStatics(pFunc);
+			pFunc = pFunc->pNextName;
+		}
+	}
+	pVm->closure_cnt = 0;
+}
+/*
+ * Free the typed-property enforcement slots left in hTypedSlot. Instance slots
+ * are already gone (each object's destructor removed its own during the object
+ * pool release above), so only the class *static* typed-property slots remain;
+ * the class re-mount registers fresh ones.
+ */
+static void VmResetTypedSlots(ph7_vm *pVm)
+{
+	SyHashEntry *pEntry;
+	/* Common case: no class static typed properties — table already empty. */
+	if( SyHashTotalEntry(&pVm->hTypedSlot) == 0 ){
+		return;
+	}
+	/* Free each VmClassAttr payload in a plain walk (no entry deletion), then
+	 * drop and re-init the table — SyHashRelease frees the entries themselves. */
+	SyHashResetLoopCursor(&pVm->hTypedSlot);
+	while( (pEntry = SyHashGetNextEntry(&pVm->hTypedSlot)) != 0 ){
+		if( pEntry->pUserData ){
+			SyMemBackendPoolFree(&pVm->sAllocator,pEntry->pUserData);
+		}
+	}
+	SyHashRelease(&pVm->hTypedSlot);
+	SyHashInit(&pVm->hTypedSlot,&pVm->sAllocator,0,0);
+}
+/*
+ * Reset a Virtual Machine to its post-compile (PH7_VmMakeReady) state so the
+ * same compiled program can be executed again (compile-once / execute-many).
+ *
+ * Definitions are preserved (treated like compile-time state): the bytecode,
+ * the operand stack, the function/class/interface tables, user-defined constants
+ * (a re-run define() overwrites the value in place), included-file markers
+ * (so include_once/require_once stay satisfied — definitions and their
+ * define()s survive without re-compiling), the literal pool, the cached
+ * interface pointers, the output-consumer configuration and the IO streams.
+ *
+ * Per-execution state is cleared: global variables and the global frame, the
+ * superglobals (re-fed afterwards via PH7_VM_CONFIG_HTTP_REQUEST), function and
+ * class statics, run-time closures, the output buffers and response headers, the
+ * exception/error-handler state, the reference table and every object/array
+ * reserved during the run.
+ *
+ * Object __destruct methods are NOT run during reset (see bInReset) — releasing
+ * the pool runs engine-level teardown only, matching PH7's prior behaviour where
+ * global-scope destructors never fired.
  */
 PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 {
+	sxu32 nWater,n;
 	if( pVm->nMagic != PH7_VM_RUN && pVm->nMagic != PH7_VM_EXEC ){
 		return SXERR_CORRUPT;
 	}
-	/* TICKET 1433-003: As of this version, the VM is automatically reset */
+	nWater = pVm->nSuperBaseline;
+	/* The $GLOBALS array is normally protected from deletion; drop the guard so
+	 * its hashmap is actually released below, then rebuilt by CreateSuper. */
+	pVm->pGlobal = 0;
+	/* Suppress user __destruct while we tear down the per-exec object pool: the
+	 * reference table is gone and $GLOBALS is nulled, so running arbitrary PHP
+	 * here is unsafe (and could realloc aMemObj mid-release). Engine memory is
+	 * still reclaimed. Mirrors prior behaviour (global destructors never ran). */
+	pVm->bInReset = 1;
+	/* (1) Unlink the whole reference table while frames and objects are intact. */
+	VmResetRefTable(&(*pVm));
+	/* (2) Free run-time closures and reset every function/method static sentinel
+	 * in a single pass over hFunction. User-defined constants are treated like
+	 * function/class registrations and intentionally persist across reuse (a
+	 * re-run define() overwrites the value in place). */
+	VmResetFunctionState(&(*pVm));
+	/* (3) Release every object/variable reserved during the run. Re-reading the
+	 * used count each iteration tolerates a destructor reserving a fresh slot. */
+	for( n = nWater ; n < SySetUsed(&pVm->aMemObj) ; ++n ){
+		ph7_value *pObj = (ph7_value *)SySetAt(&pVm->aMemObj,n);
+		if( pObj ){
+			PH7_MemObjRelease(pObj);
+		}
+	}
+	/* (4) Free the class static typed-property slots (instance ones are already
+	 * gone — object release in step 3 removes each instance's own slot). */
+	VmResetTypedSlots(&(*pVm));
+	/* (5) Unwind any active frames back to none. */
+	while( pVm->pFrame ){
+		VmLeaveFrame(&(*pVm));
+	}
+	/* Object teardown is complete; user __destruct may run normally again. */
+	pVm->bInReset = 0;
+	/* (6) Truncate the object pool back to the watermark and forget stale free
+	 * slots (their indices no longer exist). */
+	SySetTruncate(&pVm->aMemObj,nWater);
+	SySetReset(&pVm->aFreeObj);
+	/* (7) Reset the superglobal name table and namespace scratch. */
+	SyHashRelease(&pVm->hSuper);
+	SyHashInit(&pVm->hSuper,&pVm->sAllocator,0,0);
+	/* (8) Drain remaining per-exec containers. */
+	SySetReset(&pVm->aSelf);
+	/* Shutdown callbacks are normally drained+released by VmInvokeShutdownCallbacks
+	 * at the end of exec; release any that survived an abandoned run (e.g. exit()
+	 * inside a shutdown callback) so their owned callback/arg values don't leak. */
+	for( n = 0 ; n < SySetUsed(&pVm->aShutdown) ; ++n ){
+		VmShutdownCB *pCB = (VmShutdownCB *)SySetAt(&pVm->aShutdown,n);
+		if( pCB ){
+			int iArg;
+			PH7_MemObjRelease(&pCB->sCallback);
+			for( iArg = 0 ; iArg < pCB->nArg ; ++iArg ){
+				PH7_MemObjRelease(&pCB->aArg[iArg]);
+			}
+		}
+	}
+	SySetReset(&pVm->aShutdown);
+	SySetReset(&pVm->aException);
+	pVm->pPendingException = 0;
+	pVm->nExceptDepth = 0;
+	/* spl_autoload_register() callbacks are per request */
+	for( n = 0 ; n < SySetUsed(&pVm->aAutoload) ; ++n ){
+		VmAutoloadCB *pCB = (VmAutoloadCB *)SySetAt(&pVm->aAutoload,n);
+		if( pCB ){
+			PH7_MemObjRelease(&pCB->sCallback);
+		}
+	}
+	SySetReset(&pVm->aAutoload);
+	/* The reentrancy guard is empty outside an active autoload (the common case);
+	 * only rebuild the table when an aborted autoload left entries behind. */
+	if( SyHashTotalEntry(&pVm->hAutoloadActive) ){
+		SyHashRelease(&pVm->hAutoloadActive);
+		SyHashInit(&pVm->hAutoloadActive,&pVm->sAllocator,0,0);
+	}
+	/* Output buffers */
+	for( n = 0 ; n < SySetUsed(&pVm->aOB) ; ++n ){
+		VmObEntry *pOb = (VmObEntry *)SySetAt(&pVm->aOB,n);
+		if( pOb ){
+			PH7_MemObjRelease(&pOb->sCallback);
+			SyBlobRelease(&pOb->sOB);
+		}
+	}
+	SySetReset(&pVm->aOB);
+	pVm->nObDepth = 0;
+	/* (9) Rebuild the global frame and the superglobals. */
+	{
+		sxi32 rc = VmEnterFrame(&(*pVm),0,0,0);
+		if( rc == SXRET_OK ){
+			rc = PH7_HashmapCreateSuper(&(*pVm));
+		}
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	/* (10) Re-mount the static/const attribute slots of every class. */
+	{
+		SyHashEntry *pEntry;
+		SyHashResetLoopCursor(&pVm->hClass);
+		while( (pEntry = SyHashGetNextEntry(&pVm->hClass)) != 0 ){
+			sxi32 rc = VmMountUserClassAttrs(&(*pVm),(ph7_class *)pEntry->pUserData);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+		}
+	}
+	/* (11) Reset the remaining scalar/per-exec fields. */
 	SyBlobReset(&pVm->sConsumer);
-	PH7_MemObjRelease(&pVm->sExec);
-	/* Reset HTTP response state (frees header strings) */
+	pVm->nOutputLen = 0;
+	VmReinitMemObj(&(*pVm),&pVm->sExec);
 	PH7_VmReleaseResponseHeaders(pVm);
 	pVm->iResponseStatus = 200;
 	pVm->bHeadersSent = 0;
 	pVm->bHttpContext = 0;
+	VmReinitMemObj(&(*pVm),&pVm->aExceptionCB[0]);
+	VmReinitMemObj(&(*pVm),&pVm->aExceptionCB[1]);
+	VmReinitMemObj(&(*pVm),&pVm->aErrCB[0]);
+	VmReinitMemObj(&(*pVm),&pVm->aErrCB[1]);
+	VmReinitMemObj(&(*pVm),&pVm->sAssertCallback);
+	pVm->json_rc = JSON_ERROR_NONE;
+#ifdef PH7_ENABLE_PCRE
+	pVm->iPcreLastError = 0;
+#endif
+	pVm->iCmpCallbackExc = 0;
+	pVm->bHaltRequested = 0;
+	pVm->iExitStatus = 0;
+	pVm->iSpreadExtra = 0;
+	pVm->nRecursionDepth = 0;
+	pVm->pActiveCtx = 0;
+	pVm->pCoalesceObj = 0;
+	pVm->bCoalesceArmed = 0;
+	VmReinitMemObj(&(*pVm),&pVm->sCoalesceKey);
+	/* Re-roll the uniqid() seed, matching PH7_VmMakeReady(). */
+	pVm->unique_id = PH7_VmRandomNum(&(*pVm)) & 1023;
 	/* Set the ready flag */
 	pVm->nMagic = PH7_VM_RUN;
 	return SXRET_OK;
@@ -11889,8 +12187,17 @@ static int vm_builtin_define(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			}
 			zCur++;
 		}
-		/* Finally,register the constant */
-		ph7_create_constant(pCtx->pVm,zName,VmExpandUserConstant,pValue);
+		/* Register the lowercase alias with its OWN value copy (not the same
+		 * pValue) so the two entries don't share one object — otherwise freeing
+		 * one on a later overwrite would dangle the other. */
+		{
+			ph7_value *pAlias = (ph7_value *)SyMemBackendPoolAlloc(&pCtx->pVm->sAllocator,sizeof(ph7_value));
+			if( pAlias ){
+				PH7_MemObjInit(pCtx->pVm,pAlias);
+				PH7_MemObjStore(apArg[1],pAlias);
+				ph7_create_constant(pCtx->pVm,zName,VmExpandUserConstant,pAlias);
+			}
+		}
 	}
 	/* All done,return TRUE */
 	ph7_result_bool(pCtx,1);

@@ -463,6 +463,119 @@ static int IsPhpFile(const char *zPath)
 		== 0);
 }
 /*
+ * Return a file's last-modification time as a comparable integer (0 on error).
+ * Used to invalidate the compiled-VM cache when a script is edited, preserving
+ * the dev-server expectation that reloading picks up source changes.
+ */
+static long long GetFileMtime(const char *zPath)
+{
+#ifdef __WINNT__
+	WIN32_FILE_ATTRIBUTE_DATA info;
+	if( !GetFileAttributesExA(zPath, GetFileExInfoStandard, &info) ){
+		return 0;
+	}
+	return ((long long)info.ftLastWriteTime.dwHighDateTime << 32)
+		| (long long)info.ftLastWriteTime.dwLowDateTime;
+#else
+	struct stat st;
+	if( stat(zPath, &st) != 0 ){
+		return 0;
+	}
+	return (long long)st.st_mtime;
+#endif
+}
+/* ---- Compiled-VM reuse cache ------------------------------------------------
+ * Compilation dominates the per-request cost (the on-hardware profile measured
+ * 167 of 197 ms/request in compile). We therefore compile each script once and
+ * re-execute it per request, calling ph7_vm_reset() in between to clear all
+ * per-execution state (globals, superglobals, statics, output, ...). The cache
+ * is keyed by the resolved filesystem path and is safe without locking because
+ * the dev server is single-threaded. Set PHL_NO_REUSE=1 to fall back to the old
+ * compile-per-request behaviour (useful for diffing). */
+#define PHL_VM_CACHE_SIZE 16
+typedef struct PhlVmCacheEntry {
+	char zPath[PHL_MAX_PATH]; /* Resolved script path ("" = empty slot) */
+	ph7_vm *pVm;              /* Compiled, reusable VM */
+	unsigned long nUse;       /* Last-use clock for LRU eviction */
+	long long nMtime;         /* Source mtime when compiled (cache invalidation) */
+} PhlVmCacheEntry;
+static PhlVmCacheEntry g_vmCache[PHL_VM_CACHE_SIZE];
+static unsigned long g_vmCacheClock = 0;
+static int g_vmReuse = 1;
+
+/*
+ * Acquire a ready-to-execute VM for zPath. On a cache hit the VM is reset and
+ * reused; on a miss it is compiled and cached (evicting the least-recently-used
+ * entry when full). Returns NULL on compile error. On success *pbCached tells
+ * the caller whether the VM is cache-owned (do NOT release it) or a throwaway
+ * (release after use, e.g. when reuse is disabled).
+ */
+static ph7_vm *AcquireScriptVm(ph7 *pEngine, const char *zPath, int *pbCached)
+{
+	int i, iFree = -1, iLru = -1;
+	ph7_vm *pVm = 0;
+	long long nMtime;
+	if( !g_vmReuse ){
+		*pbCached = 0;
+		return ph7_compile_file(pEngine, zPath, &pVm, 0) == PH7_OK ? pVm : 0;
+	}
+	nMtime = GetFileMtime(zPath);
+	for( i = 0 ; i < PHL_VM_CACHE_SIZE ; i++ ){
+		if( g_vmCache[i].pVm == 0 ){
+			if( iFree < 0 ){ iFree = i; }
+			continue;
+		}
+		if( strcmp(g_vmCache[i].zPath, zPath) == 0 ){
+			/* Hit: reuse only if the source is unchanged on disk (dev-server
+			 * live-edit) and the reset succeeds; otherwise drop and recompile. */
+			if( g_vmCache[i].nMtime == nMtime
+			 && ph7_vm_reset(g_vmCache[i].pVm) == PH7_OK ){
+				g_vmCache[i].nUse = ++g_vmCacheClock;
+				*pbCached = 1;
+				return g_vmCache[i].pVm;
+			}
+			ph7_vm_release(g_vmCache[i].pVm);
+			g_vmCache[i].pVm = 0;
+			g_vmCache[i].zPath[0] = '\0';
+			iFree = i;
+			break;
+		}
+		if( iLru < 0 || g_vmCache[i].nUse < g_vmCache[iLru].nUse ){
+			iLru = i;
+		}
+	}
+	/* Miss: compile a fresh VM. */
+	if( ph7_compile_file(pEngine, zPath, &pVm, 0) != PH7_OK ){
+		*pbCached = 0;
+		return 0;
+	}
+	if( iFree < 0 ){
+		/* Cache full: evict the least-recently-used entry. */
+		ph7_vm_release(g_vmCache[iLru].pVm);
+		iFree = iLru;
+	}
+	snprintf(g_vmCache[iFree].zPath, sizeof(g_vmCache[iFree].zPath), "%s", zPath);
+	g_vmCache[iFree].pVm = pVm;
+	g_vmCache[iFree].nUse = ++g_vmCacheClock;
+	g_vmCache[iFree].nMtime = nMtime;
+	*pbCached = 1;
+	return pVm;
+}
+/*
+ * Release every cached VM. Called at server shutdown.
+ */
+static void ReleaseVmCache(void)
+{
+	int i;
+	for( i = 0 ; i < PHL_VM_CACHE_SIZE ; i++ ){
+		if( g_vmCache[i].pVm ){
+			ph7_vm_release(g_vmCache[i].pVm);
+			g_vmCache[i].pVm = 0;
+			g_vmCache[i].zPath[0] = '\0';
+		}
+	}
+}
+/*
  * Execute a PHP script and send its output as an HTTP response.
  * pEngine is the shared engine instance.
  * zFilePath is the resolved filesystem path to the PHP file.
@@ -480,9 +593,9 @@ static void ExecutePhpScript(ph7 *pEngine, ph7_socket client,
 	unsigned int nOutputLen;
 	char zPortBuf[16];
 	char zRemotePortBuf[16];
-	int rc;
-	rc = ph7_compile_file(pEngine, zFilePath, &pVm, 0);
-	if( rc != PH7_OK ){
+	int bCached = 0;
+	pVm = AcquireScriptVm(pEngine, zFilePath, &bCached);
+	if( pVm == 0 ){
 		SendError(client, 500, "Internal Server Error");
 		return;
 	}
@@ -508,7 +621,10 @@ static void ExecutePhpScript(ph7 *pEngine, ph7_socket client,
 	ph7_vm_config(pVm, PH7_VM_CONFIG_EXTRACT_OUTPUT, &pOutput, &nOutputLen);
 	/* Send the response using VM-set headers and status code */
 	SendVmResponse(client, pVm, pOutput, (int)nOutputLen);
-	ph7_vm_release(pVm);
+	/* Cache-owned VMs are kept for reuse; throwaways are released. */
+	if( !bCached ){
+		ph7_vm_release(pVm);
+	}
 }
 /*
  * Handle a single HTTP request.
@@ -530,11 +646,11 @@ static int HandleRequest(ph7 *pEngine, ph7_socket client,
 	if( zRouter && zRouter[0] ){
 		ph7_vm *pVm = 0;
 		ph7_value *pRetVal;
-		int rc;
+		int bCached = 0;
 		char zPortBuf[16];
 		char zRemotePortBuf[16];
-		rc = ph7_compile_file(pEngine, zRouter, &pVm, 0);
-		if( rc == PH7_OK ){
+		pVm = AcquireScriptVm(pEngine, zRouter, &bCached);
+		if( pVm != 0 ){
 			ph7_vm_config(pVm, PH7_VM_CONFIG_HTTP_REQUEST, zRawRequest, nRequestLen);
 			snprintf(zPortBuf, sizeof(zPortBuf), "%d", iPort);
 			snprintf(zRemotePortBuf, sizeof(zRemotePortBuf), "%d", iRemotePort);
@@ -553,7 +669,9 @@ static int HandleRequest(ph7 *pEngine, ph7_socket client,
 			ph7_vm_config(pVm, PH7_VM_CONFIG_EXEC_VALUE, &pRetVal);
 			if( pRetVal && ph7_value_is_bool(pRetVal) && !ph7_value_to_bool(pRetVal) ){
 				/* Router returned false: fall through to default file serving */
-				ph7_vm_release(pVm);
+				if( !bCached ){
+					ph7_vm_release(pVm);
+				}
 			}else{
 				/* Router handled the request: send its output */
 				const void *pOutput;
@@ -562,7 +680,9 @@ static int HandleRequest(ph7 *pEngine, ph7_socket client,
 				nOutputLen = 0;
 				ph7_vm_config(pVm, PH7_VM_CONFIG_EXTRACT_OUTPUT, &pOutput, &nOutputLen);
 				SendVmResponse(client, pVm, pOutput, (int)nOutputLen);
-				ph7_vm_release(pVm);
+				if( !bCached ){
+					ph7_vm_release(pVm);
+				}
 				return 200;
 			}
 		}
@@ -622,6 +742,14 @@ int phl_serve(const char *zHost, int iPort, const char *zDocRoot, const char *zR
 	char zRemoteAddr[64];
 	int iRemotePort;
 	int rc;
+	/* Compile-once / reuse is on by default; PHL_NO_REUSE=1 forces the legacy
+	 * compile-per-request path for behaviour diffing. */
+	{
+		const char *zNoReuse = getenv("PHL_NO_REUSE");
+		if( zNoReuse && zNoReuse[0] && zNoReuse[0] != '0' ){
+			g_vmReuse = 0;
+		}
+	}
 	/* Initialize networking */
 	rc = PH7_NetInit();
 	if( rc != PH7_OK ){
@@ -694,6 +822,7 @@ int phl_serve(const char *zHost, int iPort, const char *zDocRoot, const char *zR
 	}
 	/* Cleanup */
 	fprintf(stderr, "\nShutting down...\n");
+	ReleaseVmCache();
 	free(zRequestBuf);
 	PH7_NetClose(listenSock);
 	ph7_release(pEngine);
