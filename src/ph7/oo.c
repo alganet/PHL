@@ -810,8 +810,9 @@ static void PH7_ClassInstanceRelease(ph7_class_instance *pThis)
 	pVm = pThis->pVm;
 	pClass = pThis->pClass;
 	pDestr = PH7_ClassExtractMethod(pClass,"__destruct",sizeof("__destruct")-1);
-	if( pDestr ){
-		/* Invoke the destructor */
+	if( pDestr && !pVm->bInReset ){
+		/* Invoke the destructor. Skipped during ph7_vm_reset() bulk teardown:
+		 * running user PHP against a half-reset VM is unsafe (see bInReset). */
 		pThis->iRef = 2; /* Prevent garbage collection */
 		PH7_VmCallClassMethod(pVm,pThis,pDestr,0,0,0);
 	}

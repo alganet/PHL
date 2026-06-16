@@ -901,6 +901,12 @@ struct ph7_vm
 	SySet aSelf;               /* 'self' stack used for static member access [i.e: self::MyConstant] */
 	ph7_hashmap *pGlobal;      /* $GLOBALS hashmap */
 	sxu32 nGlobalIdx;          /* $GLOBALS index */
+	sxu32 nSuperBaseline;      /* SySetUsed(aMemObj) snapshot taken in PH7_VmMakeReady
+								* right before the superglobals are created. ph7_vm_reset()
+								* releases and truncates aMemObj back to this watermark then
+								* rebuilds the per-exec object graph, so a compiled VM can be
+								* re-executed (compile-once / execute-many) without state
+								* bleed or unbounded heap growth. */
 	/* Index of the shared empty-string literal reserved at VM init */
 	sxu32 nEmptyStringIdx;
 	sxi32 iSpreadExtra;        /* Cumulative extra args from PH7_OP_SPREAD (reset by CALL) */
@@ -913,6 +919,14 @@ struct ph7_vm
 								* cascades out of nested execution units (include/require/
 								* eval chunks) instead of hard-exiting the process; the
 								* top-level executor then runs shutdown callbacks normally. */
+	sxu8 bInReset;             /* Set while ph7_vm_reset() bulk-releases the per-exec
+								* object pool. Suppresses user __destruct invocation during
+								* that teardown: destructors would run arbitrary PHP against a
+								* half-reset VM (reference table already gone, $GLOBALS nulled)
+								* and could realloc aMemObj mid-release. PH7 never ran
+								* global-scope destructors before (release nuked the arena),
+								* so this preserves prior semantics while staying crash-safe.
+								* Engine-level instance memory is still reclaimed. */
 	ph7_gen_state sCodeGen;    /* Code generator module */
 	ph7_exec_ctx *pActiveCtx;  /* Currently executing fiber/generator context (NULL in normal code) */
 	ph7_class *pFiberClass;    /* Cached Fiber class pointer for fast dispatch */
