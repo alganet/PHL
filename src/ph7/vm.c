@@ -6768,18 +6768,68 @@ case PH7_OP_CAT:{
 case PH7_OP_CAT_STORE:{
 	ph7_value *pNos = &pTos[-1];
 	ph7_value *pObj;
+	sxu32 nIdx;
 #ifdef UNTRUST
 	if( pNos < pStack ){
 		goto Abort;
 	}
 #endif
+	/* The right operand must be a string to append it */
+	if((pNos->iFlags & MEMOBJ_STRING) == 0 ){
+		PH7_MemObjToString(pNos);
+	}
+	nIdx = pTos->nIdx;
+	/* Fast path: append straight into the lvalue's own (geometrically grown) buffer
+	 * instead of copy-on-write-dup'ing the read-only-aliased stack value and then
+	 * storing the whole buffer back twice. This turns `$s .= ...` (and the
+	 * $a[$i] .= / $obj->prop .= forms) from O(n^2) into amortized O(1).
+	 * Guards: a real owned slot; the right operand must NOT alias that same slot
+	 * (`$s .= $s`, or a reference to it, would realloc the buffer out from under
+	 * the source we copy from — references share the slot index, so one check
+	 * covers both); and not a typed property, whose store-time type check/coercion
+	 * must run before any mutation (left to the slow path).
+	 * NOTE: the explicit `$s = $s . x` form (OP_CAT + OP_STORE) is not covered here
+	 * and remains O(n^2) by design. */
+	if( nIdx != SXU32_HIGH
+	 && nIdx != pNos->nIdx
+	 && (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx)) != 0
+	 && (SyHashTotalEntry(&pVm->hTypedSlot) == 0
+	     || SyHashGet(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32)) == 0) ){
+		if( (pObj->iFlags & MEMOBJ_STRING) == 0 ){
+			/* e.g. $x = 5; $x .= "a";  ->  "5a" */
+			PH7_MemObjToString(pObj);
+		}
+		if( SyBlobLength(&pNos->sBlob) > 0 ){
+			if( PH7_MemObjStringAppend(pObj,(const char *)SyBlobData(&pNos->sBlob),SyBlobLength(&pNos->sBlob)) != SXRET_OK ){
+				/* Allocation failure: the grow happens before the copy, so pObj
+				 * keeps its prior valid contents — raise the fatal uncorrupted. */
+				PH7_VmMemoryError(&(*pVm));
+				goto Abort;
+			}
+		}
+		/* Produce the expression result. A `.=` result is a temporary, never an
+		 * addressable lvalue, so nIdx is SXU32_HIGH (otherwise `f($s .= "x")` with a
+		 * by-ref param, or `&($s .= "x")`, would alias the live variable).
+		 * In the dominant statement form `$s .= "x";` the result is discarded by the
+		 * very next opcode (OP_POP), so we skip building it and leave the (harmless)
+		 * RHS operand for the POP to drop — keeping the hot path allocation-free.
+		 * Otherwise the result is consumed, so materialize an INDEPENDENT owned copy
+		 * of the updated value: a read-only alias into pObj's buffer would dangle if
+		 * the same slot is appended to again later in the statement
+		 * (e.g. `($s .= "a") . ($s .= "b")` reallocs the buffer the first result
+		 * still points at). Peeking pInstr+1 is safe: the compiler always emits a
+		 * terminating OP_DONE, so it is in-bounds inside any non-DONE opcode. */
+		if( (pInstr+1)->iOp != PH7_OP_POP ){
+			PH7_MemObjStore(pObj,pNos);
+		}
+		pNos->nIdx = SXU32_HIGH;
+		VmPopOperand(&pTos,1);
+		break;
+	}
+	/* Slow path: read-only/typed/constant-attribute/self-aliasing lvalues. */
 	if((pTos->iFlags & MEMOBJ_STRING) == 0 ){
 		/* Force a string cast */
 		PH7_MemObjToString(pTos);
-	}
-	if((pNos->iFlags & MEMOBJ_STRING) == 0 ){
-		/* Force a string cast */
-		PH7_MemObjToString(pNos);
 	}
 	/* Perform the concatenation (Reverse order) */
 	if( SyBlobLength(&pNos->sBlob) > 0 ){
