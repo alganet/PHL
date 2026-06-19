@@ -57,6 +57,55 @@ struct tm *__cdecl localtime(const time_t *t)
 #elif defined(__UNIXES__)
 #include <sys/time.h>
 #endif /* __WINNT__*/
+/*
+ * Resolve the current wall-clock time (epoch seconds + sub-second microseconds).
+ *
+ * An embedder may override the platform clock via PH7_CONFIG_CLOCK (e.g. the
+ * ESP32 port routes this through esp_timer); when no hook is registered we use
+ * gettimeofday() on Unix and fall back to a second-resolution time() elsewhere.
+ * Centralising this here gives microtime()/gettimeofday() a single sub-second
+ * source instead of the old nonsensical `tt % SX_USEC_PER_SEC` off-Unix path.
+ */
+static void DateNow(ph7_vm *pVm,sytime *pOut)
+{
+	if( pVm && pVm->pEngine->xConf.xClock ){
+		ph7_int64 sec = 0,usec = 0;
+		if( pVm->pEngine->xConf.xClock(pVm->pEngine->xConf.pClockData,&sec,&usec) == PH7_OK ){
+			pOut->tm_sec  = (long)sec;
+			pOut->tm_usec = (long)usec;
+			return;
+		}
+	}
+#if defined(__UNIXES__)
+	{
+		struct timeval tv;
+		gettimeofday(&tv,0);
+		pOut->tm_sec  = (long)tv.tv_sec;
+		pOut->tm_usec = (long)tv.tv_usec;
+	}
+#elif defined(__WINNT__)
+	{
+		/* FILETIME is 100-ns ticks since 1601-01-01 UTC; convert to the Unix
+		 * epoch with microsecond resolution (GetSystemTime() only carries
+		 * milliseconds, and time() has no sub-second part at all). */
+		FILETIME ft;
+		ph7_int64 t;
+		GetSystemTimeAsFileTime(&ft);
+		t  = (ph7_int64)ft.dwHighDateTime << 32;
+		t += ft.dwLowDateTime;
+		t -= 116444736000000000LL; /* 100-ns ticks between 1601 and 1970 */
+		pOut->tm_sec  = (long)(t / 10000000);
+		pOut->tm_usec = (long)((t % 10000000) / 10);
+	}
+#else
+	{
+		time_t tt;
+		time(&tt);
+		pOut->tm_sec  = (long)tt;
+		pOut->tm_usec = 0; /* no sub-second source; embedders supply one via PH7_CONFIG_CLOCK */
+	}
+#endif /* __UNIXES__ */
+}
  /*
   * int64 time(void)
   *  Current Unix timestamp
@@ -96,26 +145,19 @@ PH7_PRIVATE int PH7_builtin_microtime(ph7_context *pCtx,int nArg,ph7_value **apA
 {
 	int bFloat = 0;
 	sytime sTime;
-#if defined(__UNIXES__)
-	struct timeval tv;
-	gettimeofday(&tv,0);
-	sTime.tm_sec  = (long)tv.tv_sec;
-	sTime.tm_usec = (long)tv.tv_usec;
-#else
-	time_t tt;
-	time(&tt);
-	sTime.tm_sec  = (long)tt;
-	sTime.tm_usec = (long)(tt%SX_USEC_PER_SEC);
-#endif /* __UNIXES__ */
+	DateNow(pCtx->pVm,&sTime);
 	if( nArg > 0 ){
 		bFloat = ph7_value_to_bool(apArg[0]);
 	}
 	if( bFloat ){
-		/* Return as float */
-		ph7_result_double(pCtx,(double)sTime.tm_sec);
+		/* Return as float: seconds accurate to the nearest microsecond */
+		ph7_result_double(pCtx,(double)sTime.tm_sec + (double)sTime.tm_usec/(double)SX_USEC_PER_SEC);
 	}else{
-		/* Return as string */
-		ph7_result_string_format(pCtx,"%ld %ld",sTime.tm_usec,sTime.tm_sec);
+		/* Return PHP's "msec sec" form: the sub-second part as fractional
+		 * seconds to 8 decimals, e.g. "0.50667100 1700000000". tm_usec is in
+		 * microseconds (0..999999), so scaling by 100 yields the 8-digit
+		 * fraction — matching PHP's "%.8F" output exactly. */
+		ph7_result_string_format(pCtx,"0.%08ld %ld",sTime.tm_usec*100,sTime.tm_sec);
 	}
 	return PH7_OK;
 }
@@ -227,23 +269,13 @@ PH7_PRIVATE int PH7_builtin_gettimeofday(ph7_context *pCtx,int nArg,ph7_value **
 {
 	int bFloat = 0;
 	sytime sTime;
-#if defined(__UNIXES__)
-	struct timeval tv;
-	gettimeofday(&tv,0);
-	sTime.tm_sec  = (long)tv.tv_sec;
-	sTime.tm_usec = (long)tv.tv_usec;
-#else
-	time_t tt;
-	time(&tt);
-	sTime.tm_sec  = (long)tt;
-	sTime.tm_usec = (long)(tt%SX_USEC_PER_SEC);
-#endif /* __UNIXES__ */
+	DateNow(pCtx->pVm,&sTime);
 	if( nArg > 0 ){
 		bFloat = ph7_value_to_bool(apArg[0]);
 	}
 	if( bFloat ){
-		/* Return as float */
-		ph7_result_double(pCtx,(double)sTime.tm_sec);
+		/* Return as float: seconds accurate to the nearest microsecond */
+		ph7_result_double(pCtx,(double)sTime.tm_sec + (double)sTime.tm_usec/(double)SX_USEC_PER_SEC);
 	}else{
 		/* Return an associative array */
 		ph7_value *pValue,*pArray;

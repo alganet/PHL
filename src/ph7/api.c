@@ -126,6 +126,16 @@ static sxi32 EngineConfig(ph7 *pEngine,sxi32 nOp,va_list ap)
 		pEngine->sAllocator.nMaxRequest = (sxu32)nMax;
 		break;
 								}
+	case PH7_CONFIG_CLOCK: {
+		/* Optional embedder clock used by microtime()/gettimeofday(). The
+		 * callback fills epoch seconds + microseconds; NULL restores the
+		 * platform default. Inherited by VMs created afterwards. */
+		ph7_clock xClock = va_arg(ap,ph7_clock);
+		void *pUserData  = va_arg(ap,void *);
+		pEngine->xConf.xClock     = xClock;
+		pEngine->xConf.pClockData = pUserData;
+		break;
+							}
 	default:
 		/* Unknown configuration verb */
 		rc = PH7_CORRUPT;

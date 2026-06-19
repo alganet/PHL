@@ -153,6 +153,13 @@ typedef sxi64 ph7_real;
 typedef double ph7_real;
 #endif
 typedef sxi64 ph7_int64;
+/*
+ * Optional embedder clock callback (see PH7_CONFIG_CLOCK).
+ * Fill *pSec with the current Unix epoch seconds and *pUsec with the
+ * sub-second microseconds (0..999999). Return PH7_OK on success; any
+ * other value makes the engine fall back to the platform default clock.
+ */
+typedef int (*ph7_clock)(void *pUserData, ph7_int64 *pSec, ph7_int64 *pUsec);
 #define PH7_APIEXPORT SX_APIEXPORT
 /*
  * Engine Configuration Commands.
@@ -172,6 +179,7 @@ typedef sxi64 ph7_int64;
 #define PH7_CONFIG_ERR_ABORT     2  /* RESERVED FOR FUTURE USE */
 #define PH7_CONFIG_ERR_LOG       3  /* TWO ARGUMENTS: const char **pzBuf,int *pLen */
 #define PH7_CONFIG_MAX_ALLOC     4  /* ONE ARGUMENT: unsigned int nMaxByte (per-allocation cap in bytes; 0 = unlimited). Inherited by VMs created afterwards. */
+#define PH7_CONFIG_CLOCK         5  /* TWO ARGUMENTS: ph7_clock xClock, void *pUserData. Overrides the platform wall/sub-second clock used by microtime()/gettimeofday(); xClock fills *pSec (epoch seconds) and *pUsec (0..999999). NULL restores the default. Inherited by VMs created afterwards. */
 /*
  * Virtual Machine Configuration Commands.
  *
