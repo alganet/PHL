@@ -139,6 +139,8 @@ struct ph7_conf
 	ProcConsumer xErr;   /* Compile-time error consumer callback */
 	void *pErrData;      /* Third argument to xErr() */
 	SyBlob sErrConsumer; /* Default error consumer */
+	ph7_clock xClock;    /* Optional embedder clock [PH7_CONFIG_CLOCK]; NULL => platform default */
+	void *pClockData;    /* Third argument to xClock() */
 };
 /*
  * Signature of the C function responsible of expanding constant values.
