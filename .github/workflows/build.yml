@@ -134,6 +134,23 @@ jobs:
           build-aux/lcov_info_to_text.php --content=all\
             report/coverage.info > report/coverage.md
 
+        # --- TEMP DIAGNOSTIC: capture a backtrace of the lcov_to_markdown segfault ---
+        # (native x86_64-only crash that does not reproduce under emulation; remove once root-caused)
+        sudo apt-get update -qq && sudo apt-get install -y gdb
+        ulimit -c unlimited || true
+        echo "::group::gdb backtrace of lcov_to_markdown.php"
+        gdb -q -batch \
+          -ex 'set pagination off' \
+          -ex 'run' \
+          -ex 'echo \n==== SIGNAL / BACKTRACE ====\n' \
+          -ex 'bt full' \
+          -ex 'info registers' \
+          --args ./artifact/coverage-report-x86_64-linux-gnu/coverage/phl \
+            build-aux/lcov_to_markdown.php --output-dir=report \
+            report/coverage.info || true
+        echo "::endgroup::"
+        # --- END TEMP DIAGNOSTIC ---
+
         ./artifact/coverage-report-x86_64-linux-gnu/coverage/phl \
           build-aux/lcov_to_markdown.php --output-dir=report \
             report/coverage.info
