@@ -270,6 +270,17 @@ static sxi32 HashmapInsertIntKey(ph7_hashmap *pMap,sxi64 iKey,ph7_value *pValue,
 	sxi32 rc;
 	if( !isForeign ){
 		ph7_value *pObj;
+		ph7_value sSafeVal;
+		/* Snapshot the source BEFORE reserving: PH7_ReserveMemObj can grow (move)
+		 * pVm->aMemObj, which would dangle pValue when it points into the pool
+		 * (e.g. get_defined_vars/func_get_args/get_class_vars/get_object_vars pass
+		 * a pool slot). A shallow copy is a safe PH7_MemObjStore source — the
+		 * referent and the heap-resident blob data survive the move; only the
+		 * ph7_value struct relocates (same sSafeVal idiom used by PH7_HashmapDup). */
+		if( pValue ){
+			sSafeVal = *pValue;
+			pValue = &sSafeVal;
+		}
 		/* Reserve a ph7_value for the value */
 		pObj = PH7_ReserveMemObj(pMap->pVm);
 		if( pObj == 0 ){
@@ -319,6 +330,17 @@ static sxi32 HashmapInsertBlobKey(ph7_hashmap *pMap,const void *pKey,sxu32 nKeyL
 	sxi32 rc;
 	if( !isForeign ){
 		ph7_value *pObj;
+		ph7_value sSafeVal;
+		/* Snapshot the source BEFORE reserving: PH7_ReserveMemObj can grow (move)
+		 * pVm->aMemObj, which would dangle pValue when it points into the pool
+		 * (e.g. get_defined_vars/func_get_args/get_class_vars/get_object_vars pass
+		 * a pool slot). A shallow copy is a safe PH7_MemObjStore source — the
+		 * referent and the heap-resident blob data survive the move; only the
+		 * ph7_value struct relocates (same sSafeVal idiom used by PH7_HashmapDup). */
+		if( pValue ){
+			sSafeVal = *pValue;
+			pValue = &sSafeVal;
+		}
 		/* Reserve a ph7_value for the value */
 		pObj = PH7_ReserveMemObj(pMap->pVm);
 		if( pObj == 0 ){
@@ -1260,6 +1282,8 @@ PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue)
 	ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;
 	ph7_hashmap *pNew;
 	ph7_value *pBacking;
+	sxu32 nValIdx;
+	int bValueInPool;
 	if( pMap->iRef < 2 ){
 		/* Sole owner, no separation needed */
 		return pMap;
@@ -1313,6 +1337,16 @@ PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue)
 			return pNew;
 		}
 	}
+	/* Some callers (e.g. OP_STORE_IDX, by-ref foreach) pass a pValue that points
+	 * directly into pVm->aMemObj. PH7_HashmapDup below reserves a memory object
+	 * per duplicated entry, which can grow — and therefore reallocate (move) —
+	 * pVm->aMemObj, leaving such a pValue dangling. Capture its slot identity now,
+	 * before the dup, so the write-back can re-resolve from the (stable) index
+	 * rather than dereference the captured pointer (the same hazard handled for
+	 * pBacking in the backing-variable branch above). */
+	nValIdx = pValue->nIdx;
+	bValueInPool = ( nValIdx != SXU32_HIGH
+		&& (ph7_value *)SySetAt(&pVm->aMemObj,nValIdx) == pValue );
 	pNew = PH7_NewHashmap(pVm,0,0);
 	if( pNew == 0 ){
 		/* Allocation failure — fall through with shared map */
@@ -1325,6 +1359,13 @@ PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue)
 	}
 	pNew->iNextIdx = pMap->iNextIdx;
 	pMap->iRef--;
+	if( bValueInPool ){
+		/* aMemObj may have moved during the dup — re-resolve pValue's slot. */
+		pValue = (ph7_value *)SySetAt(&pVm->aMemObj,nValIdx);
+		if( pValue == 0 ){
+			return pNew;
+		}
+	}
 	pValue->x.pOther = pNew;
 	return pNew;
 }
