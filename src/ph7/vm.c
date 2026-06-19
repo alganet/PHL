@@ -1673,6 +1673,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->pCountableClass   = PH7_VmExtractClass(pVm,"Countable",sizeof("Countable")-1,0,0);
 	pVm->pStringableClass  = PH7_VmExtractClass(pVm,"Stringable",sizeof("Stringable")-1,0,0);
 	pVm->pJsonSerializableClass = PH7_VmExtractClass(pVm,"JsonSerializable",sizeof("JsonSerializable")-1,0,0);
+	pVm->pTraversableClass = PH7_VmExtractClass(pVm,"Traversable",sizeof("Traversable")-1,0,0);
 	/* Initialize null-coalesce-assign scratch slot */
 	pVm->pCoalesceObj = 0;
 	pVm->bCoalesceArmed = 0;
@@ -3275,6 +3276,45 @@ static int VmStringNumericKind(ph7_value *pValue)
 }
 
 /*
+ * Check a value against a "pseudo-type" stored as an SXU32_HIGH class-name atom.
+ * PH7 parses `true`/`false`/`iterable`/`mixed` as class-name atoms (they are not
+ * scalar keywords), so without this every enforcement site — return, parameter,
+ * property, union alternative — would have to string-match the name itself.
+ * Centralising it here keeps the four sites consistent and is the single place
+ * to extend when another literal/pseudo type is added.
+ *   returns  1 : recognised pseudo-type AND the value satisfies it
+ *            0 : recognised pseudo-type AND the value does NOT satisfy it
+ *           -1 : not a pseudo-type (caller should treat sClass as a real class)
+ */
+static int VmCheckPseudoType(ph7_vm *pVm, ph7_value *pValue, const SyString *pClass)
+{
+	const char *z = pClass->zString;
+	sxu32 n = pClass->nByte;
+	if( n == 5 && SyStrnicmp(z,"mixed",5) == 0 ){
+		return 1; /* `mixed` accepts any value, including null */
+	}
+	if( n == 4 && SyStrnicmp(z,"true",4) == 0 ){
+		return ( (pValue->iFlags & MEMOBJ_BOOL) && pValue->x.iVal != 0 ) ? 1 : 0;
+	}
+	if( n == 5 && SyStrnicmp(z,"false",5) == 0 ){
+		return ( (pValue->iFlags & MEMOBJ_BOOL) && pValue->x.iVal == 0 ) ? 1 : 0;
+	}
+	if( n == 8 && SyStrnicmp(z,"iterable",8) == 0 ){
+		/* iterable === array | Traversable */
+		if( pValue->iFlags & MEMOBJ_HASHMAP ){
+			return 1;
+		}
+		if( (pValue->iFlags & MEMOBJ_OBJ) && pVm->pTraversableClass ){
+			ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
+			if( PH7_VmInstanceOf(pInst->pClass,pVm->pTraversableClass) ){
+				return 1;
+			}
+		}
+		return 0;
+	}
+	return -1;
+}
+/*
  * Try to coerce *pValue* to fit one of the alternatives in *pAlts*. When
  * *bStrict* is zero this applies PHP 8 weak-mode union semantics (permissive
  * scalar coercion). When bStrict is non-zero, only exact type matches are
@@ -3297,6 +3337,16 @@ static sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, int b
 		return bNullable ? SXRET_OK : SXERR_INVALID;
 	}
 	aAlts = (ph7_type_alt *)SySetBasePtr(pAlts);
+	/* Pseudo-type alternatives (true/false/iterable; `mixed` never unions) are
+	 * stored as SXU32_HIGH name atoms and need value-checking, not instanceof.
+	 * A match on any one accepts the value (handles e.g. `true|int`, `?true`,
+	 * `iterable|Foo`). */
+	for( i = 0; i < SySetUsed(pAlts); i++ ){
+		if( aAlts[i].nType == SXU32_HIGH
+		 && VmCheckPseudoType(pVm, pValue, &aAlts[i].sClass) == 1 ){
+			return SXRET_OK;
+		}
+	}
 	bHasArray = bHasObjAlt = bHasClassAlt = 0;
 	bHasInt = bHasFloat = bHasString = bHasBool = 0;
 	for( i = 0; i < SySetUsed(pAlts); i++ ){
@@ -3421,6 +3471,14 @@ static sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, int b
  */
 static sxi32 VmEnforceScalarType(ph7_value *pVal, sxu32 nType, int bStrict)
 {
+	/* A standalone `null` type is not a weak-coercion target: only an actual
+	 * null value satisfies it (and a null value matches via the flag test
+	 * before this is ever called, so pVal is non-null here). Reject rather than
+	 * casting the value to null — otherwise a `null`-typed parameter would
+	 * silently swallow any argument. */
+	if( nType == MEMOBJ_NULL ){
+		return SXERR_INVALID;
+	}
 	if( bStrict ){
 		/* Only int -> float widening is allowed implicitly. */
 		if( nType == MEMOBJ_REAL && (pVal->iFlags & MEMOBJ_INT) ){
@@ -3511,13 +3569,22 @@ static sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pVal
 		}
 		return VmThrowPropertyTypeError(pVm,pVmAttr,ph7_type_name(pValue));
 	}
-	/* NULL handling: allowed only if the type is nullable. */
+	/* NULL handling: allowed if the type is nullable, or is `mixed` (which
+	 * includes null). */
 	if( pValue->iFlags & MEMOBJ_NULL ){
-		if( pAttr->iFlags & PH7_CLASS_ATTR_NULLABLE ){
+		if( (pAttr->iFlags & PH7_CLASS_ATTR_NULLABLE)
+		 || (pAttr->nType == SXU32_HIGH && pAttr->sClass.nByte == 5
+		     && SyStrnicmp(pAttr->sClass.zString,"mixed",5) == 0) ){
 			pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
 			return SXRET_OK;
 		}
 		return VmThrowPropertyTypeError(pVm,pVmAttr,"null");
+	}
+	/* standalone `null` property type (PHP 8.2): a null value was already
+	 * accepted by the nullable check above, so any non-null value here is a
+	 * type error. */
+	if( pAttr->nType == MEMOBJ_NULL ){
+		return VmThrowPropertyTypeError(pVm,pVmAttr,ph7_type_name(pValue));
 	}
 	/* Bare 'object' type hint: accept any class instance, reject non-objects.
 	 * Must be checked before the generic scalar branch since MEMOBJ_OBJ is
@@ -3528,6 +3595,22 @@ static sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pVal
 			return SXRET_OK;
 		}
 		return VmThrowPropertyTypeError(pVm,pVmAttr,ph7_type_name(pValue));
+	}
+	/* Pseudo-types stored as class-name atoms: `iterable` (array|Traversable),
+	 * `true`/`false` (matching bool), `mixed` (any value — its null case is
+	 * handled by the nullable check above). Checked by value before the generic
+	 * class-instanceof branch, which would resolve no such class and then
+	 * wrongly accept any object / reject arrays. */
+	if( pAttr->nType == SXU32_HIGH ){
+		int rcPseudo = VmCheckPseudoType(pVm, pValue, &pAttr->sClass);
+		if( rcPseudo == 1 ){
+			pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
+			return SXRET_OK;
+		}
+		if( rcPseudo == 0 ){
+			return VmThrowPropertyTypeError(pVm,pVmAttr,ph7_type_name(pValue));
+		}
+		/* rcPseudo == -1: real class — fall through to the instanceof branch. */
 	}
 	if( pAttr->nType == SXU32_HIGH ){
 		/* Class / interface type. Resolve self/parent relative to the class
@@ -3836,14 +3919,30 @@ static sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value *pVa
 		}
 		return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,zExpected,"null");
 	}
-	/* `mixed` accepts any explicitly returned value, including null. It is
-	 * parsed as a class-name atom (SXU32_HIGH, sReturnClass = "mixed") since
-	 * it is not a scalar keyword, so short-circuit it here before the null /
-	 * class-type checks below — which would otherwise demand an object. */
-	if( pFunc->nReturnType == SXU32_HIGH
-	 && pFunc->sReturnClass.nByte == 5
-	 && SyStrnicmp(pFunc->sReturnClass.zString,"mixed",5) == 0 ){
-		return SXRET_OK;
+	/* standalone `null` return type (PHP 8.2): an explicit non-null return is a
+	 * TypeError. (Falling off the end is handled by the generic check above,
+	 * matching how every other typed return reports a missing value.) */
+	if( pFunc->nReturnType == MEMOBJ_NULL ){
+		if( pValue->iFlags & MEMOBJ_NULL ){
+			return SXRET_OK;
+		}
+		return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,"null",
+			VmValueGivenName(pValue,zBuf,sizeof(zBuf)));
+	}
+	/* Pseudo-types parsed as class-name atoms: `mixed` (any value),
+	 * `true`/`false` (the matching bool literal), `iterable` (array|Traversable).
+	 * Check by value before the real-class instanceof branch below. */
+	if( pFunc->nReturnType == SXU32_HIGH ){
+		int rcPseudo = VmCheckPseudoType(pVm, pValue, &pFunc->sReturnClass);
+		if( rcPseudo == 1 ){
+			return SXRET_OK;
+		}
+		if( rcPseudo == 0 ){
+			return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,
+				VmSyStringToCStr(&pFunc->sReturnClass,zTypeBuf,sizeof(zTypeBuf)),
+				VmValueGivenName(pValue,zBuf,sizeof(zBuf)));
+		}
+		/* rcPseudo == -1: a real class — fall through to the instanceof branch. */
 	}
 	/* Union return type — delegate. The function has no flag for nullable
 	 * unions; a null alternative is represented inside aReturnUnion, so pass
@@ -9300,7 +9399,25 @@ case PH7_OP_CALL: {
 						/* Scalar/class type checking */
 						if( aFormalArg[n].nType == SXU32_HIGH ){
 							SyString *pName = &aFormalArg[n].sClass;
-							ph7_class *pClass = PH7_VmExtractClass(&(*pVm),pName->zString,pName->nByte,TRUE,0);
+							ph7_class *pClass;
+							int rcPseudo = VmCheckPseudoType(&(*pVm),pVal,pName);
+							if( rcPseudo == 0 ){
+								/* Recognised pseudo-type (true/false/iterable); value mismatches */
+								char zTypeBuf[128],zGivenBuf[128];
+								rc = VmThrowTypeErrorForArg(&(*pVm),&pVmFunc->sName,n+1,
+									&aFormalArg[n].sName,
+									VmSyStringToCStr(pName,zTypeBuf,sizeof(zTypeBuf)),
+									VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf)));
+								if( rc == PH7_ABORT ) goto Abort;
+								SyMemBackendFree(&pVm->sAllocator, aSlot);
+								PH7_MemObjRelease(pTos);
+								pTos = &pTos[-nCallArgs];
+								pFrameStack = 0;
+								rc = PH7_EXCEPTION;
+								goto SkipFuncBody;
+							}
+							/* rcPseudo==1 -> matched pseudo-type (accept); -1 -> real class */
+							pClass = (rcPseudo == 1) ? 0 : PH7_VmExtractClass(&(*pVm),pName->zString,pName->nByte,TRUE,0);
 							if( pClass ){
 								if( (pVal->iFlags & MEMOBJ_OBJ) == 0 ){
 									if( (pVal->iFlags & MEMOBJ_NULL) == 0 ){
@@ -9608,8 +9725,23 @@ case PH7_OP_CALL: {
 						/* Argument must be a class instance [i.e: object] */
 						SyString *pName = &aFormalArg[n].sClass;
 						ph7_class *pClass;
-						/* Try to extract the desired class */
-						pClass = PH7_VmExtractClass(&(*pVm),pName->zString,pName->nByte,TRUE,0);
+						int rcPseudo = VmCheckPseudoType(&(*pVm),pArg,pName);
+						if( rcPseudo == 0 ){
+							/* Recognised pseudo-type (true/false/iterable); value mismatches */
+							char zTypeBuf[128],zGivenBuf[128];
+							rc = VmThrowTypeErrorForArg(&(*pVm),&pVmFunc->sName,n+1,
+								&aFormalArg[n].sName,
+								VmSyStringToCStr(pName,zTypeBuf,sizeof(zTypeBuf)),
+								VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf)));
+							if( rc == PH7_ABORT ) goto Abort;
+							PH7_MemObjRelease(pTos);
+							pTos = &pTos[-nCallArgs];
+							pFrameStack = 0;
+							rc = PH7_EXCEPTION;
+							goto SkipFuncBody;
+						}
+						/* Try to extract the desired class (rcPseudo==1 accepts; -1 real class) */
+						pClass = (rcPseudo == 1) ? 0 : PH7_VmExtractClass(&(*pVm),pName->zString,pName->nByte,TRUE,0);
 						if( pClass ){
 							if( (pArg->iFlags & MEMOBJ_OBJ) == 0 ){
 								if( (pArg->iFlags & MEMOBJ_NULL) == 0 ){
