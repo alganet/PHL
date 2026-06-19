@@ -17,7 +17,7 @@ $a = new A();
 echo $a;
 ?>
 --EXPECTF--
-%s Error:  Recursion limit reached while invoking user function '__toString',PH7 will set a NULL return value
+%s Error:  Maximum recursion depth of %d reached
 Object
 --CLEAN--
 <?php

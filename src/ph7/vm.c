@@ -2994,6 +2994,43 @@ PH7_PRIVATE sxi32 PH7_ContextMemoryError(ph7_context *pCtx)
 	return PH7_VmMemoryError(pCtx->pVm);
 }
 /*
+ * Single source of truth for the call-recursion cap policy. Each recursion
+ * entry point (OP_CALL, eval/include, fibers/generators) tests this before
+ * descending another native C frame; the control flow on a hit differs per
+ * site, but the rule itself lives here.
+ */
+static int VmRecursionExceeded(ph7_vm *pVm)
+{
+	return pVm->nRecursionDepth > pVm->nMaxDepth;
+}
+/*
+ * Raise the recursion-limit fatal and request a clean VM halt. Mirrors
+ * PH7_VmMemoryError and PHP 8.3's non-catchable "Maximum call stack size
+ * reached": a catchable Error can't be used here because PH7 runs the catch
+ * body (and renders an uncaught exception) inline at the throw-site depth —
+ * which is already over the cap, so getMessage()/__toString()/the catch body
+ * would re-trip the limit and recurse forever. A clean fatal removes the old
+ * silent "return NULL and continue" hazard while keeping the promise that deep
+ * recursion never panics: it unwinds via the abort path and still runs
+ * register_shutdown_function() callbacks. Used by every recursion path —
+ * OP_CALL, eval()/include/require (VmEvalChunk) and fibers/generators
+ * (VmStartCtx/VmResumeCtx).
+ *
+ * Halt is requested BEFORE emitting the diagnostic, and a re-entry guard makes
+ * this idempotent, so an error handler that itself recurses past the cap can't
+ * re-enter and loop.
+ */
+static sxi32 VmRecursionFatal(ph7_vm *pVm)
+{
+	if( pVm->bHaltRequested ){
+		return PH7_ABORT;
+	}
+	pVm->iExitStatus = 255;
+	pVm->bHaltRequested = 1;
+	VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Maximum recursion depth of %d reached",pVm->nMaxDepth);
+	return PH7_ABORT;
+}
+/*
  * Format and throw a run-time error and invoke the supplied VM output consumer callback.
  * Refer to the implementation of [ph7_context_throw_error_format()] for additional
  * information.
@@ -8961,18 +8998,15 @@ case PH7_OP_CALL: {
 				}
 			}
 		}
-		/* Check The recursion limit */
-		if( pVm->nRecursionDepth > pVm->nMaxDepth ){
-			VmErrorFormat(&(*pVm),PH7_CTX_ERR,
-				"Recursion limit reached while invoking user function '%z',PH7 will set a NULL return value",
-				&pVmFunc->sName);
-			/* Pop given arguments */
-			if( nCallArgs > 0 ){
-				VmPopOperand(&pTos,nCallArgs);
-			}
-			/* Assume a null return value so that the program continue it's execution normally */
-			PH7_MemObjRelease(pTos);
-			break;
+		/* Check The recursion limit. Hitting it raises a clean, non-catchable
+		 * fatal (was: silently set NULL and continue) and halts. The check is
+		 * before VmEnterFrame/the recursive VmByteCodeExec below, so a
+		 * correctly-set cap also keeps deep recursion off the native stack. */
+		if( VmRecursionExceeded(pVm) ){
+			/* Args and the function-name slot are released by the Abort label,
+			 * which walks the whole operand stack — don't release them here. */
+			VmRecursionFatal(&(*pVm));
+			goto Abort;
 		}
 		if( pVmFunc->pNextName ){
 			/* Function is candidate for overloading,select the appropriate function to call */
@@ -10150,6 +10184,11 @@ static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
 	if( pCtx->iState != PH7_CTX_STATE_CREATED ){
 		return SXERR_INVALID;
 	}
+	/* Bound fiber/generator nesting under the same cap (each start adds a C
+	 * frame); reject before mutating VM state so the abort is clean. */
+	if( VmRecursionExceeded(pVm) ){
+		return VmRecursionFatal(pVm);
+	}
 	/* Attach the fiber's frame to the VM frame chain */
 	pCtx->pFrame->pParent = pVm->pFrame;
 	pVm->pFrame = pCtx->pFrame;
@@ -10204,6 +10243,11 @@ static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValu
 	sxi32 rc;
 	if( pCtx->iState != PH7_CTX_STATE_SUSPENDED ){
 		return SXERR_INVALID;
+	}
+	/* Bound fiber/generator nesting under the same cap; reject before mutating
+	 * VM state so the abort is clean. */
+	if( VmRecursionExceeded(pVm) ){
+		return VmRecursionFatal(pVm);
 	}
 	/* Push the resume value onto the fiber's operand stack.
 	 * This makes it appear as the return value of Fiber::suspend() from
@@ -15011,8 +15055,17 @@ static sxi32 VmEvalChunk(
 			/* Assume a null return value */
 			PH7_MemObjInit(pVm,&sResult);
 		}
-		/* Execute the compiled chunk */
+		/* Execute the compiled chunk. eval()/include/require recurse in C here,
+		 * a path the OP_CALL cap check can't see; bound it under the same limit
+		 * so a recursive include/eval can't overflow the native stack. */
+		if( VmRecursionExceeded(pVm) ){
+			PH7_MemObjRelease(&sResult);
+			VmRecursionFatal(pVm);
+			goto Cleanup;
+		}
+		pVm->nRecursionDepth++;
 		VmLocalExec(pVm,&aByteCode,&sResult);
+		pVm->nRecursionDepth--;
 		if( pCtx ){
 			/* Set the execution result */
 			ph7_result_value(pCtx,&sResult);
