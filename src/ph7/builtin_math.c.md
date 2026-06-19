@@ -79,11 +79,11 @@ Coverage: 452/467 lines (96.79%)
 |    - |   69 | ` * Return` |
 |    - |   70 | ` *  Returns the next lowest integer value by rounding down value if necessary.` |
 |    - |   71 | ` */` |
-|   14 |   72 | `PH7_PRIVATE int PH7_builtin_floor(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   18 |   72 | `PH7_PRIVATE int PH7_builtin_floor(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    2 |   73 |  |
 |    - |   74 | `	double r,x;` |
 |    - |   75 | `	/* PHP requires exactly one argument. */` |
-|   16 |   76 | `	if( nArg != 1 ){` |
+|   20 |   76 | `	if( nArg != 1 ){` |
 |    7 |   77 | `		return PH7_VmThrowException(pCtx,` |
 |    - |   78 | `			"ArgumentCountError",` |
 |    - |   79 | `			"floor() expects exactly 1 argument, %d given",` |
@@ -95,7 +95,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |   85 | `	 * Other types (including non-numeric strings) raise a TypeError just like` |
 |    - |   86 | `	 * ceil() and other math functions.` |
 |    - |   87 | `	 */` |
-|   12 |   88 | `	if( ph7_value_is_int(apArg[0]) == 0 && ph7_value_is_float(apArg[0]) == 0 ){` |
+|   16 |   88 | `	if( ph7_value_is_int(apArg[0]) == 0 && ph7_value_is_float(apArg[0]) == 0 ){` |
 |    6 |   89 | `		if( ph7_value_is_string(apArg[0]) ){` |
 |    - |   90 | `			int len;` |
 |    6 |   91 | `			sxu8 bReal = FALSE;` |
@@ -119,13 +119,13 @@ Coverage: 452/467 lines (96.79%)
 |    - |  109 | `		}` |
 |    1 |  110 | `	}` |
 |    - |  111 |  |
-|    9 |  112 | `	x = ph7_value_to_double(apArg[0]);` |
+|   13 |  112 | `	x = ph7_value_to_double(apArg[0]);` |
 |    - |  113 | `	/* Perform the requested operation */` |
-|    9 |  114 | `	r = floor(x);` |
+|   13 |  114 | `	r = floor(x);` |
 |    - |  115 | `	/* store the result back */` |
-|    9 |  116 | `	ph7_result_double(pCtx,r);` |
-|    9 |  117 | `	return PH7_OK;` |
-|    9 |  118 |  |
+|   13 |  116 | `	ph7_result_double(pCtx,r);` |
+|   13 |  117 | `	return PH7_OK;` |
+|   11 |  118 |  |
 |    - |  119 | `/*` |
 |    - |  120 | ` * float cos(float $arg )` |
 |    - |  121 | ` *  Cosine.` |
@@ -487,11 +487,11 @@ Coverage: 452/467 lines (96.79%)
 |    - |  477 | ` * Return` |
 |    - |  478 | ` *  The absolute value of number.` |
 |    - |  479 | ` */` |
-|  126 |  480 | `PH7_PRIVATE int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  128 |  480 | `PH7_PRIVATE int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    2 |  481 |  |
 |    - |  482 | `	int is_float;` |
 |    - |  483 | `	/* PHP requires exactly one argument. */` |
-|  128 |  484 | `	if( nArg != 1 ){` |
+|  130 |  484 | `	if( nArg != 1 ){` |
 |   14 |  485 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  486 | `			"ArgumentCountError",` |
 |    - |  487 | `			"abs() expects exactly 1 argument, %d given",` |
@@ -500,8 +500,8 @@ Coverage: 452/467 lines (96.79%)
 |    - |  490 | `	}` |
 |    - |  491 |  |
 |    - |  492 | `	/* Numeric strings with decimal/exponent are treated as real values. */` |
-|  120 |  493 | `	is_float = ph7_value_is_float(apArg[0]);` |
-|  120 |  494 | `	if( !is_float && ph7_value_is_string(apArg[0]) ){` |
+|  122 |  493 | `	is_float = ph7_value_is_float(apArg[0]);` |
+|  122 |  494 | `	if( !is_float && ph7_value_is_string(apArg[0]) ){` |
 |    - |  495 | `		int len;` |
 |   10 |  496 | `		sxu8 bReal = FALSE;` |
 |   10 |  497 | `		const char *zStr = ph7_value_to_string(apArg[0], &len);` |
@@ -517,21 +517,21 @@ Coverage: 452/467 lines (96.79%)
 |    5 |  507 | `			is_float = 1;` |
 |    2 |  508 | `		}` |
 |    3 |  509 | `	}` |
-|  118 |  510 | `	if( is_float ){` |
+|  120 |  510 | `	if( is_float ){` |
 |    - |  511 | `		double r,x;` |
-|   99 |  512 | `		x = ph7_value_to_double(apArg[0]);` |
+|  101 |  512 | `		x = ph7_value_to_double(apArg[0]);` |
 |    - |  513 | `		/* Perform the requested operation */` |
-|   99 |  514 | `		r = fabs(x);` |
-|   99 |  515 | `		ph7_result_double(pCtx,r);` |
-|   50 |  516 | `	}else{` |
+|  101 |  514 | `		r = fabs(x);` |
+|  101 |  515 | `		ph7_result_double(pCtx,r);` |
+|   51 |  516 | `	}else{` |
 |    - |  517 | `		int r,x;` |
 |   20 |  518 | `		x = ph7_value_to_int(apArg[0]);` |
 |    - |  519 | `		/* Perform the requested operation */` |
 |   20 |  520 | `		r = abs(x);` |
 |   20 |  521 | `		ph7_result_int(pCtx,r);` |
 |    - |  522 | `	}` |
-|  118 |  523 | `	return PH7_OK;` |
-|   65 |  524 |  |
+|  120 |  523 | `	return PH7_OK;` |
+|   66 |  524 |  |
 |    - |  525 | `/*` |
 |    - |  526 | ` * float log(float $arg,[int/float $base])` |
 |    - |  527 | ` *  Natural logarithm.` |
