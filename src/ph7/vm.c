@@ -7754,8 +7754,10 @@ case PH7_OP_FOREACH_INIT: {
 						 * the stack value. */
 						if( pBacking->x.pOther == (void *)pCur ){
 							pCur->iRef--;
-							PH7_HashmapCowSeparate(&(*pVm),pBacking);
-							pTos->x.pOther = pBacking->x.pOther;
+							/* Use the returned map, not pBacking->x.pOther: PH7_HashmapDup
+							 * inside CowSeparate can reallocate (move) pVm->aMemObj and leave
+							 * pBacking dangling. The return value is the post-separation map. */
+							pTos->x.pOther = PH7_HashmapCowSeparate(&(*pVm),pBacking);
 							((ph7_hashmap *)pTos->x.pOther)->iRef++;
 						}
 					}
@@ -10593,6 +10595,7 @@ static int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **apArg
 	/* Unpack the args array and install into the frame */
 	{
 		ph7_value **apValues = 0;
+		ph7_value *aStore = 0;
 		int nActual = 0;
 		if( nArg >= 2 && (apArg[1]->iFlags & MEMOBJ_HASHMAP) ){
 			ph7_hashmap *pMap = (ph7_hashmap *)apArg[1]->x.pOther;
@@ -10602,10 +10605,24 @@ static int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **apArg
 				sxu32 idx = 0;
 				apValues = (ph7_value **)SyMemBackendAlloc(&pVm->sAllocator,
 					nCount * sizeof(ph7_value *));
-				if( apValues ){
+				aStore = (ph7_value *)SyMemBackendAlloc(&pVm->sAllocator,
+					nCount * sizeof(ph7_value));
+				if( apValues && aStore ){
 					pNode = pMap->pFirst;
 					while( pNode && idx < nCount ){
-						apValues[idx] = (ph7_value *)SySetAt(&pVm->aMemObj, pNode->nValIdx);
+						/* Snapshot each source into stable storage: VmFiberSetupFrame reserves
+						 * memory objects (VmExtractMemObj) before reading the args, which can
+						 * reallocate (move) pVm->aMemObj and dangle a raw pool pointer. A
+						 * shallow copy is a safe source — the referent and the heap-resident
+						 * blob data survive the move (same sSafeVal idiom the hashmap inserters
+						 * use); it owns nothing independently, so it needs no release. */
+						ph7_value *pSrc = (ph7_value *)SySetAt(&pVm->aMemObj, pNode->nValIdx);
+						if( pSrc ){
+							aStore[idx] = *pSrc;
+						}else{
+							PH7_MemObjInit(pVm, &aStore[idx]);
+						}
+						apValues[idx] = &aStore[idx];
 						idx++;
 						pNode = pNode->pPrev;
 					}
@@ -10614,6 +10631,9 @@ static int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **apArg
 			}
 		}
 		rc = VmFiberSetupFrame(pVm, pExecCtx, pClosureThis, nActual, apValues);
+		if( aStore ){
+			SyMemBackendFree(&pVm->sAllocator, aStore);
+		}
 		if( apValues ){
 			SyMemBackendFree(&pVm->sAllocator, apValues);
 		}
@@ -12948,7 +12968,9 @@ static sxi32 VmHashVarWalker(SyHashEntry *pEntry,void *pUserData)
 			if( pEntry->nKeyLen > 0 ){
 				SyString sName;
 				ph7_value sKey;
-				/* Perform the insertion */
+				/* Perform the insertion (pObj may point into pVm->aMemObj; the
+				 * inserter snapshots the source before reserving, so the pool may
+				 * safely move underneath it — see HashmapInsertIntKey/BlobKey). */
 				SyStringInitFromBuf(&sName,pEntry->pKey,pEntry->nKeyLen);
 				PH7_MemObjInitFromString(pVm,&sKey,&sName);
 				ph7_array_add_elem(pArray,&sKey/*Will make it's own copy*/,pObj);
