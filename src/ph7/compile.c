@@ -6243,9 +6243,17 @@ static sxi32 GenStateParseUnionTypeDecl(
 			}
 		}
 		if( !bHasNonNull && bExplicitNull ){
-			PH7_GenCompileError(pGen, E_ERROR, nLine,
-				"Null can not be used as a standalone type");
-			return SXERR_SYNTAX;
+			if( bShortNullable ){
+				/* `?null` is not a valid type — PHP rejects the shorthand. */
+				PH7_GenCompileError(pGen, E_ERROR, nLine,
+					"Null can not be used as a standalone type");
+				return SXERR_SYNTAX;
+			}
+			/* Bare `null` standalone type (PHP 8.2): represent it as the null
+			 * type flag so enforcement accepts only null. The single-type fast
+			 * path below leaves *pnType untouched when there is no non-null
+			 * atom, so set it here. */
+			*pnType = MEMOBJ_NULL;
 		}
 	}
 	/* Compute nullability flag */
@@ -6923,12 +6931,9 @@ static int GenStateIsDisallowedPropertyAtom(
 	if( n == 8 && SyMemcmpNoCase(z,"callable",8) == 0 ){
 		*pzName = "callable"; *pnName = 8; return 1;
 	}
-	if( n == 5 && SyMemcmpNoCase(z,"mixed",5) == 0 ){
-		*pzName = "mixed"; *pnName = 5; return 1;
-	}
-	if( n == 8 && SyMemcmpNoCase(z,"iterable",8) == 0 ){
-		*pzName = "iterable"; *pnName = 8; return 1;
-	}
+	/* `mixed` (any value) and `iterable` (= array|Traversable) are valid PHP
+	 * property types, enforced by value in VmEnforcePropertyTypeOnStore via
+	 * VmCheckPseudoType. Only `callable` stays disallowed (as in PHP). */
 	return 0;
 }
 

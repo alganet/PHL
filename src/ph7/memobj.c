@@ -599,6 +599,13 @@ PH7_PRIVATE ProcMemObjCast PH7_MemObjCastMethod(sxi32 iFlags)
 		return PH7_MemObjToHashmap;
 	}else if( iFlags & MEMOBJ_OBJ ){
 		return PH7_MemObjToObject;
+	}else if( iFlags & MEMOBJ_NULL ){
+		/* `null` is a type, not a weak-coercion target: never silently cast a
+		 * value to null for a standalone `null` type hint. Return/property
+		 * enforcement reject a non-null value before reaching here; this guards
+		 * the parameter default-value path from quietly nulling a non-null
+		 * default. */
+		return 0;
 	}
 	/* NULL cast */
 	return PH7_MemObjToNull;
