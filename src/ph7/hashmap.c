@@ -1296,7 +1296,17 @@ PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue)
 			}
 			pNew->iNextIdx = pMap->iNextIdx;
 			pMap->iRef--;  /* Backing variable no longer references old map */
-			pBacking->x.pOther = pNew;
+			/* PH7_HashmapDup reserves a memory object per duplicated entry, which
+			 * can grow — and therefore reallocate (move) — pVm->aMemObj. That
+			 * invalidates the pBacking pointer captured above, so re-resolve it
+			 * from the (stable) slot index before writing. Using the stale pointer
+			 * dereferences the freed old buffer, which is a hard SIGSEGV on
+			 * glibc/x86_64 once aMemObj is large enough to be mmap-backed (the old
+			 * mapping is munmap'd on move) and a silent use-after-free elsewhere. */
+			pBacking = (ph7_value *)SySetAt(&pVm->aMemObj,pValue->nIdx);
+			if( pBacking ){
+				pBacking->x.pOther = pNew;
+			}
 			/* Update the stack value to match */
 			pValue->x.pOther = pNew;
 			pNew->iRef++;  /* +1 for stack (pValue); iRef=1 from NewHashmap covers pBacking */
