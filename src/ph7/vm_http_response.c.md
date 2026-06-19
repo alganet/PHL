@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 108/255 lines (42.35%)
+Coverage: 114/255 lines (44.71%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -24,18 +24,18 @@ Coverage: 108/255 lines (42.35%)
 |     - |   14 | ` * Free all response header strings and reset the set.` |
 |     - |   15 | ` * Called from PH7_VmReset() and header_remove() with no arguments.` |
 |     - |   16 | ` */` |
-|   ! 0 |   17 | `PH7_PRIVATE void PH7_VmReleaseResponseHeaders(ph7_vm *pVm)` |
+|     6 |   17 | `PH7_PRIVATE void PH7_VmReleaseResponseHeaders(ph7_vm *pVm)` |
 |   ! 0 |   18 |  |
 |     - |   19 | `	VmResponseHeader *aHdr;` |
 |     - |   20 | `	sxu32 i, n;` |
-|   ! 0 |   21 | `	aHdr = (VmResponseHeader *)SySetBasePtr(&pVm->aResponseHeaders);` |
-|   ! 0 |   22 | `	n = SySetUsed(&pVm->aResponseHeaders);` |
-|   ! 0 |   23 | `	for( i = 0; i < n; i++ ){` |
+|     6 |   21 | `	aHdr = (VmResponseHeader *)SySetBasePtr(&pVm->aResponseHeaders);` |
+|     6 |   22 | `	n = SySetUsed(&pVm->aResponseHeaders);` |
+|     6 |   23 | `	for( i = 0; i < n; i++ ){` |
 |   ! 0 |   24 | `		SyMemBackendFree(&pVm->sAllocator, (void *)aHdr[i].sName.zString);` |
 |   ! 0 |   25 | `		SyMemBackendFree(&pVm->sAllocator, (void *)aHdr[i].sValue.zString);` |
 |   ! 0 |   26 | `	}` |
-|   ! 0 |   27 | `	SySetReset(&pVm->aResponseHeaders);` |
-|   ! 0 |   28 |  |
+|     6 |   27 | `	SySetReset(&pVm->aResponseHeaders);` |
+|     6 |   28 |  |
 |     - |   29 | `/*` |
 |     - |   30 | ` * Remove all response headers matching the given name (case-insensitive).` |
 |     - |   31 | ` */` |
@@ -404,7 +404,7 @@ Coverage: 108/255 lines (42.35%)
 |     - |  394 | `/*` |
 |     - |  395 | ` * Register all HTTP response functions with the VM.` |
 |     - |  396 | ` */` |
-|  2820 |  397 | `PH7_PRIVATE void PH7_RegisterHttpResponseFunctions(ph7_vm *pVm)` |
+|  2826 |  397 | `PH7_PRIVATE void PH7_RegisterHttpResponseFunctions(ph7_vm *pVm)` |
 |     2 |  398 |  |
 |     - |  399 | `	static const ph7_builtin_func aFunc[] = {` |
 |     - |  400 | `		{ "header",             vm_builtin_header             },` |
@@ -416,8 +416,8 @@ Coverage: 108/255 lines (42.35%)
 |     - |  406 | `		{ "setrawcookie",       vm_builtin_setrawcookie       },` |
 |     - |  407 | `	};` |
 |     - |  408 | `	sxu32 n;` |
-| 22562 |  409 | `	for( n = 0; n < SX_ARRAYSIZE(aFunc); n++ ){` |
-| 19742 |  410 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
-|  9872 |  411 | `	}` |
-|  2822 |  412 |  |
+| 22610 |  409 | `	for( n = 0; n < SX_ARRAYSIZE(aFunc); n++ ){` |
+| 19784 |  410 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
+|  9893 |  411 | `	}` |
+|  2828 |  412 |  |
 |     - |  413 |  |
