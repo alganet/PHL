@@ -680,6 +680,53 @@ static int VmCalleeExceptionResume(ph7_vm *pVm,sxi32 *pResumePc)
 	return FALSE;
 }
 /*
+ * Drain pending finally blocks for the try/catch contexts pushed during the
+ * current VmByteCodeExec invocation (those above nExceptionBase). Invoked when
+ * control leaves a function/try via 'return' (OP_DONE) or via a 'return' issued
+ * inside a catch/finally (the OP_THROW / OP_POP_EXCEPTION consumers, and a
+ * nested try/finally inside a catch body). Each finally runs with
+ * bReturnPropagates=TRUE so a 'return' inside it overrides the pending value via
+ * pVm->sCatchReturn. Returns SXERR_ABORT if a finally aborted, SXRET_OK otherwise.
+ */
+static sxi32 VmDrainFinally(ph7_vm *pVm, sxu32 nExceptionBase)
+{
+	sxu32 nUsed;
+	while( (nUsed = SySetUsed(&pVm->aException)) > nExceptionBase ){
+		ph7_exception **apExc = (ph7_exception **)SySetBasePtr(&pVm->aException);
+		ph7_exception *pExc = apExc[nUsed - 1];
+		(void)SySetPop(&pVm->aException);
+		pExc->pFrame = 0;
+		VmLeaveFrame(&(*pVm));
+		if( pExc->iHasFinally && !pExc->iFinallyDone ){
+			pExc->iFinallyDone = 1;
+			if( VmLocalExec(&(*pVm),&pExc->sFinally,0,TRUE) == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+		}
+	}
+	return SXRET_OK;
+}
+/*
+ * Materialize a `return` issued inside a catch/finally mini-program: copy the
+ * deferred pVm->sCatchReturn into the enclosing function's result, clear the
+ * signal, and tear down any try frames left open above pEntryFrame whose
+ * OP_POP_EXCEPTION the return bypassed (bounded by pEntryFrame so a tangled
+ * exception-in-finally chain can't over-leave). Only the real function body
+ * (bReturnPropagates=FALSE) calls this; a nested mini-program leaves the signal
+ * set so it propagates outward to its own enclosing function.
+ */
+static void VmMaterializeCatchReturn(ph7_vm *pVm, ph7_value *pResult, VmFrame *pEntryFrame)
+{
+	if( pResult ){
+		PH7_MemObjStore(&pVm->sCatchReturn,pResult);
+	}
+	pVm->bReturnRequested = 0;
+	PH7_MemObjRelease(&pVm->sCatchReturn);
+	while( pVm->pFrame && pVm->pFrame != pEntryFrame ){
+		VmLeaveFrame(&(*pVm));
+	}
+}
+/*
  * Compare two functions signature and return the comparison result.
  */
 static int VmOverloadCompare(SyString *pFirst,SyString *pSecond)
@@ -832,7 +879,7 @@ static sxi32 VmMountUserClassAttrs(
 			}
 			if( SySetUsed(&pAttr->aByteCode) > 0 ){
 				/* Initialize attribute default value (any complex expression) */
-				VmLocalExec(&(*pVm),&pAttr->aByteCode,pMemObj);
+				VmLocalExec(&(*pVm),&pAttr->aByteCode,pMemObj,FALSE);
 			}
 			/* Record attribute index */
 			pAttr->nIdx = pMemObj->nIdx;
@@ -946,7 +993,7 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 			pVmAttr->pOwner = pClass;
 			if( SySetUsed(&pAttr->aByteCode) > 0 ){
 				/* Initialize attribute default value (any complex expression) */
-				VmLocalExec(&(*pVm),&pAttr->aByteCode,pMemObj);
+				VmLocalExec(&(*pVm),&pAttr->aByteCode,pMemObj,FALSE);
 			}else if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
 				/* Typed property without a default: mark uninitialized. Reading
 				 * it before the first write is an Error in PHP 7.4+. */
@@ -1804,6 +1851,9 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	}
 	/* Script return value */
 	PH7_MemObjInit(&(*pVm),&pVm->sExec); /* Assume a NULL return value */
+	/* Pending return value from a catch/finally block (see VmThrowException) */
+	PH7_MemObjInit(&(*pVm),&pVm->sCatchReturn);
+	pVm->bReturnRequested = 0;
 	/* Allocate a new operand stack */
 	pVm->aOps = VmNewOperandStack(&(*pVm),SySetUsed(pVm->pByteContainer));
 	if( pVm->aOps == 0 ){
@@ -2128,6 +2178,8 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	pVm->iPcreLastError = 0;
 #endif
 	pVm->iCmpCallbackExc = 0;
+	pVm->bReturnRequested = 0;
+	VmReinitMemObj(&(*pVm),&pVm->sCatchReturn);
 	pVm->bHaltRequested = 0;
 	pVm->iExitStatus = 0;
 	pVm->iSpreadExtra = 0;
@@ -4498,13 +4550,15 @@ static sxi32 VmByteCodeExec(
 	sxu32 *pLastRef,     /* Last referenced ph7_value index */
 	int is_callback,     /* TRUE if we are executing a callback */
 	sxi32 nPc,           /* Starting program counter (0 for normal, >0 for resume) */
-	ph7_vm_func *pEnforceRetFunc /* NULL except when this invocation is a user-fn body; when set, the terminating OP_DONE validates the return value against pEnforceRetFunc's declared type. */
+	ph7_vm_func *pEnforceRetFunc, /* NULL except when this invocation is a user-fn body; when set, the terminating OP_DONE validates the return value against pEnforceRetFunc's declared type. */
+	int bReturnPropagates /* TRUE only for a catch/finally mini-program: an explicit-return OP_DONE (iP2=1) defers its value to pVm->sCatchReturn for the enclosing try handler to return. */
 	)
 {
 	VmInstr *pInstr;
 	ph7_value *pTos;
 	SySet aArg;
 	sxu32 nExceptionBase; /* Exception stack depth at entry (for finally drain guard) */
+	VmFrame *pEntryFrame;  /* Active frame at entry (for return-unwind frame teardown) */
 	sxi32 pc;
 	sxi32 rc;
 	/* Argument container */
@@ -4515,6 +4569,7 @@ static sxi32 VmByteCodeExec(
 		pTos = &pStack[nTos];
 	}
 	nExceptionBase = SySetUsed(&pVm->aException);
+	pEntryFrame = pVm->pFrame;
 	pc = nPc;
 /*
  * Typed-property enforcement helper for compound stores. Called before
@@ -4555,6 +4610,25 @@ static sxi32 VmByteCodeExec(
  * and return immediately.
  */
 case PH7_OP_DONE:
+	if( pInstr->iP2 && bReturnPropagates ){
+		/* Explicit `return` inside a catch/finally mini-program. Defer the value
+		 * to pVm->sCatchReturn; the enclosing try's OP_THROW / OP_POP_EXCEPTION
+		 * handler materializes it into the function's result and returns. Drain
+		 * any finally opened within this body first (nested try/finally inside
+		 * the catch), which may itself override sCatchReturn. */
+		if( pInstr->iP1 && pTos >= pStack ){
+			PH7_MemObjStore(pTos,&pVm->sCatchReturn);
+			VmPopOperand(&pTos,1);
+		}else{
+			PH7_MemObjRelease(&pVm->sCatchReturn); /* bare `return;` -> null */
+		}
+		pVm->bReturnRequested = 1;
+		rc = VmDrainFinally(&(*pVm),nExceptionBase);
+		if( rc == SXERR_ABORT ){
+			goto Abort;
+		}
+		goto Done;
+	}
 	/* Return-type enforcement: only the user-function CALL handler (and
 	 * the fiber start/resume paths) set pEnforceRetFunc, so this branch is
 	 * skipped for default-value bytecode, class-method mini-programs,
@@ -4609,22 +4683,16 @@ case PH7_OP_DONE:
 	 * returning. Only drain entries above nExceptionBase to avoid interfering
 	 * with exception contexts from an outer VmByteCodeExec invocation.
 	 * This runs AFTER storing the return value so that 'return' in a finally
-	 * block can override it.
+	 * block can override it (the finally writes pVm->sCatchReturn, materialized
+	 * below).
 	 */
-	while( SySetUsed(&pVm->aException) > nExceptionBase ){
-		ph7_exception **apExc = (ph7_exception **)SySetBasePtr(&pVm->aException);
-		ph7_exception *pExc = apExc[SySetUsed(&pVm->aException) - 1];
-		(void)SySetPop(&pVm->aException);
-		pExc->pFrame = 0;
-		VmLeaveFrame(&(*pVm));
-		if( pExc->iHasFinally && !pExc->iFinallyDone ){
-			pExc->iFinallyDone = 1;
-			/* Pass pResult so that 'return' inside finally can override the value */
-			rc = VmLocalExec(&(*pVm),&pExc->sFinally,pResult);
-			if( rc == SXERR_ABORT ){
-				goto Abort;
-			}
-		}
+	rc = VmDrainFinally(&(*pVm),nExceptionBase);
+	if( rc == SXERR_ABORT ){
+		goto Abort;
+	}
+	if( pVm->bReturnRequested && !bReturnPropagates ){
+		/* A drained finally issued a 'return' that overrides this one. */
+		VmMaterializeCatchReturn(&(*pVm),pResult,pEntryFrame);
 	}
 	goto Done;
 /*
@@ -7819,10 +7887,23 @@ case PH7_OP_POP_EXCEPTION: {
 	if( pException->iHasFinally && !pException->iFinallyDone ){
 		sxi32 rcFinally;
 		pException->iFinallyDone = 1;
-		rcFinally = VmLocalExec(&(*pVm),&pException->sFinally,0);
+		rcFinally = VmLocalExec(&(*pVm),&pException->sFinally,0,TRUE);
 		if( rcFinally == SXERR_ABORT ){
 			goto Abort;
 		}
+	}
+	if( pVm->bReturnRequested ){
+		/* `return` inside the finally (normal try completion) returns from the
+		 * function. Drain outer finally blocks first, then — only in the real
+		 * function body — materialize; inside a mini-program propagate outward. */
+		rc = VmDrainFinally(&(*pVm),nExceptionBase);
+		if( rc == SXERR_ABORT ){
+			goto Abort;
+		}
+		if( !bReturnPropagates ){
+			VmMaterializeCatchReturn(&(*pVm),pResult,pEntryFrame);
+		}
+		goto Done;
 	}
 	break;
 							}
@@ -7902,7 +7983,10 @@ case PH7_OP_THROW: {
 	}
 	/* Pop the top entry */
 	VmPopOperand(&pTos,1);
-	/* Perform an unconditional jump */
+	/* Perform an unconditional jump to the try's OP_POP_EXCEPTION landing pad,
+	 * which tears down the try frame, runs finally, and (when a catch/finally
+	 * issued a `return`) consumes pVm->bReturnRequested. Routing the return
+	 * through OP_POP_EXCEPTION keeps the frame stack balanced. */
 	pc = nJump - 1;
 	break;
 				   }
@@ -8790,7 +8874,7 @@ case PH7_OP_SWITCH: {
 		pCase = &aCase[n];
 		PH7_MemObjLoad(pTos,&sValue);
 		/* Execute the case expression first */
-		VmLocalExec(pVm,&pCase->aByteCode,&sCaseValue);
+		VmLocalExec(pVm,&pCase->aByteCode,&sCaseValue,FALSE);
 		/* Compare the two expression */
 		rc = PH7_MemObjCmp(&sValue,&sCaseValue,FALSE,0);
 		PH7_MemObjRelease(&sValue);
@@ -8850,18 +8934,18 @@ case PH7_OP_MATCH: {
 			if( pCondBc == 0 ){
 				continue;
 			}
-			VmLocalExec(pVm,pCondBc,&sCond);
+			VmLocalExec(pVm,pCondBc,&sCond,FALSE);
 			rc = PH7_MemObjCmp(&sSubject,&sCond,TRUE /* strict */,0);
 			PH7_MemObjRelease(&sCond);
 			if( rc == 0 ){
-				VmLocalExec(pVm,&pArm->aResult,&sResult);
+				VmLocalExec(pVm,&pArm->aResult,&sResult,FALSE);
 				matched = 1;
 				break;
 			}
 		}
 	}
 	if( !matched && pDefault ){
-		VmLocalExec(pVm,&pDefault->aResult,&sResult);
+		VmLocalExec(pVm,&pDefault->aResult,&sResult,FALSE);
 		matched = 1;
 	}
 	if( !matched ){
@@ -9375,7 +9459,7 @@ case PH7_OP_CALL: {
 						PH7_MemObjInit(&(*pVm),pObj);
 						if( SySetUsed(&pStatic->aByteCode) > 0 ){
 							/* Evaluate initialization expression (Any complex expression) */
-							VmLocalExec(&(*pVm),&pStatic->aByteCode,pObj);
+							VmLocalExec(&(*pVm),&pStatic->aByteCode,pObj,FALSE);
 						}
 						pObj->nIdx = pStatic->nIdx;
 					}else{
@@ -9446,7 +9530,7 @@ case PH7_OP_CALL: {
 					/* NULL-to-default redirect (existing behavior) */
 					if( (pVal->iFlags & MEMOBJ_NULL) && SySetUsed(&aFormalArg[n].aByteCode) > 0
 						&& !(aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) ){
-						rc = VmLocalExec(&(*pVm),&aFormalArg[n].aByteCode,pVal);
+						rc = VmLocalExec(&(*pVm),&aFormalArg[n].aByteCode,pVal,FALSE);
 						if( rc == PH7_ABORT ) goto Abort;
 					}
 					/* Type checking: union types */
@@ -9585,7 +9669,7 @@ case PH7_OP_CALL: {
 					}else if( SySetUsed(&aFormalArg[n].aByteCode) > 0 ){
 						pObj = VmExtractMemObj(&(*pVm),&aFormalArg[n].sName,FALSE,TRUE);
 						if( pObj ){
-							rc = VmLocalExec(&(*pVm),&aFormalArg[n].aByteCode,pObj);
+							rc = VmLocalExec(&(*pVm),&aFormalArg[n].aByteCode,pObj,FALSE);
 							if( rc == PH7_ABORT ) goto Abort;
 							sArg.nIdx = pObj->nIdx;
 							sArg.pUserData = 0;
@@ -9765,7 +9849,7 @@ case PH7_OP_CALL: {
 				if( (pArg->iFlags & MEMOBJ_NULL) && SySetUsed(&aFormalArg[n].aByteCode) > 0
 					&& !(aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) ){
 					/* NULL values are redirected to default arguments (but not for nullable types) */
-					rc = VmLocalExec(&(*pVm),&aFormalArg[n].aByteCode,pArg);
+					rc = VmLocalExec(&(*pVm),&aFormalArg[n].aByteCode,pArg,FALSE);
 					if( rc == PH7_ABORT ){
 						goto Abort;
 					}
@@ -9967,7 +10051,7 @@ case PH7_OP_CALL: {
 				pObj = VmExtractMemObj(&(*pVm),&aFormalArg[n].sName,FALSE,TRUE);
 				if( pObj ){
 					/* Evaluate the default value and extract it's result */
-					rc = VmLocalExec(&(*pVm),&aFormalArg[n].aByteCode,pObj);
+					rc = VmLocalExec(&(*pVm),&aFormalArg[n].aByteCode,pObj,FALSE);
 					if( rc == PH7_ABORT ){
 						goto Abort;
 					}
@@ -10013,7 +10097,7 @@ SkipFuncBody:
 		if( rc != PH7_EXCEPTION ){
 			/* Execute function body */
 			rc = VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(&pVmFunc->aByteCode),pFrameStack,-1,pTos,&n,FALSE,0,
-				pVmFunc->nReturnType > 0 ? pVmFunc : 0);
+				pVmFunc->nReturnType > 0 ? pVmFunc : 0, FALSE);
 		}
 		/* Decrement nesting level */
 		pVm->nRecursionDepth--;
@@ -10256,7 +10340,7 @@ Exception:
  * This function is a wrapper around [VmByteCodeExec()].
  * See block-comment on that function for additional information.
  */
-PH7_PRIVATE sxi32 VmLocalExec(ph7_vm *pVm,SySet *pByteCode,ph7_value *pResult)
+PH7_PRIVATE sxi32 VmLocalExec(ph7_vm *pVm,SySet *pByteCode,ph7_value *pResult,int bReturnPropagates)
 {
 	ph7_value *pStack;
 	sxi32 rc;
@@ -10266,7 +10350,7 @@ PH7_PRIVATE sxi32 VmLocalExec(ph7_vm *pVm,SySet *pByteCode,ph7_value *pResult)
 		return SXERR_MEM;
 	}
 	/* Execute the program */
-	rc = VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(pByteCode),pStack,-1,&(*pResult),0,FALSE,0,0);
+	rc = VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(pByteCode),pStack,-1,&(*pResult),0,FALSE,0,0,bReturnPropagates);
 	/* Free the operand stack */
 	SyMemBackendFree(&pVm->sAllocator,pStack);
 	/* Execution result */
@@ -10342,7 +10426,7 @@ PH7_PRIVATE sxi32 PH7_VmByteCodeExec(ph7_vm *pVm)
 	/* Set the execution magic number  */
 	pVm->nMagic = PH7_VM_EXEC;
 	/* Execute the program */
-	VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(pVm->pByteContainer),pVm->aOps,-1,&pVm->sExec,0,FALSE,0,0);
+	VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(pVm->pByteContainer),pVm->aOps,-1,&pVm->sExec,0,FALSE,0,0,FALSE);
 	/* Invoke any shutdown callbacks */
 	VmInvokeShutdownCallbacks(&(*pVm));
 	/*
@@ -10418,7 +10502,7 @@ static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
 	/* Execute from the beginning */
 	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),
 		pCtx->pStack, -1, &pCtx->sRetValue, 0, FALSE, 0,
-		pCtx->pFunc->nReturnType > 0 ? pCtx->pFunc : 0);
+		pCtx->pFunc->nReturnType > 0 ? pCtx->pFunc : 0, FALSE);
 	pVm->nRecursionDepth--;
 	/* Restore the previous context */
 	pVm->pActiveCtx = pOldCtx;
@@ -10486,7 +10570,7 @@ static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValu
 	/* Resume execution from saved PC */
 	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),
 		pCtx->pStack, pCtx->nTos, &pCtx->sRetValue, 0, FALSE, pCtx->pc,
-		pCtx->pFunc->nReturnType > 0 ? pCtx->pFunc : 0);
+		pCtx->pFunc->nReturnType > 0 ? pCtx->pFunc : 0, FALSE);
 	pVm->nRecursionDepth--;
 	/* Restore the previous context */
 	pVm->pActiveCtx = pOldCtx;
@@ -10733,7 +10817,7 @@ static sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 				SyHashInsert(&pExecCtx->pFrame->hVar, aStatic[n].sName.zString,
 					aStatic[n].sName.nByte, SX_INT_TO_PTR(sSlot.nIdx));
 				if( SySetUsed(&aStatic[n].aByteCode) > 0 ){
-					VmLocalExec(pVm, &aStatic[n].aByteCode, pVal);
+					VmLocalExec(pVm, &aStatic[n].aByteCode, pVal,FALSE);
 				}
 			}
 		}
@@ -10765,7 +10849,7 @@ static sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 			/* Default value */
 			pObj = VmExtractMemObj(pVm, &aFormalArg[n].sName, FALSE, TRUE);
 			if( pObj ){
-				rc = VmLocalExec(pVm, &aFormalArg[n].aByteCode, pObj);
+				rc = VmLocalExec(pVm, &aFormalArg[n].aByteCode, pObj,FALSE);
 				if( rc == SXERR_ABORT ){
 					return rc;
 				}
@@ -11601,7 +11685,7 @@ PH7_PRIVATE void PH7_VmExpandConstantValue(ph7_value *pVal,void *pUserData)
 {
 	SySet *pByteCode = (SySet *)pUserData;
 	/* Evaluate and expand constant value */
-	VmLocalExec((ph7_vm *)SySetGetUserData(pByteCode),pByteCode,(ph7_value *)pVal);
+	VmLocalExec((ph7_vm *)SySetGetUserData(pByteCode),pByteCode,(ph7_value *)pVal,FALSE);
 }
 /*
  * Section:
@@ -12130,7 +12214,7 @@ static sxi32 VmCallClassMethodWithMap(
 	aInstr[1].iP1 = 1;
 	aInstr[1].iP2 = 0;
 	aInstr[1].p3  = 0;
-	rc = VmByteCodeExec(&(*pVm),aInstr,aStack,iCursor,pResult,0,TRUE,0,0);
+	rc = VmByteCodeExec(&(*pVm),aInstr,aStack,iCursor,pResult,0,TRUE,0,0,FALSE);
 	SyMemBackendFree(&pVm->sAllocator,aStack);
 	/* Propagate the real exec status (PH7_EXCEPTION / PH7_ABORT) so callers
 	 * can unwind instead of continuing past a method that raised. */
@@ -12472,7 +12556,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunction(
 	/* Execute the function body (if available) */
 	{
 		sxi32 rcExec;
-		rcExec = VmByteCodeExec(&(*pVm),aInstr,aStack,nArg,pResult,0,TRUE,0,0);
+		rcExec = VmByteCodeExec(&(*pVm),aInstr,aStack,nArg,pResult,0,TRUE,0,0,FALSE);
 		/* Clean up the mess left behind */
 		SyMemBackendFree(&pVm->sAllocator,aStack);
 		/* Propagate PH7_EXCEPTION/PH7_ABORT so a callback that raised unwinds. */
@@ -14312,6 +14396,12 @@ static sxi32 VmThrowException(
 	 * disarm so the RHS-evaluation throw can't leave the slot live for a
 	 * later unrelated NULLC_STORE (stale offsetSet) or leak the instance ref. */
 	VmCoalesceDisarm(pVm);
+	/* A fresh throw supersedes any pending catch/finally return (PHP: an
+	 * exception thrown in a catch/finally discards an earlier `return`). */
+	if( pVm->bReturnRequested ){
+		pVm->bReturnRequested = 0;
+		PH7_MemObjRelease(&pVm->sCatchReturn);
+	}
 	/* Point to the stack of loaded exceptions */
 	apException = (ph7_exception **)SySetBasePtr(&pVm->aException);
 	pException = 0;
@@ -14359,7 +14449,7 @@ static sxi32 VmThrowException(
 		/* No catch matched. Execute finally, then propagate to outer try/catch. */
 		if( pException && pException->iHasFinally ){
 			pException->iFinallyDone = 1;
-			rc = VmLocalExec(&(*pVm),&pException->sFinally,0);
+			rc = VmLocalExec(&(*pVm),&pException->sFinally,0,TRUE);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
@@ -14453,7 +14543,7 @@ static sxi32 VmThrowException(
 				MemObjSetType(pObj,MEMOBJ_OBJ);
 			}
 			/* Execute the catch block */
-			rc = VmLocalExec(&(*pVm),&pCatch->sByteCode,0);
+			rc = VmLocalExec(&(*pVm),&pCatch->sByteCode,0,TRUE);
 			/* Leave the frame */
 			VmLeaveFrame(&(*pVm));
 		}
@@ -14474,7 +14564,7 @@ static sxi32 VmThrowException(
 		if( pException->iHasFinally ){
 			pException->iFinallyDone = 1;
 			{
-				sxi32 rcf = VmLocalExec(&(*pVm),&pException->sFinally,0);
+				sxi32 rcf = VmLocalExec(&(*pVm),&pException->sFinally,0,TRUE);
 				if( rcf == SXERR_ABORT ){
 					return SXERR_ABORT;
 				}
@@ -14485,12 +14575,19 @@ static sxi32 VmThrowException(
 		}
 		/* If the catch body re-threw, the exception was deferred in
 		 * pPendingException (because outer handlers were hidden).
-		 * Now that finally has run and handlers are restored, re-throw.
+		 * Now that finally has run and handlers are restored, re-throw —
+		 * unless the finally itself issued a `return`, which swallows the
+		 * in-flight exception (PHP semantics).
 		 */
 		if( pVm->pPendingException ){
-			ph7_class_instance *pReThrow = pVm->pPendingException;
+			if( !pVm->bReturnRequested ){
+				ph7_class_instance *pReThrow = pVm->pPendingException;
+				pVm->pPendingException = 0;
+				return VmThrowException(&(*pVm),pReThrow);
+			}
+			/* Swallowed by finally's return: drop the deferred exception. */
+			PH7_ClassInstanceUnref(pVm->pPendingException);
 			pVm->pPendingException = 0;
-			return VmThrowException(&(*pVm),pReThrow);
 		}
 	}
 	/* TICKET 1433-60: Do not release the 'pException' pointer since it may
@@ -15404,7 +15501,7 @@ static sxi32 VmEvalChunk(
 			goto Cleanup;
 		}
 		pVm->nRecursionDepth++;
-		VmLocalExec(pVm,&aByteCode,&sResult);
+		VmLocalExec(pVm,&aByteCode,&sResult,FALSE);
 		pVm->nRecursionDepth--;
 		if( pCtx ){
 			/* Set the execution result */
