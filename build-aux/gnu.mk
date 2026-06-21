@@ -33,6 +33,16 @@ MODE_LDFLAGS = $($(MODE)_LDFLAGS)
 
 PHP_BIN ?= $(shell command -v php)$(BIN_SUFFIX)
 
+# Optional test-shard selector (e.g. SHARD=2/4); empty = run all tests.
+# Lets CI fan a slow run (coverage) across parallel workers.
+SHARD ?=
+SHARD_FLAG = $(if $(SHARD),--shard $(SHARD))
+
+# Coverage collection wrappers for the test recipes. gcov instruments at compile
+# time, so running the MODE=coverage build just emits .gcda -- no wrapper needed.
+COVERAGE_RUN_SMOKE =
+COVERAGE_RUN_INTEGRATION =
+
 MODE_OBJECTS = $(patsubst $(BUILD_DIR)/src/%,$(BUILD_DIR)/$(MODE)/src/%,$(OBJECTS))
 
 $(PHL_BIN): $(MODE_OBJECTS)
@@ -43,10 +53,11 @@ $(BUILD_DIR)-clean:
 
 # COVERAGE
 # --------
+# coverage-report only *arranges* data already gathered by `make MODE=coverage
+# test*` (which emits .gcda). lcov captures whatever .gcda exist -- a full run or
+# a single shard.
 
 $(BUILD_DIR)/coverage/coverage.info: .ALWAYS $(PHL_BIN)
-	@$(TEST_SMOKE_CMD)
-	@$(TEST_INTEGRATION_CMD)
 	@lcov --capture --rc geninfo_unexecuted_blocks=1 --quiet \
 		--ignore-errors unsupported,unsupported \
 		--include 'src/ph7/*' --include 'src/sx/*' --include 'src/phl/*' --directory $(BUILD_DIR) \
