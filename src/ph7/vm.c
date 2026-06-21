@@ -4444,6 +4444,39 @@ static sxi32 VmResolveNamedArgs(
 	return SXRET_OK;
 }
 /*
+ * Is this value an object implementing Traversable (Iterator / IteratorAggregate
+ * / Generator)? Used by the spread sites to decide whether to unpack it.
+ */
+static int VmValueIsTraversable(ph7_vm *pVm, ph7_value *pVal)
+{
+	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 || pVal->x.pOther == 0 || pVm->pTraversableClass == 0 ){
+		return 0;
+	}
+	return PH7_VmInstanceOf(((ph7_class_instance *)pVal->x.pOther)->pClass, pVm->pTraversableClass);
+}
+/*
+ * PH7_VmIteratorWalk step for array-literal Traversable spread `[...$it]`:
+ * merge each element with PHP 8.1 array-unpack key rules — string keys are
+ * preserved (later wins), integer keys are renumbered.
+ */
+static sxi32 VmSpreadMergeStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue, void *pUserData)
+{
+	ph7_hashmap *pMap = (ph7_hashmap *)pUserData;
+	(void)pVm;
+	PH7_HashmapInsert(pMap, (pKey->iFlags & MEMOBJ_STRING) ? pKey : 0 /* auto-index */, pValue);
+	return SXRET_OK;
+}
+/*
+ * PH7_VmIteratorWalk step for call-argument Traversable spread `f(...$it)`:
+ * collect values positionally (keys ignored) into a temp array.
+ */
+static sxi32 VmSpreadValuesStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue, void *pUserData)
+{
+	(void)pVm; (void)pKey;
+	PH7_HashmapInsert((ph7_hashmap *)pUserData, 0 /* auto-index */, pValue);
+	return SXRET_OK;
+}
+/*
  * Execute as much of a PH7 bytecode program as we can then return.
  *
  * [PH7_VmMakeReady()] must be called before this routine in order to
@@ -5132,6 +5165,14 @@ case PH7_OP_LOAD_MAP: {
 						VmErrorFormat(&(*pVm),PH7_CTX_ERR,
 							"Fatal, PH7 engine is running out of memory while spreading array at instruction #:%d",pc);
 						rcSpread = PH7_ABORT;
+						break;
+					}
+				}else if( VmValueIsTraversable(pVm,&pEntry[1]) ){
+					/* Traversable unpacking (PHP 8.1): walk it into the map using the
+					 * same key rules as array spread (string keys kept, int renumbered). */
+					sxi32 rcW = PH7_VmIteratorWalk(&(*pVm),&pEntry[1],VmSpreadMergeStep,pMap);
+					if( rcW == PH7_EXCEPTION || rcW == PH7_ABORT ){
+						rcSpread = rcW;
 						break;
 					}
 				}else{
@@ -7159,6 +7200,50 @@ case PH7_OP_SPREAD: {
 		goto Abort;
 	}
 #endif
+	/* Traversable argument unpacking f(...$it): materialize the iterator into a
+	 * temp array (positional values), then expand it onto the operand stack
+	 * like an array. Materialising first leaves the stack untouched until the
+	 * walk succeeds; values are deep-copied (PH7_MemObjStore) so the temp can
+	 * be freed immediately. */
+	if( VmValueIsTraversable(pVm,pTos) ){
+		ph7_hashmap *pTmpMap = PH7_NewHashmap(&(*pVm),0,0);
+		sxi32 rcW;
+		sxu32 nEnt;
+		if( pTmpMap == 0 ){ goto Abort; }
+		rcW = PH7_VmIteratorWalk(&(*pVm),pTos,VmSpreadValuesStep,pTmpMap);
+		if( rcW == PH7_EXCEPTION || rcW == PH7_ABORT ){
+			PH7_HashmapRelease(pTmpMap,TRUE);
+			if( rcW == PH7_ABORT ){ goto Abort; }
+			goto Exception;
+		}
+		nEnt = pTmpMap->nEntry;
+		if( nEnt == 0 ){
+			VmPopOperand(&pTos,1);
+			pVm->iSpreadExtra--;
+		}else if( pVm->iSpreadExtra + (sxi32)(nEnt - 1) >= VM_STACK_GUARD ){
+			VmErrorFormat(&(*pVm), PH7_CTX_ERR,
+				"Argument unpacking: cumulative expansion exceeds stack guard (%d)", VM_STACK_GUARD);
+		}else{
+			ph7_hashmap_node *pNodeT = pTmpMap->pFirst;
+			ph7_value *pElemT;
+			sxu32 iT;
+			pElemT = (ph7_value *)SySetAt(&pVm->aMemObj, pNodeT->nValIdx);
+			if( pElemT ){ PH7_MemObjStore(pElemT, pTos); }else{ PH7_MemObjRelease(pTos); }
+			pTos->nIdx = SXU32_HIGH;
+			pNodeT = pNodeT->pPrev;
+			for( iT = 1; iT < nEnt; iT++ ){
+				pTos++;
+				PH7_MemObjInit(pVm, pTos);
+				pTos->nIdx = SXU32_HIGH;
+				pElemT = (ph7_value *)SySetAt(&pVm->aMemObj, pNodeT->nValIdx);
+				if( pElemT ){ PH7_MemObjStore(pElemT, pTos); }
+				pNodeT = pNodeT->pPrev;
+			}
+			pVm->iSpreadExtra += (sxi32)(nEnt - 1);
+		}
+		PH7_HashmapRelease(pTmpMap,TRUE);
+		break;
+	}
 	if( pTos->iFlags & MEMOBJ_HASHMAP ){
 		ph7_hashmap *pMap = (ph7_hashmap *)pTos->x.pOther;
 		sxu32 nEntry = pMap->nEntry;
@@ -12061,6 +12146,113 @@ PH7_PRIVATE sxi32 PH7_VmCallClassMethod(
 	)
 {
 	return VmCallClassMethodWithMap(pVm,pThis,pMethod,pResult,nArg,apArg,0);
+}
+/*
+ * Helper for PH7_VmIteratorWalk: call a zero-arg Iterator method by name,
+ * returning its result. Returns the exec status so a method that throws
+ * (PH7_EXCEPTION) or aborts (PH7_ABORT) is propagated — unlike the foreach
+ * opcode, which discards it.
+ */
+static sxi32 VmIterCallMethod(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,sxu32 nLen,ph7_value *pResult)
+{
+	ph7_class_method *pMethod = PH7_ClassExtractMethod(pThis->pClass,zName,nLen);
+	if( pMethod == 0 ){
+		return SXRET_OK; /* missing method: treat as no-op (mirrors foreach leniency) */
+	}
+	return PH7_VmCallClassMethod(&(*pVm),pThis,pMethod,pResult,0,0);
+}
+/*
+ * Walk a Traversable (Iterator / IteratorAggregate / Generator), invoking xStep
+ * for each (key,value) pair. This is the reusable form of the Iterator protocol
+ * that the foreach opcode drives inline; it is consumed by iterator_to_array /
+ * iterator_count / iterator_apply and by Traversable spread.
+ *
+ * Returns:
+ *   SXRET_OK            walk completed (or xStep stopped early via SXERR_EOF)
+ *   SXERR_NOTIMPLEMENTED pObj is not a Traversable (caller raises a TypeError)
+ *   PH7_EXCEPTION       an iterator method or the step threw
+ *   PH7_ABORT           an iterator method or the step requested a VM halt
+ *
+ * pKey/pValue handed to xStep are owned by the walk (released after the step
+ * returns); xStep must copy what it needs.
+ */
+PH7_PRIVATE sxi32 PH7_VmIteratorWalk(ph7_vm *pVm,ph7_value *pObj,ProcIterStep xStep,void *pUserData)
+{
+	ph7_class_instance *pThis;        /* the live Iterator (after aggregate resolution) */
+	ph7_class_instance *pAggregate = 0;
+	ph7_class *pIteratorClass;
+	sxi32 rc = SXRET_OK;
+	if( (pObj->iFlags & MEMOBJ_OBJ) == 0 || pObj->x.pOther == 0 ){
+		return SXERR_NOTIMPLEMENTED;
+	}
+	pThis = (ph7_class_instance *)pObj->x.pOther;
+	pIteratorClass = PH7_VmExtractClass(&(*pVm),"Iterator",sizeof("Iterator")-1,FALSE,0);
+	if( pIteratorClass == 0 ){
+		return SXERR_NOTIMPLEMENTED;
+	}
+	if( PH7_VmInstanceOf(pThis->pClass,pIteratorClass) ){
+		pThis->iRef++; /* keep the iterator alive across the walk */
+	}else{
+		/* Maybe an IteratorAggregate: resolve its inner Iterator via getIterator() */
+		ph7_class *pAggClass = PH7_VmExtractClass(&(*pVm),"IteratorAggregate",sizeof("IteratorAggregate")-1,FALSE,0);
+		ph7_value sInner;
+		int bOk = 0;
+		if( pAggClass == 0 || !PH7_VmInstanceOf(pThis->pClass,pAggClass) ){
+			return SXERR_NOTIMPLEMENTED; /* not Traversable at all */
+		}
+		PH7_MemObjInit(&(*pVm),&sInner);
+		rc = VmIterCallMethod(pVm,pThis,"getIterator",sizeof("getIterator")-1,&sInner);
+		if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
+			PH7_MemObjRelease(&sInner);
+			return rc;
+		}
+		if( (sInner.iFlags & MEMOBJ_OBJ) && sInner.x.pOther ){
+			ph7_class_instance *pIter = (ph7_class_instance *)sInner.x.pOther;
+			if( PH7_VmInstanceOf(pIter->pClass,pIteratorClass) ){
+				pAggregate = pThis; pAggregate->iRef++; /* keep the aggregate alive */
+				pThis = pIter; pThis->iRef++;           /* survive release of sInner */
+				bOk = 1;
+			}
+		}
+		PH7_MemObjRelease(&sInner);
+		if( !bOk ){
+			/* getIterator() returned a non-Iterator: surface as not-a-Traversable */
+			return SXERR_NOTIMPLEMENTED;
+		}
+	}
+	/* Drive rewind / valid / current / key / step / next */
+	rc = VmIterCallMethod(pVm,pThis,"rewind",sizeof("rewind")-1,0);
+	if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){ goto done; }
+	for(;;){
+		ph7_value sValid,sValue,sKey;
+		int isValid;
+		PH7_MemObjInit(&(*pVm),&sValid);
+		rc = VmIterCallMethod(pVm,pThis,"valid",sizeof("valid")-1,&sValid);
+		if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){ PH7_MemObjRelease(&sValid); goto done; }
+		PH7_MemObjToBool(&sValid);
+		isValid = (sValid.x.iVal != 0);
+		PH7_MemObjRelease(&sValid);
+		if( !isValid ){ rc = SXRET_OK; break; }
+		PH7_MemObjInit(&(*pVm),&sValue);
+		rc = VmIterCallMethod(pVm,pThis,"current",sizeof("current")-1,&sValue);
+		if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){ PH7_MemObjRelease(&sValue); goto done; }
+		PH7_MemObjInit(&(*pVm),&sKey);
+		rc = VmIterCallMethod(pVm,pThis,"key",sizeof("key")-1,&sKey);
+		if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){ PH7_MemObjRelease(&sValue); PH7_MemObjRelease(&sKey); goto done; }
+		rc = xStep(&(*pVm),&sKey,&sValue,pUserData);
+		PH7_MemObjRelease(&sValue);
+		PH7_MemObjRelease(&sKey);
+		if( rc != SXRET_OK ){
+			if( rc == SXERR_EOF ){ rc = SXRET_OK; } /* early stop is success */
+			goto done;
+		}
+		rc = VmIterCallMethod(pVm,pThis,"next",sizeof("next")-1,0);
+		if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){ goto done; }
+	}
+done:
+	PH7_ClassInstanceUnref(pThis);
+	if( pAggregate ){ PH7_ClassInstanceUnref(pAggregate); }
+	return rc;
 }
 /*
  * Dispatch a call to an object's __invoke magic method, forwarding arguments

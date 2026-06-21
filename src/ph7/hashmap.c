@@ -7412,9 +7412,153 @@ static int ph7_hashmap_all(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
+ * The iterator_*() family — walk a Traversable via the shared PH7_VmIteratorWalk
+ * helper (the reusable form of the foreach Iterator protocol).
+ */
+/* Step shared by iterator_to_array (pArray set) and iterator_count (pArray NULL). */
+struct IterCollect { ph7_value *pArray; int bPreserve; sxi64 nCount; };
+static sxi32 IterCollectStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue, void *pUserData)
+{
+	struct IterCollect *p = (struct IterCollect *)pUserData;
+	(void)pVm;
+	p->nCount++;
+	if( p->pArray ){
+		/* preserve_keys: insert with the iterator key (later wins on collision);
+		 * otherwise append with an auto-assigned int index. */
+		ph7_array_add_elem(p->pArray, p->bPreserve ? pKey : 0, pValue);
+	}
+	return SXRET_OK;
+}
+/*
+ * array iterator_to_array(Traversable|array $iterator, bool $preserve_keys = true)
+ */
+static int ph7_iterator_to_array(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	struct IterCollect sCol;
+	ph7_value *pArray;
+	sxi32 rc;
+	if( nArg < 1 ){ ph7_result_null(pCtx); return PH7_OK; }
+	pArray = ph7_context_new_array(pCtx);
+	if( pArray == 0 ){ ph7_result_null(pCtx); return PH7_OK; }
+	sCol.pArray = pArray;
+	sCol.bPreserve = (nArg > 1) ? ph7_value_to_bool(apArg[1]) : 1;
+	sCol.nCount = 0;
+	if( ph7_value_is_array(apArg[0]) ){
+		/* PHP 8.2 accepts a plain array: copy it (preserving or renumbering keys). */
+		ph7_hashmap *pMap = (ph7_hashmap *)apArg[0]->x.pOther;
+		ph7_hashmap_node *pEntry = pMap->pFirst;
+		sxu32 n;
+		for( n = 0 ; n < pMap->nEntry ; n++ ){
+			ph7_value sKey, *pVal;
+			PH7_MemObjInit(pCtx->pVm,&sKey);
+			PH7_HashmapExtractNodeKey(pEntry,&sKey);
+			pVal = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pEntry->nValIdx);
+			if( pVal ){ ph7_array_add_elem(pArray, sCol.bPreserve ? &sKey : 0, pVal); }
+			PH7_MemObjRelease(&sKey);
+			pEntry = pEntry->pPrev;
+		}
+		ph7_result_value(pCtx,pArray);
+		return PH7_OK;
+	}
+	rc = PH7_VmIteratorWalk(pCtx->pVm, apArg[0], IterCollectStep, &sCol);
+	if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){ return rc; }
+	if( rc == SXERR_NOTIMPLEMENTED ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"iterator_to_array(): Argument #1 ($iterator) must be of type Traversable|array, %s given",
+			ph7_type_name(apArg[0]));
+	}
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/*
+ * int iterator_count(Traversable|array $iterator)
+ */
+static int ph7_iterator_count(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	struct IterCollect sCol;
+	sxi32 rc;
+	if( nArg < 1 ){ ph7_result_int(pCtx,0); return PH7_OK; }
+	if( ph7_value_is_array(apArg[0]) ){
+		ph7_result_int64(pCtx, (ph7_int64)((ph7_hashmap *)apArg[0]->x.pOther)->nEntry);
+		return PH7_OK;
+	}
+	sCol.pArray = 0; sCol.bPreserve = 0; sCol.nCount = 0;
+	rc = PH7_VmIteratorWalk(pCtx->pVm, apArg[0], IterCollectStep, &sCol);
+	if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){ return rc; }
+	if( rc == SXERR_NOTIMPLEMENTED ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"iterator_count(): Argument #1 ($iterator) must be of type Traversable|array, %s given",
+			ph7_type_name(apArg[0]));
+	}
+	ph7_result_int64(pCtx, sCol.nCount);
+	return PH7_OK;
+}
+/* iterator_apply step: call the fixed callback with $args each iteration. The
+ * arg pointers are resolved fresh per step because the iterator's own methods
+ * run user code between iterations and may reallocate the aMemObj pool. */
+struct IterApply { ph7_value *pCallback; ph7_value *pArgsArray; sxi64 nCount; };
+static sxi32 IterApplyStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue, void *pUserData)
+{
+	struct IterApply *p = (struct IterApply *)pUserData;
+	ph7_value sResult;
+	SySet aArg;
+	sxi32 rc;
+	int bContinue;
+	(void)pKey; (void)pValue; /* iterator_apply does NOT pass the element to the callback */
+	SySetInit(&aArg,&pVm->sAllocator,sizeof(ph7_value *));
+	if( p->pArgsArray && (p->pArgsArray->iFlags & MEMOBJ_HASHMAP) ){
+		ph7_hashmap *pMap = (ph7_hashmap *)p->pArgsArray->x.pOther;
+		ph7_hashmap_node *pEntry = pMap->pFirst;
+		sxu32 n;
+		for( n = 0 ; n < pMap->nEntry ; n++ ){
+			ph7_value *pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nValIdx);
+			if( pVal ){ SySetPut(&aArg,(const void *)&pVal); }
+			pEntry = pEntry->pPrev;
+		}
+	}
+	PH7_MemObjInit(pVm,&sResult);
+	rc = PH7_VmCallUserFunction(pVm, p->pCallback, (int)SySetUsed(&aArg),
+		(ph7_value **)SySetBasePtr(&aArg), &sResult);
+	SySetRelease(&aArg);
+	if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){ PH7_MemObjRelease(&sResult); return rc; }
+	p->nCount++;
+	PH7_MemObjToBool(&sResult);
+	bContinue = (sResult.x.iVal != 0);
+	PH7_MemObjRelease(&sResult);
+	return bContinue ? SXRET_OK : SXERR_EOF; /* falsy return stops iteration */
+}
+/*
+ * int iterator_apply(Traversable $iterator, callable $callback, array $args = [])
+ */
+static int ph7_iterator_apply(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	struct IterApply sApp;
+	sxi32 rc;
+	if( nArg < 2 ){ ph7_result_int(pCtx,0); return PH7_OK; }
+	if( !ph7_value_is_callable(apArg[1]) ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"iterator_apply(): Argument #2 ($callback) must be a valid callback");
+	}
+	sApp.pCallback = apArg[1];
+	sApp.pArgsArray = (nArg > 2 && ph7_value_is_array(apArg[2])) ? apArg[2] : 0;
+	sApp.nCount = 0;
+	rc = PH7_VmIteratorWalk(pCtx->pVm, apArg[0], IterApplyStep, &sApp);
+	if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){ return rc; }
+	if( rc == SXERR_NOTIMPLEMENTED ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"iterator_apply(): Argument #1 ($iterator) must be of type Traversable, %s given",
+			ph7_type_name(apArg[0]));
+	}
+	ph7_result_int64(pCtx, sApp.nCount);
+	return PH7_OK;
+}
+/*
  * Table of hashmap functions.
  */
 static const ph7_builtin_func aHashmapFunc[] = {
+	{"iterator_to_array",  ph7_iterator_to_array },
+	{"iterator_count",     ph7_iterator_count },
+	{"iterator_apply",     ph7_iterator_apply },
 	{"count",             ph7_hashmap_count },
 	{"sizeof",            ph7_hashmap_count },
 	{"array_key_exists",  ph7_hashmap_key_exists },
