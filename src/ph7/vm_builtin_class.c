@@ -614,7 +614,7 @@ PH7_PRIVATE int vm_builtin_get_class_vars(ph7_context *pCtx,int nArg,ph7_value *
 				if( SySetUsed(&pAttr->aByteCode) > 0 ){
 					PH7_MemObjRelease(&sValue);
 					/* Compute default value (any complex expression) associated with this attribute */
-					VmLocalExec(pCtx->pVm,&pAttr->aByteCode,&sValue);
+					VmLocalExec(pCtx->pVm,&pAttr->aByteCode,&sValue,FALSE);
 					pValue = &sValue;
 				}
 			}

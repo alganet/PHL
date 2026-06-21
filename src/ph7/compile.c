@@ -4622,8 +4622,12 @@ static sxi32 PH7_CompileReturn(ph7_gen_state *pGen)
 			nRet = 1;
 		}
 	}
-	/* Emit the done instruction */
-	PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,nRet,0,0,0);
+	/* Emit the done instruction. iP2=1 marks an explicit `return`: when this
+	 * OP_DONE terminates a catch/finally mini-program (run via VmLocalExec with
+	 * bReturnPropagates), the VM must return from the enclosing function rather
+	 * than fall through. Terminal catch/finally DONEs keep iP2=0 (fall-through),
+	 * so the VM can tell a real `return` from the body simply ending. */
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,nRet,1,0,0);
 	return SXRET_OK;
 }
 /*
