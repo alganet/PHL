@@ -80,11 +80,11 @@ Coverage: 452/467 lines (96.79%)
 |    - |   70 | ` *  Returns the next lowest integer value by rounding down value if necessary.` |
 |    - |   71 | ` */` |
 |   18 |   72 | `PH7_PRIVATE int PH7_builtin_floor(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    2 |   73 |  |
+|    4 |   73 |  |
 |    - |   74 | `	double r,x;` |
 |    - |   75 | `	/* PHP requires exactly one argument. */` |
-|   20 |   76 | `	if( nArg != 1 ){` |
-|    7 |   77 | `		return PH7_VmThrowException(pCtx,` |
+|   22 |   76 | `	if( nArg != 1 ){` |
+|    8 |   77 | `		return PH7_VmThrowException(pCtx,` |
 |    - |   78 | `			"ArgumentCountError",` |
 |    - |   79 | `			"floor() expects exactly 1 argument, %d given",` |
 |    2 |   80 | `			nArg` |
@@ -125,7 +125,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  115 | `	/* store the result back */` |
 |   13 |  116 | `	ph7_result_double(pCtx,r);` |
 |   13 |  117 | `	return PH7_OK;` |
-|   11 |  118 |  |
+|   13 |  118 |  |
 |    - |  119 | `/*` |
 |    - |  120 | ` * float cos(float $arg )` |
 |    - |  121 | ` *  Cosine.` |
@@ -158,10 +158,10 @@ Coverage: 452/467 lines (96.79%)
 |    - |  148 | ` *  The arc cosine of arg.` |
 |    - |  149 | ` */` |
 |   22 |  150 | `PH7_PRIVATE int PH7_builtin_acos(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    2 |  151 |  |
+|    4 |  151 |  |
 |    - |  152 | `	double r, x;` |
 |    - |  153 | `	/* PHP enforces exactly one argument and a floatable parameter. */` |
-|   24 |  154 | `	if( nArg != 1 ){` |
+|   26 |  154 | `	if( nArg != 1 ){` |
 |    4 |  155 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  156 | `			"ArgumentCountError",` |
 |    - |  157 | `			"acos() expects exactly 1 argument, %d given",` |
@@ -171,8 +171,8 @@ Coverage: 452/467 lines (96.79%)
 |    - |  161 | `	/* Type checking: reject non-numeric values (arrays, objects, resources, strings)` |
 |    - |  162 | `	 * PHP8 reports a TypeError for wrong types.  Numeric strings are allowed but` |
 |    - |  163 | `	 * the float conversion will handle them. */` |
-|   22 |  164 | `	if( !ph7_value_is_numeric(apArg[0]) ){` |
-|    7 |  165 | `		return PH7_VmThrowException(pCtx,` |
+|   23 |  164 | `	if( !ph7_value_is_numeric(apArg[0]) ){` |
+|    8 |  165 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  166 | `			"TypeError",` |
 |    - |  167 | `			"acos(): Argument #1 ($num) must be of type float, %s given",` |
 |    2 |  168 | `			ph7_type_name(apArg[0])` |
@@ -189,7 +189,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  179 | `	/* store the result back */` |
 |   17 |  180 | `	ph7_result_double(pCtx,r);` |
 |   17 |  181 | `	return PH7_OK;` |
-|   13 |  182 |  |
+|   15 |  182 |  |
 |    - |  183 | `/*` |
 |    - |  184 | ` * float cosh(float $arg )` |
 |    - |  185 | ` *  Hyperbolic cosine.` |
@@ -245,10 +245,10 @@ Coverage: 452/467 lines (96.79%)
 |    - |  235 | ` *  The arc sine of arg.` |
 |    - |  236 | ` */` |
 |   22 |  237 | `PH7_PRIVATE int PH7_builtin_asin(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    2 |  238 |  |
+|    4 |  238 |  |
 |    - |  239 | `	double r, x;` |
 |    - |  240 | `	/* PHP enforces exactly one argument and a floatable parameter. */` |
-|   24 |  241 | `	if( nArg != 1 ){` |
+|   26 |  241 | `	if( nArg != 1 ){` |
 |    4 |  242 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  243 | `			"ArgumentCountError",` |
 |    - |  244 | `			"asin() expects exactly 1 argument, %d given",` |
@@ -258,8 +258,8 @@ Coverage: 452/467 lines (96.79%)
 |    - |  248 | `	/* Type checking: reject non-numeric values (arrays, objects, resources, strings)` |
 |    - |  249 | `	 * PHP8 reports a TypeError for wrong types.  Numeric strings are allowed but` |
 |    - |  250 | `	 * the float conversion will handle them. */` |
-|   22 |  251 | `	if( !ph7_value_is_numeric(apArg[0]) ){` |
-|    7 |  252 | `		return PH7_VmThrowException(pCtx,` |
+|   23 |  251 | `	if( !ph7_value_is_numeric(apArg[0]) ){` |
+|    8 |  252 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  253 | `			"TypeError",` |
 |    - |  254 | `			"asin(): Argument #1 ($num) must be of type float, %s given",` |
 |    2 |  255 | `			ph7_type_name(apArg[0])` |
@@ -276,7 +276,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  266 | `	/* store the result back */` |
 |   17 |  267 | `	ph7_result_double(pCtx,r);` |
 |   17 |  268 | `	return PH7_OK;` |
-|   13 |  269 |  |
+|   15 |  269 |  |
 |    - |  270 | `/*` |
 |    - |  271 | ` * float sinh(float $arg )` |
 |    - |  272 | ` *  Hyperbolic sine.` |
@@ -309,11 +309,11 @@ Coverage: 452/467 lines (96.79%)
 |    - |  299 | ` *  The next highest integer value by rounding up value if necessary.` |
 |    - |  300 | ` */` |
 |   14 |  301 | `PH7_PRIVATE int PH7_builtin_ceil(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    2 |  302 |  |
+|    4 |  302 |  |
 |    - |  303 | `	double r,x;` |
 |    - |  304 | `	/* PHP requires exactly one argument. */` |
-|   16 |  305 | `	if( nArg != 1 ){` |
-|    7 |  306 | `		return PH7_VmThrowException(pCtx,` |
+|   18 |  305 | `	if( nArg != 1 ){` |
+|    8 |  306 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  307 | `			"ArgumentCountError",` |
 |    - |  308 | `			"ceil() expects exactly 1 argument, %d given",` |
 |    2 |  309 | `			nArg` |
@@ -353,7 +353,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  343 | `	/* store the result back */` |
 |    9 |  344 | `	ph7_result_double(pCtx,r);` |
 |    9 |  345 | `	return PH7_OK;` |
-|    9 |  346 |  |
+|   11 |  346 |  |
 |    - |  347 | `/*` |
 |    - |  348 | ` * float tan(float $arg )` |
 |    - |  349 | ` *  Tangent.` |
@@ -386,11 +386,11 @@ Coverage: 452/467 lines (96.79%)
 |    - |  376 | ` *  The arc tangent of arg.` |
 |    - |  377 | ` */` |
 |   46 |  378 | `PH7_PRIVATE int PH7_builtin_atan(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    2 |  379 |  |
+|    5 |  379 |  |
 |    - |  380 | `	double r,x;` |
 |    - |  381 | `	/* PHP enforces exactly one argument. */` |
-|   48 |  382 | `	if( nArg != 1 ){` |
-|   11 |  383 | `		return PH7_VmThrowException(pCtx,` |
+|   51 |  382 | `	if( nArg != 1 ){` |
+|   12 |  383 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  384 | `			"ArgumentCountError",` |
 |    - |  385 | `			"atan() expects exactly 1 argument, %d given",` |
 |    3 |  386 | `			nArg` |
@@ -398,8 +398,8 @@ Coverage: 452/467 lines (96.79%)
 |    - |  388 | `	}` |
 |    - |  389 | `	/* Type checking: reject non-numeric values (arrays, objects, resources, non-numeric strings).` |
 |    - |  390 | `	 * PHP 8 reports a TypeError for wrong types. */` |
-|   42 |  391 | `	if( !ph7_value_is_numeric(apArg[0]) ){` |
-|   14 |  392 | `		return PH7_VmThrowException(pCtx,` |
+|   44 |  391 | `	if( !ph7_value_is_numeric(apArg[0]) ){` |
+|   16 |  392 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  393 | `			"TypeError",` |
 |    - |  394 | `			"atan(): Argument #1 ($num) must be of type float, %s given",` |
 |    4 |  395 | `			ph7_type_name(apArg[0])` |
@@ -411,7 +411,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  401 | `	/* store the result back */` |
 |   33 |  402 | `	ph7_result_double(pCtx,r);` |
 |   33 |  403 | `	return PH7_OK;` |
-|   25 |  404 |  |
+|   28 |  404 |  |
 |    - |  405 | `/*` |
 |    - |  406 | ` * float tanh(float $arg )` |
 |    - |  407 | ` *  Hyperbolic tangent.` |
@@ -445,19 +445,19 @@ Coverage: 452/467 lines (96.79%)
 |    - |  435 | ` *  The arc tangent of y/x in radian.` |
 |    - |  436 | ` */` |
 |   60 |  437 | `PH7_PRIVATE int PH7_builtin_atan2(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    2 |  438 |  |
+|    5 |  438 |  |
 |    - |  439 | `	double r,x,y;` |
 |    - |  440 | `	/* PHP enforces exactly two arguments. */` |
-|   62 |  441 | `	if( nArg != 2 ){` |
-|   10 |  442 | `		return PH7_VmThrowException(pCtx,` |
+|   65 |  441 | `	if( nArg != 2 ){` |
+|   12 |  442 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  443 | `			"ArgumentCountError",` |
 |    - |  444 | `			"atan2() expects exactly 2 arguments, %d given",` |
 |    3 |  445 | `			nArg` |
 |    - |  446 | `			);` |
 |    - |  447 | `	}` |
 |    - |  448 | `	/* Type checking: reject non-numeric values for $y (argument #1). */` |
-|   56 |  449 | `	if( !ph7_value_is_numeric(apArg[0]) ){` |
-|   10 |  450 | `		return PH7_VmThrowException(pCtx,` |
+|   58 |  449 | `	if( !ph7_value_is_numeric(apArg[0]) ){` |
+|   11 |  450 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  451 | `			"TypeError",` |
 |    - |  452 | `			"atan2(): Argument #1 ($y) must be of type float, %s given",` |
 |    3 |  453 | `			ph7_type_name(apArg[0])` |
@@ -478,7 +478,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  468 | `	/* store the result back */` |
 |   47 |  469 | `	ph7_result_double(pCtx,r);` |
 |   47 |  470 | `	return PH7_OK;` |
-|   32 |  471 |  |
+|   35 |  471 |  |
 |    - |  472 | `/*` |
 |    - |  473 | ` * float/int64 abs(float/int64 $arg )` |
 |    - |  474 | ` *  Absolute value.` |
@@ -488,11 +488,11 @@ Coverage: 452/467 lines (96.79%)
 |    - |  478 | ` *  The absolute value of number.` |
 |    - |  479 | ` */` |
 |  128 |  480 | `PH7_PRIVATE int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    2 |  481 |  |
+|    4 |  481 |  |
 |    - |  482 | `	int is_float;` |
 |    - |  483 | `	/* PHP requires exactly one argument. */` |
-|  130 |  484 | `	if( nArg != 1 ){` |
-|   14 |  485 | `		return PH7_VmThrowException(pCtx,` |
+|  132 |  484 | `	if( nArg != 1 ){` |
+|   15 |  485 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  486 | `			"ArgumentCountError",` |
 |    - |  487 | `			"abs() expects exactly 1 argument, %d given",` |
 |    4 |  488 | `			nArg` |
@@ -500,8 +500,8 @@ Coverage: 452/467 lines (96.79%)
 |    - |  490 | `	}` |
 |    - |  491 |  |
 |    - |  492 | `	/* Numeric strings with decimal/exponent are treated as real values. */` |
-|  122 |  493 | `	is_float = ph7_value_is_float(apArg[0]);` |
-|  122 |  494 | `	if( !is_float && ph7_value_is_string(apArg[0]) ){` |
+|  123 |  493 | `	is_float = ph7_value_is_float(apArg[0]);` |
+|  123 |  494 | `	if( !is_float && ph7_value_is_string(apArg[0]) ){` |
 |    - |  495 | `		int len;` |
 |   10 |  496 | `		sxu8 bReal = FALSE;` |
 |   10 |  497 | `		const char *zStr = ph7_value_to_string(apArg[0], &len);` |
@@ -531,7 +531,7 @@ Coverage: 452/467 lines (96.79%)
 |   20 |  521 | `		ph7_result_int(pCtx,r);` |
 |    - |  522 | `	}` |
 |  120 |  523 | `	return PH7_OK;` |
-|   66 |  524 |  |
+|   68 |  524 |  |
 |    - |  525 | `/*` |
 |    - |  526 | ` * float log(float $arg,[int/float $base])` |
 |    - |  527 | ` *  Natural logarithm.` |
@@ -752,10 +752,10 @@ Coverage: 452/467 lines (96.79%)
 |    - |  742 | ` *  The integer quotient of the division of $a by $b.` |
 |    - |  743 | ` */` |
 |   20 |  744 | `PH7_PRIVATE int PH7_builtin_intdiv(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    2 |  745 |  |
+|    4 |  745 |  |
 |    - |  746 | `	sxi64 a,b;` |
 |    - |  747 | `	/* PHP requires exactly two arguments. */` |
-|   22 |  748 | `	if( nArg != 2 ){` |
+|   24 |  748 | `	if( nArg != 2 ){` |
 |    4 |  749 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  750 | `			"ArgumentCountError",` |
 |    - |  751 | `			"intdiv() expects exactly 2 arguments, %d given",` |
@@ -764,14 +764,14 @@ Coverage: 452/467 lines (96.79%)
 |    - |  754 | `	}` |
 |    - |  755 | `	/* Type-check argument 1 */` |
 |   18 |  756 | `	if( ph7_value_is_array(apArg[0]) \|\| ph7_value_is_object(apArg[0])` |
-|   20 |  757 | `		\|\| ph7_value_is_resource(apArg[0]) ){` |
+|   21 |  757 | `		\|\| ph7_value_is_resource(apArg[0]) ){` |
 |  ! 0 |  758 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  759 | `			"TypeError",` |
 |    - |  760 | `			"intdiv(): Argument #1 ($num1) must be of type int, %s given",` |
 |  ! 0 |  761 | `			ph7_type_name(apArg[0])` |
 |    - |  762 | `			);` |
 |    - |  763 | `	}` |
-|   20 |  764 | `	if( ph7_value_is_string(apArg[0]) ){` |
+|   21 |  764 | `	if( ph7_value_is_string(apArg[0]) ){` |
 |    - |  765 | `		int len;` |
 |  ! 0 |  766 | `		const char *zStr = ph7_value_to_string(apArg[0], &len);` |
 |  ! 0 |  767 | `		if( SyStrIsNumeric(zStr, (sxu32)len, 0, 0) != SXRET_OK ){` |
@@ -783,14 +783,14 @@ Coverage: 452/467 lines (96.79%)
 |  ! 0 |  773 | `	}` |
 |    - |  774 | `	/* Type-check argument 2 */` |
 |   18 |  775 | `	if( ph7_value_is_array(apArg[1]) \|\| ph7_value_is_object(apArg[1])` |
-|   20 |  776 | `		\|\| ph7_value_is_resource(apArg[1]) ){` |
+|   21 |  776 | `		\|\| ph7_value_is_resource(apArg[1]) ){` |
 |  ! 0 |  777 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  778 | `			"TypeError",` |
 |    - |  779 | `			"intdiv(): Argument #2 ($num2) must be of type int, %s given",` |
 |  ! 0 |  780 | `			ph7_type_name(apArg[1])` |
 |    - |  781 | `			);` |
 |    - |  782 | `	}` |
-|   20 |  783 | `	if( ph7_value_is_string(apArg[1]) ){` |
+|   21 |  783 | `	if( ph7_value_is_string(apArg[1]) ){` |
 |    - |  784 | `		int len;` |
 |  ! 0 |  785 | `		const char *zStr = ph7_value_to_string(apArg[1], &len);` |
 |  ! 0 |  786 | `		if( SyStrIsNumeric(zStr, (sxu32)len, 0, 0) != SXRET_OK ){` |
@@ -801,10 +801,10 @@ Coverage: 452/467 lines (96.79%)
 |    - |  791 | `		}` |
 |  ! 0 |  792 | `	}` |
 |    - |  793 | `	/* Convert both arguments to int64 */` |
-|   20 |  794 | `	a = ph7_value_to_int64(apArg[0]);` |
-|   20 |  795 | `	b = ph7_value_to_int64(apArg[1]);` |
+|   21 |  794 | `	a = ph7_value_to_int64(apArg[0]);` |
+|   21 |  795 | `	b = ph7_value_to_int64(apArg[1]);` |
 |    - |  796 | `	/* Check for division by zero */` |
-|   20 |  797 | `	if( b == 0 ){` |
+|   21 |  797 | `	if( b == 0 ){` |
 |    3 |  798 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  799 | `			"DivisionByZeroError",` |
 |    - |  800 | `			"Division by zero"` |
@@ -820,7 +820,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  810 | `	/* Perform integer division */` |
 |   15 |  811 | `	ph7_result_int64(pCtx, a / b);` |
 |   15 |  812 | `	return PH7_OK;` |
-|   12 |  813 |  |
+|   14 |  813 |  |
 |    - |  814 | `/*` |
 |    - |  815 | ` * string dechex(int $number)` |
 |    - |  816 | ` *  Decimal to hexadecimal.` |

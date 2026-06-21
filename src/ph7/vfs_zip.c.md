@@ -49,7 +49,7 @@ Coverage: 152/261 lines (58.24%)
 |    - |   39 | `  *  A resource handle for later use with zip_read() and zip_close() or FALSE on failure.` |
 |    - |   40 | `  */` |
 |   30 |   41 | `PH7_PRIVATE int PH7_builtin_zip_open(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    2 |   42 |  |
+|    3 |   42 |  |
 |    - |   43 | `	const ph7_io_stream *pStream;` |
 |    - |   44 | `	SyArchive *pArchive;` |
 |    - |   45 | `	zip_raw_data *pRaw;` |
@@ -58,41 +58,41 @@ Coverage: 152/261 lines (58.24%)
 |    - |   48 | `	void *pHandle;` |
 |    - |   49 | `	int nLen;` |
 |    - |   50 | `	sxi32 rc;` |
-|   32 |   51 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|   33 |   51 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
 |    - |   52 | `		/* Missing/Invalid arguments,return FALSE */` |
 |  ! 0 |   53 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting a file path");` |
 |  ! 0 |   54 | `		ph7_result_bool(pCtx,0);` |
 |  ! 0 |   55 | `		return PH7_OK;` |
 |    - |   56 | `	}` |
 |    - |   57 | `	/* Extract the file path */` |
-|   32 |   58 | `	zFile = ph7_value_to_string(apArg[0],&nLen);` |
+|   33 |   58 | `	zFile = ph7_value_to_string(apArg[0],&nLen);` |
 |    - |   59 | `	/* Point to the target IO stream device */` |
-|   32 |   60 | `	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);` |
-|   32 |   61 | `	if( pStream == 0 ){` |
+|   33 |   60 | `	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);` |
+|   33 |   61 | `	if( pStream == 0 ){` |
 |  ! 0 |   62 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"No such stream device,PH7 is returning FALSE");` |
 |  ! 0 |   63 | `		ph7_result_bool(pCtx,0);` |
 |  ! 0 |   64 | `		return PH7_OK;` |
 |    - |   65 | `	}` |
 |    - |   66 | `	/* Create an in-memory archive */` |
-|   32 |   67 | `	pArchive = (SyArchive *)ph7_context_alloc_chunk(pCtx,sizeof(SyArchive)+sizeof(zip_raw_data),TRUE,FALSE);` |
-|   32 |   68 | `	if( pArchive == 0 ){` |
+|   33 |   67 | `	pArchive = (SyArchive *)ph7_context_alloc_chunk(pCtx,sizeof(SyArchive)+sizeof(zip_raw_data),TRUE,FALSE);` |
+|   33 |   68 | `	if( pArchive == 0 ){` |
 |  ! 0 |   69 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"PH7 is running out of memory");` |
 |  ! 0 |   70 | `		ph7_result_bool(pCtx,0);` |
 |  ! 0 |   71 | `		return PH7_OK;` |
 |    - |   72 | `	}` |
-|   32 |   73 | `	pRaw = (zip_raw_data *)&pArchive[1];` |
+|   33 |   73 | `	pRaw = (zip_raw_data *)&pArchive[1];` |
 |    - |   74 | `	/* Initialize the archive */` |
-|   32 |   75 | `	SyArchiveInit(pArchive,&pCtx->pVm->sAllocator,0,0);` |
+|   33 |   75 | `	SyArchiveInit(pArchive,&pCtx->pVm->sAllocator,0,0);` |
 |    - |   76 | `	/* Extract the default stream */` |
-|   32 |   77 | `	if( pStream == pCtx->pVm->pDefStream /* file:// stream*/){` |
+|   33 |   77 | `	if( pStream == pCtx->pVm->pDefStream /* file:// stream*/){` |
 |    - |   78 | `		const ph7_vfs *pVfs;` |
 |    - |   79 | `		/* Try to get a memory view of the whole file since ZIP files` |
 |    - |   80 | `		 * tends to be very big this days,this is a huge performance win.` |
 |    - |   81 | `		 */` |
-|   32 |   82 | `		pVfs = PH7_ExportBuiltinVfs();` |
-|   32 |   83 | `		if( pVfs && pVfs->xMmap ){` |
-|   32 |   84 | `			rc = pVfs->xMmap(zFile,&pRaw->raw.mmap.pMap,&pRaw->raw.mmap.nSize);` |
-|   32 |   85 | `			if( rc == PH7_OK ){` |
+|   33 |   82 | `		pVfs = PH7_ExportBuiltinVfs();` |
+|   33 |   83 | `		if( pVfs && pVfs->xMmap ){` |
+|   33 |   84 | `			rc = pVfs->xMmap(zFile,&pRaw->raw.mmap.pMap,&pRaw->raw.mmap.nSize);` |
+|   33 |   85 | `			if( rc == PH7_OK ){` |
 |    - |   86 | `				/* Nice,Extract the whole archive */` |
 |   30 |   87 | `				rc = SyZipExtractFromBuf(pArchive,(const char *)pRaw->raw.mmap.pMap,(sxu32)pRaw->raw.mmap.nSize);` |
 |   30 |   88 | `				if( rc != SXRET_OK ){` |
@@ -148,7 +148,7 @@ Coverage: 152/261 lines (58.24%)
 |    - |  138 | `	/* Return the in-memory archive as a resource handle */` |
 |   16 |  139 | `	ph7_result_resource(pCtx,pArchive);` |
 |   16 |  140 | `	return PH7_OK;` |
-|   17 |  141 |  |
+|   18 |  141 |  |
 |    - |  142 | `/*` |
 |    - |  143 | `  * void zip_close(resource $zip)` |
 |    - |  144 | `  *  Close an in-memory ZIP archive.` |

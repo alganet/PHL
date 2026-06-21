@@ -35,22 +35,22 @@ Coverage: 485/643 lines (75.43%)
 |    - |   25 | `** Taken from the sqlite3 source tree` |
 |    - |   26 | `** status: Public Domain` |
 |    - |   27 | `*/` |
-|    2 |   28 | `static WCHAR *utf8ToUnicode(const char *zFilename){` |
+|    5 |   28 | `static WCHAR *utf8ToUnicode(const char *zFilename){` |
 |    - |   29 | `  int nChar;` |
 |    - |   30 | `  WCHAR *zWideFilename;` |
 |    - |   31 |  |
-|    2 |   32 | `  nChar = MultiByteToWideChar(CP_UTF8, 0, zFilename, -1, 0, 0);` |
-|    2 |   33 | `  zWideFilename = (WCHAR *)HeapAlloc(GetProcessHeap(),0,nChar*sizeof(zWideFilename[0]));` |
-|    2 |   34 | `  if( zWideFilename == 0 ){` |
+|    5 |   32 | `  nChar = MultiByteToWideChar(CP_UTF8, 0, zFilename, -1, 0, 0);` |
+|    5 |   33 | `  zWideFilename = (WCHAR *)HeapAlloc(GetProcessHeap(),0,nChar*sizeof(zWideFilename[0]));` |
+|    5 |   34 | `  if( zWideFilename == 0 ){` |
 |  ! 0 |   35 | ` 	return 0;` |
 |    - |   36 | `  }` |
-|    2 |   37 | `  nChar = MultiByteToWideChar(CP_UTF8, 0, zFilename, -1, zWideFilename, nChar);` |
-|    2 |   38 | `  if( nChar==0 ){` |
+|    5 |   37 | `  nChar = MultiByteToWideChar(CP_UTF8, 0, zFilename, -1, zWideFilename, nChar);` |
+|    5 |   38 | `  if( nChar==0 ){` |
 |  ! 0 |   39 | `    HeapFree(GetProcessHeap(),0,zWideFilename);` |
 |  ! 0 |   40 | `    return 0;` |
 |    - |   41 | `  }` |
-|    2 |   42 | `  return zWideFilename;` |
-|    2 |   43 |  |
+|    5 |   42 | `  return zWideFilename;` |
+|    5 |   43 |  |
 |    - |   44 | `/*` |
 |    - |   45 | `** Convert a UTF-8 filename into whatever form the underlying` |
 |    - |   46 | `** operating system wants filenames in.Space to hold the result` |
@@ -59,66 +59,66 @@ Coverage: 485/643 lines (75.43%)
 |    - |   49 | `** Taken from the sqlite3 source tree` |
 |    - |   50 | `** status: Public Domain` |
 |    - |   51 | `*/` |
-|    2 |   52 | `static void *convertUtf8Filename(const char *zFilename){` |
+|    5 |   52 | `static void *convertUtf8Filename(const char *zFilename){` |
 |    - |   53 | `  void *zConverted;` |
-|    2 |   54 | `  zConverted = utf8ToUnicode(zFilename);` |
-|    2 |   55 | `  return zConverted;` |
-|    2 |   56 |  |
+|    5 |   54 | `  zConverted = utf8ToUnicode(zFilename);` |
+|    5 |   55 | `  return zConverted;` |
+|    5 |   56 |  |
 |    - |   57 | `/*` |
 |    - |   58 | `** Convert microsoft unicode to UTF-8.  Space to hold the returned string is` |
 |    - |   59 | `** obtained from HeapAlloc().` |
 |    - |   60 | `** Taken from the sqlite3 source tree` |
 |    - |   61 | `** status: Public Domain` |
 |    - |   62 | `*/` |
-|    2 |   63 | `static char *unicodeToUtf8(const WCHAR *zWideFilename){` |
+|    5 |   63 | `static char *unicodeToUtf8(const WCHAR *zWideFilename){` |
 |    - |   64 | `  char *zFilename;` |
 |    - |   65 | `  int nByte;` |
 |    - |   66 |  |
-|    2 |   67 | `  nByte = WideCharToMultiByte(CP_UTF8, 0, zWideFilename, -1, 0, 0, 0, 0);` |
-|    2 |   68 | `  zFilename = (char *)HeapAlloc(GetProcessHeap(),0,nByte);` |
-|    2 |   69 | `  if( zFilename == 0 ){` |
+|    5 |   67 | `  nByte = WideCharToMultiByte(CP_UTF8, 0, zWideFilename, -1, 0, 0, 0, 0);` |
+|    5 |   68 | `  zFilename = (char *)HeapAlloc(GetProcessHeap(),0,nByte);` |
+|    5 |   69 | `  if( zFilename == 0 ){` |
 |  ! 0 |   70 | `  	return 0;` |
 |    - |   71 | `  }` |
-|    2 |   72 | `  nByte = WideCharToMultiByte(CP_UTF8, 0, zWideFilename, -1, zFilename, nByte,0, 0);` |
-|    2 |   73 | `  if( nByte == 0 ){` |
+|    5 |   72 | `  nByte = WideCharToMultiByte(CP_UTF8, 0, zWideFilename, -1, zFilename, nByte,0, 0);` |
+|    5 |   73 | `  if( nByte == 0 ){` |
 |  ! 0 |   74 | `    HeapFree(GetProcessHeap(),0,zFilename);` |
 |  ! 0 |   75 | `    return 0;` |
 |    - |   76 | `  }` |
-|    2 |   77 | `  return zFilename;` |
-|    2 |   78 |  |
+|    5 |   77 | `  return zFilename;` |
+|    5 |   78 |  |
 |    - |   79 | `/* SPDX-SnippetEnd */` |
 |    - |   80 | `/* int (*xchdir)(const char *) */` |
 |    - |   81 | `static int WinVfs_chdir(const char *zPath)` |
-|    2 |   82 |  |
+|    5 |   82 |  |
 |    - |   83 | `	void * pConverted;` |
 |    - |   84 | `	BOOL rc;` |
-|    2 |   85 | `	pConverted = convertUtf8Filename(zPath);` |
-|    2 |   86 | `	if( pConverted == 0 ){` |
+|    5 |   85 | `	pConverted = convertUtf8Filename(zPath);` |
+|    5 |   86 | `	if( pConverted == 0 ){` |
 |  ! 0 |   87 | `		return -1;` |
 |    - |   88 | `	}` |
-|    2 |   89 | `	rc = SetCurrentDirectoryW((LPCWSTR)pConverted);` |
-|    2 |   90 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    2 |   91 | `	return rc ? PH7_OK : -1;` |
-|    2 |   92 |  |
+|    5 |   89 | `	rc = SetCurrentDirectoryW((LPCWSTR)pConverted);` |
+|    5 |   90 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    5 |   91 | `	return rc ? PH7_OK : -1;` |
+|    5 |   92 |  |
 |    - |   93 | `/* int (*xGetcwd)(ph7_context *) */` |
 |    - |   94 | `static int WinVfs_getcwd(ph7_context *pCtx)` |
-|    2 |   95 |  |
+|    5 |   95 |  |
 |    - |   96 | `	WCHAR zDir[2048];` |
 |    - |   97 | `	char *zConverted;` |
 |    - |   98 | `	DWORD rc;` |
 |    - |   99 | `	/* Get the current directory */` |
-|    2 |  100 | `	rc = GetCurrentDirectoryW(sizeof(zDir),zDir);` |
-|    2 |  101 | `	if( rc < 1 ){` |
+|    5 |  100 | `	rc = GetCurrentDirectoryW(sizeof(zDir),zDir);` |
+|    5 |  101 | `	if( rc < 1 ){` |
 |  ! 0 |  102 | `		return -1;` |
 |    - |  103 | `	}` |
-|    2 |  104 | `	zConverted = unicodeToUtf8(zDir);` |
-|    2 |  105 | `	if( zConverted == 0 ){` |
+|    5 |  104 | `	zConverted = unicodeToUtf8(zDir);` |
+|    5 |  105 | `	if( zConverted == 0 ){` |
 |  ! 0 |  106 | `		return -1;` |
 |    - |  107 | `	}` |
-|    2 |  108 | `	ph7_result_string(pCtx,zConverted,-1/*Compute length automatically*/); /* Will make it's own copy */` |
-|    2 |  109 | `	HeapFree(GetProcessHeap(),0,zConverted);` |
-|    2 |  110 | `	return PH7_OK;` |
-|    2 |  111 |  |
+|    5 |  108 | `	ph7_result_string(pCtx,zConverted,-1/*Compute length automatically*/); /* Will make it's own copy */` |
+|    5 |  109 | `	HeapFree(GetProcessHeap(),0,zConverted);` |
+|    5 |  110 | `	return PH7_OK;` |
+|    5 |  111 |  |
 |    - |  112 | `/* int (*xMkdir)(const char *,int,int) */` |
 |    - |  113 | `static int WinVfs_mkdir(const char *zPath,int mode,int recursive)` |
 |    1 |  114 |  |
@@ -149,20 +149,20 @@ Coverage: 485/643 lines (75.43%)
 |    1 |  139 |  |
 |    - |  140 | `/* int (*xIsdir)(const char *) */` |
 |    - |  141 | `static int WinVfs_isdir(const char *zPath)` |
-|    2 |  142 |  |
+|    5 |  142 |  |
 |    - |  143 | `	void * pConverted;` |
 |    - |  144 | `	DWORD dwAttr;` |
-|    2 |  145 | `	pConverted = convertUtf8Filename(zPath);` |
-|    2 |  146 | `	if( pConverted == 0 ){` |
+|    5 |  145 | `	pConverted = convertUtf8Filename(zPath);` |
+|    5 |  146 | `	if( pConverted == 0 ){` |
 |  ! 0 |  147 | `		return -1;` |
 |    - |  148 | `	}` |
-|    2 |  149 | `	dwAttr = GetFileAttributesW((LPCWSTR)pConverted);` |
-|    2 |  150 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    2 |  151 | `	if( dwAttr == INVALID_FILE_ATTRIBUTES ){` |
+|    5 |  149 | `	dwAttr = GetFileAttributesW((LPCWSTR)pConverted);` |
+|    5 |  150 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    5 |  151 | `	if( dwAttr == INVALID_FILE_ATTRIBUTES ){` |
 |    1 |  152 | `		return -1;` |
 |    - |  153 | `	}` |
-|    2 |  154 | `	return (dwAttr & FILE_ATTRIBUTE_DIRECTORY) ? PH7_OK : -1;` |
-|    2 |  155 |  |
+|    5 |  154 | `	return (dwAttr & FILE_ATTRIBUTE_DIRECTORY) ? PH7_OK : -1;` |
+|    5 |  155 |  |
 |    - |  156 | `/* int (*xRename)(const char *,const char *) */` |
 |    - |  157 | `static int WinVfs_Rename(const char *zOld,const char *zNew)` |
 |    1 |  158 |  |
@@ -220,17 +220,17 @@ Coverage: 485/643 lines (75.43%)
 |    1 |  210 |  |
 |    - |  211 | `/* int (*xUnlink)(const char *) */` |
 |    - |  212 | `static int WinVfs_unlink(const char *zPath)` |
-|    2 |  213 |  |
+|    5 |  213 |  |
 |    - |  214 | `	void * pConverted;` |
 |    - |  215 | `	BOOL rc;` |
-|    2 |  216 | `	pConverted = convertUtf8Filename(zPath);` |
-|    2 |  217 | `	if( pConverted == 0 ){` |
+|    5 |  216 | `	pConverted = convertUtf8Filename(zPath);` |
+|    5 |  217 | `	if( pConverted == 0 ){` |
 |  ! 0 |  218 | `		return -1;` |
 |    - |  219 | `	}` |
-|    2 |  220 | `	rc = DeleteFileW((LPCWSTR)pConverted);` |
-|    2 |  221 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    2 |  222 | `	return rc ? PH7_OK : - 1;` |
-|    2 |  223 |  |
+|    5 |  220 | `	rc = DeleteFileW((LPCWSTR)pConverted);` |
+|    5 |  221 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    5 |  222 | `	return rc ? PH7_OK : - 1;` |
+|    5 |  223 |  |
 |    - |  224 | `/* ph7_int64 (*xFreeSpace)(const char *) */` |
 |    - |  225 | `static ph7_int64 WinVfs_DiskFreeSpace(const char *zPath)` |
 |  ! 0 |  226 |  |
@@ -309,18 +309,18 @@ Coverage: 485/643 lines (75.43%)
 |    1 |  299 |  |
 |    - |  300 | `/* Open a file in a read-only mode */` |
 |    - |  301 | `static HANDLE OpenReadOnly(LPCWSTR pPath)` |
-|    2 |  302 |  |
-|    2 |  303 | `	DWORD dwType = FILE_ATTRIBUTE_NORMAL \| FILE_FLAG_RANDOM_ACCESS;` |
-|    2 |  304 | `	DWORD dwShare = FILE_SHARE_READ \| FILE_SHARE_WRITE;` |
-|    2 |  305 | `	DWORD dwAccess = GENERIC_READ;` |
-|    2 |  306 | `	DWORD dwCreate = OPEN_EXISTING;` |
+|    5 |  302 |  |
+|    5 |  303 | `	DWORD dwType = FILE_ATTRIBUTE_NORMAL \| FILE_FLAG_RANDOM_ACCESS;` |
+|    5 |  304 | `	DWORD dwShare = FILE_SHARE_READ \| FILE_SHARE_WRITE;` |
+|    5 |  305 | `	DWORD dwAccess = GENERIC_READ;` |
+|    5 |  306 | `	DWORD dwCreate = OPEN_EXISTING;` |
 |    - |  307 | `	HANDLE pHandle;` |
-|    2 |  308 | `	pHandle = CreateFileW(pPath,dwAccess,dwShare,0,dwCreate,dwType,0);` |
-|    2 |  309 | `	if( pHandle == INVALID_HANDLE_VALUE){` |
+|    5 |  308 | `	pHandle = CreateFileW(pPath,dwAccess,dwShare,0,dwCreate,dwType,0);` |
+|    5 |  309 | `	if( pHandle == INVALID_HANDLE_VALUE){` |
 |    1 |  310 | `		return 0;` |
 |    - |  311 | `	}` |
-|    2 |  312 | `	return pHandle;` |
-|    2 |  313 |  |
+|    5 |  312 | `	return pHandle;` |
+|    5 |  313 |  |
 |    - |  314 | `/* ph7_int64 (*xFileSize)(const char *) */` |
 |    - |  315 | `static ph7_int64 WinVfs_FileSize(const char *zPath)` |
 |    1 |  316 |  |
@@ -544,20 +544,20 @@ Coverage: 485/643 lines (75.43%)
 |    1 |  534 |  |
 |    - |  535 | `/* int (*xIsfile)(const char *) */` |
 |    - |  536 | `static int WinVfs_isfile(const char *zPath)` |
-|    2 |  537 |  |
+|    5 |  537 |  |
 |    - |  538 | `	void * pConverted;` |
 |    - |  539 | `	DWORD dwAttr;` |
-|    2 |  540 | `	pConverted = convertUtf8Filename(zPath);` |
-|    2 |  541 | `	if( pConverted == 0 ){` |
+|    5 |  540 | `	pConverted = convertUtf8Filename(zPath);` |
+|    5 |  541 | `	if( pConverted == 0 ){` |
 |  ! 0 |  542 | `		return -1;` |
 |    - |  543 | `	}` |
-|    2 |  544 | `	dwAttr = GetFileAttributesW((LPCWSTR)pConverted);` |
-|    2 |  545 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    2 |  546 | `	if( dwAttr == INVALID_FILE_ATTRIBUTES ){` |
+|    5 |  544 | `	dwAttr = GetFileAttributesW((LPCWSTR)pConverted);` |
+|    5 |  545 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    5 |  546 | `	if( dwAttr == INVALID_FILE_ATTRIBUTES ){` |
 |    1 |  547 | `		return -1;` |
 |    - |  548 | `	}` |
-|    2 |  549 | `	return (dwAttr & (FILE_ATTRIBUTE_NORMAL\|FILE_ATTRIBUTE_ARCHIVE)) ? PH7_OK : -1;` |
-|    2 |  550 |  |
+|    5 |  549 | `	return (dwAttr & (FILE_ATTRIBUTE_NORMAL\|FILE_ATTRIBUTE_ARCHIVE)) ? PH7_OK : -1;` |
+|    5 |  550 |  |
 |    - |  551 | `/* int (*xIslink)(const char *) */` |
 |    - |  552 | `static int WinVfs_islink(const char *zPath)` |
 |  ! 0 |  553 |  |
@@ -653,7 +653,7 @@ Coverage: 485/643 lines (75.43%)
 |    1 |  643 |  |
 |    - |  644 | `/* int (*xGetenv)(const char *,ph7_context *) */` |
 |    - |  645 | `static int WinVfs_Getenv(const char *zVar,ph7_context *pCtx)` |
-|    2 |  646 |  |
+|    5 |  646 |  |
 |    - |  647 | `	char zValue[1024];` |
 |    - |  648 | `	DWORD n;` |
 |    - |  649 | `	/*` |
@@ -663,17 +663,17 @@ Coverage: 485/643 lines (75.43%)
 |    - |  653 | `	 * string and its terminating null character and the contents` |
 |    - |  654 | `	 * of lpBuffer are undefined.` |
 |    - |  655 | `	 */` |
-|    2 |  656 | `	n = sizeof(zValue);` |
-|    2 |  657 | `	SyMemcpy("Undefined",zValue,sizeof("Undefined")-1);` |
+|    5 |  656 | `	n = sizeof(zValue);` |
+|    5 |  657 | `	SyMemcpy("Undefined",zValue,sizeof("Undefined")-1);` |
 |    - |  658 | `	/* Extract the environment value */` |
-|    2 |  659 | `	n = GetEnvironmentVariableA(zVar,zValue,sizeof(zValue));` |
-|    2 |  660 | `	if( !n ){` |
+|    5 |  659 | `	n = GetEnvironmentVariableA(zVar,zValue,sizeof(zValue));` |
+|    5 |  660 | `	if( !n ){` |
 |    - |  661 | `		/* No such variable*/` |
 |  ! 0 |  662 | `		return -1;` |
 |    - |  663 | `	}` |
-|    2 |  664 | `	ph7_result_string(pCtx,zValue,(int)n);` |
-|    2 |  665 | `	return PH7_OK;` |
-|    2 |  666 |  |
+|    5 |  664 | `	ph7_result_string(pCtx,zValue,(int)n);` |
+|    5 |  665 | `	return PH7_OK;` |
+|    5 |  666 |  |
 |    - |  667 | `/* int (*xSetenv)(const char *,const char *) */` |
 |    - |  668 | `static int WinVfs_Setenv(const char *zName,const char *zValue)` |
 |    1 |  669 |  |
@@ -683,61 +683,61 @@ Coverage: 485/643 lines (75.43%)
 |    1 |  673 |  |
 |    - |  674 | `/* int (*xMmap)(const char *,void **,ph7_int64 *) */` |
 |    - |  675 | `static int WinVfs_Mmap(const char *zPath,void **ppMap,ph7_int64 *pSize)` |
-|    2 |  676 |  |
+|    5 |  676 |  |
 |    - |  677 | `	DWORD dwSizeLow,dwSizeHigh;` |
 |    - |  678 | `	HANDLE pHandle,pMapHandle;` |
 |    - |  679 | `	void *pConverted,*pView;` |
 |    - |  680 |  |
-|    2 |  681 | `	pConverted = convertUtf8Filename(zPath);` |
-|    2 |  682 | `	if( pConverted == 0 ){` |
+|    5 |  681 | `	pConverted = convertUtf8Filename(zPath);` |
+|    5 |  682 | `	if( pConverted == 0 ){` |
 |  ! 0 |  683 | `		return -1;` |
 |    - |  684 | `	}` |
-|    2 |  685 | `	pHandle = OpenReadOnly((LPCWSTR)pConverted);` |
-|    2 |  686 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    2 |  687 | `	if( pHandle == 0 ){` |
+|    5 |  685 | `	pHandle = OpenReadOnly((LPCWSTR)pConverted);` |
+|    5 |  686 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    5 |  687 | `	if( pHandle == 0 ){` |
 |    1 |  688 | `		return -1;` |
 |    - |  689 | `	}` |
 |    - |  690 | `	/* Get the file size */` |
-|    2 |  691 | `	dwSizeLow = GetFileSize(pHandle,&dwSizeHigh);` |
+|    5 |  691 | `	dwSizeLow = GetFileSize(pHandle,&dwSizeHigh);` |
 |    - |  692 | `	/* Create the mapping */` |
-|    2 |  693 | `	pMapHandle = CreateFileMappingW(pHandle,0,PAGE_READONLY,dwSizeHigh,dwSizeLow,0);` |
-|    2 |  694 | `	if( pMapHandle == 0 ){` |
+|    5 |  693 | `	pMapHandle = CreateFileMappingW(pHandle,0,PAGE_READONLY,dwSizeHigh,dwSizeLow,0);` |
+|    5 |  694 | `	if( pMapHandle == 0 ){` |
 |  ! 0 |  695 | `		CloseHandle(pHandle);` |
 |  ! 0 |  696 | `		return -1;` |
 |    - |  697 | `	}` |
-|    2 |  698 | `	*pSize = ((ph7_int64)dwSizeHigh << 32) \| dwSizeLow;` |
+|    5 |  698 | `	*pSize = ((ph7_int64)dwSizeHigh << 32) \| dwSizeLow;` |
 |    - |  699 | `	/* Obtain the view */` |
-|    2 |  700 | `	pView = MapViewOfFile(pMapHandle,FILE_MAP_READ,0,0,(SIZE_T)(*pSize));` |
-|    2 |  701 | `	if( pView ){` |
+|    5 |  700 | `	pView = MapViewOfFile(pMapHandle,FILE_MAP_READ,0,0,(SIZE_T)(*pSize));` |
+|    5 |  701 | `	if( pView ){` |
 |    - |  702 | `		/* Let the upper layer point to the view */` |
-|    2 |  703 | `		*ppMap = pView;` |
+|    5 |  703 | `		*ppMap = pView;` |
 |    - |  704 | `	}` |
 |    - |  705 | `	/* Close the handle` |
 |    - |  706 | `	 * According to MSDN it's OK the close the HANDLES.` |
 |    - |  707 | `	 */` |
-|    2 |  708 | `	CloseHandle(pMapHandle);` |
-|    2 |  709 | `	CloseHandle(pHandle);` |
-|    2 |  710 | `	return pView ? PH7_OK : -1;` |
-|    2 |  711 |  |
+|    5 |  708 | `	CloseHandle(pMapHandle);` |
+|    5 |  709 | `	CloseHandle(pHandle);` |
+|    5 |  710 | `	return pView ? PH7_OK : -1;` |
+|    5 |  711 |  |
 |    - |  712 | `/* void (*xUnmap)(void *,ph7_int64)  */` |
 |    - |  713 | `static void WinVfs_Unmap(void *pView,ph7_int64 nSize)` |
-|    2 |  714 |  |
-|    2 |  715 | `	nSize = 0; /* Compiler warning */` |
-|    2 |  716 | `	UnmapViewOfFile(pView);` |
-|    2 |  717 |  |
+|    5 |  714 |  |
+|    5 |  715 | `	nSize = 0; /* Compiler warning */` |
+|    5 |  716 | `	UnmapViewOfFile(pView);` |
+|    5 |  717 |  |
 |    - |  718 | `/* void (*xTempDir)(ph7_context *) */` |
 |    - |  719 | `static void WinVfs_TempDir(ph7_context *pCtx)` |
-|    2 |  720 |  |
+|    4 |  720 |  |
 |    - |  721 | `	CHAR zTemp[1024];` |
 |    - |  722 | `	DWORD n;` |
-|    2 |  723 | `	n = GetTempPathA(sizeof(zTemp),zTemp);` |
-|    2 |  724 | `	if( n < 1 ){` |
+|    4 |  723 | `	n = GetTempPathA(sizeof(zTemp),zTemp);` |
+|    4 |  724 | `	if( n < 1 ){` |
 |    - |  725 | `		/* Assume the default windows temp directory */` |
 |  ! 0 |  726 | `		ph7_result_string(pCtx,"C:\\Windows\\Temp",-1/*Compute length automatically*/);` |
 |  ! 0 |  727 | `	}else{` |
-|    2 |  728 | `		ph7_result_string(pCtx,zTemp,(int)n);` |
+|    4 |  728 | `		ph7_result_string(pCtx,zTemp,(int)n);` |
 |    - |  729 | `	}` |
-|    2 |  730 |  |
+|    4 |  730 |  |
 |    - |  731 | `/* unsigned int (*xProcessId)(void) */` |
 |    - |  732 | `static unsigned int WinVfs_ProcessId(void)` |
 |    1 |  733 |  |
@@ -822,65 +822,65 @@ Coverage: 485/643 lines (75.43%)
 |    - |  812 | `#endif` |
 |    - |  813 | `/* int (*xOpen)(const char *,int,ph7_value *,void **) */` |
 |    - |  814 | `static int WinFile_Open(const char *zPath,int iOpenMode,ph7_value *pResource,void **ppHandle)` |
-|    2 |  815 |  |
-|    2 |  816 | `	DWORD dwType = FILE_ATTRIBUTE_NORMAL \| FILE_FLAG_RANDOM_ACCESS;` |
-|    2 |  817 | `	DWORD dwAccess = GENERIC_READ;` |
+|    5 |  815 |  |
+|    5 |  816 | `	DWORD dwType = FILE_ATTRIBUTE_NORMAL \| FILE_FLAG_RANDOM_ACCESS;` |
+|    5 |  817 | `	DWORD dwAccess = GENERIC_READ;` |
 |    - |  818 | `	DWORD dwShare,dwCreate;` |
 |    - |  819 | `	void *pConverted;` |
 |    - |  820 | `	HANDLE pHandle;` |
 |    - |  821 |  |
-|    2 |  822 | `	pConverted = convertUtf8Filename(zPath);` |
-|    2 |  823 | `	if( pConverted == 0 ){` |
+|    5 |  822 | `	pConverted = convertUtf8Filename(zPath);` |
+|    5 |  823 | `	if( pConverted == 0 ){` |
 |  ! 0 |  824 | `		return -1;` |
 |    - |  825 | `	}` |
 |    - |  826 | `	/* Set the desired flags according to the open mode */` |
-|    2 |  827 | `	if( iOpenMode & PH7_IO_OPEN_CREATE ){` |
+|    5 |  827 | `	if( iOpenMode & PH7_IO_OPEN_CREATE ){` |
 |    - |  828 | `		/* Open existing file, or create if it doesn't exist */` |
-|    2 |  829 | `		dwCreate = OPEN_ALWAYS;` |
-|    2 |  830 | `		if( iOpenMode & PH7_IO_OPEN_TRUNC ){` |
+|    5 |  829 | `		dwCreate = OPEN_ALWAYS;` |
+|    5 |  830 | `		if( iOpenMode & PH7_IO_OPEN_TRUNC ){` |
 |    - |  831 | `			/* If the specified file exists and is writable, the function overwrites the file */` |
-|    2 |  832 | `			dwCreate = CREATE_ALWAYS;` |
-|    2 |  833 | `		}` |
-|    2 |  834 | `	}else if( iOpenMode & PH7_IO_OPEN_EXCL ){` |
+|    5 |  832 | `			dwCreate = CREATE_ALWAYS;` |
+|    5 |  833 | `		}` |
+|    5 |  834 | `	}else if( iOpenMode & PH7_IO_OPEN_EXCL ){` |
 |    - |  835 | `		/* Creates a new file, only if it does not already exist.` |
 |    - |  836 | `		* If the file exists, it fails.` |
 |    - |  837 | `		*/` |
 |  ! 0 |  838 | `		dwCreate = CREATE_NEW;` |
-|    2 |  839 | `	}else if( iOpenMode & PH7_IO_OPEN_TRUNC ){` |
+|    5 |  839 | `	}else if( iOpenMode & PH7_IO_OPEN_TRUNC ){` |
 |    - |  840 | `		/* Opens a file and truncates it so that its size is zero bytes` |
 |    - |  841 | `		 * The file must exist.` |
 |    - |  842 | `		 */` |
 |  ! 0 |  843 | `		dwCreate = TRUNCATE_EXISTING;` |
 |  ! 0 |  844 | `	}else{` |
 |    - |  845 | `		/* Opens a file, only if it exists. */` |
-|    2 |  846 | `		dwCreate = OPEN_EXISTING;` |
+|    5 |  846 | `		dwCreate = OPEN_EXISTING;` |
 |    - |  847 | `	}` |
-|    2 |  848 | `	if( iOpenMode & PH7_IO_OPEN_RDWR ){` |
+|    5 |  848 | `	if( iOpenMode & PH7_IO_OPEN_RDWR ){` |
 |    - |  849 | `		/* Read+Write access */` |
-|    2 |  850 | `		dwAccess \|= GENERIC_WRITE;` |
-|    2 |  851 | `	}else if( iOpenMode & PH7_IO_OPEN_WRONLY ){` |
+|    5 |  850 | `		dwAccess \|= GENERIC_WRITE;` |
+|    5 |  851 | `	}else if( iOpenMode & PH7_IO_OPEN_WRONLY ){` |
 |    - |  852 | `		/* Write only access */` |
 |    1 |  853 | `		dwAccess = GENERIC_WRITE;` |
 |    - |  854 | `	}` |
-|    2 |  855 | `	if( iOpenMode & PH7_IO_OPEN_APPEND ){` |
+|    5 |  855 | `	if( iOpenMode & PH7_IO_OPEN_APPEND ){` |
 |    - |  856 | `		/* Append mode */` |
 |  ! 0 |  857 | `		dwAccess = FILE_APPEND_DATA;` |
 |    - |  858 | `	}` |
-|    2 |  859 | `	if( iOpenMode & PH7_IO_OPEN_TEMP ){` |
+|    5 |  859 | `	if( iOpenMode & PH7_IO_OPEN_TEMP ){` |
 |    - |  860 | `		/* File is temporary */` |
 |  ! 0 |  861 | `		dwType = FILE_ATTRIBUTE_TEMPORARY;` |
 |    - |  862 | `	}` |
-|    2 |  863 | `	dwShare = FILE_SHARE_READ \| FILE_SHARE_WRITE;` |
-|    2 |  864 | `	pHandle = CreateFileW((LPCWSTR)pConverted,dwAccess,dwShare,0,dwCreate,dwType,0);` |
-|    2 |  865 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    2 |  866 | `	if( pHandle == INVALID_HANDLE_VALUE){` |
+|    5 |  863 | `	dwShare = FILE_SHARE_READ \| FILE_SHARE_WRITE;` |
+|    5 |  864 | `	pHandle = CreateFileW((LPCWSTR)pConverted,dwAccess,dwShare,0,dwCreate,dwType,0);` |
+|    5 |  865 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    5 |  866 | `	if( pHandle == INVALID_HANDLE_VALUE){` |
 |    - |  867 | `		SXUNUSED(pResource); /* MSVC warning */` |
-|    2 |  868 | `		return -1;` |
+|    3 |  868 | `		return -1;` |
 |    - |  869 | `	}` |
 |    - |  870 | `	/* Make the handle accessible to the upper layer */` |
-|    2 |  871 | `	*ppHandle = (void *)pHandle;` |
-|    2 |  872 | `	return PH7_OK;` |
-|    2 |  873 |  |
+|    5 |  871 | `	*ppHandle = (void *)pHandle;` |
+|    5 |  872 | `	return PH7_OK;` |
+|    5 |  873 |  |
 |    - |  874 | `/* An instance of the following structure is used to record state information` |
 |    - |  875 | ` * while iterating throw directory entries.` |
 |    - |  876 | ` */` |
@@ -894,102 +894,102 @@ Coverage: 485/643 lines (75.43%)
 |    - |  884 | `};` |
 |    - |  885 | `/* int (*xOpenDir)(const char *,ph7_value *,void **) */` |
 |    - |  886 | `static int WinDir_Open(const char *zPath,ph7_value *pResource,void **ppHandle)` |
-|    2 |  887 |  |
+|    5 |  887 |  |
 |    - |  888 | `	WinDir_Info *pDirInfo;` |
 |    - |  889 | `	void *pConverted;` |
 |    - |  890 | `	char *zPrep;` |
 |    - |  891 | `	sxu32 n;` |
 |    - |  892 | `	/* Prepare the path */` |
-|    2 |  893 | `	n = SyStrlen(zPath);` |
-|    2 |  894 | `	zPrep = (char *)HeapAlloc(GetProcessHeap(),0,n+sizeof("\\*")+4);` |
-|    2 |  895 | `	if( zPrep == 0 ){` |
+|    5 |  893 | `	n = SyStrlen(zPath);` |
+|    5 |  894 | `	zPrep = (char *)HeapAlloc(GetProcessHeap(),0,n+sizeof("\\*")+4);` |
+|    5 |  895 | `	if( zPrep == 0 ){` |
 |  ! 0 |  896 | `		return -1;` |
 |    - |  897 | `	}` |
-|    2 |  898 | `	SyMemcpy((const void *)zPath,zPrep,n);` |
-|    2 |  899 | `	zPrep[n]   = '\\';` |
-|    2 |  900 | `	zPrep[n+1] =  '*';` |
-|    2 |  901 | `	zPrep[n+2] = 0;` |
-|    2 |  902 | `	pConverted = convertUtf8Filename(zPrep);` |
-|    2 |  903 | `	HeapFree(GetProcessHeap(),0,zPrep);` |
-|    2 |  904 | `	if( pConverted == 0 ){` |
+|    5 |  898 | `	SyMemcpy((const void *)zPath,zPrep,n);` |
+|    5 |  899 | `	zPrep[n]   = '\\';` |
+|    5 |  900 | `	zPrep[n+1] =  '*';` |
+|    5 |  901 | `	zPrep[n+2] = 0;` |
+|    5 |  902 | `	pConverted = convertUtf8Filename(zPrep);` |
+|    5 |  903 | `	HeapFree(GetProcessHeap(),0,zPrep);` |
+|    5 |  904 | `	if( pConverted == 0 ){` |
 |  ! 0 |  905 | `		return -1;` |
 |    - |  906 | `	}` |
 |    - |  907 | `	/* Allocate a new instance */` |
-|    2 |  908 | `	pDirInfo = (WinDir_Info *)HeapAlloc(GetProcessHeap(),0,sizeof(WinDir_Info));` |
-|    2 |  909 | `	if( pDirInfo == 0 ){` |
+|    5 |  908 | `	pDirInfo = (WinDir_Info *)HeapAlloc(GetProcessHeap(),0,sizeof(WinDir_Info));` |
+|    5 |  909 | `	if( pDirInfo == 0 ){` |
 |  ! 0 |  910 | `		pResource = 0; /* Compiler warning */` |
 |  ! 0 |  911 | `		return -1;` |
 |    - |  912 | `	}` |
-|    2 |  913 | `	pDirInfo->rc = SXRET_OK;` |
-|    2 |  914 | `	pDirInfo->pDirHandle = FindFirstFileW((LPCWSTR)pConverted,&pDirInfo->sInfo);` |
-|    2 |  915 | `	if( pDirInfo->pDirHandle == INVALID_HANDLE_VALUE ){` |
+|    5 |  913 | `	pDirInfo->rc = SXRET_OK;` |
+|    5 |  914 | `	pDirInfo->pDirHandle = FindFirstFileW((LPCWSTR)pConverted,&pDirInfo->sInfo);` |
+|    5 |  915 | `	if( pDirInfo->pDirHandle == INVALID_HANDLE_VALUE ){` |
 |    - |  916 | `		/* Cannot open directory */` |
 |  ! 0 |  917 | `		HeapFree(GetProcessHeap(),0,pConverted);` |
 |  ! 0 |  918 | `		HeapFree(GetProcessHeap(),0,pDirInfo);` |
 |  ! 0 |  919 | `		return -1;` |
 |    - |  920 | `	}` |
 |    - |  921 | `	/* Save the path */` |
-|    2 |  922 | `	pDirInfo->pPath = pConverted;` |
+|    5 |  922 | `	pDirInfo->pPath = pConverted;` |
 |    - |  923 | `	/* Save our structure */` |
-|    2 |  924 | `	*ppHandle = pDirInfo;` |
-|    2 |  925 | `	return PH7_OK;` |
-|    2 |  926 |  |
+|    5 |  924 | `	*ppHandle = pDirInfo;` |
+|    5 |  925 | `	return PH7_OK;` |
+|    5 |  926 |  |
 |    - |  927 | `/* void (*xCloseDir)(void *) */` |
 |    - |  928 | `static void WinDir_Close(void *pUserData)` |
-|    2 |  929 |  |
-|    2 |  930 | `	WinDir_Info *pDirInfo = (WinDir_Info *)pUserData;` |
-|    2 |  931 | `	if( pDirInfo->pDirHandle != INVALID_HANDLE_VALUE ){` |
-|    2 |  932 | `		FindClose(pDirInfo->pDirHandle);` |
+|    5 |  929 |  |
+|    5 |  930 | `	WinDir_Info *pDirInfo = (WinDir_Info *)pUserData;` |
+|    5 |  931 | `	if( pDirInfo->pDirHandle != INVALID_HANDLE_VALUE ){` |
+|    5 |  932 | `		FindClose(pDirInfo->pDirHandle);` |
 |    - |  933 | `	}` |
-|    2 |  934 | `	HeapFree(GetProcessHeap(),0,pDirInfo->pPath);` |
-|    2 |  935 | `	HeapFree(GetProcessHeap(),0,pDirInfo);` |
-|    2 |  936 |  |
+|    5 |  934 | `	HeapFree(GetProcessHeap(),0,pDirInfo->pPath);` |
+|    5 |  935 | `	HeapFree(GetProcessHeap(),0,pDirInfo);` |
+|    5 |  936 |  |
 |    - |  937 | `/* void (*xClose)(void *); */` |
 |    - |  938 | `static void WinFile_Close(void *pUserData)` |
-|    2 |  939 |  |
-|    2 |  940 | `	HANDLE pHandle = (HANDLE)pUserData;` |
-|    2 |  941 | `	CloseHandle(pHandle);` |
-|    2 |  942 |  |
+|    5 |  939 |  |
+|    5 |  940 | `	HANDLE pHandle = (HANDLE)pUserData;` |
+|    5 |  941 | `	CloseHandle(pHandle);` |
+|    5 |  942 |  |
 |    - |  943 | `/* int (*xReadDir)(void *,ph7_context *) */` |
 |    - |  944 | `static int WinDir_Read(void *pUserData,ph7_context *pCtx)` |
-|    2 |  945 |  |
-|    2 |  946 | `	WinDir_Info *pDirInfo = (WinDir_Info *)pUserData;` |
+|    5 |  945 |  |
+|    5 |  946 | `	WinDir_Info *pDirInfo = (WinDir_Info *)pUserData;` |
 |    - |  947 | `	LPWIN32_FIND_DATAW pData;` |
 |    - |  948 | `	char *zName;` |
 |    - |  949 | `	BOOL rc;` |
 |    - |  950 | `	sxu32 n;` |
-|    2 |  951 | `	if( pDirInfo->rc != SXRET_OK ){` |
+|    5 |  951 | `	if( pDirInfo->rc != SXRET_OK ){` |
 |    - |  952 | `		/* No more entry to process */` |
-|    2 |  953 | `		return -1;` |
+|    5 |  953 | `		return -1;` |
 |    - |  954 | `	}` |
-|    2 |  955 | `	pData = &pDirInfo->sInfo;` |
+|    5 |  955 | `	pData = &pDirInfo->sInfo;` |
 |    - |  956 | `	for(;;){` |
-|    2 |  957 | `		zName = unicodeToUtf8(pData->cFileName);` |
-|    2 |  958 | `		if( zName == 0 ){` |
+|    5 |  957 | `		zName = unicodeToUtf8(pData->cFileName);` |
+|    5 |  958 | `		if( zName == 0 ){` |
 |    - |  959 | `			/* Out of memory */` |
 |  ! 0 |  960 | `			return -1;` |
 |    - |  961 | `		}` |
-|    2 |  962 | `		n = SyStrlen(zName);` |
+|    5 |  962 | `		n = SyStrlen(zName);` |
 |    - |  963 | `		/* Ignore '.' && '..' */` |
-|    2 |  964 | `		if( n > sizeof("..")-1 \|\| zName[0] != '.' \|\| ( n == sizeof("..")-1 && zName[1] != '.') ){` |
-|    2 |  965 | `			break;` |
+|    5 |  964 | `		if( n > sizeof("..")-1 \|\| zName[0] != '.' \|\| ( n == sizeof("..")-1 && zName[1] != '.') ){` |
+|    5 |  965 | `			break;` |
 |    - |  966 | `		}` |
-|    2 |  967 | `		HeapFree(GetProcessHeap(),0,zName);` |
-|    2 |  968 | `		rc = FindNextFileW(pDirInfo->pDirHandle,&pDirInfo->sInfo);` |
-|    2 |  969 | `		if( !rc ){` |
+|    5 |  967 | `		HeapFree(GetProcessHeap(),0,zName);` |
+|    5 |  968 | `		rc = FindNextFileW(pDirInfo->pDirHandle,&pDirInfo->sInfo);` |
+|    5 |  969 | `		if( !rc ){` |
 |  ! 0 |  970 | `			return -1;` |
 |    - |  971 | `		}` |
-|    2 |  972 | `	}` |
+|    5 |  972 | `	}` |
 |    - |  973 | `	/* Return the current file name */` |
-|    2 |  974 | `	ph7_result_string(pCtx,zName,-1);` |
-|    2 |  975 | `	HeapFree(GetProcessHeap(),0,zName);` |
+|    5 |  974 | `	ph7_result_string(pCtx,zName,-1);` |
+|    5 |  975 | `	HeapFree(GetProcessHeap(),0,zName);` |
 |    - |  976 | `	/* Point to the next entry */` |
-|    2 |  977 | `	rc = FindNextFileW(pDirInfo->pDirHandle,&pDirInfo->sInfo);` |
-|    2 |  978 | `	if( !rc ){` |
-|    2 |  979 | `		pDirInfo->rc = SXERR_EOF;` |
+|    5 |  977 | `	rc = FindNextFileW(pDirInfo->pDirHandle,&pDirInfo->sInfo);` |
+|    5 |  978 | `	if( !rc ){` |
+|    5 |  979 | `		pDirInfo->rc = SXERR_EOF;` |
 |    - |  980 | `	}` |
-|    2 |  981 | `	return PH7_OK;` |
-|    2 |  982 |  |
+|    5 |  981 | `	return PH7_OK;` |
+|    5 |  982 |  |
 |    - |  983 | `/* void (*xRewindDir)(void *) */` |
 |    - |  984 | `static void WinDir_RewindDir(void *pUserData)` |
 |    1 |  985 |  |
@@ -1004,45 +1004,45 @@ Coverage: 485/643 lines (75.43%)
 |    1 |  994 |  |
 |    - |  995 | `/* ph7_int64 (*xRead)(void *,void *,ph7_int64); */` |
 |    - |  996 | `static ph7_int64 WinFile_Read(void *pOS,void *pBuffer,ph7_int64 nDatatoRead)` |
-|    2 |  997 |  |
-|    2 |  998 | `	HANDLE pHandle = (HANDLE)pOS;` |
+|    5 |  997 |  |
+|    5 |  998 | `	HANDLE pHandle = (HANDLE)pOS;` |
 |    - |  999 | `	DWORD nRd;` |
 |    - | 1000 | `	BOOL rc;` |
-|    2 | 1001 | `	rc = ReadFile(pHandle,pBuffer,(DWORD)nDatatoRead,&nRd,0);` |
-|    2 | 1002 | `	if( !rc ){` |
+|    5 | 1001 | `	rc = ReadFile(pHandle,pBuffer,(DWORD)nDatatoRead,&nRd,0);` |
+|    5 | 1002 | `	if( !rc ){` |
 |    - | 1003 | `		/* EOF or IO error */` |
 |  ! 0 | 1004 | `		return -1;` |
 |    - | 1005 | `	}` |
-|    2 | 1006 | `	return (ph7_int64)nRd;` |
-|    2 | 1007 |  |
+|    5 | 1006 | `	return (ph7_int64)nRd;` |
+|    5 | 1007 |  |
 |    - | 1008 | `/* ph7_int64 (*xWrite)(void *,const void *,ph7_int64); */` |
 |    - | 1009 | `static ph7_int64 WinFile_Write(void *pOS,const void *pBuffer,ph7_int64 nWrite)` |
-|    2 | 1010 |  |
-|    2 | 1011 | `	const char *zData = (const char *)pBuffer;` |
-|    2 | 1012 | `	HANDLE pHandle = (HANDLE)pOS;` |
+|    5 | 1010 |  |
+|    5 | 1011 | `	const char *zData = (const char *)pBuffer;` |
+|    5 | 1012 | `	HANDLE pHandle = (HANDLE)pOS;` |
 |    - | 1013 | `	ph7_int64 nCount;` |
 |    - | 1014 | `	DWORD nWr;` |
 |    - | 1015 | `	BOOL rc;` |
-|    2 | 1016 | `	nWr = 0;` |
-|    2 | 1017 | `	nCount = 0;` |
+|    5 | 1016 | `	nWr = 0;` |
+|    5 | 1017 | `	nCount = 0;` |
 |    - | 1018 | `	for(;;){` |
-|    2 | 1019 | `		if( nWrite < 1 ){` |
-|    2 | 1020 | `			break;` |
+|    5 | 1019 | `		if( nWrite < 1 ){` |
+|    5 | 1020 | `			break;` |
 |    - | 1021 | `		}` |
-|    2 | 1022 | `		rc = WriteFile(pHandle,zData,(DWORD)nWrite,&nWr,0);` |
-|    2 | 1023 | `		if( !rc ){` |
+|    5 | 1022 | `		rc = WriteFile(pHandle,zData,(DWORD)nWrite,&nWr,0);` |
+|    5 | 1023 | `		if( !rc ){` |
 |    - | 1024 | `			/* IO error */` |
 |  ! 0 | 1025 | `			break;` |
 |    - | 1026 | `		}` |
-|    2 | 1027 | `		nWrite -= nWr;` |
-|    2 | 1028 | `		nCount += nWr;` |
-|    2 | 1029 | `		zData += nWr;` |
-|    2 | 1030 | `	}` |
-|    2 | 1031 | `	if( nWrite > 0 ){` |
+|    5 | 1027 | `		nWrite -= nWr;` |
+|    5 | 1028 | `		nCount += nWr;` |
+|    5 | 1029 | `		zData += nWr;` |
+|    5 | 1030 | `	}` |
+|    5 | 1031 | `	if( nWrite > 0 ){` |
 |  ! 0 | 1032 | `		return -1;` |
 |    - | 1033 | `	}` |
-|    2 | 1034 | `	return nCount;` |
-|    2 | 1035 |  |
+|    5 | 1034 | `	return nCount;` |
+|    5 | 1035 |  |
 |    - | 1036 | `/* int (*xSeek)(void *,ph7_int64,int) */` |
 |    - | 1037 | `static int WinFile_Seek(void *pUserData,ph7_int64 iOfft,int whence)` |
 |    1 | 1038 |  |

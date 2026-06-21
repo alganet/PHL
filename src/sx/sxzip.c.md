@@ -487,28 +487,28 @@ Coverage: 219/293 lines (74.74%)
 |  ! 0 |  477 | `	 return rc;` |
 |  ! 0 |  478 | ` }` |
 |   30 |  479 | `PH7_PRIVATE sxi32 SyArchiveInit(SyArchive *pArch,SyMemBackend *pAllocator,ProcHash xHash,ProcRawStrCmp xCmp)` |
-|    2 |  480 | ` {` |
+|    3 |  480 | ` {` |
 |    - |  481 | `	SyArchiveEntry **apHash;` |
 |    - |  482 | `#if defined(UNTRUST)` |
 |    - |  483 | ` 	if( pArch == 0 ){` |
 |    - |  484 | ` 		return SXERR_EMPTY;` |
 |    - |  485 | ` 	}` |
 |    - |  486 | `#endif` |
-|   32 |  487 | ` 	SyZero(pArch,sizeof(SyArchive));` |
+|   33 |  487 | ` 	SyZero(pArch,sizeof(SyArchive));` |
 |    - |  488 | ` 	/* Allocate a new hashtable */` |
-|   32 |  489 | `	apHash = (SyArchiveEntry **)SyMemBackendAlloc(&(*pAllocator),SXARCHIVE_HASH_SIZE * sizeof(SyArchiveEntry *));` |
-|   32 |  490 | `	if( apHash == 0){` |
+|   33 |  489 | `	apHash = (SyArchiveEntry **)SyMemBackendAlloc(&(*pAllocator),SXARCHIVE_HASH_SIZE * sizeof(SyArchiveEntry *));` |
+|   33 |  490 | `	if( apHash == 0){` |
 |  ! 0 |  491 | `		return SXERR_MEM;` |
 |    - |  492 | `	}` |
-|   32 |  493 | `	SyZero(apHash,SXARCHIVE_HASH_SIZE * sizeof(SyArchiveEntry *));` |
-|   32 |  494 | `	pArch->apHash = apHash;` |
-|   32 |  495 | `	pArch->xHash  = xHash ? xHash : SyBinHash;` |
-|   32 |  496 | `	pArch->xCmp   = xCmp ? xCmp : ArchiveHashCmp;` |
-|   32 |  497 | `	pArch->nSize  = SXARCHIVE_HASH_SIZE;` |
-|   32 |  498 | ` 	pArch->pAllocator = &(*pAllocator);` |
-|   32 |  499 | ` 	pArch->nMagic = SXARCH_MAGIC;` |
-|   32 |  500 | ` 	return SXRET_OK;` |
-|   17 |  501 | ` }` |
+|   33 |  493 | `	SyZero(apHash,SXARCHIVE_HASH_SIZE * sizeof(SyArchiveEntry *));` |
+|   33 |  494 | `	pArch->apHash = apHash;` |
+|   33 |  495 | `	pArch->xHash  = xHash ? xHash : SyBinHash;` |
+|   33 |  496 | `	pArch->xCmp   = xCmp ? xCmp : ArchiveHashCmp;` |
+|   33 |  497 | `	pArch->nSize  = SXARCHIVE_HASH_SIZE;` |
+|   33 |  498 | ` 	pArch->pAllocator = &(*pAllocator);` |
+|   33 |  499 | ` 	pArch->nMagic = SXARCH_MAGIC;` |
+|   33 |  500 | ` 	return SXRET_OK;` |
+|   18 |  501 | ` }` |
 |   14 |  502 | ` static sxi32 ArchiveReleaseEntry(SyMemBackend *pAllocator,SyArchiveEntry *pEntry)` |
 |    2 |  503 | ` {` |
 |   16 |  504 | ` 	SyArchiveEntry *pDup = pEntry->pNextName;` |
