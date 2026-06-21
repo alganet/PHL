@@ -87,6 +87,11 @@ jobs:
           - os: windows-latest
             name: x86_64-windows-msvc
             extension: .exe
+        # Windows coverage (OpenCppCoverage) is the slow job; it runs sharded in
+        # the dedicated `coverage-windows` job below instead of this single cell.
+        exclude:
+          - os: windows-latest
+            make: coverage
     steps:
     - uses: actions/checkout@v6
     - uses: ./.github/actions/setup-action
@@ -94,15 +99,68 @@ jobs:
       with:
         name: ${{ matrix.name }}
         mode: ${{ matrix.make == 'coverage' && 'coverage' || 'full' }}
-        make: ${{ matrix.make == 'coverage' && 'coverage-report' || matrix.make }}
+        # Coverage = gather (run the instrumented test build) then arrange.
+        make: ${{ matrix.make == 'coverage' && 'test coverage-report' || matrix.make }}
         extension: ${{ matrix.extension }}
         artifacts: ${{ matrix.make == 'coverage' && 'true' || 'false' }}
+        artifact_name: ${{ matrix.make == 'coverage' && format('coverage-report-{0}', matrix.name) || '' }}
+        artifacts_from: build
+        artifacts_from_mode: full
+
+  # OpenCppCoverage attaches to every child phl.exe the integration runner spawns
+  # (one per test), so wall-time scales with the test count. Shard the integration
+  # set across parallel Windows runners; smoke runs once in coverage-windows-smoke
+  # below. Each job gathers its phase (`make MODE=coverage test-*`) then arranges
+  # (`coverage-report`); the `report` job merges the per-job tracefiles. The /4 in
+  # make_args must match the number of shard values below.
+  coverage-windows:
+    runs-on: windows-latest
+    needs: build
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+    - uses: actions/checkout@v6
+    - uses: ./.github/actions/setup-action
+    - uses: ./.github/actions/make-action
+      with:
+        name: x86_64-windows-msvc
+        mode: coverage
+        make: test-integration coverage-report
+        make_args: SHARD=${{ matrix.shard }}/4
+        extension: .exe
+        artifacts: 'true'
+        artifact_name: coverage-report-x86_64-windows-msvc-${{ matrix.shard }}
+        artifacts_from: build
+        artifacts_from_mode: full
+
+  # Smoke is in-process (one process) and isn't shardable, so it runs once here in
+  # parallel with the integration shards instead of repeating on each shard.
+  coverage-windows-smoke:
+    runs-on: windows-latest
+    needs: build
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@v6
+    - uses: ./.github/actions/setup-action
+    - uses: ./.github/actions/make-action
+      with:
+        name: x86_64-windows-msvc
+        mode: coverage
+        make: test-smoke coverage-report
+        extension: .exe
+        artifacts: 'true'
+        artifact_name: coverage-report-x86_64-windows-msvc-smoke
         artifacts_from: build
         artifacts_from_mode: full
 
   report:
     runs-on: ubuntu-latest
-    needs: qa
+    needs: [qa, coverage-windows, coverage-windows-smoke]
     permissions:
       contents: write
       pull-requests: write
@@ -121,10 +179,13 @@ jobs:
         mkdir -p report
         chmod +x artifact/coverage-report-x86_64-linux-gnu/coverage/phl
 
-        lcov --add-tracefile artifact/coverage-report-x86_64-linux-gnu/coverage/coverage.info \
-             --add-tracefile artifact/coverage-report-x86_64-windows-msvc/coverage/coverage.info \
-             --add-tracefile artifact/coverage-report-arm64-apple-darwin/coverage/coverage.info \
-             --ignore-errors format \
+        # Merge every per-platform tracefile, including each Windows coverage shard.
+        tracefiles=()
+        for info in artifact/coverage-report-*/coverage/coverage.info; do
+          tracefiles+=(--add-tracefile "$info")
+        done
+        lcov "${tracefiles[@]}" \
+             --ignore-errors format,empty \
              --output-file report/coverage.info
 
         genhtml --quiet --include 'src/*'\

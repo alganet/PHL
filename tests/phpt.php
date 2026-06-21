@@ -20,6 +20,8 @@ $phpt_target_dir = dirname(__FILE__);
 $phpt_file_extension = "phpt";
 $phpt_filter = "";
 $phpt_output_format = "tap";
+$phpt_shard_index = 0; // 1-based shard to run; 0 = no sharding (run all)
+$phpt_shard_total = 0; // total number of shards
 $phpt_curdir = getcwd();
 
 // Parse arguments
@@ -75,6 +77,23 @@ while (!empty($phpt_args)) {
                 exit(1);
             }
             break;
+        case '--shard':
+            // Run only shard k of n (e.g. --shard 2/4). Deterministically
+            // partitions the sorted test list so CI can fan a slow run across
+            // parallel workers; results are merged downstream.
+            $phpt_shard_spec = array_shift($phpt_args);
+            if ($phpt_shard_spec === null
+                || !preg_match('#^([0-9]+)/([0-9]+)$#', $phpt_shard_spec, $phpt_shard_m)) {
+                echo "Error: --shard requires a value of the form k/n (e.g. 2/4)\n";
+                exit(1);
+            }
+            $phpt_shard_index = (int)$phpt_shard_m[1];
+            $phpt_shard_total = (int)$phpt_shard_m[2];
+            if ($phpt_shard_total < 1 || $phpt_shard_index < 1 || $phpt_shard_index > $phpt_shard_total) {
+                echo "Error: --shard k/n requires 1 <= k <= n\n";
+                exit(1);
+            }
+            break;
         case '--help':
             echo "Usage: " . $phpt_script_name . " [options]\n";
             echo "\n";
@@ -88,6 +107,8 @@ while (!empty($phpt_args)) {
             echo "  --file-extension <ext>     File extension for test files (default: phpt)\n";
             echo "  --filter <pattern>         Filter test files by prefix (optional, runs all if not specified)\n";
             echo "  --output-format <format>   Output format: tap (default) or dot\n";
+            echo "  --shard <k/n>              Run only shard k of n (e.g. 2/4); partitions the\n";
+            echo "                             sorted test list for parallel CI runs (default: all)\n";
             echo "  --help                     Show this help message\n";
             echo "\n";
             exit(0);
@@ -340,6 +361,17 @@ function run_file_with_target($phpt_target_executable, $phpt_file) {
 // Find test files
 $phpt_files = find_files($phpt_target_dir, $phpt_file_extension, $phpt_filter);
 sort($phpt_files);
+
+// Keep only this shard's slice (deterministic: by position in the sorted list).
+if ($phpt_shard_total > 0) {
+    $phpt_sharded = array();
+    foreach ($phpt_files as $phpt_i => $phpt_f) {
+        if (($phpt_i % $phpt_shard_total) === ($phpt_shard_index - 1)) {
+            $phpt_sharded[] = $phpt_f;
+        }
+    }
+    $phpt_files = $phpt_sharded;
+}
 
 $phpt_total = count($phpt_files);
 if ($phpt_output_format == "tap") {

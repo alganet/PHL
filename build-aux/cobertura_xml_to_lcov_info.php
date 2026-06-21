@@ -115,9 +115,16 @@ if (count($input_files) == 0) {
 
 // Parse each Cobertura file and merge into $coverage_data.
 foreach ($input_files as $xml_file) {
-    if (!is_string($xml_file) || $xml_file === '' || !is_readable($xml_file)) {
+    if (!is_string($xml_file) || $xml_file === '') {
         echo "Error: cannot read input file: $xml_file\n";
         exit(1);
+    }
+    // Skip a phase that wasn't gathered (e.g. a smoke-only or single-shard job),
+    // so coverage-report can always name every phase XML. Warn on stderr to keep
+    // the lcov output (stdout) clean.
+    if (!is_readable($xml_file)) {
+        fwrite(STDERR, "Note: skipping absent coverage input: $xml_file\n");
+        continue;
     }
 
     $xml = file_get_contents($xml_file);

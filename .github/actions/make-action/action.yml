@@ -16,6 +16,10 @@ inputs:
     description: 'The make command to run (e.g., test, test-compat, or empty for build). Will be used to name artifacts.'
     required: false
     default: ''
+  make_args:
+    description: 'Extra make variables/args appended to the command line (e.g., SHARD=2/4).'
+    required: false
+    default: ''
   extension:
     description: 'File extension for the binary (e.g., .exe for Windows)'
     required: false
@@ -31,6 +35,10 @@ inputs:
     description: 'Whether to upload the build artifacts.'
     required: false
     default: 'false'
+  artifact_name:
+    description: 'Override the uploaded artifact name (default: derived from make/mode + name).'
+    required: false
+    default: ''
 runs:
   using: 'composite'
   steps:
@@ -46,16 +54,16 @@ runs:
       shell: bash
 
     - if: contains(inputs.name, '-linux') || contains(inputs.name, '-darwin')
-      run: make MODE=${{ inputs.mode }} ${{ inputs.make }}
+      run: make MODE=${{ inputs.mode }} ${{ inputs.make }} ${{ inputs.make_args }}
       shell: bash
 
     - if: contains(inputs.name, '-windows')
-      run: build-aux/dev.bat nmake /nologo MODE=${{ inputs.mode }} ${{ inputs.make }}
+      run: build-aux/dev.bat nmake /nologo MODE=${{ inputs.mode }} ${{ inputs.make }} ${{ inputs.make_args }}
       shell: cmd
 
     - if: inputs.artifacts == 'true'
       name: Upload artifact
       uses: actions/upload-artifact@v5
       with:
-        name: ${{ (inputs.make == '' || inputs.make == 'build') && inputs.mode || inputs.make }}-${{ inputs.name }}
+        name: ${{ inputs.artifact_name != '' && inputs.artifact_name || format('{0}-{1}', (inputs.make == '' || inputs.make == 'build') && inputs.mode || inputs.make, inputs.name) }}
         path: build/${{ inputs.name }}

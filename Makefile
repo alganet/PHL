@@ -74,11 +74,14 @@ TEST_SMOKE_CMD = "$(PHL_BIN)" "tests/phpt.php" \
 TEST_SMOKE_PHP_CMD = "$(PHP_BIN)" "tests/phpt.php" \
 	--target-dir tests/ph7/001-smoke \
 	--output-format dot
-
+# Only integration is shardable ($(SHARD_FLAG)): each test runs in an isolated
+# child process, so splitting the set across runners is safe. Smoke runs
+# in-process in one shared interpreter (curated to pass only in the full sorted
+# order), so sharding it would regroup tests and expose cross-test state leaks.
 TEST_INTEGRATION_CMD = "$(PHL_BIN)" "tests/phpt.php" \
 	--target-executable "$(PHL_BIN)" \
 	--target-dir tests/ph7/002-integration \
-	--output-format dot
+	--output-format dot $(SHARD_FLAG)
 TEST_INTEGRATION_PHP_CMD = "$(PHL_BIN)" "tests/phpt.php" \
 	--target-executable "$(PHP_BIN)" \
 	--target-dir tests/ph7/002-integration \
@@ -124,9 +127,13 @@ coverage-report: .ALWAYS $(PHL_BIN) $(BUILD_DIR)/coverage/coverage.info
 coverage-md: .ALWAYS $(PHL_BIN) $(BUILD_DIR)/coverage/markdown
 .ALWAYS:
 
+# MODE=coverage is a build kind: the test targets gather coverage data by
+# running the instrumented build under $(COVERAGE_RUN_*) (empty in normal builds;
+# an OpenCppCoverage wrapper on MSVC). coverage-report/coverage-md only arrange
+# the gathered data.
 $(BUILD_DIR)-test-smoke: $(PHL_BIN)
 	"$(PHL_BIN)" --version
-	$(TEST_SMOKE_CMD) 
+	$(COVERAGE_RUN_SMOKE) $(TEST_SMOKE_CMD)
 
 $(BUILD_DIR)-test-smoke-compat: $(PHL_BIN)
 	"$(PHP_BIN)" --version
@@ -136,7 +143,7 @@ $(BUILD_DIR)-test-smoke-compat: $(PHL_BIN)
 
 $(BUILD_DIR)-test-integration: $(PHL_BIN)
 	"$(PHL_BIN)" --version
-	$(TEST_INTEGRATION_CMD)
+	$(COVERAGE_RUN_INTEGRATION) $(TEST_INTEGRATION_CMD)
 
 # Opt-in stress/fault-injection suite (POSIX shell; sets PHL_MAX_ALLOC inline).
 $(BUILD_DIR)-test-stress: $(PHL_BIN)

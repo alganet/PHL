@@ -39,6 +39,29 @@ LDFLAGS = $(full_LDFLAGS)
 
 PHP_BIN = php$(BIN_SUFFIX)
 
+# Optional test-shard selector (e.g. SHARD=2/4); empty = run all tests.
+# Lets CI fan a slow run (coverage) across parallel workers.
+!IFNDEF SHARD
+SHARD =
+!ENDIF
+!IF "$(SHARD)" != ""
+SHARD_FLAG = --shard $(SHARD)
+!ELSE
+SHARD_FLAG =
+!ENDIF
+
+# Coverage collection wrappers for the test recipes. OpenCppCoverage instruments
+# at runtime, so it must wrap each test run; it exports one cobertura XML per
+# phase that coverage-report later converts. Empty outside MODE=coverage.
+!IF "$(MODE)" == "coverage"
+OCC = OpenCppCoverage.exe --quiet --sources "$(MAKEDIR)\src" --excluded_sources "$(MAKEDIR)\src\minidump.h"
+COVERAGE_RUN_SMOKE = $(OCC) --export_type cobertura:$(BUILD_DIR)/coverage/smoke.xml --
+COVERAGE_RUN_INTEGRATION = $(OCC) --cover_children --export_type cobertura:$(BUILD_DIR)/coverage/integration.xml --
+!ELSE
+COVERAGE_RUN_SMOKE =
+COVERAGE_RUN_INTEGRATION =
+!ENDIF
+
 # NOTE: The $(PHL_BIN) rule and patterns are provided by patterns.mk
 # to avoid complex IF selections and nested macro expansions in NMake.
 
@@ -47,21 +70,12 @@ $(BUILD_DIR)-clean:
 
 # COVERAGE
 # --------
+# coverage-report only *arranges* data already gathered by `make MODE=coverage
+# test*` (which exports a cobertura XML per phase via the OpenCppCoverage
+# wrappers above). It converts whichever phase XML(s) exist -- a full run or a
+# single shard -- to lcov; the converter skips a missing input.
 
 $(BUILD_DIR)/coverage/coverage.info: .ALWAYS
-	@OpenCppCoverage.exe --quiet \
-	--sources "$(MAKEDIR)\src" \
-	--excluded_sources "$(MAKEDIR)\src\minidump.h" \
-	--cover_children \
-	--export_type cobertura:$(BUILD_DIR)/coverage/smoke.xml \
-	-- $(TEST_SMOKE_CMD)
-
-	@OpenCppCoverage.exe --quiet \
-	--sources "$(MAKEDIR)\src" \
-	--excluded_sources "$(MAKEDIR)\src\minidump.h" \
-	--cover_children \
-	--export_type cobertura:$(BUILD_DIR)/coverage/integration.xml \
-	-- $(TEST_INTEGRATION_CMD)
 	@"$(PHL_BIN)" \
 		"build-aux/cobertura_xml_to_lcov_info.php" \
 		"$(BUILD_DIR)/coverage/smoke.xml" \
