@@ -14426,13 +14426,29 @@ static sxi32 VmThrowException(
 				SySetReset(&pVm->aException);
 			}
 		}
-		/* Create a private frame first */
+		/* Create the catch frame (made transparent below) */
 		rc = VmEnterFrame(&(*pVm),0,0,&pFrame);
 		if( rc == SXRET_OK ){
-			ph7_value *pObj = VmExtractMemObj(&(*pVm),&pCatch->sThis,FALSE,TRUE);
-			pFrame->iFlags |= VM_FRAME_CATCH;
+			ph7_value *pObj;
+			/* Transparent wrapper: the catch body shares the enclosing variable
+			 * scope (PHP semantics). VM_FRAME_EXCEPTION makes VmSkipExceptionFrames
+			 * resolve variables — and bind $e — against the real enclosing frame, so
+			 * outer locals, $this and a closure held in a variable are all visible
+			 * inside the catch (and $e/any var written there persists afterwards).
+			 * VM_FRAME_CATCH is kept for the deferred-exception walk. iExceptionJump
+			 * stays 0, so the try-frame-only paths (all guarded by iExceptionJump>0)
+			 * are unaffected. Must be set BEFORE binding $e below. */
+			pFrame->iFlags |= VM_FRAME_CATCH | VM_FRAME_EXCEPTION;
+			pObj = VmExtractMemObj(&(*pVm),&pCatch->sThis,FALSE,TRUE);
 			if( pObj ){
+				/* The catch variable now resolves in the (shared) enclosing frame,
+				 * so it may already hold a value from a prior catch or assignment.
+				 * Pin the new instance, then release the slot's prior contents
+				 * (runs its __destruct / frees the old value) before rebinding —
+				 * iRef++ first keeps a re-thrown same exception alive across the
+				 * release. Mirrors PH7_MemObjStore's overwrite-then-release. */
 				pThis->iRef++;
+				PH7_MemObjRelease(pObj);
 				pObj->x.pOther = pThis;
 				MemObjSetType(pObj,MEMOBJ_OBJ);
 			}
