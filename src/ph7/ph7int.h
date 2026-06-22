@@ -651,6 +651,7 @@ struct ph7_class
 #define PH7_CLASS_ABSTRACT    0x004 /* Class is abstract */
 #define PH7_CLASS_TRAIT       0x008 /* Class is a trait */
 #define PH7_CLASS_TRAIT_VISITING 0x010 /* Trait is currently being applied (cycle detection) */
+#define PH7_CLASS_READONLY    0x020 /* Class is readonly (PHP 8.2): every declared property is readonly */
 /* Class attribute/methods/constants protection levels */
 #define PH7_CLASS_PROT_PUBLIC     1 /* public */
 #define PH7_CLASS_PROT_PROTECTED  2 /* protected */

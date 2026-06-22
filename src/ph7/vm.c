@@ -3286,6 +3286,32 @@ static sxi32 VmThrowReadonlyError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *
 	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
 }
 /*
+ * Reject an in-place mutation (`++`/`--`) of a readonly property. The increment
+ * and decrement opcodes mutate the per-instance slot directly, bypassing
+ * VmEnforcePropertyTypeOnStore, so they consult the typed-slot table here. A
+ * readonly property reached by `++`/`--` is necessarily already initialized (an
+ * uninitialized read is rejected earlier at OP_MEMBER), so the mutation is always
+ * the "Cannot modify readonly property" case. Returns SXRET_OK to proceed, or the
+ * PH7_EXCEPTION/PH7_ABORT produced by the throw.
+ */
+static sxi32 VmCheckReadonlyMutate(ph7_vm *pVm,sxu32 nIdx)
+{
+	SyHashEntry *pSlot;
+	VmClassAttr *pVmAttr;
+	if( nIdx == SXU32_HIGH || SyHashTotalEntry(&pVm->hTypedSlot) == 0 ){
+		return SXRET_OK; /* Non-lvalue operand, or no typed/readonly properties — skip */
+	}
+	pSlot = SyHashGet(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32));
+	if( pSlot == 0 ){
+		return SXRET_OK; /* Not a typed slot */
+	}
+	pVmAttr = (VmClassAttr *)pSlot->pUserData;
+	if( pVmAttr->pAttr && (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_READONLY) ){
+		return VmThrowReadonlyError(pVm,pVmAttr->pOwner,pVmAttr->pAttr,1);
+	}
+	return SXRET_OK;
+}
+/*
  * Enforce a typed-property assignment. On entry pValue holds the incoming
  * value. For scalar types it may be coerced in place (PHP 7.4 weak mode).
  * For class types, instanceof is verified.
@@ -4739,6 +4765,21 @@ static sxi32 VmByteCodeExec(
 	pEntryFrame = pVm->pFrame;
 	pc = nPc;
 /*
+ * Route an enforcement helper's return code from inside the main switch:
+ * proceed on SXRET_OK, abort on PH7_ABORT, and on PH7_EXCEPTION jump to the
+ * enclosing catch block (if any) or unwind out of the VM loop.
+ */
+#define PH7_DISPATCH_ENFORCE_RC(rcVar) \
+	if( (rcVar) == PH7_ABORT ){ goto Abort; } \
+	if( (rcVar) == PH7_EXCEPTION ){ \
+		VmFrame *_pFrmE = pVm->pFrame; \
+		if( _pFrmE && (_pFrmE->iFlags & VM_FRAME_EXCEPTION) && _pFrmE->iExceptionJump > 0 ){ \
+			pc = _pFrmE->iExceptionJump - 1; \
+			break; \
+		} \
+		goto Exception; \
+	}
+/*
  * Typed-property enforcement helper for compound stores. Called before
  * PH7_MemObjStore writes into a member memobj slot. On failure throws a
  * PHP TypeError and either jumps to the nearest catch block or propagates
@@ -4747,15 +4788,18 @@ static sxi32 VmByteCodeExec(
 #define PH7_ENFORCE_TYPED_STORE(nIdxArg, pSrcArg) \
 	{ \
 		sxi32 _rcT = VmEnforcePropertyTypeOnStore(&(*pVm),(nIdxArg),(pSrcArg)); \
-		if( _rcT == PH7_ABORT ){ goto Abort; } \
-		if( _rcT == PH7_EXCEPTION ){ \
-			VmFrame *_pFrmT = pVm->pFrame; \
-			if( _pFrmT && (_pFrmT->iFlags & VM_FRAME_EXCEPTION) && _pFrmT->iExceptionJump > 0 ){ \
-				pc = _pFrmT->iExceptionJump - 1; \
-				break; \
-			} \
-			goto Exception; \
-		} \
+		PH7_DISPATCH_ENFORCE_RC(_rcT) \
+	}
+/*
+ * Readonly enforcement helper for the in-place mutation opcodes (`++`/`--`),
+ * which bypass the typed-store path. Throws "Cannot modify readonly property"
+ * when the lvalue slot is a readonly property, otherwise proceeds. Must be used
+ * inside a case of the main switch.
+ */
+#define PH7_ENFORCE_READONLY_MUTATE(nIdxArg) \
+	{ \
+		sxi32 _rcR = VmCheckReadonlyMutate(&(*pVm),(nIdxArg)); \
+		PH7_DISPATCH_ENFORCE_RC(_rcR) \
 	}
 	/* Execute as much as we can */
 	for(;;){
@@ -6206,6 +6250,10 @@ case PH7_OP_INCR:
 		goto Abort;
 	}
 #endif
+	/* `++` on a readonly property is forbidden regardless of the current value's
+	 * type (it bypasses the store path), so enforce before the type guard below
+	 * — which otherwise skips object/array/resource operands. */
+	PH7_ENFORCE_READONLY_MUTATE(pTos->nIdx);
 	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)) == 0 ){
 		if( pTos->nIdx != SXU32_HIGH ){
 			ph7_value *pObj;
@@ -6287,6 +6335,11 @@ case PH7_OP_DECR:
 		goto Abort;
 	}
 #endif
+	/* `--` on a readonly property is forbidden regardless of the current value's
+	 * type (it bypasses the store path), so enforce before the type guard below
+	 * — which otherwise skips null/object/array/resource operands (e.g. a readonly
+	 * property currently holding null). */
+	PH7_ENFORCE_READONLY_MUTATE(pTos->nIdx);
 	/* NULL stays excluded: PHP leaves `--` on null untouched (no-op). */
 	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_NULL)) == 0 ){
 		if( pTos->nIdx != SXU32_HIGH ){
