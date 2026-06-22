@@ -450,6 +450,211 @@ PH7_PRIVATE sxi32 SySha1Compute(const void *pIn,sxu32 nLen,unsigned char zDigest
 	SHA1Final(&sCtx,zDigest);
 	return SXRET_OK;
 }
+/*
+ * SHA-224 / SHA-256 (FIPS 180-4). One core transform; SHA-224 differs only in
+ * the initial hash value (set by Init) and the truncated output length. All
+ * byte<->word conversions are done explicitly so the code is endian-independent.
+ */
+#define SHA2_ROTR32(x,n) (((x) >> (n)) | ((x) << (32 - (n))))
+static const sxu32 SHA256_K[64] = {
+	0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+	0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+	0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+	0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+	0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+	0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+	0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+	0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
+};
+static void SHA256Transform(sxu32 state[8],const unsigned char block[64]){
+	sxu32 w[64],a,b,c,d,e,f,g,h,t1,t2;
+	int i;
+	for( i = 0; i < 16; i++ ){
+		w[i] = ((sxu32)block[i*4] << 24) | ((sxu32)block[i*4+1] << 16)
+			 | ((sxu32)block[i*4+2] << 8) | ((sxu32)block[i*4+3]);
+	}
+	for( i = 16; i < 64; i++ ){
+		sxu32 s0 = SHA2_ROTR32(w[i-15],7) ^ SHA2_ROTR32(w[i-15],18) ^ (w[i-15] >> 3);
+		sxu32 s1 = SHA2_ROTR32(w[i-2],17) ^ SHA2_ROTR32(w[i-2],19) ^ (w[i-2] >> 10);
+		w[i] = w[i-16] + s0 + w[i-7] + s1;
+	}
+	a = state[0]; b = state[1]; c = state[2]; d = state[3];
+	e = state[4]; f = state[5]; g = state[6]; h = state[7];
+	for( i = 0; i < 64; i++ ){
+		sxu32 S1 = SHA2_ROTR32(e,6) ^ SHA2_ROTR32(e,11) ^ SHA2_ROTR32(e,25);
+		sxu32 ch = (e & f) ^ ((~e) & g);
+		sxu32 S0 = SHA2_ROTR32(a,2) ^ SHA2_ROTR32(a,13) ^ SHA2_ROTR32(a,22);
+		sxu32 maj = (a & b) ^ (a & c) ^ (b & c);
+		t1 = h + S1 + ch + SHA256_K[i] + w[i];
+		t2 = S0 + maj;
+		h = g; g = f; f = e; e = d + t1; d = c; c = b; b = a; a = t1 + t2;
+	}
+	state[0] += a; state[1] += b; state[2] += c; state[3] += d;
+	state[4] += e; state[5] += f; state[6] += g; state[7] += h;
+}
+PH7_PRIVATE void SHA256Init(SHA256Context *pCtx){
+	pCtx->state[0] = 0x6a09e667; pCtx->state[1] = 0xbb67ae85;
+	pCtx->state[2] = 0x3c6ef372; pCtx->state[3] = 0xa54ff53a;
+	pCtx->state[4] = 0x510e527f; pCtx->state[5] = 0x9b05688c;
+	pCtx->state[6] = 0x1f83d9ab; pCtx->state[7] = 0x5be0cd19;
+	pCtx->nLen = 0; pCtx->nIndex = 0; pCtx->nDigestLen = 32;
+}
+PH7_PRIVATE void SHA224Init(SHA256Context *pCtx){
+	pCtx->state[0] = 0xc1059ed8; pCtx->state[1] = 0x367cd507;
+	pCtx->state[2] = 0x3070dd17; pCtx->state[3] = 0xf70e5939;
+	pCtx->state[4] = 0xffc00b31; pCtx->state[5] = 0x68581511;
+	pCtx->state[6] = 0x64f98fa7; pCtx->state[7] = 0xbefa4fa4;
+	pCtx->nLen = 0; pCtx->nIndex = 0; pCtx->nDigestLen = 28;
+}
+PH7_PRIVATE void SHA256Update(SHA256Context *pCtx,const unsigned char *data,unsigned int len){
+	pCtx->nLen += len;
+	while( len > 0 ){
+		unsigned int n = 64 - pCtx->nIndex;
+		if( n > len ){ n = len; }
+		SyMemcpy(data,&pCtx->buffer[pCtx->nIndex],n);
+		pCtx->nIndex += n; data += n; len -= n;
+		if( pCtx->nIndex == 64 ){
+			SHA256Transform(pCtx->state,pCtx->buffer);
+			pCtx->nIndex = 0;
+		}
+	}
+}
+PH7_PRIVATE void SHA256Final(SHA256Context *pCtx,unsigned char *digest){
+	sxu64 nBits = pCtx->nLen << 3;
+	unsigned char c = 0x80;
+	int i;
+	SHA256Update(pCtx,&c,1);
+	c = 0x00;
+	while( pCtx->nIndex != 56 ){
+		SHA256Update(pCtx,&c,1);
+	}
+	for( i = 7; i >= 0; i-- ){
+		unsigned char b = (unsigned char)((nBits >> (i*8)) & 0xff);
+		SHA256Update(pCtx,&b,1);
+	}
+	/* nIndex is now 0 (a final block was processed). Emit nDigestLen bytes. */
+	for( i = 0; i < pCtx->nDigestLen; i++ ){
+		digest[i] = (unsigned char)((pCtx->state[i>>2] >> ((3-(i&3))*8)) & 0xff);
+	}
+}
+PH7_PRIVATE sxi32 SySha256Compute(const void *pIn,sxu32 nLen,unsigned char zDigest[32]){
+	SHA256Context sCtx;
+	SHA256Init(&sCtx);
+	SHA256Update(&sCtx,(const unsigned char *)pIn,nLen);
+	SHA256Final(&sCtx,zDigest);
+	return SXRET_OK;
+}
+/*
+ * SHA-384 / SHA-512 (FIPS 180-4). Same structure as SHA-256 but with 64-bit
+ * words, 80 rounds, a 128-byte block, and a 128-bit length field (the high 64
+ * bits are always zero for realistic inputs).
+ */
+#define SHA2_ROTR64(x,n) (((x) >> (n)) | ((x) << (64 - (n))))
+static const sxu64 SHA512_K[80] = {
+	0x428a2f98d728ae22ULL,0x7137449123ef65cdULL,0xb5c0fbcfec4d3b2fULL,0xe9b5dba58189dbbcULL,
+	0x3956c25bf348b538ULL,0x59f111f1b605d019ULL,0x923f82a4af194f9bULL,0xab1c5ed5da6d8118ULL,
+	0xd807aa98a3030242ULL,0x12835b0145706fbeULL,0x243185be4ee4b28cULL,0x550c7dc3d5ffb4e2ULL,
+	0x72be5d74f27b896fULL,0x80deb1fe3b1696b1ULL,0x9bdc06a725c71235ULL,0xc19bf174cf692694ULL,
+	0xe49b69c19ef14ad2ULL,0xefbe4786384f25e3ULL,0x0fc19dc68b8cd5b5ULL,0x240ca1cc77ac9c65ULL,
+	0x2de92c6f592b0275ULL,0x4a7484aa6ea6e483ULL,0x5cb0a9dcbd41fbd4ULL,0x76f988da831153b5ULL,
+	0x983e5152ee66dfabULL,0xa831c66d2db43210ULL,0xb00327c898fb213fULL,0xbf597fc7beef0ee4ULL,
+	0xc6e00bf33da88fc2ULL,0xd5a79147930aa725ULL,0x06ca6351e003826fULL,0x142929670a0e6e70ULL,
+	0x27b70a8546d22ffcULL,0x2e1b21385c26c926ULL,0x4d2c6dfc5ac42aedULL,0x53380d139d95b3dfULL,
+	0x650a73548baf63deULL,0x766a0abb3c77b2a8ULL,0x81c2c92e47edaee6ULL,0x92722c851482353bULL,
+	0xa2bfe8a14cf10364ULL,0xa81a664bbc423001ULL,0xc24b8b70d0f89791ULL,0xc76c51a30654be30ULL,
+	0xd192e819d6ef5218ULL,0xd69906245565a910ULL,0xf40e35855771202aULL,0x106aa07032bbd1b8ULL,
+	0x19a4c116b8d2d0c8ULL,0x1e376c085141ab53ULL,0x2748774cdf8eeb99ULL,0x34b0bcb5e19b48a8ULL,
+	0x391c0cb3c5c95a63ULL,0x4ed8aa4ae3418acbULL,0x5b9cca4f7763e373ULL,0x682e6ff3d6b2b8a3ULL,
+	0x748f82ee5defb2fcULL,0x78a5636f43172f60ULL,0x84c87814a1f0ab72ULL,0x8cc702081a6439ecULL,
+	0x90befffa23631e28ULL,0xa4506cebde82bde9ULL,0xbef9a3f7b2c67915ULL,0xc67178f2e372532bULL,
+	0xca273eceea26619cULL,0xd186b8c721c0c207ULL,0xeada7dd6cde0eb1eULL,0xf57d4f7fee6ed178ULL,
+	0x06f067aa72176fbaULL,0x0a637dc5a2c898a6ULL,0x113f9804bef90daeULL,0x1b710b35131c471bULL,
+	0x28db77f523047d84ULL,0x32caab7b40c72493ULL,0x3c9ebe0a15c9bebcULL,0x431d67c49c100d4cULL,
+	0x4cc5d4becb3e42b6ULL,0x597f299cfc657e2aULL,0x5fcb6fab3ad6faecULL,0x6c44198c4a475817ULL
+};
+static void SHA512Transform(sxu64 state[8],const unsigned char block[128]){
+	sxu64 w[80],a,b,c,d,e,f,g,h,t1,t2;
+	int i;
+	for( i = 0; i < 16; i++ ){
+		w[i] = ((sxu64)block[i*8] << 56) | ((sxu64)block[i*8+1] << 48)
+			 | ((sxu64)block[i*8+2] << 40) | ((sxu64)block[i*8+3] << 32)
+			 | ((sxu64)block[i*8+4] << 24) | ((sxu64)block[i*8+5] << 16)
+			 | ((sxu64)block[i*8+6] << 8) | ((sxu64)block[i*8+7]);
+	}
+	for( i = 16; i < 80; i++ ){
+		sxu64 s0 = SHA2_ROTR64(w[i-15],1) ^ SHA2_ROTR64(w[i-15],8) ^ (w[i-15] >> 7);
+		sxu64 s1 = SHA2_ROTR64(w[i-2],19) ^ SHA2_ROTR64(w[i-2],61) ^ (w[i-2] >> 6);
+		w[i] = w[i-16] + s0 + w[i-7] + s1;
+	}
+	a = state[0]; b = state[1]; c = state[2]; d = state[3];
+	e = state[4]; f = state[5]; g = state[6]; h = state[7];
+	for( i = 0; i < 80; i++ ){
+		sxu64 S1 = SHA2_ROTR64(e,14) ^ SHA2_ROTR64(e,18) ^ SHA2_ROTR64(e,41);
+		sxu64 ch = (e & f) ^ ((~e) & g);
+		sxu64 S0 = SHA2_ROTR64(a,28) ^ SHA2_ROTR64(a,34) ^ SHA2_ROTR64(a,39);
+		sxu64 maj = (a & b) ^ (a & c) ^ (b & c);
+		t1 = h + S1 + ch + SHA512_K[i] + w[i];
+		t2 = S0 + maj;
+		h = g; g = f; f = e; e = d + t1; d = c; c = b; b = a; a = t1 + t2;
+	}
+	state[0] += a; state[1] += b; state[2] += c; state[3] += d;
+	state[4] += e; state[5] += f; state[6] += g; state[7] += h;
+}
+PH7_PRIVATE void SHA512Init(SHA512Context *pCtx){
+	pCtx->state[0] = 0x6a09e667f3bcc908ULL; pCtx->state[1] = 0xbb67ae8584caa73bULL;
+	pCtx->state[2] = 0x3c6ef372fe94f82bULL; pCtx->state[3] = 0xa54ff53a5f1d36f1ULL;
+	pCtx->state[4] = 0x510e527fade682d1ULL; pCtx->state[5] = 0x9b05688c2b3e6c1fULL;
+	pCtx->state[6] = 0x1f83d9abfb41bd6bULL; pCtx->state[7] = 0x5be0cd19137e2179ULL;
+	pCtx->nLen = 0; pCtx->nIndex = 0; pCtx->nDigestLen = 64;
+}
+PH7_PRIVATE void SHA384Init(SHA512Context *pCtx){
+	pCtx->state[0] = 0xcbbb9d5dc1059ed8ULL; pCtx->state[1] = 0x629a292a367cd507ULL;
+	pCtx->state[2] = 0x9159015a3070dd17ULL; pCtx->state[3] = 0x152fecd8f70e5939ULL;
+	pCtx->state[4] = 0x67332667ffc00b31ULL; pCtx->state[5] = 0x8eb44a8768581511ULL;
+	pCtx->state[6] = 0xdb0c2e0d64f98fa7ULL; pCtx->state[7] = 0x47b5481dbefa4fa4ULL;
+	pCtx->nLen = 0; pCtx->nIndex = 0; pCtx->nDigestLen = 48;
+}
+PH7_PRIVATE void SHA512Update(SHA512Context *pCtx,const unsigned char *data,unsigned int len){
+	pCtx->nLen += len;
+	while( len > 0 ){
+		unsigned int n = 128 - pCtx->nIndex;
+		if( n > len ){ n = len; }
+		SyMemcpy(data,&pCtx->buffer[pCtx->nIndex],n);
+		pCtx->nIndex += n; data += n; len -= n;
+		if( pCtx->nIndex == 128 ){
+			SHA512Transform(pCtx->state,pCtx->buffer);
+			pCtx->nIndex = 0;
+		}
+	}
+}
+PH7_PRIVATE void SHA512Final(SHA512Context *pCtx,unsigned char *digest){
+	sxu64 nBits = pCtx->nLen << 3;
+	unsigned char c = 0x80;
+	int i;
+	SHA512Update(pCtx,&c,1);
+	c = 0x00;
+	while( pCtx->nIndex != 112 ){
+		SHA512Update(pCtx,&c,1);
+	}
+	/* 128-bit length: the high 64 bits are zero for realistic input. */
+	for( i = 0; i < 8; i++ ){
+		SHA512Update(pCtx,&c,1);
+	}
+	for( i = 7; i >= 0; i-- ){
+		unsigned char b = (unsigned char)((nBits >> (i*8)) & 0xff);
+		SHA512Update(pCtx,&b,1);
+	}
+	for( i = 0; i < pCtx->nDigestLen; i++ ){
+		digest[i] = (unsigned char)((pCtx->state[i>>3] >> ((7-(i&7))*8)) & 0xff);
+	}
+}
+PH7_PRIVATE sxi32 SySha512Compute(const void *pIn,sxu32 nLen,unsigned char zDigest[64]){
+	SHA512Context sCtx;
+	SHA512Init(&sCtx);
+	SHA512Update(&sCtx,(const unsigned char *)pIn,nLen);
+	SHA512Final(&sCtx,zDigest);
+	return SXRET_OK;
+}
 #endif /* PH7_DISABLE_HASH_FUNC */
 static const sxu32 crc32_table[] = {
 	0x00000000, 0x77073096, 0xee0e612c, 0x990951ba,
