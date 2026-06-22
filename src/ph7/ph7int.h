@@ -568,7 +568,8 @@ struct ph7_vm_func_closure_env
 #define VM_FUNC_ARG_NULLABLE 0x100 /* Argument type is nullable (?type or T|null) */
 #define VM_FUNC_ARG_UNION    0x200 /* Argument has a union type (use aUnionAlts) */
 #define VM_FUNC_ARG_PROMOTED 0x400 /* Constructor promoted property (iPromoteVis holds visibility) */
-/* next free bit: 0x800 */
+#define VM_FUNC_ARG_READONLY 0x800 /* Promoted property is readonly (PHP 8.1) */
+/* next free bit: 0x1000 */
 /*
  * Each user defined function is parsed out and stored in an instance
  * of the following structure.
@@ -680,7 +681,8 @@ struct ph7_class_attr
 #define PH7_CLASS_ATTR_TYPED        0x010  /* Property has an explicit declared type */
 #define PH7_CLASS_ATTR_NULLABLE     0x020  /* Type allows null (?type prefix or T|null union) */
 #define PH7_CLASS_ATTR_UNION        0x040  /* Property has a union type (use aUnionAlts) */
-/* next free bit: 0x080 */
+#define PH7_CLASS_ATTR_READONLY     0x080  /* readonly property (PHP 8.1) */
+/* next free bit: 0x100 */
 /*
  * Each class method is parsed out and stored in an instance of the following
  * structure.
@@ -750,7 +752,9 @@ struct VmClassAttr
 	sxi32 iState;          /* Per-instance state: VM_CLASS_ATTR_UNINIT */
 	ph7_class *pOwner;     /* Class that declares this attribute (for error msgs) */
 };
-#define VM_CLASS_ATTR_UNINIT  0x01 /* Typed property never written (PHP 7.4+) */
+#define VM_CLASS_ATTR_UNINIT  0x01 /* Typed property never written (PHP 7.4+); also the
+                                    * write-once latch for readonly properties (cleared on
+                                    * the first successful write — see VmEnforcePropertyTypeOnStore) */
  /* Forward reference */
 typedef struct VmRefObj VmRefObj;
 /*

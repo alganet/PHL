@@ -780,6 +780,12 @@ PH7_PRIVATE ph7_class_instance * PH7_CloneClassInstance(ph7_class_instance *pSrc
 			if( pvSrc && pvDest ){
 				PH7_MemObjStore(pvSrc,pvDest);
 			}
+			/* Carry over the per-instance state so the clone matches the source:
+			 * VM_CLASS_ATTR_UNINIT marks a typed property as not-yet-initialized
+			 * and doubles as the readonly write-once latch — without this a clone
+			 * would reset to uninitialized (losing the value's readiness) and a
+			 * readonly property would become writable again. */
+			pDestAttr->iState = pSrcAttr->iState;
 		}
 	}
 	/* call the __clone method on the cloned object if available */
