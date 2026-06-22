@@ -9,7 +9,8 @@ $usage = "Usage: lcov_info_to_text.php [--content=files|summary|all] <coverage.i
 $content = 'all';
 $info_file = null;
 
-foreach ($argv as $arg) {
+// Skip $argv[0] (the script name) — PHL now matches PHP's $argv convention.
+foreach (array_slice($argv, 1) as $arg) {
     if (strpos($arg, '--content=') === 0) {
         $content = substr($arg, 10);
     } elseif (!$info_file) {

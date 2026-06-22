@@ -45,6 +45,23 @@
 /* Shutdown flag set by signal handler */
 static volatile int g_shutdown = 0;
 
+/* Resolved interpreter path, exposed to scripts as the PHP_BINARY constant.
+ * Set once in phl_serve(); the matching expand callback mirrors the CLI's
+ * (PHL_PhpBinaryConst is static to phl.c, so the server keeps its own). */
+static const char *g_phpBinaryPath = 0;
+static void PhlServerPhpBinaryConst(ph7_value *pVal, void *pUserData)
+{
+	ph7_value_string(pVal, (const char *)pUserData, -1);
+}
+/* Define PHP_BINARY on a freshly compiled VM. Constants persist across
+ * ph7_vm_reset(), so a cache-owned VM needs this only once, at compile time. */
+static void DefinePhpBinary(ph7_vm *pVm)
+{
+	if( g_phpBinaryPath ){
+		ph7_create_constant(pVm, "PHP_BINARY", PhlServerPhpBinaryConst, (void *)g_phpBinaryPath);
+	}
+}
+
 #ifdef __WINNT__
 static BOOL WINAPI ConsoleCtrlHandler(DWORD dwCtrlType)
 {
@@ -517,7 +534,11 @@ static ph7_vm *AcquireScriptVm(ph7 *pEngine, const char *zPath, int *pbCached)
 	long long nMtime;
 	if( !g_vmReuse ){
 		*pbCached = 0;
-		return ph7_compile_file(pEngine, zPath, &pVm, 0) == PH7_OK ? pVm : 0;
+		if( ph7_compile_file(pEngine, zPath, &pVm, 0) != PH7_OK ){
+			return 0;
+		}
+		DefinePhpBinary(pVm);
+		return pVm;
 	}
 	nMtime = GetFileMtime(zPath);
 	for( i = 0 ; i < PHL_VM_CACHE_SIZE ; i++ ){
@@ -549,6 +570,7 @@ static ph7_vm *AcquireScriptVm(ph7 *pEngine, const char *zPath, int *pbCached)
 		*pbCached = 0;
 		return 0;
 	}
+	DefinePhpBinary(pVm);
 	if( iFree < 0 ){
 		/* Cache full: evict the least-recently-used entry. */
 		ph7_vm_release(g_vmCache[iLru].pVm);
@@ -730,7 +752,7 @@ static void LogRequest(const char *zRemoteAddr, int iRemotePort,
 /*
  * Main server entry point.
  */
-int phl_serve(const char *zHost, int iPort, const char *zDocRoot, const char *zRouter)
+int phl_serve(const char *zHost, int iPort, const char *zDocRoot, const char *zRouter, const char *zBinaryPath)
 {
 	ph7 *pEngine;
 	ph7_socket listenSock;
@@ -742,6 +764,8 @@ int phl_serve(const char *zHost, int iPort, const char *zDocRoot, const char *zR
 	char zRemoteAddr[64];
 	int iRemotePort;
 	int rc;
+	/* Resolved interpreter path → PHP_BINARY for every served VM. */
+	g_phpBinaryPath = zBinaryPath;
 	/* Compile-once / reuse is on by default; PHL_NO_REUSE=1 forces the legacy
 	 * compile-per-request path for behaviour diffing. */
 	{

@@ -17,9 +17,11 @@ fclose($fp);
 echo $out;
 ?>
 --EXPECT--
-phl [-h|--help|-b|-v|--version|-r code] path/to/php_file [script args]
+phl [-h|--help|-b|-i|-l|-v|--version|-r code] path/to/php_file [script args]
 phl -S host:port [-t docroot] [router.php]
 	-b: Dump PH7 byte-code instructions
+	-i: Display interpreter information and exit
+	-l: Syntax-check (lint) the given file and exit
 	-r code: Run code from command line (no tags needed)
 	-S host:port: Start the built-in development server
 	-t docroot: Document root for the server (default: current directory)

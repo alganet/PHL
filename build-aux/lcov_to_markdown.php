@@ -414,7 +414,8 @@ $output_dir = null;
 $source_root = null;
 $info_files = array();
 
-foreach ($argv as $arg) {
+// Skip $argv[0] (the script name) — PHL now matches PHP's $argv convention.
+foreach (array_slice($argv, 1) as $arg) {
     if (starts_with($arg, '--output-dir=')) {
         $output_dir = substr($arg, 13);
     } elseif (starts_with($arg, '--source-root=')) {
