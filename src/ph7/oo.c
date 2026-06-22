@@ -243,6 +243,22 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 	if( rc != SXRET_OK ){
 		return rc;
 	}
+	/* readonly class inheritance (PHP 8.2): a readonly class may only extend a
+	 * readonly class, and a non-readonly class may not extend a readonly one. */
+	if( (pBase->iFlags & PH7_CLASS_READONLY) != (pSub->iFlags & PH7_CLASS_READONLY) ){
+		if( pBase->iFlags & PH7_CLASS_READONLY ){
+			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,
+				"Non-readonly class %z cannot extend readonly class %z",
+				&pSub->sName,&pBase->sName);
+		}else{
+			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,
+				"Readonly class %z cannot extend non-readonly class %z",
+				&pSub->sName,&pBase->sName);
+		}
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+	}
 	/* Copy public/protected attributes from the base class */
 	SyHashResetLoopCursor(&pBase->hAttr);
 	while((pEntry = SyHashGetNextEntry(&pBase->hAttr)) != 0 ){

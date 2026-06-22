@@ -7157,6 +7157,12 @@ static sxi32 GenStateCompileClassAttr(ph7_gen_state *pGen,sxi32 iProtection,sxi3
 	SyStringInitFromBuf(&sTypeClass,0,0);
 	SyStringInitFromBuf(&sTypeText,0,0);
 	SySetInit(&aUnionAlts,&pGen->pVm->sAllocator,sizeof(ph7_type_alt));
+	/* In a readonly class (PHP 8.2) every declared instance property is readonly;
+	 * the per-property readonly rules below then apply uniformly (a static or
+	 * untyped property, or one with a default, raises the same PHP-exact fatal). */
+	if( pClass->iFlags & PH7_CLASS_READONLY ){
+		iFlags |= PH7_CLASS_ATTR_READONLY;
+	}
 	/* Extract visibility level */
 	iProtection = GetProtectionLevel(iProtection);
 	/* Parse optional type hint (typed properties, PHP 7.4+) */
@@ -7494,8 +7500,9 @@ static sxi32 GenStateCompileClassMethod(
 			if( pArg->iFlags & VM_FUNC_ARG_UNION ){
 				iAttrFlags |= PH7_CLASS_ATTR_UNION;
 			}
-			if( pArg->iFlags & VM_FUNC_ARG_READONLY ){
-				/* A readonly promoted property must be typed (PHP 8.1). */
+			if( (pArg->iFlags & VM_FUNC_ARG_READONLY) || (pClass->iFlags & PH7_CLASS_READONLY) ){
+				/* A readonly promoted property must be typed (PHP 8.1); in a
+				 * readonly class (8.2) every promoted property is readonly too. */
 				if( (iAttrFlags & PH7_CLASS_ATTR_TYPED) == 0 ){
 					rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 						"Readonly property %z::$%z must have type",&pClass->sName,&pArg->sName);
@@ -9019,26 +9026,83 @@ done:
  *   This also applies to constructors as of PHP 5.4. Before 5.4 constructor signatures
  *   could differ.
  */
-static sxi32 PH7_CompileAbstractClass(ph7_gen_state *pGen)
+/*
+ * Recognize a class-declaration modifier token: the `final`/`abstract` keywords
+ * or the context-sensitive `readonly` identifier (PHP 8.2). On a match, *piFlag
+ * receives the corresponding PH7_CLASS_* bit.
+ */
+static int GenStateTokenIsClassModifier(SyToken *pTok,sxi32 *piFlag)
 {
-	sxi32 rc;
-	pGen->pIn++; /* Jump the 'abstract' keyword */
-	rc = GenStateCompileClass(&(*pGen),PH7_CLASS_ABSTRACT);
-	return rc;
+	if( pTok->nType & PH7_TK_KEYWORD ){
+		sxu32 nKw = (sxu32)SX_PTR_TO_INT(pTok->pUserData);
+		if( nKw == PH7_TKWRD_FINAL ){ *piFlag = PH7_CLASS_FINAL; return TRUE; }
+		if( nKw == PH7_TKWRD_ABSTRACT ){ *piFlag = PH7_CLASS_ABSTRACT; return TRUE; }
+	}
+	if( GenStateIsReadonly(pTok) ){ *piFlag = PH7_CLASS_READONLY; return TRUE; }
+	return FALSE;
 }
 /*
- * Compile a user-defined final class.
- *  According to the PHP language reference manual
- *    PHP 5 introduces the final keyword, which prevents child classes from overriding
- *    a method by prefixing the definition with final. If the class itself is being defined
- *    final then it cannot be extended.
+ * Advance *ppIn over a leading run of class modifiers, returning the combined
+ * PH7_CLASS_* flags (0 if none). If a modifier is repeated, the first repeated
+ * token is reported via *ppDup (NULL when none); pass 0 for ppDup to ignore it.
+ * This stays side-effect-free so it can be used for speculative look-ahead.
  */
-static sxi32 PH7_CompileFinalClass(ph7_gen_state *pGen)
+static sxi32 GenStateScanClassModifiers(SyToken **ppIn,SyToken *pEnd,SyToken **ppDup)
 {
+	SyToken *pIn = *ppIn,*pDup = 0;
+	sxi32 iFlags = 0,iFlag;
+	while( pIn < pEnd && GenStateTokenIsClassModifier(pIn,&iFlag) ){
+		if( (iFlags & iFlag) && pDup == 0 ){
+			pDup = pIn;
+		}
+		iFlags |= iFlag;
+		pIn++;
+	}
+	*ppIn = pIn;
+	if( ppDup ){ *ppDup = pDup; }
+	return iFlags;
+}
+/*
+ * Test whether the token stream starts a *modified* class declaration: a run of
+ * one or more `final`/`abstract`/`readonly` modifiers (in any order) terminated
+ * by the `class` keyword. Requiring at least one modifier leaves a bare
+ * `class`/`interface`/`trait` (and any expression that merely starts with
+ * `readonly`) to their existing handlers.
+ */
+static int GenStateStartsModifiedClass(SyToken *pIn,SyToken *pEnd)
+{
+	sxi32 iFlags = GenStateScanClassModifiers(&pIn,pEnd,0);
+	return iFlags != 0 && pIn < pEnd && (pIn->nType & PH7_TK_KEYWORD)
+		&& (sxu32)SX_PTR_TO_INT(pIn->pUserData) == PH7_TKWRD_CLASS;
+}
+/*
+ * Compile a class declaration carrying one or more leading modifiers
+ * (`final`/`abstract`/`readonly`, any order). Consumes the modifier run, leaving
+ * the cursor on the `class` keyword for GenStateCompileClass, and rejects a
+ * repeated modifier (`final final class`) or the mutually-exclusive
+ * `abstract`+`final` pair, like PHP.
+ */
+static sxi32 PH7_CompileClassModifiers(ph7_gen_state *pGen)
+{
+	SyToken *pDup;
+	sxi32 iFlags = GenStateScanClassModifiers(&pGen->pIn,pGen->pEnd,&pDup);
 	sxi32 rc;
-	pGen->pIn++; /* Jump the 'final' keyword */
-	rc = GenStateCompileClass(&(*pGen),PH7_CLASS_FINAL);
-	return rc;
+	if( pDup ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,pDup->nLine,
+			"Multiple %z modifiers are not allowed",&pDup->sData);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+	}
+	if( (iFlags & (PH7_CLASS_FINAL|PH7_CLASS_ABSTRACT))
+		== (PH7_CLASS_FINAL|PH7_CLASS_ABSTRACT) ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+			"Cannot use the final modifier on an abstract class");
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+	}
+	return GenStateCompileClass(&(*pGen),iFlags);
 }
 /*
  * Compile a user-defined trait.
@@ -11045,13 +11109,11 @@ static ProcLangConstruct GenStateGetStatementHandler(
 			return PH7_CompileClass;
 		}else if(nKeywordID == PH7_TKWRD_TRAIT && (pLookahed->nType & PH7_TK_ID) ){
 			return PH7_CompileTrait;
-		}else if( nKeywordID == PH7_TKWRD_ABSTRACT && (pLookahed->nType & PH7_TK_KEYWORD)
-			&& SX_PTR_TO_INT(pLookahed->pUserData) == PH7_TKWRD_CLASS ){
-				return PH7_CompileAbstractClass;
-		}else if( nKeywordID == PH7_TKWRD_FINAL && (pLookahed->nType & PH7_TK_KEYWORD)
-			&& SX_PTR_TO_INT(pLookahed->pUserData) == PH7_TKWRD_CLASS ){
-				return PH7_CompileFinalClass;
 		}
+		/* `final`/`abstract` (and `readonly`, an ID) class modifiers — possibly
+		 * combined — are routed via GenStateStartsModifiedClass in the chunk
+		 * compiler, which can scan the whole modifier run (the lookahead here is
+		 * a single token and cannot see past `final readonly …`). */
 	}
 	/* Not a language construct */
 	return 0;
@@ -11118,7 +11180,12 @@ static sxi32 GenStateCompileChunk(
 			}
 		}else{
 			xCons = 0;
-			if( pGen->pIn->nType & PH7_TK_KEYWORD ){
+			if( GenStateStartsModifiedClass(pGen->pIn,pGen->pEnd) ){
+				/* `final`/`abstract`/`readonly` (any order) before `class`. Handled
+				 * here rather than the keyword-only dispatcher because `readonly`
+				 * is a context-sensitive ID and combos need a full-run scan. */
+				xCons = PH7_CompileClassModifiers;
+			}else if( pGen->pIn->nType & PH7_TK_KEYWORD ){
 				sxu32 nKeyword = (sxu32)SX_PTR_TO_INT(pGen->pIn->pUserData);
 				/* Try to extract a language construct handler */
 				xCons = GenStateGetStatementHandler(nKeyword,(&pGen->pIn[1] < pGen->pEnd) ? &pGen->pIn[1] : 0);
