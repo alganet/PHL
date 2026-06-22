@@ -250,6 +250,19 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 		pAttr = (ph7_class_attr *)pEntry->pUserData;
 		pName = &pAttr->sName;
 		if( (pEntry = SyHashGet(&pSub->hAttr,(const void *)pName->zString,pName->nByte)) != 0 ){
+			if( (pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_FINAL))
+				== (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_FINAL) ){
+				/* Cannot override a final class constant (PHP 8.1). Report the
+				 * class that originally declared it (pDeclClass) rather than the
+				 * immediate base, so a multi-level chain matches PHP. */
+				ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pBase;
+				rc = PH7_GenCompileError(&(*pGen),E_ERROR,((ph7_class_attr *)pEntry->pUserData)->nLine,
+					"%z::%z cannot override final constant %z::%z",
+					&pSub->sName,pName,&pOwner->sName,pName);
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+			}
 			if( pAttr->iProtection == PH7_CLASS_PROT_PRIVATE &&
 				((ph7_class_attr *)pEntry->pUserData)->iProtection != PH7_CLASS_PROT_PUBLIC ){
 					/* Cannot redeclare private attribute */

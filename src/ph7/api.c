@@ -720,10 +720,17 @@ static sxi32 ProcessScript(
 	/* Ready to execute PH7 bytecode */
 	return PH7_OK;
 Release:
-	SyMemBackendRelease(&pVm->sAllocator);
-	SyMemBackendPoolFree(&pEngine->sAllocator,pVm);
-	*ppVm = 0;
-	return PH7_VM_ERR;
+	{
+		/* A code-generation error raised while mounting class definitions (e.g. a
+		 * typed class constant whose value violates its declared type) is a compile
+		 * error; any other PH7_VmMakeReady failure is a genuine VM-init error.
+		 * Captured before the releases free the VM. */
+		sxi32 rcRet = (pVm->sCodeGen.nErr > 0) ? PH7_COMPILE_ERR : PH7_VM_ERR;
+		SyMemBackendRelease(&pVm->sAllocator);
+		SyMemBackendPoolFree(&pEngine->sAllocator,pVm);
+		*ppVm = 0;
+		return rcRet;
+	}
 }
 /*
  * [CAPIREF: ph7_compile()]
