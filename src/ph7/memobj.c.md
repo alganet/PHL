@@ -90,23 +90,23 @@ Coverage: 706/796 lines (88.69%)
 |        - |   80 | `	}` |
 |   111899 |   81 | `	if( pVal->zString[0] == '0' ){` |
 |        - |   82 | `		sxi32 c;` |
-|    46316 |   83 | `		if( pVal->nByte == sizeof(char) ){` |
+|    46315 |   83 | `		if( pVal->nByte == sizeof(char) ){` |
 |    45913 |   84 | `			return 0;` |
 |        - |   85 | `		}` |
-|      404 |   86 | `		c = pVal->zString[1];` |
-|      404 |   87 | `		if( c  == 'x' \|\| c == 'X' ){` |
+|      403 |   86 | `		c = pVal->zString[1];` |
+|      403 |   87 | `		if( c  == 'x' \|\| c == 'X' ){` |
 |        - |   88 | `			/* Hex digit stream */` |
 |       69 |   89 | `			SyHexStrToInt64(pVal->zString,pVal->nByte,(void *)&iVal,0);` |
-|      370 |   90 | `		}else if( c == 'b' \|\| c == 'B' ){` |
+|      369 |   90 | `		}else if( c == 'b' \|\| c == 'B' ){` |
 |        - |   91 | `			/* Binary digit stream */` |
 |      277 |   92 | `			SyBinaryStrToInt64(pVal->zString,pVal->nByte,(void *)&iVal,0);` |
 |      139 |   93 | `		}else{` |
 |        - |   94 | `			/* Octal digit stream */` |
-|       60 |   95 | `			SyOctalStrToInt64(pVal->zString,pVal->nByte,(void *)&iVal,0);` |
+|       59 |   95 | `			SyOctalStrToInt64(pVal->zString,pVal->nByte,(void *)&iVal,0);` |
 |        - |   96 | `		}` |
 |      202 |   97 | `	}else{` |
 |        - |   98 | `		/* Decimal digit stream */` |
-|    65588 |   99 | `		SyStrToInt64(pVal->zString,pVal->nByte,(void *)&iVal,0);` |
+|    65589 |   99 | `		SyStrToInt64(pVal->zString,pVal->nByte,(void *)&iVal,0);` |
 |        - |  100 | `	}` |
 |    65991 |  101 | `	return iVal;` |
 |    55955 |  102 |  |
@@ -848,16 +848,16 @@ Coverage: 706/796 lines (88.69%)
 |        - |  838 | `/*` |
 |        - |  839 | ` * Initialize a ph7_value to the null type.` |
 |        - |  840 | ` */` |
-|  7389408 |  841 | `PH7_PRIVATE sxi32 PH7_MemObjInit(ph7_vm *pVm,ph7_value *pObj)` |
+|  7389412 |  841 | `PH7_PRIVATE sxi32 PH7_MemObjInit(ph7_vm *pVm,ph7_value *pObj)` |
 |        5 |  842 |  |
 |        - |  843 | `	/* Zero the structure */` |
-|  7389413 |  844 | `	SyZero(pObj,sizeof(ph7_value));` |
+|  7389417 |  844 | `	SyZero(pObj,sizeof(ph7_value));` |
 |        - |  845 | `	/* Initialize fields */` |
-|  7389413 |  846 | `	pObj->pVm = pVm;` |
-|  7389413 |  847 | `	SyBlobInit(&pObj->sBlob,&pVm->sAllocator);` |
+|  7389417 |  846 | `	pObj->pVm = pVm;` |
+|  7389417 |  847 | `	SyBlobInit(&pObj->sBlob,&pVm->sAllocator);` |
 |        - |  848 | `	/* Set the NULL type */` |
-|  7389413 |  849 | `	pObj->iFlags = MEMOBJ_NULL;` |
-|  7389413 |  850 | `	return SXRET_OK;` |
+|  7389417 |  849 | `	pObj->iFlags = MEMOBJ_NULL;` |
+|  7389417 |  850 | `	return SXRET_OK;` |
 |        5 |  851 |  |
 |        - |  852 | `/*` |
 |        - |  853 | ` * Initialize a ph7_value to the integer type.` |
@@ -1053,7 +1053,7 @@ Coverage: 706/796 lines (88.69%)
 | 10663325 | 1043 | `		SyBlobRelease(&pObj->sBlob);` |
 |        - | 1044 | `		/* Invalidate any prior representation */` |
 | 10663325 | 1045 | `		pObj->iFlags = MEMOBJ_NULL;` |
-|  5331788 | 1046 | `	}` |
+|  5331790 | 1046 | `	}` |
 | 11576599 | 1047 | `	return SXRET_OK;` |
 |        5 | 1048 |  |
 |        - | 1049 | `/*` |
@@ -1200,7 +1200,7 @@ Coverage: 706/796 lines (88.69%)
 |   107231 | 1190 | `		}` |
 |   612257 | 1191 | `		return rc;` |
 |   342273 | 1192 | `	}else if( iComb & (MEMOBJ_INT\|MEMOBJ_REAL) ){` |
-|   171113 | 1193 | `Numeric:` |
+|   171112 | 1193 | `Numeric:` |
 |        - | 1194 | `		/* Perform a numeric comparison if one of the operand is numeric(integer or real) */` |
 |   342285 | 1195 | `		if( (pObj1->iFlags & (MEMOBJ_INT\|MEMOBJ_REAL)) == 0 ){` |
 |        3 | 1196 | `			PH7_MemObjToNumeric(pObj1);` |
@@ -1243,16 +1243,16 @@ Coverage: 706/796 lines (88.69%)
 |      ! 0 | 1233 | `		}else{` |
 |        - | 1234 | `			/* Integer comparison */` |
 |   342093 | 1235 | `			if( pObj1->x.iVal > pObj2->x.iVal ){` |
-|     2375 | 1236 | `				return 1;` |
-|   339723 | 1237 | `			}else if( pObj1->x.iVal < pObj2->x.iVal ){` |
-|   335775 | 1238 | `				return -1;` |
+|     2378 | 1236 | `				return 1;` |
+|   339720 | 1237 | `			}else if( pObj1->x.iVal < pObj2->x.iVal ){` |
+|   335789 | 1238 | `				return -1;` |
 |        - | 1239 | `			}` |
-|     3953 | 1240 | `			return 0;` |
+|     3936 | 1240 | `			return 0;` |
 |        - | 1241 | `		}` |
 |        - | 1242 | `	}` |
 |        - | 1243 | `	/* NOT REACHED */` |
 |      ! 0 | 1244 | `	return 0;` |
-|   567234 | 1245 |  |
+|   567235 | 1245 |  |
 |        - | 1246 | `/*` |
 |        - | 1247 | ` * Perform an addition operation of two ph7_values.` |
 |        - | 1248 | ` * The reason this function is implemented here rather than 'vm.c'` |

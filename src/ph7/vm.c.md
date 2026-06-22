@@ -12980,11 +12980,11 @@ Coverage: 7009/8943 lines (78.37%)
 |        - | 12970 | ` * PH7 uses its own private PRNG (the SQLite3-derived RC4 generator` |
 |        - | 12971 | ` * implemented in src/sx/sxrand.c).` |
 |        - | 12972 | ` */` |
-|     2922 | 12973 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
+|     2925 | 12973 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
 |        5 | 12974 |  |
 |        - | 12975 | `	sxu32 iNum;` |
-|     2927 | 12976 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
-|     2927 | 12977 | `	return iNum;` |
+|     2930 | 12976 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
+|     2930 | 12977 | `	return iNum;` |
 |        5 | 12978 |  |
 |        - | 12979 | `/*` |
 |        - | 12980 | ` * Generate a random string (English Alphabet) of length nLen.` |
@@ -13167,12 +13167,12 @@ Coverage: 7009/8943 lines (78.37%)
 |      225 | 13157 | `	uMask \|= uMask >> 16;` |
 |      225 | 13158 | `	uMask \|= uMask >> 32;` |
 |      225 | 13159 | `	uResult = 0;` |
-|      355 | 13160 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
+|      339 | 13160 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
 |        - | 13161 | `		/* Always draw a full 8 bytes so endianness of the cast doesn't matter` |
 |        - | 13162 | `		 * (a 4-byte fill into a sxu64 would land in the high half on big-endian` |
 |        - | 13163 | `		 * and the low-half mask would always read 0). */` |
 |        - | 13164 | `		sxu64 uDraw;` |
-|      355 | 13165 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
+|      339 | 13165 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
 |        - | 13166 | `			/* PHP 8.2+ would throw Random\RandomException here; that class` |
 |        - | 13167 | `			 * is not yet registered in PHL (see PLAN.md item 6.13). */` |
 |      ! 0 | 13168 | `			return PH7_VmThrowException(pCtx,` |
@@ -13180,12 +13180,12 @@ Coverage: 7009/8943 lines (78.37%)
 |        - | 13170 | `				"Cannot gather sufficient random data"` |
 |        - | 13171 | `				);` |
 |        - | 13172 | `		}` |
-|      355 | 13173 | `		uDraw &= uMask;` |
-|      355 | 13174 | `		if( uDraw <= uRange ){` |
+|      339 | 13173 | `		uDraw &= uMask;` |
+|      339 | 13174 | `		if( uDraw <= uRange ){` |
 |      225 | 13175 | `			uResult = uDraw;` |
 |      225 | 13176 | `			break;` |
 |        - | 13177 | `		}` |
-|       57 | 13178 | `	}` |
+|       50 | 13178 | `	}` |
 |      225 | 13179 | `	if( nAttempt >= 50 ){` |
 |      ! 0 | 13180 | `		return PH7_VmThrowException(pCtx,` |
 |        - | 13181 | `			"Exception",` |
@@ -16959,14 +16959,14 @@ Coverage: 7009/8943 lines (78.37%)
 |        - | 16949 | `	/* Check if a scheme [i.e: file://,http://,zip://...] is available */` |
 |    29567 | 16950 | `	zNext = zCur = zIn = *pzDevice;` |
 |    29567 | 16951 | `	zEnd = &zIn[nByte];` |
-|  1887136 | 16952 | `	while( zIn < zEnd ){` |
-|  1857576 | 16953 | `		if( zIn < &zEnd[-3]/*://*/ && zIn[0] == ':' && zIn[1] == '/' && zIn[2] == '/' ){` |
+|  1887149 | 16952 | `	while( zIn < zEnd ){` |
+|  1857589 | 16953 | `		if( zIn < &zEnd[-3]/*://*/ && zIn[0] == ':' && zIn[1] == '/' && zIn[2] == '/' ){` |
 |        - | 16954 | `			/* Got one */` |
 |        3 | 16955 | `			zNext = &zIn[sizeof("://")-1];` |
 |        3 | 16956 | `			break;` |
 |        - | 16957 | `		}` |
 |        - | 16958 | `		/* Advance the cursor */` |
-|  1857574 | 16959 | `		zIn++;` |
+|  1857587 | 16959 | `		zIn++;` |
 |        5 | 16960 | `	}` |
 |    29567 | 16961 | `	if( zIn >= zEnd ){` |
 |        - | 16962 | `		/* No such scheme,return the default stream */` |
