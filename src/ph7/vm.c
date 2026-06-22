@@ -840,6 +840,7 @@ static ph7_vm_func * VmOverload(
 }
 /* Forward declaration */
 /* VmLocalExec and VmErrorFormat forward declarations removed - now PH7_PRIVATE in ph7int.h */
+static sxi32 VmEnforceConstantType(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue);
 /*
  * Mount a compiled class into the freshly created vitual machine so that
  * it can be instanciated from the executed PHP script.
@@ -880,6 +881,16 @@ static sxi32 VmMountUserClassAttrs(
 			if( SySetUsed(&pAttr->aByteCode) > 0 ){
 				/* Initialize attribute default value (any complex expression) */
 				VmLocalExec(&(*pVm),&pAttr->aByteCode,pMemObj,FALSE);
+				/* Typed class constant (PHP 8.3): enforce the computed value
+				 * against the declared type. A mismatch is a non-catchable
+				 * fatal, raised here at definition time (matching PHP). */
+				if( (pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_TYPED))
+					== (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_TYPED) ){
+					sxi32 rcType = VmEnforceConstantType(&(*pVm),pClass,pAttr,pMemObj);
+					if( rcType != SXRET_OK ){
+						return rcType;
+					}
+				}
 			}
 			/* Record attribute index */
 			pAttr->nIdx = pMemObj->nIdx;
@@ -888,8 +899,11 @@ static sxi32 VmMountUserClassAttrs(
 			/* If this is a typed static property, register the slot so the
 			 * STORE path can enforce the declared type. We allocate a tiny
 			 * VmClassAttr to uniformize with instance properties; the key
-			 * points at its own nIdx field (stable for the VM lifetime). */
-			if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
+			 * points at its own nIdx field (stable for the VM lifetime).
+			 * Typed *constants* are excluded — they are immutable and were
+			 * already enforced above, so they need no store-time slot. */
+			if( (pAttr->iFlags & PH7_CLASS_ATTR_TYPED)
+				&& (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){
 				VmClassAttr *pVmAttrS = (VmClassAttr *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(VmClassAttr));
 				if( pVmAttrS == 0 ){
 					return SXERR_MEM;
@@ -898,9 +912,9 @@ static sxi32 VmMountUserClassAttrs(
 				pVmAttrS->nIdx = pMemObj->nIdx;
 				pVmAttrS->iState = 0;
 				pVmAttrS->pOwner = pClass;
-				/* Static typed property with no default starts uninitialized */
-				if( SySetUsed(&pAttr->aByteCode) == 0
-				 && (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){
+				/* Static typed property with no default starts uninitialized
+				 * (constants are already excluded by the enclosing condition). */
+				if( SySetUsed(&pAttr->aByteCode) == 0 ){
 					pVmAttrS->iState |= VM_CLASS_ATTR_UNINIT;
 				}
 				if( SyHashInsert(&pVm->hTypedSlot,(const void *)&pVmAttrS->nIdx,sizeof(sxu32),pVmAttrS) != SXRET_OK ){
@@ -1842,8 +1856,11 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	}
 	/* Mark the VM ready for byte-code execution */
 	pVm->nMagic = PH7_VM_RUN;
-	/* Release the code generator now we have compiled our program */
-	PH7_ResetCodeGenerator(pVm,0,0);
+	/* Release the code generator now we have compiled our program, but keep its
+	 * error consumer wired to the engine's: class mounting below (e.g. typed
+	 * class-constant enforcement) still reports definition-time fatals through
+	 * it, and the host VM output consumer is not installed until afterwards. */
+	PH7_ResetCodeGenerator(pVm,pVm->pEngine->xConf.xErr,pVm->pEngine->xConf.pErrData);
 	/* Emit the DONE instruction */
 	rc = PH7_VmEmitInstr(&(*pVm),PH7_OP_DONE,0,0,0,0);
 	if( rc != SXRET_OK ){
@@ -3725,6 +3742,136 @@ static sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pVal
 	}
 	pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
 	return SXRET_OK;
+}
+/*
+ * Raise the non-catchable fatal PHP emits when a typed class constant is given
+ * a value incompatible with its declared type. Mirrors PH7_VmMemoryError: it
+ * prints the diagnostic, sets a nonzero exit status, requests a clean halt and
+ * returns PH7_ABORT (so the caller unwinds and shutdown callbacks still run).
+ */
+static sxi32 VmConstantTypeError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue)
+{
+	ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+	char zBuf[128];
+	const char *zGiven;
+	if( pValue->iFlags & MEMOBJ_OBJ ){
+		zGiven = VmFormatValueClassName(pValue,zBuf,sizeof(zBuf));
+	}else{
+		zGiven = ph7_type_name(pValue);
+	}
+	/* A class is normally mounted during the compile/VmMakeReady phase, where the
+	 * code-generator's error consumer is active but the host VM output consumer is
+	 * not yet installed — so the diagnostic is routed through PH7_GenCompileError,
+	 * matching the other compile-time fatals ("PHP Fatal error:  ... in F on line N").
+	 * A class declared at runtime inside plain eval() reaches here with the codegen
+	 * consumer cleared (VmEvalChunk nulls it); fall back to the VM output consumer
+	 * so the fatal is still reported rather than the program halting silently. */
+	if( pVm->sCodeGen.xErr ){
+		PH7_GenCompileError(&pVm->sCodeGen,E_ERROR,pAttr->nLine,
+			"Cannot use %s as value for class constant %z::%z of type %z",
+			zGiven,&pOwner->sName,&pAttr->sName,&pAttr->sTypeName);
+	}else{
+		VmErrorFormat(&(*pVm),PH7_CTX_ERR,
+			"Cannot use %s as value for class constant %z::%z of type %z",
+			zGiven,&pOwner->sName,&pAttr->sName,&pAttr->sTypeName);
+	}
+	pVm->iExitStatus = 255;
+	pVm->bHaltRequested = 1;
+	return SXERR_ABORT;
+}
+/*
+ * Enforce a typed class constant's value against its declared type (PHP 8.3).
+ * Unlike typed properties (weak mode), constants are checked strictly: the only
+ * implicit coercion allowed is int -> float widening (so `const float X = 1` is
+ * accepted but `const int X = "5"` is not), matching PHP. On entry pValue holds
+ * the computed constant value (it may be widened in place). Returns SXRET_OK on
+ * accept, or PH7_ABORT after raising the non-catchable fatal on mismatch.
+ */
+static sxi32 VmEnforceConstantType(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue)
+{
+	int bNullable = (pAttr->iFlags & PH7_CLASS_ATTR_NULLABLE) ? 1 : 0;
+	/* NULL value: allowed only for nullable, standalone `null`, or `mixed`. */
+	if( pValue->iFlags & MEMOBJ_NULL ){
+		if( bNullable || pAttr->nType == MEMOBJ_NULL ){
+			return SXRET_OK;
+		}
+		if( pAttr->nType == SXU32_HIGH && pAttr->sClass.nByte == 5
+			&& SyStrnicmp(pAttr->sClass.zString,"mixed",5) == 0 ){
+			return SXRET_OK;
+		}
+		return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue);
+	}
+	/* Union type: reuse the shared coercion helper in strict mode. */
+	if( pAttr->iFlags & PH7_CLASS_ATTR_UNION ){
+		if( VmCoerceToUnion(&(*pVm),pValue,&pAttr->aUnionAlts,bNullable,1 /* strict */) == SXRET_OK ){
+			return SXRET_OK;
+		}
+		return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue);
+	}
+	/* standalone `null` type: a non-null value is a mismatch. */
+	if( pAttr->nType == MEMOBJ_NULL ){
+		return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue);
+	}
+	/* Bare `object` type: any class instance, nothing else. */
+	if( pAttr->nType == MEMOBJ_OBJ ){
+		if( pValue->iFlags & MEMOBJ_OBJ ){
+			return SXRET_OK;
+		}
+		return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue);
+	}
+	/* Class-name atom: pseudo-types (mixed/true/false/iterable) by value, else
+	 * a real class/interface verified by instanceof. */
+	if( pAttr->nType == SXU32_HIGH ){
+		int rcPseudo = VmCheckPseudoType(&(*pVm),pValue,&pAttr->sClass);
+		if( rcPseudo == 1 ){
+			return SXRET_OK;
+		}
+		if( rcPseudo == 0 ){
+			return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue);
+		}
+		/* rcPseudo == -1: a real class/interface type. */
+		if( (pValue->iFlags & MEMOBJ_OBJ) == 0 ){
+			return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue);
+		}
+		{
+			SyString *pCN = &pAttr->sClass;
+			ph7_class *pExpected;
+			if( pCN->nByte == 4 && SyMemcmp(pCN->zString,"self",4) == 0 ){
+				pExpected = pClass;
+			}else if( pCN->nByte == 6 && SyMemcmp(pCN->zString,"parent",6) == 0 ){
+				pExpected = pClass->pBase;
+			}else{
+				pExpected = PH7_VmExtractClass(&(*pVm),pCN->zString,pCN->nByte,TRUE,0);
+			}
+			if( pExpected ){
+				ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
+				if( !PH7_VmInstanceOf(pInst->pClass,pExpected) ){
+					return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue);
+				}
+			}
+		}
+		return SXRET_OK;
+	}
+	/* Scalar type, strict: an exact flag match, or the single int -> float
+	 * implicit widening. Everything else is a type error.
+	 *
+	 * Known lenient divergence: PHL's number model leaves a whole-valued real
+	 * flagged MEMOBJ_REAL|MEMOBJ_INT (a `1.0` literal, and — because `/` always
+	 * yields a real — an evenly-dividing `4/2`), so such a value satisfies a
+	 * `: int` constant here. PHP accepts `const int X = 4/2` (its `/` yields a
+	 * genuine int) but rejects `const int X = 1.0`; PHL cannot tell the two
+	 * apart by flag, so it accepts both rather than rejecting the valid `4/2`.
+	 * A fractional real (`1.5`, MEMOBJ_REAL only) carries no MEMOBJ_INT and is
+	 * correctly rejected. Tightening this needs PHL's float-identity/division
+	 * model, which is out of scope here. */
+	if( pValue->iFlags & pAttr->nType ){
+		return SXRET_OK;
+	}
+	if( pAttr->nType == MEMOBJ_REAL && (pValue->iFlags & MEMOBJ_INT) ){
+		PH7_MemObjToReal(pValue);
+		return SXRET_OK;
+	}
+	return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue);
 }
 
 /*

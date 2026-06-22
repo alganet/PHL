@@ -1794,6 +1794,8 @@ PH7_PRIVATE sxi32 PH7_CompileShortList(ph7_gen_state *pGen,sxi32 iCompileFlag)
 /* Forward declarations */
 static sxi32 GenStateCompileFunc(ph7_gen_state *pGen,SyString *pName,sxi32 iFlags,int bHandleClosure,ph7_vm_func **ppFunc);
 static int GenStateIsReservedConstant(SyString *pName);
+static sxi32 GenStateValidateMemberType(ph7_gen_state *pGen,ph7_class *pClass,const SyString *pMemberName,
+	sxu32 nType,const SyString *pTypeClass,const SyString *pTypeText,SySet *pUnionAlts,const char *zErrFmt,sxu32 nLine);
 static void GenStateBuildFQN(ph7_gen_state *pGen,const SyString *pName,SyBlob *pOut);
 /*
  * Compile an annoynmous function or a closure.
@@ -6676,6 +6678,66 @@ static sxi32 GetProtectionLevel(sxi32 nKeyword)
  *   Refer to the official documentation for more information on the powerful extension
  *   introduced by the PH7 engine to the OO subsystem.
  */
+/*
+ * Decide whether a typed class constant (PHP 8.3) declares a type before its
+ * name. The classic untyped form is `const NAME = value` — a single name-like
+ * token immediately followed by '='. Anything else with a leading type token
+ * (`const int X`, `const ?int X`, `const A|B X`, `const \Ns\Foo X`) declares a
+ * type. We only commit to the type-parse when the shape is unambiguous so the
+ * untyped path never runs (and never trips the type parser's diagnostics).
+ */
+static int GenStateClassConstHasType(ph7_gen_state *pGen)
+{
+	SyToken *p0, *p1;
+	if( pGen->pIn >= pGen->pEnd ){
+		return 0;
+	}
+	p0 = pGen->pIn;
+	/* A leading '\' (namespaced class type) or '?' (nullable) always starts a type */
+	if( p0->nType & PH7_TK_NSSEP ){
+		return 1;
+	}
+	if( (p0->nType & PH7_TK_OP) && p0->sData.nByte == 1 && p0->sData.zString[0] == '?' ){
+		return 1;
+	}
+	/* A name-like first token begins a type only when followed by another
+	 * name (the constant name) or a union separator '|'. Followed by '=',
+	 * ';' or ',' it is the constant name itself (untyped). */
+	if( p0->nType & (PH7_TK_ID|PH7_TK_KEYWORD) ){
+		p1 = (pGen->pIn + 1 < pGen->pEnd) ? (pGen->pIn + 1) : 0;
+		if( p1 ){
+			if( p1->nType & (PH7_TK_ID|PH7_TK_KEYWORD|PH7_TK_NSSEP) ){
+				return 1;
+			}
+			if( (p1->nType & PH7_TK_OP) && p1->sData.nByte == 1 && p1->sData.zString[0] == '|' ){
+				return 1;
+			}
+		}
+	}
+	return 0;
+}
+/*
+ * Copy a parsed declared type onto a freshly created class attribute (property,
+ * promoted property or class constant). nType/pClass/pTypeName/iTypeFlags come
+ * straight from GenStateParseUnionTypeDecl; for a union the alternatives are
+ * shared from pAlts — their class-name SyStrings are VM-allocator owned and
+ * outlive the temporary set, so multiple attrs in a multi-declaration chain may
+ * share the same backing.
+ */
+static void GenStateCopyTypeToAttr(ph7_class_attr *pAttr,sxu32 nType,
+	const SyString *pClass,const SyString *pTypeName,sxi32 iTypeFlags,SySet *pAlts)
+{
+	pAttr->nType = nType;
+	pAttr->sClass = *pClass;
+	pAttr->sTypeName = *pTypeName;
+	if( iTypeFlags & PH7_CLASS_ATTR_UNION ){
+		sxu32 i;
+		for( i = 0; i < SySetUsed(pAlts); i++ ){
+			ph7_type_alt *pSrc = (ph7_type_alt *)SySetAt(pAlts, i);
+			SySetPut(&pAttr->aUnionAlts, (const void *)pSrc);
+		}
+	}
+}
 static sxi32 GenStateCompileClassConstant(ph7_gen_state *pGen,sxi32 iProtection,sxi32 iFlags,ph7_class *pClass)
 {
 	sxu32 nLine = pGen->pIn->nLine;
@@ -6683,12 +6745,44 @@ static sxi32 GenStateCompileClassConstant(ph7_gen_state *pGen,sxi32 iProtection,
 	ph7_class_attr *pCons;
 	SyString *pName;
 	sxi32 rc;
+	sxu32 nType = 0;
+	SyString sTypeClass;
+	SyString sTypeText;
+	SySet aUnionAlts;
+	sxi32 iTypeFlags = 0;
+	SyStringInitFromBuf(&sTypeClass,0,0);
+	SyStringInitFromBuf(&sTypeText,0,0);
+	SySetInit(&aUnionAlts,&pGen->pVm->sAllocator,sizeof(ph7_type_alt));
 	/* Extract visibility level */
 	iProtection = GetProtectionLevel(iProtection);
-	pGen->pIn++; /* Jump the 'const' keyword */
-loop:
 	/* Mark as constant */
 	iFlags |= PH7_CLASS_ATTR_CONSTANT;
+	pGen->pIn++; /* Jump the 'const' keyword */
+	/* Optional type hint (typed class constants, PHP 8.3). Parsed once and
+	 * applied to every name in a multi-declaration `const int A = 1, B = 2`. */
+	if( GenStateClassConstHasType(pGen) ){
+		rc = GenStateParseUnionTypeDecl(pGen,&nType,&sTypeClass,&aUnionAlts,&iTypeFlags,&sTypeText,
+			PH7_CLASS_ATTR_NULLABLE,PH7_CLASS_ATTR_UNION,/* bAllowVoid */ 0,pGen->pIn->nLine);
+		/* On abort the whole compilation tears down and the VM allocator (which
+		 * backs aUnionAlts) is released, so abort paths below don't free it —
+		 * matching the rest of this function; only the recoverable Synchronize
+		 * and success paths release. */
+		if( rc == SXERR_CORRUPT ){
+			/* Error already reported by GenStateParseUnionTypeDecl */
+			goto Synchronize;
+		}else if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}else if( rc != SXRET_OK ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+				"Invalid type for class constant inside class '%z'",&pClass->sName);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			goto Synchronize;
+		}
+		iTypeFlags |= PH7_CLASS_ATTR_TYPED;
+	}
+loop:
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_ID) == 0 ){
 		/* Invalid constant name */
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Invalid constant name");
@@ -6710,6 +6804,17 @@ loop:
 		}
 		goto Synchronize;
 	}
+	/* Reject pseudo-types PHP forbids on a typed constant (callable/void/never) */
+	if( iTypeFlags & PH7_CLASS_ATTR_TYPED ){
+		rc = GenStateValidateMemberType(pGen,pClass,pName,nType,&sTypeClass,&sTypeText,
+			(iTypeFlags & PH7_CLASS_ATTR_UNION) ? &aUnionAlts : 0,
+			"Class constant %z::%z cannot have type %z",nLine);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}else if( rc != SXRET_OK ){
+			goto Synchronize;
+		}
+	}
 	/* Advance the stream cursor */
 	pGen->pIn++;
 	if(pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_EQUAL /* '=' */) == 0 ){
@@ -6723,10 +6828,13 @@ loop:
 	}
 	pGen->pIn++; /* Jump the equal sign */
 	/* Allocate a new class attribute */
-	pCons = PH7_NewClassAttr(pGen->pVm,pName,nLine,iProtection,iFlags);
+	pCons = PH7_NewClassAttr(pGen->pVm,pName,nLine,iProtection,iFlags|iTypeFlags);
 	if( pCons == 0 ){
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
 		return SXERR_ABORT;
+	}
+	if( iTypeFlags & PH7_CLASS_ATTR_TYPED ){
+		GenStateCopyTypeToAttr(pCons,nType,&sTypeClass,&sTypeText,iTypeFlags,&aUnionAlts);
 	}
 	/* Swap bytecode container */
 	pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
@@ -6773,8 +6881,10 @@ loop:
 			}
 		}
 	}
+	SySetRelease(&aUnionAlts);
 	return SXRET_OK;
 Synchronize:
+	SySetRelease(&aUnionAlts);
 	/* Synchronize with the first semi-colon */
 	while(pGen->pIn < pGen->pEnd && ((pGen->pIn->nType & PH7_TK_SEMI/*';'*/) == 0) ){
 		pGen->pIn++;
@@ -6942,23 +7052,25 @@ static int GenStateIsDisallowedPropertyAtom(
 }
 
 /*
- * Validate a parsed property type (main atom + any union alternatives)
- * against the disallowed-pseudo-types list. Emits a PHP-compatible
- * "Property C::$x cannot have type T" error on rejection, where T is
- * the full canonical type text (matching PHP's error wording for
- * unions like `callable|int`).
+ * Validate a parsed class-member type (property, promoted parameter or class
+ * constant) — the main atom plus any union alternatives — against the
+ * disallowed-pseudo-types list. On rejection emits zErrFmt, a PH7 format string
+ * taking three %z arguments (class name, member name, full canonical type text),
+ * so each caller supplies its own PHP-exact wording ("Property C::$x cannot have
+ * type T" vs "Class constant C::X cannot have type T").
  *
  * Returns SXRET_OK if the type is acceptable, SXERR_SYNTAX on rejection
  * (error already emitted), or SXERR_ABORT on error-count overflow.
  */
-static sxi32 GenStateValidatePropertyType(
+static sxi32 GenStateValidateMemberType(
 	ph7_gen_state *pGen,
 	ph7_class *pClass,
-	const SyString *pPropName,
+	const SyString *pMemberName,
 	sxu32 nType,
 	const SyString *pTypeClass,
 	const SyString *pTypeText,
 	SySet *pUnionAlts,
+	const char *zErrFmt,
 	sxu32 nLine)
 {
 	const char *zBad = 0;
@@ -6992,8 +7104,8 @@ static sxi32 GenStateValidatePropertyType(
 		pBad = &sFallback;
 	}
 	rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-		"Property %z::$%z cannot have type %z",
-		&pClass->sName,pPropName,pBad);
+		zErrFmt,
+		&pClass->sName,pMemberName,pBad);
 	if( rc == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
@@ -7069,9 +7181,10 @@ loop:
 	 * type atom or any union alternative. void/never are already rejected
 	 * by the type parser. */
 	if( iTypeFlags & PH7_CLASS_ATTR_TYPED ){
-		rc = GenStateValidatePropertyType(pGen,pClass,pName,nType,&sTypeClass,
+		rc = GenStateValidateMemberType(pGen,pClass,pName,nType,&sTypeClass,
 			&sTypeText,
-			(iTypeFlags & PH7_CLASS_ATTR_UNION) ? &aUnionAlts : 0,nLine);
+			(iTypeFlags & PH7_CLASS_ATTR_UNION) ? &aUnionAlts : 0,
+			"Property %z::$%z cannot have type %z",nLine);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}else if( rc != SXRET_OK ){
@@ -7094,21 +7207,7 @@ loop:
 		return SXERR_ABORT;
 	}
 	if( iTypeFlags & PH7_CLASS_ATTR_TYPED ){
-		pAttr->nType = nType;
-		pAttr->sClass = sTypeClass;
-		pAttr->sTypeName = sTypeText;
-		if( iTypeFlags & PH7_CLASS_ATTR_UNION ){
-			/* Copy the parsed alternatives into the attribute. The class-name
-			 * SyStrings inside each ph7_type_alt point to memory owned by the
-			 * VM allocator (SyMemBackendStrDup'd in GenStateParseUnionTypeDecl),
-			 * so it's safe for multiple attrs in a multi-decl chain to share
-			 * the same backing strings — they outlive the temporary set. */
-			sxu32 i;
-			for( i = 0; i < SySetUsed(&aUnionAlts); i++ ){
-				ph7_type_alt *pSrc = (ph7_type_alt *)SySetAt(&aUnionAlts, i);
-				SySetPut(&pAttr->aUnionAlts, (const void *)pSrc);
-			}
-		}
+		GenStateCopyTypeToAttr(pAttr,nType,&sTypeClass,&sTypeText,iTypeFlags,&aUnionAlts);
 	}
 	if( pGen->pIn->nType & PH7_TK_EQUAL /*'='*/ ){
 		SySet *pInstrContainer;
@@ -7317,10 +7416,10 @@ static sxi32 GenStateCompileClassMethod(
 			 * appear as an alternative of a union type. */
 			if( pArg->nType > 0 || SyStringLength(&pArg->sClass) > 0
 			 || (pArg->iFlags & VM_FUNC_ARG_UNION) ){
-				rc = GenStateValidatePropertyType(pGen,pClass,&pArg->sName,
+				rc = GenStateValidateMemberType(pGen,pClass,&pArg->sName,
 					pArg->nType,&pArg->sClass,&pArg->sTypeName,
 					(pArg->iFlags & VM_FUNC_ARG_UNION) ? &pArg->aUnionAlts : 0,
-					nLine);
+					"Property %z::$%z cannot have type %z",nLine);
 				if( rc == SXERR_ABORT ){
 					return SXERR_ABORT;
 				}else if( rc != SXRET_OK ){
@@ -8437,6 +8536,20 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 							iProtection = nKwrd;
 							pGen->pIn++; /* Jump the visibility token */
 						}
+					}
+					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) &&
+						SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_CONST ){
+							/* final class constant (PHP 8.1). iAttrflags already carries
+							 * PH7_CLASS_ATTR_FINAL; the override ban is enforced when a
+							 * child class is compiled (PH7_ClassInherit). */
+							rc = GenStateCompileClassConstant(&(*pGen),iProtection,iAttrflags,pClass);
+							if( rc != SXRET_OK ){
+								if( rc == SXERR_ABORT ){
+									return SXERR_ABORT;
+								}
+								goto done;
+							}
+							continue;
 					}
 					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) &&
 						SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_STATIC ){
