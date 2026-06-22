@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 /* Make sure this header file is available.*/
 #include "ph7.h"
 #ifdef PHL_ENABLE_SERVER
@@ -54,11 +55,13 @@ static void Fatal(const char *zMsg)
  */
 static void Help(void)
 {
-	puts("phl [-h|--help|-b|-v|--version|-r code] path/to/php_file [script args]");
+	puts("phl [-h|--help|-b|-i|-l|-v|--version|-r code] path/to/php_file [script args]");
 #ifdef PHL_ENABLE_SERVER
 	puts("phl -S host:port [-t docroot] [router.php]");
 #endif
 	puts("\t-b: Dump PH7 byte-code instructions");
+	puts("\t-i: Display interpreter information and exit");
+	puts("\t-l: Syntax-check (lint) the given file and exit");
 	puts("\t-r code: Run code from command line (no tags needed)");
 #ifdef PHL_ENABLE_SERVER
 	puts("\t-S host:port: Start the built-in development server");
@@ -76,6 +79,30 @@ static void Version(void)
 {
 	puts("PHL " PH7_VERSION " (cli) (built " __DATE__ " " __TIME__ ")");
 	puts("Copyright (c) 2011-2014 Symisc Systems, 2025 Alexandre Gomes Gaigalas");
+	/* Exit immediately */
+	exit(0);
+}
+/*
+ * Display interpreter information (php -i) and exit. PHP's CLI -i is plain text
+ * (the phpinfo() builtin emits HTML, suited to the web SAPI), so this prints a
+ * concise curated subset on the terminal rather than reusing that builtin.
+ */
+static void Info(void)
+{
+	printf("phpinfo()\n");
+	printf("PHP Version => %s\n\n", PHP_COMPAT_VERSION);
+	printf("System => %s\n",
+#ifdef __WINNT__
+		"Windows NT"
+#elif defined(__UNIXES__)
+		"UNIX-Like"
+#else
+		"Other OS"
+#endif
+	);
+	printf("Build Date => %s %s\n", __DATE__, __TIME__);
+	printf("PHL Version => %s\n", PH7_VERSION);
+	printf("PHP SAPI => cli\n");
 	/* Exit immediately */
 	exit(0);
 }
@@ -163,6 +190,7 @@ int main(int argc,char **argv)
 	ph7_vm *pVm;  /* Compiled PHP program */
 	int dump_vm = 0;    /* Dump VM instructions if TRUE */
 	int run_code = 0;    /* Run inline code if TRUE */
+	int lint_mode = 0;   /* Syntax-check only (-l) if TRUE */
 	const char *zRunCode = 0; /* Inline code string */
 #ifdef PHL_ENABLE_SERVER
 	int server_mode = 0;        /* Start built-in server if TRUE */
@@ -194,6 +222,12 @@ int main(int argc,char **argv)
 		if( c == 'b' ){
 			/* Dump byte-code instructions */
 			dump_vm = 1;
+		}else if( c == 'l' ){
+			/* Syntax-check only (lint) the file argument that follows */
+			lint_mode = 1;
+		}else if( c == 'i' ){
+			/* Display interpreter information and exit */
+			Info();
 		}else if( c == 'r' ){
 			/* Run inline PHP code from next argument (php -r style) */
 			if( n + 1 >= argc ){
@@ -256,7 +290,7 @@ int main(int argc,char **argv)
 		if( n < argc ){
 			zRouter = argv[n];
 		}
-		return phl_serve(zHost, iPort, zDocRoot, zRouter);
+		return phl_serve(zHost, iPort, zDocRoot, zRouter, PHL_ResolveBinaryPath(argv[0]));
 	}
 #endif
 	if( n >= argc && !run_code ){
@@ -302,6 +336,31 @@ int main(int argc,char **argv)
 				ph7_config(pEngine,PH7_CONFIG_MAX_ALLOC,(unsigned int)uMax);
 			}
 		}
+	}
+	/* Syntax-check only mode (-l): compile the target file, print PHP's summary
+	 * line and exit without executing. The error consumer installed above
+	 * already prints any parse error; ph7_compile_file leaves *pVm NULL on a
+	 * compile/IO error, so only a successful compile owns a VM to release. */
+	if( lint_mode ){
+		const char *zFile;
+		if( n >= argc ){
+			/* No file argument (e.g. `-l` alone, or `-l` mixed with `-r`). */
+			ph7_release(pEngine);
+			puts("No input file specified");
+			return 255;
+		}
+		zFile = argv[n];
+		rc = ph7_compile_file(pEngine,zFile,&pVm,0);
+		if( rc == PH7_OK ){
+			printf("No syntax errors detected in %s\n",zFile);
+			ph7_vm_release(pVm);
+		}else if( rc == PH7_IO_ERR ){
+			printf("Could not open input file: %s\n",zFile);
+		}else{
+			printf("Errors parsing %s\n",zFile);
+		}
+		ph7_release(pEngine);
+		return (rc == PH7_OK) ? 0 : 255;
 	}
 	/* Now,it's time to compile our PHP file */
 	if( run_code ){
@@ -355,19 +414,53 @@ int main(int argc,char **argv)
 	/* Define PHP_BINARY: absolute path of this interpreter */
 	ph7_create_constant(pVm,"PHP_BINARY",PHL_PhpBinaryConst,
 		(void *)PHL_ResolveBinaryPath(argv[0]));
-	/* Register script arguments so we can access them later using the $argv[]
-	 * array from the compiled PHP program. For regular file execution we need
-	 * to register the arguments after the script file, while for inline code
-	 * (-r) the arguments start at the current index.
+	/* Register the script arguments as $argv[] plus the matching $argc count and
+	 * the CLI $_SERVER entries, matching PHP: $argv[0] is the script path (file
+	 * mode) or the literal "Standard input code" (-r mode), followed by the
+	 * script's own arguments.
 	 */
-	if( run_code ){
-		for( ; n < argc ; ++n ){
-			ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,argv[n]/* Argument value */);
+	{
+		const char *zScriptName = run_code ? "Standard input code" : argv[n];
+		int argv_count = 0;
+		ph7_value *pArgc;
+		/* Count only the entries actually inserted: PH7_VM_CONFIG_ARGV_ENTRY skips
+		 * an empty string, so counting unconditionally would leave $argc greater
+		 * than count($argv) for an empty argument (e.g. `phl s.php "" x`). */
+		if( ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,zScriptName) == PH7_OK ){
+			argv_count++;
 		}
-	}else{
-		for( n = n + 1; n < argc ; ++n ){
-			ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,argv[n]/* Argument value */);
+		/* The script's own arguments follow: in file mode argv[n] is the script
+		 * (registered above), so they start at n+1; in -r mode they start at n. */
+		for( n = run_code ? n : n + 1; n < argc ; ++n ){
+			if( ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,argv[n]) == PH7_OK ){
+				argv_count++;
+			}
 		}
+		/* $argc: a plain integer global equal to count($argv). */
+		pArgc = ph7_new_scalar(pVm);
+		if( pArgc ){
+			ph7_value_int(pArgc,argv_count);
+			ph7_vm_config(pVm,PH7_VM_CONFIG_CREATE_VAR,"argc",pArgc);
+			ph7_release_value(pVm,pArgc);
+		}
+		/* $_SERVER entries frameworks read at CLI bootstrap. SCRIPT_FILENAME is
+		 * already set to the script path by PH7_HashmapCreateSuper. */
+		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"SCRIPT_NAME",zScriptName,-1);
+		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"PHP_SELF",zScriptName,-1);
+		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"DOCUMENT_ROOT","",0);
+		{
+			char zTime[32];
+			snprintf(zTime,sizeof(zTime),"%ld",(long)time(0));
+			ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"REQUEST_TIME",zTime,-1);
+		}
+#ifndef __WINNT__
+		{
+			char zCwd[PATH_MAX];
+			if( getcwd(zCwd,sizeof(zCwd)) ){
+				ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"PWD",zCwd,-1);
+			}
+		}
+#endif
 	}
 	/* Report script run-time errors (now default behavior) */
 	ph7_vm_config(pVm,PH7_VM_CONFIG_ERR_REPORT);

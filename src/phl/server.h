@@ -9,9 +9,11 @@
  * Start the PHL built-in development server.
  * Listens on zHost:iPort, serves files from zDocRoot.
  * If zRouter is non-NULL, it is used as the router script.
+ * zBinaryPath is the resolved interpreter path, exposed to scripts as the
+ * PHP_BINARY constant (may be NULL to skip defining it).
  * This function blocks until the server is shut down (e.g. via SIGINT).
  * Returns 0 on clean shutdown, non-zero on error.
  */
-int phl_serve(const char *zHost, int iPort, const char *zDocRoot, const char *zRouter);
+int phl_serve(const char *zHost, int iPort, const char *zDocRoot, const char *zRouter, const char *zBinaryPath);
 #endif /* PHL_ENABLE_SERVER */
 #endif /* PHL_SERVER_H */
