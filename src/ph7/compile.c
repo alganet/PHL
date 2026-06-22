@@ -1794,6 +1794,7 @@ PH7_PRIVATE sxi32 PH7_CompileShortList(ph7_gen_state *pGen,sxi32 iCompileFlag)
 /* Forward declarations */
 static sxi32 GenStateCompileFunc(ph7_gen_state *pGen,SyString *pName,sxi32 iFlags,int bHandleClosure,ph7_vm_func **ppFunc);
 static int GenStateIsReservedConstant(SyString *pName);
+static int GenStateIsReadonly(SyToken *pTok);
 static sxi32 GenStateValidateMemberType(ph7_gen_state *pGen,ph7_class *pClass,const SyString *pMemberName,
 	sxu32 nType,const SyString *pTypeClass,const SyString *pTypeText,SySet *pUnionAlts,const char *zErrFmt,sxu32 nLine);
 static void GenStateBuildFQN(ph7_gen_state *pGen,const SyString *pName,SyBlob *pOut);
@@ -5584,10 +5585,33 @@ static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyTo
 		SySetInit(&sArg.aByteCode,&pGen->pVm->sAllocator,sizeof(VmInstr));
 		SySetInit(&sArg.aUnionAlts,&pGen->pVm->sAllocator,sizeof(ph7_type_alt));
 		SyStringInitFromBuf(&sArg.sTypeName,0,0);
-		/* Parse optional visibility modifier (constructor property promotion, PHP 8.0+) */
-		if( pIn < pEnd && (pIn->nType & PH7_TK_KEYWORD) ){
-			sxu32 nKw = (sxu32)SX_PTR_TO_INT(pIn->pUserData);
-			if( nKw == PH7_TKWRD_PUBLIC || nKw == PH7_TKWRD_PROTECTED || nKw == PH7_TKWRD_PRIVATE ){
+		/* Parse optional visibility + readonly modifiers (constructor property
+		 * promotion, PHP 8.0+/8.1+). A property is promoted when a visibility
+		 * keyword and/or `readonly` is present; `readonly` may appear on either
+		 * side of the visibility keyword (`public readonly T $x`,
+		 * `readonly public T $x`), or alone (`readonly T $x` ⇒ public readonly). */
+		{
+			int bReadonly = 0, bVisSeen = 0;
+			sxi32 iVis = PH7_CLASS_PROT_PUBLIC;
+			if( pIn < pEnd && GenStateIsReadonly(pIn) ){
+				bReadonly = 1;
+				pIn++;
+			}
+			if( pIn < pEnd && (pIn->nType & PH7_TK_KEYWORD) ){
+				sxu32 nKw = (sxu32)SX_PTR_TO_INT(pIn->pUserData);
+				if( nKw == PH7_TKWRD_PUBLIC || nKw == PH7_TKWRD_PROTECTED || nKw == PH7_TKWRD_PRIVATE ){
+					bVisSeen = 1;
+					iVis = (nKw == PH7_TKWRD_PRIVATE) ? PH7_CLASS_PROT_PRIVATE
+						: (nKw == PH7_TKWRD_PROTECTED) ? PH7_CLASS_PROT_PROTECTED
+						: PH7_CLASS_PROT_PUBLIC;
+					pIn++;
+					if( pIn < pEnd && GenStateIsReadonly(pIn) ){
+						bReadonly = 1;
+						pIn++;
+					}
+				}
+			}
+			if( bVisSeen || bReadonly ){
 				if( !bCtorCtx ){
 					if( bAbstractCtx ){
 						rc = PH7_GenCompileError(pGen,E_ERROR,pIn->nLine,
@@ -5602,14 +5626,10 @@ static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyTo
 					return SXERR_SYNTAX;
 				}
 				sArg.iFlags |= VM_FUNC_ARG_PROMOTED;
-				if( nKw == PH7_TKWRD_PRIVATE ){
-					sArg.iPromoteVis = PH7_CLASS_PROT_PRIVATE;
-				}else if( nKw == PH7_TKWRD_PROTECTED ){
-					sArg.iPromoteVis = PH7_CLASS_PROT_PROTECTED;
-				}else{
-					sArg.iPromoteVis = PH7_CLASS_PROT_PUBLIC;
+				sArg.iPromoteVis = iVis;
+				if( bReadonly ){
+					sArg.iFlags |= VM_FUNC_ARG_READONLY;
 				}
-				pIn++;
 			}
 		}
 		/* Parse optional type hint (single, nullable shorthand, or union) */
@@ -7111,7 +7131,18 @@ static sxi32 GenStateValidateMemberType(
 	}
 	return SXERR_SYNTAX;
 }
-
+/*
+ * Return TRUE if pTok is the context-sensitive `readonly` modifier. PHP does not
+ * reserve `readonly` (it remains valid as a method/function name), so it is
+ * matched as a plain identifier in the class-member modifier position rather
+ * than promoted to a lexer keyword.
+ */
+static int GenStateIsReadonly(SyToken *pTok)
+{
+	return (pTok->nType & PH7_TK_ID)
+		&& pTok->sData.nByte == sizeof("readonly")-1
+		&& SyStrnicmp(pTok->sData.zString,"readonly",sizeof("readonly")-1) == 0;
+}
 static sxi32 GenStateCompileClassAttr(ph7_gen_state *pGen,sxi32 iProtection,sxi32 iFlags,ph7_class *pClass)
 {
 	sxu32 nLine = pGen->pIn->nLine;
@@ -7176,6 +7207,25 @@ loop:
 			return SXERR_ABORT;
 		}
 		goto Synchronize;
+	}
+	/* readonly property rules (PHP 8.1): cannot be static, must be typed, and
+	 * cannot carry a default value. PHP-exact diagnostics. */
+	if( iFlags & PH7_CLASS_ATTR_READONLY ){
+		const char *zRoErr = 0;
+		if( iFlags & PH7_CLASS_ATTR_STATIC ){
+			zRoErr = "Static property %z::$%z cannot be readonly";
+		}else if( (iTypeFlags & PH7_CLASS_ATTR_TYPED) == 0 ){
+			zRoErr = "Readonly property %z::$%z must have type";
+		}else if( pGen->pIn->nType & PH7_TK_EQUAL ){
+			zRoErr = "Readonly property %z::$%z cannot have default value";
+		}
+		if( zRoErr ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,zRoErr,&pClass->sName,pName);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			goto Synchronize;
+		}
 	}
 	/* Reject disallowed pseudo-types (callable/mixed/iterable) on the main
 	 * type atom or any union alternative. void/never are already rejected
@@ -7443,6 +7493,18 @@ static sxi32 GenStateCompileClassMethod(
 			}
 			if( pArg->iFlags & VM_FUNC_ARG_UNION ){
 				iAttrFlags |= PH7_CLASS_ATTR_UNION;
+			}
+			if( pArg->iFlags & VM_FUNC_ARG_READONLY ){
+				/* A readonly promoted property must be typed (PHP 8.1). */
+				if( (iAttrFlags & PH7_CLASS_ATTR_TYPED) == 0 ){
+					rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+						"Readonly property %z::$%z must have type",&pClass->sName,&pArg->sName);
+					if( rc == SXERR_ABORT ){
+						return SXERR_ABORT;
+					}
+					goto Synchronize;
+				}
+				iAttrFlags |= PH7_CLASS_ATTR_READONLY;
 			}
 			pAttr = PH7_NewClassAttr(pGen->pVm,&pArg->sName,nLine,pArg->iPromoteVis,iAttrFlags);
 			if( pAttr == 0 ){
@@ -8319,7 +8381,8 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 			/* End of class body */
 			break;
 		}
-		if( (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR)) == 0 ){
+		if( (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR)) == 0
+			&& !GenStateIsReadonly(pGen->pIn) /* allow a leading `readonly` modifier */ ){
 			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 				"Unexpected token '%z'. Expecting attribute declaration inside class '%z'",
 				&pGen->pIn->sData,pName);
@@ -8332,7 +8395,35 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 		/* Assume public visibility */
 		iProtection = PH7_TKWRD_PUBLIC;
 		iAttrflags = 0;
-		if( pGen->pIn->nType & PH7_TK_KEYWORD ){
+		/* Optional leading `readonly` modifier (PHP 8.1) — context-sensitive, so
+		 * it may precede the visibility keyword: `readonly public int $x`,
+		 * `readonly int $x`. The visibility branch below also accepts it after
+		 * the visibility keyword (`public readonly int $x`). */
+		if( pGen->pIn < pGen->pEnd && GenStateIsReadonly(pGen->pIn) ){
+			int bMod = 0;
+			iAttrflags |= PH7_CLASS_ATTR_READONLY;
+			pGen->pIn++; /* Jump the 'readonly' modifier */
+			/* If a visibility/static modifier follows, let the dispatch below
+			 * handle it; otherwise this is `readonly Type $x` (implicit public)
+			 * and we compile it directly — the type may be a keyword (int/array)
+			 * that the generic keyword dispatch would misread as a method. */
+			if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
+				sxi32 k = SX_PTR_TO_INT(pGen->pIn->pUserData);
+				bMod = ( k == PH7_TKWRD_PUBLIC || k == PH7_TKWRD_PRIVATE
+					|| k == PH7_TKWRD_PROTECTED || k == PH7_TKWRD_STATIC );
+			}
+			if( !bMod ){
+				rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
+				if( rc != SXRET_OK ){
+					if( rc == SXERR_ABORT ){
+						return SXERR_ABORT;
+					}
+					goto done;
+				}
+				continue;
+			}
+		}
+		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
 			/* Extract the current keyword */
 			nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
 			if( nKwrd == PH7_TKWRD_USE ){
@@ -8400,6 +8491,11 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 			if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
 				iProtection = nKwrd;
 				pGen->pIn++; /* Jump the visibility token */
+				/* Optional `readonly` after the visibility: `public readonly int $x`. */
+				if( pGen->pIn < pGen->pEnd && GenStateIsReadonly(pGen->pIn) ){
+					iAttrflags |= PH7_CLASS_ATTR_READONLY;
+					pGen->pIn++; /* Jump the 'readonly' modifier */
+				}
 				if( pGen->pIn >= pGen->pEnd
 					|| (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR|PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP)) == 0 ){
 					rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
@@ -8457,6 +8553,13 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 							iProtection = nKwrd;
 							pGen->pIn++; /* Jump the visibility token */
 						}
+					}
+					/* `readonly` after `static` (an invalid combination): detect it so the
+					 * static+readonly diagnostic fires from GenStateCompileClassAttr rather
+					 * than a generic "expecting method" parse error. */
+					if( pGen->pIn < pGen->pEnd && GenStateIsReadonly(pGen->pIn) ){
+						iAttrflags |= PH7_CLASS_ATTR_READONLY;
+						pGen->pIn++; /* Jump the 'readonly' modifier */
 					}
 					if( pGen->pIn >= pGen->pEnd
 						|| (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR|PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP)) == 0 ){

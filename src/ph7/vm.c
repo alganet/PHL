@@ -3165,116 +3165,126 @@ static sxi32 VmThrowErrorAp(
 	return rc;
 }
 /*
+ * Return the class currently active on the self-stack (the innermost `self`
+ * scope), or NULL when executing outside any class context.
+ */
+static ph7_class * VmCurrentSelf(ph7_vm *pVm)
+{
+	if( SySetUsed(&pVm->aSelf) > 0 ){
+		ph7_class **apSelf = (ph7_class **)SySetBasePtr(&pVm->aSelf);
+		return apSelf[SySetUsed(&pVm->aSelf)-1];
+	}
+	return 0;
+}
+/*
+ * Instantiate a built-in error class (e.g. "Error"/"TypeError"), construct it
+ * with the message held in *pMsg, and throw it from the current frame. Consumes
+ * and releases *pMsg. Returns PH7_EXCEPTION on success, or PH7_ABORT when the
+ * class is unavailable or the engine is aborting. Shared scaffolding for the
+ * typed-property / uninitialized-property / readonly error throwers.
+ */
+static sxi32 VmThrowBuiltinError(ph7_vm *pVm,const char *zClass,sxu32 nClass,SyBlob *pMsg)
+{
+	ph7_class *pErrClass;
+	ph7_class_instance *pThis;
+	ph7_class_method *pCons;
+	VmFrame *pFrame;
+	sxi32 rc;
+	pErrClass = PH7_VmExtractClass(&(*pVm),zClass,nClass,TRUE,0);
+	if( pErrClass == 0 ){
+		SyBlobRelease(pMsg);
+		return PH7_ABORT;
+	}
+	pThis = PH7_NewClassInstance(&(*pVm),pErrClass);
+	if( pThis == 0 ){
+		SyBlobRelease(pMsg);
+		return PH7_ABORT;
+	}
+	pCons = PH7_ClassExtractMethod(pErrClass,"__construct",sizeof("__construct")-1);
+	if( pCons ){
+		ph7_value sArg;
+		ph7_value *apArg[1];
+		SyString sMsgStr;
+		SyStringInitFromBuf(&sMsgStr,(const char *)SyBlobData(pMsg),SyBlobLength(pMsg));
+		PH7_MemObjInitFromString(&(*pVm),&sArg,&sMsgStr);
+		apArg[0] = &sArg;
+		PH7_VmCallClassMethod(&(*pVm),pThis,pCons,0,1,apArg);
+		PH7_MemObjRelease(&sArg);
+	}
+	SyBlobRelease(pMsg);
+	pFrame = pVm->pFrame;
+	if( pFrame ){
+		pFrame = VmSkipExceptionFrames(pFrame);
+		pFrame->iFlags |= VM_FRAME_THROW;
+	}
+	rc = VmThrowException(&(*pVm),pThis);
+	PH7_ClassInstanceUnref(pThis);
+	if( rc == SXERR_ABORT ){
+		return PH7_ABORT;
+	}
+	return PH7_EXCEPTION;
+}
+/*
  * Throw a PHP-compatible TypeError whose message describes a failed typed
  * property assignment. Called from the STORE path when coercion is not
  * possible.
  */
 static sxi32 VmThrowPropertyTypeError(ph7_vm *pVm,VmClassAttr *pVmAttr,const char *zGiven)
 {
-	ph7_class *pClass;
 	ph7_class_attr *pAttr = pVmAttr->pAttr;
-	ph7_class_instance *pThis;
-	ph7_class_method *pCons;
-	ph7_value sArg;
-	ph7_value *apArg[1];
+	ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pVmAttr->pOwner;
 	SyBlob sMsg;
-	SyString sMsgStr;
-	VmFrame *pFrame;
-	sxi32 rc;
-	pClass = PH7_VmExtractClass(&(*pVm),"TypeError",sizeof("TypeError")-1,TRUE,0);
-	if( pClass == 0 ){
-		return PH7_ABORT;
-	}
-	pThis = PH7_NewClassInstance(&(*pVm),pClass);
-	if( pThis == 0 ){
-		return PH7_ABORT;
-	}
 	SyBlobInit(&sMsg,&pVm->sAllocator);
 	/* Prefer the declaring class over the runtime instance class so that an
 	 * inherited typed property reports its original owner, matching PHP. */
-	{
-		ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pVmAttr->pOwner;
-		if( pOwner ){
-			SyBlobFormat(&sMsg,"Cannot assign %s to property %z::$%z of type %z",
-				zGiven,&pOwner->sName,&pAttr->sName,&pAttr->sTypeName);
-		}else{
-			SyBlobFormat(&sMsg,"Cannot assign %s to property $%z of type %z",
-				zGiven,&pAttr->sName,&pAttr->sTypeName);
-		}
+	if( pOwner ){
+		SyBlobFormat(&sMsg,"Cannot assign %s to property %z::$%z of type %z",
+			zGiven,&pOwner->sName,&pAttr->sName,&pAttr->sTypeName);
+	}else{
+		SyBlobFormat(&sMsg,"Cannot assign %s to property $%z of type %z",
+			zGiven,&pAttr->sName,&pAttr->sTypeName);
 	}
-	pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);
-	if( pCons ){
-		SyStringInitFromBuf(&sMsgStr,(const char *)SyBlobData(&sMsg),SyBlobLength(&sMsg));
-		PH7_MemObjInitFromString(&(*pVm),&sArg,&sMsgStr);
-		apArg[0] = &sArg;
-		PH7_VmCallClassMethod(&(*pVm),pThis,pCons,0,1,apArg);
-		PH7_MemObjRelease(&sArg);
-	}
-	SyBlobRelease(&sMsg);
-	pFrame = pVm->pFrame;
-	if( pFrame ){
-		pFrame = VmSkipExceptionFrames(pFrame);
-		pFrame->iFlags |= VM_FRAME_THROW;
-	}
-	rc = VmThrowException(&(*pVm),pThis);
-	PH7_ClassInstanceUnref(pThis);
-	if( rc == SXERR_ABORT ){
-		return PH7_ABORT;
-	}
-	return PH7_EXCEPTION;
+	return VmThrowBuiltinError(pVm,"TypeError",sizeof("TypeError")-1,&sMsg);
 }
-
 /*
  * Throw a PHP-compatible Error for reading an uninitialized typed property.
  */
 static sxi32 VmThrowUninitializedPropertyError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr)
 {
-	ph7_class *pErrClass;
-	ph7_class_instance *pThis;
-	ph7_class_method *pCons;
-	ph7_value sArg;
-	ph7_value *apArg[1];
+	ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+	const char *zKind = (pAttr->iFlags & PH7_CLASS_ATTR_STATIC) ? "static property" : "property";
 	SyBlob sMsg;
-	SyString sMsgStr;
-	VmFrame *pFrame;
-	sxi32 rc;
-	pErrClass = PH7_VmExtractClass(&(*pVm),"Error",sizeof("Error")-1,TRUE,0);
-	if( pErrClass == 0 ){
-		return PH7_ABORT;
-	}
-	pThis = PH7_NewClassInstance(&(*pVm),pErrClass);
-	if( pThis == 0 ){
-		return PH7_ABORT;
-	}
 	SyBlobInit(&sMsg,&pVm->sAllocator);
-	{
-		ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
-		const char *zKind = (pAttr->iFlags & PH7_CLASS_ATTR_STATIC) ? "static property" : "property";
-		SyBlobFormat(&sMsg,"Typed %s %z::$%z must not be accessed before initialization",
-			zKind,&pOwner->sName,&pAttr->sName);
-	}
-	pCons = PH7_ClassExtractMethod(pErrClass,"__construct",sizeof("__construct")-1);
-	if( pCons ){
-		SyStringInitFromBuf(&sMsgStr,(const char *)SyBlobData(&sMsg),SyBlobLength(&sMsg));
-		PH7_MemObjInitFromString(&(*pVm),&sArg,&sMsgStr);
-		apArg[0] = &sArg;
-		PH7_VmCallClassMethod(&(*pVm),pThis,pCons,0,1,apArg);
-		PH7_MemObjRelease(&sArg);
-	}
-	SyBlobRelease(&sMsg);
-	pFrame = pVm->pFrame;
-	if( pFrame ){
-		pFrame = VmSkipExceptionFrames(pFrame);
-		pFrame->iFlags |= VM_FRAME_THROW;
-	}
-	rc = VmThrowException(&(*pVm),pThis);
-	PH7_ClassInstanceUnref(pThis);
-	if( rc == SXERR_ABORT ){
-		return PH7_ABORT;
-	}
-	return PH7_EXCEPTION;
+	SyBlobFormat(&sMsg,"Typed %s %z::$%z must not be accessed before initialization",
+		zKind,&pOwner->sName,&pAttr->sName);
+	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
 }
-
+/*
+ * Throw the PHP-compatible Error raised on an illegal write to a readonly
+ * property (PHP 8.1). bModify TRUE → a write to an already-initialized property
+ * ("Cannot modify readonly property C::$x"); bModify FALSE → a first write from
+ * a scope that cannot satisfy the readonly set-scope ("Cannot modify
+ * protected(set) readonly property C::$x from {global scope|scope X}").
+ */
+static sxi32 VmThrowReadonlyError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,int bModify)
+{
+	ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+	SyBlob sMsg;
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	if( bModify ){
+		SyBlobFormat(&sMsg,"Cannot modify readonly property %z::$%z",&pOwner->sName,&pAttr->sName);
+	}else{
+		ph7_class *pActive = VmCurrentSelf(pVm);
+		if( pActive ){
+			SyBlobFormat(&sMsg,"Cannot modify protected(set) readonly property %z::$%z from scope %z",
+				&pOwner->sName,&pAttr->sName,&pActive->sName);
+		}else{
+			SyBlobFormat(&sMsg,"Cannot modify protected(set) readonly property %z::$%z from global scope",
+				&pOwner->sName,&pAttr->sName);
+		}
+	}
+	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
+}
 /*
  * Enforce a typed-property assignment. On entry pValue holds the incoming
  * value. For scalar types it may be coerced in place (PHP 7.4 weak mode).
@@ -3432,11 +3442,7 @@ static sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, int b
 		if( bHasObjAlt ) return SXRET_OK;
 		if( bHasClassAlt ){
 			ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
-			ph7_class *pSelfNow = 0;
-			if( SySetUsed(&pVm->aSelf) > 0 ){
-				ph7_class **apSelf = (ph7_class **)SySetBasePtr(&pVm->aSelf);
-				pSelfNow = apSelf[SySetUsed(&pVm->aSelf)-1];
-			}
+			ph7_class *pSelfNow = VmCurrentSelf(pVm);
 			for( i = 0; i < SySetUsed(pAlts); i++ ){
 				ph7_class *pExpected;
 				SyString *pCN;
@@ -3620,6 +3626,28 @@ static sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pVal
 	if( pAttr == 0 || (pAttr->iFlags & PH7_CLASS_ATTR_TYPED) == 0 ){
 		return SXRET_OK;
 	}
+	/* readonly enforcement (PHP 8.1), checked before type coercion. A readonly
+	 * property may be written exactly once and only from within the declaring
+	 * class scope (its set-scope is protected). */
+	if( pAttr->iFlags & PH7_CLASS_ATTR_READONLY ){
+		/* A readonly property is always typed and default-less, so it starts
+		 * VM_CLASS_ATTR_UNINIT and that flag is cleared only by a *successful*
+		 * write below — making it the write-once latch (a type-rejected write
+		 * leaves it set, so a later valid initialization still works). */
+		if( (pVmAttr->iState & VM_CLASS_ATTR_UNINIT) == 0 ){
+			/* Already initialized: any further write is forbidden, any scope. */
+			return VmThrowReadonlyError(pVm,pVmAttr->pOwner,pAttr,1);
+		}
+		{
+			/* First write must come from within the declaring class scope
+			 * (readonly's set-scope is protected — a subclass may initialize). */
+			ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pVmAttr->pOwner;
+			ph7_class *pActive = VmCurrentSelf(pVm);
+			if( pActive == 0 || pDecl == 0 || !PH7_VmInstanceOf(pActive,pDecl) ){
+				return VmThrowReadonlyError(pVm,pVmAttr->pOwner,pAttr,0);
+			}
+		}
+	}
 	/* Union type: dispatch to the shared coercion helper. Typed properties
 	 * are always evaluated in weak mode regardless of declare(strict_types),
 	 * matching PHP's documented behavior. */
@@ -3686,11 +3714,7 @@ static sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pVal
 		 * currently active on the self-stack. */
 		ph7_class *pExpected = 0;
 		SyString *pClassName = &pAttr->sClass;
-		ph7_class *pSelfNow = 0;
-		if( SySetUsed(&pVm->aSelf) > 0 ){
-			ph7_class **apSelf = (ph7_class **)SySetBasePtr(&pVm->aSelf);
-			pSelfNow = apSelf[SySetUsed(&pVm->aSelf)-1];
-		}
+		ph7_class *pSelfNow = VmCurrentSelf(pVm);
 		if( pClassName->nByte == 4 && SyMemcmp(pClassName->zString,"self",4) == 0 ){
 			pExpected = pSelfNow;
 		}else if( pClassName->nByte == 6 && SyMemcmp(pClassName->zString,"parent",6) == 0 ){
@@ -4181,11 +4205,7 @@ static sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value *pVa
 		SyString *pClassName = &pFunc->sReturnClass;
 		const char *zExpected;
 		ph7_class *pExpected;
-		ph7_class *pSelfNow = 0;
-		if( SySetUsed(&pVm->aSelf) > 0 ){
-			ph7_class **apSelf = (ph7_class **)SySetBasePtr(&pVm->aSelf);
-			pSelfNow = apSelf[SySetUsed(&pVm->aSelf)-1];
-		}
+		ph7_class *pSelfNow = VmCurrentSelf(pVm);
 		if( pClassName->nByte == 4 && SyMemcmp(pClassName->zString,"self",4) == 0 ){
 			pExpected = pSelfNow;
 		}else if( pClassName->nByte == 6 && SyMemcmp(pClassName->zString,"parent",6) == 0 ){
