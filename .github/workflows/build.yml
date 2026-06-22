@@ -61,7 +61,7 @@ jobs:
             name: x86_64-apple-darwin
             os: macos-15-intel
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: ./.github/actions/setup-action
     - uses: ./.github/actions/make-action
       with:
@@ -93,7 +93,7 @@ jobs:
           - os: windows-latest
             make: coverage
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: ./.github/actions/setup-action
     - uses: ./.github/actions/make-action
       with:
@@ -123,7 +123,7 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: ./.github/actions/setup-action
     - uses: ./.github/actions/make-action
       with:
@@ -145,7 +145,7 @@ jobs:
     permissions:
       contents: read
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: ./.github/actions/setup-action
     - uses: ./.github/actions/make-action
       with:
@@ -165,7 +165,7 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 0
         persist-credentials: true
