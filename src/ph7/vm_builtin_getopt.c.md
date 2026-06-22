@@ -16,13 +16,13 @@ Coverage: 42/170 lines (24.71%)
 |    - |    6 | `#include "ph7int.h"` |
 |    6 |    7 | `static const char * VmFindShortOpt(int c,const char *zIn,const char *zEnd)` |
 |    1 |    8 |  |
-|  319 |    9 | `	while( zIn < zEnd ){` |
-|  313 |   10 | `		if( zIn[0] == '-' && &zIn[1] < zEnd && (int)zIn[1] == c ){` |
+|  409 |    9 | `	while( zIn < zEnd ){` |
+|  403 |   10 | `		if( zIn[0] == '-' && &zIn[1] < zEnd && (int)zIn[1] == c ){` |
 |    - |   11 | `			/* Got one */` |
 |  ! 0 |   12 | `			return &zIn[1];` |
 |    - |   13 | `		}` |
 |    - |   14 | `		/* Advance the cursor */` |
-|  313 |   15 | `		zIn++;` |
+|  403 |   15 | `		zIn++;` |
 |    1 |   16 | `	}` |
 |    - |   17 | `	/* No such option */` |
 |    7 |   18 | `	return 0;` |
