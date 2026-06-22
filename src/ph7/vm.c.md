@@ -13020,12 +13020,12 @@ Coverage: 6963/8872 lines (78.48%)
 |      225 | 13010 | `	uMask \|= uMask >> 16;` |
 |      225 | 13011 | `	uMask \|= uMask >> 32;` |
 |      225 | 13012 | `	uResult = 0;` |
-|      345 | 13013 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
+|      351 | 13013 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
 |        - | 13014 | `		/* Always draw a full 8 bytes so endianness of the cast doesn't matter` |
 |        - | 13015 | `		 * (a 4-byte fill into a sxu64 would land in the high half on big-endian` |
 |        - | 13016 | `		 * and the low-half mask would always read 0). */` |
 |        - | 13017 | `		sxu64 uDraw;` |
-|      345 | 13018 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
+|      351 | 13018 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
 |        - | 13019 | `			/* PHP 8.2+ would throw Random\RandomException here; that class` |
 |        - | 13020 | `			 * is not yet registered in PHL (see PLAN.md item 6.13). */` |
 |      ! 0 | 13021 | `			return PH7_VmThrowException(pCtx,` |
@@ -13033,12 +13033,12 @@ Coverage: 6963/8872 lines (78.48%)
 |        - | 13023 | `				"Cannot gather sufficient random data"` |
 |        - | 13024 | `				);` |
 |        - | 13025 | `		}` |
-|      345 | 13026 | `		uDraw &= uMask;` |
-|      345 | 13027 | `		if( uDraw <= uRange ){` |
+|      351 | 13026 | `		uDraw &= uMask;` |
+|      351 | 13027 | `		if( uDraw <= uRange ){` |
 |      225 | 13028 | `			uResult = uDraw;` |
 |      225 | 13029 | `			break;` |
 |        - | 13030 | `		}` |
-|       69 | 13031 | `	}` |
+|       67 | 13031 | `	}` |
 |      225 | 13032 | `	if( nAttempt >= 50 ){` |
 |      ! 0 | 13033 | `		return PH7_VmThrowException(pCtx,` |
 |        - | 13034 | `			"Exception",` |
