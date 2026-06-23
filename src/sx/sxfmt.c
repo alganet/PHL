@@ -131,6 +131,7 @@ static const SyFmtInfo aFmt[] = {
   sxu8 flag_zeropad;       /* True if field width constant starts with zero */
   sxu8 flag_long;          /* True if "l" flag is present */
   sxi64 longvalue;         /* Value for integer types */
+  sxu64 ulongvalue;        /* Unsigned magnitude used for the digit conversion */
   const SyFmtInfo *infop;  /* Pointer to the appropriate info structure */
   char buf[SXFMT_BUFSIZ];  /* Conversion buffer */
   char prefix;             /* Prefix character."+" or "-" or " " or '\0'.*/
@@ -289,25 +290,19 @@ static const SyFmtInfo aFmt[] = {
 #endif
         if( infop->flags & SXFLAG_SIGNED ){
           if( longvalue<0 ){
-            longvalue = -longvalue;
-			/* Ticket 1433-003 */
-			if( longvalue < 0 ){
-				/* Overflow */
-				longvalue= 0x7FFFFFFFFFFFFFFF;
-			}
+            /* Negate in unsigned space so INT64_MIN (where -longvalue would
+            ** overflow, UB that recent compilers exploit) yields the correct
+            ** magnitude 2^63 rather than garbage. */
+            ulongvalue = (sxu64)0 - (sxu64)longvalue;
             prefix = '-';
-          }else if( flag_plussign )  prefix = '+';
-          else if( flag_blanksign )  prefix = ' ';
-          else                       prefix = 0;
+          }else{
+            ulongvalue = (sxu64)longvalue;
+            if( flag_plussign )        prefix = '+';
+            else if( flag_blanksign )  prefix = ' ';
+            else                       prefix = 0;
+          }
         }else{
-			if( longvalue<0 ){
-				longvalue = -longvalue;
-				/* Ticket 1433-003 */
-				if( longvalue < 0 ){
-					/* Overflow */
-					longvalue= 0x7FFFFFFFFFFFFFFF;
-				}
-			}
+			ulongvalue = (sxu64)longvalue; /* print the full unsigned value as-is */
 			prefix = 0;
 		}
         if( flag_zeropad && precision<width-(prefix!=0) ){
@@ -320,9 +315,9 @@ static const SyFmtInfo aFmt[] = {
           cset = infop->charset;
           base = infop->base;
           do{                                           /* Convert to ascii */
-            *(--bufpt) = cset[longvalue%base];
-            longvalue = longvalue/base;
-          }while( longvalue>0 );
+            *(--bufpt) = cset[ulongvalue%base];
+            ulongvalue = ulongvalue/base;
+          }while( ulongvalue>0 );
         }
         length = (int)(&buf[SXFMT_BUFSIZ-1]-bufpt);
         for(idx=precision-length; idx>0; idx--){

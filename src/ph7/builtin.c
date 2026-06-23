@@ -4668,6 +4668,486 @@ static int PH7_builtin_password_needs_rehash(ph7_context *pCtx,int nArg,ph7_valu
 	ph7_result_bool(pCtx,iCost != iWantCost);
 	return PH7_OK;
 }
+/*
+ * filter_var() — input validation and sanitization (the ext/filter API).
+ *
+ * Filter and flag identifiers (values match PHP 8.5; the constants themselves
+ * are registered in constant.c). The validate filters are hand-rolled rather
+ * than delegating to SyStrToInt64/SyStrToReal: the former silently skips leading
+ * zeros and cannot signal overflow, and the latter treats ',' as a decimal point
+ * unconditionally — neither matches PHP's filter semantics.
+ */
+#define FV_VALIDATE_INT     257
+#define FV_VALIDATE_BOOLEAN 258
+#define FV_VALIDATE_FLOAT   259
+#define FV_VALIDATE_REGEXP  272
+#define FV_VALIDATE_URL     273
+#define FV_VALIDATE_EMAIL   274
+#define FV_VALIDATE_IP      275
+#define FV_VALIDATE_MAC     276
+#define FV_VALIDATE_DOMAIN  277
+#define FV_SANITIZE_SPECIAL_CHARS      515
+#define FV_DEFAULT          516 /* == FILTER_UNSAFE_RAW: pass the value through */
+#define FV_SANITIZE_EMAIL   517
+#define FV_SANITIZE_URL     518
+#define FV_SANITIZE_NUMBER_INT   519
+#define FV_SANITIZE_NUMBER_FLOAT 520
+#define FV_SANITIZE_FULL_SPECIAL_CHARS 522
+#define FV_FLAG_ALLOW_OCTAL  1
+#define FV_FLAG_ALLOW_HEX    2
+#define FV_FLAG_ALLOW_FRACTION   4096
+#define FV_FLAG_ALLOW_THOUSAND   8192
+#define FV_FLAG_ALLOW_SCIENTIFIC 16384
+#define FV_FLAG_IPV4  1048576
+#define FV_FLAG_IPV6  2097152
+#define FV_NULL_ON_FAILURE 134217728
+
+/* Trim leading/trailing PHP whitespace, adjusting the (*pz,*pn) view in place.
+ * SyisSpace (isspace) matches PHP's filter whitespace set " \t\n\r\v\f". */
+static void FvTrim(const char **pz,int *pn){
+	const char *z = *pz;
+	int n = *pn;
+	while( n>0 && SyisSpace((unsigned char)z[0]) ){ z++; n--; }
+	while( n>0 && SyisSpace((unsigned char)z[n-1]) ){ n--; }
+	*pz = z; *pn = n;
+}
+/* FILTER_VALIDATE_INT. Returns 1 and sets *pOut on success, 0 on failure. */
+static int FvValidateInt(const char *z,int n,int flags,ph7_int64 *pOut){
+	int neg = 0, i;
+	sxu64 u = 0;
+	FvTrim(&z,&n);
+	if( n==0 ){ return 0; }
+	if( z[0]=='+' || z[0]=='-' ){ neg = (z[0]=='-'); z++; n--; }
+	if( n==0 ){ return 0; }
+	if( (flags & FV_FLAG_ALLOW_HEX) && n>=2 && z[0]=='0' && (z[1]=='x'||z[1]=='X') ){
+		z += 2; n -= 2;
+		if( n==0 ){ return 0; }
+		for( i=0; i<n; i++ ){
+			int h = SyHexToint((unsigned char)z[i]);
+			if( h<0 ){ return 0; }
+			if( u > (0xFFFFFFFFFFFFFFFFULL - (sxu64)h)/16 ){ return 0; }
+			u = u*16 + (sxu64)h;
+		}
+	}else if( (flags & FV_FLAG_ALLOW_OCTAL) && z[0]=='0' ){
+		for( i=0; i<n; i++ ){
+			if( z[i]<'0' || z[i]>'7' ){ return 0; }
+			if( u > (0xFFFFFFFFFFFFFFFFULL - (sxu64)(z[i]-'0'))/8 ){ return 0; }
+			u = u*8 + (sxu64)(z[i]-'0');
+		}
+	}else{
+		if( z[0]=='0' && n>1 ){ return 0; } /* a leading zero is rejected in base 10 */
+		for( i=0; i<n; i++ ){
+			if( !SyisDigit((unsigned char)z[i]) ){ return 0; }
+			if( u > (0xFFFFFFFFFFFFFFFFULL - (sxu64)(z[i]-'0'))/10 ){ return 0; }
+			u = u*10 + (sxu64)(z[i]-'0');
+		}
+	}
+	if( neg ){
+		if( u > 0x8000000000000000ULL ){ return 0; }
+		*pOut = (ph7_int64)(0ULL - u); /* two's-complement negate in unsigned space */
+	}else{
+		if( u > 0x7FFFFFFFFFFFFFFFULL ){ return 0; }
+		*pOut = (ph7_int64)u;
+	}
+	return 1;
+}
+/* FILTER_VALIDATE_FLOAT. Returns 1 and sets *pOut on success, 0 on failure. */
+static int FvValidateFloat(const char *z,int n,int flags,double *pOut){
+	char zBuf[512];
+	int i, m = 0, seenDigit = 0;
+	const char *zv; int nv; double d = 0; const char *zRest = 0;
+	FvTrim(&z,&n);
+	/* Bound the input: zBuf[512] holds the thousand-separator-stripped copy, and
+	 * the cap also rejects the pathological 500+ digit floats PHP refuses. */
+	if( n==0 || n>500 ){ return 0; }
+	if( flags & FV_FLAG_ALLOW_THOUSAND ){
+		/* Commas are optional, but when present they must group the integer part
+		 * into a leading run of 1..3 digits followed by groups of exactly 3
+		 * ("1,000" ok, "1,5"/"1234,567" rejected). Strip them into zBuf and reject
+		 * a comma anywhere in the fractional/exponent tail. */
+		int s = 0, intEnd, segStart, segIdx, hasComma = 0;
+		if( s<n && (z[s]=='+'||z[s]=='-') ){ zBuf[m++] = z[s]; s++; }
+		intEnd = s;
+		while( intEnd<n && z[intEnd]!='.' && z[intEnd]!='e' && z[intEnd]!='E' ){
+			if( z[intEnd]==',' ){ hasComma = 1; }
+			intEnd++;
+		}
+		if( hasComma ){
+			segStart = s; segIdx = 0;
+			for( i=s; i<=intEnd; i++ ){
+				if( i==intEnd || z[i]==',' ){
+					int segLen = i - segStart, k;
+					if( segIdx==0 ){ if( segLen<1 || segLen>3 ){ return 0; } }
+					else if( segLen!=3 ){ return 0; }
+					for( k=segStart; k<i; k++ ){
+						if( !SyisDigit((unsigned char)z[k]) ){ return 0; }
+						zBuf[m++] = z[k];
+					}
+					segStart = i+1; segIdx++;
+				}
+			}
+		}else{
+			for( i=s; i<intEnd; i++ ){ zBuf[m++] = z[i]; }
+		}
+		for( i=intEnd; i<n; i++ ){
+			if( z[i]==',' ){ return 0; }
+			zBuf[m++] = z[i];
+		}
+		zv = zBuf; nv = m;
+	}else{
+		zv = z; nv = n;
+	}
+	i = 0;
+	if( i<nv && (zv[i]=='+'||zv[i]=='-') ){ i++; }
+	while( i<nv && SyisDigit((unsigned char)zv[i]) ){ i++; seenDigit = 1; }
+	if( i<nv && zv[i]=='.' ){
+		i++;
+		while( i<nv && SyisDigit((unsigned char)zv[i]) ){ i++; seenDigit = 1; }
+	}
+	if( !seenDigit ){ return 0; }
+	if( i<nv && (zv[i]=='e'||zv[i]=='E') ){
+		i++;
+		if( i<nv && (zv[i]=='+'||zv[i]=='-') ){ i++; }
+		if( i>=nv || !SyisDigit((unsigned char)zv[i]) ){ return 0; }
+		while( i<nv && SyisDigit((unsigned char)zv[i]) ){ i++; }
+	}
+	if( i!=nv ){ return 0; } /* trailing junk */
+	/* Divergence: PHP rejects magnitudes beyond the double range ("1e400" ->
+	 * false), but SyStrToReal (the engine-wide float parser, also behind
+	 * floatval/(float)) saturates them to a finite value, so they validate here. */
+	SyStrToReal(zv,(sxu32)nv,(void *)&d,&zRest);
+	*pOut = d;
+	return 1;
+}
+/* FILTER_VALIDATE_BOOLEAN. Returns 1 if the string is recognized (sets *pBool),
+ * 0 if it is unrecognized (the failure path). "0"/"false"/"" are recognized as
+ * false, NOT failures. */
+static int FvValidateBool(const char *z,int n,int *pBool){
+	FvTrim(&z,&n);
+	if( (n==1 && z[0]=='1') || (n==4 && SyStrnicmp(z,"true",4)==0)
+	    || (n==2 && SyStrnicmp(z,"on",2)==0) || (n==3 && SyStrnicmp(z,"yes",3)==0) ){
+		*pBool = 1; return 1;
+	}
+	if( n==0 || (n==1 && z[0]=='0') || (n==5 && SyStrnicmp(z,"false",5)==0)
+	    || (n==3 && SyStrnicmp(z,"off",3)==0) || (n==2 && SyStrnicmp(z,"no",2)==0) ){
+		*pBool = 0; return 1;
+	}
+	return 0;
+}
+/* IPv4 dotted-quad: exactly 4 octets 0..255, no leading zeros. */
+static int FvValidateIp4(const char *z,int n){
+	int i = 0, parts = 0;
+	while( i<n ){
+		int val = 0, digits = 0, start = i;
+		while( i<n && SyisDigit((unsigned char)z[i]) ){
+			val = val*10 + (z[i]-'0');
+			if( val>255 ){ return 0; }
+			digits++; i++;
+		}
+		if( digits==0 || digits>3 ){ return 0; }
+		if( digits>1 && z[start]=='0' ){ return 0; } /* leading zero */
+		parts++;
+		if( parts>4 ){ return 0; }
+		if( i<n ){
+			if( z[i]!='.' ){ return 0; }
+			i++;
+			if( i>=n ){ return 0; } /* trailing dot */
+		}
+	}
+	return parts==4;
+}
+/* A colon-separated run of IPv6 hextets with no "::" (n may be 0 -> 0 groups),
+ * allowing a trailing embedded IPv4. Returns the 16-bit group count or -1. */
+static int FvIp6Hextets(const char *z,int n){
+	int i = 0, segStart = 0, groups = 0;
+	if( n==0 ){ return 0; }
+	while( i<=n ){
+		if( i==n || z[i]==':' ){
+			int segLen = i - segStart, j, isV4 = 0;
+			if( segLen==0 ){ return -1; } /* an empty hextet (stray ':') */
+			for( j=segStart; j<i; j++ ){ if( z[j]=='.' ){ isV4 = 1; break; } }
+			if( isV4 ){
+				if( i!=n ){ return -1; } /* IPv4 only as the final token */
+				if( !FvValidateIp4(z+segStart,segLen) ){ return -1; }
+				groups += 2;
+			}else{
+				if( segLen>4 ){ return -1; }
+				for( j=segStart; j<i; j++ ){ if( SyHexToint((unsigned char)z[j])<0 ){ return -1; } }
+				groups++;
+			}
+			segStart = i+1;
+		}
+		i++;
+	}
+	return groups;
+}
+/* IPv6: at most one "::" zero-run; 8 groups exactly, or fewer when "::" present. */
+static int FvValidateIp6(const char *z,int n){
+	const char *zDbl = 0;
+	int i, ga, gb;
+	for( i=0; i+1<n; i++ ){
+		if( z[i]==':' && z[i+1]==':' ){
+			if( zDbl ){ return 0; } /* a second "::" is invalid */
+			zDbl = z+i;
+		}
+	}
+	if( zDbl==0 ){
+		return FvIp6Hextets(z,n)==8;
+	}else{
+		int lenA = (int)(zDbl - z);
+		int lenB = n - lenA - 2;
+		ga = (lenA==0) ? 0 : FvIp6Hextets(z,lenA);
+		gb = (lenB==0) ? 0 : FvIp6Hextets(zDbl+2,lenB);
+		if( ga<0 || gb<0 ){ return 0; }
+		return (ga+gb)<=7; /* "::" stands for at least one zero group */
+	}
+}
+static int FvValidateIp(const char *z,int n,int flags){
+	int v4 = (flags & FV_FLAG_IPV4), v6 = (flags & FV_FLAG_IPV6);
+	if( !v4 && !v6 ){ v4 = v6 = 1; } /* default accepts either family */
+	if( v4 && FvValidateIp4(z,n) ){ return 1; }
+	if( v6 && FvValidateIp6(z,n) ){ return 1; }
+	return 0;
+}
+/* FILTER_VALIDATE_MAC: 17-char colon- or dash-separated hex (XX:XX:..:XX). */
+static int FvValidateMac(const char *z,int n){
+	char sep;
+	int i;
+	if( n!=17 ){ return 0; }
+	sep = z[2];
+	if( sep!=':' && sep!='-' ){ return 0; }
+	for( i=0; i<17; i++ ){
+		if( (i%3)==2 ){ if( z[i]!=sep ){ return 0; } }
+		else if( SyHexToint((unsigned char)z[i])<0 ){ return 0; }
+	}
+	return 1;
+}
+/* FILTER_VALIDATE_EMAIL (best-effort: covers the common cases, not quoted local
+ * parts or IP-literal domains). */
+static int FvValidateEmail(const char *z,int n){
+	int at = -1, i, localLen, domLen, labelStart, dotCount = 0;
+	const char *zDom;
+	if( n==0 || n>320 ){ return 0; }
+	for( i=0; i<n; i++ ){
+		if( z[i]=='@' ){ if( at>=0 ){ return 0; } at = i; }
+	}
+	if( at<=0 || at==n-1 ){ return 0; } /* one '@', non-empty local and domain */
+	localLen = at;
+	zDom = z + at + 1;
+	domLen = n - at - 1;
+	if( z[0]=='.' || z[at-1]=='.' ){ return 0; }
+	for( i=0; i<localLen; i++ ){
+		unsigned char c = (unsigned char)z[i];
+		if( c<=' ' ){ return 0; }
+		if( c=='.' && i+1<localLen && z[i+1]=='.' ){ return 0; }
+	}
+	if( zDom[0]=='.' || zDom[domLen-1]=='.' ){ return 0; }
+	labelStart = 0;
+	for( i=0; i<=domLen; i++ ){
+		if( i==domLen || zDom[i]=='.' ){
+			int ll = i - labelStart;
+			if( ll==0 ){ return 0; } /* consecutive dots */
+			if( zDom[labelStart]=='-' || zDom[i-1]=='-' ){ return 0; }
+			if( i<domLen ){ dotCount++; }
+			labelStart = i+1;
+		}else{
+			unsigned char c = (unsigned char)zDom[i];
+			if( !((c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='-') ){ return 0; }
+		}
+	}
+	if( dotCount<1 ){ return 0; } /* PHP requires a dot in the domain (any TLD length) */
+	return 1;
+}
+/* FILTER_VALIDATE_DOMAIN (lenient, matching PHP without FILTER_FLAG_HOSTNAME). */
+static int FvValidateDomain(const char *z,int n){
+	int i;
+	if( n<1 || n>253 || z[0]=='.' ){ return 0; }
+	for( i=0; i<n; i++ ){
+		unsigned char c = (unsigned char)z[i];
+		if( c<=' ' ){ return 0; }
+		if( c=='.' && i+1<n && z[i+1]=='.' ){ return 0; }
+	}
+	return 1;
+}
+/* FILTER_VALIDATE_URL: require a scheme and a host (PHP's filter is itself
+ * parse_url-based, so PH7_VmHttpSplitURI tracks it closely). */
+static int FvValidateUrl(const char *z,int n){
+	SyhttpUri sUri;
+	if( n==0 ){ return 0; }
+	SyZero(&sUri,(sxu32)sizeof(sUri));
+	if( PH7_VmHttpSplitURI(&sUri,z,(sxu32)n)!=SXRET_OK ){ return 0; }
+	return sUri.sScheme.nByte!=0 && sUri.sHost.nByte!=0;
+}
+/* The Fv sanitizers build their result by appending directly to the call
+ * context (ph7_result_string accumulates, like htmlspecialchars), emitting each
+ * kept run in one call and seeding "" so an all-stripped input yields "". */
+/* SANITIZE_NUMBER_INT (isFloat=0) / SANITIZE_NUMBER_FLOAT (isFloat=1). */
+static void FvSanitizeNumber(ph7_context *pCtx,const char *z,int n,int isFloat,int flags){
+	int i, runStart = 0;
+	ph7_result_string(pCtx,"",0);
+	for( i=0; i<n; i++ ){
+		char c = z[i];
+		int keep = (c>='0'&&c<='9') || c=='+' || c=='-';
+		if( !keep && isFloat ){
+			keep = (c=='.' && (flags & FV_FLAG_ALLOW_FRACTION))
+			    || (c==',' && (flags & FV_FLAG_ALLOW_THOUSAND))
+			    || ((c=='e'||c=='E') && (flags & FV_FLAG_ALLOW_SCIENTIFIC));
+		}
+		if( !keep ){
+			if( i>runStart ){ ph7_result_string(pCtx,z+runStart,i-runStart); }
+			runStart = i+1;
+		}
+	}
+	if( n>runStart ){ ph7_result_string(pCtx,z+runStart,n-runStart); }
+}
+/* SANITIZE_SPECIAL_CHARS (full=0, numeric entities; also encodes control bytes
+ * <32 as &#N;) / FULL_SPECIAL_CHARS (full=1, named entities for <>&"').
+ * Divergence on bytes >=128: PHP's FULL filter is UTF-8-aware — it named-entity
+ * encodes valid sequences ("\xC3\xA9" -> "&eacute;") and drops invalid ones; we
+ * pass every byte >=128 through verbatim (the engine has no UTF-8 entity table,
+ * and PH7_builtin_htmlspecialchars behaves the same way). Bytes 0-127 match. */
+static void FvSanitizeSpecial(ph7_context *pCtx,const char *z,int n,int full){
+	int i, runStart = 0;
+	const char *zEnt;
+	ph7_result_string(pCtx,"",0);
+	for( i=0; i<n; i++ ){
+		unsigned char c = (unsigned char)z[i];
+		switch( c ){
+		case '<':  zEnt = full?"&lt;":"&#60;";   break;
+		case '>':  zEnt = full?"&gt;":"&#62;";   break;
+		case '&':  zEnt = full?"&amp;":"&#38;";  break;
+		case '"':  zEnt = full?"&quot;":"&#34;"; break;
+		case '\'': zEnt = full?"&#039;":"&#39;"; break;
+		default:
+			if( full || c>=32 ){ continue; } /* keep in the current run */
+			/* SPECIAL_CHARS encodes a control byte as a numeric entity. */
+			if( i>runStart ){ ph7_result_string(pCtx,z+runStart,i-runStart); }
+			ph7_result_string_format(pCtx,"&#%d;",(int)c);
+			runStart = i+1;
+			continue;
+		}
+		if( i>runStart ){ ph7_result_string(pCtx,z+runStart,i-runStart); }
+		ph7_result_string(pCtx,zEnt,-1); /* -1: length from strlen */
+		runStart = i+1;
+	}
+	if( n>runStart ){ ph7_result_string(pCtx,z+runStart,n-runStart); }
+}
+static int FvEmailAllowed(unsigned char c){
+	if( (c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9') ){ return 1; }
+	return c=='!'||c=='#'||c=='$'||c=='%'||c=='&'||c=='\''||c=='*'||c=='+'
+	    || c=='-'||c=='='||c=='?'||c=='^'||c=='_'||c=='`'||c=='{'||c=='|'
+	    || c=='}'||c=='~'||c=='@'||c=='.'||c=='['||c==']';
+}
+static int FvUrlAllowed(unsigned char c){
+	return c>=33 && c<=126; /* PHP keeps every printable ASCII byte except space */
+}
+/* SANITIZE_EMAIL (isUrl=0) / SANITIZE_URL (isUrl=1): strip disallowed bytes. */
+static void FvSanitizeChars(ph7_context *pCtx,const char *z,int n,int isUrl){
+	int i, runStart = 0;
+	ph7_result_string(pCtx,"",0);
+	for( i=0; i<n; i++ ){
+		unsigned char c = (unsigned char)z[i];
+		if( !(isUrl ? FvUrlAllowed(c) : FvEmailAllowed(c)) ){
+			if( i>runStart ){ ph7_result_string(pCtx,z+runStart,i-runStart); }
+			runStart = i+1;
+		}
+	}
+	if( n>runStart ){ ph7_result_string(pCtx,z+runStart,n-runStart); }
+}
+/*
+ * filter_var($value, $filter = FILTER_DEFAULT, $options = 0)
+ *  Validate or sanitize a value. The scalar input is coerced to a string and the
+ *  selected filter applied; on validation failure the 'default' option (if any)
+ *  is returned, else null when FILTER_NULL_ON_FAILURE is set, else false.
+ */
+static int PH7_builtin_filter_var(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	int iFilter = FV_DEFAULT, iFlags = 0, bNull;
+	ph7_value *pOpts = 0, *pDefault = 0;
+	const char *zVal; int nVal;
+	if( nArg<1 ){ ph7_result_null(pCtx); return PH7_OK; }
+	if( nArg>1 ){ iFilter = ph7_value_to_int(apArg[1]); }
+	if( nArg>2 ){
+		if( ph7_value_is_array(apArg[2]) ){
+			ph7_value *pF = ph7_array_fetch(apArg[2],"flags",(int)sizeof("flags")-1);
+			if( pF ){ iFlags = ph7_value_to_int(pF); }
+			pOpts = ph7_array_fetch(apArg[2],"options",(int)sizeof("options")-1);
+			if( pOpts && !ph7_value_is_array(pOpts) ){ pOpts = 0; }
+			if( pOpts ){ pDefault = ph7_array_fetch(pOpts,"default",(int)sizeof("default")-1); }
+		}else{
+			iFlags = ph7_value_to_int(apArg[2]);
+		}
+	}
+	bNull = (iFlags & FV_NULL_ON_FAILURE) ? 1 : 0;
+	/* An array/object input fails every scalar filter. */
+	if( ph7_value_is_array(apArg[0]) ){ goto fail; }
+	zVal = ph7_value_to_string(apArg[0],&nVal);
+	switch( iFilter ){
+	case FV_VALIDATE_INT: {
+		ph7_int64 v;
+		if( !FvValidateInt(zVal,nVal,iFlags,&v) ){ goto fail; }
+		if( pOpts ){
+			ph7_value *pMin = ph7_array_fetch(pOpts,"min_range",(int)sizeof("min_range")-1);
+			ph7_value *pMax = ph7_array_fetch(pOpts,"max_range",(int)sizeof("max_range")-1);
+			if( pMin && v<ph7_value_to_int64(pMin) ){ goto fail; }
+			if( pMax && v>ph7_value_to_int64(pMax) ){ goto fail; }
+		}
+		ph7_result_int64(pCtx,v);
+		return PH7_OK;
+	}
+	case FV_VALIDATE_FLOAT: {
+		double d;
+		if( !FvValidateFloat(zVal,nVal,iFlags,&d) ){ goto fail; }
+		ph7_result_double(pCtx,d);
+		return PH7_OK;
+	}
+	case FV_VALIDATE_BOOLEAN: {
+		int b;
+		if( !FvValidateBool(zVal,nVal,&b) ){ goto fail; }
+		ph7_result_bool(pCtx,b);
+		return PH7_OK;
+	}
+	case FV_VALIDATE_IP:     if( !FvValidateIp(zVal,nVal,iFlags) ){ goto fail; } goto pass;
+	case FV_VALIDATE_MAC:    if( !FvValidateMac(zVal,nVal) ){ goto fail; }       goto pass;
+	case FV_VALIDATE_EMAIL:  if( !FvValidateEmail(zVal,nVal) ){ goto fail; }     goto pass;
+	case FV_VALIDATE_DOMAIN: if( !FvValidateDomain(zVal,nVal) ){ goto fail; }    goto pass;
+	case FV_VALIDATE_URL:    if( !FvValidateUrl(zVal,nVal) ){ goto fail; }       goto pass;
+	case FV_VALIDATE_REGEXP: {
+#ifdef PH7_ENABLE_PCRE
+		ph7_value *pRe = pOpts ? ph7_array_fetch(pOpts,"regexp",(int)sizeof("regexp")-1) : 0;
+		const char *zRe; int nRe, matched = 0;
+		if( pRe==0 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"filter_var(): \"regexp\" option is missing");
+		}
+		zRe = ph7_value_to_string(pRe,&nRe);
+		if( PH7_PcreMatchQuiet(pCtx,zRe,nRe,zVal,nVal,&matched)!=SXRET_OK || !matched ){ goto fail; }
+		goto pass;
+#else
+		goto fail;
+#endif
+	}
+	case FV_SANITIZE_NUMBER_INT:   FvSanitizeNumber(pCtx,zVal,nVal,0,0);      return PH7_OK;
+	case FV_SANITIZE_NUMBER_FLOAT: FvSanitizeNumber(pCtx,zVal,nVal,1,iFlags); return PH7_OK;
+	case FV_SANITIZE_SPECIAL_CHARS:      FvSanitizeSpecial(pCtx,zVal,nVal,0); return PH7_OK;
+	case FV_SANITIZE_FULL_SPECIAL_CHARS: FvSanitizeSpecial(pCtx,zVal,nVal,1); return PH7_OK;
+	case FV_SANITIZE_EMAIL: FvSanitizeChars(pCtx,zVal,nVal,0); return PH7_OK;
+	case FV_SANITIZE_URL:   FvSanitizeChars(pCtx,zVal,nVal,1); return PH7_OK;
+	case FV_DEFAULT: goto pass; /* FILTER_UNSAFE_RAW: pass through unchanged */
+	default:
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+			"Unknown filter with ID %d",iFilter);
+		break; /* unknown filter id -> fail */
+	}
+fail:
+	if( pDefault ){ ph7_result_value(pCtx,pDefault); }
+	else if( bNull ){ ph7_result_null(pCtx); }
+	else { ph7_result_bool(pCtx,0); }
+	return PH7_OK;
+pass: /* validation passed: return the (string) input unchanged */
+	ph7_result_string(pCtx,zVal,nVal);
+	return PH7_OK;
+}
 #endif /* PH7_NEED_BUILTIN_REG */
 #ifdef PH7_NEED_FMT_AND_INI
 /*
@@ -7344,6 +7824,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "password_verify",       PH7_builtin_password_verify },
 	{ "password_get_info",     PH7_builtin_password_get_info },
 	{ "password_needs_rehash", PH7_builtin_password_needs_rehash },
+	{ "filter_var",            PH7_builtin_filter_var },
 #endif /* PH7_NEED_BUILTIN_REG */
 #ifdef PH7_NEED_FMT_AND_INI
 	{ "str_getcsv",   PH7_builtin_str_getcsv },
