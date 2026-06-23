@@ -1520,6 +1520,8 @@ PH7_PRIVATE void PH7_VmReleaseResponseHeaders(ph7_vm *pVm);
 #ifdef PH7_ENABLE_PCRE
 PH7_PRIVATE void PH7_RegisterPcreFunctions(ph7_vm *pVm);
 PH7_PRIVATE void PH7_RegisterPcreConstants(ph7_vm *pVm);
+PH7_PRIVATE sxi32 PH7_PcreMatchQuiet(ph7_context *pCtx,const char *zPat,int nPat,
+	const char *zSub,int nSub,int *pMatched);
 #endif /* PH7_ENABLE_PCRE */
 /* net.c types and function prototypes */
 #ifdef PH7_ENABLE_NET

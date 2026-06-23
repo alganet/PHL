@@ -402,6 +402,41 @@ static void PcrePopulateMatches(
 	}
 }
 
+/*
+ * Quiet whole-pattern match used by FILTER_VALIDATE_REGEXP: compile zPat (a full
+ * "/.../flags" pattern) and test it against zSub. On a successful attempt returns
+ * SXRET_OK with *pMatched set to 1 (match) or 0 (no match); returns SXERR_INVALID
+ * on a compile/match error (the caller treats that as a validation failure). The
+ * compiled code is owned by PcreCompile's cache, so it is not freed here.
+ */
+PH7_PRIVATE sxi32 PH7_PcreMatchQuiet(ph7_context *pCtx,const char *zPat,int nPat,
+	const char *zSub,int nSub,int *pMatched)
+{
+	pcre2_code *pCode;
+	pcre2_match_data *pMatchData;
+	sxu32 nCapture;
+	int rc;
+	*pMatched = 0;
+	pCode = PcreCompile(pCtx,zPat,nPat,&nCapture);
+	if( pCode == 0 ){
+		return SXERR_INVALID;
+	}
+	pMatchData = pcre2_match_data_create_from_pattern(pCode,NULL);
+	if( pMatchData == 0 ){
+		return SXERR_INVALID;
+	}
+	rc = pcre2_match(pCode,(PCRE2_SPTR)zSub,(PCRE2_SIZE)nSub,0,0,pMatchData,NULL);
+	pcre2_match_data_free(pMatchData);
+	if( rc < 0 ){
+		if( rc != PCRE2_ERROR_NOMATCH ){
+			PcreSetMatchError(pCtx->pVm,rc);
+			return SXERR_INVALID;
+		}
+		return SXRET_OK; /* clean no-match */
+	}
+	*pMatched = 1;
+	return SXRET_OK;
+}
 /* ======================================================================
  * preg_match(pattern, subject [, &matches [, flags [, offset]]])
  * ====================================================================== */
