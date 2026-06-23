@@ -41,4 +41,4 @@
 ## Integration points and extension hooks
 - Public embedding API surface is `src/ph7/ph7.h`; internals are in `src/ph7/ph7int.h`.
 - Engine-level configurability is centralized in `ph7_lib_config()`/`ph7_config()` (`src/ph7/api.c`): VFS, memory allocator, mutex subsystem, error consumers.
-- Use examples as canonical host-integration patterns: `examples/ph7_intro.c`, `examples/ph7_func_intro.c`, `examples/ph7_const_intro.c`, `examples/ph7_cgi.c`.
+- The CLI/SAPI host integration lives in `src/phl/` (`phl.c`, `server.c`) — the canonical example of embedding the engine.

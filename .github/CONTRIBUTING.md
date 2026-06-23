@@ -90,7 +90,6 @@ make test
 
 - Update documentation for API changes
 - Add comments to code for clarity
-- Update examples if relevant
 
 ## Licensing
 

@@ -13,12 +13,15 @@ if (!defined('PH7_VERSION')) {
 --FILE--
 <?php
 $phl = getenv('PHPT_TARGET_EXECUTABLE');
-$fp = popen("\"$phl\" -b \"./examples/hello_world.php\"", "r");
+$script = tempnam(sys_get_temp_dir(), 'phlb');
+file_put_contents($script, "<?php\n\necho \"Hello World!\";");
+$fp = popen("\"$phl\" -b \"$script\"", "r");
 $out = '';
 while (!feof($fp)) {
     $out .= fgets($fp);
 }
 fclose($fp);
+@unlink($script);
 echo $out;
 ?>
 --EXPECTF--
@@ -34,4 +37,4 @@ DONE               0        0        0 [5]
 Hello World!
 --CLEAN--
 <?php
-unset($phl, $fp, $out);
+unset($phl, $script, $fp, $out);

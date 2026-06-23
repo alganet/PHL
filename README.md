@@ -101,20 +101,11 @@ The project includes a standalone PHP interpreter:
 
 ```bash
 # Run a PHP file
-./build/x86_64-linux-gnu/phl examples/hello_world.php
+./build/x86_64-linux-gnu/phl script.php
 
 # With script arguments
 ./build/x86_64-linux-gnu/phl script.php arg1 arg2
 ```
-
-## Examples
-
-See the [`examples/`](examples/) directory for more usage examples:
-
-- `ph7_intro.c` - Basic embedding example
-- `ph7_cgi.c` - CGI-style execution
-- `ph7_func_intro.c` - Registering C functions
-- `ph7_const_intro.c` - Defining constants
 
 ## Testing
 
