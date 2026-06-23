@@ -121,15 +121,15 @@ Coverage: 1046/1057 lines (98.96%)
 |      - |  111 | ` * DIRECTORY_SEPARATOR.` |
 |      - |  112 | ` * Expand the directory separator character.` |
 |      - |  113 | ` */` |
-|    154 |  114 | `static void PH7_DIRSEP_Const(ph7_value *pVal,void *pUnused)` |
-|      2 |  115 |  |
-|     77 |  116 | `	SXUNUSED(pUnused);` |
+|    156 |  114 | `static void PH7_DIRSEP_Const(ph7_value *pVal,void *pUnused)` |
+|      3 |  115 |  |
+|     78 |  116 | `	SXUNUSED(pUnused);` |
 |      - |  117 | `#ifdef __WINNT__` |
-|      2 |  118 | `	ph7_value_string(pVal,"\\",(int)sizeof(char));` |
+|      3 |  118 | `	ph7_value_string(pVal,"\\",(int)sizeof(char));` |
 |      - |  119 | `#else` |
-|    154 |  120 | `	ph7_value_string(pVal,"/",(int)sizeof(char));` |
+|    156 |  120 | `	ph7_value_string(pVal,"/",(int)sizeof(char));` |
 |      - |  121 | `#endif` |
-|    156 |  122 |  |
+|    159 |  122 |  |
 |      - |  123 | `/*` |
 |      - |  124 | ` * PATH_SEPARATOR.` |
 |      - |  125 | ` * Expand the path separator character.` |

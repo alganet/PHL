@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 174/229 lines (75.98%)
+Coverage: 176/239 lines (73.64%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -23,7 +23,7 @@ Coverage: 174/229 lines (75.98%)
 |    - |   13 | ` * your error output (STDOUT) should display the compile-time error messages.` |
 |    - |   14 | ` *` |
 |    - |   15 | ` * Usage example of the phl interpreter:` |
-|    - |   16 | ` *   phl examples/hello_world.php` |
+|    - |   16 | ` *   phl hello_world.php` |
 |    - |   17 | ` * Running the interpreter with script arguments` |
 |    - |   18 | ` *    phl scripts/mp3_tag.php /usr/local/path/to/my_mp3s` |
 |    - |   19 | ` *` |
@@ -347,153 +347,167 @@ Coverage: 174/229 lines (75.98%)
 |  ! 0 |  337 | `			}` |
 |  ! 0 |  338 | `		}` |
 |    - |  339 | `	}` |
-|    - |  340 | `	/* Syntax-check only mode (-l): compile the target file, print PHP's summary` |
-|    - |  341 | `	 * line and exit without executing. The error consumer installed above` |
-|    - |  342 | `	 * already prints any parse error; ph7_compile_file leaves *pVm NULL on a` |
-|    - |  343 | `	 * compile/IO error, so only a successful compile owns a VM to release. */` |
-| 3121 |  344 | `	if( lint_mode ){` |
-|    - |  345 | `		const char *zFile;` |
-|    4 |  346 | `		if( n >= argc ){` |
-|    - |  347 | ``			/* No file argument (e.g. `-l` alone, or `-l` mixed with `-r`). */`` |
-|  ! 0 |  348 | `			ph7_release(pEngine);` |
-|  ! 0 |  349 | `			puts("No input file specified");` |
-|  ! 0 |  350 | `			return 255;` |
-|    - |  351 | `		}` |
-|    4 |  352 | `		zFile = argv[n];` |
-|    4 |  353 | `		rc = ph7_compile_file(pEngine,zFile,&pVm,0);` |
-|    4 |  354 | `		if( rc == PH7_OK ){` |
-|    2 |  355 | `			printf("No syntax errors detected in %s\n",zFile);` |
-|    2 |  356 | `			ph7_vm_release(pVm);` |
-|    3 |  357 | `		}else if( rc == PH7_IO_ERR ){` |
-|  ! 0 |  358 | `			printf("Could not open input file: %s\n",zFile);` |
-|  ! 0 |  359 | `		}else{` |
-|    2 |  360 | `			printf("Errors parsing %s\n",zFile);` |
-|    - |  361 | `		}` |
-|    4 |  362 | `		ph7_release(pEngine);` |
-|    4 |  363 | `		return (rc == PH7_OK) ? 0 : 255;` |
-|    - |  364 | `	}` |
-|    - |  365 | `	/* Now,it's time to compile our PHP file */` |
-| 3117 |  366 | `	if( run_code ){` |
-|    - |  367 | `		/* Compile inline PHP code string (PHP only - no tags needed) */` |
-|   10 |  368 | `		rc = ph7_compile_v2(` |
-|    4 |  369 | `			pEngine, /* PH7 Engine */` |
-|    4 |  370 | `			zRunCode, /* Source code */` |
-|    - |  371 | `			-1,       /* Let API compute length */` |
-|    - |  372 | `			&pVm,     /* OUT: Compiled PHP program */` |
-|    - |  373 | `			PH7_PHP_ONLY /* Inline PHP, no tags expected */` |
-|    - |  374 | `			);` |
-|   10 |  375 | `		if( rc != PH7_OK ){ /* Compile error */` |
-|  ! 0 |  376 | `			if( rc == PH7_VM_ERR ){` |
-|  ! 0 |  377 | `				Fatal("VM initialization error");` |
-|  ! 0 |  378 | `			}else{` |
-|    - |  379 | `				/* Compile-time error, your output (STDOUT) should display the error messages */` |
-|  ! 0 |  380 | `				Fatal("Compile error");` |
-|    - |  381 | `			}` |
-|  ! 0 |  382 | `		}` |
-|    6 |  383 | `	}else{` |
-| 3109 |  384 | `		rc = ph7_compile_file(` |
-| 1467 |  385 | `			pEngine, /* PH7 Engine */` |
-| 3104 |  386 | `			argv[n], /* Path to the PHP file to compile */` |
-|    - |  387 | `			&pVm,    /* OUT: Compiled PHP program */` |
-|    - |  388 |  |
-|    - |  389 | `			);` |
-| 3109 |  390 | `		if( rc != PH7_OK ){ /* Compile error */` |
-|  344 |  391 | `			if( rc == PH7_IO_ERR ){` |
-|  ! 0 |  392 | `				Fatal("IO error while opening the target file");` |
-|  344 |  393 | `			}else if( rc == PH7_VM_ERR ){` |
-|  ! 0 |  394 | `				Fatal("VM initialization error");` |
-|  ! 0 |  395 | `			}else{` |
-|    - |  396 | `				/* Compile-time error, your output (STDOUT) should display the error messages */` |
-|  344 |  397 | `				Fatal("Compile error");` |
-|    - |  398 | `			}` |
-|  170 |  399 | `		}` |
-|    - |  400 | `	}` |
-|    - |  401 | `	/*` |
-|    - |  402 | `	 * Now we have our script compiled,it's time to configure our VM.` |
-|    - |  403 | `	 * We will install the VM output consumer callback defined above` |
-|    - |  404 | `	 * so that we can consume the VM output and redirect it to STDOUT.` |
-|    - |  405 | `	 */` |
-| 2947 |  406 | `	rc = ph7_vm_config(pVm,` |
-|    - |  407 | `		PH7_VM_CONFIG_OUTPUT,` |
-|    - |  408 | `		Output_Consumer,    /* Output Consumer callback */` |
-|    - |  409 |  |
-|    - |  410 | `		);` |
-| 2947 |  411 | `	if( rc != PH7_OK ){` |
-|  ! 0 |  412 | `		Fatal("Error while installing the VM output consumer callback");` |
-|  ! 0 |  413 | `	}` |
-|    - |  414 | `	/* Define PHP_BINARY: absolute path of this interpreter */` |
-| 4418 |  415 | `	ph7_create_constant(pVm,"PHP_BINARY",PHL_PhpBinaryConst,` |
-| 2942 |  416 | `		(void *)PHL_ResolveBinaryPath(argv[0]));` |
-|    - |  417 | `	/* Register the script arguments as $argv[] plus the matching $argc count and` |
-|    - |  418 | `	 * the CLI $_SERVER entries, matching PHP: $argv[0] is the script path (file` |
-|    - |  419 | `	 * mode) or the literal "Standard input code" (-r mode), followed by the` |
-|    - |  420 | `	 * script's own arguments.` |
-|    - |  421 | `	 */` |
-|    - |  422 | `	{` |
-| 2947 |  423 | `		const char *zScriptName = run_code ? "Standard input code" : argv[n];` |
-| 2947 |  424 | `		int argv_count = 0;` |
-|    - |  425 | `		ph7_value *pArgc;` |
-|    - |  426 | `		/* Count only the entries actually inserted: PH7_VM_CONFIG_ARGV_ENTRY skips` |
-|    - |  427 | `		 * an empty string, so counting unconditionally would leave $argc greater` |
-|    - |  428 | ``		 * than count($argv) for an empty argument (e.g. `phl s.php "" x`). */`` |
-| 2947 |  429 | `		if( ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,zScriptName) == PH7_OK ){` |
-| 2947 |  430 | `			argv_count++;` |
-| 1471 |  431 | `		}` |
-|    - |  432 | `		/* The script's own arguments follow: in file mode argv[n] is the script` |
-|    - |  433 | `		 * (registered above), so they start at n+1; in -r mode they start at n. */` |
-| 2977 |  434 | `		for( n = run_code ? n : n + 1; n < argc ; ++n ){` |
-|   35 |  435 | `			if( ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,argv[n]) == PH7_OK ){` |
-|   33 |  436 | `				argv_count++;` |
-|   14 |  437 | `			}` |
-|   20 |  438 | `		}` |
-|    - |  439 | `		/* $argc: a plain integer global equal to count($argv). */` |
-| 2947 |  440 | `		pArgc = ph7_new_scalar(pVm);` |
-| 2947 |  441 | `		if( pArgc ){` |
-| 2947 |  442 | `			ph7_value_int(pArgc,argv_count);` |
-| 2947 |  443 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_CREATE_VAR,"argc",pArgc);` |
-| 2947 |  444 | `			ph7_release_value(pVm,pArgc);` |
+|    - |  340 | `	/* Optional per-input byte cap (PHL_MAX_INPUT=bytes). Used to exercise the` |
+|    - |  341 | `	 * input-size rejection path at a manageable scale (see tests/ph7/003-stress). */` |
+|    - |  342 | `	{` |
+| 3121 |  343 | `		const char *zMaxInput = getenv("PHL_MAX_INPUT");` |
+| 3121 |  344 | `		if( zMaxInput ){` |
+|  ! 0 |  345 | `			unsigned long uMax = strtoul(zMaxInput,0,10);` |
+|  ! 0 |  346 | `			if( uMax > 0 ){` |
+|  ! 0 |  347 | `				if( uMax > 0xFFFFFFFFUL ){` |
+|  ! 0 |  348 | `					uMax = 0xFFFFFFFFUL;` |
+|  ! 0 |  349 | `				}` |
+|  ! 0 |  350 | `				ph7_config(pEngine,PH7_CONFIG_MAX_INPUT,(unsigned int)uMax);` |
+|  ! 0 |  351 | `			}` |
+|  ! 0 |  352 | `		}` |
+|    - |  353 | `	}` |
+|    - |  354 | `	/* Syntax-check only mode (-l): compile the target file, print PHP's summary` |
+|    - |  355 | `	 * line and exit without executing. The error consumer installed above` |
+|    - |  356 | `	 * already prints any parse error; ph7_compile_file leaves *pVm NULL on a` |
+|    - |  357 | `	 * compile/IO error, so only a successful compile owns a VM to release. */` |
+| 3121 |  358 | `	if( lint_mode ){` |
+|    - |  359 | `		const char *zFile;` |
+|    4 |  360 | `		if( n >= argc ){` |
+|    - |  361 | ``			/* No file argument (e.g. `-l` alone, or `-l` mixed with `-r`). */`` |
+|  ! 0 |  362 | `			ph7_release(pEngine);` |
+|  ! 0 |  363 | `			puts("No input file specified");` |
+|  ! 0 |  364 | `			return 255;` |
+|    - |  365 | `		}` |
+|    4 |  366 | `		zFile = argv[n];` |
+|    4 |  367 | `		rc = ph7_compile_file(pEngine,zFile,&pVm,0);` |
+|    4 |  368 | `		if( rc == PH7_OK ){` |
+|    2 |  369 | `			printf("No syntax errors detected in %s\n",zFile);` |
+|    2 |  370 | `			ph7_vm_release(pVm);` |
+|    3 |  371 | `		}else if( rc == PH7_IO_ERR ){` |
+|  ! 0 |  372 | `			printf("Could not open input file: %s\n",zFile);` |
+|  ! 0 |  373 | `		}else{` |
+|    2 |  374 | `			printf("Errors parsing %s\n",zFile);` |
+|    - |  375 | `		}` |
+|    4 |  376 | `		ph7_release(pEngine);` |
+|    4 |  377 | `		return (rc == PH7_OK) ? 0 : 255;` |
+|    - |  378 | `	}` |
+|    - |  379 | `	/* Now,it's time to compile our PHP file */` |
+| 3117 |  380 | `	if( run_code ){` |
+|    - |  381 | `		/* Compile inline PHP code string (PHP only - no tags needed) */` |
+|   10 |  382 | `		rc = ph7_compile_v2(` |
+|    4 |  383 | `			pEngine, /* PH7 Engine */` |
+|    4 |  384 | `			zRunCode, /* Source code */` |
+|    - |  385 | `			-1,       /* Let API compute length */` |
+|    - |  386 | `			&pVm,     /* OUT: Compiled PHP program */` |
+|    - |  387 | `			PH7_PHP_ONLY /* Inline PHP, no tags expected */` |
+|    - |  388 | `			);` |
+|   10 |  389 | `		if( rc != PH7_OK ){ /* Compile error */` |
+|  ! 0 |  390 | `			if( rc == PH7_VM_ERR ){` |
+|  ! 0 |  391 | `				Fatal("VM initialization error");` |
+|  ! 0 |  392 | `			}else{` |
+|    - |  393 | `				/* Compile-time error, your output (STDOUT) should display the error messages */` |
+|  ! 0 |  394 | `				Fatal("Compile error");` |
+|    - |  395 | `			}` |
+|  ! 0 |  396 | `		}` |
+|    6 |  397 | `	}else{` |
+| 3109 |  398 | `		rc = ph7_compile_file(` |
+| 1467 |  399 | `			pEngine, /* PH7 Engine */` |
+| 3104 |  400 | `			argv[n], /* Path to the PHP file to compile */` |
+|    - |  401 | `			&pVm,    /* OUT: Compiled PHP program */` |
+|    - |  402 |  |
+|    - |  403 | `			);` |
+| 3109 |  404 | `		if( rc != PH7_OK ){ /* Compile error */` |
+|  344 |  405 | `			if( rc == PH7_IO_ERR ){` |
+|  ! 0 |  406 | `				Fatal("IO error while opening the target file");` |
+|  344 |  407 | `			}else if( rc == PH7_VM_ERR ){` |
+|  ! 0 |  408 | `				Fatal("VM initialization error");` |
+|  ! 0 |  409 | `			}else{` |
+|    - |  410 | `				/* Compile-time error, your output (STDOUT) should display the error messages */` |
+|  344 |  411 | `				Fatal("Compile error");` |
+|    - |  412 | `			}` |
+|  170 |  413 | `		}` |
+|    - |  414 | `	}` |
+|    - |  415 | `	/*` |
+|    - |  416 | `	 * Now we have our script compiled,it's time to configure our VM.` |
+|    - |  417 | `	 * We will install the VM output consumer callback defined above` |
+|    - |  418 | `	 * so that we can consume the VM output and redirect it to STDOUT.` |
+|    - |  419 | `	 */` |
+| 2947 |  420 | `	rc = ph7_vm_config(pVm,` |
+|    - |  421 | `		PH7_VM_CONFIG_OUTPUT,` |
+|    - |  422 | `		Output_Consumer,    /* Output Consumer callback */` |
+|    - |  423 |  |
+|    - |  424 | `		);` |
+| 2947 |  425 | `	if( rc != PH7_OK ){` |
+|  ! 0 |  426 | `		Fatal("Error while installing the VM output consumer callback");` |
+|  ! 0 |  427 | `	}` |
+|    - |  428 | `	/* Define PHP_BINARY: absolute path of this interpreter */` |
+| 4418 |  429 | `	ph7_create_constant(pVm,"PHP_BINARY",PHL_PhpBinaryConst,` |
+| 2942 |  430 | `		(void *)PHL_ResolveBinaryPath(argv[0]));` |
+|    - |  431 | `	/* Register the script arguments as $argv[] plus the matching $argc count and` |
+|    - |  432 | `	 * the CLI $_SERVER entries, matching PHP: $argv[0] is the script path (file` |
+|    - |  433 | `	 * mode) or the literal "Standard input code" (-r mode), followed by the` |
+|    - |  434 | `	 * script's own arguments.` |
+|    - |  435 | `	 */` |
+|    - |  436 | `	{` |
+| 2947 |  437 | `		const char *zScriptName = run_code ? "Standard input code" : argv[n];` |
+| 2947 |  438 | `		int argv_count = 0;` |
+|    - |  439 | `		ph7_value *pArgc;` |
+|    - |  440 | `		/* Count only the entries actually inserted: PH7_VM_CONFIG_ARGV_ENTRY skips` |
+|    - |  441 | `		 * an empty string, so counting unconditionally would leave $argc greater` |
+|    - |  442 | ``		 * than count($argv) for an empty argument (e.g. `phl s.php "" x`). */`` |
+| 2947 |  443 | `		if( ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,zScriptName) == PH7_OK ){` |
+| 2947 |  444 | `			argv_count++;` |
 | 1471 |  445 | `		}` |
-|    - |  446 | `		/* $_SERVER entries frameworks read at CLI bootstrap. SCRIPT_FILENAME is` |
-|    - |  447 | `		 * already set to the script path by PH7_HashmapCreateSuper. */` |
-| 2947 |  448 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"SCRIPT_NAME",zScriptName,-1);` |
-| 2947 |  449 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"PHP_SELF",zScriptName,-1);` |
-| 2947 |  450 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"DOCUMENT_ROOT","",0);` |
-|    - |  451 | `		{` |
-|    - |  452 | `			char zTime[32];` |
-| 2947 |  453 | `			snprintf(zTime,sizeof(zTime),"%ld",(long)time(0));` |
-| 2947 |  454 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"REQUEST_TIME",zTime,-1);` |
-|    - |  455 | `		}` |
-|    - |  456 | `#ifndef __WINNT__` |
-|    - |  457 | `		{` |
-|    - |  458 | `			char zCwd[PATH_MAX];` |
-| 2942 |  459 | `			if( getcwd(zCwd,sizeof(zCwd)) ){` |
-| 2942 |  460 | `				ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"PWD",zCwd,-1);` |
-| 1471 |  461 | `			}` |
-|    - |  462 | `		}` |
-|    - |  463 | `#endif` |
-|    - |  464 | `	}` |
-|    - |  465 | `	/* Report script run-time errors (now default behavior) */` |
-| 2947 |  466 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_ERR_REPORT);` |
-| 2947 |  467 | `	if( dump_vm ){` |
-|    - |  468 | `		/* Dump PH7 byte-code instructions */` |
-|    3 |  469 | `		ph7_vm_dump_v2(pVm,` |
-|    - |  470 | `			Output_Consumer, /* Dump consumer callback */` |
-|    - |  471 |  |
-|    - |  472 | `			);` |
-|    1 |  473 | `	}` |
-|    - |  474 | `	/*` |
-|    - |  475 | `	 * And finally, execute our program. Note that your output (STDOUT in our case)` |
-|    - |  476 | `	 * should display the result.` |
-|    - |  477 | `	 */` |
-|    - |  478 | `	{` |
-| 2947 |  479 | `		int iExitStatus = 0;` |
-| 2947 |  480 | `		ph7_vm_exec(pVm,&iExitStatus);` |
-|    - |  481 | `		/* All done, cleanup the mess left behind.` |
-|    - |  482 | `		*/` |
-| 2947 |  483 | `		ph7_vm_release(pVm);` |
-| 2947 |  484 | `		ph7_release(pEngine);` |
-|    - |  485 | `		/* Propagate the script exit status (set via exit()/die()) */` |
-| 2947 |  486 | `		return iExitStatus;` |
-|    - |  487 | `	}` |
-| 1489 |  488 |  |
-|    - |  489 |  |
+|    - |  446 | `		/* The script's own arguments follow: in file mode argv[n] is the script` |
+|    - |  447 | `		 * (registered above), so they start at n+1; in -r mode they start at n. */` |
+| 2977 |  448 | `		for( n = run_code ? n : n + 1; n < argc ; ++n ){` |
+|   35 |  449 | `			if( ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,argv[n]) == PH7_OK ){` |
+|   33 |  450 | `				argv_count++;` |
+|   14 |  451 | `			}` |
+|   20 |  452 | `		}` |
+|    - |  453 | `		/* $argc: a plain integer global equal to count($argv). */` |
+| 2947 |  454 | `		pArgc = ph7_new_scalar(pVm);` |
+| 2947 |  455 | `		if( pArgc ){` |
+| 2947 |  456 | `			ph7_value_int(pArgc,argv_count);` |
+| 2947 |  457 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_CREATE_VAR,"argc",pArgc);` |
+| 2947 |  458 | `			ph7_release_value(pVm,pArgc);` |
+| 1471 |  459 | `		}` |
+|    - |  460 | `		/* $_SERVER entries frameworks read at CLI bootstrap. SCRIPT_FILENAME is` |
+|    - |  461 | `		 * already set to the script path by PH7_HashmapCreateSuper. */` |
+| 2947 |  462 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"SCRIPT_NAME",zScriptName,-1);` |
+| 2947 |  463 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"PHP_SELF",zScriptName,-1);` |
+| 2947 |  464 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"DOCUMENT_ROOT","",0);` |
+|    - |  465 | `		{` |
+|    - |  466 | `			char zTime[32];` |
+| 2947 |  467 | `			snprintf(zTime,sizeof(zTime),"%ld",(long)time(0));` |
+| 2947 |  468 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"REQUEST_TIME",zTime,-1);` |
+|    - |  469 | `		}` |
+|    - |  470 | `#ifndef __WINNT__` |
+|    - |  471 | `		{` |
+|    - |  472 | `			char zCwd[PATH_MAX];` |
+| 2942 |  473 | `			if( getcwd(zCwd,sizeof(zCwd)) ){` |
+| 2942 |  474 | `				ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"PWD",zCwd,-1);` |
+| 1471 |  475 | `			}` |
+|    - |  476 | `		}` |
+|    - |  477 | `#endif` |
+|    - |  478 | `	}` |
+|    - |  479 | `	/* Report script run-time errors (now default behavior) */` |
+| 2947 |  480 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_ERR_REPORT);` |
+| 2947 |  481 | `	if( dump_vm ){` |
+|    - |  482 | `		/* Dump PH7 byte-code instructions */` |
+|    3 |  483 | `		ph7_vm_dump_v2(pVm,` |
+|    - |  484 | `			Output_Consumer, /* Dump consumer callback */` |
+|    - |  485 |  |
+|    - |  486 | `			);` |
+|    1 |  487 | `	}` |
+|    - |  488 | `	/*` |
+|    - |  489 | `	 * And finally, execute our program. Note that your output (STDOUT in our case)` |
+|    - |  490 | `	 * should display the result.` |
+|    - |  491 | `	 */` |
+|    - |  492 | `	{` |
+| 2947 |  493 | `		int iExitStatus = 0;` |
+| 2947 |  494 | `		ph7_vm_exec(pVm,&iExitStatus);` |
+|    - |  495 | `		/* All done, cleanup the mess left behind.` |
+|    - |  496 | `		*/` |
+| 2947 |  497 | `		ph7_vm_release(pVm);` |
+| 2947 |  498 | `		ph7_release(pEngine);` |
+|    - |  499 | `		/* Propagate the script exit status (set via exit()/die()) */` |
+| 2947 |  500 | `		return iExitStatus;` |
+|    - |  501 | `	}` |
+| 1489 |  502 |  |
+|    - |  503 |  |
