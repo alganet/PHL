@@ -1382,6 +1382,97 @@ static sxi32 GenStateArrayNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRoot
 	return rc;
 }
 /*
+ * Find the top-level '=>' (PH7_TK_ARRAY_OP) that separates an array/list entry's
+ * key from its value within [pStart,pEnd). The scan skips any '=>' nested inside
+ * brackets/parens/braces, inside an arrow-function signature (fn(...) =>), or
+ * inside a match() {...} arm — none of which are key/value separators. Returns a
+ * pointer to the '=>' token, or pEnd if the entry has no top-level separator.
+ */
+static SyToken * GenStateFindTopLevelArrow(SyToken *pStart,SyToken *pEnd)
+{
+	SyToken *pCur = pStart;
+	sxi32 iNest = 0;
+	while( pCur < pEnd ){
+		if( (pCur->nType & PH7_TK_ARRAY_OP) && iNest <= 0 ){
+			return pCur;
+		}
+		/* Arrow function (PHP 7.4): 'fn(...) =>' or 'static fn(...) =>'.
+		 * The '=>' inside an arrow function introduces the expression body,
+		 * not an entry separator. Skip past the signature.
+		 */
+		if( iNest == 0 && (pCur->nType & PH7_TK_KEYWORD) ){
+			sxu32 nKw = (sxu32)SX_PTR_TO_INT(pCur->pUserData);
+			SyToken *pFn = pCur;
+			if( nKw == PH7_TKWRD_STATIC && &pCur[1] < pEnd
+				&& (pCur[1].nType & PH7_TK_KEYWORD)
+				&& SX_PTR_TO_INT(pCur[1].pUserData) == PH7_TKWRD_FN ){
+				pFn = &pCur[1];
+				nKw = PH7_TKWRD_FN;
+			}
+			if( nKw == PH7_TKWRD_FN ){
+				pCur = pFn + 1; /* past 'fn' */
+				if( pCur < pEnd && (pCur->nType & PH7_TK_AMPER) ){
+					pCur++;
+				}
+				if( pCur < pEnd && (pCur->nType & PH7_TK_LPAREN) ){
+					pCur++;
+					PH7_DelimitNestedTokens(pCur,pEnd,
+						PH7_TK_LPAREN,PH7_TK_RPAREN,&pCur);
+					if( pCur < pEnd ){
+						pCur++;
+					}
+				}
+				if( pCur < pEnd && (pCur->nType & PH7_TK_COLON) ){
+					pCur++;
+					if( pCur < pEnd && (pCur->nType & PH7_TK_OP)
+						&& pCur->sData.nByte == 1
+						&& pCur->sData.zString[0] == '?' ){
+						pCur++;
+					}
+					if( pCur < pEnd
+						&& (pCur->nType & (PH7_TK_KEYWORD|PH7_TK_ID)) ){
+						pCur++;
+					}
+				}
+				/* The rest of the entry is the arrow-function body — no outer
+				 * key to extract. */
+				return pEnd;
+			}
+			/* Match expression (PHP 8.0): the '=>' inside match arms is not an
+			 * entry separator. Skip past the full match span. */
+			if( nKw == PH7_TKWRD_MATCH ){
+				pCur++; /* past 'match' */
+				if( pCur < pEnd && (pCur->nType & PH7_TK_LPAREN) ){
+					pCur++;
+					PH7_DelimitNestedTokens(pCur,pEnd,
+						PH7_TK_LPAREN,PH7_TK_RPAREN,&pCur);
+					if( pCur < pEnd ){
+						pCur++;
+					}
+				}
+				if( pCur < pEnd && (pCur->nType & PH7_TK_OCB) ){
+					pCur++;
+					PH7_DelimitNestedTokens(pCur,pEnd,
+						PH7_TK_OCB,PH7_TK_CCB,&pCur);
+					if( pCur < pEnd ){
+						pCur++;
+					}
+				}
+				continue;
+			}
+		}
+		if( pCur->nType & (PH7_TK_LPAREN/*'('*/|PH7_TK_OSB/*'['*/|PH7_TK_OCB/*'{'*/) ){
+			iNest++;
+		}else if( pCur->nType & (PH7_TK_RPAREN/*')'*/|PH7_TK_CSB/*']'*/|PH7_TK_CCB/*'}'*/) ){
+			/* Don't worry about mismatched brackets here, the expression
+			 * parser will shortly detect any syntax error. */
+			iNest--;
+		}
+		pCur++;
+	}
+	return pEnd;
+}
+/*
  * Compile the body of an array literal (shared by array() and short syntax []).
  * Assumes pGen->pIn points to the first content token and pGen->pEnd points
  * one past the last content token (i.e. the delimiters have been excluded).
@@ -1393,7 +1484,6 @@ static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)
 	sxi32 iEmitRef = 0;
 	sxi32 iSpread = 0;
 	sxi32 nPair = 0;
-	sxi32 iNest;
 	sxi32 rc;
 	xValidator = 0;
 	for(;;){
@@ -1411,90 +1501,7 @@ static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)
 		}
 		/* Compile the key if available */
 		pKey = pCur;
-		iNest = 0;
-		while( pCur < pGen->pIn ){
-			if( (pCur->nType & PH7_TK_ARRAY_OP) && iNest <= 0 ){
-				break;
-			}
-			/* Arrow function (PHP 7.4): 'fn(...) =>' or 'static fn(...) =>'.
-			 * The '=>' inside an arrow function is not an array key/value
-			 * separator — it introduces the expression body. Skip past the
-			 * signature so the body scan sees no false '=>'.
-			 */
-			if( iNest == 0 && (pCur->nType & PH7_TK_KEYWORD) ){
-				sxu32 nKw = (sxu32)SX_PTR_TO_INT(pCur->pUserData);
-				SyToken *pFn = pCur;
-				if( nKw == PH7_TKWRD_STATIC && &pCur[1] < pGen->pIn
-					&& (pCur[1].nType & PH7_TK_KEYWORD)
-					&& SX_PTR_TO_INT(pCur[1].pUserData) == PH7_TKWRD_FN ){
-					pFn = &pCur[1];
-					nKw = PH7_TKWRD_FN;
-				}
-				if( nKw == PH7_TKWRD_FN ){
-					pCur = pFn + 1; /* past 'fn' */
-					if( pCur < pGen->pIn && (pCur->nType & PH7_TK_AMPER) ){
-						pCur++;
-					}
-					if( pCur < pGen->pIn && (pCur->nType & PH7_TK_LPAREN) ){
-						pCur++;
-						PH7_DelimitNestedTokens(pCur,pGen->pIn,
-							PH7_TK_LPAREN,PH7_TK_RPAREN,&pCur);
-						if( pCur < pGen->pIn ){
-							pCur++;
-						}
-					}
-					if( pCur < pGen->pIn && (pCur->nType & PH7_TK_COLON) ){
-						pCur++;
-						if( pCur < pGen->pIn && (pCur->nType & PH7_TK_OP)
-							&& pCur->sData.nByte == 1
-							&& pCur->sData.zString[0] == '?' ){
-							pCur++;
-						}
-						if( pCur < pGen->pIn
-							&& (pCur->nType & (PH7_TK_KEYWORD|PH7_TK_ID)) ){
-							pCur++;
-						}
-					}
-					/* The rest of the entry is the arrow function body — no
-					 * outer key to extract. Stop the scan here. */
-					pCur = pGen->pIn;
-					break;
-				}
-				/* Match expression (PHP 8.0): 'match (subject) { ... }'.
-				 * The '=>' inside match arms is not an array key/value separator —
-				 * it introduces each arm's result expression. Skip past the full
-				 * match span so the outer scan sees no false '=>'. */
-				if( nKw == PH7_TKWRD_MATCH ){
-					pCur++; /* past 'match' */
-					if( pCur < pGen->pIn && (pCur->nType & PH7_TK_LPAREN) ){
-						pCur++;
-						PH7_DelimitNestedTokens(pCur,pGen->pIn,
-							PH7_TK_LPAREN,PH7_TK_RPAREN,&pCur);
-						if( pCur < pGen->pIn ){
-							pCur++;
-						}
-					}
-					if( pCur < pGen->pIn && (pCur->nType & PH7_TK_OCB) ){
-						pCur++;
-						PH7_DelimitNestedTokens(pCur,pGen->pIn,
-							PH7_TK_OCB,PH7_TK_CCB,&pCur);
-						if( pCur < pGen->pIn ){
-							pCur++;
-						}
-					}
-					continue;
-				}
-			}
-			if( pCur->nType & (PH7_TK_LPAREN/*'('*/|PH7_TK_OSB/*'['*/|PH7_TK_OCB/*'{'*/) ){
-				iNest++;
-			}else if( pCur->nType & (PH7_TK_RPAREN/*')'*/|PH7_TK_CSB/*']'*/|PH7_TK_CCB/*'}'*/) ){
-				/* Don't worry about mismatched brackets here,the expression
-				 * parser will shortly detect any syntax error.
-				 */
-				iNest--;
-			}
-			pCur++;
-		}
+		pCur = GenStateFindTopLevelArrow(pCur,pGen->pIn);
 		rc = SXERR_EMPTY;
 		if( pCur < pGen->pIn ){
 			if( &pCur[1] >= pGen->pIn ){
@@ -1661,6 +1668,99 @@ struct NestedListEntry {
 	sxi32 isShort;       /* 1 if [...] form, 0 if list(...) form */
 };
 /*
+ * Compile the body of a *keyed* list/short-list destructuring (PHP 7.1), where
+ * every entry has the form `keyExpr => target`. The source array is on the stack
+ * top on entry and remains there on exit, mirroring the positional LOAD_LIST
+ * path so the caller's teardown is unchanged. For each entry: DUP the source,
+ * push the key, LOAD_IDX to fetch source[key] (NULL on a missing key, silently,
+ * like a normal subscript read), then assign the fetched value to the target — a
+ * nested [...]/list() recurses, a simple lvalue uses the same STORE fold as a
+ * normal assignment (the value sits below the lvalue-load, exactly as in
+ * GenStateEmitExprCode where the assignment RHS precedes the LHS load).
+ */
+static sxi32 GenStateCompileKeyedListBody(ph7_gen_state *pGen)
+{
+	SyToken *pNext;
+	sxi32 rc;
+	while( SXRET_OK == PH7_GetNextExpr(pGen->pIn,pGen->pEnd,&pNext) ){
+		SyToken *pArrow,*pTarget;
+		/* Split `keyExpr => target` at the top-level '=>' */
+		pArrow = GenStateFindTopLevelArrow(pGen->pIn,pNext);
+		pTarget = &pArrow[1];
+		if( pArrow <= pGen->pIn || pTarget >= pNext ){
+			/* Empty key (`[ => $v]`) or empty value (`["k" =>]`): PHP rejects
+			 * both. Reject rather than silently emitting unbalanced bytecode. */
+			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
+				"Cannot use empty array entries in keyed array assignment");
+			return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;
+		}
+		/* DUP the source array (it is on the stack top) */
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_DUP,0,0,0,0);
+		/* Compile the key expression; it is pushed above the DUP'd source */
+		rc = GenStateCompileArrayEntry(&(*pGen),pGen->pIn,pArrow,EXPR_FLAG_RDONLY_LOAD,0);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		/* LOAD_IDX: pop the key, replace the DUP'd source with source[key].
+		 * iP2=0 is a read context: a missing key loads NULL silently, matching a
+		 * normal `$arr[$k]` read. (PHP also emits an "Undefined array key"
+		 * warning here; PHL omits it, like its other subscript reads — §3.7.) */
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_IDX,1,0,0,0);
+		if( pTarget < pNext && ( (pTarget->nType & PH7_TK_OSB)
+			|| ( (pTarget->nType & PH7_TK_KEYWORD)
+				&& SX_PTR_TO_INT(pTarget->pUserData) == PH7_TKWRD_LIST ) ) ){
+			/* Nested destructuring:  ["k" => [ ... ]]  or  ["k" => list( ... )].
+			 * Treat source[key] as the inner body's source, then drop the
+			 * leftover it leaves behind (mirrors the positional nested path). */
+			sxi32 isShort = (pTarget->nType & PH7_TK_OSB) != 0;
+			SyToken *pSavedIn = pGen->pIn;
+			SyToken *pSavedEnd = pGen->pEnd;
+			pGen->pIn = pTarget;
+			pGen->pEnd = pNext;
+			rc = isShort ? PH7_CompileShortList(&(*pGen),0)
+			             : PH7_CompileList(&(*pGen),0);
+			pGen->pIn = pSavedIn;
+			pGen->pEnd = pSavedEnd;
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
+		}else{
+			/* Simple lvalue target ($v / $o->p / $a[i] / Cls::$s). source[key]
+			 * is already on the stack as the value; compiling the target appends
+			 * its lvalue-load, which we fold into a STORE just as a normal
+			 * assignment does. */
+			VmInstr *pInstr;
+			sxi32 iVmOp = PH7_OP_STORE;
+			sxi32 iP1 = 0, iP2 = 0;
+			void *p3 = 0;
+			rc = GenStateCompileArrayEntry(&(*pGen),pTarget,pNext,
+				EXPR_FLAG_LOAD_IDX_STORE,GenStateListNodeValidator);
+			if( rc != SXRET_OK ){
+				return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;
+			}
+			if( (pInstr = PH7_VmPeekInstr(pGen->pVm)) != 0 ){
+				if( pInstr->iOp == PH7_OP_MEMBER ){
+					iP2 = 1; /* member store: keep MEMBER, store value below it */
+				}else if( pInstr->iOp == PH7_OP_LOAD_IDX ){
+					iVmOp = PH7_OP_STORE_IDX;
+					iP1 = pInstr->iP1;
+					(void)PH7_VmPopInstr(pGen->pVm);
+				}else{
+					p3 = pInstr->p3; /* named store: $v = value */
+					(void)PH7_VmPopInstr(pGen->pVm);
+				}
+			}
+			PH7_VmEmitInstr(pGen->pVm,iVmOp,iP1,iP2,p3,0);
+			/* STORE leaves the assigned value on the stack top; drop it so the
+			 * source array is back on top for the next entry. */
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
+		}
+		pGen->pIn = &pNext[1];
+	}
+	return SXRET_OK;
+}
+/*
  * Shared body for list() and short list [...] compilation.
  * Assumes pGen->pIn and pGen->pEnd are already positioned past
  * the opening delimiter and before the closing delimiter.
@@ -1669,8 +1769,39 @@ static sxi32 GenStateCompileListBody(ph7_gen_state *pGen)
 {
 	SySet sNested; /* Dynamically-sized container of NestedListEntry */
 	SyToken *pNext;
+	SyToken *pClassifyIn;
+	sxi32 nKeyed = 0, nPositional = 0, nEmpty = 0;
 	sxi32 nExpr;
 	sxi32 rc;
+	/* First pass: classify entries as keyed (`k => v`), positional, or empty
+	 * skip slots ([,]). A list level must be entirely keyed or entirely
+	 * positional — PHP fatals on a mix, and on an empty slot inside a keyed
+	 * list. */
+	pClassifyIn = pGen->pIn;
+	while( SXRET_OK == PH7_GetNextExpr(pGen->pIn,pGen->pEnd,&pNext) ){
+		if( pGen->pIn >= pNext ){
+			nEmpty++;
+		}else if( GenStateFindTopLevelArrow(pGen->pIn,pNext) < pNext ){
+			nKeyed++;
+		}else{
+			nPositional++;
+		}
+		pGen->pIn = &pNext[1];
+	}
+	pGen->pIn = pClassifyIn;
+	if( nKeyed > 0 && nEmpty > 0 ){
+		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
+			"Cannot use empty array entries in keyed array assignment");
+		return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;
+	}
+	if( nKeyed > 0 && nPositional > 0 ){
+		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
+			"Cannot mix keyed and unkeyed array entries in assignments");
+		return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;
+	}
+	if( nKeyed > 0 ){
+		return GenStateCompileKeyedListBody(pGen);
+	}
 	nExpr = 0;
 	SySetInit(&sNested,&pGen->pVm->sAllocator,sizeof(struct NestedListEntry));
 	while( SXRET_OK == PH7_GetNextExpr(pGen->pIn,pGen->pEnd,&pNext) ){
@@ -4172,10 +4303,10 @@ static sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 	SyZero(pInfo,sizeof(ph7_foreach_info));
 	/* Initialize structure fields */
 	SySetInit(&pInfo->aStep,&pGen->pVm->sAllocator,sizeof(ph7_foreach_step *));
-	/* Check if we have a key field */
-	while( pCur < pEnd && (pCur->nType & PH7_TK_ARRAY_OP) == 0 ){
-		pCur++;
-	}
+	/* Check if we have a key field. Scan only for a top-level '=>' so a keyed
+	 * value target — foreach ($x as ["k" => $v]) — is not split at its inner
+	 * '=>'. */
+	pCur = GenStateFindTopLevelArrow(pCur,pEnd);
 	if( pCur < pEnd ){
 		/* Compile the expression holding the key name */
 		if( pGen->pIn >= pCur ){
