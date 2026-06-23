@@ -13794,8 +13794,166 @@ static int vm_builtin_print_r(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return SXRET_OK;
 }
 /*
+ * var_export() — PHP-exact evaluable representation of a value.
+ *
+ * Distinct from print_r/var_dump (which share PH7_MemObjDump): var_export emits
+ * parseable PHP — 'single-quoted' strings, true/false/NULL, array (\n  k => v,\n),
+ * and \Class::__set_state(array(...)) for objects. PHP's indentation is quirky
+ * (2-space array entries; 3-space object property lines; a composite value always
+ * opens at containerIndent+2) but deterministic; this matches it byte-for-byte.
+ */
+/* Instance flag (distinct from oo.c's CLASS_INSTANCE_DESTROYED 0x001) marking an
+ * object currently on the var_export recursion stack, for cycle detection. */
+#define VM_INSTANCE_DUMPING 0x002
+typedef struct VmExportCtx VmExportCtx;
+struct VmExportCtx
+{
+	SyBlob *pOut;
+	int nIndent;  /* indentation of the container emitting this entry */
+	int depth;    /* recursion guard */
+};
+static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth);
+/* Append nIndent spaces. */
+static void VmExportIndent(SyBlob *pOut, int nIndent)
+{
+	int i;
+	for( i = 0; i < nIndent; i++ ){ SyBlobAppend(pOut," ",1); }
+}
+/* Append a single-quoted PHP string literal (escapes ' and \, batching safe runs
+ * in one append). A NUL byte can't live in a single-quoted literal, so PHP splits
+ * it out as ' . "\0" . ' — match that. */
+static void VmExportQuoted(SyBlob *pOut, const char *z, int n)
+{
+	int i, run = 0;
+	SyBlobAppend(pOut,"'",1);
+	for( i = 0; i < n; i++ ){
+		char c = z[i];
+		if( c != '\0' && c != '\'' && c != '\\' ){ continue; } /* extend the safe run */
+		if( i > run ){ SyBlobAppend(pOut,&z[run],(sxu32)(i-run)); }
+		if( c == '\0' ){ SyBlobAppend(pOut,"' . \"\\0\" . '",12); }
+		else { SyBlobAppend(pOut,"\\",1); SyBlobAppend(pOut,&z[i],1); }
+		run = i+1;
+	}
+	if( n > run ){ SyBlobAppend(pOut,&z[run],(sxu32)(n-run)); }
+	SyBlobAppend(pOut,"'",1);
+}
+/* True if the array/object is already on the var_export recursion stack. */
+static int VmExportIsCycle(ph7_value *pVal)
+{
+	if( ph7_value_is_array(pVal) ){
+		return (((ph7_hashmap *)pVal->x.pOther)->iFlags & HASHMAP_DUMPING) != 0;
+	}
+	if( ph7_value_is_object(pVal) ){
+		return (((ph7_class_instance *)pVal->x.pOther)->iFlags & VM_INSTANCE_DUMPING) != 0;
+	}
+	return 0;
+}
+/* Emit " => " then the value: a scalar inline, a composite on its own line at
+ * containerIndent+2. A circular reference renders inline as NULL (like PHP). */
+static void VmExportEntryValue(SyBlob *pOut, ph7_value *pVal, int nContainerIndent, int depth)
+{
+	SyBlobAppend(pOut," => ",4);
+	if( VmExportIsCycle(pVal) ){
+		SyBlobAppend(pOut,"NULL",4);
+	}else if( ph7_value_is_array(pVal) || ph7_value_is_object(pVal) ){
+		SyBlobAppend(pOut,"\n",1);
+		VmExportIndent(pOut,nContainerIndent+2);
+		VmExportValue(pOut,pVal,nContainerIndent+2,depth+1);
+	}else{
+		VmExportValue(pOut,pVal,nContainerIndent+2,depth+1);
+	}
+	SyBlobAppend(pOut,",\n",2);
+}
+/* Array walker: "<indent+2>key => value,\n" for each entry. */
+static int VmExportArrayWalk(ph7_value *pKey, ph7_value *pValue, void *pUserData)
+{
+	VmExportCtx *pC = (VmExportCtx *)pUserData;
+	VmExportIndent(pC->pOut,pC->nIndent+2);
+	if( ph7_value_is_string(pKey) ){
+		int n;
+		const char *z = ph7_value_to_string(pKey,&n);
+		VmExportQuoted(pC->pOut,z,n);
+	}else{
+		SyBlobFormat(pC->pOut,"%qd",ph7_value_to_int64(pKey));
+	}
+	VmExportEntryValue(pC->pOut,pValue,pC->nIndent,pC->depth);
+	return PH7_OK;
+}
+static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)
+{
+	if( depth > 4096 ){ return; } /* backstop for pathological finite nesting */
+	if( ph7_value_is_null(pVal) ){
+		SyBlobAppend(pOut,"NULL",4);
+	}else if( ph7_value_is_bool(pVal) ){
+		if( ph7_value_to_bool(pVal) ){ SyBlobAppend(pOut,"true",4); }
+		else { SyBlobAppend(pOut,"false",5); }
+	}else if( ph7_value_is_float(pVal) ){
+		/* float before int: ph7_value_is_int is lenient (true for integer reals). */
+		sxu32 before = SyBlobLength(pOut), i, after;
+		const char *z;
+		int plain = 1;
+		PH7_AppendShortestReal(pOut,ph7_value_to_double(pVal));
+		z = (const char *)SyBlobData(pOut);
+		after = SyBlobLength(pOut);
+		for( i = before; i < after; i++ ){
+			if( !((z[i]>='0'&&z[i]<='9')||z[i]=='-') ){ plain = 0; break; }
+		}
+		if( plain ){ SyBlobAppend(pOut,".0",2); } /* integer-form floats render 1.0/100.0 */
+	}else if( ph7_value_is_int(pVal) ){
+		SyBlobFormat(pOut,"%qd",ph7_value_to_int64(pVal));
+	}else if( ph7_value_is_string(pVal) ){
+		int n;
+		const char *z = ph7_value_to_string(pVal,&n);
+		VmExportQuoted(pOut,z,n);
+	}else if( ph7_value_is_array(pVal) ){
+		ph7_hashmap *pMap = (ph7_hashmap *)pVal->x.pOther;
+		if( pMap->iFlags & HASHMAP_DUMPING ){
+			SyBlobAppend(pOut,"NULL",4); /* circular reference -> NULL, like PHP */
+		}else{
+			VmExportCtx ctx;
+			pMap->iFlags |= HASHMAP_DUMPING;
+			SyBlobAppend(pOut,"array (\n",8);
+			ctx.pOut = pOut; ctx.nIndent = nIndent; ctx.depth = depth;
+			ph7_array_walk(pVal,VmExportArrayWalk,&ctx);
+			VmExportIndent(pOut,nIndent);
+			SyBlobAppend(pOut,")",1);
+			pMap->iFlags &= ~HASHMAP_DUMPING;
+		}
+	}else if( ph7_value_is_object(pVal) ){
+		ph7_class_instance *pThis = (ph7_class_instance *)pVal->x.pOther;
+		if( pThis->iFlags & VM_INSTANCE_DUMPING ){
+			SyBlobAppend(pOut,"NULL",4); /* circular reference -> NULL, like PHP */
+		}else{
+			SyString *pClassName = &pThis->pClass->sName;
+			SyHashEntry *pEntry;
+			pThis->iFlags |= VM_INSTANCE_DUMPING;
+			SyBlobAppend(pOut,"\\",1);
+			SyBlobAppend(pOut,pClassName->zString,pClassName->nByte);
+			SyBlobAppend(pOut,"::__set_state(array(\n",21);
+			SyHashResetLoopCursor(&pThis->hAttr);
+			while( (pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
+				VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
+				SyString *pAName = &pVmAttr->pAttr->sName;
+				ph7_value *pAttrVal;
+				if( pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT) ){ continue; }
+				VmExportIndent(pOut,nIndent+3); /* object property lines sit one deeper than arrays */
+				VmExportQuoted(pOut,pAName->zString,(int)pAName->nByte);
+				pAttrVal = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
+				if( pAttrVal ){ VmExportEntryValue(pOut,pAttrVal,nIndent,depth); }
+				else { SyBlobAppend(pOut," => NULL,\n",10); }
+			}
+			VmExportIndent(pOut,nIndent);
+			SyBlobAppend(pOut,"))",2);
+			pThis->iFlags &= ~VM_INSTANCE_DUMPING;
+		}
+	}else{
+		/* resource / other -> PHP emits NULL (with a warning we omit) */
+		SyBlobAppend(pOut,"NULL",4);
+	}
+}
+/*
  * string/null var_export(expression,[bool $return = FALSE])
- * Same job as print_r. (see coment above)
+ *  PHP-exact evaluable representation (see VmExportValue).
  */
 static int vm_builtin_var_export(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -13811,8 +13969,8 @@ static int vm_builtin_var_export(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Where to redirect output */
 		ret_string = ph7_value_to_bool(apArg[1]);
 	}
-	/* Generate dump */
-	PH7_MemObjDump(&sDump,apArg[0],FALSE,0,0,0);
+	/* Generate the PHP-exact evaluable representation */
+	VmExportValue(&sDump,apArg[0],0,0);
 	if( !ret_string ){
 		/* Output dump */
 		ph7_context_output(pCtx,(const char *)SyBlobData(&sDump),(int)SyBlobLength(&sDump));

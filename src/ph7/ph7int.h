@@ -253,6 +253,7 @@ struct ph7_hashmap
  * Hashmap control flags.
  */
 #define HASHMAP_COUNTING 0x01 /* Set during recursive count to detect cycles */
+#define HASHMAP_DUMPING  0x02 /* Set during var_export recursion to detect cycles */
 /* An instance of the following structure is the context
  * for the FOREACH_STEP/FOREACH_INIT VM instructions.
  * Those instructions are used to implement the 'foreach'
@@ -1557,6 +1558,7 @@ PH7_PRIVATE int vm_builtin_json_validate(ph7_context *pCtx,int nArg,ph7_value **
 /* vm_serialize.c function prototypes */
 PH7_PRIVATE int vm_builtin_serialize(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_unserialize(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE void PH7_AppendShortestReal(SyBlob *pOut,double d);
 /* vm_xml.c function prototypes */
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 PH7_PRIVATE int vm_builtin_xml_parser_create(ph7_context *pCtx,int nArg,ph7_value **apArg);

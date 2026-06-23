@@ -40,20 +40,22 @@ struct serialize_data
 };
 static sxi32 VmSerialize(ph7_value *pIn, serialize_data *pData);
 /*
- * Emit the shortest decimal string that round-trips to the given double, in
- * PHP's serialize style: uppercase 'E' exponent with no leading zeros and a
+ * Append the shortest decimal string that round-trips to the given double, in
+ * PHP's gcvt/serialize style: uppercase 'E' exponent with no leading zeros and a
  * "1.0E+20"-style mantissa; INF/-INF/NAN spelled out. PHP switches to the
  * exponential form when the leading-digit exponent e satisfies e >= 17 or
- * e <= -5 (php_gcvt with ndigit == 17), and to decimal otherwise.
+ * e <= -5 (php_gcvt with ndigit == 17), and to decimal otherwise. Emits just the
+ * number (no "d:"/";") so var_export can reuse it (see PH7_AppendShortestReal
+ * decl in ph7int.h).
  */
-static void VmSerializeReal(SyBlob *pOut, double d)
+PH7_PRIVATE void PH7_AppendShortestReal(SyBlob *pOut, double d)
 {
 	char zExp[64];
 	char zDig[24];   /* significant digits, no sign/point */
 	const char *p;
 	int sig, nDig, e, decpt, neg;
-	if( PH7_IS_NAN(d) ){ SyBlobAppend(pOut,"d:NAN;",6); return; }
-	if( PH7_IS_INF(d) ){ SyBlobAppend(pOut, d<0.0?"d:-INF;":"d:INF;", d<0.0?7:6); return; }
+	if( PH7_IS_NAN(d) ){ SyBlobAppend(pOut,"NAN",3); return; }
+	if( PH7_IS_INF(d) ){ SyBlobAppend(pOut, d<0.0?"-INF":"INF", d<0.0?4:3); return; }
 	/* Find the fewest significant digits that re-parse bit-exactly. */
 	for( sig = 1; sig <= 17; sig++ ){
 		snprintf(zExp,sizeof(zExp),"%.*e",sig-1,d);
@@ -72,7 +74,6 @@ static void VmSerializeReal(SyBlob *pOut, double d)
 	e = (*p) ? atoi(p+1) : 0;
 	while( nDig > 1 && zDig[nDig-1] == '0' ){ nDig--; } /* trim trailing zeros */
 	decpt = e + 1; /* digits to the left of the decimal point */
-	SyBlobAppend(pOut,"d:",2);
 	if( neg ){ SyBlobAppend(pOut,"-",1); }
 	if( decpt > 17 || decpt < -3 ){
 		/* Exponential: <lead>.<rest>E<sign><exp> (mantissa always has a dot). */
@@ -98,6 +99,12 @@ static void VmSerializeReal(SyBlob *pOut, double d)
 		SyBlobAppend(pOut,".",1);
 		SyBlobAppend(pOut,&zDig[decpt],nDig-decpt);
 	}
+}
+/* Serialize a double as d:<shortest>; */
+static void VmSerializeReal(SyBlob *pOut, double d)
+{
+	SyBlobAppend(pOut,"d:",2);
+	PH7_AppendShortestReal(pOut,d);
 	SyBlobAppend(pOut,";",1);
 }
 /* Emit s:<bytelen>:"<raw>"; for an arbitrary byte string. */
