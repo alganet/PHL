@@ -51,6 +51,12 @@ PH7_PRIVATE const char *ph7_type_name(ph7_value *pVal);
 #ifndef SMALLEST_INT64
 #define SMALLEST_INT64 (((sxi64)-1) - LARGEST_INT64)
 #endif
+/* Maximum input size for ph7_compile() in bytes. Override at build time with
+ * -DPH7_MAX_INPUT_SIZE=N (e.g. a smaller value for embedded/tiny targets).
+ * Runtime override: ph7_config(engine, PH7_CONFIG_MAX_INPUT, n). */
+#ifndef PH7_MAX_INPUT_SIZE
+#define PH7_MAX_INPUT_SIZE (64u*1024u*1024u)
+#endif
 /* Forward declaration of private structures */
 typedef struct ph7_class_instance ph7_class_instance;
 typedef struct ph7_foreach_info   ph7_foreach_info;
@@ -141,6 +147,7 @@ struct ph7_conf
 	SyBlob sErrConsumer; /* Default error consumer */
 	ph7_clock xClock;    /* Optional embedder clock [PH7_CONFIG_CLOCK]; NULL => platform default */
 	void *pClockData;    /* Third argument to xClock() */
+	sxu32 nMaxInput;     /* Per-compile input byte cap [PH7_CONFIG_MAX_INPUT]; 0 = PH7_MAX_INPUT_SIZE */
 };
 /*
  * Signature of the C function responsible of expanding constant values.

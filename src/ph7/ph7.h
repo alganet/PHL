@@ -180,6 +180,7 @@ typedef int (*ph7_clock)(void *pUserData, ph7_int64 *pSec, ph7_int64 *pUsec);
 #define PH7_CONFIG_ERR_LOG       3  /* TWO ARGUMENTS: const char **pzBuf,int *pLen */
 #define PH7_CONFIG_MAX_ALLOC     4  /* ONE ARGUMENT: unsigned int nMaxByte (per-allocation cap in bytes; 0 = unlimited). Inherited by VMs created afterwards. */
 #define PH7_CONFIG_CLOCK         5  /* TWO ARGUMENTS: ph7_clock xClock, void *pUserData. Overrides the platform wall/sub-second clock used by microtime()/gettimeofday(); xClock fills *pSec (epoch seconds) and *pUsec (0..999999). NULL restores the default. Inherited by VMs created afterwards. */
+#define PH7_CONFIG_MAX_INPUT     6  /* ONE ARGUMENT: unsigned int nMaxByte (per-compile input cap in bytes; 0 = use compile-time default PH7_MAX_INPUT_SIZE). */
 /*
  * Virtual Machine Configuration Commands.
  *
