@@ -1,12 +1,12 @@
 | Filename                       | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
 | src/ph7/api.c                  | 71.09%   | 772/1086    |
-| src/ph7/builtin.c              | 87.90%   | 3051/3471   |
+| src/ph7/builtin.c              | 88.20%   | 3169/3593   |
 | src/ph7/builtin_date.c         | 65.67%   | 459/699     |
 | src/ph7/builtin_math.c         | 96.79%   | 452/467     |
 | src/ph7/compile.c              | 80.09%   | 5399/6741   |
 | src/ph7/constant.c             | 98.95%   | 1036/1047   |
-| src/ph7/hashmap.c              | 87.17%   | 3335/3826   |
+| src/ph7/hashmap.c              | 87.19%   | 3336/3826   |
 | src/ph7/lex.c                  | 93.33%   | 755/809     |
 | src/ph7/memobj.c               | 88.69%   | 706/796     |
 | src/ph7/net.c                  | 50.48%   | 53/105      |
@@ -29,7 +29,7 @@
 | src/phl/server.c               | 61.56%   | 277/450     |
 | src/sx/sxds.c                  | 94.77%   | 272/287     |
 | src/sx/sxfmt.c                 | 70.46%   | 291/413     |
-| src/sx/sxhash.c                | 90.49%   | 238/263     |
+| src/sx/sxhash.c                | 91.06%   | 377/414     |
 | src/sx/sxlib.c                 | 90.12%   | 228/253     |
 | src/sx/sxmem.c                 | 85.29%   | 435/510     |
 | src/sx/sxmutex.c               | 83.70%   | 77/92       |
@@ -42,6 +42,6 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 79.28%   | 32996/41620 |
-| Functions                      | 95.70%   | 1535/1604   |
+| Lines                          | 79.38%   | 33254/41893 |
+| Functions                      | 95.66%   | 1564/1635   |
 
