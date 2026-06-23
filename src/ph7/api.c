@@ -136,6 +136,12 @@ static sxi32 EngineConfig(ph7 *pEngine,sxi32 nOp,va_list ap)
 		pEngine->xConf.pClockData = pUserData;
 		break;
 							}
+	case PH7_CONFIG_MAX_INPUT: {
+		/* Per-compile input byte cap (0 = use PH7_MAX_INPUT_SIZE default). */
+		unsigned int nMax = va_arg(ap,unsigned int);
+		pEngine->xConf.nMaxInput = (sxu32)nMax;
+		break;
+								}
 	default:
 		/* Unknown configuration verb */
 		rc = PH7_CORRUPT;
@@ -684,8 +690,19 @@ static sxi32 ProcessScript(
 	}
 	/* Reset the error message consumer */
 	SyBlobReset(&pEngine->xConf.sErrConsumer);
+	/* Enforce input size cap before touching the lexer/compiler */
+	{
+		sxu32 nLimit = pEngine->xConf.nMaxInput ? pEngine->xConf.nMaxInput : PH7_MAX_INPUT_SIZE;
+		if( SyStringLength(pScript) > nLimit ){
+			PH7_GenCompileError(&pVm->sCodeGen,E_ERROR,1,
+				"Input size (%u bytes) exceeds the configured limit (%u bytes)",
+				SyStringLength(pScript),nLimit);
+		}
+	}
 	/* Compile the script */
-	PH7_CompileScript(pVm,&(*pScript),iFlags);
+	if( pVm->sCodeGen.nErr == 0 ){
+		PH7_CompileScript(pVm,&(*pScript),iFlags);
+	}
 	if( pVm->sCodeGen.nErr > 0 || pVm == 0){
 		sxu32 nErr = pVm->sCodeGen.nErr;
 		/* Compilation error or null ppVm pointer,release this VM */

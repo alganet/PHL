@@ -94,7 +94,7 @@ TEST_INTEGRATION_PHP_CMD = "$(PHL_BIN)" "tests/phpt.php" \
 # paths. The cap is per-request (not cumulative), so the runner and the small
 # tests run normally while only the oversized allocations fail. Long-term these
 # migrate to per-test `--INI-- memory_limit=...` once php.ini lands.
-TEST_STRESS_CMD = PHL_MAX_ALLOC=1048576 "$(PHL_BIN)" "tests/phpt.php" \
+TEST_STRESS_CMD = PHL_MAX_ALLOC=1048576 PHL_MAX_INPUT=32768 "$(PHL_BIN)" "tests/phpt.php" \
 	--target-executable "$(PHL_BIN)" \
 	--target-dir tests/ph7/003-stress \
 	--output-format dot

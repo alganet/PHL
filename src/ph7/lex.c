@@ -1100,6 +1100,10 @@ PH7_PRIVATE sxi32 PH7_TokenizePHP(const char *zInput,sxu32 nLen,sxu32 nLineStart
 {
 	SyLex sLexer;
 	sxi32 rc;
+	/* Defense-in-depth cap for internal tokenizer calls that bypass ph7_compile() */
+	if( nLen > PH7_MAX_INPUT_SIZE ){
+		return SXERR_LIMIT;
+	}
 	/* Initialize the lexer */
 	rc = SyLexInit(&sLexer,&(*pOut),TokenizePHP,0);
 	if( rc != SXRET_OK ){

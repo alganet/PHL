@@ -337,6 +337,20 @@ int main(int argc,char **argv)
 			}
 		}
 	}
+	/* Optional per-input byte cap (PHL_MAX_INPUT=bytes). Used to exercise the
+	 * input-size rejection path at a manageable scale (see tests/ph7/003-stress). */
+	{
+		const char *zMaxInput = getenv("PHL_MAX_INPUT");
+		if( zMaxInput ){
+			unsigned long uMax = strtoul(zMaxInput,0,10);
+			if( uMax > 0 ){
+				if( uMax > 0xFFFFFFFFUL ){
+					uMax = 0xFFFFFFFFUL;
+				}
+				ph7_config(pEngine,PH7_CONFIG_MAX_INPUT,(unsigned int)uMax);
+			}
+		}
+	}
 	/* Syntax-check only mode (-l): compile the target file, print PHP's summary
 	 * line and exit without executing. The error consumer installed above
 	 * already prints any parse error; ph7_compile_file leaves *pVm NULL on a
