@@ -13,7 +13,7 @@
  * your error output (STDOUT) should display the compile-time error messages.
  *
  * Usage example of the phl interpreter:
- *   phl examples/hello_world.php
+ *   phl hello_world.php
  * Running the interpreter with script arguments
  *    phl scripts/mp3_tag.php /usr/local/path/to/my_mp3s
  *

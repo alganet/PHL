@@ -54,7 +54,6 @@ mkdir -p "$tmpdir"
 rsync -a --delete "$workspace_dir/src" "$tmpdir" &
 rsync -a --delete "$workspace_dir/tests" "$tmpdir" &
 rsync -a --delete "$workspace_dir/build-aux" "$tmpdir" &
-rsync -a --delete "$workspace_dir/examples" "$tmpdir" &
 cp "$workspace_dir/Makefile" "$tmpdir/Makefile" &
 wait
 
