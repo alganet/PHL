@@ -32,41 +32,41 @@ Coverage: 302/444 lines (68.02%)
 |    - |   22 | `  * as the first argument. Otherwise SXERR_* is returned when a malformed` |
 |    - |   23 | `  * input is encountered.` |
 |    - |   24 | `  */` |
-|   50 |   25 | ` PH7_PRIVATE sxi32 PH7_VmHttpSplitURI(SyhttpUri *pOut,const char *zUri,sxu32 nLen)` |
+|   64 |   25 | ` PH7_PRIVATE sxi32 PH7_VmHttpSplitURI(SyhttpUri *pOut,const char *zUri,sxu32 nLen)` |
 |    1 |   26 | ` {` |
-|   51 |   27 | `	 const char *zEnd = &zUri[nLen];` |
-|   51 |   28 | `	 sxu8 bHostOnly = FALSE;` |
-|   51 |   29 | `	 sxu8 bIPv6 = FALSE	;` |
+|   65 |   27 | `	 const char *zEnd = &zUri[nLen];` |
+|   65 |   28 | `	 sxu8 bHostOnly = FALSE;` |
+|   65 |   29 | `	 sxu8 bIPv6 = FALSE	;` |
 |    - |   30 | `	 const char *zCur;` |
 |    - |   31 | `	 SyString *pComp;` |
-|   51 |   32 | `	 sxu32 nPos = 0;` |
+|   65 |   32 | `	 sxu32 nPos = 0;` |
 |    - |   33 | `	 sxi32 rc;` |
 |    - |   34 | `	 /* Zero the structure first */` |
-|   51 |   35 | `	 SyZero(pOut,sizeof(SyhttpUri));` |
+|   65 |   35 | `	 SyZero(pOut,sizeof(SyhttpUri));` |
 |    - |   36 | `	 /* Remove leading and trailing white spaces  */` |
-|   51 |   37 | `	 SyStringInitFromBuf(&pOut->sRaw,zUri,nLen);` |
-|   51 |   38 | `	 SyStringFullTrim(&pOut->sRaw);` |
+|   65 |   37 | `	 SyStringInitFromBuf(&pOut->sRaw,zUri,nLen);` |
+|   65 |   38 | `	 SyStringFullTrim(&pOut->sRaw);` |
 |    - |   39 | `	 /* Find the first '/' separator */` |
-|   51 |   40 | `	 rc = SyByteFind(zUri,(sxu32)(zEnd - zUri),'/',&nPos);` |
-|   51 |   41 | `	 if( rc != SXRET_OK ){` |
+|   65 |   40 | `	 rc = SyByteFind(zUri,(sxu32)(zEnd - zUri),'/',&nPos);` |
+|   65 |   41 | `	 if( rc != SXRET_OK ){` |
 |    - |   42 | `		 /* Assume a host name only */` |
-|    7 |   43 | `		 zCur = zEnd;` |
-|    7 |   44 | `		 bHostOnly = TRUE;` |
-|    7 |   45 | `		 goto ProcessHost;` |
+|    9 |   43 | `		 zCur = zEnd;` |
+|    9 |   44 | `		 bHostOnly = TRUE;` |
+|    9 |   45 | `		 goto ProcessHost;` |
 |    - |   46 | `	 }` |
-|   45 |   47 | `	 zCur = &zUri[nPos];` |
-|   45 |   48 | `	 if( zUri != zCur && zCur[-1] == ':' ){` |
+|   57 |   47 | `	 zCur = &zUri[nPos];` |
+|   57 |   48 | `	 if( zUri != zCur && zCur[-1] == ':' ){` |
 |    - |   49 | `		 /* Extract a scheme:` |
 |    - |   50 | `		  * Not that we can get an invalid scheme here.` |
 |    - |   51 | `		  * Fortunately the caller can discard any URI by comparing this scheme with its` |
 |    - |   52 | `		  * registered schemes and will report the error as soon as his comparison function` |
 |    - |   53 | `		  * fail.` |
 |    - |   54 | `		  */` |
-|   19 |   55 | `	 	pComp = &pOut->sScheme;` |
-|   19 |   56 | `		SyStringInitFromBuf(pComp,zUri,(sxu32)(zCur - zUri - 1));` |
-|   19 |   57 | `		SyStringLeftTrim(pComp);` |
-|    9 |   58 | `	 }` |
-|   45 |   59 | `	 if( zCur[1] != '/' ){` |
+|   29 |   55 | `	 	pComp = &pOut->sScheme;` |
+|   29 |   56 | `		SyStringInitFromBuf(pComp,zUri,(sxu32)(zCur - zUri - 1));` |
+|   29 |   57 | `		SyStringLeftTrim(pComp);` |
+|   14 |   58 | `	 }` |
+|   57 |   59 | `	 if( zCur[1] != '/' ){` |
 |   24 |   60 | `		 if( zCur == zUri \|\| zCur[-1] == ':' ){` |
 |    - |   61 | `		  /* No authority */` |
 |   24 |   62 | `		  goto PathSplit;` |
@@ -79,40 +79,40 @@ Coverage: 302/444 lines (68.02%)
 |    - |   69 | `		  */` |
 |  ! 0 |   70 | `		 goto ProcessHost;` |
 |    - |   71 | `	 }` |
-|   21 |   72 | `	 zUri = &zCur[2];` |
-|   21 |   73 | `	 zCur = zEnd;` |
-|   21 |   74 | `	 rc = SyByteFind(zUri,(sxu32)(zEnd - zUri),'/',&nPos);` |
-|   29 |   75 | `	 if( rc == SXRET_OK ){` |
-|   17 |   76 | `		 zCur = &zUri[nPos];` |
-|    8 |   77 | `	 }` |
-|    2 |   78 | ` ProcessHost:` |
+|   33 |   72 | `	 zUri = &zCur[2];` |
+|   33 |   73 | `	 zCur = zEnd;` |
+|   33 |   74 | `	 rc = SyByteFind(zUri,(sxu32)(zEnd - zUri),'/',&nPos);` |
+|   42 |   75 | `	 if( rc == SXRET_OK ){` |
+|   19 |   76 | `		 zCur = &zUri[nPos];` |
+|    9 |   77 | `	 }` |
+|    7 |   78 | ` ProcessHost:` |
 |    - |   79 | `	 /* Extract user information if present */` |
-|   27 |   80 | `	 rc = SyByteFind(zUri,(sxu32)(zCur - zUri),'@',&nPos);` |
-|   27 |   81 | `	 if( rc == SXRET_OK ){` |
-|    7 |   82 | `		 if( nPos > 0 ){` |
+|   41 |   80 | `	 rc = SyByteFind(zUri,(sxu32)(zCur - zUri),'@',&nPos);` |
+|   41 |   81 | `	 if( rc == SXRET_OK ){` |
+|    9 |   82 | `		 if( nPos > 0 ){` |
 |    - |   83 | `			 sxu32 nPassOfft; /* Password offset */` |
-|    7 |   84 | `			 pComp = &pOut->sUser;` |
-|    7 |   85 | `			 SyStringInitFromBuf(pComp,zUri,nPos);` |
+|    9 |   84 | `			 pComp = &pOut->sUser;` |
+|    9 |   85 | `			 SyStringInitFromBuf(pComp,zUri,nPos);` |
 |    - |   86 | `			 /* Extract the password if available */` |
-|    7 |   87 | `			 rc = SyByteFind(zUri,(sxu32)(zCur - zUri),':',&nPassOfft);` |
-|    7 |   88 | `			 if( rc == SXRET_OK && nPassOfft < nPos){` |
-|    7 |   89 | `				 pComp->nByte = nPassOfft;` |
-|    7 |   90 | `				 pComp = &pOut->sPass;` |
-|    7 |   91 | `				 pComp->zString = &zUri[nPassOfft+sizeof(char)];` |
-|    7 |   92 | `				 pComp->nByte = nPos - nPassOfft - 1;` |
-|    3 |   93 | `			 }` |
+|    9 |   87 | `			 rc = SyByteFind(zUri,(sxu32)(zCur - zUri),':',&nPassOfft);` |
+|    9 |   88 | `			 if( rc == SXRET_OK && nPassOfft < nPos){` |
+|    9 |   89 | `				 pComp->nByte = nPassOfft;` |
+|    9 |   90 | `				 pComp = &pOut->sPass;` |
+|    9 |   91 | `				 pComp->zString = &zUri[nPassOfft+sizeof(char)];` |
+|    9 |   92 | `				 pComp->nByte = nPos - nPassOfft - 1;` |
+|    4 |   93 | `			 }` |
 |    - |   94 | `			 /* Update the cursor */` |
-|    7 |   95 | `			 zUri = &zUri[nPos+1];` |
-|    4 |   96 | `		 }else{` |
+|    9 |   95 | `			 zUri = &zUri[nPos+1];` |
+|    5 |   96 | `		 }else{` |
 |  ! 0 |   97 | `			 zUri++;` |
 |    - |   98 | `		 }` |
-|    3 |   99 | `	 }` |
-|   27 |  100 | `	 pComp = &pOut->sHost;` |
-|   27 |  101 | `	 while( zUri < zCur && SyisSpace(zUri[0])){` |
+|    4 |   99 | `	 }` |
+|   41 |  100 | `	 pComp = &pOut->sHost;` |
+|   41 |  101 | `	 while( zUri < zCur && SyisSpace(zUri[0])){` |
 |  ! 0 |  102 | `		 zUri++;` |
 |  ! 0 |  103 | `	 }` |
-|   27 |  104 | `	 SyStringInitFromBuf(pComp,zUri,(sxu32)(zCur - zUri));` |
-|   27 |  105 | `	 if( pComp->zString[0] == '[' ){` |
+|   41 |  104 | `	 SyStringInitFromBuf(pComp,zUri,(sxu32)(zCur - zUri));` |
+|   41 |  105 | `	 if( pComp->zString[0] == '[' ){` |
 |    - |  106 | `		 /* An IPv6 Address: Make a simple naive test` |
 |    - |  107 | `		  */` |
 |    3 |  108 | `		 zUri++; pComp->zString++; pComp->nByte = 0;` |
@@ -126,45 +126,45 @@ Coverage: 302/444 lines (68.02%)
 |    3 |  116 | `		 bIPv6 = TRUE;` |
 |    1 |  117 | `	 }` |
 |    - |  118 | `	 /* Extract a port number if available */` |
-|   27 |  119 | `	 rc = SyByteFind(zUri,(sxu32)(zCur - zUri),':',&nPos);` |
-|   27 |  120 | `	 if( rc == SXRET_OK ){` |
-|   11 |  121 | `		 if( bIPv6 == FALSE ){` |
-|   11 |  122 | `			 pComp->nByte = (sxu32)(&zUri[nPos] - zUri);` |
-|    5 |  123 | `		 }` |
-|   11 |  124 | `		 pComp = &pOut->sPort;` |
-|   11 |  125 | `		 SyStringInitFromBuf(pComp,&zUri[nPos+1],(sxu32)(zCur - &zUri[nPos+1]));` |
-|    5 |  126 | `	 }` |
-|   27 |  127 | `	 if( bHostOnly == TRUE ){` |
-|    7 |  128 | `		 return SXRET_OK;` |
+|   41 |  119 | `	 rc = SyByteFind(zUri,(sxu32)(zCur - zUri),':',&nPos);` |
+|   41 |  120 | `	 if( rc == SXRET_OK ){` |
+|   13 |  121 | `		 if( bIPv6 == FALSE ){` |
+|   13 |  122 | `			 pComp->nByte = (sxu32)(&zUri[nPos] - zUri);` |
+|    6 |  123 | `		 }` |
+|   13 |  124 | `		 pComp = &pOut->sPort;` |
+|   13 |  125 | `		 SyStringInitFromBuf(pComp,&zUri[nPos+1],(sxu32)(zCur - &zUri[nPos+1]));` |
+|    6 |  126 | `	 }` |
+|   41 |  127 | `	 if( bHostOnly == TRUE ){` |
+|    9 |  128 | `		 return SXRET_OK;` |
 |    - |  129 | `	 }` |
-|   10 |  130 | `PathSplit:` |
-|   45 |  131 | `	 zUri = zCur;` |
-|   45 |  132 | `	 pComp = &pOut->sPath;` |
-|   45 |  133 | `	 SyStringInitFromBuf(pComp,zUri,(sxu32)(zEnd-zUri));` |
-|   45 |  134 | `	 if( pComp->nByte == 0 ){` |
-|    5 |  135 | `		 return SXRET_OK; /* Empty path */` |
+|   16 |  130 | `PathSplit:` |
+|   57 |  131 | `	 zUri = zCur;` |
+|   57 |  132 | `	 pComp = &pOut->sPath;` |
+|   57 |  133 | `	 SyStringInitFromBuf(pComp,zUri,(sxu32)(zEnd-zUri));` |
+|   57 |  134 | `	 if( pComp->nByte == 0 ){` |
+|   15 |  135 | `		 return SXRET_OK; /* Empty path */` |
 |    - |  136 | `	 }` |
-|   41 |  137 | `	 if( SXRET_OK == SyByteFind(zUri,(sxu32)(zEnd-zUri),'?',&nPos) ){` |
-|   13 |  138 | `		 pComp->nByte = nPos; /* Update path length */` |
-|   13 |  139 | `		 pComp = &pOut->sQuery;` |
-|   13 |  140 | `		 SyStringInitFromBuf(pComp,&zUri[nPos+1],(sxu32)(zEnd-&zUri[nPos+1]));` |
-|    6 |  141 | `	 }` |
-|   41 |  142 | `	 if( SXRET_OK == SyByteFind(zUri,(sxu32)(zEnd-zUri),'#',&nPos) ){` |
+|   43 |  137 | `	 if( SXRET_OK == SyByteFind(zUri,(sxu32)(zEnd-zUri),'?',&nPos) ){` |
+|   15 |  138 | `		 pComp->nByte = nPos; /* Update path length */` |
+|   15 |  139 | `		 pComp = &pOut->sQuery;` |
+|   15 |  140 | `		 SyStringInitFromBuf(pComp,&zUri[nPos+1],(sxu32)(zEnd-&zUri[nPos+1]));` |
+|    7 |  141 | `	 }` |
+|   43 |  142 | `	 if( SXRET_OK == SyByteFind(zUri,(sxu32)(zEnd-zUri),'#',&nPos) ){` |
 |    - |  143 | `		 /* Update path or query length */` |
-|    5 |  144 | `		 if( pComp == &pOut->sPath ){` |
+|    7 |  144 | `		 if( pComp == &pOut->sPath ){` |
 |  ! 0 |  145 | `			 pComp->nByte = nPos;` |
 |  ! 0 |  146 | `		 }else{` |
-|    5 |  147 | `			 if( &zUri[nPos] < (char *)SyStringData(pComp) ){` |
+|    7 |  147 | `			 if( &zUri[nPos] < (char *)SyStringData(pComp) ){` |
 |    - |  148 | `				 /* Malformed syntax : Query must be present before fragment */` |
 |  ! 0 |  149 | `				 return SXERR_SYNTAX;` |
 |    - |  150 | `			 }` |
-|    5 |  151 | `			 pComp->nByte -= (sxu32)(zEnd - &zUri[nPos]);` |
+|    7 |  151 | `			 pComp->nByte -= (sxu32)(zEnd - &zUri[nPos]);` |
 |    - |  152 | `		 }` |
-|    5 |  153 | `		 pComp = &pOut->sFragment;` |
-|    5 |  154 | `		 SyStringInitFromBuf(pComp,&zUri[nPos+1],(sxu32)(zEnd-&zUri[nPos+1]))` |
-|    2 |  155 | `	 }` |
-|   41 |  156 | `	 return SXRET_OK;` |
-|   26 |  157 | ` }` |
+|    7 |  153 | `		 pComp = &pOut->sFragment;` |
+|    7 |  154 | `		 SyStringInitFromBuf(pComp,&zUri[nPos+1],(sxu32)(zEnd-&zUri[nPos+1]))` |
+|    3 |  155 | `	 }` |
+|   43 |  156 | `	 return SXRET_OK;` |
+|   33 |  157 | ` }` |
 |    - |  158 | ` /*` |
 |    - |  159 | ` * Extract a single line from a raw HTTP request.` |
 |    - |  160 | ` * Return SXRET_OK on success,SXERR_EOF when end of input` |
