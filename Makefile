@@ -58,6 +58,7 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/vm_http_response$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_json$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_pcre$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/vm_serialize$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_xml$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/net$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/phl/phl$(OBJ_SUFFIX) \
