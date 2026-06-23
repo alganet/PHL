@@ -1914,6 +1914,25 @@ static void PH7_parent_Const(ph7_value *pVal,void *pUserData)
 }
 
 /*
+ * PASSWORD_BCRYPT / PASSWORD_DEFAULT
+ *  The bcrypt algorithm identifier (PHP 7.4+ exposes these as the string "2y").
+ *  PASSWORD_DEFAULT tracks the recommended default, currently bcrypt.
+ */
+static void PH7_PASSWORD_BCRYPT_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_string(pVal,"2y",(int)sizeof("2y")-1);
+}
+/*
+ * PASSWORD_BCRYPT_DEFAULT_COST
+ *  The default bcrypt work factor used by password_hash() (currently 12).
+ */
+static void PH7_PASSWORD_COST_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,12);
+}
+/*
  * Table of built-in constants.
  */
 static const ph7_builtin_constant aBuiltIn[] = {
@@ -1928,6 +1947,9 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"PHP_VERSION_ID",       PH7_PHPVerIdConst  },
 	{"PHP_OS",               PH7_OS_Const       },
 	{"PHP_EOL",              PH7_EOL_Const      },
+	{"PASSWORD_BCRYPT",      PH7_PASSWORD_BCRYPT_Const },
+	{"PASSWORD_DEFAULT",     PH7_PASSWORD_BCRYPT_Const },
+	{"PASSWORD_BCRYPT_DEFAULT_COST", PH7_PASSWORD_COST_Const },
 	{"PHP_INT_MAX",          PH7_INTMAX_Const   },
 	{"MAXINT",               PH7_INTMAX_Const   },
 	{"PHP_INT_SIZE",         PH7_INTSIZE_Const  },

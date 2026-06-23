@@ -4487,6 +4487,187 @@ static int PH7_builtin_hash_algos(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 #endif /* PH7_DISABLE_HASH_FUNC */
+/*
+ * password_* (bcrypt). These live in ext/standard in real PHP — outside the
+ * hash extension — so they are NOT guarded by PH7_DISABLE_HASH_FUNC.
+ */
+/*
+ * Parse a bcrypt crypt string. Returns TRUE and fills *piCost when zHash is a
+ * well-formed "$2?$NN$"+53-char bcrypt hash (60 bytes, valid minor, cost 4..31).
+ */
+static int BcryptParseHash(const char *zHash,int nHash,int *piCost)
+{
+	int iCost;
+	if( nHash != 60 || zHash[0] != '$' || zHash[1] != '2' || zHash[3] != '$'
+		|| (zHash[2] != 'a' && zHash[2] != 'b' && zHash[2] != 'x' && zHash[2] != 'y') ){
+		return FALSE;
+	}
+	if( zHash[4] < '0' || zHash[4] > '9' || zHash[5] < '0' || zHash[5] > '9' || zHash[6] != '$' ){
+		return FALSE;
+	}
+	iCost = (zHash[4]-'0')*10 + (zHash[5]-'0');
+	if( iCost < 4 || iCost > 31 ){
+		return FALSE;
+	}
+	if( piCost ){ *piCost = iCost; }
+	return TRUE;
+}
+/*
+ * TRUE if the $algo argument selects bcrypt: null (PASSWORD_DEFAULT) or the
+ * "2y" id (PASSWORD_BCRYPT/PASSWORD_DEFAULT). bcrypt is the only supported algo.
+ */
+static int BcryptIsBcryptAlgo(ph7_value *pAlgo)
+{
+	if( ph7_value_is_null(pAlgo) ){
+		return TRUE;
+	}
+	if( ph7_value_is_string(pAlgo) ){
+		int nAlgo;
+		const char *zAlgo = ph7_value_to_string(pAlgo,&nAlgo);
+		return ( nAlgo == 2 && zAlgo[0] == '2' && zAlgo[1] == 'y' );
+	}
+	return FALSE;
+}
+/*
+ * bool|string password_hash(string $password,string|int|null $algo[,array $options])
+ *  Create a bcrypt hash of the password.
+ */
+static int PH7_builtin_password_hash(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zPwd;
+	int nPwd,iCost = 12;
+	unsigned char aSalt[16];
+	char zHash[60];
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"password_hash() expects at least 2 arguments, %d given",nArg);
+	}
+	if( !BcryptIsBcryptAlgo(apArg[1]) ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"password_hash(): Argument #2 ($algo) must be a valid password hashing algorithm");
+	}
+	/* cost from $options['cost'] (default 12). */
+	if( nArg > 2 && ph7_value_is_array(apArg[2]) ){
+		ph7_value *pCost = ph7_array_fetch(apArg[2],"cost",(int)sizeof("cost")-1);
+		if( pCost ){ iCost = ph7_value_to_int(pCost); }
+	}
+	if( iCost < 4 || iCost > 31 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"Invalid bcrypt cost parameter specified: %d",iCost);
+	}
+	zPwd = ph7_value_to_string(apArg[0],&nPwd);
+	if( SyOSCSPRNG(aSalt,sizeof(aSalt)) != SXRET_OK ){
+		return PH7_VmThrowException(pCtx,"Exception",
+			"password_hash(): unable to gather sufficient entropy for the salt");
+	}
+	if( SyBcryptHash((const unsigned char *)zPwd,(sxu32)nPwd,(sxu32)iCost,aSalt,zHash) != SXRET_OK ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_string(pCtx,zHash,(int)sizeof(zHash));
+	return PH7_OK;
+}
+/*
+ * bool password_verify(string $password,string $hash)
+ *  Verify a password against a bcrypt hash. Never throws on a malformed hash.
+ */
+static int PH7_builtin_password_verify(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zPwd,*zHash;
+	int nPwd,nHash,iCost,i;
+	unsigned char aSalt[16];
+	char zComputed[60];
+	volatile unsigned char vDiff = 0;
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"password_verify() expects exactly 2 arguments, %d given",nArg);
+	}
+	zPwd = ph7_value_to_string(apArg[0],&nPwd);
+	zHash = ph7_value_to_string(apArg[1],&nHash);
+	if( !BcryptParseHash(zHash,nHash,&iCost) ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* Recover the 16 salt bytes from the 22-char salt field [7..28]. */
+	if( SyBcryptB64Decode(&zHash[7],22,aSalt,sizeof(aSalt)) != SXRET_OK ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( SyBcryptHash((const unsigned char *)zPwd,(sxu32)nPwd,(sxu32)iCost,aSalt,zComputed) != SXRET_OK ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* Constant-time compare of the 31-char hash field [29..59] only — sidesteps
+	 * salt re-canonicalisation and any "$2a"/"$2y" prefix difference. */
+	for( i = 29; i < 60; i++ ){
+		vDiff |= (unsigned char)(zComputed[i] ^ zHash[i]);
+	}
+	ph7_result_bool(pCtx,vDiff == 0);
+	return PH7_OK;
+}
+/*
+ * array password_get_info(string $hash)
+ *  Return ["algo"=>id|null, "algoName"=>name, "options"=>[...]].
+ */
+static int PH7_builtin_password_get_info(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zHash = "";
+	int nHash,iCost = 0,bBcrypt = 0;
+	ph7_value *pArray,*pOptions,*pVal;
+	if( nArg > 0 ){
+		zHash = ph7_value_to_string(apArg[0],&nHash);
+		bBcrypt = BcryptParseHash(zHash,nHash,&iCost);
+	}
+	pArray = ph7_context_new_array(pCtx);
+	pOptions = ph7_context_new_array(pCtx);
+	pVal = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pOptions == 0 || pVal == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	if( bBcrypt ){
+		ph7_value_string(pVal,&zHash[1],2);            /* algo "2y"/"2a" */
+		ph7_array_add_strkey_elem(pArray,"algo",pVal);
+		ph7_value_reset_string_cursor(pVal);
+		ph7_value_string(pVal,"bcrypt",(int)sizeof("bcrypt")-1);
+		ph7_array_add_strkey_elem(pArray,"algoName",pVal);
+		ph7_value_int(pVal,iCost);
+		ph7_array_add_strkey_elem(pOptions,"cost",pVal);
+	}else{
+		ph7_value_null(pVal);                          /* algo => null */
+		ph7_array_add_strkey_elem(pArray,"algo",pVal);
+		ph7_value_string(pVal,"unknown",(int)sizeof("unknown")-1);
+		ph7_array_add_strkey_elem(pArray,"algoName",pVal);
+	}
+	ph7_array_add_strkey_elem(pArray,"options",pOptions);
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/*
+ * bool password_needs_rehash(string $hash,string|int|null $algo[,array $options])
+ *  True if the hash was not made with the given algo/options.
+ */
+static int PH7_builtin_password_needs_rehash(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zHash;
+	int nHash,iCost = 0,iWantCost = 12;
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"password_needs_rehash() expects at least 2 arguments, %d given",nArg);
+	}
+	zHash = ph7_value_to_string(apArg[0],&nHash);
+	if( !BcryptParseHash(zHash,nHash,&iCost) || !BcryptIsBcryptAlgo(apArg[1]) ){
+		/* A non-bcrypt hash, or a request for a different algo → needs rehash. */
+		ph7_result_bool(pCtx,1);
+		return PH7_OK;
+	}
+	if( nArg > 2 && ph7_value_is_array(apArg[2]) ){
+		ph7_value *pCost = ph7_array_fetch(apArg[2],"cost",(int)sizeof("cost")-1);
+		if( pCost ){ iWantCost = ph7_value_to_int(pCost); }
+	}
+	ph7_result_bool(pCtx,iCost != iWantCost);
+	return PH7_OK;
+}
 #endif /* PH7_NEED_BUILTIN_REG */
 #ifdef PH7_NEED_FMT_AND_INI
 /*
@@ -7159,6 +7340,10 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "hash_equals",  PH7_builtin_hash_equals },
 	{ "hash_algos",   PH7_builtin_hash_algos },
 #endif /* PH7_DISABLE_HASH_FUNC */
+	{ "password_hash",         PH7_builtin_password_hash },
+	{ "password_verify",       PH7_builtin_password_verify },
+	{ "password_get_info",     PH7_builtin_password_get_info },
+	{ "password_needs_rehash", PH7_builtin_password_needs_rehash },
 #endif /* PH7_NEED_BUILTIN_REG */
 #ifdef PH7_NEED_FMT_AND_INI
 	{ "str_getcsv",   PH7_builtin_str_getcsv },

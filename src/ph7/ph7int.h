@@ -29,6 +29,7 @@ PH7_PRIVATE const char *ph7_type_name(ph7_value *pVal);
 #include "sxuri.h"        /* URI encode/decode */
 #include "sxtime.h"       /* Time utilities */
 #include "sxdigest.h"     /* MD5Context, SHA1Context, digest functions */
+#include "sxblowfish.h"   /* bcrypt (Blowfish) password hashing */
 #include "sxxml.h"        /* SyXMLParser, XML callbacks */
 #include "sxzip.h"        /* SyArchive, SyArchiveEntry */
 
