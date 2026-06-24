@@ -170,9 +170,9 @@ Coverage: 176/239 lines (73.64%)
 |    - |  160 | ` * This function is registered later via a call to ph7_vm_config()` |
 |    - |  161 | ` * with a configuration verb set to: PH7_VM_CONFIG_OUTPUT.` |
 |    - |  162 | ` */` |
-| 9344 |  163 | `static int Output_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUserData /* Unused */)` |
+| 9360 |  163 | `static int Output_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUserData /* Unused */)` |
 |    5 |  164 |  |
-| 4672 |  165 | `	(void)pUserData;` |
+| 4680 |  165 | `	(void)pUserData;` |
 |    - |  166 | `#ifdef __WINNT__` |
 |    - |  167 | `	BOOL rc;` |
 |    5 |  168 | `	rc = WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),pOutput,(DWORD)nOutputLen,0,0);` |
@@ -182,15 +182,15 @@ Coverage: 176/239 lines (73.64%)
 |    - |  172 | `	}` |
 |    - |  173 | `#else` |
 |    - |  174 | `	ssize_t nWr;` |
-| 9344 |  175 | `	nWr = write(STDOUT_FILENO,pOutput,nOutputLen);` |
-| 9344 |  176 | `	if( nWr < 0 ){` |
+| 9360 |  175 | `	nWr = write(STDOUT_FILENO,pOutput,nOutputLen);` |
+| 9360 |  176 | `	if( nWr < 0 ){` |
 |    - |  177 | `		/* Abort processing */` |
 |  ! 0 |  178 | `		return PH7_ABORT;` |
 |    - |  179 | `	}` |
 |    - |  180 | `#endif /* __WINT__ */` |
 |    - |  181 | `	/* All done,VM output was redirected to STDOUT */` |
-| 9349 |  182 | `	return PH7_OK;` |
-| 4677 |  183 |  |
+| 9365 |  182 | `	return PH7_OK;` |
+| 4685 |  183 |  |
 |    - |  184 | `/*` |
 |    - |  185 | ` * Main program: Compile and execute the PHP file.` |
 |    - |  186 | ` */` |
