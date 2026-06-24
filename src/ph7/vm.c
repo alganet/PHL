@@ -1123,6 +1123,8 @@ static int vm_builtin_Fiber_destruct(ph7_context *pCtx, int nArg, ph7_value **ap
 /* Forward declarations for Fiber/Generator infrastructure */
 static ph7_exec_ctx * VmNewExecCtx(ph7_vm *pVm, ph7_vm_func *pFunc);
 static void VmReleaseExecCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx);
+static ph7_generator * VmGeneratorExtractCtx(ph7_vm *pVm, ph7_value *pGenObj);
+static sxi32 VmIterCallMethod(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,sxu32 nLen,ph7_value *pResult);
 static sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 	ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg);
 static sxi32 VmCallClassMethodWithMap(ph7_vm *pVm, ph7_class_instance *pThis,
@@ -4870,12 +4872,7 @@ case PH7_OP_DONE:
 		 * defensively we clear the pointer after a successful check). */
 		pEnforceRetFunc = 0;
 	}
-	if( pInstr->iP1 ){
-#ifdef UNTRUST
-		if( pTos < pStack ){
-			goto Abort;
-		}
-#endif
+	if( pInstr->iP1 && pTos >= pStack ){
 		if( pLastRef ){
 			*pLastRef = pTos->nIdx;
 		}
@@ -4885,7 +4882,11 @@ case PH7_OP_DONE:
 		}
 		VmPopOperand(&pTos,1);
 	}else if( pLastRef ){
-		/* Nothing referenced */
+		/* Nothing referenced — also the throw-unwind path: the compiler routes
+		 * an uncaught exception to this terminal OP_DONE with iP1 set but an
+		 * empty operand stack (pTos == pStack-1), so there is no return value to
+		 * store. Guarding on pTos >= pStack (matching the two sibling branches
+		 * above) avoids the below-base read that crashed under glibc/ASan. */
 		*pLastRef = SXU32_HIGH;
 	}
 	/* Execute pending finally blocks for any try/catch contexts pushed during
@@ -9249,6 +9250,186 @@ case PH7_OP_YIELD: {
 	goto Suspend;
 }
 /*
+ * OP_YIELD_FROM * * *
+ *
+ * Generator delegation: `yield from <iterable>`. Re-yield every (key,value) of an
+ * array/Traversable/Generator from the OUTER generator, preserving the inner
+ * keys; the expression evaluates to the inner Generator's return value (or NULL).
+ *
+ * This opcode is RE-ENTRANT: it suspends back to its own pc and, on each resume,
+ * advances the per-instance delegate cursor stored on the exec context (never the
+ * shared foreach aStep, so independent generator instances cannot clash). The
+ * iterable operand is consumed on first entry; the expression result is pushed at
+ * exhaustion — net stack effect +1, identical to OP_YIELD.
+ */
+case PH7_OP_YIELD_FROM: {
+	ph7_generator *pGenFrom;
+	ph7_exec_ctx *pCtxFrom;
+	ph7_value sKey,sVal;
+	sxi32 rcm = SXRET_OK;   /* delegate iterator-method status */
+	int bExhausted = 0;
+	if( pVm->pActiveCtx == 0 || pVm->pActiveCtx->pPrivate == 0 ){
+		VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Cannot use \"yield from\" outside of a generator");
+		goto Abort;
+	}
+	pCtxFrom = pVm->pActiveCtx;
+	pGenFrom = (ph7_generator *)pCtxFrom->pPrivate;
+	PH7_MemObjInit(pVm,&sKey);
+	PH7_MemObjInit(pVm,&sVal);
+	if( pCtxFrom->iDelegateState == 0 ){
+		/* First entry: classify the iterable on the stack top. */
+		int bIterable = 1;
+#ifdef UNTRUST
+		if( pTos < pStack ){ goto Abort; }
+#endif
+		if( pTos->iFlags & MEMOBJ_HASHMAP ){
+			PH7_MemObjStore(pTos,&pCtxFrom->sDelegate);
+			pCtxFrom->pDelegateNode = ((ph7_hashmap *)pCtxFrom->sDelegate.x.pOther)->pFirst;
+			pCtxFrom->iDelegateState = 1;
+		}else if( pTos->iFlags & MEMOBJ_OBJ ){
+			ph7_class_instance *pThis = (ph7_class_instance *)pTos->x.pOther;
+			ph7_class *pIterCls = PH7_VmExtractClass(&(*pVm),"Iterator",sizeof("Iterator")-1,FALSE,0);
+			if( pVm->pGeneratorClass && PH7_VmInstanceOf(pThis->pClass,pVm->pGeneratorClass) ){
+				PH7_MemObjStore(pTos,&pCtxFrom->sDelegate);
+				pCtxFrom->iDelegateState = 3;
+			}else if( pIterCls && PH7_VmInstanceOf(pThis->pClass,pIterCls) ){
+				PH7_MemObjStore(pTos,&pCtxFrom->sDelegate);
+				pCtxFrom->iDelegateState = 2;
+			}else{
+				ph7_class *pAggCls = PH7_VmExtractClass(&(*pVm),"IteratorAggregate",
+					sizeof("IteratorAggregate")-1,FALSE,0);
+				if( pAggCls && PH7_VmInstanceOf(pThis->pClass,pAggCls) ){
+					/* Delegate to the Iterator returned by getIterator() */
+					ph7_value sIt;
+					PH7_MemObjInit(pVm,&sIt);
+					rcm = VmIterCallMethod(pVm,pThis,"getIterator",sizeof("getIterator")-1,&sIt);
+					if( rcm == PH7_ABORT || rcm == PH7_EXCEPTION ){
+						/* getIterator() threw/aborted: drop it, consume the
+						 * operand, and propagate. */
+						PH7_MemObjRelease(&sIt);
+						VmPopOperand(&pTos,1);
+						goto yf_propagate;
+					}
+					if( (sIt.iFlags & MEMOBJ_OBJ) && sIt.x.pOther && pIterCls
+						&& PH7_VmInstanceOf(((ph7_class_instance *)sIt.x.pOther)->pClass,pIterCls) ){
+						PH7_MemObjStore(&sIt,&pCtxFrom->sDelegate);
+						pCtxFrom->iDelegateState = 2;
+					}else{
+						bIterable = 0;
+					}
+					PH7_MemObjRelease(&sIt);
+				}else{
+					bIterable = 0;
+				}
+			}
+		}else{
+			bIterable = 0;
+		}
+		VmPopOperand(&pTos,1); /* Consume the iterable operand */
+		if( !bIterable ){
+			/* Non-iterable source: throw a catchable Error (PHP 8.5), then
+			 * funnel through the shared teardown/route path. */
+			rc = VmThrowFromVm(&(*pVm),"Error",
+				"Can use \"yield from\" only with arrays and Traversables",
+				sizeof("Can use \"yield from\" only with arrays and Traversables")-1);
+			rcm = (rc == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
+			goto yf_propagate;
+		}
+		if( pCtxFrom->iDelegateState >= 2 ){
+			/* rewind() the delegate (also starts a fresh generator) */
+			rcm = VmIterCallMethod(pVm,(ph7_class_instance *)pCtxFrom->sDelegate.x.pOther,
+				"rewind",sizeof("rewind")-1,0);
+			if( rcm == PH7_ABORT || rcm == PH7_EXCEPTION ){ goto yf_propagate; }
+		}
+	}else{
+		/* Resume entry: discard the value VmResumeCtx pushed. Forwarding send()
+		 * into the delegated generator is deferred (see the Generator::throw TODO);
+		 * arrays/Traversables ignore send() anyway. */
+#ifdef UNTRUST
+		if( pTos < pStack ){ goto Abort; }
+#endif
+		PH7_MemObjRelease(pTos);
+		pTos--;
+		if( pCtxFrom->iDelegateState >= 2 ){
+			rcm = VmIterCallMethod(pVm,(ph7_class_instance *)pCtxFrom->sDelegate.x.pOther,
+				"next",sizeof("next")-1,0);
+			if( rcm == PH7_ABORT || rcm == PH7_EXCEPTION ){ goto yf_propagate; }
+		}
+	}
+	/* Fetch the current (key,value) of the delegate, or mark exhausted. */
+	if( pCtxFrom->iDelegateState == 1 ){
+		if( pCtxFrom->pDelegateNode == 0 ){
+			bExhausted = 1;
+		}else{
+			PH7_HashmapExtractNodeKey(pCtxFrom->pDelegateNode,&sKey);
+			PH7_HashmapExtractNodeValue(pCtxFrom->pDelegateNode,&sVal,TRUE);
+			/* Forward traversal follows pPrev (the hashmap's "reverse link",
+			 * matching PH7_HashmapGetNextEntry). */
+			pCtxFrom->pDelegateNode = pCtxFrom->pDelegateNode->pPrev;
+		}
+	}else{
+		ph7_class_instance *pThis = (ph7_class_instance *)pCtxFrom->sDelegate.x.pOther;
+		ph7_value sValid;
+		int isValid;
+		PH7_MemObjInit(pVm,&sValid);
+		rcm = VmIterCallMethod(pVm,pThis,"valid",sizeof("valid")-1,&sValid);
+		PH7_MemObjToBool(&sValid);
+		isValid = (sValid.x.iVal != 0);
+		PH7_MemObjRelease(&sValid);
+		if( rcm == PH7_ABORT || rcm == PH7_EXCEPTION ){ goto yf_propagate; }
+		if( !isValid ){
+			bExhausted = 1;
+		}else{
+			rcm = VmIterCallMethod(pVm,pThis,"current",sizeof("current")-1,&sVal);
+			if( rcm == PH7_ABORT || rcm == PH7_EXCEPTION ){ goto yf_propagate; }
+			rcm = VmIterCallMethod(pVm,pThis,"key",sizeof("key")-1,&sKey);
+			if( rcm == PH7_ABORT || rcm == PH7_EXCEPTION ){ goto yf_propagate; }
+		}
+	}
+	if( bExhausted ){
+		/* Expression value: inner Generator's return value (state 3) or NULL. */
+		ph7_value sResult;
+		PH7_MemObjInit(pVm,&sResult);
+		if( pCtxFrom->iDelegateState == 3 ){
+			ph7_generator *pInner = VmGeneratorExtractCtx(&(*pVm),&pCtxFrom->sDelegate);
+			if( pInner && pInner->pCtx ){
+				PH7_MemObjStore(&pInner->pCtx->sRetValue,&sResult);
+			}
+		}
+		PH7_MemObjRelease(&pCtxFrom->sDelegate);
+		pCtxFrom->pDelegateNode = 0;
+		pCtxFrom->iDelegateState = 0;
+		pTos++;
+		PH7_MemObjStore(&sResult,pTos);
+		PH7_MemObjRelease(&sResult);
+		PH7_MemObjRelease(&sKey);
+		PH7_MemObjRelease(&sVal);
+		break; /* fall through to pc+1 with the result on the stack top */
+	}
+	/* Re-yield (key,value) from the OUTER generator, preserving the inner key.
+	 * The outer generator's implicit auto-key counter is NOT advanced by the
+	 * delegated keys — PHP keeps it independent across `yield from`, so a later
+	 * plain `yield` continues from the outer's own counter. */
+	PH7_MemObjStore(&sVal,&pGenFrom->sYieldValue);
+	PH7_MemObjStore(&sKey,&pGenFrom->sYieldKey);
+	PH7_MemObjRelease(&sKey);
+	PH7_MemObjRelease(&sVal);
+	/* Suspend, re-entering this SAME opcode on resume (pc, not pc+1). */
+	VmSuspendCtx(pVm,pCtxFrom,pc,(sxi32)(pTos - pStack));
+	goto Suspend;
+yf_propagate:
+	/* A delegate iterator method threw/aborted (or the source was non-iterable):
+	 * tear down the delegation, then route via the shared dispatch macro. rcm is
+	 * always PH7_EXCEPTION or PH7_ABORT here. */
+	PH7_MemObjRelease(&sKey);
+	PH7_MemObjRelease(&sVal);
+	PH7_MemObjRelease(&pCtxFrom->sDelegate);
+	pCtxFrom->pDelegateNode = 0;
+	pCtxFrom->iDelegateState = 0;
+	PH7_DISPATCH_ENFORCE_RC(rcm)
+	goto Exception; /* defensive default — unreachable for ABORT/EXCEPTION */
+}
+/*
  * OP_CALL P1 * *
  *  Call a PHP or a foreign function and push the return value of the called
  *  function on the stack.
@@ -10678,6 +10859,7 @@ static ph7_exec_ctx * VmNewExecCtx(ph7_vm *pVm, ph7_vm_func *pFunc)
 	pCtx->pc = 0;
 	PH7_MemObjInit(pVm, &pCtx->sSuspendValue);
 	PH7_MemObjInit(pVm, &pCtx->sRetValue);
+	PH7_MemObjInit(pVm, &pCtx->sDelegate);
 	/* Allocate a private operand stack */
 	pStack = VmNewOperandStack(pVm, SySetUsed(&pFunc->aByteCode));
 	if( pStack == 0 ){
@@ -10839,6 +11021,7 @@ static void VmReleaseExecCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx)
 	/* Release values */
 	PH7_MemObjRelease(&pCtx->sSuspendValue);
 	PH7_MemObjRelease(&pCtx->sRetValue);
+	PH7_MemObjRelease(&pCtx->sDelegate);
 	/* Release the frame if it's detached (not in the VM chain) */
 	if( pCtx->pFrame ){
 		VmSlot *aSlot;
@@ -11829,6 +12012,7 @@ static const char * VmInstrToString(sxi32 nOp)
 	case PH7_OP_USECONST:   zOp = "USECONST   "; break;
 	case PH7_OP_SWAP:       zOp = "SWAP       "; break;
 	case PH7_OP_YIELD:      zOp = "YIELD      "; break;
+	case PH7_OP_YIELD_FROM: zOp = "YIELD_FROM "; break;
 	case PH7_OP_NULLC:      zOp = "NULLC      "; break;
 	case PH7_OP_NULLC_JMP:  zOp = "NULLC_JMP  "; break;
 	case PH7_OP_NULLC_STORE:zOp = "NULLC_STORE"; break;

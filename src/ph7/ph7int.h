@@ -454,6 +454,11 @@ struct ph7_exec_ctx
 	ph7_value sRetValue;      /* Final return value */
 	sxu32 nExceptionBase;     /* Exception stack depth at entry */
 	void *pPrivate;           /* Generator wrapper (ph7_generator*) or NULL for fibers */
+	/* `yield from` delegation state — per generator instance, so independent
+	 * instances never clash (unlike the shared foreach aStep). */
+	ph7_value sDelegate;             /* The iterable being delegated (kept alive) */
+	ph7_hashmap_node *pDelegateNode; /* Array cursor: next node to read, else 0 */
+	sxi32 iDelegateState;            /* 0=inactive, 1=array, 2=iterator, 3=generator */
 };
 /* Special return code from VmByteCodeExec signaling fiber suspension */
 #define PH7_SUSPEND  0x100
@@ -1071,6 +1076,7 @@ enum ph7_vm_op {
   PH7_OP_PULL,         /* Stack pull */
   PH7_OP_SWAP,         /* Stack swap */
   PH7_OP_YIELD,        /* Stack yield */
+  PH7_OP_YIELD_FROM,   /* Generator delegation (yield from <iterable>) */
   PH7_OP_CVT_BOOL,     /* Boolean cast */
   PH7_OP_CVT_NUMC,     /* Numeric (integer,real or both) type cast */
   PH7_OP_INCR,         /* Increment ++ */
