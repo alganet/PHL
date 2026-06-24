@@ -32,11 +32,12 @@
 typedef struct serialize_data serialize_data;
 struct serialize_data
 {
-	ph7_vm *pVm;   /* The underlying VM */
-	SyBlob *pOut;  /* Output accumulator */
-	int depth;     /* Current nesting level (cycle guard) */
-	int exc;       /* A magic method threw -> propagate the exception */
-	int err;       /* Recursion overflow or bad input -> serialize returns false */
+	ph7_vm *pVm;          /* The underlying VM */
+	ph7_context *pCtx;    /* Call context (for throwing exceptions) */
+	SyBlob *pOut;         /* Output accumulator */
+	int depth;            /* Current nesting level (cycle guard) */
+	int exc;              /* A magic method threw -> propagate the exception */
+	int err;              /* Recursion overflow or bad input -> serialize returns false */
 };
 static sxi32 VmSerialize(ph7_value *pIn, serialize_data *pData);
 /*
@@ -206,6 +207,14 @@ static sxi32 VmSerializeObject(ph7_value *pIn, serialize_data *pData)
 	VmClassAttr *pVmAttr;
 	SyBlob sBody, *pSave;
 	sxu32 nCount = 0;
+	/* Anonymous classes cannot be serialized (PHP throws an Exception). Their
+	 * synthesized name contains '@', which no ordinary class name can. */
+	if( SyByteFind(pClassName->zString,pClassName->nByte,'@',0) == SXRET_OK ){
+		PH7_VmThrowException(pData->pCtx,"Exception",
+			"Serialization of 'class@anonymous' is not allowed");
+		pData->exc = 1;
+		return PH7_EXCEPTION;
+	}
 	SyBlobInit(&sBody,&pVm->sAllocator);
 	pSave = pData->pOut;
 	pData->pOut = &sBody;     /* recursion appends to the body blob */
@@ -307,6 +316,7 @@ PH7_PRIVATE int vm_builtin_serialize(ph7_context *pCtx, int nArg, ph7_value **ap
 	}
 	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
 	sData.pVm = pCtx->pVm;
+	sData.pCtx = pCtx;
 	sData.pOut = &sOut;
 	sData.depth = 0;
 	sData.exc = 0;

@@ -688,6 +688,52 @@ Synchronize:
 	return rc;
 }
 /*
+ * Assemble an anonymous-class token range (PHP 7.0):
+ *   class [ ( args ) ] [ extends Name ] [ implements N1, N2 … ] { body }
+ * On entry *ppCur points at the 'class' keyword. On exit *ppCur points just past
+ * the closing '}', so the whole construct becomes a single 'new' operand and the
+ * expression tree-builder never sees the inner braces/keywords. The header and
+ * body are re-parsed precisely later by GenStateCompileClassEx — here we only
+ * delimit the span (mirroring ExprAssembleAnnon for closures).
+ */
+static sxi32 ExprAssembleAnnonClass(ph7_gen_state *pGen,SyToken **ppCur,SyToken *pEnd)
+{
+	SyToken *pIn = *ppCur;
+	sxu32 nLine = pIn->nLine;
+	sxi32 rc;
+	pIn++; /* Jump the 'class' keyword */
+	/* Optional constructor argument list */
+	if( pIn < pEnd && (pIn->nType & PH7_TK_LPAREN) ){
+		pIn++; /* Jump '(' */
+		PH7_DelimitNestedTokens(pIn,pEnd,PH7_TK_LPAREN/*'('*/,PH7_TK_RPAREN/*')'*/,&pIn);
+		if( pIn < pEnd ){
+			pIn++; /* Jump ')' */
+		}
+	}
+	/* Optional 'extends Base' / 'implements I1, I2 …': skip up to the body '{'
+	 * (no braces appear between ')' and the class body). */
+	while( pIn < pEnd && (pIn->nType & PH7_TK_OCB/*'{'*/) == 0 ){
+		pIn++;
+	}
+	if( pIn >= pEnd || (pIn->nType & PH7_TK_OCB) == 0 ){
+		/* Syntax error: missing class body */
+		rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+			"Syntax error while declaring anonymous class, missing '{'");
+		if( rc != SXERR_ABORT ){
+			rc = SXERR_SYNTAX;
+		}
+		*ppCur = pIn;
+		return rc;
+	}
+	pIn++; /* Jump the leading '{' */
+	PH7_DelimitNestedTokens(pIn,pEnd,PH7_TK_OCB/*'{'*/,PH7_TK_CCB/*'}'*/,&pIn);
+	if( pIn < pEnd ){
+		pIn++; /* Jump the trailing '}' */
+	}
+	*ppCur = pIn;
+	return SXRET_OK;
+}
+/*
  * Assemble a PHP 7.4 arrow function token range:
  *    [static] fn [&] ( params ) [: [?] type] => expression
  * On entry *ppCur points at 'static' or 'fn'. On exit *ppCur points just
@@ -980,6 +1026,21 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 				 }
 				 pNode->xCode = PH7_CompileAnnonFunc;
 			  }
+		 }else if( nKeyword == PH7_TKWRD_CLASS && &pCur[1] < pGen->pEnd
+			 && ( (pCur[1].nType & (PH7_TK_OCB/*'{'*/|PH7_TK_LPAREN/*'('*/))
+				|| ( (pCur[1].nType & PH7_TK_KEYWORD)
+					&& ( SX_PTR_TO_INT(pCur[1].pUserData) == PH7_TKWRD_EXTENDS
+						|| SX_PTR_TO_INT(pCur[1].pUserData) == PH7_TKWRD_IMPLEMENTS ) ) ) ){
+			 /* Anonymous class: new class(args) [extends/implements] { body }.
+			  * Only when 'class' is followed by '{', '(', extends or implements —
+			  * this excludes the '::class' constant (e.g. self::class), where
+			  * 'class' is a plain name handled by the literal fallback below. */
+			 rc = ExprAssembleAnnonClass(&(*pGen),&pCur,pGen->pEnd);
+			 if( rc != SXRET_OK ){
+				 SyMemBackendPoolFree(&pGen->pVm->sAllocator,pNode);
+				 return rc;
+			 }
+			 pNode->xCode = PH7_CompileAnnonClass;
 		 }else if( nKeyword == PH7_TKWRD_FN
 			|| ( nKeyword == PH7_TKWRD_STATIC && &pCur[1] < pGen->pEnd
 				 && (pCur[1].nType & PH7_TK_KEYWORD)
@@ -1582,7 +1643,8 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				 /* New */
 				 if( apNode[iLeft]->pOp == 0 ){
 					 ProcNodeConstruct xCons = apNode[iLeft]->xCode;
-					 if( xCons != PH7_CompileVariable && xCons != PH7_CompileLiteral && xCons != PH7_CompileSimpleString){
+					 if( xCons != PH7_CompileVariable && xCons != PH7_CompileLiteral && xCons != PH7_CompileSimpleString
+						 && xCons != PH7_CompileAnnonClass){
 						 pToken = apNode[iLeft]->pStart;
 						 /* Syntax error */
 						 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
