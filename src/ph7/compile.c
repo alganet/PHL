@@ -4781,6 +4781,28 @@ PH7_PRIVATE sxi32 PH7_CompileYield(ph7_gen_state *pGen, sxi32 iCompileFlag)
 	pGen->pIn++;
 	/* Now pGen->pIn points to the first token after 'yield'
 	 * pGen->pEnd points to the delimiter (;, ), ], etc.) */
+	/* `yield from <iterable>` — generator delegation (PHP 7.0). 'from' is a
+	 * contextual identifier, not a keyword; a variable named $from lexes as
+	 * PH7_TK_DOLLAR, never PH7_TK_ID, so `yield $from` cannot match here. */
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_ID)
+		&& pGen->pIn->sData.nByte == 4
+		&& SyStrnicmp(pGen->pIn->sData.zString, "from", 4) == 0 ){
+		pGen->pIn++; /* Skip 'from' */
+		rc = PH7_CompileExpr(pGen, 0, 0);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		if( rc == SXERR_EMPTY ){
+			rc = PH7_GenCompileError(pGen, E_ERROR,
+				(pGen->pIn < pGen->pEnd) ? pGen->pIn->nLine : 0,
+				"Missing expression after 'yield from'");
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+		}
+		PH7_VmEmitInstr(pGen->pVm, PH7_OP_YIELD_FROM, 0, 0, 0, 0);
+		return SXRET_OK;
+	}
 	if( pGen->pIn >= pGen->pEnd ){
 		/* Bare yield — no value */
 		PH7_VmEmitInstr(pGen->pVm, PH7_OP_YIELD, 0, 0, 0, 0);
@@ -6028,7 +6050,7 @@ static sxi32 GenStateCompileFuncBody(
 		VmInstr *aInstr = (VmInstr *)SySetBasePtr(&pFunc->aByteCode);
 		sxu32 i;
 		for( i = 0; i < SySetUsed(&pFunc->aByteCode); i++ ){
-			if( aInstr[i].iOp == PH7_OP_YIELD ){
+			if( aInstr[i].iOp == PH7_OP_YIELD || aInstr[i].iOp == PH7_OP_YIELD_FROM ){
 				pFunc->iFlags |= VM_FUNC_GENERATOR;
 				break;
 			}
