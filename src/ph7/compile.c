@@ -8312,7 +8312,18 @@ static int GenStateClassIsExceptionOrError(ph7_class *pBase)
 	}
 	return FALSE;
 }
-static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
+/*
+ * Compile a class declaration, named or anonymous.
+ *
+ * For a named class pAnonName is 0 and the class name is read from the token
+ * stream. For an anonymous class (`new class(args) extends B implements I {…}`)
+ * pAnonName carries the synthesized class name, the optional constructor
+ * '(args)' token range is returned through ppArgStart/ppArgEnd for the caller to
+ * compile, and no name token is expected. Everything after the header (extends/
+ * implements, body, install) is shared by both paths.
+ */
+static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
+	SyString *pAnonName,SyToken **ppArgStart,SyToken **ppArgEnd)
 {
 	sxu32 nLine = pGen->pIn->nLine;
 	ph7_class *pClass,*pBase;
@@ -8326,31 +8337,48 @@ static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
 	sxi32 rc;
 	/* Jump the 'class' keyword */
 	pGen->pIn++;
-	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_ID) == 0 ){
-		/* Syntax error */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Invalid class name");
-		if( rc == SXERR_ABORT ){
-			/* Error count limit reached,abort immediately */
-			return SXERR_ABORT;
+	if( pAnonName ){
+		/* Anonymous class: no name token. Capture the optional constructor
+		 * '(args)' range for the caller (which always supplies the out-params),
+		 * then use the synthesized name. */
+		*ppArgStart = *ppArgEnd = 0;
+		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_LPAREN) ){
+			pGen->pIn++; /* Jump '(' */
+			*ppArgStart = pGen->pIn;
+			PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,
+				PH7_TK_LPAREN/*'('*/,PH7_TK_RPAREN/*')'*/,ppArgEnd);
+			pGen->pIn = *ppArgEnd;
+			if( pGen->pIn < pGen->pEnd ){ pGen->pIn++; } /* Jump ')' */
 		}
-		/* Synchronize with the first semi-colon or curly braces */
-		while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_OCB/*'{'*/|PH7_TK_SEMI/*';'*/)) == 0 ){
-			pGen->pIn++;
+		pName = pAnonName;
+		pClass = PH7_NewRawClass(pGen->pVm,pAnonName,nLine);
+	}else{
+		if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_ID) == 0 ){
+			/* Syntax error */
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Invalid class name");
+			if( rc == SXERR_ABORT ){
+				/* Error count limit reached,abort immediately */
+				return SXERR_ABORT;
+			}
+			/* Synchronize with the first semi-colon or curly braces */
+			while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_OCB/*'{'*/|PH7_TK_SEMI/*';'*/)) == 0 ){
+				pGen->pIn++;
+			}
+			return SXRET_OK;
 		}
-		return SXRET_OK;
-	}
-	/* Extract class name */
-	pName = &pGen->pIn->sData;
-	/* Advance the stream cursor */
-	pGen->pIn++;
-	/* Build FQN and obtain a raw class */ {
-		SyBlob sFQN;
-		SyString sFQNStr;
-		SyBlobInit(&sFQN,&pGen->pVm->sAllocator);
-		GenStateBuildFQN(pGen,pName,&sFQN);
-		SyStringInitFromBuf(&sFQNStr,(const char *)SyBlobData(&sFQN),SyBlobLength(&sFQN));
-		pClass = PH7_NewRawClass(pGen->pVm,&sFQNStr,nLine);
-		SyBlobRelease(&sFQN);
+		/* Extract class name */
+		pName = &pGen->pIn->sData;
+		/* Advance the stream cursor */
+		pGen->pIn++;
+		/* Build FQN and obtain a raw class */ {
+			SyBlob sFQN;
+			SyString sFQNStr;
+			SyBlobInit(&sFQN,&pGen->pVm->sAllocator);
+			GenStateBuildFQN(pGen,pName,&sFQN);
+			SyStringInitFromBuf(&sFQNStr,(const char *)SyBlobData(&sFQN),SyBlobLength(&sFQN));
+			pClass = PH7_NewRawClass(pGen->pVm,&sFQNStr,nLine);
+			SyBlobRelease(&sFQN);
+		}
 	}
 	if( pClass == 0 ){
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
@@ -9140,6 +9168,80 @@ done:
 	pGen->pIn = &pEnd[1];
 	pGen->pEnd = pTmp;
 	return PH7_OK;
+}
+/* Compile a named class declaration (the common case). */
+static sxi32 GenStateCompileClass(ph7_gen_state *pGen,sxi32 iFlags)
+{
+	return GenStateCompileClassEx(pGen,iFlags,0,0,0);
+}
+/*
+ * Compile an anonymous class expression: `new class(args) extends B implements I
+ * { ... }` (PHP 7.0). Mirrors PH7_CompileAnnonFunc: synthesize a unique name,
+ * compile + install the class body once (at compile time, like every other
+ * class), then emit the instantiation — push the constructor arguments, load the
+ * synthesized class name, and OP_NEW. The class is installed once per source
+ * site, matching PHP's one-class-per-anonymous-site semantics.
+ */
+PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
+{
+	char zName[128];         /* Synthesized class name */
+	static int iCnt = 1;     /* Single-threaded compile: no locking needed */
+	SyString sName;
+	SyToken *pArgStart,*pArgEnd;
+	ph7_value *pObj;
+	sxu32 nLine = pGen->pIn->nLine;
+	sxu32 nIdx,nLen;
+	sxi32 nArg,rc;
+	SXUNUSED(iCompileFlag);
+	/* Generate a unique anonymous-class name (collision-checked) */
+	nLen = SyBufferFormat(zName,sizeof(zName),"class@anonymous_%d",iCnt++);
+	while( PH7_VmExtractClass(pGen->pVm,zName,nLen,FALSE,0) != 0 && nLen < sizeof(zName) - 2 ){
+		nLen = SyBufferFormat(zName,sizeof(zName),"class@anonymous_%d",iCnt++);
+	}
+	SyStringInitFromBuf(&sName,zName,nLen);
+	/* Compile + install the class body; capture the constructor '(args)' range.
+	 * On entry pGen->pIn sits on the 'class' keyword and pGen->pEnd bounds the
+	 * delimited construct; GenStateCompileClassEx restores both on success. */
+	pArgStart = pArgEnd = 0;
+	rc = GenStateCompileClassEx(pGen,0,&sName,&pArgStart,&pArgEnd);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* Emit the instantiation. OP_NEW expects the class name on the stack top
+	 * with the constructor arguments beneath it, so push the args first. */
+	nArg = 0;
+	if( pArgStart < pArgEnd ){
+		SyToken *pSavedIn = pGen->pIn;
+		SyToken *pSavedEnd = pGen->pEnd;
+		SyToken *pArgNext;
+		pGen->pIn = pArgStart;
+		pGen->pEnd = pArgEnd;
+		while( SXRET_OK == PH7_GetNextExpr(pGen->pIn,pGen->pEnd,&pArgNext) ){
+			if( pGen->pIn < pArgNext ){
+				rc = GenStateCompileArrayEntry(pGen,pGen->pIn,pArgNext,EXPR_FLAG_RDONLY_LOAD,0);
+				if( rc == SXERR_ABORT ){
+					pGen->pIn = pSavedIn;
+					pGen->pEnd = pSavedEnd;
+					return SXERR_ABORT;
+				}
+				nArg++;
+			}
+			pGen->pIn = &pArgNext[1];
+		}
+		pGen->pIn = pSavedIn;
+		pGen->pEnd = pSavedEnd;
+	}
+	/* Load the synthesized class name */
+	pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);
+	if( pObj == 0 ){
+		PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Fatal, PH7 engine is running out of memory");
+		return SXERR_ABORT;
+	}
+	PH7_MemObjInitFromString(pGen->pVm,pObj,&sName);
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);
+	/* Instantiate: pops the name + nArg arguments, runs __construct */
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_NEW,nArg,0,GenStateAttachStrictFlag(pGen,0),0);
+	return SXRET_OK;
 }
 /*
  * Compile a user-defined abstract class.
@@ -10853,6 +10955,12 @@ static sxi32 GenStateEmitExprCode(
 				}
 			}
 		}
+	}
+	if( iVmOp == PH7_OP_NEW && pNode->pLeft && pNode->pLeft->pOp == 0
+		&& pNode->pLeft->xCode == PH7_CompileAnnonClass ){
+		/* `new class {…}`: PH7_CompileAnnonClass already emitted the args, the
+		 * class-name constant, and OP_NEW. Suppress this redundant OP_NEW. */
+		iVmOp = 0;
 	}
 	if( iVmOp > 0 ){
 		if( iVmOp == PH7_OP_INCR || iVmOp == PH7_OP_DECR ){
