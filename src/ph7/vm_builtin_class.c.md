@@ -14,11 +14,11 @@ Coverage: 415/489 lines (84.87%)
 |     - |    4 | ` * SPDX-License-Identifier: BSD-3-Clause` |
 |     - |    5 | ` */` |
 |     - |    6 | `#include "ph7int.h"` |
-|    92 |    7 | `PH7_PRIVATE int vm_builtin_get_class(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    96 |    7 | `PH7_PRIVATE int vm_builtin_get_class(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     4 |    8 |  |
 |     - |    9 | `	ph7_class *pClass;` |
 |     - |   10 | `	SyString *pName;` |
-|    96 |   11 | `	if( nArg < 1 ){` |
+|   100 |   11 | `	if( nArg < 1 ){` |
 |     - |   12 | `		/* Check if we are inside a class */` |
 |   ! 0 |   13 | `		pClass = PH7_VmPeekTopClass(pCtx->pVm);` |
 |   ! 0 |   14 | `		if( pClass ){` |
@@ -31,17 +31,17 @@ Coverage: 415/489 lines (84.87%)
 |     - |   21 | `		}` |
 |   ! 0 |   22 | `	}else{` |
 |     - |   23 | `		/* Extract the target class */` |
-|    96 |   24 | `		pClass = PH7_VmExtractClassFromValue(pCtx->pVm,apArg[0]);` |
-|    96 |   25 | `		if( pClass ){` |
-|    93 |   26 | `			pName = &pClass->sName;` |
+|   100 |   24 | `		pClass = PH7_VmExtractClassFromValue(pCtx->pVm,apArg[0]);` |
+|   100 |   25 | `		if( pClass ){` |
+|    98 |   26 | `			pName = &pClass->sName;` |
 |     - |   27 | `			/* Return the class name */` |
-|    93 |   28 | `			ph7_result_string(pCtx,pName->zString,(int)pName->nByte);` |
-|    48 |   29 | `		}else{` |
+|    98 |   28 | `			ph7_result_string(pCtx,pName->zString,(int)pName->nByte);` |
+|    51 |   29 | `		}else{` |
 |     - |   30 | `			/* Not a class instance,return FALSE */` |
 |     3 |   31 | `			ph7_result_bool(pCtx,0);` |
 |     - |   32 | `		}` |
 |     - |   33 | `	}` |
-|    96 |   34 | `	return PH7_OK;` |
+|   100 |   34 | `	return PH7_OK;` |
 |     4 |   35 |  |
 |     - |   36 | `/*` |
 |     - |   37 | ` * string get_parent_class([object $object = NULL ] )` |
@@ -120,13 +120,13 @@ Coverage: 415/489 lines (84.87%)
 |     - |  110 | ` * The given value must be of type object [i.e: class instance] or` |
 |     - |  111 | ` * string which hold the class name.` |
 |     - |  112 | ` */` |
-|   190 |  113 | `PH7_PRIVATE ph7_class * PH7_VmExtractClassFromValue(ph7_vm *pVm,ph7_value *pArg)` |
+|   194 |  113 | `PH7_PRIVATE ph7_class * PH7_VmExtractClassFromValue(ph7_vm *pVm,ph7_value *pArg)` |
 |     4 |  114 |  |
-|   194 |  115 | `	ph7_class *pClass = 0;` |
-|   194 |  116 | `	if( ph7_value_is_object(pArg) ){` |
+|   198 |  115 | `	ph7_class *pClass = 0;` |
+|   198 |  116 | `	if( ph7_value_is_object(pArg) ){` |
 |     - |  117 | `		/* Class instance already loaded,no need to perform a lookup */` |
-|   128 |  118 | `		pClass = ((ph7_class_instance *)pArg->x.pOther)->pClass;` |
-|   131 |  119 | `	}else if( ph7_value_is_string(pArg) ){` |
+|   132 |  118 | `		pClass = ((ph7_class_instance *)pArg->x.pOther)->pClass;` |
+|   133 |  119 | `	}else if( ph7_value_is_string(pArg) ){` |
 |     - |  120 | `		const char *zClass;` |
 |     - |  121 | `		int nLen;` |
 |     - |  122 | `		/* Extract class name */` |
@@ -141,7 +141,7 @@ Coverage: 415/489 lines (84.87%)
 |    28 |  131 | `			}` |
 |    32 |  132 | `		}` |
 |    32 |  133 | `	}` |
-|   194 |  134 | `	return pClass;` |
+|   198 |  134 | `	return pClass;` |
 |     4 |  135 |  |
 |     - |  136 | `/*` |
 |     - |  137 | ` * bool property_exists(mixed $class,string $property)` |
@@ -225,30 +225,30 @@ Coverage: 415/489 lines (84.87%)
 |     - |  215 | ` *   TRUE if class_name is a defined class, FALSE otherwise.` |
 |     - |  216 | ` */` |
 |    62 |  217 | `PH7_PRIVATE int vm_builtin_class_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     5 |  218 |  |
-|    67 |  219 | `	int res = 0; /* Assume class does not exist */` |
-|    67 |  220 | `	if( nArg > 0 ){` |
-|    67 |  221 | `		SyHashEntry *pEntry = 0;` |
+|     4 |  218 |  |
+|    66 |  219 | `	int res = 0; /* Assume class does not exist */` |
+|    66 |  220 | `	if( nArg > 0 ){` |
+|    66 |  221 | `		SyHashEntry *pEntry = 0;` |
 |     - |  222 | `		const char *zName;` |
 |     - |  223 | `		int nLen;` |
-|    67 |  224 | `		int iAutoload = 1; /* Default: autoload enabled */` |
+|    66 |  224 | `		int iAutoload = 1; /* Default: autoload enabled */` |
 |     - |  225 | `		/* Extract given name */` |
-|    67 |  226 | `		zName = ph7_value_to_string(apArg[0],&nLen);` |
-|    67 |  227 | `		if( nArg >= 2 ){` |
+|    66 |  226 | `		zName = ph7_value_to_string(apArg[0],&nLen);` |
+|    66 |  227 | `		if( nArg >= 2 ){` |
 |     6 |  228 | `			iAutoload = ph7_value_to_bool(apArg[1]);` |
 |     2 |  229 | `		}` |
-|    67 |  230 | `		if( nLen > 0 ){` |
+|    66 |  230 | `		if( nLen > 0 ){` |
 |     - |  231 | `			/* Perform a hash lookup first */` |
-|    67 |  232 | `			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);` |
+|    66 |  232 | `			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);` |
 |    31 |  233 | `		}` |
-|    67 |  234 | `		if( pEntry == 0 && nLen > 0 && iAutoload ){` |
+|    66 |  234 | `		if( pEntry == 0 && nLen > 0 && iAutoload ){` |
 |     - |  235 | `			/* Try autoload, then re-check */` |
-|    21 |  236 | `			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,(sxu32)nLen,FALSE);` |
-|    21 |  237 | `			if( pClass ){` |
+|    20 |  236 | `			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,(sxu32)nLen,FALSE);` |
+|    20 |  237 | `			if( pClass ){` |
 |     6 |  238 | `				pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);` |
 |     2 |  239 | `			}` |
 |     8 |  240 | `		}` |
-|    67 |  241 | `		if( pEntry ){` |
+|    66 |  241 | `		if( pEntry ){` |
 |     - |  242 | `			/* Walk the collision chain: return TRUE only for concrete or abstract classes,` |
 |     - |  243 | `			 * not for interfaces or traits (matching PHP behavior). */` |
 |    52 |  244 | `			ph7_class *pClass = (ph7_class *)pEntry->pUserData;` |
@@ -261,9 +261,9 @@ Coverage: 415/489 lines (84.87%)
 |   ! 0 |  251 | `			}` |
 |    24 |  252 | `		}` |
 |    31 |  253 | `	}` |
-|    67 |  254 | `	ph7_result_bool(pCtx,res);` |
-|    67 |  255 | `	return PH7_OK;` |
-|     5 |  256 |  |
+|    66 |  254 | `	ph7_result_bool(pCtx,res);` |
+|    66 |  255 | `	return PH7_OK;` |
+|     4 |  256 |  |
 |     - |  257 | `/*` |
 |     - |  258 | ` * bool interface_exists(string $class_name [, bool $autoload = true ] )` |
 |     - |  259 | ` *   Checks if the interface has been defined.` |
@@ -515,7 +515,7 @@ Coverage: 415/489 lines (84.87%)
 |     - |  505 | ` * in the pAttrName parameter is visible and thus can be extracted` |
 |     - |  506 | ` * from the current scope.Otherwise FALSE is returned.` |
 |     - |  507 | ` */` |
-|  8132 |  508 | `PH7_PRIVATE int PH7_VmClassMemberAccess(` |
+|  8276 |  508 | `PH7_PRIVATE int PH7_VmClassMemberAccess(` |
 |     - |  509 | `	ph7_vm *pVm,               /* Target VM */` |
 |     - |  510 | `	ph7_class *pClass,         /* Target Class */` |
 |     - |  511 | `	const SyString *pAttrName, /* Attribute name */` |
@@ -523,21 +523,21 @@ Coverage: 415/489 lines (84.87%)
 |     - |  513 | `	int bLog                   /* TRUE to log forbidden access. */` |
 |     - |  514 | `	)` |
 |     5 |  515 |  |
-|  8137 |  516 | `	if( iProtection != PH7_CLASS_PROT_PUBLIC ){` |
-|  6479 |  517 | `		VmFrame *pFrame = pVm->pFrame;` |
+|  8281 |  516 | `	if( iProtection != PH7_CLASS_PROT_PUBLIC ){` |
+|  6623 |  517 | `		VmFrame *pFrame = pVm->pFrame;` |
 |     - |  518 | `		ph7_vm_func *pVmFunc;` |
-|  6479 |  519 | `		while( pFrame->pParent && (pFrame->iFlags & (VM_FRAME_EXCEPTION\|VM_FRAME_CATCH) ) ){` |
+|  6623 |  519 | `		while( pFrame->pParent && (pFrame->iFlags & (VM_FRAME_EXCEPTION\|VM_FRAME_CATCH) ) ){` |
 |     - |  520 | `			/* Safely ignore the exception frame */` |
 |   ! 0 |  521 | `			pFrame = pFrame->pParent;` |
 |   ! 0 |  522 | `		}` |
-|  6479 |  523 | `		pVmFunc = (ph7_vm_func *)pFrame->pUserData;` |
-|  6479 |  524 | `		if( pVmFunc == 0 \|\| (pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) == 0 ){` |
+|  6623 |  523 | `		pVmFunc = (ph7_vm_func *)pFrame->pUserData;` |
+|  6623 |  524 | `		if( pVmFunc == 0 \|\| (pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) == 0 ){` |
 |    12 |  525 | `			goto dis; /* Access is forbidden */` |
 |     - |  526 | `		}` |
-|  6469 |  527 | `		if( iProtection == PH7_CLASS_PROT_PRIVATE ){` |
+|  6613 |  527 | `		if( iProtection == PH7_CLASS_PROT_PRIVATE ){` |
 |     - |  528 | `			/* Must be the same instance or a trait used by the class */` |
-|   377 |  529 | `			ph7_class *pCaller = (ph7_class *)pVmFunc->pUserData;` |
-|   377 |  530 | `			if( pCaller != pClass ){` |
+|   477 |  529 | `			ph7_class *pCaller = (ph7_class *)pVmFunc->pUserData;` |
+|   477 |  530 | `			if( pCaller != pClass ){` |
 |     - |  531 | `				/* Check if the caller is a trait used by pClass */` |
 |     - |  532 | `				ph7_class **apTrait;` |
 |     - |  533 | `				sxu32 nTrait,k;` |
@@ -554,16 +554,16 @@ Coverage: 415/489 lines (84.87%)
 |     3 |  544 | `					goto dis; /* Access is forbidden */` |
 |     - |  545 | `				}` |
 |     4 |  546 | `			}` |
-|   190 |  547 | `		}else{` |
+|   240 |  547 | `		}else{` |
 |     - |  548 | `			/* Protected */` |
-|  6097 |  549 | `			ph7_class *pBase = (ph7_class *)pVmFunc->pUserData;` |
+|  6141 |  549 | `			ph7_class *pBase = (ph7_class *)pVmFunc->pUserData;` |
 |     - |  550 | `			/* Must be in the same class hierarchy */` |
-|  6097 |  551 | `			if( !PH7_VmInstanceOf(pClass,pBase) && !PH7_VmInstanceOf(pBase,pClass) ){` |
+|  6141 |  551 | `			if( !PH7_VmInstanceOf(pClass,pBase) && !PH7_VmInstanceOf(pBase,pClass) ){` |
 |   ! 0 |  552 | `				goto dis; /* Access is forbidden */` |
 |     - |  553 | `			}` |
 |     - |  554 | `		}` |
-|  3231 |  555 | `	}` |
-|  8125 |  556 | `	return 1; /* Access is granted */` |
+|  3303 |  555 | `	}` |
+|  8269 |  556 | `	return 1; /* Access is granted */` |
 |     6 |  557 | `dis:` |
 |    14 |  558 | `	if( bLog ){` |
 |   ! 0 |  559 | `		VmErrorFormat(&(*pVm),PH7_CTX_ERR,` |
@@ -571,7 +571,7 @@ Coverage: 415/489 lines (84.87%)
 |   ! 0 |  561 | `			&pClass->sName,pAttrName);` |
 |   ! 0 |  562 | `	}` |
 |    14 |  563 | `	return 0; /* Access is forbidden */` |
-|  4071 |  564 |  |
+|  4143 |  564 |  |
 |     - |  565 | `/*` |
 |     - |  566 | ` * array get_class_vars(string/object $class_name)` |
 |     - |  567 | ` *   Get the default properties of the class` |
@@ -719,52 +719,52 @@ Coverage: 415/489 lines (84.87%)
 |     - |  709 | ` * This function returns TRUE if the given class is an implemented` |
 |     - |  710 | ` * interface.Otherwise FALSE is returned.` |
 |     - |  711 | ` */` |
-|  7070 |  712 | `static int VmQueryInterfaceSet(ph7_class *pClass,SySet *pSet)` |
+|  7128 |  712 | `static int VmQueryInterfaceSet(ph7_class *pClass,SySet *pSet)` |
 |     5 |  713 |  |
 |     - |  714 | `	ph7_class **apInterface;` |
 |     - |  715 | `	sxu32 n;` |
-|  7075 |  716 | `	if( SySetUsed(pSet) < 1 ){` |
+|  7133 |  716 | `	if( SySetUsed(pSet) < 1 ){` |
 |     - |  717 | `		/* Empty interface container */` |
 |   137 |  718 | `		return FALSE;` |
 |     - |  719 | `	}` |
 |     - |  720 | `	/* Point to the set of implemented interfaces */` |
-|  6943 |  721 | `	apInterface = (ph7_class **)SySetBasePtr(pSet);` |
+|  7001 |  721 | `	apInterface = (ph7_class **)SySetBasePtr(pSet);` |
 |     - |  722 | `	/* Perform the lookup, walking each interface's parent chain so that` |
 |     - |  723 | `	 * Iterator extends Traversable (and similar) is recognized. */` |
-| 13393 |  724 | `	for( n = 0 ; n < SySetUsed(pSet) ; n++ ){` |
-|  7027 |  725 | `		ph7_class *pIface = apInterface[n];` |
-|  7027 |  726 | `		int iDepth = 0;` |
-| 13539 |  727 | `		while( pIface && iDepth <= PH7_INTERFACE_WALK_MAX_DEPTH ){` |
-|  7089 |  728 | `			if( pIface == pClass ){` |
-|   577 |  729 | `				return TRUE;` |
+| 13461 |  724 | `	for( n = 0 ; n < SySetUsed(pSet) ; n++ ){` |
+|  7085 |  725 | `		ph7_class *pIface = apInterface[n];` |
+|  7085 |  726 | `		int iDepth = 0;` |
+| 13617 |  727 | `		while( pIface && iDepth <= PH7_INTERFACE_WALK_MAX_DEPTH ){` |
+|  7157 |  728 | `			if( pIface == pClass ){` |
+|   625 |  729 | `				return TRUE;` |
 |     - |  730 | `			}` |
-|  6517 |  731 | `			pIface = pIface->pBase;` |
-|  6517 |  732 | `			iDepth++;` |
+|  6537 |  731 | `			pIface = pIface->pBase;` |
+|  6537 |  732 | `			iDepth++;` |
 |     5 |  733 | `		}` |
-|  3230 |  734 | `	}` |
-|  6371 |  735 | `	return FALSE;` |
-|  3540 |  736 |  |
+|  3235 |  734 | `	}` |
+|  6381 |  735 | `	return FALSE;` |
+|  3569 |  736 |  |
 |     - |  737 | `/*` |
 |     - |  738 | ` * This function returns TRUE if the given class (first argument)` |
 |     - |  739 | ` * is an instance of the main class (second argument).` |
 |     - |  740 | ` * Otherwise FALSE is returned.` |
 |     - |  741 | ` */` |
-|  7306 |  742 | `PH7_PRIVATE int PH7_VmInstanceOf(ph7_class *pThis,ph7_class *pClass)` |
+|  7418 |  742 | `PH7_PRIVATE int PH7_VmInstanceOf(ph7_class *pThis,ph7_class *pClass)` |
 |     5 |  743 |  |
 |     - |  744 | `	ph7_class *pParent;` |
 |     - |  745 | `	sxi32 rc;` |
-|  7311 |  746 | `	if( pThis == pClass ){` |
+|  7423 |  746 | `	if( pThis == pClass ){` |
 |     - |  747 | `		/* Instance of the same class */` |
-|  1971 |  748 | `		return TRUE;` |
+|  2025 |  748 | `		return TRUE;` |
 |     - |  749 | `	}` |
 |     - |  750 | `	/* Check implemented interfaces */` |
-|  5345 |  751 | `	rc = VmQueryInterfaceSet(pClass,&pThis->aInterface);` |
-|  5345 |  752 | `	if( rc ){` |
-|   483 |  753 | `		return TRUE;` |
+|  5403 |  751 | `	rc = VmQueryInterfaceSet(pClass,&pThis->aInterface);` |
+|  5403 |  752 | `	if( rc ){` |
+|   531 |  753 | `		return TRUE;` |
 |     - |  754 | `	}` |
 |     - |  755 | `	/* Check parent classes */` |
-|  4867 |  756 | `	pParent = pThis->pBase;` |
-|  6503 |  757 | `	while( pParent ){` |
+|  4877 |  756 | `	pParent = pThis->pBase;` |
+|  6513 |  757 | `	while( pParent ){` |
 |  6401 |  758 | `		if( pParent == pClass ){` |
 |     - |  759 | `			/* Same instance */` |
 |  4671 |  760 | `			return TRUE;` |
@@ -772,14 +772,14 @@ Coverage: 415/489 lines (84.87%)
 |     - |  762 | `		/* Check the implemented interfaces */` |
 |  1735 |  763 | `		rc = VmQueryInterfaceSet(pClass,&pParent->aInterface);` |
 |  1735 |  764 | `		if( rc ){` |
-|    99 |  765 | `			return TRUE;` |
+|    98 |  765 | `			return TRUE;` |
 |     - |  766 | `		}` |
 |     - |  767 | `		/* Point to the parent class */` |
 |  1641 |  768 | `		pParent = pParent->pBase;` |
 |     5 |  769 | `	}` |
 |     - |  770 | `	/* Not an instance of the the given class */` |
-|   107 |  771 | `	return FALSE;` |
-|  3658 |  772 |  |
+|   117 |  771 | `	return FALSE;` |
+|  3714 |  772 |  |
 |     - |  773 | `/*` |
 |     - |  774 | ` * This function returns TRUE if the given class (first argument)` |
 |     - |  775 | ` * is a subclass of the main class (second argument).` |
