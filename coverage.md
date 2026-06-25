@@ -4,9 +4,9 @@
 | src/ph7/builtin.c              | 88.99%   | 3629/4078   |
 | src/ph7/builtin_date.c         | 65.67%   | 459/699     |
 | src/ph7/builtin_math.c         | 96.79%   | 452/467     |
-| src/ph7/compile.c              | 80.29%   | 5535/6894   |
+| src/ph7/compile.c              | 80.29%   | 5536/6895   |
 | src/ph7/constant.c             | 98.89%   | 1070/1082   |
-| src/ph7/hashmap.c              | 87.19%   | 3336/3826   |
+| src/ph7/hashmap.c              | 87.17%   | 3335/3826   |
 | src/ph7/lex.c                  | 93.22%   | 756/811     |
 | src/ph7/memobj.c               | 88.69%   | 706/796     |
 | src/ph7/net.c                  | 50.48%   | 53/105      |
@@ -16,14 +16,14 @@
 | src/ph7/vfs_unix.c             | 88.06%   | 376/427     |
 | src/ph7/vfs_win.c              | 75.43%   | 485/643     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
-| src/ph7/vm.c                   | 79.17%   | 7276/9190   |
+| src/ph7/vm.c                   | 79.25%   | 7307/9220   |
 | src/ph7/vm_builtin_class.c     | 84.87%   | 415/489     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
 | src/ph7/vm_builtin_ob.c        | 76.21%   | 157/206     |
 | src/ph7/vm_http.c              | 68.02%   | 302/444     |
 | src/ph7/vm_http_response.c     | 44.71%   | 114/255     |
 | src/ph7/vm_json.c              | 73.97%   | 378/511     |
-| src/ph7/vm_pcre.c              | 61.58%   | 516/838     |
+| src/ph7/vm_pcre.c              | 62.65%   | 525/838     |
 | src/ph7/vm_serialize.c         | 96.51%   | 415/430     |
 | src/ph7/vm_xml.c               | 67.82%   | 392/578     |
 | src/phl/phl.c                  | 73.64%   | 176/239     |
@@ -44,6 +44,6 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 80.02%   | 34790/43475 |
-| Functions                      | 95.89%   | 1658/1729   |
+| Lines                          | 80.06%   | 34830/43506 |
+| Functions                      | 95.90%   | 1661/1732   |
 
