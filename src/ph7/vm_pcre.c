@@ -250,18 +250,20 @@ static pcre2_code *PcreCompile(
 /*
  * Write a value back to the caller's variable through the stack slot's nIdx.
  *
- * For a plain positional variable argument the call compiler auto-vivifies
- * known by-reference out-params (see GenStateByRefBuiltinMask in compile.c),
- * so even a bare undefined variable (e.g. preg_match($p,$s,$m) with $m never
- * assigned) arrives with a real nIdx and is written back here, matching PHP's
- * reference semantics.
+ * For a positional out-param argument the call compiler auto-vivifies known
+ * by-reference out-params (see GenStateByRefBuiltinMask in compile.c), so a
+ * bare undefined variable (e.g. preg_match($p,$s,$m) with $m never assigned),
+ * an array subscript (preg_match($p,$s,$a['k'])), and a declared/untyped
+ * property (preg_match($p,$s,$o->prop)) all arrive with a real nIdx and are
+ * written back here, matching PHP's reference semantics.
  *
  * nIdx stays SXU32_HIGH and the write-back to the caller is skipped (the value
- * still lands in the local stack slot) when the argument is not a plain lvalue
- * variable: a literal, a function-call result, an array/property subscript
- * (element vivification is not wired), or any variable in a call that also uses
- * named or spread arguments (compile-time positions no longer map to the
- * runtime arg slots, so the compiler conservatively does not vivify).
+ * still lands in the local stack slot) when the argument cannot expose a stable
+ * memobj slot: a literal, a function-call result, a subscript of a non-lvalue
+ * parent (foo()['k']), or any variable in a call that also uses named or spread
+ * arguments (compile-time positions no longer map to the runtime arg slots, so
+ * the compiler conservatively does not vivify). An uninitialized typed property
+ * is also not wired (it throws before the write) -- see PLAN.md deferrals.
  */
 static void PcreStoreByRef(ph7_vm *pVm, ph7_value *pArg, ph7_value *pNewVal)
 {
