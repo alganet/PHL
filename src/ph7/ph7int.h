@@ -728,6 +728,8 @@ struct ph7_class_instance
 	SyHash hAttr;       /* Hashtable of active class members */
 	sxi32 iRef;         /* Reference count */
 	sxi32 iFlags;       /* Control flags */
+	sxu32 nObjId;       /* Per-instance monotonic handle id (from pVm->nNextObjId,
+	                     * never reused). Drives spl_object_id/hash + var_dump #N. */
 };
 /*
  * A single instruction of the virtual machine has an opcode
@@ -913,6 +915,8 @@ struct ph7_vm
 	int closure_cnt;           /* Loaded closures counter */
 	int json_rc;               /* JSON return status [refer to json_encode()/json_decode()]*/
 	sxu32 unique_id;           /* Random number used to generate unique ID [refer to uniqid() for more info]*/
+	sxu32 nNextObjId;          /* Next object handle id to hand out (monotonic; reset to 1 per exec
+	                            * so a reused VM looks like a fresh process). See ph7_class_instance.nObjId */
 	ProcErrLog xErrLog;        /* error_log() consumer [refer to PH7_VM_CONFIG_ERR_LOG_HANDLER] */
 	sxu32 nOutputLen;          /* Total number of generated output */
 	ph7_output_consumer sVmConsumer; /* Registered output consumer callback */
@@ -1611,6 +1615,8 @@ PH7_PRIVATE int vm_builtin_get_class_methods(ph7_context *pCtx,int nArg,ph7_valu
 PH7_PRIVATE int vm_builtin_get_class_vars(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_get_object_vars(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_is_a(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_spl_object_id(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_spl_object_hash(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_is_subclass_of(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_call_user_func(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_value **apArg);
@@ -1754,6 +1760,7 @@ PH7_PRIVATE void PH7_HashmapExtractNodeValue(ph7_hashmap_node *pNode,ph7_value *
 PH7_PRIVATE void PH7_HashmapExtractNodeKey(ph7_hashmap_node *pNode,ph7_value *pKey);
 PH7_PRIVATE void PH7_RegisterHashmapFunctions(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_HashmapDump(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,int nTab,int nDepth);
+PH7_PRIVATE sxi32 PH7_HashmapDumpEntries(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,int nTab,int nDepth);
 PH7_PRIVATE sxi32 PH7_HashmapWalk(ph7_hashmap *pMap,int (*xWalk)(ph7_value *,ph7_value *,void *),void *pUserData);
 PH7_PRIVATE int PH7_HashmapIsList(ph7_hashmap *pMap);
 #ifndef PH7_DISABLE_DISK_IO

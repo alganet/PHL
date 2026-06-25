@@ -827,6 +827,43 @@ PH7_PRIVATE int vm_builtin_is_a(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
+ * int spl_object_id(object $object)
+ *  Return the integer object handle (per-instance id) of the given object.
+ * PHL note: PHP 8 throws a TypeError when passed a non-object; PHL returns NULL
+ * to stay consistent with the engine's graceful-degradation convention.
+ */
+PH7_PRIVATE int vm_builtin_spl_object_id(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis;
+	if( nArg < 1 || !ph7_value_is_object(apArg[0]) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pThis = (ph7_class_instance *)apArg[0]->x.pOther;
+	ph7_result_int64(pCtx,(ph7_int64)pThis->nObjId);
+	return PH7_OK;
+}
+/*
+ * string spl_object_hash(object $object)
+ *  Return a 32-char hex identifier, unique and stable per live object.
+ * PHL note: PHP derives this from the internal handle plus a per-process key, so
+ * the exact value is NOT reproducible. PHL returns the zero-padded object id,
+ * which preserves the only guaranteed properties: unique per live object, stable
+ * across calls, and distinct objects -> distinct strings. A non-object returns
+ * NULL (PHP 8 throws a TypeError; see spl_object_id above).
+ */
+PH7_PRIVATE int vm_builtin_spl_object_hash(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis;
+	if( nArg < 1 || !ph7_value_is_object(apArg[0]) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pThis = (ph7_class_instance *)apArg[0]->x.pOther;
+	ph7_result_string_format(pCtx,"%08x%08x%08x%08x",0,0,0,(unsigned int)pThis->nObjId);
+	return PH7_OK;
+}
+/*
  * bool is_subclass_of(object/string $object,object/string $class_name)
  *   Checks if the object has this class as one of its parents.
  * Parameters
