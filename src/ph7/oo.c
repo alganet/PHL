@@ -644,6 +644,8 @@ static ph7_class_instance * NewClassInstance(ph7_vm *pVm,ph7_class *pClass)
 	pThis->iRef = 1;
 	pThis->pVm = pVm;
 	pThis->pClass = pClass;
+	/* Assign a fresh monotonic object handle id (clones get their own, like PHP). */
+	pThis->nObjId = pVm->nNextObjId++;
 	SyHashInit(&pThis->hAttr,&pVm->sAllocator,0,0);
 	return pThis;
 }
@@ -1033,6 +1035,26 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceCmp(ph7_class_instance *pLeft,ph7_class_insta
  * This function SXRET_OK on success. Any other return value including
  * SXERR_LIMIT(infinite recursion) indicates failure.
  */
+/*
+ * Emit a class-instance dump header plus its trailing newline. For var_dump
+ * (ShowType) it completes the "object(" prefix the caller already emitted as
+ *   ClassName)#<id> (<count>) {
+ * for print_r it emits the legacy PHL  Object(ClassName) {  (count/id unused).
+ */
+static void DumpClassInstanceHeader(SyBlob *pOut,ph7_class *pClass,sxu32 nObjId,int ShowType,sxu32 nCount)
+{
+	if( !ShowType ){
+		SyBlobAppend(&(*pOut),"Object(",sizeof("Object(")-1);
+		SyBlobFormat(&(*pOut),"%z) {",&pClass->sName);
+	}else{
+		SyBlobFormat(&(*pOut),"%z)#%u (%u) {",&pClass->sName,nObjId,nCount);
+	}
+#ifdef __WINNT__
+	SyBlobAppend(&(*pOut),"\r\n",sizeof("\r\n")-1);
+#else
+	SyBlobAppend(&(*pOut),"\n",sizeof(char));
+#endif
+}
 PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,int ShowType,int nTab,int nDepth)
 {
 	SyHashEntry *pEntry;
@@ -1049,16 +1071,49 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 		return SXERR_LIMIT;
 	}
 	rc = SXRET_OK;
-	if( !ShowType ){
-		SyBlobAppend(&(*pOut),"Object(",sizeof("Object(")-1);
+	{
+		/* Both var_dump and print_r consult __debugInfo() (PHP behavior);
+		 * var_export uses a separate renderer and never reaches here. When the
+		 * method is present and returns an array, render that array's entries as
+		 * the object body, with the header showing the debug array's count. The
+		 * nDepth guard above protects against a __debugInfo returning the object
+		 * itself. */
+		ph7_class_method *pDbg = PH7_ClassExtractMethod(pThis->pClass,"__debugInfo",sizeof("__debugInfo")-1);
+		if( pDbg ){
+			ph7_value sResult;
+			PH7_MemObjInit(pThis->pVm,&sResult);
+			PH7_VmCallClassMethod(pThis->pVm,pThis,pDbg,&sResult,0,0);
+			if( sResult.iFlags & MEMOBJ_HASHMAP ){
+				ph7_hashmap *pMap = (ph7_hashmap *)sResult.x.pOther;
+				/* Header count is the debug array's entry count. */
+				DumpClassInstanceHeader(&(*pOut),pThis->pClass,pThis->nObjId,ShowType,pMap->nEntry);
+				rc = PH7_HashmapDumpEntries(&(*pOut),pMap,ShowType,nTab,nDepth);
+				for( i = 0 ; i < nTab ; i++ ){
+					SyBlobAppend(&(*pOut)," ",sizeof(char));
+				}
+				SyBlobAppend(&(*pOut),"}",sizeof(char));
+				PH7_MemObjRelease(&sResult);
+				return rc;
+			}
+			/* Non-array return: behave as if __debugInfo were absent. */
+			PH7_MemObjRelease(&sResult);
+		}
 	}
-	/* Append class name */
-	SyBlobFormat(&(*pOut),"%z) {",&pThis->pClass->sName);
-#ifdef __WINNT__
-	SyBlobAppend(&(*pOut),"\r\n",sizeof("\r\n")-1);
-#else
-	SyBlobAppend(&(*pOut),"\n",sizeof(char));
-#endif
+	{
+		/* var_dump's header needs the property count up front, so pre-count the
+		 * non-static/non-constant attributes (matching the dump loop below). */
+		sxu32 nProp = 0;
+		if( ShowType ){
+			SyHashResetLoopCursor(&pThis->hAttr);
+			while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0){
+				VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
+				if((pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC)) == 0 ){
+					nProp++;
+				}
+			}
+		}
+		DumpClassInstanceHeader(&(*pOut),pThis->pClass,pThis->nObjId,ShowType,nProp);
+	}
 	/* Dump object attributes */
 	SyHashResetLoopCursor(&pThis->hAttr);
 	while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0){

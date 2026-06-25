@@ -7645,36 +7645,21 @@ PH7_PRIVATE void PH7_RegisterHashmapFunctions(ph7_vm *pVm)
  * This function SXRET_OK on success. Any other return value including
  * SXERR_LIMIT(infinite recursion) indicates failure.
  */
-PH7_PRIVATE sxi32 PH7_HashmapDump(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,int nTab,int nDepth)
+/*
+ * Dump the entries of a hashmap [i.e: the key/value lines between the opening
+ * '{' and the closing '}'] in the var_dump/print_r style. Factored out of
+ * PH7_HashmapDump so the var_dump object renderer can reuse it for a
+ * __debugInfo() array body (which carries an object header, not "array(N)").
+ * Returns SXERR_LIMIT if a nested value hit the depth cap.
+ */
+PH7_PRIVATE sxi32 PH7_HashmapDumpEntries(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,int nTab,int nDepth)
 {
-	ph7_hashmap_node *pEntry;
+	ph7_hashmap_node *pEntry = pMap->pFirst;
 	ph7_value *pObj;
 	sxu32 n = 0;
 	int isRef;
-	sxi32 rc;
+	sxi32 rc = SXRET_OK;
 	int i;
-	if( nDepth > 31 ){
-		static const char zInfinite[] = "Nesting limit reached: Infinite recursion?";
-		/* Nesting limit reached */
-		SyBlobAppend(&(*pOut),zInfinite,sizeof(zInfinite)-1);
-		if( ShowType ){
-			SyBlobAppend(&(*pOut),")",sizeof(char));
-		}
-		return SXERR_LIMIT;
-	}
-	/* Point to the first inserted entry */
-	pEntry = pMap->pFirst;
-	rc = SXRET_OK;
-	if( !ShowType ){
-		SyBlobAppend(&(*pOut),"Array(",sizeof("Array(")-1);
-	}
-	/* Total entries */
-	SyBlobFormat(&(*pOut),"%u) {",pMap->nEntry);
-#ifdef __WINNT__
-	SyBlobAppend(&(*pOut),"\r\n",sizeof("\r\n")-1);
-#else
-	SyBlobAppend(&(*pOut),"\n",sizeof(char));
-#endif
 	for(;;){
 		if( n >= pMap->nEntry ){
 			break;
@@ -7711,6 +7696,32 @@ PH7_PRIVATE sxi32 PH7_HashmapDump(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,in
 		n++;
 		pEntry = pEntry->pPrev; /* Reverse link */
 	}
+	return rc;
+}
+PH7_PRIVATE sxi32 PH7_HashmapDump(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,int nTab,int nDepth)
+{
+	sxi32 rc;
+	int i;
+	if( nDepth > 31 ){
+		static const char zInfinite[] = "Nesting limit reached: Infinite recursion?";
+		/* Nesting limit reached */
+		SyBlobAppend(&(*pOut),zInfinite,sizeof(zInfinite)-1);
+		if( ShowType ){
+			SyBlobAppend(&(*pOut),")",sizeof(char));
+		}
+		return SXERR_LIMIT;
+	}
+	if( !ShowType ){
+		SyBlobAppend(&(*pOut),"Array(",sizeof("Array(")-1);
+	}
+	/* Total entries */
+	SyBlobFormat(&(*pOut),"%u) {",pMap->nEntry);
+#ifdef __WINNT__
+	SyBlobAppend(&(*pOut),"\r\n",sizeof("\r\n")-1);
+#else
+	SyBlobAppend(&(*pOut),"\n",sizeof(char));
+#endif
+	rc = PH7_HashmapDumpEntries(&(*pOut),pMap,ShowType,nTab,nDepth);
 	for( i = 0 ; i < nTab ; i++ ){
 		SyBlobAppend(&(*pOut)," ",sizeof(char));
 	}

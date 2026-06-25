@@ -1968,6 +1968,8 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	}
 	/* Random number betwwen 0 and 1023 used to generate unique ID */
 	pVm->unique_id = PH7_VmRandomNum(&(*pVm)) & 1023;
+	/* First object handle id handed out is 1 (matches PHP's first userland object #1) */
+	pVm->nNextObjId = 1;
 	/* VM is ready for bytecode execution */
 	return SXRET_OK;
 }
@@ -2243,6 +2245,9 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	VmReinitMemObj(&(*pVm),&pVm->sCoalesceKey);
 	/* Re-roll the uniqid() seed, matching PH7_VmMakeReady(). */
 	pVm->unique_id = PH7_VmRandomNum(&(*pVm)) & 1023;
+	/* Restart object handle ids per exec so a reused VM (e.g. the -S server)
+	 * looks like a fresh process, matching PH7_VmMakeReady(). */
+	pVm->nNextObjId = 1;
 	/* Set the ready flag */
 	pVm->nMagic = PH7_VM_RUN;
 	return SXRET_OK;
@@ -16851,6 +16856,9 @@ static const ph7_builtin_func aVmFunc[] = {
 	{ "get_object_vars",         vm_builtin_get_object_vars   },
 	{ "is_subclass_of",          vm_builtin_is_subclass_of    },
 	{ "is_a", vm_builtin_is_a },
+	   /* SPL object identity */
+	{ "spl_object_id",   vm_builtin_spl_object_id   },
+	{ "spl_object_hash", vm_builtin_spl_object_hash },
 	   /* SPL Autoloading */
 	{ "spl_autoload_register",   vm_builtin_spl_autoload_register   },
 	{ "spl_autoload_unregister", vm_builtin_spl_autoload_unregister },

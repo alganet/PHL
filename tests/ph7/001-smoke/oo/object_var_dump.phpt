@@ -19,7 +19,7 @@ $output = ob_get_clean();
 echo $output;
 ?>
 --EXPECTF--
-object(TestClass) {
+object(TestClass)#%d (2) {
  ['public_attr'] =>
   string(4) "test"
  ['private_attr'] =>
