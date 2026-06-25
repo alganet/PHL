@@ -1413,7 +1413,7 @@ static int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_value 
 	"  public function rewind(){ return __gen_rewind($this); }"\
 	"  public function valid(){ return __gen_valid($this); }"\
 	"  public function send($value = null){ return __gen_send($this,$value); }"\
-	"  public function throw($exception){ return __gen_throw($this,$exception); }"\
+	"  public function throw(Throwable $exception){ return __gen_throw($this,$exception); }"\
 	"  public function getReturn(){ return __gen_getReturn($this); }"\
 	"  public function __destruct(){ __gen_destruct($this); }"\
 	"}"\
@@ -11928,49 +11928,72 @@ static int vm_builtin_Generator_send(ph7_context *pCtx, int nArg, ph7_value **ap
 /*
  * Generator::throw($exception) — throw an exception into the generator.
  *
- * TODO: Full PHP semantics require injecting the exception at the yield
- * point so the generator's own try/catch can handle it. This needs a
- * pending-exception field on ph7_exec_ctx and a check at the start of
- * VmByteCodeExec resume. For now we close the generator and propagate
- * the exception to the caller.
+ * Full PHP semantics inject the exception at the suspended yield point so the
+ * generator's OWN try/catch can handle it and execution resumes. That requires
+ * keeping the generator's exception (try) frame — and thus its resume landing
+ * pad — live across suspend/resume, which the current generator frame model
+ * discards on resume (it saves only the body frame). Until that frame-model
+ * rework lands (see PLAN.md), we close the generator and propagate the ACTUAL
+ * exception object (preserving its class/type, message and trace) to the
+ * throw() caller — byte-for-byte correct whenever the generator would not have
+ * caught the exception itself (incl. a finished generator), and the documented
+ * limitation only when the generator has a try/catch around the yield.
+ *
+ * PHL does not enforce the Throwable parameter hint (interface/class hints are
+ * not checked on call), so the Throwable validation — and its PHP TypeError —
+ * are done here.
  */
 static int vm_builtin_Generator_throw(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ph7_generator *pGen;
-	const char *zMsg;
-	int nLen;
+	ph7_class_instance *pInj;
+	ph7_class *pThrowable;
+	VmFrame *pFrame;
+	sxi32 rc;
 	if( nArg < 2 ) return PH7_OK;
+	/* Argument #1 must be a Throwable; otherwise PHP raises a TypeError naming
+	 * the given type (class name for objects, "null"/"string"/... for scalars). */
+	pThrowable = PH7_VmExtractClass(pCtx->pVm, "Throwable", sizeof("Throwable")-1, 0, 0);
+	if( (apArg[1]->iFlags & MEMOBJ_OBJ) == 0
+	 || (pThrowable && !PH7_VmInstanceOf(((ph7_class_instance *)apArg[1]->x.pOther)->pClass, pThrowable)) ){
+		char zCls[128];
+		const char *zGiven = (apArg[1]->iFlags & MEMOBJ_OBJ)
+			? VmFormatValueClassName(apArg[1], zCls, sizeof(zCls))
+			: ((apArg[1]->iFlags & MEMOBJ_NULL) ? "null" : ph7_type_name(apArg[1]));
+		return PH7_VmThrowException(pCtx, "TypeError",
+			"Generator::throw(): Argument #1 ($exception) must be of type Throwable, %s given", zGiven);
+	}
 	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);
 	if( pGen == 0 ) return PH7_OK;
-	if( pGen->pCtx->iState == PH7_CTX_STATE_COMPLETED ||
-		pGen->pCtx->iState == PH7_CTX_STATE_CLOSED ){
+	/* PHP forbids resuming/throwing into a generator that is currently executing. */
+	if( pGen->pCtx->iState == PH7_CTX_STATE_RUNNING ){
 		return PH7_VmThrowException(pCtx, "Error",
-			"Cannot throw into a closed generator");
+			"Cannot resume an already running generator");
 	}
-	/* Close the generator. Re-throw the exception properly via
-	 * PH7_VmThrowException so that VM_FRAME_THROW is set and the
-	 * exception dispatch path works correctly. Extract the message
-	 * from the passed exception object if possible. */
-	pGen->pCtx->iState = PH7_CTX_STATE_CLOSED;
-	zMsg = "Unknown exception thrown into generator";
-	nLen = 0;
-	if( apArg[1]->iFlags & MEMOBJ_OBJ ){
-		/* Try to get the exception's message */
-		SyString sAttr;
-		ph7_value *pMsgAttr;
-		SyStringInitFromBuf(&sAttr, "message", 7);
-		pMsgAttr = PH7_ClassInstanceFetchAttr(
-			(ph7_class_instance *)apArg[1]->x.pOther, &sAttr);
-		if( pMsgAttr && (pMsgAttr->iFlags & MEMOBJ_STRING) ){
-			zMsg = (const char *)SyBlobData(&pMsgAttr->sBlob);
-			nLen = (int)SyBlobLength(&pMsgAttr->sBlob);
-		}
-	}else if( apArg[1]->iFlags & MEMOBJ_STRING ){
-		zMsg = (const char *)SyBlobData(&apArg[1]->sBlob);
-		nLen = (int)SyBlobLength(&apArg[1]->sBlob);
+	/* A still-active (created/suspended) generator can no longer catch the
+	 * injected exception (inject-at-yield is deferred), so close it. A generator
+	 * that already finished keeps its terminal state — and thus its return value,
+	 * which getReturn() still reads — and we simply propagate the exception.
+	 * Re-throw the supplied instance through the normal dispatch path so the
+	 * throw() call site's try/catch (and the uncaught handler) see the real
+	 * object. Hold a ref across VmThrowException, which may run catch blocks. */
+	if( pGen->pCtx->iState != PH7_CTX_STATE_COMPLETED
+	 && pGen->pCtx->iState != PH7_CTX_STATE_CLOSED ){
+		pGen->pCtx->iState = PH7_CTX_STATE_CLOSED;
 	}
-	(void)nLen;
-	return PH7_VmThrowException(pCtx, "Exception", "%s", zMsg);
+	pInj = (ph7_class_instance *)apArg[1]->x.pOther;
+	pInj->iRef++;
+	pFrame = pCtx->pVm->pFrame;
+	if( pFrame ){
+		pFrame = VmSkipExceptionFrames(pFrame);
+		pFrame->iFlags |= VM_FRAME_THROW;
+	}
+	rc = VmThrowException(pCtx->pVm, pInj);
+	PH7_ClassInstanceUnref(pInj);
+	if( rc == SXERR_ABORT ){
+		return PH7_ABORT;
+	}
+	return PH7_EXCEPTION;
 }
 /*
  * Generator::getReturn() — get the return value after the generator has finished.
