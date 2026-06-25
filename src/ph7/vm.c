@@ -727,6 +727,40 @@ static void VmMaterializeCatchReturn(ph7_vm *pVm, ph7_value *pResult, VmFrame *p
 	}
 }
 /*
+ * Per-exec scoping of the catch/finally pending-return signal
+ * (pVm->bReturnRequested / sCatchReturn), which is a VM-global. A *real* nested
+ * body (a called function, a match/default eval) that runs while an outer
+ * catch/finally return is pending would clobber the signal via its own
+ * exception handling, so VmByteCodeExec saves it on entry, runs on a clean
+ * slate, and at exit either restores it (normal completion) or discards it (an
+ * escaping exception, which per PHP discards the pending return). See PLAN.md.
+ * VmSaveOuterReturn moves the live signal into *pSaved and clears it.
+ */
+static void VmSaveOuterReturn(ph7_vm *pVm, ph7_value *pSaved)
+{
+	PH7_MemObjInit(&(*pVm),pSaved);
+	PH7_MemObjStore(&pVm->sCatchReturn,pSaved);
+	pVm->bReturnRequested = 0;
+	PH7_MemObjRelease(&pVm->sCatchReturn);
+}
+/* Restore the saved outer signal (NORMAL exit: Done/Suspend). */
+static void VmRestoreOuterReturn(ph7_vm *pVm, int bSaved, ph7_value *pSaved)
+{
+	if( bSaved ){
+		pVm->bReturnRequested = 1;
+		PH7_MemObjStore(pSaved,&pVm->sCatchReturn);
+		PH7_MemObjRelease(pSaved);
+	}
+}
+/* Discard the saved outer signal (ABNORMAL exit: Abort/Exception). The live
+ * signal stays cleared; just release the saved value. */
+static void VmDiscardOuterReturn(int bSaved, ph7_value *pSaved)
+{
+	if( bSaved ){
+		PH7_MemObjRelease(pSaved);
+	}
+}
+/*
  * Compare two functions signature and return the comparison result.
  */
 static int VmOverloadCompare(SyString *pFirst,SyString *pSecond)
@@ -4756,6 +4790,11 @@ static sxi32 VmByteCodeExec(
 	VmFrame *pEntryFrame;  /* Active frame at entry (for return-unwind frame teardown) */
 	sxi32 pc;
 	sxi32 rc;
+	/* Saved outer catch/finally pending-return signal (see VmSaveOuterReturn).
+	 * Only a real nested body (bReturnPropagates==FALSE) isolates it, and only
+	 * when a return is actually pending — so the common path is untouched. */
+	int bSavedReturn = 0;
+	ph7_value sSavedReturn;
 	/* Argument container */
 	SySetInit(&aArg,&pVm->sAllocator,sizeof(ph7_value *));
 	if( nTos < 0 ){
@@ -4766,6 +4805,10 @@ static sxi32 VmByteCodeExec(
 	nExceptionBase = SySetUsed(&pVm->aException);
 	pEntryFrame = pVm->pFrame;
 	pc = nPc;
+	if( !bReturnPropagates && pVm->bReturnRequested ){
+		bSavedReturn = 1;
+		VmSaveOuterReturn(&(*pVm),&sSavedReturn);
+	}
 /*
  * Route an enforcement helper's return code from inside the main switch:
  * proceed on SXRET_OK, abort on PH7_ABORT, and on PH7_EXCEPTION jump to the
@@ -10716,12 +10759,15 @@ case PH7_OP_CONSUME: {
 		pc++; /* Next instruction in the stream */
 	} /* For(;;) */
 Done:
+	VmRestoreOuterReturn(&(*pVm),bSavedReturn,&sSavedReturn);
 	SySetRelease(&aArg);
 	return SXRET_OK;
 Suspend:
+	VmRestoreOuterReturn(&(*pVm),bSavedReturn,&sSavedReturn);
 	SySetRelease(&aArg);
 	return PH7_SUSPEND;
 Abort:
+	VmDiscardOuterReturn(bSavedReturn,&sSavedReturn);
 	SySetRelease(&aArg);
 	while( pTos >= pStack ){
 		PH7_MemObjRelease(pTos);
@@ -10729,6 +10775,7 @@ Abort:
 	}
 	return PH7_ABORT;
 Exception:
+	VmDiscardOuterReturn(bSavedReturn,&sSavedReturn);
 	SySetRelease(&aArg);
 	while( pTos >= pStack ){
 		PH7_MemObjRelease(pTos);
