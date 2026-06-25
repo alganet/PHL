@@ -1,7 +1,7 @@
 | Filename                       | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
 | src/ph7/api.c                  | 71.92%   | 789/1097    |
-| src/ph7/builtin.c              | 88.99%   | 3629/4078   |
+| src/ph7/builtin.c              | 88.56%   | 3638/4108   |
 | src/ph7/builtin_date.c         | 65.67%   | 459/699     |
 | src/ph7/builtin_math.c         | 96.79%   | 452/467     |
 | src/ph7/compile.c              | 80.29%   | 5536/6895   |
@@ -22,7 +22,7 @@
 | src/ph7/vm_builtin_ob.c        | 76.21%   | 157/206     |
 | src/ph7/vm_http.c              | 68.02%   | 302/444     |
 | src/ph7/vm_http_response.c     | 44.71%   | 114/255     |
-| src/ph7/vm_json.c              | 73.97%   | 378/511     |
+| src/ph7/vm_json.c              | 73.85%   | 387/524     |
 | src/ph7/vm_pcre.c              | 62.65%   | 525/838     |
 | src/ph7/vm_serialize.c         | 96.51%   | 415/430     |
 | src/ph7/vm_xml.c               | 67.82%   | 392/578     |
@@ -44,6 +44,6 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 80.06%   | 34830/43506 |
+| Lines                          | 80.02%   | 34848/43549 |
 | Functions                      | 95.90%   | 1661/1732   |
 
