@@ -874,7 +874,7 @@ Synchronize:
  * quoted string, a heredoc/nowdoc,a literal [i.e: PHP_EOL],a namespace path
  * [i.e: namespaces\path\to..],a array/list [i.e: array(4,5,6)] and so on.
  */
-static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLastWasTerm)
+static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLastWasTerm,int bAfterMemberOp)
 {
 	ph7_expr_node *pNode;
 	SyToken *pCur;
@@ -899,7 +899,7 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 		pCur++;
 		pGen->pIn = pCur;
 		SyMemBackendPoolFree(&pGen->pVm->sAllocator, pNode);
-		rc = ExprExtractNode(pGen, ppNode, iLastWasTerm);
+		rc = ExprExtractNode(pGen, ppNode, iLastWasTerm, 0/* a spread element is never a member name */);
 		if( rc == SXRET_OK && *ppNode ){
 			(*ppNode)->iFlags |= EXPR_NODE_SPREAD;
 		}
@@ -968,7 +968,14 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 		pNode->xCode = PH7_CompileVariable;
 	 }else if( pCur->nType & PH7_TK_KEYWORD ){
 		 sxu32 nKeyword = (sxu32)SX_PTR_TO_INT(pCur->pUserData);
-		 if( nKeyword == PH7_TKWRD_ARRAY ||  nKeyword == PH7_TKWRD_LIST ){
+		 if( bAfterMemberOp ){
+			 /* A keyword immediately after a member operator (->, ?->, ::) is a
+			  * method/property NAME, not a language construct — PHP allows any
+			  * keyword there (e.g. $g->throw(), $o->list(), $o->print()). Treat it
+			  * as a plain literal like an ordinary identifier member name. */
+			 ExprAssembleLiteral(&pCur,pGen->pEnd);
+			 pNode->xCode = PH7_CompileLiteral;
+		 }else if( nKeyword == PH7_TKWRD_ARRAY ||  nKeyword == PH7_TKWRD_LIST ){
 			 /* List/Array node */
 			 if( &pCur[1] >= pGen->pEnd || (pCur[1].nType & PH7_TK_LPAREN) == 0 ){
 				 /* Assume a literal */
@@ -2084,8 +2091,9 @@ PH7_PRIVATE sxi32 PH7_ExprMakeTree(ph7_gen_state *pGen,SySet *pExprNode,ph7_expr
 	/* Extract nodes one after one until we hit the end of the input */
 	{
 		int iLastWasTerm = 0;
+		int bAfterMemberOp = 0; /* TRUE iff the previous node was -> / ?-> / :: */
 		while( pGen->pIn < pGen->pEnd ){
-			rc = ExprExtractNode(&(*pGen),&pNode,iLastWasTerm);
+			rc = ExprExtractNode(&(*pGen),&pNode,iLastWasTerm,bAfterMemberOp);
 			if( rc != SXRET_OK ){
 				return rc;
 			}
@@ -2100,6 +2108,10 @@ PH7_PRIVATE sxi32 PH7_ExprMakeTree(ph7_gen_state *pGen,SySet *pExprNode,ph7_expr
 				/* Delimiter: ')' and ']' end terms */
 				iLastWasTerm = (pNode->pStart->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB)) ? 1 : 0;
 			}
+			/* A keyword in the next node is a member name only right after a member
+			 * operator (-> / ?-> / :: — the PH7_OP_MEMBER ops); null in every other
+			 * node kind, so this single test covers all branches. */
+			bAfterMemberOp = ( pNode->pOp && pNode->pOp->iVmOp == PH7_OP_MEMBER );
 			/* Save the extracted node */
 			SySetPut(pExprNode,(const void *)&pNode);
 		}
