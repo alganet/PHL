@@ -10716,9 +10716,14 @@ static sxi32 GenStateEmitExprCode(
 				sxu32 nArgNsBase = SySetUsed(&pGen->aNullsafeJmp);
 				sxi32 iArgFlags = iFlags & ~EXPR_FLAG_LOAD_IDX_STORE;
 				/* For a by-ref argument position, drop the read-only flag so the
-				 * variable is created if absent (PH7_OP_LOAD iP1=0 => bCreate). */
+				 * variable is created if absent (PH7_OP_LOAD iP1=0 => bCreate), and
+				 * set write-context so a subscript target (preg_match($p,$s,$a['k']))
+				 * auto-vivifies its element and exposes a writable memobj slot for the
+				 * builtin to write back through. A plain $var target is unaffected
+				 * (iP1=0 either way). See PLAN.md §2 for the full rationale. */
 				if( n < 31 && (byRefMask & (1u<<n)) ){
 					iArgFlags &= ~EXPR_FLAG_RDONLY_LOAD;
+					iArgFlags |= EXPR_FLAG_LOAD_IDX_STORE;
 				}
 				rc = GenStateEmitExprCode(&(*pGen),apNode[n],iArgFlags);
 				if( rc != SXRET_OK ){
