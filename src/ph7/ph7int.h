@@ -452,7 +452,12 @@ struct ph7_exec_ctx
 	sxi32 iState;             /* One of PH7_CTX_STATE_* */
 	ph7_value sSuspendValue;  /* Value passed out via Fiber::suspend() / yield */
 	ph7_value sRetValue;      /* Final return value */
-	sxu32 nExceptionBase;     /* Exception stack depth at entry */
+	sxu32 nExceptionBase;     /* Exception-stack depth below this body's own handlers
+	                           * (caller depth); refreshed at each resume */
+	SySet aSavedException;    /* This body's own exception handlers (ph7_exception*),
+	                           * parked here while suspended so a generator/fiber that
+	                           * suspends inside a try does not corrupt the caller's
+	                           * exception stack */
 	void *pPrivate;           /* Generator wrapper (ph7_generator*) or NULL for fibers */
 	/* `yield from` delegation state — per generator instance, so independent
 	 * instances never clash (unlike the shared foreach aStep). */

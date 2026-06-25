@@ -4807,7 +4807,18 @@ static sxi32 VmByteCodeExec(
 	}else{
 		pTos = &pStack[nTos];
 	}
-	nExceptionBase = SySetUsed(&pVm->aException);
+	/* Finally-drain base. For a resumed generator/fiber TOP-LEVEL body, its own
+	 * exception handlers were just re-published above the caller depth
+	 * (VmRestoreCtxExceptionHandlers), so the live SySetUsed over-counts; take the
+	 * caller-depth base recorded on the ctx instead. The pFrame==active-ctx-frame
+	 * guard restricts this to the resumed body only — a nested call or a
+	 * catch/finally mini-program run within it has a different pVm->pFrame and
+	 * falls through to the live depth (the common, unchanged path). */
+	if( pVm->pActiveCtx && pVm->pActiveCtx->pFrame == pVm->pFrame ){
+		nExceptionBase = pVm->pActiveCtx->nExceptionBase;
+	}else{
+		nExceptionBase = SySetUsed(&pVm->aException);
+	}
 	pEntryFrame = pVm->pFrame;
 	pc = nPc;
 	if( !bReturnPropagates && pVm->bReturnRequested ){
@@ -10912,6 +10923,9 @@ static ph7_exec_ctx * VmNewExecCtx(ph7_vm *pVm, ph7_vm_func *pFunc)
 	PH7_MemObjInit(pVm, &pCtx->sSuspendValue);
 	PH7_MemObjInit(pVm, &pCtx->sRetValue);
 	PH7_MemObjInit(pVm, &pCtx->sDelegate);
+	/* Container for this body's own exception handlers while suspended (borrowed
+	 * ph7_exception* pointers — never freed here, owned by the compiled func). */
+	SySetInit(&pCtx->aSavedException, &pVm->sAllocator, sizeof(ph7_exception *));
 	/* Allocate a private operand stack */
 	pStack = VmNewOperandStack(pVm, SySetUsed(&pFunc->aByteCode));
 	if( pStack == 0 ){
@@ -10928,6 +10942,41 @@ static ph7_exec_ctx * VmNewExecCtx(ph7_vm *pVm, ph7_vm_func *pFunc)
 	}
 	pCtx->pFrame = pFrame;
 	return pCtx;
+}
+/*
+ * On suspend, move this exec-context's own exception handlers (the entries on
+ * pVm->aException above pCtx->nExceptionBase) into pCtx->aSavedException and
+ * truncate the global stack back to the caller's depth. Without this, a
+ * generator/fiber that suspends inside a try leaves handlers referencing its
+ * now-detached frame on the global stack, corrupting the caller's try/catch.
+ */
+static void VmParkCtxExceptionHandlers(ph7_vm *pVm, ph7_exec_ctx *pCtx)
+{
+	sxu32 nUsed = SySetUsed(&pVm->aException);
+	if( nUsed > pCtx->nExceptionBase ){
+		ph7_exception **apBase = (ph7_exception **)SySetBasePtr(&pVm->aException);
+		sxu32 i;
+		for( i = pCtx->nExceptionBase; i < nUsed; i++ ){
+			SySetPut(&pCtx->aSavedException, (const void *)&apBase[i]);
+		}
+		SySetTruncate(&pVm->aException, pCtx->nExceptionBase);
+	}
+}
+/*
+ * On resume, re-publish the parked handlers on top of pVm->aException (at the
+ * current caller depth, already recorded in pCtx->nExceptionBase) and clear the
+ * park. Inverse of VmParkCtxExceptionHandlers.
+ */
+static void VmRestoreCtxExceptionHandlers(ph7_vm *pVm, ph7_exec_ctx *pCtx)
+{
+	sxu32 i, n = SySetUsed(&pCtx->aSavedException);
+	if( n > 0 ){
+		ph7_exception **apSaved = (ph7_exception **)SySetBasePtr(&pCtx->aSavedException);
+		for( i = 0; i < n; i++ ){
+			SySetPut(&pVm->aException, (const void *)&apSaved[i]);
+		}
+		SySetReset(&pCtx->aSavedException);
+	}
 }
 /*
  * Start executing a fiber context for the first time.
@@ -10964,6 +11013,7 @@ static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
 		/* Fiber suspended. Detach the fiber's frame from the VM chain. */
 		pVm->pFrame = pCtx->pFrame->pParent;
 		pCtx->pFrame->pParent = 0;
+		VmParkCtxExceptionHandlers(pVm, pCtx);
 		if( pResult ){
 			PH7_MemObjStore(&pCtx->sSuspendValue, pResult);
 		}
@@ -11013,6 +11063,12 @@ static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValu
 		PH7_MemObjRelease(&pCtx->pStack[pCtx->nTos + 1]);
 	}
 	pCtx->nTos++;
+	/* Refresh the caller-depth base and re-publish this body's own exception
+	 * handlers on top of pVm->aException at that depth, so the resumed body's
+	 * try/catch and finally-drain bound line up (see VmByteCodeExec's base
+	 * override). Must run before VmByteCodeExec recaptures its local base. */
+	pCtx->nExceptionBase = SySetUsed(&pVm->aException);
+	VmRestoreCtxExceptionHandlers(pVm, pCtx);
 	/* Re-attach the fiber's frame to the VM frame chain */
 	pCtx->pFrame->pParent = pVm->pFrame;
 	pVm->pFrame = pCtx->pFrame;
@@ -11032,6 +11088,7 @@ static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValu
 		/* Fiber suspended again. Detach the fiber's frame. */
 		pVm->pFrame = pCtx->pFrame->pParent;
 		pCtx->pFrame->pParent = 0;
+		VmParkCtxExceptionHandlers(pVm, pCtx);
 		if( pResult ){
 			PH7_MemObjStore(&pCtx->sSuspendValue, pResult);
 		}
@@ -11074,6 +11131,9 @@ static void VmReleaseExecCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx)
 	PH7_MemObjRelease(&pCtx->sSuspendValue);
 	PH7_MemObjRelease(&pCtx->sRetValue);
 	PH7_MemObjRelease(&pCtx->sDelegate);
+	/* Free only the SySet backing — the parked ph7_exception* entries are owned
+	 * by the compiled function, not by us. */
+	SySetRelease(&pCtx->aSavedException);
 	/* Release the frame if it's detached (not in the VM chain) */
 	if( pCtx->pFrame ){
 		VmSlot *aSlot;
