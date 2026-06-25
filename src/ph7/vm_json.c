@@ -26,7 +26,15 @@ struct json_private_data
 	int iFlags;        /* JSON encoding flags */
 	int nRecCount;     /* Recursion count */
 	int exc;           /* True if a jsonSerialize() callback threw an exception */
+	int oom;           /* True if a result append ran out of memory (raises a fatal) */
 };
+/*
+ * Emit into the JSON result, flagging OOM on the shared data and bailing out
+ * of the current encode function (which returns PH7_OK; the top-level
+ * vm_builtin_json_encode checks ->oom and raises a non-catchable fatal). Used
+ * for every ph7_result_string/ph7_result_string_format append below.
+ */
+#define JSON_EMIT(pD, call) do { if( (call) != SXRET_OK ){ (pD)->oom = 1; return PH7_OK; } } while(0)
 /*
  * Returns the JSON representation of a value.In other word perform a JSON encoding operation.
  * According to wikipedia
@@ -52,18 +60,18 @@ static sxi32 VmJsonEncode(
 		int nByte;
 		if( ph7_value_is_null(pIn) || ph7_value_is_resource(pIn)){
 			/* null */
-			ph7_result_string(pCtx,"null",(int)sizeof("null")-1);
+			JSON_EMIT(pData,ph7_result_string(pCtx,"null",(int)sizeof("null")-1));
 		}else if( ph7_value_is_bool(pIn) ){
 			int iBool = ph7_value_to_bool(pIn);
 			int iLen;
 			/* true/false */
 			iLen = iBool ? (int)sizeof("true") : (int)sizeof("false");
-			ph7_result_string(pCtx,iBool ? "true" : "false",iLen-1);
+			JSON_EMIT(pData,ph7_result_string(pCtx,iBool ? "true" : "false",iLen-1));
 		}else if(  ph7_value_is_numeric(pIn) && !ph7_value_is_string(pIn) ){
 			const char *zNum;
 			/* Get a string representation of the number */
 			zNum = ph7_value_to_string(pIn,&nByte);
-			ph7_result_string(pCtx,zNum,nByte);
+			JSON_EMIT(pData,ph7_result_string(pCtx,zNum,nByte));
 		}else if( ph7_value_is_string(pIn) ){
 			if( (iFlags & JSON_NUMERIC_CHECK) &&  ph7_value_is_numeric(pIn) ){
 				const char *zNum;
@@ -71,7 +79,7 @@ static sxi32 VmJsonEncode(
 				PH7_MemObjToReal(pIn); /* Force a numeric cast */
 				/* Get a string representation of the number */
 				zNum = ph7_value_to_string(pIn,&nByte);
-				ph7_result_string(pCtx,zNum,nByte);
+				JSON_EMIT(pData,ph7_result_string(pCtx,zNum,nByte));
 			}else{
 				const char *zIn,*zEnd;
 				int c;
@@ -79,7 +87,7 @@ static sxi32 VmJsonEncode(
 				zIn = ph7_value_to_string(pIn,&nByte);
 				zEnd = &zIn[nByte];
 				/* Append the double quote */
-				ph7_result_string(pCtx,"\"",(int)sizeof(char));
+				JSON_EMIT(pData,ph7_result_string(pCtx,"\"",(int)sizeof(char)));
 				for(;;){
 					if( zIn >= zEnd ){
 						/* No more input to process */
@@ -91,33 +99,33 @@ static sxi32 VmJsonEncode(
 					if( (c == '<' || c == '>') && (iFlags & JSON_HEX_TAG) ){
 						/* All < and > are converted to \u003C and \u003E */
 						if( c == '<' ){
-							ph7_result_string(pCtx,"\\u003C",(int)sizeof("\\u003C")-1);
+							JSON_EMIT(pData,ph7_result_string(pCtx,"\\u003C",(int)sizeof("\\u003C")-1));
 						}else{
-							ph7_result_string(pCtx,"\\u003E",(int)sizeof("\\u003E")-1);
+							JSON_EMIT(pData,ph7_result_string(pCtx,"\\u003E",(int)sizeof("\\u003E")-1));
 						}
 						continue;
 					}else if( c == '&' && (iFlags & JSON_HEX_AMP) ){
 						/* All &s are converted to \u0026.  */
-						ph7_result_string(pCtx,"\\u0026",(int)sizeof("\\u0026")-1);
+						JSON_EMIT(pData,ph7_result_string(pCtx,"\\u0026",(int)sizeof("\\u0026")-1));
 						continue;
 					}else if( c == '\'' && (iFlags & JSON_HEX_APOS) ){
 						/* All ' are converted to \u0027.   */
-						ph7_result_string(pCtx,"\\u0027",(int)sizeof("\\u0027")-1);
+						JSON_EMIT(pData,ph7_result_string(pCtx,"\\u0027",(int)sizeof("\\u0027")-1));
 						continue;
 					}else if( c == '"' && (iFlags & JSON_HEX_QUOT) ){
 						/* All " are converted to \u0022. */
-						ph7_result_string(pCtx,"\\u0022",(int)sizeof("\\u0022")-1);
+						JSON_EMIT(pData,ph7_result_string(pCtx,"\\u0022",(int)sizeof("\\u0022")-1));
 						continue;
 					}
 					if( c == '"' || (c == '\\' && ((iFlags & JSON_UNESCAPED_SLASHES)==0)) ){
 						/* Unescape the character */
-						ph7_result_string(pCtx,"\\",(int)sizeof(char));
+						JSON_EMIT(pData,ph7_result_string(pCtx,"\\",(int)sizeof(char)));
 					}
 					/* Append character verbatim */
-					ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char));
+					JSON_EMIT(pData,ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char)));
 				}
 				/* Append the double quote */
-				ph7_result_string(pCtx,"\"",(int)sizeof(char));
+				JSON_EMIT(pData,ph7_result_string(pCtx,"\"",(int)sizeof(char)));
 			}
 		}else if( ph7_value_is_array(pIn) ){
 			/* An array encodes as a JSON array iff it is a "list" [consecutive
@@ -132,11 +140,15 @@ static sxi32 VmJsonEncode(
 			pData->isObject = isObject;
 			pData->isFirst = 1;
 			/* Append the square bracket or curly braces */
-			ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char));
+			JSON_EMIT(pData,ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char)));
 			/* Iterate throw array entries */
 			ph7_array_walk(pIn,VmJsonArrayEncode,pData);
+			/* Bail if a nested append ran out of memory before the closer */
+			if( pData->oom ){
+				return PH7_OK;
+			}
 			/* Append the closing square bracket or curly braces */
-			ph7_result_string(pCtx,(const char *)&d,(int)sizeof(char));
+			JSON_EMIT(pData,ph7_result_string(pCtx,(const char *)&d,(int)sizeof(char)));
 			pData->isObject = savedObject;
 		}else if( ph7_value_is_object(pIn) ){
 			ph7_class_instance *pThis = (ph7_class_instance *)pIn->x.pOther;
@@ -167,19 +179,25 @@ static sxi32 VmJsonEncode(
 				if( pData->exc ){
 					return PH7_EXCEPTION;
 				}
+				if( pData->oom ){
+					return PH7_OK;
+				}
 			}else{
 				/* Encode the class instance */
 				pData->isFirst = 1;
 				/* Append the curly braces */
-				ph7_result_string(pCtx,"{",(int)sizeof(char));
+				JSON_EMIT(pData,ph7_result_string(pCtx,"{",(int)sizeof(char)));
 				/* Iterate throw class attribute */
 				ph7_object_walk(pIn,VmJsonObjectEncode,pData);
+				if( pData->oom ){
+					return PH7_OK;
+				}
 				/* Append the closing curly braces  */
-				ph7_result_string(pCtx,"}",(int)sizeof(char));
+				JSON_EMIT(pData,ph7_result_string(pCtx,"}",(int)sizeof(char)));
 			}
 		}else{
 			/* Can't happen */
-			ph7_result_string(pCtx,"null",(int)sizeof("null")-1);
+			JSON_EMIT(pData,ph7_result_string(pCtx,"null",(int)sizeof("null")-1));
 		}
 		/* All done */
 		return PH7_OK;
@@ -191,13 +209,13 @@ static sxi32 VmJsonEncode(
 static int VmJsonArrayEncode(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 {
 	json_private_data *pJson = (json_private_data *)pUserData;
-	if( pJson->nRecCount > 31 || pJson->exc ){
-		/* Recursion limit reached or a callback threw,return immediately */
+	if( pJson->nRecCount > 31 || pJson->exc || pJson->oom ){
+		/* Recursion limit reached, a callback threw, or OOM — return immediately */
 		return PH7_OK;
 	}
 	if( !pJson->isFirst ){
 		/* Append the colon first */
-		ph7_result_string(pJson->pCtx,",",(int)sizeof(char));
+		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,",",(int)sizeof(char)));
 	}
 	if( pJson->isObject ){
 		/* Outputs an object rather than an array */
@@ -205,8 +223,12 @@ static int VmJsonArrayEncode(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 		int nByte;
 		/* Extract a string representation of the key */
 		zKey = ph7_value_to_string(pKey,&nByte);
-		/* Append the key and the double colon */
-		ph7_result_string_format(pJson->pCtx,"\"%.*s\":",nByte,zKey);
+		/* Append the quoted key and the colon (checked, so an OOM here is caught
+		 * rather than silently truncating; matches the prior "%.*s" emit byte for
+		 * byte — keys are not JSON-escaped, a pre-existing behavior). */
+		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,"\"",(int)sizeof(char)));
+		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,zKey,nByte));
+		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,"\":",(int)sizeof("\":")-1));
 	}
 	/* Encode the value */
 	pJson->nRecCount++;
@@ -222,16 +244,19 @@ static int VmJsonArrayEncode(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 static int VmJsonObjectEncode(const char *zAttr,ph7_value *pValue,void *pUserData)
 {
 	json_private_data *pJson = (json_private_data *)pUserData;
-	if( pJson->nRecCount > 31 || pJson->exc ){
-		/* Recursion limit reached or a callback threw,return immediately */
+	if( pJson->nRecCount > 31 || pJson->exc || pJson->oom ){
+		/* Recursion limit reached, a callback threw, or OOM — return immediately */
 		return PH7_OK;
 	}
 	if( !pJson->isFirst ){
 		/* Append the colon first */
-		ph7_result_string(pJson->pCtx,",",(int)sizeof(char));
+		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,",",(int)sizeof(char)));
 	}
-	/* Append the attribute name and the double colon first */
-	ph7_result_string_format(pJson->pCtx,"\"%s\":",zAttr);
+	/* Append the quoted attribute name and the colon (checked; matches the prior
+	 * "%s" emit byte for byte — attribute names are not JSON-escaped). */
+	JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,"\"",(int)sizeof(char)));
+	JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,zAttr,-1));
+	JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,"\":",(int)sizeof("\":")-1));
 	/* Encode the value */
 	pJson->nRecCount++;
 	VmJsonEncode(pValue,pJson);
@@ -275,12 +300,18 @@ PH7_PRIVATE int vm_builtin_json_encode(ph7_context *pCtx,int nArg,ph7_value **ap
 	sJson.isFirst = 1;
 	sJson.iFlags = 0;
 	sJson.exc = 0;
+	sJson.oom = 0;
 	if( nArg > 1 && ph7_value_is_int(apArg[1]) ){
 		/* Extract option flags */
 		sJson.iFlags = ph7_value_to_int(apArg[1]);
 	}
 	/* Perform the encoding operation */
 	rc = VmJsonEncode(apArg[0],&sJson);
+	if( sJson.oom ){
+		/* A result append ran out of memory: raise a non-catchable fatal,
+		 * distinct from a JSON-encoding error (json_last_error untouched). */
+		return PH7_ContextMemoryError(pCtx);
+	}
 	if( rc == PH7_EXCEPTION || sJson.exc ){
 		/* A jsonSerialize() callback threw — propagate so the exception unwinds */
 		return PH7_EXCEPTION;
@@ -288,6 +319,7 @@ PH7_PRIVATE int vm_builtin_json_encode(ph7_context *pCtx,int nArg,ph7_value **ap
 	/* All done */
 	return PH7_OK;
 }
+#undef JSON_EMIT
 /*
  * int json_last_error(void)
  *  Returns the last error (if any) occurred during the last JSON encoding/decoding.

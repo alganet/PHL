@@ -1516,6 +1516,7 @@ struct implode_data {
 	int nSeplen;          /* Separator length */
 	int bFirst;           /* TRUE if first call */
 	int nRecCount;        /* Recursion count to avoid infinite loop */
+	sxi32 rc;             /* Captured allocation rc; SXERR_MEM => the builtin raises an OOM fatal */
 };
 /*
  * Implode walker callback for the [ph7_array_walk()] interface.
@@ -1532,7 +1533,10 @@ static int implode_callback(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 		if( pData->nSeplen > 0 ){
 			if( !pData->bFirst ){
 				/* append the separator first */
-				ph7_result_string(pData->pCtx,pData->zSep,pData->nSeplen);
+				if( ph7_result_string(pData->pCtx,pData->zSep,pData->nSeplen) != SXRET_OK ){
+					pData->rc = SXERR_MEM;
+					return PH7_ABORT;
+				}
 			}else{
 				pData->bFirst = 0;
 			}
@@ -1542,6 +1546,10 @@ static int implode_callback(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 		pData->nRecCount++;
 		PH7_HashmapWalk((ph7_hashmap *)pValue->x.pOther,implode_callback,pData);
 		pData->nRecCount--;
+		/* Propagate an allocation failure surfaced deeper in the recursion. */
+		if( pData->rc != SXRET_OK ){
+			return PH7_ABORT;
+		}
 		return PH7_OK;
 	}
 	/* Extract the string representation of the entry value */
@@ -1551,11 +1559,17 @@ static int implode_callback(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 		pData->bFirst = 0;
 	}else if( pData->nSeplen > 0 ){
 		/* append the separator first */
-		ph7_result_string(pData->pCtx,pData->zSep,pData->nSeplen);
+		if( ph7_result_string(pData->pCtx,pData->zSep,pData->nSeplen) != SXRET_OK ){
+			pData->rc = SXERR_MEM;
+			return PH7_ABORT;
+		}
 	}
 	/* Append the value if non-empty; empty values are represented by the separators */
 	if( nLen > 0 ){
-		ph7_result_string(pData->pCtx,zData,nLen);
+		if( ph7_result_string(pData->pCtx,zData,nLen) != SXRET_OK ){
+			pData->rc = SXERR_MEM;
+			return PH7_ABORT;
+		}
 	}
 	return PH7_OK;
 }
@@ -1586,6 +1600,7 @@ static int PH7_builtin_implode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	imp_data.bRecursive = 0;
 	imp_data.bFirst = 1;
 	imp_data.nRecCount = 0;
+	imp_data.rc = SXRET_OK;
 	if( !ph7_value_is_array(apArg[0]) ){
 		imp_data.zSep = ph7_value_to_string(apArg[0],&imp_data.nSeplen);
 	}else{
@@ -1593,12 +1608,18 @@ static int PH7_builtin_implode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		imp_data.nSeplen = 0;
 		i = 0;
 	}
-	ph7_result_string(pCtx,"",0); /* Set an empty stirng */
+	if( ph7_result_string(pCtx,"",0) != SXRET_OK ){ /* Set an empty stirng */
+		return PH7_ContextMemoryError(pCtx);
+	}
 	/* Start the 'join' process */
 	while( i < nArg ){
 		if( ph7_value_is_array(apArg[i]) ){
 			/* Iterate throw array entries */
 			ph7_array_walk(apArg[i],implode_callback,&imp_data);
+			/* Surface a callback allocation failure as a fatal */
+			if( imp_data.rc != SXRET_OK ){
+				return PH7_ContextMemoryError(pCtx);
+			}
 		}else{
 			const char *zData;
 			int nLen;
@@ -1608,11 +1629,15 @@ static int PH7_builtin_implode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			if( imp_data.bFirst ){
 				imp_data.bFirst = 0;
 			}else if( imp_data.nSeplen > 0 ){
-				ph7_result_string(pCtx, imp_data.zSep, imp_data.nSeplen);
+				if( ph7_result_string(pCtx, imp_data.zSep, imp_data.nSeplen) != SXRET_OK ){
+					return PH7_ContextMemoryError(pCtx);
+				}
 			}
 			/* Append the value if non-empty; empty values are represented by the separators */
 			if( nLen > 0 ){
-				ph7_result_string(pCtx,zData,nLen);
+				if( ph7_result_string(pCtx,zData,nLen) != SXRET_OK ){
+					return PH7_ContextMemoryError(pCtx);
+				}
 			}
 		}
 		i++;
@@ -1650,6 +1675,7 @@ static int PH7_builtin_implode_recursive(ph7_context *pCtx,int nArg,ph7_value **
 	imp_data.bRecursive = 1;
 	imp_data.bFirst = 1;
 	imp_data.nRecCount = 0;
+	imp_data.rc = SXRET_OK;
 	if( !ph7_value_is_array(apArg[0]) ){
 		imp_data.zSep = ph7_value_to_string(apArg[0],&imp_data.nSeplen);
 	}else{
@@ -1657,12 +1683,18 @@ static int PH7_builtin_implode_recursive(ph7_context *pCtx,int nArg,ph7_value **
 		imp_data.nSeplen = 0;
 		i = 0;
 	}
-	ph7_result_string(pCtx,"",0); /* Set an empty stirng */
+	if( ph7_result_string(pCtx,"",0) != SXRET_OK ){ /* Set an empty stirng */
+		return PH7_ContextMemoryError(pCtx);
+	}
 	/* Start the 'join' process */
 	while( i < nArg ){
 		if( ph7_value_is_array(apArg[i]) ){
 			/* Iterate throw array entries */
 			ph7_array_walk(apArg[i],implode_callback,&imp_data);
+			/* Surface a callback allocation failure as a fatal */
+			if( imp_data.rc != SXRET_OK ){
+				return PH7_ContextMemoryError(pCtx);
+			}
 		}else{
 			const char *zData;
 			int nLen;
@@ -1672,11 +1704,15 @@ static int PH7_builtin_implode_recursive(ph7_context *pCtx,int nArg,ph7_value **
 			if( imp_data.bFirst ){
 				imp_data.bFirst = 0;
 			}else if( imp_data.nSeplen > 0 ){
-				ph7_result_string(pCtx, imp_data.zSep, imp_data.nSeplen);
+				if( ph7_result_string(pCtx, imp_data.zSep, imp_data.nSeplen) != SXRET_OK ){
+					return PH7_ContextMemoryError(pCtx);
+				}
 			}
 			/* Append the value if non-empty; empty values are represented by the separators */
 			if( nLen > 0 ){
-				ph7_result_string(pCtx,zData,nLen);
+				if( ph7_result_string(pCtx,zData,nLen) != SXRET_OK ){
+					return PH7_ContextMemoryError(pCtx);
+				}
 			}
 		}
 		i++;
@@ -1739,7 +1775,9 @@ static int PH7_builtin_explode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			return PH7_OK;
 		}
 		ph7_value_string(pValueTmp, "", 0);
-		ph7_array_add_elem(pArrayTmp, 0 /* Automatic index assign */, pValueTmp);
+		if( ph7_array_add_elem(pArrayTmp, 0 /* Automatic index assign */, pValueTmp) != SXRET_OK ){
+			return PH7_ContextMemoryError(pCtx);
+		}
 		ph7_result_value(pCtx, pArrayTmp);
 		return PH7_OK;
 	}
@@ -1771,14 +1809,18 @@ static int PH7_builtin_explode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( rc != SXRET_OK || iLimit <= (int)ph7_array_count(pArray) ){
 			/* Limit reached or no more delimiter; insert the rest (may be empty) and break */
 			ph7_value_string(pValue, zString, (int)(zEnd - zString));
-			ph7_array_add_elem(pArray, 0/* Automatic index assign */, pValue);
+			if( ph7_array_add_elem(pArray, 0/* Automatic index assign */, pValue) != SXRET_OK ){
+				return PH7_ContextMemoryError(pCtx);
+			}
 			break;
 		}
 		/* Point to the desired offset */
 		zCur = &zString[nOfft];
 		/* Perform the store operation (may be empty) */
 		ph7_value_string(pValue, zString, (int)(zCur - zString));
-		ph7_array_add_elem(pArray, 0/* Automatic index assign */, pValue);
+		if( ph7_array_add_elem(pArray, 0/* Automatic index assign */, pValue) != SXRET_OK ){
+			return PH7_ContextMemoryError(pCtx);
+		}
 		/* Point beyond the delimiter */
 		zString = &zCur[nDelim];
 		/* Reset the cursor */
@@ -3516,8 +3558,8 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 		if( zCur < zIn ){
 			/* Consume chunk verbatim */
 			rc = xConsumer(pCtx,zCur,(int)(zIn-zCur),pUserData);
-			if( rc == SXERR_ABORT ){
-				/* Callback request an operation abort */
+			if( rc != SXRET_OK ){
+				/* Callback requested an abort (e.g. an allocation failure) */
 				break;
 			}
 		}
@@ -3956,10 +3998,12 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
  */
 static int sprintfConsumer(ph7_context *pCtx,const char *zInput,int nLen,void *pUserData)
 {
-	/* Consume directly */
-	ph7_result_string(pCtx,zInput,nLen);
-	SXUNUSED(pUserData); /* cc warning */
-	return PH7_OK;
+	/* pUserData points to the caller's allocation-rc slot so an OOM during the
+	 * result append is surfaced (the builtin raises a fatal); returning the
+	 * non-OK rc also stops the format loop. */
+	sxi32 *pRc = (sxi32 *)pUserData;
+	*pRc = ph7_result_string(pCtx,zInput,nLen);
+	return *pRc;
 }
 /*
  * string sprintf(string $format[,mixed $args [, mixed $... ]])
@@ -3973,6 +4017,7 @@ static int sprintfConsumer(ph7_context *pCtx,const char *zInput,int nLen,void *p
 static int PH7_builtin_sprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zFormat;
+	sxi32 rc = SXRET_OK;
 	int nLen;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid arguments,return the empty string */
@@ -3986,8 +4031,13 @@ static int PH7_builtin_sprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
-	/* Format the string */
-	PH7_InputFormat(sprintfConsumer,pCtx,zFormat,nLen,nArg,apArg,0,FALSE);
+	/* Format the string; sprintfConsumer reports an allocation failure via &rc. */
+	PH7_InputFormat(sprintfConsumer,pCtx,zFormat,nLen,nArg,apArg,(void *)&rc,FALSE);
+	if( rc != SXRET_OK ){
+		/* The result append ran out of memory: raise a fatal rather than
+		 * returning a silently-truncated string. */
+		return PH7_ContextMemoryError(pCtx);
+	}
 	return PH7_OK;
 }
 /*
@@ -4088,6 +4138,7 @@ static int PH7_builtin_vsprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zFormat;
 	ph7_hashmap *pMap;
 	SySet sArg;
+	sxi32 rc = SXRET_OK;
 	int nLen,n;
 	if( nArg < 2 || !ph7_value_is_string(apArg[0]) || !ph7_value_is_array(apArg[1]) ){
 		/* Missing/Invalid arguments,return the empty string */
@@ -4105,10 +4156,14 @@ static int PH7_builtin_vsprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	pMap = (ph7_hashmap *)apArg[1]->x.pOther;
 	/* Extract arguments from the hashmap */
 	n = PH7_HashmapValuesToSet(pMap,&sArg);
-	/* Format the string */
-	PH7_InputFormat(sprintfConsumer,pCtx,zFormat,nLen,n,(ph7_value **)SySetBasePtr(&sArg),0,TRUE);
+	/* Format the string; sprintfConsumer reports an allocation failure via &rc. */
+	PH7_InputFormat(sprintfConsumer,pCtx,zFormat,nLen,n,(ph7_value **)SySetBasePtr(&sArg),(void *)&rc,TRUE);
 	/* Release the container */
 	SySetRelease(&sArg);
+	if( rc != SXRET_OK ){
+		/* The result append ran out of memory: raise a fatal. */
+		return PH7_ContextMemoryError(pCtx);
+	}
 	return PH7_OK;
 }
 #endif /* PH7_NEED_FMT_AND_INI */
@@ -5616,7 +5671,9 @@ static int PH7_builtin_str_split(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Copy the current chunk */
 		ph7_value_string(pValue,zString,split_len);
 		/* Insert it */
-		ph7_array_add_elem(pArray,0,pValue); /* Will make it's own copy */
+		if( ph7_array_add_elem(pArray,0,pValue) != SXRET_OK ){ /* Will make it's own copy */
+			return PH7_ContextMemoryError(pCtx);
+		}
 		/* reset the string cursor */
 		ph7_value_reset_string_cursor(pValue);
 		/* Update position */
@@ -6310,7 +6367,7 @@ static int PH7_builtin_str_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	if( iPadlen < 1  ){
 		/* Return the string verbatim */
-		ph7_result_string(pCtx,zIn,iLen);
+		if( ph7_result_string(pCtx,zIn,iLen) != SXRET_OK ){ return PH7_ContextMemoryError(pCtx); }
 		return PH7_OK;
 	}
 	zPad = " "; /* Whitespace padding */
@@ -6344,7 +6401,7 @@ static int PH7_builtin_str_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			if( (int)ph7_context_result_buf_length(pCtx) + iLen + jPad >= iRealPad ){
 				break;
 			}
-			ph7_result_string(pCtx,zPad,jPad);
+			if( ph7_result_string(pCtx,zPad,jPad) != SXRET_OK ){ return PH7_ContextMemoryError(pCtx); }
 		}
 		if( iType == 0 /* STR_PAD_LEFT */ ){
 			while( (int)ph7_context_result_buf_length(pCtx) + iLen < iRealPad ){
@@ -6355,13 +6412,13 @@ static int PH7_builtin_str_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				if( jPad < 1){
 					break;
 				}
-				ph7_result_string(pCtx,zPad,jPad);
+				if( ph7_result_string(pCtx,zPad,jPad) != SXRET_OK ){ return PH7_ContextMemoryError(pCtx); }
 			}
 		}
 	}
 	if( iLen > 0 ){
 		/* Append the input string */
-		ph7_result_string(pCtx,zIn,iLen);
+		if( ph7_result_string(pCtx,zIn,iLen) != SXRET_OK ){ return PH7_ContextMemoryError(pCtx); }
 	}
 	if( iType == 1 /* STR_PAD_RIGHT */ || iType == 2 /* STR_PAD_BOTH */ ){
 		for( i = 0 ; i < iPadlen/iDiv ; i += iStrpad ){
@@ -6369,7 +6426,7 @@ static int PH7_builtin_str_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			if( (int)ph7_context_result_buf_length(pCtx) + iStrpad >= iRealPad ){
 				break;
 			}
-			ph7_result_string(pCtx,zPad,iStrpad);
+			if( ph7_result_string(pCtx,zPad,iStrpad) != SXRET_OK ){ return PH7_ContextMemoryError(pCtx); }
 		}
 		while( (int)ph7_context_result_buf_length(pCtx) < iRealPad ){
 			jPad = iRealPad - (int)ph7_context_result_buf_length(pCtx);
@@ -6379,7 +6436,7 @@ static int PH7_builtin_str_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			if( jPad < 1){
 				break;
 			}
-			ph7_result_string(pCtx,zPad,jPad);
+			if( ph7_result_string(pCtx,zPad,jPad) != SXRET_OK ){ return PH7_ContextMemoryError(pCtx); }
 		}
 	}
 	return PH7_OK;
