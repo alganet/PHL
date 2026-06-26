@@ -546,6 +546,9 @@ static VmFrame * VmNewFrame(
 	SySetInit(&pFrame->sArg,&pVm->sAllocator,sizeof(VmSlot));
 	SySetInit(&pFrame->sLocal,&pVm->sAllocator,sizeof(VmSlot));
 	SySetInit(&pFrame->sRef,&pVm->sAllocator,sizeof(VmSlot));
+	/* Per-frame pending catch/finally return slot (always-init so release is
+	 * unconditional; bHasRet is already 0 from SyZero). */
+	PH7_MemObjInit(&(*pVm),&pFrame->sRet);
 	return pFrame;
 }
 /* Forward declaration */
@@ -644,6 +647,10 @@ static void VmLeaveFrame(ph7_vm *pVm)
 		SySetRelease(&pCurFrame->sArg);
 		SySetRelease(&pCurFrame->sLocal);
 		SySetRelease(&pCurFrame->sRef);
+		/* Release the per-frame pending-return slot (a frame-level resource like the
+		 * containers above — released for every frame, including transparent
+		 * exception/catch wrappers, which never own a return so it is empty there). */
+		PH7_MemObjRelease(&pCurFrame->sRet);
 		/* Release the whole structure */
 		SyMemBackendPoolFree(&pVm->sAllocator,pCurFrame);
 	}
@@ -710,8 +717,8 @@ static int VmCalleeExceptionResume(ph7_vm *pVm,sxi32 *pResumePc,VmFrame *pEntryF
  * control leaves a function/try via 'return' (OP_DONE) or via a 'return' issued
  * inside a catch/finally (the OP_THROW / OP_POP_EXCEPTION consumers, and a
  * nested try/finally inside a catch body). Each finally runs with
- * bReturnPropagates=TRUE so a 'return' inside it overrides the pending value via
- * pVm->sCatchReturn. Returns SXERR_ABORT if a finally aborted, PH7_EXCEPTION if a
+ * bReturnPropagates=TRUE so a 'return' inside it overrides the pending value on
+ * its body frame's sRet slot. Returns SXERR_ABORT if a finally aborted, PH7_EXCEPTION if a
  * finally threw an exception that escaped it (the caller must then unwind as an
  * exception rather than return its pending value — PHP: a throwing finally
  * discards the in-flight return), SXRET_OK otherwise.
@@ -744,57 +751,32 @@ static sxi32 VmDrainFinally(ph7_vm *pVm, sxu32 nExceptionBase)
 	return rcOut;
 }
 /*
+ * Drop a body frame's pending catch/finally return: clear the flag and release
+ * the slot value. Safe on a frame with no pending return (the slot is then an
+ * empty MEMOBJ_NULL value and the release is a no-op).
+ */
+static void VmClearFrameReturn(VmFrame *pFrame)
+{
+	pFrame->bHasRet = 0;
+	PH7_MemObjRelease(&pFrame->sRet);
+}
+/*
  * Materialize a `return` issued inside a catch/finally mini-program: copy the
- * deferred pVm->sCatchReturn into the enclosing function's result, clear the
- * signal, and tear down any try frames left open above pEntryFrame whose
- * OP_POP_EXCEPTION the return bypassed (bounded by pEntryFrame so a tangled
- * exception-in-finally chain can't over-leave). Only the real function body
- * (bReturnPropagates=FALSE) calls this; a nested mini-program leaves the signal
- * set so it propagates outward to its own enclosing function.
+ * value deferred on the enclosing body frame (pEntryFrame->sRet) into the
+ * function's result, clear the per-frame slot, and tear down any try frames left
+ * open above pEntryFrame whose OP_POP_EXCEPTION the return bypassed (bounded by
+ * pEntryFrame so a tangled exception-in-finally chain can't over-leave). Only the
+ * real function body (bReturnPropagates=FALSE) calls this; a nested mini-program
+ * leaves the slot set so it materializes at its own enclosing body.
  */
 static void VmMaterializeCatchReturn(ph7_vm *pVm, ph7_value *pResult, VmFrame *pEntryFrame)
 {
 	if( pResult ){
-		PH7_MemObjStore(&pVm->sCatchReturn,pResult);
+		PH7_MemObjStore(&pEntryFrame->sRet,pResult);
 	}
-	pVm->bReturnRequested = 0;
-	PH7_MemObjRelease(&pVm->sCatchReturn);
+	VmClearFrameReturn(pEntryFrame);
 	while( pVm->pFrame && pVm->pFrame != pEntryFrame ){
 		VmLeaveFrame(&(*pVm));
-	}
-}
-/*
- * Per-exec scoping of the catch/finally pending-return signal
- * (pVm->bReturnRequested / sCatchReturn), which is a VM-global. A *real* nested
- * body (a called function, a match/default eval) that runs while an outer
- * catch/finally return is pending would clobber the signal via its own
- * exception handling, so VmByteCodeExec saves it on entry, runs on a clean
- * slate, and at exit either restores it (normal completion) or discards it (an
- * escaping exception, which per PHP discards the pending return). See PLAN.md.
- * VmSaveOuterReturn moves the live signal into *pSaved and clears it.
- */
-static void VmSaveOuterReturn(ph7_vm *pVm, ph7_value *pSaved)
-{
-	PH7_MemObjInit(&(*pVm),pSaved);
-	PH7_MemObjStore(&pVm->sCatchReturn,pSaved);
-	pVm->bReturnRequested = 0;
-	PH7_MemObjRelease(&pVm->sCatchReturn);
-}
-/* Restore the saved outer signal (NORMAL exit: Done/Suspend). */
-static void VmRestoreOuterReturn(ph7_vm *pVm, int bSaved, ph7_value *pSaved)
-{
-	if( bSaved ){
-		pVm->bReturnRequested = 1;
-		PH7_MemObjStore(pSaved,&pVm->sCatchReturn);
-		PH7_MemObjRelease(pSaved);
-	}
-}
-/* Discard the saved outer signal (ABNORMAL exit: Abort/Exception). The live
- * signal stays cleared; just release the saved value. */
-static void VmDiscardOuterReturn(int bSaved, ph7_value *pSaved)
-{
-	if( bSaved ){
-		PH7_MemObjRelease(pSaved);
 	}
 }
 /*
@@ -1941,9 +1923,6 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	}
 	/* Script return value */
 	PH7_MemObjInit(&(*pVm),&pVm->sExec); /* Assume a NULL return value */
-	/* Pending return value from a catch/finally block (see VmThrowException) */
-	PH7_MemObjInit(&(*pVm),&pVm->sCatchReturn);
-	pVm->bReturnRequested = 0;
 	/* Allocate a new operand stack */
 	pVm->aOps = VmNewOperandStack(&(*pVm),SySetUsed(pVm->pByteContainer));
 	if( pVm->aOps == 0 ){
@@ -2270,8 +2249,6 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	pVm->iPcreLastError = 0;
 #endif
 	pVm->iCmpCallbackExc = 0;
-	pVm->bReturnRequested = 0;
-	VmReinitMemObj(&(*pVm),&pVm->sCatchReturn);
 	pVm->bHaltRequested = 0;
 	pVm->iExitStatus = 0;
 	pVm->iSpreadExtra = 0;
@@ -4859,7 +4836,7 @@ static sxi32 VmByteCodeExec(
 	int is_callback,     /* TRUE if we are executing a callback */
 	sxi32 nPc,           /* Starting program counter (0 for normal, >0 for resume) */
 	ph7_vm_func *pEnforceRetFunc, /* NULL except when this invocation is a user-fn body; when set, the terminating OP_DONE validates the return value against pEnforceRetFunc's declared type. */
-	int bReturnPropagates /* TRUE only for a catch/finally mini-program: an explicit-return OP_DONE (iP2=1) defers its value to pVm->sCatchReturn for the enclosing try handler to return. */
+	int bReturnPropagates /* TRUE only for a catch/finally mini-program: an explicit-return OP_DONE (iP2=1) defers its value onto the enclosing body frame's sRet slot for that body to return. */
 	)
 {
 	VmInstr *pInstr;
@@ -4869,11 +4846,6 @@ static sxi32 VmByteCodeExec(
 	VmFrame *pEntryFrame;  /* Active frame at entry (for return-unwind frame teardown) */
 	sxi32 pc;
 	sxi32 rc;
-	/* Saved outer catch/finally pending-return signal (see VmSaveOuterReturn).
-	 * Only a real nested body (bReturnPropagates==FALSE) isolates it, and only
-	 * when a return is actually pending — so the common path is untouched. */
-	int bSavedReturn = 0;
-	ph7_value sSavedReturn;
 	/* Argument container */
 	SySetInit(&aArg,&pVm->sAllocator,sizeof(ph7_value *));
 	if( nTos < 0 ){
@@ -4895,10 +4867,6 @@ static sxi32 VmByteCodeExec(
 	}
 	pEntryFrame = pVm->pFrame;
 	pc = nPc;
-	if( !bReturnPropagates && pVm->bReturnRequested ){
-		bSavedReturn = 1;
-		VmSaveOuterReturn(&(*pVm),&sSavedReturn);
-	}
 /*
  * Route an enforcement helper's return code from inside the main switch:
  * proceed on SXRET_OK, abort on PH7_ABORT, and on PH7_EXCEPTION jump to the
@@ -4958,17 +4926,20 @@ static sxi32 VmByteCodeExec(
 case PH7_OP_DONE:
 	if( pInstr->iP2 && bReturnPropagates ){
 		/* Explicit `return` inside a catch/finally mini-program. Defer the value
-		 * to pVm->sCatchReturn; the enclosing try's OP_THROW / OP_POP_EXCEPTION
-		 * handler materializes it into the function's result and returns. Drain
-		 * any finally opened within this body first (nested try/finally inside
-		 * the catch), which may itself override sCatchReturn. */
+		 * onto the body frame this catch/finally returns from (skip the transparent
+		 * exception/catch wrappers); the enclosing body's OP_DONE / OP_POP_EXCEPTION
+		 * materializes it into pResult. Drain any finally opened within this body
+		 * first (nested try/finally inside the catch), which may overwrite the same
+		 * frame's slot (finally-over-catch). */
+		VmFrame *pTgt = VmSkipExceptionFrames(pVm->pFrame);
 		if( pInstr->iP1 && pTos >= pStack ){
-			PH7_MemObjStore(pTos,&pVm->sCatchReturn);
+			PH7_MemObjStore(pTos,&pTgt->sRet);
 			VmPopOperand(&pTos,1);
 		}else{
-			PH7_MemObjRelease(&pVm->sCatchReturn); /* bare `return;` -> null */
+			PH7_MemObjRelease(&pTgt->sRet); /* bare `return;` -> null */
 		}
-		pVm->bReturnRequested = 1;
+		pTgt->bHasRet = 1;
+		pTgt->nRetGen++;
 		rc = VmDrainFinally(&(*pVm),nExceptionBase);
 		if( rc == SXERR_ABORT ){
 			goto Abort;
@@ -5032,8 +5003,8 @@ case PH7_OP_DONE:
 	 * returning. Only drain entries above nExceptionBase to avoid interfering
 	 * with exception contexts from an outer VmByteCodeExec invocation.
 	 * This runs AFTER storing the return value so that 'return' in a finally
-	 * block can override it (the finally writes pVm->sCatchReturn, materialized
-	 * below).
+	 * block can override it (the finally writes this body frame's sRet slot,
+	 * materialized below).
 	 */
 	rc = VmDrainFinally(&(*pVm),nExceptionBase);
 	if( rc == SXERR_ABORT ){
@@ -5051,9 +5022,17 @@ case PH7_OP_DONE:
 		}
 		goto Exception;
 	}
-	if( pVm->bReturnRequested && !bReturnPropagates ){
-		/* A drained finally issued a 'return' that overrides this one. */
-		VmMaterializeCatchReturn(&(*pVm),pResult,pEntryFrame);
+	if( pEntryFrame->bHasRet && !bReturnPropagates ){
+		/* A catch/finally issued a 'return' targeting THIS body. If the body is
+		 * actually unwinding because an exception escaped it (terminal OP_DONE on
+		 * the throw-unwind path, VM_FRAME_THROW set — same guard as the return-type
+		 * enforcement above), that exception supersedes the return: discard it.
+		 * Otherwise materialize it as this function's result. */
+		if( VmSkipExceptionFrames(pVm->pFrame)->iFlags & VM_FRAME_THROW ){
+			VmClearFrameReturn(pEntryFrame);
+		}else{
+			VmMaterializeCatchReturn(&(*pVm),pResult,pEntryFrame);
+		}
 	}
 	goto Done;
 /*
@@ -8273,10 +8252,12 @@ case PH7_OP_POP_EXCEPTION: {
 			goto Exception;
 		}
 	}
-	if( pVm->bReturnRequested ){
+	if( VmSkipExceptionFrames(pVm->pFrame)->bHasRet ){
 		/* `return` inside the finally (normal try completion) returns from the
-		 * function. Drain outer finally blocks first, then — only in the real
-		 * function body — materialize; inside a mini-program propagate outward. */
+		 * function. The return targets the body frame this try belongs to. Drain
+		 * outer finally blocks first, then — only in the real function body
+		 * (pEntryFrame IS that body) — materialize; inside a mini-program (an inline
+		 * try within a catch/finally) propagate outward so the owning body returns. */
 		rc = VmDrainFinally(&(*pVm),nExceptionBase);
 		if( rc == SXERR_ABORT ){
 			goto Abort;
@@ -8381,8 +8362,8 @@ case PH7_OP_THROW: {
 	}
 	/* Perform an unconditional jump to the try's OP_POP_EXCEPTION landing pad,
 	 * which tears down the try frame, runs finally, and (when a catch/finally
-	 * issued a `return`) consumes pVm->bReturnRequested. Routing the return
-	 * through OP_POP_EXCEPTION keeps the frame stack balanced. */
+	 * issued a `return`) materializes the body frame's pending return. Routing the
+	 * return through OP_POP_EXCEPTION keeps the frame stack balanced. */
 	pc = nJump - 1;
 	break;
 				   }
@@ -10896,26 +10877,29 @@ case PH7_OP_CONSUME: {
 		pc++; /* Next instruction in the stream */
 	} /* For(;;) */
 Done:
-	/* A body reaches its terminal OP_DONE on both a normal return and the
-	 * throw-unwind path (the compiler routes an uncaught throw here). When an
-	 * exception escaped THIS body (VM_FRAME_THROW still set on its frame), that
-	 * escaping exception discards any pending outer catch/finally return we parked
-	 * on entry — the same rule VmThrowException applies (line ~15135) when the
-	 * signal is live, but here it was saved out of its sight in sSavedReturn.
-	 * Restoring it would resurrect a return the exception already superseded. */
-	if( bSavedReturn && (VmSkipExceptionFrames(pVm->pFrame)->iFlags & VM_FRAME_THROW) ){
-		VmDiscardOuterReturn(bSavedReturn,&sSavedReturn);
-	}else{
-		VmRestoreOuterReturn(&(*pVm),bSavedReturn,&sSavedReturn);
+	/* Safety net: whenever the REAL body returns, its pending-return slot must be
+	 * empty. The materialize at OP_DONE/OP_POP_EXCEPTION already moved the value
+	 * into pResult and cleared bHasRet, so this is normally a no-op; it only fires
+	 * on a path that reached Done with a stale slot, preventing a leak. The
+	 * !bReturnPropagates guard is essential: a catch/finally MINI-PROGRAM runs in
+	 * its body's own frame (VmLocalExec adds no frame), so pEntryFrame here is that
+	 * body — wiping its slot would destroy the return the body is about to take. */
+	if( !bReturnPropagates ){
+		VmClearFrameReturn(pEntryFrame);
 	}
 	SySetRelease(&aArg);
 	return SXRET_OK;
 Suspend:
-	VmRestoreOuterReturn(&(*pVm),bSavedReturn,&sSavedReturn);
+	/* A generator/fiber body never suspends mid-completion of a catch/finally
+	 * return, so its frame's slot is empty here; nothing to do. */
 	SySetRelease(&aArg);
 	return PH7_SUSPEND;
 Abort:
-	VmDiscardOuterReturn(bSavedReturn,&sSavedReturn);
+	/* Real body unwinding abnormally — discard its pending return (see Done; a
+	 * mini-program leaves the body's slot for the body itself to discard). */
+	if( !bReturnPropagates ){
+		VmClearFrameReturn(pEntryFrame);
+	}
 	SySetRelease(&aArg);
 	while( pTos >= pStack ){
 		PH7_MemObjRelease(pTos);
@@ -10923,7 +10907,11 @@ Abort:
 	}
 	return PH7_ABORT;
 Exception:
-	VmDiscardOuterReturn(bSavedReturn,&sSavedReturn);
+	/* Exception escaping the real body — per PHP it discards any pending
+	 * catch/finally return parked on this body's frame (see Done). */
+	if( !bReturnPropagates ){
+		VmClearFrameReturn(pEntryFrame);
+	}
 	SySetRelease(&aArg);
 	while( pTos >= pStack ){
 		PH7_MemObjRelease(pTos);
@@ -11284,6 +11272,7 @@ static void VmReleaseExecCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx)
 		SySetRelease(&pCtx->pFrame->sArg);
 		SySetRelease(&pCtx->pFrame->sLocal);
 		SySetRelease(&pCtx->pFrame->sRef);
+		PH7_MemObjRelease(&pCtx->pFrame->sRet);
 		SyMemBackendPoolFree(&pVm->sAllocator, pCtx->pFrame);
 		pCtx->pFrame = 0;
 	}
@@ -15225,12 +15214,12 @@ static sxi32 VmThrowException(
 	 * disarm so the RHS-evaluation throw can't leave the slot live for a
 	 * later unrelated NULLC_STORE (stale offsetSet) or leak the instance ref. */
 	VmCoalesceDisarm(pVm);
-	/* A fresh throw supersedes any pending catch/finally return (PHP: an
-	 * exception thrown in a catch/finally discards an earlier `return`). */
-	if( pVm->bReturnRequested ){
-		pVm->bReturnRequested = 0;
-		PH7_MemObjRelease(&pVm->sCatchReturn);
-	}
+	/* A throw supersedes a pending catch/finally `return` ONLY when it actually
+	 * unwinds past that return's body frame. We do NOT clear anything here: each
+	 * body's pending return lives on its own frame and is discarded at that body's
+	 * Exception/Abort exit (or its terminal throw-unwind OP_DONE). A throw caught
+	 * locally — e.g. an inline try/catch inside a finally — never unwinds the body
+	 * that owns the pending return, so it must leave that return intact. */
 	/* Point to the stack of loaded exceptions */
 	apException = (ph7_exception **)SySetBasePtr(&pVm->aException);
 	pException = 0;
@@ -15284,16 +15273,19 @@ static sxi32 VmThrowException(
 				return SXERR_ABORT;
 			}
 			/* A `return` inside the finally swallows the in-flight exception (PHP
-			 * semantics). pThis is discarded; the enclosing try's OP_THROW /
-			 * OP_POP_EXCEPTION landing pad materializes the pending return. Clear
-			 * VM_FRAME_THROW on the owning frame: this body now returns normally, so
-			 * its caller's OP_CALL must take the return value, not unwind. */
-			if( pVm->bReturnRequested ){
+			 * semantics). The finally stored it on the body frame it returns from
+			 * (pThrowFrame); pThis is discarded; the body's OP_DONE / OP_POP_EXCEPTION
+			 * landing pad materializes it. Clear VM_FRAME_THROW on the owning frame:
+			 * this body now returns normally, so its caller's OP_CALL must take the
+			 * return value, not unwind. */
+			{
 				VmFrame *pThrowFrame = VmSkipExceptionFrames(pVm->pFrame);
-				if( pException->pFrame == pThrowFrame ){
-					pThrowFrame->iFlags &= ~VM_FRAME_THROW;
+				if( pThrowFrame->bHasRet ){
+					if( pException->pFrame == pThrowFrame ){
+						pThrowFrame->iFlags &= ~VM_FRAME_THROW;
+					}
+					return SXRET_OK;
 				}
-				return SXRET_OK;
 			}
 			/* The finally threw an exception that superseded pThis — it either
 			 * escaped (PH7_EXCEPTION) or was caught in place by an outer handler
@@ -15412,28 +15404,40 @@ static sxi32 VmThrowException(
 		}
 		/* Execute the finally block after catch */
 		if( pException->iHasFinally ){
+			sxi32 rcf;
+			/* Snapshot, before the finally runs: the body frame this try returns
+			 * from, its pending-return write generation (set if the catch above
+			 * returned), and the exception-stack depth. After the finally we use
+			 * these to decide whether the finally's throw superseded THIS try's
+			 * catch-return. */
+			VmFrame *pBody = VmSkipExceptionFrames(pVm->pFrame);
+			sxu32 nGenBefore = pBody->nRetGen;
+			sxu32 nExcBefore = SySetUsed(&pVm->aException);
 			pException->iFinallyDone = 1;
-			{
-				sxi32 rcf = VmLocalExec(&(*pVm),&pException->sFinally,0,TRUE);
-				if( rcf == SXERR_ABORT ){
-					return SXERR_ABORT;
+			rcf = VmLocalExec(&(*pVm),&pException->sFinally,0,TRUE);
+			if( rcf == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			/* Did the finally throw an exception that escaped THIS try? Two shapes:
+			 * it propagated out (rcf == PH7_EXCEPTION), or it was caught in place by
+			 * a handler that lived BELOW this try (the exception stack shrank). In
+			 * either case that exception supersedes this try's catch-return — but
+			 * ONLY if the slot still holds it (nRetGen unchanged). If an outer catch
+			 * (same body frame) ran during the finally and OVERWROTE the slot with
+			 * its own return, nRetGen advanced and that return must survive. */
+			if( (rcf == PH7_EXCEPTION || SySetUsed(&pVm->aException) < nExcBefore)
+			 && pBody->bHasRet && pBody->nRetGen == nGenBefore ){
+				VmClearFrameReturn(pBody);
+			}
+			if( rcf == PH7_EXCEPTION ){
+				/* The finally's exception propagated past this try; drop any deferred
+				 * re-throw and signal the OP_THROW site to unwind THIS function so it
+				 * reaches the frame that caught the finally's throw. */
+				if( pVm->pPendingException ){
+					PH7_ClassInstanceUnref(pVm->pPendingException);
+					pVm->pPendingException = 0;
 				}
-				if( rcf == PH7_EXCEPTION ){
-					/* The finally threw an exception that escaped it (its handler, if
-					 * any, already ran in place at an outer frame). That new exception
-					 * supersedes the one we just caught here: drop any deferred
-					 * re-throw and signal the OP_THROW site to unwind THIS function so
-					 * it reaches the frame that caught the finally's throw. THIS
-					 * catch's own pending return was already discarded on the way out
-					 * of the throwing body (VM_FRAME_THROW path at Done); any signal
-					 * still live here belongs to the outer handler that caught the
-					 * finally's exception with a `return`, so it must be preserved. */
-					if( pVm->pPendingException ){
-						PH7_ClassInstanceUnref(pVm->pPendingException);
-						pVm->pPendingException = 0;
-					}
-					return PH7_EXCEPTION;
-				}
+				return PH7_EXCEPTION;
 			}
 		}
 		if( rc == SXERR_ABORT ){
@@ -15442,16 +15446,17 @@ static sxi32 VmThrowException(
 		/* If the catch body re-threw, the exception was deferred in
 		 * pPendingException (because outer handlers were hidden).
 		 * Now that finally has run and handlers are restored, re-throw —
-		 * unless the finally itself issued a `return`, which swallows the
-		 * in-flight exception (PHP semantics).
+		 * unless the catch/finally issued a `return` (parked on this body frame,
+		 * the catch frame having been left above), which swallows the in-flight
+		 * exception (PHP semantics).
 		 */
 		if( pVm->pPendingException ){
-			if( !pVm->bReturnRequested ){
+			if( !VmSkipExceptionFrames(pVm->pFrame)->bHasRet ){
 				ph7_class_instance *pReThrow = pVm->pPendingException;
 				pVm->pPendingException = 0;
 				return VmThrowException(&(*pVm),pReThrow);
 			}
-			/* Swallowed by finally's return: drop the deferred exception. */
+			/* Swallowed by the catch/finally's return: drop the deferred exception. */
 			PH7_ClassInstanceUnref(pVm->pPendingException);
 			pVm->pPendingException = 0;
 		}
