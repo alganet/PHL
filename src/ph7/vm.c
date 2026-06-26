@@ -661,19 +661,44 @@ static VmFrame * VmSkipExceptionFrames(VmFrame *pFrame)
 	return pFrame;
 }
 /*
+ * TRUE when pEntryFrame is a proper ancestor of pFrame via the pParent chain —
+ * i.e. pFrame (a VM_FRAME_EXCEPTION try frame) was pushed *within* the
+ * VmByteCodeExec invocation whose entry frame is pEntryFrame. A frame's
+ * iExceptionJump indexes the bytecode array that was executing when its
+ * OP_LOAD_EXCEPTION ran, so an in-place `pc = iExceptionJump - 1` resume is only
+ * valid against the CURRENT array when the try was opened in this same exec.
+ * For a catch/finally mini-program (run via VmLocalExec over its own small
+ * array) the only exception frames below pEntryFrame belong to the *enclosing*
+ * function — jumping pc to their index overruns the mini-program's array. */
+static int VmTryFrameInCurrentExec(VmFrame *pFrame, VmFrame *pEntryFrame)
+{
+	VmFrame *p = pFrame ? pFrame->pParent : 0;
+	while( p ){
+		if( p == pEntryFrame ){
+			return 1;
+		}
+		p = p->pParent;
+	}
+	return 0;
+}
+/*
  * After a callee invoked from an OP_CALL site (object __invoke, an array
  * callable, or a NEW constructor) returns PH7_EXCEPTION, decide how the current
  * frame unwinds. The catch body, if any, already ran in-place inside
  * VmThrowException. Returns TRUE and sets *pResumePc to the post-try resume
  * point when THIS frame's own try caught the exception; returns FALSE to signal
  * the caller to propagate (goto Exception) so the exception unwinds through
- * intermediate frames that have no local handler.
+ * intermediate frames that have no local handler. pEntryFrame is the running
+ * exec's entry frame: a try frame not opened within it (see
+ * VmTryFrameInCurrentExec) belongs to an outer bytecode array and must not steer
+ * this array's pc.
  */
-static int VmCalleeExceptionResume(ph7_vm *pVm,sxi32 *pResumePc)
+static int VmCalleeExceptionResume(ph7_vm *pVm,sxi32 *pResumePc,VmFrame *pEntryFrame)
 {
 	VmFrame *pFrame = pVm->pFrame;
 	if( (pFrame->iFlags & VM_FRAME_EXCEPTION) && pFrame->iExceptionJump > 0
-	 && !(pFrame->iFlags & VM_FRAME_THROW) ){
+	 && !(pFrame->iFlags & VM_FRAME_THROW)
+	 && VmTryFrameInCurrentExec(pFrame,pEntryFrame) ){
 		*pResumePc = (sxi32)pFrame->iExceptionJump - 1;
 		return TRUE;
 	}
@@ -686,11 +711,15 @@ static int VmCalleeExceptionResume(ph7_vm *pVm,sxi32 *pResumePc)
  * inside a catch/finally (the OP_THROW / OP_POP_EXCEPTION consumers, and a
  * nested try/finally inside a catch body). Each finally runs with
  * bReturnPropagates=TRUE so a 'return' inside it overrides the pending value via
- * pVm->sCatchReturn. Returns SXERR_ABORT if a finally aborted, SXRET_OK otherwise.
+ * pVm->sCatchReturn. Returns SXERR_ABORT if a finally aborted, PH7_EXCEPTION if a
+ * finally threw an exception that escaped it (the caller must then unwind as an
+ * exception rather than return its pending value — PHP: a throwing finally
+ * discards the in-flight return), SXRET_OK otherwise.
  */
 static sxi32 VmDrainFinally(ph7_vm *pVm, sxu32 nExceptionBase)
 {
 	sxu32 nUsed;
+	sxi32 rcOut = SXRET_OK;
 	while( (nUsed = SySetUsed(&pVm->aException)) > nExceptionBase ){
 		ph7_exception **apExc = (ph7_exception **)SySetBasePtr(&pVm->aException);
 		ph7_exception *pExc = apExc[nUsed - 1];
@@ -698,13 +727,21 @@ static sxi32 VmDrainFinally(ph7_vm *pVm, sxu32 nExceptionBase)
 		pExc->pFrame = 0;
 		VmLeaveFrame(&(*pVm));
 		if( pExc->iHasFinally && !pExc->iFinallyDone ){
+			sxi32 rcF;
 			pExc->iFinallyDone = 1;
-			if( VmLocalExec(&(*pVm),&pExc->sFinally,0,TRUE) == SXERR_ABORT ){
+			rcF = VmLocalExec(&(*pVm),&pExc->sFinally,0,TRUE);
+			if( rcF == SXERR_ABORT ){
 				return SXERR_ABORT;
+			}
+			if( rcF == PH7_EXCEPTION ){
+				/* The finally threw past itself (its catch, if any, ran in place).
+				 * Remember it so the caller unwinds as an exception; keep draining
+				 * the remaining outer finallys so the frame stack stays balanced. */
+				rcOut = PH7_EXCEPTION;
 			}
 		}
 	}
-	return SXRET_OK;
+	return rcOut;
 }
 /*
  * Materialize a `return` issued inside a catch/finally mini-program: copy the
@@ -4936,6 +4973,10 @@ case PH7_OP_DONE:
 		if( rc == SXERR_ABORT ){
 			goto Abort;
 		}
+		if( rc == PH7_EXCEPTION ){
+			/* A drained finally threw past itself — it discards this return. */
+			goto Exception;
+		}
 		goto Done;
 	}
 	/* Return-type enforcement: only the user-function CALL handler (and
@@ -4997,6 +5038,18 @@ case PH7_OP_DONE:
 	rc = VmDrainFinally(&(*pVm),nExceptionBase);
 	if( rc == SXERR_ABORT ){
 		goto Abort;
+	}
+	if( rc == PH7_EXCEPTION ){
+		/* A drained finally threw past itself, discarding the value this OP_DONE
+		 * stored into pResult. If an enclosing try IN THIS function caught the new
+		 * exception in place, resume at its landing pad; otherwise unwind (the
+		 * caller's exception-resume pops the stored result). */
+		sxi32 iResumePc;
+		if( !bReturnPropagates && VmCalleeExceptionResume(pVm,&iResumePc,pEntryFrame) ){
+			pc = iResumePc;
+			break;
+		}
+		goto Exception;
 	}
 	if( pVm->bReturnRequested && !bReturnPropagates ){
 		/* A drained finally issued a 'return' that overrides this one. */
@@ -8208,6 +8261,17 @@ case PH7_OP_POP_EXCEPTION: {
 		if( rcFinally == SXERR_ABORT ){
 			goto Abort;
 		}
+		if( rcFinally == PH7_EXCEPTION ){
+			/* The finally threw past itself. If an enclosing try IN THIS function
+			 * caught the new exception in place, resume at its landing pad;
+			 * otherwise it was caught at an outer frame, so unwind this function. */
+			sxi32 iResumePc;
+			if( VmCalleeExceptionResume(pVm,&iResumePc,pEntryFrame) ){
+				pc = iResumePc;
+				break;
+			}
+			goto Exception;
+		}
 	}
 	if( pVm->bReturnRequested ){
 		/* `return` inside the finally (normal try completion) returns from the
@@ -8216,6 +8280,9 @@ case PH7_OP_POP_EXCEPTION: {
 		rc = VmDrainFinally(&(*pVm),nExceptionBase);
 		if( rc == SXERR_ABORT ){
 			goto Abort;
+		}
+		if( rc == PH7_EXCEPTION ){
+			goto Exception;
 		}
 		if( !bReturnPropagates ){
 			VmMaterializeCatchReturn(&(*pVm),pResult,pEntryFrame);
@@ -8300,6 +8367,18 @@ case PH7_OP_THROW: {
 	}
 	/* Pop the top entry */
 	VmPopOperand(&pTos,1);
+	if( rc == PH7_EXCEPTION ){
+		/* This try's own finally threw past itself, superseding the exception just
+		 * handled here. If an enclosing try IN THIS function caught the new one,
+		 * resume at its landing pad; otherwise it was caught at an outer frame, so
+		 * unwind this function and let the caller's OP_CALL resume there. */
+		sxi32 iResumePc;
+		if( VmCalleeExceptionResume(pVm,&iResumePc,pEntryFrame) ){
+			pc = iResumePc;
+			break;
+		}
+		goto Exception;
+	}
 	/* Perform an unconditional jump to the try's OP_POP_EXCEPTION landing pad,
 	 * which tears down the try frame, runs finally, and (when a catch/finally
 	 * issued a `return`) consumes pVm->bReturnRequested. Routing the return
@@ -9103,7 +9182,7 @@ case PH7_OP_NEW: {
 				if( rcCons == PH7_ABORT ){
 					goto Abort;
 				}
-				if( VmCalleeExceptionResume(pVm,&iResumePc) ){
+				if( VmCalleeExceptionResume(pVm,&iResumePc,pEntryFrame) ){
 					/* This frame's own try caught it in-place: tidy the stack
 					 * (pop ctor args + release the class-name slot) and resume. */
 					if( pInstr->iP1 > 0 ){
@@ -9564,7 +9643,7 @@ case PH7_OP_CALL: {
 				 * try if it caught the exception in-place, otherwise propagate. */
 				sxi32 iResumePc;
 				PH7_MemObjRelease(&sResult);
-				if( VmCalleeExceptionResume(pVm,&iResumePc) ){
+				if( VmCalleeExceptionResume(pVm,&iResumePc,pEntryFrame) ){
 					PH7_MemObjRelease(pTos);
 					pc = iResumePc;
 					break;
@@ -9627,7 +9706,7 @@ case PH7_OP_CALL: {
 				 * exception unwinds through intermediate frames with no handler. */
 				sxi32 iResumePc;
 				PH7_MemObjRelease(&sResult);
-				if( VmCalleeExceptionResume(pVm,&iResumePc) ){
+				if( VmCalleeExceptionResume(pVm,&iResumePc,pEntryFrame) ){
 					PH7_MemObjRelease(pTos);
 					pc = iResumePc;
 					break;
@@ -10634,10 +10713,15 @@ SkipFuncBody:
 		if( rc != PH7_ABORT && ((pFrame->iFlags & VM_FRAME_THROW) || rc == PH7_EXCEPTION) ){
 			/* An exception was throw in this frame */
 			pFrame = pFrame->pParent;
-			if( !is_callback && pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) && pFrame->iExceptionJump > 0 ){
+			if( !is_callback && pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) && pFrame->iExceptionJump > 0
+			 && VmTryFrameInCurrentExec(pFrame,pEntryFrame) ){
 				/* Pop the resutlt */
 				VmPopOperand(&pTos,1);
-				/* Jump to this destination */
+				/* Jump to this destination — pFrame's try was opened in THIS exec, so
+				 * iExceptionJump indexes the array we are running (see
+				 * VmTryFrameInCurrentExec). A finally/catch mini-program calling a
+				 * throwing function instead falls through to propagate the exception
+				 * out, rather than steering pc with the enclosing function's index. */
 				pc = pFrame->iExceptionJump - 1;
 				rc = PH7_OK;
 			}else{
@@ -10812,7 +10896,18 @@ case PH7_OP_CONSUME: {
 		pc++; /* Next instruction in the stream */
 	} /* For(;;) */
 Done:
-	VmRestoreOuterReturn(&(*pVm),bSavedReturn,&sSavedReturn);
+	/* A body reaches its terminal OP_DONE on both a normal return and the
+	 * throw-unwind path (the compiler routes an uncaught throw here). When an
+	 * exception escaped THIS body (VM_FRAME_THROW still set on its frame), that
+	 * escaping exception discards any pending outer catch/finally return we parked
+	 * on entry — the same rule VmThrowException applies (line ~15135) when the
+	 * signal is live, but here it was saved out of its sight in sSavedReturn.
+	 * Restoring it would resurrect a return the exception already superseded. */
+	if( bSavedReturn && (VmSkipExceptionFrames(pVm->pFrame)->iFlags & VM_FRAME_THROW) ){
+		VmDiscardOuterReturn(bSavedReturn,&sSavedReturn);
+	}else{
+		VmRestoreOuterReturn(&(*pVm),bSavedReturn,&sSavedReturn);
+	}
 	SySetRelease(&aArg);
 	return SXRET_OK;
 Suspend:
@@ -15301,6 +15396,22 @@ static sxi32 VmThrowException(
 				sxi32 rcf = VmLocalExec(&(*pVm),&pException->sFinally,0,TRUE);
 				if( rcf == SXERR_ABORT ){
 					return SXERR_ABORT;
+				}
+				if( rcf == PH7_EXCEPTION ){
+					/* The finally threw an exception that escaped it (its handler, if
+					 * any, already ran in place at an outer frame). That new exception
+					 * supersedes the one we just caught here: drop any deferred
+					 * re-throw and signal the OP_THROW site to unwind THIS function so
+					 * it reaches the frame that caught the finally's throw. THIS
+					 * catch's own pending return was already discarded on the way out
+					 * of the throwing body (VM_FRAME_THROW path at Done); any signal
+					 * still live here belongs to the outer handler that caught the
+					 * finally's exception with a `return`, so it must be preserved. */
+					if( pVm->pPendingException ){
+						PH7_ClassInstanceUnref(pVm->pPendingException);
+						pVm->pPendingException = 0;
+					}
+					return PH7_EXCEPTION;
 				}
 			}
 		}
