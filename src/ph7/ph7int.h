@@ -426,6 +426,9 @@ struct VmFrame
 	SySet sRef;       /* Local reference table (VmSlot instance) */
 	sxi32 iFlags;     /* Frame configuration flags (See below)*/
 	sxu32 iExceptionJump; /* Exception jump destination */
+	ph7_value sRet;   /* Deferred catch/finally `return` value targeting THIS body frame */
+	int bHasRet;      /* TRUE when sRet holds a live pending return */
+	sxu32 nRetGen;    /* Bumped on every sRet write (see VmThrowException finally path) */
 };
 #define VM_FRAME_EXCEPTION  0x01 /* Special Exception frame */
 #define VM_FRAME_THROW      0x02 /* An exception was thrown */
@@ -909,9 +912,6 @@ struct ph7_vm
 	SyHash hTypedSlot;          /* memobj nIdx -> VmClassAttr* for typed property enforcement */
 	SySet aException;           /* Stack of loaded exception */
 	ph7_class_instance *pPendingException; /* Exception deferred past a finally block */
-	sxu8 bReturnRequested;      /* A 'return' fired inside a catch/finally mini-program; the
-	                             * enclosing try's THROW/POP_EXCEPTION handler must return */
-	ph7_value sCatchReturn;     /* Value carried by that return until materialized into pResult */
 	SySet aIOstream;            /* Installed IO stream container */
 	const ph7_io_stream *pDefStream; /* Default IO stream [i.e: typically this is the 'file://' stream] */
 	ph7_value sExec;           /* Compiled script return value [Can be extracted via the PH7_VM_CONFIG_EXEC_VALUE directive]*/
