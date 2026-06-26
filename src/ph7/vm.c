@@ -3473,21 +3473,83 @@ static int VmCheckPseudoType(ph7_vm *pVm, ph7_value *pValue, const SyString *pCl
  * The class match for object values consults the active VM self-stack to
  * resolve `self`/`parent` aliases when present.
  */
+/*
+ * Resolve a class/interface name from a type declaration to its ph7_class*,
+ * handling the `self`/`parent` aliases against the supplied scope class pSelf
+ * (the active self for params/returns/properties, or the declaring class for a
+ * class constant). Used by every type-enforcement site so the resolution rule —
+ * including the iLoadable flag — lives in one place.
+ *
+ * iLoadable: pass FALSE for an instanceof/type-compatibility target (the type
+ * may legitimately be an interface or abstract class); TRUE only filters to
+ * instantiable classes.
+ */
+static ph7_class *VmResolveTypeClass(ph7_vm *pVm, const SyString *pCN, ph7_class *pSelf, int iLoadable)
+{
+	if( pCN->nByte == 4 && SyMemcmp(pCN->zString,"self",4) == 0 ){
+		return pSelf;
+	}
+	if( pCN->nByte == 6 && SyMemcmp(pCN->zString,"parent",6) == 0 ){
+		return pSelf ? pSelf->pBase : 0;
+	}
+	return PH7_VmExtractClass(pVm,pCN->zString,pCN->nByte,iLoadable,0);
+}
 static sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, int bNullable, int bStrict)
 {
 	sxu32 i;
+	sxu32 nAlts;
 	ph7_type_alt *aAlts;
 	int bHasArray, bHasObjAlt, bHasClassAlt;
 	int bHasInt, bHasFloat, bHasString, bHasBool;
+	int bHasIntersection = 0;
+	sxu32 aGroupCount[PHL_UNION_MAX_ALTS];
 	if( pValue->iFlags & MEMOBJ_NULL ){
 		return bNullable ? SXRET_OK : SXERR_INVALID;
 	}
 	aAlts = (ph7_type_alt *)SySetBasePtr(pAlts);
+	nAlts = SySetUsed(pAlts);
+	/* Tally OR-group sizes: a group of ≥2 alternatives is an intersection (the
+	 * value must match ALL its members); singleton groups are ordinary union
+	 * alternatives (match ANY). Group ids are NOT dense in the stored set —
+	 * `null`-only parts are dropped at store time, leaving gaps — so an id can be
+	 * up to (parts-1) ≥ nAlts; index the full PHL_UNION_MAX_ALTS-wide tally. */
+	for( i = 0; i < PHL_UNION_MAX_ALTS; i++ ) aGroupCount[i] = 0;
+	for( i = 0; i < nAlts; i++ ){
+		if( aAlts[i].nGroup < PHL_UNION_MAX_ALTS && ++aGroupCount[aAlts[i].nGroup] == 2 ){
+			bHasIntersection = 1;
+		}
+	}
+	/* Intersection phase: an object satisfies an intersection group iff it is
+	 * instanceof every member. Members are always class types (enforced at parse),
+	 * so a non-object value can never satisfy a group. Skipped entirely for a pure
+	 * union (the common case), which then pays nothing for the group machinery. */
+	if( bHasIntersection && (pValue->iFlags & MEMOBJ_OBJ) ){
+		ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
+		ph7_class *pSelfNow = VmCurrentSelf(pVm);
+		sxu32 g;
+		for( g = 0; g < PHL_UNION_MAX_ALTS; g++ ){
+			int bAll;
+			if( aGroupCount[g] < 2 ) continue;
+			bAll = 1;
+			for( i = 0; i < nAlts; i++ ){
+				ph7_class *pExpected;
+				if( aAlts[i].nGroup != g ) continue;
+				if( aAlts[i].nType != SXU32_HIGH ){ bAll = 0; break; }
+				pExpected = VmResolveTypeClass(pVm,&aAlts[i].sClass,pSelfNow,FALSE);
+				if( pExpected == 0 || !PH7_VmInstanceOf(pInst->pClass,pExpected) ){
+					bAll = 0;
+					break;
+				}
+			}
+			if( bAll ) return SXRET_OK;
+		}
+	}
 	/* Pseudo-type alternatives (true/false/iterable; `mixed` never unions) are
 	 * stored as SXU32_HIGH name atoms and need value-checking, not instanceof.
 	 * A match on any one accepts the value (handles e.g. `true|int`, `?true`,
-	 * `iterable|Foo`). */
-	for( i = 0; i < SySetUsed(pAlts); i++ ){
+	 * `iterable|Foo`). Only singleton-group (ordinary union) atoms apply here. */
+	for( i = 0; i < nAlts; i++ ){
+		if( aGroupCount[aAlts[i].nGroup] >= 2 ) continue;
 		if( aAlts[i].nType == SXU32_HIGH
 		 && VmCheckPseudoType(pVm, pValue, &aAlts[i].sClass) == 1 ){
 			return SXRET_OK;
@@ -3495,7 +3557,8 @@ static sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, int b
 	}
 	bHasArray = bHasObjAlt = bHasClassAlt = 0;
 	bHasInt = bHasFloat = bHasString = bHasBool = 0;
-	for( i = 0; i < SySetUsed(pAlts); i++ ){
+	for( i = 0; i < nAlts; i++ ){
+		if( aGroupCount[aAlts[i].nGroup] >= 2 ) continue;
 		if( aAlts[i].nType == SXU32_HIGH ) bHasClassAlt = 1;
 		else if( aAlts[i].nType == MEMOBJ_OBJ ) bHasObjAlt = 1;
 		else if( aAlts[i].nType == MEMOBJ_HASHMAP ) bHasArray = 1;
@@ -3510,18 +3573,13 @@ static sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, int b
 		if( bHasClassAlt ){
 			ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
 			ph7_class *pSelfNow = VmCurrentSelf(pVm);
-			for( i = 0; i < SySetUsed(pAlts); i++ ){
+			for( i = 0; i < nAlts; i++ ){
 				ph7_class *pExpected;
-				SyString *pCN;
+				if( aGroupCount[aAlts[i].nGroup] >= 2 ) continue;
 				if( aAlts[i].nType != SXU32_HIGH ) continue;
-				pCN = &aAlts[i].sClass;
-				if( pCN->nByte == 4 && SyMemcmp(pCN->zString,"self",4) == 0 ){
-					pExpected = pSelfNow;
-				}else if( pCN->nByte == 6 && SyMemcmp(pCN->zString,"parent",6) == 0 ){
-					pExpected = pSelfNow ? pSelfNow->pBase : 0;
-				}else{
-					pExpected = PH7_VmExtractClass(pVm,pCN->zString,pCN->nByte,TRUE,0);
-				}
+				/* iLoadable=FALSE: an instanceof target may be an interface or
+				 * abstract class (TRUE would filter those out → never match). */
+				pExpected = VmResolveTypeClass(pVm,&aAlts[i].sClass,pSelfNow,FALSE);
 				if( pExpected && PH7_VmInstanceOf(pInst->pClass,pExpected) ){
 					return SXRET_OK;
 				}
@@ -3779,16 +3837,7 @@ static sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pVal
 	if( pAttr->nType == SXU32_HIGH ){
 		/* Class / interface type. Resolve self/parent relative to the class
 		 * currently active on the self-stack. */
-		ph7_class *pExpected = 0;
-		SyString *pClassName = &pAttr->sClass;
-		ph7_class *pSelfNow = VmCurrentSelf(pVm);
-		if( pClassName->nByte == 4 && SyMemcmp(pClassName->zString,"self",4) == 0 ){
-			pExpected = pSelfNow;
-		}else if( pClassName->nByte == 6 && SyMemcmp(pClassName->zString,"parent",6) == 0 ){
-			pExpected = pSelfNow ? pSelfNow->pBase : 0;
-		}else{
-			pExpected = PH7_VmExtractClass(&(*pVm),pClassName->zString,pClassName->nByte,TRUE,0);
-		}
+		ph7_class *pExpected = VmResolveTypeClass(pVm,&pAttr->sClass,VmCurrentSelf(pVm),TRUE);
 		if( (pValue->iFlags & MEMOBJ_OBJ) == 0 ){
 			return VmThrowPropertyTypeError(pVm,pVmAttr,ph7_type_name(pValue));
 		}
@@ -3925,15 +3974,8 @@ static sxi32 VmEnforceConstantType(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr 
 			return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue);
 		}
 		{
-			SyString *pCN = &pAttr->sClass;
-			ph7_class *pExpected;
-			if( pCN->nByte == 4 && SyMemcmp(pCN->zString,"self",4) == 0 ){
-				pExpected = pClass;
-			}else if( pCN->nByte == 6 && SyMemcmp(pCN->zString,"parent",6) == 0 ){
-				pExpected = pClass->pBase;
-			}else{
-				pExpected = PH7_VmExtractClass(&(*pVm),pCN->zString,pCN->nByte,TRUE,0);
-			}
+			/* A class constant's self/parent resolve against the declaring class. */
+			ph7_class *pExpected = VmResolveTypeClass(pVm,&pAttr->sClass,pClass,TRUE);
 			if( pExpected ){
 				ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
 				if( !PH7_VmInstanceOf(pInst->pClass,pExpected) ){
@@ -4271,15 +4313,7 @@ static sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value *pVa
 	if( pFunc->nReturnType == SXU32_HIGH ){
 		SyString *pClassName = &pFunc->sReturnClass;
 		const char *zExpected;
-		ph7_class *pExpected;
-		ph7_class *pSelfNow = VmCurrentSelf(pVm);
-		if( pClassName->nByte == 4 && SyMemcmp(pClassName->zString,"self",4) == 0 ){
-			pExpected = pSelfNow;
-		}else if( pClassName->nByte == 6 && SyMemcmp(pClassName->zString,"parent",6) == 0 ){
-			pExpected = pSelfNow ? pSelfNow->pBase : 0;
-		}else{
-			pExpected = PH7_VmExtractClass(&(*pVm),pClassName->zString,pClassName->nByte,TRUE,0);
-		}
+		ph7_class *pExpected = VmResolveTypeClass(pVm,pClassName,VmCurrentSelf(pVm),TRUE);
 		zExpected = VmSyStringToCStr(pClassName, zTypeBuf, sizeof(zTypeBuf));
 		if( (pValue->iFlags & MEMOBJ_OBJ) == 0 ){
 			zGiven = (pValue->iFlags & MEMOBJ_NULL) ? "null" : ph7_type_name(pValue);

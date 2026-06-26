@@ -6099,12 +6099,9 @@ static int SyMemcmpNoCase(const char *zA, const char *zB, sxu32 n)
 #define UTA_VOID_FLAG  ((sxu32)0xFFFFFFF1)  /* the `void` keyword */
 #define UTA_NEVER_FLAG ((sxu32)0xFFFFFFF2)  /* the `never` keyword */
 
-/* Maximum number of alternatives in a single union type declaration.
- * Picked to be larger than any union type seen in real PHP codebases
- * (typical max is 4-6, with the largest internal PHP unions around 8).
- * The atom array lives on the parser stack, so the cost is bounded:
- * 32 * sizeof(PhlTypeAtom) ≈ 1 KiB. */
-#define PHL_UNION_MAX_ALTS 32
+/* PHL_UNION_MAX_ALTS (max alternatives in one type declaration) is defined in
+ * ph7int.h so the runtime enforcer (vm.c) shares the same bound. The atom array
+ * below lives on the parser stack, so the cost is bounded: ~1 KiB. */
 
 typedef struct PhlTypeAtom PhlTypeAtom;
 struct PhlTypeAtom {
@@ -6112,6 +6109,8 @@ struct PhlTypeAtom {
 	SyString sClass;   /* class name when nType == SXU32_HIGH */
 	const char *zCanon;/* canonical lowercase name for scalar/builtin atoms */
 	sxu32 nCanon;
+	sxu32 nGroup;      /* intersection-group id: atoms sharing it are ANDed (A&B),
+	                    * distinct groups are ORed; pure unions use one atom per group */
 };
 
 /*
@@ -6210,10 +6209,61 @@ static void GenBuildUnionTypeText(SyBlob *pBlob, PhlTypeAtom *aAtoms, int nAtoms
 {
 	int i;
 	int nNonNull = 0;
+	int bAnyIntersection = 0;
+	sxu32 aGroupCount[PHL_UNION_MAX_ALTS];
+	sxu32 nMaxGroup = 0;
+	for( i = 0; i < PHL_UNION_MAX_ALTS; i++ ) aGroupCount[i] = 0;
 	for( i = 0; i < nAtoms; i++ ){
 		if( aAtoms[i].nType != UTA_NULL_FLAG ){
 			nNonNull++;
+			if( aAtoms[i].nGroup < PHL_UNION_MAX_ALTS ){
+				aGroupCount[aAtoms[i].nGroup]++;
+				if( aAtoms[i].nGroup > nMaxGroup ) nMaxGroup = aAtoms[i].nGroup;
+			}
 		}
+	}
+	for( i = 0; i < nAtoms; i++ ){
+		if( aAtoms[i].nType != UTA_NULL_FLAG && aGroupCount[aAtoms[i].nGroup] >= 2 ){
+			bAnyIntersection = 1;
+			break;
+		}
+	}
+	if( bAnyIntersection ){
+		/* Intersection / DNF rendering, in declaration (group) order: each group's
+		 * members joined by `&`; a ≥2-member group is wrapped in `()` only when the
+		 * whole type has more than one group (so a standalone `A&B` stays bare). */
+		sxu32 g, nGroups = 0;
+		int bFirstGroup = 1;
+		for( g = 0; g <= nMaxGroup; g++ ){ if( aGroupCount[g] > 0 ) nGroups++; }
+		for( g = 0; g <= nMaxGroup; g++ ){
+			int bFirstMember = 1;
+			int bWrap;
+			if( aGroupCount[g] == 0 ) continue;
+			/* Wrap a ≥2-member group in `()` whenever it shares the type with any
+			 * other alternative — another group OR a trailing `null` (which is not
+			 * counted in nGroups). So `A&B` stays bare but `(A&B)|null` keeps its
+			 * parens, matching PHP's canonical text. */
+			bWrap = (aGroupCount[g] >= 2 && (nGroups > 1 || bNullable));
+			if( !bFirstGroup ) SyBlobAppend(pBlob, "|", 1);
+			if( bWrap ) SyBlobAppend(pBlob, "(", 1);
+			for( i = 0; i < nAtoms; i++ ){
+				if( aAtoms[i].nType == UTA_NULL_FLAG || aAtoms[i].nGroup != g ) continue;
+				if( !bFirstMember ) SyBlobAppend(pBlob, "&", 1);
+				if( aAtoms[i].nType == SXU32_HIGH ){
+					SyBlobAppend(pBlob, aAtoms[i].sClass.zString, aAtoms[i].sClass.nByte);
+				}else{
+					SyBlobAppend(pBlob, aAtoms[i].zCanon, aAtoms[i].nCanon);
+				}
+				bFirstMember = 0;
+			}
+			if( bWrap ) SyBlobAppend(pBlob, ")", 1);
+			bFirstGroup = 0;
+		}
+		if( bNullable ){
+			SyBlobAppend(pBlob, "|", 1);
+			SyBlobAppend(pBlob, "null", 4);
+		}
+		return;
 	}
 	if( nNonNull == 1 && bNullable ){
 		/* Shorthand: ?T */
@@ -6260,6 +6310,75 @@ static void GenBuildUnionTypeText(SyBlob *pBlob, PhlTypeAtom *aAtoms, int nAtoms
 			SyBlobAppend(pBlob, "null", 4);
 		}
 	}
+}
+
+/*
+ * Parse one `|`-separated part of a type declaration into aAtoms[*pnAtoms..],
+ * tagging each appended atom with group id iGroup. A part is one of:
+ *   - a parenthesized intersection  `(` atom (`&` atom)+ `)`   (DNF group), or
+ *   - a bare atom, optionally followed by a top-level intersection atom (`&` atom)+.
+ * On return *pnMembers is the number of atoms in this part and *pbParen records
+ * whether it was parenthesized.
+ *
+ * The `&`-vs-by-reference ambiguity (`A&B $x` intersection vs `A &$x` by-ref) is
+ * resolved by a one-token lookahead: `&` continues the intersection only when it
+ * is followed by a type atom (namespace separator / identifier / keyword);
+ * otherwise it belongs to a by-ref parameter marker and the part ends, leaving
+ * the `&` for the caller (compile.c param loop) to consume.
+ */
+static sxi32 GenStateParsePart(
+	ph7_gen_state *pGen, PhlTypeAtom *aAtoms, int *pnAtoms, sxu32 iGroup,
+	int *pnMembers, int *pbParen, sxu32 nLine)
+{
+	sxi32 rc;
+	int nMembers = 0;
+	int bParen = 0;
+	*pnMembers = 0;
+	*pbParen = 0;
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_LPAREN) ){
+		bParen = 1;
+		pGen->pIn++; /* skip '(' */
+	}
+	for(;;){
+		if( *pnAtoms >= PHL_UNION_MAX_ALTS ){
+			rc = PH7_GenCompileError(pGen, E_ERROR, nLine,
+				"Too many alternatives in type (limit %d)", PHL_UNION_MAX_ALTS);
+			return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_SYNTAX;
+		}
+		rc = GenStateParseOneTypeAtom(pGen, &aAtoms[*pnAtoms]);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		aAtoms[*pnAtoms].nGroup = iGroup;
+		(*pnAtoms)++;
+		nMembers++;
+		/* Continue the intersection while `&` is followed by another type atom. */
+		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_AMPER) ){
+			SyToken *pNext = &pGen->pIn[1];
+			if( pNext < pGen->pEnd
+			 && (pNext->nType & (PH7_TK_NSSEP|PH7_TK_ID|PH7_TK_KEYWORD)) ){
+				pGen->pIn++; /* skip '&' */
+				continue;
+			}
+		}
+		break;
+	}
+	if( bParen ){
+		if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_RPAREN) == 0 ){
+			rc = PH7_GenCompileError(pGen, E_ERROR, nLine,
+				"Malformed DNF type: expecting ')'");
+			return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_SYNTAX;
+		}
+		pGen->pIn++; /* skip ')' */
+		if( nMembers < 2 ){
+			rc = PH7_GenCompileError(pGen, E_ERROR, nLine,
+				"Parenthesized type must be an intersection of at least two types");
+			return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_SYNTAX;
+		}
+	}
+	*pnMembers = nMembers;
+	*pbParen = bParen;
+	return SXRET_OK;
 }
 
 /*
@@ -6314,34 +6433,47 @@ static sxi32 GenStateParseUnionTypeDecl(
 			return SXERR_SYNTAX;
 		}
 	}
-	/* First atom is mandatory */
-	rc = GenStateParseOneTypeAtom(pGen, &aAtoms[0]);
-	if( rc != SXRET_OK ){
-		return rc;
-	}
-	nAtoms = 1;
-	/* Subsequent atoms separated by `|` */
-	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OP)
-		&& pGen->pIn->sData.nByte == 1 && pGen->pIn->sData.zString[0] == '|' ){
-		if( bShortNullable ){
-			/* Match PHP's wording — `?T|X` is rejected as a parse error.
-			 * Return SXERR_CORRUPT as a sentinel meaning "syntax error
-			 * already reported" so callers skip their own error emission. */
-			rc = PH7_GenCompileError(pGen, E_PARSE, pGen->pIn->nLine,
-				"syntax error, unexpected token \"|\", expecting variable");
-			return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_CORRUPT;
-		}
-		if( nAtoms >= PHL_UNION_MAX_ALTS ){
-			rc = PH7_GenCompileError(pGen, E_ERROR, nLine,
-				"Too many alternatives in union type (limit %d)", PHL_UNION_MAX_ALTS);
-			return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_SYNTAX;
-		}
-		pGen->pIn++; /* skip `|` */
-		rc = GenStateParseOneTypeAtom(pGen, &aAtoms[nAtoms]);
+	/* Parse the first part (a single atom, a bare top-level intersection, or a
+	 * parenthesized DNF intersection), then any further `|`-separated parts. Each
+	 * part is one OR-group; atoms within an intersection share the group id. */
+	{
+		int nMembers, bParen;
+		sxu32 iGroup = 0;
+		rc = GenStateParsePart(pGen, aAtoms, &nAtoms, iGroup, &nMembers, &bParen, nLine);
 		if( rc != SXRET_OK ){
 			return rc;
 		}
-		nAtoms++;
+		/* Subsequent parts separated by `|`. A bare (unparenthesized) intersection
+		 * is legal only as the sole part; once a `|` makes this a union every part
+		 * must be a single type or a parenthesized intersection (`A&B|C` is invalid,
+		 * write `(A&B)|C`). The loop-top check rejects a bare intersection followed
+		 * by `|`; the after-loop check rejects one as the trailing part of a union. */
+		while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OP)
+			&& pGen->pIn->sData.nByte == 1 && pGen->pIn->sData.zString[0] == '|' ){
+			if( bShortNullable ){
+				/* Match PHP's wording — `?T|X` is rejected as a parse error.
+				 * Return SXERR_CORRUPT as a sentinel meaning "syntax error
+				 * already reported" so callers skip their own error emission. */
+				rc = PH7_GenCompileError(pGen, E_PARSE, pGen->pIn->nLine,
+					"syntax error, unexpected token \"|\", expecting variable");
+				return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_CORRUPT;
+			}
+			if( nMembers >= 2 && !bParen ){
+				rc = PH7_GenCompileError(pGen, E_ERROR, pGen->pIn->nLine,
+					"Unparenthesized intersection type cannot be part of a union; wrap it in parentheses");
+				return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_SYNTAX;
+			}
+			pGen->pIn++; /* skip `|` */
+			rc = GenStateParsePart(pGen, aAtoms, &nAtoms, ++iGroup, &nMembers, &bParen, nLine);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+		}
+		if( iGroup > 0 && nMembers >= 2 && !bParen ){
+			rc = PH7_GenCompileError(pGen, E_ERROR, nLine,
+				"Unparenthesized intersection type cannot be part of a union; wrap it in parentheses");
+			return (rc == SXERR_ABORT) ? SXERR_ABORT : SXERR_SYNTAX;
+		}
 	}
 	/* Validation pass.
 	 *
@@ -6352,7 +6484,52 @@ static sxi32 GenStateParseUnionTypeDecl(
 	{
 		int i, j;
 		int bHasNonNull = 0;
+		int bAnyIntersection = 0;
+		sxu32 aGroupCount[PHL_UNION_MAX_ALTS];
+		/* Tally how many atoms each OR-group holds; a group of ≥2 is an
+		 * intersection. (Group ids are 0..parts-1, bounded by nAtoms.) */
+		for( i = 0; i < PHL_UNION_MAX_ALTS; i++ ) aGroupCount[i] = 0;
 		for( i = 0; i < nAtoms; i++ ){
+			if( aAtoms[i].nGroup < PHL_UNION_MAX_ALTS ) aGroupCount[aAtoms[i].nGroup]++;
+		}
+		for( i = 0; i < nAtoms; i++ ){
+			if( aGroupCount[aAtoms[i].nGroup] >= 2 ){ bAnyIntersection = 1; break; }
+		}
+		/* PHP forbids a nullable intersection via the `?` shorthand — `?A&B` must
+		 * be written `(A&B)|null` (handled by the explicit-null DNF path). */
+		if( bShortNullable && bAnyIntersection ){
+			PH7_GenCompileError(pGen, E_ERROR, nLine,
+				"Nullable intersection types are not supported; use (A&B)|null instead");
+			return SXERR_SYNTAX;
+		}
+		for( i = 0; i < nAtoms; i++ ){
+			/* Intersection members must be class/interface types (PHP rejects
+			 * scalars, `object`, and the pseudo-types `iterable`/`callable`/
+			 * `true`/`false` in an intersection). */
+			if( aGroupCount[aAtoms[i].nGroup] >= 2 ){
+				int bClassLike = (aAtoms[i].nType == SXU32_HIGH);
+				if( bClassLike ){
+					SyString *pC = &aAtoms[i].sClass;
+					if( (pC->nByte == 8 && SyMemcmpNoCase(pC->zString,"iterable",8) == 0)
+					 || (pC->nByte == 8 && SyMemcmpNoCase(pC->zString,"callable",8) == 0)
+					 || (pC->nByte == 4 && SyMemcmpNoCase(pC->zString,"true",4) == 0)
+					 || (pC->nByte == 5 && SyMemcmpNoCase(pC->zString,"false",5) == 0) ){
+						bClassLike = 0;
+					}
+				}
+				if( !bClassLike ){
+					const char *zName; sxu32 nName;
+					if( aAtoms[i].nType == SXU32_HIGH ){
+						zName = aAtoms[i].sClass.zString; nName = aAtoms[i].sClass.nByte;
+					}else{
+						zName = aAtoms[i].zCanon; nName = aAtoms[i].nCanon;
+					}
+					PH7_GenCompileError(pGen, E_ERROR, nLine,
+						"Type %.*s cannot be part of an intersection type",
+						(int)nName, zName);
+					return SXERR_SYNTAX;
+				}
+			}
 			if( aAtoms[i].nType == UTA_VOID_FLAG ){
 				if( nAtoms > 1 ){
 					PH7_GenCompileError(pGen, E_ERROR, nLine,
@@ -6390,9 +6567,17 @@ static sxi32 GenStateParseUnionTypeDecl(
 			}else{
 				bHasNonNull = 1;
 			}
-			/* Duplicate detection */
+			/* Duplicate detection. Flag a repeat only within the same group
+			 * (intersection dup `A&A`) or between two singleton groups (union dup
+			 * `int|int` / `A|A`); a class appearing in two distinct intersection
+			 * groups (`(A&B)|(A&C)`) is legal, so skip those pairs. (Exhaustive DNF
+			 * subsumption — e.g. `(A&B)|A` — is deferred.) */
 			for( j = 0; j < i; j++ ){
 				int bDup = 0;
+				int bSameGroup = (aAtoms[i].nGroup == aAtoms[j].nGroup);
+				int bBothSingleton = (aGroupCount[aAtoms[i].nGroup] == 1
+				                   && aGroupCount[aAtoms[j].nGroup] == 1);
+				if( !bSameGroup && !bBothSingleton ) continue;
 				if( aAtoms[i].nType == aAtoms[j].nType ){
 					if( aAtoms[i].nType == SXU32_HIGH ){
 						if( aAtoms[i].sClass.nByte == aAtoms[j].sClass.nByte
@@ -6492,6 +6677,7 @@ static sxi32 GenStateParseUnionTypeDecl(
 				ph7_type_alt sAlt;
 				if( aAtoms[i].nType == UTA_NULL_FLAG ) continue;
 				SyZero(&sAlt, sizeof(sAlt));
+				sAlt.nGroup = aAtoms[i].nGroup; /* preserve intersection grouping */
 				if( aAtoms[i].nType == SXU32_HIGH ){
 					char *zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
 						aAtoms[i].sClass.zString, aAtoms[i].sClass.nByte);
@@ -7096,44 +7282,63 @@ Synchronize:
 static int GenStateLooksLikeTypedProperty(SyToken *pStart,SyToken *pEnd)
 {
 	SyToken *p = pStart;
+	int bFirst = 1;
 	if( p >= pEnd ) return 0;
+	/* Optional nullable `?` shorthand. */
 	if( (p->nType & PH7_TK_OP) && p->sData.nByte == 1 && p->sData.zString[0] == '?' ){
 		p++;
 		if( p >= pEnd ) return 0;
 	}
-	if( p->nType & PH7_TK_NSSEP ){
-		p++;
-		if( p >= pEnd ) return 0;
-	}
-	if( (p->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
-		return 0;
-	}
-	/* Reject class-body modifier keywords that aren't types. Visibility
-	 * (public/private/protected) has already been consumed by the caller,
-	 * but static/final/abstract may still appear here for the initial
-	 * dispatch site. */
-	if( p->nType & PH7_TK_KEYWORD ){
-		sxu32 k = (sxu32)(SX_PTR_TO_INT(p->pUserData));
-		if( k == PH7_TKWRD_FUNCTION || k == PH7_TKWRD_VAR || k == PH7_TKWRD_CONST
-		 || k == PH7_TKWRD_STATIC || k == PH7_TKWRD_FINAL || k == PH7_TKWRD_ABSTRACT ){
-			return 0;
+	/* Skip a (possibly union / intersection / DNF) type to find the `$name`.
+	 * One or more `|`-separated parts; each part is either a parenthesized
+	 * intersection `( … )` or an atom optionally followed by a bare `&`
+	 * intersection. We only need to land on the `$` to classify the member. */
+	for(;;){
+		if( p < pEnd && (p->nType & PH7_TK_LPAREN) ){
+			/* Parenthesized DNF group — skip to the matching `)`. */
+			p++;
+			while( p < pEnd && (p->nType & PH7_TK_RPAREN) == 0 ){ p++; }
+			if( p >= pEnd ) return 0;
+			p++; /* skip ')' */
+		}else{
+			/* A type atom: optional `\`, an identifier/keyword, namespace path,
+			 * then any `&`-joined intersection members. */
+			if( p < pEnd && (p->nType & PH7_TK_NSSEP) ){ p++; }
+			if( p >= pEnd || (p->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
+				return 0;
+			}
+			/* Reject class-body modifier keywords that aren't types (only on the
+			 * first atom; visibility is already consumed, but static/final/abstract
+			 * may still appear at the initial dispatch site). */
+			if( bFirst && (p->nType & PH7_TK_KEYWORD) ){
+				sxu32 k = (sxu32)(SX_PTR_TO_INT(p->pUserData));
+				if( k == PH7_TKWRD_FUNCTION || k == PH7_TKWRD_VAR || k == PH7_TKWRD_CONST
+				 || k == PH7_TKWRD_STATIC || k == PH7_TKWRD_FINAL || k == PH7_TKWRD_ABSTRACT ){
+					return 0;
+				}
+			}
+			p++;
+			while( p + 1 < pEnd && (p->nType & PH7_TK_NSSEP) && (p[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) ){
+				p += 2;
+			}
+			while( p + 1 < pEnd && (p->nType & PH7_TK_AMPER)
+				&& (p[1].nType & (PH7_TK_NSSEP|PH7_TK_ID|PH7_TK_KEYWORD)) ){
+				p++; /* skip '&' */
+				if( p < pEnd && (p->nType & PH7_TK_NSSEP) ){ p++; }
+				if( p >= pEnd || (p->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ) return 0;
+				p++;
+				while( p + 1 < pEnd && (p->nType & PH7_TK_NSSEP) && (p[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) ){
+					p += 2;
+				}
+			}
 		}
-	}
-	p++;
-	/* Consume optional namespace path */
-	while( p + 1 < pEnd && (p->nType & PH7_TK_NSSEP) && (p[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) ){
-		p += 2;
-	}
-	/* Consume any `| Type` union alternatives */
-	while( p < pEnd && (p->nType & PH7_TK_OP) && p->sData.nByte == 1
-		&& p->sData.zString[0] == '|' ){
-		p++;
-		if( p < pEnd && (p->nType & PH7_TK_NSSEP) ){ p++; }
-		if( p >= pEnd || (p->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ) return 0;
-		p++;
-		while( p + 1 < pEnd && (p->nType & PH7_TK_NSSEP) && (p[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) ){
-			p += 2;
+		bFirst = 0;
+		if( p < pEnd && (p->nType & PH7_TK_OP) && p->sData.nByte == 1
+			&& p->sData.zString[0] == '|' ){
+			p++; /* next `|`-separated part */
+			continue;
 		}
+		break;
 	}
 	if( p >= pEnd ) return 0;
 	return (p->nType & PH7_TK_DOLLAR) ? 1 : 0;
@@ -8685,7 +8890,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 					pGen->pIn++; /* Jump the 'readonly' modifier */
 				}
 				if( pGen->pIn >= pGen->pEnd
-					|| (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR|PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP)) == 0 ){
+					|| (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR|PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP|PH7_TK_LPAREN)) == 0 ){
 					rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 						"Unexpected token '%z'. Expecting attribute declaration inside class '%z'",
 						&pGen->pIn->sData,pName);
@@ -8750,7 +8955,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 						pGen->pIn++; /* Jump the 'readonly' modifier */
 					}
 					if( pGen->pIn >= pGen->pEnd
-						|| (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR|PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP)) == 0 ){
+						|| (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR|PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP|PH7_TK_LPAREN)) == 0 ){
 						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 							"Unexpected token '%z',Expecting method,attribute or constant declaration inside class '%z'",
 							&pGen->pIn->sData,pName);
@@ -9496,7 +9701,7 @@ static sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 				iProtection = nKwrd;
 				pGen->pIn++;
 				if( pGen->pIn >= pGen->pEnd
-					|| (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR|PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP)) == 0 ){
+					|| (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR|PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP|PH7_TK_LPAREN)) == 0 ){
 					rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 						"Unexpected token '%z'. Expecting attribute declaration inside trait '%z'",
 						&pGen->pIn->sData,pName);
@@ -9546,7 +9751,7 @@ static sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 						}
 					}
 					if( pGen->pIn >= pGen->pEnd
-						|| (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR|PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP)) == 0 ){
+						|| (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR|PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP|PH7_TK_LPAREN)) == 0 ){
 						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 							"Unexpected token '%z',Expecting method or attribute declaration inside trait '%z'",
 							&pGen->pIn->sData,pName);
