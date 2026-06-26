@@ -191,6 +191,203 @@ PH7_PRIVATE sxi32 PH7_ClassInstallMethod(ph7_class *pClass,ph7_class_method *pMe
 	return rc;
 }
 /*
+ * Method-override compatibility (variance) checking.
+ *
+ * PHP rejects an override whose signature is incompatible with the parent's:
+ * return types are covariant (child may only narrow), parameter types are
+ * contravariant (child may only widen), and a child may not add a required
+ * parameter. We add the diagnostic — but conservatively: PHL must keep running
+ * valid PHP, so the comparator below is SKIP-BY-DEFAULT. It flags only cases that
+ * are unambiguously invalid and silently accepts anything subtle (unions,
+ * intersections, pseudo-types, self/parent/static, object, unresolved classes,
+ * or a missing type), so it can never reject valid code.
+ */
+#define OVT_NONE   0  /* no declared type */
+#define OVT_SCALAR 1  /* a concrete invariant scalar: int/float/string/bool/array */
+#define OVT_CLASS  2  /* a real, already-loaded class/interface */
+#define OVT_SKIP   3  /* union/intersection/pseudo/self/object/unresolved — never flag */
+
+/*
+ * Classify one declared type (nType + class name + union flag) for override
+ * comparison. On OVT_CLASS, *ppClass receives the resolved class. Class names are
+ * resolved by a direct, autoload-free hClass lookup: a miss (forward reference,
+ * namespaced, or not-yet-loaded) yields OVT_SKIP, which the caller accepts.
+ */
+static int OoClassifyOverrideType(ph7_vm *pVm, sxu32 nType, const SyString *pClass,
+	int bUnion, ph7_class **ppClass)
+{
+	*ppClass = 0;
+	if( bUnion ){
+		return OVT_SKIP; /* union/intersection — full lattice, skip */
+	}
+	if( nType == 0 ){
+		return OVT_NONE; /* no declared type */
+	}
+	if( nType == SXU32_HIGH ){
+		/* A class name OR a pseudo-type stored as a name atom. Skip every pseudo
+		 * (incl. self/parent/static, which are context-relative). */
+		static const struct { const char *z; sxu32 n; } aPseudo[] = {
+			{"mixed",5}, {"never",5}, {"iterable",8}, {"callable",8}, {"true",4},
+			{"false",5}, {"self",4}, {"parent",6}, {"static",6}
+		};
+		const char *z = pClass->zString;
+		sxu32 n = pClass->nByte;
+		SyHashEntry *pE;
+		sxu32 i;
+		for( i = 0; i < SX_ARRAYSIZE(aPseudo); i++ ){
+			if( n == aPseudo[i].n && SyStrnmicmp(z,aPseudo[i].z,n) == 0 ){
+				return OVT_SKIP;
+			}
+		}
+		pE = SyHashGet(&pVm->hClass,(const void *)z,n);
+		if( pE == 0 ){
+			return OVT_SKIP; /* not loaded / forward ref / namespaced — accept */
+		}
+		*ppClass = (ph7_class *)pE->pUserData;
+		return OVT_CLASS;
+	}
+	if( nType == MEMOBJ_STRING || nType == MEMOBJ_INT || nType == MEMOBJ_REAL
+	 || nType == MEMOBJ_BOOL || nType == MEMOBJ_HASHMAP ){
+		return OVT_SCALAR;
+	}
+	/* MEMOBJ_OBJ (object — subtypes against classes), MEMOBJ_VOID/NULL/RES,
+	 * or anything unexpected: skip. */
+	return OVT_SKIP;
+}
+
+/*
+ * A declared type normalized for override comparison: the raw type code, the
+ * class-name string (when a class), and the union/nullable flags. Extracted once
+ * from each side so the comparator takes two of these instead of eight scalars.
+ */
+typedef struct OvType OvType;
+struct OvType {
+	sxu32 nType;
+	const SyString *pClass;
+	int bUnion;
+	int bNullable;
+};
+static OvType OoTypeFromReturn(ph7_vm_func *pF)
+{
+	OvType t;
+	t.nType = pF->nReturnType;
+	t.pClass = &pF->sReturnClass;
+	t.bUnion = SySetUsed(&pF->aReturnUnion) > 0;
+	t.bNullable = (pF->iFlags & VM_FUNC_RETURN_NULLABLE) != 0;
+	return t;
+}
+static OvType OoTypeFromArg(ph7_vm_func_arg *pA)
+{
+	OvType t;
+	t.nType = pA->nType;
+	t.pClass = &pA->sClass;
+	t.bUnion = (pA->iFlags & VM_FUNC_ARG_UNION) != 0;
+	t.bNullable = (pA->iFlags & VM_FUNC_ARG_NULLABLE) != 0;
+	return t;
+}
+/*
+ * Return TRUE if the child type is an unambiguously-invalid override of the
+ * parent type. bCovariant=1 for a return type (child must be ⊆ parent),
+ * 0 for a parameter (child must be ⊇ parent). Returns FALSE (accept) on any
+ * skipped/ambiguous shape.
+ */
+static int OoOverrideTypeBad(ph7_vm *pVm, OvType parent, OvType child, int bCovariant)
+{
+	ph7_class *pParentCls, *pChildCls;
+	int kP = OoClassifyOverrideType(pVm, parent.nType, parent.pClass, parent.bUnion, &pParentCls);
+	int kC = OoClassifyOverrideType(pVm, child.nType, child.pClass, child.bUnion, &pChildCls);
+	if( kP == OVT_SKIP || kC == OVT_SKIP ){
+		return 0; /* ambiguous shape — conservatively accept */
+	}
+	/* A missing type is the TOP type. covariant (return): a concrete child is a
+	 * subtype of top, fine; a top child over a concrete parent WIDENS → bad.
+	 * contravariant (param): a top child is a supertype of anything, fine; a
+	 * concrete child over a top parent NARROWS → bad. (A union/intersection child
+	 * already fell into OVT_SKIP above, so a flagged child here is scalar/class.) */
+	if( kP == OVT_NONE || kC == OVT_NONE ){
+		if( bCovariant && kC == OVT_NONE && kP != OVT_NONE ) return 1;
+		if( !bCovariant && kP == OVT_NONE && kC != OVT_NONE ) return 1;
+		return 0;
+	}
+	/* Nullability: a covariant return may not ADD null; a contravariant param may
+	 * not REMOVE null. */
+	if( bCovariant ){
+		if( child.bNullable && !parent.bNullable ) return 1;
+	}else{
+		if( parent.bNullable && !child.bNullable ) return 1;
+	}
+	if( kP == OVT_SCALAR && kC == OVT_SCALAR ){
+		/* Scalars are invariant — they must match exactly. */
+		return (parent.nType != child.nType) ? 1 : 0;
+	}
+	if( kP == OVT_CLASS && kC == OVT_CLASS ){
+		if( bCovariant ){
+			return PH7_VmInstanceOf(pChildCls, pParentCls) ? 0 : 1;  /* child ⊆ parent */
+		}
+		return PH7_VmInstanceOf(pParentCls, pChildCls) ? 0 : 1;      /* child ⊇ parent */
+	}
+	/* One scalar and one class — disjoint. */
+	return 1;
+}
+
+/*
+ * Check a child method's signature against the parent method it overrides.
+ * Emits a PHP-style "Declaration of … must be compatible …" fatal on a clear
+ * incompatibility. `__construct` is exempt (PHP does not apply variance to it).
+ */
+static sxi32 OoCheckOverrideCompat(ph7_gen_state *pGen, ph7_class *pBase, ph7_class *pSub,
+	ph7_class_method *pParent, ph7_class_method *pChild)
+{
+	ph7_vm *pVm = pGen->pVm;
+	ph7_vm_func *pPF = &pParent->sFunc;
+	ph7_vm_func *pCF = &pChild->sFunc;
+	SyString *pMName = &pCF->sName;
+	ph7_vm_func_arg *aP, *aC;
+	sxu32 nPArg, nCArg, k;
+	int bBad = 0;
+	if( pMName->nByte == sizeof("__construct")-1
+	 && SyStrnmicmp(pMName->zString,"__construct",pMName->nByte) == 0 ){
+		return SXRET_OK;
+	}
+	/* Return type — covariant. */
+	bBad = OoOverrideTypeBad(pVm, OoTypeFromReturn(pPF), OoTypeFromReturn(pCF), /* bCovariant */ 1);
+	/* Each overlapping parameter — contravariant. */
+	nPArg = SySetUsed(&pPF->aArgs);
+	nCArg = SySetUsed(&pCF->aArgs);
+	aP = (ph7_vm_func_arg *)SySetBasePtr(&pPF->aArgs);
+	aC = (ph7_vm_func_arg *)SySetBasePtr(&pCF->aArgs);
+	for( k = 0; !bBad && k < nPArg && k < nCArg; k++ ){
+		bBad = OoOverrideTypeBad(pVm, OoTypeFromArg(&aP[k]), OoTypeFromArg(&aC[k]), /* bCovariant */ 0);
+	}
+	/* Parameter arity: the child must declare at least the parent's parameters and
+	 * may add only OPTIONAL ones — PHP rejects dropping any param (even an optional
+	 * one) or adding a required one. Skip the rule if either signature is variadic
+	 * (arity semantics differ). */
+	if( !bBad ){
+		int bVariadic = 0;
+		for( k = 0; k < nPArg; k++ ){ if( aP[k].iFlags & VM_FUNC_ARG_VARIADIC ) bVariadic = 1; }
+		for( k = 0; k < nCArg; k++ ){ if( aC[k].iFlags & VM_FUNC_ARG_VARIADIC ) bVariadic = 1; }
+		if( !bVariadic ){
+			if( nCArg < nPArg ){
+				bBad = 1; /* dropped a parent parameter */
+			}else{
+				for( k = nPArg; k < nCArg; k++ ){
+					if( SySetUsed(&aC[k].aByteCode) == 0 ){ bBad = 1; break; } /* new required */
+				}
+			}
+		}
+	}
+	if( bBad ){
+		sxi32 rc = PH7_GenCompileError(&(*pGen),E_ERROR,pChild->nLine,
+			"Declaration of %z::%z() must be compatible with %z::%z()",
+			&pSub->sName,pMName,&pBase->sName,&pParent->sFunc.sName);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+	}
+	return SXRET_OK;
+}
+/*
  * Perform an inheritance operation.
  * According to the PHP language reference manual
  *  When you extend a class, the subclass inherits all of the public and protected methods
@@ -308,6 +505,13 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 				rc = PH7_GenCompileError(&(*pGen),E_ERROR,((ph7_class_method *)pEntry->pUserData)->nLine,
 					"Cannot Overwrite final method '%z:%z' inside child class '%z'",
 					&pBase->sName,pName,&pSub->sName);
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+			}else{
+				/* Check the override's signature is compatible with the parent's. */
+				rc = OoCheckOverrideCompat(&(*pGen),pBase,pSub,pMeth,
+					(ph7_class_method *)pEntry->pUserData);
 				if( rc == SXERR_ABORT ){
 					return SXERR_ABORT;
 				}
