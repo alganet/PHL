@@ -6726,11 +6726,11 @@ static sxi32 GenStateParseReturnType(ph7_gen_state *pGen, ph7_vm_func *pFunc)
 		&pFunc->aReturnUnion,
 		&iFlags,
 		&pFunc->sReturnTypeName,
-		/* iNullableFlag */ 0, /* nullability for returns rides on aReturnUnion contents only */
+		VM_FUNC_RETURN_NULLABLE, /* nullability flag — a null alternative isn't stored
+		                          * in aReturnUnion, so the func carries it explicitly */
 		/* iUnionFlag */ 0,
 		/* bAllowVoid */ 1,
 		nLine);
-	(void)iFlags;
 	if( rc == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
@@ -6749,6 +6749,7 @@ static sxi32 GenStateParseReturnType(ph7_gen_state *pGen, ph7_vm_func *pFunc)
 		}
 		return SXERR_SYNTAX;
 	}
+	pFunc->iFlags |= (iFlags & VM_FUNC_RETURN_NULLABLE);
 	return SXRET_OK;
 }
 
@@ -7814,9 +7815,15 @@ static sxi32 GenStateCompileClassMethod(
 			ph7_vm_func_arg *pArg = (ph7_vm_func_arg *)SySetAt(&pMeth->sFunc.aArgs,i);
 			ph7_class_attr *pAttr;
 			sxi32 iAttrFlags = 0;
+			int bArgTyped;
 			if( (pArg->iFlags & VM_FUNC_ARG_PROMOTED) == 0 ){
 				continue;
 			}
+			/* "typed" = a single type or class name, OR a union/intersection,
+			 * which leaves nType=0 / empty sClass and stores its alts in
+			 * aUnionAlts. Used both to validate the type and to mark the attr. */
+			bArgTyped = pArg->nType > 0 || SyStringLength(&pArg->sClass) > 0
+			         || (pArg->iFlags & VM_FUNC_ARG_UNION);
 			if( pArg->iFlags & VM_FUNC_ARG_VARIADIC ){
 				rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 					"Cannot declare variadic promoted property");
@@ -7828,8 +7835,7 @@ static sxi32 GenStateCompileClassMethod(
 			/* Reject the same disallowed pseudo-types (callable/mixed/iterable)
 			 * that GenStateCompileClassAttr rejects — including when they
 			 * appear as an alternative of a union type. */
-			if( pArg->nType > 0 || SyStringLength(&pArg->sClass) > 0
-			 || (pArg->iFlags & VM_FUNC_ARG_UNION) ){
+			if( bArgTyped ){
 				rc = GenStateValidateMemberType(pGen,pClass,&pArg->sName,
 					pArg->nType,&pArg->sClass,&pArg->sTypeName,
 					(pArg->iFlags & VM_FUNC_ARG_UNION) ? &pArg->aUnionAlts : 0,
@@ -7849,7 +7855,7 @@ static sxi32 GenStateCompileClassMethod(
 				}
 				goto Synchronize;
 			}
-			if( pArg->nType > 0 || SyStringLength(&pArg->sClass) > 0 ){
+			if( bArgTyped ){
 				iAttrFlags |= PH7_CLASS_ATTR_TYPED;
 			}
 			if( pArg->iFlags & VM_FUNC_ARG_NULLABLE ){
