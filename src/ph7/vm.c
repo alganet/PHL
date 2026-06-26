@@ -4221,14 +4221,25 @@ static const char *VmSyStringToCStr(const SyString *pStr, char *zBuf, sxu32 nBuf
 	return zBuf;
 }
 
+/*
+ * TRUE if a function declares a return type that must be enforced — a single
+ * type (nReturnType) OR a union/intersection (aReturnUnion, where nReturnType is
+ * left 0). The return-enforcement gates must consult both, not just the single
+ * type field.
+ */
+static int VmFuncHasReturnType(ph7_vm_func *pFunc)
+{
+	return pFunc->nReturnType > 0 || SySetUsed(&pFunc->aReturnUnion) > 0;
+}
 static sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value *pValue)
 {
 	int bStrict = pFunc->bStrictTypes ? 1 : 0;
+	int bNullable = (pFunc->iFlags & VM_FUNC_RETURN_NULLABLE) ? 1 : 0;
 	const char *zGiven;
 	char zBuf[128];
 	char zTypeBuf[128];
-	/* Untyped function: no enforcement. */
-	if( pFunc->nReturnType == 0 ){
+	/* Untyped function: no enforcement (no single type and no union/intersection). */
+	if( !VmFuncHasReturnType(pFunc) ){
 		return SXRET_OK;
 	}
 	/* void return type: the function must not produce a value. */
@@ -4241,9 +4252,9 @@ static sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value *pVa
 		zGiven = (pValue->iFlags & MEMOBJ_NULL) ? "null" : ph7_type_name(pValue);
 		return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,"void",zGiven);
 	}
-	/* Function fell off the end without an explicit return: PHP implicitly
-	 * returns null. For a typed non-nullable return (including `mixed`, which
-	 * requires an explicit returned value), that's a TypeError. */
+	/* Fell off the end or a bare `return;` with no value: PHP requires any typed
+	 * return (even a nullable one) to return a value explicitly — only an explicit
+	 * `return null;` satisfies a nullable type, which is handled below. */
 	if( pValue == 0 ){
 		const char *zExpected = "value";
 		if( SyStringLength(&pFunc->sReturnTypeName) > 0 ){
@@ -4261,6 +4272,12 @@ static sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value *pVa
 		return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,"null",
 			VmValueGivenName(pValue,zBuf,sizeof(zBuf)));
 	}
+	/* An explicit `return null` satisfies any nullable return type (`?T`, `T|null`,
+	 * `A|B|null`) uniformly — handle it before the per-shape branches below, none
+	 * of which (scalar/class/union) carry their own nullable check. */
+	if( (pValue->iFlags & MEMOBJ_NULL) && bNullable ){
+		return SXRET_OK;
+	}
 	/* Pseudo-types parsed as class-name atoms: `mixed` (any value),
 	 * `true`/`false` (the matching bool literal), `iterable` (array|Traversable).
 	 * Check by value before the real-class instanceof branch below. */
@@ -4276,21 +4293,12 @@ static sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value *pVa
 		}
 		/* rcPseudo == -1: a real class — fall through to the instanceof branch. */
 	}
-	/* Union return type — delegate. The function has no flag for nullable
-	 * unions; a null alternative is represented inside aReturnUnion, so pass
-	 * bNullable=0 here. */
+	/* Union/intersection return type — delegate. A null alternative is not stored
+	 * in aReturnUnion (dropped at parse), so nullability comes from the func's
+	 * VM_FUNC_RETURN_NULLABLE flag (already consumed above for an explicit null). */
 	if( SySetUsed(&pFunc->aReturnUnion) > 0 ){
 		sxi32 rcU;
-		int bNullable = 0;
 		const char *zExpected = "union";
-		/* Scan alternatives for MEMOBJ_NULL, which serves as `T|null`. */
-		{
-			sxu32 i;
-			ph7_type_alt *aAlts = (ph7_type_alt *)SySetBasePtr(&pFunc->aReturnUnion);
-			for( i = 0; i < SySetUsed(&pFunc->aReturnUnion); i++ ){
-				if( aAlts[i].nType == MEMOBJ_NULL ){ bNullable = 1; break; }
-			}
-		}
 		rcU = VmCoerceToUnion(pVm, pValue, &pFunc->aReturnUnion, bNullable, bStrict);
 		if( rcU == SXRET_OK ){
 			return SXRET_OK;
@@ -4328,15 +4336,10 @@ static sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value *pVa
 		}
 		return SXRET_OK;
 	}
-	/* Scalar return type. Allow null pass-through if the function is
-	 * nullable (textual "?T" gets that flag, though union+null is handled
-	 * above). There's no explicit nullable flag on ph7_vm_func, so detect
-	 * via the type-text leading '?'. */
-	if( (pValue->iFlags & MEMOBJ_NULL) ){
-		if( SyStringLength(&pFunc->sReturnTypeName) > 0
-		 && pFunc->sReturnTypeName.zString[0] == '?' ){
-			return SXRET_OK;
-		}
+	/* Scalar return type. A nullable scalar accepting null was already handled by
+	 * the unified MEMOBJ_NULL+bNullable check above, so any null reaching here is a
+	 * non-nullable scalar return — a TypeError. */
+	if( pValue->iFlags & MEMOBJ_NULL ){
 		return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,
 			VmScalarTypeName(pFunc->nReturnType,&pFunc->sReturnTypeName,zTypeBuf,sizeof(zTypeBuf)),
 			"null");
@@ -4939,7 +4942,7 @@ case PH7_OP_DONE:
 	 * the fiber start/resume paths) set pEnforceRetFunc, so this branch is
 	 * skipped for default-value bytecode, class-method mini-programs,
 	 * callback trampolines, and the main script. */
-	if( pEnforceRetFunc && pEnforceRetFunc->nReturnType > 0
+	if( pEnforceRetFunc && VmFuncHasReturnType(pEnforceRetFunc)
 	 && !(VmSkipExceptionFrames(pVm->pFrame)->iFlags & VM_FRAME_THROW) ){
 		/* The VM_FRAME_THROW guard skips enforcement when the function is
 		 * unwinding because an exception was thrown (the compiler routes an
@@ -10591,7 +10594,7 @@ SkipFuncBody:
 		if( rc != PH7_EXCEPTION ){
 			/* Execute function body */
 			rc = VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(&pVmFunc->aByteCode),pFrameStack,-1,pTos,&n,FALSE,0,
-				pVmFunc->nReturnType > 0 ? pVmFunc : 0, FALSE);
+				VmFuncHasReturnType(pVmFunc) ? pVmFunc : 0, FALSE);
 		}
 		/* Decrement nesting level */
 		pVm->nRecursionDepth--;
@@ -11039,7 +11042,7 @@ static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
 	/* Execute from the beginning */
 	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),
 		pCtx->pStack, -1, &pCtx->sRetValue, 0, FALSE, 0,
-		pCtx->pFunc->nReturnType > 0 ? pCtx->pFunc : 0, FALSE);
+		VmFuncHasReturnType(pCtx->pFunc) ? pCtx->pFunc : 0, FALSE);
 	pVm->nRecursionDepth--;
 	/* Restore the previous context */
 	pVm->pActiveCtx = pOldCtx;
@@ -11114,7 +11117,7 @@ static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValu
 	/* Resume execution from saved PC */
 	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),
 		pCtx->pStack, pCtx->nTos, &pCtx->sRetValue, 0, FALSE, pCtx->pc,
-		pCtx->pFunc->nReturnType > 0 ? pCtx->pFunc : 0, FALSE);
+		VmFuncHasReturnType(pCtx->pFunc) ? pCtx->pFunc : 0, FALSE);
 	pVm->nRecursionDepth--;
 	/* Restore the previous context */
 	pVm->pActiveCtx = pOldCtx;

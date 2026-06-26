@@ -595,7 +595,8 @@ struct ph7_vm_func_closure_env
 #define VM_FUNC_ARG_UNION    0x200 /* Argument has a union type (use aUnionAlts) */
 #define VM_FUNC_ARG_PROMOTED 0x400 /* Constructor promoted property (iPromoteVis holds visibility) */
 #define VM_FUNC_ARG_READONLY 0x800 /* Promoted property is readonly (PHP 8.1) */
-/* next free bit: 0x1000 */
+#define VM_FUNC_RETURN_NULLABLE 0x1000 /* Return type is nullable (?T, T|null, A|B|null) — func-level */
+/* next free bit: 0x2000 */
 /*
  * Each user defined function is parsed out and stored in an instance
  * of the following structure.
