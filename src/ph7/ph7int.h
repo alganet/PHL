@@ -531,14 +531,21 @@ struct ph7_vm_func_arg
 };
 /*
  * One alternative within a union type declaration. Used by parameters,
- * return types, and properties when the declaration is `T1|T2|...`.
+ * return types, and properties when the declaration is `T1|T2|...`,
+ * `A&B` (intersection), or `(A&B)|C` (DNF).
  */
 typedef struct ph7_type_alt ph7_type_alt;
 struct ph7_type_alt
 {
 	sxu32 nType;     /* MEMOBJ_* bitmask, or SXU32_HIGH for a class/interface alternative */
 	SyString sClass; /* Class/interface name when nType == SXU32_HIGH */
+	sxu32 nGroup;    /* Intersection-group id: atoms sharing a group are ANDed (A&B),
+	                  * distinct groups are ORed. A pure union is one atom per group. */
 };
+/* Maximum alternatives in one type declaration; bounds the on-stack atom array
+ * in the parser and the per-group tally in the enforcer. Larger than any real
+ * union/DNF type. */
+#define PHL_UNION_MAX_ALTS 32
 /*
  * Each static variable is parsed out and remembered in an instance
  * of the following structure.
