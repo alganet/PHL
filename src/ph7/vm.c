@@ -15277,10 +15277,31 @@ static sxi32 VmThrowException(
 		sxi32 rc;
 		/* No catch matched. Execute finally, then propagate to outer try/catch. */
 		if( pException && pException->iHasFinally ){
+			sxu32 nExcBefore = SySetUsed(&pVm->aException);
 			pException->iFinallyDone = 1;
 			rc = VmLocalExec(&(*pVm),&pException->sFinally,0,TRUE);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
+			}
+			/* A `return` inside the finally swallows the in-flight exception (PHP
+			 * semantics). pThis is discarded; the enclosing try's OP_THROW /
+			 * OP_POP_EXCEPTION landing pad materializes the pending return. Clear
+			 * VM_FRAME_THROW on the owning frame: this body now returns normally, so
+			 * its caller's OP_CALL must take the return value, not unwind. */
+			if( pVm->bReturnRequested ){
+				VmFrame *pThrowFrame = VmSkipExceptionFrames(pVm->pFrame);
+				if( pException->pFrame == pThrowFrame ){
+					pThrowFrame->iFlags &= ~VM_FRAME_THROW;
+				}
+				return SXRET_OK;
+			}
+			/* The finally threw an exception that superseded pThis — it either
+			 * escaped (PH7_EXCEPTION) or was caught in place by an outer handler
+			 * (which consumed an entry from the exception stack). Either way the
+			 * original pThis is discarded; unwind with the finally's exception (the
+			 * OP_THROW caller resumes at the catching frame or propagates). */
+			if( rc == PH7_EXCEPTION || SySetUsed(&pVm->aException) < nExcBefore ){
+				return PH7_EXCEPTION;
 			}
 		}
 		/* Check if there is an outer exception handler on the stack */
