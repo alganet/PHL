@@ -1956,22 +1956,14 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	static int iCnt = 1;     /* There is no worry about thread-safety here,because only
 							  * one thread is allowed to compile the script.
 						      */
-	ph7_value *pObj;
 	SyString sName;
-	sxu32 nIdx;
 	sxu32 nLen;
 	sxi32 rc;
+	SXUNUSED(iCompileFlag); /* cc warning */
 
 	pGen->pIn++; /* Jump the 'function' keyword */
 	if( pGen->pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD) ){
 		pGen->pIn++;
-	}
-	/* Reserve a constant for the lambda */
-	pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);
-	if( pObj == 0 ){
-		PH7_GenCompileError(&(*pGen),E_ERROR,1,"Fatal, PH7 engine is running out of memory");
-		SXUNUSED(iCompileFlag); /* cc warning */
-		return SXERR_ABORT;
 	}
 	/* Generate a unique name */
 	nLen = SyBufferFormat(zName,sizeof(zName),"[lambda_%d]",iCnt++);
@@ -1980,19 +1972,15 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		nLen = SyBufferFormat(zName,sizeof(zName),"[lambda_%d]",iCnt++);
 	}
 	SyStringInitFromBuf(&sName,zName,nLen);
-	PH7_MemObjInitFromString(pGen->pVm,pObj,&sName);
 	/* Compile the lambda body */
 	rc = GenStateCompileFunc(&(*pGen),&sName,0,TRUE,&pAnnonFunc);
 	if( rc == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
-	if( pAnnonFunc->iFlags & VM_FUNC_CLOSURE ){
-		/* Emit the load closure instruction */
-		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_CLOSURE,0,0,pAnnonFunc,0);
-	}else{
-		/* Emit the load constant instruction */
-		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);
-	}
+	/* Every anonymous function is a Closure object in PHP, so emit OP_LOAD_CLOSURE for
+	 * both real closures (per-instantiation captured env) and plain lambdas (no captures);
+	 * the handler wraps either in a Closure instance. */
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_CLOSURE,0,0,pAnnonFunc,0);
 	/* Node successfully compiled */
 	return SXRET_OK;
 }

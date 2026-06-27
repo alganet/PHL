@@ -215,6 +215,14 @@ static sxi32 VmSerializeObject(ph7_value *pIn, serialize_data *pData)
 		pData->exc = 1;
 		return PH7_EXCEPTION;
 	}
+	/* Closures cannot be serialized either (PHP throws). Guard before the generic
+	 * object path would otherwise emit the Closure object's private callable attributes. */
+	if( pThis->pClass == pVm->pClosureClass ){
+		PH7_VmThrowException(pData->pCtx,"Exception",
+			"Serialization of 'Closure' is not allowed");
+		pData->exc = 1;
+		return PH7_EXCEPTION;
+	}
 	SyBlobInit(&sBody,&pVm->sAllocator);
 	pSave = pData->pOut;
 	pData->pOut = &sBody;     /* recursion appends to the body blob */
