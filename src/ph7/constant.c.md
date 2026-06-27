@@ -216,19 +216,19 @@ Coverage: 1070/1082 lines (98.89%)
 |      - |  206 | ` * __FILE__` |
 |      - |  207 | ` *  Path of the processed script.` |
 |      - |  208 | ` */` |
-|   1204 |  209 | `static void PH7_FILE_Const(ph7_value *pVal,void *pUserData)` |
+|   1210 |  209 | `static void PH7_FILE_Const(ph7_value *pVal,void *pUserData)` |
 |      5 |  210 |  |
-|   1209 |  211 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
+|   1215 |  211 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
 |      - |  212 | `	SyString *pFile;` |
 |      - |  213 | `	/* Peek the top entry */` |
-|   1209 |  214 | `	pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
-|   1209 |  215 | `	if( pFile == 0 ){` |
+|   1215 |  214 | `	pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
+|   1215 |  215 | `	if( pFile == 0 ){` |
 |      - |  216 | `		/* Expand the magic word: ":MEMORY:" */` |
 |      3 |  217 | `		ph7_value_string(pVal,":MEMORY:",(int)sizeof(":MEMORY:")-1);` |
 |      2 |  218 | `	}else{` |
-|   1207 |  219 | `		ph7_value_string(pVal,pFile->zString,pFile->nByte);` |
+|   1213 |  219 | `		ph7_value_string(pVal,pFile->zString,pFile->nByte);` |
 |      - |  220 | `	}` |
-|   1209 |  221 |  |
+|   1215 |  221 |  |
 |      - |  222 | `/*` |
 |      - |  223 | ` * __DIR__` |
 |      - |  224 | ` *  Directory holding the processed script.` |
@@ -1098,20 +1098,20 @@ Coverage: 1070/1082 lines (98.89%)
 |      - | 1088 | ` * PATHINFO_EXTENSION` |
 |      - | 1089 | ` *  Expand 3.` |
 |      - | 1090 | ` */` |
-|   5960 | 1091 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
+|   5976 | 1091 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1092 |  |
-|   2980 | 1093 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   5965 | 1094 | `	ph7_value_int(pVal,3);` |
-|   5965 | 1095 |  |
+|   2988 | 1093 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   5981 | 1094 | `	ph7_value_int(pVal,3);` |
+|   5981 | 1095 |  |
 |      - | 1096 | `/*` |
 |      - | 1097 | ` * PATHINFO_FILENAME` |
 |      - | 1098 | ` *  Expand 4.` |
 |      - | 1099 | ` */` |
-|   5952 | 1100 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
+|   5968 | 1100 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1101 |  |
-|   2976 | 1102 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   5957 | 1103 | `	ph7_value_int(pVal,4);` |
-|   5957 | 1104 |  |
+|   2984 | 1102 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   5973 | 1103 | `	ph7_value_int(pVal,4);` |
+|   5973 | 1104 |  |
 |      - | 1105 | `/*` |
 |      - | 1106 | ` * ASSERT_ACTIVE.` |
 |      - | 1107 | ` *  PHP ASSERT_ACTIVE = 1` |
