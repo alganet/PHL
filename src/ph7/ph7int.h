@@ -981,6 +981,7 @@ struct ph7_vm
 	ph7_exec_ctx *pActiveCtx;  /* Currently executing fiber/generator context (NULL in normal code) */
 	ph7_class *pFiberClass;    /* Cached Fiber class pointer for fast dispatch */
 	ph7_class *pGeneratorClass; /* Cached Generator class pointer */
+	ph7_class *pClosureClass;  /* Cached Closure class pointer (closures are instances of it) */
 	ph7_class *pArrayAccessClass; /* Cached ArrayAccess interface pointer */
 	ph7_class *pCountableClass;   /* Cached Countable interface pointer */
 	ph7_class *pStringableClass;  /* Cached Stringable interface pointer */

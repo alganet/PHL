@@ -248,8 +248,8 @@ PH7_PRIVATE int vm_builtin_ob_start(ph7_context *pCtx,int nArg,ph7_value **apArg
 	/* Initialize the OB entry */
 	PH7_MemObjInit(pCtx->pVm,&sOb.sCallback);
 	SyBlobInit(&sOb.sOB,&pVm->sAllocator);
-	if( nArg > 0 && (apArg[0]->iFlags & (MEMOBJ_STRING|MEMOBJ_HASHMAP)) ){
-		/* Save the callback name for later invocation */
+	if( nArg > 0 && (apArg[0]->iFlags & (MEMOBJ_STRING|MEMOBJ_HASHMAP|MEMOBJ_OBJ)) ){
+		/* Save the callback name for later invocation (MEMOBJ_OBJ = a Closure callback). */
 		PH7_MemObjStore(apArg[0],&sOb.sCallback);
 	}
 	/* Push in the stack */

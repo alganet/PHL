@@ -1200,6 +1200,14 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceCmp(ph7_class_instance *pLeft,ph7_class_insta
 		/* Same instance,don't bother processing,object are equals */
 		return 0;
 	}
+	/* Closures compare by IDENTITY under == as well (not by attributes): two distinct
+	 * Closure instances are never equal, even when they wrap the same underlying function
+	 * (PHP semantics). pLeft != pRight here, so a Closure pair is unequal. Without this,
+	 * two capture-less lambdas of the same `function(){}` share the template's `$__fn`
+	 * name and would compare equal. */
+	if( pLeft->pVm->pClosureClass && pLeft->pClass == pLeft->pVm->pClosureClass ){
+		return 1;
+	}
 	SyHashResetLoopCursor(&pLeft->hAttr);
 	SyHashResetLoopCursor(&pRight->hAttr);
 	PH7_MemObjInit(pLeft->pVm,&sV1);

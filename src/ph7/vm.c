@@ -1219,6 +1219,9 @@ static int vm_builtin_Fiber_destruct(ph7_context *pCtx, int nArg, ph7_value **ap
 static ph7_exec_ctx * VmNewExecCtx(ph7_vm *pVm, ph7_vm_func *pFunc);
 static void VmReleaseExecCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx);
 static ph7_generator * VmGeneratorExtractCtx(ph7_vm *pVm, ph7_value *pGenObj);
+static int VmValueIsClosure(ph7_vm *pVm, ph7_value *pVal);
+static sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut);
+static ph7_class_instance * VmCreateClosure(ph7_vm *pVm, const SyString *pName);
 static sxi32 VmIterCallMethod(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,sxu32 nLen,ph7_value *pResult);
 static sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 	ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg);
@@ -1477,6 +1480,10 @@ static int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_value 
 	"  public function throw(Throwable $exception){ return __gen_throw($this,$exception); }"\
 	"  public function getReturn(){ return __gen_getReturn($this); }"\
 	"  public function __destruct(){ __gen_destruct($this); }"\
+	"}"\
+	"final class Closure {"\
+	"  private $__fn;"\
+	"  public function __construct(){ throw new \\Error('Instantiation of class Closure is not allowed'); }"\
 	"}"\
 	"class stdClass{"\
 	"  public $value;"\
@@ -1850,6 +1857,8 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	ph7_create_function(pVm,"__fiber_isSuspended",vm_builtin_Fiber_isSuspended,0);
 	ph7_create_function(pVm,"__fiber_isTerminated",vm_builtin_Fiber_isTerminated,0);
 	ph7_create_function(pVm,"__fiber_destruct",vm_builtin_Fiber_destruct,0);
+	/* Cache the Closure class pointer (closures are instances of it) */
+	pVm->pClosureClass = PH7_VmExtractClass(pVm,"Closure",7,0,0);
 	/* Cache the Generator class pointer and register generator functions */
 	pVm->pGeneratorClass = PH7_VmExtractClass(pVm,"Generator",9,0,0);
 	ph7_create_function(pVm,"__gen_rewind",vm_builtin_Generator_rewind,0);
@@ -6082,6 +6091,10 @@ case PH7_OP_LOAD_IDX: {
  */
 case PH7_OP_LOAD_CLOSURE:{
 	ph7_vm_func *pFunc = (ph7_vm_func *)pInstr->p3;
+	/* The function whose name the Closure object will wrap: a fresh per-instantiation
+	 * copy for a real closure (built below), or the shared lambda function itself for a
+	 * plain anonymous function with no captured environment. */
+	ph7_vm_func *pTarget = pFunc;
 	if( pFunc->iFlags & VM_FUNC_CLOSURE ){
 		ph7_vm_func_closure_env *aEnv,*pEnv,sEnv;
 		ph7_vm_func *pClosure;
@@ -6141,9 +6154,22 @@ case PH7_OP_LOAD_CLOSURE:{
 			/* Insert the imported variable */
 			SySetPut(&pClosure->aClosureEnv,(const void *)&sEnv);
 		}
-		/* Finally,load the closure name on the stack */
-		pTos++;
-		PH7_MemObjStringAppend(pTos,zName,mLen);
+		pTarget = pClosure;
+	}
+	/* Wrap the target function in a Closure object and push it. Its captured environment
+	 * (incl. any `$this`) stays in pTarget->aClosureEnv and is delivered by the normal call
+	 * path when the closure is dispatched by name. */
+	pTos++;
+	{
+		ph7_class_instance *pCloObj = VmCreateClosure(pVm, &pTarget->sName);
+		if( pCloObj ){
+			pCloObj->iRef++;
+			pTos->x.pOther = pCloObj;
+			MemObjSetType(pTos, MEMOBJ_OBJ);
+		}else{
+			/* OOM fallback: the name string is still a usable callable. */
+			PH7_MemObjStringAppend(pTos, pTarget->sName.zString, pTarget->sName.nByte);
+		}
 	}
 	break;
 						 }
@@ -9663,6 +9689,19 @@ case PH7_OP_CALL: {
 	pArg = &pTos[-nCallArgs];
 	SyHashEntry *pEntry;
 	SyString sName;
+	/* A Closure object is callable: unwrap it to its underlying string callable so the
+	 * dispatch below handles it (rather than treating it as a generic object and looking
+	 * for __invoke). pTos here is a stack copy of the call target. Gated on VmValueIsClosure
+	 * so a plain __invoke object skips the temp-value work entirely. */
+	if( VmValueIsClosure(pVm,pTos) ){
+		ph7_value sCallable;
+		PH7_MemObjInit(pVm,&sCallable);
+		if( VmClosureUnwrap(pVm,pTos,&sCallable) == SXRET_OK ){
+			PH7_MemObjRelease(pTos);
+			PH7_MemObjStore(&sCallable,pTos);
+		}
+		PH7_MemObjRelease(&sCallable);
+	}
 	/* Extract function name */
 	if( (pTos->iFlags & MEMOBJ_STRING) == 0 ){
 		if( pTos->iFlags & MEMOBJ_HASHMAP ){
@@ -11387,6 +11426,78 @@ static ph7_exec_ctx * VmFiberExtractCtx(ph7_vm *pVm, ph7_value *pFiberObj)
 	return (ph7_exec_ctx *)pAttr->x.pOther;
 }
 /*
+ * A PHP closure (and a first-class callable `f(...)`) is a real object: an instance of
+ * the built-in final `Closure` class carrying its underlying callable in a private
+ * `$__fn` attribute (the callable NAME: a registered `[closure_N]`/`[lambda_N]` or a
+ * user/host function name). Storing the callable as a plain attribute (rather than a
+ * native resource pointer) means the object owns no `ph7_vm_func` — the per-closure
+ * function stays owned by `hFunction`/VM-release exactly as before, so there is no extra
+ * free path. (First-class callables `f(...)` will add bound `$this`/scope in a follow-up.)
+ *
+ * Returns non-zero iff pVal is a Closure instance.
+ */
+static int VmValueIsClosure(ph7_vm *pVm, ph7_value *pVal)
+{
+	ph7_class_instance *pThis;
+	/* Flag test first: a non-object call target (the hot common case) bails before any
+	 * pVm dereference; pClosureClass==0 is a one-time pre-init concern, so it goes last. */
+	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 || pVal->x.pOther == 0 || pVm->pClosureClass == 0 ){
+		return 0;
+	}
+	pThis = (ph7_class_instance *)pVal->x.pOther;
+	/* Closure is final, so an exact class match is correct (no subclasses possible). */
+	return pThis->pClass == pVm->pClosureClass;
+}
+/*
+ * Unwrap a Closure value into the simple callable the existing dispatch machinery
+ * already understands, written into pOut (which the caller must have initialised):
+ * the `$__fn` name string — a registered `[closure_N]`/`[lambda_N]` or a user/host
+ * function name, all resolvable by name. (Bound `$this` / scope for first-class
+ * callables `f(...)` are a follow-up increment.)
+ * Returns SXRET_OK if pVal was a Closure (pOut filled), SXERR_NOTFOUND otherwise.
+ */
+static sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut)
+{
+	ph7_class_instance *pThis;
+	ph7_value *pFn;
+	SyString sAttr;
+	if( !VmValueIsClosure(pVm, pVal) ){
+		return SXERR_NOTFOUND;
+	}
+	pThis = (ph7_class_instance *)pVal->x.pOther;
+	SyStringInitFromBuf(&sAttr, "__fn", 4);
+	pFn = PH7_ClassInstanceFetchAttr(pThis, &sAttr);
+	if( pFn == 0 || (pFn->iFlags & MEMOBJ_STRING) == 0 || SyBlobLength(&pFn->sBlob) == 0 ){
+		return SXERR_NOTFOUND; /* malformed/uninitialised closure */
+	}
+	PH7_MemObjStringAppend(pOut, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));
+	return SXRET_OK;
+}
+/*
+ * Create a Closure object wrapping a callable name. Mirrors the Generator/Fiber
+ * "object carries its state in a private attribute" pattern.
+ * Returns the fresh instance (iRef == 0; caller takes the reference), or 0 on OOM.
+ */
+static ph7_class_instance * VmCreateClosure(ph7_vm *pVm, const SyString *pName)
+{
+	ph7_class_instance *pObj;
+	ph7_value *pAttr;
+	SyString sAttr;
+	if( pVm->pClosureClass == 0 ){
+		return 0;
+	}
+	pObj = PH7_NewClassInstance(&(*pVm), pVm->pClosureClass);
+	if( pObj == 0 ){
+		return 0;
+	}
+	SyStringInitFromBuf(&sAttr, "__fn", 4);
+	pAttr = PH7_ClassInstanceFetchAttr(pObj, &sAttr);
+	if( pAttr ){
+		PH7_MemObjStringAppend(pAttr, pName->zString, pName->nByte);
+	}
+	return pObj;
+}
+/*
  * Fiber::suspend($value = null) — static method.
  * Suspends the currently running fiber and passes $value to the caller.
  */
@@ -11474,9 +11585,28 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
 		pFunc = (ph7_vm_func *)pEntry->pUserData;
 		return pFunc;
 	}else{
-		/* Object callable (closure) — resolve __invoke method */
 		ph7_class_instance *pClosure = (ph7_class_instance *)pCallable->x.pOther;
-		ph7_class_method *pMethod = PH7_ClassExtractMethod(pClosure->pClass, "__invoke",
+		ph7_class_method *pMethod;
+		if( VmValueIsClosure(pVm, pCallable) ){
+			/* A real Closure object: unwrap to its underlying callable name (the single
+			 * source of truth, VmClosureUnwrap) and resolve that function. Its captured
+			 * environment (including any `$this`) rides along in the named function's
+			 * aClosureEnv, installed by VmFiberSetupFrame, so *ppThis stays 0. */
+			ph7_value sName;
+			SyHashEntry *pEntry = 0;
+			PH7_MemObjInit(pVm, &sName);
+			if( VmClosureUnwrap(pVm, pCallable, &sName) == SXRET_OK ){
+				pEntry = SyHashGet(&pVm->hFunction, SyBlobData(&sName.sBlob), SyBlobLength(&sName.sBlob));
+			}
+			PH7_MemObjRelease(&sName);
+			if( pEntry ){
+				return (ph7_vm_func *)pEntry->pUserData;
+			}
+			PH7_VmThrowException(pCtx, "FiberError", "Fiber callable closure could not be resolved");
+			return 0;
+		}
+		/* Object callable — resolve __invoke method */
+		pMethod = PH7_ClassExtractMethod(pClosure->pClass, "__invoke",
 			sizeof("__invoke") - 1);
 		if( pMethod == 0 ){
 			PH7_VmThrowException(pCtx, "FiberError",
@@ -12638,7 +12768,10 @@ PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)
 		 * formerly invoked __invoke as a runtime predicate, which is not
 		 * standard PHP behavior. */
 		ph7_class_instance *pThis = (ph7_class_instance *)pValue->x.pOther;
-		if( PH7_ClassExtractMethod(pThis->pClass,"__invoke",sizeof("__invoke")-1) ){
+		if( VmValueIsClosure(pVm,pValue) ){
+			/* A Closure (incl. a first-class callable) is always callable. */
+			res = 1;
+		}else if( PH7_ClassExtractMethod(pThis->pClass,"__invoke",sizeof("__invoke")-1) ){
 			res = 1;
 		}
 		(void)CallInvoke;
@@ -12799,8 +12932,9 @@ static int vm_builtin_register_shutdown_function(ph7_context *pCtx,int nArg,ph7_
 {
 	VmShutdownCB sEntry;
 	int i,j;
-	if( nArg < 1 || (apArg[0]->iFlags & (MEMOBJ_STRING|MEMOBJ_HASHMAP)) == 0 ){
-		/* Missing/Invalid arguments,return immediately */
+	if( nArg < 1 || (apArg[0]->iFlags & (MEMOBJ_STRING|MEMOBJ_HASHMAP|MEMOBJ_OBJ)) == 0 ){
+		/* Missing/Invalid arguments,return immediately. MEMOBJ_OBJ covers a Closure (and
+		 * any __invoke object) callback; it is resolved/validated at shutdown. */
 		return PH7_OK;
 	}
 	/* Zero the Entry */
@@ -13183,8 +13317,22 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunction(
 	ph7_value *aStack;
 	VmInstr aInstr[2];
 	int i;
+	if( VmValueIsClosure(pVm,pFunc) ){
+		/* A Closure object: unwrap to its underlying string/array callable and dispatch
+		 * that (call_user_func / array_map / usort / the C API all funnel here). */
+		ph7_value sCallable;
+		sxi32 rcClo;
+		PH7_MemObjInit(pVm,&sCallable);
+		if( VmClosureUnwrap(pVm,pFunc,&sCallable) == SXRET_OK ){
+			rcClo = PH7_VmCallUserFunction(pVm,&sCallable,nArg,apArg,pResult);
+			PH7_MemObjRelease(&sCallable);
+			return rcClo;
+		}
+		PH7_MemObjRelease(&sCallable);
+	}
 	if( pFunc->iFlags & MEMOBJ_OBJ ){
-		/* Object callable: dispatch through __invoke when available.
+		/* Object callable: dispatch through __invoke when available (Closures were already
+		 * unwrapped above, so only non-Closure __invoke objects reach here).
 		 * No VmCallArgMap: call_user_func / array_map / usort and the C API
 		 * pass arguments positionally and inherit no strict-types context. */
 		return VmCallObjectInvoke(&(*pVm),
