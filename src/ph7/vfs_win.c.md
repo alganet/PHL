@@ -875,7 +875,7 @@ Coverage: 485/643 lines (75.43%)
 |    5 |  865 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
 |    5 |  866 | `	if( pHandle == INVALID_HANDLE_VALUE){` |
 |    - |  867 | `		SXUNUSED(pResource); /* MSVC warning */` |
-|    4 |  868 | `		return -1;` |
+|    3 |  868 | `		return -1;` |
 |    - |  869 | `	}` |
 |    - |  870 | `	/* Make the handle accessible to the upper layer */` |
 |    5 |  871 | `	*ppHandle = (void *)pHandle;` |
