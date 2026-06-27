@@ -815,6 +815,12 @@ struct ph7_exception
 	int iHasFinally;/* TRUE if a finally block was compiled */
 	int iFinallyDone;/* TRUE if the finally block was already executed */
 	VmFrame *pFrame; /* Frame that trigger the exception */
+	sxu32 iLandingPc;/* Post-try landing pad (= OP_LOAD_EXCEPTION's iP2). Mirrors the
+					  * exception frame's iExceptionJump but survives that frame's
+					  * teardown, so an in-place catch can record where to resume. */
+	void *pOwnerInstr;/* Bytecode array (VmInstr*) this try was compiled into. iLandingPc
+					   * indexes THIS array; the resume only fires in the exec running it
+					   * (distinguishes a mini-program from the body that shares its frame). */
 };
 /* Forward reference */
 typedef struct ph7_case_expr ph7_case_expr;
@@ -912,6 +918,9 @@ struct ph7_vm
 	SyHash hTypedSlot;          /* memobj nIdx -> VmClassAttr* for typed property enforcement */
 	SySet aException;           /* Stack of loaded exception */
 	ph7_class_instance *pPendingException; /* Exception deferred past a finally block */
+	VmFrame *pResumeFrame;      /* Body frame whose in-place catch consumed the live throw (ROOT B) */
+	sxu32 iResumePc;            /* Its post-try landing pad (1-based, as iExceptionJump) */
+	void *pResumeInstr;         /* Bytecode array the catching try lives in; resume only in that exec */
 	SySet aIOstream;            /* Installed IO stream container */
 	const ph7_io_stream *pDefStream; /* Default IO stream [i.e: typically this is the 'file://' stream] */
 	ph7_value sExec;           /* Compiled script return value [Can be extracted via the PH7_VM_CONFIG_EXEC_VALUE directive]*/
