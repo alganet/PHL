@@ -3555,11 +3555,14 @@ static int VmCheckPseudoType(ph7_vm *pVm, ph7_value *pValue, const SyString *pCl
  * class constant). Used by every type-enforcement site so the resolution rule —
  * including the iLoadable flag — lives in one place.
  *
- * iLoadable: pass FALSE for an instanceof/type-compatibility target (the type
- * may legitimately be an interface or abstract class); TRUE only filters to
- * instantiable classes.
+ * Always resolves with iLoadable=FALSE: every caller is an instanceof/type-
+ * compatibility target, where the type may legitimately be an interface or
+ * abstract class (TRUE would filter those out → the check is skipped → any
+ * object wrongly accepted). Centralizing FALSE here keeps a future caller from
+ * reintroducing that bug. (Instantiation/`new` uses PH7_VmExtractClass directly
+ * with TRUE; it does not go through this helper.)
  */
-static ph7_class *VmResolveTypeClass(ph7_vm *pVm, const SyString *pCN, ph7_class *pSelf, int iLoadable)
+static ph7_class *VmResolveTypeClass(ph7_vm *pVm, const SyString *pCN, ph7_class *pSelf)
 {
 	if( pCN->nByte == 4 && SyMemcmp(pCN->zString,"self",4) == 0 ){
 		return pSelf;
@@ -3567,7 +3570,7 @@ static ph7_class *VmResolveTypeClass(ph7_vm *pVm, const SyString *pCN, ph7_class
 	if( pCN->nByte == 6 && SyMemcmp(pCN->zString,"parent",6) == 0 ){
 		return pSelf ? pSelf->pBase : 0;
 	}
-	return PH7_VmExtractClass(pVm,pCN->zString,pCN->nByte,iLoadable,0);
+	return PH7_VmExtractClass(pVm,pCN->zString,pCN->nByte,FALSE,0);
 }
 static sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, int bNullable, int bStrict)
 {
@@ -3610,7 +3613,7 @@ static sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, int b
 				ph7_class *pExpected;
 				if( aAlts[i].nGroup != g ) continue;
 				if( aAlts[i].nType != SXU32_HIGH ){ bAll = 0; break; }
-				pExpected = VmResolveTypeClass(pVm,&aAlts[i].sClass,pSelfNow,FALSE);
+				pExpected = VmResolveTypeClass(pVm,&aAlts[i].sClass,pSelfNow);
 				if( pExpected == 0 || !PH7_VmInstanceOf(pInst->pClass,pExpected) ){
 					bAll = 0;
 					break;
@@ -3652,9 +3655,7 @@ static sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, int b
 				ph7_class *pExpected;
 				if( aGroupCount[aAlts[i].nGroup] >= 2 ) continue;
 				if( aAlts[i].nType != SXU32_HIGH ) continue;
-				/* iLoadable=FALSE: an instanceof target may be an interface or
-				 * abstract class (TRUE would filter those out → never match). */
-				pExpected = VmResolveTypeClass(pVm,&aAlts[i].sClass,pSelfNow,FALSE);
+				pExpected = VmResolveTypeClass(pVm,&aAlts[i].sClass,pSelfNow);
 				if( pExpected && PH7_VmInstanceOf(pInst->pClass,pExpected) ){
 					return SXRET_OK;
 				}
@@ -3912,7 +3913,7 @@ static sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pVal
 	if( pAttr->nType == SXU32_HIGH ){
 		/* Class / interface type. Resolve self/parent relative to the class
 		 * currently active on the self-stack. */
-		ph7_class *pExpected = VmResolveTypeClass(pVm,&pAttr->sClass,VmCurrentSelf(pVm),TRUE);
+		ph7_class *pExpected = VmResolveTypeClass(pVm,&pAttr->sClass,VmCurrentSelf(pVm));
 		if( (pValue->iFlags & MEMOBJ_OBJ) == 0 ){
 			return VmThrowPropertyTypeError(pVm,pVmAttr,ph7_type_name(pValue));
 		}
@@ -4050,7 +4051,7 @@ static sxi32 VmEnforceConstantType(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr 
 		}
 		{
 			/* A class constant's self/parent resolve against the declaring class. */
-			ph7_class *pExpected = VmResolveTypeClass(pVm,&pAttr->sClass,pClass,TRUE);
+			ph7_class *pExpected = VmResolveTypeClass(pVm,&pAttr->sClass,pClass);
 			if( pExpected ){
 				ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
 				if( !PH7_VmInstanceOf(pInst->pClass,pExpected) ){
@@ -4396,7 +4397,7 @@ static sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value *pVa
 	if( pFunc->nReturnType == SXU32_HIGH ){
 		SyString *pClassName = &pFunc->sReturnClass;
 		const char *zExpected;
-		ph7_class *pExpected = VmResolveTypeClass(pVm,pClassName,VmCurrentSelf(pVm),TRUE);
+		ph7_class *pExpected = VmResolveTypeClass(pVm,pClassName,VmCurrentSelf(pVm));
 		zExpected = VmSyStringToCStr(pClassName, zTypeBuf, sizeof(zTypeBuf));
 		if( (pValue->iFlags & MEMOBJ_OBJ) == 0 ){
 			zGiven = (pValue->iFlags & MEMOBJ_NULL) ? "null" : ph7_type_name(pValue);
@@ -10323,7 +10324,12 @@ case PH7_OP_CALL: {
 								rc = PH7_EXCEPTION;
 								goto SkipFuncBody;
 							}
-							/* rcPseudo==1 -> matched pseudo-type (accept); -1 -> real class */
+							/* rcPseudo==1 -> matched pseudo-type (accept); -1 -> real class.
+							 * iLoadable stays TRUE here: the param-mismatch path warn+coerces
+							 * to NULL rather than throwing a TypeError, so resolving an
+							 * interface/abstract hint would corrupt the arg (and diverge worse
+							 * than the current skip). Interface/abstract PARAM enforcement waits
+							 * on the param-path-throws-TypeError fidelity work (PLAN.md §3.7). */
 							pClass = (rcPseudo == 1) ? 0 : PH7_VmExtractClass(&(*pVm),pName->zString,pName->nByte,TRUE,0);
 							if( pClass ){
 								if( (pVal->iFlags & MEMOBJ_OBJ) == 0 ){
@@ -10647,7 +10653,11 @@ case PH7_OP_CALL: {
 							rc = PH7_EXCEPTION;
 							goto SkipFuncBody;
 						}
-						/* Try to extract the desired class (rcPseudo==1 accepts; -1 real class) */
+						/* Try to extract the desired class (rcPseudo==1 accepts; -1 real class).
+						 * iLoadable stays TRUE: see the positional-arg path above — the
+						 * param-mismatch handler warn+coerces to NULL instead of throwing, so
+						 * resolving interface/abstract hints here would corrupt the arg.
+						 * Deferred to the param-path-throws-TypeError work (PLAN.md §3.7). */
 						pClass = (rcPseudo == 1) ? 0 : PH7_VmExtractClass(&(*pVm),pName->zString,pName->nByte,TRUE,0);
 						if( pClass ){
 							if( (pArg->iFlags & MEMOBJ_OBJ) == 0 ){
