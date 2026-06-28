@@ -3111,6 +3111,19 @@ static sxi32 GenStateResolveNamespaceLiteral(ph7_gen_state *pGen)
 /*
  * Compile a literal which is an identifier(name) for a simple value.
  */
+/*
+ * Compile a first-class-callable marker node `...` (the lone-ellipsis argument list of
+ * `f(...)`). The function-call code generator detects EXPR_NODE_FCC on its single argument
+ * and emits OP_LOAD_FCC instead of compiling this node, so reaching here means the `...`
+ * appeared outside a call argument list — a syntax error (PHP rejects it likewise).
+ */
+PH7_PRIVATE sxi32 PH7_CompileFccMarker(ph7_gen_state *pGen,sxi32 iCompileFlag)
+{
+	SXUNUSED(iCompileFlag);
+	PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn ? pGen->pIn->nLine : 0,
+		"Cannot use the first-class callable syntax '...' here");
+	return SXERR_SYNTAX;
+}
 PH7_PRIVATE sxi32 PH7_CompileLiteral(ph7_gen_state *pGen,sxi32 iCompileFlag)
 {
 	sxi32 rc;
@@ -10725,6 +10738,7 @@ static sxi32 GenStateEmitExprCode(
 	sxi32 iVmOp;
 	sxi32 rc;
 	int bIsChainOp = 0; /* Set below once we know pNode->pOp */
+	int bFcc = 0;       /* First-class callable `f(...)`: emit OP_LOAD_FCC, not OP_CALL */
 	sxu32 nRhsNsBase = 0;
 	if( pNode->xCode ){
 		SyToken *pTmpIn,*pTmpEnd;
@@ -10868,6 +10882,13 @@ static sxi32 GenStateEmitExprCode(
 			/* Recurse and generate bytecodes for function arguments */
 			apNode = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);
 			nArgs = (sxi32)SySetUsed(&pNode->aNodeArgs);
+			/* First-class callable `f(...)`: the sole argument is the lone-ellipsis marker.
+			 * Emit no arguments; the callee (pNode->pLeft) is still compiled below, then we
+			 * emit OP_LOAD_FCC instead of OP_CALL to wrap it in a Closure. */
+			if( nArgs == 1 && apNode[0] && (apNode[0]->iFlags & EXPR_NODE_FCC) ){
+				bFcc = 1;
+				nArgs = 0;
+			}
 			/* Validate: no positional arguments after named arguments */
 			{
 				int seenNamed = 0;
@@ -11272,6 +11293,31 @@ static sxi32 GenStateEmitExprCode(
 					p3 = pInstr->p3;
 					(void)PH7_VmPopInstr(pGen->pVm);
 				}
+			}
+		}
+		/* First-class callable: emit OP_LOAD_FCC to wrap the callee in a Closure instead of
+		 * calling it. For a plain function the callee's OP_LOADC left its name on the stack
+		 * (iP1=1). For a method/static callee the callee compiled to ... OP_MEMBER, which we
+		 * DROP — the OP_MEMBER would dispatch and mangle the method name; popping it leaves
+		 * [target, real-method-name] on the stack for OP_LOAD_FCC to bind (iP1=2). */
+		if( bFcc ){
+			iVmOp = PH7_OP_LOAD_FCC;
+			iP2 = 0;
+			p3 = 0;
+			pInstr = PH7_VmPeekInstr(pGen->pVm);
+			if( pInstr && pInstr->iOp == PH7_OP_MEMBER ){
+				/* A static call with a DYNAMIC method name (`C::$m(...)`) folded that name
+				 * into OP_MEMBER->p3 and left only [class] on the stack (the name's OP_LOAD
+				 * was popped at the static-`::` codegen above). Re-load it so OP_LOAD_FCC
+				 * sees the [target, method-name] pair the iP1=2 handler expects. */
+				void *pMemberName = pInstr->p3;
+				(void)PH7_VmPopInstr(pGen->pVm);
+				if( pMemberName ){
+					PH7_VmEmitInstr(pGen->pVm, PH7_OP_LOAD, 0, 0, pMemberName, 0);
+				}
+				iP1 = 2;
+			}else{
+				iP1 = 1;
 			}
 		}
 		/* Tag CALL/NEW sites with the caller file's strict_types flag.
