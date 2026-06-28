@@ -1221,7 +1221,9 @@ static void VmReleaseExecCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx);
 static ph7_generator * VmGeneratorExtractCtx(ph7_vm *pVm, ph7_value *pGenObj);
 static int VmValueIsClosure(ph7_vm *pVm, ph7_value *pVal);
 static sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut);
-static ph7_class_instance * VmCreateClosure(ph7_vm *pVm, const SyString *pName);
+static ph7_class_instance * VmCreateClosure(ph7_vm *pVm, const SyString *pName,
+	ph7_class_instance *pBoundThis, const SyString *pScope);
+static ph7_class * VmFccResolveScope(ph7_vm *pVm, ph7_value *pTarget);
 static sxi32 VmIterCallMethod(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,sxu32 nLen,ph7_value *pResult);
 static sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 	ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg);
@@ -1483,6 +1485,8 @@ static int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_value 
 	"}"\
 	"final class Closure {"\
 	"  private $__fn;"\
+	"  private $__this;"\
+	"  private $__scope;"\
 	"  public function __construct(){ throw new \\Error('Instantiation of class Closure is not allowed'); }"\
 	"}"\
 	"class stdClass{"\
@@ -6161,7 +6165,7 @@ case PH7_OP_LOAD_CLOSURE:{
 	 * path when the closure is dispatched by name. */
 	pTos++;
 	{
-		ph7_class_instance *pCloObj = VmCreateClosure(pVm, &pTarget->sName);
+		ph7_class_instance *pCloObj = VmCreateClosure(pVm, &pTarget->sName, 0, 0);
 		if( pCloObj ){
 			pCloObj->iRef++;
 			pTos->x.pOther = pCloObj;
@@ -6173,6 +6177,79 @@ case PH7_OP_LOAD_CLOSURE:{
 	}
 	break;
 						 }
+/*
+ * LOAD_FCC P1 * *
+ *
+ * First-class callable: wrap the callee in a Closure object instead of calling it.
+ *  P1 == 1: a plain function/host callable — its NAME string is already on the TOS
+ *           (from the callee's OP_LOADC). Replace it in place with a Closure whose
+ *           $__fn is that name; the existing string-callable dispatch resolves it.
+ *           (OOM degrades to leaving the name string on the stack — still callable.)
+ *  P1 == 2: a method/static callee — the stack is [ target (pTos[-1]), real-method-name
+ *           (pTos) ] (the OP_MEMBER was popped at compile time). An object target binds
+ *           $this (scope = its class); a class-name-string target is a static callable
+ *           (scope = that class, self/parent/static resolved now). (OOM degrades to NULL —
+ *           the popped target leaves no name string to keep.)
+ */
+case PH7_OP_LOAD_FCC:{
+	if( pInstr->iP1 == 1 ){
+		/* Plain-callee FCC: TOS holds the callee value. The common case is a function-NAME
+		 * string (from the callee's OP_LOADC) — wrap it in a Closure. Two value-callee cases
+		 * are handled idempotently rather than minting a broken empty-name Closure:
+		 *   - an existing Closure (`$closure(...)`) is left unchanged (PHP: idempotent);
+		 *   - any other non-string value (array callable, scalar via `($expr)(...)`) is left
+		 *     as-is — it stays whatever it was (a [obj,m] array callable remains callable).
+		 * Full first-class-callable wrapping of an arbitrary callable EXPRESSION is a
+		 * follow-up (see PLAN.md). */
+		if( VmValueIsClosure(pVm, pTos) || (pTos->iFlags & MEMOBJ_STRING) == 0 ){
+			break;
+		}
+		{
+			SyString sName;
+			ph7_class_instance *pCloObj;
+			SyStringInitFromBuf(&sName, SyBlobData(&pTos->sBlob), SyBlobLength(&pTos->sBlob));
+			pCloObj = VmCreateClosure(pVm, &sName, 0, 0);
+			if( pCloObj ){
+				PH7_MemObjRelease(pTos);
+				pCloObj->iRef++;
+				pTos->x.pOther = pCloObj;
+				MemObjSetType(pTos, MEMOBJ_OBJ);
+			}
+			/* OOM: leave the name string on the stack — still a usable callable. */
+		}
+	}else{
+		/* iP1 == 2: method/static. Stack is [ target (pTos[-1]), real-method-name (pTos) ]
+		 * left standing by the popped OP_MEMBER. An object target binds $this (scope = its
+		 * class); a class-name string target is a static callable (scope = that class). */
+		ph7_value *pTarget = &pTos[-1];
+		SyString sName;
+		ph7_class_instance *pCloObj;
+		SyStringInitFromBuf(&sName, SyBlobData(&pTos->sBlob), SyBlobLength(&pTos->sBlob));
+		if( pTarget->iFlags & MEMOBJ_OBJ ){
+			ph7_class_instance *pBoundThis = (ph7_class_instance *)pTarget->x.pOther;
+			pCloObj = VmCreateClosure(pVm, &sName, pBoundThis, &pBoundThis->pClass->sName);
+		}else if( pTarget->iFlags & MEMOBJ_STRING ){
+			/* Static `T::m(...)`: resolve T (incl. self/static/parent) to the real class
+			 * now, so the closure binds the concrete scope (matching PHP). */
+			ph7_class *pScopeCls = VmFccResolveScope(pVm, pTarget);
+			pCloObj = pScopeCls ? VmCreateClosure(pVm, &sName, 0, &pScopeCls->sName) : 0;
+		}else{
+			pCloObj = 0;
+		}
+		/* Pop the method name and the target, push the Closure. */
+		PH7_MemObjRelease(pTos);
+		pTos--;
+		PH7_MemObjRelease(pTos);
+		if( pCloObj ){
+			pCloObj->iRef++;
+			pTos->x.pOther = pCloObj;
+			MemObjSetType(pTos, MEMOBJ_OBJ);
+		}else{
+			pTos->nIdx = SXU32_HIGH; /* OOM: NULL */
+		}
+	}
+	break;
+					 }
 /*
  * STORE * P2 P3
  *
@@ -11425,14 +11502,19 @@ static ph7_exec_ctx * VmFiberExtractCtx(ph7_vm *pVm, ph7_value *pFiberObj)
 	}
 	return (ph7_exec_ctx *)pAttr->x.pOther;
 }
+/* ph7_class_instance.iFlags bit: this Closure is a bound/static first-class callable and
+ * carries $__this/$__scope. Lets the hot plain-closure unwrap skip those attribute lookups.
+ * (Distinct from CLASS_INSTANCE_DESTROYED 0x001 and VM_INSTANCE_DUMPING 0x002.) */
+#define VM_INSTANCE_FCC_BOUND 0x004
 /*
  * A PHP closure (and a first-class callable `f(...)`) is a real object: an instance of
  * the built-in final `Closure` class carrying its underlying callable in a private
  * `$__fn` attribute (the callable NAME: a registered `[closure_N]`/`[lambda_N]` or a
- * user/host function name). Storing the callable as a plain attribute (rather than a
- * native resource pointer) means the object owns no `ph7_vm_func` — the per-closure
- * function stays owned by `hFunction`/VM-release exactly as before, so there is no extra
- * free path. (First-class callables `f(...)` will add bound `$this`/scope in a follow-up.)
+ * user/host function name) — plus, for a method/static first-class callable, a bound
+ * `$__this` object and/or a `$__scope` class-name. Storing the callable as plain attributes
+ * (rather than a native resource pointer) means the object owns no `ph7_vm_func` — the
+ * per-closure function stays owned by `hFunction`/VM-release exactly as before, so there is
+ * no extra free path.
  *
  * Returns non-zero iff pVal is a Closure instance.
  */
@@ -11451,9 +11533,11 @@ static int VmValueIsClosure(ph7_vm *pVm, ph7_value *pVal)
 /*
  * Unwrap a Closure value into the simple callable the existing dispatch machinery
  * already understands, written into pOut (which the caller must have initialised):
- * the `$__fn` name string — a registered `[closure_N]`/`[lambda_N]` or a user/host
- * function name, all resolvable by name. (Bound `$this` / scope for first-class
- * callables `f(...)` are a follow-up increment.)
+ *   - bound `$this` set (method first-class callable) -> [ $__this, $__fn ] array callable
+ *   - `$__scope` set (static first-class callable)     -> [ $__scope, $__fn ] array callable
+ *   - neither (plain function / real closure)          -> the `$__fn` name string
+ * The 2-element array form rides the existing MEMOBJ_HASHMAP dispatch, which binds $this
+ * for an object first element and resolves the class for a class-name-string first element.
  * Returns SXRET_OK if pVal was a Closure (pOut filled), SXERR_NOTFOUND otherwise.
  */
 static sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut)
@@ -11470,15 +11554,87 @@ static sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut)
 	if( pFn == 0 || (pFn->iFlags & MEMOBJ_STRING) == 0 || SyBlobLength(&pFn->sBlob) == 0 ){
 		return SXERR_NOTFOUND; /* malformed/uninitialised closure */
 	}
+	/* Only a bound/static first-class callable (rare) carries $__this/$__scope; the
+	 * VM_INSTANCE_FCC_BOUND flag (set by VmCreateClosure) keeps the hot plain-closure path
+	 * to the single $__fn lookup above instead of two extra attribute lookups per dispatch. */
+	if( pThis->iFlags & VM_INSTANCE_FCC_BOUND ){
+		ph7_value *pBound, *pScope;
+		int bBoundObj, bScope;
+		SyStringInitFromBuf(&sAttr, "__this", 6);
+		pBound = PH7_ClassInstanceFetchAttr(pThis, &sAttr);
+		SyStringInitFromBuf(&sAttr, "__scope", 7);
+		pScope = PH7_ClassInstanceFetchAttr(pThis, &sAttr);
+		bBoundObj = pBound && (pBound->iFlags & MEMOBJ_OBJ);
+		bScope = pScope && (pScope->iFlags & MEMOBJ_STRING) && SyBlobLength(&pScope->sBlob) > 0;
+		if( bBoundObj || bScope ){
+			/* Method/static first-class callable -> [ target, "method" ] array callable. */
+			ph7_hashmap *pMap = PH7_NewHashmap(&(*pVm), 0, 0);
+			ph7_value sTarget, sMeth;
+			sxi32 rc;
+			if( pMap == 0 ){
+				return SXERR_NOTFOUND;
+			}
+			PH7_MemObjInit(pVm, &sTarget);
+			PH7_MemObjInit(pVm, &sMeth);
+			if( bBoundObj ){
+				PH7_MemObjStore(pBound, &sTarget); /* bound object (iRef++) -> binds $this */
+			}else{
+				PH7_MemObjStringAppend(&sTarget, SyBlobData(&pScope->sBlob), SyBlobLength(&pScope->sBlob));
+			}
+			PH7_MemObjStringAppend(&sMeth, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));
+			rc = PH7_HashmapInsert(pMap, 0, &sTarget);
+			if( rc == SXRET_OK ){
+				rc = PH7_HashmapInsert(pMap, 0, &sMeth);
+			}
+			PH7_MemObjRelease(&sTarget);
+			PH7_MemObjRelease(&sMeth);
+			if( rc != SXRET_OK ){
+				PH7_HashmapRelease(pMap, TRUE); /* free the partial map, no leak */
+				return SXERR_NOTFOUND;
+			}
+			pOut->x.pOther = pMap;
+			MemObjSetType(pOut, MEMOBJ_HASHMAP);
+			return SXRET_OK;
+		}
+	}
 	PH7_MemObjStringAppend(pOut, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));
 	return SXRET_OK;
 }
 /*
- * Create a Closure object wrapping a callable name. Mirrors the Generator/Fiber
- * "object carries its state in a private attribute" pattern.
+ * Resolve the scope class for a STATIC first-class callable `T::m(...)`, where T is a
+ * class-name STRING value: handles the self/static/parent keywords against the live class
+ * context (so the actual class is bound at FCC-creation time, like PHP), and falls back to
+ * an explicit class-name lookup. Mirrors the static OP_MEMBER resolution. Returns 0 if the
+ * class cannot be resolved.
+ */
+static ph7_class * VmFccResolveScope(ph7_vm *pVm, ph7_value *pTarget)
+{
+	const char *zCls = (const char *)SyBlobData(&pTarget->sBlob);
+	sxu32 nCls = (sxu32)SyBlobLength(&pTarget->sBlob);
+	ph7_class *pClass;
+	if( nCls == 4 && SyMemcmp(zCls,"self",4) == 0 ){
+		pClass = PH7_VmPeekDeclaringClass(&(*pVm));
+		if( pClass && (pClass->iFlags & PH7_CLASS_TRAIT) ){
+			pClass = PH7_VmPeekTopClass(&(*pVm)); /* self:: in a trait -> using class */
+		}
+	}else if( nCls == 6 && SyMemcmp(zCls,"static",6) == 0 ){
+		pClass = PH7_VmPeekTopClass(&(*pVm));     /* late static binding */
+	}else if( nCls == 6 && SyMemcmp(zCls,"parent",6) == 0 ){
+		ph7_class *pSelf = PH7_VmPeekDeclaringClass(&(*pVm));
+		pClass = (pSelf && pSelf->pBase) ? pSelf->pBase : 0;
+	}else{
+		pClass = PH7_VmExtractClass(&(*pVm),zCls,nCls,FALSE,0);
+	}
+	return pClass;
+}
+/*
+ * Create a Closure object wrapping a callable name (+ optional bound $this object and/or
+ * scope class-name, for the method/static first-class callables `$o->m(...)`/`C::m(...)`).
+ * Mirrors the Generator/Fiber "object carries its state in private attributes" pattern.
  * Returns the fresh instance (iRef == 0; caller takes the reference), or 0 on OOM.
  */
-static ph7_class_instance * VmCreateClosure(ph7_vm *pVm, const SyString *pName)
+static ph7_class_instance * VmCreateClosure(ph7_vm *pVm, const SyString *pName,
+	ph7_class_instance *pBoundThis, const SyString *pScope)
 {
 	ph7_class_instance *pObj;
 	ph7_value *pAttr;
@@ -11494,6 +11650,27 @@ static ph7_class_instance * VmCreateClosure(ph7_vm *pVm, const SyString *pName)
 	pAttr = PH7_ClassInstanceFetchAttr(pObj, &sAttr);
 	if( pAttr ){
 		PH7_MemObjStringAppend(pAttr, pName->zString, pName->nByte);
+	}
+	if( pBoundThis ){
+		SyStringInitFromBuf(&sAttr, "__this", 6);
+		pAttr = PH7_ClassInstanceFetchAttr(pObj, &sAttr);
+		if( pAttr ){
+			pAttr->x.pOther = pBoundThis;
+			MemObjSetType(pAttr, MEMOBJ_OBJ);
+			pBoundThis->iRef++; /* keep the bound object alive for the closure's lifetime */
+		}
+	}
+	if( pScope && pScope->nByte ){
+		SyStringInitFromBuf(&sAttr, "__scope", 7);
+		pAttr = PH7_ClassInstanceFetchAttr(pObj, &sAttr);
+		if( pAttr ){
+			PH7_MemObjStringAppend(pAttr, pScope->zString, pScope->nByte);
+		}
+	}
+	if( pBoundThis || (pScope && pScope->nByte) ){
+		/* Mark bound/static FCC closures so VmClosureUnwrap can skip the $__this/$__scope
+		 * lookups on the hot plain-closure dispatch path. */
+		pObj->iFlags |= VM_INSTANCE_FCC_BOUND;
 	}
 	return pObj;
 }
@@ -12422,6 +12599,8 @@ static const char * VmInstrToString(sxi32 nOp)
 	case PH7_OP_LOAD_IDX:   zOp = "LOAD_IDX   "; break;
 	case PH7_OP_LOAD_CLOSURE:
 		                    zOp = "LOAD_CLOSR "; break;
+	case PH7_OP_LOAD_FCC:
+		                    zOp = "LOAD_FCC   "; break;
 	case PH7_OP_NOOP:       zOp = "NOOP       "; break;
 	case PH7_OP_JMP:        zOp = "JMP        "; break;
 	case PH7_OP_JZ:         zOp = "JZ         "; break;

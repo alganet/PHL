@@ -352,6 +352,9 @@ struct ph7_expr_node
 #define EXPR_NODE_SPREAD      0x02 /* Argument unpacking: ...$expr */
 #define EXPR_NODE_NAMED_ARG   0x04 /* Named argument: name: $expr */
 #define EXPR_NODE_PARENS      0x08 /* Root of a parenthesized sub-expression */
+#define EXPR_NODE_FCC         0x10 /* First-class callable marker: a lone `...` as the
+                                    * whole argument list, e.g. f(...) — wrap the callee
+                                    * in a Closure instead of calling it. */
 /*
  * A block of instructions is recorded in an instance of the following structure.
  * This structure is used only during compile-time and have no meaning
@@ -1060,6 +1063,7 @@ enum ph7_vm_op {
   PH7_OP_LOAD_MAP,     /* Load hashmap('array') */
   PH7_OP_LOAD_LIST,    /* Load list */
   PH7_OP_LOAD_CLOSURE, /* Load closure */
+  PH7_OP_LOAD_FCC,     /* Load first-class callable: wrap a function/method as a Closure */
   PH7_OP_NOOP,         /* NOOP */
   PH7_OP_JMP,          /* Unconditional jump */
   PH7_OP_JZ,           /* Jump on zero (FALSE jump) */
@@ -1742,6 +1746,7 @@ PH7_PRIVATE sxi32 PH7_CompileLangConstruct(ph7_gen_state *pGen,sxi32 iCompileFla
 PH7_PRIVATE sxi32 PH7_CompileYield(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileVariable(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileLiteral(ph7_gen_state *pGen,sxi32 iCompileFlag);
+PH7_PRIVATE sxi32 PH7_CompileFccMarker(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileSimpleString(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileString(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileHereDoc(ph7_gen_state *pGen,sxi32 iCompileFlag);

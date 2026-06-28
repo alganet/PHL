@@ -894,6 +894,19 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 	pCur = pNode->pStart = pGen->pIn;
 	/* Start collecting tokens */
 	if( pCur->nType & PH7_TK_ELLIPSIS ){
+		if( &pCur[1] < pGen->pEnd && (pCur[1].nType & PH7_TK_RPAREN) ){
+			/* First-class callable: `...` is the ENTIRE argument list — the next token is
+			 * ')'. Consume only the '...' and return this node as a self-evaluating FCC
+			 * marker (xCode set so ExprMakeTree accepts it as a lone terminal); the
+			 * function-call code generator turns it into a Closure (OP_LOAD_FCC). */
+			pNode->pEnd = pCur;
+			pCur++;
+			pNode->iFlags |= EXPR_NODE_FCC;
+			pNode->xCode = PH7_CompileFccMarker;
+			pGen->pIn = pCur;
+			*ppNode = pNode;
+			return SXRET_OK;
+		}
 		/* Argument unpacking: ...$expr — skip '...' and extract the expression.
 		 * Mark the node so that the code generator emits PH7_OP_SPREAD after it. */
 		pCur++;
