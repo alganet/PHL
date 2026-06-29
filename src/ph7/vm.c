@@ -4956,6 +4956,36 @@ static sxi32 VmSpreadValuesStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue,
 	return SXRET_OK;
 }
 /*
+ * Raise the PHP "Cannot use <type> as array" warning for a non-array source used in a
+ * list / array-destructuring assignment. Shared by the positional OP_LOAD_LIST path and the
+ * keyed OP_LOAD_IDX (iP2=7) path. The CALLER decides whether to warn at all — the two paths
+ * disagree on which scalar types are silent (positional silences null+bool; keyed silences
+ * only null, warning for bool to match PHP) — this only maps the type name and emits.
+ */
+static void VmWarnCannotUseAsArray(ph7_vm *pVm, sxi32 iFlags)
+{
+	const char *zType = "unknown";
+	char zMsg[64];
+	if( iFlags & MEMOBJ_STRING ){
+		zType = "string";
+	}else if( iFlags & MEMOBJ_REAL ){
+		/* REAL before INT: a whole-valued real carries MEMOBJ_REAL|MEMOBJ_INT (see the
+		 * float-identity note), and PHP names it "float" here, not "int". A pure int has no
+		 * REAL flag, so it still falls through to the int arm. */
+		zType = "float";
+	}else if( iFlags & MEMOBJ_INT ){
+		zType = "int";
+	}else if( iFlags & MEMOBJ_BOOL ){
+		zType = "bool";
+	}else if( iFlags & MEMOBJ_OBJ ){
+		zType = "object";
+	}else if( iFlags & MEMOBJ_RES ){
+		zType = "resource";
+	}
+	SyBufferFormat(zMsg,sizeof(zMsg),"Cannot use %s as array",zType);
+	PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,zMsg);
+}
+/*
  * Execute as much of a PH7 bytecode program as we can then return.
  *
  * [PH7_VmMakeReady()] must be called before this routine in order to
@@ -5832,23 +5862,8 @@ case PH7_OP_LOAD_LIST: {
 			pEntry++;
 		}
 		if( (pTos[-pInstr->iP1].iFlags & (MEMOBJ_NULL|MEMOBJ_BOOL)) == 0 ){
-			/* Emit PHP-compatible warning with type name */
-			const char *zType = "unknown";
-			sxi32 iFlags = pTos[-pInstr->iP1].iFlags;
-			char zMsg[256];
-			if( iFlags & MEMOBJ_STRING ){
-				zType = "string";
-			}else if( iFlags & MEMOBJ_INT ){
-				zType = "int";
-			}else if( iFlags & MEMOBJ_REAL ){
-				zType = "float";
-			}else if( iFlags & MEMOBJ_OBJ ){
-				zType = "object";
-			}else if( iFlags & MEMOBJ_RES ){
-				zType = "resource";
-			}
-			SyBufferFormat(zMsg,sizeof(zMsg),"Cannot use %s as array",zType);
-			PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,zMsg);
+			/* Positional list destructuring silences null+bool; warn for the rest. */
+			VmWarnCannotUseAsArray(&(*pVm),pTos[-pInstr->iP1].iFlags);
 		}
 	}
 	VmPopOperand(&pTos,pInstr->iP1);
@@ -5886,6 +5901,23 @@ case PH7_OP_LOAD_IDX: {
 	}else{
 		pIdx = pTos;
 		pTos--;
+	}
+	if( pInstr->iP2 == 7 && (pTos->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		/* Keyed list destructuring `["k"=>$v] = $src` from a NON-array source: yield NULL
+		 * (never char-index a string), warning once per key — matching PHP, which warns per
+		 * key here. A NULL source is silent; unlike the positional OP_LOAD_LIST path, a bool
+		 * source DOES warn (PHP warns for bool in keyed destructuring). */
+		if( (pTos->iFlags & MEMOBJ_NULL) == 0 ){
+			VmWarnCannotUseAsArray(&(*pVm),pTos->iFlags);
+		}
+		if( pIdx ){
+			/* Release the key (a string literal for keyed destructuring), like the
+			 * normal hashmap-read exit below — otherwise its blob is orphaned. */
+			PH7_MemObjRelease(pIdx);
+		}
+		PH7_MemObjRelease(pTos);
+		MemObjSetType(pTos,MEMOBJ_NULL);
+		break;
 	}
 	if( pTos->iFlags & MEMOBJ_STRING ){
 		/* String access */

@@ -1702,10 +1702,12 @@ static sxi32 GenStateCompileKeyedListBody(ph7_gen_state *pGen)
 			return SXERR_ABORT;
 		}
 		/* LOAD_IDX: pop the key, replace the DUP'd source with source[key].
-		 * iP2=0 is a read context: a missing key loads NULL silently, matching a
-		 * normal `$arr[$k]` read. (PHP also emits an "Undefined array key"
-		 * warning here; PHL omits it, like its other subscript reads — §3.7.) */
-		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_IDX,1,0,0,0);
+		 * iP2=7 is the keyed-destructuring read context: an array source reads like
+		 * iP2=0 (missing key loads NULL silently, matching a normal `$arr[$k]` read;
+		 * PHP also emits an "Undefined array key" warning here, PHL omits it — §3.7),
+		 * but a NON-array source yields NULL + a per-key "Cannot use <type> as array"
+		 * warning instead of char-indexing a string (matching PHP's OP_LOAD_LIST path). */
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_IDX,1,7,0,0);
 		if( pTarget < pNext && ( (pTarget->nType & PH7_TK_OSB)
 			|| ( (pTarget->nType & PH7_TK_KEYWORD)
 				&& SX_PTR_TO_INT(pTarget->pUserData) == PH7_TKWRD_LIST ) ) ){
