@@ -37,6 +37,7 @@ struct SyHash
 	ProcHash xHash;                   /* Hash function */
 	ProcCmp xCmp;                     /* Comparison function */
 	SyHashEntry_Pr *pList,*pCurrent;  /* Linked list of hash entries for linear traversal */
+	SyHashEntry_Pr *pLast;            /* Tail of pList — O(1) append for the tail-insert path */
 	sxu32 nEntry;                     /* Total number of entries */
 	SyHashEntry_Pr **apBucket;        /* Hash buckets */
 	sxu32 nBucketSize;                /* Current bucket size */

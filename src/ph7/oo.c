@@ -988,25 +988,43 @@ PH7_PRIVATE ph7_class_instance * PH7_CloneClassInstance(ph7_class_instance *pSrc
 		SyMemBackendPoolFree(&pVm->sAllocator,pClone);
 		return 0;
 	}
-	/* Duplicate object values */
+	/* Duplicate object values. Iterate the SOURCE attributes and copy each into
+	 * the clone's same-named slot (looked up by name, so order/count differences
+	 * from dynamic properties don't matter). A dynamic (runtime-added) property
+	 * has no declared counterpart in the clone, so synthesize it first — without
+	 * this, a clone of a stdClass would silently lose all its dynamic properties. */
 	SyHashResetLoopCursor(&pSrc->hAttr);
-	SyHashResetLoopCursor(&pClone->hAttr);
-	while((pEntry = SyHashGetNextEntry(&pSrc->hAttr)) != 0 && (pEntry2 = SyHashGetNextEntry(&pClone->hAttr)) != 0 ){
+	while((pEntry = SyHashGetNextEntry(&pSrc->hAttr)) != 0 ){
 		VmClassAttr *pSrcAttr = (VmClassAttr *)pEntry->pUserData;
-		VmClassAttr *pDestAttr = (VmClassAttr *)pEntry2->pUserData;
+		VmClassAttr *pDestAttr = 0;
+		ph7_value *pvSrc,*pvDest = 0;
 		/* Duplicate non-static attribute */
-		if( (pSrcAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
-			ph7_value *pvSrc,*pvDest;
-			pvSrc = ExtractClassAttrValue(pVm,pSrcAttr);
+		if( pSrcAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT) ){
+			continue;
+		}
+		pEntry2 = SyHashGet(&pClone->hAttr,SyStringData(&pSrcAttr->pAttr->sName),SyStringLength(&pSrcAttr->pAttr->sName));
+		if( pEntry2 ){
+			pDestAttr = (VmClassAttr *)pEntry2->pUserData;
 			pvDest = ExtractClassAttrValue(pVm,pDestAttr);
-			if( pvSrc && pvDest ){
-				PH7_MemObjStore(pvSrc,pvDest);
-			}
-			/* Carry over the per-instance state so the clone matches the source:
-			 * VM_CLASS_ATTR_UNINIT marks a typed property as not-yet-initialized
-			 * and doubles as the readonly write-once latch — without this a clone
-			 * would reset to uninitialized (losing the value's readiness) and a
-			 * readonly property would become writable again. */
+		}else if( pSrcAttr->pAttr->iFlags & PH7_CLASS_ATTR_DYNAMIC ){
+			/* Dynamic property: synthesize the matching slot on the clone. */
+			pvDest = PH7_VmCreateDynamicAttr(pVm,pClone,
+				SyStringData(&pSrcAttr->pAttr->sName),SyStringLength(&pSrcAttr->pAttr->sName),&pDestAttr);
+		}
+		/* Fetch the source value LAST: PH7_VmCreateDynamicAttr above may have
+		 * reserved a slot and reallocated pVm->aMemObj, which would dangle any
+		 * ph7_value* obtained before it. pvDest from the synth path already points
+		 * into the post-realloc aMemObj; resolve pvSrc now so both are current. */
+		pvSrc = ExtractClassAttrValue(pVm,pSrcAttr);
+		if( pvSrc && pvDest ){
+			PH7_MemObjStore(pvSrc,pvDest);
+		}
+		/* Carry over the per-instance state so the clone matches the source:
+		 * VM_CLASS_ATTR_UNINIT marks a typed property as not-yet-initialized
+		 * and doubles as the readonly write-once latch — without this a clone
+		 * would reset to uninitialized (losing the value's readiness) and a
+		 * readonly property would become writable again. */
+		if( pDestAttr ){
 			pDestAttr->iState = pSrcAttr->iState;
 		}
 	}
@@ -1070,6 +1088,12 @@ static void PH7_ClassInstanceRelease(ph7_class_instance *pThis)
 					(const void *)&pVmAttr->nIdx,sizeof(sxu32),0);
 			}
 			PH7_VmUnsetMemObj(pVm,pVmAttr->nIdx,TRUE);
+		}
+		/* A dynamic (runtime-added) property owns its synthesized ph7_class_attr
+		 * (struct + inline name in one block); free it here — the only place a
+		 * per-instance pAttr is freed (declared attrs are class-owned). */
+		if( pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_DYNAMIC ){
+			SyMemBackendFree(&pVm->sAllocator,pVmAttr->pAttr);
 		}
 		SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
 	}
@@ -1208,30 +1232,45 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceCmp(ph7_class_instance *pLeft,ph7_class_insta
 	if( pLeft->pVm->pClosureClass && pLeft->pClass == pLeft->pVm->pClosureClass ){
 		return 1;
 	}
-	SyHashResetLoopCursor(&pLeft->hAttr);
-	SyHashResetLoopCursor(&pRight->hAttr);
+	/* Same class but a different number of attributes ⇒ different property sets
+	 * (dynamic properties can give two same-class instances different counts). */
+	if( pLeft->hAttr.nEntry != pRight->hAttr.nEntry ){
+		return 1;
+	}
 	PH7_MemObjInit(pLeft->pVm,&sV1);
 	PH7_MemObjInit(pLeft->pVm,&sV2);
 	sV1.nIdx = sV2.nIdx = SXU32_HIGH;
-	while((pEntry = SyHashGetNextEntry(&pLeft->hAttr)) != 0 && (pEntry2 = SyHashGetNextEntry(&pRight->hAttr)) != 0 ){
+	/* Compare each left attribute against the RIGHT attribute of the SAME NAME
+	 * (not in lockstep): dynamic properties may be stored in a different order
+	 * on the two instances. Counts already match, so if every left attribute has
+	 * an equal-valued same-named right attribute the property sets are equal. */
+	SyHashResetLoopCursor(&pLeft->hAttr);
+	while((pEntry = SyHashGetNextEntry(&pLeft->hAttr)) != 0 ){
 		VmClassAttr *p1 = (VmClassAttr *)pEntry->pUserData;
-		VmClassAttr *p2 = (VmClassAttr *)pEntry2->pUserData;
+		VmClassAttr *p2;
+		ph7_value *pL,*pR;
 		/* Compare only non-static attribute */
-		if( (p1->pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC)) == 0 ){
-			ph7_value *pL,*pR;
-			pL = ExtractClassAttrValue(pLeft->pVm,p1);
-			pR = ExtractClassAttrValue(pRight->pVm,p2);
-			if( pL && pR ){
-				PH7_MemObjLoad(pL,&sV1);
-				PH7_MemObjLoad(pR,&sV2);
-				/* Compare the two values now */
-				rc = PH7_MemObjCmp(&sV1,&sV2,bStrict,iNest+1);
-				PH7_MemObjRelease(&sV1);
-				PH7_MemObjRelease(&sV2);
-				if( rc != 0 ){
-					/* Not equals */
-					return rc;
-				}
+		if( p1->pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC) ){
+			continue;
+		}
+		pEntry2 = SyHashGet(&pRight->hAttr,SyStringData(&p1->pAttr->sName),SyStringLength(&p1->pAttr->sName));
+		if( pEntry2 == 0 ){
+			/* Left has a property the right lacks ⇒ not equal. */
+			return 1;
+		}
+		p2 = (VmClassAttr *)pEntry2->pUserData;
+		pL = ExtractClassAttrValue(pLeft->pVm,p1);
+		pR = ExtractClassAttrValue(pRight->pVm,p2);
+		if( pL && pR ){
+			PH7_MemObjLoad(pL,&sV1);
+			PH7_MemObjLoad(pR,&sV2);
+			/* Compare the two values now */
+			rc = PH7_MemObjCmp(&sV1,&sV2,bStrict,iNest+1);
+			PH7_MemObjRelease(&sV1);
+			PH7_MemObjRelease(&sV2);
+			if( rc != 0 ){
+				/* Not equals */
+				return rc;
 			}
 		}
 	}

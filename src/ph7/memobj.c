@@ -516,56 +516,72 @@ PH7_PRIVATE sxi32 PH7_MemObjToHashmap(ph7_value *pObj)
 	}
 	return SXRET_OK;
 }
+/* Per-entry callback for the array branch of the (object) cast: add one dynamic
+ * property to the target stdClass, named by the array key (rendered as a string,
+ * matching PHP) and holding a copy of the value. */
+struct VmObjCastData { ph7_vm *pVm; ph7_class_instance *pStd; };
+static int VmArrayToObjectWalk(ph7_value *pKey,ph7_value *pValue,void *pUserData)
+{
+	struct VmObjCastData *pData = (struct VmObjCastData *)pUserData;
+	ph7_value *pSlot;
+	/* pKey and pValue are walk-owned temporaries (PH7_HashmapWalk passes pointers to
+	 * its own stack-local sKey/sValue, not slots inside pVm->aMemObj), so they survive
+	 * the slot reservation inside PH7_VmCreateDynamicAttr — no snapshot needed. pKey is
+	 * safe to coerce in place. */
+	PH7_MemObjToString(pKey);
+	pSlot = PH7_VmCreateDynamicAttr(pData->pVm,pData->pStd,
+		(const char *)SyBlobData(&pKey->sBlob),(sxu32)SyBlobLength(&pKey->sBlob),0);
+	if( pSlot ){
+		PH7_MemObjStore(pValue,pSlot);
+	}
+	return SXRET_OK;
+}
 /*
- * Convert a ph7_value to type object.Invalidate any prior representations.
- * The new object is instantiated from the builtin stdClass().
- * The stdClass() class have a single attribute which is '$value'. This attribute
- * hold a copy of the converted ph7_value.
- * The internal of the stdClass is as follows:
- * class stdClass{
- *	 public $value;
- *	 public function __toInt(){ return (int)$this->value; }
- *	 public function __toBool(){ return (bool)$this->value; }
- *	 public function __toFloat(){ return (float)$this->value; }
- *	 public function __toString(){ return (string)$this->value; }
- *	 function __construct($v){ $this->value = $v; }"
- *  }
- * Refer to the official documentation for more information.
+ * Convert a ph7_value to type object, invalidating any prior representation.
+ * The new object is a (PHP-empty) stdClass populated with dynamic properties,
+ * matching PHP's (object) cast:
+ *   - array  -> one property per entry (key rendered as a string -> name).
+ *   - scalar -> a single property named "scalar".
+ *   - null   -> an empty stdClass (no properties).
+ *   - object -> returned unchanged (the MEMOBJ_OBJ guard below).
  */
 PH7_PRIVATE sxi32 PH7_MemObjToObject(ph7_value *pObj)
 {
 	if( (pObj->iFlags & MEMOBJ_OBJ) == 0 ){
 		ph7_class_instance *pStd;
-		ph7_class_method *pCons;
 		ph7_class *pClass;
 		ph7_vm *pVm;
-		/* Point to the underlying VM */
+		/* Point to the underlying VM + the stdClass */
 		pVm = pObj->pVm;
-		/* Point to the stdClass() */
-		pClass = PH7_VmExtractClass(pVm,"stdClass",sizeof("stdClass")-1,0,0);
+		pClass = pVm->pStdClass ? pVm->pStdClass
+			: PH7_VmExtractClass(pVm,"stdClass",sizeof("stdClass")-1,0,0);
 		if( pClass == 0 ){
 			/* Can't happen,load null instead */
 			PH7_MemObjRelease(pObj);
 			return SXRET_OK;
 		}
-		/* Instanciate a new stdClass() object */
+		/* Instanciate a new (empty) stdClass object */
 		pStd = PH7_NewClassInstance(pVm,pClass);
 		if( pStd == 0 ){
 			/* Out of memory */
 			PH7_MemObjRelease(pObj);
 			return SXRET_OK;
 		}
-		/* Check if a constructor is available */
-		pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);
-		if( pCons ){
-			ph7_value *apArg[2];
-			/* Invoke the constructor with one argument */
-			apArg[0] = pObj;
-			PH7_VmCallClassMethod(pVm,pStd,pCons,0,1,apArg);
-			if( pStd->iRef < 1 ){
-				pStd->iRef = 1;
+		pStd->iRef = 1;
+		if( pObj->iFlags & MEMOBJ_HASHMAP ){
+			/* Array: one dynamic property per entry. */
+			struct VmObjCastData sData;
+			sData.pVm = pVm;
+			sData.pStd = pStd;
+			ph7_array_walk(pObj,VmArrayToObjectWalk,&sData);
+		}else if( (pObj->iFlags & MEMOBJ_NULL) == 0 ){
+			/* Scalar (int/float/bool/string): a single "scalar" property. */
+			ph7_value *pSlot = PH7_VmCreateDynamicAttr(pVm,pStd,"scalar",sizeof("scalar")-1,0);
+			if( pSlot ){
+				PH7_MemObjStore(pObj,pSlot);
 			}
 		}
+		/* (A NULL source yields an empty stdClass — nothing to populate.) */
 		/* Invalidate any prior representation */
 		PH7_MemObjRelease(pObj);
 		/* Save the new instance */

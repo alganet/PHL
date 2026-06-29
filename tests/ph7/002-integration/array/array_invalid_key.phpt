@@ -13,7 +13,6 @@ $arr = array($obj => 'value');
 var_dump($arr);
 ?>
 --EXPECTF--
-%s Notice:  Missing constructor argument 1($v) for class 'stdClass'
 array(1) {
  [Object] =>
   string(5) "value"
