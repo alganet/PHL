@@ -120,28 +120,28 @@ Coverage: 429/507 lines (84.62%)
 |     - |  110 | ` * The given value must be of type object [i.e: class instance] or` |
 |     - |  111 | ` * string which hold the class name.` |
 |     - |  112 | ` */` |
-|   282 |  113 | `PH7_PRIVATE ph7_class * PH7_VmExtractClassFromValue(ph7_vm *pVm,ph7_value *pArg)` |
+|   304 |  113 | `PH7_PRIVATE ph7_class * PH7_VmExtractClassFromValue(ph7_vm *pVm,ph7_value *pArg)` |
 |     5 |  114 |  |
-|   287 |  115 | `	ph7_class *pClass = 0;` |
-|   287 |  116 | `	if( ph7_value_is_object(pArg) ){` |
+|   309 |  115 | `	ph7_class *pClass = 0;` |
+|   309 |  116 | `	if( ph7_value_is_object(pArg) ){` |
 |     - |  117 | `		/* Class instance already loaded,no need to perform a lookup */` |
-|   203 |  118 | `		pClass = ((ph7_class_instance *)pArg->x.pOther)->pClass;` |
-|   186 |  119 | `	}else if( ph7_value_is_string(pArg) ){` |
+|   217 |  118 | `		pClass = ((ph7_class_instance *)pArg->x.pOther)->pClass;` |
+|   201 |  119 | `	}else if( ph7_value_is_string(pArg) ){` |
 |     - |  120 | `		const char *zClass;` |
 |     - |  121 | `		int nLen;` |
 |     - |  122 | `		/* Extract class name */` |
-|    84 |  123 | `		zClass = ph7_value_to_string(pArg,&nLen);` |
-|    84 |  124 | `		if( nLen > 0 ){` |
+|    92 |  123 | `		zClass = ph7_value_to_string(pArg,&nLen);` |
+|    92 |  124 | `		if( nLen > 0 ){` |
 |     - |  125 | `			SyHashEntry *pEntry;` |
 |     - |  126 | `			/* Perform a lookup */` |
-|    84 |  127 | `			pEntry = SyHashGet(&pVm->hClass,(const void *)zClass,(sxu32)nLen);` |
-|    84 |  128 | `			if( pEntry ){` |
+|    92 |  127 | `			pEntry = SyHashGet(&pVm->hClass,(const void *)zClass,(sxu32)nLen);` |
+|    92 |  128 | `			if( pEntry ){` |
 |     - |  129 | `				/* Point to the desired class */` |
-|    75 |  130 | `				pClass = (ph7_class *)pEntry->pUserData;` |
-|    37 |  131 | `			}` |
-|    41 |  132 | `		}` |
-|    41 |  133 | `	}` |
-|   287 |  134 | `	return pClass;` |
+|    83 |  130 | `				pClass = (ph7_class *)pEntry->pUserData;` |
+|    41 |  131 | `			}` |
+|    45 |  132 | `		}` |
+|    45 |  133 | `	}` |
+|   309 |  134 | `	return pClass;` |
 |     5 |  135 |  |
 |     - |  136 | `/*` |
 |     - |  137 | ` * bool property_exists(mixed $class,string $property)` |
