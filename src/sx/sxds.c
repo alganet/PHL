@@ -176,7 +176,7 @@ PH7_PRIVATE sxi32 SyHashInit(SyHash *pHash,SyMemBackend *pAllocator,ProcHash xHa
 	pHash->pAllocator = &(*pAllocator);
 	pHash->xHash = xHash ? xHash : SyBinHash;
 	pHash->xCmp = xCmp ? xCmp : SyMemcmp;
-	pHash->pCurrent = pHash->pList = 0;
+	pHash->pCurrent = pHash->pList = pHash->pLast = 0;
 	pHash->nEntry = 0;
 	pHash->apBucket = apNew;
 	pHash->nBucketSize = SXHASH_BUCKET_SIZE;
@@ -256,6 +256,10 @@ static sxi32 HashDeleteEntry(SyHash *pHash,SyHashEntry_Pr *pEntry,void **ppUserD
 	}
 	if( pEntry->pNextCollide ){
 		pEntry->pNextCollide->pPrevCollide = pEntry->pPrevCollide;
+	}
+	/* Keep the tail pointer valid when the last entry is the one removed. */
+	if( pHash->pLast == pEntry ){
+		pHash->pLast = pEntry->pPrev;
 	}
 	MACRO_LD_REMOVE(pHash->pList,pEntry);
 	pHash->nEntry--;
@@ -379,7 +383,7 @@ static sxi32 HashGrowTable(SyHash *pHash)
 	pHash->nBucketSize = nNewSize;
 	return SXRET_OK;
 }
-static sxi32 HashInsert(SyHash *pHash,SyHashEntry_Pr *pEntry)
+static sxi32 HashInsert(SyHash *pHash,SyHashEntry_Pr *pEntry,int bTail)
 {
 	sxu32 iBucket = pEntry->nHash & (pHash->nBucketSize - 1);
 	/* Insert the entry in its corresponding bucket */
@@ -388,15 +392,25 @@ static sxi32 HashInsert(SyHash *pHash,SyHashEntry_Pr *pEntry)
 		pHash->apBucket[iBucket]->pPrevCollide = pEntry;
 	}
 	pHash->apBucket[iBucket] = pEntry;
-	/* Link to the entry list */
-	MACRO_LD_PUSH(pHash->pList,pEntry);
+	/* Link to the entry list. The default is head-insert (LIFO); bTail appends
+	 * to the tail (O(1) via pLast) so iteration follows insertion order — for
+	 * callers that need a FIFO traversal. */
+	if( bTail && pHash->pLast != 0 ){
+		pHash->pLast->pNext = pEntry;
+		pEntry->pPrev = pHash->pLast;
+		pHash->pLast = pEntry;
+	}else{
+		MACRO_LD_PUSH(pHash->pList,pEntry);
+	}
 	if( pHash->nEntry == 0 ){
+		/* First entry: it is simultaneously the head, the tail and the cursor. */
 		pHash->pCurrent = pHash->pList;
+		pHash->pLast = pEntry;
 	}
 	pHash->nEntry++;
 	return SXRET_OK;
 }
-PH7_PRIVATE sxi32 SyHashInsert(SyHash *pHash,const void *pKey,sxu32 nKeyLen,void *pUserData)
+static sxi32 SyHashInsertCore(SyHash *pHash,const void *pKey,sxu32 nKeyLen,void *pUserData,int bTail)
 {
 	SyHashEntry_Pr *pEntry;
 	sxi32 rc;
@@ -424,8 +438,22 @@ PH7_PRIVATE sxi32 SyHashInsert(SyHash *pHash,const void *pKey,sxu32 nKeyLen,void
 	pEntry->pUserData = pUserData;
 	pEntry->nHash = pHash->xHash(pEntry->pKey,pEntry->nKeyLen);
 	/* Finally insert the entry in its corresponding bucket */
-	rc = HashInsert(&(*pHash),pEntry);
+	rc = HashInsert(&(*pHash),pEntry,bTail);
 	return rc;
+}
+PH7_PRIVATE sxi32 SyHashInsert(SyHash *pHash,const void *pKey,sxu32 nKeyLen,void *pUserData)
+{
+	return SyHashInsertCore(&(*pHash),pKey,nKeyLen,pUserData,0);
+}
+/*
+ * Like SyHashInsert but appends the entry to the tail of the iteration list, so
+ * SyHashGetNextEntry() yields entries in insertion order (FIFO) rather than the
+ * default reverse-insertion (LIFO). Used for ordered collections such as dynamic
+ * object properties, where PHP preserves property-creation order.
+ */
+PH7_PRIVATE sxi32 SyHashInsertTail(SyHash *pHash,const void *pKey,sxu32 nKeyLen,void *pUserData)
+{
+	return SyHashInsertCore(&(*pHash),pKey,nKeyLen,pUserData,1);
 }
 PH7_PRIVATE SyHashEntry * SyHashLastEntry(SyHash *pHash)
 {

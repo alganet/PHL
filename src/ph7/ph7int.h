@@ -716,7 +716,10 @@ struct ph7_class_attr
 #define PH7_CLASS_ATTR_NULLABLE     0x020  /* Type allows null (?type prefix or T|null union) */
 #define PH7_CLASS_ATTR_UNION        0x040  /* Property has a union type (use aUnionAlts) */
 #define PH7_CLASS_ATTR_READONLY     0x080  /* readonly property (PHP 8.1) */
-/* next free bit: 0x100 */
+#define PH7_CLASS_ATTR_DYNAMIC      0x100  /* Runtime-added (dynamic) property: the ph7_class_attr is
+                                            * instance-owned (synthesized, not class-declared) and must
+                                            * be freed when the instance is released. */
+/* next free bit: 0x200 */
 /*
  * Each class method is parsed out and stored in an instance of the following
  * structure.
@@ -985,6 +988,7 @@ struct ph7_vm
 	ph7_class *pFiberClass;    /* Cached Fiber class pointer for fast dispatch */
 	ph7_class *pGeneratorClass; /* Cached Generator class pointer */
 	ph7_class *pClosureClass;  /* Cached Closure class pointer (closures are instances of it) */
+	ph7_class *pStdClass;      /* Cached stdClass pointer (target of (object) cast + dynamic props) */
 	ph7_class *pArrayAccessClass; /* Cached ArrayAccess interface pointer */
 	ph7_class *pCountableClass;   /* Cached Countable interface pointer */
 	ph7_class *pStringableClass;  /* Cached Stringable interface pointer */
@@ -1487,6 +1491,7 @@ PH7_PRIVATE sxi32 PH7_VmInitFuncState(ph7_vm *pVm,ph7_vm_func *pFunc,const char 
 	sxi32 iFlags,void *pUserData);
 PH7_PRIVATE sxi32 PH7_VmInstallUserFunction(ph7_vm *pVm,ph7_vm_func *pFunc,SyString *pName);
 PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(ph7_vm *pVm,ph7_class_instance *pObj);
+PH7_PRIVATE ph7_value * PH7_VmCreateDynamicAttr(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,sxu32 nName,VmClassAttr **ppAttr);
 PH7_PRIVATE sxi32 PH7_VmRefObjRemove(ph7_vm *pVm,sxu32 nIdx,SyHashEntry *pEntry,ph7_hashmap_node *pMapEntry);
 PH7_PRIVATE sxi32 PH7_VmRefObjInstall(ph7_vm *pVm,sxu32 nIdx,SyHashEntry *pEntry,ph7_hashmap_node *pMapEntry,sxi32 iFlags);
 PH7_PRIVATE sxi32 PH7_VmPushFilePath(ph7_vm *pVm,const char *zPath,int nLen,sxu8 bMain,sxi32 *pNew);
@@ -1911,6 +1916,7 @@ PH7_PRIVATE sxi32 SyStrToInt32(const char *zSrc,sxu32 nLen,void *pOutVal,const c
 PH7_PRIVATE sxi32 SyStrIsNumeric(const char *zSrc,sxu32 nLen,sxu8 *pReal,const char **pzTail);
 PH7_PRIVATE SyHashEntry *SyHashLastEntry(SyHash *pHash);
 PH7_PRIVATE sxi32 SyHashInsert(SyHash *pHash,const void *pKey,sxu32 nKeyLen,void *pUserData);
+PH7_PRIVATE sxi32 SyHashInsertTail(SyHash *pHash,const void *pKey,sxu32 nKeyLen,void *pUserData);
 PH7_PRIVATE sxi32 SyHashForEach(SyHash *pHash,sxi32(*xStep)(SyHashEntry *,void *),void *pUserData);
 PH7_PRIVATE SyHashEntry *SyHashGetNextEntry(SyHash *pHash);
 PH7_PRIVATE sxi32 SyHashResetLoopCursor(SyHash *pHash);

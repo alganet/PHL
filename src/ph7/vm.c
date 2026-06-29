@@ -1149,6 +1149,89 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 	}
 	return SXRET_OK;
 }
+/*
+ * Whether [pClass] permits runtime-created (dynamic) properties. Scoped to
+ * stdClass for now; the future general-dynamic-props work (PLAN.md §3.1) turns
+ * this into a class-flag / #[AllowDynamicProperties] check at this one site.
+ */
+static int VmClassAllowsDynamicProps(ph7_vm *pVm,ph7_class *pClass)
+{
+	return pVm->pStdClass != 0 && pClass == pVm->pStdClass;
+}
+/*
+ * Create a dynamic (runtime-added) property named [zName:nName] on a class
+ * instance and return its freshly reserved value slot (the caller stores the
+ * value via PH7_MemObjStore). If [ppAttr] is non-NULL it receives the new
+ * VmClassAttr (saving the caller a re-lookup). Returns NULL on OOM.
+ *
+ * Mirrors the non-static declared-attribute path in PH7_VmCreateClassInstanceFrame,
+ * but the ph7_class_attr is SYNTHESIZED and instance-owned: a single allocation
+ * holds the attr struct followed by the name bytes (so the SyHash key, which
+ * SyHashInsert stores by pointer, stays valid for the entry's lifetime). The
+ * attr carries PH7_CLASS_ATTR_DYNAMIC; PH7_ClassInstanceRelease frees it (and its
+ * inline name) on that flag — the only place a per-instance pAttr is freed.
+ * The property is public + untyped, so the iFlags/sName dereferences in the
+ * member-read, type-enforcement and destruction paths all behave normally.
+ */
+PH7_PRIVATE ph7_value * PH7_VmCreateDynamicAttr(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,sxu32 nName,VmClassAttr **ppAttr)
+{
+	ph7_class_attr *pAttr;
+	VmClassAttr *pVmAttr = 0;
+	ph7_value *pMemObj = 0;
+	char *zCopy;
+	/* One block: ph7_class_attr struct + inline NUL-terminated name. */
+	pAttr = (ph7_class_attr *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(ph7_class_attr) + nName + 1);
+	if( pAttr == 0 ){
+		return 0;
+	}
+	SyZero(pAttr,sizeof(ph7_class_attr));
+	zCopy = (char *)&pAttr[1];
+	if( nName > 0 ){
+		SyMemcpy((const void *)zName,(void *)zCopy,nName);
+	}
+	zCopy[nName] = 0;
+	SyStringInitFromBuf(&pAttr->sName,zCopy,nName);
+	pAttr->iFlags = PH7_CLASS_ATTR_DYNAMIC;
+	pAttr->iProtection = PH7_CLASS_PROT_PUBLIC;
+	pAttr->pDeclClass = pThis->pClass;
+	/* nType / aByteCode / aUnionAlts left zeroed by SyZero: untyped, no default
+	 * value, never a union. */
+	pVmAttr = (VmClassAttr *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(VmClassAttr));
+	if( pVmAttr == 0 ){
+		goto fail_attr;
+	}
+	pMemObj = PH7_ReserveMemObj(&(*pVm));
+	if( pMemObj == 0 ){
+		goto fail_vmattr;
+	}
+	pVmAttr->pAttr = pAttr;
+	pVmAttr->nIdx = pMemObj->nIdx;
+	pVmAttr->iState = 0;
+	pVmAttr->pOwner = pThis->pClass;
+	/* Tail-insert so iteration (json_encode/foreach/(array)/var_dump) follows
+	 * property-creation order, matching PHP. */
+	if( SyHashInsertTail(&pThis->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),pVmAttr) != SXRET_OK ){
+		goto fail_slot;
+	}
+	/* Install in the reference table so COW/refcount tracks the slot. */
+	PH7_VmRefObjInstall(&(*pVm),pMemObj->nIdx,0,0,VM_REF_IDX_KEEP);
+	if( ppAttr ){
+		*ppAttr = pVmAttr;
+	}
+	return pMemObj;
+fail_slot:
+	{
+		VmSlot sSlot;
+		sSlot.nIdx = pMemObj->nIdx;
+		sSlot.pUserData = 0;
+		SySetPut(&pVm->aFreeObj,(const void *)&sSlot);
+	}
+fail_vmattr:
+	SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
+fail_attr:
+	SyMemBackendFree(&pVm->sAllocator,pAttr);
+	return 0;
+}
 /* Forward declaration */
 static VmRefObj * VmRefObjExtract(ph7_vm *pVm,sxu32 nObjIdx);
 static sxi32 VmRefObjUnlink(ph7_vm *pVm,VmRefObj *pRef);
@@ -1489,14 +1572,8 @@ static int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_value 
 	"  private $__scope;"\
 	"  public function __construct(){ throw new \\Error('Instantiation of class Closure is not allowed'); }"\
 	"}"\
+	/* stdClass is empty (PHP-exact): holds only dynamic (runtime-added) properties. */\
 	"class stdClass{"\
-	"  public $value;"\
-	" /* Magic methods */"\
-	" public function __toInt(){ return (int)$this->value; }"\
-	" public function __toBool(){ return (bool)$this->value; }"\
-	" public function __toFloat(){ return (float)$this->value; }"\
-	" public function __toString(){ return (string)$this->value; }"\
-	" function __construct($v){ $this->value = $v; }"\
 	"}"\
 	"function dir(string $path){"\
 	"   return new Directory($path);"\
@@ -1863,6 +1940,8 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	ph7_create_function(pVm,"__fiber_destruct",vm_builtin_Fiber_destruct,0);
 	/* Cache the Closure class pointer (closures are instances of it) */
 	pVm->pClosureClass = PH7_VmExtractClass(pVm,"Closure",7,0,0);
+	/* Cache the stdClass pointer ((object) cast target + dynamic-property owner) */
+	pVm->pStdClass = PH7_VmExtractClass(pVm,"stdClass",sizeof("stdClass")-1,0,0);
 	/* Cache the Generator class pointer and register generator functions */
 	pVm->pGeneratorClass = PH7_VmExtractClass(pVm,"Generator",9,0,0);
 	ph7_create_function(pVm,"__gen_rewind",vm_builtin_Generator_rewind,0);
@@ -8937,6 +9016,16 @@ case PH7_OP_MEMBER: {
 						pObjAttr = (VmClassAttr *)pEntry->pUserData;
 					}
 				}
+				if( pObjAttr == 0 && sName.nByte > 0 && VmClassAllowsDynamicProps(pVm,pThis->pClass) ){
+					/* Dynamic property: when this member is the LHS of an assignment
+					 * (next instr is a member store), create the property so the store
+					 * lands. Detected via one-token lookahead — the compiler always
+					 * emits a terminating PH7_OP_DONE, so pInstr+1 is in-bounds. */
+					VmInstr *pNext = pInstr + 1;
+					if( pNext->iOp == PH7_OP_STORE && pNext->iP2 ){
+						PH7_VmCreateDynamicAttr(&(*pVm),pThis,sName.zString,sName.nByte,&pObjAttr);
+					}
+				}
 				if( pObjAttr == 0 ){
 					/* No such attribute,load null */
 					VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Undefined class attribute '%z->%z',PH7 is loading NULL",
@@ -9833,16 +9922,22 @@ case PH7_OP_CALL: {
 				&sResult,
 				(VmCallArgMap *)pInstr->p3);
 			SySetReset(&aArg);
+			/* Pin pThis BEFORE popping operands: VmPopOperand releases the callable
+			 * slot itself (it pops top-down and the callable IS pTos), which for a
+			 * temporary like (new Plain())(...) holds the only reference — popping it
+			 * would free pThis before VmRaiseNotCallable reads its class name below.
+			 * Only the not-callable branch dereferences pThis afterwards, so pin just
+			 * for that case; the matching PH7_ClassInstanceUnref drops it (destroying
+			 * the temporary). The other branches let the pop free the temp as before. */
+			if( rcInv == SXERR_INVALID ){
+				pThis->iRef++;
+			}
 			if( nCallArgs > 0 ){
 				VmPopOperand(&pTos,nCallArgs);
 			}
 			if( rcInv == SXERR_INVALID ){
 				/* No __invoke: raise a catchable Error and route through try/catch.
-				 * sResult was already released by VmCallObjectInvoke.
-				 * Pin pThis: the release below would otherwise drop the last ref
-				 * to a temporary callable like (new Plain())(...), freeing the
-				 * instance before VmRaiseNotCallable reads its class name. */
-				pThis->iRef++;
+				 * sResult was already released by VmCallObjectInvoke. */
 				PH7_MemObjRelease(pTos);
 				rc = VmRaiseNotCallable(&(*pVm),pThis);
 				PH7_ClassInstanceUnref(pThis);
@@ -17500,6 +17595,12 @@ static int vm_builtin_spl_autoload(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 		/* Append extension */
 		SyBlobAppend(&sPath,(const void *)zCur,(sxu32)(zComma - zCur));
+		/* NUL-terminate: the include path flows down to PH7_StreamOpenHandle,
+		 * which does SyStrlen() on it as a C string. SyBlobAppend does not add a
+		 * terminator, so without this the strlen reads past the buffer (a
+		 * heap-buffer-overflow whose visibility depends on heap layout). The NUL
+		 * is not counted in SyBlobLength(), so the SyString length stays correct. */
+		SyBlobNullAppend(&sPath);
 		/* Try to include the file */
 		SyStringInitFromBuf(&sFile,(const char *)SyBlobData(&sPath),SyBlobLength(&sPath));
 		rc = VmExecIncludedFile(pCtx,&sFile,FALSE);
