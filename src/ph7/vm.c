@@ -9874,8 +9874,10 @@ case PH7_OP_CALL: {
 				pArg++;
 			}
 			PH7_MemObjInit(pVm,&sResult);
-			/* May be a class instance and it's static method */
-			rcArr = PH7_VmCallUserFunction(pVm,pTos,(int)SySetUsed(&aArg),(ph7_value **)SySetBasePtr(&aArg),&sResult);
+			/* May be a class instance and it's static method. Forward this call's named-arg map
+			 * (pInstr->p3) so an FCC array callable invoked as `$c(name: …)` binds by name —
+			 * mirroring the __invoke-object branch below. */
+			rcArr = PH7_VmCallUserFunctionWithMap(pVm,pTos,(int)SySetUsed(&aArg),(ph7_value **)SySetBasePtr(&aArg),&sResult,(VmCallArgMap *)pInstr->p3);
 			SySetReset(&aArg);
 			/* Pop given arguments */
 			if( nCallArgs > 0 ){
@@ -13654,12 +13656,13 @@ static sxi32 VmRaiseNotCallable(ph7_vm *pVm, ph7_class_instance *pThis)
  * Return SXRET_OK if the function was successfuly called.Any other
  * return value indicates failure.
  */
-PH7_PRIVATE sxi32 PH7_VmCallUserFunction(
+PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 	ph7_vm *pVm,       /* Target VM */
 	ph7_value *pFunc,  /* Callback name */
 	int nArg,          /* Total number of given arguments */
 	ph7_value **apArg, /* Callback arguments */
-	ph7_value *pResult /* Store callback return value here. NULL otherwise */
+	ph7_value *pResult,  /* Store callback return value here. NULL otherwise */
+	VmCallArgMap *pArgMap/* Named-argument map (call-site `p3`), or 0 for a positional call */
 	)
 {
 	ph7_value *aStack;
@@ -13667,12 +13670,13 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunction(
 	int i;
 	if( VmValueIsClosure(pVm,pFunc) ){
 		/* A Closure object: unwrap to its underlying string/array callable and dispatch
-		 * that (call_user_func / array_map / usort / the C API all funnel here). */
+		 * that (call_user_func / array_map / usort / the C API all funnel here). Forward the
+		 * named-arg map so a first-class-callable invoked as `$c(name: …)` binds by name. */
 		ph7_value sCallable;
 		sxi32 rcClo;
 		PH7_MemObjInit(pVm,&sCallable);
 		if( VmClosureUnwrap(pVm,pFunc,&sCallable) == SXRET_OK ){
-			rcClo = PH7_VmCallUserFunction(pVm,&sCallable,nArg,apArg,pResult);
+			rcClo = PH7_VmCallUserFunctionWithMap(pVm,&sCallable,nArg,apArg,pResult,pArgMap);
 			PH7_MemObjRelease(&sCallable);
 			return rcClo;
 		}
@@ -13680,12 +13684,12 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunction(
 	}
 	if( pFunc->iFlags & MEMOBJ_OBJ ){
 		/* Object callable: dispatch through __invoke when available (Closures were already
-		 * unwrapped above, so only non-Closure __invoke objects reach here).
-		 * No VmCallArgMap: call_user_func / array_map / usort and the C API
-		 * pass arguments positionally and inherit no strict-types context. */
+		 * unwrapped above, so only non-Closure __invoke objects reach here). pArgMap is 0 for the
+		 * positional callers (call_user_func / array_map / usort / C API) and carries the
+		 * named-arg map only for an `__invoke`-object first-class-callable invocation. */
 		return VmCallObjectInvoke(&(*pVm),
 			(ph7_class_instance *)pFunc->x.pOther,
-			nArg,apArg,pResult,0);
+			nArg,apArg,pResult,pArgMap);
 	}
 	if((pFunc->iFlags & (MEMOBJ_STRING|MEMOBJ_HASHMAP)) == 0 ){
 		/* Don't bother processing,it's invalid anyway */
@@ -13742,8 +13746,9 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunction(
 			}
 			return SXRET_OK;
 		}
-		/* Call the class method */
-		rc = PH7_VmCallClassMethod(&(*pVm),pThis,pMethod,pResult,nArg,apArg);
+		/* Call the class method, forwarding the named-arg map (a `[obj,m]`/`[class,m]`
+		 * first-class-callable invoked as `$c(name: …)` must bind by name, like a direct call). */
+		rc = VmCallClassMethodWithMap(&(*pVm),pThis,pMethod,pResult,nArg,apArg,pArgMap);
 		return rc;
 	}
 	/* Create a new operand stack */
@@ -13773,7 +13778,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunction(
 	aInstr[0].iOp = PH7_OP_CALL;
 	aInstr[0].iP1 = nArg; /* Total number of given arguments */
 	aInstr[0].iP2 = 0;
-	aInstr[0].p3  = 0;
+	aInstr[0].p3  = (void *)pArgMap; /* Named-arg map (0 for positional callers) */
 	/* Emit the DONE instruction */
 	aInstr[1].iOp = PH7_OP_DONE;
 	aInstr[1].iP1 = 1;   /* Extract function return value if available */
@@ -13788,6 +13793,22 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunction(
 		/* Propagate PH7_EXCEPTION/PH7_ABORT so a callback that raised unwinds. */
 		return rcExec;
 	}
+}
+/*
+ * Positional-call wrapper around PH7_VmCallUserFunctionWithMap (mirrors the
+ * PH7_VmCallClassMethod -> VmCallClassMethodWithMap pattern). call_user_func,
+ * array_map, usort and the whole C API funnel here and pass arguments by
+ * position, so they need no named-argument map.
+ */
+PH7_PRIVATE sxi32 PH7_VmCallUserFunction(
+	ph7_vm *pVm,       /* Target VM */
+	ph7_value *pFunc,  /* Callback name */
+	int nArg,          /* Total number of given arguments */
+	ph7_value **apArg, /* Callback arguments */
+	ph7_value *pResult /* Store callback return value here. NULL otherwise */
+	)
+{
+	return PH7_VmCallUserFunctionWithMap(&(*pVm),pFunc,nArg,apArg,pResult,0);
 }
 /*
  * Call a user defined or foreign function whith a varibale number
