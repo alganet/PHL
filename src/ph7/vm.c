@@ -1307,6 +1307,7 @@ static sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut);
 static ph7_class_instance * VmCreateClosure(ph7_vm *pVm, const SyString *pName,
 	ph7_class_instance *pBoundThis, const SyString *pScope);
 static ph7_class * VmFccResolveScope(ph7_vm *pVm, ph7_value *pTarget);
+static ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue);
 static sxi32 VmIterCallMethod(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,sxu32 nLen,ph7_value *pResult);
 static sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 	ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg);
@@ -6273,29 +6274,22 @@ case PH7_OP_LOAD_CLOSURE:{
  */
 case PH7_OP_LOAD_FCC:{
 	if( pInstr->iP1 == 1 ){
-		/* Plain-callee FCC: TOS holds the callee value. The common case is a function-NAME
-		 * string (from the callee's OP_LOADC) — wrap it in a Closure. Two value-callee cases
-		 * are handled idempotently rather than minting a broken empty-name Closure:
-		 *   - an existing Closure (`$closure(...)`) is left unchanged (PHP: idempotent);
-		 *   - any other non-string value (array callable, scalar via `($expr)(...)`) is left
-		 *     as-is — it stays whatever it was (a [obj,m] array callable remains callable).
-		 * Full first-class-callable wrapping of an arbitrary callable EXPRESSION is a
-		 * follow-up (see PLAN.md). */
-		if( VmValueIsClosure(pVm, pTos) || (pTos->iFlags & MEMOBJ_STRING) == 0 ){
+		/* Plain-callee FCC: TOS holds the callee value. An existing Closure (`$closure(...)`)
+		 * is idempotent (left unchanged, matching PHP). Any other validated callable VALUE —
+		 * a function-NAME string (the common case, from the callee's OP_LOADC), a [target,
+		 * method] array callable, or an __invoke object via `($expr)(...)` — is normalized to a
+		 * fresh Closure (PHP always yields a Closure). A non-callable value is left as-is
+		 * (graceful degradation), and so is the original on OOM — still whatever it was. */
+		ph7_class_instance *pCloObj;
+		if( VmValueIsClosure(pVm, pTos) ){
 			break;
 		}
-		{
-			SyString sName;
-			ph7_class_instance *pCloObj;
-			SyStringInitFromBuf(&sName, SyBlobData(&pTos->sBlob), SyBlobLength(&pTos->sBlob));
-			pCloObj = VmCreateClosure(pVm, &sName, 0, 0);
-			if( pCloObj ){
-				PH7_MemObjRelease(pTos);
-				pCloObj->iRef++;
-				pTos->x.pOther = pCloObj;
-				MemObjSetType(pTos, MEMOBJ_OBJ);
-			}
-			/* OOM: leave the name string on the stack — still a usable callable. */
+		pCloObj = VmFccWrapValue(pVm, pTos);
+		if( pCloObj ){
+			PH7_MemObjRelease(pTos);
+			pCloObj->iRef++;
+			pTos->x.pOther = pCloObj;
+			MemObjSetType(pTos, MEMOBJ_OBJ);
 		}
 	}else{
 		/* iP1 == 2: method/static. Stack is [ target (pTos[-1]), real-method-name (pTos) ]
@@ -11778,6 +11772,76 @@ static ph7_class_instance * VmCreateClosure(ph7_vm *pVm, const SyString *pName,
 		pObj->iFlags |= VM_INSTANCE_FCC_BOUND;
 	}
 	return pObj;
+}
+/*
+ * First-class callable over an arbitrary callable VALUE: `($expr)(...)`.
+ * Normalize a validated callable value into a fresh Closure, reusing VmCreateClosure (the same
+ * object the method/static first-class-callable paths mint, so dispatch round-trips identically
+ * via VmClosureUnwrap). Handles the three remaining callable shapes a value can hold:
+ *   - a function-NAME string          -> plain closure ($__fn = name)
+ *   - a [target, method] array callable -> bound (object target -> $this) / static (class-name
+ *     target -> scope) closure, mirroring the [obj,m]/[class,m] decode in PH7_VmIsCallable
+ *   - an __invoke object               -> closure bound to the object's __invoke
+ * An existing Closure returns 0 here (it is already a Closure — the caller keeps it as-is), so this
+ * stays idempotent even for a direct caller. Returns the fresh instance (iRef == 0; caller takes the
+ * reference) or 0 if the value is an existing Closure / not a normalizable callable / on OOM — in
+ * which case the caller leaves the value untouched (graceful degradation). This is the generic
+ * "callable value -> Closure" primitive: the body is FCC-agnostic and self-contained, so the future
+ * Closure::bind/fromCallable work (Increment 2) can call it directly.
+ */
+static ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue)
+{
+	/* A Closure is already callable; never double-wrap it (this also stops the __invoke branch
+	 * below from binding a closure to its OWN __invoke). The OP_LOAD_FCC caller intercepts a
+	 * Closure first too, but guarding here keeps the primitive safe for a direct Increment-2 caller. */
+	if( VmValueIsClosure(pVm, pValue) ){
+		return 0;
+	}
+	if( !PH7_VmIsCallable(pVm, pValue, TRUE) ){
+		return 0;
+	}
+	if( pValue->iFlags & MEMOBJ_STRING ){
+		SyString sName;
+		SyStringInitFromBuf(&sName, SyBlobData(&pValue->sBlob), SyBlobLength(&pValue->sBlob));
+		return VmCreateClosure(pVm, &sName, 0, 0);
+	}
+	if( pValue->iFlags & MEMOBJ_HASHMAP ){
+		/* [target, method] — same two-slot decode PH7_VmIsCallable uses to validate it. */
+		ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;
+		ph7_value *pTarget, *pMeth;
+		SyString sName;
+		if( pMap->nEntry != 2 ){
+			return 0;
+		}
+		pTarget = (ph7_value *)SySetAt(&pVm->aMemObj, pMap->pFirst->nValIdx);
+		pMeth   = (ph7_value *)SySetAt(&pVm->aMemObj, pMap->pFirst->pPrev->nValIdx);
+		if( pTarget == 0 || pMeth == 0 || (pMeth->iFlags & MEMOBJ_STRING) == 0
+			|| SyBlobLength(&pMeth->sBlob) == 0 ){
+			return 0;
+		}
+		SyStringInitFromBuf(&sName, SyBlobData(&pMeth->sBlob), SyBlobLength(&pMeth->sBlob));
+		if( pTarget->iFlags & MEMOBJ_OBJ ){
+			ph7_class_instance *pBoundThis = (ph7_class_instance *)pTarget->x.pOther;
+			return VmCreateClosure(pVm, &sName, pBoundThis, &pBoundThis->pClass->sName);
+		}else{
+			/* [class-name, method] static callable -> bind the resolved scope. A runtime array
+			 * callable carries a concrete class name (never self/static/parent), so a plain class
+			 * lookup is correct — unlike the syntactic `C::m(...)` path, which must resolve
+			 * self/static/parent via VmFccResolveScope. Matches PH7_VmIsCallable's own decode. */
+			ph7_class *pScopeCls = PH7_VmExtractClassFromValue(pVm, pTarget);
+			return pScopeCls ? VmCreateClosure(pVm, &sName, 0, &pScopeCls->sName) : 0;
+		}
+	}
+	if( pValue->iFlags & MEMOBJ_OBJ ){
+		/* __invoke object (a real Closure is intercepted by the caller before this point). */
+		ph7_class_instance *pObj = (ph7_class_instance *)pValue->x.pOther;
+		SyString sInvoke;
+		SyStringInitFromBuf(&sInvoke, "__invoke", sizeof("__invoke") - 1);
+		return VmCreateClosure(pVm, &sInvoke, pObj, &pObj->pClass->sName);
+	}
+	/* Unreachable in practice — the PH7_VmIsCallable gate admits only string/array/object, all
+	 * handled above; kept to satisfy the non-void return path. */
+	return 0;
 }
 /*
  * Fiber::suspend($value = null) — static method.
