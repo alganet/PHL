@@ -1905,6 +1905,8 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyHashInit(&pVm->hTypedSlot,&pVm->sAllocator,0,0);
 	SySetInit(&pVm->aException,&pVm->sAllocator,sizeof(ph7_exception *));
 	pVm->pPendingException = 0;
+	pVm->pInflightException = 0;
+	pVm->nInflightExcBase = 0;
 	pVm->pResumeFrame = 0;
 	pVm->iResumePc = 0;
 	pVm->pResumeInstr = 0;
@@ -2399,6 +2401,8 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	SySetReset(&pVm->aShutdown);
 	SySetReset(&pVm->aException);
 	pVm->pPendingException = 0;
+	pVm->pInflightException = 0;
+	pVm->nInflightExcBase = 0;
 	pVm->pResumeFrame = 0;
 	pVm->iResumePc = 0;
 	pVm->pResumeInstr = 0;
@@ -4669,15 +4673,24 @@ static void VmGetFrameContext(ph7_vm *pVm,const char **pzFuncName,int *pnFuncLen
 	*pnFuncLen = (int)pFunc->sName.nByte;
 }
 /*
- * Emit a PHP-compatible uncaught exception message and stack trace.
+ * Render one exception entry of an uncaught-exception report into pOut.
+ *
+ * The output is the single-exception PHP format, factored so a `$previous`
+ * chain can emit several entries into one blob (see VmReportUncaughtChain):
+ *   bFirst -> the head entry is prefixed "PHP Fatal error:  Uncaught "; a
+ *             chained entry is prefixed "\n\nNext " (blank-line separated).
+ *   bLast  -> only the tail entry appends the "  thrown in <file> on line 1"
+ *             trailer.
+ * A single entry (bFirst && bLast) is byte-identical to the historical output.
+ * The caller owns the blob lifecycle (init/release) and the output consumer
+ * call; this routine only appends.
  */
-static sxi32 VmReportUncaughtException(ph7_vm *pVm,const char *zClass,sxu32 nClass,const char *zMsg,sxu32 nMsg,const char *zFuncName,int nFuncLen)
+static void VmRenderUncaughtEntry(
+	ph7_vm *pVm,SyBlob *pOut,
+	const char *zClass,sxu32 nClass,const char *zMsg,sxu32 nMsg,
+	const char *zFuncName,int nFuncLen,int bFirst,int bLast)
 {
-	SyBlob sOut;
 	SyString *pFile;
-	if( !pVm->bErrReport ){
-		return PH7_OK;
-	}
 	if( zClass == 0 || nClass == 0 ){
 		zClass = "Exception";
 		nClass = (sxu32)sizeof("Exception") - 1;
@@ -4686,38 +4699,187 @@ static sxi32 VmReportUncaughtException(ph7_vm *pVm,const char *zClass,sxu32 nCla
 		VmGetFrameContext(pVm,&zFuncName,&nFuncLen);
 	}
 	pFile = (SyString *)SySetPeek(&pVm->aFiles);
-	SyBlobInit(&sOut,&pVm->sAllocator);
-	SyBlobAppend(&sOut,"PHP Fatal error:  Uncaught ",sizeof("PHP Fatal error:  Uncaught ")-1);
-	SyBlobAppend(&sOut,zClass,nClass);
+	if( bFirst ){
+		SyBlobAppend(pOut,"PHP Fatal error:  Uncaught ",sizeof("PHP Fatal error:  Uncaught ")-1);
+	}else{
+		SyBlobAppend(pOut,"\n\nNext ",sizeof("\n\nNext ")-1);
+	}
+	SyBlobAppend(pOut,zClass,nClass);
 	if( zMsg && nMsg > 0 ){
-		SyBlobAppend(&sOut,": ",sizeof(": ")-1);
-		SyBlobAppend(&sOut,zMsg,nMsg);
+		SyBlobAppend(pOut,": ",sizeof(": ")-1);
+		SyBlobAppend(pOut,zMsg,nMsg);
 	}
 	if( pFile ){
-		SyBlobAppend(&sOut," in ",sizeof(" in ")-1);
-		SyBlobAppend(&sOut,pFile->zString,pFile->nByte);
-		SyBlobAppend(&sOut,":1",sizeof(":1")-1);
+		SyBlobAppend(pOut," in ",sizeof(" in ")-1);
+		SyBlobAppend(pOut,pFile->zString,pFile->nByte);
+		SyBlobAppend(pOut,":1",sizeof(":1")-1);
 	}
-	SyBlobAppend(&sOut,"\nStack trace:\n",sizeof("\nStack trace:\n")-1);
+	SyBlobAppend(pOut,"\nStack trace:\n",sizeof("\nStack trace:\n")-1);
 	if( pFile ){
-		SyBlobAppend(&sOut,"#0 ",sizeof("#0 ")-1);
-		SyBlobAppend(&sOut,pFile->zString,pFile->nByte);
+		SyBlobAppend(pOut,"#0 ",sizeof("#0 ")-1);
+		SyBlobAppend(pOut,pFile->zString,pFile->nByte);
 		if( zFuncName && nFuncLen > 0 ){
-			SyBlobFormat(&sOut,"(1): %.*s()\n",nFuncLen,zFuncName);
+			SyBlobFormat(pOut,"(1): %.*s()\n",nFuncLen,zFuncName);
 		}else{
-			SyBlobAppend(&sOut,"(1): {main}\n",sizeof("(1): {main}\n")-1);
+			SyBlobAppend(pOut,"(1): {main}\n",sizeof("(1): {main}\n")-1);
 		}
 	}else if( zFuncName && nFuncLen > 0 ){
-		SyBlobFormat(&sOut,"#0 [internal function]: %.*s()\n",nFuncLen,zFuncName);
+		SyBlobFormat(pOut,"#0 [internal function]: %.*s()\n",nFuncLen,zFuncName);
 	}else{
-		SyBlobAppend(&sOut,"#0 {main}\n",sizeof("#0 {main}\n")-1);
+		SyBlobAppend(pOut,"#0 {main}\n",sizeof("#0 {main}\n")-1);
 	}
-	SyBlobAppend(&sOut,"#1 {main}",sizeof("#1 {main}")-1);
-	if( pFile ){
-		SyBlobAppend(&sOut,"\n",sizeof("\n")-1);
-		SyBlobAppend(&sOut,"  thrown in ",sizeof("  thrown in ")-1);
-		SyBlobAppend(&sOut,pFile->zString,pFile->nByte);
-		SyBlobAppend(&sOut," on line 1",sizeof(" on line 1")-1);
+	SyBlobAppend(pOut,"#1 {main}",sizeof("#1 {main}")-1);
+	if( bLast && pFile ){
+		SyBlobAppend(pOut,"\n",sizeof("\n")-1);
+		SyBlobAppend(pOut,"  thrown in ",sizeof("  thrown in ")-1);
+		SyBlobAppend(pOut,pFile->zString,pFile->nByte);
+		SyBlobAppend(pOut," on line 1",sizeof(" on line 1")-1);
+	}
+}
+/*
+ * Emit a PHP-compatible uncaught exception message and stack trace for a
+ * single exception (no `$previous` chain). Used by the callers that have no
+ * exception instance to walk (internal Error reports, type errors, ...).
+ */
+static sxi32 VmReportUncaughtException(ph7_vm *pVm,const char *zClass,sxu32 nClass,const char *zMsg,sxu32 nMsg,const char *zFuncName,int nFuncLen)
+{
+	SyBlob sOut;
+	if( !pVm->bErrReport ){
+		return PH7_OK;
+	}
+	SyBlobInit(&sOut,&pVm->sAllocator);
+	VmRenderUncaughtEntry(pVm,&sOut,zClass,nClass,zMsg,nMsg,zFuncName,nFuncLen,TRUE,TRUE);
+	VmCallErrorHandler(pVm,&sOut);
+	SyBlobRelease(&sOut);
+	return PH7_ABORT;
+}
+/*
+ * Return the `$previous` exception linked on pThis (the Throwable data model:
+ * a protected $previous property, inherited by every user subclass), or NULL
+ * if there is none / it isn't an object. Reads the per-instance attribute
+ * directly (no getPrevious() dispatch), mirroring PHP's internal reporter.
+ */
+static const SyString sExcPrevName = { "previous", sizeof("previous") - 1 };
+static ph7_class_instance * VmExceptionGetPrevious(ph7_class_instance *pThis)
+{
+	ph7_value *pValue;
+	ph7_class_instance *pPrev;
+	ph7_class *pThrowable;
+	if( pThis == 0 ){
+		return 0;
+	}
+	pValue = PH7_ClassInstanceFetchAttr(pThis,&sExcPrevName);
+	if( pValue == 0 || (pValue->iFlags & MEMOBJ_OBJ) == 0 ){
+		return 0;
+	}
+	pPrev = (ph7_class_instance *)pValue->x.pOther;
+	/* PHP's $previous is always a Throwable; a PHL subclass could assign a
+	 * non-Throwable to the (untyped, protected) slot — ignore it so the report
+	 * never renders a stray object as an exception entry. */
+	pThrowable = PH7_VmExtractClass(pThis->pVm,"Throwable",sizeof("Throwable")-1,FALSE,0);
+	if( pThrowable && pPrev && !PH7_VmInstanceOf(pPrev->pClass,pThrowable) ){
+		return 0;
+	}
+	return pPrev;
+}
+/*
+ * Link pPrev as the `$previous` of pThis, but ONLY if pThis has no previous
+ * yet (PHP keeps an explicitly-constructed previous and never overrides it).
+ * pThis takes a ref on pPrev so it outlives the superseded exception; the
+ * slot is released by the normal instance teardown. No-op on any miss.
+ */
+static void VmExceptionLinkPrevious(ph7_class_instance *pThis,ph7_class_instance *pPrev)
+{
+	ph7_value *pValue;
+	if( pThis == 0 || pPrev == 0 || pThis == pPrev ){
+		return;
+	}
+	pValue = PH7_ClassInstanceFetchAttr(pThis,&sExcPrevName);
+	if( pValue == 0 || (pValue->iFlags & MEMOBJ_OBJ) != 0 ){
+		return; /* No slot (not our Exception/Error model), or pThis already has a previous — keep it */
+	}
+	pPrev->iRef++;
+	/* The slot is non-OBJ here, but may hold a scalar (a subclass that wrote a
+	 * non-Throwable); release frees any such buffer before the overwrite. */
+	PH7_MemObjRelease(pValue);
+	pValue->x.pOther = pPrev;
+	MemObjSetType(pValue,MEMOBJ_OBJ);
+}
+/*
+ * Append the message of the exception instance pThis to pOut by invoking its
+ * getMessage() (so a user override is honored). A no-op if the method is
+ * absent or yields an empty string.
+ */
+static void VmExtractExceptionMessage(ph7_vm *pVm,ph7_class_instance *pThis,SyBlob *pOut)
+{
+	ph7_class_method *pGetMessage;
+	ph7_value sMsg;
+	const char *zTmp;
+	int nTmp;
+	pGetMessage = PH7_ClassExtractMethod(pThis->pClass,"getMessage",sizeof("getMessage")-1);
+	if( pGetMessage == 0 ){
+		return;
+	}
+	PH7_MemObjInit(pVm,&sMsg);
+	if( PH7_VmCallClassMethod(&(*pVm),pThis,pGetMessage,&sMsg,0,0) == SXRET_OK ){
+		zTmp = ph7_value_to_string(&sMsg,&nTmp);
+		if( zTmp && nTmp > 0 ){
+			SyBlobAppend(pOut,zTmp,(sxu32)nTmp);
+		}
+	}
+	PH7_MemObjRelease(&sMsg);
+}
+/*
+ * Emit a PHP-compatible uncaught-exception report for pThis, walking its
+ * `$previous` chain. PHP prints the DEEPEST previous as "Uncaught", then each
+ * outer one as "Next ...", with a single "thrown in ..." trailer after the
+ * outermost (the actually-uncaught) exception.
+ *
+ * The walk starts at pThis (outermost) and follows $previous inward; entries
+ * are rendered in reverse (deepest first). A cyclic $previous (e.g.
+ * $a->previous = $a, or A<->B) is broken on the first already-seen instance so
+ * it is not duplicated, and the depth is hard-capped as a final backstop.
+ */
+#define VM_EXCEPTION_CHAIN_MAX 64
+static sxi32 VmReportUncaughtChain(ph7_vm *pVm,ph7_class_instance *pThis,const char *zFuncName,int nFuncLen)
+{
+	ph7_class_instance *apChain[VM_EXCEPTION_CHAIN_MAX];
+	int nChain = 0;
+	int i;
+	SyBlob sOut;
+	if( !pVm->bErrReport ){
+		return PH7_OK;
+	}
+	/* Collect outermost -> deepest, stopping on a cycle (an instance already
+	 * collected) or the hard cap. */
+	while( pThis && nChain < VM_EXCEPTION_CHAIN_MAX ){
+		for( i = 0 ; i < nChain ; ++i ){
+			if( apChain[i] == pThis ){
+				pThis = 0; /* cycle: stop the walk */
+				break;
+			}
+		}
+		if( pThis == 0 ){
+			break;
+		}
+		apChain[nChain++] = pThis;
+		pThis = VmExceptionGetPrevious(pThis);
+	}
+	SyBlobInit(&sOut,&pVm->sAllocator);
+	/* Render deepest -> outermost: index nChain-1 is the deepest ("Uncaught"),
+	 * index 0 is the outermost (gets the "thrown in" trailer). */
+	for( i = nChain - 1 ; i >= 0 ; --i ){
+		ph7_class_instance *pEnt = apChain[i];
+		SyBlob sMsg;
+		SyBlobInit(&sMsg,&pVm->sAllocator);
+		VmExtractExceptionMessage(pVm,pEnt,&sMsg);
+		VmRenderUncaughtEntry(pVm,&sOut,
+			pEnt->pClass->sName.zString,pEnt->pClass->sName.nByte,
+			(const char *)SyBlobData(&sMsg),(sxu32)SyBlobLength(&sMsg),
+			zFuncName,nFuncLen,
+			(i == nChain - 1) ? TRUE : FALSE,   /* bFirst: deepest entry */
+			(i == 0) ? TRUE : FALSE);           /* bLast: outermost entry */
+		SyBlobRelease(&sMsg);
 	}
 	VmCallErrorHandler(pVm,&sOut);
 	SyBlobRelease(&sOut);
@@ -16161,38 +16323,18 @@ static sxi32 VmUncaughtException(
 	rc = PH7_VmCallUserFunction(&(*pVm),&pVm->aExceptionCB[1],nArg,apArg,0);
 	pVm->nExceptDepth--;
 	if( rc != SXRET_OK ){
-		SyBlob sMsgBuf;
-		const char *zClass = "Exception";
-		sxu32 nClass = (sxu32)sizeof("Exception") - 1;
-		const char *zMsg;
-		sxu32 nMsg;
 		const char *zFuncName;
 		int nFuncLen;
-		SyBlobInit(&sMsgBuf,&pVm->sAllocator);
-		if( pThis ){
-			ph7_class_method *pGetMessage;
-			ph7_value sMsg;
-			const char *zTmp;
-			int nTmp;
-			zClass = pThis->pClass->sName.zString;
-			nClass = pThis->pClass->sName.nByte;
-			pGetMessage = PH7_ClassExtractMethod(pThis->pClass,"getMessage",sizeof("getMessage")-1);
-			if( pGetMessage ){
-				PH7_MemObjInit(pVm,&sMsg);
-				if( PH7_VmCallClassMethod(&(*pVm),pThis,pGetMessage,&sMsg,0,0) == SXRET_OK ){
-					zTmp = ph7_value_to_string(&sMsg,&nTmp);
-					if( zTmp && nTmp > 0 ){
-						SyBlobAppend(&sMsgBuf,zTmp,(sxu32)nTmp);
-					}
-				}
-				PH7_MemObjRelease(&sMsg);
-			}
-		}
-		zMsg = (const char *)SyBlobData(&sMsgBuf);
-		nMsg = (sxu32)SyBlobLength(&sMsgBuf);
 		VmGetFrameContext(pVm,&zFuncName,&nFuncLen);
-		VmReportUncaughtException(pVm,zClass,nClass,zMsg,nMsg,zFuncName,nFuncLen);
-		SyBlobRelease(&sMsgBuf);
+		if( pThis ){
+			/* Walk the $previous chain: deepest is "Uncaught", each outer one
+			 * "Next ..." (PHP). A non-chained exception is a length-1 chain and
+			 * renders byte-identically to the historical single-entry report. */
+			VmReportUncaughtChain(pVm,pThis,zFuncName,nFuncLen);
+		}else{
+			/* No instance (internal report path) — default-class single entry. */
+			VmReportUncaughtException(pVm,0,0,0,0,zFuncName,nFuncLen);
+		}
 		/* Tell the upper layer to stop VM execution immediately  */
 		rc = SXERR_ABORT;
 	}
@@ -16242,6 +16384,18 @@ static sxi32 VmThrowException(
 	 * disarm so the RHS-evaluation throw can't leave the slot live for a
 	 * later unrelated NULLC_STORE (stale offsetSet) or leak the instance ref. */
 	VmCoalesceDisarm(pVm);
+	/* Finally-supersede chaining (PHP): when a finally runs for an in-flight
+	 * exception (pInflightException) and a NEW exception thrown by that finally
+	 * is leaving it — i.e. the exception stack has unwound to/below the depth it
+	 * had when the finally started (nInflightExcBase), so no finally-local catch
+	 * will handle it — link the in-flight one as its $previous. A finally
+	 * exception caught locally (a try/catch inside the finally) sits ABOVE the
+	 * base, so it is not chained, matching PHP. VmExceptionLinkPrevious is a no-op
+	 * if pThis already carries a previous, so re-entry across propagation is safe. */
+	if( pVm->pInflightException && pThis && pThis != pVm->pInflightException
+	 && SySetUsed(&pVm->aException) <= pVm->nInflightExcBase ){
+		VmExceptionLinkPrevious(pThis,pVm->pInflightException);
+	}
 	/* A throw supersedes a pending catch/finally `return` ONLY when it actually
 	 * unwinds past that return's body frame. We do NOT clear anything here: each
 	 * body's pending return lives on its own frame and is discarded at that body's
@@ -16300,8 +16454,16 @@ static sxi32 VmThrowException(
 		/* No catch matched. Execute finally, then propagate to outer try/catch. */
 		if( pException && pException->iHasFinally ){
 			sxu32 nExcBefore = SySetUsed(&pVm->aException);
+			ph7_class_instance *pSaveInflight = pVm->pInflightException;
+			sxu32 nSaveBase = pVm->nInflightExcBase;
 			pException->iFinallyDone = 1;
+			/* Mark pThis in-flight (base = current exception-stack depth) so a throw
+			 * from the finally that leaves it chains pThis as $previous; restore after. */
+			pVm->pInflightException = pThis;
+			pVm->nInflightExcBase = nExcBefore;
 			rc = VmLocalExec(&(*pVm),&pException->sFinally,0,TRUE);
+			pVm->pInflightException = pSaveInflight;
+			pVm->nInflightExcBase = nSaveBase;
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
@@ -16467,8 +16629,19 @@ static sxi32 VmThrowException(
 			VmFrame *pBody = VmSkipExceptionFrames(pVm->pFrame);
 			sxu32 nGenBefore = pBody->nRetGen;
 			sxu32 nExcBefore = SySetUsed(&pVm->aException);
+			/* The exception in flight while this finally runs is the catch body's
+			 * re-throw (deferred in pPendingException), if any — NOT the original
+			 * pThis, which the catch already handled. A finally throw chains to that
+			 * re-throw (PHP: `catch{throw C}finally{throw B}` => B->previous == C;
+			 * a normally-handled catch leaves nothing in flight => B->previous null). */
+			ph7_class_instance *pSaveInflight = pVm->pInflightException;
+			sxu32 nSaveBase = pVm->nInflightExcBase;
 			pException->iFinallyDone = 1;
+			pVm->pInflightException = pVm->pPendingException;
+			pVm->nInflightExcBase = nExcBefore;
 			rcf = VmLocalExec(&(*pVm),&pException->sFinally,0,TRUE);
+			pVm->pInflightException = pSaveInflight;
+			pVm->nInflightExcBase = nSaveBase;
 			if( rcf == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
