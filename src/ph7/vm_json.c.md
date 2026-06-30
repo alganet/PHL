@@ -61,28 +61,28 @@ Coverage: 387/524 lines (73.85%)
 |    - |   51 | ` * Non-significant white space may be added freely around the "structural characters"` |
 |    - |   52 | ` * (i.e. the brackets "[{]}", colon ":" and comma ",").` |
 |    - |   53 | ` */` |
-|  222 |   54 | `static sxi32 VmJsonEncode(` |
+|  272 |   54 | `static sxi32 VmJsonEncode(` |
 |    - |   55 | `	ph7_value *pIn,          /* Encode this value */` |
 |    - |   56 | `	json_private_data *pData /* Context data */` |
 |    2 |   57 | `	){` |
-|  224 |   58 | `		ph7_context *pCtx = pData->pCtx;` |
-|  224 |   59 | `		int iFlags = pData->iFlags;` |
+|  274 |   58 | `		ph7_context *pCtx = pData->pCtx;` |
+|  274 |   59 | `		int iFlags = pData->iFlags;` |
 |    - |   60 | `		int nByte;` |
-|  224 |   61 | `		if( ph7_value_is_null(pIn) \|\| ph7_value_is_resource(pIn)){` |
+|  274 |   61 | `		if( ph7_value_is_null(pIn) \|\| ph7_value_is_resource(pIn)){` |
 |    - |   62 | `			/* null */` |
 |  ! 0 |   63 | `			JSON_EMIT(pData,ph7_result_string(pCtx,"null",(int)sizeof("null")-1));` |
-|  222 |   64 | `		}else if( ph7_value_is_bool(pIn) ){` |
-|   13 |   65 | `			int iBool = ph7_value_to_bool(pIn);` |
+|  272 |   64 | `		}else if( ph7_value_is_bool(pIn) ){` |
+|   15 |   65 | `			int iBool = ph7_value_to_bool(pIn);` |
 |    - |   66 | `			int iLen;` |
 |    - |   67 | `			/* true/false */` |
-|   13 |   68 | `			iLen = iBool ? (int)sizeof("true") : (int)sizeof("false");` |
-|   13 |   69 | `			JSON_EMIT(pData,ph7_result_string(pCtx,iBool ? "true" : "false",iLen-1));` |
-|  255 |   70 | `		}else if(  ph7_value_is_numeric(pIn) && !ph7_value_is_string(pIn) ){` |
+|   15 |   68 | `			iLen = iBool ? (int)sizeof("true") : (int)sizeof("false");` |
+|   15 |   69 | `			JSON_EMIT(pData,ph7_result_string(pCtx,iBool ? "true" : "false",iLen-1));` |
+|  313 |   70 | `		}else if(  ph7_value_is_numeric(pIn) && !ph7_value_is_string(pIn) ){` |
 |    - |   71 | `			const char *zNum;` |
 |    - |   72 | `			/* Get a string representation of the number */` |
-|   77 |   73 | `			zNum = ph7_value_to_string(pIn,&nByte);` |
-|   77 |   74 | `			JSON_EMIT(pData,ph7_result_string(pCtx,zNum,nByte));` |
-|  173 |   75 | `		}else if( ph7_value_is_string(pIn) ){` |
+|   95 |   73 | `			zNum = ph7_value_to_string(pIn,&nByte);` |
+|   95 |   74 | `			JSON_EMIT(pData,ph7_result_string(pCtx,zNum,nByte));` |
+|  212 |   75 | `		}else if( ph7_value_is_string(pIn) ){` |
 |   44 |   76 | `			if( (iFlags & JSON_NUMERIC_CHECK) &&  ph7_value_is_numeric(pIn) ){` |
 |    - |   77 | `				const char *zNum;` |
 |    - |   78 | `				/* Encodes numeric strings as numbers. */` |
@@ -137,40 +137,40 @@ Coverage: 387/524 lines (73.85%)
 |    - |  127 | `				/* Append the double quote */` |
 |   44 |  128 | `				JSON_EMIT(pData,ph7_result_string(pCtx,"\"",(int)sizeof(char)));` |
 |    2 |  129 | `			}` |
-|  115 |  130 | `		}else if( ph7_value_is_array(pIn) ){` |
+|  145 |  130 | `		}else if( ph7_value_is_array(pIn) ){` |
 |    - |  131 | `			/* An array encodes as a JSON array iff it is a "list" [consecutive` |
 |    - |  132 | `			 * 0-based int keys]; otherwise [or under JSON_FORCE_OBJECT] as an` |
 |    - |  133 | `			 * object with stringified keys (PHP semantics). */` |
-|  104 |  134 | `			int isObject = (iFlags & JSON_FORCE_OBJECT)` |
-|   52 |  135 | `				\|\| !PH7_HashmapIsList((ph7_hashmap *)pIn->x.pOther);` |
-|   53 |  136 | `			int savedObject = pData->isObject; /* restore for sibling entries after recursion */` |
-|   53 |  137 | `			int c = isObject ? '{' : '[';` |
-|   53 |  138 | `			int d = isObject ? '}' : ']';` |
+|  136 |  134 | `			int isObject = (iFlags & JSON_FORCE_OBJECT)` |
+|   68 |  135 | `				\|\| !PH7_HashmapIsList((ph7_hashmap *)pIn->x.pOther);` |
+|   69 |  136 | `			int savedObject = pData->isObject; /* restore for sibling entries after recursion */` |
+|   69 |  137 | `			int c = isObject ? '{' : '[';` |
+|   69 |  138 | `			int d = isObject ? '}' : ']';` |
 |    - |  139 | `			/* Encode the array */` |
-|   53 |  140 | `			pData->isObject = isObject;` |
-|   53 |  141 | `			pData->isFirst = 1;` |
+|   69 |  140 | `			pData->isObject = isObject;` |
+|   69 |  141 | `			pData->isFirst = 1;` |
 |    - |  142 | `			/* Append the square bracket or curly braces */` |
-|   53 |  143 | `			JSON_EMIT(pData,ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char)));` |
+|   69 |  143 | `			JSON_EMIT(pData,ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char)));` |
 |    - |  144 | `			/* Iterate throw array entries */` |
-|   53 |  145 | `			ph7_array_walk(pIn,VmJsonArrayEncode,pData);` |
+|   69 |  145 | `			ph7_array_walk(pIn,VmJsonArrayEncode,pData);` |
 |    - |  146 | `			/* Bail if a nested append ran out of memory before the closer */` |
-|   53 |  147 | `			if( pData->oom ){` |
+|   69 |  147 | `			if( pData->oom ){` |
 |  ! 0 |  148 | `				return PH7_OK;` |
 |    - |  149 | `			}` |
 |    - |  150 | `			/* Append the closing square bracket or curly braces */` |
-|   53 |  151 | `			JSON_EMIT(pData,ph7_result_string(pCtx,(const char *)&d,(int)sizeof(char)));` |
-|   53 |  152 | `			pData->isObject = savedObject;` |
-|   68 |  153 | `		}else if( ph7_value_is_object(pIn) ){` |
-|   42 |  154 | `			ph7_class_instance *pThis = (ph7_class_instance *)pIn->x.pOther;` |
-|   42 |  155 | `			ph7_vm *pVm = pIn->pVm;` |
-|   42 |  156 | `			ph7_class_method *pMethod = 0;` |
+|   69 |  151 | `			JSON_EMIT(pData,ph7_result_string(pCtx,(const char *)&d,(int)sizeof(char)));` |
+|   69 |  152 | `			pData->isObject = savedObject;` |
+|   90 |  153 | `		}else if( ph7_value_is_object(pIn) ){` |
+|   56 |  154 | `			ph7_class_instance *pThis = (ph7_class_instance *)pIn->x.pOther;` |
+|   56 |  155 | `			ph7_vm *pVm = pIn->pVm;` |
+|   56 |  156 | `			ph7_class_method *pMethod = 0;` |
 |    - |  157 | `			/* If the object implements JsonSerializable, encode the value` |
 |    - |  158 | `			 * returned by jsonSerialize() instead of its public properties. */` |
-|   40 |  159 | `			if( pVm->pJsonSerializableClass` |
-|   42 |  160 | `				&& PH7_VmInstanceOf(pThis->pClass,pVm->pJsonSerializableClass) ){` |
+|   54 |  159 | `			if( pVm->pJsonSerializableClass` |
+|   56 |  160 | `				&& PH7_VmInstanceOf(pThis->pClass,pVm->pJsonSerializableClass) ){` |
 |   15 |  161 | `				pMethod = PH7_ClassExtractMethod(pThis->pClass,"jsonSerialize",sizeof("jsonSerialize")-1);` |
 |    7 |  162 | `			}` |
-|   42 |  163 | `			if( pMethod ){` |
+|   56 |  163 | `			if( pMethod ){` |
 |    - |  164 | `				ph7_value sResult;` |
 |    - |  165 | `				sxi32 rc;` |
 |   15 |  166 | `				PH7_MemObjInit(pVm,&sResult);` |
@@ -194,86 +194,86 @@ Coverage: 387/524 lines (73.85%)
 |    - |  184 | `				}` |
 |    6 |  185 | `			}else{` |
 |    - |  186 | `				/* Encode the class instance */` |
-|   28 |  187 | `				pData->isFirst = 1;` |
+|   42 |  187 | `				pData->isFirst = 1;` |
 |    - |  188 | `				/* Append the curly braces */` |
-|   28 |  189 | `				JSON_EMIT(pData,ph7_result_string(pCtx,"{",(int)sizeof(char)));` |
+|   42 |  189 | `				JSON_EMIT(pData,ph7_result_string(pCtx,"{",(int)sizeof(char)));` |
 |    - |  190 | `				/* Iterate throw class attribute */` |
-|   28 |  191 | `				ph7_object_walk(pIn,VmJsonObjectEncode,pData);` |
-|   28 |  192 | `				if( pData->oom ){` |
+|   42 |  191 | `				ph7_object_walk(pIn,VmJsonObjectEncode,pData);` |
+|   42 |  192 | `				if( pData->oom ){` |
 |  ! 0 |  193 | `					return PH7_OK;` |
 |    - |  194 | `				}` |
 |    - |  195 | `				/* Append the closing curly braces  */` |
-|   28 |  196 | `				JSON_EMIT(pData,ph7_result_string(pCtx,"}",(int)sizeof(char)));` |
+|   42 |  196 | `				JSON_EMIT(pData,ph7_result_string(pCtx,"}",(int)sizeof(char)));` |
 |    - |  197 | `			}` |
-|   20 |  198 | `		}else{` |
+|   27 |  198 | `		}else{` |
 |    - |  199 | `			/* Can't happen */` |
 |  ! 0 |  200 | `			JSON_EMIT(pData,ph7_result_string(pCtx,"null",(int)sizeof("null")-1));` |
 |    - |  201 | `		}` |
 |    - |  202 | `		/* All done */` |
-|  220 |  203 | `		return PH7_OK;` |
-|  113 |  204 |  |
+|  270 |  203 | `		return PH7_OK;` |
+|  138 |  204 |  |
 |    - |  205 | `/*` |
 |    - |  206 | ` * The following walker callback is invoked each time we need` |
 |    - |  207 | ` * to encode an array to JSON.` |
 |    - |  208 | ` */` |
-|  106 |  209 | `static int VmJsonArrayEncode(ph7_value *pKey,ph7_value *pValue,void *pUserData)` |
+|  124 |  209 | `static int VmJsonArrayEncode(ph7_value *pKey,ph7_value *pValue,void *pUserData)` |
 |    1 |  210 |  |
-|  107 |  211 | `	json_private_data *pJson = (json_private_data *)pUserData;` |
-|  107 |  212 | `	if( pJson->nRecCount > 31 \|\| pJson->exc \|\| pJson->oom ){` |
+|  125 |  211 | `	json_private_data *pJson = (json_private_data *)pUserData;` |
+|  125 |  212 | `	if( pJson->nRecCount > 31 \|\| pJson->exc \|\| pJson->oom ){` |
 |    - |  213 | `		/* Recursion limit reached, a callback threw, or OOM — return immediately */` |
 |  ! 0 |  214 | `		return PH7_OK;` |
 |    - |  215 | `	}` |
-|  107 |  216 | `	if( !pJson->isFirst ){` |
+|  125 |  216 | `	if( !pJson->isFirst ){` |
 |    - |  217 | `		/* Append the colon first */` |
-|   57 |  218 | `		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,",",(int)sizeof(char)));` |
-|   28 |  219 | `	}` |
-|  107 |  220 | `	if( pJson->isObject ){` |
+|   59 |  218 | `		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,",",(int)sizeof(char)));` |
+|   29 |  219 | `	}` |
+|  125 |  220 | `	if( pJson->isObject ){` |
 |    - |  221 | `		/* Outputs an object rather than an array */` |
 |    - |  222 | `		const char *zKey;` |
 |    - |  223 | `		int nByte;` |
 |    - |  224 | `		/* Extract a string representation of the key */` |
-|   53 |  225 | `		zKey = ph7_value_to_string(pKey,&nByte);` |
+|   65 |  225 | `		zKey = ph7_value_to_string(pKey,&nByte);` |
 |    - |  226 | `		/* Append the quoted key and the colon (checked, so an OOM here is caught` |
 |    - |  227 | `		 * rather than silently truncating; matches the prior "%.*s" emit byte for` |
 |    - |  228 | `		 * byte — keys are not JSON-escaped, a pre-existing behavior). */` |
-|   53 |  229 | `		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,"\"",(int)sizeof(char)));` |
-|   53 |  230 | `		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,zKey,nByte));` |
-|   53 |  231 | `		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,"\":",(int)sizeof("\":")-1));` |
-|   26 |  232 | `	}` |
+|   65 |  229 | `		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,"\"",(int)sizeof(char)));` |
+|   65 |  230 | `		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,zKey,nByte));` |
+|   65 |  231 | `		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,"\":",(int)sizeof("\":")-1));` |
+|   32 |  232 | `	}` |
 |    - |  233 | `	/* Encode the value */` |
-|  107 |  234 | `	pJson->nRecCount++;` |
-|  107 |  235 | `	VmJsonEncode(pValue,pJson);` |
-|  107 |  236 | `	pJson->nRecCount--;` |
-|  107 |  237 | `	pJson->isFirst = 0;` |
-|  107 |  238 | `	return PH7_OK;` |
-|   54 |  239 |  |
+|  125 |  234 | `	pJson->nRecCount++;` |
+|  125 |  235 | `	VmJsonEncode(pValue,pJson);` |
+|  125 |  236 | `	pJson->nRecCount--;` |
+|  125 |  237 | `	pJson->isFirst = 0;` |
+|  125 |  238 | `	return PH7_OK;` |
+|   63 |  239 |  |
 |    - |  240 | `/*` |
 |    - |  241 | ` * The following walker callback is invoked each time we need to encode` |
 |    - |  242 | ` * a class instance [i.e: Object in the PHP jargon] to JSON.` |
 |    - |  243 | ` */` |
-|   44 |  244 | `static int VmJsonObjectEncode(const char *zAttr,ph7_value *pValue,void *pUserData)` |
+|   62 |  244 | `static int VmJsonObjectEncode(const char *zAttr,ph7_value *pValue,void *pUserData)` |
 |    2 |  245 |  |
-|   46 |  246 | `	json_private_data *pJson = (json_private_data *)pUserData;` |
-|   46 |  247 | `	if( pJson->nRecCount > 31 \|\| pJson->exc \|\| pJson->oom ){` |
+|   64 |  246 | `	json_private_data *pJson = (json_private_data *)pUserData;` |
+|   64 |  247 | `	if( pJson->nRecCount > 31 \|\| pJson->exc \|\| pJson->oom ){` |
 |    - |  248 | `		/* Recursion limit reached, a callback threw, or OOM — return immediately */` |
 |  ! 0 |  249 | `		return PH7_OK;` |
 |    - |  250 | `	}` |
-|   46 |  251 | `	if( !pJson->isFirst ){` |
+|   64 |  251 | `	if( !pJson->isFirst ){` |
 |    - |  252 | `		/* Append the colon first */` |
-|   19 |  253 | `		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,",",(int)sizeof(char)));` |
-|    9 |  254 | `	}` |
+|   25 |  253 | `		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,",",(int)sizeof(char)));` |
+|   12 |  254 | `	}` |
 |    - |  255 | `	/* Append the quoted attribute name and the colon (checked; matches the prior` |
 |    - |  256 | `	 * "%s" emit byte for byte — attribute names are not JSON-escaped). */` |
-|   46 |  257 | `	JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,"\"",(int)sizeof(char)));` |
-|   46 |  258 | `	JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,zAttr,-1));` |
-|   46 |  259 | `	JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,"\":",(int)sizeof("\":")-1));` |
+|   64 |  257 | `	JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,"\"",(int)sizeof(char)));` |
+|   64 |  258 | `	JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,zAttr,-1));` |
+|   64 |  259 | `	JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,"\":",(int)sizeof("\":")-1));` |
 |    - |  260 | `	/* Encode the value */` |
-|   46 |  261 | `	pJson->nRecCount++;` |
-|   46 |  262 | `	VmJsonEncode(pValue,pJson);` |
-|   46 |  263 | `	pJson->nRecCount--;` |
-|   46 |  264 | `	pJson->isFirst = 0;` |
-|   46 |  265 | `	return PH7_OK;` |
-|   24 |  266 |  |
+|   64 |  261 | `	pJson->nRecCount++;` |
+|   64 |  262 | `	VmJsonEncode(pValue,pJson);` |
+|   64 |  263 | `	pJson->nRecCount--;` |
+|   64 |  264 | `	pJson->isFirst = 0;` |
+|   64 |  265 | `	return PH7_OK;` |
+|   33 |  266 |  |
 |    - |  267 | `/*` |
 |    - |  268 | ` * string json_encode(mixed $value [, int $options = 0 ])` |
 |    - |  269 | ` *  Returns a string containing the JSON representation of value.` |
@@ -295,40 +295,40 @@ Coverage: 387/524 lines (73.85%)
 |    - |  285 | ` * Return` |
 |    - |  286 | ` *  Returns a JSON encoded string on success. FALSE otherwise` |
 |    - |  287 | ` */` |
-|   62 |  288 | `PH7_PRIVATE int vm_builtin_json_encode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   76 |  288 | `PH7_PRIVATE int vm_builtin_json_encode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    2 |  289 |  |
 |    - |  290 | `	json_private_data sJson;` |
 |    - |  291 | `	sxi32 rc;` |
-|   64 |  292 | `	if( nArg < 1 ){` |
+|   78 |  292 | `	if( nArg < 1 ){` |
 |    - |  293 | `		/* Missing arguments,return FALSE */` |
 |  ! 0 |  294 | `		ph7_result_bool(pCtx,0);` |
 |  ! 0 |  295 | `		return PH7_OK;` |
 |    - |  296 | `	}` |
 |    - |  297 | `	/* Prepare the JSON data */` |
-|   64 |  298 | `	sJson.nRecCount = 0;` |
-|   64 |  299 | `	sJson.pCtx = pCtx;` |
-|   64 |  300 | `	sJson.isFirst = 1;` |
-|   64 |  301 | `	sJson.iFlags = 0;` |
-|   64 |  302 | `	sJson.exc = 0;` |
-|   64 |  303 | `	sJson.oom = 0;` |
-|   64 |  304 | `	if( nArg > 1 && ph7_value_is_int(apArg[1]) ){` |
+|   78 |  298 | `	sJson.nRecCount = 0;` |
+|   78 |  299 | `	sJson.pCtx = pCtx;` |
+|   78 |  300 | `	sJson.isFirst = 1;` |
+|   78 |  301 | `	sJson.iFlags = 0;` |
+|   78 |  302 | `	sJson.exc = 0;` |
+|   78 |  303 | `	sJson.oom = 0;` |
+|   78 |  304 | `	if( nArg > 1 && ph7_value_is_int(apArg[1]) ){` |
 |    - |  305 | `		/* Extract option flags */` |
 |    3 |  306 | `		sJson.iFlags = ph7_value_to_int(apArg[1]);` |
 |    1 |  307 | `	}` |
 |    - |  308 | `	/* Perform the encoding operation */` |
-|   64 |  309 | `	rc = VmJsonEncode(apArg[0],&sJson);` |
-|   64 |  310 | `	if( sJson.oom ){` |
+|   78 |  309 | `	rc = VmJsonEncode(apArg[0],&sJson);` |
+|   78 |  310 | `	if( sJson.oom ){` |
 |    - |  311 | `		/* A result append ran out of memory: raise a non-catchable fatal,` |
 |    - |  312 | `		 * distinct from a JSON-encoding error (json_last_error untouched). */` |
 |  ! 0 |  313 | `		return PH7_ContextMemoryError(pCtx);` |
 |    - |  314 | `	}` |
-|   64 |  315 | `	if( rc == PH7_EXCEPTION \|\| sJson.exc ){` |
+|   78 |  315 | `	if( rc == PH7_EXCEPTION \|\| sJson.exc ){` |
 |    - |  316 | `		/* A jsonSerialize() callback threw — propagate so the exception unwinds */` |
 |    5 |  317 | `		return PH7_EXCEPTION;` |
 |    - |  318 | `	}` |
 |    - |  319 | `	/* All done */` |
-|   60 |  320 | `	return PH7_OK;` |
-|   33 |  321 |  |
+|   74 |  320 | `	return PH7_OK;` |
+|   40 |  321 |  |
 |    - |  322 | `#undef JSON_EMIT` |
 |    - |  323 | `/*` |
 |    - |  324 | ` * int json_last_error(void)` |
@@ -437,7 +437,7 @@ Coverage: 387/524 lines (73.85%)
 |  146 |  427 | `	pToken->pUserData = 0;` |
 |  146 |  428 | `	pStr = &pToken->sData;` |
 |  146 |  429 | `	SyStringInitFromBuf(pStr,pStream->zText,0);` |
-|  144 |  430 | `	if( pStream->zText[0] == '{' \|\| pStream->zText[0] == '[' \|\| pStream->zText[0] == '}' \|\| pStream->zText[0] == ']'` |
+|  183 |  430 | `	if( pStream->zText[0] == '{' \|\| pStream->zText[0] == '[' \|\| pStream->zText[0] == '}' \|\| pStream->zText[0] == ']'` |
 |  102 |  431 | `		\|\| pStream->zText[0] == ':' \|\| pStream->zText[0] == ',' ){` |
 |    - |  432 | `			/* Single character */` |
 |   84 |  433 | `			c = pStream->zText[0];` |
