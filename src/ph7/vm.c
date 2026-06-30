@@ -4258,7 +4258,7 @@ PH7_PRIVATE sxi32 VmErrorFormat(ph7_vm *pVm,sxi32 iErr,const char *zFormat,...)
  * Throw a TypeError exception from within the VM execution loop.
  * Used for user-defined function type hint violations (e.g. object type hint).
  */
-static sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,SyString *pFuncName,sxu32 nArg,SyString *pArgName,const char *zExpected,const char *zGiven)
+static sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName,sxu32 nArg,SyString *pArgName,const char *zExpected,const char *zGiven)
 {
 	ph7_class *pClass;
 	ph7_class_instance *pThis;
@@ -4278,8 +4278,15 @@ static sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,SyString *pFuncName,sxu32 nArg,S
 		return PH7_ABORT;
 	}
 	SyBlobInit(&sMsg,&pVm->sAllocator);
-	SyBlobFormat(&sMsg,"%z(): Argument #%u ($%z) must be of type %s, %s given",
-		pFuncName,nArg,pArgName,zExpected,zGiven);
+	/* PHP qualifies a method's type-error with its declaring class ("Class::m()"); a free
+	 * function uses the bare name. pOwnerClass is NULL for free functions/closures. */
+	if( pOwnerClass ){
+		SyBlobFormat(&sMsg,"%z::%z(): Argument #%u ($%z) must be of type %s, %s given",
+			&pOwnerClass->sName,pFuncName,nArg,pArgName,zExpected,zGiven);
+	}else{
+		SyBlobFormat(&sMsg,"%z(): Argument #%u ($%z) must be of type %s, %s given",
+			pFuncName,nArg,pArgName,zExpected,zGiven);
+	}
 	pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);
 	if( pCons ){
 		SyStringInitFromBuf(&sMsgStr,(const char *)SyBlobData(&sMsg),SyBlobLength(&sMsg));
@@ -10177,6 +10184,7 @@ case PH7_OP_CALL: {
 		ph7_value *pFrameStack;
 		ph7_vm_func *pVmFunc;
 		ph7_class *pSelf;
+		ph7_class *pSelfHint;
 		VmFrame *pFrame;
 		ph7_value *pObj;
 		VmSlot sArg;
@@ -10278,6 +10286,21 @@ case PH7_OP_CALL: {
 		if( pVmFunc->pNextName ){
 			/* Function is candidate for overloading,select the appropriate function to call */
 			pVmFunc = VmOverload(&(*pVm),pVmFunc,pArg,(int)(pTos-pArg));
+		}
+		/* Self class for a param type hint (resolves `self`/`parent` and qualifies the error's
+		 * `Class::method`). Computed after overload resolution so it reflects the selected method.
+		 * A normal method uses its DECLARING class (pVmFunc->pUserData), so an inherited `self`-typed
+		 * param accepts a base instance — matching PHP. A TRAIT method shares one ph7_class_method
+		 * whose pUserData is the TRAIT, but PHP resolves `self`/`parent` (and the message) to the
+		 * USING class; we don't carry the using class on the shared struct, so fall back to the
+		 * runtime class (pSelf) — correct when the trait is used directly (only slightly stricter for
+		 * a trait used in a base class then called on a subclass). Free functions/closures → pSelf. */
+		pSelfHint = pSelf;
+		if( pVmFunc->iFlags & VM_FUNC_CLASS_METHOD ){
+			ph7_class *pDecl = (ph7_class *)pVmFunc->pUserData;
+			if( pDecl && (pDecl->iFlags & PH7_CLASS_TRAIT) == 0 ){
+				pSelfHint = pDecl;
+			}
 		}
 		if( pVmFunc->iFlags & VM_FUNC_GENERATOR ){
 			/* Generator function: return a Generator object instead of executing */
@@ -10563,7 +10586,7 @@ case PH7_OP_CALL: {
 							if( SyStringLength(&aFormalArg[n].sTypeName) > 0 ){
 								zExpected = VmSyStringToCStr(&aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf));
 							}
-							rc = VmThrowTypeErrorForArg(&(*pVm),&pVmFunc->sName,n+1,
+							rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
 								&aFormalArg[n].sName, zExpected, zGiven);
 							if( rc == PH7_ABORT ) goto Abort;
 							SyMemBackendFree(&pVm->sAllocator, aSlot);
@@ -10583,7 +10606,7 @@ case PH7_OP_CALL: {
 							if( rcPseudo == 0 ){
 								/* Recognised pseudo-type (true/false/iterable); value mismatches */
 								char zTypeBuf[128],zGivenBuf[128];
-								rc = VmThrowTypeErrorForArg(&(*pVm),&pVmFunc->sName,n+1,
+								rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
 									&aFormalArg[n].sName,
 									VmSyStringToCStr(pName,zTypeBuf,sizeof(zTypeBuf)),
 									VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf)));
@@ -10596,33 +10619,36 @@ case PH7_OP_CALL: {
 								goto SkipFuncBody;
 							}
 							/* rcPseudo==1 -> matched pseudo-type (accept); -1 -> real class.
-							 * iLoadable stays TRUE here: the param-mismatch path warn+coerces
-							 * to NULL rather than throwing a TypeError, so resolving an
-							 * interface/abstract hint would corrupt the arg (and diverge worse
-							 * than the current skip). Interface/abstract PARAM enforcement waits
-							 * on the param-path-throws-TypeError fidelity work (PLAN.md §3.7). */
-							pClass = (rcPseudo == 1) ? 0 : PH7_VmExtractClass(&(*pVm),pName->zString,pName->nByte,TRUE,0);
+							 * Resolve via VmResolveTypeClass so `self`/`parent` resolve and
+							 * interface/abstract hints are included (iLoadable=FALSE), then throw a
+							 * catchable TypeError on mismatch — matching PHP — instead of the legacy
+							 * warn + NULL-coerce (which silently ran the body with a corrupted arg). */
+							pClass = (rcPseudo == 1) ? 0 : VmResolveTypeClass(&(*pVm),pName,pSelfHint);
 							if( pClass ){
-								if( (pVal->iFlags & MEMOBJ_OBJ) == 0 ){
-									if( (pVal->iFlags & MEMOBJ_NULL) == 0 ){
-										VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
-											"Function '%z()':Argument %u must be an object of type '%z',PH7 is loading NULL instead",
-											&pVmFunc->sName,n+1,pName);
-										PH7_MemObjRelease(pVal);
-									}
-								}else{
-									ph7_class_instance *pInst = (ph7_class_instance *)pVal->x.pOther;
-									if( !PH7_VmInstanceOf(pInst->pClass,pClass) ){
-										VmErrorFormat(&(*pVm),PH7_CTX_ERR,
-											"Function '%z()':Argument %u must be an object of type '%z',PH7 is loading NULL instead",
-											&pVmFunc->sName,n+1,pName);
-										PH7_MemObjRelease(pVal);
-									}
+								/* An explicit null to a non-nullable class param stays a lenient
+								 * pass-through (PHP throws; that needs the param nullable/default
+								 * model — out of scope here). */
+								int bBad = (pVal->iFlags & MEMOBJ_OBJ) == 0
+									? ((pVal->iFlags & MEMOBJ_NULL) == 0)
+									: !PH7_VmInstanceOf(((ph7_class_instance *)pVal->x.pOther)->pClass,pClass);
+								if( bBad ){
+									char zTypeBuf[128],zGivenBuf[128];
+									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
+										&aFormalArg[n].sName,
+										VmSyStringToCStr(&pClass->sName,zTypeBuf,sizeof(zTypeBuf)),
+										VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf)));
+									if( rc == PH7_ABORT ) goto Abort;
+									SyMemBackendFree(&pVm->sAllocator, aSlot);
+									PH7_MemObjRelease(pTos);
+									pTos = &pTos[-nCallArgs];
+									pFrameStack = 0;
+									rc = PH7_EXCEPTION;
+									goto SkipFuncBody;
 								}
 							}
 						}else if( (pVal->iFlags & aFormalArg[n].nType) == 0 ){
 							if( aFormalArg[n].nType == MEMOBJ_OBJ ){
-								rc = VmThrowTypeErrorForArg(&(*pVm),&pVmFunc->sName,n+1,
+								rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
 									&aFormalArg[n].sName,"object",ph7_type_name(pVal));
 								if( rc == PH7_ABORT ) goto Abort;
 								SyMemBackendFree(&pVm->sAllocator, aSlot);
@@ -10633,7 +10659,7 @@ case PH7_OP_CALL: {
 								goto SkipFuncBody;
 							}else if( VmEnforceScalarType(pVal, aFormalArg[n].nType, bCallIsStrict) != SXRET_OK ){
 								char zTypeBuf[128];
-								rc = VmThrowTypeErrorForArg(&(*pVm),&pVmFunc->sName,n+1,
+								rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
 									&aFormalArg[n].sName,
 									VmScalarTypeName(aFormalArg[n].nType, &aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf)),
 									ph7_type_name(pVal));
@@ -10807,7 +10833,7 @@ case PH7_OP_CALL: {
 									if( SyStringLength(&aFormalArg[n].sTypeName) > 0 ){
 										zExpected = VmSyStringToCStr(&aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf));
 									}
-									rc = VmThrowTypeErrorForArg(&(*pVm),&pVmFunc->sName,n+1,
+									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
 										&aFormalArg[n].sName, zExpected, zGiven);
 									if( rc == PH7_ABORT ){
 										goto Abort;
@@ -10829,7 +10855,7 @@ case PH7_OP_CALL: {
 								&& (pArg->iFlags & aFormalArg[n].nType) == 0 ){
 								if( aFormalArg[n].nType == MEMOBJ_OBJ ){
 									/* object type hint on variadic: reject non-objects with TypeError */
-									rc = VmThrowTypeErrorForArg(&(*pVm),&pVmFunc->sName,n+1,
+									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
 										&aFormalArg[n].sName,"object",ph7_type_name(pArg));
 									if( rc == PH7_ABORT ){
 										goto Abort;
@@ -10842,7 +10868,7 @@ case PH7_OP_CALL: {
 									goto SkipFuncBody;
 								}else if( VmEnforceScalarType(pArg, aFormalArg[n].nType, bCallIsStrict) != SXRET_OK ){
 									char zTypeBuf[128];
-									rc = VmThrowTypeErrorForArg(&(*pVm),&pVmFunc->sName,n+1,
+									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
 										&aFormalArg[n].sName,
 										VmScalarTypeName(aFormalArg[n].nType, &aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf)),
 										ph7_type_name(pArg));
@@ -10895,7 +10921,7 @@ case PH7_OP_CALL: {
 						if( SyStringLength(&aFormalArg[n].sTypeName) > 0 ){
 							zExpected = VmSyStringToCStr(&aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf));
 						}
-						rc = VmThrowTypeErrorForArg(&(*pVm),&pVmFunc->sName,n+1,
+						rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
 							&aFormalArg[n].sName, zExpected, zGiven);
 						if( rc == PH7_ABORT ){
 							goto Abort;
@@ -10919,7 +10945,7 @@ case PH7_OP_CALL: {
 						if( rcPseudo == 0 ){
 							/* Recognised pseudo-type (true/false/iterable); value mismatches */
 							char zTypeBuf[128],zGivenBuf[128];
-							rc = VmThrowTypeErrorForArg(&(*pVm),&pVmFunc->sName,n+1,
+							rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
 								&aFormalArg[n].sName,
 								VmSyStringToCStr(pName,zTypeBuf,sizeof(zTypeBuf)),
 								VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf)));
@@ -10930,36 +10956,35 @@ case PH7_OP_CALL: {
 							rc = PH7_EXCEPTION;
 							goto SkipFuncBody;
 						}
-						/* Try to extract the desired class (rcPseudo==1 accepts; -1 real class).
-						 * iLoadable stays TRUE: see the positional-arg path above — the
-						 * param-mismatch handler warn+coerces to NULL instead of throwing, so
-						 * resolving interface/abstract hints here would corrupt the arg.
-						 * Deferred to the param-path-throws-TypeError work (PLAN.md §3.7). */
-						pClass = (rcPseudo == 1) ? 0 : PH7_VmExtractClass(&(*pVm),pName->zString,pName->nByte,TRUE,0);
+						/* rcPseudo==1 accepts a pseudo-type; -1 real class. Resolve via
+						 * VmResolveTypeClass (self/parent + interface/abstract, iLoadable=FALSE)
+						 * and throw a catchable TypeError on mismatch — matching PHP — instead of
+						 * the legacy warn + NULL-coerce. (Symmetric with the positional path.) */
+						pClass = (rcPseudo == 1) ? 0 : VmResolveTypeClass(&(*pVm),pName,pSelfHint);
 						if( pClass ){
-							if( (pArg->iFlags & MEMOBJ_OBJ) == 0 ){
-								if( (pArg->iFlags & MEMOBJ_NULL) == 0 ){
-									VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
-										"Function '%z()':Argument %u must be an object of type '%z',PH7 is loading NULL instead",
-										&pVmFunc->sName,n+1,pName);
-									PH7_MemObjRelease(pArg);
-								}
-							}else{
-								/* reuse pThis declared in outer scope */
-								pThis = (ph7_class_instance *)pArg->x.pOther;
-								/* Make sure the object is an instance of the given class */
-								if( ! PH7_VmInstanceOf(pThis->pClass,pClass) ){
-									VmErrorFormat(&(*pVm),PH7_CTX_ERR,
-										"Function '%z()':Argument %u must be an object of type '%z',PH7 is loading NULL instead",
-										&pVmFunc->sName,n+1,pName);
-									PH7_MemObjRelease(pArg);
-								}
+							/* An explicit null to a non-nullable class param stays a lenient
+							 * pass-through (PHP throws; needs the param nullable/default model). */
+							int bBad = (pArg->iFlags & MEMOBJ_OBJ) == 0
+								? ((pArg->iFlags & MEMOBJ_NULL) == 0)
+								: !PH7_VmInstanceOf(((ph7_class_instance *)pArg->x.pOther)->pClass,pClass);
+							if( bBad ){
+								char zTypeBuf[128],zGivenBuf[128];
+								rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
+									&aFormalArg[n].sName,
+									VmSyStringToCStr(&pClass->sName,zTypeBuf,sizeof(zTypeBuf)),
+									VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf)));
+								if( rc == PH7_ABORT ) goto Abort;
+								PH7_MemObjRelease(pTos);
+								pTos = &pTos[-nCallArgs];
+								pFrameStack = 0;
+								rc = PH7_EXCEPTION;
+								goto SkipFuncBody;
 							}
 						}
 					}else if( ((pArg->iFlags & aFormalArg[n].nType) == 0) ){
 						if( aFormalArg[n].nType == MEMOBJ_OBJ ){
 							/* object type hint: reject non-objects with TypeError */
-							rc = VmThrowTypeErrorForArg(&(*pVm),&pVmFunc->sName,n+1,
+							rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
 								&aFormalArg[n].sName,"object",ph7_type_name(pArg));
 							if( rc == PH7_ABORT ){
 								goto Abort;
@@ -10972,7 +10997,7 @@ case PH7_OP_CALL: {
 							goto SkipFuncBody;
 						}else if( VmEnforceScalarType(pArg, aFormalArg[n].nType, bCallIsStrict) != SXRET_OK ){
 							char zTypeBuf[128];
-							rc = VmThrowTypeErrorForArg(&(*pVm),&pVmFunc->sName,n+1,
+							rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
 								&aFormalArg[n].sName,
 								VmScalarTypeName(aFormalArg[n].nType, &aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf)),
 								ph7_type_name(pArg));
