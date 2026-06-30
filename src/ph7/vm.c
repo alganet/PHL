@@ -5060,6 +5060,15 @@ static void VmWarnCannotUseAsArray(ph7_vm *pVm, sxi32 iFlags)
 	PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,zMsg);
 }
 /*
+ * A member access in isset()/empty() context (OP_MEMBER iP2 = PH7_MEMBER_ISSET/EMPTY) is a silent
+ * lookup: a read-miss must not raise the "Undefined class attribute" / "Expecting class instance"
+ * warnings, mirroring the array isset/empty path.
+ */
+static int VmMemberCtxIsLookup(sxi32 iP2)
+{
+	return iP2 == PH7_MEMBER_ISSET || iP2 == PH7_MEMBER_EMPTY;
+}
+/*
  * Execute as much of a PH7 bytecode program as we can then return.
  *
  * [PH7_VmMakeReady()] must be called before this routine in order to
@@ -9081,7 +9090,7 @@ case PH7_OP_MEMBER: {
 			pClass = pThis->pClass;
 			/* Extract attribute name first */
 			SyStringInitFromBuf(&sName,(const char *)SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
-			if( pInstr->iP2 == 1 ){
+			if( pInstr->iP2 == PH7_MEMBER_METHOD ){
 				/* Method call */
 				ph7_class_method *pMeth = 0;
 				if( sName.nByte > 0 ){
@@ -9116,7 +9125,7 @@ case PH7_OP_MEMBER: {
 						pObjAttr = (VmClassAttr *)pEntry->pUserData;
 					}
 				}
-				if( pInstr->iP2 == 2 ){
+				if( pInstr->iP2 == PH7_MEMBER_UNSET ){
 					/* unset($o->prop): remove the property entirely so it disappears from
 					 * foreach / json_encode / get_object_vars / (array) — matching PHP (a value-only
 					 * release would leave a zombie null entry). Leave a NULL constant on the stack so
@@ -9151,7 +9160,7 @@ case PH7_OP_MEMBER: {
 					/* No such attribute,load null. In isset()/empty() context (iP2 3/4) PHP returns
 					 * false/true SILENTLY, so suppress the read-miss warning there (mirrors the array
 					 * LOAD_IDX iP2=4/6 suppression). */
-					if( pInstr->iP2 != 3 && pInstr->iP2 != 4 ){
+					if( !VmMemberCtxIsLookup(pInstr->iP2) ){
 						VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Undefined class attribute '%z->%z',PH7 is loading NULL",
 							&pClass->sName,&sName);
 					}
@@ -9236,7 +9245,7 @@ case PH7_OP_MEMBER: {
 		}else{
 			/* `->` on a non-object (e.g. a null intermediate). Silent in isset()/empty()/unset()
 			 * context (iP2 2/3/4) so `isset($o->missing->x)` / `unset($o->missing->x)` match PHP. */
-			if( pInstr->iP2 != 2 && pInstr->iP2 != 3 && pInstr->iP2 != 4 ){
+			if( pInstr->iP2 != PH7_MEMBER_UNSET && !VmMemberCtxIsLookup(pInstr->iP2) ){
 				VmErrorFormat(&(*pVm),PH7_CTX_ERR,"'->': Expecting class instance as left operand,PH7 is loading NULL");
 			}
 			VmPopOperand(&pTos,1);
@@ -9301,7 +9310,7 @@ case PH7_OP_MEMBER: {
 				PH7_MemObjRelease(pTos);
 				pTos->nIdx = SXU32_HIGH;
 			}else{
-				if( pInstr->iP2 == 1 ){
+				if( pInstr->iP2 == PH7_MEMBER_METHOD ){
 					/* Method call */
 					ph7_class_method *pMeth = 0;
 					if( sName.nByte > 0 && (pClass->iFlags & PH7_CLASS_INTERFACE) == 0){
@@ -9335,6 +9344,16 @@ case PH7_OP_MEMBER: {
 				}else{
 					/* Attribute access */
 					ph7_class_attr *pAttr = 0;
+					if( pInstr->iP2 == PH7_MEMBER_UNSET ){
+						/* unset(C::$x): PHP rejects unsetting a static property with a fatal Error.
+						 * Without this the iP2=unset tag falls through to a normal static read and the
+						 * trailing generic unset() would silently NULL (and de-type) the shared slot. */
+						char zMsg[256];
+						SyBufferFormat(zMsg,sizeof(zMsg),"Attempt to unset static property %.*s::$%.*s",
+							(int)pClass->sName.nByte,pClass->sName.zString,(int)sName.nByte,sName.zString);
+						VmReportUncaughtException(&(*pVm),"Error",5,zMsg,(sxu32)SyStrlen(zMsg),0,0);
+						goto Abort;
+					}
 					/* Check for special ::class pseudo-constant */
 					if( sName.nByte == sizeof("class")-1 &&
 					    SyStrnicmp(sName.zString,"class",sizeof("class")-1) == 0 ){
@@ -9353,8 +9372,8 @@ case PH7_OP_MEMBER: {
 							pAttr = PH7_ClassExtractAttribute(pClass,sName.zString,sName.nByte);
 						}
 						if( pAttr == 0 ){
-							/* No such attribute,load null. isset()/empty() context (iP2 3/4) is silent. */
-							if( pInstr->iP2 != 3 && pInstr->iP2 != 4 ){
+							/* No such attribute,load null. isset()/empty() context is silent. */
+							if( !VmMemberCtxIsLookup(pInstr->iP2) ){
 								VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Undefined class attribute '%z::%z',PH7 is loading NULL",
 									&pClass->sName,&sName);
 							}

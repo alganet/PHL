@@ -11317,13 +11317,13 @@ static sxi32 GenStateEmitExprCode(
 			 * context: tag the OP_MEMBER so the VM removes the property (unset) or suppresses the
 			 * read-miss "Undefined class attribute" warning (isset/empty) — mirrors the same
 			 * EXPR_FLAG_LOAD_IDX_* → LOAD_IDX iP2=5/4/6 mapping used for array subscripts above. */
-			if( iP2 == 0 ){
+			if( iP2 == PH7_MEMBER_READ ){
 				if( iFlags & EXPR_FLAG_LOAD_IDX_UNSET ){
-					iP2 = 2;
+					iP2 = PH7_MEMBER_UNSET;
 				}else if( iFlags & EXPR_FLAG_LOAD_IDX_ISSET ){
-					iP2 = 3;
+					iP2 = PH7_MEMBER_ISSET;
 				}else if( iFlags & EXPR_FLAG_LOAD_IDX_EMPTY ){
-					iP2 = 4;
+					iP2 = PH7_MEMBER_EMPTY;
 				}
 			}
 		}
