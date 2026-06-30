@@ -10998,7 +10998,24 @@ static sxi32 GenStateEmitExprCode(
 			/* Remove stale flags now */
 			iFlags &= ~EXPR_FLAG_RDONLY_LOAD;
 		}
-		rc = GenStateEmitExprCode(&(*pGen),pNode->pLeft,iFlags);
+		{
+			/* The unset() target is the OUTERMOST access. When the intermediate container — the left
+			 * operand of `->`/`::`/`[]` — is itself a MEMBER access (`unset($o->a->b)` /
+			 * `unset($o->arr[$k])`), strip the UNSET context from it: OP_MEMBER's iP2=2 unset mode is
+			 * DESTRUCTIVE (it removes the property), but the inner $o->a / $o->arr is only a read.
+			 * A SUBSCRIPT intermediate is left alone — its LOAD_IDX iP2=5 must keep firing to
+			 * COW-separate the parent array (e.g. `$c['k'][1]` on a copy must not mutate the
+			 * original). isset/empty are never stripped: PHP stays silent on a missing intermediate
+			 * in `isset($o->a->b)`, which the suppression modes mirror. */
+			sxi32 iLeftFlags = iFlags;
+			if( pNode->pLeft && pNode->pLeft->pOp
+				&& (pNode->pLeft->pOp->iOp == EXPR_OP_ARROW
+					|| pNode->pLeft->pOp->iOp == EXPR_OP_NULLSAFE_ARROW
+					|| pNode->pLeft->pOp->iOp == EXPR_OP_DC) ){
+				iLeftFlags &= ~EXPR_FLAG_LOAD_IDX_UNSET;
+			}
+			rc = GenStateEmitExprCode(&(*pGen),pNode->pLeft,iLeftFlags);
+		}
 		if( rc != SXRET_OK ){
 			return rc;
 		}
@@ -11294,6 +11311,19 @@ static sxi32 GenStateEmitExprCode(
 				if( pInstr && pInstr->iOp == PH7_OP_LOAD ){
 					p3 = pInstr->p3;
 					(void)PH7_VmPopInstr(pGen->pVm);
+				}
+			}
+			/* Attribute access (iP2==0, not a method call which is iP2==1) in unset()/isset()/empty()
+			 * context: tag the OP_MEMBER so the VM removes the property (unset) or suppresses the
+			 * read-miss "Undefined class attribute" warning (isset/empty) — mirrors the same
+			 * EXPR_FLAG_LOAD_IDX_* → LOAD_IDX iP2=5/4/6 mapping used for array subscripts above. */
+			if( iP2 == 0 ){
+				if( iFlags & EXPR_FLAG_LOAD_IDX_UNSET ){
+					iP2 = 2;
+				}else if( iFlags & EXPR_FLAG_LOAD_IDX_ISSET ){
+					iP2 = 3;
+				}else if( iFlags & EXPR_FLAG_LOAD_IDX_EMPTY ){
+					iP2 = 4;
 				}
 			}
 		}

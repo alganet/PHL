@@ -1046,6 +1046,30 @@ PH7_PRIVATE ph7_class_instance * PH7_CloneClassInstance(ph7_class_instance *pSrc
 }
 #define CLASS_INSTANCE_DESTROYED 0x001 /* Instance is released */
 /*
+ * Free the per-instance allocations owned by ONE object attribute: its value slot (+ the typed-slot
+ * enforcement entry), the synthesized ph7_class_attr for a dynamic (runtime-added) property, and the
+ * VmClassAttr wrapper itself. Does NOT touch the hAttr entry node — the caller removes it
+ * (`unset($o->p)` via SyHashDeleteEntry2; instance teardown via the wholesale SyHashRelease, so it must
+ * not delete entries mid-walk). Shared by PH7_ClassInstanceRelease and the OP_MEMBER unset path.
+ */
+PH7_PRIVATE void PH7_VmReleaseInstanceAttr(ph7_vm *pVm, VmClassAttr *pVmAttr)
+{
+	if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
+		/* Drop any typed-property enforcement slot registered for this memobj, before the memobj
+		 * is returned to the free list, so a future recycled slot does not inherit the stale entry. */
+		if( pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
+			SyHashDeleteEntry(&pVm->hTypedSlot,(const void *)&pVmAttr->nIdx,sizeof(sxu32),0);
+		}
+		PH7_VmUnsetMemObj(pVm,pVmAttr->nIdx,TRUE);
+	}
+	/* A dynamic property owns its synthesized ph7_class_attr (struct + inline name in one block) —
+	 * free it here (the only place a per-instance pAttr is freed; declared attrs are class-owned). */
+	if( pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_DYNAMIC ){
+		SyMemBackendFree(&pVm->sAllocator,pVmAttr->pAttr);
+	}
+	SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
+}
+/*
  * Release a class instance [i.e: Object in the PHP jargon] and invoke any defined destructor.
  * This routine is invoked as soon as there are no other references to a particular
  * class instance.
@@ -1075,27 +1099,11 @@ static void PH7_ClassInstanceRelease(ph7_class_instance *pThis)
 		pThis->iRef = 2; /* Prevent garbage collection */
 		PH7_VmCallClassMethod(pVm,pThis,pDestr,0,0,0);
 	}
-	/* Release non-static attributes */
+	/* Release non-static attributes (the wholesale SyHashRelease below frees the entry nodes,
+	 * so the helper must not delete them mid-walk). */
 	SyHashResetLoopCursor(&pThis->hAttr);
 	while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
-		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
-		if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
-			/* Drop any typed-property enforcement slot registered for this
-			 * memobj. Must happen before the memobj is returned to the free
-			 * list so a future recycled slot does not inherit the stale entry. */
-			if( pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
-				SyHashDeleteEntry(&pVm->hTypedSlot,
-					(const void *)&pVmAttr->nIdx,sizeof(sxu32),0);
-			}
-			PH7_VmUnsetMemObj(pVm,pVmAttr->nIdx,TRUE);
-		}
-		/* A dynamic (runtime-added) property owns its synthesized ph7_class_attr
-		 * (struct + inline name in one block); free it here — the only place a
-		 * per-instance pAttr is freed (declared attrs are class-owned). */
-		if( pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_DYNAMIC ){
-			SyMemBackendFree(&pVm->sAllocator,pVmAttr->pAttr);
-		}
-		SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
+		PH7_VmReleaseInstanceAttr(pVm,(VmClassAttr *)pEntry->pUserData);
 	}
 	/* Release the whole structure */
 	SyHashRelease(&pThis->hAttr);
