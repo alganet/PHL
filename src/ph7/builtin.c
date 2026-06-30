@@ -1766,17 +1766,26 @@ static int PH7_builtin_explode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Extract the string */
 	zString = ph7_value_to_string(apArg[1],&nStrlen);
 	if( nStrlen < 1 ){
-		/* Empty string: return an array with a single empty element (PHP behavior) */
+		/* Empty string: normally an array with a single empty element (PHP behavior).
+		 * A negative limit drops the last -limit components, so the sole empty
+		 * component is dropped and the result is an empty array. */
 		ph7_value *pArrayTmp = ph7_context_new_array(pCtx);
-		ph7_value *pValueTmp = ph7_context_new_scalar(pCtx);
-		if( pArrayTmp == 0 || pValueTmp == 0 ){
+		if( pArrayTmp == 0 ){
 			/* Out of memory,return FALSE */
 			ph7_result_bool(pCtx,0);
 			return PH7_OK;
 		}
-		ph7_value_string(pValueTmp, "", 0);
-		if( ph7_array_add_elem(pArrayTmp, 0 /* Automatic index assign */, pValueTmp) != SXRET_OK ){
-			return PH7_ContextMemoryError(pCtx);
+		if( !(nArg > 2 && ph7_value_to_int(apArg[2]) < 0) ){
+			ph7_value *pValueTmp = ph7_context_new_scalar(pCtx);
+			if( pValueTmp == 0 ){
+				/* Out of memory,return FALSE */
+				ph7_result_bool(pCtx,0);
+				return PH7_OK;
+			}
+			ph7_value_string(pValueTmp, "", 0);
+			if( ph7_array_add_elem(pArrayTmp, 0 /* Automatic index assign */, pValueTmp) != SXRET_OK ){
+				return PH7_ContextMemoryError(pCtx);
+			}
 		}
 		ph7_result_value(pCtx, pArrayTmp);
 		return PH7_OK;
@@ -1795,8 +1804,32 @@ static int PH7_builtin_explode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	iLimit = SXI32_HIGH;
 	if( nArg > 2 ){
 		iLimit = ph7_value_to_int(apArg[2]);
-		 if( iLimit < 0 ){
-			iLimit = -iLimit;
+		if( iLimit < 0 ){
+			/* Negative limit: keep all components except the last -iLimit (PHP).
+			 * Pre-count the components (delimiters + 1), then emit only the first
+			 * nKeep CLEAN components — no trailing-remainder merge (the difference
+			 * from the positive path). nKeep <= 0 drops everything -> empty array. */
+			int nTotal = 1,nKeep;
+			const char *zScan = zString;
+			sxu32 nScanOfft;
+			while( SyBlobSearch(zScan,(sxu32)(zEnd - zScan),zDelim,nDelim,&nScanOfft) == SXRET_OK ){
+				nTotal++;
+				zScan = &zScan[nScanOfft + nDelim];
+			}
+			nKeep = nTotal + iLimit; /* iLimit < 0, so this is nTotal - (-iLimit) */
+			while( nKeep > (int)ph7_array_count(pArray)
+				&& SyBlobSearch(zString,(sxu32)(zEnd - zString),zDelim,nDelim,&nOfft) == SXRET_OK ){
+				/* Emit the next clean component */
+				zCur = &zString[nOfft];
+				ph7_value_string(pValue, zString, (int)(zCur - zString));
+				if( ph7_array_add_elem(pArray, 0/* Automatic index assign */, pValue) != SXRET_OK ){
+					return PH7_ContextMemoryError(pCtx);
+				}
+				zString = &zCur[nDelim];
+				ph7_value_reset_string_cursor(pValue);
+			}
+			ph7_result_value(pCtx,pArray);
+			return PH7_OK;
 		}
 		if( iLimit == 0 ){
 			iLimit = 1;
