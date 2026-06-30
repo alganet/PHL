@@ -925,6 +925,11 @@ struct ph7_vm
 	SyHash hTypedSlot;          /* memobj nIdx -> VmClassAttr* for typed property enforcement */
 	SySet aException;           /* Stack of loaded exception */
 	ph7_class_instance *pPendingException; /* Exception deferred past a finally block */
+	ph7_class_instance *pInflightException; /* Exception being unwound while a finally runs; a throw from
+	                                         * that finally that escapes the finally chains it as $previous
+	                                         * (PHP finally-supersede) */
+	sxu32 nInflightExcBase;                 /* Exception-stack depth when the in-flight finally started; a throw
+	                                         * is "leaving the finally" once the stack unwinds to/below this */
 	VmFrame *pResumeFrame;      /* Body frame whose in-place catch consumed the live throw (ROOT B) */
 	sxu32 iResumePc;            /* Its post-try landing pad (1-based, as iExceptionJump) */
 	void *pResumeInstr;         /* Bytecode array the catching try lives in; resume only in that exec */
