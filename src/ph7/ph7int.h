@@ -422,6 +422,7 @@ struct VmFrame
 	VmFrame *pParent; /* Parent frame or NULL if global scope */
 	void *pUserData;  /* Upper layer private data associated with this frame */
 	ph7_class_instance *pThis; /* Current class instance [i.e: the '$this' variable].NULL otherwise */
+	ph7_class *pBoundScope; /* Closure::bindTo/call scope override for private/protected access (Increment 2) */
 	SySet sLocal;     /* Local variables container (VmSlot instance) */
 	ph7_vm *pVm;      /* VM that own this frame */
 	SyHash hVar;      /* Variable hashtable for fast lookup */
@@ -988,6 +989,11 @@ struct ph7_vm
 	ph7_class *pFiberClass;    /* Cached Fiber class pointer for fast dispatch */
 	ph7_class *pGeneratorClass; /* Cached Generator class pointer */
 	ph7_class *pClosureClass;  /* Cached Closure class pointer (closures are instances of it) */
+	ph7_class_instance *pClosureThis; /* Transient: bound $this for a bound PLAIN closure about to be
+	                                   * invoked, set by VmClosureUnwrap, consumed (ref transferred) at
+	                                   * the OP_CALL user-function frame setup. Owns one reference. */
+	ph7_class *pClosureScope; /* Transient: bound $__scope class for the same bound PLAIN closure
+	                           * (private/protected visibility override); consumed alongside pClosureThis. */
 	ph7_class *pStdClass;      /* Cached stdClass pointer (target of (object) cast + dynamic props) */
 	ph7_class *pArrayAccessClass; /* Cached ArrayAccess interface pointer */
 	ph7_class *pCountableClass;   /* Cached Countable interface pointer */
