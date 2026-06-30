@@ -1232,6 +1232,62 @@ fail_attr:
 	SyMemBackendFree(&pVm->sAllocator,pAttr);
 	return 0;
 }
+/*
+ * Recreate a DECLARED (non-static/non-constant) instance property that was removed by unset() and is
+ * now being re-assigned: PHP re-creates it, appended at the end (creation order) like a dynamic
+ * property. Unlike PH7_VmCreateDynamicAttr the ph7_class_attr is the CLASS-owned declared attr (no
+ * DYNAMIC flag), so PH7_ClassInstanceRelease must NOT free it. Returns the new VmClassAttr via *ppAttr
+ * (left untouched on OOM, so the caller still sees pObjAttr==0 and degrades gracefully).
+ */
+static void VmRecreateDeclaredAttr(ph7_vm *pVm,ph7_class_instance *pThis,ph7_class_attr *pAttr,VmClassAttr **ppAttr)
+{
+	VmClassAttr *pVmAttr;
+	ph7_value *pMemObj;
+	pVmAttr = (VmClassAttr *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(VmClassAttr));
+	if( pVmAttr == 0 ){
+		return;
+	}
+	pMemObj = PH7_ReserveMemObj(&(*pVm));
+	if( pMemObj == 0 ){
+		SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
+		return;
+	}
+	pVmAttr->pAttr = pAttr;
+	pVmAttr->nIdx = pMemObj->nIdx;
+	pVmAttr->iState = 0;
+	pVmAttr->pOwner = pThis->pClass;
+	if( SySetUsed(&pAttr->aByteCode) > 0 ){
+		/* Re-run the declared default; the assignment that triggered this overwrites it. */
+		VmLocalExec(&(*pVm),&pAttr->aByteCode,pMemObj,FALSE);
+	}else if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
+		pVmAttr->iState |= VM_CLASS_ATTR_UNINIT;
+	}
+	/* Tail-insert: a re-created property appends (creation order), consistent with a dynamic prop.
+	 * PHP keeps a re-added DECLARED property in its original declared position; replicating that
+	 * exactly needs a keep-entry/mark-unset model across every iteration site — deferred. The value
+	 * is always correct; only the relative order of a declared prop re-added after unset differs. */
+	if( SyHashInsertTail(&pThis->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),pVmAttr) != SXRET_OK ){
+		VmSlot sSlot;
+		sSlot.nIdx = pMemObj->nIdx; sSlot.pUserData = 0;
+		SySetPut(&pVm->aFreeObj,(const void *)&sSlot);
+		SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
+		return;
+	}
+	PH7_VmRefObjInstall(&(*pVm),pMemObj->nIdx,0,0,VM_REF_IDX_KEEP);
+	if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
+		if( SyHashInsert(&pVm->hTypedSlot,(const void *)&pVmAttr->nIdx,sizeof(sxu32),pVmAttr) != SXRET_OK ){
+			VmSlot sSlot;
+			SyHashDeleteEntry(&pThis->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),0);
+			sSlot.nIdx = pMemObj->nIdx; sSlot.pUserData = 0;
+			SySetPut(&pVm->aFreeObj,(const void *)&sSlot);
+			SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
+			return;
+		}
+	}
+	if( ppAttr ){
+		*ppAttr = pVmAttr;
+	}
+}
 /* Forward declaration */
 static VmRefObj * VmRefObjExtract(ph7_vm *pVm,sxu32 nObjIdx);
 static sxi32 VmRefObjUnlink(ph7_vm *pVm,VmRefObj *pRef);
@@ -9025,7 +9081,7 @@ case PH7_OP_MEMBER: {
 			pClass = pThis->pClass;
 			/* Extract attribute name first */
 			SyStringInitFromBuf(&sName,(const char *)SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
-			if( pInstr->iP2 ){
+			if( pInstr->iP2 == 1 ){
 				/* Method call */
 				ph7_class_method *pMeth = 0;
 				if( sName.nByte > 0 ){
@@ -9049,9 +9105,9 @@ case PH7_OP_MEMBER: {
 				}
 				pTos->nIdx = SXU32_HIGH;
 			}else{
-				/* Attribute access */
+				/* Attribute access. iP2: 0 = read, 2 = unset, 3 = isset, 4 = empty. */
 				VmClassAttr *pObjAttr = 0;
-				SyHashEntry *pEntry;
+				SyHashEntry *pEntry = 0;
 				/* Extract the target attribute */
 				if( sName.nByte > 0 ){
 					pEntry = SyHashGet(&pThis->hAttr,(const void *)sName.zString,sName.nByte);
@@ -9060,20 +9116,45 @@ case PH7_OP_MEMBER: {
 						pObjAttr = (VmClassAttr *)pEntry->pUserData;
 					}
 				}
-				if( pObjAttr == 0 && sName.nByte > 0 && VmClassAllowsDynamicProps(pVm,pThis->pClass) ){
-					/* Dynamic property: when this member is the LHS of an assignment
-					 * (next instr is a member store), create the property so the store
-					 * lands. Detected via one-token lookahead — the compiler always
-					 * emits a terminating PH7_OP_DONE, so pInstr+1 is in-bounds. */
+				if( pInstr->iP2 == 2 ){
+					/* unset($o->prop): remove the property entirely so it disappears from
+					 * foreach / json_encode / get_object_vars / (array) — matching PHP (a value-only
+					 * release would leave a zombie null entry). Leave a NULL constant on the stack so
+					 * the trailing generic unset() builtin is a no-op (mirrors LOAD_IDX iP2=5). */
+					if( pEntry ){
+						PH7_VmReleaseInstanceAttr(&(*pVm),pObjAttr);
+						SyHashDeleteEntry2(pEntry);
+					}
+					VmPopOperand(&pTos,1);    /* pop the attribute name */
+					PH7_MemObjRelease(pTos);  /* release the object on the stack ($o's stack ref) */
+					pTos->nIdx = SXU32_HIGH;  /* NULL constant */
+					break;
+				}
+				if( pObjAttr == 0 && sName.nByte > 0 ){
+					/* Member not present on the instance and this is the LHS of an assignment
+					 * (next instr is a member store; the compiler always emits a terminating
+					 * PH7_OP_DONE so pInstr+1 is in-bounds). Create the property so the store lands:
+					 *   - a DECLARED prop that was unset() and is re-assigned → recreate it
+					 *     (PHP re-appends it at the end), OR
+					 *   - a dynamic prop on a dynamic-allowing class (stdClass). */
 					VmInstr *pNext = pInstr + 1;
 					if( pNext->iOp == PH7_OP_STORE && pNext->iP2 ){
-						PH7_VmCreateDynamicAttr(&(*pVm),pThis,sName.zString,sName.nByte,&pObjAttr);
+						ph7_class_attr *pDecl = PH7_ClassExtractAttribute(pThis->pClass,sName.zString,sName.nByte);
+						if( pDecl && (pDecl->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
+							VmRecreateDeclaredAttr(&(*pVm),pThis,pDecl,&pObjAttr);
+						}else if( VmClassAllowsDynamicProps(pVm,pThis->pClass) ){
+							PH7_VmCreateDynamicAttr(&(*pVm),pThis,sName.zString,sName.nByte,&pObjAttr);
+						}
 					}
 				}
 				if( pObjAttr == 0 ){
-					/* No such attribute,load null */
-					VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Undefined class attribute '%z->%z',PH7 is loading NULL",
-						&pClass->sName,&sName);
+					/* No such attribute,load null. In isset()/empty() context (iP2 3/4) PHP returns
+					 * false/true SILENTLY, so suppress the read-miss warning there (mirrors the array
+					 * LOAD_IDX iP2=4/6 suppression). */
+					if( pInstr->iP2 != 3 && pInstr->iP2 != 4 ){
+						VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Undefined class attribute '%z->%z',PH7 is loading NULL",
+							&pClass->sName,&sName);
+					}
 					/* Call the __get magic method if available */
 					PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,pThis,"__get",sizeof("__get")-1,&sName);
 				}
@@ -9153,7 +9234,11 @@ case PH7_OP_MEMBER: {
 				PH7_ClassInstanceUnref(pThis);
 			}
 		}else{
-			VmErrorFormat(&(*pVm),PH7_CTX_ERR,"'->': Expecting class instance as left operand,PH7 is loading NULL");
+			/* `->` on a non-object (e.g. a null intermediate). Silent in isset()/empty()/unset()
+			 * context (iP2 2/3/4) so `isset($o->missing->x)` / `unset($o->missing->x)` match PHP. */
+			if( pInstr->iP2 != 2 && pInstr->iP2 != 3 && pInstr->iP2 != 4 ){
+				VmErrorFormat(&(*pVm),PH7_CTX_ERR,"'->': Expecting class instance as left operand,PH7 is loading NULL");
+			}
 			VmPopOperand(&pTos,1);
 			PH7_MemObjRelease(pTos);
 			pTos->nIdx = SXU32_HIGH; /* Assume we are loading a constant */
@@ -9216,7 +9301,7 @@ case PH7_OP_MEMBER: {
 				PH7_MemObjRelease(pTos);
 				pTos->nIdx = SXU32_HIGH;
 			}else{
-				if( pInstr->iP2 ){
+				if( pInstr->iP2 == 1 ){
 					/* Method call */
 					ph7_class_method *pMeth = 0;
 					if( sName.nByte > 0 && (pClass->iFlags & PH7_CLASS_INTERFACE) == 0){
@@ -9268,9 +9353,11 @@ case PH7_OP_MEMBER: {
 							pAttr = PH7_ClassExtractAttribute(pClass,sName.zString,sName.nByte);
 						}
 						if( pAttr == 0 ){
-							/* No such attribute,load null */
-							VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Undefined class attribute '%z::%z',PH7 is loading NULL",
-								&pClass->sName,&sName);
+							/* No such attribute,load null. isset()/empty() context (iP2 3/4) is silent. */
+							if( pInstr->iP2 != 3 && pInstr->iP2 != 4 ){
+								VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Undefined class attribute '%z::%z',PH7 is loading NULL",
+									&pClass->sName,&sName);
+							}
 							/* Call the __get magic method if available */
 							PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,0,"__get",sizeof("__get")-1,&sName);
 						}
