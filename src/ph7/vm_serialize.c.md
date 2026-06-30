@@ -550,7 +550,7 @@ Coverage: 419/434 lines (96.54%)
 |    3 |  540 | `		if( pOut ){ ph7_value_null(pOut); }` |
 |    3 |  541 | `		return pOut;` |
 |    4 |  542 | `	case 'b': /* b:0; / b:1; */` |
-|   13 |  543 | `		if( ud->zCur+4 > ud->zEnd \|\| ud->zCur[1] != ':'` |
+|   12 |  543 | `		if( ud->zCur+4 > ud->zEnd \|\| ud->zCur[1] != ':'` |
 |   13 |  544 | `		    \|\| (ud->zCur[2] != '0' && ud->zCur[2] != '1') \|\| ud->zCur[3] != ';' ){ return 0; }` |
 |    7 |  545 | `		pOut = ph7_context_new_scalar(ud->pCtx);` |
 |    7 |  546 | `		if( pOut ){ ph7_value_bool(pOut, ud->zCur[2]=='1'); }` |
