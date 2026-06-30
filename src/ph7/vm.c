@@ -1256,10 +1256,12 @@ static void VmRecreateDeclaredAttr(ph7_vm *pVm,ph7_class_instance *pThis,ph7_cla
 	pVmAttr->nIdx = pMemObj->nIdx;
 	pVmAttr->iState = 0;
 	pVmAttr->pOwner = pThis->pClass;
-	if( SySetUsed(&pAttr->aByteCode) > 0 ){
-		/* Re-run the declared default; the assignment that triggered this overwrites it. */
-		VmLocalExec(&(*pVm),&pAttr->aByteCode,pMemObj,FALSE);
-	}else if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
+	/* Do NOT re-run the declared default initializer. A property recreated after unset() is a fresh
+	 * UNDEFINED property — PHP applies the class default only at construction, not on re-creation. The
+	 * reserved slot stays NULL, so a read-modify-write that triggered this (`$o->p += 1`, `.=`, `??=`)
+	 * sees null/0/"" as PHP does; a plain `$o->p = v` overwrites it either way. For a typed property,
+	 * mark it uninitialized so a read before the (re)assignment is an Error, matching PHP. */
+	if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
 		pVmAttr->iState |= VM_CLASS_ATTR_UNINIT;
 	}
 	/* Tail-insert: a re-created property appends (creation order), consistent with a dynamic prop.
@@ -5074,6 +5076,32 @@ static void VmWarnCannotUseAsArray(ph7_vm *pVm, sxi32 iFlags)
 static int VmMemberCtxIsLookup(sxi32 iP2)
 {
 	return iP2 == PH7_MEMBER_ISSET || iP2 == PH7_MEMBER_EMPTY;
+}
+/*
+ * Whether the instruction immediately following an OP_MEMBER that missed (property absent) is a
+ * write/modify of the member slot that lands DIRECTLY on it — so a fresh property should be
+ * auto-created (PHP-style auto-vivification) for the op to work. Covers the read-modify-write forms
+ * whose op immediately follows OP_MEMBER: increment/decrement and the compound-assign family
+ * (`$o->n++`, `$o->s .= "x"`, `$o->c += 1`), plus a plain member store. Subscript-writes
+ * (`$o->arr[] = x`, `$o->m[$k] = x`, `??=`) are NOT detectable here — the key sits between OP_MEMBER
+ * and OP_STORE_IDX — so those are marked by the compiler instead (OP_MEMBER iP2 == PH7_MEMBER_WRITE).
+ * One-token lookahead only.
+ */
+static int VmMemberNextIsWrite(const VmInstr *pNext)
+{
+	switch( pNext->iOp ){
+		case PH7_OP_STORE:
+			return pNext->iP2 != 0;                          /* member store ($o->p = v) */
+		case PH7_OP_INCR: case PH7_OP_DECR:
+		case PH7_OP_ADD_STORE: case PH7_OP_SUB_STORE: case PH7_OP_MUL_STORE:
+		case PH7_OP_DIV_STORE: case PH7_OP_MOD_STORE: case PH7_OP_POW_STORE:
+		case PH7_OP_CAT_STORE:
+		case PH7_OP_SHL_STORE: case PH7_OP_SHR_STORE:
+		case PH7_OP_BAND_STORE: case PH7_OP_BOR_STORE: case PH7_OP_BXOR_STORE:
+			return 1;
+		default:
+			return 0;
+	}
 }
 /*
  * Execute as much of a PH7 bytecode program as we can then return.
@@ -9147,14 +9175,22 @@ case PH7_OP_MEMBER: {
 					break;
 				}
 				if( pObjAttr == 0 && sName.nByte > 0 ){
-					/* Member not present on the instance and this is the LHS of an assignment
-					 * (next instr is a member store; the compiler always emits a terminating
-					 * PH7_OP_DONE so pInstr+1 is in-bounds). Create the property so the store lands:
+					/* Member not present on the instance and the next instruction writes/modifies it
+					 * (store, array-append/keyed-write, `??=`, ++/--, or a compound-assign — see
+					 * VmMemberNextIsWrite; the compiler always emits a terminating PH7_OP_DONE so
+					 * pInstr+1 is in-bounds). Create the property so the operation lands on a real slot
+					 * (PHP auto-vivifies a fresh property for all these forms, not just `=`):
 					 *   - a DECLARED prop that was unset() and is re-assigned → recreate it
 					 *     (PHP re-appends it at the end), OR
-					 *   - a dynamic prop on a dynamic-allowing class (stdClass). */
+					 *   - a dynamic prop on a dynamic-allowing class (stdClass).
+					 * The created slot is NULL with a real nIdx, which the modify-op then vivifies
+					 * (NULL→array for [], NULL→0/"" for ++/.=) and writes back in place.
+					 * Two signals: the compiler tags the member itself iP2=PH7_MEMBER_WRITE when it is
+					 * the base of a write-subscript / `??=` (the modify-op is not the immediately-next
+					 * instruction there), and for ++/--/compound-assign/store the next opcode is the
+					 * modify-op directly (VmMemberNextIsWrite). */
 					VmInstr *pNext = pInstr + 1;
-					if( pNext->iOp == PH7_OP_STORE && pNext->iP2 ){
+					if( pInstr->iP2 == PH7_MEMBER_WRITE || VmMemberNextIsWrite(pNext) ){
 						ph7_class_attr *pDecl = PH7_ClassExtractAttribute(pThis->pClass,sName.zString,sName.nByte);
 						if( pDecl && (pDecl->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
 							VmRecreateDeclaredAttr(&(*pVm),pThis,pDecl,&pObjAttr);

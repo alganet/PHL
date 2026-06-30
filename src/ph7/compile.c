@@ -94,6 +94,12 @@ struct LangConstruct
 #define EXPR_FLAG_LOAD_IDX_ISSET    0x008 /* LOAD_IDX argument is the LHS of isset() — emit iP2=4 (offsetExists) */
 #define EXPR_FLAG_LOAD_IDX_UNSET    0x010 /* LOAD_IDX argument is the LHS of unset() — emit iP2=5 (offsetUnset) */
 #define EXPR_FLAG_LOAD_IDX_EMPTY    0x020 /* LOAD_IDX argument is the LHS of empty() — emit iP2=6 (offsetExists+offsetGet) */
+#define EXPR_FLAG_MEMBER_WRITE      0x040 /* Sub-tree is the write lvalue of an assignment: tag a target
+                                           * OP_MEMBER iP2=PH7_MEMBER_WRITE so the VM auto-creates a missing
+                                           * property (e.g. `$o->arr[$k] = v`, `$o->p ??= v`). Propagated
+                                           * from the precedence-18 lvalue through SUBSCRIPT to the base
+                                           * member; stripped when descending into an intermediate `->`
+                                           * container (the container is read, not the write target). */
 /* Forward declaration */
 static sxi32 PH7_CompileExpr(ph7_gen_state *pGen,sxi32 iFlags,sxi32 (*xTreeValidator)(ph7_gen_state *,ph7_expr_node *));
 /*
@@ -10767,7 +10773,7 @@ static sxi32 GenStateEmitExprCode(
 		 * stack slot carries a writable nIdx. */
 		if( pNode->pRight ){
 			nNcNsBase = SySetUsed(&pGen->aNullsafeJmp);
-			rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iFlags|EXPR_FLAG_LOAD_IDX_STORE);
+			rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iFlags|EXPR_FLAG_LOAD_IDX_STORE|EXPR_FLAG_MEMBER_WRITE);
 			if( rc != SXRET_OK ){
 				return rc;
 			}
@@ -10936,7 +10942,7 @@ static sxi32 GenStateEmitExprCode(
 			}
 			for( n = 0 ; n < nArgs ; ++n ){
 				sxu32 nArgNsBase = SySetUsed(&pGen->aNullsafeJmp);
-				sxi32 iArgFlags = iFlags & ~EXPR_FLAG_LOAD_IDX_STORE;
+				sxi32 iArgFlags = iFlags & ~(EXPR_FLAG_LOAD_IDX_STORE|EXPR_FLAG_MEMBER_WRITE);
 				/* For a by-ref argument position, drop the read-only flag so the
 				 * variable is created if absent (PH7_OP_LOAD iP1=0 => bCreate), and
 				 * set write-context so a subscript target (preg_match($p,$s,$a['k']))
@@ -11014,6 +11020,19 @@ static sxi32 GenStateEmitExprCode(
 					|| pNode->pLeft->pOp->iOp == EXPR_OP_DC) ){
 				iLeftFlags &= ~EXPR_FLAG_LOAD_IDX_UNSET;
 			}
+			/* Write-lvalue propagation (mirrors the UNSET strip): EXPR_FLAG_MEMBER_WRITE marks the
+			 * write target of an assignment and flows through a SUBSCRIPT to its base member
+			 * ($o->arr[$k]=v → create arr). But when THIS node is itself a `->`/`::` member access, its
+			 * left operand is an intermediate container that is only READ ($o->a->b=v must not create
+			 * a; $o->arr[]=v reads $o), so strip MEMBER_WRITE there — PHP auto-vivifies arrays, never
+			 * objects. (The flag is ADDED to the lvalue at the precedence-18 site below / the `??=`
+			 * site, since `=` is right-associative and its lvalue is pNode->pRight.) */
+			if( pNode->pOp
+				&& (pNode->pOp->iOp == EXPR_OP_ARROW
+					|| pNode->pOp->iOp == EXPR_OP_NULLSAFE_ARROW
+					|| pNode->pOp->iOp == EXPR_OP_DC) ){
+				iLeftFlags &= ~EXPR_FLAG_MEMBER_WRITE;
+			}
 			rc = GenStateEmitExprCode(&(*pGen),pNode->pLeft,iLeftFlags);
 		}
 		if( rc != SXRET_OK ){
@@ -11077,7 +11096,7 @@ static sxi32 GenStateEmitExprCode(
 			sxi32 n;
 			sxi32 iChildMask = ~(EXPR_FLAG_LOAD_IDX_STORE
 				|EXPR_FLAG_LOAD_IDX_ISSET|EXPR_FLAG_LOAD_IDX_UNSET
-				|EXPR_FLAG_LOAD_IDX_EMPTY);
+				|EXPR_FLAG_LOAD_IDX_EMPTY|EXPR_FLAG_MEMBER_WRITE);
 			/* Recurse and generate bytecodes for array index */
 			apNode = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);
 			for( n = 0 ; n < (sxi32)SySetUsed(&pNode->aNodeArgs) ; ++n ){
@@ -11170,7 +11189,10 @@ static sxi32 GenStateEmitExprCode(
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_NULLSAFE_JMP,0,0,0,&nNsJmp);
 			SySetPut(&pGen->aNullsafeJmp,(const void *)&nNsJmp);
 		}else if( pNode->pOp->iPrec == 18 /* Combined binary operators [i.e: =,'.=','+=',*=' ...] precedence */ ){
-			iFlags |= EXPR_FLAG_LOAD_IDX_STORE;
+			/* The lvalue is the RIGHT operand (these ops are right-associative). Mark it a write
+			 * target so a missing member (the base of a subscript-write, or a bare `$o->p`) is
+			 * auto-created — PHP auto-vivifies on write. */
+			iFlags |= EXPR_FLAG_LOAD_IDX_STORE | EXPR_FLAG_MEMBER_WRITE;
 		}
 		nRhsNsBase = SySetUsed(&pGen->aNullsafeJmp);
 		rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iFlags);
@@ -11324,6 +11346,9 @@ static sxi32 GenStateEmitExprCode(
 					iP2 = PH7_MEMBER_ISSET;
 				}else if( iFlags & EXPR_FLAG_LOAD_IDX_EMPTY ){
 					iP2 = PH7_MEMBER_EMPTY;
+				}else if( iFlags & EXPR_FLAG_MEMBER_WRITE ){
+					/* Write-lvalue base ($o->arr[$k]=v, $o->p ??= v): auto-create a missing prop. */
+					iP2 = PH7_MEMBER_WRITE;
 				}
 			}
 		}
