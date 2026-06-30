@@ -1175,6 +1175,7 @@ enum ph7_vm_op {
 #define PH7_MEMBER_UNSET  2 /* unset($o->p): remove the property */
 #define PH7_MEMBER_ISSET  3 /* isset($o->p): silent on a read-miss */
 #define PH7_MEMBER_EMPTY  4 /* empty($o->p): silent on a read-miss */
+#define PH7_MEMBER_WRITE  5 /* write-lvalue base ($o->arr[..]=, $o->p??=): auto-create a missing prop */
 /* -- END-OF INSTRUCTIONS -- */
 /*
  * Expression Operators ID.
