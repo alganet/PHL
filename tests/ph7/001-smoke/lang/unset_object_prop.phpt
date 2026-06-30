@@ -34,6 +34,13 @@ echo json_encode($n), "\n";                                   // {"data":{"b":2}
 $m = new stdClass; $m->inner = new stdClass; $m->inner->p = 1; $m->inner->q = 2;
 unset($m->inner->p);
 echo json_encode($m), "\n";                                   // {"inner":{"q":2}}
+
+/* clone must NOT resurrect a property unset on the source (declared or dynamic) */
+class CloneUnsetC { public $p = 1; public $q = 2; }
+$s = new CloneUnsetC(); unset($s->p);
+echo json_encode(clone $s), "\n";                             // {"q":2}
+$sd = new stdClass; $sd->x = 1; $sd->y = 2; unset($sd->x);
+echo json_encode(clone $sd), "\n";                            // {"y":2}
 ?>
 --EXPECT--
 {"a":1,"c":3}
@@ -46,5 +53,7 @@ false
 {"b":2,"a":9}
 {"data":{"b":2}}
 {"inner":{"q":2}}
+{"q":2}
+{"y":2}
 --CLEAN--
 <?php

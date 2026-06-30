@@ -1028,6 +1028,36 @@ PH7_PRIVATE ph7_class_instance * PH7_CloneClassInstance(ph7_class_instance *pSrc
 			pDestAttr->iState = pSrcAttr->iState;
 		}
 	}
+	/* A declared property unset() on the source is absent from the clone too (PHP). But the clone
+	 * frame above materialized ALL declared attrs (with their defaults), so drop any clone attr whose
+	 * name is not present on the source. Collect first, then delete — removing an entry mid-walk would
+	 * free the node the SyHash loop cursor points at. */
+	{
+		SySet sDrop;
+		SySetInit(&sDrop,&pVm->sAllocator,sizeof(VmClassAttr *));
+		SyHashResetLoopCursor(&pClone->hAttr);
+		while((pEntry = SyHashGetNextEntry(&pClone->hAttr)) != 0 ){
+			VmClassAttr *pCloneAttr = (VmClassAttr *)pEntry->pUserData;
+			if( pCloneAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT) ){
+				continue;
+			}
+			if( SyHashGet(&pSrc->hAttr,SyStringData(&pCloneAttr->pAttr->sName),
+					SyStringLength(&pCloneAttr->pAttr->sName)) == 0 ){
+				SySetPut(&sDrop,(const void *)&pCloneAttr);
+			}
+		}
+		if( SySetUsed(&sDrop) > 0 ){
+			VmClassAttr **apDrop = (VmClassAttr **)SySetBasePtr(&sDrop);
+			sxu32 i;
+			for( i = 0 ; i < SySetUsed(&sDrop) ; ++i ){
+				VmClassAttr *pVmAttr = apDrop[i];
+				SyHashDeleteEntry(&pClone->hAttr,SyStringData(&pVmAttr->pAttr->sName),
+					SyStringLength(&pVmAttr->pAttr->sName),0);
+				PH7_VmReleaseInstanceAttr(pVm,pVmAttr);
+			}
+		}
+		SySetRelease(&sDrop);
+	}
 	/* call the __clone method on the cloned object if available */
 	pMethod = PH7_ClassExtractMethod(pClone->pClass,"__clone",sizeof("__clone")-1);
 	if( pMethod ){

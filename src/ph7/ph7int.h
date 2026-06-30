@@ -1168,6 +1168,13 @@ enum ph7_vm_op {
 /* LOADC.iP1 bit flags */
 #define PH7_LOADC_EXPAND   0x01 /* Candidate for constant/function/class expansion */
 #define PH7_LOADC_ABSOLUTE 0x02 /* Fully-qualified — skip namespace prefixing */
+/* MEMBER.iP2 — member-access context. 0=read is the default; the unset/isset/empty modes mirror the
+ * array LOAD_IDX context modes so unset()/isset()/empty() on a property behave like on an array elem. */
+#define PH7_MEMBER_READ   0 /* attribute read */
+#define PH7_MEMBER_METHOD 1 /* method-call preparation */
+#define PH7_MEMBER_UNSET  2 /* unset($o->p): remove the property */
+#define PH7_MEMBER_ISSET  3 /* isset($o->p): silent on a read-miss */
+#define PH7_MEMBER_EMPTY  4 /* empty($o->p): silent on a read-miss */
 /* -- END-OF INSTRUCTIONS -- */
 /*
  * Expression Operators ID.
