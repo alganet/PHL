@@ -516,17 +516,24 @@ PH7_PRIVATE int PH7_VmClassMemberAccess(
 	if( iProtection != PH7_CLASS_PROT_PUBLIC ){
 		VmFrame *pFrame = pVm->pFrame;
 		ph7_vm_func *pVmFunc;
+		ph7_class *pCallerScope;
 		while( pFrame->pParent && (pFrame->iFlags & (VM_FRAME_EXCEPTION|VM_FRAME_CATCH) ) ){
 			/* Safely ignore the exception frame */
 			pFrame = pFrame->pParent;
 		}
 		pVmFunc = (ph7_vm_func *)pFrame->pUserData;
-		if( pVmFunc == 0 || (pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) == 0 ){
-			goto dis; /* Access is forbidden */
+		/* The calling scope is the executing method's declaring class — OR, for a bound closure
+		 * (Closure::bindTo/call), the explicit scope override carried on the frame (Increment 2). */
+		if( pFrame->pBoundScope ){
+			pCallerScope = pFrame->pBoundScope;
+		}else if( pVmFunc && (pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) ){
+			pCallerScope = (ph7_class *)pVmFunc->pUserData;
+		}else{
+			goto dis; /* Not in a class scope: access is forbidden */
 		}
 		if( iProtection == PH7_CLASS_PROT_PRIVATE ){
 			/* Must be the same instance or a trait used by the class */
-			ph7_class *pCaller = (ph7_class *)pVmFunc->pUserData;
+			ph7_class *pCaller = pCallerScope;
 			if( pCaller != pClass ){
 				/* Check if the caller is a trait used by pClass */
 				ph7_class **apTrait;
@@ -546,7 +553,7 @@ PH7_PRIVATE int PH7_VmClassMemberAccess(
 			}
 		}else{
 			/* Protected */
-			ph7_class *pBase = (ph7_class *)pVmFunc->pUserData;
+			ph7_class *pBase = pCallerScope;
 			/* Must be in the same class hierarchy */
 			if( !PH7_VmInstanceOf(pClass,pBase) && !PH7_VmInstanceOf(pBase,pClass) ){
 				goto dis; /* Access is forbidden */

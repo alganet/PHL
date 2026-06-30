@@ -1329,6 +1329,8 @@ static int vm_builtin_Generator_send(ph7_context *pCtx, int nArg, ph7_value **ap
 static int vm_builtin_Generator_throw(ph7_context *pCtx, int nArg, ph7_value **apArg);
 static int vm_builtin_Generator_getReturn(ph7_context *pCtx, int nArg, ph7_value **apArg);
 static int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_value **apArg);
+static int vm_builtin_Closure_bindTo(ph7_context *pCtx, int nArg, ph7_value **apArg);
+static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_value **apArg);
 /*
  * Built-in classes/interfaces and some functions that cannot be implemented
  * directly as foreign functions.
@@ -1572,6 +1574,10 @@ static int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_value 
 	"  private $__this;"\
 	"  private $__scope;"\
 	"  public function __construct(){ throw new \\Error('Instantiation of class Closure is not allowed'); }"\
+	"  public function bindTo($newThis, $scope = 'static'){ return __closure_bindTo($this, $newThis, $scope); }"\
+	"  public function call($newThis, ...$args){ $bound = __closure_bindTo($this, $newThis, get_class($newThis)); return $bound(...$args); }"\
+	"  public static function bind($closure, $newThis, $scope = 'static'){ return __closure_bindTo($closure, $newThis, $scope); }"\
+	"  public static function fromCallable($callable){ return __closure_fromCallable($callable); }"\
 	"}"\
 	/* stdClass is empty (PHP-exact): holds only dynamic (runtime-added) properties. */\
 	"class stdClass{"\
@@ -1941,6 +1947,11 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	ph7_create_function(pVm,"__fiber_destruct",vm_builtin_Fiber_destruct,0);
 	/* Cache the Closure class pointer (closures are instances of it) */
 	pVm->pClosureClass = PH7_VmExtractClass(pVm,"Closure",7,0,0);
+	pVm->pClosureThis = 0; /* transient bound-$this slot, consumed per call */
+	pVm->pClosureScope = 0; /* transient bound-scope slot, consumed per call */
+	/* Closure::bind/bindTo/call/fromCallable native delegates (Increment 2) */
+	ph7_create_function(pVm,"__closure_bindTo",vm_builtin_Closure_bindTo,0);
+	ph7_create_function(pVm,"__closure_fromCallable",vm_builtin_Closure_fromCallable,0);
 	/* Cache the stdClass pointer ((object) cast target + dynamic-property owner) */
 	pVm->pStdClass = PH7_VmExtractClass(pVm,"stdClass",sizeof("stdClass")-1,0,0);
 	/* Cache the Generator class pointer and register generator functions */
@@ -2269,6 +2280,13 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	/* The $GLOBALS array is normally protected from deletion; drop the guard so
 	 * its hashmap is actually released below, then rebuilt by CreateSuper. */
 	pVm->pGlobal = 0;
+	/* Defensive: a bound-closure $this transient is consumed within the same OP_CALL it is set,
+	 * so it is normally 0 here. But if a prior request aborted (e.g. OOM) between set and consume,
+	 * a stale pointer must not survive into the next reused (-S server) request — the object pool
+	 * is about to be truncated, which would dangle it. Just null it (the pool free reclaims the
+	 * object); unref'ing here would race the teardown below. */
+	pVm->pClosureThis = 0;
+	pVm->pClosureScope = 0;
 	/* Suppress user __destruct while we tear down the per-exec object pool: the
 	 * reference table is gone and $GLOBALS is nulled, so running arbitrary PHP
 	 * here is unsafe (and could realloc aMemObj mid-release). Engine memory is
@@ -10057,10 +10075,23 @@ case PH7_OP_CALL: {
 		ph7_value *pObj;
 		VmSlot sArg;
 		sxu32 n;
+		int bClosureThis = 0;
+		ph7_class *pClosureScope = 0;
 		/* initialize fields */
 		pVmFunc = (ph7_vm_func *)pEntry->pUserData;
 		pThis = 0;
 		pSelf = 0;
+		/* A bound PLAIN closure stashed its $this in pVm->pClosureThis (VmClosureUnwrap); consume it
+		 * here — transferring the owned reference to this frame's $this (teardown unrefs). Only ever
+		 * set for a bound plain closure, which dispatches as a function, so the method branch below
+		 * is skipped for it. The matching $__scope (private/protected visibility) rides alongside. */
+		if( pVm->pClosureThis ){
+			pThis = pVm->pClosureThis;
+			pVm->pClosureThis = 0;
+			bClosureThis = 1;
+			pClosureScope = pVm->pClosureScope;
+			pVm->pClosureScope = 0;
+		}
 		if( pVmFunc->iFlags & VM_FUNC_CLASS_METHOD ){
 			ph7_class_method *pMeth;
 			/* Class method call */
@@ -10289,6 +10320,12 @@ case PH7_OP_CALL: {
 			VmErrorFormat(&(*pVm),PH7_CTX_ERR,
 				"PH7 is running out of memory while calling function '%z',NULL will be returned",
 				&pVmFunc->sName);
+			/* The frame that would own (and later release) $this never got created; for a bound
+			 * plain closure the consumed transient is the object's ONLY ref, so release it here
+			 * to avoid a leak (a method call's pThis stays owned by the receiver on the stack). */
+			if( bClosureThis && pThis ){
+				PH7_ClassInstanceUnref(pThis);
+			}
 			/* Pop given arguments */
 			if( nCallArgs > 0 ){
 				VmPopOperand(&pTos,nCallArgs);
@@ -10297,8 +10334,13 @@ case PH7_OP_CALL: {
 			PH7_MemObjRelease(pTos);
 			break;
 		}
-		if( (pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) && pThis ){
-			/* Install the '$this' variable */
+		if( bClosureThis && pClosureScope ){
+			/* Bound plain closure with an explicit scope: private/protected access inside the body
+			 * resolves against it (Closure::bindTo($o, Scope::class) / call($o)). */
+			pFrame->pBoundScope = pClosureScope;
+		}
+		if( pThis && ((pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) || bClosureThis) ){
+			/* Install the '$this' variable (a method call, or a bound plain closure — Increment 2). */
 			static const SyString sThis = { "this" , sizeof("this") - 1 };
 			pObj = VmExtractMemObj(&(*pVm),&sThis,FALSE,TRUE);
 			if( pObj ){
@@ -10621,8 +10663,14 @@ case PH7_OP_CALL: {
 				/* Variadic parameter: collect all remaining args into an array */
 				pObj = VmExtractMemObj(&(*pVm),&aFormalArg[n].sName,FALSE,TRUE);
 				if( pObj ){
+					/* Capture the slot index now: PH7_HashmapInsert below can PH7_ReserveMemObj,
+					 * reallocating pVm->aMemObj and dangling pObj — so don't read pObj->nIdx after
+					 * the packing loop (pre-existing UAF, masked by the pool allocator). pMap is a
+					 * separately-allocated hashmap and stays valid across the realloc. */
+					sxu32 nVariadicIdx;
 					/* Initialize as empty array */
 					PH7_MemObjToHashmap(pObj);
+					nVariadicIdx = pObj->nIdx;
 					{
 						ph7_hashmap *pMap = (ph7_hashmap *)pObj->x.pOther;
 						while( pArg < pTos ){
@@ -10706,7 +10754,7 @@ case PH7_OP_CALL: {
 							pArg++;
 						}
 					}
-					sArg.nIdx = pObj->nIdx;
+					sArg.nIdx = nVariadicIdx; /* pObj may be stale here (aMemObj realloc) — use the saved index */
 					sArg.pUserData = 0;
 					SySetPut(&pFrame->sArg,(const void *)&sArg);
 				}
@@ -11701,9 +11749,39 @@ static sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut)
 		bScope = pScope && (pScope->iFlags & MEMOBJ_STRING) && SyBlobLength(&pScope->sBlob) > 0;
 		if( bBoundObj || bScope ){
 			/* Method/static first-class callable -> [ target, "method" ] array callable. */
-			ph7_hashmap *pMap = PH7_NewHashmap(&(*pVm), 0, 0);
+			ph7_hashmap *pMap;
 			ph7_value sTarget, sMeth;
 			sxi32 rc;
+			if( bBoundObj ){
+				ph7_class_instance *pBoundObj = (ph7_class_instance *)pBound->x.pOther;
+				/* A bound PLAIN closure (`function(){…}->bindTo($o)`): $__fn names a function, not a
+				 * method of the bound object's class, so a [obj,method] array callable would fail
+				 * method resolution. Stash the bound object (own a ref) so the OP_CALL user-function
+				 * frame setup injects it as $this, and return the plain $__fn string for a normal
+				 * function dispatch. */
+				if( PH7_ClassExtractMethod(pBoundObj->pClass,
+						(const char *)SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob)) == 0 ){
+					/* Only a USER function (anonymous closure / named fn in hFunction) reads $this and
+					 * reaches the OP_CALL user-function frame-setup that consumes pClosureThis. A HOST
+					 * function (e.g. Closure::fromCallable('strlen')->bindTo($o)) ignores $this and
+					 * dispatches via the host path which never consumes the transient — setting it
+					 * there would leak the ref and inject a stale $this into the next call. */
+					if( SyHashGet(&pVm->hFunction, (const void *)SyBlobData(&pFn->sBlob),
+							SyBlobLength(&pFn->sBlob)) != 0 ){
+						pBoundObj->iRef++;
+						pVm->pClosureThis = pBoundObj;
+						/* Carry the bound scope (if set) so private/protected member access inside
+						 * the closure body resolves against it — bindTo($o, Scope::class) / call($o). */
+						if( bScope ){
+							pVm->pClosureScope = PH7_VmExtractClass(pVm,
+								(const char *)SyBlobData(&pScope->sBlob), SyBlobLength(&pScope->sBlob), FALSE, 0);
+						}
+					}
+					PH7_MemObjStringAppend(pOut, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));
+					return SXRET_OK;
+				}
+			}
+			pMap = PH7_NewHashmap(&(*pVm), 0, 0);
 			if( pMap == 0 ){
 				return SXERR_NOTFOUND;
 			}
@@ -11876,6 +11954,161 @@ static ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue)
 	/* Unreachable in practice — the PH7_VmIsCallable gate admits only string/array/object, all
 	 * handled above; kept to satisfy the non-void return path. */
 	return 0;
+}
+/*
+ * Return a fresh Closure instance (iRef==0 from create/clone) as a builtin result, taking the
+ * one reference into pCtx->pRet — mirrors the OP_LOAD_FCC store convention.
+ */
+static int VmClosureResult(ph7_context *pCtx, ph7_class_instance *pClosure)
+{
+	if( pClosure == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	PH7_MemObjRelease(pCtx->pRet);
+	pClosure->iRef++;
+	pCtx->pRet->x.pOther = pClosure;
+	MemObjSetType(pCtx->pRet, MEMOBJ_OBJ);
+	return PH7_OK;
+}
+/*
+ * Overwrite a Closure clone's $__this (bound object, or 0 to unbind) and, when pScope != 0, its
+ * $__scope (the class-name string; pScope->nByte==0 clears it). pScope==0 leaves $__scope as the
+ * clone inherited it (PHP's "static" = keep-scope). Refreshes VM_INSTANCE_FCC_BOUND from the result.
+ * The clone inherited a ref on the original $__this (PH7_CloneClassInstance copies via MemObjStore);
+ * this drops that and takes one on pNewThis.
+ */
+static void VmClosureRebind(ph7_class_instance *pClone,
+	ph7_class_instance *pNewThis, const SyString *pScope)
+{
+	SyString sAttr;
+	ph7_value *pThisAttr, *pScopeAttr;
+	int bBound = 0;
+	SyStringInitFromBuf(&sAttr, "__this", 6);
+	pThisAttr = PH7_ClassInstanceFetchAttr(pClone, &sAttr);
+	if( pThisAttr ){
+		/* PH7_MemObjRelease already drops the cloned-in object's refcount for an OBJ value —
+		 * do NOT also decrement by hand (that double-frees the original bound object). */
+		PH7_MemObjRelease(pThisAttr);
+		if( pNewThis ){
+			pThisAttr->x.pOther = pNewThis;
+			MemObjSetType(pThisAttr, MEMOBJ_OBJ);
+			pNewThis->iRef++;
+		}
+	}
+	if( pScope ){
+		SyStringInitFromBuf(&sAttr, "__scope", 7);
+		pScopeAttr = PH7_ClassInstanceFetchAttr(pClone, &sAttr);
+		if( pScopeAttr ){
+			PH7_MemObjRelease(pScopeAttr);
+			if( pScope->nByte ){
+				PH7_MemObjStringAppend(pScopeAttr, pScope->zString, pScope->nByte);
+			}
+		}
+	}
+	/* Refresh the FCC_BOUND fast-path flag from the resulting $__this/$__scope. pThisAttr already
+	 * points at the final $__this slot; only $__scope needs a (re)fetch — the top half fetched it
+	 * just for pScope != 0. */
+	SyStringInitFromBuf(&sAttr, "__scope", 7);
+	pScopeAttr = PH7_ClassInstanceFetchAttr(pClone, &sAttr);
+	if( (pThisAttr && (pThisAttr->iFlags & MEMOBJ_OBJ))
+		|| (pScopeAttr && (pScopeAttr->iFlags & MEMOBJ_STRING) && SyBlobLength(&pScopeAttr->sBlob) > 0) ){
+		bBound = 1;
+	}
+	if( bBound ){
+		pClone->iFlags |= VM_INSTANCE_FCC_BOUND;
+	}else{
+		pClone->iFlags &= ~VM_INSTANCE_FCC_BOUND;
+	}
+}
+/*
+ * Resolve the bindTo/bind/call $scope argument to a class-name SyString.
+ * Returns 1 and fills *pOut if $__scope should be replaced (pOut->nByte==0 means "clear");
+ * returns 0 to leave the scope unchanged (the PHP "static" sentinel / scope omitted).
+ */
+static int VmClosureResolveScope(ph7_value *pScopeArg, SyString *pOut)
+{
+	if( pScopeArg == 0 ){
+		return 0; /* keep */
+	}
+	if( (pScopeArg->iFlags & MEMOBJ_STRING) && SyBlobLength(&pScopeArg->sBlob) == 6
+		&& SyMemcmp((const void *)SyBlobData(&pScopeArg->sBlob), (const void *)"static", 6) == 0 ){
+		return 0; /* "static" -> keep current scope */
+	}
+	if( pScopeArg->iFlags & MEMOBJ_NULL ){
+		SyStringInitFromBuf(pOut, 0, 0); /* unscoped */
+		return 1;
+	}
+	if( pScopeArg->iFlags & MEMOBJ_OBJ ){
+		ph7_class_instance *pScopeObj = (ph7_class_instance *)pScopeArg->x.pOther;
+		*pOut = pScopeObj->pClass->sName;
+		return 1;
+	}
+	if( pScopeArg->iFlags & MEMOBJ_STRING ){
+		SyStringInitFromBuf(pOut, (const char *)SyBlobData(&pScopeArg->sBlob), SyBlobLength(&pScopeArg->sBlob));
+		return 1;
+	}
+	return 0;
+}
+/*
+ * Closure::bindTo($newThis, $scope='static') / Closure::bind($closure, $newThis, $scope='static').
+ * Clone the receiver and rebind $this/$scope; returns the new Closure (NULL on a non-Closure
+ * receiver, matching PHP's failure mode).
+ */
+static int vm_builtin_Closure_bindTo(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pClosure, *pNewThis, *pClone;
+	ph7_value *pNewThisArg;
+	SyString sScope;
+	const SyString *pScopePtr = 0;
+	if( nArg < 2 || !VmValueIsClosure(pVm, apArg[0]) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pClosure = (ph7_class_instance *)apArg[0]->x.pOther;
+	pNewThisArg = apArg[1];
+	if( pNewThisArg->iFlags & MEMOBJ_NULL ){
+		pNewThis = 0;
+	}else if( pNewThisArg->iFlags & MEMOBJ_OBJ ){
+		pNewThis = (ph7_class_instance *)pNewThisArg->x.pOther;
+	}else{
+		return PH7_VmThrowException(pCtx, "TypeError",
+			"Closure::bindTo(): Argument #1 ($newThis) must be of type ?object");
+	}
+	if( VmClosureResolveScope((nArg > 2) ? apArg[2] : 0, &sScope) ){
+		pScopePtr = &sScope;
+	}
+	pClone = PH7_CloneClassInstance(pClosure);
+	if( pClone == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	VmClosureRebind(pClone, pNewThis, pScopePtr);
+	return VmClosureResult(pCtx, pClone);
+}
+/*
+ * Closure::fromCallable($callable) — normalize any callable value to a Closure (reuses the
+ * VmFccWrapValue primitive); idempotent on a Closure; TypeError on a non-callable.
+ */
+static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pClosure;
+	if( nArg < 1 ){
+		return PH7_VmThrowException(pCtx, "TypeError",
+			"Closure::fromCallable() expects exactly 1 argument, 0 given");
+	}
+	if( VmValueIsClosure(pVm, apArg[0]) ){
+		ph7_result_value(pCtx, apArg[0]); /* already a Closure: idempotent */
+		return PH7_OK;
+	}
+	pClosure = VmFccWrapValue(pVm, apArg[0]);
+	if( pClosure == 0 ){
+		return PH7_VmThrowException(pCtx, "TypeError",
+			"Closure::fromCallable(): Argument #1 ($callback) is not a valid callback");
+	}
+	return VmClosureResult(pCtx, pClosure);
 }
 /*
  * Fiber::suspend($value = null) — static method.
@@ -13709,6 +13942,15 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 		PH7_MemObjInit(pVm,&sCallable);
 		if( VmClosureUnwrap(pVm,pFunc,&sCallable) == SXRET_OK ){
 			rcClo = PH7_VmCallUserFunctionWithMap(pVm,&sCallable,nArg,apArg,pResult,pArgMap);
+			/* A bound PLAIN closure parks its $this in pVm->pClosureThis for the (synthetic) OP_CALL
+			 * frame setup to consume. If that dispatch failed before the consume (e.g. operand-stack
+			 * OOM), the transient is still set — release its owned ref and clear it so it neither
+			 * leaks nor poisons the next call's frame with a stale $this. */
+			if( pVm->pClosureThis ){
+				PH7_ClassInstanceUnref(pVm->pClosureThis);
+				pVm->pClosureThis = 0;
+				pVm->pClosureScope = 0;
+			}
 			PH7_MemObjRelease(&sCallable);
 			return rcClo;
 		}
