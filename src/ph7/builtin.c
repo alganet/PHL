@@ -717,38 +717,59 @@ static int PH7_builtin_addslashes(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * Check if the given character is present in the given mask.
- * Return TRUE if present. FALSE otherwise.
+ * Build a 256-entry membership mask from a PHP charlist, expanding `a..z`
+ * byte ranges exactly like PHP's php_charmask(). On return aMask[c] != 0 iff
+ * the byte c belongs to the set. Emits the PHP-exact warnings for the three
+ * malformed-range shapes (ph7_context_throw_error_format prepends the active
+ * function name, so the messages omit it); on a bad range the surrounding
+ * bytes are still added and the scan never aborts. Reads only within
+ * [zList, zList+nLen).
+ *
+ * Use ONLY for the builtins whose charlist expands ranges the way PHP's
+ * php_charmask() does: trim/ltrim/rtrim/addcslashes (and quotemeta, whose set
+ * is a fixed literal with no ".."). Do NOT route strspn/strcspn/strtok/strpbrk
+ * through this — PHP treats their charlists literally, so expanding "a..z" here
+ * would be a behavior regression plus spurious "Invalid '..'-range" warnings.
  */
-static int cSlashCheckMask(int c,const char *zMask,int nLen)
+static void PH7_BuildCharMask(ph7_context *pCtx,const char *zList,int nLen,char aMask[256])
 {
-	const char *zEnd = &zMask[nLen];
-	while( zMask < zEnd ){
-		/* Support range syntax A..Z where A and Z are literal bytes.  The
-		 * original PH7 implementation ignored ranges; tests rely on them so
-		 * provide a simple on-the-fly check here. */
-		if( zMask + 3 < zEnd && zMask[1] == '.' && zMask[2] == '.' ){
-			int lo = (unsigned char)zMask[0];
-			int hi = (unsigned char)zMask[3];
-			if( lo > hi ){
-				int tmp = lo; lo = hi; hi = tmp;
+	const unsigned char *zIn  = (const unsigned char *)zList;
+	const unsigned char *zEnd = zIn + (nLen > 0 ? nLen : 0);
+	SyZero(aMask,256);
+	for( ; zIn < zEnd ; zIn++ ){
+		int c = zIn[0];
+		if( zIn + 3 < zEnd && zIn[1] == '.' && zIn[2] == '.' && zIn[3] >= c ){
+			/* Valid incrementing range c..zIn[3] */
+			int hi = zIn[3],k;
+			for( k = c ; k <= hi ; k++ ){
+				aMask[k] = 1;
 			}
-			if( c >= lo && c <= hi ){
-				return 1;
+			zIn += 3; /* the loop's ++ then steps past the range end */
+		}else if( zIn + 1 < zEnd && zIn[0] == '.' && zIn[1] == '.' ){
+			/* Malformed range: mirror php_charmask's three diagnostics. */
+			const char *zMsg;
+			if( (const unsigned char *)zList >= zIn ){
+				zMsg = "no character to the left of '..'";
+			}else if( zIn + 2 >= zEnd ){
+				zMsg = "no character to the right of '..'";
+			}else if( zIn[-1] > zIn[2] ){
+				zMsg = "'..'-range needs to be incrementing";
+			}else{
+				zMsg = 0; /* catch-all (e.g. a..b..c) */
 			}
-			/* consume the range specifier */
-			zMask += 4;
-			continue;
+			if( zMsg ){
+				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+					"Invalid '..'-range, %s",zMsg);
+			}else{
+				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+					"Invalid '..'-range");
+			}
+			/* Do not consume the dots: the loop's ++ steps one byte so the
+			 * dots are re-scanned as literals, exactly like php_charmask. */
+		}else{
+			aMask[c] = 1;
 		}
-		if( zMask[0] == c ){
-			/* Character present,return TRUE */
-			return 1;
-		}
-		/* Advance the pointer */
-		zMask++;
 	}
-	/* Not present */
-	return 0;
 }
 /*
  * string addcslashes(string $str,string $charlist)
@@ -763,11 +784,12 @@ static int cSlashCheckMask(int c,const char *zMask,int nLen)
  * Return
  *  Returns the escaped string.
  * Note:
- *  Range characters [i.e: 'A..Z'] is not implemented in the current release.
+ *  Character ranges [i.e: 'A..Z'] are supported (see PH7_BuildCharMask).
  */
 static int PH7_builtin_addcslashes(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zCur,*zIn,*zEnd,*zMask;
+	char aMask[256];
 	int nLen,nMask;
 	/* PHP enforces exactly two arguments. */
 	if( nArg != 2 ){
@@ -821,8 +843,9 @@ static int PH7_builtin_addcslashes(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_string(pCtx,zIn,nLen);
 		return PH7_OK;
 	}
-	/* Extract the desired mask */
+	/* Extract the desired mask and expand any `a..z` ranges into a lookup. */
 	zMask = ph7_value_to_string(apArg[1],&nMask);
+	PH7_BuildCharMask(pCtx,zMask,nMask,aMask);
 	zEnd = &zIn[nLen];
 	zCur = 0; /* cc warning */
 	for(;;){
@@ -831,7 +854,7 @@ static int PH7_builtin_addcslashes(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			break;
 		}
 		zCur = zIn;
-		while( zIn < zEnd && !cSlashCheckMask(zIn[0],zMask,nMask) ){
+		while( zIn < zEnd && !aMask[(unsigned char)zIn[0]] ){
 			zIn++;
 		}
 		if( zIn > zCur ){
@@ -879,6 +902,7 @@ static int PH7_builtin_addcslashes(ph7_context *pCtx,int nArg,ph7_value **apArg)
 static int PH7_builtin_quotemeta(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zCur,*zIn,*zEnd;
+	char aMask[256];
 	int nLen;
 	if( nArg < 1 ){
 		/* Nothing to process,retun NULL */
@@ -892,6 +916,8 @@ static int PH7_builtin_quotemeta(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
+	/* Fixed meta-character set (no ranges); build the lookup once. */
+	PH7_BuildCharMask(pCtx,".\\+*?[^]($)",(int)sizeof(".\\+*?[^]($)")-1,aMask);
 	zEnd = &zIn[nLen];
 	zCur = 0; /* cc warning */
 	for(;;){
@@ -900,7 +926,7 @@ static int PH7_builtin_quotemeta(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			break;
 		}
 		zCur = zIn;
-		while( zIn < zEnd && !cSlashCheckMask(zIn[0],".\\+*?[^]($)",(int)sizeof(".\\+*?[^]($)")-1) ){
+		while( zIn < zEnd && !aMask[(unsigned char)zIn[0]] ){
 			zIn++;
 		}
 		if( zIn > zCur ){
@@ -1879,7 +1905,7 @@ static int PH7_builtin_explode(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Returns.
  *  Thr processed string.
  * NOTE:
- *   RANGE CHARACTERS [I.E: 'a'..'z'] are not supported.
+ *   Character ranges [i.e: 'a..z'] are supported (see PH7_BuildCharMask).
  */
 static int PH7_builtin_trim(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -1913,47 +1939,22 @@ static int PH7_builtin_trim(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			/* Return the string unchanged */
 			ph7_result_string(pCtx,zString,nLen);
 		}else{
+			char aMask[256];
 			const char *zEnd = &zString[nLen];
 			const char *zCur = zString;
-			const char *zPtr;
-			int i;
+			PH7_BuildCharMask(pCtx,zList,nListlen,aMask);
 			/* Left trim */
-			for(;;){
-				if( zCur >= zEnd ){
-					break;
-				}
-				zPtr = zCur;
-				for( i = 0 ; i < nListlen ; i++ ){
-					if( zCur < zEnd && zCur[0] == zList[i] ){
-						zCur++;
-					}
-				}
-				if( zCur == zPtr ){
-					/* No match,break immediately */
-					break;
-				}
+			while( zCur < zEnd && aMask[(unsigned char)zCur[0]] ){
+				zCur++;
 			}
 			/* Right trim */
-			zEnd--;
-			for(;;){
-				if( zEnd <= zCur ){
-					break;
-				}
-				zPtr = zEnd;
-				for( i = 0 ; i < nListlen ; i++ ){
-					if( zEnd > zCur && zEnd[0] == zList[i] ){
-						zEnd--;
-					}
-				}
-				if( zEnd == zPtr ){
-					break;
-				}
+			while( zEnd > zCur && aMask[(unsigned char)zEnd[-1]] ){
+				zEnd--;
 			}
 			if( zCur >= zEnd ){
 				/* Return the empty string */
 				ph7_result_string(pCtx,"",0);
 			}else{
-				zEnd++;
 				ph7_result_string(pCtx,zCur,(int)(zEnd-zCur));
 			}
 		}
@@ -1973,7 +1974,7 @@ static int PH7_builtin_trim(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Returns.
  *  Thr processed string.
  * NOTE:
- *   RANGE CHARACTERS [I.E: 'a'..'z'] are not supported.
+ *   Character ranges [i.e: 'a..z'] are supported (see PH7_BuildCharMask).
  */
 static int PH7_builtin_rtrim(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -2007,30 +2008,18 @@ static int PH7_builtin_rtrim(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			/* Return the string unchanged */
 			ph7_result_string(pCtx,zString,nLen);
 		}else{
-			const char *zEnd = &zString[nLen - 1];
+			char aMask[256];
+			const char *zEnd = &zString[nLen];
 			const char *zCur = zString;
-			const char *zPtr;
-			int i;
+			PH7_BuildCharMask(pCtx,zList,nListlen,aMask);
 			/* Right trim */
-			for(;;){
-				if( zEnd <= zCur ){
-					break;
-				}
-				zPtr = zEnd;
-				for( i = 0 ; i < nListlen ; i++ ){
-					if( zEnd > zCur && zEnd[0] == zList[i] ){
-						zEnd--;
-					}
-				}
-				if( zEnd == zPtr ){
-					break;
-				}
+			while( zEnd > zCur && aMask[(unsigned char)zEnd[-1]] ){
+				zEnd--;
 			}
 			if( zEnd <= zCur ){
 				/* Return the empty string */
 				ph7_result_string(pCtx,"",0);
 			}else{
-				zEnd++;
 				ph7_result_string(pCtx,zCur,(int)(zEnd-zCur));
 			}
 		}
@@ -2050,7 +2039,7 @@ static int PH7_builtin_rtrim(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Returns.
  *  Thr processed string.
  * NOTE:
- *   RANGE CHARACTERS [I.E: 'a'..'z'] are not supported.
+ *   Character ranges [i.e: 'a..z'] are supported (see PH7_BuildCharMask).
  */
 static int PH7_builtin_ltrim(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -2084,25 +2073,13 @@ static int PH7_builtin_ltrim(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			/* Return the string unchanged */
 			ph7_result_string(pCtx,zString,nLen);
 		}else{
+			char aMask[256];
 			const char *zEnd = &zString[nLen];
 			const char *zCur = zString;
-			const char *zPtr;
-			int i;
+			PH7_BuildCharMask(pCtx,zList,nListlen,aMask);
 			/* Left trim */
-			for(;;){
-				if( zCur >= zEnd ){
-					break;
-				}
-				zPtr = zCur;
-				for( i = 0 ; i < nListlen ; i++ ){
-					if( zCur < zEnd && zCur[0] == zList[i] ){
-						zCur++;
-					}
-				}
-				if( zCur == zPtr ){
-					/* No match,break immediately */
-					break;
-				}
+			while( zCur < zEnd && aMask[(unsigned char)zCur[0]] ){
+				zCur++;
 			}
 			if( zCur >= zEnd ){
 				/* Return the empty string */
