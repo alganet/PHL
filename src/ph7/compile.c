@@ -4754,6 +4754,24 @@ static sxi32 PH7_CompileReturn(ph7_gen_state *pGen)
 {
 	sxi32 nRet = 0; /* TRUE if there is a return value */
 	sxi32 rc;
+	sxu32 nLine = pGen->pIn->nLine;
+	GenBlock *pFuncBlock = pGen->pCurrent;
+	/* A `never`-returning function must not contain a `return` statement at all
+	 * (PHP compile error), with or without a value. Find the enclosing function
+	 * (nearest GEN_BLOCK_FUNC) and check its declared return type. The error is
+	 * recorded (nErr>0 fails the whole compile); the statement is still consumed
+	 * normally below so token processing stays consistent. */
+	while( pFuncBlock && (pFuncBlock->iFlags & GEN_BLOCK_FUNC) == 0 ){
+		pFuncBlock = pFuncBlock->pParent;
+	}
+	if( pFuncBlock && pFuncBlock->pUserData
+	 && ((ph7_vm_func *)pFuncBlock->pUserData)->nReturnType == MEMOBJ_NEVER ){
+		rc = PH7_GenCompileError(pGen, E_ERROR, nLine,
+			"A never-returning function must not return");
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+	}
 	/* Jump the 'return' keyword */
 	pGen->pIn++;
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) == 0 ){
@@ -6557,19 +6575,23 @@ static sxi32 GenStateParseUnionTypeDecl(
 				}
 			}
 			if( aAtoms[i].nType == UTA_NEVER_FLAG ){
-				/* `never` is parsed but not yet implemented in the type
-				 * system. Reject it explicitly rather than silently aliasing
-				 * to `void` — the two have different semantics (never =
-				 * does not return), and folding them would mislead any
-				 * future return-enforcement work. */
-				if( nAtoms > 1 ){
+				/* `never` is a bottom type usable only as a standalone RETURN
+				 * type (never = the function does not return). Mirrors the void
+				 * validation above; accepted here and enforced at compile time
+				 * (explicit `return` banned) and run time (fall-off TypeError). */
+				if( nAtoms > 1 || bShortNullable ){
+					/* `?never` is `never|null`, a union — PHP reports it the
+					 * same as any other non-standalone use. */
 					PH7_GenCompileError(pGen, E_ERROR, nLine,
 						"never can only be used as a standalone type");
 					return SXERR_SYNTAX;
 				}
-				PH7_GenCompileError(pGen, E_ERROR, nLine,
-					"never type is not yet implemented");
-				return SXERR_SYNTAX;
+				if( !bAllowVoid ){
+					/* Return-only: params call with bAllowVoid=0. */
+					PH7_GenCompileError(pGen, E_ERROR, nLine,
+						"never cannot be used as a parameter type");
+					return SXERR_SYNTAX;
+				}
 			}
 			if( aAtoms[i].nType == UTA_NULL_FLAG ){
 				bExplicitNull = 1;
@@ -6673,9 +6695,9 @@ static sxi32 GenStateParseUnionTypeDecl(
 					if( pClass ) SyStringInitFromBuf(pClass, zDup, pA->sClass.nByte);
 				}else if( pA->nType == UTA_VOID_FLAG ){
 					*pnType = MEMOBJ_VOID;
+				}else if( pA->nType == UTA_NEVER_FLAG ){
+					*pnType = MEMOBJ_NEVER;
 				}else{
-					/* UTA_NEVER_FLAG never reaches here — the validation
-					 * pass above rejects it as not-yet-implemented. */
 					*pnType = pA->nType;
 				}
 			}
