@@ -12063,6 +12063,9 @@ static ph7_exec_ctx * VmNewExecCtx(ph7_vm *pVm, ph7_vm_func *pFunc)
 	/* Container for this body's own exception handlers while suspended (borrowed
 	 * ph7_exception* pointers — never freed here, owned by the compiled func). */
 	SySetInit(&pCtx->aSavedException, &pVm->sAllocator, sizeof(ph7_exception *));
+	/* ROOT C: this body's own pending finally actions while suspended. */
+	SySetInit(&pCtx->aSavedFinally, &pVm->sAllocator, sizeof(VmFinallyAction));
+	pCtx->nFinallyBase = 0;
 	/* Allocate a private operand stack */
 	pStack = VmNewOperandStack(pVm, SySetUsed(&pFunc->aByteCode));
 	if( pStack == 0 ){
@@ -12098,6 +12101,19 @@ static void VmParkCtxExceptionHandlers(ph7_vm *pVm, ph7_exec_ctx *pCtx)
 		}
 		SySetTruncate(&pVm->aException, pCtx->nExceptionBase);
 	}
+	/* ROOT C: park this body's own pending finally actions the same way, so a generator
+	 * that yields inside a finally (reached by return/break/rethrow, with a live record on
+	 * the shared aFinallyAction) does not leave that record where an out-of-order-resumed
+	 * sibling generator's OP_END_FINALLY would mis-pop it. */
+	nUsed = SySetUsed(&pVm->aFinallyAction);
+	if( nUsed > pCtx->nFinallyBase ){
+		VmFinallyAction *aBase = (VmFinallyAction *)SySetBasePtr(&pVm->aFinallyAction);
+		sxu32 i;
+		for( i = pCtx->nFinallyBase; i < nUsed; i++ ){
+			SySetPut(&pCtx->aSavedFinally, (const void *)&aBase[i]);
+		}
+		SySetTruncate(&pVm->aFinallyAction, pCtx->nFinallyBase);
+	}
 }
 /*
  * On resume, re-publish the parked handlers on top of pVm->aException (at the
@@ -12113,6 +12129,15 @@ static void VmRestoreCtxExceptionHandlers(ph7_vm *pVm, ph7_exec_ctx *pCtx)
 			SySetPut(&pVm->aException, (const void *)&apSaved[i]);
 		}
 		SySetReset(&pCtx->aSavedException);
+	}
+	/* ROOT C: re-publish this body's parked finally actions (inverse of the park above). */
+	n = SySetUsed(&pCtx->aSavedFinally);
+	if( n > 0 ){
+		VmFinallyAction *aSaved = (VmFinallyAction *)SySetBasePtr(&pCtx->aSavedFinally);
+		for( i = 0; i < n; i++ ){
+			SySetPut(&pVm->aFinallyAction, (const void *)&aSaved[i]);
+		}
+		SySetReset(&pCtx->aSavedFinally);
 	}
 }
 /*
@@ -12157,6 +12182,7 @@ static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
 	pVm->pActiveCtx = pCtx;
 	pCtx->iState = PH7_CTX_STATE_RUNNING;
 	pCtx->nExceptionBase = SySetUsed(&pVm->aException);
+	pCtx->nFinallyBase = SySetUsed(&pVm->aFinallyAction);
 	pVm->nRecursionDepth++;
 	/* Execute from the beginning */
 	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),
@@ -12226,6 +12252,7 @@ static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValu
 	 * try/catch and finally-drain bound line up (see VmByteCodeExec's base
 	 * override). Must run before VmByteCodeExec recaptures its local base. */
 	pCtx->nExceptionBase = SySetUsed(&pVm->aException);
+	pCtx->nFinallyBase = SySetUsed(&pVm->aFinallyAction);
 	VmRestoreCtxExceptionHandlers(pVm, pCtx);
 	/* Re-attach the fiber's frame to the VM frame chain */
 	pCtx->pFrame->pParent = pVm->pFrame;
@@ -12294,6 +12321,24 @@ static void VmReleaseExecCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx)
 	/* Free only the SySet backing — the parked ph7_exception* entries are owned
 	 * by the compiled function, not by us. */
 	SySetRelease(&pCtx->aSavedException);
+	/* ROOT C: a generator abandoned while suspended inside a finally may carry parked
+	 * finally actions holding owned values/refs (a RETURN's sRet, a RETHROW's pExc).
+	 * Release them so the abandon path leaks nothing. */
+	{
+		sxu32 n = SySetUsed(&pCtx->aSavedFinally);
+		if( n > 0 ){
+			VmFinallyAction *aA = (VmFinallyAction *)SySetBasePtr(&pCtx->aSavedFinally);
+			sxu32 i;
+			for( i = 0; i < n; i++ ){
+				if( aA[i].eKind == PH7_FA_RETURN ){
+					PH7_MemObjRelease(&aA[i].sRet);
+				}else if( aA[i].eKind == PH7_FA_RETHROW && aA[i].pExc ){
+					PH7_ClassInstanceUnref(aA[i].pExc);
+				}
+			}
+		}
+		SySetRelease(&pCtx->aSavedFinally);
+	}
 	/* Release the frame if it's detached (not in the VM chain) */
 	if( pCtx->pFrame ){
 		VmSlot *aSlot;

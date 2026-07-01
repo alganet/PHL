@@ -470,6 +470,12 @@ struct ph7_exec_ctx
 	                           * parked here while suspended so a generator/fiber that
 	                           * suspends inside a try does not corrupt the caller's
 	                           * exception stack */
+	SySet aSavedFinally;      /* ROOT C: this body's own pending finally actions
+	                           * (VmFinallyAction), parked while suspended so a generator
+	                           * that yields inside a finally reached by return/break/rethrow
+	                           * does not leave its record on the shared VM stack (where an
+	                           * out-of-order-resumed sibling generator would mis-pop it) */
+	sxu32 nFinallyBase;       /* aFinallyAction depth below this body's own records */
 	void *pPrivate;           /* Generator wrapper (ph7_generator*) or NULL for fibers */
 	ph7_class_instance *pInjected; /* Generator::throw() inject-at-yield: exception to raise at
 	                                * the suspended yield on the next resume, or NULL. One-shot:

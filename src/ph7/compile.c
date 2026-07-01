@@ -10450,6 +10450,10 @@ static sxi32 PH7_CompileTryInline(ph7_gen_state *pGen, ph7_exception *pException
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_CATCH,(sxi32)k,0,pException,0);
 			rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_EXCEPTION,PH7_VmInstrLength(pGen->pVm),0,&pCatchBlk);
 			if( rc != SXRET_OK ){ return SXERR_ABORT; }
+			/* Tag the catch block with its try so a break/continue leaving the catch counts
+			 * this try's finally (VmThrowInline keeps the handler on aException as iInCatch
+			 * during the catch, so VmFinallyAdvance can run the finally then take the jump). */
+			pCatchBlk->pUserData = pException;
 			rc = PH7_CompileBlock(&(*pGen),0);
 			if( rc == SXERR_ABORT ){ return SXERR_ABORT; }
 			GenStateFixJumps(pCatchBlk,-1,PH7_VmInstrLength(pGen->pVm));
