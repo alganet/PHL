@@ -22,7 +22,7 @@ Coverage: 152/261 lines (58.24%)
 |    - |   12 | ` */` |
 |    - |   13 | `typedef struct zip_raw_data zip_raw_data;` |
 |    - |   14 | `struct zip_raw_data` |
-|    - |   15 |  |
+|    - |   15 | `{` |
 |    - |   16 | `	int iType;         /* Where the raw data is stored */` |
 |    - |   17 | `	union raw_data{` |
 |    - |   18 | `		struct mmap_data{` |
@@ -49,7 +49,7 @@ Coverage: 152/261 lines (58.24%)
 |    - |   39 | `  *  A resource handle for later use with zip_read() and zip_close() or FALSE on failure.` |
 |    - |   40 | `  */` |
 |   30 |   41 | `PH7_PRIVATE int PH7_builtin_zip_open(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    3 |   42 |  |
+|    3 |   42 | `{` |
 |    - |   43 | `	const ph7_io_stream *pStream;` |
 |    - |   44 | `	SyArchive *pArchive;` |
 |    - |   45 | `	zip_raw_data *pRaw;` |
@@ -148,7 +148,7 @@ Coverage: 152/261 lines (58.24%)
 |    - |  138 | `	/* Return the in-memory archive as a resource handle */` |
 |   16 |  139 | `	ph7_result_resource(pCtx,pArchive);` |
 |   16 |  140 | `	return PH7_OK;` |
-|   18 |  141 |  |
+|   18 |  141 | `}` |
 |    - |  142 | `/*` |
 |    - |  143 | `  * void zip_close(resource $zip)` |
 |    - |  144 | `  *  Close an in-memory ZIP archive.` |
@@ -159,7 +159,7 @@ Coverage: 152/261 lines (58.24%)
 |    - |  149 | `  *  null.` |
 |    - |  150 | `  */` |
 |   14 |  151 | `PH7_PRIVATE int PH7_builtin_zip_close(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    2 |  152 |  |
+|    2 |  152 | `{` |
 |    - |  153 | `	SyArchive *pArchive;` |
 |    - |  154 | `	zip_raw_data *pRaw;` |
 |   16 |  155 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
@@ -189,7 +189,7 @@ Coverage: 152/261 lines (58.24%)
 |    - |  179 | `	/* Release the memory chunk */` |
 |   16 |  180 | `	ph7_context_free_chunk(pCtx,pArchive);` |
 |   16 |  181 | `	return PH7_OK;` |
-|    9 |  182 |  |
+|    9 |  182 | `}` |
 |    - |  183 | `/*` |
 |    - |  184 | `  * mixed zip_read(resource $zip)` |
 |    - |  185 | `  *  Reads the next entry from an in-memory ZIP archive.` |
@@ -201,7 +201,7 @@ Coverage: 152/261 lines (58.24%)
 |    - |  191 | `  *  or FALSE if there are no more entries to read, or an error code if an error occurred.` |
 |    - |  192 | `  */` |
 |    8 |  193 | `PH7_PRIVATE int PH7_builtin_zip_read(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    2 |  194 |  |
+|    2 |  194 | `{` |
 |   10 |  195 | `	SyArchiveEntry *pNext = 0; /* cc warning */` |
 |    - |  196 | `	SyArchive *pArchive;` |
 |    - |  197 | `	sxi32 rc;` |
@@ -233,7 +233,7 @@ Coverage: 152/261 lines (58.24%)
 |   10 |  223 | `		pNext->pUserData = (void *)&pArchive[1];` |
 |    - |  224 | `	}` |
 |   10 |  225 | `	return PH7_OK;` |
-|    6 |  226 |  |
+|    6 |  226 | `}` |
 |    - |  227 | `/*` |
 |    - |  228 | `  * bool zip_entry_open(resource $zip,resource $zip_entry[,string $mode ])` |
 |    - |  229 | `  *  Open a directory entry for reading` |
@@ -249,7 +249,7 @@ Coverage: 152/261 lines (58.24%)
 |    - |  239 | `  *  or FALSE if there are no more entries to read, or an error code if an error occurred.` |
 |    - |  240 | `  */` |
 |    2 |  241 | `PH7_PRIVATE int PH7_builtin_zip_entry_open(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  242 |  |
+|    1 |  242 | `{` |
 |    - |  243 | `	SyArchiveEntry *pEntry;` |
 |    - |  244 | `	SyArchive *pArchive;` |
 |    3 |  245 | `	if( nArg < 2 \|\| !ph7_value_is_resource(apArg[0]) \|\| !ph7_value_is_resource(apArg[1]) ){` |
@@ -279,7 +279,7 @@ Coverage: 152/261 lines (58.24%)
 |    - |  269 | `	/* All done. Actually this function is a no-op,return TRUE */` |
 |    3 |  270 | `	ph7_result_bool(pCtx,1);` |
 |    3 |  271 | `	return PH7_OK;` |
-|    2 |  272 |  |
+|    2 |  272 | `}` |
 |    - |  273 | `/*` |
 |    - |  274 | `  * bool zip_entry_close(resource $zip_entry)` |
 |    - |  275 | `  *  Close a directory entry.` |
@@ -290,7 +290,7 @@ Coverage: 152/261 lines (58.24%)
 |    - |  280 | `  *  Returns TRUE on success or FALSE on failure.` |
 |    - |  281 | `  */` |
 |    6 |  282 | `PH7_PRIVATE int PH7_builtin_zip_entry_close(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  283 |  |
+|    1 |  283 | `{` |
 |    - |  284 | `	SyArchiveEntry *pEntry;` |
 |    7 |  285 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |    - |  286 | `		/* Missing/Invalid arguments */` |
@@ -312,7 +312,7 @@ Coverage: 152/261 lines (58.24%)
 |    - |  302 | `	/*All done. Actually this function is a no-op,return TRUE */` |
 |    7 |  303 | `	ph7_result_bool(pCtx,1);` |
 |    7 |  304 | `	return PH7_OK;` |
-|    4 |  305 |  |
+|    4 |  305 | `}` |
 |    - |  306 | `/*` |
 |    - |  307 | `  * string zip_entry_name(resource $zip_entry)` |
 |    - |  308 | `  *  Retrieve the name of a directory entry.` |
@@ -323,7 +323,7 @@ Coverage: 152/261 lines (58.24%)
 |    - |  313 | `  *  The name of the directory entry.` |
 |    - |  314 | `  */` |
 |    2 |  315 | `PH7_PRIVATE int PH7_builtin_zip_entry_name(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  316 |  |
+|    1 |  316 | `{` |
 |    - |  317 | `	SyArchiveEntry *pEntry;` |
 |    - |  318 | `	SyString *pName;` |
 |    3 |  319 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
@@ -345,7 +345,7 @@ Coverage: 152/261 lines (58.24%)
 |    3 |  335 | `	pName = &pEntry->sFileName;` |
 |    3 |  336 | `	ph7_result_string(pCtx,pName->zString,(int)pName->nByte);` |
 |    3 |  337 | `	return PH7_OK;` |
-|    2 |  338 |  |
+|    2 |  338 | `}` |
 |    - |  339 | `/*` |
 |    - |  340 | `  * int64 zip_entry_filesize(resource $zip_entry)` |
 |    - |  341 | `  *  Retrieve the actual file size of a directory entry.` |
@@ -356,7 +356,7 @@ Coverage: 152/261 lines (58.24%)
 |    - |  346 | `  *  The size of the directory entry.` |
 |    - |  347 | `  */` |
 |    4 |  348 | `PH7_PRIVATE int PH7_builtin_zip_entry_filesize(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  349 |  |
+|    1 |  349 | `{` |
 |    - |  350 | `	SyArchiveEntry *pEntry;` |
 |    5 |  351 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |    - |  352 | `		/* Missing/Invalid arguments */` |
@@ -376,7 +376,7 @@ Coverage: 152/261 lines (58.24%)
 |    - |  366 | `	/* Return entry size */` |
 |    5 |  367 | `	ph7_result_int64(pCtx,(ph7_int64)pEntry->nByte);` |
 |    5 |  368 | `	return PH7_OK;` |
-|    3 |  369 |  |
+|    3 |  369 | `}` |
 |    - |  370 | `/*` |
 |    - |  371 | `  * int64 zip_entry_compressedsize(resource $zip_entry)` |
 |    - |  372 | `  *  Retrieve the compressed size of a directory entry.` |
@@ -387,7 +387,7 @@ Coverage: 152/261 lines (58.24%)
 |    - |  377 | `  *  The compressed size.` |
 |    - |  378 | `  */` |
 |    2 |  379 | `PH7_PRIVATE int PH7_builtin_zip_entry_compressedsize(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  380 |  |
+|    1 |  380 | `{` |
 |    - |  381 | `	SyArchiveEntry *pEntry;` |
 |    3 |  382 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |    - |  383 | `		/* Missing/Invalid arguments */` |
@@ -407,7 +407,7 @@ Coverage: 152/261 lines (58.24%)
 |    - |  397 | `	/* Return entry compressed size */` |
 |    3 |  398 | `	ph7_result_int64(pCtx,(ph7_int64)pEntry->nByteCompr);` |
 |    3 |  399 | `	return PH7_OK;` |
-|    2 |  400 |  |
+|    2 |  400 | `}` |
 |    - |  401 | `/*` |
 |    - |  402 | `  * string zip_entry_read(resource $zip_entry[,int $length])` |
 |    - |  403 | `  *  Reads from an open directory entry.` |
@@ -421,7 +421,7 @@ Coverage: 152/261 lines (58.24%)
 |    - |  411 | `  *  Returns the data read, or FALSE if the end of the file is reached.` |
 |    - |  412 | `  */` |
 |    2 |  413 | `PH7_PRIVATE int PH7_builtin_zip_entry_read(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  414 |  |
+|    1 |  414 | `{` |
 |    - |  415 | `	SyArchiveEntry *pEntry;` |
 |    - |  416 | `	zip_raw_data *pRaw;` |
 |    - |  417 | `	const char *zData;` |
@@ -472,7 +472,7 @@ Coverage: 152/261 lines (58.24%)
 |    - |  462 | `	/* Return the raw data */` |
 |    3 |  463 | `	ph7_result_string(pCtx,zData,iLength);` |
 |    3 |  464 | `	return PH7_OK;` |
-|    2 |  465 |  |
+|    2 |  465 | `}` |
 |    - |  466 | `/*` |
 |    - |  467 | `  * bool zip_entry_reset_read_cursor(resource $zip_entry)` |
 |    - |  468 | `  *  Reset the read cursor of an open directory entry.` |
@@ -484,7 +484,7 @@ Coverage: 152/261 lines (58.24%)
 |    - |  474 | `  * Note that this is a symisc eXtension.` |
 |    - |  475 | `  */` |
 |    6 |  476 | `PH7_PRIVATE int PH7_builtin_zip_entry_reset_read_cursor(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  477 |  |
+|    1 |  477 | `{` |
 |    - |  478 | `	SyArchiveEntry *pEntry;` |
 |    7 |  479 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |    - |  480 | `		/* Missing/Invalid arguments */` |
@@ -506,7 +506,7 @@ Coverage: 152/261 lines (58.24%)
 |    - |  496 | `	/* Return TRUE */` |
 |    3 |  497 | `	ph7_result_bool(pCtx,1);` |
 |    3 |  498 | `	return PH7_OK;` |
-|    4 |  499 |  |
+|    4 |  499 | `}` |
 |    - |  500 | `/*` |
 |    - |  501 | `  * string zip_entry_compressionmethod(resource $zip_entry)` |
 |    - |  502 | `  *  Retrieve the compression method of a directory entry.` |
@@ -517,7 +517,7 @@ Coverage: 152/261 lines (58.24%)
 |    - |  507 | `  *  The compression method on success or FALSE on failure.` |
 |    - |  508 | `  */` |
 |    2 |  509 | `PH7_PRIVATE int PH7_builtin_zip_entry_compressionmethod(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  510 |  |
+|    1 |  510 | `{` |
 |    - |  511 | `	SyArchiveEntry *pEntry;` |
 |    3 |  512 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |    - |  513 | `		/* Missing/Invalid arguments */` |
@@ -563,6 +563,6 @@ Coverage: 152/261 lines (58.24%)
 |  ! 0 |  553 | `		break;` |
 |    - |  554 | `	}` |
 |    3 |  555 | `	return PH7_OK;` |
-|    2 |  556 |  |
+|    2 |  556 | `}` |
 |    - |  557 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
 |    - |  558 |  |

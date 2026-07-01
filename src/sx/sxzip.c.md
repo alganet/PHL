@@ -124,24 +124,24 @@ Coverage: 219/293 lines (74.74%)
 |    - |  114 |  |
 |    - |  115 | `#define SXARCHIVE_HASH_SIZE	64 /* Starting hash table size(MUST BE POWER OF 2)*/` |
 |  154 |  116 | `static sxi32 SyLittleEndianUnpack32(sxu32 *uNB,const unsigned char *buf,sxu32 Len)` |
-|    2 |  117 |  |
+|    2 |  117 | `{` |
 |  156 |  118 | `	if( Len < sizeof(sxu32) ){` |
 |  ! 0 |  119 | `		return SXERR_SHORT;` |
 |    - |  120 | `	}` |
 |  156 |  121 | `	*uNB =  buf[0] + (buf[1] << 8) + (buf[2] << 16) + (buf[3] << 24);` |
 |  156 |  122 | `	return SXRET_OK;` |
-|   79 |  123 |  |
+|   79 |  123 | `}` |
 |  156 |  124 | `static sxi32 SyLittleEndianUnpack16(sxu16 *pOut,const unsigned char *zBuf,sxu32 nLen)` |
-|    2 |  125 |  |
+|    2 |  125 | `{` |
 |  158 |  126 | `	if( nLen < sizeof(sxu16) ){` |
 |  ! 0 |  127 | `		return SXERR_SHORT;` |
 |    - |  128 | `	}` |
 |  158 |  129 | `	*pOut = zBuf[0] + (zBuf[1] <<8);` |
 |    - |  130 |  |
 |  158 |  131 | `	return SXRET_OK;` |
-|   80 |  132 |  |
+|   80 |  132 | `}` |
 |   18 |  133 | `static sxi32 SyDosTimeFormat(sxu32 nDosDate,Sytm *pOut)` |
-|    2 |  134 |  |
+|    2 |  134 | `{` |
 |    - |  135 | `	sxu16 nDate;` |
 |    - |  136 | `	sxu16 nTime;` |
 |   20 |  137 | `	nDate = nDosDate >> 16;` |
@@ -154,12 +154,12 @@ Coverage: 219/293 lines (74.74%)
 |   20 |  144 | `	pOut->tm_min	= (nTime % (1<<11)) >> 5;` |
 |   20 |  145 | `	pOut->tm_sec	= ((nTime % (1<<11))& 0x1F )<<1;` |
 |   20 |  146 | `	return SXRET_OK;` |
-|    2 |  147 |  |
+|    2 |  147 | `}` |
 |    - |  148 | `/*` |
 |    - |  149 | ` * Archive hashtable manager` |
 |    - |  150 | ` */` |
 |   14 |  151 | `static sxi32 ArchiveHashGetEntry(SyArchive *pArch,const char *zName,sxu32 nLen,SyArchiveEntry **ppEntry)` |
-|    2 |  152 |  |
+|    2 |  152 | `{` |
 |    - |  153 | `	SyArchiveEntry *pBucketEntry;` |
 |    - |  154 | `	SyString sEntry;` |
 |    - |  155 | `	sxu32 nHash;` |
@@ -182,17 +182,17 @@ Coverage: 219/293 lines (74.74%)
 |  ! 0 |  172 | `		pBucketEntry = pBucketEntry->pNextHash;` |
 |  ! 0 |  173 | `	}` |
 |   16 |  174 | `	return SXERR_NOTFOUND;` |
-|    9 |  175 |  |
+|    9 |  175 | `}` |
 |   14 |  176 | `static void ArchiveHashBucketInstall(SyArchiveEntry **apTable,sxu32 nBucket,SyArchiveEntry *pEntry)` |
-|    2 |  177 |  |
+|    2 |  177 | `{` |
 |   16 |  178 | `	pEntry->pNextHash = apTable[nBucket];` |
 |   16 |  179 | `	if( apTable[nBucket] != 0 ){` |
 |  ! 0 |  180 | `		apTable[nBucket]->pPrevHash = pEntry;` |
 |  ! 0 |  181 | `	}` |
 |   16 |  182 | `	apTable[nBucket] = pEntry;` |
-|   16 |  183 |  |
+|   16 |  183 | `}` |
 |  ! 0 |  184 | `static sxi32 ArchiveHashGrowTable(SyArchive *pArch)` |
-|  ! 0 |  185 |  |
+|  ! 0 |  185 | `{` |
 |  ! 0 |  186 | `	sxu32 nNewSize = pArch->nSize * 2;` |
 |    - |  187 | `	SyArchiveEntry **apNew;` |
 |    - |  188 | `	SyArchiveEntry *pEntry;` |
@@ -215,9 +215,9 @@ Coverage: 219/293 lines (74.74%)
 |  ! 0 |  205 | `	pArch->nSize = nNewSize;` |
 |    - |  206 |  |
 |  ! 0 |  207 | `	return SXRET_OK;` |
-|  ! 0 |  208 |  |
+|  ! 0 |  208 | `}` |
 |   14 |  209 | `static sxi32 ArchiveHashInstallEntry(SyArchive *pArch,SyArchiveEntry *pEntry)` |
-|    2 |  210 |  |
+|    2 |  210 | `{` |
 |   16 |  211 | `	if( pArch->nLoaded > pArch->nSize * 3 ){` |
 |  ! 0 |  212 | `		ArchiveHashGrowTable(&(*pArch));` |
 |  ! 0 |  213 | `	}` |
@@ -228,7 +228,7 @@ Coverage: 219/293 lines (74.74%)
 |   16 |  218 | `	pArch->nLoaded++;` |
 |    - |  219 |  |
 |   16 |  220 | `	return SXRET_OK;` |
-|    2 |  221 |  |
+|    2 |  221 | `}` |
 |    - |  222 | ` /*` |
 |    - |  223 | `  * Parse the End of central directory and report status` |
 |    - |  224 | `  */` |
@@ -339,9 +339,9 @@ Coverage: 219/293 lines (74.74%)
 |    - |  329 | ` 	/* Update the offset to point to the next central directory record */` |
 |   20 |  330 | ` 	*pNextOffset =  SXZIP_CENTRAL_HDRSZ + pName->nByte + pEntry->nExtra + nComment;` |
 |   20 |  331 | ` 	return rc; /* Report failure or success */` |
-|    2 |  332 |  |
+|    2 |  332 | `}` |
 |   18 |  333 | `static sxi32 ZipFixOffset(SyArchiveEntry *pEntry,void *pSrc)` |
-|    2 |  334 |  |
+|    2 |  334 | `{` |
 |    - |  335 | `	sxu16 nExtra,nNameLen;` |
 |    - |  336 | `	unsigned char *zHdr;` |
 |   20 |  337 | `	nExtra = nNameLen = 0;` |
@@ -355,12 +355,12 @@ Coverage: 219/293 lines (74.74%)
 |    - |  345 | `	/* Fix contents offset */` |
 |   16 |  346 | `	pEntry->nOfft += SXZIP_LOCAL_HDRSZ + nExtra + nNameLen;` |
 |   16 |  347 | `	return SXRET_OK;` |
-|   11 |  348 |  |
+|   11 |  348 | `}` |
 |    - |  349 | `/*` |
 |    - |  350 | ` * Extract all valid entries from the central directory` |
 |    - |  351 | ` */` |
 |   18 |  352 | `static sxi32 ZipExtract(SyArchive *pArch,const unsigned char *zCentral,sxu32 nLen,void *pSrc)` |
-|    2 |  353 |  |
+|    2 |  353 | `{` |
 |    - |  354 | `	SyArchiveEntry *pEntry,*pDup;` |
 |    - |  355 | `	const unsigned char *zEnd ; /* End of central directory */` |
 |    - |  356 | `	sxu32 nIncr,nOfft;          /* Central Offset */` |
@@ -430,7 +430,7 @@ Coverage: 219/293 lines (74.74%)
 |   20 |  420 | `	pArch->pCursor = pArch->pList;` |
 |    - |  421 |  |
 |   20 |  422 | `	return pArch->nLoaded > 0 ? SXRET_OK : SXERR_EMPTY;` |
-|    2 |  423 |  |
+|    2 |  423 | `}` |
 |   28 |  424 | `PH7_PRIVATE sxi32 SyZipExtractFromBuf(SyArchive *pArch,const char *zBuf,sxu32 nLen)` |
 |    2 |  425 | ` {` |
 |    - |  426 | ` 	const unsigned char *zCentral,*zEnd;` |

@@ -60,37 +60,37 @@ Coverage: 277/450 lines (61.56%)
 |    - |   50 | ` * (PHL_PhpBinaryConst is static to phl.c, so the server keeps its own). */` |
 |    - |   51 | `static const char *g_phpBinaryPath = 0;` |
 |    4 |   52 | `static void PhlServerPhpBinaryConst(ph7_value *pVal, void *pUserData)` |
-|  ! 0 |   53 |  |
+|  ! 0 |   53 | `{` |
 |    4 |   54 | `	ph7_value_string(pVal, (const char *)pUserData, -1);` |
-|    4 |   55 |  |
+|    4 |   55 | `}` |
 |    - |   56 | `/* Define PHP_BINARY on a freshly compiled VM. Constants persist across` |
 |    - |   57 | ` * ph7_vm_reset(), so a cache-owned VM needs this only once, at compile time. */` |
 |   18 |   58 | `static void DefinePhpBinary(ph7_vm *pVm)` |
-|  ! 0 |   59 |  |
+|  ! 0 |   59 | `{` |
 |   18 |   60 | `	if( g_phpBinaryPath ){` |
 |   18 |   61 | `		ph7_create_constant(pVm, "PHP_BINARY", PhlServerPhpBinaryConst, (void *)g_phpBinaryPath);` |
 |    9 |   62 | `	}` |
-|   18 |   63 |  |
+|   18 |   63 | `}` |
 |    - |   64 |  |
 |    - |   65 | `#ifdef __WINNT__` |
 |    - |   66 | `static BOOL WINAPI ConsoleCtrlHandler(DWORD dwCtrlType)` |
-|  ! 0 |   67 |  |
+|  ! 0 |   67 | `{` |
 |    - |   68 | `	(void)dwCtrlType;` |
 |  ! 0 |   69 | `	g_shutdown = 1;` |
 |  ! 0 |   70 | `	return TRUE;` |
-|  ! 0 |   71 |  |
+|  ! 0 |   71 | `}` |
 |    - |   72 | `#else` |
 |   22 |   73 | `static void SignalHandler(int sig)` |
-|    - |   74 |  |
+|    - |   74 | `{` |
 |   11 |   75 | `	(void)sig;` |
 |   22 |   76 | `	g_shutdown = 1;` |
-|   22 |   77 |  |
+|   22 |   77 | `}` |
 |    - |   78 | `#endif` |
 |    - |   79 | `/*` |
 |    - |   80 | ` * Install signal handlers for graceful shutdown.` |
 |    - |   81 | ` */` |
 |   22 |   82 | `static void InstallSignalHandlers(void)` |
-|  ! 0 |   83 |  |
+|  ! 0 |   83 | `{` |
 |    - |   84 | `#ifdef __WINNT__` |
 |  ! 0 |   85 | `	SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);` |
 |    - |   86 | `#else` |
@@ -100,7 +100,7 @@ Coverage: 277/450 lines (61.56%)
 |   22 |   90 | `	sigaction(SIGINT, &sa, 0);` |
 |   22 |   91 | `	sigaction(SIGTERM, &sa, 0);` |
 |    - |   92 | `#endif` |
-|   22 |   93 |  |
+|   22 |   93 | `}` |
 |    - |   94 | `/*` |
 |    - |   95 | ` * MIME type lookup table.` |
 |    - |   96 | ` */` |
@@ -130,7 +130,7 @@ Coverage: 277/450 lines (61.56%)
 |    - |  120 | `	{ 0, 0 }` |
 |    - |  121 | `};` |
 |    4 |  122 | `static const char *GetMimeType(const char *zPath)` |
-|  ! 0 |  123 |  |
+|  ! 0 |  123 | `{` |
 |    - |  124 | `	const char *zDot;` |
 |    - |  125 | `	int i;` |
 |    4 |  126 | `	zDot = strrchr(zPath, '.');` |
@@ -149,13 +149,13 @@ Coverage: 277/450 lines (61.56%)
 |    - |  139 | `		}` |
 |   12 |  140 | `	}` |
 |  ! 0 |  141 | `	return "application/octet-stream";` |
-|    2 |  142 |  |
+|    2 |  142 | `}` |
 |    - |  143 | `/*` |
 |    - |  144 | ` * Check if a path contains directory traversal sequences.` |
 |    - |  145 | ` * Returns 1 if the path is safe, 0 if it contains "..".` |
 |    - |  146 | ` */` |
 |   30 |  147 | `static int IsPathSafe(const char *zPath)` |
-|  ! 0 |  148 |  |
+|  ! 0 |  148 | `{` |
 |   30 |  149 | `	const char *z = zPath;` |
 |  300 |  150 | `	while( *z ){` |
 |  270 |  151 | `		if( z[0] == '.' && z[1] == '.' && (z[2] == '/' \|\| z[2] == '\\' \|\| z[2] == 0) ){` |
@@ -164,13 +164,13 @@ Coverage: 277/450 lines (61.56%)
 |  270 |  154 | `		z++;` |
 |  ! 0 |  155 | `	}` |
 |   30 |  156 | `	return 1;` |
-|   15 |  157 |  |
+|   15 |  157 | `}` |
 |    - |  158 | `/*` |
 |    - |  159 | ` * Check if a file exists and is a regular file.` |
 |    - |  160 | ` * Returns 1 if it exists, 0 otherwise. Sets *pSize to the file size.` |
 |    - |  161 | ` */` |
 |   30 |  162 | `static int FileExists(const char *zPath, long *pSize)` |
-|  ! 0 |  163 |  |
+|  ! 0 |  163 | `{` |
 |    - |  164 | `#ifdef __WINNT__` |
 |    - |  165 | `	WIN32_FILE_ATTRIBUTE_DATA info;` |
 |  ! 0 |  166 | `	if( !GetFileAttributesExA(zPath, GetFileExInfoStandard, &info) ){` |
@@ -196,12 +196,12 @@ Coverage: 277/450 lines (61.56%)
 |   14 |  186 | `	}` |
 |   28 |  187 | `	return 1;` |
 |    - |  188 | `#endif` |
-|   15 |  189 |  |
+|   15 |  189 | `}` |
 |    - |  190 | `/*` |
 |    - |  191 | ` * Check if a path is a directory.` |
 |    - |  192 | ` */` |
 |   30 |  193 | `static int IsDirectory(const char *zPath)` |
-|  ! 0 |  194 |  |
+|  ! 0 |  194 | `{` |
 |    - |  195 | `#ifdef __WINNT__` |
 |  ! 0 |  196 | `	DWORD attr = GetFileAttributesA(zPath);` |
 |  ! 0 |  197 | `	return (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY));` |
@@ -212,7 +212,7 @@ Coverage: 277/450 lines (61.56%)
 |    - |  202 | `	}` |
 |   28 |  203 | `	return S_ISDIR(st.st_mode);` |
 |    - |  204 | `#endif` |
-|   15 |  205 |  |
+|   15 |  205 | `}` |
 |    - |  206 | `/*` |
 |    - |  207 | ` * Read the full HTTP request from a socket into a buffer.` |
 |    - |  208 | ` * Reads headers first (until \r\n\r\n), then reads the body` |
@@ -220,7 +220,7 @@ Coverage: 277/450 lines (61.56%)
 |    - |  210 | ` * Returns total bytes read, or -1 on error.` |
 |    - |  211 | ` */` |
 |   30 |  212 | `static int ReadRequest(ph7_socket sock, char *zBuf, int nBufSize)` |
-|  ! 0 |  213 |  |
+|  ! 0 |  213 | `{` |
 |   30 |  214 | `	int nTotal = 0;` |
 |    - |  215 | `	int nRead;` |
 |    - |  216 | `	char *zHeaderEnd;` |
@@ -264,13 +264,13 @@ Coverage: 277/450 lines (61.56%)
 |  ! 0 |  254 | `	}` |
 |   30 |  255 | `	zBuf[nTotal] = 0;` |
 |   30 |  256 | `	return nTotal;` |
-|   15 |  257 |  |
+|   15 |  257 | `}` |
 |    - |  258 | `/*` |
 |    - |  259 | ` * Send an HTTP response with headers.` |
 |    - |  260 | ` */` |
 |    2 |  261 | `static void SendResponse(ph7_socket sock, int iStatus, const char *zStatus,` |
 |    - |  262 | `						 const char *zContentType, const void *pBody, int nBodyLen)` |
-|  ! 0 |  263 |  |
+|  ! 0 |  263 | `{` |
 |    - |  264 | `	char zHeader[512];` |
 |    - |  265 | `	int nHeader;` |
 |    2 |  266 | `	nHeader = snprintf(zHeader, sizeof(zHeader),` |
@@ -285,12 +285,12 @@ Coverage: 277/450 lines (61.56%)
 |    2 |  275 | `	if( pBody && nBodyLen > 0 ){` |
 |    2 |  276 | `		PH7_NetSendAll(sock, pBody, nBodyLen);` |
 |    1 |  277 | `	}` |
-|    2 |  278 |  |
+|    2 |  278 | `}` |
 |    - |  279 | `/*` |
 |    - |  280 | ` * Send an HTTP error response.` |
 |    - |  281 | ` */` |
 |    2 |  282 | `static void SendError(ph7_socket sock, int iStatus, const char *zStatus)` |
-|  ! 0 |  283 |  |
+|  ! 0 |  283 | `{` |
 |    - |  284 | `	char zBody[256];` |
 |    - |  285 | `	int nBody;` |
 |    2 |  286 | `	nBody = snprintf(zBody, sizeof(zBody),` |
@@ -298,12 +298,12 @@ Coverage: 277/450 lines (61.56%)
 |    - |  288 | `		"<body><h1>%d %s</h1></body></html>",` |
 |    - |  289 | `		iStatus, zStatus, iStatus, zStatus);` |
 |    2 |  290 | `	SendResponse(sock, iStatus, zStatus, "text/html", zBody, nBody);` |
-|    2 |  291 |  |
+|    2 |  291 | `}` |
 |    - |  292 | `/*` |
 |    - |  293 | ` * Map a status code to a reason phrase.` |
 |    - |  294 | ` */` |
 |   24 |  295 | `static const char *StatusReason(int iStatus)` |
-|  ! 0 |  296 |  |
+|  ! 0 |  296 | `{` |
 |   24 |  297 | `	switch( iStatus ){` |
 |   18 |  298 | `	case 200: return "OK";` |
 |    4 |  299 | `	case 201: return "Created";` |
@@ -321,7 +321,7 @@ Coverage: 277/450 lines (61.56%)
 |  ! 0 |  311 | `	case 503: return "Service Unavailable";` |
 |  ! 0 |  312 | `	default:  return "";` |
 |    - |  313 | `	}` |
-|   12 |  314 |  |
+|   12 |  314 | `}` |
 |    - |  315 | `/*` |
 |    - |  316 | ` * Send an HTTP response using the VM's response headers and status code.` |
 |    - |  317 | ` * Falls back to Content-Type: text/html if the script didn't set one.` |
@@ -337,7 +337,7 @@ Coverage: 277/450 lines (61.56%)
 |   12 |  327 | `static int VmResponseHeaderCB(const char *zName, unsigned int nName,` |
 |    - |  328 | `							   const char *zValue, unsigned int nValue,` |
 |    - |  329 | `							   void *pUserData)` |
-|  ! 0 |  330 |  |
+|  ! 0 |  330 | `{` |
 |   12 |  331 | `	VmResponseCtx *pCtx = (VmResponseCtx *)pUserData;` |
 |    - |  332 | `	char zLine[512];` |
 |    - |  333 | `	int nLine;` |
@@ -349,10 +349,10 @@ Coverage: 277/450 lines (61.56%)
 |    2 |  339 | `		pCtx->bHasContentType = 1;` |
 |    1 |  340 | `	}` |
 |   12 |  341 | `	return PH7_OK;` |
-|  ! 0 |  342 |  |
+|  ! 0 |  342 | `}` |
 |   24 |  343 | `static void SendVmResponse(ph7_socket sock, ph7_vm *pVm,` |
 |    - |  344 | `							const void *pBody, int nBodyLen)` |
-|  ! 0 |  345 |  |
+|  ! 0 |  345 | `{` |
 |    - |  346 | `	int iStatus;` |
 |    - |  347 | `	VmResponseCtx sCtx;` |
 |    - |  348 | `	char zLine[512];` |
@@ -384,12 +384,12 @@ Coverage: 277/450 lines (61.56%)
 |   24 |  374 | `	if( pBody && nBodyLen > 0 ){` |
 |   24 |  375 | `		PH7_NetSendAll(sock, pBody, nBodyLen);` |
 |   12 |  376 | `	}` |
-|   24 |  377 |  |
+|   24 |  377 | `}` |
 |    - |  378 | `/*` |
 |    - |  379 | ` * Serve a static file.` |
 |    - |  380 | ` */` |
 |    4 |  381 | `static void ServeStaticFile(ph7_socket sock, const char *zPath, long nFileSize)` |
-|  ! 0 |  382 |  |
+|  ! 0 |  382 | `{` |
 |    - |  383 | `	const char *zMime;` |
 |    - |  384 | `	char zHeader[512];` |
 |    - |  385 | `	char zFileBuf[PHL_FILE_BUF];` |
@@ -421,7 +421,7 @@ Coverage: 277/450 lines (61.56%)
 |    - |  411 | `		}` |
 |  ! 0 |  412 | `	}` |
 |    4 |  413 | `	fclose(pFile);` |
-|    2 |  414 |  |
+|    2 |  414 | `}` |
 |    - |  415 | `/*` |
 |    - |  416 | ` * Extract the request method and URI path from the first line of the HTTP request.` |
 |    - |  417 | ` * E.g., "GET /foo/bar?q=1 HTTP/1.1\r\n..."` |
@@ -430,7 +430,7 @@ Coverage: 277/450 lines (61.56%)
 |    - |  420 | ` */` |
 |   60 |  421 | `static void ExtractRequestLine(const char *zRequest, char *zMethod, int nMethodSize,` |
 |    - |  422 | `							   char *zPath, int nPathSize)` |
-|  ! 0 |  423 |  |
+|  ! 0 |  423 | `{` |
 |   60 |  424 | `	const char *z = zRequest;` |
 |    - |  425 | `	int i;` |
 |    - |  426 | `	/* Extract method */` |
@@ -445,14 +445,14 @@ Coverage: 277/450 lines (61.56%)
 |  540 |  435 | `		zPath[i] = *z;` |
 |  270 |  436 | `	}` |
 |   60 |  437 | `	zPath[i] = 0;` |
-|   60 |  438 |  |
+|   60 |  438 | `}` |
 |    - |  439 | `/*` |
 |    - |  440 | ` * Resolve a request URI path to a filesystem path under the document root.` |
 |    - |  441 | ` * Returns 1 on success, 0 on failure (bad path).` |
 |    - |  442 | ` * zOut must be at least PHL_MAX_PATH bytes.` |
 |    - |  443 | ` */` |
 |   30 |  444 | `static int ResolvePath(const char *zDocRoot, const char *zUri, char *zOut)` |
-|  ! 0 |  445 |  |
+|  ! 0 |  445 | `{` |
 |   30 |  446 | `	if( !IsPathSafe(zUri) ){` |
 |  ! 0 |  447 | `		return 0;` |
 |    - |  448 | `	}` |
@@ -471,12 +471,12 @@ Coverage: 277/450 lines (61.56%)
 |  ! 0 |  461 | `		snprintf(zOut + n, PHL_MAX_PATH - n, "index.php");` |
 |  ! 0 |  462 | `	}` |
 |   30 |  463 | `	return 1;` |
-|   15 |  464 |  |
+|   15 |  464 | `}` |
 |    - |  465 | `/*` |
 |    - |  466 | ` * Check if a filename ends with ".php" (case-insensitive).` |
 |    - |  467 | ` */` |
 |   28 |  468 | `static int IsPhpFile(const char *zPath)` |
-|  ! 0 |  469 |  |
+|  ! 0 |  469 | `{` |
 |   28 |  470 | `	int n = (int)strlen(zPath);` |
 |   28 |  471 | `	if( n < 4 ){` |
 |  ! 0 |  472 | `		return 0;` |
@@ -488,14 +488,14 @@ Coverage: 277/450 lines (61.56%)
 |   28 |  478 | `		strcasecmp(zPath + n - 4, ".php")` |
 |    - |  479 | `#endif` |
 |   28 |  480 | `		== 0);` |
-|   14 |  481 |  |
+|   14 |  481 | `}` |
 |    - |  482 | `/*` |
 |    - |  483 | ` * Return a file's last-modification time as a comparable integer (0 on error).` |
 |    - |  484 | ` * Used to invalidate the compiled-VM cache when a script is edited, preserving` |
 |    - |  485 | ` * the dev-server expectation that reloading picks up source changes.` |
 |    - |  486 | ` */` |
 |   24 |  487 | `static long long GetFileMtime(const char *zPath)` |
-|  ! 0 |  488 |  |
+|  ! 0 |  488 | `{` |
 |    - |  489 | `#ifdef __WINNT__` |
 |    - |  490 | `	WIN32_FILE_ATTRIBUTE_DATA info;` |
 |  ! 0 |  491 | `	if( !GetFileAttributesExA(zPath, GetFileExInfoStandard, &info) ){` |
@@ -510,7 +510,7 @@ Coverage: 277/450 lines (61.56%)
 |    - |  500 | `	}` |
 |   24 |  501 | `	return (long long)st.st_mtime;` |
 |    - |  502 | `#endif` |
-|   12 |  503 |  |
+|   12 |  503 | `}` |
 |    - |  504 | `/* ---- Compiled-VM reuse cache ------------------------------------------------` |
 |    - |  505 | ` * Compilation dominates the per-request cost (the on-hardware profile measured` |
 |    - |  506 | ` * 167 of 197 ms/request in compile). We therefore compile each script once and` |
@@ -538,7 +538,7 @@ Coverage: 277/450 lines (61.56%)
 |    - |  528 | ` * (release after use, e.g. when reuse is disabled).` |
 |    - |  529 | ` */` |
 |   24 |  530 | `static ph7_vm *AcquireScriptVm(ph7 *pEngine, const char *zPath, int *pbCached)` |
-|  ! 0 |  531 |  |
+|  ! 0 |  531 | `{` |
 |   24 |  532 | `	int i, iFree = -1, iLru = -1;` |
 |   24 |  533 | `	ph7_vm *pVm = 0;` |
 |    - |  534 | `	long long nMtime;` |
@@ -592,12 +592,12 @@ Coverage: 277/450 lines (61.56%)
 |   18 |  582 | `	g_vmCache[iFree].nMtime = nMtime;` |
 |   18 |  583 | `	*pbCached = 1;` |
 |   18 |  584 | `	return pVm;` |
-|   12 |  585 |  |
+|   12 |  585 | `}` |
 |    - |  586 | `/*` |
 |    - |  587 | ` * Release every cached VM. Called at server shutdown.` |
 |    - |  588 | ` */` |
 |   22 |  589 | `static void ReleaseVmCache(void)` |
-|  ! 0 |  590 |  |
+|  ! 0 |  590 | `{` |
 |    - |  591 | `	int i;` |
 |  374 |  592 | `	for( i = 0 ; i < PHL_VM_CACHE_SIZE ; i++ ){` |
 |  352 |  593 | `		if( g_vmCache[i].pVm ){` |
@@ -606,7 +606,7 @@ Coverage: 277/450 lines (61.56%)
 |   18 |  596 | `			g_vmCache[i].zPath[0] = '\0';` |
 |    9 |  597 | `		}` |
 |  176 |  598 | `	}` |
-|   22 |  599 |  |
+|   22 |  599 | `}` |
 |    - |  600 | `/*` |
 |    - |  601 | ` * Execute a PHP script and send its output as an HTTP response.` |
 |    - |  602 | ` * pEngine is the shared engine instance.` |
@@ -619,7 +619,7 @@ Coverage: 277/450 lines (61.56%)
 |    - |  609 | `							 const char *zRawRequest, int nRequestLen,` |
 |    - |  610 | `							 const char *zHost, int iPort, const char *zDocRoot,` |
 |    - |  611 | `							 const char *zRemoteAddr, int iRemotePort)` |
-|  ! 0 |  612 |  |
+|  ! 0 |  612 | `{` |
 |   24 |  613 | `	ph7_vm *pVm = 0;` |
 |    - |  614 | `	const void *pOutput;` |
 |    - |  615 | `	unsigned int nOutputLen;` |
@@ -657,7 +657,7 @@ Coverage: 277/450 lines (61.56%)
 |   24 |  647 | `	if( !bCached ){` |
 |  ! 0 |  648 | `		ph7_vm_release(pVm);` |
 |  ! 0 |  649 | `	}` |
-|   12 |  650 |  |
+|   12 |  650 | `}` |
 |    - |  651 | `/*` |
 |    - |  652 | ` * Handle a single HTTP request.` |
 |    - |  653 | ` */` |
@@ -666,7 +666,7 @@ Coverage: 277/450 lines (61.56%)
 |    - |  656 | `						  const char *zHost, int iPort,` |
 |    - |  657 | `						  const char *zRawRequest, int nRequestLen,` |
 |    - |  658 | `						  const char *zRemoteAddr, int iRemotePort)` |
-|  ! 0 |  659 |  |
+|  ! 0 |  659 | `{` |
 |    - |  660 | `	char zMethod[16];` |
 |    - |  661 | `	char zUri[PHL_MAX_PATH];` |
 |    - |  662 | `	char zFilePath[PHL_MAX_PATH];` |
@@ -739,13 +739,13 @@ Coverage: 277/450 lines (61.56%)
 |    - |  729 | `	}` |
 |    2 |  730 | `	SendError(client, 404, "Not Found");` |
 |    2 |  731 | `	return 404;` |
-|   15 |  732 |  |
+|   15 |  732 | `}` |
 |    - |  733 | `/*` |
 |    - |  734 | ` * Log a request line to stderr.` |
 |    - |  735 | ` */` |
 |   30 |  736 | `static void LogRequest(const char *zRemoteAddr, int iRemotePort,` |
 |    - |  737 | `					   const char *zMethod, const char *zUri, int iStatus)` |
-|  ! 0 |  738 |  |
+|  ! 0 |  738 | `{` |
 |    - |  739 | `	time_t now;` |
 |    - |  740 | `	struct tm tm_buf;` |
 |    - |  741 | `	char zTime[64];` |
@@ -758,12 +758,12 @@ Coverage: 277/450 lines (61.56%)
 |   30 |  748 | `	strftime(zTime, sizeof(zTime), "%a %b %d %H:%M:%S %Y", &tm_buf);` |
 |   45 |  749 | `	fprintf(stderr, "[%s] %s:%d [%d]: %s %s\n",` |
 |   15 |  750 | `		zTime, zRemoteAddr, iRemotePort, iStatus, zMethod, zUri);` |
-|   30 |  751 |  |
+|   30 |  751 | `}` |
 |    - |  752 | `/*` |
 |    - |  753 | ` * Main server entry point.` |
 |    - |  754 | ` */` |
 |   22 |  755 | `int phl_serve(const char *zHost, int iPort, const char *zDocRoot, const char *zRouter, const char *zBinaryPath)` |
-|  ! 0 |  756 |  |
+|  ! 0 |  756 | `{` |
 |    - |  757 | `	ph7 *pEngine;` |
 |    - |  758 | `	ph7_socket listenSock;` |
 |    - |  759 | `	ph7_socket clientSock;` |
@@ -862,7 +862,7 @@ Coverage: 277/450 lines (61.56%)
 |   22 |  852 | `	ph7_release(pEngine);` |
 |   22 |  853 | `	PH7_NetCleanup();` |
 |   22 |  854 | `	return 0;` |
-|   11 |  855 |  |
+|   11 |  855 | `}` |
 |    - |  856 |  |
 |    - |  857 | `#endif /* PHL_ENABLE_SERVER */` |
 |    - |  858 |  |

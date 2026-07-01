@@ -171,7 +171,7 @@ Coverage: 302/444 lines (68.02%)
 |    - |  161 | ` * and SXERR_MORE when more input is needed.` |
 |    - |  162 | ` */` |
 |   96 |  163 | `static sxi32 VmGetNextLine(SyString *pCursor,SyString *pCurrent)` |
-|  ! 0 |  164 |  |
+|  ! 0 |  164 | `{` |
 |    - |  165 | `  	const char *zIn;` |
 |    - |  166 | `  	sxu32 nPos;` |
 |    - |  167 | `	/* Jump leading white spaces */` |

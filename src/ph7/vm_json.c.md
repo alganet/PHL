@@ -29,7 +29,7 @@ Coverage: 387/524 lines (73.85%)
 |    - |   19 | ` */` |
 |    - |   20 | `typedef struct json_private_data json_private_data;` |
 |    - |   21 | `struct json_private_data` |
-|    - |   22 |  |
+|    - |   22 | `{` |
 |    - |   23 | `	ph7_context *pCtx; /* Call context */` |
 |    - |   24 | `	int isFirst;       /* True if first encoded entry */` |
 |    - |   25 | `	int isObject;      /* True if the current array level is encoded as a JSON object */` |
@@ -211,13 +211,13 @@ Coverage: 387/524 lines (73.85%)
 |    - |  201 | `		}` |
 |    - |  202 | `		/* All done */` |
 |  370 |  203 | `		return PH7_OK;` |
-|  188 |  204 |  |
+|  188 |  204 | `}` |
 |    - |  205 | `/*` |
 |    - |  206 | ` * The following walker callback is invoked each time we need` |
 |    - |  207 | ` * to encode an array to JSON.` |
 |    - |  208 | ` */` |
 |  180 |  209 | `static int VmJsonArrayEncode(ph7_value *pKey,ph7_value *pValue,void *pUserData)` |
-|    1 |  210 |  |
+|    1 |  210 | `{` |
 |  181 |  211 | `	json_private_data *pJson = (json_private_data *)pUserData;` |
 |  181 |  212 | `	if( pJson->nRecCount > 31 \|\| pJson->exc \|\| pJson->oom ){` |
 |    - |  213 | `		/* Recursion limit reached, a callback threw, or OOM — return immediately */` |
@@ -246,13 +246,13 @@ Coverage: 387/524 lines (73.85%)
 |  181 |  236 | `	pJson->nRecCount--;` |
 |  181 |  237 | `	pJson->isFirst = 0;` |
 |  181 |  238 | `	return PH7_OK;` |
-|   91 |  239 |  |
+|   91 |  239 | `}` |
 |    - |  240 | `/*` |
 |    - |  241 | ` * The following walker callback is invoked each time we need to encode` |
 |    - |  242 | ` * a class instance [i.e: Object in the PHP jargon] to JSON.` |
 |    - |  243 | ` */` |
 |   62 |  244 | `static int VmJsonObjectEncode(const char *zAttr,ph7_value *pValue,void *pUserData)` |
-|    2 |  245 |  |
+|    2 |  245 | `{` |
 |   64 |  246 | `	json_private_data *pJson = (json_private_data *)pUserData;` |
 |   64 |  247 | `	if( pJson->nRecCount > 31 \|\| pJson->exc \|\| pJson->oom ){` |
 |    - |  248 | `		/* Recursion limit reached, a callback threw, or OOM — return immediately */` |
@@ -273,7 +273,7 @@ Coverage: 387/524 lines (73.85%)
 |   64 |  263 | `	pJson->nRecCount--;` |
 |   64 |  264 | `	pJson->isFirst = 0;` |
 |   64 |  265 | `	return PH7_OK;` |
-|   33 |  266 |  |
+|   33 |  266 | `}` |
 |    - |  267 | `/*` |
 |    - |  268 | ` * string json_encode(mixed $value [, int $options = 0 ])` |
 |    - |  269 | ` *  Returns a string containing the JSON representation of value.` |
@@ -296,7 +296,7 @@ Coverage: 387/524 lines (73.85%)
 |    - |  286 | ` *  Returns a JSON encoded string on success. FALSE otherwise` |
 |    - |  287 | ` */` |
 |  120 |  288 | `PH7_PRIVATE int vm_builtin_json_encode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    2 |  289 |  |
+|    2 |  289 | `{` |
 |    - |  290 | `	json_private_data sJson;` |
 |    - |  291 | `	sxi32 rc;` |
 |  122 |  292 | `	if( nArg < 1 ){` |
@@ -328,7 +328,7 @@ Coverage: 387/524 lines (73.85%)
 |    - |  318 | `	}` |
 |    - |  319 | `	/* All done */` |
 |  118 |  320 | `	return PH7_OK;` |
-|   62 |  321 |  |
+|   62 |  321 | `}` |
 |    - |  322 | `#undef JSON_EMIT` |
 |    - |  323 | `/*` |
 |    - |  324 | ` * int json_last_error(void)` |
@@ -345,14 +345,14 @@ Coverage: 387/524 lines (73.85%)
 |    - |  335 | ` *  JSON_ERROR_UTF8_CHECK      Malformed UTF-8 characters.` |
 |    - |  336 | ` */` |
 |   10 |  337 | `PH7_PRIVATE int vm_builtin_json_last_error(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    2 |  338 |  |
+|    2 |  338 | `{` |
 |   12 |  339 | `	ph7_vm *pVm = pCtx->pVm;` |
 |    - |  340 | `	/* Return the error code */` |
 |   12 |  341 | `	ph7_result_int(pCtx,pVm->json_rc);` |
 |    5 |  342 | `	SXUNUSED(nArg); /* cc warning */` |
 |    5 |  343 | `	SXUNUSED(apArg);` |
 |   12 |  344 | `	return PH7_OK;` |
-|    2 |  345 |  |
+|    2 |  345 | `}` |
 |    - |  346 | `/*` |
 |    - |  347 | ` * string json_last_error_msg(void)` |
 |    - |  348 | ` *  Returns the error string of the last JSON encoding/decoding operation.` |
@@ -363,7 +363,7 @@ Coverage: 387/524 lines (73.85%)
 |    - |  353 | ` *  code, or "No error" if no error has occurred.` |
 |    - |  354 | ` */` |
 |    4 |  355 | `PH7_PRIVATE int vm_builtin_json_last_error_msg(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  356 |  |
+|    1 |  356 | `{` |
 |    5 |  357 | `	ph7_vm *pVm = pCtx->pVm;` |
 |    - |  358 | `	const char *zMsg;` |
 |    5 |  359 | `	switch( pVm->json_rc ){` |
@@ -393,7 +393,7 @@ Coverage: 387/524 lines (73.85%)
 |    2 |  383 | `	SXUNUSED(nArg); /* cc warning */` |
 |    2 |  384 | `	SXUNUSED(apArg);` |
 |    5 |  385 | `	return PH7_OK;` |
-|    1 |  386 |  |
+|    1 |  386 | `}` |
 |    - |  387 | `/* Possible tokens from the JSON tokenization process */` |
 |    - |  388 | `#define JSON_TK_TRUE    0x001 /* Boolean true */` |
 |    - |  389 | `#define JSON_TK_FALSE   0x002 /* Boolean false */` |
@@ -414,7 +414,7 @@ Coverage: 387/524 lines (73.85%)
 |    - |  404 | ` * character beyond the extracted token.` |
 |    - |  405 | ` */` |
 |  144 |  406 | `static sxi32 VmJsonTokenize(SyStream *pStream,SyToken *pToken,void *pUserData,void *pCtxData)` |
-|    2 |  407 |  |
+|    2 |  407 | `{` |
 |  146 |  408 | `	int *pJsonErr = (int *)pUserData;` |
 |    - |  409 | `	SyString *pStr;` |
 |    - |  410 | `	int c;` |
@@ -555,7 +555,7 @@ Coverage: 387/524 lines (73.85%)
 |   12 |  545 | `	}` |
 |    - |  546 | `	/* Return to the lexer */` |
 |  134 |  547 | `	return SXRET_OK;` |
-|   74 |  548 |  |
+|   74 |  548 | `}` |
 |    - |  549 | `/*` |
 |    - |  550 | ` * JSON decoded input consumer callback signature.` |
 |    - |  551 | ` */` |
@@ -565,7 +565,7 @@ Coverage: 387/524 lines (73.85%)
 |    - |  555 | ` */` |
 |    - |  556 | `typedef struct json_decoder json_decoder;` |
 |    - |  557 | `struct json_decoder` |
-|    - |  558 |  |
+|    - |  558 | `{` |
 |    - |  559 | `	ph7_context *pCtx; /* Call context */` |
 |    - |  560 | `	ProcJsonConsumer xConsumer; /* Consumer callback */` |
 |    - |  561 | `	void *pUserData;   /* Last argument to xConsumer() */` |
@@ -584,7 +584,7 @@ Coverage: 387/524 lines (73.85%)
 |    - |  574 | ` * the result in the given ph7_value.` |
 |    - |  575 | ` */` |
 |   24 |  576 | `static void VmJsonDequoteString(const SyString *pStr,ph7_value *pWorker)` |
-|    2 |  577 |  |
+|    2 |  577 | `{` |
 |   26 |  578 | `	const char *zIn = pStr->zString;` |
 |   26 |  579 | `	const char *zEnd = &pStr->zString[pStr->nByte];` |
 |    - |  580 | `	const char *zCur;` |
@@ -621,7 +621,7 @@ Coverage: 387/524 lines (73.85%)
 |    - |  611 | `		/* Advance the stream cursor */` |
 |  ! 0 |  612 | `		zIn++;` |
 |  ! 0 |  613 | `	}` |
-|   26 |  614 |  |
+|   26 |  614 | `}` |
 |    - |  615 | `/*` |
 |    - |  616 | ` * Returns a ph7_value holding the image of a JSON string. In other word perform a JSON decoding operation.` |
 |    - |  617 | ` * According to wikipedia` |
@@ -814,33 +814,33 @@ Coverage: 387/524 lines (73.85%)
 |    - |  804 | `	/* Release the worker variable */` |
 |   58 |  805 | `	ph7_context_release_value(pDecoder->pCtx,pWorker);` |
 |   58 |  806 | `	return SXRET_OK;` |
-|   30 |  807 |  |
+|   30 |  807 | `}` |
 |    - |  808 | `/*` |
 |    - |  809 | ` * The following JSON decoder callback is invoked each time` |
 |    - |  810 | ` * a JSON array representation [i.e: [15,"hello",FALSE] ]` |
 |    - |  811 | ` * is being decoded.` |
 |    - |  812 | ` */` |
 |   38 |  813 | `static int VmJsonArrayDecoder(ph7_context *pCtx,ph7_value *pKey,ph7_value *pWorker,void *pUserData)` |
-|    2 |  814 |  |
+|    2 |  814 | `{` |
 |   40 |  815 | `	ph7_value *pArray = (ph7_value *)pUserData;` |
 |    - |  816 | `	/* Insert the entry */` |
 |   40 |  817 | `	ph7_array_add_elem(pArray,pKey,pWorker); /* Will make it's own copy */` |
 |   19 |  818 | `	SXUNUSED(pCtx); /* cc warning */` |
 |    - |  819 | `	/* All done */` |
 |   40 |  820 | `	return SXRET_OK;` |
-|    2 |  821 |  |
+|    2 |  821 | `}` |
 |    - |  822 | `/*` |
 |    - |  823 | ` * Standard JSON decoder callback.` |
 |    - |  824 | ` */` |
 |   18 |  825 | `static int VmJsonDefaultDecoder(ph7_context *pCtx,ph7_value *pKey,ph7_value *pWorker,void *pUserData)` |
-|    2 |  826 |  |
+|    2 |  826 | `{` |
 |    - |  827 | `	/* Return the value directly */` |
 |   20 |  828 | `	ph7_result_value(pCtx,pWorker); /* Will make it's own copy */` |
 |    9 |  829 | `	SXUNUSED(pKey); /* cc warning */` |
 |    9 |  830 | `	SXUNUSED(pUserData);` |
 |    - |  831 | `	/* All done */` |
 |   20 |  832 | `	return SXRET_OK;` |
-|    2 |  833 |  |
+|    2 |  833 | `}` |
 |    - |  834 | `/*` |
 |    - |  835 | ` * mixed json_decode(string $json[,bool $assoc = false[,int $depth = 32[,int $options = 0 ]]])` |
 |    - |  836 | ` *  Takes a JSON encoded string and converts it into a PHP variable.` |
@@ -869,7 +869,7 @@ Coverage: 387/524 lines (73.85%)
 |    - |  859 | ` * value, preserving the original "abort \|\| error => failure" json_decode semantics.` |
 |    - |  860 | ` */` |
 |   30 |  861 | `static int VmJsonDecodeInput(ph7_context *pCtx,const char *zIn,int nByte,int iAssoc,int nDepth)` |
-|    2 |  862 |  |
+|    2 |  862 | `{` |
 |   32 |  863 | `	ph7_vm *pVm = pCtx->pVm;` |
 |    - |  864 | `	json_decoder sDecoder;` |
 |    - |  865 | `	SySet sToken;` |
@@ -915,9 +915,9 @@ Coverage: 387/524 lines (73.85%)
 |   20 |  905 | `	SyLexRelease(&sLex);` |
 |   20 |  906 | `	SySetRelease(&sToken);` |
 |   20 |  907 | `	return pVm->json_rc;` |
-|   17 |  908 |  |
+|   17 |  908 | `}` |
 |   22 |  909 | `PH7_PRIVATE int vm_builtin_json_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    2 |  910 |  |
+|    2 |  910 | `{` |
 |    - |  911 | `	const char *zIn;` |
 |    - |  912 | `	int nByte;` |
 |   24 |  913 | `	int iAssoc = 0;` |
@@ -948,7 +948,7 @@ Coverage: 387/524 lines (73.85%)
 |    4 |  938 | `	}` |
 |    - |  939 | `	/* All done */` |
 |   22 |  940 | `	return PH7_OK;` |
-|   13 |  941 |  |
+|   13 |  941 | `}` |
 |    - |  942 | `/*` |
 |    - |  943 | ` * bool json_validate(string $json[,int $depth = 512[,int $flags = 0]])` |
 |    - |  944 | ` *  Validates whether a string is valid JSON without materializing a value.` |
@@ -960,7 +960,7 @@ Coverage: 387/524 lines (73.85%)
 |    - |  950 | ` *  TRUE if the string is valid JSON, FALSE otherwise. Updates json_last_error().` |
 |    - |  951 | ` */` |
 |   12 |  952 | `PH7_PRIVATE int vm_builtin_json_validate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  953 |  |
+|    1 |  953 | `{` |
 |   13 |  954 | `	ph7_vm *pVm = pCtx->pVm;` |
 |    - |  955 | `	const char *zIn;` |
 |    - |  956 | `	int nByte;` |
@@ -988,5 +988,5 @@ Coverage: 387/524 lines (73.85%)
 |    - |  978 | `	 * not raised - the decoded value is discarded, only its validity matters. */` |
 |   11 |  979 | `	ph7_result_bool(pCtx,VmJsonDecodeInput(pCtx,zIn,nByte,1,nDepth) == JSON_ERROR_NONE);` |
 |   11 |  980 | `	return PH7_OK;` |
-|    7 |  981 |  |
+|    7 |  981 | `}` |
 |    - |  982 |  |

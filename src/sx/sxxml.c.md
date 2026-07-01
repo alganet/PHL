@@ -36,7 +36,7 @@ Coverage: 533/774 lines (68.86%)
 |    - |   26 | ` */` |
 |    - |   27 | `typedef struct SyXMLRawStrNS SyXMLRawStrNS;` |
 |    - |   28 | `struct SyXMLRawStrNS` |
-|    - |   29 |  |
+|    - |   29 | `{` |
 |    - |   30 | `	/* Public field [Must match the SyXMLRawStr fields ] */` |
 |    - |   31 | `	const char *zString; /* Raw text [UTF-8 ENCODED EXCEPT CDATA] [NOT NULL TERMINATED] */` |
 |    - |   32 | `	sxu32 nByte; /* Text length */` |
@@ -65,7 +65,7 @@ Coverage: 533/774 lines (68.86%)
 |    - |   55 | ``	c == '['  \|\| c == ']' \|\| c == '\\'\|\| c == ';'\|\|c == '^'  \|\| c == '`' )`` |
 |    - |   56 | `/* Tokenize an entire XML input */` |
 |  396 |   57 | `static sxi32 XML_Tokenize(SyStream *pStream,SyToken *pToken,void *pUserData,void *pUnused2)` |
-|    1 |   58 |  |
+|    1 |   58 | `{` |
 |  397 |   59 | `	SyXMLParser *pParse = (SyXMLParser *)pUserData;` |
 |    - |   60 | `	SyString *pStr;` |
 |    - |   61 | `	sxi32 rc;` |
@@ -339,9 +339,9 @@ Coverage: 533/774 lines (68.86%)
 |    - |  329 | `	}` |
 |    - |  330 | `	/* Return to the lexer */` |
 |  203 |  331 | `	return SXRET_OK;` |
-|  120 |  332 |  |
+|  120 |  332 | `}` |
 |   12 |  333 | `static int XMLCheckDuplicateAttr(SyXMLRawStr *aSet,sxu32 nEntry,SyXMLRawStr *pEntry)` |
-|    1 |  334 |  |
+|    1 |  334 | `{` |
 |    - |  335 | `	sxu32 n;` |
 |   13 |  336 | `	for( n = 0 ; n < nEntry ; n += 2 ){` |
 |    3 |  337 | `		SyXMLRawStr *pAttr = &aSet[n];` |
@@ -352,9 +352,9 @@ Coverage: 533/774 lines (68.86%)
 |  ! 0 |  342 | `	}` |
 |    - |  343 | `	/* No duplicates */` |
 |   11 |  344 | `	return 0;` |
-|    7 |  345 |  |
+|    7 |  345 | `}` |
 |    4 |  346 | `static sxi32 XMLProcessNamesSpace(SyXMLParser *pParse,SyXMLRawStrNS *pTag,SyToken *pToken,SySet *pAttr)` |
-|    1 |  347 |  |
+|    1 |  347 | `{` |
 |    - |  348 | `	SyXMLRawStr *pPrefix,*pUri; /* Namespace prefix/URI */` |
 |    - |  349 | `	SyHashEntry *pEntry;` |
 |    - |  350 | `	SyXMLRawStr *pDup;` |
@@ -421,9 +421,9 @@ Coverage: 533/774 lines (68.86%)
 |    5 |  411 | `	(void)SySetPop(pAttr);` |
 |    5 |  412 | `	(void)SySetPop(pAttr);` |
 |    5 |  413 | `	return SXRET_OK;` |
-|    3 |  414 |  |
+|    3 |  414 | `}` |
 |  456 |  415 | `static sxi32 XMLProcessStartTag(SyXMLParser *pParse,SyToken *pToken,SyXMLRawStrNS *pTag,SySet  *pAttrSet,SySet *pTagStack)` |
-|    1 |  416 |  |
+|    1 |  416 | `{` |
 |  457 |  417 | `	SyString *pIn = &pToken->sData;` |
 |    - |  418 | `	const char *zIn,*zCur,*zEnd;` |
 |    - |  419 | `	SyXMLRawStr sEntry;` |
@@ -594,9 +594,9 @@ Coverage: 533/774 lines (68.86%)
 |   71 |  584 | `		rc = SySetPut(pTagStack,(const void *)pTag);` |
 |   35 |  585 | `	}` |
 |   79 |  586 | `	return SXRET_OK;` |
-|   41 |  587 |  |
+|   41 |  587 | `}` |
 |   12 |  588 | `static void XMLExtactPI(SyToken *pToken,SyXMLRawStr *pTarget,SyXMLRawStr *pData,int *pXML)` |
-|    1 |  589 |  |
+|    1 |  589 | `{` |
 |   13 |  590 | `	SyString *pIn = &pToken->sData;` |
 |    - |  591 | `	const char *zIn,*zCur,*zEnd;` |
 |    - |  592 |  |
@@ -639,9 +639,9 @@ Coverage: 533/774 lines (68.86%)
 |   13 |  629 | `		pData->zString = zIn;` |
 |   13 |  630 | `		pData->nByte = (sxu32)(zEnd-zIn);` |
 |    6 |  631 | `	}` |
-|   13 |  632 |  |
+|   13 |  632 | `}` |
 |   54 |  633 | `static sxi32 XMLExtractEndTag(SyXMLParser *pParse,SyToken *pToken,SyXMLRawStrNS *pOut)` |
-|    1 |  634 |  |
+|    1 |  634 | `{` |
 |   55 |  635 | `	SyString *pIn = &pToken->sData;` |
 |   55 |  636 | `	const char *zEnd = &pIn->zString[pIn->nByte];` |
 |   55 |  637 | `	const char *zIn = pIn->zString;` |
@@ -668,16 +668,16 @@ Coverage: 533/774 lines (68.86%)
 |  ! 0 |  658 | `		return SXERR_SYNTAX;` |
 |    - |  659 | `	}` |
 |   55 |  660 | `	return SXRET_OK;` |
-|   28 |  661 |  |
+|   28 |  661 | `}` |
 |   28 |  662 | `static void TokenToXMLString(SyToken *pTok,SyXMLRawStrNS *pOut)` |
-|    1 |  663 |  |
+|    1 |  663 | `{` |
 |    - |  664 | `	/* Remove leading and trailing white spaces first */` |
 |   29 |  665 | `	SyStringFullTrim(&pTok->sData);` |
 |   29 |  666 | `	pOut->zString = SyStringData(&pTok->sData);` |
 |   29 |  667 | `	pOut->nByte = SyStringLength(&pTok->sData);` |
-|   29 |  668 |  |
+|   29 |  668 | `}` |
 |   16 |  669 | `static sxi32 XMLExtractNS(SyXMLParser *pParse,SyToken *pToken,SyXMLRawStrNS *pTag,SyXMLRawStr *pnsUri)` |
-|    1 |  670 |  |
+|    1 |  670 | `{` |
 |    - |  671 | `	SyXMLRawStr *pUri,sPrefix;` |
 |    - |  672 | `	SyHashEntry *pEntry;` |
 |    - |  673 | `	sxu32 nOfft;` |
@@ -739,9 +739,9 @@ Coverage: 533/774 lines (68.86%)
 |    9 |  729 | `	pnsUri->nByte = pUri->nByte;` |
 |    - |  730 | `	/* All done */` |
 |    9 |  731 | `	return SXRET_OK;` |
-|    9 |  732 |  |
+|    9 |  732 | `}` |
 |   62 |  733 | `static sxi32 XMLnsUnlink(SyXMLParser *pParse,SyXMLRawStrNS *pLast,SyToken *pToken)` |
-|    1 |  734 |  |
+|    1 |  734 | `{` |
 |    - |  735 | `	SyHashEntry **apEntry,*pEntry;` |
 |    - |  736 | `	void *pUserData;` |
 |    - |  737 | `	sxu32 n;` |
@@ -768,10 +768,10 @@ Coverage: 533/774 lines (68.86%)
 |    3 |  758 | `	}` |
 |   63 |  759 | `	SySetRelease(&pLast->sNSset);` |
 |   63 |  760 | `	return SXRET_OK;` |
-|   32 |  761 |  |
+|   32 |  761 | `}` |
 |    - |  762 | `/* Process XML tokens */` |
 |   52 |  763 | `static sxi32  ProcessXML(SyXMLParser *pParse,SySet *pTagStack,SySet *pWorker)` |
-|    1 |  764 |  |
+|    1 |  764 | `{` |
 |   53 |  765 | `	SySet *pTokenSet = &pParse->sToken;` |
 |    - |  766 | `	SyXMLRawStrNS sEntry;` |
 |    - |  767 | `	SyXMLRawStr sNs;` |
@@ -986,9 +986,9 @@ Coverage: 533/774 lines (68.86%)
 |  ! 0 |  976 | `		pParse->xEndDoc(pParse->pUserData);` |
 |  ! 0 |  977 | `	}` |
 |   43 |  978 | `	return SXRET_OK;` |
-|   27 |  979 |  |
+|   27 |  979 | `}` |
 |   84 |  980 | `PH7_PRIVATE sxi32 SyXMLParserInit(SyXMLParser *pParser,SyMemBackend *pAllocator,sxi32 iFlags)` |
-|    1 |  981 |  |
+|    1 |  981 | `{` |
 |    - |  982 | `	/* Zero the structure first */` |
 |   85 |  983 | `	SyZero(pParser,sizeof(SyXMLParser));` |
 |    - |  984 | `	/* Initialize fields */` |
@@ -998,7 +998,7 @@ Coverage: 533/774 lines (68.86%)
 |   85 |  988 | `	pParser->pAllocator = pAllocator;` |
 |   85 |  989 | `	pParser->nFlags = iFlags;` |
 |   85 |  990 | `	return SXRET_OK;` |
-|    1 |  991 |  |
+|    1 |  991 | `}` |
 |   74 |  992 | `PH7_PRIVATE sxi32 SyXMLParserSetEventHandler(SyXMLParser *pParser,` |
 |    - |  993 | `	void *pUserData,` |
 |    - |  994 | `	ProcXMLStartTagHandler xStartTag,` |
@@ -1045,10 +1045,10 @@ Coverage: 533/774 lines (68.86%)
 |   37 | 1035 | `	}` |
 |   75 | 1036 | `	pParser->pUserData = pUserData;` |
 |   75 | 1037 | `	return SXRET_OK;` |
-|    1 | 1038 |  |
+|    1 | 1038 | `}` |
 |    - | 1039 | `/* Process an XML chunk */` |
 |   74 | 1040 | `PH7_PRIVATE sxi32 SyXMLProcess(SyXMLParser *pParser,const char *zInput,sxu32 nByte)` |
-|    1 | 1041 |  |
+|    1 | 1041 | `{` |
 |    - | 1042 | `	SySet sTagStack;` |
 |    - | 1043 | `	SySet sWorker;` |
 |    - | 1044 | `	sxi32 rc;` |
@@ -1089,13 +1089,13 @@ Coverage: 533/774 lines (68.86%)
 |   55 | 1079 | `	SySetRelease(&sTagStack);` |
 |    - | 1080 | `	/* Processing result */` |
 |   55 | 1081 | `	return rc;` |
-|   38 | 1082 |  |
+|   38 | 1082 | `}` |
 |   84 | 1083 | `PH7_PRIVATE sxi32 SyXMLParserRelease(SyXMLParser *pParser)` |
-|    1 | 1084 |  |
+|    1 | 1084 | `{` |
 |   85 | 1085 | `	SyLexRelease(&pParser->sLex);` |
 |   85 | 1086 | `	SySetRelease(&pParser->sToken);` |
 |   85 | 1087 | `	SyHashRelease(&pParser->hns);` |
 |   85 | 1088 | `	return SXRET_OK;` |
-|    1 | 1089 |  |
+|    1 | 1089 | `}` |
 |    - | 1090 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
 |    - | 1091 |  |

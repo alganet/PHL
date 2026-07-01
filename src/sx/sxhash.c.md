@@ -41,7 +41,7 @@ Coverage: 377/414 lines (91.06%)
 |    - |   31 | ` * Note: this code is harmless on little-endian machines.` |
 |    - |   32 | ` */` |
 |   56 |   33 | `static void byteReverse (unsigned char *buf, unsigned longs)` |
-|    1 |   34 |  |
+|    1 |   34 | `{` |
 |    - |   35 | `	sxu32 t;` |
 |   28 |   36 | `        do {` |
 |  841 |   37 | `                t = (sxu32)((unsigned)buf[3]<<8 \| buf[2]) << 16 \|` |
@@ -49,7 +49,7 @@ Coverage: 377/414 lines (91.06%)
 |  561 |   39 | `                *(sxu32*)buf = t;` |
 |  561 |   40 | `                buf += 4;` |
 |  561 |   41 | `        } while (--longs);` |
-|   57 |   42 |  |
+|   57 |   42 | `}` |
 |    - |   43 | `/* The four core functions - F1 is optimized somewhat */` |
 |    - |   44 |  |
 |    - |   45 | `/* #define F1(x, y, z) (x & y \| ~x & z) */` |
@@ -81,7 +81,7 @@ Coverage: 377/414 lines (91.06%)
 |    - |   71 | ` * the data and converts bytes into longwords for this routine.` |
 |    - |   72 | ` */` |
 |   32 |   73 | `static void MD5Transform(sxu32 buf[4], const sxu32 in[16])` |
-|    1 |   74 |  |
+|    1 |   74 | `{` |
 |    - |   75 | `	register sxu32 a, b, c, d;` |
 |    - |   76 |  |
 |   33 |   77 | `        a = buf[0];` |
@@ -161,13 +161,13 @@ Coverage: 377/414 lines (91.06%)
 |   33 |  151 | `        buf[1] += b;` |
 |   33 |  152 | `        buf[2] += c;` |
 |   33 |  153 | `        buf[3] += d;` |
-|   33 |  154 |  |
+|   33 |  154 | `}` |
 |    - |  155 | `/*` |
 |    - |  156 | ` * Update context to reflect the concatenation of another buffer full` |
 |    - |  157 | ` * of bytes.` |
 |    - |  158 | ` */` |
 |   28 |  159 | `PH7_PRIVATE void MD5Update(MD5Context *ctx, const unsigned char *buf, unsigned int len)` |
-|    1 |  160 |  |
+|    1 |  160 | `{` |
 |    - |  161 | `	sxu32 t;` |
 |    - |  162 |  |
 |    - |  163 | `        /* Update bitcount */` |
@@ -201,7 +201,7 @@ Coverage: 377/414 lines (91.06%)
 |    1 |  191 | `        }` |
 |    - |  192 | `        /* Handle any remaining bytes of data.*/` |
 |   29 |  193 | `        SyMemcpy(buf,ctx->in,len);` |
-|   15 |  194 |  |
+|   15 |  194 | `}` |
 |    - |  195 | `/*` |
 |    - |  196 | ` * Final wrapup - pad to 64-byte boundary with the bit pattern` |
 |    - |  197 | ` * 1 0* (64-bit count of bits processed, MSB-first)` |
@@ -244,13 +244,13 @@ Coverage: 377/414 lines (91.06%)
 |   25 |  234 | `        byteReverse((unsigned char *)ctx->buf, 4);` |
 |   25 |  235 | `        SyMemcpy(ctx->buf,digest,0x10);` |
 |   25 |  236 | `        SyZero(ctx,sizeof(ctx));    /* In case it's sensitive */` |
-|   25 |  237 |  |
+|   25 |  237 | `}` |
 |    - |  238 | `#undef F1` |
 |    - |  239 | `#undef F2` |
 |    - |  240 | `#undef F3` |
 |    - |  241 | `#undef F4` |
 |   24 |  242 | `PH7_PRIVATE sxi32 MD5Init(MD5Context *pCtx)` |
-|    1 |  243 |  |
+|    1 |  243 | `{` |
 |   25 |  244 | `	pCtx->buf[0] = 0x67452301;` |
 |   25 |  245 | `    pCtx->buf[1] = 0xefcdab89;` |
 |   25 |  246 | `    pCtx->buf[2] = 0x98badcfe;` |
@@ -259,15 +259,15 @@ Coverage: 377/414 lines (91.06%)
 |   25 |  249 | `    pCtx->bits[1] = 0;` |
 |    - |  250 |  |
 |   25 |  251 | `   return SXRET_OK;` |
-|    1 |  252 |  |
+|    1 |  252 | `}` |
 |   12 |  253 | `PH7_PRIVATE sxi32 SyMD5Compute(const void *pIn,sxu32 nLen,unsigned char zDigest[16])` |
-|    1 |  254 |  |
+|    1 |  254 | `{` |
 |    - |  255 | `	MD5Context sCtx;` |
 |   13 |  256 | `	MD5Init(&sCtx);` |
 |   13 |  257 | `	MD5Update(&sCtx,(const unsigned char *)pIn,nLen);` |
 |   13 |  258 | `	MD5Final(zDigest,&sCtx);` |
 |   13 |  259 | `	return SXRET_OK;` |
-|    1 |  260 |  |
+|    1 |  260 | `}` |
 |    - |  261 | `/*` |
 |    - |  262 | ` * SHA-1 in C` |
 |    - |  263 | ` * By Steve Reid <steve@edmweb.com>` |
@@ -332,7 +332,7 @@ Coverage: 377/414 lines (91.06%)
 |    - |  322 | `#define e qq[4]` |
 |    - |  323 |  |
 |   50 |  324 | `static void SHA1Transform(unsigned int state[5], const unsigned char *buffer)` |
-|    1 |  325 |  |
+|    1 |  325 | `{` |
 |    - |  326 | `  unsigned int qq[5]; /* a, b, c, d, e; */` |
 |    - |  327 | `  static int one = 1;` |
 |    - |  328 | `  unsigned int block[16];` |
@@ -383,7 +383,7 @@ Coverage: 377/414 lines (91.06%)
 |   51 |  373 | `  state[2] += c;` |
 |   51 |  374 | `  state[3] += d;` |
 |   51 |  375 | `  state[4] += e;` |
-|   51 |  376 |  |
+|   51 |  376 | `}` |
 |    - |  377 | `#undef a` |
 |    - |  378 | `#undef b` |
 |    - |  379 | `#undef c` |
@@ -400,7 +400,7 @@ Coverage: 377/414 lines (91.06%)
 |   47 |  390 | `    context->state[3] = 0x10325476;` |
 |   47 |  391 | `    context->state[4] = 0xC3D2E1F0;` |
 |   47 |  392 | `    context->count[0] = context->count[1] = 0;` |
-|   47 |  393 |  |
+|   47 |  393 | `}` |
 |    - |  394 | `/*` |
 |    - |  395 | ` * Run your data through this.` |
 |    - |  396 | ` */` |
@@ -422,7 +422,7 @@ Coverage: 377/414 lines (91.06%)
 | 2261 |  412 | `	i = 0;` |
 |    - |  413 | `    }` |
 | 2311 |  414 | `	(void)SyMemcpy(&data[i],&context->buffer[j],len - i);` |
-| 2311 |  415 |  |
+| 2311 |  415 | `}` |
 |    - |  416 | `/*` |
 |    - |  417 | ` * Add padding and return the message digest.` |
 |    - |  418 | ` */` |
@@ -444,7 +444,7 @@ Coverage: 377/414 lines (91.06%)
 |  921 |  434 | `	    digest[i] = (unsigned char)` |
 |  920 |  435 | `		((context->state[i>>2] >> ((3-(i & 3)) * 8) ) & 255);` |
 |   23 |  436 | `    }` |
-|   47 |  437 |  |
+|   47 |  437 | `}` |
 |    - |  438 | `#undef Rl0` |
 |    - |  439 | `#undef Rb0` |
 |    - |  440 | `#undef R1` |
@@ -453,13 +453,13 @@ Coverage: 377/414 lines (91.06%)
 |    - |  443 | `#undef R4` |
 |    - |  444 |  |
 |   10 |  445 | `PH7_PRIVATE sxi32 SySha1Compute(const void *pIn,sxu32 nLen,unsigned char zDigest[20])` |
-|    1 |  446 |  |
+|    1 |  446 | `{` |
 |    - |  447 | `	SHA1Context sCtx;` |
 |   11 |  448 | `	SHA1Init(&sCtx);` |
 |   11 |  449 | `	SHA1Update(&sCtx,(const unsigned char *)pIn,nLen);` |
 |   11 |  450 | `	SHA1Final(&sCtx,zDigest);` |
 |   11 |  451 | `	return SXRET_OK;` |
-|    1 |  452 |  |
+|    1 |  452 | `}` |
 |    - |  453 | `/*` |
 |    - |  454 | ` * SHA-224 / SHA-256 (FIPS 180-4). One core transform; SHA-224 differs only in` |
 |    - |  455 | ` * the initial hash value (set by Init) and the truncated output length. All` |
@@ -501,21 +501,21 @@ Coverage: 377/414 lines (91.06%)
 | 2177 |  491 | `	}` |
 |   69 |  492 | `	state[0] += a; state[1] += b; state[2] += c; state[3] += d;` |
 |   69 |  493 | `	state[4] += e; state[5] += f; state[6] += g; state[7] += h;` |
-|   69 |  494 |  |
+|   69 |  494 | `}` |
 |   33 |  495 | `PH7_PRIVATE void SHA256Init(SHA256Context *pCtx){` |
 |   33 |  496 | `	pCtx->state[0] = 0x6a09e667; pCtx->state[1] = 0xbb67ae85;` |
 |   33 |  497 | `	pCtx->state[2] = 0x3c6ef372; pCtx->state[3] = 0xa54ff53a;` |
 |   33 |  498 | `	pCtx->state[4] = 0x510e527f; pCtx->state[5] = 0x9b05688c;` |
 |   33 |  499 | `	pCtx->state[6] = 0x1f83d9ab; pCtx->state[7] = 0x5be0cd19;` |
 |   33 |  500 | `	pCtx->nLen = 0; pCtx->nIndex = 0; pCtx->nDigestLen = 32;` |
-|   33 |  501 |  |
+|   33 |  501 | `}` |
 |    9 |  502 | `PH7_PRIVATE void SHA224Init(SHA256Context *pCtx){` |
 |    9 |  503 | `	pCtx->state[0] = 0xc1059ed8; pCtx->state[1] = 0x367cd507;` |
 |    9 |  504 | `	pCtx->state[2] = 0x3070dd17; pCtx->state[3] = 0xf70e5939;` |
 |    9 |  505 | `	pCtx->state[4] = 0xffc00b31; pCtx->state[5] = 0x68581511;` |
 |    9 |  506 | `	pCtx->state[6] = 0x64f98fa7; pCtx->state[7] = 0xbefa4fa4;` |
 |    9 |  507 | `	pCtx->nLen = 0; pCtx->nIndex = 0; pCtx->nDigestLen = 28;` |
-|    9 |  508 |  |
+|    9 |  508 | `}` |
 | 2193 |  509 | `PH7_PRIVATE void SHA256Update(SHA256Context *pCtx,const unsigned char *data,unsigned int len){` |
 | 2193 |  510 | `	pCtx->nLen += len;` |
 | 4393 |  511 | `	while( len > 0 ){` |
@@ -528,7 +528,7 @@ Coverage: 377/414 lines (91.06%)
 |   69 |  518 | `			pCtx->nIndex = 0;` |
 |   34 |  519 | `		}` |
 |    1 |  520 | `	}` |
-| 2193 |  521 |  |
+| 2193 |  521 | `}` |
 |   41 |  522 | `PH7_PRIVATE void SHA256Final(SHA256Context *pCtx,unsigned char *digest){` |
 |   41 |  523 | `	sxu64 nBits = pCtx->nLen << 3;` |
 |   41 |  524 | `	unsigned char c = 0x80;` |
@@ -546,14 +546,14 @@ Coverage: 377/414 lines (91.06%)
 | 1289 |  536 | `	for( i = 0; i < pCtx->nDigestLen; i++ ){` |
 | 1249 |  537 | `		digest[i] = (unsigned char)((pCtx->state[i>>2] >> ((3-(i&3))*8)) & 0xff);` |
 |  625 |  538 | `	}` |
-|   41 |  539 |  |
+|   41 |  539 | `}` |
 |  ! 0 |  540 | `PH7_PRIVATE sxi32 SySha256Compute(const void *pIn,sxu32 nLen,unsigned char zDigest[32]){` |
 |    - |  541 | `	SHA256Context sCtx;` |
 |  ! 0 |  542 | `	SHA256Init(&sCtx);` |
 |  ! 0 |  543 | `	SHA256Update(&sCtx,(const unsigned char *)pIn,nLen);` |
 |  ! 0 |  544 | `	SHA256Final(&sCtx,zDigest);` |
 |  ! 0 |  545 | `	return SXRET_OK;` |
-|  ! 0 |  546 |  |
+|  ! 0 |  546 | `}` |
 |    - |  547 | `/*` |
 |    - |  548 | ` * SHA-384 / SHA-512 (FIPS 180-4). Same structure as SHA-256 but with 64-bit` |
 |    - |  549 | ` * words, 80 rounds, a 128-byte block, and a 128-bit length field (the high 64` |
@@ -609,21 +609,21 @@ Coverage: 377/414 lines (91.06%)
 | 1121 |  599 | `	}` |
 |   29 |  600 | `	state[0] += a; state[1] += b; state[2] += c; state[3] += d;` |
 |   29 |  601 | `	state[4] += e; state[5] += f; state[6] += g; state[7] += h;` |
-|   29 |  602 |  |
+|   29 |  602 | `}` |
 |   15 |  603 | `PH7_PRIVATE void SHA512Init(SHA512Context *pCtx){` |
 |   15 |  604 | `	pCtx->state[0] = 0x6a09e667f3bcc908ULL; pCtx->state[1] = 0xbb67ae8584caa73bULL;` |
 |   15 |  605 | `	pCtx->state[2] = 0x3c6ef372fe94f82bULL; pCtx->state[3] = 0xa54ff53a5f1d36f1ULL;` |
 |   15 |  606 | `	pCtx->state[4] = 0x510e527fade682d1ULL; pCtx->state[5] = 0x9b05688c2b3e6c1fULL;` |
 |   15 |  607 | `	pCtx->state[6] = 0x1f83d9abfb41bd6bULL; pCtx->state[7] = 0x5be0cd19137e2179ULL;` |
 |   15 |  608 | `	pCtx->nLen = 0; pCtx->nIndex = 0; pCtx->nDigestLen = 64;` |
-|   15 |  609 |  |
+|   15 |  609 | `}` |
 |    9 |  610 | `PH7_PRIVATE void SHA384Init(SHA512Context *pCtx){` |
 |    9 |  611 | `	pCtx->state[0] = 0xcbbb9d5dc1059ed8ULL; pCtx->state[1] = 0x629a292a367cd507ULL;` |
 |    9 |  612 | `	pCtx->state[2] = 0x9159015a3070dd17ULL; pCtx->state[3] = 0x152fecd8f70e5939ULL;` |
 |    9 |  613 | `	pCtx->state[4] = 0x67332667ffc00b31ULL; pCtx->state[5] = 0x8eb44a8768581511ULL;` |
 |    9 |  614 | `	pCtx->state[6] = 0xdb0c2e0d64f98fa7ULL; pCtx->state[7] = 0x47b5481dbefa4fa4ULL;` |
 |    9 |  615 | `	pCtx->nLen = 0; pCtx->nIndex = 0; pCtx->nDigestLen = 48;` |
-|    9 |  616 |  |
+|    9 |  616 | `}` |
 | 2543 |  617 | `PH7_PRIVATE void SHA512Update(SHA512Context *pCtx,const unsigned char *data,unsigned int len){` |
 | 2543 |  618 | `	pCtx->nLen += len;` |
 | 5083 |  619 | `	while( len > 0 ){` |
@@ -636,7 +636,7 @@ Coverage: 377/414 lines (91.06%)
 |   29 |  626 | `			pCtx->nIndex = 0;` |
 |   14 |  627 | `		}` |
 |    1 |  628 | `	}` |
-| 2543 |  629 |  |
+| 2543 |  629 | `}` |
 |   23 |  630 | `PH7_PRIVATE void SHA512Final(SHA512Context *pCtx,unsigned char *digest){` |
 |   23 |  631 | `	sxu64 nBits = pCtx->nLen << 3;` |
 |   23 |  632 | `	unsigned char c = 0x80;` |
@@ -657,14 +657,14 @@ Coverage: 377/414 lines (91.06%)
 | 1303 |  647 | `	for( i = 0; i < pCtx->nDigestLen; i++ ){` |
 | 1281 |  648 | `		digest[i] = (unsigned char)((pCtx->state[i>>3] >> ((7-(i&7))*8)) & 0xff);` |
 |  641 |  649 | `	}` |
-|   23 |  650 |  |
+|   23 |  650 | `}` |
 |  ! 0 |  651 | `PH7_PRIVATE sxi32 SySha512Compute(const void *pIn,sxu32 nLen,unsigned char zDigest[64]){` |
 |    - |  652 | `	SHA512Context sCtx;` |
 |  ! 0 |  653 | `	SHA512Init(&sCtx);` |
 |  ! 0 |  654 | `	SHA512Update(&sCtx,(const unsigned char *)pIn,nLen);` |
 |  ! 0 |  655 | `	SHA512Final(&sCtx,zDigest);` |
 |  ! 0 |  656 | `	return SXRET_OK;` |
-|  ! 0 |  657 |  |
+|  ! 0 |  657 | `}` |
 |    - |  658 | `#endif /* PH7_DISABLE_HASH_FUNC */` |
 |    - |  659 | `static const sxu32 crc32_table[] = {` |
 |    - |  660 |  |
@@ -734,7 +734,7 @@ Coverage: 377/414 lines (91.06%)
 |    - |  724 | `};` |
 |    - |  725 | `#define CRC32C(c,d) (c = ( crc32_table[(c ^ (d)) & 0xFF] ^ (c>>8) ) )` |
 |    2 |  726 | `static sxu32 SyCrc32Update(sxu32 crc32,const void *pSrc,sxu32 nLen)` |
-|    1 |  727 |  |
+|    1 |  727 | `{` |
 |    3 |  728 | `	register unsigned char *zIn = (unsigned char *)pSrc;` |
 |    - |  729 | `	unsigned char *zEnd;` |
 |    3 |  730 | `	if( zIn == 0 ){` |
@@ -749,13 +749,13 @@ Coverage: 377/414 lines (91.06%)
 |  ! 0 |  739 | `	}` |
 |    - |  740 |  |
 |    3 |  741 | `	return crc32;` |
-|    2 |  742 |  |
+|    2 |  742 | `}` |
 |    2 |  743 | `PH7_PRIVATE sxu32 SyCrc32(const void *pSrc,sxu32 nLen)` |
-|    1 |  744 |  |
+|    1 |  744 | `{` |
 |    3 |  745 | `	return SyCrc32Update(SXU32_HIGH,pSrc,nLen);` |
-|    1 |  746 |  |
+|    1 |  746 | `}` |
 |  110 |  747 | `PH7_PRIVATE sxi32 SyBinToHexConsumer(const void *pIn,sxu32 nLen,ProcConsumer xConsumer,void *pConsumerData)` |
-|    1 |  748 |  |
+|    1 |  748 | `{` |
 |    - |  749 | `	static const unsigned char zHexTab[] = "0123456789abcdef";` |
 |    - |  750 | `	const unsigned char *zIn,*zEnd;` |
 |    - |  751 | `	unsigned char zOut[3];` |
@@ -779,5 +779,5 @@ Coverage: 377/414 lines (91.06%)
 | 2571 |  769 | `		zIn++;` |
 |    1 |  770 | `	}` |
 |   87 |  771 | `        return SXRET_OK;` |
-|   56 |  772 |  |
+|   56 |  772 | `}` |
 |    - |  773 |  |

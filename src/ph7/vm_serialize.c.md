@@ -41,7 +41,7 @@ Coverage: 419/434 lines (96.54%)
 |    - |   31 | ` * ------------------------------------------------------------------------- */` |
 |    - |   32 | `typedef struct serialize_data serialize_data;` |
 |    - |   33 | `struct serialize_data` |
-|    - |   34 |  |
+|    - |   34 | `{` |
 |    - |   35 | `	ph7_vm *pVm;          /* The underlying VM */` |
 |    - |   36 | `	ph7_context *pCtx;    /* Call context (for throwing exceptions) */` |
 |    - |   37 | `	SyBlob *pOut;         /* Output accumulator */` |
@@ -60,7 +60,7 @@ Coverage: 419/434 lines (96.54%)
 |    - |   50 | ` * decl in ph7int.h).` |
 |    - |   51 | ` */` |
 |   78 |   52 | `PH7_PRIVATE void PH7_AppendShortestReal(SyBlob *pOut, double d)` |
-|    1 |   53 |  |
+|    1 |   53 | `{` |
 |    - |   54 | `	char zExp[64];` |
 |    - |   55 | `	char zDig[24];   /* significant digits, no sign/point */` |
 |    - |   56 | `	const char *p;` |
@@ -110,33 +110,33 @@ Coverage: 419/434 lines (96.54%)
 |   17 |  100 | `		SyBlobAppend(pOut,".",1);` |
 |   17 |  101 | `		SyBlobAppend(pOut,&zDig[decpt],nDig-decpt);` |
 |    - |  102 | `	}` |
-|   40 |  103 |  |
+|   40 |  103 | `}` |
 |    - |  104 | `/* Serialize a double as d:<shortest>; */` |
 |   52 |  105 | `static void VmSerializeReal(SyBlob *pOut, double d)` |
-|    1 |  106 |  |
+|    1 |  106 | `{` |
 |   53 |  107 | `	SyBlobAppend(pOut,"d:",2);` |
 |   53 |  108 | `	PH7_AppendShortestReal(pOut,d);` |
 |   53 |  109 | `	SyBlobAppend(pOut,";",1);` |
-|   53 |  110 |  |
+|   53 |  110 | `}` |
 |    - |  111 | `/* Emit s:<bytelen>:"<raw>"; for an arbitrary byte string. */` |
 |   56 |  112 | `static void VmSerializeRawString(SyBlob *pOut, const char *z, int n)` |
-|    1 |  113 |  |
+|    1 |  113 | `{` |
 |   57 |  114 | `	SyBlobFormat(pOut,"s:%u:\"",(unsigned)n);` |
 |   57 |  115 | `	if( n > 0 ){ SyBlobAppend(pOut,z,(sxu32)n); }` |
 |   57 |  116 | `	SyBlobAppend(pOut,"\";",2);` |
-|   57 |  117 |  |
+|   57 |  117 | `}` |
 |    - |  118 | `/* Array walker: serialize key then value. */` |
 |   64 |  119 | `static int VmSerializeArrayWalk(ph7_value *pKey, ph7_value *pValue, void *pUserData)` |
-|    1 |  120 |  |
+|    1 |  120 | `{` |
 |   65 |  121 | `	serialize_data *pData = (serialize_data *)pUserData;` |
 |   65 |  122 | `	if( pData->err \|\| pData->exc ){ return PH7_OK; }` |
 |   63 |  123 | `	VmSerialize(pKey,pData);   /* an int or string key -> i:/s: */` |
 |   63 |  124 | `	VmSerialize(pValue,pData);` |
 |   63 |  125 | `	return PH7_OK;` |
-|   33 |  126 |  |
+|   33 |  126 | `}` |
 |    - |  127 | `/* Emit an object property key with the proper visibility mangling. */` |
 |   22 |  128 | `static void VmSerializePropKey(SyBlob *pOut, ph7_class_attr *pAttr)` |
-|    1 |  129 |  |
+|    1 |  129 | `{` |
 |   23 |  130 | `	const char *zName = SyStringData(&pAttr->sName);` |
 |   23 |  131 | `	int nName = (int)SyStringLength(&pAttr->sName);` |
 |   23 |  132 | `	if( pAttr->iProtection == PH7_CLASS_PROT_PUBLIC ){` |
@@ -159,22 +159,22 @@ Coverage: 419/434 lines (96.54%)
 |    7 |  149 | `		SyBlobAppend(pOut,zName,(sxu32)nName);` |
 |    7 |  150 | `		SyBlobAppend(pOut,"\";",2);` |
 |    - |  151 | `	}` |
-|   23 |  152 |  |
+|   23 |  152 | `}` |
 |    - |  153 | `/* True if an attribute is a serializable instance property (not static/const). */` |
 |   22 |  154 | `static int VmAttrIsProperty(VmClassAttr *pVmAttr)` |
-|    1 |  155 |  |
+|    1 |  155 | `{` |
 |   23 |  156 | `	return (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC\|PH7_CLASS_ATTR_CONSTANT)) == 0;` |
-|    1 |  157 |  |
+|    1 |  157 | `}` |
 |    - |  158 | `/* __sleep() walker state: emit each named property in the array's order. */` |
 |    - |  159 | `typedef struct sleep_ctx sleep_ctx;` |
 |    - |  160 | `struct sleep_ctx` |
-|    - |  161 |  |
+|    - |  161 | `{` |
 |    - |  162 | `	serialize_data *pData;` |
 |    - |  163 | `	ph7_class_instance *pThis;` |
 |    - |  164 | `	sxu32 nCount;` |
 |    - |  165 | `};` |
 |    4 |  166 | `static int VmSleepWalk(ph7_value *pKey, ph7_value *pName, void *pUserData)` |
-|    1 |  167 |  |
+|    1 |  167 | `{` |
 |    5 |  168 | `	sleep_ctx *pS = (sleep_ctx *)pUserData;` |
 |    5 |  169 | `	serialize_data *pData = pS->pData;` |
 |    - |  170 | `	SyHashEntry *pHE;` |
@@ -194,21 +194,21 @@ Coverage: 419/434 lines (96.54%)
 |    5 |  184 | `	pS->nCount++;` |
 |    2 |  185 | `	SXUNUSED(pKey);` |
 |    5 |  186 | `	return PH7_OK;` |
-|    3 |  187 |  |
+|    3 |  187 | `}` |
 |    - |  188 | `/* Emit "O:<len>:"Class":<count>:{" + body + "}" from a pre-built body blob. */` |
 |   18 |  189 | `static void VmSerializeObjectHeader(SyBlob *pOut, SyString *pClassName, sxu32 nCount, SyBlob *pBody)` |
-|    1 |  190 |  |
+|    1 |  190 | `{` |
 |   19 |  191 | `	SyBlobFormat(pOut,"O:%u:\"",(unsigned)pClassName->nByte);` |
 |   19 |  192 | `	SyBlobAppend(pOut,pClassName->zString,pClassName->nByte);` |
 |   19 |  193 | `	SyBlobFormat(pOut,"\":%u:{",nCount);` |
 |   19 |  194 | `	if( SyBlobLength(pBody) > 0 ){ SyBlobAppend(pOut,SyBlobData(pBody),SyBlobLength(pBody)); }` |
 |   19 |  195 | `	SyBlobAppend(pOut,"}",1);` |
-|   19 |  196 |  |
+|   19 |  196 | `}` |
 |    - |  197 | `/* Serialize a class instance, honoring __serialize()/__sleep() then the default.` |
 |    - |  198 | ` * The object body is built into a temp blob (so the entry count and __sleep's` |
 |    - |  199 | ` * array order come out right) before the O: header is written. */` |
 |   26 |  200 | `static sxi32 VmSerializeObject(ph7_value *pIn, serialize_data *pData)` |
-|    1 |  201 |  |
+|    1 |  201 | `{` |
 |   27 |  202 | `	ph7_class_instance *pThis = (ph7_class_instance *)pIn->x.pOther;` |
 |   27 |  203 | `	ph7_vm *pVm = pData->pVm;` |
 |   27 |  204 | `	SyString *pClassName = &pThis->pClass->sName;` |
@@ -286,9 +286,9 @@ Coverage: 419/434 lines (96.54%)
 |    9 |  276 | `	}` |
 |   19 |  277 | `	SyBlobRelease(&sBody);` |
 |   19 |  278 | `	return pData->exc ? PH7_EXCEPTION : PH7_OK;` |
-|   14 |  279 |  |
+|   14 |  279 | `}` |
 |  280 |  280 | `static sxi32 VmSerialize(ph7_value *pIn, serialize_data *pData)` |
-|    1 |  281 |  |
+|    1 |  281 | `{` |
 |  281 |  282 | `	SyBlob *pOut = pData->pOut;` |
 |  281 |  283 | `	if( pData->err \|\| pData->exc ){ return PH7_OK; }` |
 |  281 |  284 | `	if( pData->depth > SERIALIZE_MAX_DEPTH ){ pData->err = 1; return PH7_OK; }` |
@@ -319,13 +319,13 @@ Coverage: 419/434 lines (96.54%)
 |  ! 0 |  309 | `		SyBlobAppend(pOut,"i:0;",4);` |
 |    - |  310 | `	}` |
 |  255 |  311 | `	return PH7_OK;` |
-|  141 |  312 |  |
+|  141 |  312 | `}` |
 |    - |  313 | `/*` |
 |    - |  314 | ` * string serialize(mixed $value)` |
 |    - |  315 | ` *  Returns a storable representation of a value.` |
 |    - |  316 | ` */` |
 |  134 |  317 | `PH7_PRIVATE int vm_builtin_serialize(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|    1 |  318 |  |
+|    1 |  318 | `{` |
 |    - |  319 | `	serialize_data sData;` |
 |    - |  320 | `	SyBlob sOut;` |
 |  135 |  321 | `	if( nArg < 1 ){` |
@@ -352,14 +352,14 @@ Coverage: 419/434 lines (96.54%)
 |  127 |  342 | `	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));` |
 |  127 |  343 | `	SyBlobRelease(&sOut);` |
 |  127 |  344 | `	return PH7_OK;` |
-|   68 |  345 |  |
+|   68 |  345 | `}` |
 |    - |  346 |  |
 |    - |  347 | `/* ----------------------------------------------------------------------------` |
 |    - |  348 | ` * Unserializer` |
 |    - |  349 | ` * ------------------------------------------------------------------------- */` |
 |    - |  350 | `typedef struct unserialize_data unserialize_data;` |
 |    - |  351 | `struct unserialize_data` |
-|    - |  352 |  |
+|    - |  352 | `{` |
 |    - |  353 | `	ph7_vm *pVm;` |
 |    - |  354 | `	ph7_context *pCtx;` |
 |    - |  355 | `	const char *zCur; /* Current parse position */` |
@@ -370,13 +370,13 @@ Coverage: 419/434 lines (96.54%)
 |    - |  360 | `static ph7_value * VmUnserializeValue(unserialize_data *ud);` |
 |    - |  361 | `/* Consume the single expected character; 0 on mismatch/EOF. */` |
 |  432 |  362 | `static int VmUnExpect(unserialize_data *ud, char c)` |
-|    1 |  363 |  |
+|    1 |  363 | `{` |
 |  433 |  364 | `	if( ud->zCur < ud->zEnd && ud->zCur[0] == c ){ ud->zCur++; return 1; }` |
 |    7 |  365 | `	return 0;` |
-|  217 |  366 |  |
+|  217 |  366 | `}` |
 |    - |  367 | `/* Parse an unsigned decimal into *pOut; 0 on no-digit/overflow. */` |
 |   50 |  368 | `static int VmUnParseUInt(unserialize_data *ud, sxu32 *pOut)` |
-|    1 |  369 |  |
+|    1 |  369 | `{` |
 |   51 |  370 | `	sxu32 v = 0;` |
 |   51 |  371 | `	int n = 0;` |
 |  105 |  372 | `	while( ud->zCur < ud->zEnd && ud->zCur[0] >= '0' && ud->zCur[0] <= '9' ){` |
@@ -388,10 +388,10 @@ Coverage: 419/434 lines (96.54%)
 |   51 |  378 | `	if( n == 0 ){ return 0; }` |
 |   51 |  379 | `	*pOut = v;` |
 |   51 |  380 | `	return 1;` |
-|   26 |  381 |  |
+|   26 |  381 | `}` |
 |    - |  382 | `/* Parse a signed 64-bit decimal into *pOut; 0 on failure. */` |
 |   54 |  383 | `static int VmUnParseInt64(unserialize_data *ud, ph7_int64 *pOut)` |
-|    1 |  384 |  |
+|    1 |  384 | `{` |
 |   55 |  385 | `	int neg = 0, n = 0;` |
 |   55 |  386 | `	sxu64 v = 0;` |
 |   55 |  387 | `	if( ud->zCur < ud->zEnd && (ud->zCur[0]=='-' \|\| ud->zCur[0]=='+') ){` |
@@ -404,10 +404,10 @@ Coverage: 419/434 lines (96.54%)
 |   55 |  394 | `	if( n == 0 ){ return 0; }` |
 |   55 |  395 | `	*pOut = neg ? (ph7_int64)(0ULL - v) : (ph7_int64)v;` |
 |   55 |  396 | `	return 1;` |
-|   28 |  397 |  |
+|   28 |  397 | `}` |
 |    - |  398 | `/* Parse s:<len>:"<len bytes>"; returning the raw view (zStr,nStr). */` |
 |   20 |  399 | `static int VmUnParseString(unserialize_data *ud, const char **pzStr, int *pnStr)` |
-|    1 |  400 |  |
+|    1 |  400 | `{` |
 |    - |  401 | `	sxu32 nLen;` |
 |   21 |  402 | `	if( !VmUnExpect(ud,'s') \|\| !VmUnExpect(ud,':') ){ return 0; }` |
 |   21 |  403 | `	if( !VmUnParseUInt(ud,&nLen) ){ return 0; }` |
@@ -418,10 +418,10 @@ Coverage: 419/434 lines (96.54%)
 |   19 |  408 | `	ud->zCur += nLen;` |
 |   19 |  409 | `	if( !VmUnExpect(ud,'"') \|\| !VmUnExpect(ud,';') ){ return 0; }` |
 |   17 |  410 | `	return 1;` |
-|   11 |  411 |  |
+|   11 |  411 | `}` |
 |    - |  412 | `/* Strip object-property key mangling: "\0*\0name" / "\0Class\0name" -> name. */` |
 |    8 |  413 | `static void VmUnstripKey(const char *z, int n, const char **pzName, int *pnName)` |
-|    1 |  414 |  |
+|    1 |  414 | `{` |
 |    9 |  415 | `	if( n >= 1 && z[0] == '\0' ){` |
 |    - |  416 | `		int i;` |
 |   21 |  417 | `		for( i = 1; i < n; i++ ){` |
@@ -429,10 +429,10 @@ Coverage: 419/434 lines (96.54%)
 |    9 |  419 | `		}` |
 |  ! 0 |  420 | `	}` |
 |    5 |  421 | `	*pzName = z; *pnName = n;` |
-|    5 |  422 |  |
+|    5 |  422 | `}` |
 |    - |  423 | `/* Parse a:<count>:{ <key><val> ... } into a fresh array value. */` |
 |   12 |  424 | `static ph7_value * VmUnserializeArray(unserialize_data *ud)` |
-|    1 |  425 |  |
+|    1 |  425 | `{` |
 |    - |  426 | `	sxu32 count, i;` |
 |    - |  427 | `	ph7_value *pArray;` |
 |   13 |  428 | `	if( !VmUnExpect(ud,'a') \|\| !VmUnExpect(ud,':') ){ return 0; }` |
@@ -456,10 +456,10 @@ Coverage: 419/434 lines (96.54%)
 |    9 |  446 | `	ud->depth--;` |
 |    9 |  447 | `	if( !VmUnExpect(ud,'}') ){ return 0; }` |
 |    9 |  448 | `	return pArray;` |
-|    7 |  449 |  |
+|    7 |  449 | `}` |
 |    - |  450 | `/* Parse O:<namelen>:"<Class>":<count>:{ ... } into a fresh object value. */` |
 |   10 |  451 | `static ph7_value * VmUnserializeObject(unserialize_data *ud)` |
-|    1 |  452 |  |
+|    1 |  452 | `{` |
 |    - |  453 | `	sxu32 nLen, count, i;` |
 |    - |  454 | `	const char *zClass;` |
 |    - |  455 | `	ph7_class *pClass;` |
@@ -535,9 +535,9 @@ Coverage: 419/434 lines (96.54%)
 |  ! 0 |  525 | `	if( pArrVal ){ ph7_context_release_value(ud->pCtx,pArrVal); }` |
 |  ! 0 |  526 | `	ph7_context_release_value(ud->pCtx,pObjVal);` |
 |  ! 0 |  527 | `	return 0;` |
-|    6 |  528 |  |
+|    6 |  528 | `}` |
 |  130 |  529 | `static ph7_value * VmUnserializeValue(unserialize_data *ud)` |
-|    1 |  530 |  |
+|    1 |  530 | `{` |
 |    - |  531 | `	ph7_value *pOut;` |
 |    - |  532 | `	char c;` |
 |  131 |  533 | `	if( ud->depth > SERIALIZE_MAX_DEPTH \|\| ud->zCur >= ud->zEnd ){ return 0; }` |
@@ -606,13 +606,13 @@ Coverage: 419/434 lines (96.54%)
 |    - |  596 | `		/* r:/R: back-references and anything else are unsupported */` |
 |    9 |  597 | `		return 0;` |
 |    - |  598 | `	}` |
-|   64 |  599 |  |
+|   64 |  599 | `}` |
 |    - |  600 | `/*` |
 |    - |  601 | ` * mixed unserialize(string $str)` |
 |    - |  602 | ` *  Create a PHP value from a stored representation. Returns false on failure.` |
 |    - |  603 | ` */` |
 |   66 |  604 | `PH7_PRIVATE int vm_builtin_unserialize(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|    1 |  605 |  |
+|    1 |  605 | `{` |
 |    - |  606 | `	unserialize_data ud;` |
 |    - |  607 | `	const char *zIn;` |
 |    - |  608 | `	int nByte;` |
@@ -644,5 +644,5 @@ Coverage: 419/434 lines (96.54%)
 |   41 |  634 | `	ph7_result_value(pCtx,pVal);` |
 |   41 |  635 | `	ph7_context_release_value(pCtx,pVal);` |
 |   41 |  636 | `	return PH7_OK;` |
-|   34 |  637 |  |
+|   34 |  637 | `}` |
 |    - |  638 |  |

@@ -15,7 +15,7 @@ Coverage: 42/170 lines (24.71%)
 |    - |    5 | ` */` |
 |    - |    6 | `#include "ph7int.h"` |
 |    6 |    7 | `static const char * VmFindShortOpt(int c,const char *zIn,const char *zEnd)` |
-|    1 |    8 |  |
+|    1 |    8 | `{` |
 |  409 |    9 | `	while( zIn < zEnd ){` |
 |  403 |   10 | `		if( zIn[0] == '-' && &zIn[1] < zEnd && (int)zIn[1] == c ){` |
 |    - |   11 | `			/* Got one */` |
@@ -26,14 +26,14 @@ Coverage: 42/170 lines (24.71%)
 |    1 |   16 | `	}` |
 |    - |   17 | `	/* No such option */` |
 |    7 |   18 | `	return 0;` |
-|    4 |   19 |  |
+|    4 |   19 | `}` |
 |    - |   20 | `/*` |
 |    - |   21 | ` * Check if a long option argument [i.e: --opt] is available in the command` |
 |    - |   22 | ` * line string. Return a pointer to the start of the stream on success.` |
 |    - |   23 | ` * NULL otherwise.` |
 |    - |   24 | ` */` |
 |  ! 0 |   25 | `static const char * VmFindLongOpt(const char *zLong,int nByte,const char *zIn,const char *zEnd)` |
-|  ! 0 |   26 |  |
+|  ! 0 |   26 | `{` |
 |    - |   27 | `	const char *zOpt;` |
 |  ! 0 |   28 | `	while( zIn < zEnd ){` |
 |  ! 0 |   29 | `		if( zIn[0] == '-' && &zIn[1] < zEnd && (int)zIn[1] == '-' ){` |
@@ -57,12 +57,12 @@ Coverage: 42/170 lines (24.71%)
 |  ! 0 |   47 | `	}` |
 |    - |   48 | `	/* No such option */` |
 |  ! 0 |   49 | `	return 0;` |
-|  ! 0 |   50 |  |
+|  ! 0 |   50 | `}` |
 |    - |   51 | `/*` |
 |    - |   52 | ` * Long option [i.e: --opt] arguments private data structure.` |
 |    - |   53 | ` */` |
 |    - |   54 | `struct getopt_long_opt` |
-|    - |   55 |  |
+|    - |   55 | `{` |
 |    - |   56 | `	const char *zArgIn,*zArgEnd; /* Command line arguments */` |
 |    - |   57 | `	ph7_value *pWorker;  /* Worker variable*/` |
 |    - |   58 | `	ph7_value *pArray;   /* getopt() return value */` |
@@ -81,7 +81,7 @@ Coverage: 42/170 lines (24.71%)
 |    - |   71 | `	int need_val,       /* TRUE to fetch option argument */` |
 |    - |   72 | `	ph7_context *pCtx,  /* Call Context */` |
 |    - |   73 | `	const char *zName   /* Option name */)` |
-|  ! 0 |   74 |  |
+|  ! 0 |   74 | `{` |
 |  ! 0 |   75 | `	ph7_value_bool(pWorker,0);` |
 |  ! 0 |   76 | `	if( !need_val ){` |
 |    - |   77 | `		/*` |
@@ -181,7 +181,7 @@ Coverage: 42/170 lines (24.71%)
 |  ! 0 |  171 | `			ph7_array_add_strkey_elem(pArray,(const char *)zName,pWorker); /* Will make it's own copy */` |
 |    - |  172 | `		}` |
 |    - |  173 | `	}` |
-|  ! 0 |  174 |  |
+|  ! 0 |  174 | `}` |
 |    - |  175 | `/*` |
 |    - |  176 | ` * array getopt(string $options[,array $longopts ])` |
 |    - |  177 | ` *   Gets options from the command line argument list.` |
@@ -201,7 +201,7 @@ Coverage: 42/170 lines (24.71%)
 |    - |  191 | ` *  on failure.` |
 |    - |  192 | ` */` |
 |    2 |  193 | `PH7_PRIVATE int vm_builtin_getopt(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  194 |  |
+|    1 |  194 | `{` |
 |    - |  195 | `	const char *zIn,*zEnd,*zArg,*zArgIn,*zArgEnd;` |
 |    - |  196 | `	struct getopt_long_opt sLong;` |
 |    - |  197 | `	ph7_value *pArray,*pWorker;` |
@@ -279,12 +279,12 @@ Coverage: 42/170 lines (24.71%)
 |    - |  269 | `	 * automatically as soon we return from this foreign function.` |
 |    - |  270 | `	 */` |
 |    3 |  271 | `	return PH7_OK;` |
-|    2 |  272 |  |
+|    2 |  272 | `}` |
 |    - |  273 | `/*` |
 |    - |  274 | ` * Array walker callback used for processing long options values.` |
 |    - |  275 | ` */` |
 |  ! 0 |  276 | `static int VmProcessLongOpt(ph7_value *pKey,ph7_value *pValue,void *pUserData)` |
-|  ! 0 |  277 |  |
+|  ! 0 |  277 | `{` |
 |  ! 0 |  278 | `	struct getopt_long_opt *pOpt = (struct getopt_long_opt *)pUserData;` |
 |    - |  279 | `	const char *zArg,*zOpt,*zEnd;` |
 |  ! 0 |  280 | `	int need_value = 0;` |
@@ -327,5 +327,5 @@ Coverage: 42/170 lines (24.71%)
 |    - |  317 | `	/* Try to extract a value */` |
 |  ! 0 |  318 | `	VmExtractOptArgValue(pOpt->pArray,pOpt->pWorker,zArg,pOpt->zArgEnd,need_value,pOpt->pCtx,zOpt);` |
 |  ! 0 |  319 | `	return PH7_OK;` |
-|  ! 0 |  320 |  |
+|  ! 0 |  320 | `}` |
 |    - |  321 |  |

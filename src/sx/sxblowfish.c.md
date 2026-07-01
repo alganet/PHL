@@ -313,7 +313,7 @@ Coverage: 168/170 lines (98.82%)
 | 214277345 |  303 | `	y = y ^ c->S[2][cc];` |
 | 214277345 |  304 | `	y = y + c->S[3][d];` |
 | 214277345 |  305 | `	return y;` |
-|         1 |  306 |  |
+|         1 |  306 | `}` |
 |         - |  307 | `/* Encrypt one 64-bit block (xl\|\|xr) in place. */` |
 |  13392335 |  308 | `static void Blowfish_encipher(blf_ctx *c,sxu32 *xl,sxu32 *xr){` |
 |  13392335 |  309 | `	sxu32 Xl = *xl,Xr = *xr,temp;` |
@@ -327,14 +327,14 @@ Coverage: 168/170 lines (98.82%)
 |  13392335 |  317 | `	Xr = Xr ^ c->P[BLF_N];` |
 |  13392335 |  318 | `	Xl = Xl ^ c->P[BLF_N + 1];` |
 |  13392335 |  319 | `	*xl = Xl; *xr = Xr;` |
-|  13392335 |  320 |  |
+|  13392335 |  320 | `}` |
 |         - |  321 | `/* Encrypt nBlocks consecutive 64-bit blocks (ECB). */` |
 |      1921 |  322 | `static void Blowfish_encrypt(blf_ctx *c,sxu32 *data,int nBlocks){` |
 |         - |  323 | `	int i;` |
 |      7681 |  324 | `	for( i = 0; i < nBlocks; i++ ){` |
 |      5761 |  325 | `		Blowfish_encipher(c,&data[i*2],&data[i*2+1]);` |
 |      2881 |  326 | `	}` |
-|      1921 |  327 |  |
+|      1921 |  327 | `}` |
 |         - |  328 | `/* Read 4 bytes (big-endian) from data, cycling at databytes; advance *pCur.` |
 |         - |  329 | ` * Bytes are unsigned (the corrected "$2y" behaviour — no sign extension). */` |
 |    493933 |  330 | `static sxu32 Blowfish_stream2word(const unsigned char *data,sxu32 databytes,sxu32 *pCur){` |
@@ -346,11 +346,11 @@ Coverage: 168/170 lines (98.82%)
 |    987865 |  336 | `	}` |
 |    493933 |  337 | `	*pCur = j;` |
 |    493933 |  338 | `	return temp;` |
-|         1 |  339 |  |
+|         1 |  339 | `}` |
 |        31 |  340 | `static void Blowfish_initstate(blf_ctx *c){` |
 |        31 |  341 | `	SyMemcpy((const void *)ORIG_S,(void *)c->S,sizeof(c->S));` |
 |        31 |  342 | `	SyMemcpy((const void *)ORIG_P,(void *)c->P,sizeof(c->P));` |
-|        31 |  343 |  |
+|        31 |  343 | `}` |
 |         - |  344 | `/* Standard (unsalted) key expansion. */` |
 |     25665 |  345 | `static void Blowfish_expand0state(blf_ctx *c,const unsigned char *key,sxu32 keybytes){` |
 |         - |  346 | `	int i,k;` |
@@ -371,7 +371,7 @@ Coverage: 168/170 lines (98.82%)
 |  13139969 |  361 | `			c->S[i][k] = datal; c->S[i][k+1] = datar;` |
 |   6569985 |  362 | `		}` |
 |     51329 |  363 | `	}` |
-|     25665 |  364 |  |
+|     25665 |  364 | `}` |
 |         - |  365 | `/* Salted "expensive" key expansion (the bcrypt ExpandKey). */` |
 |        30 |  366 | `static void Blowfish_expandstate(blf_ctx *c,const unsigned char *data,sxu32 databytes,` |
 |         1 |  367 | `	const unsigned char *key,sxu32 keybytes){` |
@@ -398,7 +398,7 @@ Coverage: 168/170 lines (98.82%)
 |     15361 |  388 | `			c->S[i][k] = datal; c->S[i][k+1] = datar;` |
 |      7681 |  389 | `		}` |
 |        61 |  390 | `	}` |
-|        31 |  391 |  |
+|        31 |  391 | `}` |
 |         - |  392 |  |
 |         - |  393 | `/* bcrypt-base64 alphabet: '.','/', then A-Z, a-z, 0-9. */` |
 |         - |  394 | `static const char zB64[] = "./ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";` |
@@ -406,11 +406,11 @@ Coverage: 168/170 lines (98.82%)
 |       397 |  396 | `static int BcryptB64Value(int c){` |
 |       397 |  397 | `	const char *p = zB64;` |
 |       397 |  398 | `	int i = 0;` |
-|      9451 |  399 | `	for(; i < 64; i++ ){` |
-|      9451 |  400 | `		if( p[i] == c ){ return i; }` |
-|      4638 |  401 | `	}` |
+|      9609 |  399 | `	for(; i < 64; i++ ){` |
+|      9609 |  400 | `		if( p[i] == c ){ return i; }` |
+|      4431 |  401 | `	}` |
 |       ! 0 |  402 | `	return 255;` |
-|       199 |  403 |  |
+|       199 |  403 | `}` |
 |         - |  404 | `/* Encode nIn bytes as bcrypt-base64 into zOut (no padding); returns char count. */` |
 |        61 |  405 | `static int BcryptB64Encode(char *zOut,const unsigned char *pIn,sxu32 nIn){` |
 |        61 |  406 | `	sxu32 i = 0;` |
@@ -432,7 +432,7 @@ Coverage: 168/170 lines (98.82%)
 |       361 |  422 | `		zOut[n++] = zB64[c2 & 0x3f];` |
 |         1 |  423 | `	}` |
 |        61 |  424 | `	return n;` |
-|         1 |  425 |  |
+|         1 |  425 | `}` |
 |        19 |  426 | `PH7_PRIVATE sxi32 SyBcryptB64Decode(const char *zIn,sxu32 nIn,unsigned char *pOut,sxu32 nOut){` |
 |        19 |  427 | `	sxu32 i = 0,o = 0;` |
 |         - |  428 | `	int c1,c2,c3,c4;` |
@@ -454,7 +454,7 @@ Coverage: 168/170 lines (98.82%)
 |        91 |  444 | `		i += 4;` |
 |         1 |  445 | `	}` |
 |        19 |  446 | `	return SXRET_OK;` |
-|        10 |  447 |  |
+|        10 |  447 | `}` |
 |         - |  448 |  |
 |        30 |  449 | `PH7_PRIVATE sxi32 SyBcryptHash(const unsigned char *pPwd,sxu32 nPwd,sxu32 nCost,` |
 |         1 |  450 | `	const unsigned char aSalt[16],char zOut[60]){` |
@@ -512,5 +512,5 @@ Coverage: 168/170 lines (98.82%)
 |        31 |  502 | `	n += BcryptB64Encode(&zOut[n],aSalt,16);          /* 22 chars → n = 29 */` |
 |        31 |  503 | `	BcryptB64Encode(&zOut[n],zCipher,23);             /* 31 chars (drop the 24th byte) */` |
 |        31 |  504 | `	return SXRET_OK;` |
-|        16 |  505 |  |
+|        16 |  505 | `}` |
 |         - |  506 |  |

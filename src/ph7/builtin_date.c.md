@@ -42,7 +42,7 @@ Coverage: 459/699 lines (65.67%)
 |    - |   32 | `** Status: Public domain` |
 |    - |   33 | `*/` |
 |    - |   34 | `struct tm *__cdecl localtime(const time_t *t)` |
-|    - |   35 |  |
+|    - |   35 | `{` |
 |    - |   36 | `  static struct tm y;` |
 |    - |   37 | `  FILETIME uTm, lTm;` |
 |    - |   38 | `  SYSTEMTIME pTm;` |
@@ -61,7 +61,7 @@ Coverage: 459/699 lines (65.67%)
 |    - |   51 | `  y.tm_min = pTm.wMinute;` |
 |    - |   52 | `  y.tm_sec = pTm.wSecond;` |
 |    - |   53 | `  return &y;` |
-|    - |   54 |  |
+|    - |   54 | `}` |
 |    - |   55 | `/* SPDX-SnippetEnd */` |
 |    - |   56 | `#endif /*_WIN32_WCE */` |
 |    - |   57 | `#elif defined(__UNIXES__)` |
@@ -77,7 +77,7 @@ Coverage: 459/699 lines (65.67%)
 |    - |   67 | `` * source instead of the old nonsensical `tt % SX_USEC_PER_SEC` off-Unix path.`` |
 |    - |   68 | ` */` |
 |   34 |   69 | `static void DateNow(ph7_vm *pVm,sytime *pOut)` |
-|    1 |   70 |  |
+|    1 |   70 | `{` |
 |   35 |   71 | `	if( pVm && pVm->pEngine->xConf.xClock ){` |
 |  ! 0 |   72 | `		ph7_int64 sec = 0,usec = 0;` |
 |  ! 0 |   73 | `		if( pVm->pEngine->xConf.xClock(pVm->pEngine->xConf.pClockData,&sec,&usec) == PH7_OK ){` |
@@ -115,7 +115,7 @@ Coverage: 459/699 lines (65.67%)
 |    - |  105 | `		pOut->tm_usec = 0; /* no sub-second source; embedders supply one via PH7_CONFIG_CLOCK */` |
 |    - |  106 | `	}` |
 |    - |  107 | `#endif /* __UNIXES__ */` |
-|   18 |  108 |  |
+|   18 |  108 | `}` |
 |    - |  109 | ` /*` |
 |    - |  110 | `  * int64 time(void)` |
 |    - |  111 | `  *  Current Unix timestamp` |
@@ -126,7 +126,7 @@ Coverage: 459/699 lines (65.67%)
 |    - |  116 | `  *  since the Unix Epoch (January 1 1970 00:00:00 GMT).` |
 |    - |  117 | `  */` |
 |    8 |  118 | `PH7_PRIVATE int PH7_builtin_time(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  119 |  |
+|    1 |  119 | `{` |
 |    - |  120 | `	time_t tt;` |
 |    4 |  121 | `	SXUNUSED(nArg); /* cc warning */` |
 |    4 |  122 | `	SXUNUSED(apArg);` |
@@ -135,7 +135,7 @@ Coverage: 459/699 lines (65.67%)
 |    - |  125 | `	/* Return as 64-bit integer */` |
 |    9 |  126 | `	ph7_result_int64(pCtx,(ph7_int64)tt);` |
 |    9 |  127 | `	return  PH7_OK;` |
-|    1 |  128 |  |
+|    1 |  128 | `}` |
 |    - |  129 | `/*` |
 |    - |  130 | `  * string/float microtime([ bool $get_as_float = false ])` |
 |    - |  131 | `  *  microtime() returns the current Unix timestamp with microseconds.` |
@@ -152,7 +152,7 @@ Coverage: 459/699 lines (65.67%)
 |    - |  142 | `  *  the current time in seconds since the Unix epoch accurate to the nearest microsecond.` |
 |    - |  143 | `  */` |
 |   26 |  144 | `PH7_PRIVATE int PH7_builtin_microtime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  145 |  |
+|    1 |  145 | `{` |
 |   27 |  146 | `	int bFloat = 0;` |
 |    - |  147 | `	sytime sTime;` |
 |   27 |  148 | `	DateNow(pCtx->pVm,&sTime);` |
@@ -170,7 +170,7 @@ Coverage: 459/699 lines (65.67%)
 |    7 |  160 | `		ph7_result_string_format(pCtx,"0.%08ld %ld",sTime.tm_usec*100,sTime.tm_sec);` |
 |    - |  161 | `	}` |
 |   27 |  162 | `	return PH7_OK;` |
-|    1 |  163 |  |
+|    1 |  163 | `}` |
 |    - |  164 | `/*` |
 |    - |  165 | ` * array getdate ([ int $timestamp = time() ])` |
 |    - |  166 | ` *  Returns an associative array containing the date information` |
@@ -183,7 +183,7 @@ Coverage: 459/699 lines (65.67%)
 |    - |  173 | ` *  Returns an associative array of information related to the timestamp.` |
 |    - |  174 | ` */` |
 |    8 |  175 | `PH7_PRIVATE int PH7_builtin_getdate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  176 |  |
+|    1 |  176 | `{` |
 |    - |  177 | `	ph7_value *pValue,*pArray;` |
 |    - |  178 | `	Sytm sTm;` |
 |    9 |  179 | `	if( nArg < 1 ){` |
@@ -264,7 +264,7 @@ Coverage: 459/699 lines (65.67%)
 |    - |  254 | `	/* Return the freshly created array */` |
 |    9 |  255 | `	ph7_result_value(pCtx,pArray);` |
 |    9 |  256 | `	return PH7_OK;` |
-|    5 |  257 |  |
+|    5 |  257 | `}` |
 |    - |  258 | `/*` |
 |    - |  259 | ` * mixed gettimeofday([ bool $return_float = false ] )` |
 |    - |  260 | ` *  Returns an associative array containing the data returned from the system call.` |
@@ -276,7 +276,7 @@ Coverage: 459/699 lines (65.67%)
 |    - |  266 | ` *  a float is returned.` |
 |    - |  267 | ` */` |
 |    8 |  268 | `PH7_PRIVATE int PH7_builtin_gettimeofday(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  269 |  |
+|    1 |  269 | `{` |
 |    9 |  270 | `	int bFloat = 0;` |
 |    - |  271 | `	sytime sTime;` |
 |    9 |  272 | `	DateNow(pCtx->pVm,&sTime);` |
@@ -309,7 +309,7 @@ Coverage: 459/699 lines (65.67%)
 |    5 |  299 | `		ph7_result_value(pCtx,pArray);` |
 |    - |  300 | `	}` |
 |    9 |  301 | `	return PH7_OK;` |
-|    5 |  302 |  |
+|    5 |  302 | `}` |
 |    - |  303 | `/* Check if the given year is leap or not */` |
 |    - |  304 | `#define IS_LEAP_YEAR(YEAR)	(YEAR % 400 ? ( YEAR % 100 ? ( YEAR % 4 ? 0 : 1 ) : 0 ) : 1)` |
 |    - |  305 | `/* ISO-8601 numeric representation of the day of the week */` |
@@ -354,7 +354,7 @@ Coverage: 459/699 lines (65.67%)
 |    - |  344 | ` * c         ISO 8601 date` |
 |    - |  345 | ` */` |
 |   46 |  346 | `static sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pTm)` |
-|    1 |  347 |  |
+|    1 |  347 | `{` |
 |   47 |  348 | `	const char *zEnd = &zIn[nLen];` |
 |    - |  349 | `	const char *zCur;` |
 |    - |  350 | `	/* Start the format process */` |
@@ -562,7 +562,7 @@ Coverage: 459/699 lines (65.67%)
 |  111 |  552 | `		zIn++;` |
 |    1 |  553 | `	}` |
 |   47 |  554 | `	return SXRET_OK;` |
-|    1 |  555 |  |
+|    1 |  555 | `}` |
 |    - |  556 | `/*` |
 |    - |  557 | ` * PH7 implementation of the strftime() function.` |
 |    - |  558 | ` * The following formats are supported:` |
@@ -614,7 +614,7 @@ Coverage: 459/699 lines (65.67%)
 |    - |  604 | `	int nLen,           /* Input length */` |
 |    - |  605 | `	Sytm *pTm           /* Parse of the given time */` |
 |    - |  606 | `	)` |
-|    1 |  607 |  |
+|    1 |  607 | `{` |
 |   17 |  608 | `	const char *zCur,*zEnd = &zIn[nLen];` |
 |    - |  609 | `	int c;` |
 |    - |  610 | `	/* Start the format process */` |
@@ -800,7 +800,7 @@ Coverage: 459/699 lines (65.67%)
 |   21 |  790 | `		zIn++;` |
 |    1 |  791 | `	}` |
 |   17 |  792 | `	return SXRET_OK;` |
-|    1 |  793 |  |
+|    1 |  793 | `}` |
 |    - |  794 | `/*` |
 |    - |  795 | ` * string date(string $format [, int $timestamp = time() ] )` |
 |    - |  796 | ` *  Returns a string formatted according to the given format string using` |
@@ -817,7 +817,7 @@ Coverage: 459/699 lines (65.67%)
 |    - |  807 | ` *  A formatted date string. If a non-numeric value is used for timestamp, FALSE is returned.` |
 |    - |  808 | ` */` |
 |   36 |  809 | `PH7_PRIVATE int PH7_builtin_date(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  810 |  |
+|    1 |  810 | `{` |
 |    - |  811 | `	const char *zFormat;` |
 |    - |  812 | `	int nLen;` |
 |    - |  813 | `	Sytm sTm;` |
@@ -862,7 +862,7 @@ Coverage: 459/699 lines (65.67%)
 |    - |  852 | `	/* Format the given string */` |
 |   33 |  853 | `	DateFormat(pCtx,zFormat,nLen,&sTm);` |
 |   33 |  854 | `	return PH7_OK;` |
-|   19 |  855 |  |
+|   19 |  855 | `}` |
 |    - |  856 | `/*` |
 |    - |  857 | ` * string strftime(string $format [, int $timestamp = time() ] )` |
 |    - |  858 | ` *  Format a local time/date (PLATFORM INDEPENDANT IMPLEENTATION NOT BASED ON LOCALE)` |
@@ -878,7 +878,7 @@ Coverage: 459/699 lines (65.67%)
 |    - |  868 | ` * or the current local time if no timestamp is given.` |
 |    - |  869 | ` */` |
 |   20 |  870 | `PH7_PRIVATE int PH7_builtin_strftime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  871 |  |
+|    1 |  871 | `{` |
 |    - |  872 | `	const char *zFormat;` |
 |    - |  873 | `	int nLen;` |
 |    - |  874 | `	Sytm sTm;` |
@@ -927,7 +927,7 @@ Coverage: 459/699 lines (65.67%)
 |  ! 0 |  917 | `		ph7_result_bool(pCtx,0);` |
 |  ! 0 |  918 | `	}` |
 |   17 |  919 | `	return PH7_OK;` |
-|   11 |  920 |  |
+|   11 |  920 | `}` |
 |    - |  921 | `/*` |
 |    - |  922 | ` * string gmdate(string $format [, int $timestamp = time() ] )` |
 |    - |  923 | ` *  Identical to the date() function except that the time returned` |
@@ -943,7 +943,7 @@ Coverage: 459/699 lines (65.67%)
 |    - |  933 | ` *  A formatted date string. If a non-numeric value is used for timestamp, FALSE is returned.` |
 |    - |  934 | ` */` |
 |   16 |  935 | `PH7_PRIVATE int PH7_builtin_gmdate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  936 |  |
+|    1 |  936 | `{` |
 |    - |  937 | `	const char *zFormat;` |
 |    - |  938 | `	int nLen;` |
 |    - |  939 | `	Sytm sTm;` |
@@ -988,7 +988,7 @@ Coverage: 459/699 lines (65.67%)
 |    - |  978 | `	/* Format the given string */` |
 |   15 |  979 | `	DateFormat(pCtx,zFormat,nLen,&sTm);` |
 |   15 |  980 | `	return PH7_OK;` |
-|    9 |  981 |  |
+|    9 |  981 | `}` |
 |    - |  982 | `/*` |
 |    - |  983 | ` * array localtime([ int $timestamp = time() [, bool $is_associative = false ]])` |
 |    - |  984 | ` *  Return the local time.` |
@@ -1014,7 +1014,7 @@ Coverage: 459/699 lines (65.67%)
 |    - | 1004 | ` *  An associative array of information related to the timestamp.` |
 |    - | 1005 | ` */` |
 |    8 | 1006 | `PH7_PRIVATE int PH7_builtin_localtime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 | 1007 |  |
+|    1 | 1007 | `{` |
 |    - | 1008 | `	ph7_value *pValue,*pArray;` |
 |    9 | 1009 | `	int isAssoc = 0;` |
 |    - | 1010 | `	Sytm sTm;` |
@@ -1137,7 +1137,7 @@ Coverage: 459/699 lines (65.67%)
 |    - | 1127 | `	/* Return the array */` |
 |    9 | 1128 | `	ph7_result_value(pCtx,pArray);` |
 |    9 | 1129 | `	return PH7_OK;` |
-|    5 | 1130 |  |
+|    5 | 1130 | `}` |
 |    - | 1131 | `/*` |
 |    - | 1132 | ` * int idate(string $format [, int $timestamp = time() ])` |
 |    - | 1133 | ` *  Returns a number formatted according to the given format string` |
@@ -1172,7 +1172,7 @@ Coverage: 459/699 lines (65.67%)
 |    - | 1162 | ` *  An integer.` |
 |    - | 1163 | ` */` |
 |   42 | 1164 | `PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    2 | 1165 |  |
+|    2 | 1165 | `{` |
 |    - | 1166 | `	const char *zFormat;` |
 |   44 | 1167 | `	ph7_int64 iVal = 0;` |
 |    - | 1168 | `	int nLen;` |
@@ -1304,7 +1304,7 @@ Coverage: 459/699 lines (65.67%)
 |    - | 1294 | `	/* Return the time value */` |
 |   40 | 1295 | `	ph7_result_int64(pCtx,iVal);` |
 |   40 | 1296 | `	return PH7_OK;` |
-|   23 | 1297 |  |
+|   23 | 1297 | `}` |
 |    - | 1298 | `/*` |
 |    - | 1299 | ` * int mktime/gmmktime([ int $hour = date("H") [, int $minute = date("i") [, int $second = date("s")` |
 |    - | 1300 | ` *  [, int $month = date("n") [, int $day = date("j") [, int $year = date("Y") [, int $is_dst = -1 ]]]]]]] )` |
@@ -1348,7 +1348,7 @@ Coverage: 459/699 lines (65.67%)
 |    - | 1338 | ` *   If the arguments are invalid, the function returns FALSE` |
 |    - | 1339 | ` */` |
 |    8 | 1340 | `PH7_PRIVATE int PH7_builtin_mktime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 | 1341 |  |
+|    1 | 1341 | `{` |
 |    - | 1342 | `	const char *zFunction;` |
 |    9 | 1343 | `	ph7_int64 iVal = 0;` |
 |    - | 1344 | `	struct tm *pTm;` |
@@ -1407,6 +1407,6 @@ Coverage: 459/699 lines (65.67%)
 |    - | 1397 | `	/* Return the timesatmp as a 64bit integer */` |
 |    9 | 1398 | `	ph7_result_int64(pCtx,iVal);` |
 |    9 | 1399 | `	return PH7_OK;` |
-|    1 | 1400 |  |
+|    1 | 1400 | `}` |
 |    - | 1401 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
 |    - | 1402 |  |

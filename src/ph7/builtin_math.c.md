@@ -34,7 +34,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |   24 | ` *  The square root of arg or the special value Nan of failure.` |
 |    - |   25 | ` */` |
 |    6 |   26 | `PH7_PRIVATE int PH7_builtin_sqrt(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |   27 |  |
+|    1 |   27 | `{` |
 |    - |   28 | `	double r,x;` |
 |    7 |   29 | `	if( nArg < 1 ){` |
 |    - |   30 | `		/* Missing argument,return 0 */` |
@@ -47,7 +47,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |   37 | `	/* store the result back */` |
 |    3 |   38 | `	ph7_result_double(pCtx,r);` |
 |    3 |   39 | `	return PH7_OK;` |
-|    4 |   40 |  |
+|    4 |   40 | `}` |
 |    - |   41 | `/*` |
 |    - |   42 | ` * float exp(float $arg )` |
 |    - |   43 | ` *  Calculates the exponent of e.` |
@@ -57,7 +57,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |   47 | ` *  'e' raised to the power of arg.` |
 |    - |   48 | ` */` |
 |   20 |   49 | `PH7_PRIVATE int PH7_builtin_exp(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |   50 |  |
+|    1 |   50 | `{` |
 |    - |   51 | `	double r,x;` |
 |   21 |   52 | `	if( nArg < 1 ){` |
 |    - |   53 | `		/* Missing argument,return 0 */` |
@@ -70,7 +70,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |   60 | `	/* store the result back */` |
 |   19 |   61 | `	ph7_result_double(pCtx,r);` |
 |   19 |   62 | `	return PH7_OK;` |
-|   11 |   63 |  |
+|   11 |   63 | `}` |
 |    - |   64 | `/*` |
 |    - |   65 | ` * float floor(float $arg )` |
 |    - |   66 | ` *  Round fractions down.` |
@@ -80,7 +80,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |   70 | ` *  Returns the next lowest integer value by rounding down value if necessary.` |
 |    - |   71 | ` */` |
 |   18 |   72 | `PH7_PRIVATE int PH7_builtin_floor(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    4 |   73 |  |
+|    4 |   73 | `{` |
 |    - |   74 | `	double r,x;` |
 |    - |   75 | `	/* PHP requires exactly one argument. */` |
 |   22 |   76 | `	if( nArg != 1 ){` |
@@ -125,7 +125,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  115 | `	/* store the result back */` |
 |   13 |  116 | `	ph7_result_double(pCtx,r);` |
 |   13 |  117 | `	return PH7_OK;` |
-|   13 |  118 |  |
+|   13 |  118 | `}` |
 |    - |  119 | `/*` |
 |    - |  120 | ` * float cos(float $arg )` |
 |    - |  121 | ` *  Cosine.` |
@@ -135,7 +135,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  125 | ` *  The cosine of arg.` |
 |    - |  126 | ` */` |
 |    4 |  127 | `PH7_PRIVATE int PH7_builtin_cos(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  128 |  |
+|    1 |  128 | `{` |
 |    - |  129 | `	double r,x;` |
 |    5 |  130 | `	if( nArg < 1 ){` |
 |    - |  131 | `		/* Missing argument,return 0 */` |
@@ -148,7 +148,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  138 | `	/* store the result back */` |
 |    3 |  139 | `	ph7_result_double(pCtx,r);` |
 |    3 |  140 | `	return PH7_OK;` |
-|    3 |  141 |  |
+|    3 |  141 | `}` |
 |    - |  142 | `/*` |
 |    - |  143 | ` * float acos(float $arg )` |
 |    - |  144 | ` *  Arc cosine.` |
@@ -158,7 +158,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  148 | ` *  The arc cosine of arg.` |
 |    - |  149 | ` */` |
 |   22 |  150 | `PH7_PRIVATE int PH7_builtin_acos(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    4 |  151 |  |
+|    4 |  151 | `{` |
 |    - |  152 | `	double r, x;` |
 |    - |  153 | `	/* PHP enforces exactly one argument and a floatable parameter. */` |
 |   26 |  154 | `	if( nArg != 1 ){` |
@@ -189,7 +189,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  179 | `	/* store the result back */` |
 |   17 |  180 | `	ph7_result_double(pCtx,r);` |
 |   17 |  181 | `	return PH7_OK;` |
-|   15 |  182 |  |
+|   15 |  182 | `}` |
 |    - |  183 | `/*` |
 |    - |  184 | ` * float cosh(float $arg )` |
 |    - |  185 | ` *  Hyperbolic cosine.` |
@@ -199,7 +199,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  189 | ` *  The hyperbolic cosine of arg.` |
 |    - |  190 | ` */` |
 |   18 |  191 | `PH7_PRIVATE int PH7_builtin_cosh(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  192 |  |
+|    1 |  192 | `{` |
 |    - |  193 | `	double r,x;` |
 |   19 |  194 | `	if( nArg < 1 ){` |
 |    - |  195 | `		/* Missing argument,return 0 */` |
@@ -212,7 +212,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  202 | `	/* store the result back */` |
 |   17 |  203 | `	ph7_result_double(pCtx,r);` |
 |   17 |  204 | `	return PH7_OK;` |
-|   10 |  205 |  |
+|   10 |  205 | `}` |
 |    - |  206 | `/*` |
 |    - |  207 | ` * float sin(float $arg )` |
 |    - |  208 | ` *  Sine.` |
@@ -222,7 +222,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  212 | ` *  The sine of arg.` |
 |    - |  213 | ` */` |
 |    8 |  214 | `PH7_PRIVATE int PH7_builtin_sin(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  215 |  |
+|    1 |  215 | `{` |
 |    - |  216 | `	double r,x;` |
 |    9 |  217 | `	if( nArg < 1 ){` |
 |    - |  218 | `		/* Missing argument,return 0 */` |
@@ -235,7 +235,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  225 | `	/* store the result back */` |
 |    3 |  226 | `	ph7_result_double(pCtx,r);` |
 |    3 |  227 | `	return PH7_OK;` |
-|    5 |  228 |  |
+|    5 |  228 | `}` |
 |    - |  229 | `/*` |
 |    - |  230 | ` * float asin(float $arg )` |
 |    - |  231 | ` *  Arc sine.` |
@@ -245,7 +245,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  235 | ` *  The arc sine of arg.` |
 |    - |  236 | ` */` |
 |   22 |  237 | `PH7_PRIVATE int PH7_builtin_asin(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    4 |  238 |  |
+|    4 |  238 | `{` |
 |    - |  239 | `	double r, x;` |
 |    - |  240 | `	/* PHP enforces exactly one argument and a floatable parameter. */` |
 |   26 |  241 | `	if( nArg != 1 ){` |
@@ -276,7 +276,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  266 | `	/* store the result back */` |
 |   17 |  267 | `	ph7_result_double(pCtx,r);` |
 |   17 |  268 | `	return PH7_OK;` |
-|   15 |  269 |  |
+|   15 |  269 | `}` |
 |    - |  270 | `/*` |
 |    - |  271 | ` * float sinh(float $arg )` |
 |    - |  272 | ` *  Hyperbolic sine.` |
@@ -286,7 +286,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  276 | ` *  The hyperbolic sine of arg.` |
 |    - |  277 | ` */` |
 |   20 |  278 | `PH7_PRIVATE int PH7_builtin_sinh(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  279 |  |
+|    1 |  279 | `{` |
 |    - |  280 | `	double r,x;` |
 |   21 |  281 | `	if( nArg < 1 ){` |
 |    - |  282 | `		/* Missing argument,return 0 */` |
@@ -299,7 +299,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  289 | `	/* store the result back */` |
 |   19 |  290 | `	ph7_result_double(pCtx,r);` |
 |   19 |  291 | `	return PH7_OK;` |
-|   11 |  292 |  |
+|   11 |  292 | `}` |
 |    - |  293 | `/*` |
 |    - |  294 | ` * float ceil(float $arg )` |
 |    - |  295 | ` *  Round fractions up.` |
@@ -309,7 +309,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  299 | ` *  The next highest integer value by rounding up value if necessary.` |
 |    - |  300 | ` */` |
 |   14 |  301 | `PH7_PRIVATE int PH7_builtin_ceil(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    4 |  302 |  |
+|    4 |  302 | `{` |
 |    - |  303 | `	double r,x;` |
 |    - |  304 | `	/* PHP requires exactly one argument. */` |
 |   18 |  305 | `	if( nArg != 1 ){` |
@@ -353,7 +353,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  343 | `	/* store the result back */` |
 |    9 |  344 | `	ph7_result_double(pCtx,r);` |
 |    9 |  345 | `	return PH7_OK;` |
-|   11 |  346 |  |
+|   11 |  346 | `}` |
 |    - |  347 | `/*` |
 |    - |  348 | ` * float tan(float $arg )` |
 |    - |  349 | ` *  Tangent.` |
@@ -363,7 +363,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  353 | ` *  The tangent of arg.` |
 |    - |  354 | ` */` |
 |    6 |  355 | `PH7_PRIVATE int PH7_builtin_tan(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  356 |  |
+|    1 |  356 | `{` |
 |    - |  357 | `	double r,x;` |
 |    7 |  358 | `	if( nArg < 1 ){` |
 |    - |  359 | `		/* Missing argument,return 0 */` |
@@ -376,7 +376,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  366 | `	/* store the result back */` |
 |    5 |  367 | `	ph7_result_double(pCtx,r);` |
 |    5 |  368 | `	return PH7_OK;` |
-|    4 |  369 |  |
+|    4 |  369 | `}` |
 |    - |  370 | `/*` |
 |    - |  371 | ` * float atan(float $arg )` |
 |    - |  372 | ` *  Arc tangent.` |
@@ -386,7 +386,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  376 | ` *  The arc tangent of arg.` |
 |    - |  377 | ` */` |
 |   46 |  378 | `PH7_PRIVATE int PH7_builtin_atan(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    5 |  379 |  |
+|    5 |  379 | `{` |
 |    - |  380 | `	double r,x;` |
 |    - |  381 | `	/* PHP enforces exactly one argument. */` |
 |   51 |  382 | `	if( nArg != 1 ){` |
@@ -411,7 +411,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  401 | `	/* store the result back */` |
 |   33 |  402 | `	ph7_result_double(pCtx,r);` |
 |   33 |  403 | `	return PH7_OK;` |
-|   28 |  404 |  |
+|   28 |  404 | `}` |
 |    - |  405 | `/*` |
 |    - |  406 | ` * float tanh(float $arg )` |
 |    - |  407 | ` *  Hyperbolic tangent.` |
@@ -421,7 +421,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  411 | ` *  The Hyperbolic tangent of arg.` |
 |    - |  412 | ` */` |
 |   20 |  413 | `PH7_PRIVATE int PH7_builtin_tanh(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  414 |  |
+|    1 |  414 | `{` |
 |    - |  415 | `	double r,x;` |
 |   21 |  416 | `	if( nArg < 1 ){` |
 |    - |  417 | `		/* Missing argument,return 0 */` |
@@ -434,7 +434,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  424 | `	/* store the result back */` |
 |   19 |  425 | `	ph7_result_double(pCtx,r);` |
 |   19 |  426 | `	return PH7_OK;` |
-|   11 |  427 |  |
+|   11 |  427 | `}` |
 |    - |  428 | `/*` |
 |    - |  429 | ` * float atan2(float $y,float $x)` |
 |    - |  430 | ` *  Arc tangent of two variable.` |
@@ -445,7 +445,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  435 | ` *  The arc tangent of y/x in radian.` |
 |    - |  436 | ` */` |
 |   60 |  437 | `PH7_PRIVATE int PH7_builtin_atan2(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    5 |  438 |  |
+|    5 |  438 | `{` |
 |    - |  439 | `	double r,x,y;` |
 |    - |  440 | `	/* PHP enforces exactly two arguments. */` |
 |   65 |  441 | `	if( nArg != 2 ){` |
@@ -478,7 +478,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  468 | `	/* store the result back */` |
 |   47 |  469 | `	ph7_result_double(pCtx,r);` |
 |   47 |  470 | `	return PH7_OK;` |
-|   35 |  471 |  |
+|   35 |  471 | `}` |
 |    - |  472 | `/*` |
 |    - |  473 | ` * float/int64 abs(float/int64 $arg )` |
 |    - |  474 | ` *  Absolute value.` |
@@ -488,7 +488,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  478 | ` *  The absolute value of number.` |
 |    - |  479 | ` */` |
 |  128 |  480 | `PH7_PRIVATE int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    4 |  481 |  |
+|    4 |  481 | `{` |
 |    - |  482 | `	int is_float;` |
 |    - |  483 | `	/* PHP requires exactly one argument. */` |
 |  132 |  484 | `	if( nArg != 1 ){` |
@@ -500,8 +500,8 @@ Coverage: 452/467 lines (96.79%)
 |    - |  490 | `	}` |
 |    - |  491 |  |
 |    - |  492 | `	/* Numeric strings with decimal/exponent are treated as real values. */` |
-|  123 |  493 | `	is_float = ph7_value_is_float(apArg[0]);` |
-|  123 |  494 | `	if( !is_float && ph7_value_is_string(apArg[0]) ){` |
+|  122 |  493 | `	is_float = ph7_value_is_float(apArg[0]);` |
+|  122 |  494 | `	if( !is_float && ph7_value_is_string(apArg[0]) ){` |
 |    - |  495 | `		int len;` |
 |   10 |  496 | `		sxu8 bReal = FALSE;` |
 |   10 |  497 | `		const char *zStr = ph7_value_to_string(apArg[0], &len);` |
@@ -531,7 +531,7 @@ Coverage: 452/467 lines (96.79%)
 |   20 |  521 | `		ph7_result_int(pCtx,r);` |
 |    - |  522 | `	}` |
 |  120 |  523 | `	return PH7_OK;` |
-|   68 |  524 |  |
+|   68 |  524 | `}` |
 |    - |  525 | `/*` |
 |    - |  526 | ` * float log(float $arg,[int/float $base])` |
 |    - |  527 | ` *  Natural logarithm.` |
@@ -544,7 +544,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  534 | ` *  only Natural log and base-10 log are supported.` |
 |    - |  535 | ` */` |
 |   14 |  536 | `PH7_PRIVATE int PH7_builtin_log(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  537 |  |
+|    1 |  537 | `{` |
 |    - |  538 | `	double r,x;` |
 |   15 |  539 | `	if( nArg < 1 ){` |
 |    - |  540 | `		/* Missing argument,return 0 */` |
@@ -562,7 +562,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  552 | `	/* store the result back */` |
 |   13 |  553 | `	ph7_result_double(pCtx,r);` |
 |   13 |  554 | `	return PH7_OK;` |
-|    8 |  555 |  |
+|    8 |  555 | `}` |
 |    - |  556 | `/*` |
 |    - |  557 | ` * float log10(float $arg )` |
 |    - |  558 | ` *  Base-10 logarithm.` |
@@ -572,7 +572,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  562 | ` *  The Base-10 logarithm of the given number.` |
 |    - |  563 | ` */` |
 |   16 |  564 | `PH7_PRIVATE int PH7_builtin_log10(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  565 |  |
+|    1 |  565 | `{` |
 |    - |  566 | `	double r,x;` |
 |   17 |  567 | `	if( nArg < 1 ){` |
 |    - |  568 | `		/* Missing argument,return 0 */` |
@@ -585,7 +585,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  575 | `	/* store the result back */` |
 |   15 |  576 | `	ph7_result_double(pCtx,r);` |
 |   15 |  577 | `	return PH7_OK;` |
-|    9 |  578 |  |
+|    9 |  578 | `}` |
 |    - |  579 | `/*` |
 |    - |  580 | ` * number pow(number $base,number $exp)` |
 |    - |  581 | ` *  Exponential expression.` |
@@ -600,7 +600,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  590 | ` *  as type integer, else it will be returned as type float.` |
 |    - |  591 | ` */` |
 |   10 |  592 | `PH7_PRIVATE int PH7_builtin_pow(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  593 |  |
+|    1 |  593 | `{` |
 |    - |  594 | `	double r,x,y;` |
 |   11 |  595 | `	if( nArg < 1 ){` |
 |    - |  596 | `		/* Missing argument,return 0 */` |
@@ -613,7 +613,7 @@ Coverage: 452/467 lines (96.79%)
 |    7 |  603 | `	r = pow(x,y);` |
 |    7 |  604 | `	ph7_result_double(pCtx,r);` |
 |    7 |  605 | `	return PH7_OK;` |
-|    6 |  606 |  |
+|    6 |  606 | `}` |
 |    - |  607 | `/*` |
 |    - |  608 | ` * float pi(void)` |
 |    - |  609 | ` *  Returns an approximation of pi.` |
@@ -623,12 +623,12 @@ Coverage: 452/467 lines (96.79%)
 |    - |  613 | ` *  The value of pi as float.` |
 |    - |  614 | ` */` |
 |    2 |  615 | `PH7_PRIVATE int PH7_builtin_pi(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  616 |  |
+|    1 |  616 | `{` |
 |    1 |  617 | `	SXUNUSED(nArg); /* cc warning */` |
 |    1 |  618 | `	SXUNUSED(apArg);` |
 |    3 |  619 | `	ph7_result_double(pCtx,PH7_PI);` |
 |    3 |  620 | `	return PH7_OK;` |
-|    1 |  621 |  |
+|    1 |  621 | `}` |
 |    - |  622 | `/*` |
 |    - |  623 | ` * float fmod(float $x,float $y)` |
 |    - |  624 | ` *  Returns the floating point remainder (modulo) of the division of the arguments.` |
@@ -641,7 +641,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  631 | ` *  The floating point remainder of x/y.` |
 |    - |  632 | ` */` |
 |    8 |  633 | `PH7_PRIVATE int PH7_builtin_fmod(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  634 |  |
+|    1 |  634 | `{` |
 |    - |  635 | `	double x,y,r;` |
 |    9 |  636 | `	if( nArg < 2 ){` |
 |    - |  637 | `		/* Missing arguments */` |
@@ -656,7 +656,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  646 | `	/* Processing result */` |
 |    3 |  647 | `	ph7_result_double(pCtx,r);` |
 |    3 |  648 | `	return PH7_OK;` |
-|    5 |  649 |  |
+|    5 |  649 | `}` |
 |    - |  650 | `/*` |
 |    - |  651 | ` * float hypot(float $x,float $y)` |
 |    - |  652 | ` *  Calculate the length of the hypotenuse of a right-angle triangle .` |
@@ -669,7 +669,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  659 | ` *  Calculated length of the hypotenuse.` |
 |    - |  660 | ` */` |
 |    6 |  661 | `PH7_PRIVATE int PH7_builtin_hypot(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  662 |  |
+|    1 |  662 | `{` |
 |    - |  663 | `	double x,y,r;` |
 |    7 |  664 | `	if( nArg < 2 ){` |
 |    - |  665 | `		/* Missing arguments */` |
@@ -684,7 +684,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  674 | `	/* Processing result */` |
 |    3 |  675 | `	ph7_result_double(pCtx,r);` |
 |    3 |  676 | `	return PH7_OK;` |
-|    4 |  677 |  |
+|    4 |  677 | `}` |
 |    - |  678 | `#endif /* PH7_ENABLE_MATH_FUNC */` |
 |    - |  679 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
 |    - |  680 | `/*` |
@@ -702,7 +702,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  692 | ` *  The rounded value.` |
 |    - |  693 | ` */` |
 |   20 |  694 | `PH7_PRIVATE int PH7_builtin_round(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  695 |  |
+|    1 |  695 | `{` |
 |   21 |  696 | `	int n = 0;` |
 |    - |  697 | `	double r;` |
 |   21 |  698 | `	if( nArg < 1 ){` |
@@ -739,7 +739,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  729 | `  /* Return thr rounded value */` |
 |   17 |  730 | `  ph7_result_double(pCtx,r);` |
 |   17 |  731 | `  return PH7_OK;` |
-|   11 |  732 |  |
+|   11 |  732 | `}` |
 |    - |  733 | `/*` |
 |    - |  734 | ` * int intdiv(int $a, int $b)` |
 |    - |  735 | ` *  Integer division.` |
@@ -752,7 +752,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  742 | ` *  The integer quotient of the division of $a by $b.` |
 |    - |  743 | ` */` |
 |   20 |  744 | `PH7_PRIVATE int PH7_builtin_intdiv(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    4 |  745 |  |
+|    4 |  745 | `{` |
 |    - |  746 | `	sxi64 a,b;` |
 |    - |  747 | `	/* PHP requires exactly two arguments. */` |
 |   24 |  748 | `	if( nArg != 2 ){` |
@@ -820,7 +820,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  810 | `	/* Perform integer division */` |
 |   15 |  811 | `	ph7_result_int64(pCtx, a / b);` |
 |   15 |  812 | `	return PH7_OK;` |
-|   14 |  813 |  |
+|   14 |  813 | `}` |
 |    - |  814 | `/*` |
 |    - |  815 | ` * string dechex(int $number)` |
 |    - |  816 | ` *  Decimal to hexadecimal.` |
@@ -831,7 +831,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  821 | ` *  Hexadecimal string representation of number` |
 |    - |  822 | ` */` |
 |    8 |  823 | `PH7_PRIVATE int PH7_builtin_dechex(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  824 |  |
+|    1 |  824 | `{` |
 |    - |  825 | `	int iVal;` |
 |    9 |  826 | `	if( nArg < 1 ){` |
 |    - |  827 | `		/* Missing arguments,return null */` |
@@ -843,7 +843,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  833 | `	/* Format */` |
 |    5 |  834 | `	ph7_result_string_format(pCtx,"%x",iVal);` |
 |    5 |  835 | `	return PH7_OK;` |
-|    5 |  836 |  |
+|    5 |  836 | `}` |
 |    - |  837 | `/*` |
 |    - |  838 | ` * string decoct(int $number)` |
 |    - |  839 | ` *  Decimal to Octal.` |
@@ -854,7 +854,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  844 | ` *  Octal string representation of number` |
 |    - |  845 | ` */` |
 |    8 |  846 | `PH7_PRIVATE int PH7_builtin_decoct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  847 |  |
+|    1 |  847 | `{` |
 |    - |  848 | `	int iVal;` |
 |    9 |  849 | `	if( nArg < 1 ){` |
 |    - |  850 | `		/* Missing arguments,return null */` |
@@ -866,7 +866,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  856 | `	/* Format */` |
 |    7 |  857 | `	ph7_result_string_format(pCtx,"%o",iVal);` |
 |    7 |  858 | `	return PH7_OK;` |
-|    5 |  859 |  |
+|    5 |  859 | `}` |
 |    - |  860 | `/*` |
 |    - |  861 | ` * string decbin(int $number)` |
 |    - |  862 | ` *  Decimal to binary.` |
@@ -877,7 +877,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  867 | ` *  Binary string representation of number` |
 |    - |  868 | ` */` |
 |    6 |  869 | `PH7_PRIVATE int PH7_builtin_decbin(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  870 |  |
+|    1 |  870 | `{` |
 |    - |  871 | `	int iVal;` |
 |    7 |  872 | `	if( nArg < 1 ){` |
 |    - |  873 | `		/* Missing arguments,return null */` |
@@ -889,7 +889,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  879 | `	/* Format */` |
 |    5 |  880 | `	ph7_result_string_format(pCtx,"%B",iVal);` |
 |    5 |  881 | `	return PH7_OK;` |
-|    4 |  882 |  |
+|    4 |  882 | `}` |
 |    - |  883 | `/*` |
 |    - |  884 | ` * int64 hexdec(string $hex_string)` |
 |    - |  885 | ` *  Hexadecimal to decimal.` |
@@ -900,7 +900,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  890 | ` *  The decimal representation of hex_string` |
 |    - |  891 | ` */` |
 |   24 |  892 | `PH7_PRIVATE int PH7_builtin_hexdec(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  893 |  |
+|    1 |  893 | `{` |
 |    - |  894 | `	const char *zString,*zEnd;` |
 |    - |  895 | `	ph7_int64 iVal;` |
 |    - |  896 | `	int nLen;` |
@@ -942,7 +942,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  932 | `	/* Return the number */` |
 |   21 |  933 | `	ph7_result_int64(pCtx,iVal);` |
 |   21 |  934 | `	return PH7_OK;` |
-|   13 |  935 |  |
+|   13 |  935 | `}` |
 |    - |  936 | `/*` |
 |    - |  937 | ` * int64 bindec(string $bin_string)` |
 |    - |  938 | ` *  Binary to decimal.` |
@@ -953,7 +953,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  943 | ` *  Returns the decimal equivalent of the binary number represented by the binary_string argument.` |
 |    - |  944 | ` */` |
 |   14 |  945 | `PH7_PRIVATE int PH7_builtin_bindec(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  946 |  |
+|    1 |  946 | `{` |
 |    - |  947 | `	const char *zString;` |
 |    - |  948 | `	ph7_int64 iVal;` |
 |    - |  949 | `	int nLen;` |
@@ -977,7 +977,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  967 | `	/* Return the number */` |
 |   11 |  968 | `	ph7_result_int64(pCtx,iVal);` |
 |   11 |  969 | `	return PH7_OK;` |
-|    8 |  970 |  |
+|    8 |  970 | `}` |
 |    - |  971 | `/*` |
 |    - |  972 | ` * int64 octdec(string $oct_string)` |
 |    - |  973 | ` *  Octal to decimal.` |
@@ -988,7 +988,7 @@ Coverage: 452/467 lines (96.79%)
 |    - |  978 | ` *  Returns the decimal equivalent of the octal number represented by the octal_string argument.` |
 |    - |  979 | ` */` |
 |    6 |  980 | `PH7_PRIVATE int PH7_builtin_octdec(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  981 |  |
+|    1 |  981 | `{` |
 |    - |  982 | `	const char *zString;` |
 |    - |  983 | `	ph7_int64 iVal;` |
 |    - |  984 | `	int nLen;` |
@@ -1012,7 +1012,7 @@ Coverage: 452/467 lines (96.79%)
 |    - | 1002 | `	/* Return the number */` |
 |    5 | 1003 | `	ph7_result_int64(pCtx,iVal);` |
 |    5 | 1004 | `	return PH7_OK;` |
-|    4 | 1005 |  |
+|    4 | 1005 | `}` |
 |    - | 1006 | `/*` |
 |    - | 1007 | ` * srand([int $seed])` |
 |    - | 1008 | ` * mt_srand([int $seed])` |
@@ -1027,12 +1027,12 @@ Coverage: 452/467 lines (96.79%)
 |    - | 1017 | ` *  THE PH7 PRNG IS AUTOMATICALLY SEEDED WHEN THE VM IS CREATED.` |
 |    - | 1018 | ` */` |
 |   20 | 1019 | `PH7_PRIVATE int PH7_builtin_srand(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 | 1020 |  |
+|    1 | 1020 | `{` |
 |   10 | 1021 | `	SXUNUSED(nArg);` |
 |   10 | 1022 | `	SXUNUSED(apArg);` |
 |   21 | 1023 | `	ph7_result_null(pCtx);` |
 |   21 | 1024 | `	return PH7_OK;` |
-|    1 | 1025 |  |
+|    1 | 1025 | `}` |
 |    - | 1026 | `#ifndef PH7_DISABLE_DISK_IO` |
 |    - | 1027 | `/*` |
 |    - | 1028 | ` * string base_convert(string $number,int $frombase,int $tobase)` |
@@ -1048,7 +1048,7 @@ Coverage: 452/467 lines (96.79%)
 |    - | 1038 | ` *  Number converted to base tobase` |
 |    - | 1039 | ` */` |
 |   48 | 1040 | `PH7_PRIVATE int PH7_builtin_base_convert(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 | 1041 |  |
+|    1 | 1041 | `{` |
 |    - | 1042 | `	int nLen,iFbase,iTobase;` |
 |    - | 1043 | `	const char *zNum;` |
 |    - | 1044 | `	ph7_int64 iNum;` |
@@ -1109,7 +1109,7 @@ Coverage: 452/467 lines (96.79%)
 |   22 | 1099 | `		break;` |
 |    - | 1100 | `	}` |
 |   33 | 1101 | `	return PH7_OK;` |
-|   25 | 1102 |  |
+|   25 | 1102 | `}` |
 |    - | 1103 | `#endif /* PH7_DISABLE_DISK_IO */` |
 |    - | 1104 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
 |    - | 1105 |  |

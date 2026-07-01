@@ -100,14 +100,14 @@ Coverage: 16/16 lines (100.00%)
 | 1673 |   90 | `    u.d = v;` |
 | 1751 |   91 | `    return ((u.u & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL)` |
 | 1670 |   92 | `           && ((u.u & 0x000fffffffffffffULL) != 0);` |
-|    3 |   93 |  |
+|    3 |   93 | `}` |
 |  747 |   94 | `SX_STATIC_INLINE int PH7_IS_INF_DOUBLE(double v){` |
 |    - |   95 | `    union { double d; sxu64 u; } u;` |
 |    - |   96 | `    sxu64 abs;` |
 |  747 |   97 | `    u.d = v;` |
 |  747 |   98 | `    abs = u.u & 0x7fffffffffffffffULL;` |
 |  747 |   99 | `    return abs == 0x7ff0000000000000ULL;` |
-|    3 |  100 |  |
+|    3 |  100 | `}` |
 |    - |  101 |  |
 |    - |  102 | `/* convenience macros cast to double */` |
 |    - |  103 | `#define PH7_IS_NAN(x) PH7_IS_NAN_DOUBLE((double)(x))` |
@@ -133,11 +133,11 @@ Coverage: 16/16 lines (100.00%)
 |    - |  123 | `     */` |
 |    - |  124 | `    static const union { sxu64 u; double d; } u = { 0x7ff8000000000000ULL };` |
 |   59 |  125 | `    return u.d;` |
-|    1 |  126 |  |
+|    1 |  126 | `}` |
 |   25 |  127 | `SX_STATIC_INLINE double PH7_INF_VALUE(void){` |
 |    - |  128 | `    static const union { sxu64 u; double d; } u = { 0x7ff0000000000000ULL };` |
 |   25 |  129 | `    return u.d;` |
-|    1 |  130 |  |
+|    1 |  130 | `}` |
 |    - |  131 | `/* Time constants */` |
 |    - |  132 | `#define SX_MSEC_PER_SEC  (1000)          /* Millisec per seconds */` |
 |    - |  133 | `#define SX_USEC_PER_SEC  (1000000)       /* Microsec per seconds */` |
@@ -146,7 +146,7 @@ Coverage: 16/16 lines (100.00%)
 |    - |  136 | `/* High resolution timer */` |
 |    - |  137 | `typedef struct sytime sytime;` |
 |    - |  138 | `struct sytime` |
-|    - |  139 |  |
+|    - |  139 | `{` |
 |    - |  140 | `	long tm_sec;   /* seconds */` |
 |    - |  141 | `	long tm_usec;  /* microseconds */` |
 |    - |  142 | `};` |

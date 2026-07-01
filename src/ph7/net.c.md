@@ -44,7 +44,7 @@ Coverage: 53/105 lines (50.48%)
 |    - |   34 | ` * Returns PH7_OK on success.` |
 |    - |   35 | ` */` |
 |   22 |   36 | `PH7_PRIVATE int PH7_NetInit(void)` |
-|  ! 0 |   37 |  |
+|  ! 0 |   37 | `{` |
 |    - |   38 | `#ifdef __WINNT__` |
 |    - |   39 | `	WSADATA wsaData;` |
 |  ! 0 |   40 | `	if( WSAStartup(MAKEWORD(2,2), &wsaData) != 0 ){` |
@@ -54,22 +54,22 @@ Coverage: 53/105 lines (50.48%)
 |   22 |   44 | `	signal(SIGPIPE, SIG_IGN);` |
 |    - |   45 | `#endif` |
 |   22 |   46 | `	return PH7_OK;` |
-|  ! 0 |   47 |  |
+|  ! 0 |   47 | `}` |
 |    - |   48 | `/*` |
 |    - |   49 | ` * Cleanup the networking subsystem.` |
 |    - |   50 | ` */` |
 |   22 |   51 | `PH7_PRIVATE void PH7_NetCleanup(void)` |
-|  ! 0 |   52 |  |
+|  ! 0 |   52 | `{` |
 |    - |   53 | `#ifdef __WINNT__` |
 |  ! 0 |   54 | `	WSACleanup();` |
 |    - |   55 | `#endif` |
-|   22 |   56 |  |
+|   22 |   56 | `}` |
 |    - |   57 | `/*` |
 |    - |   58 | ` * Create a TCP listening socket bound to the given host and port.` |
 |    - |   59 | ` * Returns the socket descriptor, or PH7_NET_INVALID_SOCKET on error.` |
 |    - |   60 | ` */` |
 |   22 |   61 | `PH7_PRIVATE ph7_socket PH7_NetListen(const char *zHost, int iPort, int iBacklog)` |
-|  ! 0 |   62 |  |
+|  ! 0 |   62 | `{` |
 |    - |   63 | `	struct sockaddr_in addr;` |
 |    - |   64 | `	ph7_socket sock;` |
 |   22 |   65 | `	int on = 1;` |
@@ -105,38 +105,38 @@ Coverage: 53/105 lines (50.48%)
 |  ! 0 |   95 | `		return PH7_NET_INVALID_SOCKET;` |
 |    - |   96 | `	}` |
 |   22 |   97 | `	return sock;` |
-|   11 |   98 |  |
+|   11 |   98 | `}` |
 |    - |   99 | `/*` |
 |    - |  100 | ` * Accept an incoming connection on a listening socket.` |
 |    - |  101 | ` * If pAddr and pAddrLen are non-NULL, the client address is stored there.` |
 |    - |  102 | ` * Returns the client socket, or PH7_NET_INVALID_SOCKET on error.` |
 |    - |  103 | ` */` |
 |   52 |  104 | `PH7_PRIVATE ph7_socket PH7_NetAccept(ph7_socket listenSock, struct sockaddr *pAddr, ph7_socklen *pAddrLen)` |
-|  ! 0 |  105 |  |
+|  ! 0 |  105 | `{` |
 |   52 |  106 | `	return accept(listenSock, pAddr, pAddrLen);` |
-|  ! 0 |  107 |  |
+|  ! 0 |  107 | `}` |
 |    - |  108 | `/*` |
 |    - |  109 | ` * Receive data from a socket.` |
 |    - |  110 | ` * Returns the number of bytes received, or -1 on error.` |
 |    - |  111 | ` */` |
 |   30 |  112 | `PH7_PRIVATE int PH7_NetRecv(ph7_socket sock, void *pBuf, int nLen, int flags)` |
-|  ! 0 |  113 |  |
+|  ! 0 |  113 | `{` |
 |   30 |  114 | `	return (int)recv(sock, (char *)pBuf, nLen, flags);` |
-|  ! 0 |  115 |  |
+|  ! 0 |  115 | `}` |
 |    - |  116 | `/*` |
 |    - |  117 | ` * Send data on a socket.` |
 |    - |  118 | ` * Returns the number of bytes sent, or -1 on error.` |
 |    - |  119 | ` */` |
 |  ! 0 |  120 | `PH7_PRIVATE int PH7_NetSend(ph7_socket sock, const void *pBuf, int nLen, int flags)` |
-|  ! 0 |  121 |  |
+|  ! 0 |  121 | `{` |
 |  ! 0 |  122 | `	return (int)send(sock, (const char *)pBuf, nLen, flags);` |
-|  ! 0 |  123 |  |
+|  ! 0 |  123 | `}` |
 |    - |  124 | `/*` |
 |    - |  125 | ` * Send all data on a socket, retrying on partial writes.` |
 |    - |  126 | ` * Returns PH7_OK on success, PH7_IO_ERR on error.` |
 |    - |  127 | ` */` |
 |  118 |  128 | `PH7_PRIVATE int PH7_NetSendAll(ph7_socket sock, const void *pBuf, int nLen)` |
-|  ! 0 |  129 |  |
+|  ! 0 |  129 | `{` |
 |  118 |  130 | `	const char *zBuf = (const char *)pBuf;` |
 |    - |  131 | `	int nSent;` |
 |  236 |  132 | `	while( nLen > 0 ){` |
@@ -148,12 +148,12 @@ Coverage: 53/105 lines (50.48%)
 |  118 |  138 | `		nLen -= nSent;` |
 |  ! 0 |  139 | `	}` |
 |  118 |  140 | `	return PH7_OK;` |
-|   59 |  141 |  |
+|   59 |  141 | `}` |
 |    - |  142 | `/*` |
 |    - |  143 | ` * Close a socket.` |
 |    - |  144 | ` */` |
 |   52 |  145 | `PH7_PRIVATE void PH7_NetClose(ph7_socket sock)` |
-|  ! 0 |  146 |  |
+|  ! 0 |  146 | `{` |
 |   52 |  147 | `	if( sock == PH7_NET_INVALID_SOCKET ){` |
 |  ! 0 |  148 | `		return;` |
 |    - |  149 | `	}` |
@@ -162,12 +162,12 @@ Coverage: 53/105 lines (50.48%)
 |    - |  152 | `#else` |
 |   52 |  153 | `	close(sock);` |
 |    - |  154 | `#endif` |
-|   26 |  155 |  |
+|   26 |  155 | `}` |
 |    - |  156 | `/*` |
 |    - |  157 | ` * Set a receive timeout on a socket (in milliseconds).` |
 |    - |  158 | ` */` |
 |   30 |  159 | `PH7_PRIVATE void PH7_NetSetTimeout(ph7_socket sock, int iMilliseconds)` |
-|  ! 0 |  160 |  |
+|  ! 0 |  160 | `{` |
 |    - |  161 | `#ifdef __WINNT__` |
 |  ! 0 |  162 | `	DWORD tv = (DWORD)iMilliseconds;` |
 |  ! 0 |  163 | `	setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof(tv));` |
@@ -177,13 +177,13 @@ Coverage: 53/105 lines (50.48%)
 |   30 |  167 | `	tv.tv_usec = (iMilliseconds % 1000) * 1000;` |
 |   30 |  168 | `	setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const void *)&tv, sizeof(tv));` |
 |    - |  169 | `#endif` |
-|   30 |  170 |  |
+|   30 |  170 | `}` |
 |    - |  171 | `/*` |
 |    - |  172 | ` * Extract a human-readable IP address string from a sockaddr.` |
 |    - |  173 | ` * Writes at most nBufLen bytes (including NUL) to zBuf.` |
 |    - |  174 | ` */` |
 |   30 |  175 | `PH7_PRIVATE void PH7_NetAddrToString(const struct sockaddr *pAddr, char *zBuf, int nBufLen)` |
-|  ! 0 |  176 |  |
+|  ! 0 |  176 | `{` |
 |   30 |  177 | `	const struct sockaddr_in *pIn = (const struct sockaddr_in *)pAddr;` |
 |   30 |  178 | `	if( pAddr == 0 \|\| pAddr->sa_family != AF_INET ){` |
 |  ! 0 |  179 | `		if( nBufLen > 0 ){` |
@@ -206,18 +206,18 @@ Coverage: 53/105 lines (50.48%)
 |    - |  196 | `#else` |
 |   30 |  197 | `	inet_ntop(AF_INET, &pIn->sin_addr, zBuf, (ph7_socklen)nBufLen);` |
 |    - |  198 | `#endif` |
-|   15 |  199 |  |
+|   15 |  199 | `}` |
 |    - |  200 | `/*` |
 |    - |  201 | ` * Extract the port number from a sockaddr (in host byte order).` |
 |    - |  202 | ` */` |
 |   30 |  203 | `PH7_PRIVATE int PH7_NetAddrPort(const struct sockaddr *pAddr)` |
-|  ! 0 |  204 |  |
+|  ! 0 |  204 | `{` |
 |   30 |  205 | `	const struct sockaddr_in *pIn = (const struct sockaddr_in *)pAddr;` |
 |   30 |  206 | `	if( pAddr == 0 \|\| pAddr->sa_family != AF_INET ){` |
 |  ! 0 |  207 | `		return 0;` |
 |    - |  208 | `	}` |
 |   30 |  209 | `	return (int)ntohs(pIn->sin_port);` |
-|   15 |  210 |  |
+|   15 |  210 | `}` |
 |    - |  211 |  |
 |    - |  212 | `#endif /* PH7_ENABLE_NET */` |
 |    - |  213 |  |

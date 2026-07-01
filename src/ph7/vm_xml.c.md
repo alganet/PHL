@@ -19,7 +19,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |    9 | ` * Allocate and initialize an XML engine.` |
 |    - |   10 | ` */` |
 |   84 |   11 | `static ph7_xml_engine * VmCreateXMLEngine(ph7_context *pCtx,int process_ns,int ns_sep)` |
-|    1 |   12 |  |
+|    1 |   12 | `{` |
 |    - |   13 | `	ph7_xml_engine *pEngine;` |
 |   85 |   14 | `	ph7_vm *pVm = pCtx->pVm;` |
 |    - |   15 | `	ph7_value *pValue;` |
@@ -49,12 +49,12 @@ Coverage: 392/578 lines (67.82%)
 |    - |   39 | `	/* Finally set the magic number */` |
 |   85 |   40 | `	pEngine->nMagic = XML_ENGINE_MAGIC;` |
 |   85 |   41 | `	return pEngine;` |
-|   43 |   42 |  |
+|   43 |   42 | `}` |
 |    - |   43 | `/*` |
 |    - |   44 | ` * Release an XML engine.` |
 |    - |   45 | ` */` |
 |   84 |   46 | `static void VmReleaseXMLEngine(ph7_xml_engine *pEngine)` |
-|    1 |   47 |  |
+|    1 |   47 | `{` |
 |   85 |   48 | `	ph7_vm *pVm = pEngine->pVm;` |
 |    - |   49 | `	ph7_value *pValue;` |
 |    - |   50 | `	sxu32 n;` |
@@ -69,7 +69,7 @@ Coverage: 392/578 lines (67.82%)
 |   85 |   59 | `	pEngine->nMagic = 0x2621;` |
 |    - |   60 | `	/* Finally,release the whole instance */` |
 |   85 |   61 | `	SyMemBackendFree(&pVm->sAllocator,pEngine);` |
-|   85 |   62 |  |
+|   85 |   62 | `}` |
 |    - |   63 | `/*` |
 |    - |   64 | ` * resource xml_parser_create([ string $encoding ])` |
 |    - |   65 | ` *  Create an UTF-8 XML parser.` |
@@ -80,7 +80,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |   70 | ` *  Returns a resource handle for the new XML parser.` |
 |    - |   71 | ` */` |
 |   80 |   72 | `PH7_PRIVATE int vm_builtin_xml_parser_create(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |   73 |  |
+|    1 |   73 | `{` |
 |    - |   74 | `	ph7_xml_engine *pEngine;` |
 |    - |   75 | `	/* Allocate a new instance */` |
 |   81 |   76 | `	pEngine = VmCreateXMLEngine(&(*pCtx),0,':');` |
@@ -95,7 +95,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |   85 | `	/* Return the engine as a resource */` |
 |   81 |   86 | `	ph7_result_resource(pCtx,pEngine);` |
 |   81 |   87 | `	return PH7_OK;` |
-|   41 |   88 |  |
+|   41 |   88 | `}` |
 |    - |   89 | `/*` |
 |    - |   90 | ` * resource xml_parser_create_ns([ string $encoding[,string $separator = ':']])` |
 |    - |   91 | ` *  Create an UTF-8 XML parser with namespace support.` |
@@ -108,7 +108,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |   98 | ` *  Returns a resource handle for the new XML parser.` |
 |    - |   99 | ` */` |
 |    4 |  100 | `PH7_PRIVATE int vm_builtin_xml_parser_create_ns(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  101 |  |
+|    1 |  101 | `{` |
 |    - |  102 | `	ph7_xml_engine *pEngine;` |
 |    5 |  103 | `	int ns_sep = ':';` |
 |    5 |  104 | `	if( nArg > 1 && ph7_value_is_string(apArg[1]) ){` |
@@ -128,7 +128,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  118 | `	/* Return the engine as a resource */` |
 |    5 |  119 | `	ph7_result_resource(pCtx,pEngine);` |
 |    5 |  120 | `	return PH7_OK;` |
-|    3 |  121 |  |
+|    3 |  121 | `}` |
 |    - |  122 | `/*` |
 |    - |  123 | ` * bool xml_parser_free(resource $parser)` |
 |    - |  124 | ` *  Release an XML engine.` |
@@ -140,7 +140,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  130 | ` *  to a valid parser, or else it frees the parser and returns TRUE.` |
 |    - |  131 | ` */` |
 |   84 |  132 | `PH7_PRIVATE int vm_builtin_xml_parser_free(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  133 |  |
+|    1 |  133 | `{` |
 |    - |  134 | `	ph7_xml_engine *pEngine;` |
 |   85 |  135 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |    - |  136 | `		/* Missing/Ivalid argument,return FALSE */` |
@@ -159,7 +159,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  149 | `	/* Return TRUE */` |
 |   85 |  150 | `	ph7_result_bool(pCtx,1);` |
 |   85 |  151 | `	return PH7_OK;` |
-|   43 |  152 |  |
+|   43 |  152 | `}` |
 |    - |  153 | `/*` |
 |    - |  154 | ` * bool xml_set_element_handler(resource $parser,callback $start_element_handler,[callback $end_element_handler])` |
 |    - |  155 | ` * Sets the element handler functions for the XML parser. start_element_handler and end_element_handler` |
@@ -196,7 +196,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  186 | ` * TRUE on success or FALSE on failure.` |
 |    - |  187 | ` */` |
 |   66 |  188 | `PH7_PRIVATE int vm_builtin_xml_set_element_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  189 |  |
+|    1 |  189 | `{` |
 |    - |  190 | `	ph7_xml_engine *pEngine;` |
 |   67 |  191 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |    - |  192 | `		/* Missing/Ivalid argument,return FALSE */` |
@@ -221,7 +221,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  211 | `	/* All done,return TRUE */` |
 |   67 |  212 | `	ph7_result_bool(pCtx,1);` |
 |   67 |  213 | `	return PH7_OK;` |
-|   34 |  214 |  |
+|   34 |  214 | `}` |
 |    - |  215 | `/*` |
 |    - |  216 | ` * bool xml_set_character_data_handler(resource $parser,callback $handler)` |
 |    - |  217 | ` *  Sets the character data handler function for the XML parser parser.` |
@@ -245,7 +245,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  235 | ` *  TRUE on success or FALSE on failure.` |
 |    - |  236 | ` */` |
 |   40 |  237 | `PH7_PRIVATE int vm_builtin_xml_set_character_data_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  238 |  |
+|    1 |  238 | `{` |
 |    - |  239 | `	ph7_xml_engine *pEngine;` |
 |   41 |  240 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |    - |  241 | `		/* Missing/Ivalid argument,return FALSE */` |
@@ -266,7 +266,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  256 | `	/* All done,return TRUE */` |
 |   41 |  257 | `	ph7_result_bool(pCtx,1);` |
 |   41 |  258 | `	return PH7_OK;` |
-|   21 |  259 |  |
+|   21 |  259 | `}` |
 |    - |  260 | `/*` |
 |    - |  261 | ` * bool xml_set_default_handler(resource $parser,callback $handler)` |
 |    - |  262 | ` *  Set up default handler.` |
@@ -288,7 +288,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  278 | ` *  TRUE on success or FALSE on failure.` |
 |    - |  279 | ` */` |
 |    2 |  280 | `PH7_PRIVATE int vm_builtin_xml_set_default_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  281 |  |
+|    1 |  281 | `{` |
 |    - |  282 | `	ph7_xml_engine *pEngine;` |
 |    3 |  283 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |    - |  284 | `		/* Missing/Ivalid argument,return FALSE */` |
@@ -309,7 +309,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  299 | `	/* All done,return TRUE */` |
 |    3 |  300 | `	ph7_result_bool(pCtx,1);` |
 |    3 |  301 | `	return PH7_OK;` |
-|    2 |  302 |  |
+|    2 |  302 | `}` |
 |    - |  303 | `/*` |
 |    - |  304 | ` * bool xml_set_end_namespace_decl_handler(resource $parser,callback $handler)` |
 |    - |  305 | ` *  Set up end namespace declaration handler.` |
@@ -330,7 +330,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  320 | ` *  TRUE on success or FALSE on failure.` |
 |    - |  321 | ` */` |
 |    2 |  322 | `PH7_PRIVATE int vm_builtin_xml_set_end_namespace_decl_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  323 |  |
+|    1 |  323 | `{` |
 |    - |  324 | `	ph7_xml_engine *pEngine;` |
 |    3 |  325 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |    - |  326 | `		/* Missing/Ivalid argument,return FALSE */` |
@@ -351,7 +351,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  341 | `	/* All done,return TRUE */` |
 |    3 |  342 | `	ph7_result_bool(pCtx,1);` |
 |    3 |  343 | `	return PH7_OK;` |
-|    2 |  344 |  |
+|    2 |  344 | `}` |
 |    - |  345 | `/*` |
 |    - |  346 | ` * bool xml_set_start_namespace_decl_handler(resource $parser,callback $handler)` |
 |    - |  347 | ` *  Set up start namespace declaration handler.` |
@@ -374,7 +374,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  364 | ` *  TRUE on success or FALSE on failure.` |
 |    - |  365 | ` */` |
 |    2 |  366 | `PH7_PRIVATE int vm_builtin_xml_set_start_namespace_decl_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  367 |  |
+|    1 |  367 | `{` |
 |    - |  368 | `	ph7_xml_engine *pEngine;` |
 |    3 |  369 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |    - |  370 | `		/* Missing/Ivalid argument,return FALSE */` |
@@ -395,7 +395,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  385 | `	/* All done,return TRUE */` |
 |    3 |  386 | `	ph7_result_bool(pCtx,1);` |
 |    3 |  387 | `	return PH7_OK;` |
-|    2 |  388 |  |
+|    2 |  388 | `}` |
 |    - |  389 | `/*` |
 |    - |  390 | ` * bool xml_set_processing_instruction_handler(resource $parser,callback $handler)` |
 |    - |  391 | ` *  Set up processing instruction (PI) handler.` |
@@ -418,7 +418,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  408 | ` *  TRUE on success or FALSE on failure.` |
 |    - |  409 | ` */` |
 |    8 |  410 | `PH7_PRIVATE int vm_builtin_xml_set_processing_instruction_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  411 |  |
+|    1 |  411 | `{` |
 |    - |  412 | `	ph7_xml_engine *pEngine;` |
 |    9 |  413 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |    - |  414 | `		/* Missing/Ivalid argument,return FALSE */` |
@@ -439,7 +439,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  429 | `	/* All done,return TRUE */` |
 |    9 |  430 | `	ph7_result_bool(pCtx,1);` |
 |    9 |  431 | `	return PH7_OK;` |
-|    5 |  432 |  |
+|    5 |  432 | `}` |
 |    - |  433 | `/*` |
 |    - |  434 | ` * bool xml_set_unparsed_entity_decl_handler(resource $parser,callback $handler)` |
 |    - |  435 | ` *  Set up unparsed entity declaration handler.` |
@@ -469,7 +469,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  459 | ` *  TRUE on success or FALSE on failure.` |
 |    - |  460 | ` */` |
 |    2 |  461 | `PH7_PRIVATE int vm_builtin_xml_set_unparsed_entity_decl_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  462 |  |
+|    1 |  462 | `{` |
 |    - |  463 | `	ph7_xml_engine *pEngine;` |
 |    3 |  464 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |    - |  465 | `		/* Missing/Ivalid argument,return FALSE */` |
@@ -490,7 +490,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  480 | `	/* All done,return TRUE */` |
 |    3 |  481 | `	ph7_result_bool(pCtx,1);` |
 |    3 |  482 | `	return PH7_OK;` |
-|    2 |  483 |  |
+|    2 |  483 | `}` |
 |    - |  484 | `/*` |
 |    - |  485 | ` * bool xml_set_notation_decl_handler(resource $parser,callback $handler)` |
 |    - |  486 | ` *  Set up notation declaration handler.` |
@@ -518,7 +518,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  508 | ` *  TRUE on success or FALSE on failure.` |
 |    - |  509 | ` */` |
 |    2 |  510 | `PH7_PRIVATE int vm_builtin_xml_set_notation_decl_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  511 |  |
+|    1 |  511 | `{` |
 |    - |  512 | `	ph7_xml_engine *pEngine;` |
 |    3 |  513 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |    - |  514 | `		/* Missing/Ivalid argument,return FALSE */` |
@@ -539,7 +539,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  529 | `	/* All done,return TRUE */` |
 |    3 |  530 | `	ph7_result_bool(pCtx,1);` |
 |    3 |  531 | `	return PH7_OK;` |
-|    2 |  532 |  |
+|    2 |  532 | `}` |
 |    - |  533 | `/*` |
 |    - |  534 | ` * bool xml_set_external_entity_ref_handler(resource $parser,callback $handler)` |
 |    - |  535 | ` *  Set up external entity reference handler.` |
@@ -570,7 +570,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  560 | ` *  TRUE on success or FALSE on failure.` |
 |    - |  561 | ` */` |
 |    2 |  562 | `PH7_PRIVATE int vm_builtin_xml_set_external_entity_ref_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  563 |  |
+|    1 |  563 | `{` |
 |    - |  564 | `	ph7_xml_engine *pEngine;` |
 |    3 |  565 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |    - |  566 | `		/* Missing/Ivalid argument,return FALSE */` |
@@ -591,7 +591,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  581 | `	/* All done,return TRUE */` |
 |    3 |  582 | `	ph7_result_bool(pCtx,1);` |
 |    3 |  583 | `	return PH7_OK;` |
-|    2 |  584 |  |
+|    2 |  584 | `}` |
 |    - |  585 | `/*` |
 |    - |  586 | ` * int xml_get_current_line_number(resource $parser)` |
 |    - |  587 | ` *  Gets the current line number for the given XML parser.` |
@@ -604,7 +604,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  594 | ` *  is currently at in its data buffer.` |
 |    - |  595 | ` */` |
 |    8 |  596 | `PH7_PRIVATE int vm_builtin_xml_get_current_line_number(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  597 |  |
+|    1 |  597 | `{` |
 |    - |  598 | `	ph7_xml_engine *pEngine;` |
 |    9 |  599 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |    - |  600 | `		/* Missing/Ivalid argument,return FALSE */` |
@@ -621,7 +621,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  611 | `	/* Return the line number */` |
 |    9 |  612 | `	ph7_result_int(pCtx,(int)pEngine->nLine);` |
 |    9 |  613 | `	return PH7_OK;` |
-|    5 |  614 |  |
+|    5 |  614 | `}` |
 |    - |  615 | `/*` |
 |    - |  616 | ` * int xml_get_current_byte_index(resource $parser)` |
 |    - |  617 | ` *  Gets the current byte index of the given XML parser.` |
@@ -634,7 +634,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  624 | ` *  at in its data buffer (starting at 0).` |
 |    - |  625 | ` */` |
 |    4 |  626 | `PH7_PRIVATE int vm_builtin_xml_get_current_byte_index(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  627 |  |
+|    1 |  627 | `{` |
 |    - |  628 | `	ph7_xml_engine *pEngine;` |
 |    - |  629 | `	SyStream *pStream;` |
 |    - |  630 | `	SyToken *pToken;` |
@@ -662,7 +662,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  652 | `	/* Return the byte index */` |
 |    3 |  653 | `	ph7_result_int64(pCtx,(ph7_int64)(pToken->sData.zString-(const char *)pStream->zInput));` |
 |    3 |  654 | `	return PH7_OK;` |
-|    3 |  655 |  |
+|    3 |  655 | `}` |
 |    - |  656 | `/*` |
 |    - |  657 | ` * bool xml_set_object(resource $parser,object &$object)` |
 |    - |  658 | ` *  Use XML Parser within an object.` |
@@ -677,7 +677,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  667 | ` * Always FALSE.` |
 |    - |  668 | ` */` |
 |    2 |  669 | `PH7_PRIVATE int vm_builtin_xml_set_object(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  670 |  |
+|    1 |  670 | `{` |
 |    - |  671 | `	ph7_xml_engine *pEngine;` |
 |    3 |  672 | `	if( nArg < 2 \|\| !ph7_value_is_resource(apArg[0]) \|\| !ph7_value_is_object(apArg[1]) ){` |
 |    - |  673 | `		/* Missing/Ivalid argument,return FALSE */` |
@@ -699,7 +699,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  689 | `	/* Return FALSE */` |
 |  ! 0 |  690 | `	ph7_result_bool(pCtx,0);` |
 |  ! 0 |  691 | `	return PH7_OK;` |
-|    2 |  692 |  |
+|    2 |  692 | `}` |
 |    - |  693 | `/*` |
 |    - |  694 | ` * int xml_get_current_column_number(resource $parser)` |
 |    - |  695 | ` *  Gets the current column number of the given XML parser.` |
@@ -712,7 +712,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  702 | ` *  is currently at.` |
 |    - |  703 | ` */` |
 |    4 |  704 | `PH7_PRIVATE int vm_builtin_xml_get_current_column_number(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  705 |  |
+|    1 |  705 | `{` |
 |    - |  706 | `	ph7_xml_engine *pEngine;` |
 |    - |  707 | `	SyStream *pStream;` |
 |    - |  708 | `	SyToken *pToken;` |
@@ -740,7 +740,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  730 | `	/* Return the byte index */` |
 |    5 |  731 | `	ph7_result_int64(pCtx,(ph7_int64)(pToken->sData.zString-(const char *)pStream->zInput)/80);` |
 |    5 |  732 | `	return PH7_OK;` |
-|    3 |  733 |  |
+|    3 |  733 | `}` |
 |    - |  734 | `/*` |
 |    - |  735 | ` * int xml_get_error_code(resource $parser)` |
 |    - |  736 | ` *  Get XML parser error code.` |
@@ -753,7 +753,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  743 | ` *  codes section.` |
 |    - |  744 | ` */` |
 |   32 |  745 | `PH7_PRIVATE int vm_builtin_xml_get_error_code(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  746 |  |
+|    1 |  746 | `{` |
 |    - |  747 | `	ph7_xml_engine *pEngine;` |
 |   33 |  748 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |    - |  749 | `		/* Missing/Ivalid argument,return FALSE */` |
@@ -770,7 +770,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  760 | `	/* Return the error code if any */` |
 |   33 |  761 | `	ph7_result_int(pCtx,pEngine->iErrCode);` |
 |   33 |  762 | `	return PH7_OK;` |
-|   17 |  763 |  |
+|   17 |  763 | `}` |
 |    - |  764 | `/*` |
 |    - |  765 | ` * XML parser event callbacks` |
 |    - |  766 | ` * Each time the unserlying XML parser extract a single token` |
@@ -782,7 +782,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  772 | ` * of an XML tag/attribute/CDATA and so on.` |
 |    - |  773 | ` */` |
 |  148 |  774 | `static ph7_value * VmXMLValue(ph7_xml_engine *pEngine,SyXMLRawStr *pXML,SyXMLRawStr *pNsUri)` |
-|    1 |  775 |  |
+|    1 |  775 | `{` |
 |    - |  776 | `	ph7_value *pValue;` |
 |    - |  777 | `	/* Allocate a new scalar variable */` |
 |  149 |  778 | `	pValue = ph7_context_new_scalar(pEngine->pCtx);` |
@@ -797,13 +797,13 @@ Coverage: 392/578 lines (67.82%)
 |    - |  787 | `	/* Copy the tag value */` |
 |  149 |  788 | `	ph7_value_string(pValue,pXML->zString,(int)pXML->nByte);` |
 |  149 |  789 | `	return pValue;` |
-|   75 |  790 |  |
+|   75 |  790 | `}` |
 |    - |  791 | `/*` |
 |    - |  792 | ` * Create a 'ph7_value' of type array holding the values` |
 |    - |  793 | ` * of an XML tag attributes.` |
 |    - |  794 | ` */` |
 |   62 |  795 | `static ph7_value * VmXMLAttrValue(ph7_xml_engine *pEngine,SyXMLRawStr *aAttr,sxu32 nAttr)` |
-|    1 |  796 |  |
+|    1 |  796 | `{` |
 |    - |  797 | `	ph7_value *pArray;` |
 |    - |  798 | `	/* Create an empty array */` |
 |   63 |  799 | `	pArray = ph7_context_new_array(pEngine->pCtx);` |
@@ -838,7 +838,7 @@ Coverage: 392/578 lines (67.82%)
 |    2 |  828 | `	}` |
 |    - |  829 | `	/* Return the freshly created array */` |
 |   63 |  830 | `	return pArray;` |
-|   32 |  831 |  |
+|   32 |  831 | `}` |
 |    - |  832 | `/*` |
 |    - |  833 | ` * Start element handler.` |
 |    - |  834 | ` * The user defined callback must accept three parameters:` |
@@ -857,7 +857,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  847 | ` *      Note: Instead of a function name, an array containing an object reference and a method name can also be supplied.` |
 |    - |  848 | ` */` |
 |   78 |  849 | `static sxi32 VmXMLStartElementHandler(SyXMLRawStr *pStart,SyXMLRawStr *pNS,sxu32 nAttr,SyXMLRawStr *aAttr,void *pUserData)` |
-|    1 |  850 |  |
+|    1 |  850 | `{` |
 |   79 |  851 | `	ph7_xml_engine *pEngine = (ph7_xml_engine *)pUserData;` |
 |    - |  852 | `	ph7_value *pCallback,*pTag,*pAttr;` |
 |    - |  853 | `	/* Point to the target user defined callback */` |
@@ -882,7 +882,7 @@ Coverage: 392/578 lines (67.82%)
 |   63 |  872 | `	ph7_context_release_value(pEngine->pCtx,pTag);` |
 |   63 |  873 | `	ph7_context_release_value(pEngine->pCtx,pAttr);` |
 |   63 |  874 | `	return SXRET_OK;` |
-|   40 |  875 |  |
+|   40 |  875 | `}` |
 |    - |  876 | `/*` |
 |    - |  877 | ` * End element handler.` |
 |    - |  878 | ` * The user defined callback must accept two parameters:` |
@@ -896,7 +896,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  886 | ` *   can also be supplied.` |
 |    - |  887 | ` */` |
 |   62 |  888 | `static sxi32 VmXMLEndElementHandler(SyXMLRawStr *pEnd,SyXMLRawStr *pNS,void *pUserData)` |
-|    1 |  889 |  |
+|    1 |  889 | `{` |
 |   63 |  890 | `	ph7_xml_engine *pEngine = (ph7_xml_engine *)pUserData;` |
 |    - |  891 | `	ph7_value *pCallback,*pTag;` |
 |    - |  892 | `	/* Point to the target user defined callback */` |
@@ -918,7 +918,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  908 | `	/* Clean-up the mess left behind */` |
 |   55 |  909 | `	ph7_context_release_value(pEngine->pCtx,pTag);` |
 |   55 |  910 | `	return SXRET_OK;` |
-|   32 |  911 |  |
+|   32 |  911 | `}` |
 |    - |  912 | `/*` |
 |    - |  913 | ` * Character data handler.` |
 |    - |  914 | ` *  The user defined callback must accept two parameters:` |
@@ -933,7 +933,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  923 | ` *   Note: Instead of a function name, an array containing an object reference and a method name can also be supplied.` |
 |    - |  924 | ` */` |
 |   28 |  925 | `static sxi32 VmXMLTextHandler(SyXMLRawStr *pText,void *pUserData)` |
-|    1 |  926 |  |
+|    1 |  926 | `{` |
 |   29 |  927 | `	ph7_xml_engine *pEngine = (ph7_xml_engine *)pUserData;` |
 |    - |  928 | `	ph7_value *pCallback,*pData;` |
 |    - |  929 | `	/* Point to the target user defined callback */` |
@@ -954,7 +954,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  944 | `	/* Clean-up the mess left behind */` |
 |   19 |  945 | `	ph7_context_release_value(pEngine->pCtx,pData);` |
 |   19 |  946 | `	return SXRET_OK;` |
-|   15 |  947 |  |
+|   15 |  947 | `}` |
 |    - |  948 | `/*` |
 |    - |  949 | ` * Processing instruction (PI) handler.` |
 |    - |  950 | ` * The user defined callback must accept two parameters:` |
@@ -969,7 +969,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  959 | ` *    and a method name can also be supplied.` |
 |    - |  960 | ` */` |
 |    8 |  961 | `static sxi32 VmXMLPIHandler(SyXMLRawStr *pTargetStr,SyXMLRawStr *pDataStr,void *pUserData)` |
-|    1 |  962 |  |
+|    1 |  962 | `{` |
 |    9 |  963 | `	ph7_xml_engine *pEngine = (ph7_xml_engine *)pUserData;` |
 |    - |  964 | `	ph7_value *pCallback,*pTarget,*pData;` |
 |    - |  965 | `	/* Point to the target user defined callback */` |
@@ -992,7 +992,7 @@ Coverage: 392/578 lines (67.82%)
 |    5 |  982 | `	ph7_context_release_value(pEngine->pCtx,pTarget);` |
 |    5 |  983 | `	ph7_context_release_value(pEngine->pCtx,pData);` |
 |    5 |  984 | `	return SXRET_OK;` |
-|    5 |  985 |  |
+|    5 |  985 | `}` |
 |    - |  986 | `/*` |
 |    - |  987 | ` * Namespace declaration handler.` |
 |    - |  988 | ` * The user defined callback must accept two parameters:` |
@@ -1007,7 +1007,7 @@ Coverage: 392/578 lines (67.82%)
 |    - |  997 | ` *   and a method name can also be supplied.` |
 |    - |  998 | ` */` |
 |    4 |  999 | `static sxi32 VmXMLNSStartHandler(SyXMLRawStr *pUriStr,SyXMLRawStr *pPrefixStr,void *pUserData)` |
-|    1 | 1000 |  |
+|    1 | 1000 | `{` |
 |    5 | 1001 | `	ph7_xml_engine *pEngine = (ph7_xml_engine *)pUserData;` |
 |    - | 1002 | `	ph7_value *pCallback,*pUri,*pPrefix;` |
 |    - | 1003 | `	/* Point to the target user defined callback */` |
@@ -1030,7 +1030,7 @@ Coverage: 392/578 lines (67.82%)
 |    3 | 1020 | `	ph7_context_release_value(pEngine->pCtx,pUri);` |
 |    3 | 1021 | `	ph7_context_release_value(pEngine->pCtx,pPrefix);` |
 |    3 | 1022 | `	return SXRET_OK;` |
-|    3 | 1023 |  |
+|    3 | 1023 | `}` |
 |    - | 1024 | `/*` |
 |    - | 1025 | ` * Namespace end declaration handler.` |
 |    - | 1026 | ` * The user defined callback must accept two parameters:` |
@@ -1043,7 +1043,7 @@ Coverage: 392/578 lines (67.82%)
 |    - | 1033 | ` *   and a method name can also be supplied.` |
 |    - | 1034 | ` */` |
 |    4 | 1035 | `static sxi32 VmXMLNSEndHandler(SyXMLRawStr *pPrefixStr,void *pUserData)` |
-|    1 | 1036 |  |
+|    1 | 1036 | `{` |
 |    5 | 1037 | `	ph7_xml_engine *pEngine = (ph7_xml_engine *)pUserData;` |
 |    - | 1038 | `	ph7_value *pCallback,*pPrefix;` |
 |    - | 1039 | `	/* Point to the target user defined callback */` |
@@ -1064,7 +1064,7 @@ Coverage: 392/578 lines (67.82%)
 |    - | 1054 | `	/* Clean-up the mess left behind */` |
 |    3 | 1055 | `	ph7_context_release_value(pEngine->pCtx,pPrefix);` |
 |    3 | 1056 | `	return SXRET_OK;` |
-|    3 | 1057 |  |
+|    3 | 1057 | `}` |
 |    - | 1058 | `/*` |
 |    - | 1059 | ` * Error Message consumer handler.` |
 |    - | 1060 | ` * Each time the XML parser encounter a syntaxt error or any other error` |
@@ -1072,7 +1072,7 @@ Coverage: 392/578 lines (67.82%)
 |    - | 1062 | ` * underlying XML parser.` |
 |    - | 1063 | ` */` |
 |   34 | 1064 | `static sxi32 VmXMLErrorHandler(const char *zMessage,sxi32 iErrCode,SyToken *pToken,void *pUserData)` |
-|    1 | 1065 |  |
+|    1 | 1065 | `{` |
 |   35 | 1066 | `	ph7_xml_engine *pEngine = (ph7_xml_engine *)pUserData;` |
 |    - | 1067 | `	/* Save the error code */` |
 |   35 | 1068 | `	pEngine->iErrCode = iErrCode;` |
@@ -1082,7 +1082,7 @@ Coverage: 392/578 lines (67.82%)
 |   17 | 1072 | `	}` |
 |    - | 1073 | `	/* Abort XML processing immediately */` |
 |   35 | 1074 | `	return SXERR_ABORT;` |
-|    1 | 1075 |  |
+|    1 | 1075 | `}` |
 |    - | 1076 | `/*` |
 |    - | 1077 | ` * int xml_parse(resource $parser,string $data[,bool $is_final = false ])` |
 |    - | 1078 | ` *  Parses an XML document. The handlers for the configured events are called` |
@@ -1101,7 +1101,7 @@ Coverage: 392/578 lines (67.82%)
 |    - | 1091 | ` *  Returns 1 on success or 0 on failure.` |
 |    - | 1092 | ` */` |
 |   74 | 1093 | `PH7_PRIVATE int vm_builtin_xml_parse(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 | 1094 |  |
+|    1 | 1094 | `{` |
 |    - | 1095 | `	ph7_xml_engine *pEngine;` |
 |    - | 1096 | `	SyXMLParser *pParser;` |
 |    - | 1097 | `	const char *zData;` |
@@ -1156,7 +1156,7 @@ Coverage: 392/578 lines (67.82%)
 |    - | 1146 | `	/* Return the parse result */` |
 |   75 | 1147 | `	ph7_result_int(pCtx,pEngine->iErrCode == SXML_ERROR_NONE ? 1 : 0);` |
 |   75 | 1148 | `	return PH7_OK;` |
-|   38 | 1149 |  |
+|   38 | 1149 | `}` |
 |    - | 1150 | `/*` |
 |    - | 1151 | ` * bool xml_parser_set_option(resource $parser,int $option,mixed $value)` |
 |    - | 1152 | ` *  Sets an option in an XML parser.` |
@@ -1179,7 +1179,7 @@ Coverage: 392/578 lines (67.82%)
 |    - | 1169 | ` *  function is a no-op.` |
 |    - | 1170 | ` */` |
 |    6 | 1171 | `PH7_PRIVATE int vm_builtin_xml_parser_set_option(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 | 1172 |  |
+|    1 | 1172 | `{` |
 |    - | 1173 | `	ph7_xml_engine *pEngine;` |
 |    7 | 1174 | `	if( nArg < 2 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |    - | 1175 | `		/* Missing/Ivalid argument,return FALSE */` |
@@ -1196,7 +1196,7 @@ Coverage: 392/578 lines (67.82%)
 |    - | 1186 | `	/* Always return FALSE */` |
 |    7 | 1187 | `	ph7_result_bool(pCtx,0);` |
 |    7 | 1188 | `	return PH7_OK;` |
-|    4 | 1189 |  |
+|    4 | 1189 | `}` |
 |    - | 1190 | `/*` |
 |    - | 1191 | ` * mixed xml_parser_get_option(resource $parser,int $option)` |
 |    - | 1192 | ` *  Get options from an XML parser.` |
@@ -1210,7 +1210,7 @@ Coverage: 392/578 lines (67.82%)
 |    - | 1200 | ` *  or if option isn't valid.Else the option's value is returned.` |
 |    - | 1201 | ` */` |
 |    2 | 1202 | `PH7_PRIVATE int vm_builtin_xml_parser_get_option(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 | 1203 |  |
+|    1 | 1203 | `{` |
 |    - | 1204 | `	ph7_xml_engine *pEngine;` |
 |    - | 1205 | `	int nOp;` |
 |    3 | 1206 | `	if( nArg < 2 \|\| !ph7_value_is_resource(apArg[0]) ){` |
@@ -1241,7 +1241,7 @@ Coverage: 392/578 lines (67.82%)
 |    2 | 1231 | `		break;` |
 |    - | 1232 | `	}` |
 |    3 | 1233 | `	return PH7_OK;` |
-|    2 | 1234 |  |
+|    2 | 1234 | `}` |
 |    - | 1235 | `/*` |
 |    - | 1236 | ` * string xml_error_string(int $code)` |
 |    - | 1237 | ` *  Gets the XML parser error string associated with the given code.` |
@@ -1253,7 +1253,7 @@ Coverage: 392/578 lines (67.82%)
 |    - | 1243 | ` *  code, or FALSE if no description was found.` |
 |    - | 1244 | ` */` |
 |   30 | 1245 | `PH7_PRIVATE int vm_builtin_xml_error_string(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 | 1246 |  |
+|    1 | 1246 | `{` |
 |   31 | 1247 | `	int nErr = -1;` |
 |   31 | 1248 | `	if( nArg > 0 ){` |
 |   31 | 1249 | `		nErr = ph7_value_to_int(apArg[0]);` |
@@ -1288,7 +1288,7 @@ Coverage: 392/578 lines (67.82%)
 |   18 | 1278 | `		break;` |
 |    - | 1279 | `	}` |
 |   31 | 1280 | `	return PH7_OK;` |
-|    1 | 1281 |  |
+|    1 | 1281 | `}` |
 |    - | 1282 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
 |    - | 1283 | `/*` |
 |    - | 1284 | ` * int utf8_encode(string $input)` |
@@ -1311,7 +1311,7 @@ Coverage: 392/578 lines (67.82%)
 |    - | 1301 | ` *  An UTF-8 encoded string.` |
 |    - | 1302 | ` */` |
 |  ! 0 | 1303 | `PH7_PRIVATE int vm_builtin_utf8_encode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|  ! 0 | 1304 |  |
+|  ! 0 | 1304 | `{` |
 |    - | 1305 | `	const unsigned char *zIn,*zEnd;` |
 |    - | 1306 | `	int nByte,c,e;` |
 |  ! 0 | 1307 | `	if( nArg < 1 ){` |
@@ -1365,7 +1365,7 @@ Coverage: 392/578 lines (67.82%)
 |  ! 0 | 1355 | `	}` |
 |    - | 1356 | `	/* All done */` |
 |  ! 0 | 1357 | `	return PH7_OK;` |
-|  ! 0 | 1358 |  |
+|  ! 0 | 1358 | `}` |
 |    - | 1359 | `/* SPDX-SnippetBegin */` |
 |    - | 1360 | `/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */` |
 |    - | 1361 | `/* SPDX-License-Identifier: blessing */` |
@@ -1435,7 +1435,7 @@ Coverage: 392/578 lines (67.82%)
 |  149 | 1425 | `  READ_UTF8(z, zTerm, c);` |
 |  149 | 1426 | `  *pzNext = z;` |
 |  149 | 1427 | `  return c;` |
-|    1 | 1428 |  |
+|    1 | 1428 | `}` |
 |    - | 1429 | `/* SPDX-SnippetEnd */` |
 |    - | 1430 | `/*` |
 |    - | 1431 | ` * string utf8_decode(string $data)` |
@@ -1447,7 +1447,7 @@ Coverage: 392/578 lines (67.82%)
 |    - | 1437 | ` *  Unicode decoded string or NULL on failure.` |
 |    - | 1438 | ` */` |
 |  ! 0 | 1439 | `PH7_PRIVATE int vm_builtin_utf8_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|  ! 0 | 1440 |  |
+|  ! 0 | 1440 | `{` |
 |    - | 1441 | `	const unsigned char *zIn,*zEnd;` |
 |    - | 1442 | `	int nByte,c;` |
 |  ! 0 | 1443 | `	if( nArg < 1 ){` |
@@ -1472,5 +1472,5 @@ Coverage: 392/578 lines (67.82%)
 |  ! 0 | 1462 | `		ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char));` |
 |  ! 0 | 1463 | `	}` |
 |  ! 0 | 1464 | `	return PH7_OK;` |
-|  ! 0 | 1465 |  |
+|  ! 0 | 1465 | `}` |
 |    - | 1466 |  |
