@@ -5341,11 +5341,22 @@ static sxi32 VmByteCodeExec(
 	/* Finally-drain base. For a resumed generator/fiber TOP-LEVEL body, its own
 	 * exception handlers were just re-published above the caller depth
 	 * (VmRestoreCtxExceptionHandlers), so the live SySetUsed over-counts; take the
-	 * caller-depth base recorded on the ctx instead. The pFrame==active-ctx-frame
-	 * guard restricts this to the resumed body only — a nested call or a
-	 * catch/finally mini-program run within it has a different pVm->pFrame and
-	 * falls through to the live depth (the common, unchanged path). */
-	if( pVm->pActiveCtx && pVm->pActiveCtx->pFrame == pVm->pFrame ){
+	 * caller-depth base recorded on the ctx instead.
+	 *
+	 * The discriminator is the OPERAND STACK, not the frame: the body exec runs on
+	 * the ctx's own pStack, whereas every nested frame-less mini-program run within
+	 * it — a default-argument / constructor trampoline, or a catch/finally body via
+	 * VmLocalExec — runs on a FRESH operand stack while SHARING pVm->pFrame (those
+	 * mini-programs do not push a VM frame). A pFrame-only guard therefore misfires
+	 * for such a mini-program and hands it the generator's low caller-base; its
+	 * terminal OP_DONE then drains VmDrainFinally down to that base, tearing down a
+	 * live try that the surrounding finally had just opened (e.g. `finally { try {
+	 * throw new E(); } catch (E) {} }` in a generator: the `new E()` trampoline's
+	 * OP_DONE popped the inner try before its OP_THROW ran, so the throw escaped
+	 * uncaught). Requiring pStack == pCtx->pStack pins the override to the resumed
+	 * body itself; nested mini-programs fall through to the correct live depth. */
+	if( pVm->pActiveCtx && pVm->pActiveCtx->pFrame == pVm->pFrame
+	 && pStack == pVm->pActiveCtx->pStack ){
 		nExceptionBase = pVm->pActiveCtx->nExceptionBase;
 	}else{
 		nExceptionBase = SySetUsed(&pVm->aException);
