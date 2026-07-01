@@ -4,6 +4,16 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "ph7int.h"
+/*
+ * round() (defined below, under PH7_DISABLE_BUILTIN_FUNC rather than the
+ * math-func guard) needs floor/ceil/fabs/copysign/fmod/isfinite/pow plus the
+ * libc snprintf/strtod round-trip for its high-precision branch, so pull these
+ * in unconditionally here — they must be available even when
+ * PH7_ENABLE_MATH_FUNC is off. abs() is also used by the guarded math builtins.
+ */
+#include <math.h>
+#include <stdio.h>  /* snprintf: correctly-rounded high-precision round() round-trip */
+#include <stdlib.h> /* strtod (round-trip inverse), abs */
 #ifdef PH7_ENABLE_MATH_FUNC
 
 /*
@@ -13,8 +23,6 @@
  * Status:
  *    Stable.
  */
-#include <stdlib.h> /* abs */
-#include <math.h>
 /*
  * float sqrt(float $arg )
  *  Square root of the given number.
@@ -678,57 +686,266 @@ PH7_PRIVATE int PH7_builtin_hypot(ph7_context *pCtx,int nArg,ph7_value **apArg)
 #endif /* PH7_ENABLE_MATH_FUNC */
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 /*
- * float round ( float $val [, int $precision = 0 [, int $mode = PHP_ROUND_HALF_UP ]] )
- *  Exponential expression.
- * Parameter
- *  $val
- *   The value to round.
- * $precision
- *   The optional number of decimal digits to round to.
- * $mode
- *   One of PHP_ROUND_HALF_UP, PHP_ROUND_HALF_DOWN, PHP_ROUND_HALF_EVEN, or PHP_ROUND_HALF_ODD.
- *   (not supported).
+ * PHP rounding modes (mirror ext/standard/php_math_round_mode.h).
+ * Only the four HALF_* integer constants are exposed to userland
+ * (PHP_ROUND_HALF_UP..HALF_ODD, see constant.c); the CEILING/FLOOR/
+ * TOWARD_ZERO/AWAY_FROM_ZERO modes (5..8) have no userland constant but
+ * are reachable by passing the raw integer to round()'s 3rd argument,
+ * which PHP 8.5 still accepts, so all eight are honored here.
+ */
+#define PH7_ROUND_HALF_UP        1
+#define PH7_ROUND_HALF_DOWN      2
+#define PH7_ROUND_HALF_EVEN      3
+#define PH7_ROUND_HALF_ODD       4
+#define PH7_ROUND_CEILING        5
+#define PH7_ROUND_FLOOR          6
+#define PH7_ROUND_TOWARD_ZERO    7
+#define PH7_ROUND_AWAY_FROM_ZERO 8
+/*
+ * 10**power via an exact lookup table for 0..22, falling back to pow()
+ * otherwise. Port of php-src PHP-8.5 ext/standard/math.c php_intpow10().
+ */
+static double MathIntPow10(int power)
+{
+	static const double powers[] = {
+		1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11,
+		1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22
+	};
+	if( power < 0 || power > 22 ){
+		return pow(10.0, (double)power);
+	}
+	return powers[power];
+}
+static double MathRoundBasicEdge(double integral, double exponent, int places)
+{
+	return (places > 0)
+		? fabs((integral + copysign(0.5, integral)) / exponent)
+		: fabs((integral + copysign(0.5, integral)) * exponent);
+}
+static double MathRoundZeroEdge(double integral, double exponent, int places)
+{
+	return (places > 0)
+		? fabs((integral) / exponent)
+		: fabs((integral) * exponent);
+}
+/*
+ * Round the extracted integral part according to the requested mode.
+ * Faithful port of php-src PHP-8.5 ext/standard/math.c php_round_helper().
+ */
+static double MathRoundHelper(double integral, double value, double exponent, int places, int mode)
+{
+	double value_abs = fabs(value);
+	double edge_case;
+	switch( mode ){
+		case PH7_ROUND_HALF_UP:
+			edge_case = MathRoundBasicEdge(integral, exponent, places);
+			if( value_abs >= edge_case ){
+				return integral + copysign(1.0, integral);
+			}
+			return integral;
+		case PH7_ROUND_HALF_DOWN:
+			edge_case = MathRoundBasicEdge(integral, exponent, places);
+			if( value_abs > edge_case ){
+				return integral + copysign(1.0, integral);
+			}
+			return integral;
+		case PH7_ROUND_CEILING:
+			edge_case = MathRoundZeroEdge(integral, exponent, places);
+			if( value > 0.0 && value_abs > edge_case ){
+				return integral + 1.0;
+			}
+			return integral;
+		case PH7_ROUND_FLOOR:
+			edge_case = MathRoundZeroEdge(integral, exponent, places);
+			if( value < 0.0 && value_abs > edge_case ){
+				return integral - 1.0;
+			}
+			return integral;
+		case PH7_ROUND_TOWARD_ZERO:
+			return integral;
+		case PH7_ROUND_AWAY_FROM_ZERO:
+			edge_case = MathRoundZeroEdge(integral, exponent, places);
+			if( value_abs > edge_case ){
+				return integral + copysign(1.0, integral);
+			}
+			return integral;
+		case PH7_ROUND_HALF_EVEN:
+			edge_case = MathRoundBasicEdge(integral, exponent, places);
+			if( value_abs > edge_case ){
+				return integral + copysign(1.0, integral);
+			}else if( value_abs == edge_case ){
+				if( fmod(integral, 2.0) != 0.0 ){ /* integral not even -> make it even */
+					return integral + copysign(1.0, integral);
+				}
+			}
+			return integral;
+		case PH7_ROUND_HALF_ODD:
+			edge_case = MathRoundBasicEdge(integral, exponent, places);
+			if( value_abs > edge_case ){
+				return integral + copysign(1.0, integral);
+			}else if( value_abs == edge_case ){
+				if( fmod(integral, 2.0) == 0.0 ){ /* integral even -> make it odd */
+					return integral + copysign(1.0, integral);
+				}
+			}
+			return integral;
+		default:
+			return integral; /* unreachable: mode validated by the caller */
+	}
+}
+/*
+ * Round `value` to `places` decimals in `mode`. Faithful port of php-src
+ * PHP-8.5 ext/standard/math.c _php_math_round() — the post-8.4
+ * integer-extraction algorithm with the +/-1 floating-point error
+ * correction step, required for byte-exact results on cases such as
+ * round(0.285, 2) == 0.29 that the old naive "+0.5" approach got wrong.
+ */
+static double MathRound(double value, int places, int mode)
+{
+	double exponent, tmp_value, tmp_value2;
+	int abs_places;
+	if( !isfinite(value) || value == 0.0 ){
+		return value;
+	}
+	/* mirror php-src's clamp away from INT_MIN */
+	if( places < -2147483647 ){
+		places = -2147483647;
+	}
+	abs_places = places < 0 ? -places : places;
+	exponent = MathIntPow10(abs_places);
+	/*
+	 * Extracting the integer part can be off by one ULP due to float error
+	 * (e.g. floor(0.285 * 1e10) == 2849999999). Try +/-1 and keep it if it
+	 * divides back to exactly `value`.
+	 */
+	if( value >= 0.0 ){
+		tmp_value = floor(places > 0 ? value * exponent : value / exponent);
+		tmp_value2 = tmp_value + 1.0;
+	}else{
+		tmp_value = ceil(places > 0 ? value * exponent : value / exponent);
+		tmp_value2 = tmp_value - 1.0;
+	}
+	if( (places > 0 ? tmp_value2 / exponent : tmp_value2 * exponent) == value ){
+		tmp_value = tmp_value2;
+	}
+	/* Beyond our precision, so rounding it is pointless. */
+	if( fabs(tmp_value) >= 1e16 ){
+		return value;
+	}
+	tmp_value = MathRoundHelper(tmp_value, value, exponent, places, mode);
+	if( abs_places < 23 ){
+		tmp_value = (places > 0) ? tmp_value / exponent : tmp_value * exponent;
+	}else{
+		/*
+		 * Simple division would lose precision here; round-trip through a
+		 * string exactly like php-src does (snprintf "%15fe%d" + strtod).
+		 * libc snprintf/strtod are used (not SyBufferFormat/SyStrToReal,
+		 * which are not correctly-rounded) so the low bits match PHP — the
+		 * same reason vm_serialize.c uses libc strtod for its float repr.
+		 */
+		char zBuf[64];
+		snprintf(zBuf, sizeof(zBuf), "%15fe%d", tmp_value, -places);
+		zBuf[sizeof(zBuf)-1] = '\0';
+		tmp_value = strtod(zBuf, 0);
+		if( !isfinite(tmp_value) || isnan(tmp_value) ){
+			tmp_value = value;
+		}
+	}
+	return tmp_value;
+}
+/*
+ * float round ( int|float $num [, int $precision = 0 [, int $mode = PHP_ROUND_HALF_UP ]] )
+ *  Rounds a float.
+ * Parameters
+ *  $num       The value to round.
+ *  $precision The optional number of decimal digits to round to. May be
+ *             negative (rounds to the left of the decimal point).
+ *  $mode      One of PHP_ROUND_HALF_UP (default) / _HALF_DOWN / _HALF_EVEN /
+ *             _HALF_ODD, or the 8.5 integer modes CEILING / FLOOR /
+ *             TOWARD_ZERO / AWAY_FROM_ZERO (5..8).
  * Return
- *  The rounded value.
+ *  The rounded value as a float.
  */
 PH7_PRIVATE int PH7_builtin_round(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	int n = 0;
-	double r;
+	double value, r;
+	int places = 0;
+	int mode = PH7_ROUND_HALF_UP;
+	/*
+	 * Legacy PHL contract: no argument -> int(0). PHP throws an
+	 * ArgumentCountError here, but two PHL-only (--SKIPIF-- zend_version)
+	 * tests assert round()===0, so keep the historical behavior.
+	 */
 	if( nArg < 1 ){
-		/* Missing argument,return 0 */
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
 	}
-	/* Extract the precision if available */
-	if( nArg > 1 ){
-		n = ph7_value_to_int(apArg[1]);
-		if( n>30 ){
-			n = 30;
-		}
-		if( n<0 ){
-			n = 0;
+	if( nArg > 3 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"round() expects at most 3 arguments, %d given",
+			nArg
+			);
+	}
+	/*
+	 * Validate argument #1: only int/float (and numeric strings) are
+	 * accepted; every other type raises a TypeError (mirrors floor()/ceil()).
+	 */
+	if( ph7_value_is_int(apArg[0]) == 0 && ph7_value_is_float(apArg[0]) == 0 ){
+		if( ph7_value_is_string(apArg[0]) ){
+			int len;
+			sxu8 bReal = FALSE;
+			const char *zStr = ph7_value_to_string(apArg[0], &len);
+			if( SyStrIsNumeric(zStr, len, &bReal, 0) != SXRET_OK ){
+				return PH7_VmThrowException(pCtx,
+					"TypeError",
+					"round(): Argument #1 ($num) must be of type int|float, %s given",
+					ph7_type_name(apArg[0])
+					);
+			}
+		}else{
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"round(): Argument #1 ($num) must be of type int|float, %s given",
+				ph7_type_name(apArg[0])
+				);
 		}
 	}
-	r = ph7_value_to_double(apArg[0]);
-	/* If Y==0 and X will fit in a 64-bit int,
-     * handle the rounding directly.Otherwise
-	 * use our own cutsom printf [i.e:SyBufferFormat()].
-     */
-	if( n==0 && r>=0 && r < (double)(LARGEST_INT64-1) ){
-    r = (double)((ph7_int64)(r+0.5));
-	}else if( n==0 && r<0 && (-r) < (double)(LARGEST_INT64-1) ){
-    r = -(double)((ph7_int64)((-r)+0.5));
-  }else{
-	  char zBuf[256];
-	  sxu32 nLen;
-	  nLen = SyBufferFormat(zBuf,sizeof(zBuf),"%.*f",n,r);
-	  /* Convert the string to real number */
-	  SyStrToReal(zBuf,nLen,(void *)&r,0);
-  }
-  /* Return thr rounded value */
-  ph7_result_double(pCtx,r);
-  return PH7_OK;
+	/* Precision (arg #2). Negative values are valid; clamp to int range. */
+	if( nArg > 1 ){
+		sxi64 prec = ph7_value_to_int64(apArg[1]);
+		if( prec > 2147483647 ){
+			places = 2147483647;
+		}else if( prec < -2147483647 ){
+			places = -2147483647;
+		}else{
+			places = (int)prec;
+		}
+	}
+	/*
+	 * Mode (arg #3). PHP 8.5 accepts the integer modes 1..8. Read the full
+	 * 64-bit value before range-checking so a large out-of-range mode cannot
+	 * alias a valid 1..8 via a truncating 32-bit cast (e.g. 0x1_0000_0003).
+	 */
+	if( nArg > 2 ){
+		sxi64 m = ph7_value_to_int64(apArg[2]);
+		if( m < PH7_ROUND_HALF_UP || m > PH7_ROUND_AWAY_FROM_ZERO ){
+			return PH7_VmThrowException(pCtx,
+				"ValueError",
+				"round(): Argument #3 ($mode) must be a valid rounding mode (RoundingMode::*)"
+				);
+		}
+		mode = (int)m;
+	}
+	value = ph7_value_to_double(apArg[0]);
+	/* Integer input with non-negative precision needs no rounding. */
+	if( ph7_value_is_int(apArg[0]) && places >= 0 ){
+		ph7_result_double(pCtx,value);
+		return PH7_OK;
+	}
+	r = MathRound(value, places, mode);
+	ph7_result_double(pCtx,r);
+	return PH7_OK;
 }
 /*
  * int intdiv(int $a, int $b)
