@@ -5967,6 +5967,67 @@ static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyTo
 	return SXRET_OK;
 }
 /*
+ * ROOT C helper: from a `function`/`fn` keyword token, skip past the whole nested
+ * function/closure/arrow body so a `yield` inside it is NOT counted as belonging to
+ * the enclosing function. Returns the token just past the nested construct.
+ */
+static SyToken * GenStateSkipNestedFunc(SyToken *pIn, SyToken *pEnd)
+{
+	sxi32 iParen = 0;
+	pIn++; /* past 'function'/'fn' */
+	/* Advance to the body's opening '{', ignoring any '{' that could appear inside a
+	 * parenthesised signature (e.g. a `new class {}` parameter default). Stop early on a
+	 * ';' at paren-depth 0 (an abstract/interface method has no body). */
+	while( pIn < pEnd ){
+		sxu32 t = pIn->nType;
+		if( t & PH7_TK_LPAREN ){ iParen++; }
+		else if( t & PH7_TK_RPAREN ){ iParen--; }
+		else if( (t & PH7_TK_OCB) && iParen <= 0 ){ break; }
+		else if( (t & PH7_TK_SEMI) && iParen <= 0 ){ return pIn; }
+		pIn++;
+	}
+	if( pIn >= pEnd ){ return pIn; }
+	/* pIn at the body '{' — skip the balanced brace block. */
+	{
+		sxi32 d = 0;
+		while( pIn < pEnd ){
+			sxu32 t = pIn->nType;
+			if( t & PH7_TK_OCB ){ d++; }
+			else if( t & PH7_TK_CCB ){ d--; if( d <= 0 ){ pIn++; break; } }
+			pIn++;
+		}
+	}
+	return pIn;
+}
+/*
+ * ROOT C helper: does the function body about to be compiled (pGen->pIn at its opening
+ * '{') contain a `yield`/`yield from` at THIS function's own level (i.e. is it a
+ * generator)? Nested function/closure bodies are skipped so their yields don't count.
+ * Used to gate inline try/catch/finally compilation: only generators need it (so a
+ * `yield` inside a catch/finally can suspend); every other function keeps the legacy
+ * detached-mini-program path untouched.
+ */
+static int GenStateFuncBodyHasYield(ph7_gen_state *pGen)
+{
+	SyToken *pIn = pGen->pIn;   /* expected at the body's opening '{' */
+	SyToken *pEnd = pGen->pEnd;
+	sxi32 iDepth = 0;
+	int bStarted = 0;
+	while( pIn < pEnd ){
+		sxu32 t = pIn->nType;
+		if( t & PH7_TK_OCB ){ iDepth++; bStarted = 1; pIn++; continue; }
+		if( t & PH7_TK_CCB ){ iDepth--; pIn++; if( bStarted && iDepth <= 0 ){ break; } continue; }
+		if( t & PH7_TK_KEYWORD ){
+			int kw = SX_PTR_TO_INT(pIn->pUserData);
+			if( kw == PH7_TKWRD_YIELD ){ return TRUE; }
+			if( kw == PH7_TKWRD_FUNCTION ){ pIn = GenStateSkipNestedFunc(pIn,pEnd); continue; }
+			/* `fn` arrow bodies are single expressions and cannot contain a valid yield. */
+		}
+		pIn++;
+	}
+	return FALSE;
+}
+/*
  * Compile function [i.e: standard function, annonymous function or closure ] body.
  * Return SXRET_OK on success. Any other return value indicates failure
  * and this routine takes care of generating the appropriate error message.
@@ -6053,8 +6114,17 @@ static sxi32 GenStateCompileFuncBody(
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
 		}
 	}
-	/* Compile the body */
-	PH7_CompileBlock(&(*pGen),0);
+	/* ROOT C: detect a generator (yield at this function's own level) BEFORE compiling
+	 * the body, so try/catch/finally inside it compile inline (yield-in-catch/finally
+	 * suspends correctly). Saved/restored so a nested non-generator closure inside a
+	 * generator — and vice versa — is classified independently. */
+	{
+		sxi8 bSavedGen = pGen->bInGenerator;
+		pGen->bInGenerator = (sxi8)GenStateFuncBodyHasYield(&(*pGen));
+		/* Compile the body */
+		PH7_CompileBlock(&(*pGen),0);
+		pGen->bInGenerator = bSavedGen;
+	}
 	/* Fix exception jumps now the destination is resolved */
 	GenStateFixJumps(pGen->pCurrent,PH7_OP_THROW,PH7_VmInstrLength(pGen->pVm));
 	/* Emit the final return if not yet done */

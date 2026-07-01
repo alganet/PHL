@@ -411,6 +411,10 @@ struct ph7_gen_state
 	SySet   *pTokenSet;  /* Token containers */
 	sxi8 bStrictTypes;       /* Current file's strict_types mode (0 = weak/unset, 1 = strict) */
 	sxi8 bStrictTypesLocked; /* 1 once the current file has emitted any non-declare top-level statement */
+	sxi8 bInGenerator;       /* ROOT C: 1 while compiling a generator function body (a yield appears at
+	                          * this function's own level). Gates inline try/catch/finally so `yield`
+	                          * inside a catch/finally suspends correctly; non-generators keep the
+	                          * legacy detached-mini-program path. Saved/restored across nested funcs. */
 };
 /* Forward references */
 typedef struct ph7_vm_func_closure_env ph7_vm_func_closure_env;
@@ -812,7 +816,8 @@ struct ph7_exception_block
 {
 	SySet aClasses;  /* Exception class names (SyString instances) for multi-catch */
 	SyString sThis;  /* Instance name [i.e: $e..] */
-	SySet sByteCode; /* Block compiled instructions */
+	SySet sByteCode; /* Block compiled instructions (legacy; unused once ROOT C inlining lands) */
+	sxu32 iHandlerPc;/* ROOT C: inline PC where this catch body begins (0 = not inlined) */
 };
 /*
  * Context for the exception mechanism.
@@ -823,9 +828,15 @@ struct ph7_exception
 	SySet sEntry;   /* Compiled 'catch' blocks (ph7_exception_block instance)
 				     * container.
 					 */
-	SySet sFinally; /* Compiled 'finally' block bytecode (VmInstr instances) */
+	SySet sFinally; /* Compiled 'finally' block bytecode (legacy; unused once ROOT C inlining lands) */
 	int iHasFinally;/* TRUE if a finally block was compiled */
-	int iFinallyDone;/* TRUE if the finally block was already executed */
+	int iFinallyDone;/* TRUE if the finally block was already executed (legacy VmLocalExec path) */
+	sxu32 iFinallyPc;/* ROOT C: inline PC where the finally body begins (0 = no finally) */
+	sxu32 iEndCatchPc;/* ROOT C: inline PC just after the whole try/catch/finally (normal exit) */
+	sxu32 iNextFinallyPc;/* ROOT C: iFinallyPc of the lexically-enclosing try-with-finally in the
+					   * same function, or 0 — threads a return/break out through nested finallys */
+	int iInCatch;   /* ROOT C: TRUE while a catch body of this try is running (finally still owed) */
+	ph7_class_instance *pInflight;/* ROOT C: exception to bind at OP_CATCH / re-raise at END_FINALLY */
 	VmFrame *pFrame; /* Frame that trigger the exception */
 	sxu32 iLandingPc;/* Post-try landing pad (= OP_LOAD_EXCEPTION's iP2). Mirrors the
 					  * exception frame's iExceptionJump but survives that frame's
@@ -838,6 +849,28 @@ struct ph7_exception
 					   * Generator::throw() inject-at-yield to drain the abandoned
 					   * (mid-expression) operand slots back to the try's base before
 					   * landing at iLandingPc. */
+};
+/*
+ * ROOT C: a pending non-local exit for an inline `finally` body. When control
+ * enters a finally (normal fall-through, a caught/unmatched throw, or a return/
+ * break/continue crossing the try), one of these is pushed onto pVm->aFinallyAction;
+ * the finally's terminating OP_END_FINALLY pops it and dispatches accordingly. A
+ * return/break/continue crossing several nested finallys keeps ONE record on the
+ * stack and re-drives it through each finally via ph7_exception.iNextFinallyPc.
+ */
+#define PH7_FA_FALLTHROUGH 0  /* Resume at iNextPc (post-construct landing) */
+#define PH7_FA_RETHROW     1  /* Re-raise pExc after the finally runs */
+#define PH7_FA_RETURN      2  /* Return sRet from pTargetBody after the finally chain */
+#define PH7_FA_JMP         3  /* Break/continue: resume at iNextPc after the finally chain */
+typedef struct VmFinallyAction VmFinallyAction;
+struct VmFinallyAction
+{
+	int eKind;                    /* One of PH7_FA_* */
+	sxu32 iNextPc;                /* FALLTHROUGH/JMP: pc (0-based) to resume at in this array */
+	ph7_class_instance *pExc;     /* RETHROW: exception to re-raise (holds a ref) */
+	ph7_value sRet;               /* RETURN: the value to return (owned) */
+	int bHasRetVal;               /* RETURN: TRUE if sRet holds a real value (vs bare `return;`) */
+	void *pTargetBody;            /* RETURN: VmFrame* the return materializes on */
 };
 /* Forward reference */
 typedef struct ph7_case_expr ph7_case_expr;
@@ -934,6 +967,8 @@ struct ph7_vm
 	SyHash hAutoloadActive;     /* Classes currently being autoloaded (reentrancy guard) */
 	SyHash hTypedSlot;          /* memobj nIdx -> VmClassAttr* for typed property enforcement */
 	SySet aException;           /* Stack of loaded exception */
+	SySet aFinallyAction;       /* ROOT C: stack of VmFinallyAction — pending action (fallthrough /
+	                             * rethrow / return / break-continue) for each inline finally in flight */
 	ph7_class_instance *pPendingException; /* Exception deferred past a finally block */
 	ph7_class_instance *pInflightException; /* Exception being unwound while a finally runs; a throw from
 	                                         * that finally that escapes the finally chains it as $previous
@@ -1181,7 +1216,11 @@ enum ph7_vm_op {
   PH7_OP_NULLC_STORE,   /* Null coalescing assign store */
   PH7_OP_NULLSAFE_JMP,  /* Nullsafe (?->) short-circuit jump */
   PH7_OP_SPREAD,        /* Mark TOS for argument unpacking (...$arr) */
-  PH7_OP_FLAG_SPREAD    /* Flag TOS as a spread source for the next LOAD_MAP */
+  PH7_OP_FLAG_SPREAD,   /* Flag TOS as a spread source for the next LOAD_MAP */
+  PH7_OP_CATCH,         /* Bind the in-flight exception into a catch variable (ROOT C inline catch) */
+  PH7_OP_END_FINALLY,   /* Terminate an inline finally: dispatch the pending action (ROOT C) */
+  PH7_OP_SET_FINALLY_RET,/* Seed a pending RETURN and enter the innermost enclosing finally (ROOT C) */
+  PH7_OP_SET_FINALLY_JMP /* Seed a pending BREAK/CONTINUE (jump target) and enter a finally (ROOT C) */
 };
 /* LOADC.iP1 bit flags */
 #define PH7_LOADC_EXPAND   0x01 /* Candidate for constant/function/class expansion */
