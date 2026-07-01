@@ -7131,6 +7131,126 @@ static int GenStateConstInitIsRealLiteral(ph7_gen_state *pGen)
 	return ( p >= pGen->pEnd || (p->nType & (PH7_TK_SEMI|PH7_TK_COMMA)) ) ? 1 : 0;
 }
 /*
+ * TRUE if the operator token *p is one of `::` / `->` / `?->` (member access).
+ * A `new` that immediately follows one of these is a member name (`A::new`,
+ * `$o->new`), not a `new` expression.
+ */
+static int GenStateTokenIsMemberOp(const SyToken *p)
+{
+	sxi32 iOp;
+	if( (p->nType & PH7_TK_OP) == 0 || p->pUserData == 0 ){
+		return 0;
+	}
+	iOp = ((const ph7_expr_op *)p->pUserData)->iOp;
+	return ( iOp == EXPR_OP_DC || iOp == EXPR_OP_ARROW || iOp == EXPR_OP_NULLSAFE_ARROW );
+}
+/*
+ * Return TRUE if the initializer starting at the current token contains a `new`
+ * expression anywhere before it ends. PHP 8.5 forbids `new` in class-constant,
+ * interface-constant and (instance/static) property-default initializers
+ * ("New expressions are not supported in this context") while still allowing it
+ * in global constants, parameter defaults and static-local initializers (which
+ * are compiled by different functions and left untouched). The scan is
+ * bracket-depth aware so a nested `new` (e.g. `[new X()]`, `cond ? new X() : y`)
+ * is still caught and an inner comma does not end the scan prematurely; only a
+ * `,` / `;` at depth 0 terminates the initializer.
+ *
+ * A `new` inside a nested closure / arrow-function is NOT part of this constant
+ * expression (it runs when the closure is later invoked), so PHP permits it — a
+ * `static function(){ return new X(); }` is a valid constant expression. The scan
+ * therefore skips over any `function`/`fn` construct rather than descending into
+ * it. A `new` used as a member name (`A::new`) is likewise ignored.
+ */
+static int GenStateInitHasNewExpr(ph7_gen_state *pGen)
+{
+	SyToken *p = pGen->pIn;
+	int iDepth = 0;
+	while( p < pGen->pEnd ){
+		if( iDepth == 0 && (p->nType & (PH7_TK_SEMI|PH7_TK_COMMA)) ){
+			break; /* end of this initializer */
+		}
+		if( (p->nType & PH7_TK_KEYWORD)
+			&& ( SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FUNCTION
+				|| SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FN ) ){
+			/* Skip the whole closure/arrow-fn (signature defaults + body): any
+			 * `new` in there is deferred to call time, not part of this const
+			 * expression. */
+			int bArrow = ( SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FN );
+			p++;
+			if( bArrow ){
+				/* fn(params) => expr : skip to the end of the current element (a
+				 * `,`/`;` or a bracket closing an enclosing group, at base depth). */
+				int iBase = iDepth;
+				while( p < pGen->pEnd ){
+					if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+						iDepth++;
+					}else if( p->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+						if( iDepth <= iBase ){
+							break; /* closes an enclosing group, not the fn's own */
+						}
+						iDepth--;
+					}else if( iDepth <= iBase && (p->nType & (PH7_TK_SEMI|PH7_TK_COMMA)) ){
+						break;
+					}
+					p++;
+				}
+			}else{
+				/* function(params)[use(...)][: type] { body } : skip the signature
+				 * up to the body '{' (a '{' at closure-local depth 0, so a
+				 * `new class{}` default inside the parens is not mistaken for it),
+				 * then skip the balanced brace block. */
+				int iLocal = 0;
+				while( p < pGen->pEnd ){
+					if( iLocal == 0 && (p->nType & PH7_TK_OCB) ){
+						break; /* body brace */
+					}
+					if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+						iLocal++;
+					}else if( p->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+						if( iLocal > 0 ){
+							iLocal--;
+						}
+					}
+					p++;
+				}
+				if( p < pGen->pEnd ){
+					int iBrace = 0; /* p is on the body '{' */
+					while( p < pGen->pEnd ){
+						if( p->nType & PH7_TK_OCB ){
+							iBrace++;
+						}else if( p->nType & PH7_TK_CCB ){
+							iBrace--;
+							if( iBrace == 0 ){
+								p++;
+								break;
+							}
+						}
+						p++;
+					}
+				}
+			}
+			continue;
+		}
+		if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+			iDepth++;
+		}else if( p->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+			if( iDepth > 0 ){
+				iDepth--;
+			}
+		}else if( (p->nType & PH7_TK_OP) && p->pUserData
+			&& ((const ph7_expr_op *)p->pUserData)->iOp == EXPR_OP_NEW ){
+			/* `new` is lexed as an alpha-stream operator (PH7_TK_ID|PH7_TK_OP)
+			 * whose pUserData is the operator instance, not a keyword id. Ignore a
+			 * `new` used as a member name (`A::new`/`$o->new`). */
+			if( p == pGen->pIn || !GenStateTokenIsMemberOp(&p[-1]) ){
+				return 1;
+			}
+		}
+		p++;
+	}
+	return 0;
+}
+/*
  * Copy a parsed declared type onto a freshly created class attribute (property,
  * promoted property or class constant). nType/pClass/pTypeName/iTypeFlags come
  * straight from GenStateParseUnionTypeDecl; for a union the alternatives are
@@ -7250,6 +7370,17 @@ loop:
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 			"Cannot use float as value for class constant %z::%z of type %z",
 			&pClass->sName,pName,&sTypeText);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		goto Synchronize;
+	}
+	/* PHP 8.5: a `new` expression is not allowed anywhere in a class/interface
+	 * constant initializer ("New expressions are not supported in this context").
+	 * Reject it at definition time, matching PHP's compile-time fatal. */
+	if( GenStateInitHasNewExpr(pGen) ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+			"New expressions are not supported in this context");
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -7678,6 +7809,20 @@ loop:
 	if( PH7_ClassExtractAttribute(pClass,pName->zString,pName->nByte) != 0 ){
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 			"Cannot redeclare %z::$%z",&pClass->sName,pName);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		goto Synchronize;
+	}
+	/* PHP 8.5: a `new` expression is not allowed anywhere in a property default
+	 * initializer ("New expressions are not supported in this context"). Reject it
+	 * here, before allocating the attribute, matching PHP's compile-time fatal and
+	 * the class-constant path above. pGen->pIn is still on the '=' (the scan skips
+	 * it and reads the initializer non-destructively); no '=' means no default, so
+	 * the helper stops at the ';'/',' and returns 0. */
+	if( (pGen->pIn->nType & PH7_TK_EQUAL /*'='*/) && GenStateInitHasNewExpr(pGen) ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+			"New expressions are not supported in this context");
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
