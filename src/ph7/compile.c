@@ -7108,6 +7108,29 @@ static int GenStateClassConstHasType(ph7_gen_state *pGen)
 	return 0;
 }
 /*
+ * TRUE when the class-constant initializer starting at pGen->pIn is a bare real
+ * literal (e.g. `1.0`, `-1.0`, `2.0e3`), optionally preceded by unary sign(s).
+ * Used to reject `const int X = 1.0` at compile time: PHL's number model tags a
+ * whole-valued real MEMOBJ_REAL|MEMOBJ_INT, so the runtime flag test would wrongly
+ * accept it as an int. The literal shape is the only reliable signal that separates
+ * the invalid `1.0` from the valid `4/2` (a computed whole-real PHP accepts as int).
+ * Peek only; never consumes tokens.
+ */
+static int GenStateConstInitIsRealLiteral(ph7_gen_state *pGen)
+{
+	SyToken *p = pGen->pIn;
+	while( p < pGen->pEnd && (p->nType & PH7_TK_OP) && p->sData.nByte == 1
+		&& (p->sData.zString[0] == '-' || p->sData.zString[0] == '+') ){
+		p++; /* skip leading unary sign(s) */
+	}
+	if( p >= pGen->pEnd || (p->nType & PH7_TK_REAL) == 0 ){
+		return 0; /* not a real literal (int literal, cast, call, ...) */
+	}
+	p++;
+	/* Must be the WHOLE initializer: the next token ends this constant. */
+	return ( p >= pGen->pEnd || (p->nType & (PH7_TK_SEMI|PH7_TK_COMMA)) ) ? 1 : 0;
+}
+/*
  * Copy a parsed declared type onto a freshly created class attribute (property,
  * promoted property or class constant). nType/pClass/pTypeName/iTypeFlags come
  * straight from GenStateParseUnionTypeDecl; for a union the alternatives are
@@ -7218,6 +7241,20 @@ loop:
 		goto Synchronize;
 	}
 	pGen->pIn++; /* Jump the equal sign */
+	/* PHP 8.3: a bare float literal cannot initialize an `int` typed constant
+	 * (`const int X = 1.0`). Runtime flag-testing can't distinguish it from the valid
+	 * `const int X = 4/2` (both whole-reals in PHL's number model), so reject the
+	 * literal shape here, at definition time, matching PHP's eager fatal. */
+	if( (iTypeFlags & PH7_CLASS_ATTR_TYPED) && !(iTypeFlags & PH7_CLASS_ATTR_UNION)
+		&& nType == MEMOBJ_INT && GenStateConstInitIsRealLiteral(pGen) ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+			"Cannot use float as value for class constant %z::%z of type %z",
+			&pClass->sName,pName,&sTypeText);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		goto Synchronize;
+	}
 	/* Allocate a new class attribute */
 	pCons = PH7_NewClassAttr(pGen->pVm,pName,nLine,iProtection,iFlags|iTypeFlags);
 	if( pCons == 0 ){

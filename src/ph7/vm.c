@@ -4225,14 +4225,16 @@ static sxi32 VmEnforceConstantType(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr 
 	 * implicit widening. Everything else is a type error.
 	 *
 	 * Known lenient divergence: PHL's number model leaves a whole-valued real
-	 * flagged MEMOBJ_REAL|MEMOBJ_INT (a `1.0` literal, and — because `/` always
-	 * yields a real — an evenly-dividing `4/2`), so such a value satisfies a
-	 * `: int` constant here. PHP accepts `const int X = 4/2` (its `/` yields a
-	 * genuine int) but rejects `const int X = 1.0`; PHL cannot tell the two
-	 * apart by flag, so it accepts both rather than rejecting the valid `4/2`.
-	 * A fractional real (`1.5`, MEMOBJ_REAL only) carries no MEMOBJ_INT and is
-	 * correctly rejected. Tightening this needs PHL's float-identity/division
-	 * model, which is out of scope here. */
+	 * flagged MEMOBJ_REAL|MEMOBJ_INT, so a computed whole-real (e.g. `1.0 + 0.0`,
+	 * or the evenly-dividing `4/2` — `/` always yields a real) satisfies a `: int`
+	 * constant here. PHP accepts `const int X = 4/2` (its `/` yields a genuine int)
+	 * but rejects `const int X = 1.0 + 0.0`; PHL cannot tell them apart by flag, so
+	 * it accepts both rather than rejecting the valid `4/2`. The common bare-literal
+	 * case `const int X = 1.0` is caught earlier, at definition time, by the
+	 * syntactic check in GenStateCompileClassConstant (compile.c) — the literal
+	 * shape is the only reliable signal. A fractional real (`1.5`, MEMOBJ_REAL only)
+	 * carries no MEMOBJ_INT and is correctly rejected here. Tightening the computed
+	 * residual needs PHL's float-identity/division model, which is out of scope. */
 	if( pValue->iFlags & pAttr->nType ){
 		return SXRET_OK;
 	}
