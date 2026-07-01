@@ -1904,6 +1904,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyHashInit(&pVm->hAutoloadActive,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hTypedSlot,&pVm->sAllocator,0,0);
 	SySetInit(&pVm->aException,&pVm->sAllocator,sizeof(ph7_exception *));
+	SySetInit(&pVm->aFinallyAction,&pVm->sAllocator,sizeof(VmFinallyAction));
 	pVm->pPendingException = 0;
 	pVm->pInflightException = 0;
 	pVm->nInflightExcBase = 0;
@@ -2401,6 +2402,7 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	}
 	SySetReset(&pVm->aShutdown);
 	SySetReset(&pVm->aException);
+	SySetReset(&pVm->aFinallyAction);
 	pVm->pPendingException = 0;
 	pVm->pInflightException = 0;
 	pVm->nInflightExcBase = 0;
