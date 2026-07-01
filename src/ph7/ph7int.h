@@ -831,6 +831,8 @@ struct ph7_exception
 	SySet sFinally; /* Compiled 'finally' block bytecode (legacy; unused once ROOT C inlining lands) */
 	int iHasFinally;/* TRUE if a finally block was compiled */
 	int iFinallyDone;/* TRUE if the finally block was already executed (legacy VmLocalExec path) */
+	int iInlined;   /* ROOT C: TRUE when this try's catch/finally are inlined into the function
+					 * bytecode (generator body). FALSE = legacy detached-mini-program path. */
 	sxu32 iFinallyPc;/* ROOT C: inline PC where the finally body begins (0 = no finally) */
 	sxu32 iEndCatchPc;/* ROOT C: inline PC just after the whole try/catch/finally (normal exit) */
 	sxu32 iNextFinallyPc;/* ROOT C: iFinallyPc of the lexically-enclosing try-with-finally in the
@@ -962,6 +964,9 @@ struct ph7_vm
 	int iResponseStatus;        /* HTTP response status code (default 200) */
 	int bHeadersSent;           /* TRUE once non-OB output has been emitted */
 	int bHttpContext;           /* TRUE when an HTTP request has been fed (server/CGI mode) */
+	int bInlineTryCatch;        /* ROOT C: TRUE once the inline try/catch/finally VM handlers exist,
+	                             * enabling the compiler to inline generator-body try/catch (so a
+	                             * `yield` in a catch/finally suspends). Default 0 = legacy path. */
 	SySet aShutdown;            /* Stack of shutdown user callbacks */
 	SySet aAutoload;            /* Stack of spl_autoload callbacks */
 	SyHash hAutoloadActive;     /* Classes currently being autoloaded (reentrancy guard) */

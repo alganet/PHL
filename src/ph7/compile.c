@@ -10298,6 +10298,186 @@ PH7_PRIVATE sxi32 PH7_CompileThrowExpr(ph7_gen_state *pGen, sxi32 iCompileFlag)
 	return SXRET_OK;
 }
 /*
+ * ROOT C: parse a single `catch (A | B $e)` header (no body) into an
+ * ph7_exception_block. On success pGen->pIn is positioned at the catch body's
+ * opening '{'. Mirrors the header parsing in PH7_CompileCatch but leaves body
+ * compilation to the caller (which emits it inline). Returns SXRET_OK, or a
+ * compile error propagated from the parser.
+ */
+static sxi32 GenStateParseCatchHeader(ph7_gen_state *pGen, ph7_exception_block *pCatch)
+{
+	SyString sClassName;
+	SyToken *pToken;
+	SyString *pName;
+	char *zDup;
+	sxi32 rc;
+	pGen->pIn++; /* Jump the 'catch' keyword */
+	SyZero(pCatch,sizeof(ph7_exception_block));
+	SySetInit(&pCatch->aClasses,&pGen->pVm->sAllocator,sizeof(SyString));
+	SySetInit(&pCatch->sByteCode,&pGen->pVm->sAllocator,sizeof(VmInstr));
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
+		pToken = pGen->pIn; if( pToken >= pGen->pEnd ){ pToken--; }
+		PH7_GenCompileError(pGen,E_PARSE,pToken->nLine,"syntax error, unexpected %s \"%z\"",
+			TokenTypeName(pToken->nType),&pToken->sData);
+		return SXERR_INVALID;
+	}
+	pGen->pIn++; /* '(' */
+	for(;;){
+		SyBlob sResolved;
+		SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
+		if( GenStateParseClassReference(pGen,&sResolved) != SXRET_OK ){
+			SyBlobRelease(&sResolved);
+			pToken = pGen->pIn; if( pToken >= pGen->pEnd ){ pToken--; }
+			PH7_GenCompileError(pGen,E_PARSE,pToken->nLine,"syntax error, unexpected %s \"%z\"",
+				TokenTypeName(pToken->nType),&pToken->sData);
+			return SXERR_INVALID;
+		}
+		zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+			(const char *)SyBlobData(&sResolved),SyBlobLength(&sResolved));
+		SyStringInitFromBuf(&sClassName,zDup,SyBlobLength(&sResolved));
+		SyBlobRelease(&sResolved);
+		if( zDup == 0 ){ return SXERR_ABORT; }
+		rc = SySetPut(&pCatch->aClasses,(const void *)&sClassName);
+		if( rc != SXRET_OK ){ return SXERR_ABORT; }
+		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OP) &&
+			pGen->pIn->sData.nByte == 1 && pGen->pIn->sData.zString[0] == '|' ){
+			pGen->pIn++; continue;
+		}
+		break;
+	}
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 ||
+		&pGen->pIn[1] >= pGen->pEnd || (pGen->pIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
+		pToken = pGen->pIn; if( pToken >= pGen->pEnd ){ pToken--; }
+		PH7_GenCompileError(pGen,E_PARSE,pToken->nLine,"syntax error, unexpected %s \"%z\"",
+			TokenTypeName(pToken->nType),&pToken->sData);
+		return SXERR_INVALID;
+	}
+	pGen->pIn++; /* '$' */
+	pName = &pGen->pIn->sData;
+	zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,pName->zString,pName->nByte);
+	if( zDup == 0 ){ return SXERR_ABORT; }
+	SyStringInitFromBuf(&pCatch->sThis,zDup,pName->nByte);
+	pGen->pIn++;
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_RPAREN) == 0 ){
+		pToken = pGen->pIn; if( pToken >= pGen->pEnd ){ pToken--; }
+		PH7_GenCompileError(pGen,E_PARSE,pToken->nLine,"syntax error, unexpected %s \"%z\"",
+			TokenTypeName(pToken->nType),&pToken->sData);
+		return SXERR_INVALID;
+	}
+	pGen->pIn++; /* ')' */
+	return SXRET_OK;
+}
+/*
+ * ROOT C: compile try/catch/finally INLINE into the current (function) bytecode
+ * container. Used only for generator bodies so a `yield` inside a catch/finally
+ * suspends correctly (the legacy path runs them via a detached VmLocalExec whose
+ * pc/stack a generator resume cannot restore). Layout (see the block comment on
+ * VmThrowException):
+ *
+ *    LOAD_EXCEPTION p3=pExc            ; push handler + transparent frame
+ *    <try body>
+ *    POP_EXCEPTION  p3=pExc            ; normal completion (seeds finally or pops)
+ *    JMP  -> finally|end
+ *  Lh: CATCH p3=pExc iP1=k             ; throw lands here, binds $e
+ *    <catch body>
+ *    JMP  -> finally|end
+ *    ... more catches ...
+ *  Lfin: <finally body>
+ *    END_FINALLY p3=pExc               ; dispatch pending action
+ *  Lend:
+ */
+static sxi32 PH7_CompileTryInline(ph7_gen_state *pGen, ph7_exception *pException)
+{
+	sxu32 nLine = pGen->pIn->nLine;
+	GenBlock *pTry;
+	VmInstr *pInstr;
+	sxu32 idxLoad = 0, idxNormalJmp = 0, iLpop;
+	SySet aCatchJmp;         /* instruction indices of each catch-end JMP, to fix later */
+	sxi32 rc;
+	SySetInit(&aCatchJmp,&pGen->pVm->sAllocator,sizeof(sxu32));
+	/* Try block (pUserData=pException so break/continue emit POP_EXCEPTION) */
+	rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_EXCEPTION,PH7_VmInstrLength(pGen->pVm),0,&pTry);
+	if( rc != SXRET_OK ){ return SXERR_ABORT; }
+	pTry->pUserData = pException;
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_EXCEPTION,0,0,pException,&idxLoad);
+	pGen->pIn++; /* Jump the 'try' keyword */
+	rc = PH7_CompileBlock(&(*pGen),0);
+	if( rc == SXERR_ABORT ){ return SXERR_ABORT; }
+	GenStateFixJumps(pTry,-1,PH7_VmInstrLength(pGen->pVm));
+	iLpop = PH7_VmInstrLength(pGen->pVm);
+	/* LOAD_EXCEPTION landing pad = post-try-body (drives inject-drain + break-pop) */
+	pInstr = PH7_VmGetInstr(pGen->pVm,idxLoad);
+	if( pInstr ){ pInstr->iP2 = iLpop; }
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP_EXCEPTION,0,0,pException,0);
+	GenStateLeaveBlock(&(*pGen),0);
+	/* Normal-completion jump -> finally or end (target fixed after layout) */
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_JMP,0,0,0,&idxNormalJmp);
+	/* Catch clauses (inline) */
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) &&
+		SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_CATCH ){
+		sxu32 k = 0;
+		for(;;){
+			ph7_exception_block sCatch;
+			GenBlock *pCatchBlk;
+			sxu32 idxJmp = 0;
+			if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0
+				|| SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_CATCH ){
+				break;
+			}
+			rc = GenStateParseCatchHeader(&(*pGen),&sCatch);
+			if( rc == SXERR_ABORT ){ return SXERR_ABORT; }
+			if( rc != SXRET_OK ){ return SXERR_INVALID; }
+			sCatch.iHandlerPc = PH7_VmInstrLength(pGen->pVm);
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_CATCH,(sxi32)k,0,pException,0);
+			rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_EXCEPTION,PH7_VmInstrLength(pGen->pVm),0,&pCatchBlk);
+			if( rc != SXRET_OK ){ return SXERR_ABORT; }
+			rc = PH7_CompileBlock(&(*pGen),0);
+			if( rc == SXERR_ABORT ){ return SXERR_ABORT; }
+			GenStateFixJumps(pCatchBlk,-1,PH7_VmInstrLength(pGen->pVm));
+			GenStateLeaveBlock(&(*pGen),0);
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_JMP,0,0,0,&idxJmp);
+			SySetPut(&aCatchJmp,(const void *)&idxJmp);
+			rc = SySetPut(&pException->sEntry,(const void *)&sCatch);
+			if( rc != SXRET_OK ){ return SXERR_ABORT; }
+			k++;
+		}
+	}
+	/* Finally (inline) */
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) &&
+		SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_FINALLY ){
+		GenBlock *pFinBlk;
+		pGen->pIn++; /* Jump 'finally' */
+		pException->iFinallyPc = PH7_VmInstrLength(pGen->pVm);
+		rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_EXCEPTION,PH7_VmInstrLength(pGen->pVm),0,&pFinBlk);
+		if( rc != SXRET_OK ){ return SXERR_ABORT; }
+		rc = PH7_CompileBlock(&(*pGen),0);
+		if( rc == SXERR_ABORT ){ return SXERR_ABORT; }
+		GenStateFixJumps(pFinBlk,-1,PH7_VmInstrLength(pGen->pVm));
+		GenStateLeaveBlock(&(*pGen),0);
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_END_FINALLY,0,0,pException,0);
+		pException->iHasFinally = 1;
+	}
+	pException->iEndCatchPc = PH7_VmInstrLength(pGen->pVm);
+	pException->iInlined = 1;
+	/* Fix the normal-completion + catch-end jumps to finally (if any) else end */
+	{
+		sxu32 iTarget = pException->iHasFinally ? pException->iFinallyPc : pException->iEndCatchPc;
+		sxu32 *aJ; sxu32 n;
+		pInstr = PH7_VmGetInstr(pGen->pVm,idxNormalJmp);
+		if( pInstr ){ pInstr->iP2 = iTarget; }
+		aJ = (sxu32 *)SySetBasePtr(&aCatchJmp);
+		for( n = 0; n < SySetUsed(&aCatchJmp); ++n ){
+			pInstr = PH7_VmGetInstr(pGen->pVm,aJ[n]);
+			if( pInstr ){ pInstr->iP2 = iTarget; }
+		}
+	}
+	SySetRelease(&aCatchJmp);
+	if( SySetUsed(&pException->sEntry) == 0 && !pException->iHasFinally ){
+		PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Cannot use try without catch or finally");
+	}
+	return SXRET_OK;
+}
+/*
  * Compile a 'catch' block.
  * Catch: A "catch" block retrieves an exception and creates
  * an object containing the exception information.
@@ -10472,6 +10652,15 @@ static sxi32 PH7_CompileTry(ph7_gen_state *pGen)
 	pException->iHasFinally = 0;
 	pException->iFinallyDone = 0;
 	pException->pVm = pGen->pVm;
+	/* ROOT C: inside a generator body, compile the whole try/catch/finally inline so a
+	 * `yield` in a catch/finally suspends correctly. Non-generators keep the legacy path.
+	 * DORMANT until the inline VM handlers (OP_CATCH / OP_END_FINALLY dispatch,
+	 * VmThrowException pc-redirect, return/break-through-finally threading, generator
+	 * park of aFinallyAction) land — the compiler emits the layout but the VM cannot yet
+	 * execute it. Guarded by pVm->bInlineTryCatch (default 0) so the tree stays green. */
+	if( pGen->bInGenerator && pGen->pVm->bInlineTryCatch ){
+		return PH7_CompileTryInline(&(*pGen),pException);
+	}
 	/* Create the try block */
 	rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_EXCEPTION,PH7_VmInstrLength(pGen->pVm),0,&pTry);
 	if( rc != SXRET_OK ){
