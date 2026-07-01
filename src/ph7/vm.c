@@ -4318,14 +4318,16 @@ static sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,ph7_class *pOwnerClass,SyString 
  * Throw a PHP-compatible TypeError describing a return-value type mismatch.
  * Message format: "funcname(): Return value must be of type X, Y returned".
  */
-static sxi32 VmThrowTypeErrorForReturn(ph7_vm *pVm,SyString *pFuncName,const char *zExpected,const char *zGiven)
+/* Build a catchable TypeError from a pre-formatted message blob and throw it.
+ * The message is copied into the instance by __construct, so the caller owns
+ * (and releases) pMsg. Sets VM_FRAME_THROW so the terminal OP_DONE unwinds. */
+static sxi32 VmThrowTypeErrorMsg(ph7_vm *pVm,SyBlob *pMsg)
 {
 	ph7_class *pClass;
 	ph7_class_instance *pThis;
 	ph7_class_method *pCons;
 	ph7_value sArg;
 	ph7_value *apArg[1];
-	SyBlob sMsg;
 	SyString sMsgStr;
 	VmFrame *pFrame;
 	sxi32 rc;
@@ -4337,18 +4339,14 @@ static sxi32 VmThrowTypeErrorForReturn(ph7_vm *pVm,SyString *pFuncName,const cha
 	if( pThis == 0 ){
 		return PH7_ABORT;
 	}
-	SyBlobInit(&sMsg,&pVm->sAllocator);
-	SyBlobFormat(&sMsg,"%z(): Return value must be of type %s, %s returned",
-		pFuncName,zExpected,zGiven);
 	pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);
 	if( pCons ){
-		SyStringInitFromBuf(&sMsgStr,(const char *)SyBlobData(&sMsg),SyBlobLength(&sMsg));
+		SyStringInitFromBuf(&sMsgStr,(const char *)SyBlobData(pMsg),SyBlobLength(pMsg));
 		PH7_MemObjInitFromString(&(*pVm),&sArg,&sMsgStr);
 		apArg[0] = &sArg;
 		PH7_VmCallClassMethod(&(*pVm),pThis,pCons,0,1,apArg);
 		PH7_MemObjRelease(&sArg);
 	}
-	SyBlobRelease(&sMsg);
 	pFrame = pVm->pFrame;
 	if( pFrame ){
 		pFrame = VmSkipExceptionFrames(pFrame);
@@ -4360,6 +4358,30 @@ static sxi32 VmThrowTypeErrorForReturn(ph7_vm *pVm,SyString *pFuncName,const cha
 		return PH7_ABORT;
 	}
 	return PH7_EXCEPTION;
+}
+static sxi32 VmThrowTypeErrorForReturn(ph7_vm *pVm,SyString *pFuncName,const char *zExpected,const char *zGiven)
+{
+	SyBlob sMsg;
+	sxi32 rc;
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	SyBlobFormat(&sMsg,"%z(): Return value must be of type %s, %s returned",
+		pFuncName,zExpected,zGiven);
+	rc = VmThrowTypeErrorMsg(pVm,&sMsg);
+	SyBlobRelease(&sMsg);
+	return rc;
+}
+/* A never-returning function that returned normally (fall-off). PHP bans an
+ * explicit `return` at compile time, so this fires only for an implicit return. */
+static sxi32 VmThrowNeverReturnError(ph7_vm *pVm,SyString *pFuncName)
+{
+	SyBlob sMsg;
+	sxi32 rc;
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	SyBlobFormat(&sMsg,"%z(): never-returning function must not implicitly return",
+		pFuncName);
+	rc = VmThrowTypeErrorMsg(pVm,&sMsg);
+	SyBlobRelease(&sMsg);
+	return rc;
 }
 /*
  * Format the "X given" portion of error messages following PHP's value-name
@@ -4484,6 +4506,13 @@ static sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value *pVa
 	/* Untyped function: no enforcement (no single type and no union/intersection). */
 	if( !VmFuncHasReturnType(pFunc) ){
 		return SXRET_OK;
+	}
+	/* never return type: the function must not return at all. An explicit
+	 * `return` is a compile error, so reaching here means the function ran off
+	 * the end normally (a throw/exit is skipped by the VM_FRAME_THROW guard at
+	 * the call site). */
+	if( pFunc->nReturnType == MEMOBJ_NEVER ){
+		return VmThrowNeverReturnError(pVm,&pFunc->sName);
 	}
 	/* void return type: the function must not produce a value. */
 	if( pFunc->nReturnType == MEMOBJ_VOID ){
