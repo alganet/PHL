@@ -873,6 +873,9 @@ struct VmFinallyAction
 	ph7_value sRet;               /* RETURN: the value to return (owned) */
 	int bHasRetVal;               /* RETURN: TRUE if sRet holds a real value (vs bare `return;`) */
 	void *pTargetBody;            /* RETURN: VmFrame* the return materializes on */
+	int nCross;                   /* trys still to cross through their finallys (-1 = unbounded,
+	                               * for RETURN; a positive count bounds a break/continue to the
+	                               * trys between it and its target loop) */
 };
 /* Forward reference */
 typedef struct ph7_case_expr ph7_case_expr;
@@ -986,6 +989,13 @@ struct ph7_vm
 	sxi32 iResumeStackDepth;    /* Operand-stack base (0-based TOS index) of the catching try, recorded
 	                             * with the resume target. Used only by Generator::throw() inject-at-yield
 	                             * to drain abandoned mid-expression operands before landing at iResumePc. */
+	/* ROOT C inline redirect: set by VmThrowException when a throw is caught by an INLINE
+	 * try (generator body). The throw site checks pInlineInstr==aInstr, drains the operand
+	 * stack to iInlineDrain, and jumps to iInlinePc; a mismatch means an outer exec owns it,
+	 * so the throw propagates. Separate from the ROOT B fields above (legacy path). */
+	void *pInlineInstr;         /* Owner bytecode array of the catching inline try (0 = none) */
+	sxu32 iInlinePc;            /* 0-based target pc (iHandlerPc or iFinallyPc) */
+	sxi32 iInlineDrain;         /* Operand-stack base to drain to before landing (0-based TOS idx) */
 	SySet aIOstream;            /* Installed IO stream container */
 	const ph7_io_stream *pDefStream; /* Default IO stream [i.e: typically this is the 'file://' stream] */
 	ph7_value sExec;           /* Compiled script return value [Can be extracted via the PH7_VM_CONFIG_EXEC_VALUE directive]*/

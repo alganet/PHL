@@ -3302,24 +3302,31 @@ Synchronize:
  * those are compiled into separate bytecode containers executed via VmLocalExec,
  * so we must not emit POP_EXCEPTION for the parent try from inside them.
  */
-static void GenStateEmitExceptionPopForBreak(ph7_gen_state *pGen,GenBlock *pTarget)
+static int GenStateEmitExceptionPopForBreak(ph7_gen_state *pGen,GenBlock *pTarget)
 {
 	GenBlock *pBlock = pGen->pCurrent;
+	int nInlineTry = 0;
 	while( pBlock && pBlock != pTarget ){
 		if( pBlock->iFlags & GEN_BLOCK_EXCEPTION ){
 			if( pBlock->pUserData ){
-				/* This is a try block with an exception context — emit POP_EXCEPTION */
-				PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP_EXCEPTION,0,0,pBlock->pUserData,0);
+				/* A try block with an exception context. In a generator its catch/finally
+				 * are inlined: count it so the caller emits a single OP_SET_FINALLY_JMP that
+				 * runs each crossed finally (VmFinallyAdvance) before taking the loop jump.
+				 * Legacy path: emit POP_EXCEPTION per crossed try as before. */
+				if( pGen->bInGenerator ){
+					nInlineTry++;
+				}else{
+					PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP_EXCEPTION,0,0,pBlock->pUserData,0);
+				}
 			}else{
-				/* This is a catch/finally block compiled into a separate bytecode
-				 * container. Stop here — we cannot cross into the parent try's
-				 * exception context from a sub-execution.
-				 */
+				/* A catch/finally block compiled into a separate bytecode container
+				 * (legacy). Stop — cannot cross into the parent try from a sub-execution. */
 				break;
 			}
 		}
 		pBlock = pBlock->pParent;
 	}
+	return nInlineTry;
 }
 static sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 {
@@ -3367,21 +3374,24 @@ static sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 		}
 	}else{
 		sxu32 nInstrIdx = 0;
-		/* Emit POP_EXCEPTION for any try blocks between here and the loop */
-		GenStateEmitExceptionPopForBreak(&(*pGen),pLoop);
+		/* Emit POP_EXCEPTION (legacy) for crossed try blocks, or count them (generator). */
+		int nCross = GenStateEmitExceptionPopForBreak(&(*pGen),pLoop);
+		/* ROOT C: in a generator, a break/continue crossing inline trys must run their
+		 * finallys first. OP_SET_FINALLY_JMP(iP1=count) does that then takes the loop jump. */
+		sxi32 iJmpOp = nCross > 0 ? PH7_OP_SET_FINALLY_JMP : PH7_OP_JMP;
 		if( pLoop->iFlags & GEN_BLOCK_SWITCH ){
 			/* According to the PHP language reference manual
 			 *  Note that unlike some other languages, the continue statement applies to switch
 			 *  and acts similar to break. If you have a switch inside a loop and wish to continue
 			 *  to the next iteration of the outer loop, use continue 2.
 			 */
-			rc = PH7_VmEmitInstr(pGen->pVm,PH7_OP_JMP,0,0,0,&nInstrIdx);
+			rc = PH7_VmEmitInstr(pGen->pVm,iJmpOp,nCross,0,0,&nInstrIdx);
 			if( rc == SXRET_OK ){
 				GenStateNewJumpFixup(pLoop,PH7_OP_JMP,nInstrIdx);
 			}
 		}else{
 			/* Emit the unconditional jump to the beginning of the target loop */
-			PH7_VmEmitInstr(pGen->pVm,PH7_OP_JMP,0,pLoop->nFirstInstr,0,&nInstrIdx);
+			PH7_VmEmitInstr(pGen->pVm,iJmpOp,nCross,pLoop->nFirstInstr,0,&nInstrIdx);
 			if( pLoop->bPostContinue == TRUE ){
 				JumpFixup sJumpFix;
 				/* Post-continue */
@@ -3450,9 +3460,10 @@ static sxi32 PH7_CompileBreak(ph7_gen_state *pGen)
 		}
 	}else{
 		sxu32 nInstrIdx;
-		/* Emit POP_EXCEPTION for any try blocks between here and the loop */
-		GenStateEmitExceptionPopForBreak(&(*pGen),pLoop);
-		rc = PH7_VmEmitInstr(pGen->pVm,PH7_OP_JMP,0,0,0,&nInstrIdx);
+		/* Emit POP_EXCEPTION (legacy) for crossed try blocks, or count them (generator). */
+		int nCross = GenStateEmitExceptionPopForBreak(&(*pGen),pLoop);
+		/* ROOT C: OP_SET_FINALLY_JMP runs the crossed inline finallys before the break jump. */
+		rc = PH7_VmEmitInstr(pGen->pVm,nCross > 0 ? PH7_OP_SET_FINALLY_JMP : PH7_OP_JMP,nCross,0,0,&nInstrIdx);
 		if( rc == SXRET_OK ){
 			/* Fix the jump later when the jump destination is resolved */
 			GenStateNewJumpFixup(pLoop,PH7_OP_JMP,nInstrIdx);
@@ -4782,6 +4793,14 @@ static sxi32 PH7_CompileReturn(ph7_gen_state *pGen)
 		}else if(rc != SXERR_EMPTY ){
 			nRet = 1;
 		}
+	}
+	/* ROOT C: inside a generator body, route `return` through OP_SET_FINALLY_RET so every
+	 * enclosing inline finally runs first (threaded at runtime via VmFinallyAdvance over the
+	 * live aException stack). With no enclosing try the action materializes immediately, so
+	 * this is safe for a plain top-level generator return too. Non-generators: legacy OP_DONE. */
+	if( pGen->bInGenerator ){
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_SET_FINALLY_RET,nRet,0,0,0);
+		return SXRET_OK;
 	}
 	/* Emit the done instruction. iP2=1 marks an explicit `return`: when this
 	 * OP_DONE terminates a catch/finally mini-program (run via VmLocalExec with
@@ -10435,6 +10454,9 @@ static sxi32 PH7_CompileTryInline(ph7_gen_state *pGen, ph7_exception *pException
 			if( rc == SXERR_ABORT ){ return SXERR_ABORT; }
 			GenStateFixJumps(pCatchBlk,-1,PH7_VmInstrLength(pGen->pVm));
 			GenStateLeaveBlock(&(*pGen),0);
+			/* Pop the handler VmThrowInline re-pushed for this catch (iInCatch) — with a
+			 * finally it seeds FALLTHROUGH and keeps the frame; otherwise it tears down. */
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP_EXCEPTION,0,0,pException,0);
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_JMP,0,0,0,&idxJmp);
 			SySetPut(&aCatchJmp,(const void *)&idxJmp);
 			rc = SySetPut(&pException->sEntry,(const void *)&sCatch);

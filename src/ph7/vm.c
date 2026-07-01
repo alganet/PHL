@@ -1905,6 +1905,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyHashInit(&pVm->hTypedSlot,&pVm->sAllocator,0,0);
 	SySetInit(&pVm->aException,&pVm->sAllocator,sizeof(ph7_exception *));
 	SySetInit(&pVm->aFinallyAction,&pVm->sAllocator,sizeof(VmFinallyAction));
+	pVm->bInlineTryCatch = 1; /* ROOT C: enable inline generator try/catch/finally */
 	pVm->pPendingException = 0;
 	pVm->pInflightException = 0;
 	pVm->nInflightExcBase = 0;
@@ -3192,6 +3193,7 @@ static sxi32 VmByteCodeDump(
 /* Forward declaration */
 static sxi32 VmUncaughtException(ph7_vm *pVm,ph7_class_instance *pThis);
 static sxi32 VmThrowException(ph7_vm *pVm,ph7_class_instance *pThis);
+static int VmFinallyAdvance(ph7_vm *pVm, VmInstr *aInstr, int *pnCross, sxu32 *pPc);
 static int VmMiniBacktrace(ph7_vm *pVm,SyBlob *pOut);
 static void VmGetFrameContext(ph7_vm *pVm,const char **pzFuncName,int *pnFuncLen);
 static sxi32 VmReportUncaughtException(ph7_vm *pVm,const char *zClass,sxu32 nClass,const char *zMsg,sxu32 nMsg,const char *zFuncName,int nFuncLen);
@@ -5374,15 +5376,30 @@ static sxi32 VmByteCodeExec(
  * the statement after the try even when the catch was at an enclosing frame (ROOT B,
  * face b — `yield from` over a throwing sub-generator).
  */
+/*
+ * ROOT C: if a throw was caught by an INLINE try owned by THIS exec, drain the
+ * abandoned operand slots back to the try's stack base and jump to the catch/finally
+ * body; the throw runs in this same dispatch loop (so a yield inside it suspends).
+ * pInlineInstr != aInstr means an outer exec owns the handler → fall through and
+ * propagate. Must be used inside a case of the main switch (uses break/pc/pTos).
+ */
+#define PH7_INLINE_RESUME_BREAK() \
+	if( pVm->pInlineInstr == (void *)aInstr ){ \
+		while( (sxi32)(pTos - pStack) > pVm->iInlineDrain ){ PH7_MemObjRelease(pTos); pTos--; } \
+		pc = (sxi32)pVm->iInlinePc - 1; \
+		pVm->pInlineInstr = 0; \
+		break; \
+	}
 #define PH7_DISPATCH_ENFORCE_RC(rcVar) \
 	if( (rcVar) == PH7_ABORT ){ goto Abort; } \
-	if( (rcVar) == PH7_EXCEPTION ){ \
+	if( (rcVar) == PH7_EXCEPTION || pVm->pInlineInstr ){ \
 		sxi32 _iRpE; \
+		PH7_INLINE_RESUME_BREAK() \
 		if( VmRecordedResume(pVm,&_iRpE,pEntryFrame,aInstr) ){ \
 			pc = _iRpE; \
 			break; \
 		} \
-		goto Exception; \
+		if( (rcVar) == PH7_EXCEPTION ){ goto Exception; } \
 	}
 /*
  * Typed-property enforcement helper for compound stores. Called before
@@ -5431,7 +5448,17 @@ static sxi32 VmByteCodeExec(
 		if( rc == SXERR_ABORT ){
 			goto Abort;
 		}
-		if( VmRecordedResume(pVm,&iResumePc,pEntryFrame,aInstr) ){
+		if( pVm->pInlineInstr == (void *)aInstr ){
+			/* ROOT C: the inject was caught by an inline try in THIS generator. Drain the
+			 * abandoned mid-expression operands and land at the catch/finally body. This is
+			 * the pre-loop path (the first fetch uses pc directly), so no -1 adjustment. */
+			while( (sxi32)(pTos - pStack) > pVm->iInlineDrain ){
+				PH7_MemObjRelease(pTos);
+				pTos--;
+			}
+			pc = (sxi32)pVm->iInlinePc;
+			pVm->pInlineInstr = 0;
+		}else if( VmRecordedResume(pVm,&iResumePc,pEntryFrame,aInstr) ){
 			/* Caught by THIS generator's own try. (VmRecordedResume returns FALSE unless a
 			 * catch recorded a resume target for this exec, so rc need not be pre-checked;
 			 * unlike OP_THROW there is no lexical-try fallthrough here — the else just
@@ -8866,6 +8893,33 @@ case PH7_OP_LOAD_EXCEPTION: {
  */
 case PH7_OP_POP_EXCEPTION: {
 	ph7_exception *pException = (ph7_exception *)pInstr->p3;
+	if( pException->iInlined ){
+		/* ROOT C: end of a try body or a catch body on the NORMAL (non-throwing) path.
+		 * Pop this try's handler off aException so a throw in the finally propagates to
+		 * an outer handler. With a finally, seed a FALLTHROUGH action and KEEP the
+		 * transparent frame (OP_END_FINALLY leaves it after the finally runs); the
+		 * compiler-emitted JMP falls into the finally. Without a finally, this is the
+		 * whole exit: leave the frame and let the JMP reach the post-construct landing. */
+		if( SySetUsed(&pVm->aException) > 0 ){
+			ph7_exception **ap = (ph7_exception **)SySetBasePtr(&pVm->aException);
+			if( pException == ap[SySetUsed(&pVm->aException) - 1] ){
+				(void)SySetPop(&pVm->aException);
+			}
+		}
+		pException->iInCatch = 0;
+		pException->pFrame = 0;
+		if( pException->iHasFinally ){
+			VmFinallyAction sAct;
+			SyZero(&sAct,sizeof(sAct));
+			sAct.eKind = PH7_FA_FALLTHROUGH;
+			sAct.iNextPc = pException->iEndCatchPc;
+			SySetPut(&pVm->aFinallyAction,(const void *)&sAct);
+			/* keep the transparent frame for OP_END_FINALLY */
+		}else if( pVm->pFrame->iFlags & VM_FRAME_EXCEPTION ){
+			VmLeaveFrame(&(*pVm));
+		}
+		break;
+	}
 	if( SySetUsed(&pVm->aException) > 0 ){
 		ph7_exception **apException;
 		/* Pop the loaded exception */
@@ -8925,7 +8979,156 @@ case PH7_OP_POP_EXCEPTION: {
 	}
 	break;
 							}
-
+/*
+ * OP_CATCH iP1(catch-index) * P3(ph7_exception)
+ * ROOT C: entry of an inline catch body. Bind the in-flight exception (held on
+ * pException->pInflight by VmThrowInline) into the catch variable, resolved in the
+ * enclosing body's scope (PHP: a catch shares the surrounding variable scope).
+ */
+case PH7_OP_CATCH: {
+	ph7_exception *pExc = (ph7_exception *)pInstr->p3;
+	ph7_exception_block *pCatch = (ph7_exception_block *)SySetAt(&pExc->sEntry,(sxu32)pInstr->iP1);
+	ph7_class_instance *pBind = pExc->pInflight;
+	VmFrame *pBody = VmSkipExceptionFrames(pVm->pFrame);
+	pBody->iFlags &= ~VM_FRAME_THROW;
+	if( pCatch && pBind ){
+		ph7_value *pObj = VmExtractMemObj(&(*pVm),&pCatch->sThis,FALSE,TRUE);
+		if( pObj ){
+			/* Overwrite-then-release (mirrors PH7_MemObjStore): pin the new instance,
+			 * free the slot's prior contents, then rebind. */
+			pBind->iRef++;
+			PH7_MemObjRelease(pObj);
+			pObj->x.pOther = pBind;
+			MemObjSetType(pObj,MEMOBJ_OBJ);
+		}
+	}
+	if( pBind ){
+		/* Drop the hold VmThrowInline took across the redirect. */
+		PH7_ClassInstanceUnref(pBind);
+	}
+	pExc->pInflight = 0;
+	break;
+						 }
+/*
+ * OP_END_FINALLY * P3(ph7_exception)
+ * ROOT C: terminate an inline finally. Leave the try's transparent frame and dispatch
+ * the pending action queued when the finally was entered (fall-through / re-throw /
+ * return / break-continue). A return/break threads out through each enclosing finally
+ * via pException->iNextFinallyPc.
+ */
+case PH7_OP_END_FINALLY: {
+	ph7_exception *pExc = (ph7_exception *)pInstr->p3;
+	VmFinallyAction sAct;
+	int eKind = PH7_FA_FALLTHROUGH;
+	/* Leave the try's transparent frame kept alive across the finally. */
+	if( pVm->pFrame->iFlags & VM_FRAME_EXCEPTION ){
+		VmLeaveFrame(&(*pVm));
+	}
+	if( SySetUsed(&pVm->aFinallyAction) > 0 ){
+		VmFinallyAction *aA = (VmFinallyAction *)SySetBasePtr(&pVm->aFinallyAction);
+		sAct = aA[SySetUsed(&pVm->aFinallyAction) - 1];
+		(void)SySetPop(&pVm->aFinallyAction);
+		eKind = sAct.eKind;
+	}else{
+		SyZero(&sAct,sizeof(sAct));
+		sAct.iNextPc = pExc->iEndCatchPc;
+	}
+	if( eKind == PH7_FA_FALLTHROUGH ){
+		pc = (sxi32)(sAct.iNextPc ? sAct.iNextPc : pExc->iEndCatchPc) - 1;
+		break;
+	}else if( eKind == PH7_FA_JMP ){
+		/* break/continue: run the remaining crossed finallys, then take the jump. */
+		sxu32 iFpc = 0;
+		int nCross = sAct.nCross;
+		if( VmFinallyAdvance(&(*pVm),aInstr,&nCross,&iFpc) ){
+			sAct.nCross = nCross;
+			SySetPut(&pVm->aFinallyAction,(const void *)&sAct);
+			pc = (sxi32)iFpc - 1;
+			break;
+		}
+		pc = (sxi32)sAct.iNextPc - 1;
+		break;
+	}else if( eKind == PH7_FA_RETHROW ){
+		ph7_class_instance *pRe = sAct.pExc;
+		sxi32 _iRpE;
+		rc = VmThrowException(&(*pVm),pRe);
+		if( pRe ){ PH7_ClassInstanceUnref(pRe); }
+		if( rc == SXERR_ABORT ){ goto Abort; }
+		PH7_INLINE_RESUME_BREAK()
+		if( VmRecordedResume(pVm,&_iRpE,pEntryFrame,aInstr) ){ pc = _iRpE; break; }
+		goto Exception;
+	}else{ /* PH7_FA_RETURN */
+		sxu32 iFpc = 0;
+		int nCross = sAct.nCross;
+		if( VmFinallyAdvance(&(*pVm),aInstr,&nCross,&iFpc) ){
+			/* Thread the return through the next enclosing finally. */
+			sAct.nCross = nCross;
+			SySetPut(&pVm->aFinallyAction,(const void *)&sAct);
+			pc = (sxi32)iFpc - 1;
+			break;
+		}
+		/* No enclosing finally left: materialize the return from this body. */
+		if( sAct.bHasRetVal && pResult ){
+			PH7_MemObjStore(&sAct.sRet,pResult);
+		}
+		PH7_MemObjRelease(&sAct.sRet);
+		goto Done;
+	}
+						 }
+/*
+ * OP_SET_FINALLY_RET iP1(hasVal) * P3(ph7_exception first finally)
+ * ROOT C: a `return` inside an inline try/catch. Pop the return value (if any) into a
+ * pending RETURN action and enter the innermost enclosing finally (p3->iFinallyPc);
+ * OP_END_FINALLY threads it out through the finally chain and then returns.
+ */
+case PH7_OP_SET_FINALLY_RET: {
+	VmFinallyAction sAct;
+	sxu32 iFpc = 0;
+	int nCross = -1; /* a return crosses every enclosing finally in this function */
+	SyZero(&sAct,sizeof(sAct));
+	sAct.eKind = PH7_FA_RETURN;
+	sAct.pTargetBody = (void *)VmSkipExceptionFrames(pVm->pFrame);
+	PH7_MemObjInit(pVm,&sAct.sRet);
+	if( pInstr->iP1 && pTos >= pStack ){
+		PH7_MemObjStore(pTos,&sAct.sRet);
+		sAct.bHasRetVal = 1;
+		VmPopOperand(&pTos,1);
+	}
+	if( VmFinallyAdvance(&(*pVm),aInstr,&nCross,&iFpc) ){
+		sAct.nCross = nCross;
+		SySetPut(&pVm->aFinallyAction,(const void *)&sAct);
+		pc = (sxi32)iFpc - 1;
+		break;
+	}
+	/* No enclosing finally left: return now. */
+	if( sAct.bHasRetVal && pResult ){
+		PH7_MemObjStore(&sAct.sRet,pResult);
+	}
+	PH7_MemObjRelease(&sAct.sRet);
+	goto Done;
+						 }
+/*
+ * OP_SET_FINALLY_JMP iP2(target pc) * P3(ph7_exception first finally)
+ * ROOT C: a `break`/`continue` crossing an inline try-with-finally. Queue a JMP action
+ * (resume at iP2 after the finally chain) and enter the innermost enclosing finally.
+ */
+case PH7_OP_SET_FINALLY_JMP: {
+	VmFinallyAction sAct;
+	sxu32 iFpc = 0;
+	int nCross = (int)pInstr->iP1; /* number of enclosing trys to cross to reach the loop */
+	SyZero(&sAct,sizeof(sAct));
+	sAct.eKind = PH7_FA_JMP;
+	sAct.iNextPc = pInstr->iP2;
+	if( VmFinallyAdvance(&(*pVm),aInstr,&nCross,&iFpc) ){
+		sAct.nCross = nCross;
+		SySetPut(&pVm->aFinallyAction,(const void *)&sAct);
+		pc = (sxi32)iFpc - 1;
+		break;
+	}
+	/* No finally among the crossed trys: just take the break/continue jump. */
+	pc = (sxi32)sAct.iNextPc - 1;
+	break;
+						 }
 /*
  * OP_THROW * P2 *
  * Throw an user exception.
@@ -9001,7 +9204,12 @@ case PH7_OP_THROW: {
 	}
 	/* Pop the top entry */
 	VmPopOperand(&pTos,1);
-	if( rc == PH7_EXCEPTION || pVm->pResumeFrame ){
+	/* ROOT C: throw caught by an inline try in THIS exec -> jump to its catch/finally
+	 * (draining any mid-expression operands back to the try's base). */
+	PH7_INLINE_RESUME_BREAK()
+	/* pInlineInstr still set here means an inline try in an OUTER exec caught it (e.g. a
+	 * throwing sub-generator delegated via `yield from`): propagate so the owning exec lands. */
+	if( rc == PH7_EXCEPTION || pVm->pResumeFrame || pVm->pInlineInstr ){
 		/* The throw was handled by a `catch` that ran IN PLACE — either this try's own
 		 * finally threw past itself superseding it (rc == PH7_EXCEPTION), or the catch
 		 * sits several frames above this one (pVm->pResumeFrame recorded). Resume at the
@@ -11497,7 +11705,18 @@ SkipFuncBody:
 			 * return (ROOT B, face c). */
 			sxi32 iResumePc;
 			pFrame = pFrame->pParent;
-			if( !is_callback && VmRecordedResume(pVm,&iResumePc,pEntryFrame,aInstr) ){
+			if( !is_callback && pVm->pInlineInstr == (void *)aInstr ){
+				/* ROOT C: the callee's throw was caught by an inline try in THIS caller
+				 * (generator body). Drain the operand stack (incl. the unwritten result
+				 * slot) to the try's base and land at its catch/finally. */
+				while( (sxi32)(pTos - pStack) > pVm->iInlineDrain ){
+					PH7_MemObjRelease(pTos);
+					pTos--;
+				}
+				pc = (sxi32)pVm->iInlinePc - 1;
+				pVm->pInlineInstr = 0;
+				rc = PH7_OK;
+			}else if( !is_callback && VmRecordedResume(pVm,&iResumePc,pEntryFrame,aInstr) ){
 				/* Pop the result */
 				VmPopOperand(&pTos,1);
 				pc = iResumePc;
@@ -16524,6 +16743,88 @@ static sxi32 VmUncaughtException(
  *    e. If pPendingException is set (catch re-threw), re-throw it now
  *       that handlers are restored and finally has run.
  */
+/*
+ * ROOT C: advance a pending return/break through the chain of enclosing INLINE trys.
+ * Pops each enclosing try's handler (this function's inline trys, innermost first) off
+ * aException; when one has a finally, sets *pPc to its iFinallyPc and returns 1 (the
+ * caller re-queues the action and jumps there — OP_END_FINALLY calls back in after the
+ * finally runs). A try without a finally is torn down (handler + transparent frame) and
+ * the walk continues. Returns 0 when no more of this function's inline trys remain (the
+ * action is terminal: materialize the return / take the break jump). A try WITH a finally
+ * keeps its transparent frame — OP_END_FINALLY leaves it; a try WITHOUT one is left here.
+ * pStop, when non-NULL, bounds the walk (used by break/continue: stop after crossing it).
+ */
+static int VmFinallyAdvance(ph7_vm *pVm, VmInstr *aInstr, int *pnCross, sxu32 *pPc)
+{
+	while( *pnCross != 0 && SySetUsed(&pVm->aException) > 0 ){
+		ph7_exception **ap = (ph7_exception **)SySetBasePtr(&pVm->aException);
+		ph7_exception *pT = ap[SySetUsed(&pVm->aException) - 1];
+		if( !pT->iInlined || pT->pOwnerInstr != (void *)aInstr ){
+			break; /* reached an outer exec's / legacy handler */
+		}
+		(void)SySetPop(&pVm->aException);
+		pT->iInCatch = 0;
+		if( *pnCross > 0 ){ (*pnCross)--; }   /* bounded (break/continue); -1 stays unbounded */
+		if( pT->iHasFinally ){
+			*pPc = pT->iFinallyPc;
+			return 1;
+		}
+		/* No finally: tear the try's transparent frame down now. */
+		pT->pFrame = 0;
+		if( pVm->pFrame->iFlags & VM_FRAME_EXCEPTION ){
+			VmLeaveFrame(&(*pVm));
+		}
+	}
+	return 0;
+}
+/*
+ * ROOT C: classify a throw against an INLINE try (generator body) and set up a
+ * pc-redirect for the throw site — never runs bytecode itself. pException has been
+ * popped off aException by the caller; pCatch is the matching catch block or 0.
+ *
+ *  - catch matched: re-push the handler marked iInCatch (so a throw inside the catch
+ *    still runs this try's finally), hold a ref to the exception for OP_CATCH to bind,
+ *    and redirect to the catch body (iHandlerPc).
+ *  - no catch but finally: queue a RETHROW action and redirect to the finally
+ *    (iFinallyPc); OP_END_FINALLY re-raises after the finally runs.
+ *  - no catch, no finally: leave this try's transparent frame and propagate to the
+ *    next handler (inline or legacy) by re-entering VmThrowException.
+ * The operand-stack drain to iStackDepth happens at the throw site (PH7_INLINE_RESUME_BREAK).
+ */
+static sxi32 VmThrowInline(ph7_vm *pVm, ph7_class_instance *pThis,
+	ph7_exception *pException, ph7_exception_block *pCatch)
+{
+	if( pCatch ){
+		pException->iInCatch = 1;
+		SySetPut(&pVm->aException,(const void *)&pException);
+		if( pThis ){ pThis->iRef++; }
+		pException->pInflight = pThis;
+		pVm->pInlineInstr = pException->pOwnerInstr;
+		pVm->iInlinePc = pCatch->iHandlerPc;
+		pVm->iInlineDrain = pException->iStackDepth;
+		return SXRET_OK;
+	}
+	if( pException->iHasFinally ){
+		VmFinallyAction sAct;
+		SyZero(&sAct,sizeof(sAct));
+		sAct.eKind = PH7_FA_RETHROW;
+		if( pThis ){ pThis->iRef++; }
+		sAct.pExc = pThis;
+		SySetPut(&pVm->aFinallyAction,(const void *)&sAct);
+		pException->iInCatch = 0;
+		pVm->pInlineInstr = pException->pOwnerInstr;
+		pVm->iInlinePc = pException->iFinallyPc;
+		pVm->iInlineDrain = pException->iStackDepth;
+		return SXRET_OK;
+	}
+	/* No catch, no finally: drop this try's frame and continue unwinding. */
+	pException->iInCatch = 0;
+	pException->pFrame = 0;
+	if( pVm->pFrame->iFlags & VM_FRAME_EXCEPTION ){
+		VmLeaveFrame(&(*pVm));
+	}
+	return VmThrowException(&(*pVm),pThis);
+}
 static sxi32 VmThrowException(
 	ph7_vm *pVm,              /* Target VM */
 	ph7_class_instance *pThis /* Exception class instance [i.e: Exception $e] */
@@ -16574,7 +16875,10 @@ static sxi32 VmThrowException(
 		pException = apException[SySetUsed(&pVm->aException) - 1];
 		(void)SySetPop(&pVm->aException);
 		aCatch = (ph7_exception_block *)SySetBasePtr(&pException->sEntry);
-		for( j = 0 ; j < SySetUsed(&pException->sEntry) ; ++j ){
+		/* ROOT C: a handler re-pushed for the duration of a catch body (iInCatch) does
+		 * NOT re-match its own catches — a throw inside the catch runs the finally then
+		 * propagates. Skip the class scan so pCatch stays 0. */
+		for( j = 0 ; !pException->iInCatch && j < SySetUsed(&pException->sEntry) ; ++j ){
 			/* Iterate over all class names in this catch block (multi-catch support) */
 			aNames = (SyString *)SySetBasePtr(&aCatch[j].aClasses);
 			nNames = SySetUsed(&aCatch[j].aClasses);
@@ -16599,6 +16903,12 @@ static sxi32 VmThrowException(
 				break;
 			}
 		}
+	}
+	/* ROOT C: an inline try (generator body) is not executed here — VmThrowException
+	 * only classifies the throw and sets a pc-redirect (pInlineInstr/iInlinePc) that the
+	 * throw site jumps to, so catch/finally run in the generator's own dispatch loop. */
+	if( pException && pException->iInlined ){
+		return VmThrowInline(&(*pVm),pThis,pException,pCatch);
 	}
 	/* Execute the cached block if available */
 	if( pCatch == 0 ){
