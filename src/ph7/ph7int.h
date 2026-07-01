@@ -467,6 +467,10 @@ struct ph7_exec_ctx
 	                           * suspends inside a try does not corrupt the caller's
 	                           * exception stack */
 	void *pPrivate;           /* Generator wrapper (ph7_generator*) or NULL for fibers */
+	ph7_class_instance *pInjected; /* Generator::throw() inject-at-yield: exception to raise at
+	                                * the suspended yield on the next resume, or NULL. One-shot:
+	                                * consumed (cleared) by the loop-top inject check. Holds a
+	                                * reference for the duration of the resume. */
 	/* `yield from` delegation state — per generator instance, so independent
 	 * instances never clash (unlike the shared foreach aStep). */
 	ph7_value sDelegate;             /* The iterable being delegated (kept alive) */
@@ -829,6 +833,11 @@ struct ph7_exception
 	void *pOwnerInstr;/* Bytecode array (VmInstr*) this try was compiled into. iLandingPc
 					   * indexes THIS array; the resume only fires in the exec running it
 					   * (distinguishes a mini-program from the body that shares its frame). */
+	sxi32 iStackDepth;/* Operand-stack base (0-based TOS index = pTos-pStack, -1 when empty)
+					   * captured when this try opened at OP_LOAD_EXCEPTION. Used only by
+					   * Generator::throw() inject-at-yield to drain the abandoned
+					   * (mid-expression) operand slots back to the try's base before
+					   * landing at iLandingPc. */
 };
 /* Forward reference */
 typedef struct ph7_case_expr ph7_case_expr;
@@ -934,6 +943,9 @@ struct ph7_vm
 	VmFrame *pResumeFrame;      /* Body frame whose in-place catch consumed the live throw (ROOT B) */
 	sxu32 iResumePc;            /* Its post-try landing pad (1-based, as iExceptionJump) */
 	void *pResumeInstr;         /* Bytecode array the catching try lives in; resume only in that exec */
+	sxi32 iResumeStackDepth;    /* Operand-stack base (0-based TOS index) of the catching try, recorded
+	                             * with the resume target. Used only by Generator::throw() inject-at-yield
+	                             * to drain abandoned mid-expression operands before landing at iResumePc. */
 	SySet aIOstream;            /* Installed IO stream container */
 	const ph7_io_stream *pDefStream; /* Default IO stream [i.e: typically this is the 'file://' stream] */
 	ph7_value sExec;           /* Compiled script return value [Can be extracted via the PH7_VM_CONFIG_EXEC_VALUE directive]*/

@@ -1910,6 +1910,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->pResumeFrame = 0;
 	pVm->iResumePc = 0;
 	pVm->pResumeInstr = 0;
+	pVm->iResumeStackDepth = 0;
 	/* Configuration containers */
 	SySetInit(&pVm->aFiles,&pVm->sAllocator,sizeof(SyString));
 	SySetInit(&pVm->aPaths,&pVm->sAllocator,sizeof(SyString));
@@ -2406,6 +2407,7 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	pVm->pResumeFrame = 0;
 	pVm->iResumePc = 0;
 	pVm->pResumeInstr = 0;
+	pVm->iResumeStackDepth = 0;
 	pVm->nExceptDepth = 0;
 	/* spl_autoload_register() callbacks are per request */
 	for( n = 0 ; n < SySetUsed(&pVm->aAutoload) ; ++n ){
@@ -5390,6 +5392,51 @@ static sxi32 VmByteCodeExec(
 	{ \
 		sxi32 _rcR = VmCheckReadonlyMutate(&(*pVm),(nIdxArg)); \
 		PH7_DISPATCH_ENFORCE_RC(_rcR) \
+	}
+	/* Generator::throw() inject-at-yield: when this invocation is a resumed generator/fiber
+	 * body carrying a pending injected exception, raise it HERE — once, before the dispatch
+	 * loop (pc is already at the resume point) — so the existing OP_THROW route
+	 * (VmThrowException + VmRecordedResume) lands it at the generator's own try/catch landing
+	 * pad WITHOUT reconstructing the suspended exception frame on pVm->pFrame. Because
+	 * pVm->pFrame stays the body, the return/finally/sRet subsystem is untouched (this is why
+	 * the reverted frame-reconstruction approach's regression cannot recur). Behaviorally
+	 * identical to a `throw` executed at the yield point: if the generator's own try catches
+	 * it we resume after the try; otherwise it propagates to the throw() caller (ROOT B lands
+	 * the caller's handler) and the ctx closes. pInjected is one-shot and only meaningful at
+	 * the resume pc, so this is checked once at entry — NOT per-instruction — keeping the hot
+	 * dispatch loop untouched for all normal code. The pFrame gate keeps a nested call / catch
+	 * mini-program sharing the ctx (a separate VmByteCodeExec entry) from re-firing. */
+	if( pVm->pActiveCtx && pVm->pActiveCtx->pInjected
+	 && pVm->pActiveCtx->pFrame == pEntryFrame ){
+		ph7_class_instance *pInj = pVm->pActiveCtx->pInjected;
+		VmFrame *pThrowFrame;
+		sxi32 iResumePc;
+		pVm->pActiveCtx->pInjected = 0; /* one-shot consume */
+		pThrowFrame = VmSkipExceptionFrames(pVm->pFrame);
+		pThrowFrame->iFlags |= VM_FRAME_THROW;
+		rc = VmThrowException(&(*pVm),pInj);
+		if( rc == SXERR_ABORT ){
+			goto Abort;
+		}
+		if( VmRecordedResume(pVm,&iResumePc,pEntryFrame,aInstr) ){
+			/* Caught by THIS generator's own try. (VmRecordedResume returns FALSE unless a
+			 * catch recorded a resume target for this exec, so rc need not be pre-checked;
+			 * unlike OP_THROW there is no lexical-try fallthrough here — the else just
+			 * propagates.) Drain the abandoned mid-expression operand slots back to the
+			 * catching try's base, then land at its pad (iResumePc is landing-1 for the
+			 * dispatcher's trailing pc++; the loop below fetches at pc with no leading pc++,
+			 * so add 1 to land on the pad itself). */
+			while( (sxi32)(pTos - pStack) > pVm->iResumeStackDepth ){
+				PH7_MemObjRelease(pTos);
+				pTos--;
+			}
+			pc = iResumePc + 1;
+		}else{
+			/* Not caught in this generator (no match, or caught by an outer/caller frame
+			 * that ROOT B will land at its own OP_CALL site): propagate out so the ctx
+			 * closes and the caller sees the exception. */
+			goto Exception;
+		}
 	}
 	/* Execute as much as we can */
 	for(;;){
@@ -8789,6 +8836,11 @@ case PH7_OP_LOAD_EXCEPTION: {
 	 * frame's iExceptionJump just set above — reuse it so the two can't drift. */
 	pException->iLandingPc = pFrameLocal->iExceptionJump;
 	pException->pOwnerInstr = (void *)aInstr;
+	/* Operand-stack base at try entry (0-based TOS index; -1 when empty). The post-try
+	 * landing pad is reached with the stack back at this depth; Generator::throw()
+	 * inject-at-yield drains to it before landing (a mid-expression yield leaves the
+	 * abandoned expression's operands above this base). Normal throws are already here. */
+	pException->iStackDepth = (sxi32)(pTos - pStack);
 	/* Point to the frame that trigger the exception */
 	pFrameLocal = pFrameLocal->pParent;
 	pFrameLocal = VmSkipExceptionFrames(pFrameLocal);
@@ -8810,8 +8862,16 @@ case PH7_OP_POP_EXCEPTION: {
 		}
 	}
 	pException->pFrame = 0;
-	/* Leave the exception frame */
-	VmLeaveFrame(&(*pVm));
+	/* Leave the exception frame. It is normally on top here (a try that fell through
+	 * normally, or the frame VmRecordedResume left for an in-place catch). But for a
+	 * RESUMED generator/fiber body whose yield was inside this try, that exception
+	 * frame was discarded at suspend (VmStartCtx/VmResumeCtx save only the body frame),
+	 * so pVm->pFrame is the coroutine body itself — popping it would destroy the
+	 * coroutine (and defeat the bHasRet materialization just below, which must see the
+	 * body). Only leave a genuine exception frame. */
+	if( pVm->pFrame->iFlags & VM_FRAME_EXCEPTION ){
+		VmLeaveFrame(&(*pVm));
+	}
 	/* Execute the finally block if present and not already executed by catch path */
 	if( pException->iHasFinally && !pException->iFinallyDone ){
 		sxi32 rcFinally;
@@ -11824,6 +11884,25 @@ static void VmRestoreCtxExceptionHandlers(ph7_vm *pVm, ph7_exec_ctx *pCtx)
 	}
 }
 /*
+ * On suspend, free the exception (try) frames the yield was nested in. They were
+ * pushed by OP_LOAD_EXCEPTION between the coroutine body frame (pCtx->pFrame) and
+ * the current suspend-point top frame. The generator/fiber frame model saves only
+ * the body frame, so these transparent wrappers would otherwise be orphaned and
+ * leak on every yield-that-sits-inside-a-try (unbounded for a generator looping
+ * with a yield in a try). Freeing them loses nothing the resume needs: this body's
+ * exception HANDLERS are parked separately (VmParkCtxExceptionHandlers) and each
+ * try's landing pad lives on its ph7_exception (iLandingPc), while OP_POP_EXCEPTION
+ * on resume skips the (now absent) frame pop via its VM_FRAME_EXCEPTION guard and
+ * OP_LOAD_EXCEPTION re-creates a fresh wrapper when the try is next entered. Must
+ * run while pVm->pFrame still points at the suspend-time top (before the detach).
+ */
+static void VmFreeSuspendedExceptionFrames(ph7_vm *pVm, ph7_exec_ctx *pCtx)
+{
+	while( pVm->pFrame != pCtx->pFrame && (pVm->pFrame->iFlags & VM_FRAME_EXCEPTION) ){
+		VmLeaveFrame(&(*pVm));
+	}
+}
+/*
  * Start executing a fiber context for the first time.
  */
 static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
@@ -11855,7 +11934,9 @@ static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
 	/* Restore the previous context */
 	pVm->pActiveCtx = pOldCtx;
 	if( rc == PH7_SUSPEND ){
-		/* Fiber suspended. Detach the fiber's frame from the VM chain. */
+		/* Fiber suspended. Free the try wrappers the yield was nested in, then
+		 * detach the fiber's body frame from the VM chain. */
+		VmFreeSuspendedExceptionFrames(pVm, pCtx);
 		pVm->pFrame = pCtx->pFrame->pParent;
 		pCtx->pFrame->pParent = 0;
 		VmParkCtxExceptionHandlers(pVm, pCtx);
@@ -11930,7 +12011,9 @@ static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValu
 	/* Restore the previous context */
 	pVm->pActiveCtx = pOldCtx;
 	if( rc == PH7_SUSPEND ){
-		/* Fiber suspended again. Detach the fiber's frame. */
+		/* Fiber suspended again. Free the try wrappers the yield was nested in, then
+		 * detach the fiber's body frame. */
+		VmFreeSuspendedExceptionFrames(pVm, pCtx);
 		pVm->pFrame = pCtx->pFrame->pParent;
 		pCtx->pFrame->pParent = 0;
 		VmParkCtxExceptionHandlers(pVm, pCtx);
@@ -13222,16 +13305,16 @@ static int vm_builtin_Generator_send(ph7_context *pCtx, int nArg, ph7_value **ap
 /*
  * Generator::throw($exception) — throw an exception into the generator.
  *
- * Full PHP semantics inject the exception at the suspended yield point so the
- * generator's OWN try/catch can handle it and execution resumes. That requires
- * keeping the generator's exception (try) frame — and thus its resume landing
- * pad — live across suspend/resume, which the current generator frame model
- * discards on resume (it saves only the body frame). Until that frame-model
- * rework lands (see PLAN.md), we close the generator and propagate the ACTUAL
- * exception object (preserving its class/type, message and trace) to the
- * throw() caller — byte-for-byte correct whenever the generator would not have
- * caught the exception itself (incl. a finished generator), and the documented
- * limitation only when the generator has a try/catch around the yield.
+ * PHP semantics: the exception is injected AT the suspended yield point so the
+ * generator's OWN try/catch (if any wraps the yield) can handle it and the body
+ * resumes after the try; otherwise it propagates to the throw() caller and the
+ * generator closes. We implement this by resuming the body with a pending
+ * injection (pCtx->pInjected) that the VM loop raises in the body's own frame via
+ * the existing OP_THROW / ROOT B resume route — no exception frame is
+ * reconstructed on pVm->pFrame, so the return/finally unwind path is untouched.
+ * A never-started generator is first run to its first yield, then injected there;
+ * a finished/closed generator has no suspend point, so the exception is simply
+ * propagated to the caller (its return value stays readable via getReturn()).
  *
  * PHL does not enforce the Throwable parameter hint (interface/class hints are
  * not checked on call), so the Throwable validation — and its PHP TypeError —
@@ -13264,19 +13347,44 @@ static int vm_builtin_Generator_throw(ph7_context *pCtx, int nArg, ph7_value **a
 		return PH7_VmThrowException(pCtx, "Error",
 			"Cannot resume an already running generator");
 	}
-	/* A still-active (created/suspended) generator can no longer catch the
-	 * injected exception (inject-at-yield is deferred), so close it. A generator
-	 * that already finished keeps its terminal state — and thus its return value,
-	 * which getReturn() still reads — and we simply propagate the exception.
-	 * Re-throw the supplied instance through the normal dispatch path so the
-	 * throw() call site's try/catch (and the uncaught handler) see the real
-	 * object. Hold a ref across VmThrowException, which may run catch blocks. */
-	if( pGen->pCtx->iState != PH7_CTX_STATE_COMPLETED
-	 && pGen->pCtx->iState != PH7_CTX_STATE_CLOSED ){
-		pGen->pCtx->iState = PH7_CTX_STATE_CLOSED;
-	}
+	/* Hold a reference to the injected instance for the whole operation: the VM loop
+	 * (inject path) or VmThrowException (propagate path) may run catch blocks that bind
+	 * and later release it. Dropped on every return path below. */
 	pInj = (ph7_class_instance *)apArg[1]->x.pOther;
 	pInj->iRef++;
+	/* A never-started generator runs to its first yield, then the exception is injected
+	 * there (PHP). Start it first; if it suspended at a yield, fall through to inject; if
+	 * it ran to completion without yielding, drop through to the propagate path below. */
+	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){
+		rc = VmStartCtx(pCtx->pVm, pGen->pCtx, 0);
+		if( rc == PH7_ABORT ){ PH7_ClassInstanceUnref(pInj); return PH7_ABORT; }
+		if( rc == PH7_EXCEPTION ){ PH7_ClassInstanceUnref(pInj); return PH7_EXCEPTION; }
+	}
+	if( pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){
+		/* Inject at the suspended yield: the resume loop raises it in the body's own
+		 * frame so the generator's try/catch can catch it and resume (path 2). */
+		pGen->pCtx->pInjected = pInj;   /* borrowed; ref held here across the resume */
+		rc = VmResumeCtx(pCtx->pVm, pGen->pCtx, 0, 0);
+		/* Normally the inject was consumed (cleared) at VmByteCodeExec entry; clear it
+		 * here too for the path where VmResumeCtx bails BEFORE entering the loop (e.g. the
+		 * recursion-depth fatal), so no dangling borrowed pointer survives the Unref. */
+		pGen->pCtx->pInjected = 0;
+		PH7_ClassInstanceUnref(pInj);
+		if( rc == PH7_ABORT ) return PH7_ABORT;
+		if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;
+		/* Caught inside the generator and it resumed: return the next yielded value (or
+		 * null if it then completed) — symmetric with Generator::send(). */
+		if( pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){
+			ph7_result_value(pCtx, &pGen->sYieldValue);
+		}else{
+			ph7_result_null(pCtx);
+		}
+		return PH7_OK;
+	}
+	/* COMPLETED/CLOSED (incl. a CREATED generator that ran to completion without a
+	 * yield): no suspend point to inject at. Propagate the real object to the throw()
+	 * caller through the normal dispatch path (class/message/trace preserved); its
+	 * terminal state — and thus getReturn() — is left intact. */
 	pFrame = pCtx->pVm->pFrame;
 	if( pFrame ){
 		pFrame = VmSkipExceptionFrames(pFrame);
@@ -16725,6 +16833,7 @@ static sxi32 VmThrowException(
 		pVm->pResumeFrame = pCatchBody;
 		pVm->iResumePc = iCatchPc;
 		pVm->pResumeInstr = pCatchInstr;
+		pVm->iResumeStackDepth = pException->iStackDepth;
 	}
 	/* TICKET 1433-60: Do not release the 'pException' pointer since it may
 	 * be used again if a 'goto' statement is executed.
