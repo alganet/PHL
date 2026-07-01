@@ -496,10 +496,10 @@ Coverage: 554/587 lines (94.38%)
 |    - |  486 | ` *  The absolute value of number.` |
 |    - |  487 | ` */` |
 |  128 |  488 | `PH7_PRIVATE int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    4 |  489 | `{` |
+|    5 |  489 | `{` |
 |    - |  490 | `	int is_float;` |
 |    - |  491 | `	/* PHP requires exactly one argument. */` |
-|  132 |  492 | `	if( nArg != 1 ){` |
+|  133 |  492 | `	if( nArg != 1 ){` |
 |   15 |  493 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  494 | `			"ArgumentCountError",` |
 |    - |  495 | `			"abs() expects exactly 1 argument, %d given",` |
@@ -539,7 +539,7 @@ Coverage: 554/587 lines (94.38%)
 |   20 |  529 | `		ph7_result_int(pCtx,r);` |
 |    - |  530 | `	}` |
 |  120 |  531 | `	return PH7_OK;` |
-|   68 |  532 | `}` |
+|   69 |  532 | `}` |
 |    - |  533 | `/*` |
 |    - |  534 | ` * float log(float $arg,[int/float $base])` |
 |    - |  535 | ` *  Natural logarithm.` |
