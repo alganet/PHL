@@ -142,7 +142,7 @@ Coverage: 277/450 lines (61.56%)
 |    - |  132 | `#ifdef __WINNT__` |
 |    - |  133 | `			_stricmp(zDot, aMime[i].zExt)` |
 |    - |  134 | `#else` |
-|   42 |  135 | `			strcasecmp(zDot, aMime[i].zExt)` |
+|   28 |  135 | `			strcasecmp(zDot, aMime[i].zExt)` |
 |    - |  136 | `#endif` |
 |   14 |  137 | `			== 0 ){` |
 |    4 |  138 | `			return aMime[i].zType;` |

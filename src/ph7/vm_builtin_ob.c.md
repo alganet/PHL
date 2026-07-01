@@ -51,24 +51,24 @@ Coverage: 157/206 lines (76.21%)
 |     - |   41 | ` *  the function without an active buffer or that for some reason a buffer could not be deleted` |
 |     - |   42 | ` * (possible for special buffer)` |
 |     - |   43 | ` */` |
-|  4370 |   44 | `PH7_PRIVATE int vm_builtin_ob_end_clean(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  4372 |   44 | `PH7_PRIVATE int vm_builtin_ob_end_clean(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     5 |   45 |  |
-|  4375 |   46 | `	ph7_vm *pVm = pCtx->pVm;` |
+|  4377 |   46 | `	ph7_vm *pVm = pCtx->pVm;` |
 |     - |   47 | `	VmObEntry *pOb;` |
 |     - |   48 | `	/* Pop the top most OB */` |
-|  4375 |   49 | `	pOb = (VmObEntry *)SySetPop(&pVm->aOB);` |
-|  4375 |   50 | `	if( pOb == 0){` |
+|  4377 |   49 | `	pOb = (VmObEntry *)SySetPop(&pVm->aOB);` |
+|  4377 |   50 | `	if( pOb == 0){` |
 |     - |   51 | `		/* No such OB,return FALSE */` |
 |   ! 0 |   52 | `		ph7_result_bool(pCtx,0);` |
 |   ! 0 |   53 | `		SXUNUSED(nArg); /* cc warning */` |
 |   ! 0 |   54 | `		SXUNUSED(apArg);` |
 |   ! 0 |   55 | `	}else{` |
 |     - |   56 | `		/* Release */` |
-|  4375 |   57 | `		VmObRestore(pVm,pOb);` |
+|  4377 |   57 | `		VmObRestore(pVm,pOb);` |
 |     - |   58 | `		/* Return true */` |
-|  4375 |   59 | `		ph7_result_bool(pCtx,1);` |
+|  4377 |   59 | `		ph7_result_bool(pCtx,1);` |
 |     - |   60 | `	}` |
-|  4375 |   61 | `	return PH7_OK;` |
+|  4377 |   61 | `	return PH7_OK;` |
 |     5 |   62 |  |
 |     - |   63 | `/*` |
 |     - |   64 | ` * string ob_get_contents(void)` |
@@ -104,24 +104,24 @@ Coverage: 157/206 lines (76.21%)
 |     - |   94 | ` * Return` |
 |     - |   95 | ` *  This will return the contents of the output buffer or FALSE, if output buffering isn't active.` |
 |     - |   96 | ` */` |
-|  5716 |   97 | `PH7_PRIVATE int vm_builtin_ob_get_clean(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  5718 |   97 | `PH7_PRIVATE int vm_builtin_ob_get_clean(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     3 |   98 |  |
-|  5719 |   99 | `	ph7_vm *pVm = pCtx->pVm;` |
+|  5721 |   99 | `	ph7_vm *pVm = pCtx->pVm;` |
 |     - |  100 | `	VmObEntry *pOb;` |
 |     - |  101 | `	/* Pop the top most OB */` |
-|  5719 |  102 | `	pOb = (VmObEntry *)SySetPop(&pVm->aOB);` |
-|  5719 |  103 | `	if( pOb == 0 ){` |
+|  5721 |  102 | `	pOb = (VmObEntry *)SySetPop(&pVm->aOB);` |
+|  5721 |  103 | `	if( pOb == 0 ){` |
 |     - |  104 | `		/* No active OB,return FALSE */` |
 |   ! 0 |  105 | `		ph7_result_bool(pCtx,0);` |
 |   ! 0 |  106 | `		SXUNUSED(nArg); /* cc warning */` |
 |   ! 0 |  107 | `		SXUNUSED(apArg);` |
 |   ! 0 |  108 | `	}else{` |
 |     - |  109 | `		/* Return contents */` |
-|  5719 |  110 | `		ph7_result_string(pCtx,(const char *)SyBlobData(&pOb->sOB),(int)SyBlobLength(&pOb->sOB)); /* Will make it's own copy */` |
+|  5721 |  110 | `		ph7_result_string(pCtx,(const char *)SyBlobData(&pOb->sOB),(int)SyBlobLength(&pOb->sOB)); /* Will make it's own copy */` |
 |     - |  111 | `		/* Release */` |
-|  5719 |  112 | `		VmObRestore(pVm,pOb);` |
+|  5721 |  112 | `		VmObRestore(pVm,pOb);` |
 |     - |  113 | `	}` |
-|  5719 |  114 | `	return PH7_OK;` |
+|  5721 |  114 | `	return PH7_OK;` |
 |     3 |  115 |  |
 |     - |  116 | `/*` |
 |     - |  117 | ` * int ob_get_length(void)` |
@@ -173,19 +173,19 @@ Coverage: 157/206 lines (76.21%)
 |     - |  163 | ` * to a stackable internal buffer,until the user call [ob_get_clean(),ob_end_clean(),...].` |
 |     - |  164 | ` * Refer to the implementation of [ob_start()] for more information.` |
 |     - |  165 | ` */` |
-| 14890 |  166 | `PH7_PRIVATE int VmObConsumer(const void *pData,unsigned int nDataLen,void *pUserData)` |
+| 14916 |  166 | `PH7_PRIVATE int VmObConsumer(const void *pData,unsigned int nDataLen,void *pUserData)` |
 |     5 |  167 |  |
-| 14895 |  168 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
+| 14921 |  168 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
 |     - |  169 | `	VmObEntry *pEntry;` |
 |     - |  170 | `	ph7_value sResult;` |
 |     - |  171 | `	/* Peek the top most entry */` |
-| 14895 |  172 | `	pEntry = (VmObEntry *)SySetPeek(&pVm->aOB);` |
-| 14895 |  173 | `	if( pEntry == 0 ){` |
+| 14921 |  172 | `	pEntry = (VmObEntry *)SySetPeek(&pVm->aOB);` |
+| 14921 |  173 | `	if( pEntry == 0 ){` |
 |     - |  174 | `		/* CAN'T HAPPEN */` |
 |   ! 0 |  175 | `		return PH7_OK;` |
 |     - |  176 | `	}` |
-| 14895 |  177 | `	PH7_MemObjInit(pVm,&sResult);` |
-| 14895 |  178 | `	if( ph7_value_is_callable(&pEntry->sCallback) && pVm->nObDepth < 15 ){` |
+| 14921 |  177 | `	PH7_MemObjInit(pVm,&sResult);` |
+| 14921 |  178 | `	if( ph7_value_is_callable(&pEntry->sCallback) && pVm->nObDepth < 15 ){` |
 |     - |  179 | `		ph7_value sArg,*apArg[2];` |
 |     - |  180 | `		/* Fill the first argument */` |
 |   ! 0 |  181 | `		PH7_MemObjInitFromString(pVm,&sArg,0);` |
@@ -202,31 +202,31 @@ Coverage: 157/206 lines (76.21%)
 |   ! 0 |  192 | `		}` |
 |   ! 0 |  193 | `		PH7_MemObjRelease(&sArg);` |
 |   ! 0 |  194 | `	}` |
-| 14895 |  195 | `	if( nDataLen > 0 ){` |
+| 14921 |  195 | `	if( nDataLen > 0 ){` |
 |     - |  196 | `		/* Redirect the VM output to the internal buffer */` |
-| 14895 |  197 | `		SyBlobAppend(&pEntry->sOB,pData,nDataLen);` |
-|  7445 |  198 | `	}` |
+| 14921 |  197 | `		SyBlobAppend(&pEntry->sOB,pData,nDataLen);` |
+|  7458 |  198 | `	}` |
 |     - |  199 | `	/* Release */` |
-| 14895 |  200 | `	PH7_MemObjRelease(&sResult);` |
-| 14895 |  201 | `	return PH7_OK;` |
-|  7450 |  202 |  |
+| 14921 |  200 | `	PH7_MemObjRelease(&sResult);` |
+| 14921 |  201 | `	return PH7_OK;` |
+|  7463 |  202 |  |
 |     - |  203 | `/*` |
 |     - |  204 | ` * Restore the default consumer.` |
 |     - |  205 | ` * Refer to the implementation of [ob_end_clean()] for more` |
 |     - |  206 | ` * information.` |
 |     - |  207 | ` */` |
-| 10088 |  208 | `static void VmObRestore(ph7_vm *pVm,VmObEntry *pEntry)` |
+| 10092 |  208 | `static void VmObRestore(ph7_vm *pVm,VmObEntry *pEntry)` |
 |     5 |  209 |  |
-| 10093 |  210 | `	ph7_output_consumer *pCons = &pVm->sVmConsumer;` |
-| 10093 |  211 | `	if( SySetUsed(&pVm->aOB) < 1 ){` |
+| 10097 |  210 | `	ph7_output_consumer *pCons = &pVm->sVmConsumer;` |
+| 10097 |  211 | `	if( SySetUsed(&pVm->aOB) < 1 ){` |
 |     - |  212 | `		/* No more stackable OB */` |
-| 10075 |  213 | `		pCons->xConsumer = pCons->xDef;` |
-| 10075 |  214 | `		pCons->pUserData = pCons->pDefData;` |
-|  5035 |  215 | `	}` |
+| 10079 |  213 | `		pCons->xConsumer = pCons->xDef;` |
+| 10079 |  214 | `		pCons->pUserData = pCons->pDefData;` |
+|  5037 |  215 | `	}` |
 |     - |  216 | `	/* Release OB data */` |
-| 10093 |  217 | `	PH7_MemObjRelease(&pEntry->sCallback);` |
-| 10093 |  218 | `	SyBlobRelease(&pEntry->sOB);` |
-| 10093 |  219 |  |
+| 10097 |  217 | `	PH7_MemObjRelease(&pEntry->sCallback);` |
+| 10097 |  218 | `	SyBlobRelease(&pEntry->sOB);` |
+| 10097 |  219 |  |
 |     - |  220 | `/*` |
 |     - |  221 | ` * bool ob_start([ callback $output_callback] )` |
 |     - |  222 | ` * This function will turn output buffering on. While output buffering is active no output` |
@@ -250,35 +250,35 @@ Coverage: 157/206 lines (76.21%)
 |     - |  240 | ` * Return` |
 |     - |  241 | ` *   Returns TRUE on success or FALSE on failure.` |
 |     - |  242 | ` */` |
-| 10088 |  243 | `PH7_PRIVATE int vm_builtin_ob_start(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+| 10092 |  243 | `PH7_PRIVATE int vm_builtin_ob_start(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     5 |  244 |  |
-| 10093 |  245 | `	ph7_vm *pVm = pCtx->pVm;` |
+| 10097 |  245 | `	ph7_vm *pVm = pCtx->pVm;` |
 |     - |  246 | `	VmObEntry sOb;` |
 |     - |  247 | `	sxi32 rc;` |
 |     - |  248 | `	/* Initialize the OB entry */` |
-| 10093 |  249 | `	PH7_MemObjInit(pCtx->pVm,&sOb.sCallback);` |
-| 10093 |  250 | `	SyBlobInit(&sOb.sOB,&pVm->sAllocator);` |
-| 10093 |  251 | `	if( nArg > 0 && (apArg[0]->iFlags & (MEMOBJ_STRING\|MEMOBJ_HASHMAP\|MEMOBJ_OBJ)) ){` |
+| 10097 |  249 | `	PH7_MemObjInit(pCtx->pVm,&sOb.sCallback);` |
+| 10097 |  250 | `	SyBlobInit(&sOb.sOB,&pVm->sAllocator);` |
+| 10097 |  251 | `	if( nArg > 0 && (apArg[0]->iFlags & (MEMOBJ_STRING\|MEMOBJ_HASHMAP\|MEMOBJ_OBJ)) ){` |
 |     - |  252 | `		/* Save the callback name for later invocation (MEMOBJ_OBJ = a Closure callback). */` |
 |   ! 0 |  253 | `		PH7_MemObjStore(apArg[0],&sOb.sCallback);` |
 |   ! 0 |  254 | `	}` |
 |     - |  255 | `	/* Push in the stack */` |
-| 10093 |  256 | `	rc = SySetPut(&pVm->aOB,(const void *)&sOb);` |
-| 10093 |  257 | `	if( rc != SXRET_OK ){` |
+| 10097 |  256 | `	rc = SySetPut(&pVm->aOB,(const void *)&sOb);` |
+| 10097 |  257 | `	if( rc != SXRET_OK ){` |
 |   ! 0 |  258 | `		PH7_MemObjRelease(&sOb.sCallback);` |
 |   ! 0 |  259 | `	}else{` |
-| 10093 |  260 | `		ph7_output_consumer *pCons = &pVm->sVmConsumer;` |
+| 10097 |  260 | `		ph7_output_consumer *pCons = &pVm->sVmConsumer;` |
 |     - |  261 | `		/* Substitute the default VM consumer */` |
-| 10093 |  262 | `		if( pCons->xConsumer != VmObConsumer ){` |
-| 10075 |  263 | `			pCons->xDef = pCons->xConsumer;` |
-| 10075 |  264 | `			pCons->pDefData = pCons->pUserData;` |
+| 10097 |  262 | `		if( pCons->xConsumer != VmObConsumer ){` |
+| 10079 |  263 | `			pCons->xDef = pCons->xConsumer;` |
+| 10079 |  264 | `			pCons->pDefData = pCons->pUserData;` |
 |     - |  265 | `			/* Install the new consumer */` |
-| 10075 |  266 | `			pCons->xConsumer = VmObConsumer;` |
-| 10075 |  267 | `			pCons->pUserData = pVm;` |
-|  5035 |  268 | `		}` |
+| 10079 |  266 | `			pCons->xConsumer = VmObConsumer;` |
+| 10079 |  267 | `			pCons->pUserData = pVm;` |
+|  5037 |  268 | `		}` |
 |     - |  269 | `	}` |
-| 10093 |  270 | `	ph7_result_bool(pCtx,rc == SXRET_OK);` |
-| 10093 |  271 | `	return PH7_OK;` |
+| 10097 |  270 | `	ph7_result_bool(pCtx,rc == SXRET_OK);` |
+| 10097 |  271 | `	return PH7_OK;` |
 |     5 |  272 |  |
 |     - |  273 | `/*` |
 |     - |  274 | ` * Flush Output buffer to the default VM output consumer.` |

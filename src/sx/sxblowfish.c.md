@@ -406,9 +406,9 @@ Coverage: 168/170 lines (98.82%)
 |       397 |  396 | `static int BcryptB64Value(int c){` |
 |       397 |  397 | `	const char *p = zB64;` |
 |       397 |  398 | `	int i = 0;` |
-|      9826 |  399 | `	for(; i < 64; i++ ){` |
-|      9826 |  400 | `		if( p[i] == c ){ return i; }` |
-|      4742 |  401 | `	}` |
+|     10013 |  399 | `	for(; i < 64; i++ ){` |
+|     10013 |  400 | `		if( p[i] == c ){ return i; }` |
+|      4849 |  401 | `	}` |
 |       ! 0 |  402 | `	return 255;` |
 |       199 |  403 |  |
 |         - |  404 | `/* Encode nIn bytes as bcrypt-base64 into zOut (no padding); returns char count. */` |
