@@ -11290,6 +11290,13 @@ static sxi32 GenStateEmitExprCode(
 		return SXERR_ABORT;
 	}
 	iVmOp = pNode->pOp->iVmOp;
+	if( iVmOp == PH7_OP_CVT_NULL ){
+		/* php 8 removed the (unset) cast. Error recorded (nErr>0 fails the
+		 * whole compile); keep emitting so expression codegen stays aligned
+		 * and later errors are still reported. */
+		PH7_GenCompileError(&(*pGen),E_ERROR,pNode->pStart->nLine,
+			"The (unset) cast is no longer supported");
+	}
 	if( pNode->pOp->iOp == EXPR_OP_NULLC_ASSIGN ){
 		sxu32 nJmp = 0;
 		sxu32 nNcNsBase;
