@@ -2,13 +2,12 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7 / PHP: ENT_DISALLOWED constant
+ENT_DISALLOWED constant (PHP-exact value)
 --FILE--
 <?php
-echo "ENT_DISALLOWED=" . ENT_DISALLOWED . "\n";
+echo ENT_DISALLOWED . "\n";
 ?>
---EXPECTF--
-ENT_DISALLOWED=%d
+--EXPECT--
+128
 --CLEAN--
 <?php
-

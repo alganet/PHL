@@ -813,94 +813,100 @@ static void PH7_DATE_W3C_Const(ph7_value *pVal,void *pUserData)
 	ph7_value_string(pVal,"Y-m-d\\TH:i:sP",-1/*Compute length automatically*/);
 }
 /*
+ * The ENT_* values are PHP-exact (php 8.5.7). The low two bits are the quote
+ * bits (1 = single, 2 = double), so ENT_QUOTES = ENT_COMPAT|1 and
+ * ENT_NOQUOTES = 0. Bits 16|32 select the doctype (0 = HTML401, 16 = XML1,
+ * 32 = XHTML, 48 = HTML5) — composites, not flags.
+ */
+/*
  * ENT_COMPAT
- *  Expand 0x01 (Must be a power of two)
+ *  Expand 2 (double-quote bit only)
  */
 static void PH7_ENT_COMPAT_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x01);
+	ph7_value_int(pVal,2);
 }
 /*
  * ENT_QUOTES
- *  Expand 0x02 (Must be a power of two)
+ *  Expand 3 (double|single quote bits)
  */
 static void PH7_ENT_QUOTES_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x02);
+	ph7_value_int(pVal,3);
 }
 /*
  * ENT_NOQUOTES
- *  Expand 0x04 (Must be a power of two)
+ *  Expand 0 (no quote bits)
  */
 static void PH7_ENT_NOQUOTES_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x04);
+	ph7_value_int(pVal,0);
 }
 /*
  * ENT_IGNORE
- *  Expand 0x08 (Must be a power of two)
+ *  Expand 4
  */
 static void PH7_ENT_IGNORE_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x08);
+	ph7_value_int(pVal,4);
 }
 /*
  * ENT_SUBSTITUTE
- *  Expand 0x10 (Must be a power of two)
+ *  Expand 8
  */
 static void PH7_ENT_SUBSTITUTE_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x10);
+	ph7_value_int(pVal,8);
 }
 /*
  * ENT_DISALLOWED
- *  Expand 0x20 (Must be a power of two)
+ *  Expand 128
  */
 static void PH7_ENT_DISALLOWED_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x20);
+	ph7_value_int(pVal,128);
 }
 /*
  * ENT_HTML401
- *  Expand 0x40 (Must be a power of two)
+ *  Expand 0 (the default doctype)
  */
 static void PH7_ENT_HTML401_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x40);
+	ph7_value_int(pVal,0);
 }
 /*
  * ENT_XML1
- *  Expand 0x80 (Must be a power of two)
+ *  Expand 16
  */
 static void PH7_ENT_XML1_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x80);
+	ph7_value_int(pVal,16);
 }
 /*
  * ENT_XHTML
- *  Expand 0x100 (Must be a power of two)
+ *  Expand 32
  */
 static void PH7_ENT_XHTML_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x100);
+	ph7_value_int(pVal,32);
 }
 /*
  * ENT_HTML5
- *  Expand 0x200 (Must be a power of two)
+ *  Expand 48 (16|32 — a doctype composite, not a flag bit)
  */
 static void PH7_ENT_HTML5_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x200);
+	ph7_value_int(pVal,48);
 }
 /*
  * ISO-8859-1
@@ -933,12 +939,12 @@ static void PH7_HTML_ENTITIES_Const(ph7_value *pVal,void *pUserData)
 }
 /*
  * HTML_SPECIALCHARS
- *  Expand 2
+ *  Expand 0 (PHP-exact)
  */
 static void PH7_HTML_SPECIALCHARS_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,2);
+	ph7_value_int(pVal,0);
 }
 /*
  * PHP_URL_SCHEME.
