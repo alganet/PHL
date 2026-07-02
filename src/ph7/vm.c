@@ -1868,6 +1868,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	 )
 {
 	SyString sBuiltin;
+	SyString sRandom;
 	ph7_value *pObj;
 	sxi32 rc;
 	/* Zero the structure */
@@ -1985,6 +1986,20 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyStringInitFromBuf(&sBuiltin,PH7_BUILTIN_LIB,sizeof(PH7_BUILTIN_LIB)-1);
 	/* Compile the built-in library */
 	VmEvalChunk(&(*pVm),0,&sBuiltin,PH7_PHP_ONLY,FALSE);
+	/* Register the Random\RandomException namespaced class (PHP 8.2+).
+	 * Kept in its own VmEvalChunk (not appended to PH7_BUILTIN_LIB): a namespace
+	 * declaration is NOT reset at the block's closing brace in this engine, so
+	 * anything following it in the same chunk would leak into the Random
+	 * namespace. Isolation instead comes from VmEvalChunk saving/restoring
+	 * pVm->sNamespace (and PH7_ResetCodeGenerator clearing the compiler
+	 * namespace) per chunk, so this lands as Random\RandomException while later
+	 * user code still compiles in the global namespace. */
+	{
+		static const char zRandomLib[] =
+			"namespace Random { class RandomException extends \\Exception { } }";
+		SyStringInitFromBuf(&sRandom,zRandomLib,sizeof(zRandomLib)-1);
+		VmEvalChunk(&(*pVm),0,&sRandom,PH7_PHP_ONLY,FALSE);
+	}
 	/* Cache the Fiber class pointer for fast dispatch */
 	pVm->pFiberClass = PH7_VmExtractClass(pVm,"Fiber",5,0,0);
 	/* Cache built-in interface pointers used on hot dispatch paths */
@@ -15282,10 +15297,8 @@ static int vm_builtin_random_int(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		 * and the low-half mask would always read 0). */
 		sxu64 uDraw;
 		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){
-			/* PHP 8.2+ would throw Random\RandomException here; that class
-			 * is not yet registered in PHL (see PLAN.md item 6.13). */
 			return PH7_VmThrowException(pCtx,
-				"Exception",
+				"Random\\RandomException",
 				"Cannot gather sufficient random data"
 				);
 		}
@@ -15297,7 +15310,7 @@ static int vm_builtin_random_int(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	if( nAttempt >= 50 ){
 		return PH7_VmThrowException(pCtx,
-			"Exception",
+			"Random\\RandomException",
 			"Cannot gather sufficient random data"
 			);
 	}
@@ -15359,7 +15372,7 @@ static int vm_builtin_random_bytes(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			SyMemBackendFree(&pCtx->pVm->sAllocator,pBuf);
 		}
 		return PH7_VmThrowException(pCtx,
-			"Exception",
+			"Random\\RandomException",
 			"Cannot gather sufficient random data"
 			);
 	}
