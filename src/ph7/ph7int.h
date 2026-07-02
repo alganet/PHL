@@ -1442,6 +1442,26 @@ enum ph7_expr_id {
 #define PH7_TKWRD_OBJECT       0x80000 /* object: MUST BE A POWER OF TWO */
 #define PH7_TKWRD_SEQ          0x100000 /* String string comparison operator: 'eq' equal MUST BE A POWER OF TWO */
 #define PH7_TKWRD_SNE          0x200000 /* String string comparison operator: 'ne' not equal MUST BE A POWER OF TWO */
+/*
+ * PHP-exact ENT_* flag values for the html-entity family. Single source of
+ * truth: constant.c declares the PHP-visible ENT_* constants from these and
+ * builtin.c implements the semantics against them. The low two bits are the
+ * quote bits (ENT_QUOTES = both, ENT_COMPAT = double only, ENT_NOQUOTES = 0)
+ * and bits 16|32 select the doctype — composites, not independent flags.
+ */
+#define PH7_ENT_QUOTE_SINGLE 0x01 /* encode/decode ' */
+#define PH7_ENT_QUOTE_DOUBLE 0x02 /* encode/decode " (== ENT_COMPAT) */
+#define PH7_ENT_QUOTES       (PH7_ENT_QUOTE_DOUBLE|PH7_ENT_QUOTE_SINGLE)
+#define PH7_ENT_IGNORE       0x04 /* drop invalid UTF-8 units */
+#define PH7_ENT_SUBSTITUTE   0x08 /* invalid UTF-8 unit -> U+FFFD */
+#define PH7_ENT_DOC_MASK     0x30 /* doctype selector */
+#define PH7_ENT_DOC_HTML401  0x00
+#define PH7_ENT_DOC_XML1     0x10
+#define PH7_ENT_DOC_XHTML    0x20
+#define PH7_ENT_DOC_HTML5    0x30
+#define PH7_ENT_DISALLOWED   0x80 /* substitute doctype-disallowed codepoints */
+/* The shared default for all five builtins (php 8.1+): ENT_QUOTES|ENT_SUBSTITUTE|ENT_HTML401. */
+#define PH7_ENT_DEFAULT      (PH7_ENT_QUOTES|PH7_ENT_SUBSTITUTE|PH7_ENT_DOC_HTML401)
 /* JSON encoding/decoding related definition */
 enum json_err_code{
 	JSON_ERROR_NONE = 0,  /* No error has occurred. */

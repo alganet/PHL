@@ -825,7 +825,7 @@ static void PH7_DATE_W3C_Const(ph7_value *pVal,void *pUserData)
 static void PH7_ENT_COMPAT_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,2);
+	ph7_value_int(pVal,PH7_ENT_QUOTE_DOUBLE);
 }
 /*
  * ENT_QUOTES
@@ -834,7 +834,7 @@ static void PH7_ENT_COMPAT_Const(ph7_value *pVal,void *pUserData)
 static void PH7_ENT_QUOTES_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,3);
+	ph7_value_int(pVal,PH7_ENT_QUOTES);
 }
 /*
  * ENT_NOQUOTES
@@ -852,7 +852,7 @@ static void PH7_ENT_NOQUOTES_Const(ph7_value *pVal,void *pUserData)
 static void PH7_ENT_IGNORE_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,4);
+	ph7_value_int(pVal,PH7_ENT_IGNORE);
 }
 /*
  * ENT_SUBSTITUTE
@@ -861,7 +861,7 @@ static void PH7_ENT_IGNORE_Const(ph7_value *pVal,void *pUserData)
 static void PH7_ENT_SUBSTITUTE_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,8);
+	ph7_value_int(pVal,PH7_ENT_SUBSTITUTE);
 }
 /*
  * ENT_DISALLOWED
@@ -870,7 +870,7 @@ static void PH7_ENT_SUBSTITUTE_Const(ph7_value *pVal,void *pUserData)
 static void PH7_ENT_DISALLOWED_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,128);
+	ph7_value_int(pVal,PH7_ENT_DISALLOWED);
 }
 /*
  * ENT_HTML401
@@ -879,7 +879,7 @@ static void PH7_ENT_DISALLOWED_Const(ph7_value *pVal,void *pUserData)
 static void PH7_ENT_HTML401_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0);
+	ph7_value_int(pVal,PH7_ENT_DOC_HTML401);
 }
 /*
  * ENT_XML1
@@ -888,7 +888,7 @@ static void PH7_ENT_HTML401_Const(ph7_value *pVal,void *pUserData)
 static void PH7_ENT_XML1_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,16);
+	ph7_value_int(pVal,PH7_ENT_DOC_XML1);
 }
 /*
  * ENT_XHTML
@@ -897,7 +897,7 @@ static void PH7_ENT_XML1_Const(ph7_value *pVal,void *pUserData)
 static void PH7_ENT_XHTML_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,32);
+	ph7_value_int(pVal,PH7_ENT_DOC_XHTML);
 }
 /*
  * ENT_HTML5
@@ -906,7 +906,7 @@ static void PH7_ENT_XHTML_Const(ph7_value *pVal,void *pUserData)
 static void PH7_ENT_HTML5_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,48);
+	ph7_value_int(pVal,PH7_ENT_DOC_HTML5);
 }
 /*
  * ISO-8859-1
