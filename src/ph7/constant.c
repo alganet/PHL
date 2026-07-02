@@ -1966,6 +1966,12 @@ PH7_FILTER_INT_CONST(FILTER_FLAG_ALLOW_SCIENTIFIC,16384)
 PH7_FILTER_INT_CONST(FILTER_FLAG_IPV4,1048576)
 PH7_FILTER_INT_CONST(FILTER_FLAG_IPV6,2097152)
 PH7_FILTER_INT_CONST(FILTER_NULL_ON_FAILURE,134217728)
+/* filter_input() source selectors (php values; SESSION/REQUEST are undefined in 8.5) */
+PH7_FILTER_INT_CONST(INPUT_POST,0)
+PH7_FILTER_INT_CONST(INPUT_GET,1)
+PH7_FILTER_INT_CONST(INPUT_COOKIE,2)
+PH7_FILTER_INT_CONST(INPUT_ENV,4)
+PH7_FILTER_INT_CONST(INPUT_SERVER,5)
 /*
  * Table of built-in constants.
  */
@@ -2010,6 +2016,11 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"FILTER_FLAG_IPV4",            PH7_FILTER_FLAG_IPV4_Const },
 	{"FILTER_FLAG_IPV6",            PH7_FILTER_FLAG_IPV6_Const },
 	{"FILTER_NULL_ON_FAILURE",      PH7_FILTER_NULL_ON_FAILURE_Const },
+	{"INPUT_POST",                  PH7_INPUT_POST_Const },
+	{"INPUT_GET",                   PH7_INPUT_GET_Const },
+	{"INPUT_COOKIE",                PH7_INPUT_COOKIE_Const },
+	{"INPUT_ENV",                   PH7_INPUT_ENV_Const },
+	{"INPUT_SERVER",                PH7_INPUT_SERVER_Const },
 	{"PHP_INT_MAX",          PH7_INTMAX_Const   },
 	{"MAXINT",               PH7_INTMAX_Const   },
 	{"PHP_INT_SIZE",         PH7_INTSIZE_Const  },

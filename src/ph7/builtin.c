@@ -5138,33 +5138,22 @@ static void FvSanitizeChars(ph7_context *pCtx,const char *z,int n,int isUrl){
 	if( n>runStart ){ ph7_result_string(pCtx,z+runStart,n-runStart); }
 }
 /*
- * filter_var($value, $filter = FILTER_DEFAULT, $options = 0)
- *  Validate or sanitize a value. The scalar input is coerced to a string and the
- *  selected filter applied; on validation failure the 'default' option (if any)
- *  is returned, else null when FILTER_NULL_ON_FAILURE is set, else false.
+ * Apply the selected filter to one already-resolved input value and write the
+ * result into pCtx. Shared by filter_var() and filter_input(): the caller has
+ * already parsed $filter/$flags/$options. On validation failure the 'default'
+ * option (if any) is returned, else null when FILTER_NULL_ON_FAILURE is set,
+ * else false. A validating filter that passes returns the (string) input
+ * unchanged; a sanitizer writes its transformed output directly.
  */
-static int PH7_builtin_filter_var(ph7_context *pCtx,int nArg,ph7_value **apArg)
+static int FvApplyFilter(ph7_context *pCtx,ph7_value *pInput,
+                         int iFilter,int iFlags,ph7_value *pOpts,
+                         ph7_value *pDefault)
 {
-	int iFilter = FV_DEFAULT, iFlags = 0, bNull;
-	ph7_value *pOpts = 0, *pDefault = 0;
+	int bNull = (iFlags & FV_NULL_ON_FAILURE) ? 1 : 0;
 	const char *zVal; int nVal;
-	if( nArg<1 ){ ph7_result_null(pCtx); return PH7_OK; }
-	if( nArg>1 ){ iFilter = ph7_value_to_int(apArg[1]); }
-	if( nArg>2 ){
-		if( ph7_value_is_array(apArg[2]) ){
-			ph7_value *pF = ph7_array_fetch(apArg[2],"flags",(int)sizeof("flags")-1);
-			if( pF ){ iFlags = ph7_value_to_int(pF); }
-			pOpts = ph7_array_fetch(apArg[2],"options",(int)sizeof("options")-1);
-			if( pOpts && !ph7_value_is_array(pOpts) ){ pOpts = 0; }
-			if( pOpts ){ pDefault = ph7_array_fetch(pOpts,"default",(int)sizeof("default")-1); }
-		}else{
-			iFlags = ph7_value_to_int(apArg[2]);
-		}
-	}
-	bNull = (iFlags & FV_NULL_ON_FAILURE) ? 1 : 0;
 	/* An array/object input fails every scalar filter. */
-	if( ph7_value_is_array(apArg[0]) ){ goto fail; }
-	zVal = ph7_value_to_string(apArg[0],&nVal);
+	if( ph7_value_is_array(pInput) ){ goto fail; }
+	zVal = ph7_value_to_string(pInput,&nVal);
 	switch( iFilter ){
 	case FV_VALIDATE_INT: {
 		ph7_int64 v;
@@ -5230,6 +5219,93 @@ fail:
 pass: /* validation passed: return the (string) input unchanged */
 	ph7_result_string(pCtx,zVal,nVal);
 	return PH7_OK;
+}
+/*
+ * Parse the ($filter, $options) pair shared by filter_var()/filter_input() out
+ * of apArg[iBase] ($filter) and apArg[iBase+1] ($options): $options is either a
+ * plain flags int, or an array with 'flags' and an 'options' sub-array (whose
+ * 'default' entry is the fallback value). Fills the four output pointers;
+ * unset outputs keep the caller-provided defaults.
+ */
+static void FvParseFilterArgs(int nArg,ph7_value **apArg,int iBase,
+                              int *piFilter,int *piFlags,
+                              ph7_value **ppOpts,ph7_value **ppDefault)
+{
+	if( nArg>iBase ){ *piFilter = ph7_value_to_int(apArg[iBase]); }
+	if( nArg>iBase+1 ){
+		if( ph7_value_is_array(apArg[iBase+1]) ){
+			ph7_value *pF = ph7_array_fetch(apArg[iBase+1],"flags",(int)sizeof("flags")-1);
+			if( pF ){ *piFlags = ph7_value_to_int(pF); }
+			*ppOpts = ph7_array_fetch(apArg[iBase+1],"options",(int)sizeof("options")-1);
+			if( *ppOpts && !ph7_value_is_array(*ppOpts) ){ *ppOpts = 0; }
+			if( *ppOpts ){ *ppDefault = ph7_array_fetch(*ppOpts,"default",(int)sizeof("default")-1); }
+		}else{
+			*piFlags = ph7_value_to_int(apArg[iBase+1]);
+		}
+	}
+}
+/*
+ * filter_var($value, $filter = FILTER_DEFAULT, $options = 0)
+ *  Validate or sanitize a value; see FvApplyFilter for the failure semantics.
+ */
+static int PH7_builtin_filter_var(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	int iFilter = FV_DEFAULT, iFlags = 0;
+	ph7_value *pOpts = 0, *pDefault = 0;
+	if( nArg<1 ){ ph7_result_null(pCtx); return PH7_OK; }
+	FvParseFilterArgs(nArg,apArg,1,&iFilter,&iFlags,&pOpts,&pDefault);
+	return FvApplyFilter(pCtx,apArg[0],iFilter,iFlags,pOpts,pDefault);
+}
+/*
+ * filter_input($type, $var_name, $filter = FILTER_DEFAULT, $options = 0)
+ *  Look up $var_name in the requested INPUT_* superglobal, then apply the
+ *  filter. Semantics verified byte-for-byte against php 8.5:
+ *   - variable NOT set: 'default' option wins, else false when
+ *     FILTER_NULL_ON_FAILURE is set, else null. (Note the null/false roles are
+ *     INVERTED relative to a present value that fails validation, which yields
+ *     default > null-if-NULL_ON_FAILURE > false via FvApplyFilter.)
+ *   - variable present: delegate to FvApplyFilter.
+ *  Divergence: php reads a SAPI snapshot of the original request variables
+ *  captured at startup; PHL reads the live superglobal. In CLI they match for
+ *  the SAPI-registered keys (SCRIPT_NAME/PHP_SELF/DOCUMENT_ROOT); keys added
+ *  only to the live $_SERVER (REQUEST_TIME/PWD/…) are visible here but not in
+ *  php's snapshot.
+ */
+static int PH7_builtin_filter_input(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	int iType, iFilter = FV_DEFAULT, iFlags = 0;
+	ph7_value *pOpts = 0, *pDefault = 0, *pSuper, *pElem;
+	const char *zVar, *zSuper; int nVar; sxu32 nSuper;
+	if( nArg<2 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"filter_input() expects at least 2 arguments, %d given",nArg);
+	}
+	iType = ph7_value_to_int(apArg[0]);
+	switch( iType ){
+	case 0: zSuper = "_POST";   nSuper = (sxu32)sizeof("_POST")-1;   break; /* INPUT_POST */
+	case 1: zSuper = "_GET";    nSuper = (sxu32)sizeof("_GET")-1;    break; /* INPUT_GET */
+	case 2: zSuper = "_COOKIE"; nSuper = (sxu32)sizeof("_COOKIE")-1; break; /* INPUT_COOKIE */
+	case 4: zSuper = "_ENV";    nSuper = (sxu32)sizeof("_ENV")-1;    break; /* INPUT_ENV */
+	case 5: zSuper = "_SERVER"; nSuper = (sxu32)sizeof("_SERVER")-1; break; /* INPUT_SERVER */
+	default:
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"filter_input(): Argument #1 ($type) must be an INPUT_* constant");
+	}
+	zVar = ph7_value_to_string(apArg[1],&nVar);
+	FvParseFilterArgs(nArg,apArg,2,&iFilter,&iFlags,&pOpts,&pDefault);
+	/* Resolve the variable from the superglobal (missing/non-array -> not set). */
+	pSuper = PH7_VmExtractSuper(pCtx->pVm,zSuper,nSuper);
+	pElem = (pSuper && ph7_value_is_array(pSuper))
+		? ph7_array_fetch(pSuper,zVar,nVar) : 0;
+	if( pElem==0 ){
+		/* Variable not set: default > false(if NULL_ON_FAILURE) > null. Note the
+		 * false/null roles are inverted vs FvApplyFilter's present-but-fails path. */
+		if( pDefault ){ ph7_result_value(pCtx,pDefault); }
+		else if( iFlags & FV_NULL_ON_FAILURE ){ ph7_result_bool(pCtx,0); }
+		else { ph7_result_null(pCtx); }
+		return PH7_OK;
+	}
+	return FvApplyFilter(pCtx,pElem,iFilter,iFlags,pOpts,pDefault);
 }
 #endif /* PH7_NEED_BUILTIN_REG */
 #ifdef PH7_NEED_FMT_AND_INI
@@ -7910,6 +7986,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "password_get_info",     PH7_builtin_password_get_info },
 	{ "password_needs_rehash", PH7_builtin_password_needs_rehash },
 	{ "filter_var",            PH7_builtin_filter_var },
+	{ "filter_input",          PH7_builtin_filter_input },
 #endif /* PH7_NEED_BUILTIN_REG */
 #ifdef PH7_NEED_FMT_AND_INI
 	{ "str_getcsv",   PH7_builtin_str_getcsv },
