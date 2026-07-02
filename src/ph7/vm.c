@@ -5848,9 +5848,13 @@ case PH7_OP_CVT_BOOL:
 		PH7_MemObjToBool(pTos);
 	}
 	break;
-/* PH7_OP_CVT_NULL, the '(unset)' cast, has no execution case: emitting it
+/* PH7_OP_CVT_NULL, the '(unset)' cast, must never execute: emitting it
  * always raises "The (unset) cast is no longer supported" (php 8 removed
- * the cast), so a program containing it never compiles. */
+ * the cast), so a program containing it never compiles. The switch has no
+ * default arm, so abort loudly rather than fall through as a silent no-op
+ * if a future emitter ever produces one without the compile error. */
+case PH7_OP_CVT_NULL:
+	goto Abort;
 /*
  * CVT_NUMC: * * *
  *

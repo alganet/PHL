@@ -27,12 +27,16 @@ echo "hex: ", "\x41", " ", bin2hex("\x5"), " ", bin2hex("\x5!"), " ", bin2hex("\
 // Unicode codepoint escapes \u{...}; bare \u stays literal
 echo "unicode: ", bin2hex("\u{e9}"), " ", bin2hex("\u{1F600}"), " ", "\u{0000041}", " ", bin2hex("\u"), " ", bin2hex("\u9"), "\n";
 
-// Heredoc shares double-quote escape semantics
+// Heredoc shares double-quote escape semantics — except \" (no active quote
+// char, so the backslash stays) — and keeps a trailing lone backslash
 $v = "interp";
 echo <<<EOT
-heredoc: \o146 \d \146 \u{e9} \x41 $v
+heredoc: \o146 \d \146 \u{e9} \x41 $v \"q\" \$raw tail\
 EOT;
 echo "\n";
+
+// \u{ followed by $ is not a codepoint escape: literal \u + {$...} interpolation
+echo "u-interp: ", "\u{$v}", "\n";
 
 // Nowdoc: no escape processing at all
 echo <<<'EOT'
@@ -49,7 +53,8 @@ o-literal: \o146 \o \o9
 octal: 00 01 0a AB ff A8
 hex: A 05 0521 5c7847 5c78
 unicode: c3a9 f09f9880 A 5c75 5c7539
-heredoc: \o146 \d f é A interp
+heredoc: \o146 \d f é A interp \"q\" $raw tail\
+u-interp: \uinterp
 nowdoc: \o146 \d \146 \u{e9} \x41 \n
 --CLEAN--
 <?php
