@@ -839,7 +839,7 @@ static sxu32 KeywordCode(const char *z, int n){
        /* PH7_TKWRD_INT */
        /* PH7_TKWRD_REQONCE */
        /* PH7_TKWRD_REQUIRE */
-       /* PH7_TK_ID ('eq' PH7-ism removed) */
+       /* PH7_TK_ID */
        /* PH7_TKWRD_ENDDEC */
        /* PH7_TKWRD_DECLARE */
        /* PH7_TKWRD_RETURN */
@@ -858,7 +858,7 @@ static sxu32 KeywordCode(const char *z, int n){
        /* PH7_TKWRD_LIST */
        /* PH7_TKWRD_STATIC */
        /* PH7_TKWRD_CLONE */
-       /* PH7_TK_ID ('ne' PH7-ism removed) */
+       /* PH7_TK_ID */
        /* PH7_TKWRD_NEW */
        /* PH7_TKWRD_CONST */
        /* PH7_TKWRD_STRING */

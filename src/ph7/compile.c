@@ -1012,7 +1012,26 @@ static ph7_value * GenStateNewStrObj(ph7_gen_state *pGen,sxi32 *pCount)
  * The most important feature of double-quoted strings is the fact that variable names will be expanded.
  * See string parsing for details.
  */
-static sxi32 GenStateCompileString(ph7_gen_state *pGen)
+/*
+ * Line number of an escape sequence inside the string body being compiled:
+ * the token's line plus every newline before the escape (php reports the
+ * escape's own line, not the string's opening line). A heredoc body starts
+ * on the line after the '<<<' marker, hence the +1.
+ */
+static sxu32 GenStateStringEscLine(ph7_gen_state *pGen,const char *zPos,int bHeredoc)
+{
+	const char *z = pGen->pIn->sData.zString;
+	sxu32 nLine = pGen->pIn->nLine + (bHeredoc ? 1 : 0);
+	for( ; z < zPos ; z++ ){
+		if( z[0] == '\n' ){
+			nLine++;
+		}
+	}
+	return nLine;
+}
+/* bHeredoc: php strips the backslash from '\"' only when '"' is the active
+ * quote character; a heredoc has none, so '\"' stays verbatim there. */
+static sxi32 GenStateCompileString(ph7_gen_state *pGen,int bHeredoc)
 {
 	SyString *pStr = &pGen->pIn->sData; /* Raw token value */
 	const char *zIn,*zCur,*zEnd;
@@ -1060,14 +1079,16 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen)
 			const char *zPtr = 0;
 			sxu32 n;
 			zIn++;
-			if( zIn >= zEnd ){
-				break;
-			}
 			if( pObj == 0 ){
 				pObj = GenStateNewStrObj(&(*pGen),&iCons);
 				if( pObj == 0 ){
 					return SXERR_ABORT;
 				}
+			}
+			if( zIn >= zEnd ){
+				/* Lone backslash at the very end of the body: php keeps it */
+				PH7_MemObjStringAppend(pObj,"\\",sizeof(char));
+				break;
 			}
 			n = sizeof(char); /* size of conversion */
 			switch( zIn[0] ){
@@ -1104,16 +1125,22 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen)
 				PH7_MemObjStringAppend(pObj,"\v",sizeof(char));
 				break;
 			case '"':
-				/* Double quote */
-				PH7_MemObjStringAppend(pObj,"\"",sizeof(char));
+				if( bHeredoc ){
+					/* No active quote char in a heredoc: php keeps \" verbatim */
+					PH7_MemObjStringAppend(pObj,"\\\"",sizeof(char)*2);
+				}else{
+					/* Double quote */
+					PH7_MemObjStringAppend(pObj,"\"",sizeof(char));
+				}
 				break;
 			case '0': case '1': case '2': case '3':
 			case '4': case '5': case '6': case '7': {
 				/* \[0-7]{1,3}: a character in octal notation. A value above \377
 				 * warns and wraps to the low byte, matching php 8. */
 				int c = 0;
+				char cOut;
 				for( zPtr = zIn ; zPtr < &zIn[3*sizeof(char)] ; zPtr++ ){
-					if( zPtr >= zEnd || (unsigned char)zPtr[0] >= 0xc0 || zPtr[0] < '0' || zPtr[0] > '7' ){
+					if( zPtr >= zEnd || zPtr[0] < '0' || zPtr[0] > '7' ){
 						break;
 					}
 					c = c * 8 + (zPtr[0] - '0');
@@ -1121,41 +1148,46 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen)
 				if( c > 0xFF ){
 					SyString sSeq;
 					SyStringInitFromBuf(&sSeq,zIn,(sxu32)(zPtr-zIn));
-					PH7_GenCompileError(&(*pGen),E_WARNING,pGen->pIn->nLine,
+					PH7_GenCompileError(&(*pGen),E_WARNING,GenStateStringEscLine(&(*pGen),zIn,bHeredoc),
 						"Octal escape sequence overflow \\%z is greater than \\377",&sSeq);
 					c &= 0xFF;
 				}
-				PH7_MemObjStringAppend(pObj,(const char *)&c,sizeof(char));
+				cOut = (char)c; /* value byte, independent of host endianness */
+				PH7_MemObjStringAppend(pObj,&cOut,sizeof(char));
 				n = (sxu32)(zPtr-zIn);
 				break;
 			}
 			case 'x':
-				if( &zIn[1] < zEnd && (unsigned char)zIn[1] < 0xc0 && SyisHex(zIn[1]) ){
+				if( &zIn[1] < zEnd && SyisHex((unsigned char)zIn[1]) ){
 					/* \x[0-9A-Fa-f]{1,2}: a character in hexadecimal notation */
 					int c = SyHexToint(zIn[1]);
+					char cOut;
 					n += sizeof(char);
-					if( &zIn[2] < zEnd && (unsigned char)zIn[2] < 0xc0 && SyisHex(zIn[2]) ){
+					if( &zIn[2] < zEnd && SyisHex((unsigned char)zIn[2]) ){
 						c = (c << 4) + SyHexToint(zIn[2]);
 						n += sizeof(char);
 					}
-					PH7_MemObjStringAppend(pObj,(const char *)&c,sizeof(char));
+					cOut = (char)c; /* value byte, independent of host endianness */
+					PH7_MemObjStringAppend(pObj,&cOut,sizeof(char));
 				}else{
 					/* Not an escape: keep the backslash, as php does */
 					PH7_MemObjStringAppend(pObj,"\\x",sizeof(char)*2);
 				}
 				break;
 			case 'u':
-				if( &zIn[1] < zEnd && zIn[1] == '{' ){
+				if( &zIn[1] < zEnd && zIn[1] == '{'
+				 && !(&zIn[2] < zEnd && zIn[2] == '$') ){
 					/* \u{codepoint}: UTF-8 encoding of the given codepoint (php 7+).
 					 * php encodes surrogates verbatim, so the only invalid value
-					 * is > U+10FFFF; malformed/empty braces are a compile error. */
+					 * is > U+10FFFF; malformed/empty braces are a compile error.
+					 * "\u{$..." is excluded above: php treats it as a literal \u
+					 * followed by {$...} curly interpolation. */
 					sxu32 nCp = 0;
-					int bOvf = 0;
 					zPtr = &zIn[2];
-					while( zPtr < zEnd && (unsigned char)zPtr[0] < 0xc0 && SyisHex(zPtr[0]) ){
-						if( nCp > 0x10FFFF ){
-							bOvf = 1; /* stop accumulating: a long digit run would wrap sxu32 */
-						}else{
+					while( zPtr < zEnd && SyisHex((unsigned char)zPtr[0]) ){
+						if( nCp <= 0x10FFFF ){
+							/* stop accumulating once out of range: keeps a long
+							 * digit run from wrapping sxu32 */
 							nCp = nCp * 16 + (sxu32)SyHexToint(zPtr[0]);
 						}
 						zPtr++;
@@ -1163,18 +1195,24 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen)
 					if( zPtr == &zIn[2] || zPtr >= zEnd || zPtr[0] != '}' ){
 						/* Error recorded (nErr>0 fails the whole compile); consume the
 						 * malformed sequence so later errors are still reported. */
-						PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
+						rc = PH7_GenCompileError(&(*pGen),E_ERROR,GenStateStringEscLine(&(*pGen),zIn,bHeredoc),
 							"Invalid UTF-8 codepoint escape sequence");
+						if( rc == SXERR_ABORT ){
+							return SXERR_ABORT;
+						}
 						n = (sxu32)(zPtr-zIn);
 						if( zPtr < zEnd && zPtr[0] == '}' ){
 							n += sizeof(char);
 						}
 						break;
 					}
-					if( bOvf || nCp > 0x10FFFF ){
-						PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
+					n = (sxu32)(&zPtr[1]-zIn); /* 'u{...}' incl. closing brace */
+					if( nCp > 0x10FFFF ){
+						rc = PH7_GenCompileError(&(*pGen),E_ERROR,GenStateStringEscLine(&(*pGen),zIn,bHeredoc),
 							"Invalid UTF-8 codepoint escape sequence: Codepoint too large");
-						n = (sxu32)(&zPtr[1]-zIn);
+						if( rc == SXERR_ABORT ){
+							return SXERR_ABORT;
+						}
 						break;
 					}
 					{
@@ -1183,16 +1221,16 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen)
 						SX_WRITE_UTF8(zOut,nCp);
 						PH7_MemObjStringAppend(pObj,zUtf,(sxu32)(zOut-(sxu8 *)zUtf));
 					}
-					n = (sxu32)(&zPtr[1]-zIn);
 				}else{
 					/* Not an escape: keep the backslash, as php does */
 					PH7_MemObjStringAppend(pObj,"\\u",sizeof(char)*2);
 				}
 				break;
 			default:
-				/* Unrecognized escape: keep the backslash, as php does */
-				PH7_MemObjStringAppend(pObj,"\\",sizeof(char));
-				PH7_MemObjStringAppend(pObj,zIn,sizeof(char));
+				/* Unrecognized escape: keep the backslash, as php does.
+				 * zIn[-1] is the backslash itself, so both bytes are contiguous
+				 * in the source buffer — one batched append. */
+				PH7_MemObjStringAppend(pObj,&zIn[-1],sizeof(char)*2);
 				break;
 			}
 			/* Advance the stream cursor */
@@ -1329,7 +1367,7 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen)
 PH7_PRIVATE sxi32 PH7_CompileString(ph7_gen_state *pGen,sxi32 iCompileFlag)
 {
 	sxi32 rc;
-	rc = GenStateCompileString(&(*pGen));
+	rc = GenStateCompileString(&(*pGen),0/*bHeredoc*/);
 	SXUNUSED(iCompileFlag); /* cc warning */
 	/* Compilation result */
 	return rc;
@@ -1352,7 +1390,7 @@ PH7_PRIVATE sxi32 PH7_CompileHereDoc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	 * unaffected, including on the error path. */
 	sOrig = pGen->pIn->sData;
 	pGen->pIn->sData = sStripped;
-	rc = GenStateCompileString(&(*pGen));
+	rc = GenStateCompileString(&(*pGen),1/*bHeredoc*/);
 	pGen->pIn->sData = sOrig;
 	SXUNUSED(iCompileFlag); /* cc warning */
 	return rc;
@@ -11294,8 +11332,11 @@ static sxi32 GenStateEmitExprCode(
 		/* php 8 removed the (unset) cast. Error recorded (nErr>0 fails the
 		 * whole compile); keep emitting so expression codegen stays aligned
 		 * and later errors are still reported. */
-		PH7_GenCompileError(&(*pGen),E_ERROR,pNode->pStart->nLine,
+		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pNode->pStart->nLine,
 			"The (unset) cast is no longer supported");
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
 	}
 	if( pNode->pOp->iOp == EXPR_OP_NULLC_ASSIGN ){
 		sxu32 nJmp = 0;
