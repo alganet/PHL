@@ -5848,19 +5848,9 @@ case PH7_OP_CVT_BOOL:
 		PH7_MemObjToBool(pTos);
 	}
 	break;
-/*
- * CVT_NULL: * * *
- *
- * Nullify the top of the stack.
- */
-case PH7_OP_CVT_NULL:
-#ifdef UNTRUST
-	if( pTos < pStack ){
-		goto Abort;
-	}
-#endif
-	PH7_MemObjRelease(pTos);
-	break;
+/* PH7_OP_CVT_NULL, the '(unset)' cast, has no execution case: emitting it
+ * always raises "The (unset) cast is no longer supported" (php 8 removed
+ * the cast), so a program containing it never compiles. */
 /*
  * CVT_NUMC: * * *
  *
