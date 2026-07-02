@@ -1098,20 +1098,20 @@ Coverage: 1070/1082 lines (98.89%)
 |      - | 1088 | ` * PATHINFO_EXTENSION` |
 |      - | 1089 | ` *  Expand 3.` |
 |      - | 1090 | ` */` |
-|   6110 | 1091 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
+|   6112 | 1091 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1092 | `{` |
-|   3055 | 1093 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6115 | 1094 | `	ph7_value_int(pVal,3);` |
-|   6115 | 1095 | `}` |
+|   3056 | 1093 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6117 | 1094 | `	ph7_value_int(pVal,3);` |
+|   6117 | 1095 | `}` |
 |      - | 1096 | `/*` |
 |      - | 1097 | ` * PATHINFO_FILENAME` |
 |      - | 1098 | ` *  Expand 4.` |
 |      - | 1099 | ` */` |
-|   6102 | 1100 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
+|   6104 | 1100 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1101 | `{` |
-|   3051 | 1102 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6107 | 1103 | `	ph7_value_int(pVal,4);` |
-|   6107 | 1104 | `}` |
+|   3052 | 1102 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6109 | 1103 | `	ph7_value_int(pVal,4);` |
+|   6109 | 1104 | `}` |
 |      - | 1105 | `/*` |
 |      - | 1106 | ` * ASSERT_ACTIVE.` |
 |      - | 1107 | ` *  PHP ASSERT_ACTIVE = 1` |
@@ -1955,7 +1955,7 @@ Coverage: 1070/1082 lines (98.89%)
 |    ! 0 | 1945 | `PH7_FILTER_INT_CONST(FILTER_UNSAFE_RAW,516)` |
 |     59 | 1946 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_INT,257)` |
 |     29 | 1947 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_BOOLEAN,258)` |
-|     41 | 1948 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_FLOAT,259)` |
+|     69 | 1948 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_FLOAT,259)` |
 |      8 | 1949 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_REGEXP,272)` |
 |     11 | 1950 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_DOMAIN,277)` |
 |     15 | 1951 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_URL,273)` |
@@ -1971,7 +1971,7 @@ Coverage: 1070/1082 lines (98.89%)
 |      3 | 1961 | `PH7_FILTER_INT_CONST(FILTER_FLAG_ALLOW_OCTAL,1)` |
 |      3 | 1962 | `PH7_FILTER_INT_CONST(FILTER_FLAG_ALLOW_HEX,2)` |
 |      3 | 1963 | `PH7_FILTER_INT_CONST(FILTER_FLAG_ALLOW_FRACTION,4096)` |
-|     23 | 1964 | `PH7_FILTER_INT_CONST(FILTER_FLAG_ALLOW_THOUSAND,8192)` |
+|     25 | 1964 | `PH7_FILTER_INT_CONST(FILTER_FLAG_ALLOW_THOUSAND,8192)` |
 |      3 | 1965 | `PH7_FILTER_INT_CONST(FILTER_FLAG_ALLOW_SCIENTIFIC,16384)` |
 |      5 | 1966 | `PH7_FILTER_INT_CONST(FILTER_FLAG_IPV4,1048576)` |
 |      3 | 1967 | `PH7_FILTER_INT_CONST(FILTER_FLAG_IPV6,2097152)` |
