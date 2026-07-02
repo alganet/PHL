@@ -29,11 +29,10 @@ $base = 10;
 $ref = &$base;
 $ref = 20;
 
-// Test PH7 specific operators
 $a = "hello";
 $b = "world";
-$result = $a eq $b;  // PH7 string equality
-$result2 = $a ne $b; // PH7 string inequality
+$result = $a . $b;
+$result2 = $a !== $b;
 
 // Test comma operator (PH7 extension)
 $counter = 5;

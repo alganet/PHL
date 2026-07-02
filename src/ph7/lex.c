@@ -85,8 +85,8 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 		}
 		if( nKeyword != PH7_TK_ID ){
 			if( nKeyword &
-				(PH7_TKWRD_NEW|PH7_TKWRD_CLONE|PH7_TKWRD_AND|PH7_TKWRD_XOR|PH7_TKWRD_OR|PH7_TKWRD_INSTANCEOF|PH7_TKWRD_SEQ|PH7_TKWRD_SNE) ){
-					/* Alpha stream operators [i.e: new,clone,and,instanceof,eq,ne,or,xor],save the operator instance for later processing */
+				(PH7_TKWRD_NEW|PH7_TKWRD_CLONE|PH7_TKWRD_AND|PH7_TKWRD_XOR|PH7_TKWRD_OR|PH7_TKWRD_INSTANCEOF) ){
+					/* Alpha stream operators [i.e: new,clone,and,instanceof,or,xor],save the operator instance for later processing */
 					pToken->pUserData = (void *)PH7_ExprExtractOperator(pStr,0);
 					/* Mark as an operator */
 					pToken->nType = PH7_TK_ID|PH7_TK_OP;
@@ -810,11 +810,11 @@ static sxu32 KeywordCode(const char *z, int n){
   };
   static const sxu32 aCode[84] = {
     PH7_TKWRD_EXTENDS,   PH7_TKWRD_ENDSWITCH,   PH7_TKWRD_SWITCH,    PH7_TKWRD_PRINT,   PH7_TKWRD_INT,
-    PH7_TKWRD_REQONCE,   PH7_TKWRD_REQUIRE,     PH7_TKWRD_SEQ,       PH7_TKWRD_ENDDEC,    PH7_TKWRD_DECLARE,
+    PH7_TKWRD_REQONCE,   PH7_TKWRD_REQUIRE,     PH7_TK_ID /* 'eq' PH7-ism removed */, PH7_TKWRD_ENDDEC, PH7_TKWRD_DECLARE,
     PH7_TKWRD_RETURN,    PH7_TKWRD_NAMESPACE,   PH7_TKWRD_ECHO,      PH7_TKWRD_OBJECT,    PH7_TKWRD_THROW,
     PH7_TKWRD_BOOL,      PH7_TKWRD_BOOL,        PH7_TKWRD_AND,       PH7_TKWRD_DEFAULT,   PH7_TKWRD_TRY,
     PH7_TKWRD_CASE,      PH7_TKWRD_SELF,        PH7_TKWRD_FINAL,     PH7_TKWRD_LIST,      PH7_TKWRD_STATIC,
-    PH7_TKWRD_CLONE,     PH7_TKWRD_SNE,         PH7_TKWRD_NEW,       PH7_TKWRD_CONST,     PH7_TKWRD_STRING,
+    PH7_TKWRD_CLONE,     PH7_TK_ID /* 'ne' PH7-ism removed */, PH7_TKWRD_NEW,  PH7_TKWRD_CONST,     PH7_TKWRD_STRING,
     PH7_TKWRD_GLOBAL,    PH7_TKWRD_USE,         PH7_TKWRD_ELIF,      PH7_TKWRD_ELSE,      PH7_TKWRD_IF,
     PH7_TKWRD_FLOAT,     PH7_TKWRD_VAR,         PH7_TKWRD_ARRAY,     PH7_TKWRD_AND,       PH7_TKWRD_DIE,
     PH7_TKWRD_ECHO,      PH7_TKWRD_USE,         PH7_TKWRD_ECHO,      PH7_TKWRD_ABSTRACT,  PH7_TKWRD_CLASS,
@@ -839,7 +839,7 @@ static sxu32 KeywordCode(const char *z, int n){
        /* PH7_TKWRD_INT */
        /* PH7_TKWRD_REQONCE */
        /* PH7_TKWRD_REQUIRE */
-       /* PH7_TKWRD_SEQ */
+       /* PH7_TK_ID ('eq' PH7-ism removed) */
        /* PH7_TKWRD_ENDDEC */
        /* PH7_TKWRD_DECLARE */
        /* PH7_TKWRD_RETURN */
@@ -858,7 +858,7 @@ static sxu32 KeywordCode(const char *z, int n){
        /* PH7_TKWRD_LIST */
        /* PH7_TKWRD_STATIC */
        /* PH7_TKWRD_CLONE */
-       /* PH7_TKWRD_SNE */
+       /* PH7_TK_ID ('ne' PH7-ism removed) */
        /* PH7_TKWRD_NEW */
        /* PH7_TKWRD_CONST */
        /* PH7_TKWRD_STRING */
