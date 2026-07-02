@@ -1003,34 +1003,39 @@ static int PH7_builtin_stripslashes(ph7_context *pCtx,int nArg,ph7_value **apArg
 	return PH7_OK;
 }
 /*
- * string htmlspecialchars(string $string [, int $flags = ENT_COMPAT | ENT_HTML401 [, string $charset]])
- *  HTML escaping of special characters.
- *  The translations performed are:
- *   '&' (ampersand) ==> '&amp;'
- *   '"' (double quote) ==> '&quot;' when ENT_NOQUOTES is not set.
- *   "'" (single quote) ==> '&#039;' only when ENT_QUOTES is set.
- *   '<' (less than) ==> '&lt;'
- *   '>' (greater than) ==> '&gt;'
- * Parameters
- *  $string
- *   The string being converted.
- * $flags
- *   A bitmask of one or more of the following flags, which specify how to handle quotes.
- *   The default is ENT_COMPAT | ENT_HTML401.
- *   ENT_COMPAT 	Will convert double-quotes and leave single-quotes alone.
- *   ENT_QUOTES 	Will convert both double and single quotes.
- *   ENT_NOQUOTES 	Will leave both double and single quotes unconverted.
- *   ENT_IGNORE 	Silently discard invalid code unit sequences instead of returning an empty string.
- * $charset
- *  Defines character set used in conversion. The default character set is ISO-8859-1. (Not used)
+ * UTF-8-aware HTML entity machinery, shared by htmlspecialchars/htmlentities/
+ * htmlspecialchars_decode/html_entity_decode/get_html_translation_table.
+ * The implementations live further down in this file, next to the filter_var
+ * FULL_SPECIAL_CHARS machinery they reuse (aHtml401Ent[]/FvHtml401Lookup()/
+ * FvUtf8Next()). Semantics are byte-exact vs php 8.5.7; PHL is UTF-8-only
+ * (PLAN.md §6) so every charset argument other than a UTF-8 alias gets PHP's
+ * unsupported-charset warning and is treated as UTF-8.
+ *
+ * Flag model (the PHP-exact ENT_* values, see constant.c): bit 1 = encode/
+ * decode single quotes, bit 2 = double quotes (ENT_QUOTES=3, ENT_COMPAT=2,
+ * ENT_NOQUOTES=0); bits 16|32 select the doctype (0=HTML401, 16=XML1,
+ * 32=XHTML, 48=HTML5); ENT_IGNORE=4 drops invalid UTF-8 bytes (wins over
+ * ENT_SUBSTITUTE=8, which replaces each with U+FFFD; with neither set the
+ * whole result collapses to ""); ENT_DISALLOWED=128 substitutes valid but
+ * doctype-disallowed codepoints. The shared default is
+ * ENT_QUOTES|ENT_SUBSTITUTE|ENT_HTML401 = 11.
+ */
+static void HtmlEscape(ph7_context *pCtx,const char *zIn,int nIn,int iFlags,int bAll,int bDoubleEncode);
+static void HtmlUnescape(ph7_context *pCtx,const char *zIn,int nIn,int iFlags,int bFull);
+static void HtmlCheckCharset(ph7_context *pCtx,int nArg,ph7_value **apArg,int idx);
+static void HtmlTranslationTable(ph7_context *pCtx,int iTable,int iFlags);
+/*
+ * string htmlspecialchars(string $string [, int $flags = ENT_QUOTES|ENT_SUBSTITUTE|ENT_HTML401
+ *                         [, ?string $encoding = "UTF-8" [, bool $double_encode = true]]])
+ *  Convert the special characters & < > " ' to HTML entities.
  * Return
  *  The escaped string or NULL on failure.
  */
 static int PH7_builtin_htmlspecialchars(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const char *zCur,*zIn,*zEnd;
-	int iFlags = 0x01|0x40; /* ENT_COMPAT | ENT_HTML401 */
-	int nLen,c;
+	int iFlags = 11; /* ENT_QUOTES|ENT_SUBSTITUTE|ENT_HTML401 */
+	const char *zIn;
+	int nLen,bDouble = 1;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid arguments,return NULL */
 		ph7_result_null(pCtx);
@@ -1038,86 +1043,28 @@ static int PH7_builtin_htmlspecialchars(ph7_context *pCtx,int nArg,ph7_value **a
 	}
 	/* Extract the target string */
 	zIn = ph7_value_to_string(apArg[0],&nLen);
-	/* Return early when the input is empty, mirroring PHP's behavior. */
-	if( nLen == 0 ){
-		ph7_result_string(pCtx,"",0);
-		return PH7_OK;
-	}
-	zEnd = &zIn[nLen];
-	/* Extract the flags if available */
 	if( nArg > 1 ){
 		iFlags = ph7_value_to_int(apArg[1]);
-		if( iFlags < 0 ){
-			iFlags = 0x01|0x40;
-		}
 	}
-	/* Perform the requested operation */
-	for(;;){
-		if( zIn >= zEnd ){
-			break;
-		}
-		zCur = zIn;
-		while( zIn < zEnd && zIn[0] != '&' && zIn[0] != '\'' && zIn[0] != '"' && zIn[0] != '<' && zIn[0] != '>' ){
-			zIn++;
-		}
-		if( zCur < zIn ){
-			/* Append the raw string verbatim */
-			ph7_result_string(pCtx,zCur,(int)(zIn-zCur));
-		}
-		if( zIn >= zEnd ){
-			break;
-		}
-		c = zIn[0];
-		if( c == '&' ){
-			/* Expand '&amp;' */
-			ph7_result_string(pCtx,"&amp;",(int)sizeof("&amp;")-1);
-		}else if( c == '<' ){
-			/* Expand '&lt;' */
-			ph7_result_string(pCtx,"&lt;",(int)sizeof("&lt;")-1);
-		}else if( c == '>' ){
-			/* Expand '&gt;' */
-			ph7_result_string(pCtx,"&gt;",(int)sizeof("&gt;")-1);
-		}else if( c == '\'' ){
-			if( iFlags & 0x02 /*ENT_QUOTES*/ ){
-				/* Expand '&#039;' */
-				ph7_result_string(pCtx,"&#039;",(int)sizeof("&#039;")-1);
-			}else{
-				/* Leave the single quote untouched */
-				ph7_result_string(pCtx,"'",(int)sizeof(char));
-			}
-		}else if( c == '"' ){
-			if( (iFlags & 0x04) == 0 /*ENT_NOQUOTES*/ ){
-				/* Expand '&quot;' */
-				ph7_result_string(pCtx,"&quot;",(int)sizeof("&quot;")-1);
-			}else{
-				/* Leave the double quote untouched */
-				ph7_result_string(pCtx,"\"",(int)sizeof(char));
-			}
-		}
-		/* Ignore the unsafe HTML character */
-		zIn++;
+	HtmlCheckCharset(pCtx,nArg,apArg,2);
+	if( nArg > 3 ){
+		bDouble = ph7_value_to_bool(apArg[3]);
 	}
+	HtmlEscape(pCtx,zIn,nLen,iFlags,0,bDouble);
 	return PH7_OK;
 }
 /*
- * string htmlspecialchars_decode(string $string[,int $quote_style = ENT_COMPAT ])
- *  Unescape HTML entities.
- * Parameters
- *  $string
- *   The string to decode
- *  $quote_style
- *    The quote style. One of the following constants:
- *   ENT_COMPAT 	Will convert double-quotes and leave single-quotes alone (default)
- *   ENT_QUOTES 	Will convert both double and single quotes
- *   ENT_NOQUOTES 	Will leave both double and single quotes unconverted
+ * string htmlspecialchars_decode(string $string [, int $flags = ENT_QUOTES|ENT_SUBSTITUTE|ENT_HTML401])
+ *  Convert the special HTML entities (&amp; &lt; &gt; &quot; and the
+ *  numeric/doctype forms of the two quotes) back to characters.
  * Return
  *  The unescaped string or NULL on failure.
  */
 static int PH7_builtin_htmlspecialchars_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const char *zCur,*zIn,*zEnd;
-	int iFlags = 0x01; /* ENT_COMPAT */
-	int nLen,nJump;
+	int iFlags = 11; /* ENT_QUOTES|ENT_SUBSTITUTE|ENT_HTML401 */
+	const char *zIn;
+	int nLen;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid arguments,return NULL */
 		ph7_result_null(pCtx);
@@ -1125,142 +1072,47 @@ static int PH7_builtin_htmlspecialchars_decode(ph7_context *pCtx,int nArg,ph7_va
 	}
 	/* Extract the target string */
 	zIn = ph7_value_to_string(apArg[0],&nLen);
-	zEnd = &zIn[nLen];
-	/* Extract the flags if available */
 	if( nArg > 1 ){
 		iFlags = ph7_value_to_int(apArg[1]);
-		if( iFlags < 0 ){
-			iFlags = 0x01;
-		}
 	}
-	/* Perform the requested operation */
-	for(;;){
-		if( zIn >= zEnd ){
-			break;
-		}
-		zCur = zIn;
-		while( zIn < zEnd && zIn[0] != '&' ){
-			zIn++;
-		}
-		if( zCur < zIn ){
-			/* Append the raw string verbatim */
-			ph7_result_string(pCtx,zCur,(int)(zIn-zCur));
-		}
-		nLen = (int)(zEnd-zIn);
-		nJump = (int)sizeof(char);
-		if( nLen >= (int)sizeof("&amp;")-1 && SyStrnicmp(zIn,"&amp;",sizeof("&amp;")-1) == 0 ){
-			/* &amp; ==> '&' */
-			ph7_result_string(pCtx,"&",(int)sizeof(char));
-			nJump = (int)sizeof("&amp;")-1;
-		}else if( nLen >= (int)sizeof("&lt;")-1 && SyStrnicmp(zIn,"&lt;",sizeof("&lt;")-1) == 0 ){
-			/* &lt; ==> < */
-			ph7_result_string(pCtx,"<",(int)sizeof(char));
-			nJump = (int)sizeof("&lt;")-1;
-		}else if( nLen >= (int)sizeof("&gt;")-1 && SyStrnicmp(zIn,"&gt;",sizeof("&gt;")-1) == 0 ){
-			/* &gt; ==> '>' */
-			ph7_result_string(pCtx,">",(int)sizeof(char));
-			nJump = (int)sizeof("&gt;")-1;
-		}else if( nLen >= (int)sizeof("&quot;")-1 && SyStrnicmp(zIn,"&quot;",sizeof("&quot;")-1) == 0 ){
-			/* &quot; ==> '"' */
-			if( (iFlags & 0x04) == 0 /*ENT_NOQUOTES*/ ){
-				ph7_result_string(pCtx,"\"",(int)sizeof(char));
-			}else{
-				/* Leave untouched */
-				ph7_result_string(pCtx,"&quot;",(int)sizeof("&quot;")-1);
-			}
-			nJump = (int)sizeof("&quot;")-1;
-		}else if( nLen >= (int)sizeof("&#039;")-1 && SyStrnicmp(zIn,"&#039;",sizeof("&#039;")-1) == 0 ){
-			/* &#039; ==> ''' */
-			if( iFlags & 0x02 /*ENT_QUOTES*/ ){
-				/* Expand ''' */
-				ph7_result_string(pCtx,"'",(int)sizeof(char));
-			}else{
-				/* Leave untouched */
-				ph7_result_string(pCtx,"&#039;",(int)sizeof("&#039;")-1);
-			}
-			nJump = (int)sizeof("&#039;")-1;
-		}else if( nLen >= (int)sizeof(char) ){
-			/* expand '&' */
-			ph7_result_string(pCtx,"&",(int)sizeof(char));
-		}else{
-			/* No more input to process */
-			break;
-		}
-		zIn += nJump;
-	}
+	HtmlUnescape(pCtx,zIn,nLen,iFlags,0);
 	return PH7_OK;
 }
-/* HTML encoding/Decoding table
- * Source: Symisc RunTime API.[chm@symisc.net]
- */
-static const char *azHtmlEscape[] = {
- 	"&lt;","<","&gt;",">","&amp;","&","&quot;","\"","&#39;","'",
-	"&#33;","!","&#36;","$","&#35;","#","&#37;","%","&#40;","(",
-	"&#41;",")","&#123;","{","&#125;","}","&#61;","=","&#43;","+",
-	"&#63;","?","&#91;","[","&#93;","]","&#64;","@","&#44;",","
- };
 /*
- * array get_html_translation_table(void)
- *  Returns the translation table used by htmlspecialchars() and htmlentities().
- * Parameters
- *  None
+ * array get_html_translation_table(int $table = HTML_SPECIALCHARS
+ *      [, int $flags = ENT_QUOTES|ENT_SUBSTITUTE|ENT_HTML401 [, string $encoding = "UTF-8"]])
+ *  Return the translation table used by htmlspecialchars() (HTML_SPECIALCHARS)
+ *  or htmlentities() (HTML_ENTITIES) as character => entity pairs.
  * Return
  *  The translation table as an array or NULL on failure.
  */
 static int PH7_builtin_get_html_translation_table(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_value *pArray,*pValue;
-	sxu32 n;
-	/* Element value */
-	pValue = ph7_context_new_scalar(pCtx);
-	if( pValue == 0 ){
-		SXUNUSED(nArg); /* cc warning */
-		SXUNUSED(apArg);
-		/* Return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	int iTable = 0; /* HTML_SPECIALCHARS */
+	int iFlags = 11; /* ENT_QUOTES|ENT_SUBSTITUTE|ENT_HTML401 */
+	if( nArg > 0 ){
+		iTable = ph7_value_to_int(apArg[0]);
 	}
-	/* Create a new array */
-	pArray = ph7_context_new_array(pCtx);
-	if( pArray == 0 ){
-		/* Return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	if( nArg > 1 ){
+		iFlags = ph7_value_to_int(apArg[1]);
 	}
-	/* Make the table */
-	for( n = 0 ; n < SX_ARRAYSIZE(azHtmlEscape) ; n += 2 ){
-		/* Prepare the value */
-		ph7_value_string(pValue,azHtmlEscape[n],-1 /* Compute length automatically */);
-		/* Insert the value */
-		ph7_array_add_strkey_elem(pArray,azHtmlEscape[n+1],pValue);
-		/* Reset the string cursor */
-		ph7_value_reset_string_cursor(pValue);
-	}
-	/*
-	 * Return the array.
-	 * Don't worry about freeing memory, everything will be automatically
-	 * released upon we return from this function.
-	 */
-	ph7_result_value(pCtx,pArray);
+	HtmlCheckCharset(pCtx,nArg,apArg,2);
+	HtmlTranslationTable(pCtx,iTable,iFlags);
 	return PH7_OK;
 }
 /*
- * string htmlentities( string $string [, int $flags = ENT_COMPAT | ENT_HTML401]);
- *   Convert all applicable characters to HTML entities
- * Parameters
- * $string
- *   The input string.
- * $flags
- *  A bitmask of one or more of the flags (see block-comment on PH7_builtin_htmlspecialchars())
+ * string htmlentities(string $string [, int $flags = ENT_QUOTES|ENT_SUBSTITUTE|ENT_HTML401
+ *                     [, ?string $encoding = "UTF-8" [, bool $double_encode = true]]])
+ *  Convert all applicable characters to HTML entities: the specials plus
+ *  every codepoint with an HTML 4.01 named entity (aHtml401Ent[]).
  * Return
- * The encoded string.
+ *  The encoded string or NULL on failure.
  */
 static int PH7_builtin_htmlentities(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	int iFlags = 0x01; /* ENT_COMPAT */
-	const char *zIn,*zEnd;
-	int nLen,c;
-	sxu32 n;
+	int iFlags = 11; /* ENT_QUOTES|ENT_SUBSTITUTE|ENT_HTML401 */
+	const char *zIn;
+	int nLen,bDouble = 1;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid arguments,return NULL */
 		ph7_result_null(pCtx);
@@ -1268,69 +1120,29 @@ static int PH7_builtin_htmlentities(ph7_context *pCtx,int nArg,ph7_value **apArg
 	}
 	/* Extract the target string */
 	zIn = ph7_value_to_string(apArg[0],&nLen);
-	/* Handle empty string up front */
-	if( nLen == 0 ){
-		ph7_result_string(pCtx,"",0);
-		return PH7_OK;
-	}
-	zEnd = &zIn[nLen];
-	/* Extract the flags if available */
 	if( nArg > 1 ){
 		iFlags = ph7_value_to_int(apArg[1]);
-		if( iFlags < 0 ){
-			iFlags = 0x01;
-		}
 	}
-	/* Perform the requested operation */
-	for(;;){
-		if( zIn >= zEnd ){
-			/* No more input to process */
-			break;
-		}
-		c = zIn[0];
-		/* Perform a linear lookup on the decoding table */
-		for( n = 0 ; n < SX_ARRAYSIZE(azHtmlEscape) ; n += 2 ){
-			if( azHtmlEscape[n+1][0] == c ){
-				/* Got one */
-				break;
-			}
-		}
-		if( n < SX_ARRAYSIZE(azHtmlEscape) ){
-			/* Output the safe sequence [i.e: '<' ==> '&lt;"] */
-			if( c == '"' && (iFlags & 0x04) /*ENT_NOQUOTES*/ ){
-				/* Expand the double quote verbatim */
-				ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char));
-			}else if(c == '\'' && ((iFlags & 0x02 /*ENT_QUOTES*/) == 0 || (iFlags & 0x04) /*ENT_NOQUOTES*/) ){
-				/* expand single quote verbatim */
-				ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char));
-			}else{
-				ph7_result_string(pCtx,azHtmlEscape[n],-1/*Compute length automatically */);
-			}
-		}else{
-			/* Output character verbatim */
-			ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char));
-		}
-		zIn++;
+	HtmlCheckCharset(pCtx,nArg,apArg,2);
+	if( nArg > 3 ){
+		bDouble = ph7_value_to_bool(apArg[3]);
 	}
+	HtmlEscape(pCtx,zIn,nLen,iFlags,1,bDouble);
 	return PH7_OK;
 }
 /*
- * string html_entity_decode(string $string [, int $quote_style = ENT_COMPAT [, string $charset = 'UTF-8' ]])
- *   Perform the reverse operation of html_entity_decode().
- * Parameters
- * $string
- *   The input string.
- * $flags
- *  A bitmask of one or more of the flags (see comment on PH7_builtin_htmlspecialchars())
+ * string html_entity_decode(string $string [, int $flags = ENT_QUOTES|ENT_SUBSTITUTE|ENT_HTML401
+ *                           [, string $encoding = "UTF-8"]])
+ *  Convert HTML entities (named — case-sensitive — and numeric, decimal or
+ *  hex) back to their UTF-8 characters. The reverse of htmlentities().
  * Return
- * The decoded string.
+ *  The decoded string or NULL on failure.
  */
 static int PH7_builtin_html_entity_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const char *zCur,*zIn,*zEnd;
-	int iFlags = 0x01; /* ENT_COMPAT  */
+	int iFlags = 11; /* ENT_QUOTES|ENT_SUBSTITUTE|ENT_HTML401 */
+	const char *zIn;
 	int nLen;
-	sxu32 n;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid arguments,return NULL */
 		ph7_result_null(pCtx);
@@ -1338,59 +1150,11 @@ static int PH7_builtin_html_entity_decode(ph7_context *pCtx,int nArg,ph7_value *
 	}
 	/* Extract the target string */
 	zIn = ph7_value_to_string(apArg[0],&nLen);
-	zEnd = &zIn[nLen];
-	/* Extract the flags if available */
 	if( nArg > 1 ){
 		iFlags = ph7_value_to_int(apArg[1]);
-		if( iFlags < 0 ){
-			iFlags = 0x01;
-		}
 	}
-	/* Perform the requested operation */
-	for(;;){
-		if( zIn >= zEnd ){
-			/* No more input to process */
-			break;
-		}
-		zCur = zIn;
-		while( zIn < zEnd && zIn[0] != '&' ){
-			zIn++;
-		}
-		if( zCur < zIn ){
-			/* Append raw string verbatim */
-			ph7_result_string(pCtx,zCur,(int)(zIn-zCur));
-		}
-		if( zIn >= zEnd ){
-			break;
-		}
-		nLen = (int)(zEnd-zIn);
-		/* Find an encoded sequence */
-		for(n = 0 ; n < SX_ARRAYSIZE(azHtmlEscape) ; n += 2 ){
-			int iLen = (int)SyStrlen(azHtmlEscape[n]);
-			if( nLen >= iLen && SyStrnicmp(zIn,azHtmlEscape[n],(sxu32)iLen) == 0 ){
-				/* Got one */
-				zIn += iLen;
-				break;
-			}
-		}
-		if( n < SX_ARRAYSIZE(azHtmlEscape) ){
-			int c = azHtmlEscape[n+1][0];
-			/* Output the decoded character */
-			if( c == '\'' && ((iFlags & 0x02) == 0 /*ENT_QUOTES*/|| (iFlags & 0x04) /*ENT_NOQUOTES*/)  ){
-				/* Do not process single quotes */
-				ph7_result_string(pCtx,azHtmlEscape[n],-1);
-			}else if( c == '"' && (iFlags & 0x04) /*ENT_NOQUOTES*/ ){
-				/* Do not process double quotes */
-				ph7_result_string(pCtx,azHtmlEscape[n],-1);
-			}else{
-				ph7_result_string(pCtx,azHtmlEscape[n+1],-1); /* Compute length automatically */
-			}
-		}else{
-			/* Append '&' */
-			ph7_result_string(pCtx,"&",(int)sizeof(char));
-			zIn++;
-		}
-	}
+	HtmlCheckCharset(pCtx,nArg,apArg,2);
+	HtmlUnescape(pCtx,zIn,nLen,iFlags,1);
 	return PH7_OK;
 }
 /*
@@ -5331,6 +5095,362 @@ static void FvSanitizeFull(ph7_context *pCtx,const char *z,int n,int flags){
 		p += len;
 	}
 	if( zEnd>runStart ){ ph7_result_string(pCtx,(const char *)runStart,(int)(zEnd-runStart)); }
+}
+/* ---------------------------------------------------------------------------
+ * UTF-8-aware HTML entity core (htmlspecialchars/htmlentities family).
+ * Prototyped next to the five builtins earlier in this file; lives here so it
+ * can share aHtml401Ent[]/FvHtml401Lookup()/FvUtf8Next() with the filter_var
+ * FULL_SPECIAL_CHARS filter above. Byte-exact vs php 8.5.7 (oracle-swept).
+ * ------------------------------------------------------------------------ */
+/* Encode cp as UTF-8 into zBuf (>= 4 bytes); return the byte length 1..4. */
+static int HtmlCpUtf8(sxu32 cp,char *zBuf){
+	if( cp < 0x80 ){
+		zBuf[0] = (char)cp;
+		return 1;
+	}
+	if( cp < 0x800 ){
+		zBuf[0] = (char)(0xC0 | (cp >> 6));
+		zBuf[1] = (char)(0x80 | (cp & 0x3F));
+		return 2;
+	}
+	if( cp < 0x10000 ){
+		zBuf[0] = (char)(0xE0 | (cp >> 12));
+		zBuf[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+		zBuf[2] = (char)(0x80 | (cp & 0x3F));
+		return 3;
+	}
+	zBuf[0] = (char)(0xF0 | (cp >> 18));
+	zBuf[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+	zBuf[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+	zBuf[3] = (char)(0x80 | (cp & 0x3F));
+	return 4;
+}
+/* Doctype-allowed codepoint test (php's unicode_cp_is_allowed) — gates what a
+ * numeric reference may DECODE to. Oracle-pinned per doctype: HTML401
+ * disallows C0 (except TAB/LF/CR) and DEL..U+009F; XML1 and XHTML share the
+ * XML rules — DEL..U+009F allowed, U+FFFE/U+FFFF excluded; HTML5 swaps CR
+ * for FF (0x0C) and excludes the noncharacters (U+FDD0..U+FDEF and every
+ * U+xFFFE/U+xFFFF). Surrogates are disallowed everywhere. */
+static int HtmlCpAllowed(sxu32 cp,int iFlags){
+	int iDoc = iFlags & 48;
+	if( cp==0x09 || cp==0x0A ){ return 1; }
+	if( cp==0x0D ){ return iDoc != 48 /*ENT_HTML5*/; }
+	if( cp==0x0C ){ return iDoc == 48; }
+	if( cp < 0x20 || cp > 0x10FFFF ){ return 0; }
+	if( cp>=0xD800 && cp<=0xDFFF ){ return 0; }
+	if( cp>=0x7F && cp<=0x9F ){ return iDoc == 16 /*ENT_XML1*/ || iDoc == 32 /*ENT_XHTML*/; }
+	if( iDoc == 16 || iDoc == 32 ){
+		return cp!=0xFFFE && cp!=0xFFFF;
+	}
+	if( iDoc == 48 ){
+		if( cp>=0xFDD0 && cp<=0xFDEF ){ return 0; }
+		if( (cp & 0xFFFF) >= 0xFFFE ){ return 0; }
+	}
+	return 1;
+}
+/* Numeric-reference validity for the double_encode=false "is this already a
+ * valid entity" test — a MUCH looser predicate than the decode gate above:
+ * any codepoint <= U+10FFFF is valid (controls and surrogates included, every
+ * doctype). ENT_DISALLOWED re-tightens non-HTML401 doctypes to the decode
+ * gate, EXCEPT surrogates. All oracle-pinned: &#0; and &#xD800; stay verbatim
+ * at flags 11 and 139; flags -1 (HTML5+DISALLOWED) re-encodes &#0; and
+ * &#x10FFFF; but still keeps &#xD800;. */
+static int HtmlNumericAllowed(sxu32 cp,int iFlags){
+	if( cp > 0x10FFFF ){ return 0; }
+	if( (iFlags & 48)==0 /*ENT_HTML401: never tightened*/ ){ return 1; }
+	if( (iFlags & 128/*ENT_DISALLOWED*/)
+	 && !(cp>=0xD800 && cp<=0xDFFF)
+	 && !HtmlCpAllowed(cp,iFlags) ){ return 0; }
+	return 1;
+}
+/* How many bytes the malformed UTF-8 sequence at p consumes — php's
+ * get_next_char failure step (one U+FFFD substitution / one ENT_IGNORE drop
+ * per MAXIMAL invalid subpart, not per byte): a prefix-valid sequence eats
+ * its continuation bytes ("\xE0\x80\xAF" is ONE unit) while a byte that could
+ * start a new sequence is left for the next round. */
+static int HtmlUtf8Trail(unsigned char c){ return c>=0x80 && c<=0xBF; }
+static int HtmlUtf8Lead(unsigned char c){ return c<0x80 || (c>=0xC2 && c<=0xF4); }
+static int HtmlUtf8FailAdvance(const unsigned char *p,const unsigned char *zEnd){
+	unsigned char c = p[0];
+	int nAvail = (int)(zEnd - p);
+	if( c < 0xC2 || c > 0xF4 ){ return 1; } /* stray trail / C0-C1 / F5-FF */
+	if( c < 0xE0 ){
+		if( nAvail < 2 ){ return 1; }
+		return HtmlUtf8Lead(p[1]) ? 1 : 2;
+	}
+	if( c < 0xF0 ){
+		if( nAvail >= 3 && HtmlUtf8Trail(p[1]) && HtmlUtf8Trail(p[2]) ){
+			return 3; /* complete but overlong/surrogate */
+		}
+		if( nAvail < 2 || HtmlUtf8Lead(p[1]) ){ return 1; }
+		if( nAvail < 3 || HtmlUtf8Lead(p[2]) ){ return 2; }
+		return 3;
+	}
+	if( nAvail >= 4 && HtmlUtf8Trail(p[1]) && HtmlUtf8Trail(p[2]) && HtmlUtf8Trail(p[3]) ){
+		return 4; /* complete but overlong / > U+10FFFF */
+	}
+	if( nAvail < 2 || HtmlUtf8Lead(p[1]) ){ return 1; }
+	if( nAvail < 3 || HtmlUtf8Lead(p[2]) ){ return 2; }
+	if( nAvail < 4 || HtmlUtf8Lead(p[3]) ){ return 3; }
+	return 4;
+}
+/* Try to parse one HTML entity at z (z[0]=='&', z < zEnd). bFull selects the
+ * html_entity_decode set (doctype named table + any allowed numeric ref) vs
+ * the htmlspecialchars_decode set (the basic specials + quote numerics only).
+ * Named matching is case-SENSITIVE and the ';' is required (both PHP-exact);
+ * numeric refs accept dec/hex (x or X) with any number of leading zeros but
+ * reject out-of-range, surrogate and doctype-disallowed codepoints (the
+ * caller then leaves the source verbatim). Quote-flag gating is NOT applied
+ * here — the same routine doubles as the "is this a valid entity" test for
+ * double_encode=false, which ignores the quote bits (oracle-pinned).
+ * bEncodeCheck selects the looser HtmlNumericAllowed predicate used by that
+ * double_encode test; decode callers pass 0 for the HtmlCpAllowed gate.
+ * On success sets *pCp / *pnConsumed and returns 1. */
+static int HtmlParseEntity(const unsigned char *z,const unsigned char *zEnd,
+                           int iFlags,int bFull,int bEncodeCheck,sxu32 *pCp,int *pnConsumed){
+	int nAvail = (int)(zEnd - z);
+	int iDoc = iFlags & 48;
+	if( nAvail < 4 ){ return 0; } /* shortest entities: &lt; &#9; */
+	if( z[1] == '#' ){
+		/* Numeric reference */
+		sxu32 cp = 0;
+		int i = 2, bHex = 0, nDig = 0;
+		if( z[i]=='x' || z[i]=='X' ){ bHex = 1; i++; }
+		for( ; i < nAvail && z[i] != ';' ; i++ ){
+			int v;
+			unsigned char c = z[i];
+			if( c>='0' && c<='9' ){ v = c - '0'; }
+			else if( bHex && c>='a' && c<='f' ){ v = c - 'a' + 10; }
+			else if( bHex && c>='A' && c<='F' ){ v = c - 'A' + 10; }
+			else { return 0; }
+			/* Stop accumulating once out of range (keeps validating the shape;
+			 * max intermediate is 0x10FFFF*16+15, no sxu32 overflow). */
+			if( cp <= 0x10FFFF ){ cp = cp * (bHex ? 16 : 10) + (sxu32)v; }
+			nDig++;
+		}
+		if( nDig == 0 || i >= nAvail ){ return 0; } /* no digits / no ';' */
+		if( bEncodeCheck ? !HtmlNumericAllowed(cp,iFlags) : !HtmlCpAllowed(cp,iFlags) ){ return 0; }
+		if( !bFull && cp!=34 && cp!=38 && cp!=39 && cp!=60 && cp!=62 ){
+			return 0; /* hsc_decode: numeric refs to the five specials only */
+		}
+		*pCp = cp;
+		*pnConsumed = i + 1;
+		return 1;
+	}
+	/* Named reference: the basic specials first (&apos; is not HTML 4.01). */
+	{
+		static const struct { const char *zEnt; int n; sxu32 cp; } aSpec[] = {
+			{"&amp;",5,38},{"&lt;",4,60},{"&gt;",4,62},{"&quot;",6,34},{"&apos;",6,39}
+		};
+		sxu32 n;
+		for( n = 0 ; n < SX_ARRAYSIZE(aSpec) ; n++ ){
+			if( aSpec[n].cp == 39 && iDoc == 0 /*ENT_HTML401*/ ){ continue; }
+			if( nAvail >= aSpec[n].n && SyMemcmp(z,aSpec[n].zEnt,(sxu32)aSpec[n].n) == 0 ){
+				*pCp = aSpec[n].cp;
+				*pnConsumed = aSpec[n].n;
+				return 1;
+			}
+		}
+		if( bFull && iDoc != 16 /*ENT_XML1 has no named table beyond the specials*/ ){
+			/* Linear scan of the 248-row table: runs only at '&' positions and
+			 * guarantees the decode set can never drift from the encode table. */
+			for( n = 0 ; n < SX_ARRAYSIZE(aHtml401Ent) ; n++ ){
+				sxu32 nEnt = SyStrlen(aHtml401Ent[n].zEnt);
+				if( (sxu32)nAvail >= nEnt && SyMemcmp(z,aHtml401Ent[n].zEnt,nEnt) == 0 ){
+					*pCp = aHtml401Ent[n].cp;
+					*pnConsumed = (int)nEnt;
+					return 1;
+				}
+			}
+		}
+	}
+	return 0;
+}
+/* Shared encoder for htmlspecialchars (bAll=0) and htmlentities (bAll=1).
+ * Invalid UTF-8 policy: ENT_IGNORE drops the byte (and wins over SUBSTITUTE),
+ * ENT_SUBSTITUTE emits one U+FFFD per invalid byte, neither -> the whole
+ * result is "" (pre-validated in a first pass: the accumulating result API
+ * cannot roll back — same reason FvSanitizeFull is two-pass). */
+static void HtmlEscape(ph7_context *pCtx,const char *zIn,int nIn,
+                       int iFlags,int bAll,int bDoubleEncode){
+	const unsigned char *zEnd = (const unsigned char *)(zIn + nIn);
+	const unsigned char *p = (const unsigned char *)zIn;
+	const unsigned char *runStart;
+	int iDoc = iFlags & 48;
+	sxu32 cp;
+	if( (iFlags & (4/*ENT_IGNORE*/ | 8/*ENT_SUBSTITUTE*/)) == 0 ){
+		/* Pass 1: any malformed sequence rejects the entire input. */
+		while( p < zEnd ){
+			int len = FvUtf8Next(p,zEnd,&cp);
+			if( len == 0 ){ ph7_result_string(pCtx,"",0); return; }
+			p += len;
+		}
+		p = (const unsigned char *)zIn;
+	}
+	runStart = p;
+	ph7_result_string(pCtx,"",0);
+	while( p < zEnd ){
+		const char *zEnt = 0;
+		int len;
+		if( *p < 0x80 ){
+			len = 1;
+			switch( *p ){
+			case '<': zEnt = "&lt;"; break;
+			case '>': zEnt = "&gt;"; break;
+			case '&':
+				zEnt = "&amp;";
+				if( !bDoubleEncode ){
+					sxu32 eCp; int nEat;
+					if( HtmlParseEntity(p,zEnd,iFlags,1,1,&eCp,&nEat) ){
+						/* A valid existing entity: keep it verbatim. */
+						zEnt = 0;
+						len = nEat;
+					}
+				}
+				break;
+			case '"':
+				if( iFlags & 2 ){ zEnt = "&quot;"; }
+				break;
+			case '\'':
+				if( iFlags & 1 ){
+					/* Oracle-pinned asymmetry: htmlspecialchars uses &apos;
+					 * for every non-HTML401 doctype, htmlentities keeps
+					 * &#039; under XHTML too. */
+					zEnt = (iDoc == 0 || (bAll && iDoc == 32)) ? "&#039;" : "&apos;";
+				}
+				break;
+			default:
+				if( (iFlags & 128/*ENT_DISALLOWED*/) && !HtmlCpAllowed((sxu32)*p,iFlags) ){
+					zEnt = "\xEF\xBF\xBD";
+				}
+				break;
+			}
+		}else{
+			len = FvUtf8Next(p,zEnd,&cp);
+			if( len == 0 ){
+				/* Malformed subpart (IGNORE or SUBSTITUTE is set, else pass 1
+				 * would have rejected): drop it or emit ONE U+FFFD for the
+				 * whole unit (php substitutes per maximal invalid subpart). */
+				if( p > runStart ){ ph7_result_string(pCtx,(const char *)runStart,(int)(p-runStart)); }
+				if( (iFlags & 4) == 0 ){ ph7_result_string(pCtx,"\xEF\xBF\xBD",3); }
+				p += HtmlUtf8FailAdvance(p,zEnd);
+				runStart = p;
+				continue;
+			}
+			if( bAll && iDoc != 16 /*ENT_XML1: no named table*/ ){
+				zEnt = FvHtml401Lookup(cp);
+			}
+			if( zEnt == 0 && (iFlags & 128) && !HtmlCpAllowed(cp,iFlags) ){
+				zEnt = "\xEF\xBF\xBD";
+			}
+		}
+		if( zEnt ){
+			if( p > runStart ){ ph7_result_string(pCtx,(const char *)runStart,(int)(p-runStart)); }
+			ph7_result_string(pCtx,zEnt,-1);
+			runStart = p + len;
+		}
+		p += len;
+	}
+	if( zEnd > runStart ){ ph7_result_string(pCtx,(const char *)runStart,(int)(zEnd-runStart)); }
+}
+/* Shared decoder for html_entity_decode (bFull=1) and htmlspecialchars_decode
+ * (bFull=0). Quote refs (cp 34/39, named or numeric) are gated by the quote
+ * bits and left verbatim when suppressed; an invalid entity leaves its '&'
+ * verbatim and rescans right after it, which also yields PHP's no-double-
+ * decode behavior ("&amp;lt;" -> "&lt;"). */
+static void HtmlUnescape(ph7_context *pCtx,const char *zIn,int nIn,
+                         int iFlags,int bFull){
+	const unsigned char *zEnd = (const unsigned char *)(zIn + nIn);
+	const unsigned char *p = (const unsigned char *)zIn;
+	const unsigned char *runStart = p;
+	ph7_result_string(pCtx,"",0);
+	while( p < zEnd ){
+		sxu32 cp;
+		int nEat;
+		if( *p != '&' ){ p++; continue; }
+		if( !HtmlParseEntity(p,zEnd,iFlags,bFull,0,&cp,&nEat) ){ p++; continue; }
+		if( (cp == 34 && (iFlags & 2) == 0) || (cp == 39 && (iFlags & 1) == 0) ){
+			/* Suppressed quote: leave the entity source verbatim. */
+			p += nEat;
+			continue;
+		}
+		if( p > runStart ){ ph7_result_string(pCtx,(const char *)runStart,(int)(p-runStart)); }
+		{
+			char zBuf[4];
+			int n = HtmlCpUtf8(cp,zBuf);
+			ph7_result_string(pCtx,zBuf,n);
+		}
+		p += nEat;
+		runStart = p;
+	}
+	if( zEnd > runStart ){ ph7_result_string(pCtx,(const char *)runStart,(int)(zEnd-runStart)); }
+}
+/* Validate the optional charset argument at apArg[idx]: UTF-8 aliases (and
+ * ""/NULL meaning the default) are accepted; anything else — including
+ * php-supported single-byte charsets like ISO-8859-1, PHL is UTF-8-only per
+ * PLAN.md §6 — raises PHP's unsupported-charset warning and is treated as
+ * UTF-8 (ph7_context_throw_error_format prepends the function name). */
+static void HtmlCheckCharset(ph7_context *pCtx,int nArg,ph7_value **apArg,int idx){
+	const char *zCs;
+	int nCs;
+	if( nArg <= idx || ph7_value_is_null(apArg[idx]) ){ return; }
+	zCs = ph7_value_to_string(apArg[idx],&nCs);
+	if( nCs == 0 ){ return; } /* "" selects the default charset (UTF-8) */
+	if( nCs == 5 && SyStrnicmp(zCs,"UTF-8",5) == 0 ){
+		return; /* php accepts only "UTF-8" (any case) silently — "UTF8" warns */
+	}
+	ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+		"Charset \"%.*s\" is not supported, assuming UTF-8",nCs,zCs);
+}
+/* get_html_translation_table() worker: character (UTF-8 bytes) => entity.
+ * The five specials come first in byte order, then — for HTML_ENTITIES with a
+ * named-table doctype — the 248 aHtml401Ent rows ascending (oracle-pinned
+ * ordering; 253 entries under the defaults). */
+static void HtmlTranslationTable(ph7_context *pCtx,int iTable,int iFlags){
+	ph7_value *pArray,*pValue;
+	int iDoc = iFlags & 48;
+	sxu32 n;
+	pValue = ph7_context_new_scalar(pCtx);
+	pArray = ph7_context_new_array(pCtx);
+	if( pValue == 0 || pArray == 0 ){
+		ph7_result_null(pCtx);
+		return;
+	}
+	if( iFlags & 2 ){
+		ph7_value_string(pValue,"&quot;",-1);
+		ph7_array_add_strkey_elem(pArray,"\"",pValue);
+		ph7_value_reset_string_cursor(pValue);
+	}
+	ph7_value_string(pValue,"&amp;",-1);
+	ph7_array_add_strkey_elem(pArray,"&",pValue);
+	ph7_value_reset_string_cursor(pValue);
+	if( iFlags & 1 ){
+		/* The apostrophe row mirrors the function each table belongs to:
+		 * the SPECIALCHARS table follows htmlspecialchars (&apos; for every
+		 * non-HTML401 doctype), the ENTITIES table follows htmlentities
+		 * (&#039; under XHTML too). Oracle-pinned at flags 35. */
+		int b039 = (iDoc == 0) || (iTable != 0 && iDoc == 32);
+		ph7_value_string(pValue,b039 ? "&#039;" : "&apos;",-1);
+		ph7_array_add_strkey_elem(pArray,"'",pValue);
+		ph7_value_reset_string_cursor(pValue);
+	}
+	ph7_value_string(pValue,"&lt;",-1);
+	ph7_array_add_strkey_elem(pArray,"<",pValue);
+	ph7_value_reset_string_cursor(pValue);
+	ph7_value_string(pValue,"&gt;",-1);
+	ph7_array_add_strkey_elem(pArray,">",pValue);
+	ph7_value_reset_string_cursor(pValue);
+	if( iTable != 0 /*php: any non-HTML_SPECIALCHARS table => entities*/ && iDoc != 16 /*ENT_XML1*/ ){
+		char zKey[8];
+		for( n = 0 ; n < SX_ARRAYSIZE(aHtml401Ent) ; n++ ){
+			int nK = HtmlCpUtf8(aHtml401Ent[n].cp,zKey);
+			zKey[nK] = 0;
+			ph7_value_string(pValue,aHtml401Ent[n].zEnt,-1);
+			ph7_array_add_strkey_elem(pArray,zKey,pValue);
+			ph7_value_reset_string_cursor(pValue);
+		}
+	}
+	ph7_result_value(pCtx,pArray);
 }
 static int FvEmailAllowed(unsigned char c){
 	if( (c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9') ){ return 1; }

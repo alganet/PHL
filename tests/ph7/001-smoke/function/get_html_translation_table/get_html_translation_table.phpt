@@ -2,15 +2,16 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-get_html_translation_table returns mapping array
+get_html_translation_table default table: char => entity specials
 --FILE--
 <?php
-$table = get_html_translation_table();
-$pr = print_r($table, true);
-echo (strpos($pr, '&lt;') !== false) ? 'get_html_table_ok' : 'get_html_table_fail';
+$t = get_html_translation_table();
+echo count($t), "\n";
+echo $t['<'], " ", $t['>'], " ", $t['&'], " ", $t['"'], " ", $t["'"], "\n";
 ?>
 --EXPECT--
-get_html_table_ok
+5
+&lt; &gt; &amp; &quot; &#039;
 --CLEAN--
 <?php
-unset($table, $pr);
+unset($t);
