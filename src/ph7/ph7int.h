@@ -1196,8 +1196,6 @@ enum ph7_vm_op {
   PH7_OP_CVT_NUMC,     /* Numeric (integer,real or both) type cast */
   PH7_OP_INCR,         /* Increment ++ */
   PH7_OP_DECR,         /* Decrement -- */
-  PH7_OP_SEQ,          /* 'eq' String equal: Strict string comparison */
-  PH7_OP_SNE,          /* 'ne' String not equal: Strict string comparison */
   PH7_OP_NEW,          /* new */
   PH7_OP_CLONE,        /* clone */
   PH7_OP_ADD_STORE,    /* Add and store '+=' */
@@ -1293,8 +1291,6 @@ enum ph7_expr_id {
 	EXPR_OP_NE,        /* Not equal != <> */
 	EXPR_OP_TEQ,       /* Type equal === */
 	EXPR_OP_TNE,       /* Type not equal !== */
-	EXPR_OP_SEQ,       /* String equal 'eq' */
-	EXPR_OP_SNE,       /* String not equal 'ne' */
 	EXPR_OP_BAND,      /* Biwise and '&' */
 	EXPR_OP_REF,       /* Reference operator '&' */
 	EXPR_OP_XOR,       /* bitwise xor '^' */
@@ -1440,8 +1436,8 @@ enum ph7_expr_id {
 #define PH7_TKWRD_FLOAT        0x20000  /* float:  MUST BE A POWER OF TWO */
 #define PH7_TKWRD_STRING       0x40000  /* string: MUST BE A POWER OF TWO */
 #define PH7_TKWRD_OBJECT       0x80000 /* object: MUST BE A POWER OF TWO */
-#define PH7_TKWRD_SEQ          0x100000 /* String string comparison operator: 'eq' equal MUST BE A POWER OF TWO */
-#define PH7_TKWRD_SNE          0x200000 /* String string comparison operator: 'ne' not equal MUST BE A POWER OF TWO */
+/* 0x100000 and 0x200000 are free: they were the PH7-ism 'eq'/'ne' string
+ * comparison operators, removed so both stay usable as plain identifiers. */
 /*
  * PHP-exact ENT_* flag values for the html-entity family. Single source of
  * truth: constant.c declares the PHP-visible ENT_* constants from these and

@@ -8679,67 +8679,6 @@ case PH7_OP_SPACESHIP: {
 	MemObjSetType(pTos,MEMOBJ_INT);
 	break;
 				}
-/* OP_SEQ P1 P2 *
- * Strict string comparison.
- * Pop the top two elements from the stack. If they are equal (pure text comparison)
- * then jump to instruction P2.  Otherwise, continue to the next instruction.
- * If either operand is NULL then the comparison result is FALSE.
- * The SyMemcmp() routine is used for the comparison. For a numeric comparison
- * use PH7_OP_EQ.
- * If P2 is zero, do not jump.Instead, push a boolean 1 (TRUE) onto the
- * stack if the jump would have been taken, or a 0 (FALSE) if not.
- */
-/* OP_SNE P1 P2 *
- * Strict string comparison.
- * Pop the top two elements from the stack. If they are not equal (pure text comparison)
- * then jump to instruction P2.  Otherwise, continue to the next instruction.
- * If either operand is NULL then the comparison result is FALSE.
- * The SyMemcmp() routine is used for the comparison. For a numeric comparison
- * use PH7_OP_EQ.
- * If P2 is zero, do not jump.Instead, push a boolean 1 (TRUE) onto the
- * stack if the jump would have been taken, or a 0 (FALSE) if not.
- */
-case PH7_OP_SEQ:
-case PH7_OP_SNE: {
-	ph7_value *pNos = &pTos[-1];
-	SyString s1,s2;
-	/* Perform the comparison and act accordingly */
-#ifdef UNTRUST
-	if( pNos < pStack ){
-		goto Abort;
-	}
-#endif
-	/* Force a string cast */
-	if((pTos->iFlags & MEMOBJ_STRING) == 0 ){
-		PH7_MemObjToString(pTos);
-	}
-	if((pNos->iFlags & MEMOBJ_STRING) == 0 ){
-		PH7_MemObjToString(pNos);
-	}
-	SyStringInitFromBuf(&s1,SyBlobData(&pNos->sBlob),SyBlobLength(&pNos->sBlob));
-	SyStringInitFromBuf(&s2,SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
-	rc = SyStringCmp(&s1,&s2,SyMemcmp);
-	if( pInstr->iOp == PH7_OP_NEQ ){
-		rc = rc != 0;
-	}else{
-		rc = rc == 0;
-	}
-	VmPopOperand(&pTos,1);
-	if( !pInstr->iP2 ){
-		/* Push comparison result without taking the jump */
-		PH7_MemObjRelease(pTos);
-		pTos->x.iVal = rc;
-		/* Invalidate any prior representation */
-		MemObjSetType(pTos,MEMOBJ_BOOL);
-	}else{
-		if( rc ){
-			/* Jump to the desired location */
-			pc = pInstr->iP2 - 1;
-			VmPopOperand(&pTos,1);
-		}
-	}
-	break;
-				 }
 /*
  * OP_LOAD_REF * * *
  * Push the index of a referenced object on the stack.
@@ -13857,8 +13796,6 @@ static const char * VmInstrToString(sxi32 nOp)
 	case PH7_OP_CVT_NUMC:   zOp = "CVT_NUMC   "; break;
 	case PH7_OP_INCR:       zOp = "INCR       "; break;
 	case PH7_OP_DECR:       zOp = "DECR       "; break;
-	case PH7_OP_SEQ:        zOp = "SEQ        "; break;
-	case PH7_OP_SNE:        zOp = "SNE        "; break;
 	case PH7_OP_NEW:        zOp = "NEW        "; break;
 	case PH7_OP_CLONE:      zOp = "CLONE      "; break;
 	case PH7_OP_ADD_STORE:  zOp = "ADD_STORE  "; break;
