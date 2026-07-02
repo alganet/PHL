@@ -3,8 +3,6 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Complex string escaping edge cases
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
 // Test complex string escaping that exercises lexer edge cases
@@ -30,8 +28,8 @@ $edge1 = "Ends with backslash\\";
 $edge2 = 'Ends with backslash\\';
 echo "Edge cases: '$edge1' and '$edge2'\n";
 
-// Multiple consecutive escapes
-$multi = "Multiple\\\\\\escapes";
+// Multiple consecutive escapes: \\ \\ then the non-escape \q keeps its backslash
+$multi = "Multiple\\\\\\qescapes";
 echo "Multiple: $multi\n";
 ?>
 --EXPECT--
@@ -39,9 +37,9 @@ Single quoted: Don't worry - It's a test
 Double quoted: Line 1
 Line 2	TabbedCarriage Return
 Quote: "Hello" and backslash: \
-Complex: Hex: Hello - Octal: 110145154154157
+Complex: Hex: Hello - Octal: Hello
 Edge cases: 'Ends with backslash\' and 'Ends with backslash\'
-Multiple: Multiple\\\escapes
+Multiple: Multiple\\\qescapes
 --CLEAN--
 <?php
 unset($single1, $single2, $double1, $double2, $complex1, $complex2, $edge1, $edge2, $multi);
