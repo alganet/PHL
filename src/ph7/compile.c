@@ -997,13 +997,18 @@ static ph7_value * GenStateNewStrObj(ph7_gen_state *pGen,sxi32 *pCount)
  *  \r carriage return (CR or 0x0D (13) in ASCII)
  *  \t horizontal tab (HT or 0x09 (9) in ASCII)
  *  \v vertical tab (VT or 0x0B (11) in ASCII)
+ *  \e escape (ESC or 0x1B (27) in ASCII)
  *  \f form feed (FF or 0x0C (12) in ASCII)
  *  \\ backslash
  *  \$ dollar sign
  *  \" double-quote
- *  \[0-7]{1,3} 	the sequence of characters matching the regular expression is a character in octal notation
+ *  \[0-7]{1,3} 	the sequence of characters matching the regular expression is a character in octal notation,
+ *      which silently overflows to fit in a byte (e.g. "\400" === "\000")
  *  \x[0-9A-Fa-f]{1,2} 	the sequence of characters matching the regular expression is a character in hexadecimal notation
+ *  \u{[0-9A-Fa-f]+} 	the sequence of characters matching the regular expression is a Unicode codepoint,
+ *      which will be output to the string as that codepoint's UTF-8 representation
  * As in single quoted strings, escaping any other character will result in the backslash being printed too.
+ * (The PH7-ism "\oNNN" octal form is gone: a literal "\o" now round-trips like php 8.)
  * The most important feature of double-quoted strings is the fact that variable names will be expanded.
  * See string parsing for details.
  */
@@ -1074,13 +1079,9 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen)
 				/* A literal backslash */
 				PH7_MemObjStringAppend(pObj,"\\",sizeof(char));
 				break;
-			case 'a':
-				/* The "alert" character (BEL)[ctrl+g] ASCII code 7 */
-				PH7_MemObjStringAppend(pObj,"\a",sizeof(char));
-				break;
-			case 'b':
-				/* Backspace (BS)[ctrl+h] ASCII code 8 */
-				PH7_MemObjStringAppend(pObj,"\b",sizeof(char));
+			case 'e':
+				/* Escape (ESC) ASCII code 27 */
+				PH7_MemObjStringAppend(pObj,"\x1b",sizeof(char));
 				break;
 			case 'f':
 				/* Form-feed (FF)[ctrl+l] ASCII code 12 */
@@ -1102,57 +1103,95 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen)
 				/* Vertical tab(VT)[ctrl+k] ASCII code 11 */
 				PH7_MemObjStringAppend(pObj,"\v",sizeof(char));
 				break;
-			case '\'':
-				/* Single quote */
-				PH7_MemObjStringAppend(pObj,"'",sizeof(char));
-				break;
 			case '"':
 				/* Double quote */
 				PH7_MemObjStringAppend(pObj,"\"",sizeof(char));
 				break;
-			case '0':
-				/* NUL byte */
-				PH7_MemObjStringAppend(pObj,"\0",sizeof(char));
-				break;
-			case 'x':
-				if((unsigned char)zIn[1] < 0xc0 && SyisHex(zIn[1]) ){
-					int c;
-					/* Hex digit */
-					c = SyHexToint(zIn[1]) << 4;
-					if( &zIn[2] < zEnd ){
-						c +=  SyHexToint(zIn[2]);
+			case '0': case '1': case '2': case '3':
+			case '4': case '5': case '6': case '7': {
+				/* \[0-7]{1,3}: a character in octal notation. A value above \377
+				 * warns and wraps to the low byte, matching php 8. */
+				int c = 0;
+				for( zPtr = zIn ; zPtr < &zIn[3*sizeof(char)] ; zPtr++ ){
+					if( zPtr >= zEnd || (unsigned char)zPtr[0] >= 0xc0 || zPtr[0] < '0' || zPtr[0] > '7' ){
+						break;
 					}
-					/* Output char */
+					c = c * 8 + (zPtr[0] - '0');
+				}
+				if( c > 0xFF ){
+					SyString sSeq;
+					SyStringInitFromBuf(&sSeq,zIn,(sxu32)(zPtr-zIn));
+					PH7_GenCompileError(&(*pGen),E_WARNING,pGen->pIn->nLine,
+						"Octal escape sequence overflow \\%z is greater than \\377",&sSeq);
+					c &= 0xFF;
+				}
+				PH7_MemObjStringAppend(pObj,(const char *)&c,sizeof(char));
+				n = (sxu32)(zPtr-zIn);
+				break;
+			}
+			case 'x':
+				if( &zIn[1] < zEnd && (unsigned char)zIn[1] < 0xc0 && SyisHex(zIn[1]) ){
+					/* \x[0-9A-Fa-f]{1,2}: a character in hexadecimal notation */
+					int c = SyHexToint(zIn[1]);
+					n += sizeof(char);
+					if( &zIn[2] < zEnd && (unsigned char)zIn[2] < 0xc0 && SyisHex(zIn[2]) ){
+						c = (c << 4) + SyHexToint(zIn[2]);
+						n += sizeof(char);
+					}
 					PH7_MemObjStringAppend(pObj,(const char *)&c,sizeof(char));
-					n += sizeof(char) * 2;
 				}else{
-					/* Output literal character  */
-					PH7_MemObjStringAppend(pObj,"x",sizeof(char));
+					/* Not an escape: keep the backslash, as php does */
+					PH7_MemObjStringAppend(pObj,"\\x",sizeof(char)*2);
 				}
 				break;
-			case 'o':
-				if( &zIn[1] < zEnd && (unsigned char)zIn[1] < 0xc0 && SyisDigit(zIn[1]) && (zIn[1] - '0') < 8 ){
-					/* Octal digit stream */
-					int c;
-					c = 0;
-					zIn++;
-					for( zPtr = zIn ; zPtr < &zIn[3*sizeof(char)] ; zPtr++ ){
-						if( zPtr >= zEnd || (unsigned char)zPtr[0] >= 0xc0 || !SyisDigit(zPtr[0]) || (zPtr[0] - '0') > 7 ){
-							break;
+			case 'u':
+				if( &zIn[1] < zEnd && zIn[1] == '{' ){
+					/* \u{codepoint}: UTF-8 encoding of the given codepoint (php 7+).
+					 * php encodes surrogates verbatim, so the only invalid value
+					 * is > U+10FFFF; malformed/empty braces are a compile error. */
+					sxu32 nCp = 0;
+					int bOvf = 0;
+					zPtr = &zIn[2];
+					while( zPtr < zEnd && (unsigned char)zPtr[0] < 0xc0 && SyisHex(zPtr[0]) ){
+						if( nCp > 0x10FFFF ){
+							bOvf = 1; /* stop accumulating: a long digit run would wrap sxu32 */
+						}else{
+							nCp = nCp * 16 + (sxu32)SyHexToint(zPtr[0]);
 						}
-						c = c * 8 + (zPtr[0] - '0');
+						zPtr++;
 					}
-					if ( c > 0 ){
-						PH7_MemObjStringAppend(pObj,(const char *)&c,sizeof(char));
+					if( zPtr == &zIn[2] || zPtr >= zEnd || zPtr[0] != '}' ){
+						/* Error recorded (nErr>0 fails the whole compile); consume the
+						 * malformed sequence so later errors are still reported. */
+						PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
+							"Invalid UTF-8 codepoint escape sequence");
+						n = (sxu32)(zPtr-zIn);
+						if( zPtr < zEnd && zPtr[0] == '}' ){
+							n += sizeof(char);
+						}
+						break;
 					}
-					n = (sxu32)(zPtr-zIn);
+					if( bOvf || nCp > 0x10FFFF ){
+						PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
+							"Invalid UTF-8 codepoint escape sequence: Codepoint too large");
+						n = (sxu32)(&zPtr[1]-zIn);
+						break;
+					}
+					{
+						char zUtf[4];
+						sxu8 *zOut = (sxu8 *)zUtf;
+						SX_WRITE_UTF8(zOut,nCp);
+						PH7_MemObjStringAppend(pObj,zUtf,(sxu32)(zOut-(sxu8 *)zUtf));
+					}
+					n = (sxu32)(&zPtr[1]-zIn);
 				}else{
-					/* Output literal character  */
-					PH7_MemObjStringAppend(pObj,"o",sizeof(char));
+					/* Not an escape: keep the backslash, as php does */
+					PH7_MemObjStringAppend(pObj,"\\u",sizeof(char)*2);
 				}
 				break;
 			default:
-				/* Output without a slash */
+				/* Unrecognized escape: keep the backslash, as php does */
+				PH7_MemObjStringAppend(pObj,"\\",sizeof(char));
 				PH7_MemObjStringAppend(pObj,zIn,sizeof(char));
 				break;
 			}
