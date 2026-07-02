@@ -251,11 +251,11 @@ Coverage: 433/511 lines (84.74%)
 |    70 |  241 | `		if( pEntry ){` |
 |     - |  242 | `			/* Walk the collision chain: return TRUE only for concrete or abstract classes,` |
 |     - |  243 | `			 * not for interfaces or traits (matching PHP behavior). */` |
-|    55 |  244 | `			ph7_class *pClass = (ph7_class *)pEntry->pUserData;` |
-|    55 |  245 | `			while( pClass ){` |
-|    55 |  246 | `				if( (pClass->iFlags & (PH7_CLASS_INTERFACE\|PH7_CLASS_TRAIT)) == 0 ){` |
-|    55 |  247 | `					res = 1;` |
-|    55 |  248 | `					break;` |
+|    56 |  244 | `			ph7_class *pClass = (ph7_class *)pEntry->pUserData;` |
+|    56 |  245 | `			while( pClass ){` |
+|    56 |  246 | `				if( (pClass->iFlags & (PH7_CLASS_INTERFACE\|PH7_CLASS_TRAIT)) == 0 ){` |
+|    56 |  247 | `					res = 1;` |
+|    56 |  248 | `					break;` |
 |     - |  249 | `				}` |
 |   ! 0 |  250 | `				pClass = pClass->pNextName;` |
 |   ! 0 |  251 | `			}` |
@@ -515,7 +515,7 @@ Coverage: 433/511 lines (84.74%)
 |     - |  505 | ` * in the pAttrName parameter is visible and thus can be extracted` |
 |     - |  506 | ` * from the current scope.Otherwise FALSE is returned.` |
 |     - |  507 | ` */` |
-| 10136 |  508 | `PH7_PRIVATE int PH7_VmClassMemberAccess(` |
+| 10140 |  508 | `PH7_PRIVATE int PH7_VmClassMemberAccess(` |
 |     - |  509 | `	ph7_vm *pVm,               /* Target VM */` |
 |     - |  510 | `	ph7_class *pClass,         /* Target Class */` |
 |     - |  511 | `	const SyString *pAttrName, /* Attribute name */` |
@@ -523,7 +523,7 @@ Coverage: 433/511 lines (84.74%)
 |     - |  513 | `	int bLog                   /* TRUE to log forbidden access. */` |
 |     - |  514 | `	)` |
 |     5 |  515 | `{` |
-| 10141 |  516 | `	if( iProtection != PH7_CLASS_PROT_PUBLIC ){` |
+| 10145 |  516 | `	if( iProtection != PH7_CLASS_PROT_PUBLIC ){` |
 |  8233 |  517 | `		VmFrame *pFrame = pVm->pFrame;` |
 |     - |  518 | `		ph7_vm_func *pVmFunc;` |
 |     - |  519 | `		ph7_class *pCallerScope;` |
@@ -570,7 +570,7 @@ Coverage: 433/511 lines (84.74%)
 |     - |  560 | `			}` |
 |     - |  561 | `		}` |
 |  4108 |  562 | `	}` |
-| 10129 |  563 | `	return 1; /* Access is granted */` |
+| 10133 |  563 | `	return 1; /* Access is granted */` |
 |     6 |  564 | `dis:` |
 |    14 |  565 | `	if( bLog ){` |
 |   ! 0 |  566 | `		VmErrorFormat(&(*pVm),PH7_CTX_ERR,` |
@@ -578,7 +578,7 @@ Coverage: 433/511 lines (84.74%)
 |   ! 0 |  568 | `			&pClass->sName,pAttrName);` |
 |   ! 0 |  569 | `	}` |
 |    14 |  570 | `	return 0; /* Access is forbidden */` |
-|  5073 |  571 | `}` |
+|  5075 |  571 | `}` |
 |     - |  572 | `/*` |
 |     - |  573 | ` * array get_class_vars(string/object $class_name)` |
 |     - |  574 | ` *   Get the default properties of the class` |

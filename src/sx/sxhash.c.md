@@ -754,8 +754,8 @@ Coverage: 377/414 lines (91.06%)
 |    1 |  744 | `{` |
 |    3 |  745 | `	return SyCrc32Update(SXU32_HIGH,pSrc,nLen);` |
 |    1 |  746 | `}` |
-|  174 |  747 | `PH7_PRIVATE sxi32 SyBinToHexConsumer(const void *pIn,sxu32 nLen,ProcConsumer xConsumer,void *pConsumerData)` |
-|    1 |  748 | `{` |
+|  214 |  747 | `PH7_PRIVATE sxi32 SyBinToHexConsumer(const void *pIn,sxu32 nLen,ProcConsumer xConsumer,void *pConsumerData)` |
+|    2 |  748 | `{` |
 |    - |  749 | `	static const unsigned char zHexTab[] = "0123456789abcdef";` |
 |    - |  750 | `	const unsigned char *zIn,*zEnd;` |
 |    - |  751 | `	unsigned char zOut[3];` |
@@ -765,19 +765,19 @@ Coverage: 377/414 lines (91.06%)
 |    - |  755 | `		return SXERR_EMPTY;` |
 |    - |  756 | `	}` |
 |    - |  757 | `#endif` |
-|  175 |  758 | `	zIn   = (const unsigned char *)pIn;` |
-|  175 |  759 | `	zEnd  = &zIn[nLen];` |
-| 1729 |  760 | `	for(;;){` |
-| 3459 |  761 | `		if( zIn >= zEnd  ){` |
-|  151 |  762 | `			break;` |
+|  216 |  758 | `	zIn   = (const unsigned char *)pIn;` |
+|  216 |  759 | `	zEnd  = &zIn[nLen];` |
+| 1786 |  760 | `	for(;;){` |
+| 3574 |  761 | `		if( zIn >= zEnd  ){` |
+|  192 |  762 | `			break;` |
 |    - |  763 | `		}` |
-| 3309 |  764 | `		zOut[0] = zHexTab[zIn[0] >> 4];  zOut[1] = zHexTab[zIn[0] & 0x0F];` |
-| 3309 |  765 | `		rc = xConsumer((const void *)zOut,sizeof(char)*2,pConsumerData);` |
-| 3309 |  766 | `		if( rc != SXRET_OK ){` |
+| 3384 |  764 | `		zOut[0] = zHexTab[zIn[0] >> 4];  zOut[1] = zHexTab[zIn[0] & 0x0F];` |
+| 3384 |  765 | `		rc = xConsumer((const void *)zOut,sizeof(char)*2,pConsumerData);` |
+| 3384 |  766 | `		if( rc != SXRET_OK ){` |
 |   25 |  767 | `			return rc;` |
 |    - |  768 | `		}` |
-| 3285 |  769 | `		zIn++;` |
-|    1 |  770 | `	}` |
-|  151 |  771 | `        return SXRET_OK;` |
-|   88 |  772 | `}` |
+| 3360 |  769 | `		zIn++;` |
+|    2 |  770 | `	}` |
+|  192 |  771 | `        return SXRET_OK;` |
+|  109 |  772 | `}` |
 |    - |  773 |  |
