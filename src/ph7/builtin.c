@@ -4766,12 +4766,24 @@ static int PH7_builtin_password_needs_rehash(ph7_context *pCtx,int nArg,ph7_valu
 #define FV_SANITIZE_FULL_SPECIAL_CHARS 522
 #define FV_FLAG_ALLOW_OCTAL  1
 #define FV_FLAG_ALLOW_HEX    2
+#define FV_FLAG_STRIP_LOW    4
+#define FV_FLAG_STRIP_HIGH   8
+#define FV_FLAG_ENCODE_LOW   16
+#define FV_FLAG_ENCODE_HIGH  32
+#define FV_FLAG_ENCODE_AMP   64
+#define FV_FLAG_NO_ENCODE_QUOTES 128
+#define FV_FLAG_STRIP_BACKTICK   512
 #define FV_FLAG_ALLOW_FRACTION   4096
 #define FV_FLAG_ALLOW_THOUSAND   8192
 #define FV_FLAG_ALLOW_SCIENTIFIC 16384
 #define FV_FLAG_IPV4  1048576
 #define FV_FLAG_IPV6  2097152
 #define FV_NULL_ON_FAILURE 134217728
+/* The subset of flags the UNSAFE_RAW/DEFAULT string filter (FvSanitizeString)
+ * acts on: when none are set the filter is a verbatim pass-through, so FV_DEFAULT
+ * can shortcut. Keep this in sync with FvSanitizeString's flag handling. */
+#define FV_FLAG_STRING_MASK (FV_FLAG_STRIP_LOW|FV_FLAG_STRIP_HIGH|FV_FLAG_STRIP_BACKTICK \
+                            |FV_FLAG_ENCODE_LOW|FV_FLAG_ENCODE_HIGH|FV_FLAG_ENCODE_AMP)
 
 /* Trim leading/trailing PHP whitespace, adjusting the (*pz,*pn) view in place.
  * SyisSpace (isspace) matches PHP's filter whitespace set " \t\n\r\v\f". */
@@ -5083,37 +5095,242 @@ static void FvSanitizeNumber(ph7_context *pCtx,const char *z,int n,int isFloat,i
 	}
 	if( n>runStart ){ ph7_result_string(pCtx,z+runStart,n-runStart); }
 }
-/* SANITIZE_SPECIAL_CHARS (full=0, numeric entities; also encodes control bytes
- * <32 as &#N;) / FULL_SPECIAL_CHARS (full=1, named entities for <>&"').
- * Divergence on bytes >=128: PHP's FULL filter is UTF-8-aware — it named-entity
- * encodes valid sequences ("\xC3\xA9" -> "&eacute;") and drops invalid ones; we
- * pass every byte >=128 through verbatim (the engine has no UTF-8 entity table,
- * and PH7_builtin_htmlspecialchars behaves the same way). Bytes 0-127 match. */
-static void FvSanitizeSpecial(ph7_context *pCtx,const char *z,int n,int full){
+/* Return non-zero when byte c must be stripped under the STRIP_* flags. Shared
+ * by the UNSAFE_RAW string filter and SANITIZE_SPECIAL_CHARS. STRIP_LOW drops
+ * bytes <32, STRIP_HIGH drops bytes >=127 (incl. DEL), STRIP_BACKTICK drops '`'.
+ * Matches php_filter_strip(); verified byte-exact vs php 8.5.7. */
+static int FvStripByte(unsigned char c,int flags){
+	if( (flags & FV_FLAG_STRIP_LOW)      && c<32 )    { return 1; }
+	if( (flags & FV_FLAG_STRIP_HIGH)     && c>=127 )  { return 1; }
+	if( (flags & FV_FLAG_STRIP_BACKTICK) && c==0x60 ) { return 1; }
+	return 0;
+}
+/* FILTER_UNSAFE_RAW / FILTER_DEFAULT with flags: no default transform, but the
+ * STRIP/ENCODE flags apply. Precedence (per php_filter_unsafe_raw, verified
+ * vs php 8.5.7): a byte is first tested for stripping; a surviving byte is then
+ * encoded as a decimal numeric entity if ENCODE_LOW (<32) / ENCODE_HIGH (>=127)
+ * is set, and '&' becomes "&#38;" under ENCODE_AMP. So STRIP_LOW|ENCODE_LOW
+ * strips (nothing left to encode). Bytes are treated individually — ENCODE_HIGH
+ * numeric-encodes each byte of a multibyte sequence separately, not the codepoint. */
+static void FvSanitizeString(ph7_context *pCtx,const char *z,int n,int flags){
+	int i, runStart = 0;
+	ph7_result_string(pCtx,"",0);
+	for( i=0; i<n; i++ ){
+		unsigned char c = (unsigned char)z[i];
+		if( FvStripByte(c,flags) ){
+			if( i>runStart ){ ph7_result_string(pCtx,z+runStart,i-runStart); }
+			runStart = i+1;
+			continue;
+		}
+		if( c=='&' && (flags & FV_FLAG_ENCODE_AMP) ){
+			if( i>runStart ){ ph7_result_string(pCtx,z+runStart,i-runStart); }
+			ph7_result_string(pCtx,"&#38;",-1);
+			runStart = i+1;
+		}else if( (c<32 && (flags & FV_FLAG_ENCODE_LOW))
+		       || (c>=127 && (flags & FV_FLAG_ENCODE_HIGH)) ){
+			if( i>runStart ){ ph7_result_string(pCtx,z+runStart,i-runStart); }
+			ph7_result_string_format(pCtx,"&#%d;",(int)c);
+			runStart = i+1;
+		}
+	}
+	if( n>runStart ){ ph7_result_string(pCtx,z+runStart,n-runStart); }
+}
+/* FILTER_SANITIZE_SPECIAL_CHARS: encode <>&"' and every control byte <32 as a
+ * decimal numeric entity (&#60; &#38; &#34; ...). The STRIP_* flags remove bytes
+ * before encoding; ENCODE_HIGH numeric-encodes surviving bytes >=127. Bytes >=128
+ * are otherwise passed through verbatim (this filter is NOT UTF-8-aware — only the
+ * FULL variant is). Byte-exact vs php 8.5.7. */
+static void FvSanitizeSpecial(ph7_context *pCtx,const char *z,int n,int flags){
 	int i, runStart = 0;
 	const char *zEnt;
 	ph7_result_string(pCtx,"",0);
 	for( i=0; i<n; i++ ){
 		unsigned char c = (unsigned char)z[i];
-		switch( c ){
-		case '<':  zEnt = full?"&lt;":"&#60;";   break;
-		case '>':  zEnt = full?"&gt;":"&#62;";   break;
-		case '&':  zEnt = full?"&amp;":"&#38;";  break;
-		case '"':  zEnt = full?"&quot;":"&#34;"; break;
-		case '\'': zEnt = full?"&#039;":"&#39;"; break;
-		default:
-			if( full || c>=32 ){ continue; } /* keep in the current run */
-			/* SPECIAL_CHARS encodes a control byte as a numeric entity. */
+		if( FvStripByte(c,flags) ){
 			if( i>runStart ){ ph7_result_string(pCtx,z+runStart,i-runStart); }
-			ph7_result_string_format(pCtx,"&#%d;",(int)c);
 			runStart = i+1;
 			continue;
+		}
+		switch( c ){
+		case '<':  zEnt = "&#60;"; break;
+		case '>':  zEnt = "&#62;"; break;
+		case '&':  zEnt = "&#38;"; break;
+		case '"':  zEnt = "&#34;"; break;
+		case '\'': zEnt = "&#39;"; break;
+		default:
+			/* Control bytes <32 are always numeric-encoded; bytes >=127 only when
+			 * ENCODE_HIGH is set. Everything else stays in the current run. */
+			if( c<32 || (c>=127 && (flags & FV_FLAG_ENCODE_HIGH)) ){
+				if( i>runStart ){ ph7_result_string(pCtx,z+runStart,i-runStart); }
+				ph7_result_string_format(pCtx,"&#%d;",(int)c);
+				runStart = i+1;
+			}
+			continue; /* keep in the current run */
 		}
 		if( i>runStart ){ ph7_result_string(pCtx,z+runStart,i-runStart); }
 		ph7_result_string(pCtx,zEnt,-1); /* -1: length from strlen */
 		runStart = i+1;
 	}
 	if( n>runStart ){ ph7_result_string(pCtx,z+runStart,n-runStart); }
+}
+/* HTML 4.01 named-entity table (codepoint -> "&name;") used by the UTF-8-aware
+ * FULL_SPECIAL_CHARS filter, sorted ascending by codepoint for binary search.
+ * Generated from php 8.5.7 (the exact set php_escape_html_entities emits for the
+ * default document type); the five inline specials <>&"' are handled separately,
+ * so every entry here is a codepoint >=0xA0. 248 rows. */
+static const struct { sxu32 cp; const char *zEnt; } aHtml401Ent[] = {
+	{0x00A0,"&nbsp;"},{0x00A1,"&iexcl;"},{0x00A2,"&cent;"},{0x00A3,"&pound;"},
+	{0x00A4,"&curren;"},{0x00A5,"&yen;"},{0x00A6,"&brvbar;"},{0x00A7,"&sect;"},
+	{0x00A8,"&uml;"},{0x00A9,"&copy;"},{0x00AA,"&ordf;"},{0x00AB,"&laquo;"},
+	{0x00AC,"&not;"},{0x00AD,"&shy;"},{0x00AE,"&reg;"},{0x00AF,"&macr;"},
+	{0x00B0,"&deg;"},{0x00B1,"&plusmn;"},{0x00B2,"&sup2;"},{0x00B3,"&sup3;"},
+	{0x00B4,"&acute;"},{0x00B5,"&micro;"},{0x00B6,"&para;"},{0x00B7,"&middot;"},
+	{0x00B8,"&cedil;"},{0x00B9,"&sup1;"},{0x00BA,"&ordm;"},{0x00BB,"&raquo;"},
+	{0x00BC,"&frac14;"},{0x00BD,"&frac12;"},{0x00BE,"&frac34;"},{0x00BF,"&iquest;"},
+	{0x00C0,"&Agrave;"},{0x00C1,"&Aacute;"},{0x00C2,"&Acirc;"},{0x00C3,"&Atilde;"},
+	{0x00C4,"&Auml;"},{0x00C5,"&Aring;"},{0x00C6,"&AElig;"},{0x00C7,"&Ccedil;"},
+	{0x00C8,"&Egrave;"},{0x00C9,"&Eacute;"},{0x00CA,"&Ecirc;"},{0x00CB,"&Euml;"},
+	{0x00CC,"&Igrave;"},{0x00CD,"&Iacute;"},{0x00CE,"&Icirc;"},{0x00CF,"&Iuml;"},
+	{0x00D0,"&ETH;"},{0x00D1,"&Ntilde;"},{0x00D2,"&Ograve;"},{0x00D3,"&Oacute;"},
+	{0x00D4,"&Ocirc;"},{0x00D5,"&Otilde;"},{0x00D6,"&Ouml;"},{0x00D7,"&times;"},
+	{0x00D8,"&Oslash;"},{0x00D9,"&Ugrave;"},{0x00DA,"&Uacute;"},{0x00DB,"&Ucirc;"},
+	{0x00DC,"&Uuml;"},{0x00DD,"&Yacute;"},{0x00DE,"&THORN;"},{0x00DF,"&szlig;"},
+	{0x00E0,"&agrave;"},{0x00E1,"&aacute;"},{0x00E2,"&acirc;"},{0x00E3,"&atilde;"},
+	{0x00E4,"&auml;"},{0x00E5,"&aring;"},{0x00E6,"&aelig;"},{0x00E7,"&ccedil;"},
+	{0x00E8,"&egrave;"},{0x00E9,"&eacute;"},{0x00EA,"&ecirc;"},{0x00EB,"&euml;"},
+	{0x00EC,"&igrave;"},{0x00ED,"&iacute;"},{0x00EE,"&icirc;"},{0x00EF,"&iuml;"},
+	{0x00F0,"&eth;"},{0x00F1,"&ntilde;"},{0x00F2,"&ograve;"},{0x00F3,"&oacute;"},
+	{0x00F4,"&ocirc;"},{0x00F5,"&otilde;"},{0x00F6,"&ouml;"},{0x00F7,"&divide;"},
+	{0x00F8,"&oslash;"},{0x00F9,"&ugrave;"},{0x00FA,"&uacute;"},{0x00FB,"&ucirc;"},
+	{0x00FC,"&uuml;"},{0x00FD,"&yacute;"},{0x00FE,"&thorn;"},{0x00FF,"&yuml;"},
+	{0x0152,"&OElig;"},{0x0153,"&oelig;"},{0x0160,"&Scaron;"},{0x0161,"&scaron;"},
+	{0x0178,"&Yuml;"},{0x0192,"&fnof;"},{0x02C6,"&circ;"},{0x02DC,"&tilde;"},
+	{0x0391,"&Alpha;"},{0x0392,"&Beta;"},{0x0393,"&Gamma;"},{0x0394,"&Delta;"},
+	{0x0395,"&Epsilon;"},{0x0396,"&Zeta;"},{0x0397,"&Eta;"},{0x0398,"&Theta;"},
+	{0x0399,"&Iota;"},{0x039A,"&Kappa;"},{0x039B,"&Lambda;"},{0x039C,"&Mu;"},
+	{0x039D,"&Nu;"},{0x039E,"&Xi;"},{0x039F,"&Omicron;"},{0x03A0,"&Pi;"},
+	{0x03A1,"&Rho;"},{0x03A3,"&Sigma;"},{0x03A4,"&Tau;"},{0x03A5,"&Upsilon;"},
+	{0x03A6,"&Phi;"},{0x03A7,"&Chi;"},{0x03A8,"&Psi;"},{0x03A9,"&Omega;"},
+	{0x03B1,"&alpha;"},{0x03B2,"&beta;"},{0x03B3,"&gamma;"},{0x03B4,"&delta;"},
+	{0x03B5,"&epsilon;"},{0x03B6,"&zeta;"},{0x03B7,"&eta;"},{0x03B8,"&theta;"},
+	{0x03B9,"&iota;"},{0x03BA,"&kappa;"},{0x03BB,"&lambda;"},{0x03BC,"&mu;"},
+	{0x03BD,"&nu;"},{0x03BE,"&xi;"},{0x03BF,"&omicron;"},{0x03C0,"&pi;"},
+	{0x03C1,"&rho;"},{0x03C2,"&sigmaf;"},{0x03C3,"&sigma;"},{0x03C4,"&tau;"},
+	{0x03C5,"&upsilon;"},{0x03C6,"&phi;"},{0x03C7,"&chi;"},{0x03C8,"&psi;"},
+	{0x03C9,"&omega;"},{0x03D1,"&thetasym;"},{0x03D2,"&upsih;"},{0x03D6,"&piv;"},
+	{0x2002,"&ensp;"},{0x2003,"&emsp;"},{0x2009,"&thinsp;"},{0x200C,"&zwnj;"},
+	{0x200D,"&zwj;"},{0x200E,"&lrm;"},{0x200F,"&rlm;"},{0x2013,"&ndash;"},
+	{0x2014,"&mdash;"},{0x2018,"&lsquo;"},{0x2019,"&rsquo;"},{0x201A,"&sbquo;"},
+	{0x201C,"&ldquo;"},{0x201D,"&rdquo;"},{0x201E,"&bdquo;"},{0x2020,"&dagger;"},
+	{0x2021,"&Dagger;"},{0x2022,"&bull;"},{0x2026,"&hellip;"},{0x2030,"&permil;"},
+	{0x2032,"&prime;"},{0x2033,"&Prime;"},{0x2039,"&lsaquo;"},{0x203A,"&rsaquo;"},
+	{0x203E,"&oline;"},{0x2044,"&frasl;"},{0x20AC,"&euro;"},{0x2111,"&image;"},
+	{0x2118,"&weierp;"},{0x211C,"&real;"},{0x2122,"&trade;"},{0x2135,"&alefsym;"},
+	{0x2190,"&larr;"},{0x2191,"&uarr;"},{0x2192,"&rarr;"},{0x2193,"&darr;"},
+	{0x2194,"&harr;"},{0x21B5,"&crarr;"},{0x21D0,"&lArr;"},{0x21D1,"&uArr;"},
+	{0x21D2,"&rArr;"},{0x21D3,"&dArr;"},{0x21D4,"&hArr;"},{0x2200,"&forall;"},
+	{0x2202,"&part;"},{0x2203,"&exist;"},{0x2205,"&empty;"},{0x2207,"&nabla;"},
+	{0x2208,"&isin;"},{0x2209,"&notin;"},{0x220B,"&ni;"},{0x220F,"&prod;"},
+	{0x2211,"&sum;"},{0x2212,"&minus;"},{0x2217,"&lowast;"},{0x221A,"&radic;"},
+	{0x221D,"&prop;"},{0x221E,"&infin;"},{0x2220,"&ang;"},{0x2227,"&and;"},
+	{0x2228,"&or;"},{0x2229,"&cap;"},{0x222A,"&cup;"},{0x222B,"&int;"},
+	{0x2234,"&there4;"},{0x223C,"&sim;"},{0x2245,"&cong;"},{0x2248,"&asymp;"},
+	{0x2260,"&ne;"},{0x2261,"&equiv;"},{0x2264,"&le;"},{0x2265,"&ge;"},
+	{0x2282,"&sub;"},{0x2283,"&sup;"},{0x2284,"&nsub;"},{0x2286,"&sube;"},
+	{0x2287,"&supe;"},{0x2295,"&oplus;"},{0x2297,"&otimes;"},{0x22A5,"&perp;"},
+	{0x22C5,"&sdot;"},{0x2308,"&lceil;"},{0x2309,"&rceil;"},{0x230A,"&lfloor;"},
+	{0x230B,"&rfloor;"},{0x2329,"&lang;"},{0x232A,"&rang;"},{0x25CA,"&loz;"},
+	{0x2660,"&spades;"},{0x2663,"&clubs;"},{0x2665,"&hearts;"},{0x2666,"&diams;"}
+};
+/* Binary-search aHtml401Ent[] for cp; return its "&name;" entity or 0. */
+static const char *FvHtml401Lookup(sxu32 cp){
+	int lo = 0, hi = (int)SX_ARRAYSIZE(aHtml401Ent) - 1;
+	while( lo <= hi ){
+		int mid = (lo + hi) / 2;
+		sxu32 c = aHtml401Ent[mid].cp;
+		if( c == cp ){ return aHtml401Ent[mid].zEnt; }
+		if( c < cp ){ lo = mid + 1; } else { hi = mid - 1; }
+	}
+	return 0;
+}
+/* Decode one strict-UTF-8 sequence at p (< zEnd). On success returns its byte
+ * length (1..4) and sets *pCp to the codepoint; on any malformed, overlong,
+ * surrogate, truncated or out-of-range (>U+10FFFF) sequence returns 0. Matches
+ * PHP's UTF-8 validation used by FULL_SPECIAL_CHARS (verified vs php 8.5.7). */
+static int FvUtf8Next(const unsigned char *p,const unsigned char *zEnd,sxu32 *pCp){
+	unsigned char c = p[0];
+	if( c < 0x80 ){ *pCp = c; return 1; }
+	if( c < 0xC2 ){ return 0; }              /* 0x80-0xBF stray cont / 0xC0-0xC1 overlong */
+	if( c < 0xE0 ){                          /* 2-byte: U+0080..U+07FF */
+		if( zEnd-p < 2 || (p[1]&0xC0)!=0x80 ){ return 0; }
+		*pCp = ((sxu32)(c&0x1F)<<6) | (p[1]&0x3F);
+		return 2;
+	}
+	if( c < 0xF0 ){                          /* 3-byte: U+0800..U+FFFF minus surrogates */
+		sxu32 cp;
+		if( zEnd-p < 3 || (p[1]&0xC0)!=0x80 || (p[2]&0xC0)!=0x80 ){ return 0; }
+		cp = ((sxu32)(c&0x0F)<<12) | ((sxu32)(p[1]&0x3F)<<6) | (p[2]&0x3F);
+		if( cp < 0x800 || (cp>=0xD800 && cp<=0xDFFF) ){ return 0; }
+		*pCp = cp;
+		return 3;
+	}
+	if( c < 0xF5 ){                          /* 4-byte: U+10000..U+10FFFF */
+		sxu32 cp;
+		if( zEnd-p < 4 || (p[1]&0xC0)!=0x80 || (p[2]&0xC0)!=0x80 || (p[3]&0xC0)!=0x80 ){ return 0; }
+		cp = ((sxu32)(c&0x07)<<18) | ((sxu32)(p[1]&0x3F)<<12) | ((sxu32)(p[2]&0x3F)<<6) | (p[3]&0x3F);
+		if( cp < 0x10000 || cp > 0x10FFFF ){ return 0; }
+		*pCp = cp;
+		return 4;
+	}
+	return 0;                                /* 0xF5-0xFF */
+}
+/* FILTER_SANITIZE_FULL_SPECIAL_CHARS: htmlentities-style, UTF-8-aware. Encodes
+ * <>&"' as named entities ("'" -> &#039;; quotes suppressed under NO_ENCODE_QUOTES),
+ * and every valid UTF-8 codepoint with an HTML 4.01 named entity as that entity;
+ * valid codepoints without a named entity (and low control bytes) pass through
+ * verbatim. If the input contains ANY invalid UTF-8 the whole result is "".
+ * The STRIP/ENCODE flags do NOT apply to this filter (only NO_ENCODE_QUOTES).
+ * Byte-exact vs php 8.5.7. */
+static void FvSanitizeFull(ph7_context *pCtx,const char *z,int n,int flags){
+	const unsigned char *zEnd = (const unsigned char *)(z + n);
+	const unsigned char *p = (const unsigned char *)z;
+	const unsigned char *runStart;
+	int bNoQuotes = (flags & FV_FLAG_NO_ENCODE_QUOTES) ? 1 : 0;
+	sxu32 cp;
+	/* Pass 1: reject the entire input on the first malformed UTF-8 sequence. */
+	while( p < zEnd ){
+		int len = FvUtf8Next(p,zEnd,&cp);
+		if( len==0 ){ ph7_result_string(pCtx,"",0); return; }
+		p += len;
+	}
+	/* Pass 2: emit (input is now known to be valid UTF-8). */
+	p = (const unsigned char *)z;
+	runStart = p;
+	ph7_result_string(pCtx,"",0);
+	while( p < zEnd ){
+		const char *zEnt = 0;
+		int len;
+		if( *p < 0x80 ){
+			switch( *p ){
+			case '<':  zEnt = "&lt;";  break;
+			case '>':  zEnt = "&gt;";  break;
+			case '&':  zEnt = "&amp;"; break;
+			case '"':  if( !bNoQuotes ){ zEnt = "&quot;"; } break;
+			case '\'': if( !bNoQuotes ){ zEnt = "&#039;"; } break;
+			}
+			len = 1;
+		}else{
+			len = FvUtf8Next(p,zEnd,&cp);   /* len>0: validated in pass 1 */
+			zEnt = FvHtml401Lookup(cp);
+		}
+		if( zEnt ){
+			if( p>runStart ){ ph7_result_string(pCtx,(const char *)runStart,(int)(p-runStart)); }
+			ph7_result_string(pCtx,zEnt,-1);
+			runStart = p + len;
+		}
+		p += len;
+	}
+	if( zEnd>runStart ){ ph7_result_string(pCtx,(const char *)runStart,(int)(zEnd-runStart)); }
 }
 static int FvEmailAllowed(unsigned char c){
 	if( (c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9') ){ return 1; }
@@ -5201,11 +5418,18 @@ static int FvApplyFilter(ph7_context *pCtx,ph7_value *pInput,
 	}
 	case FV_SANITIZE_NUMBER_INT:   FvSanitizeNumber(pCtx,zVal,nVal,0,0);      return PH7_OK;
 	case FV_SANITIZE_NUMBER_FLOAT: FvSanitizeNumber(pCtx,zVal,nVal,1,iFlags); return PH7_OK;
-	case FV_SANITIZE_SPECIAL_CHARS:      FvSanitizeSpecial(pCtx,zVal,nVal,0); return PH7_OK;
-	case FV_SANITIZE_FULL_SPECIAL_CHARS: FvSanitizeSpecial(pCtx,zVal,nVal,1); return PH7_OK;
+	case FV_SANITIZE_SPECIAL_CHARS:      FvSanitizeSpecial(pCtx,zVal,nVal,iFlags); return PH7_OK;
+	case FV_SANITIZE_FULL_SPECIAL_CHARS: FvSanitizeFull(pCtx,zVal,nVal,iFlags);    return PH7_OK;
 	case FV_SANITIZE_EMAIL: FvSanitizeChars(pCtx,zVal,nVal,0); return PH7_OK;
 	case FV_SANITIZE_URL:   FvSanitizeChars(pCtx,zVal,nVal,1); return PH7_OK;
-	case FV_DEFAULT: goto pass; /* FILTER_UNSAFE_RAW: pass through unchanged */
+	case FV_DEFAULT:
+		/* FILTER_UNSAFE_RAW / FILTER_DEFAULT: pass through unchanged unless a
+		 * STRIP/ENCODE flag is set, in which case apply the string filter. */
+		if( iFlags & FV_FLAG_STRING_MASK ){
+			FvSanitizeString(pCtx,zVal,nVal,iFlags);
+			return PH7_OK;
+		}
+		goto pass;
 	default:
 		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
 			"Unknown filter with ID %d",iFilter);
