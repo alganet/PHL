@@ -4,6 +4,12 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "ph7int.h"
+/* filter_var(FILTER_VALIDATE_FLOAT) parses with libc strtod for overflow/underflow
+ * detection + a correctly-rounded value; SyStrToReal clamps the exponent and saturates,
+ * so it cannot reject out-of-range magnitudes. Same rationale as builtin_math.c's round(). */
+#include <stdlib.h>  /* strtod */
+#include <math.h>    /* HUGE_VAL */
+#include <errno.h>   /* ERANGE (strtod range-error signal) */
 /* This file implement built-in 'foreign' functions for the PH7 engine */
 /*
  * Section:
@@ -4820,7 +4826,7 @@ static int FvValidateInt(const char *z,int n,int flags,ph7_int64 *pOut){
 static int FvValidateFloat(const char *z,int n,int flags,double *pOut){
 	char zBuf[512];
 	int i, m = 0, seenDigit = 0;
-	const char *zv; int nv; double d = 0; const char *zRest = 0;
+	const char *zv; int nv; double d = 0;
 	FvTrim(&z,&n);
 	/* Bound the input: zBuf[512] holds the thousand-separator-stripped copy, and
 	 * the cap also rejects the pathological 500+ digit floats PHP refuses. */
@@ -4877,10 +4883,22 @@ static int FvValidateFloat(const char *z,int n,int flags,double *pOut){
 		while( i<nv && SyisDigit((unsigned char)zv[i]) ){ i++; }
 	}
 	if( i!=nv ){ return 0; } /* trailing junk */
-	/* Divergence: PHP rejects magnitudes beyond the double range ("1e400" ->
-	 * false), but SyStrToReal (the engine-wide float parser, also behind
-	 * floatval/(float)) saturates them to a finite value, so they validate here. */
-	SyStrToReal(zv,(sxu32)nv,(void *)&d,&zRest);
+	/* The grammar above guarantees zv[0..nv) is a clean ASCII decimal float (no hex /
+	 * inf / nan / trailing junk), so it is safe to hand to libc strtod, which — unlike
+	 * SyStrToReal (15 sig-digits + exponent clamped to 308, so it silently saturates
+	 * overflowing magnitudes to a finite value) — is overflow/underflow-aware and
+	 * correctly rounded. strtod needs a NUL-terminated string: the ALLOW_THOUSAND path
+	 * already built the span in zBuf (zv==zBuf); the plain path must copy it there (z is
+	 * const + not NUL-terminated). nv <= n <= 500 < sizeof(zBuf) by the cap above.
+	 * Matches PHP 8.5 byte-for-byte: reject overflow (-> +/-INF) and total underflow
+	 * (-> 0.0), keep subnormals (nonzero, errno==ERANGE) and a genuine "0" (errno==0). */
+	if( zv != zBuf ){ SyMemcpy(zv,zBuf,(sxu32)nv); }
+	zBuf[nv] = 0;
+	errno = 0;
+	d = strtod(zBuf,0);
+	if( errno == ERANGE && (d == HUGE_VAL || d == -HUGE_VAL || d == 0.0) ){
+		return 0;
+	}
 	*pOut = d;
 	return 1;
 }
