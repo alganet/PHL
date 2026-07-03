@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 219/293 lines (74.74%)
+Coverage: 220/297 lines (74.07%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -372,202 +372,210 @@ Coverage: 219/293 lines (74.74%)
 |   20 |  362 | `	zEnd = &zCentral[nLen];` |
 |    - |  363 |  |
 |   16 |  364 | `	for(;;){` |
-|   34 |  365 | `		if( &zCentral[nOfft] >= zEnd ){` |
-|   16 |  366 | `			break;` |
-|    - |  367 | `		}` |
-|    - |  368 | `		/* Add a new entry */` |
-|   20 |  369 | `		pEntry = (SyArchiveEntry *)SyMemBackendPoolAlloc(pArch->pAllocator,sizeof(SyArchiveEntry));` |
-|   20 |  370 | `		if( pEntry == 0 ){` |
-|  ! 0 |  371 | `			break;` |
-|    - |  372 | `		}` |
-|   20 |  373 | `		SyZero(pEntry,sizeof(SyArchiveEntry));` |
-|   20 |  374 | `		pEntry->nMagic = SXARCH_MAGIC;` |
-|   20 |  375 | `		nIncr = 0;` |
-|   20 |  376 | `		rc = GetCentralDirectoryEntry(&(*pArch),pEntry,&zCentral[nOfft],&nIncr);` |
-|   20 |  377 | `		if( rc == SXRET_OK ){` |
-|    - |  378 | `			/* Fix the starting record offset so we can access entry contents correctly */` |
-|   20 |  379 | `			rc = ZipFixOffset(pEntry,pSrc);` |
-|    9 |  380 | `		}` |
-|   20 |  381 | `		if(rc != SXRET_OK ){` |
-|    5 |  382 | `			sxu32 nJmp = 0;` |
-|    5 |  383 | `			SyMemBackendPoolFree(pArch->pAllocator,pEntry);` |
-|    - |  384 | `			/* Try to recover by brute-forcing for a valid central directory record */` |
-|    5 |  385 | `			if( SXRET_OK == SyBlobSearch((const void *)&zCentral[nOfft + nIncr],(sxu32)(zEnd - &zCentral[nOfft + nIncr]),` |
-|    - |  386 | `				(const void *)"PK\001\002",sizeof(sxu32),&nJmp)){` |
-|  ! 0 |  387 | `					nOfft += nIncr + nJmp; /* Check next entry */` |
-|  ! 0 |  388 | `					continue;` |
-|    - |  389 | `			}` |
-|    5 |  390 | `			break; /* Giving up,archive is hopelessly corrupted */` |
-|    - |  391 | `		}` |
-|   16 |  392 | `		pName = &pEntry->sFileName;` |
-|   16 |  393 | `		pName->zString = (const char *)&zCentral[nOfft + SXZIP_CENTRAL_HDRSZ];` |
-|   16 |  394 | `		if( pName->nByte <= 0 \|\| ( pEntry->nByte <= 0 && pName->zString[pName->nByte - 1] != '/') ){` |
-|    - |  395 | `			/* Ignore zero length records (except folders) and records without names */` |
-|  ! 0 |  396 | `			SyMemBackendPoolFree(pArch->pAllocator,pEntry);` |
-|  ! 0 |  397 | `		 	nOfft += nIncr; /* Check next entry */` |
-|  ! 0 |  398 | `			continue;` |
+|   34 |  365 | `		if( &zCentral[nOfft] >= zEnd \|\| (sxu32)(zEnd - &zCentral[nOfft]) < SXZIP_CENTRAL_HDRSZ ){` |
+|    - |  366 | `			/* No room left for a full central directory record */` |
+|    9 |  367 | `			break;` |
+|    - |  368 | `		}` |
+|    - |  369 | `		/* Add a new entry */` |
+|   20 |  370 | `		pEntry = (SyArchiveEntry *)SyMemBackendPoolAlloc(pArch->pAllocator,sizeof(SyArchiveEntry));` |
+|   20 |  371 | `		if( pEntry == 0 ){` |
+|  ! 0 |  372 | `			break;` |
+|    - |  373 | `		}` |
+|   20 |  374 | `		SyZero(pEntry,sizeof(SyArchiveEntry));` |
+|   20 |  375 | `		pEntry->nMagic = SXARCH_MAGIC;` |
+|   20 |  376 | `		nIncr = 0;` |
+|   20 |  377 | `		rc = GetCentralDirectoryEntry(&(*pArch),pEntry,&zCentral[nOfft],&nIncr);` |
+|   20 |  378 | `		if( rc == SXRET_OK && nIncr > (sxu32)(zEnd - &zCentral[nOfft]) ){` |
+|    - |  379 | `			/* Name/extra/comment lengths run past the central directory end */` |
+|  ! 0 |  380 | `			rc = SXERR_CORRUPT;` |
+|  ! 0 |  381 | `		}` |
+|   20 |  382 | `		if( rc == SXRET_OK ){` |
+|    - |  383 | `			/* Fix the starting record offset so we can access entry contents correctly */` |
+|   20 |  384 | `			rc = ZipFixOffset(pEntry,pSrc);` |
+|    9 |  385 | `		}` |
+|   20 |  386 | `		if(rc != SXRET_OK ){` |
+|    5 |  387 | `			sxu32 nJmp = 0;` |
+|    5 |  388 | `			SyMemBackendPoolFree(pArch->pAllocator,pEntry);` |
+|    - |  389 | `			/* Try to recover by brute-forcing for a valid central directory record.` |
+|    - |  390 | `			 * Guard the window: a corrupted record can claim lengths that put` |
+|    - |  391 | `			 * nOfft + nIncr past zEnd, and the unsigned size would underflow. */` |
+|    5 |  392 | `			if( nOfft + nIncr < (sxu32)(zEnd - zCentral) &&` |
+|  ! 0 |  393 | `				SXRET_OK == SyBlobSearch((const void *)&zCentral[nOfft + nIncr],(sxu32)(zEnd - &zCentral[nOfft + nIncr]),` |
+|    - |  394 | `				(const void *)"PK\001\002",sizeof(sxu32),&nJmp)){` |
+|  ! 0 |  395 | `					nOfft += nIncr + nJmp; /* Check next entry */` |
+|  ! 0 |  396 | `					continue;` |
+|    - |  397 | `			}` |
+|    5 |  398 | `			break; /* Giving up,archive is hopelessly corrupted */` |
 |    - |  399 | `		}` |
-|   16 |  400 | `		zName = SyMemBackendStrDup(pArch->pAllocator,pName->zString,pName->nByte);` |
-|   16 |  401 | ` 	 	if( zName == 0 ){` |
-|  ! 0 |  402 | ` 	 		 SyMemBackendPoolFree(pArch->pAllocator,pEntry);` |
-|  ! 0 |  403 | `		 	 nOfft += nIncr; /* Check next entry */` |
-|  ! 0 |  404 | `			continue;` |
-|    - |  405 | ` 	 	}` |
-|   16 |  406 | `		pName->zString = (const char *)zName;` |
-|    - |  407 | `		/* Check for duplicates */` |
-|   16 |  408 | `		rc = ArchiveHashGetEntry(&(*pArch),pName->zString,pName->nByte,&pDup);` |
-|   16 |  409 | `		if( rc == SXRET_OK ){` |
-|    - |  410 | `			/* Another entry with the same name exists ; link them together */` |
-|  ! 0 |  411 | `			pEntry->pNextName = pDup->pNextName;` |
-|  ! 0 |  412 | `			pDup->pNextName = pEntry;` |
-|  ! 0 |  413 | `			pDup->nDup++;` |
-|  ! 0 |  414 | `		}else{` |
-|    - |  415 | `			/* Insert in hashtable */` |
-|   16 |  416 | `			ArchiveHashInstallEntry(pArch,pEntry);` |
-|    - |  417 | `		}` |
-|   16 |  418 | `		nOfft += nIncr;	/* Check next record */` |
-|    2 |  419 | `	}` |
-|   20 |  420 | `	pArch->pCursor = pArch->pList;` |
-|    - |  421 |  |
-|   20 |  422 | `	return pArch->nLoaded > 0 ? SXRET_OK : SXERR_EMPTY;` |
-|    2 |  423 | `}` |
-|   28 |  424 | `PH7_PRIVATE sxi32 SyZipExtractFromBuf(SyArchive *pArch,const char *zBuf,sxu32 nLen)` |
-|    2 |  425 | ` {` |
-|    - |  426 | ` 	const unsigned char *zCentral,*zEnd;` |
-|    - |  427 | ` 	sxi32 rc;` |
-|    - |  428 | `#if defined(UNTRUST)` |
-|    - |  429 | ` 	if( SXARCH_INVALID(pArch) \|\| zBuf == 0 ){` |
-|    - |  430 | ` 		return SXERR_INVALID;` |
-|    - |  431 | ` 	}` |
-|    - |  432 | `#endif` |
-|    - |  433 | ` 	/* The miminal size of a zip archive:` |
-|    - |  434 | ` 	 * LOCAL_HDR_SZ + CENTRAL_HDR_SZ + END_OF_CENTRAL_HDR_SZ` |
-|    - |  435 | ` 	 * 		30				46				22` |
-|    - |  436 | ` 	 */` |
-|   30 |  437 | ` 	 if( nLen < SXZIP_LOCAL_HDRSZ + SXZIP_CENTRAL_HDRSZ + SXZIP_END_CENTRAL_HDRSZ ){` |
-|    5 |  438 | ` 	 	return SXERR_CORRUPT; /* Don't bother processing return immediately */` |
-|    - |  439 | ` 	 }` |
-|    - |  440 |  |
-|   26 |  441 | ` 	zEnd = (unsigned char *)&zBuf[nLen - SXZIP_END_CENTRAL_HDRSZ];` |
-|    - |  442 | ` 	/* Find the end of central directory */` |
-|  414 |  443 | ` 	while( ((sxu32)((unsigned char *)&zBuf[nLen] - zEnd) < (SXZIP_END_CENTRAL_HDRSZ + SXI16_HIGH)) &&` |
-|  585 |  444 | `		zEnd > (unsigned char *)zBuf && SyMemcmp(zEnd,"PK\005\006",sizeof(sxu32)) != 0 ){` |
-|  367 |  445 | ` 		zEnd--;` |
-|    1 |  446 | ` 	}` |
-|    - |  447 | ` 	/* Parse the end of central directory */` |
-|   26 |  448 | ` 	rc = ParseEndOfCentralDirectory(&(*pArch),zEnd);` |
-|   26 |  449 | ` 	if( rc != SXRET_OK ){` |
-|    5 |  450 | ` 		return rc;` |
-|    - |  451 | ` 	}` |
-|    - |  452 |  |
-|    - |  453 | ` 	/* Find the starting offset of the central directory */` |
-|   22 |  454 | ` 	zCentral = &zEnd[-(sxi32)pArch->nCentralSize];` |
-|   22 |  455 | ` 	if( zCentral <= (unsigned char *)zBuf \|\| SyMemcmp(zCentral,"PK\001\002",sizeof(sxu32)) != 0 ){` |
-|    3 |  456 | ` 		if( pArch->nCentralOfft >= nLen ){` |
-|    - |  457 | `			/* Corrupted central directory offset */` |
-|  ! 0 |  458 | ` 			return SXERR_CORRUPT;` |
-|    - |  459 | ` 		}` |
-|    3 |  460 | ` 		zCentral = (unsigned char *)&zBuf[pArch->nCentralOfft];` |
-|    3 |  461 | ` 		if( SyMemcmp(zCentral,"PK\001\002",sizeof(sxu32)) != 0 ){` |
-|    - |  462 | ` 			/* Corrupted zip archive */` |
-|    3 |  463 | ` 			return SXERR_CORRUPT;` |
-|    - |  464 | ` 		}` |
-|    - |  465 | ` 		/* Fall thru and extract all valid entries from the central directory */` |
-|  ! 0 |  466 | ` 	}` |
-|   20 |  467 | ` 	rc = ZipExtract(&(*pArch),zCentral,(sxu32)(zEnd - zCentral),(void *)zBuf);` |
-|   20 |  468 | ` 	return rc;` |
-|   16 |  469 | ` }` |
-|    - |  470 | `/*` |
-|    - |  471 | `  * Default comparison function.` |
-|    - |  472 | `  */` |
-|  ! 0 |  473 | ` static sxi32 ArchiveHashCmp(const SyString *pStr1,const SyString *pStr2)` |
-|  ! 0 |  474 | ` {` |
-|    - |  475 | `	 sxi32 rc;` |
-|  ! 0 |  476 | `	 rc = SyStringCmp(pStr1,pStr2,SyMemcmp);` |
-|  ! 0 |  477 | `	 return rc;` |
-|  ! 0 |  478 | ` }` |
-|   30 |  479 | `PH7_PRIVATE sxi32 SyArchiveInit(SyArchive *pArch,SyMemBackend *pAllocator,ProcHash xHash,ProcRawStrCmp xCmp)` |
-|    3 |  480 | ` {` |
-|    - |  481 | `	SyArchiveEntry **apHash;` |
-|    - |  482 | `#if defined(UNTRUST)` |
-|    - |  483 | ` 	if( pArch == 0 ){` |
-|    - |  484 | ` 		return SXERR_EMPTY;` |
-|    - |  485 | ` 	}` |
-|    - |  486 | `#endif` |
-|   33 |  487 | ` 	SyZero(pArch,sizeof(SyArchive));` |
-|    - |  488 | ` 	/* Allocate a new hashtable */` |
-|   33 |  489 | `	apHash = (SyArchiveEntry **)SyMemBackendAlloc(&(*pAllocator),SXARCHIVE_HASH_SIZE * sizeof(SyArchiveEntry *));` |
-|   33 |  490 | `	if( apHash == 0){` |
-|  ! 0 |  491 | `		return SXERR_MEM;` |
-|    - |  492 | `	}` |
-|   33 |  493 | `	SyZero(apHash,SXARCHIVE_HASH_SIZE * sizeof(SyArchiveEntry *));` |
-|   33 |  494 | `	pArch->apHash = apHash;` |
-|   33 |  495 | `	pArch->xHash  = xHash ? xHash : SyBinHash;` |
-|   33 |  496 | `	pArch->xCmp   = xCmp ? xCmp : ArchiveHashCmp;` |
-|   33 |  497 | `	pArch->nSize  = SXARCHIVE_HASH_SIZE;` |
-|   33 |  498 | ` 	pArch->pAllocator = &(*pAllocator);` |
-|   33 |  499 | ` 	pArch->nMagic = SXARCH_MAGIC;` |
-|   33 |  500 | ` 	return SXRET_OK;` |
-|   18 |  501 | ` }` |
-|   14 |  502 | ` static sxi32 ArchiveReleaseEntry(SyMemBackend *pAllocator,SyArchiveEntry *pEntry)` |
-|    2 |  503 | ` {` |
-|   16 |  504 | ` 	SyArchiveEntry *pDup = pEntry->pNextName;` |
-|    - |  505 | ` 	SyArchiveEntry *pNextDup;` |
-|    - |  506 |  |
-|    - |  507 | ` 	/* Release duplicates first since there are not stored in the hashtable */` |
-|    7 |  508 | ` 	for(;;){` |
-|   16 |  509 | ` 		if( pEntry->nDup == 0 ){` |
-|   16 |  510 | ` 			break;` |
-|    - |  511 | ` 		}` |
-|  ! 0 |  512 | ` 		pNextDup = pDup->pNextName;` |
-|  ! 0 |  513 | `		pDup->nMagic = 0x2661;` |
-|  ! 0 |  514 | ` 		SyMemBackendFree(pAllocator,(void *)SyStringData(&pDup->sFileName));` |
-|  ! 0 |  515 | ` 		SyMemBackendPoolFree(pAllocator,pDup);` |
-|  ! 0 |  516 | ` 		pDup = pNextDup;` |
-|  ! 0 |  517 | ` 		pEntry->nDup--;` |
-|  ! 0 |  518 | ` 	}` |
-|   16 |  519 | `	pEntry->nMagic = 0x2661;` |
-|   16 |  520 | `  	SyMemBackendFree(pAllocator,(void *)SyStringData(&pEntry->sFileName));` |
-|   16 |  521 | ` 	SyMemBackendPoolFree(pAllocator,pEntry);` |
-|   16 |  522 | ` 	return SXRET_OK;` |
-|    2 |  523 | ` }` |
-|   14 |  524 | `PH7_PRIVATE sxi32 SyArchiveRelease(SyArchive *pArch)` |
-|    2 |  525 | ` {` |
-|    - |  526 | `	SyArchiveEntry *pEntry,*pNext;` |
-|   16 |  527 | ` 	pEntry = pArch->pList;` |
-|   14 |  528 | `	for(;;){` |
-|   30 |  529 | `		if( pArch->nLoaded < 1 ){` |
-|   16 |  530 | `			break;` |
-|    - |  531 | `		}` |
-|   16 |  532 | `		pNext = pEntry->pNext;` |
-|   16 |  533 | `		MACRO_LD_REMOVE(pArch->pList,pEntry);` |
-|   16 |  534 | `		ArchiveReleaseEntry(pArch->pAllocator,pEntry);` |
-|   16 |  535 | `		pEntry = pNext;` |
-|   16 |  536 | `		pArch->nLoaded--;` |
-|    2 |  537 | `	}` |
-|   16 |  538 | `	SyMemBackendFree(pArch->pAllocator,pArch->apHash);` |
-|   16 |  539 | `	pArch->pCursor = 0;` |
-|   16 |  540 | `	pArch->nMagic = 0x2626;` |
-|   16 |  541 | `	return SXRET_OK;` |
-|    2 |  542 | ` }` |
-|   14 |  543 | ` PH7_PRIVATE sxi32 SyArchiveResetLoopCursor(SyArchive *pArch)` |
-|    2 |  544 | ` {` |
-|   16 |  545 | `	pArch->pCursor = pArch->pList;` |
-|   16 |  546 | `	return SXRET_OK;` |
-|    2 |  547 | ` }` |
-|    8 |  548 | ` PH7_PRIVATE sxi32 SyArchiveGetNextEntry(SyArchive *pArch,SyArchiveEntry **ppEntry)` |
-|    2 |  549 | ` {` |
-|    - |  550 | `	SyArchiveEntry *pNext;` |
-|   10 |  551 | `	if( pArch->pCursor == 0 ){` |
-|    - |  552 | `		/* Rewind the cursor */` |
-|  ! 0 |  553 | `		pArch->pCursor = pArch->pList;` |
-|  ! 0 |  554 | `		return SXERR_EOF;` |
-|    - |  555 | `	}` |
-|   10 |  556 | `	*ppEntry = pArch->pCursor;` |
-|   10 |  557 | `	 pNext = pArch->pCursor->pNext;` |
-|    - |  558 | `	 /* Advance the cursor to the next entry */` |
-|   10 |  559 | `	 pArch->pCursor = pNext;` |
-|   10 |  560 | `	 return SXRET_OK;` |
-|    6 |  561 | `  }` |
-|    - |  562 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
-|    - |  563 |  |
+|   16 |  400 | `		pName = &pEntry->sFileName;` |
+|   16 |  401 | `		pName->zString = (const char *)&zCentral[nOfft + SXZIP_CENTRAL_HDRSZ];` |
+|   16 |  402 | `		if( pName->nByte <= 0 \|\| ( pEntry->nByte <= 0 && pName->zString[pName->nByte - 1] != '/') ){` |
+|    - |  403 | `			/* Ignore zero length records (except folders) and records without names */` |
+|  ! 0 |  404 | `			SyMemBackendPoolFree(pArch->pAllocator,pEntry);` |
+|  ! 0 |  405 | `		 	nOfft += nIncr; /* Check next entry */` |
+|  ! 0 |  406 | `			continue;` |
+|    - |  407 | `		}` |
+|   16 |  408 | `		zName = SyMemBackendStrDup(pArch->pAllocator,pName->zString,pName->nByte);` |
+|   16 |  409 | ` 	 	if( zName == 0 ){` |
+|  ! 0 |  410 | ` 	 		 SyMemBackendPoolFree(pArch->pAllocator,pEntry);` |
+|  ! 0 |  411 | `		 	 nOfft += nIncr; /* Check next entry */` |
+|  ! 0 |  412 | `			continue;` |
+|    - |  413 | ` 	 	}` |
+|   16 |  414 | `		pName->zString = (const char *)zName;` |
+|    - |  415 | `		/* Check for duplicates */` |
+|   16 |  416 | `		rc = ArchiveHashGetEntry(&(*pArch),pName->zString,pName->nByte,&pDup);` |
+|   16 |  417 | `		if( rc == SXRET_OK ){` |
+|    - |  418 | `			/* Another entry with the same name exists ; link them together */` |
+|  ! 0 |  419 | `			pEntry->pNextName = pDup->pNextName;` |
+|  ! 0 |  420 | `			pDup->pNextName = pEntry;` |
+|  ! 0 |  421 | `			pDup->nDup++;` |
+|  ! 0 |  422 | `		}else{` |
+|    - |  423 | `			/* Insert in hashtable */` |
+|   16 |  424 | `			ArchiveHashInstallEntry(pArch,pEntry);` |
+|    - |  425 | `		}` |
+|   16 |  426 | `		nOfft += nIncr;	/* Check next record */` |
+|    2 |  427 | `	}` |
+|   20 |  428 | `	pArch->pCursor = pArch->pList;` |
+|    - |  429 |  |
+|   20 |  430 | `	return pArch->nLoaded > 0 ? SXRET_OK : SXERR_EMPTY;` |
+|    2 |  431 | `}` |
+|   28 |  432 | `PH7_PRIVATE sxi32 SyZipExtractFromBuf(SyArchive *pArch,const char *zBuf,sxu32 nLen)` |
+|    2 |  433 | ` {` |
+|    - |  434 | ` 	const unsigned char *zCentral,*zEnd;` |
+|    - |  435 | ` 	sxi32 rc;` |
+|    - |  436 | `#if defined(UNTRUST)` |
+|    - |  437 | ` 	if( SXARCH_INVALID(pArch) \|\| zBuf == 0 ){` |
+|    - |  438 | ` 		return SXERR_INVALID;` |
+|    - |  439 | ` 	}` |
+|    - |  440 | `#endif` |
+|    - |  441 | ` 	/* The miminal size of a zip archive:` |
+|    - |  442 | ` 	 * LOCAL_HDR_SZ + CENTRAL_HDR_SZ + END_OF_CENTRAL_HDR_SZ` |
+|    - |  443 | ` 	 * 		30				46				22` |
+|    - |  444 | ` 	 */` |
+|   30 |  445 | ` 	 if( nLen < SXZIP_LOCAL_HDRSZ + SXZIP_CENTRAL_HDRSZ + SXZIP_END_CENTRAL_HDRSZ ){` |
+|    5 |  446 | ` 	 	return SXERR_CORRUPT; /* Don't bother processing return immediately */` |
+|    - |  447 | ` 	 }` |
+|    - |  448 |  |
+|   26 |  449 | ` 	zEnd = (unsigned char *)&zBuf[nLen - SXZIP_END_CENTRAL_HDRSZ];` |
+|    - |  450 | ` 	/* Find the end of central directory */` |
+|  414 |  451 | ` 	while( ((sxu32)((unsigned char *)&zBuf[nLen] - zEnd) < (SXZIP_END_CENTRAL_HDRSZ + SXI16_HIGH)) &&` |
+|  585 |  452 | `		zEnd > (unsigned char *)zBuf && SyMemcmp(zEnd,"PK\005\006",sizeof(sxu32)) != 0 ){` |
+|  367 |  453 | ` 		zEnd--;` |
+|    1 |  454 | ` 	}` |
+|    - |  455 | ` 	/* Parse the end of central directory */` |
+|   26 |  456 | ` 	rc = ParseEndOfCentralDirectory(&(*pArch),zEnd);` |
+|   26 |  457 | ` 	if( rc != SXRET_OK ){` |
+|    5 |  458 | ` 		return rc;` |
+|    - |  459 | ` 	}` |
+|    - |  460 |  |
+|    - |  461 | ` 	/* Find the starting offset of the central directory */` |
+|   22 |  462 | ` 	zCentral = &zEnd[-(sxi32)pArch->nCentralSize];` |
+|   22 |  463 | ` 	if( zCentral <= (unsigned char *)zBuf \|\| SyMemcmp(zCentral,"PK\001\002",sizeof(sxu32)) != 0 ){` |
+|    3 |  464 | ` 		if( pArch->nCentralOfft >= nLen ){` |
+|    - |  465 | `			/* Corrupted central directory offset */` |
+|  ! 0 |  466 | ` 			return SXERR_CORRUPT;` |
+|    - |  467 | ` 		}` |
+|    3 |  468 | ` 		zCentral = (unsigned char *)&zBuf[pArch->nCentralOfft];` |
+|    3 |  469 | ` 		if( SyMemcmp(zCentral,"PK\001\002",sizeof(sxu32)) != 0 ){` |
+|    - |  470 | ` 			/* Corrupted zip archive */` |
+|    3 |  471 | ` 			return SXERR_CORRUPT;` |
+|    - |  472 | ` 		}` |
+|    - |  473 | ` 		/* Fall thru and extract all valid entries from the central directory */` |
+|  ! 0 |  474 | ` 	}` |
+|   20 |  475 | ` 	rc = ZipExtract(&(*pArch),zCentral,(sxu32)(zEnd - zCentral),(void *)zBuf);` |
+|   20 |  476 | ` 	return rc;` |
+|   16 |  477 | ` }` |
+|    - |  478 | `/*` |
+|    - |  479 | `  * Default comparison function.` |
+|    - |  480 | `  */` |
+|  ! 0 |  481 | ` static sxi32 ArchiveHashCmp(const SyString *pStr1,const SyString *pStr2)` |
+|  ! 0 |  482 | ` {` |
+|    - |  483 | `	 sxi32 rc;` |
+|  ! 0 |  484 | `	 rc = SyStringCmp(pStr1,pStr2,SyMemcmp);` |
+|  ! 0 |  485 | `	 return rc;` |
+|  ! 0 |  486 | ` }` |
+|   30 |  487 | `PH7_PRIVATE sxi32 SyArchiveInit(SyArchive *pArch,SyMemBackend *pAllocator,ProcHash xHash,ProcRawStrCmp xCmp)` |
+|    3 |  488 | ` {` |
+|    - |  489 | `	SyArchiveEntry **apHash;` |
+|    - |  490 | `#if defined(UNTRUST)` |
+|    - |  491 | ` 	if( pArch == 0 ){` |
+|    - |  492 | ` 		return SXERR_EMPTY;` |
+|    - |  493 | ` 	}` |
+|    - |  494 | `#endif` |
+|   33 |  495 | ` 	SyZero(pArch,sizeof(SyArchive));` |
+|    - |  496 | ` 	/* Allocate a new hashtable */` |
+|   33 |  497 | `	apHash = (SyArchiveEntry **)SyMemBackendAlloc(&(*pAllocator),SXARCHIVE_HASH_SIZE * sizeof(SyArchiveEntry *));` |
+|   33 |  498 | `	if( apHash == 0){` |
+|  ! 0 |  499 | `		return SXERR_MEM;` |
+|    - |  500 | `	}` |
+|   33 |  501 | `	SyZero(apHash,SXARCHIVE_HASH_SIZE * sizeof(SyArchiveEntry *));` |
+|   33 |  502 | `	pArch->apHash = apHash;` |
+|   33 |  503 | `	pArch->xHash  = xHash ? xHash : SyBinHash;` |
+|   33 |  504 | `	pArch->xCmp   = xCmp ? xCmp : ArchiveHashCmp;` |
+|   33 |  505 | `	pArch->nSize  = SXARCHIVE_HASH_SIZE;` |
+|   33 |  506 | ` 	pArch->pAllocator = &(*pAllocator);` |
+|   33 |  507 | ` 	pArch->nMagic = SXARCH_MAGIC;` |
+|   33 |  508 | ` 	return SXRET_OK;` |
+|   18 |  509 | ` }` |
+|   14 |  510 | ` static sxi32 ArchiveReleaseEntry(SyMemBackend *pAllocator,SyArchiveEntry *pEntry)` |
+|    2 |  511 | ` {` |
+|   16 |  512 | ` 	SyArchiveEntry *pDup = pEntry->pNextName;` |
+|    - |  513 | ` 	SyArchiveEntry *pNextDup;` |
+|    - |  514 |  |
+|    - |  515 | ` 	/* Release duplicates first since there are not stored in the hashtable */` |
+|    7 |  516 | ` 	for(;;){` |
+|   16 |  517 | ` 		if( pEntry->nDup == 0 ){` |
+|   16 |  518 | ` 			break;` |
+|    - |  519 | ` 		}` |
+|  ! 0 |  520 | ` 		pNextDup = pDup->pNextName;` |
+|  ! 0 |  521 | `		pDup->nMagic = 0x2661;` |
+|  ! 0 |  522 | ` 		SyMemBackendFree(pAllocator,(void *)SyStringData(&pDup->sFileName));` |
+|  ! 0 |  523 | ` 		SyMemBackendPoolFree(pAllocator,pDup);` |
+|  ! 0 |  524 | ` 		pDup = pNextDup;` |
+|  ! 0 |  525 | ` 		pEntry->nDup--;` |
+|  ! 0 |  526 | ` 	}` |
+|   16 |  527 | `	pEntry->nMagic = 0x2661;` |
+|   16 |  528 | `  	SyMemBackendFree(pAllocator,(void *)SyStringData(&pEntry->sFileName));` |
+|   16 |  529 | ` 	SyMemBackendPoolFree(pAllocator,pEntry);` |
+|   16 |  530 | ` 	return SXRET_OK;` |
+|    2 |  531 | ` }` |
+|   14 |  532 | `PH7_PRIVATE sxi32 SyArchiveRelease(SyArchive *pArch)` |
+|    2 |  533 | ` {` |
+|    - |  534 | `	SyArchiveEntry *pEntry,*pNext;` |
+|   16 |  535 | ` 	pEntry = pArch->pList;` |
+|   14 |  536 | `	for(;;){` |
+|   30 |  537 | `		if( pArch->nLoaded < 1 ){` |
+|   16 |  538 | `			break;` |
+|    - |  539 | `		}` |
+|   16 |  540 | `		pNext = pEntry->pNext;` |
+|   16 |  541 | `		MACRO_LD_REMOVE(pArch->pList,pEntry);` |
+|   16 |  542 | `		ArchiveReleaseEntry(pArch->pAllocator,pEntry);` |
+|   16 |  543 | `		pEntry = pNext;` |
+|   16 |  544 | `		pArch->nLoaded--;` |
+|    2 |  545 | `	}` |
+|   16 |  546 | `	SyMemBackendFree(pArch->pAllocator,pArch->apHash);` |
+|   16 |  547 | `	pArch->pCursor = 0;` |
+|   16 |  548 | `	pArch->nMagic = 0x2626;` |
+|   16 |  549 | `	return SXRET_OK;` |
+|    2 |  550 | ` }` |
+|   14 |  551 | ` PH7_PRIVATE sxi32 SyArchiveResetLoopCursor(SyArchive *pArch)` |
+|    2 |  552 | ` {` |
+|   16 |  553 | `	pArch->pCursor = pArch->pList;` |
+|   16 |  554 | `	return SXRET_OK;` |
+|    2 |  555 | ` }` |
+|    8 |  556 | ` PH7_PRIVATE sxi32 SyArchiveGetNextEntry(SyArchive *pArch,SyArchiveEntry **ppEntry)` |
+|    2 |  557 | ` {` |
+|    - |  558 | `	SyArchiveEntry *pNext;` |
+|   10 |  559 | `	if( pArch->pCursor == 0 ){` |
+|    - |  560 | `		/* Rewind the cursor */` |
+|  ! 0 |  561 | `		pArch->pCursor = pArch->pList;` |
+|  ! 0 |  562 | `		return SXERR_EOF;` |
+|    - |  563 | `	}` |
+|   10 |  564 | `	*ppEntry = pArch->pCursor;` |
+|   10 |  565 | `	 pNext = pArch->pCursor->pNext;` |
+|    - |  566 | `	 /* Advance the cursor to the next entry */` |
+|   10 |  567 | `	 pArch->pCursor = pNext;` |
+|   10 |  568 | `	 return SXRET_OK;` |
+|    6 |  569 | `  }` |
+|    - |  570 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
+|    - |  571 |  |

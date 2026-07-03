@@ -251,11 +251,11 @@ Coverage: 433/511 lines (84.74%)
 |    71 |  241 | `		if( pEntry ){` |
 |     - |  242 | `			/* Walk the collision chain: return TRUE only for concrete or abstract classes,` |
 |     - |  243 | `			 * not for interfaces or traits (matching PHP behavior). */` |
-|    56 |  244 | `			ph7_class *pClass = (ph7_class *)pEntry->pUserData;` |
-|    56 |  245 | `			while( pClass ){` |
-|    56 |  246 | `				if( (pClass->iFlags & (PH7_CLASS_INTERFACE\|PH7_CLASS_TRAIT)) == 0 ){` |
-|    56 |  247 | `					res = 1;` |
-|    56 |  248 | `					break;` |
+|    57 |  244 | `			ph7_class *pClass = (ph7_class *)pEntry->pUserData;` |
+|    57 |  245 | `			while( pClass ){` |
+|    57 |  246 | `				if( (pClass->iFlags & (PH7_CLASS_INTERFACE\|PH7_CLASS_TRAIT)) == 0 ){` |
+|    57 |  247 | `					res = 1;` |
+|    57 |  248 | `					break;` |
 |     - |  249 | `				}` |
 |   ! 0 |  250 | `				pClass = pClass->pNextName;` |
 |   ! 0 |  251 | `			}` |
