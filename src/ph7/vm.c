@@ -5343,6 +5343,183 @@ static void VmForeachStepAbandon(ph7_vm *pVm,ph7_foreach_info *pInfo,ph7_foreach
 	PH7_ClassInstanceUnref(pThis);
 }
 /*
+ * Boundary state of one VmByteCodeExec activation (BYTECODE.md stage 1):
+ * everything the executor must restore to continue an activation after a
+ * nested call returns. pc/pTos are authoritative here only at activation
+ * boundaries — the dispatch loop keeps them in locals for the hot path and
+ * syncs around the call epilogue and the terminal labels. Stage 2 stacks
+ * these records to replace the native recursion.
+ */
+typedef struct VmExecState VmExecState;
+struct VmExecState
+{
+	VmInstr *aInstr;        /* Bytecode of this activation */
+	ph7_value *pStack;      /* Operand-stack base (owned by this activation) */
+	ph7_value *pTos;        /* Top-of-stack (synced at boundaries) */
+	sxi32 pc;               /* Program counter (synced at boundaries) */
+	sxu32 nExceptionBase;   /* Exception-stack depth at entry (finally-drain floor) */
+	VmFrame *pEntryFrame;   /* Active frame at entry (exec identity for VmRecordedResume) */
+	ph7_value *pResult;     /* Where the terminal OP_DONE stores the result (or NULL) */
+	sxu32 *pLastRef;        /* By-ref return out-param (or NULL) */
+	ph7_vm_func *pEnforceRetFunc; /* Return-type enforcement target (user-fn bodies only) */
+	sxu8 is_callback;       /* TRUE only for a C->PHP callback trampoline activation */
+	sxu8 bReturnPropagates; /* TRUE only for a catch/finally mini-program */
+};
+/*
+ * One in-flight user-function call: what the caller's OP_CALL set up and the
+ * pop boundary (VmCallFinish) must tear down.
+ */
+typedef struct VmCallRecord VmCallRecord;
+struct VmCallRecord
+{
+	ph7_vm_func *pVmFunc;   /* Callee */
+	VmFrame *pFrame;        /* Callee's VM frame (entered by the OP_CALL setup) */
+	ph7_value *pFrameStack; /* Callee's operand stack (owned; freed here). NULL when the body was skipped */
+	sxu32 nLastRef;         /* Callee body's last-referenced slot (by-ref return) */
+	sxu8 bSelfPushed;       /* TRUE when the setup pushed onto pVm->aSelf */
+};
+/*
+ * Terminal teardown of one VmByteCodeExec activation — the former
+ * Done/Suspend/Abort/Exception label bodies, one home (BYTECODE.md stage 1).
+ *
+ * SXRET_OK (Done): whenever the REAL body returns, its pending-return slot
+ * must be empty — the materialize at OP_DONE/OP_POP_EXCEPTION already moved
+ * the value into pResult and cleared bHasRet, so the clear is normally a
+ * no-op; it only fires on a path that reached Done with a stale slot,
+ * preventing a leak. The !bReturnPropagates guard is essential: a
+ * catch/finally MINI-PROGRAM runs in its body's own frame (VmLocalExec adds
+ * no frame), so pEntryFrame is that body — wiping its slot would destroy the
+ * return the body is about to take.
+ * PH7_SUSPEND: a generator/fiber body never suspends mid-completion of a
+ * catch/finally return, so its frame's slot is empty (nothing to clear) and
+ * its operand stack is preserved in place — the ctx owns it.
+ * PH7_ABORT / PH7_EXCEPTION: abnormal unwind — discard the body's pending
+ * return (an escaping exception supersedes it, per PHP) and release every
+ * live operand slot down to the activation's stack base.
+ */
+static sxi32 VmExecFinalize(ph7_vm *pVm,VmExecState *pState,SySet *pArg,ph7_value *pTos,sxi32 rcTerm)
+{
+	SXUNUSED(pVm);
+	if( rcTerm != PH7_SUSPEND && !pState->bReturnPropagates ){
+		VmClearFrameReturn(pState->pEntryFrame);
+	}
+	SySetRelease(pArg);
+	if( rcTerm == PH7_ABORT || rcTerm == PH7_EXCEPTION ){
+		while( pTos >= pState->pStack ){
+			PH7_MemObjRelease(pTos);
+			pTos--;
+		}
+	}
+	return rcTerm;
+}
+/*
+ * Finish one user-function call at the "pop" boundary of the callee's
+ * activation: pop-time accounting (recursion depth, aSelf), by-ref-return
+ * fixup, callee-threw routing (inline resume / recorded resume / propagate),
+ * operand-stack free and frame teardown. Extracted verbatim from the OP_CALL
+ * epilogue (BYTECODE.md stage 1) so the stage-2 trampoline can run the same
+ * code when a record is popped at OP_DONE instead of after a native return.
+ * pCaller->pc / pCaller->pTos are authoritative across this boundary; the
+ * dispatch loop syncs its locals around the call. Returns PH7_OK (continue
+ * the caller, possibly at a redirected pc), PH7_ABORT, PH7_SUSPEND (the ctx
+ * state was re-saved at the caller's level) or PH7_EXCEPTION.
+ */
+static sxi32 VmCallFinish(ph7_vm *pVm,VmExecState *pCaller,VmCallRecord *pCallee,sxi32 rc)
+{
+	ph7_value *pObj;
+	/* Decrement nesting level */
+	pVm->nRecursionDepth--;
+	if( pCallee->bSelfPushed ){
+		/* Pop class name */
+		(void)SySetPop(&pVm->aSelf);
+	}
+	if( (pCallee->pVmFunc->iFlags & VM_FUNC_REF_RETURN) && rc == SXRET_OK ){
+		/* Return by reference,reflect that */
+		if( pCallee->nLastRef != SXU32_HIGH ){
+			VmSlot *aSlot = (VmSlot *)SySetBasePtr(&pCallee->pFrame->sLocal);
+			sxu32 i;
+			/* Make sure the referenced object is not a local variable */
+			for( i = 0 ; i < SySetUsed(&pCallee->pFrame->sLocal) ; ++i ){
+				if( pCallee->nLastRef == aSlot[i].nIdx ){
+					pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pCallee->nLastRef);
+					if( pObj && (pObj->iFlags & (MEMOBJ_NULL|MEMOBJ_OBJ|MEMOBJ_HASHMAP|MEMOBJ_RES)) == 0 ){
+						VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,
+							"Function '%z',return by reference: Cannot reference local variable,PH7 is switching to return by value",
+							&pCallee->pVmFunc->sName);
+					}
+					pCallee->nLastRef = SXU32_HIGH;
+					break;
+				}
+			}
+		}else{
+			if( (pCaller->pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_NULL|MEMOBJ_RES)) == 0 ){
+				VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,
+					"Function '%z',return by reference: Cannot reference constant expression,PH7 is switching to return by value",
+					&pCallee->pVmFunc->sName);
+			}
+		}
+		pCaller->pTos->nIdx = pCallee->nLastRef;
+	}
+	if( rc != PH7_ABORT && ((pCallee->pFrame->iFlags & VM_FRAME_THROW) || rc == PH7_EXCEPTION) ){
+		/* The callee threw (or its finally threw past it). If an in-place catch
+		 * recorded a resume target owned by THIS caller's body, resume there and
+		 * consume the target (VmRecordedResume); when the catcher is an outer exec
+		 * — or this is a callback with no bytecode to resume into — propagate so
+		 * the owning exec lands. This replaces the old "is the caller's parent a
+		 * resumable try frame" test, which resumed at the caller's OWN try even
+		 * when the finally's throw was caught further out, losing that catch's
+		 * return (ROOT B, face c). */
+		sxi32 iResumePc;
+		VmFrame *pParentFrame = pCallee->pFrame->pParent;
+		if( !pCaller->is_callback && pVm->pInlineInstr == (void *)pCaller->aInstr ){
+			/* ROOT C: the callee's throw was caught by an inline try in THIS caller
+			 * (generator body). Drain the operand stack (incl. the unwritten result
+			 * slot) to the try's base and land at its catch/finally. */
+			while( (sxi32)(pCaller->pTos - pCaller->pStack) > pVm->iInlineDrain ){
+				PH7_MemObjRelease(pCaller->pTos);
+				pCaller->pTos--;
+			}
+			pCaller->pc = (sxi32)pVm->iInlinePc - 1;
+			pVm->pInlineInstr = 0;
+			rc = PH7_OK;
+		}else if( !pCaller->is_callback && VmRecordedResume(pVm,&iResumePc,pCaller->pEntryFrame,pCaller->aInstr) ){
+			/* Pop the result */
+			VmPopOperand(&pCaller->pTos,1);
+			pCaller->pc = iResumePc;
+			rc = PH7_OK;
+		}else{
+			if( pParentFrame->pParent ){
+				rc = PH7_EXCEPTION;
+			}else{
+				/* Continue normal execution */
+				rc = PH7_OK;
+			}
+		}
+	}
+	/* Free the operand stack (NULL when function body was skipped) */
+	if( pCallee->pFrameStack ){
+		SyMemBackendFree(&pVm->sAllocator,pCallee->pFrameStack);
+	}
+	/* Leave the frame */
+	VmLeaveFrame(&(*pVm));
+	if( rc == PH7_ABORT ){
+		return PH7_ABORT;
+	}
+	if( rc == PH7_SUSPEND && pVm->pActiveCtx ){
+		/* A Fiber::suspend() was called somewhere inside this function.
+		 * Re-save the fiber's state at THIS level (the fiber's body),
+		 * overwriting the state saved by the inner level.
+		 * pTos points to the result slot (not yet written).
+		 * Save nTos one below so resume pushes at the result slot. */
+		VmSuspendCtx(pVm,pVm->pActiveCtx,pCaller->pc + 1,(sxi32)(pCaller->pTos - pCaller->pStack) - 1);
+		return PH7_SUSPEND;
+	}
+	if( rc == PH7_EXCEPTION ){
+		return PH7_EXCEPTION;
+	}
+	return PH7_OK;
+}
+/*
  * Execute as much of a PH7 bytecode program as we can then return.
  *
  * [PH7_VmMakeReady()] must be called before this routine in order to
@@ -5371,10 +5548,20 @@ static sxi32 VmByteCodeExec(
 	VmInstr *pInstr;
 	ph7_value *pTos;
 	SySet aArg;
-	sxu32 nExceptionBase; /* Exception stack depth at entry (for finally drain guard) */
-	VmFrame *pEntryFrame;  /* Active frame at entry (for return-unwind frame teardown) */
+	VmExecState sState; /* This activation's boundary state (BYTECODE.md stage 1):
+	                     * everything a suspended/nested activation must restore.
+	                     * pc/pTos stay in locals for the hot loop and are synced
+	                     * into sState only around the call epilogue (stage 2 turns
+	                     * that boundary into an explicit record push/pop). */
 	sxi32 pc;
 	sxi32 rc;
+	sState.aInstr = aInstr;
+	sState.pStack = pStack;
+	sState.pResult = pResult;
+	sState.pLastRef = pLastRef;
+	sState.pEnforceRetFunc = pEnforceRetFunc;
+	sState.is_callback = (sxu8)(is_callback ? 1 : 0);
+	sState.bReturnPropagates = (sxu8)(bReturnPropagates ? 1 : 0);
 	/* Argument container */
 	SySetInit(&aArg,&pVm->sAllocator,sizeof(ph7_value *));
 	if( nTos < 0 ){
@@ -5382,6 +5569,8 @@ static sxi32 VmByteCodeExec(
 	}else{
 		pTos = &pStack[nTos];
 	}
+	sState.pTos = pTos;
+	sState.pc = nPc;
 	/* Finally-drain base. For a resumed generator/fiber TOP-LEVEL body, its own
 	 * exception handlers were just re-published above the caller depth
 	 * (VmRestoreCtxExceptionHandlers), so the live SySetUsed over-counts; take the
@@ -5401,11 +5590,11 @@ static sxi32 VmByteCodeExec(
 	 * body itself; nested mini-programs fall through to the correct live depth. */
 	if( pVm->pActiveCtx && pVm->pActiveCtx->pFrame == pVm->pFrame
 	 && pStack == pVm->pActiveCtx->pStack ){
-		nExceptionBase = pVm->pActiveCtx->nExceptionBase;
+		sState.nExceptionBase = pVm->pActiveCtx->nExceptionBase;
 	}else{
-		nExceptionBase = SySetUsed(&pVm->aException);
+		sState.nExceptionBase = SySetUsed(&pVm->aException);
 	}
-	pEntryFrame = pVm->pFrame;
+	sState.pEntryFrame = pVm->pFrame;
 	pc = nPc;
 /*
  * Route an enforcement helper's (or yield-from delegate's) return code from inside
@@ -5435,7 +5624,7 @@ static sxi32 VmByteCodeExec(
 	if( (rcVar) == PH7_EXCEPTION || pVm->pInlineInstr ){ \
 		sxi32 _iRpE; \
 		PH7_INLINE_RESUME_BREAK() \
-		if( VmRecordedResume(pVm,&_iRpE,pEntryFrame,aInstr) ){ \
+		if( VmRecordedResume(pVm,&_iRpE,sState.pEntryFrame,aInstr) ){ \
 			pc = _iRpE; \
 			break; \
 		} \
@@ -5460,7 +5649,7 @@ static sxi32 VmByteCodeExec(
 	{ \
 		sxi32 _iRpI; \
 		PH7_INLINE_RESUME_BREAK() \
-		if( VmRecordedResume(pVm,&_iRpI,pEntryFrame,aInstr) ){ \
+		if( VmRecordedResume(pVm,&_iRpI,sState.pEntryFrame,aInstr) ){ \
 			if( (nPopOnResume) > 0 ){ VmPopOperand(&pTos,(nPopOnResume)); } \
 			pc = _iRpI; \
 			break; \
@@ -5511,7 +5700,7 @@ static sxi32 VmByteCodeExec(
 	 * dispatch loop untouched for all normal code. The pFrame gate keeps a nested call / catch
 	 * mini-program sharing the ctx (a separate VmByteCodeExec entry) from re-firing. */
 	if( pVm->pActiveCtx && pVm->pActiveCtx->pInjected
-	 && pVm->pActiveCtx->pFrame == pEntryFrame ){
+	 && pVm->pActiveCtx->pFrame == sState.pEntryFrame ){
 		ph7_class_instance *pInj = pVm->pActiveCtx->pInjected;
 		VmFrame *pThrowFrame;
 		sxi32 iResumePc;
@@ -5532,7 +5721,7 @@ static sxi32 VmByteCodeExec(
 			}
 			pc = (sxi32)pVm->iInlinePc;
 			pVm->pInlineInstr = 0;
-		}else if( VmRecordedResume(pVm,&iResumePc,pEntryFrame,aInstr) ){
+		}else if( VmRecordedResume(pVm,&iResumePc,sState.pEntryFrame,aInstr) ){
 			/* Caught by THIS generator's own try. (VmRecordedResume returns FALSE unless a
 			 * catch recorded a resume target for this exec, so rc need not be pre-checked;
 			 * unlike OP_THROW there is no lexical-try fallthrough here — the else just
@@ -5572,11 +5761,11 @@ static sxi32 VmByteCodeExec(
  * and return immediately.
  */
 case PH7_OP_DONE:
-	if( pInstr->iP2 && bReturnPropagates ){
+	if( pInstr->iP2 && sState.bReturnPropagates ){
 		/* Explicit `return` inside a catch/finally mini-program. Defer the value
 		 * onto the body frame this catch/finally returns from (skip the transparent
 		 * exception/catch wrappers); the enclosing body's OP_DONE / OP_POP_EXCEPTION
-		 * materializes it into pResult. Drain any finally opened within this body
+		 * materializes it into sState.pResult. Drain any finally opened within this body
 		 * first (nested try/finally inside the catch), which may overwrite the same
 		 * frame's slot (finally-over-catch). */
 		VmFrame *pTgt = VmSkipExceptionFrames(pVm->pFrame);
@@ -5588,7 +5777,7 @@ case PH7_OP_DONE:
 		}
 		pTgt->bHasRet = 1;
 		pTgt->nRetGen++;
-		rc = VmDrainFinally(&(*pVm),nExceptionBase);
+		rc = VmDrainFinally(&(*pVm),sState.nExceptionBase);
 		if( rc == SXERR_ABORT ){
 			goto Abort;
 		}
@@ -5599,10 +5788,10 @@ case PH7_OP_DONE:
 		goto Done;
 	}
 	/* Return-type enforcement: only the user-function CALL handler (and
-	 * the fiber start/resume paths) set pEnforceRetFunc, so this branch is
+	 * the fiber start/resume paths) set sState.pEnforceRetFunc, so this branch is
 	 * skipped for default-value bytecode, class-method mini-programs,
 	 * callback trampolines, and the main script. */
-	if( pEnforceRetFunc && VmFuncHasReturnType(pEnforceRetFunc)
+	if( sState.pEnforceRetFunc && VmFuncHasReturnType(sState.pEnforceRetFunc)
 	 && !(VmSkipExceptionFrames(pVm->pFrame)->iFlags & VM_FRAME_THROW) ){
 		/* The VM_FRAME_THROW guard skips enforcement when the function is
 		 * unwinding because an exception was thrown (the compiler routes an
@@ -5614,7 +5803,7 @@ case PH7_OP_DONE:
 		if( pInstr->iP1 && pTos >= pStack ){
 			pRetVal = pTos;
 		}
-		rc = VmEnforceReturnType(&(*pVm), pEnforceRetFunc, pRetVal);
+		rc = VmEnforceReturnType(&(*pVm), sState.pEnforceRetFunc, pRetVal);
 		if( rc == PH7_ABORT ) goto Abort;
 		if( rc == PH7_EXCEPTION ){
 			if( pInstr->iP1 && pTos >= pStack ){
@@ -5626,60 +5815,60 @@ case PH7_OP_DONE:
 		/* Don't enforce twice if the function loops through multiple
 		 * OP_DONEs (it shouldn't — compilers emit one terminal DONE — but
 		 * defensively we clear the pointer after a successful check). */
-		pEnforceRetFunc = 0;
+		sState.pEnforceRetFunc = 0;
 	}
 	if( pInstr->iP1 && pTos >= pStack ){
-		if( pLastRef ){
-			*pLastRef = pTos->nIdx;
+		if( sState.pLastRef ){
+			*sState.pLastRef = pTos->nIdx;
 		}
-		if( pResult ){
+		if( sState.pResult ){
 			/* Execution result */
-			PH7_MemObjStore(pTos,pResult);
+			PH7_MemObjStore(pTos,sState.pResult);
 		}
 		VmPopOperand(&pTos,1);
-	}else if( pLastRef ){
+	}else if( sState.pLastRef ){
 		/* Nothing referenced — also the throw-unwind path: the compiler routes
 		 * an uncaught exception to this terminal OP_DONE with iP1 set but an
 		 * empty operand stack (pTos == pStack-1), so there is no return value to
 		 * store. Guarding on pTos >= pStack (matching the two sibling branches
 		 * above) avoids the below-base read that crashed under glibc/ASan. */
-		*pLastRef = SXU32_HIGH;
+		*sState.pLastRef = SXU32_HIGH;
 	}
 	/* Execute pending finally blocks for any try/catch contexts pushed during
 	 * this execution. When 'return' is used inside a try block,
 	 * PH7_OP_POP_EXCEPTION is bypassed. We must run finally blocks before
-	 * returning. Only drain entries above nExceptionBase to avoid interfering
+	 * returning. Only drain entries above sState.nExceptionBase to avoid interfering
 	 * with exception contexts from an outer VmByteCodeExec invocation.
 	 * This runs AFTER storing the return value so that 'return' in a finally
 	 * block can override it (the finally writes this body frame's sRet slot,
 	 * materialized below).
 	 */
-	rc = VmDrainFinally(&(*pVm),nExceptionBase);
+	rc = VmDrainFinally(&(*pVm),sState.nExceptionBase);
 	if( rc == SXERR_ABORT ){
 		goto Abort;
 	}
 	if( rc == PH7_EXCEPTION ){
 		/* A drained finally threw past itself, discarding the value this OP_DONE
-		 * stored into pResult. If an enclosing try IN THIS function caught the new
+		 * stored into sState.pResult. If an enclosing try IN THIS function caught the new
 		 * exception in place, resume at its landing pad; otherwise unwind (the
 		 * caller's exception-resume pops the stored result). */
 		sxi32 iResumePc;
-		if( VmRecordedResume(pVm,&iResumePc,pEntryFrame,aInstr) ){
+		if( VmRecordedResume(pVm,&iResumePc,sState.pEntryFrame,aInstr) ){
 			pc = iResumePc;
 			break;
 		}
 		goto Exception;
 	}
-	if( pEntryFrame->bHasRet && !bReturnPropagates ){
+	if( sState.pEntryFrame->bHasRet && !sState.bReturnPropagates ){
 		/* A catch/finally issued a 'return' targeting THIS body. If the body is
 		 * actually unwinding because an exception escaped it (terminal OP_DONE on
 		 * the throw-unwind path, VM_FRAME_THROW set — same guard as the return-type
 		 * enforcement above), that exception supersedes the return: discard it.
 		 * Otherwise materialize it as this function's result. */
 		if( VmSkipExceptionFrames(pVm->pFrame)->iFlags & VM_FRAME_THROW ){
-			VmClearFrameReturn(pEntryFrame);
+			VmClearFrameReturn(sState.pEntryFrame);
 		}else{
-			VmMaterializeCatchReturn(&(*pVm),pResult,pEntryFrame);
+			VmMaterializeCatchReturn(&(*pVm),sState.pResult,sState.pEntryFrame);
 		}
 	}
 	goto Done;
@@ -5696,8 +5885,8 @@ case PH7_OP_HALT:
 			goto Abort;
 		}
 #endif
-		if( pLastRef ){
-			*pLastRef = pTos->nIdx;
+		if( sState.pLastRef ){
+			*sState.pLastRef = pTos->nIdx;
 		}
 		if( pTos->iFlags & MEMOBJ_STRING ){
 			if( SyBlobLength(&pTos->sBlob) > 0 ){
@@ -5711,9 +5900,9 @@ case PH7_OP_HALT:
 			pVm->iExitStatus = (sxi32)pTos->x.iVal;
 		}
 		VmPopOperand(&pTos,1);
-	}else if( pLastRef ){
+	}else if( sState.pLastRef ){
 		/* Nothing referenced */
-		*pLastRef = SXU32_HIGH;
+		*sState.pLastRef = SXU32_HIGH;
 	}
 	/* Request a VM-wide halt so the abort cascades out of any enclosing
 	 * include/require/eval execution unit; shutdown callbacks then run
@@ -6256,7 +6445,7 @@ case PH7_OP_LOAD_MAP: {
 			}
 			{
 				sxi32 iRp;
-				if( VmRecordedResume(pVm,&iRp,pEntryFrame,aInstr) ){
+				if( VmRecordedResume(pVm,&iRp,sState.pEntryFrame,aInstr) ){
 					pc = iRp;
 					break;
 				}
@@ -6859,7 +7048,7 @@ case PH7_OP_STORE: {
 				VmPopOperand(&pTos,1);
 				{
 					sxi32 iRp;
-					if( VmRecordedResume(pVm,&iRp,pEntryFrame,aInstr) ){
+					if( VmRecordedResume(pVm,&iRp,sState.pEntryFrame,aInstr) ){
 						pc = iRp;
 						break;
 					}
@@ -8959,7 +9148,7 @@ case PH7_OP_POP_EXCEPTION: {
 			 * caught the new exception in place, resume at its landing pad;
 			 * otherwise it was caught at an outer frame, so unwind this function. */
 			sxi32 iResumePc;
-			if( VmRecordedResume(pVm,&iResumePc,pEntryFrame,aInstr) ){
+			if( VmRecordedResume(pVm,&iResumePc,sState.pEntryFrame,aInstr) ){
 				pc = iResumePc;
 				break;
 			}
@@ -8970,17 +9159,17 @@ case PH7_OP_POP_EXCEPTION: {
 		/* `return` inside the finally (normal try completion) returns from the
 		 * function. The return targets the body frame this try belongs to. Drain
 		 * outer finally blocks first, then — only in the real function body
-		 * (pEntryFrame IS that body) — materialize; inside a mini-program (an inline
+		 * (sState.pEntryFrame IS that body) — materialize; inside a mini-program (an inline
 		 * try within a catch/finally) propagate outward so the owning body returns. */
-		rc = VmDrainFinally(&(*pVm),nExceptionBase);
+		rc = VmDrainFinally(&(*pVm),sState.nExceptionBase);
 		if( rc == SXERR_ABORT ){
 			goto Abort;
 		}
 		if( rc == PH7_EXCEPTION ){
 			goto Exception;
 		}
-		if( !bReturnPropagates ){
-			VmMaterializeCatchReturn(&(*pVm),pResult,pEntryFrame);
+		if( !sState.bReturnPropagates ){
+			VmMaterializeCatchReturn(&(*pVm),sState.pResult,sState.pEntryFrame);
 		}
 		goto Done;
 	}
@@ -9062,7 +9251,7 @@ case PH7_OP_END_FINALLY: {
 		if( pRe ){ PH7_ClassInstanceUnref(pRe); }
 		if( rc == SXERR_ABORT ){ goto Abort; }
 		PH7_INLINE_RESUME_BREAK()
-		if( VmRecordedResume(pVm,&_iRpE,pEntryFrame,aInstr) ){ pc = _iRpE; break; }
+		if( VmRecordedResume(pVm,&_iRpE,sState.pEntryFrame,aInstr) ){ pc = _iRpE; break; }
 		goto Exception;
 	}else{ /* PH7_FA_RETURN */
 		sxu32 iFpc = 0;
@@ -9075,8 +9264,8 @@ case PH7_OP_END_FINALLY: {
 			break;
 		}
 		/* No enclosing finally left: materialize the return from this body. */
-		if( sAct.bHasRetVal && pResult ){
-			PH7_MemObjStore(&sAct.sRet,pResult);
+		if( sAct.bHasRetVal && sState.pResult ){
+			PH7_MemObjStore(&sAct.sRet,sState.pResult);
 		}
 		PH7_MemObjRelease(&sAct.sRet);
 		goto Done;
@@ -9108,8 +9297,8 @@ case PH7_OP_SET_FINALLY_RET: {
 		break;
 	}
 	/* No enclosing finally left: return now. */
-	if( sAct.bHasRetVal && pResult ){
-		PH7_MemObjStore(&sAct.sRet,pResult);
+	if( sAct.bHasRetVal && sState.pResult ){
+		PH7_MemObjStore(&sAct.sRet,sState.pResult);
 	}
 	PH7_MemObjRelease(&sAct.sRet);
 	goto Done;
@@ -9226,7 +9415,7 @@ case PH7_OP_THROW: {
 		 * dead code after it (ROOT B, face a) or continue a callee as if it never threw
 		 * (face c). */
 		sxi32 iResumePc;
-		if( VmRecordedResume(pVm,&iResumePc,pEntryFrame,aInstr) ){
+		if( VmRecordedResume(pVm,&iResumePc,sState.pEntryFrame,aInstr) ){
 			pc = iResumePc;
 			break;
 		}
@@ -9771,7 +9960,7 @@ case PH7_OP_MEMBER: {
 								}
 								{
 									sxi32 iRp;
-									if( VmRecordedResume(pVm,&iRp,pEntryFrame,aInstr) ){
+									if( VmRecordedResume(pVm,&iRp,sState.pEntryFrame,aInstr) ){
 										pc = iRp;
 										break;
 									}
@@ -9992,7 +10181,7 @@ case PH7_OP_MEMBER: {
 													}
 													{
 														sxi32 iRp;
-														if( VmRecordedResume(pVm,&iRp,pEntryFrame,aInstr) ){
+														if( VmRecordedResume(pVm,&iRp,sState.pEntryFrame,aInstr) ){
 															pc = iRp;
 															break;
 														}
@@ -10144,7 +10333,7 @@ case PH7_OP_NEW: {
 				if( rcCons == PH7_ABORT ){
 					goto Abort;
 				}
-				if( VmRecordedResume(pVm,&iResumePc,pEntryFrame,aInstr) ){
+				if( VmRecordedResume(pVm,&iResumePc,sState.pEntryFrame,aInstr) ){
 					/* This frame's own try caught it in-place: tidy the stack
 					 * (pop ctor args + release the class-name slot) and resume. */
 					if( pInstr->iP1 > 0 ){
@@ -10620,7 +10809,7 @@ case PH7_OP_CALL: {
 				 * try if it caught the exception in-place, otherwise propagate. */
 				sxi32 iResumePc;
 				PH7_MemObjRelease(&sResult);
-				if( VmRecordedResume(pVm,&iResumePc,pEntryFrame,aInstr) ){
+				if( VmRecordedResume(pVm,&iResumePc,sState.pEntryFrame,aInstr) ){
 					PH7_MemObjRelease(pTos);
 					pc = iResumePc;
 					break;
@@ -10670,7 +10859,7 @@ case PH7_OP_CALL: {
 				}
 				{
 					sxi32 iRp;
-					if( VmRecordedResume(pVm,&iRp,pEntryFrame,aInstr) ){
+					if( VmRecordedResume(pVm,&iRp,sState.pEntryFrame,aInstr) ){
 						pc = iRp;
 						break;
 					}
@@ -10688,7 +10877,7 @@ case PH7_OP_CALL: {
 				 * exception unwinds through intermediate frames with no handler. */
 				sxi32 iResumePc;
 				PH7_MemObjRelease(&sResult);
-				if( VmRecordedResume(pVm,&iResumePc,pEntryFrame,aInstr) ){
+				if( VmRecordedResume(pVm,&iResumePc,sState.pEntryFrame,aInstr) ){
 					PH7_MemObjRelease(pTos);
 					pc = iResumePc;
 					break;
@@ -11714,93 +11903,28 @@ SkipFuncBody:
 			rc = VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(&pVmFunc->aByteCode),pFrameStack,-1,pTos,&n,FALSE,0,
 				VmFuncHasReturnType(pVmFunc) ? pVmFunc : 0, FALSE);
 		}
-		/* Decrement nesting level */
-		pVm->nRecursionDepth--;
-		if( pSelf ){
-			/* Pop class name */
-			(void)SySetPop(&pVm->aSelf);
+		/* Finish the call at the pop boundary (VmCallFinish): pop-time
+		 * accounting, by-ref-return fixup, callee-threw routing, operand-stack
+		 * and frame teardown. pc/pTos are authoritative in sState across the
+		 * boundary; stage 2 runs this same helper when a stacked record is
+		 * popped at OP_DONE instead of after a native return. */
+		{
+			VmCallRecord sCallee;
+			sCallee.pVmFunc = pVmFunc;
+			sCallee.pFrame = pFrame;
+			sCallee.pFrameStack = pFrameStack;
+			sCallee.nLastRef = n;
+			sCallee.bSelfPushed = (sxu8)(pSelf ? 1 : 0);
+			sState.pTos = pTos;
+			sState.pc = pc;
+			rc = VmCallFinish(&(*pVm),&sState,&sCallee,rc);
+			pTos = sState.pTos;
+			pc = sState.pc;
 		}
-		/* Cleanup the mess left behind */
-		if( (pVmFunc->iFlags & VM_FUNC_REF_RETURN) && rc == SXRET_OK ){
-			/* Return by reference,reflect that */
-			if( n != SXU32_HIGH ){
-				VmSlot *aSlot = (VmSlot *)SySetBasePtr(&pFrame->sLocal);
-				sxu32 i;
-				/* Make sure the referenced object is not a local variable */
-				for( i = 0 ; i < SySetUsed(&pFrame->sLocal) ; ++i ){
-					if( n == aSlot[i].nIdx ){
-						pObj = (ph7_value *)SySetAt(&pVm->aMemObj,n);
-						if( pObj && (pObj->iFlags & (MEMOBJ_NULL|MEMOBJ_OBJ|MEMOBJ_HASHMAP|MEMOBJ_RES)) == 0 ){
-							VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,
-								"Function '%z',return by reference: Cannot reference local variable,PH7 is switching to return by value",
-								&pVmFunc->sName);
-						}
-						n = SXU32_HIGH;
-						break;
-					}
-				}
-			}else{
-				if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_NULL|MEMOBJ_RES)) == 0 ){
-					VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,
-						"Function '%z',return by reference: Cannot reference constant expression,PH7 is switching to return by value",
-						&pVmFunc->sName);
-				}
-			}
-			pTos->nIdx = n;
-		}
-		/* Cleanup the mess left behind */
-		if( rc != PH7_ABORT && ((pFrame->iFlags & VM_FRAME_THROW) || rc == PH7_EXCEPTION) ){
-			/* The callee threw (or its finally threw past it). If an in-place catch
-			 * recorded a resume target owned by THIS caller's body, resume there and
-			 * consume the target (VmRecordedResume); when the catcher is an outer exec
-			 * — or this is a callback with no bytecode to resume into — propagate so
-			 * the owning exec lands. This replaces the old "is the caller's parent a
-			 * resumable try frame" test, which resumed at the caller's OWN try even
-			 * when the finally's throw was caught further out, losing that catch's
-			 * return (ROOT B, face c). */
-			sxi32 iResumePc;
-			pFrame = pFrame->pParent;
-			if( !is_callback && pVm->pInlineInstr == (void *)aInstr ){
-				/* ROOT C: the callee's throw was caught by an inline try in THIS caller
-				 * (generator body). Drain the operand stack (incl. the unwritten result
-				 * slot) to the try's base and land at its catch/finally. */
-				while( (sxi32)(pTos - pStack) > pVm->iInlineDrain ){
-					PH7_MemObjRelease(pTos);
-					pTos--;
-				}
-				pc = (sxi32)pVm->iInlinePc - 1;
-				pVm->pInlineInstr = 0;
-				rc = PH7_OK;
-			}else if( !is_callback && VmRecordedResume(pVm,&iResumePc,pEntryFrame,aInstr) ){
-				/* Pop the result */
-				VmPopOperand(&pTos,1);
-				pc = iResumePc;
-				rc = PH7_OK;
-			}else{
-				if( pFrame->pParent ){
-					rc = PH7_EXCEPTION;
-				}else{
-					/* Continue normal execution */
-					rc = PH7_OK;
-				}
-			}
-		}
-		/* Free the operand stack (NULL when function body was skipped) */
-		if( pFrameStack ){
-			SyMemBackendFree(&pVm->sAllocator,pFrameStack);
-		}
-		/* Leave the frame */
-		VmLeaveFrame(&(*pVm));
 		if( rc == PH7_ABORT ){
 			/* Abort processing immeditaley */
 			goto Abort;
-		}else if( rc == PH7_SUSPEND && pVm->pActiveCtx ){
-			/* A Fiber::suspend() was called somewhere inside this function.
-			 * Re-save the fiber's state at THIS level (the fiber's body),
-			 * overwriting the state saved by the inner level.
-			 * pTos points to the result slot (not yet written).
-			 * Save nTos one below so resume pushes at the result slot. */
-			VmSuspendCtx(pVm, pVm->pActiveCtx, pc + 1, (sxi32)(pTos - pStack) - 1);
+		}else if( rc == PH7_SUSPEND ){
 			goto Suspend;
 		}else if( rc == PH7_EXCEPTION ){
 			goto Exception;
@@ -11872,7 +11996,7 @@ SkipFuncBody:
 			 * means uncaught, else jump to pVm->pFrame's nearest iExceptionJump", which
 			 * resumed at the wrong try when the catcher was not the nearest (ROOT B). */
 			sxi32 iResumePc;
-			if( !VmRecordedResume(pVm,&iResumePc,pEntryFrame,aInstr) ){
+			if( !VmRecordedResume(pVm,&iResumePc,sState.pEntryFrame,aInstr) ){
 				/* Caught by an outer exec, or not caught here: propagate. */
 				goto Exception;
 			}
@@ -11949,47 +12073,13 @@ case PH7_OP_CONSUME: {
 		pc++; /* Next instruction in the stream */
 	} /* For(;;) */
 Done:
-	/* Safety net: whenever the REAL body returns, its pending-return slot must be
-	 * empty. The materialize at OP_DONE/OP_POP_EXCEPTION already moved the value
-	 * into pResult and cleared bHasRet, so this is normally a no-op; it only fires
-	 * on a path that reached Done with a stale slot, preventing a leak. The
-	 * !bReturnPropagates guard is essential: a catch/finally MINI-PROGRAM runs in
-	 * its body's own frame (VmLocalExec adds no frame), so pEntryFrame here is that
-	 * body — wiping its slot would destroy the return the body is about to take. */
-	if( !bReturnPropagates ){
-		VmClearFrameReturn(pEntryFrame);
-	}
-	SySetRelease(&aArg);
-	return SXRET_OK;
+	return VmExecFinalize(&(*pVm),&sState,&aArg,pTos,SXRET_OK);
 Suspend:
-	/* A generator/fiber body never suspends mid-completion of a catch/finally
-	 * return, so its frame's slot is empty here; nothing to do. */
-	SySetRelease(&aArg);
-	return PH7_SUSPEND;
+	return VmExecFinalize(&(*pVm),&sState,&aArg,pTos,PH7_SUSPEND);
 Abort:
-	/* Real body unwinding abnormally — discard its pending return (see Done; a
-	 * mini-program leaves the body's slot for the body itself to discard). */
-	if( !bReturnPropagates ){
-		VmClearFrameReturn(pEntryFrame);
-	}
-	SySetRelease(&aArg);
-	while( pTos >= pStack ){
-		PH7_MemObjRelease(pTos);
-		pTos--;
-	}
-	return PH7_ABORT;
+	return VmExecFinalize(&(*pVm),&sState,&aArg,pTos,PH7_ABORT);
 Exception:
-	/* Exception escaping the real body — per PHP it discards any pending
-	 * catch/finally return parked on this body's frame (see Done). */
-	if( !bReturnPropagates ){
-		VmClearFrameReturn(pEntryFrame);
-	}
-	SySetRelease(&aArg);
-	while( pTos >= pStack ){
-		PH7_MemObjRelease(pTos);
-		pTos--;
-	}
-	return PH7_EXCEPTION;
+	return VmExecFinalize(&(*pVm),&sState,&aArg,pTos,PH7_EXCEPTION);
 }
 /*
  * Execute as much of a local PH7 bytecode program as we can then return.
