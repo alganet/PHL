@@ -1019,6 +1019,8 @@ struct ph7_vm
 	int bErrReport;            /* TRUE to report all runtime Error/Warning/Notice */
 	int nRecursionDepth;       /* Current recursion depth */
 	int nMaxDepth;             /* Maximum allowed recusion depth */
+	int nVmExecDepth;          /* Live native VmByteCodeExec activations (C-stack guard;
+	                            * see the VmByteCodeExec wrapper in vm.c) */
 	void *pIdleCallFrames;     /* Freelist of VmCallFrame nodes (BYTECODE stage 2):
 	                            * fixed-size, strictly LIFO per invocation — reusing
 	                            * them skips a pool alloc/free round-trip per PHP
@@ -1629,6 +1631,7 @@ PH7_PRIVATE sxi32 PH7_VmThrowError(ph7_vm *pVm,SyString *pFuncName,sxi32 iErr,co
 PH7_PRIVATE sxi32 PH7_VmMemoryError(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_ContextMemoryError(ph7_context *pCtx);
 PH7_PRIVATE sxi32 PH7_VmThrowException(ph7_context *pCtx,const char *zClass,const char *zFormat,...);
+PH7_PRIVATE sxi32 PH7_VmThrowArrayNextIndexError(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmThrowExceptionTrace(ph7_context *pCtx,const char *zClass,const char *zFormat,...);
 PH7_PRIVATE void  PH7_VmExpandConstantValue(ph7_value *pVal,void *pUserData);
 PH7_PRIVATE sxi32 PH7_VmDump(ph7_vm *pVm,ProcConsumer xConsumer,void *pUserData);

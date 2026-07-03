@@ -3504,6 +3504,21 @@ static sxi32 VmRecursionFatal(ph7_vm *pVm)
 	return PH7_ABORT;
 }
 /*
+ * Sibling of VmRecursionFatal for the NATIVE nesting bound (see the
+ * VmByteCodeExec wrapper): same clean-halt semantics, its own message so the
+ * two limits are distinguishable. Non-catchable for the same at-depth reason.
+ */
+static sxi32 VmNativeNestingFatal(ph7_vm *pVm)
+{
+	if( pVm->bHaltRequested ){
+		return PH7_ABORT;
+	}
+	pVm->iExitStatus = 255;
+	pVm->bHaltRequested = 1;
+	VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Maximum native nesting depth reached");
+	return PH7_ABORT;
+}
+/*
  * Format and throw a run-time error and invoke the supplied VM output consumer callback.
  * Refer to the implementation of [ph7_context_throw_error_format()] for additional
  * information.
@@ -3626,6 +3641,19 @@ static sxi32 VmThrowBuiltinError(ph7_vm *pVm,const char *zClass,sxu32 nClass,SyB
 		return PH7_ABORT;
 	}
 	return PH7_EXCEPTION;
+}
+/*
+ * Throw php's catchable Error for an append (`$a[] = v`) whose saturated
+ * auto-index slot (PHP_INT_MAX) is already occupied. Called by the hashmap
+ * layer; the store opcodes route the returned PH7_EXCEPTION through the
+ * standard dispatch (PH7_DISPATCH_ENFORCE_RC), builtins return it as-is.
+ */
+PH7_PRIVATE sxi32 PH7_VmThrowArrayNextIndexError(ph7_vm *pVm)
+{
+	SyBlob sMsg;
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	SyBlobFormat(&sMsg,"Cannot add element to the array as the next element is already occupied");
+	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
 }
 /*
  * Throw a PHP-compatible TypeError whose message describes a failed typed
@@ -5656,7 +5684,51 @@ static sxi32 VmCallFinish(ph7_vm *pVm,VmExecState *pCaller,VmCallRecord *pCallee
  * should be used respectively to clean up the mess that was left behind
  * or to reset the VM to it's initial state.
  */
+static sxi32 VmByteCodeExecBody(ph7_vm *pVm,VmInstr *aInstr,ph7_value *pStack,int nTos,
+	ph7_value *pResult,sxu32 *pLastRef,int is_callback,sxi32 nPc,
+	ph7_vm_func *pEnforceRetFunc,int bReturnPropagates);
+/*
+ * Native-nesting guard around the executor. PHP->PHP calls run iteratively
+ * (the stage-2 trampoline), but every OTHER (re-)entry — mini-programs,
+ * C->PHP callbacks, ctx start/resume, eval/include — is still one real C
+ * activation of VmByteCodeExecBody. nMaxDepth no longer bounds them (it is
+ * PHP call depth, raisable to memory-bound values since the clamp removal),
+ * so this counter is what actually protects the C stack: recursive
+ * eval/include towers, nested coroutine-resume chains and self-recursive
+ * C-callback compositions hit a clean fatal instead of overflowing. This is a
+ * coarse frame-count net, not php's stack-byte measurement (stage 5 turns it
+ * into a per-platform config knob measuring real usage, BYTECODE.md §3 stage
+ * 5, nNativeDepth); the value is therefore conservative — well below the old
+ * config clamp's <1024 ceiling so it also holds on the fattest frames (the
+ * callback path drags in usort/mergesort/trampoline C frames per re-entry,
+ * and instrumented builds inflate every frame), while still 8x the default
+ * PHP-depth cap and far beyond any realistic eval/include/callback nesting.
+ */
+#define PH7_VM_NATIVE_NESTING_MAX 256
 static sxi32 VmByteCodeExec(
+	ph7_vm *pVm,         /* Target VM */
+	VmInstr *aInstr,     /* PH7 bytecode program */
+	ph7_value *pStack,   /* Operand stack */
+	int nTos,            /* Top entry in the operand stack (usually -1) */
+	ph7_value *pResult,  /* Store program return value here. NULL otherwise */
+	sxu32 *pLastRef,     /* Last referenced ph7_value index */
+	int is_callback,     /* TRUE if we are executing a callback */
+	sxi32 nPc,           /* Starting program counter (0 for normal, >0 for resume) */
+	ph7_vm_func *pEnforceRetFunc, /* NULL except when this invocation is a user-fn body; when set, the terminating OP_DONE validates the return value against pEnforceRetFunc's declared type. */
+	int bReturnPropagates /* TRUE only for a catch/finally mini-program: an explicit-return OP_DONE (iP2=1) defers its value onto the enclosing body frame's sRet slot for that body to return. */
+	)
+{
+	sxi32 rc;
+	if( pVm->nVmExecDepth >= PH7_VM_NATIVE_NESTING_MAX ){
+		return VmNativeNestingFatal(&(*pVm));
+	}
+	pVm->nVmExecDepth++;
+	rc = VmByteCodeExecBody(&(*pVm),aInstr,pStack,nTos,pResult,pLastRef,is_callback,nPc,
+		pEnforceRetFunc,bReturnPropagates);
+	pVm->nVmExecDepth--;
+	return rc;
+}
+static sxi32 VmByteCodeExecBody(
 	ph7_vm *pVm,         /* Target VM */
 	VmInstr *aInstr,     /* PH7 bytecode program */
 	ph7_value *pStack,   /* Operand stack */
@@ -6948,6 +7020,12 @@ case PH7_OP_LOAD_IDX: {
 			if( rc == SXRET_OK ){
 				/* Point to the last inserted entry */
 				pNode = pMap->pLast;
+			}else{
+				/* An append lvalue (`$a[][...] = v`) whose saturated auto-index
+				 * is occupied threw php's catchable Error. Dispatch it here —
+				 * falling through with a stale pMap->pLast is what silently
+				 * overwrote $a[PHP_INT_MAX]. */
+				PH7_DISPATCH_ENFORCE_RC(rc)
 			}
 		}
 	}
@@ -7401,13 +7479,17 @@ case PH7_OP_STORE_IDX_REF: {
 	/* Phase#2: Perform the insertion */
 	if( pInstr->iOp == PH7_OP_STORE_IDX_REF && pTos->nIdx != SXU32_HIGH ){
 		/* Insertion by reference */
-		PH7_HashmapInsertByRef(pMap,pKey,pTos->nIdx);
+		rc = PH7_HashmapInsertByRef(pMap,pKey,pTos->nIdx);
 	}else{
-		PH7_HashmapInsert(pMap,pKey,pTos);
+		rc = PH7_HashmapInsert(pMap,pKey,pTos);
 	}
 	if( pKey ){
 		PH7_MemObjRelease(pKey);
 	}
+	/* An append onto the occupied saturated auto-index threw php's catchable
+	 * Error (PH7_VmThrowArrayNextIndexError) — dispatch it like any other
+	 * store-path throw. Plain failures (OOM) keep their existing routes. */
+	PH7_DISPATCH_ENFORCE_RC(rc)
 	break;
 					   }
 /*
@@ -17282,6 +17364,13 @@ static sxi32 VmExecFinallyInOwner(ph7_vm *pVm,SySet *pByteCode,VmFrame *pOwner)
 	pVm->pFrame = pThrowSite;
 	return rc;
 }
+/*
+ * VmThrowInline -> VmThrowException private protocol: "no catch/finally in
+ * this inline try — keep unwinding outward" (the caller loops back to its
+ * Rethrow label). Aliased so the generic retry code's other contract (the
+ * sxmem xMemError release-and-retry callback) is not confused with this one.
+ */
+#define VM_THROW_KEEP_UNWINDING SXERR_RETRY
 static sxi32 VmThrowInline(ph7_vm *pVm, ph7_class_instance *pThis,
 	ph7_exception *pException, ph7_exception_block *pCatch)
 {
@@ -17308,14 +17397,13 @@ static sxi32 VmThrowInline(ph7_vm *pVm, ph7_class_instance *pThis,
 		VmExcRelease(&(*pVm),pException); /* not re-pushed: activation ends here */
 		return SXRET_OK;
 	}
-	/* No catch, no finally: drop this try's frame and continue unwinding.
-	 * SXERR_RETRY tells the (sole) caller, VmThrowException, to loop back to
-	 * its Rethrow label — flat native stack instead of mutual recursion. */
+	/* No catch, no finally: drop this try's frame and continue unwinding —
+	 * flat native stack instead of mutual recursion. */
 	if( pVm->pFrame->iFlags & VM_FRAME_EXCEPTION ){
 		VmLeaveFrame(&(*pVm));
 	}
 	VmExcRelease(&(*pVm),pException); /* not re-pushed: activation ends here */
-	return SXERR_RETRY;
+	return VM_THROW_KEEP_UNWINDING;
 }
 static sxi32 VmThrowException(
 	ph7_vm *pVm,              /* Target VM */
@@ -17407,7 +17495,7 @@ Rethrow:
 	 * throw site jumps to, so catch/finally run in the generator's own dispatch loop. */
 	if( pException && pException->iInlined ){
 		sxi32 rcInline = VmThrowInline(&(*pVm),pThis,pException,pCatch);
-		if( rcInline == SXERR_RETRY ){
+		if( rcInline == VM_THROW_KEEP_UNWINDING ){
 			/* No catch/finally in that inline try: keep unwinding outward. */
 			goto Rethrow;
 		}
@@ -17592,8 +17680,13 @@ Rethrow:
 			/* Execute the catch block */
 			rc = VmLocalExec(&(*pVm),&pCatch->sByteCode,0,TRUE);
 			/* Leave the frame (sets pVm->pFrame = pCatchBody via the re-parent), then
-			 * restore the real throw-site frame so the unwind continues normally. */
-			VmLeaveFrame(&(*pVm));
+			 * restore the real throw-site frame so the unwind continues normally.
+			 * Guarded like VmExecFinallyInOwner's wrapper teardown: a catch body
+			 * that suspends/aborts mid-mini-program can leave the frame chain
+			 * unbalanced — never pop somebody else's frame. */
+			if( pVm->pFrame == pFrame ){
+				VmLeaveFrame(&(*pVm));
+			}
 			pVm->pFrame = pThrowSite;
 		}
 		/* Restore the outer exception handlers */
