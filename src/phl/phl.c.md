@@ -156,7 +156,7 @@ Coverage: 180/243 lines (74.07%)
 |     - |  146 | ` * Falls back to argv[0] verbatim (e.g. bare PATH invocation):` |
 |     - |  147 | ` * consumers spawning it again go through the shell, which re-resolves it.` |
 |     - |  148 | ` */` |
-|  3410 |  149 | `static const char * PHL_ResolveBinaryPath(const char *zArgv0)` |
+|  3402 |  149 | `static const char * PHL_ResolveBinaryPath(const char *zArgv0)` |
 |     5 |  150 | `{` |
 |     - |  151 | `#ifdef __WINNT__` |
 |     5 |  152 | `	DWORD nLen = GetModuleFileNameA(0,zPhlBinaryPath,(DWORD)sizeof(zPhlBinaryPath));` |
@@ -164,12 +164,12 @@ Coverage: 180/243 lines (74.07%)
 |     5 |  154 | `		return zPhlBinaryPath;` |
 |     - |  155 | `	}` |
 |     - |  156 | `#else` |
-|  3410 |  157 | `	if( realpath(zArgv0,zPhlBinaryPath) != 0 ){` |
-|  3410 |  158 | `		return zPhlBinaryPath;` |
+|  3402 |  157 | `	if( realpath(zArgv0,zPhlBinaryPath) != 0 ){` |
+|  3402 |  158 | `		return zPhlBinaryPath;` |
 |     - |  159 | `	}` |
 |     - |  160 | `#endif` |
 |   ! 0 |  161 | `	return zArgv0;` |
-|  1710 |  162 | `}` |
+|  1706 |  162 | `}` |
 |     - |  163 | `/*` |
 |     - |  164 | ` * VM output consumer callback.` |
 |     - |  165 | ` * Each time the virtual machine generates some outputs,the following` |
@@ -179,9 +179,9 @@ Coverage: 180/243 lines (74.07%)
 |     - |  169 | ` * This function is registered later via a call to ph7_vm_config()` |
 |     - |  170 | ` * with a configuration verb set to: PH7_VM_CONFIG_OUTPUT.` |
 |     - |  171 | ` */` |
-| 11392 |  172 | `static int Output_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUserData /* Unused */)` |
+| 11122 |  172 | `static int Output_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUserData /* Unused */)` |
 |     5 |  173 | `{` |
-|  5696 |  174 | `	(void)pUserData;` |
+|  5561 |  174 | `	(void)pUserData;` |
 |     - |  175 | `#ifdef __WINNT__` |
 |     - |  176 | `	BOOL rc;` |
 |     5 |  177 | `	rc = WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),pOutput,(DWORD)nOutputLen,0,0);` |
@@ -191,39 +191,39 @@ Coverage: 180/243 lines (74.07%)
 |     - |  181 | `	}` |
 |     - |  182 | `#else` |
 |     - |  183 | `	ssize_t nWr;` |
-| 11392 |  184 | `	nWr = write(STDOUT_FILENO,pOutput,nOutputLen);` |
-| 11392 |  185 | `	if( nWr < 0 ){` |
+| 11122 |  184 | `	nWr = write(STDOUT_FILENO,pOutput,nOutputLen);` |
+| 11122 |  185 | `	if( nWr < 0 ){` |
 |     - |  186 | `		/* Abort processing */` |
 |   ! 0 |  187 | `		return PH7_ABORT;` |
 |     - |  188 | `	}` |
 |     - |  189 | `#endif /* __WINT__ */` |
 |     - |  190 | `	/* All done,VM output was redirected to STDOUT */` |
-| 11397 |  191 | `	return PH7_OK;` |
-|  5701 |  192 | `}` |
+| 11127 |  191 | `	return PH7_OK;` |
+|  5566 |  192 | `}` |
 |     - |  193 | `/*` |
 |     - |  194 | ` * Main program: Compile and execute the PHP file.` |
 |     - |  195 | ` */` |
-|  3949 |  196 | `int main(int argc,char **argv)` |
+|  3941 |  196 | `int main(int argc,char **argv)` |
 |     5 |  197 | `{` |
 |     - |  198 | `	ph7 *pEngine; /* PH7 engine */` |
 |     - |  199 | `	ph7_vm *pVm;  /* Compiled PHP program */` |
-|  3954 |  200 | `	int dump_vm = 0;    /* Dump VM instructions if TRUE */` |
-|  3954 |  201 | `	int run_code = 0;    /* Run inline code if TRUE */` |
-|  3954 |  202 | `	int lint_mode = 0;   /* Syntax-check only (-l) if TRUE */` |
-|  3954 |  203 | `	const char *zRunCode = 0; /* Inline code string */` |
+|  3946 |  200 | `	int dump_vm = 0;    /* Dump VM instructions if TRUE */` |
+|  3946 |  201 | `	int run_code = 0;    /* Run inline code if TRUE */` |
+|  3946 |  202 | `	int lint_mode = 0;   /* Syntax-check only (-l) if TRUE */` |
+|  3946 |  203 | `	const char *zRunCode = 0; /* Inline code string */` |
 |     - |  204 | `#ifdef PHL_ENABLE_SERVER` |
-|  3954 |  205 | `	int server_mode = 0;        /* Start built-in server if TRUE */` |
-|  3954 |  206 | `	const char *zServerAddr = 0; /* host:port string */` |
-|  3954 |  207 | `	const char *zDocRoot = ".";  /* Document root */` |
+|  3946 |  205 | `	int server_mode = 0;        /* Start built-in server if TRUE */` |
+|  3946 |  206 | `	const char *zServerAddr = 0; /* host:port string */` |
+|  3946 |  207 | `	const char *zDocRoot = ".";  /* Document root */` |
 |     - |  208 | `#endif` |
 |     - |  209 | `	int n;              /* Script arguments */` |
 |     - |  210 | `	int rc;` |
 |     - |  211 | `	/* Process interpreter arguments first*/` |
-|  4017 |  212 | `	for(n = 1 ; n < argc ; ++n ){` |
+|  4009 |  212 | `	for(n = 1 ; n < argc ; ++n ){` |
 |     - |  213 | `		int c;` |
-|  3831 |  214 | `		if( argv[n][0] != '-' ){` |
+|  3823 |  214 | `		if( argv[n][0] != '-' ){` |
 |     - |  215 | `			/* No more interpreter arguments */` |
-|  3763 |  216 | `			break;` |
+|  3755 |  216 | `			break;` |
 |     - |  217 | `		}` |
 |     - |  218 | `		/* Check for long options */` |
 |    72 |  219 | `		if( argv[n][1] == '-' ){` |
@@ -285,7 +285,7 @@ Coverage: 180/243 lines (74.07%)
 |     - |  275 | `		}` |
 |    32 |  276 | `	}` |
 |     - |  277 | `#ifdef PHL_ENABLE_SERVER` |
-|  3949 |  278 | `	if( server_mode ){` |
+|  3941 |  278 | `	if( server_mode ){` |
 |     - |  279 | `		/* Parse host:port from zServerAddr */` |
 |     - |  280 | `		char zHost[256];` |
 |    22 |  281 | `		int iPort = 0;` |
@@ -312,7 +312,7 @@ Coverage: 180/243 lines (74.07%)
 |    22 |  302 | `		return phl_serve(zHost, iPort, zDocRoot, zRouter, PHL_ResolveBinaryPath(argv[0]));` |
 |     - |  303 | `	}` |
 |     - |  304 | `#endif` |
-|  3583 |  305 | `	if( n >= argc && !run_code ){` |
+|  3575 |  305 | `	if( n >= argc && !run_code ){` |
 |   ! 0 |  306 | `		puts("Missing PHP file to compile");` |
 |   ! 0 |  307 | `		Help();` |
 |   ! 0 |  308 | `	}` |
@@ -322,8 +322,8 @@ Coverage: 180/243 lines (74.07%)
 |     5 |  312 | `	CreateMiniDumpOnUnHandledException();` |
 |     - |  313 | `#endif` |
 |     - |  314 | `	/* Allocate a new PH7 engine instance */` |
-|  3583 |  315 | `	rc = ph7_init(&pEngine);` |
-|  3583 |  316 | `	if( rc != PH7_OK ){` |
+|  3575 |  315 | `	rc = ph7_init(&pEngine);` |
+|  3575 |  316 | `	if( rc != PH7_OK ){` |
 |     - |  317 | `		/*` |
 |     - |  318 | `		 * If the supplied memory subsystem is so sick that we are unable` |
 |     - |  319 | `		 * to allocate a tiny chunk of memory,there is no much we can do here.` |
@@ -333,7 +333,7 @@ Coverage: 180/243 lines (74.07%)
 |     - |  323 | `	/* Set an error log consumer callback. This callback [Output_Consumer()] will` |
 |     - |  324 | `	 * redirect all compile-time error messages to STDOUT.` |
 |     - |  325 | `	 */` |
-|  3583 |  326 | `	ph7_config(pEngine,PH7_CONFIG_ERR_OUTPUT,` |
+|  3575 |  326 | `	ph7_config(pEngine,PH7_CONFIG_ERR_OUTPUT,` |
 |     - |  327 | `		Output_Consumer, /* Error log consumer */` |
 |     - |  328 |  |
 |     - |  329 | `		);` |
@@ -342,8 +342,8 @@ Coverage: 180/243 lines (74.07%)
 |     - |  332 | `	 * Clamp to a floor above the pool bucket size (SXMEM_POOL_MAXALLOC, 32 KB)` |
 |     - |  333 | `	 * so the engine can still start; VMs inherit it at creation. */` |
 |     - |  334 | `	{` |
-|  3583 |  335 | `		const char *zMaxAlloc = getenv("PHL_MAX_ALLOC");` |
-|  3583 |  336 | `		if( zMaxAlloc ){` |
+|  3575 |  335 | `		const char *zMaxAlloc = getenv("PHL_MAX_ALLOC");` |
+|  3575 |  336 | `		if( zMaxAlloc ){` |
 |   ! 0 |  337 | `			unsigned long uMax = strtoul(zMaxAlloc,0,10);` |
 |   ! 0 |  338 | `			if( uMax > 0 ){` |
 |   ! 0 |  339 | `				if( uMax < 65536UL ){` |
@@ -359,8 +359,8 @@ Coverage: 180/243 lines (74.07%)
 |     - |  349 | `	/* Optional per-input byte cap (PHL_MAX_INPUT=bytes). Used to exercise the` |
 |     - |  350 | `	 * input-size rejection path at a manageable scale (see tests/ph7/003-stress). */` |
 |     - |  351 | `	{` |
-|  3583 |  352 | `		const char *zMaxInput = getenv("PHL_MAX_INPUT");` |
-|  3583 |  353 | `		if( zMaxInput ){` |
+|  3575 |  352 | `		const char *zMaxInput = getenv("PHL_MAX_INPUT");` |
+|  3575 |  353 | `		if( zMaxInput ){` |
 |   ! 0 |  354 | `			unsigned long uMax = strtoul(zMaxInput,0,10);` |
 |   ! 0 |  355 | `			if( uMax > 0 ){` |
 |   ! 0 |  356 | `				if( uMax > 0xFFFFFFFFUL ){` |
@@ -374,7 +374,7 @@ Coverage: 180/243 lines (74.07%)
 |     - |  364 | `	 * line and exit without executing. The error consumer installed above` |
 |     - |  365 | `	 * already prints any parse error; ph7_compile_file leaves *pVm NULL on a` |
 |     - |  366 | `	 * compile/IO error, so only a successful compile owns a VM to release. */` |
-|  3583 |  367 | `	if( lint_mode ){` |
+|  3575 |  367 | `	if( lint_mode ){` |
 |     - |  368 | `		const char *zFile;` |
 |     4 |  369 | `		if( n >= argc ){` |
 |     - |  370 | ``			/* No file argument (e.g. `-l` alone, or `-l` mixed with `-r`). */`` |
@@ -396,7 +396,7 @@ Coverage: 180/243 lines (74.07%)
 |     4 |  386 | `		return (rc == PH7_OK) ? 0 : 255;` |
 |     - |  387 | `	}` |
 |     - |  388 | `	/* Now,it's time to compile our PHP file */` |
-|  3579 |  389 | `	if( run_code ){` |
+|  3571 |  389 | `	if( run_code ){` |
 |     - |  390 | `		/* Compile inline PHP code string (PHP only - no tags needed) */` |
 |    10 |  391 | `		rc = ph7_compile_v2(` |
 |     4 |  392 | `			pEngine, /* PH7 Engine */` |
@@ -414,13 +414,13 @@ Coverage: 180/243 lines (74.07%)
 |     - |  404 | `			}` |
 |   ! 0 |  405 | `		}` |
 |     6 |  406 | `	}else{` |
-|  3571 |  407 | `		rc = ph7_compile_file(` |
-|  1690 |  408 | `			pEngine, /* PH7 Engine */` |
-|  3566 |  409 | `			argv[n], /* Path to the PHP file to compile */` |
+|  3563 |  407 | `		rc = ph7_compile_file(` |
+|  1686 |  408 | `			pEngine, /* PH7 Engine */` |
+|  3558 |  409 | `			argv[n], /* Path to the PHP file to compile */` |
 |     - |  410 | `			&pVm,    /* OUT: Compiled PHP program */` |
 |     - |  411 |  |
 |     - |  412 | `			);` |
-|  3571 |  413 | `		if( rc != PH7_OK ){ /* Compile error */` |
+|  3563 |  413 | `		if( rc != PH7_OK ){ /* Compile error */` |
 |   376 |  414 | `			if( rc == PH7_IO_ERR ){` |
 |   ! 0 |  415 | `				FatalCode("IO error while opening the target file",1);` |
 |   376 |  416 | `			}else if( rc == PH7_VM_ERR ){` |
@@ -436,68 +436,68 @@ Coverage: 180/243 lines (74.07%)
 |     - |  426 | `	 * We will install the VM output consumer callback defined above` |
 |     - |  427 | `	 * so that we can consume the VM output and redirect it to STDOUT.` |
 |     - |  428 | `	 */` |
-|  3393 |  429 | `	rc = ph7_vm_config(pVm,` |
+|  3385 |  429 | `	rc = ph7_vm_config(pVm,` |
 |     - |  430 | `		PH7_VM_CONFIG_OUTPUT,` |
 |     - |  431 | `		Output_Consumer,    /* Output Consumer callback */` |
 |     - |  432 |  |
 |     - |  433 | `		);` |
-|  3393 |  434 | `	if( rc != PH7_OK ){` |
+|  3385 |  434 | `	if( rc != PH7_OK ){` |
 |   ! 0 |  435 | `		Fatal("Error while installing the VM output consumer callback");` |
 |   ! 0 |  436 | `	}` |
 |     - |  437 | `	/* Define PHP_BINARY: absolute path of this interpreter */` |
-|  5087 |  438 | `	ph7_create_constant(pVm,"PHP_BINARY",PHL_PhpBinaryConst,` |
-|  3388 |  439 | `		(void *)PHL_ResolveBinaryPath(argv[0]));` |
+|  5075 |  438 | `	ph7_create_constant(pVm,"PHP_BINARY",PHL_PhpBinaryConst,` |
+|  3380 |  439 | `		(void *)PHL_ResolveBinaryPath(argv[0]));` |
 |     - |  440 | `	/* Register the script arguments as $argv[] plus the matching $argc count and` |
 |     - |  441 | `	 * the CLI $_SERVER entries, matching PHP: $argv[0] is the script path (file` |
 |     - |  442 | `	 * mode) or the literal "Standard input code" (-r mode), followed by the` |
 |     - |  443 | `	 * script's own arguments.` |
 |     - |  444 | `	 */` |
 |     - |  445 | `	{` |
-|  3393 |  446 | `		const char *zScriptName = run_code ? "Standard input code" : argv[n];` |
-|  3393 |  447 | `		int argv_count = 0;` |
+|  3385 |  446 | `		const char *zScriptName = run_code ? "Standard input code" : argv[n];` |
+|  3385 |  447 | `		int argv_count = 0;` |
 |     - |  448 | `		ph7_value *pArgc;` |
 |     - |  449 | `		/* Count only the entries actually inserted: PH7_VM_CONFIG_ARGV_ENTRY skips` |
 |     - |  450 | `		 * an empty string, so counting unconditionally would leave $argc greater` |
 |     - |  451 | ``		 * than count($argv) for an empty argument (e.g. `phl s.php "" x`). */`` |
-|  3393 |  452 | `		if( ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,zScriptName) == PH7_OK ){` |
-|  3393 |  453 | `			argv_count++;` |
-|  1694 |  454 | `		}` |
+|  3385 |  452 | `		if( ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,zScriptName) == PH7_OK ){` |
+|  3385 |  453 | `			argv_count++;` |
+|  1690 |  454 | `		}` |
 |     - |  455 | `		/* The script's own arguments follow: in file mode argv[n] is the script` |
 |     - |  456 | `		 * (registered above), so they start at n+1; in -r mode they start at n. */` |
-|  3423 |  457 | `		for( n = run_code ? n : n + 1; n < argc ; ++n ){` |
+|  3415 |  457 | `		for( n = run_code ? n : n + 1; n < argc ; ++n ){` |
 |    35 |  458 | `			if( ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,argv[n]) == PH7_OK ){` |
 |    33 |  459 | `				argv_count++;` |
 |    14 |  460 | `			}` |
 |    20 |  461 | `		}` |
 |     - |  462 | `		/* $argc: a plain integer global equal to count($argv). */` |
-|  3393 |  463 | `		pArgc = ph7_new_scalar(pVm);` |
-|  3393 |  464 | `		if( pArgc ){` |
-|  3393 |  465 | `			ph7_value_int(pArgc,argv_count);` |
-|  3393 |  466 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_CREATE_VAR,"argc",pArgc);` |
-|  3393 |  467 | `			ph7_release_value(pVm,pArgc);` |
-|  1694 |  468 | `		}` |
+|  3385 |  463 | `		pArgc = ph7_new_scalar(pVm);` |
+|  3385 |  464 | `		if( pArgc ){` |
+|  3385 |  465 | `			ph7_value_int(pArgc,argv_count);` |
+|  3385 |  466 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_CREATE_VAR,"argc",pArgc);` |
+|  3385 |  467 | `			ph7_release_value(pVm,pArgc);` |
+|  1690 |  468 | `		}` |
 |     - |  469 | `		/* $_SERVER entries frameworks read at CLI bootstrap. SCRIPT_FILENAME is` |
 |     - |  470 | `		 * already set to the script path by PH7_HashmapCreateSuper. */` |
-|  3393 |  471 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"SCRIPT_NAME",zScriptName,-1);` |
-|  3393 |  472 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"PHP_SELF",zScriptName,-1);` |
-|  3393 |  473 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"DOCUMENT_ROOT","",0);` |
+|  3385 |  471 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"SCRIPT_NAME",zScriptName,-1);` |
+|  3385 |  472 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"PHP_SELF",zScriptName,-1);` |
+|  3385 |  473 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"DOCUMENT_ROOT","",0);` |
 |     - |  474 | `		{` |
 |     - |  475 | `			char zTime[32];` |
-|  3393 |  476 | `			snprintf(zTime,sizeof(zTime),"%ld",(long)time(0));` |
-|  3393 |  477 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"REQUEST_TIME",zTime,-1);` |
+|  3385 |  476 | `			snprintf(zTime,sizeof(zTime),"%ld",(long)time(0));` |
+|  3385 |  477 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"REQUEST_TIME",zTime,-1);` |
 |     - |  478 | `		}` |
 |     - |  479 | `#ifndef __WINNT__` |
 |     - |  480 | `		{` |
 |     - |  481 | `			char zCwd[PATH_MAX];` |
-|  3388 |  482 | `			if( getcwd(zCwd,sizeof(zCwd)) ){` |
-|  3388 |  483 | `				ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"PWD",zCwd,-1);` |
-|  1694 |  484 | `			}` |
+|  3380 |  482 | `			if( getcwd(zCwd,sizeof(zCwd)) ){` |
+|  3380 |  483 | `				ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"PWD",zCwd,-1);` |
+|  1690 |  484 | `			}` |
 |     - |  485 | `		}` |
 |     - |  486 | `#endif` |
 |     - |  487 | `	}` |
 |     - |  488 | `	/* Report script run-time errors (now default behavior) */` |
-|  3393 |  489 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_ERR_REPORT);` |
-|  3393 |  490 | `	if( dump_vm ){` |
+|  3385 |  489 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_ERR_REPORT);` |
+|  3385 |  490 | `	if( dump_vm ){` |
 |     - |  491 | `		/* Dump PH7 byte-code instructions */` |
 |     3 |  492 | `		ph7_vm_dump_v2(pVm,` |
 |     - |  493 | `			Output_Consumer, /* Dump consumer callback */` |
@@ -509,14 +509,14 @@ Coverage: 180/243 lines (74.07%)
 |     - |  499 | `	 * should display the result.` |
 |     - |  500 | `	 */` |
 |     - |  501 | `	{` |
-|  3393 |  502 | `		int iExitStatus = 0;` |
-|  3393 |  503 | `		ph7_vm_exec(pVm,&iExitStatus);` |
+|  3385 |  502 | `		int iExitStatus = 0;` |
+|  3385 |  503 | `		ph7_vm_exec(pVm,&iExitStatus);` |
 |     - |  504 | `		/* All done, cleanup the mess left behind.` |
 |     - |  505 | `		*/` |
-|  3393 |  506 | `		ph7_vm_release(pVm);` |
-|  3393 |  507 | `		ph7_release(pEngine);` |
+|  3385 |  506 | `		ph7_vm_release(pVm);` |
+|  3385 |  507 | `		ph7_release(pEngine);` |
 |     - |  508 | `		/* Propagate the script exit status (set via exit()/die()) */` |
-|  3393 |  509 | `		return iExitStatus;` |
+|  3385 |  509 | `		return iExitStatus;` |
 |     - |  510 | `	}` |
-|  1712 |  511 | `}` |
+|  1708 |  511 | `}` |
 |     - |  512 |  |
