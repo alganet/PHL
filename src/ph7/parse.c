@@ -576,39 +576,55 @@ static void ExprAssembleLiteral(SyToken **ppCur,SyToken *pEnd)
  * print implode(' ', $new_numbers);
  */
 /*
- * Skip an optional return-type declaration ': [?] type ( | type )*' at *ppIn.
- * Shared by the two positions php allows it in an anonymous function:
- * right after the parameter list (arrow-function style lookahead) and after
- * the `use (...)` clause — `function (...) use (...) : int {` (php 7.1+).
+ * Skip an optional return-type declaration at *ppIn:
+ *     ':' [?] atom ( ('|' | '&') [?] atom )*
+ * where atom is ['\']Name('\'Name)* or a parenthesized DNF group '(A&B)'.
+ * Shared by the anonymous-function positions php allows a return type in —
+ * after the parameter list, after the `use (...)` clause (php 7.1+
+ * `function (...) use (...) : int {`) — and by arrow functions. This is
+ * boundary scanning only; GenStateParseUnionTypeDecl (compile.c) does the
+ * authoritative type parse, so this must accept every shape it does
+ * (unions, 8.1 intersections, 8.2 DNF).
  */
 static void ExprSkipReturnType(SyToken **ppIn,SyToken *pEnd)
 {
 	SyToken *pIn = *ppIn;
 	if( pIn < pEnd && (pIn->nType & PH7_TK_COLON) ){
 		pIn++; /* Skip ':' */
-		/* Skip optional '?' nullable prefix */
-		if( pIn < pEnd && (pIn->nType & PH7_TK_OP) && pIn->sData.nByte == 1 && pIn->sData.zString[0] == '?' ){
-			pIn++;
-		}
-		/* Skip the first type (allow leading '\' and namespace path) */
-		if( pIn < pEnd && (pIn->nType & PH7_TK_NSSEP) ){ pIn++; }
-		if( pIn < pEnd && (pIn->nType & (PH7_TK_KEYWORD|PH7_TK_ID)) ){
-			pIn++;
-			while( pIn + 1 < pEnd && (pIn->nType & PH7_TK_NSSEP) && (pIn[1].nType & PH7_TK_ID) ){
-				pIn += 2;
-			}
-		}
-		/* Skip union alternatives ( | type )* */
-		while( pIn < pEnd && (pIn->nType & PH7_TK_OP) && pIn->sData.nByte == 1
-			&& pIn->sData.zString[0] == '|' ){
-			pIn++;
-			if( pIn < pEnd && (pIn->nType & PH7_TK_NSSEP) ){ pIn++; }
-			if( pIn < pEnd && (pIn->nType & (PH7_TK_KEYWORD|PH7_TK_ID)) ){
+		for(;;){
+			/* Optional '?' nullable prefix */
+			if( pIn < pEnd && (pIn->nType & PH7_TK_OP) && pIn->sData.nByte == 1 && pIn->sData.zString[0] == '?' ){
 				pIn++;
-				while( pIn + 1 < pEnd && (pIn->nType & PH7_TK_NSSEP) && (pIn[1].nType & PH7_TK_ID) ){
-					pIn += 2;
-				}
 			}
+			if( pIn < pEnd && (pIn->nType & PH7_TK_LPAREN) ){
+				/* Parenthesized DNF group '(A&B)' */
+				pIn++;
+				PH7_DelimitNestedTokens(pIn,pEnd,PH7_TK_LPAREN/*'('*/,PH7_TK_RPAREN/*')'*/,&pIn);
+				if( pIn < pEnd ){
+					pIn++; /* ')' */
+				}
+			}else if( pIn < pEnd
+			 && ((pIn->nType & (PH7_TK_KEYWORD|PH7_TK_ID)) || (pIn->nType & PH7_TK_NSSEP)) ){
+				/* ['\']Name('\'Name)* */
+				if( pIn->nType & PH7_TK_NSSEP ){ pIn++; }
+				if( pIn < pEnd && (pIn->nType & (PH7_TK_KEYWORD|PH7_TK_ID)) ){
+					pIn++;
+					while( pIn + 1 < pEnd && (pIn->nType & PH7_TK_NSSEP) && (pIn[1].nType & PH7_TK_ID) ){
+						pIn += 2;
+					}
+				}
+			}else{
+				/* Malformed type — stop; the caller diagnoses the next token. */
+				break;
+			}
+			/* A '|' (union) or single '&' (intersection) continues the type. */
+			if( pIn < pEnd
+			 && (((pIn->nType & PH7_TK_OP) && pIn->sData.nByte == 1 && pIn->sData.zString[0] == '|')
+			  || (pIn->nType & PH7_TK_AMPER)) ){
+				pIn++;
+				continue;
+			}
+			break;
 		}
 	}
 	*ppIn = pIn;
@@ -643,9 +659,9 @@ static sxi32 ExprAssembleAnnon(ph7_gen_state *pGen,SyToken **ppCur,SyToken *pEnd
 		goto Synchronize;
 	}
 	pIn++; /* Jump the trailing parenthesis */
-	/* Skip optional return type declaration ': [?] type ( | type )*' */
+	/* Skip optional return type declaration (legacy pre-use position) */
 	ExprSkipReturnType(&pIn,pEnd);
-	if( pIn->nType & PH7_TK_KEYWORD ){
+	if( pIn < pEnd && (pIn->nType & PH7_TK_KEYWORD) ){
 		sxu32 nKey = SX_PTR_TO_INT(pIn->pUserData);
 		/* Check if we are dealing with a closure */
 		if( nKey == PH7_TKWRD_USE ){
@@ -681,7 +697,10 @@ static sxi32 ExprAssembleAnnon(ph7_gen_state *pGen,SyToken **ppCur,SyToken *pEnd
 			goto Synchronize;
 		}
 	}
-	if( pIn->nType & PH7_TK_OCB /*'{'*/ ){
+	/* The pIn < pEnd guard matters: the post-use return-type skip above can
+	 * legitimately consume up to pEnd on truncated source (EOF right after
+	 * the type), and pEnd is one past the last token. */
+	if( pIn < pEnd && (pIn->nType & PH7_TK_OCB) /*'{'*/ ){
 		pIn++; /* Jump the leading curly '{' */
 		PH7_DelimitNestedTokens(pIn,pEnd,PH7_TK_OCB/*'{'*/,PH7_TK_CCB/*'}'*/,&pIn);
 		if( pIn < pEnd ){
@@ -789,32 +808,8 @@ static sxi32 ExprAssembleArrowFunc(ph7_gen_state *pGen,SyToken **ppCur,SyToken *
 			pIn++; /* ')' */
 		}
 	}
-	/* Optional return type ': [?] type ( | type )*' */
-	if( pIn < pEnd && (pIn->nType & PH7_TK_COLON) ){
-		pIn++;
-		if( pIn < pEnd && (pIn->nType & PH7_TK_OP)
-			&& pIn->sData.nByte == 1 && pIn->sData.zString[0] == '?' ){
-			pIn++;
-		}
-		if( pIn < pEnd && (pIn->nType & PH7_TK_NSSEP) ){ pIn++; }
-		if( pIn < pEnd && (pIn->nType & (PH7_TK_KEYWORD|PH7_TK_ID)) ){
-			pIn++;
-			while( pIn + 1 < pEnd && (pIn->nType & PH7_TK_NSSEP) && (pIn[1].nType & PH7_TK_ID) ){
-				pIn += 2;
-			}
-		}
-		while( pIn < pEnd && (pIn->nType & PH7_TK_OP) && pIn->sData.nByte == 1
-			&& pIn->sData.zString[0] == '|' ){
-			pIn++;
-			if( pIn < pEnd && (pIn->nType & PH7_TK_NSSEP) ){ pIn++; }
-			if( pIn < pEnd && (pIn->nType & (PH7_TK_KEYWORD|PH7_TK_ID)) ){
-				pIn++;
-				while( pIn + 1 < pEnd && (pIn->nType & PH7_TK_NSSEP) && (pIn[1].nType & PH7_TK_ID) ){
-					pIn += 2;
-				}
-			}
-		}
-	}
+	/* Optional return type — shared skipper (unions/intersections/DNF) */
+	ExprSkipReturnType(&pIn,pEnd);
 	/* Consume '=>' if present; the compile pass diagnoses absence */
 	if( pIn < pEnd && (pIn->nType & PH7_TK_ARRAY_OP) ){
 		pIn++;

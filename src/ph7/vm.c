@@ -4902,6 +4902,10 @@ static sxi32 VmReportUncaughtChain(ph7_vm *pVm,ph7_class_instance *pThis,const c
 	int nChain = 0;
 	int i;
 	SyBlob sOut;
+	/* Same rule as VmReportUncaughtException: an uncaught exception is a
+	 * fatal — php exits 255 whether or not the report is displayed. One rule
+	 * per report entry point, so a future direct caller can't miss it. */
+	pVm->iExitStatus = 255;
 	if( !pVm->bErrReport ){
 		return PH7_OK;
 	}
@@ -5321,6 +5325,24 @@ static int VmMemberNextIsWrite(const VmInstr *pNext)
 	}
 }
 /*
+ * Abandon an ITERATOR-mode foreach step: release the aggregate owner (if this
+ * was an IteratorAggregate foreach), free the step, pop it off the info's
+ * step stack and drop the step's retain on the iterator instance. The single
+ * home for this teardown — it runs on iterator exhaustion AND on every
+ * iterator-protocol throw path (next/valid/current/key); a per-site copy that
+ * drifts produces a leak or pool-masked use-after-free on exactly one throw
+ * path (the SyHash-layout incident class).
+ */
+static void VmForeachStepAbandon(ph7_vm *pVm,ph7_foreach_info *pInfo,ph7_foreach_step *pStep,ph7_class_instance *pThis)
+{
+	if( pStep->pOwner ){
+		PH7_ClassInstanceUnref(pStep->pOwner);
+	}
+	SyMemBackendPoolFree(&pVm->sAllocator,pStep);
+	SySetPop(&pInfo->aStep);
+	PH7_ClassInstanceUnref(pThis);
+}
+/*
  * Execute as much of a PH7 bytecode program as we can then return.
  *
  * [PH7_VmMakeReady()] must be called before this routine in order to
@@ -5445,6 +5467,14 @@ static sxi32 VmByteCodeExec(
 		} \
 		if( (rcVar) == PH7_EXCEPTION ){ goto Exception; } \
 	}
+/*
+ * The routing condition for the above: the iterator-protocol call aborted,
+ * threw past this exec, or was caught by an inline try THIS exec owns
+ * (pInlineInstr identity). Named once so the seven foreach sites cannot
+ * drift; a missed edit here would silently re-swallow exceptions.
+ */
+#define VmIterCallThrew(rcVar) \
+	((rcVar) == PH7_ABORT || (rcVar) == PH7_EXCEPTION || pVm->pInlineInstr == (void *)aInstr)
 /*
  * Typed-property enforcement helper for compound stores. Called before
  * PH7_MemObjStore writes into a member memobj slot. On failure throws a
@@ -9309,8 +9339,7 @@ case PH7_OP_FOREACH_INIT: {
 					pRewind = PH7_ClassExtractMethod(pThis->pClass,"rewind",sizeof("rewind")-1);
 					if( pRewind ){
 						rc = PH7_VmCallClassMethod(&(*pVm),pThis,pRewind,0,0,0);
-						if( rc == PH7_ABORT || rc == PH7_EXCEPTION
-						 || pVm->pInlineInstr == (void *)aInstr ){
+						if( VmIterCallThrew(rc) ){
 							/* rewind() threw (a generator body or userland Iterator):
 							 * undo this step's retain, drop the step, and route the
 							 * exception instead of silently starting the loop. */
@@ -9334,8 +9363,7 @@ case PH7_OP_FOREACH_INIT: {
 							ph7_value sResult;
 							PH7_MemObjInit(&(*pVm),&sResult);
 							rc = PH7_VmCallClassMethod(&(*pVm),pThis,pGetIter,&sResult,0,0);
-							if( rc == PH7_ABORT || rc == PH7_EXCEPTION
-							 || pVm->pInlineInstr == (void *)aInstr ){
+							if( VmIterCallThrew(rc) ){
 								/* getIterator() threw: drop the step and route the
 								 * exception (don't pile the "must implement Iterator"
 								 * error on top of it). */
@@ -9357,8 +9385,7 @@ case PH7_OP_FOREACH_INIT: {
 									pRewind = PH7_ClassExtractMethod(pIterObj->pClass,"rewind",sizeof("rewind")-1);
 									if( pRewind ){
 										rc = PH7_VmCallClassMethod(&(*pVm),pIterObj,pRewind,0,0,0);
-										if( rc == PH7_ABORT || rc == PH7_EXCEPTION
-										 || pVm->pInlineInstr == (void *)aInstr ){
+										if( VmIterCallThrew(rc) ){
 											/* The aggregate's iterator rewind() threw: undo
 											 * both retains, drop the step, route the exception. */
 											pIterObj->iRef--;
@@ -9477,17 +9504,11 @@ case PH7_OP_FOREACH_STEP: {
 			pMethod = PH7_ClassExtractMethod(pThis->pClass,"next",sizeof("next")-1);
 			if( pMethod ){
 				rc = PH7_VmCallClassMethod(&(*pVm),pThis,pMethod,0,0,0);
-				if( rc == PH7_ABORT || rc == PH7_EXCEPTION
-				 || pVm->pInlineInstr == (void *)aInstr ){
+				if( VmIterCallThrew(rc) ){
 					/* next() threw (generator body / userland Iterator): tear the
 					 * step down like exhaustion does, then route the exception —
 					 * the loop must not silently end with execution continuing. */
-					if( pStep->pOwner ){
-						PH7_ClassInstanceUnref(pStep->pOwner);
-					}
-					SyMemBackendPoolFree(&pVm->sAllocator,pStep);
-					SySetPop(&pInfo->aStep);
-					PH7_ClassInstanceUnref(pThis);
+					VmForeachStepAbandon(pVm,pInfo,pStep,pThis);
 					PH7_DISPATCH_ITER_RC(rc,0)
 				}
 			}
@@ -9497,16 +9518,10 @@ case PH7_OP_FOREACH_STEP: {
 		pMethod = PH7_ClassExtractMethod(pThis->pClass,"valid",sizeof("valid")-1);
 		if( pMethod ){
 			rc = PH7_VmCallClassMethod(&(*pVm),pThis,pMethod,&sResult,0,0);
-			if( rc == PH7_ABORT || rc == PH7_EXCEPTION
-			 || pVm->pInlineInstr == (void *)aInstr ){
+			if( VmIterCallThrew(rc) ){
 				/* valid() threw: same teardown-and-route as next() above. */
 				PH7_MemObjRelease(&sResult);
-				if( pStep->pOwner ){
-					PH7_ClassInstanceUnref(pStep->pOwner);
-				}
-				SyMemBackendPoolFree(&pVm->sAllocator,pStep);
-				SySetPop(&pInfo->aStep);
-				PH7_ClassInstanceUnref(pThis);
+				VmForeachStepAbandon(pVm,pInfo,pStep,pThis);
 				PH7_DISPATCH_ITER_RC(rc,0)
 			}
 			PH7_MemObjToBool(&sResult);
@@ -9517,28 +9532,17 @@ case PH7_OP_FOREACH_STEP: {
 			/* Iterator exhausted */
 			pc = pInstr->iP2 - 1;
 			/* Release the aggregate owner if this was an IteratorAggregate foreach */
-			if( pStep->pOwner ){
-				PH7_ClassInstanceUnref(pStep->pOwner);
-			}
-			SyMemBackendPoolFree(&pVm->sAllocator,pStep);
-			SySetPop(&pInfo->aStep);
-			PH7_ClassInstanceUnref(pThis);
+			VmForeachStepAbandon(pVm,pInfo,pStep,pThis);
 		}else{
 			/* Call current() to get value */
 			PH7_MemObjInit(pVm,&sResult);
 			pMethod = PH7_ClassExtractMethod(pThis->pClass,"current",sizeof("current")-1);
 			if( pMethod ){
 				rc = PH7_VmCallClassMethod(&(*pVm),pThis,pMethod,&sResult,0,0);
-				if( rc == PH7_ABORT || rc == PH7_EXCEPTION
-				 || pVm->pInlineInstr == (void *)aInstr ){
+				if( VmIterCallThrew(rc) ){
 					/* current() threw: same teardown-and-route as next() above. */
 					PH7_MemObjRelease(&sResult);
-					if( pStep->pOwner ){
-						PH7_ClassInstanceUnref(pStep->pOwner);
-					}
-					SyMemBackendPoolFree(&pVm->sAllocator,pStep);
-					SySetPop(&pInfo->aStep);
-					PH7_ClassInstanceUnref(pThis);
+					VmForeachStepAbandon(pVm,pInfo,pStep,pThis);
 					PH7_DISPATCH_ITER_RC(rc,0)
 				}
 			}
@@ -9554,16 +9558,10 @@ case PH7_OP_FOREACH_STEP: {
 				pMethod = PH7_ClassExtractMethod(pThis->pClass,"key",sizeof("key")-1);
 				if( pMethod ){
 					rc = PH7_VmCallClassMethod(&(*pVm),pThis,pMethod,&sKey,0,0);
-					if( rc == PH7_ABORT || rc == PH7_EXCEPTION
-					 || pVm->pInlineInstr == (void *)aInstr ){
+					if( VmIterCallThrew(rc) ){
 						/* key() threw: same teardown-and-route as next() above. */
 						PH7_MemObjRelease(&sKey);
-						if( pStep->pOwner ){
-							PH7_ClassInstanceUnref(pStep->pOwner);
-						}
-						SyMemBackendPoolFree(&pVm->sAllocator,pStep);
-						SySetPop(&pInfo->aStep);
-						PH7_ClassInstanceUnref(pThis);
+						VmForeachStepAbandon(pVm,pInfo,pStep,pThis);
 						PH7_DISPATCH_ITER_RC(rc,0)
 					}
 				}
@@ -12241,14 +12239,17 @@ static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
 	pCtx->nExceptionBase = SySetUsed(&pVm->aException);
 	pCtx->nFinallyBase = SySetUsed(&pVm->aFinallyAction);
 	pVm->nRecursionDepth++;
-	/* Execute from the beginning. A GENERATOR's declared return type belongs
-	 * to the call site (always a Generator object, validated at compile time —
-	 * "must be a supertype of Generator"); the body's own return value feeds
-	 * getReturn() and is never type-checked, so enforcement is fiber-only here
-	 * (a fiber callable is an ordinary function whose return type php enforces). */
+	/* Execute from the beginning. A GENERATOR FUNCTION's declared return type
+	 * belongs to the call site (always a Generator object, validated at compile
+	 * time — "must be a supertype of Generator"); the body's own return value
+	 * feeds getReturn() and is never type-checked. Gate on the function's
+	 * VM_FUNC_GENERATOR flag (the semantic property), not pPrivate (a wrapper-
+	 * linkage fact): a Fiber given a generator-flagged callable runs the body
+	 * with pPrivate == 0 and must not enforce either. Ordinary fiber callables
+	 * keep enforcement (php enforces their return type). */
 	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),
 		pCtx->pStack, -1, &pCtx->sRetValue, 0, FALSE, 0,
-		(pCtx->pPrivate == 0 && VmFuncHasReturnType(pCtx->pFunc)) ? pCtx->pFunc : 0, FALSE);
+		((pCtx->pFunc->iFlags & VM_FUNC_GENERATOR) == 0 && VmFuncHasReturnType(pCtx->pFunc)) ? pCtx->pFunc : 0, FALSE);
 	pVm->nRecursionDepth--;
 	/* Restore the previous context */
 	pVm->pActiveCtx = pOldCtx;
@@ -12323,11 +12324,11 @@ static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValu
 	pVm->pActiveCtx = pCtx;
 	pCtx->iState = PH7_CTX_STATE_RUNNING;
 	pVm->nRecursionDepth++;
-	/* Resume execution from saved PC. Generator bodies skip return-type
-	 * enforcement (fiber-only) — see the block comment in VmStartCtx. */
+	/* Resume execution from saved PC. Generator-function bodies skip
+	 * return-type enforcement — see the block comment in VmStartCtx. */
 	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),
 		pCtx->pStack, pCtx->nTos, &pCtx->sRetValue, 0, FALSE, pCtx->pc,
-		(pCtx->pPrivate == 0 && VmFuncHasReturnType(pCtx->pFunc)) ? pCtx->pFunc : 0, FALSE);
+		((pCtx->pFunc->iFlags & VM_FUNC_GENERATOR) == 0 && VmFuncHasReturnType(pCtx->pFunc)) ? pCtx->pFunc : 0, FALSE);
 	pVm->nRecursionDepth--;
 	/* Restore the previous context */
 	pVm->pActiveCtx = pOldCtx;
@@ -16800,9 +16801,7 @@ static sxi32 VmUncaughtException(
 		const char *zFuncName;
 		int nFuncLen;
 		VmGetFrameContext(pVm,&zFuncName,&nFuncLen);
-		/* Truly uncaught: a fatal — php exits 255 regardless of how (or
-		 * whether) the report is rendered. */
-		pVm->iExitStatus = 255;
+		/* Both report entry points below stamp iExitStatus = 255 themselves. */
 		if( pThis ){
 			/* Walk the $previous chain: deepest is "Uncaught", each outer one
 			 * "Next ..." (PHP). A non-chained exception is a length-1 chain and
