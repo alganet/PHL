@@ -362,7 +362,8 @@ static sxi32 ZipExtract(SyArchive *pArch,const unsigned char *zCentral,sxu32 nLe
 	zEnd = &zCentral[nLen];
 
 	for(;;){
-		if( &zCentral[nOfft] >= zEnd ){
+		if( &zCentral[nOfft] >= zEnd || (sxu32)(zEnd - &zCentral[nOfft]) < SXZIP_CENTRAL_HDRSZ ){
+			/* No room left for a full central directory record */
 			break;
 		}
 		/* Add a new entry */
@@ -374,6 +375,10 @@ static sxi32 ZipExtract(SyArchive *pArch,const unsigned char *zCentral,sxu32 nLe
 		pEntry->nMagic = SXARCH_MAGIC;
 		nIncr = 0;
 		rc = GetCentralDirectoryEntry(&(*pArch),pEntry,&zCentral[nOfft],&nIncr);
+		if( rc == SXRET_OK && nIncr > (sxu32)(zEnd - &zCentral[nOfft]) ){
+			/* Name/extra/comment lengths run past the central directory end */
+			rc = SXERR_CORRUPT;
+		}
 		if( rc == SXRET_OK ){
 			/* Fix the starting record offset so we can access entry contents correctly */
 			rc = ZipFixOffset(pEntry,pSrc);
@@ -381,8 +386,11 @@ static sxi32 ZipExtract(SyArchive *pArch,const unsigned char *zCentral,sxu32 nLe
 		if(rc != SXRET_OK ){
 			sxu32 nJmp = 0;
 			SyMemBackendPoolFree(pArch->pAllocator,pEntry);
-			/* Try to recover by brute-forcing for a valid central directory record */
-			if( SXRET_OK == SyBlobSearch((const void *)&zCentral[nOfft + nIncr],(sxu32)(zEnd - &zCentral[nOfft + nIncr]),
+			/* Try to recover by brute-forcing for a valid central directory record.
+			 * Guard the window: a corrupted record can claim lengths that put
+			 * nOfft + nIncr past zEnd, and the unsigned size would underflow. */
+			if( nOfft + nIncr < (sxu32)(zEnd - zCentral) &&
+				SXRET_OK == SyBlobSearch((const void *)&zCentral[nOfft + nIncr],(sxu32)(zEnd - &zCentral[nOfft + nIncr]),
 				(const void *)"PK\001\002",sizeof(sxu32),&nJmp)){
 					nOfft += nIncr + nJmp; /* Check next entry */
 					continue;

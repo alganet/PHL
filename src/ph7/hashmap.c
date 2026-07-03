@@ -17,7 +17,8 @@
  */
 static sxu32 IntHash(sxi64 iKey)
 {
-	return (sxu32)(iKey ^ (iKey << 8) ^ (iKey >> 8));
+	sxu64 uKey = (sxu64)iKey; /* unsigned mixing: shifting a negative key is UB */
+	return (sxu32)(uKey ^ (uKey << 8) ^ (uKey >> 8));
 }
 /*
  * Default hash function for string/BLOB keys.
@@ -610,10 +611,12 @@ IntKey:
 		rc = HashmapInsertIntKey(&(*pMap),pKey->x.iVal,&(*pVal),0,FALSE);
 		if( rc == SXRET_OK ){
 			if( pKey->x.iVal >= pMap->iNextIdx ){
-				/* Increment the automatic index */
-				pMap->iNextIdx = pKey->x.iVal + 1;
+				/* Increment the automatic index. Like Zend's nNextFreeElement, the
+				 * index saturates at PHP_INT_MAX (incrementing past it is signed
+				 * overflow); the occupied-slot case errors at append time below. */
+				pMap->iNextIdx = pKey->x.iVal < SXI64_HIGH ? pKey->x.iVal + 1 : SXI64_HIGH;
 				/* Make sure the automatic index is not reserved */
-				while( SXRET_OK == HashmapLookupIntKey(&(*pMap),pMap->iNextIdx,0) ){
+				while( pMap->iNextIdx < SXI64_HIGH && SXRET_OK == HashmapLookupIntKey(&(*pMap),pMap->iNextIdx,0) ){
 					pMap->iNextIdx++;
 				}
 			}
@@ -624,9 +627,18 @@ IntKey:
 			PH7_VmThrowError(pMap->pVm,0,PH7_CTX_NOTICE,"$GLOBALS is a read-only array,insertion is forbidden");
 			return SXRET_OK;
 		}
+		if( pMap->iNextIdx == SXI64_HIGH && SXRET_OK == HashmapLookupIntKey(&(*pMap),SXI64_HIGH,0) ){
+			/* The saturated automatic index is taken: php throws a catchable Error
+			 * here; PHL reports it as a runtime error (divergence recorded in
+			 * PLAN.md §3 — catchability needs exception plumbing in the store
+			 * opcodes). */
+			PH7_VmThrowError(pMap->pVm,0,PH7_CTX_ERR,
+				"Cannot add element to the array as the next element is already occupied");
+			return SXRET_OK;
+		}
 		/* Assign an automatic index */
 		rc = HashmapInsertIntKey(&(*pMap),pMap->iNextIdx,&(*pVal),0,FALSE);
-		if( rc == SXRET_OK ){
+		if( rc == SXRET_OK && pMap->iNextIdx < SXI64_HIGH ){
 			++pMap->iNextIdx;
 		}
 	}
@@ -711,18 +723,24 @@ IntKey:
 		rc = HashmapInsertIntKey(&(*pMap),pKey->x.iVal,0,nRefIdx,TRUE);
 		if( rc == SXRET_OK ){
 			if( pKey->x.iVal >= pMap->iNextIdx ){
-				/* Increment the automatic index */
-				pMap->iNextIdx = pKey->x.iVal + 1;
+				/* Increment the automatic index (saturating — see PH7_HashmapInsert) */
+				pMap->iNextIdx = pKey->x.iVal < SXI64_HIGH ? pKey->x.iVal + 1 : SXI64_HIGH;
 				/* Make sure the automatic index is not reserved */
-				while( SXRET_OK == HashmapLookupIntKey(&(*pMap),pMap->iNextIdx,0) ){
+				while( pMap->iNextIdx < SXI64_HIGH && SXRET_OK == HashmapLookupIntKey(&(*pMap),pMap->iNextIdx,0) ){
 					pMap->iNextIdx++;
 				}
 			}
 		}
 	}else{
+		if( pMap->iNextIdx == SXI64_HIGH && SXRET_OK == HashmapLookupIntKey(&(*pMap),SXI64_HIGH,0) ){
+			/* Saturated automatic index taken (see PH7_HashmapInsert) */
+			PH7_VmThrowError(pMap->pVm,0,PH7_CTX_ERR,
+				"Cannot add element to the array as the next element is already occupied");
+			return SXRET_OK;
+		}
 		/* Assign an automatic index */
 		rc = HashmapInsertIntKey(&(*pMap),pMap->iNextIdx,0,nRefIdx,TRUE);
-		if( rc == SXRET_OK ){
+		if( rc == SXRET_OK && pMap->iNextIdx < SXI64_HIGH ){
 			++pMap->iNextIdx;
 		}
 	}
