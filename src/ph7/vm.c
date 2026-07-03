@@ -2994,9 +2994,13 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 		pVm->bErrReport = 1;
 		break;
 	case PH7_VM_CONFIG_RECURSION_DEPTH:{
-		/* Recursion depth */
+		/* Recursion depth. PHP frames are heap-bound since the iterative
+		 * executor (BYTECODE.md stage 2), so no upper clamp: the embedder's
+		 * value is policy, bounded by memory like the main PHP engine. (The
+		 * old <1024 clamp guarded the native stack the recursion no longer
+		 * grows; stage 5 finalizes the defaults.) */
 		int nDepth = va_arg(ap,int);
-		if( nDepth > 2 && nDepth < 1024 ){
+		if( nDepth > 2 ){
 			pVm->nMaxDepth = nDepth;
 		}
 		break;
@@ -17304,12 +17308,14 @@ static sxi32 VmThrowInline(ph7_vm *pVm, ph7_class_instance *pThis,
 		VmExcRelease(&(*pVm),pException); /* not re-pushed: activation ends here */
 		return SXRET_OK;
 	}
-	/* No catch, no finally: drop this try's frame and continue unwinding. */
+	/* No catch, no finally: drop this try's frame and continue unwinding.
+	 * SXERR_RETRY tells the (sole) caller, VmThrowException, to loop back to
+	 * its Rethrow label — flat native stack instead of mutual recursion. */
 	if( pVm->pFrame->iFlags & VM_FRAME_EXCEPTION ){
 		VmLeaveFrame(&(*pVm));
 	}
 	VmExcRelease(&(*pVm),pException); /* not re-pushed: activation ends here */
-	return VmThrowException(&(*pVm),pThis);
+	return SXERR_RETRY;
 }
 static sxi32 VmThrowException(
 	ph7_vm *pVm,              /* Target VM */
@@ -17319,6 +17325,12 @@ static sxi32 VmThrowException(
 	ph7_exception_block *pCatch; /* Catch block to execute */
 	ph7_exception **apException;
 	ph7_exception *pException;
+Rethrow:
+	/* Unwinding to the next outer handler loops back here instead of the old
+	 * self tail-call: a throw from N frames deep runs N finallys at constant
+	 * native depth (the ASan deep-tier stress overflowed the C stack on the
+	 * recursive form; the dispatch-loop trampoline made PHP depth heap-bound,
+	 * so the throw path must be too). */
 	/* An in-flight throw abandons any pending null-coalesce-assign store:
 	 * disarm so the RHS-evaluation throw can't leave the slot live for a
 	 * later unrelated NULLC_STORE (stale offsetSet) or leak the instance ref. */
@@ -17394,7 +17406,12 @@ static sxi32 VmThrowException(
 	 * only classifies the throw and sets a pc-redirect (pInlineInstr/iInlinePc) that the
 	 * throw site jumps to, so catch/finally run in the generator's own dispatch loop. */
 	if( pException && pException->iInlined ){
-		return VmThrowInline(&(*pVm),pThis,pException,pCatch);
+		sxi32 rcInline = VmThrowInline(&(*pVm),pThis,pException,pCatch);
+		if( rcInline == SXERR_RETRY ){
+			/* No catch/finally in that inline try: keep unwinding outward. */
+			goto Rethrow;
+		}
+		return rcInline;
 	}
 	/* Execute the cached block if available */
 	if( pCatch == 0 ){
@@ -17458,9 +17475,10 @@ static sxi32 VmThrowException(
 		}
 		/* Check if there is an outer exception handler on the stack */
 		if( SySetUsed(&pVm->aException) > 0 ){
-			/* Re-throw to the outer handler */
+			/* Re-throw to the outer handler — flat loop (see Rethrow), one
+			 * iteration per unwound level instead of one native frame. */
 			VmExcRelease(&(*pVm),pException);
-			return VmThrowException(&(*pVm),pThis);
+			goto Rethrow;
 		}
 		/* No outer handler. If the handlers were temporarily hidden
 		 * (catch body re-throw with finally pending), defer the
@@ -17665,7 +17683,9 @@ static sxi32 VmThrowException(
 				ph7_class_instance *pReThrow = pVm->pPendingException;
 				pVm->pPendingException = 0;
 				VmExcRelease(&(*pVm),pException);
-				return VmThrowException(&(*pVm),pReThrow);
+				/* Continue unwinding with the re-thrown exception (flat loop) */
+				pThis = pReThrow;
+				goto Rethrow;
 			}
 			/* Swallowed by the catch/finally's return: drop the deferred exception. */
 			PH7_ClassInstanceUnref(pVm->pPendingException);

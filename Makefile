@@ -100,6 +100,15 @@ TEST_STRESS_CMD = PHL_MAX_ALLOC=1048576 PHL_MAX_INPUT=32768 "$(PHL_BIN)" "tests/
 	--target-dir tests/ph7/003-stress \
 	--output-format dot
 
+# Deep-recursion tier (BYTECODE.md stage 3): PHP call depth is heap-bound, so
+# these run with the cap raised via PHL_MAX_RECURSION and WITHOUT the small
+# per-allocation cap (deep frames legitimately grow single slot-table
+# allocations past 1 MB).
+TEST_DEEP_CMD = PHL_MAX_RECURSION=131072 "$(PHL_BIN)" "tests/phpt.php" \
+	--target-executable "$(PHL_BIN)" \
+	--target-dir tests/ph7/004-deep \
+	--output-format dot
+
 default: build
 
 # --- POLYGLOT MAGIC BEGINS
@@ -151,6 +160,7 @@ $(BUILD_DIR)-test-integration: $(PHL_BIN)
 $(BUILD_DIR)-test-stress: $(PHL_BIN)
 	"$(PHL_BIN)" --version
 	$(TEST_STRESS_CMD)
+	$(TEST_DEEP_CMD)
 
 $(BUILD_DIR)-test-integration-compat: $(PHL_BIN)
 	"$(PHP_BIN)" --version
