@@ -55,9 +55,9 @@ Coverage: 74/104 lines (71.15%)
 |       - |   45 | `#define SX_HAVE_GETRANDOM 1` |
 |       - |   46 | `#endif` |
 |       - |   47 | `#endif` |
-|    3792 |   48 | `static sxi32 SyOSUtilRandomSeed(void *pBuf,sxu32 nLen,void *pUnused)` |
+|    3796 |   48 | `static sxi32 SyOSUtilRandomSeed(void *pBuf,sxu32 nLen,void *pUnused)` |
 |       5 |   49 | `{` |
-|    3797 |   50 | `	char *zBuf = (char *)pBuf;` |
+|    3801 |   50 | `	char *zBuf = (char *)pBuf;` |
 |       - |   51 | `#ifdef __WINNT__` |
 |       - |   52 | `	DWORD nProcessID; /* Yes,keep it uninitialized when compiling using the MinGW32 builds tools */` |
 |       - |   53 | `#elif defined(__UNIXES__)` |
@@ -66,7 +66,7 @@ Coverage: 74/104 lines (71.15%)
 |       - |   56 | `#else` |
 |       - |   57 | `	char zGarbage[128]; /* Yes,keep this buffer uninitialized */` |
 |       - |   58 | `#endif` |
-|    1896 |   59 | `	SXUNUSED(pUnused);` |
+|    1898 |   59 | `	SXUNUSED(pUnused);` |
 |       - |   60 | `#ifdef __WINNT__` |
 |       - |   61 | `#ifndef __MINGW32__` |
 |       5 |   62 | `	nProcessID = GetProcessId(GetCurrentProcess());` |
@@ -76,11 +76,11 @@ Coverage: 74/104 lines (71.15%)
 |       5 |   66 | `		GetSystemTime((LPSYSTEMTIME)&zBuf[sizeof(DWORD)]);` |
 |       - |   67 | `	}` |
 |       - |   68 | `#elif defined(__UNIXES__)` |
-|    3792 |   69 | `	fd = open("/dev/urandom",O_RDONLY);` |
-|    3792 |   70 | `	if (fd >= 0 ){` |
-|    3792 |   71 | `		if( read(fd,zBuf,nLen) > 0 ){` |
-|    3792 |   72 | `			close(fd);` |
-|    3792 |   73 | `			return SXRET_OK;` |
+|    3796 |   69 | `	fd = open("/dev/urandom",O_RDONLY);` |
+|    3796 |   70 | `	if (fd >= 0 ){` |
+|    3796 |   71 | `		if( read(fd,zBuf,nLen) > 0 ){` |
+|    3796 |   72 | `			close(fd);` |
+|    3796 |   73 | `			return SXRET_OK;` |
 |       - |   74 | `		}` |
 |       - |   75 | `		/* FALL THRU */` |
 |     ! 0 |   76 | `	}` |
@@ -95,17 +95,17 @@ Coverage: 74/104 lines (71.15%)
 |       - |   85 | `	SyMemcpy(zGarbage,zBuf,SXMIN(nLen,sizeof(zGarbage)));` |
 |       - |   86 | `#endif` |
 |       5 |   87 | `	return SXRET_OK;` |
-|    1901 |   88 | `}` |
+|    1903 |   88 | `}` |
 |       - |   89 | `/* SPDX-SnippetBegin */` |
 |       - |   90 | `/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */` |
 |       - |   91 | `/* SPDX-License-Identifier: blessing */` |
-|    3792 |   92 | `PH7_PRIVATE sxi32 SyRandomnessInit(SyPRNGCtx *pCtx,ProcRandomSeed xSeed,void * pUserData)` |
+|    3796 |   92 | `PH7_PRIVATE sxi32 SyRandomnessInit(SyPRNGCtx *pCtx,ProcRandomSeed xSeed,void * pUserData)` |
 |       5 |   93 | `{` |
 |       - |   94 | `	char zSeed[256];` |
 |       - |   95 | `	sxu8 t;` |
 |       - |   96 | `	sxi32 rc;` |
 |       - |   97 | `	sxu32 i;` |
-|    3797 |   98 | `	if( pCtx->nMagic == SXPRNG_MAGIC ){` |
+|    3801 |   98 | `	if( pCtx->nMagic == SXPRNG_MAGIC ){` |
 |     ! 0 |   99 | `		return SXRET_OK; /* Already initialized */` |
 |       - |  100 | `	}` |
 |       - |  101 | ` /* Initialize the state of the random number generator once,` |
@@ -113,63 +113,63 @@ Coverage: 74/104 lines (71.15%)
 |       - |  103 | `  ** not need to contain a lot of randomness since we are not` |
 |       - |  104 | `  ** trying to do secure encryption or anything like that...` |
 |       - |  105 | `  */` |
-|    3797 |  106 | `	if( xSeed == 0 ){` |
-|    3797 |  107 | `		xSeed = SyOSUtilRandomSeed;` |
-|    1896 |  108 | `	}` |
-|    3797 |  109 | `	rc = xSeed(zSeed,sizeof(zSeed),pUserData);` |
-|    3797 |  110 | `	if( rc != SXRET_OK ){` |
+|    3801 |  106 | `	if( xSeed == 0 ){` |
+|    3801 |  107 | `		xSeed = SyOSUtilRandomSeed;` |
+|    1898 |  108 | `	}` |
+|    3801 |  109 | `	rc = xSeed(zSeed,sizeof(zSeed),pUserData);` |
+|    3801 |  110 | `	if( rc != SXRET_OK ){` |
 |     ! 0 |  111 | `		return rc;` |
 |       - |  112 | `	}` |
-|    3797 |  113 | `	pCtx->i = pCtx->j = 0;` |
-|  974549 |  114 | `	for(i=0; i < SX_ARRAYSIZE(pCtx->s) ; i++){` |
-|  970757 |  115 | `		pCtx->s[i] = (unsigned char)i;` |
-|  485381 |  116 | `    }` |
-|  974549 |  117 | `    for(i=0; i < sizeof(zSeed) ; i++){` |
-|  970757 |  118 | `      pCtx->j += pCtx->s[i] + zSeed[i];` |
-|  970757 |  119 | `      t = pCtx->s[pCtx->j];` |
-|  970757 |  120 | `      pCtx->s[pCtx->j] = pCtx->s[i];` |
-|  970757 |  121 | `      pCtx->s[i] = t;` |
-|  485381 |  122 | `    }` |
-|    3797 |  123 | `	pCtx->nMagic = SXPRNG_MAGIC;` |
+|    3801 |  113 | `	pCtx->i = pCtx->j = 0;` |
+|  975577 |  114 | `	for(i=0; i < SX_ARRAYSIZE(pCtx->s) ; i++){` |
+|  971781 |  115 | `		pCtx->s[i] = (unsigned char)i;` |
+|  485893 |  116 | `    }` |
+|  975577 |  117 | `    for(i=0; i < sizeof(zSeed) ; i++){` |
+|  971781 |  118 | `      pCtx->j += pCtx->s[i] + zSeed[i];` |
+|  971781 |  119 | `      t = pCtx->s[pCtx->j];` |
+|  971781 |  120 | `      pCtx->s[pCtx->j] = pCtx->s[i];` |
+|  971781 |  121 | `      pCtx->s[i] = t;` |
+|  485893 |  122 | `    }` |
+|    3801 |  123 | `	pCtx->nMagic = SXPRNG_MAGIC;` |
 |       - |  124 |  |
-|    3797 |  125 | `	return SXRET_OK;` |
-|    1901 |  126 | `}` |
+|    3801 |  125 | `	return SXRET_OK;` |
+|    1903 |  126 | `}` |
 |       - |  127 | `/*` |
 |       - |  128 | ` * Get a single 8-bit random value using the RC4 PRNG.` |
 |       - |  129 | ` */` |
-| 2871252 |  130 | `static sxu8 randomByte(SyPRNGCtx *pCtx)` |
+| 2874276 |  130 | `static sxu8 randomByte(SyPRNGCtx *pCtx)` |
 |       5 |  131 | `{` |
 |       - |  132 | `  sxu8 t;` |
 |       - |  133 |  |
 |       - |  134 | `  /* Generate and return single random byte */` |
-| 2871257 |  135 | `  pCtx->i++;` |
-| 2871257 |  136 | `  t = pCtx->s[pCtx->i];` |
-| 2871257 |  137 | `  pCtx->j += t;` |
-| 2871257 |  138 | `  pCtx->s[pCtx->i] = pCtx->s[pCtx->j];` |
-| 2871257 |  139 | `  pCtx->s[pCtx->j] = t;` |
-| 2871257 |  140 | `  t += pCtx->s[pCtx->i];` |
-| 2871257 |  141 | `  return pCtx->s[t];` |
+| 2874281 |  135 | `  pCtx->i++;` |
+| 2874281 |  136 | `  t = pCtx->s[pCtx->i];` |
+| 2874281 |  137 | `  pCtx->j += t;` |
+| 2874281 |  138 | `  pCtx->s[pCtx->i] = pCtx->s[pCtx->j];` |
+| 2874281 |  139 | `  pCtx->s[pCtx->j] = t;` |
+| 2874281 |  140 | `  t += pCtx->s[pCtx->i];` |
+| 2874281 |  141 | `  return pCtx->s[t];` |
 |       5 |  142 | `}` |
-|  289205 |  143 | `PH7_PRIVATE sxi32 SyRandomness(SyPRNGCtx *pCtx,void *pBuf,sxu32 nLen)` |
+|  289511 |  143 | `PH7_PRIVATE sxi32 SyRandomness(SyPRNGCtx *pCtx,void *pBuf,sxu32 nLen)` |
 |       5 |  144 | `{` |
-|  289210 |  145 | `	unsigned char *zBuf = (unsigned char *)pBuf;` |
-|  289210 |  146 | `	unsigned char *zEnd = &zBuf[nLen];` |
+|  289516 |  145 | `	unsigned char *zBuf = (unsigned char *)pBuf;` |
+|  289516 |  146 | `	unsigned char *zEnd = &zBuf[nLen];` |
 |       - |  147 | `#if defined(UNTRUST)` |
 |       - |  148 | `	if( pCtx == 0 \|\| pBuf == 0 \|\| nLen <= 0 ){` |
 |       - |  149 | `		return SXERR_EMPTY;` |
 |       - |  150 | `	}` |
 |       - |  151 | `#endif` |
-|  289210 |  152 | `	if(pCtx->nMagic != SXPRNG_MAGIC ){` |
+|  289516 |  152 | `	if(pCtx->nMagic != SXPRNG_MAGIC ){` |
 |     ! 0 |  153 | `		return SXERR_CORRUPT;` |
 |       - |  154 | `	}` |
-|  432108 |  155 | `	for(;;){` |
-|  864223 |  156 | `		if( zBuf >= zEnd ){break;}	zBuf[0] = randomByte(pCtx);	zBuf++;` |
-|  860606 |  157 | `		if( zBuf >= zEnd ){break;}	zBuf[0] = randomByte(pCtx);	zBuf++;` |
-|  860606 |  158 | `		if( zBuf >= zEnd ){break;}	zBuf[0] = randomByte(pCtx);	zBuf++;` |
-|  575042 |  159 | `		if( zBuf >= zEnd ){break;}	zBuf[0] = randomByte(pCtx);	zBuf++;` |
+|  432564 |  155 | `	for(;;){` |
+|  865135 |  156 | `		if( zBuf >= zEnd ){break;}	zBuf[0] = randomByte(pCtx);	zBuf++;` |
+|  861512 |  157 | `		if( zBuf >= zEnd ){break;}	zBuf[0] = randomByte(pCtx);	zBuf++;` |
+|  861512 |  158 | `		if( zBuf >= zEnd ){break;}	zBuf[0] = randomByte(pCtx);	zBuf++;` |
+|  575648 |  159 | `		if( zBuf >= zEnd ){break;}	zBuf[0] = randomByte(pCtx);	zBuf++;` |
 |       5 |  160 | `	}` |
-|  289210 |  161 | `	return SXRET_OK;` |
-|  144607 |  162 | `}` |
+|  289516 |  161 | `	return SXRET_OK;` |
+|  144760 |  162 | `}` |
 |       - |  163 | `/* SPDX-SnippetEnd */` |
 |       - |  164 | `#if defined(__UNIXES__) && !defined(SX_HAVE_ARC4RANDOM)` |
 |     ! 0 |  165 | `static sxi32 SyReadDevUrandom(unsigned char *zBuf,sxu32 nLen)` |
@@ -196,9 +196,9 @@ Coverage: 74/104 lines (71.15%)
 |     ! 0 |  186 | `	return SXRET_OK;` |
 |       - |  187 | `}` |
 |       - |  188 | `#endif` |
-|     373 |  189 | `PH7_PRIVATE sxi32 SyOSCSPRNG(void *pBuf,sxu32 nLen)` |
+|     396 |  189 | `PH7_PRIVATE sxi32 SyOSCSPRNG(void *pBuf,sxu32 nLen)` |
 |       1 |  190 | `{` |
-|     374 |  191 | `	unsigned char *zBuf = (unsigned char *)pBuf;` |
+|     397 |  191 | `	unsigned char *zBuf = (unsigned char *)pBuf;` |
 |       - |  192 | `#if defined(UNTRUST)` |
 |       - |  193 | `	if( pBuf == 0 \|\| nLen == 0 ){` |
 |       - |  194 | `		return SXERR_EMPTY;` |
@@ -210,8 +210,8 @@ Coverage: 74/104 lines (71.15%)
 |       - |  200 | `	}` |
 |     ! 0 |  201 | `	return SXERR_IO;` |
 |       - |  202 | `#elif defined(SX_HAVE_ARC4RANDOM)` |
-|     172 |  203 | `	arc4random_buf(zBuf,(size_t)nLen);` |
-|     172 |  204 | `	return SXRET_OK;` |
+|     195 |  203 | `	arc4random_buf(zBuf,(size_t)nLen);` |
+|     195 |  204 | `	return SXRET_OK;` |
 |       - |  205 | `#elif defined(SX_HAVE_GETRANDOM)` |
 |       - |  206 | `	{` |
 |     201 |  207 | `		sxu32 nDone = 0;` |
