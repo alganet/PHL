@@ -862,7 +862,14 @@ static sxi32 VmDrainFinally(ph7_vm *pVm, sxu32 nExceptionBase)
 		ph7_exception *pExc = apExc[nUsed - 1];
 		(void)SySetPop(&pVm->aException);
 		pExc->pFrame = 0;
-		VmLeaveFrame(&(*pVm));
+		/* Leave the try's exception frame — but only a genuine one. For a RESUMED
+		 * generator/fiber body the handler was restored from the parked ctx and its
+		 * exception frame was discarded at suspend, so pVm->pFrame is the coroutine
+		 * body itself; popping it would free the entry frame OP_DONE still reads
+		 * (same guard as OP_POP_EXCEPTION's). */
+		if( pVm->pFrame->iFlags & VM_FRAME_EXCEPTION ){
+			VmLeaveFrame(&(*pVm));
+		}
 		if( pExc->iHasFinally && !pExc->iFinallyDone ){
 			sxi32 rcF;
 			pExc->iFinallyDone = 1;

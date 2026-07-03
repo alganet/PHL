@@ -87,42 +87,51 @@ PH7_PRIVATE sxu32 SyMemcpy(const void *pSrc,void *pDest,sxu32 nLen)
 	SX_MACRO_FAST_MEMCPY(pSrc,pDest,nLen);
 	return nLen;
 }
+/* Size prefix stored ahead of every OS allocation. Padded to pointer size so
+ * the returned payload (and the SyMemBlock/SyMemHeader the backend lays on
+ * top of it) keeps the allocator's natural alignment — a bare sxu32 prefix
+ * left every chunk 4-misaligned on 64-bit platforms. */
+typedef union MemOSHeader MemOSHeader;
+union MemOSHeader {
+	sxu32 nBytes;
+	void *pAlign;
+};
 static void * MemOSAlloc(sxu32 nBytes)
 {
-	sxu32 *pChunk;
-	pChunk = (sxu32 *)SyOSHeapAlloc(nBytes + sizeof(sxu32));
+	MemOSHeader *pChunk;
+	pChunk = (MemOSHeader *)SyOSHeapAlloc(nBytes + sizeof(MemOSHeader));
 	if( pChunk == 0 ){
 		return 0;
 	}
-	pChunk[0] = nBytes;
+	pChunk->nBytes = nBytes;
 	return (void *)&pChunk[1];
 }
 static void * MemOSRealloc(void *pOld,sxu32 nBytes)
 {
-	sxu32 *pOldChunk;
-	sxu32 *pChunk;
-	pOldChunk = (sxu32 *)(((char *)pOld)-sizeof(sxu32));
-	if( pOldChunk[0] >= nBytes ){
+	MemOSHeader *pOldChunk;
+	MemOSHeader *pChunk;
+	pOldChunk = (MemOSHeader *)(((char *)pOld)-sizeof(MemOSHeader));
+	if( pOldChunk->nBytes >= nBytes ){
 		return pOld;
 	}
-	pChunk = (sxu32 *)SyOSHeapRealloc(pOldChunk,nBytes + sizeof(sxu32));
+	pChunk = (MemOSHeader *)SyOSHeapRealloc(pOldChunk,nBytes + sizeof(MemOSHeader));
 	if( pChunk == 0 ){
 		return 0;
 	}
-	pChunk[0] = nBytes;
+	pChunk->nBytes = nBytes;
 	return (void *)&pChunk[1];
 }
 static void MemOSFree(void *pBlock)
 {
 	void *pChunk;
-	pChunk = (void *)(((char *)pBlock)-sizeof(sxu32));
+	pChunk = (void *)(((char *)pBlock)-sizeof(MemOSHeader));
 	SyOSHeapFree(pChunk);
 }
 static sxu32 MemOSChunkSize(void *pBlock)
 {
-	sxu32 *pChunk;
-	pChunk = (sxu32 *)(((char *)pBlock)-sizeof(sxu32));
-	return pChunk[0];
+	MemOSHeader *pChunk;
+	pChunk = (MemOSHeader *)(((char *)pBlock)-sizeof(MemOSHeader));
+	return pChunk->nBytes;
 }
 /* Export OS allocation methods */
 static const SyMemMethods sOSAllocMethods = {
@@ -333,6 +342,7 @@ PH7_PRIVATE sxi32 SyMemBackendDisbaleMutexing(SyMemBackend *pBackend)
 #define SXMEM_POOL_MAGIC		0xDEAD
 #define SXMEM_POOL_MAXALLOC		(1<<(SXMEM_POOL_NBUCKETS+SXMEM_POOL_INCR))
 #define SXMEM_POOL_MINALLOC		(1<<(SXMEM_POOL_INCR))
+#if !defined(SXMEM_POOL_BYPASS)
 static sxi32 MemPoolBucketAlloc(SyMemBackend *pBackend,sxu32 nBucket)
 {
 	char *zBucket,*zBucketEnd;
@@ -361,8 +371,21 @@ static sxi32 MemPoolBucketAlloc(SyMemBackend *pBackend,sxu32 nBucket)
 
 	return SXRET_OK;
 }
+#endif /* !SXMEM_POOL_BYPASS */
 static void * MemBackendPoolAlloc(SyMemBackend *pBackend,sxu32 nByte)
 {
+#if defined(SXMEM_POOL_BYPASS)
+	/* Sanitizer builds: no bucket recycling — every request is a real
+	 * backend allocation so ASan tracks each object's lifetime. Freed via
+	 * the big-block path in MemBackendPoolFree. */
+	SyMemHeader *pBucket;
+	pBucket = (SyMemHeader *)MemBackendAlloc(&(*pBackend),nByte+sizeof(SyMemHeader));
+	if( pBucket == 0 ){
+		return 0;
+	}
+	pBucket->nBucket = ((sxu32)SXMEM_POOL_MAGIC << 16) | SXU16_HIGH;
+	return (void *)(pBucket+1);
+#else
 	SyMemHeader *pBucket,*pNext;
 	sxu32 nBucketSize;
 	sxu32 nBucket;
@@ -374,7 +397,7 @@ static void * MemBackendPoolAlloc(SyMemBackend *pBackend,sxu32 nByte)
 			return 0;
 		}
 		/* Record as big block */
-		pBucket->nBucket = (sxu32)(SXMEM_POOL_MAGIC << 16) | SXU16_HIGH;
+		pBucket->nBucket = ((sxu32)SXMEM_POOL_MAGIC << 16) | SXU16_HIGH;
 		return (void *)(pBucket+1);
 	}
 	/* Locate the appropriate bucket */
@@ -397,8 +420,9 @@ static void * MemBackendPoolAlloc(SyMemBackend *pBackend,sxu32 nByte)
 	pNext = pBucket->pNext;
 	pBackend->apPool[nBucket] = pNext;
 	/* Record bucket&magic number */
-	pBucket->nBucket = (SXMEM_POOL_MAGIC << 16) | nBucket;
+	pBucket->nBucket = (((sxu32)SXMEM_POOL_MAGIC << 16) | nBucket);
 	return (void *)&pBucket[1];
+#endif /* SXMEM_POOL_BYPASS */
 }
 PH7_PRIVATE void * SyMemBackendPoolAlloc(SyMemBackend *pBackend,sxu32 nByte)
 {
