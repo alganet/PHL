@@ -2,12 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-KNOWN DIVERGENCE (BYTECODE.md stage 2): a cross-frame finally runs detached from its owning frame, so its `return` value is lost (empty). Pinned until the activation-record rework; the _zend twin is the acceptance test.
---SKIPIF--
-<?php
-if (function_exists('zend_version')) {
-    echo "skip";
-}
+return inside a finally reached by an exception from a nested call returns that value from the enclosing function
 --FILE--
 <?php
 function inner_throw() {
@@ -23,7 +18,7 @@ function f_ret() {
 echo "A:", f_ret(), "\n";
 echo "end\n";
 --EXPECT--
-A:
+A:fin-ret
 end
 --CLEAN--
 <?php

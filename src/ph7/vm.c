@@ -765,6 +765,63 @@ static int VmRecordedResume(ph7_vm *pVm,sxi32 *pResumePc,VmFrame *pEntryFrame,Vm
  * exception rather than return its pending value — PHP: a throwing finally
  * discards the in-flight return), SXRET_OK otherwise.
  */
+/*
+ * BYTECODE stage 2b — per-activation try state.
+ *
+ * A lexical try compiles to ONE ph7_exception (pInstr->p3). Pushing that
+ * object itself onto pVm->aException meant every recursive activation of the
+ * same try shared one pFrame/iFinallyDone/iInCatch/pInflight — unwinding a
+ * deep throw then ran every level's catch/finally against the deepest frame
+ * (silent wrong answers; see PLAN.md §3.1 and the try_unwind_recursive_frames
+ * twins). OP_LOAD_EXCEPTION now pushes a pool-allocated ACTIVATION: a shallow
+ * copy of the compiled object (sEntry/sFinally share the read-only compiled
+ * containers) with fresh mutable state and pCompiled pointing at the origin.
+ * Opcodes that only know the compiled p3 find their live activation with
+ * VmExcLive. Activations are freed at the sites that discard an entry for
+ * good: OP_POP_EXCEPTION, VmDrainFinally, VmThrowException's discard paths,
+ * VmThrowInline's non-repush paths, VmReleaseExecCtx (parked handlers of an
+ * abandoned coroutine) and VM reset. This also retires TICKET 1433-60's
+ * "never free" constraint: a `goto` re-entering the try simply mints a fresh
+ * activation.
+ */
+static ph7_exception * VmExcActivate(ph7_vm *pVm,ph7_exception *pCompiled)
+{
+	ph7_exception *pClone = (ph7_exception *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_exception));
+	if( pClone == 0 ){
+		return 0;
+	}
+	*pClone = *pCompiled;
+	pClone->pCompiled = pCompiled;
+	pClone->iFinallyDone = 0;
+	pClone->iInCatch = 0;
+	pClone->pInflight = 0;
+	pClone->pFrame = 0;
+	return pClone;
+}
+static void VmExcRelease(ph7_vm *pVm,ph7_exception *pExc)
+{
+	if( pExc && pExc->pCompiled ){
+		/* Only activations are freed; the compiled object is compiler-owned. */
+		SyMemBackendPoolFree(&pVm->sAllocator,pExc);
+	}
+}
+/*
+ * The live activation of a lexical try: the topmost aException entry cloned
+ * from pCompiled. Used by the inline opcodes (OP_CATCH) whose instruction
+ * only carries the compiled pointer.
+ */
+static ph7_exception * VmExcLive(ph7_vm *pVm,ph7_exception *pCompiled)
+{
+	ph7_exception **ap = (ph7_exception **)SySetBasePtr(&pVm->aException);
+	sxu32 n = SySetUsed(&pVm->aException);
+	while( n > 0 ){
+		n--;
+		if( ap[n] == pCompiled || ap[n]->pCompiled == pCompiled ){
+			return ap[n];
+		}
+	}
+	return 0;
+}
 static sxi32 VmDrainFinally(ph7_vm *pVm, sxu32 nExceptionBase)
 {
 	sxu32 nUsed;
@@ -779,6 +836,7 @@ static sxi32 VmDrainFinally(ph7_vm *pVm, sxu32 nExceptionBase)
 			sxi32 rcF;
 			pExc->iFinallyDone = 1;
 			rcF = VmLocalExec(&(*pVm),&pExc->sFinally,0,TRUE);
+			VmExcRelease(&(*pVm),pExc); /* nothing re-references a popped activation */
 			if( rcF == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
@@ -788,6 +846,8 @@ static sxi32 VmDrainFinally(ph7_vm *pVm, sxu32 nExceptionBase)
 				 * the remaining outer finallys so the frame stack stays balanced. */
 				rcOut = PH7_EXCEPTION;
 			}
+		}else{
+			VmExcRelease(&(*pVm),pExc);
 		}
 	}
 	return rcOut;
@@ -2417,6 +2477,18 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 		}
 	}
 	SySetReset(&pVm->aShutdown);
+	{
+		/* Stage 2b: free any leftover per-activation exception clones (an
+		 * aborted program can leave entries behind). */
+		sxu32 nExc = SySetUsed(&pVm->aException);
+		if( nExc > 0 ){
+			ph7_exception **apExc = (ph7_exception **)SySetBasePtr(&pVm->aException);
+			sxu32 iExc;
+			for( iExc = 0; iExc < nExc; iExc++ ){
+				VmExcRelease(&(*pVm),apExc[iExc]);
+			}
+		}
+	}
 	SySetReset(&pVm->aException);
 	SySetReset(&pVm->aFinallyAction);
 	pVm->pPendingException = 0;
@@ -9072,10 +9144,15 @@ case PH7_OP_UPLINK: {
  * it can be thrown later by the OP_THROW instruction.
  */
 case PH7_OP_LOAD_EXCEPTION: {
-	ph7_exception *pException = (ph7_exception *)pInstr->p3;
+	/* BYTECODE stage 2b: push a fresh ACTIVATION of this lexical try (own
+	 * mutable state per entry — see VmExcActivate), never the shared
+	 * compiled object. */
+	ph7_exception *pException = VmExcActivate(&(*pVm),(ph7_exception *)pInstr->p3);
 	VmFrame *pFrameLocal;
-	/* Reset per-entry state so finally runs on each iteration */
-	pException->iFinallyDone = 0;
+	if( pException == 0 ){
+		VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Fatal PH7 engine is runnig out of memory");
+		goto Abort;
+	}
 	SySetPut(&pVm->aException,(const void *)&pException);
 	/* Create the exception frame */
 	rc = VmEnterFrame(&(*pVm),0,0,&pFrameLocal);
@@ -9110,27 +9187,33 @@ case PH7_OP_LOAD_EXCEPTION: {
  * Pop a previously pushed exception from the corresponding container.
  */
 case PH7_OP_POP_EXCEPTION: {
-	ph7_exception *pException = (ph7_exception *)pInstr->p3;
-	if( pException->iInlined ){
+	ph7_exception *pCompiledExc = (ph7_exception *)pInstr->p3;
+	/* BYTECODE stage 2b: the stack holds ACTIVATIONS — pop ours when it is on
+	 * top (matched by compiled origin). pException == NULL means this try's
+	 * activation was already consumed (an in-place catch handled a throw and
+	 * ran the finally itself); compiled fields keep coming from p3. */
+	ph7_exception *pException = 0;
+	if( SySetUsed(&pVm->aException) > 0 ){
+		ph7_exception **apTop = (ph7_exception **)SySetBasePtr(&pVm->aException);
+		ph7_exception *pTop = apTop[SySetUsed(&pVm->aException) - 1];
+		if( pTop == pCompiledExc || pTop->pCompiled == pCompiledExc ){
+			pException = pTop;
+			(void)SySetPop(&pVm->aException);
+		}
+	}
+	if( pCompiledExc->iInlined ){
 		/* ROOT C: end of a try body or a catch body on the NORMAL (non-throwing) path.
 		 * Pop this try's handler off aException so a throw in the finally propagates to
 		 * an outer handler. With a finally, seed a FALLTHROUGH action and KEEP the
 		 * transparent frame (OP_END_FINALLY leaves it after the finally runs); the
 		 * compiler-emitted JMP falls into the finally. Without a finally, this is the
 		 * whole exit: leave the frame and let the JMP reach the post-construct landing. */
-		if( SySetUsed(&pVm->aException) > 0 ){
-			ph7_exception **ap = (ph7_exception **)SySetBasePtr(&pVm->aException);
-			if( pException == ap[SySetUsed(&pVm->aException) - 1] ){
-				(void)SySetPop(&pVm->aException);
-			}
-		}
-		pException->iInCatch = 0;
-		pException->pFrame = 0;
-		if( pException->iHasFinally ){
+		VmExcRelease(&(*pVm),pException); /* activation consumed (may be NULL) */
+		if( pCompiledExc->iHasFinally ){
 			VmFinallyAction sAct;
 			SyZero(&sAct,sizeof(sAct));
 			sAct.eKind = PH7_FA_FALLTHROUGH;
-			sAct.iNextPc = pException->iEndCatchPc;
+			sAct.iNextPc = pCompiledExc->iEndCatchPc;
 			SySetPut(&pVm->aFinallyAction,(const void *)&sAct);
 			/* keep the transparent frame for OP_END_FINALLY */
 		}else if( pVm->pFrame->iFlags & VM_FRAME_EXCEPTION ){
@@ -9138,15 +9221,6 @@ case PH7_OP_POP_EXCEPTION: {
 		}
 		break;
 	}
-	if( SySetUsed(&pVm->aException) > 0 ){
-		ph7_exception **apException;
-		/* Pop the loaded exception */
-		apException = (ph7_exception **)SySetBasePtr(&pVm->aException);
-		if( pException == apException[SySetUsed(&pVm->aException) - 1] ){
-			(void)SySetPop(&pVm->aException);
-		}
-	}
-	pException->pFrame = 0;
 	/* Leave the exception frame. It is normally on top here (a try that fell through
 	 * normally, or the frame VmRecordedResume left for an in-place catch). But for a
 	 * RESUMED generator/fiber body whose yield was inside this try, that exception
@@ -9157,11 +9231,15 @@ case PH7_OP_POP_EXCEPTION: {
 	if( pVm->pFrame->iFlags & VM_FRAME_EXCEPTION ){
 		VmLeaveFrame(&(*pVm));
 	}
-	/* Execute the finally block if present and not already executed by catch path */
-	if( pException->iHasFinally && !pException->iFinallyDone ){
+	/* Execute the finally block if present and not already executed by the
+	 * catch path. No live activation (pException == NULL) means an in-place
+	 * catch consumed it — and that path runs the finally itself — so skip. */
+	if( pException && pCompiledExc->iHasFinally && !pException->iFinallyDone ){
 		sxi32 rcFinally;
 		pException->iFinallyDone = 1;
-		rcFinally = VmLocalExec(&(*pVm),&pException->sFinally,0,TRUE);
+		VmExcRelease(&(*pVm),pException);
+		pException = 0;
+		rcFinally = VmLocalExec(&(*pVm),&pCompiledExc->sFinally,0,TRUE);
 		if( rcFinally == SXERR_ABORT ){
 			goto Abort;
 		}
@@ -9177,6 +9255,7 @@ case PH7_OP_POP_EXCEPTION: {
 			goto Exception;
 		}
 	}
+	VmExcRelease(&(*pVm),pException); /* no-finally / already-done paths (may be NULL) */
 	if( VmSkipExceptionFrames(pVm->pFrame)->bHasRet ){
 		/* `return` inside the finally (normal try completion) returns from the
 		 * function. The return targets the body frame this try belongs to. Drain
@@ -9204,9 +9283,13 @@ case PH7_OP_POP_EXCEPTION: {
  * enclosing body's scope (PHP: a catch shares the surrounding variable scope).
  */
 case PH7_OP_CATCH: {
-	ph7_exception *pExc = (ph7_exception *)pInstr->p3;
-	ph7_exception_block *pCatch = (ph7_exception_block *)SySetAt(&pExc->sEntry,(sxu32)pInstr->iP1);
-	ph7_class_instance *pBind = pExc->pInflight;
+	/* BYTECODE stage 2b: mutable state (pInflight) lives on the LIVE activation
+	 * of this try, not the compiled p3 (which VmThrowInline kept on aException
+	 * marked iInCatch). Compiled fields (sEntry) are shared either way. */
+	ph7_exception *pExcC = (ph7_exception *)pInstr->p3;
+	ph7_exception *pExc = VmExcLive(&(*pVm),pExcC);
+	ph7_exception_block *pCatch = (ph7_exception_block *)SySetAt(&pExcC->sEntry,(sxu32)pInstr->iP1);
+	ph7_class_instance *pBind = pExc ? pExc->pInflight : 0;
 	VmFrame *pBody = VmSkipExceptionFrames(pVm->pFrame);
 	pBody->iFlags &= ~VM_FRAME_THROW;
 	if( pCatch && pBind ){
@@ -9224,7 +9307,9 @@ case PH7_OP_CATCH: {
 		/* Drop the hold VmThrowInline took across the redirect. */
 		PH7_ClassInstanceUnref(pBind);
 	}
-	pExc->pInflight = 0;
+	if( pExc ){
+		pExc->pInflight = 0;
+	}
 	break;
 						 }
 /*
@@ -12580,8 +12665,18 @@ static void VmReleaseExecCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx)
 	PH7_MemObjRelease(&pCtx->sSuspendValue);
 	PH7_MemObjRelease(&pCtx->sRetValue);
 	PH7_MemObjRelease(&pCtx->sDelegate);
-	/* Free only the SySet backing — the parked ph7_exception* entries are owned
-	 * by the compiled function, not by us. */
+	/* Stage 2b: the parked entries are per-activation clones now — free them
+	 * (an abandoned suspended coroutine is their last holder). */
+	{
+		sxu32 nExc = SySetUsed(&pCtx->aSavedException);
+		if( nExc > 0 ){
+			ph7_exception **apExc = (ph7_exception **)SySetBasePtr(&pCtx->aSavedException);
+			sxu32 iExc;
+			for( iExc = 0; iExc < nExc; iExc++ ){
+				VmExcRelease(pVm,apExc[iExc]);
+			}
+		}
+	}
 	SySetRelease(&pCtx->aSavedException);
 	/* ROOT C: a generator abandoned while suspended inside a finally may carry parked
 	 * finally actions holding owned values/refs (a RETURN's sRet, a RETHROW's pExc).
@@ -17095,6 +17190,38 @@ static int VmFinallyAdvance(ph7_vm *pVm, VmInstr *aInstr, int *pnCross, sxu32 *p
  *    next handler (inline or legacy) by re-entering VmThrowException.
  * The operand-stack drain to iStackDepth happens at the throw site (PH7_INLINE_RESUME_BREAK).
  */
+/*
+ * BYTECODE stage 2b: run a legacy (detached) finally mini-program in the scope
+ * of the try-OWNING body — a transparent VM_FRAME_EXCEPTION wrapper re-parented
+ * onto pOwner, exactly the catch body's mechanism (see the re-parent note in
+ * VmThrowException's catch path). Before this, a finally reached by a throw
+ * from a NESTED call ran against the throw-site frame: it read the wrong
+ * function's variables and a `return` inside it parked on the wrong body
+ * (the finally_return_cross_frame twin). Same-frame execution (the common
+ * case) is unchanged: no wrapper.
+ */
+static sxi32 VmExecFinallyInOwner(ph7_vm *pVm,SySet *pByteCode,VmFrame *pOwner)
+{
+	VmFrame *pWrap = 0;
+	VmFrame *pThrowSite;
+	sxi32 rc;
+	if( pOwner == 0 || pOwner == VmSkipExceptionFrames(pVm->pFrame) ){
+		return VmLocalExec(&(*pVm),pByteCode,0,TRUE);
+	}
+	if( SXRET_OK != VmEnterFrame(&(*pVm),0,0,&pWrap) ){
+		/* OOM: degrade to in-place execution rather than losing the finally. */
+		return VmLocalExec(&(*pVm),pByteCode,0,TRUE);
+	}
+	pThrowSite = pWrap->pParent;
+	pWrap->pParent = pOwner;
+	pWrap->iFlags |= VM_FRAME_EXCEPTION;
+	rc = VmLocalExec(&(*pVm),pByteCode,0,TRUE);
+	/* Leave the wrapper (pVm->pFrame becomes pOwner via the re-parent), then
+	 * restore the real throw site so the unwind continues normally. */
+	VmLeaveFrame(&(*pVm));
+	pVm->pFrame = pThrowSite;
+	return rc;
+}
 static sxi32 VmThrowInline(ph7_vm *pVm, ph7_class_instance *pThis,
 	ph7_exception *pException, ph7_exception_block *pCatch)
 {
@@ -17115,18 +17242,17 @@ static sxi32 VmThrowInline(ph7_vm *pVm, ph7_class_instance *pThis,
 		if( pThis ){ pThis->iRef++; }
 		sAct.pExc = pThis;
 		SySetPut(&pVm->aFinallyAction,(const void *)&sAct);
-		pException->iInCatch = 0;
 		pVm->pInlineInstr = pException->pOwnerInstr;
 		pVm->iInlinePc = pException->iFinallyPc;
 		pVm->iInlineDrain = pException->iStackDepth;
+		VmExcRelease(&(*pVm),pException); /* not re-pushed: activation ends here */
 		return SXRET_OK;
 	}
 	/* No catch, no finally: drop this try's frame and continue unwinding. */
-	pException->iInCatch = 0;
-	pException->pFrame = 0;
 	if( pVm->pFrame->iFlags & VM_FRAME_EXCEPTION ){
 		VmLeaveFrame(&(*pVm));
 	}
+	VmExcRelease(&(*pVm),pException); /* not re-pushed: activation ends here */
 	return VmThrowException(&(*pVm),pThis);
 }
 static sxi32 VmThrowException(
@@ -17227,25 +17353,41 @@ static sxi32 VmThrowException(
 			 * from the finally that leaves it chains pThis as $previous; restore after. */
 			pVm->pInflightException = pThis;
 			pVm->nInflightExcBase = nExcBefore;
-			rc = VmLocalExec(&(*pVm),&pException->sFinally,0,TRUE);
+			/* Stage 2b: the finally runs in the try-OWNING body's scope (its own
+			 * variables; a `return` parks on the owning body), like the catch. */
+			rc = VmExecFinallyInOwner(&(*pVm),&pException->sFinally,pException->pFrame);
 			pVm->pInflightException = pSaveInflight;
 			pVm->nInflightExcBase = nSaveBase;
 			if( rc == SXERR_ABORT ){
+				VmExcRelease(&(*pVm),pException);
 				return SXERR_ABORT;
 			}
 			/* A `return` inside the finally swallows the in-flight exception (PHP
 			 * semantics). The finally stored it on the body frame it returns from
-			 * (pThrowFrame); pThis is discarded; the body's OP_DONE / OP_POP_EXCEPTION
-			 * landing pad materializes it. Clear VM_FRAME_THROW on the owning frame:
-			 * this body now returns normally, so its caller's OP_CALL must take the
-			 * return value, not unwind. */
+			 * (the try-OWNING body, via the wrapper above); pThis is discarded; the
+			 * owner's OP_POP_EXCEPTION landing pad materializes it. Same frame:
+			 * clear VM_FRAME_THROW (this body now returns normally, so its caller
+			 * takes the value instead of unwinding) and resume in place.
+			 * Cross-frame: record the OWNER's landing pad as the resume target —
+			 * the same transport an in-place catch uses — and unwind as an
+			 * exception; the owner's activation consumes the resume
+			 * (VmCallFinish/VmRecordedResume), lands at its OP_POP_EXCEPTION and
+			 * its bHasRet tail materializes the return. */
 			{
 				VmFrame *pThrowFrame = VmSkipExceptionFrames(pVm->pFrame);
-				if( pThrowFrame->bHasRet ){
-					if( pException->pFrame == pThrowFrame ){
+				VmFrame *pOwnerFrame = pException->pFrame ? pException->pFrame : pThrowFrame;
+				if( pOwnerFrame->bHasRet ){
+					if( pOwnerFrame == pThrowFrame ){
 						pThrowFrame->iFlags &= ~VM_FRAME_THROW;
+						VmExcRelease(&(*pVm),pException);
+						return SXRET_OK;
 					}
-					return SXRET_OK;
+					pVm->pResumeFrame = pOwnerFrame;
+					pVm->iResumePc = pException->iLandingPc;
+					pVm->pResumeInstr = pException->pOwnerInstr;
+					pVm->iResumeStackDepth = pException->iStackDepth;
+					VmExcRelease(&(*pVm),pException);
+					return PH7_EXCEPTION;
 				}
 			}
 			/* The finally threw an exception that superseded pThis — it either
@@ -17254,12 +17396,14 @@ static sxi32 VmThrowException(
 			 * original pThis is discarded; unwind with the finally's exception (the
 			 * OP_THROW caller resumes at the catching frame or propagates). */
 			if( rc == PH7_EXCEPTION || SySetUsed(&pVm->aException) < nExcBefore ){
+				VmExcRelease(&(*pVm),pException);
 				return PH7_EXCEPTION;
 			}
 		}
 		/* Check if there is an outer exception handler on the stack */
 		if( SySetUsed(&pVm->aException) > 0 ){
 			/* Re-throw to the outer handler */
+			VmExcRelease(&(*pVm),pException);
 			return VmThrowException(&(*pVm),pThis);
 		}
 		/* No outer handler. If the handlers were temporarily hidden
@@ -17283,6 +17427,7 @@ static sxi32 VmThrowException(
 				/* Defer — will be re-thrown after finally runs */
 				pThis->iRef++;
 				pVm->pPendingException = pThis;
+				VmExcRelease(&(*pVm),pException);
 				return SXRET_OK;
 			}
 		}
@@ -17295,6 +17440,7 @@ static sxi32 VmThrowException(
 				pFrame->iFlags &= ~VM_FRAME_THROW;
 			}
 		}
+		VmExcRelease(&(*pVm),pException);
 		return rc;
 	}else{
 		VmFrame *pFrame = pVm->pFrame;
@@ -17392,7 +17538,11 @@ static sxi32 VmThrowException(
 			 * returned), and the exception-stack depth. After the finally we use
 			 * these to decide whether the finally's throw superseded THIS try's
 			 * catch-return. */
-			VmFrame *pBody = VmSkipExceptionFrames(pVm->pFrame);
+			/* Stage 2b: anchor on the try-OWNING body (pCatchBody) — for a deep
+			 * throw the current frame is the THROW SITE, and both the catch's
+			 * return (parked via the re-parented wrapper) and the finally's
+			 * supersede decision belong to the owner, not the thrower. */
+			VmFrame *pBody = pCatchBody ? pCatchBody : VmSkipExceptionFrames(pVm->pFrame);
 			sxu32 nGenBefore = pBody->nRetGen;
 			sxu32 nExcBefore = SySetUsed(&pVm->aException);
 			/* The exception in flight while this finally runs is the catch body's
@@ -17405,10 +17555,12 @@ static sxi32 VmThrowException(
 			pException->iFinallyDone = 1;
 			pVm->pInflightException = pVm->pPendingException;
 			pVm->nInflightExcBase = nExcBefore;
-			rcf = VmLocalExec(&(*pVm),&pException->sFinally,0,TRUE);
+			/* Stage 2b: the finally runs in the owner's scope, like the catch. */
+			rcf = VmExecFinallyInOwner(&(*pVm),&pException->sFinally,pCatchBody);
 			pVm->pInflightException = pSaveInflight;
 			pVm->nInflightExcBase = nSaveBase;
 			if( rcf == SXERR_ABORT ){
+				VmExcRelease(&(*pVm),pException);
 				return SXERR_ABORT;
 			}
 			/* Did the finally throw an exception that escaped THIS try? Two shapes:
@@ -17430,10 +17582,12 @@ static sxi32 VmThrowException(
 					PH7_ClassInstanceUnref(pVm->pPendingException);
 					pVm->pPendingException = 0;
 				}
+				VmExcRelease(&(*pVm),pException);
 				return PH7_EXCEPTION;
 			}
 		}
 		if( rc == SXERR_ABORT ){
+			VmExcRelease(&(*pVm),pException);
 			return SXERR_ABORT;
 		}
 		/* If the catch body re-threw, the exception was deferred in
@@ -17444,9 +17598,11 @@ static sxi32 VmThrowException(
 		 * exception (PHP semantics).
 		 */
 		if( pVm->pPendingException ){
-			if( !VmSkipExceptionFrames(pVm->pFrame)->bHasRet ){
+			/* Stage 2b: the swallow decision reads the OWNER's parked return. */
+			if( !(pCatchBody ? pCatchBody : VmSkipExceptionFrames(pVm->pFrame))->bHasRet ){
 				ph7_class_instance *pReThrow = pVm->pPendingException;
 				pVm->pPendingException = 0;
+				VmExcRelease(&(*pVm),pException);
 				return VmThrowException(&(*pVm),pReThrow);
 			}
 			/* Swallowed by the catch/finally's return: drop the deferred exception. */
@@ -17461,10 +17617,11 @@ static sxi32 VmThrowException(
 		pVm->iResumePc = iCatchPc;
 		pVm->pResumeInstr = pCatchInstr;
 		pVm->iResumeStackDepth = pException->iStackDepth;
+		/* (TICKET 1433-60 is retired by stage 2b: this frees the per-entry
+		 * ACTIVATION; a `goto` re-entering the try mints a fresh one at
+		 * OP_LOAD_EXCEPTION. The compiled object is untouched.) */
+		VmExcRelease(&(*pVm),pException);
 	}
-	/* TICKET 1433-60: Do not release the 'pException' pointer since it may
-	 * be used again if a 'goto' statement is executed.
-	 */
 	return SXRET_OK;
 }
 /*

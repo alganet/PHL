@@ -2,12 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-KNOWN DIVERGENCE (BYTECODE.md stage 2): each recursion level pushes the SAME per-lexical-try ph7_exception, so unwind runs every catch/finally against the deepest frame ($n=0). Pinned until the activation-record rework makes try state per-activation; the _zend twin is the acceptance test.
---SKIPIF--
-<?php
-if (function_exists('zend_version')) {
-    echo "skip";
-}
+try/catch/finally state during unwind through recursive frames — each level's catch/finally sees its own $n (per-activation try state)
 --FILE--
 <?php
 function dive(int $n): string {
@@ -47,58 +42,14 @@ try {
 }
 --EXPECT--
 unwind:0
-unwind:0
-unwind:0
-unwind:0
-unwind:0
-unwind:0
-unwind:0
-unwind:0
-unwind:0
-unwind:0
-unwind:0
-unwind:0
-unwind:0
-unwind:0
-unwind:0
-unwind:0
-unwind:0
-unwind:0
-unwind:0
-unwind:0
-unwind:0
-unwind:0
-unwind:0
-unwind:0
-unwind:0
-unwind:0
+unwind:8
+unwind:16
+unwind:24
 top caught: bottom
 relay:0
-relay:0
-relay:0
-relay:0
-relay:0
-relay:0
-relay:0
-relay:0
-relay:0
-relay:0
-relay:0
-relay:0
-relay:0
-relay:0
-relay:0
-relay:0
-relay:0
-relay:0
-relay:0
-relay:0
-relay:0
-relay:0
-relay:0
-relay:0
-relay:0
-relay:0
+relay:8
+relay:16
+relay:24
 relay top: relay-bottom
 --CLEAN--
 <?php
