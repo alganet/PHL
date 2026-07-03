@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 180/243 lines (74.07%)
+Coverage: 182/253 lines (71.94%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -444,79 +444,95 @@ Coverage: 180/243 lines (74.07%)
 |  3403 |  434 | `	if( rc != PH7_OK ){` |
 |   ! 0 |  435 | `		Fatal("Error while installing the VM output consumer callback");` |
 |   ! 0 |  436 | `	}` |
-|     - |  437 | `	/* Define PHP_BINARY: absolute path of this interpreter */` |
-|  5102 |  438 | `	ph7_create_constant(pVm,"PHP_BINARY",PHL_PhpBinaryConst,` |
-|  3398 |  439 | `		(void *)PHL_ResolveBinaryPath(argv[0]));` |
-|     - |  440 | `	/* Register the script arguments as $argv[] plus the matching $argc count and` |
-|     - |  441 | `	 * the CLI $_SERVER entries, matching PHP: $argv[0] is the script path (file` |
-|     - |  442 | `	 * mode) or the literal "Standard input code" (-r mode), followed by the` |
-|     - |  443 | `	 * script's own arguments.` |
-|     - |  444 | `	 */` |
-|     - |  445 | `	{` |
-|  3403 |  446 | `		const char *zScriptName = run_code ? "Standard input code" : argv[n];` |
-|  3403 |  447 | `		int argv_count = 0;` |
-|     - |  448 | `		ph7_value *pArgc;` |
-|     - |  449 | `		/* Count only the entries actually inserted: PH7_VM_CONFIG_ARGV_ENTRY skips` |
-|     - |  450 | `		 * an empty string, so counting unconditionally would leave $argc greater` |
-|     - |  451 | ``		 * than count($argv) for an empty argument (e.g. `phl s.php "" x`). */`` |
-|  3403 |  452 | `		if( ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,zScriptName) == PH7_OK ){` |
-|  3403 |  453 | `			argv_count++;` |
-|  1699 |  454 | `		}` |
-|     - |  455 | `		/* The script's own arguments follow: in file mode argv[n] is the script` |
-|     - |  456 | `		 * (registered above), so they start at n+1; in -r mode they start at n. */` |
-|  3433 |  457 | `		for( n = run_code ? n : n + 1; n < argc ; ++n ){` |
-|    35 |  458 | `			if( ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,argv[n]) == PH7_OK ){` |
-|    33 |  459 | `				argv_count++;` |
-|    14 |  460 | `			}` |
-|    20 |  461 | `		}` |
-|     - |  462 | `		/* $argc: a plain integer global equal to count($argv). */` |
-|  3403 |  463 | `		pArgc = ph7_new_scalar(pVm);` |
-|  3403 |  464 | `		if( pArgc ){` |
-|  3403 |  465 | `			ph7_value_int(pArgc,argv_count);` |
-|  3403 |  466 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_CREATE_VAR,"argc",pArgc);` |
-|  3403 |  467 | `			ph7_release_value(pVm,pArgc);` |
-|  1699 |  468 | `		}` |
-|     - |  469 | `		/* $_SERVER entries frameworks read at CLI bootstrap. SCRIPT_FILENAME is` |
-|     - |  470 | `		 * already set to the script path by PH7_HashmapCreateSuper. */` |
-|  3403 |  471 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"SCRIPT_NAME",zScriptName,-1);` |
-|  3403 |  472 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"PHP_SELF",zScriptName,-1);` |
-|  3403 |  473 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"DOCUMENT_ROOT","",0);` |
-|     - |  474 | `		{` |
-|     - |  475 | `			char zTime[32];` |
-|  3403 |  476 | `			snprintf(zTime,sizeof(zTime),"%ld",(long)time(0));` |
-|  3403 |  477 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"REQUEST_TIME",zTime,-1);` |
-|     - |  478 | `		}` |
-|     - |  479 | `#ifndef __WINNT__` |
-|     - |  480 | `		{` |
-|     - |  481 | `			char zCwd[PATH_MAX];` |
-|  3398 |  482 | `			if( getcwd(zCwd,sizeof(zCwd)) ){` |
-|  3398 |  483 | `				ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"PWD",zCwd,-1);` |
-|  1699 |  484 | `			}` |
-|     - |  485 | `		}` |
-|     - |  486 | `#endif` |
-|     - |  487 | `	}` |
-|     - |  488 | `	/* Report script run-time errors (now default behavior) */` |
-|  3403 |  489 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_ERR_REPORT);` |
-|  3403 |  490 | `	if( dump_vm ){` |
-|     - |  491 | `		/* Dump PH7 byte-code instructions */` |
-|     3 |  492 | `		ph7_vm_dump_v2(pVm,` |
-|     - |  493 | `			Output_Consumer, /* Dump consumer callback */` |
-|     - |  494 |  |
-|     - |  495 | `			);` |
-|     1 |  496 | `	}` |
-|     - |  497 | `	/*` |
-|     - |  498 | `	 * And finally, execute our program. Note that your output (STDOUT in our case)` |
-|     - |  499 | `	 * should display the result.` |
-|     - |  500 | `	 */` |
-|     - |  501 | `	{` |
-|  3403 |  502 | `		int iExitStatus = 0;` |
-|  3403 |  503 | `		ph7_vm_exec(pVm,&iExitStatus);` |
-|     - |  504 | `		/* All done, cleanup the mess left behind.` |
-|     - |  505 | `		*/` |
-|  3403 |  506 | `		ph7_vm_release(pVm);` |
-|  3403 |  507 | `		ph7_release(pEngine);` |
-|     - |  508 | `		/* Propagate the script exit status (set via exit()/die()) */` |
-|  3403 |  509 | `		return iExitStatus;` |
-|     - |  510 | `	}` |
-|  1717 |  511 | `}` |
-|     - |  512 |  |
+|     - |  437 | `	/* Optional PHP-recursion-depth cap override (PHL_MAX_RECURSION=frames).` |
+|     - |  438 | `	 * Testing hatch like PHL_MAX_ALLOC: lets the deep-recursion stress tests` |
+|     - |  439 | `	 * (tests/ph7/003-stress) run past the conservative host default until the` |
+|     - |  440 | `	 * BYTECODE.md stage-5 config rework makes the host default unbounded. */` |
+|     - |  441 | `	{` |
+|  3403 |  442 | `		const char *zMaxRec = getenv("PHL_MAX_RECURSION");` |
+|  3403 |  443 | `		if( zMaxRec ){` |
+|   ! 0 |  444 | `			unsigned long uMax = strtoul(zMaxRec,0,10);` |
+|   ! 0 |  445 | `			if( uMax > 0 ){` |
+|   ! 0 |  446 | `				if( uMax > 0x7FFFFFFFUL ){` |
+|   ! 0 |  447 | `					uMax = 0x7FFFFFFFUL;` |
+|   ! 0 |  448 | `				}` |
+|   ! 0 |  449 | `				ph7_vm_config(pVm,PH7_VM_CONFIG_RECURSION_DEPTH,(int)uMax);` |
+|   ! 0 |  450 | `			}` |
+|   ! 0 |  451 | `		}` |
+|     - |  452 | `	}` |
+|     - |  453 | `	/* Define PHP_BINARY: absolute path of this interpreter */` |
+|  5102 |  454 | `	ph7_create_constant(pVm,"PHP_BINARY",PHL_PhpBinaryConst,` |
+|  3398 |  455 | `		(void *)PHL_ResolveBinaryPath(argv[0]));` |
+|     - |  456 | `	/* Register the script arguments as $argv[] plus the matching $argc count and` |
+|     - |  457 | `	 * the CLI $_SERVER entries, matching PHP: $argv[0] is the script path (file` |
+|     - |  458 | `	 * mode) or the literal "Standard input code" (-r mode), followed by the` |
+|     - |  459 | `	 * script's own arguments.` |
+|     - |  460 | `	 */` |
+|     - |  461 | `	{` |
+|  3403 |  462 | `		const char *zScriptName = run_code ? "Standard input code" : argv[n];` |
+|  3403 |  463 | `		int argv_count = 0;` |
+|     - |  464 | `		ph7_value *pArgc;` |
+|     - |  465 | `		/* Count only the entries actually inserted: PH7_VM_CONFIG_ARGV_ENTRY skips` |
+|     - |  466 | `		 * an empty string, so counting unconditionally would leave $argc greater` |
+|     - |  467 | ``		 * than count($argv) for an empty argument (e.g. `phl s.php "" x`). */`` |
+|  3403 |  468 | `		if( ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,zScriptName) == PH7_OK ){` |
+|  3403 |  469 | `			argv_count++;` |
+|  1699 |  470 | `		}` |
+|     - |  471 | `		/* The script's own arguments follow: in file mode argv[n] is the script` |
+|     - |  472 | `		 * (registered above), so they start at n+1; in -r mode they start at n. */` |
+|  3433 |  473 | `		for( n = run_code ? n : n + 1; n < argc ; ++n ){` |
+|    35 |  474 | `			if( ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,argv[n]) == PH7_OK ){` |
+|    33 |  475 | `				argv_count++;` |
+|    14 |  476 | `			}` |
+|    20 |  477 | `		}` |
+|     - |  478 | `		/* $argc: a plain integer global equal to count($argv). */` |
+|  3403 |  479 | `		pArgc = ph7_new_scalar(pVm);` |
+|  3403 |  480 | `		if( pArgc ){` |
+|  3403 |  481 | `			ph7_value_int(pArgc,argv_count);` |
+|  3403 |  482 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_CREATE_VAR,"argc",pArgc);` |
+|  3403 |  483 | `			ph7_release_value(pVm,pArgc);` |
+|  1699 |  484 | `		}` |
+|     - |  485 | `		/* $_SERVER entries frameworks read at CLI bootstrap. SCRIPT_FILENAME is` |
+|     - |  486 | `		 * already set to the script path by PH7_HashmapCreateSuper. */` |
+|  3403 |  487 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"SCRIPT_NAME",zScriptName,-1);` |
+|  3403 |  488 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"PHP_SELF",zScriptName,-1);` |
+|  3403 |  489 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"DOCUMENT_ROOT","",0);` |
+|     - |  490 | `		{` |
+|     - |  491 | `			char zTime[32];` |
+|  3403 |  492 | `			snprintf(zTime,sizeof(zTime),"%ld",(long)time(0));` |
+|  3403 |  493 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"REQUEST_TIME",zTime,-1);` |
+|     - |  494 | `		}` |
+|     - |  495 | `#ifndef __WINNT__` |
+|     - |  496 | `		{` |
+|     - |  497 | `			char zCwd[PATH_MAX];` |
+|  3398 |  498 | `			if( getcwd(zCwd,sizeof(zCwd)) ){` |
+|  3398 |  499 | `				ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"PWD",zCwd,-1);` |
+|  1699 |  500 | `			}` |
+|     - |  501 | `		}` |
+|     - |  502 | `#endif` |
+|     - |  503 | `	}` |
+|     - |  504 | `	/* Report script run-time errors (now default behavior) */` |
+|  3403 |  505 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_ERR_REPORT);` |
+|  3403 |  506 | `	if( dump_vm ){` |
+|     - |  507 | `		/* Dump PH7 byte-code instructions */` |
+|     3 |  508 | `		ph7_vm_dump_v2(pVm,` |
+|     - |  509 | `			Output_Consumer, /* Dump consumer callback */` |
+|     - |  510 |  |
+|     - |  511 | `			);` |
+|     1 |  512 | `	}` |
+|     - |  513 | `	/*` |
+|     - |  514 | `	 * And finally, execute our program. Note that your output (STDOUT in our case)` |
+|     - |  515 | `	 * should display the result.` |
+|     - |  516 | `	 */` |
+|     - |  517 | `	{` |
+|  3403 |  518 | `		int iExitStatus = 0;` |
+|  3403 |  519 | `		ph7_vm_exec(pVm,&iExitStatus);` |
+|     - |  520 | `		/* All done, cleanup the mess left behind.` |
+|     - |  521 | `		*/` |
+|  3403 |  522 | `		ph7_vm_release(pVm);` |
+|  3403 |  523 | `		ph7_release(pEngine);` |
+|     - |  524 | `		/* Propagate the script exit status (set via exit()/die()) */` |
+|  3403 |  525 | `		return iExitStatus;` |
+|     - |  526 | `	}` |
+|  1717 |  527 | `}` |
+|     - |  528 |  |
