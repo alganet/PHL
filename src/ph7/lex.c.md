@@ -89,7 +89,7 @@ Coverage: 756/811 lines (93.22%)
 |        - |   79 | `		 * The auto-generated perfect hash above doesn't know about it,` |
 |        - |   80 | `		 * so intercept the 'fn' identifier here.` |
 |        - |   81 | `		 */` |
-|  4563946 |   82 | `		if( nKeyword == PH7_TK_ID && pStr->nByte == 2` |
+|  4563354 |   82 | `		if( nKeyword == PH7_TK_ID && pStr->nByte == 2` |
 |  1451242 |   83 | `			&& pStr->zString[0] == 'f' && pStr->zString[1] == 'n' ){` |
 |      467 |   84 | `			nKeyword = PH7_TKWRD_FN;` |
 |      231 |   85 | `		}` |
@@ -208,7 +208,7 @@ Coverage: 756/811 lines (93.22%)
 |        - |  198 | `			/* PHP 7.4: handle underscore separator immediately following the first digit.` |
 |        - |  199 | `			 * Check pStream->zText < pStream->zEnd BEFORE forming pStream->zText + 1 so` |
 |        - |  200 | `			 * we never compute a pointer past one-past-end. */` |
-|   133512 |  201 | `			if( pStream->zText < pStream->zEnd` |
+|   133432 |  201 | `			if( pStream->zText < pStream->zEnd` |
 |   133432 |  202 | `				&& pStream->zText[0] == '_'` |
 |    66796 |  203 | `				&& pStream->zText + 1 < pStream->zEnd` |
 |      160 |  204 | `				&& pStream->zText[1] < 0xc0` |
@@ -218,7 +218,7 @@ Coverage: 756/811 lines (93.22%)
 |        - |  208 | `			/* Decimal digit stream (PHP 7.4: underscore separator allowed between two digits) */` |
 |   145803 |  209 | `			while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){` |
 |    12371 |  210 | `				pStream->zText++;` |
-|    12452 |  211 | `				if( pStream->zText < pStream->zEnd` |
+|    12366 |  211 | `				if( pStream->zText < pStream->zEnd` |
 |    12366 |  212 | `					&& pStream->zText[0] == '_'` |
 |     6269 |  213 | `					&& pStream->zText + 1 < pStream->zEnd` |
 |      172 |  214 | `					&& pStream->zText[1] < 0xc0` |
@@ -235,7 +235,7 @@ Coverage: 756/811 lines (93.22%)
 |      671 |  225 | `					pStream->zText++;` |
 |     2337 |  226 | `					while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){` |
 |     1671 |  227 | `						pStream->zText++;` |
-|     1672 |  228 | `						if( pStream->zText < pStream->zEnd` |
+|     1666 |  228 | `						if( pStream->zText < pStream->zEnd` |
 |     1666 |  229 | `							&& pStream->zText[0] == '_'` |
 |      839 |  230 | `							&& pStream->zText + 1 < pStream->zEnd` |
 |       12 |  231 | `							&& pStream->zText[1] < 0xc0` |
@@ -249,13 +249,13 @@ Coverage: 756/811 lines (93.22%)
 |       37 |  239 | `							pStream->zText++;` |
 |       37 |  240 | `							if( pStream->zText < pStream->zEnd ){` |
 |       37 |  241 | `								c = pStream->zText[0];` |
-|       44 |  242 | `								if( (c =='+' \|\| c=='-') && &pStream->zText[1] < pStream->zEnd  &&` |
+|       36 |  242 | `								if( (c =='+' \|\| c=='-') && &pStream->zText[1] < pStream->zEnd  &&` |
 |       17 |  243 | `									pStream->zText[1] < 0xc0 && SyisDigit(pStream->zText[1]) ){` |
 |       17 |  244 | `										pStream->zText++;` |
 |        8 |  245 | `								}` |
 |       95 |  246 | `								while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){` |
 |       59 |  247 | `									pStream->zText++;` |
-|       62 |  248 | `									if( pStream->zText < pStream->zEnd` |
+|       58 |  248 | `									if( pStream->zText < pStream->zEnd` |
 |       58 |  249 | `										&& pStream->zText[0] == '_'` |
 |       33 |  250 | `										&& pStream->zText + 1 < pStream->zEnd` |
 |        8 |  251 | `										&& pStream->zText[1] < 0xc0` |
@@ -273,13 +273,13 @@ Coverage: 756/811 lines (93.22%)
 |       59 |  263 | `					pStream->zText++;` |
 |       59 |  264 | `					if( pStream->zText < pStream->zEnd ){` |
 |       59 |  265 | `						c = pStream->zText[0];` |
-|       66 |  266 | `						if( (c =='+' \|\| c=='-') && &pStream->zText[1] < pStream->zEnd  &&` |
+|       58 |  266 | `						if( (c =='+' \|\| c=='-') && &pStream->zText[1] < pStream->zEnd  &&` |
 |       17 |  267 | `							pStream->zText[1] < 0xc0 && SyisDigit(pStream->zText[1]) ){` |
 |       17 |  268 | `								pStream->zText++;` |
 |        8 |  269 | `						}` |
 |      167 |  270 | `						while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){` |
 |      109 |  271 | `							pStream->zText++;` |
-|      110 |  272 | `							if( pStream->zText < pStream->zEnd` |
+|      108 |  272 | `							if( pStream->zText < pStream->zEnd` |
 |      108 |  273 | `								&& pStream->zText[0] == '_'` |
 |       56 |  274 | `								&& pStream->zText + 1 < pStream->zEnd` |
 |        4 |  275 | `								&& pStream->zText[1] < 0xc0` |
@@ -294,7 +294,7 @@ Coverage: 756/811 lines (93.22%)
 |       74 |  284 | `					pStream->zText++;` |
 |      370 |  285 | `					while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisHex(pStream->zText[0]) ){` |
 |      297 |  286 | `						pStream->zText++;` |
-|      320 |  287 | `						if( pStream->zText < pStream->zEnd` |
+|      296 |  287 | `						if( pStream->zText < pStream->zEnd` |
 |      296 |  288 | `							&& pStream->zText[0] == '_'` |
 |      172 |  289 | `							&& pStream->zText + 1 < pStream->zEnd` |
 |       48 |  290 | `							&& pStream->zText[1] < 0xc0` |
@@ -307,7 +307,7 @@ Coverage: 756/811 lines (93.22%)
 |      280 |  297 | `					pStream->zText++;` |
 |     2702 |  298 | `					while( pStream->zText < pStream->zEnd && (pStream->zText[0] == '0' \|\| pStream->zText[0] == '1') ){` |
 |     1523 |  299 | `						pStream->zText++;` |
-|     1583 |  300 | `						if( pStream->zText < pStream->zEnd` |
+|     1522 |  300 | `						if( pStream->zText < pStream->zEnd` |
 |     1522 |  301 | `							&& pStream->zText[0] == '_'` |
 |      830 |  302 | `							&& pStream->zText + 1 < pStream->zEnd` |
 |      139 |  303 | `							&& (pStream->zText[1] == '0' \|\| pStream->zText[1] == '1') ){` |
@@ -697,7 +697,7 @@ Coverage: 756/811 lines (93.22%)
 |        - |  687 | `					/* Null coalescing assignment operator (PHP 7.4) */` |
 |       73 |  688 | `					pStream->zText++;` |
 |       34 |  689 | `				}` |
-|     3005 |  690 | `			}else if( (pStream->zEnd - pStream->zText) >= 2` |
+|     2949 |  690 | `			}else if( (pStream->zEnd - pStream->zText) >= 2` |
 |     2853 |  691 | `				&& pStream->zText[0] == '-' && pStream->zText[1] == '>' ){` |
 |        - |  692 | `				/* Nullsafe object operator (PHP 8.0): ?-> */` |
 |      117 |  693 | `				pStream->zText += 2;` |

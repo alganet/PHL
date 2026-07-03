@@ -125,7 +125,7 @@ Coverage: 633/698 lines (90.69%)
 |      3 |  115 | `		zName = (char *)pNamePtr->zString;` |
 |      - |  116 | `	}` |
 | 284821 |  117 | `	if( iProtection != PH7_CLASS_PROT_PUBLIC ){` |
-|     32 |  118 | `		if( (pName->nByte == sizeof("__construct") - 1 && SyMemcmp(pName->zString,"__construct",sizeof("__construct") - 1 ) == 0)` |
+|     22 |  118 | `		if( (pName->nByte == sizeof("__construct") - 1 && SyMemcmp(pName->zString,"__construct",sizeof("__construct") - 1 ) == 0)` |
 |     21 |  119 | `			\|\| (pName->nByte == sizeof("__destruct") - 1 && SyMemcmp(pName->zString,"__destruct",sizeof("__destruct") - 1 ) == 0)` |
 |     22 |  120 | `			\|\| SyStringCmp(pName,&pClass->sName,SyMemcmp) == 0 ){` |
 |      - |  121 | `				/* Switch to public visibility when dealing with constructor/destructor */` |
@@ -256,7 +256,7 @@ Coverage: 633/698 lines (90.69%)
 |     14 |  246 | `		*ppClass = (ph7_class *)pE->pUserData;` |
 |     14 |  247 | `		return OVT_CLASS;` |
 |      - |  248 | `	}` |
-|     70 |  249 | `	if( nType == MEMOBJ_STRING \|\| nType == MEMOBJ_INT \|\| nType == MEMOBJ_REAL` |
+|     58 |  249 | `	if( nType == MEMOBJ_STRING \|\| nType == MEMOBJ_INT \|\| nType == MEMOBJ_REAL` |
 |     27 |  250 | `	 \|\| nType == MEMOBJ_BOOL \|\| nType == MEMOBJ_HASHMAP ){` |
 |     36 |  251 | `		return OVT_SCALAR;` |
 |      - |  252 | `	}` |
@@ -473,7 +473,7 @@ Coverage: 633/698 lines (90.69%)
 | 499653 |  463 | `		pAttr = (ph7_class_attr *)pEntry->pUserData;` |
 | 499653 |  464 | `		pName = &pAttr->sName;` |
 | 499653 |  465 | `		if( (pEntry = SyHashGet(&pSub->hAttr,(const void *)pName->zString,pName->nByte)) != 0 ){` |
-|      9 |  466 | `			if( (pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT\|PH7_CLASS_ATTR_FINAL))` |
+|      6 |  466 | `			if( (pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT\|PH7_CLASS_ATTR_FINAL))` |
 |      6 |  467 | `				== (PH7_CLASS_ATTR_CONSTANT\|PH7_CLASS_ATTR_FINAL) ){` |
 |      - |  468 | `				/* Cannot override a final class constant (PHP 8.1). Report the` |
 |      - |  469 | `				 * class that originally declared it (pDeclClass) rather than the` |
@@ -1051,7 +1051,7 @@ Coverage: 633/698 lines (90.69%)
 |    149 | 1041 | `			if( pCloneAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC\|PH7_CLASS_ATTR_CONSTANT) ){` |
 |    ! 0 | 1042 | `				continue;` |
 |      - | 1043 | `			}` |
-|    292 | 1044 | `			if( SyHashGet(&pSrc->hAttr,SyStringData(&pCloneAttr->pAttr->sName),` |
+|    219 | 1044 | `			if( SyHashGet(&pSrc->hAttr,SyStringData(&pCloneAttr->pAttr->sName),` |
 |    222 | 1045 | `					SyStringLength(&pCloneAttr->pAttr->sName)) == 0 ){` |
 |      3 | 1046 | `				SySetPut(&sDrop,(const void *)&pCloneAttr);` |
 |      1 | 1047 | `			}` |
