@@ -1019,6 +1019,11 @@ struct ph7_vm
 	int bErrReport;            /* TRUE to report all runtime Error/Warning/Notice */
 	int nRecursionDepth;       /* Current recursion depth */
 	int nMaxDepth;             /* Maximum allowed recusion depth */
+	void *pIdleCallFrames;     /* Freelist of VmCallFrame nodes (BYTECODE stage 2):
+	                            * fixed-size, strictly LIFO per invocation — reusing
+	                            * them skips a pool alloc/free round-trip per PHP
+	                            * call (the measured trampoline overhead). Backing
+	                            * memory is allocator-owned; freed wholesale. */
 	int nObDepth;              /* OB depth */
 	int nExceptDepth;          /* Exception depth */
 	int closure_cnt;           /* Loaded closures counter */
