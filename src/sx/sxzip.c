@@ -330,11 +330,16 @@ update:
  	*pNextOffset =  SXZIP_CENTRAL_HDRSZ + pName->nByte + pEntry->nExtra + nComment;
  	return rc; /* Report failure or success */
 }
-static sxi32 ZipFixOffset(SyArchiveEntry *pEntry,void *pSrc)
+static sxi32 ZipFixOffset(SyArchiveEntry *pEntry,void *pSrc,sxu32 nSrcLen)
 {
 	sxu16 nExtra,nNameLen;
 	unsigned char *zHdr;
 	nExtra = nNameLen = 0;
+	/* Bound the local-header read: nOfft comes from the (attacker-controlled)
+	 * central record and can point far past the mapped source buffer. */
+	if( pEntry->nOfft > nSrcLen || nSrcLen - pEntry->nOfft < SXZIP_LOCAL_HDRSZ ){
+		return SXERR_CORRUPT;
+	}
 	zHdr = (unsigned char *)pSrc;
 	zHdr = &zHdr[pEntry->nOfft];
 	if( SyMemcmp(zHdr,"PK\003\004",sizeof(sxu32)) != 0 ){
@@ -344,12 +349,16 @@ static sxi32 ZipFixOffset(SyArchiveEntry *pEntry,void *pSrc)
 	SyLittleEndianUnpack16(&nExtra,&zHdr[28],sizeof(sxu16));
 	/* Fix contents offset */
 	pEntry->nOfft += SXZIP_LOCAL_HDRSZ + nExtra + nNameLen;
+	if( pEntry->nOfft > nSrcLen ){
+		/* Contents would start past the source buffer */
+		return SXERR_CORRUPT;
+	}
 	return SXRET_OK;
 }
 /*
  * Extract all valid entries from the central directory
  */
-static sxi32 ZipExtract(SyArchive *pArch,const unsigned char *zCentral,sxu32 nLen,void *pSrc)
+static sxi32 ZipExtract(SyArchive *pArch,const unsigned char *zCentral,sxu32 nLen,void *pSrc,sxu32 nSrcLen)
 {
 	SyArchiveEntry *pEntry,*pDup;
 	const unsigned char *zEnd ; /* End of central directory */
@@ -381,7 +390,7 @@ static sxi32 ZipExtract(SyArchive *pArch,const unsigned char *zCentral,sxu32 nLe
 		}
 		if( rc == SXRET_OK ){
 			/* Fix the starting record offset so we can access entry contents correctly */
-			rc = ZipFixOffset(pEntry,pSrc);
+			rc = ZipFixOffset(pEntry,pSrc,nSrcLen);
 		}
 		if(rc != SXRET_OK ){
 			sxu32 nJmp = 0;
@@ -472,7 +481,7 @@ PH7_PRIVATE sxi32 SyZipExtractFromBuf(SyArchive *pArch,const char *zBuf,sxu32 nL
  		}
  		/* Fall thru and extract all valid entries from the central directory */
  	}
- 	rc = ZipExtract(&(*pArch),zCentral,(sxu32)(zEnd - zCentral),(void *)zBuf);
+ 	rc = ZipExtract(&(*pArch),zCentral,(sxu32)(zEnd - zCentral),(void *)zBuf,nLen);
  	return rc;
  }
 /*

@@ -342,7 +342,17 @@ PH7_PRIVATE sxi32 SyMemBackendDisbaleMutexing(SyMemBackend *pBackend)
 #define SXMEM_POOL_MAGIC		0xDEAD
 #define SXMEM_POOL_MAXALLOC		(1<<(SXMEM_POOL_NBUCKETS+SXMEM_POOL_INCR))
 #define SXMEM_POOL_MINALLOC		(1<<(SXMEM_POOL_INCR))
-#if !defined(SXMEM_POOL_BYPASS)
+/* When SXMEM_POOL_BYPASS is defined (sanitizer builds) the bucket-recycling
+ * path is compiled but never taken — MemBackendPoolAlloc forces the big-block
+ * branch — so ASan sees one real allocation per request. A compile-time
+ * constant (not #ifdef scattered through the alloc body) keeps a single copy
+ * of the alloc/tag/free logic; production builds fold the constant to 0 and
+ * lose nothing. */
+#if defined(SXMEM_POOL_BYPASS)
+# define SXMEM_POOL_BYPASS_ACTIVE 1
+#else
+# define SXMEM_POOL_BYPASS_ACTIVE 0
+#endif
 static sxi32 MemPoolBucketAlloc(SyMemBackend *pBackend,sxu32 nBucket)
 {
 	char *zBucket,*zBucketEnd;
@@ -371,26 +381,17 @@ static sxi32 MemPoolBucketAlloc(SyMemBackend *pBackend,sxu32 nBucket)
 
 	return SXRET_OK;
 }
-#endif /* !SXMEM_POOL_BYPASS */
 static void * MemBackendPoolAlloc(SyMemBackend *pBackend,sxu32 nByte)
 {
-#if defined(SXMEM_POOL_BYPASS)
-	/* Sanitizer builds: no bucket recycling — every request is a real
-	 * backend allocation so ASan tracks each object's lifetime. Freed via
-	 * the big-block path in MemBackendPoolFree. */
-	SyMemHeader *pBucket;
-	pBucket = (SyMemHeader *)MemBackendAlloc(&(*pBackend),nByte+sizeof(SyMemHeader));
-	if( pBucket == 0 ){
-		return 0;
-	}
-	pBucket->nBucket = ((sxu32)SXMEM_POOL_MAGIC << 16) | SXU16_HIGH;
-	return (void *)(pBucket+1);
-#else
 	SyMemHeader *pBucket,*pNext;
 	sxu32 nBucketSize;
 	sxu32 nBucket;
 
-	if( nByte + sizeof(SyMemHeader) >= SXMEM_POOL_MAXALLOC ){
+	/* SXMEM_POOL_BYPASS (sanitizer builds): force the big-block path for every
+	 * request so there is no bucket recycling and ASan tracks each object's
+	 * real lifetime. Chunks are freed through MemBackendPoolFree's big-block
+	 * branch either way — one copy of the alloc+tag logic. */
+	if( SXMEM_POOL_BYPASS_ACTIVE || nByte + sizeof(SyMemHeader) >= SXMEM_POOL_MAXALLOC ){
 		/* Allocate a big chunk directly */
 		pBucket = (SyMemHeader *)MemBackendAlloc(&(*pBackend),nByte+sizeof(SyMemHeader));
 		if( pBucket == 0 ){
@@ -422,7 +423,6 @@ static void * MemBackendPoolAlloc(SyMemBackend *pBackend,sxu32 nByte)
 	/* Record bucket&magic number */
 	pBucket->nBucket = (((sxu32)SXMEM_POOL_MAGIC << 16) | nBucket);
 	return (void *)&pBucket[1];
-#endif /* SXMEM_POOL_BYPASS */
 }
 PH7_PRIVATE void * SyMemBackendPoolAlloc(SyMemBackend *pBackend,sxu32 nByte)
 {

@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <errno.h>
 /* Make sure this header file is available.*/
 #include "ph7.h"
 #ifdef PHL_ENABLE_SERVER
@@ -191,6 +192,41 @@ static int Output_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUs
 	return PH7_OK;
 }
 /*
+ * Parse an unsigned-long testing knob from the environment (PHL_MAX_ALLOC /
+ * PHL_MAX_INPUT / PHL_MAX_RECURSION). Returns 1 and writes *pOut on a valid,
+ * strictly-positive, fully-numeric value clamped to [uFloor, uCeil]; returns
+ * 0 (leaving *pOut untouched) when the var is unset, empty, non-numeric, has
+ * trailing garbage, or is zero — so a typo like "-1" or "abc" is ignored
+ * rather than silently reinterpreted (strtoul would wrap "-1" to ULONG_MAX).
+ */
+static int PHL_EnvULong(const char *zName,unsigned long uFloor,unsigned long uCeil,unsigned long *pOut)
+{
+	const char *zVal = getenv(zName);
+	char *zEnd = 0;
+	unsigned long uMax;
+	if( zVal == 0 || zVal[0] == 0 ){
+		return 0;
+	}
+	/* Reject a leading sign outright: strtoul silently negates "-1" to
+	 * ULONG_MAX, turning a typo into an effectively-unlimited cap. */
+	if( zVal[0] == '-' || zVal[0] == '+' ){
+		return 0;
+	}
+	errno = 0;
+	uMax = strtoul(zVal,&zEnd,10);
+	if( errno != 0 || zEnd == zVal || *zEnd != 0 || uMax == 0 ){
+		return 0; /* non-numeric, trailing junk, overflow, or zero */
+	}
+	if( uMax < uFloor ){
+		uMax = uFloor;
+	}
+	if( uMax > uCeil ){
+		uMax = uCeil;
+	}
+	*pOut = uMax;
+	return 1;
+}
+/*
  * Main program: Compile and execute the PHP file.
  */
 int main(int argc,char **argv)
@@ -332,32 +368,18 @@ int main(int argc,char **argv)
 	 * Clamp to a floor above the pool bucket size (SXMEM_POOL_MAXALLOC, 32 KB)
 	 * so the engine can still start; VMs inherit it at creation. */
 	{
-		const char *zMaxAlloc = getenv("PHL_MAX_ALLOC");
-		if( zMaxAlloc ){
-			unsigned long uMax = strtoul(zMaxAlloc,0,10);
-			if( uMax > 0 ){
-				if( uMax < 65536UL ){
-					uMax = 65536UL; /* floor: keep above the pool bucket size */
-				}
-				if( uMax > 0xFFFFFFFFUL ){
-					uMax = 0xFFFFFFFFUL; /* clamp: nMaxRequest is a 32-bit byte count */
-				}
-				ph7_config(pEngine,PH7_CONFIG_MAX_ALLOC,(unsigned int)uMax);
-			}
+		unsigned long uMax;
+		/* floor: keep above the pool bucket size; clamp: nMaxRequest is 32-bit */
+		if( PHL_EnvULong("PHL_MAX_ALLOC",65536UL,0xFFFFFFFFUL,&uMax) ){
+			ph7_config(pEngine,PH7_CONFIG_MAX_ALLOC,(unsigned int)uMax);
 		}
 	}
 	/* Optional per-input byte cap (PHL_MAX_INPUT=bytes). Used to exercise the
 	 * input-size rejection path at a manageable scale (see tests/ph7/003-stress). */
 	{
-		const char *zMaxInput = getenv("PHL_MAX_INPUT");
-		if( zMaxInput ){
-			unsigned long uMax = strtoul(zMaxInput,0,10);
-			if( uMax > 0 ){
-				if( uMax > 0xFFFFFFFFUL ){
-					uMax = 0xFFFFFFFFUL;
-				}
-				ph7_config(pEngine,PH7_CONFIG_MAX_INPUT,(unsigned int)uMax);
-			}
+		unsigned long uMax;
+		if( PHL_EnvULong("PHL_MAX_INPUT",1UL,0xFFFFFFFFUL,&uMax) ){
+			ph7_config(pEngine,PH7_CONFIG_MAX_INPUT,(unsigned int)uMax);
 		}
 	}
 	/* Syntax-check only mode (-l): compile the target file, print PHP's summary
@@ -435,19 +457,14 @@ int main(int argc,char **argv)
 		Fatal("Error while installing the VM output consumer callback");
 	}
 	/* Optional PHP-recursion-depth cap override (PHL_MAX_RECURSION=frames).
-	 * Testing hatch like PHL_MAX_ALLOC: lets the deep-recursion stress tests
-	 * (tests/ph7/003-stress) run past the conservative host default until the
-	 * BYTECODE.md stage-5 config rework makes the host default unbounded. */
+	 * Testing hatch like PHL_MAX_ALLOC: lets the deep-recursion tests
+	 * (tests/ph7/004-deep) run past the conservative host default until the
+	 * BYTECODE.md stage-5 config rework makes the host default unbounded.
+	 * Floor of 3 because PH7_VM_CONFIG_RECURSION_DEPTH ignores nDepth<=2. */
 	{
-		const char *zMaxRec = getenv("PHL_MAX_RECURSION");
-		if( zMaxRec ){
-			unsigned long uMax = strtoul(zMaxRec,0,10);
-			if( uMax > 0 ){
-				if( uMax > 0x7FFFFFFFUL ){
-					uMax = 0x7FFFFFFFUL;
-				}
-				ph7_vm_config(pVm,PH7_VM_CONFIG_RECURSION_DEPTH,(int)uMax);
-			}
+		unsigned long uMax;
+		if( PHL_EnvULong("PHL_MAX_RECURSION",3UL,0x7FFFFFFFUL,&uMax) ){
+			ph7_vm_config(pVm,PH7_VM_CONFIG_RECURSION_DEPTH,(int)uMax);
 		}
 	}
 	/* Define PHP_BINARY: absolute path of this interpreter */
