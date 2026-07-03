@@ -6104,28 +6104,18 @@ static SyToken * GenStateSkipNestedFunc(SyToken *pIn, SyToken *pEnd)
  * detached-mini-program path untouched.
  */
 /*
- * One atom of a generator's declared return type: is it a supertype of
- * Generator? php 8 accepts Generator, Iterator, Traversable, iterable,
- * mixed and object (nullability is irrelevant — it only widens).
+ * Case-insensitive match of a (possibly '\'-prefixed) name against the
+ * Generator-supertype whitelist: Generator, Iterator, Traversable, iterable,
+ * mixed, object.
  */
-static int GenStateGenRetAtomOk(sxu32 nType,const SyString *pName)
+static int GenStateGenRetNameOk(const char *zName,sxu32 nName)
 {
 	static const struct { const char *zName; sxu32 nLen; } aOk[] = {
 		{"Generator",9},{"Iterator",8},{"Traversable",11},
 		{"iterable",8},{"mixed",5},{"object",6}
 	};
-	const char *zName;
-	sxu32 nName,i;
-	if( nType == MEMOBJ_OBJ ){
-		return 1; /* bare `object` */
-	}
-	if( nType != SXU32_HIGH ){
-		return 0; /* scalar/array/void/never/null/... */
-	}
-	zName = pName->zString;
-	nName = pName->nByte;
+	sxu32 i;
 	if( nName > 0 && zName[0] == '\\' ){
-		/* php resolves `\Generator` like `Generator` */
 		zName++;
 		nName--;
 	}
@@ -6135,6 +6125,43 @@ static int GenStateGenRetAtomOk(sxu32 nType,const SyString *pName)
 		}
 	}
 	return 0;
+}
+/*
+ * One atom of a generator's declared return type: is it a supertype of
+ * Generator? php 8 accepts Generator, Iterator, Traversable, iterable,
+ * mixed and object (nullability is irrelevant — it only widens). A class
+ * atom is accepted when its raw name matches OR its use-import/namespace
+ * resolution (GenStateResolveName) matches — so `use Generator as Gen;
+ * function g(): Gen` compiles like php. Raw-first is deliberately LENIENT:
+ * the parser strips a leading `\`, so inside `namespace Foo;` a
+ * fully-qualified `\Generator` (php: accept) and a bare `Generator`
+ * (php: reject as Foo\Generator) are indistinguishable here — we accept
+ * both rather than fatal on valid code (divergence recorded in PLAN.md).
+ */
+static int GenStateGenRetAtomOk(ph7_gen_state *pGen,sxu32 nType,const SyString *pName)
+{
+	if( nType == MEMOBJ_OBJ ){
+		return 1; /* bare `object` */
+	}
+	if( nType != SXU32_HIGH ){
+		return 0; /* scalar/array/void/never/null/... */
+	}
+	if( GenStateGenRetNameOk(pName->zString,pName->nByte) ){
+		return 1;
+	}
+	/* Not a whitelist name as written — try the compile-time resolution
+	 * (use-import aliases; namespace prefix). `use Iterator as It;` must
+	 * compile; a userland `MyIter` resolves to [Ns\]MyIter and still fails,
+	 * matching php (a subinterface is not a SUPERtype of Generator). */
+	{
+		SyBlob sFQN;
+		int bOk;
+		SyBlobInit(&sFQN,&pGen->pVm->sAllocator);
+		GenStateResolveName(pGen,pName,&sFQN);
+		bOk = GenStateGenRetNameOk((const char *)SyBlobData(&sFQN),(sxu32)SyBlobLength(&sFQN));
+		SyBlobRelease(&sFQN);
+		return bOk;
+	}
 }
 /*
  * php 8: a generator function may only declare a return type that is a
@@ -6159,10 +6186,13 @@ static sxi32 GenStateValidateGeneratorReturnType(ph7_gen_state *pGen,ph7_vm_func
 		sxu32 n = SySetUsed(&pFunc->aReturnUnion);
 		sxu32 i,j;
 		for( i = 0; i < n && !bOk; i++ ){
-			int bGroupOk = 1;
-			for( j = 0; j < n; j++ ){
-				if( aAlt[j].nGroup == aAlt[i].nGroup
-				 && !GenStateGenRetAtomOk(aAlt[j].nType,&aAlt[j].sClass) ){
+			int bGroupOk;
+			if( i > 0 && aAlt[i].nGroup == aAlt[i-1].nGroup ){
+				continue; /* group already judged at its first member (ids are contiguous) */
+			}
+			bGroupOk = 1;
+			for( j = i; j < n && aAlt[j].nGroup == aAlt[i].nGroup; j++ ){
+				if( !GenStateGenRetAtomOk(&(*pGen),aAlt[j].nType,&aAlt[j].sClass) ){
 					bGroupOk = 0;
 					break;
 				}
@@ -6170,24 +6200,26 @@ static sxi32 GenStateValidateGeneratorReturnType(ph7_gen_state *pGen,ph7_vm_func
 			bOk = bGroupOk;
 		}
 	}else{
-		bOk = GenStateGenRetAtomOk(pFunc->nReturnType,&pFunc->sReturnClass);
+		bOk = GenStateGenRetAtomOk(&(*pGen),pFunc->nReturnType,&pFunc->sReturnClass);
 	}
 	if( bOk ){
 		return SXRET_OK;
 	}
-	nLine = 1;
-	if( pGen->pIn > pGen->pRawIn && pGen->pIn <= pGen->pEnd ){
-		nLine = pGen->pIn[-1].nLine;
-	}else if( pGen->pIn < pGen->pEnd ){
-		nLine = pGen->pIn->nLine;
-	}
+	/* This validator runs at the end of GenStateCompileFuncBody, after the
+	 * body's tokens (>= the '{...}') were consumed, so pIn[-1] is always a
+	 * token of this stream — its line is the function's closing brace. php
+	 * reports the SIGNATURE line instead; the drift is the §3.7 error-
+	 * fidelity class (recorded), pending a decl-line field on ph7_vm_func. */
+	nLine = pGen->pIn[-1].nLine;
 	{
 		SyString sGiven = pFunc->sReturnTypeName;
 		if( sGiven.nByte < 1 ){
 			sGiven = pFunc->sReturnClass;
 		}
 		if( sGiven.nByte < 1 ){
-			/* Pseudo-types whose parse path fills neither text field. */
+			/* `void`/`never`: GenBuildUnionTypeText omits their atoms from the
+			 * rendered type text, so sReturnTypeName arrives empty for them —
+			 * name them here (the root fix belongs to that renderer, §3.7). */
 			const char *zScalar =
 				pFunc->nReturnType == MEMOBJ_VOID  ? "void"  :
 				pFunc->nReturnType == MEMOBJ_NEVER ? "never" : "?";
@@ -7009,6 +7041,13 @@ static sxi32 GenStateParseReturnType(ph7_gen_state *pGen, ph7_vm_func *pFunc)
 	pFunc->nReturnType = 0;
 	SyStringInitFromBuf(&pFunc->sReturnClass, 0, 0);
 	SyStringInitFromBuf(&pFunc->sReturnTypeName, 0, 0);
+	/* Reset ALL declared-return-type state, not just the scalar fields: this
+	 * parser can legitimately run twice for one closure (legacy pre-use colon
+	 * position + the php post-use position). Leaving stale union alternatives
+	 * or the nullable flag behind merges two declarations — enforcement then
+	 * honored a wiped `: int|string` over the real `: bool`. */
+	SySetReset(&pFunc->aReturnUnion);
+	pFunc->iFlags &= ~VM_FUNC_RETURN_NULLABLE;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_COLON) == 0 ){
 		return SXRET_OK;
 	}

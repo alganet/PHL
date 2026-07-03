@@ -42,13 +42,22 @@
 /*
  * Display an error message and exit.
  */
-static void Fatal(const char *zMsg)
+static void FatalCode(const char *zMsg,int iCode)
 {
 	puts(zMsg);
 	/* Shutdown the library */
 	ph7_lib_shutdown();
 	/* Exit immediately */
-	exit(0);
+	exit(iCode);
+}
+/*
+ * php-parity default: fatal engine/compile failures exit 255 (php exits 255
+ * on a fatal compile error); usage and IO errors use FatalCode(msg, 1)
+ * directly, mirroring php's exit 1 for bad invocations / unopenable input.
+ */
+static void Fatal(const char *zMsg)
+{
+	FatalCode(zMsg,255);
 }
 /*
  * Display the banner,a help message and exit.
@@ -232,7 +241,7 @@ int main(int argc,char **argv)
 			/* Run inline PHP code from next argument (php -r style) */
 			if( n + 1 >= argc ){
 				/* Missing code argument */
-				Fatal("Missing code argument for -r");
+				FatalCode("Missing code argument for -r",1);
 			}
 			zRunCode = argv[++n];
 			run_code = 1;
@@ -240,7 +249,7 @@ int main(int argc,char **argv)
 			/* Start built-in development server */
 #ifdef PHL_ENABLE_SERVER
 			if( n + 1 >= argc ){
-				Fatal("Missing host:port argument for -S");
+				FatalCode("Missing host:port argument for -S",1);
 			}
 			zServerAddr = argv[++n];
 			server_mode = 1;
@@ -251,7 +260,7 @@ int main(int argc,char **argv)
 			/* Set document root for the server */
 #ifdef PHL_ENABLE_SERVER
 			if( n + 1 >= argc ){
-				Fatal("Missing docroot argument for -t");
+				FatalCode("Missing docroot argument for -t",1);
 			}
 			zDocRoot = argv[++n];
 #else
@@ -274,7 +283,7 @@ int main(int argc,char **argv)
 		const char *zRouter = 0;
 		zColon = strrchr(zServerAddr, ':');
 		if( zColon == 0 ){
-			Fatal("Invalid address format. Use host:port (e.g., localhost:8080)");
+			FatalCode("Invalid address format. Use host:port (e.g., localhost:8080)",1);
 		}
 		{
 			int nHostLen = (int)(zColon - zServerAddr);
@@ -284,7 +293,7 @@ int main(int argc,char **argv)
 		}
 		iPort = atoi(zColon + 1);
 		if( iPort <= 0 || iPort > 65535 ){
-			Fatal("Invalid port number");
+			FatalCode("Invalid port number",1);
 		}
 		/* Check for optional router script */
 		if( n < argc ){
@@ -403,7 +412,7 @@ int main(int argc,char **argv)
 			);
 		if( rc != PH7_OK ){ /* Compile error */
 			if( rc == PH7_IO_ERR ){
-				Fatal("IO error while opening the target file");
+				FatalCode("IO error while opening the target file",1);
 			}else if( rc == PH7_VM_ERR ){
 				Fatal("VM initialization error");
 			}else{
