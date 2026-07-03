@@ -575,6 +575,44 @@ static void ExprAssembleLiteral(SyToken **ppCur,SyToken *pEnd)
  * $new_numbers = array_map($double, $numbers);
  * print implode(' ', $new_numbers);
  */
+/*
+ * Skip an optional return-type declaration ': [?] type ( | type )*' at *ppIn.
+ * Shared by the two positions php allows it in an anonymous function:
+ * right after the parameter list (arrow-function style lookahead) and after
+ * the `use (...)` clause — `function (...) use (...) : int {` (php 7.1+).
+ */
+static void ExprSkipReturnType(SyToken **ppIn,SyToken *pEnd)
+{
+	SyToken *pIn = *ppIn;
+	if( pIn < pEnd && (pIn->nType & PH7_TK_COLON) ){
+		pIn++; /* Skip ':' */
+		/* Skip optional '?' nullable prefix */
+		if( pIn < pEnd && (pIn->nType & PH7_TK_OP) && pIn->sData.nByte == 1 && pIn->sData.zString[0] == '?' ){
+			pIn++;
+		}
+		/* Skip the first type (allow leading '\' and namespace path) */
+		if( pIn < pEnd && (pIn->nType & PH7_TK_NSSEP) ){ pIn++; }
+		if( pIn < pEnd && (pIn->nType & (PH7_TK_KEYWORD|PH7_TK_ID)) ){
+			pIn++;
+			while( pIn + 1 < pEnd && (pIn->nType & PH7_TK_NSSEP) && (pIn[1].nType & PH7_TK_ID) ){
+				pIn += 2;
+			}
+		}
+		/* Skip union alternatives ( | type )* */
+		while( pIn < pEnd && (pIn->nType & PH7_TK_OP) && pIn->sData.nByte == 1
+			&& pIn->sData.zString[0] == '|' ){
+			pIn++;
+			if( pIn < pEnd && (pIn->nType & PH7_TK_NSSEP) ){ pIn++; }
+			if( pIn < pEnd && (pIn->nType & (PH7_TK_KEYWORD|PH7_TK_ID)) ){
+				pIn++;
+				while( pIn + 1 < pEnd && (pIn->nType & PH7_TK_NSSEP) && (pIn[1].nType & PH7_TK_ID) ){
+					pIn += 2;
+				}
+			}
+		}
+	}
+	*ppIn = pIn;
+}
 static sxi32 ExprAssembleAnnon(ph7_gen_state *pGen,SyToken **ppCur,SyToken *pEnd)
 {
 	SyToken *pIn = *ppCur;
@@ -606,33 +644,7 @@ static sxi32 ExprAssembleAnnon(ph7_gen_state *pGen,SyToken **ppCur,SyToken *pEnd
 	}
 	pIn++; /* Jump the trailing parenthesis */
 	/* Skip optional return type declaration ': [?] type ( | type )*' */
-	if( pIn < pEnd && (pIn->nType & PH7_TK_COLON) ){
-		pIn++; /* Skip ':' */
-		/* Skip optional '?' nullable prefix */
-		if( pIn < pEnd && (pIn->nType & PH7_TK_OP) && pIn->sData.nByte == 1 && pIn->sData.zString[0] == '?' ){
-			pIn++;
-		}
-		/* Skip the first type (allow leading '\' and namespace path) */
-		if( pIn < pEnd && (pIn->nType & PH7_TK_NSSEP) ){ pIn++; }
-		if( pIn < pEnd && (pIn->nType & (PH7_TK_KEYWORD|PH7_TK_ID)) ){
-			pIn++;
-			while( pIn + 1 < pEnd && (pIn->nType & PH7_TK_NSSEP) && (pIn[1].nType & PH7_TK_ID) ){
-				pIn += 2;
-			}
-		}
-		/* Skip union alternatives ( | type )* */
-		while( pIn < pEnd && (pIn->nType & PH7_TK_OP) && pIn->sData.nByte == 1
-			&& pIn->sData.zString[0] == '|' ){
-			pIn++;
-			if( pIn < pEnd && (pIn->nType & PH7_TK_NSSEP) ){ pIn++; }
-			if( pIn < pEnd && (pIn->nType & (PH7_TK_KEYWORD|PH7_TK_ID)) ){
-				pIn++;
-				while( pIn + 1 < pEnd && (pIn->nType & PH7_TK_NSSEP) && (pIn[1].nType & PH7_TK_ID) ){
-					pIn += 2;
-				}
-			}
-		}
-	}
+	ExprSkipReturnType(&pIn,pEnd);
 	if( pIn->nType & PH7_TK_KEYWORD ){
 		sxu32 nKey = SX_PTR_TO_INT(pIn->pUserData);
 		/* Check if we are dealing with a closure */
@@ -657,6 +669,9 @@ static sxi32 ExprAssembleAnnon(ph7_gen_state *pGen,SyToken **ppCur,SyToken *pEnd
 				goto Synchronize;
 			}
 			pIn++;
+			/* php 7.1+: the return type may also follow the use clause —
+			 * `function (...) use (...) : int {` */
+			ExprSkipReturnType(&pIn,pEnd);
 		}else{
 			/* Syntax error */
 			rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Syntax error while declaring annonymous function");
