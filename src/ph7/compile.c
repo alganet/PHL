@@ -6103,6 +6103,101 @@ static SyToken * GenStateSkipNestedFunc(SyToken *pIn, SyToken *pEnd)
  * `yield` inside a catch/finally can suspend); every other function keeps the legacy
  * detached-mini-program path untouched.
  */
+/*
+ * One atom of a generator's declared return type: is it a supertype of
+ * Generator? php 8 accepts Generator, Iterator, Traversable, iterable,
+ * mixed and object (nullability is irrelevant — it only widens).
+ */
+static int GenStateGenRetAtomOk(sxu32 nType,const SyString *pName)
+{
+	static const struct { const char *zName; sxu32 nLen; } aOk[] = {
+		{"Generator",9},{"Iterator",8},{"Traversable",11},
+		{"iterable",8},{"mixed",5},{"object",6}
+	};
+	const char *zName;
+	sxu32 nName,i;
+	if( nType == MEMOBJ_OBJ ){
+		return 1; /* bare `object` */
+	}
+	if( nType != SXU32_HIGH ){
+		return 0; /* scalar/array/void/never/null/... */
+	}
+	zName = pName->zString;
+	nName = pName->nByte;
+	if( nName > 0 && zName[0] == '\\' ){
+		/* php resolves `\Generator` like `Generator` */
+		zName++;
+		nName--;
+	}
+	for( i = 0; i < SX_ARRAYSIZE(aOk); i++ ){
+		if( nName == aOk[i].nLen && SyStrnicmp(zName,aOk[i].zName,nName) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
+ * php 8: a generator function may only declare a return type that is a
+ * supertype of Generator, alone or as a union alternative; an intersection
+ * group qualifies only if every member does. Anything else is php's exact
+ * compile-time fatal "Generator return type must be a supertype of
+ * Generator, %s given" (byte-matched vs php 8.5.7; the type text is the
+ * canonical-order sReturnTypeName). Without this check the declared type
+ * used to leak into the BODY's completion OP_DONE via the ctx resume paths
+ * and threw a spurious runtime TypeError instead (see VmStartCtx/VmResumeCtx).
+ */
+static sxi32 GenStateValidateGeneratorReturnType(ph7_gen_state *pGen,ph7_vm_func *pFunc)
+{
+	int bOk = 0;
+	sxu32 nLine;
+	sxi32 rc;
+	if( pFunc->nReturnType < 1 && SySetUsed(&pFunc->aReturnUnion) < 1 ){
+		return SXRET_OK; /* untyped: nothing to validate */
+	}
+	if( SySetUsed(&pFunc->aReturnUnion) > 0 ){
+		ph7_type_alt *aAlt = (ph7_type_alt *)SySetBasePtr(&pFunc->aReturnUnion);
+		sxu32 n = SySetUsed(&pFunc->aReturnUnion);
+		sxu32 i,j;
+		for( i = 0; i < n && !bOk; i++ ){
+			int bGroupOk = 1;
+			for( j = 0; j < n; j++ ){
+				if( aAlt[j].nGroup == aAlt[i].nGroup
+				 && !GenStateGenRetAtomOk(aAlt[j].nType,&aAlt[j].sClass) ){
+					bGroupOk = 0;
+					break;
+				}
+			}
+			bOk = bGroupOk;
+		}
+	}else{
+		bOk = GenStateGenRetAtomOk(pFunc->nReturnType,&pFunc->sReturnClass);
+	}
+	if( bOk ){
+		return SXRET_OK;
+	}
+	nLine = 1;
+	if( pGen->pIn > pGen->pRawIn && pGen->pIn <= pGen->pEnd ){
+		nLine = pGen->pIn[-1].nLine;
+	}else if( pGen->pIn < pGen->pEnd ){
+		nLine = pGen->pIn->nLine;
+	}
+	{
+		SyString sGiven = pFunc->sReturnTypeName;
+		if( sGiven.nByte < 1 ){
+			sGiven = pFunc->sReturnClass;
+		}
+		if( sGiven.nByte < 1 ){
+			/* Pseudo-types whose parse path fills neither text field. */
+			const char *zScalar =
+				pFunc->nReturnType == MEMOBJ_VOID  ? "void"  :
+				pFunc->nReturnType == MEMOBJ_NEVER ? "never" : "?";
+			SyStringInitFromBuf(&sGiven,zScalar,SyStrlen(zScalar));
+		}
+		rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+			"Generator return type must be a supertype of Generator, %z given",&sGiven);
+	}
+	return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;
+}
 static int GenStateFuncBodyHasYield(ph7_gen_state *pGen)
 {
 	SyToken *pIn = pGen->pIn;   /* expected at the body's opening '{' */
@@ -6247,6 +6342,12 @@ static sxi32 GenStateCompileFuncBody(
 				pFunc->iFlags |= VM_FUNC_GENERATOR;
 				break;
 			}
+		}
+	}
+	if( pFunc->iFlags & VM_FUNC_GENERATOR ){
+		/* php-exact definition-time check; see the helper's block comment. */
+		if( SXERR_ABORT == GenStateValidateGeneratorReturnType(&(*pGen),pFunc) ){
+			return SXERR_ABORT;
 		}
 	}
 	/* All done, function body compiled */
@@ -7113,6 +7214,19 @@ static sxi32 GenStateCompileFunc(
 				if( SySetUsed(&pFunc->aClosureEnv) > 0 ){
 					/* Mark as closure */
 					pFunc->iFlags |= VM_FUNC_CLOSURE;
+				}
+				/* php 7.1+: the return type follows the use clause —
+				 * `function (...) use (...) : int {`. Gated on the colon:
+				 * GenStateParseReturnType resets the type fields at entry,
+				 * so an unconditional call would wipe a type parsed at the
+				 * legacy pre-use position. */
+				if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_COLON) ){
+					sxi32 rcRt2 = GenStateParseReturnType(&(*pGen),pFunc);
+					if( rcRt2 == SXERR_ABORT ){
+						return SXERR_ABORT;
+					}else if( rcRt2 == SXERR_SYNTAX ){
+						return SXERR_SYNTAX;
+					}
 				}
 		}
 	}
