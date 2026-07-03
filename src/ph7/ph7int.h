@@ -857,6 +857,12 @@ struct ph7_exception
 					   * Generator::throw() inject-at-yield to drain the abandoned
 					   * (mid-expression) operand slots back to the try's base before
 					   * landing at iLandingPc. */
+	ph7_exception *pCompiled;/* BYTECODE stage 2b: NULL on the compiler-owned object; on a
+					   * runtime ACTIVATION (clone pushed by OP_LOAD_EXCEPTION) this points
+					   * at the compiled origin. Every activation of a lexical try carries
+					   * its OWN mutable state (pFrame/iFinallyDone/iInCatch/pInflight/
+					   * iStackDepth) — recursion levels no longer share one object, which
+					   * ran every level's catch/finally against the deepest frame. */
 };
 /*
  * ROOT C: a pending non-local exit for an inline `finally` body. When control
