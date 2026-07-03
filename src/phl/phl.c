@@ -434,6 +434,22 @@ int main(int argc,char **argv)
 	if( rc != PH7_OK ){
 		Fatal("Error while installing the VM output consumer callback");
 	}
+	/* Optional PHP-recursion-depth cap override (PHL_MAX_RECURSION=frames).
+	 * Testing hatch like PHL_MAX_ALLOC: lets the deep-recursion stress tests
+	 * (tests/ph7/003-stress) run past the conservative host default until the
+	 * BYTECODE.md stage-5 config rework makes the host default unbounded. */
+	{
+		const char *zMaxRec = getenv("PHL_MAX_RECURSION");
+		if( zMaxRec ){
+			unsigned long uMax = strtoul(zMaxRec,0,10);
+			if( uMax > 0 ){
+				if( uMax > 0x7FFFFFFFUL ){
+					uMax = 0x7FFFFFFFUL;
+				}
+				ph7_vm_config(pVm,PH7_VM_CONFIG_RECURSION_DEPTH,(int)uMax);
+			}
+		}
+	}
 	/* Define PHP_BINARY: absolute path of this interpreter */
 	ph7_create_constant(pVm,"PHP_BINARY",PHL_PhpBinaryConst,
 		(void *)PHL_ResolveBinaryPath(argv[0]));
