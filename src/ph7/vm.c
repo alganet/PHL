@@ -5379,6 +5379,24 @@ struct VmCallRecord
 	sxu8 bSelfPushed;       /* TRUE when the setup pushed onto pVm->aSelf */
 };
 /*
+ * One node of the in-loop call-record stack (BYTECODE stage 2): the caller's
+ * activation to restore plus the in-flight call to finish, linked to the
+ * next-outer record. Nodes are pool-allocated individually so pointers into
+ * them (sState.pLastRef aims at sCall.nLastRef while the callee runs) stay
+ * stable — a growable array would invalidate them on realloc. The stack is a
+ * LOCAL of each native VmByteCodeExec invocation: an inner native entry
+ * (mini-program, C->PHP callback, ctx resume) can never unwind records that
+ * belong to an outer invocation, preserving the old nesting isolation by
+ * construction.
+ */
+typedef struct VmCallFrame VmCallFrame;
+struct VmCallFrame
+{
+	VmExecState sCaller;   /* Caller activation, restored on pop */
+	VmCallRecord sCall;    /* The in-flight call, finished (VmCallFinish) on pop */
+	VmCallFrame *pPrev;    /* Next-outer record, or NULL at this invocation's base */
+};
+/*
  * Terminal teardown of one VmByteCodeExec activation — the former
  * Done/Suspend/Abort/Exception label bodies, one home (BYTECODE.md stage 1).
  *
@@ -5548,6 +5566,9 @@ static sxi32 VmByteCodeExec(
 	VmInstr *pInstr;
 	ph7_value *pTos;
 	SySet aArg;
+	VmCallFrame *pCallTop = 0; /* Top of this invocation's in-loop call-record
+	                            * stack (BYTECODE stage 2); NULL = executing the
+	                            * bottom activation. */
 	VmExecState sState; /* This activation's boundary state (BYTECODE.md stage 1):
 	                     * everything a suspended/nested activation must restore.
 	                     * pc/pTos stay in locals for the hot loop and are synced
@@ -5743,6 +5764,7 @@ static sxi32 VmByteCodeExec(
 	}
 	/* Execute as much as we can */
 	for(;;){
+VmLoopFetch:
 		/* Fetch the instruction to execute */
 		pInstr = &aInstr[pc];
 		rc = SXRET_OK;
@@ -11898,36 +11920,76 @@ SkipFuncBody:
 		}
 		/* Increment nesting level */
 		pVm->nRecursionDepth++;
-		if( rc != PH7_EXCEPTION ){
-			/* Execute function body */
-			rc = VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(&pVmFunc->aByteCode),pFrameStack,-1,pTos,&n,FALSE,0,
-				VmFuncHasReturnType(pVmFunc) ? pVmFunc : 0, FALSE);
-		}
-		/* Finish the call at the pop boundary (VmCallFinish): pop-time
-		 * accounting, by-ref-return fixup, callee-threw routing, operand-stack
-		 * and frame teardown. pc/pTos are authoritative in sState across the
-		 * boundary; stage 2 runs this same helper when a stacked record is
-		 * popped at OP_DONE instead of after a native return. */
-		{
+		if( rc == PH7_EXCEPTION ){
+			/* Arg-binding threw: there is no body to run — finish the call
+			 * immediately (no record is pushed). */
 			VmCallRecord sCallee;
 			sCallee.pVmFunc = pVmFunc;
 			sCallee.pFrame = pFrame;
 			sCallee.pFrameStack = pFrameStack;
-			sCallee.nLastRef = n;
+			sCallee.nLastRef = SXU32_HIGH;
 			sCallee.bSelfPushed = (sxu8)(pSelf ? 1 : 0);
 			sState.pTos = pTos;
 			sState.pc = pc;
 			rc = VmCallFinish(&(*pVm),&sState,&sCallee,rc);
 			pTos = sState.pTos;
 			pc = sState.pc;
-		}
-		if( rc == PH7_ABORT ){
-			/* Abort processing immeditaley */
-			goto Abort;
-		}else if( rc == PH7_SUSPEND ){
-			goto Suspend;
-		}else if( rc == PH7_EXCEPTION ){
-			goto Exception;
+			if( rc == PH7_ABORT ){
+				/* Abort processing immeditaley */
+				goto Abort;
+			}else if( rc == PH7_SUSPEND ){
+				goto Suspend;
+			}else if( rc == PH7_EXCEPTION ){
+				goto Exception;
+			}
+		}else{
+			/* BYTECODE stage 2: run the callee in THIS dispatch loop. Push a
+			 * call record (caller activation + in-flight call) and switch the
+			 * loop's locals to the callee — a PHP->PHP call no longer grows
+			 * the native stack. The record node is pool-allocated so
+			 * sState.pLastRef (aimed at sCall.nLastRef) stays stable. */
+			VmCallFrame *pRec = (VmCallFrame *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(VmCallFrame));
+			if( pRec == 0 ){
+				/* OOM: undo the push-time accounting, tear the call down and
+				 * raise the non-catchable fatal (the §3.1 OOM convention —
+				 * never a silent NULL). */
+				pVm->nRecursionDepth--;
+				if( pSelf ){
+					(void)SySetPop(&pVm->aSelf);
+				}
+				SyMemBackendFree(&pVm->sAllocator,pFrameStack);
+				VmLeaveFrame(&(*pVm));
+				PH7_VmMemoryError(&(*pVm));
+				goto Abort;
+			}
+			sState.pTos = pTos;
+			sState.pc = pc;
+			pRec->sCaller = sState;
+			pRec->sCall.pVmFunc = pVmFunc;
+			pRec->sCall.pFrame = pFrame;
+			pRec->sCall.pFrameStack = pFrameStack;
+			pRec->sCall.nLastRef = SXU32_HIGH;
+			pRec->sCall.bSelfPushed = (sxu8)(pSelf ? 1 : 0);
+			pRec->pPrev = pCallTop;
+			pCallTop = pRec;
+			/* Switch to the callee activation (what the recursive
+			 * VmByteCodeExec entry used to set up). */
+			aInstr = (VmInstr *)SySetBasePtr(&pVmFunc->aByteCode);
+			pStack = pFrameStack;
+			pTos = &pStack[-1];
+			pc = 0;
+			sState.aInstr = aInstr;
+			sState.pStack = pStack;
+			sState.pTos = pTos;
+			sState.pc = 0;
+			sState.nExceptionBase = SySetUsed(&pVm->aException);
+			sState.pEntryFrame = pVm->pFrame;
+			sState.pResult = pRec->sCaller.pTos;
+			sState.pLastRef = &pRec->sCall.nLastRef;
+			sState.pEnforceRetFunc = VmFuncHasReturnType(pVmFunc) ? pVmFunc : 0;
+			sState.is_callback = 0;
+			sState.bReturnPropagates = 0;
+			goto VmLoopFetch;
 		}
 	}else{
 		ph7_user_func *pFunc;
@@ -12073,13 +12135,60 @@ case PH7_OP_CONSUME: {
 		pc++; /* Next instruction in the stream */
 	} /* For(;;) */
 Done:
+	if( pCallTop ){
+		/* BYTECODE stage 2: a stacked callee completed — its result is already
+		 * in sState.pResult (the caller's operand slot). Pop into the caller. */
+		rc = SXRET_OK;
+		goto Unwind;
+	}
 	return VmExecFinalize(&(*pVm),&sState,&aArg,pTos,SXRET_OK);
 Suspend:
-	return VmExecFinalize(&(*pVm),&sState,&aArg,pTos,PH7_SUSPEND);
+	rc = PH7_SUSPEND;
+	goto Unwind;
 Abort:
-	return VmExecFinalize(&(*pVm),&sState,&aArg,pTos,PH7_ABORT);
+	rc = PH7_ABORT;
+	goto Unwind;
 Exception:
-	return VmExecFinalize(&(*pVm),&sState,&aArg,pTos,PH7_EXCEPTION);
+	rc = PH7_EXCEPTION;
+	goto Unwind;
+Unwind:
+	/* BYTECODE stage 2: unwind this invocation's call records. Each iteration
+	 * finishes the top record exactly as the old per-level native return did:
+	 * for ABORT/EXCEPTION, first run what the popped activation's own
+	 * Abort/Exception label used to do (clear its pending return, release its
+	 * operands — a stacked activation never has bReturnPropagates set), then
+	 * VmCallFinish routes in the restored caller (an in-place catch there
+	 * resumes dispatch; otherwise keep popping). SUSPEND pops with no cleanup —
+	 * VmCallFinish re-saves the ctx per level ("last wins"), byte-compatible
+	 * with the pre-stage-2 lossy deep-suspend (stage 4 replaces this).
+	 * At the bottom, VmExecFinalize hands the status to the native caller. */
+	for(;;){
+		if( pCallTop == 0 ){
+			return VmExecFinalize(&(*pVm),&sState,&aArg,pTos,rc);
+		}
+		if( rc == PH7_ABORT || rc == PH7_EXCEPTION ){
+			VmClearFrameReturn(sState.pEntryFrame);
+			while( pTos >= pStack ){
+				PH7_MemObjRelease(pTos);
+				pTos--;
+			}
+		}
+		{
+			VmCallFrame *pRec = pCallTop;
+			sState = pRec->sCaller;
+			rc = VmCallFinish(&(*pVm),&sState,&pRec->sCall,rc);
+			pCallTop = pRec->pPrev;
+			SyMemBackendPoolFree(&pVm->sAllocator,pRec);
+			aInstr = sState.aInstr;
+			pStack = sState.pStack;
+			pTos = sState.pTos;
+			pc = sState.pc;
+		}
+		if( rc == PH7_OK ){
+			pc++; /* the loop-bottom increment this OP_CALL missed */
+			goto VmLoopFetch;
+		}
+	}
 }
 /*
  * Execute as much of a local PH7 bytecode program as we can then return.
