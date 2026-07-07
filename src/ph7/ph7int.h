@@ -1052,6 +1052,14 @@ struct ph7_vm
 	                            * them skips a pool alloc/free round-trip per PHP
 	                            * call (the measured trampoline overhead). Backing
 	                            * memory is allocator-owned; freed wholesale. */
+	void *pIdleOperandStacks;  /* Freelist of recycled operand-stack buffers (BYTECODE
+	                            * stage 7): a returning PHP call recycles its (tight-sized)
+	                            * operand stack here instead of freeing it, so a same-size
+	                            * call (recursion / a hot call loop) reuses it — skipping
+	                            * the buffer alloc AND the per-slot init. LIFO, exact-size
+	                            * head match, capped length; buffers are plain allocator
+	                            * blocks so cold/suspend/abort paths can still raw-free them. */
+	int nIdleOperandStacks;    /* Length of pIdleOperandStacks (cap: VM_STACK_POOL_MAX) */
 	int nObDepth;              /* OB depth */
 	int nExceptDepth;          /* Exception depth */
 	int closure_cnt;           /* Loaded closures counter */

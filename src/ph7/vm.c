@@ -2004,6 +2004,8 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyHashInit(&pVm->hTypedSlot,&pVm->sAllocator,0,0);
 	SySetInit(&pVm->aException,&pVm->sAllocator,sizeof(ph7_exception *));
 	pVm->pIdleCallFrames = 0;
+	pVm->pIdleOperandStacks = 0;
+	pVm->nIdleOperandStacks = 0;
 	SySetInit(&pVm->aFinallyAction,&pVm->sAllocator,sizeof(VmFinallyAction));
 	pVm->bInlineTryCatch = 1; /* ROOT C: enable inline generator try/catch/finally */
 	pVm->pPendingException = 0;
@@ -2396,6 +2398,85 @@ static ph7_value * VmNewOperandStack(
 	}
 	/* Ready for bytecode execution */
 	return pStack;
+}
+/*
+ * Operand-stack recycling (BYTECODE.md stage 7).
+ *
+ * After tight sizing, a PHP call still allocates + inits an operand stack on the
+ * way in and frees it on the way out. For recursion and hot call loops the freed
+ * stack is exactly the size the next call needs, so instead of freeing it at the
+ * normal OP_CALL return (VmCallFinish) we park it on a small per-VM freelist and
+ * hand it back to the next same-size call — skipping the buffer allocation and
+ * the per-slot PH7_MemObjInit.
+ *
+ * The freelist holds plain allocator blocks (no header): a parked buffer is just
+ * a ph7_value array whose slots were all released at recycle time, so it is
+ * clean to reuse, cannot leak a stale value, and can still be raw-freed by the
+ * cold/suspend/abort paths that never route through here. Head-only exact-size
+ * match keeps it O(1) and memory-tight (a mismatched size allocates fresh rather
+ * than over-allocating — deep recursion, whose freelist is empty during descent,
+ * is unaffected). Length is capped so the pool can't grow without bound.
+ */
+typedef struct VmIdleStack VmIdleStack;
+struct VmIdleStack {
+	ph7_value *pStack;   /* Parked buffer (nCap slots, all released) */
+	sxu32 nCap;          /* Its allocated slot count (VmNewOperandStack size) */
+	VmIdleStack *pNext;  /* LIFO link */
+};
+#define VM_STACK_POOL_MAX 64      /* max buffers parked at once */
+#define VM_STACK_POOL_MAXSLOTS 512 /* only pool buffers this small — bounds pool memory
+                                    * (a large fallback-sized stack recursing would
+                                    * otherwise park up to VM_STACK_POOL_MAX huge buffers;
+                                    * the tight-sized hot case is far below this) */
+/*
+ * Allocate an operand stack of nSlots (+ VM_STACK_GUARD) usable slots, reusing a
+ * parked same-size buffer when one is available (its slots are already clean).
+ */
+static ph7_value * VmOperandStackAlloc(ph7_vm *pVm, sxu32 nSlots)
+{
+	VmIdleStack *pIdle = (VmIdleStack *)pVm->pIdleOperandStacks;
+	sxu32 nCap = nSlots + VM_STACK_GUARD;
+	if( pIdle && pIdle->nCap == nCap ){
+		ph7_value *pStack = pIdle->pStack;
+		pVm->pIdleOperandStacks = pIdle->pNext;
+		pVm->nIdleOperandStacks--;
+		SyMemBackendPoolFree(&pVm->sAllocator,pIdle);
+		return pStack; /* slots already released -> reusable without re-init */
+	}
+	return VmNewOperandStack(&(*pVm),nSlots);
+}
+/*
+ * Return an operand stack to the freelist (or free it if the pool is full).
+ * nCap is its full allocated slot count (== the VmNewOperandStack size). Every
+ * slot is released so the parked buffer is clean for reuse and never retains a
+ * live value.
+ */
+static void VmOperandStackRecycle(ph7_vm *pVm, ph7_value *pStack, sxu32 nCap)
+{
+	VmIdleStack *pIdle;
+	sxu32 i;
+	if( pStack == 0 ){
+		return;
+	}
+	if( pVm->nIdleOperandStacks >= VM_STACK_POOL_MAX || nCap > VM_STACK_POOL_MAXSLOTS
+	 || (pIdle = (VmIdleStack *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(VmIdleStack))) == 0 ){
+		SyMemBackendFree(&pVm->sAllocator,pStack);
+		return;
+	}
+	for( i = 0; i < nCap; i++ ){
+		PH7_MemObjRelease(&pStack[i]);
+		/* Reset the global-slot index to the "temporary / not a variable" marker.
+		 * A released slot is already reusable (the dispatch reuses released slots
+		 * mid-call, and every push sets nIdx before the slot is read), but marking
+		 * it here means a stale index can never masquerade as a live variable slot
+		 * across invocations — cheap defense in depth. */
+		pStack[i].nIdx = SXU32_HIGH;
+	}
+	pIdle->pStack = pStack;
+	pIdle->nCap = nCap;
+	pIdle->pNext = (VmIdleStack *)pVm->pIdleOperandStacks;
+	pVm->pIdleOperandStacks = pIdle;
+	pVm->nIdleOperandStacks++;
 }
 /* Forward declaration */
 static sxi32 VmRegisterSpecialFunction(ph7_vm *pVm);
@@ -5878,9 +5959,13 @@ static sxi32 VmCallFinish(ph7_vm *pVm,VmExecState *pCaller,VmCallRecord *pCallee
 			}
 		}
 	}
-	/* Free the operand stack (NULL when function body was skipped) */
+	/* Recycle the operand stack for the next same-size call (BYTECODE stage 7),
+	 * or free it if the pool is full. Its allocated size is the callee's cached
+	 * nMaxStack + VM_STACK_GUARD — exactly what VmOperandStackAlloc handed out.
+	 * (NULL when the function body was skipped.) */
 	if( pCallee->pFrameStack ){
-		SyMemBackendFree(&pVm->sAllocator,pCallee->pFrameStack);
+		VmOperandStackRecycle(pVm,pCallee->pFrameStack,
+			pCallee->pVmFunc->nMaxStack + VM_STACK_GUARD);
 	}
 	/* Leave the frame */
 	VmLeaveFrame(&(*pVm));
@@ -12384,7 +12469,7 @@ case PH7_OP_CALL: {
 				if( nSlots == 0 ){ nSlots = 1; } /* a 0-depth body still needs a valid, nonzero cache marker */
 				pVmFunc->nMaxStack = nSlots;
 			}
-			pFrameStack = VmNewOperandStack(&(*pVm),nSlots);
+			pFrameStack = VmOperandStackAlloc(&(*pVm),nSlots);
 		}
 		if( pFrameStack == 0 ){
 			/* Raise exception: Out of memory */
