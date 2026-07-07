@@ -2028,11 +2028,23 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	PH7_MemObjInit(&(*pVm),&pVm->aErrCB[0]);
 	PH7_MemObjInit(&(*pVm),&pVm->aErrCB[1]);
 	PH7_MemObjInit(&(*pVm),&pVm->sAssertCallback);
-	/* Set a default recursion limit */
+	/* Recursion policy (BYTECODE.md stage 5). PHP call depth is heap-bound since
+	 * the iterative executor, so the host default is UNBOUNDED (0) — real PHP runs
+	 * deep userland recursion until memory_limit, and so must PHL; an embedder opts
+	 * back into a cap via PH7_VM_CONFIG_RECURSION_DEPTH. What still needs guarding
+	 * is NATIVE VmByteCodeExec nesting (eval/include towers, coroutine-resume
+	 * chains, self-recursive C->PHP callbacks) — sized to the platform stack. */
 #if defined(__WINNT__) || defined(__UNIXES__)
-	pVm->nMaxDepth = 32;
+	pVm->nMaxDepth = 0;         /* host: unbounded PHP call depth (memory-bound) */
+	pVm->nMaxNativeDepth = 256; /* host: proven the safe ceiling under ASan (the
+	                             * usort-in-comparator path overflows at 1024) */
 #else
-	pVm->nMaxDepth = 16;
+	/* Small-stack embedders (e.g. ESP32 16 KB task, 8 MB PSRAM): PHP recursion is
+	 * iterative/heap-bound, but a tiny device still wants a runaway-recursion
+	 * bound, so keep a PHP-depth default here (~3.5 KB/frame × 512 ≈ 1.8 MB PSRAM
+	 * at max depth — BYTECODE.md §6). The embedder tunes both via config verbs. */
+	pVm->nMaxDepth = 512;
+	pVm->nMaxNativeDepth = 16;
 #endif
 	/* Default assertion flags */
 	pVm->iAssertFlags = 0; /* PHP 8: no warning flag by default, AssertionError is thrown */
@@ -2994,14 +3006,30 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 		pVm->bErrReport = 1;
 		break;
 	case PH7_VM_CONFIG_RECURSION_DEPTH:{
-		/* Recursion depth. PHP frames are heap-bound since the iterative
-		 * executor (BYTECODE.md stage 2), so no upper clamp: the embedder's
-		 * value is policy, bounded by memory like the main PHP engine. (The
-		 * old <1024 clamp guarded the native stack the recursion no longer
-		 * grows; stage 5 finalizes the defaults.) */
+		/* PHP call-depth cap (OP_CALL frames). The host default is UNBOUNDED
+		 * (nMaxDepth == 0) — PHP frames are heap-bound since the iterative
+		 * executor, so recursion is limited by memory like the main PHP engine.
+		 * This is an embedder opt-in: any non-negative value installs a cap of that
+		 * many frames; 0 restores the unbounded default. No upper clamp (the old
+		 * <1024 clamp guarded the native stack the recursion no longer grows — that
+		 * role is now PH7_VM_CONFIG_NATIVE_DEPTH). A negative value is ignored (it
+		 * would otherwise read as an enormous positive cap). */
 		int nDepth = va_arg(ap,int);
-		if( nDepth > 2 ){
+		if( nDepth >= 0 ){
 			pVm->nMaxDepth = nDepth;
+		}
+		break;
+									   }
+	case PH7_VM_CONFIG_NATIVE_DEPTH:{
+		/* Native VmByteCodeExec nesting cap: the C-stack guard for the re-entry
+		 * classes the trampoline does not flatten (eval/include towers, nested
+		 * coroutine resume, self-recursive C->PHP callbacks). Sized to the
+		 * platform stack; the default (256 host / 16 small-stack embedders) is
+		 * set in VmInit. A value > 1 overrides it (1 would forbid any re-entry,
+		 * so it is rejected as a footgun). */
+		int nDepth = va_arg(ap,int);
+		if( nDepth > 1 ){
+			pVm->nMaxNativeDepth = nDepth;
 		}
 		break;
 									   }
@@ -3467,14 +3495,29 @@ PH7_PRIVATE sxi32 PH7_ContextMemoryError(ph7_context *pCtx)
 	return PH7_VmMemoryError(pCtx->pVm);
 }
 /*
- * Single source of truth for the call-recursion cap policy. Each recursion
- * entry point (OP_CALL, eval/include, fibers/generators) tests this before
- * descending another native C frame; the control flow on a hit differs per
- * site, but the rule itself lives here.
+ * Single source of truth for the PHP call-depth cap policy (BYTECODE.md stage
+ * 5). Only OP_CALL tests this — a PHP->PHP call is the sole thing that grows
+ * nRecursionDepth. Native re-entries (eval/include, coroutine start/resume,
+ * C->PHP callbacks) are bounded separately by nMaxNativeDepth in the
+ * VmByteCodeExec wrapper, since PHP recursion no longer grows the C stack.
  */
 static int VmRecursionExceeded(ph7_vm *pVm)
 {
-	return pVm->nRecursionDepth > pVm->nMaxDepth;
+	/* nMaxDepth == 0 means unbounded (the host default): PHP call depth is
+	 * heap-bound, so only an embedder-configured cap can trip. */
+	return pVm->nMaxDepth > 0 && pVm->nRecursionDepth > pVm->nMaxDepth;
+}
+/*
+ * Single source of truth for the NATIVE VmByteCodeExec nesting cap (the C-stack
+ * guard) — the twin of VmRecursionExceeded for the other axis. Tested by the
+ * VmByteCodeExec wrapper and, before mutating VM state, by the coroutine
+ * start/resume entries (which splice frames in before that wrapper runs). Always
+ * bounded (unlike the PHP cap there is no unbounded mode — the whole point is to
+ * keep native re-entries off a finite C stack).
+ */
+static int VmNativeNestingExceeded(ph7_vm *pVm)
+{
+	return pVm->nVmExecDepth >= pVm->nMaxNativeDepth;
 }
 /*
  * Raise the recursion-limit fatal and request a clean VM halt. Mirrors
@@ -3485,9 +3528,9 @@ static int VmRecursionExceeded(ph7_vm *pVm)
  * would re-trip the limit and recurse forever. A clean fatal removes the old
  * silent "return NULL and continue" hazard while keeping the promise that deep
  * recursion never panics: it unwinds via the abort path and still runs
- * register_shutdown_function() callbacks. Used by every recursion path —
- * OP_CALL, eval()/include/require (VmEvalChunk) and fibers/generators
- * (VmStartCtx/VmResumeCtx).
+ * register_shutdown_function() callbacks. Raised by OP_CALL only (the sole
+ * site testing the PHP call-depth cap); native nesting has its own fatal
+ * (VmNativeNestingFatal).
  *
  * Halt is requested BEFORE emitting the diagnostic, and a re-entry guard makes
  * this idempotent, so an error handler that itself recurses past the cap can't
@@ -5715,16 +5758,16 @@ static sxi32 VmByteCodeExecBody(ph7_vm *pVm,VmInstr *aInstr,ph7_value *pStack,in
  * PHP call depth, raisable to memory-bound values since the clamp removal),
  * so this counter is what actually protects the C stack: recursive
  * eval/include towers, nested coroutine-resume chains and self-recursive
- * C-callback compositions hit a clean fatal instead of overflowing. This is a
- * coarse frame-count net, not php's stack-byte measurement (stage 5 turns it
- * into a per-platform config knob measuring real usage, BYTECODE.md §3 stage
- * 5, nNativeDepth); the value is therefore conservative — well below the old
- * config clamp's <1024 ceiling so it also holds on the fattest frames (the
- * callback path drags in usort/mergesort/trampoline C frames per re-entry,
- * and instrumented builds inflate every frame), while still 8x the default
- * PHP-depth cap and far beyond any realistic eval/include/callback nesting.
+ * C-callback compositions hit a clean fatal instead of overflowing. The limit
+ * lives in pVm->nMaxNativeDepth — a per-platform default (256 host / 16 small-
+ * stack embedders, VmInit) overridable via PH7_VM_CONFIG_NATIVE_DEPTH. This is
+ * still a coarse frame-count net rather than php's stack-byte measurement, so
+ * the host default is conservative — well below the old config clamp's <1024
+ * ceiling so it holds on the fattest frames (the callback path drags in
+ * usort/mergesort/trampoline C frames per re-entry, and instrumented builds
+ * inflate every frame), while far beyond any realistic eval/include/callback
+ * nesting.
  */
-#define PH7_VM_NATIVE_NESTING_MAX 256
 static sxi32 VmByteCodeExec(
 	ph7_vm *pVm,         /* Target VM */
 	VmInstr *aInstr,     /* PH7 bytecode program */
@@ -5739,8 +5782,8 @@ static sxi32 VmByteCodeExec(
 	)
 {
 	sxi32 rc;
-	if( pVm->nVmExecDepth >= PH7_VM_NATIVE_NESTING_MAX ){
-		return VmNativeNestingFatal(&(*pVm));
+	if( VmNativeNestingExceeded(pVm) ){
+		return VmNativeNestingFatal(pVm);
 	}
 	pVm->nVmExecDepth++;
 	rc = VmByteCodeExecBody(&(*pVm),aInstr,pStack,nTos,pResult,pLastRef,is_callback,nPc,
@@ -11304,10 +11347,12 @@ case PH7_OP_CALL: {
 				}
 			}
 		}
-		/* Check The recursion limit. Hitting it raises a clean, non-catchable
-		 * fatal (was: silently set NULL and continue) and halts. The check is
-		 * before VmEnterFrame/the recursive VmByteCodeExec below, so a
-		 * correctly-set cap also keeps deep recursion off the native stack. */
+		/* Check the PHP call-depth cap (the sole site — BYTECODE.md stage 5).
+		 * Default is unbounded (heap-bound recursion, decoupled from the C stack
+		 * by the stage-2 trampoline); the C stack is guarded separately by
+		 * nMaxNativeDepth. This fires only when an embedder configures a cap, and
+		 * then raises a clean non-catchable fatal (was: silently set NULL and
+		 * continue) and halts. */
 		if( VmRecursionExceeded(pVm) ){
 			/* Args and the function-name slot are released by the Abort label,
 			 * which walks the whole operand stack — don't release them here. */
@@ -12795,10 +12840,14 @@ static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
 	if( pCtx->iState != PH7_CTX_STATE_CREATED ){
 		return SXERR_INVALID;
 	}
-	/* Bound fiber/generator nesting under the same cap (each start adds a C
-	 * frame); reject before mutating VM state so the abort is clean. */
-	if( VmRecursionExceeded(pVm) ){
-		return VmRecursionFatal(pVm);
+	/* A fiber/generator start is a native VmByteCodeExec re-entry, bounded by
+	 * nMaxNativeDepth. Reject HERE, before attaching the frame / mutating VM
+	 * state, so the abort is clean — the wrapper's own check fires only after
+	 * this function has spliced the coroutine into the frame chain, which its
+	 * post-exec detach cannot fully unwind. The PHP call-depth cap belongs to
+	 * OP_CALL only (BYTECODE.md stage 5). */
+	if( VmNativeNestingExceeded(pVm) ){
+		return VmNativeNestingFatal(pVm);
 	}
 	/* Attach the fiber's frame to the VM frame chain */
 	pCtx->pFrame->pParent = pVm->pFrame;
@@ -12814,7 +12863,6 @@ static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
 	 * Fiber::suspend() at a deeper depth is inside a C->PHP callback and gets a
 	 * FiberError instead of parking across the native frame (stage 4). */
 	pCtx->nBodyExecDepth = pVm->nVmExecDepth + 1;
-	pVm->nRecursionDepth++;
 	/* Execute from the beginning. A GENERATOR FUNCTION's declared return type
 	 * belongs to the call site (always a Generator object, validated at compile
 	 * time — "must be a supertype of Generator"); the body's own return value
@@ -12826,7 +12874,6 @@ static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
 	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),
 		pCtx->pStack, -1, &pCtx->sRetValue, 0, FALSE, 0,
 		((pCtx->pFunc->iFlags & VM_FUNC_GENERATOR) == 0 && VmFuncHasReturnType(pCtx->pFunc)) ? pCtx->pFunc : 0, FALSE);
-	pVm->nRecursionDepth--;
 	/* Restore the previous context */
 	pVm->pActiveCtx = pOldCtx;
 	if( rc == PH7_SUSPEND ){
@@ -12864,10 +12911,14 @@ static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValu
 	if( pCtx->iState != PH7_CTX_STATE_SUSPENDED ){
 		return SXERR_INVALID;
 	}
-	/* Bound fiber/generator nesting under the same cap; reject before mutating
-	 * VM state so the abort is clean. */
-	if( VmRecursionExceeded(pVm) ){
-		return VmRecursionFatal(pVm);
+	/* A resume is a native VmByteCodeExec re-entry, bounded by nMaxNativeDepth.
+	 * Reject HERE, before re-attaching the (possibly deep) parked segment to the
+	 * frame chain and re-adding its nRecords to nRecursionDepth — a wrapper-level
+	 * abort past those mutations would leave pVm->pFrame pointing into the parked
+	 * callee and the depth accounting un-reverted. The PHP call-depth cap is
+	 * OP_CALL-only (BYTECODE.md stage 5). */
+	if( VmNativeNestingExceeded(pVm) ){
+		return VmNativeNestingFatal(pVm);
 	}
 	/* Push the resume value onto the SUSPENDED activation's operand stack so it
 	 * appears as Fiber::suspend()'s return value. For a deep suspend (stage 4)
@@ -12923,13 +12974,11 @@ static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValu
 	pVm->pActiveCtx = pCtx;
 	pCtx->iState = PH7_CTX_STATE_RUNNING;
 	pCtx->nBodyExecDepth = pVm->nVmExecDepth + 1; /* see VmStartCtx */
-	pVm->nRecursionDepth++;
 	/* Resume execution from saved PC. Generator-function bodies skip
 	 * return-type enforcement — see the block comment in VmStartCtx. */
 	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),
 		pCtx->pStack, pCtx->nTos, &pCtx->sRetValue, 0, FALSE, pCtx->pc,
 		((pCtx->pFunc->iFlags & VM_FUNC_GENERATOR) == 0 && VmFuncHasReturnType(pCtx->pFunc)) ? pCtx->pFunc : 0, FALSE);
-	pVm->nRecursionDepth--;
 	/* Restore the previous context */
 	pVm->pActiveCtx = pOldCtx;
 	if( rc == PH7_SUSPEND ){
@@ -18942,17 +18991,12 @@ static sxi32 VmEvalChunk(
 			/* Assume a null return value */
 			PH7_MemObjInit(pVm,&sResult);
 		}
-		/* Execute the compiled chunk. eval()/include/require recurse in C here,
-		 * a path the OP_CALL cap check can't see; bound it under the same limit
-		 * so a recursive include/eval can't overflow the native stack. */
-		if( VmRecursionExceeded(pVm) ){
-			PH7_MemObjRelease(&sResult);
-			VmRecursionFatal(pVm);
-			goto Cleanup;
-		}
-		pVm->nRecursionDepth++;
+		/* Execute the compiled chunk. eval()/include/require recurse in C here
+		 * (VmLocalExec -> VmByteCodeExec) — a native re-entry bounded by
+		 * nMaxNativeDepth in the wrapper, so a recursive include/eval hits the
+		 * native-nesting fatal instead of overflowing the C stack. The PHP
+		 * call-depth cap is OP_CALL-only (BYTECODE.md stage 5). */
 		VmLocalExec(pVm,&aByteCode,&sResult,FALSE);
-		pVm->nRecursionDepth--;
 		if( pCtx ){
 			/* Set the execution result */
 			ph7_result_value(pCtx,&sResult);

@@ -8,7 +8,7 @@ Every level opens its own try/finally (per-activation exception state, stage
 2b); the throw at the bottom must run each level's finally exactly once on
 the way out and reach the catch with the counter intact.
 --SKIPIF--
-<?php if (!getenv('PHL_MAX_RECURSION')) { echo "skip needs PHL_MAX_RECURSION (run: make test-stress)"; } ?>
+<?php if (function_exists('zend_version')) echo 'skip phl-only deep-recursion probe: depth exceeds the php oracle stack / xdebug nesting limit'; ?>
 --FILE--
 <?php
 $finallys = 0;

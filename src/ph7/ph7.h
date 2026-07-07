@@ -201,7 +201,7 @@ typedef int (*ph7_clock)(void *pUserData, ph7_int64 *pSec, ph7_int64 *pUsec);
 #define PH7_VM_CONFIG_OUTPUT           1  /* TWO ARGUMENTS: int (*xConsumer)(const void *pOut,unsigned int nLen,void *pUserData),void *pUserData */
 #define PH7_VM_CONFIG_IMPORT_PATH      3  /* ONE ARGUMENT: const char *zIncludePath */
 #define PH7_VM_CONFIG_ERR_REPORT       4  /* NO ARGUMENTS: Report all run-time errors in the VM output */
-#define PH7_VM_CONFIG_RECURSION_DEPTH  5  /* ONE ARGUMENT: int nMaxDepth */
+#define PH7_VM_CONFIG_RECURSION_DEPTH  5  /* ONE ARGUMENT: int nMaxDepth (PHP call depth; 0 = unbounded, the default) */
 #define PH7_VM_OUTPUT_LENGTH           6  /* ONE ARGUMENT: unsigned int *pLength */
 #define PH7_VM_CONFIG_CREATE_SUPER     7  /* TWO ARGUMENTS: const char *zName,ph7_value *pValue */
 #define PH7_VM_CONFIG_CREATE_VAR       8  /* TWO ARGUMENTS: const char *zName,ph7_value *pValue */
@@ -220,6 +220,7 @@ typedef int (*ph7_clock)(void *pUserData, ph7_int64 *pSec, ph7_int64 *pUsec);
 #define PH7_VM_CONFIG_ERR_LOG_HANDLER 21  /* ONE ARGUMENT: void (*xErrLog)(const char *,int,const char *,const char *) */
 #define PH7_VM_CONFIG_RESPONSE_STATUS  22  /* ONE ARGUMENT: int *pStatusCode */
 #define PH7_VM_CONFIG_RESPONSE_HEADERS 23  /* TWO ARGUMENTS: int (*xCallback)(const char *zName,unsigned int nName,const char *zValue,unsigned int nValue,void *pUserData), void *pUserData */
+#define PH7_VM_CONFIG_NATIVE_DEPTH    24  /* ONE ARGUMENT: int nMaxNativeDepth (native VmByteCodeExec nesting: eval/include, callbacks, coroutine resume; default 256 host / 16 embedded) */
 /*
  * Global Library Configuration Commands.
  *

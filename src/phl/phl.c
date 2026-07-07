@@ -193,7 +193,7 @@ static int Output_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUs
 }
 /*
  * Parse an unsigned-long testing knob from the environment (PHL_MAX_ALLOC /
- * PHL_MAX_INPUT / PHL_MAX_RECURSION). Returns 1 and writes *pOut on a valid,
+ * PHL_MAX_INPUT / PHL_MAX_RECURSION / PHL_MAX_NATIVE_DEPTH). Returns 1 and writes *pOut on a valid,
  * strictly-positive, fully-numeric value clamped to [uFloor, uCeil]; returns
  * 0 (leaving *pOut untouched) when the var is unset, empty, non-numeric, has
  * trailing garbage, or is zero — so a typo like "-1" or "abc" is ignored
@@ -456,15 +456,21 @@ int main(int argc,char **argv)
 	if( rc != PH7_OK ){
 		Fatal("Error while installing the VM output consumer callback");
 	}
-	/* Optional PHP-recursion-depth cap override (PHL_MAX_RECURSION=frames).
-	 * Testing hatch like PHL_MAX_ALLOC: lets the deep-recursion tests
-	 * (tests/ph7/004-deep) run past the conservative host default until the
-	 * BYTECODE.md stage-5 config rework makes the host default unbounded.
-	 * Floor of 3 because PH7_VM_CONFIG_RECURSION_DEPTH ignores nDepth<=2. */
+	/* Optional recursion caps via the environment (like PHL_MAX_ALLOC). The host
+	 * defaults are PHP-parity — PHP call depth is UNBOUNDED (heap-bound) and only
+	 * the native VmByteCodeExec nesting is capped — so these knobs are for tests
+	 * and embedders that want a tighter bound, not to raise a low default.
+	 *   PHL_MAX_RECURSION   -> PH7_VM_CONFIG_RECURSION_DEPTH (PHP call depth; any
+	 *                          positive value is a cap, PHL_EnvULong rejects 0)
+	 *   PHL_MAX_NATIVE_DEPTH -> PH7_VM_CONFIG_NATIVE_DEPTH   (native nesting;
+	 *                          floor 2) */
 	{
 		unsigned long uMax;
-		if( PHL_EnvULong("PHL_MAX_RECURSION",3UL,0x7FFFFFFFUL,&uMax) ){
+		if( PHL_EnvULong("PHL_MAX_RECURSION",1UL,0x7FFFFFFFUL,&uMax) ){
 			ph7_vm_config(pVm,PH7_VM_CONFIG_RECURSION_DEPTH,(int)uMax);
+		}
+		if( PHL_EnvULong("PHL_MAX_NATIVE_DEPTH",2UL,0x7FFFFFFFUL,&uMax) ){
+			ph7_vm_config(pVm,PH7_VM_CONFIG_NATIVE_DEPTH,(int)uMax);
 		}
 	}
 	/* Define PHP_BINARY: absolute path of this interpreter */

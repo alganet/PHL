@@ -2,17 +2,24 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Recursion through eval() is bounded by the depth cap (no native-stack overflow)
+Recursion through eval() is bounded by the NATIVE-nesting cap (no native-stack overflow)
+--DESCRIPTION--
+eval()/include/require recurse in C off the main OP_CALL trampoline
+(VmEvalChunk -> VmByteCodeExec), a path the iterative executor never
+flattened. PHP call depth is now unbounded, so what stops a self-eval chain
+from overflowing the native stack is the separate native-nesting cap
+(PH7_VM_CONFIG_NATIVE_DEPTH). Here it is lowered to 32 via PHL_MAX_NATIVE_DEPTH
+so the fatal fires quickly and deterministically. phl-only: an engine-internal
+cap real php does not express.
 --SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+<?php if (function_exists('zend_version')) echo 'skip phl-only: engine-internal native-nesting cap, not expressible in php'; ?>
+--ENV--
+PHL_MAX_NATIVE_DEPTH=32
 --FILE--
 <?php
-// eval()/include/require recurse in C off the main OP_CALL path; without the
-// VmEvalChunk guard a self-eval chain would overflow the native stack and
-// reboot a small-stack embedder. It must instead hit the same cap and halt.
 function r() { eval("r();"); }
 r();
 echo "AFTER\n";
 ?>
 --EXPECTF--
-%s Error:  Maximum recursion depth of %d reached
+%s Error:  Maximum native nesting depth reached
