@@ -657,7 +657,7 @@ struct ph7_vm_func
 	SySet aReturnUnion;  /* Return-type union alternatives (ph7_type_alt). Empty unless union return. */
 	SyString sReturnTypeName; /* Original return-type text for error messages, in canonical PHP order */
 	sxu8 bStrictTypes;   /* 1 if defining file declared strict_types=1 (governs return-value coercion) */
-	sxu32 nMaxStack;     /* Cached operand-stack depth for this body (BYTECODE.md stage 7):
+	sxu32 nMaxStack;     /* Cached operand-stack depth for this body (BYTECODE stage 7):
 						  * 0 = not yet computed; otherwise the number of slots to allocate
 						  * per call (a tight bound from VmComputeMaxStack, or the whole
 						  * instruction count when the body is not statically modelable). */

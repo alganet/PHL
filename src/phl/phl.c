@@ -193,8 +193,9 @@ static int Output_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUs
 }
 /*
  * Parse an unsigned-long testing knob from the environment (PHL_MAX_ALLOC /
- * PHL_MAX_INPUT / PHL_MAX_RECURSION / PHL_MAX_NATIVE_DEPTH). Returns 1 and writes *pOut on a valid,
- * strictly-positive, fully-numeric value clamped to [uFloor, uCeil]; returns
+ * PHL_MAX_INPUT / PHL_MAX_RECURSION / PHL_MAX_NATIVE_DEPTH). Returns 1 and writes
+ * *pOut on a valid, strictly-positive, fully-numeric value clamped to
+ * [uFloor, uCeil]; returns
  * 0 (leaving *pOut untouched) when the var is unset, empty, non-numeric, has
  * trailing garbage, or is zero — so a typo like "-1" or "abc" is ignored
  * rather than silently reinterpreted (strtoul would wrap "-1" to ULONG_MAX).
