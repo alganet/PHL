@@ -476,6 +476,9 @@ struct ph7_exec_ctx
 	                           * does not leave its record on the shared VM stack (where an
 	                           * out-of-order-resumed sibling generator would mis-pop it) */
 	sxu32 nFinallyBase;       /* aFinallyAction depth below this body's own records */
+	SySet aSavedSelf;         /* Stage 4: this coroutine's own aSelf (self::/static::)
+	                           * entries, parked while suspended (ph7_class* pointers) */
+	sxu32 nSelfBase;          /* aSelf depth below this coroutine's own pushes */
 	void *pPrivate;           /* Generator wrapper (ph7_generator*) or NULL for fibers */
 	ph7_class_instance *pInjected; /* Generator::throw() inject-at-yield: exception to raise at
 	                                * the suspended yield on the next resume, or NULL. One-shot:
@@ -486,6 +489,16 @@ struct ph7_exec_ctx
 	ph7_value sDelegate;             /* The iterable being delegated (kept alive) */
 	ph7_hashmap_node *pDelegateNode; /* Array cursor: next node to read, else 0 */
 	sxi32 iDelegateState;            /* 0=inactive, 1=array, 2=iterator, 3=generator */
+	/* BYTECODE stage 4: deep Fiber::suspend() record-segment parking. */
+	void *pParkedSegment;            /* VmParkedSegment* (opaque here): the trampoline
+	                                  * record chain + innermost activation parked when a
+	                                  * suspend fires inside a nested PHP call; NULL when
+	                                  * suspended at the body level (pc/nTos above suffice) */
+	int nBodyExecDepth;              /* pVm->nVmExecDepth of this ctx's body invocation. A
+	                                  * suspend at a DEEPER native depth is inside a C->PHP
+	                                  * callback (usort comparator, etc.) and cannot park
+	                                  * across the native frame — it raises a catchable
+	                                  * FiberError instead (the one scoped divergence). */
 };
 /* Special return code from VmByteCodeExec signaling fiber suspension */
 #define PH7_SUSPEND  0x100

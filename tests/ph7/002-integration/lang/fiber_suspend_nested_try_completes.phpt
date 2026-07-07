@@ -2,12 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-KNOWN DIVERGENCE (BYTECODE.md stage 4): a fiber suspending inside a nested call's try/finally still has PHL's lossy resume semantics — but the script must COMPLETE (regression: the parked handler's freed owner frame was dereferenced and the script silently truncated with exit 0)
---SKIPIF--
-<?php
-if (function_exists('zend_version')) {
-    echo "skip";
-}
+Fiber suspended inside a nested call's try/finally resumes in place: the finally sees its own live locals and the callee returns normally (php-exact; BYTECODE.md stage 4)
 --FILE--
 <?php
 function inner() {
@@ -31,9 +26,9 @@ echo "ret=", $f->getReturn(), "\n";
 echo "script-end\n";
 ?>
 --EXPECT--
-inner returned: 'go'
+fin(inner-var)
+inner returned: 'inner-done'
 caught: after
-fin()
 ret=done
 script-end
 --CLEAN--
