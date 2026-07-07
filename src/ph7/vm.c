@@ -2199,6 +2199,173 @@ static void VmTrackOutput(ph7_vm *pVm, sxu32 nLen)
 }
 #define VM_STACK_GUARD 16
 /*
+ * Static operand-stack depth analysis (BYTECODE.md stage 7).
+ *
+ * The safe upper bound on a body's operand-stack depth is its instruction count
+ * (no instruction pushes more than one net slot), and that is what
+ * VmNewOperandStack allocates by default. For DEEP recursion that over-allocates
+ * badly — one operand stack per live frame, each sized to the whole body — so
+ * this pass computes a TIGHT bound (typically single digits) for the common
+ * shape of a recursive function, letting the OP_CALL path allocate small stacks.
+ *
+ * Undersizing an operand stack is a heap overflow, so the analysis is
+ * conservative BY CONSTRUCTION:
+ *   - Every modeled opcode uses pushmax = 1 (the engine invariant) and a popmin
+ *     that never exceeds its real pop on any path (verified per handler). Over-
+ *     estimating height is safe; the only unsafe direction — over-crediting a
+ *     pop — makes height go negative, which triggers fallback.
+ *   - A body is sized by this analysis only if EVERY instruction is in the
+ *     verified modeled set (VmInstrStackEffect). Any other opcode (try/catch,
+ *     yield, foreach, switch/match, spread, string/array builders, …) returns
+ *     VM_STACK_UNMODELED for the whole body -> caller keeps the instruction-count
+ *     bound. There is no partial/unsafe middle.
+ *   - Control flow follows real edges (JMP/JZ/JNZ + the fused comparison-branch
+ *     forms). An out-of-range jump, a negative height, or a height exceeding the
+ *     instruction-count bound -> fallback.
+ *   - VM_STACK_GUARD slack is still added by VmNewOperandStack on top of the
+ *     returned depth, and the full corpus runs under ASan (which catches any
+ *     undersize as a heap-buffer-overflow) as the standing validation.
+ *
+ * The exception-resume `pc =` reassignments inside some modeled handlers
+ * (STORE/CALL/DONE/comparisons) only fire when this activation OWNS a catch
+ * frame — impossible in a modeled body, since OP_LOAD_EXCEPTION is unmodeled and
+ * forces fallback — so they are dead in analyzed bodies and need no edge.
+ */
+#define VM_STACK_UNMODELED SXU32_HIGH
+/*
+ * Fill the stack effect of one modeled instruction: *pPush is its transient
+ * push (0/1, added to the height for the peak), and the *pN successor edges
+ * (absolute instruction index in aSucc[k], height delta in aDelta[k]). Returns
+ * 1 if modeled, 0 if the opcode is outside the verified set (whole-body
+ * fallback). pc is this instruction's own index (fall-through = pc+1).
+ */
+static int VmInstrStackEffect(VmInstr *pI, sxu32 pc, int *pPush, int *pN, sxu32 aSucc[2], sxi32 aDelta[2])
+{
+	int push = 0, n = 0;
+	sxi32 d;
+	switch( pI->iOp ){
+	/* Pushers (+1). LOAD pushes only with an inline name operand (p3 != 0); with
+	 * the name taken from the stack (p3 == 0) it reuses that slot -> net 0. */
+	case PH7_OP_LOADC:
+	case PH7_OP_DUP:
+		push = 1; aSucc[0] = pc + 1; aDelta[0] = 1; n = 1; break;
+	case PH7_OP_LOAD:
+		if( pI->p3 ){ push = 1; d = 1; }else{ push = 0; d = 0; }
+		aSucc[0] = pc + 1; aDelta[0] = d; n = 1; break;
+	case PH7_OP_LOAD_REF:
+		aSucc[0] = pc + 1; aDelta[0] = 0; n = 1; break;
+	/* Binary ops: 2-in/1-out, computed in place then one pop -> net -1. */
+	case PH7_OP_ADD: case PH7_OP_SUB: case PH7_OP_MUL: case PH7_OP_DIV:
+	case PH7_OP_MOD: case PH7_OP_POW: case PH7_OP_BAND: case PH7_OP_BOR:
+	case PH7_OP_BXOR: case PH7_OP_SHL: case PH7_OP_SHR: case PH7_OP_SPACESHIP:
+		aSucc[0] = pc + 1; aDelta[0] = -1; n = 1; break;
+	/* Comparisons: value-form (iP2 == 0) pops 1 in place. Fused branch-form
+	 * (iP2 != 0) pops 1 on the fall-through edge and 2 on the taken edge (-> iP2). */
+	case PH7_OP_LT: case PH7_OP_LE: case PH7_OP_GT: case PH7_OP_GE:
+	case PH7_OP_EQ: case PH7_OP_NEQ: case PH7_OP_TEQ: case PH7_OP_TNE:
+		if( pI->iP2 == 0 ){
+			aSucc[0] = pc + 1; aDelta[0] = -1; n = 1;
+		}else{
+			aSucc[0] = pc + 1; aDelta[0] = -1;
+			aSucc[1] = pI->iP2; aDelta[1] = -2; n = 2;
+		}
+		break;
+	/* In-place unary / casts: net 0. (CVT_NULL aborts, CVT_ARRAY/CVT_OBJ are not
+	 * verified here -> all three fall through to the unmodeled default.) */
+	case PH7_OP_LNOT: case PH7_OP_UMINUS: case PH7_OP_UPLUS: case PH7_OP_BITNOT:
+	case PH7_OP_CVT_INT: case PH7_OP_CVT_REAL: case PH7_OP_CVT_STR:
+	case PH7_OP_CVT_BOOL: case PH7_OP_CVT_NUMC:
+	case PH7_OP_NOOP:
+		aSucc[0] = pc + 1; aDelta[0] = 0; n = 1; break;
+	/* Stores: member (iP2) and name-from-stack (p3 == 0) pop 1; inline-name
+	 * (p3 != 0) pops 0. The rvalue is left as the expression result either way. */
+	case PH7_OP_STORE:
+		d = ( pI->iP2 || pI->p3 == 0 ) ? -1 : 0;
+		aSucc[0] = pc + 1; aDelta[0] = d; n = 1; break;
+	/* Explicit multi-slot pops (operand-encoded count). */
+	case PH7_OP_POP:
+	case PH7_OP_CONSUME:
+		aSucc[0] = pc + 1; aDelta[0] = -(sxi32)pI->iP1; n = 1; break;
+	/* Call: net -iP1 (args + callable consumed, result reuses the callable slot).
+	 * Spread is excluded: OP_SPREAD is unmodeled, so a call with `...$x` — whose
+	 * true pop count is a runtime value — never reaches here. */
+	case PH7_OP_CALL:
+		aSucc[0] = pc + 1; aDelta[0] = -(sxi32)pI->iP1; n = 1; break;
+	/* Jumps. */
+	case PH7_OP_JMP:
+		aSucc[0] = pI->iP2; aDelta[0] = 0; n = 1; break;
+	case PH7_OP_JZ: case PH7_OP_JNZ:
+		d = ( pI->iP1 == 0 ) ? -1 : 0; /* pops the condition on BOTH edges unless P1 says peek */
+		aSucc[0] = pc + 1; aDelta[0] = d; aSucc[1] = pI->iP2; aDelta[1] = d; n = 2; break;
+	/* Terminal: ends the path (its optional result pop does not propagate). */
+	case PH7_OP_DONE:
+		n = 0; break;
+	default:
+		return 0; /* unmodeled opcode -> whole-body fallback */
+	}
+	*pPush = push; *pN = n;
+	return 1;
+}
+/*
+ * Compute a tight upper bound on the operand-stack depth of a compiled body, or
+ * VM_STACK_UNMODELED to request the safe instruction-count bound. See the block
+ * comment above. Never underestimates a modelable body's true peak depth.
+ */
+static sxu32 VmComputeMaxStack(ph7_vm *pVm, VmInstr *aInstr, sxu32 nInstr)
+{
+	sxi32 *aH; sxu32 *aQ; unsigned char *aIn;
+	sxu32 nQ, i, nIter, nCap;
+	sxi32 iMax;
+	int push, n, k;
+	sxu32 succ[2]; sxi32 delta[2];
+	if( nInstr == 0 || nInstr > 8192 ){
+		/* Empty, or large enough that the analysis cost/benefit isn't worth it. */
+		return VM_STACK_UNMODELED;
+	}
+	/* Pre-scan: any unmodeled opcode -> bail before allocating scratch. */
+	for( i = 0; i < nInstr; i++ ){
+		if( !VmInstrStackEffect(&aInstr[i], i, &push, &n, succ, delta) ){
+			return VM_STACK_UNMODELED;
+		}
+	}
+	aH  = (sxi32 *)SyMemBackendAlloc(&pVm->sAllocator, nInstr * sizeof(sxi32));
+	aQ  = (sxu32 *)SyMemBackendAlloc(&pVm->sAllocator, nInstr * sizeof(sxu32));
+	aIn = (unsigned char *)SyMemBackendAlloc(&pVm->sAllocator, nInstr);
+	if( aH == 0 || aQ == 0 || aIn == 0 ){
+		if( aH ){ SyMemBackendFree(&pVm->sAllocator, aH); }
+		if( aQ ){ SyMemBackendFree(&pVm->sAllocator, aQ); }
+		if( aIn ){ SyMemBackendFree(&pVm->sAllocator, aIn); }
+		return VM_STACK_UNMODELED;
+	}
+	for( i = 0; i < nInstr; i++ ){ aH[i] = -1; aIn[i] = 0; }
+	aH[0] = 0; aQ[0] = 0; aIn[0] = 1; nQ = 1; iMax = 0;
+	nIter = 0; nCap = nInstr * 16 + 1024; /* convergence backstop (fallback if hit) */
+	while( nQ > 0 ){
+		sxu32 pc = aQ[--nQ];
+		sxi32 h;
+		aIn[pc] = 0;
+		h = aH[pc];
+		if( ++nIter > nCap ){ iMax = -1; break; }
+		(void)VmInstrStackEffect(&aInstr[pc], pc, &push, &n, succ, delta);
+		if( h + push > iMax ){ iMax = h + push; }
+		if( iMax > (sxi32)nInstr ){ iMax = -1; break; } /* over the safe bound: not worth it */
+		for( k = 0; k < n; k++ ){
+			sxi32 hn = h + delta[k];
+			sxu32 t = succ[k];
+			if( t >= nInstr || hn < 0 ){ iMax = -1; break; } /* bad jump / imbalance */
+			if( hn > aH[t] ){
+				aH[t] = hn;
+				if( !aIn[t] ){ aIn[t] = 1; aQ[nQ++] = t; }
+			}
+		}
+		if( iMax < 0 ){ break; }
+	}
+	SyMemBackendFree(&pVm->sAllocator, aH);
+	SyMemBackendFree(&pVm->sAllocator, aQ);
+	SyMemBackendFree(&pVm->sAllocator, aIn);
+	return ( iMax < 0 ) ? VM_STACK_UNMODELED : (sxu32)iMax;
+}
+/*
  * Allocate a new operand stack so that we can start executing
  * our compiled PHP program.
  * Return a pointer to the operand stack (array of ph7_values)
@@ -12202,8 +12369,23 @@ case PH7_OP_CALL: {
 		 */
 		PH7_MemObjRelease(pTos);
 		pTos = &pTos[-nCallArgs];
-		/* Allocate a new operand stack and evaluate the function body */
-		pFrameStack = VmNewOperandStack(&(*pVm),SySetUsed(&pVmFunc->aByteCode));
+		/* Allocate a new operand stack and evaluate the function body. Size it to
+		 * a tight static bound when the body is statically modelable (BYTECODE.md
+		 * stage 7) — the big memory win for deep recursion, where one such stack
+		 * lives per frame — falling back to the safe instruction-count bound
+		 * otherwise. The bound is computed once and cached on the func. */
+		{
+			sxu32 nSlots = pVmFunc->nMaxStack;
+			if( nSlots == 0 ){
+				sxu32 nInstr = SySetUsed(&pVmFunc->aByteCode);
+				sxu32 nTight = VmComputeMaxStack(&(*pVm),
+					(VmInstr *)SySetBasePtr(&pVmFunc->aByteCode),nInstr);
+				nSlots = ( nTight == VM_STACK_UNMODELED ) ? nInstr : nTight;
+				if( nSlots == 0 ){ nSlots = 1; } /* a 0-depth body still needs a valid, nonzero cache marker */
+				pVmFunc->nMaxStack = nSlots;
+			}
+			pFrameStack = VmNewOperandStack(&(*pVm),nSlots);
+		}
 		if( pFrameStack == 0 ){
 			/* Raise exception: Out of memory */
 			VmErrorFormat(&(*pVm),PH7_CTX_ERR,"PH7 is running out of memory while calling function '%z',NULL will be returned",
