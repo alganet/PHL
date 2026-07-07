@@ -6043,7 +6043,7 @@ static sxi32 VmCallFinish(ph7_vm *pVm,VmExecState *pCaller,VmCallRecord *pCallee
  */
 static sxi32 VmByteCodeExecBody(ph7_vm *pVm,VmInstr *aInstr,ph7_value *pStack,int nTos,
 	ph7_value *pResult,sxu32 *pLastRef,int is_callback,sxi32 nPc,
-	ph7_vm_func *pEnforceRetFunc,int bReturnPropagates);
+	ph7_vm_func *pEnforceRetFunc,int bReturnPropagates,VmParkedSegment *pAdoptSegment);
 /*
  * Native-nesting guard around the executor. PHP->PHP calls run iteratively
  * (the stage-2 trampoline), but every OTHER (re-)entry — mini-programs,
@@ -6072,7 +6072,8 @@ static sxi32 VmByteCodeExec(
 	int is_callback,     /* TRUE if we are executing a callback */
 	sxi32 nPc,           /* Starting program counter (0 for normal, >0 for resume) */
 	ph7_vm_func *pEnforceRetFunc, /* NULL except when this invocation is a user-fn body; when set, the terminating OP_DONE validates the return value against pEnforceRetFunc's declared type. */
-	int bReturnPropagates /* TRUE only for a catch/finally mini-program: an explicit-return OP_DONE (iP2=1) defers its value onto the enclosing body frame's sRet slot for that body to return. */
+	int bReturnPropagates, /* TRUE only for a catch/finally mini-program: an explicit-return OP_DONE (iP2=1) defers its value onto the enclosing body frame's sRet slot for that body to return. */
+	VmParkedSegment *pAdoptSegment /* NULL except on a deep-fiber RESUME (VmResumeCtx): the parked record segment this body invocation re-enters inside (BYTECODE stage 4). */
 	)
 {
 	sxi32 rc;
@@ -6081,7 +6082,7 @@ static sxi32 VmByteCodeExec(
 	}
 	pVm->nVmExecDepth++;
 	rc = VmByteCodeExecBody(&(*pVm),aInstr,pStack,nTos,pResult,pLastRef,is_callback,nPc,
-		pEnforceRetFunc,bReturnPropagates);
+		pEnforceRetFunc,bReturnPropagates,pAdoptSegment);
 	pVm->nVmExecDepth--;
 	return rc;
 }
@@ -6095,7 +6096,8 @@ static sxi32 VmByteCodeExecBody(
 	int is_callback,     /* TRUE if we are executing a callback */
 	sxi32 nPc,           /* Starting program counter (0 for normal, >0 for resume) */
 	ph7_vm_func *pEnforceRetFunc, /* NULL except when this invocation is a user-fn body; when set, the terminating OP_DONE validates the return value against pEnforceRetFunc's declared type. */
-	int bReturnPropagates /* TRUE only for a catch/finally mini-program: an explicit-return OP_DONE (iP2=1) defers its value onto the enclosing body frame's sRet slot for that body to return. */
+	int bReturnPropagates, /* TRUE only for a catch/finally mini-program: an explicit-return OP_DONE (iP2=1) defers its value onto the enclosing body frame's sRet slot for that body to return. */
+	VmParkedSegment *pAdoptSegment /* NULL except on a deep-fiber RESUME (VmResumeCtx): the parked record segment this body invocation re-enters inside (BYTECODE stage 4). */
 	)
 {
 	VmInstr *pInstr;
@@ -6153,16 +6155,15 @@ static sxi32 VmByteCodeExecBody(
 	sState.pEntryFrame = pVm->pFrame;
 	pc = nPc;
 	/* BYTECODE stage 4: a resumed fiber whose suspend was deep in a nested call
-	 * adopts its parked record segment here (VmResumeCtx set pParkedSegment,
-	 * rebased the segment's exception floors and pushed the resume value into
-	 * the innermost stack). The pStack==ctx->pStack guard pins this to the body
-	 * invocation — a nested mini-program run inside the resumed body never sees
-	 * a live pParkedSegment (this consumes it). Locals switch to the innermost
-	 * activation so the dispatch loop continues inside the callee; the record
-	 * chain is restored so its completion unwinds back through the body. */
-	if( pVm->pActiveCtx && pVm->pActiveCtx->pParkedSegment && pStack == pVm->pActiveCtx->pStack ){
-		VmParkedSegment *pSeg = (VmParkedSegment *)pVm->pActiveCtx->pParkedSegment;
-		pVm->pActiveCtx->pParkedSegment = 0;
+	 * adopts its parked record segment here. VmResumeCtx hands the segment in
+	 * explicitly (pAdoptSegment) — set only for the body invocation, never for a
+	 * nested mini-program/callback run inside the resumed body — after it rebased
+	 * the segment's exception floors and pushed the resume value into the innermost
+	 * stack. Locals switch to the innermost activation so the dispatch loop
+	 * continues inside the callee; the record chain is restored so its completion
+	 * unwinds back through the body. */
+	if( pAdoptSegment ){
+		VmParkedSegment *pSeg = pAdoptSegment;
 		pCallTop = pSeg->pCallTop;
 		sState = pSeg->sState;
 		aInstr = sState.aInstr;
@@ -12863,7 +12864,7 @@ PH7_PRIVATE sxi32 VmLocalExec(ph7_vm *pVm,SySet *pByteCode,ph7_value *pResult,in
 		return SXERR_MEM;
 	}
 	/* Execute the program */
-	rc = VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(pByteCode),pStack,-1,&(*pResult),0,FALSE,0,0,bReturnPropagates);
+	rc = VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(pByteCode),pStack,-1,&(*pResult),0,FALSE,0,0,bReturnPropagates,0);
 	/* Free the operand stack */
 	SyMemBackendFree(&pVm->sAllocator,pStack);
 	/* Execution result */
@@ -12939,7 +12940,7 @@ PH7_PRIVATE sxi32 PH7_VmByteCodeExec(ph7_vm *pVm)
 	/* Set the execution magic number  */
 	pVm->nMagic = PH7_VM_EXEC;
 	/* Execute the program */
-	VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(pVm->pByteContainer),pVm->aOps,-1,&pVm->sExec,0,FALSE,0,0,FALSE);
+	VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(pVm->pByteContainer),pVm->aOps,-1,&pVm->sExec,0,FALSE,0,0,FALSE,0);
 	/* Invoke any shutdown callbacks */
 	VmInvokeShutdownCallbacks(&(*pVm));
 	/*
@@ -13189,7 +13190,7 @@ static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
 	 * keep enforcement (php enforces their return type). */
 	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),
 		pCtx->pStack, -1, &pCtx->sRetValue, 0, FALSE, 0,
-		((pCtx->pFunc->iFlags & VM_FUNC_GENERATOR) == 0 && VmFuncHasReturnType(pCtx->pFunc)) ? pCtx->pFunc : 0, FALSE);
+		((pCtx->pFunc->iFlags & VM_FUNC_GENERATOR) == 0 && VmFuncHasReturnType(pCtx->pFunc)) ? pCtx->pFunc : 0, FALSE, 0);
 	/* Restore the previous context */
 	pVm->pActiveCtx = pOldCtx;
 	if( rc == PH7_SUSPEND ){
@@ -13223,6 +13224,7 @@ static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
 static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValue, ph7_value *pResult)
 {
 	ph7_exec_ctx *pOldCtx;
+	VmParkedSegment *pSeg;
 	sxi32 rc;
 	if( pCtx->iState != PH7_CTX_STATE_SUSPENDED ){
 		return SXERR_INVALID;
@@ -13241,8 +13243,9 @@ static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValu
 	 * that stack is the innermost callee's — parked in the segment — not the
 	 * body's. nTos was saved one below the return-value slot. */
 	{
-		VmParkedSegment *pSeg = (VmParkedSegment *)pCtx->pParkedSegment;
-		ph7_value *pResumeStack = pSeg ? pSeg->sState.pStack : pCtx->pStack;
+		ph7_value *pResumeStack;
+		pSeg = (VmParkedSegment *)pCtx->pParkedSegment;
+		pResumeStack = pSeg ? pSeg->sState.pStack : pCtx->pStack;
 		if( pResumeValue ){
 			PH7_MemObjStore(pResumeValue, &pResumeStack[pCtx->nTos + 1]);
 		}else{
@@ -13285,16 +13288,20 @@ static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValu
 		pCtx->pFrame->pParent = pVm->pFrame;
 		pVm->pFrame = pSeg ? pSeg->pTopFrame : pCtx->pFrame;
 	}
+	/* The segment (if any) is handed to the body invocation explicitly below; it
+	 * is no longer part of the suspended ctx state once resume owns it. */
+	pCtx->pParkedSegment = 0;
 	/* Save and set the active context */
 	pOldCtx = pVm->pActiveCtx;
 	pVm->pActiveCtx = pCtx;
 	pCtx->iState = PH7_CTX_STATE_RUNNING;
 	pCtx->nBodyExecDepth = pVm->nVmExecDepth + 1; /* see VmStartCtx */
 	/* Resume execution from saved PC. Generator-function bodies skip
-	 * return-type enforcement — see the block comment in VmStartCtx. */
+	 * return-type enforcement — see the block comment in VmStartCtx. pSeg, when
+	 * non-NULL, makes this body re-enter inside the innermost parked callee. */
 	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),
 		pCtx->pStack, pCtx->nTos, &pCtx->sRetValue, 0, FALSE, pCtx->pc,
-		((pCtx->pFunc->iFlags & VM_FUNC_GENERATOR) == 0 && VmFuncHasReturnType(pCtx->pFunc)) ? pCtx->pFunc : 0, FALSE);
+		((pCtx->pFunc->iFlags & VM_FUNC_GENERATOR) == 0 && VmFuncHasReturnType(pCtx->pFunc)) ? pCtx->pFunc : 0, FALSE, pSeg);
 	/* Restore the previous context */
 	pVm->pActiveCtx = pOldCtx;
 	if( rc == PH7_SUSPEND ){
@@ -15542,7 +15549,7 @@ static sxi32 VmCallClassMethodWithMap(
 	aInstr[1].iP1 = 1;
 	aInstr[1].iP2 = 0;
 	aInstr[1].p3  = 0;
-	rc = VmByteCodeExec(&(*pVm),aInstr,aStack,iCursor,pResult,0,TRUE,0,0,FALSE);
+	rc = VmByteCodeExec(&(*pVm),aInstr,aStack,iCursor,pResult,0,TRUE,0,0,FALSE,0);
 	SyMemBackendFree(&pVm->sAllocator,aStack);
 	/* Propagate the real exec status (PH7_EXCEPTION / PH7_ABORT) so callers
 	 * can unwind instead of continuing past a method that raised. */
@@ -15910,7 +15917,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 	/* Execute the function body (if available) */
 	{
 		sxi32 rcExec;
-		rcExec = VmByteCodeExec(&(*pVm),aInstr,aStack,nArg,pResult,0,TRUE,0,0,FALSE);
+		rcExec = VmByteCodeExec(&(*pVm),aInstr,aStack,nArg,pResult,0,TRUE,0,0,FALSE,0);
 		/* Clean up the mess left behind */
 		SyMemBackendFree(&pVm->sAllocator,aStack);
 		/* Propagate PH7_EXCEPTION/PH7_ABORT so a callback that raised unwinds. */
