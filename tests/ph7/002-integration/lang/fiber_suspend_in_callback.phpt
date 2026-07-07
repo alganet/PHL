@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-KNOWN DIVERGENCE (BYTECODE.md stage 4): Fiber::suspend() inside a C-callback (usort comparator) — PHL silently discards the suspension, corrupting the sort and completing the fiber; php suspends fine (full native-stack switch). Stage 4 turns PHL's side into a loud catchable FiberError; this twin pins today's behavior until then. The _zend twin documents php and is PERMANENT (scoped divergence — PHL cannot suspend across a native frame without coroutine stacks).
+SCOPED DIVERGENCE (BYTECODE.md stage 4, PERMANENT): Fiber::suspend() inside a C-callback (usort comparator) raises a catchable FiberError — PHL cannot suspend across a native frame without coroutine stacks. php suspends fine (full native-stack switch); its behavior is the permanent _zend twin. This twin pins PHL's loud, catchable failure (never the old silent sort corruption).
 --SKIPIF--
 <?php
 if (function_exists('zend_version')) {
@@ -19,16 +19,18 @@ $f = new Fiber(function () {
     echo "sorted:", implode(",", $a), "\n";
     return "done";
 });
-$v = $f->start();
-echo "start returned: ", ($v === null ? "NULL" : $v), "\n";
-while ($f->isSuspended()) {
-    $f->resume();
+try {
+    $v = $f->start();
+    echo "start returned: ", ($v === null ? "NULL" : $v), "\n";
+    while ($f->isSuspended()) {
+        $f->resume();
+    }
+    echo "ret=", $f->getReturn(), "\n";
+} catch (FiberError $e) {
+    echo "FiberError: ", $e->getMessage(), "\n";
 }
-echo "ret=", $f->getReturn(), "\n";
 ?>
 --EXPECT--
-sorted:2,3,1
-start returned: done
-ret=done
+FiberError: Cannot suspend across an internal (C) call boundary
 --CLEAN--
 <?php
