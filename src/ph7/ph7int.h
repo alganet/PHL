@@ -1060,6 +1060,10 @@ struct ph7_vm
 	                            * head match, capped length; buffers are plain allocator
 	                            * blocks so cold/suspend/abort paths can still raw-free them. */
 	int nIdleOperandStacks;    /* Length of pIdleOperandStacks (cap: VM_STACK_POOL_MAX) */
+	void *pIdleStackNodes;     /* Freelist of spare VmIdleStack nodes (BYTECODE stage 7b):
+	                            * reused across recycle/reuse cycles so a parked buffer's
+	                            * wrapper node isn't pool-alloc/freed per call (mirrors
+	                            * pIdleCallFrames). Allocator-owned; freed wholesale. */
 	int nObDepth;              /* OB depth */
 	int nExceptDepth;          /* Exception depth */
 	int closure_cnt;           /* Loaded closures counter */

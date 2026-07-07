@@ -2006,6 +2006,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->pIdleCallFrames = 0;
 	pVm->pIdleOperandStacks = 0;
 	pVm->nIdleOperandStacks = 0;
+	pVm->pIdleStackNodes = 0;
 	SySetInit(&pVm->aFinallyAction,&pVm->sAllocator,sizeof(VmFinallyAction));
 	pVm->bInlineTryCatch = 1; /* ROOT C: enable inline generator try/catch/finally */
 	pVm->pPendingException = 0;
@@ -2461,7 +2462,10 @@ static ph7_value * VmOperandStackAlloc(ph7_vm *pVm, sxu32 nSlots)
 		ph7_value *pStack = pIdle->pStack;
 		pVm->pIdleOperandStacks = pIdle->pNext;
 		pVm->nIdleOperandStacks--;
-		SyMemBackendPoolFree(&pVm->sAllocator,pIdle);
+		/* Keep the wrapper node on the spare-node freelist for the next recycle
+		 * instead of returning it to the pool (mirrors pIdleCallFrames). */
+		pIdle->pNext = (VmIdleStack *)pVm->pIdleStackNodes;
+		pVm->pIdleStackNodes = pIdle;
 		return pStack; /* slots already released -> reusable without re-init */
 	}
 	return VmNewOperandStack(&(*pVm),nSlots);
@@ -2479,10 +2483,21 @@ static void VmOperandStackRecycle(ph7_vm *pVm, ph7_value *pStack, sxu32 nCap)
 	if( pStack == 0 ){
 		return;
 	}
-	if( pVm->nIdleOperandStacks >= VM_STACK_POOL_MAX || nCap > VM_STACK_POOL_MAXSLOTS
-	 || (pIdle = (VmIdleStack *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(VmIdleStack))) == 0 ){
+	if( pVm->nIdleOperandStacks >= VM_STACK_POOL_MAX || nCap > VM_STACK_POOL_MAXSLOTS ){
 		SyMemBackendFree(&pVm->sAllocator,pStack);
 		return;
+	}
+	/* Take a spare wrapper node (reused across cycles, mirroring pIdleCallFrames);
+	 * pool-allocate only when the spare list is empty. */
+	pIdle = (VmIdleStack *)pVm->pIdleStackNodes;
+	if( pIdle ){
+		pVm->pIdleStackNodes = pIdle->pNext;
+	}else{
+		pIdle = (VmIdleStack *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(VmIdleStack));
+		if( pIdle == 0 ){
+			SyMemBackendFree(&pVm->sAllocator,pStack);
+			return;
+		}
 	}
 	for( i = 0; i < nCap; i++ ){
 		PH7_MemObjRelease(&pStack[i]);
@@ -5983,8 +5998,14 @@ static sxi32 VmCallFinish(ph7_vm *pVm,VmExecState *pCaller,VmCallRecord *pCallee
 	/* Recycle the operand stack for the next same-size call (BYTECODE stage 7),
 	 * or free it if the pool is full. Its allocated size is the callee's cached
 	 * nMaxStack + VM_STACK_GUARD — exactly what VmOperandStackAlloc handed out.
-	 * (NULL when the function body was skipped.) */
-	if( pCallee->pFrameStack ){
+	 * (NULL when the function body was skipped.)
+	 *
+	 * Never on rc == PH7_SUSPEND: that path (unreachable in the stage-4 model,
+	 * where a deep suspend parks its whole record segment before reaching here)
+	 * would leave the callee stack owned by the suspended ctx, so recycling it
+	 * would hand a live fiber's operand stack to the next call. The guard keeps
+	 * that invariant explicit and robust to future coroutine changes. */
+	if( rc != PH7_SUSPEND && pCallee->pFrameStack ){
 		VmOperandStackRecycle(pVm,pCallee->pFrameStack,
 			pCallee->pVmFunc->nMaxStack + VM_STACK_GUARD);
 	}
