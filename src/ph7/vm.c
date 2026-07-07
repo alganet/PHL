@@ -2224,14 +2224,24 @@ static void VmTrackOutput(ph7_vm *pVm, sxu32 nLen)
  *   - Control flow follows real edges (JMP/JZ/JNZ + the fused comparison-branch
  *     forms). An out-of-range jump, a negative height, or a height exceeding the
  *     instruction-count bound -> fallback.
- *   - VM_STACK_GUARD slack is still added by VmNewOperandStack on top of the
- *     returned depth, and the full corpus runs under ASan (which catches any
- *     undersize as a heap-buffer-overflow) as the standing validation.
+ *   - VM_STACK_GUARD slack is still added by the operand-stack allocator on top
+ *     of the returned depth, and the full corpus runs under ASan (which catches
+ *     any undersize as a heap-buffer-overflow) as the standing validation.
  *
  * The exception-resume `pc =` reassignments inside some modeled handlers
  * (STORE/CALL/DONE/comparisons) only fire when this activation OWNS a catch
  * frame — impossible in a modeled body, since OP_LOAD_EXCEPTION is unmodeled and
  * forces fallback — so they are dead in analyzed bodies and need no edge.
+ *
+ * Drift safety (for whoever adds an opcode or changes a handler's stack effect):
+ * VmInstrStackEffect is a hand-maintained model that must stay in sync with the
+ * real handlers. Two things keep a drift from becoming a silent undersize: a NEW
+ * opcode is unmodeled by default (its `default:` return forces the safe
+ * instruction-count bound), so only *changing a modeled opcode's real pop count*
+ * to exceed its popmin can undersize — and that is caught deterministically by
+ * the standing ASan-over-corpus run (an undersize is a heap-buffer-overflow on
+ * the operand stack). When touching a modeled handler's push/pop, re-check its
+ * entry here.
  */
 #define VM_STACK_UNMODELED SXU32_HIGH
 /*
@@ -2315,6 +2325,7 @@ static int VmInstrStackEffect(VmInstr *pI, sxu32 pc, int *pPush, int *pN, sxu32 
  */
 static sxu32 VmComputeMaxStack(ph7_vm *pVm, VmInstr *aInstr, sxu32 nInstr)
 {
+	void *pScratch;
 	sxi32 *aH; sxu32 *aQ; unsigned char *aIn;
 	sxu32 nQ, i, nIter, nCap;
 	sxi32 iMax;
@@ -2330,15 +2341,16 @@ static sxu32 VmComputeMaxStack(ph7_vm *pVm, VmInstr *aInstr, sxu32 nInstr)
 			return VM_STACK_UNMODELED;
 		}
 	}
-	aH  = (sxi32 *)SyMemBackendAlloc(&pVm->sAllocator, nInstr * sizeof(sxi32));
-	aQ  = (sxu32 *)SyMemBackendAlloc(&pVm->sAllocator, nInstr * sizeof(sxu32));
-	aIn = (unsigned char *)SyMemBackendAlloc(&pVm->sAllocator, nInstr);
-	if( aH == 0 || aQ == 0 || aIn == 0 ){
-		if( aH ){ SyMemBackendFree(&pVm->sAllocator, aH); }
-		if( aQ ){ SyMemBackendFree(&pVm->sAllocator, aQ); }
-		if( aIn ){ SyMemBackendFree(&pVm->sAllocator, aIn); }
+	/* aH (entry height per pc), aQ (worklist), aIn (queued flag) share one lifetime
+	 * and count -> one allocation, carved into three regions with the 4-byte arrays
+	 * first (the byte array last needs no alignment). */
+	pScratch = SyMemBackendAlloc(&pVm->sAllocator, nInstr * (sizeof(sxi32) + sizeof(sxu32) + 1));
+	if( pScratch == 0 ){
 		return VM_STACK_UNMODELED;
 	}
+	aH  = (sxi32 *)pScratch;
+	aQ  = (sxu32 *)(aH + nInstr);
+	aIn = (unsigned char *)(aQ + nInstr);
 	for( i = 0; i < nInstr; i++ ){ aH[i] = -1; aIn[i] = 0; }
 	aH[0] = 0; aQ[0] = 0; aIn[0] = 1; nQ = 1; iMax = 0;
 	nIter = 0; nCap = nInstr * 16 + 1024; /* convergence backstop (fallback if hit) */
@@ -2362,9 +2374,7 @@ static sxu32 VmComputeMaxStack(ph7_vm *pVm, VmInstr *aInstr, sxu32 nInstr)
 		}
 		if( iMax < 0 ){ break; }
 	}
-	SyMemBackendFree(&pVm->sAllocator, aH);
-	SyMemBackendFree(&pVm->sAllocator, aQ);
-	SyMemBackendFree(&pVm->sAllocator, aIn);
+	SyMemBackendFree(&pVm->sAllocator, pScratch);
 	return ( iMax < 0 ) ? VM_STACK_UNMODELED : (sxu32)iMax;
 }
 /*
@@ -2372,6 +2382,11 @@ static sxu32 VmComputeMaxStack(ph7_vm *pVm, VmInstr *aInstr, sxu32 nInstr)
  * our compiled PHP program.
  * Return a pointer to the operand stack (array of ph7_values)
  * on success. NULL (Fatal error) on failure.
+ *
+ * This is the RAW allocator (always mallocs + inits nInstr + VM_STACK_GUARD
+ * slots). The OP_CALL hot path goes through VmOperandStackAlloc, which recycles a
+ * parked buffer when it can and falls back to this; the other entries (top-level,
+ * eval, coroutine, callbacks) call this directly.
  */
 static ph7_value * VmNewOperandStack(
 	ph7_vm *pVm, /* Target VM */
@@ -2416,6 +2431,12 @@ static ph7_value * VmNewOperandStack(
  * match keeps it O(1) and memory-tight (a mismatched size allocates fresh rather
  * than over-allocating — deep recursion, whose freelist is empty during descent,
  * is unaffected). Length is capped so the pool can't grow without bound.
+ *
+ * The head-only match is tuned for the design target (recursion / a hot loop
+ * calling one function — one size, ~total reuse). An alternating-size pattern
+ * (a() then b() with different depths, repeatedly) never matches the head, so it
+ * degrades to a fresh allocation every call — same as no pool, never worse; the
+ * recursion case is the one worth the O(1) simplicity.
  */
 typedef struct VmIdleStack VmIdleStack;
 struct VmIdleStack {
@@ -12454,11 +12475,18 @@ case PH7_OP_CALL: {
 		 */
 		PH7_MemObjRelease(pTos);
 		pTos = &pTos[-nCallArgs];
-		/* Allocate a new operand stack and evaluate the function body. Size it to
-		 * a tight static bound when the body is statically modelable (BYTECODE.md
-		 * stage 7) — the big memory win for deep recursion, where one such stack
-		 * lives per frame — falling back to the safe instruction-count bound
-		 * otherwise. The bound is computed once and cached on the func. */
+		/* Allocate an operand stack (via the recycling allocator) and evaluate the
+		 * function body. Size it to a tight static bound when the body is statically
+		 * modelable (BYTECODE.md stage 7) — the big memory win for deep recursion,
+		 * where one such stack lives per frame — falling back to the safe
+		 * instruction-count bound otherwise.
+		 *
+		 * The bound is computed LAZILY on the first call and cached on the func
+		 * (nMaxStack == 0 = not yet computed). Deliberately not a compile-time pass:
+		 * self-computing on first use is fail-safe against any body-creation path
+		 * (an uncomputed body just computes, never uses a wrong 0 -> undersize),
+		 * where undersizing is a heap overflow; the amortized cost is one analysis
+		 * per function. */
 		{
 			sxu32 nSlots = pVmFunc->nMaxStack;
 			if( nSlots == 0 ){
