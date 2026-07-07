@@ -13111,6 +13111,58 @@ static void VmSuspendCtxDetach(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResu
 	}
 }
 /*
+ * The return-type enforcement target for a coroutine body run. A GENERATOR
+ * function's declared return type belongs to the call site (always a Generator
+ * object, validated at compile time as "a supertype of Generator"); the body's
+ * own return value feeds getReturn() and is never type-checked. Gate on the
+ * VM_FUNC_GENERATOR flag (the semantic property), not pPrivate (a wrapper-linkage
+ * fact): a Fiber given a generator-flagged callable runs with pPrivate == 0 and
+ * must not enforce either. Ordinary fiber callables keep their declared
+ * return-type enforcement (php enforces it).
+ */
+static ph7_vm_func * VmCtxEnforceRetFunc(ph7_exec_ctx *pCtx)
+{
+	return ((pCtx->pFunc->iFlags & VM_FUNC_GENERATOR) == 0 && VmFuncHasReturnType(pCtx->pFunc))
+		? pCtx->pFunc : 0;
+}
+/*
+ * Common epilogue for VmStartCtx / VmResumeCtx once the body run returns rc:
+ * restore the previous active context, then park on suspend or detach the
+ * coroutine frame and record the terminal state. On normal completion the value
+ * belongs to getReturn() only — start()/resume() return the NEXT suspend value,
+ * which is null at completion (php parity), so pResult is left at its
+ * caller-initialized null.
+ */
+static sxi32 VmFinishCtxRun(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_exec_ctx *pOldCtx,
+	sxi32 rc, ph7_value *pResult)
+{
+	pVm->pActiveCtx = pOldCtx;
+	if( rc == PH7_SUSPEND ){
+		/* Handles a deep RE-suspend too (a resumed segment parking a fresh one):
+		 * VmSuspendCtxDetach deactivates the new segment's recursion accounting,
+		 * parks its aSelf, and skips VmFreeSuspendedExceptionFrames for a segment
+		 * so it can't free the still-live parked try wrappers. */
+		VmSuspendCtxDetach(pVm, pCtx, pResult);
+		return SXRET_OK;
+	}
+	/* Detach the coroutine frame from the live chain, unless a deeper unwind
+	 * already moved pVm->pFrame off it. */
+	if( pVm->pFrame == pCtx->pFrame ){
+		pVm->pFrame = pCtx->pFrame->pParent;
+		pCtx->pFrame->pParent = 0;
+	}
+	if( rc == PH7_ABORT ){
+		pCtx->iState = PH7_CTX_STATE_CLOSED;
+		return PH7_ABORT;
+	}
+	if( rc == PH7_EXCEPTION ){
+		pCtx->iState = PH7_CTX_STATE_CLOSED;
+		return PH7_EXCEPTION;
+	}
+	pCtx->iState = PH7_CTX_STATE_COMPLETED;
+	return SXRET_OK;
+}
+/*
  * Start executing a fiber context for the first time.
  */
 static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
@@ -13143,43 +13195,11 @@ static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
 	 * Fiber::suspend() at a deeper depth is inside a C->PHP callback and gets a
 	 * FiberError instead of parking across the native frame (stage 4). */
 	pCtx->nBodyExecDepth = pVm->nVmExecDepth + 1;
-	/* Execute from the beginning. A GENERATOR FUNCTION's declared return type
-	 * belongs to the call site (always a Generator object, validated at compile
-	 * time — "must be a supertype of Generator"); the body's own return value
-	 * feeds getReturn() and is never type-checked. Gate on the function's
-	 * VM_FUNC_GENERATOR flag (the semantic property), not pPrivate (a wrapper-
-	 * linkage fact): a Fiber given a generator-flagged callable runs the body
-	 * with pPrivate == 0 and must not enforce either. Ordinary fiber callables
-	 * keep enforcement (php enforces their return type). */
+	/* Execute from the beginning (no parked segment). */
 	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),
 		pCtx->pStack, -1, &pCtx->sRetValue, 0, FALSE, 0,
-		((pCtx->pFunc->iFlags & VM_FUNC_GENERATOR) == 0 && VmFuncHasReturnType(pCtx->pFunc)) ? pCtx->pFunc : 0, FALSE, 0);
-	/* Restore the previous context */
-	pVm->pActiveCtx = pOldCtx;
-	if( rc == PH7_SUSPEND ){
-		VmSuspendCtxDetach(pVm, pCtx, pResult);
-		return SXRET_OK;
-	}
-	/* Detach frame */
-	if( pVm->pFrame == pCtx->pFrame ){
-		pVm->pFrame = pCtx->pFrame->pParent;
-		pCtx->pFrame->pParent = 0;
-	}
-	if( rc == PH7_ABORT ){
-		pCtx->iState = PH7_CTX_STATE_CLOSED;
-		return PH7_ABORT;
-	}
-	if( rc == PH7_EXCEPTION ){
-		pCtx->iState = PH7_CTX_STATE_CLOSED;
-		return PH7_EXCEPTION;
-	}
-	/* Normal completion. The final return value belongs to getReturn() only —
-	 * start()/resume() return the NEXT suspend value, which is null when the
-	 * coroutine completes instead of suspending (php parity). Leave pResult at
-	 * its caller-initialized null; sRetValue is read separately by getReturn().
-	 * (Generators pass pResult == NULL and are unaffected.) */
-	pCtx->iState = PH7_CTX_STATE_COMPLETED;
-	return SXRET_OK;
+		VmCtxEnforceRetFunc(pCtx), FALSE, 0);
+	return VmFinishCtxRun(pVm, pCtx, pOldCtx, rc, pResult);
 }
 /*
  * Resume a suspended fiber context.
@@ -13258,43 +13278,12 @@ static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValu
 	pVm->pActiveCtx = pCtx;
 	pCtx->iState = PH7_CTX_STATE_RUNNING;
 	pCtx->nBodyExecDepth = pVm->nVmExecDepth + 1; /* see VmStartCtx */
-	/* Resume execution from saved PC. Generator-function bodies skip
-	 * return-type enforcement — see the block comment in VmStartCtx. pSeg, when
-	 * non-NULL, makes this body re-enter inside the innermost parked callee. */
+	/* Resume execution from saved PC. pSeg, when non-NULL, makes this body
+	 * re-enter inside the innermost parked callee (deep fiber resume, stage 4). */
 	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),
 		pCtx->pStack, pCtx->nTos, &pCtx->sRetValue, 0, FALSE, pCtx->pc,
-		((pCtx->pFunc->iFlags & VM_FUNC_GENERATOR) == 0 && VmFuncHasReturnType(pCtx->pFunc)) ? pCtx->pFunc : 0, FALSE, pSeg);
-	/* Restore the previous context */
-	pVm->pActiveCtx = pOldCtx;
-	if( rc == PH7_SUSPEND ){
-		/* Suspended again — same detach as VmStartCtx. Crucially this handles a
-		 * deep RE-suspend (a resumed segment that parks a fresh segment): the
-		 * shared helper deactivates the new segment's recursion accounting, parks
-		 * its aSelf, and (for a segment) skips VmFreeSuspendedExceptionFrames so
-		 * it can't free the still-live parked try wrappers. */
-		VmSuspendCtxDetach(pVm, pCtx, pResult);
-		return SXRET_OK;
-	}
-	/* Detach frame */
-	if( pVm->pFrame == pCtx->pFrame ){
-		pVm->pFrame = pCtx->pFrame->pParent;
-		pCtx->pFrame->pParent = 0;
-	}
-	if( rc == PH7_ABORT ){
-		pCtx->iState = PH7_CTX_STATE_CLOSED;
-		return PH7_ABORT;
-	}
-	if( rc == PH7_EXCEPTION ){
-		pCtx->iState = PH7_CTX_STATE_CLOSED;
-		return PH7_EXCEPTION;
-	}
-	/* Normal completion. The final return value belongs to getReturn() only —
-	 * start()/resume() return the NEXT suspend value, which is null when the
-	 * coroutine completes instead of suspending (php parity). Leave pResult at
-	 * its caller-initialized null; sRetValue is read separately by getReturn().
-	 * (Generators pass pResult == NULL and are unaffected.) */
-	pCtx->iState = PH7_CTX_STATE_COMPLETED;
-	return SXRET_OK;
+		VmCtxEnforceRetFunc(pCtx), FALSE, pSeg);
+	return VmFinishCtxRun(pVm, pCtx, pOldCtx, rc, pResult);
 }
 /*
  * Free one DETACHED frame (not in the live pVm->pFrame chain): the frame of a
