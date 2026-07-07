@@ -2943,6 +2943,7 @@ static sxi32 VmInitCallContext(
 	MemObjSetType(pRet,MEMOBJ_NULL);
 	pOut->pRet = pRet;
 	pOut->iFlags = iFlags;
+	pOut->pArgMap = 0; /* Set by the OP_CALL dispatcher for named-arg-aware builtins */
 	return SXRET_OK;
 }
 /*
@@ -5628,6 +5629,7 @@ static sxi32 VmResolveNamedArgs(
 {
 	sxi32 posIdx = 0;
 	sxu32 i;
+	int bSeenNamed = 0;
 	char zErrMsg[256];
 	SyZero(aUsed, nNonVariadic * sizeof(sxu8));
 	for( i = 0; i < nActual; i++ ){
@@ -5637,6 +5639,7 @@ static sxi32 VmResolveNamedArgs(
 		if( i < pMap->nTotal && pMap->aNames[i].nByte > 0 ){
 			/* Named argument — find formal by name */
 			int found = 0;
+			bSeenNamed = 1;
 			sxu32 k;
 			for( k = 0; k < nNonVariadic; k++ ){
 				if( aFormalArg[k].sName.nByte == pMap->aNames[i].nByte
@@ -5668,7 +5671,16 @@ static sxi32 VmResolveNamedArgs(
 				}
 			}
 		}else{
-			/* Positional argument */
+			/* Positional argument. Source-syntax calls can't reach here after a
+			 * named arg (the parser rejects it at compile time), but a call
+			 * reconstructed from an array — call_user_func_array(['b'=>9, 'x']) —
+			 * can, so enforce PHP's rule at this shared choke point. */
+			if( bSeenNamed ){
+				VmThrowNamedArgError(&(*pVm),
+					"Cannot use positional argument after named argument",
+					sizeof("Cannot use positional argument after named argument") - 1);
+				return PH7_ABORT;
+			}
 			if( (sxu32)posIdx < nNonVariadic ){
 				if( aUsed[posIdx] ){
 					SyBufferFormat(zErrMsg,sizeof(zErrMsg),
@@ -12662,6 +12674,13 @@ SkipFuncBody:
 		PH7_MemObjInit(&(*pVm),&sRet);
 		/* Init the call context */
 		VmInitCallContext(&sCtx,&(*pVm),pFunc,&sRet,0);
+		/* Hand the call-site named-argument map to the builtin so name-forwarding
+		 * helpers (call_user_func & friends) can relay name: arguments — and the
+		 * caller's strict_types mode — to the inner callback. Forwarded whole (not
+		 * gated on bHasNamed) because call_user_func_array reads bStrict from it even
+		 * when its own call site is purely positional; only the two forwarding
+		 * builtins read pArgMap, so this is inert for every other host function. */
+		sCtx.pArgMap = (VmCallArgMap *)pInstr->p3;
 		/* Call the foreign function */
 		rc = pFunc->xFunc(&sCtx,(int)SySetUsed(&aArg),(ph7_value **)SySetBasePtr(&aArg));
 		/* Release the call context */

@@ -910,8 +910,28 @@ PH7_PRIVATE int vm_builtin_call_user_func(ph7_context *pCtx,int nArg,ph7_value *
 	}
 	PH7_MemObjInit(pCtx->pVm,&sResult);
 	sResult.nIdx = SXU32_HIGH; /* Mark as constant */
-	/* Try to invoke the callback */
-	rc = PH7_VmCallUserFunction(pCtx->pVm,apArg[0],nArg - 1,&apArg[1],&sResult);
+	/* Try to invoke the callback. If the call_user_func() call site used
+	 * name: arguments (e.g. call_user_func('f', b: 9)), forward them to the
+	 * callback. The inner call's argument i is the outer argument i+1 (outer
+	 * argument 0 is the callback), so the inner name array is simply the outer
+	 * names shifted by one — no copy needed: VmResolveNamedArgs treats any index
+	 * >= nTotal as positional, so a shorter map covers the callback's args. */
+	if( pCtx->pArgMap && pCtx->pArgMap->bHasNamed && nArg > 1 ){
+		VmCallArgMap *pOuter = pCtx->pArgMap;
+		VmCallArgMap sInner;
+		sInner.bHasNamed = 1;
+		sInner.bIsNamespaced = 0;
+		/* Named args to call_user_func coerce in WEAK mode even from a
+		 * strict_types=1 caller (verified vs php 8.5.7): a name: argument
+		 * collected into the variadic and re-spread loses the strict context.
+		 * call_user_func_array does NOT share this quirk (it stays strict). */
+		sInner.bStrict = 0;
+		sInner.nTotal = pOuter->nTotal > 1 ? pOuter->nTotal - 1 : 0;
+		sInner.aNames = sInner.nTotal > 0 ? &pOuter->aNames[1] : 0;
+		rc = PH7_VmCallUserFunctionWithMap(pCtx->pVm,apArg[0],nArg - 1,&apArg[1],&sResult,&sInner);
+	}else{
+		rc = PH7_VmCallUserFunction(pCtx->pVm,apArg[0],nArg - 1,&apArg[1],&sResult);
+	}
 	if( rc == PH7_EXCEPTION ){
 		/* The callback raised: propagate so the OP_CALL dispatcher unwinds
 		 * through the nearest try/catch instead of returning FALSE. */
@@ -944,7 +964,9 @@ PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_v
 	ph7_hashmap_node *pEntry; /* Current hashmap entry */
 	ph7_value *pValue,sResult;/* Store callback return value here */
 	ph7_hashmap *pMap;        /* Target hashmap */
-	SySet aArg;               /* Arguments containers */
+	SySet aArg;               /* Argument value pointers */
+	SyString *aNames = 0;     /* Name map, lazily allocated when a string key appears */
+	sxu32 nSlot = 0;          /* Number of collected arguments */
 	sxi32 rc;
 	sxu32 n;
 	if( nArg < 2 || !ph7_value_is_array(apArg[1]) ){
@@ -956,19 +978,54 @@ PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_v
 	sResult.nIdx = SXU32_HIGH; /* Mark as constant */
 	/* Initialize the arguments container */
 	SySetInit(&aArg,&pCtx->pVm->sAllocator,sizeof(ph7_value *));
-	/* Turn hashmap entries into callback arguments */
+	/* Turn hashmap entries into callback arguments. A string key becomes a
+	 * named argument (PHP 8: call_user_func_array($cb, ['b' => 9])), an integer
+	 * key stays positional. The name map points straight at each node's key
+	 * blob: the source array stays pinned on the operand stack for the whole
+	 * call, so the blobs outlive argument binding. A pure list array (no string
+	 * keys) never allocates aNames and takes the plain positional path. */
 	pMap = (ph7_hashmap *)apArg[1]->x.pOther;
 	pEntry = pMap->pFirst; /* First inserted entry */
 	for( n = 0 ; n < pMap->nEntry ; n++ ){
 		/* Extract node value */
 		if( (pValue = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pEntry->nValIdx)) != 0 ){
+			if( pEntry->iType == HASHMAP_BLOB_NODE ){
+				if( aNames == 0 ){
+					/* First string key: allocate the whole map, zeroed so every
+					 * not-yet-seen slot defaults to positional. */
+					aNames = (SyString *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,pMap->nEntry * sizeof(SyString));
+					if( aNames == 0 ){
+						SySetRelease(&aArg);
+						PH7_MemObjRelease(&sResult);
+						return PH7_ContextMemoryError(pCtx);
+					}
+					SyZero(aNames,pMap->nEntry * sizeof(SyString));
+				}
+				SyStringInitFromBuf(&aNames[nSlot],SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey));
+			}
 			SySetPut(&aArg,(const void *)&pValue);
+			nSlot++;
 		}
 		/* Point to the next entry */
 		pEntry = pEntry->pPrev; /* Reverse link */
 	}
 	/* Try to invoke the callback */
-	rc = PH7_VmCallUserFunction(pCtx->pVm,apArg[0],(int)SySetUsed(&aArg),(ph7_value **)SySetBasePtr(&aArg),&sResult);
+	if( aNames ){
+		VmCallArgMap sMap;
+		sMap.bHasNamed = 1;
+		sMap.bIsNamespaced = 0;
+		/* Coercion strictness follows the caller's file; the OP_CALL dispatcher
+		 * forwards the call site's map on pArgMap (0 only at non-OP_CALL sites). */
+		sMap.bStrict = (pCtx->pArgMap ? pCtx->pArgMap->bStrict : 0);
+		sMap.nTotal = nSlot;
+		sMap.aNames = aNames;
+		rc = PH7_VmCallUserFunctionWithMap(pCtx->pVm,apArg[0],(int)nSlot,
+			(ph7_value **)SySetBasePtr(&aArg),&sResult,&sMap);
+		SyMemBackendFree(&pCtx->pVm->sAllocator,aNames);
+	}else{
+		rc = PH7_VmCallUserFunction(pCtx->pVm,apArg[0],(int)nSlot,
+			(ph7_value **)SySetBasePtr(&aArg),&sResult);
+	}
 	if( rc == PH7_EXCEPTION ){
 		/* The callback raised: propagate so the OP_CALL dispatcher unwinds. */
 		PH7_MemObjRelease(&sResult);

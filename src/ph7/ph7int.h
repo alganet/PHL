@@ -200,6 +200,7 @@ struct ph7_user_func
  * instance of this structure is the first argument to the routines used
  * implement the foreign functions.
  */
+typedef struct VmCallArgMap VmCallArgMap; /* Forward decl; full definition below. */
 struct ph7_context
 {
 	ph7_user_func *pFunc;   /* Function information. */
@@ -212,11 +213,17 @@ struct ph7_context
 							 */
 	ph7_vm *pVm;            /* Virtual machine that own this context */
 	sxi32 iFlags;           /* Call flags */
+	VmCallArgMap *pArgMap;  /* Call-site named-argument map (or 0). Lets a builtin
+	                         * such as call_user_func forward its callers' name:
+	                         * arguments to the inner callback. */
 };
 /*
  * Each hashmap entry [i.e: array(4,5,6)] is recorded in an instance
  * of the following structure.
  */
+/* Allowed hashmap node key types (iType below) */
+#define HASHMAP_INT_NODE   1  /* Node with an int [i.e: 64-bit integer] key */
+#define HASHMAP_BLOB_NODE  2  /* Node with a string/BLOB key */
 struct ph7_hashmap_node
 {
 	ph7_hashmap *pMap;     /* Hashmap that own this instance */
@@ -804,7 +811,6 @@ struct VmInstr
  * Named-argument metadata attached to PH7_OP_CALL instructions via p3.
  * Also carries the namespace-qualification flag formerly stored as p3=(void*)1.
  */
-typedef struct VmCallArgMap VmCallArgMap;
 struct VmCallArgMap
 {
 	sxu8 bHasNamed;      /* 1 if any argument uses name: syntax */

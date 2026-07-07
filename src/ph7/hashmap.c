@@ -5,9 +5,8 @@
  */
 #include "ph7int.h"
 /* This file implement generic hashmaps known as 'array' in the PHP world */
-/* Allowed node types */
-#define HASHMAP_INT_NODE   1  /* Node with an int [i.e: 64-bit integer] key */
-#define HASHMAP_BLOB_NODE  2  /* Node with a string/BLOB key */
+/* HASHMAP_INT_NODE / HASHMAP_BLOB_NODE (node key types) are declared in ph7int.h
+ * alongside ph7_hashmap_node so name-forwarding builtins can classify keys. */
 /* Node control flags */
 #define HASHMAP_NODE_FOREIGN_OBJ 0x001 /* Node hold a reference to a foreign ph7_value
                                         * [i.e: array(&var)/$a[] =& $var ]
