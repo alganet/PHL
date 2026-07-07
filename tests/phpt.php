@@ -11,7 +11,7 @@
 $phpt_valid_sections = array('test', 'description', 'credits', 'skipif', 'file', 'expect', 'expectf', 'expectregex', 'clean', 'post', 'post_raw', 'get', 'cookie', 'stdin', 'ini', 'args', 'env');
 
 // Unimplemented section types
-$phpt_not_implemented = array('post', 'post_raw', 'get', 'cookie', 'stdin', 'ini', 'args', 'env', 'expectregex');
+$phpt_not_implemented = array('post', 'post_raw', 'get', 'cookie', 'stdin', 'ini', 'args', 'expectregex');
 
 // Default values
 $phpt_target_executable = "";
@@ -334,14 +334,51 @@ function match_expectf_pattern($phpt_pattern, $phpt_output) {
     return true;
 }
 
+// Parse an --ENV-- section into an ordered map of KEY => VALUE. Each non-empty
+// line is "KEY=VALUE" (VALUE may be empty); blank lines are ignored.
+function parse_env_section($phpt_env_text) {
+    $phpt_env = array();
+    foreach (explode("\n", $phpt_env_text) as $phpt_env_line) {
+        $phpt_env_line = trim($phpt_env_line);
+        if ($phpt_env_line === '' || strpos($phpt_env_line, '=') === false) {
+            continue;
+        }
+        list($phpt_env_key, $phpt_env_val) = explode('=', $phpt_env_line, 2);
+        // Trim both sides: `KEY = 32` is a common way to write the section, and a
+        // stray space would otherwise reach the child as a value like " 32".
+        $phpt_env[trim($phpt_env_key)] = trim($phpt_env_val);
+    }
+    return $phpt_env;
+}
+
+// Build the platform-appropriate command prefix that exports $env for a child
+// process (used for --ENV-- support). Values are quoted; keys are assumed sane.
+function build_env_prefix($phpt_env) {
+    // The runner is self-hosted under phl, so avoid escapeshellarg() (not a phl
+    // builtin) and quote POSIX values by hand: wrap in single quotes, closing +
+    // escaping any embedded quote.
+    $phpt_prefix = '';
+    foreach ($phpt_env as $phpt_env_key => $phpt_env_val) {
+        if (PHP_OS === 'WINNT') {
+            // set "KEY=VAL"&& — the quotes bound the value so a trailing space
+            // before && is NOT captured into it (cmd.exe would otherwise keep it).
+            $phpt_prefix .= 'set "' . $phpt_env_key . '=' . $phpt_env_val . '"&& ';
+        } else {
+            $phpt_quoted = "'" . str_replace("'", "'\\''", $phpt_env_val) . "'";
+            $phpt_prefix .= $phpt_env_key . '=' . $phpt_quoted . ' ';
+        }
+    }
+    return $phpt_prefix;
+}
+
 // Run a PHPT section file through an external target executable
 // Returns the combined stdout/stderr output as string, or false if popen() failed
-function run_file_with_target($phpt_target_executable, $phpt_file) {
-    if (PHP_OS === 'WINNT') {
-        $cmd = "set PHPT_TARGET_EXECUTABLE=" . $phpt_target_executable . " && ";
-    } else {
-        $cmd = 'PHPT_TARGET_EXECUTABLE=' . $phpt_target_executable . ' ';
-    }
+function run_file_with_target($phpt_target_executable, $phpt_file, $phpt_env = array()) {
+    // Export PHPT_TARGET_EXECUTABLE through the same per-OS, value-quoting path as
+    // the --ENV-- vars (build_env_prefix) so a target path containing a space is
+    // quoted too. The '+' keeps PHPT_TARGET_EXECUTABLE ahead of any --ENV-- vars.
+    $phpt_full_env = array('PHPT_TARGET_EXECUTABLE' => $phpt_target_executable) + $phpt_env;
+    $cmd = build_env_prefix($phpt_full_env);
     $cmd .= '"' . $phpt_target_executable . '" "' . $phpt_file . '" 2>&1';
     $fp = popen($cmd, 'r');
     if ($fp === false) {
@@ -388,6 +425,16 @@ $phpt_failures = array();
 foreach ($phpt_files as $phpt_file) {
     $phpt_sections = parse_phpt_sections($phpt_file, $phpt_valid_sections);
 
+    // Optional --ENV-- section: extra environment for the target CHILD process.
+    // Only meaningful with --target-executable: it is exported via the command
+    // prefix so a fresh child reads it at startup. In-process (@include) runs
+    // share the runner's own already-started VM, so env cannot be applied there
+    // (phl's putenv can't unset for a clean restore, and startup-read knobs like
+    // PHL_MAX_* would not re-read) — such tests are skipped below rather than
+    // run with the env silently dropped.
+    $phpt_env = isset($phpt_sections['env']) ? parse_env_section($phpt_sections['env']) : array();
+    $phpt_env_unsupported = (!empty($phpt_env) && empty($phpt_target_executable));
+
     // Write sections to disk
     if (isset($phpt_sections['file'])) {
         $phpt_file_path = $phpt_file . '.file';
@@ -407,10 +454,14 @@ foreach ($phpt_files as $phpt_file) {
 
     // SKIPIF check
     $phpt_skip = false;
-    if (isset($phpt_sections['skipif'])) {
+    if ($phpt_env_unsupported) {
+        // --ENV-- is only honored for a fresh child process (see the parse note);
+        // skip rather than run in-process with the env silently dropped.
+        $phpt_skip = true;
+    } elseif (isset($phpt_sections['skipif'])) {
         $phpt_skipif_path = $phpt_file . '.skipif';
         if (!empty($phpt_target_executable)) {
-            $phpt_skip_output = run_file_with_target($phpt_target_executable, $phpt_skipif_path);
+            $phpt_skip_output = run_file_with_target($phpt_target_executable, $phpt_skipif_path, $phpt_env);
             if ($phpt_skip_output === false) {
                 echo "# ERROR: Failed to spawn skipif for $phpt_skipif_path\n";
                 $phpt_skip_output = '';
@@ -464,7 +515,7 @@ foreach ($phpt_files as $phpt_file) {
             // Test execution
             $phpt_file_path = $phpt_file . '.file';
             if (!empty($phpt_target_executable)) {
-                $phpt_output = run_file_with_target($phpt_target_executable, $phpt_file_path);
+                $phpt_output = run_file_with_target($phpt_target_executable, $phpt_file_path, $phpt_env);
                 if ($phpt_output === false) {
                     echo "# ERROR: Failed to spawn test for $phpt_file_path\n";
                     $phpt_output = "";
@@ -528,7 +579,7 @@ foreach ($phpt_files as $phpt_file) {
     if (isset($phpt_sections['clean']) && $phpt_skip === false) {
         $phpt_clean_path = $phpt_file . '.clean';
         if (!empty($phpt_target_executable)) {
-            $phpt_clean_output = run_file_with_target($phpt_target_executable, $phpt_clean_path);
+            $phpt_clean_output = run_file_with_target($phpt_target_executable, $phpt_clean_path, $phpt_env);
             if ($phpt_clean_output === false) {
                 echo "# ERROR: Failed to spawn clean for $phpt_clean_path\n";
             }

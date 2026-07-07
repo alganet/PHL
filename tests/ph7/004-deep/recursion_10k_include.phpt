@@ -9,7 +9,7 @@ PHP recursion inside it must still be heap-bound, and a second 10k descent
 that calls include at the bottom exercises depth accounting across the
 include boundary.
 --SKIPIF--
-<?php if (!getenv('PHL_MAX_RECURSION')) { echo "skip needs PHL_MAX_RECURSION (run: make test-stress)"; } ?>
+<?php if (function_exists('zend_version')) echo 'skip phl-only deep-recursion probe: depth exceeds the php oracle stack / xdebug nesting limit'; ?>
 --FILE--
 <?php
 $inc = __DIR__ . '/recursion_10k_include.inc.tmp.php';

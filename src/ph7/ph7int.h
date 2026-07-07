@@ -1030,10 +1030,19 @@ struct ph7_vm
 	void *pStdout;             /* STDOUT IO stream */
 	void *pStderr;             /* STDERR IO stream */
 	int bErrReport;            /* TRUE to report all runtime Error/Warning/Notice */
-	int nRecursionDepth;       /* Current recursion depth */
-	int nMaxDepth;             /* Maximum allowed recusion depth */
+	int nRecursionDepth;       /* Current PHP call depth (OP_CALL frames only) */
+	int nMaxDepth;             /* Maximum PHP call depth; 0 == unbounded (the host
+	                            * default: PHP frames are heap-bound since the
+	                            * iterative executor, so recursion is limited by
+	                            * memory like the main PHP engine). Embedders opt in
+	                            * via PH7_VM_CONFIG_RECURSION_DEPTH. */
 	int nVmExecDepth;          /* Live native VmByteCodeExec activations (C-stack guard;
 	                            * see the VmByteCodeExec wrapper in vm.c) */
+	int nMaxNativeDepth;       /* Maximum native VmByteCodeExec nesting (mini-programs,
+	                            * C->PHP callbacks, ctx start/resume, eval/include) —
+	                            * what actually protects the C stack now that PHP
+	                            * recursion is iterative. Platform-sized default,
+	                            * PH7_VM_CONFIG_NATIVE_DEPTH overrides. */
 	void *pIdleCallFrames;     /* Freelist of VmCallFrame nodes (BYTECODE stage 2):
 	                            * fixed-size, strictly LIFO per invocation — reusing
 	                            * them skips a pool alloc/free round-trip per PHP

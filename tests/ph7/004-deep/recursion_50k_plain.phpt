@@ -4,11 +4,13 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 50k-deep linear recursion completes on the heap (iterative executor; BYTECODE.md stage 3)
 --DESCRIPTION--
-Runs under PHL_MAX_RECURSION (set by `make test-stress` for this directory).
-Before the trampoline this depth overflowed the native stack at ~7.7k frames;
-now PHP call frames are heap records and depth is a policy knob.
+Runs at the stock uncapped host default (BYTECODE.md stage 5; the deep tier no
+longer needs PHL_MAX_RECURSION). Before the trampoline this depth overflowed the
+native stack at ~7.7k frames; now PHP call frames are heap records and depth is
+memory-bound. phl-only: this depth trips the php oracle's stack / xdebug
+max_nesting_level (256), so it cannot be asserted cross-engine.
 --SKIPIF--
-<?php if (!getenv('PHL_MAX_RECURSION')) { echo "skip needs PHL_MAX_RECURSION (run: make test-stress)"; } ?>
+<?php if (function_exists('zend_version')) echo 'skip phl-only deep-recursion probe: depth exceeds the php oracle stack / xdebug nesting limit'; ?>
 --FILE--
 <?php
 function down(int $n, int $acc): int {
