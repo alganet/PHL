@@ -12060,12 +12060,11 @@ case PH7_OP_CALL: {
 				if( iSrc >= 0 ){
 					/* Argument was provided — install with type checking */
 					ph7_value *pVal = &pArg[iSrc];
-					/* NULL-to-default redirect (existing behavior) */
-					if( (pVal->iFlags & MEMOBJ_NULL) && SySetUsed(&aFormalArg[n].aByteCode) > 0
-						&& !(aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) ){
-						rc = VmLocalExec(&(*pVm),&aFormalArg[n].aByteCode,pVal,FALSE);
-						if( rc == PH7_ABORT ) goto Abort;
-					}
+					/* An explicit null is NOT redirected to the default: PHP applies a
+					 * default only for an OMITTED argument. An explicit null falls through
+					 * to the type check below (TypeError for a non-nullable typed param,
+					 * kept as null for a typeless one). An implicitly-nullable `Type $x =
+					 * null` param carries VM_FUNC_ARG_NULLABLE, so the check accepts null. */
 					/* Type checking: union types */
 					if( aFormalArg[n].iFlags & VM_FUNC_ARG_UNION ){
 						sxi32 rcU = VmCoerceToUnion(pVm, pVal, &aFormalArg[n].aUnionAlts,
@@ -12398,14 +12397,11 @@ case PH7_OP_CALL: {
 				break; /* All remaining args consumed */
 			}
 			if( n < SySetUsed(&pVmFunc->aArgs) ){
-				if( (pArg->iFlags & MEMOBJ_NULL) && SySetUsed(&aFormalArg[n].aByteCode) > 0
-					&& !(aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) ){
-					/* NULL values are redirected to default arguments (but not for nullable types) */
-					rc = VmLocalExec(&(*pVm),&aFormalArg[n].aByteCode,pArg,FALSE);
-					if( rc == PH7_ABORT ){
-						goto Abort;
-					}
-				}
+				/* An explicit null is NOT redirected to the default (PHP applies a
+				 * default only for an omitted arg); it falls through to the type check
+				 * below — TypeError for a non-nullable typed param, kept as null for a
+				 * typeless one. A `Type $x = null` param is flagged VM_FUNC_ARG_NULLABLE
+				 * at compile time so its check accepts null. */
 				/* Union type: dispatch to the shared coercion helper. */
 				if( aFormalArg[n].iFlags & VM_FUNC_ARG_UNION ){
 					sxi32 rcU = VmCoerceToUnion(pVm, pArg, &aFormalArg[n].aUnionAlts,
