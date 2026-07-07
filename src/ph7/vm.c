@@ -4087,29 +4087,60 @@ static sxi32 VmCheckReadonlyMutate(ph7_vm *pVm,sxu32 nIdx)
  */
 static int VmStringIsStrictNumeric(ph7_value *pValue)
 {
-	const char *z, *zEnd, *zTail;
+	const char *z, *zEnd;
 	sxu32 n;
-	sxu8 bReal;
-	sxi32 rc;
+	int bDigit = 0;
 	if( (pValue->iFlags & MEMOBJ_STRING) == 0 ){
 		return 0;
 	}
 	z = (const char *)SyBlobData(&pValue->sBlob);
 	n = SyBlobLength(&pValue->sBlob);
-	zEnd = z + n;
 	if( n == 0 ){
 		return 0;
 	}
-	zTail = 0;
-	rc = SyStrIsNumeric(z,n,&bReal,&zTail);
-	if( rc != SXRET_OK || zTail == 0 ){
+	zEnd = z + n;
+	/* PHP's numeric-string grammar (used for int/float coercion), implemented
+	 * directly rather than via SyStrIsNumeric — which requires a leading digit
+	 * (so it rejects ".5"/"-.5", valid in PHP) and accepts a dangling exponent
+	 * ("1e", invalid in PHP). Grammar: [ws] [sign] ( D+ [.D*] | .D+ ) [ (e|E)
+	 * [sign] D+ ] [ws], entire string consumed. */
+	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisSpace(z[0]) ){
+		z++;
+	}
+	if( z < zEnd && (z[0] == '+' || z[0] == '-') ){
+		z++;
+	}
+	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){
+		z++; bDigit = 1;
+	}
+	if( z < zEnd && z[0] == '.' ){
+		z++;
+		while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){
+			z++; bDigit = 1;
+		}
+	}
+	/* At least one mantissa digit required (rejects "", ".", "+", "e5"). */
+	if( !bDigit ){
 		return 0;
 	}
-	/* Trailing whitespace is allowed by PHP, trailing anything else is not. */
-	while( zTail < zEnd && SyisSpace(zTail[0]) ){
-		zTail++;
+	/* Optional exponent — must carry at least one digit (rejects "1e", "1e+"). */
+	if( z < zEnd && (z[0] == 'e' || z[0] == 'E') ){
+		z++;
+		if( z < zEnd && (z[0] == '+' || z[0] == '-') ){
+			z++;
+		}
+		if( z >= zEnd || (unsigned char)z[0] >= 0xc0 || !SyisDigit(z[0]) ){
+			return 0;
+		}
+		while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){
+			z++;
+		}
 	}
-	return zTail == zEnd ? 1 : 0;
+	/* Trailing whitespace allowed; anything else means not a numeric string. */
+	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisSpace(z[0]) ){
+		z++;
+	}
+	return z == zEnd ? 1 : 0;
 }
 
 /*
@@ -4404,6 +4435,21 @@ static sxi32 VmEnforceScalarType(ph7_value *pVal, sxu32 nType, int bStrict)
 			PH7_MemObjToReal(pVal);
 			return SXRET_OK;
 		}
+		return SXERR_INVALID;
+	}
+	/* Weak mode, but PHP still rejects some coercions with a TypeError rather
+	 * than silently fabricating a value (mirroring the return-type path above):
+	 *   - null to a non-nullable scalar (a null reaching here is always
+	 *     non-nullable — the caller's guards skip nullable+null, and a
+	 *     `Type $x = null` default is flagged implicitly nullable at compile time).
+	 *   - a non-numeric string to int/float ("abc"/"12abc"). Only a strictly
+	 *     numeric string (optional surrounding whitespace) coerces. */
+	if( pVal->iFlags & MEMOBJ_NULL ){
+		return SXERR_INVALID;
+	}
+	if( (nType == MEMOBJ_INT || nType == MEMOBJ_REAL)
+		&& (pVal->iFlags & MEMOBJ_STRING)
+		&& !VmStringIsStrictNumeric(pVal) ){
 		return SXERR_INVALID;
 	}
 	{
@@ -12008,12 +12054,14 @@ case PH7_OP_CALL: {
 							 * warn + NULL-coerce (which silently ran the body with a corrupted arg). */
 							pClass = (rcPseudo == 1) ? 0 : VmResolveTypeClass(&(*pVm),pName,pSelfHint);
 							if( pClass ){
-								/* An explicit null to a non-nullable class param stays a lenient
-								 * pass-through (PHP throws; that needs the param nullable/default
-								 * model — out of scope here). */
-								int bBad = (pVal->iFlags & MEMOBJ_OBJ) == 0
-									? ((pVal->iFlags & MEMOBJ_NULL) == 0)
-									: !PH7_VmInstanceOf(((ph7_class_instance *)pVal->x.pOther)->pClass,pClass);
+								/* Reaching here means the param is non-nullable (the guard
+								 * above skips nullable+null; a `Type $x = null` default is
+								 * marked implicitly nullable at compile time). So ANY
+								 * non-object — including an explicit null — is a TypeError,
+								 * matching PHP (&& below short-circuits so instanceof only
+								 * derefs a real object). */
+								int bBad = !((pVal->iFlags & MEMOBJ_OBJ)
+									&& PH7_VmInstanceOf(((ph7_class_instance *)pVal->x.pOther)->pClass,pClass));
 								if( bBad ){
 									char zTypeBuf[128],zGivenBuf[128];
 									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
@@ -12098,8 +12146,11 @@ case PH7_OP_CALL: {
 							sArg.nIdx = pObj->nIdx;
 							sArg.pUserData = 0;
 							SySetPut(&pFrame->sArg,(const void *)&sArg);
+							/* A null default on an implicitly-nullable param must stay null
+							 * (see the positional-path note above). */
 							if( aFormalArg[n].nType > 0 && aFormalArg[n].nType != MEMOBJ_OBJ
-								&& (pObj->iFlags & aFormalArg[n].nType) == 0 ){
+								&& (pObj->iFlags & aFormalArg[n].nType) == 0
+								&& !((aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) && (pObj->iFlags & MEMOBJ_NULL)) ){
 								ProcMemObjCast xCast = PH7_MemObjCastMethod(aFormalArg[n].nType);
 								if( xCast ) xCast(pObj);
 							}
@@ -12345,11 +12396,13 @@ case PH7_OP_CALL: {
 						 * the legacy warn + NULL-coerce. (Symmetric with the positional path.) */
 						pClass = (rcPseudo == 1) ? 0 : VmResolveTypeClass(&(*pVm),pName,pSelfHint);
 						if( pClass ){
-							/* An explicit null to a non-nullable class param stays a lenient
-							 * pass-through (PHP throws; needs the param nullable/default model). */
-							int bBad = (pArg->iFlags & MEMOBJ_OBJ) == 0
-								? ((pArg->iFlags & MEMOBJ_NULL) == 0)
-								: !PH7_VmInstanceOf(((ph7_class_instance *)pArg->x.pOther)->pClass,pClass);
+							/* Reaching here means the param is non-nullable (the guard above
+							 * skips nullable+null; a `Type $x = null` default is marked
+							 * implicitly nullable at compile time). So ANY non-object —
+							 * including an explicit null — is a TypeError, matching PHP
+							 * (&& below short-circuits so instanceof only derefs an object). */
+							int bBad = !((pArg->iFlags & MEMOBJ_OBJ)
+								&& PH7_VmInstanceOf(((ph7_class_instance *)pArg->x.pOther)->pClass,pClass));
 							if( bBad ){
 								char zTypeBuf[128],zGivenBuf[128];
 								rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
@@ -12492,9 +12545,13 @@ case PH7_OP_CALL: {
 					sArg.nIdx = pObj->nIdx;
 					sArg.pUserData = 0;
 					SySetPut(&pFrame->sArg,(const void *)&sArg);
-					/* Make sure the default argument is of the correct type */
+					/* Make sure the default argument is of the correct type.
+					 * A null default on an implicitly-nullable param (`int $x = null`)
+					 * must stay null — casting it to 0/""/false would diverge from PHP
+					 * and contradict the explicit-null path, which now keeps it null. */
 					if( aFormalArg[n].nType > 0 && aFormalArg[n].nType != MEMOBJ_OBJ
-						&& ((pObj->iFlags & aFormalArg[n].nType) == 0) ){
+						&& ((pObj->iFlags & aFormalArg[n].nType) == 0)
+						&& !((aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) && (pObj->iFlags & MEMOBJ_NULL)) ){
 						ProcMemObjCast xCast = PH7_MemObjCastMethod(aFormalArg[n].nType);
 						/* Cast to the desired type */
 						xCast(pObj);

@@ -5997,6 +5997,19 @@ static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyTo
 				if( rc != SXRET_OK ){
 					return rc;
 				}
+				/* PHP rule: a typed parameter whose default is the literal `null`
+				 * (`C $c = null`, `int $x = null`, `A|B $x = null`) is implicitly
+				 * nullable — an explicit null is accepted even though the type isn't
+				 * written `?T`. Detect the single-token `null` default here so the VM
+				 * arg-type check lets null through. */
+				if( (sArg.nType > 0 || (sArg.iFlags & VM_FUNC_ARG_UNION))
+					&& (sArg.iFlags & VM_FUNC_ARG_NULLABLE) == 0
+					&& &pIn[1] == pDefend
+					&& pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)
+					&& pIn->sData.nByte == sizeof("null")-1
+					&& SyStrnicmp(SyStringData(&pIn->sData),"null",sizeof("null")-1) == 0 ){
+					sArg.iFlags |= VM_FUNC_ARG_NULLABLE;
+				}
 				/* Point beyond the default value */
 				pIn = pDefend;
 			}
