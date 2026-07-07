@@ -2,19 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: stripos missing argument returns FALSE
---SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+stripos() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-if (stripos() === false) {
-    echo "true";
-} else {
-    echo "false";
+try {
+    stripos();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-true
---CLEAN--
-<?php
-
+stripos() expects at least 2 arguments, 0 given

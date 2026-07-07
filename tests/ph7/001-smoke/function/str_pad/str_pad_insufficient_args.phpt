@@ -2,16 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-str_pad with insufficient args
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+str_pad("hello") throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-$result = str_pad("hello");
-var_dump($result);
+try {
+    str_pad("hello");
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
+}
 ?>
 --EXPECT--
-string(0) ""
---CLEAN--
-<?php
-unset($result);
+str_pad() expects at least 2 arguments, 1 given

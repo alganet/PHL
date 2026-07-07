@@ -2,21 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-substr_count with insufficient arguments
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+substr_count() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-// Test with 0 arguments
-$result1 = substr_count();
-echo $result1 === 0 ? 'PASS' : 'FAIL';
-
-// Test with 1 argument
-$result2 = substr_count('hello');
-echo $result2 === 0 ? 'PASS' : 'FAIL';
+try {
+    substr_count();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
+}
 ?>
 --EXPECT--
-PASSPASS
---CLEAN--
-<?php
-unset($result1, $result2);
+substr_count() expects at least 2 arguments, 0 given

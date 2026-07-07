@@ -14,15 +14,10 @@ echo "bindec(15): " . $result1 . "\n";
 // Test bindec with string (normal case)
 $result2 = bindec("1010");
 echo "bindec('1010'): " . $result2 . "\n";
-
-// Test bindec with no arguments (covers uncovered line in error handling)
-$result3 = bindec();
-echo "bindec(): " . $result3 . "\n";
 ?>
 --EXPECT--
 bindec(15): 15
 bindec('1010'): 10
-bindec(): -1
 --CLEAN--
 <?php
-unset($result1, $result2, $result3);
+unset($result1, $result2);

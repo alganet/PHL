@@ -2,21 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: fmod with insufficient arguments returns 0
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+fmod(5.0) throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-// Test fmod with insufficient arguments
-$result = fmod(5.0);
-if ($result === 0.0) {
-    echo "PASS";
-} else {
-    echo "FAIL";
+try {
+    fmod(5.0);
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-PASS
---CLEAN--
-<?php
-unset($result);
+fmod() expects exactly 2 arguments, 1 given

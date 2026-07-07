@@ -2,15 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-strpos with insufficient args
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+strpos("hello") throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-var_dump(strpos("hello"));
+try {
+    strpos("hello");
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
+}
 ?>
 --EXPECT--
-bool(FALSE)
---CLEAN--
-<?php
-
+strpos() expects at least 2 arguments, 1 given

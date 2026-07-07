@@ -2,20 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-str_replace with insufficient arguments (2 args)
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+str_replace("search", "replace") throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-$result = str_replace("search", "replace");
-if (is_null($result)) {
-    echo "PASS";
-} else {
-    echo "FAIL: expected null, got " . var_export($result, true);
+try {
+    str_replace("search", "replace");
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-PASS
---CLEAN--
-<?php
-unset($result);
+str_replace() expects at least 3 arguments, 2 given
