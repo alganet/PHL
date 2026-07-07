@@ -31,6 +31,6 @@ try {
 }
 ?>
 --EXPECT--
-FiberError: Cannot suspend across an internal (C) call boundary
+FiberError: Cannot suspend across an internal call boundary
 --CLEAN--
 <?php

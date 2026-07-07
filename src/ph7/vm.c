@@ -5830,7 +5830,8 @@ static sxi32 VmByteCodeExecBody(
 		sState = pSeg->sState;
 		aInstr = sState.aInstr;
 		pStack = sState.pStack;
-		pc = nPc;               /* pCtx->pc — the innermost's post-suspend pc */
+		/* pc is already nPc (== pCtx->pc, the innermost's post-suspend pc) from the
+		 * init above; only the stack/top move to the innermost activation. */
 		pTos = &pStack[nTos];   /* nTos == pCtx->nTos — innermost, resume value pushed */
 		SyMemBackendFree(&pVm->sAllocator,pSeg); /* holder only; its contents are now live */
 	}
@@ -12413,12 +12414,15 @@ Suspend:
 		 * FiberError before it could arrive here. */
 		VmParkedSegment *pSeg = (VmParkedSegment *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmParkedSegment));
 		if( pSeg == 0 ){
-			/* OOM on the park allocation: fall back to the lossy unwind rather
-			 * than losing the suspension (non-silent — the fiber still suspends,
-			 * just at the body level as before stage 4). */
+			/* OOM on the park allocation. VmSuspendCtx already wrote the INNERMOST
+			 * pc/nTos into the ctx, so the lossy body-level fallback would resume
+			 * the callee's pc against the body stack — silent corruption, exactly
+			 * what stage 4 removed. Take the non-catchable OOM fatal instead (the
+			 * §3.1 convention shared with the stage-2 record-alloc OOM site). */
+			PH7_VmMemoryError(&(*pVm));
+			rc = PH7_ABORT;
 			goto Unwind;
 		}
-		sState.pc = pc;
 		sState.pTos = pTos; /* innermost live top (args already popped at the CALL) */
 		pSeg->sState = sState;
 		pSeg->pCallTop = pCallTop;
@@ -12905,16 +12909,14 @@ static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValu
 						(sxu32)((sxi32)pRec->sCaller.nExceptionBase + iDelta);
 				}
 			}
-			/* Re-attach the WHOLE segment: body frame onto the live chain, then
-			 * make the suspend-time top frame current so the dispatch loop's
-			 * adopt (VmByteCodeExec entry) resumes inside the innermost callee. */
-			pCtx->pFrame->pParent = pVm->pFrame;
-			pVm->pFrame = pSeg->pTopFrame;
-		}else{
-			/* Re-attach the fiber's body frame to the VM frame chain */
-			pCtx->pFrame->pParent = pVm->pFrame;
-			pVm->pFrame = pCtx->pFrame;
 		}
+		/* Re-attach the coroutine to the live VM frame chain: the body frame's
+		 * parent becomes the resumer's current frame. For a deep segment the
+		 * suspend-time top frame (the innermost callee / open-try wrapper) then
+		 * becomes current so the adopt at VmByteCodeExec entry resumes inside the
+		 * callee; body-level resumes make the body frame current. */
+		pCtx->pFrame->pParent = pVm->pFrame;
+		pVm->pFrame = pSeg ? pSeg->pTopFrame : pCtx->pFrame;
 	}
 	/* Save and set the active context */
 	pOldCtx = pVm->pActiveCtx;
@@ -12931,15 +12933,12 @@ static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValu
 	/* Restore the previous context */
 	pVm->pActiveCtx = pOldCtx;
 	if( rc == PH7_SUSPEND ){
-		/* Fiber suspended again. Free the try wrappers the yield was nested in, then
-		 * detach the fiber's body frame. */
-		VmFreeSuspendedExceptionFrames(pVm, pCtx);
-		pVm->pFrame = pCtx->pFrame->pParent;
-		pCtx->pFrame->pParent = 0;
-		VmParkCtxExceptionHandlers(pVm, pCtx);
-		if( pResult ){
-			PH7_MemObjStore(&pCtx->sSuspendValue, pResult);
-		}
+		/* Suspended again — same detach as VmStartCtx. Crucially this handles a
+		 * deep RE-suspend (a resumed segment that parks a fresh segment): the
+		 * shared helper deactivates the new segment's recursion accounting, parks
+		 * its aSelf, and (for a segment) skips VmFreeSuspendedExceptionFrames so
+		 * it can't free the still-live parked try wrappers. */
+		VmSuspendCtxDetach(pVm, pCtx, pResult);
 		return SXRET_OK;
 	}
 	/* Detach frame */
@@ -13003,7 +13002,7 @@ static void VmFreeDetachedFrame(ph7_vm *pVm, VmFrame *pFrame)
  * The body frame/stack are NOT here — they are freed by the caller
  * (VmReleaseExecCtx) as pCtx->pFrame / pCtx->pStack.
  */
-static void VmFreeParkedSegment(ph7_vm *pVm, VmParkedSegment *pSeg)
+static void VmFreeParkedSegment(ph7_vm *pVm, ph7_exec_ctx *pCtx, VmParkedSegment *pSeg)
 {
 	/* Live top-of-stack of the activation running on the current record's callee
 	 * stack: the innermost (sState) for the topmost record, then each caller. */
@@ -13027,6 +13026,11 @@ static void VmFreeParkedSegment(ph7_vm *pVm, VmParkedSegment *pSeg)
 		SyMemBackendPoolFree(&pVm->sAllocator, pRec);
 		pRec = pNext;
 	}
+	/* pTosAbove now points at the BODY activation's live top (the bottom record's
+	 * sCaller, which runs on pCtx->pStack). pCtx->nTos still holds the INNERMOST
+	 * index (VmSuspendCtx saved it), which would over-index the body stack in
+	 * VmReleaseExecCtx's release loop — correct it to the body's real top. */
+	pCtx->nTos = (sxi32)(pTosAbove - pCtx->pStack);
 	SyMemBackendFree(&pVm->sAllocator, pSeg);
 }
 /*
@@ -13075,7 +13079,7 @@ static void VmReleaseExecCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx)
 	 * stacks are still alive and only this holder references them. Must run
 	 * before the body frame/stack below (they are the segment's floor). */
 	if( pCtx->pParkedSegment ){
-		VmFreeParkedSegment(pVm, (VmParkedSegment *)pCtx->pParkedSegment);
+		VmFreeParkedSegment(pVm, pCtx, (VmParkedSegment *)pCtx->pParkedSegment);
 		pCtx->pParkedSegment = 0;
 	}
 	/* Release the frame if it's detached (not in the VM chain) */
@@ -13561,16 +13565,22 @@ static int vm_builtin_Fiber_suspend(ph7_context *pCtx, int nArg, ph7_value **apA
 		return PH7_VmThrowException(pCtx, "FiberError",
 			"Cannot suspend outside of a fiber");
 	}
-	/* Stage 4 scoped divergence: PHL runs C->PHP callbacks (usort comparators,
-	 * array_map, preg_replace_callback, …) on a fresh native VmByteCodeExec
-	 * activation. A suspend from there would have to unwind PH7_SUSPEND across
-	 * that native C frame — which php does via full stack switching but PHL
-	 * cannot without real coroutine stacks (BYTECODE.md §2.4). Raising a
-	 * catchable FiberError here is the loud, documented failure instead of the
-	 * old silent frame-discard that corrupted the callback's caller. */
+	/* Stage 4 scoped divergence: the trampoline only makes PHP->PHP CALLs
+	 * iterative. Every OTHER re-entry runs on a fresh native VmByteCodeExec
+	 * activation (nVmExecDepth bumped) that PH7_SUSPEND cannot unwind across
+	 * without real coroutine stacks (BYTECODE.md §2.4): a C->PHP callback
+	 * (usort/array_map/preg_replace_callback comparator), and — because fibers
+	 * use the LEGACY (non-inline) try/catch machinery — a suspend inside a
+	 * fiber's catch/finally body, a match/switch arm, or eval()/include()'d
+	 * code, all of which run via VmLocalExec. php does all of these via full
+	 * native-stack switching; PHL raises a catchable FiberError instead of the
+	 * old silent corruption. A suspend in a fiber's try BODY (not catch/finally)
+	 * runs in the main dispatch loop and parks normally. Recorded in PLAN.md
+	 * §3.9; making the catch/finally case work needs fibers on the inline
+	 * try machinery (the generator ROOT C path), a follow-up. */
 	if( pVm->nVmExecDepth != pVm->pActiveCtx->nBodyExecDepth ){
 		return PH7_VmThrowException(pCtx, "FiberError",
-			"Cannot suspend across an internal (C) call boundary");
+			"Cannot suspend across an internal call boundary");
 	}
 	if( nArg > 0 ){
 		PH7_MemObjStore(apArg[0], &pVm->pActiveCtx->sSuspendValue);
