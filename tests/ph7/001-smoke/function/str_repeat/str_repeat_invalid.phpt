@@ -2,19 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: str_repeat missing argument returns NULL
---SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+str_repeat() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-if (str_repeat() === null) {
-    echo "true";
-} else {
-    echo "false";
+try {
+    str_repeat();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-true
---CLEAN--
-<?php
-
+str_repeat() expects exactly 2 arguments, 0 given

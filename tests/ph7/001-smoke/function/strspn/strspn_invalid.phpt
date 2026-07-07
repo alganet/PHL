@@ -2,19 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: strspn missing argument returns integer 0
---SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+strspn() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-if (strspn() === 0) {
-    echo "true";
-} else {
-    echo "false";
+try {
+    strspn();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-true
---CLEAN--
-<?php
-
+strspn() expects at least 2 arguments, 0 given

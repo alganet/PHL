@@ -2,16 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-pow with no arguments
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+pow() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-$result = pow();
-echo $result;
+try {
+    pow();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
+}
 ?>
 --EXPECT--
-0
---CLEAN--
-<?php
-unset($result);
+pow() expects exactly 2 arguments, 0 given

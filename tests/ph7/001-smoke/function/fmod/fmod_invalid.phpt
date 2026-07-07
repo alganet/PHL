@@ -2,19 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: fmod missing arguments returns float 0.0
---SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+fmod() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-if (is_float(fmod()) && fmod() == 0.0) {
-    echo "true";
-} else {
-    echo "false";
+try {
+    fmod();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-true
---CLEAN--
-<?php
-
+fmod() expects exactly 2 arguments, 0 given

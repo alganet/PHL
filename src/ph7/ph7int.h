@@ -194,6 +194,11 @@ struct ph7_user_func
 	ProchHostFunction xFunc;  /* Implementation of the foreign function */
 	void *pUserData;          /* User private data [Refer to the official documentation for more information]*/
 	SySet aAux;               /* Stack of auxiliary data [Refer to the official documentation for more information]*/
+	sxi16 nMinArg;            /* Minimum required arguments for the PHP-8 ArgumentCountError
+	                           * check at the OP_CALL choke point; 0 = no central enforcement
+	                           * (the builtin self-validates, or genuinely accepts zero args). */
+	sxu8 bAtLeast;            /* 0 -> "expects exactly N", 1 -> "expects at least N" (the
+	                           * wording depends on whether the builtin has optional params). */
 };
 /*
  * The 'context' argument for an installable function. A pointer to an

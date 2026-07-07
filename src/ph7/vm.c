@@ -315,6 +315,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallForeignFunction(
 		pFunc->pUserData = pUserData;
 		pFunc->xFunc = xFunc;
 		SySetReset(&pFunc->aAux);
+		/* A replacement implementation carries its own (unknown) arity, so drop
+		 * any minimum-arity metadata stamped on the previous holder of this name
+		 * — otherwise an embedder overriding a listed builtin (e.g. a 1-arg
+		 * custom "substr") would inherit the old ArgumentCountError threshold. */
+		pFunc->nMinArg  = 0;
+		pFunc->bAtLeast = 0;
 		return SXRET_OK;
 	}
 	/* Create a new user function */
@@ -331,6 +337,68 @@ PH7_PRIVATE sxi32 PH7_VmInstallForeignFunction(
 	}
 	/* User function successfully installed */
 	return SXRET_OK;
+}
+/*
+ * PHP-8 builtin minimum-arity table (band A #5, stage 1).
+ *
+ * Native builtins carry no formal-parameter signature, so historically each
+ * one self-validated its argument count (or, worse, silently degraded to a
+ * bogus false/-1/"" return on too few arguments — a PH7-ism that diverges from
+ * PHP 8, which throws a catchable ArgumentCountError). This table is the single
+ * source of truth for the required minimum: at VM init VmSetBuiltinArity()
+ * stamps nMinArg/bAtLeast onto the matching ph7_user_func, and the OP_CALL
+ * choke point throws ArgumentCountError before the C routine ever runs.
+ *
+ * bAtLeast mirrors PHP's ZPP wording: "expects exactly N" when the builtin has
+ * no optional/variadic parameters (min == max), "expects at least N" otherwise.
+ * Every entry's min count and wording is byte-verified against php 8.5.7.
+ *
+ * Only functions that currently mis-behave (silent wrong return) are listed;
+ * builtins that already self-throw the correct message are intentionally left
+ * out so there is no double-check / message drift. New entries are cheap to add
+ * as further families are swept.
+ */
+static const struct VmBuiltinArity {
+	const char *zName;   /* Builtin name (short, unqualified) */
+	sxi16 nMin;          /* Minimum required arguments */
+	sxu8 bAtLeast;       /* 0 -> "exactly", 1 -> "at least" */
+} aBuiltinArity[] = {
+	/* String family */
+	{ "substr",       2, 1 }, { "substr_count",  2, 1 }, { "str_repeat",     2, 0 },
+	{ "str_pad",      2, 1 }, { "strpos",        2, 1 }, { "stripos",        2, 1 },
+	{ "strrpos",      2, 1 }, { "strripos",      2, 1 }, { "strstr",         2, 1 },
+	{ "stristr",      2, 1 }, { "strrchr",       2, 1 }, { "str_replace",    3, 1 },
+	{ "str_ireplace", 3, 1 }, { "strncmp",       3, 0 }, { "strncasecmp",    3, 0 },
+	{ "substr_compare",3,1 }, { "strpbrk",       2, 0 }, { "strspn",         2, 1 },
+	{ "strcspn",      2, 1 }, { "hexdec",        1, 0 }, { "octdec",         1, 0 },
+	{ "bindec",       1, 0 }, { "chunk_split",   1, 1 },
+	/* Math family (atan2/intdiv already self-throw the same ArgumentCountError,
+	 * so they stay off the table per the disjointness rule above). */
+	{ "pow",          2, 0 }, { "fmod",          2, 0 }, { "hypot",          2, 0 },
+	{ "log",          1, 1 },
+	/* Array family (str_split already self-throws — kept off the table). */
+	{ "in_array",     2, 1 }, { "range",         2, 1 },
+	{ "implode",      1, 1 }, { "join",          1, 1 },
+};
+/*
+ * Stamp the minimum-arity metadata from aBuiltinArity[] onto the already
+ * registered host functions. Called once at VM init after every builtin family
+ * has been installed into hHostFunction. A name absent from the hash (e.g. a
+ * build without a given extension) is simply skipped.
+ */
+static void VmSetBuiltinArity(ph7_vm *pVm)
+{
+	sxu32 n;
+	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltinArity) ; ++n ){
+		const struct VmBuiltinArity *p = &aBuiltinArity[n];
+		SyHashEntry *pEntry = SyHashGet(&pVm->hHostFunction,
+			(const void *)p->zName,SyStrlen(p->zName));
+		if( pEntry ){
+			ph7_user_func *pFunc = (ph7_user_func *)pEntry->pUserData;
+			pFunc->nMinArg  = p->nMin;
+			pFunc->bAtLeast = p->bAtLeast;
+		}
+	}
 }
 /*
  * Initialize a VM function.
@@ -2592,6 +2660,9 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	PH7_RegisterPcreFunctions(&(*pVm));
 	PH7_RegisterPcreConstants(&(*pVm));
 #endif
+	/* Stamp PHP-8 minimum-arity metadata onto the registered builtins so the
+	 * OP_CALL choke point can raise ArgumentCountError on too few arguments. */
+	VmSetBuiltinArity(&(*pVm));
 	/* Initialize and install static and constants class attributes.
 	 * NOTE: the per-exec object graph created from nSuperBaseline onward (the
 	 * global frame via VmEnterFrame above, the superglobals via CreateSuper, and
@@ -12738,8 +12809,26 @@ SkipFuncBody:
 		 * when its own call site is purely positional; only the two forwarding
 		 * builtins read pArgMap, so this is inert for every other host function. */
 		sCtx.pArgMap = (VmCallArgMap *)pInstr->p3;
-		/* Call the foreign function */
-		rc = pFunc->xFunc(&sCtx,(int)SySetUsed(&aArg),(ph7_value **)SySetBasePtr(&aArg));
+		{
+		int nGiven = (int)SySetUsed(&aArg);
+		/* PHP-8 arity enforcement (band A #5): a builtin declaring a minimum
+		 * argument count (aBuiltinArity[]) throws a catchable ArgumentCountError
+		 * before the C routine runs when called with too few arguments — instead
+		 * of the legacy PH7-ism of silently degrading to a bogus false/-1/""
+		 * return. The message wording matches php's ZPP output byte-for-byte. */
+		if( pFunc->nMinArg > 0 && nGiven < pFunc->nMinArg ){
+			rc = PH7_VmThrowException(&sCtx,"ArgumentCountError",
+				"%z() expects %s %d argument%s, %d given",
+				&pFunc->sName,
+				pFunc->bAtLeast ? "at least" : "exactly",
+				(int)pFunc->nMinArg,
+				pFunc->nMinArg == 1 ? "" : "s",
+				nGiven);
+		}else{
+			/* Call the foreign function */
+			rc = pFunc->xFunc(&sCtx,nGiven,(ph7_value **)SySetBasePtr(&aArg));
+		}
+		}
 		/* Release the call context */
 		VmReleaseCallContext(&sCtx);
 		if( rc == PH7_ABORT ){

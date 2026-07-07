@@ -2,19 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: octdec missing argument returns integer -1
---SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+octdec() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-if (octdec() === -1) {
-    echo "true";
-} else {
-    echo "false";
+try {
+    octdec();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-true
---CLEAN--
-<?php
-
+octdec() expects exactly 1 argument, 0 given
