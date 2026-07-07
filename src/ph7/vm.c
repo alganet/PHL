@@ -6131,7 +6131,7 @@ static sxi32 VmByteCodeExecBody(
 	sState.pc = nPc;
 	/* Finally-drain base. For a resumed generator/fiber TOP-LEVEL body, its own
 	 * exception handlers were just re-published above the caller depth
-	 * (VmRestoreCtxExceptionHandlers), so the live SySetUsed over-counts; take the
+	 * (VmRestoreCtxState), so the live SySetUsed over-counts; take the
 	 * caller-depth base recorded on the ctx instead.
 	 *
 	 * The discriminator is the OPERAND STACK, not the frame: the body exec runs on
@@ -13004,98 +13004,62 @@ static ph7_exec_ctx * VmNewExecCtx(ph7_vm *pVm, ph7_vm_func *pFunc)
 	return pCtx;
 }
 /*
- * On suspend, move this exec-context's own exception handlers (the entries on
- * pVm->aException above pCtx->nExceptionBase) into pCtx->aSavedException and
- * truncate the global stack back to the caller's depth. Without this, a
- * generator/fiber that suspends inside a try leaves handlers referencing its
- * now-detached frame on the global stack, corrupting the caller's try/catch.
+ * A suspended coroutine must not leave its own slices of the VM's shared stacks
+ * sitting above the caller's depth. Three stacks are affected, identically:
+ *   - pVm->aException: its exception handlers — else a generator/fiber suspended
+ *     inside a try leaves handlers referencing its now-detached frame on the
+ *     global stack, corrupting the caller's try/catch.
+ *   - pVm->aFinallyAction (ROOT C): its pending finally actions — else a yield
+ *     inside a finally (reached by return/break/rethrow) leaves a record where an
+ *     out-of-order-resumed sibling generator's OP_END_FINALLY would mis-pop it.
+ *   - pVm->aSelf (stage 4): its self::/static:: entries pushed by still-open
+ *     nested method calls — else they sit on the resumer's aSelf and corrupt its
+ *     self:: resolution.
+ * Each is the same operation: on suspend move the slice above a captured base
+ * into a per-ctx park buffer; on resume re-publish it at the (refreshed) caller
+ * depth. VmParkStackSlice / VmRestoreStackSlice factor it for any element type
+ * (size taken from the SySet); VmParkCtxState / VmRestoreCtxState drive all three.
+ *
+ * Stage 4: the whole suspended segment stays alive, so a parked handler's owner
+ * frame is never freed underneath it — the parked pointer stays valid and is kept
+ * (the old stage-2b lossy-path invalidation is gone with the discard). A
+ * body-level suspend only ever has body-owned handlers here, and its finally/self
+ * slices are empty (all nested calls already returned) — so those are no-ops.
  */
-static void VmParkCtxExceptionHandlers(ph7_vm *pVm, ph7_exec_ctx *pCtx)
+static void VmParkStackSlice(SySet *pFrom, SySet *pSaved, sxu32 nBase)
 {
-	sxu32 nUsed = SySetUsed(&pVm->aException);
-	if( nUsed > pCtx->nExceptionBase ){
-		ph7_exception **apBase = (ph7_exception **)SySetBasePtr(&pVm->aException);
+	sxu32 nUsed = SySetUsed(pFrom);
+	if( nUsed > nBase ){
+		const char *aBase = (const char *)SySetBasePtr(pFrom);
 		sxu32 i;
-		for( i = pCtx->nExceptionBase; i < nUsed; i++ ){
-			/* Stage 4: the whole suspended segment stays alive, so a handler's
-			 * owner frame is never freed underneath it — the parked owner
-			 * pointer stays valid and is kept (the old lossy-path invalidation,
-			 * added in stage 2b when nested call frames were discarded, is gone
-			 * with the discard). A body-level suspend only ever has body-owned
-			 * handlers here anyway. */
-			SySetPut(&pCtx->aSavedException, (const void *)&apBase[i]);
+		for( i = nBase; i < nUsed; i++ ){
+			SySetPut(pSaved, (const void *)(aBase + i * pFrom->eSize));
 		}
-		SySetTruncate(&pVm->aException, pCtx->nExceptionBase);
-	}
-	/* ROOT C: park this body's own pending finally actions the same way, so a generator
-	 * that yields inside a finally (reached by return/break/rethrow, with a live record on
-	 * the shared aFinallyAction) does not leave that record where an out-of-order-resumed
-	 * sibling generator's OP_END_FINALLY would mis-pop it. */
-	nUsed = SySetUsed(&pVm->aFinallyAction);
-	if( nUsed > pCtx->nFinallyBase ){
-		VmFinallyAction *aBase = (VmFinallyAction *)SySetBasePtr(&pVm->aFinallyAction);
-		sxu32 i;
-		for( i = pCtx->nFinallyBase; i < nUsed; i++ ){
-			SySetPut(&pCtx->aSavedFinally, (const void *)&aBase[i]);
-		}
-		SySetTruncate(&pVm->aFinallyAction, pCtx->nFinallyBase);
+		SySetTruncate(pFrom, nBase);
 	}
 }
-/*
- * On resume, re-publish the parked handlers on top of pVm->aException (at the
- * current caller depth, already recorded in pCtx->nExceptionBase) and clear the
- * park. Inverse of VmParkCtxExceptionHandlers.
- */
-static void VmRestoreCtxExceptionHandlers(ph7_vm *pVm, ph7_exec_ctx *pCtx)
+static void VmRestoreStackSlice(SySet *pTo, SySet *pSaved)
 {
-	sxu32 i, n = SySetUsed(&pCtx->aSavedException);
+	sxu32 i, n = SySetUsed(pSaved);
 	if( n > 0 ){
-		ph7_exception **apSaved = (ph7_exception **)SySetBasePtr(&pCtx->aSavedException);
+		const char *aSaved = (const char *)SySetBasePtr(pSaved);
 		for( i = 0; i < n; i++ ){
-			SySetPut(&pVm->aException, (const void *)&apSaved[i]);
+			SySetPut(pTo, (const void *)(aSaved + i * pSaved->eSize));
 		}
-		SySetReset(&pCtx->aSavedException);
-	}
-	/* ROOT C: re-publish this body's parked finally actions (inverse of the park above). */
-	n = SySetUsed(&pCtx->aSavedFinally);
-	if( n > 0 ){
-		VmFinallyAction *aSaved = (VmFinallyAction *)SySetBasePtr(&pCtx->aSavedFinally);
-		for( i = 0; i < n; i++ ){
-			SySetPut(&pVm->aFinallyAction, (const void *)&aSaved[i]);
-		}
-		SySetReset(&pCtx->aSavedFinally);
+		SySetReset(pSaved);
 	}
 }
-/*
- * Stage 4: park / restore this coroutine's own aSelf entries (self::/static::
- * class context pushed by still-open nested method calls) around suspension, so
- * they don't sit on top of the resumer's aSelf stack and corrupt its self::
- * resolution. Mirrors VmParkCtxExceptionHandlers exactly (base = the aSelf depth
- * captured at start/resume). A body-level suspend has nothing above the base
- * (all nested calls already returned), so both are no-ops there.
- */
-static void VmParkCtxSelf(ph7_vm *pVm, ph7_exec_ctx *pCtx)
+static void VmParkCtxState(ph7_vm *pVm, ph7_exec_ctx *pCtx)
 {
-	sxu32 nUsed = SySetUsed(&pVm->aSelf);
-	if( nUsed > pCtx->nSelfBase ){
-		ph7_class **apBase = (ph7_class **)SySetBasePtr(&pVm->aSelf);
-		sxu32 i;
-		for( i = pCtx->nSelfBase; i < nUsed; i++ ){
-			SySetPut(&pCtx->aSavedSelf, (const void *)&apBase[i]);
-		}
-		SySetTruncate(&pVm->aSelf, pCtx->nSelfBase);
-	}
+	VmParkStackSlice(&pVm->aException, &pCtx->aSavedException, pCtx->nExceptionBase);
+	VmParkStackSlice(&pVm->aFinallyAction, &pCtx->aSavedFinally, pCtx->nFinallyBase);
+	VmParkStackSlice(&pVm->aSelf, &pCtx->aSavedSelf, pCtx->nSelfBase);
 }
-static void VmRestoreCtxSelf(ph7_vm *pVm, ph7_exec_ctx *pCtx)
+static void VmRestoreCtxState(ph7_vm *pVm, ph7_exec_ctx *pCtx)
 {
-	sxu32 i, n = SySetUsed(&pCtx->aSavedSelf);
-	if( n > 0 ){
-		ph7_class **apSaved = (ph7_class **)SySetBasePtr(&pCtx->aSavedSelf);
-		for( i = 0; i < n; i++ ){
-			SySetPut(&pVm->aSelf, (const void *)&apSaved[i]);
-		}
-		SySetReset(&pCtx->aSavedSelf);
-	}
+	VmRestoreStackSlice(&pVm->aException, &pCtx->aSavedException);
+	VmRestoreStackSlice(&pVm->aFinallyAction, &pCtx->aSavedFinally);
+	VmRestoreStackSlice(&pVm->aSelf, &pCtx->aSavedSelf);
 }
 /*
  * On suspend, free the exception (try) frames the yield was nested in. They were
@@ -13104,7 +13068,7 @@ static void VmRestoreCtxSelf(ph7_vm *pVm, ph7_exec_ctx *pCtx)
  * the body frame, so these transparent wrappers would otherwise be orphaned and
  * leak on every yield-that-sits-inside-a-try (unbounded for a generator looping
  * with a yield in a try). Freeing them loses nothing the resume needs: this body's
- * exception HANDLERS are parked separately (VmParkCtxExceptionHandlers) and each
+ * exception HANDLERS are parked separately (VmParkCtxState) and each
  * try's landing pad lives on its ph7_exception (iLandingPc), while OP_POP_EXCEPTION
  * on resume skips the (now absent) frame pop via its VM_FRAME_EXCEPTION guard and
  * OP_LOAD_EXCEPTION re-creates a fresh wrapper when the try is next entered. Must
@@ -13141,8 +13105,7 @@ static void VmSuspendCtxDetach(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResu
 	}
 	pVm->pFrame = pCtx->pFrame->pParent;
 	pCtx->pFrame->pParent = 0;
-	VmParkCtxExceptionHandlers(pVm, pCtx);
-	VmParkCtxSelf(pVm, pCtx);
+	VmParkCtxState(pVm, pCtx);
 	if( pResult ){
 		PH7_MemObjStore(&pCtx->sSuspendValue, pResult);
 	}
@@ -13259,8 +13222,7 @@ static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValu
 		pCtx->nExceptionBase = SySetUsed(&pVm->aException);
 		pCtx->nFinallyBase = SySetUsed(&pVm->aFinallyAction);
 		pCtx->nSelfBase = SySetUsed(&pVm->aSelf);
-		VmRestoreCtxExceptionHandlers(pVm, pCtx);
-		VmRestoreCtxSelf(pVm, pCtx);
+		VmRestoreCtxState(pVm, pCtx);
 		if( pSeg ){
 			/* Reactivate the parked records' recursion accounting (mirror of the
 			 * deactivate at suspend); aSelf was just restored above. */
