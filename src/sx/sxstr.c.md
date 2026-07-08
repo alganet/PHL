@@ -17,21 +17,21 @@ Coverage: 92/98 lines (93.88%)
 |        - |    7 | `#include "sxmacros.h"` |
 |        - |    8 | `#include "sxstr.h"` |
 |        - |    9 |  |
-|  6712831 |   10 | `PH7_PRIVATE sxu32 SyStrlen(const char *zSrc)` |
+|  6712845 |   10 | `PH7_PRIVATE sxu32 SyStrlen(const char *zSrc)` |
 |        5 |   11 | `{` |
-|  6712836 |   12 | `	register const char *zIn = zSrc;` |
+|  6712850 |   12 | `	register const char *zIn = zSrc;` |
 |        - |   13 | `#if defined(UNTRUST)` |
 |        - |   14 | `	if( zIn == 0 ){` |
 |        - |   15 | `		return 0;` |
 |        - |   16 | `	}` |
 |        - |   17 | `#endif` |
-| 11732134 |   18 | `	for(;;){` |
-| 23459994 |   19 | `		if( !zIn[0] ){ break; } zIn++;` |
-| 21925046 |   20 | `		if( !zIn[0] ){ break; } zIn++;` |
-| 20207831 |   21 | `		if( !zIn[0] ){ break; } zIn++;` |
-| 18067287 |   22 | `		if( !zIn[0] ){ break; } zIn++;` |
+| 11732152 |   18 | `	for(;;){` |
+| 23460063 |   19 | `		if( !zIn[0] ){ break; } zIn++;` |
+| 21925116 |   20 | `		if( !zIn[0] ){ break; } zIn++;` |
+| 20207887 |   21 | `		if( !zIn[0] ){ break; } zIn++;` |
+| 18067338 |   22 | `		if( !zIn[0] ){ break; } zIn++;` |
 |        5 |   23 | `	}` |
-|  6712836 |   24 | `	return (sxu32)(zIn - zSrc);` |
+|  6712850 |   24 | `	return (sxu32)(zIn - zSrc);` |
 |        5 |   25 | `}` |
 |      418 |   26 | `PH7_PRIVATE sxi32 SyByteFind(const char *zStr,sxu32 nLen,sxi32 c,sxu32 *pPos)` |
 |        1 |   27 | `{` |
@@ -134,11 +134,11 @@ Coverage: 92/98 lines (93.88%)
 |      ! 0 |  124 | `		nLen = SyStrlen(zSrc);` |
 |      ! 0 |  125 | `	}` |
 |  3438905 |  126 | `	zEnd = &zBuf[nDestLen - 1]; /* reserve a room for the null terminator */` |
-|  6051080 |  127 | `	for(;;){` |
-| 12101925 |  128 | `		if( zBuf >= zEnd \|\| nLen == 0 ){ break;} zBuf[0] = zIn[0]; zIn++; zBuf++; nLen--;` |
+|  6051078 |  127 | `	for(;;){` |
+| 12101923 |  128 | `		if( zBuf >= zEnd \|\| nLen == 0 ){ break;} zBuf[0] = zIn[0]; zIn++; zBuf++; nLen--;` |
 | 11206050 |  129 | `		if( zBuf >= zEnd \|\| nLen == 0 ){ break;} zBuf[0] = zIn[0]; zIn++; zBuf++; nLen--;` |
 | 10354156 |  130 | `		if( zBuf >= zEnd \|\| nLen == 0 ){ break;} zBuf[0] = zIn[0]; zIn++; zBuf++; nLen--;` |
-|  9503352 |  131 | `		if( zBuf >= zEnd \|\| nLen == 0 ){ break;} zBuf[0] = zIn[0]; zIn++; zBuf++; nLen--;` |
+|  9503350 |  131 | `		if( zBuf >= zEnd \|\| nLen == 0 ){ break;} zBuf[0] = zIn[0]; zIn++; zBuf++; nLen--;` |
 |        5 |  132 | `	}` |
 |  3438905 |  133 | `	zBuf[0] = 0;` |
 |  3438905 |  134 | `	return (sxu32)(zBuf-(unsigned char *)zDest);` |
