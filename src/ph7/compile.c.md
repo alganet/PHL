@@ -526,7 +526,7 @@ Coverage: 6047/7493 lines (80.70%)
 |     139 |   516 | `	}` |
 |   39915 |   517 | `	for( i = 0; i < n; ++i ){` |
 |   28837 |   518 | `		if( z[i] != '_' ) continue;` |
-|     814 |   519 | `		if( i > 0 && i + 1 < n` |
+|     546 |   519 | `		if( i > 0 && i + 1 < n` |
 |     543 |   520 | `			&& GenStateIsBaseDigit((unsigned char)z[i-1], base)` |
 |     543 |   521 | `			&& GenStateIsBaseDigit((unsigned char)z[i+1], base) ){` |
 |     533 |   522 | `			continue; /* well-placed separator */` |
@@ -1185,7 +1185,7 @@ Coverage: 6047/7493 lines (80.70%)
 |       - |  1175 | `				}` |
 |     541 |  1176 | `				break;` |
 |       9 |  1177 | `			case 'u':` |
-|      25 |  1178 | `				if( &zIn[1] < zEnd && zIn[1] == '{'` |
+|      18 |  1178 | `				if( &zIn[1] < zEnd && zIn[1] == '{'` |
 |      22 |  1179 | `				 && !(&zIn[2] < zEnd && zIn[2] == '$') ){` |
 |       - |  1180 | `					/* \u{codepoint}: UTF-8 encoding of the given codepoint (php 7+).` |
 |       - |  1181 | `					 * php encodes surrogates verbatim, so the only invalid value` |
@@ -1454,7 +1454,7 @@ Coverage: 6047/7493 lines (80.70%)
 |       4 |  1444 | `{` |
 |      40 |  1445 | `	sxi32 rc = SXRET_OK;` |
 |      40 |  1446 | `	if( pRoot->pOp ){` |
-|      19 |  1447 | `		if( pRoot->pOp->iOp != EXPR_OP_SUBSCRIPT /* $a[] */ &&` |
+|      14 |  1447 | `		if( pRoot->pOp->iOp != EXPR_OP_SUBSCRIPT /* $a[] */ &&` |
 |      12 |  1448 | `			pRoot->pOp->iOp != EXPR_OP_FUNC_CALL /* function() [Symisc extension: i.e: array(&foo())] */` |
 |      16 |  1449 | `			&& pRoot->pOp->iOp != EXPR_OP_ARROW /* -> */ && pRoot->pOp->iOp != EXPR_OP_DC /* :: */){` |
 |       - |  1450 | `			/* Unexpected expression */` |
@@ -3086,8 +3086,8 @@ Coverage: 6047/7493 lines (80.70%)
 |       - |  3076 | `			}` |
 |       8 |  3077 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);` |
 |       8 |  3078 | `			return SXRET_OK;` |
-|  620502 |  3079 | `	}else if( (pStr->nByte == sizeof("__FUNCTION__") - 1 &&` |
-|   16165 |  3080 | `		SyMemcmp(pStr->zString,"__FUNCTION__",sizeof("__FUNCTION__")-1) == 0) \|\|` |
+|  610076 |  3079 | `	}else if( (pStr->nByte == sizeof("__FUNCTION__") - 1 &&` |
+|   26591 |  3080 | `		SyMemcmp(pStr->zString,"__FUNCTION__",sizeof("__FUNCTION__")-1) == 0) \|\|` |
 |  612415 |  3081 | `		(pStr->nByte == sizeof("__METHOD__") - 1 &&` |
 |   20852 |  3082 | `		SyMemcmp(pStr->zString,"__METHOD__",sizeof("__METHOD__")-1) == 0) ){` |
 |      11 |  3083 | `			GenBlock *pBlock = pGen->pCurrent;` |
@@ -4917,7 +4917,7 @@ Coverage: 6047/7493 lines (80.70%)
 |       - |  4907 | ``	/* `yield from <iterable>` — generator delegation (PHP 7.0). 'from' is a`` |
 |       - |  4908 | `	 * contextual identifier, not a keyword; a variable named $from lexes as` |
 |       - |  4909 | ``	 * PH7_TK_DOLLAR, never PH7_TK_ID, so `yield $from` cannot match here. */`` |
-|     287 |  4910 | `	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_ID)` |
+|     266 |  4910 | `	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_ID)` |
 |     154 |  4911 | `		&& pGen->pIn->sData.nByte == 4` |
 |      48 |  4912 | `		&& SyStrnicmp(pGen->pIn->sData.zString, "from", 4) == 0 ){` |
 |      46 |  4913 | `		pGen->pIn++; /* Skip 'from' */` |
@@ -5919,7 +5919,7 @@ Coverage: 6047/7493 lines (80.70%)
 |      33 |  5909 | `			}` |
 |       - |  5910 | `		}` |
 |       - |  5911 | `		/* Parse optional type hint (single, nullable shorthand, or union) */` |
-|  221979 |  5912 | `		if( pIn < pEnd && (pIn->nType & PH7_TK_DOLLAR) == 0` |
+|  177876 |  5912 | `		if( pIn < pEnd && (pIn->nType & PH7_TK_DOLLAR) == 0` |
 |  134963 |  5913 | `			&& (pIn->nType & PH7_TK_AMPER) == 0` |
 |   90133 |  5914 | `			&& (pIn->nType & PH7_TK_ELLIPSIS) == 0 ){` |
 |   84367 |  5915 | `			sxu32 nLineLocal = pIn->nLine;` |
@@ -7498,7 +7498,7 @@ Coverage: 6047/7493 lines (80.70%)
 |   70727 |  7488 | `		if( iDepth == 0 && (p->nType & (PH7_TK_SEMI\|PH7_TK_COMMA)) ){` |
 |   23503 |  7489 | `			break; /* end of this initializer */` |
 |       - |  7490 | `		}` |
-|   47229 |  7491 | `		if( (p->nType & PH7_TK_KEYWORD)` |
+|   47224 |  7491 | `		if( (p->nType & PH7_TK_KEYWORD)` |
 |   23622 |  7492 | `			&& ( SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FUNCTION` |
 |      10 |  7493 | `				\|\| SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FN ) ){` |
 |       - |  7494 | `			/* Skip the whole closure/arrow-fn (signature defaults + body): any` |
@@ -7694,7 +7694,7 @@ Coverage: 6047/7493 lines (80.70%)
 |       - |  7684 | ``	 * (`const int X = 1.0`). Runtime flag-testing can't distinguish it from the valid`` |
 |       - |  7685 | ``	 * `const int X = 4/2` (both whole-reals in PHL's number model), so reject the`` |
 |       - |  7686 | `	 * literal shape here, at definition time, matching PHP's eager fatal. */` |
-|     110 |  7687 | `	if( (iTypeFlags & PH7_CLASS_ATTR_TYPED) && !(iTypeFlags & PH7_CLASS_ATTR_UNION)` |
+|      98 |  7687 | `	if( (iTypeFlags & PH7_CLASS_ATTR_TYPED) && !(iTypeFlags & PH7_CLASS_ATTR_UNION)` |
 |      39 |  7688 | `		&& nType == MEMOBJ_INT && GenStateConstInitIsRealLiteral(pGen) ){` |
 |       8 |  7689 | `		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,` |
 |       - |  7690 | `			"Cannot use float as value for class constant %z::%z of type %z",` |
@@ -7841,7 +7841,7 @@ Coverage: 6047/7493 lines (80.70%)
 |       - |  7831 | `			 * may still appear at the initial dispatch site). */` |
 |  199709 |  7832 | `			if( bFirst && (p->nType & PH7_TK_KEYWORD) ){` |
 |  199663 |  7833 | `				sxu32 k = (sxu32)(SX_PTR_TO_INT(p->pUserData));` |
-|  199736 |  7834 | `				if( k == PH7_TKWRD_FUNCTION \|\| k == PH7_TKWRD_VAR \|\| k == PH7_TKWRD_CONST` |
+|  199658 |  7834 | `				if( k == PH7_TKWRD_FUNCTION \|\| k == PH7_TKWRD_VAR \|\| k == PH7_TKWRD_CONST` |
 |   11680 |  7835 | `				 \|\| k == PH7_TKWRD_STATIC \|\| k == PH7_TKWRD_FINAL \|\| k == PH7_TKWRD_ABSTRACT ){` |
 |  199507 |  7836 | `					return 0;` |
 |       - |  7837 | `				}` |
@@ -8320,7 +8320,7 @@ Coverage: 6047/7493 lines (80.70%)
 |       - |  8310 | `	{` |
 |  287523 |  8311 | `		int bIsCtor = 0;` |
 |  287523 |  8312 | `		int bAbstractCtor = 0;` |
-|  419740 |  8313 | `		if( (pName->nByte == sizeof("__construct") - 1` |
+|  287518 |  8313 | `		if( (pName->nByte == sizeof("__construct") - 1` |
 |  170613 |  8314 | `				&& SyMemcmp(pName->zString,"__construct",sizeof("__construct") - 1) == 0)` |
 |  275986 |  8315 | `		 \|\| SyStringCmp(pName,&pClass->sName,SyMemcmp) == 0 ){` |
 |   23079 |  8316 | `			if( iFlags & PH7_CLASS_ATTR_ABSTRACT ){` |
@@ -9259,7 +9259,7 @@ Coverage: 6047/7493 lines (80.70%)
 |   19358 |  9249 | `						 SyMemcmp(pFqn->zString,"Exception",sizeof("Exception")-1) == 0) \|\|` |
 |    9728 |  9250 | `						(pFqn->nByte == sizeof("Error")-1 &&` |
 |    3832 |  9251 | `						 SyMemcmp(pFqn->zString,"Error",sizeof("Error")-1) == 0);` |
-|   19274 |  9252 | `					if( GenStateInterfaceIsThrowable(pInterface) &&` |
+|   15453 |  9252 | `					if( GenStateInterfaceIsThrowable(pInterface) &&` |
 |   11472 |  9253 | `						!GenStateClassIsExceptionOrError(pBase) &&` |
 |    3821 |  9254 | `						!bIsExceptionOrError ){` |
 |      12 |  9255 | `						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,` |
@@ -9892,7 +9892,7 @@ Coverage: 6047/7493 lines (80.70%)
 |    5817 |  9882 | `		}` |
 |       - |  9883 | `		/* Auto-implement Stringable when class declares __toString (PHP 8.0+).` |
 |       - |  9884 | `		 * Skip interfaces/traits and classes that already implement it explicitly. */` |
-|  167991 |  9885 | `		if( rc == SXRET_OK` |
+|  111994 |  9885 | `		if( rc == SXRET_OK` |
 |  111994 |  9886 | `		 && (pClass->iFlags & (PH7_CLASS_INTERFACE\|PH7_CLASS_TRAIT)) == 0` |
 |  111999 |  9887 | `		 && SyHashGet(&pClass->hMethod,"__toString",sizeof("__toString")-1) != 0 ){` |
 |   91727 |  9888 | `			ph7_class *pStringable = PH7_VmExtractClass(pGen->pVm,` |
@@ -10102,7 +10102,7 @@ Coverage: 6047/7493 lines (80.70%)
 |     ! 0 | 10092 | `			return SXERR_ABORT;` |
 |       - | 10093 | `		}` |
 |       1 | 10094 | `	}` |
-|    5817 | 10095 | `	if( (iFlags & (PH7_CLASS_FINAL\|PH7_CLASS_ABSTRACT))` |
+|    3878 | 10095 | `	if( (iFlags & (PH7_CLASS_FINAL\|PH7_CLASS_ABSTRACT))` |
 |    1944 | 10096 | `		== (PH7_CLASS_FINAL\|PH7_CLASS_ABSTRACT) ){` |
 |       3 | 10097 | `		rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,` |
 |       - | 10098 | `			"Cannot use the final modifier on an abstract class");` |
@@ -10604,7 +10604,7 @@ Coverage: 6047/7493 lines (80.70%)
 |       - | 10594 | `		}` |
 |      44 | 10595 | `		break;` |
 |     ! 0 | 10596 | `	}` |
-|      60 | 10597 | `	if( pGen->pIn >= pGen->pEnd \|\| (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 \|\|` |
+|      40 | 10597 | `	if( pGen->pIn >= pGen->pEnd \|\| (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 \|\|` |
 |      44 | 10598 | `		&pGen->pIn[1] >= pGen->pEnd \|\| (pGen->pIn[1].nType & (PH7_TK_ID\|PH7_TK_KEYWORD)) == 0 ){` |
 |     ! 0 | 10599 | `		pToken = pGen->pIn; if( pToken >= pGen->pEnd ){ pToken--; }` |
 |     ! 0 | 10600 | `		PH7_GenCompileError(pGen,E_PARSE,pToken->nLine,"syntax error, unexpected %s \"%z\"",` |
@@ -10812,7 +10812,7 @@ Coverage: 6047/7493 lines (80.70%)
 |     ! 0 | 10802 | `			goto Mem;` |
 |       - | 10803 | `		}` |
 |       - | 10804 | `		/* Check for '\|' (multi-catch separator) */` |
-|     674 | 10805 | `		if( pGen->pIn < pGen->pEnd &&` |
+|     660 | 10805 | `		if( pGen->pIn < pGen->pEnd &&` |
 |     660 | 10806 | `			(pGen->pIn->nType & PH7_TK_OP) &&` |
 |      33 | 10807 | `			pGen->pIn->sData.nByte == 1 &&` |
 |      28 | 10808 | `			pGen->pIn->sData.zString[0] == '\|' ){` |
@@ -10821,7 +10821,7 @@ Coverage: 6047/7493 lines (80.70%)
 |       - | 10811 | `		}` |
 |     637 | 10812 | `		break;` |
 |     ! 0 | 10813 | `	}` |
-|     948 | 10814 | `	if( pGen->pIn >= pGen->pEnd \|\| (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 /*$*/ \|\|` |
+|     632 | 10814 | `	if( pGen->pIn >= pGen->pEnd \|\| (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 /*$*/ \|\|` |
 |     637 | 10815 | `		&pGen->pIn[1] >= pGen->pEnd \|\| (pGen->pIn[1].nType & (PH7_TK_ID\|PH7_TK_KEYWORD)) == 0 ){` |
 |       - | 10816 | `			/* Unexpected token,break immediately */` |
 |     ! 0 | 10817 | `			pToken = pGen->pIn;` |
@@ -11753,8 +11753,8 @@ Coverage: 6047/7493 lines (80.70%)
 |       - | 11743 | `			 * original). isset/empty are never stripped: PHP stays silent on a missing intermediate` |
 |       - | 11744 | ``			 * in `isset($o->a->b)`, which the suppression modes mirror. */`` |
 | 1422681 | 11745 | `			sxi32 iLeftFlags = iFlags;` |
-| 1605962 | 11746 | `			if( pNode->pLeft && pNode->pLeft->pOp` |
-|  903137 | 11747 | `				&& (pNode->pLeft->pOp->iOp == EXPR_OP_ARROW` |
+| 1422676 | 11746 | `			if( pNode->pLeft && pNode->pLeft->pOp` |
+| 1086423 | 11747 | `				&& (pNode->pLeft->pOp->iOp == EXPR_OP_ARROW` |
 |  375110 | 11748 | `					\|\| pNode->pLeft->pOp->iOp == EXPR_OP_NULLSAFE_ARROW` |
 |  366602 | 11749 | `					\|\| pNode->pLeft->pOp->iOp == EXPR_OP_DC) ){` |
 |   17235 | 11750 | `				iLeftFlags &= ~EXPR_FLAG_LOAD_IDX_UNSET;` |
@@ -11766,8 +11766,8 @@ Coverage: 6047/7493 lines (80.70%)
 |       - | 11756 | `			 * a; $o->arr[]=v reads $o), so strip MEMBER_WRITE there — PHP auto-vivifies arrays, never` |
 |       - | 11757 | `` 			 * objects. (The flag is ADDED to the lvalue at the precedence-18 site below / the `??=` `` |
 |       - | 11758 | ``			 * site, since `=` is right-associative and its lvalue is pNode->pRight.) */`` |
-| 2038986 | 11759 | `			if( pNode->pOp` |
-| 1422681 | 11760 | `				&& (pNode->pOp->iOp == EXPR_OP_ARROW` |
+| 1422676 | 11759 | `			if( pNode->pOp` |
+| 2038991 | 11760 | `				&& (pNode->pOp->iOp == EXPR_OP_ARROW` |
 | 1327699 | 11761 | `					\|\| pNode->pOp->iOp == EXPR_OP_NULLSAFE_ARROW` |
 | 1232671 | 11762 | `					\|\| pNode->pOp->iOp == EXPR_OP_DC) ){` |
 |  190431 | 11763 | `				iLeftFlags &= ~EXPR_FLAG_MEMBER_WRITE;` |
@@ -11884,8 +11884,8 @@ Coverage: 6047/7493 lines (80.70%)
 |     413 | 11874 | `			if( pLitCheck && (pLitCheck->iFlags & MEMOBJ_STRING) ){` |
 |     317 | 11875 | `				const char *z = (const char *)SyBlobData(&pLitCheck->sBlob);` |
 |     317 | 11876 | `				sxu32 n = (sxu32)SyBlobLength(&pLitCheck->sBlob);` |
-|     329 | 11877 | `				if( (n == 4 && SyMemcmp(z,"self",4) == 0) \|\|` |
-|     283 | 11878 | `					(n == 6 && SyMemcmp(z,"static",6) == 0) \|\|` |
+|     312 | 11877 | `				if( (n == 4 && SyMemcmp(z,"self",4) == 0) \|\|` |
+|     300 | 11878 | `					(n == 6 && SyMemcmp(z,"static",6) == 0) \|\|` |
 |     144 | 11879 | `					(n == 6 && SyMemcmp(z,"parent",6) == 0) ){` |
 |     111 | 11880 | `					isSpecial = 1;` |
 |      53 | 11881 | `				}` |
@@ -12046,8 +12046,8 @@ Coverage: 6047/7493 lines (80.70%)
 |     203 | 12036 | `				if( pLitChk && (pLitChk->iFlags & MEMOBJ_STRING) ){` |
 |     199 | 12037 | `					const char *z = (const char *)SyBlobData(&pLitChk->sBlob);` |
 |     199 | 12038 | `					sxu32 n = (sxu32)SyBlobLength(&pLitChk->sBlob);` |
-|     199 | 12039 | `					if( (n == 4 && SyMemcmp(z,"self",4) == 0) \|\|` |
-|     194 | 12040 | `						(n == 6 && SyMemcmp(z,"static",6) == 0) \|\|` |
+|     194 | 12039 | `					if( (n == 4 && SyMemcmp(z,"self",4) == 0) \|\|` |
+|     199 | 12040 | `						(n == 6 && SyMemcmp(z,"static",6) == 0) \|\|` |
 |      98 | 12041 | `						(n == 6 && SyMemcmp(z,"parent",6) == 0) ){` |
 |      12 | 12042 | `						isSpecialIs = 1;` |
 |       5 | 12043 | `					}` |
