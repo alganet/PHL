@@ -325,9 +325,9 @@ Coverage: 290/407 lines (71.25%)
 |   58335 |  315 | `          cset = infop->charset;` |
 |   58335 |  316 | `          base = infop->base;` |
 |   29165 |  317 | `          do{                                           /* Convert to ascii */` |
-|  176694 |  318 | `            *(--bufpt) = cset[ulongvalue%base];` |
-|  176694 |  319 | `            ulongvalue = ulongvalue/base;` |
-|  176694 |  320 | `          }while( ulongvalue>0 );` |
+|  176683 |  318 | `            *(--bufpt) = cset[ulongvalue%base];` |
+|  176683 |  319 | `            ulongvalue = ulongvalue/base;` |
+|  176683 |  320 | `          }while( ulongvalue>0 );` |
 |       - |  321 | `        }` |
 |   58335 |  322 | `        length = (int)(&buf[SXFMT_BUFSIZ-1]-bufpt);` |
 |   58689 |  323 | `        for(idx=precision-length; idx>0; idx--){` |
