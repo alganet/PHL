@@ -225,15 +225,15 @@ Coverage: 289/304 lines (95.07%)
 |         - |  215 |  |
 |  19024375 |  216 | `	nHash = pHash->xHash(pKey,nKeyLen);` |
 |  19024375 |  217 | `	pEntry = pHash->apBucket[nHash & (pHash->nBucketSize - 1)];` |
-|  17287090 |  218 | `	for(;;){` |
-|  34347604 |  219 | `		if( pEntry == 0 ){` |
+|  17215167 |  218 | `	for(;;){` |
+|  34514627 |  219 | `		if( pEntry == 0 ){` |
 |  10147993 |  220 | `			break;` |
 |         - |  221 | `		}` |
-|  28637557 |  222 | `		if( pEntry->nHash == nHash && pEntry->nKeyLen == nKeyLen &&` |
+|  28804580 |  222 | `		if( pEntry->nHash == nHash && pEntry->nKeyLen == nKeyLen &&` |
 |   8876392 |  223 | `			pHash->xCmp(pEntry->pKey,pKey,nKeyLen) == 0 ){` |
 |   8876387 |  224 | `				return pEntry;` |
 |         - |  225 | `		}` |
-|  15323234 |  226 | `		pEntry = pEntry->pNextCollide;` |
+|  15490257 |  226 | `		pEntry = pEntry->pNextCollide;` |
 |         5 |  227 | `	}` |
 |         - |  228 | `	/* Entry not found */` |
 |  10147993 |  229 | `	return 0;` |
@@ -381,8 +381,8 @@ Coverage: 289/304 lines (95.07%)
 |   4118885 |  371 | `		iBucket = pEntry->nHash & (nNewSize - 1);` |
 |   4118885 |  372 | `		pEntry->pNextCollide = apNew[iBucket];` |
 |   4118885 |  373 | `		if( apNew[iBucket] != 0 ){` |
-|   1976841 |  374 | `			apNew[iBucket]->pPrevCollide = pEntry;` |
-|    988412 |  375 | `		}` |
+|   1977104 |  374 | `			apNew[iBucket]->pPrevCollide = pEntry;` |
+|    988539 |  375 | `		}` |
 |   4118885 |  376 | `		apNew[iBucket] = pEntry;` |
 |         - |  377 | `		/* Point to the next entry */` |
 |   4118885 |  378 | `		pEntry = pEntry->pNext;` |
@@ -399,8 +399,8 @@ Coverage: 289/304 lines (95.07%)
 |         - |  389 | `	/* Insert the entry in its corresponding bucket */` |
 |   5563255 |  390 | `	pEntry->pNextCollide = pHash->apBucket[iBucket];` |
 |   5563255 |  391 | `	if( pHash->apBucket[iBucket] != 0 ){` |
-|   3112476 |  392 | `		pHash->apBucket[iBucket]->pPrevCollide = pEntry;` |
-|   1556262 |  393 | `	}` |
+|   3112472 |  392 | `		pHash->apBucket[iBucket]->pPrevCollide = pEntry;` |
+|   1556201 |  393 | `	}` |
 |   5563255 |  394 | `	pHash->apBucket[iBucket] = pEntry;` |
 |         - |  395 | `	/* Link to the entry list. The default is head-insert (LIFO); bTail appends` |
 |         - |  396 | `	 * to the tail (O(1) via pLast) so iteration follows insertion order — for` |

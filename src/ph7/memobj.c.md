@@ -1259,11 +1259,11 @@ Coverage: 724/811 lines (89.27%)
 |      ! 0 | 1249 | `		}else{` |
 |        - | 1250 | `			/* Integer comparison */` |
 |   374726 | 1251 | `			if( pObj1->x.iVal > pObj2->x.iVal ){` |
-|     5264 | 1252 | `				return 1;` |
-|   369467 | 1253 | `			}else if( pObj1->x.iVal < pObj2->x.iVal ){` |
-|   364065 | 1254 | `				return -1;` |
+|     5266 | 1252 | `				return 1;` |
+|   369465 | 1253 | `			}else if( pObj1->x.iVal < pObj2->x.iVal ){` |
+|   364072 | 1254 | `				return -1;` |
 |        - | 1255 | `			}` |
-|     5407 | 1256 | `			return 0;` |
+|     5398 | 1256 | `			return 0;` |
 |        - | 1257 | `		}` |
 |        - | 1258 | `	}` |
 |        - | 1259 | `	/* NOT REACHED */` |

@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 3357/3846 lines (87.29%)
+Coverage: 3356/3846 lines (87.26%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -847,9 +847,9 @@ Coverage: 3357/3846 lines (87.29%)
 |       - |  837 | `	sxu32 nBucket;` |
 |       - |  838 | `	/* Remove old collision links */` |
 |   13091 |  839 | `	if( pEntry->pPrevCollide ){` |
-|   10713 |  840 | `		pEntry->pPrevCollide->pNextCollide = pEntry->pNextCollide;` |
-|    5360 |  841 | `	}else{` |
-|    2383 |  842 | `		pMap->apBucket[pEntry->nHash & (pMap->nSize - 1)] = pEntry->pNextCollide;` |
+|   10714 |  840 | `		pEntry->pPrevCollide->pNextCollide = pEntry->pNextCollide;` |
+|    5361 |  841 | `	}else{` |
+|    2382 |  842 | `		pMap->apBucket[pEntry->nHash & (pMap->nSize - 1)] = pEntry->pNextCollide;` |
 |       - |  843 | `	}` |
 |   13091 |  844 | `	if( pEntry->pNextCollide ){` |
 |    1056 |  845 | `		pEntry->pNextCollide->pPrevCollide = pEntry->pPrevCollide;` |
@@ -862,8 +862,8 @@ Coverage: 3357/3846 lines (87.29%)
 |       - |  852 | `	/* Link to the new bucket */` |
 |   13091 |  853 | `	pEntry->pNextCollide = pMap->apBucket[nBucket];` |
 |   13091 |  854 | `	if( pMap->apBucket[nBucket] ){` |
-|   11030 |  855 | `		pMap->apBucket[nBucket]->pPrevCollide = pEntry;` |
-|    5511 |  856 | `	}` |
+|   11031 |  855 | `		pMap->apBucket[nBucket]->pPrevCollide = pEntry;` |
+|    5512 |  856 | `	}` |
 |   13091 |  857 | `	pEntry->pNextCollide = pMap->apBucket[nBucket];` |
 |   13091 |  858 | `	pMap->apBucket[nBucket] = pEntry;` |
 |       - |  859 | `	/* Increment the automatic index (saturating, like every other advance —` |
@@ -1887,24 +1887,24 @@ Coverage: 3357/3846 lines (87.29%)
 |   33251 | 1877 | `	pTail = &result;` |
 |  101734 | 1878 | `	while( pA && pB ){` |
 |   68488 | 1879 | `		if( xCmp(pA,pB,pCmpData) <= 0 ){` |
-|   45346 | 1880 | `			pTail->pPrev = pA;` |
-|   45346 | 1881 | `			pA->pNext = pTail;` |
-|   45346 | 1882 | `			pTail = pA;` |
-|   45346 | 1883 | `			pA = pA->pPrev;` |
-|   22675 | 1884 | `		}else{` |
-|   23147 | 1885 | `			pTail->pPrev = pB;` |
-|   23147 | 1886 | `			pB->pNext = pTail;` |
-|   23147 | 1887 | `			pTail = pB;` |
-|   23147 | 1888 | `			pB = pB->pPrev;` |
+|   45343 | 1880 | `			pTail->pPrev = pA;` |
+|   45343 | 1881 | `			pA->pNext = pTail;` |
+|   45343 | 1882 | `			pTail = pA;` |
+|   45343 | 1883 | `			pA = pA->pPrev;` |
+|   22673 | 1884 | `		}else{` |
+|   23150 | 1885 | `			pTail->pPrev = pB;` |
+|   23150 | 1886 | `			pB->pNext = pTail;` |
+|   23150 | 1887 | `			pTail = pB;` |
+|   23150 | 1888 | `			pB = pB->pPrev;` |
 |       - | 1889 | `		}` |
 |       5 | 1890 | `	}` |
 |   33251 | 1891 | `	if( pA ){` |
-|   23250 | 1892 | `		pTail->pPrev = pA;` |
-|   23250 | 1893 | `		pA->pNext = pTail;` |
+|   23251 | 1892 | `		pTail->pPrev = pA;` |
+|   23251 | 1893 | `		pA->pNext = pTail;` |
 |   21631 | 1894 | `	}else if( pB ){` |
-|    9792 | 1895 | `		pTail->pPrev = pB;` |
-|    9792 | 1896 | `		pB->pNext = pTail;` |
-|    4896 | 1897 | `	}else{` |
+|    9791 | 1895 | `		pTail->pPrev = pB;` |
+|    9791 | 1896 | `		pB->pNext = pTail;` |
+|    4895 | 1897 | `	}else{` |
 |     219 | 1898 | `		pTail->pPrev = pTail->pNext = 0;` |
 |       - | 1899 | `	}` |
 |   33251 | 1900 | `	return result.pPrev;` |
@@ -6176,9 +6176,9 @@ Coverage: 3357/3846 lines (87.29%)
 |       - | 6166 | `		 * Note that we perform a linear lookup here (later version must change this)` |
 |       - | 6167 | `		 */` |
 |       5 | 6168 | `		if( nEntry > pMap->nEntry / 2 ){` |
-|       1 | 6169 | `			pNode = pMap->pLast;` |
-|       1 | 6170 | `			nEntry = pMap->nEntry - nEntry;` |
-|       1 | 6171 | `			if( nEntry > 1 ){` |
+|       2 | 6169 | `			pNode = pMap->pLast;` |
+|       2 | 6170 | `			nEntry = pMap->nEntry - nEntry;` |
+|       2 | 6171 | `			if( nEntry > 1 ){` |
 |     ! 0 | 6172 | `				for(;;){` |
 |     ! 0 | 6173 | `					if( nEntry == 0 ){` |
 |     ! 0 | 6174 | `						break;` |
@@ -6188,16 +6188,16 @@ Coverage: 3357/3846 lines (87.29%)
 |     ! 0 | 6178 | `					nEntry--;` |
 |     ! 0 | 6179 | `				}` |
 |     ! 0 | 6180 | `			}` |
-|       1 | 6181 | `		}else{` |
-|       4 | 6182 | `			pNode = pMap->pFirst;` |
+|       2 | 6181 | `		}else{` |
+|       3 | 6182 | `			pNode = pMap->pFirst;` |
 |       1 | 6183 | `			for(;;){` |
-|       5 | 6184 | `				if( nEntry == 0 ){` |
-|       4 | 6185 | `					break;` |
+|       4 | 6184 | `				if( nEntry == 0 ){` |
+|       3 | 6185 | `					break;` |
 |       - | 6186 | `				}` |
 |       - | 6187 | `				/* Point to the next entry */` |
-|       2 | 6188 | `				pNode = pNode->pPrev; /* Reverse link */` |
-|       2 | 6189 | `				nEntry--;` |
-|       1 | 6190 | `			}` |
+|       1 | 6188 | `				pNode = pNode->pPrev; /* Reverse link */` |
+|       1 | 6189 | `				nEntry--;` |
+|     ! 0 | 6190 | `			}` |
 |       - | 6191 | `		}` |
 |       5 | 6192 | `		if( pNode->iType == HASHMAP_INT_NODE ){` |
 |       - | 6193 | `			/* Int key */` |
