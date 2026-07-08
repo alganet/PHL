@@ -26,29 +26,29 @@ Coverage: 756/811 lines (93.22%)
 |        - |   16 | ` * Get a single low-level token from the input file. Update the stream pointer so that` |
 |        - |   17 | ` * it points to the first character beyond the extracted token.` |
 |        - |   18 | ` */` |
-| 12078208 |   19 | `static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void *pCtxData)` |
+| 12077476 |   19 | `static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void *pCtxData)` |
 |        5 |   20 | `{` |
 |        - |   21 | `	SyString *pStr;` |
 |        - |   22 | `	sxi32 rc;` |
 |        - |   23 | `	/* Ignore leading white spaces */` |
-| 18211227 |   24 | `	while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisSpace(pStream->zText[0]) ){` |
+| 18210159 |   24 | `	while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisSpace(pStream->zText[0]) ){` |
 |        - |   25 | `		/* Advance the stream cursor */` |
-|  6133019 |   26 | `		if( pStream->zText[0] == '\n' ){` |
+|  6132683 |   26 | `		if( pStream->zText[0] == '\n' ){` |
 |        - |   27 | `			/* Update line counter */` |
-|    42647 |   28 | `			pStream->nLine++;` |
-|    21321 |   29 | `		}` |
-|  6133019 |   30 | `		pStream->zText++;` |
+|    42643 |   28 | `			pStream->nLine++;` |
+|    21319 |   29 | `		}` |
+|  6132683 |   30 | `		pStream->zText++;` |
 |        5 |   31 | `	}` |
-| 12078213 |   32 | `	if( pStream->zText >= pStream->zEnd ){` |
+| 12077481 |   32 | `	if( pStream->zText >= pStream->zEnd ){` |
 |        - |   33 | `		/* End of input reached */` |
 |      ! 0 |   34 | `		return SXERR_EOF;` |
 |        - |   35 | `	}` |
 |        - |   36 | `	/* Record token starting position and line */` |
-| 12078213 |   37 | `	pToken->nLine = pStream->nLine;` |
-| 12078213 |   38 | `	pToken->pUserData = 0;` |
-| 12078213 |   39 | `	pStr = &pToken->sData;` |
-| 12078213 |   40 | `	SyStringInitFromBuf(pStr,pStream->zText,0);` |
-| 14386541 |   41 | `	if( pStream->zText[0] >= 0xc0 \|\| SyisAlpha(pStream->zText[0]) \|\| pStream->zText[0] == '_' ){` |
+| 12077481 |   37 | `	pToken->nLine = pStream->nLine;` |
+| 12077481 |   38 | `	pToken->pUserData = 0;` |
+| 12077481 |   39 | `	pStr = &pToken->sData;` |
+| 12077481 |   40 | `	SyStringInitFromBuf(pStr,pStream->zText,0);` |
+| 14385726 |   41 | `	if( pStream->zText[0] >= 0xc0 \|\| SyisAlpha(pStream->zText[0]) \|\| pStream->zText[0] == '_' ){` |
 |        - |   42 | `		/* The following code fragment is taken verbatim from the xPP source tree.` |
 |        - |   43 | `		 * xPP is a modern embeddable macro processor with advanced features useful for` |
 |        - |   44 | `		 * application seeking for a production quality,ready to use macro processor.` |
@@ -59,12 +59,12 @@ Coverage: 756/811 lines (93.22%)
 |        - |   49 | `		const unsigned char *zIn;` |
 |        - |   50 | `		sxu32 nKeyword;` |
 |        - |   51 | `		/* Isolate UTF-8 or alphanumeric stream */` |
-|  4616661 |   52 | `		if( pStream->zText[0] < 0xc0 ){` |
-|  4616645 |   53 | `			pStream->zText++;` |
-|  2308320 |   54 | `		}` |
-|  4552812 |   55 | `		for(;;){` |
-|  9105629 |   56 | `			zIn = pStream->zText;` |
-|  9105629 |   57 | `			if( zIn[0] >= 0xc0 ){` |
+|  4616495 |   52 | `		if( pStream->zText[0] < 0xc0 ){` |
+|  4616479 |   53 | `			pStream->zText++;` |
+|  2308237 |   54 | `		}` |
+|  4552570 |   55 | `		for(;;){` |
+|  9105145 |   56 | `			zIn = pStream->zText;` |
+|  9105145 |   57 | `			if( zIn[0] >= 0xc0 ){` |
 |       49 |   58 | `				zIn++;` |
 |        - |   59 | `				/* UTF-8 stream */` |
 |      109 |   60 | `				while( zIn < pStream->zEnd && ((zIn[0] & 0xc0) == 0x80) ){` |
@@ -72,29 +72,29 @@ Coverage: 756/811 lines (93.22%)
 |        1 |   62 | `				}` |
 |       24 |   63 | `			}` |
 |        - |   64 | `			/* Skip alphanumeric stream */` |
-| 39340699 |   65 | `			while( zIn < pStream->zEnd && zIn[0] < 0xc0 && (SyisAlphaNum(zIn[0]) \|\| zIn[0] == '_') ){` |
-| 25682263 |   66 | `				zIn++;` |
+| 39339577 |   65 | `			while( zIn < pStream->zEnd && zIn[0] < 0xc0 && (SyisAlphaNum(zIn[0]) \|\| zIn[0] == '_') ){` |
+| 25681867 |   66 | `				zIn++;` |
 |        5 |   67 | `			}` |
-|  9105629 |   68 | `			if( zIn == pStream->zText ){` |
+|  9105145 |   68 | `			if( zIn == pStream->zText ){` |
 |        - |   69 | `				/* Not an UTF-8 or alphanumeric stream */` |
-|  4616661 |   70 | `				break;` |
+|  4616495 |   70 | `				break;` |
 |        - |   71 | `			}` |
 |        - |   72 | `			/* Synchronize pointers */` |
-|  4488973 |   73 | `			pStream->zText = zIn;` |
+|  4488655 |   73 | `			pStream->zText = zIn;` |
 |        5 |   74 | `		}` |
 |        - |   75 | `		/* Record token length */` |
-|  4616661 |   76 | `		pStr->nByte = (sxu32)((const char *)pStream->zText-pStr->zString);` |
-|  4616661 |   77 | `		nKeyword = KeywordCode(pStr->zString,(int)pStr->nByte);` |
+|  4616495 |   76 | `		pStr->nByte = (sxu32)((const char *)pStream->zText-pStr->zString);` |
+|  4616495 |   77 | `		nKeyword = KeywordCode(pStr->zString,(int)pStr->nByte);` |
 |        - |   78 | `		/* PHP 7.4: 'fn' is a keyword reserved for arrow functions.` |
 |        - |   79 | `		 * The auto-generated perfect hash above doesn't know about it,` |
 |        - |   80 | `		 * so intercept the 'fn' identifier here.` |
 |        - |   81 | `		 */` |
-|  4616656 |   82 | `		if( nKeyword == PH7_TK_ID && pStr->nByte == 2` |
-|  1468221 |   83 | `			&& pStr->zString[0] == 'f' && pStr->zString[1] == 'n' ){` |
+|  4616490 |   82 | `		if( nKeyword == PH7_TK_ID && pStr->nByte == 2` |
+|  1468247 |   83 | `			&& pStr->zString[0] == 'f' && pStr->zString[1] == 'n' ){` |
 |      467 |   84 | `			nKeyword = PH7_TKWRD_FN;` |
 |      231 |   85 | `		}` |
-|  4616661 |   86 | `		if( nKeyword != PH7_TK_ID ){` |
-|  1690967 |   87 | `			if( nKeyword &` |
+|  4616495 |   86 | `		if( nKeyword != PH7_TK_ID ){` |
+|  1690749 |   87 | `			if( nKeyword &` |
 |        - |   88 | `				(PH7_TKWRD_NEW\|PH7_TKWRD_CLONE\|PH7_TKWRD_AND\|PH7_TKWRD_XOR\|PH7_TKWRD_OR\|PH7_TKWRD_INSTANCEOF) ){` |
 |        - |   89 | `					/* Alpha stream operators [i.e: new,clone,and,instanceof,or,xor],save the operator instance for later processing */` |
 |    25021 |   90 | `					pToken->pUserData = (void *)PH7_ExprExtractOperator(pStr,0);` |
@@ -102,17 +102,17 @@ Coverage: 756/811 lines (93.22%)
 |    25021 |   92 | `					pToken->nType = PH7_TK_ID\|PH7_TK_OP;` |
 |    12513 |   93 | `			}else{` |
 |        - |   94 | `				/* We are dealing with a keyword [i.e: while,foreach,class...],save the keyword ID */` |
-|  1665951 |   95 | `				pToken->nType = PH7_TK_KEYWORD;` |
-|  1665951 |   96 | `				pToken->pUserData = SX_INT_TO_PTR(nKeyword);` |
+|  1665733 |   95 | `				pToken->nType = PH7_TK_KEYWORD;` |
+|  1665733 |   96 | `				pToken->pUserData = SX_INT_TO_PTR(nKeyword);` |
 |        - |   97 | `			}` |
-|   845486 |   98 | `		}else{` |
+|   845377 |   98 | `		}else{` |
 |        - |   99 | `			/* A simple identifier */` |
-|  2925699 |  100 | `			pToken->nType = PH7_TK_ID;` |
+|  2925751 |  100 | `			pToken->nType = PH7_TK_ID;` |
 |        - |  101 | `		}` |
-|  2308333 |  102 | `	}else{` |
+|  2308250 |  102 | `	}else{` |
 |        - |  103 | `		sxi32 c;` |
 |        - |  104 | `		/* Non-alpha stream */` |
-|  7461557 |  105 | `		if( pStream->zText[0] == '#' && &pStream->zText[1] < pStream->zEnd && pStream->zText[1] == '[' ){` |
+|  7460991 |  105 | `		if( pStream->zText[0] == '#' && &pStream->zText[1] < pStream->zEnd && pStream->zText[1] == '[' ){` |
 |       73 |  106 | `			sxu32 nDepth = 1;` |
 |        - |  107 | `			/* PHP 8 attribute group '#[ ... ]': skip the whole balanced group as` |
 |        - |  108 | `			 * trivia (attributes are not stored yet). Brackets inside string` |
@@ -177,16 +177,16 @@ Coverage: 756/811 lines (93.22%)
 |        5 |  167 | `			}` |
 |        - |  168 | `			/* Tell the upper-layer to ignore this token */` |
 |       73 |  169 | `			return SXERR_CONTINUE;` |
-|  7510190 |  170 | `		}else if( pStream->zText[0] == '#' \|\|` |
-|  7461478 |  171 | `			( pStream->zText[0] == '/' &&  &pStream->zText[1] < pStream->zEnd && pStream->zText[1] == '/') ){` |
-|     5297 |  172 | `				pStream->zText++;` |
+|  7509618 |  170 | `		}else if( pStream->zText[0] == '#' \|\|` |
+|  7460912 |  171 | `			( pStream->zText[0] == '/' &&  &pStream->zText[1] < pStream->zEnd && pStream->zText[1] == '/') ){` |
+|     5285 |  172 | `				pStream->zText++;` |
 |        - |  173 | `				/* Inline comments */` |
-|   208959 |  174 | `				while( pStream->zText < pStream->zEnd && pStream->zText[0] != '\n' ){` |
-|   203667 |  175 | `					pStream->zText++;` |
+|   208449 |  174 | `				while( pStream->zText < pStream->zEnd && pStream->zText[0] != '\n' ){` |
+|   203169 |  175 | `					pStream->zText++;` |
 |        5 |  176 | `				}` |
 |        - |  177 | `				/* Tell the upper-layer to ignore this token */` |
-|     5297 |  178 | `				return SXERR_CONTINUE;` |
-|  7456197 |  179 | `		}else if( pStream->zText[0] == '/' && &pStream->zText[1] < pStream->zEnd && pStream->zText[1] == '*' ){` |
+|     5285 |  178 | `				return SXERR_CONTINUE;` |
+|  7455643 |  179 | `		}else if( pStream->zText[0] == '/' && &pStream->zText[1] < pStream->zEnd && pStream->zText[1] == '*' ){` |
 |    92041 |  180 | `			pStream->zText += 2;` |
 |        - |  181 | `			/* Block comment */` |
 |  2845489 |  182 | `			while( pStream->zText < pStream->zEnd ){` |
@@ -203,20 +203,20 @@ Coverage: 756/811 lines (93.22%)
 |    92041 |  193 | `			pStream->zText += 2;` |
 |        - |  194 | `			/* Tell the upper-layer to ignore this token */` |
 |    92041 |  195 | `			return SXERR_CONTINUE;` |
-|  7364161 |  196 | `		}else if( SyisDigit(pStream->zText[0]) ){` |
-|   134953 |  197 | `			pStream->zText++;` |
+|  7363607 |  196 | `		}else if( SyisDigit(pStream->zText[0]) ){` |
+|   134919 |  197 | `			pStream->zText++;` |
 |        - |  198 | `			/* PHP 7.4: handle underscore separator immediately following the first digit.` |
 |        - |  199 | `			 * Check pStream->zText < pStream->zEnd BEFORE forming pStream->zText + 1 so` |
 |        - |  200 | `			 * we never compute a pointer past one-past-end. */` |
-|   134948 |  201 | `			if( pStream->zText < pStream->zEnd` |
-|   134948 |  202 | `				&& pStream->zText[0] == '_'` |
-|    67554 |  203 | `				&& pStream->zText + 1 < pStream->zEnd` |
+|   134914 |  201 | `			if( pStream->zText < pStream->zEnd` |
+|   134914 |  202 | `				&& pStream->zText[0] == '_'` |
+|    67537 |  203 | `				&& pStream->zText + 1 < pStream->zEnd` |
 |      160 |  204 | `				&& pStream->zText[1] < 0xc0` |
 |      165 |  205 | `				&& SyisDigit(pStream->zText[1]) ){` |
 |      151 |  206 | `				pStream->zText++; /* swallow underscore between two digits */` |
 |       75 |  207 | `			}` |
 |        - |  208 | `			/* Decimal digit stream (PHP 7.4: underscore separator allowed between two digits) */` |
-|   147421 |  209 | `			while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){` |
+|   147387 |  209 | `			while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){` |
 |    12473 |  210 | `				pStream->zText++;` |
 |    12468 |  211 | `				if( pStream->zText < pStream->zEnd` |
 |    12468 |  212 | `					&& pStream->zText[0] == '_'` |
@@ -227,25 +227,25 @@ Coverage: 756/811 lines (93.22%)
 |       86 |  217 | `				}` |
 |        5 |  218 | `			}` |
 |        - |  219 | `			/* Mark the token as integer until we encounter a real number */` |
-|   134953 |  220 | `			pToken->nType = PH7_TK_INTEGER;` |
-|   134953 |  221 | `			if( pStream->zText < pStream->zEnd ){` |
-|   134953 |  222 | `				c = pStream->zText[0];` |
-|   134953 |  223 | `				if( c == '.' ){` |
+|   134919 |  220 | `			pToken->nType = PH7_TK_INTEGER;` |
+|   134919 |  221 | `			if( pStream->zText < pStream->zEnd ){` |
+|   134919 |  222 | `				c = pStream->zText[0];` |
+|   134919 |  223 | `				if( c == '.' ){` |
 |        - |  224 | `					/* Real number (PHP 7.4: underscore separator allowed between two digits) */` |
-|      671 |  225 | `					pStream->zText++;` |
-|     2337 |  226 | `					while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){` |
-|     1671 |  227 | `						pStream->zText++;` |
-|     1666 |  228 | `						if( pStream->zText < pStream->zEnd` |
-|     1666 |  229 | `							&& pStream->zText[0] == '_'` |
-|      839 |  230 | `							&& pStream->zText + 1 < pStream->zEnd` |
+|      665 |  225 | `					pStream->zText++;` |
+|     2325 |  226 | `					while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){` |
+|     1665 |  227 | `						pStream->zText++;` |
+|     1660 |  228 | `						if( pStream->zText < pStream->zEnd` |
+|     1660 |  229 | `							&& pStream->zText[0] == '_'` |
+|      836 |  230 | `							&& pStream->zText + 1 < pStream->zEnd` |
 |       12 |  231 | `							&& pStream->zText[1] < 0xc0` |
 |       17 |  232 | `							&& SyisDigit(pStream->zText[1]) ){` |
 |       13 |  233 | `							pStream->zText++;` |
 |        6 |  234 | `						}` |
 |        5 |  235 | `					}` |
-|      671 |  236 | `					if( pStream->zText < pStream->zEnd ){` |
-|      671 |  237 | `						c = pStream->zText[0];` |
-|      671 |  238 | `						if( c=='e' \|\| c=='E' ){` |
+|      665 |  236 | `					if( pStream->zText < pStream->zEnd ){` |
+|      665 |  237 | `						c = pStream->zText[0];` |
+|      665 |  238 | `						if( c=='e' \|\| c=='E' ){` |
 |       37 |  239 | `							pStream->zText++;` |
 |       37 |  240 | `							if( pStream->zText < pStream->zEnd ){` |
 |       37 |  241 | `								c = pStream->zText[0];` |
@@ -265,9 +265,9 @@ Coverage: 756/811 lines (93.22%)
 |        1 |  255 | `								}` |
 |       18 |  256 | `							}` |
 |       18 |  257 | `						}` |
-|      333 |  258 | `					}` |
-|      671 |  259 | `					pToken->nType = PH7_TK_REAL;` |
-|   134620 |  260 | `				}else if( c=='e' \|\| c=='E' ){` |
+|      330 |  258 | `					}` |
+|      665 |  259 | `					pToken->nType = PH7_TK_REAL;` |
+|   134589 |  260 | `				}else if( c=='e' \|\| c=='E' ){` |
 |       29 |  261 | `					SXUNUSED(pUserData); /* Prevent compiler warning */` |
 |       29 |  262 | `					SXUNUSED(pCtxData);` |
 |       59 |  263 | `					pStream->zText++;` |
@@ -289,7 +289,7 @@ Coverage: 756/811 lines (93.22%)
 |        1 |  279 | `						}` |
 |       29 |  280 | `					}` |
 |       59 |  281 | `					pToken->nType = PH7_TK_REAL;` |
-|   134258 |  282 | `				}else if( c == 'x' \|\| c == 'X' ){` |
+|   134230 |  282 | `				}else if( c == 'x' \|\| c == 'X' ){` |
 |        - |  283 | `					/* Hex digit stream (PHP 7.4: underscore separator allowed between two digits) */` |
 |       75 |  284 | `					pStream->zText++;` |
 |      371 |  285 | `					while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisHex(pStream->zText[0]) ){` |
@@ -302,7 +302,7 @@ Coverage: 756/811 lines (93.22%)
 |       49 |  292 | `							pStream->zText++;` |
 |       24 |  293 | `						}` |
 |        1 |  294 | `					}` |
-|   134191 |  295 | `				}else if(c  == 'b' \|\| c == 'B' ){` |
+|   134163 |  295 | `				}else if(c  == 'b' \|\| c == 'B' ){` |
 |        - |  296 | `					/* Binary digit stream (PHP 7.4: underscore separator allowed between two digits) */` |
 |      280 |  297 | `					pStream->zText++;` |
 |     2702 |  298 | `					while( pStream->zText < pStream->zEnd && (pStream->zText[0] == '0' \|\| pStream->zText[0] == '1') ){` |
@@ -315,13 +315,13 @@ Coverage: 756/811 lines (93.22%)
 |       69 |  305 | `						}` |
 |        1 |  306 | `					}` |
 |      139 |  307 | `				}` |
-|    67474 |  308 | `			}` |
+|    67457 |  308 | `			}` |
 |        - |  309 | `			/* PHP 7.4: absorb a trailing malformed underscore run into the` |
 |        - |  310 | `			 * numeric token so the compile phase can emit a PHP-compatible` |
 |        - |  311 | `			 * "syntax error, unexpected identifier" parse error. Valid` |
 |        - |  312 | `			 * separators were already consumed by the per-loop peek logic` |
 |        - |  313 | `			 * above, so an underscore here is always misplaced. */` |
-|   134953 |  314 | `			if( pStream->zText < pStream->zEnd && pStream->zText[0] == '_' ){` |
+|   134919 |  314 | `			if( pStream->zText < pStream->zEnd && pStream->zText[0] == '_' ){` |
 |       18 |  315 | `				pStream->zText++;` |
 |       44 |  316 | `				while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0` |
 |       49 |  317 | `					&& (SyisAlphaNum(pStream->zText[0]) \|\| pStream->zText[0] == '_') ){` |
@@ -329,29 +329,29 @@ Coverage: 756/811 lines (93.22%)
 |        4 |  319 | `				}` |
 |        7 |  320 | `			}` |
 |        - |  321 | `			/* Record token length */` |
-|   134953 |  322 | `			pStr->nByte = (sxu32)((const char *)pStream->zText-pStr->zString);` |
-|   134953 |  323 | `			return SXRET_OK;` |
+|   134919 |  322 | `			pStr->nByte = (sxu32)((const char *)pStream->zText-pStr->zString);` |
+|   134919 |  323 | `			return SXRET_OK;` |
 |        - |  324 | `		}` |
-|  7229213 |  325 | `		c = pStream->zText[0];` |
-|  7229213 |  326 | `		pStream->zText++; /* Advance the stream cursor */` |
+|  7228693 |  325 | `		c = pStream->zText[0];` |
+|  7228693 |  326 | `		pStream->zText++; /* Advance the stream cursor */` |
 |        - |  327 | `		/* Assume we are dealing with an operator*/` |
-|  7229213 |  328 | `		pToken->nType = PH7_TK_OP;` |
-|  7229213 |  329 | `		switch(c){` |
-|  1483443 |  330 | `		case '$': pToken->nType = PH7_TK_DOLLAR; break;` |
-|   621593 |  331 | `		case '{': pToken->nType = PH7_TK_OCB;    break;` |
-|   621579 |  332 | `		case '}': pToken->nType = PH7_TK_CCB;    break;` |
-|  1104879 |  333 | `		case '(': pToken->nType = PH7_TK_LPAREN; break;` |
+|  7228693 |  328 | `		pToken->nType = PH7_TK_OP;` |
+|  7228693 |  329 | `		switch(c){` |
+|  1483491 |  330 | `		case '$': pToken->nType = PH7_TK_DOLLAR; break;` |
+|   621573 |  331 | `		case '{': pToken->nType = PH7_TK_OCB;    break;` |
+|   621559 |  332 | `		case '}': pToken->nType = PH7_TK_CCB;    break;` |
+|  1104761 |  333 | `		case '(': pToken->nType = PH7_TK_LPAREN; break;` |
 |    99583 |  334 | `		case '[': pToken->nType \|= PH7_TK_OSB;   break; /* Bitwise operation here,since the square bracket token '['` |
 |        - |  335 | `														 * is a potential operator [i.e: subscripting] */` |
 |    99589 |  336 | `		case ']': pToken->nType = PH7_TK_CSB;    break;` |
-|   552429 |  337 | `		case ')': {` |
-|  1104863 |  338 | `			SySet *pTokSet = pStream->pSet;` |
+|   552370 |  337 | `		case ')': {` |
+|  1104745 |  338 | `			SySet *pTokSet = pStream->pSet;` |
 |        - |  339 | `			/* Assemble type cast operators [i.e: (int),(float),(bool)...] */` |
-|  1104863 |  340 | `			if( pTokSet->nUsed >= 2 ){` |
+|  1104745 |  340 | `			if( pTokSet->nUsed >= 2 ){` |
 |        - |  341 | `				SyToken *pTmp;` |
 |        - |  342 | `				/* Peek the last recongnized token */` |
-|  1104861 |  343 | `				pTmp = (SyToken *)SySetPeek(pTokSet);` |
-|  1104861 |  344 | `				if( pTmp->nType & PH7_TK_KEYWORD ){` |
+|  1104743 |  343 | `				pTmp = (SyToken *)SySetPeek(pTokSet);` |
+|  1104743 |  344 | `				if( pTmp->nType & PH7_TK_KEYWORD ){` |
 |     4453 |  345 | `					sxi32 nID = SX_PTR_TO_INT(pTmp->pUserData);` |
 |     4453 |  346 | `					if( (sxu32)nID & (PH7_TKWRD_ARRAY\|PH7_TKWRD_INT\|PH7_TKWRD_FLOAT\|PH7_TKWRD_STRING\|PH7_TKWRD_OBJECT\|PH7_TKWRD_BOOL\|PH7_TKWRD_UNSET) ){` |
 |     4197 |  347 | `						pTmp = (SyToken *)SySetAt(pTokSet,pTokSet->nUsed - 2);` |
@@ -382,17 +382,17 @@ Coverage: 756/811 lines (93.22%)
 |        - |  372 | `						}` |
 |       42 |  373 | `					}` |
 |      170 |  374 | `				}` |
-|   550374 |  375 | `			}` |
-|  1100755 |  376 | `			pToken->nType = PH7_TK_RPAREN;` |
-|  1100755 |  377 | `			break;` |
+|   550315 |  375 | `			}` |
+|  1100637 |  376 | `			pToken->nType = PH7_TK_RPAREN;` |
+|  1100637 |  377 | `			break;` |
 |        - |  378 | `				  }` |
-|    53611 |  379 | `		case '\'':{` |
+|    53526 |  379 | `		case '\'':{` |
 |        - |  380 | `			/* Single quoted string */` |
-|   107227 |  381 | `			pStr->zString++;` |
-|  1212035 |  382 | `			while( pStream->zText < pStream->zEnd ){` |
-|  1212035 |  383 | `				if( pStream->zText[0] == '\''  ){` |
-|   107237 |  384 | `					if( pStream->zText[-1] != '\\' ){` |
-|   107213 |  385 | `						break;` |
+|   107057 |  381 | `			pStr->zString++;` |
+|  1210575 |  382 | `			while( pStream->zText < pStream->zEnd ){` |
+|  1210575 |  383 | `				if( pStream->zText[0] == '\''  ){` |
+|   107067 |  384 | `					if( pStream->zText[-1] != '\\' ){` |
+|   107043 |  385 | `						break;` |
 |      ! 0 |  386 | `					}else{` |
 |       25 |  387 | `						const unsigned char *zPtr = &pStream->zText[-2];` |
 |       25 |  388 | `						sxi32 i = 1;` |
@@ -405,24 +405,24 @@ Coverage: 756/811 lines (93.22%)
 |        - |  395 | `						}` |
 |        - |  396 | `					}` |
 |        5 |  397 | `				}` |
-|  1104813 |  398 | `				if( pStream->zText[0] == '\n' ){` |
+|  1103523 |  398 | `				if( pStream->zText[0] == '\n' ){` |
 |       67 |  399 | `					pStream->nLine++;` |
 |       33 |  400 | `				}` |
-|  1104813 |  401 | `				pStream->zText++;` |
+|  1103523 |  401 | `				pStream->zText++;` |
 |        5 |  402 | `			}` |
 |        - |  403 | `			/* Record token length and type */` |
-|   107227 |  404 | `			pStr->nByte = (sxu32)((const char *)pStream->zText-pStr->zString);` |
-|   107227 |  405 | `			pToken->nType = PH7_TK_SSTR;` |
+|   107057 |  404 | `			pStr->nByte = (sxu32)((const char *)pStream->zText-pStr->zString);` |
+|   107057 |  405 | `			pToken->nType = PH7_TK_SSTR;` |
 |        - |  406 | `			/* Jump the trailing single quote */` |
-|   107227 |  407 | `			pStream->zText++;` |
-|   107227 |  408 | `			return SXRET_OK;` |
+|   107057 |  407 | `			pStream->zText++;` |
+|   107057 |  408 | `			return SXRET_OK;` |
 |        - |  409 | `				  }` |
-|    12420 |  410 | `		case '"':{` |
+|    12389 |  410 | `		case '"':{` |
 |        - |  411 | `			sxi32 iNest;` |
 |        - |  412 | `			/* Double quoted string */` |
-|    24845 |  413 | `			pStr->zString++;` |
-|   208191 |  414 | `			while( pStream->zText < pStream->zEnd ){` |
-|   208191 |  415 | `				if( pStream->zText[0] == '{' && &pStream->zText[1] < pStream->zEnd && pStream->zText[1] == '$'){` |
+|    24783 |  413 | `			pStr->zString++;` |
+|   207511 |  414 | `			while( pStream->zText < pStream->zEnd ){` |
+|   207511 |  415 | `				if( pStream->zText[0] == '{' && &pStream->zText[1] < pStream->zEnd && pStream->zText[1] == '$'){` |
 |      115 |  416 | `					iNest = 1;` |
 |      115 |  417 | `					pStream->zText++;` |
 |        - |  418 | `					/* TICKET 1433-40: Hnadle braces'{}' in double quoted string where everything is allowed */` |
@@ -444,9 +444,9 @@ Coverage: 756/811 lines (93.22%)
 |      ! 0 |  434 | `						break;` |
 |        - |  435 | `					}` |
 |       56 |  436 | `				}` |
-|   208191 |  437 | `				if( pStream->zText[0] == '"' ){` |
-|    25065 |  438 | `					if( pStream->zText[-1] != '\\' ){` |
-|    24839 |  439 | `						break;` |
+|   207511 |  437 | `				if( pStream->zText[0] == '"' ){` |
+|    25003 |  438 | `					if( pStream->zText[-1] != '\\' ){` |
+|    24777 |  439 | `						break;` |
 |      ! 0 |  440 | `					}else{` |
 |      231 |  441 | `						const unsigned char *zPtr = &pStream->zText[-2];` |
 |      231 |  442 | `						sxi32 i = 1;` |
@@ -459,17 +459,17 @@ Coverage: 756/811 lines (93.22%)
 |        - |  449 | `						}` |
 |        - |  450 | `					}` |
 |      110 |  451 | `				}` |
-|   183351 |  452 | `				if( pStream->zText[0] == '\n' ){` |
+|   182733 |  452 | `				if( pStream->zText[0] == '\n' ){` |
 |       29 |  453 | `					pStream->nLine++;` |
 |       14 |  454 | `				}` |
-|   183351 |  455 | `				pStream->zText++;` |
+|   182733 |  455 | `				pStream->zText++;` |
 |        5 |  456 | `			}` |
 |        - |  457 | `			/* Record token length and type */` |
-|    24845 |  458 | `			pStr->nByte = (sxu32)((const char *)pStream->zText-pStr->zString);` |
-|    24845 |  459 | `			pToken->nType = PH7_TK_DSTR;` |
+|    24783 |  458 | `			pStr->nByte = (sxu32)((const char *)pStream->zText-pStr->zString);` |
+|    24783 |  459 | `			pToken->nType = PH7_TK_DSTR;` |
 |        - |  460 | `			/* Jump the trailing quote */` |
-|    24845 |  461 | `			pStream->zText++;` |
-|    24845 |  462 | `			return SXRET_OK;` |
+|    24783 |  461 | `			pStream->zText++;` |
+|    24783 |  462 | `			return SXRET_OK;` |
 |        - |  463 | `				  }` |
 |        2 |  464 | ``		case '`':{`` |
 |        - |  465 | `			/* Backtick quoted string */` |
@@ -490,44 +490,44 @@ Coverage: 756/811 lines (93.22%)
 |        6 |  480 | `			pStream->zText++;` |
 |        6 |  481 | `			return SXRET_OK;` |
 |        - |  482 | `				  }` |
-|     7979 |  483 | `		case '\\': pToken->nType = PH7_TK_NSSEP;  break;` |
-|     2055 |  484 | `		case ':':` |
-|     4115 |  485 | `			if( pStream->zText < pStream->zEnd && pStream->zText[0] == ':' ){` |
+|     8055 |  483 | `		case '\\': pToken->nType = PH7_TK_NSSEP;  break;` |
+|     2051 |  484 | `		case ':':` |
+|     4107 |  485 | `			if( pStream->zText < pStream->zEnd && pStream->zText[0] == ':' ){` |
 |        - |  486 | `				/* Current operator: '::' */` |
 |      383 |  487 | `				pStream->zText++;` |
 |      194 |  488 | `			}else{` |
-|     3737 |  489 | `				pToken->nType = PH7_TK_COLON; /* Single colon */` |
+|     3729 |  489 | `				pToken->nType = PH7_TK_COLON; /* Single colon */` |
 |        - |  490 | `			}` |
-|     4115 |  491 | `			break;` |
-|   156667 |  492 | `		case ',': pToken->nType \|= PH7_TK_COMMA;  break; /* Comma is also an operator */` |
-|   851429 |  493 | `		case ';': pToken->nType = PH7_TK_SEMI;    break;` |
+|     4107 |  491 | `			break;` |
+|   156727 |  492 | `		case ',': pToken->nType \|= PH7_TK_COMMA;  break; /* Comma is also an operator */` |
+|   851303 |  493 | `		case ';': pToken->nType = PH7_TK_SEMI;    break;` |
 |        - |  494 | `			/* Handle combined operators [i.e: +=,===,!=== ...] */` |
-|   225551 |  495 | `		case '=':` |
-|   451107 |  496 | `			pToken->nType \|= PH7_TK_EQUAL;` |
-|   451107 |  497 | `			if( pStream->zText < pStream->zEnd ){` |
-|   451107 |  498 | `				if( pStream->zText[0] == '=' ){` |
-|    24775 |  499 | `					pToken->nType &= ~PH7_TK_EQUAL;` |
+|   225500 |  495 | `		case '=':` |
+|   451005 |  496 | `			pToken->nType \|= PH7_TK_EQUAL;` |
+|   451005 |  497 | `			if( pStream->zText < pStream->zEnd ){` |
+|   451005 |  498 | `				if( pStream->zText[0] == '=' ){` |
+|    24705 |  499 | `					pToken->nType &= ~PH7_TK_EQUAL;` |
 |        - |  500 | `					/* Current operator: == */` |
-|    24775 |  501 | `					pStream->zText++;` |
-|    24775 |  502 | `					if( pStream->zText < pStream->zEnd && pStream->zText[0] == '=' ){` |
+|    24705 |  501 | `					pStream->zText++;` |
+|    24705 |  502 | `					if( pStream->zText < pStream->zEnd && pStream->zText[0] == '=' ){` |
 |        - |  503 | `						/* Current operator: === */` |
-|     5305 |  504 | `						pStream->zText++;` |
-|     2655 |  505 | `					}` |
-|   438722 |  506 | `				}else if( pStream->zText[0] == '>' ){` |
+|     5241 |  504 | `						pStream->zText++;` |
+|     2623 |  505 | `					}` |
+|   438655 |  506 | `				}else if( pStream->zText[0] == '>' ){` |
 |        - |  507 | `					/* Array operator: => */` |
 |     6169 |  508 | `					pToken->nType = PH7_TK_ARRAY_OP;` |
 |     6169 |  509 | `					pStream->zText++;` |
 |     3087 |  510 | `				}else{` |
 |        - |  511 | `					/* TICKET 1433-0010: Reference operator '=&' */` |
-|   420173 |  512 | `					const unsigned char *zCur = pStream->zText;` |
-|   420173 |  513 | `					sxu32 nLine = 0;` |
-|   840171 |  514 | `					while( zCur < pStream->zEnd && zCur[0] < 0xc0 && SyisSpace(zCur[0]) ){` |
-|   420003 |  515 | `						if( zCur[0] == '\n' ){` |
+|   420141 |  512 | `					const unsigned char *zCur = pStream->zText;` |
+|   420141 |  513 | `					sxu32 nLine = 0;` |
+|   840107 |  514 | `					while( zCur < pStream->zEnd && zCur[0] < 0xc0 && SyisSpace(zCur[0]) ){` |
+|   419971 |  515 | `						if( zCur[0] == '\n' ){` |
 |        5 |  516 | `							nLine++;` |
 |        2 |  517 | `						}` |
-|   420003 |  518 | `						zCur++;` |
+|   419971 |  518 | `						zCur++;` |
 |        5 |  519 | `					}` |
-|   420173 |  520 | `					if( zCur < pStream->zEnd && zCur[0] == '&' ){` |
+|   420141 |  520 | `					if( zCur < pStream->zEnd && zCur[0] == '&' ){` |
 |        - |  521 | `						/* Current operator: =& */` |
 |       59 |  522 | `						pToken->nType &= ~PH7_TK_EQUAL;` |
 |       59 |  523 | `						SyStringInitFromBuf(pStr,"=&",sizeof("=&")-1);` |
@@ -536,8 +536,8 @@ Coverage: 756/811 lines (93.22%)
 |       59 |  526 | `						pStream->nLine += nLine;` |
 |       28 |  527 | `					}` |
 |        - |  528 | `				}` |
-|   225551 |  529 | `			}` |
-|   451107 |  530 | `			break;` |
+|   225500 |  529 | `			}` |
+|   451005 |  530 | `			break;` |
 |    27215 |  531 | `		case '!':` |
 |    54435 |  532 | `			if( pStream->zText < pStream->zEnd && pStream->zText[0] == '=' ){` |
 |        - |  533 | `				/* Current operator: != */` |
@@ -548,20 +548,20 @@ Coverage: 756/811 lines (93.22%)
 |     9649 |  538 | `				}` |
 |    11579 |  539 | `			}` |
 |    54435 |  540 | `			break;` |
-|    15633 |  541 | `		case '&':` |
-|    31271 |  542 | `			pToken->nType \|= PH7_TK_AMPER;` |
-|    31271 |  543 | `			if( pStream->zText < pStream->zEnd ){` |
-|    31271 |  544 | `				if( pStream->zText[0] == '&' ){` |
-|    11977 |  545 | `					pToken->nType &= ~PH7_TK_AMPER;` |
+|    15630 |  541 | `		case '&':` |
+|    31265 |  542 | `			pToken->nType \|= PH7_TK_AMPER;` |
+|    31265 |  543 | `			if( pStream->zText < pStream->zEnd ){` |
+|    31265 |  544 | `				if( pStream->zText[0] == '&' ){` |
+|    11971 |  545 | `					pToken->nType &= ~PH7_TK_AMPER;` |
 |        - |  546 | `					/* Current operator: && */` |
-|    11977 |  547 | `					pStream->zText++;` |
-|    25285 |  548 | `				}else if( pStream->zText[0] == '=' ){` |
+|    11971 |  547 | `					pStream->zText++;` |
+|    25282 |  548 | `				}else if( pStream->zText[0] == '=' ){` |
 |        7 |  549 | `					pToken->nType &= ~PH7_TK_AMPER;` |
 |        - |  550 | `					/* Current operator: &= */` |
 |        7 |  551 | `					pStream->zText++;` |
 |        3 |  552 | `				}` |
-|    15633 |  553 | `			}` |
-|    31271 |  554 | `			break;` |
+|    15630 |  553 | `			}` |
+|    31265 |  554 | `			break;` |
 |     2098 |  555 | `		case '\|':` |
 |     4201 |  556 | `			if( pStream->zText < pStream->zEnd ){` |
 |     4201 |  557 | `				if( pStream->zText[0] == '\|' ){` |
@@ -584,20 +584,20 @@ Coverage: 756/811 lines (93.22%)
 |       27 |  574 | `				}` |
 |    10068 |  575 | `			}` |
 |    20143 |  576 | `			break;` |
-|    95541 |  577 | `		case '-':` |
-|   191087 |  578 | `			if( pStream->zText < pStream->zEnd ){` |
-|   191087 |  579 | `				if( pStream->zText[0] == '-' ){` |
+|    95575 |  577 | `		case '-':` |
+|   191155 |  578 | `			if( pStream->zText < pStream->zEnd ){` |
+|   191155 |  579 | `				if( pStream->zText[0] == '-' ){` |
 |        - |  580 | `					/* Current operator: -- */` |
 |       37 |  581 | `					pStream->zText++;` |
-|   191070 |  582 | `				}else if( pStream->zText[0] == '=' ){` |
+|   191138 |  582 | `				}else if( pStream->zText[0] == '=' ){` |
 |        - |  583 | `					/* Current operator: -= */` |
 |       10 |  584 | `					pStream->zText++;` |
-|   191049 |  585 | `				}else if( pStream->zText[0] == '>' ){` |
+|   191117 |  585 | `				}else if( pStream->zText[0] == '>' ){` |
 |        - |  586 | `					/* Current operator: -> */` |
-|   190355 |  587 | `					pStream->zText++;` |
-|    95175 |  588 | `				}` |
-|    95541 |  589 | `			}` |
-|   191087 |  590 | `			break;` |
+|   190431 |  587 | `					pStream->zText++;` |
+|    95213 |  588 | `				}` |
+|    95575 |  589 | `			}` |
+|   191155 |  590 | `			break;` |
 |      180 |  591 | `		case '*':` |
 |      365 |  592 | `			if( pStream->zText < pStream->zEnd ){` |
 |      365 |  593 | `				if( pStream->zText[0] == '*' ){` |
@@ -631,19 +631,19 @@ Coverage: 756/811 lines (93.22%)
 |        9 |  621 | `				pStream->zText++;` |
 |        4 |  622 | `			}` |
 |       23 |  623 | `			break;` |
-|    55935 |  624 | `		case '.':` |
-|   111875 |  625 | `			if( pStream->zText + 1 < pStream->zEnd && pStream->zText[0] == '.' && pStream->zText[1] == '.' ){` |
+|    55929 |  624 | `		case '.':` |
+|   111863 |  625 | `			if( pStream->zText + 1 < pStream->zEnd && pStream->zText[0] == '.' && pStream->zText[1] == '.' ){` |
 |        - |  626 | `				/* Ellipsis: ... */` |
 |     7863 |  627 | `				pStream->zText += 2;` |
 |     7863 |  628 | `				pToken->nType = PH7_TK_ELLIPSIS;` |
-|   107946 |  629 | `			}else if( pStream->zText < pStream->zEnd && pStream->zText[0] == '=' ){` |
+|   107934 |  629 | `			}else if( pStream->zText < pStream->zEnd && pStream->zText[0] == '=' ){` |
 |        - |  630 | `				/* Current operator: .= */` |
 |     3961 |  631 | `				pStream->zText++;` |
 |     1978 |  632 | `			}` |
-|   111875 |  633 | `			break;` |
-|    32828 |  634 | `		case '<':` |
-|    65661 |  635 | `			if( pStream->zText < pStream->zEnd ){` |
-|    65661 |  636 | `				if( pStream->zText[0] == '<' ){` |
+|   111863 |  633 | `			break;` |
+|    32827 |  634 | `		case '<':` |
+|    65659 |  635 | `			if( pStream->zText < pStream->zEnd ){` |
+|    65659 |  636 | `				if( pStream->zText[0] == '<' ){` |
 |        - |  637 | `					/* Current operator: << */` |
 |      145 |  638 | `					pStream->zText++;` |
 |      145 |  639 | `					if( pStream->zText < pStream->zEnd ){` |
@@ -661,10 +661,10 @@ Coverage: 756/811 lines (93.22%)
 |        - |  651 | `							}` |
 |      ! 0 |  652 | `						}` |
 |       12 |  653 | `					}` |
-|    65532 |  654 | `				}else if( pStream->zText[0] == '>' ){` |
+|    65530 |  654 | `				}else if( pStream->zText[0] == '>' ){` |
 |        - |  655 | `					/* Current operator: <> */` |
 |        5 |  656 | `					pStream->zText++;` |
-|    65519 |  657 | `				}else if( pStream->zText[0] == '=' ){` |
+|    65517 |  657 | `				}else if( pStream->zText[0] == '=' ){` |
 |        - |  658 | `					/* Current operator: <= or <=> */` |
 |      113 |  659 | `					pStream->zText++;` |
 |      113 |  660 | `					if( pStream->zText < pStream->zEnd && pStream->zText[0] == '>' ){` |
@@ -672,8 +672,8 @@ Coverage: 756/811 lines (93.22%)
 |       54 |  662 | `						pStream->zText++;` |
 |       26 |  663 | `					}` |
 |       54 |  664 | `				}` |
-|    32769 |  665 | `			}` |
-|    65543 |  666 | `			break;` |
+|    32768 |  665 | `			}` |
+|    65541 |  666 | `			break;` |
 |     3963 |  667 | `		case '>':` |
 |     7931 |  668 | `			if( pStream->zText < pStream->zEnd ){` |
 |     7931 |  669 | `				if( pStream->zText[0] == '>' ){` |
@@ -689,32 +689,32 @@ Coverage: 756/811 lines (93.22%)
 |       43 |  679 | `				}` |
 |     3963 |  680 | `			}` |
 |     7931 |  681 | `			break;` |
-|     1526 |  682 | `		case '?':` |
-|     3057 |  683 | `			if( pStream->zText < pStream->zEnd && pStream->zText[0] == '?' ){` |
+|     1522 |  682 | `		case '?':` |
+|     3049 |  683 | `			if( pStream->zText < pStream->zEnd && pStream->zText[0] == '?' ){` |
 |        - |  684 | `				/* Null coalescing operator: ?? */` |
 |      197 |  685 | `				pStream->zText++;` |
 |      197 |  686 | `				if( pStream->zText < pStream->zEnd && pStream->zText[0] == '=' ){` |
 |        - |  687 | `					/* Null coalescing assignment operator (PHP 7.4) */` |
 |       73 |  688 | `					pStream->zText++;` |
 |       34 |  689 | `				}` |
-|     2961 |  690 | `			}else if( (pStream->zEnd - pStream->zText) >= 2` |
-|     2865 |  691 | `				&& pStream->zText[0] == '-' && pStream->zText[1] == '>' ){` |
+|     2953 |  690 | `			}else if( (pStream->zEnd - pStream->zText) >= 2` |
+|     2857 |  691 | `				&& pStream->zText[0] == '-' && pStream->zText[1] == '>' ){` |
 |        - |  692 | `				/* Nullsafe object operator (PHP 8.0): ?-> */` |
 |      117 |  693 | `				pStream->zText += 2;` |
 |       56 |  694 | `			}` |
-|     3052 |  695 | `			break;` |
+|     3044 |  695 | `			break;` |
 |      115 |  696 | `		default:` |
 |      230 |  697 | `			break;` |
 |        - |  698 | `		}` |
-|  7092921 |  699 | `		if( pStr->nByte <= 0 ){` |
+|  7092633 |  699 | `		if( pStr->nByte <= 0 ){` |
 |        - |  700 | `			/* Record token length */` |
-|  7092865 |  701 | `			pStr->nByte = (sxu32)((const char *)pStream->zText-pStr->zString);` |
-|  3546430 |  702 | `		}` |
-|  7092921 |  703 | `		if( pToken->nType & PH7_TK_OP ){` |
+|  7092577 |  701 | `			pStr->nByte = (sxu32)((const char *)pStream->zText-pStr->zString);` |
+|  3546286 |  702 | `		}` |
+|  7092633 |  703 | `		if( pToken->nType & PH7_TK_OP ){` |
 |        - |  704 | `			const ph7_expr_op *pOp;` |
 |        - |  705 | `			/* Check if the extracted token is an operator */` |
-|  1183961 |  706 | `			pOp = PH7_ExprExtractOperator(pStr,(SyToken *)SySetPeek(pStream->pSet));` |
-|  1183961 |  707 | `			if( pOp == 0 ){` |
+|  1183959 |  706 | `			pOp = PH7_ExprExtractOperator(pStr,(SyToken *)SySetPeek(pStream->pSet));` |
+|  1183959 |  707 | `			if( pOp == 0 ){` |
 |        - |  708 | `				/* Not an operator */` |
 |      ! 0 |  709 | `				pToken->nType &= ~PH7_TK_OP;` |
 |      ! 0 |  710 | `				if( pToken->nType <= 0 ){` |
@@ -722,13 +722,13 @@ Coverage: 756/811 lines (93.22%)
 |      ! 0 |  712 | `				}` |
 |      ! 0 |  713 | `			}else{` |
 |        - |  714 | `				/* Save the instance associated with this operator for later processing */` |
-|  1183961 |  715 | `				pToken->pUserData = (void *)pOp;` |
+|  1183959 |  715 | `				pToken->pUserData = (void *)pOp;` |
 |        - |  716 | `			}` |
-|   591978 |  717 | `		}` |
+|   591977 |  717 | `		}` |
 |        - |  718 | `	}` |
 |        - |  719 | `	/* Tell the upper-layer to save the extracted token for later processing */` |
-| 11709577 |  720 | `	return SXRET_OK;` |
-|  6039109 |  721 | `}` |
+| 11709123 |  720 | `	return SXRET_OK;` |
+|  6038743 |  721 | `}` |
 |        - |  722 | `/* SPDX-SnippetBegin */` |
 |        - |  723 | `/* SPDX-SnippetCopyrightText: SQLite mkkeywordhash.c (D. Richard Hipp and the SQLite authors <https://sqlite.org/>); adapted for the PH7 engine by Chems mrad */` |
 |        - |  724 | `/* SPDX-License-Identifier: blessing */` |
@@ -748,7 +748,7 @@ Coverage: 756/811 lines (93.22%)
 |        - |  738 | `** on platforms with limited memory.` |
 |        - |  739 | `*/` |
 |        - |  740 | `/* Hash score: 103 */` |
-|  4616661 |  741 | `static sxu32 KeywordCode(const char *z, int n){` |
+|  4616495 |  741 | `static sxu32 KeywordCode(const char *z, int n){` |
 |        - |  742 | `  /* zText[] encodes 532 bytes of keywords in 333 bytes */` |
 |        - |  743 | `  /*   extendswitchprintegerequire_oncenddeclareturnamespacechobject      */` |
 |        - |  744 | `  /*   hrowbooleandefaultrycaselfinalistaticlonewconstringlobaluse        */` |
@@ -838,10 +838,10 @@ Coverage: 756/811 lines (93.22%)
 |        - |  828 | `    PH7_TKWRD_UNSET,     PH7_TKWRD_XOR,         PH7_TKWRD_OR,        PH7_TKWRD_BREAK` |
 |        - |  829 | `  };` |
 |        - |  830 | `  int h, i;` |
-|  4616661 |  831 | `  if( n<2 ) return PH7_TK_ID;` |
-|  4488951 |  832 | `  h = (((int)z[0]*4) ^ ((int)z[n-1]*3) ^ n) % 151;` |
-|  6733785 |  833 | `  for(i=((int)aHash[h])-1; i>=0; i=((int)aNext[i])-1){` |
-|  3934827 |  834 | `    if( (int)aLen[i]==n && SyMemcmp(&zText[aOffset[i]],z,n)==0 ){` |
+|  4616495 |  831 | `  if( n<2 ) return PH7_TK_ID;` |
+|  4488633 |  832 | `  h = (((int)z[0]*4) ^ ((int)z[n-1]*3) ^ n) % 151;` |
+|  6733413 |  833 | `  for(i=((int)aHash[h])-1; i>=0; i=((int)aNext[i])-1){` |
+|  3934555 |  834 | `    if( (int)aLen[i]==n && SyMemcmp(&zText[aOffset[i]],z,n)==0 ){` |
 |        - |  835 | `       /* PH7_TKWRD_EXTENDS */` |
 |        - |  836 | `       /* PH7_TKWRD_ENDSWITCH */` |
 |        - |  837 | `       /* PH7_TKWRD_SWITCH */` |
@@ -926,17 +926,17 @@ Coverage: 756/811 lines (93.22%)
 |        - |  916 | `       /* PH7_TKWRD_XOR */` |
 |        - |  917 | `       /* PH7_TKWRD_OR */` |
 |        - |  918 | `       /* PH7_TKWRD_BREAK */` |
-|  1689993 |  919 | `      return aCode[i];` |
+|  1689775 |  919 | `      return aCode[i];` |
 |        - |  920 | `    }` |
-|  1122420 |  921 | `  }` |
+|  1122393 |  921 | `  }` |
 |        - |  922 | `  /* Linear fallback for keywords not in the auto-generated hash table */` |
-|  2798963 |  923 | `  if( n==5 && SyMemcmp(z,"trait",5)==0 ) return PH7_TKWRD_TRAIT;` |
-|  2798897 |  924 | `  if( n==9 && SyMemcmp(z,"insteadof",9)==0 ) return PH7_TKWRD_INSTEADOF;` |
-|  2798893 |  925 | `  if( n==7 && SyMemcmp(z,"finally",7)==0 ) return PH7_TKWRD_FINALLY;` |
-|  2798745 |  926 | `  if( n==5 && SyMemcmp(z,"yield",5)==0 ) return PH7_TKWRD_YIELD;` |
-|  2798475 |  927 | `  if( n==5 && SyMemcmp(z,"match",5)==0 ) return PH7_TKWRD_MATCH;` |
-|  2798401 |  928 | `  return PH7_TK_ID;` |
-|  2308333 |  929 | `}` |
+|  2798863 |  923 | `  if( n==5 && SyMemcmp(z,"trait",5)==0 ) return PH7_TKWRD_TRAIT;` |
+|  2798797 |  924 | `  if( n==9 && SyMemcmp(z,"insteadof",9)==0 ) return PH7_TKWRD_INSTEADOF;` |
+|  2798793 |  925 | `  if( n==7 && SyMemcmp(z,"finally",7)==0 ) return PH7_TKWRD_FINALLY;` |
+|  2798645 |  926 | `  if( n==5 && SyMemcmp(z,"yield",5)==0 ) return PH7_TKWRD_YIELD;` |
+|  2798375 |  927 | `  if( n==5 && SyMemcmp(z,"match",5)==0 ) return PH7_TKWRD_MATCH;` |
+|  2798301 |  928 | `  return PH7_TK_ID;` |
+|  2308250 |  929 | `}` |
 |        - |  930 | `/* --- End of Automatically generated code --- */` |
 |        - |  931 | `/* SPDX-SnippetEnd */` |
 |        - |  932 | `/*` |
@@ -1106,27 +1106,27 @@ Coverage: 756/811 lines (93.22%)
 |        - | 1096 | ` * Tokenize a raw PHP input.` |
 |        - | 1097 | ` * This is the public tokenizer called by most code generator routines.` |
 |        - | 1098 | ` */` |
-|    20864 | 1099 | `PH7_PRIVATE sxi32 PH7_TokenizePHP(const char *zInput,sxu32 nLen,sxu32 nLineStart,SySet *pOut)` |
+|    20762 | 1099 | `PH7_PRIVATE sxi32 PH7_TokenizePHP(const char *zInput,sxu32 nLen,sxu32 nLineStart,SySet *pOut)` |
 |        5 | 1100 | `{` |
 |        - | 1101 | `	SyLex sLexer;` |
 |        - | 1102 | `	sxi32 rc;` |
 |        - | 1103 | `	/* Defense-in-depth cap for internal tokenizer calls that bypass ph7_compile() */` |
-|    20869 | 1104 | `	if( nLen > PH7_MAX_INPUT_SIZE ){` |
+|    20767 | 1104 | `	if( nLen > PH7_MAX_INPUT_SIZE ){` |
 |      ! 0 | 1105 | `		return SXERR_LIMIT;` |
 |        - | 1106 | `	}` |
 |        - | 1107 | `	/* Initialize the lexer */` |
-|    20869 | 1108 | `	rc = SyLexInit(&sLexer,&(*pOut),TokenizePHP,0);` |
-|    20869 | 1109 | `	if( rc != SXRET_OK ){` |
+|    20767 | 1108 | `	rc = SyLexInit(&sLexer,&(*pOut),TokenizePHP,0);` |
+|    20767 | 1109 | `	if( rc != SXRET_OK ){` |
 |      ! 0 | 1110 | `		return rc;` |
 |        - | 1111 | `	}` |
-|    20869 | 1112 | `	sLexer.sStream.nLine = nLineStart;` |
+|    20767 | 1112 | `	sLexer.sStream.nLine = nLineStart;` |
 |        - | 1113 | `	/* Tokenize input */` |
-|    20869 | 1114 | `	rc = SyLexTokenizeInput(&sLexer,zInput,nLen,0,0,0);` |
+|    20767 | 1114 | `	rc = SyLexTokenizeInput(&sLexer,zInput,nLen,0,0,0);` |
 |        - | 1115 | `	/* Release the lexer */` |
-|    20869 | 1116 | `	SyLexRelease(&sLexer);` |
+|    20767 | 1116 | `	SyLexRelease(&sLexer);` |
 |        - | 1117 | `	/* Tokenization result */` |
-|    20869 | 1118 | `	return rc;` |
-|    10437 | 1119 | `}` |
+|    20767 | 1118 | `	return rc;` |
+|    10386 | 1119 | `}` |
 |        - | 1120 | `/*` |
 |        - | 1121 | ` * High level public tokenizer.` |
 |        - | 1122 | ` *  Tokenize the input into PHP tokens and raw tokens [i.e: HTML,XML,Raw text...].` |
@@ -1172,47 +1172,47 @@ Coverage: 756/811 lines (93.22%)
 |        - | 1162 | ` * 3.  <? echo 'this is the simplest, an SGML processing instruction'; ?>` |
 |        - | 1163 | ` *   <?= expression ?> This is a shortcut for "<? echo expression ?>"` |
 |        - | 1164 | ` */` |
-|    13808 | 1165 | `PH7_PRIVATE sxi32 PH7_TokenizeRawText(const char *zInput,sxu32 nLen,SySet *pOut)` |
+|    13656 | 1165 | `PH7_PRIVATE sxi32 PH7_TokenizeRawText(const char *zInput,sxu32 nLen,SySet *pOut)` |
 |        5 | 1166 | `{` |
-|    13813 | 1167 | `	const char *zEnd = &zInput[nLen];` |
-|    13813 | 1168 | `	const char *zIn  = zInput;` |
+|    13661 | 1167 | `	const char *zEnd = &zInput[nLen];` |
+|    13661 | 1168 | `	const char *zIn  = zInput;` |
 |        - | 1169 | `	const char *zCur,*zCurEnd;` |
-|    13813 | 1170 | `	SyString sCtag = { 0, 0 };     /* Closing tag */` |
+|    13661 | 1170 | `	SyString sCtag = { 0, 0 };     /* Closing tag */` |
 |        - | 1171 | `	SyToken sToken;` |
 |        - | 1172 | `	SyString sDoc;` |
 |        - | 1173 | `	sxu32 nLine;` |
 |        - | 1174 | `	sxi32 iNest;` |
 |        - | 1175 | `	sxi32 rc;` |
 |        - | 1176 | `	/* Tokenize the input into PHP tokens and raw tokens */` |
-|    13813 | 1177 | `	nLine = 1;` |
-|    13813 | 1178 | `	zCur = zCurEnd   = 0; /* Prevent compiler warning */` |
-|    13813 | 1179 | `	sToken.pUserData = 0;` |
-|    13813 | 1180 | `	iNest = 0;` |
-|    13813 | 1181 | `	sDoc.nByte = 0;` |
-|    13813 | 1182 | `	sDoc.zString = ""; /* cc warning */` |
-|    13810 | 1183 | `	for(;;){` |
-|    27625 | 1184 | `		if( zIn >= zEnd ){` |
+|    13661 | 1177 | `	nLine = 1;` |
+|    13661 | 1178 | `	zCur = zCurEnd   = 0; /* Prevent compiler warning */` |
+|    13661 | 1179 | `	sToken.pUserData = 0;` |
+|    13661 | 1180 | `	iNest = 0;` |
+|    13661 | 1181 | `	sDoc.nByte = 0;` |
+|    13661 | 1182 | `	sDoc.zString = ""; /* cc warning */` |
+|    13658 | 1183 | `	for(;;){` |
+|    27321 | 1184 | `		if( zIn >= zEnd ){` |
 |        - | 1185 | `			/* End of input reached */` |
-|    13763 | 1186 | `			break;` |
+|    13611 | 1186 | `			break;` |
 |        - | 1187 | `		}` |
-|    13867 | 1188 | `		sToken.nLine = nLine;` |
-|    13867 | 1189 | `		zCur = zIn;` |
-|    13867 | 1190 | `		zCurEnd = 0;` |
-|    13921 | 1191 | `		while( zIn < zEnd ){` |
-|    13871 | 1192 | `			 if( zIn[0] == '<' ){` |
-|    13817 | 1193 | `				const char *zTmp = zIn; /* End of raw input marker */` |
-|    13817 | 1194 | `				zIn++;` |
-|    13817 | 1195 | `				if( zIn < zEnd ){` |
-|    13817 | 1196 | `					if( zIn[0] == '?' ){` |
-|    13817 | 1197 | `						zIn++;` |
-|    13817 | 1198 | `						if( (sxu32)(zEnd - zIn) >= sizeof("php")-1 &&  SyStrnicmp(zIn,"php",sizeof("php")-1) == 0 ){` |
+|    13715 | 1188 | `		sToken.nLine = nLine;` |
+|    13715 | 1189 | `		zCur = zIn;` |
+|    13715 | 1190 | `		zCurEnd = 0;` |
+|    13769 | 1191 | `		while( zIn < zEnd ){` |
+|    13719 | 1192 | `			 if( zIn[0] == '<' ){` |
+|    13665 | 1193 | `				const char *zTmp = zIn; /* End of raw input marker */` |
+|    13665 | 1194 | `				zIn++;` |
+|    13665 | 1195 | `				if( zIn < zEnd ){` |
+|    13665 | 1196 | `					if( zIn[0] == '?' ){` |
+|    13665 | 1197 | `						zIn++;` |
+|    13665 | 1198 | `						if( (sxu32)(zEnd - zIn) >= sizeof("php")-1 &&  SyStrnicmp(zIn,"php",sizeof("php")-1) == 0 ){` |
 |        - | 1199 | `							/* opening tag: <?php */` |
-|    13815 | 1200 | `							zIn += sizeof("php")-1;` |
-|     6905 | 1201 | `						}` |
+|    13663 | 1200 | `							zIn += sizeof("php")-1;` |
+|     6829 | 1201 | `						}` |
 |        - | 1202 | `						/* Look for the closing tag '?>' */` |
-|    13817 | 1203 | `						SyStringInitFromBuf(&sCtag,"?>",sizeof("?>")-1);` |
-|    13817 | 1204 | `						zCurEnd = zTmp;` |
-|    13817 | 1205 | `						break;` |
+|    13665 | 1203 | `						SyStringInitFromBuf(&sCtag,"?>",sizeof("?>")-1);` |
+|    13665 | 1204 | `						zCurEnd = zTmp;` |
+|    13665 | 1205 | `						break;` |
 |        - | 1206 | `					}` |
 |      ! 0 | 1207 | `				}` |
 |      ! 0 | 1208 | `			}else{` |
@@ -1222,48 +1222,48 @@ Coverage: 756/811 lines (93.22%)
 |       59 | 1212 | `				zIn++;` |
 |        - | 1213 | `			 }` |
 |        5 | 1214 | `		} /* While(zIn < zEnd) */` |
-|    13867 | 1215 | `		if( zCurEnd == 0 ){` |
+|    13715 | 1215 | `		if( zCurEnd == 0 ){` |
 |       54 | 1216 | `			zCurEnd = zIn;` |
 |       25 | 1217 | `		}` |
 |        - | 1218 | `		/* Save the raw token */` |
-|    13867 | 1219 | `		SyStringInitFromBuf(&sToken.sData,zCur,zCurEnd - zCur);` |
-|    13867 | 1220 | `		sToken.nType = PH7_TOKEN_RAW;` |
-|    13867 | 1221 | `		rc = SySetPut(&(*pOut),(const void *)&sToken);` |
-|    13867 | 1222 | `		if( rc != SXRET_OK ){` |
+|    13715 | 1219 | `		SyStringInitFromBuf(&sToken.sData,zCur,zCurEnd - zCur);` |
+|    13715 | 1220 | `		sToken.nType = PH7_TOKEN_RAW;` |
+|    13715 | 1221 | `		rc = SySetPut(&(*pOut),(const void *)&sToken);` |
+|    13715 | 1222 | `		if( rc != SXRET_OK ){` |
 |      ! 0 | 1223 | `			return rc;` |
 |        - | 1224 | `		}` |
-|    13867 | 1225 | `		if( zIn >= zEnd ){` |
+|    13715 | 1225 | `		if( zIn >= zEnd ){` |
 |       54 | 1226 | `			break;` |
 |        - | 1227 | `		}` |
 |        - | 1228 | `		/* Ignore leading white space */` |
-|    29613 | 1229 | `		while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && SyisSpace(zIn[0]) ){` |
-|    15801 | 1230 | `			if( zIn[0] == '\n' ){` |
-|    14593 | 1231 | `				nLine++;` |
-|     7294 | 1232 | `			}` |
-|    15801 | 1233 | `			zIn++;` |
+|    29259 | 1229 | `		while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && SyisSpace(zIn[0]) ){` |
+|    15599 | 1230 | `			if( zIn[0] == '\n' ){` |
+|    14467 | 1231 | `				nLine++;` |
+|     7231 | 1232 | `			}` |
+|    15599 | 1233 | `			zIn++;` |
 |        5 | 1234 | `		}` |
 |        - | 1235 | `		/* Delimit the PHP chunk */` |
-|    13817 | 1236 | `		sToken.nLine = nLine;` |
-|    13817 | 1237 | `		zCur = zIn;` |
-|  1468093 | 1238 | `		while( (sxu32)(zEnd - zIn) >= sCtag.nByte ){` |
+|    13665 | 1236 | `		sToken.nLine = nLine;` |
+|    13665 | 1237 | `		zCur = zIn;` |
+|  1464197 | 1238 | `		while( (sxu32)(zEnd - zIn) >= sCtag.nByte ){` |
 |        - | 1239 | `			const char *zPtr;` |
-|  1462011 | 1240 | `			if( SyMemcmp(zIn,sCtag.zString,sCtag.nByte) == 0 && iNest < 1 ){` |
-|     7733 | 1241 | `				break;` |
+|  1458191 | 1240 | `			if( SyMemcmp(zIn,sCtag.zString,sCtag.nByte) == 0 && iNest < 1 ){` |
+|     7657 | 1241 | `				break;` |
 |        - | 1242 | `			}` |
-|   729918 | 1243 | `			for(;;){` |
-|  1459841 | 1244 | `				if( zIn[0] != '/' \|\| (zIn[1] != '*' && zIn[1] != '/') /* && sCtag.nByte >= 2 */ ){` |
-|   727144 | 1245 | `					break;` |
+|   728040 | 1243 | `			for(;;){` |
+|  1456085 | 1244 | `				if( zIn[0] != '/' \|\| (zIn[1] != '*' && zIn[1] != '/') /* && sCtag.nByte >= 2 */ ){` |
+|   725272 | 1245 | `					break;` |
 |        - | 1246 | `				}` |
-|     5563 | 1247 | `				zIn += 2;` |
-|     5563 | 1248 | `				if( zIn[-1] == '/' ){` |
+|     5551 | 1247 | `				zIn += 2;` |
+|     5551 | 1248 | `				if( zIn[-1] == '/' ){` |
 |        - | 1249 | `					/* Inline comment */` |
-|   206569 | 1250 | `					while( zIn < zEnd && zIn[0] != '\n' ){` |
-|   201223 | 1251 | `						zIn++;` |
+|   206071 | 1250 | `					while( zIn < zEnd && zIn[0] != '\n' ){` |
+|   200737 | 1251 | `						zIn++;` |
 |        5 | 1252 | `					}` |
-|     5351 | 1253 | `					if( zIn >= zEnd ){` |
+|     5339 | 1253 | `					if( zIn >= zEnd ){` |
 |      ! 0 | 1254 | `						zIn--;` |
 |      ! 0 | 1255 | `					}` |
-|     2678 | 1256 | `				}else{` |
+|     2672 | 1256 | `				}else{` |
 |        - | 1257 | `					/* Block comment */` |
 |    14249 | 1258 | `					while( (sxu32)(zEnd-zIn) >= sizeof("*/") - 1 ){` |
 |    14249 | 1259 | `						if( zIn[0] == '*' && zIn[1] == '/' ){` |
@@ -1277,9 +1277,9 @@ Coverage: 756/811 lines (93.22%)
 |        5 | 1267 | `					}` |
 |        - | 1268 | `				}` |
 |        5 | 1269 | `			}` |
-|  1454283 | 1270 | `			if( zIn[0] == '\n' ){` |
-|    49639 | 1271 | `				nLine++;` |
-|    49639 | 1272 | `				if( iNest > 0 ){` |
+|  1450539 | 1270 | `			if( zIn[0] == '\n' ){` |
+|    49635 | 1271 | `				nLine++;` |
+|    49635 | 1272 | `				if( iNest > 0 ){` |
 |      329 | 1273 | `					zIn++;` |
 |      719 | 1274 | `					while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && SyisSpace(zIn[0]) && zIn[0] != '\n' ){` |
 |      394 | 1275 | `						zIn++;` |
@@ -1301,7 +1301,7 @@ Coverage: 756/811 lines (93.22%)
 |       58 | 1291 | `					}` |
 |      329 | 1292 | `					continue;` |
 |        5 | 1293 | `				}` |
-|  1429304 | 1294 | `			}else if ( (sxu32)(zEnd - zIn) >= sizeof("<<<") && zIn[0] == '<' && zIn[1] == '<' && zIn[2] == '<' && iNest < 1){` |
+|  1425562 | 1294 | `			}else if ( (sxu32)(zEnd - zIn) >= sizeof("<<<") && zIn[0] == '<' && zIn[1] == '<' && zIn[2] == '<' && iNest < 1){` |
 |      123 | 1295 | `				zIn += sizeof("<<<")-1;` |
 |      135 | 1296 | `				while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && SyisSpace(zIn[0]) && zIn[0] != '\n' ){` |
 |       13 | 1297 | `					zIn++;` |
@@ -1328,30 +1328,30 @@ Coverage: 756/811 lines (93.22%)
 |       59 | 1318 | `				}` |
 |      123 | 1319 | `				continue;` |
 |        - | 1320 | `			}` |
-|  1453841 | 1321 | `			zIn++;` |
+|  1450097 | 1321 | `			zIn++;` |
 |        - | 1322 |  |
-|  1453841 | 1323 | `			if ( zIn >= zEnd )` |
+|  1450097 | 1323 | `			if ( zIn >= zEnd )` |
 |        3 | 1324 | `				break;` |
 |        5 | 1325 | `		}` |
-|    13817 | 1326 | `		if( (sxu32)(zEnd - zIn) < sCtag.nByte ){` |
-|     6089 | 1327 | `			zIn = zEnd;` |
-|     3042 | 1328 | `		}` |
-|    13817 | 1329 | `		if( zCur < zIn ){` |
+|    13665 | 1326 | `		if( (sxu32)(zEnd - zIn) < sCtag.nByte ){` |
+|     6013 | 1327 | `			zIn = zEnd;` |
+|     3004 | 1328 | `		}` |
+|    13665 | 1329 | `		if( zCur < zIn ){` |
 |        - | 1330 | `			/* Save the PHP chunk for later processing */` |
-|    10729 | 1331 | `			sToken.nType = PH7_TOKEN_PHP;` |
-|    10729 | 1332 | `			SyStringInitFromBuf(&sToken.sData,zCur,zIn-zCur);` |
-|    21365 | 1333 | `			SyStringRightTrim(&sToken.sData); /* Trim trailing white spaces */` |
-|    10729 | 1334 | `			rc = SySetPut(&(*pOut),(const void *)&sToken);` |
-|    10729 | 1335 | `			if( rc != SXRET_OK ){` |
+|    10627 | 1331 | `			sToken.nType = PH7_TOKEN_PHP;` |
+|    10627 | 1332 | `			SyStringInitFromBuf(&sToken.sData,zCur,zIn-zCur);` |
+|    21161 | 1333 | `			SyStringRightTrim(&sToken.sData); /* Trim trailing white spaces */` |
+|    10627 | 1334 | `			rc = SySetPut(&(*pOut),(const void *)&sToken);` |
+|    10627 | 1335 | `			if( rc != SXRET_OK ){` |
 |      ! 0 | 1336 | `				return rc;` |
 |        - | 1337 | `			}` |
-|     5362 | 1338 | `		}` |
-|    13817 | 1339 | `		if( zIn < zEnd ){` |
+|     5311 | 1338 | `		}` |
+|    13665 | 1339 | `		if( zIn < zEnd ){` |
 |        - | 1340 | `			/* Jump the trailing closing tag */` |
-|     7733 | 1341 | `			zIn += sCtag.nByte;` |
-|     3864 | 1342 | `		}` |
+|     7657 | 1341 | `			zIn += sCtag.nByte;` |
+|     3826 | 1342 | `		}` |
 |        5 | 1343 | `	} /* For(;;) */` |
 |        - | 1344 |  |
-|    13813 | 1345 | ` 	return SXRET_OK;` |
-|     6909 | 1346 | `}` |
+|    13661 | 1345 | ` 	return SXRET_OK;` |
+|     6833 | 1346 | `}` |
 |        - | 1347 |  |

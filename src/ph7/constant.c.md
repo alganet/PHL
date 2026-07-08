@@ -216,19 +216,19 @@ Coverage: 1083/1094 lines (98.99%)
 |      - |  206 | ` * __FILE__` |
 |      - |  207 | ` *  Path of the processed script.` |
 |      - |  208 | ` */` |
-|   1406 |  209 | `static void PH7_FILE_Const(ph7_value *pVal,void *pUserData)` |
+|   1482 |  209 | `static void PH7_FILE_Const(ph7_value *pVal,void *pUserData)` |
 |      5 |  210 | `{` |
-|   1411 |  211 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
+|   1487 |  211 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
 |      - |  212 | `	SyString *pFile;` |
 |      - |  213 | `	/* Peek the top entry */` |
-|   1411 |  214 | `	pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
-|   1411 |  215 | `	if( pFile == 0 ){` |
+|   1487 |  214 | `	pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
+|   1487 |  215 | `	if( pFile == 0 ){` |
 |      - |  216 | `		/* Expand the magic word: ":MEMORY:" */` |
 |      3 |  217 | `		ph7_value_string(pVal,":MEMORY:",(int)sizeof(":MEMORY:")-1);` |
 |      2 |  218 | `	}else{` |
-|   1409 |  219 | `		ph7_value_string(pVal,pFile->zString,pFile->nByte);` |
+|   1485 |  219 | `		ph7_value_string(pVal,pFile->zString,pFile->nByte);` |
 |      - |  220 | `	}` |
-|   1411 |  221 | `}` |
+|   1487 |  221 | `}` |
 |      - |  222 | `/*` |
 |      - |  223 | ` * __DIR__` |
 |      - |  224 | ` *  Directory holding the processed script.` |
