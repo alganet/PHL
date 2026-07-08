@@ -6,7 +6,7 @@
 | src/ph7/builtin_math.c         | 94.38%   | 554/587     |
 | src/ph7/compile.c              | 80.70%   | 6047/7493   |
 | src/ph7/constant.c             | 98.99%   | 1083/1094   |
-| src/ph7/hashmap.c              | 87.29%   | 3357/3846   |
+| src/ph7/hashmap.c              | 87.18%   | 3353/3846   |
 | src/ph7/lex.c                  | 93.22%   | 756/811     |
 | src/ph7/memobj.c               | 89.27%   | 724/811     |
 | src/ph7/net.c                  | 50.48%   | 53/105      |
@@ -16,7 +16,7 @@
 | src/ph7/vfs_unix.c             | 88.06%   | 376/427     |
 | src/ph7/vfs_win.c              | 75.43%   | 485/643     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
-| src/ph7/vm.c                   | 81.01%   | 8547/10550  |
+| src/ph7/vm.c                   | 81.16%   | 8563/10551  |
 | src/ph7/vm_builtin_class.c     | 84.74%   | 433/511     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
 | src/ph7/vm_builtin_ob.c        | 76.21%   | 157/206     |
@@ -26,7 +26,7 @@
 | src/ph7/vm_pcre.c              | 65.26%   | 605/927     |
 | src/ph7/vm_serialize.c         | 96.54%   | 419/434     |
 | src/ph7/vm_xml.c               | 67.82%   | 392/578     |
-| src/phl/phl.c                  | 74.40%   | 186/250     |
+| src/phl/phl.c                  | 78.66%   | 199/253     |
 | src/phl/server.c               | 61.56%   | 277/450     |
 | src/sx/sxblowfish.c            | 98.82%   | 168/170     |
 | src/sx/sxds.c                  | 95.07%   | 289/304     |
@@ -44,6 +44,6 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 80.70%   | 37274/46191 |
-| Functions                      | 96.16%   | 1780/1851   |
+| Lines                          | 80.74%   | 37299/46195 |
+| Functions                      | 96.22%   | 1782/1852   |
 
