@@ -2,9 +2,7 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: substr_count with valid length parameter
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+substr_count with valid length parameter
 --FILE--
 <?php
 // Test substr_count with valid length parameter (should not return 0)

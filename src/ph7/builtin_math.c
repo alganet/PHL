@@ -1256,64 +1256,73 @@ PH7_PRIVATE int PH7_builtin_srand(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int PH7_builtin_base_convert(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	int nLen,iFbase,iTobase;
+	static const char zDigits[] = "0123456789abcdefghijklmnopqrstuvwxyz";
+	int nLen,iFbase,iTobase,i;
+	ph7_int64 iFbase64,iTobase64;
 	const char *zNum;
-	ph7_int64 iNum;
+	sxu64 uNum = 0;
 	if( nArg < 3 ){
 		/* Return the empty string*/
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
-	/* Base numbers */
-	iFbase  = ph7_value_to_int(apArg[1]);
-	iTobase = ph7_value_to_int(apArg[2]);
-	if( ph7_value_is_string(apArg[0]) ){
-		/* Extract the target number */
-		zNum = ph7_value_to_string(apArg[0],&nLen);
-		if( nLen < 1 ){
-			/* Return the empty string*/
-			ph7_result_string(pCtx,"",0);
-			return PH7_OK;
-		}
-		/* Base conversion */
-		switch(iFbase){
-		case 16:
-			/* Hex */
-			SyHexStrToInt64(zNum,(sxu32)nLen,(void *)&iNum,0);
-			break;
-		case 8:
-			/* Octal */
-			SyOctalStrToInt64(zNum,(sxu32)nLen,(void *)&iNum,0);
-			break;
-		case 2:
-			/* Binary */
-			SyBinaryStrToInt64(zNum,(sxu32)nLen,(void *)&iNum,0);
-			break;
-		default:
-			/* Decimal */
-			SyStrToInt64(zNum,(sxu32)nLen,(void *)&iNum,0);
-			break;
-		}
-	}else{
-		iNum = ph7_value_to_int64(apArg[0]);
+	/* Base numbers. Read them as 64-bit so an out-of-range base can't wrap through
+	 * a 32-bit truncation back into the 2..36 window and bypass the check below. */
+	iFbase64 = ph7_value_to_int64(apArg[1]);
+	iTobase64 = ph7_value_to_int64(apArg[2]);
+	/* PHP 8 throws a catchable ValueError for a base outside 2..36; from_base
+	 * is validated before to_base, both before the string is even parsed. */
+	if( iFbase64 < 2 || iFbase64 > 36 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"base_convert(): Argument #2 ($from_base) must be between 2 and 36 (inclusive)");
 	}
-	switch(iTobase){
-	case 16:
-		/* Hex */
-		ph7_result_string_format(pCtx,"%qx",iNum); /* Quad hex */
-		break;
-	case 8:
-		/* Octal */
-		ph7_result_string_format(pCtx,"%qo",iNum); /* Quad octal */
-		break;
-	case 2:
-		/* Binary */
-		ph7_result_string_format(pCtx,"%qB",iNum); /* Quad binary */
-		break;
-	default:
-		/* Decimal */
-		ph7_result_string_format(pCtx,"%qd",iNum); /* Quad decimal */
-		break;
+	if( iTobase64 < 2 || iTobase64 > 36 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"base_convert(): Argument #3 ($to_base) must be between 2 and 36 (inclusive)");
+	}
+	/* Both bases are now known to fit in [2,36], so the int form is exact. */
+	iFbase  = (int)iFbase64;
+	iTobase = (int)iTobase64;
+	/* Parse the input number in from_base. Every base is handled the same way:
+	 * digits 0-9 then a-z/A-Z map to 0-35; a character that is not a valid digit
+	 * for from_base is ignored (PHP additionally raises an E_DEPRECATED for the
+	 * ignored characters — not yet emitted, see PLAN §3.1). */
+	zNum = ph7_value_to_string(apArg[0],&nLen);
+	for( i = 0 ; i < nLen ; ++i ){
+		int c = (unsigned char)zNum[i];
+		int d;
+		if( c >= '0' && c <= '9' ){
+			d = c - '0';
+		}else if( c >= 'a' && c <= 'z' ){
+			d = c - 'a' + 10;
+		}else if( c >= 'A' && c <= 'Z' ){
+			d = c - 'A' + 10;
+		}else{
+			d = 99;
+		}
+		if( d >= iFbase ){
+			/* Not a valid digit for this base: skip it (PHP). */
+			continue;
+		}
+		uNum = uNum * (sxu64)iFbase + (sxu64)d;
+	}
+	/* Format the result in to_base using lowercase digits. */
+	if( uNum == 0 ){
+		ph7_result_string(pCtx,"0",1);
+	}else{
+		char zOut[70]; /* base-2 of a 64-bit value fits in 64 digits */
+		int n = 0,j;
+		while( uNum > 0 ){
+			zOut[n++] = zDigits[uNum % (sxu64)iTobase];
+			uNum /= (sxu64)iTobase;
+		}
+		/* Digits were produced least-significant first: reverse in place. */
+		for( j = 0 ; j < n/2 ; ++j ){
+			char t = zOut[j];
+			zOut[j] = zOut[n - 1 - j];
+			zOut[n - 1 - j] = t;
+		}
+		ph7_result_string(pCtx,zOut,n);
 	}
 	return PH7_OK;
 }

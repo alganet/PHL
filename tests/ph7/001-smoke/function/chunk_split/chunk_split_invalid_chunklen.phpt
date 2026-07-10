@@ -2,22 +2,17 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: chunk_split with invalid chunk length
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+chunk_split with a non-positive chunk length throws ValueError
 --FILE--
 <?php
-// Test chunk_split with zero chunk length (should reset to default 76)
-$result = chunk_split("hello", 0);
-$expected = "hello\r\n";
-if ($result === $expected) {
-    echo "PASS\n";
-} else {
-    echo "FAIL\n";
+try {
+    chunk_split("hello", 0);
+    echo "NO_ERROR\n";
+} catch (\ValueError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-PASS
+chunk_split(): Argument #2 ($length) must be greater than 0
 --CLEAN--
 <?php
-unset($result, $expected);
