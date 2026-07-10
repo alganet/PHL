@@ -3114,7 +3114,7 @@ static int PH7_builtin_str_repeat(ph7_context *pCtx,int nArg,ph7_value **apArg)
 static int PH7_builtin_nl2br(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zIn,*zCur,*zEnd;
-	int is_xhtml = 1; /* Default to XHTML-style '<br/>' like PHP */
+	int is_xhtml = 1; /* Default to XHTML-style '<br />' like PHP */
 	int nLen;
 	if( nArg < 1 ){
 		/* Missing arguments,return the empty string */
@@ -3148,9 +3148,9 @@ static int PH7_builtin_nl2br(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			break;
 		}
 		/* Output the HTML line break */
-		/* Follow PHP semantics: if is_xhtml is true, use '<br/>' (legacy without space), otherwise use '<br>' */
+		/* Follow PHP semantics: if is_xhtml is true, use '<br />' (space before the slash), otherwise use '<br>' */
 		if( is_xhtml ){
-			ph7_result_string(pCtx,"<br/>",(int)sizeof("<br/>")-1);
+			ph7_result_string(pCtx,"<br />",(int)sizeof("<br />")-1);
 		}else{
 			ph7_result_string(pCtx,"<br>",(int)sizeof("<br>")-1);
 		}
