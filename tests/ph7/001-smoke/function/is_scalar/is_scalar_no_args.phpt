@@ -2,20 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: is_scalar() with no arguments returns false
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+is_scalar() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-// Calling is_scalar with no arguments should return false
-if (is_scalar() === false) {
-    echo "true";
-} else {
-    echo "false";
+try {
+    is_scalar();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-true
---CLEAN--
-<?php
-
+is_scalar() expects exactly 1 argument, 0 given

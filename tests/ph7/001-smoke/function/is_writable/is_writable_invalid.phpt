@@ -2,22 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-is_writable with invalid arguments
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+is_writable() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-// No arguments
-$result = is_writable();
-if ($result === false) echo "PASS_NO_ARGS\n"; else echo "FAIL_NO_ARGS\n";
-
-// Non-string argument
-$result = is_writable(123);
-if ($result === false) echo "PASS_NON_STRING\n"; else echo "FAIL_NON_STRING\n";
+try {
+    is_writable();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
+}
 ?>
 --EXPECT--
-PASS_NO_ARGS
-PASS_NON_STRING
---CLEAN--
-<?php
-unset($result);
+is_writable() expects exactly 1 argument, 0 given

@@ -1,17 +1,15 @@
 --CREDITS--
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --TEST--
-explode with insufficient arguments returns false
+explode() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-$result = explode("a");
-echo $result === false ? "EXPLODE_INSUFFICIENT:FALSE\n" : "EXPLODE_INSUFFICIENT:NOT_FALSE\n";
+try {
+    explode("a");
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
+}
 ?>
 --EXPECT--
-EXPLODE_INSUFFICIENT:FALSE
---CLEAN--
-<?php
-unset($result);
+explode() expects at least 2 arguments, 1 given

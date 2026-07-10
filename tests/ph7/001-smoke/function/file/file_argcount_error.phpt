@@ -2,14 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-ctype_graph() throws ArgumentCountError with too few arguments (PHP 8)
+file() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
 try {
-    ctype_graph();
+    file();
 } catch (\ArgumentCountError $e) {
     echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-ctype_graph() expects exactly 1 argument, 0 given
+file() expects at least 1 argument, 0 given

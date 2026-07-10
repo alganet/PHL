@@ -2,17 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-is_bool with no arguments
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+is_bool() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-$result = is_bool();
-echo $result ? "true" : "false";
-echo "\n";
+try {
+    is_bool();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
+}
 ?>
 --EXPECT--
-false
---CLEAN--
-<?php
-unset($result);
+is_bool() expects exactly 1 argument, 0 given

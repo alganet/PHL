@@ -2,19 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: ctype_space missing argument returns FALSE
---SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+ctype_space() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-if (ctype_space() === false) {
-    echo "true";
-} else {
-    echo "false";
+try {
+    ctype_space();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-true
---CLEAN--
-<?php
-
+ctype_space() expects exactly 1 argument, 0 given

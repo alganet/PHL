@@ -2,20 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: vsprintf with no arguments returns empty string
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+vsprintf() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-$result = vsprintf();
-if ($result == "") {
-    echo "PASS";
-} else {
-    echo "FAIL";
+try {
+    vsprintf();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-PASS
---CLEAN--
-<?php
-unset($result);
+vsprintf() expects exactly 2 arguments, 0 given

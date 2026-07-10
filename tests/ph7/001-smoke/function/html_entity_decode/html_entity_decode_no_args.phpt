@@ -2,20 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-html_entity_decode with no arguments
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+html_entity_decode() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-$result = html_entity_decode();
-if (is_null($result)) {
-    echo "PASS";
-} else {
-    echo "FAIL: expected null, got " . var_export($result, true);
+try {
+    html_entity_decode();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-PASS
---CLEAN--
-<?php
-unset($result);
+html_entity_decode() expects at least 1 argument, 0 given

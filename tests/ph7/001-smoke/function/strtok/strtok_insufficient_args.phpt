@@ -2,20 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-strtok insufficient arguments
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+strtok() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-$result = strtok();
-if ($result === false) {
-    echo "false";
-} else {
-    echo "not false";
+try {
+    strtok();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-false
---CLEAN--
-<?php
-unset($result);
+strtok() expects at least 1 argument, 0 given

@@ -2,19 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-trigger_error with no arguments returns false
---SKIPIF--
-<?php
-if (!function_exists('trigger_error')) { echo 'skip: trigger_error not available'; }
-if (function_exists('zend_version')) { echo 'skip: PHP error message format differs'; }
-?>
+trigger_error() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-$result = trigger_error();
-if ($result) { echo "no_args_true\n"; } else { echo "no_args_false\n"; }
+try {
+    trigger_error();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
+}
 ?>
 --EXPECT--
-no_args_false
---CLEAN--
-<?php
-unset($result);
+trigger_error() expects at least 1 argument, 0 given
