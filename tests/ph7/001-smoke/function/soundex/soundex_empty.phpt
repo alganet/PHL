@@ -2,20 +2,17 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PHL: soundex empty string
---SKIPIF--
-<?php
-if (function_exists('zend_version')) {
-    echo 'skip';
-}
-?>
+soundex returns "0000" for input with no alphabetic character
 --FILE--
 <?php
-// Test empty string
-echo soundex("") === "?000" ? "EMPTY_OK\n" : "EMPTY_FAIL: " . soundex("") . "\n";
+var_dump(soundex(""));
+var_dump(soundex("123"));
+var_dump(soundex("!!!"));
 ?>
 --EXPECT--
-EMPTY_OK
+string(4) "0000"
+string(4) "0000"
+string(4) "0000"
 --CLEAN--
 <?php
 
