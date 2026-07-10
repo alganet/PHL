@@ -531,40 +531,47 @@ static int PH7_builtin_substr_count(ph7_context *pCtx,int nArg,ph7_value **apArg
 	zText = ph7_value_to_string(apArg[0],&nTextlen);
 	/* Point to the neddle */
 	zPattern = ph7_value_to_string(apArg[1],&nPatlen);
-	if( nTextlen < 1 || nPatlen < 1 || nPatlen > nTextlen ){
-		/* NOOP,return zero */
+	if( nPatlen < 1 ){
+		/* Empty needle: PHP 8 throws a catchable ValueError. */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"substr_count(): Argument #2 ($needle) must not be empty");
+	}
+	/* Apply the optional $offset/$length window before searching. PHP 8 validates
+	 * both against the haystack (a negative value counts from the end) and throws a
+	 * catchable ValueError when the result falls outside it — this happens before the
+	 * needle-fits check, so it fires even when the needle is longer than the haystack. */
+	if( nArg > 2 ){
+		ph7_int64 iOfft = ph7_value_to_int64(apArg[2]);
+		if( iOfft < 0 ){
+			iOfft += nTextlen;
+		}
+		if( iOfft < 0 || iOfft > nTextlen ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"substr_count(): Argument #3 ($offset) must be contained in argument #1 ($haystack)");
+		}
+		/* Point to the desired offset and shrink the remaining region */
+		zText = &zText[iOfft];
+		nTextlen -= (int)iOfft;
+	}
+	if( nArg > 3 ){
+		ph7_int64 nLen = ph7_value_to_int64(apArg[3]);
+		if( nLen < 0 ){
+			/* Negative length is relative to the end of the (offset) haystack */
+			nLen += nTextlen;
+		}
+		if( nLen < 0 || nLen > nTextlen ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"substr_count(): Argument #4 ($length) must be contained in argument #1 ($haystack)");
+		}
+		nTextlen = (int)nLen;
+	}
+	if( nTextlen < 1 || nPatlen > nTextlen ){
+		/* The windowed haystack can't contain the needle: zero matches */
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
 	}
-	if( nArg > 2 ){
-		int iOfft;
-		/* Extract the offset */
-		iOfft = ph7_value_to_int(apArg[2]);
-		if( iOfft < 0 || iOfft > nTextlen ){
-			/* Invalid offset,return zero */
-			ph7_result_int(pCtx,0);
-			return PH7_OK;
-		}
-		/* Point to the desired offset */
-		zText = &zText[iOfft];
-		/* Adjust length */
-		nTextlen -= iOfft;
-	}
-	/* Point to the end of the string */
+	/* Point to the end of the windowed haystack */
 	zEnd = &zText[nTextlen];
-	if( nArg > 3 ){
-		int nLen;
-		/* Extract the length */
-		nLen = ph7_value_to_int(apArg[3]);
-		if( nLen < 0 || nLen > nTextlen ){
-			/* Invalid length,return 0 */
-			ph7_result_int(pCtx,0);
-			return PH7_OK;
-		}
-		/* Adjust pointer */
-		nTextlen = nLen;
-		zEnd = &zText[nTextlen];
-	}
 	/* Perform the search */
 	for(;;){
 		rc = SyBlobSearch((const void *)zText,(sxu32)(zEnd-zText),(const void *)zPattern,nPatlen,&nOfft);
@@ -614,8 +621,9 @@ static int PH7_builtin_chunk_split(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Chunk length */
 		nChunkLen = ph7_value_to_int(apArg[1]);
 		if( nChunkLen < 1 ){
-			/* Switch back to the default length */
-			nChunkLen = 76;
+			/* PHP 8 throws a catchable ValueError for a non-positive length. */
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"chunk_split(): Argument #2 ($length) must be greater than 0");
 		}
 		if( nArg > 2 ){
 			/* Separator */
@@ -1555,9 +1563,9 @@ static int PH7_builtin_explode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Extract the delimiter */
 	zDelim = ph7_value_to_string(apArg[0],&nDelim);
 	if( nDelim < 1 ){
-		/* Empty delimiter,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+		/* Empty delimiter: PHP 8 throws a catchable ValueError. */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"explode(): Argument #1 ($separator) must not be empty");
 	}
 	/* Extract the string */
 	zString = ph7_value_to_string(apArg[1],&nStrlen);
@@ -3052,7 +3060,8 @@ static int PH7_builtin_ucwords(ph7_context *pCtx,int nArg,ph7_value **apArg)
 static int PH7_builtin_str_repeat(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zIn;
-	int nLen,nMul;
+	int nLen;
+	ph7_int64 nMul;
 	int rc;
 	if( nArg < 2 ){
 		/* Missing arguments,return NULL */
@@ -3061,15 +3070,17 @@ static int PH7_builtin_str_repeat(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Extract the target string */
 	zIn = ph7_value_to_string(apArg[0],&nLen);
-	if( nLen < 1 ){
-		/* Empty string.Return null */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	/* Extract the multiplier as a 64-bit value (a 32-bit read would wrap a large
+	 * positive $times into a negative one and trip a spurious ValueError). PHP
+	 * validates $times regardless of the string contents: a negative count throws
+	 * a catchable ValueError. */
+	nMul = ph7_value_to_int64(apArg[1]);
+	if( nMul < 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"str_repeat(): Argument #2 ($times) must be greater than or equal to 0");
 	}
-	/* Extract the multiplier */
-	nMul = ph7_value_to_int(apArg[1]);
-	if( nMul < 1 ){
-		/* Return the empty string */
+	if( nLen < 1 || nMul < 1 ){
+		/* Empty input or a zero multiplier yields the empty string (PHP). */
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
@@ -6801,9 +6812,10 @@ static int PH7_builtin_str_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Padding string */
 		zPad = ph7_value_to_string(apArg[2],&iStrpad);
 		if( iStrpad < 1 ){
-			/* Empty string */
-			zPad = " "; /* Whitespace padding */
-			iStrpad = (int)sizeof(char);
+			/* An empty pad string throws a catchable ValueError in PHP 8
+			 * (only reached once padding is actually required). */
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"str_pad(): Argument #3 ($pad_string) must not be empty");
 		}
 		if( nArg > 3 ){
 			/* Padd type */

@@ -2,30 +2,27 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: substr_count with offset and length parameters
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+substr_count with offset and length parameters
 --FILE--
 <?php
-// Test substr_count with 4 arguments (haystack, needle, offset, length)
 $haystack = "abababababa";
 $needle = "aba";
 
-// Test with offset and length
-$result1 = substr_count($haystack, $needle, 0, 6); // "ababab" -> 1 (at 0-2)
-echo "substr_count with offset 0, length 6: $result1\n";
+// Valid offset and length windows.
+echo "substr_count with offset 0, length 6: ", substr_count($haystack, $needle, 0, 6), "\n"; // "ababab" -> 1
+echo "substr_count with offset 2, length 8: ", substr_count($haystack, $needle, 2, 8), "\n"; // "abababab" -> 2
 
-$result2 = substr_count($haystack, $needle, 2, 8); // "abababab" -> 2 (at 2-4, 4-6)
-echo "substr_count with offset 2, length 8: $result2\n";
-
-// Test with invalid length (too large)
-$result3 = substr_count($haystack, $needle, 0, 100);
-echo "substr_count with large length: $result3\n";
+// A length past the end of the haystack throws.
+try {
+    substr_count($haystack, $needle, 0, 100);
+    echo "NO_ERROR\n";
+} catch (\ValueError $e) {
+    echo "substr_count with large length: ", $e->getMessage(), "\n";
+}
 ?>
 --EXPECT--
 substr_count with offset 0, length 6: 1
 substr_count with offset 2, length 8: 2
-substr_count with large length: 0
+substr_count with large length: substr_count(): Argument #4 ($length) must be contained in argument #1 ($haystack)
 --CLEAN--
 <?php
-unset($haystack, $needle, $result1, $result2, $result3);
