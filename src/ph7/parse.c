@@ -963,6 +963,45 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 		}else{
 			pNode->xCode = PH7_CompileShortArray;
 		}
+	}else if( bAfterMemberOp && (pCur->nType & PH7_TK_OP) && (pCur->nType & PH7_TK_ID) ){
+		/* An alpha-stream operator-keyword (clone/new/and/or/xor/instanceof) used
+		 * as a member NAME right after -> / ?-> / :: — e.g. $o->clone(), C::new(),
+		 * $o->and() — is a plain identifier, exactly like the TK_KEYWORD member-name
+		 * case below (PHP allows any keyword there). Clear PH7_TK_OP so ExprVerifyNodes
+		 * / ExprMakeTree treat this as a term, not an operator with a NULL pOp. This
+		 * must precede the clone(...) call-form branch so `$o->clone(...)` is a method
+		 * call, not the clone() intrinsic. */
+		pNode->pStart->nType &= ~PH7_TK_OP;
+		ExprAssembleLiteral(&pCur,pGen->pEnd);
+		pNode->xCode = PH7_CompileLiteral;
+	}else if( (pCur->nType & PH7_TK_OP) && pCur->pUserData
+		&& ((const ph7_expr_op *)pCur->pUserData)->iOp == EXPR_OP_CLONE
+		&& &pCur[1] < pGen->pEnd && (pCur[1].nType & PH7_TK_LPAREN) ){
+		/* PHP 8.5 clone(...) call form: clone($object [, $withProperties]).
+		 * `clone` is an alpha-stream operator, so `clone(` is NOT auto-marked
+		 * as a function call the way `foo(` is — collect the parenthesised
+		 * argument list here and let PH7_CompileCloneCall reparse it (mirrors
+		 * how array(...)/list(...) are handled). The bare operator/statement
+		 * form `clone $obj` (no immediately-following '(') keeps the
+		 * precedence-1 operator path below. Clear PH7_TK_OP on the 'clone'
+		 * token: this node is now a self-evaluating term (xCode set, pOp NULL),
+		 * so ExprVerifyNodes / ExprMakeTree must not treat its start token as an
+		 * operator (which would dereference the NULL pOp). */
+		pNode->pStart->nType &= ~PH7_TK_OP;
+		pCur += 2; /* skip 'clone' and the opening '(' */
+		PH7_DelimitNestedTokens(pCur,pGen->pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pCur);
+		if( pCur < pGen->pEnd ){
+			pCur++; /* skip the closing ')' */
+		}else{
+			rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
+				"clone: Missing closing parenthesis ')'");
+			if( rc != SXERR_ABORT ){
+				rc = SXERR_SYNTAX;
+			}
+			SyMemBackendPoolFree(&pGen->pVm->sAllocator,pNode);
+			return rc;
+		}
+		pNode->xCode = PH7_CompileCloneCall;
 	}else if( pCur->nType & PH7_TK_OP ){
 		/* Point to the instance that describe this operator */
 		pNode->pOp = (const ph7_expr_op *)pCur->pUserData;

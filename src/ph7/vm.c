@@ -4847,7 +4847,7 @@ static const char *VmFormatValueClassName(ph7_value *pValue,char *zBuf,sxu32 nBu
 	return zBuf;
 }
 
-static sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValue)
+static sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValue,int bCloneInit)
 {
 	SyHashEntry *pSlot;
 	VmClassAttr *pVmAttr;
@@ -4869,13 +4869,16 @@ static sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pVal
 		 * VM_CLASS_ATTR_UNINIT and that flag is cleared only by a *successful*
 		 * write below — making it the write-once latch (a type-rejected write
 		 * leaves it set, so a later valid initialization still works). */
-		if( (pVmAttr->iState & VM_CLASS_ATTR_UNINIT) == 0 ){
-			/* Already initialized: any further write is forbidden, any scope. */
+		if( !bCloneInit && (pVmAttr->iState & VM_CLASS_ATTR_UNINIT) == 0 ){
+			/* Already initialized: any further write is forbidden, any scope.
+			 * (PHP 8.5 clone($o,[...]) is the sole exception — bCloneInit — which
+			 * re-initializes a readonly property from an allowed scope, so it
+			 * falls through to the set-scope check below.) */
 			return VmThrowReadonlyError(pVm,pVmAttr->pOwner,pAttr,1);
 		}
 		{
-			/* First write must come from within the declaring class scope
-			 * (readonly's set-scope is protected — a subclass may initialize). */
+			/* First write (or a clone re-init) must come from within the declaring
+			 * class scope (readonly's set-scope is protected — a subclass may set). */
 			ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pVmAttr->pOwner;
 			ph7_class *pActive = VmCurrentSelf(pVm);
 			if( pActive == 0 || pDecl == 0 || !PH7_VmInstanceOf(pActive,pDecl) ){
@@ -4991,6 +4994,72 @@ static sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pVal
 		}
 	}
 	pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
+	return SXRET_OK;
+}
+/*
+ * Apply ONE property update from a PHP 8.5 clone($obj, [ 'name' => value, ... ])
+ * to the freshly-produced clone. The write happens in the caller's scope, so:
+ *   - visibility is enforced (a private/protected property is only writable from
+ *     a scope that could normally reach it — else a catchable Error),
+ *   - a readonly property may be RE-initialized here (bCloneInit) provided the
+ *     caller's scope could set it (else the readonly set-scope Error),
+ *   - typed properties are coerced/validated exactly as a normal store, and
+ *   - an unknown name creates a dynamic property (PHP still creates it; the 8.2
+ *     deprecation notice is not emitted yet — PLAN §3.9 / band A #8).
+ * Returns SXRET_OK, or PH7_EXCEPTION/PH7_ABORT (already thrown) on failure.
+ */
+static sxi32 VmCloneApplyUpdate(ph7_vm *pVm,ph7_class_instance *pClone,
+	const char *zName,sxu32 nName,ph7_value *pValue)
+{
+	ph7_class *pClass = pClone->pClass;
+	SyHashEntry *pEntry;
+	VmClassAttr *pVmAttr;
+	ph7_class_attr *pAttr;
+	ph7_value *pSlot;
+	sxi32 rc;
+	pEntry = (nName > 0) ? SyHashGet(&pClone->hAttr,(const void *)zName,nName) : 0;
+	if( pEntry == 0 ){
+		/* Unknown property: PHP creates a dynamic property (deprecated on a class
+		 * without #[AllowDynamicProperties], but still created — the notice is a
+		 * deferred residual). */
+		pSlot = PH7_VmCreateDynamicAttr(pVm,pClone,zName,nName,0);
+		if( pSlot == 0 ){
+			return PH7_VmMemoryError(pVm);
+		}
+		PH7_MemObjStore(pValue,pSlot);
+		return SXRET_OK;
+	}
+	pVmAttr = (VmClassAttr *)pEntry->pUserData;
+	pAttr = pVmAttr->pAttr;
+	/* Static / class-constant "properties" are not per-instance state. */
+	if( pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT) ){
+		SyBlob sMsg;
+		SyBlobInit(&sMsg,&pVm->sAllocator);
+		SyBlobFormat(&sMsg,"Cannot update static property %z::$%z via clone()",
+			&pClass->sName,&pAttr->sName);
+		return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
+	}
+	/* Visibility: enforced against the current (calling) frame's scope. A public
+	 * readonly property passes here and is handled by the readonly set-scope check
+	 * inside VmEnforcePropertyTypeOnStore below. */
+	if( !PH7_VmClassMemberAccess(pVm,pClass,&pAttr->sName,pAttr->iProtection,FALSE) ){
+		const char *zProt = (pAttr->iProtection == PH7_CLASS_PROT_PRIVATE) ? "private" : "protected";
+		ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pVmAttr->pOwner;
+		SyBlob sMsg;
+		SyBlobInit(&sMsg,&pVm->sAllocator);
+		SyBlobFormat(&sMsg,"Cannot access %s property %z::$%z",zProt,&pOwner->sName,&pAttr->sName);
+		return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
+	}
+	/* Typed + readonly (clone re-init) enforcement — may coerce pValue in place. */
+	rc = VmEnforcePropertyTypeOnStore(pVm,pVmAttr->nIdx,pValue,1 /* bCloneInit */);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* Commit the (possibly coerced) value into the property slot. */
+	pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,pVmAttr->nIdx);
+	if( pSlot ){
+		PH7_MemObjStore(pValue,pSlot);
+	}
 	return SXRET_OK;
 }
 /*
@@ -6652,7 +6721,7 @@ static sxi32 VmByteCodeExecBody(
  */
 #define PH7_ENFORCE_TYPED_STORE(nIdxArg, pSrcArg) \
 	{ \
-		sxi32 _rcT = VmEnforcePropertyTypeOnStore(&(*pVm),(nIdxArg),(pSrcArg)); \
+		sxi32 _rcT = VmEnforcePropertyTypeOnStore(&(*pVm),(nIdxArg),(pSrcArg),0); \
 		PH7_DISPATCH_ENFORCE_RC(_rcT) \
 	}
 /*
@@ -8068,7 +8137,7 @@ case PH7_OP_STORE: {
 		}else{
 			/* Enforce typed property declaration if any. May coerce the
 			 * incoming value in place (weak mode) or throw TypeError. */
-			rcT = VmEnforcePropertyTypeOnStore(&(*pVm),nIdx,pTos);
+			rcT = VmEnforcePropertyTypeOnStore(&(*pVm),nIdx,pTos,0);
 			if( rcT == PH7_ABORT ){
 				goto Abort;
 			}
@@ -11429,12 +11498,27 @@ case PH7_OP_CLONE: {
 		goto Abort;
 	}
 #endif
-	/* Make sure we are dealing with a class instance */
+	/* Make sure we are dealing with a class instance. PHP 8 throws a catchable
+	 * TypeError for a non-object operand — for both `clone $x` and clone($x). */
 	if( (pTos->iFlags & MEMOBJ_OBJ) == 0 ){
-		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
-			"Clone: Expecting a class instance as left operand,PH7 is loading NULL");
+		SyBlob sMsg;
+		SyBlobInit(&sMsg,&pVm->sAllocator);
+		SyBlobFormat(&sMsg,"clone(): Argument #1 ($object) must be of type object, %s given",
+			ph7_type_name(pTos));
+		rc = VmThrowBuiltinError(pVm,"TypeError",sizeof("TypeError")-1,&sMsg);
 		PH7_MemObjRelease(pTos);
-		break;
+		pTos->nIdx = SXU32_HIGH;
+		if( rc == PH7_ABORT ){
+			goto Abort;
+		}
+		{
+			sxi32 iRp;
+			if( VmRecordedResume(pVm,&iRp,sState.pEntryFrame,aInstr) ){
+				pc = iRp;
+				break;
+			}
+		}
+		goto Exception;
 	}
 	/* Point to the source */
 	pSrc = (ph7_class_instance *)pTos->x.pOther;
@@ -11457,6 +11541,109 @@ case PH7_OP_CLONE: {
 		pTos->x.pOther = pClone;
 		MemObjSetType(pTos,MEMOBJ_OBJ);
 	}
+	break;
+				   }
+/*
+ * OP_CLONE_APPLY * * *
+ *  Apply the PHP 8.5 clone($obj, $withProperties) property updates. The updates
+ *  array is on the stack top and the freshly-cloned object (from OP_CLONE) is
+ *  directly below it. Each entry is applied as a scope-aware property write
+ *  (AFTER __clone() has already run); the array is then popped, leaving the
+ *  clone as the result.
+ */
+case PH7_OP_CLONE_APPLY: {
+	ph7_value *pUpdates,*pObj;
+	ph7_class_instance *pClone;
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pNode;
+	sxi32 rcApply = SXRET_OK;
+	sxu32 n;
+#ifdef UNTRUST
+	if( pTos < &pStack[1] ){
+		goto Abort;
+	}
+#endif
+	pUpdates = pTos;
+	pObj = &pTos[-1];
+	/* $withProperties must be an array (PHP: TypeError otherwise). */
+	if( (pUpdates->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		SyBlob sMsg;
+		SyBlobInit(&sMsg,&pVm->sAllocator);
+		SyBlobFormat(&sMsg,"clone(): Argument #2 ($withProperties) must be of type array, %s given",
+			ph7_type_name(pUpdates));
+		rc = VmThrowBuiltinError(pVm,"TypeError",sizeof("TypeError")-1,&sMsg);
+		if( rc == PH7_ABORT ){
+			goto Abort;
+		}
+		/* Pop the (bad) updates argument and dispatch to the nearest catch. */
+		VmPopOperand(&pTos,1);
+		{
+			sxi32 iRp;
+			if( VmRecordedResume(pVm,&iRp,sState.pEntryFrame,aInstr) ){
+				pc = iRp;
+				break;
+			}
+		}
+		goto Exception;
+	}
+	/* The clone must be an object; OP_CLONE leaves NULL only on a prior failure
+	 * (already reported) — in that case just drop the updates and carry the NULL. */
+	if( (pObj->iFlags & MEMOBJ_OBJ) == 0 ){
+		VmPopOperand(&pTos,1);
+		break;
+	}
+	pClone = (ph7_class_instance *)pObj->x.pOther;
+	pMap = (ph7_hashmap *)pUpdates->x.pOther;
+	/* Apply each update in insertion order (pFirst -> pPrev is the forward link). */
+	pNode = pMap->pFirst;
+	for( n = pMap->nEntry ; n > 0 && rcApply == SXRET_OK ; --n ){
+		ph7_value *pVal;
+		ph7_value sVal;
+		const char *zName;
+		sxu32 nName;
+		char zKeyBuf[64];
+		if( pNode == 0 ){
+			break;
+		}
+		pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx);
+		if( pNode->iType == HASHMAP_INT_NODE ){
+			/* An int key becomes the property name (PHP: `$5`). */
+			nName = SyBufferFormat(zKeyBuf,sizeof(zKeyBuf),"%qd",pNode->xKey.iKey);
+			zName = zKeyBuf;
+		}else{
+			zName = (const char *)SyBlobData(&pNode->xKey.sKey);
+			nName = SyBlobLength(&pNode->xKey.sKey);
+		}
+		if( pVal ){
+			/* Snapshot the update value into a stack local FIRST: applying it may
+			 * create a dynamic property, whose slot reservation can reallocate
+			 * pVm->aMemObj and dangle pVal (a pointer into it). The name is safe
+			 * (it lives in the node's key blob / zKeyBuf, not in aMemObj). */
+			PH7_MemObjInit(pVm,&sVal);
+			PH7_MemObjLoad(pVal,&sVal);
+			rcApply = VmCloneApplyUpdate(pVm,pClone,zName,nName,&sVal);
+			PH7_MemObjRelease(&sVal);
+		}
+		pNode = pNode->pPrev;
+	}
+	if( rcApply == PH7_ABORT ){
+		goto Abort;
+	}
+	if( rcApply == PH7_EXCEPTION ){
+		/* An update threw (visibility / readonly / type). Pop the updates array
+		 * and hand control to the nearest catch, else propagate out of the loop. */
+		VmPopOperand(&pTos,1);
+		{
+			sxi32 iRp;
+			if( VmRecordedResume(pVm,&iRp,sState.pEntryFrame,aInstr) ){
+				pc = iRp;
+				break;
+			}
+		}
+		goto Exception;
+	}
+	/* Success: drop the updates array, leaving the clone on the stack. */
+	VmPopOperand(&pTos,1);
 	break;
 				   }
 /*
@@ -15510,6 +15697,7 @@ static const char * VmInstrToString(sxi32 nOp)
 	case PH7_OP_DECR:       zOp = "DECR       "; break;
 	case PH7_OP_NEW:        zOp = "NEW        "; break;
 	case PH7_OP_CLONE:      zOp = "CLONE      "; break;
+	case PH7_OP_CLONE_APPLY: zOp = "CLONE_APPLY"; break;
 	case PH7_OP_ADD_STORE:  zOp = "ADD_STORE  "; break;
 	case PH7_OP_SUB_STORE:  zOp = "SUB_STORE  "; break;
 	case PH7_OP_MUL_STORE:  zOp = "MUL_STORE  "; break;

@@ -1266,6 +1266,7 @@ enum ph7_vm_op {
   PH7_OP_DECR,         /* Decrement -- */
   PH7_OP_NEW,          /* new */
   PH7_OP_CLONE,        /* clone */
+  PH7_OP_CLONE_APPLY,  /* apply clone() property updates (PHP 8.5) */
   PH7_OP_ADD_STORE,    /* Add and store '+=' */
   PH7_OP_SUB_STORE,    /* Sub and store '-=' */
   PH7_OP_MUL_STORE,    /* Mul and store '*=' */
@@ -1937,6 +1938,7 @@ PH7_PRIVATE sxi32 PH7_CompileString(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileHereDoc(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileNowDoc(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileArray(ph7_gen_state *pGen,sxi32 iCompileFlag);
+PH7_PRIVATE sxi32 PH7_CompileCloneCall(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileShortArray(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileList(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_CompileShortList(ph7_gen_state *pGen,sxi32 iCompileFlag);
