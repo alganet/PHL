@@ -6883,10 +6883,7 @@ static int PH7_builtin_str_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
 typedef struct str_replace_data str_replace_data;
 struct str_replace_data
 {
-	/* The following two fields are only used by the strtr function */
-	SyBlob *pWorker;         /* Working buffer */
-	ProcStringMatch xMatch;  /* Pattern match routine */
-	/* The following two fields are only used by the str_replace function */
+	/* Used by the str_replace family to collect the search/replace arguments. */
 	SySet *pCollector;  /* Argument collector*/
 	ph7_context *pCtx;  /* Call context */
 	sxi32 rc;           /* Carries an allocation failure (SXERR_MEM) out of a walker */
@@ -6953,50 +6950,6 @@ static int StringReplace(SyBlob *pWorker,sxu32 nOfft,int nLen,const char *zRepla
 		SyBlobLength(pWorker) += nReplen;
 	}
 	return SXRET_OK;
-}
-/*
- * String replacement walker callback.
- * The following callback is invoked for each array entry that hold
- * the replace string.
- * Refer to the strtr() implementation for more information.
- */
-static int StringReplaceWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
-{
-	str_replace_data *pRepData = (str_replace_data *)pUserData;
-	const char *zTarget,*zReplace;
-	SyBlob *pWorker;
-	int tLen,nLen;
-	sxu32 nOfft;
-	sxi32 rc;
-	/* Point to the working buffer */
-	pWorker = pRepData->pWorker;
-	if( !ph7_value_is_string(pKey) ){
-		/* Target and replace must be a string */
-		return PH7_OK;
-	}
-	/* Extract the target and the replace */
-	zTarget = ph7_value_to_string(pKey,&tLen);
-	if( tLen < 1 ){
-		/* Empty target,return immediately */
-		return PH7_OK;
-	}
-	/* Perform a pattern search */
-	rc = pRepData->xMatch(SyBlobData(pWorker),SyBlobLength(pWorker),(const void *)zTarget,(sxu32)tLen,&nOfft);
-	if( rc != SXRET_OK ){
-		/* Pattern not found */
-		return PH7_OK;
-	}
-	/* Extract the replace string */
-	zReplace = ph7_value_to_string(pData,&nLen);
-	/* Perform the replace process */
-	rc = StringReplace(pWorker,nOfft,tLen,zReplace,nLen);
-	if( rc != SXRET_OK ){
-		/* Allocation failure: carry it out and stop the walk */
-		pRepData->rc = rc;
-		return rc;
-	}
-	/* All done */
-	return PH7_OK;
 }
 /*
  * The following walker callback is invoked by the str_rplace() function inorder
@@ -7201,6 +7154,62 @@ static int PH7_builtin_str_replace(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
+ * strtr() array form: a single (key,value) pair copied out of the replace_pairs
+ * array. The bytes are owned by a persistent pool (see strtr_collect) rather than
+ * the transient walker values, which HashmapWalk releases after each callback, so
+ * we store byte offsets into that pool instead of raw pointers.
+ */
+typedef struct strtr_entry strtr_entry;
+struct strtr_entry
+{
+	sxu32 nKeyOfft; /* Offset of the search key inside the pool */
+	sxu32 nKeyLen;  /* Length of the search key */
+	sxu32 nValOfft; /* Offset of the replacement inside the pool */
+	sxu32 nValLen;  /* Length of the replacement */
+};
+typedef struct strtr_collect strtr_collect;
+struct strtr_collect
+{
+	SyBlob *pPool;  /* Byte pool holding copied key + value bytes */
+	SySet  *pTable; /* Set of strtr_entry (parallel offsets into pPool) */
+	sxi32   rc;     /* Carries an allocation failure (SXERR_MEM) out of the walker */
+};
+/*
+ * Collect one replace_pairs entry into the persistent pool/offset table.
+ * PHP coerces both the key and the value to string (an integer key becomes its
+ * decimal form) and ignores an empty-string key.
+ */
+static int StrtrCollectWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
+{
+	strtr_collect *pCol = (strtr_collect *)pUserData;
+	const char *zKey,*zVal;
+	strtr_entry sEnt;
+	int nKey,nVal;
+	zKey = ph7_value_to_string(pKey,&nKey);
+	if( nKey < 1 ){
+		/* PHP ignores an empty-string key (it also emits a warning we do not replicate). */
+		return PH7_OK;
+	}
+	zVal = ph7_value_to_string(pData,&nVal);
+	sEnt.nKeyOfft = SyBlobLength(pCol->pPool);
+	sEnt.nKeyLen  = (sxu32)nKey;
+	if( SyBlobAppend(pCol->pPool,(const void *)zKey,(sxu32)nKey) != SXRET_OK ){
+		pCol->rc = SXERR_MEM;
+		return SXERR_ABORT;
+	}
+	sEnt.nValOfft = SyBlobLength(pCol->pPool);
+	sEnt.nValLen  = (sxu32)nVal;
+	if( nVal > 0 && SyBlobAppend(pCol->pPool,(const void *)zVal,(sxu32)nVal) != SXRET_OK ){
+		pCol->rc = SXERR_MEM;
+		return SXERR_ABORT;
+	}
+	if( SySetPut(pCol->pTable,(const void *)&sEnt) != SXRET_OK ){
+		pCol->rc = SXERR_MEM;
+		return SXERR_ABORT;
+	}
+	return PH7_OK;
+}
+/*
  * string strtr(string $str,string $from,string $to)
  * string strtr(string $str,array $replace_pairs)
  *  Translate characters or replace substrings.
@@ -7234,29 +7243,73 @@ static int PH7_builtin_strtr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	if( nArg == 2 && ph7_value_is_array(apArg[1]) ){
-		str_replace_data sRepData;
-		SyBlob sWorker;
+		strtr_collect sCol;
+		SyBlob sPool,sWorker;
+		SySet sTable;
+		const char *zPool;
+		strtr_entry *pEnt;
 		sxi32 rc;
-		/* Initilaize the working buffer */
+		int i;
+		/*
+		 * PHP's array-form strtr is a single left-to-right pass over the subject:
+		 * at every position it substitutes the LONGEST replace_pairs key that
+		 * matches there, then advances past the key (replacements are never
+		 * rescanned). It is not a sequential per-key global replace. First copy
+		 * the pairs into a persistent pool, then run that scan.
+		 */
+		SyBlobInit(&sPool,&pCtx->pVm->sAllocator);
 		SyBlobInit(&sWorker,&pCtx->pVm->sAllocator);
-		/* Copy raw string */
-		SyBlobAppend(&sWorker,(const void *)zIn,(sxu32)nLen);
-		/* Init our replace data instance */
-		sRepData.pWorker = &sWorker;
-		sRepData.xMatch = SyBlobSearch;
-		sRepData.rc = SXRET_OK;
-		/* Iterate throw array entries and perform the replace operation.*/
-		ph7_array_walk(apArg[1],StringReplaceWalker,&sRepData);
-		if( sRepData.rc != SXRET_OK ){
-			/* Allocation failure during replacement: surface a fatal */
+		SySetInit(&sTable,&pCtx->pVm->sAllocator,sizeof(strtr_entry));
+		sCol.pPool  = &sPool;
+		sCol.pTable = &sTable;
+		sCol.rc     = SXRET_OK;
+		ph7_array_walk(apArg[1],StrtrCollectWalker,&sCol);
+		if( sCol.rc != SXRET_OK ){
+			/* Allocation failure while collecting the pairs: surface a fatal */
+			SyBlobRelease(&sPool);
 			SyBlobRelease(&sWorker);
+			SySetRelease(&sTable);
 			return PH7_ContextMemoryError(pCtx);
+		}
+		/* The pool is now stable, so offsets can be resolved against its base. */
+		zPool = (const char *)SyBlobData(&sPool);
+		rc = SXRET_OK;
+		for( i = 0 ; i < nLen ; ){
+			strtr_entry *pBest = 0;
+			sxu32 nBest = 0;
+			/* Pick the longest key that matches at the current position. */
+			SySetResetCursor(&sTable);
+			while( SXRET_OK == SySetGetNextEntry(&sTable,(void **)&pEnt) ){
+				if( pEnt->nKeyLen > nBest
+					&& pEnt->nKeyLen <= (sxu32)(nLen - i)
+					&& SyMemcmp(zPool + pEnt->nKeyOfft,zIn + i,pEnt->nKeyLen) == 0 ){
+					nBest = pEnt->nKeyLen;
+					pBest = pEnt;
+				}
+			}
+			if( pBest ){
+				if( pBest->nValLen > 0 ){
+					rc = SyBlobAppend(&sWorker,zPool + pBest->nValOfft,pBest->nValLen);
+				}
+				i += (int)pBest->nKeyLen;
+			}else{
+				rc = SyBlobAppend(&sWorker,(const void *)&zIn[i],(sxu32)sizeof(char));
+				i++;
+			}
+			if( rc != SXRET_OK ){
+				SyBlobRelease(&sPool);
+				SyBlobRelease(&sWorker);
+				SySetRelease(&sTable);
+				return PH7_ContextMemoryError(pCtx);
+			}
 		}
 		/* All done, return the result string */
 		rc = ph7_result_string(pCtx,(const char *)SyBlobData(&sWorker),
 			(int)SyBlobLength(&sWorker)); /* Will make it's own copy */
 		/* Clean-up */
+		SyBlobRelease(&sPool);
 		SyBlobRelease(&sWorker);
+		SySetRelease(&sTable);
 		if( rc != PH7_OK ){
 			return PH7_ContextMemoryError(pCtx);
 		}
