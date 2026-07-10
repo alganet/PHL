@@ -6433,6 +6433,16 @@ static sxi32 VmByteCodeExecBody(
 		VmFrame *pThrowFrame;
 		sxi32 iResumePc;
 		pVm->pActiveCtx->pInjected = 0; /* one-shot consume */
+		/* Raising the injection at the yield-from point abandons any array/Iterator
+		 * delegation in progress (state 1/2 — state 3 was forwarded, not raised here).
+		 * Tear the delegate down so that if the generator's own try catches this and
+		 * runs on to a LATER `yield from`, that opcode classifies its operand fresh
+		 * instead of resuming this now-stale delegate cursor. */
+		if( pVm->pActiveCtx->iDelegateState != 0 ){
+			PH7_MemObjRelease(&pVm->pActiveCtx->sDelegate);
+			pVm->pActiveCtx->pDelegateNode = 0;
+			pVm->pActiveCtx->iDelegateState = 0;
+		}
 		pThrowFrame = VmSkipExceptionFrames(pVm->pFrame);
 		pThrowFrame->iFlags |= VM_FRAME_THROW;
 		rc = VmThrowException(&(*pVm),pInj);
@@ -11492,13 +11502,9 @@ case PH7_OP_YIELD_FROM: {
 			ph7_generator *pInner = VmGeneratorExtractCtx(&(*pVm),&pCtxFrom->sDelegate);
 			/* A pending Generator::throw() on the outer was parked on pInjected by the
 			 * body-entry gate (which skips its own raise for state 3); forward it as a
-			 * throw into the delegate, else forward the sent value. */
+			 * throw into the delegate, else forward the sent value (pTos, which
+			 * VmResumeCtx copies into the inner's own stack). */
 			ph7_class_instance *pInjFwd = pCtxFrom->pInjected;
-			ph7_value sSent;
-			PH7_MemObjInit(pVm,&sSent);
-			PH7_MemObjStore(pTos,&sSent); /* take the sent value off the stack */
-			PH7_MemObjRelease(pTos);
-			pTos--;
 			pCtxFrom->pInjected = 0;
 			if( pInner && pInner->pCtx && pInner->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){
 				if( pInjFwd ){
@@ -11508,7 +11514,7 @@ case PH7_OP_YIELD_FROM: {
 					rcm = VmResumeCtx(&(*pVm),pInner->pCtx,0,0);
 					pInner->pCtx->pInjected = 0;
 				}else{
-					rcm = VmResumeCtx(&(*pVm),pInner->pCtx,&sSent,0);
+					rcm = VmResumeCtx(&(*pVm),pInner->pCtx,pTos,0);
 				}
 			}else if( pInjFwd ){
 				/* No live delegate to receive the throw (inner already finished/closed):
@@ -11517,7 +11523,8 @@ case PH7_OP_YIELD_FROM: {
 				pTF->iFlags |= VM_FRAME_THROW;
 				rcm = (VmThrowException(&(*pVm),pInjFwd) == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
 			}
-			PH7_MemObjRelease(&sSent);
+			PH7_MemObjRelease(pTos);
+			pTos--;
 			if( rcm == PH7_ABORT || rcm == PH7_EXCEPTION ){ goto yf_propagate; }
 		}else{
 			PH7_MemObjRelease(pTos);

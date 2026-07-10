@@ -40,6 +40,21 @@ $u = outerBare();
 $u->current();
 try { $u->throw(new RuntimeException("kaboom")); }
 catch (RuntimeException $e) { echo "caught at top: ", $e->getMessage(), "\n"; }
+
+// throw() at a non-Generator (array) delegate is raised at the outer yield-from,
+// not forwarded; if the outer catches it, a LATER `yield from` must classify its
+// operand fresh instead of resuming the abandoned array delegate cursor.
+function staleArr(){
+    try { yield from [1,2,3]; }
+    catch (Exception $e) { echo "arr caught\n"; yield 'x'; }
+    yield from ['a','b'];
+    echo "arr end\n";
+}
+$s = staleArr();
+echo "cur=", $s->current(), "\n";
+echo "throw=", $s->throw(new Exception()), "\n";
+$s->next(); echo "after=", $s->current(), "\n";
+$s->next(); echo "after=", $s->current(), "\n";
 ?>
 --EXPECT--
 start: 1
@@ -57,5 +72,10 @@ mid saw return: leaf-ret
 3
 cur=3
 caught at top: kaboom
+cur=1
+throw=arr caught
+x
+after=a
+after=b
 --CLEAN--
 <?php
