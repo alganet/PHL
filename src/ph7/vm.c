@@ -1544,6 +1544,7 @@ static sxi32 VmRaiseNotCallable(ph7_vm *pVm, ph7_class_instance *pThis);
 /* Forward declarations for Generator helpers and C functions */
 static ph7_generator * VmNewGenerator(ph7_vm *pVm, ph7_exec_ctx *pCtx);
 static void VmReleaseGenerator(ph7_vm *pVm, ph7_generator *pGen);
+static sxi32 VmCloseCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx);
 static int vm_builtin_Generator_rewind(ph7_context *pCtx, int nArg, ph7_value **apArg);
 static int vm_builtin_Generator_valid(ph7_context *pCtx, int nArg, ph7_value **apArg);
 static int vm_builtin_Generator_current(ph7_context *pCtx, int nArg, ph7_value **apArg);
@@ -4042,6 +4043,20 @@ static sxi32 VmThrowBuiltinError(ph7_vm *pVm,const char *zClass,sxu32 nClass,SyB
 	return PH7_EXCEPTION;
 }
 /*
+ * Throw a built-in error class (e.g. "Error") carrying a FIXED message string.
+ * Thin wrapper over VmThrowBuiltinError for the several dispatch-loop sites that
+ * raise a constant-message catchable Error; returns PH7_EXCEPTION (or PH7_ABORT
+ * when the class is unavailable / the engine is aborting) so the caller routes the
+ * result through its normal goto Exception / goto Abort.
+ */
+static sxi32 VmThrowFixedError(ph7_vm *pVm, const char *zClass, const char *zMsg)
+{
+	SyBlob sMsg;
+	SyBlobInit(&sMsg, &pVm->sAllocator);
+	SyBlobAppend(&sMsg, zMsg, SyStrlen(zMsg));
+	return VmThrowBuiltinError(pVm, zClass, SyStrlen(zClass), &sMsg);
+}
+/*
  * Throw php's catchable Error for an append (`$a[] = v`) whose saturated
  * auto-index slot (PHP_INT_MAX) is already occupied. Called by the hashmap
  * layer; the store opcodes route the returned PH7_EXCEPTION through the
@@ -6445,6 +6460,34 @@ static sxi32 VmByteCodeExecBody(
 			 * that ROOT B will land at its own OP_CALL site): propagate out so the ctx
 			 * closes and the caller sees the exception. */
 			goto Exception;
+		}
+	}
+	/* Force-close entry (VmCloseCtx): a suspended generator being destroyed runs its
+	 * pending `finally` blocks. Instead of resuming at the yield, redirect straight
+	 * into the innermost open try's finally as if a `return` had crossed every
+	 * enclosing finally (mirrors OP_SET_FINALLY_RET; OP_END_FINALLY then threads the
+	 * PH7_FA_RETURN out through the whole chain and completes the body). Gate on the
+	 * BODY bytecode (aInstr == the function program) so nested mini-programs sharing
+	 * this ctx/frame never re-fire it; bClosing stays set so OP_YIELD can reject a
+	 * yield reached inside one of these finallys. */
+	if( pVm->pActiveCtx && pVm->pActiveCtx->bClosing
+	 && pVm->pActiveCtx->pFrame == sState.pEntryFrame
+	 && aInstr == (VmInstr *)SySetBasePtr(&pVm->pActiveCtx->pFunc->aByteCode) ){
+		VmFinallyAction sAct;
+		sxu32 iFpc = 0;
+		int nCross = -1; /* cross every enclosing finally of this body */
+		SyZero(&sAct,sizeof(sAct));
+		sAct.eKind = PH7_FA_RETURN;
+		sAct.pTargetBody = (void *)VmSkipExceptionFrames(pVm->pFrame);
+		PH7_MemObjInit(pVm,&sAct.sRet); /* discarded return; getReturn() is moot post-close */
+		if( VmFinallyAdvance(&(*pVm),aInstr,&nCross,&iFpc) ){
+			sAct.nCross = nCross;
+			SySetPut(&pVm->aFinallyAction,(const void *)&sAct);
+			pc = (sxi32)iFpc; /* pre-loop: the first fetch uses pc directly (no -1) */
+		}else{
+			/* No open try had a finally: nothing to run, complete the body. */
+			PH7_MemObjRelease(&sAct.sRet);
+			goto Done;
 		}
 	}
 	/* Execute as much as we can */
@@ -11280,6 +11323,15 @@ case PH7_OP_YIELD: {
 		VmErrorFormat(&(*pVm), PH7_CTX_ERR, "Cannot use yield outside of a generator");
 		goto Abort;
 	}
+	if( pVm->pActiveCtx->bClosing ){
+		/* A `finally` reached while VmCloseCtx force-drives this destroyed generator's
+		 * pending finallys tried to yield — PHP forbids it. */
+		if( VmThrowFixedError(&(*pVm), "Error",
+			"Cannot yield from finally in a force-closed generator") == PH7_ABORT ){
+			goto Abort;
+		}
+		goto Exception;
+	}
 	pGen = (ph7_generator *)pVm->pActiveCtx->pPrivate;
 	if( pInstr->iP2 ){
 		/* yield $key => $value: value on top, key below */
@@ -11341,6 +11393,16 @@ case PH7_OP_YIELD_FROM: {
 	if( pVm->pActiveCtx == 0 || pVm->pActiveCtx->pPrivate == 0 ){
 		VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Cannot use \"yield from\" outside of a generator");
 		goto Abort;
+	}
+	if( pVm->pActiveCtx->bClosing ){
+		/* A `yield from` reached while VmCloseCtx force-drives this destroyed
+		 * generator's pending finallys — PHP forbids it (distinct message from a
+		 * bare `yield`, mirroring the OP_YIELD guard above). */
+		if( VmThrowFixedError(&(*pVm), "Error",
+			"Cannot use \"yield from\" in a force-closed generator") == PH7_ABORT ){
+			goto Abort;
+		}
+		goto Exception;
 	}
 	pCtxFrom = pVm->pActiveCtx;
 	pGenFrom = (ph7_generator *)pCtxFrom->pPrivate;
@@ -11929,12 +11991,15 @@ case PH7_OP_CALL: {
 				pCtxAttr->x.pOther = pGenerator;
 				MemObjSetType(pCtxAttr, MEMOBJ_RES);
 			}
-			/* Pop args and function name, push Generator object */
+			/* Pop args and function name, push Generator object. PH7_NewClassInstance
+			 * already returns iRef==1, held by this stack value (mirrors OP_NEW) — do
+			 * NOT bump again, or the object never unrefs to 0 on unset / out-of-scope
+			 * and its __destruct (which runs pending `finally` blocks and frees the
+			 * exec context) never fires. */
 			PH7_MemObjRelease(pTos);
 			pTos = &pTos[-nCallArgs];
 			pTos->x.pOther = pGenObj;
 			MemObjSetType(pTos, MEMOBJ_OBJ);
-			pGenObj->iRef++;
 			if( pThis ){
 				PH7_ClassInstanceUnref(pThis);
 			}
@@ -13447,6 +13512,67 @@ static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValu
 	return VmFinishCtxRun(pVm, pCtx, pOldCtx, rc, pResult);
 }
 /*
+ * Force-close a suspended generator context at destruction time, running its
+ * pending `finally` blocks (PHP runs finally when a generator is unset / goes out
+ * of scope / is GC'd before it completes; PHL previously freed the open try
+ * handlers unexecuted in VmReleaseExecCtx). This is a "close", not a "resume":
+ * the finally handler of every still-open `try` the generator was suspended
+ * inside runs innermost-first, but NO `catch` runs and no code past the finallys
+ * executes.
+ *
+ * Generators compile finally INLINE (ROOT C): the finally bytecode lives in the
+ * body program at iFinallyPc, driven by the aException/aFinallyAction pc-redirect
+ * machinery — not the legacy detached `sFinally` mini-program VmDrainFinally runs.
+ * So a close is expressed exactly like a `return` that crosses every enclosing
+ * finally (OP_SET_FINALLY_RET): set pCtx->bClosing and resume; the body-entry
+ * redirect (see VmByteCodeExecBody) seeds a PH7_FA_RETURN action and jumps into
+ * the innermost open try's finally, and OP_END_FINALLY threads it out through the
+ * chain, then completes the body.
+ *
+ * Scope: a plain body-level suspend (pParkedSegment == 0). A deep fiber segment is
+ * left to plain release (generators never park one — yield is body-level only). A
+ * `yield` reached inside a finally during close is rejected by OP_YIELD via
+ * pCtx->bClosing (PHP-exact "Cannot yield from finally in a force-closed
+ * generator"). Deferred edges recorded in PLAN.md §3.9.
+ *
+ * Returns whatever the body run returns: SXRET_OK on a clean close, PH7_ABORT if a
+ * finally aborts, or PH7_EXCEPTION if a finally threw past itself (surfaced to the
+ * destruct caller).
+ */
+static sxi32 VmCloseCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx)
+{
+	sxi32 rc;
+	if( pCtx->iState != PH7_CTX_STATE_SUSPENDED ){
+		/* CREATED never ran, so has no open try; COMPLETED/CLOSED already ran theirs. */
+		return SXRET_OK;
+	}
+	if( pCtx->pParkedSegment != 0 ){
+		/* Deep fiber segment (never a generator) — leave to plain release. */
+		return SXRET_OK;
+	}
+	/* Suspended mid `yield from` over an inner generator: PHP closes innermost-first,
+	 * so run the delegate's finallys before this body's. Both delegate-object states
+	 * carry the live iterator in sDelegate — state 3 (the delegate IS a Generator) and
+	 * state 2 (an Iterator, which for `yield from $aggregate` is the generator returned
+	 * by getIterator()); VmGeneratorExtractCtx returns 0 for a non-generator iterator,
+	 * so a plain Iterator/array delegate is skipped. Recurses for nested delegation;
+	 * the inner ends COMPLETED, so its own later __destruct close is a no-op. */
+	if( pCtx->iDelegateState >= 2 && (pCtx->sDelegate.iFlags & MEMOBJ_OBJ) ){
+		ph7_generator *pInner = VmGeneratorExtractCtx(pVm, &pCtx->sDelegate);
+		if( pInner && pInner->pCtx ){
+			sxi32 rcInner = VmCloseCtx(pVm, pInner->pCtx);
+			if( rcInner == PH7_ABORT ){ return PH7_ABORT; }
+		}
+	}
+	/* Drive the pending finallys through a real body resume that the entry redirect
+	 * turns into a finally-chain unwind. VmResumeCtx handles state restore, frame
+	 * re-attach, active-ctx save/restore and the terminal-state bookkeeping. */
+	pCtx->bClosing = 1;
+	rc = VmResumeCtx(pVm, pCtx, 0, 0);
+	pCtx->bClosing = 0;
+	return rc;
+}
+/*
  * Free one DETACHED frame (not in the live pVm->pFrame chain): the frame of a
  * suspended coroutine's body, or of a segment activation abandoned mid-call.
  * Mirrors VmLeaveFrame's teardown minus the chain pop (there is no chain to pop
@@ -14921,9 +15047,15 @@ static int vm_builtin_Generator_getReturn(ph7_context *pCtx, int nArg, ph7_value
 static int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ph7_generator *pGen;
+	sxi32 rcClose = SXRET_OK;
 	if( nArg < 1 ) return PH7_OK;
 	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);
 	if( pGen ){
+		/* A generator abandoned before it completes still runs its pending `finally`
+		 * blocks (PHP runs them at generator close/GC). Drive them before teardown. */
+		if( pGen->pCtx ){
+			rcClose = VmCloseCtx(pCtx->pVm, pGen->pCtx);
+		}
 		VmReleaseGenerator(pCtx->pVm, pGen);
 		if( apArg[0]->iFlags & MEMOBJ_OBJ ){
 			ph7_class_instance *pThis = (ph7_class_instance *)apArg[0]->x.pOther;
@@ -14936,6 +15068,9 @@ static int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_value 
 			}
 		}
 	}
+	/* Surface an abort/exception raised by a finally that ran during close. */
+	if( rcClose == PH7_ABORT ) return PH7_ABORT;
+	if( rcClose == PH7_EXCEPTION ) return PH7_EXCEPTION;
 	return PH7_OK;
 }
 /* ======================== End Generator Infrastructure ======================== */
