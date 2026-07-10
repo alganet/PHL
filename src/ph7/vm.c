@@ -17799,7 +17799,14 @@ static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)
 		}
 		if( plain ){ SyBlobAppend(pOut,".0",2); } /* integer-form floats render 1.0/100.0 */
 	}else if( ph7_value_is_int(pVal) ){
-		SyBlobFormat(pOut,"%qd",ph7_value_to_int64(pVal));
+		sxi64 iVal = ph7_value_to_int64(pVal);
+		if( iVal == SMALLEST_INT64 ){
+			/* php renders LONG_MIN as an expression: the positive literal
+			 * 9223372036854775808 would not be representable when eval'd. */
+			SyBlobAppend(pOut,"-9223372036854775807-1",sizeof("-9223372036854775807-1")-1);
+		}else{
+			SyBlobFormat(pOut,"%qd",iVal);
+		}
 	}else if( ph7_value_is_string(pVal) ){
 		int n;
 		const char *z = ph7_value_to_string(pVal,&n);

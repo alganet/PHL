@@ -4,6 +4,12 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "ph7int.h"
+/* range() formats the float variant of its max-array-size ValueError with libc
+ * snprintf and parses numeric strings with libc strtod — the byte-exact-floats
+ * rule (see builtin_math.c): SyBufferFormat/SyStrToReal are not correctly
+ * rounded at extreme magnitudes. */
+#include <stdio.h>  /* snprintf */
+#include <stdlib.h> /* strtod */
 /* This file implement generic hashmaps known as 'array' in the PHP world */
 /* HASHMAP_INT_NODE / HASHMAP_BLOB_NODE (node key types) are declared in ph7int.h
  * alongside ph7_hashmap_node so name-forwarding builtins can classify keys. */
@@ -3379,68 +3385,598 @@ static int ph7_hashmap_each(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * array range(int $start,int $limit,int $step)
- *  Create an array containing a range of elements
- * Parameter
- *  start
- *   First value of the sequence.
- *  limit
- *   The sequence is ended upon reaching the limit value.
- *  step
- *  If a step value is given, it will be used as the increment between elements in the sequence.
- *  step should be given as a positive number. If not specified, step will default to 1.
+ * range() — a faithful port of php 8.5's ext/standard/array.c implementation
+ * (php_range_process_input + PHP_FUNCTION(range)), so the value semantics,
+ * diagnostics, and their ordering are byte-exact: decreasing ranges, float
+ * ranges, character ranges, the step/endpoint ValueErrors, the ZPP TypeErrors
+ * and null deprecations, and the string-endpoint warnings.
+ */
+#define PH7_RANGE_HT_MAX_SIZE 1073741824 /* php's HT_MAX_SIZE (2^30 entries) */
+/*
+ * Endpoint classification, mirroring php_range_process_input's return
+ * contract. php returns zval type tags whose ORDER encodes the logic
+ * (IS_LONG < IS_DOUBLE < IS_STRING < IS_ARRAY); the >=/< comparisons in
+ * ph7_hashmap_range depend on the same ordering here.
+ *   RANGE_IN_LONG/DOUBLE : only interpretable as int / float
+ *   RANGE_IN_STRING      : only interpretable as a (char-range) string
+ *   RANGE_IN_DIGIT       : single-byte numeric string — valid as both a char
+ *                          and a number (php returns IS_ARRAY for this)
+ */
+#define RANGE_IN_ERROR   0
+#define RANGE_IN_LONG    1
+#define RANGE_IN_DOUBLE  2
+#define RANGE_IN_STRING  3
+#define RANGE_IN_DIGIT   4
+/* IEEE special-value tests: the engine-wide bit-pattern macros from
+ * sxtypes.h (via ph7int.h) — same ones the printf/serialize paths use. */
+/*
+ * The type name php's ZPP prints after "must be of type ..., X given":
+ * the concrete class name for objects, the usual type name otherwise.
+ */
+static const char * RangeArgTypeName(ph7_value *pVal,char *zBuf,sxu32 nBufLen)
+{
+	if( pVal->iFlags & MEMOBJ_OBJ ){
+		ph7_class_instance *pThis = (ph7_class_instance *)pVal->x.pOther;
+		sxu32 n = SXMIN(pThis->pClass->sName.nByte,nBufLen - 1);
+		SyMemcpy((const void *)pThis->pClass->sName.zString,zBuf,n);
+		zBuf[n] = 0;
+		return zBuf;
+	}
+	return ph7_type_name(pVal);
+}
+/*
+ * Classify a string with php's is_numeric_string() grammar:
+ *   [ws] [sign] ( D+ [ . D* ] | . D+ ) [ (e|E) [sign] D+ ] [ws]
+ * — the whole string must be consumed; hex/binary/"INF"/"NAN" are NOT
+ * numeric. Returns RANGE_IN_LONG with *pLong set, RANGE_IN_DOUBLE with
+ * *pDouble set (a fractional/exponent form, or an integer too wide for an
+ * sxi64 — php reclassifies those as float), or RANGE_IN_ERROR when the
+ * string is not numeric. The float value comes from libc strtod, like
+ * php's zend_strtod (byte-exact-floats rule). zIn must be NUL-terminated
+ * at zIn[nLen] — ph7_value_to_string guarantees this (SyBlobNullAppend) —
+ * so strtod can parse it in place once the grammar has validated it.
+ */
+static sxu8 RangeStrToNumber(const char *zIn,sxu32 nLen,sxi64 *pLong,double *pDouble)
+{
+	const char *z = zIn,*zEnd = &zIn[nLen];
+	sxu64 uVal = 0;
+	int bNeg = 0,bDigit = 0,bReal = 0,bOverflow = 0;
+	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisSpace(z[0]) ){ z++; }
+	if( z < zEnd && (z[0] == '+' || z[0] == '-') ){
+		bNeg = (z[0] == '-');
+		z++;
+	}
+	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){
+		int d = z[0] - '0';
+		/* Track overflow past 2^63, the widest magnitude an sxi64 can carry
+		 * (as LONG_MIN); overflowing integers become floats like in php. */
+		if( uVal > 922337203685477580ULL || (uVal == 922337203685477580ULL && d > 8) ){
+			bOverflow = 1;
+		}else{
+			uVal = uVal * 10 + (sxu64)d;
+		}
+		bDigit = 1;
+		z++;
+	}
+	if( z < zEnd && z[0] == '.' ){
+		bReal = 1;
+		z++;
+		while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){
+			bDigit = 1;
+			z++;
+		}
+	}
+	/* At least one mantissa digit required (rejects "", ".", "+", "e5"). */
+	if( !bDigit ){
+		return RANGE_IN_ERROR;
+	}
+	/* Optional exponent — needs at least one digit (rejects "1e", "1e+"). */
+	if( z < zEnd && (z[0] == 'e' || z[0] == 'E') ){
+		z++;
+		if( z < zEnd && (z[0] == '+' || z[0] == '-') ){ z++; }
+		if( z >= zEnd || (unsigned char)z[0] >= 0xc0 || !SyisDigit(z[0]) ){
+			return RANGE_IN_ERROR;
+		}
+		bReal = 1;
+		while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){ z++; }
+	}
+	/* Trailing whitespace allowed; anything else means not numeric. */
+	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisSpace(z[0]) ){ z++; }
+	if( z != zEnd ){
+		return RANGE_IN_ERROR;
+	}
+	if( bOverflow || (!bNeg && uVal > (sxu64)LARGEST_INT64)
+	 || (bNeg && uVal > (sxu64)LARGEST_INT64 + 1) ){
+		bReal = 1;
+	}
+	if( bReal ){
+		*pDouble = strtod(zIn,0);
+		return RANGE_IN_DOUBLE;
+	}
+	/* Negate in unsigned space so 2^63 lands on LONG_MIN without overflow. */
+	*pLong = bNeg ? (sxi64)((sxu64)0 - uVal) : (sxi64)uVal;
+	return RANGE_IN_LONG;
+}
+/*
+ * ZPP emulation for $start/$end (php's Z_PARAM_NUMBER_OR_STR, weak mode):
+ * reject array/object/resource with php's TypeError, deprecate null (the
+ * value then reads as int 0 — *pbNullCoerced). php runs this for all
+ * arguments BEFORE any value/domain check, hence the split from
+ * RangeProcessInput below. Returns FALSE after throwing (*pRc set).
+ */
+static int RangeEndpointZpp(ph7_context *pCtx,ph7_value *pIn,int iArg,const char *zName,int *pbNullCoerced,sxi32 *pRc)
+{
+	char zMsg[160];
+	*pRc = PH7_OK;
+	if( pIn->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES) ){
+		char zType[80];
+		*pRc = PH7_VmThrowException(pCtx,"TypeError",
+			"range(): Argument #%d ($%s) must be of type string|int|float, %s given",
+			iArg,zName,RangeArgTypeName(pIn,zType,sizeof(zType)));
+		return FALSE;
+	}
+	if( pIn->iFlags & MEMOBJ_NULL ){
+		SyBufferFormat(zMsg,sizeof(zMsg),
+			"range(): Passing null to parameter #%d ($%s) of type string|int|float is deprecated",
+			iArg,zName);
+		PH7_VmThrowError(pCtx->pVm,0,E_DEPRECATED,zMsg);
+		*pbNullCoerced = TRUE;
+	}
+	return TRUE;
+}
+/*
+ * ZPP emulation for $step (php's Z_PARAM_NUMBER, weak mode): int/float pass
+ * through, bool coerces to int, null deprecates to int 0 (which then trips
+ * the "cannot be 0" ValueError like php), a numeric string coerces to its
+ * number, anything else is a TypeError. Returns RANGE_IN_LONG/DOUBLE, or
+ * RANGE_IN_ERROR after throwing (*pRc set).
+ */
+static sxu8 RangeStepInput(ph7_context *pCtx,ph7_value *pIn,sxi64 *pLong,double *pDouble,sxi32 *pRc)
+{
+	*pRc = PH7_OK;
+	if( pIn->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES) ){
+		char zType[80];
+		*pRc = PH7_VmThrowException(pCtx,"TypeError",
+			"range(): Argument #3 ($step) must be of type int|float, %s given",
+			RangeArgTypeName(pIn,zType,sizeof(zType)));
+		return RANGE_IN_ERROR;
+	}
+	if( pIn->iFlags & MEMOBJ_NULL ){
+		PH7_VmThrowError(pCtx->pVm,0,E_DEPRECATED,
+			"range(): Passing null to parameter #3 ($step) of type int|float is deprecated");
+		*pLong = 0;
+		return RANGE_IN_LONG;
+	}
+	if( pIn->iFlags & MEMOBJ_REAL ){
+		*pDouble = ph7_value_to_double(pIn);
+		return RANGE_IN_DOUBLE;
+	}
+	if( pIn->iFlags & MEMOBJ_STRING ){
+		const char *zStr;
+		int nLen;
+		sxu8 iKind;
+		zStr = ph7_value_to_string(pIn,&nLen);
+		iKind = RangeStrToNumber(zStr,(sxu32)nLen,pLong,pDouble);
+		if( iKind == RANGE_IN_ERROR ){
+			*pRc = PH7_VmThrowException(pCtx,"TypeError",
+				"range(): Argument #3 ($step) must be of type int|float, string given");
+		}
+		return iKind;
+	}
+	/* int / bool */
+	*pLong = ph7_value_to_int64(pIn);
+	return RANGE_IN_LONG;
+}
+/*
+ * php_range_process_input port: resolve $start/$end into a number and/or a
+ * char-range byte, emitting php's exact warnings (empty string, multi-byte
+ * string) and ValueErrors (INF/NAN). Returns a RANGE_IN_* code, or
+ * RANGE_IN_ERROR after throwing (*pRc set).
+ */
+static sxu8 RangeProcessInput(ph7_context *pCtx,ph7_value *pIn,int iArg,const char *zName,
+	int bNullCoerced,sxi64 *pLong,double *pDouble,unsigned char *pChar,sxi32 *pRc)
+{
+	char zMsg[160];
+	double r;
+	*pRc = PH7_OK;
+	if( bNullCoerced ){
+		/* ZPP already deprecated the null; it reads as int 0. */
+		*pLong = 0;
+		*pDouble = 0.0;
+		return RANGE_IN_LONG;
+	}
+	if( pIn->iFlags & MEMOBJ_REAL ){
+		r = ph7_value_to_double(pIn);
+check_dval:
+		if( PH7_IS_INF(r) ){
+			*pRc = PH7_VmThrowException(pCtx,"ValueError",
+				"range(): Argument #%d ($%s) must be a finite number, INF provided",iArg,zName);
+			return RANGE_IN_ERROR;
+		}
+		if( PH7_IS_NAN(r) ){
+			*pRc = PH7_VmThrowException(pCtx,"ValueError",
+				"range(): Argument #%d ($%s) must be a finite number, NAN provided",iArg,zName);
+			return RANGE_IN_ERROR;
+		}
+		*pDouble = r;
+		return RANGE_IN_DOUBLE;
+	}
+	if( pIn->iFlags & MEMOBJ_STRING ){
+		const char *zStr;
+		int nLen;
+		sxu8 iKind;
+		zStr = ph7_value_to_string(pIn,&nLen);
+		if( nLen == 0 ){
+			SyBufferFormat(zMsg,sizeof(zMsg),
+				"range(): Argument #%d ($%s) must not be empty, casted to 0",iArg,zName);
+			PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,zMsg);
+			*pLong = 0;
+			*pDouble = 0.0;
+			return RANGE_IN_LONG;
+		}
+		iKind = RangeStrToNumber(zStr,(sxu32)nLen,pLong,pDouble);
+		if( iKind == RANGE_IN_DOUBLE ){
+			r = *pDouble;
+			goto check_dval;
+		}
+		if( iKind == RANGE_IN_LONG ){
+			*pDouble = (double)*pLong;
+			if( nLen == 1 ){
+				/* A single numeric digit works as both a char and a number. */
+				*pChar = (unsigned char)zStr[0];
+				return RANGE_IN_DIGIT;
+			}
+			return RANGE_IN_LONG;
+		}
+		if( nLen != 1 ){
+			SyBufferFormat(zMsg,sizeof(zMsg),
+				"range(): Argument #%d ($%s) must be a single byte, subsequent bytes are ignored",iArg,zName);
+			PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,zMsg);
+		}
+		*pChar = (unsigned char)zStr[0];
+		/* Fall-back numeric value in case the other argument is not a string. */
+		*pLong = 0;
+		*pDouble = 0.0;
+		return RANGE_IN_STRING;
+	}
+	/* int / bool */
+	*pLong = ph7_value_to_int64(pIn);
+	*pDouble = (double)*pLong;
+	return RANGE_IN_LONG;
+}
+/*
+ * The two "supplied range exceeds the maximum array size" ValueErrors.
+ * Both php messages print the macro's (start,end) parameters, which its
+ * callers pass SWAPPED for a decreasing range — a php quirk kept for
+ * byte-parity (callers below pass the values to *print*). The int and
+ * float variants differ in wording ("Maximum size: N." vs "Max size: N")
+ * exactly like php's two macros.
+ */
+static sxi32 RangeLongSizeError(ph7_context *pCtx,sxu64 nCalc,sxi64 iStart,sxi64 iEnd,sxi64 iStep)
+{
+	return PH7_VmThrowException(pCtx,"ValueError",
+		"The supplied range exceeds the maximum array size by %qu elements: "
+		"start=%qd, end=%qd, step=%qd. Calculated size: %qu. Maximum size: %qu.",
+		nCalc - (sxu64)(PH7_RANGE_HT_MAX_SIZE - 1),iStart,iEnd,iStep,
+		nCalc,(sxu64)PH7_RANGE_HT_MAX_SIZE);
+}
+static sxi32 RangeDoubleSizeError(ph7_context *pCtx,double rCalc,double rStart,double rEnd,double rStep)
+{
+	/* Four %.1f doubles can reach ~313 bytes each near DBL_MAX, so format on
+	 * the VM heap (auto-released with the call context) rather than parking
+	 * ~1.5 KB on the native stack of a small-stack embedded port. */
+	const unsigned int nBuf = 1500;
+	char *zMsg = (char *)ph7_context_alloc_chunk(pCtx,nBuf,FALSE,TRUE/* Auto-release */);
+	if( zMsg == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	snprintf(zMsg,nBuf,
+		"The supplied range exceeds the maximum array size by %.1f elements: "
+		"start=%.1f, end=%.1f, step=%.1f. Max size: 1073741824",
+		rCalc - (double)PH7_RANGE_HT_MAX_SIZE,rStart,rEnd,rStep);
+	return PH7_VmThrowException(pCtx,"ValueError","%s",zMsg);
+}
+/*
+ * Set the element container to the next range element and append it to the
+ * result array, surfacing allocation failure as the OOM fatal (never a
+ * silently-truncated array). One helper per element type so the fill loops
+ * below stay one line per iteration.
+ */
+static sxi32 RangeAppendInt(ph7_context *pCtx,ph7_value *pArray,ph7_value *pValue,sxi64 iVal)
+{
+	ph7_value_int64(pValue,iVal);
+	if( ph7_array_add_elem(pArray,0/* Automatic index assign*/,pValue) != SXRET_OK ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	return PH7_OK;
+}
+static sxi32 RangeAppendDouble(ph7_context *pCtx,ph7_value *pArray,ph7_value *pValue,double rVal)
+{
+	ph7_value_double(pValue,rVal);
+	if( ph7_array_add_elem(pArray,0,pValue) != SXRET_OK ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	return PH7_OK;
+}
+static sxi32 RangeAppendChar(ph7_context *pCtx,ph7_value *pArray,ph7_value *pValue,char c)
+{
+	ph7_value_string(pValue,&c,1);
+	if( ph7_array_add_elem(pArray,0,pValue) != SXRET_OK ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	ph7_value_reset_string_cursor(pValue);
+	return PH7_OK;
+}
+/*
+ * array range(string|int|float $start,string|int|float $end,int|float $step = 1)
+ *  Create an array containing a range of elements.
  * Return
- *  An array of elements from start to limit, inclusive.
- * NOTE:
- *  Only 32/64 bit integer key is supported.
+ *  An array of elements from start to end, inclusive; int, float, or
+ *  single-character string elements depending on the inputs, like php 8.
  */
 static int ph7_hashmap_range(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_value *pValue,*pArray;
-	sxi64 iOfft,iLimit;
-	int iStep = 1;
+	sxi32 rc = PH7_OK;
+	int is_step_double = 0,is_step_negative = 0;
+	double step_double = 1.0;
+	sxi64 step = 1;
+	sxu8 start_type,end_type;
+	sxi64 start_long = 0,end_long = 0;
+	double start_double = 0.0,end_double = 0.0;
+	unsigned char cStart = 0,cEnd = 0;
+	int bStartNull = FALSE,bEndNull = FALSE;
+	sxu32 i,size;
 
-	iOfft = iLimit = 0; /* cc -O6 */
-	if( nArg > 0 ){
-		/* Extract the offset */
-		iOfft = ph7_value_to_int64(apArg[0]);
-		if( nArg > 1 ){
-			/* Extract the limit */
-			iLimit = ph7_value_to_int64(apArg[1]);
-			if( nArg > 2 ){
-				/* Extract the increment */
-				iStep = ph7_value_to_int(apArg[2]);
-				if( iStep < 1 ){
-					/* Only positive number are allowed */
-					iStep = 1;
+	/* php ZPP arity: at least 2 (enforced centrally, aBuiltinArity), at most 3. */
+	if( nArg > 3 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"range() expects at most 3 arguments, %d given",nArg);
+	}
+	if( nArg < 2 ){
+		/* Defensive only: the central arity table throws before we run. */
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"range() expects at least 2 arguments, %d given",nArg);
+	}
+	/* ZPP pass in argument order: type errors and null deprecations fire
+	 * before any value/domain check, like php's zend_parse_parameters. */
+	if( !RangeEndpointZpp(pCtx,apArg[0],1,"start",&bStartNull,&rc) ){
+		return rc;
+	}
+	if( !RangeEndpointZpp(pCtx,apArg[1],2,"end",&bEndNull,&rc) ){
+		return rc;
+	}
+	if( nArg > 2 ){
+		sxu8 iStepKind = RangeStepInput(pCtx,apArg[2],&step,&step_double,&rc);
+		if( iStepKind == RANGE_IN_ERROR ){
+			return rc;
+		}
+		if( iStepKind == RANGE_IN_DOUBLE ){
+			if( PH7_IS_INF(step_double) ){
+				return PH7_VmThrowException(pCtx,"ValueError",
+					"range(): Argument #3 ($step) must be a finite number, INF provided");
+			}
+			if( PH7_IS_NAN(step_double) ){
+				return PH7_VmThrowException(pCtx,"ValueError",
+					"range(): Argument #3 ($step) must be a finite number, NAN provided");
+			}
+			/* We only want positive step values. */
+			if( step_double < 0.0 ){
+				is_step_negative = 1;
+				step_double *= -1;
+			}
+			/* zend_dval_to_lval_silent + zend_is_long_compatible: an integral
+			 * in-sxi64-range float step behaves as an int (char ranges accept
+			 * it, int endpoints stay int); anything else is a float step. */
+			if( step_double < 9223372036854775808.0 ){
+				step = (sxi64)step_double;
+				if( (double)step != step_double ){
+					is_step_double = 1;
 				}
+			}else{
+				/* Casting out-of-range would be UB; `step` stays unread —
+				 * every reader is gated behind !is_step_double. */
+				is_step_double = 1;
+			}
+		}else{
+			/* We only want positive step values. */
+			if( step < 0 ){
+				if( step == SMALLEST_INT64 ){
+					/* -step would overflow */
+					return PH7_VmThrowException(pCtx,"ValueError",
+						"range(): Argument #3 ($step) must be greater than %qd",step);
+				}
+				is_step_negative = 1;
+				step = -step;
+			}
+			step_double = (double)step;
+		}
+		if( step_double == 0.0 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"range(): Argument #3 ($step) cannot be 0");
+		}
+	}
+	start_type = RangeProcessInput(pCtx,apArg[0],1,"start",bStartNull,&start_long,&start_double,&cStart,&rc);
+	if( start_type == RANGE_IN_ERROR ){
+		return rc;
+	}
+	end_type = RangeProcessInput(pCtx,apArg[1],2,"end",bEndNull,&end_long,&end_double,&cEnd,&rc);
+	if( end_type == RANGE_IN_ERROR ){
+		return rc;
+	}
+	/* Element container + result array */
+	pValue = ph7_context_new_scalar(pCtx);
+	pArray = ph7_context_new_array(pCtx);
+	if( pValue == 0 || pArray == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	/* If the range is given as strings, generate an array of characters. */
+	if( start_type >= RANGE_IN_STRING || end_type >= RANGE_IN_STRING ){
+		if( start_type < RANGE_IN_STRING || end_type < RANGE_IN_STRING ){
+			/* Only one side is a string: the char side converts to 0 (with a
+			 * warning unless the numeric side is an ambiguous single digit)
+			 * and the range is numeric. */
+			if( start_type < RANGE_IN_STRING ){
+				if( end_type != RANGE_IN_DIGIT ){
+					PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
+						"range(): Argument #1 ($start) must be a single byte string if"
+						" argument #2 ($end) is a single byte string, argument #2 ($end) converted to 0");
+				}
+				end_type = RANGE_IN_LONG;
+			}else{
+				if( start_type != RANGE_IN_DIGIT ){
+					PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
+						"range(): Argument #2 ($end) must be a single byte string if"
+						" argument #1 ($start) is a single byte string, argument #1 ($start) converted to 0");
+				}
+				start_type = RANGE_IN_LONG;
+			}
+			goto handle_numeric_inputs;
+		}
+		if( is_step_double ){
+			/* Only emit the warning if one of the inputs is not a numeric digit. */
+			if( start_type == RANGE_IN_STRING || end_type == RANGE_IN_STRING ){
+				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
+					"range(): Argument #3 ($step) must be of type int when generating an array"
+					" of characters, inputs converted to 0");
+			}
+			start_type = RANGE_IN_LONG;
+			end_type = RANGE_IN_LONG;
+			goto handle_numeric_inputs;
+		}
+		/* Generate an array of characters */
+		if( cStart > cEnd ){
+			/* Decreasing char range */
+			int iCur;
+			if( (sxi64)(cStart - cEnd) < step ){
+				goto boundary_error;
+			}
+			for( iCur = (int)cStart ; iCur >= (int)cEnd ; iCur -= (int)step ){
+				if( (rc = RangeAppendChar(pCtx,pArray,pValue,(char)iCur)) != PH7_OK ){
+					return rc;
+				}
+			}
+		}else if( cEnd > cStart ){
+			/* Increasing char range */
+			int iCur;
+			if( is_step_negative ){
+				goto negative_step_error;
+			}
+			if( (sxi64)(cEnd - cStart) < step ){
+				goto boundary_error;
+			}
+			for( iCur = (int)cStart ; iCur <= (int)cEnd ; iCur += (int)step ){
+				if( (rc = RangeAppendChar(pCtx,pArray,pValue,(char)iCur)) != PH7_OK ){
+					return rc;
+				}
+			}
+		}else{
+			if( (rc = RangeAppendChar(pCtx,pArray,pValue,(char)cStart)) != PH7_OK ){
+				return rc;
+			}
+		}
+		ph7_result_value(pCtx,pArray);
+		return PH7_OK;
+	}
+handle_numeric_inputs:
+	if( start_type == RANGE_IN_DOUBLE || end_type == RANGE_IN_DOUBLE || is_step_double ){
+		/* Float range */
+		double elem,calc;
+		if( start_double > end_double ){
+			/* Decreasing float range */
+			if( start_double - end_double < step_double ){
+				goto boundary_error;
+			}
+			calc = ((start_double - end_double) / step_double) + 1;
+			if( calc >= (double)PH7_RANGE_HT_MAX_SIZE ){
+				/* php prints start/end swapped here (see RangeDoubleSizeError). */
+				return RangeDoubleSizeError(pCtx,calc,end_double,start_double,step_double);
+			}
+			size = (sxu32)(calc + 0.5); /* _php_math_round(...,0,HALF_UP) */
+			for( i = 0,elem = start_double ; i < size && elem >= end_double ; ++i,elem = start_double - ((double)i * step_double) ){
+				if( (rc = RangeAppendDouble(pCtx,pArray,pValue,elem)) != PH7_OK ){
+					return rc;
+				}
+			}
+		}else if( end_double > start_double ){
+			/* Increasing float range */
+			if( is_step_negative ){
+				goto negative_step_error;
+			}
+			if( end_double - start_double < step_double ){
+				goto boundary_error;
+			}
+			calc = ((end_double - start_double) / step_double) + 1;
+			if( calc >= (double)PH7_RANGE_HT_MAX_SIZE ){
+				return RangeDoubleSizeError(pCtx,calc,start_double,end_double,step_double);
+			}
+			size = (sxu32)(calc + 0.5);
+			for( i = 0,elem = start_double ; i < size && elem <= end_double ; ++i,elem = start_double + ((double)i * step_double) ){
+				if( (rc = RangeAppendDouble(pCtx,pArray,pValue,elem)) != PH7_OK ){
+					return rc;
+				}
+			}
+		}else{
+			if( (rc = RangeAppendDouble(pCtx,pArray,pValue,start_double)) != PH7_OK ){
+				return rc;
+			}
+		}
+	}else{
+		/* Int range. All arithmetic in unsigned space so a span wider than
+		 * LARGEST_INT64 (e.g. -PHP_INT_MAX..PHP_INT_MAX) wraps correctly
+		 * instead of overflowing, exactly like php's zend_ulong math. */
+		sxu64 ustep = (sxu64)step;
+		sxu64 calc;
+		if( start_long > end_long ){
+			/* Decreasing int range */
+			if( (sxu64)start_long - (sxu64)end_long < ustep ){
+				goto boundary_error;
+			}
+			calc = ((sxu64)start_long - (sxu64)end_long) / ustep;
+			if( calc >= (sxu64)(PH7_RANGE_HT_MAX_SIZE - 1) ){
+				/* php prints start/end swapped here (see RangeLongSizeError). */
+				return RangeLongSizeError(pCtx,calc,end_long,start_long,step);
+			}
+			size = (sxu32)(calc + 1);
+			for( i = 0 ; i < size ; ++i ){
+				if( (rc = RangeAppendInt(pCtx,pArray,pValue,(sxi64)((sxu64)start_long - (sxu64)i * ustep))) != PH7_OK ){
+					return rc;
+				}
+			}
+		}else if( end_long > start_long ){
+			/* Increasing int range */
+			if( is_step_negative ){
+				goto negative_step_error;
+			}
+			if( (sxu64)end_long - (sxu64)start_long < ustep ){
+				goto boundary_error;
+			}
+			calc = ((sxu64)end_long - (sxu64)start_long) / ustep;
+			if( calc >= (sxu64)(PH7_RANGE_HT_MAX_SIZE - 1) ){
+				return RangeLongSizeError(pCtx,calc,start_long,end_long,step);
+			}
+			size = (sxu32)(calc + 1);
+			for( i = 0 ; i < size ; ++i ){
+				if( (rc = RangeAppendInt(pCtx,pArray,pValue,(sxi64)((sxu64)start_long + (sxu64)i * ustep))) != PH7_OK ){
+					return rc;
+				}
+			}
+		}else{
+			if( (rc = RangeAppendInt(pCtx,pArray,pValue,start_long)) != PH7_OK ){
+				return rc;
 			}
 		}
 	}
-	/* Element container */
-	pValue = ph7_context_new_scalar(pCtx);
-	/* Create the new array */
-	pArray = ph7_context_new_array(pCtx);
-	if( pArray == 0 ){
-		return PH7_ContextMemoryError(pCtx);
-	}
-	/* Start filling */
-	while( iOfft <= iLimit ){
-		ph7_value_int64(pValue,iOfft);
-		/* Perform the insertion */
-		if( ph7_array_add_elem(pArray,0/* Automatic index assign*/,pValue) != SXRET_OK ){
-			/* Allocation failure: surface a fatal instead of a partial array */
-			return PH7_ContextMemoryError(pCtx);
-		}
-		/* Increment */
-		iOfft += iStep;
-	}
-	/* Return the new array */
+	/* Return the new array. 'pValue' is released automatically by the
+	 * virtual machine as soon as we return from this foreign function. */
 	ph7_result_value(pCtx,pArray);
-	/* Dont'worry about freeing 'pValue',it will be released automatically
-	 * by the virtual machine as soon we return from this foreign function.
-	 */
 	return PH7_OK;
+negative_step_error:
+	return PH7_VmThrowException(pCtx,"ValueError",
+		"range(): Argument #3 ($step) must be greater than 0 for increasing ranges");
+boundary_error:
+	return PH7_VmThrowException(pCtx,"ValueError",
+		"range(): Argument #3 ($step) must be less than the range spanned by argument #1 ($start) and argument #2 ($end)");
 }
 /*
  * array array_values(array $array)

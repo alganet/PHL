@@ -3,13 +3,6 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 range should generate sequences with step and negative ranges
---SKIPIF--
-<?php
-// Skip third check if negative-step ranges are unsupported by the engine
-if (count(range(3,1,-1)) === 0) {
-	echo "skip";
-}
-?>
 --FILE--
 <?php
 $r = range(1, 3);
