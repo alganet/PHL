@@ -1,21 +1,15 @@
 --CREDITS--
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --TEST--
-dechex with no arguments
+dechex() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-$result = dechex();
-if ($result === null) {
-    echo "NULL\n";
-} else {
-    echo "NOT NULL\n";
+try {
+    dechex();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-NULL
---CLEAN--
-<?php
-unset($result);
+dechex() expects exactly 1 argument, 0 given

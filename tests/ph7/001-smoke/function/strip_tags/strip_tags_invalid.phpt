@@ -2,19 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: strip_tags missing argument returns empty string
---SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+strip_tags() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-if (strip_tags() == "") {
-    echo "true";
-} else {
-    echo "false";
+try {
+    strip_tags();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-true
---CLEAN--
-<?php
-
+strip_tags() expects at least 1 argument, 0 given

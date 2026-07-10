@@ -1,17 +1,15 @@
 --CREDITS--
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --TEST--
-array_filter called without arguments should return NULL (PHL-specific)
+array_filter() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-$result = array_filter();
-if ($result === null) echo "NULL\n"; else echo "NOT NULL\n";
+try {
+    array_filter();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
+}
 ?>
 --EXPECT--
-NULL
---CLEAN--
-<?php
-unset($result);
+array_filter() expects at least 1 argument, 0 given

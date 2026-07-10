@@ -2,19 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: sinh missing argument returns integer 0
---SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+sinh() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-if (sinh() === 0) {
-    echo "true";
-} else {
-    echo "false";
+try {
+    sinh();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-true
---CLEAN--
-<?php
-
+sinh() expects exactly 1 argument, 0 given

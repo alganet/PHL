@@ -2,15 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-sqrt with no arguments
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+sqrt() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-echo sqrt() . "\n";
+try {
+    sqrt();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
+}
 ?>
 --EXPECT--
-0
---CLEAN--
-<?php
-
+sqrt() expects exactly 1 argument, 0 given

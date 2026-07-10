@@ -2,19 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: nl2br missing argument returns empty string
---SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+nl2br() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-if (nl2br() == "") {
-    echo "true";
-} else {
-    echo "false";
+try {
+    nl2br();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-true
---CLEAN--
-<?php
-
+nl2br() expects at least 1 argument, 0 given

@@ -2,20 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-base64_encode with no arguments
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+base64_encode() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-$result = base64_encode();
-if ($result === false) {
-    echo "PASS\n";
-} else {
-    echo "FAIL\n";
+try {
+    base64_encode();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-PASS
---CLEAN--
-<?php
-unset($result);
+base64_encode() expects exactly 1 argument, 0 given

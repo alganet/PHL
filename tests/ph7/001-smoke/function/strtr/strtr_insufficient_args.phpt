@@ -2,20 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-strtr insufficient arguments
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+strtr() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-$result = strtr();
-if ($result === false) {
-    echo "false";
-} else {
-    echo "not false";
+try {
+    strtr("x");
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-false
---CLEAN--
-<?php
-unset($result);
+strtr() expects exactly 2 arguments, 1 given

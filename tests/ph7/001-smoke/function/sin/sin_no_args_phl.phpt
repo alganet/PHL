@@ -1,16 +1,15 @@
 --CREDITS--
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --TEST--
-sin() with no arguments (PHL specific)
+sin() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-var_dump(sin());
+try {
+    sin();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
+}
 ?>
 --EXPECT--
-int(0)
---CLEAN--
-<?php
-
+sin() expects exactly 1 argument, 0 given

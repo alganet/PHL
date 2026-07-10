@@ -1,21 +1,15 @@
 --CREDITS--
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --TEST--
-base_convert with no arguments
+base_convert() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-$result = base_convert();
-if ($result == "") {
-    echo "PASS\n";
-} else {
-    echo "FAIL: expected empty string, got " . var_export($result, true) . "\n";
+try {
+    base_convert();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-PASS
---CLEAN--
-<?php
-unset($result);
+base_convert() expects exactly 3 arguments, 0 given

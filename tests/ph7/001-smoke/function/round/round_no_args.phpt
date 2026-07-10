@@ -2,20 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-round() returns 0 when called with no arguments
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+round() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-$result = round();
-if ($result === 0) {
-    echo "round with no args returns 0\n";
-} else {
-    echo "unexpected result\n";
+try {
+    round();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-round with no args returns 0
---CLEAN--
-<?php
-unset($result);
+round() expects at least 1 argument, 0 given

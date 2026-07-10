@@ -2,19 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: is_resource missing argument returns false
---SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+is_resource() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-if (is_resource() === false) {
-    echo "true";
-} else {
-    echo "false";
+try {
+    is_resource();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-true
---CLEAN--
-<?php
-
+is_resource() expects exactly 1 argument, 0 given

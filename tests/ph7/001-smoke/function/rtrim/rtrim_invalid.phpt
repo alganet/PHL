@@ -2,19 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: rtrim missing argument returns NULL
---SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+rtrim() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-if (rtrim() === null) {
-    echo "true";
-} else {
-    echo "false";
+try {
+    rtrim();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-true
---CLEAN--
-<?php
-
+rtrim() expects at least 1 argument, 0 given

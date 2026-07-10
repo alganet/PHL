@@ -2,19 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: crc32 missing argument returns integer 0
---SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+crc32() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-if (crc32() === 0) {
-    echo "true";
-} else {
-    echo "false";
+try {
+    crc32();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-true
---CLEAN--
-<?php
-
+crc32() expects exactly 1 argument, 0 given

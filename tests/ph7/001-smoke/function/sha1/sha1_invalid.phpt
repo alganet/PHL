@@ -2,19 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: sha1 missing argument returns empty string
---SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+sha1() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-if (sha1() == "") {
-    echo "true";
-} else {
-    echo "false";
+try {
+    sha1();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-true
---CLEAN--
-<?php
-
+sha1() expects at least 1 argument, 0 given

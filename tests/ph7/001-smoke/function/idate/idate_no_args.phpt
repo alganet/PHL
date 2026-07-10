@@ -2,20 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-idate with no arguments
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+idate() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-$result = idate();
-if ($result === -1) {
-    echo "PASS";
-} else {
-    echo "FAIL";
+try {
+    idate();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-PASS
---CLEAN--
-<?php
-unset($result);
+idate() expects at least 1 argument, 0 given

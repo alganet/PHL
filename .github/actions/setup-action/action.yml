@@ -12,6 +12,13 @@ runs:
       with:
         packages: lcov libpcre2-dev
         version: 1.1
+    # The Ubuntu runner ships an older php (8.3) whose ValueError / arity
+    # wording predates 8.4/8.5; the cross-engine oracle must be the version PHL
+    # targets, matching the Homebrew php used on macOS below.
+    - if: runner.os == 'Linux'
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.5'
     - if: runner.os == 'macOS'
       uses: tecolicom/actions-use-homebrew-tools@v1
       with:

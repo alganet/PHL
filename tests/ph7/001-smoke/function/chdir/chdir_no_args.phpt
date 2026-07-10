@@ -2,20 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PHL: chdir() with no arguments returns FALSE
---SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+chdir() throws ArgumentCountError with too few arguments (PHP 8)
 --FILE--
 <?php
-// Calling chdir with no arguments should return false
-if (chdir() === false) {
-    echo "true";
-} else {
-    echo "false";
+try {
+    chdir();
+} catch (\ArgumentCountError $e) {
+    echo $e->getMessage(), "\n";
 }
 ?>
 --EXPECT--
-true
---CLEAN--
-<?php
-
+chdir() expects exactly 1 argument, 0 given
