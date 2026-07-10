@@ -9146,9 +9146,11 @@ case PH7_OP_MOD:{
 	a = pNos->x.iVal;
 	b = pTos->x.iVal;
 	if( b == 0 ){
-		r = 0;
-		VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Division by zero %qd%%0",a);
-		/* goto Abort; */
+		/* Modulo by zero: php throws a catchable DivisionByZeroError (8.0),
+		 * not the old non-catchable warning that continued with a 0 result. */
+		rc = VmThrowFixedError(&(*pVm),"DivisionByZeroError","Modulo by zero");
+		PH7_DISPATCH_ENFORCE_RC(rc)
+		r = 0; /* unreachable — ENFORCE_RC jumps/breaks for a throw */
 	}else{
 		r = a%b;
 	}
@@ -9187,9 +9189,11 @@ case PH7_OP_MOD_STORE: {
 	a = pTos->x.iVal;
 	b = pNos->x.iVal;
 	if( b == 0 ){
-		r = 0;
-		VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Division by zero %qd%%0",a);
-		/* goto Abort; */
+		/* Modulo by zero: php throws a catchable DivisionByZeroError (8.0),
+		 * not the old non-catchable warning that continued with a 0 result. */
+		rc = VmThrowFixedError(&(*pVm),"DivisionByZeroError","Modulo by zero");
+		PH7_DISPATCH_ENFORCE_RC(rc)
+		r = 0; /* unreachable — ENFORCE_RC jumps/breaks for a throw */
 	}else{
 		r = a%b;
 	}
@@ -9232,10 +9236,10 @@ case PH7_OP_DIV:{
 	a = pNos->rVal;
 	b = pTos->rVal;
 	if( b == 0 ){
-		/* Division by zero */
-		pNos->rVal = 0;
-		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Division by zero");
-		/* goto Abort; */
+		/* Division by zero: php throws a catchable DivisionByZeroError (8.0),
+		 * not the old non-catchable warning that continued with a 0 result. */
+		rc = VmThrowFixedError(&(*pVm),"DivisionByZeroError","Division by zero");
+		PH7_DISPATCH_ENFORCE_RC(rc)
 	}else{
 		r = a/b;
 		/* Push the result */
@@ -9275,10 +9279,10 @@ case PH7_OP_DIV_STORE:{
 	a = pTos->rVal;
 	b = pNos->rVal;
 	if( b == 0 ){
-		/* Division by zero */
-		r = 0;
-		VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Division by zero %qd/0",a);
-		/* goto Abort; */
+		/* Division by zero: php throws a catchable DivisionByZeroError (8.0),
+		 * not the old non-catchable warning that continued with a 0 result. */
+		rc = VmThrowFixedError(&(*pVm),"DivisionByZeroError","Division by zero");
+		PH7_DISPATCH_ENFORCE_RC(rc)
 	}else{
 		r = a/b;
 		/* Push the result */
