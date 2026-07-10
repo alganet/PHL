@@ -17423,12 +17423,15 @@ static int vm_builtin_gettype(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 static int vm_builtin_get_resource_type(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	const char *zType;
 	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE*/
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	ph7_result_string_format(pCtx,"resID_%#x",apArg[0]->x.pOther);
+	/* PHP returns the resource TYPE name (e.g. "stream" for IO handles), not an id. */
+	zType = PH7_VfsResourceType(apArg[0]->x.pOther);
+	ph7_result_string(pCtx,zType,-1/*Compute length automatically*/);
 	return SXRET_OK;
 }
 /*

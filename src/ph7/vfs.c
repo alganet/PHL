@@ -2437,6 +2437,21 @@ struct io_private
 /* Forward declaration */
 static void ResetIOPrivate(io_private *pDev);
 /*
+ * Return the PHP resource-type name for a raw resource handle.
+ * Every IO handle this VFS hands out (fopen/tmpfile/popen/opendir and the
+ * STDIN/STDOUT/STDERR constants) is an io_private, which PHP reports as
+ * "stream"; anything else is "Unknown". The magic probe mirrors the
+ * IO_PRIVATE_INVALID check the rest of this file uses to validate handles.
+ */
+PH7_PRIVATE const char * PH7_VfsResourceType(void *pResource)
+{
+	io_private *pDev = (io_private *)pResource;
+	if( !IO_PRIVATE_INVALID(pDev) ){
+		return "stream";
+	}
+	return "Unknown";
+}
+/*
  * bool ftruncate(resource $handle,int64 $size)
  *  Truncates a file to a given length.
  * Parameters
@@ -5111,6 +5126,18 @@ static int PH7_builtin_parse_ini_file(ph7_context *pCtx,int nArg,ph7_value **apA
 	return rc;
 }
 /* ZIP archive processing moved to vfs_zip.c */
+#else /* PH7_DISABLE_DISK_IO */
+/*
+ * Disk I/O is compiled out: this VFS hands out no resource handles, so
+ * get_resource_type() has nothing that could be a "stream" and every
+ * resource reports as "Unknown" (the same fallback the full build gives
+ * to any non-VFS resource).
+ */
+PH7_PRIVATE const char * PH7_VfsResourceType(void *pResource)
+{
+	SXUNUSED(pResource);
+	return "Unknown";
+}
 #endif /* PH7_DISABLE_BUILTIN_FUNC || PH7_DISABLE_DISK_IO */
 /* NULL VFS [i.e: a no-op VFS]*/
 #if defined(_MSC_VER)
