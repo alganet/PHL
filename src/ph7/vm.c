@@ -621,6 +621,7 @@ static VmFrame * VmNewFrame(
 }
 /* Forward declaration */
 static VmFrame * VmSkipExceptionFrames(VmFrame *pFrame);
+static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValue, ph7_value *pResult);
 /*
  * Enter a VM frame.
  */
@@ -6419,9 +6420,15 @@ static sxi32 VmByteCodeExecBody(
 	 * the caller's handler) and the ctx closes. pInjected is one-shot and only meaningful at
 	 * the resume pc, so this is checked once at entry — NOT per-instruction — keeping the hot
 	 * dispatch loop untouched for all normal code. The pFrame gate keeps a nested call / catch
-	 * mini-program sharing the ctx (a separate VmByteCodeExec entry) from re-firing. */
+	 * mini-program sharing the ctx (a separate VmByteCodeExec entry) from re-firing.
+	 *
+	 * Exception: when this body is suspended mid `yield from` over an inner Generator
+	 * (iDelegateState==3), a Generator::throw() on the OUTER generator must be forwarded
+	 * INTO the delegate (PHP yield-from transparency), not raised here. Leave pInjected
+	 * set and skip; the resume pc is that OP_YIELD_FROM, which consumes and forwards it. */
 	if( pVm->pActiveCtx && pVm->pActiveCtx->pInjected
-	 && pVm->pActiveCtx->pFrame == sState.pEntryFrame ){
+	 && pVm->pActiveCtx->pFrame == sState.pEntryFrame
+	 && pVm->pActiveCtx->iDelegateState != 3 ){
 		ph7_class_instance *pInj = pVm->pActiveCtx->pInjected;
 		VmFrame *pThrowFrame;
 		sxi32 iResumePc;
@@ -11474,18 +11481,52 @@ case PH7_OP_YIELD_FROM: {
 			if( rcm == PH7_ABORT || rcm == PH7_EXCEPTION ){ goto yf_propagate; }
 		}
 	}else{
-		/* Resume entry: discard the value VmResumeCtx pushed. Forwarding send()
-		 * into the delegated generator is deferred (see the Generator::throw TODO);
-		 * arrays/Traversables ignore send() anyway. */
+		/* Resume entry: the value VmResumeCtx pushed is the send() value (null for a
+		 * plain next()). For a Generator delegate (state 3) PHP forwards send()/throw()
+		 * transparently INTO the inner generator; arrays/plain Iterators (state 1/2)
+		 * ignore send() and just advance with next(). */
 #ifdef UNTRUST
 		if( pTos < pStack ){ goto Abort; }
 #endif
-		PH7_MemObjRelease(pTos);
-		pTos--;
-		if( pCtxFrom->iDelegateState >= 2 ){
-			rcm = VmIterCallMethod(pVm,(ph7_class_instance *)pCtxFrom->sDelegate.x.pOther,
-				"next",sizeof("next")-1,0);
+		if( pCtxFrom->iDelegateState == 3 ){
+			ph7_generator *pInner = VmGeneratorExtractCtx(&(*pVm),&pCtxFrom->sDelegate);
+			/* A pending Generator::throw() on the outer was parked on pInjected by the
+			 * body-entry gate (which skips its own raise for state 3); forward it as a
+			 * throw into the delegate, else forward the sent value. */
+			ph7_class_instance *pInjFwd = pCtxFrom->pInjected;
+			ph7_value sSent;
+			PH7_MemObjInit(pVm,&sSent);
+			PH7_MemObjStore(pTos,&sSent); /* take the sent value off the stack */
+			PH7_MemObjRelease(pTos);
+			pTos--;
+			pCtxFrom->pInjected = 0;
+			if( pInner && pInner->pCtx && pInner->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){
+				if( pInjFwd ){
+					/* Borrowed ref: the outer's Generator::throw() holds it across this
+					 * whole resume, so the inner inject path must not unref it. */
+					pInner->pCtx->pInjected = pInjFwd;
+					rcm = VmResumeCtx(&(*pVm),pInner->pCtx,0,0);
+					pInner->pCtx->pInjected = 0;
+				}else{
+					rcm = VmResumeCtx(&(*pVm),pInner->pCtx,&sSent,0);
+				}
+			}else if( pInjFwd ){
+				/* No live delegate to receive the throw (inner already finished/closed):
+				 * raise it at the yield-from in the outer generator's own frame. */
+				VmFrame *pTF = VmSkipExceptionFrames(pVm->pFrame);
+				pTF->iFlags |= VM_FRAME_THROW;
+				rcm = (VmThrowException(&(*pVm),pInjFwd) == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
+			}
+			PH7_MemObjRelease(&sSent);
 			if( rcm == PH7_ABORT || rcm == PH7_EXCEPTION ){ goto yf_propagate; }
+		}else{
+			PH7_MemObjRelease(pTos);
+			pTos--;
+			if( pCtxFrom->iDelegateState >= 2 ){
+				rcm = VmIterCallMethod(pVm,(ph7_class_instance *)pCtxFrom->sDelegate.x.pOther,
+					"next",sizeof("next")-1,0);
+				if( rcm == PH7_ABORT || rcm == PH7_EXCEPTION ){ goto yf_propagate; }
+			}
 		}
 	}
 	/* Fetch the current (key,value) of the delegate, or mark exhausted. */
