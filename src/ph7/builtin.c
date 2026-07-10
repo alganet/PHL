@@ -6531,8 +6531,10 @@ static int PH7_builtin_soundex(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 static int PH7_builtin_wordwrap(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const char *zIn,*zEnd,*zBreak;
-	int iLen,iBreaklen,iChunk;
+	const char *zIn,*zBreak;
+	SyBlob sWorker;
+	int iLen,iBreaklen,iWidth,iCut,iStart,iSpace,iCur;
+	sxi32 rc;
 	if( nArg < 1 ){
 		/* Missing arguments,return the empty string */
 		ph7_result_string(pCtx,"",0);
@@ -6540,56 +6542,89 @@ static int PH7_builtin_wordwrap(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Extract the input string */
 	zIn = ph7_value_to_string(apArg[0],&iLen);
+	/* Width (default 75; PHP allows 0/negative — break at every space). */
+	iWidth = 75;
+	if( nArg > 1 ){
+		iWidth = ph7_value_to_int(apArg[1]);
+	}
+	/* Break string (default "\n"). */
+	zBreak = "\n";
+	iBreaklen = (int)sizeof(char);
+	if( nArg > 2 ){
+		zBreak = ph7_value_to_string(apArg[2],&iBreaklen);
+	}
+	/* Cut long words? (default false). */
+	iCut = 0;
+	if( nArg > 3 ){
+		iCut = ph7_value_to_bool(apArg[3]);
+	}
 	if( iLen < 1 ){
-		/* Nothing to process,return the empty string */
+		/* PHP returns the empty string for empty input before validating the other args. */
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
-	/* Chunk length */
-	iChunk = 75;
-	iBreaklen = 0;
-	zBreak = ""; /* cc warning */
-	if( nArg > 1 ){
-		iChunk = ph7_value_to_int(apArg[1]);
-		if( iChunk < 1 ){
-			iChunk = 75;
-		}
-		if( nArg > 2 ){
-			zBreak = ph7_value_to_string(apArg[2],&iBreaklen);
-		}
-	}
+	/* PHP 8 domain errors (catchable ValueError). */
 	if( iBreaklen < 1 ){
-		/* Set a default column break */
-#ifdef __WINNT__
-		zBreak = "\r\n";
-		iBreaklen = (int)sizeof("\r\n")-1;
-#else
-		zBreak = "\n";
-		iBreaklen = (int)sizeof(char);
-#endif
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"wordwrap(): Argument #3 ($break) must not be empty");
 	}
-	/* Perform the requested operation */
-	zEnd = &zIn[iLen];
-	for(;;){
-		int nMax;
-		if( zIn >= zEnd ){
-			/* No more input to process */
-			break;
-		}
-		nMax = (int)(zEnd-zIn);
-		if( iChunk > nMax ){
-			iChunk = nMax;
-		}
-		/* Append the column first */
-		ph7_result_string(pCtx,zIn,iChunk); /* Will make it's own copy */
-		/* Advance the cursor */
-		zIn += iChunk;
-		if( zIn < zEnd ){
-			/* Append the line break */
-			ph7_result_string(pCtx,zBreak,iBreaklen);
-		}
+	if( iWidth == 0 && iCut ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"wordwrap(): Argument #4 ($cut_long_words) cannot be true when argument #2 ($width) is 0");
 	}
+	/*
+	 * PHP's algorithm: a single left-to-right pass tracking the start of the
+	 * current line (iStart) and the position of the last space seen on it
+	 * (iSpace). A break is emitted when the line reaches the width, at the last
+	 * space if there was one, otherwise (only when cut is enabled) hard at the
+	 * boundary. An existing break sequence in the input resets the line.
+	 */
+	SyBlobInit(&sWorker,&pCtx->pVm->sAllocator);
+	iStart = iSpace = iCur = 0;
+	rc = SXRET_OK;
+	while( iCur < iLen ){
+		if( iBreaklen <= iLen - iCur && SyMemcmp(&zIn[iCur],zBreak,(sxu32)iBreaklen) == 0 ){
+			/* Existing break sequence in the input: copy it verbatim and reset the line. */
+			rc = SyBlobAppend(&sWorker,&zIn[iStart],(sxu32)(iCur - iStart + iBreaklen));
+			if( rc != SXRET_OK ){ goto oom; }
+			iCur += iBreaklen;
+			iStart = iSpace = iCur;
+			continue;
+		}else if( zIn[iCur] == ' ' ){
+			if( iCur - iStart >= iWidth ){
+				/* The line already fills the width at this space: break here (the space is consumed). */
+				rc = SyBlobAppend(&sWorker,&zIn[iStart],(sxu32)(iCur - iStart));
+				if( rc == SXRET_OK ){ rc = SyBlobAppend(&sWorker,zBreak,(sxu32)iBreaklen); }
+				if( rc != SXRET_OK ){ goto oom; }
+				iStart = iCur + 1;
+			}
+			iSpace = iCur;
+		}else if( iCut && iCur - iStart >= iWidth && iStart >= iSpace ){
+			/* A word longer than the width with no space to break at: hard-cut at the boundary. */
+			rc = SyBlobAppend(&sWorker,&zIn[iStart],(sxu32)(iCur - iStart));
+			if( rc == SXRET_OK ){ rc = SyBlobAppend(&sWorker,zBreak,(sxu32)iBreaklen); }
+			if( rc != SXRET_OK ){ goto oom; }
+			iStart = iSpace = iCur;
+		}else if( iCur - iStart >= iWidth && iStart < iSpace ){
+			/* Past the width mid-word: wrap back to the last space (which is consumed). */
+			rc = SyBlobAppend(&sWorker,&zIn[iStart],(sxu32)(iSpace - iStart));
+			if( rc == SXRET_OK ){ rc = SyBlobAppend(&sWorker,zBreak,(sxu32)iBreaklen); }
+			if( rc != SXRET_OK ){ goto oom; }
+			iStart = iSpace = iSpace + 1;
+		}
+		iCur++;
+	}
+	/* Emit the trailing chunk. */
+	if( iStart < iCur ){
+		rc = SyBlobAppend(&sWorker,&zIn[iStart],(sxu32)(iCur - iStart));
+		if( rc != SXRET_OK ){ goto oom; }
+	}
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sWorker),(int)SyBlobLength(&sWorker));
+	SyBlobRelease(&sWorker);
 	return PH7_OK;
+oom:
+	SyBlobRelease(&sWorker);
+	return PH7_ContextMemoryError(pCtx);
 }
 /*
  * Check if the given character is a member of the given mask.

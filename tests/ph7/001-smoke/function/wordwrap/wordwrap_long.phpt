@@ -2,21 +2,33 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: wordwrap basic functionality
---SKIPIF--
-<?php
-if (function_exists('zend_version')) {
-    echo 'skip';
-}
-?>
+wordwrap wraps at word boundaries and honours the cut flag
 --FILE--
 <?php
-// Test single word longer than width
-$result6 = wordwrap("supercalifragilisticexpialidocious", 10);
-echo strpos($result6, "\n") !== false ? "LONG_WORD_WRAP_OK\n" : "LONG_WORD_WRAP_FAIL\n";
+// A single word longer than the width is left intact when cut is false (default).
+var_dump(wordwrap("supercalifragilisticexpialidocious", 10));
+// With cut enabled the long word is hard-broken at the width.
+var_dump(wordwrap("supercalifragilisticexpialidocious", 10, "\n", true));
+// Normal word wrapping breaks at spaces.
+var_dump(wordwrap("The quick brown fox", 10));
+// A word longer than the width overflows onto its own line (cut false).
+var_dump(wordwrap("A very longlonglongword here", 10));
+// Custom multi-character break.
+var_dump(wordwrap("aaa bbb ccc", 3, "<br>\n"));
 ?>
 --EXPECT--
-LONG_WORD_WRAP_OK
+string(34) "supercalifragilisticexpialidocious"
+string(37) "supercalif
+ragilistic
+expialidoc
+ious"
+string(19) "The quick
+brown fox"
+string(28) "A very
+longlonglongword
+here"
+string(19) "aaa<br>
+bbb<br>
+ccc"
 --CLEAN--
 <?php
-unset($result6);
