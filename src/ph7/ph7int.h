@@ -2021,6 +2021,7 @@ PH7_PRIVATE void PH7_StreamCloseHandle(const ph7_io_stream *pStream,void *pHandl
 PH7_PRIVATE const char * PH7_ExtractDirName(const char *zPath,int nByte,int *pLen);
 PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm);
 PH7_PRIVATE const ph7_vfs * PH7_ExportBuiltinVfs(void);
+PH7_PRIVATE const char * PH7_VfsResourceType(void *pResource);
 PH7_PRIVATE void * PH7_ExportStdin(ph7_vm *pVm);
 PH7_PRIVATE void * PH7_ExportStdout(ph7_vm *pVm);
 PH7_PRIVATE void * PH7_ExportStderr(ph7_vm *pVm);

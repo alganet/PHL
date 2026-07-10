@@ -2,22 +2,18 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-get_resource_type returns a well-formed resource id string
---SKIPIF--
-<?php
-if (function_exists('zend_version')) {
-	echo "skip";
-}
-?>
+get_resource_type returns "stream" for an IO handle
 --FILE--
 <?php
 $f = fopen(__FILE__, 'r');
-$t = get_resource_type($f);
-if (strpos($t, 'resID_') === 0) echo "ok\n"; else echo "fail\n";
+var_dump(get_resource_type($f));
 fclose($f);
+$d = opendir(__DIR__);
+var_dump(get_resource_type($d));
+closedir($d);
 ?>
 --EXPECT--
-ok
+string(6) "stream"
+string(6) "stream"
 --CLEAN--
 <?php
-unset($f, $t);
