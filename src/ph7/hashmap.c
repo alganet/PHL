@@ -609,9 +609,16 @@ static sxi32 HashmapInsert(
 				return SXRET_OK;
 		}
 		if( pMap == pMap->pVm->pGlobal ){
-			/* Forbidden */
-			PH7_VmThrowError(pMap->pVm,0,PH7_CTX_NOTICE,"$GLOBALS is a read-only array,insertion is forbidden");
-			return SXRET_OK;
+			/* php 8.1: writing a new key into $GLOBALS creates a real global
+			 * variable ($GLOBALS stays a live view of the symbol table). */
+			if( SyBlobLength(&pKey->sBlob) < 1 ){
+				/* Pathological empty name: keep the legacy diagnostic */
+				PH7_VmThrowError(pMap->pVm,0,PH7_CTX_NOTICE,"$GLOBALS is a read-only array,insertion is forbidden");
+				return SXRET_OK;
+			}
+			return PH7_VmInstallGlobalVar(pMap->pVm,
+				(const char *)SyBlobData(&pKey->sBlob),SyBlobLength(&pKey->sBlob),
+				pVal,SXU32_HIGH);
 		}
 		/* Perform a blob-key insertion */
 		rc = HashmapInsertBlobKey(&(*pMap),SyBlobData(&pKey->sBlob),SyBlobLength(&pKey->sBlob),&(*pVal),0,FALSE);
@@ -638,9 +645,11 @@ IntKey:
 			return SXRET_OK;
 		}
 		if( pMap == pMap->pVm->pGlobal ){
-			/* Forbidden */
-			PH7_VmThrowError(pMap->pVm,0,PH7_CTX_NOTICE,"$GLOBALS is a read-only array,insertion is forbidden");
-			return SXRET_OK;
+			/* php 8.1: an int key creates the global named by its decimal
+			 * form ($GLOBALS[7] = ... behaves like $GLOBALS['7'] = ...). */
+			char zKey[24];
+			sxu32 nKey = SyBufferFormat(zKey,sizeof(zKey),"%qd",pKey->x.iVal);
+			return PH7_VmInstallGlobalVar(pMap->pVm,zKey,nKey,pVal,SXU32_HIGH);
 		}
 		/* Perform a 64-bit-int-key insertion */
 		rc = HashmapInsertIntKey(&(*pMap),pKey->x.iVal,&(*pVal),0,FALSE);
@@ -649,9 +658,8 @@ IntKey:
 		}
 	}else{
 		if( pMap == pMap->pVm->pGlobal ){
-			/* Forbidden */
-			PH7_VmThrowError(pMap->pVm,0,PH7_CTX_NOTICE,"$GLOBALS is a read-only array,insertion is forbidden");
-			return SXRET_OK;
+			/* php's catchable Error: Cannot append to $GLOBALS */
+			return PH7_VmThrowGlobalsAppendError(pMap->pVm);
 		}
 		if( HashmapAppendIndexBusy(&(*pMap),&rc) ){
 			return rc; /* PH7_EXCEPTION/PH7_ABORT: php's catchable Error was thrown */
@@ -1304,6 +1312,52 @@ PH7_PRIVATE sxi32 PH7_HashmapDup(ph7_hashmap *pSrc,ph7_hashmap *pDest)
 	return SXRET_OK;
 }
 /*
+ * Duplicate a hashmap, flattening every foreign (by-reference) node into a
+ * plain value copy. php 8.1 gives a COPY of $GLOBALS pure value semantics
+ * ($snap = $GLOBALS snapshots the symbol table: later writes on either side
+ * never affect the other) — unlike ordinary array copies, where reference
+ * elements stay live — so the $GLOBALS store path (PH7_MemObjStore) uses
+ * this instead of PH7_HashmapDup.
+ */
+PH7_PRIVATE sxi32 PH7_HashmapDupMaterialized(ph7_hashmap *pSrc,ph7_hashmap *pDest)
+{
+	ph7_hashmap_node *pEntry;
+	ph7_value *pVal;
+	sxi32 rc;
+	sxu32 n;
+	if( pSrc == pDest ){
+		return SXRET_OK;
+	}
+	pEntry = pSrc->pFirst;
+	for( n = 0 ; n < pSrc->nEntry ; ++n ){
+		/* Extract the node value (resolves foreign references) */
+		pVal = HashmapExtractNodeValue(pEntry);
+		if( pVal && (pVal->iFlags & MEMOBJ_HASHMAP)
+		 && (ph7_hashmap *)pVal->x.pOther == pSrc->pVm->pGlobal ){
+			/* A global still holding the live $GLOBALS map is the snapshot's
+			 * own destination mid-store ($snap = $GLOBALS registers $snap
+			 * before the value lands). php's snapshot — taken when $GLOBALS
+			 * is READ, before the assignment — has no such entry, so skip it
+			 * (also breaks the would-be infinite recursion). */
+			pVal = 0;
+		}
+		if( pVal ){
+			if( pEntry->iType == HASHMAP_BLOB_NODE ){
+				rc = HashmapInsertBlobKey(&(*pDest),SyBlobData(&pEntry->xKey.sKey),
+					SyBlobLength(&pEntry->xKey.sKey),pVal,0,FALSE);
+			}else{
+				rc = HashmapInsertIntKey(&(*pDest),pEntry->xKey.iKey,pVal,0,FALSE);
+			}
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+		}
+		/* Point to the next entry */
+		pEntry = pEntry->pPrev; /* Reverse link */
+	}
+	return SXRET_OK;
+}
+/*
  * Copy-on-write separation for arrays.
  * If the hashmap inside pValue has iRef > 1 (shared), duplicate it so that
  * pValue owns a private copy. The original map's refcount is decremented.
@@ -1321,7 +1375,9 @@ PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue)
 		return pMap;
 	}
 	if( pMap == pVm->pGlobal ){
-		/* Never separate $GLOBALS */
+		/* Never separate $GLOBALS — it is a live view of the symbol table.
+		 * (A COPY of $GLOBALS never shares this map: PH7_MemObjStore
+		 * materializes a by-value snapshot at assignment, php 8.1.) */
 		return pMap;
 	}
 	/* If this value is a stack copy of a named variable, separate the
@@ -1701,13 +1757,10 @@ PH7_PRIVATE sxi32 PH7_HashmapInsert(
 	)
 {
 	sxi32 rc;
-	if( pVal && (pVal->iFlags & MEMOBJ_HASHMAP) && (ph7_hashmap *)pVal->x.pOther == pMap->pVm->pGlobal ){
-		/*
-		 * TICKET 1433-35: Insertion in the $GLOBALS array is forbidden.
-		 */
-		PH7_VmThrowError(pMap->pVm,0,PH7_CTX_ERR,"$GLOBALS is a read-only array,insertion is forbidden");
-		return SXRET_OK;
-	}
+	/* Storing the $GLOBALS array itself as a VALUE is fine in php ($a[] =
+	 * $GLOBALS copies the symbol table); the old TICKET 1433-35 guard that
+	 * forbade it was a PH7-ism. Writes INTO $GLOBALS are handled inside
+	 * HashmapInsert (they create real global variables, php 8.1). */
 	rc = HashmapInsert(&(*pMap),&(*pKey),&(*pVal));
 	return rc;
 }
@@ -1756,11 +1809,11 @@ PH7_PRIVATE sxi32 PH7_HashmapInsertByRef(
 {
 	sxi32 rc;
 	if( nRefIdx == pMap->pVm->nGlobalIdx ){
-		/*
-		 * TICKET 1433-35: Insertion in the $GLOBALS array is forbidden.
-		 */
-		PH7_VmThrowError(pMap->pVm,0,PH7_CTX_ERR,"$GLOBALS is a read-only array,insertion is forbidden");
-		return SXRET_OK;
+		/* php's non-catchable fatal: $a[] =& $GLOBALS is forbidden (8.1) */
+		PH7_VmThrowError(pMap->pVm,0,PH7_CTX_ERR,"Cannot acquire reference to $GLOBALS");
+		pMap->pVm->iExitStatus = 255;
+		pMap->pVm->bHaltRequested = 1;
+		return PH7_ABORT;
 	}
 	rc = HashmapInsertByRef(&(*pMap),&(*pKey),nRefIdx);
 	return rc;
