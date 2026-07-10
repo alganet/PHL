@@ -496,6 +496,12 @@ struct ph7_exec_ctx
 	                                * the suspended yield on the next resume, or NULL. One-shot:
 	                                * consumed (cleared) by the loop-top inject check. Holds a
 	                                * reference for the duration of the resume. */
+	sxu8 bClosing;                 /* Set while VmCloseCtx force-drives this suspended generator's
+	                                * pending `finally` blocks at destruction (unset / out-of-scope
+	                                * / GC before completion). The body-resume entry redirects into
+	                                * the innermost open try's finally chain instead of resuming at
+	                                * the yield, and OP_YIELD raises PHP's "Cannot yield from finally
+	                                * in a force-closed generator". Stays set for the whole close run. */
 	/* `yield from` delegation state — per generator instance, so independent
 	 * instances never clash (unlike the shared foreach aStep). */
 	ph7_value sDelegate;             /* The iterable being delegated (kept alive) */
