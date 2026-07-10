@@ -1686,6 +1686,96 @@ PH7_PRIVATE sxi32 PH7_CompileArray(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	return GenStateCompileArrayBody(pGen);
 }
 /*
+ * Compile the PHP 8.5 clone(...) call form:
+ *   clone($object)                          -> identical to the `clone $object` operator
+ *   clone($object, ['prop' => value, ...])  -> clone, run __clone(), then apply the
+ *                                              property updates as scope-aware writes
+ *   clone(object: $o, withProperties: [..]) -> the named-argument spelling
+ * Codegen: compile the object argument and emit OP_CLONE (which clones and runs
+ * __clone()); if a withProperties argument is present, compile it and emit
+ * OP_CLONE_APPLY, which applies each update to the fresh clone AFTER __clone(),
+ * honouring visibility / readonly-set-scope / typed-property enforcement in the
+ * calling scope. The parser (ExprExtractNode) delimited this node's tokens as
+ * `clone ( ... )`; pGen->pIn/pEnd point at the first/one-past-last of that range.
+ */
+PH7_PRIVATE sxi32 PH7_CompileCloneCall(ph7_gen_state *pGen,sxi32 iCompileFlag)
+{
+	SyToken *pIn,*pEnd,*pNext;
+	SyToken *pObjStart = 0,*pObjEnd = 0;
+	SyToken *pUpdStart = 0,*pUpdEnd = 0;
+	int nArg = 0;
+	sxi32 rc;
+	SXUNUSED(iCompileFlag);
+	/* pGen->pIn -> 'clone', pGen->pIn[1] -> '(', pGen->pEnd -> one past ')'. */
+	pIn  = pGen->pIn + 2;   /* skip 'clone' and the opening '(' */
+	pEnd = pGen->pEnd - 1;  /* exclude the closing ')' */
+	/* clone(...) first-class-callable form: a lone ellipsis is the whole list. */
+	if( pIn < pEnd && (pIn->nType & PH7_TK_ELLIPSIS) ){
+		return PH7_GenCompileError(pGen,E_ERROR,pIn->nLine,
+			"clone(...) first-class callable form is not yet supported");
+	}
+	/* Split the (at most two) comma-separated arguments, tolerating named labels. */
+	while( pIn < pEnd ){
+		SyToken *pArgStart,*pArgEnd,*pName = 0;
+		if( PH7_GetNextExpr(pIn,pEnd,&pNext) != SXRET_OK ){
+			break;
+		}
+		pArgStart = pIn;
+		pArgEnd   = pNext;
+		/* Named-argument label: <ID|keyword> ':' expr. A single ':' is PH7_TK_COLON;
+		 * '::' is a distinct operator token, so this never mis-fires on `A::B`. */
+		if( (pArgEnd - pArgStart) >= 2
+			&& (pArgStart[0].nType & (PH7_TK_ID|PH7_TK_KEYWORD))
+			&& (pArgStart[1].nType & PH7_TK_COLON) ){
+			pName = pArgStart;
+			pArgStart += 2;
+		}
+		if( pName ){
+			if( pName->sData.nByte == sizeof("object")-1
+				&& SyStrnicmp(pName->sData.zString,"object",sizeof("object")-1) == 0 ){
+				pObjStart = pArgStart; pObjEnd = pArgEnd;
+			}else if( pName->sData.nByte == sizeof("withProperties")-1
+				&& SyStrnicmp(pName->sData.zString,"withProperties",sizeof("withProperties")-1) == 0 ){
+				pUpdStart = pArgStart; pUpdEnd = pArgEnd;
+			}else{
+				return PH7_GenCompileError(pGen,E_ERROR,pName->nLine,
+					"Unknown named parameter $%z for clone()",&pName->sData);
+			}
+		}else if( nArg == 0 ){
+			pObjStart = pArgStart; pObjEnd = pArgEnd;
+		}else if( nArg == 1 ){
+			pUpdStart = pArgStart; pUpdEnd = pArgEnd;
+		}else{
+			return PH7_GenCompileError(pGen,E_ERROR,pArgStart->nLine,
+				"clone() expects at most 2 arguments");
+		}
+		nArg++;
+		pIn = pNext;
+		if( pIn < pEnd && (pIn->nType & PH7_TK_COMMA) ){
+			pIn++; /* step over the argument separator */
+		}
+	}
+	if( pObjStart == 0 || pObjStart >= pObjEnd ){
+		return PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+			"clone() expects at least 1 argument, 0 given");
+	}
+	/* Object argument -> clone (+ __clone()). */
+	rc = GenStateCompileArrayEntry(pGen,pObjStart,pObjEnd,EXPR_FLAG_RDONLY_LOAD,0);
+	if( rc == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_CLONE,0,0,0,0);
+	/* Property updates (evaluated after __clone runs). */
+	if( pUpdStart && pUpdStart < pUpdEnd ){
+		rc = GenStateCompileArrayEntry(pGen,pUpdStart,pUpdEnd,EXPR_FLAG_RDONLY_LOAD,0);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_CLONE_APPLY,0,0,0,0);
+	}
+	return SXRET_OK;
+}
+/*
  * Compile a short array literal using the PHP 5.4 bracket syntax.
  * [1, 2, 3] is equivalent to array(1, 2, 3).
  * ['key' => 'value'] is equivalent to array('key' => 'value').
