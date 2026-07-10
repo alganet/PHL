@@ -191,6 +191,13 @@ static const ph7_expr_op aOpTable[] = {
 	/* Precedence 9,left-associative */
 	{ {"<<",sizeof(char)*2}, EXPR_OP_SHL, 9, EXPR_OP_ASSOC_LEFT, PH7_OP_SHL},
 	{ {">>",sizeof(char)*2}, EXPR_OP_SHR, 9, EXPR_OP_ASSOC_LEFT, PH7_OP_SHR},
+	/* PHP 8.5 pipe operator: `$x |> f(...)` desugars to `f($x)`. It binds
+	 * looser than shift/arithmetic and tighter than comparison — PHP places it
+	 * between precedence 9 and 10. We share level 9 (left-associative) so the
+	 * generic binary tree-builder links it correctly; the actual codegen is
+	 * custom (a one-argument call of the RHS callable), handled in
+	 * GenStateEmitExprCode. iVmOp is 0 like the other codegen-only operators. */
+	{ {"|>",sizeof(char)*2}, EXPR_OP_PIPE, 9, EXPR_OP_ASSOC_LEFT, 0},
 	/* Precedence 10,non-associative */
 	{ {"<",sizeof(char)},    EXPR_OP_LT,  10, EXPR_OP_NON_ASSOC, PH7_OP_LT},
 	{ {">",sizeof(char)},    EXPR_OP_GT,  10, EXPR_OP_NON_ASSOC, PH7_OP_GT},

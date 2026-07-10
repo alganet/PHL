@@ -1382,6 +1382,7 @@ enum ph7_expr_id {
 	EXPR_OP_SHL_ASSIGN, /* Combined operator: <<= */
 	EXPR_OP_SHR_ASSIGN, /* Combined operator: >>= */
 	EXPR_OP_NULLC_ASSIGN, /* Combined operator: null coalescing assign */
+	EXPR_OP_PIPE,       /* PHP 8.5 pipe operator: |> */
 	EXPR_OP_COMMA       /* Comma expression */
 };
 /*
