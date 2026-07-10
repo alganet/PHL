@@ -4,12 +4,14 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "ph7int.h"
-/* filter_var(FILTER_VALIDATE_FLOAT) parses with libc strtod for overflow/underflow
- * detection + a correctly-rounded value; SyStrToReal clamps the exponent and saturates,
- * so it cannot reject out-of-range magnitudes. Same rationale as builtin_math.c's round(). */
+/* filter_var(FILTER_VALIDATE_FLOAT) parses with libc strtod directly because it
+ * needs errno==ERANGE to reject out-of-range magnitudes; SyStrToReal (also
+ * strtod-backed nowadays) exposes no range-error signal. */
 #include <stdlib.h>  /* strtod */
 #include <math.h>    /* HUGE_VAL */
 #include <errno.h>   /* ERANGE (strtod range-error signal) */
+#include <stdio.h>   /* snprintf (printf-family float conversions — correctly
+                      * rounded digits like php's zend_dtoa; see PH7_InputFormat) */
 /* This file implement built-in 'foreign' functions for the PH7 engine */
 /*
  * Section:
@@ -3244,34 +3246,9 @@ struct ph7_fmt_info
   char *charset; /* The character set for conversion */
   char *prefix;  /* Prefix on non-zero values in alt format */
 };
-#ifndef PH7_OMIT_FLOATING_POINT
-/*
-** "*val" is a double such that 0.1 <= *val < 10.0
-** Return the ascii code for the leading digit of *val, then
-** multiply "*val" by 10.0 to renormalize.
-**
-** Example:
-**     input:     *val = 3.14159
-**     output:    *val = 1.4159    function return = '3'
-**
-** The counter *cnt is incremented each time.  After counter exceeds
-** 16 (the number of significant digits in a 64-bit float) '0' is
-** always returned.
-*/
-static int vxGetdigit(sxlongreal *val,int *cnt)
-{
-  sxlongreal d;
-  int digit;
-
-  if( (*cnt)++ >= 16 ){
-	  return '0';
-  }
-  digit = (int)*val;
-  d = digit;
-   *val = (*val - d)*10.0;
-  return digit + '0' ;
-}
-#endif /* PH7_OMIT_FLOATING_POINT */
+/* PH7_PhpFloatShape (php's float-shape post-processing) lives in memobj.c —
+ * the default float->string cast needs it even when this whole formatting
+ * region is compiled out by PH7_DISABLE_DISK_IO. */
 /*
  * The following table is searched linearly, so it is good to put the most frequently
  * used conversion types first.
@@ -3573,28 +3550,24 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 		case PH7_FMT_EXP:
 		case PH7_FMT_GENERIC:{
 #ifndef PH7_OMIT_FLOATING_POINT
-		long double realvalue;
-		int  exp;                /* exponent of real numbers */
-		double rounder;          /* Used for rounding floating point values */
-		int flag_dp;            /* True if decimal point should be shown */
-		int flag_rtz;           /* True if trailing zeros should be removed */
-		int flag_exp;           /* True to force display of the exponent */
-		int nsd;                 /* Number of significant digits returned */
+		double realvalue;
+		char zFmt[8];
+		int nOut, nFmt;
 		pArg = NEXT_ARG;
 		if( pArg == 0 ){
 			realvalue = 0;
 		}else{
 			realvalue = ph7_value_to_double(pArg);
 		}
-		/* Special-case NaN and infinities since the normal formatting logic
-		 * below assumes a finite positive realvalue. */
+		/* php prints the IEEE specials bare — NaN / INF / -INF with no width
+		 * padding, precision, or sign flags (php_sprintf_appenddouble). */
 		if( PH7_IS_NAN(realvalue) ){
-			zBuf = "NAN";
+			zBuf = "NaN";
 			length = 3;
+			width = 0;
 			break;
 		}
 		if( PH7_IS_INF(realvalue) ){
-			/* Infinity prints as INF or -INF depending on sign. */
 			if( realvalue < 0.0 ){
 				zBuf = "-INF";
 				length = 4;
@@ -3602,112 +3575,55 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 				zBuf = "INF";
 				length = 3;
 			}
+			width = 0;
 			break;
 		}
 		if( precision<0 ) precision = 6;         /* Set default precision */
-		if( precision>PH7_FMT_BUFSIZ-40) precision = PH7_FMT_BUFSIZ-40;
-        if( realvalue<0.0 ){
-          realvalue = -realvalue;
-          prefix = '-';
-        }else{
-          if( flag_plussign )          prefix = '+';
-          else if( flag_blanksign )    prefix = ' ';
-          else                         prefix = 0;
-        }
-        if( pInfo->type==PH7_FMT_GENERIC && precision>0 ) precision--;
-        rounder = 0.0;
-#if 0
-        /* Rounding works like BSD when the constant 0.4999 is used.Wierd! */
-        for(idx=precision, rounder=0.4999; idx>0; idx--, rounder*=0.1);
-#else
-        /* It makes more sense to use 0.5 */
-        for(idx=precision, rounder=0.5; idx>0; idx--, rounder*=0.1);
-#endif
-        if( pInfo->type==PH7_FMT_FLOAT ) realvalue += rounder;
-        /* Normalize realvalue to within 10.0 > realvalue >= 1.0 */
-        exp = 0;
-        if( realvalue>0.0 ){
-          while( realvalue>=1e8 && exp<=350 ){ realvalue *= 1e-8; exp+=8; }
-          while( realvalue>=10.0 && exp<=350 ){ realvalue *= 0.1; exp++; }
-          while( realvalue<1e-8 && exp>=-350 ){ realvalue *= 1e8; exp-=8; }
-          while( realvalue<1.0 && exp>=-350 ){ realvalue *= 10.0; exp--; }
-          if( exp>350 || exp<-350 ){
-            zBuf = "NaN";
-            length = 3;
-            break;
-          }
-        }
-        zBuf = zWorker;
-        /*
-        ** If the field type is etGENERIC, then convert to either etEXP
-        ** or etFLOAT, as appropriate.
-        */
-        flag_exp = xtype==PH7_FMT_EXP;
-        if( xtype!=PH7_FMT_FLOAT ){
-          realvalue += rounder;
-          if( realvalue>=10.0 ){ realvalue *= 0.1; exp++; }
-        }
-        if( xtype==PH7_FMT_GENERIC ){
-          flag_rtz = !flag_alternateform;
-          if( exp<-4 || exp>precision ){
-            xtype = PH7_FMT_EXP;
-          }else{
-            precision = precision - exp;
-            xtype = PH7_FMT_FLOAT;
-          }
-        }else{
-          flag_rtz = 0;
-        }
-        /*
-        ** The "exp+precision" test causes output to be of type etEXP if
-        ** the precision is too large to fit in buf[].
-        */
-        nsd = 0;
-        if( xtype==PH7_FMT_FLOAT && exp+precision<PH7_FMT_BUFSIZ-30 ){
-          flag_dp = (precision>0 || flag_alternateform);
-          if( prefix ) *(zBuf++) = (char)prefix;         /* Sign */
-          if( exp<0 )  *(zBuf++) = '0';            /* Digits before "." */
-          else for(; exp>=0; exp--) *(zBuf++) = (char)vxGetdigit(&realvalue,&nsd);
-          if( flag_dp ) *(zBuf++) = '.';           /* The decimal point */
-          for(exp++; exp<0 && precision>0; precision--, exp++){
-            *(zBuf++) = '0';
-          }
-          while( (precision--)>0 ) *(zBuf++) = (char)vxGetdigit(&realvalue,&nsd);
-          *(zBuf--) = 0;                           /* Null terminate */
-          if( flag_rtz && flag_dp ){     /* Remove trailing zeros and "." */
-            while( zBuf>=zWorker && *zBuf=='0' ) *(zBuf--) = 0;
-            if( zBuf>=zWorker && *zBuf=='.' ) *(zBuf--) = 0;
-          }
-          zBuf++;                            /* point to next free slot */
-        }else{    /* etEXP or etGENERIC */
-          flag_dp = (precision>0 || flag_alternateform);
-          if( prefix ) *(zBuf++) = (char)prefix;   /* Sign */
-          *(zBuf++) = (char)vxGetdigit(&realvalue,&nsd);  /* First digit */
-          if( flag_dp ) *(zBuf++) = '.';     /* Decimal point */
-          while( (precision--)>0 ) *(zBuf++) = (char)vxGetdigit(&realvalue,&nsd);
-          zBuf--;                            /* point to last digit */
-          if( flag_rtz && flag_dp ){          /* Remove tail zeros */
-            while( zBuf>=zWorker && *zBuf=='0' ) *(zBuf--) = 0;
-            if( zBuf>=zWorker && *zBuf=='.' ) *(zBuf--) = 0;
-          }
-          zBuf++;                            /* point to next free slot */
-          if( exp || flag_exp ){
-            *(zBuf++) = pInfo->charset[0];
-            if( exp<0 ){ *(zBuf++) = '-'; exp = -exp; } /* sign of exp */
-            else       { *(zBuf++) = '+'; }
-            if( exp>=100 ){
-              *(zBuf++) = (char)((exp/100)+'0');                /* 100's digit */
-              exp %= 100;
-            }
-            *(zBuf++) = (char)(exp/10+'0');                     /* 10's digit */
-            *(zBuf++) = (char)(exp%10+'0');                     /* 1's digit */
-          }
-        }
-        /* The converted number is in buf[] and zero terminated.Output it.
-        ** Note that the number is in the usual order, not reversed as with
-        ** integer conversions.*/
-        length = (int)(zBuf-zWorker);
-        zBuf = zWorker;
+		if( precision > 53 ){
+			/* php's FORMAT_CONV_MAX_PRECISION cap, with the same E_NOTICE
+			 * (message prefixed with the active function's name, like
+			 * php_error_docref). */
+			char zMsg[160];
+			SyBufferFormat(zMsg,sizeof(zMsg),
+				"%z(): Requested precision of %d digits was truncated to PHP maximum of %d digits",
+				&pCtx->pFunc->sName,precision,53);
+			PH7_VmThrowError(pCtx->pVm,0,E_NOTICE,zMsg);
+			precision = 53;
+		}
+		/* php's %f/%e extract the sign via `num < 0`, so negative zero prints
+		 * unsigned there — while %g (php_gcvt on the raw value) keeps "-0". */
+		if( xtype!=PH7_FMT_GENERIC && realvalue == 0.0 ){
+			realvalue = 0.0;
+		}
+		/* php's float conversions are correctly rounded (zend_dtoa); use libc
+		 * snprintf as the digit engine (the byte-exact-floats rule — the old
+		 * hand-rolled vxGetdigit loop stopped at 16 significant digits, so
+		 * e.g. %f of 1e308 printed zeros where php prints the exact binary64
+		 * expansion), then post-process into php's exact shapes below. */
+		nFmt = 0;
+		zFmt[nFmt++] = '%';
+		if( flag_alternateform ) zFmt[nFmt++] = '#';
+		/* php's ' ' flag selects space PADDING (its default), not C's
+		 * space-for-positive-sign — so flag_blanksign is NOT forwarded. */
+		if( flag_plussign ) zFmt[nFmt++] = '+';
+		zFmt[nFmt++] = '.';
+		zFmt[nFmt++] = '*';
+		zFmt[nFmt++] = (char)(xtype==PH7_FMT_FLOAT ? 'f' :
+			(xtype==PH7_FMT_EXP ? ((pInfo->charset[0]=='E') ? 'E' : 'e')
+			                    : ((pInfo->charset[0]=='E') ? 'G' : 'g')));
+		zFmt[nFmt] = 0;
+		nOut = snprintf(zWorker,sizeof(zWorker),zFmt,precision,realvalue);
+		if( nOut < 0 || nOut >= (int)sizeof(zWorker) ){
+			/* Cannot happen with precision capped at 53 (%f of DBL_MAX is
+			 * ~365 bytes); keep the truncated output rather than overrun. */
+			nOut = (int)SyStrlen(zWorker);
+		}
+		nOut = (int)PH7_PhpFloatShape(zWorker,(sxi32)nOut,xtype==PH7_FMT_GENERIC);
+		zBuf = zWorker;
+		length = nOut;
+		/* Let the zero-pad block below insert zeros between the sign (written
+		 * by snprintf) and the first digit, as before. */
+		prefix = (zWorker[0]=='-' || zWorker[0]=='+' || zWorker[0]==' ') ? zWorker[0] : 0;
         /* Special case:  Add leading zeros if the flag_zeropad flag is
         ** set and we are not left justified */
         if( flag_zeropad && !flag_leftjustify && length < width){

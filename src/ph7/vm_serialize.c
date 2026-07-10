@@ -563,8 +563,9 @@ static ph7_value * VmUnserializeValue(unserialize_data *ud)
 		if( ud->zCur >= ud->zEnd ){ return 0; }
 		/* INF / -INF / NAN, else a plain real literal. Parse via libc strtod (the
 		 * correctly-rounded inverse of the strtod-verified shortest repr that
-		 * VmSerializeReal emits) so unserialize(serialize($f)) is bit-exact;
-		 * SyStrToReal is not correctly-rounded and loses the low bits of e.g. 1/3. */
+		 * VmSerializeReal emits) so unserialize(serialize($f)) is bit-exact.
+		 * (SyStrToReal delegates to strtod nowadays; the direct call is kept
+		 * because the INF/NAN tags above are already split out here.) */
 		if( (ud->zCur-zStart) == 3 && SyStrnicmp(zStart,"INF",3)==0 ){ d = PH7_INF_VALUE(); }
 		else if( (ud->zCur-zStart)==4 && SyStrnicmp(zStart,"-INF",4)==0 ){ d = -PH7_INF_VALUE(); }
 		else if( (ud->zCur-zStart)==3 && SyStrnicmp(zStart,"NAN",3)==0 ){ d = PH7_NAN_VALUE(); }
