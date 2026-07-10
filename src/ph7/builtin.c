@@ -6510,7 +6510,8 @@ static int PH7_builtin_soundex(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 		ph7_result_string(pCtx,zResult,4);
 	}else{
-	  ph7_result_string(pCtx,"?000",4);
+	  /* No alphabetic character: PHP returns "0000" (not the SQLite "?000"). */
+	  ph7_result_string(pCtx,"0000",4);
 	}
 	return PH7_OK;
 }
