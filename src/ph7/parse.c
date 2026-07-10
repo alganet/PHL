@@ -1541,6 +1541,30 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				 for( iPtr = 1; iPtr <= nFuncTok ; iPtr++ ){
 					 apNode[iCur+iPtr] = 0;
 				 }
+				 /* PHP 8.4: `new ClassName(args)` may be the left operand of a
+				  * postfix operator without wrapping parens — `new C()->m()`
+				  * means `(new C())->m()`, not `new (C()->m())`. If this call's
+				  * callee is immediately preceded by a `new` operator, fold the
+				  * constructor call into that new-node NOW, before the postfix
+				  * operators bind, and relocate the completed new-node onto this
+				  * call slot so a trailing ->/::/[]/call picks it up as its left
+				  * operand. `new C` without a constructor-arg '(' never reaches
+				  * this branch, so it keeps the legacy precedence-1 path (and
+				  * `new C->m()` stays a parse error, like PHP). */
+				 {
+					 sxi32 iNew = iLeft - 1;
+					 while( iNew >= 0 && apNode[iNew] == 0 ){
+						 iNew--;
+					 }
+					 if( iNew >= 0 && apNode[iNew]->pOp
+						 && apNode[iNew]->pOp->iOp == EXPR_OP_NEW
+						 && apNode[iNew]->pLeft == 0 ){
+						 apNode[iNew]->pLeft = pNode; /* new -> ClassName(args) */
+						 apNode[iCur] = apNode[iNew]; /* relocate onto the call slot */
+						 apNode[iNew] = 0;
+						 pNode = apNode[iCur];
+					 }
+				 }
 			 }else if (pNode->pOp->iOp == EXPR_OP_SUBSCRIPT ){
 				 /* Subscripting */
 				 sxi32 iArrTok = iCur + 1;
@@ -1549,7 +1573,10 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 					 apNode[iLeft]->xCode != PH7_CompileSimpleString && apNode[iLeft]->xCode != PH7_CompileString &&
 					 apNode[iLeft]->xCode != PH7_CompileHereDoc && apNode[iLeft]->xCode != PH7_CompileNowDoc &&
 					 apNode[iLeft]->xCode != PH7_CompileArray && apNode[iLeft]->xCode != PH7_CompileShortArray ) ) ||
-					 ( apNode[iLeft]->pOp && apNode[iLeft]->pOp->iPrec != 2 /* postfix */) ){
+					 ( apNode[iLeft]->pOp && apNode[iLeft]->pOp->iPrec != 2 /* postfix */
+						 /* PHP 8.4: a folded `new C()` (precedence-1 op) is a valid
+						  * subscript base — `new C()[0]` means `(new C())[0]`. */
+						 && apNode[iLeft]->pOp->iOp != EXPR_OP_NEW ) ){
 						 /* Syntax error */
 						 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"Invalid array name");
 						 if( rc != SXERR_ABORT ){
@@ -1669,6 +1696,23 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				 }
 			 }else{
 				 /* New */
+				 if( apNode[iLeft]->pOp && apNode[iLeft]->pOp->iOp == EXPR_OP_NEW
+					 && (apNode[iLeft]->iFlags & EXPR_NODE_PARENS) == 0 ){
+					 /* `new new C()` — the operand of `new` is a class-name
+					  * reference and cannot itself be an unparenthesized `new`
+					  * expression (PHP parse error). The postfix pass folds
+					  * `new C()` into a completed term, so guard against the
+					  * outer `new` accepting it here. `new (new C())` is allowed
+					  * (the inner is a parenthesized group). */
+					 pToken = apNode[iLeft]->pStart;
+					 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
+						 "'%z': Unexpected token '%z', expecting literal, variable or constructor call",
+						 &pNode->pOp->sOp,&pToken->sData);
+					 if( rc != SXERR_ABORT ){
+						 rc = SXERR_SYNTAX;
+					 }
+					 return rc;
+				 }
 				 if( apNode[iLeft]->pOp == 0 ){
 					 ProcNodeConstruct xCons = apNode[iLeft]->xCode;
 					 if( xCons != PH7_CompileVariable && xCons != PH7_CompileLiteral && xCons != PH7_CompileSimpleString
