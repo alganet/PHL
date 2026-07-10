@@ -17220,23 +17220,56 @@ PH7_PRIVATE void PH7_VmRandomString(ph7_vm *pVm,char *zBuf,int nLen)
  */
 static int vm_builtin_rand(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	SyString *pName = &pCtx->pFunc->sName;
+	int bMt = (pName->nByte == sizeof("mt_rand")-1
+		&& SyMemcmp(pName->zString,"mt_rand",sizeof("mt_rand")-1) == 0);
 	sxu32 iNum;
+	/* php accepts exactly 0 or exactly 2 arguments (min,max); 1 or 3+ is an
+	 * ArgumentCountError. The central arity table can't express "0 or 2", so
+	 * it is enforced here (was a silent wrong result for the raw draw). */
+	if( nArg == 1 || nArg > 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"%z() expects exactly 2 arguments, %d given",
+			pName, nArg
+			);
+	}
 	/* Generate the random number */
 	iNum = PH7_VmRandomNum(pCtx->pVm);
-	if( nArg > 1 ){
-		sxu32 iMin,iMax;
-		iMin = (sxu32)ph7_value_to_int(apArg[0]);
-		iMax = (sxu32)ph7_value_to_int(apArg[1]);
-		if( iMin < iMax ){
-			sxu32 iDiv = iMax+1-iMin;
-			if( iDiv > 0 ){
-				iNum = (iNum % iDiv)+iMin;
+	if( nArg == 2 ){
+		sxi64 iMin,iMax;
+		sxu64 iSpan;
+		/* Signed 64-bit endpoints: the old unsigned math wrapped negative
+		 * ranges to huge positives (rand(-10,-1) -> ~4e9) and mis-handled
+		 * min==max. */
+		iMin = ph7_value_to_int64(apArg[0]);
+		iMax = ph7_value_to_int64(apArg[1]);
+		if( iMin > iMax ){
+			if( bMt ){
+				/* mt_rand() is strict: php throws a catchable ValueError. */
+				return PH7_VmThrowException(pCtx,
+					"ValueError",
+					"mt_rand(): Argument #2 ($max) must be greater than or equal to argument #1 ($min)"
+					);
 			}
-		}else if(iMax > 0 ){
-			iNum %= iMax;
+			/* rand() swaps the bounds for backward compatibility (php keeps
+			 * this quirk; only mt_rand() rejects a reversed range). */
+			{ sxi64 iTmp = iMin; iMin = iMax; iMax = iTmp; }
 		}
+		/* Map the draw into [iMin,iMax] inclusive using a 64-bit span so a
+		 * full-width range never overflows. Subtract in unsigned space: the
+		 * signed (iMax-iMin) would overflow for a range wider than 2^63
+		 * (up to the full PHP_INT domain), which is C undefined behavior. */
+		iSpan = ((sxu64)iMax - (sxu64)iMin) + 1;
+		if( iSpan == 0 ){
+			/* Range spans the entire 64-bit domain (PHP_INT_MIN..PHP_INT_MAX). */
+			ph7_result_int64(pCtx,(sxi64)((sxu64)iMin + (sxu64)iNum));
+			return SXRET_OK;
+		}
+		ph7_result_int64(pCtx,(sxi64)((sxu64)iMin + (iNum % iSpan)));
+		return SXRET_OK;
 	}
-	/* Return the number */
+	/* No-argument form: return the raw draw */
 	ph7_result_int64(pCtx,(ph7_int64)iNum);
 	return SXRET_OK;
 }
