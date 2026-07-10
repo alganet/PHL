@@ -1096,6 +1096,27 @@ PH7_PRIVATE sxi32 PH7_MemObjStore(ph7_value *pSrc,ph7_value *pDest)
 	}else if( pObj ){
 		PH7_ClassInstanceUnref(pObj);
 	}
+	if( rc == SXRET_OK && (pDest->iFlags & MEMOBJ_HASHMAP)
+	 && pDest->pVm
+	 && (ph7_hashmap *)pDest->x.pOther == pDest->pVm->pGlobal
+	 /* Identity, not nIdx: transient values carry nIdx==0 (SyZero), which
+	  * collides with a typical nGlobalIdx of 0 and would skip the snapshot
+	  * for closure envs and other non-slot destinations. */
+	 && pDest != (ph7_value *)SySetAt(&pDest->pVm->aMemObj,pDest->pVm->nGlobalIdx) ){
+		/* php 8.1: a COPY of $GLOBALS ($snap = $GLOBALS, $a[] = $GLOBALS,
+		 * by-value argument passing, return $GLOBALS, ...) is a by-value
+		 * SNAPSHOT of the symbol table with its reference entries
+		 * flattened — never a live alias. Materialize it here, the one
+		 * store choke point (loads/subscript access keep sharing, so
+		 * $GLOBALS[$k] reads and writes stay live). */
+		ph7_hashmap *pSnap = PH7_NewHashmap(pDest->pVm,0,0);
+		if( pSnap && PH7_HashmapDupMaterialized((ph7_hashmap *)pDest->x.pOther,pSnap) == SXRET_OK ){
+			PH7_HashmapUnref((ph7_hashmap *)pDest->x.pOther);
+			pDest->x.pOther = pSnap;
+		}else if( pSnap ){
+			PH7_HashmapUnref(pSnap);
+		}
+	}
 	return rc;
 }
 /*

@@ -3405,6 +3405,113 @@ static sxi32 VmHashmapRefInsert(
 	return rc;
 }
 /*
+ * The write side of php 8.1's $GLOBALS semantics: `$GLOBALS['x'] = $v` (or
+ * `=& $v`) from ANY scope behaves like a global-frame `$x = $v`, so a new
+ * key must create a real global variable — linked into the bottom frame's
+ * hVar and registered by reference in the $GLOBALS hashmap, exactly like a
+ * variable created by top-level code — so later reads and writes alias one
+ * slot. Called from the hashmap layer when an insertion targets pGlobal.
+ *   - pValue mode (nRefIdx == SXU32_HIGH): the named global receives a copy
+ *     of pValue (NULL pValue nullifies), overwriting an existing global or
+ *     superglobal in place.
+ *   - reference mode (nRefIdx != SXU32_HIGH): the name is bound to that
+ *     existing memobj slot ($GLOBALS['y'] =& $x). Rebinding an EXISTING
+ *     name is rejected with the engine's usual "already exists" diagnostic
+ *     (the same limitation OP_STORE_REF has for plain variables).
+ */
+PH7_PRIVATE sxi32 PH7_VmInstallGlobalVar(ph7_vm *pVm,const char *zName,sxu32 nByte,ph7_value *pValue,sxu32 nRefIdx)
+{
+	VmFrame *pFrame = pVm->pFrame;
+	SyHashEntry *pEntry;
+	ph7_value *pObj;
+	char *zDup;
+	sxu32 nIdx;
+	sxi32 rc;
+	/* Walk down to the global frame */
+	while( pFrame->pParent ){
+		pFrame = pFrame->pParent;
+	}
+	/* An existing global (or superglobal) is overwritten in place */
+	pEntry = SyHashGet(&pVm->hSuper,(const void *)zName,nByte);
+	if( pEntry && (sxu32)SX_PTR_TO_INT(pEntry->pUserData) == pVm->nGlobalIdx ){
+		/* $GLOBALS['GLOBALS'] = ... must NOT clobber the live $GLOBALS slot:
+		 * php creates an ordinary symbol-table entry named GLOBALS while the
+		 * auto-global keeps resolving to the array. Fall through to the
+		 * create-a-real-entry path (the hSuper lookup still wins for reads
+		 * of $GLOBALS itself). */
+		pEntry = 0;
+	}
+	if( pEntry == 0 ){
+		pEntry = SyHashGet(&pFrame->hVar,(const void *)zName,nByte);
+	}
+	if( pEntry ){
+		if( nRefIdx != SXU32_HIGH ){
+			SyString sName;
+			SyStringInitFromBuf(&sName,zName,nByte);
+			VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Referenced variable name '%z' already exists",&sName);
+			return SXRET_OK;
+		}
+		pObj = (ph7_value *)SySetAt(&pVm->aMemObj,(sxu32)SX_PTR_TO_INT(pEntry->pUserData));
+		if( pObj == 0 ){
+			return SXERR_NOTFOUND;
+		}
+		if( pValue ){
+			PH7_MemObjStore(pValue,pObj);
+		}else{
+			PH7_MemObjToNull(pObj);
+		}
+		return SXRET_OK;
+	}
+	if( nRefIdx == SXU32_HIGH ){
+		/* Reserve a fresh slot for the new global */
+		pObj = PH7_ReserveMemObj(&(*pVm));
+		if( pObj == 0 ){
+			return SXERR_MEM;
+		}
+		nIdx = pObj->nIdx;
+	}else{
+		/* Reference assignment: bind the name to the existing slot */
+		pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nRefIdx);
+		if( pObj == 0 ){
+			return SXERR_NOTFOUND;
+		}
+		nIdx = nRefIdx;
+	}
+	zDup = SyMemBackendStrDup(&pVm->sAllocator,zName,nByte);
+	if( zDup == 0 ){
+		if( nRefIdx == SXU32_HIGH ){
+			/* Return the reserved slot to the free pool (as VmExtractMemObj
+			 * does) so an OOM here doesn't burn aMemObj slots. */
+			VmSlot sFree;
+			sFree.nIdx = nIdx;
+			sFree.pUserData = 0;
+			SySetPut(&pVm->aFreeObj,(const void *)&sFree);
+		}
+		return SXERR_MEM;
+	}
+	rc = SyHashInsert(&pFrame->hVar,(const void *)zDup,nByte,SX_INT_TO_PTR(nIdx));
+	if( rc != SXRET_OK ){
+		if( nRefIdx == SXU32_HIGH ){
+			VmSlot sFree;
+			sFree.nIdx = nIdx;
+			sFree.pUserData = 0;
+			SySetPut(&pVm->aFreeObj,(const void *)&sFree);
+		}
+		SyMemBackendFree(&pVm->sAllocator,zDup);
+		return rc;
+	}
+	/* Register in the $GLOBALS array (by reference, like any global) */
+	VmHashmapRefInsert(pVm->pGlobal,zName,nByte,nIdx);
+	PH7_VmRefObjInstall(&(*pVm),nIdx,SyHashLastEntry(&pFrame->hVar),0,0);
+	if( nRefIdx == SXU32_HIGH ){
+		pObj->nIdx = nIdx;
+		if( pValue ){
+			PH7_MemObjStore(pValue,pObj);
+		}
+	}
+	return SXRET_OK;
+}
+/*
  * Extract a variable value from the top active VM frame.
  * Return a pointer to the variable value on success.
  * NULL otherwise (non-existent variable/Out-of-memory,...).
@@ -4327,6 +4434,20 @@ PH7_PRIVATE sxi32 PH7_VmThrowArrayNextIndexError(ph7_vm *pVm)
 	SyBlobInit(&sMsg,&pVm->sAllocator);
 	SyBlobFormat(&sMsg,"Cannot add element to the array as the next element is already occupied");
 	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
+}
+/*
+ * php's fatal for `$GLOBALS[] = ...` — appending to the global symbol table
+ * has no name to bind. A compile-time fatal in php (NOT a catchable Error);
+ * raised at the store site here with the same message and the same
+ * non-catchable outcome. Returns PH7_ABORT (dispatched via
+ * PH7_DISPATCH_ENFORCE_RC at the store sites).
+ */
+PH7_PRIVATE sxi32 PH7_VmThrowGlobalsAppendError(ph7_vm *pVm)
+{
+	PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot append to $GLOBALS");
+	pVm->iExitStatus = 255;
+	pVm->bHaltRequested = 1;
+	return PH7_ABORT;
 }
 /*
  * Throw a PHP-compatible TypeError whose message describes a failed typed
@@ -8179,6 +8300,26 @@ case PH7_OP_STORE: {
 	}else{
 		SyStringInitFromBuf(&sName,pInstr->p3,SyStrlen((const char *)pInstr->p3));
 	}
+	if( sName.nByte == sizeof("GLOBALS")-1
+	 && SyMemcmp((const void *)sName.zString,(const void *)"GLOBALS",sName.nByte) == 0 ){
+		if( pInstr->p3 ){
+			/* php 8.1 forbids re-assigning the literal $GLOBALS (compile-time
+			 * fatal there; raised at the store site here with the same
+			 * message and the same non-catchable outcome). Element writes
+			 * are unaffected. */
+			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
+				"$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax");
+			pVm->iExitStatus = 255;
+			pVm->bHaltRequested = 1;
+			goto Abort;
+		}
+		/* A DYNAMIC-name write (${'GLOBALS'} = v, $$n = v) is not php's
+		 * compile-time case: php quietly creates an ordinary symbol-table
+		 * entry named GLOBALS, leaving the auto-global view intact. */
+		PH7_VmInstallGlobalVar(&(*pVm),"GLOBALS",sizeof("GLOBALS")-1,pTos,SXU32_HIGH);
+		PH7_MemObjRelease(&pTos[1]);
+		break;
+	}
 	/* Extract the desired variable and if not available dynamically create it */
 	pObj = VmExtractMemObj(&(*pVm),&sName,pInstr->p3 ? FALSE : TRUE,TRUE);
 	if( pObj == 0 ){
@@ -8372,8 +8513,30 @@ case PH7_OP_STORE_IDX_REF: {
 	VmPopOperand(&pTos,1);
 	/* Phase#2: Perform the insertion */
 	if( pInstr->iOp == PH7_OP_STORE_IDX_REF && pTos->nIdx != SXU32_HIGH ){
-		/* Insertion by reference */
-		rc = PH7_HashmapInsertByRef(pMap,pKey,pTos->nIdx);
+		if( pMap == pVm->pGlobal ){
+			/* php 8.1: $GLOBALS['y'] =& $x binds the global $y to $x's
+			 * slot; an append has no name to bind (catchable Error). */
+			if( pKey == 0 ){
+				rc = PH7_VmThrowGlobalsAppendError(&(*pVm));
+			}else{
+				if( (pKey->iFlags & MEMOBJ_STRING) == 0 ){
+					PH7_MemObjToString(pKey);
+				}
+				if( SyBlobLength(&pKey->sBlob) < 1 ){
+					/* Pathological empty name: keep the legacy diagnostic */
+					PH7_VmThrowError(&(*pVm),0,PH7_CTX_NOTICE,
+						"$GLOBALS is a read-only array,insertion is forbidden");
+					rc = SXRET_OK;
+				}else{
+					rc = PH7_VmInstallGlobalVar(&(*pVm),
+						(const char *)SyBlobData(&pKey->sBlob),SyBlobLength(&pKey->sBlob),
+						0,pTos->nIdx);
+				}
+			}
+		}else{
+			/* Insertion by reference */
+			rc = PH7_HashmapInsertByRef(pMap,pKey,pTos->nIdx);
+		}
 	}else{
 		rc = PH7_HashmapInsert(pMap,pKey,pTos);
 	}
@@ -8839,6 +9002,15 @@ case PH7_OP_ADD_STORE:{
 #endif
 	/* Perform the addition */
 	nIdx = pTos->nIdx;
+	if( nIdx == pVm->nGlobalIdx ){
+		/* php 8.1: $GLOBALS += [...] is forbidden like any re-assignment
+		 * (a compile-time fatal in php; raised here, same message). */
+		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
+			"$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax");
+		pVm->iExitStatus = 255;
+		pVm->bHaltRequested = 1;
+		goto Abort;
+	}
 	PH7_MemObjAdd(pTos,pNos,TRUE);
 	/* Peform the store operation */
 	if( nIdx == SXU32_HIGH ){
@@ -10101,7 +10273,11 @@ case PH7_OP_LOAD_REF: {
 		}
 	}else if( sName.nByte > 0){
 		if( (pTos->iFlags & MEMOBJ_HASHMAP) && (pVm->pGlobal == (ph7_hashmap *)pTos->x.pOther) ){
-			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"$GLOBALS is a read-only array and therefore cannot be referenced");
+			/* php 8.1's non-catchable fatal (compile-time there) */
+			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot acquire reference to $GLOBALS");
+			pVm->iExitStatus = 255;
+			pVm->bHaltRequested = 1;
+			goto Abort;
 		}else{
 			pFrameLocal = pVm->pFrame;
 			pFrameLocal = VmSkipExceptionFrames(pFrameLocal);
@@ -10639,12 +10815,35 @@ case PH7_OP_FOREACH_INIT: {
 					}
 				}
 				pMap = (ph7_hashmap *)pTos->x.pOther;
-				/* Reset the internal loop cursor */
-				PH7_HashmapResetLoopCursor(pMap);
-				/* Mark the step */
-				pStep->iFlags |= PH7_4EACH_STEP_HASHMAP;
-				pStep->xIter.pMap = pMap;
-				pMap->iRef++;
+				if( pMap == pVm->pGlobal && (pStep->iFlags & PH7_4EACH_STEP_REF) == 0 ){
+					/* php 8.1: foreach ($GLOBALS as ...) by value iterates a
+					 * SNAPSHOT of the symbol table — globals created inside
+					 * the loop body must not be visited (the live map would
+					 * grow under the cursor). By-ref foreach keeps the live
+					 * map, like php. On OOM fall back to the live map. */
+					ph7_hashmap *pSnap = PH7_NewHashmap(&(*pVm),0,0);
+					if( pSnap && PH7_HashmapDupMaterialized(pMap,pSnap) == SXRET_OK ){
+						PH7_HashmapResetLoopCursor(pSnap);
+						pStep->iFlags |= PH7_4EACH_STEP_HASHMAP;
+						/* The step consumes the snapshot's initial reference */
+						pStep->xIter.pMap = pSnap;
+					}else{
+						if( pSnap ){
+							PH7_HashmapUnref(pSnap);
+						}
+						PH7_HashmapResetLoopCursor(pMap);
+						pStep->iFlags |= PH7_4EACH_STEP_HASHMAP;
+						pStep->xIter.pMap = pMap;
+						pMap->iRef++;
+					}
+				}else{
+					/* Reset the internal loop cursor */
+					PH7_HashmapResetLoopCursor(pMap);
+					/* Mark the step */
+					pStep->iFlags |= PH7_4EACH_STEP_HASHMAP;
+					pStep->xIter.pMap = pMap;
+					pMap->iRef++;
+				}
 			}else{
 				ph7_class_instance *pThis = (ph7_class_instance *)pTos->x.pOther;
 				ph7_class *pIteratorClass;
@@ -12734,6 +12933,23 @@ case PH7_OP_CALL: {
 					}
 					/* Install: by reference or by value */
 					if( aFormalArg[n].iFlags & VM_FUNC_ARG_BY_REF ){
+						if( pVal->nIdx == pVm->nGlobalIdx && pVal->nIdx != SXU32_HIGH ){
+							/* php 8.1: $GLOBALS cannot be passed by reference */
+							SyBlob sMsg;
+							SyBlobInit(&sMsg,&pVm->sAllocator);
+							SyBlobFormat(&sMsg,"%z(): Argument #%d ($%z) could not be passed by reference",
+								&pVmFunc->sName,n+1,&aFormalArg[n].sName);
+							rc = VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sMsg);
+							if( rc == PH7_ABORT ){
+								goto Abort;
+							}
+							SyMemBackendFree(&pVm->sAllocator, aSlot);
+							PH7_MemObjRelease(pTos);
+							pTos = &pTos[-nCallArgs];
+							pFrameStack = 0;
+							rc = PH7_EXCEPTION;
+							goto SkipFuncBody;
+						}
 						if( pVal->nIdx == SXU32_HIGH ){
 							if( (pVal->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_NULL)) == 0 ){
 								VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
@@ -13075,6 +13291,23 @@ case PH7_OP_CALL: {
 				}
 				if( aFormalArg[n].iFlags & VM_FUNC_ARG_BY_REF ){
 					/* Pass by reference */
+					if( pArg->nIdx == pVm->nGlobalIdx && pArg->nIdx != SXU32_HIGH ){
+						/* php 8.1: $GLOBALS cannot be passed by reference —
+						 * a catchable Error with php's exact wording. */
+						SyBlob sMsg;
+						SyBlobInit(&sMsg,&pVm->sAllocator);
+						SyBlobFormat(&sMsg,"%z(): Argument #%d ($%z) could not be passed by reference",
+							&pVmFunc->sName,n+1,&aFormalArg[n].sName);
+						rc = VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sMsg);
+						if( rc == PH7_ABORT ){
+							goto Abort;
+						}
+						PH7_MemObjRelease(pTos);
+						pTos = &pTos[-nCallArgs];
+						pFrameStack = 0;
+						rc = PH7_EXCEPTION;
+						goto SkipFuncBody;
+					}
 					if( pArg->nIdx == SXU32_HIGH ){
 						/* Expecting a variable,not a constant,raise an exception */
 						if((pArg->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_NULL)) == 0){
@@ -17511,10 +17744,16 @@ static int vm_builtin_unset(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			}
 		}else{
 			sxu32 nIdx = pObj->nIdx;
-			/* TICKET 1433-35: Protect the $GLOBALS array from deletion */
-			if( nIdx != pVm->nGlobalIdx ){
-				PH7_VmUnsetMemObj(&(*pVm),nIdx,FALSE);
+			if( nIdx == pVm->nGlobalIdx ){
+				/* php 8.1: unset($GLOBALS) is forbidden — the same fatal as
+				 * re-assigning it (compile-time in php, raised here). */
+				PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
+					"$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax");
+				pVm->iExitStatus = 255;
+				pVm->bHaltRequested = 1;
+				return PH7_ABORT;
 			}
+			PH7_VmUnsetMemObj(&(*pVm),nIdx,FALSE);
 		}
 	}
 	return SXRET_OK;
