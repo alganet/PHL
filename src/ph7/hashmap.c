@@ -6727,24 +6727,73 @@ static int ph7_hashmap_rand(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_hashmap *pMap;
 	int nItem = 1;
 	if( nArg < 1 ){
-		/* Missing argument,return NULL */
+		/* Missing argument (arity is enforced upstream; defensive) */
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	/* Make sure we are dealing with an array */
+	/* php 8: $array must be an array (TypeError, not a silent NULL return) */
 	if( !ph7_value_is_array(apArg[0]) ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_rand(): Argument #1 ($array) must be of type array, %s given",
+			ph7_type_name(apArg[0])
+			);
+	}
+	/* php validates $num (and weak-coerces it) BEFORE the empty-array body
+	 * check, matching its ZPP-before-body ordering. */
+	if( nArg > 1 ){
+		ph7_value *pNum = apArg[1];
+		if( ph7_value_is_array(pNum) || ph7_value_is_object(pNum)
+			|| ph7_value_is_resource(pNum) ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_rand(): Argument #2 ($num) must be of type int, %s given",
+				ph7_type_name(pNum)
+				);
+		}
+		if( ph7_value_is_string(pNum) ){
+			/* Weak int coercion of a string $num follows php's numeric-string
+			 * grammar (whole string, int or float): a non-numeric string
+			 * (incl. leading-numeric junk like "2abc" or "0x1A") is a TypeError,
+			 * a well-formed float-string ("1e3") coerces like a float value.
+			 * Reuses the range() ZPP number parser (§3.9 shared-helper note). */
+			int len;
+			const char *zStr = ph7_value_to_string(pNum, &len);
+			sxi64 iLong; double dReal;
+			sxu8 iKind = RangeStrToNumber(zStr, (sxu32)len, &iLong, &dReal);
+			if( iKind == RANGE_IN_ERROR ){
+				return PH7_VmThrowException(pCtx,
+					"TypeError",
+					"array_rand(): Argument #2 ($num) must be of type int, string given"
+					);
+			}
+			/* Clamp into a signed-int band so an absurd magnitude still yields
+			 * the out-of-range ValueError below without an out-of-int cast. */
+			if( iKind == RANGE_IN_DOUBLE ){
+				iLong = dReal <= 0.0 ? 0 : (dReal >= 2147483647.0 ? 2147483647 : (sxi64)dReal);
+			}
+			if( iLong > 2147483647 ){ iLong = 2147483647; }
+			else if( iLong < -2147483647 ){ iLong = -2147483647; }
+			nItem = (int)iLong;
+		}else{
+			nItem = ph7_value_to_int(pNum);
+		}
 	}
 	/* Point to the internal representation of the input hashmap */
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
-	if(pMap->nEntry < 1 ){
-		/* Empty hashmap,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	/* php 8: an empty array is a ValueError, not a NULL return */
+	if( pMap->nEntry < 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ValueError",
+			"array_rand(): Argument #1 ($array) must not be empty"
+			);
 	}
-	if( nArg > 1 ){
-		nItem = ph7_value_to_int(apArg[1]);
+	/* php 8: $num outside [1, count] is a ValueError, not a clamp/wrong value */
+	if( nItem < 1 || nItem > (int)pMap->nEntry ){
+		return PH7_VmThrowException(pCtx,
+			"ValueError",
+			"array_rand(): Argument #2 ($num) must be between 1 and the number of elements in argument #1 ($array)"
+			);
 	}
 	if( nItem < 2 ){
 		sxu32 nEntry;
