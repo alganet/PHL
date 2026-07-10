@@ -1680,7 +1680,12 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				 pNode->pLeft = apNode[iLeft];
 				 if( (pNode->pOp->iOp == EXPR_OP_ARROW /*'->'*/ || pNode->pOp->iOp == EXPR_OP_NULLSAFE_ARROW /*'?->'*/)
 					 && pNode->pLeft->pOp == 0 &&
-					 pNode->pLeft->xCode != PH7_CompileVariable ){
+					 pNode->pLeft->xCode != PH7_CompileVariable &&
+					 /* A clone(...) call term (pOp==0, xCode set) produces an object,
+					  * so `(clone($o))->x` is a valid arrow left operand — like the
+					  * `clone $o` operator form (pOp!=0), which this guard already
+					  * accepts. */
+					 pNode->pLeft->xCode != PH7_CompileCloneCall ){
 						 /* Syntax error */
 						 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
 							 "'%z': Expecting a variable as left operand",&pNode->pOp->sOp);
