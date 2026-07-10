@@ -7285,7 +7285,7 @@ static int PH7_builtin_strtr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		const char *zPool;
 		strtr_entry *pEnt;
 		sxi32 rc;
-		int i;
+		int i,iRun;
 		/*
 		 * PHP's array-form strtr is a single left-to-right pass over the subject:
 		 * at every position it substitutes the LONGEST replace_pairs key that
@@ -7310,6 +7310,7 @@ static int PH7_builtin_strtr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* The pool is now stable, so offsets can be resolved against its base. */
 		zPool = (const char *)SyBlobData(&sPool);
 		rc = SXRET_OK;
+		iRun = 0; /* Start of the pending run of unmatched bytes copied verbatim. */
 		for( i = 0 ; i < nLen ; ){
 			strtr_entry *pBest = 0;
 			sxu32 nBest = 0;
@@ -7323,15 +7324,30 @@ static int PH7_builtin_strtr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 					pBest = pEnt;
 				}
 			}
-			if( pBest ){
-				if( pBest->nValLen > 0 ){
-					rc = SyBlobAppend(&sWorker,zPool + pBest->nValOfft,pBest->nValLen);
-				}
-				i += (int)pBest->nKeyLen;
-			}else{
-				rc = SyBlobAppend(&sWorker,(const void *)&zIn[i],(sxu32)sizeof(char));
+			if( pBest == 0 ){
+				/* No key here: extend the literal run and copy it in one shot later. */
 				i++;
+				continue;
 			}
+			/* Flush the pending literal run, then the replacement. */
+			if( i > iRun ){
+				rc = SyBlobAppend(&sWorker,&zIn[iRun],(sxu32)(i - iRun));
+			}
+			if( rc == SXRET_OK && pBest->nValLen > 0 ){
+				rc = SyBlobAppend(&sWorker,zPool + pBest->nValOfft,pBest->nValLen);
+			}
+			if( rc != SXRET_OK ){
+				SyBlobRelease(&sPool);
+				SyBlobRelease(&sWorker);
+				SySetRelease(&sTable);
+				return PH7_ContextMemoryError(pCtx);
+			}
+			i += (int)pBest->nKeyLen;
+			iRun = i;
+		}
+		/* Flush the trailing literal run. */
+		if( nLen > iRun ){
+			rc = SyBlobAppend(&sWorker,&zIn[iRun],(sxu32)(nLen - iRun));
 			if( rc != SXRET_OK ){
 				SyBlobRelease(&sPool);
 				SyBlobRelease(&sWorker);
