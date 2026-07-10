@@ -27,6 +27,9 @@ echo "$u->x,$u->y\n";                     // 1,99
 // typed property: a numeric string coerces like a normal store
 $v = clone($p, ['x' => "42"]);
 echo "$v->x\n";                           // 42
+// a parenthesized clone() call is a valid arrow/method left operand
+echo (clone($p, ['x' => 8]))->x, "\n";    // 8
+echo (clone($p))->x, "\n";                // 1
 
 // readonly: re-initialized in-scope, rejected from outside
 final class Temp {
@@ -63,6 +66,10 @@ clone sees x=1
 1,99
 clone sees x=1
 42
+clone sees x=1
+8
+clone sees x=1
+1
 20 100
 Cannot modify protected(set) readonly property Temp::$c from global scope
 Cannot access private property Secret::$s

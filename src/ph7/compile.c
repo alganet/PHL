@@ -1731,15 +1731,17 @@ PH7_PRIVATE sxi32 PH7_CompileCloneCall(ph7_gen_state *pGen,sxi32 iCompileFlag)
 			pArgStart += 2;
 		}
 		if( pName ){
+			/* PHP named parameters are case-SENSITIVE, so `Object:`/`WITHPROPERTIES:`
+			 * must be rejected as unknown (SyMemcmp, not SyStrnicmp). */
 			if( pName->sData.nByte == sizeof("object")-1
-				&& SyStrnicmp(pName->sData.zString,"object",sizeof("object")-1) == 0 ){
+				&& SyMemcmp(pName->sData.zString,"object",sizeof("object")-1) == 0 ){
 				pObjStart = pArgStart; pObjEnd = pArgEnd;
 			}else if( pName->sData.nByte == sizeof("withProperties")-1
-				&& SyStrnicmp(pName->sData.zString,"withProperties",sizeof("withProperties")-1) == 0 ){
+				&& SyMemcmp(pName->sData.zString,"withProperties",sizeof("withProperties")-1) == 0 ){
 				pUpdStart = pArgStart; pUpdEnd = pArgEnd;
 			}else{
 				return PH7_GenCompileError(pGen,E_ERROR,pName->nLine,
-					"Unknown named parameter $%z for clone()",&pName->sData);
+					"Unknown named parameter $%z",&pName->sData);
 			}
 		}else if( nArg == 0 ){
 			pObjStart = pArgStart; pObjEnd = pArgEnd;
