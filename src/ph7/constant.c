@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "ph7int.h"
+#include <float.h> /* DBL_EPSILON/DBL_MAX/DBL_MIN/DBL_DIG for the PHP_FLOAT_* constants */
 /* This file implement built-in constants for the PH7 engine. */
 /*
  * PH7_VERSION
@@ -99,6 +100,15 @@ static void PH7_INTMAX_Const(ph7_value *pVal,void *pUnused)
 	ph7_value_int64(pVal,SXI64_HIGH);
 }
 /*
+ * PHP_INT_MIN (php 7.0)
+ * Expand the smallest integer supported.
+ */
+static void PH7_INTMIN_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int64(pVal,SMALLEST_INT64);
+}
+/*
  * PHP_INT_SIZE
  * Expand the size in bytes of a 64-bit integer.
  */
@@ -106,6 +116,31 @@ static void PH7_INTSIZE_Const(ph7_value *pVal,void *pUnused)
 {
 	SXUNUSED(pUnused);
 	ph7_value_int64(pVal,sizeof(sxi64));
+}
+/*
+ * PHP_FLOAT_EPSILON / PHP_FLOAT_MAX / PHP_FLOAT_MIN / PHP_FLOAT_DIG (php 7.2)
+ * Double-precision characteristics, sourced from <float.h> exactly like php
+ * so they track the compiling platform's actual double representation.
+ */
+static void PH7_FLOATEPSILON_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_double(pVal,DBL_EPSILON);
+}
+static void PH7_FLOATMAX_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_double(pVal,DBL_MAX);
+}
+static void PH7_FLOATMIN_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_double(pVal,DBL_MIN);
+}
+static void PH7_FLOATDIG_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int64(pVal,DBL_DIG);
 }
 /*
  * DIRECTORY_SEPARATOR.
@@ -2043,7 +2078,12 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"INPUT_SERVER",                PH7_INPUT_SERVER_Const },
 	{"PHP_INT_MAX",          PH7_INTMAX_Const   },
 	{"MAXINT",               PH7_INTMAX_Const   },
+	{"PHP_INT_MIN",          PH7_INTMIN_Const   },
 	{"PHP_INT_SIZE",         PH7_INTSIZE_Const  },
+	{"PHP_FLOAT_EPSILON",    PH7_FLOATEPSILON_Const },
+	{"PHP_FLOAT_MAX",        PH7_FLOATMAX_Const },
+	{"PHP_FLOAT_MIN",        PH7_FLOATMIN_Const },
+	{"PHP_FLOAT_DIG",        PH7_FLOATDIG_Const },
 	{"PATH_SEPARATOR",       PH7_PATHSEP_Const  },
 	{"DIRECTORY_SEPARATOR",  PH7_DIRSEP_Const   },
 	{"DIR_SEP",              PH7_DIRSEP_Const   },
