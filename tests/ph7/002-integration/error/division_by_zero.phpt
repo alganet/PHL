@@ -2,17 +2,19 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Division by zero in expressions
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+PH7 / PHP: Division by zero throws a catchable DivisionByZeroError
 --FILE--
 <?php
-$result = 10 / 0;
-echo "Result: $result\n";
+try {
+    $result = 10 / 0;
+    echo "Result: $result\n";
+} catch (DivisionByZeroError $e) {
+    echo get_class($e), ": ", $e->getMessage(), "\n";
+}
+echo "continues\n";
 ?>
---EXPECTF--
-%s Error:  Division by zero
-Result: 0
+--EXPECT--
+DivisionByZeroError: Division by zero
+continues
 --CLEAN--
 <?php
-unset($result);
