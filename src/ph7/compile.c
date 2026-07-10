@@ -11617,6 +11617,39 @@ static sxi32 GenStateEmitExprCode(
 		/* All done */
 		return SXRET_OK;
 	}
+	if( pNode->pOp->iOp == EXPR_OP_PIPE ){
+		/* PHP 8.5 pipe: `$lhs |> $rhs` invokes the RHS callable with the LHS
+		 * value as its sole argument [i.e. `$rhs($lhs)`]. Evaluate the LHS (the
+		 * argument) first, then the RHS callable, then emit a one-argument
+		 * OP_CALL — the same stack shape the function-call path builds (the
+		 * argument sits below the callee). The RHS is any callable expression:
+		 * an FCC `f(...)` (an OP_LOAD_FCC Closure), a closure variable, an
+		 * `[obj,method]` pair, or a callable string. */
+		sxu32 nPipeNsBase;
+		sxi32 iOperandFlags = iFlags & ~(EXPR_FLAG_LOAD_IDX_STORE|EXPR_FLAG_MEMBER_WRITE|EXPR_FLAG_RDONLY_LOAD);
+		if( pNode->pLeft == 0 || pNode->pRight == 0 ){
+			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pNode->pStart->nLine,
+				"'|>': Missing operand");
+			return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
+		}
+		/* Argument: the LHS value. */
+		nPipeNsBase = SySetUsed(&pGen->aNullsafeJmp);
+		rc = GenStateEmitExprCode(&(*pGen),pNode->pLeft,iOperandFlags);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		GenStatePatchNullsafeJumps(pGen, nPipeNsBase);
+		/* Callable: the RHS. */
+		nPipeNsBase = SySetUsed(&pGen->aNullsafeJmp);
+		rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iOperandFlags);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		GenStatePatchNullsafeJumps(pGen, nPipeNsBase);
+		/* Invoke the callable with the single piped argument. */
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_CALL,1,0,GenStateAttachStrictFlag(pGen,0),0);
+		return SXRET_OK;
+	}
 	bIsChainOp = GEN_IS_CHAIN_OP(pNode->pOp->iOp);
 	/* Generate code for the left tree */
 	if( pNode->pLeft ){

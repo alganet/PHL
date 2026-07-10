@@ -560,6 +560,9 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 				}else if( pStream->zText[0] == '=' ){
 					/* Current operator: |= */
 					pStream->zText++;
+				}else if( pStream->zText[0] == '>' ){
+					/* Current operator: |> (PHP 8.5 pipe) */
+					pStream->zText++;
 				}
 			}
 			break;
