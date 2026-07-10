@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "ph7int.h" /* This file handle low-level stuff related to indexed memory objects [i.e: ph7_value] */
+#include <stdio.h>  /* snprintf — the default float->string conversion needs
+                     * correctly-rounded digits like php (see MemObjStringValue) */
 
 /* Provide PHP-style type names for values.  This utility may be reused
  * by any subsystem that works with ph7_value.
@@ -252,6 +254,65 @@ static ph7_real MemObjRealValue(ph7_value *pObj)
 	/* NOT REACHED  */
 	return 0;
 }
+#ifndef PH7_OMIT_FLOATING_POINT
+/*
+ * Post-process a libc-formatted float into php's exact shape (php_gcvt /
+ * smart_str_append_double semantics): strip the exponent's zero padding
+ * (libc's 1e+08 becomes php's 1e+8; a zero exponent stays e+0) and, when
+ * bGeneric is set (%g-style output, including the default float->string
+ * cast), make an exponent-form mantissa keep a fractional digit
+ * (1e+20 -> 1.0e+20). zBuf must be NUL-terminated with at least two bytes
+ * of spare capacity past the NUL. Returns the new length.
+ * Defined here (not builtin.c) because the float->string cast below needs it
+ * even when builtin.c's formatting region is compiled out
+ * (PH7_DISABLE_DISK_IO); the printf family reuses it from PH7_InputFormat.
+ */
+PH7_PRIVATE sxi32 PH7_PhpFloatShape(char *zBuf,sxi32 nLen,int bGeneric)
+{
+	sxi32 iExp,i;
+	iExp = nLen - 1;
+	while( iExp > 0 && zBuf[iExp] != 'e' && zBuf[iExp] != 'E' ){
+		iExp--;
+	}
+	if( iExp <= 0 ){
+		return nLen; /* No exponent part (fixed notation) */
+	}
+	{
+		sxi32 iDig = iExp + 1;
+		sxi32 iFirst;
+		if( zBuf[iDig] == '+' || zBuf[iDig] == '-' ){
+			iDig++;
+		}
+		iFirst = iDig;
+		while( zBuf[iFirst] == '0' && iFirst + 1 < nLen
+		 && zBuf[iFirst+1] >= '0' && zBuf[iFirst+1] <= '9' ){
+			iFirst++;
+		}
+		if( iFirst > iDig ){
+			sxi32 nStrip = iFirst - iDig;
+			for( i = iDig ; i + nStrip <= nLen ; i++ ){
+				zBuf[i] = zBuf[i+nStrip]; /* moves the NUL too */
+			}
+			nLen -= nStrip;
+		}
+	}
+	if( bGeneric ){
+		int bHasDot = 0;
+		for( i = 0 ; i < iExp ; i++ ){
+			if( zBuf[i] == '.' ){ bHasDot = 1; break; }
+		}
+		if( !bHasDot ){
+			for( i = nLen ; i >= iExp ; i-- ){
+				zBuf[i+2] = zBuf[i]; /* moves the NUL too */
+			}
+			zBuf[iExp] = '.';
+			zBuf[iExp+1] = '0';
+			nLen += 2;
+		}
+	}
+	return nLen;
+}
+#endif /* PH7_OMIT_FLOATING_POINT */
 /*
  * Return the string representation of a given ph7_value.
  * This function never fail and always return SXRET_OK.
@@ -269,7 +330,23 @@ static sxi32 MemObjStringValue(SyBlob *pOut,ph7_value *pObj,sxu8 bStrictBool)
 				SyBlobAppend(&(*pOut),"INF",3);
 			}
 		}else{
+#ifndef PH7_OMIT_FLOATING_POINT
+			/* php's default float->string conversion (echo/concat/cast):
+			 * zend_gcvt with EG(precision)=14 and an uppercase exponent
+			 * marker (smart_str_append_double) — 1/3 -> "0.33333333333333",
+			 * 1e15 -> "1.0E+15", -0.0 -> "-0". libc snprintf supplies
+			 * correctly-rounded digits; PH7_PhpFloatShape applies php's
+			 * exponent/fraction quirks. */
+			char zNum[48]; /* %.14G peaks at ~22 bytes; +2 spare for ".0" */
+			sxi32 n = (sxi32)snprintf(zNum,sizeof(zNum),"%.14G",pObj->rVal);
+			if( n < 0 || n >= (sxi32)sizeof(zNum) ){
+				n = (sxi32)SyStrlen(zNum);
+			}
+			n = PH7_PhpFloatShape(zNum,n,TRUE);
+			SyBlobAppend(&(*pOut),zNum,(sxu32)n);
+#else
 			SyBlobFormat(&(*pOut),"%.15g",pObj->rVal);
+#endif
 		}
 	}else if( pObj->iFlags & MEMOBJ_INT ){
 		SyBlobFormat(&(*pOut),"%qd",pObj->x.iVal);

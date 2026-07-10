@@ -7,6 +7,7 @@
 #include "sxmacros.h"
 #include "sxutils.h"
 #include "sxstr.h"
+#include <stdlib.h> /* strtod — SyStrToReal must be correctly rounded (see its comment) */
 
 PH7_PRIVATE sxi32 SyStrIsNumeric(const char *zSrc,sxu32 nLen,sxu8 *pReal,const char  **pzTail)
 {
@@ -407,25 +408,25 @@ PH7_PRIVATE sxi32 SyBinaryStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,
 }
 PH7_PRIVATE sxi32 SyStrToReal(const char *zSrc,sxu32 nLen,void * pOutVal,const char **zRest)
 {
-#define SXDBL_DIG        15
-#define SXDBL_MAX_EXP    308
-#define SXDBL_MIN_EXP_PLUS	307
-	static const sxreal aTab[] = {
-	10,
-	1.0e2,
-	1.0e4,
-	1.0e8,
-	1.0e16,
-	1.0e32,
-	1.0e64,
-	1.0e128,
-	1.0e256
-	};
-	sxu8 neg = FALSE;
+	/* Correctly-rounded conversion via libc strtod (the byte-exact-floats
+	 * rule): the old hand-rolled accumulator kept only 15 significant
+	 * digits, clamped exponents to +/-30x (so 1e400 silently became 1e308
+	 * and 5e-324 became 5e-307) and drifted the low mantissa bits, making
+	 * float literals and string->float casts differ from php. The accepted
+	 * numeric-prefix grammar is kept from the old parser, including the ','
+	 * decimal separator: [ws][sign]D*[(.|,)D*][(e|E)[sign]D+][ws]. The
+	 * prefix is copied (',' -> '.') into a stack buffer for strtod — or a
+	 * heap copy for the rare number longer than the buffer (e.g. hundreds of
+	 * leading fractional zeros before the significant digits), falling back
+	 * to a truncated-mantissa-plus-exponent copy only if that allocation
+	 * fails. Everything is always consumed from the input. */
+	char zBuf[512];
+	const char *zEnd = &zSrc[nLen];
+	const char *zNum;
+	const char *zExpStart = 0;
 	sxreal Val = 0.0;
-	const char *zEnd;
-	sxi32 Lim,exp;
-	sxreal *p = 0;
+	sxu32 nCopy = 0;
+	int bDigit = 0;
 #ifdef UNTRUST
 	if( SX_EMPTY_STR(zSrc)  ){
 		if( pOutVal ){
@@ -434,146 +435,73 @@ PH7_PRIVATE sxi32 SyStrToReal(const char *zSrc,sxu32 nLen,void * pOutVal,const c
 		return SXERR_EMPTY;
 	}
 #endif
-	/* Define local limits and end pointer used by the parsing loops */
-	zEnd = &zSrc[nLen];
-	Lim = SXDBL_DIG;
 	/* Skip leading spaces */
-	while( zSrc < zEnd && SyisSpace(zSrc[0]) ) zSrc++;
-
+	while( zSrc < zEnd && SyisSpace(zSrc[0]) ){
+		zSrc++;
+	}
+	zNum = zSrc;
 	/* Sign (if exists) */
 	if( zSrc < zEnd && (zSrc[0] == '-' || zSrc[0] == '+' ) ){
-		neg =  zSrc[0] == '-' ? TRUE : FALSE ;
 		zSrc++;
 	}
-
 	/* Integer part */
-	for(;;){
-		if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
-			break;
-		}
-		Val = Val * 10.0 + (zSrc[0] - '0');
+	while( zSrc < zEnd && SyisDigit(zSrc[0]) ){
+		bDigit = 1;
 		zSrc++;
-		--Lim;
-		if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
-			break;
-		}
-		Val = Val * 10.0 + (zSrc[0] - '0');
-		zSrc++;
-		--Lim;
-		if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
-			break;
-		}
-		Val = Val * 10.0 + (zSrc[0] - '0');
-		zSrc++;
-		--Lim;
-		if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
-			break;
-		}
-		Val = Val * 10.0 + (zSrc[0] - '0');
-		zSrc++;
-		--Lim;
 	}
-	Lim = SXDBL_DIG ;
-	for(;;){
-		if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
-			break;
-		}
-		Val = Val * 10.0 + (zSrc[0] - '0');
-		zSrc++;
-		--Lim;
-		if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
-			break;
-		}
-		Val = Val * 10.0 + (zSrc[0] - '0');
-		zSrc++;
-		--Lim;
-		if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
-			break;
-		}
-		Val = Val * 10.0 + (zSrc[0] - '0');
-		zSrc++;
-		--Lim;
-		if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
-			break;
-		}
-		Val = Val * 10.0 + (zSrc[0] - '0');
-		zSrc++;
-		--Lim;
-	}
+	/* Fractional part */
 	if( zSrc < zEnd && ( zSrc[0] == '.' || zSrc[0] == ',' ) ){
-		sxreal dec = 1.0;
 		zSrc++;
-		for(;;){
-			if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
-				break;
-			}
-			Val = Val * 10.0 + (zSrc[0] - '0');
-			dec *= 10.0;
-			zSrc++;
-			--Lim;
-			if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
-				break;
-			}
-			Val = Val * 10.0 + (zSrc[0] - '0');
-			dec *= 10.0;
-			zSrc++;
-			--Lim;
-			if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
-				break;
-			}
-			Val = Val * 10.0 + (zSrc[0] - '0');
-			dec *= 10.0;
-			zSrc++;
-			--Lim;
-			if(zSrc >= zEnd || !Lim || !SyisDigit(zSrc[0])){
-				break;
-			}
-			Val = Val * 10.0 + (zSrc[0] - '0');
-			dec *= 10.0;
-			zSrc++;
-			--Lim;
-		}
-		Val /= dec;
-	}
-	if( neg == TRUE && Val != 0.0 ) {
-		Val = -Val ;
-	}
-	if( Lim <= 0 ){
-		/* jump overflow digit */
-		while( zSrc < zEnd ){
-			if( zSrc[0] == 'e' || zSrc[0] == 'E' ){
-				break;
-			}
+		while( zSrc < zEnd && SyisDigit(zSrc[0]) ){
+			bDigit = 1;
 			zSrc++;
 		}
 	}
-	neg = FALSE;
-	if( zSrc < zEnd && ( zSrc[0] == 'e' || zSrc[0] == 'E' ) ){
-		zSrc++;
-		if( zSrc < zEnd && ( zSrc[0] == '-' || zSrc[0] == '+') ){
-			neg = zSrc[0] == '-' ? TRUE : FALSE ;
-			zSrc++;
+	/* Exponent — consumed only when it carries at least one digit, like
+	 * strtod, so "1e+x" leaves the "e+" unconsumed. */
+	if( bDigit && zSrc < zEnd && ( zSrc[0] == 'e' || zSrc[0] == 'E' ) ){
+		const char *zExp = &zSrc[1];
+		if( zExp < zEnd && (zExp[0] == '-' || zExp[0] == '+') ){
+			zExp++;
 		}
-		exp = 0;
-		while( zSrc < zEnd && SyisDigit(zSrc[0]) && exp < SXDBL_MAX_EXP ){
-			exp = exp * 10 + (zSrc[0] - '0');
-			zSrc++;
-		}
-		if( neg  ){
-			if( exp > SXDBL_MIN_EXP_PLUS ) exp = SXDBL_MIN_EXP_PLUS ;
-		}else if ( exp > SXDBL_MAX_EXP ){
-			exp = SXDBL_MAX_EXP;
-		}
-		for( p = (sxreal *)aTab ; exp ; exp >>= 1 , p++ ){
-			if( exp & 01 ){
-				if( neg ){
-					Val /= *p ;
-				}else{
-					Val *= *p;
-				}
+		if( zExp < zEnd && SyisDigit(zExp[0]) ){
+			zExpStart = zSrc;
+			zSrc = zExp;
+			while( zSrc < zEnd && SyisDigit(zSrc[0]) ){
+				zSrc++;
 			}
 		}
 	}
+	if( bDigit ){
+		sxu32 i, nSpan = (sxu32)((zExpStart ? zExpStart : zSrc) - zNum);
+		sxu32 nExp = zExpStart ? (sxu32)(zSrc - zExpStart) : 0;
+		char *zDup = zBuf;
+		sxu32 nDup = sizeof(zBuf);
+		if( nSpan + nExp >= sizeof(zBuf) ){
+			char *zHeap = (char *)malloc(nSpan + nExp + 1);
+			if( zHeap ){
+				zDup = zHeap;
+				nDup = nSpan + nExp + 1;
+			}
+		}
+		{
+			sxu32 nMantMax = nDup - 1 - (nExp < nDup - 1 ? nExp : 0);
+			for( i = 0 ; i < nSpan && nCopy < nMantMax ; i++ ){
+				zDup[nCopy++] = (zNum[i] == ',') ? '.' : zNum[i];
+			}
+			/* The exponent rides behind even a truncated mantissa: dropping
+			 * it would collapse "0.<hundreds of zeros>1e300" to 0.0. */
+			for( i = 0 ; i < nExp && nCopy < nDup - 1 ; i++ ){
+				zDup[nCopy++] = zExpStart[i];
+			}
+		}
+		zDup[nCopy] = 0;
+		Val = (sxreal)strtod(zDup,0);
+		if( zDup != zBuf ){
+			free(zDup);
+		}
+	}
+	/* Jump trailing spaces */
 	while( zSrc < zEnd && SyisSpace(zSrc[0]) ){
 		zSrc++;
 	}

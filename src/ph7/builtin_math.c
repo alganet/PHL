@@ -839,9 +839,10 @@ static double MathRound(double value, int places, int mode)
 		/*
 		 * Simple division would lose precision here; round-trip through a
 		 * string exactly like php-src does (snprintf "%15fe%d" + strtod).
-		 * libc snprintf/strtod are used (not SyBufferFormat/SyStrToReal,
-		 * which are not correctly-rounded) so the low bits match PHP — the
-		 * same reason vm_serialize.c uses libc strtod for its float repr.
+		 * libc snprintf is used (not SyBufferFormat, which is not
+		 * correctly-rounded) so the low bits match PHP. (SyStrToReal now
+		 * delegates to strtod too; the direct call here simply mirrors
+		 * php-src's own snprintf+strtod pairing.)
 		 */
 		char zBuf[64];
 		snprintf(zBuf, sizeof(zBuf), "%15fe%d", tmp_value, -places);

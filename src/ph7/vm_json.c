@@ -36,6 +36,35 @@ struct json_private_data
  */
 #define JSON_EMIT(pD, call) do { if( (call) != SXRET_OK ){ (pD)->oom = 1; return PH7_OK; } } while(0)
 /*
+ * Emit a float in php's json shape: PH7_AppendShortestReal (the shared
+ * serialize/var_export shortest-round-trip formatter, php's
+ * serialize_precision=-1) with the exponent marker lowercased (json prints
+ * 1.0e+17 where serialize prints 1.0E+17).
+ */
+static sxi32 VmJsonEmitReal(ph7_context *pCtx,double rVal)
+{
+	SyBlob sNum;
+	char *z;
+	sxu32 i,n;
+	sxi32 rc;
+	SyBlobInit(&sNum,&pCtx->pVm->sAllocator);
+	PH7_AppendShortestReal(&sNum,rVal);
+	z = (char *)SyBlobData(&sNum);
+	n = SyBlobLength(&sNum);
+	if( z == 0 || n < 1 ){
+		SyBlobRelease(&sNum);
+		return SXERR_MEM; /* treated as OOM by JSON_EMIT */
+	}
+	for( i = 0 ; i < n ; i++ ){
+		if( z[i] == 'E' ){
+			z[i] = 'e';
+		}
+	}
+	rc = ph7_result_string(pCtx,(const char *)z,(int)n);
+	SyBlobRelease(&sNum);
+	return rc;
+}
+/*
  * Returns the JSON representation of a value.In other word perform a JSON encoding operation.
  * According to wikipedia
  * JSON's basic types are:
@@ -68,18 +97,24 @@ static sxi32 VmJsonEncode(
 			iLen = iBool ? (int)sizeof("true") : (int)sizeof("false");
 			JSON_EMIT(pData,ph7_result_string(pCtx,iBool ? "true" : "false",iLen-1));
 		}else if(  ph7_value_is_numeric(pIn) && !ph7_value_is_string(pIn) ){
-			const char *zNum;
-			/* Get a string representation of the number */
-			zNum = ph7_value_to_string(pIn,&nByte);
-			JSON_EMIT(pData,ph7_result_string(pCtx,zNum,nByte));
-		}else if( ph7_value_is_string(pIn) ){
-			if( (iFlags & JSON_NUMERIC_CHECK) &&  ph7_value_is_numeric(pIn) ){
+			if( ph7_value_is_float(pIn) ){
+				/* php's json float output follows serialize_precision
+				 * (shortest round-trip, like serialize/var_export), NOT the
+				 * echo/cast precision of 14 — with a lowercase exponent
+				 * marker: 1/3 -> 0.3333333333333333, 1e17 -> 1.0e+17,
+				 * 1.0 -> 1, -0.0 -> -0. */
+				JSON_EMIT(pData,VmJsonEmitReal(pCtx,ph7_value_to_double(pIn)));
+			}else{
 				const char *zNum;
-				/* Encodes numeric strings as numbers. */
-				PH7_MemObjToReal(pIn); /* Force a numeric cast */
 				/* Get a string representation of the number */
 				zNum = ph7_value_to_string(pIn,&nByte);
 				JSON_EMIT(pData,ph7_result_string(pCtx,zNum,nByte));
+			}
+		}else if( ph7_value_is_string(pIn) ){
+			if( (iFlags & JSON_NUMERIC_CHECK) &&  ph7_value_is_numeric(pIn) ){
+				/* Encodes numeric strings as numbers (same float shapes). */
+				PH7_MemObjToReal(pIn); /* Force a numeric cast */
+				JSON_EMIT(pData,VmJsonEmitReal(pCtx,ph7_value_to_double(pIn)));
 			}else{
 				const char *zIn,*zEnd;
 				int c;
