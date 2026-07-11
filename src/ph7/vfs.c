@@ -4510,7 +4510,7 @@ static int PH7_builtin_fprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zFormat;
 	io_private *pDev;
 	int nLen;
-	if( nArg < 2 || !ph7_value_is_resource(apArg[0]) || !ph7_value_is_string(apArg[1]) ){
+	if( nArg < 2 || !ph7_value_is_resource(apArg[0]) ){
 		/* Missing/Invalid arguments,return zero */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Invalid arguments");
 		ph7_result_int(pCtx,0);
@@ -4534,12 +4534,27 @@ static int PH7_builtin_fprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
 	}
-	/* Extract the string format */
+	/* PHP 8: a non-string-coercible $format (array/object/resource) is a TypeError (#2). */
+	{
+		sxi32 rcf = PH7_FormatCheckFormatArg(pCtx,apArg[1],2);
+		if( rcf != PH7_OK ){
+			return rcf;
+		}
+	}
+	/* Extract the string format (scalars/null coerce). */
 	zFormat = ph7_value_to_string(apArg[1],&nLen);
 	if( nLen < 1 ){
 		/* Empty string,return zero */
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
+	}
+	/* PHP 8: an unknown format specifier throws a catchable ValueError before any
+	 * output; propagate the throw status verbatim. */
+	{
+		sxi32 rcv = PH7_FormatValidate(pCtx,zFormat,nLen);
+		if( rcv != PH7_OK ){
+			return rcv;
+		}
 	}
 	/* Prepare our private data */
 	sFdata.nCount = 0;
@@ -4571,11 +4586,25 @@ static int PH7_builtin_vfprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	io_private *pDev;
 	SySet sArg;
 	int n,nLen;
-	if( nArg < 3 || !ph7_value_is_resource(apArg[0]) || !ph7_value_is_string(apArg[1])  || !ph7_value_is_array(apArg[2]) ){
+	if( nArg < 3 || !ph7_value_is_resource(apArg[0]) ){
 		/* Missing/Invalid arguments,return zero */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Invalid arguments");
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
+	}
+	/* PHP 8 checks argument types left-to-right: $format (#2) then $values (#3). */
+	{
+		sxi32 rcf = PH7_FormatCheckFormatArg(pCtx,apArg[1],2);
+		if( rcf != PH7_OK ){
+			return rcf;
+		}
+	}
+	if( !ph7_value_is_array(apArg[2]) ){
+		/* PHP 8: a non-array $values is a catchable TypeError. */
+		char zBuf[64];
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"vfprintf(): Argument #3 ($values) must be of type array, %s given",
+			VmValueGivenName(apArg[2],zBuf,sizeof(zBuf)));
 	}
 	/* Extract our private data */
 	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
@@ -4601,6 +4630,14 @@ static int PH7_builtin_vfprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Empty string,return zero */
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
+	}
+	/* PHP 8: an unknown format specifier throws a catchable ValueError before any
+	 * output; propagate the throw status verbatim. */
+	{
+		sxi32 rcv = PH7_FormatValidate(pCtx,zFormat,nLen);
+		if( rcv != PH7_OK ){
+			return rcv;
+		}
 	}
 	/* Point to hashmap */
 	pMap = (ph7_hashmap *)apArg[2]->x.pOther;

@@ -5454,7 +5454,7 @@ static sxi32 VmThrowNeverReturnError(ph7_vm *pVm,SyString *pFuncName)
  * convention: "true"/"false" for booleans, class name for objects, otherwise
  * the bare type name. zBuf must hold at least 64 bytes.
  */
-static const char * VmValueGivenName(ph7_value *pVal,char *zBuf,sxu32 nBuf)
+PH7_PRIVATE const char * VmValueGivenName(ph7_value *pVal,char *zBuf,sxu32 nBuf)
 {
 	if( pVal->iFlags & MEMOBJ_BOOL ){
 		return pVal->x.iVal ? "true" : "false";
