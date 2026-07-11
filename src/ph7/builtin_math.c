@@ -1040,16 +1040,17 @@ PH7_PRIVATE int PH7_builtin_intdiv(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int PH7_builtin_dechex(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	int iVal;
+	ph7_int64 iVal;
 	if( nArg < 1 ){
 		/* Missing arguments,return null */
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	/* Extract the given number */
-	iVal = ph7_value_to_int(apArg[0]);
-	/* Format */
-	ph7_result_string_format(pCtx,"%x",iVal);
+	/* Extract the given number as a full 64-bit integer (PHP casts $num to int). */
+	iVal = ph7_value_to_int64(apArg[0]);
+	/* Format: the 'q' modifier emits the full unsigned 64-bit two's-complement,
+	 * so a negative value prints all 16 hex digits like PHP. */
+	ph7_result_string_format(pCtx,"%qx",iVal);
 	return PH7_OK;
 }
 /*
@@ -1063,16 +1064,16 @@ PH7_PRIVATE int PH7_builtin_dechex(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int PH7_builtin_decoct(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	int iVal;
+	ph7_int64 iVal;
 	if( nArg < 1 ){
 		/* Missing arguments,return null */
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	/* Extract the given number */
-	iVal = ph7_value_to_int(apArg[0]);
-	/* Format */
-	ph7_result_string_format(pCtx,"%o",iVal);
+	/* Extract the given number as a full 64-bit integer (PHP casts $num to int). */
+	iVal = ph7_value_to_int64(apArg[0]);
+	/* Format: the 'q' modifier emits the full unsigned 64-bit two's-complement. */
+	ph7_result_string_format(pCtx,"%qo",iVal);
 	return PH7_OK;
 }
 /*
@@ -1086,16 +1087,16 @@ PH7_PRIVATE int PH7_builtin_decoct(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int PH7_builtin_decbin(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	int iVal;
+	ph7_int64 iVal;
 	if( nArg < 1 ){
 		/* Missing arguments,return null */
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	/* Extract the given number */
-	iVal = ph7_value_to_int(apArg[0]);
-	/* Format */
-	ph7_result_string_format(pCtx,"%B",iVal);
+	/* Extract the given number as a full 64-bit integer (PHP casts $num to int). */
+	iVal = ph7_value_to_int64(apArg[0]);
+	/* Format: the 'q' modifier emits the full unsigned 64-bit two's-complement. */
+	ph7_result_string_format(pCtx,"%qB",iVal);
 	return PH7_OK;
 }
 /*
