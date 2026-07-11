@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 512/587 lines (87.22%)
+Coverage: 514/590 lines (87.12%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -1264,69 +1264,78 @@ Coverage: 512/587 lines (87.22%)
 |    - | 1254 | ` * Return` |
 |    - | 1255 | ` *  Number converted to base tobase` |
 |    - | 1256 | ` */` |
-|   36 | 1257 | `PH7_PRIVATE int PH7_builtin_base_convert(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   58 | 1257 | `PH7_PRIVATE int PH7_builtin_base_convert(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 | 1258 | `{` |
-|    - | 1259 | `	int nLen,iFbase,iTobase;` |
-|    - | 1260 | `	const char *zNum;` |
-|    - | 1261 | `	ph7_int64 iNum;` |
-|   37 | 1262 | `	if( nArg < 3 ){` |
-|    - | 1263 | `		/* Return the empty string*/` |
-|  ! 0 | 1264 | `		ph7_result_string(pCtx,"",0);` |
-|  ! 0 | 1265 | `		return PH7_OK;` |
-|    - | 1266 | `	}` |
-|    - | 1267 | `	/* Base numbers */` |
-|   37 | 1268 | `	iFbase  = ph7_value_to_int(apArg[1]);` |
-|   37 | 1269 | `	iTobase = ph7_value_to_int(apArg[2]);` |
-|   37 | 1270 | `	if( ph7_value_is_string(apArg[0]) ){` |
-|    - | 1271 | `		/* Extract the target number */` |
-|   33 | 1272 | `		zNum = ph7_value_to_string(apArg[0],&nLen);` |
-|   33 | 1273 | `		if( nLen < 1 ){` |
-|    - | 1274 | `			/* Return the empty string*/` |
-|    5 | 1275 | `			ph7_result_string(pCtx,"",0);` |
-|    5 | 1276 | `			return PH7_OK;` |
-|    - | 1277 | `		}` |
-|    - | 1278 | `		/* Base conversion */` |
-|   29 | 1279 | `		switch(iFbase){` |
-|    5 | 1280 | `		case 16:` |
-|    - | 1281 | `			/* Hex */` |
-|   11 | 1282 | `			SyHexStrToInt64(zNum,(sxu32)nLen,(void *)&iNum,0);` |
-|   11 | 1283 | `			break;` |
-|    3 | 1284 | `		case 8:` |
-|    - | 1285 | `			/* Octal */` |
-|    7 | 1286 | `			SyOctalStrToInt64(zNum,(sxu32)nLen,(void *)&iNum,0);` |
-|    7 | 1287 | `			break;` |
-|    2 | 1288 | `		case 2:` |
-|    - | 1289 | `			/* Binary */` |
-|    5 | 1290 | `			SyBinaryStrToInt64(zNum,(sxu32)nLen,(void *)&iNum,0);` |
-|    5 | 1291 | `			break;` |
-|    4 | 1292 | `		default:` |
-|    - | 1293 | `			/* Decimal */` |
-|    9 | 1294 | `			SyStrToInt64(zNum,(sxu32)nLen,(void *)&iNum,0);` |
-|    8 | 1295 | `			break;` |
-|    - | 1296 | `		}` |
-|   15 | 1297 | `	}else{` |
-|    5 | 1298 | `		iNum = ph7_value_to_int64(apArg[0]);` |
-|    - | 1299 | `	}` |
-|   33 | 1300 | `	switch(iTobase){` |
-|    3 | 1301 | `	case 16:` |
-|    - | 1302 | `		/* Hex */` |
-|    7 | 1303 | `		ph7_result_string_format(pCtx,"%qx",iNum); /* Quad hex */` |
-|    7 | 1304 | `		break;` |
-|    1 | 1305 | `	case 8:` |
-|    - | 1306 | `		/* Octal */` |
-|    3 | 1307 | `		ph7_result_string_format(pCtx,"%qo",iNum); /* Quad octal */` |
-|    3 | 1308 | `		break;` |
-|    1 | 1309 | `	case 2:` |
-|    - | 1310 | `		/* Binary */` |
-|    3 | 1311 | `		ph7_result_string_format(pCtx,"%qB",iNum); /* Quad binary */` |
-|    3 | 1312 | `		break;` |
-|   11 | 1313 | `	default:` |
-|    - | 1314 | `		/* Decimal */` |
-|   23 | 1315 | `		ph7_result_string_format(pCtx,"%qd",iNum); /* Quad decimal */` |
-|   22 | 1316 | `		break;` |
-|    - | 1317 | `	}` |
-|   33 | 1318 | `	return PH7_OK;` |
-|   19 | 1319 | `}` |
-|    - | 1320 | `#endif /* PH7_DISABLE_DISK_IO */` |
-|    - | 1321 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
-|    - | 1322 |  |
+|    - | 1259 | `	static const char zDigits[] = "0123456789abcdefghijklmnopqrstuvwxyz";` |
+|    - | 1260 | `	int nLen,iFbase,iTobase,i;` |
+|    - | 1261 | `	ph7_int64 iFbase64,iTobase64;` |
+|    - | 1262 | `	const char *zNum;` |
+|   59 | 1263 | `	sxu64 uNum = 0;` |
+|   59 | 1264 | `	if( nArg < 3 ){` |
+|    - | 1265 | `		/* Return the empty string*/` |
+|  ! 0 | 1266 | `		ph7_result_string(pCtx,"",0);` |
+|  ! 0 | 1267 | `		return PH7_OK;` |
+|    - | 1268 | `	}` |
+|    - | 1269 | `	/* Base numbers. Read them as 64-bit so an out-of-range base can't wrap through` |
+|    - | 1270 | `	 * a 32-bit truncation back into the 2..36 window and bypass the check below. */` |
+|   59 | 1271 | `	iFbase64 = ph7_value_to_int64(apArg[1]);` |
+|   59 | 1272 | `	iTobase64 = ph7_value_to_int64(apArg[2]);` |
+|    - | 1273 | `	/* PHP 8 throws a catchable ValueError for a base outside 2..36; from_base` |
+|    - | 1274 | `	 * is validated before to_base, both before the string is even parsed. */` |
+|   59 | 1275 | `	if( iFbase64 < 2 \|\| iFbase64 > 36 ){` |
+|    7 | 1276 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
+|    - | 1277 | `			"base_convert(): Argument #2 ($from_base) must be between 2 and 36 (inclusive)");` |
+|    - | 1278 | `	}` |
+|   53 | 1279 | `	if( iTobase64 < 2 \|\| iTobase64 > 36 ){` |
+|    5 | 1280 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
+|    - | 1281 | `			"base_convert(): Argument #3 ($to_base) must be between 2 and 36 (inclusive)");` |
+|    - | 1282 | `	}` |
+|    - | 1283 | `	/* Both bases are now known to fit in [2,36], so the int form is exact. */` |
+|   49 | 1284 | `	iFbase  = (int)iFbase64;` |
+|   49 | 1285 | `	iTobase = (int)iTobase64;` |
+|    - | 1286 | `	/* Parse the input number in from_base. Every base is handled the same way:` |
+|    - | 1287 | `	 * digits 0-9 then a-z/A-Z map to 0-35; a character that is not a valid digit` |
+|    - | 1288 | `	 * for from_base is ignored (PHP additionally raises an E_DEPRECATED for the` |
+|    - | 1289 | `	 * ignored characters — not yet emitted, see PLAN §3.1). */` |
+|   49 | 1290 | `	zNum = ph7_value_to_string(apArg[0],&nLen);` |
+|  147 | 1291 | `	for( i = 0 ; i < nLen ; ++i ){` |
+|   99 | 1292 | `		int c = (unsigned char)zNum[i];` |
+|    - | 1293 | `		int d;` |
+|   99 | 1294 | `		if( c >= '0' && c <= '9' ){` |
+|   73 | 1295 | `			d = c - '0';` |
+|   63 | 1296 | `		}else if( c >= 'a' && c <= 'z' ){` |
+|   25 | 1297 | `			d = c - 'a' + 10;` |
+|   15 | 1298 | `		}else if( c >= 'A' && c <= 'Z' ){` |
+|    3 | 1299 | `			d = c - 'A' + 10;` |
+|    2 | 1300 | `		}else{` |
+|  ! 0 | 1301 | `			d = 99;` |
+|    - | 1302 | `		}` |
+|   99 | 1303 | `		if( d >= iFbase ){` |
+|    - | 1304 | `			/* Not a valid digit for this base: skip it (PHP). */` |
+|    3 | 1305 | `			continue;` |
+|    - | 1306 | `		}` |
+|   97 | 1307 | `		uNum = uNum * (sxu64)iFbase + (sxu64)d;` |
+|   49 | 1308 | `	}` |
+|    - | 1309 | `	/* Format the result in to_base using lowercase digits. */` |
+|   49 | 1310 | `	if( uNum == 0 ){` |
+|    9 | 1311 | `		ph7_result_string(pCtx,"0",1);` |
+|    5 | 1312 | `	}else{` |
+|    - | 1313 | `		char zOut[70]; /* base-2 of a 64-bit value fits in 64 digits */` |
+|   41 | 1314 | `		int n = 0,j;` |
+|  133 | 1315 | `		while( uNum > 0 ){` |
+|   93 | 1316 | `			zOut[n++] = zDigits[uNum % (sxu64)iTobase];` |
+|   93 | 1317 | `			uNum /= (sxu64)iTobase;` |
+|    1 | 1318 | `		}` |
+|    - | 1319 | `		/* Digits were produced least-significant first: reverse in place. */` |
+|   79 | 1320 | `		for( j = 0 ; j < n/2 ; ++j ){` |
+|   39 | 1321 | `			char t = zOut[j];` |
+|   39 | 1322 | `			zOut[j] = zOut[n - 1 - j];` |
+|   39 | 1323 | `			zOut[n - 1 - j] = t;` |
+|   20 | 1324 | `		}` |
+|   41 | 1325 | `		ph7_result_string(pCtx,zOut,n);` |
+|    - | 1326 | `	}` |
+|   49 | 1327 | `	return PH7_OK;` |
+|   30 | 1328 | `}` |
+|    - | 1329 | `#endif /* PH7_DISABLE_DISK_IO */` |
+|    - | 1330 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
+|    - | 1331 |  |
