@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 459/699 lines (65.67%)
+Coverage: 453/699 lines (64.81%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -816,15 +816,15 @@ Coverage: 459/699 lines (65.67%)
 |    - |  806 | ` * Return` |
 |    - |  807 | ` *  A formatted date string. If a non-numeric value is used for timestamp, FALSE is returned.` |
 |    - |  808 | ` */` |
-|   36 |  809 | `PH7_PRIVATE int PH7_builtin_date(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   32 |  809 | `PH7_PRIVATE int PH7_builtin_date(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  810 | `{` |
 |    - |  811 | `	const char *zFormat;` |
 |    - |  812 | `	int nLen;` |
 |    - |  813 | `	Sytm sTm;` |
-|   37 |  814 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|   33 |  814 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
 |    - |  815 | `		/* Missing/Invalid argument,return FALSE */` |
-|    5 |  816 | `		ph7_result_bool(pCtx,0);` |
-|    5 |  817 | `		return PH7_OK;` |
+|  ! 0 |  816 | `		ph7_result_bool(pCtx,0);` |
+|  ! 0 |  817 | `		return PH7_OK;` |
 |    - |  818 | `	}` |
 |   33 |  819 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
 |   33 |  820 | `	if( nLen < 1 ){` |
@@ -862,7 +862,7 @@ Coverage: 459/699 lines (65.67%)
 |    - |  852 | `	/* Format the given string */` |
 |   33 |  853 | `	DateFormat(pCtx,zFormat,nLen,&sTm);` |
 |   33 |  854 | `	return PH7_OK;` |
-|   19 |  855 | `}` |
+|   17 |  855 | `}` |
 |    - |  856 | `/*` |
 |    - |  857 | ` * string strftime(string $format [, int $timestamp = time() ] )` |
 |    - |  858 | ` *  Format a local time/date (PLATFORM INDEPENDANT IMPLEENTATION NOT BASED ON LOCALE)` |
@@ -942,15 +942,15 @@ Coverage: 459/699 lines (65.67%)
 |    - |  932 | ` * Return` |
 |    - |  933 | ` *  A formatted date string. If a non-numeric value is used for timestamp, FALSE is returned.` |
 |    - |  934 | ` */` |
-|   16 |  935 | `PH7_PRIVATE int PH7_builtin_gmdate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   14 |  935 | `PH7_PRIVATE int PH7_builtin_gmdate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  936 | `{` |
 |    - |  937 | `	const char *zFormat;` |
 |    - |  938 | `	int nLen;` |
 |    - |  939 | `	Sytm sTm;` |
-|   17 |  940 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|   15 |  940 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
 |    - |  941 | `		/* Missing/Invalid argument,return FALSE */` |
-|    3 |  942 | `		ph7_result_bool(pCtx,0);` |
-|    3 |  943 | `		return PH7_OK;` |
+|  ! 0 |  942 | `		ph7_result_bool(pCtx,0);` |
+|  ! 0 |  943 | `		return PH7_OK;` |
 |    - |  944 | `	}` |
 |   15 |  945 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
 |   15 |  946 | `	if( nLen < 1 ){` |
@@ -988,7 +988,7 @@ Coverage: 459/699 lines (65.67%)
 |    - |  978 | `	/* Format the given string */` |
 |   15 |  979 | `	DateFormat(pCtx,zFormat,nLen,&sTm);` |
 |   15 |  980 | `	return PH7_OK;` |
-|    9 |  981 | `}` |
+|    8 |  981 | `}` |
 |    - |  982 | `/*` |
 |    - |  983 | ` * array localtime([ int $timestamp = time() [, bool $is_associative = false ]])` |
 |    - |  984 | ` *  Return the local time.` |
@@ -1171,16 +1171,16 @@ Coverage: 459/699 lines (65.67%)
 |    - | 1161 | ` * Return` |
 |    - | 1162 | ` *  An integer.` |
 |    - | 1163 | ` */` |
-|   42 | 1164 | `PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   38 | 1164 | `PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    2 | 1165 | `{` |
 |    - | 1166 | `	const char *zFormat;` |
-|   44 | 1167 | `	ph7_int64 iVal = 0;` |
+|   40 | 1167 | `	ph7_int64 iVal = 0;` |
 |    - | 1168 | `	int nLen;` |
 |    - | 1169 | `	Sytm sTm;` |
-|   44 | 1170 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|   40 | 1170 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
 |    - | 1171 | `		/* Missing/Invalid argument,return -1 */` |
-|    5 | 1172 | `		ph7_result_int(pCtx,-1);` |
-|    5 | 1173 | `		return PH7_OK;` |
+|  ! 0 | 1172 | `		ph7_result_int(pCtx,-1);` |
+|  ! 0 | 1173 | `		return PH7_OK;` |
 |    - | 1174 | `	}` |
 |   40 | 1175 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
 |   40 | 1176 | `	if( nLen < 1 ){` |
@@ -1304,7 +1304,7 @@ Coverage: 459/699 lines (65.67%)
 |    - | 1294 | `	/* Return the time value */` |
 |   40 | 1295 | `	ph7_result_int64(pCtx,iVal);` |
 |   40 | 1296 | `	return PH7_OK;` |
-|   23 | 1297 | `}` |
+|   21 | 1297 | `}` |
 |    - | 1298 | `/*` |
 |    - | 1299 | ` * int mktime/gmmktime([ int $hour = date("H") [, int $minute = date("i") [, int $second = date("s")` |
 |    - | 1300 | ` *  [, int $month = date("n") [, int $day = date("j") [, int $year = date("Y") [, int $is_dst = -1 ]]]]]]] )` |
