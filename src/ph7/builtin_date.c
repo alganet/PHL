@@ -792,6 +792,48 @@ static int PH7_Strftime(
 	return SXRET_OK;
 }
 /*
+ * Resolve a date()/gmdate() $timestamp argument under php 8's ?int weak ZPP:
+ *   - null            -> *pbUseNow = 1 (caller uses the current time)
+ *   - int/bool/float  -> coerce to a Unix timestamp (float truncates; php's
+ *                        float->int precision E_DEPRECATED is not emitted, §3.7)
+ *   - numeric string  -> coerce via php's is_numeric_string grammar
+ *                        (RangeStrToNumber: " 100 "/"1e3"/".5"/"+5" ok)
+ *   - anything else (non-numeric string, array, object, resource)
+ *                     -> catchable TypeError, byte-exact with php.
+ * Returns PH7_OK with *pbUseNow / *pT set, or the PH7_VmThrowException status.
+ */
+static int DateResolveTimestamp(ph7_context *pCtx,ph7_value *pArg,int *pbUseNow,time_t *pT)
+{
+	char zBuf[64];
+	*pbUseNow = 0;
+	if( ph7_value_is_null(pArg) ){
+		*pbUseNow = 1;
+		return PH7_OK;
+	}
+	if( ph7_value_is_int(pArg) || ph7_value_is_bool(pArg) || ph7_value_is_float(pArg) ){
+		*pT = (time_t)ph7_value_to_int64(pArg);
+		return PH7_OK;
+	}
+	if( ph7_value_is_string(pArg) ){
+		int nStr;
+		const char *zStr = ph7_value_to_string(pArg,&nStr);
+		sxi64 iLong; double dReal;
+		sxu8 iKind = RangeStrToNumber(zStr,(sxu32)nStr,&iLong,&dReal);
+		if( iKind == RANGE_IN_DOUBLE ){
+			*pT = (time_t)dReal;
+			return PH7_OK;
+		}
+		if( iKind == RANGE_IN_LONG ){
+			*pT = (time_t)iLong;
+			return PH7_OK;
+		}
+		/* Not a numeric string: fall through to the TypeError. */
+	}
+	return PH7_VmThrowException(pCtx,"TypeError",
+		"%s(): Argument #2 ($timestamp) must be of type ?int, %s given",
+		ph7_function_name(pCtx),VmValueGivenName(pArg,zBuf,sizeof(zBuf)));
+}
+/*
  * string date(string $format [, int $timestamp = time() ] )
  *  Returns a string formatted according to the given format string using
  *  the given integer timestamp or the current time if no timestamp is given.
@@ -834,19 +876,22 @@ PH7_PRIVATE int PH7_builtin_date(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		STRUCT_TM_TO_SYTM(pTm,&sTm);
 #endif
 	}else{
-		/* Use the given timestamp */
-		time_t t;
+		/* Use the given timestamp (php 8 ?int weak ZPP; TypeError otherwise) */
+		time_t t = 0;
 		struct tm *pTm;
-		if( ph7_value_is_int(apArg[1]) ){
-			t = (time_t)ph7_value_to_int64(apArg[1]);
-			pTm = localtime(&t);
-			if( pTm == 0 ){
-				time(&t);
-			}
-		}else{
+		int bUseNow;
+		int rc = DateResolveTimestamp(pCtx,apArg[1],&bUseNow,&t);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+		if( bUseNow ){
 			time(&t);
 		}
 		pTm = localtime(&t);
+		if( pTm == 0 ){
+			time(&t);
+			pTm = localtime(&t);
+		}
 		STRUCT_TM_TO_SYTM(pTm,&sTm);
 	}
 	/* Format the given string */
@@ -960,19 +1005,22 @@ PH7_PRIVATE int PH7_builtin_gmdate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		STRUCT_TM_TO_SYTM(pTm,&sTm);
 #endif
 	}else{
-		/* Use the given timestamp */
-		time_t t;
+		/* Use the given timestamp (php 8 ?int weak ZPP; TypeError otherwise) */
+		time_t t = 0;
 		struct tm *pTm;
-		if( ph7_value_is_int(apArg[1]) ){
-			t = (time_t)ph7_value_to_int64(apArg[1]);
-			pTm = gmtime(&t);
-			if( pTm == 0 ){
-				time(&t);
-			}
-		}else{
+		int bUseNow;
+		int rc = DateResolveTimestamp(pCtx,apArg[1],&bUseNow,&t);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+		if( bUseNow ){
 			time(&t);
 		}
 		pTm = gmtime(&t);
+		if( pTm == 0 ){
+			time(&t);
+			pTm = gmtime(&t);
+		}
 		STRUCT_TM_TO_SYTM(pTm,&sTm);
 	}
 	/* Format the given string */

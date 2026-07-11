@@ -3454,12 +3454,9 @@ static int ph7_hashmap_each(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *   RANGE_IN_STRING      : only interpretable as a (char-range) string
  *   RANGE_IN_DIGIT       : single-byte numeric string — valid as both a char
  *                          and a number (php returns IS_ARRAY for this)
+ * The RANGE_IN_* codes and RangeStrToNumber are declared in ph7int.h so the
+ * stage-2 ZPP domain-error sweep can reuse the classifier (PLAN §3.9(a)).
  */
-#define RANGE_IN_ERROR   0
-#define RANGE_IN_LONG    1
-#define RANGE_IN_DOUBLE  2
-#define RANGE_IN_STRING  3
-#define RANGE_IN_DIGIT   4
 /* IEEE special-value tests: the engine-wide bit-pattern macros from
  * sxtypes.h (via ph7int.h) — same ones the printf/serialize paths use. */
 /*
@@ -3489,7 +3486,7 @@ static const char * RangeArgTypeName(ph7_value *pVal,char *zBuf,sxu32 nBufLen)
  * at zIn[nLen] — ph7_value_to_string guarantees this (SyBlobNullAppend) —
  * so strtod can parse it in place once the grammar has validated it.
  */
-static sxu8 RangeStrToNumber(const char *zIn,sxu32 nLen,sxi64 *pLong,double *pDouble)
+PH7_PRIVATE sxu8 RangeStrToNumber(const char *zIn,sxu32 nLen,sxi64 *pLong,double *pDouble)
 {
 	const char *z = zIn,*zEnd = &zIn[nLen];
 	sxu64 uVal = 0;
