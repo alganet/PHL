@@ -1,14 +1,14 @@
 | Filename                       | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
 | src/ph7/api.c                  | 71.47%   | 784/1097    |
-| src/ph7/builtin.c              | 85.76%   | 3770/4396   |
+| src/ph7/builtin.c              | 86.74%   | 3761/4336   |
 | src/ph7/builtin_date.c         | 64.81%   | 453/699     |
 | src/ph7/builtin_math.c         | 87.12%   | 514/590     |
 | src/ph7/compile.c              | 80.76%   | 6119/7577   |
 | src/ph7/constant.c             | 99.02%   | 1108/1119   |
-| src/ph7/hashmap.c              | 87.63%   | 3683/4203   |
+| src/ph7/hashmap.c              | 87.77%   | 3689/4203   |
 | src/ph7/lex.c                  | 93.23%   | 758/813     |
-| src/ph7/memobj.c               | 89.27%   | 724/811     |
+| src/ph7/memobj.c               | 89.95%   | 770/856     |
 | src/ph7/net.c                  | 50.48%   | 53/105      |
 | src/ph7/oo.c                   | 90.69%   | 633/698     |
 | src/ph7/parse.c                | 87.10%   | 1148/1318   |
@@ -16,13 +16,13 @@
 | src/ph7/vfs_unix.c             | 88.06%   | 376/427     |
 | src/ph7/vfs_win.c              | 75.43%   | 485/643     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
-| src/ph7/vm.c                   | 81.56%   | 8874/10881  |
+| src/ph7/vm.c                   | 81.57%   | 8876/10881  |
 | src/ph7/vm_builtin_class.c     | 85.50%   | 466/545     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
 | src/ph7/vm_builtin_ob.c        | 76.21%   | 157/206     |
 | src/ph7/vm_http.c              | 68.02%   | 302/444     |
 | src/ph7/vm_http_response.c     | 44.71%   | 114/255     |
-| src/ph7/vm_json.c              | 73.85%   | 387/524     |
+| src/ph7/vm_json.c              | 75.23%   | 410/545     |
 | src/ph7/vm_pcre.c              | 65.26%   | 605/927     |
 | src/ph7/vm_serialize.c         | 96.54%   | 419/434     |
 | src/ph7/vm_xml.c               | 67.82%   | 392/578     |
@@ -30,7 +30,7 @@
 | src/phl/server.c               | 61.56%   | 277/450     |
 | src/sx/sxblowfish.c            | 98.82%   | 168/170     |
 | src/sx/sxds.c                  | 95.07%   | 289/304     |
-| src/sx/sxfmt.c                 | 71.25%   | 290/407     |
+| src/sx/sxfmt.c                 | 69.78%   | 284/407     |
 | src/sx/sxhash.c                | 91.06%   | 377/414     |
 | src/sx/sxlib.c                 | 90.12%   | 228/253     |
 | src/sx/sxmem.c                 | 85.29%   | 435/510     |
@@ -38,12 +38,12 @@
 | src/sx/sxrand.c                | 71.15%   | 74/104      |
 | src/sx/sxstr.c                 | 93.88%   | 92/98       |
 | src/sx/sxtypes.h               | 100.00%  | 16/16       |
-| src/sx/sxutils.c               | 76.18%   | 339/445     |
+| src/sx/sxutils.c               | 78.65%   | 302/384     |
 | src/sx/sxxml.c                 | 68.86%   | 533/774     |
 | src/sx/sxzip.c                 | 73.75%   | 222/301     |
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 80.54%   | 37976/47153 |
-| Functions                      | 96.28%   | 1812/1882   |
+| Lines                          | 80.68%   | 38001/47098 |
+| Functions                      | 96.28%   | 1813/1883   |
 

@@ -183,21 +183,21 @@ Coverage: 1108/1119 lines (99.02%)
 |      - |  173 | `/*` |
 |      - |  174 | ` * NAN constant: floating-point Not-A-Number` |
 |      - |  175 | ` */` |
-|     60 |  176 | `static void PH7_NAN_Const(ph7_value *pVal,void *pUnused)` |
+|     80 |  176 | `static void PH7_NAN_Const(ph7_value *pVal,void *pUnused)` |
 |      1 |  177 | `{` |
-|     30 |  178 | `	SXUNUSED(pUnused);` |
-|     61 |  179 | `	ph7_value_double(pVal, PH7_NAN_VALUE());` |
-|     61 |  180 | `}` |
+|     40 |  178 | `	SXUNUSED(pUnused);` |
+|     81 |  179 | `	ph7_value_double(pVal, PH7_NAN_VALUE());` |
+|     81 |  180 | `}` |
 |      - |  181 |  |
 |      - |  182 | `/*` |
 |      - |  183 | ` * INF constant: positive infinity` |
 |      - |  184 | ` */` |
-|     34 |  185 | `static void PH7_INF_Const(ph7_value *pVal,void *pUnused)` |
+|     70 |  185 | `static void PH7_INF_Const(ph7_value *pVal,void *pUnused)` |
 |      1 |  186 | `{` |
-|     17 |  187 | `	SXUNUSED(pUnused);` |
+|     35 |  187 | `	SXUNUSED(pUnused);` |
 |      - |  188 | `	/* similarly avoid the INFINITY macro */` |
-|     35 |  189 | `	ph7_value_double(pVal, PH7_INF_VALUE());` |
-|     35 |  190 | `}` |
+|     71 |  189 | `	ph7_value_double(pVal, PH7_INF_VALUE());` |
+|     71 |  190 | `}` |
 |      - |  191 | `#endif /* PH7_ENABLE_MATH_FUNC */` |
 |      - |  192 |  |
 |      - |  193 | `#ifndef __WINNT__` |
@@ -1139,20 +1139,20 @@ Coverage: 1108/1119 lines (99.02%)
 |      - | 1129 | ` * PATHINFO_EXTENSION` |
 |      - | 1130 | ` *  Expand 3.` |
 |      - | 1131 | ` */` |
-|   6210 | 1132 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
+|   6214 | 1132 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1133 | `{` |
-|   3105 | 1134 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6215 | 1135 | `	ph7_value_int(pVal,3);` |
-|   6215 | 1136 | `}` |
+|   3107 | 1134 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6219 | 1135 | `	ph7_value_int(pVal,3);` |
+|   6219 | 1136 | `}` |
 |      - | 1137 | `/*` |
 |      - | 1138 | ` * PATHINFO_FILENAME` |
 |      - | 1139 | ` *  Expand 4.` |
 |      - | 1140 | ` */` |
-|   6202 | 1141 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
+|   6206 | 1141 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1142 | `{` |
-|   3101 | 1143 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6207 | 1144 | `	ph7_value_int(pVal,4);` |
-|   6207 | 1145 | `}` |
+|   3103 | 1143 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6211 | 1144 | `	ph7_value_int(pVal,4);` |
+|   6211 | 1145 | `}` |
 |      - | 1146 | `/*` |
 |      - | 1147 | ` * ASSERT_ACTIVE.` |
 |      - | 1148 | ` *  PHP ASSERT_ACTIVE = 1` |
@@ -1804,11 +1804,11 @@ Coverage: 1108/1119 lines (99.02%)
 |      - | 1794 | ` * JSON_NUMERIC_CHECK.` |
 |      - | 1795 | ` *   Expand the value of JSON_NUMERIC_CHECK defined in ph7Int.h.` |
 |      - | 1796 | ` */` |
-|      2 | 1797 | `static void PH7_JSON_NUMERIC_CHECK_Const(ph7_value *pVal,void *pUserData)` |
+|      4 | 1797 | `static void PH7_JSON_NUMERIC_CHECK_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1798 | `{` |
-|      1 | 1799 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1800 | `	ph7_value_int(pVal,JSON_NUMERIC_CHECK);` |
-|      3 | 1801 | `}` |
+|      2 | 1799 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      5 | 1800 | `	ph7_value_int(pVal,JSON_NUMERIC_CHECK);` |
+|      5 | 1801 | `}` |
 |      - | 1802 | `/*` |
 |      - | 1803 | ` * JSON_BIGINT_AS_STRING.` |
 |      - | 1804 | ` *   Expand the value of JSON_BIGINT_AS_STRING defined in ph7Int.h.` |
