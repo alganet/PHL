@@ -3,10 +3,10 @@
 | src/ph7/api.c                  | 71.47%   | 784/1097    |
 | src/ph7/builtin.c              | 85.95%   | 3836/4463   |
 | src/ph7/builtin_date.c         | 66.25%   | 481/726     |
-| src/ph7/builtin_math.c         | 87.12%   | 514/590     |
+| src/ph7/builtin_math.c         | 87.35%   | 525/601     |
 | src/ph7/compile.c              | 80.76%   | 6119/7577   |
 | src/ph7/constant.c             | 99.02%   | 1108/1119   |
-| src/ph7/hashmap.c              | 89.27%   | 3804/4261   |
+| src/ph7/hashmap.c              | 89.30%   | 3805/4261   |
 | src/ph7/lex.c                  | 93.23%   | 758/813     |
 | src/ph7/memobj.c               | 89.86%   | 780/868     |
 | src/ph7/net.c                  | 50.48%   | 53/105      |
@@ -38,12 +38,12 @@
 | src/sx/sxrand.c                | 71.15%   | 74/104      |
 | src/sx/sxstr.c                 | 93.88%   | 92/98       |
 | src/sx/sxtypes.h               | 100.00%  | 16/16       |
-| src/sx/sxutils.c               | 78.91%   | 303/384     |
+| src/sx/sxutils.c               | 78.65%   | 302/384     |
 | src/sx/sxxml.c                 | 68.86%   | 533/774     |
 | src/sx/sxzip.c                 | 73.75%   | 222/301     |
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 80.77%   | 38371/47505 |
-| Functions                      | 96.51%   | 1824/1890   |
+| Lines                          | 80.78%   | 38382/47516 |
+| Functions                      | 96.51%   | 1825/1891   |
 
