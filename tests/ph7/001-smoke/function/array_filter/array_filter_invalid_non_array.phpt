@@ -1,17 +1,21 @@
 --CREDITS--
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --TEST--
-array_filter with non-array first argument should return NULL (PHL-specific)
+array_filter(): non-array $array throws TypeError (PHP 8)
 --FILE--
 <?php
-$result = array_filter("not an array");
-if ($result === null) echo "NULL\n"; else echo "NOT NULL\n";
+foreach (["not an array", 5, 1.5, true, false, null, new stdClass] as $v) {
+    try { array_filter($v); } catch (\TypeError $e) { echo $e->getMessage(), "\n"; }
+}
 ?>
 --EXPECT--
-NULL
+array_filter(): Argument #1 ($array) must be of type array, string given
+array_filter(): Argument #1 ($array) must be of type array, int given
+array_filter(): Argument #1 ($array) must be of type array, float given
+array_filter(): Argument #1 ($array) must be of type array, true given
+array_filter(): Argument #1 ($array) must be of type array, false given
+array_filter(): Argument #1 ($array) must be of type array, null given
+array_filter(): Argument #1 ($array) must be of type array, stdClass given
 --CLEAN--
 <?php
-unset($result);
