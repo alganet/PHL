@@ -1986,11 +1986,17 @@ PH7_PRIVATE sxi32 PH7_HashmapDump(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,in
 PH7_PRIVATE sxi32 PH7_HashmapDumpEntries(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,int nTab,int nDepth);
 PH7_PRIVATE sxi32 PH7_HashmapWalk(ph7_hashmap *pMap,int (*xWalk)(ph7_value *,ph7_value *,void *),void *pUserData);
 PH7_PRIVATE int PH7_HashmapIsList(ph7_hashmap *pMap);
+/* php value-name helper (true/false/class-name/null); used by the range()/
+ * array_rand() domain-error messages in hashmap.c, which are compiled in every
+ * mode, so it must stay outside the PH7_DISABLE_DISK_IO guard. */
+PH7_PRIVATE const char *VmValueGivenName(ph7_value *pVal,char *zBuf,sxu32 nBuf);
 #ifndef PH7_DISABLE_DISK_IO
 PH7_PRIVATE int PH7_HashmapValuesToSet(ph7_hashmap *pMap,SySet *pOut);
 /* builtin.c function prototypes */
 PH7_PRIVATE sxi32 PH7_InputFormat(int (*xConsumer)(ph7_context *,const char *,int,void *),
 	ph7_context *pCtx,const char *zIn,int nByte,int nArg,ph7_value **apArg,void *pUserData,int vf);
+PH7_PRIVATE sxi32 PH7_FormatValidate(ph7_context *pCtx,const char *zFormat,int nByte);
+PH7_PRIVATE sxi32 PH7_FormatCheckFormatArg(ph7_context *pCtx,ph7_value *pArg,int iArg);
 PH7_PRIVATE sxi32 PH7_ProcessCsv(const char *zInput,int nByte,int delim,int encl,
 	int escape,sxi32 (*xConsumer)(const char *,int,void *),void *pUserData);
 PH7_PRIVATE sxi32 PH7_CsvConsumer(const char *zToken,int nTokenLen,void *pUserData);

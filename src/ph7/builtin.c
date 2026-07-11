@@ -3268,8 +3268,145 @@ static const ph7_fmt_info aFmt[] = {
   {  'E',  0, PH7_FMT_FLAG_SIGNED, PH7_FMT_EXP,        "E",    0    },
   {  'g',  0, PH7_FMT_FLAG_SIGNED, PH7_FMT_GENERIC,    "e",    0    },
   {  'G',  0, PH7_FMT_FLAG_SIGNED, PH7_FMT_GENERIC,    "E",    0    },
+  /* php's 'h'/'H' are the locale-independent twins of 'g'/'G'; PHL always
+   * formats in the C locale, so they behave identically. */
+  {  'h',  0, PH7_FMT_FLAG_SIGNED, PH7_FMT_GENERIC,    "e",    0    },
+  {  'H',  0, PH7_FMT_FLAG_SIGNED, PH7_FMT_GENERIC,    "E",    0    },
   {  '%',  0, 0, PH7_FMT_PERCENT,    0,                  0    }
 };
+/*
+ * PHP 8 raises a catchable ValueError for an unknown conversion specifier
+ * (e.g. "%y", or the C-ism "%#x" — '#' is not a php flag). Because printf()
+ * and fprintf() stream their output incrementally while sprintf() buffers it,
+ * every format builtin calls PH7_FormatValidate (below) to check the whole
+ * format string BEFORE formatting so the throw happens with no partial output
+ * escaping (php buffers the entire result and only emits it on success). This
+ * scan mirrors the specifier-locating logic of the main format loop below.
+ * On the first unknown specifier, stores it in *pBad and returns TRUE; returns
+ * FALSE when every specifier is known. (A found-flag rather than a sentinel
+ * char, so a NUL specifier byte — "%\0" — is still reported, not mistaken for
+ * "all valid".)
+ */
+static int FormatUnknownSpec(const char *zIn,int nByte,int *pBad)
+{
+	const char *zEnd = &zIn[nByte];
+	int c,idx;
+	while( zIn < zEnd ){
+		if( zIn[0] != '%' ){
+			zIn++;
+			continue;
+		}
+		zIn++; /* jump the percent sign */
+		/* php-supported flags: '-', '+', ' ', '0' and the "'<pad>'" custom-pad
+		 * form. '#' is intentionally NOT treated as a flag so it surfaces as an
+		 * unknown specifier, matching php. */
+		while( zIn < zEnd ){
+			c = zIn[0];
+			if( c=='-' || c=='+' || c==' ' || c=='0' ){
+				zIn++;
+				continue;
+			}
+			if( c=='\'' ){
+				zIn++;
+				if( zIn < zEnd ){
+					zIn++; /* the custom pad character */
+				}
+				continue;
+			}
+			break;
+		}
+		/* field width */
+		while( zIn < zEnd && zIn[0]>='0' && zIn[0]<='9' ){
+			zIn++;
+		}
+		/* positional specifier ($) — php parses flags AFTER it (e.g. "%1$-10s"),
+		 * so skip the full flag set and width again, mirroring the main loop. */
+		if( zIn < zEnd && zIn[0]=='$' ){
+			zIn++;
+			while( zIn < zEnd ){
+				c = zIn[0];
+				if( c=='-' || c=='+' || c==' ' || c=='0' ){
+					zIn++;
+					continue;
+				}
+				if( c=='\'' ){
+					zIn++;
+					if( zIn < zEnd ){
+						zIn++;
+					}
+					continue;
+				}
+				break;
+			}
+			while( zIn < zEnd && zIn[0]>='0' && zIn[0]<='9' ){
+				zIn++;
+			}
+		}
+		/* precision */
+		if( zIn < zEnd && zIn[0]=='.' ){
+			zIn++;
+			while( zIn < zEnd && zIn[0]>='0' && zIn[0]<='9' ){
+				zIn++;
+			}
+		}
+		/* a single 'l' length modifier (ignored, php compat) */
+		if( zIn < zEnd && zIn[0]=='l' ){
+			zIn++;
+		}
+		if( zIn >= zEnd ){
+			/* A dangling '%' with no specifier: PHL's legacy path silently
+			 * truncates here (recorded residual); nothing to validate. */
+			break;
+		}
+		c = zIn[0];
+		zIn++; /* jump the conversion specifier */
+		for( idx = 0 ; idx < (int)SX_ARRAYSIZE(aFmt) ; idx++ ){
+			if( c == aFmt[idx].fmttype ){
+				break;
+			}
+		}
+		if( idx >= (int)SX_ARRAYSIZE(aFmt) ){
+			*pBad = c; /* unknown specifier */
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+/*
+ * Validate a printf-style format string. PHP 8 raises a catchable ValueError for
+ * an unknown conversion specifier, thrown before any output is produced. Every
+ * format builtin (sprintf/printf/vprintf/vsprintf/fprintf/vfprintf) calls this
+ * up-front, then propagates the returned status verbatim (PH7_EXCEPTION when the
+ * throw is caught in place, PH7_ABORT when it goes uncaught).
+ * Returns PH7_OK when the format is valid.
+ */
+PH7_PRIVATE sxi32 PH7_FormatValidate(ph7_context *pCtx,const char *zFormat,int nByte)
+{
+	int badSpec = 0;
+	if( FormatUnknownSpec(zFormat,nByte,&badSpec) ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"Unknown format specifier \"%c\"",badSpec);
+	}
+	return PH7_OK;
+}
+/*
+ * PHP 8: a printf-family `$format` argument is a `string` parameter — scalars
+ * (int/float/bool) and null coerce to a string, but an array/object/resource
+ * raises a catchable TypeError. iArg is the 1-based argument position ($format
+ * is #1 for sprintf/printf/vprintf/vsprintf, #2 for fprintf/vfprintf). Returns
+ * PH7_OK when the value is string-coercible (the caller then uses
+ * ph7_value_to_string, which renders scalars/null verbatim).
+ */
+PH7_PRIVATE sxi32 PH7_FormatCheckFormatArg(ph7_context *pCtx,ph7_value *pArg,int iArg)
+{
+	if( ph7_value_is_array(pArg) || ph7_value_is_object(pArg) || ph7_value_is_resource(pArg) ){
+		char zBuf[64];
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): Argument #%d ($format) must be of type string, %s given",
+			ph7_function_name(pCtx),iArg,VmValueGivenName(pArg,zBuf,sizeof(zBuf)));
+	}
+	return PH7_OK;
+}
 /*
  * Format a given string.
  * The root program.  All variations call this core.
@@ -3317,6 +3454,9 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 	int idx;
 	n = (vf == TRUE) ? 0 : 1;
 #define NEXT_ARG	( n < nArg ? apArg[n++] : 0 )
+	/* An unknown conversion specifier is rejected up-front by PH7_FormatValidate()
+	 * (called by every format builtin before this routine), so the specifier set
+	 * seen here is always valid. */
 	/* Start the format process */
 	for(;;){
 		zCur = zIn;
@@ -3345,7 +3485,6 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 			case '-':   flag_leftjustify = 1;     c = 0;   break;
 			case '+':   flag_plussign = 1;        c = 0;   break;
 			case ' ':   flag_blanksign = 1;       c = 0;   break;
-			case '#':   flag_alternateform = 1;   c = 0;   break;
 			case '0':   flag_zeropad = 1;         c = 0;   break;
 			case '\'':
 				zIn++;
@@ -3377,10 +3516,29 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 			}
 			zIn++;
 			width = 0;
-			if( zIn < zEnd && zIn[0] == '0' ){
-				flag_zeropad = 1;
-				zIn++;
-			}
+			/* php's grammar is %argnum$<flags><width>: the flags come AFTER the
+			 * positional, so re-parse the full flag set here (e.g. "%1$-10s"),
+			 * not just zero-padding. */
+			do{
+				c = zIn[0];
+				switch( c ){
+				case '-':   flag_leftjustify = 1;     c = 0;   break;
+				case '+':   flag_plussign = 1;        c = 0;   break;
+				case ' ':   flag_blanksign = 1;       c = 0;   break;
+				case '0':   flag_zeropad = 1;         c = 0;   break;
+				case '\'':
+					zIn++;
+					if( zIn < zEnd ){
+						c = zIn[0];
+						for(idx = 0 ; idx < etSPACESIZE ; ++idx ){
+							spaces[idx] = (char)c;
+						}
+						c = 0;
+					}
+					break;
+				default:                                       break;
+				}
+			}while( c==0 && (zIn++ < zEnd) );
 			while( zIn < zEnd && ( zIn[0] >='0' && zIn[0] <='9') ){
 				width = width*10 + (zIn[0] - '0');
 				zIn++;
@@ -3398,6 +3556,12 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 				precision = precision*10 + (zIn[0] - '0');
 				zIn++;
 			}
+		}
+		/* Consume a single 'l' length modifier (a C-ism php accepts and ignores,
+		 * e.g. "%ld"); PH7_FormatValidate mirrors this. Exactly one is skipped:
+		 * in "%lld" the second 'l' becomes the (unknown) specifier, just like php. */
+		if( zIn < zEnd && zIn[0] == 'l' ){
+			zIn++;
 		}
 		if( zIn >= zEnd ){
 			/* No more input */
@@ -3643,9 +3807,10 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 		 break;
 							 }
 		default:
-			/* Invalid format specifer */
-			zWorker[0] = '?';
-			length = (int)sizeof(char);
+			/* Unreachable: PH7_FormatValidate() rejects unknown specifiers with a
+			 * catchable ValueError before formatting begins. Kept as a defensive
+			 * no-op that emits nothing. */
+			length = 0;
 			break;
 		}
 		 /*
@@ -3726,17 +3891,28 @@ static int PH7_builtin_sprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zFormat;
 	sxi32 rc = SXRET_OK;
 	int nLen;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
-		/* Missing/Invalid arguments,return the empty string */
+	if( nArg < 1 ){
+		/* Missing arguments,return the empty string */
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
-	/* Extract the string format */
+	/* PHP 8: a non-string-coercible $format (array/object/resource) is a TypeError. */
+	rc = PH7_FormatCheckFormatArg(pCtx,apArg[0],1);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	/* Extract the string format (scalars/null coerce). */
 	zFormat = ph7_value_to_string(apArg[0],&nLen);
 	if( nLen < 1 ){
 		/* Empty string */
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
+	}
+	/* PHP 8: an unknown format specifier throws a catchable ValueError before any
+	 * output; propagate the throw status verbatim. */
+	rc = PH7_FormatValidate(pCtx,zFormat,nLen);
+	if( rc != PH7_OK ){
+		return rc;
 	}
 	/* Format the string; sprintfConsumer reports an allocation failure via &rc. */
 	PH7_InputFormat(sprintfConsumer,pCtx,zFormat,nLen,nArg,apArg,(void *)&rc,FALSE);
@@ -3773,17 +3949,32 @@ static int PH7_builtin_printf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_int64 nCounter = 0;
 	const char *zFormat;
 	int nLen;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
-		/* Missing/Invalid arguments,return 0 */
+	if( nArg < 1 ){
+		/* Missing arguments,return 0 */
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
 	}
-	/* Extract the string format */
+	/* PHP 8: a non-string-coercible $format (array/object/resource) is a TypeError. */
+	{
+		sxi32 rcf = PH7_FormatCheckFormatArg(pCtx,apArg[0],1);
+		if( rcf != PH7_OK ){
+			return rcf;
+		}
+	}
+	/* Extract the string format (scalars/null coerce). */
 	zFormat = ph7_value_to_string(apArg[0],&nLen);
 	if( nLen < 1 ){
 		/* Empty string */
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
+	}
+	/* PHP 8: an unknown format specifier throws a catchable ValueError before any
+	 * output; propagate the throw status verbatim. */
+	{
+		sxi32 rcv = PH7_FormatValidate(pCtx,zFormat,nLen);
+		if( rcv != PH7_OK ){
+			return rcv;
+		}
 	}
 	/* Format the string */
 	PH7_InputFormat(printfConsumer,pCtx,zFormat,nLen,nArg,apArg,(void *)&nCounter,FALSE);
@@ -3807,17 +3998,36 @@ static int PH7_builtin_vprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_hashmap *pMap;
 	SySet sArg;
 	int nLen,n;
-	if( nArg < 2 || !ph7_value_is_string(apArg[0]) || !ph7_value_is_array(apArg[1]) ){
-		/* Missing/Invalid arguments,return 0 */
+	sxi32 rcFmt;
+	if( nArg < 2 ){
+		/* Missing arguments,return 0 */
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
 	}
-	/* Extract the string format */
+	/* PHP 8 checks arguments left-to-right: $format (#1) then $values (#2). */
+	rcFmt = PH7_FormatCheckFormatArg(pCtx,apArg[0],1);
+	if( rcFmt != PH7_OK ){
+		return rcFmt;
+	}
+	if( !ph7_value_is_array(apArg[1]) ){
+		/* PHP 8: a non-array $values is a catchable TypeError. */
+		char zBuf[64];
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"vprintf(): Argument #2 ($values) must be of type array, %s given",
+			VmValueGivenName(apArg[1],zBuf,sizeof(zBuf)));
+	}
+	/* Extract the string format (scalars/null coerce). */
 	zFormat = ph7_value_to_string(apArg[0],&nLen);
 	if( nLen < 1 ){
 		/* Empty string */
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
+	}
+	/* PHP 8: an unknown format specifier throws a catchable ValueError before any
+	 * output; propagate the throw status verbatim. */
+	rcFmt = PH7_FormatValidate(pCtx,zFormat,nLen);
+	if( rcFmt != PH7_OK ){
+		return rcFmt;
 	}
 	/* Point to the hashmap */
 	pMap = (ph7_hashmap *)apArg[1]->x.pOther;
@@ -3825,10 +4035,10 @@ static int PH7_builtin_vprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	n = PH7_HashmapValuesToSet(pMap,&sArg);
 	/* Format the string */
 	PH7_InputFormat(printfConsumer,pCtx,zFormat,nLen,n,(ph7_value **)SySetBasePtr(&sArg),(void *)&nCounter,TRUE);
-	/* Return the length of the outputted string */
-	ph7_result_int64(pCtx,nCounter);
 	/* Release the container */
 	SySetRelease(&sArg);
+	/* Return the length of the outputted string */
+	ph7_result_int64(pCtx,nCounter);
 	return PH7_OK;
 }
 /*
@@ -3846,18 +4056,37 @@ static int PH7_builtin_vsprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_hashmap *pMap;
 	SySet sArg;
 	sxi32 rc = SXRET_OK;
+	sxi32 rcFmt;
 	int nLen,n;
-	if( nArg < 2 || !ph7_value_is_string(apArg[0]) || !ph7_value_is_array(apArg[1]) ){
-		/* Missing/Invalid arguments,return the empty string */
+	if( nArg < 2 ){
+		/* Missing arguments,return the empty string */
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
-	/* Extract the string format */
+	/* PHP 8 checks arguments left-to-right: $format (#1) then $values (#2). */
+	rc = PH7_FormatCheckFormatArg(pCtx,apArg[0],1);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	if( !ph7_value_is_array(apArg[1]) ){
+		/* PHP 8: a non-array $values is a catchable TypeError. */
+		char zBuf[64];
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"vsprintf(): Argument #2 ($values) must be of type array, %s given",
+			VmValueGivenName(apArg[1],zBuf,sizeof(zBuf)));
+	}
+	/* Extract the string format (scalars/null coerce). */
 	zFormat = ph7_value_to_string(apArg[0],&nLen);
 	if( nLen < 1 ){
 		/* Empty string */
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
+	}
+	/* PHP 8: an unknown format specifier throws a catchable ValueError before any
+	 * output; propagate the throw status verbatim. */
+	rcFmt = PH7_FormatValidate(pCtx,zFormat,nLen);
+	if( rcFmt != PH7_OK ){
+		return rcFmt;
 	}
 	/* Point to hashmap */
 	pMap = (ph7_hashmap *)apArg[1]->x.pOther;
