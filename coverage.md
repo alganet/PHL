@@ -1,18 +1,18 @@
 | Filename                       | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
 | src/ph7/api.c                  | 71.47%   | 784/1097    |
-| src/ph7/builtin.c              | 86.74%   | 3761/4336   |
-| src/ph7/builtin_date.c         | 64.81%   | 453/699     |
+| src/ph7/builtin.c              | 85.95%   | 3836/4463   |
+| src/ph7/builtin_date.c         | 66.25%   | 481/726     |
 | src/ph7/builtin_math.c         | 87.12%   | 514/590     |
 | src/ph7/compile.c              | 80.76%   | 6119/7577   |
 | src/ph7/constant.c             | 99.02%   | 1108/1119   |
-| src/ph7/hashmap.c              | 88.04%   | 3739/4247   |
+| src/ph7/hashmap.c              | 89.27%   | 3804/4261   |
 | src/ph7/lex.c                  | 93.23%   | 758/813     |
 | src/ph7/memobj.c               | 89.86%   | 780/868     |
 | src/ph7/net.c                  | 50.48%   | 53/105      |
 | src/ph7/oo.c                   | 90.69%   | 633/698     |
 | src/ph7/parse.c                | 87.10%   | 1148/1318   |
-| src/ph7/vfs.c                  | 64.84%   | 1842/2841   |
+| src/ph7/vfs.c                  | 64.92%   | 1854/2856   |
 | src/ph7/vfs_unix.c             | 88.06%   | 376/427     |
 | src/ph7/vfs_win.c              | 75.43%   | 485/643     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
@@ -22,7 +22,7 @@
 | src/ph7/vm_builtin_ob.c        | 76.21%   | 157/206     |
 | src/ph7/vm_http.c              | 68.02%   | 302/444     |
 | src/ph7/vm_http_response.c     | 44.71%   | 114/255     |
-| src/ph7/vm_json.c              | 75.23%   | 410/545     |
+| src/ph7/vm_json.c              | 76.84%   | 428/557     |
 | src/ph7/vm_pcre.c              | 65.26%   | 605/927     |
 | src/ph7/vm_serialize.c         | 96.54%   | 419/434     |
 | src/ph7/vm_xml.c               | 67.82%   | 392/578     |
@@ -38,12 +38,12 @@
 | src/sx/sxrand.c                | 71.15%   | 74/104      |
 | src/sx/sxstr.c                 | 93.88%   | 92/98       |
 | src/sx/sxtypes.h               | 100.00%  | 16/16       |
-| src/sx/sxutils.c               | 78.65%   | 302/384     |
+| src/sx/sxutils.c               | 78.91%   | 303/384     |
 | src/sx/sxxml.c                 | 68.86%   | 533/774     |
 | src/sx/sxzip.c                 | 73.75%   | 222/301     |
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 80.68%   | 38172/47310 |
-| Functions                      | 96.34%   | 1817/1886   |
+| Lines                          | 80.77%   | 38371/47505 |
+| Functions                      | 96.51%   | 1824/1890   |
 

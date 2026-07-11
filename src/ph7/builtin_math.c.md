@@ -1117,226 +1117,237 @@ Coverage: 514/590 lines (87.12%)
 |    - | 1107 | ` * Return` |
 |    - | 1108 | ` *  The decimal representation of hex_string` |
 |    - | 1109 | ` */` |
-|   20 | 1110 | `PH7_PRIVATE int PH7_builtin_hexdec(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   26 | 1110 | `PH7_PRIVATE int PH7_builtin_hexdec(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 | 1111 | `{` |
 |    - | 1112 | `	const char *zString,*zEnd;` |
 |    - | 1113 | `	ph7_int64 iVal;` |
 |    - | 1114 | `	int nLen;` |
-|   21 | 1115 | `	if( nArg < 1 ){` |
+|   27 | 1115 | `	if( nArg < 1 ){` |
 |    - | 1116 | `		/* Missing arguments,return -1 */` |
 |  ! 0 | 1117 | `		ph7_result_int(pCtx,-1);` |
 |  ! 0 | 1118 | `		return PH7_OK;` |
 |    - | 1119 | `	}` |
-|   21 | 1120 | `	iVal = 0;` |
-|   21 | 1121 | `	if( ph7_value_is_string(apArg[0]) ){` |
-|    - | 1122 | `		/* Extract the given string */` |
-|   15 | 1123 | `		zString = ph7_value_to_string(apArg[0],&nLen);` |
-|    - | 1124 | `		/* Delimit the string */` |
-|   15 | 1125 | `		zEnd = &zString[nLen];` |
-|    - | 1126 | `		/* Ignore non hex-stream */` |
-|   21 | 1127 | `		while( zString < zEnd ){` |
-|   21 | 1128 | `			if( (unsigned char)zString[0] >= 0xc0 ){` |
-|    - | 1129 | `				/* UTF-8 stream */` |
-|    5 | 1130 | `				zString++;` |
-|    9 | 1131 | `				while( zString < zEnd && (((unsigned char)zString[0] & 0xc0) == 0x80) ){` |
-|    5 | 1132 | `					zString++;` |
-|    1 | 1133 | `				}` |
-|    3 | 1134 | `			}else{` |
-|   17 | 1135 | `				if( SyisHex(zString[0]) ){` |
-|   15 | 1136 | `					break;` |
-|    - | 1137 | `				}` |
-|    - | 1138 | `				/* Ignore */` |
-|    3 | 1139 | `				zString++;` |
-|    - | 1140 | `			}` |
-|    1 | 1141 | `		}` |
-|   15 | 1142 | `		if( zString < zEnd ){` |
-|    - | 1143 | `			/* Cast */` |
-|   15 | 1144 | `			SyHexStrToInt64(zString,(sxu32)(zEnd-zString),(void *)&iVal,0);` |
-|    7 | 1145 | `		}` |
-|    8 | 1146 | `	}else{` |
-|    - | 1147 | `		/* Extract as a 64-bit integer */` |
-|    7 | 1148 | `		iVal = ph7_value_to_int64(apArg[0]);` |
-|    - | 1149 | `	}` |
-|    - | 1150 | `	/* Return the number */` |
-|   21 | 1151 | `	ph7_result_int64(pCtx,iVal);` |
-|   21 | 1152 | `	return PH7_OK;` |
-|   11 | 1153 | `}` |
-|    - | 1154 | `/*` |
-|    - | 1155 | ` * int64 bindec(string $bin_string)` |
-|    - | 1156 | ` *  Binary to decimal.` |
-|    - | 1157 | ` * Parameters` |
-|    - | 1158 | ` *  $bin_string` |
-|    - | 1159 | ` *   The binary string to convert` |
-|    - | 1160 | ` * Return` |
-|    - | 1161 | ` *  Returns the decimal equivalent of the binary number represented by the binary_string argument.` |
-|    - | 1162 | ` */` |
-|   10 | 1163 | `PH7_PRIVATE int PH7_builtin_bindec(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 | 1164 | `{` |
-|    - | 1165 | `	const char *zString;` |
-|    - | 1166 | `	ph7_int64 iVal;` |
-|    - | 1167 | `	int nLen;` |
-|   11 | 1168 | `	if( nArg < 1 ){` |
-|    - | 1169 | `		/* Missing arguments,return -1 */` |
-|  ! 0 | 1170 | `		ph7_result_int(pCtx,-1);` |
-|  ! 0 | 1171 | `		return PH7_OK;` |
-|    - | 1172 | `	}` |
-|   11 | 1173 | `	iVal = 0;` |
-|   11 | 1174 | `	if( ph7_value_is_string(apArg[0]) ){` |
-|    - | 1175 | `		/* Extract the given string */` |
-|    9 | 1176 | `		zString = ph7_value_to_string(apArg[0],&nLen);` |
-|    9 | 1177 | `		if( nLen > 0 ){` |
-|    - | 1178 | `			/* Perform a binary cast */` |
-|    7 | 1179 | `			SyBinaryStrToInt64(zString,(sxu32)nLen,(void *)&iVal,0);` |
-|    3 | 1180 | `		}` |
-|    5 | 1181 | `	}else{` |
-|    - | 1182 | `		/* Extract as a 64-bit integer */` |
-|    3 | 1183 | `		iVal = ph7_value_to_int64(apArg[0]);` |
+|   27 | 1120 | `	if( ph7_value_is_array(apArg[0]) \|\| ph7_value_is_object(apArg[0]) \|\| ph7_value_is_resource(apArg[0]) ){` |
+|    - | 1121 | `		/* PHP 8 throws a catchable TypeError for a non-string-coercible argument. */` |
+|    - | 1122 | `		char zBuf[64];` |
+|    7 | 1123 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
+|    - | 1124 | `			"hexdec(): Argument #1 ($hex_string) must be of type string, %s given",` |
+|    2 | 1125 | `			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf)));` |
+|    - | 1126 | `	}` |
+|   23 | 1127 | `	iVal = 0;` |
+|    - | 1128 | ``	/* PHP's `string` ZPP renders scalars/null to their string form and then`` |
+|    - | 1129 | `	 * hex-parses that (hexdec(255) == hexdec("255") == 0x255), so route every` |
+|    - | 1130 | `	 * non-throwing value through ph7_value_to_string rather than reading it as` |
+|    - | 1131 | `	 * a decimal integer. */` |
+|   23 | 1132 | `	zString = ph7_value_to_string(apArg[0],&nLen);` |
+|    - | 1133 | `	/* Delimit the string */` |
+|   23 | 1134 | `	zEnd = &zString[nLen];` |
+|    - | 1135 | `	/* Ignore non hex-stream */` |
+|   29 | 1136 | `	while( zString < zEnd ){` |
+|   29 | 1137 | `		if( (unsigned char)zString[0] >= 0xc0 ){` |
+|    - | 1138 | `			/* UTF-8 stream */` |
+|    5 | 1139 | `			zString++;` |
+|    9 | 1140 | `			while( zString < zEnd && (((unsigned char)zString[0] & 0xc0) == 0x80) ){` |
+|    5 | 1141 | `				zString++;` |
+|    1 | 1142 | `			}` |
+|    3 | 1143 | `		}else{` |
+|   25 | 1144 | `			if( SyisHex(zString[0]) ){` |
+|   23 | 1145 | `				break;` |
+|    - | 1146 | `			}` |
+|    - | 1147 | `			/* Ignore */` |
+|    3 | 1148 | `			zString++;` |
+|    - | 1149 | `		}` |
+|    1 | 1150 | `	}` |
+|   23 | 1151 | `	if( zString < zEnd ){` |
+|    - | 1152 | `		/* Cast */` |
+|   23 | 1153 | `		SyHexStrToInt64(zString,(sxu32)(zEnd-zString),(void *)&iVal,0);` |
+|   11 | 1154 | `	}` |
+|    - | 1155 | `	/* Return the number */` |
+|   23 | 1156 | `	ph7_result_int64(pCtx,iVal);` |
+|   23 | 1157 | `	return PH7_OK;` |
+|   14 | 1158 | `}` |
+|    - | 1159 | `/*` |
+|    - | 1160 | ` * int64 bindec(string $bin_string)` |
+|    - | 1161 | ` *  Binary to decimal.` |
+|    - | 1162 | ` * Parameters` |
+|    - | 1163 | ` *  $bin_string` |
+|    - | 1164 | ` *   The binary string to convert` |
+|    - | 1165 | ` * Return` |
+|    - | 1166 | ` *  Returns the decimal equivalent of the binary number represented by the binary_string argument.` |
+|    - | 1167 | ` */` |
+|   18 | 1168 | `PH7_PRIVATE int PH7_builtin_bindec(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1 | 1169 | `{` |
+|    - | 1170 | `	const char *zString;` |
+|    - | 1171 | `	ph7_int64 iVal;` |
+|    - | 1172 | `	int nLen;` |
+|   19 | 1173 | `	if( nArg < 1 ){` |
+|    - | 1174 | `		/* Missing arguments,return -1 */` |
+|  ! 0 | 1175 | `		ph7_result_int(pCtx,-1);` |
+|  ! 0 | 1176 | `		return PH7_OK;` |
+|    - | 1177 | `	}` |
+|   19 | 1178 | `	if( ph7_value_is_array(apArg[0]) \|\| ph7_value_is_object(apArg[0]) \|\| ph7_value_is_resource(apArg[0]) ){` |
+|    - | 1179 | `		/* PHP 8 throws a catchable TypeError for a non-string-coercible argument. */` |
+|    - | 1180 | `		char zBuf[64];` |
+|    7 | 1181 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
+|    - | 1182 | `			"bindec(): Argument #1 ($binary_string) must be of type string, %s given",` |
+|    2 | 1183 | `			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf)));` |
 |    - | 1184 | `	}` |
-|    - | 1185 | `	/* Return the number */` |
-|   11 | 1186 | `	ph7_result_int64(pCtx,iVal);` |
-|   11 | 1187 | `	return PH7_OK;` |
-|    6 | 1188 | `}` |
-|    - | 1189 | `/*` |
-|    - | 1190 | ` * int64 octdec(string $oct_string)` |
-|    - | 1191 | ` *  Octal to decimal.` |
-|    - | 1192 | ` * Parameters` |
-|    - | 1193 | ` *  $oct_string` |
-|    - | 1194 | ` *   The octal string to convert` |
-|    - | 1195 | ` * Return` |
-|    - | 1196 | ` *  Returns the decimal equivalent of the octal number represented by the octal_string argument.` |
-|    - | 1197 | ` */` |
-|    4 | 1198 | `PH7_PRIVATE int PH7_builtin_octdec(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 | 1199 | `{` |
-|    - | 1200 | `	const char *zString;` |
-|    - | 1201 | `	ph7_int64 iVal;` |
-|    - | 1202 | `	int nLen;` |
-|    5 | 1203 | `	if( nArg < 1 ){` |
-|    - | 1204 | `		/* Missing arguments,return -1 */` |
-|  ! 0 | 1205 | `		ph7_result_int(pCtx,-1);` |
-|  ! 0 | 1206 | `		return PH7_OK;` |
-|    - | 1207 | `	}` |
-|    5 | 1208 | `	iVal = 0;` |
-|    5 | 1209 | `	if( ph7_value_is_string(apArg[0]) ){` |
-|    - | 1210 | `		/* Extract the given string */` |
-|    3 | 1211 | `		zString = ph7_value_to_string(apArg[0],&nLen);` |
-|    3 | 1212 | `		if( nLen > 0 ){` |
-|    - | 1213 | `			/* Perform the cast */` |
-|    3 | 1214 | `			SyOctalStrToInt64(zString,(sxu32)nLen,(void *)&iVal,0);` |
-|    1 | 1215 | `		}` |
-|    2 | 1216 | `	}else{` |
-|    - | 1217 | `		/* Extract as a 64-bit integer */` |
-|    3 | 1218 | `		iVal = ph7_value_to_int64(apArg[0]);` |
-|    - | 1219 | `	}` |
-|    - | 1220 | `	/* Return the number */` |
-|    5 | 1221 | `	ph7_result_int64(pCtx,iVal);` |
-|    5 | 1222 | `	return PH7_OK;` |
-|    3 | 1223 | `}` |
-|    - | 1224 | `/*` |
-|    - | 1225 | ` * srand([int $seed])` |
-|    - | 1226 | ` * mt_srand([int $seed])` |
-|    - | 1227 | ` *  Seed the random number generator.` |
-|    - | 1228 | ` * Parameters` |
-|    - | 1229 | ` * $seed` |
-|    - | 1230 | ` *  Optional seed value` |
-|    - | 1231 | ` * Return` |
-|    - | 1232 | ` *  null.` |
-|    - | 1233 | ` * Note:` |
-|    - | 1234 | ` *  THIS FUNCTION IS A NO-OP.` |
-|    - | 1235 | ` *  THE PH7 PRNG IS AUTOMATICALLY SEEDED WHEN THE VM IS CREATED.` |
-|    - | 1236 | ` */` |
-|   20 | 1237 | `PH7_PRIVATE int PH7_builtin_srand(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 | 1238 | `{` |
-|   10 | 1239 | `	SXUNUSED(nArg);` |
-|   10 | 1240 | `	SXUNUSED(apArg);` |
-|   21 | 1241 | `	ph7_result_null(pCtx);` |
-|   21 | 1242 | `	return PH7_OK;` |
-|    1 | 1243 | `}` |
-|    - | 1244 | `#ifndef PH7_DISABLE_DISK_IO` |
-|    - | 1245 | `/*` |
-|    - | 1246 | ` * string base_convert(string $number,int $frombase,int $tobase)` |
-|    - | 1247 | ` *  Convert a number between arbitrary bases.` |
-|    - | 1248 | ` * Parameters` |
-|    - | 1249 | ` * $number` |
-|    - | 1250 | ` *  The number to convert` |
-|    - | 1251 | ` * $frombase` |
-|    - | 1252 | ` *  The base number is in` |
-|    - | 1253 | ` * $tobase` |
-|    - | 1254 | ` *  The base to convert number to` |
-|    - | 1255 | ` * Return` |
-|    - | 1256 | ` *  Number converted to base tobase` |
-|    - | 1257 | ` */` |
-|   58 | 1258 | `PH7_PRIVATE int PH7_builtin_base_convert(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 | 1259 | `{` |
-|    - | 1260 | `	static const char zDigits[] = "0123456789abcdefghijklmnopqrstuvwxyz";` |
-|    - | 1261 | `	int nLen,iFbase,iTobase,i;` |
-|    - | 1262 | `	ph7_int64 iFbase64,iTobase64;` |
-|    - | 1263 | `	const char *zNum;` |
-|   59 | 1264 | `	sxu64 uNum = 0;` |
-|   59 | 1265 | `	if( nArg < 3 ){` |
-|    - | 1266 | `		/* Return the empty string*/` |
-|  ! 0 | 1267 | `		ph7_result_string(pCtx,"",0);` |
-|  ! 0 | 1268 | `		return PH7_OK;` |
-|    - | 1269 | `	}` |
-|    - | 1270 | `	/* Base numbers. Read them as 64-bit so an out-of-range base can't wrap through` |
-|    - | 1271 | `	 * a 32-bit truncation back into the 2..36 window and bypass the check below. */` |
-|   59 | 1272 | `	iFbase64 = ph7_value_to_int64(apArg[1]);` |
-|   59 | 1273 | `	iTobase64 = ph7_value_to_int64(apArg[2]);` |
-|    - | 1274 | `	/* PHP 8 throws a catchable ValueError for a base outside 2..36; from_base` |
-|    - | 1275 | `	 * is validated before to_base, both before the string is even parsed. */` |
-|   59 | 1276 | `	if( iFbase64 < 2 \|\| iFbase64 > 36 ){` |
-|    7 | 1277 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
-|    - | 1278 | `			"base_convert(): Argument #2 ($from_base) must be between 2 and 36 (inclusive)");` |
-|    - | 1279 | `	}` |
-|   53 | 1280 | `	if( iTobase64 < 2 \|\| iTobase64 > 36 ){` |
-|    5 | 1281 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
-|    - | 1282 | `			"base_convert(): Argument #3 ($to_base) must be between 2 and 36 (inclusive)");` |
-|    - | 1283 | `	}` |
-|    - | 1284 | `	/* Both bases are now known to fit in [2,36], so the int form is exact. */` |
-|   49 | 1285 | `	iFbase  = (int)iFbase64;` |
-|   49 | 1286 | `	iTobase = (int)iTobase64;` |
-|    - | 1287 | `	/* Parse the input number in from_base. Every base is handled the same way:` |
-|    - | 1288 | `	 * digits 0-9 then a-z/A-Z map to 0-35; a character that is not a valid digit` |
-|    - | 1289 | `	 * for from_base is ignored (PHP additionally raises an E_DEPRECATED for the` |
-|    - | 1290 | `	 * ignored characters — not yet emitted, see PLAN §3.1). */` |
-|   49 | 1291 | `	zNum = ph7_value_to_string(apArg[0],&nLen);` |
-|  147 | 1292 | `	for( i = 0 ; i < nLen ; ++i ){` |
-|   99 | 1293 | `		int c = (unsigned char)zNum[i];` |
-|    - | 1294 | `		int d;` |
-|   99 | 1295 | `		if( c >= '0' && c <= '9' ){` |
-|   73 | 1296 | `			d = c - '0';` |
-|   63 | 1297 | `		}else if( c >= 'a' && c <= 'z' ){` |
-|   25 | 1298 | `			d = c - 'a' + 10;` |
-|   15 | 1299 | `		}else if( c >= 'A' && c <= 'Z' ){` |
-|    3 | 1300 | `			d = c - 'A' + 10;` |
-|    2 | 1301 | `		}else{` |
-|  ! 0 | 1302 | `			d = 99;` |
-|    - | 1303 | `		}` |
-|   99 | 1304 | `		if( d >= iFbase ){` |
-|    - | 1305 | `			/* Not a valid digit for this base: skip it (PHP). */` |
-|    3 | 1306 | `			continue;` |
-|    - | 1307 | `		}` |
-|   97 | 1308 | `		uNum = uNum * (sxu64)iFbase + (sxu64)d;` |
-|   49 | 1309 | `	}` |
-|    - | 1310 | `	/* Format the result in to_base using lowercase digits. */` |
-|   49 | 1311 | `	if( uNum == 0 ){` |
-|    9 | 1312 | `		ph7_result_string(pCtx,"0",1);` |
-|    5 | 1313 | `	}else{` |
-|    - | 1314 | `		char zOut[70]; /* base-2 of a 64-bit value fits in 64 digits */` |
-|   41 | 1315 | `		int n = 0,j;` |
-|  133 | 1316 | `		while( uNum > 0 ){` |
-|   93 | 1317 | `			zOut[n++] = zDigits[uNum % (sxu64)iTobase];` |
-|   93 | 1318 | `			uNum /= (sxu64)iTobase;` |
-|    1 | 1319 | `		}` |
-|    - | 1320 | `		/* Digits were produced least-significant first: reverse in place. */` |
-|   79 | 1321 | `		for( j = 0 ; j < n/2 ; ++j ){` |
-|   39 | 1322 | `			char t = zOut[j];` |
-|   39 | 1323 | `			zOut[j] = zOut[n - 1 - j];` |
-|   39 | 1324 | `			zOut[n - 1 - j] = t;` |
-|   20 | 1325 | `		}` |
-|   41 | 1326 | `		ph7_result_string(pCtx,zOut,n);` |
-|    - | 1327 | `	}` |
-|   49 | 1328 | `	return PH7_OK;` |
-|   30 | 1329 | `}` |
-|    - | 1330 | `#endif /* PH7_DISABLE_DISK_IO */` |
-|    - | 1331 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
-|    - | 1332 |  |
+|   15 | 1185 | `	iVal = 0;` |
+|    - | 1186 | ``	/* PHP's `string` ZPP renders scalars/null to their string form and then`` |
+|    - | 1187 | `	 * binary-parses that (bindec(11) == bindec("11") == 3). */` |
+|   15 | 1188 | `	zString = ph7_value_to_string(apArg[0],&nLen);` |
+|   15 | 1189 | `	if( nLen > 0 ){` |
+|    - | 1190 | `		/* Perform a binary cast */` |
+|   13 | 1191 | `		SyBinaryStrToInt64(zString,(sxu32)nLen,(void *)&iVal,0);` |
+|    6 | 1192 | `	}` |
+|    - | 1193 | `	/* Return the number */` |
+|   15 | 1194 | `	ph7_result_int64(pCtx,iVal);` |
+|   15 | 1195 | `	return PH7_OK;` |
+|   10 | 1196 | `}` |
+|    - | 1197 | `/*` |
+|    - | 1198 | ` * int64 octdec(string $oct_string)` |
+|    - | 1199 | ` *  Octal to decimal.` |
+|    - | 1200 | ` * Parameters` |
+|    - | 1201 | ` *  $oct_string` |
+|    - | 1202 | ` *   The octal string to convert` |
+|    - | 1203 | ` * Return` |
+|    - | 1204 | ` *  Returns the decimal equivalent of the octal number represented by the octal_string argument.` |
+|    - | 1205 | ` */` |
+|   14 | 1206 | `PH7_PRIVATE int PH7_builtin_octdec(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1 | 1207 | `{` |
+|    - | 1208 | `	const char *zString;` |
+|    - | 1209 | `	ph7_int64 iVal;` |
+|    - | 1210 | `	int nLen;` |
+|   15 | 1211 | `	if( nArg < 1 ){` |
+|    - | 1212 | `		/* Missing arguments,return -1 */` |
+|  ! 0 | 1213 | `		ph7_result_int(pCtx,-1);` |
+|  ! 0 | 1214 | `		return PH7_OK;` |
+|    - | 1215 | `	}` |
+|   15 | 1216 | `	if( ph7_value_is_array(apArg[0]) \|\| ph7_value_is_object(apArg[0]) \|\| ph7_value_is_resource(apArg[0]) ){` |
+|    - | 1217 | `		/* PHP 8 throws a catchable TypeError for a non-string-coercible argument. */` |
+|    - | 1218 | `		char zBuf[64];` |
+|    7 | 1219 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
+|    - | 1220 | `			"octdec(): Argument #1 ($octal_string) must be of type string, %s given",` |
+|    2 | 1221 | `			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf)));` |
+|    - | 1222 | `	}` |
+|   11 | 1223 | `	iVal = 0;` |
+|    - | 1224 | ``	/* PHP's `string` ZPP renders scalars/null to their string form and then`` |
+|    - | 1225 | `	 * octal-parses that (octdec(11) == octdec("11") == 9). */` |
+|   11 | 1226 | `	zString = ph7_value_to_string(apArg[0],&nLen);` |
+|   11 | 1227 | `	if( nLen > 0 ){` |
+|    - | 1228 | `		/* Perform the cast */` |
+|   11 | 1229 | `		SyOctalStrToInt64(zString,(sxu32)nLen,(void *)&iVal,0);` |
+|    5 | 1230 | `	}` |
+|    - | 1231 | `	/* Return the number */` |
+|   11 | 1232 | `	ph7_result_int64(pCtx,iVal);` |
+|   11 | 1233 | `	return PH7_OK;` |
+|    8 | 1234 | `}` |
+|    - | 1235 | `/*` |
+|    - | 1236 | ` * srand([int $seed])` |
+|    - | 1237 | ` * mt_srand([int $seed])` |
+|    - | 1238 | ` *  Seed the random number generator.` |
+|    - | 1239 | ` * Parameters` |
+|    - | 1240 | ` * $seed` |
+|    - | 1241 | ` *  Optional seed value` |
+|    - | 1242 | ` * Return` |
+|    - | 1243 | ` *  null.` |
+|    - | 1244 | ` * Note:` |
+|    - | 1245 | ` *  THIS FUNCTION IS A NO-OP.` |
+|    - | 1246 | ` *  THE PH7 PRNG IS AUTOMATICALLY SEEDED WHEN THE VM IS CREATED.` |
+|    - | 1247 | ` */` |
+|   20 | 1248 | `PH7_PRIVATE int PH7_builtin_srand(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1 | 1249 | `{` |
+|   10 | 1250 | `	SXUNUSED(nArg);` |
+|   10 | 1251 | `	SXUNUSED(apArg);` |
+|   21 | 1252 | `	ph7_result_null(pCtx);` |
+|   21 | 1253 | `	return PH7_OK;` |
+|    1 | 1254 | `}` |
+|    - | 1255 | `#ifndef PH7_DISABLE_DISK_IO` |
+|    - | 1256 | `/*` |
+|    - | 1257 | ` * string base_convert(string $number,int $frombase,int $tobase)` |
+|    - | 1258 | ` *  Convert a number between arbitrary bases.` |
+|    - | 1259 | ` * Parameters` |
+|    - | 1260 | ` * $number` |
+|    - | 1261 | ` *  The number to convert` |
+|    - | 1262 | ` * $frombase` |
+|    - | 1263 | ` *  The base number is in` |
+|    - | 1264 | ` * $tobase` |
+|    - | 1265 | ` *  The base to convert number to` |
+|    - | 1266 | ` * Return` |
+|    - | 1267 | ` *  Number converted to base tobase` |
+|    - | 1268 | ` */` |
+|   58 | 1269 | `PH7_PRIVATE int PH7_builtin_base_convert(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1 | 1270 | `{` |
+|    - | 1271 | `	static const char zDigits[] = "0123456789abcdefghijklmnopqrstuvwxyz";` |
+|    - | 1272 | `	int nLen,iFbase,iTobase,i;` |
+|    - | 1273 | `	ph7_int64 iFbase64,iTobase64;` |
+|    - | 1274 | `	const char *zNum;` |
+|   59 | 1275 | `	sxu64 uNum = 0;` |
+|   59 | 1276 | `	if( nArg < 3 ){` |
+|    - | 1277 | `		/* Return the empty string*/` |
+|  ! 0 | 1278 | `		ph7_result_string(pCtx,"",0);` |
+|  ! 0 | 1279 | `		return PH7_OK;` |
+|    - | 1280 | `	}` |
+|    - | 1281 | `	/* Base numbers. Read them as 64-bit so an out-of-range base can't wrap through` |
+|    - | 1282 | `	 * a 32-bit truncation back into the 2..36 window and bypass the check below. */` |
+|   59 | 1283 | `	iFbase64 = ph7_value_to_int64(apArg[1]);` |
+|   59 | 1284 | `	iTobase64 = ph7_value_to_int64(apArg[2]);` |
+|    - | 1285 | `	/* PHP 8 throws a catchable ValueError for a base outside 2..36; from_base` |
+|    - | 1286 | `	 * is validated before to_base, both before the string is even parsed. */` |
+|   59 | 1287 | `	if( iFbase64 < 2 \|\| iFbase64 > 36 ){` |
+|    7 | 1288 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
+|    - | 1289 | `			"base_convert(): Argument #2 ($from_base) must be between 2 and 36 (inclusive)");` |
+|    - | 1290 | `	}` |
+|   53 | 1291 | `	if( iTobase64 < 2 \|\| iTobase64 > 36 ){` |
+|    5 | 1292 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
+|    - | 1293 | `			"base_convert(): Argument #3 ($to_base) must be between 2 and 36 (inclusive)");` |
+|    - | 1294 | `	}` |
+|    - | 1295 | `	/* Both bases are now known to fit in [2,36], so the int form is exact. */` |
+|   49 | 1296 | `	iFbase  = (int)iFbase64;` |
+|   49 | 1297 | `	iTobase = (int)iTobase64;` |
+|    - | 1298 | `	/* Parse the input number in from_base. Every base is handled the same way:` |
+|    - | 1299 | `	 * digits 0-9 then a-z/A-Z map to 0-35; a character that is not a valid digit` |
+|    - | 1300 | `	 * for from_base is ignored (PHP additionally raises an E_DEPRECATED for the` |
+|    - | 1301 | `	 * ignored characters — not yet emitted, see PLAN §3.1). */` |
+|   49 | 1302 | `	zNum = ph7_value_to_string(apArg[0],&nLen);` |
+|  147 | 1303 | `	for( i = 0 ; i < nLen ; ++i ){` |
+|   99 | 1304 | `		int c = (unsigned char)zNum[i];` |
+|    - | 1305 | `		int d;` |
+|   99 | 1306 | `		if( c >= '0' && c <= '9' ){` |
+|   73 | 1307 | `			d = c - '0';` |
+|   63 | 1308 | `		}else if( c >= 'a' && c <= 'z' ){` |
+|   25 | 1309 | `			d = c - 'a' + 10;` |
+|   15 | 1310 | `		}else if( c >= 'A' && c <= 'Z' ){` |
+|    3 | 1311 | `			d = c - 'A' + 10;` |
+|    2 | 1312 | `		}else{` |
+|  ! 0 | 1313 | `			d = 99;` |
+|    - | 1314 | `		}` |
+|   99 | 1315 | `		if( d >= iFbase ){` |
+|    - | 1316 | `			/* Not a valid digit for this base: skip it (PHP). */` |
+|    3 | 1317 | `			continue;` |
+|    - | 1318 | `		}` |
+|   97 | 1319 | `		uNum = uNum * (sxu64)iFbase + (sxu64)d;` |
+|   49 | 1320 | `	}` |
+|    - | 1321 | `	/* Format the result in to_base using lowercase digits. */` |
+|   49 | 1322 | `	if( uNum == 0 ){` |
+|    9 | 1323 | `		ph7_result_string(pCtx,"0",1);` |
+|    5 | 1324 | `	}else{` |
+|    - | 1325 | `		char zOut[70]; /* base-2 of a 64-bit value fits in 64 digits */` |
+|   41 | 1326 | `		int n = 0,j;` |
+|  133 | 1327 | `		while( uNum > 0 ){` |
+|   93 | 1328 | `			zOut[n++] = zDigits[uNum % (sxu64)iTobase];` |
+|   93 | 1329 | `			uNum /= (sxu64)iTobase;` |
+|    1 | 1330 | `		}` |
+|    - | 1331 | `		/* Digits were produced least-significant first: reverse in place. */` |
+|   79 | 1332 | `		for( j = 0 ; j < n/2 ; ++j ){` |
+|   39 | 1333 | `			char t = zOut[j];` |
+|   39 | 1334 | `			zOut[j] = zOut[n - 1 - j];` |
+|   39 | 1335 | `			zOut[n - 1 - j] = t;` |
+|   20 | 1336 | `		}` |
+|   41 | 1337 | `		ph7_result_string(pCtx,zOut,n);` |
+|    - | 1338 | `	}` |
+|   49 | 1339 | `	return PH7_OK;` |
+|   30 | 1340 | `}` |
+|    - | 1341 | `#endif /* PH7_DISABLE_DISK_IO */` |
+|    - | 1342 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
+|    - | 1343 |  |
