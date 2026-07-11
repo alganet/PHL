@@ -2,22 +2,20 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-bindec with numeric argument
---SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+bindec coerces a non-string scalar via its string form (PHP `string` ZPP)
 --FILE--
 <?php
-// Test bindec with numeric argument (covers uncovered line 1003)
-$result1 = bindec(15);
-echo "bindec(15): " . $result1 . "\n";
-
-// Test bindec with string (normal case)
-$result2 = bindec("1010");
-echo "bindec('1010'): " . $result2 . "\n";
+// PHP renders a non-string scalar to its string form and binary-parses THAT,
+// so bindec(101) == bindec("101") == 5 (not the decimal 101).
+var_dump(bindec(101));
+var_dump(bindec(1010));
+var_dump(bindec("1010"));
+var_dump(bindec(true));
 ?>
 --EXPECT--
-bindec(15): 15
-bindec('1010'): 10
+int(5)
+int(10)
+int(10)
+int(1)
 --CLEAN--
 <?php
-unset($result1, $result2);
