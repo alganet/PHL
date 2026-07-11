@@ -1117,35 +1117,40 @@ PH7_PRIVATE int PH7_builtin_hexdec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_int(pCtx,-1);
 		return PH7_OK;
 	}
+	if( ph7_value_is_array(apArg[0]) || ph7_value_is_object(apArg[0]) || ph7_value_is_resource(apArg[0]) ){
+		/* PHP 8 throws a catchable TypeError for a non-string-coercible argument. */
+		char zBuf[64];
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"hexdec(): Argument #1 ($hex_string) must be of type string, %s given",
+			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf)));
+	}
 	iVal = 0;
-	if( ph7_value_is_string(apArg[0]) ){
-		/* Extract the given string */
-		zString = ph7_value_to_string(apArg[0],&nLen);
-		/* Delimit the string */
-		zEnd = &zString[nLen];
-		/* Ignore non hex-stream */
-		while( zString < zEnd ){
-			if( (unsigned char)zString[0] >= 0xc0 ){
-				/* UTF-8 stream */
-				zString++;
-				while( zString < zEnd && (((unsigned char)zString[0] & 0xc0) == 0x80) ){
-					zString++;
-				}
-			}else{
-				if( SyisHex(zString[0]) ){
-					break;
-				}
-				/* Ignore */
+	/* PHP's `string` ZPP renders scalars/null to their string form and then
+	 * hex-parses that (hexdec(255) == hexdec("255") == 0x255), so route every
+	 * non-throwing value through ph7_value_to_string rather than reading it as
+	 * a decimal integer. */
+	zString = ph7_value_to_string(apArg[0],&nLen);
+	/* Delimit the string */
+	zEnd = &zString[nLen];
+	/* Ignore non hex-stream */
+	while( zString < zEnd ){
+		if( (unsigned char)zString[0] >= 0xc0 ){
+			/* UTF-8 stream */
+			zString++;
+			while( zString < zEnd && (((unsigned char)zString[0] & 0xc0) == 0x80) ){
 				zString++;
 			}
+		}else{
+			if( SyisHex(zString[0]) ){
+				break;
+			}
+			/* Ignore */
+			zString++;
 		}
-		if( zString < zEnd ){
-			/* Cast */
-			SyHexStrToInt64(zString,(sxu32)(zEnd-zString),(void *)&iVal,0);
-		}
-	}else{
-		/* Extract as a 64-bit integer */
-		iVal = ph7_value_to_int64(apArg[0]);
+	}
+	if( zString < zEnd ){
+		/* Cast */
+		SyHexStrToInt64(zString,(sxu32)(zEnd-zString),(void *)&iVal,0);
 	}
 	/* Return the number */
 	ph7_result_int64(pCtx,iVal);
@@ -1170,17 +1175,20 @@ PH7_PRIVATE int PH7_builtin_bindec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_int(pCtx,-1);
 		return PH7_OK;
 	}
+	if( ph7_value_is_array(apArg[0]) || ph7_value_is_object(apArg[0]) || ph7_value_is_resource(apArg[0]) ){
+		/* PHP 8 throws a catchable TypeError for a non-string-coercible argument. */
+		char zBuf[64];
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"bindec(): Argument #1 ($binary_string) must be of type string, %s given",
+			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf)));
+	}
 	iVal = 0;
-	if( ph7_value_is_string(apArg[0]) ){
-		/* Extract the given string */
-		zString = ph7_value_to_string(apArg[0],&nLen);
-		if( nLen > 0 ){
-			/* Perform a binary cast */
-			SyBinaryStrToInt64(zString,(sxu32)nLen,(void *)&iVal,0);
-		}
-	}else{
-		/* Extract as a 64-bit integer */
-		iVal = ph7_value_to_int64(apArg[0]);
+	/* PHP's `string` ZPP renders scalars/null to their string form and then
+	 * binary-parses that (bindec(11) == bindec("11") == 3). */
+	zString = ph7_value_to_string(apArg[0],&nLen);
+	if( nLen > 0 ){
+		/* Perform a binary cast */
+		SyBinaryStrToInt64(zString,(sxu32)nLen,(void *)&iVal,0);
 	}
 	/* Return the number */
 	ph7_result_int64(pCtx,iVal);
@@ -1205,17 +1213,20 @@ PH7_PRIVATE int PH7_builtin_octdec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_int(pCtx,-1);
 		return PH7_OK;
 	}
+	if( ph7_value_is_array(apArg[0]) || ph7_value_is_object(apArg[0]) || ph7_value_is_resource(apArg[0]) ){
+		/* PHP 8 throws a catchable TypeError for a non-string-coercible argument. */
+		char zBuf[64];
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"octdec(): Argument #1 ($octal_string) must be of type string, %s given",
+			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf)));
+	}
 	iVal = 0;
-	if( ph7_value_is_string(apArg[0]) ){
-		/* Extract the given string */
-		zString = ph7_value_to_string(apArg[0],&nLen);
-		if( nLen > 0 ){
-			/* Perform the cast */
-			SyOctalStrToInt64(zString,(sxu32)nLen,(void *)&iVal,0);
-		}
-	}else{
-		/* Extract as a 64-bit integer */
-		iVal = ph7_value_to_int64(apArg[0]);
+	/* PHP's `string` ZPP renders scalars/null to their string form and then
+	 * octal-parses that (octdec(11) == octdec("11") == 9). */
+	zString = ph7_value_to_string(apArg[0],&nLen);
+	if( nLen > 0 ){
+		/* Perform the cast */
+		SyOctalStrToInt64(zString,(sxu32)nLen,(void *)&iVal,0);
 	}
 	/* Return the number */
 	ph7_result_int64(pCtx,iVal);
