@@ -1345,6 +1345,14 @@ PH7_PRIVATE int PH7_builtin_mktime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	time_t t;
 	/* Extract function name */
 	zFunction = ph7_function_name(pCtx);
+	/* PHP 8 dropped the legacy $is_dst 7th parameter: mktime()/gmmktime() now
+	 * accept at most 6 arguments and throw a catchable ArgumentCountError
+	 * otherwise (the central aBuiltinArity table only enforces the minimum, so
+	 * this maximum is checked here). */
+	if( nArg > 6 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"%s() expects at most 6 arguments, %d given",zFunction,nArg);
+	}
 	/* Get the current time */
 	time(&t);
 	if( zFunction[0] == 'g' /* gmmktime */ ){
@@ -1381,11 +1389,6 @@ PH7_PRIVATE int PH7_builtin_mktime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 								iTmp -= 1900;
 							}
 							pTm->tm_year = iTmp;
-							if( nArg > 6 ){
-								/* is_dst */
-								iTmp = ph7_value_to_bool(apArg[6]);
-								pTm->tm_isdst = iTmp;
-							}
 						}
 					}
 				}
