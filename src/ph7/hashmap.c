@@ -6737,10 +6737,11 @@ static int ph7_hashmap_rand(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* php 8: $array must be an array (TypeError, not a silent NULL return) */
 	if( !ph7_value_is_array(apArg[0]) ){
+		char zBuf[64];
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_rand(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf))
 			);
 	}
 	/* php validates $num (and weak-coerces it) BEFORE the empty-array body
@@ -6749,10 +6750,11 @@ static int ph7_hashmap_rand(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_value *pNum = apArg[1];
 		if( ph7_value_is_array(pNum) || ph7_value_is_object(pNum)
 			|| ph7_value_is_resource(pNum) ){
+			char zBuf[64];
 			return PH7_VmThrowException(pCtx,
 				"TypeError",
 				"array_rand(): Argument #2 ($num) must be of type int, %s given",
-				ph7_type_name(pNum)
+				VmValueGivenName(pNum,zBuf,sizeof(zBuf))
 				);
 		}
 		if( ph7_value_is_string(pNum) ){
@@ -7205,10 +7207,19 @@ static int ph7_hashmap_filter(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	sxi32 rc;
 	int keep;
 	sxu32 n;
-	if( nArg < 1 || !ph7_value_is_array(apArg[0]) ){
-		/* Invalid arguments,return NULL */
+	if( nArg < 1 ){
+		/* Missing argument (arity is enforced upstream; defensive) */
 		ph7_result_null(pCtx);
 		return PH7_OK;
+	}
+	/* php 8: $array must be an array (TypeError, not a silent NULL return) */
+	if( !ph7_value_is_array(apArg[0]) ){
+		char zBuf[64];
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_filter(): Argument #1 ($array) must be of type array, %s given",
+			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf))
+			);
 	}
 	/* Create a new array */
 	pArray = ph7_context_new_array(pCtx);

@@ -20,9 +20,13 @@ echo ar_probe(fn() => array_rand([], 5)), "\n";
 echo ar_probe(fn() => array_rand([1, 2, 3], 0)), "\n";
 echo ar_probe(fn() => array_rand([1, 2, 3], -1)), "\n";
 echo ar_probe(fn() => array_rand([1, 2, 3], 4)), "\n";
-// wrong types -> TypeError
+// wrong types -> TypeError. The value name follows php's convention
+// (true/false for bools, the class name for objects), not "bool"/"object".
 echo ar_probe(fn() => array_rand("x")), "\n";
+echo ar_probe(fn() => array_rand(true)), "\n";
+echo ar_probe(fn() => array_rand(false)), "\n";
 echo ar_probe(fn() => array_rand([1, 2, 3], [])), "\n";
+echo ar_probe(fn() => array_rand([1, 2, 3], new stdClass)), "\n";
 echo ar_probe(fn() => array_rand([1, 2, 3], "abc")), "\n";
 // a leading-numeric-junk / non-numeric-base string $num is a TypeError, not a
 // silent coercion of its numeric prefix
@@ -48,7 +52,10 @@ ValueError: array_rand(): Argument #2 ($num) must be between 1 and the number of
 ValueError: array_rand(): Argument #2 ($num) must be between 1 and the number of elements in argument #1 ($array)
 ValueError: array_rand(): Argument #2 ($num) must be between 1 and the number of elements in argument #1 ($array)
 TypeError: array_rand(): Argument #1 ($array) must be of type array, string given
+TypeError: array_rand(): Argument #1 ($array) must be of type array, true given
+TypeError: array_rand(): Argument #1 ($array) must be of type array, false given
 TypeError: array_rand(): Argument #2 ($num) must be of type int, array given
+TypeError: array_rand(): Argument #2 ($num) must be of type int, stdClass given
 TypeError: array_rand(): Argument #2 ($num) must be of type int, string given
 TypeError: array_rand(): Argument #2 ($num) must be of type int, string given
 TypeError: array_rand(): Argument #2 ($num) must be of type int, string given
