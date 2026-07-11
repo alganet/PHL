@@ -2198,26 +2198,35 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
 	 " }"\
 	 " return $ret;"\
     "}"\
+	/* __php_zpp_type: php's ZPP value-name for TypeError messages */\
+	"function __php_zpp_type($v){"\
+	" if( is_object($v) ){ return get_class($v); }"\
+	" if( is_int($v) ){ return 'int'; }"\
+	" if( is_float($v) ){ return 'float'; }"\
+	" if( is_string($v) ){ return 'string'; }"\
+	" if( is_bool($v) ){ return $v ? 'true' : 'false'; }"\
+	" if( is_null($v) ){ return 'null'; }"\
+	" if( is_array($v) ){ return 'array'; }"\
+	" if( is_resource($v) ){ return 'resource'; }"\
+	" return 'mixed';"\
+	"}"\
 	"function max(){"\
     "  $pArgs = func_get_args();"\
     " if( sizeof($pArgs) < 1 ){"\
-	"  return null;"\
+	"  throw new ArgumentCountError('max() expects at least 1 argument, 0 given');"\
     " }"\
     " if( sizeof($pArgs) < 2 ){"\
     " $pArg = $pArgs[0];"\
 	" if( !is_array($pArg) ){"\
-	"   return $pArg; "\
+	"   throw new TypeError('max(): Argument #1 ($value) must be of type array, ' . __php_zpp_type($pArg) . ' given');"\
 	" }"\
 	" if( sizeof($pArg) < 1 ){"\
-	"   return null;"\
+	"   throw new ValueError('max(): Argument #1 ($value) must contain at least one element');"\
 	" }"\
-	" $pArg = array_copy($pArgs[0]);"\
-	" reset($pArg);"\
-	" $max = current($pArg);"\
-	" while( FALSE !== ($val = next($pArg)) ){"\
-	"   if( $val > $max ){"\
-	"     $max = $val;"\
-    " }"\
+	" $max = null; $first = true;"\
+	" foreach( $pArgs[0] as $val ){"\
+	"   if( $first ){ $max = $val; $first = false; }"\
+	"   else if( $val > $max ){ $max = $val; }"\
 	" }"\
 	" return $max;"\
     " }"\
@@ -2233,23 +2242,20 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
 	"function min(){"\
     "  $pArgs = func_get_args();"\
     " if( sizeof($pArgs) < 1 ){"\
-	"  return null;"\
+	"  throw new ArgumentCountError('min() expects at least 1 argument, 0 given');"\
     " }"\
     " if( sizeof($pArgs) < 2 ){"\
     " $pArg = $pArgs[0];"\
 	" if( !is_array($pArg) ){"\
-	"   return $pArg; "\
+	"   throw new TypeError('min(): Argument #1 ($value) must be of type array, ' . __php_zpp_type($pArg) . ' given');"\
 	" }"\
 	" if( sizeof($pArg) < 1 ){"\
-	"   return null;"\
+	"   throw new ValueError('min(): Argument #1 ($value) must contain at least one element');"\
 	" }"\
-	" $pArg = array_copy($pArgs[0]);"\
-	" reset($pArg);"\
-	" $min = current($pArg);"\
-	" while( FALSE !== ($val = next($pArg)) ){"\
-	"   if( $val < $min ){"\
-	"     $min = $val;"\
-    " }"\
+	" $min = null; $first = true;"\
+	" foreach( $pArgs[0] as $val ){"\
+	"   if( $first ){ $min = $val; $first = false; }"\
+	"   else if( $val < $min ){ $min = $val; }"\
 	" }"\
 	" return $min;"\
     " }"\

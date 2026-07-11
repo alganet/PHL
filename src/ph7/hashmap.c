@@ -6555,11 +6555,12 @@ static int ph7_hashmap_sum(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Make sure we are dealing with a valid hashmap */
 	if( !ph7_value_is_array(apArg[0]) ){
-		/* Type mismatch -> TypeError */
+		/* Type mismatch -> TypeError (php's true/false/class-name convention). */
+		char zBuf[64];
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_sum(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf))
 			);
 	}
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
@@ -6677,20 +6678,23 @@ static int ph7_hashmap_product(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_hashmap *pMap;
 	ph7_value *pObj;
 	if( nArg < 1 ){
-		/* Missing arguments,return 0 */
-		ph7_result_int(pCtx,0);
+		/* Missing arguments (arity is enforced upstream; defensive). */
+		ph7_result_int(pCtx,1);
 		return PH7_OK;
 	}
-	/* Make sure we are dealing with a valid hashmap */
+	/* PHP 8: a non-array $array is a catchable TypeError, not a silent 0. */
 	if( !ph7_value_is_array(apArg[0]) ){
-		/* Invalid argument,return 0 */
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
+		char zBuf[64];
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_product(): Argument #1 ($array) must be of type array, %s given",
+			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf))
+			);
 	}
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	if( pMap->nEntry < 1 ){
-		/* Nothing to compute,return 0 */
-		ph7_result_int(pCtx,0);
+		/* The product of an empty array is the multiplicative identity 1 (PHP). */
+		ph7_result_int(pCtx,1);
 		return PH7_OK;
 	}
 	/* If the first element is of type float,then perform floating
