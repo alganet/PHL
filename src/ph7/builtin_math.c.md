@@ -496,10 +496,10 @@ Coverage: 514/590 lines (87.12%)
 |    - |  486 | ` *  The absolute value of number.` |
 |    - |  487 | ` */` |
 |  128 |  488 | `PH7_PRIVATE int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    4 |  489 | `{` |
+|    5 |  489 | `{` |
 |    - |  490 | `	int is_float;` |
 |    - |  491 | `	/* PHP requires exactly one argument. */` |
-|  132 |  492 | `	if( nArg != 1 ){` |
+|  133 |  492 | `	if( nArg != 1 ){` |
 |   15 |  493 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  494 | `			"ArgumentCountError",` |
 |    - |  495 | `			"abs() expects exactly 1 argument, %d given",` |
@@ -508,8 +508,8 @@ Coverage: 514/590 lines (87.12%)
 |    - |  498 | `	}` |
 |    - |  499 |  |
 |    - |  500 | `	/* Numeric strings with decimal/exponent are treated as real values. */` |
-|  122 |  501 | `	is_float = ph7_value_is_float(apArg[0]);` |
-|  122 |  502 | `	if( !is_float && ph7_value_is_string(apArg[0]) ){` |
+|  123 |  501 | `	is_float = ph7_value_is_float(apArg[0]);` |
+|  123 |  502 | `	if( !is_float && ph7_value_is_string(apArg[0]) ){` |
 |    - |  503 | `		int len;` |
 |   10 |  504 | `		sxu8 bReal = FALSE;` |
 |   10 |  505 | `		const char *zStr = ph7_value_to_string(apArg[0], &len);` |
@@ -539,7 +539,7 @@ Coverage: 514/590 lines (87.12%)
 |   20 |  529 | `		ph7_result_int(pCtx,r);` |
 |    - |  530 | `	}` |
 |  120 |  531 | `	return PH7_OK;` |
-|   68 |  532 | `}` |
+|   69 |  532 | `}` |
 |    - |  533 | `/*` |
 |    - |  534 | ` * float log(float $arg,[int/float $base])` |
 |    - |  535 | ` *  Natural logarithm.` |

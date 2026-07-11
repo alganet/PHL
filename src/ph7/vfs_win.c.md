@@ -727,17 +727,17 @@ Coverage: 485/643 lines (75.43%)
 |    5 |  717 | `}` |
 |    - |  718 | `/* void (*xTempDir)(ph7_context *) */` |
 |    - |  719 | `static void WinVfs_TempDir(ph7_context *pCtx)` |
-|    4 |  720 | `{` |
+|    3 |  720 | `{` |
 |    - |  721 | `	CHAR zTemp[1024];` |
 |    - |  722 | `	DWORD n;` |
-|    4 |  723 | `	n = GetTempPathA(sizeof(zTemp),zTemp);` |
-|    4 |  724 | `	if( n < 1 ){` |
+|    3 |  723 | `	n = GetTempPathA(sizeof(zTemp),zTemp);` |
+|    3 |  724 | `	if( n < 1 ){` |
 |    - |  725 | `		/* Assume the default windows temp directory */` |
 |  ! 0 |  726 | `		ph7_result_string(pCtx,"C:\\Windows\\Temp",-1/*Compute length automatically*/);` |
 |  ! 0 |  727 | `	}else{` |
-|    4 |  728 | `		ph7_result_string(pCtx,zTemp,(int)n);` |
+|    3 |  728 | `		ph7_result_string(pCtx,zTemp,(int)n);` |
 |    - |  729 | `	}` |
-|    4 |  730 | `}` |
+|    3 |  730 | `}` |
 |    - |  731 | `/* unsigned int (*xProcessId)(void) */` |
 |    - |  732 | `static unsigned int WinVfs_ProcessId(void)` |
 |    1 |  733 | `{` |
@@ -875,7 +875,7 @@ Coverage: 485/643 lines (75.43%)
 |    5 |  865 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
 |    5 |  866 | `	if( pHandle == INVALID_HANDLE_VALUE){` |
 |    - |  867 | `		SXUNUSED(pResource); /* MSVC warning */` |
-|    4 |  868 | `		return -1;` |
+|    3 |  868 | `		return -1;` |
 |    - |  869 | `	}` |
 |    - |  870 | `	/* Make the handle accessible to the upper layer */` |
 |    5 |  871 | `	*ppHandle = (void *)pHandle;` |
