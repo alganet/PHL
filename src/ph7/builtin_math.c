@@ -1100,18 +1100,70 @@ PH7_PRIVATE int PH7_builtin_decbin(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
+ * Convert a base-2/8/16 digit string to a number, mirroring PHP's
+ * _php_math_basetozval (ext/standard/math.c) so hexdec/octdec/bindec agree with
+ * php byte-for-byte: walk every byte, decode a digit (0-9,a-z,A-Z) or skip any
+ * invalid one, accumulate into a signed 64-bit integer and transparently promote
+ * to a double once the value would overflow PHP_INT_MAX. The context result is
+ * set to an int when it fits, otherwise a float — PHP returns a float for values
+ * above PHP_INT_MAX (e.g. hexdec("ffffffffffffffff") == 1.8446744073709552E+19).
+ * A byte >= 0x80 (e.g. a UTF-8 continuation) matches none of the digit ranges and
+ * is skipped, so leading/interior multibyte junk is ignored like php.
+ * Note: php also raises E_DEPRECATED for skipped invalid characters; that notice
+ * is not emitted here (a §3.7 deprecation-fidelity residual, value is correct).
+ */
+static void MathBaseToNumber(ph7_context *pCtx,const char *zStr,int nLen,int base)
+{
+	sxi64 num = 0;      /* Integer accumulator */
+	double fnum = 0;    /* Float accumulator (used once num would overflow) */
+	int mode = 0;       /* 0 -> integer accumulation, 1 -> switched to float */
+	sxi64 cutoff = SXI64_HIGH / base;      /* PHP_INT_MAX / base */
+	int cutlim = (int)(SXI64_HIGH % base); /* PHP_INT_MAX % base */
+	int i;
+	for( i = 0 ; i < nLen ; ++i ){
+		int c = (unsigned char)zStr[i];
+		if( c >= '0' && c <= '9' ){
+			c -= '0';
+		}else if( c >= 'A' && c <= 'Z' ){
+			c -= 'A' - 10;
+		}else if( c >= 'a' && c <= 'z' ){
+			c -= 'a' - 10;
+		}else{
+			continue; /* Not a digit character: skip */
+		}
+		if( c >= base ){
+			continue; /* Digit out of range for this base: skip */
+		}
+		if( mode == 0 ){
+			if( num < cutoff || (num == cutoff && c <= cutlim) ){
+				num = num * base + c;
+				continue;
+			}
+			/* Adding this digit would overflow the 64-bit integer: fall back to
+			 * float accumulation, seeding it with the value gathered so far. */
+			fnum = (double)num;
+			mode = 1;
+		}
+		fnum = fnum * base + c;
+	}
+	if( mode == 1 ){
+		ph7_result_double(pCtx,fnum);
+	}else{
+		ph7_result_int64(pCtx,num);
+	}
+}
+/*
  * int64 hexdec(string $hex_string)
  *  Hexadecimal to decimal.
  * Parameters
  *  $hex_string
  *   The hexadecimal string to convert
  * Return
- *  The decimal representation of hex_string
+ *  The decimal representation of hex_string (int, or float on overflow)
  */
 PH7_PRIVATE int PH7_builtin_hexdec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const char *zString,*zEnd;
-	ph7_int64 iVal;
+	const char *zString;
 	int nLen;
 	if( nArg < 1 ){
 		/* Missing arguments,return -1 */
@@ -1125,36 +1177,12 @@ PH7_PRIVATE int PH7_builtin_hexdec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			"hexdec(): Argument #1 ($hex_string) must be of type string, %s given",
 			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf)));
 	}
-	iVal = 0;
 	/* PHP's `string` ZPP renders scalars/null to their string form and then
 	 * hex-parses that (hexdec(255) == hexdec("255") == 0x255), so route every
 	 * non-throwing value through ph7_value_to_string rather than reading it as
 	 * a decimal integer. */
 	zString = ph7_value_to_string(apArg[0],&nLen);
-	/* Delimit the string */
-	zEnd = &zString[nLen];
-	/* Ignore non hex-stream */
-	while( zString < zEnd ){
-		if( (unsigned char)zString[0] >= 0xc0 ){
-			/* UTF-8 stream */
-			zString++;
-			while( zString < zEnd && (((unsigned char)zString[0] & 0xc0) == 0x80) ){
-				zString++;
-			}
-		}else{
-			if( SyisHex(zString[0]) ){
-				break;
-			}
-			/* Ignore */
-			zString++;
-		}
-	}
-	if( zString < zEnd ){
-		/* Cast */
-		SyHexStrToInt64(zString,(sxu32)(zEnd-zString),(void *)&iVal,0);
-	}
-	/* Return the number */
-	ph7_result_int64(pCtx,iVal);
+	MathBaseToNumber(pCtx,zString,nLen,16);
 	return PH7_OK;
 }
 /*
@@ -1169,7 +1197,6 @@ PH7_PRIVATE int PH7_builtin_hexdec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 PH7_PRIVATE int PH7_builtin_bindec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zString;
-	ph7_int64 iVal;
 	int nLen;
 	if( nArg < 1 ){
 		/* Missing arguments,return -1 */
@@ -1183,16 +1210,10 @@ PH7_PRIVATE int PH7_builtin_bindec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			"bindec(): Argument #1 ($binary_string) must be of type string, %s given",
 			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf)));
 	}
-	iVal = 0;
 	/* PHP's `string` ZPP renders scalars/null to their string form and then
 	 * binary-parses that (bindec(11) == bindec("11") == 3). */
 	zString = ph7_value_to_string(apArg[0],&nLen);
-	if( nLen > 0 ){
-		/* Perform a binary cast */
-		SyBinaryStrToInt64(zString,(sxu32)nLen,(void *)&iVal,0);
-	}
-	/* Return the number */
-	ph7_result_int64(pCtx,iVal);
+	MathBaseToNumber(pCtx,zString,nLen,2);
 	return PH7_OK;
 }
 /*
@@ -1207,7 +1228,6 @@ PH7_PRIVATE int PH7_builtin_bindec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 PH7_PRIVATE int PH7_builtin_octdec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zString;
-	ph7_int64 iVal;
 	int nLen;
 	if( nArg < 1 ){
 		/* Missing arguments,return -1 */
@@ -1221,16 +1241,10 @@ PH7_PRIVATE int PH7_builtin_octdec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			"octdec(): Argument #1 ($octal_string) must be of type string, %s given",
 			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf)));
 	}
-	iVal = 0;
 	/* PHP's `string` ZPP renders scalars/null to their string form and then
 	 * octal-parses that (octdec(11) == octdec("11") == 9). */
 	zString = ph7_value_to_string(apArg[0],&nLen);
-	if( nLen > 0 ){
-		/* Perform the cast */
-		SyOctalStrToInt64(zString,(sxu32)nLen,(void *)&iVal,0);
-	}
-	/* Return the number */
-	ph7_result_int64(pCtx,iVal);
+	MathBaseToNumber(pCtx,zString,nLen,8);
 	return PH7_OK;
 }
 /*
