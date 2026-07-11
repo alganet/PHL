@@ -24,19 +24,19 @@ Coverage: 228/253 lines (90.12%)
 |        - |   14 | `#include "sxtime.h"` |
 |        - |   15 | `#include "sxstr.h"` |
 |        - |   16 |  |
-| 25000426 |   17 | `PH7_PRIVATE sxu32 SyBinHash(const void *pSrc,sxu32 nLen)` |
+| 25000696 |   17 | `PH7_PRIVATE sxu32 SyBinHash(const void *pSrc,sxu32 nLen)` |
 |        5 |   18 | `{` |
-| 25000431 |   19 | `	register unsigned char *zIn = (unsigned char *)pSrc;` |
+| 25000701 |   19 | `	register unsigned char *zIn = (unsigned char *)pSrc;` |
 |        - |   20 | `	unsigned char *zEnd;` |
-| 25000431 |   21 | `	sxu32 nH = 5381;` |
-| 25000431 |   22 | `	zEnd = &zIn[nLen];` |
-| 44453761 |   23 | `	for(;;){` |
-| 88904807 |   24 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
-| 82109649 |   25 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
-| 76249759 |   26 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
-| 69782109 |   27 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+| 25000701 |   21 | `	sxu32 nH = 5381;` |
+| 25000701 |   22 | `	zEnd = &zIn[nLen];` |
+| 44454159 |   23 | `	for(;;){` |
+| 88905603 |   24 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+| 82110379 |   25 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+| 76250353 |   26 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+| 69782643 |   27 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
 |        5 |   28 | `	}` |
-| 25000431 |   29 | `	return nH;` |
+| 25000701 |   29 | `	return nH;` |
 |        5 |   30 | `}` |
 |   546492 |   31 | `PH7_PRIVATE sxu32 SyStrHash(const void *pSrc,sxu32 nLen)` |
 |        5 |   32 | `{` |
@@ -193,32 +193,32 @@ Coverage: 228/253 lines (90.12%)
 |    20621 |  183 | `	pStream->zText = pStream->zInput = (const unsigned char *)zInput;` |
 |        - |  184 | `	/* Point to the end of the input */` |
 |    20621 |  185 | `	pStream->zEnd = &pStream->zInput[nLen];` |
-|  6054018 |  186 | `	for(;;){` |
-| 12108041 |  187 | `		if( pStream->zText >= pStream->zEnd ){` |
+|  6054053 |  186 | `	for(;;){` |
+| 12108111 |  187 | `		if( pStream->zText >= pStream->zEnd ){` |
 |        - |  188 | `			/* End of the input reached */` |
 |    20589 |  189 | `			break;` |
 |        - |  190 | `		}` |
-| 12087457 |  191 | `		zCur = pStream->zText;` |
+| 12087527 |  191 | `		zCur = pStream->zText;` |
 |        - |  192 | `		/* Call the tokenizer callback */` |
-| 12087457 |  193 | `		rc = pLex->xTokenizer(pStream,&sToken,pLex->pUserData,pCtxData);` |
-| 12087457 |  194 | `		if( rc != SXRET_OK && rc != SXERR_CONTINUE ){` |
+| 12087527 |  193 | `		rc = pLex->xTokenizer(pStream,&sToken,pLex->pUserData,pCtxData);` |
+| 12087527 |  194 | `		if( rc != SXRET_OK && rc != SXERR_CONTINUE ){` |
 |        - |  195 | `			/* Tokenizer callback request an operation abort */` |
 |       34 |  196 | `			if( rc == SXERR_ABORT ){` |
 |       34 |  197 | `				return SXERR_ABORT;` |
 |        - |  198 | `			}` |
 |      ! 0 |  199 | `			break;` |
 |        - |  200 | `		}` |
-| 12087425 |  201 | `		if( rc == SXERR_CONTINUE ){` |
+| 12087495 |  201 | `		if( rc == SXERR_CONTINUE ){` |
 |        - |  202 | `			/* Request to ignore this token */` |
-|    97567 |  203 | `			pStream->nIgn++;` |
-| 12038644 |  204 | `		}else if( pLex->pTokenSet  ){` |
+|    97573 |  203 | `			pStream->nIgn++;` |
+| 12038711 |  204 | `		}else if( pLex->pTokenSet  ){` |
 |        - |  205 | `			/* Put the token in the set */` |
-| 11989863 |  206 | `			rc = SySetPut(pLex->pTokenSet,(const void *)&sToken);` |
-| 11989863 |  207 | `			if( rc != SXRET_OK ){` |
+| 11989927 |  206 | `			rc = SySetPut(pLex->pTokenSet,(const void *)&sToken);` |
+| 11989927 |  207 | `			if( rc != SXRET_OK ){` |
 |      ! 0 |  208 | `				break;` |
 |        - |  209 | `			}` |
-|  5994929 |  210 | `		}` |
-| 12087425 |  211 | `		if( zCur >= pStream->zText ){` |
+|  5994961 |  210 | `		}` |
+| 12087495 |  211 | `		if( zCur >= pStream->zText ){` |
 |        - |  212 | `			/* Automatic advance of the stream cursor */` |
 |      ! 0 |  213 | `			pStream->zText = &zCur[1];` |
 |      ! 0 |  214 | `		}` |

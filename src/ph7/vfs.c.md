@@ -2831,15 +2831,15 @@ Coverage: 1842/2841 lines (64.84%)
 |   6521 | 2821 | `	zIn = (const char *)SyBlobDataAt(&pDev->sBuffer,pDev->nOfft);` |
 |   6521 | 2822 | `	zEnd = &zIn[SyBlobLength(&pDev->sBuffer)-pDev->nOfft];` |
 |   6521 | 2823 | `	zPtr = zIn;` |
-| 380008 | 2824 | `	while( zIn < zEnd ){` |
-| 379926 | 2825 | `		if( zIn[0] == '\n' ){` |
+| 380020 | 2824 | `	while( zIn < zEnd ){` |
+| 379938 | 2825 | `		if( zIn[0] == '\n' ){` |
 |      - | 2826 | `			/* Line found */` |
 |   6439 | 2827 | `			zIn++; /* Include the line ending as requested by the PHP specification */` |
 |   6439 | 2828 | `			*pLen = (ph7_int64)(zIn-zPtr);` |
 |   6439 | 2829 | `			*pzLine = zPtr;` |
 |   6439 | 2830 | `			return SXRET_OK;` |
 |      - | 2831 | `		}` |
-| 373492 | 2832 | `		zIn++;` |
+| 373504 | 2832 | `		zIn++;` |
 |      5 | 2833 | `	}` |
 |      - | 2834 | `	/* No line were found */` |
 |     87 | 2835 | `	return SXERR_NOTFOUND;` |
