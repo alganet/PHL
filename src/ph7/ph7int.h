@@ -1990,6 +1990,18 @@ PH7_PRIVATE int PH7_HashmapIsList(ph7_hashmap *pMap);
  * array_rand() domain-error messages in hashmap.c, which are compiled in every
  * mode, so it must stay outside the PH7_DISABLE_DISK_IO guard. */
 PH7_PRIVATE const char *VmValueGivenName(ph7_value *pVal,char *zBuf,sxu32 nBuf);
+/* Numeric-string classifier — php's is_numeric_string() grammar — shared from
+ * hashmap.c (range/array_rand) for the stage-2 ZPP domain-error sweep
+ * (PLAN §3.9(a)). RangeStrToNumber only ever returns ERROR/LONG/DOUBLE; the
+ * STRING/DIGIT codes are range()-internal endpoint tags. range() and array_rand()
+ * are core builtins compiled in every mode, so these must stay outside the
+ * PH7_DISABLE_DISK_IO guard. */
+#define RANGE_IN_ERROR   0
+#define RANGE_IN_LONG    1
+#define RANGE_IN_DOUBLE  2
+#define RANGE_IN_STRING  3
+#define RANGE_IN_DIGIT   4
+PH7_PRIVATE sxu8 RangeStrToNumber(const char *zIn,sxu32 nLen,sxi64 *pLong,double *pDouble);
 #ifndef PH7_DISABLE_DISK_IO
 PH7_PRIVATE int PH7_HashmapValuesToSet(ph7_hashmap *pMap,SySet *pOut);
 /* builtin.c function prototypes */
