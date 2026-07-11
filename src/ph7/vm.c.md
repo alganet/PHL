@@ -16763,11 +16763,11 @@ Coverage: 8808/10784 lines (81.68%)
 |        - | 16753 | ` * PH7 uses its own private PRNG (the SQLite3-derived RC4 generator` |
 |        - | 16754 | ` * implemented in src/sx/sxrand.c).` |
 |        - | 16755 | ` */` |
-|     3534 | 16756 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
+|     3533 | 16756 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
 |        5 | 16757 | `{` |
 |        - | 16758 | `	sxu32 iNum;` |
-|     3539 | 16759 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
-|     3539 | 16760 | `	return iNum;` |
+|     3538 | 16759 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
+|     3538 | 16760 | `	return iNum;` |
 |        5 | 16761 | `}` |
 |        - | 16762 | `/*` |
 |        - | 16763 | ` * Generate a random string (English Alphabet) of length nLen.` |
@@ -16950,23 +16950,23 @@ Coverage: 8808/10784 lines (81.68%)
 |      225 | 16940 | `	uMask \|= uMask >> 16;` |
 |      225 | 16941 | `	uMask \|= uMask >> 32;` |
 |      225 | 16942 | `	uResult = 0;` |
-|      384 | 16943 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
+|      342 | 16943 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
 |        - | 16944 | `		/* Always draw a full 8 bytes so endianness of the cast doesn't matter` |
 |        - | 16945 | `		 * (a 4-byte fill into a sxu64 would land in the high half on big-endian` |
 |        - | 16946 | `		 * and the low-half mask would always read 0). */` |
 |        - | 16947 | `		sxu64 uDraw;` |
-|      384 | 16948 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
+|      342 | 16948 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
 |      ! 0 | 16949 | `			return PH7_VmThrowException(pCtx,` |
 |        - | 16950 | `				"Random\\RandomException",` |
 |        - | 16951 | `				"Cannot gather sufficient random data"` |
 |        - | 16952 | `				);` |
 |        - | 16953 | `		}` |
-|      384 | 16954 | `		uDraw &= uMask;` |
-|      384 | 16955 | `		if( uDraw <= uRange ){` |
+|      342 | 16954 | `		uDraw &= uMask;` |
+|      342 | 16955 | `		if( uDraw <= uRange ){` |
 |      225 | 16956 | `			uResult = uDraw;` |
 |      225 | 16957 | `			break;` |
 |        - | 16958 | `		}` |
-|       91 | 16959 | `	}` |
+|       62 | 16959 | `	}` |
 |      225 | 16960 | `	if( nAttempt >= 50 ){` |
 |      ! 0 | 16961 | `		return PH7_VmThrowException(pCtx,` |
 |        - | 16962 | `			"Random\\RandomException",` |

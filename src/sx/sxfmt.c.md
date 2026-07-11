@@ -325,13 +325,13 @@ Coverage: 290/407 lines (71.25%)
 |   59017 |  315 | `          cset = infop->charset;` |
 |   59017 |  316 | `          base = infop->base;` |
 |   29506 |  317 | `          do{                                           /* Convert to ascii */` |
-|  177490 |  318 | `            *(--bufpt) = cset[ulongvalue%base];` |
-|  177490 |  319 | `            ulongvalue = ulongvalue/base;` |
-|  177490 |  320 | `          }while( ulongvalue>0 );` |
+|  177497 |  318 | `            *(--bufpt) = cset[ulongvalue%base];` |
+|  177497 |  319 | `            ulongvalue = ulongvalue/base;` |
+|  177497 |  320 | `          }while( ulongvalue>0 );` |
 |       - |  321 | `        }` |
 |   59017 |  322 | `        length = (int)(&buf[SXFMT_BUFSIZ-1]-bufpt);` |
-|   59349 |  323 | `        for(idx=precision-length; idx>0; idx--){` |
-|     334 |  324 | `          *(--bufpt) = '0';                             /* Zero pad */` |
+|   59343 |  323 | `        for(idx=precision-length; idx>0; idx--){` |
+|     328 |  324 | `          *(--bufpt) = '0';                             /* Zero pad */` |
 |     165 |  325 | `        }` |
 |   59017 |  326 | `        if( prefix ) *(--bufpt) = prefix;               /* Add sign */` |
 |   59017 |  327 | `        if( flag_alternateform && infop->prefix ){      /* Add "0" or "0x" */` |

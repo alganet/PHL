@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 3762/4384 lines (85.81%)
+Coverage: 3770/4396 lines (85.76%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -7295,7 +7295,7 @@ Coverage: 3762/4384 lines (85.81%)
 |      - | 7285 | `		const char *zPool;` |
 |      - | 7286 | `		strtr_entry *pEnt;` |
 |      - | 7287 | `		sxi32 rc;` |
-|      - | 7288 | `		int i;` |
+|      - | 7288 | `		int i,iRun;` |
 |      - | 7289 | `		/*` |
 |      - | 7290 | `		 * PHP's array-form strtr is a single left-to-right pass over the subject:` |
 |      - | 7291 | `		 * at every position it substitutes the LONGEST replace_pairs key that` |
@@ -7320,1177 +7320,1193 @@ Coverage: 3762/4384 lines (85.81%)
 |      - | 7310 | `		/* The pool is now stable, so offsets can be resolved against its base. */` |
 |     11 | 7311 | `		zPool = (const char *)SyBlobData(&sPool);` |
 |     11 | 7312 | `		rc = SXRET_OK;` |
-|     43 | 7313 | `		for( i = 0 ; i < nLen ; ){` |
-|     33 | 7314 | `			strtr_entry *pBest = 0;` |
-|     33 | 7315 | `			sxu32 nBest = 0;` |
-|      - | 7316 | `			/* Pick the longest key that matches at the current position. */` |
-|     33 | 7317 | `			SySetResetCursor(&sTable);` |
-|     97 | 7318 | `			while( SXRET_OK == SySetGetNextEntry(&sTable,(void **)&pEnt) ){` |
-|     64 | 7319 | `				if( pEnt->nKeyLen > nBest` |
-|     60 | 7320 | `					&& pEnt->nKeyLen <= (sxu32)(nLen - i)` |
-|     56 | 7321 | `					&& SyMemcmp(zPool + pEnt->nKeyOfft,zIn + i,pEnt->nKeyLen) == 0 ){` |
-|     29 | 7322 | `					nBest = pEnt->nKeyLen;` |
-|     29 | 7323 | `					pBest = pEnt;` |
-|     14 | 7324 | `				}` |
-|      1 | 7325 | `			}` |
-|     33 | 7326 | `			if( pBest ){` |
-|     25 | 7327 | `				if( pBest->nValLen > 0 ){` |
-|     25 | 7328 | `					rc = SyBlobAppend(&sWorker,zPool + pBest->nValOfft,pBest->nValLen);` |
-|     12 | 7329 | `				}` |
-|     25 | 7330 | `				i += (int)pBest->nKeyLen;` |
-|     13 | 7331 | `			}else{` |
-|      9 | 7332 | `				rc = SyBlobAppend(&sWorker,(const void *)&zIn[i],(sxu32)sizeof(char));` |
-|      9 | 7333 | `				i++;` |
-|      - | 7334 | `			}` |
-|     33 | 7335 | `			if( rc != SXRET_OK ){` |
-|    ! 0 | 7336 | `				SyBlobRelease(&sPool);` |
-|    ! 0 | 7337 | `				SyBlobRelease(&sWorker);` |
-|    ! 0 | 7338 | `				SySetRelease(&sTable);` |
-|    ! 0 | 7339 | `				return PH7_ContextMemoryError(pCtx);` |
-|      - | 7340 | `			}` |
-|      1 | 7341 | `		}` |
-|      - | 7342 | `		/* All done, return the result string */` |
-|     16 | 7343 | `		rc = ph7_result_string(pCtx,(const char *)SyBlobData(&sWorker),` |
-|     10 | 7344 | `			(int)SyBlobLength(&sWorker)); /* Will make it's own copy */` |
-|      - | 7345 | `		/* Clean-up */` |
-|     11 | 7346 | `		SyBlobRelease(&sPool);` |
-|     11 | 7347 | `		SyBlobRelease(&sWorker);` |
-|     11 | 7348 | `		SySetRelease(&sTable);` |
-|     11 | 7349 | `		if( rc != PH7_OK ){` |
-|    ! 0 | 7350 | `			return PH7_ContextMemoryError(pCtx);` |
-|      - | 7351 | `		}` |
-|      6 | 7352 | `	}else{` |
-|      - | 7353 | `		int i,flen,tlen,c,iOfft;` |
-|      - | 7354 | `		const char *zFrom,*zTo;` |
-|      3 | 7355 | `		if( nArg < 3 ){` |
-|      - | 7356 | `			/* Nothing to replace */` |
-|    ! 0 | 7357 | `			ph7_result_string(pCtx,zIn,nLen);` |
-|    ! 0 | 7358 | `			return PH7_OK;` |
-|      - | 7359 | `		}` |
-|      - | 7360 | `		/* Extract given arguments */` |
-|      3 | 7361 | `		zFrom = ph7_value_to_string(apArg[1],&flen);` |
-|      3 | 7362 | `		zTo = ph7_value_to_string(apArg[2],&tlen);` |
-|      3 | 7363 | `		if( flen < 1 \|\| tlen < 1 ){` |
-|      - | 7364 | `			/* Nothing to replace */` |
-|    ! 0 | 7365 | `			ph7_result_string(pCtx,zIn,nLen);` |
-|    ! 0 | 7366 | `			return PH7_OK;` |
+|     11 | 7313 | `		iRun = 0; /* Start of the pending run of unmatched bytes copied verbatim. */` |
+|     43 | 7314 | `		for( i = 0 ; i < nLen ; ){` |
+|     33 | 7315 | `			strtr_entry *pBest = 0;` |
+|     33 | 7316 | `			sxu32 nBest = 0;` |
+|      - | 7317 | `			/* Pick the longest key that matches at the current position. */` |
+|     33 | 7318 | `			SySetResetCursor(&sTable);` |
+|     97 | 7319 | `			while( SXRET_OK == SySetGetNextEntry(&sTable,(void **)&pEnt) ){` |
+|     64 | 7320 | `				if( pEnt->nKeyLen > nBest` |
+|     60 | 7321 | `					&& pEnt->nKeyLen <= (sxu32)(nLen - i)` |
+|     56 | 7322 | `					&& SyMemcmp(zPool + pEnt->nKeyOfft,zIn + i,pEnt->nKeyLen) == 0 ){` |
+|     29 | 7323 | `					nBest = pEnt->nKeyLen;` |
+|     29 | 7324 | `					pBest = pEnt;` |
+|     14 | 7325 | `				}` |
+|      1 | 7326 | `			}` |
+|     33 | 7327 | `			if( pBest == 0 ){` |
+|      - | 7328 | `				/* No key here: extend the literal run and copy it in one shot later. */` |
+|      9 | 7329 | `				i++;` |
+|      9 | 7330 | `				continue;` |
+|      - | 7331 | `			}` |
+|      - | 7332 | `			/* Flush the pending literal run, then the replacement. */` |
+|     25 | 7333 | `			if( i > iRun ){` |
+|      5 | 7334 | `				rc = SyBlobAppend(&sWorker,&zIn[iRun],(sxu32)(i - iRun));` |
+|      2 | 7335 | `			}` |
+|     25 | 7336 | `			if( rc == SXRET_OK && pBest->nValLen > 0 ){` |
+|     25 | 7337 | `				rc = SyBlobAppend(&sWorker,zPool + pBest->nValOfft,pBest->nValLen);` |
+|     12 | 7338 | `			}` |
+|     25 | 7339 | `			if( rc != SXRET_OK ){` |
+|    ! 0 | 7340 | `				SyBlobRelease(&sPool);` |
+|    ! 0 | 7341 | `				SyBlobRelease(&sWorker);` |
+|    ! 0 | 7342 | `				SySetRelease(&sTable);` |
+|    ! 0 | 7343 | `				return PH7_ContextMemoryError(pCtx);` |
+|      - | 7344 | `			}` |
+|     25 | 7345 | `			i += (int)pBest->nKeyLen;` |
+|     25 | 7346 | `			iRun = i;` |
+|      1 | 7347 | `		}` |
+|      - | 7348 | `		/* Flush the trailing literal run. */` |
+|     11 | 7349 | `		if( nLen > iRun ){` |
+|      3 | 7350 | `			rc = SyBlobAppend(&sWorker,&zIn[iRun],(sxu32)(nLen - iRun));` |
+|      3 | 7351 | `			if( rc != SXRET_OK ){` |
+|    ! 0 | 7352 | `				SyBlobRelease(&sPool);` |
+|    ! 0 | 7353 | `				SyBlobRelease(&sWorker);` |
+|    ! 0 | 7354 | `				SySetRelease(&sTable);` |
+|    ! 0 | 7355 | `				return PH7_ContextMemoryError(pCtx);` |
+|      - | 7356 | `			}` |
+|      1 | 7357 | `		}` |
+|      - | 7358 | `		/* All done, return the result string */` |
+|     16 | 7359 | `		rc = ph7_result_string(pCtx,(const char *)SyBlobData(&sWorker),` |
+|     10 | 7360 | `			(int)SyBlobLength(&sWorker)); /* Will make it's own copy */` |
+|      - | 7361 | `		/* Clean-up */` |
+|     11 | 7362 | `		SyBlobRelease(&sPool);` |
+|     11 | 7363 | `		SyBlobRelease(&sWorker);` |
+|     11 | 7364 | `		SySetRelease(&sTable);` |
+|     11 | 7365 | `		if( rc != PH7_OK ){` |
+|    ! 0 | 7366 | `			return PH7_ContextMemoryError(pCtx);` |
 |      - | 7367 | `		}` |
-|      - | 7368 | `		/* Start the replace process */` |
-|     13 | 7369 | `		for( i = 0 ; i < nLen ; ++i ){` |
-|     11 | 7370 | `			c = zIn[i];` |
-|     11 | 7371 | `			if( CheckMask(c,zFrom,flen,&iOfft) ){` |
-|      5 | 7372 | `				if ( iOfft < tlen ){` |
-|      5 | 7373 | `					c = zTo[iOfft];` |
-|      2 | 7374 | `				}` |
-|      2 | 7375 | `			}` |
-|     11 | 7376 | `			ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char));` |
-|      - | 7377 |  |
-|      6 | 7378 | `		}` |
-|      - | 7379 | `	}` |
-|     13 | 7380 | `	return PH7_OK;` |
-|      7 | 7381 | `}` |
-|      - | 7382 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|      - | 7383 | `#ifdef PH7_NEED_FMT_AND_INI` |
-|      - | 7384 | `/*` |
-|      - | 7385 | ` * Parse an INI string.` |
-|      - | 7386 |  |
-|      - | 7387 | ` * According to wikipedia` |
-|      - | 7388 | ` *  The INI file format is an informal standard for configuration files for some platforms or software.` |
-|      - | 7389 | ` *  INI files are simple text files with a basic structure composed of "sections" and "properties".` |
-|      - | 7390 | ` *  Format` |
-|      - | 7391 | `*    Properties` |
-|      - | 7392 | `*     The basic element contained in an INI file is the property. Every property has a name and a value` |
-|      - | 7393 | `*     delimited by an equals sign (=). The name appears to the left of the equals sign.` |
-|      - | 7394 | `*     Example:` |
-|      - | 7395 | `*      name=value` |
-|      - | 7396 | `*    Sections` |
-|      - | 7397 | `*     Properties may be grouped into arbitrarily named sections. The section name appears on a line by itself` |
-|      - | 7398 | `*     in square brackets ([ and ]). All properties after the section declaration are associated with that section.` |
-|      - | 7399 | `*     There is no explicit "end of section" delimiter; sections end at the next section declaration` |
-|      - | 7400 | `*     or the end of the file. Sections may not be nested.` |
-|      - | 7401 | `*     Example:` |
-|      - | 7402 | `*      [section]` |
-|      - | 7403 | `*   Comments` |
-|      - | 7404 | `*    Semicolons (;) at the beginning of the line indicate a comment. Comment lines are ignored.` |
-|      - | 7405 | `* This function return an array holding parsed values on success.FALSE otherwise.` |
-|      - | 7406 | `*/` |
-|     12 | 7407 | `PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nByte,int bProcessSection)` |
-|      1 | 7408 | `{` |
-|      - | 7409 | `	ph7_value *pCur,*pArray,*pSection,*pWorker,*pValue;` |
-|     13 | 7410 | `	const char *zCur,*zEnd = &zIn[nByte];` |
-|      - | 7411 | `	SyHashEntry *pEntry;` |
-|      - | 7412 | `	SyString sEntry;` |
-|      - | 7413 | `	SyHash sHash;` |
-|      - | 7414 | `	int c;` |
-|      - | 7415 | `	/* Create an empty array and worker variables */` |
-|     13 | 7416 | `	pArray = ph7_context_new_array(pCtx);` |
-|     13 | 7417 | `	pWorker = ph7_context_new_scalar(pCtx);` |
-|     13 | 7418 | `	pValue = ph7_context_new_scalar(pCtx);` |
-|     13 | 7419 | `	if( pArray == 0 \|\| pWorker == 0 \|\| pValue == 0){` |
-|      - | 7420 | `		/* Out of memory: surface a fatal instead of returning FALSE */` |
-|    ! 0 | 7421 | `		return PH7_ContextMemoryError(pCtx);` |
-|      - | 7422 | `	}` |
-|     13 | 7423 | `	SyHashInit(&sHash,&pCtx->pVm->sAllocator,0,0);` |
-|     13 | 7424 | `	pCur = pArray;` |
-|      - | 7425 | `	/* Start the parse process */` |
-|     21 | 7426 | `	for(;;){` |
-|      - | 7427 | `		/* Ignore leading white spaces */` |
-|     69 | 7428 | `		while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && SyisSpace(zIn[0])){` |
-|     27 | 7429 | `			zIn++;` |
-|      1 | 7430 | `		}` |
-|     43 | 7431 | `		if( zIn >= zEnd ){` |
-|      - | 7432 | `			/* No more input to process */` |
-|     13 | 7433 | `			break;` |
-|      - | 7434 | `		}` |
-|     31 | 7435 | `		if( zIn[0] == ';' \|\| zIn[0] == '#' ){` |
-|      - | 7436 | `			/* Comment til the end of line */` |
-|    ! 0 | 7437 | `			zIn++;` |
-|    ! 0 | 7438 | `			while(zIn < zEnd && zIn[0] != '\n' ){` |
-|    ! 0 | 7439 | `				zIn++;` |
-|    ! 0 | 7440 | `			}` |
-|    ! 0 | 7441 | `			continue;` |
-|      - | 7442 | `		}` |
-|      - | 7443 | `		/* Reset the string cursor of the working variable */` |
-|     31 | 7444 | `		ph7_value_reset_string_cursor(pWorker);` |
-|     31 | 7445 | `		if( zIn[0] == '[' ){` |
-|      - | 7446 | `			/* Section: Extract the section name */` |
-|      9 | 7447 | `			zIn++;` |
-|      9 | 7448 | `			zCur = zIn;` |
-|     73 | 7449 | `			while( zIn < zEnd && zIn[0] != ']' ){` |
-|     65 | 7450 | `				zIn++;` |
-|      1 | 7451 | `			}` |
-|      9 | 7452 | `			if( zIn > zCur && bProcessSection ){` |
-|      - | 7453 | `				/* Save the section name */` |
-|      5 | 7454 | `				SyStringInitFromBuf(&sEntry,zCur,(int)(zIn-zCur));` |
-|      5 | 7455 | `				SyStringFullTrim(&sEntry);` |
-|      5 | 7456 | `				ph7_value_string(pWorker,sEntry.zString,(int)sEntry.nByte);` |
-|      5 | 7457 | `				if( sEntry.nByte > 0 ){` |
-|      - | 7458 | `					/* Associate an array with the section */` |
-|      5 | 7459 | `					pSection = ph7_context_new_array(pCtx);` |
-|      5 | 7460 | `					if( pSection ){` |
-|      5 | 7461 | `						ph7_array_add_elem(pArray,pWorker/*Section name*/,pSection);` |
-|      5 | 7462 | `						pCur = pSection;` |
-|      2 | 7463 | `					}` |
-|      2 | 7464 | `				}` |
-|      2 | 7465 | `			}` |
-|      9 | 7466 | `			zIn++; /* Trailing square brackets ']' */` |
-|      5 | 7467 | `		}else{` |
-|      - | 7468 | `			ph7_value *pOldCur;` |
-|      - | 7469 | `			int is_array;` |
-|      - | 7470 | `			int iLen;` |
-|      - | 7471 | `			/* Properties */` |
-|     23 | 7472 | `			is_array = 0;` |
-|     23 | 7473 | `			zCur = zIn;` |
-|     23 | 7474 | `			iLen = 0; /* cc warning */` |
-|     23 | 7475 | `			pOldCur = pCur;` |
-|    155 | 7476 | `			while( zIn < zEnd && zIn[0] != '=' ){` |
-|    133 | 7477 | `				if( zIn[0] == '[' && !is_array ){` |
-|      - | 7478 | `					/* Array */` |
-|    ! 0 | 7479 | `					iLen = (int)(zIn-zCur);` |
-|    ! 0 | 7480 | `					is_array = 1;` |
-|    ! 0 | 7481 | `					if( iLen > 0 ){` |
-|    ! 0 | 7482 | `						ph7_value *pvArr = 0; /* cc warning */` |
-|      - | 7483 | `						/* Query the hashtable */` |
-|    ! 0 | 7484 | `						SyStringInitFromBuf(&sEntry,zCur,iLen);` |
-|    ! 0 | 7485 | `						SyStringFullTrim(&sEntry);` |
-|    ! 0 | 7486 | `						pEntry = SyHashGet(&sHash,(const void *)sEntry.zString,sEntry.nByte);` |
-|    ! 0 | 7487 | `						if( pEntry ){` |
-|    ! 0 | 7488 | `							pvArr = (ph7_value *)SyHashEntryGetUserData(pEntry);` |
-|    ! 0 | 7489 | `						}else{` |
-|      - | 7490 | `							/* Create an empty array */` |
-|    ! 0 | 7491 | `							pvArr = ph7_context_new_array(pCtx);` |
-|    ! 0 | 7492 | `							if( pvArr ){` |
-|      - | 7493 | `								/* Save the entry */` |
-|    ! 0 | 7494 | `								SyHashInsert(&sHash,(const void *)sEntry.zString,sEntry.nByte,pvArr);` |
-|      - | 7495 | `								/* Insert the entry */` |
-|    ! 0 | 7496 | `								ph7_value_reset_string_cursor(pWorker);` |
-|    ! 0 | 7497 | `								ph7_value_string(pWorker,sEntry.zString,(int)sEntry.nByte);` |
-|    ! 0 | 7498 | `								ph7_array_add_elem(pCur,pWorker,pvArr);` |
-|    ! 0 | 7499 | `								ph7_value_reset_string_cursor(pWorker);` |
-|    ! 0 | 7500 | `							}` |
-|      - | 7501 | `						}` |
-|    ! 0 | 7502 | `						if( pvArr ){` |
-|    ! 0 | 7503 | `							pCur = pvArr;` |
-|    ! 0 | 7504 | `						}` |
-|    ! 0 | 7505 | `					}` |
-|    ! 0 | 7506 | `					while ( zIn < zEnd && zIn[0] != ']' ){` |
-|    ! 0 | 7507 | `						zIn++;` |
-|    ! 0 | 7508 | `					}` |
-|    ! 0 | 7509 | `				}` |
-|    133 | 7510 | `				zIn++;` |
-|      1 | 7511 | `			}` |
-|     23 | 7512 | `			if( !is_array ){` |
-|     23 | 7513 | `				iLen = (int)(zIn-zCur);` |
-|     11 | 7514 | `			}` |
-|      - | 7515 | `			/* Trim the key */` |
-|     23 | 7516 | `			SyStringInitFromBuf(&sEntry,zCur,iLen);` |
-|     39 | 7517 | `			SyStringFullTrim(&sEntry);` |
-|     23 | 7518 | `			if( sEntry.nByte > 0 ){` |
-|     23 | 7519 | `				if( !is_array ){` |
-|      - | 7520 | `					/* Save the key name */` |
-|     23 | 7521 | `					ph7_value_string(pWorker,sEntry.zString,(int)sEntry.nByte);` |
-|     11 | 7522 | `				}` |
-|      - | 7523 | `				/* extract key value */` |
-|     23 | 7524 | `				ph7_value_reset_string_cursor(pValue);` |
-|     23 | 7525 | `				zIn++; /* '=' */` |
-|     39 | 7526 | `				while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && SyisSpace(zIn[0]) ){` |
-|     17 | 7527 | `					zIn++;` |
-|      1 | 7528 | `				}` |
-|     23 | 7529 | `				if( zIn < zEnd ){` |
-|     21 | 7530 | `					zCur = zIn;` |
-|     21 | 7531 | `					c = zIn[0];` |
-|     21 | 7532 | `					if( c == '"' \|\| c == '\'' ){` |
-|    ! 0 | 7533 | `						zIn++;` |
-|      - | 7534 | `						/* Delimit the value */` |
-|    ! 0 | 7535 | `						while( zIn < zEnd ){` |
-|    ! 0 | 7536 | `							if ( zIn[0] == c && zIn[-1] != '\\' ){` |
-|    ! 0 | 7537 | `								break;` |
-|      - | 7538 | `							}` |
-|    ! 0 | 7539 | `							zIn++;` |
-|    ! 0 | 7540 | `						}` |
-|    ! 0 | 7541 | `						if( zIn < zEnd ){` |
-|    ! 0 | 7542 | `							zIn++;` |
-|    ! 0 | 7543 | `						}` |
-|    ! 0 | 7544 | `					}else{` |
-|    125 | 7545 | `						while( zIn < zEnd ){` |
-|    123 | 7546 | `							if( zIn[0] == '\n' ){` |
-|     19 | 7547 | `								if( zIn[-1] != '\\' ){` |
-|     19 | 7548 | `									break;` |
-|    ! 0 | 7549 | `								}` |
-|    105 | 7550 | `							}else if( zIn[0] == ';' \|\| zIn[0] == '#' ){` |
-|      - | 7551 | `								/* Inline comments */` |
-|    ! 0 | 7552 | `								break;` |
-|      - | 7553 | `							}` |
-|    105 | 7554 | `							zIn++;` |
-|      1 | 7555 | `						}` |
-|      - | 7556 | `					}` |
-|      - | 7557 | `					/* Trim the value */` |
-|     21 | 7558 | `					SyStringInitFromBuf(&sEntry,zCur,(int)(zIn-zCur));` |
-|     21 | 7559 | `					SyStringFullTrim(&sEntry);` |
-|     21 | 7560 | `					if( c == '"' \|\| c == '\'' ){` |
-|    ! 0 | 7561 | `						SyStringTrimLeadingChar(&sEntry,c);` |
-|    ! 0 | 7562 | `						SyStringTrimTrailingChar(&sEntry,c);` |
-|    ! 0 | 7563 | `					}` |
-|     21 | 7564 | `					if( sEntry.nByte > 0 ){` |
-|     21 | 7565 | `						ph7_value_string(pValue,sEntry.zString,(int)sEntry.nByte);` |
-|     10 | 7566 | `					}` |
-|      - | 7567 | `					/* Insert the key and it's value */` |
-|     21 | 7568 | `					ph7_array_add_elem(pCur,is_array ? 0 /*Automatic index assign */: pWorker,pValue);` |
-|     10 | 7569 | `				}` |
-|     12 | 7570 | `			}else{` |
-|    ! 0 | 7571 | `				while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && ( SyisSpace(zIn[0]) \|\| zIn[0] == '=' ) ){` |
-|    ! 0 | 7572 | `					zIn++;` |
-|    ! 0 | 7573 | `				}` |
-|      - | 7574 | `			}` |
-|     23 | 7575 | `			pCur = pOldCur;` |
-|      - | 7576 | `		}` |
-|      1 | 7577 | `	}` |
-|     13 | 7578 | `	SyHashRelease(&sHash);` |
-|      - | 7579 | `	/* Return the parse of the INI string */` |
-|     13 | 7580 | `	ph7_result_value(pCtx,pArray);` |
-|     13 | 7581 | `	return SXRET_OK;` |
-|      7 | 7582 | `}` |
-|      - | 7583 | `/*` |
-|      - | 7584 | ` * array parse_ini_string(string $ini[,bool $process_sections = false[,int $scanner_mode = INI_SCANNER_NORMAL ]])` |
-|      - | 7585 | ` *  Parse a configuration string.` |
-|      - | 7586 | ` * Parameters` |
-|      - | 7587 | ` *  $ini` |
-|      - | 7588 | ` *   The contents of the ini file being parsed.` |
-|      - | 7589 | ` *  $process_sections` |
-|      - | 7590 | ` *   By setting the process_sections parameter to TRUE, you get a multidimensional array, with the section names` |
-|      - | 7591 | ` *   and settings included. The default for process_sections is FALSE.` |
-|      - | 7592 | ` *  $scanner_mode (Not used)` |
-|      - | 7593 | ` *   Can either be INI_SCANNER_NORMAL (default) or INI_SCANNER_RAW. If INI_SCANNER_RAW is supplied` |
-|      - | 7594 | ` *   then option values will not be parsed.` |
-|      - | 7595 | ` * Return` |
-|      - | 7596 | ` *  The settings are returned as an associative array on success, and FALSE on failure.` |
-|      - | 7597 | ` */` |
-|     10 | 7598 | `static int PH7_builtin_parse_ini_string(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 7599 | `{` |
-|      - | 7600 | `	const char *zIni;` |
-|      - | 7601 | `	int nByte;` |
-|     11 | 7602 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
-|      - | 7603 | `		/* Missing/Invalid arguments,return FALSE*/` |
-|    ! 0 | 7604 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 7605 | `		return PH7_OK;` |
-|      - | 7606 | `	}` |
-|      - | 7607 | `	/* Extract the raw INI buffer */` |
-|     11 | 7608 | `	zIni = ph7_value_to_string(apArg[0],&nByte);` |
-|      - | 7609 | `	/* Process the INI buffer; propagate an OOM abort so the fatal actually halts */` |
-|     11 | 7610 | `	return PH7_ParseIniString(pCtx,zIni,(sxu32)nByte,(nArg > 1) ? ph7_value_to_bool(apArg[1]) : 0);` |
-|      6 | 7611 | `}` |
-|      - | 7612 | `#endif /* PH7_NEED_FMT_AND_INI */` |
-|      - | 7613 |  |
-|      - | 7614 | `#ifdef PH7_NEED_BUILTIN_REG` |
-|      - | 7615 |  |
-|      - | 7616 | `/*` |
-|      - | 7617 | ` * Ctype Functions.` |
-|      - | 7618 | ` * Status:` |
-|      - | 7619 | ` *    Stable.` |
-|      - | 7620 | ` */` |
-|      - | 7621 | `/*` |
-|      - | 7622 | ` * bool ctype_alnum(string $text)` |
-|      - | 7623 | ` *  Checks if all of the characters in the provided string, text, are alphanumeric.` |
-|      - | 7624 | ` * Parameters` |
-|      - | 7625 | ` *  $text` |
-|      - | 7626 | ` *   The tested string.` |
-|      - | 7627 | ` * Return` |
-|      - | 7628 | ` *   TRUE if every character in text is either a letter or a digit, FALSE otherwise.` |
-|      - | 7629 | ` */` |
-|     14 | 7630 | `static int PH7_builtin_ctype_alnum(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 7631 | `{` |
-|      - | 7632 | `	const unsigned char *zIn,*zEnd;` |
-|      - | 7633 | `	int nLen;` |
-|     15 | 7634 | `	if( nArg < 1 ){` |
-|      - | 7635 | `		/* Missing arguments,return FALSE */` |
-|    ! 0 | 7636 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 7637 | `		return PH7_OK;` |
-|      - | 7638 | `	}` |
-|      - | 7639 | `	/* Extract the target string */` |
-|     15 | 7640 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
-|     15 | 7641 | `	zEnd = &zIn[nLen];` |
-|     15 | 7642 | `	if( nLen < 1 ){` |
-|      - | 7643 | `		/* Empty string,return FALSE */` |
-|      3 | 7644 | `		ph7_result_bool(pCtx,0);` |
-|      3 | 7645 | `		return PH7_OK;` |
-|      - | 7646 | `	}` |
-|      - | 7647 | `	/* Perform the requested operation */` |
-|     32 | 7648 | `	for(;;){` |
-|     65 | 7649 | `		if( zIn >= zEnd ){` |
-|      - | 7650 | `			/* If we reach the end of the string,then the test succeeded. */` |
-|      9 | 7651 | `			ph7_result_bool(pCtx,1);` |
-|      9 | 7652 | `			return PH7_OK;` |
-|      - | 7653 | `		}` |
-|     57 | 7654 | `		if( !SyisAlphaNum(zIn[0]) ){` |
-|      5 | 7655 | `			break;` |
-|      - | 7656 | `		}` |
-|      - | 7657 | `		/* Point to the next character */` |
-|     53 | 7658 | `		zIn++;` |
-|      1 | 7659 | `	}` |
-|      - | 7660 | `	/* The test failed,return FALSE */` |
-|      5 | 7661 | `	ph7_result_bool(pCtx,0);` |
-|      5 | 7662 | `	return PH7_OK;` |
-|      8 | 7663 | `}` |
-|      - | 7664 | `/*` |
-|      - | 7665 | ` * bool ctype_alpha(string $text)` |
-|      - | 7666 | ` *  Checks if all of the characters in the provided string, text, are alphabetic.` |
-|      - | 7667 | ` * Parameters` |
-|      - | 7668 | ` *  $text` |
-|      - | 7669 | ` *   The tested string.` |
-|      - | 7670 | ` * Return` |
-|      - | 7671 | ` *  TRUE if every character in text is a letter from the current locale, FALSE otherwise.` |
-|      - | 7672 | ` */` |
-|     16 | 7673 | `static int PH7_builtin_ctype_alpha(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 7674 | `{` |
-|      - | 7675 | `	const unsigned char *zIn,*zEnd;` |
-|      - | 7676 | `	int nLen;` |
-|     17 | 7677 | `	if( nArg < 1 ){` |
-|      - | 7678 | `		/* Missing arguments,return FALSE */` |
-|    ! 0 | 7679 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 7680 | `		return PH7_OK;` |
-|      - | 7681 | `	}` |
-|      - | 7682 | `	/* Extract the target string */` |
-|     17 | 7683 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
-|     17 | 7684 | `	zEnd = &zIn[nLen];` |
-|     17 | 7685 | `	if( nLen < 1 ){` |
-|      - | 7686 | `		/* Empty string,return FALSE */` |
-|      3 | 7687 | `		ph7_result_bool(pCtx,0);` |
-|      3 | 7688 | `		return PH7_OK;` |
-|      - | 7689 | `	}` |
-|      - | 7690 | `	/* Perform the requested operation */` |
-|     42 | 7691 | `	for(;;){` |
-|     85 | 7692 | `		if( zIn >= zEnd ){` |
-|      - | 7693 | `			/* If we reach the end of the string,then the test succeeded. */` |
-|      9 | 7694 | `			ph7_result_bool(pCtx,1);` |
-|      9 | 7695 | `			return PH7_OK;` |
-|      - | 7696 | `		}` |
-|     77 | 7697 | `		if( !SyisAlpha(zIn[0]) ){` |
-|      7 | 7698 | `			break;` |
-|      - | 7699 | `		}` |
-|      - | 7700 | `		/* Point to the next character */` |
-|     71 | 7701 | `		zIn++;` |
-|      1 | 7702 | `	}` |
-|      - | 7703 | `	/* The test failed,return FALSE */` |
-|      7 | 7704 | `	ph7_result_bool(pCtx,0);` |
-|      7 | 7705 | `	return PH7_OK;` |
-|      9 | 7706 | `}` |
-|      - | 7707 | `/*` |
-|      - | 7708 | ` * bool ctype_cntrl(string $text)` |
-|      - | 7709 | ` *  Checks if all of the characters in the provided string, text, are control characters.` |
-|      - | 7710 | ` * Parameters` |
-|      - | 7711 | ` *  $text` |
-|      - | 7712 | ` *   The tested string.` |
-|      - | 7713 | ` * Return` |
-|      - | 7714 | ` *  TRUE if every character in text is a control characters,FALSE otherwise.` |
-|      - | 7715 | ` */` |
-|     16 | 7716 | `static int PH7_builtin_ctype_cntrl(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 7717 | `{` |
-|      - | 7718 | `	const unsigned char *zIn,*zEnd;` |
-|      - | 7719 | `	int nLen;` |
-|     17 | 7720 | `	if( nArg < 1 ){` |
-|      - | 7721 | `		/* Missing arguments,return FALSE */` |
-|    ! 0 | 7722 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 7723 | `		return PH7_OK;` |
-|      - | 7724 | `	}` |
-|      - | 7725 | `	/* Extract the target string */` |
-|     17 | 7726 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
-|     17 | 7727 | `	zEnd = &zIn[nLen];` |
-|     17 | 7728 | `	if( nLen < 1 ){` |
-|      - | 7729 | `		/* Empty string,return FALSE */` |
-|      3 | 7730 | `		ph7_result_bool(pCtx,0);` |
-|      3 | 7731 | `		return PH7_OK;` |
-|      - | 7732 | `	}` |
-|      - | 7733 | `	/* Perform the requested operation */` |
-|     14 | 7734 | `	for(;;){` |
-|     29 | 7735 | `		if( zIn >= zEnd ){` |
-|      - | 7736 | `			/* If we reach the end of the string,then the test succeeded. */` |
-|      9 | 7737 | `			ph7_result_bool(pCtx,1);` |
-|      9 | 7738 | `			return PH7_OK;` |
-|      - | 7739 | `		}` |
-|     21 | 7740 | `		if( zIn[0] >= 0xc0 ){` |
-|      - | 7741 | `			/* UTF-8 stream  */` |
-|    ! 0 | 7742 | `			break;` |
-|      - | 7743 | `		}` |
-|     21 | 7744 | `		if( !SyisCtrl(zIn[0]) ){` |
-|      7 | 7745 | `			break;` |
-|      - | 7746 | `		}` |
-|      - | 7747 | `		/* Point to the next character */` |
-|     15 | 7748 | `		zIn++;` |
-|      1 | 7749 | `	}` |
-|      - | 7750 | `	/* The test failed,return FALSE */` |
-|      7 | 7751 | `	ph7_result_bool(pCtx,0);` |
-|      7 | 7752 | `	return PH7_OK;` |
-|      9 | 7753 | `}` |
-|      - | 7754 | `/*` |
-|      - | 7755 | ` * bool ctype_digit(string $text)` |
-|      - | 7756 | ` *  Checks if all of the characters in the provided string, text, are numerical.` |
-|      - | 7757 | ` * Parameters` |
-|      - | 7758 | ` *  $text` |
-|      - | 7759 | ` *   The tested string.` |
-|      - | 7760 | ` * Return` |
-|      - | 7761 | ` *  TRUE if every character in the string text is a decimal digit, FALSE otherwise.` |
-|      - | 7762 | ` */` |
-|   1623 | 7763 | `static int PH7_builtin_ctype_digit(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      5 | 7764 | `{` |
-|      - | 7765 | `	const unsigned char *zIn,*zEnd;` |
-|      - | 7766 | `	int nLen;` |
-|   1628 | 7767 | `	if( nArg < 1 ){` |
-|      - | 7768 | `		/* Missing arguments,return FALSE */` |
-|    ! 0 | 7769 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 7770 | `		return PH7_OK;` |
-|      - | 7771 | `	}` |
-|      - | 7772 | `	/* Extract the target string */` |
-|   1628 | 7773 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
-|   1628 | 7774 | `	zEnd = &zIn[nLen];` |
-|   1628 | 7775 | `	if( nLen < 1 ){` |
-|      - | 7776 | `		/* Empty string,return FALSE */` |
-|      3 | 7777 | `		ph7_result_bool(pCtx,0);` |
-|      3 | 7778 | `		return PH7_OK;` |
-|      - | 7779 | `	}` |
-|      - | 7780 | `	/* Perform the requested operation */` |
-|   1525 | 7781 | `	for(;;){` |
-|   3053 | 7782 | `		if( zIn >= zEnd ){` |
-|      - | 7783 | `			/* If we reach the end of the string,then the test succeeded. */` |
-|   1382 | 7784 | `			ph7_result_bool(pCtx,1);` |
-|   1382 | 7785 | `			return PH7_OK;` |
-|      - | 7786 | `		}` |
-|   1676 | 7787 | `		if( zIn[0] >= 0xc0 ){` |
-|      - | 7788 | `			/* UTF-8 stream  */` |
-|    ! 0 | 7789 | `			break;` |
-|      - | 7790 | `		}` |
-|   1676 | 7791 | `		if( !SyisDigit(zIn[0]) ){` |
-|    249 | 7792 | `			break;` |
-|      - | 7793 | `		}` |
-|      - | 7794 | `		/* Point to the next character */` |
-|   1432 | 7795 | `		zIn++;` |
-|      5 | 7796 | `	}` |
-|      - | 7797 | `	/* The test failed,return FALSE */` |
-|    249 | 7798 | `	ph7_result_bool(pCtx,0);` |
-|    249 | 7799 | `	return PH7_OK;` |
-|    817 | 7800 | `}` |
-|      - | 7801 | `/*` |
-|      - | 7802 | ` * bool ctype_xdigit(string $text)` |
-|      - | 7803 | ` *  Check for character(s) representing a hexadecimal digit.` |
-|      - | 7804 | ` * Parameters` |
-|      - | 7805 | ` *  $text` |
-|      - | 7806 | ` *   The tested string.` |
-|      - | 7807 | ` * Return` |
-|      - | 7808 | ` *  Returns TRUE if every character in text is a hexadecimal 'digit', that is` |
-|      - | 7809 | ` * a decimal digit or a character from [A-Fa-f] , FALSE otherwise.` |
-|      - | 7810 | ` */` |
-|     18 | 7811 | `static int PH7_builtin_ctype_xdigit(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 7812 | `{` |
-|      - | 7813 | `	const unsigned char *zIn,*zEnd;` |
-|      - | 7814 | `	int nLen;` |
-|     19 | 7815 | `	if( nArg < 1 ){` |
-|      - | 7816 | `		/* Missing arguments,return FALSE */` |
-|    ! 0 | 7817 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 7818 | `		return PH7_OK;` |
-|      - | 7819 | `	}` |
-|      - | 7820 | `	/* Extract the target string */` |
-|     19 | 7821 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
-|     19 | 7822 | `	zEnd = &zIn[nLen];` |
-|     19 | 7823 | `	if( nLen < 1 ){` |
-|      - | 7824 | `		/* Empty string,return FALSE */` |
-|      3 | 7825 | `		ph7_result_bool(pCtx,0);` |
-|      3 | 7826 | `		return PH7_OK;` |
-|      - | 7827 | `	}` |
-|      - | 7828 | `	/* Perform the requested operation */` |
-|     46 | 7829 | `	for(;;){` |
-|     93 | 7830 | `		if( zIn >= zEnd ){` |
-|      - | 7831 | `			/* If we reach the end of the string,then the test succeeded. */` |
-|     11 | 7832 | `			ph7_result_bool(pCtx,1);` |
-|     11 | 7833 | `			return PH7_OK;` |
-|      - | 7834 | `		}` |
-|     83 | 7835 | `		if( zIn[0] >= 0xc0 ){` |
-|      - | 7836 | `			/* UTF-8 stream  */` |
-|    ! 0 | 7837 | `			break;` |
-|      - | 7838 | `		}` |
-|     83 | 7839 | `		if( !SyisHex(zIn[0]) ){` |
-|      7 | 7840 | `			break;` |
-|      - | 7841 | `		}` |
-|      - | 7842 | `		/* Point to the next character */` |
-|     77 | 7843 | `		zIn++;` |
-|      1 | 7844 | `	}` |
-|      - | 7845 | `	/* The test failed,return FALSE */` |
-|      7 | 7846 | `	ph7_result_bool(pCtx,0);` |
-|      7 | 7847 | `	return PH7_OK;` |
-|     10 | 7848 | `}` |
-|      - | 7849 | `/*` |
-|      - | 7850 | ` * bool ctype_graph(string $text)` |
-|      - | 7851 | ` *  Checks if all of the characters in the provided string, text, creates visible output.` |
-|      - | 7852 | ` * Parameters` |
-|      - | 7853 | ` *  $text` |
-|      - | 7854 | ` *   The tested string.` |
-|      - | 7855 | ` * Return` |
-|      - | 7856 | ` *  Returns TRUE if every character in text is printable and actually creates visible output` |
-|      - | 7857 | ` * (no white space), FALSE otherwise.` |
-|      - | 7858 | ` */` |
-|     16 | 7859 | `static int PH7_builtin_ctype_graph(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 7860 | `{` |
-|      - | 7861 | `	const unsigned char *zIn,*zEnd;` |
-|      - | 7862 | `	int nLen;` |
-|     17 | 7863 | `	if( nArg < 1 ){` |
-|      - | 7864 | `		/* Missing arguments,return FALSE */` |
-|    ! 0 | 7865 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 7866 | `		return PH7_OK;` |
-|      - | 7867 | `	}` |
-|      - | 7868 | `	/* Extract the target string */` |
-|     17 | 7869 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
-|     17 | 7870 | `	zEnd = &zIn[nLen];` |
-|     17 | 7871 | `	if( nLen < 1 ){` |
-|      - | 7872 | `		/* Empty string,return FALSE */` |
-|      3 | 7873 | `		ph7_result_bool(pCtx,0);` |
-|      3 | 7874 | `		return PH7_OK;` |
-|      - | 7875 | `	}` |
-|      - | 7876 | `	/* Perform the requested operation */` |
-|     57 | 7877 | `	for(;;){` |
-|    115 | 7878 | `		if( zIn >= zEnd ){` |
-|      - | 7879 | `			/* If we reach the end of the string,then the test succeeded. */` |
-|      9 | 7880 | `			ph7_result_bool(pCtx,1);` |
-|      9 | 7881 | `			return PH7_OK;` |
-|      - | 7882 | `		}` |
-|    107 | 7883 | `		if( zIn[0] >= 0xc0 ){` |
-|      - | 7884 | `			/* UTF-8 stream  */` |
-|    ! 0 | 7885 | `			break;` |
-|      - | 7886 | `		}` |
-|    107 | 7887 | `		if( !SyisGraph(zIn[0]) ){` |
-|      7 | 7888 | `			break;` |
-|      - | 7889 | `		}` |
-|      - | 7890 | `		/* Point to the next character */` |
-|    101 | 7891 | `		zIn++;` |
-|      1 | 7892 | `	}` |
-|      - | 7893 | `	/* The test failed,return FALSE */` |
-|      7 | 7894 | `	ph7_result_bool(pCtx,0);` |
-|      7 | 7895 | `	return PH7_OK;` |
-|      9 | 7896 | `}` |
-|      - | 7897 | `/*` |
-|      - | 7898 | ` * bool ctype_print(string $text)` |
-|      - | 7899 | ` *  Checks if all of the characters in the provided string, text, are printable.` |
-|      - | 7900 | ` * Parameters` |
-|      - | 7901 | ` *  $text` |
-|      - | 7902 | ` *   The tested string.` |
-|      - | 7903 | ` * Return` |
-|      - | 7904 | ` *  Returns TRUE if every character in text will actually create output (including blanks).` |
-|      - | 7905 | ` *  Returns FALSE if text contains control characters or characters that do not have any output` |
-|      - | 7906 | ` *  or control function at all.` |
-|      - | 7907 | ` */` |
-|     16 | 7908 | `static int PH7_builtin_ctype_print(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 7909 | `{` |
-|      - | 7910 | `	const unsigned char *zIn,*zEnd;` |
-|      - | 7911 | `	int nLen;` |
-|     17 | 7912 | `	if( nArg < 1 ){` |
-|      - | 7913 | `		/* Missing arguments,return FALSE */` |
-|    ! 0 | 7914 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 7915 | `		return PH7_OK;` |
-|      - | 7916 | `	}` |
-|      - | 7917 | `	/* Extract the target string */` |
-|     17 | 7918 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
-|     17 | 7919 | `	zEnd = &zIn[nLen];` |
-|     17 | 7920 | `	if( nLen < 1 ){` |
-|      - | 7921 | `		/* Empty string,return FALSE */` |
-|      3 | 7922 | `		ph7_result_bool(pCtx,0);` |
-|      3 | 7923 | `		return PH7_OK;` |
-|      - | 7924 | `	}` |
-|      - | 7925 | `	/* Perform the requested operation */` |
-|     63 | 7926 | `	for(;;){` |
-|    127 | 7927 | `		if( zIn >= zEnd ){` |
-|      - | 7928 | `			/* If we reach the end of the string,then the test succeeded. */` |
-|      9 | 7929 | `			ph7_result_bool(pCtx,1);` |
-|      9 | 7930 | `			return PH7_OK;` |
-|      - | 7931 | `		}` |
-|    119 | 7932 | `		if( zIn[0] >= 0xc0 ){` |
-|      - | 7933 | `			/* UTF-8 stream  */` |
-|    ! 0 | 7934 | `			break;` |
-|      - | 7935 | `		}` |
-|    119 | 7936 | `		if( !SyisPrint(zIn[0]) ){` |
-|      7 | 7937 | `			break;` |
-|      - | 7938 | `		}` |
-|      - | 7939 | `		/* Point to the next character */` |
-|    113 | 7940 | `		zIn++;` |
-|      1 | 7941 | `	}` |
-|      - | 7942 | `	/* The test failed,return FALSE */` |
-|      7 | 7943 | `	ph7_result_bool(pCtx,0);` |
-|      7 | 7944 | `	return PH7_OK;` |
-|      9 | 7945 | `}` |
-|      - | 7946 | `/*` |
-|      - | 7947 | ` * bool ctype_punct(string $text)` |
-|      - | 7948 | ` *  Checks if all of the characters in the provided string, text, are punctuation character.` |
-|      - | 7949 | ` * Parameters` |
-|      - | 7950 | ` *  $text` |
-|      - | 7951 | ` *   The tested string.` |
-|      - | 7952 | ` * Return` |
-|      - | 7953 | ` *  Returns TRUE if every character in text is printable, but neither letter` |
-|      - | 7954 | ` *  digit or blank, FALSE otherwise.` |
-|      - | 7955 | ` */` |
-|     18 | 7956 | `static int PH7_builtin_ctype_punct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 7957 | `{` |
-|      - | 7958 | `	const unsigned char *zIn,*zEnd;` |
-|      - | 7959 | `	int nLen;` |
-|     19 | 7960 | `	if( nArg < 1 ){` |
-|      - | 7961 | `		/* Missing arguments,return FALSE */` |
-|    ! 0 | 7962 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 7963 | `		return PH7_OK;` |
-|      - | 7964 | `	}` |
-|      - | 7965 | `	/* Extract the target string */` |
-|     19 | 7966 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
-|     19 | 7967 | `	zEnd = &zIn[nLen];` |
-|     19 | 7968 | `	if( nLen < 1 ){` |
-|      - | 7969 | `		/* Empty string,return FALSE */` |
-|      3 | 7970 | `		ph7_result_bool(pCtx,0);` |
-|      3 | 7971 | `		return PH7_OK;` |
-|      - | 7972 | `	}` |
-|      - | 7973 | `	/* Perform the requested operation */` |
-|     38 | 7974 | `	for(;;){` |
-|     77 | 7975 | `		if( zIn >= zEnd ){` |
-|      - | 7976 | `			/* If we reach the end of the string,then the test succeeded. */` |
-|      9 | 7977 | `			ph7_result_bool(pCtx,1);` |
-|      9 | 7978 | `			return PH7_OK;` |
-|      - | 7979 | `		}` |
-|     69 | 7980 | `		if( zIn[0] >= 0xc0 ){` |
-|      - | 7981 | `			/* UTF-8 stream  */` |
-|    ! 0 | 7982 | `			break;` |
-|      - | 7983 | `		}` |
-|     69 | 7984 | `		if( !SyisPunct(zIn[0]) ){` |
-|      9 | 7985 | `			break;` |
-|      - | 7986 | `		}` |
-|      - | 7987 | `		/* Point to the next character */` |
-|     61 | 7988 | `		zIn++;` |
-|      1 | 7989 | `	}` |
-|      - | 7990 | `	/* The test failed,return FALSE */` |
-|      9 | 7991 | `	ph7_result_bool(pCtx,0);` |
-|      9 | 7992 | `	return PH7_OK;` |
-|     10 | 7993 | `}` |
-|      - | 7994 | `/*` |
-|      - | 7995 | ` * bool ctype_space(string $text)` |
-|      - | 7996 | ` *  Checks if all of the characters in the provided string, text, creates whitespace.` |
-|      - | 7997 | ` * Parameters` |
-|      - | 7998 | ` *  $text` |
-|      - | 7999 | ` *   The tested string.` |
-|      - | 8000 | ` * Return` |
-|      - | 8001 | ` *  Returns TRUE if every character in text creates some sort of white space, FALSE otherwise.` |
-|      - | 8002 | ` *  Besides the blank character this also includes tab, vertical tab, line feed, carriage return` |
-|      - | 8003 | ` *  and form feed characters.` |
-|      - | 8004 | ` */` |
-|  62580 | 8005 | `static int PH7_builtin_ctype_space(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      5 | 8006 | `{` |
-|      - | 8007 | `	const unsigned char *zIn,*zEnd;` |
-|      - | 8008 | `	int nLen;` |
-|  62585 | 8009 | `	if( nArg < 1 ){` |
-|      - | 8010 | `		/* Missing arguments,return FALSE */` |
-|    ! 0 | 8011 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 8012 | `		return PH7_OK;` |
-|      - | 8013 | `	}` |
-|      - | 8014 | `	/* Extract the target string */` |
-|  62585 | 8015 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
-|  62585 | 8016 | `	zEnd = &zIn[nLen];` |
-|  62585 | 8017 | `	if( nLen < 1 ){` |
-|      - | 8018 | `		/* Empty string,return FALSE */` |
-|      3 | 8019 | `		ph7_result_bool(pCtx,0);` |
-|      3 | 8020 | `		return PH7_OK;` |
-|      - | 8021 | `	}` |
-|      - | 8022 | `	/* Perform the requested operation */` |
-|  32401 | 8023 | `	for(;;){` |
-|  64721 | 8024 | `		if( zIn >= zEnd ){` |
-|      - | 8025 | `			/* If we reach the end of the string,then the test succeeded. */` |
-|   2119 | 8026 | `			ph7_result_bool(pCtx,1);` |
-|   2119 | 8027 | `			return PH7_OK;` |
-|      - | 8028 | `		}` |
-|  62607 | 8029 | `		if( zIn[0] >= 0xc0 ){` |
-|      - | 8030 | `			/* UTF-8 stream  */` |
-|    ! 0 | 8031 | `			break;` |
-|      - | 8032 | `		}` |
-|  62607 | 8033 | `		if( !SyisSpace(zIn[0]) ){` |
-|  60469 | 8034 | `			break;` |
-|      - | 8035 | `		}` |
-|      - | 8036 | `		/* Point to the next character */` |
-|   2143 | 8037 | `		zIn++;` |
-|      5 | 8038 | `	}` |
-|      - | 8039 | `	/* The test failed,return FALSE */` |
-|  60469 | 8040 | `	ph7_result_bool(pCtx,0);` |
-|  60469 | 8041 | `	return PH7_OK;` |
-|  31338 | 8042 | `}` |
-|      - | 8043 | `/*` |
-|      - | 8044 | ` * bool ctype_lower(string $text)` |
-|      - | 8045 | ` *  Checks if all of the characters in the provided string, text, are lowercase letters.` |
-|      - | 8046 | ` * Parameters` |
-|      - | 8047 | ` *  $text` |
-|      - | 8048 | ` *   The tested string.` |
-|      - | 8049 | ` * Return` |
-|      - | 8050 | ` *  Returns TRUE if every character in text is a lowercase letter in the current locale.` |
-|      - | 8051 | ` */` |
-|     16 | 8052 | `static int PH7_builtin_ctype_lower(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 8053 | `{` |
-|      - | 8054 | `	const unsigned char *zIn,*zEnd;` |
-|      - | 8055 | `	int nLen;` |
-|     17 | 8056 | `	if( nArg < 1 ){` |
-|      - | 8057 | `		/* Missing arguments,return FALSE */` |
-|    ! 0 | 8058 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 8059 | `		return PH7_OK;` |
-|      - | 8060 | `	}` |
-|      - | 8061 | `	/* Extract the target string */` |
-|     17 | 8062 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
-|     17 | 8063 | `	zEnd = &zIn[nLen];` |
-|     17 | 8064 | `	if( nLen < 1 ){` |
-|      - | 8065 | `		/* Empty string,return FALSE */` |
-|      3 | 8066 | `		ph7_result_bool(pCtx,0);` |
-|      3 | 8067 | `		return PH7_OK;` |
-|      - | 8068 | `	}` |
-|      - | 8069 | `	/* Perform the requested operation */` |
-|     27 | 8070 | `	for(;;){` |
-|     55 | 8071 | `		if( zIn >= zEnd ){` |
-|      - | 8072 | `			/* If we reach the end of the string,then the test succeeded. */` |
-|      5 | 8073 | `			ph7_result_bool(pCtx,1);` |
-|      5 | 8074 | `			return PH7_OK;` |
-|      - | 8075 | `		}` |
-|     51 | 8076 | `		if( !SyisLower(zIn[0]) ){` |
-|     11 | 8077 | `			break;` |
-|      - | 8078 | `		}` |
-|      - | 8079 | `		/* Point to the next character */` |
-|     41 | 8080 | `		zIn++;` |
-|      1 | 8081 | `	}` |
-|      - | 8082 | `	/* The test failed,return FALSE */` |
-|     11 | 8083 | `	ph7_result_bool(pCtx,0);` |
-|     11 | 8084 | `	return PH7_OK;` |
-|      9 | 8085 | `}` |
-|      - | 8086 | `/*` |
-|      - | 8087 | ` * bool ctype_upper(string $text)` |
-|      - | 8088 | ` *  Checks if all of the characters in the provided string, text, are uppercase letters.` |
-|      - | 8089 | ` * Parameters` |
-|      - | 8090 | ` *  $text` |
-|      - | 8091 | ` *   The tested string.` |
-|      - | 8092 | ` * Return` |
-|      - | 8093 | ` *  Returns TRUE if every character in text is a uppercase letter in the current locale.` |
-|      - | 8094 | ` */` |
-|     16 | 8095 | `static int PH7_builtin_ctype_upper(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 8096 | `{` |
-|      - | 8097 | `	const unsigned char *zIn,*zEnd;` |
-|      - | 8098 | `	int nLen;` |
-|     17 | 8099 | `	if( nArg < 1 ){` |
-|      - | 8100 | `		/* Missing arguments,return FALSE */` |
-|    ! 0 | 8101 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 8102 | `		return PH7_OK;` |
-|      - | 8103 | `	}` |
-|      - | 8104 | `	/* Extract the target string */` |
-|     17 | 8105 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
-|     17 | 8106 | `	zEnd = &zIn[nLen];` |
-|     17 | 8107 | `	if( nLen < 1 ){` |
-|      - | 8108 | `		/* Empty string,return FALSE */` |
-|      3 | 8109 | `		ph7_result_bool(pCtx,0);` |
-|      3 | 8110 | `		return PH7_OK;` |
-|      - | 8111 | `	}` |
-|      - | 8112 | `	/* Perform the requested operation */` |
-|     28 | 8113 | `	for(;;){` |
-|     57 | 8114 | `		if( zIn >= zEnd ){` |
-|      - | 8115 | `			/* If we reach the end of the string,then the test succeeded. */` |
-|      5 | 8116 | `			ph7_result_bool(pCtx,1);` |
-|      5 | 8117 | `			return PH7_OK;` |
-|      - | 8118 | `		}` |
-|     53 | 8119 | `		if( !SyisUpper(zIn[0]) ){` |
-|     11 | 8120 | `			break;` |
-|      - | 8121 | `		}` |
-|      - | 8122 | `		/* Point to the next character */` |
-|     43 | 8123 | `		zIn++;` |
-|      1 | 8124 | `	}` |
-|      - | 8125 | `	/* The test failed,return FALSE */` |
-|     11 | 8126 | `	ph7_result_bool(pCtx,0);` |
-|     11 | 8127 | `	return PH7_OK;` |
-|      9 | 8128 | `}` |
-|      - | 8129 | `/* Date/Time functions moved to builtin_date.c */` |
-|      - | 8130 | `/*` |
-|      - | 8131 | ` * Section:` |
-|      - | 8132 | ` *    URL handling Functions.` |
-|      - | 8133 | ` * Status:` |
-|      - | 8134 | ` *    Stable.` |
-|      - | 8135 | ` */` |
-|      - | 8136 | `/*` |
-|      - | 8137 | ` * Output consumer callback for the standard Symisc routines.` |
-|      - | 8138 | ` * [i.e: SyBase64Encode(),SyBase64Decode(),SyUriEncode(),...].` |
-|      - | 8139 | ` */` |
-|   1026 | 8140 | `static int Consumer(const void *pData,unsigned int nLen,void *pUserData)` |
-|      2 | 8141 | `{` |
-|      - | 8142 | `	/* Store in the call context result buffer */` |
-|   1028 | 8143 | `	ph7_result_string((ph7_context *)pUserData,(const char *)pData,(int)nLen);` |
-|   1028 | 8144 | `	return SXRET_OK;` |
-|      2 | 8145 | `}` |
+|      6 | 7368 | `	}else{` |
+|      - | 7369 | `		int i,flen,tlen,c,iOfft;` |
+|      - | 7370 | `		const char *zFrom,*zTo;` |
+|      3 | 7371 | `		if( nArg < 3 ){` |
+|      - | 7372 | `			/* Nothing to replace */` |
+|    ! 0 | 7373 | `			ph7_result_string(pCtx,zIn,nLen);` |
+|    ! 0 | 7374 | `			return PH7_OK;` |
+|      - | 7375 | `		}` |
+|      - | 7376 | `		/* Extract given arguments */` |
+|      3 | 7377 | `		zFrom = ph7_value_to_string(apArg[1],&flen);` |
+|      3 | 7378 | `		zTo = ph7_value_to_string(apArg[2],&tlen);` |
+|      3 | 7379 | `		if( flen < 1 \|\| tlen < 1 ){` |
+|      - | 7380 | `			/* Nothing to replace */` |
+|    ! 0 | 7381 | `			ph7_result_string(pCtx,zIn,nLen);` |
+|    ! 0 | 7382 | `			return PH7_OK;` |
+|      - | 7383 | `		}` |
+|      - | 7384 | `		/* Start the replace process */` |
+|     13 | 7385 | `		for( i = 0 ; i < nLen ; ++i ){` |
+|     11 | 7386 | `			c = zIn[i];` |
+|     11 | 7387 | `			if( CheckMask(c,zFrom,flen,&iOfft) ){` |
+|      5 | 7388 | `				if ( iOfft < tlen ){` |
+|      5 | 7389 | `					c = zTo[iOfft];` |
+|      2 | 7390 | `				}` |
+|      2 | 7391 | `			}` |
+|     11 | 7392 | `			ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char));` |
+|      - | 7393 |  |
+|      6 | 7394 | `		}` |
+|      - | 7395 | `	}` |
+|     13 | 7396 | `	return PH7_OK;` |
+|      7 | 7397 | `}` |
+|      - | 7398 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|      - | 7399 | `#ifdef PH7_NEED_FMT_AND_INI` |
+|      - | 7400 | `/*` |
+|      - | 7401 | ` * Parse an INI string.` |
+|      - | 7402 |  |
+|      - | 7403 | ` * According to wikipedia` |
+|      - | 7404 | ` *  The INI file format is an informal standard for configuration files for some platforms or software.` |
+|      - | 7405 | ` *  INI files are simple text files with a basic structure composed of "sections" and "properties".` |
+|      - | 7406 | ` *  Format` |
+|      - | 7407 | `*    Properties` |
+|      - | 7408 | `*     The basic element contained in an INI file is the property. Every property has a name and a value` |
+|      - | 7409 | `*     delimited by an equals sign (=). The name appears to the left of the equals sign.` |
+|      - | 7410 | `*     Example:` |
+|      - | 7411 | `*      name=value` |
+|      - | 7412 | `*    Sections` |
+|      - | 7413 | `*     Properties may be grouped into arbitrarily named sections. The section name appears on a line by itself` |
+|      - | 7414 | `*     in square brackets ([ and ]). All properties after the section declaration are associated with that section.` |
+|      - | 7415 | `*     There is no explicit "end of section" delimiter; sections end at the next section declaration` |
+|      - | 7416 | `*     or the end of the file. Sections may not be nested.` |
+|      - | 7417 | `*     Example:` |
+|      - | 7418 | `*      [section]` |
+|      - | 7419 | `*   Comments` |
+|      - | 7420 | `*    Semicolons (;) at the beginning of the line indicate a comment. Comment lines are ignored.` |
+|      - | 7421 | `* This function return an array holding parsed values on success.FALSE otherwise.` |
+|      - | 7422 | `*/` |
+|     12 | 7423 | `PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nByte,int bProcessSection)` |
+|      1 | 7424 | `{` |
+|      - | 7425 | `	ph7_value *pCur,*pArray,*pSection,*pWorker,*pValue;` |
+|     13 | 7426 | `	const char *zCur,*zEnd = &zIn[nByte];` |
+|      - | 7427 | `	SyHashEntry *pEntry;` |
+|      - | 7428 | `	SyString sEntry;` |
+|      - | 7429 | `	SyHash sHash;` |
+|      - | 7430 | `	int c;` |
+|      - | 7431 | `	/* Create an empty array and worker variables */` |
+|     13 | 7432 | `	pArray = ph7_context_new_array(pCtx);` |
+|     13 | 7433 | `	pWorker = ph7_context_new_scalar(pCtx);` |
+|     13 | 7434 | `	pValue = ph7_context_new_scalar(pCtx);` |
+|     13 | 7435 | `	if( pArray == 0 \|\| pWorker == 0 \|\| pValue == 0){` |
+|      - | 7436 | `		/* Out of memory: surface a fatal instead of returning FALSE */` |
+|    ! 0 | 7437 | `		return PH7_ContextMemoryError(pCtx);` |
+|      - | 7438 | `	}` |
+|     13 | 7439 | `	SyHashInit(&sHash,&pCtx->pVm->sAllocator,0,0);` |
+|     13 | 7440 | `	pCur = pArray;` |
+|      - | 7441 | `	/* Start the parse process */` |
+|     21 | 7442 | `	for(;;){` |
+|      - | 7443 | `		/* Ignore leading white spaces */` |
+|     69 | 7444 | `		while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && SyisSpace(zIn[0])){` |
+|     27 | 7445 | `			zIn++;` |
+|      1 | 7446 | `		}` |
+|     43 | 7447 | `		if( zIn >= zEnd ){` |
+|      - | 7448 | `			/* No more input to process */` |
+|     13 | 7449 | `			break;` |
+|      - | 7450 | `		}` |
+|     31 | 7451 | `		if( zIn[0] == ';' \|\| zIn[0] == '#' ){` |
+|      - | 7452 | `			/* Comment til the end of line */` |
+|    ! 0 | 7453 | `			zIn++;` |
+|    ! 0 | 7454 | `			while(zIn < zEnd && zIn[0] != '\n' ){` |
+|    ! 0 | 7455 | `				zIn++;` |
+|    ! 0 | 7456 | `			}` |
+|    ! 0 | 7457 | `			continue;` |
+|      - | 7458 | `		}` |
+|      - | 7459 | `		/* Reset the string cursor of the working variable */` |
+|     31 | 7460 | `		ph7_value_reset_string_cursor(pWorker);` |
+|     31 | 7461 | `		if( zIn[0] == '[' ){` |
+|      - | 7462 | `			/* Section: Extract the section name */` |
+|      9 | 7463 | `			zIn++;` |
+|      9 | 7464 | `			zCur = zIn;` |
+|     73 | 7465 | `			while( zIn < zEnd && zIn[0] != ']' ){` |
+|     65 | 7466 | `				zIn++;` |
+|      1 | 7467 | `			}` |
+|      9 | 7468 | `			if( zIn > zCur && bProcessSection ){` |
+|      - | 7469 | `				/* Save the section name */` |
+|      5 | 7470 | `				SyStringInitFromBuf(&sEntry,zCur,(int)(zIn-zCur));` |
+|      5 | 7471 | `				SyStringFullTrim(&sEntry);` |
+|      5 | 7472 | `				ph7_value_string(pWorker,sEntry.zString,(int)sEntry.nByte);` |
+|      5 | 7473 | `				if( sEntry.nByte > 0 ){` |
+|      - | 7474 | `					/* Associate an array with the section */` |
+|      5 | 7475 | `					pSection = ph7_context_new_array(pCtx);` |
+|      5 | 7476 | `					if( pSection ){` |
+|      5 | 7477 | `						ph7_array_add_elem(pArray,pWorker/*Section name*/,pSection);` |
+|      5 | 7478 | `						pCur = pSection;` |
+|      2 | 7479 | `					}` |
+|      2 | 7480 | `				}` |
+|      2 | 7481 | `			}` |
+|      9 | 7482 | `			zIn++; /* Trailing square brackets ']' */` |
+|      5 | 7483 | `		}else{` |
+|      - | 7484 | `			ph7_value *pOldCur;` |
+|      - | 7485 | `			int is_array;` |
+|      - | 7486 | `			int iLen;` |
+|      - | 7487 | `			/* Properties */` |
+|     23 | 7488 | `			is_array = 0;` |
+|     23 | 7489 | `			zCur = zIn;` |
+|     23 | 7490 | `			iLen = 0; /* cc warning */` |
+|     23 | 7491 | `			pOldCur = pCur;` |
+|    155 | 7492 | `			while( zIn < zEnd && zIn[0] != '=' ){` |
+|    133 | 7493 | `				if( zIn[0] == '[' && !is_array ){` |
+|      - | 7494 | `					/* Array */` |
+|    ! 0 | 7495 | `					iLen = (int)(zIn-zCur);` |
+|    ! 0 | 7496 | `					is_array = 1;` |
+|    ! 0 | 7497 | `					if( iLen > 0 ){` |
+|    ! 0 | 7498 | `						ph7_value *pvArr = 0; /* cc warning */` |
+|      - | 7499 | `						/* Query the hashtable */` |
+|    ! 0 | 7500 | `						SyStringInitFromBuf(&sEntry,zCur,iLen);` |
+|    ! 0 | 7501 | `						SyStringFullTrim(&sEntry);` |
+|    ! 0 | 7502 | `						pEntry = SyHashGet(&sHash,(const void *)sEntry.zString,sEntry.nByte);` |
+|    ! 0 | 7503 | `						if( pEntry ){` |
+|    ! 0 | 7504 | `							pvArr = (ph7_value *)SyHashEntryGetUserData(pEntry);` |
+|    ! 0 | 7505 | `						}else{` |
+|      - | 7506 | `							/* Create an empty array */` |
+|    ! 0 | 7507 | `							pvArr = ph7_context_new_array(pCtx);` |
+|    ! 0 | 7508 | `							if( pvArr ){` |
+|      - | 7509 | `								/* Save the entry */` |
+|    ! 0 | 7510 | `								SyHashInsert(&sHash,(const void *)sEntry.zString,sEntry.nByte,pvArr);` |
+|      - | 7511 | `								/* Insert the entry */` |
+|    ! 0 | 7512 | `								ph7_value_reset_string_cursor(pWorker);` |
+|    ! 0 | 7513 | `								ph7_value_string(pWorker,sEntry.zString,(int)sEntry.nByte);` |
+|    ! 0 | 7514 | `								ph7_array_add_elem(pCur,pWorker,pvArr);` |
+|    ! 0 | 7515 | `								ph7_value_reset_string_cursor(pWorker);` |
+|    ! 0 | 7516 | `							}` |
+|      - | 7517 | `						}` |
+|    ! 0 | 7518 | `						if( pvArr ){` |
+|    ! 0 | 7519 | `							pCur = pvArr;` |
+|    ! 0 | 7520 | `						}` |
+|    ! 0 | 7521 | `					}` |
+|    ! 0 | 7522 | `					while ( zIn < zEnd && zIn[0] != ']' ){` |
+|    ! 0 | 7523 | `						zIn++;` |
+|    ! 0 | 7524 | `					}` |
+|    ! 0 | 7525 | `				}` |
+|    133 | 7526 | `				zIn++;` |
+|      1 | 7527 | `			}` |
+|     23 | 7528 | `			if( !is_array ){` |
+|     23 | 7529 | `				iLen = (int)(zIn-zCur);` |
+|     11 | 7530 | `			}` |
+|      - | 7531 | `			/* Trim the key */` |
+|     23 | 7532 | `			SyStringInitFromBuf(&sEntry,zCur,iLen);` |
+|     39 | 7533 | `			SyStringFullTrim(&sEntry);` |
+|     23 | 7534 | `			if( sEntry.nByte > 0 ){` |
+|     23 | 7535 | `				if( !is_array ){` |
+|      - | 7536 | `					/* Save the key name */` |
+|     23 | 7537 | `					ph7_value_string(pWorker,sEntry.zString,(int)sEntry.nByte);` |
+|     11 | 7538 | `				}` |
+|      - | 7539 | `				/* extract key value */` |
+|     23 | 7540 | `				ph7_value_reset_string_cursor(pValue);` |
+|     23 | 7541 | `				zIn++; /* '=' */` |
+|     39 | 7542 | `				while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && SyisSpace(zIn[0]) ){` |
+|     17 | 7543 | `					zIn++;` |
+|      1 | 7544 | `				}` |
+|     23 | 7545 | `				if( zIn < zEnd ){` |
+|     21 | 7546 | `					zCur = zIn;` |
+|     21 | 7547 | `					c = zIn[0];` |
+|     21 | 7548 | `					if( c == '"' \|\| c == '\'' ){` |
+|    ! 0 | 7549 | `						zIn++;` |
+|      - | 7550 | `						/* Delimit the value */` |
+|    ! 0 | 7551 | `						while( zIn < zEnd ){` |
+|    ! 0 | 7552 | `							if ( zIn[0] == c && zIn[-1] != '\\' ){` |
+|    ! 0 | 7553 | `								break;` |
+|      - | 7554 | `							}` |
+|    ! 0 | 7555 | `							zIn++;` |
+|    ! 0 | 7556 | `						}` |
+|    ! 0 | 7557 | `						if( zIn < zEnd ){` |
+|    ! 0 | 7558 | `							zIn++;` |
+|    ! 0 | 7559 | `						}` |
+|    ! 0 | 7560 | `					}else{` |
+|    125 | 7561 | `						while( zIn < zEnd ){` |
+|    123 | 7562 | `							if( zIn[0] == '\n' ){` |
+|     19 | 7563 | `								if( zIn[-1] != '\\' ){` |
+|     19 | 7564 | `									break;` |
+|    ! 0 | 7565 | `								}` |
+|    105 | 7566 | `							}else if( zIn[0] == ';' \|\| zIn[0] == '#' ){` |
+|      - | 7567 | `								/* Inline comments */` |
+|    ! 0 | 7568 | `								break;` |
+|      - | 7569 | `							}` |
+|    105 | 7570 | `							zIn++;` |
+|      1 | 7571 | `						}` |
+|      - | 7572 | `					}` |
+|      - | 7573 | `					/* Trim the value */` |
+|     21 | 7574 | `					SyStringInitFromBuf(&sEntry,zCur,(int)(zIn-zCur));` |
+|     21 | 7575 | `					SyStringFullTrim(&sEntry);` |
+|     21 | 7576 | `					if( c == '"' \|\| c == '\'' ){` |
+|    ! 0 | 7577 | `						SyStringTrimLeadingChar(&sEntry,c);` |
+|    ! 0 | 7578 | `						SyStringTrimTrailingChar(&sEntry,c);` |
+|    ! 0 | 7579 | `					}` |
+|     21 | 7580 | `					if( sEntry.nByte > 0 ){` |
+|     21 | 7581 | `						ph7_value_string(pValue,sEntry.zString,(int)sEntry.nByte);` |
+|     10 | 7582 | `					}` |
+|      - | 7583 | `					/* Insert the key and it's value */` |
+|     21 | 7584 | `					ph7_array_add_elem(pCur,is_array ? 0 /*Automatic index assign */: pWorker,pValue);` |
+|     10 | 7585 | `				}` |
+|     12 | 7586 | `			}else{` |
+|    ! 0 | 7587 | `				while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && ( SyisSpace(zIn[0]) \|\| zIn[0] == '=' ) ){` |
+|    ! 0 | 7588 | `					zIn++;` |
+|    ! 0 | 7589 | `				}` |
+|      - | 7590 | `			}` |
+|     23 | 7591 | `			pCur = pOldCur;` |
+|      - | 7592 | `		}` |
+|      1 | 7593 | `	}` |
+|     13 | 7594 | `	SyHashRelease(&sHash);` |
+|      - | 7595 | `	/* Return the parse of the INI string */` |
+|     13 | 7596 | `	ph7_result_value(pCtx,pArray);` |
+|     13 | 7597 | `	return SXRET_OK;` |
+|      7 | 7598 | `}` |
+|      - | 7599 | `/*` |
+|      - | 7600 | ` * array parse_ini_string(string $ini[,bool $process_sections = false[,int $scanner_mode = INI_SCANNER_NORMAL ]])` |
+|      - | 7601 | ` *  Parse a configuration string.` |
+|      - | 7602 | ` * Parameters` |
+|      - | 7603 | ` *  $ini` |
+|      - | 7604 | ` *   The contents of the ini file being parsed.` |
+|      - | 7605 | ` *  $process_sections` |
+|      - | 7606 | ` *   By setting the process_sections parameter to TRUE, you get a multidimensional array, with the section names` |
+|      - | 7607 | ` *   and settings included. The default for process_sections is FALSE.` |
+|      - | 7608 | ` *  $scanner_mode (Not used)` |
+|      - | 7609 | ` *   Can either be INI_SCANNER_NORMAL (default) or INI_SCANNER_RAW. If INI_SCANNER_RAW is supplied` |
+|      - | 7610 | ` *   then option values will not be parsed.` |
+|      - | 7611 | ` * Return` |
+|      - | 7612 | ` *  The settings are returned as an associative array on success, and FALSE on failure.` |
+|      - | 7613 | ` */` |
+|     10 | 7614 | `static int PH7_builtin_parse_ini_string(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      1 | 7615 | `{` |
+|      - | 7616 | `	const char *zIni;` |
+|      - | 7617 | `	int nByte;` |
+|     11 | 7618 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|      - | 7619 | `		/* Missing/Invalid arguments,return FALSE*/` |
+|    ! 0 | 7620 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 7621 | `		return PH7_OK;` |
+|      - | 7622 | `	}` |
+|      - | 7623 | `	/* Extract the raw INI buffer */` |
+|     11 | 7624 | `	zIni = ph7_value_to_string(apArg[0],&nByte);` |
+|      - | 7625 | `	/* Process the INI buffer; propagate an OOM abort so the fatal actually halts */` |
+|     11 | 7626 | `	return PH7_ParseIniString(pCtx,zIni,(sxu32)nByte,(nArg > 1) ? ph7_value_to_bool(apArg[1]) : 0);` |
+|      6 | 7627 | `}` |
+|      - | 7628 | `#endif /* PH7_NEED_FMT_AND_INI */` |
+|      - | 7629 |  |
+|      - | 7630 | `#ifdef PH7_NEED_BUILTIN_REG` |
+|      - | 7631 |  |
+|      - | 7632 | `/*` |
+|      - | 7633 | ` * Ctype Functions.` |
+|      - | 7634 | ` * Status:` |
+|      - | 7635 | ` *    Stable.` |
+|      - | 7636 | ` */` |
+|      - | 7637 | `/*` |
+|      - | 7638 | ` * bool ctype_alnum(string $text)` |
+|      - | 7639 | ` *  Checks if all of the characters in the provided string, text, are alphanumeric.` |
+|      - | 7640 | ` * Parameters` |
+|      - | 7641 | ` *  $text` |
+|      - | 7642 | ` *   The tested string.` |
+|      - | 7643 | ` * Return` |
+|      - | 7644 | ` *   TRUE if every character in text is either a letter or a digit, FALSE otherwise.` |
+|      - | 7645 | ` */` |
+|     14 | 7646 | `static int PH7_builtin_ctype_alnum(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      1 | 7647 | `{` |
+|      - | 7648 | `	const unsigned char *zIn,*zEnd;` |
+|      - | 7649 | `	int nLen;` |
+|     15 | 7650 | `	if( nArg < 1 ){` |
+|      - | 7651 | `		/* Missing arguments,return FALSE */` |
+|    ! 0 | 7652 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 7653 | `		return PH7_OK;` |
+|      - | 7654 | `	}` |
+|      - | 7655 | `	/* Extract the target string */` |
+|     15 | 7656 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
+|     15 | 7657 | `	zEnd = &zIn[nLen];` |
+|     15 | 7658 | `	if( nLen < 1 ){` |
+|      - | 7659 | `		/* Empty string,return FALSE */` |
+|      3 | 7660 | `		ph7_result_bool(pCtx,0);` |
+|      3 | 7661 | `		return PH7_OK;` |
+|      - | 7662 | `	}` |
+|      - | 7663 | `	/* Perform the requested operation */` |
+|     32 | 7664 | `	for(;;){` |
+|     65 | 7665 | `		if( zIn >= zEnd ){` |
+|      - | 7666 | `			/* If we reach the end of the string,then the test succeeded. */` |
+|      9 | 7667 | `			ph7_result_bool(pCtx,1);` |
+|      9 | 7668 | `			return PH7_OK;` |
+|      - | 7669 | `		}` |
+|     57 | 7670 | `		if( !SyisAlphaNum(zIn[0]) ){` |
+|      5 | 7671 | `			break;` |
+|      - | 7672 | `		}` |
+|      - | 7673 | `		/* Point to the next character */` |
+|     53 | 7674 | `		zIn++;` |
+|      1 | 7675 | `	}` |
+|      - | 7676 | `	/* The test failed,return FALSE */` |
+|      5 | 7677 | `	ph7_result_bool(pCtx,0);` |
+|      5 | 7678 | `	return PH7_OK;` |
+|      8 | 7679 | `}` |
+|      - | 7680 | `/*` |
+|      - | 7681 | ` * bool ctype_alpha(string $text)` |
+|      - | 7682 | ` *  Checks if all of the characters in the provided string, text, are alphabetic.` |
+|      - | 7683 | ` * Parameters` |
+|      - | 7684 | ` *  $text` |
+|      - | 7685 | ` *   The tested string.` |
+|      - | 7686 | ` * Return` |
+|      - | 7687 | ` *  TRUE if every character in text is a letter from the current locale, FALSE otherwise.` |
+|      - | 7688 | ` */` |
+|     16 | 7689 | `static int PH7_builtin_ctype_alpha(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      1 | 7690 | `{` |
+|      - | 7691 | `	const unsigned char *zIn,*zEnd;` |
+|      - | 7692 | `	int nLen;` |
+|     17 | 7693 | `	if( nArg < 1 ){` |
+|      - | 7694 | `		/* Missing arguments,return FALSE */` |
+|    ! 0 | 7695 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 7696 | `		return PH7_OK;` |
+|      - | 7697 | `	}` |
+|      - | 7698 | `	/* Extract the target string */` |
+|     17 | 7699 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
+|     17 | 7700 | `	zEnd = &zIn[nLen];` |
+|     17 | 7701 | `	if( nLen < 1 ){` |
+|      - | 7702 | `		/* Empty string,return FALSE */` |
+|      3 | 7703 | `		ph7_result_bool(pCtx,0);` |
+|      3 | 7704 | `		return PH7_OK;` |
+|      - | 7705 | `	}` |
+|      - | 7706 | `	/* Perform the requested operation */` |
+|     42 | 7707 | `	for(;;){` |
+|     85 | 7708 | `		if( zIn >= zEnd ){` |
+|      - | 7709 | `			/* If we reach the end of the string,then the test succeeded. */` |
+|      9 | 7710 | `			ph7_result_bool(pCtx,1);` |
+|      9 | 7711 | `			return PH7_OK;` |
+|      - | 7712 | `		}` |
+|     77 | 7713 | `		if( !SyisAlpha(zIn[0]) ){` |
+|      7 | 7714 | `			break;` |
+|      - | 7715 | `		}` |
+|      - | 7716 | `		/* Point to the next character */` |
+|     71 | 7717 | `		zIn++;` |
+|      1 | 7718 | `	}` |
+|      - | 7719 | `	/* The test failed,return FALSE */` |
+|      7 | 7720 | `	ph7_result_bool(pCtx,0);` |
+|      7 | 7721 | `	return PH7_OK;` |
+|      9 | 7722 | `}` |
+|      - | 7723 | `/*` |
+|      - | 7724 | ` * bool ctype_cntrl(string $text)` |
+|      - | 7725 | ` *  Checks if all of the characters in the provided string, text, are control characters.` |
+|      - | 7726 | ` * Parameters` |
+|      - | 7727 | ` *  $text` |
+|      - | 7728 | ` *   The tested string.` |
+|      - | 7729 | ` * Return` |
+|      - | 7730 | ` *  TRUE if every character in text is a control characters,FALSE otherwise.` |
+|      - | 7731 | ` */` |
+|     16 | 7732 | `static int PH7_builtin_ctype_cntrl(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      1 | 7733 | `{` |
+|      - | 7734 | `	const unsigned char *zIn,*zEnd;` |
+|      - | 7735 | `	int nLen;` |
+|     17 | 7736 | `	if( nArg < 1 ){` |
+|      - | 7737 | `		/* Missing arguments,return FALSE */` |
+|    ! 0 | 7738 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 7739 | `		return PH7_OK;` |
+|      - | 7740 | `	}` |
+|      - | 7741 | `	/* Extract the target string */` |
+|     17 | 7742 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
+|     17 | 7743 | `	zEnd = &zIn[nLen];` |
+|     17 | 7744 | `	if( nLen < 1 ){` |
+|      - | 7745 | `		/* Empty string,return FALSE */` |
+|      3 | 7746 | `		ph7_result_bool(pCtx,0);` |
+|      3 | 7747 | `		return PH7_OK;` |
+|      - | 7748 | `	}` |
+|      - | 7749 | `	/* Perform the requested operation */` |
+|     14 | 7750 | `	for(;;){` |
+|     29 | 7751 | `		if( zIn >= zEnd ){` |
+|      - | 7752 | `			/* If we reach the end of the string,then the test succeeded. */` |
+|      9 | 7753 | `			ph7_result_bool(pCtx,1);` |
+|      9 | 7754 | `			return PH7_OK;` |
+|      - | 7755 | `		}` |
+|     21 | 7756 | `		if( zIn[0] >= 0xc0 ){` |
+|      - | 7757 | `			/* UTF-8 stream  */` |
+|    ! 0 | 7758 | `			break;` |
+|      - | 7759 | `		}` |
+|     21 | 7760 | `		if( !SyisCtrl(zIn[0]) ){` |
+|      7 | 7761 | `			break;` |
+|      - | 7762 | `		}` |
+|      - | 7763 | `		/* Point to the next character */` |
+|     15 | 7764 | `		zIn++;` |
+|      1 | 7765 | `	}` |
+|      - | 7766 | `	/* The test failed,return FALSE */` |
+|      7 | 7767 | `	ph7_result_bool(pCtx,0);` |
+|      7 | 7768 | `	return PH7_OK;` |
+|      9 | 7769 | `}` |
+|      - | 7770 | `/*` |
+|      - | 7771 | ` * bool ctype_digit(string $text)` |
+|      - | 7772 | ` *  Checks if all of the characters in the provided string, text, are numerical.` |
+|      - | 7773 | ` * Parameters` |
+|      - | 7774 | ` *  $text` |
+|      - | 7775 | ` *   The tested string.` |
+|      - | 7776 | ` * Return` |
+|      - | 7777 | ` *  TRUE if every character in the string text is a decimal digit, FALSE otherwise.` |
+|      - | 7778 | ` */` |
+|   1623 | 7779 | `static int PH7_builtin_ctype_digit(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      5 | 7780 | `{` |
+|      - | 7781 | `	const unsigned char *zIn,*zEnd;` |
+|      - | 7782 | `	int nLen;` |
+|   1628 | 7783 | `	if( nArg < 1 ){` |
+|      - | 7784 | `		/* Missing arguments,return FALSE */` |
+|    ! 0 | 7785 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 7786 | `		return PH7_OK;` |
+|      - | 7787 | `	}` |
+|      - | 7788 | `	/* Extract the target string */` |
+|   1628 | 7789 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
+|   1628 | 7790 | `	zEnd = &zIn[nLen];` |
+|   1628 | 7791 | `	if( nLen < 1 ){` |
+|      - | 7792 | `		/* Empty string,return FALSE */` |
+|      3 | 7793 | `		ph7_result_bool(pCtx,0);` |
+|      3 | 7794 | `		return PH7_OK;` |
+|      - | 7795 | `	}` |
+|      - | 7796 | `	/* Perform the requested operation */` |
+|   1525 | 7797 | `	for(;;){` |
+|   3053 | 7798 | `		if( zIn >= zEnd ){` |
+|      - | 7799 | `			/* If we reach the end of the string,then the test succeeded. */` |
+|   1382 | 7800 | `			ph7_result_bool(pCtx,1);` |
+|   1382 | 7801 | `			return PH7_OK;` |
+|      - | 7802 | `		}` |
+|   1676 | 7803 | `		if( zIn[0] >= 0xc0 ){` |
+|      - | 7804 | `			/* UTF-8 stream  */` |
+|    ! 0 | 7805 | `			break;` |
+|      - | 7806 | `		}` |
+|   1676 | 7807 | `		if( !SyisDigit(zIn[0]) ){` |
+|    249 | 7808 | `			break;` |
+|      - | 7809 | `		}` |
+|      - | 7810 | `		/* Point to the next character */` |
+|   1432 | 7811 | `		zIn++;` |
+|      5 | 7812 | `	}` |
+|      - | 7813 | `	/* The test failed,return FALSE */` |
+|    249 | 7814 | `	ph7_result_bool(pCtx,0);` |
+|    249 | 7815 | `	return PH7_OK;` |
+|    817 | 7816 | `}` |
+|      - | 7817 | `/*` |
+|      - | 7818 | ` * bool ctype_xdigit(string $text)` |
+|      - | 7819 | ` *  Check for character(s) representing a hexadecimal digit.` |
+|      - | 7820 | ` * Parameters` |
+|      - | 7821 | ` *  $text` |
+|      - | 7822 | ` *   The tested string.` |
+|      - | 7823 | ` * Return` |
+|      - | 7824 | ` *  Returns TRUE if every character in text is a hexadecimal 'digit', that is` |
+|      - | 7825 | ` * a decimal digit or a character from [A-Fa-f] , FALSE otherwise.` |
+|      - | 7826 | ` */` |
+|     18 | 7827 | `static int PH7_builtin_ctype_xdigit(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      1 | 7828 | `{` |
+|      - | 7829 | `	const unsigned char *zIn,*zEnd;` |
+|      - | 7830 | `	int nLen;` |
+|     19 | 7831 | `	if( nArg < 1 ){` |
+|      - | 7832 | `		/* Missing arguments,return FALSE */` |
+|    ! 0 | 7833 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 7834 | `		return PH7_OK;` |
+|      - | 7835 | `	}` |
+|      - | 7836 | `	/* Extract the target string */` |
+|     19 | 7837 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
+|     19 | 7838 | `	zEnd = &zIn[nLen];` |
+|     19 | 7839 | `	if( nLen < 1 ){` |
+|      - | 7840 | `		/* Empty string,return FALSE */` |
+|      3 | 7841 | `		ph7_result_bool(pCtx,0);` |
+|      3 | 7842 | `		return PH7_OK;` |
+|      - | 7843 | `	}` |
+|      - | 7844 | `	/* Perform the requested operation */` |
+|     46 | 7845 | `	for(;;){` |
+|     93 | 7846 | `		if( zIn >= zEnd ){` |
+|      - | 7847 | `			/* If we reach the end of the string,then the test succeeded. */` |
+|     11 | 7848 | `			ph7_result_bool(pCtx,1);` |
+|     11 | 7849 | `			return PH7_OK;` |
+|      - | 7850 | `		}` |
+|     83 | 7851 | `		if( zIn[0] >= 0xc0 ){` |
+|      - | 7852 | `			/* UTF-8 stream  */` |
+|    ! 0 | 7853 | `			break;` |
+|      - | 7854 | `		}` |
+|     83 | 7855 | `		if( !SyisHex(zIn[0]) ){` |
+|      7 | 7856 | `			break;` |
+|      - | 7857 | `		}` |
+|      - | 7858 | `		/* Point to the next character */` |
+|     77 | 7859 | `		zIn++;` |
+|      1 | 7860 | `	}` |
+|      - | 7861 | `	/* The test failed,return FALSE */` |
+|      7 | 7862 | `	ph7_result_bool(pCtx,0);` |
+|      7 | 7863 | `	return PH7_OK;` |
+|     10 | 7864 | `}` |
+|      - | 7865 | `/*` |
+|      - | 7866 | ` * bool ctype_graph(string $text)` |
+|      - | 7867 | ` *  Checks if all of the characters in the provided string, text, creates visible output.` |
+|      - | 7868 | ` * Parameters` |
+|      - | 7869 | ` *  $text` |
+|      - | 7870 | ` *   The tested string.` |
+|      - | 7871 | ` * Return` |
+|      - | 7872 | ` *  Returns TRUE if every character in text is printable and actually creates visible output` |
+|      - | 7873 | ` * (no white space), FALSE otherwise.` |
+|      - | 7874 | ` */` |
+|     16 | 7875 | `static int PH7_builtin_ctype_graph(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      1 | 7876 | `{` |
+|      - | 7877 | `	const unsigned char *zIn,*zEnd;` |
+|      - | 7878 | `	int nLen;` |
+|     17 | 7879 | `	if( nArg < 1 ){` |
+|      - | 7880 | `		/* Missing arguments,return FALSE */` |
+|    ! 0 | 7881 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 7882 | `		return PH7_OK;` |
+|      - | 7883 | `	}` |
+|      - | 7884 | `	/* Extract the target string */` |
+|     17 | 7885 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
+|     17 | 7886 | `	zEnd = &zIn[nLen];` |
+|     17 | 7887 | `	if( nLen < 1 ){` |
+|      - | 7888 | `		/* Empty string,return FALSE */` |
+|      3 | 7889 | `		ph7_result_bool(pCtx,0);` |
+|      3 | 7890 | `		return PH7_OK;` |
+|      - | 7891 | `	}` |
+|      - | 7892 | `	/* Perform the requested operation */` |
+|     57 | 7893 | `	for(;;){` |
+|    115 | 7894 | `		if( zIn >= zEnd ){` |
+|      - | 7895 | `			/* If we reach the end of the string,then the test succeeded. */` |
+|      9 | 7896 | `			ph7_result_bool(pCtx,1);` |
+|      9 | 7897 | `			return PH7_OK;` |
+|      - | 7898 | `		}` |
+|    107 | 7899 | `		if( zIn[0] >= 0xc0 ){` |
+|      - | 7900 | `			/* UTF-8 stream  */` |
+|    ! 0 | 7901 | `			break;` |
+|      - | 7902 | `		}` |
+|    107 | 7903 | `		if( !SyisGraph(zIn[0]) ){` |
+|      7 | 7904 | `			break;` |
+|      - | 7905 | `		}` |
+|      - | 7906 | `		/* Point to the next character */` |
+|    101 | 7907 | `		zIn++;` |
+|      1 | 7908 | `	}` |
+|      - | 7909 | `	/* The test failed,return FALSE */` |
+|      7 | 7910 | `	ph7_result_bool(pCtx,0);` |
+|      7 | 7911 | `	return PH7_OK;` |
+|      9 | 7912 | `}` |
+|      - | 7913 | `/*` |
+|      - | 7914 | ` * bool ctype_print(string $text)` |
+|      - | 7915 | ` *  Checks if all of the characters in the provided string, text, are printable.` |
+|      - | 7916 | ` * Parameters` |
+|      - | 7917 | ` *  $text` |
+|      - | 7918 | ` *   The tested string.` |
+|      - | 7919 | ` * Return` |
+|      - | 7920 | ` *  Returns TRUE if every character in text will actually create output (including blanks).` |
+|      - | 7921 | ` *  Returns FALSE if text contains control characters or characters that do not have any output` |
+|      - | 7922 | ` *  or control function at all.` |
+|      - | 7923 | ` */` |
+|     16 | 7924 | `static int PH7_builtin_ctype_print(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      1 | 7925 | `{` |
+|      - | 7926 | `	const unsigned char *zIn,*zEnd;` |
+|      - | 7927 | `	int nLen;` |
+|     17 | 7928 | `	if( nArg < 1 ){` |
+|      - | 7929 | `		/* Missing arguments,return FALSE */` |
+|    ! 0 | 7930 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 7931 | `		return PH7_OK;` |
+|      - | 7932 | `	}` |
+|      - | 7933 | `	/* Extract the target string */` |
+|     17 | 7934 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
+|     17 | 7935 | `	zEnd = &zIn[nLen];` |
+|     17 | 7936 | `	if( nLen < 1 ){` |
+|      - | 7937 | `		/* Empty string,return FALSE */` |
+|      3 | 7938 | `		ph7_result_bool(pCtx,0);` |
+|      3 | 7939 | `		return PH7_OK;` |
+|      - | 7940 | `	}` |
+|      - | 7941 | `	/* Perform the requested operation */` |
+|     63 | 7942 | `	for(;;){` |
+|    127 | 7943 | `		if( zIn >= zEnd ){` |
+|      - | 7944 | `			/* If we reach the end of the string,then the test succeeded. */` |
+|      9 | 7945 | `			ph7_result_bool(pCtx,1);` |
+|      9 | 7946 | `			return PH7_OK;` |
+|      - | 7947 | `		}` |
+|    119 | 7948 | `		if( zIn[0] >= 0xc0 ){` |
+|      - | 7949 | `			/* UTF-8 stream  */` |
+|    ! 0 | 7950 | `			break;` |
+|      - | 7951 | `		}` |
+|    119 | 7952 | `		if( !SyisPrint(zIn[0]) ){` |
+|      7 | 7953 | `			break;` |
+|      - | 7954 | `		}` |
+|      - | 7955 | `		/* Point to the next character */` |
+|    113 | 7956 | `		zIn++;` |
+|      1 | 7957 | `	}` |
+|      - | 7958 | `	/* The test failed,return FALSE */` |
+|      7 | 7959 | `	ph7_result_bool(pCtx,0);` |
+|      7 | 7960 | `	return PH7_OK;` |
+|      9 | 7961 | `}` |
+|      - | 7962 | `/*` |
+|      - | 7963 | ` * bool ctype_punct(string $text)` |
+|      - | 7964 | ` *  Checks if all of the characters in the provided string, text, are punctuation character.` |
+|      - | 7965 | ` * Parameters` |
+|      - | 7966 | ` *  $text` |
+|      - | 7967 | ` *   The tested string.` |
+|      - | 7968 | ` * Return` |
+|      - | 7969 | ` *  Returns TRUE if every character in text is printable, but neither letter` |
+|      - | 7970 | ` *  digit or blank, FALSE otherwise.` |
+|      - | 7971 | ` */` |
+|     18 | 7972 | `static int PH7_builtin_ctype_punct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      1 | 7973 | `{` |
+|      - | 7974 | `	const unsigned char *zIn,*zEnd;` |
+|      - | 7975 | `	int nLen;` |
+|     19 | 7976 | `	if( nArg < 1 ){` |
+|      - | 7977 | `		/* Missing arguments,return FALSE */` |
+|    ! 0 | 7978 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 7979 | `		return PH7_OK;` |
+|      - | 7980 | `	}` |
+|      - | 7981 | `	/* Extract the target string */` |
+|     19 | 7982 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
+|     19 | 7983 | `	zEnd = &zIn[nLen];` |
+|     19 | 7984 | `	if( nLen < 1 ){` |
+|      - | 7985 | `		/* Empty string,return FALSE */` |
+|      3 | 7986 | `		ph7_result_bool(pCtx,0);` |
+|      3 | 7987 | `		return PH7_OK;` |
+|      - | 7988 | `	}` |
+|      - | 7989 | `	/* Perform the requested operation */` |
+|     38 | 7990 | `	for(;;){` |
+|     77 | 7991 | `		if( zIn >= zEnd ){` |
+|      - | 7992 | `			/* If we reach the end of the string,then the test succeeded. */` |
+|      9 | 7993 | `			ph7_result_bool(pCtx,1);` |
+|      9 | 7994 | `			return PH7_OK;` |
+|      - | 7995 | `		}` |
+|     69 | 7996 | `		if( zIn[0] >= 0xc0 ){` |
+|      - | 7997 | `			/* UTF-8 stream  */` |
+|    ! 0 | 7998 | `			break;` |
+|      - | 7999 | `		}` |
+|     69 | 8000 | `		if( !SyisPunct(zIn[0]) ){` |
+|      9 | 8001 | `			break;` |
+|      - | 8002 | `		}` |
+|      - | 8003 | `		/* Point to the next character */` |
+|     61 | 8004 | `		zIn++;` |
+|      1 | 8005 | `	}` |
+|      - | 8006 | `	/* The test failed,return FALSE */` |
+|      9 | 8007 | `	ph7_result_bool(pCtx,0);` |
+|      9 | 8008 | `	return PH7_OK;` |
+|     10 | 8009 | `}` |
+|      - | 8010 | `/*` |
+|      - | 8011 | ` * bool ctype_space(string $text)` |
+|      - | 8012 | ` *  Checks if all of the characters in the provided string, text, creates whitespace.` |
+|      - | 8013 | ` * Parameters` |
+|      - | 8014 | ` *  $text` |
+|      - | 8015 | ` *   The tested string.` |
+|      - | 8016 | ` * Return` |
+|      - | 8017 | ` *  Returns TRUE if every character in text creates some sort of white space, FALSE otherwise.` |
+|      - | 8018 | ` *  Besides the blank character this also includes tab, vertical tab, line feed, carriage return` |
+|      - | 8019 | ` *  and form feed characters.` |
+|      - | 8020 | ` */` |
+|  62580 | 8021 | `static int PH7_builtin_ctype_space(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      5 | 8022 | `{` |
+|      - | 8023 | `	const unsigned char *zIn,*zEnd;` |
+|      - | 8024 | `	int nLen;` |
+|  62585 | 8025 | `	if( nArg < 1 ){` |
+|      - | 8026 | `		/* Missing arguments,return FALSE */` |
+|    ! 0 | 8027 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 8028 | `		return PH7_OK;` |
+|      - | 8029 | `	}` |
+|      - | 8030 | `	/* Extract the target string */` |
+|  62585 | 8031 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
+|  62585 | 8032 | `	zEnd = &zIn[nLen];` |
+|  62585 | 8033 | `	if( nLen < 1 ){` |
+|      - | 8034 | `		/* Empty string,return FALSE */` |
+|      3 | 8035 | `		ph7_result_bool(pCtx,0);` |
+|      3 | 8036 | `		return PH7_OK;` |
+|      - | 8037 | `	}` |
+|      - | 8038 | `	/* Perform the requested operation */` |
+|  32401 | 8039 | `	for(;;){` |
+|  64721 | 8040 | `		if( zIn >= zEnd ){` |
+|      - | 8041 | `			/* If we reach the end of the string,then the test succeeded. */` |
+|   2119 | 8042 | `			ph7_result_bool(pCtx,1);` |
+|   2119 | 8043 | `			return PH7_OK;` |
+|      - | 8044 | `		}` |
+|  62607 | 8045 | `		if( zIn[0] >= 0xc0 ){` |
+|      - | 8046 | `			/* UTF-8 stream  */` |
+|    ! 0 | 8047 | `			break;` |
+|      - | 8048 | `		}` |
+|  62607 | 8049 | `		if( !SyisSpace(zIn[0]) ){` |
+|  60469 | 8050 | `			break;` |
+|      - | 8051 | `		}` |
+|      - | 8052 | `		/* Point to the next character */` |
+|   2143 | 8053 | `		zIn++;` |
+|      5 | 8054 | `	}` |
+|      - | 8055 | `	/* The test failed,return FALSE */` |
+|  60469 | 8056 | `	ph7_result_bool(pCtx,0);` |
+|  60469 | 8057 | `	return PH7_OK;` |
+|  31338 | 8058 | `}` |
+|      - | 8059 | `/*` |
+|      - | 8060 | ` * bool ctype_lower(string $text)` |
+|      - | 8061 | ` *  Checks if all of the characters in the provided string, text, are lowercase letters.` |
+|      - | 8062 | ` * Parameters` |
+|      - | 8063 | ` *  $text` |
+|      - | 8064 | ` *   The tested string.` |
+|      - | 8065 | ` * Return` |
+|      - | 8066 | ` *  Returns TRUE if every character in text is a lowercase letter in the current locale.` |
+|      - | 8067 | ` */` |
+|     16 | 8068 | `static int PH7_builtin_ctype_lower(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      1 | 8069 | `{` |
+|      - | 8070 | `	const unsigned char *zIn,*zEnd;` |
+|      - | 8071 | `	int nLen;` |
+|     17 | 8072 | `	if( nArg < 1 ){` |
+|      - | 8073 | `		/* Missing arguments,return FALSE */` |
+|    ! 0 | 8074 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 8075 | `		return PH7_OK;` |
+|      - | 8076 | `	}` |
+|      - | 8077 | `	/* Extract the target string */` |
+|     17 | 8078 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
+|     17 | 8079 | `	zEnd = &zIn[nLen];` |
+|     17 | 8080 | `	if( nLen < 1 ){` |
+|      - | 8081 | `		/* Empty string,return FALSE */` |
+|      3 | 8082 | `		ph7_result_bool(pCtx,0);` |
+|      3 | 8083 | `		return PH7_OK;` |
+|      - | 8084 | `	}` |
+|      - | 8085 | `	/* Perform the requested operation */` |
+|     27 | 8086 | `	for(;;){` |
+|     55 | 8087 | `		if( zIn >= zEnd ){` |
+|      - | 8088 | `			/* If we reach the end of the string,then the test succeeded. */` |
+|      5 | 8089 | `			ph7_result_bool(pCtx,1);` |
+|      5 | 8090 | `			return PH7_OK;` |
+|      - | 8091 | `		}` |
+|     51 | 8092 | `		if( !SyisLower(zIn[0]) ){` |
+|     11 | 8093 | `			break;` |
+|      - | 8094 | `		}` |
+|      - | 8095 | `		/* Point to the next character */` |
+|     41 | 8096 | `		zIn++;` |
+|      1 | 8097 | `	}` |
+|      - | 8098 | `	/* The test failed,return FALSE */` |
+|     11 | 8099 | `	ph7_result_bool(pCtx,0);` |
+|     11 | 8100 | `	return PH7_OK;` |
+|      9 | 8101 | `}` |
+|      - | 8102 | `/*` |
+|      - | 8103 | ` * bool ctype_upper(string $text)` |
+|      - | 8104 | ` *  Checks if all of the characters in the provided string, text, are uppercase letters.` |
+|      - | 8105 | ` * Parameters` |
+|      - | 8106 | ` *  $text` |
+|      - | 8107 | ` *   The tested string.` |
+|      - | 8108 | ` * Return` |
+|      - | 8109 | ` *  Returns TRUE if every character in text is a uppercase letter in the current locale.` |
+|      - | 8110 | ` */` |
+|     16 | 8111 | `static int PH7_builtin_ctype_upper(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      1 | 8112 | `{` |
+|      - | 8113 | `	const unsigned char *zIn,*zEnd;` |
+|      - | 8114 | `	int nLen;` |
+|     17 | 8115 | `	if( nArg < 1 ){` |
+|      - | 8116 | `		/* Missing arguments,return FALSE */` |
+|    ! 0 | 8117 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 8118 | `		return PH7_OK;` |
+|      - | 8119 | `	}` |
+|      - | 8120 | `	/* Extract the target string */` |
+|     17 | 8121 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
+|     17 | 8122 | `	zEnd = &zIn[nLen];` |
+|     17 | 8123 | `	if( nLen < 1 ){` |
+|      - | 8124 | `		/* Empty string,return FALSE */` |
+|      3 | 8125 | `		ph7_result_bool(pCtx,0);` |
+|      3 | 8126 | `		return PH7_OK;` |
+|      - | 8127 | `	}` |
+|      - | 8128 | `	/* Perform the requested operation */` |
+|     28 | 8129 | `	for(;;){` |
+|     57 | 8130 | `		if( zIn >= zEnd ){` |
+|      - | 8131 | `			/* If we reach the end of the string,then the test succeeded. */` |
+|      5 | 8132 | `			ph7_result_bool(pCtx,1);` |
+|      5 | 8133 | `			return PH7_OK;` |
+|      - | 8134 | `		}` |
+|     53 | 8135 | `		if( !SyisUpper(zIn[0]) ){` |
+|     11 | 8136 | `			break;` |
+|      - | 8137 | `		}` |
+|      - | 8138 | `		/* Point to the next character */` |
+|     43 | 8139 | `		zIn++;` |
+|      1 | 8140 | `	}` |
+|      - | 8141 | `	/* The test failed,return FALSE */` |
+|     11 | 8142 | `	ph7_result_bool(pCtx,0);` |
+|     11 | 8143 | `	return PH7_OK;` |
+|      9 | 8144 | `}` |
+|      - | 8145 | `/* Date/Time functions moved to builtin_date.c */` |
 |      - | 8146 | `/*` |
-|      - | 8147 | ` * string base64_encode(string $data)` |
-|      - | 8148 | ` * string convert_uuencode(string $data)` |
-|      - | 8149 | ` *  Encodes data with MIME base64` |
-|      - | 8150 | ` * Parameter` |
-|      - | 8151 | ` *  $data` |
-|      - | 8152 | ` *    Data to encode` |
-|      - | 8153 | ` * Return` |
-|      - | 8154 | ` *  Encoded data or FALSE on failure.` |
+|      - | 8147 | ` * Section:` |
+|      - | 8148 | ` *    URL handling Functions.` |
+|      - | 8149 | ` * Status:` |
+|      - | 8150 | ` *    Stable.` |
+|      - | 8151 | ` */` |
+|      - | 8152 | `/*` |
+|      - | 8153 | ` * Output consumer callback for the standard Symisc routines.` |
+|      - | 8154 | ` * [i.e: SyBase64Encode(),SyBase64Decode(),SyUriEncode(),...].` |
 |      - | 8155 | ` */` |
-|      6 | 8156 | `static int PH7_builtin_base64_encode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 8157 | `{` |
-|      - | 8158 | `	const char *zIn;` |
-|      - | 8159 | `	int nLen;` |
-|      7 | 8160 | `	if( nArg < 1 ){` |
-|      - | 8161 | `		/* Missing arguments,return FALSE */` |
-|    ! 0 | 8162 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 8163 | `		return PH7_OK;` |
-|      - | 8164 | `	}` |
-|      - | 8165 | `	/* Extract the input string */` |
-|      7 | 8166 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
-|      7 | 8167 | `	if( nLen < 1 ){` |
-|      - | 8168 | `		/* Nothing to process,return FALSE */` |
-|    ! 0 | 8169 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 8170 | `		return PH7_OK;` |
-|      - | 8171 | `	}` |
-|      - | 8172 | `	/* Perform the BASE64 encoding */` |
-|      7 | 8173 | `	SyBase64Encode(zIn,(sxu32)nLen,Consumer,pCtx);` |
-|      7 | 8174 | `	return PH7_OK;` |
-|      4 | 8175 | `}` |
-|      - | 8176 | `/*` |
-|      - | 8177 | ` * string base64_decode(string $data)` |
-|      - | 8178 | ` * string convert_uudecode(string $data)` |
-|      - | 8179 | ` *  Decodes data encoded with MIME base64` |
-|      - | 8180 | ` * Parameter` |
-|      - | 8181 | ` *  $data` |
-|      - | 8182 | ` *    Encoded data.` |
-|      - | 8183 | ` * Return` |
-|      - | 8184 | ` *  Returns the original data or FALSE on failure.` |
-|      - | 8185 | ` */` |
-|     34 | 8186 | `static int PH7_builtin_base64_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      2 | 8187 | `{` |
-|      - | 8188 | `	const char *zIn;` |
-|      - | 8189 | `	int nLen;` |
-|     36 | 8190 | `	if( nArg < 1 ){` |
-|      - | 8191 | `		/* Missing arguments,return FALSE */` |
-|    ! 0 | 8192 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 8193 | `		return PH7_OK;` |
-|      - | 8194 | `	}` |
-|      - | 8195 | `	/* Extract the input string */` |
-|     36 | 8196 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
-|     36 | 8197 | `	if( nLen < 1 ){` |
-|      - | 8198 | `		/* Nothing to process,return FALSE */` |
-|      3 | 8199 | `		ph7_result_bool(pCtx,0);` |
-|      3 | 8200 | `		return PH7_OK;` |
-|      - | 8201 | `	}` |
-|      - | 8202 | `	/* Perform the BASE64 decoding */` |
-|     34 | 8203 | `	SyBase64Decode(zIn,(sxu32)nLen,Consumer,pCtx);` |
-|     34 | 8204 | `	return PH7_OK;` |
-|     19 | 8205 | `}` |
-|      - | 8206 | `/*` |
-|      - | 8207 | ` * string urlencode(string $str)` |
-|      - | 8208 | ` *  URL encoding` |
-|      - | 8209 | ` * Parameter` |
-|      - | 8210 | ` *  $data` |
-|      - | 8211 | ` *   Input string.` |
-|      - | 8212 | ` * Return` |
-|      - | 8213 | ` *  Returns a string in which all non-alphanumeric characters except -_. have` |
-|      - | 8214 | ` *  been replaced with a percent (%) sign followed by two hex digits and spaces` |
-|      - | 8215 | ` *  encoded as plus (+) signs.` |
-|      - | 8216 | ` */` |
-|      4 | 8217 | `static int PH7_builtin_urlencode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 8218 | `{` |
-|      - | 8219 | `	const char *zIn;` |
-|      - | 8220 | `	int nLen;` |
-|      5 | 8221 | `	if( nArg < 1 ){` |
-|      - | 8222 | `		/* Missing arguments,return FALSE */` |
-|    ! 0 | 8223 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 8224 | `		return PH7_OK;` |
-|      - | 8225 | `	}` |
-|      - | 8226 | `	/* Extract the input string */` |
-|      5 | 8227 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
-|      5 | 8228 | `	if( nLen < 1 ){` |
-|      - | 8229 | `		/* Nothing to process,return FALSE */` |
-|    ! 0 | 8230 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 8231 | `		return PH7_OK;` |
-|      - | 8232 | `	}` |
-|      - | 8233 | `	/* Perform the URL encoding */` |
-|      5 | 8234 | `	SyUriEncode(zIn,(sxu32)nLen,Consumer,pCtx);` |
-|      5 | 8235 | `	return PH7_OK;` |
-|      3 | 8236 | `}` |
-|      - | 8237 | `/*` |
-|      - | 8238 | ` * string urldecode(string $str)` |
-|      - | 8239 | ` *  Decodes any %## encoding in the given string.` |
-|      - | 8240 | ` *  Plus symbols ('+') are decoded to a space character.` |
-|      - | 8241 | ` * Parameter` |
-|      - | 8242 | ` *  $data` |
-|      - | 8243 | ` *    Input string.` |
-|      - | 8244 | ` * Return` |
-|      - | 8245 | ` *  Decoded URL or FALSE on failure.` |
-|      - | 8246 | ` */` |
-|      6 | 8247 | `static int PH7_builtin_urldecode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 8248 | `{` |
-|      - | 8249 | `	const char *zIn;` |
-|      - | 8250 | `	int nLen;` |
-|      7 | 8251 | `	if( nArg < 1 ){` |
-|      - | 8252 | `		/* Missing arguments,return FALSE */` |
-|    ! 0 | 8253 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 8254 | `		return PH7_OK;` |
-|      - | 8255 | `	}` |
-|      - | 8256 | `	/* Extract the input string */` |
-|      7 | 8257 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
-|      7 | 8258 | `	if( nLen < 1 ){` |
-|      - | 8259 | `		/* Nothing to process,return FALSE */` |
-|    ! 0 | 8260 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 8261 | `		return PH7_OK;` |
-|      - | 8262 | `	}` |
-|      - | 8263 | `	/* Perform the URL decoding */` |
-|      7 | 8264 | `	SyUriDecode(zIn,(sxu32)nLen,Consumer,pCtx,TRUE);` |
-|      7 | 8265 | `	return PH7_OK;` |
-|      4 | 8266 | `}` |
-|      - | 8267 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|      - | 8268 | `/* Table of the built-in functions */` |
-|      - | 8269 | `static const ph7_builtin_func aBuiltInFunc[] = {` |
-|      - | 8270 | `	   /* Variable handling functions */` |
-|      - | 8271 | `	{ "is_bool"    , PH7_builtin_is_bool     },` |
-|      - | 8272 | `	{ "is_float"   , PH7_builtin_is_float    },` |
-|      - | 8273 | `	{ "is_real"    , PH7_builtin_is_float    },` |
-|      - | 8274 | `	{ "is_double"  , PH7_builtin_is_float    },` |
-|      - | 8275 | `	{ "is_int"     , PH7_builtin_is_int      },` |
-|      - | 8276 | `	{ "is_integer" , PH7_builtin_is_int      },` |
-|      - | 8277 | `	{ "is_long"    , PH7_builtin_is_int      },` |
-|      - | 8278 | `	{ "is_string"  , PH7_builtin_is_string   },` |
-|      - | 8279 | `	{ "is_null"    , PH7_builtin_is_null     },` |
-|      - | 8280 | `	{ "is_numeric" , PH7_builtin_is_numeric  },` |
-|      - | 8281 | `	{ "is_scalar"  , PH7_builtin_is_scalar   },` |
-|      - | 8282 | `	{ "is_array"   , PH7_builtin_is_array    },` |
-|      - | 8283 | `	{ "is_object"  , PH7_builtin_is_object   },` |
-|      - | 8284 | `	{ "is_resource", PH7_builtin_is_resource },` |
-|      - | 8285 | `	{ "douleval"   , PH7_builtin_floatval    },` |
-|      - | 8286 | `	{ "floatval"   , PH7_builtin_floatval    },` |
-|      - | 8287 | `	{ "intval"     , PH7_builtin_intval      },` |
-|      - | 8288 | `	{ "strval"     , PH7_builtin_strval      },` |
-|      - | 8289 | `	{ "boolval"    , PH7_builtin_boolval     },` |
-|      - | 8290 | `	{ "empty"      , PH7_builtin_empty       },` |
-|      - | 8291 | `#ifdef PH7_NEED_BUILTIN_REG` |
-|      - | 8292 | `#ifdef PH7_ENABLE_MATH_FUNC` |
-|      - | 8293 | `	   /* Math functions */` |
-|      - | 8294 | `	{ "abs"  ,    PH7_builtin_abs          },` |
-|      - | 8295 | `	{ "sqrt" ,    PH7_builtin_sqrt         },` |
-|      - | 8296 | `	{ "exp"  ,    PH7_builtin_exp          },` |
-|      - | 8297 | `	{ "floor",    PH7_builtin_floor        },` |
-|      - | 8298 | `	{ "cos"  ,    PH7_builtin_cos          },` |
-|      - | 8299 | `	{ "sin"  ,    PH7_builtin_sin          },` |
-|      - | 8300 | `	{ "acos" ,    PH7_builtin_acos         },` |
-|      - | 8301 | `	{ "asin" ,    PH7_builtin_asin         },` |
-|      - | 8302 | `	{ "cosh" ,    PH7_builtin_cosh         },` |
-|      - | 8303 | `	{ "sinh" ,    PH7_builtin_sinh         },` |
-|      - | 8304 | `	{ "ceil" ,    PH7_builtin_ceil         },` |
-|      - | 8305 | `	{ "tan"  ,    PH7_builtin_tan          },` |
-|      - | 8306 | `	{ "tanh" ,    PH7_builtin_tanh         },` |
-|      - | 8307 | `	{ "atan" ,    PH7_builtin_atan         },` |
-|      - | 8308 | `	{ "atan2",    PH7_builtin_atan2        },` |
-|      - | 8309 | `	{ "log"  ,    PH7_builtin_log          },` |
-|      - | 8310 | `	{ "log10" ,   PH7_builtin_log10        },` |
-|      - | 8311 | `	{ "pow"  ,    PH7_builtin_pow          },` |
-|      - | 8312 | `	{ "pi",       PH7_builtin_pi           },` |
-|      - | 8313 | `	{ "fmod",     PH7_builtin_fmod         },` |
-|      - | 8314 | `	{ "hypot",    PH7_builtin_hypot        },` |
-|      - | 8315 | `#endif /* PH7_ENABLE_MATH_FUNC */` |
-|      - | 8316 | `	{ "round",    PH7_builtin_round        },` |
-|      - | 8317 | `	{ "intdiv",   PH7_builtin_intdiv       },` |
-|      - | 8318 | `	{ "dechex", PH7_builtin_dechex         },` |
-|      - | 8319 | `	{ "decoct", PH7_builtin_decoct         },` |
-|      - | 8320 | `	{ "decbin", PH7_builtin_decbin         },` |
-|      - | 8321 | `	{ "hexdec", PH7_builtin_hexdec         },` |
-|      - | 8322 | `	{ "bindec", PH7_builtin_bindec         },` |
-|      - | 8323 | `	{ "octdec", PH7_builtin_octdec         },` |
-|      - | 8324 | `	{ "srand",  PH7_builtin_srand          },` |
-|      - | 8325 | `	{ "mt_srand",PH7_builtin_srand         },` |
-|      - | 8326 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|      - | 8327 | `#ifdef PH7_NEED_FMT_AND_INI` |
-|      - | 8328 | `	{ "base_convert", PH7_builtin_base_convert },` |
-|      - | 8329 | `#endif /* PH7_NEED_FMT_AND_INI */` |
-|      - | 8330 | `#ifdef PH7_NEED_BUILTIN_REG` |
-|      - | 8331 | `	   /* String handling functions */` |
-|      - | 8332 |  |
-|      - | 8333 | `	{ "substr",          PH7_builtin_substr     },` |
-|      - | 8334 | `	{ "substr_compare",  PH7_builtin_substr_compare },` |
-|      - | 8335 | `	{ "substr_count",    PH7_builtin_substr_count },` |
-|      - | 8336 | `	{ "chunk_split",     PH7_builtin_chunk_split},` |
-|      - | 8337 | `	{ "addslashes" ,     PH7_builtin_addslashes },` |
-|      - | 8338 | `	{ "addcslashes",     PH7_builtin_addcslashes},` |
-|      - | 8339 | `	{ "quotemeta",       PH7_builtin_quotemeta  },` |
-|      - | 8340 | `	{ "stripslashes",    PH7_builtin_stripslashes },` |
-|      - | 8341 | `	{ "htmlspecialchars",PH7_builtin_htmlspecialchars },` |
-|      - | 8342 | `	{ "htmlspecialchars_decode", PH7_builtin_htmlspecialchars_decode },` |
-|      - | 8343 | `	{ "get_html_translation_table",PH7_builtin_get_html_translation_table },` |
-|      - | 8344 | `	{ "htmlentities",PH7_builtin_htmlentities},` |
-|      - | 8345 | `	{ "html_entity_decode", PH7_builtin_html_entity_decode},` |
-|      - | 8346 | `	{ "strlen"     , PH7_builtin_strlen     },` |
-|      - | 8347 | `	{ "strcmp"     , PH7_builtin_strcmp     },` |
-|      - | 8348 | `	{ "strcoll"    , PH7_builtin_strcmp     },` |
-|      - | 8349 | `	{ "strncmp"    , PH7_builtin_strncmp    },` |
-|      - | 8350 | `	{ "strcasecmp" , PH7_builtin_strcasecmp },` |
-|      - | 8351 | `	{ "strncasecmp", PH7_builtin_strncasecmp},` |
-|      - | 8352 | `	{ "implode"    , PH7_builtin_implode    },` |
-|      - | 8353 | `	{ "join"       , PH7_builtin_implode    },` |
-|      - | 8354 | `	{ "implode_recursive" , PH7_builtin_implode_recursive },` |
-|      - | 8355 | `	{ "join_recursive"    , PH7_builtin_implode_recursive },` |
-|      - | 8356 | `	{ "explode"     , PH7_builtin_explode    },` |
-|      - | 8357 | `	{ "trim"        , PH7_builtin_trim       },` |
-|      - | 8358 | `	{ "rtrim"       , PH7_builtin_rtrim      },` |
-|      - | 8359 | `	{ "chop"        , PH7_builtin_rtrim      },` |
-|      - | 8360 | `	{ "ltrim"       , PH7_builtin_ltrim      },` |
-|      - | 8361 | `	{ "strtolower",   PH7_builtin_strtolower },` |
-|      - | 8362 | `	{ "mb_strtolower",PH7_builtin_strtolower }, /* Only UTF-8 encoding is supported */` |
-|      - | 8363 | `	{ "strtoupper",   PH7_builtin_strtoupper },` |
-|      - | 8364 | `	{ "mb_strtoupper",PH7_builtin_strtoupper }, /* Only UTF-8 encoding is supported */` |
-|      - | 8365 | `	{ "ucfirst",      PH7_builtin_ucfirst    },` |
-|      - | 8366 | `	{ "lcfirst",      PH7_builtin_lcfirst    },` |
-|      - | 8367 | `	{ "ord",          PH7_builtin_ord        },` |
-|      - | 8368 | `	{ "chr",          PH7_builtin_chr        },` |
-|      - | 8369 | `	{ "bin2hex",      PH7_builtin_bin2hex    },` |
-|      - | 8370 | `	{ "strstr",       PH7_builtin_strstr     },` |
-|      - | 8371 | `	{ "stristr",      PH7_builtin_stristr    },` |
-|      - | 8372 | `	{ "strchr",       PH7_builtin_strstr     },` |
-|      - | 8373 | `	{ "strpos",       PH7_builtin_strpos     },` |
-|      - | 8374 | `	{ "stripos",      PH7_builtin_stripos    },` |
-|      - | 8375 | `	{ "strrpos",      PH7_builtin_strrpos    },` |
-|      - | 8376 | `	{ "strripos",     PH7_builtin_strripos   },` |
-|      - | 8377 | `	{ "strrchr",      PH7_builtin_strrchr    },` |
-|      - | 8378 | `	{ "strrev",       PH7_builtin_strrev     },` |
-|      - | 8379 | `	{ "ucwords",      PH7_builtin_ucwords    },` |
-|      - | 8380 | `	{ "str_repeat",   PH7_builtin_str_repeat },` |
-|      - | 8381 | `	{ "str_contains", PH7_builtin_str_contains },` |
-|      - | 8382 | `	{ "str_starts_with", PH7_builtin_str_starts_with },` |
-|      - | 8383 | `	{ "str_ends_with", PH7_builtin_str_ends_with },` |
-|      - | 8384 | `	{ "nl2br",        PH7_builtin_nl2br      },` |
-|      - | 8385 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|      - | 8386 | `#ifdef PH7_NEED_FMT_AND_INI` |
-|      - | 8387 | `	{ "sprintf",      PH7_builtin_sprintf    },` |
-|      - | 8388 | `	{ "printf",       PH7_builtin_printf     },` |
-|      - | 8389 | `	{ "vprintf",      PH7_builtin_vprintf    },` |
-|      - | 8390 | `	{ "vsprintf",     PH7_builtin_vsprintf   },` |
-|      - | 8391 | `#endif /* PH7_NEED_FMT_AND_INI */` |
-|      - | 8392 | `#ifdef PH7_NEED_BUILTIN_REG` |
-|      - | 8393 | `	{ "size_format",  PH7_builtin_size_format},` |
-|      - | 8394 |  |
-|      - | 8395 |  |
-|      - | 8396 | `#ifndef PH7_DISABLE_HASH_FUNC` |
-|      - | 8397 | `	{ "md5",          PH7_builtin_md5       },` |
-|      - | 8398 | `	{ "sha1",         PH7_builtin_sha1      },` |
-|      - | 8399 | `	{ "crc32",        PH7_builtin_crc32     },` |
-|      - | 8400 | `	{ "hash",         PH7_builtin_hash      },` |
-|      - | 8401 | `	{ "hash_hmac",    PH7_builtin_hash_hmac },` |
-|      - | 8402 | `	{ "hash_equals",  PH7_builtin_hash_equals },` |
-|      - | 8403 | `	{ "hash_algos",   PH7_builtin_hash_algos },` |
-|      - | 8404 | `#endif /* PH7_DISABLE_HASH_FUNC */` |
-|      - | 8405 | `	{ "password_hash",         PH7_builtin_password_hash },` |
-|      - | 8406 | `	{ "password_verify",       PH7_builtin_password_verify },` |
-|      - | 8407 | `	{ "password_get_info",     PH7_builtin_password_get_info },` |
-|      - | 8408 | `	{ "password_needs_rehash", PH7_builtin_password_needs_rehash },` |
-|      - | 8409 | `	{ "filter_var",            PH7_builtin_filter_var },` |
-|      - | 8410 | `	{ "filter_input",          PH7_builtin_filter_input },` |
-|      - | 8411 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|      - | 8412 | `#ifdef PH7_NEED_FMT_AND_INI` |
-|      - | 8413 | `	{ "str_getcsv",   PH7_builtin_str_getcsv },` |
-|      - | 8414 | `	{ "strip_tags",   PH7_builtin_strip_tags },` |
-|      - | 8415 | `#endif /* PH7_NEED_FMT_AND_INI */` |
-|      - | 8416 | `#ifdef PH7_NEED_BUILTIN_REG` |
-|      - | 8417 |  |
-|      - | 8418 | `	{ "str_shuffle",  PH7_builtin_str_shuffle},` |
-|      - | 8419 | `	{ "str_split",    PH7_builtin_str_split  },` |
-|      - | 8420 | `	{ "strspn",       PH7_builtin_strspn     },` |
-|      - | 8421 | `	{ "strcspn",      PH7_builtin_strcspn    },` |
-|      - | 8422 | `	{ "strpbrk",      PH7_builtin_strpbrk    },` |
-|      - | 8423 | `	{ "soundex",      PH7_builtin_soundex    },` |
-|      - | 8424 | `	{ "wordwrap",     PH7_builtin_wordwrap   },` |
-|      - | 8425 | `	{ "strtok",       PH7_builtin_strtok     },` |
-|      - | 8426 | `	{ "str_pad",      PH7_builtin_str_pad    },` |
-|      - | 8427 | `	{ "str_replace",  PH7_builtin_str_replace},` |
-|      - | 8428 | `	{ "str_ireplace", PH7_builtin_str_replace},` |
-|      - | 8429 | `	{ "strtr",        PH7_builtin_strtr      },` |
-|      - | 8430 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|      - | 8431 | `#ifdef PH7_NEED_FMT_AND_INI` |
-|      - | 8432 | `	{ "parse_ini_string", PH7_builtin_parse_ini_string},` |
-|      - | 8433 | `#endif /* PH7_NEED_FMT_AND_INI */` |
-|      - | 8434 | `#ifdef PH7_NEED_BUILTIN_REG` |
-|      - | 8435 |  |
-|      - | 8436 | `	         /* Ctype functions */` |
-|      - | 8437 | `	{ "ctype_alnum", PH7_builtin_ctype_alnum },` |
-|      - | 8438 | `	{ "ctype_alpha", PH7_builtin_ctype_alpha },` |
-|      - | 8439 | `	{ "ctype_cntrl", PH7_builtin_ctype_cntrl },` |
-|      - | 8440 | `	{ "ctype_digit", PH7_builtin_ctype_digit },` |
-|      - | 8441 | `	{ "ctype_xdigit",PH7_builtin_ctype_xdigit},` |
-|      - | 8442 | `	{ "ctype_graph", PH7_builtin_ctype_graph },` |
-|      - | 8443 | `	{ "ctype_print", PH7_builtin_ctype_print },` |
-|      - | 8444 | `	{ "ctype_punct", PH7_builtin_ctype_punct },` |
-|      - | 8445 | `	{ "ctype_space", PH7_builtin_ctype_space },` |
-|      - | 8446 | `	{ "ctype_lower", PH7_builtin_ctype_lower },` |
-|      - | 8447 | `	{ "ctype_upper", PH7_builtin_ctype_upper },` |
-|      - | 8448 | `	         /* Time functions */` |
-|      - | 8449 | `	{ "time"    ,    PH7_builtin_time         },` |
-|      - | 8450 | `	{ "microtime",   PH7_builtin_microtime    },` |
-|      - | 8451 | `	{ "getdate" ,    PH7_builtin_getdate      },` |
-|      - | 8452 | `	{ "gettimeofday",PH7_builtin_gettimeofday },` |
-|      - | 8453 | `	{ "date",        PH7_builtin_date         },` |
-|      - | 8454 | `	{ "strftime",    PH7_builtin_strftime     },` |
-|      - | 8455 | `	{ "idate",       PH7_builtin_idate        },` |
-|      - | 8456 | `	{ "gmdate",      PH7_builtin_gmdate       },` |
-|      - | 8457 | `	{ "localtime",   PH7_builtin_localtime    },` |
-|      - | 8458 | `	{ "mktime",      PH7_builtin_mktime       },` |
-|      - | 8459 | `	{ "gmmktime",    PH7_builtin_mktime       },` |
-|      - | 8460 | `	        /* URL functions */` |
-|      - | 8461 | `	{ "base64_encode",PH7_builtin_base64_encode },` |
-|      - | 8462 | `	{ "base64_decode",PH7_builtin_base64_decode },` |
-|      - | 8463 | `	{ "convert_uuencode",PH7_builtin_base64_encode },` |
-|      - | 8464 | `	{ "convert_uudecode",PH7_builtin_base64_decode },` |
-|      - | 8465 | `	{ "urlencode",    PH7_builtin_urlencode },` |
-|      - | 8466 | `	{ "urldecode",    PH7_builtin_urldecode },` |
-|      - | 8467 | `	{ "rawurlencode", PH7_builtin_urlencode },` |
-|      - | 8468 | `	{ "rawurldecode", PH7_builtin_urldecode },` |
-|      - | 8469 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|      - | 8470 | `};` |
-|      - | 8471 | `/*` |
-|      - | 8472 | ` * Register the built-in functions defined above,the array functions` |
-|      - | 8473 | ` * defined in hashmap.c and the IO functions defined in vfs.c.` |
-|      - | 8474 | ` */` |
-|   3458 | 8475 | `PH7_PRIVATE void PH7_RegisterBuiltInFunction(ph7_vm *pVm)` |
-|      5 | 8476 | `{` |
-|      - | 8477 | `	sxu32 n;` |
-| 580949 | 8478 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltInFunc) ; ++n ){` |
-| 577491 | 8479 | `		ph7_create_function(&(*pVm),aBuiltInFunc[n].zName,aBuiltInFunc[n].xFunc,0);` |
-| 288748 | 8480 | `	}` |
-|      - | 8481 | `	/* Register hashmap functions [i.e: array_merge(),sort(),count(),array_diff(),...] */` |
-|   3463 | 8482 | `	PH7_RegisterHashmapFunctions(&(*pVm));` |
-|      - | 8483 | `	/* Register IO functions [i.e: fread(),fwrite(),chdir(),mkdir(),file(),...] */` |
-|   3463 | 8484 | `	PH7_RegisterIORoutine(&(*pVm));` |
-|   3463 | 8485 | `}` |
-|      - | 8486 |  |
+|   1026 | 8156 | `static int Consumer(const void *pData,unsigned int nLen,void *pUserData)` |
+|      2 | 8157 | `{` |
+|      - | 8158 | `	/* Store in the call context result buffer */` |
+|   1028 | 8159 | `	ph7_result_string((ph7_context *)pUserData,(const char *)pData,(int)nLen);` |
+|   1028 | 8160 | `	return SXRET_OK;` |
+|      2 | 8161 | `}` |
+|      - | 8162 | `/*` |
+|      - | 8163 | ` * string base64_encode(string $data)` |
+|      - | 8164 | ` * string convert_uuencode(string $data)` |
+|      - | 8165 | ` *  Encodes data with MIME base64` |
+|      - | 8166 | ` * Parameter` |
+|      - | 8167 | ` *  $data` |
+|      - | 8168 | ` *    Data to encode` |
+|      - | 8169 | ` * Return` |
+|      - | 8170 | ` *  Encoded data or FALSE on failure.` |
+|      - | 8171 | ` */` |
+|      6 | 8172 | `static int PH7_builtin_base64_encode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      1 | 8173 | `{` |
+|      - | 8174 | `	const char *zIn;` |
+|      - | 8175 | `	int nLen;` |
+|      7 | 8176 | `	if( nArg < 1 ){` |
+|      - | 8177 | `		/* Missing arguments,return FALSE */` |
+|    ! 0 | 8178 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 8179 | `		return PH7_OK;` |
+|      - | 8180 | `	}` |
+|      - | 8181 | `	/* Extract the input string */` |
+|      7 | 8182 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
+|      7 | 8183 | `	if( nLen < 1 ){` |
+|      - | 8184 | `		/* Nothing to process,return FALSE */` |
+|    ! 0 | 8185 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 8186 | `		return PH7_OK;` |
+|      - | 8187 | `	}` |
+|      - | 8188 | `	/* Perform the BASE64 encoding */` |
+|      7 | 8189 | `	SyBase64Encode(zIn,(sxu32)nLen,Consumer,pCtx);` |
+|      7 | 8190 | `	return PH7_OK;` |
+|      4 | 8191 | `}` |
+|      - | 8192 | `/*` |
+|      - | 8193 | ` * string base64_decode(string $data)` |
+|      - | 8194 | ` * string convert_uudecode(string $data)` |
+|      - | 8195 | ` *  Decodes data encoded with MIME base64` |
+|      - | 8196 | ` * Parameter` |
+|      - | 8197 | ` *  $data` |
+|      - | 8198 | ` *    Encoded data.` |
+|      - | 8199 | ` * Return` |
+|      - | 8200 | ` *  Returns the original data or FALSE on failure.` |
+|      - | 8201 | ` */` |
+|     34 | 8202 | `static int PH7_builtin_base64_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      2 | 8203 | `{` |
+|      - | 8204 | `	const char *zIn;` |
+|      - | 8205 | `	int nLen;` |
+|     36 | 8206 | `	if( nArg < 1 ){` |
+|      - | 8207 | `		/* Missing arguments,return FALSE */` |
+|    ! 0 | 8208 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 8209 | `		return PH7_OK;` |
+|      - | 8210 | `	}` |
+|      - | 8211 | `	/* Extract the input string */` |
+|     36 | 8212 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
+|     36 | 8213 | `	if( nLen < 1 ){` |
+|      - | 8214 | `		/* Nothing to process,return FALSE */` |
+|      3 | 8215 | `		ph7_result_bool(pCtx,0);` |
+|      3 | 8216 | `		return PH7_OK;` |
+|      - | 8217 | `	}` |
+|      - | 8218 | `	/* Perform the BASE64 decoding */` |
+|     34 | 8219 | `	SyBase64Decode(zIn,(sxu32)nLen,Consumer,pCtx);` |
+|     34 | 8220 | `	return PH7_OK;` |
+|     19 | 8221 | `}` |
+|      - | 8222 | `/*` |
+|      - | 8223 | ` * string urlencode(string $str)` |
+|      - | 8224 | ` *  URL encoding` |
+|      - | 8225 | ` * Parameter` |
+|      - | 8226 | ` *  $data` |
+|      - | 8227 | ` *   Input string.` |
+|      - | 8228 | ` * Return` |
+|      - | 8229 | ` *  Returns a string in which all non-alphanumeric characters except -_. have` |
+|      - | 8230 | ` *  been replaced with a percent (%) sign followed by two hex digits and spaces` |
+|      - | 8231 | ` *  encoded as plus (+) signs.` |
+|      - | 8232 | ` */` |
+|      4 | 8233 | `static int PH7_builtin_urlencode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      1 | 8234 | `{` |
+|      - | 8235 | `	const char *zIn;` |
+|      - | 8236 | `	int nLen;` |
+|      5 | 8237 | `	if( nArg < 1 ){` |
+|      - | 8238 | `		/* Missing arguments,return FALSE */` |
+|    ! 0 | 8239 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 8240 | `		return PH7_OK;` |
+|      - | 8241 | `	}` |
+|      - | 8242 | `	/* Extract the input string */` |
+|      5 | 8243 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
+|      5 | 8244 | `	if( nLen < 1 ){` |
+|      - | 8245 | `		/* Nothing to process,return FALSE */` |
+|    ! 0 | 8246 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 8247 | `		return PH7_OK;` |
+|      - | 8248 | `	}` |
+|      - | 8249 | `	/* Perform the URL encoding */` |
+|      5 | 8250 | `	SyUriEncode(zIn,(sxu32)nLen,Consumer,pCtx);` |
+|      5 | 8251 | `	return PH7_OK;` |
+|      3 | 8252 | `}` |
+|      - | 8253 | `/*` |
+|      - | 8254 | ` * string urldecode(string $str)` |
+|      - | 8255 | ` *  Decodes any %## encoding in the given string.` |
+|      - | 8256 | ` *  Plus symbols ('+') are decoded to a space character.` |
+|      - | 8257 | ` * Parameter` |
+|      - | 8258 | ` *  $data` |
+|      - | 8259 | ` *    Input string.` |
+|      - | 8260 | ` * Return` |
+|      - | 8261 | ` *  Decoded URL or FALSE on failure.` |
+|      - | 8262 | ` */` |
+|      6 | 8263 | `static int PH7_builtin_urldecode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      1 | 8264 | `{` |
+|      - | 8265 | `	const char *zIn;` |
+|      - | 8266 | `	int nLen;` |
+|      7 | 8267 | `	if( nArg < 1 ){` |
+|      - | 8268 | `		/* Missing arguments,return FALSE */` |
+|    ! 0 | 8269 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 8270 | `		return PH7_OK;` |
+|      - | 8271 | `	}` |
+|      - | 8272 | `	/* Extract the input string */` |
+|      7 | 8273 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
+|      7 | 8274 | `	if( nLen < 1 ){` |
+|      - | 8275 | `		/* Nothing to process,return FALSE */` |
+|    ! 0 | 8276 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 8277 | `		return PH7_OK;` |
+|      - | 8278 | `	}` |
+|      - | 8279 | `	/* Perform the URL decoding */` |
+|      7 | 8280 | `	SyUriDecode(zIn,(sxu32)nLen,Consumer,pCtx,TRUE);` |
+|      7 | 8281 | `	return PH7_OK;` |
+|      4 | 8282 | `}` |
+|      - | 8283 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|      - | 8284 | `/* Table of the built-in functions */` |
+|      - | 8285 | `static const ph7_builtin_func aBuiltInFunc[] = {` |
+|      - | 8286 | `	   /* Variable handling functions */` |
+|      - | 8287 | `	{ "is_bool"    , PH7_builtin_is_bool     },` |
+|      - | 8288 | `	{ "is_float"   , PH7_builtin_is_float    },` |
+|      - | 8289 | `	{ "is_real"    , PH7_builtin_is_float    },` |
+|      - | 8290 | `	{ "is_double"  , PH7_builtin_is_float    },` |
+|      - | 8291 | `	{ "is_int"     , PH7_builtin_is_int      },` |
+|      - | 8292 | `	{ "is_integer" , PH7_builtin_is_int      },` |
+|      - | 8293 | `	{ "is_long"    , PH7_builtin_is_int      },` |
+|      - | 8294 | `	{ "is_string"  , PH7_builtin_is_string   },` |
+|      - | 8295 | `	{ "is_null"    , PH7_builtin_is_null     },` |
+|      - | 8296 | `	{ "is_numeric" , PH7_builtin_is_numeric  },` |
+|      - | 8297 | `	{ "is_scalar"  , PH7_builtin_is_scalar   },` |
+|      - | 8298 | `	{ "is_array"   , PH7_builtin_is_array    },` |
+|      - | 8299 | `	{ "is_object"  , PH7_builtin_is_object   },` |
+|      - | 8300 | `	{ "is_resource", PH7_builtin_is_resource },` |
+|      - | 8301 | `	{ "douleval"   , PH7_builtin_floatval    },` |
+|      - | 8302 | `	{ "floatval"   , PH7_builtin_floatval    },` |
+|      - | 8303 | `	{ "intval"     , PH7_builtin_intval      },` |
+|      - | 8304 | `	{ "strval"     , PH7_builtin_strval      },` |
+|      - | 8305 | `	{ "boolval"    , PH7_builtin_boolval     },` |
+|      - | 8306 | `	{ "empty"      , PH7_builtin_empty       },` |
+|      - | 8307 | `#ifdef PH7_NEED_BUILTIN_REG` |
+|      - | 8308 | `#ifdef PH7_ENABLE_MATH_FUNC` |
+|      - | 8309 | `	   /* Math functions */` |
+|      - | 8310 | `	{ "abs"  ,    PH7_builtin_abs          },` |
+|      - | 8311 | `	{ "sqrt" ,    PH7_builtin_sqrt         },` |
+|      - | 8312 | `	{ "exp"  ,    PH7_builtin_exp          },` |
+|      - | 8313 | `	{ "floor",    PH7_builtin_floor        },` |
+|      - | 8314 | `	{ "cos"  ,    PH7_builtin_cos          },` |
+|      - | 8315 | `	{ "sin"  ,    PH7_builtin_sin          },` |
+|      - | 8316 | `	{ "acos" ,    PH7_builtin_acos         },` |
+|      - | 8317 | `	{ "asin" ,    PH7_builtin_asin         },` |
+|      - | 8318 | `	{ "cosh" ,    PH7_builtin_cosh         },` |
+|      - | 8319 | `	{ "sinh" ,    PH7_builtin_sinh         },` |
+|      - | 8320 | `	{ "ceil" ,    PH7_builtin_ceil         },` |
+|      - | 8321 | `	{ "tan"  ,    PH7_builtin_tan          },` |
+|      - | 8322 | `	{ "tanh" ,    PH7_builtin_tanh         },` |
+|      - | 8323 | `	{ "atan" ,    PH7_builtin_atan         },` |
+|      - | 8324 | `	{ "atan2",    PH7_builtin_atan2        },` |
+|      - | 8325 | `	{ "log"  ,    PH7_builtin_log          },` |
+|      - | 8326 | `	{ "log10" ,   PH7_builtin_log10        },` |
+|      - | 8327 | `	{ "pow"  ,    PH7_builtin_pow          },` |
+|      - | 8328 | `	{ "pi",       PH7_builtin_pi           },` |
+|      - | 8329 | `	{ "fmod",     PH7_builtin_fmod         },` |
+|      - | 8330 | `	{ "hypot",    PH7_builtin_hypot        },` |
+|      - | 8331 | `#endif /* PH7_ENABLE_MATH_FUNC */` |
+|      - | 8332 | `	{ "round",    PH7_builtin_round        },` |
+|      - | 8333 | `	{ "intdiv",   PH7_builtin_intdiv       },` |
+|      - | 8334 | `	{ "dechex", PH7_builtin_dechex         },` |
+|      - | 8335 | `	{ "decoct", PH7_builtin_decoct         },` |
+|      - | 8336 | `	{ "decbin", PH7_builtin_decbin         },` |
+|      - | 8337 | `	{ "hexdec", PH7_builtin_hexdec         },` |
+|      - | 8338 | `	{ "bindec", PH7_builtin_bindec         },` |
+|      - | 8339 | `	{ "octdec", PH7_builtin_octdec         },` |
+|      - | 8340 | `	{ "srand",  PH7_builtin_srand          },` |
+|      - | 8341 | `	{ "mt_srand",PH7_builtin_srand         },` |
+|      - | 8342 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|      - | 8343 | `#ifdef PH7_NEED_FMT_AND_INI` |
+|      - | 8344 | `	{ "base_convert", PH7_builtin_base_convert },` |
+|      - | 8345 | `#endif /* PH7_NEED_FMT_AND_INI */` |
+|      - | 8346 | `#ifdef PH7_NEED_BUILTIN_REG` |
+|      - | 8347 | `	   /* String handling functions */` |
+|      - | 8348 |  |
+|      - | 8349 | `	{ "substr",          PH7_builtin_substr     },` |
+|      - | 8350 | `	{ "substr_compare",  PH7_builtin_substr_compare },` |
+|      - | 8351 | `	{ "substr_count",    PH7_builtin_substr_count },` |
+|      - | 8352 | `	{ "chunk_split",     PH7_builtin_chunk_split},` |
+|      - | 8353 | `	{ "addslashes" ,     PH7_builtin_addslashes },` |
+|      - | 8354 | `	{ "addcslashes",     PH7_builtin_addcslashes},` |
+|      - | 8355 | `	{ "quotemeta",       PH7_builtin_quotemeta  },` |
+|      - | 8356 | `	{ "stripslashes",    PH7_builtin_stripslashes },` |
+|      - | 8357 | `	{ "htmlspecialchars",PH7_builtin_htmlspecialchars },` |
+|      - | 8358 | `	{ "htmlspecialchars_decode", PH7_builtin_htmlspecialchars_decode },` |
+|      - | 8359 | `	{ "get_html_translation_table",PH7_builtin_get_html_translation_table },` |
+|      - | 8360 | `	{ "htmlentities",PH7_builtin_htmlentities},` |
+|      - | 8361 | `	{ "html_entity_decode", PH7_builtin_html_entity_decode},` |
+|      - | 8362 | `	{ "strlen"     , PH7_builtin_strlen     },` |
+|      - | 8363 | `	{ "strcmp"     , PH7_builtin_strcmp     },` |
+|      - | 8364 | `	{ "strcoll"    , PH7_builtin_strcmp     },` |
+|      - | 8365 | `	{ "strncmp"    , PH7_builtin_strncmp    },` |
+|      - | 8366 | `	{ "strcasecmp" , PH7_builtin_strcasecmp },` |
+|      - | 8367 | `	{ "strncasecmp", PH7_builtin_strncasecmp},` |
+|      - | 8368 | `	{ "implode"    , PH7_builtin_implode    },` |
+|      - | 8369 | `	{ "join"       , PH7_builtin_implode    },` |
+|      - | 8370 | `	{ "implode_recursive" , PH7_builtin_implode_recursive },` |
+|      - | 8371 | `	{ "join_recursive"    , PH7_builtin_implode_recursive },` |
+|      - | 8372 | `	{ "explode"     , PH7_builtin_explode    },` |
+|      - | 8373 | `	{ "trim"        , PH7_builtin_trim       },` |
+|      - | 8374 | `	{ "rtrim"       , PH7_builtin_rtrim      },` |
+|      - | 8375 | `	{ "chop"        , PH7_builtin_rtrim      },` |
+|      - | 8376 | `	{ "ltrim"       , PH7_builtin_ltrim      },` |
+|      - | 8377 | `	{ "strtolower",   PH7_builtin_strtolower },` |
+|      - | 8378 | `	{ "mb_strtolower",PH7_builtin_strtolower }, /* Only UTF-8 encoding is supported */` |
+|      - | 8379 | `	{ "strtoupper",   PH7_builtin_strtoupper },` |
+|      - | 8380 | `	{ "mb_strtoupper",PH7_builtin_strtoupper }, /* Only UTF-8 encoding is supported */` |
+|      - | 8381 | `	{ "ucfirst",      PH7_builtin_ucfirst    },` |
+|      - | 8382 | `	{ "lcfirst",      PH7_builtin_lcfirst    },` |
+|      - | 8383 | `	{ "ord",          PH7_builtin_ord        },` |
+|      - | 8384 | `	{ "chr",          PH7_builtin_chr        },` |
+|      - | 8385 | `	{ "bin2hex",      PH7_builtin_bin2hex    },` |
+|      - | 8386 | `	{ "strstr",       PH7_builtin_strstr     },` |
+|      - | 8387 | `	{ "stristr",      PH7_builtin_stristr    },` |
+|      - | 8388 | `	{ "strchr",       PH7_builtin_strstr     },` |
+|      - | 8389 | `	{ "strpos",       PH7_builtin_strpos     },` |
+|      - | 8390 | `	{ "stripos",      PH7_builtin_stripos    },` |
+|      - | 8391 | `	{ "strrpos",      PH7_builtin_strrpos    },` |
+|      - | 8392 | `	{ "strripos",     PH7_builtin_strripos   },` |
+|      - | 8393 | `	{ "strrchr",      PH7_builtin_strrchr    },` |
+|      - | 8394 | `	{ "strrev",       PH7_builtin_strrev     },` |
+|      - | 8395 | `	{ "ucwords",      PH7_builtin_ucwords    },` |
+|      - | 8396 | `	{ "str_repeat",   PH7_builtin_str_repeat },` |
+|      - | 8397 | `	{ "str_contains", PH7_builtin_str_contains },` |
+|      - | 8398 | `	{ "str_starts_with", PH7_builtin_str_starts_with },` |
+|      - | 8399 | `	{ "str_ends_with", PH7_builtin_str_ends_with },` |
+|      - | 8400 | `	{ "nl2br",        PH7_builtin_nl2br      },` |
+|      - | 8401 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|      - | 8402 | `#ifdef PH7_NEED_FMT_AND_INI` |
+|      - | 8403 | `	{ "sprintf",      PH7_builtin_sprintf    },` |
+|      - | 8404 | `	{ "printf",       PH7_builtin_printf     },` |
+|      - | 8405 | `	{ "vprintf",      PH7_builtin_vprintf    },` |
+|      - | 8406 | `	{ "vsprintf",     PH7_builtin_vsprintf   },` |
+|      - | 8407 | `#endif /* PH7_NEED_FMT_AND_INI */` |
+|      - | 8408 | `#ifdef PH7_NEED_BUILTIN_REG` |
+|      - | 8409 | `	{ "size_format",  PH7_builtin_size_format},` |
+|      - | 8410 |  |
+|      - | 8411 |  |
+|      - | 8412 | `#ifndef PH7_DISABLE_HASH_FUNC` |
+|      - | 8413 | `	{ "md5",          PH7_builtin_md5       },` |
+|      - | 8414 | `	{ "sha1",         PH7_builtin_sha1      },` |
+|      - | 8415 | `	{ "crc32",        PH7_builtin_crc32     },` |
+|      - | 8416 | `	{ "hash",         PH7_builtin_hash      },` |
+|      - | 8417 | `	{ "hash_hmac",    PH7_builtin_hash_hmac },` |
+|      - | 8418 | `	{ "hash_equals",  PH7_builtin_hash_equals },` |
+|      - | 8419 | `	{ "hash_algos",   PH7_builtin_hash_algos },` |
+|      - | 8420 | `#endif /* PH7_DISABLE_HASH_FUNC */` |
+|      - | 8421 | `	{ "password_hash",         PH7_builtin_password_hash },` |
+|      - | 8422 | `	{ "password_verify",       PH7_builtin_password_verify },` |
+|      - | 8423 | `	{ "password_get_info",     PH7_builtin_password_get_info },` |
+|      - | 8424 | `	{ "password_needs_rehash", PH7_builtin_password_needs_rehash },` |
+|      - | 8425 | `	{ "filter_var",            PH7_builtin_filter_var },` |
+|      - | 8426 | `	{ "filter_input",          PH7_builtin_filter_input },` |
+|      - | 8427 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|      - | 8428 | `#ifdef PH7_NEED_FMT_AND_INI` |
+|      - | 8429 | `	{ "str_getcsv",   PH7_builtin_str_getcsv },` |
+|      - | 8430 | `	{ "strip_tags",   PH7_builtin_strip_tags },` |
+|      - | 8431 | `#endif /* PH7_NEED_FMT_AND_INI */` |
+|      - | 8432 | `#ifdef PH7_NEED_BUILTIN_REG` |
+|      - | 8433 |  |
+|      - | 8434 | `	{ "str_shuffle",  PH7_builtin_str_shuffle},` |
+|      - | 8435 | `	{ "str_split",    PH7_builtin_str_split  },` |
+|      - | 8436 | `	{ "strspn",       PH7_builtin_strspn     },` |
+|      - | 8437 | `	{ "strcspn",      PH7_builtin_strcspn    },` |
+|      - | 8438 | `	{ "strpbrk",      PH7_builtin_strpbrk    },` |
+|      - | 8439 | `	{ "soundex",      PH7_builtin_soundex    },` |
+|      - | 8440 | `	{ "wordwrap",     PH7_builtin_wordwrap   },` |
+|      - | 8441 | `	{ "strtok",       PH7_builtin_strtok     },` |
+|      - | 8442 | `	{ "str_pad",      PH7_builtin_str_pad    },` |
+|      - | 8443 | `	{ "str_replace",  PH7_builtin_str_replace},` |
+|      - | 8444 | `	{ "str_ireplace", PH7_builtin_str_replace},` |
+|      - | 8445 | `	{ "strtr",        PH7_builtin_strtr      },` |
+|      - | 8446 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|      - | 8447 | `#ifdef PH7_NEED_FMT_AND_INI` |
+|      - | 8448 | `	{ "parse_ini_string", PH7_builtin_parse_ini_string},` |
+|      - | 8449 | `#endif /* PH7_NEED_FMT_AND_INI */` |
+|      - | 8450 | `#ifdef PH7_NEED_BUILTIN_REG` |
+|      - | 8451 |  |
+|      - | 8452 | `	         /* Ctype functions */` |
+|      - | 8453 | `	{ "ctype_alnum", PH7_builtin_ctype_alnum },` |
+|      - | 8454 | `	{ "ctype_alpha", PH7_builtin_ctype_alpha },` |
+|      - | 8455 | `	{ "ctype_cntrl", PH7_builtin_ctype_cntrl },` |
+|      - | 8456 | `	{ "ctype_digit", PH7_builtin_ctype_digit },` |
+|      - | 8457 | `	{ "ctype_xdigit",PH7_builtin_ctype_xdigit},` |
+|      - | 8458 | `	{ "ctype_graph", PH7_builtin_ctype_graph },` |
+|      - | 8459 | `	{ "ctype_print", PH7_builtin_ctype_print },` |
+|      - | 8460 | `	{ "ctype_punct", PH7_builtin_ctype_punct },` |
+|      - | 8461 | `	{ "ctype_space", PH7_builtin_ctype_space },` |
+|      - | 8462 | `	{ "ctype_lower", PH7_builtin_ctype_lower },` |
+|      - | 8463 | `	{ "ctype_upper", PH7_builtin_ctype_upper },` |
+|      - | 8464 | `	         /* Time functions */` |
+|      - | 8465 | `	{ "time"    ,    PH7_builtin_time         },` |
+|      - | 8466 | `	{ "microtime",   PH7_builtin_microtime    },` |
+|      - | 8467 | `	{ "getdate" ,    PH7_builtin_getdate      },` |
+|      - | 8468 | `	{ "gettimeofday",PH7_builtin_gettimeofday },` |
+|      - | 8469 | `	{ "date",        PH7_builtin_date         },` |
+|      - | 8470 | `	{ "strftime",    PH7_builtin_strftime     },` |
+|      - | 8471 | `	{ "idate",       PH7_builtin_idate        },` |
+|      - | 8472 | `	{ "gmdate",      PH7_builtin_gmdate       },` |
+|      - | 8473 | `	{ "localtime",   PH7_builtin_localtime    },` |
+|      - | 8474 | `	{ "mktime",      PH7_builtin_mktime       },` |
+|      - | 8475 | `	{ "gmmktime",    PH7_builtin_mktime       },` |
+|      - | 8476 | `	        /* URL functions */` |
+|      - | 8477 | `	{ "base64_encode",PH7_builtin_base64_encode },` |
+|      - | 8478 | `	{ "base64_decode",PH7_builtin_base64_decode },` |
+|      - | 8479 | `	{ "convert_uuencode",PH7_builtin_base64_encode },` |
+|      - | 8480 | `	{ "convert_uudecode",PH7_builtin_base64_decode },` |
+|      - | 8481 | `	{ "urlencode",    PH7_builtin_urlencode },` |
+|      - | 8482 | `	{ "urldecode",    PH7_builtin_urldecode },` |
+|      - | 8483 | `	{ "rawurlencode", PH7_builtin_urlencode },` |
+|      - | 8484 | `	{ "rawurldecode", PH7_builtin_urldecode },` |
+|      - | 8485 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|      - | 8486 | `};` |
+|      - | 8487 | `/*` |
+|      - | 8488 | ` * Register the built-in functions defined above,the array functions` |
+|      - | 8489 | ` * defined in hashmap.c and the IO functions defined in vfs.c.` |
+|      - | 8490 | ` */` |
+|   3458 | 8491 | `PH7_PRIVATE void PH7_RegisterBuiltInFunction(ph7_vm *pVm)` |
+|      5 | 8492 | `{` |
+|      - | 8493 | `	sxu32 n;` |
+| 580949 | 8494 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltInFunc) ; ++n ){` |
+| 577491 | 8495 | `		ph7_create_function(&(*pVm),aBuiltInFunc[n].zName,aBuiltInFunc[n].xFunc,0);` |
+| 288748 | 8496 | `	}` |
+|      - | 8497 | `	/* Register hashmap functions [i.e: array_merge(),sort(),count(),array_diff(),...] */` |
+|   3463 | 8498 | `	PH7_RegisterHashmapFunctions(&(*pVm));` |
+|      - | 8499 | `	/* Register IO functions [i.e: fread(),fwrite(),chdir(),mkdir(),file(),...] */` |
+|   3463 | 8500 | `	PH7_RegisterIORoutine(&(*pVm));` |
+|   3463 | 8501 | `}` |
+|      - | 8502 |  |
