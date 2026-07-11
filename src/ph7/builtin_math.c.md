@@ -508,8 +508,8 @@ Coverage: 540/587 lines (91.99%)
 |    - |  498 | `	}` |
 |    - |  499 |  |
 |    - |  500 | `	/* Numeric strings with decimal/exponent are treated as real values. */` |
-|  123 |  501 | `	is_float = ph7_value_is_float(apArg[0]);` |
-|  123 |  502 | `	if( !is_float && ph7_value_is_string(apArg[0]) ){` |
+|  122 |  501 | `	is_float = ph7_value_is_float(apArg[0]);` |
+|  122 |  502 | `	if( !is_float && ph7_value_is_string(apArg[0]) ){` |
 |    - |  503 | `		int len;` |
 |   10 |  504 | `		sxu8 bReal = FALSE;` |
 |   10 |  505 | `		const char *zStr = ph7_value_to_string(apArg[0], &len);` |
