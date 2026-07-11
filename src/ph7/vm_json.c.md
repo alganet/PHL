@@ -472,7 +472,7 @@ Coverage: 410/545 lines (75.23%)
 |  146 |  462 | `	pToken->pUserData = 0;` |
 |  146 |  463 | `	pStr = &pToken->sData;` |
 |  146 |  464 | `	SyStringInitFromBuf(pStr,pStream->zText,0);` |
-|  183 |  465 | `	if( pStream->zText[0] == '{' \|\| pStream->zText[0] == '[' \|\| pStream->zText[0] == '}' \|\| pStream->zText[0] == ']'` |
+|  144 |  465 | `	if( pStream->zText[0] == '{' \|\| pStream->zText[0] == '[' \|\| pStream->zText[0] == '}' \|\| pStream->zText[0] == ']'` |
 |  102 |  466 | `		\|\| pStream->zText[0] == ':' \|\| pStream->zText[0] == ',' ){` |
 |    - |  467 | `			/* Single character */` |
 |   84 |  468 | `			c = pStream->zText[0];` |
