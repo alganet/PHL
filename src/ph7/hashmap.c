@@ -7065,11 +7065,40 @@ static int ph7_hashmap_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			);
 	}
 	if( !ph7_value_is_array(apArg[0]) ){
+		char zBuf[64];
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_pad(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
+			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf))
 			);
+	}
+	/* php 8: $length must be int-coercible. An array/object/resource or a
+	 * non-numeric string throws a TypeError instead of silently padding to 0;
+	 * a numeric string is weak-coerced via php's is_numeric_string grammar
+	 * (reusing the shared RangeStrToNumber, like array_rand's $num). */
+	if( ph7_value_is_array(apArg[1]) || ph7_value_is_object(apArg[1])
+		|| ph7_value_is_resource(apArg[1]) ){
+		char zBuf[64];
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_pad(): Argument #2 ($length) must be of type int, %s given",
+			VmValueGivenName(apArg[1],zBuf,sizeof(zBuf))
+			);
+	}
+	if( ph7_value_is_string(apArg[1]) ){
+		int nStr;
+		const char *zStr = ph7_value_to_string(apArg[1],&nStr);
+		sxi64 iLong; double dReal;
+		sxu8 iKind = RangeStrToNumber(zStr,(sxu32)nStr,&iLong,&dReal);
+		if( iKind == RANGE_IN_ERROR ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_pad(): Argument #2 ($length) must be of type int, string given"
+				);
+		}
+		nEntry = (int)(iKind == RANGE_IN_DOUBLE ? (sxi64)dReal : iLong);
+	}else{
+		nEntry = ph7_value_to_int(apArg[1]);
 	}
 	/* Create a new array */
 	pArray = ph7_context_new_array(pCtx);
@@ -7078,8 +7107,6 @@ static int ph7_hashmap_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Point to the internal representation of the input hashmap */
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
-	/* Extract the total number of desired entry to insert */
-	nEntry = ph7_value_to_int(apArg[1]);
 	if( nEntry < 0 ){
 		nEntry = -nEntry;
 		if( nEntry > (int)pMap->nEntry ){
