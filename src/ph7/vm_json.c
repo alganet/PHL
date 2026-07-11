@@ -963,7 +963,22 @@ PH7_PRIVATE int vm_builtin_json_decode(ph7_context *pCtx,int nArg,ph7_value **ap
 		iAssoc = 1;
 	}
 	if( nArg > 2 && ph7_value_is_int(apArg[2]) ){
-		nDepth = ph7_value_to_int(apArg[2]);
+		/* PHP 8: $depth must be in 1 .. INT_MAX (a catchable ValueError otherwise);
+		 * read as int64 so a value above INT_MAX is detected, not truncated. */
+		ph7_int64 nWant = ph7_value_to_int64(apArg[2]);
+		/* php clears the json error state before validating $depth, so a caught
+		 * depth ValueError leaves json_last_error() == JSON_ERROR_NONE (the normal
+		 * path resets it again inside VmJsonDecodeInput). */
+		pCtx->pVm->json_rc = JSON_ERROR_NONE;
+		if( nWant <= 0 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"json_decode(): Argument #3 ($depth) must be greater than 0");
+		}
+		if( nWant > 2147483647 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"json_decode(): Argument #3 ($depth) must be less than 2147483647");
+		}
+		nDepth = (int)nWant;
 	}
 	/* Decode the raw JSON input.The default consumer sets the decoded value as the
 	 * call-context result; on failure we replace it with NULL. */
@@ -1006,7 +1021,20 @@ PH7_PRIVATE int vm_builtin_json_validate(ph7_context *pCtx,int nArg,ph7_value **
 		return PH7_OK;
 	}
 	if( nArg > 1 && ph7_value_is_int(apArg[1]) ){
-		nDepth = ph7_value_to_int(apArg[1]);
+		/* PHP 8: $depth must be in 1 .. INT_MAX (a catchable ValueError otherwise). */
+		ph7_int64 nWant = ph7_value_to_int64(apArg[1]);
+		/* Clear the json error state before validating $depth (php parity), so a
+		 * caught depth ValueError leaves json_last_error() == JSON_ERROR_NONE. */
+		pVm->json_rc = JSON_ERROR_NONE;
+		if( nWant <= 0 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"json_validate(): Argument #2 ($depth) must be greater than 0");
+		}
+		if( nWant > 2147483647 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"json_validate(): Argument #2 ($depth) must be less than 2147483647");
+		}
+		nDepth = (int)nWant;
 	}
 	/* apArg[2] ($flags) is accepted and ignored: no decode flag is implemented.
 	 * Decode in associative mode so the "objects are returned as an array" warning is
