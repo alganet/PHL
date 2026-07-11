@@ -522,11 +522,15 @@ PH7_PRIVATE int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		r = fabs(x);
 		ph7_result_double(pCtx,r);
 	}else{
-		int r,x;
-		x = ph7_value_to_int(apArg[0]);
-		/* Perform the requested operation */
-		r = abs(x);
-		ph7_result_int(pCtx,r);
+		/* Read the full 64-bit value (the old 32-bit `int abs()` truncated any
+		 * magnitude above 2^31 and was UB on INT_MIN). */
+		sxi64 x = ph7_value_to_int64(apArg[0]);
+		if( x == SMALLEST_INT64 ){
+			/* abs(PHP_INT_MIN) has no int representation, so PHP returns a float. */
+			ph7_result_double(pCtx,-(double)x);
+		}else{
+			ph7_result_int64(pCtx,x < 0 ? -x : x);
+		}
 	}
 	return PH7_OK;
 }
