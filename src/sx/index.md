@@ -1,6 +1,6 @@
 # src/sx/
 
-Coverage: 3097/3827 lines (80.93%)
+Coverage: 3092/3827 lines (80.79%)
 
 [Up](../index.md)
 
@@ -8,7 +8,7 @@ Coverage: 3097/3827 lines (80.93%)
 |:---|---:|---:|
 |[sxblowfish.c](sxblowfish.c.md)|98.82%|168/170|
 |[sxds.c](sxds.c.md)|95.07%|289/304|
-|[sxfmt.c](sxfmt.c.md)|69.78%|284/407|
+|[sxfmt.c](sxfmt.c.md)|68.55%|279/407|
 |[sxhash.c](sxhash.c.md)|91.06%|377/414|
 |[sxlib.c](sxlib.c.md)|90.12%|228/253|
 |[sxmem.c](sxmem.c.md)|85.29%|435/510|

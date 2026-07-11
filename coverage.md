@@ -16,7 +16,7 @@
 | src/ph7/vfs_unix.c             | 88.06%   | 376/427     |
 | src/ph7/vfs_win.c              | 75.43%   | 485/643     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
-| src/ph7/vm.c                   | 81.40%   | 8976/11027  |
+| src/ph7/vm.c                   | 81.46%   | 8984/11029  |
 | src/ph7/vm_builtin_class.c     | 85.50%   | 466/545     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
 | src/ph7/vm_builtin_ob.c        | 76.21%   | 157/206     |
@@ -30,7 +30,7 @@
 | src/phl/server.c               | 61.56%   | 277/450     |
 | src/sx/sxblowfish.c            | 98.82%   | 168/170     |
 | src/sx/sxds.c                  | 95.07%   | 289/304     |
-| src/sx/sxfmt.c                 | 69.78%   | 284/407     |
+| src/sx/sxfmt.c                 | 68.55%   | 279/407     |
 | src/sx/sxhash.c                | 91.06%   | 377/414     |
 | src/sx/sxlib.c                 | 90.12%   | 228/253     |
 | src/sx/sxmem.c                 | 85.29%   | 435/510     |
@@ -44,6 +44,6 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 80.66%   | 38139/47282 |
-| Functions                      | 96.29%   | 1816/1886   |
+| Lines                          | 80.67%   | 38142/47284 |
+| Functions                      | 96.34%   | 1817/1886   |
 
