@@ -1840,7 +1840,8 @@ static ph7_class * VmFccResolveScope(ph7_vm *pVm, ph7_value *pTarget);
 static ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue);
 static sxi32 VmIterCallMethod(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,sxu32 nLen,ph7_value *pResult);
 static sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
-	ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg);
+	ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg,
+	int bStrict, ph7_class *pSelfHint);
 static sxi32 VmCallClassMethodWithMap(ph7_vm *pVm, ph7_class_instance *pThis,
 	ph7_class_method *pMethod, ph7_value *pResult, int nArg,
 	ph7_value **apArg, VmCallArgMap *pMap);
@@ -13269,7 +13270,8 @@ case PH7_OP_CALL: {
 			/* Set up the frame with arguments, closure env, $this */
 			pExecCtx->pFrame->pParent = pVm->pFrame;
 			pVm->pFrame = pExecCtx->pFrame;
-			rc = VmFiberSetupFrame(pVm, pExecCtx, pThis, nGenArgs, apCallArgs);
+			rc = VmFiberSetupFrame(pVm, pExecCtx, pThis, nGenArgs, apCallArgs,
+				(pInstr->p3 && ((VmCallArgMap *)pInstr->p3)->bStrict) ? 1 : 0, pSelfHint);
 			pVm->pFrame = pExecCtx->pFrame->pParent;
 			pExecCtx->pFrame->pParent = 0;
 			if( apCallArgs ){
@@ -13282,6 +13284,25 @@ case PH7_OP_CALL: {
 				}
 				if( rc == SXERR_ABORT ){
 					goto Abort;
+				}
+				if( rc == PH7_EXCEPTION ){
+					/* A declared-type TypeError thrown while binding the
+					 * generator's arguments (php binds + type-checks eagerly at
+					 * the g(...) call site, before any resume — band A #2). If
+					 * an inline try THIS exec owns caught it, land at its
+					 * redirect (the drain subsumes the operand pops); else pop
+					 * the args + function name and route like the other
+					 * OP_CALL throw paths. */
+					PH7_INLINE_RESUME_BREAK()
+					VmPopOperand(&pTos,nCallArgs + 1);
+					{
+						sxi32 iRpG;
+						if( VmRecordedResume(pVm,&iRpG,sState.pEntryFrame,aInstr) ){
+							pc = iRpG;
+							break;
+						}
+					}
+					goto Exception;
 				}
 				break;
 			}
@@ -14239,7 +14260,22 @@ SkipFuncBody:
 			 * (mirrors the PH7_EXCEPTION branch below). */
 			PH7_MemObjRelease(&sRet);
 			goto Abort;
-		}else if( rc == PH7_EXCEPTION ){
+		}
+		if( rc != PH7_SUSPEND && pVm->pInlineInstr == (void *)aInstr ){
+			/* A throw raised inside this host function — directly
+			 * (PH7_VmThrowException) or by a PHP callback it invoked — was
+			 * caught by an INLINE try (generator body) THIS exec owns.
+			 * VmThrowInline records only a pc-redirect: a direct builtin throw
+			 * travels back as SXRET_OK and a callback throw as PH7_EXCEPTION
+			 * with the redirect pending, so the rc branches below never land
+			 * it (pre-existing hole: explode("") or a throwing usort
+			 * comparator inside a generator's try lost the catch AND the
+			 * yield). Land at the redirect now — its drain to the try's
+			 * operand base subsumes the args + name pops. */
+			PH7_MemObjRelease(&sRet);
+			PH7_INLINE_RESUME_BREAK()
+		}
+		if( rc == PH7_EXCEPTION ){
 			/* A callback invoked by this host function threw. If an in-place catch
 			 * recorded a resume target owned by THIS body, resume at its landing pad
 			 * (consuming the target); otherwise the exception was caught by an outer
@@ -15679,8 +15715,104 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
  * type casting, pass-by-reference handling, default values, and closure environment.
  * The fiber's frame must be at the top of pVm->pFrame when this is called.
  */
+/*
+ * Enforce one formal parameter's declared type on an argument being installed
+ * into a generator/fiber initial frame (band A #2). Mirrors the OP_CALL
+ * install path's checks exactly: union types via VmCoerceToUnion, class and
+ * pseudo types (VmCheckPseudoType + VmResolveTypeClass + instanceof, so
+ * interfaces/abstract classes and self/parent resolve), the bare `object`
+ * hint, and scalars via VmEnforceScalarType (weak-mode coercion in place,
+ * strict rejection otherwise) — with the VM_FUNC_ARG_NULLABLE guard letting
+ * null through for `?type` and implicit-nullable `Type $x = null` params.
+ * Pre-fix, VmFiberSetupFrame only xCast()ed on mismatch, so a typed
+ * generator/fiber parameter silently coerced (g(int $x){yield $x;} g(null)
+ * yielded int(0) where php throws TypeError at the call site).
+ * Returns SXRET_OK (value possibly coerced) or the VmThrowTypeErrorForArg
+ * status for the caller to route — normalized so an INLINE-caught throw
+ * (VmThrowInline records only a pc-redirect and reports SXRET_OK) still
+ * comes back as PH7_EXCEPTION: the binding must stop and the OP_CALL
+ * generator block's PH7_INLINE_RESUME_BREAK consumes the redirect.
+ */
+static sxi32 VmGenArgThrowStatus(ph7_vm *pVm, sxi32 rcThrow)
+{
+	if( rcThrow == SXRET_OK && pVm->pInlineInstr ){
+		return PH7_EXCEPTION;
+	}
+	return rcThrow;
+}
+static sxi32 VmEnforceGenArgType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_vm_func_arg *pFormal,
+	sxu32 nArgPos, ph7_value *pVal, int bStrict, ph7_class *pSelfHint)
+{
+	if( pFormal->iFlags & VM_FUNC_ARG_UNION ){
+		if( VmCoerceToUnion(pVm,pVal,&pFormal->aUnionAlts,
+			(pFormal->iFlags & VM_FUNC_ARG_NULLABLE) ? 1 : 0,bStrict) != SXRET_OK ){
+			const char *zGiven;
+			const char *zExpected = "union";
+			char zBuf[128];
+			char zTypeBuf[128];
+			if( pVal->iFlags & MEMOBJ_OBJ ){
+				zGiven = VmFormatValueClassName(pVal,zBuf,sizeof(zBuf));
+			}else if( pVal->iFlags & MEMOBJ_NULL ){
+				zGiven = "null";
+			}else{
+				zGiven = ph7_type_name(pVal);
+			}
+			if( SyStringLength(&pFormal->sTypeName) > 0 ){
+				zExpected = VmSyStringToCStr(&pFormal->sTypeName,zTypeBuf,sizeof(zTypeBuf));
+			}
+			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pFunc->sName,(int)nArgPos,
+				&pFormal->sName,zExpected,zGiven));
+		}
+		return SXRET_OK;
+	}
+	if( pFormal->nType == 0
+	 || ((pFormal->iFlags & VM_FUNC_ARG_NULLABLE) && (pVal->iFlags & MEMOBJ_NULL)) ){
+		return SXRET_OK;
+	}
+	if( pFormal->nType == SXU32_HIGH ){
+		/* Class or pseudo type */
+		SyString *pName = &pFormal->sClass;
+		ph7_class *pClass;
+		int rcPseudo = VmCheckPseudoType(&(*pVm),pVal,pName);
+		if( rcPseudo == 0 ){
+			char zTypeBuf[128],zGivenBuf[128];
+			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pFunc->sName,(int)nArgPos,
+				&pFormal->sName,
+				VmSyStringToCStr(pName,zTypeBuf,sizeof(zTypeBuf)),
+				VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf))));
+		}
+		pClass = (rcPseudo == 1) ? 0 : VmResolveTypeClass(&(*pVm),pName,pSelfHint);
+		if( pClass ){
+			int bBad = !((pVal->iFlags & MEMOBJ_OBJ)
+				&& PH7_VmInstanceOf(((ph7_class_instance *)pVal->x.pOther)->pClass,pClass));
+			if( bBad ){
+				char zTypeBuf[128],zGivenBuf[128];
+				return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pFunc->sName,(int)nArgPos,
+					&pFormal->sName,
+					VmSyStringToCStr(&pClass->sName,zTypeBuf,sizeof(zTypeBuf)),
+					VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf))));
+			}
+		}
+		return SXRET_OK;
+	}
+	if( (pVal->iFlags & pFormal->nType) == 0 ){
+		if( pFormal->nType == MEMOBJ_OBJ ){
+			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pFunc->sName,(int)nArgPos,
+				&pFormal->sName,"object",ph7_type_name(pVal)));
+		}
+		if( VmEnforceScalarType(pVal,pFormal->nType,bStrict) != SXRET_OK ){
+			char zTypeBuf[128];
+			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pFunc->sName,(int)nArgPos,
+				&pFormal->sName,
+				VmScalarTypeName(pFormal->nType,&pFormal->sTypeName,zTypeBuf,sizeof(zTypeBuf)),
+				ph7_type_name(pVal)));
+		}
+	}
+	return SXRET_OK;
+}
 static sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
-	ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg)
+	ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg,
+	int bStrict, ph7_class *pSelfHint)
 {
 	ph7_vm_func *pFunc = pExecCtx->pFunc;
 	ph7_vm_func_arg *aFormalArg;
@@ -15720,18 +15852,54 @@ static sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 	nFormal = SySetUsed(&pFunc->aArgs);
 	for( n = 0; n < nFormal; n++ ){
 		ph7_value *pObj;
+		if( aFormalArg[n].iFlags & VM_FUNC_ARG_VARIADIC ){
+			/* Variadic formal: collect this and every remaining actual into a
+			 * fresh array (php semantics — pre-fix nothing collected here, so a
+			 * `function g(int ...$xs)` generator saw a bare scalar in $xs).
+			 * Per-element checks mirror OP_CALL's variadic install: union via
+			 * the shared helper, scalar coerce/TypeError, `object` hint; a
+			 * class-typed variadic element is (like OP_CALL) not checked. */
+			pObj = VmExtractMemObj(pVm, &aFormalArg[n].sName, FALSE, TRUE);
+			if( pObj ){
+				sxu32 nVariadicIdx;
+				ph7_hashmap *pMap;
+				sxu32 k;
+				PH7_MemObjToHashmap(pObj);
+				/* Capture the slot index now: PH7_HashmapInsert can reallocate
+				 * pVm->aMemObj and dangle pObj (same hazard as OP_CALL's path). */
+				nVariadicIdx = pObj->nIdx;
+				pMap = (ph7_hashmap *)pObj->x.pOther;
+				for( k = n; k < (sxu32)nArg; k++ ){
+					if( ((aFormalArg[n].iFlags & VM_FUNC_ARG_UNION)
+					   || (aFormalArg[n].nType > 0 && aFormalArg[n].nType != SXU32_HIGH)) ){
+						rc = VmEnforceGenArgType(pVm,pFunc,&aFormalArg[n],n+1,apArg[k],bStrict,pSelfHint);
+						if( rc != SXRET_OK ){
+							return rc;
+						}
+					}
+					PH7_HashmapInsert(pMap,0,apArg[k]);
+				}
+				sSlot.nIdx = nVariadicIdx;
+				sSlot.pUserData = 0;
+				SySetPut(&pExecCtx->pFrame->sArg, &sSlot);
+			}
+			break; /* All remaining actuals consumed */
+		}
 		if( n < (sxu32)nArg ){
-			/* Argument provided — install with type casting */
+			/* Argument provided — install with declared-type enforcement.
+			 * php binds and type-checks generator arguments EAGERLY at the
+			 * g(...) call site (and fiber arguments at Fiber::start()), so the
+			 * enforcement lives here, mirroring the OP_CALL install path via
+			 * VmEnforceGenArgType (TypeError on mismatch, weak coercion in
+			 * place otherwise) instead of the old silent xCast. A variadic
+			 * formal collects as-is (no per-element declared-type model). */
 			pObj = VmExtractMemObj(pVm, &aFormalArg[n].sName, FALSE, TRUE);
 			if( pObj ){
 				PH7_MemObjStore(apArg[n], pObj);
-				/* Type casting */
-				if( aFormalArg[n].nType > 0 && aFormalArg[n].nType != SXU32_HIGH ){
-					if( (pObj->iFlags & aFormalArg[n].nType) == 0 ){
-						ProcMemObjCast xCast = PH7_MemObjCastMethod(aFormalArg[n].nType);
-						if( xCast ){
-							xCast(pObj);
-						}
+				if( (aFormalArg[n].iFlags & VM_FUNC_ARG_VARIADIC) == 0 ){
+					rc = VmEnforceGenArgType(pVm,pFunc,&aFormalArg[n],n+1,pObj,bStrict,pSelfHint);
+					if( rc != SXRET_OK ){
+						return rc;
 					}
 				}
 				sSlot.nIdx = pObj->nIdx;
@@ -15746,7 +15914,11 @@ static sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 				if( rc == SXERR_ABORT ){
 					return rc;
 				}
-				if( aFormalArg[n].nType > 0 && aFormalArg[n].nType != SXU32_HIGH ){
+				/* A null default on an implicitly-nullable `Type $x = null`
+				 * param must stay null (php); only non-null defaults keep the
+				 * legacy shaping cast. */
+				if( aFormalArg[n].nType > 0 && aFormalArg[n].nType != SXU32_HIGH
+				 && !((aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) && (pObj->iFlags & MEMOBJ_NULL)) ){
 					if( (pObj->iFlags & aFormalArg[n].nType) == 0 ){
 						ProcMemObjCast xCast = PH7_MemObjCastMethod(aFormalArg[n].nType);
 						if( xCast ){
@@ -15868,7 +16040,8 @@ static int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **apArg
 				}
 			}
 		}
-		rc = VmFiberSetupFrame(pVm, pExecCtx, pClosureThis, nActual, apValues);
+		rc = VmFiberSetupFrame(pVm, pExecCtx, pClosureThis, nActual, apValues,
+			0 /* weak-mode arg binding, like call_user_func */, 0);
 		if( aStore ){
 			SyMemBackendFree(&pVm->sAllocator, aStore);
 		}
@@ -15880,7 +16053,9 @@ static int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **apArg
 	pVm->pFrame = pExecCtx->pFrame->pParent;
 	pExecCtx->pFrame->pParent = 0;
 	if( rc != SXRET_OK ){
-		return PH7_ABORT;
+		/* Propagate the real status: a declared-type TypeError from the arg
+		 * install (band A #2) must stay catchable, not become an abort. */
+		return (rc == PH7_EXCEPTION) ? PH7_EXCEPTION : PH7_ABORT;
 	}
 	PH7_MemObjInit(pVm, &sResult);
 	rc = VmStartCtx(pVm, pExecCtx, &sResult);
@@ -16040,6 +16215,7 @@ PH7_PRIVATE sxi32 PH7_VmFiberStart(ph7_vm *pVm, ph7_value *pFiber, int nArg, ph7
 	ph7_value *pCallable;
 	ph7_value *pCtxAttr;
 	SyString sAttrName;
+	sxi32 rc;
 	/* Must not already be started */
 	pCtx = VmFiberExtractCtx(pVm, pFiber);
 	if( pCtx != 0 ){
@@ -16092,9 +16268,13 @@ PH7_PRIVATE sxi32 PH7_VmFiberStart(ph7_vm *pVm, ph7_value *pFiber, int nArg, ph7
 	/* Set up frame with args */
 	pCtx->pFrame->pParent = pVm->pFrame;
 	pVm->pFrame = pCtx->pFrame;
-	VmFiberSetupFrame(pVm, pCtx, pClosureThis, nArg, apArg);
+	rc = VmFiberSetupFrame(pVm, pCtx, pClosureThis, nArg, apArg,
+		0 /* weak-mode arg binding (embedder entry) */, 0);
 	pVm->pFrame = pCtx->pFrame->pParent;
 	pCtx->pFrame->pParent = 0;
+	if( rc != SXRET_OK ){
+		return rc;
+	}
 	return VmStartCtx(pVm, pCtx, pResult);
 }
 PH7_PRIVATE sxi32 PH7_VmFiberResume(ph7_vm *pVm, ph7_value *pFiber, ph7_value *pSendValue, ph7_value *pResult)
