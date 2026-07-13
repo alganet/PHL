@@ -1716,6 +1716,7 @@ PH7_PRIVATE sxi32 PH7_VmEvalBuiltinChunk(ph7_vm *pVm,const char *zSrc,sxu32 nLen
 PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm); /* vm_builtin_reflection.c */
 PH7_PRIVATE ph7_class_instance * PH7_VmNewClosure(ph7_vm *pVm,const SyString *pName,
 	ph7_class_instance *pBoundThis,const SyString *pScope);
+PH7_PRIVATE sxi32 PH7_VmEnforcePropStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValue);
 PH7_PRIVATE sxi32 PH7_VmInit(ph7_vm *pVm,ph7 *pEngine);
 PH7_PRIVATE sxi32 PH7_VmConfigure(ph7_vm *pVm,sxi32 nOp,va_list ap);
 PH7_PRIVATE sxi32 PH7_VmByteCodeExec(ph7_vm *pVm);

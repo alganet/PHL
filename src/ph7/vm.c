@@ -14649,6 +14649,15 @@ PH7_PRIVATE ph7_class_instance * PH7_VmNewClosure(ph7_vm *pVm, const SyString *p
 	return VmCreateClosure(&(*pVm), pName, pBoundThis, pScope);
 }
 /*
+ * Exported wrapper around the typed/readonly property store enforcement for
+ * ReflectionProperty::setValue (vm_builtin_reflection.c). Same contract:
+ * SXRET_OK (value possibly coerced in place), PH7_EXCEPTION, or PH7_ABORT.
+ */
+PH7_PRIVATE sxi32 PH7_VmEnforcePropStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValue)
+{
+	return VmEnforcePropertyTypeOnStore(&(*pVm),nIdx,pValue,0);
+}
+/*
  * First-class callable over an arbitrary callable VALUE: `($expr)(...)`.
  * Normalize a validated callable value into a fresh Closure, reusing VmCreateClosure (the same
  * object the method/static first-class-callable paths mint, so dispatch round-trips identically
