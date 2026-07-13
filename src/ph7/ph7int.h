@@ -207,6 +207,7 @@ struct ph7_user_func
 	const char *zSig;         /* PHP-style parameter list ("string $s, int $o = 0") from the
 	                           * static signature table, or NULL: ReflectionFunction input for
 	                           * internal functions. Points at static storage — never freed. */
+	const char *zRet;         /* Return-type text from the same table, or NULL */
 };
 /*
  * The 'context' argument for an installable function. A pointer to an
@@ -1780,7 +1781,7 @@ PH7_PRIVATE sxi32 PH7_VmThrowExceptionTrace(ph7_context *pCtx,const char *zClass
 PH7_PRIVATE void  PH7_VmExpandConstantValue(ph7_value *pVal,void *pUserData);
 PH7_PRIVATE sxi32 PH7_VmDump(ph7_vm *pVm,ProcConsumer xConsumer,void *pUserData);
 PH7_PRIVATE sxi32 PH7_VmEvalBuiltinChunk(ph7_vm *pVm,const char *zSrc,sxu32 nLen);
-PH7_PRIVATE const char * PH7_VmBuiltinSigLookup(const char *zName,sxu32 nLen);
+PH7_PRIVATE const char * PH7_VmBuiltinSigLookup(const char *zName,sxu32 nLen,const char **pzRet);
 PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm); /* vm_builtin_reflection.c */
 PH7_PRIVATE ph7_class_instance * PH7_VmNewClosure(ph7_vm *pVm,const SyString *pName,
 	ph7_class_instance *pBoundThis,const SyString *pScope);

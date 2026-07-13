@@ -1130,7 +1130,11 @@ static int vm_builtin_reflect_func_info(ph7_context *pCtx, int nArg, ph7_value *
 				ph7_array_add_strkey_elem(pInfo, "attrs", pEmpty);
 			}
 		}
-		ReflectMapAddNull(pCtx, pInfo, "rettext");
+		if( pHost->zRet ){
+			ReflectMapAddStr(pCtx, pInfo, "rettext", pHost->zRet, (int)SyStrlen(pHost->zRet));
+		}else{
+			ReflectMapAddNull(pCtx, pInfo, "rettext");
+		}
 		ReflectMapAddBool(pCtx, pInfo, "retnullable", 0);
 		if( pParams ){
 			ph7_array_add_strkey_elem(pInfo, "params", pParams);
@@ -1150,9 +1154,13 @@ static int vm_builtin_reflect_func_info(ph7_context *pCtx, int nArg, ph7_value *
 	if( (pFunc->iFlags & VM_FUNC_INTERNAL) && SySetUsed(&pFunc->aArgs) == 0 && pMeth == 0 ){
 		/* Embedded-PHP builtin (max/min...): declared argless, actual
 		 * signature comes from the static table */
-		const char *zSig = PH7_VmBuiltinSigLookup(SyStringData(&pFunc->sName), SyStringLength(&pFunc->sName));
+		const char *zRet = 0;
+		const char *zSig = PH7_VmBuiltinSigLookup(SyStringData(&pFunc->sName), SyStringLength(&pFunc->sName), &zRet);
 		if( zSig ){
 			ReflectMapAddStr(pCtx, pInfo, "sig", zSig, (int)SyStrlen(zSig));
+		}
+		if( zRet && SyStringLength(&pFunc->sReturnTypeName) == 0 ){
+			ReflectMapAddStr(pCtx, pInfo, "ret2", zRet, (int)SyStrlen(zRet));
 		}
 	}
 	if( pMeth && pClass ){
@@ -2007,9 +2015,7 @@ static const char zReflectLib1[] =
 " public function initializeLazyObject($object){ return $object; }"
 " public function markLazyObjectAsInitialized($object){ return $object; }"
 " public function isUninitializedLazyObject($object){ return false; }"
-" public function __toString(){"
-"  return 'Class [ class '.$this->name.' ] {'.\"\\n\".'}'.\"\\n\";"
-" }"
+" public function __toString(){ return __reflect_export_class($this); }"
 "}"
 "class ReflectionObject extends ReflectionClass {"
 " public function __construct($object){"
@@ -2053,7 +2059,7 @@ static const char zReflectLib2[] =
 " public function returnsReference(){ $i = $this->__rfinfo(); return $i['byref']; }"
 " public function isInternal(){ $i = $this->__rfinfo(); return $i['internal']; }"
 " public function isUserDefined(){ return !$this->isInternal(); }"
-" public function isDeprecated(){ return false; }"
+" public function isDeprecated(){ $i = $this->__rfinfo(); return __reflect_has_deprecated($i['attrs']); }"
 " public function isStatic(){ return false; }"
 " public function getFileName(){ $i = $this->__rfinfo(); return $i['file']; }"
 " public function getStartLine(){"
@@ -2125,9 +2131,7 @@ static const char zReflectLib2[] =
 "  }"
 "  return __reflect_build_attrs($i['attrs'], $spec, $target, $name, $flags);"
 " }"
-" public function __toString(){"
-"  return 'Function [ function '.$this->name.' ] {'.\"\\n\".'}'.\"\\n\";"
-" }"
+" public function __toString(){ return __reflect_export_fnabs($this, ''); }"
 "}"
 "class ReflectionFunction extends ReflectionFunctionAbstract {"
 " const IS_DEPRECATED = 2048;"
@@ -2285,9 +2289,7 @@ static const char zReflectLib2[] =
 "  }"
 "  return null;"
 " }"
-" public function __toString(){"
-"  return 'Method [ public method '.$this->name.' ] {'.\"\\n\".'}'.\"\\n\";"
-" }"
+" public function __toString(){ return __reflect_export_fnabs($this, ''); }"
 "}"
 "class ReflectionParameter implements Reflector {"
 " public $name;"
@@ -2409,9 +2411,7 @@ static const char zReflectLib2[] =
 "  $p = $this->__rpinfo();"
 "  return __reflect_build_attrs($p['attrs'], array('param', $this->__t, $this->__m, $this->__p), 32, $name, $flags);"
 " }"
-" public function __toString(){"
-"  return 'Parameter #'.$this->__p.' [ <required> $'.$this->name.' ]';"
-" }"
+" public function __toString(){ return __reflect_export_param($this); }"
 "}"
 ;
 /*
@@ -2546,9 +2546,7 @@ static const char zReflectLib3[] =
 "  if(!isset($m['attrs'])){ return array(); }"
 "  return __reflect_build_attrs($m['attrs'], array('attr', $this->class, $this->name, 0), 8, $name, $flags);"
 " }"
-" public function __toString(){"
-"  return 'Property [ public $'.$this->name.' ]'.\"\\n\";"
-" }"
+" public function __toString(){ return __reflect_export_prop($this); }"
 "}"
 "class ReflectionClassConstant implements Reflector {"
 " const IS_PUBLIC = 1;"
@@ -2592,7 +2590,7 @@ static const char zReflectLib3[] =
 " public function isPrivate(){ $m = $this->__rcmeta(); return $m['vis'] === 3; }"
 " public function isFinal(){ $m = $this->__rcmeta(); return $m['final']; }"
 " public function isEnumCase(){ return false; }"
-" public function isDeprecated(){ return false; }"
+" public function isDeprecated(){ $m = $this->__rcmeta(); return __reflect_has_deprecated($m['attrs']); }"
 " public function hasType(){ $m = $this->__rcmeta(); return $m['typed']; }"
 " public function getType(){ $m = $this->__rcmeta(); return $m['typed'] ? __reflect_make_type($m['typetext']) : null; }"
 " public function getDocComment(){ $m = $this->__rcmeta(); return $m['doc']; }"
@@ -2600,9 +2598,7 @@ static const char zReflectLib3[] =
 "  $m = $this->__rcmeta();"
 "  return __reflect_build_attrs($m['attrs'], array('attr', $this->class, $this->name, 0), 16, $name, $flags);"
 " }"
-" public function __toString(){"
-"  return 'Constant [ public '.$this->name.' ]'.\"\\n\";"
-" }"
+" public function __toString(){ return __reflect_export_cconst($this); }"
 "}"
 ;
 /*
@@ -2888,6 +2884,12 @@ static const char zReflectLib6[] =
  * values evaluate lazily through __reflect_attr_args (PHP semantics).
  */
 static const char zReflectLib7[] =
+"function __reflect_has_deprecated($meta){"
+" foreach($meta as $a){"
+"  if(strtolower($a['name']) === 'deprecated'){ return true; }"
+" }"
+" return false;"
+"}"
 "function __reflect_target_names($mask){"
 " $parts = array();"
 " foreach(array('class' => 1, 'function' => 2, 'method' => 4, 'property' => 8,"
@@ -3060,13 +3062,176 @@ static const char zReflectLib8[] =
 " return $params;"
 "}"
 "function __reflect_sig_fixup($i){"
-" if($i === null || !isset($i['sig']) || $i['sig'] === ''){ return $i; }"
+" if($i === null){ return $i; }"
+" if(isset($i['ret2'])){ $i['rettext'] = $i['ret2']; }"
+" if(!isset($i['sig']) || $i['sig'] === ''){ return $i; }"
 " $i['params'] = __reflect_parse_sig($i['sig']);"
 " $i['minarg'] = -1;"
 " $v = false;"
 " foreach($i['params'] as $p){ if($p['variadic']){ $v = true; } }"
 " $i['variadic'] = $v;"
 " return $i;"
+"}"
+;
+/*
+ * Chunk 9: PHP's Reflection export format (__toString on every Reflector).
+ * Built entirely from the public reflection API of the target objects.
+ */
+static const char zReflectLib9[] =
+"function __reflect_export_value($v){"
+" if($v === null){ return 'NULL'; }"
+" if($v === true){ return 'true'; }"
+" if($v === false){ return 'false'; }"
+" if(is_string($v)){ return chr(39).$v.chr(39); }"
+" if(is_array($v)){"
+"  $parts = array();"
+"  $isList = true;"
+"  $next = 0;"
+"  foreach($v as $k => $x){"
+"   if($k !== $next){ $isList = false; break; }"
+"   $next++;"
+"  }"
+"  foreach($v as $k => $x){"
+"   $parts[] = $isList ? __reflect_export_value($x)"
+"    : (__reflect_export_value($k).' => '.__reflect_export_value($x));"
+"  }"
+"  return '['.implode(', ', $parts).']';"
+" }"
+" return (string)$v;"
+"}"
+"function __reflect_export_param($p){"
+" $s = 'Parameter #'.$p->getPosition().' [ <'.($p->isOptional() ? 'optional' : 'required').'> ';"
+" $t = $p->getType();"
+" if($t !== null){ $s .= (string)$t.' '; }"
+" if($p->isPassedByReference()){ $s .= '&'; }"
+" if($p->isVariadic()){ $s .= '...'; }"
+" $s .= '$'.$p->getName();"
+" if($p->isDefaultValueAvailable()){"
+"  try{ $s .= ' = '.__reflect_export_value($p->getDefaultValue()); }"
+"  catch(ReflectionException $e){ $s .= ' = <default>'; }"
+" }"
+" return $s.' ]';"
+"}"
+"function __reflect_export_prop($p){"
+" $s = 'Property [ ';"
+" $s .= $p->isPrivate() ? 'private ' : ($p->isProtected() ? 'protected ' : 'public ');"
+" if($p->isStatic()){ $s .= 'static '; }"
+" if($p->isReadOnly()){ $s .= 'readonly '; }"
+" $t = $p->getType();"
+" if($t !== null){ $s .= (string)$t.' '; }"
+" $s .= '$'.$p->getName();"
+" if($p->hasDefaultValue()){ $s .= ' = '.__reflect_export_value($p->getDefaultValue()); }"
+" return $s.' ]'.chr(10);"
+"}"
+"function __reflect_export_cconst($c){"
+" $v = $c->getValue();"
+" if(is_int($v)){ $t = 'int'; }"
+" else if(is_string($v)){ $t = 'string'; }"
+" else if(is_float($v)){ $t = 'float'; }"
+" else if(is_bool($v)){ $t = 'bool'; }"
+" else if(is_array($v)){ $t = 'array'; }"
+" else{ $t = 'null'; }"
+" $vs = is_array($v) ? 'Array' : (is_bool($v) ? ($v ? '1' : '') : (string)$v);"
+" $vis = $c->isPrivate() ? 'private' : ($c->isProtected() ? 'protected' : 'public');"
+" return 'Constant [ '.$vis.' '.$t.' '.$c->name.' ] { '.$vs.' }'.chr(10);"
+"}"
+"function __reflect_export_fnabs($r, $indent){"
+" $tags = $r->isInternal() ? 'internal:Core' : 'user';"
+" if($r instanceof ReflectionMethod){"
+"  if($r->isConstructor()){ $tags .= ', ctor'; }"
+"  else if($r->isDestructor()){ $tags .= ', dtor'; }"
+"  $decl = $r->getDeclaringClass()->name;"
+"  if(strtolower($decl) !== strtolower($r->class)){ $tags .= ', inherits '.$decl; }"
+"  else if($r->hasPrototype()){ $tags .= ', prototype '.$r->getPrototype()->class; }"
+"  $head = 'Method [ <'.$tags.'> ';"
+"  if($r->isAbstract()){ $head .= 'abstract '; }"
+"  if($r->isFinal()){ $head .= 'final '; }"
+"  if($r->isStatic()){ $head .= 'static '; }"
+"  $head .= $r->isPrivate() ? 'private ' : ($r->isProtected() ? 'protected ' : 'public ');"
+"  $head .= 'method '.$r->name.' ]';"
+" }else{"
+"  $kind = $r->isClosure() ? 'Closure' : 'Function';"
+"  $head = $kind.' [ <'.$tags.'> function '.$r->name.' ]';"
+" }"
+" $s = $head.' {'.chr(10);"
+" if(!$r->isInternal()){"
+"  $s .= '  @@ '.$r->getFileName().' '.$r->getStartLine().' - '.$r->getEndLine().chr(10);"
+" }"
+" $ps = $r->getParameters();"
+" $ret = $r->getReturnType();"
+" if(count($ps) > 0 || $ret !== null){"
+"  $s .= chr(10).'  - Parameters ['.count($ps).'] {'.chr(10);"
+"  foreach($ps as $p){ $s .= '    '.__reflect_export_param($p).chr(10); }"
+"  $s .= '  }'.chr(10);"
+" }"
+" if($ret !== null){ $s .= '  - Return [ '.(string)$ret.' ]'.chr(10); }"
+" $s .= '}'.chr(10);"
+" if($indent === ''){ return $s; }"
+" $lines = explode(chr(10), $s);"
+" $out = '';"
+" $n = count($lines);"
+" for($k = 0; $k < $n; $k++){"
+"  if($lines[$k] === '' && $k === $n - 1){ break; }"
+"  $out .= ($lines[$k] === '' ? '' : $indent.$lines[$k]).chr(10);"
+" }"
+" return $out;"
+"}"
+"function __reflect_export_class($rc){"
+" $tags = $rc->isInternal() ? 'internal:Core' : 'user';"
+" if($rc->isInterface()){"
+"  $head = 'Interface [ <'.$tags.'> interface '.$rc->name.' ]';"
+" }else{"
+"  $mods = '';"
+"  if($rc->isAbstract()){ $mods .= 'abstract '; }"
+"  if($rc->isFinal()){ $mods .= 'final '; }"
+"  $head = 'Class [ <'.$tags.'> '.$mods.'class '.$rc->name;"
+"  $par = $rc->getParentClass();"
+"  if($par !== false){ $head .= ' extends '.$par->name; }"
+"  $ifs = $rc->getInterfaceNames();"
+"  if(count($ifs) > 0){ $head .= ' implements '.implode(', ', $ifs); }"
+"  $head .= ' ]';"
+" }"
+" $s = $head.' {'.chr(10);"
+" if(!$rc->isInternal()){"
+"  $s .= '  @@ '.$rc->getFileName().' '.$rc->getStartLine().'-'.$rc->getEndLine().chr(10);"
+" }"
+" $consts = $rc->getReflectionConstants();"
+" $s .= chr(10).'  - Constants ['.count($consts).'] {'.chr(10);"
+" foreach($consts as $c){ $s .= '    '.__reflect_export_cconst($c); }"
+" $s .= '  }'.chr(10);"
+" $sp = array();"
+" $ip = array();"
+" foreach($rc->getProperties() as $p){"
+"  if($p->isStatic()){ $sp[] = $p; }else{ $ip[] = $p; }"
+" }"
+" $sm = array();"
+" $im = array();"
+" foreach($rc->getMethods() as $m){"
+"  if($m->isStatic()){ $sm[] = $m; }else{ $im[] = $m; }"
+" }"
+" $s .= chr(10).'  - Static properties ['.count($sp).'] {'.chr(10);"
+" foreach($sp as $p){ $s .= '    '.__reflect_export_prop($p); }"
+" $s .= '  }'.chr(10);"
+" $s .= chr(10).'  - Static methods ['.count($sm).'] {'.chr(10);"
+" $first = true;"
+" foreach($sm as $m){"
+"  if(!$first){ $s .= chr(10); }"
+"  $first = false;"
+"  $s .= __reflect_export_fnabs($m, '    ');"
+" }"
+" $s .= '  }'.chr(10);"
+" $s .= chr(10).'  - Properties ['.count($ip).'] {'.chr(10);"
+" foreach($ip as $p){ $s .= '    '.__reflect_export_prop($p); }"
+" $s .= '  }'.chr(10);"
+" $s .= chr(10).'  - Methods ['.count($im).'] {'.chr(10);"
+" $first = true;"
+" foreach($im as $m){"
+"  if(!$first){ $s .= chr(10); }"
+"  $first = false;"
+"  $s .= __reflect_export_fnabs($m, '    ');"
+" }"
+" $s .= '  }'.chr(10);"
+" return $s.'}'.chr(10);"
 "}"
 ;
 /*
@@ -3135,5 +3300,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 	if( rc != SXRET_OK ){
 		return rc;
 	}
-	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib8, sizeof(zReflectLib8)-1);
+	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib8, sizeof(zReflectLib8)-1);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib9, sizeof(zReflectLib9)-1);
 }
