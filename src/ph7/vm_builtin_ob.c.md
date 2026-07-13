@@ -173,19 +173,19 @@ Coverage: 157/206 lines (76.21%)
 |     - |  163 | ` * to a stackable internal buffer,until the user call [ob_get_clean(),ob_end_clean(),...].` |
 |     - |  164 | ` * Refer to the implementation of [ob_start()] for more information.` |
 |     - |  165 | ` */` |
-| 18448 |  166 | `PH7_PRIVATE int VmObConsumer(const void *pData,unsigned int nDataLen,void *pUserData)` |
+| 18460 |  166 | `PH7_PRIVATE int VmObConsumer(const void *pData,unsigned int nDataLen,void *pUserData)` |
 |     5 |  167 | `{` |
-| 18453 |  168 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
+| 18465 |  168 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
 |     - |  169 | `	VmObEntry *pEntry;` |
 |     - |  170 | `	ph7_value sResult;` |
 |     - |  171 | `	/* Peek the top most entry */` |
-| 18453 |  172 | `	pEntry = (VmObEntry *)SySetPeek(&pVm->aOB);` |
-| 18453 |  173 | `	if( pEntry == 0 ){` |
+| 18465 |  172 | `	pEntry = (VmObEntry *)SySetPeek(&pVm->aOB);` |
+| 18465 |  173 | `	if( pEntry == 0 ){` |
 |     - |  174 | `		/* CAN'T HAPPEN */` |
 |   ! 0 |  175 | `		return PH7_OK;` |
 |     - |  176 | `	}` |
-| 18453 |  177 | `	PH7_MemObjInit(pVm,&sResult);` |
-| 18453 |  178 | `	if( ph7_value_is_callable(&pEntry->sCallback) && pVm->nObDepth < 15 ){` |
+| 18465 |  177 | `	PH7_MemObjInit(pVm,&sResult);` |
+| 18465 |  178 | `	if( ph7_value_is_callable(&pEntry->sCallback) && pVm->nObDepth < 15 ){` |
 |     - |  179 | `		ph7_value sArg,*apArg[2];` |
 |     - |  180 | `		/* Fill the first argument */` |
 |   ! 0 |  181 | `		PH7_MemObjInitFromString(pVm,&sArg,0);` |
@@ -202,14 +202,14 @@ Coverage: 157/206 lines (76.21%)
 |   ! 0 |  192 | `		}` |
 |   ! 0 |  193 | `		PH7_MemObjRelease(&sArg);` |
 |   ! 0 |  194 | `	}` |
-| 18453 |  195 | `	if( nDataLen > 0 ){` |
+| 18465 |  195 | `	if( nDataLen > 0 ){` |
 |     - |  196 | `		/* Redirect the VM output to the internal buffer */` |
-| 18453 |  197 | `		SyBlobAppend(&pEntry->sOB,pData,nDataLen);` |
-|  9224 |  198 | `	}` |
+| 18465 |  197 | `		SyBlobAppend(&pEntry->sOB,pData,nDataLen);` |
+|  9230 |  198 | `	}` |
 |     - |  199 | `	/* Release */` |
-| 18453 |  200 | `	PH7_MemObjRelease(&sResult);` |
-| 18453 |  201 | `	return PH7_OK;` |
-|  9229 |  202 | `}` |
+| 18465 |  200 | `	PH7_MemObjRelease(&sResult);` |
+| 18465 |  201 | `	return PH7_OK;` |
+|  9235 |  202 | `}` |
 |     - |  203 | `/*` |
 |     - |  204 | ` * Restore the default consumer.` |
 |     - |  205 | ` * Refer to the implementation of [ob_end_clean()] for more` |
