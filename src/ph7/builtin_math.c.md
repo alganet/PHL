@@ -719,22 +719,22 @@ Coverage: 525/601 lines (87.35%)
 |    - |  709 | ` * 10**power via an exact lookup table for 0..22, falling back to pow()` |
 |    - |  710 | ` * otherwise. Port of php-src PHP-8.5 ext/standard/math.c php_intpow10().` |
 |    - |  711 | ` */` |
-|  142 |  712 | `static double MathIntPow10(int power)` |
+|  144 |  712 | `static double MathIntPow10(int power)` |
 |    1 |  713 | `{` |
 |    - |  714 | `	static const double powers[] = {` |
 |    - |  715 | `		1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11,` |
 |    - |  716 | `		1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22` |
 |    - |  717 | `	};` |
-|  143 |  718 | `	if( power < 0 \|\| power > 22 ){` |
+|  145 |  718 | `	if( power < 0 \|\| power > 22 ){` |
 |    3 |  719 | `		return pow(10.0, (double)power);` |
 |    - |  720 | `	}` |
-|  141 |  721 | `	return powers[power];` |
-|   72 |  722 | `}` |
-|  124 |  723 | `static double MathRoundBasicEdge(double integral, double exponent, int places)` |
+|  143 |  721 | `	return powers[power];` |
+|   73 |  722 | `}` |
+|  126 |  723 | `static double MathRoundBasicEdge(double integral, double exponent, int places)` |
 |    1 |  724 | `{` |
-|   63 |  725 | `	return (places > 0)` |
-|   34 |  726 | `		? fabs((integral + copysign(0.5, integral)) / exponent)` |
-|  107 |  727 | `		: fabs((integral + copysign(0.5, integral)) * exponent);` |
+|   64 |  725 | `	return (places > 0)` |
+|   36 |  726 | `		? fabs((integral + copysign(0.5, integral)) / exponent)` |
+|  108 |  727 | `		: fabs((integral + copysign(0.5, integral)) * exponent);` |
 |    1 |  728 | `}` |
 |   12 |  729 | `static double MathRoundZeroEdge(double integral, double exponent, int places)` |
 |    1 |  730 | `{` |
@@ -746,15 +746,15 @@ Coverage: 525/601 lines (87.35%)
 |    - |  736 | ` * Round the extracted integral part according to the requested mode.` |
 |    - |  737 | ` * Faithful port of php-src PHP-8.5 ext/standard/math.c php_round_helper().` |
 |    - |  738 | ` */` |
-|  140 |  739 | `static double MathRoundHelper(double integral, double value, double exponent, int places, int mode)` |
+|  142 |  739 | `static double MathRoundHelper(double integral, double value, double exponent, int places, int mode)` |
 |    1 |  740 | `{` |
-|  141 |  741 | `	double value_abs = fabs(value);` |
+|  143 |  741 | `	double value_abs = fabs(value);` |
 |    - |  742 | `	double edge_case;` |
-|  141 |  743 | `	switch( mode ){` |
-|   42 |  744 | `		case PH7_ROUND_HALF_UP:` |
-|   85 |  745 | `			edge_case = MathRoundBasicEdge(integral, exponent, places);` |
-|   85 |  746 | `			if( value_abs >= edge_case ){` |
-|   69 |  747 | `				return integral + copysign(1.0, integral);` |
+|  143 |  743 | `	switch( mode ){` |
+|   43 |  744 | `		case PH7_ROUND_HALF_UP:` |
+|   87 |  745 | `			edge_case = MathRoundBasicEdge(integral, exponent, places);` |
+|   87 |  746 | `			if( value_abs >= edge_case ){` |
+|   71 |  747 | `				return integral + copysign(1.0, integral);` |
 |    - |  748 | `			}` |
 |   17 |  749 | `			return integral;` |
 |    6 |  750 | `		case PH7_ROUND_HALF_DOWN:` |
@@ -806,7 +806,7 @@ Coverage: 525/601 lines (87.35%)
 |  ! 0 |  796 | `		default:` |
 |  ! 0 |  797 | `			return integral; /* unreachable: mode validated by the caller */` |
 |    - |  798 | `	}` |
-|   71 |  799 | `}` |
+|   72 |  799 | `}` |
 |    - |  800 | `/*` |
 |    - |  801 | `` * Round `value` to `places` decimals in `mode`. Faithful port of php-src`` |
 |    - |  802 | ` * PHP-8.5 ext/standard/math.c _php_math_round() — the post-8.4` |
@@ -814,42 +814,42 @@ Coverage: 525/601 lines (87.35%)
 |    - |  804 | ` * correction step, required for byte-exact results on cases such as` |
 |    - |  805 | ` * round(0.285, 2) == 0.29 that the old naive "+0.5" approach got wrong.` |
 |    - |  806 | ` */` |
-|  148 |  807 | `static double MathRound(double value, int places, int mode)` |
+|  150 |  807 | `static double MathRound(double value, int places, int mode)` |
 |    1 |  808 | `{` |
 |    - |  809 | `	double exponent, tmp_value, tmp_value2;` |
 |    - |  810 | `	int abs_places;` |
-|  149 |  811 | `	if( !isfinite(value) \|\| value == 0.0 ){` |
+|  151 |  811 | `	if( !isfinite(value) \|\| value == 0.0 ){` |
 |    7 |  812 | `		return value;` |
 |    - |  813 | `	}` |
 |    - |  814 | `	/* mirror php-src's clamp away from INT_MIN */` |
-|  143 |  815 | `	if( places < -2147483647 ){` |
+|  145 |  815 | `	if( places < -2147483647 ){` |
 |  ! 0 |  816 | `		places = -2147483647;` |
 |  ! 0 |  817 | `	}` |
-|  143 |  818 | `	abs_places = places < 0 ? -places : places;` |
-|  143 |  819 | `	exponent = MathIntPow10(abs_places);` |
+|  145 |  818 | `	abs_places = places < 0 ? -places : places;` |
+|  145 |  819 | `	exponent = MathIntPow10(abs_places);` |
 |    - |  820 | `	/*` |
 |    - |  821 | `	 * Extracting the integer part can be off by one ULP due to float error` |
 |    - |  822 | `	 * (e.g. floor(0.285 * 1e10) == 2849999999). Try +/-1 and keep it if it` |
 |    - |  823 | ``	 * divides back to exactly `value`.`` |
 |    - |  824 | `	 */` |
-|  143 |  825 | `	if( value >= 0.0 ){` |
-|  113 |  826 | `		tmp_value = floor(places > 0 ? value * exponent : value / exponent);` |
-|  113 |  827 | `		tmp_value2 = tmp_value + 1.0;` |
-|   57 |  828 | `	}else{` |
+|  145 |  825 | `	if( value >= 0.0 ){` |
+|  115 |  826 | `		tmp_value = floor(places > 0 ? value * exponent : value / exponent);` |
+|  115 |  827 | `		tmp_value2 = tmp_value + 1.0;` |
+|   58 |  828 | `	}else{` |
 |   31 |  829 | `		tmp_value = ceil(places > 0 ? value * exponent : value / exponent);` |
 |   31 |  830 | `		tmp_value2 = tmp_value - 1.0;` |
 |    - |  831 | `	}` |
-|  143 |  832 | `	if( (places > 0 ? tmp_value2 / exponent : tmp_value2 * exponent) == value ){` |
+|  145 |  832 | `	if( (places > 0 ? tmp_value2 / exponent : tmp_value2 * exponent) == value ){` |
 |    3 |  833 | `		tmp_value = tmp_value2;` |
 |    1 |  834 | `	}` |
 |    - |  835 | `	/* Beyond our precision, so rounding it is pointless. */` |
-|  143 |  836 | `	if( fabs(tmp_value) >= 1e16 ){` |
+|  145 |  836 | `	if( fabs(tmp_value) >= 1e16 ){` |
 |    3 |  837 | `		return value;` |
 |    - |  838 | `	}` |
-|  141 |  839 | `	tmp_value = MathRoundHelper(tmp_value, value, exponent, places, mode);` |
-|  141 |  840 | `	if( abs_places < 23 ){` |
-|  141 |  841 | `		tmp_value = (places > 0) ? tmp_value / exponent : tmp_value * exponent;` |
-|   71 |  842 | `	}else{` |
+|  143 |  839 | `	tmp_value = MathRoundHelper(tmp_value, value, exponent, places, mode);` |
+|  143 |  840 | `	if( abs_places < 23 ){` |
+|  143 |  841 | `		tmp_value = (places > 0) ? tmp_value / exponent : tmp_value * exponent;` |
+|   72 |  842 | `	}else{` |
 |    - |  843 | `		/*` |
 |    - |  844 | `		 * Simple division would lose precision here; round-trip through a` |
 |    - |  845 | `		 * string exactly like php-src does (snprintf "%15fe%d" + strtod).` |
@@ -866,8 +866,8 @@ Coverage: 525/601 lines (87.35%)
 |  ! 0 |  856 | `			tmp_value = value;` |
 |  ! 0 |  857 | `		}` |
 |    - |  858 | `	}` |
-|  141 |  859 | `	return tmp_value;` |
-|   75 |  860 | `}` |
+|  143 |  859 | `	return tmp_value;` |
+|   76 |  860 | `}` |
 |    - |  861 | `/*` |
 |    - |  862 | ` * float round ( int\|float $num [, int $precision = 0 [, int $mode = PHP_ROUND_HALF_UP ]] )` |
 |    - |  863 | ` *  Rounds a float.` |
@@ -881,21 +881,21 @@ Coverage: 525/601 lines (87.35%)
 |    - |  871 | ` * Return` |
 |    - |  872 | ` *  The rounded value as a float.` |
 |    - |  873 | ` */` |
-|  168 |  874 | `PH7_PRIVATE int PH7_builtin_round(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  174 |  874 | `PH7_PRIVATE int PH7_builtin_round(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  875 | `{` |
 |    - |  876 | `	double value, r;` |
-|  169 |  877 | `	int places = 0;` |
-|  169 |  878 | `	int mode = PH7_ROUND_HALF_UP;` |
+|  175 |  877 | `	int places = 0;` |
+|  175 |  878 | `	int mode = PH7_ROUND_HALF_UP;` |
 |    - |  879 | `	/*` |
 |    - |  880 | `	 * Legacy PHL contract: no argument -> int(0). PHP throws an` |
 |    - |  881 | `	 * ArgumentCountError here, but two PHL-only (--SKIPIF-- zend_version)` |
 |    - |  882 | `	 * tests assert round()===0, so keep the historical behavior.` |
 |    - |  883 | `	 */` |
-|  169 |  884 | `	if( nArg < 1 ){` |
+|  175 |  884 | `	if( nArg < 1 ){` |
 |  ! 0 |  885 | `		ph7_result_int(pCtx,0);` |
 |  ! 0 |  886 | `		return PH7_OK;` |
 |    - |  887 | `	}` |
-|  169 |  888 | `	if( nArg > 3 ){` |
+|  175 |  888 | `	if( nArg > 3 ){` |
 |    4 |  889 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  890 | `			"ArgumentCountError",` |
 |    - |  891 | `			"round() expects at most 3 arguments, %d given",` |
@@ -906,7 +906,7 @@ Coverage: 525/601 lines (87.35%)
 |    - |  896 | `	 * Validate argument #1: only int/float (and numeric strings) are` |
 |    - |  897 | `	 * accepted; every other type raises a TypeError (mirrors floor()/ceil()).` |
 |    - |  898 | `	 */` |
-|  167 |  899 | `	if( ph7_value_is_int(apArg[0]) == 0 && ph7_value_is_float(apArg[0]) == 0 ){` |
+|  173 |  899 | `	if( ph7_value_is_int(apArg[0]) == 0 && ph7_value_is_float(apArg[0]) == 0 ){` |
 |    7 |  900 | `		if( ph7_value_is_string(apArg[0]) ){` |
 |    - |  901 | `			int len;` |
 |    5 |  902 | `			sxu8 bReal = FALSE;` |
@@ -927,22 +927,22 @@ Coverage: 525/601 lines (87.35%)
 |    - |  917 | `		}` |
 |    1 |  918 | `	}` |
 |    - |  919 | `	/* Precision (arg #2). Negative values are valid; clamp to int range. */` |
-|  163 |  920 | `	if( nArg > 1 ){` |
-|  137 |  921 | `		sxi64 prec = ph7_value_to_int64(apArg[1]);` |
-|  137 |  922 | `		if( prec > 2147483647 ){` |
+|  169 |  920 | `	if( nArg > 1 ){` |
+|  143 |  921 | `		sxi64 prec = ph7_value_to_int64(apArg[1]);` |
+|  143 |  922 | `		if( prec > 2147483647 ){` |
 |  ! 0 |  923 | `			places = 2147483647;` |
-|  137 |  924 | `		}else if( prec < -2147483647 ){` |
+|  143 |  924 | `		}else if( prec < -2147483647 ){` |
 |  ! 0 |  925 | `			places = -2147483647;` |
 |  ! 0 |  926 | `		}else{` |
-|  137 |  927 | `			places = (int)prec;` |
+|  143 |  927 | `			places = (int)prec;` |
 |    - |  928 | `		}` |
-|   68 |  929 | `	}` |
+|   71 |  929 | `	}` |
 |    - |  930 | `	/*` |
 |    - |  931 | `	 * Mode (arg #3). PHP 8.5 accepts the integer modes 1..8. Read the full` |
 |    - |  932 | `	 * 64-bit value before range-checking so a large out-of-range mode cannot` |
 |    - |  933 | `	 * alias a valid 1..8 via a truncating 32-bit cast (e.g. 0x1_0000_0003).` |
 |    - |  934 | `	 */` |
-|  163 |  935 | `	if( nArg > 2 ){` |
+|  169 |  935 | `	if( nArg > 2 ){` |
 |   73 |  936 | `		sxi64 m = ph7_value_to_int64(apArg[2]);` |
 |   73 |  937 | `		if( m < PH7_ROUND_HALF_UP \|\| m > PH7_ROUND_AWAY_FROM_ZERO ){` |
 |    5 |  938 | `			return PH7_VmThrowException(pCtx,` |
@@ -952,16 +952,16 @@ Coverage: 525/601 lines (87.35%)
 |    - |  942 | `		}` |
 |   69 |  943 | `		mode = (int)m;` |
 |   34 |  944 | `	}` |
-|  159 |  945 | `	value = ph7_value_to_double(apArg[0]);` |
+|  165 |  945 | `	value = ph7_value_to_double(apArg[0]);` |
 |    - |  946 | `	/* Integer input with non-negative precision needs no rounding. */` |
-|  159 |  947 | `	if( ph7_value_is_int(apArg[0]) && places >= 0 ){` |
-|   11 |  948 | `		ph7_result_double(pCtx,value);` |
-|   11 |  949 | `		return PH7_OK;` |
+|  165 |  947 | `	if( ph7_value_is_int(apArg[0]) && places >= 0 ){` |
+|   15 |  948 | `		ph7_result_double(pCtx,value);` |
+|   15 |  949 | `		return PH7_OK;` |
 |    - |  950 | `	}` |
-|  149 |  951 | `	r = MathRound(value, places, mode);` |
-|  149 |  952 | `	ph7_result_double(pCtx,r);` |
-|  149 |  953 | `	return PH7_OK;` |
-|   85 |  954 | `}` |
+|  151 |  951 | `	r = MathRound(value, places, mode);` |
+|  151 |  952 | `	ph7_result_double(pCtx,r);` |
+|  151 |  953 | `	return PH7_OK;` |
+|   88 |  954 | `}` |
 |    - |  955 | `/*` |
 |    - |  956 | ` * int intdiv(int $a, int $b)` |
 |    - |  957 | ` *  Integer division.` |
