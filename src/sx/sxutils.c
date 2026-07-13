@@ -91,8 +91,6 @@ PH7_PRIVATE sxi32 SyStrIsNumeric(const char *zSrc,sxu32 nLen,sxu8 *pReal,const c
 }
 #define SXINT32_MIN_STR		"2147483648"
 #define SXINT32_MAX_STR		"2147483647"
-#define SXINT64_MIN_STR		"9223372036854775808"
-#define SXINT64_MAX_STR		"9223372036854775807"
 PH7_PRIVATE sxi32 SyStrToInt32(const char *zSrc,sxu32 nLen,void * pOutVal,const char **zRest)
 {
 	int isNeg = FALSE;
@@ -171,7 +169,13 @@ PH7_PRIVATE sxi32 SyStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,const 
 	int isNeg = FALSE;
 	const char *zEnd;
 	sxi64 nVal;
-	sxi16 i;
+	/* Magnitude accumulated unsigned so overflow can be detected and the result
+	 * saturated (PHP casts an out-of-range numeric string to PHP_INT_MAX/MIN)
+	 * rather than the digits being dropped. cutoff is the largest magnitude that
+	 * fits: PHP_INT_MAX for a positive value, |PHP_INT_MIN| == 2^63 for a
+	 * negative one. */
+	sxu64 uVal, cutoff;
+	int bOverflow = FALSE;
 #if defined(UNTRUST)
 	if( SX_EMPTY_STR(zSrc) ){
 		if( pOutVal ){
@@ -192,16 +196,19 @@ PH7_PRIVATE sxi32 SyStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,const 
 	while(zSrc < zEnd && zSrc[0] == '0' ){
 		zSrc++;
 	}
-	i = 19;
-	if( (sxu32)(zEnd-zSrc) >= 19 ){
-		i = SyMemcmp(zSrc,isNeg ? SXINT64_MIN_STR : SXINT64_MAX_STR,19) <= 0 ? 19 : 18 ;
+	cutoff = isNeg ? ((sxu64)SXI64_HIGH + 1) : (sxu64)SXI64_HIGH;
+	uVal = 0;
+	while( zSrc < zEnd && (unsigned char)zSrc[0] < 0xc0 && SyisDigit(zSrc[0]) ){
+		int d = zSrc[0] - '0';
+		if( uVal > cutoff / 10 || (uVal == cutoff / 10 && (sxu64)d > cutoff % 10) ){
+			bOverflow = TRUE;
+		}else{
+			uVal = uVal * 10 + (sxu64)d;
+		}
+		zSrc++;
 	}
-	nVal = 0;
-	for(;;){
-		if(zSrc >= zEnd || !i || !SyisDigit(zSrc[0])){ break; } nVal = nVal * 10 + ( zSrc[0] - '0' ) ; --i ; zSrc++;
-		if(zSrc >= zEnd || !i || !SyisDigit(zSrc[0])){ break; } nVal = nVal * 10 + ( zSrc[0] - '0' ) ; --i ; zSrc++;
-		if(zSrc >= zEnd || !i || !SyisDigit(zSrc[0])){ break; } nVal = nVal * 10 + ( zSrc[0] - '0' ) ; --i ; zSrc++;
-		if(zSrc >= zEnd || !i || !SyisDigit(zSrc[0])){ break; } nVal = nVal * 10 + ( zSrc[0] - '0' ) ; --i ; zSrc++;
+	if( bOverflow ){
+		uVal = cutoff;
 	}
 	/* Skip trailing spaces */
 	while(zSrc < zEnd && SyisSpace(zSrc[0])){
@@ -211,8 +218,12 @@ PH7_PRIVATE sxi32 SyStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,const 
 		*zRest = (char *)zSrc;
 	}
 	if( pOutVal ){
-		if( isNeg == TRUE && nVal != 0 ){
-			nVal = -nVal;
+		if( isNeg ){
+			/* uVal <= 2^63; the cap value 2^63 is PHP_INT_MIN and has no positive
+			 * sxi64 representation, so materialize it directly to dodge UB. */
+			nVal = ( uVal > (sxu64)SXI64_HIGH ) ? (-SXI64_HIGH - 1) : -(sxi64)uVal;
+		}else{
+			nVal = (sxi64)uVal;
 		}
 		*(sxi64 *)pOutVal = nVal;
 	}
