@@ -1137,11 +1137,24 @@ static int vm_builtin_reflect_func_info(ph7_context *pCtx, int nArg, ph7_value *
 		}
 		ReflectMapAddBool(pCtx, pInfo, "variadic", 0);
 		ReflectMapAddInt(pCtx, pInfo, "minarg", (sxi64)pHost->nMinArg);
+		if( pHost->zSig ){
+			ReflectMapAddStr(pCtx, pInfo, "sig", pHost->zSig, (int)SyStrlen(pHost->zSig));
+		}else{
+			ReflectMapAddStr(pCtx, pInfo, "sig", "", 0);
+		}
 		ph7_result_value(pCtx, pInfo);
 		return PH7_OK;
 	}
 	ReflectFillFuncCommon(pCtx, pInfo, pFunc);
 	ReflectMapAddInt(pCtx, pInfo, "minarg", -1);
+	if( (pFunc->iFlags & VM_FUNC_INTERNAL) && SySetUsed(&pFunc->aArgs) == 0 && pMeth == 0 ){
+		/* Embedded-PHP builtin (max/min...): declared argless, actual
+		 * signature comes from the static table */
+		const char *zSig = PH7_VmBuiltinSigLookup(SyStringData(&pFunc->sName), SyStringLength(&pFunc->sName));
+		if( zSig ){
+			ReflectMapAddStr(pCtx, pInfo, "sig", zSig, (int)SyStrlen(zSig));
+		}
+	}
 	if( pMeth && pClass ){
 		ph7_class *pDecl = ReflectMethodDeclClass(pClass, pMeth);
 		ReflectMapAddStr(pCtx, pInfo, "class", SyStringData(&pClass->sName), (int)SyStringLength(&pClass->sName));
@@ -2017,8 +2030,8 @@ static const char zReflectLib2[] =
 " public $name;"
 " protected $__cl = null;"
 " protected function __rfinfo(){"
-"  if($this->__cl !== null){ return __reflect_func_info($this->__cl); }"
-"  return __reflect_func_info($this->name);"
+"  if($this->__cl !== null){ return __reflect_sig_fixup(__reflect_func_info($this->__cl)); }"
+"  return __reflect_sig_fixup(__reflect_func_info($this->name));"
 " }"
 " protected function __rftarget(){ return $this->__cl !== null ? $this->__cl : $this->name; }"
 " protected function __rpspec(){ return $this->__rftarget(); }"
@@ -2302,7 +2315,7 @@ static const char zReflectLib2[] =
 "   $t = $function;"
 "   $i = __reflect_func_info($function);"
 "  }else{"
-"   $i = __reflect_func_info($t);"
+"   $i = __reflect_sig_fixup(__reflect_func_info($t));"
 "   if($i === null){"
 "    throw new ReflectionException('Function '.$t.'() does not exist');"
 "   }"
@@ -2328,7 +2341,7 @@ static const char zReflectLib2[] =
 " }"
 " protected function __rffull(){"
 "  if($this->__m !== null){ return __reflect_func_info($this->__t, $this->__m); }"
-"  return __reflect_func_info($this->__t);"
+"  return __reflect_sig_fixup(__reflect_func_info($this->__t));"
 " }"
 " protected function __rpinfo(){"
 "  $i = $this->__rffull();"
@@ -2354,10 +2367,19 @@ static const char zReflectLib2[] =
 "  if(!$this->isDefaultValueAvailable()){"
 "   throw new ReflectionException('Internal error: Failed to retrieve the default value');"
 "  }"
+"  $p = $this->__rpinfo();"
+"  if(isset($p['deftext'])){"
+"   $s = __reflect_sig_scalar($p['deftext']);"
+"   if($s[0]){ return $s[1]; }"
+"   if($p['deftext'] === 'array (' || strpos($p['deftext'], '[') === 0){ return array(); }"
+"   throw new ReflectionException('Internal error: Failed to retrieve the default value');"
+"  }"
 "  return __reflect_param_default($this->__t, $this->__m, $this->__p);"
 " }"
 " public function isDefaultValueConstant(){"
 "  if(!$this->isDefaultValueAvailable()){ return false; }"
+"  $p = $this->__rpinfo();"
+"  if(isset($p['deftext'])){ return false; }"
 "  return __reflect_param_defconst($this->__t, $this->__m, $this->__p) !== null;"
 " }"
 " public function getDefaultValueConstantName(){"
@@ -2962,6 +2984,92 @@ static const char zReflectLib7[] =
 "}"
 ;
 /*
+ * Chunk 8: signature-table support. Internal (C builtin) functions carry a
+ * PHP-style parameter-list string; these helpers parse it into the same
+ * param-meta shape user functions get, so ReflectionFunction and
+ * ReflectionParameter work uniformly over builtins.
+ */
+static const char zReflectLib8[] =
+"function __reflect_sig_split($sig){"
+" $parts = array();"
+" $cur = '';"
+" $q = false;"
+" $n = strlen($sig);"
+" for($k = 0; $k < $n; $k++){"
+"  $ch = $sig[$k];"
+"  if($q){"
+"   $cur .= $ch;"
+"   if($ch === chr(92) && $k + 1 < $n){ $cur .= $sig[$k+1]; $k++; }"
+"   else if($ch === chr(39)){ $q = false; }"
+"  }else if($ch === chr(39)){ $q = true; $cur .= $ch; }"
+"  else if($ch === ',' ){ $parts[] = trim($cur); $cur = ''; }"
+"  else{ $cur .= $ch; }"
+" }"
+" if(trim($cur) !== ''){ $parts[] = trim($cur); }"
+" return $parts;"
+"}"
+"function __reflect_sig_scalar($t){"
+" if($t === '?'){ return array(false, null); }"
+" if($t === 'NULL' || $t === 'null'){ return array(true, null); }"
+" if($t === 'true'){ return array(true, true); }"
+" if($t === 'false'){ return array(true, false); }"
+" if(is_numeric($t)){"
+"  if(strpos($t, '.') === false && stripos($t, 'e') === false && strpos($t, 'x') === false){"
+"   return array(true, (int)$t);"
+"  }"
+"  return array(true, (float)$t);"
+" }"
+" if(strlen($t) >= 2 && $t[0] === chr(39) && $t[strlen($t)-1] === chr(39)){"
+"  $body = substr($t, 1, strlen($t) - 2);"
+"  return array(true, strtr($body, array(chr(92).chr(39) => chr(39), chr(92).chr(92) => chr(92))));"
+" }"
+" return array(false, null);"
+"}"
+"function __reflect_parse_sig($sig){"
+" $params = array();"
+" $pos = 0;"
+" foreach(__reflect_sig_split($sig) as $part){"
+"  $deftext = null;"
+"  $q = false;"
+"  $n = strlen($part);"
+"  for($k = 0; $k < $n; $k++){"
+"   $ch = $part[$k];"
+"   if($q){"
+"    if($ch === chr(92)){ $k++; }"
+"    else if($ch === chr(39)){ $q = false; }"
+"   }else if($ch === chr(39)){ $q = true; }"
+"   else if($ch === '=' ){"
+"    $deftext = trim(substr($part, $k + 1));"
+"    $part = trim(substr($part, 0, $k));"
+"    break;"
+"   }"
+"  }"
+"  $variadic = strpos($part, '...') !== false;"
+"  $byref = strpos($part, '&') !== false;"
+"  $d = strpos($part, '$');"
+"  $name = $d === false ? $part : substr($part, $d + 1);"
+"  $typetext = null;"
+"  $sp = strpos($part, ' ');"
+"  if($sp !== false && $d !== false && $sp < $d){ $typetext = substr($part, 0, $sp); }"
+"  $nullable = $typetext !== null && ($typetext[0] === '?' || stripos($typetext, 'null') !== false);"
+"  $params[] = array('name' => $name, 'pos' => $pos, 'byref' => $byref,"
+"   'variadic' => $variadic, 'hasdef' => $deftext !== null, 'nullable' => $nullable,"
+"   'promoted' => false, 'typetext' => $typetext, 'attrs' => array(), 'deftext' => $deftext);"
+"  $pos++;"
+" }"
+" return $params;"
+"}"
+"function __reflect_sig_fixup($i){"
+" if($i === null || !isset($i['sig']) || $i['sig'] === ''){ return $i; }"
+" $i['params'] = __reflect_parse_sig($i['sig']);"
+" $i['minarg'] = -1;"
+" $v = false;"
+" foreach($i['params'] as $p){ if($p['variadic']){ $v = true; } }"
+" $i['variadic'] = $v;"
+" return $i;"
+"}"
+;
+/*
  * Register the __reflect_* thunks and compile the Reflection library.
  * Called from PH7_VmInit while pVm->bCompilingBuiltin is set, right after
  * the core builtin chunks (Exception and friends must exist already).
@@ -3023,5 +3131,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 	if( rc != SXRET_OK ){
 		return rc;
 	}
-	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib7, sizeof(zReflectLib7)-1);
+	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib7, sizeof(zReflectLib7)-1);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib8, sizeof(zReflectLib8)-1);
 }
