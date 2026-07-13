@@ -393,13 +393,16 @@ static sxi32 MemObjStringValue(SyBlob *pOut,ph7_value *pObj,sxu8 bStrictBool)
 /*
  * Return some kind of boolean value which is the best we can do
  * at representing the value that pObj describes as a boolean.
- * When converting to boolean, the following values are considered FALSE:
+ * When converting to boolean, the following values are considered FALSE
+ * (php's exact set):
  * NULL
  * the boolean FALSE itself.
  * the integer 0 (zero).
  * the real 0.0 (zero).
- * the empty string,a stream of zero [i.e: "0","00","000",...] and the string
- * "false".
+ * the empty string "" and the string "0" (nothing else: "00", "0.0", " ",
+ * and "false" are all TRUE in php — the historical PH7 zero-stream and
+ * "false"/"on"/"yes" special cases changed the meaning of valid PHP source
+ * and were removed under the §10 PH7-ism policy).
  * an array with zero elements.
  */
 static sxi32 MemObjBooleanValue(ph7_value *pObj)
@@ -417,24 +420,14 @@ static sxi32 MemObjBooleanValue(ph7_value *pObj)
 	}else if (iFlags & MEMOBJ_STRING) {
 		SyString sString;
 		SyStringInitFromBuf(&sString,SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob));
+		/* php: a string is FALSE iff it is empty or exactly "0" */
 		if( sString.nByte == 0 ){
-			/* Empty string */
 			return 0;
-		}else if( (sString.nByte == sizeof("true") - 1 && SyStrnicmp(sString.zString,"true",sizeof("true")-1) == 0) ||
-			(sString.nByte == sizeof("on") - 1 && SyStrnicmp(sString.zString,"on",sizeof("on")-1) == 0) ||
-			(sString.nByte == sizeof("yes") - 1 && SyStrnicmp(sString.zString,"yes",sizeof("yes")-1) == 0) ){
-				return 1;
-		}else if( sString.nByte == sizeof("false") - 1 && SyStrnicmp(sString.zString,"false",sizeof("false")-1) == 0 ){
-			return 0;
-		}else{
-			const char *zIn,*zEnd;
-			zIn = sString.zString;
-			zEnd = &zIn[sString.nByte];
-			while( zIn < zEnd && zIn[0] == '0' ){
-				zIn++;
-			}
-			return zIn >= zEnd ? 0 : 1;
 		}
+		if( sString.nByte == 1 && sString.zString[0] == '0' ){
+			return 0;
+		}
+		return 1;
 	}else if( iFlags & MEMOBJ_NULL ){
 		return 0;
 	}else if( iFlags & MEMOBJ_HASHMAP ){
@@ -1299,6 +1292,25 @@ PH7_PRIVATE sxi32 PH7_MemObjCmp(ph7_value *pObj1,ph7_value *pObj2,int bStrict,in
 	}
 	/* Combine flag together */
 	iComb = pObj1->iFlags|pObj2->iFlags;
+	if( !bStrict
+	 && (iComb & MEMOBJ_NULL) != 0
+	 && (iComb & MEMOBJ_STRING) != 0
+	 && (iComb & (MEMOBJ_BOOL|MEMOBJ_RES|MEMOBJ_HASHMAP|MEMOBJ_OBJ)) == 0 ){
+		/*
+		 * PHP 8 comparison table: null loosely compared with a STRING is
+		 * compared as the empty string (a string comparison), not through
+		 * bool coercion — so null == "0" is FALSE and null < "0" is TRUE
+		 * (php 7 and the historical PH7 behavior coerced both to bool,
+		 * making any non-empty non-"0"-insensitive string "equal" to null).
+		 * Convert the null side to "" and let the string branch below run.
+		 */
+		if( pObj1->iFlags & MEMOBJ_NULL ){
+			PH7_MemObjToString(pObj1);
+		}else{
+			PH7_MemObjToString(pObj2);
+		}
+		iComb = pObj1->iFlags|pObj2->iFlags;
+	}
 	if( iComb & (MEMOBJ_NULL|MEMOBJ_RES|MEMOBJ_BOOL) ){
 		/* Convert to boolean: Keep in mind FALSE < TRUE */
 		if( (pObj1->iFlags & MEMOBJ_BOOL) == 0 ){
