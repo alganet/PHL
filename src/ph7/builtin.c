@@ -2978,24 +2978,48 @@ static int PH7_builtin_strrev(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * string ucwords(string $string)
+ * string ucwords(string $string [, string $separators = " \t\r\n\f\v"])
  *  Uppercase the first character of each word in a string.
- *  The definition of a word is any string of characters that is immediately after
- *  a whitespace (These are: space, form-feed, newline, carriage return, horizontal tab, and vertical tab).
+ *  A word begins at the start of the string and after any character present in
+ *  $separators. The default separators are the whitespace characters (space,
+ *  horizontal tab, carriage return, newline, form-feed and vertical tab); an
+ *  explicit $separators argument REPLACES them (an empty string leaves only the
+ *  very first character upper-cased). Like PHP, this is byte-based: only ASCII
+ *  bytes are upper-cased and a byte is a separator only if it appears in the set.
  * Parameters
  *  $string
  *   The input string.
+ *  $separators
+ *   The optional word-boundary characters.
  * Return
- *  The modified string..
+ *  The modified string.
  */
 static int PH7_builtin_ucwords(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const char *zIn,*zCur,*zEnd;
-	int nLen,c;
+	const char *zIn;
+	int nLen,i,iStart;
+	char aDelim[256];
 	if( nArg < 1 ){
 		/* Missing arguments,return NULL */
 		ph7_result_null(pCtx);
 		return PH7_OK;
+	}
+	/* Build the separator membership table: an explicit $separators argument
+	 * replaces the default whitespace set (an empty string clears it). */
+	SyZero(aDelim,(sxu32)sizeof(aDelim));
+	if( nArg > 1 ){
+		int nDelim;
+		const char *zDelim = ph7_value_to_string(apArg[1],&nDelim);
+		for( i = 0 ; i < nDelim ; i++ ){
+			aDelim[(unsigned char)zDelim[i]] = 1;
+		}
+	}else{
+		aDelim[(unsigned char)' ']  = 1;
+		aDelim[(unsigned char)'\t'] = 1;
+		aDelim[(unsigned char)'\r'] = 1;
+		aDelim[(unsigned char)'\n'] = 1;
+		aDelim[(unsigned char)'\f'] = 1;
+		aDelim[(unsigned char)'\v'] = 1;
 	}
 	/* Extract the target string */
 	zIn = ph7_value_to_string(apArg[0],&nLen);
@@ -3004,45 +3028,22 @@ static int PH7_builtin_ucwords(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
-	/* Perform the requested operation */
-	zEnd = &zIn[nLen];
-	for(;;){
-		/* Jump leading white spaces */
-		zCur = zIn;
-		while( zIn < zEnd && (unsigned char)zIn[0] < 0x80 && SyisSpace(zIn[0]) ){
-			zIn++;
-		}
-		if( zCur < zIn ){
-			/* Append white space stream */
-			ph7_result_string(pCtx,zCur,(int)(zIn-zCur));
-		}
-		if( zIn >= zEnd ){
-			/* No more input to process */
-			break;
-		}
-		c = zIn[0];
-		if( c < 0x80 && SyisLower(c) ){
-			c = SyToUpper(c);
-		}
-		/* Append the upper-cased character */
-		ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char));
-		zIn++;
-		zCur = zIn;
-		/* Append the word varbatim */
-		while( zIn < zEnd ){
-			if( (unsigned char)zIn[0] >= 0xc0 ){
-				/* UTF-8 stream */
-				zIn++;
-				SX_JMP_UTF8(zIn,zEnd);
-			}else if( !SyisSpace(zIn[0]) ){
-				zIn++;
-			}else{
-				break;
+	/* Upper-case the first byte of each word (the leading byte, or any byte that
+	 * follows a separator), appending the untouched runs in between verbatim. */
+	iStart = 0;
+	for( i = 0 ; i < nLen ; i++ ){
+		int c = (unsigned char)zIn[i];
+		if( (i == 0 || aDelim[(unsigned char)zIn[i-1]]) && c < 0x80 && SyisLower(c) ){
+			char up = (char)SyToUpper(c);
+			if( i > iStart ){
+				ph7_result_string(pCtx,&zIn[iStart],i - iStart);
 			}
+			ph7_result_string(pCtx,&up,1);
+			iStart = i + 1;
 		}
-		if( zCur < zIn ){
-			ph7_result_string(pCtx,zCur,(int)(zIn-zCur));
-		}
+	}
+	if( nLen > iStart ){
+		ph7_result_string(pCtx,&zIn[iStart],nLen - iStart);
 	}
 	return PH7_OK;
 }
