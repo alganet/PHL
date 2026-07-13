@@ -624,6 +624,95 @@ static sxi32 GenStateStripNumericSeparators(
  *  For more information on this powerfull extension please refer to the official
  *  documentation.
  */
+/*
+ * Determine whether an integer literal token exceeds the signed 64-bit range.
+ * PHP promotes such a literal to a float (e.g. 9223372036854775808 ->
+ * float(9.22...E+18), 0xFFFFFFFFFFFFFFFF -> float) rather than wrapping or
+ * dropping digits. pNum is the separator-stripped token (unsigned; the sign of
+ * a "-1" is a separate unary operator). Base detection mirrors
+ * PH7_TokenValueToInt64. Returns TRUE on overflow: for a non-decimal base the
+ * float value is accumulated into *pReal (dv = dv*base + digit); for decimal
+ * *pbDecimal is set so the caller reuses strtod on the token for a
+ * correctly-rounded value. Returns FALSE (value fits) for anything it cannot
+ * confidently classify, so the int path stays in charge.
+ *
+ * The int/float CLASSIFICATION is php-exact for every base. VALUES are byte-exact
+ * for decimal (strtod) and hex (php's zend_hex_strtod uses the same dv*16+digit
+ * doubling). Octal/binary overflow values can differ from php by the low bit(s):
+ * php's zend_{oct,bin}_strtod rounds differently than this doubling — e.g. php's
+ * binary 2**63 is 2**63-1024 whereas this returns the exact 2**63. Recorded as a
+ * residual in PLAN.md; matching php exactly would need a port of those functions.
+ */
+static int GenStateIntLiteralOverflows(const SyString *pNum, ph7_real *pReal, int *pbDecimal)
+{
+	const char *z = pNum->zString;
+	const char *zEnd = z + pNum->nByte;
+	const char *p, *q;
+	int n;
+	*pbDecimal = FALSE;
+	if( z >= zEnd ){
+		return FALSE;
+	}
+	if( z[0] == '0' && (z + 1) < zEnd && (z[1] == 'x' || z[1] == 'X') ){
+		/* Hexadecimal: INT64_MAX == 0x7FFF...F (16 digits, leading nibble 7). */
+		p = z + 2;
+		while( p < zEnd && p[0] == '0' ){ p++; }
+		for( q = p, n = 0; q < zEnd && (unsigned char)q[0] < 0xc0 && SyisHex(q[0]); q++ ){ n++; }
+		if( n < 16 || (n == 16 && SyHexToint(p[0]) < 8) ){
+			return FALSE;
+		}
+		{ ph7_real dv = 0;
+		  for( q = p; q < zEnd && (unsigned char)q[0] < 0xc0 && SyisHex(q[0]); q++ ){
+			dv = dv * 16 + (ph7_real)SyHexToint(q[0]);
+		  }
+		  *pReal = dv;
+		}
+		return TRUE;
+	}else if( z[0] == '0' && (z + 1) < zEnd && (z[1] == 'b' || z[1] == 'B') ){
+		/* Binary: INT64_MAX needs 63 significant bits. */
+		p = z + 2;
+		while( p < zEnd && p[0] == '0' ){ p++; }
+		for( q = p, n = 0; q < zEnd && (q[0] == '0' || q[0] == '1'); q++ ){ n++; }
+		if( n <= 63 ){
+			return FALSE;
+		}
+		{ ph7_real dv = 0;
+		  for( q = p; q < zEnd && (q[0] == '0' || q[0] == '1'); q++ ){
+			dv = dv * 2 + (ph7_real)(q[0] - '0');
+		  }
+		  *pReal = dv;
+		}
+		return TRUE;
+	}else if( z[0] == '0' ){
+		/* Octal: INT64_MAX == 0o777...7 (21 significant octal digits). Skip the
+		 * leading zeros (incl. the base '0'); a non-octal char such as the 8.1
+		 * "0o" marker ends the run and leaves it to the int path (as today). */
+		p = z;
+		while( p < zEnd && p[0] == '0' ){ p++; }
+		for( q = p, n = 0; q < zEnd && q[0] >= '0' && q[0] <= '7'; q++ ){ n++; }
+		if( n <= 21 ){
+			return FALSE;
+		}
+		{ ph7_real dv = 0;
+		  for( q = p; q < zEnd && q[0] >= '0' && q[0] <= '7'; q++ ){
+			dv = dv * 8 + (ph7_real)(q[0] - '0');
+		  }
+		  *pReal = dv;
+		}
+		return TRUE;
+	}
+	/* Decimal: overflow iff more than 19 significant digits, or exactly 19 that
+	 * compare greater than INT64_MAX. Defer the value to strtod (via the caller)
+	 * for php-exact rounding. */
+	p = z;
+	while( p < zEnd && p[0] == '0' ){ p++; }
+	for( q = p, n = 0; q < zEnd && (unsigned char)q[0] < 0xc0 && SyisDigit(q[0]); q++ ){ n++; }
+	if( n > 19 || (n == 19 && SyMemcmp(p, "9223372036854775807", 19) > 0) ){
+		*pbDecimal = TRUE;
+		return TRUE;
+	}
+	return FALSE;
+}
 static sxi32 PH7_CompileNumLiteral(ph7_gen_state *pGen,sxi32 iCompileFlag)
 {
 	SyToken *pToken = pGen->pIn; /* Raw token */
@@ -645,13 +734,33 @@ static sxi32 PH7_CompileNumLiteral(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	if( pToken->nType & PH7_TK_INTEGER ){
 		ph7_value *pObj;
 		sxi64 iValue;
-		iValue = PH7_TokenValueToInt64(&sNum);
-		pObj = GenStateInstallNumLiteral(&(*pGen),&nIdx);
-		if( pObj == 0 ){
-			if( zAlloc ){ SyMemBackendFree(&pGen->pVm->sAllocator, zAlloc); }
-			return SXERR_ABORT;
+		ph7_real rOverflow = 0;
+		int bDecimalOverflow = 0;
+		if( GenStateIntLiteralOverflows(&sNum,&rOverflow,&bDecimalOverflow) ){
+			/* Literal exceeds the signed 64-bit range: PHP represents it as a
+			 * float instead of wrapping/dropping digits. */
+			pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);
+			if( pObj == 0 ){
+				PH7_GenCompileError(&(*pGen),E_ERROR,1,"PH7 engine is running out of memory");
+				if( zAlloc ){ SyMemBackendFree(&pGen->pVm->sAllocator, zAlloc); }
+				return SXERR_ABORT;
+			}
+			if( bDecimalOverflow ){
+				/* strtod on the decimal token yields php-exact rounding. */
+				PH7_MemObjInitFromString(pGen->pVm,pObj,&sNum);
+				PH7_MemObjToReal(pObj);
+			}else{
+				PH7_MemObjInitFromReal(pGen->pVm,pObj,rOverflow);
+			}
+		}else{
+			iValue = PH7_TokenValueToInt64(&sNum);
+			pObj = GenStateInstallNumLiteral(&(*pGen),&nIdx);
+			if( pObj == 0 ){
+				if( zAlloc ){ SyMemBackendFree(&pGen->pVm->sAllocator, zAlloc); }
+				return SXERR_ABORT;
+			}
+			PH7_MemObjInitFromInt(pGen->pVm,pObj,iValue);
 		}
-		PH7_MemObjInitFromInt(pGen->pVm,pObj,iValue);
 	}else{
 		/* Real number */
 		ph7_value *pObj;

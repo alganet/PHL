@@ -1044,7 +1044,6 @@ PH7_PRIVATE sxi32 PH7_MemObjInitFromBool(ph7_vm *pVm,ph7_value *pObj,sxi32 iVal)
 	pObj->iFlags = MEMOBJ_BOOL;
 	return SXRET_OK;
 }
-#if 0
 /*
  * Initialize a ph7_value to the real type.
  */
@@ -1060,7 +1059,6 @@ PH7_PRIVATE sxi32 PH7_MemObjInitFromReal(ph7_vm *pVm,ph7_value *pObj,ph7_real rV
 	pObj->iFlags = MEMOBJ_REAL;
 	return SXRET_OK;
 }
-#endif
 /*
  * Initialize a ph7_value to the array type.
  */
