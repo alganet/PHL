@@ -1121,6 +1121,10 @@ static int VmRecordedResume(ph7_vm *pVm,sxi32 *pResumePc,VmFrame *pEntryFrame,Vm
 	}
 	*pResumePc = (sxi32)pVm->iResumePc - 1;
 	pVm->pResumeFrame = 0; /* one-shot consume */
+	/* Landing at the catch pad consumes any C-boundary parked copy of the same
+	 * in-flight throw (VmBoundaryPark): the status is routed now, so the fetch-
+	 * point router must not re-fire it after this resume. */
+	pVm->nBoundaryRc = 0;
 	return TRUE;
 }
 /*
@@ -2416,6 +2420,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->iResumePc = 0;
 	pVm->pResumeInstr = 0;
 	pVm->iResumeStackDepth = 0;
+	pVm->nBoundaryRc = 0;
 	/* Configuration containers */
 	SySetInit(&pVm->aFiles,&pVm->sAllocator,sizeof(SyString));
 	SySetInit(&pVm->aPaths,&pVm->sAllocator,sizeof(SyString));
@@ -3744,6 +3749,7 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	pVm->iResumePc = 0;
 	pVm->pResumeInstr = 0;
 	pVm->iResumeStackDepth = 0;
+	pVm->nBoundaryRc = 0;
 	pVm->nExceptDepth = 0;
 	/* spl_autoload_register() callbacks are per request */
 	for( n = 0 ; n < SySetUsed(&pVm->aAutoload) ; ++n ){
@@ -4708,7 +4714,22 @@ static sxi32 VmInvokeErrorHandler(ph7_vm *pVm, sxi32 iErr, const char *zMessage,
 		apArgPtr[2] = &apArg[2];
 		apArgPtr[3] = &apArg[3];
 		/* Call the handler */
-		PH7_VmCallUserFunction(pVm,&pVm->aErrCB[1],4,apArgPtr,&sResult);
+		{
+			sxi32 rcCb = PH7_VmCallUserFunction(pVm,&pVm->aErrCB[1],4,apArgPtr,&sResult);
+			if( rcCb == PH7_EXCEPTION || rcCb == PH7_ABORT ){
+				/* The handler threw (or aborted) instead of returning: php never
+				 * reports the original diagnostic then — the exception supersedes
+				 * it (and is routed by the boundary parking / fetch-point router).
+				 * Reporting it here would print a spurious Warning AFTER the
+				 * user's catch already ran. */
+				PH7_MemObjRelease(&apArg[0]);
+				PH7_MemObjRelease(&apArg[1]);
+				PH7_MemObjRelease(&apArg[2]);
+				PH7_MemObjRelease(&apArg[3]);
+				PH7_MemObjRelease(&sResult);
+				return FALSE;
+			}
+		}
 		/* Check return value */
 		if( (sResult.iFlags & MEMOBJ_BOOL) == 0 ){
 			PH7_MemObjToBool(&sResult);
@@ -7195,13 +7216,26 @@ static sxi32 VmByteCodeExec(
 	)
 {
 	sxi32 rc;
+	sxi32 nSavedBrc;
 	if( VmNativeNestingExceeded(pVm) ){
 		return VmNativeNestingFatal(pVm);
 	}
+	/* A fresh native exec entered while a C-boundary throw is parked
+	 * (nBoundaryRc — e.g. a __destruct fired by an operand release inside the
+	 * very opcode that swallowed the throw) must run CLEAN: the parked status
+	 * belongs to the interrupted outer exec's fetch-point router, not to this
+	 * one. Save+clear on entry, merge back on exit — the outer status is
+	 * restored unless this exec parked its own unconsumed (newer) one, with
+	 * PH7_ABORT dominating either way. */
+	nSavedBrc = pVm->nBoundaryRc;
+	pVm->nBoundaryRc = 0;
 	pVm->nVmExecDepth++;
 	rc = VmByteCodeExecBody(&(*pVm),aInstr,pStack,nTos,pResult,pLastRef,is_callback,nPc,
 		pEnforceRetFunc,bReturnPropagates,pAdoptSegment);
 	pVm->nVmExecDepth--;
+	if( nSavedBrc != 0 && (nSavedBrc == PH7_ABORT || pVm->nBoundaryRc == 0) ){
+		pVm->nBoundaryRc = nSavedBrc;
+	}
 	return rc;
 }
 static sxi32 VmByteCodeExecBody(
@@ -7312,6 +7346,7 @@ static sxi32 VmByteCodeExecBody(
 		while( (sxi32)(pTos - pStack) > pVm->iInlineDrain ){ PH7_MemObjRelease(pTos); pTos--; } \
 		pc = (sxi32)pVm->iInlinePc - 1; \
 		pVm->pInlineInstr = 0; \
+		pVm->nBoundaryRc = 0; /* redirect consumed: drop any parked copy of this throw */ \
 		break; \
 	}
 #define PH7_DISPATCH_ENFORCE_RC(rcVar) \
@@ -7483,6 +7518,51 @@ static sxi32 VmByteCodeExecBody(
 	/* Execute as much as we can */
 	for(;;){
 VmLoopFetch:
+		/* C-boundary throw routing (band A #1): a PHP callee invoked from a C
+		 * site with no status channel — a __toString/__toInt cast, __get/__set/
+		 * offsetGet/offsetSet, __clone, __destruct, a user callback inside a
+		 * builtin — raised, and the site continued with a fallback value; the
+		 * invocation boundary parked the status here (VmBoundaryPark). Route it
+		 * exactly as the throw site's dispatch macro would have: abort, land at
+		 * an inline-try redirect, resume at a recorded in-place catch (draining
+		 * the abandoned mid-expression operands to the catching try's base), or
+		 * propagate out of this exec. Checked at the fetch point, so a swallowed
+		 * throw outlives at most the C remainder of ONE opcode instead of
+		 * silently resuming the surrounding PHP code with a bogus value. */
+		if( pVm->nBoundaryRc != 0 ){
+			sxi32 rcBr = pVm->nBoundaryRc;
+			pVm->nBoundaryRc = 0;
+			if( rcBr == PH7_ABORT ){
+				goto Abort;
+			}
+			if( pVm->pInlineInstr == (void *)aInstr ){
+				/* Caught by an inline try (generator body) THIS exec owns: drain
+				 * and land (pre-fetch path: pc is used directly, no trailing ++). */
+				while( (sxi32)(pTos - pStack) > pVm->iInlineDrain ){
+					PH7_MemObjRelease(pTos);
+					pTos--;
+				}
+				pc = (sxi32)pVm->iInlinePc;
+				pVm->pInlineInstr = 0;
+			}else{
+				sxi32 iBrPc;
+				if( VmRecordedResume(pVm,&iBrPc,sState.pEntryFrame,aInstr) ){
+					/* Caught in place by a try THIS exec owns: drain the abandoned
+					 * operands to the catching try's base and land at its pad
+					 * (iBrPc is landing-1 for the dispatcher's trailing pc++;
+					 * pre-fetch here, so +1 lands on the pad itself). */
+					while( (sxi32)(pTos - pStack) > pVm->iResumeStackDepth ){
+						PH7_MemObjRelease(pTos);
+						pTos--;
+					}
+					pc = iBrPc + 1;
+				}else{
+					/* Caught by an outer exec (or uncaught-with-report pending):
+					 * unwind out of this exec; the owner's macros/router land it. */
+					goto Exception;
+				}
+			}
+		}
 		/* Fetch the instruction to execute */
 		pInstr = &aInstr[pc];
 		rc = SXRET_OK;
@@ -17040,6 +17120,29 @@ PH7_PRIVATE ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm)
  * return value indicates failure.
  */
 /*
+ * Park a C-boundary throw status on the VM (band A #1). Every C->PHP
+ * invocation funnels through VmCallClassMethodWithMap or
+ * PH7_VmCallUserFunctionWithMap; when the callee raised (PH7_EXCEPTION /
+ * PH7_ABORT) and the C caller has no channel to route that status — the
+ * __toString/__toInt cast helpers, __get/__set/offsetGet/offsetSet,
+ * __clone, __destruct, error/shutdown/autoload/ob callbacks, and every
+ * builtin that coerces an object argument — the status would be silently
+ * dropped and PHP execution would resume with a bogus fallback value (the
+ * catch, if any, having ALSO run: a double-execution silent wrong answer).
+ * Parking it here lets the executor's fetch-point router (VmLoopFetch)
+ * land it exactly as the throw site would have. Callers that DO route
+ * their rc are unaffected: the routing consumers (VmRecordedResume, the
+ * inline-redirect breaks, the fetch-point router itself) clear the parked
+ * copy when the throw is landed. PH7_ABORT dominates a parked EXCEPTION;
+ * a generalization of the older iCmpCallbackExc comparator flag.
+ */
+static void VmBoundaryPark(ph7_vm *pVm,sxi32 rc)
+{
+	if( (rc == PH7_EXCEPTION || rc == PH7_ABORT) && pVm->nBoundaryRc != PH7_ABORT ){
+		pVm->nBoundaryRc = rc;
+	}
+}
+/*
  * Internal variant of PH7_VmCallClassMethod that threads a VmCallArgMap
  * through to the synthetic CALL instruction.  Used by the NEW handler so
  * that constructor calls with named arguments reach the named-arg path
@@ -17093,7 +17196,10 @@ static sxi32 VmCallClassMethodWithMap(
 	rc = VmByteCodeExec(&(*pVm),aInstr,aStack,iCursor,pResult,0,TRUE,0,0,FALSE,0);
 	SyMemBackendFree(&pVm->sAllocator,aStack);
 	/* Propagate the real exec status (PH7_EXCEPTION / PH7_ABORT) so callers
-	 * can unwind instead of continuing past a method that raised. */
+	 * can unwind instead of continuing past a method that raised — and park
+	 * it on the VM for the callers that CAN'T (the fetch-point router lands
+	 * it; see VmBoundaryPark). */
+	VmBoundaryPark(&(*pVm),rc);
 	return rc;
 }
 PH7_PRIVATE sxi32 PH7_VmCallClassMethod(
@@ -17471,7 +17577,9 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 		rcExec = VmByteCodeExec(&(*pVm),aInstr,aStack,nArg,pResult,0,TRUE,0,0,FALSE,0);
 		/* Clean up the mess left behind */
 		SyMemBackendFree(&pVm->sAllocator,aStack);
-		/* Propagate PH7_EXCEPTION/PH7_ABORT so a callback that raised unwinds. */
+		/* Propagate PH7_EXCEPTION/PH7_ABORT so a callback that raised unwinds —
+		 * and park it for the callers with no status channel (VmBoundaryPark). */
+		VmBoundaryPark(&(*pVm),rcExec);
 		return rcExec;
 	}
 }
