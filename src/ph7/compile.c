@@ -11700,6 +11700,7 @@ static sxu32 GenStateByRefBuiltinMask(SyString *pName)
 		{ "preg_match_all",        14, 1u<<2 },  /* $matches (apArg[2]) */
 		{ "preg_replace",          12, 1u<<4 },  /* &$count  (apArg[4]) */
 		{ "preg_replace_callback", 21, 1u<<4 },  /* &$count  (apArg[4]) */
+		{ "similar_text",          12, 1u<<2 },  /* &$percent (apArg[2]) */
 	};
 	sxu32 i;
 	if( pName == 0 || pName->zString == 0 || pName->nByte == 0 ){
