@@ -12471,6 +12471,12 @@ case PH7_OP_CALL: {
 				while( pArg < pStack ){
 					pArg++;
 				}
+				if( pSelf && pVm->bReflectBypass ){
+					/* ReflectionMethod::invoke()/getClosure(): PHP 8.1+ reflection
+					 * ignores visibility. Consume-once so nested calls made by the
+					 * invoked body are checked normally. */
+					pVm->bReflectBypass = 0;
+				}else
 				if( pSelf ){ /* Paranoid edition */
 					/* Check if the call is allowed */
 					pMeth = PH7_ClassExtractMethod(pSelf,pVmFunc->sName.zString,pVmFunc->sName.nByte);
@@ -14632,6 +14638,15 @@ static ph7_class_instance * VmCreateClosure(ph7_vm *pVm, const SyString *pName,
 		pObj->iFlags |= VM_INSTANCE_FCC_BOUND;
 	}
 	return pObj;
+}
+/*
+ * Exported wrapper around VmCreateClosure for builtin libraries outside this
+ * file (ReflectionFunction::getClosure / ReflectionMethod::getClosure).
+ */
+PH7_PRIVATE ph7_class_instance * PH7_VmNewClosure(ph7_vm *pVm, const SyString *pName,
+	ph7_class_instance *pBoundThis, const SyString *pScope)
+{
+	return VmCreateClosure(&(*pVm), pName, pBoundThis, pScope);
 }
 /*
  * First-class callable over an arbitrary callable VALUE: `($expr)(...)`.

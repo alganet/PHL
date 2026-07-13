@@ -1033,6 +1033,9 @@ struct ph7_vm
 	int bCompilingBuiltin;      /* TRUE while the embedded builtin PHP library chunks compile at VM
 	                             * init: classes/functions defined then are stamped INTERNAL so
 	                             * Reflection reports isInternal() like Zend does for C-level code. */
+	int bReflectBypass;         /* Consume-once: the next method OP_CALL skips the visibility
+	                             * check (ReflectionMethod::invoke bypasses protection like PHP
+	                             * 8.1+). Cleared by the check site; never survives past one call. */
 	SySet aShutdown;            /* Stack of shutdown user callbacks */
 	SySet aAutoload;            /* Stack of spl_autoload callbacks */
 	SyHash hAutoloadActive;     /* Classes currently being autoloaded (reentrancy guard) */
@@ -1711,6 +1714,8 @@ PH7_PRIVATE void  PH7_VmExpandConstantValue(ph7_value *pVal,void *pUserData);
 PH7_PRIVATE sxi32 PH7_VmDump(ph7_vm *pVm,ProcConsumer xConsumer,void *pUserData);
 PH7_PRIVATE sxi32 PH7_VmEvalBuiltinChunk(ph7_vm *pVm,const char *zSrc,sxu32 nLen);
 PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm); /* vm_builtin_reflection.c */
+PH7_PRIVATE ph7_class_instance * PH7_VmNewClosure(ph7_vm *pVm,const SyString *pName,
+	ph7_class_instance *pBoundThis,const SyString *pScope);
 PH7_PRIVATE sxi32 PH7_VmInit(ph7_vm *pVm,ph7 *pEngine);
 PH7_PRIVATE sxi32 PH7_VmConfigure(ph7_vm *pVm,sxi32 nOp,va_list ap);
 PH7_PRIVATE sxi32 PH7_VmByteCodeExec(ph7_vm *pVm);
