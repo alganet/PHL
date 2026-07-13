@@ -1140,6 +1140,20 @@ struct ph7_vm
 	                             * {instance, property-name hash, kind} entries pushed around a
 	                             * __get dispatch so a self-recursive read of the same property
 	                             * falls back to the undefined-property path instead of looping. */
+	ph7_class_instance *pMagicSetThis; /* Pending __set receiver (band A #3b): OP_MEMBER detected a
+	                             * plain store to a missing/inaccessible property whose class
+	                             * declares __set; the VALUE only exists at the immediately-
+	                             * following OP_STORE, which consumes this (with sMagicSetName)
+	                             * and dispatches __set($name,$value). Holds a reference;
+	                             * one-instruction lifetime by construction. */
+	SyBlob sMagicSetName;       /* Pending __set property name (stable copy) */
+	ph7_class_instance *pMagicCallThis; /* Pending __call receiver (band A #3b): OP_MEMBER hit a
+	                             * missing method on a class declaring __call/__callStatic and
+	                             * redirected the callee to the hidden packing trampoline
+	                             * (vm_builtin_magic_call), which consumes this + the class +
+	                             * the original name. Holds a reference; NULL for __callStatic. */
+	ph7_class *pMagicCallClass; /* Pending __call/__callStatic declaring class */
+	SyBlob sMagicCallName;      /* Pending original method name (stable copy) */
 	sxi32 nBoundaryRc;          /* C-boundary parked throw status (0 / PH7_EXCEPTION / PH7_ABORT).
 	                             * Set by VmBoundaryPark when a PHP callee invoked from a C site
 	                             * (magic method, cast hook, __destruct, user callback) raised and
