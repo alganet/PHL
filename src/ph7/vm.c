@@ -206,6 +206,22 @@ PH7_PRIVATE sxi32 PH7_VmRegisterConstant(
 	void *pUserData         /* Last argument to xExpand() */
 	)
 {
+	return PH7_VmRegisterConstantEx(&(*pVm),pName,xExpand,pUserData,0,0,0);
+}
+/*
+ * Like PH7_VmRegisterConstant, additionally recording the constant's
+ * origin (file/line/user-defined) for ReflectionConstant.
+ */
+PH7_PRIVATE sxi32 PH7_VmRegisterConstantEx(
+	ph7_vm *pVm,            /* Target VM */
+	const SyString *pName,  /* Constant name */
+	ProcConstant xExpand,   /* Constant expansion callback */
+	void *pUserData,        /* Last argument to xExpand() */
+	const SyString *pFile,  /* Defining file (VM-lifetime buffer) or NULL */
+	sxu32 nLine,            /* Declaration line, 0 = unknown */
+	int bUser               /* 1 when defined by user code */
+	)
+{
 	ph7_constant *pCons;
 	SyHashEntry *pEntry;
 	char *zDupName;
@@ -224,6 +240,13 @@ PH7_PRIVATE sxi32 PH7_VmRegisterConstant(
 		}
 		pCons->xExpand = xExpand;
 		pCons->pUserData = pUserData;
+		if( pFile ){
+			SyStringDupPtr(&pCons->sFile,pFile);
+		}else{
+			SyStringInitFromBuf(&pCons->sFile,0,0);
+		}
+		pCons->nLine = nLine;
+		pCons->bUserDefined = (sxu8)(bUser ? 1 : 0);
 		return SXRET_OK;
 	}
 	/* Allocate a new constant instance */
@@ -237,6 +260,12 @@ PH7_PRIVATE sxi32 PH7_VmRegisterConstant(
 		SyMemBackendPoolFree(&pVm->sAllocator,pCons);
 		return 0;
 	}
+	SyStringInitFromBuf(&pCons->sFile,0,0);
+	if( pFile ){
+		SyStringDupPtr(&pCons->sFile,pFile);
+	}
+	pCons->nLine = nLine;
+	pCons->bUserDefined = (sxu8)(bUser ? 1 : 0);
 	/* Install the constant */
 	SyStringInitFromBuf(&pCons->sName,zDupName,pName->nByte);
 	pCons->xExpand = xExpand;
@@ -685,6 +714,8 @@ PH7_PRIVATE sxi32 PH7_VmInitFuncState(
 	SySetInit(&pFunc->aClosureEnv,&pVm->sAllocator,sizeof(ph7_vm_func_closure_env));
 	/* Return-type union alternatives (empty unless declared as a union) */
 	SySetInit(&pFunc->aReturnUnion,&pVm->sAllocator,sizeof(ph7_type_alt));
+	/* Declared #[...] attributes */
+	SySetInit(&pFunc->aAttrs,&pVm->sAllocator,sizeof(ph7_attribute));
 	pFunc->iFlags = iFlags;
 	pFunc->pUserData = pUserData;
 	/* Capture the defining file's strict_types mode. PHP scopes return-type
@@ -2076,6 +2107,19 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
 	"  public static function fromCallable($callable){ return __closure_fromCallable($callable); }"\
 	"}"\
 	/* stdClass is empty (PHP-exact): holds only dynamic (runtime-added) properties. */\
+	"final class Attribute {"\
+	"  const TARGET_CLASS = 1;"\
+	"  const TARGET_FUNCTION = 2;"\
+	"  const TARGET_METHOD = 4;"\
+	"  const TARGET_PROPERTY = 8;"\
+	"  const TARGET_CLASS_CONSTANT = 16;"\
+	"  const TARGET_PARAMETER = 32;"\
+	"  const TARGET_CONSTANT = 64;"\
+	"  const TARGET_ALL = 127;"\
+	"  const IS_REPEATABLE = 128;"\
+	"  public $flags;"\
+	"  public function __construct($flags = 127){ $this->flags = $flags; }"\
+	"}"\
 	"class stdClass{"\
 	"}"\
 	"function dir(string $path){"\
@@ -16545,6 +16589,16 @@ PH7_PRIVATE sxi32 PH7_VmCallClassMethod(
 	)
 {
 	return VmCallClassMethodWithMap(pVm,pThis,pMethod,pResult,nArg,apArg,0);
+}
+/*
+ * Like PH7_VmCallClassMethod but forwarding named-argument metadata
+ * (ReflectionClass::newInstanceArgs / ReflectionAttribute::newInstance
+ * accept string keys as named constructor arguments, PHP 8.1).
+ */
+PH7_PRIVATE sxi32 PH7_VmCallClassMethodMap(ph7_vm *pVm,ph7_class_instance *pThis,
+	ph7_class_method *pMethod,ph7_value *pResult,int nArg,ph7_value **apArg,VmCallArgMap *pMap)
+{
+	return VmCallClassMethodWithMap(pVm,pThis,pMethod,pResult,nArg,apArg,pMap);
 }
 /*
  * Helper for PH7_VmIteratorWalk: call a zero-arg Iterator method by name,

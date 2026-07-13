@@ -35,6 +35,7 @@ PH7_PRIVATE ph7_class * PH7_NewRawClass(ph7_vm *pVm,const SyString *pName,sxu32 
 	SyHashInit(&pClass->hDerived,&pVm->sAllocator,0,0);
 	SySetInit(&pClass->aInterface,&pVm->sAllocator,sizeof(ph7_class *));
 	SySetInit(&pClass->aTrait,&pVm->sAllocator,sizeof(ph7_class *));
+	SySetInit(&pClass->aAttrs,&pVm->sAllocator,sizeof(ph7_attribute));
 	pClass->nLine = nLine;
 	if( pVm->bCompilingBuiltin ){
 		/* Defined by an embedded builtin chunk: internal, no defining file.
@@ -64,6 +65,7 @@ PH7_PRIVATE ph7_class_attr * PH7_NewClassAttr(ph7_vm *pVm,const SyString *pName,
 	}
 	/* Zero the structure */
 	SyZero(pAttr,sizeof(ph7_class_attr));
+	SySetInit(&pAttr->aAttrs,&pVm->sAllocator,sizeof(ph7_attribute));
 	/* Duplicate attribute name */
 	zName = SyMemBackendStrDup(&pVm->sAllocator,pName->zString,pName->nByte);
 	if( zName == 0 ){

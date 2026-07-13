@@ -167,6 +167,11 @@ struct ph7_constant
 	SyString sName;        /* Constant name */
 	ProcConstant xExpand;  /* Function responsible of expanding constant value */
 	void *pUserData;       /* Last argument to xExpand() */
+	SyString sFile;        /* Defining file (aliases the VM-lifetime dup in pVm->aFiles);
+	                        * nByte == 0 = unknown/engine constant */
+	sxu32 nLine;           /* Declaration line for `const`; 0 for define()/engine */
+	sxu8 bUserDefined;     /* 1 when created by user code (const / define()):
+	                        * Reflection isInternal()/getFileName() input */
 };
 typedef struct ph7_aux_data ph7_aux_data;
 /*
@@ -341,6 +346,30 @@ struct ph7_trivia
 };
 #define PH7_TRIVIA_DOC  1 /* A doc-comment: slash-star-star ... star-slash */
 #define PH7_TRIVIA_ATTR 2 /* An attribute group: the span between #[ and its ] */
+/*
+ * One compiled attribute argument: an optional name (named argument) and
+ * the constant expression's bytecode, evaluated lazily at
+ * ReflectionAttribute::getArguments()/newInstance() time (PHP's
+ * lazy-instantiation semantics).
+ */
+typedef struct ph7_attr_arg ph7_attr_arg;
+struct ph7_attr_arg
+{
+	SyString sName;   /* Named-argument name (duplicated); nByte == 0 = positional */
+	SySet aByteCode;  /* Compiled expression, OP_DONE(p1=1) terminated (VmInstr) */
+};
+/*
+ * One #[...] attribute as declared: the compile-time-resolved FQN and its
+ * argument list.
+ */
+typedef struct ph7_attribute ph7_attribute;
+struct ph7_attribute
+{
+	SyString sName;   /* Fully-qualified class name (resolved via use imports /
+	                   * current namespace at compile time; duplicated) */
+	SySet aArgs;      /* ph7_attr_arg records */
+	sxu32 nLine;      /* Line the attribute appears on */
+};
 typedef struct GenBlock        GenBlock;
 typedef sxi32 (*ProcLangConstruct)(ph7_gen_state *);
 typedef sxi32 (*ProcNodeConstruct)(ph7_gen_state *,sxi32);
@@ -448,6 +477,9 @@ struct ph7_gen_state
 	SyString sPendingDoc;/* Docblock immediately preceding the statement being dispatched;
 	                      * consumed by the declaration compilers, discarded at the next
 	                      * statement boundary (points into the raw script buffer) */
+	SySet aPendingAttrs; /* Attribute-group trivia (ph7_trivia) bound to the statement being
+	                      * dispatched; unlike docs, PHP requires attributes to be adjacent,
+	                      * so this resets at every boundary */
 };
 /* Forward references */
 typedef struct ph7_vm_func_closure_env ph7_vm_func_closure_env;
@@ -602,6 +634,7 @@ struct ph7_vm_func_arg
 	SySet aUnionAlts;    /* Union type alternatives (ph7_type_alt). Empty unless VM_FUNC_ARG_UNION is set. */
 	SyString sTypeName;  /* Original type text for error messages, normalized in canonical PHP order */
 	sxi32 iPromoteVis;   /* PH7_CLASS_PROT_* when VM_FUNC_ARG_PROMOTED is set */
+	SySet aAttrs;        /* Declared #[...] attributes (ph7_attribute records) */
 };
 /*
  * One alternative within a union type declaration. Used by parameters,
@@ -703,6 +736,7 @@ struct ph7_vm_func
 						  * 0 = not yet computed; otherwise the number of slots to allocate
 						  * per call (a tight bound from VmComputeMaxStack, or the whole
 						  * instruction count when the body is not statically modelable). */
+	SySet aAttrs;        /* Declared #[...] attributes (ph7_attribute records) */
 	SyString sDoc;       /* Doc-comment immediately preceding the declaration, delimiters
 						  * included (duplicated into the VM allocator); nByte == 0 = none,
 						  * Reflection getDocComment() then reports false. */
@@ -764,6 +798,7 @@ struct ph7_class
 	                       * nByte == 0 when unknown: Reflection getFileName() reports false. */
 	sxu32 nEndLine;       /* Line of the class body's closing brace (Reflection getEndLine) */
 	SyString sDoc;        /* Doc-comment preceding the declaration (duplicated; empty = none) */
+	SySet aAttrs;         /* Declared #[...] attributes (ph7_attribute records) */
 };
 /* Class configuration flags */
 #define PH7_CLASS_FINAL       0x001 /* Class is final [cannot be extended] */
@@ -797,6 +832,7 @@ struct ph7_class_attr
 	SySet aUnionAlts;    /* Union alternatives (ph7_type_alt). Empty unless PH7_CLASS_ATTR_UNION is set. */
 	ph7_class *pDeclClass; /* Class that originally declared this attribute */
 	SyString sDoc;       /* Doc-comment preceding the declaration (duplicated; empty = none) */
+	SySet aAttrs;        /* Declared #[...] attributes (ph7_attribute records) */
 };
 /* Attribute configuration */
 #define PH7_CLASS_ATTR_STATIC       0x001  /* Static attribute */
@@ -1720,6 +1756,8 @@ PH7_PRIVATE sxi32 PH7_VmPushFilePath(ph7_vm *pVm,const char *zPath,int nLen,sxu8
 PH7_PRIVATE ph7_class * PH7_VmExtractClass(ph7_vm *pVm,const char *zName,sxu32 nByte,sxi32 iLoadable,sxi32 iNest);
 PH7_PRIVATE ph7_class * PH7_VmTriggerAutoload(ph7_vm *pVm,const char *zName,sxu32 nByte,sxi32 iLoadable);
 PH7_PRIVATE sxi32 PH7_VmRegisterConstant(ph7_vm *pVm,const SyString *pName,ProcConstant xExpand,void *pUserData);
+PH7_PRIVATE sxi32 PH7_VmRegisterConstantEx(ph7_vm *pVm,const SyString *pName,ProcConstant xExpand,
+	void *pUserData,const SyString *pFile,sxu32 nLine,int bUser);
 PH7_PRIVATE sxi32 PH7_VmInstallForeignFunction(ph7_vm *pVm,const SyString *pName,ProchHostFunction xFunc,void *pUserData);
 PH7_PRIVATE sxi32 PH7_VmInstallClass(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE sxi32 PH7_VmBlobConsumer(const void *pSrc,unsigned int nLen,void *pUserData);
@@ -1769,6 +1807,8 @@ PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm);
 PH7_PRIVATE void PH7_VmReleaseInstanceAttr(ph7_vm *pVm,VmClassAttr *pVmAttr);
 PH7_PRIVATE sxi32 PH7_VmCallClassMethod(ph7_vm *pVm,ph7_class_instance *pThis,ph7_class_method *pMethod,
 	ph7_value *pResult,int nArg,ph7_value **apArg);
+PH7_PRIVATE sxi32 PH7_VmCallClassMethodMap(ph7_vm *pVm,ph7_class_instance *pThis,ph7_class_method *pMethod,
+	ph7_value *pResult,int nArg,ph7_value **apArg,VmCallArgMap *pMap);
 PH7_PRIVATE sxi32 PH7_VmCallUserFunction(ph7_vm *pVm,ph7_value *pFunc,int nArg,ph7_value **apArg,ph7_value *pResult);
 PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(ph7_vm *pVm,ph7_value *pFunc,int nArg,ph7_value **apArg,ph7_value *pResult,VmCallArgMap *pArgMap);
 /* Per-element callback for PH7_VmIteratorWalk: return SXRET_OK to continue,
