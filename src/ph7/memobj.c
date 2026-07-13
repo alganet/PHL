@@ -1268,17 +1268,18 @@ PH7_PRIVATE sxi32 PH7_MemObjCmp(ph7_value *pObj1,ph7_value *pObj2,int bStrict,in
 		SyString s1,s2;
 		if( !bStrict ){
 			/*
-			 * According to the PHP language reference manual:
-			 *
-			 *  If you compare a number with a string or the comparison involves numerical
-			 *  strings, then each string is converted to a number and the comparison
-			 *  performed numerically.
+			 * PHP 8 "saner string to number comparisons" (RFC): a numeric
+			 * comparison is performed only when BOTH operands are numbers or
+			 * numeric strings. A number compared with a NON-numeric string is
+			 * compared as strings, with the number cast to its string form —
+			 * so 0 == "abc" is false, "abc" < 10 is false, and max("abc",10)
+			 * is "abc". (PHP 7 cast the non-numeric string to 0 and compared
+			 * numerically; comparing when EITHER side was numeric is what this
+			 * replaces.) Two non-numeric strings, or one numeric and one
+			 * non-numeric string, still fall through to the string comparison
+			 * below, unchanged.
 			 */
-			if( PH7_MemObjIsNumeric(pObj1) ){
-				/* Perform a numeric comparison */
-				goto Numeric;
-			}
-			if( PH7_MemObjIsNumeric(pObj2) ){
+			if( PH7_MemObjIsNumeric(pObj1) && PH7_MemObjIsNumeric(pObj2) ){
 				/* Perform a numeric comparison */
 				goto Numeric;
 			}
