@@ -1128,6 +1128,14 @@ struct ph7_vm
 	void *pInlineInstr;         /* Owner bytecode array of the catching inline try (0 = none) */
 	sxu32 iInlinePc;            /* 0-based target pc (iHandlerPc or iFinallyPc) */
 	sxi32 iInlineDrain;         /* Operand-stack base to drain to before landing (0-based TOS idx) */
+	sxi32 nBoundaryRc;          /* C-boundary parked throw status (0 / PH7_EXCEPTION / PH7_ABORT).
+	                             * Set by VmBoundaryPark when a PHP callee invoked from a C site
+	                             * (magic method, cast hook, __destruct, user callback) raised and
+	                             * that C site has no status channel to route it. Consumed once per
+	                             * dispatch at the executor's fetch point (and cleared wherever the
+	                             * same in-flight throw is landed via VmRecordedResume or the inline
+	                             * redirect), so a swallowed throw outlives at most the C remainder
+	                             * of one opcode instead of silently resuming execution. */
 	SySet aIOstream;            /* Installed IO stream container */
 	const ph7_io_stream *pDefStream; /* Default IO stream [i.e: typically this is the 'file://' stream] */
 	ph7_value sExec;           /* Compiled script return value [Can be extracted via the PH7_VM_CONFIG_EXEC_VALUE directive]*/
