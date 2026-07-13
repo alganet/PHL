@@ -177,6 +177,15 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 				/* Tell the upper-layer to ignore this token */
 				return SXERR_CONTINUE;
 		}else if( pStream->zText[0] == '/' && &pStream->zText[1] < pStream->zEnd && pStream->zText[1] == '*' ){
+			/* A doc-comment starts with slash-star-star followed by more
+			 * content (slash-star-star-slash is the empty comment, not a
+			 * docblock). Its full span, delimiters included, goes to the
+			 * trivia sidecar when the caller supplied one — keyed by the
+			 * index the NEXT real token receives — and never enters the
+			 * token stream. */
+			const unsigned char *zDocStart = pStream->zText;
+			int bDoc = ( &pStream->zText[2] < pStream->zEnd && pStream->zText[2] == '*'
+			 && ( &pStream->zText[3] >= pStream->zEnd || pStream->zText[3] != '/' ) );
 			pStream->zText += 2;
 			/* Block comment */
 			while( pStream->zText < pStream->zEnd ){
@@ -191,6 +200,18 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 				pStream->zText++;
 			}
 			pStream->zText += 2;
+			if( bDoc && pUserData && pStream->pSet ){
+				ph7_trivia sTrivia;
+				const unsigned char *zDocEnd = pStream->zText;
+				if( zDocEnd > pStream->zEnd ){
+					zDocEnd = pStream->zEnd; /* Unterminated comment at EOF */
+				}
+				sTrivia.nTokIdx = SySetUsed(pStream->pSet);
+				sTrivia.iKind = PH7_TRIVIA_DOC;
+				SyStringInitFromBuf(&sTrivia.sText,(const char *)zDocStart,(sxu32)(zDocEnd - zDocStart));
+				sTrivia.nLine = pToken->nLine;
+				SySetPut((SySet *)pUserData,(const void *)&sTrivia);
+			}
 			/* Tell the upper-layer to ignore this token */
 			return SXERR_CONTINUE;
 		}else if( SyisDigit(pStream->zText[0]) ){
@@ -1099,7 +1120,7 @@ static sxi32 LexExtractHeredoc(SyStream *pStream,SyToken *pToken)
  * Tokenize a raw PHP input.
  * This is the public tokenizer called by most code generator routines.
  */
-PH7_PRIVATE sxi32 PH7_TokenizePHP(const char *zInput,sxu32 nLen,sxu32 nLineStart,SySet *pOut)
+PH7_PRIVATE sxi32 PH7_TokenizePHP(const char *zInput,sxu32 nLen,sxu32 nLineStart,SySet *pOut,SySet *pTrivia)
 {
 	SyLex sLexer;
 	sxi32 rc;
@@ -1107,8 +1128,10 @@ PH7_PRIVATE sxi32 PH7_TokenizePHP(const char *zInput,sxu32 nLen,sxu32 nLineStart
 	if( nLen > PH7_MAX_INPUT_SIZE ){
 		return SXERR_LIMIT;
 	}
-	/* Initialize the lexer */
-	rc = SyLexInit(&sLexer,&(*pOut),TokenizePHP,0);
+	/* Initialize the lexer. pTrivia (may be NULL = discard) rides as the
+	 * tokenizer callback's user data: doc-comments (and later attribute
+	 * groups) are recorded there instead of entering the token stream. */
+	rc = SyLexInit(&sLexer,&(*pOut),TokenizePHP,pTrivia);
 	if( rc != SXRET_OK ){
 		return rc;
 	}

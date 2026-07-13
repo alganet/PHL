@@ -98,6 +98,16 @@ static void ReflectMapAddDyn(ph7_context *pCtx, ph7_value *pMap,
 	ph7_value_string(pK, pKey->zString, (int)pKey->nByte);
 	ph7_array_add_elem(pMap, pK, pVal);
 }
+/* Emit a doc-comment field: the text when present, else boolean false
+ * (getDocComment()'s exact return contract). */
+static void ReflectMapAddDoc(ph7_context *pCtx, ph7_value *pMap, const SyString *pDoc)
+{
+	if( SyStringLength(pDoc) > 0 ){
+		ReflectMapAddStr(pCtx, pMap, "doc", SyStringData(pDoc), (int)SyStringLength(pDoc));
+	}else{
+		ReflectMapAddBool(pCtx, pMap, "doc", 0);
+	}
+}
 /*
  * Append pIface (and its parents / extended interfaces) to the dedup set
  * of ph7_class pointers.
@@ -285,6 +295,7 @@ static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value 
 	}
 	ReflectMapAddInt(pCtx, pInfo, "line", (sxi64)pClass->nLine);
 	ReflectMapAddInt(pCtx, pInfo, "endline", (sxi64)pClass->nEndLine);
+	ReflectMapAddDoc(pCtx, pInfo, &pClass->sDoc);
 	/* Members are emitted in PHP's reporting order: the class's own members
 	 * first (declaration order), then each inheritance level's, outward.
 	 * Per level we iterate the DECLARING class's own hash — subclass hashes
@@ -335,6 +346,7 @@ static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value 
 				ReflectMapAddInt(pCtx, pMeta, "vis", (sxi64)pAttr->iProtection);
 				ReflectMapAddStr(pCtx, pMeta, "decl", SyStringData(&pDecl->sName), (int)SyStringLength(&pDecl->sName));
 				ReflectMapAddInt(pCtx, pMeta, "line", (sxi64)pAttr->nLine);
+				ReflectMapAddDoc(pCtx, pMeta, &pAttr->sDoc);
 				ReflectMapAddBool(pCtx, pMeta, "typed", (pAttr->iFlags & PH7_CLASS_ATTR_TYPED) != 0);
 				if( SyStringLength(&pAttr->sTypeName) > 0 ){
 					ReflectMapAddStr(pCtx, pMeta, "typetext", SyStringData(&pAttr->sTypeName),
@@ -938,6 +950,7 @@ static void ReflectFillFuncCommon(ph7_context *pCtx, ph7_value *pInfo, ph7_vm_fu
 	}
 	ReflectMapAddInt(pCtx, pInfo, "line", (sxi64)pFunc->nLine);
 	ReflectMapAddInt(pCtx, pInfo, "endline", (sxi64)pFunc->nEndLine);
+	ReflectMapAddDoc(pCtx, pInfo, &pFunc->sDoc);
 	if( SyStringLength(&pFunc->sReturnTypeName) > 0 ){
 		ReflectMapAddStr(pCtx, pInfo, "rettext", SyStringData(&pFunc->sReturnTypeName),
 			(int)SyStringLength(&pFunc->sReturnTypeName));
@@ -1049,6 +1062,7 @@ static int vm_builtin_reflect_func_info(ph7_context *pCtx, int nArg, ph7_value *
 		ReflectMapAddBool(pCtx, pInfo, "file", 0);
 		ReflectMapAddInt(pCtx, pInfo, "line", 0);
 		ReflectMapAddInt(pCtx, pInfo, "endline", 0);
+		ReflectMapAddBool(pCtx, pInfo, "doc", 0);
 		ReflectMapAddNull(pCtx, pInfo, "rettext");
 		ReflectMapAddBool(pCtx, pInfo, "retnullable", 0);
 		if( pParams ){
@@ -1653,7 +1667,7 @@ static const char zReflectLib1[] =
 "  return $i['endline'];"
 " }"
 " public function getFileName(){ $i = $this->__rinfo(); return $i['file']; }"
-" public function getDocComment(){ return false; }"
+" public function getDocComment(){ $i = $this->__rinfo(); return $i['doc']; }"
 " public function isInstantiable(){"
 "  $i = $this->__rinfo();"
 "  if($i['interface'] || $i['trait'] || $i['abstract']){ return false; }"
@@ -1898,7 +1912,7 @@ static const char zReflectLib2[] =
 "  if($i['internal']){ return false; }"
 "  return $i['endline'];"
 " }"
-" public function getDocComment(){ return false; }"
+" public function getDocComment(){ $i = $this->__rfinfo(); return $i['doc']; }"
 " public function hasReturnType(){ $i = $this->__rfinfo(); return $i['rettext'] !== null; }"
 " public function getReturnType(){ $i = $this->__rfinfo(); return __reflect_make_type($i['rettext']); }"
 " public function hasTentativeReturnType(){ return false; }"
@@ -2350,7 +2364,7 @@ static const char zReflectLib3[] =
 " public function skipLazyInitialization($object){"
 "  throw new Error('ReflectionProperty::skipLazyInitialization() is not supported by PHL (no lazy objects)');"
 " }"
-" public function getDocComment(){ return false; }"
+" public function getDocComment(){ $m = $this->__rpmeta(); return isset($m['doc']) ? $m['doc'] : false; }"
 " public function getAttributes($name = null, $flags = 0){ return array(); }"
 " public function __toString(){"
 "  return 'Property [ public $'.$this->name.' ]'.\"\\n\";"
@@ -2401,7 +2415,7 @@ static const char zReflectLib3[] =
 " public function isDeprecated(){ return false; }"
 " public function hasType(){ $m = $this->__rcmeta(); return $m['typed']; }"
 " public function getType(){ $m = $this->__rcmeta(); return $m['typed'] ? __reflect_make_type($m['typetext']) : null; }"
-" public function getDocComment(){ return false; }"
+" public function getDocComment(){ $m = $this->__rcmeta(); return $m['doc']; }"
 " public function getAttributes($name = null, $flags = 0){ return array(); }"
 " public function __toString(){"
 "  return 'Constant [ public '.$this->name.' ]'.\"\\n\";"

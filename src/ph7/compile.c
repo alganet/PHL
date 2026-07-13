@@ -445,6 +445,8 @@ static void *GenStateAttachStrictFlag(ph7_gen_state *pGen, void *p3)
 }
 /* Forward declaration */
 static sxi32 GenStateCompileChunk(ph7_gen_state *pGen,sxi32 iFlags);
+static void GenStateSetPendingDoc(ph7_gen_state *pGen);
+static void GenStateConsumeDoc(ph7_gen_state *pGen,SyString *pOut);
 static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyToken *pEnd,int bCtorCtx,int bAbstractCtx);
 static sxi32 GenStateParseClassReference(ph7_gen_state *pGen,SyBlob *pFqn);
 /* Forward decl: union type parser is defined later in this file. */
@@ -1043,7 +1045,7 @@ static sxi32 GenStateProcessStringExpression(
 	/* Preallocate some slots */
 	SySetAlloc(&sToken,0x08);
 	/* Tokenize the text */
-	PH7_TokenizePHP(zIn,(sxu32)(zEnd-zIn),nLine,&sToken);
+	PH7_TokenizePHP(zIn,(sxu32)(zEnd-zIn),nLine,&sToken,0);
 	/* Swap delimiter */
 	pTmpIn  = pGen->pIn;
 	pTmpEnd = pGen->pEnd;
@@ -3931,11 +3933,12 @@ Consume:
 	}
 	if( pGen->pRawIn < pGen->pRawEnd ){
 		SySet *pTokenSet = pGen->pTokenSet;
-		/* Reset the token set */
+		/* Reset the token set (and its trivia sidecar) */
 		SySetReset(pTokenSet);
+		SySetReset(&pGen->aTrivia);
 		/* Tokenize input */
 		PH7_TokenizePHP(SyStringData(&pGen->pRawIn->sData),SyStringLength(&pGen->pRawIn->sData),
-			pGen->pRawIn->nLine,pTokenSet);
+			pGen->pRawIn->nLine,pTokenSet,&pGen->aTrivia);
 		/* Point to the fresh token stream */
 		pGen->pIn  = (SyToken *)SySetBasePtr(pTokenSet);
 		pGen->pEnd = &pGen->pIn[SySetUsed(pTokenSet)];
@@ -6542,7 +6545,7 @@ static sxi32 GenStateCompileFuncBody(
 				*z = 0;
 			}
 			SySetInit(&sToken,&pGen->pVm->sAllocator,sizeof(SyToken));
-			PH7_TokenizePHP(zSrc,nSrc,1,&sToken);
+			PH7_TokenizePHP(zSrc,nSrc,1,&sToken,0);
 			pTmpIn = pGen->pIn;
 			pTmpEnd = pGen->pEnd;
 			pGen->pIn = (SyToken *)SySetBasePtr(&sToken);
@@ -7372,6 +7375,7 @@ static sxi32 GenStateCompileFunc(
 	/* Fallback start line (the '(' token); callers that know the line of the
 	 * 'function'/'fn' keyword overwrite this with the exact PHP getStartLine. */
 	pFunc->nLine = nLine;
+	GenStateConsumeDoc(&(*pGen),&pFunc->sDoc);
 	if( pGen->pIn < pEnd ){
 		/* Collect function arguments */
 		rc = GenStateCollectFuncArgs(pFunc,&(*pGen),pEnd,0,0);
@@ -7944,6 +7948,9 @@ loop:
 	}
 	/* Allocate a new class attribute */
 	pCons = PH7_NewClassAttr(pGen->pVm,pName,nLine,iProtection,iFlags|iTypeFlags);
+	if( pCons ){
+		GenStateConsumeDoc(&(*pGen),&pCons->sDoc);
+	}
 	if( pCons == 0 ){
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
 		return SXERR_ABORT;
@@ -8386,6 +8393,9 @@ loop:
 	}
 	/* Allocate a new class attribute */
 	pAttr = PH7_NewClassAttr(pGen->pVm,pName,nLine,iProtection,iFlags|iTypeFlags);
+	if( pAttr ){
+		GenStateConsumeDoc(&(*pGen),&pAttr->sDoc);
+	}
 	if( pAttr == 0 ){
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 engine is running out of memory");
 		return SXERR_ABORT;
@@ -8532,6 +8542,7 @@ static sxi32 GenStateCompileClassMethod(
 		return SXERR_ABORT;
 	}
 	pMeth->sFunc.nLine = nKwLine;
+	GenStateConsumeDoc(&(*pGen),&pMeth->sFunc.sDoc);
 	/* Jump the left parenthesis '(' */
 	pGen->pIn++;
 	pEnd = 0; /* cc warning */
@@ -8747,6 +8758,7 @@ static sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
 		return SXERR_ABORT;
 	}
+	GenStateConsumeDoc(&(*pGen),&pClass->sDoc);
 	/* Mark as an interface (PH7_NewRawClass may have set INTERNAL) */
 	pClass->iFlags |= PH7_CLASS_INTERFACE;
 	/* Assume no base class is given */
@@ -8834,6 +8846,8 @@ static sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 			/* End of interface body */
 			break;
 		}
+		/* Bind a directly-preceding docblock to this member */
+		GenStateSetPendingDoc(&(*pGen));
 		if( (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ){
 			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 				"Unexpected token '%z'.Expecting method signature or constant declaration inside interface '%z'",
@@ -9396,6 +9410,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
 		return SXERR_ABORT;
 	}
+	GenStateConsumeDoc(&(*pGen),&pClass->sDoc);
 	/* implemented interfaces and per-use-statement trait containers */
 	SySetInit(&aInterfaces,&pGen->pVm->sAllocator,sizeof(ph7_class *));
 	SySetInit(&aUseEntries,&pGen->pVm->sAllocator,sizeof(TraitUseEntry));
@@ -9561,6 +9576,8 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 			/* End of class body */
 			break;
 		}
+		/* Bind a directly-preceding docblock to this member */
+		GenStateSetPendingDoc(&(*pGen));
 		if( (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR)) == 0
 			&& !GenStateIsReadonly(pGen->pIn) /* allow a leading `readonly` modifier */ ){
 			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
@@ -10395,6 +10412,7 @@ static sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
 		return SXERR_ABORT;
 	}
+	GenStateConsumeDoc(&(*pGen),&pClass->sDoc);
 	/* Traits cannot extend or implement; expect opening brace directly */
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_OCB) == 0 ){
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected '{' after trait '%z' declaration",pName);
@@ -10430,6 +10448,8 @@ static sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 		if( pGen->pIn >= pGen->pEnd ){
 			break;
 		}
+		/* Bind a directly-preceding docblock to this member */
+		GenStateSetPendingDoc(&(*pGen));
 		if( (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR)) == 0 ){
 			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 				"Unexpected token '%z'. Expecting attribute declaration inside trait '%z'",
@@ -12726,6 +12746,51 @@ static int GenStateisLangConstruct(sxu32 nKeyword)
  * If something goes wrong while compiling the PHP chunk,this function
  * takes care of generating the appropriate error message.
  */
+/*
+ * Update pGen->sPendingDoc for the statement whose first token is
+ * pGen->pIn: when a docblock trivia is keyed to that token's index in
+ * the chunk token set it becomes the pending docblock. An existing
+ * pending docblock is LEFT in place otherwise: Zend keeps the last-seen
+ * doc comment until a declaration consumes it, so a docblock survives
+ * intervening non-declaration statements.
+ */
+static void GenStateSetPendingDoc(ph7_gen_state *pGen)
+{
+	SyToken *pBase = (SyToken *)SySetBasePtr(pGen->pTokenSet);
+	ph7_trivia *aT = (ph7_trivia *)SySetBasePtr(&pGen->aTrivia);
+	sxu32 nT = SySetUsed(&pGen->aTrivia);
+	sxu32 nIdx, n;
+	if( nT < 1 || pGen->pTokenSet == 0
+	 || pGen->pIn < pBase || pGen->pIn >= &pBase[SySetUsed(pGen->pTokenSet)] ){
+		/* Re-tokenized substream (string interpolation, synthesized code):
+		 * indexes do not map to the sidecar */
+		return;
+	}
+	nIdx = (sxu32)(pGen->pIn - pBase);
+	for( n = 0 ; n < nT ; n++ ){
+		if( aT[n].nTokIdx == nIdx && aT[n].iKind == PH7_TRIVIA_DOC ){
+			pGen->sPendingDoc = aT[n].sText;
+		}
+	}
+}
+/*
+ * Hand the pending docblock (if any) to a declaration: duplicate it into
+ * the VM allocator (the raw script buffer dies after compilation) and
+ * clear the pending slot so sibling declarations do not inherit it.
+ */
+static void GenStateConsumeDoc(ph7_gen_state *pGen,SyString *pOut)
+{
+	char *zDup;
+	if( SyStringLength(&pGen->sPendingDoc) < 1 ){
+		return;
+	}
+	zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+		SyStringData(&pGen->sPendingDoc),SyStringLength(&pGen->sPendingDoc));
+	if( zDup ){
+		SyStringInitFromBuf(pOut,zDup,SyStringLength(&pGen->sPendingDoc));
+	}
+	SyStringInitFromBuf(&pGen->sPendingDoc,0,0);
+}
 static sxi32 GenStateCompileChunk(
 	ph7_gen_state *pGen, /* Code generator state */
 	sxi32 iFlags         /* Compile flags */
@@ -12740,6 +12805,8 @@ static sxi32 GenStateCompileChunk(
 			/* No more input to process */
 			break;
 		}
+		/* Bind a directly-preceding docblock to this statement */
+		GenStateSetPendingDoc(&(*pGen));
 		/* Peek to detect a top-level `declare` so the strict_types lock
 		 * below doesn't fire before the directive has a chance to run. */
 		if( pGen->pIn->nType & PH7_TK_KEYWORD ){
@@ -12832,14 +12899,15 @@ static sxi32 PH7_CompilePHP(
 {
 	SyToken *pScript = pGen->pRawIn; /* Script to compile */
 	sxi32 rc;
-	/* Reset the token set */
+	/* Reset the token set (and its trivia sidecar) */
 	SySetReset(&(*pTokenSet));
+	SySetReset(&pGen->aTrivia);
 	/* Mark as the default token set */
 	pGen->pTokenSet = &(*pTokenSet);
 	/* Advance the stream cursor */
 	pGen->pRawIn++;
 	/* Tokenize the PHP chunk first */
-	PH7_TokenizePHP(SyStringData(&pScript->sData),SyStringLength(&pScript->sData),pScript->nLine,&(*pTokenSet));
+	PH7_TokenizePHP(SyStringData(&pScript->sData),SyStringLength(&pScript->sData),pScript->nLine,&(*pTokenSet),&pGen->aTrivia);
 	/* Point to the head and tail of the token stream. */
 	pGen->pIn  = (SyToken *)SySetBasePtr(pTokenSet);
 	pGen->pEnd = &pGen->pIn[SySetUsed(pTokenSet)];
@@ -13019,6 +13087,7 @@ PH7_PRIVATE sxi32 PH7_InitCodeGenerator(
 	SySetInit(&pGen->aLabel,&pVm->sAllocator,sizeof(Label));
 	SySetInit(&pGen->aGoto,&pVm->sAllocator,sizeof(JumpFixup));
 	SySetInit(&pGen->aNullsafeJmp,&pVm->sAllocator,sizeof(sxu32));
+	SySetInit(&pGen->aTrivia,&pVm->sAllocator,sizeof(ph7_trivia));
 	SyHashInit(&pGen->hLiteral,&pVm->sAllocator,0,0);
 	SyHashInit(&pGen->hVar,&pVm->sAllocator,0,0);
 	/* Error log buffer */
@@ -13051,6 +13120,8 @@ PH7_PRIVATE sxi32 PH7_ResetCodeGenerator(
 	SySetReset(&pGen->aLabel);
 	SySetReset(&pGen->aGoto);
 	SySetReset(&pGen->aNullsafeJmp);
+	SySetReset(&pGen->aTrivia);
+	SyStringInitFromBuf(&pGen->sPendingDoc,0,0);
 	SyBlobRelease(&pGen->sErrBuf);
 	SyBlobRelease(&pGen->sWorker);
 	SyBlobRelease(&pGen->sNamespace);

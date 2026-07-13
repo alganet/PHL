@@ -325,6 +325,22 @@ typedef sxi32 (*ProcErrorGen)(void *,sxi32,sxu32,const char *,...);
 typedef struct ph7_expr_node   ph7_expr_node;
 typedef struct ph7_expr_op     ph7_expr_op;
 typedef struct ph7_gen_state   ph7_gen_state;
+/*
+ * Lexer trivia sidecar record: a doc-comment (or, later, an attribute
+ * group) captured OUT of the token stream, keyed by the index the NEXT
+ * real token receives in the chunk's token set. sText points into the
+ * raw script buffer — consumers must duplicate before the buffer dies.
+ */
+typedef struct ph7_trivia ph7_trivia;
+struct ph7_trivia
+{
+	sxu32 nTokIdx;   /* Index of the next real token in the chunk token set */
+	sxu8  iKind;     /* PH7_TRIVIA_* */
+	SyString sText;  /* Raw span (docblock includes its delimiters) */
+	sxu32 nLine;     /* Line the trivia starts on */
+};
+#define PH7_TRIVIA_DOC  1 /* A doc-comment: slash-star-star ... star-slash */
+#define PH7_TRIVIA_ATTR 2 /* An attribute group: the span between #[ and its ] */
 typedef struct GenBlock        GenBlock;
 typedef sxi32 (*ProcLangConstruct)(ph7_gen_state *);
 typedef sxi32 (*ProcNodeConstruct)(ph7_gen_state *,sxi32);
@@ -427,6 +443,11 @@ struct ph7_gen_state
 	                          * this function's own level). Gates inline try/catch/finally so `yield`
 	                          * inside a catch/finally suspends correctly; non-generators keep the
 	                          * legacy detached-mini-program path. Saved/restored across nested funcs. */
+	SySet aTrivia;       /* Trivia sidecar for the current chunk (ph7_trivia records from the
+	                      * main-chunk tokenize calls; reset with the token set) */
+	SyString sPendingDoc;/* Docblock immediately preceding the statement being dispatched;
+	                      * consumed by the declaration compilers, discarded at the next
+	                      * statement boundary (points into the raw script buffer) */
 };
 /* Forward references */
 typedef struct ph7_vm_func_closure_env ph7_vm_func_closure_env;
@@ -682,6 +703,9 @@ struct ph7_vm_func
 						  * 0 = not yet computed; otherwise the number of slots to allocate
 						  * per call (a tight bound from VmComputeMaxStack, or the whole
 						  * instruction count when the body is not statically modelable). */
+	SyString sDoc;       /* Doc-comment immediately preceding the declaration, delimiters
+						  * included (duplicated into the VM allocator); nByte == 0 = none,
+						  * Reflection getDocComment() then reports false. */
 	SyString sFile;      /* Path of the defining file (aliases the VM-lifetime dup in pVm->aFiles).
 						  * nByte == 0 when unknown (builtin chunk, eval, direct API compile):
 						  * Reflection getFileName() then reports false. */
@@ -739,6 +763,7 @@ struct ph7_class
 	SyString sFile;       /* Path of the defining file (aliases the VM-lifetime dup in pVm->aFiles).
 	                       * nByte == 0 when unknown: Reflection getFileName() reports false. */
 	sxu32 nEndLine;       /* Line of the class body's closing brace (Reflection getEndLine) */
+	SyString sDoc;        /* Doc-comment preceding the declaration (duplicated; empty = none) */
 };
 /* Class configuration flags */
 #define PH7_CLASS_FINAL       0x001 /* Class is final [cannot be extended] */
@@ -771,6 +796,7 @@ struct ph7_class_attr
 	SyString sTypeName;  /* Original type text for error messages (e.g. "?int", "Foo", "string|int") */
 	SySet aUnionAlts;    /* Union alternatives (ph7_type_alt). Empty unless PH7_CLASS_ATTR_UNION is set. */
 	ph7_class *pDeclClass; /* Class that originally declared this attribute */
+	SyString sDoc;       /* Doc-comment preceding the declaration (duplicated; empty = none) */
 };
 /* Attribute configuration */
 #define PH7_CLASS_ATTR_STATIC       0x001  /* Static attribute */
@@ -1680,7 +1706,7 @@ PH7_PRIVATE sxi32 PH7_MemObjToBool(ph7_value *pObj);
 PH7_PRIVATE sxi64 PH7_TokenValueToInt64(SyString *pData);
 /* lex.c function prototypes */
 PH7_PRIVATE sxi32 PH7_TokenizeRawText(const char *zInput,sxu32 nLen,SySet *pOut);
-PH7_PRIVATE sxi32 PH7_TokenizePHP(const char *zInput,sxu32 nLen,sxu32 nLineStart,SySet *pOut);
+PH7_PRIVATE sxi32 PH7_TokenizePHP(const char *zInput,sxu32 nLen,sxu32 nLineStart,SySet *pOut,SySet *pTrivia);
 /* vm.c function prototypes */
 PH7_PRIVATE void PH7_VmReleaseContextValue(ph7_context *pCtx,ph7_value *pValue);
 PH7_PRIVATE sxi32 PH7_VmInitFuncState(ph7_vm *pVm,ph7_vm_func *pFunc,const char *zName,sxu32 nByte,
