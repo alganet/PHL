@@ -152,9 +152,33 @@ static sxi32 VmJsonEncode(
 						JSON_EMIT(pData,ph7_result_string(pCtx,"\\u0022",(int)sizeof("\\u0022")-1));
 						continue;
 					}
-					if( c == '"' || (c == '\\' && ((iFlags & JSON_UNESCAPED_SLASHES)==0)) ){
-						/* Unescape the character */
+					if( c == '"' || c == '\\' ){
+						/* Escape the quote/backslash (php escapes the backslash
+						 * unconditionally — the old code wrongly tied it to
+						 * JSON_UNESCAPED_SLASHES, which governs '/' below) */
 						JSON_EMIT(pData,ph7_result_string(pCtx,"\\",(int)sizeof(char)));
+					}else if( c == '/' && (iFlags & JSON_UNESCAPED_SLASHES) == 0 ){
+						/* php escapes forward slashes by default */
+						JSON_EMIT(pData,ph7_result_string(pCtx,"\\",(int)sizeof(char)));
+					}else if( (unsigned char)c < 0x20 ){
+						/* Control characters (band A #4): php emits the short
+						 * escapes for \b \f \n \r \t and \u00xx for the rest —
+						 * pre-fix these were emitted RAW (invalid JSON). */
+						static const char zHex[] = "0123456789abcdef";
+						char zEsc[6] = { '\\', 'u', '0', '0', 0, 0 };
+						switch(c){
+						case '\b': JSON_EMIT(pData,ph7_result_string(pCtx,"\\b",2)); break;
+						case '\f': JSON_EMIT(pData,ph7_result_string(pCtx,"\\f",2)); break;
+						case '\n': JSON_EMIT(pData,ph7_result_string(pCtx,"\\n",2)); break;
+						case '\r': JSON_EMIT(pData,ph7_result_string(pCtx,"\\r",2)); break;
+						case '\t': JSON_EMIT(pData,ph7_result_string(pCtx,"\\t",2)); break;
+						default:
+							zEsc[4] = zHex[(c >> 4) & 0x0F];
+							zEsc[5] = zHex[c & 0x0F];
+							JSON_EMIT(pData,ph7_result_string(pCtx,zEsc,6));
+							break;
+						}
+						continue;
 					}
 					/* Append character verbatim */
 					JSON_EMIT(pData,ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char)));

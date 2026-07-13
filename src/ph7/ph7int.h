@@ -507,6 +507,11 @@ struct VmFrame
 	ph7_value sRet;   /* Deferred catch/finally `return` value targeting THIS body frame */
 	int bHasRet;      /* TRUE when sRet holds a live pending return */
 	sxu32 nRetGen;    /* Bumped on every sRet write (see VmThrowException finally path) */
+	int nActualArgs;  /* Actual call arity (band A #4): how many arguments the CALLER passed,
+	                   * stamped by the OP_CALL / generator-fiber install sites; -1 when
+	                   * unknown (non-call frames) - func_num_args()/func_get_args() then fall
+	                   * back to the installed-formals count. Unlike sArg this excludes
+	                   * defaulted params and counts variadic-packed args individually. */
 };
 #define VM_FRAME_EXCEPTION  0x01 /* Special Exception frame */
 #define VM_FRAME_THROW      0x02 /* An exception was thrown */

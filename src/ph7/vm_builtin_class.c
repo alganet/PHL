@@ -491,15 +491,77 @@ PH7_PRIVATE int vm_builtin_get_class_methods(ph7_context *pCtx,int nArg,ph7_valu
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	/* Fill the array with the defined methods */
-	SyHashResetLoopCursor(&pClass->hMethod);
-	while((pEntry = SyHashGetNextEntry(&pClass->hMethod)) != 0 ){
-		ph7_class_method *pMethod = (ph7_class_method *)pEntry->pUserData;
-		/* Insert method name */
-		ph7_value_string(pName,SyStringData(&pMethod->sFunc.sName),(int)SyStringLength(&pMethod->sFunc.sName));
-		ph7_array_add_elem(pArray,0/*Automatic index assign*/,pName); /* Will make it's own copy */
-		/* Reset the cursor */
-		ph7_value_reset_string_cursor(pName);
+	/* Fill the array with the defined methods, in php's order: the class's own
+	 * methods in DECLARATION order, then each ancestor's in ITS declaration
+	 * order (band A #4 — the raw hash walk returned reverse-insertion/LIFO
+	 * order). SyHash iterates newest-first, so a reversed walk restores
+	 * insertion order; grouping by declaring class (sFunc.pUserData, the class
+	 * a method was compiled into) walks own-then-parent like php. An override
+	 * lives once in the hash under the subclass, so no dedup is needed. */
+	{
+		SySet aTmp;
+		SyHashEntry **apEntry;
+		ph7_class *pLevel;
+		sxu32 n;
+		SySetInit(&aTmp,&pCtx->pVm->sAllocator,sizeof(SyHashEntry *));
+		SyHashResetLoopCursor(&pClass->hMethod);
+		while((pEntry = SyHashGetNextEntry(&pClass->hMethod)) != 0 ){
+			SySetPut(&aTmp,(const void *)&pEntry);
+		}
+		apEntry = (SyHashEntry **)SySetBasePtr(&aTmp);
+		for( pLevel = pClass; pLevel; pLevel = pLevel->pBase ){
+			/* Collect this level's methods, then emit in DECLARATION order
+			 * (sorted by nLine — same-level methods share a source file; a
+			 * hash-order fallback covers line-less internal methods). */
+			SySet aLvl;
+			ph7_class_method **apLvl;
+			sxu32 i,j;
+			SySetInit(&aLvl,&pCtx->pVm->sAllocator,sizeof(ph7_class_method *));
+			/* Hash-order fallback for same-line methods: the class's OWN entries
+			 * come out in declaration order when walked newest-first, while
+			 * inherited copies (inserted by PH7_ClassInherit's walk of the base
+			 * hash) come out in declaration order walked oldest-first. */
+			for( n = 0; n < SySetUsed(&aTmp); n++ ){
+				sxu32 nPick = (pLevel == pClass) ? (SySetUsed(&aTmp) - 1 - n) : n;
+				ph7_class_method *pMethod = (ph7_class_method *)apEntry[nPick]->pUserData;
+				ph7_class *pDecl = (ph7_class *)pMethod->sFunc.pUserData;
+				if( pDecl != pLevel ){
+					/* A declarer outside the base chain (a used trait, or none)
+					 * counts as the class's own level, like php. */
+					ph7_class *pWalk;
+					if( pLevel != pClass || pDecl == pClass ){
+						continue;
+					}
+					for( pWalk = pClass; pWalk; pWalk = pWalk->pBase ){
+						if( pWalk == pDecl ){
+							break;
+						}
+					}
+					if( pWalk != 0 ){
+						continue; /* in-chain: its own level emits it */
+					}
+				}
+				SySetPut(&aLvl,(const void *)&pMethod);
+			}
+			apLvl = (ph7_class_method **)SySetBasePtr(&aLvl);
+			/* Insertion sort by declaration line (stable) */
+			for( i = 1; i < SySetUsed(&aLvl); i++ ){
+				ph7_class_method *pKey = apLvl[i];
+				for( j = i; j > 0 && apLvl[j-1]->nLine > pKey->nLine; j-- ){
+					apLvl[j] = apLvl[j-1];
+				}
+				apLvl[j] = pKey;
+			}
+			for( i = 0; i < SySetUsed(&aLvl); i++ ){
+				/* Insert method name */
+				ph7_value_string(pName,SyStringData(&apLvl[i]->sFunc.sName),(int)SyStringLength(&apLvl[i]->sFunc.sName));
+				ph7_array_add_elem(pArray,0/*Automatic index assign*/,pName); /* Will make it's own copy */
+				/* Reset the cursor */
+				ph7_value_reset_string_cursor(pName);
+			}
+			SySetRelease(&aLvl);
+		}
+		SySetRelease(&aTmp);
 	}
 	/* Return the created array */
 	ph7_result_value(pCtx,pArray);
