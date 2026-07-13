@@ -1138,11 +1138,11 @@ Coverage: 392/578 lines (67.82%)
 |    - | 1128 | `		VmXMLStartElementHandler,` |
 |    - | 1129 | `		VmXMLTextHandler,` |
 |    - | 1130 | `		VmXMLErrorHandler,` |
-|    - | 1131 |  |
+|    - | 1131 | `		0,` |
 |    - | 1132 | `		VmXMLEndElementHandler,` |
 |    - | 1133 | `		VmXMLPIHandler,` |
-|    - | 1134 |  |
-|    - | 1135 |  |
+|    - | 1134 | `		0,` |
+|    - | 1135 | `		0,` |
 |    - | 1136 | `		VmXMLNSStartHandler,` |
 |    - | 1137 | `		VmXMLNSEndHandler` |
 |    - | 1138 | `		);` |
@@ -1379,14 +1379,14 @@ Coverage: 392/578 lines (67.82%)
 |    - | 1369 | `** a multi-byte UTF8 character.` |
 |    - | 1370 | `*/` |
 |    - | 1371 | `static const unsigned char UtfTrans1[] = {` |
-|    - | 1372 |  |
-|    - | 1373 |  |
-|    - | 1374 |  |
-|    - | 1375 |  |
-|    - | 1376 |  |
-|    - | 1377 |  |
-|    - | 1378 |  |
-|    - | 1379 |  |
+|    - | 1372 | `  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
+|    - | 1373 | `  0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,` |
+|    - | 1374 | `  0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,` |
+|    - | 1375 | `  0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,` |
+|    - | 1376 | `  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
+|    - | 1377 | `  0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,` |
+|    - | 1378 | `  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
+|    - | 1379 | `  0x00, 0x01, 0x02, 0x03, 0x00, 0x01, 0x00, 0x00,` |
 |    - | 1380 | `};` |
 |    - | 1381 | `/*` |
 |    - | 1382 | `** Translate a single UTF-8 character.  Return the unicode value.` |

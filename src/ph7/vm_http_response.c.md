@@ -381,7 +381,7 @@ Coverage: 114/255 lines (44.71%)
 |     - |  371 | `	/* Append as Set-Cookie header (never replace) */` |
 |   ! 0 |  372 | `	VmAddResponseHeader(pVm, "Set-Cookie", 10,` |
 |   ! 0 |  373 | `		(const char *)SyBlobData(&sWorker), SyBlobLength(&sWorker),` |
-|     - |  374 |  |
+|     - |  374 | `		0 /* bReplace = false */);` |
 |   ! 0 |  375 | `	SyBlobRelease(&sWorker);` |
 |   ! 0 |  376 | `	ph7_result_bool(pCtx, 1);` |
 |   ! 0 |  377 | `	return PH7_OK;` |

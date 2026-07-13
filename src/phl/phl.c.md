@@ -180,9 +180,9 @@ Coverage: 199/253 lines (78.66%)
 |     - |  170 | ` * This function is registered later via a call to ph7_vm_config()` |
 |     - |  171 | ` * with a configuration verb set to: PH7_VM_CONFIG_OUTPUT.` |
 |     - |  172 | ` */` |
-| 11706 |  173 | `static int Output_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUserData /* Unused */)` |
+| 11708 |  173 | `static int Output_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUserData /* Unused */)` |
 |     5 |  174 | `{` |
-|  5853 |  175 | `	(void)pUserData;` |
+|  5854 |  175 | `	(void)pUserData;` |
 |     - |  176 | `#ifdef __WINNT__` |
 |     - |  177 | `	BOOL rc;` |
 |     5 |  178 | `	rc = WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),pOutput,(DWORD)nOutputLen,0,0);` |
@@ -192,15 +192,15 @@ Coverage: 199/253 lines (78.66%)
 |     - |  182 | `	}` |
 |     - |  183 | `#else` |
 |     - |  184 | `	ssize_t nWr;` |
-| 11706 |  185 | `	nWr = write(STDOUT_FILENO,pOutput,nOutputLen);` |
-| 11706 |  186 | `	if( nWr < 0 ){` |
+| 11708 |  185 | `	nWr = write(STDOUT_FILENO,pOutput,nOutputLen);` |
+| 11708 |  186 | `	if( nWr < 0 ){` |
 |     - |  187 | `		/* Abort processing */` |
 |   ! 0 |  188 | `		return PH7_ABORT;` |
 |     - |  189 | `	}` |
 |     - |  190 | `#endif /* __WINT__ */` |
 |     - |  191 | `	/* All done,VM output was redirected to STDOUT */` |
-| 11711 |  192 | `	return PH7_OK;` |
-|  5858 |  193 | `}` |
+| 11713 |  192 | `	return PH7_OK;` |
+|  5859 |  193 | `}` |
 |     - |  194 | `/*` |
 |     - |  195 | ` * Parse an unsigned-long testing knob from the environment (PHL_MAX_ALLOC /` |
 |     - |  196 | ` * PHL_MAX_INPUT / PHL_MAX_RECURSION / PHL_MAX_NATIVE_DEPTH). Returns 1 and writes` |
@@ -372,7 +372,7 @@ Coverage: 199/253 lines (78.66%)
 |     - |  362 | `	 */` |
 |  3645 |  363 | `	ph7_config(pEngine,PH7_CONFIG_ERR_OUTPUT,` |
 |     - |  364 | `		Output_Consumer, /* Error log consumer */` |
-|     - |  365 |  |
+|     - |  365 | `		0 /* NULL: Callback Private data */` |
 |     - |  366 | `		);` |
 |     - |  367 | `	/* Optional per-allocation memory cap (PHL_MAX_ALLOC=bytes). Used to` |
 |     - |  368 | `	 * deterministically exercise out-of-memory paths (see tests/ph7/003-stress).` |
@@ -441,7 +441,7 @@ Coverage: 199/253 lines (78.66%)
 |  1721 |  431 | `			pEngine, /* PH7 Engine */` |
 |  3628 |  432 | `			argv[n], /* Path to the PHP file to compile */` |
 |     - |  433 | `			&pVm,    /* OUT: Compiled PHP program */` |
-|     - |  434 |  |
+|     - |  434 | `			0        /* IN: Compile flags */` |
 |     - |  435 | `			);` |
 |  3633 |  436 | `		if( rc != PH7_OK ){ /* Compile error */` |
 |   376 |  437 | `			if( rc == PH7_IO_ERR ){` |
@@ -462,7 +462,7 @@ Coverage: 199/253 lines (78.66%)
 |  3455 |  452 | `	rc = ph7_vm_config(pVm,` |
 |     - |  453 | `		PH7_VM_CONFIG_OUTPUT,` |
 |     - |  454 | `		Output_Consumer,    /* Output Consumer callback */` |
-|     - |  455 |  |
+|     - |  455 | `		0                   /* Callback private data */` |
 |     - |  456 | `		);` |
 |  3455 |  457 | `	if( rc != PH7_OK ){` |
 |   ! 0 |  458 | `		Fatal("Error while installing the VM output consumer callback");` |
@@ -541,7 +541,7 @@ Coverage: 199/253 lines (78.66%)
 |     - |  531 | `		/* Dump PH7 byte-code instructions */` |
 |     3 |  532 | `		ph7_vm_dump_v2(pVm,` |
 |     - |  533 | `			Output_Consumer, /* Dump consumer callback */` |
-|     - |  534 |  |
+|     - |  534 | `			0` |
 |     - |  535 | `			);` |
 |     1 |  536 | `	}` |
 |     - |  537 | `	/*` |

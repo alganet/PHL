@@ -775,7 +775,7 @@ Coverage: 485/643 lines (75.43%)
 |    - |  765 | `	"Windows_vfs",` |
 |    - |  766 | `	PH7_VFS_VERSION,` |
 |    - |  767 | `	WinVfs_chdir,    /* int (*xChdir)(const char *) */` |
-|    - |  768 |  |
+|    - |  768 | `	0,               /* int (*xChroot)(const char *); */` |
 |    - |  769 | `	WinVfs_getcwd,   /* int (*xGetcwd)(ph7_context *) */` |
 |    - |  770 | `	WinVfs_mkdir,    /* int (*xMkdir)(const char *,int,int) */` |
 |    - |  771 | `	WinVfs_rmdir,    /* int (*xRmdir)(const char *) */` |
@@ -785,9 +785,9 @@ Coverage: 485/643 lines (75.43%)
 |    - |  775 | `	WinVfs_Sleep,               /* int (*xSleep)(unsigned int) */` |
 |    - |  776 | `	WinVfs_unlink,   /* int (*xUnlink)(const char *) */` |
 |    - |  777 | `	WinVfs_FileExists, /* int (*xFileExists)(const char *) */` |
-|    - |  778 |  |
-|    - |  779 |  |
-|    - |  780 |  |
+|    - |  778 | `	0, /*int (*xChmod)(const char *,int)*/` |
+|    - |  779 | `	0, /*int (*xChown)(const char *,const char *)*/` |
+|    - |  780 | `	0, /*int (*xChgrp)(const char *,const char *)*/` |
 |    - |  781 | `	WinVfs_DiskFreeSpace,/* ph7_int64 (*xFreeSpace)(const char *) */` |
 |    - |  782 | `	WinVfs_DiskTotalSpace,/* ph7_int64 (*xTotalSpace)(const char *) */` |
 |    - |  783 | `	WinVfs_FileSize, /* ph7_int64 (*xFileSize)(const char *) */` |
@@ -807,14 +807,14 @@ Coverage: 485/643 lines (75.43%)
 |    - |  797 | `	WinVfs_Touch,      /* int (*xTouch)(const char *,ph7_int64,ph7_int64) */` |
 |    - |  798 | `	WinVfs_Mmap,       /* int (*xMmap)(const char *,void **,ph7_int64 *) */` |
 |    - |  799 | `	WinVfs_Unmap,      /* void (*xUnmap)(void *,ph7_int64);  */` |
-|    - |  800 |  |
-|    - |  801 |  |
+|    - |  800 | `	0,                 /* int (*xLink)(const char *,const char *,int) */` |
+|    - |  801 | `	0,                 /* int (*xUmask)(int) */` |
 |    - |  802 | `	WinVfs_TempDir,    /* void (*xTempDir)(ph7_context *) */` |
 |    - |  803 | `	WinVfs_ProcessId,  /* unsigned int (*xProcessId)(void) */` |
-|    - |  804 |  |
-|    - |  805 |  |
+|    - |  804 | `	0, /* int (*xUid)(void) */` |
+|    - |  805 | `	0, /* int (*xGid)(void) */` |
 |    - |  806 | `	WinVfs_Username,    /* void (*xUsername)(ph7_context *) */` |
-|    - |  807 |  |
+|    - |  807 | `	0 /* int (*xExec)(const char *,ph7_context *) */` |
 |    - |  808 | `};` |
 |    - |  809 | `/* Windows file IO */` |
 |    - |  810 | `#ifndef INVALID_SET_FILE_POINTER` |

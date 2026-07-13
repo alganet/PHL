@@ -24,19 +24,19 @@ Coverage: 228/253 lines (90.12%)
 |        - |   14 | `#include "sxtime.h"` |
 |        - |   15 | `#include "sxstr.h"` |
 |        - |   16 |  |
-| 25512816 |   17 | `PH7_PRIVATE sxu32 SyBinHash(const void *pSrc,sxu32 nLen)` |
+| 25515008 |   17 | `PH7_PRIVATE sxu32 SyBinHash(const void *pSrc,sxu32 nLen)` |
 |        5 |   18 | `{` |
-| 25512821 |   19 | `	register unsigned char *zIn = (unsigned char *)pSrc;` |
+| 25515013 |   19 | `	register unsigned char *zIn = (unsigned char *)pSrc;` |
 |        - |   20 | `	unsigned char *zEnd;` |
-| 25512821 |   21 | `	sxu32 nH = 5381;` |
-| 25512821 |   22 | `	zEnd = &zIn[nLen];` |
-| 45414741 |   23 | `	for(;;){` |
-| 90826703 |   24 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
-| 83978543 |   25 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
-| 77900231 |   26 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
-| 71291629 |   27 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+| 25515013 |   21 | `	sxu32 nH = 5381;` |
+| 25515013 |   22 | `	zEnd = &zIn[nLen];` |
+| 45418415 |   23 | `	for(;;){` |
+| 90834115 |   24 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+| 83985577 |   25 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+| 77906217 |   26 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+| 71297041 |   27 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
 |        5 |   28 | `	}` |
-| 25512821 |   29 | `	return nH;` |
+| 25515013 |   29 | `	return nH;` |
 |        5 |   30 | `}` |
 |   549346 |   31 | `PH7_PRIVATE sxu32 SyStrHash(const void *pSrc,sxu32 nLen)` |
 |        5 |   32 | `{` |
@@ -99,11 +99,11 @@ Coverage: 228/253 lines (90.12%)
 |       32 |   89 | `PH7_PRIVATE sxi32 SyBase64Decode(const char *zB64,sxu32 nLen,ProcConsumer xConsumer,void *pUserData)` |
 |        2 |   90 | `{` |
 |        - |   91 | `	static const sxu32 aBase64Trans[] = {` |
-|        - |   92 |  |
-|        - |   93 |  |
+|        - |   92 | `	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,` |
+|        - |   93 | `	0,0,0,0,0,62,0,0,0,63,52,53,54,55,56,57,58,59,60,61,0,0,0,0,0,0,0,0,1,2,3,4,` |
 |        - |   94 | `	5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,0,0,0,0,0,0,26,27,` |
 |        - |   95 | `	28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,0,0,` |
-|        - |   96 |  |
+|        - |   96 | `	0,0,0` |
 |        - |   97 | `	};` |
 |        - |   98 | `	sxu32 n,w,x,y,z;` |
 |        - |   99 | `	sxi32 rc;` |
@@ -193,32 +193,32 @@ Coverage: 228/253 lines (90.12%)
 |    20703 |  183 | `	pStream->zText = pStream->zInput = (const unsigned char *)zInput;` |
 |        - |  184 | `	/* Point to the end of the input */` |
 |    20703 |  185 | `	pStream->zEnd = &pStream->zInput[nLen];` |
-|  6387449 |  186 | `	for(;;){` |
-| 12774903 |  187 | `		if( pStream->zText >= pStream->zEnd ){` |
+|  6387600 |  186 | `	for(;;){` |
+| 12775205 |  187 | `		if( pStream->zText >= pStream->zEnd ){` |
 |        - |  188 | `			/* End of the input reached */` |
 |    20669 |  189 | `			break;` |
 |        - |  190 | `		}` |
-| 12754239 |  191 | `		zCur = pStream->zText;` |
+| 12754541 |  191 | `		zCur = pStream->zText;` |
 |        - |  192 | `		/* Call the tokenizer callback */` |
-| 12754239 |  193 | `		rc = pLex->xTokenizer(pStream,&sToken,pLex->pUserData,pCtxData);` |
-| 12754239 |  194 | `		if( rc != SXRET_OK && rc != SXERR_CONTINUE ){` |
+| 12754541 |  193 | `		rc = pLex->xTokenizer(pStream,&sToken,pLex->pUserData,pCtxData);` |
+| 12754541 |  194 | `		if( rc != SXRET_OK && rc != SXERR_CONTINUE ){` |
 |        - |  195 | `			/* Tokenizer callback request an operation abort */` |
 |       36 |  196 | `			if( rc == SXERR_ABORT ){` |
 |       36 |  197 | `				return SXERR_ABORT;` |
 |        - |  198 | `			}` |
 |      ! 0 |  199 | `			break;` |
 |        - |  200 | `		}` |
-| 12754205 |  201 | `		if( rc == SXERR_CONTINUE ){` |
+| 12754507 |  201 | `		if( rc == SXERR_CONTINUE ){` |
 |        - |  202 | `			/* Request to ignore this token */` |
-|    98151 |  203 | `			pStream->nIgn++;` |
-| 12705132 |  204 | `		}else if( pLex->pTokenSet  ){` |
+|    98191 |  203 | `			pStream->nIgn++;` |
+| 12705414 |  204 | `		}else if( pLex->pTokenSet  ){` |
 |        - |  205 | `			/* Put the token in the set */` |
-| 12656059 |  206 | `			rc = SySetPut(pLex->pTokenSet,(const void *)&sToken);` |
-| 12656059 |  207 | `			if( rc != SXRET_OK ){` |
+| 12656321 |  206 | `			rc = SySetPut(pLex->pTokenSet,(const void *)&sToken);` |
+| 12656321 |  207 | `			if( rc != SXRET_OK ){` |
 |      ! 0 |  208 | `				break;` |
 |        - |  209 | `			}` |
-|  6328027 |  210 | `		}` |
-| 12754205 |  211 | `		if( zCur >= pStream->zText ){` |
+|  6328158 |  210 | `		}` |
+| 12754507 |  211 | `		if( zCur >= pStream->zText ){` |
 |        - |  212 | `			/* Automatic advance of the stream cursor */` |
 |      ! 0 |  213 | `			pStream->zText = &zCur[1];` |
 |      ! 0 |  214 | `		}` |
@@ -312,14 +312,14 @@ Coverage: 228/253 lines (90.12%)
 |       22 |  302 | `PH7_PRIVATE sxi32 SyUriDecode(const char *zSrc,sxu32 nLen,ProcConsumer xConsumer,void *pUserData,int bUTF8)` |
 |        1 |  303 | `{` |
 |        - |  304 | `	static const sxu8 Utf8Trans[] = {` |
-|        - |  305 |  |
-|        - |  306 |  |
-|        - |  307 |  |
-|        - |  308 |  |
-|        - |  309 |  |
-|        - |  310 |  |
-|        - |  311 |  |
-|        - |  312 |  |
+|        - |  305 | `		0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
+|        - |  306 | `		0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,` |
+|        - |  307 | `		0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,` |
+|        - |  308 | `		0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,` |
+|        - |  309 | `		0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
+|        - |  310 | `		0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,` |
+|        - |  311 | `		0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
+|        - |  312 | `		0x00, 0x01, 0x02, 0x03, 0x00, 0x01, 0x00, 0x00` |
 |        - |  313 | `	};` |
 |       23 |  314 | `	const char *zIn = zSrc;` |
 |        - |  315 | `	const char *zEnd;` |

@@ -195,12 +195,12 @@ Coverage: 77/92 lines (83.70%)
 | 75588 |  185 | `}` |
 |     - |  186 | `/* Export pthread mutex interfaces */` |
 |     - |  187 | `static const SyMutexMethods sPthreadMutexMethods = {` |
-|     - |  188 |  |
-|     - |  189 |  |
+|     - |  188 | `	0, /* xGlobalInit() */` |
+|     - |  189 | `	0, /* xGlobalRelease() */` |
 |     - |  190 | `	UnixMutexNew,      /* xNew() */` |
 |     - |  191 | `	UnixMutexRelease,  /* xRelease() */` |
 |     - |  192 | `	UnixMutexEnter,    /* xEnter() */` |
-|     - |  193 |  |
+|     - |  193 | `	0,                 /* xTryEnter() */` |
 |     - |  194 | `	UnixMutexLeave     /* xLeave() */` |
 |     - |  195 | `};` |
 |  3848 |  196 | `PH7_PRIVATE const SyMutexMethods * SyMutexExportMethods(void)` |
@@ -235,12 +235,12 @@ Coverage: 77/92 lines (83.70%)
 |     - |  225 | `}` |
 |     - |  226 | `/* Export the dummy mutex interfaces */` |
 |     - |  227 | `static const SyMutexMethods sDummyMutexMethods = {` |
-|     - |  228 |  |
-|     - |  229 |  |
+|     - |  228 | `	0, /* xGlobalInit() */` |
+|     - |  229 | `	0, /* xGlobalRelease() */` |
 |     - |  230 | `	DummyMutexNew,      /* xNew() */` |
 |     - |  231 | `	DummyMutexRelease,  /* xRelease() */` |
 |     - |  232 | `	DummyMutexEnter,    /* xEnter() */` |
-|     - |  233 |  |
+|     - |  233 | `	0,                  /* xTryEnter() */` |
 |     - |  234 | `	DummyMutexLeave     /* xLeave() */` |
 |     - |  235 | `};` |
 |     - |  236 | `PH7_PRIVATE const SyMutexMethods * SyMutexExportMethods(void)` |
