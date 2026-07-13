@@ -649,7 +649,10 @@ struct ph7_vm_func_closure_env
 #define VM_FUNC_ARG_PROMOTED 0x400 /* Constructor promoted property (iPromoteVis holds visibility) */
 #define VM_FUNC_ARG_READONLY 0x800 /* Promoted property is readonly (PHP 8.1) */
 #define VM_FUNC_RETURN_NULLABLE 0x1000 /* Return type is nullable (?T, T|null, A|B|null) — func-level */
-/* next free bit: 0x2000 */
+#define VM_FUNC_INTERNAL     0x2000 /* Function was defined while compiling a builtin chunk
+                                     * (embedded PHP library). Reflection reports it as internal:
+                                     * isInternal() true, getFileName() false. */
+/* next free bit: 0x4000 */
 /*
  * Each user defined function is parsed out and stored in an instance
  * of the following structure.
@@ -679,6 +682,11 @@ struct ph7_vm_func
 						  * 0 = not yet computed; otherwise the number of slots to allocate
 						  * per call (a tight bound from VmComputeMaxStack, or the whole
 						  * instruction count when the body is not statically modelable). */
+	SyString sFile;      /* Path of the defining file (aliases the VM-lifetime dup in pVm->aFiles).
+						  * nByte == 0 when unknown (builtin chunk, eval, direct API compile):
+						  * Reflection getFileName() then reports false. */
+	sxu32 nLine;         /* Line of the 'function'/'fn' keyword (Reflection getStartLine) */
+	sxu32 nEndLine;      /* Line of the closing brace of the body (Reflection getEndLine) */
 	void *pUserData;     /* Upper layer private data associated with this instance */
 	ph7_vm_func *pNextName; /* Next VM function with the same name as this one */
 };
@@ -728,6 +736,9 @@ struct ph7_class
 	SySet aTrait;         /* Used trait container */
 	ph7_class *pNextName; /* Next class [interface, abstract, etc.] with the same name */
 	int bMounted;         /* TRUE if class has been mounted (internal VM state) */
+	SyString sFile;       /* Path of the defining file (aliases the VM-lifetime dup in pVm->aFiles).
+	                       * nByte == 0 when unknown: Reflection getFileName() reports false. */
+	sxu32 nEndLine;       /* Line of the class body's closing brace (Reflection getEndLine) */
 };
 /* Class configuration flags */
 #define PH7_CLASS_FINAL       0x001 /* Class is final [cannot be extended] */
@@ -736,6 +747,9 @@ struct ph7_class
 #define PH7_CLASS_TRAIT       0x008 /* Class is a trait */
 #define PH7_CLASS_TRAIT_VISITING 0x010 /* Trait is currently being applied (cycle detection) */
 #define PH7_CLASS_READONLY    0x020 /* Class is readonly (PHP 8.2): every declared property is readonly */
+#define PH7_CLASS_INTERNAL    0x040 /* Class was defined while compiling a builtin chunk (embedded PHP
+                                     * library). Reflection reports it as internal: isInternal() true,
+                                     * getFileName() false. */
 /* Class attribute/methods/constants protection levels */
 #define PH7_CLASS_PROT_PUBLIC     1 /* public */
 #define PH7_CLASS_PROT_PROTECTED  2 /* protected */
@@ -1016,6 +1030,9 @@ struct ph7_vm
 	int bInlineTryCatch;        /* ROOT C: TRUE once the inline try/catch/finally VM handlers exist,
 	                             * enabling the compiler to inline generator-body try/catch (so a
 	                             * `yield` in a catch/finally suspends). Default 0 = legacy path. */
+	int bCompilingBuiltin;      /* TRUE while the embedded builtin PHP library chunks compile at VM
+	                             * init: classes/functions defined then are stamped INTERNAL so
+	                             * Reflection reports isInternal() like Zend does for C-level code. */
 	SySet aShutdown;            /* Stack of shutdown user callbacks */
 	SySet aAutoload;            /* Stack of spl_autoload callbacks */
 	SyHash hAutoloadActive;     /* Classes currently being autoloaded (reentrancy guard) */

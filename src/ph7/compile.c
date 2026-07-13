@@ -2237,16 +2237,18 @@ static void GenStateBuildFQN(ph7_gen_state *pGen,const SyString *pName,SyBlob *p
  */
 PH7_PRIVATE sxi32 PH7_CompileAnnonFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 {
-	ph7_vm_func *pAnnonFunc; /* Annonymous function body */
+	ph7_vm_func *pAnnonFunc = 0; /* Annonymous function body */
 	char zName[512];         /* Unique lambda name */
 	static int iCnt = 1;     /* There is no worry about thread-safety here,because only
 							  * one thread is allowed to compile the script.
 						      */
 	SyString sName;
+	sxu32 nKwLine;
 	sxu32 nLen;
 	sxi32 rc;
 	SXUNUSED(iCompileFlag); /* cc warning */
 
+	nKwLine = pGen->pIn->nLine; /* Line of the 'function' keyword (Reflection getStartLine) */
 	pGen->pIn++; /* Jump the 'function' keyword */
 	if( pGen->pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD) ){
 		pGen->pIn++;
@@ -2262,6 +2264,9 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	rc = GenStateCompileFunc(&(*pGen),&sName,0,TRUE,&pAnnonFunc);
 	if( rc == SXERR_ABORT ){
 		return SXERR_ABORT;
+	}
+	if( pAnnonFunc ){
+		pAnnonFunc->nLine = nKwLine;
 	}
 	/* Every anonymous function is a Closure object in PHP, so emit OP_LOAD_CLOSURE for
 	 * both real closures (per-instantiation captured env) and plain lambdas (no captures);
@@ -2678,6 +2683,8 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		return SXERR_ABORT;
 	}
 	PH7_VmInitFuncState(pGen->pVm,pFunc,zDup,nLen,iFlags,0);
+	/* Reflection getStartLine(): line of the ['static'] 'fn' keyword */
+	pFunc->nLine = nLine;
 	/* Collect function arguments */
 	if( pGen->pIn < pSigEnd ){
 		rc = GenStateCollectFuncArgs(pFunc,&(*pGen),pSigEnd,0,0);
@@ -2771,6 +2778,8 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	if( rc == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
+	/* The cursor stopped just past the body expression */
+	pFunc->nEndLine = (pGen->pIn > pBodyStart) ? pGen->pIn[-1].nLine : nLine;
 	/* Emit implicit return: OP_DONE with p1=1 means 'value on stack'.
 	 * Any throw-expression inside the body needs a valid jump target and a
 	 * stack-balanced exit path — point its fixup at a separate OP_DONE with
@@ -7360,6 +7369,9 @@ static sxi32 GenStateCompileFunc(
 		}
 		PH7_VmInitFuncState(pGen->pVm,pFunc,zName,pName->nByte,iFlags,0);
 	}
+	/* Fallback start line (the '(' token); callers that know the line of the
+	 * 'function'/'fn' keyword overwrite this with the exact PHP getStartLine. */
+	pFunc->nLine = nLine;
 	if( pGen->pIn < pEnd ){
 		/* Collect function arguments */
 		rc = GenStateCollectFuncArgs(pFunc,&(*pGen),pEnd,0,0);
@@ -7488,6 +7500,8 @@ static sxi32 GenStateCompileFunc(
 	if( rc == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
+	/* The cursor sits just past the body's closing brace */
+	pFunc->nEndLine = pGen->pIn[-1].nLine;
 	if( ppFunc ){
 		*ppFunc = pFunc;
 	}
@@ -7515,10 +7529,12 @@ static sxi32 PH7_CompileFunction(ph7_gen_state *pGen)
 {
 	SyString *pName;
 	sxi32 iFlags;
+	sxu32 nKwLine;
 	sxu32 nLine;
 	sxi32 rc;
 
 	nLine = pGen->pIn->nLine;
+	nKwLine = nLine; /* Line of the 'function' keyword (Reflection getStartLine) */
 	pGen->pIn++; /* Jump the 'function' keyword */
 	iFlags = 0;
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_AMPER) ){
@@ -7557,7 +7573,14 @@ static sxi32 PH7_CompileFunction(ph7_gen_state *pGen)
 		return SXRET_OK;
 	}
 	/* Compile function body */
-	rc = GenStateCompileFunc(&(*pGen),pName,iFlags,FALSE,0);
+	{
+		ph7_vm_func *pFuncState = 0;
+		rc = GenStateCompileFunc(&(*pGen),pName,iFlags,FALSE,&pFuncState);
+		if( pFuncState ){
+			/* Reflection getStartLine(): line of the 'function' keyword */
+			pFuncState->nLine = nKwLine;
+		}
+	}
 	return rc;
 }
 /*
@@ -8442,6 +8465,7 @@ static sxi32 GenStateCompileClassMethod(
 	)
 {
 	sxu32 nLine = pGen->pIn->nLine;
+	sxu32 nKwLine = nLine; /* Line of the 'function' keyword (Reflection getStartLine) */
 	ph7_class_method *pMeth;
 	sxi32 iFuncFlags;
 	SyString *pName;
@@ -8507,6 +8531,7 @@ static sxi32 GenStateCompileClassMethod(
 		PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Fatal, PH7 is running out of memory");
 		return SXERR_ABORT;
 	}
+	pMeth->sFunc.nLine = nKwLine;
 	/* Jump the left parenthesis '(' */
 	pGen->pIn++;
 	pEnd = 0; /* cc warning */
@@ -8653,7 +8678,13 @@ static sxi32 GenStateCompileClassMethod(
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
+		/* The cursor sits just past the body's closing brace */
+		pMeth->sFunc.nEndLine = pGen->pIn[-1].nLine;
 	}else{
+		/* Abstract/interface method: declaration ends at the ';' */
+		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI /* ';'*/) ){
+			pMeth->sFunc.nEndLine = pGen->pIn->nLine;
+		}
 		/* Only method signature is allowed */
 		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI /* ';'*/) == 0 ){
 			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
@@ -8716,8 +8747,8 @@ static sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
 		return SXERR_ABORT;
 	}
-	/* Mark as an interface */
-	pClass->iFlags = PH7_CLASS_INTERFACE;
+	/* Mark as an interface (PH7_NewRawClass may have set INTERNAL) */
+	pClass->iFlags |= PH7_CLASS_INTERFACE;
 	/* Assume no base class is given */
 	pBase = 0;
 	if( pGen->pIn < pGen->pEnd  && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
@@ -8784,6 +8815,8 @@ static sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 		}
 		return SXRET_OK;
 	}
+	/* The delimiter token is the interface body's closing brace */
+	pClass->nEndLine = pEnd->nLine;
 	/* Swap token stream */
 	pTmp = pGen->pEnd;
 	pGen->pEnd = pEnd;
@@ -9511,11 +9544,13 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 		}
 		return SXRET_OK;
 	}
+	/* The delimiter token is the class body's closing brace */
+	pClass->nEndLine = pEnd->nLine;
 	/* Swap token stream */
 	pTmp = pGen->pEnd;
 	pGen->pEnd = pEnd;
-	/* Set the inherited flags */
-	pClass->iFlags = iFlags;
+	/* Merge the inherited flags (PH7_NewRawClass may have set INTERNAL) */
+	pClass->iFlags |= iFlags;
 	/* Start the parse process */
 	for(;;){
 		/* Jump leading/trailing semi-colons */
@@ -10380,11 +10415,13 @@ static sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 		}
 		return SXRET_OK;
 	}
+	/* The delimiter token is the trait body's closing brace */
+	pClass->nEndLine = pEnd->nLine;
 	/* Swap token stream */
 	pTmp = pGen->pEnd;
 	pGen->pEnd = pEnd;
-	/* Mark as trait */
-	pClass->iFlags = PH7_CLASS_TRAIT;
+	/* Mark as trait (PH7_NewRawClass may have set INTERNAL) */
+	pClass->iFlags |= PH7_CLASS_TRAIT;
 	/* Parse the body: same as a normal class (methods, attributes, visibility modifiers) */
 	for(;;){
 		while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) ){
