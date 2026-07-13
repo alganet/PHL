@@ -98,6 +98,26 @@ static void ReflectMapAddDyn(ph7_context *pCtx, ph7_value *pMap,
 	ph7_value_string(pK, pKey->zString, (int)pKey->nByte);
 	ph7_array_add_elem(pMap, pK, pVal);
 }
+/* Emit the declared #[...] attributes of a target as a summary list:
+ * [ {name, line} ... ]. Argument values stay lazy — the PHP layer pulls
+ * them through __reflect_attr_args when ReflectionAttribute needs them. */
+static void ReflectMapAddAttrs(ph7_context *pCtx, ph7_value *pMap, SySet *pAttrs)
+{
+	ph7_value *pList = ph7_context_new_array(pCtx);
+	ph7_attribute *aA = (ph7_attribute *)SySetBasePtr(pAttrs);
+	sxu32 n;
+	if( pList == 0 ){
+		return;
+	}
+	for( n = 0 ; n < SySetUsed(pAttrs) ; n++ ){
+		ph7_value *pMeta = ph7_context_new_array(pCtx);
+		if( pMeta == 0 ){ break; }
+		ReflectMapAddStr(pCtx, pMeta, "name", SyStringData(&aA[n].sName), (int)SyStringLength(&aA[n].sName));
+		ReflectMapAddInt(pCtx, pMeta, "line", (sxi64)aA[n].nLine);
+		ph7_array_add_elem(pList, 0, pMeta);
+	}
+	ph7_array_add_strkey_elem(pMap, "attrs", pList);
+}
 /* Emit a doc-comment field: the text when present, else boolean false
  * (getDocComment()'s exact return contract). */
 static void ReflectMapAddDoc(ph7_context *pCtx, ph7_value *pMap, const SyString *pDoc)
@@ -296,6 +316,7 @@ static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value 
 	ReflectMapAddInt(pCtx, pInfo, "line", (sxi64)pClass->nLine);
 	ReflectMapAddInt(pCtx, pInfo, "endline", (sxi64)pClass->nEndLine);
 	ReflectMapAddDoc(pCtx, pInfo, &pClass->sDoc);
+	ReflectMapAddAttrs(pCtx, pInfo, &pClass->aAttrs);
 	/* Members are emitted in PHP's reporting order: the class's own members
 	 * first (declaration order), then each inheritance level's, outward.
 	 * Per level we iterate the DECLARING class's own hash — subclass hashes
@@ -347,6 +368,7 @@ static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value 
 				ReflectMapAddStr(pCtx, pMeta, "decl", SyStringData(&pDecl->sName), (int)SyStringLength(&pDecl->sName));
 				ReflectMapAddInt(pCtx, pMeta, "line", (sxi64)pAttr->nLine);
 				ReflectMapAddDoc(pCtx, pMeta, &pAttr->sDoc);
+				ReflectMapAddAttrs(pCtx, pMeta, &pAttr->aAttrs);
 				ReflectMapAddBool(pCtx, pMeta, "typed", (pAttr->iFlags & PH7_CLASS_ATTR_TYPED) != 0);
 				if( SyStringLength(&pAttr->sTypeName) > 0 ){
 					ReflectMapAddStr(pCtx, pMeta, "typetext", SyStringData(&pAttr->sTypeName),
@@ -563,14 +585,21 @@ static int vm_builtin_reflect_prop_default(ph7_context *pCtx, int nArg, ph7_valu
 	return PH7_OK;
 }
 /*
- * Collect the values of a PHP list array into a ph7_value* set
- * (positional constructor arguments).
+ * Collect a PHP array's values into a ph7_value* set (call arguments).
+ * When ppNames is non-NULL, string keys become named arguments: a name
+ * map is lazily allocated (like call_user_func_array's) with one entry
+ * per collected slot, empty entries meaning positional.
  */
-static sxi32 ReflectCollectArgs(ph7_context *pCtx, ph7_value *pArray, SySet *pOut)
+static sxi32 ReflectCollectArgs(ph7_context *pCtx, ph7_value *pArray, SySet *pOut, SyString **ppNames)
 {
 	ph7_hashmap *pMap;
 	ph7_hashmap_node *pEntry;
+	SyString *aNames = 0;
+	sxu32 nSlot = 0;
 	sxu32 n;
+	if( ppNames ){
+		*ppNames = 0;
+	}
 	if( !ph7_value_is_array(pArray) ){
 		return SXRET_OK;
 	}
@@ -579,9 +608,26 @@ static sxi32 ReflectCollectArgs(ph7_context *pCtx, ph7_value *pArray, SySet *pOu
 	for( n = 0 ; n < pMap->nEntry ; n++ ){
 		ph7_value *pValue = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pEntry->nValIdx);
 		if( pValue ){
+			if( ppNames && pEntry->iType == HASHMAP_BLOB_NODE ){
+				if( aNames == 0 ){
+					aNames = (SyString *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,
+						pMap->nEntry * sizeof(SyString));
+					if( aNames ){
+						SyZero(aNames, pMap->nEntry * sizeof(SyString));
+					}
+				}
+				if( aNames ){
+					SyStringInitFromBuf(&aNames[nSlot],
+						SyBlobData(&pEntry->xKey.sKey), SyBlobLength(&pEntry->xKey.sKey));
+				}
+			}
 			SySetPut(pOut, (const void *)&pValue);
+			nSlot++;
 		}
 		pEntry = pEntry->pPrev; /* Reverse link: insertion order */
+	}
+	if( ppNames ){
+		*ppNames = aNames;
 	}
 	return SXRET_OK;
 }
@@ -609,12 +655,25 @@ static int vm_builtin_reflect_new_instance(ph7_context *pCtx, int nArg, ph7_valu
 	if( pCons ){
 		SySet aArg;
 		sxi32 rc;
+		SyString *aNames = 0;
 		SySetInit(&aArg, &pVm->sAllocator, sizeof(ph7_value *));
 		if( nArg > 1 ){
-			ReflectCollectArgs(pCtx, apArg[1], &aArg);
+			ReflectCollectArgs(pCtx, apArg[1], &aArg, &aNames);
 		}
-		rc = PH7_VmCallClassMethod(pVm, pThis, pCons, 0, (int)SySetUsed(&aArg),
-			(ph7_value **)SySetBasePtr(&aArg));
+		if( aNames ){
+			VmCallArgMap sMap;
+			sMap.bHasNamed = 1;
+			sMap.bIsNamespaced = 0;
+			sMap.bStrict = 0;
+			sMap.nTotal = SySetUsed(&aArg);
+			sMap.aNames = aNames;
+			rc = PH7_VmCallClassMethodMap(pVm, pThis, pCons, 0, (int)SySetUsed(&aArg),
+				(ph7_value **)SySetBasePtr(&aArg), &sMap);
+			SyMemBackendFree(&pVm->sAllocator, aNames);
+		}else{
+			rc = PH7_VmCallClassMethod(pVm, pThis, pCons, 0, (int)SySetUsed(&aArg),
+				(ph7_value **)SySetBasePtr(&aArg));
+		}
 		SySetRelease(&aArg);
 		if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
 			PH7_ClassInstanceUnref(pThis);
@@ -951,6 +1010,7 @@ static void ReflectFillFuncCommon(ph7_context *pCtx, ph7_value *pInfo, ph7_vm_fu
 	ReflectMapAddInt(pCtx, pInfo, "line", (sxi64)pFunc->nLine);
 	ReflectMapAddInt(pCtx, pInfo, "endline", (sxi64)pFunc->nEndLine);
 	ReflectMapAddDoc(pCtx, pInfo, &pFunc->sDoc);
+	ReflectMapAddAttrs(pCtx, pInfo, &pFunc->aAttrs);
 	if( SyStringLength(&pFunc->sReturnTypeName) > 0 ){
 		ReflectMapAddStr(pCtx, pInfo, "rettext", SyStringData(&pFunc->sReturnTypeName),
 			(int)SyStringLength(&pFunc->sReturnTypeName));
@@ -985,6 +1045,7 @@ static void ReflectFillFuncCommon(ph7_context *pCtx, ph7_value *pInfo, ph7_vm_fu
 		}else{
 			ReflectMapAddNull(pCtx, pMeta, "typetext");
 		}
+		ReflectMapAddAttrs(pCtx, pMeta, &aArg[n].aAttrs);
 		ph7_array_add_elem(pParams, 0, pMeta);
 		if( aArg[n].iFlags & VM_FUNC_ARG_VARIADIC ){
 			bVariadic = 1;
@@ -1063,6 +1124,12 @@ static int vm_builtin_reflect_func_info(ph7_context *pCtx, int nArg, ph7_value *
 		ReflectMapAddInt(pCtx, pInfo, "line", 0);
 		ReflectMapAddInt(pCtx, pInfo, "endline", 0);
 		ReflectMapAddBool(pCtx, pInfo, "doc", 0);
+		{
+			ph7_value *pEmpty = ph7_context_new_array(pCtx);
+			if( pEmpty ){
+				ph7_array_add_strkey_elem(pInfo, "attrs", pEmpty);
+			}
+		}
 		ReflectMapAddNull(pCtx, pInfo, "rettext");
 		ReflectMapAddBool(pCtx, pInfo, "retnullable", 0);
 		if( pParams ){
@@ -1211,7 +1278,7 @@ static int vm_builtin_reflect_invoke(ph7_context *pCtx, int nArg, ph7_value **ap
 	PH7_MemObjInit(pVm, &sResult);
 	sResult.nIdx = SXU32_HIGH;
 	SySetInit(&aCallArg, &pVm->sAllocator, sizeof(ph7_value *));
-	ReflectCollectArgs(pCtx, apArg[3], &aCallArg);
+	ReflectCollectArgs(pCtx, apArg[3], &aCallArg, 0);
 	if( (apArg[1]->iFlags & MEMOBJ_STRING) && SyBlobLength(&apArg[1]->sBlob) > 0 ){
 		ph7_class *pClass = 0;
 		ph7_class_method *pMeth = 0;
@@ -1481,6 +1548,70 @@ static int vm_builtin_reflect_ref_id(ph7_context *pCtx, int nArg, ph7_value **ap
 		return PH7_OK;
 	}
 	ph7_result_int64(pCtx, (sxi64)pNode->nValIdx);
+	return PH7_OK;
+}
+/*
+ * array|null __reflect_attr_args(string $kind, mixed $target, ?string $member,
+ *                                int $paramIdx, int $attrIdx)
+ * Evaluate the recorded argument expressions of one declared attribute:
+ * kind 'class' (target = class), 'attr' (class + property/constant name),
+ * 'method' (class + method), 'fn' (function name or Closure), 'param'
+ * (function spec + parameter index). Named arguments become string keys.
+ */
+static int vm_builtin_reflect_attr_args(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	SySet *pAttrs = 0;
+	ph7_attribute *pAttrRec;
+	ph7_value *pOut;
+	const char *zKind;
+	int nKind;
+	sxu32 nAttrIdx, n;
+	if( nArg < 5 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	zKind = ph7_value_to_string(apArg[0], &nKind);
+	nAttrIdx = (sxu32)ph7_value_to_int(apArg[4]);
+	if( nKind == 5 && SyMemcmp(zKind, "class", 5) == 0 ){
+		ph7_class *pClass = ReflectResolveClass(pVm, apArg[1]);
+		if( pClass ){ pAttrs = &pClass->aAttrs; }
+	}else if( nKind == 4 && SyMemcmp(zKind, "attr", 4) == 0 ){
+		ph7_class *pClass = ReflectResolveClass(pVm, apArg[1]);
+		ph7_class_attr *pMember = pClass ? ReflectFetchAttr(pClass, apArg[2]) : 0;
+		if( pMember ){ pAttrs = &pMember->aAttrs; }
+	}else if( nKind == 6 && SyMemcmp(zKind, "method", 6) == 0 ){
+		ph7_vm_func *pFunc = ReflectResolveCallable(pCtx, apArg[1], apArg[2], 0, 0, 0, 0);
+		if( pFunc ){ pAttrs = &pFunc->aAttrs; }
+	}else if( nKind == 2 && SyMemcmp(zKind, "fn", 2) == 0 ){
+		ph7_vm_func *pFunc = ReflectResolveCallable(pCtx, apArg[1], 0, 0, 0, 0, 0);
+		if( pFunc ){ pAttrs = &pFunc->aAttrs; }
+	}else if( nKind == 5 && SyMemcmp(zKind, "param", 5) == 0 ){
+		ph7_vm_func *pFunc = ReflectResolveCallable(pCtx, apArg[1], apArg[2], 0, 0, 0, 0);
+		ph7_vm_func_arg *pParam = pFunc
+			? (ph7_vm_func_arg *)SySetAt(&pFunc->aArgs, (sxu32)ph7_value_to_int(apArg[3])) : 0;
+		if( pParam ){ pAttrs = &pParam->aAttrs; }
+	}
+	if( pAttrs == 0 || (pAttrRec = (ph7_attribute *)SySetAt(pAttrs, nAttrIdx)) == 0
+	 || (pOut = ph7_context_new_array(pCtx)) == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	for( n = 0 ; n < SySetUsed(&pAttrRec->aArgs) ; n++ ){
+		ph7_attr_arg *pArgRec = (ph7_attr_arg *)SySetAt(&pAttrRec->aArgs, n);
+		ph7_value sValue;
+		PH7_MemObjInit(pVm, &sValue);
+		if( SySetUsed(&pArgRec->aByteCode) > 0 ){
+			VmLocalExec(pVm, &pArgRec->aByteCode, &sValue, FALSE);
+		}
+		if( SyStringLength(&pArgRec->sName) > 0 ){
+			ReflectMapAddDyn(pCtx, pOut, &pArgRec->sName, &sValue);
+		}else{
+			ph7_array_add_elem(pOut, 0, &sValue);
+		}
+		PH7_MemObjRelease(&sValue);
+	}
+	ph7_result_value(pCtx, pOut);
 	return PH7_OK;
 }
 /*
@@ -1834,7 +1965,10 @@ static const char zReflectLib1[] =
 "  }"
 "  return $out;"
 " }"
-" public function getAttributes($name = null, $flags = 0){ return array(); }"
+" public function getAttributes($name = null, $flags = 0){"
+"  $i = $this->__rinfo();"
+"  return __reflect_build_attrs($i['attrs'], array('class', $this->name, null, 0), 1, $name, $flags);"
+" }"
 " public function getExtensionName(){ $i = $this->__rinfo(); return $i['internal'] ? 'Core' : false; }"
 " public function getExtension(){ $i = $this->__rinfo(); return $i['internal'] ? new ReflectionExtension('Core') : null; }"
 " public function newLazyGhost($initializer, $options = 0){"
@@ -1960,7 +2094,17 @@ static const char zReflectLib2[] =
 " }"
 " public function getExtensionName(){ $i = $this->__rfinfo(); return $i['internal'] ? 'Core' : false; }"
 " public function getExtension(){ $i = $this->__rfinfo(); return $i['internal'] ? new ReflectionExtension('Core') : null; }"
-" public function getAttributes($name = null, $flags = 0){ return array(); }"
+" public function getAttributes($name = null, $flags = 0){"
+"  $i = $this->__rfinfo();"
+"  if($this instanceof ReflectionMethod){"
+"   $spec = array('method', $this->class, $this->name, 0);"
+"   $target = 4;"
+"  }else{"
+"   $spec = array('fn', $this->__rftarget(), null, 0);"
+"   $target = 2;"
+"  }"
+"  return __reflect_build_attrs($i['attrs'], $spec, $target, $name, $flags);"
+" }"
 " public function __toString(){"
 "  return 'Function [ function '.$this->name.' ] {'.\"\\n\".'}'.\"\\n\";"
 " }"
@@ -2232,7 +2376,10 @@ static const char zReflectLib2[] =
 "  $i = $this->__rffull();"
 "  return new ReflectionClass($i['decl']);"
 " }"
-" public function getAttributes($name = null, $flags = 0){ return array(); }"
+" public function getAttributes($name = null, $flags = 0){"
+"  $p = $this->__rpinfo();"
+"  return __reflect_build_attrs($p['attrs'], array('param', $this->__t, $this->__m, $this->__p), 32, $name, $flags);"
+" }"
 " public function __toString(){"
 "  return 'Parameter #'.$this->__p.' [ <required> $'.$this->name.' ]';"
 " }"
@@ -2365,7 +2512,11 @@ static const char zReflectLib3[] =
 "  throw new Error('ReflectionProperty::skipLazyInitialization() is not supported by PHL (no lazy objects)');"
 " }"
 " public function getDocComment(){ $m = $this->__rpmeta(); return isset($m['doc']) ? $m['doc'] : false; }"
-" public function getAttributes($name = null, $flags = 0){ return array(); }"
+" public function getAttributes($name = null, $flags = 0){"
+"  $m = $this->__rpmeta();"
+"  if(!isset($m['attrs'])){ return array(); }"
+"  return __reflect_build_attrs($m['attrs'], array('attr', $this->class, $this->name, 0), 8, $name, $flags);"
+" }"
 " public function __toString(){"
 "  return 'Property [ public $'.$this->name.' ]'.\"\\n\";"
 " }"
@@ -2416,7 +2567,10 @@ static const char zReflectLib3[] =
 " public function hasType(){ $m = $this->__rcmeta(); return $m['typed']; }"
 " public function getType(){ $m = $this->__rcmeta(); return $m['typed'] ? __reflect_make_type($m['typetext']) : null; }"
 " public function getDocComment(){ $m = $this->__rcmeta(); return $m['doc']; }"
-" public function getAttributes($name = null, $flags = 0){ return array(); }"
+" public function getAttributes($name = null, $flags = 0){"
+"  $m = $this->__rcmeta();"
+"  return __reflect_build_attrs($m['attrs'], array('attr', $this->class, $this->name, 0), 16, $name, $flags);"
+" }"
 " public function __toString(){"
 "  return 'Constant [ public '.$this->name.' ]'.\"\\n\";"
 " }"
@@ -2691,6 +2845,107 @@ static const char zReflectLib6[] =
 "}"
 ;
 /*
+ * Chunk 7: ReflectionAttribute and the shared getAttributes() builder.
+ * The spec array rides as [kind, target, member, paramIdx]; argument
+ * values evaluate lazily through __reflect_attr_args (PHP semantics).
+ */
+static const char zReflectLib7[] =
+"function __reflect_target_names($mask){"
+" $parts = array();"
+" foreach(array('class' => 1, 'function' => 2, 'method' => 4, 'property' => 8,"
+"  'class constant' => 16, 'parameter' => 32, 'constant' => 64) as $nm => $bit){"
+"  if($mask & $bit){ $parts[] = $nm; }"
+" }"
+" return implode(', ', $parts);"
+"}"
+"function __reflect_build_attrs($meta, $spec, $target, $name, $flags){"
+" $out = array();"
+" $counts = array();"
+" foreach($meta as $a){"
+"  $k = strtolower($a['name']);"
+"  $counts[$k] = isset($counts[$k]) ? $counts[$k] + 1 : 1;"
+" }"
+" $idx = 0;"
+" foreach($meta as $a){"
+"  $keep = true;"
+"  if($name !== null){"
+"   $keep = strtolower($a['name']) === strtolower($name);"
+"   if(!$keep && ($flags & 2)){"
+"    $keep = is_subclass_of($a['name'], $name);"
+"   }"
+"  }"
+"  if($keep){"
+"   $r = __reflect_new_no_ctor('ReflectionAttribute');"
+"   $r->__init($a['name'], $spec, $idx, $target, $counts[strtolower($a['name'])] > 1);"
+"   $out[] = $r;"
+"  }"
+"  $idx++;"
+" }"
+" return $out;"
+"}"
+"final class ReflectionAttribute {"
+" const IS_INSTANCEOF = 2;"
+" protected $__name = '';"
+" protected $__spec = null;"
+" protected $__idx = 0;"
+" protected $__target = 0;"
+" protected $__rep = false;"
+" public function __construct(){"
+"  throw new Error('Call to private ReflectionAttribute::__construct() from global scope');"
+" }"
+" public function __init($name, $spec, $idx, $target, $rep){"
+"  $this->__name = $name;"
+"  $this->__spec = $spec;"
+"  $this->__idx = $idx;"
+"  $this->__target = $target;"
+"  $this->__rep = $rep;"
+" }"
+" public function getName(){ return $this->__name; }"
+" public function getTarget(){ return $this->__target; }"
+" public function isRepeated(){ return $this->__rep; }"
+" public function getArguments(){"
+"  $a = __reflect_attr_args($this->__spec[0], $this->__spec[1], $this->__spec[2], $this->__spec[3], $this->__idx);"
+"  return $a === null ? array() : $a;"
+" }"
+" public function newInstance(){"
+"  $name = $this->__name;"
+"  $ci = __reflect_class_info($name);"
+"  if($ci === null){"
+"   throw new Error('Attribute class \"'.$name.'\" not found');"
+"  }"
+"  $name = $ci['name'];"
+"  $decl = null;"
+"  $didx = 0;"
+"  foreach($ci['attrs'] as $a){"
+"   if(strtolower($a['name']) === 'attribute'){ $decl = $didx; break; }"
+"   $didx++;"
+"  }"
+"  if($decl === null){"
+"   throw new Error('Attempting to use non-attribute class \"'.$name.'\" as attribute');"
+"  }"
+"  $dargs = __reflect_attr_args('class', $name, null, 0, $decl);"
+"  $flags = 127;"
+"  if(is_array($dargs)){"
+"   if(isset($dargs[0])){ $flags = $dargs[0]; }"
+"   else if(isset($dargs['flags'])){ $flags = $dargs['flags']; }"
+"  }"
+"  if(($flags & $this->__target) === 0){"
+"   $tnames = array(1 => 'class', 2 => 'function', 4 => 'method', 8 => 'property',"
+"    16 => 'class constant', 32 => 'parameter', 64 => 'constant');"
+"   throw new Error('Attribute \"'.$name.'\" cannot target '.$tnames[$this->__target]"
+"    .' (allowed targets: '.__reflect_target_names($flags).')');"
+"  }"
+"  if($this->__rep && ($flags & 128) === 0){"
+"   throw new Error('Attribute \"'.$name.'\" must not be repeated');"
+"  }"
+"  return __reflect_new_instance($name, $this->getArguments());"
+" }"
+" public function __toString(){"
+"  return 'Attribute [ '.$this->__name.' ]';"
+" }"
+"}"
+;
+/*
  * Register the __reflect_* thunks and compile the Reflection library.
  * Called from PH7_VmInit while pVm->bCompilingBuiltin is set, right after
  * the core builtin chunks (Exception and friends must exist already).
@@ -2721,6 +2976,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 		{ "__reflect_gen_exec",       vm_builtin_reflect_gen_exec },
 		{ "__reflect_const_info",     vm_builtin_reflect_const_info },
 		{ "__reflect_ref_id",         vm_builtin_reflect_ref_id },
+		{ "__reflect_attr_args",      vm_builtin_reflect_attr_args },
 	};
 	sxu32 n;
 	sxi32 rc;
@@ -2747,5 +3003,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 	if( rc != SXRET_OK ){
 		return rc;
 	}
-	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib6, sizeof(zReflectLib6)-1);
+	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib6, sizeof(zReflectLib6)-1);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib7, sizeof(zReflectLib7)-1);
 }

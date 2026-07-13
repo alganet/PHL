@@ -110,7 +110,9 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 			 * unterminated group is silently consumed up to EOF, consistent
 			 * with unterminated block comments below.
 			 */
+			const unsigned char *zGroupStart;
 			pStream->zText += 2;
+			zGroupStart = pStream->zText;
 			while( pStream->zText < pStream->zEnd && nDepth > 0 ){
 				sxi32 d = pStream->zText[0];
 				if( d == '[' ){
@@ -164,6 +166,20 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 					pStream->nLine++;
 				}
 				pStream->zText++;
+			}
+			if( pUserData && pStream->pSet ){
+				/* Record the group's inner span (between #[ and its balanced ])
+				 * in the trivia sidecar, keyed like doc-comments. */
+				ph7_trivia sTrivia;
+				const unsigned char *zGroupEnd = pStream->zText;
+				if( nDepth == 0 && zGroupEnd > zGroupStart ){
+					zGroupEnd--; /* Exclude the closing ']' */
+				}
+				sTrivia.nTokIdx = SySetUsed(pStream->pSet);
+				sTrivia.iKind = PH7_TRIVIA_ATTR;
+				SyStringInitFromBuf(&sTrivia.sText,(const char *)zGroupStart,(sxu32)(zGroupEnd - zGroupStart));
+				sTrivia.nLine = pToken->nLine;
+				SySetPut((SySet *)pUserData,(const void *)&sTrivia);
 			}
 			/* Tell the upper-layer to ignore this token */
 			return SXERR_CONTINUE;

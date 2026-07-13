@@ -447,6 +447,9 @@ static void *GenStateAttachStrictFlag(ph7_gen_state *pGen, void *p3)
 static sxi32 GenStateCompileChunk(ph7_gen_state *pGen,sxi32 iFlags);
 static void GenStateSetPendingDoc(ph7_gen_state *pGen);
 static void GenStateConsumeDoc(ph7_gen_state *pGen,SyString *pOut);
+static sxi32 GenStateCompileAttrSpan(ph7_gen_state *pGen,ph7_trivia *pTrivia,SySet *pOut);
+static sxi32 GenStateConsumeAttrs(ph7_gen_state *pGen,SySet *pOut);
+static sxi32 GenStateCollectParamAttrs(ph7_gen_state *pGen,SyToken *pTok,SySet *pOut);
 static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyToken *pEnd,int bCtorCtx,int bAbstractCtx);
 static sxi32 GenStateParseClassReference(ph7_gen_state *pGen,SyBlob *pFqn);
 /* Forward decl: union type parser is defined later in this file. */
@@ -6073,7 +6076,13 @@ static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyTo
 		SyZero(&sArg,sizeof(ph7_vm_func_arg));
 		SySetInit(&sArg.aByteCode,&pGen->pVm->sAllocator,sizeof(VmInstr));
 		SySetInit(&sArg.aUnionAlts,&pGen->pVm->sAllocator,sizeof(ph7_type_alt));
+		SySetInit(&sArg.aAttrs,&pGen->pVm->sAllocator,sizeof(ph7_attribute));
 		SyStringInitFromBuf(&sArg.sTypeName,0,0);
+		/* Parameter #[...] attributes: the group precedes the parameter's
+		 * first token inside the main token stream */
+		if( GenStateCollectParamAttrs(&(*pGen),pIn,&sArg.aAttrs) == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
 		/* Parse optional visibility + readonly modifiers (constructor property
 		 * promotion, PHP 8.0+/8.1+). A property is promoted when a visibility
 		 * keyword and/or `readonly` is present; `readonly` may appear on either
@@ -7376,6 +7385,9 @@ static sxi32 GenStateCompileFunc(
 	 * 'function'/'fn' keyword overwrite this with the exact PHP getStartLine. */
 	pFunc->nLine = nLine;
 	GenStateConsumeDoc(&(*pGen),&pFunc->sDoc);
+	if( GenStateConsumeAttrs(&(*pGen),&pFunc->aAttrs) == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
 	if( pGen->pIn < pEnd ){
 		/* Collect function arguments */
 		rc = GenStateCollectFuncArgs(pFunc,&(*pGen),pEnd,0,0);
@@ -7950,6 +7962,9 @@ loop:
 	pCons = PH7_NewClassAttr(pGen->pVm,pName,nLine,iProtection,iFlags|iTypeFlags);
 	if( pCons ){
 		GenStateConsumeDoc(&(*pGen),&pCons->sDoc);
+		if( GenStateConsumeAttrs(&(*pGen),&pCons->aAttrs) == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
 	}
 	if( pCons == 0 ){
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
@@ -8395,6 +8410,9 @@ loop:
 	pAttr = PH7_NewClassAttr(pGen->pVm,pName,nLine,iProtection,iFlags|iTypeFlags);
 	if( pAttr ){
 		GenStateConsumeDoc(&(*pGen),&pAttr->sDoc);
+		if( GenStateConsumeAttrs(&(*pGen),&pAttr->aAttrs) == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
 	}
 	if( pAttr == 0 ){
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 engine is running out of memory");
@@ -8543,6 +8561,9 @@ static sxi32 GenStateCompileClassMethod(
 	}
 	pMeth->sFunc.nLine = nKwLine;
 	GenStateConsumeDoc(&(*pGen),&pMeth->sFunc.sDoc);
+	if( GenStateConsumeAttrs(&(*pGen),&pMeth->sFunc.aAttrs) == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
 	/* Jump the left parenthesis '(' */
 	pGen->pIn++;
 	pEnd = 0; /* cc warning */
@@ -8759,6 +8780,9 @@ static sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 		return SXERR_ABORT;
 	}
 	GenStateConsumeDoc(&(*pGen),&pClass->sDoc);
+	if( GenStateConsumeAttrs(&(*pGen),&pClass->aAttrs) == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
 	/* Mark as an interface (PH7_NewRawClass may have set INTERNAL) */
 	pClass->iFlags |= PH7_CLASS_INTERFACE;
 	/* Assume no base class is given */
@@ -9411,6 +9435,9 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 		return SXERR_ABORT;
 	}
 	GenStateConsumeDoc(&(*pGen),&pClass->sDoc);
+	if( GenStateConsumeAttrs(&(*pGen),&pClass->aAttrs) == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
 	/* implemented interfaces and per-use-statement trait containers */
 	SySetInit(&aInterfaces,&pGen->pVm->sAllocator,sizeof(ph7_class *));
 	SySetInit(&aUseEntries,&pGen->pVm->sAllocator,sizeof(TraitUseEntry));
@@ -10413,6 +10440,9 @@ static sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 		return SXERR_ABORT;
 	}
 	GenStateConsumeDoc(&(*pGen),&pClass->sDoc);
+	if( GenStateConsumeAttrs(&(*pGen),&pClass->aAttrs) == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
 	/* Traits cannot extend or implement; expect opening brace directly */
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_OCB) == 0 ){
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected '{' after trait '%z' declaration",pName);
@@ -12767,9 +12797,17 @@ static void GenStateSetPendingDoc(ph7_gen_state *pGen)
 		return;
 	}
 	nIdx = (sxu32)(pGen->pIn - pBase);
+	/* Attributes must be adjacent to their declaration (unlike docblocks):
+	 * reset at every boundary, then collect the groups keyed to this token. */
+	SySetReset(&pGen->aPendingAttrs);
 	for( n = 0 ; n < nT ; n++ ){
-		if( aT[n].nTokIdx == nIdx && aT[n].iKind == PH7_TRIVIA_DOC ){
+		if( aT[n].nTokIdx != nIdx ){
+			continue;
+		}
+		if( aT[n].iKind == PH7_TRIVIA_DOC ){
 			pGen->sPendingDoc = aT[n].sText;
+		}else if( aT[n].iKind == PH7_TRIVIA_ATTR ){
+			SySetPut(&pGen->aPendingAttrs,(const void *)&aT[n]);
 		}
 	}
 }
@@ -12790,6 +12828,214 @@ static void GenStateConsumeDoc(ph7_gen_state *pGen,SyString *pOut)
 		SyStringInitFromBuf(pOut,zDup,SyStringLength(&pGen->sPendingDoc));
 	}
 	SyStringInitFromBuf(&pGen->sPendingDoc,0,0);
+}
+/*
+ * Compile one recorded #[...] attribute group (the span between the group
+ * delimiters) into ph7_attribute records appended to pOut. The span is
+ * duplicated into the VM allocator FIRST (compiled bytecode and interned
+ * names may point into the token text, which must outlive the raw script
+ * buffer), then re-tokenized on its own. Each argument expression compiles
+ * with the container-swap idiom into its own OP_DONE-terminated set,
+ * evaluated lazily at ReflectionAttribute time (PHP semantics).
+ */
+static sxi32 GenStateCompileAttrSpan(ph7_gen_state *pGen,ph7_trivia *pTrivia,SySet *pOut)
+{
+	SySet *pToken;
+	SyToken *pIn, *pEnd, *pSavedIn, *pSavedEnd;
+	char *zSpan;
+	sxi32 rc = SXRET_OK;
+	if( SyStringLength(&pTrivia->sText) < 1 ){
+		return SXRET_OK;
+	}
+	zSpan = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+		SyStringData(&pTrivia->sText),SyStringLength(&pTrivia->sText));
+	if( zSpan == 0 ){
+		return SXRET_OK;
+	}
+	/* The token set must outlive compilation too: interned operands may
+	 * reference token payloads. Pool-allocated, never released — bounded by
+	 * the number of attribute declarations in the program. */
+	pToken = (SySet *)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(SySet));
+	if( pToken == 0 ){
+		return SXRET_OK;
+	}
+	SySetInit(pToken,&pGen->pVm->sAllocator,sizeof(SyToken));
+	PH7_TokenizePHP(zSpan,SyStringLength(&pTrivia->sText),pTrivia->nLine,pToken,0);
+	pIn = (SyToken *)SySetBasePtr(pToken);
+	pEnd = &pIn[SySetUsed(pToken)];
+	pSavedIn = pGen->pIn;
+	pSavedEnd = pGen->pEnd;
+	while( pIn < pEnd ){
+		ph7_attribute sAttr;
+		SyBlob sFQN;
+		int bAbsolute = 0;
+		SyZero(&sAttr,sizeof(sAttr));
+		SySetInit(&sAttr.aArgs,&pGen->pVm->sAllocator,sizeof(ph7_attr_arg));
+		sAttr.nLine = pIn->nLine;
+		if( pIn->nType & PH7_TK_NSSEP ){
+			bAbsolute = 1;
+			pIn++;
+		}
+		SyBlobInit(&sFQN,&pGen->pVm->sAllocator);
+		while( pIn < pEnd && (pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) ){
+			SyBlobAppend(&sFQN,pIn->sData.zString,pIn->sData.nByte);
+			pIn++;
+			if( pIn < pEnd && (pIn->nType & PH7_TK_NSSEP) ){
+				SyBlobAppend(&sFQN,"\\",1);
+				pIn++;
+				continue;
+			}
+			break;
+		}
+		if( SyBlobLength(&sFQN) < 1 ){
+			/* Malformed group: stop quietly (the group was inert trivia before
+			 * this feature; never turn it into a new fatal) */
+			SyBlobRelease(&sFQN);
+			break;
+		}
+		/* Resolve to an FQN: absolute names verbatim; else use-import alias,
+		 * else current-namespace prefix (PHP attribute name resolution) */
+		{
+			const char *zName = (const char *)SyBlobData(&sFQN);
+			sxu32 nName = SyBlobLength(&sFQN);
+			char *zDup = 0;
+			if( !bAbsolute ){
+				SyHashEntry *pImp = SyHashGet(&pGen->hUseImports,(const void *)zName,nName);
+				if( pImp ){
+					const char *zFqn = (const char *)pImp->pUserData;
+					zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,zFqn,SyStrlen(zFqn));
+					if( zDup ){
+						SyStringInitFromBuf(&sAttr.sName,zDup,SyStrlen(zDup));
+					}
+				}else if( SyBlobLength(&pGen->sNamespace) > 0 ){
+					SyBlob sTmp;
+					SyBlobInit(&sTmp,&pGen->pVm->sAllocator);
+					SyBlobAppend(&sTmp,SyBlobData(&pGen->sNamespace),SyBlobLength(&pGen->sNamespace));
+					SyBlobAppend(&sTmp,"\\",1);
+					SyBlobAppend(&sTmp,zName,nName);
+					zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+						(const char *)SyBlobData(&sTmp),SyBlobLength(&sTmp));
+					if( zDup ){
+						SyStringInitFromBuf(&sAttr.sName,zDup,SyBlobLength(&sTmp));
+					}
+					SyBlobRelease(&sTmp);
+				}
+			}
+			if( SyStringLength(&sAttr.sName) < 1 ){
+				zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,zName,nName);
+				if( zDup ){
+					SyStringInitFromBuf(&sAttr.sName,zDup,nName);
+				}
+			}
+		}
+		SyBlobRelease(&sFQN);
+		if( pIn < pEnd && (pIn->nType & PH7_TK_LPAREN) ){
+			SyToken *pArgsEnd;
+			pIn++;
+			PH7_DelimitNestedTokens(pIn,pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pArgsEnd);
+			while( pIn < pArgsEnd ){
+				SyToken *pArgStart = pIn, *pArgStop = pIn;
+				sxi32 iDepth = 0;
+				ph7_attr_arg sArgRec;
+				while( pArgStop < pArgsEnd ){
+					if( pArgStop->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+						iDepth++;
+					}else if( pArgStop->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+						iDepth--;
+					}else if( (pArgStop->nType & PH7_TK_COMMA) && iDepth == 0 ){
+						break;
+					}
+					pArgStop++;
+				}
+				SyZero(&sArgRec,sizeof(sArgRec));
+				SySetInit(&sArgRec.aByteCode,&pGen->pVm->sAllocator,sizeof(VmInstr));
+				if( pArgStart < pArgStop && (pArgStart->nType & (PH7_TK_ID|PH7_TK_KEYWORD))
+				 && &pArgStart[1] < pArgStop && (pArgStart[1].nType & PH7_TK_COLON) ){
+					char *zN = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+						pArgStart->sData.zString,pArgStart->sData.nByte);
+					if( zN ){
+						SyStringInitFromBuf(&sArgRec.sName,zN,pArgStart->sData.nByte);
+					}
+					pArgStart += 2;
+				}
+				if( pArgStart < pArgStop ){
+					SySet *pInstrContainer;
+					pGen->pIn = pArgStart;
+					pGen->pEnd = pArgStop;
+					pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
+					PH7_VmSetByteCodeContainer(pGen->pVm,&sArgRec.aByteCode);
+					rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_COMMA_STATEMENT,0);
+					PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,1,0,0,0);
+					PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
+					if( rc == SXERR_ABORT ){
+						pGen->pIn = pSavedIn;
+						pGen->pEnd = pSavedEnd;
+						return SXERR_ABORT;
+					}
+					SySetPut(&sAttr.aArgs,(const void *)&sArgRec);
+				}
+				pIn = pArgStop;
+				if( pIn < pArgsEnd && (pIn->nType & PH7_TK_COMMA) ){
+					pIn++;
+				}
+			}
+			pIn = (pArgsEnd < pEnd) ? &pArgsEnd[1] : pEnd;
+		}
+		SySetPut(pOut,(const void *)&sAttr);
+		if( pIn < pEnd && (pIn->nType & PH7_TK_COMMA) ){
+			pIn++;
+			continue;
+		}
+		break;
+	}
+	pGen->pIn = pSavedIn;
+	pGen->pEnd = pSavedEnd;
+	return SXRET_OK;
+}
+/*
+ * Hand the pending attribute groups (if any) to a declaration: compile
+ * every recorded group into pOut and clear the pending list.
+ */
+static sxi32 GenStateConsumeAttrs(ph7_gen_state *pGen,SySet *pOut)
+{
+	ph7_trivia *aT = (ph7_trivia *)SySetBasePtr(&pGen->aPendingAttrs);
+	sxu32 n;
+	sxi32 rc;
+	for( n = 0 ; n < SySetUsed(&pGen->aPendingAttrs) ; n++ ){
+		rc = GenStateCompileAttrSpan(&(*pGen),&aT[n],pOut);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+	}
+	SySetReset(&pGen->aPendingAttrs);
+	return SXRET_OK;
+}
+/*
+ * Compile the attribute groups keyed to the given token (a parameter's
+ * first token inside a signature) into pOut. Parameters are parsed from
+ * the main token stream, so the sidecar indexes map directly.
+ */
+static sxi32 GenStateCollectParamAttrs(ph7_gen_state *pGen,SyToken *pTok,SySet *pOut)
+{
+	SyToken *pBase = (SyToken *)SySetBasePtr(pGen->pTokenSet);
+	ph7_trivia *aT = (ph7_trivia *)SySetBasePtr(&pGen->aTrivia);
+	sxu32 nT = SySetUsed(&pGen->aTrivia);
+	sxu32 nIdx, n;
+	sxi32 rc;
+	if( nT < 1 || pGen->pTokenSet == 0
+	 || pTok < pBase || pTok >= &pBase[SySetUsed(pGen->pTokenSet)] ){
+		return SXRET_OK;
+	}
+	nIdx = (sxu32)(pTok - pBase);
+	for( n = 0 ; n < nT ; n++ ){
+		if( aT[n].nTokIdx == nIdx && aT[n].iKind == PH7_TRIVIA_ATTR ){
+			rc = GenStateCompileAttrSpan(&(*pGen),&aT[n],pOut);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+		}
+	}
+	return SXRET_OK;
 }
 static sxi32 GenStateCompileChunk(
 	ph7_gen_state *pGen, /* Code generator state */
@@ -13088,6 +13334,7 @@ PH7_PRIVATE sxi32 PH7_InitCodeGenerator(
 	SySetInit(&pGen->aGoto,&pVm->sAllocator,sizeof(JumpFixup));
 	SySetInit(&pGen->aNullsafeJmp,&pVm->sAllocator,sizeof(sxu32));
 	SySetInit(&pGen->aTrivia,&pVm->sAllocator,sizeof(ph7_trivia));
+	SySetInit(&pGen->aPendingAttrs,&pVm->sAllocator,sizeof(ph7_trivia));
 	SyHashInit(&pGen->hLiteral,&pVm->sAllocator,0,0);
 	SyHashInit(&pGen->hVar,&pVm->sAllocator,0,0);
 	/* Error log buffer */
@@ -13121,6 +13368,7 @@ PH7_PRIVATE sxi32 PH7_ResetCodeGenerator(
 	SySetReset(&pGen->aGoto);
 	SySetReset(&pGen->aNullsafeJmp);
 	SySetReset(&pGen->aTrivia);
+	SySetReset(&pGen->aPendingAttrs);
 	SyStringInitFromBuf(&pGen->sPendingDoc,0,0);
 	SyBlobRelease(&pGen->sErrBuf);
 	SyBlobRelease(&pGen->sWorker);
