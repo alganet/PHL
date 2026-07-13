@@ -2463,7 +2463,8 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 		SyStringInitFromBuf(&sRandom,zRandomLib,sizeof(zRandomLib)-1);
 		VmEvalChunk(&(*pVm),0,&sRandom,PH7_PHP_ONLY,FALSE);
 	}
-	pVm->bCompilingBuiltin = 0;
+	/* bCompilingBuiltin stays set until the Reflection library below has
+	 * compiled — its classes are internal too. */
 	/* Cache the Fiber class pointer for fast dispatch */
 	pVm->pFiberClass = PH7_VmExtractClass(pVm,"Fiber",5,0,0);
 	/* Cache built-in interface pointers used on hot dispatch paths */
@@ -2507,6 +2508,11 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	ph7_create_function(pVm,"__gen_throw",vm_builtin_Generator_throw,0);
 	ph7_create_function(pVm,"__gen_getReturn",vm_builtin_Generator_getReturn,0);
 	ph7_create_function(pVm,"__gen_destruct",vm_builtin_Generator_destruct,0);
+	/* Install the Reflection library (embedded classes + __reflect_* thunks).
+	 * Still inside the bCompilingBuiltin window so its classes are flagged
+	 * internal; the Traversable pointer above must already be cached. */
+	PH7_VmInstallReflection(&(*pVm));
+	pVm->bCompilingBuiltin = 0;
 	/* Reset the code generator */
 	PH7_ResetCodeGenerator(&(*pVm),pEngine->xConf.xErr,pEngine->xConf.pErrData);
 	return SXRET_OK;
@@ -20265,23 +20271,30 @@ static sxi32 VmEvalChunk(
 			ph7_result_bool(pCtx,0);
 		}
 	}else{
-		/* Mount any newly defined classes */
+		/* Mount any newly defined classes. Skipped while the VM is still
+		 * initializing (builtin chunks): mounting evaluates class-constant/
+		 * static initializers and installs reference-table entries, and the
+		 * runtime structures those need (apRefObj, the per-exec object pool
+		 * baseline) do not exist before PH7_VmMakeReady — which mounts every
+		 * class unconditionally anyway. */
 		SyHashEntry *pEntry;
 		ph7_class *pClass;
 		ph7_value sResult; /* Return value */
 		sxi32 rc;
-		SyHashResetLoopCursor(&pVm->hClass);
-		while((pEntry = SyHashGetNextEntry(&pVm->hClass)) != 0 ){
-			pClass = (ph7_class *)pEntry->pUserData;
-			/* Only mount classes that haven't been mounted yet */
-			if( !pClass->bMounted ){
-				rc = VmMountUserClass(pVm,pClass);
-				if( rc != SXRET_OK ){
-					/* Mount failure (likely memory error) */
-					if( pCtx ){
-						ph7_result_bool(pCtx,0);
+		if( pVm->nMagic != PH7_VM_INIT ){
+			SyHashResetLoopCursor(&pVm->hClass);
+			while((pEntry = SyHashGetNextEntry(&pVm->hClass)) != 0 ){
+				pClass = (ph7_class *)pEntry->pUserData;
+				/* Only mount classes that haven't been mounted yet */
+				if( !pClass->bMounted ){
+					rc = VmMountUserClass(pVm,pClass);
+					if( rc != SXRET_OK ){
+						/* Mount failure (likely memory error) */
+						if( pCtx ){
+							ph7_result_bool(pCtx,0);
+						}
+						goto Cleanup;
 					}
-					goto Cleanup;
 				}
 			}
 		}
@@ -20320,6 +20333,17 @@ Cleanup:
 	SyBlobDup(&sSavedNs,&pVm->sNamespace);
 	SyBlobRelease(&sSavedNs);
 	return SXRET_OK;
+}
+/*
+ * Compile an embedded builtin PHP chunk into the VM. Thin exported wrapper
+ * around the static VmEvalChunk for builtin libraries that live outside
+ * this file (e.g. the Reflection classes in vm_builtin_reflection.c).
+ */
+PH7_PRIVATE sxi32 PH7_VmEvalBuiltinChunk(ph7_vm *pVm,const char *zSrc,sxu32 nLen)
+{
+	SyString sChunk;
+	SyStringInitFromBuf(&sChunk,zSrc,nLen);
+	return VmEvalChunk(&(*pVm),0,&sChunk,PH7_PHP_ONLY,FALSE);
 }
 /*
  * value eval(string $code)
