@@ -915,6 +915,7 @@ static VmFrame * VmNewFrame(
 	SySetInit(&pFrame->sArg,&pVm->sAllocator,sizeof(VmSlot));
 	SySetInit(&pFrame->sLocal,&pVm->sAllocator,sizeof(VmSlot));
 	SySetInit(&pFrame->sRef,&pVm->sAllocator,sizeof(VmSlot));
+	pFrame->nActualArgs = -1; /* unknown until an arg-install site stamps it */
 	/* Per-frame pending catch/finally return slot (always-init so release is
 	 * unconditional; bHasRet is already 0 from SyZero). */
 	PH7_MemObjInit(&(*pVm),&pFrame->sRet);
@@ -12610,6 +12611,41 @@ case PH7_OP_NEW: {
 		goto Abort;
 	}else{
 		ph7_class_method *pCons;
+		/* Check if a constructor is available — BEFORE instantiation: a
+		 * visibility-denied `new` must not construct (nor later destruct)
+		 * the object (band A #4). */
+		pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);
+		if( pCons == 0 ){
+			SyString *pName = &pClass->sName;
+			/* Check for a constructor with the same base class name */
+			pCons = PH7_ClassExtractMethod(pClass,pName->zString,pName->nByte);
+		}
+		/* Constructor visibility (band A #4): __construct now KEEPS its
+		 * declared protection (PH7_NewClassMethod no longer forces it
+		 * public), so `new C()` on a private/protected constructor from
+		 * the wrong scope is php's catchable Error. Reflection's
+		 * newInstance path sets bReflectBypass like method invoke. */
+		if( pCons && pCons->iProtection != PH7_CLASS_PROT_PUBLIC ){
+			if( pVm->bReflectBypass ){
+				pVm->bReflectBypass = 0;
+			}else if( !PH7_VmClassMemberAccess(&(*pVm),pClass,&pCons->sFunc.sName,pCons->iProtection,FALSE) ){
+				SyBlob sErrMsg;
+				const char *zVis = pCons->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected";
+				SyBlobInit(&sErrMsg,&pVm->sAllocator);
+				SyBlobFormat(&sErrMsg,"Call to %s %z::__construct() from global scope",
+					zVis,&pClass->sName);
+				VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
+				/* Pop ctor args + release the class-name operand, leave NULL
+				 * as the expression value; the fetch-point router lands the
+				 * throw. No instance was created. */
+				if( pInstr->iP1 > 0 ){
+					VmPopOperand(&pTos,pInstr->iP1);
+				}
+				PH7_MemObjRelease(pTos);
+				pTos->nIdx = SXU32_HIGH;
+				break;
+			}
+		}
 		/* Create a new class instance */
 		pNew = PH7_NewClassInstance(&(*pVm),pClass);
 		if( pNew == 0 ){
@@ -12623,13 +12659,6 @@ case PH7_OP_NEW: {
 				VmPopOperand(&pTos,pInstr->iP1);
 			}
 			break;
-		}
-		/* Check if a constructor is available */
-		pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);
-		if( pCons == 0 ){
-			SyString *pName = &pClass->sName;
-			/* Check for a constructor with the same base class name */
-			pCons = PH7_ClassExtractMethod(pClass,pName->zString,pName->nByte);
 		}
 		if( pCons ){
 			/* Call the class constructor.  Collect args in stack order and
@@ -13764,6 +13793,10 @@ case PH7_OP_CALL: {
 			 * resolves against it (Closure::bindTo($o, Scope::class) / call($o)). */
 			pFrame->pBoundScope = pClosureScope;
 		}
+		/* Stamp the ACTUAL call arity for func_num_args()/func_get_args() (band
+		 * A #4): sArg over-counts (defaulted params installed, variadic packed
+		 * as one entry) so php's answers can't be derived from it. */
+		pFrame->nActualArgs = (int)(pTos - pArg);
 		if( pThis && ((pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) || bClosureThis) ){
 			/* Install the '$this' variable (a method call, or a bound plain closure — Increment 2). */
 			static const SyString sThis = { "this" , sizeof("this") - 1 };
@@ -16253,6 +16286,8 @@ static sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 	/* Install arguments with type casting and default values (matching OP_CALL) */
 	aFormalArg = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);
 	nFormal = SySetUsed(&pFunc->aArgs);
+	/* Actual call arity for func_num_args()/func_get_args() (band A #4) */
+	pExecCtx->pFrame->nActualArgs = nArg;
 	for( n = 0; n < nFormal; n++ ){
 		ph7_value *pObj;
 		if( aFormalArg[n].iFlags & VM_FUNC_ARG_VARIADIC ){
@@ -17253,7 +17288,14 @@ static int vm_builtin_func_num_args(ph7_context *pCtx,int nArg,ph7_value **apArg
 		ph7_result_int(pCtx,-1);
 		return SXRET_OK;
 	}
-	/* Total number of arguments passed to the enclosing function */
+	/* Total number of arguments passed to the enclosing function. The stamped
+	 * actual arity (band A #4) is php's answer — sArg over-counts (defaulted
+	 * params are installed too, and it once returned the FORMAL count for
+	 * `function f($a,$b=2){}; f(1)` — 2 where php says 1). */
+	if( pFrame->nActualArgs >= 0 ){
+		ph7_result_int(pCtx,pFrame->nActualArgs);
+		return SXRET_OK;
+	}
 	nArg = (int)SySetUsed(&pFrame->sArg);
 	ph7_result_int(pCtx,nArg);
 	return SXRET_OK;
@@ -17383,8 +17425,62 @@ static int vm_builtin_func_get_args(ph7_context *pCtx,int nArg,ph7_value **apArg
 		ph7_result_bool(pCtx,0);
 		return SXRET_OK;
 	}
-	/* Start filling the array with the given arguments */
+	/* Start filling the array with the given arguments. With a stamped actual
+	 * arity (band A #4) reconstruct php's flat ACTUAL list: the first
+	 * min(actual, non-variadic-formal) installed slots, then the elements of
+	 * the variadic packed array (sArg's last entry) — never defaulted params,
+	 * and never the packed array itself (the pre-fix behavior listed defaults
+	 * AND the array, once even twice). */
 	aSlot = (VmSlot *)SySetBasePtr(&pFrame->sArg);
+	{
+		ph7_vm_func *pVmFunc = (ph7_vm_func *)pFrame->pUserData;
+		int nActual = pFrame->nActualArgs;
+		if( nActual >= 0 && pVmFunc ){
+			sxu32 nFormal = SySetUsed(&pVmFunc->aArgs);
+			ph7_vm_func_arg *aFormal = (ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs);
+			sxu32 nHead = nFormal;
+			if( nFormal > 0 && (aFormal[nFormal-1].iFlags & VM_FUNC_ARG_VARIADIC) ){
+				nHead = nFormal - 1;
+			}
+			for( n = 0; n < (sxu32)nActual && n < nHead && n < SySetUsed(&pFrame->sArg); n++ ){
+				pObj = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,aSlot[n].nIdx);
+				if( pObj ){
+					ph7_array_add_elem(pArray,0,pObj);
+				}
+			}
+			if( (sxu32)nActual > nHead && nHead < SySetUsed(&pFrame->sArg) ){
+				if( nHead < nFormal ){
+					/* A variadic formal exists: the extras live, in order,
+					 * inside its packed array */
+					pObj = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,aSlot[nHead].nIdx);
+					if( pObj && (pObj->iFlags & MEMOBJ_HASHMAP) ){
+						ph7_hashmap *pMap = (ph7_hashmap *)pObj->x.pOther;
+						ph7_hashmap_node *pNode = pMap->pFirst;
+						sxu32 i;
+						for( i = 0; i < pMap->nEntry && pNode; ++i ){
+							ph7_value *pElem = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pNode->nValIdx);
+							if( pElem ){
+								ph7_array_add_elem(pArray,0,pElem);
+							}
+							pNode = pNode->pPrev;
+						}
+					}
+				}else{
+					/* No variadic formal: extra positional args are plain sArg
+					 * entries beyond the formals (e.g. Fiber::start()'s own
+					 * zero-formal func_get_args() relay). */
+					for( n = nHead; n < SySetUsed(&pFrame->sArg) && n < (sxu32)nActual; n++ ){
+						pObj = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,aSlot[n].nIdx);
+						if( pObj ){
+							ph7_array_add_elem(pArray,0,pObj);
+						}
+					}
+				}
+			}
+			ph7_result_value(pCtx,pArray);
+			return SXRET_OK;
+		}
+	}
 	for( n = 0;  n < SySetUsed(&pFrame->sArg) ; n++ ){
 		pObj = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,aSlot[n].nIdx);
 		if( pObj ){
@@ -18373,12 +18469,46 @@ static int vm_builtin_constant(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Extract the constant name */
 	zName = ph7_value_to_string(apArg[0],&nLen);
+	/* Class-constant form "C::K" (band A #4): resolve the class — interfaces
+	 * included — and read the mounted constant slot; php throws a catchable
+	 * Error for an unknown class or constant (pre-fix this path warned
+	 * "Undefined constant" and returned NULL without ever looking at the
+	 * class). */
+	{
+		int iSep;
+		for( iSep = 0; iSep + 1 < nLen; iSep++ ){
+			if( zName[iSep] == ':' && zName[iSep+1] == ':' ){
+				break;
+			}
+		}
+		if( iSep + 1 < nLen ){
+			ph7_class *pClass = iSep > 0 ?
+				PH7_VmExtractClass(pCtx->pVm,zName,(sxu32)iSep,FALSE,0) : 0;
+			if( pClass == 0 ){
+				return PH7_VmThrowException(pCtx,"Error",
+					"Class \"%.*s\" not found",iSep,zName);
+			}
+			if( iSep + 2 < nLen ){
+				ph7_class_attr *pAttr = PH7_ClassExtractAttribute(pClass,
+					&zName[iSep+2],(sxu32)(nLen - iSep - 2));
+				if( pAttr && (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) ){
+					ph7_value *pValue = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pAttr->nIdx);
+					if( pValue ){
+						ph7_result_value(pCtx,pValue);
+						return SXRET_OK;
+					}
+				}
+			}
+			return PH7_VmThrowException(pCtx,"Error",
+				"Undefined constant %.*s",nLen,zName);
+		}
+	}
 	/* Perform the query */
 	pEntry = SyHashGet(&pCtx->pVm->hConstant,(const void *)zName,(sxu32)nLen);
 	if( pEntry == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,"'%.*s': Undefined constant",nLen,zName);
-		ph7_result_null(pCtx);
-		return SXRET_OK;
+		/* php 8: a catchable Error, not a notice + NULL (band A #4) */
+		return PH7_VmThrowException(pCtx,"Error",
+			"Undefined constant \"%.*s\"",nLen,zName);
 	}
 	PH7_MemObjInit(pCtx->pVm,&sVal);
 	/* Point to the structure that describe the constant */

@@ -1,10 +1,14 @@
 --CREDITS--
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --TEST--
-OO constructor visibility (private constructors are made public)
+OO constructor visibility (private constructor from outside is a catchable Error)
+--DESCRIPTION--
+Rewritten cross-engine with the band A #4 fix: __construct keeps its declared
+visibility (the engine previously forced it public, so `new` on a
+private-ctor class succeeded from any scope — this test used to enshrine
+that). Construction from inside the class still works; destructors are
+engine-invoked so a private __destruct always runs.
 --FILE--
 <?php
 class ConstructorVisibilityTest {
@@ -12,23 +16,32 @@ class ConstructorVisibilityTest {
         echo "Private constructor called\n";
     }
 
-    private function __destruct() {
-        echo "Private destructor called\n";
+    public function __destruct() {
+        echo "Destructor called\n";
+    }
+
+    public static function make(): ConstructorVisibilityTest {
+        return new ConstructorVisibilityTest();
     }
 }
 
 echo "Testing constructor visibility...\n";
 
-$test = new ConstructorVisibilityTest();
+try {
+    $test = new ConstructorVisibilityTest();
+    echo "constructed from global scope\n";
+} catch (Error $e) {
+    echo "Caught: ", $e->getMessage(), "\n";
+}
+
+$test = ConstructorVisibilityTest::make();
 unset($test);
 
 echo "Constructor visibility test completed\n";
 ?>
---EXPECTF--
+--EXPECT--
 Testing constructor visibility...
+Caught: Call to private ConstructorVisibilityTest::__construct() from global scope
 Private constructor called
-Private destructor called
+Destructor called
 Constructor visibility test completed
---CLEAN--
-<?php
-unset($test);
