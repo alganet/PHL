@@ -597,6 +597,460 @@ static int vm_builtin_reflect_new_no_ctor(ph7_context *pCtx, int nArg, ph7_value
 	}
 	return ReflectResultObject(pCtx, PH7_NewClassInstance(pCtx->pVm, pClass));
 }
+/* Hand an EXISTING instance to the caller: takes an extra reference
+ * (unlike ReflectResultObject, which transfers a fresh instance's one). */
+static int ReflectResultExistingObject(ph7_context *pCtx, ph7_class_instance *pObj)
+{
+	if( pObj == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	PH7_MemObjRelease(pCtx->pRet);
+	pObj->iRef++;
+	pCtx->pRet->x.pOther = pObj;
+	MemObjSetType(pCtx->pRet, MEMOBJ_OBJ);
+	return PH7_OK;
+}
+/* pVal is a Closure instance? Return it, else NULL. */
+static ph7_class_instance * ReflectValueClosure(ph7_vm *pVm, ph7_value *pVal)
+{
+	ph7_class_instance *pThis;
+	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 || pVal->x.pOther == 0 || pVm->pClosureClass == 0 ){
+		return 0;
+	}
+	pThis = (ph7_class_instance *)pVal->x.pOther;
+	return (pThis->pClass == pVm->pClosureClass) ? pThis : 0;
+}
+/*
+ * Resolve a reflection callable target into its compiled function.
+ *   - pMethodArg a non-empty string  -> method mode: pTarget is a class name
+ *     or object; outputs *ppClass and *ppMeth.
+ *   - pTarget a Closure              -> unwrap $__fn into hFunction; *ppClosure.
+ *   - pTarget a string               -> hFunction (user) or hHostFunction
+ *     (*ppHost set, returns NULL).
+ * Returns the ph7_vm_func, or NULL (host function or unresolvable).
+ */
+static ph7_vm_func * ReflectResolveCallable(ph7_context *pCtx, ph7_value *pTarget,
+	ph7_value *pMethodArg, ph7_class **ppClass, ph7_class_method **ppMeth,
+	ph7_user_func **ppHost, ph7_class_instance **ppClosure)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	SyHashEntry *pEntry;
+	if( ppClass ){ *ppClass = 0; }
+	if( ppMeth ){ *ppMeth = 0; }
+	if( ppHost ){ *ppHost = 0; }
+	if( ppClosure ){ *ppClosure = 0; }
+	if( pMethodArg && (pMethodArg->iFlags & MEMOBJ_STRING) && SyBlobLength(&pMethodArg->sBlob) > 0 ){
+		ph7_class *pClass = ReflectResolveClass(pVm, pTarget);
+		ph7_class_method *pMeth;
+		if( pClass == 0 ){
+			return 0;
+		}
+		pMeth = PH7_ClassExtractMethod(pClass, (const char *)SyBlobData(&pMethodArg->sBlob),
+			SyBlobLength(&pMethodArg->sBlob));
+		if( pMeth == 0 ){
+			return 0;
+		}
+		if( ppClass ){ *ppClass = pClass; }
+		if( ppMeth ){ *ppMeth = pMeth; }
+		return &pMeth->sFunc;
+	}
+	{
+		ph7_class_instance *pClo = ReflectValueClosure(pVm, pTarget);
+		if( pClo ){
+			SyString sAttr;
+			ph7_value *pFn;
+			SyStringInitFromBuf(&sAttr, "__fn", 4);
+			pFn = PH7_ClassInstanceFetchAttr(pClo, &sAttr);
+			if( pFn == 0 || (pFn->iFlags & MEMOBJ_STRING) == 0 || SyBlobLength(&pFn->sBlob) < 1 ){
+				return 0;
+			}
+			pEntry = SyHashGet(&pVm->hFunction, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));
+			if( pEntry == 0 ){
+				/* A Closure over a host function (Closure::fromCallable('strlen')) */
+				pEntry = SyHashGet(&pVm->hHostFunction, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));
+				if( pEntry && ppHost ){
+					*ppHost = (ph7_user_func *)pEntry->pUserData;
+					if( ppClosure ){ *ppClosure = pClo; }
+				}
+				return 0;
+			}
+			if( ppClosure ){ *ppClosure = pClo; }
+			return (ph7_vm_func *)pEntry->pUserData;
+		}
+	}
+	if( pTarget->iFlags & MEMOBJ_STRING ){
+		if( SyBlobLength(&pTarget->sBlob) < 1 ){
+			return 0;
+		}
+		pEntry = SyHashGet(&pVm->hFunction, SyBlobData(&pTarget->sBlob), SyBlobLength(&pTarget->sBlob));
+		if( pEntry ){
+			return (ph7_vm_func *)pEntry->pUserData;
+		}
+		pEntry = SyHashGet(&pVm->hHostFunction, SyBlobData(&pTarget->sBlob), SyBlobLength(&pTarget->sBlob));
+		if( pEntry && ppHost ){
+			*ppHost = (ph7_user_func *)pEntry->pUserData;
+		}
+	}
+	return 0;
+}
+/* Emit the shared descriptor fields of a compiled function. */
+static void ReflectFillFuncCommon(ph7_context *pCtx, ph7_value *pInfo, ph7_vm_func *pFunc)
+{
+	ph7_vm_func_arg *aArg;
+	ph7_value *pParams, *pStatics;
+	int bVariadic = 0;
+	int bAnon;
+	sxu32 n;
+	/* A capture-free `function(){}` compiles without the CLOSURE flag but
+	 * still carries the synthesized "[lambda_N]" / "[closure_N]" name. */
+	bAnon = (pFunc->iFlags & VM_FUNC_CLOSURE) != 0;
+	if( !bAnon && SyStringLength(&pFunc->sName) > 9
+	 && (SyMemcmp(SyStringData(&pFunc->sName), "[lambda_", 8) == 0
+	  || SyMemcmp(SyStringData(&pFunc->sName), "[closure_", 9) == 0) ){
+		bAnon = 1;
+	}
+	ReflectMapAddStr(pCtx, pInfo, "name", SyStringData(&pFunc->sName), (int)SyStringLength(&pFunc->sName));
+	ReflectMapAddBool(pCtx, pInfo, "internal", (pFunc->iFlags & VM_FUNC_INTERNAL) != 0);
+	ReflectMapAddBool(pCtx, pInfo, "closure", bAnon);
+	ReflectMapAddBool(pCtx, pInfo, "byref", (pFunc->iFlags & VM_FUNC_REF_RETURN) != 0);
+	ReflectMapAddBool(pCtx, pInfo, "generator", (pFunc->iFlags & VM_FUNC_GENERATOR) != 0);
+	ReflectMapAddBool(pCtx, pInfo, "strict", pFunc->bStrictTypes != 0);
+	if( SyStringLength(&pFunc->sFile) > 0 ){
+		ReflectMapAddStr(pCtx, pInfo, "file", SyStringData(&pFunc->sFile), (int)SyStringLength(&pFunc->sFile));
+	}else{
+		ReflectMapAddBool(pCtx, pInfo, "file", 0);
+	}
+	ReflectMapAddInt(pCtx, pInfo, "line", (sxi64)pFunc->nLine);
+	ReflectMapAddInt(pCtx, pInfo, "endline", (sxi64)pFunc->nEndLine);
+	if( SyStringLength(&pFunc->sReturnTypeName) > 0 ){
+		ReflectMapAddStr(pCtx, pInfo, "rettext", SyStringData(&pFunc->sReturnTypeName),
+			(int)SyStringLength(&pFunc->sReturnTypeName));
+	}else{
+		ReflectMapAddNull(pCtx, pInfo, "rettext");
+	}
+	ReflectMapAddBool(pCtx, pInfo, "retnullable", (pFunc->iFlags & VM_FUNC_RETURN_NULLABLE) != 0);
+	/* Parameters */
+	pParams = ph7_context_new_array(pCtx);
+	aArg = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);
+	for( n = 0 ; pParams && n < SySetUsed(&pFunc->aArgs) ; n++ ){
+		ph7_value *pMeta = ph7_context_new_array(pCtx);
+		if( pMeta == 0 ){ break; }
+		ReflectMapAddStr(pCtx, pMeta, "name", SyStringData(&aArg[n].sName), (int)SyStringLength(&aArg[n].sName));
+		ReflectMapAddInt(pCtx, pMeta, "pos", (sxi64)n);
+		ReflectMapAddBool(pCtx, pMeta, "byref", (aArg[n].iFlags & VM_FUNC_ARG_BY_REF) != 0);
+		ReflectMapAddBool(pCtx, pMeta, "variadic", (aArg[n].iFlags & VM_FUNC_ARG_VARIADIC) != 0);
+		/* The compiler never sets ARG_HAS_DEF; a default = compiled bytecode
+		 * (same test the OP_CALL default-value path uses). */
+		ReflectMapAddBool(pCtx, pMeta, "hasdef", SySetUsed(&aArg[n].aByteCode) > 0);
+		ReflectMapAddBool(pCtx, pMeta, "nullable", (aArg[n].iFlags & VM_FUNC_ARG_NULLABLE) != 0);
+		ReflectMapAddBool(pCtx, pMeta, "promoted", (aArg[n].iFlags & VM_FUNC_ARG_PROMOTED) != 0);
+		if( SyStringLength(&aArg[n].sTypeName) > 0 ){
+			ReflectMapAddStr(pCtx, pMeta, "typetext", SyStringData(&aArg[n].sTypeName),
+				(int)SyStringLength(&aArg[n].sTypeName));
+		}else{
+			ReflectMapAddNull(pCtx, pMeta, "typetext");
+		}
+		ph7_array_add_elem(pParams, 0, pMeta);
+		if( aArg[n].iFlags & VM_FUNC_ARG_VARIADIC ){
+			bVariadic = 1;
+		}
+	}
+	if( pParams ){
+		ph7_array_add_strkey_elem(pInfo, "params", pParams);
+	}
+	ReflectMapAddBool(pCtx, pInfo, "variadic", bVariadic);
+	/* Static variables: current value when the slot was initialized (first
+	 * call), otherwise the evaluated default — PHP's getStaticVariables
+	 * initializes on demand and reports the same values. */
+	pStatics = ph7_context_new_array(pCtx);
+	if( pStatics ){
+		ph7_vm_func_static_var *aStatic = (ph7_vm_func_static_var *)SySetBasePtr(&pFunc->aStatic);
+		for( n = 0 ; n < SySetUsed(&pFunc->aStatic) ; n++ ){
+			ph7_value *pVal = 0;
+			ph7_value sScratch;
+			int bScratch = 0;
+			if( aStatic[n].nIdx != SXU32_HIGH ){
+				pVal = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, aStatic[n].nIdx);
+			}
+			if( pVal == 0 ){
+				PH7_MemObjInit(pCtx->pVm, &sScratch);
+				if( SySetUsed(&aStatic[n].aByteCode) > 0 ){
+					VmLocalExec(pCtx->pVm, &aStatic[n].aByteCode, &sScratch, FALSE);
+				}
+				pVal = &sScratch;
+				bScratch = 1;
+			}
+			ReflectMapAddDyn(pCtx, pStatics, &aStatic[n].sName, pVal);
+			if( bScratch ){
+				PH7_MemObjRelease(&sScratch);
+			}
+		}
+		ph7_array_add_strkey_elem(pInfo, "statics", pStatics);
+	}
+}
+/*
+ * array|null __reflect_func_info(string|Closure $target [, string $method])
+ * Function/method/closure descriptor for the PHP layer.
+ */
+static int vm_builtin_reflect_func_info(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm_func *pFunc;
+	ph7_class *pClass = 0;
+	ph7_class_method *pMeth = 0;
+	ph7_user_func *pHost = 0;
+	ph7_class_instance *pClosure = 0;
+	ph7_value *pInfo;
+	if( nArg < 1 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pFunc = ReflectResolveCallable(pCtx, apArg[0], nArg > 1 ? apArg[1] : 0,
+		&pClass, &pMeth, &pHost, &pClosure);
+	if( pFunc == 0 && pHost == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pInfo = ph7_context_new_array(pCtx);
+	if( pInfo == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	if( pFunc == 0 ){
+		/* Host (C builtin) function: no parameter metadata beyond arity */
+		ph7_value *pParams = ph7_context_new_array(pCtx);
+		ReflectMapAddStr(pCtx, pInfo, "name", SyStringData(&pHost->sName), (int)SyStringLength(&pHost->sName));
+		ReflectMapAddBool(pCtx, pInfo, "internal", 1);
+		ReflectMapAddBool(pCtx, pInfo, "closure", 0);
+		ReflectMapAddBool(pCtx, pInfo, "byref", 0);
+		ReflectMapAddBool(pCtx, pInfo, "generator", 0);
+		ReflectMapAddBool(pCtx, pInfo, "strict", 0);
+		ReflectMapAddBool(pCtx, pInfo, "file", 0);
+		ReflectMapAddInt(pCtx, pInfo, "line", 0);
+		ReflectMapAddInt(pCtx, pInfo, "endline", 0);
+		ReflectMapAddNull(pCtx, pInfo, "rettext");
+		ReflectMapAddBool(pCtx, pInfo, "retnullable", 0);
+		if( pParams ){
+			ph7_array_add_strkey_elem(pInfo, "params", pParams);
+		}
+		ReflectMapAddBool(pCtx, pInfo, "variadic", 0);
+		ReflectMapAddInt(pCtx, pInfo, "minarg", (sxi64)pHost->nMinArg);
+		ph7_result_value(pCtx, pInfo);
+		return PH7_OK;
+	}
+	ReflectFillFuncCommon(pCtx, pInfo, pFunc);
+	ReflectMapAddInt(pCtx, pInfo, "minarg", -1);
+	if( pMeth && pClass ){
+		ph7_class *pDecl = ReflectMethodDeclClass(pClass, pMeth);
+		ReflectMapAddStr(pCtx, pInfo, "class", SyStringData(&pClass->sName), (int)SyStringLength(&pClass->sName));
+		ReflectMapAddStr(pCtx, pInfo, "decl", SyStringData(&pDecl->sName), (int)SyStringLength(&pDecl->sName));
+		ReflectMapAddInt(pCtx, pInfo, "vis", (sxi64)pMeth->iProtection);
+		ReflectMapAddBool(pCtx, pInfo, "mstatic", (pMeth->iFlags & PH7_CLASS_ATTR_STATIC) != 0);
+		ReflectMapAddBool(pCtx, pInfo, "abstract", (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) != 0);
+		ReflectMapAddBool(pCtx, pInfo, "final", (pMeth->iFlags & PH7_CLASS_ATTR_FINAL) != 0);
+	}
+	if( pClosure ){
+		SyString sAttr;
+		ph7_value *pAttr;
+		ph7_value *pUsed;
+		SyStringInitFromBuf(&sAttr, "__this", 6);
+		pAttr = PH7_ClassInstanceFetchAttr(pClosure, &sAttr);
+		if( pAttr && (pAttr->iFlags & MEMOBJ_OBJ) ){
+			ph7_value *pKey = ph7_context_new_scalar(pCtx);
+			if( pKey ){
+				ph7_value_string(pKey, "this", 4);
+				ph7_array_add_elem(pInfo, pKey, pAttr);
+			}
+		}else{
+			ReflectMapAddNull(pCtx, pInfo, "this");
+		}
+		SyStringInitFromBuf(&sAttr, "__scope", 7);
+		pAttr = PH7_ClassInstanceFetchAttr(pClosure, &sAttr);
+		if( pAttr && (pAttr->iFlags & MEMOBJ_STRING) && SyBlobLength(&pAttr->sBlob) > 0 ){
+			ReflectMapAddStr(pCtx, pInfo, "scope", (const char *)SyBlobData(&pAttr->sBlob),
+				(int)SyBlobLength(&pAttr->sBlob));
+		}else{
+			ReflectMapAddNull(pCtx, pInfo, "scope");
+		}
+		/* use(...) imports; the implicit auto-captured $this is flagged IGNORE */
+		pUsed = ph7_context_new_array(pCtx);
+		if( pUsed ){
+			ph7_vm_func_closure_env *aEnv = (ph7_vm_func_closure_env *)SySetBasePtr(&pFunc->aClosureEnv);
+			sxu32 n;
+			for( n = 0 ; n < SySetUsed(&pFunc->aClosureEnv) ; n++ ){
+				if( aEnv[n].iFlags & VM_FUNC_ARG_IGNORE ){
+					continue;
+				}
+				if( SyStringLength(&aEnv[n].sName) == sizeof("this")-1
+				 && SyMemcmp(SyStringData(&aEnv[n].sName), "this", sizeof("this")-1) == 0 ){
+					continue;
+				}
+				ReflectMapAddDyn(pCtx, pUsed, &aEnv[n].sName, &aEnv[n].sValue);
+			}
+			ph7_array_add_strkey_elem(pInfo, "used", pUsed);
+		}
+	}
+	ph7_result_value(pCtx, pInfo);
+	return PH7_OK;
+}
+/*
+ * mixed __reflect_param_default(string|Closure $target, ?string $method, int $idx)
+ * Evaluate a parameter's compiled default expression.
+ */
+static int vm_builtin_reflect_param_default(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm_func *pFunc;
+	ph7_vm_func_arg *pArg;
+	ph7_value sValue;
+	sxu32 nIdx;
+	if( nArg < 3 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pFunc = ReflectResolveCallable(pCtx, apArg[0], apArg[1], 0, 0, 0, 0);
+	nIdx = (sxu32)ph7_value_to_int(apArg[2]);
+	if( pFunc == 0 || (pArg = (ph7_vm_func_arg *)SySetAt(&pFunc->aArgs, nIdx)) == 0
+	 || SySetUsed(&pArg->aByteCode) < 1 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pCtx->pVm, &sValue);
+	VmLocalExec(pCtx->pVm, &pArg->aByteCode, &sValue, FALSE);
+	ph7_result_value(pCtx, &sValue);
+	PH7_MemObjRelease(&sValue);
+	return PH7_OK;
+}
+/*
+ * string|null __reflect_param_defconst(string|Closure $target, ?string $method, int $idx)
+ * When a parameter's default is a plain global-constant reference, its
+ * source name; null otherwise. A constant default compiles to exactly
+ * [ OP_LOADC (EXPAND) , OP_DONE ] with the name in the literal table.
+ */
+static int vm_builtin_reflect_param_defconst(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm_func *pFunc;
+	ph7_vm_func_arg *pArg;
+	VmInstr *aInstr;
+	ph7_value *pLit;
+	sxu32 nIdx;
+	if( nArg < 3 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pFunc = ReflectResolveCallable(pCtx, apArg[0], apArg[1], 0, 0, 0, 0);
+	nIdx = (sxu32)ph7_value_to_int(apArg[2]);
+	if( pFunc == 0 || (pArg = (ph7_vm_func_arg *)SySetAt(&pFunc->aArgs, nIdx)) == 0
+	 || SySetUsed(&pArg->aByteCode) != 2 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	aInstr = (VmInstr *)SySetBasePtr(&pArg->aByteCode);
+	if( aInstr[0].iOp != PH7_OP_LOADC || (aInstr[0].iP1 & PH7_LOADC_EXPAND) == 0
+	 || aInstr[1].iOp != PH7_OP_DONE ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pLit = (ph7_value *)SySetAt(&pCtx->pVm->aLitObj, aInstr[0].iP2);
+	if( pLit == 0 || SyBlobLength(&pLit->sBlob) < 1 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	ph7_result_string(pCtx, (const char *)SyBlobData(&pLit->sBlob), (int)SyBlobLength(&pLit->sBlob));
+	return PH7_OK;
+}
+/*
+ * mixed __reflect_invoke(mixed $target, ?string $method, ?object $this, array $args)
+ * Visibility-bypassing invocation (methods dispatch by VM name; functions
+ * and closures ride PH7_VmCallUserFunction like call_user_func_array).
+ */
+static int vm_builtin_reflect_invoke(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_value sResult;
+	SySet aCallArg;
+	sxi32 rc;
+	if( nArg < 4 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pVm, &sResult);
+	sResult.nIdx = SXU32_HIGH;
+	SySetInit(&aCallArg, &pVm->sAllocator, sizeof(ph7_value *));
+	ReflectCollectArgs(pCtx, apArg[3], &aCallArg);
+	if( (apArg[1]->iFlags & MEMOBJ_STRING) && SyBlobLength(&apArg[1]->sBlob) > 0 ){
+		ph7_class *pClass = 0;
+		ph7_class_method *pMeth = 0;
+		ph7_class_instance *pThis = 0;
+		ReflectResolveCallable(pCtx, apArg[0], apArg[1], &pClass, &pMeth, 0, 0);
+		if( pMeth == 0 ){
+			SySetRelease(&aCallArg);
+			PH7_MemObjRelease(&sResult);
+			ph7_result_null(pCtx);
+			return PH7_OK;
+		}
+		if( apArg[2]->iFlags & MEMOBJ_OBJ ){
+			pThis = (ph7_class_instance *)apArg[2]->x.pOther;
+		}
+		/* Reflection ignores method visibility (PHP 8.1+); the flag is
+		 * consumed by the first OP_CALL, i.e. this synthetic one. */
+		pVm->bReflectBypass = 1;
+		rc = PH7_VmCallClassMethod(pVm, pThis, pMeth, &sResult,
+			(int)SySetUsed(&aCallArg), (ph7_value **)SySetBasePtr(&aCallArg));
+		pVm->bReflectBypass = 0;
+	}else{
+		rc = PH7_VmCallUserFunction(pVm, apArg[0],
+			(int)SySetUsed(&aCallArg), (ph7_value **)SySetBasePtr(&aCallArg), &sResult);
+	}
+	SySetRelease(&aCallArg);
+	if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
+		PH7_MemObjRelease(&sResult);
+		return rc;
+	}
+	ph7_result_value(pCtx, &sResult);
+	PH7_MemObjRelease(&sResult);
+	return PH7_OK;
+}
+/*
+ * Closure __reflect_closure(mixed $target, ?string $method, ?object $this)
+ * Mint a Closure for a function or method, bound and scoped like the
+ * first-class-callable path.
+ */
+static int vm_builtin_reflect_closure(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class *pClass = 0;
+	ph7_class_method *pMeth = 0;
+	ph7_class_instance *pClosure = 0;
+	ph7_vm_func *pFunc;
+	if( nArg < 3 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pFunc = ReflectResolveCallable(pCtx, apArg[0], apArg[1], &pClass, &pMeth, 0, &pClosure);
+	if( pClosure ){
+		/* Already a Closure: hand the same instance back */
+		return ReflectResultExistingObject(pCtx, pClosure);
+	}
+	if( pMeth && pClass ){
+		ph7_class_instance *pThis = 0;
+		if( apArg[2]->iFlags & MEMOBJ_OBJ ){
+			pThis = (ph7_class_instance *)apArg[2]->x.pOther;
+		}
+		return ReflectResultObject(pCtx,
+			PH7_VmNewClosure(pVm, &pMeth->sFunc.sName, pThis, &pClass->sName));
+	}
+	if( pFunc ){
+		return ReflectResultObject(pCtx, PH7_VmNewClosure(pVm, &pFunc->sName, 0, 0));
+	}
+	/* Host function by name */
+	if( apArg[0]->iFlags & MEMOBJ_STRING ){
+		SyString sName;
+		SyStringInitFromBuf(&sName, (const char *)SyBlobData(&apArg[0]->sBlob), SyBlobLength(&apArg[0]->sBlob));
+		return ReflectResultObject(pCtx, PH7_VmNewClosure(pVm, &sName, 0, 0));
+	}
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
 /*
  * The Reflection classes, in PHP. Chunk 1: exceptions, Reflector,
  * Reflection, ReflectionClass, ReflectionObject (plus get_debug_type,
@@ -867,6 +1321,371 @@ static const char zReflectLib1[] =
 "}"
 ;
 /*
+ * Chunk 2: ReflectionFunctionAbstract, ReflectionFunction, ReflectionMethod,
+ * ReflectionParameter.
+ */
+static const char zReflectLib2[] =
+"abstract class ReflectionFunctionAbstract implements Reflector {"
+" public $name;"
+" protected $__cl = null;"
+" protected function __rfinfo(){"
+"  if($this->__cl !== null){ return __reflect_func_info($this->__cl); }"
+"  return __reflect_func_info($this->name);"
+" }"
+" protected function __rftarget(){ return $this->__cl !== null ? $this->__cl : $this->name; }"
+" protected function __rpspec(){ return $this->__rftarget(); }"
+" public function getName(){ return $this->name; }"
+" public function inNamespace(){ return strrpos($this->name,'\\\\') !== false; }"
+" public function getNamespaceName(){"
+"  $p = strrpos($this->name,'\\\\');"
+"  if($p === false){ return ''; }"
+"  return substr($this->name,0,$p);"
+" }"
+" public function getShortName(){"
+"  $p = strrpos($this->name,'\\\\');"
+"  if($p === false){ return $this->name; }"
+"  return substr($this->name,$p+1);"
+" }"
+" public function isClosure(){ $i = $this->__rfinfo(); return $i['closure']; }"
+" public function isGenerator(){ $i = $this->__rfinfo(); return $i['generator']; }"
+" public function isVariadic(){ $i = $this->__rfinfo(); return $i['variadic']; }"
+" public function returnsReference(){ $i = $this->__rfinfo(); return $i['byref']; }"
+" public function isInternal(){ $i = $this->__rfinfo(); return $i['internal']; }"
+" public function isUserDefined(){ return !$this->isInternal(); }"
+" public function isDeprecated(){ return false; }"
+" public function isStatic(){ return false; }"
+" public function getFileName(){ $i = $this->__rfinfo(); return $i['file']; }"
+" public function getStartLine(){"
+"  $i = $this->__rfinfo();"
+"  if($i['internal']){ return false; }"
+"  return $i['line'];"
+" }"
+" public function getEndLine(){"
+"  $i = $this->__rfinfo();"
+"  if($i['internal']){ return false; }"
+"  return $i['endline'];"
+" }"
+" public function getDocComment(){ return false; }"
+" public function hasReturnType(){ $i = $this->__rfinfo(); return $i['rettext'] !== null; }"
+" public function getReturnType(){ return null; }"
+" public function hasTentativeReturnType(){ return false; }"
+" public function getTentativeReturnType(){ return null; }"
+" public function getNumberOfParameters(){"
+"  $i = $this->__rfinfo();"
+"  if($i['minarg'] >= 0){ return $i['minarg']; }"
+"  return count($i['params']);"
+" }"
+" public function getNumberOfRequiredParameters(){"
+"  $i = $this->__rfinfo();"
+"  if($i['minarg'] >= 0){ return $i['minarg']; }"
+"  $req = 0;"
+"  $n = count($i['params']);"
+"  for($k = $n - 1; $k >= 0; $k--){"
+"   $p = $i['params'][$k];"
+"   if(!$p['variadic'] && !$p['hasdef']){ $req = $k + 1; break; }"
+"  }"
+"  return $req;"
+" }"
+" public function getParameters(){"
+"  $i = $this->__rfinfo();"
+"  $out = array();"
+"  $spec = $this->__rpspec();"
+"  foreach($i['params'] as $p){"
+"   $out[] = new ReflectionParameter($spec, $p['pos']);"
+"  }"
+"  return $out;"
+" }"
+" public function getStaticVariables(){ $i = $this->__rfinfo(); return $i['statics']; }"
+" public function getClosureThis(){"
+"  $i = $this->__rfinfo();"
+"  return isset($i['this']) ? $i['this'] : null;"
+" }"
+" public function getClosureScopeClass(){"
+"  $i = $this->__rfinfo();"
+"  if(isset($i['scope'])){ return new ReflectionClass($i['scope']); }"
+"  if(isset($i['this'])){ return new ReflectionClass(get_class($i['this'])); }"
+"  return null;"
+" }"
+" public function getClosureCalledClass(){ return $this->getClosureScopeClass(); }"
+" public function getClosureUsedVariables(){"
+"  $i = $this->__rfinfo();"
+"  return isset($i['used']) ? $i['used'] : array();"
+" }"
+" public function getExtensionName(){ $i = $this->__rfinfo(); return $i['internal'] ? 'Core' : false; }"
+" public function getAttributes($name = null, $flags = 0){ return array(); }"
+" public function __toString(){"
+"  return 'Function [ function '.$this->name.' ] {'.\"\\n\".'}'.\"\\n\";"
+" }"
+"}"
+"class ReflectionFunction extends ReflectionFunctionAbstract {"
+" const IS_DEPRECATED = 2048;"
+" public function __construct($function){"
+"  if($function instanceof Closure){"
+"   $this->__cl = $function;"
+"   $i = $this->__rfinfo();"
+"   if($i['closure']){"
+"    $f = $i['file'] === false ? '' : $i['file'];"
+"    $this->name = '{closure:'.$f.':'.$i['line'].'}';"
+"   }else{"
+"    $this->name = $i['name'];"
+"   }"
+"   return;"
+"  }"
+"  if(!is_string($function)){"
+"   throw new TypeError('ReflectionFunction::__construct(): Argument #1 ($function) must be of type Closure|string, '.get_debug_type($function).' given');"
+"  }"
+"  $i = __reflect_func_info($function);"
+"  if($i === null){"
+"   throw new ReflectionException('Function '.$function.'() does not exist');"
+"  }"
+"  $this->name = $i['name'];"
+" }"
+" public function invoke(...$args){ return __reflect_invoke($this->__rftarget(), null, null, $args); }"
+" public function invokeArgs(array $args){ return __reflect_invoke($this->__rftarget(), null, null, $args); }"
+" public function getClosure(){"
+"  if($this->__cl !== null){ return $this->__cl; }"
+"  return __reflect_closure($this->name, null, null);"
+" }"
+" public function isAnonymous(){ $i = $this->__rfinfo(); return $i['closure']; }"
+" public function isDisabled(){ return false; }"
+"}"
+"class ReflectionMethod extends ReflectionFunctionAbstract {"
+" const IS_PUBLIC = 1;"
+" const IS_PROTECTED = 2;"
+" const IS_PRIVATE = 4;"
+" const IS_STATIC = 16;"
+" const IS_FINAL = 32;"
+" const IS_ABSTRACT = 64;"
+" public $class;"
+" public function __construct($objectOrMethod, $method = null){"
+"  if($method === null){"
+"   if(!is_string($objectOrMethod) || strpos($objectOrMethod,'::') === false){"
+"    throw new TypeError('ReflectionMethod::__construct(): Argument #1 ($objectOrMethod) must be of type object|string, '.get_debug_type($objectOrMethod).' given');"
+"   }"
+"   $p = strpos($objectOrMethod,'::');"
+"   $method = substr($objectOrMethod,$p+2);"
+"   $objectOrMethod = substr($objectOrMethod,0,$p);"
+"  }"
+"  $ci = __reflect_class_info($objectOrMethod);"
+"  if($ci === null){"
+"   throw new ReflectionException('Class \"'.$objectOrMethod.'\" does not exist');"
+"  }"
+"  $this->class = $ci['name'];"
+"  $found = null;"
+"  if(isset($ci['methods'][$method])){"
+"   $found = $method;"
+"  }else{"
+"   $l = strtolower($method);"
+"   foreach($ci['methods'] as $k => $m){"
+"    if(strtolower($k) === $l){ $found = $k; break; }"
+"   }"
+"  }"
+"  if($found === null){"
+"   throw new ReflectionException('Method '.$this->class.'::'.$method.'() does not exist');"
+"  }"
+"  $this->name = $found;"
+" }"
+" public static function createFromMethodName($name){"
+"  return new ReflectionMethod($name);"
+" }"
+" protected function __rfinfo(){ return __reflect_func_info($this->class, $this->name); }"
+" protected function __rpspec(){ return array($this->class, $this->name); }"
+" public function getDeclaringClass(){"
+"  $i = $this->__rfinfo();"
+"  return new ReflectionClass($i['decl']);"
+" }"
+" public function getModifiers(){"
+"  $i = $this->__rfinfo();"
+"  $m = ($i['vis'] === 1 ? 1 : ($i['vis'] === 2 ? 2 : 4));"
+"  if($i['mstatic']){ $m |= 16; }"
+"  if($i['abstract']){ $m |= 64; }"
+"  if($i['final']){ $m |= 32; }"
+"  return $m;"
+" }"
+" public function isPublic(){ $i = $this->__rfinfo(); return $i['vis'] === 1; }"
+" public function isProtected(){ $i = $this->__rfinfo(); return $i['vis'] === 2; }"
+" public function isPrivate(){ $i = $this->__rfinfo(); return $i['vis'] === 3; }"
+" public function isStatic(){ $i = $this->__rfinfo(); return $i['mstatic']; }"
+" public function isAbstract(){ $i = $this->__rfinfo(); return $i['abstract']; }"
+" public function isFinal(){ $i = $this->__rfinfo(); return $i['final']; }"
+" public function isConstructor(){ return strtolower($this->name) === '__construct'; }"
+" public function isDestructor(){ return strtolower($this->name) === '__destruct'; }"
+" public function invoke($object = null, ...$args){ return $this->__rinvoke($object, $args); }"
+" public function invokeArgs($object, array $args){ return $this->__rinvoke($object, $args); }"
+" protected function __rinvoke($object, $args){"
+"  $i = $this->__rfinfo();"
+"  if(!$i['mstatic']){"
+"   if(!is_object($object)){"
+"    throw new ReflectionException('Trying to invoke non static method '.$this->class.'::'.$this->name.'() without an object');"
+"   }"
+"   if(!is_a($object, $i['decl'])){"
+"    throw new ReflectionException('Given object is not an instance of the class this method was declared in');"
+"   }"
+"  }else{"
+"   $object = null;"
+"  }"
+"  return __reflect_invoke($this->class, $this->name, $object, $args);"
+" }"
+" public function getClosure($object = null){"
+"  $i = $this->__rfinfo();"
+"  if(!$i['mstatic']){"
+"   if($object === null){"
+"    throw new ValueError('ReflectionMethod::getClosure(): Argument #1 ($object) cannot be null for non-static methods');"
+"   }"
+"   if(!is_a($object, $i['decl'])){"
+"    throw new ReflectionException('Given object is not an instance of the class this method was declared in');"
+"   }"
+"  }else{"
+"   $object = null;"
+"  }"
+"  return __reflect_closure($this->class, $this->name, $object);"
+" }"
+" public function setAccessible($accessible){ }"
+" public function hasPrototype(){ return $this->__rproto() !== null; }"
+" public function getPrototype(){"
+"  $p = $this->__rproto();"
+"  if($p === null){"
+"   throw new ReflectionException('Method '.$this->class.'::'.$this->name.' does not have a prototype');"
+"  }"
+"  return new ReflectionMethod($p, $this->name);"
+" }"
+" protected function __rproto(){"
+"  $ci = __reflect_class_info($this->class);"
+"  $l = strtolower($this->name);"
+"  $p = $ci['parent'];"
+"  while($p !== null){"
+"   $pi = __reflect_class_info($p);"
+"   foreach($pi['methods'] as $k => $m){"
+"    if(strtolower($k) === $l && $m['vis'] !== 3){ return $m['decl']; }"
+"   }"
+"   $p = $pi['parent'];"
+"  }"
+"  foreach($ci['interfaces'] as $if){"
+"   $ii = __reflect_class_info($if);"
+"   foreach($ii['methods'] as $k => $m){"
+"    if(strtolower($k) === $l){ return $ii['name']; }"
+"   }"
+"  }"
+"  return null;"
+" }"
+" public function __toString(){"
+"  return 'Method [ public method '.$this->name.' ] {'.\"\\n\".'}'.\"\\n\";"
+" }"
+"}"
+"class ReflectionParameter implements Reflector {"
+" public $name;"
+" protected $__t;"
+" protected $__m = null;"
+" protected $__p = 0;"
+" public function __construct($function, $param){"
+"  $m = null;"
+"  $t = $function;"
+"  if(is_array($function)){"
+"   $t = $function[0];"
+"   $m = $function[1];"
+"   if(is_object($t)){ $t = get_class($t); }"
+"  }else if(is_string($function) && strpos($function,'::') !== false){"
+"   $p = strpos($function,'::');"
+"   $m = substr($function,$p+2);"
+"   $t = substr($function,0,$p);"
+"  }"
+"  if($m !== null){"
+"   $rm = new ReflectionMethod($t, $m);"
+"   $t = $rm->class;"
+"   $m = $rm->name;"
+"   $i = __reflect_func_info($t, $m);"
+"  }else if($function instanceof Closure){"
+"   $t = $function;"
+"   $i = __reflect_func_info($function);"
+"  }else{"
+"   $i = __reflect_func_info($t);"
+"   if($i === null){"
+"    throw new ReflectionException('Function '.$t.'() does not exist');"
+"   }"
+"  }"
+"  $found = null;"
+"  if(is_int($param)){"
+"   if(isset($i['params'][$param])){ $found = $i['params'][$param]; }"
+"   if($found === null){"
+"    throw new ReflectionException('The parameter specified by its offset could not be found');"
+"   }"
+"  }else{"
+"   foreach($i['params'] as $pp){"
+"    if($pp['name'] === $param){ $found = $pp; break; }"
+"   }"
+"   if($found === null){"
+"    throw new ReflectionException('The parameter specified by its name could not be found');"
+"   }"
+"  }"
+"  $this->name = $found['name'];"
+"  $this->__t = $t;"
+"  $this->__m = $m;"
+"  $this->__p = $found['pos'];"
+" }"
+" protected function __rffull(){"
+"  if($this->__m !== null){ return __reflect_func_info($this->__t, $this->__m); }"
+"  return __reflect_func_info($this->__t);"
+" }"
+" protected function __rpinfo(){"
+"  $i = $this->__rffull();"
+"  return $i['params'][$this->__p];"
+" }"
+" public function getName(){ return $this->name; }"
+" public function getPosition(){ return $this->__p; }"
+" public function isPassedByReference(){ $p = $this->__rpinfo(); return $p['byref']; }"
+" public function canBePassedByValue(){ return !$this->isPassedByReference(); }"
+" public function isVariadic(){ $p = $this->__rpinfo(); return $p['variadic']; }"
+" public function isPromoted(){ $p = $this->__rpinfo(); return $p['promoted']; }"
+" public function isDefaultValueAvailable(){ $p = $this->__rpinfo(); return $p['hasdef']; }"
+" public function isOptional(){"
+"  $i = $this->__rffull();"
+"  $n = count($i['params']);"
+"  for($k = $this->__p; $k < $n; $k++){"
+"   $p = $i['params'][$k];"
+"   if(!$p['variadic'] && !$p['hasdef']){ return false; }"
+"  }"
+"  return true;"
+" }"
+" public function getDefaultValue(){"
+"  if(!$this->isDefaultValueAvailable()){"
+"   throw new ReflectionException('Internal error: Failed to retrieve the default value');"
+"  }"
+"  return __reflect_param_default($this->__t, $this->__m, $this->__p);"
+" }"
+" public function isDefaultValueConstant(){"
+"  if(!$this->isDefaultValueAvailable()){ return false; }"
+"  return __reflect_param_defconst($this->__t, $this->__m, $this->__p) !== null;"
+" }"
+" public function getDefaultValueConstantName(){"
+"  if(!$this->isDefaultValueAvailable()){"
+"   throw new ReflectionException('Internal error: Failed to retrieve the default value');"
+"  }"
+"  return __reflect_param_defconst($this->__t, $this->__m, $this->__p);"
+" }"
+" public function allowsNull(){"
+"  $p = $this->__rpinfo();"
+"  if($p['typetext'] === null){ return true; }"
+"  if($p['nullable']){ return true; }"
+"  return $p['typetext'] === 'mixed' || $p['typetext'] === 'null';"
+" }"
+" public function hasType(){ $p = $this->__rpinfo(); return $p['typetext'] !== null; }"
+" public function getType(){ return null; }"
+" public function getDeclaringFunction(){"
+"  if($this->__m !== null){ return new ReflectionMethod($this->__t, $this->__m); }"
+"  return new ReflectionFunction($this->__t);"
+" }"
+" public function getDeclaringClass(){"
+"  if($this->__m === null){ return null; }"
+"  $i = $this->__rffull();"
+"  return new ReflectionClass($i['decl']);"
+" }"
+" public function getAttributes($name = null, $flags = 0){ return array(); }"
+" public function __toString(){"
+"  return 'Parameter #'.$this->__p.' [ <required> $'.$this->name.' ]';"
+" }"
+"}"
+;
+/*
  * Register the __reflect_* thunks and compile the Reflection library.
  * Called from PH7_VmInit while pVm->bCompilingBuiltin is set, right after
  * the core builtin chunks (Exception and friends must exist already).
@@ -877,17 +1696,27 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 		const char *zName;
 		ProchHostFunction xFunc;
 	} aFunc[] = {
-		{ "__reflect_class_info",   vm_builtin_reflect_class_info },
-		{ "__reflect_const_value",  vm_builtin_reflect_const_value },
-		{ "__reflect_static_value", vm_builtin_reflect_static_value },
-		{ "__reflect_static_set",   vm_builtin_reflect_static_set },
-		{ "__reflect_prop_default", vm_builtin_reflect_prop_default },
-		{ "__reflect_new_instance", vm_builtin_reflect_new_instance },
-		{ "__reflect_new_no_ctor",  vm_builtin_reflect_new_no_ctor },
+		{ "__reflect_class_info",     vm_builtin_reflect_class_info },
+		{ "__reflect_const_value",    vm_builtin_reflect_const_value },
+		{ "__reflect_static_value",   vm_builtin_reflect_static_value },
+		{ "__reflect_static_set",     vm_builtin_reflect_static_set },
+		{ "__reflect_prop_default",   vm_builtin_reflect_prop_default },
+		{ "__reflect_new_instance",   vm_builtin_reflect_new_instance },
+		{ "__reflect_new_no_ctor",    vm_builtin_reflect_new_no_ctor },
+		{ "__reflect_func_info",      vm_builtin_reflect_func_info },
+		{ "__reflect_param_default",  vm_builtin_reflect_param_default },
+		{ "__reflect_param_defconst", vm_builtin_reflect_param_defconst },
+		{ "__reflect_invoke",         vm_builtin_reflect_invoke },
+		{ "__reflect_closure",        vm_builtin_reflect_closure },
 	};
 	sxu32 n;
+	sxi32 rc;
 	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){
 		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);
 	}
-	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib1, sizeof(zReflectLib1)-1);
+	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib1, sizeof(zReflectLib1)-1);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib2, sizeof(zReflectLib2)-1);
 }
