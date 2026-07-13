@@ -3557,7 +3557,8 @@ static sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 		SyBlobInit(&sFQN,&pGen->pVm->sAllocator);
 		GenStateBuildFQN(pGen,pName,&sFQN);
 		SyStringInitFromBuf(&sFQNStr,(const char *)SyBlobData(&sFQN),SyBlobLength(&sFQN));
-		rc = PH7_VmRegisterConstant(pGen->pVm,&sFQNStr,PH7_VmExpandConstantValue,pConsCode);
+		rc = PH7_VmRegisterConstantEx(pGen->pVm,&sFQNStr,PH7_VmExpandConstantValue,pConsCode,
+			(SyString *)SySetPeek(&pGen->pVm->aFiles),nLineLocal,1);
 		SyBlobRelease(&sFQN);
 	}
 	if( rc != SXRET_OK ){

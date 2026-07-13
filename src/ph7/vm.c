@@ -17093,7 +17093,12 @@ static int vm_builtin_define(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Initialize the memory object */
 	PH7_MemObjInit(pCtx->pVm,pValue);
 	/* Register the constant */
-	rc = ph7_create_constant(pCtx->pVm,zName,VmExpandUserConstant,pValue);
+	{
+		SyString sConsName;
+		SyStringInitFromBuf(&sConsName,zName,(sxu32)nLen);
+		rc = PH7_VmRegisterConstantEx(pCtx->pVm,&sConsName,VmExpandUserConstant,pValue,
+			(SyString *)SySetPeek(&pCtx->pVm->aFiles),0,1);
+	}
 	if( rc != SXRET_OK ){
 		SyMemBackendPoolFree(&pCtx->pVm->sAllocator,pValue);
 		ph7_context_throw_error(pCtx,PH7_CTX_NOTICE,"Cannot register constant due to a memory failure");
