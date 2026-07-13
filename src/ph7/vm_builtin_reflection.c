@@ -21,6 +21,8 @@
  * vm_builtin_class.c. */
 #define REFLECT_WALK_MAX_DEPTH 64
 
+static sxi32 ReflectEnforceStore(ph7_context *pCtx, sxu32 nIdx, ph7_value *pValue);
+
 /*
  * Resolve a class-name string or object into a ph7_class pointer,
  * triggering autoload for unknown string names. Returns NULL when the
@@ -333,6 +335,13 @@ static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value 
 				ReflectMapAddInt(pCtx, pMeta, "vis", (sxi64)pAttr->iProtection);
 				ReflectMapAddStr(pCtx, pMeta, "decl", SyStringData(&pDecl->sName), (int)SyStringLength(&pDecl->sName));
 				ReflectMapAddInt(pCtx, pMeta, "line", (sxi64)pAttr->nLine);
+				ReflectMapAddBool(pCtx, pMeta, "typed", (pAttr->iFlags & PH7_CLASS_ATTR_TYPED) != 0);
+				if( SyStringLength(&pAttr->sTypeName) > 0 ){
+					ReflectMapAddStr(pCtx, pMeta, "typetext", SyStringData(&pAttr->sTypeName),
+						(int)SyStringLength(&pAttr->sTypeName));
+				}else{
+					ReflectMapAddNull(pCtx, pMeta, "typetext");
+				}
 				if( pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT ){
 					ReflectMapAddBool(pCtx, pMeta, "final", (pAttr->iFlags & PH7_CLASS_ATTR_FINAL) != 0);
 					ReflectMapAddDyn(pCtx, pConsts, &pAttr->sName, pMeta);
@@ -466,6 +475,19 @@ static int vm_builtin_reflect_static_value(ph7_context *pCtx, int nArg, ph7_valu
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
+	{
+		/* Uninitialized typed static: same Error the VM raises on read */
+		SyHashEntry *pSlot = SyHashGet(&pCtx->pVm->hTypedSlot, (const void *)&pAttr->nIdx, sizeof(sxu32));
+		if( pSlot ){
+			VmClassAttr *pVmAttr = (VmClassAttr *)pSlot->pUserData;
+			if( pVmAttr->iState & VM_CLASS_ATTR_UNINIT ){
+				ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+				return PH7_VmThrowException(pCtx, "Error",
+					"Typed static property %z::$%z must not be accessed before initialization",
+					&pDecl->sName, &pAttr->sName);
+			}
+		}
+	}
 	pValue = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
 	if( pValue ){
 		ph7_result_value(pCtx, pValue);
@@ -493,6 +515,12 @@ static int vm_builtin_reflect_static_set(ph7_context *pCtx, int nArg, ph7_value 
 	if( pValue == 0 ){
 		ph7_result_bool(pCtx, 0);
 		return PH7_OK;
+	}
+	{
+		sxi32 rc = ReflectEnforceStore(pCtx, pAttr->nIdx, apArg[2]);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
 	}
 	PH7_MemObjStore(apArg[2], pValue);
 	ph7_result_bool(pCtx, 1);
@@ -596,6 +624,193 @@ static int vm_builtin_reflect_new_no_ctor(ph7_context *pCtx, int nArg, ph7_value
 		return PH7_OK;
 	}
 	return ReflectResultObject(pCtx, PH7_NewClassInstance(pCtx->pVm, pClass));
+}
+/*
+ * Typed/readonly store enforcement for reflection writes. Like the VM's
+ * store path, except an UNINITIALIZED readonly property may be written from
+ * any scope (PHP lets ReflectionProperty::setValue initialize readonly): the
+ * READONLY bit is masked off for the enforcement call so the set-scope check
+ * is skipped, while an already-initialized readonly still gets PHP's
+ * "Cannot modify readonly property" Error. Returns SXRET_OK/PH7_EXCEPTION/
+ * PH7_ABORT; the value may be coerced in place.
+ */
+static sxi32 ReflectEnforceStore(ph7_context *pCtx, sxu32 nIdx, ph7_value *pValue)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	SyHashEntry *pSlot;
+	VmClassAttr *pVmAttr;
+	ph7_class_attr *pAttr;
+	sxi32 iSaved, rc;
+	pSlot = SyHashGet(&pVm->hTypedSlot, (const void *)&nIdx, sizeof(sxu32));
+	if( pSlot == 0 ){
+		return SXRET_OK; /* Untyped slot: plain store */
+	}
+	pVmAttr = (VmClassAttr *)pSlot->pUserData;
+	pAttr = pVmAttr->pAttr;
+	if( pAttr == 0 ){
+		return SXRET_OK;
+	}
+	iSaved = pAttr->iFlags;
+	if( (pAttr->iFlags & PH7_CLASS_ATTR_READONLY) && (pVmAttr->iState & VM_CLASS_ATTR_UNINIT) ){
+		pAttr->iFlags &= ~PH7_CLASS_ATTR_READONLY;
+	}
+	rc = PH7_VmEnforcePropStore(pVm, nIdx, pValue);
+	pAttr->iFlags = iSaved;
+	return rc;
+}
+/*
+ * mixed __reflect_prop_read(object $obj, string $name)
+ * Instance property read, visibility ignored. Throws PHP's Error for an
+ * uninitialized typed property.
+ */
+static int vm_builtin_reflect_prop_read(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis;
+	SyHashEntry *pEntry;
+	VmClassAttr *pVmAttr;
+	ph7_value *pValue;
+	const char *zName;
+	int nLen;
+	if( nArg < 2 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pThis = (ph7_class_instance *)apArg[0]->x.pOther;
+	zName = ph7_value_to_string(apArg[1], &nLen);
+	pEntry = nLen > 0 ? SyHashGet(&pThis->hAttr, (const void *)zName, (sxu32)nLen) : 0;
+	if( pEntry == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pVmAttr = (VmClassAttr *)pEntry->pUserData;
+	if( pVmAttr->iState & VM_CLASS_ATTR_UNINIT ){
+		ph7_class *pDecl = pVmAttr->pAttr->pDeclClass ? pVmAttr->pAttr->pDeclClass : pThis->pClass;
+		return PH7_VmThrowException(pCtx, "Error",
+			"Typed property %z::$%z must not be accessed before initialization",
+			&pDecl->sName, &pVmAttr->pAttr->sName);
+	}
+	pValue = PH7_ClassInstanceExtractAttrValue(pThis, pVmAttr);
+	if( pValue ){
+		ph7_result_value(pCtx, pValue);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+/*
+ * bool __reflect_prop_write(object $obj, string $name, mixed $value)
+ * Instance property write, visibility ignored; typed and readonly rules
+ * enforced (see ReflectEnforceStore).
+ */
+static int vm_builtin_reflect_prop_write(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis;
+	SyHashEntry *pEntry;
+	VmClassAttr *pVmAttr;
+	ph7_value *pValue;
+	const char *zName;
+	sxi32 rc;
+	int nLen;
+	if( nArg < 3 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	pThis = (ph7_class_instance *)apArg[0]->x.pOther;
+	zName = ph7_value_to_string(apArg[1], &nLen);
+	pEntry = nLen > 0 ? SyHashGet(&pThis->hAttr, (const void *)zName, (sxu32)nLen) : 0;
+	if( pEntry == 0 ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	pVmAttr = (VmClassAttr *)pEntry->pUserData;
+	rc = ReflectEnforceStore(pCtx, pVmAttr->nIdx, apArg[2]);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	pValue = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pVmAttr->nIdx);
+	if( pValue == 0 ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	PH7_MemObjStore(apArg[2], pValue);
+	ph7_result_bool(pCtx, 1);
+	return PH7_OK;
+}
+/*
+ * int __reflect_prop_state(object|string $target, string $name)
+ * Bitfield: 1 = exists (instance attr / static slot), 2 = initialized,
+ * 4 = dynamic (instance-owned, not class-declared).
+ */
+static int vm_builtin_reflect_prop_state(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	int iState = 0;
+	const char *zName;
+	int nLen;
+	if( nArg < 2 ){
+		ph7_result_int(pCtx, 0);
+		return PH7_OK;
+	}
+	zName = ph7_value_to_string(apArg[1], &nLen);
+	if( nLen < 1 ){
+		ph7_result_int(pCtx, 0);
+		return PH7_OK;
+	}
+	if( apArg[0]->iFlags & MEMOBJ_OBJ ){
+		ph7_class_instance *pThis = (ph7_class_instance *)apArg[0]->x.pOther;
+		SyHashEntry *pEntry = SyHashGet(&pThis->hAttr, (const void *)zName, (sxu32)nLen);
+		if( pEntry ){
+			VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
+			iState |= 1;
+			if( (pVmAttr->iState & VM_CLASS_ATTR_UNINIT) == 0 ){
+				iState |= 2;
+			}
+			if( pVmAttr->pAttr && (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_DYNAMIC) ){
+				iState |= 4;
+			}
+		}
+	}else{
+		ph7_class *pClass = ReflectResolveClass(pCtx->pVm, apArg[0]);
+		ph7_class_attr *pAttr = pClass ? ReflectFetchAttr(pClass, apArg[1]) : 0;
+		if( pAttr && (pAttr->iFlags & PH7_CLASS_ATTR_STATIC) ){
+			SyHashEntry *pSlot = SyHashGet(&pCtx->pVm->hTypedSlot, (const void *)&pAttr->nIdx, sizeof(sxu32));
+			iState |= 1 | 2;
+			if( pSlot && (((VmClassAttr *)pSlot->pUserData)->iState & VM_CLASS_ATTR_UNINIT) ){
+				iState &= ~2;
+			}
+		}
+	}
+	ph7_result_int(pCtx, iState);
+	return PH7_OK;
+}
+/*
+ * array __reflect_dyn_props(object $obj)
+ * Names of the instance's runtime-added (dynamic) properties, in creation
+ * order (the instance attr table inserts dynamics at the tail).
+ */
+static int vm_builtin_reflect_dyn_props(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis;
+	SyHashEntry *pEntry;
+	ph7_value *pList;
+	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0
+	 || (pList = ph7_context_new_array(pCtx)) == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pThis = (ph7_class_instance *)apArg[0]->x.pOther;
+	SyHashResetLoopCursor(&pThis->hAttr);
+	while( (pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
+		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
+		if( pVmAttr->pAttr && (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_DYNAMIC) ){
+			ph7_value *pName = ph7_context_new_scalar(pCtx);
+			if( pName == 0 ){ break; }
+			ph7_value_string(pName, SyStringData(&pVmAttr->pAttr->sName),
+				(int)SyStringLength(&pVmAttr->pAttr->sName));
+			ph7_array_add_elem(pList, 0, pName);
+		}
+	}
+	ph7_result_value(pCtx, pList);
+	return PH7_OK;
 }
 /* Hand an EXISTING instance to the caller: takes an extra reference
  * (unlike ReflectResultObject, which transfers a fresh instance's one). */
@@ -1090,6 +1305,7 @@ static const char zReflectLib1[] =
 " const SKIP_INITIALIZATION_ON_SERIALIZE = 8;"
 " const SKIP_DESTRUCTOR = 16;"
 " public $name;"
+" protected $__obj = null;"
 " public function __construct($objectOrClass){"
 "  if(!is_object($objectOrClass) && !is_string($objectOrClass)){"
 "   if(is_int($objectOrClass) || is_float($objectOrClass) || is_bool($objectOrClass)){"
@@ -1199,7 +1415,12 @@ static const char zReflectLib1[] =
 "  foreach($i['methods'] as $k => $m){ if(strtolower($k) === $l){ return true; } }"
 "  return false;"
 " }"
-" public function hasProperty($name){ $i = $this->__rinfo(); return isset($i['props'][$name]); }"
+" public function hasProperty($name){"
+"  $i = $this->__rinfo();"
+"  if(isset($i['props'][$name])){ return true; }"
+"  if($this->__obj !== null){ return (__reflect_prop_state($this->__obj, $name) & 1) !== 0; }"
+"  return false;"
+" }"
 " public function hasConstant($name){ $i = $this->__rinfo(); return isset($i['consts'][$name]); }"
 " public function getConstant($name){"
 "  $i = $this->__rinfo();"
@@ -1305,6 +1526,97 @@ static const char zReflectLib1[] =
 "  }"
 "  return $out;"
 " }"
+" public function getProperty($name){"
+"  $i = $this->__rinfo();"
+"  if(isset($i['props'][$name])){"
+"   return new ReflectionProperty($this->name, $name);"
+"  }"
+"  if($this->__obj !== null && (__reflect_prop_state($this->__obj, $name) & 1)){"
+"   return new ReflectionProperty($this->__obj, $name);"
+"  }"
+"  throw new ReflectionException('Property '.$this->name.'::$'.$name.' does not exist');"
+" }"
+" public function getProperties($filter = null){"
+"  $i = $this->__rinfo();"
+"  $out = array();"
+"  foreach($i['props'] as $k => $p){"
+"   if($filter !== null){"
+"    $m = ($p['vis'] === 1 ? 1 : ($p['vis'] === 2 ? 2 : 4));"
+"    if($p['static']){ $m |= 16; }"
+"    if($p['readonly']){ $m |= 128; }"
+"    if(($m & $filter) === 0){ continue; }"
+"   }"
+"   $out[] = new ReflectionProperty($this->name, $k);"
+"  }"
+"  if($this->__obj !== null){"
+"   foreach(__reflect_dyn_props($this->__obj) as $k){"
+"    if(isset($i['props'][$k])){ continue; }"
+"    if($filter !== null && ($filter & 1) === 0){ continue; }"
+"    $out[] = new ReflectionProperty($this->__obj, $k);"
+"   }"
+"  }"
+"  return $out;"
+" }"
+" public function getMethod($name){"
+"  $i = $this->__rinfo();"
+"  $found = null;"
+"  if(isset($i['methods'][$name])){"
+"   $found = $name;"
+"  }else{"
+"   $l = strtolower($name);"
+"   foreach($i['methods'] as $k => $m){ if(strtolower($k) === $l){ $found = $k; break; } }"
+"  }"
+"  if($found === null){"
+"   throw new ReflectionException('Method '.$this->name.'::'.$name.'() does not exist');"
+"  }"
+"  return new ReflectionMethod($this->name, $found);"
+" }"
+" public function getMethods($filter = null){"
+"  $i = $this->__rinfo();"
+"  $out = array();"
+"  foreach($i['methods'] as $k => $m){"
+"   if($filter !== null){"
+"    $mod = ($m['vis'] === 1 ? 1 : ($m['vis'] === 2 ? 2 : 4));"
+"    if($m['static']){ $mod |= 16; }"
+"    if($m['abstract']){ $mod |= 64; }"
+"    if($m['final']){ $mod |= 32; }"
+"    if(($mod & $filter) === 0){ continue; }"
+"   }"
+"   $out[] = new ReflectionMethod($this->name, $k);"
+"  }"
+"  return $out;"
+" }"
+" public function getConstructor(){"
+"  $i = $this->__rinfo();"
+"  if(isset($i['methods']['__construct'])){"
+"   return new ReflectionMethod($this->name, '__construct');"
+"  }"
+"  foreach($i['methods'] as $k => $m){"
+"   if(strtolower($k) === '__construct'){ return new ReflectionMethod($this->name, $k); }"
+"  }"
+"  if($i['ctorvis'] !== 0 && isset($i['methods'][$this->name])){"
+"   return new ReflectionMethod($this->name, $this->name);"
+"  }"
+"  return null;"
+" }"
+" public function getReflectionConstant($name){"
+"  $i = $this->__rinfo();"
+"  if(!isset($i['consts'][$name])){ return false; }"
+"  return new ReflectionClassConstant($this->name, $name);"
+" }"
+" public function getReflectionConstants($filter = null){"
+"  $i = $this->__rinfo();"
+"  $out = array();"
+"  foreach($i['consts'] as $k => $c){"
+"   if($filter !== null){"
+"    $m = ($c['vis'] === 1 ? 1 : ($c['vis'] === 2 ? 2 : 4));"
+"    if($c['final']){ $m |= 32; }"
+"    if(($m & $filter) === 0){ continue; }"
+"   }"
+"   $out[] = new ReflectionClassConstant($this->name, $k);"
+"  }"
+"  return $out;"
+" }"
 " public function getAttributes($name = null, $flags = 0){ return array(); }"
 " public function getExtensionName(){ $i = $this->__rinfo(); return $i['internal'] ? 'Core' : false; }"
 " public function __toString(){"
@@ -1317,6 +1629,7 @@ static const char zReflectLib1[] =
 "   throw new TypeError('ReflectionObject::__construct(): Argument #1 ($object) must be of type object, '.get_debug_type($object).' given');"
 "  }"
 "  parent::__construct($object);"
+"  $this->__obj = $object;"
 " }"
 "}"
 ;
@@ -1686,6 +1999,184 @@ static const char zReflectLib2[] =
 "}"
 ;
 /*
+ * Chunk 3: ReflectionProperty, ReflectionClassConstant.
+ */
+static const char zReflectLib3[] =
+"class ReflectionProperty implements Reflector {"
+" const IS_PUBLIC = 1;"
+" const IS_PROTECTED = 2;"
+" const IS_PRIVATE = 4;"
+" const IS_STATIC = 16;"
+" const IS_FINAL = 32;"
+" const IS_ABSTRACT = 64;"
+" const IS_READONLY = 128;"
+" const IS_VIRTUAL = 512;"
+" const IS_PROTECTED_SET = 2048;"
+" const IS_PRIVATE_SET = 4096;"
+" public $name;"
+" public $class;"
+" protected $__dynobj = null;"
+" public function __construct($class, $property){"
+"  $obj = null;"
+"  if(is_object($class)){ $obj = $class; }"
+"  else if(!is_string($class)){"
+"   throw new TypeError('ReflectionProperty::__construct(): Argument #1 ($class) must be of type object|string, '.get_debug_type($class).' given');"
+"  }"
+"  $ci = __reflect_class_info($class);"
+"  if($ci === null){"
+"   throw new ReflectionException('Class \"'.$class.'\" does not exist');"
+"  }"
+"  $this->class = $ci['name'];"
+"  if(isset($ci['props'][$property])){"
+"   $this->name = $property;"
+"   return;"
+"  }"
+"  if($obj !== null && (__reflect_prop_state($obj, $property) & 1)){"
+"   $this->name = $property;"
+"   $this->__dynobj = $obj;"
+"   return;"
+"  }"
+"  throw new ReflectionException('Property '.$this->class.'::$'.$property.' does not exist');"
+" }"
+" protected function __rpmeta(){"
+"  $ci = __reflect_class_info($this->class);"
+"  if(isset($ci['props'][$this->name])){ return $ci['props'][$this->name]; }"
+"  return array('vis' => 1, 'static' => false, 'readonly' => false, 'hasdef' => false,"
+"   'typed' => false, 'typetext' => null, 'decl' => $this->class, 'line' => 0, 'dyn' => true);"
+" }"
+" public function getName(){ return $this->name; }"
+" public function getDeclaringClass(){"
+"  $m = $this->__rpmeta();"
+"  return new ReflectionClass($m['decl']);"
+" }"
+" public function getModifiers(){"
+"  $m = $this->__rpmeta();"
+"  $mod = ($m['vis'] === 1 ? 1 : ($m['vis'] === 2 ? 2 : 4));"
+"  if($m['static']){ $mod |= 16; }"
+"  if($m['readonly']){ $mod |= 128; }"
+"  return $mod;"
+" }"
+" public function isPublic(){ $m = $this->__rpmeta(); return $m['vis'] === 1; }"
+" public function isProtected(){ $m = $this->__rpmeta(); return $m['vis'] === 2; }"
+" public function isPrivate(){ $m = $this->__rpmeta(); return $m['vis'] === 3; }"
+" public function isStatic(){ $m = $this->__rpmeta(); return $m['static']; }"
+" public function isReadOnly(){ $m = $this->__rpmeta(); return $m['readonly']; }"
+" public function isDefault(){ $m = $this->__rpmeta(); return !isset($m['dyn']); }"
+" public function isDynamic(){ $m = $this->__rpmeta(); return isset($m['dyn']); }"
+" public function isAbstract(){ return false; }"
+" public function isFinal(){ return false; }"
+" public function isVirtual(){ return false; }"
+" public function isPrivateSet(){ return false; }"
+" public function isProtectedSet(){ return false; }"
+" public function hasHooks(){ return false; }"
+" public function getHooks(){ return array(); }"
+" public function hasHook($type){ return false; }"
+" public function getHook($type){ return null; }"
+" public function isLazy($object){ return false; }"
+" public function setAccessible($accessible){ }"
+" public function getValue($object = null){"
+"  $m = $this->__rpmeta();"
+"  if($m['static']){ return __reflect_static_value($this->class, $this->name); }"
+"  if(!is_object($object)){"
+"   throw new ReflectionException('Instance of '.$this->class.' expected, but '.get_debug_type($object).' given');"
+"  }"
+"  return __reflect_prop_read($object, $this->name);"
+" }"
+" public function setValue($objectOrValue = null, $value = null){"
+"  $m = $this->__rpmeta();"
+"  if($m['static']){"
+"   if($value === null && $objectOrValue !== null && !is_object($objectOrValue)){"
+"    __reflect_static_set($this->class, $this->name, $objectOrValue);"
+"   }else{"
+"    __reflect_static_set($this->class, $this->name, $value);"
+"   }"
+"   return;"
+"  }"
+"  __reflect_prop_write($objectOrValue, $this->name, $value);"
+" }"
+" public function getRawValue($object){ return $this->getValue($object); }"
+" public function setRawValue($object, $value){ $this->setValue($object, $value); }"
+" public function isInitialized($object = null){"
+"  $m = $this->__rpmeta();"
+"  if($m['static']){ return (__reflect_prop_state($this->class, $this->name) & 2) !== 0; }"
+"  if(!is_object($object)){"
+"   throw new ReflectionException('Instance of '.$this->class.' expected, but '.get_debug_type($object).' given');"
+"  }"
+"  return (__reflect_prop_state($object, $this->name) & 2) !== 0;"
+" }"
+" public function hasDefaultValue(){"
+"  $m = $this->__rpmeta();"
+"  if(isset($m['dyn'])){ return false; }"
+"  if($m['hasdef']){ return true; }"
+"  return !$m['typed'];"
+" }"
+" public function getDefaultValue(){"
+"  $m = $this->__rpmeta();"
+"  if(isset($m['dyn']) || !$m['hasdef']){ return null; }"
+"  return __reflect_prop_default($this->class, $this->name);"
+" }"
+" public function hasType(){ $m = $this->__rpmeta(); return $m['typed']; }"
+" public function getType(){ return null; }"
+" public function getSettableType(){ return $this->getType(); }"
+" public function getDocComment(){ return false; }"
+" public function getAttributes($name = null, $flags = 0){ return array(); }"
+" public function __toString(){"
+"  return 'Property [ public $'.$this->name.' ]'.\"\\n\";"
+" }"
+"}"
+"class ReflectionClassConstant implements Reflector {"
+" const IS_PUBLIC = 1;"
+" const IS_PROTECTED = 2;"
+" const IS_PRIVATE = 4;"
+" const IS_FINAL = 32;"
+" public $name;"
+" public $class;"
+" public function __construct($class, $constant){"
+"  if(!is_object($class) && !is_string($class)){"
+"   throw new TypeError('ReflectionClassConstant::__construct(): Argument #1 ($class) must be of type object|string, '.get_debug_type($class).' given');"
+"  }"
+"  $ci = __reflect_class_info($class);"
+"  if($ci === null){"
+"   throw new ReflectionException('Class \"'.$class.'\" does not exist');"
+"  }"
+"  $this->class = $ci['name'];"
+"  if(!isset($ci['consts'][$constant])){"
+"   throw new ReflectionException('Constant '.$this->class.'::'.$constant.' does not exist');"
+"  }"
+"  $this->name = $constant;"
+" }"
+" protected function __rcmeta(){"
+"  $ci = __reflect_class_info($this->class);"
+"  return $ci['consts'][$this->name];"
+" }"
+" public function getName(){ return $this->name; }"
+" public function getValue(){ return __reflect_const_value($this->class, $this->name); }"
+" public function getDeclaringClass(){"
+"  $m = $this->__rcmeta();"
+"  return new ReflectionClass($m['decl']);"
+" }"
+" public function getModifiers(){"
+"  $m = $this->__rcmeta();"
+"  $mod = ($m['vis'] === 1 ? 1 : ($m['vis'] === 2 ? 2 : 4));"
+"  if($m['final']){ $mod |= 32; }"
+"  return $mod;"
+" }"
+" public function isPublic(){ $m = $this->__rcmeta(); return $m['vis'] === 1; }"
+" public function isProtected(){ $m = $this->__rcmeta(); return $m['vis'] === 2; }"
+" public function isPrivate(){ $m = $this->__rcmeta(); return $m['vis'] === 3; }"
+" public function isFinal(){ $m = $this->__rcmeta(); return $m['final']; }"
+" public function isEnumCase(){ return false; }"
+" public function isDeprecated(){ return false; }"
+" public function hasType(){ $m = $this->__rcmeta(); return $m['typed']; }"
+" public function getType(){ return null; }"
+" public function getDocComment(){ return false; }"
+" public function getAttributes($name = null, $flags = 0){ return array(); }"
+" public function __toString(){"
+"  return 'Constant [ public '.$this->name.' ]'.\"\\n\";"
+" }"
+"}"
+;
+/*
  * Register the __reflect_* thunks and compile the Reflection library.
  * Called from PH7_VmInit while pVm->bCompilingBuiltin is set, right after
  * the core builtin chunks (Exception and friends must exist already).
@@ -1708,6 +2199,10 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 		{ "__reflect_param_defconst", vm_builtin_reflect_param_defconst },
 		{ "__reflect_invoke",         vm_builtin_reflect_invoke },
 		{ "__reflect_closure",        vm_builtin_reflect_closure },
+		{ "__reflect_prop_read",      vm_builtin_reflect_prop_read },
+		{ "__reflect_prop_write",     vm_builtin_reflect_prop_write },
+		{ "__reflect_prop_state",     vm_builtin_reflect_prop_state },
+		{ "__reflect_dyn_props",      vm_builtin_reflect_dyn_props },
 	};
 	sxu32 n;
 	sxi32 rc;
@@ -1718,5 +2213,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 	if( rc != SXRET_OK ){
 		return rc;
 	}
-	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib2, sizeof(zReflectLib2)-1);
+	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib2, sizeof(zReflectLib2)-1);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib3, sizeof(zReflectLib3)-1);
 }
