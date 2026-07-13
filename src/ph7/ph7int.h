@@ -1058,6 +1058,14 @@ typedef void (*ProcErrLog)(const char *,int,const char *,const char *);
  * resulting from compiling a PHP script.
  * This structure contains the complete state of the virtual machine.
  */
+/* In-flight magic-accessor guard entry (band A #3a; see vm.c helpers). */
+typedef struct VmMagicGuard VmMagicGuard;
+struct VmMagicGuard
+{
+	void *pThis;      /* instance identity */
+	sxu32 nNameHash;  /* property-name hash (SyBinHash) */
+	sxu8 cKind;       /* accessor kind: 'g' = __get */
+};
 struct ph7_vm
 {
 	SyMemBackend sAllocator;	/* Memory backend */
@@ -1128,6 +1136,10 @@ struct ph7_vm
 	void *pInlineInstr;         /* Owner bytecode array of the catching inline try (0 = none) */
 	sxu32 iInlinePc;            /* 0-based target pc (iHandlerPc or iFinallyPc) */
 	sxi32 iInlineDrain;         /* Operand-stack base to drain to before landing (0-based TOS idx) */
+	SySet aMagicGuard;          /* In-flight magic-accessor guard (php's property guard):
+	                             * {instance, property-name hash, kind} entries pushed around a
+	                             * __get dispatch so a self-recursive read of the same property
+	                             * falls back to the undefined-property path instead of looping. */
 	sxi32 nBoundaryRc;          /* C-boundary parked throw status (0 / PH7_EXCEPTION / PH7_ABORT).
 	                             * Set by VmBoundaryPark when a PHP callee invoked from a C site
 	                             * (magic method, cast hook, __destruct, user callback) raised and
@@ -2137,7 +2149,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceCmp(ph7_class_instance *pLeft,ph7_class_insta
 PH7_PRIVATE void  PH7_ClassInstanceUnref(ph7_class_instance *pThis);
 PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,int ShowType,int nTab,int nDepth);
 PH7_PRIVATE sxi32 PH7_ClassInstanceCallMagicMethod(ph7_vm *pVm,ph7_class *pClass,ph7_class_instance *pThis,const char *zMethod,
-	sxu32 nByte,const SyString *pAttrName);
+	sxu32 nByte,const SyString *pAttrName,ph7_value *pResult);
 PH7_PRIVATE ph7_value * PH7_ClassInstanceExtractAttrValue(ph7_class_instance *pThis,VmClassAttr *pAttr);
 PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmap(ph7_class_instance *pThis,ph7_hashmap *pMap);
 PH7_PRIVATE sxi32 PH7_ClassInstanceWalk(ph7_class_instance *pThis,
