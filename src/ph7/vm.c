@@ -690,6 +690,18 @@ PH7_PRIVATE sxi32 PH7_VmInitFuncState(
 	/* Capture the defining file's strict_types mode. PHP scopes return-type
 	 * coercion by the callee's file, so we freeze it at definition time. */
 	pFunc->bStrictTypes = (sxu8)(pVm->sCodeGen.bStrictTypes ? 1 : 0);
+	if( pVm->bCompilingBuiltin ){
+		/* Defined by an embedded builtin chunk: internal, no defining file */
+		pFunc->iFlags |= VM_FUNC_INTERNAL;
+	}else{
+		/* Alias the VM-lifetime path dup on top of the include stack. eval()
+		 * chunks push nothing, so eval-defined functions report the includer's
+		 * file (documented divergence from PHP's "eval()'d code" pseudo-path). */
+		SyString *pFile = (SyString *)SySetPeek(&pVm->aFiles);
+		if( pFile ){
+			SyStringDupPtr(&pFunc->sFile,pFile);
+		}
+	}
 	SyStringInitFromBuf(&pFunc->sName,zName,nByte);
 	return SXRET_OK;
 }
@@ -2432,6 +2444,9 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	/* VM correctly initialized,set the magic number */
 	pVm->nMagic = PH7_VM_INIT;
 	SyStringInitFromBuf(&sBuiltin,PH7_BUILTIN_LIB,sizeof(PH7_BUILTIN_LIB)-1);
+	/* Classes/functions defined by the embedded builtin chunks below are
+	 * flagged INTERNAL (Reflection: isInternal() true, getFileName() false). */
+	pVm->bCompilingBuiltin = 1;
 	/* Compile the built-in library */
 	VmEvalChunk(&(*pVm),0,&sBuiltin,PH7_PHP_ONLY,FALSE);
 	/* Register the Random\RandomException namespaced class (PHP 8.2+).
@@ -2448,6 +2463,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 		SyStringInitFromBuf(&sRandom,zRandomLib,sizeof(zRandomLib)-1);
 		VmEvalChunk(&(*pVm),0,&sRandom,PH7_PHP_ONLY,FALSE);
 	}
+	pVm->bCompilingBuiltin = 0;
 	/* Cache the Fiber class pointer for fast dispatch */
 	pVm->pFiberClass = PH7_VmExtractClass(pVm,"Fiber",5,0,0);
 	/* Cache built-in interface pointers used on hot dispatch paths */

@@ -36,6 +36,17 @@ PH7_PRIVATE ph7_class * PH7_NewRawClass(ph7_vm *pVm,const SyString *pName,sxu32 
 	SySetInit(&pClass->aInterface,&pVm->sAllocator,sizeof(ph7_class *));
 	SySetInit(&pClass->aTrait,&pVm->sAllocator,sizeof(ph7_class *));
 	pClass->nLine = nLine;
+	if( pVm->bCompilingBuiltin ){
+		/* Defined by an embedded builtin chunk: internal, no defining file.
+		 * Class compilers merge further flags with |= so this survives. */
+		pClass->iFlags |= PH7_CLASS_INTERNAL;
+	}else{
+		/* Alias the VM-lifetime path dup on top of the include stack */
+		SyString *pFile = (SyString *)SySetPeek(&pVm->aFiles);
+		if( pFile ){
+			SyStringDupPtr(&pClass->sFile,pFile);
+		}
+	}
 	/* All done */
 	return pClass;
 }
