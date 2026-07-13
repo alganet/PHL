@@ -1493,7 +1493,8 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceCallMagicMethod(
 	ph7_class_instance *pThis, /* Target object */
 	const char *zMethod,       /* Magic method name [i.e: __toString()]*/
 	sxu32 nByte,               /* zMethod length*/
-	const SyString *pAttrName  /* Attribute name */
+	const SyString *pAttrName, /* Attribute name */
+	ph7_value *pResult         /* OUT: magic method return value. NULL to discard */
 	)
 {
 	ph7_value *apArg[2] = { 0 , 0 };
@@ -1516,7 +1517,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceCallMagicMethod(
 		nArg = 1;
 	}
 	/* Call the magic method now */
-	rc = PH7_VmCallClassMethod(pVm,&(*pThis),pMeth,0,nArg,apArg);
+	rc = PH7_VmCallClassMethod(pVm,&(*pThis),pMeth,pResult,nArg,apArg);
 	/* Clean up */
 	if( pAttrName ){
 		PH7_MemObjRelease(&sAttr);

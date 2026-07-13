@@ -2408,6 +2408,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyHashInit(&pVm->hAutoloadActive,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hTypedSlot,&pVm->sAllocator,0,0);
 	SySetInit(&pVm->aException,&pVm->sAllocator,sizeof(ph7_exception *));
+	SySetInit(&pVm->aMagicGuard,&pVm->sAllocator,sizeof(VmMagicGuard));
 	pVm->pIdleCallFrames = 0;
 	pVm->pIdleOperandStacks = 0;
 	pVm->nIdleOperandStacks = 0;
@@ -2422,6 +2423,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->pResumeInstr = 0;
 	pVm->iResumeStackDepth = 0;
 	pVm->nBoundaryRc = 0;
+	SySetReset(&pVm->aMagicGuard);
 	/* Configuration containers */
 	SySetInit(&pVm->aFiles,&pVm->sAllocator,sizeof(SyString));
 	SySetInit(&pVm->aPaths,&pVm->sAllocator,sizeof(SyString));
@@ -3751,6 +3753,7 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	pVm->pResumeInstr = 0;
 	pVm->iResumeStackDepth = 0;
 	pVm->nBoundaryRc = 0;
+	SySetReset(&pVm->aMagicGuard);
 	pVm->nExceptDepth = 0;
 	/* spl_autoload_register() callbacks are per request */
 	for( n = 0 ; n < SySetUsed(&pVm->aAutoload) ; ++n ){
@@ -6898,6 +6901,37 @@ static void VmWarnCannotUseAsArray(ph7_vm *pVm, sxi32 iFlags)
 static int VmMemberCtxIsLookup(sxi32 iP2)
 {
 	return iP2 == PH7_MEMBER_ISSET || iP2 == PH7_MEMBER_EMPTY;
+}
+/*
+ * In-flight magic-accessor guard (band A #3a) — php's property guard.
+ * A __get body reading the SAME property of the SAME instance must not
+ * re-enter __get (php falls back to the undefined-property path); entries
+ * are pushed around the dispatch and popped after, so unrelated nested
+ * reads (other names / other instances) still dispatch.
+ */
+static int VmMagicGuardHeld(ph7_vm *pVm,void *pThis,const SyString *pName,sxu8 cKind)
+{
+	VmMagicGuard *aG = (VmMagicGuard *)SySetBasePtr(&pVm->aMagicGuard);
+	sxu32 nHash = SyBinHash((const void *)pName->zString,pName->nByte);
+	sxu32 n;
+	for( n = 0; n < SySetUsed(&pVm->aMagicGuard); ++n ){
+		if( aG[n].pThis == pThis && aG[n].nNameHash == nHash && aG[n].cKind == cKind ){
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+static void VmMagicGuardPush(ph7_vm *pVm,void *pThis,const SyString *pName,sxu8 cKind)
+{
+	VmMagicGuard sG;
+	sG.pThis = pThis;
+	sG.nNameHash = SyBinHash((const void *)pName->zString,pName->nByte);
+	sG.cKind = cKind;
+	SySetPut(&pVm->aMagicGuard,(const void *)&sG);
+}
+static void VmMagicGuardPop(ph7_vm *pVm)
+{
+	(void)SySetPop(&pVm->aMagicGuard);
 }
 /*
  * Whether the instruction immediately following an OP_MEMBER that missed (property absent) is a
@@ -11795,7 +11829,7 @@ case PH7_OP_MEMBER: {
 						&pClass->sName,&sName
 						);
 					/* Call the '__Call()' magic method if available */
-					PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,pThis,"__call",sizeof("__call")-1,&sName);
+					PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,pThis,"__call",sizeof("__call")-1,&sName,0);
 					/* Pop the method name from the stack */
 					VmPopOperand(&pTos,1);
 					PH7_MemObjRelease(pTos);
@@ -11858,15 +11892,45 @@ case PH7_OP_MEMBER: {
 					}
 				}
 				if( pObjAttr == 0 ){
-					/* No such attribute,load null. In isset()/empty() context (iP2 3/4) PHP returns
-					 * false/true SILENTLY, so suppress the read-miss warning there (mirrors the array
-					 * LOAD_IDX iP2=4/6 suppression). */
+					/* Missing property. On a plain READ, php dispatches __get($name) and the
+					 * expression takes its RETURN VALUE (band A #3a — pre-fix the result was
+					 * discarded and a PHL-native warn fired even when __get existed). isset/
+					 * empty context consults __isset only (not implemented — stays silent
+					 * null, matching php when no __isset is declared); a write context
+					 * belongs to __set (the vivify block above / the #3 follow-up). A
+					 * self-recursive read of the same property falls back to the
+					 * undefined-property path via the guard, like php's property guard. */
+					ph7_class_method *pGetMagic = 0;
+					if( pInstr->iP2 != PH7_MEMBER_WRITE && !VmMemberCtxIsLookup(pInstr->iP2)
+					 && !VmMemberNextIsWrite(pInstr + 1) ){
+						pGetMagic = PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1);
+					}
+					if( pGetMagic && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'g') ){
+						ph7_value sMagicRet;
+						PH7_MemObjInit(pVm,&sMagicRet);
+						VmMagicGuardPush(pVm,(void *)pThis,&sName,'g');
+						PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,pThis,"__get",sizeof("__get")-1,&sName,&sMagicRet);
+						VmMagicGuardPop(pVm);
+						/* Pop the attribute name, replace the object slot with the magic
+						 * result (a temp, not an lvalue — nIdx stays constant). A throw
+						 * from __get parked at the boundary; the fetch-point router lands
+						 * it and abandons this slot. */
+						VmPopOperand(&pTos,1);
+						pThis->iRef++;
+						PH7_MemObjRelease(pTos);
+						PH7_MemObjStore(&sMagicRet,pTos);
+						pTos->nIdx = SXU32_HIGH;
+						PH7_MemObjRelease(&sMagicRet);
+						PH7_ClassInstanceUnref(pThis);
+						break;
+					}
+					/* No __get (or guard held): load null. In isset()/empty() context (iP2 3/4)
+					 * PHP returns false/true SILENTLY, so suppress the read-miss warning there
+					 * (mirrors the array LOAD_IDX iP2=4/6 suppression). */
 					if( !VmMemberCtxIsLookup(pInstr->iP2) ){
 						VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Undefined class attribute '%z->%z',PH7 is loading NULL",
 							&pClass->sName,&sName);
 					}
-					/* Call the __get magic method if available */
-					PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,pThis,"__get",sizeof("__get")-1,&sName);
 				}
 				VmPopOperand(&pTos,1);
 				/* TICKET 1433-49: Deffer garbage collection until attribute loading.
@@ -11928,8 +11992,31 @@ case PH7_OP_MEMBER: {
 							}
 						}
 					}else{
+						/* Inaccessible (private/protected) from this scope. php consults
+						 * __get here exactly like a missing property (band A #3a) before
+						 * erroring; the guard keeps a self-recursive read from looping. */
+						ph7_class_method *pGetMagic = 0;
+						if( pInstr->iP2 != PH7_MEMBER_WRITE && !VmMemberCtxIsLookup(pInstr->iP2)
+						 && !VmMemberNextIsWrite(pInstr + 1) ){
+							pGetMagic = PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1);
+						}
+						if( pGetMagic && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'g') ){
+							ph7_value sMagicRet;
+							PH7_MemObjInit(pVm,&sMagicRet);
+							VmMagicGuardPush(pVm,(void *)pThis,&sName,'g');
+							PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,pThis,"__get",sizeof("__get")-1,&sName,&sMagicRet);
+							VmMagicGuardPop(pVm);
+							/* The name was already popped and pTos released above; just
+							 * take the magic result as the expression value. */
+							PH7_MemObjStore(&sMagicRet,pTos);
+							pTos->nIdx = SXU32_HIGH;
+							PH7_MemObjRelease(&sMagicRet);
+							PH7_ClassInstanceUnref(pThis);
+							break;
+						}
 						/* Throw Error exception (PHP-compatible).
 						 * Build message before unref — pObjAttr belongs to pThis->hAttr. */
+						{
 						char zMsg[256];
 						const char *zVis = pObjAttr->pAttr->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected";
 						SyBufferFormat(zMsg,sizeof(zMsg),"Cannot access %s property %.*s::$%.*s",
@@ -11938,6 +12025,7 @@ case PH7_OP_MEMBER: {
 						PH7_ClassInstanceUnref(pThis);
 						VmReportUncaughtException(&(*pVm),"Error",5,zMsg,(sxu32)SyStrlen(zMsg),0,0);
 						goto Abort;
+						}
 					}
 				}
 				/* Safely unreference the object */
@@ -12028,7 +12116,7 @@ case PH7_OP_MEMBER: {
 								&pClass->sName,&sName
 								);
 							/* Call the '__CallStatic()' magic method if available */
-							PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,0,"__callStatic",sizeof("__callStatic")-1,&sName);
+							PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,0,"__callStatic",sizeof("__callStatic")-1,&sName,0);
 						}
 						/* Pop the method name from the stack */
 						if( !pInstr->p3 ){
@@ -12079,7 +12167,7 @@ case PH7_OP_MEMBER: {
 									&pClass->sName,&sName);
 							}
 							/* Call the __get magic method if available */
-							PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,0,"__get",sizeof("__get")-1,&sName);
+							PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,0,"__get",sizeof("__get")-1,&sName,0);
 						}
 						/* Pop the attribute name from the stack */
 						if( !pInstr->p3 ){
