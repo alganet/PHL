@@ -1273,6 +1273,133 @@ static int vm_builtin_reflect_closure(ph7_context *pCtx, int nArg, ph7_value **a
 	return PH7_OK;
 }
 /*
+ * Resolve a Generator object into its wrapper. Mirrors the static
+ * VmGeneratorExtractCtx in vm.c: the $__ctx attribute carries the
+ * ph7_generator pointer as a resource value.
+ */
+static ph7_generator * ReflectGeneratorCtx(ph7_vm *pVm, ph7_value *pVal)
+{
+	ph7_class_instance *pThis;
+	ph7_value *pAttr;
+	SyString sAttr;
+	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 || pVm->pGeneratorClass == 0 ){
+		return 0;
+	}
+	pThis = (ph7_class_instance *)pVal->x.pOther;
+	if( pThis->pClass != pVm->pGeneratorClass ){
+		return 0;
+	}
+	SyStringInitFromBuf(&sAttr, "__ctx", 5);
+	pAttr = PH7_ClassInstanceFetchAttr(pThis, &sAttr);
+	if( pAttr == 0 || (pAttr->iFlags & MEMOBJ_RES) == 0 ){
+		return 0;
+	}
+	return (ph7_generator *)pAttr->x.pOther;
+}
+/*
+ * array|null __reflect_gen_info(Generator $g)
+ * {state, closed, executing, kind ('fn'|'method'), name, class?, this}
+ */
+static int vm_builtin_reflect_gen_info(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_generator *pGen;
+	ph7_exec_ctx *pExec;
+	ph7_value *pInfo;
+	if( nArg < 1 || (pGen = ReflectGeneratorCtx(pVm, apArg[0])) == 0 || pGen->pCtx == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pExec = pGen->pCtx;
+	pInfo = ph7_context_new_array(pCtx);
+	if( pInfo == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	ReflectMapAddInt(pCtx, pInfo, "state", (sxi64)pExec->iState);
+	ReflectMapAddBool(pCtx, pInfo, "closed",
+		pExec->iState == PH7_CTX_STATE_COMPLETED || pExec->iState == PH7_CTX_STATE_CLOSED);
+	ReflectMapAddBool(pCtx, pInfo, "executing", pVm->pActiveCtx == pExec);
+	if( pExec->pFunc ){
+		ph7_vm_func *pFunc = pExec->pFunc;
+		if( (pFunc->iFlags & VM_FUNC_CLASS_METHOD) && pFunc->pUserData ){
+			ph7_class *pDecl = (ph7_class *)pFunc->pUserData;
+			ReflectMapAddStr(pCtx, pInfo, "kind", "method", sizeof("method")-1);
+			ReflectMapAddStr(pCtx, pInfo, "class", SyStringData(&pDecl->sName), (int)SyStringLength(&pDecl->sName));
+		}else{
+			ReflectMapAddStr(pCtx, pInfo, "kind", "fn", sizeof("fn")-1);
+		}
+		ReflectMapAddStr(pCtx, pInfo, "name", SyStringData(&pFunc->sName), (int)SyStringLength(&pFunc->sName));
+	}
+	{
+		/* The coroutine frame installs $this as a frame VARIABLE (see
+		 * VmFiberSetupFrame), not as pFrame->pThis — check both. */
+		ph7_value *pThisVal = 0;
+		if( pExec->pFrame ){
+			SyHashEntry *pVar = SyHashGet(&pExec->pFrame->hVar, "this", sizeof("this")-1);
+			if( pVar ){
+				ph7_value *pSlot = (ph7_value *)SySetAt(&pVm->aMemObj, (sxu32)SX_PTR_TO_INT(pVar->pUserData));
+				if( pSlot && (pSlot->iFlags & MEMOBJ_OBJ) ){
+					pThisVal = pSlot;
+				}
+			}
+			if( pThisVal == 0 && pExec->pFrame->pThis ){
+				ph7_value sThis;
+				ph7_value *pKey = ph7_context_new_scalar(pCtx);
+				PH7_MemObjInit(pVm, &sThis);
+				pExec->pFrame->pThis->iRef++;
+				sThis.x.pOther = pExec->pFrame->pThis;
+				MemObjSetType(&sThis, MEMOBJ_OBJ);
+				if( pKey ){
+					ph7_value_string(pKey, "this", 4);
+					ph7_array_add_elem(pInfo, pKey, &sThis); /* copies (takes its own ref) */
+				}
+				PH7_MemObjRelease(&sThis);
+				pThisVal = (ph7_value *)1; /* handled */
+			}
+		}
+		if( pThisVal == 0 ){
+			ReflectMapAddNull(pCtx, pInfo, "this");
+		}else if( pThisVal != (ph7_value *)1 ){
+			ph7_value *pKey = ph7_context_new_scalar(pCtx);
+			if( pKey ){
+				ph7_value_string(pKey, "this", 4);
+				ph7_array_add_elem(pInfo, pKey, pThisVal);
+			}
+		}
+	}
+	ph7_result_value(pCtx, pInfo);
+	return PH7_OK;
+}
+/*
+ * Generator __reflect_gen_exec(Generator $g)
+ * Follow `yield from` delegation to the innermost executing generator
+ * (PHP's ReflectionGenerator::getExecutingGenerator).
+ */
+static int vm_builtin_reflect_gen_exec(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_generator *pGen;
+	ph7_value *pCur;
+	int iDepth = 0;
+	if( nArg < 1 || (pGen = ReflectGeneratorCtx(pVm, apArg[0])) == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pCur = apArg[0];
+	while( pGen && pGen->pCtx && pGen->pCtx->iDelegateState == 3
+	 && iDepth <= REFLECT_WALK_MAX_DEPTH ){
+		ph7_generator *pInner = ReflectGeneratorCtx(pVm, &pGen->pCtx->sDelegate);
+		if( pInner == 0 ){
+			break;
+		}
+		pCur = &pGen->pCtx->sDelegate;
+		pGen = pInner;
+		iDepth++;
+	}
+	return ReflectResultExistingObject(pCtx, (ph7_class_instance *)pCur->x.pOther);
+}
+/*
  * The Reflection classes, in PHP. Chunk 1: exceptions, Reflector,
  * Reflection, ReflectionClass, ReflectionObject (plus get_debug_type,
  * which the TypeError messages need and PHP 8.0 ships natively).
@@ -1757,7 +1884,12 @@ static const char zReflectLib2[] =
 "  if($i === null){"
 "   throw new ReflectionException('Function '.$function.'() does not exist');"
 "  }"
-"  $this->name = $i['name'];"
+"  if($i['closure']){"
+"   $this->name = '{closure:'.($i['file'] === false ? '' : $i['file']).':'.$i['line'].'}';"
+"   $this->__cl = __reflect_closure($function, null, null);"
+"  }else{"
+"   $this->name = $i['name'];"
+"  }"
 " }"
 " public function invoke(...$args){ return __reflect_invoke($this->__rftarget(), null, null, $args); }"
 " public function invokeArgs(array $args){ return __reflect_invoke($this->__rftarget(), null, null, $args); }"
@@ -2276,6 +2408,61 @@ static const char zReflectLib4[] =
 "}"
 ;
 /*
+ * Chunk 5: ReflectionGenerator, ReflectionFiber. Executing line/file and
+ * traces need runtime line tracking the VM does not have (same gap as
+ * debug_backtrace's line numbers) — those throw a loud Error, recorded in
+ * the plan ledger.
+ */
+static const char zReflectLib5[] =
+"class ReflectionGenerator {"
+" protected $__gen;"
+" public function __construct($generator){"
+"  if(!($generator instanceof Generator)){"
+"   throw new TypeError('ReflectionGenerator::__construct(): Argument #1 ($generator) must be of type Generator, '.get_debug_type($generator).' given');"
+"  }"
+"  $this->__gen = $generator;"
+" }"
+" protected function __rginfo(){ return __reflect_gen_info($this->__gen); }"
+" public function getFunction(){"
+"  $i = $this->__rginfo();"
+"  if($i['kind'] === 'method'){ return new ReflectionMethod($i['class'], $i['name']); }"
+"  return new ReflectionFunction($i['name']);"
+" }"
+" public function getThis(){ $i = $this->__rginfo(); return isset($i['this']) ? $i['this'] : null; }"
+" public function getExecutingGenerator(){ return __reflect_gen_exec($this->__gen); }"
+" public function isClosed(){ $i = $this->__rginfo(); return $i['closed']; }"
+" public function getExecutingLine(){"
+"  throw new Error('ReflectionGenerator::getExecutingLine() is not supported by PHL (no runtime line tracking)');"
+" }"
+" public function getExecutingFile(){"
+"  throw new Error('ReflectionGenerator::getExecutingFile() is not supported by PHL (no runtime line tracking)');"
+" }"
+" public function getTrace($options = 1){"
+"  throw new Error('ReflectionGenerator::getTrace() is not supported by PHL (no runtime line tracking)');"
+" }"
+"}"
+"class ReflectionFiber {"
+" protected $__fiber;"
+" public function __construct($fiber){"
+"  if(!($fiber instanceof Fiber)){"
+"   throw new TypeError('ReflectionFiber::__construct(): Argument #1 ($fiber) must be of type Fiber, '.get_debug_type($fiber).' given');"
+"  }"
+"  $this->__fiber = $fiber;"
+" }"
+" public function getFiber(){ return $this->__fiber; }"
+" public function getCallable(){ return __reflect_prop_read($this->__fiber, '__callable'); }"
+" public function getExecutingLine(){"
+"  throw new Error('ReflectionFiber::getExecutingLine() is not supported by PHL (no runtime line tracking)');"
+" }"
+" public function getExecutingFile(){"
+"  throw new Error('ReflectionFiber::getExecutingFile() is not supported by PHL (no runtime line tracking)');"
+" }"
+" public function getTrace($options = 1){"
+"  throw new Error('ReflectionFiber::getTrace() is not supported by PHL (no runtime line tracking)');"
+" }"
+"}"
+;
+/*
  * Register the __reflect_* thunks and compile the Reflection library.
  * Called from PH7_VmInit while pVm->bCompilingBuiltin is set, right after
  * the core builtin chunks (Exception and friends must exist already).
@@ -2302,6 +2489,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 		{ "__reflect_prop_write",     vm_builtin_reflect_prop_write },
 		{ "__reflect_prop_state",     vm_builtin_reflect_prop_state },
 		{ "__reflect_dyn_props",      vm_builtin_reflect_dyn_props },
+		{ "__reflect_gen_info",       vm_builtin_reflect_gen_info },
+		{ "__reflect_gen_exec",       vm_builtin_reflect_gen_exec },
 	};
 	sxu32 n;
 	sxi32 rc;
@@ -2320,5 +2509,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 	if( rc != SXRET_OK ){
 		return rc;
 	}
-	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib4, sizeof(zReflectLib4)-1);
+	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib4, sizeof(zReflectLib4)-1);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib5, sizeof(zReflectLib5)-1);
 }
