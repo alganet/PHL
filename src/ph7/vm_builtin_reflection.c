@@ -1400,6 +1400,76 @@ static int vm_builtin_reflect_gen_exec(ph7_context *pCtx, int nArg, ph7_value **
 	return ReflectResultExistingObject(pCtx, (ph7_class_instance *)pCur->x.pOther);
 }
 /*
+ * array|null __reflect_const_info(string $name)
+ * Global-constant descriptor: {value}. Null when undefined. File/origin
+ * metadata arrives with the C5 constant-metadata work.
+ */
+static int vm_builtin_reflect_const_info(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	SyHashEntry *pEntry;
+	ph7_constant *pCons;
+	ph7_value *pInfo;
+	ph7_value sValue;
+	const char *zName;
+	int nLen;
+	if( nArg < 1 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	zName = ph7_value_to_string(apArg[0], &nLen);
+	pEntry = nLen > 0 ? SyHashGet(&pVm->hConstant, (const void *)zName, (sxu32)nLen) : 0;
+	if( pEntry == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pCons = (ph7_constant *)pEntry->pUserData;
+	pInfo = ph7_context_new_array(pCtx);
+	if( pInfo == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pVm, &sValue);
+	if( pCons->xExpand ){
+		pCons->xExpand(&sValue, pCons->pUserData);
+	}
+	{
+		ph7_value *pKey = ph7_context_new_scalar(pCtx);
+		if( pKey ){
+			ph7_value_string(pKey, "value", 5);
+			ph7_array_add_elem(pInfo, pKey, &sValue);
+		}
+	}
+	PH7_MemObjRelease(&sValue);
+	ph7_result_value(pCtx, pInfo);
+	return PH7_OK;
+}
+/*
+ * int|null __reflect_ref_id(array $arr, int|string $key)
+ * The element's slot index when the element is a reference (its slot has
+ * a reference-table record with at least two links), null otherwise.
+ */
+static int vm_builtin_reflect_ref_id(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pNode = 0;
+	if( nArg < 2 || !ph7_value_is_array(apArg[0]) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
+	if( PH7_HashmapLookup(pMap, apArg[1], &pNode) != SXRET_OK || pNode == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	if( PH7_VmSlotRefCount(pCtx->pVm, pNode->nValIdx) < 2 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	ph7_result_int64(pCtx, (sxi64)pNode->nValIdx);
+	return PH7_OK;
+}
+/*
  * The Reflection classes, in PHP. Chunk 1: exceptions, Reflector,
  * Reflection, ReflectionClass, ReflectionObject (plus get_debug_type,
  * which the TypeError messages need and PHP 8.0 ships natively).
@@ -1752,6 +1822,23 @@ static const char zReflectLib1[] =
 " }"
 " public function getAttributes($name = null, $flags = 0){ return array(); }"
 " public function getExtensionName(){ $i = $this->__rinfo(); return $i['internal'] ? 'Core' : false; }"
+" public function getExtension(){ $i = $this->__rinfo(); return $i['internal'] ? new ReflectionExtension('Core') : null; }"
+" public function newLazyGhost($initializer, $options = 0){"
+"  throw new Error('ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)');"
+" }"
+" public function newLazyProxy($factory, $options = 0){"
+"  throw new Error('ReflectionClass::newLazyProxy() is not supported by PHL (no lazy objects)');"
+" }"
+" public function resetAsLazyGhost($object, $initializer, $options = 0){"
+"  throw new Error('ReflectionClass::resetAsLazyGhost() is not supported by PHL (no lazy objects)');"
+" }"
+" public function resetAsLazyProxy($object, $factory, $options = 0){"
+"  throw new Error('ReflectionClass::resetAsLazyProxy() is not supported by PHL (no lazy objects)');"
+" }"
+" public function getLazyInitializer($object){ return null; }"
+" public function initializeLazyObject($object){ return $object; }"
+" public function markLazyObjectAsInitialized($object){ return $object; }"
+" public function isUninitializedLazyObject($object){ return false; }"
 " public function __toString(){"
 "  return 'Class [ class '.$this->name.' ] {'.\"\\n\".'}'.\"\\n\";"
 " }"
@@ -1858,6 +1945,7 @@ static const char zReflectLib2[] =
 "  return isset($i['used']) ? $i['used'] : array();"
 " }"
 " public function getExtensionName(){ $i = $this->__rfinfo(); return $i['internal'] ? 'Core' : false; }"
+" public function getExtension(){ $i = $this->__rfinfo(); return $i['internal'] ? new ReflectionExtension('Core') : null; }"
 " public function getAttributes($name = null, $flags = 0){ return array(); }"
 " public function __toString(){"
 "  return 'Function [ function '.$this->name.' ] {'.\"\\n\".'}'.\"\\n\";"
@@ -2256,6 +2344,12 @@ static const char zReflectLib3[] =
 " public function hasType(){ $m = $this->__rpmeta(); return $m['typed']; }"
 " public function getType(){ $m = $this->__rpmeta(); return $m['typed'] ? __reflect_make_type($m['typetext']) : null; }"
 " public function getSettableType(){ return $this->getType(); }"
+" public function setRawValueWithoutLazyInitialization($object, $value){"
+"  throw new Error('ReflectionProperty::setRawValueWithoutLazyInitialization() is not supported by PHL (no lazy objects)');"
+" }"
+" public function skipLazyInitialization($object){"
+"  throw new Error('ReflectionProperty::skipLazyInitialization() is not supported by PHL (no lazy objects)');"
+" }"
 " public function getDocComment(){ return false; }"
 " public function getAttributes($name = null, $flags = 0){ return array(); }"
 " public function __toString(){"
@@ -2463,6 +2557,126 @@ static const char zReflectLib5[] =
 "}"
 ;
 /*
+ * Chunk 6: the long tail — ReflectionConstant (PHP 8.5), the synthetic
+ * "Core" ReflectionExtension, ReflectionZendExtension (throws: no Zend
+ * extensions exist), the ReflectionEnum family (throws: enums are not a
+ * PHL language feature yet), and ReflectionReference.
+ */
+static const char zReflectLib6[] =
+"class ReflectionConstant implements Reflector {"
+" public $name;"
+" public function __construct($name){"
+"  if(!is_string($name)){"
+"   throw new TypeError('ReflectionConstant::__construct(): Argument #1 ($name) must be of type string, '.get_debug_type($name).' given');"
+"  }"
+"  $i = __reflect_const_info($name);"
+"  if($i === null){"
+"   throw new ReflectionException('Constant \"'.$name.'\" does not exist');"
+"  }"
+"  $this->name = $name;"
+" }"
+" public function getName(){ return $this->name; }"
+" public function getNamespaceName(){"
+"  $p = strrpos($this->name,'\\\\');"
+"  if($p === false){ return ''; }"
+"  return substr($this->name,0,$p);"
+" }"
+" public function getShortName(){"
+"  $p = strrpos($this->name,'\\\\');"
+"  if($p === false){ return $this->name; }"
+"  return substr($this->name,$p+1);"
+" }"
+" public function getValue(){"
+"  $i = __reflect_const_info($this->name);"
+"  return $i['value'];"
+" }"
+" public function isDeprecated(){ return false; }"
+" public function getFileName(){ return false; }"
+" public function getExtension(){ return null; }"
+" public function getExtensionName(){ return false; }"
+" public function getAttributes($name = null, $flags = 0){ return array(); }"
+" public function __toString(){"
+"  return 'Constant [ '.$this->name.' ]'.\"\\n\";"
+" }"
+"}"
+"class ReflectionExtension implements Reflector {"
+" public $name;"
+" public function __construct($name){"
+"  if(!is_string($name)){"
+"   throw new TypeError('ReflectionExtension::__construct(): Argument #1 ($name) must be of type string, '.get_debug_type($name).' given');"
+"  }"
+"  if(strtolower($name) !== 'core'){"
+"   throw new ReflectionException('Extension \"'.$name.'\" does not exist');"
+"  }"
+"  $this->name = 'Core';"
+" }"
+" public function getName(){ return $this->name; }"
+" public function getVersion(){ return phpversion(); }"
+" public function getFunctions(){ return array(); }"
+" public function getClasses(){ return array(); }"
+" public function getClassNames(){ return array(); }"
+" public function getConstants(){ return array(); }"
+" public function getINIEntries(){ return array(); }"
+" public function getDependencies(){ return array(); }"
+" public function isPersistent(){ return true; }"
+" public function isTemporary(){ return false; }"
+" public function info(){ }"
+" public function __toString(){"
+"  return 'Extension [ extension #1 '.$this->name.' ]'.\"\\n\";"
+" }"
+"}"
+"class ReflectionZendExtension implements Reflector {"
+" public $name;"
+" public function __construct($name){"
+"  throw new ReflectionException('Zend Extension \"'.$name.'\" does not exist');"
+" }"
+" public function getName(){ return $this->name; }"
+" public function __toString(){ return ''; }"
+"}"
+"class ReflectionEnum extends ReflectionClass {"
+" public function __construct($objectOrClass){"
+"  $info = __reflect_class_info($objectOrClass);"
+"  if($info === null){"
+"   throw new ReflectionException('Class \"'.$objectOrClass.'\" does not exist');"
+"  }"
+"  throw new ReflectionException('Class \"'.$info['name'].'\" is not an enum');"
+" }"
+" public function hasCase($name){ return false; }"
+" public function getCase($name){ throw new ReflectionException('Case '.$name.' does not exist'); }"
+" public function getCases(){ return array(); }"
+" public function isBacked(){ return false; }"
+" public function getBackingType(){ return null; }"
+"}"
+"class ReflectionEnumUnitCase extends ReflectionClassConstant {"
+" public function __construct($class, $constant){"
+"  parent::__construct($class, $constant);"
+"  throw new ReflectionException('Class \"'.$this->class.'\" is not an enum');"
+" }"
+" public function getEnum(){ return null; }"
+"}"
+"class ReflectionEnumBackedCase extends ReflectionEnumUnitCase {"
+" public function getBackingValue(){ return null; }"
+"}"
+"final class ReflectionReference {"
+" protected $__id = '';"
+" public function __construct(){"
+"  throw new Error('Call to private ReflectionReference::__construct() from global scope');"
+" }"
+" public static function fromArrayElement($array, $key){"
+"  if(!is_array($array)){"
+"   throw new TypeError('ReflectionReference::fromArrayElement(): Argument #1 ($array) must be of type array, '.get_debug_type($array).' given');"
+"  }"
+"  $id = __reflect_ref_id($array, $key);"
+"  if($id === null){ return null; }"
+"  $r = __reflect_new_no_ctor('ReflectionReference');"
+"  $r->__setId('phlref'.$id);"
+"  return $r;"
+" }"
+" public function __setId($id){ $this->__id = $id; }"
+" public function getId(){ return $this->__id; }"
+"}"
+;
+/*
  * Register the __reflect_* thunks and compile the Reflection library.
  * Called from PH7_VmInit while pVm->bCompilingBuiltin is set, right after
  * the core builtin chunks (Exception and friends must exist already).
@@ -2491,6 +2705,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 		{ "__reflect_dyn_props",      vm_builtin_reflect_dyn_props },
 		{ "__reflect_gen_info",       vm_builtin_reflect_gen_info },
 		{ "__reflect_gen_exec",       vm_builtin_reflect_gen_exec },
+		{ "__reflect_const_info",     vm_builtin_reflect_const_info },
+		{ "__reflect_ref_id",         vm_builtin_reflect_ref_id },
 	};
 	sxu32 n;
 	sxi32 rc;
@@ -2513,5 +2729,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 	if( rc != SXRET_OK ){
 		return rc;
 	}
-	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib5, sizeof(zReflectLib5)-1);
+	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib5, sizeof(zReflectLib5)-1);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib6, sizeof(zReflectLib6)-1);
 }
