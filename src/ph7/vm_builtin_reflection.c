@@ -1522,6 +1522,13 @@ static int vm_builtin_reflect_const_info(ph7_context *pCtx, int nArg, ph7_value 
 		}
 	}
 	PH7_MemObjRelease(&sValue);
+	ReflectMapAddBool(pCtx, pInfo, "internal", pCons->bUserDefined == 0);
+	if( SyStringLength(&pCons->sFile) > 0 ){
+		ReflectMapAddStr(pCtx, pInfo, "file", SyStringData(&pCons->sFile), (int)SyStringLength(&pCons->sFile));
+	}else{
+		ReflectMapAddBool(pCtx, pInfo, "file", 0);
+	}
+	ReflectMapAddInt(pCtx, pInfo, "line", (sxi64)pCons->nLine);
 	ph7_result_value(pCtx, pInfo);
 	return PH7_OK;
 }
@@ -2759,9 +2766,18 @@ static const char zReflectLib6[] =
 "  return $i['value'];"
 " }"
 " public function isDeprecated(){ return false; }"
-" public function getFileName(){ return false; }"
-" public function getExtension(){ return null; }"
-" public function getExtensionName(){ return false; }"
+" public function getFileName(){"
+"  $i = __reflect_const_info($this->name);"
+"  return $i['file'];"
+" }"
+" public function getExtension(){"
+"  $i = __reflect_const_info($this->name);"
+"  return $i['internal'] ? new ReflectionExtension('Core') : null;"
+" }"
+" public function getExtensionName(){"
+"  $i = __reflect_const_info($this->name);"
+"  return $i['internal'] ? 'Core' : false;"
+" }"
 " public function getAttributes($name = null, $flags = 0){ return array(); }"
 " public function __toString(){"
 "  return 'Constant [ '.$this->name.' ]'.\"\\n\";"
