@@ -162,6 +162,15 @@ PH7_PRIVATE int vm_builtin_property_exists(ph7_context *pCtx,int nArg,ph7_value 
 						/* property exists,flag that */
 						res = 1;
 				}
+				/* A DYNAMIC (runtime-added) property lives on the INSTANCE's
+				 * attribute table, not the class's — php reports those too
+				 * (band A #3b; pre-fix property_exists() was blind to them). */
+				if( res == 0 && (apArg[0]->iFlags & MEMOBJ_OBJ) ){
+					ph7_class_instance *pThis = (ph7_class_instance *)apArg[0]->x.pOther;
+					if( pThis && SyHashGet(&pThis->hAttr,(const void *)zName,(sxu32)nLen) != 0 ){
+						res = 1;
+					}
+				}
 			}
 		}
 	}

@@ -1631,6 +1631,28 @@ static int VmClassAllowsDynamicProps(ph7_vm *pVm,ph7_class *pClass)
 	return pVm->pStdClass != 0 && pClass == pVm->pStdClass;
 }
 /*
+ * Whether pClass carries a #[...] attribute of the given (resolved) name —
+ * band A #3b uses it for #[AllowDynamicProperties], which suppresses the
+ * php 8.2 dynamic-property deprecation. Inherited attributes do not apply
+ * (php: the attribute must be on the class itself... except php DOES honor
+ * it on parents for AllowDynamicProperties — walk the ancestry).
+ */
+static int VmClassHasAttributeNamed(ph7_class *pClass,const char *zName,sxu32 nName)
+{
+	while( pClass ){
+		ph7_attribute *aAttr = (ph7_attribute *)SySetBasePtr(&pClass->aAttrs);
+		sxu32 n;
+		for( n = 0; n < SySetUsed(&pClass->aAttrs); ++n ){
+			if( aAttr[n].sName.nByte == nName
+			 && SyMemcmp((const void *)aAttr[n].sName.zString,(const void *)zName,nName) == 0 ){
+				return TRUE;
+			}
+		}
+		pClass = pClass->pBase;
+	}
+	return FALSE;
+}
+/*
  * Create a dynamic (runtime-added) property named [zName:nName] on a class
  * instance and return its freshly reserved value slot (the caller stores the
  * value via PH7_MemObjStore). If [ppAttr] is non-NULL it receives the new
@@ -1842,6 +1864,7 @@ static sxi32 VmIterCallMethod(ph7_vm *pVm,ph7_class_instance *pThis,const char *
 static sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 	ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg,
 	int bStrict, ph7_class *pSelfHint);
+static void VmBoundaryPark(ph7_vm *pVm,sxi32 rc);
 static sxi32 VmCallClassMethodWithMap(ph7_vm *pVm, ph7_class_instance *pThis,
 	ph7_class_method *pMethod, ph7_value *pResult, int nArg,
 	ph7_value **apArg, VmCallArgMap *pMap);
@@ -2409,6 +2432,11 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyHashInit(&pVm->hTypedSlot,&pVm->sAllocator,0,0);
 	SySetInit(&pVm->aException,&pVm->sAllocator,sizeof(ph7_exception *));
 	SySetInit(&pVm->aMagicGuard,&pVm->sAllocator,sizeof(VmMagicGuard));
+	pVm->pMagicSetThis = 0;
+	SyBlobInit(&pVm->sMagicSetName,&pVm->sAllocator);
+	pVm->pMagicCallThis = 0;
+	pVm->pMagicCallClass = 0;
+	SyBlobInit(&pVm->sMagicCallName,&pVm->sAllocator);
 	pVm->pIdleCallFrames = 0;
 	pVm->pIdleOperandStacks = 0;
 	pVm->nIdleOperandStacks = 0;
@@ -2424,6 +2452,17 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->iResumeStackDepth = 0;
 	pVm->nBoundaryRc = 0;
 	SySetReset(&pVm->aMagicGuard);
+	if( pVm->pMagicSetThis ){
+		PH7_ClassInstanceUnref(pVm->pMagicSetThis);
+		pVm->pMagicSetThis = 0;
+	}
+	SyBlobRelease(&pVm->sMagicSetName);
+	if( pVm->pMagicCallThis ){
+		PH7_ClassInstanceUnref(pVm->pMagicCallThis);
+		pVm->pMagicCallThis = 0;
+	}
+	pVm->pMagicCallClass = 0;
+	SyBlobRelease(&pVm->sMagicCallName);
 	/* Configuration containers */
 	SySetInit(&pVm->aFiles,&pVm->sAllocator,sizeof(SyString));
 	SySetInit(&pVm->aPaths,&pVm->sAllocator,sizeof(SyString));
@@ -3754,6 +3793,17 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	pVm->iResumeStackDepth = 0;
 	pVm->nBoundaryRc = 0;
 	SySetReset(&pVm->aMagicGuard);
+	if( pVm->pMagicSetThis ){
+		PH7_ClassInstanceUnref(pVm->pMagicSetThis);
+		pVm->pMagicSetThis = 0;
+	}
+	SyBlobRelease(&pVm->sMagicSetName);
+	if( pVm->pMagicCallThis ){
+		PH7_ClassInstanceUnref(pVm->pMagicCallThis);
+		pVm->pMagicCallThis = 0;
+	}
+	pVm->pMagicCallClass = 0;
+	SyBlobRelease(&pVm->sMagicCallName);
 	pVm->nExceptDepth = 0;
 	/* spl_autoload_register() callbacks are per request */
 	for( n = 0 ; n < SySetUsed(&pVm->aAutoload) ; ++n ){
@@ -8891,6 +8941,34 @@ case PH7_OP_STORE: {
 		/* Member store operation */
 		nIdx = pTos->nIdx;
 		VmPopOperand(&pTos,1);
+		if( pVm->pMagicSetThis ){
+			/* Pending __set (band A #3b): the preceding OP_MEMBER detected a plain
+			 * store to a missing/inaccessible property on a class declaring __set.
+			 * Dispatch __set($name, $value) with the rvalue (pTos), which stays on
+			 * the stack as the assignment expression's result — php's semantics
+			 * (no property is created; a throw rides the boundary rail). */
+			ph7_class_instance *pSetThis = pVm->pMagicSetThis;
+			ph7_class_method *pSetMeth;
+			SyString sSetName;
+			pVm->pMagicSetThis = 0;
+			SyStringInitFromBuf(&sSetName,SyBlobData(&pVm->sMagicSetName),SyBlobLength(&pVm->sMagicSetName));
+			pSetMeth = PH7_ClassExtractMethod(pSetThis->pClass,"__set",sizeof("__set")-1);
+			if( pSetMeth ){
+				ph7_value sNameVal;
+				ph7_value *apSetArg[2];
+				PH7_MemObjInitFromString(pVm,&sNameVal,&sSetName);
+				sNameVal.nIdx = SXU32_HIGH;
+				apSetArg[0] = &sNameVal;
+				apSetArg[1] = pTos;
+				VmMagicGuardPush(pVm,(void *)pSetThis,&sSetName,'s');
+				PH7_VmCallClassMethod(&(*pVm),pSetThis,pSetMeth,0,2,apSetArg);
+				VmMagicGuardPop(pVm);
+				PH7_MemObjRelease(&sNameVal);
+			}
+			PH7_ClassInstanceUnref(pSetThis);
+			SyBlobReset(&pVm->sMagicSetName);
+			break;
+		}
 		if( nIdx == SXU32_HIGH ){
 			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
 				"Cannot perform assignment on a constant class attribute,PH7 is loading NULL");
@@ -11825,19 +11903,57 @@ case PH7_OP_MEMBER: {
 					pMeth = PH7_ClassExtractMethod(pClass,sName.zString,sName.nByte);
 				}
 				if( pMeth == 0 ){
-					VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Undefined class method '%z->%z',PH7 is loading NULL",
-						&pClass->sName,&sName
-						);
-					/* Call the '__Call()' magic method if available */
-					PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,pThis,"__call",sizeof("__call")-1,&sName,0);
-					/* Pop the method name from the stack */
-					VmPopOperand(&pTos,1);
-					PH7_MemObjRelease(pTos);
+					ph7_class_method *pCallMagic = PH7_ClassExtractMethod(pClass,"__call",sizeof("__call")-1);
+					if( pCallMagic ){
+						/* php: a missing method dispatches __call($name, $args) — the
+						 * args are only collected by the following OP_CALL, so stash the
+						 * receiver + class + original name and redirect the callee to
+						 * the hidden packing trampoline (band A #3b; pre-fix the name-
+						 * only call discarded everything and the call site failed with
+						 * "Invalid function name"). Stack: pop the method name, then
+						 * the receiver slot becomes the trampoline's callee name. */
+						SyBlobReset(&pVm->sMagicCallName);
+						SyBlobAppend(&pVm->sMagicCallName,(const void *)sName.zString,sName.nByte);
+						pThis->iRef++;
+						pVm->pMagicCallThis = pThis;
+						pVm->pMagicCallClass = pClass;
+						VmPopOperand(&pTos,1);
+						PH7_MemObjRelease(pTos);
+						SyBlobAppend(&pTos->sBlob,"__phl_magic_call",sizeof("__phl_magic_call")-1);
+						MemObjSetType(pTos,MEMOBJ_STRING);
+					}else{
+						VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Undefined class method '%z->%z',PH7 is loading NULL",
+							&pClass->sName,&sName
+							);
+						/* Pop the method name from the stack */
+						VmPopOperand(&pTos,1);
+						PH7_MemObjRelease(pTos);
+					}
 				}else{
-					/* Push method name on the stack */
-					PH7_MemObjRelease(pTos);
-					SyBlobAppend(&pTos->sBlob,SyStringData(&pMeth->sVmName),SyStringLength(&pMeth->sVmName));
-					MemObjSetType(pTos,MEMOBJ_STRING);
+					ph7_class_method *pDeniedCall = 0;
+					if( pMeth->iProtection != PH7_CLASS_PROT_PUBLIC
+					 && !PH7_VmClassMemberAccess(&(*pVm),pClass,&sName,pMeth->iProtection,FALSE) ){
+						/* Inaccessible from this scope: php routes through __call when
+						 * declared (band A #3b); without it OP_CALL raises its
+						 * "Call to private/protected method" Error as before. */
+						pDeniedCall = PH7_ClassExtractMethod(pClass,"__call",sizeof("__call")-1);
+					}
+					if( pDeniedCall ){
+						SyBlobReset(&pVm->sMagicCallName);
+						SyBlobAppend(&pVm->sMagicCallName,(const void *)sName.zString,sName.nByte);
+						pThis->iRef++;
+						pVm->pMagicCallThis = pThis;
+						pVm->pMagicCallClass = pClass;
+						VmPopOperand(&pTos,1);
+						PH7_MemObjRelease(pTos);
+						SyBlobAppend(&pTos->sBlob,"__phl_magic_call",sizeof("__phl_magic_call")-1);
+						MemObjSetType(pTos,MEMOBJ_STRING);
+					}else{
+						/* Push method name on the stack */
+						PH7_MemObjRelease(pTos);
+						SyBlobAppend(&pTos->sBlob,SyStringData(&pMeth->sVmName),SyStringLength(&pMeth->sVmName));
+						MemObjSetType(pTos,MEMOBJ_STRING);
+					}
 				}
 				pTos->nIdx = SXU32_HIGH;
 			}else{
@@ -11856,10 +11972,32 @@ case PH7_OP_MEMBER: {
 					/* unset($o->prop): remove the property entirely so it disappears from
 					 * foreach / json_encode / get_object_vars / (array) — matching PHP (a value-only
 					 * release would leave a zombie null entry). Leave a NULL constant on the stack so
-					 * the trailing generic unset() builtin is a no-op (mirrors LOAD_IDX iP2=5). */
-					if( pEntry ){
+					 * the trailing generic unset() builtin is a no-op (mirrors LOAD_IDX iP2=5).
+					 * php dispatches __unset($name) for a MISSING or INACCESSIBLE property
+					 * (band A #3b — pre-fix an inaccessible private was silently DELETED from
+					 * outside the class); without __unset, an inaccessible unset is php's
+					 * catchable "Cannot access ..." Error and a missing one stays a no-op. */
+					int bUnsAccessible = pEntry ? PH7_VmClassMemberAccess(&(*pVm),pClass,&pObjAttr->pAttr->sName,pObjAttr->pAttr->iProtection,FALSE) : 0;
+					if( pEntry && bUnsAccessible ){
 						PH7_VmReleaseInstanceAttr(&(*pVm),pObjAttr);
 						SyHashDeleteEntry2(pEntry);
+					}else{
+						ph7_class_method *pUnsetMagic = PH7_ClassExtractMethod(pClass,"__unset",sizeof("__unset")-1);
+						if( pUnsetMagic && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'u') ){
+							VmMagicGuardPush(pVm,(void *)pThis,&sName,'u');
+							PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,pThis,"__unset",sizeof("__unset")-1,&sName,0);
+							VmMagicGuardPop(pVm);
+						}else if( pEntry ){
+							/* Inaccessible and no __unset: php's catchable Error. Parked on
+							 * the boundary rail; the op completes benignly and the
+							 * fetch-point router lands it. */
+							SyBlob sErrMsg;
+							const char *zVis = pObjAttr->pAttr->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected";
+							SyBlobInit(&sErrMsg,&pVm->sAllocator);
+							SyBlobFormat(&sErrMsg,"Cannot access %s property %z::$%z",zVis,&pClass->sName,&sName);
+							VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
+						}
+						/* Missing property without __unset: silent no-op (php). */
 					}
 					VmPopOperand(&pTos,1);    /* pop the attribute name */
 					PH7_MemObjRelease(pTos);  /* release the object on the stack ($o's stack ref) */
@@ -11886,8 +12024,55 @@ case PH7_OP_MEMBER: {
 						ph7_class_attr *pDecl = PH7_ClassExtractAttribute(pThis->pClass,sName.zString,sName.nByte);
 						if( pDecl && (pDecl->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
 							VmRecreateDeclaredAttr(&(*pVm),pThis,pDecl,&pObjAttr);
-						}else if( VmClassAllowsDynamicProps(pVm,pThis->pClass) ){
-							PH7_VmCreateDynamicAttr(&(*pVm),pThis,sName.zString,sName.nByte,&pObjAttr);
+						}else{
+							/* php 8 semantics (band A #3b): a PLAIN store to a missing
+							 * property dispatches __set($name,$value) when declared —
+							 * the value only exists at the following OP_STORE, so park
+							 * the receiver+name for it (one-instruction lifetime; the
+							 * guard makes a same-name write inside __set fall through
+							 * to dynamic creation, like php). Without __set — or for a
+							 * subscript-write base / read-modify-write, which php does
+							 * NOT route through __set — create a dynamic property on
+							 * ANY class with the 8.2 deprecation (suppressed for
+							 * stdClass and #[AllowDynamicProperties]); a readonly
+							 * class raises php's catchable Error instead. */
+							ph7_class_method *pSetMagic = 0;
+							int bPlainStore = (pNext->iOp == PH7_OP_STORE && pNext->iP2 != 0);
+							if( bPlainStore ){
+								pSetMagic = PH7_ClassExtractMethod(pClass,"__set",sizeof("__set")-1);
+							}
+							if( pSetMagic && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'s') ){
+								pThis->iRef++;
+								pVm->pMagicSetThis = pThis;
+								SyBlobReset(&pVm->sMagicSetName);
+								SyBlobAppend(&pVm->sMagicSetName,(const void *)sName.zString,sName.nByte);
+								/* pObjAttr stays NULL; the miss path below stays silent. */
+							}else if( !bPlainStore && pInstr->iP2 == PH7_MEMBER_WRITE
+							 && PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1) ){
+								/* `$o->p ??= v` / subscript-write base on a class with
+								 * __get: php reads through the magic layer (the ??= then
+								 * skips its assign on a non-null value; a subscript write
+								 * lands on the temp and is lost, like php's
+								 * indirect-modification case). A PLAIN store (bPlainStore
+								 * — the compiler tags those PH7_MEMBER_WRITE too) is NOT
+								 * this case: it falls through to dynamic creation.
+								 * Leave the miss path — the read gate below dispatches
+								 * __get. */
+							}else if( pThis->pClass->iFlags & PH7_CLASS_READONLY ){
+								SyBlob sErrMsg;
+								SyBlobInit(&sErrMsg,&pVm->sAllocator);
+								SyBlobFormat(&sErrMsg,"Cannot create dynamic property %z::$%z",
+									&pThis->pClass->sName,&sName);
+								VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
+							}else{
+								if( !VmClassAllowsDynamicProps(pVm,pThis->pClass)
+								 && !VmClassHasAttributeNamed(pThis->pClass,"AllowDynamicProperties",sizeof("AllowDynamicProperties")-1) ){
+									VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,
+										"Creation of dynamic property %z::$%z is deprecated",
+										&pThis->pClass->sName,&sName);
+								}
+								PH7_VmCreateDynamicAttr(&(*pVm),pThis,sName.zString,sName.nByte,&pObjAttr);
+							}
 						}
 					}
 				}
@@ -11895,14 +12080,61 @@ case PH7_OP_MEMBER: {
 					/* Missing property. On a plain READ, php dispatches __get($name) and the
 					 * expression takes its RETURN VALUE (band A #3a — pre-fix the result was
 					 * discarded and a PHL-native warn fired even when __get existed). isset/
-					 * empty context consults __isset only (not implemented — stays silent
-					 * null, matching php when no __isset is declared); a write context
-					 * belongs to __set (the vivify block above / the #3 follow-up). A
+					 * empty context consults __isset first (then __get for empty()'s value
+					 * test); a plain-store write context parked a pending __set above. A
 					 * self-recursive read of the same property falls back to the
 					 * undefined-property path via the guard, like php's property guard. */
 					ph7_class_method *pGetMagic = 0;
-					if( pInstr->iP2 != PH7_MEMBER_WRITE && !VmMemberCtxIsLookup(pInstr->iP2)
-					 && !VmMemberNextIsWrite(pInstr + 1) ){
+					if( VmMemberCtxIsLookup(pInstr->iP2) ){
+						ph7_class_method *pIssetMagic = PH7_ClassExtractMethod(pClass,"__isset",sizeof("__isset")-1);
+						if( pIssetMagic && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'i') ){
+							ph7_value sIssetRet;
+							int bSet;
+							PH7_MemObjInit(pVm,&sIssetRet);
+							VmMagicGuardPush(pVm,(void *)pThis,&sName,'i');
+							PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,pThis,"__isset",sizeof("__isset")-1,&sName,&sIssetRet);
+							VmMagicGuardPop(pVm);
+							PH7_MemObjToBool(&sIssetRet);
+							bSet = sIssetRet.x.iVal != 0;
+							PH7_MemObjRelease(&sIssetRet);
+							if( bSet && pInstr->iP2 == PH7_MEMBER_EMPTY ){
+								/* empty(): __isset said set — fetch the value via __get
+								 * (php) so emptiness is judged on the real value. */
+								ph7_class_method *pEmptyGet = PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1);
+								ph7_value sEmptyVal;
+								PH7_MemObjInit(pVm,&sEmptyVal);
+								if( pEmptyGet && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'g') ){
+									VmMagicGuardPush(pVm,(void *)pThis,&sName,'g');
+									PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,pThis,"__get",sizeof("__get")-1,&sName,&sEmptyVal);
+									VmMagicGuardPop(pVm);
+								}
+								VmPopOperand(&pTos,1);
+								pThis->iRef++;
+								PH7_MemObjRelease(pTos);
+								PH7_MemObjStore(&sEmptyVal,pTos);
+								pTos->nIdx = SXU32_HIGH;
+								PH7_MemObjRelease(&sEmptyVal);
+								PH7_ClassInstanceUnref(pThis);
+								break;
+							}
+							/* isset(): the truth of __isset IS the answer — push a non-null
+							 * marker for true, NULL for false (isset only tests null-ness). */
+							VmPopOperand(&pTos,1);
+							pThis->iRef++;
+							PH7_MemObjRelease(pTos);
+							if( bSet ){
+								pTos->x.iVal = 1;
+								MemObjSetType(pTos,MEMOBJ_BOOL);
+							}
+							pTos->nIdx = SXU32_HIGH;
+							PH7_ClassInstanceUnref(pThis);
+							break;
+						}
+					}
+					if( !VmMemberCtxIsLookup(pInstr->iP2) && !VmMemberNextIsWrite(pInstr + 1) ){
+						/* Plain reads AND the ??=/subscript write-base (PH7_MEMBER_WRITE,
+						 * which php reads through __get); read-modify-write forms are
+						 * excluded (they vivified above — approximate, recorded). */
 						pGetMagic = PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1);
 					}
 					if( pGetMagic && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'g') ){
@@ -11926,8 +12158,13 @@ case PH7_OP_MEMBER: {
 					}
 					/* No __get (or guard held): load null. In isset()/empty() context (iP2 3/4)
 					 * PHP returns false/true SILENTLY, so suppress the read-miss warning there
-					 * (mirrors the array LOAD_IDX iP2=4/6 suppression). */
-					if( !VmMemberCtxIsLookup(pInstr->iP2) ){
+					 * (mirrors the array LOAD_IDX iP2=4/6 suppression); likewise when a
+					 * pending __set was parked above (the following OP_STORE dispatches it —
+					 * nothing is "undefined" about that write) or a throw is parked on the
+					 * boundary rail (e.g. the readonly-class dynamic-property Error — the
+					 * fetch-point router lands it right after this op). */
+					if( !VmMemberCtxIsLookup(pInstr->iP2) && pVm->pMagicSetThis == 0
+					 && pVm->nBoundaryRc == 0 ){
 						VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Undefined class attribute '%z->%z',PH7 is loading NULL",
 							&pClass->sName,&sName);
 					}
@@ -12013,6 +12250,62 @@ case PH7_OP_MEMBER: {
 							PH7_MemObjRelease(&sMagicRet);
 							PH7_ClassInstanceUnref(pThis);
 							break;
+						}
+						if( VmMemberCtxIsLookup(pInstr->iP2) ){
+							/* isset/empty on an inaccessible property: php consults __isset
+							 * (band A #3b), and is silently false without it — never an
+							 * Error (pre-fix PHL fataled here). */
+							ph7_class_method *pIssetMagic = PH7_ClassExtractMethod(pClass,"__isset",sizeof("__isset")-1);
+							int bSet = 0;
+							if( pIssetMagic && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'i') ){
+								ph7_value sIssetRet;
+								PH7_MemObjInit(pVm,&sIssetRet);
+								VmMagicGuardPush(pVm,(void *)pThis,&sName,'i');
+								PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,pThis,"__isset",sizeof("__isset")-1,&sName,&sIssetRet);
+								VmMagicGuardPop(pVm);
+								PH7_MemObjToBool(&sIssetRet);
+								bSet = sIssetRet.x.iVal != 0;
+								PH7_MemObjRelease(&sIssetRet);
+							}
+							if( bSet ){
+								if( pInstr->iP2 == PH7_MEMBER_EMPTY ){
+									ph7_class_method *pEmptyGet = PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1);
+									ph7_value sEmptyVal;
+									PH7_MemObjInit(pVm,&sEmptyVal);
+									if( pEmptyGet && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'g') ){
+										VmMagicGuardPush(pVm,(void *)pThis,&sName,'g');
+										PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,pThis,"__get",sizeof("__get")-1,&sName,&sEmptyVal);
+										VmMagicGuardPop(pVm);
+									}
+									PH7_MemObjStore(&sEmptyVal,pTos);
+									pTos->nIdx = SXU32_HIGH;
+									PH7_MemObjRelease(&sEmptyVal);
+								}else{
+									pTos->x.iVal = 1;
+									MemObjSetType(pTos,MEMOBJ_BOOL);
+									pTos->nIdx = SXU32_HIGH;
+								}
+							}
+							PH7_ClassInstanceUnref(pThis);
+							break;
+						}
+						{
+							/* A plain store to an inaccessible property dispatches __set
+							 * (band A #3b): park the receiver+name for the following
+							 * OP_STORE, exactly like the missing-property case. */
+							VmInstr *pNextW = pInstr + 1;
+							if( pNextW->iOp == PH7_OP_STORE && pNextW->iP2 != 0 ){
+								ph7_class_method *pSetMagic = PH7_ClassExtractMethod(pClass,"__set",sizeof("__set")-1);
+								if( pSetMagic && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'s') ){
+									pThis->iRef++;
+									pVm->pMagicSetThis = pThis;
+									SyBlobReset(&pVm->sMagicSetName);
+									SyBlobAppend(&pVm->sMagicSetName,(const void *)sName.zString,sName.nByte);
+									pTos->nIdx = SXU32_HIGH; /* sentinel slot for OP_STORE */
+									PH7_ClassInstanceUnref(pThis);
+									break;
+								}
+							}
 						}
 						/* Throw Error exception (PHP-compatible).
 						 * Build message before unref — pObjAttr belongs to pThis->hAttr. */
@@ -12112,11 +12405,26 @@ case PH7_OP_MEMBER: {
 								&pClass->sName,&sName
 								);
 						}else{
+							ph7_class_method *pCallStaticMagic = PH7_ClassExtractMethod(pClass,"__callStatic",sizeof("__callStatic")-1);
+							if( pCallStaticMagic ){
+								/* php: C::missing(...) dispatches __callStatic($name,$args)
+								 * via the packing trampoline (see the instance twin). */
+								SyBlobReset(&pVm->sMagicCallName);
+								SyBlobAppend(&pVm->sMagicCallName,(const void *)sName.zString,sName.nByte);
+								pVm->pMagicCallThis = 0;
+								pVm->pMagicCallClass = pClass;
+								if( !pInstr->p3 ){
+									VmPopOperand(&pTos,1);
+								}
+								PH7_MemObjRelease(pTos);
+								SyBlobAppend(&pTos->sBlob,"__phl_magic_call",sizeof("__phl_magic_call")-1);
+								MemObjSetType(pTos,MEMOBJ_STRING);
+								pTos->nIdx = SXU32_HIGH;
+								break;
+							}
 							VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Undefined class static method '%z::%z',PH7 is loading NULL",
 								&pClass->sName,&sName
 								);
-							/* Call the '__CallStatic()' magic method if available */
-							PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,0,"__callStatic",sizeof("__callStatic")-1,&sName,0);
 						}
 						/* Pop the method name from the stack */
 						if( !pInstr->p3 ){
@@ -12161,13 +12469,20 @@ case PH7_OP_MEMBER: {
 							pAttr = PH7_ClassExtractAttribute(pClass,sName.zString,sName.nByte);
 						}
 						if( pAttr == 0 ){
-							/* No such attribute,load null. isset()/empty() context is silent. */
+							/* No such STATIC attribute. php raises a catchable Error
+							 * ("Access to undeclared static property") — instance magic
+							 * (__get) is never consulted for statics (band A #3b; the old
+							 * path warned + called __get with a null $this and discarded
+							 * it). isset()/empty() context stays silently false. Parked on
+							 * the boundary rail; the op completes benignly with NULL and
+							 * the fetch-point router lands the throw. */
 							if( !VmMemberCtxIsLookup(pInstr->iP2) ){
-								VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Undefined class attribute '%z::%z',PH7 is loading NULL",
+								SyBlob sErrMsg;
+								SyBlobInit(&sErrMsg,&pVm->sAllocator);
+								SyBlobFormat(&sErrMsg,"Access to undeclared static property %z::$%z",
 									&pClass->sName,&sName);
+								VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 							}
-							/* Call the __get magic method if available */
-							PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,0,"__get",sizeof("__get")-1,&sName,0);
 						}
 						/* Pop the attribute name from the stack */
 						if( !pInstr->p3 ){
@@ -22029,7 +22344,84 @@ static int vm_builtin_spl_autoload(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return SXRET_OK;
 }
 /* Table of built-in VM functions. */
+/*
+ * Hidden packing trampoline for __call / __callStatic (band A #3b).
+ * OP_MEMBER, on a missing method whose class declares the magic handler,
+ * stashes {receiver, class, original name} on the VM and redirects the
+ * callee name to this host function; the normal OP_CALL machinery then
+ * collects the ORIGINAL argument list (incl. spreads) and hands it here,
+ * which packs it into a php array and invokes
+ *   $recv->__call($name, $args)   /   Class::__callStatic($name, $args)
+ * returning the handler's value as the call's result. A throw propagates
+ * via the returned status (and the boundary rail). Like the __gen_* /
+ * __reflect_* thunks, this is a PHL-internal global — calling it directly
+ * yields NULL (documented engine-specific surface).
+ */
+static int vm_builtin_magic_call(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pRecv = pVm->pMagicCallThis;
+	ph7_class *pClass = pVm->pMagicCallClass;
+	ph7_class_method *pMeth = 0;
+	ph7_hashmap *pMap;
+	ph7_value sNameVal,sArgsVal,sResult;
+	ph7_value *apCall[2];
+	SyString sMethName;
+	sxi32 rc;
+	int i;
+	/* Consume the pending dispatch (one-shot) */
+	pVm->pMagicCallThis = 0;
+	pVm->pMagicCallClass = 0;
+	if( pClass == 0 ){
+		/* Not a magic dispatch (direct user invocation): no-op */
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pMeth = PH7_ClassExtractMethod(pClass,
+		pRecv ? "__call" : "__callStatic",
+		pRecv ? sizeof("__call")-1 : sizeof("__callStatic")-1);
+	if( pMeth == 0 ){
+		/* Unreachable: OP_MEMBER verified the handler exists */
+		if( pRecv ){
+			PH7_ClassInstanceUnref(pRecv);
+		}
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pMap = PH7_NewHashmap(pVm,0,0);
+	if( pMap == 0 ){
+		if( pRecv ){
+			PH7_ClassInstanceUnref(pRecv);
+		}
+		PH7_VmMemoryError(pVm);
+		return PH7_ABORT;
+	}
+	for( i = 0 ; i < nArg ; i++ ){
+		PH7_HashmapInsert(pMap,0,apArg[i]);
+	}
+	SyStringInitFromBuf(&sMethName,SyBlobData(&pVm->sMagicCallName),SyBlobLength(&pVm->sMagicCallName));
+	PH7_MemObjInitFromString(pVm,&sNameVal,&sMethName);
+	sNameVal.nIdx = SXU32_HIGH;
+	PH7_MemObjInitFromArray(pVm,&sArgsVal,pMap);
+	sArgsVal.nIdx = SXU32_HIGH;
+	PH7_MemObjInit(pVm,&sResult);
+	apCall[0] = &sNameVal;
+	apCall[1] = &sArgsVal;
+	rc = PH7_VmCallClassMethod(pVm,pRecv,pMeth,&sResult,2,apCall);
+	if( rc == SXRET_OK ){
+		ph7_result_value(pCtx,&sResult);
+	}
+	PH7_MemObjRelease(&sResult);
+	PH7_MemObjRelease(&sNameVal);
+	PH7_MemObjRelease(&sArgsVal); /* drops the packed array */
+	if( pRecv ){
+		PH7_ClassInstanceUnref(pRecv);
+	}
+	SyBlobReset(&pVm->sMagicCallName);
+	return (rc == PH7_EXCEPTION || rc == PH7_ABORT) ? rc : PH7_OK;
+}
 static const ph7_builtin_func aVmFunc[] = {
+	{ "__phl_magic_call", vm_builtin_magic_call },
 	{ "func_num_args"  , vm_builtin_func_num_args },
 	{ "func_get_arg"   , vm_builtin_func_get_arg  },
 	{ "func_get_args"  , vm_builtin_func_get_args },
