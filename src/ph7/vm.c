@@ -14658,6 +14658,20 @@ PH7_PRIVATE sxi32 PH7_VmEnforcePropStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValu
 	return VmEnforcePropertyTypeOnStore(&(*pVm),nIdx,pValue,0);
 }
 /*
+ * Exported reference-table probe for ReflectionReference::fromArrayElement
+ * (vm_builtin_reflection.c). Returns the number of links (frame variables +
+ * array entries) attached to the slot's reference record, 0 when the slot
+ * has none — an array element is a PHP reference when this is >= 2.
+ */
+PH7_PRIVATE int PH7_VmSlotRefCount(ph7_vm *pVm,sxu32 nIdx)
+{
+	VmRefObj *pRef = VmRefObjExtract(&(*pVm),nIdx);
+	if( pRef == 0 ){
+		return 0;
+	}
+	return (int)(SySetUsed(&pRef->aReference) + SySetUsed(&pRef->aArrEntries));
+}
+/*
  * First-class callable over an arbitrary callable VALUE: `($expr)(...)`.
  * Normalize a validated callable value into a fresh Closure, reusing VmCreateClosure (the same
  * object the method/static first-class-callable paths mint, so dispatch round-trips identically
