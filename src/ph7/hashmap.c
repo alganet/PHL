@@ -927,30 +927,23 @@ static int HashmapFindValue(
 		/* Extract node value */
 		pVal = HashmapExtractNodeValue(pEntry);
 		if( pVal ){
-			if( (pVal->iFlags|pNeedle->iFlags) & MEMOBJ_NULL ){
-				sxi32 iF1 = pVal->iFlags&~MEMOBJ_AUX;
-				sxi32 iF2 = pNeedle->iFlags&~MEMOBJ_AUX;
-				if( iF1 == iF2 ){
-					/* NULL values are equals */
-					if( ppNode ){
-						*ppNode = pEntry;
-					}
-					return SXRET_OK;
+			/* Compare on duplicates (PH7_MemObjCmp converts its operands in
+			 * place). PH7_MemObjCmp implements php's full comparison table for
+			 * null too — loose null == ""/0/false, strict null === null only —
+			 * so null needles/values take the same path as everything else
+			 * (the historical null-to-null shortcut here made
+			 * in_array(null, [""]) false where php says true). */
+			PH7_MemObjLoad(pVal,&sVal);
+			PH7_MemObjLoad(pNeedle,&sNeedle);
+			rc = PH7_MemObjCmp(&sNeedle,&sVal,bStrict,0);
+			PH7_MemObjRelease(&sVal);
+			PH7_MemObjRelease(&sNeedle);
+			if( rc == 0 ){
+				if( ppNode ){
+					*ppNode = pEntry;
 				}
-			}else{
-				/* Duplicate value */
-				PH7_MemObjLoad(pVal,&sVal);
-				PH7_MemObjLoad(pNeedle,&sNeedle);
-				rc = PH7_MemObjCmp(&sNeedle,&sVal,bStrict,0);
-				PH7_MemObjRelease(&sVal);
-				PH7_MemObjRelease(&sNeedle);
-				if( rc == 0 ){
-					if( ppNode ){
-						*ppNode = pEntry;
-					}
-					/* Match found*/
-					return SXRET_OK;
-				}
+				/* Match found*/
+				return SXRET_OK;
 			}
 		}
 		/* Point to the next entry */
@@ -4186,9 +4179,16 @@ static int ph7_hashmap_keys(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( nArg > 1 ){
 			ph7_value *pValue = HashmapExtractNodeValue(pNode);
 			if( pValue ){
+				ph7_value sNeedle;
+				PH7_MemObjInit(pMap->pVm,&sNeedle);
 				PH7_MemObjLoad(pValue,&sVal);
-				/* Filter key */
-				rc = ph7_value_compare(&sVal,apArg[1],bStrict);
+				/* Filter key — compare on duplicates of BOTH sides:
+				 * PH7_MemObjCmp converts its operands in place, and a needle
+				 * mutated on the first element (e.g. null coerced) would
+				 * corrupt every later comparison. */
+				PH7_MemObjLoad(apArg[1],&sNeedle);
+				rc = ph7_value_compare(&sVal,&sNeedle,bStrict);
+				PH7_MemObjRelease(&sNeedle);
 				PH7_MemObjRelease(&sVal);
 			}
 		}
@@ -5180,7 +5180,19 @@ static int ph7_hashmap_diff_assoc(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				/* directly compare with value at pN1 rather than searching again */
 				ph7_value *pVal2 = HashmapExtractNodeValue(pN1);
 				if( pVal2 ){
-					sxi32 cmp = PH7_MemObjCmp(pVal, pVal2, TRUE, 0);
+					ph7_value sV1,sV2;
+					sxi32 cmp;
+					/* Compare on duplicates: PH7_MemObjCmp converts its
+					 * operands in place and these are LIVE array elements (a
+					 * null element used to come back bool(false) in the
+					 * caller's array). */
+					PH7_MemObjInit(pEntry->pMap->pVm,&sV1);
+					PH7_MemObjInit(pEntry->pMap->pVm,&sV2);
+					PH7_MemObjLoad(pVal,&sV1);
+					PH7_MemObjLoad(pVal2,&sV2);
+					cmp = PH7_MemObjCmp(&sV1,&sV2,TRUE,0);
+					PH7_MemObjRelease(&sV1);
+					PH7_MemObjRelease(&sV2);
 					if( cmp == 0 ){
 						/* identical key+value found in one of the arrays => drop it */
 						keep = 0;
@@ -5366,7 +5378,18 @@ static int ph7_hashmap_diff_uassoc(ph7_context *pCtx,int nArg,ph7_value **apArg)
 						ph7_value *pVal1 = HashmapExtractNodeValue(pEntry);
 						ph7_value *pVal2 = HashmapExtractNodeValue(pIt);
 						if( pVal1 && pVal2 ){
-							if( PH7_MemObjCmp(pVal1,pVal2,TRUE,0) == 0 ){
+							ph7_value sV1,sV2;
+							sxi32 cmp;
+							/* Compare on duplicates: PH7_MemObjCmp converts in
+							 * place and these are LIVE array elements. */
+							PH7_MemObjInit(pEntry->pMap->pVm,&sV1);
+							PH7_MemObjInit(pEntry->pMap->pVm,&sV2);
+							PH7_MemObjLoad(pVal1,&sV1);
+							PH7_MemObjLoad(pVal2,&sV2);
+							cmp = PH7_MemObjCmp(&sV1,&sV2,TRUE,0);
+							PH7_MemObjRelease(&sV1);
+							PH7_MemObjRelease(&sV2);
+							if( cmp == 0 ){
 								keep = 0;
 								PH7_MemObjRelease(&result);
 								/* release keys too before breaking */
