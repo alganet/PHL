@@ -6074,13 +6074,13 @@ static int ph7_hashmap_fill(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_ContextMemoryError(pCtx);
 	}
 
-	/* Insert the first entry alone because it has its own key */
-	if( ph7_array_add_intkey_elem(pArray, ph7_value_to_int(apArg[0]), apArg[2]) != SXRET_OK ){
-		return PH7_ContextMemoryError(pCtx);
-	}
-	/* Repeat insertion of the desired value */
-	for( i = 1 ; i < nEntry ; i++ ){
-		if( ph7_array_add_elem(pArray, 0/*Automatic index assign */, apArg[2]) != SXRET_OK ){
+	/* PHP 8 fills consecutive integer keys start_index, start_index+1, … even
+	 * when start_index is negative (PHP 7 restarted the remaining keys from 0,
+	 * so array_fill(-5,3) gave -5,0,1 instead of -5,-4,-3). Assign each key
+	 * explicitly rather than relying on automatic (append) indexing. */
+	int iStart = ph7_value_to_int(apArg[0]);
+	for( i = 0 ; i < nEntry ; i++ ){
+		if( ph7_array_add_intkey_elem(pArray, iStart + i, apArg[2]) != SXRET_OK ){
 			/* Allocation failure: surface a fatal instead of a partial array */
 			return PH7_ContextMemoryError(pCtx);
 		}
