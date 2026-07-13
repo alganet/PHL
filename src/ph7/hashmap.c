@@ -3348,6 +3348,21 @@ static int ph7_hashmap_reset(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
+ * Emit a node's key (integer or blob) as the call result — shared by key(),
+ * array_key_first() and array_key_last().
+ */
+static void HashmapResultNodeKey(ph7_context *pCtx,ph7_hashmap_node *pNode)
+{
+	if( pNode->iType == HASHMAP_INT_NODE ){
+		/* Key is integer */
+		ph7_result_int64(pCtx,pNode->xKey.iKey);
+	}else{
+		/* Key is blob */
+		ph7_result_string(pCtx,
+			(const char *)SyBlobData(&pNode->xKey.sKey),(int)SyBlobLength(&pNode->xKey.sKey));
+	}
+}
+/*
  * value key(array $array)
  *   Fetch a key from an array
  * Parameter
@@ -3381,14 +3396,7 @@ static int ph7_hashmap_simple_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	if( pCur->iType == HASHMAP_INT_NODE){
-		/* Key is integer */
-		ph7_result_int64(pCtx,pCur->xKey.iKey);
-	}else{
-		/* Key is blob */
-		ph7_result_string(pCtx,
-			(const char *)SyBlobData(&pCur->xKey.sKey),(int)SyBlobLength(&pCur->xKey.sKey));
-	}
+	HashmapResultNodeKey(pCtx,pCur);
 	return PH7_OK;
 }
 /*
@@ -7942,6 +7950,51 @@ static int ph7_hashmap_last(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return HashmapFirstLast(pCtx,nArg,apArg,1);
 }
 /*
+ * int|string|null array_key_first(array $array)
+ * int|string|null array_key_last(array $array)
+ *  Return the key of the first (respectively last) element of the array,
+ *  or NULL when the array is empty. The internal array pointer is left
+ *  untouched.
+ */
+static int HashmapKeyFirstLast(ph7_context *pCtx,int nArg,ph7_value **apArg,int bLast)
+{
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pNode;
+	const char *zName = bLast ? "array_key_last" : "array_key_first";
+	if( nArg < 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"%s() expects exactly 1 argument, 0 given",
+			zName
+			);
+	}
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"%s(): Argument #1 ($array) must be of type array, %s given",
+			zName,
+			ph7_type_name(apArg[0])
+			);
+	}
+	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
+	pNode = bLast ? pMap->pLast : pMap->pFirst;
+	if( pNode == 0 ){
+		/* Empty array: PHP returns NULL */
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	HashmapResultNodeKey(pCtx,pNode);
+	return PH7_OK;
+}
+static int ph7_hashmap_key_first(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return HashmapKeyFirstLast(pCtx,nArg,apArg,0);
+}
+static int ph7_hashmap_key_last(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return HashmapKeyFirstLast(pCtx,nArg,apArg,1);
+}
+/*
  * Fetch the element identified by 'pKey' from 'pRow' which may be either an
  * array (hashmap lookup) or an object (public attribute lookup). Used by
  * array_column() for both the column value and the index key.
@@ -8379,6 +8432,8 @@ static const ph7_builtin_func aHashmapFunc[] = {
 	{"array_is_list",     ph7_hashmap_is_list },
 	{"array_first",       ph7_hashmap_first   },
 	{"array_last",        ph7_hashmap_last    },
+	{"array_key_first",   ph7_hashmap_key_first },
+	{"array_key_last",    ph7_hashmap_key_last  },
 	{"array_find",        ph7_hashmap_find    },
 	{"array_find_key",    ph7_hashmap_find_key},
 	{"array_any",         ph7_hashmap_any     },

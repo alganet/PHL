@@ -592,6 +592,819 @@ static int PH7_builtin_substr_count(ph7_context *pCtx,int nArg,ph7_value **apArg
 	ph7_result_int(pCtx,iCount);
 	return PH7_OK;
 }
+/* Forward declarations: defined with the trim/addcslashes and str_contains
+ * families below. */
+static void PH7_BuildCharMask(ph7_context *pCtx,const char *zList,int nLen,char aMask[256]);
+static sxi32 StrPredicateResolveArg(ph7_context *pCtx,ph7_value *pArg,const char *zFunc,
+	int iArgNum,const char *zParamName,const char *zTypeStr,const char *zNullMsg,
+	ph7_value *pTmp,const char **pzOut,int *pnOut);
+/*
+ * Emit a formatted E_DEPRECATED diagnostic WITHOUT the active-function-name
+ * prefix that ph7_context_throw_error_format() prepends — php's implicit-
+ * conversion notices carry no prefix, and the ZPP null notices embed the
+ * function name mid-message themselves.
+ */
+static void BuiltinThrowDeprecatedFmt(ph7_vm *pVm,const char *zFmt,...)
+{
+	va_list ap;
+	va_start(ap,zFmt);
+	PH7_VmThrowErrorAp(pVm,0,E_DEPRECATED,zFmt,ap);
+	va_end(ap);
+}
+/*
+ * Validate and resolve an int-typed builtin parameter with php-8 ZPP weak-mode
+ * semantics: ints and bools pass through; null emits the 8.1 deprecation and
+ * resolves to 0; floats and float-strings convert, with the implicit-conversion
+ * E_DEPRECATED when lossy and a TypeError when NAN/INF/out of int range;
+ * integral numeric strings convert exactly; everything else (arrays, resources,
+ * objects, non-numeric strings) is a TypeError naming zTypeStr (e.g. "int",
+ * "array|int"). Returns PH7_OK with *pOut set, or the throw status.
+ */
+static sxi32 IntArgResolve(
+	ph7_context *pCtx,
+	ph7_value *pArg,
+	const char *zFunc,
+	int iArgNum,
+	const char *zParamName,
+	const char *zTypeStr,
+	sxi64 *pOut
+){
+	if( ph7_value_is_null(pArg) ){
+		BuiltinThrowDeprecatedFmt(pCtx->pVm,
+			"%s(): Passing null to parameter #%d (%s) of type %s is deprecated",
+			zFunc,iArgNum,zParamName,zTypeStr
+			);
+		*pOut = 0;
+		return PH7_OK;
+	}
+	if( ph7_value_is_float(pArg) ){
+		double dVal = ph7_value_to_double(pArg);
+		sxi64 iVal;
+		/* php: NAN/INF/out-of-int64-range floats fail ZPP outright */
+		if( dVal != dVal || dVal >= 9223372036854775808.0 || dVal < -9223372036854775808.0 ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"%s(): Argument #%d (%s) must be of type %s, float given",
+				zFunc,iArgNum,zParamName,zTypeStr
+				);
+		}
+		iVal = (sxi64)dVal;
+		if( (double)iVal != dVal ){
+			BuiltinThrowDeprecatedFmt(pCtx->pVm,
+				"Implicit conversion from float %s to int loses precision",
+				ph7_value_to_string(pArg,0)
+				);
+		}
+		*pOut = iVal;
+		return PH7_OK;
+	}
+	if( ph7_value_is_string(pArg) ){
+		const char *zNum;
+		int nSlen;
+		int i,bFloat = 0;
+		if( !PH7_MemObjStringIsNumeric(pArg) ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"%s(): Argument #%d (%s) must be of type %s, string given",
+				zFunc,iArgNum,zParamName,zTypeStr
+				);
+		}
+		zNum = ph7_value_to_string(pArg,&nSlen);
+		for( i = 0 ; i < nSlen ; i++ ){
+			if( zNum[i] == '.' || zNum[i] == 'e' || zNum[i] == 'E' ){
+				bFloat = 1;
+				break;
+			}
+		}
+		if( bFloat ){
+			double dVal = 0;
+			sxi64 iVal;
+			SyStrToReal(zNum,(sxu32)nSlen,(void *)&dVal,0);
+			if( dVal != dVal || dVal >= 9223372036854775808.0 || dVal < -9223372036854775808.0 ){
+				return PH7_VmThrowException(pCtx,
+					"TypeError",
+					"%s(): Argument #%d (%s) must be of type %s, string given",
+					zFunc,iArgNum,zParamName,zTypeStr
+					);
+			}
+			iVal = (sxi64)dVal;
+			if( (double)iVal != dVal ){
+				BuiltinThrowDeprecatedFmt(pCtx->pVm,
+					"Implicit conversion from float-string \"%s\" to int loses precision",
+					zNum
+					);
+			}
+			*pOut = iVal;
+			return PH7_OK;
+		}
+		*pOut = ph7_value_to_int64(pArg);
+		return PH7_OK;
+	}
+	if( !ph7_value_is_int(pArg) && !ph7_value_is_bool(pArg) ){
+		/* Arrays, resources and objects: php names the class for objects */
+		const char *zType = ph7_type_name(pArg);
+		if( ph7_value_is_object(pArg) ){
+			ph7_class_instance *pInst = (ph7_class_instance *)pArg->x.pOther;
+			if( pInst && pInst->pClass ){
+				zType = SyStringData(&pInst->pClass->sName);
+			}
+		}
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"%s(): Argument #%d (%s) must be of type %s, %s given",
+			zFunc,iArgNum,zParamName,zTypeStr,zType
+			);
+	}
+	*pOut = ph7_value_to_int64(pArg);
+	return PH7_OK;
+}
+/*
+ * Normalize a substr_replace() offset/length pair against a string of nStrLen
+ * bytes, exactly like PHP: a negative offset counts from the end (clamped to 0),
+ * an offset past the end clamps to the end; a negative length leaves that many
+ * bytes off the end of the remaining region (clamped to 0), and the length is
+ * finally clamped to the remaining region. Written without f+l additions so an
+ * INT64_MAX length cannot overflow.
+ */
+static void SubstrReplaceWindow(sxi64 *pF,sxi64 *pL,int nStrLen)
+{
+	sxi64 f = *pF,l = *pL;
+	if( f < 0 ){
+		f += nStrLen;
+		if( f < 0 ){
+			f = 0;
+		}
+	}else if( f > nStrLen ){
+		f = nStrLen;
+	}
+	if( l < 0 ){
+		l += nStrLen - f;
+		if( l < 0 ){
+			l = 0;
+		}
+	}
+	if( l > nStrLen - f ){
+		l = nStrLen - f;
+	}
+	*pF = f;
+	*pL = l;
+}
+/* A replacement string collected out of substr_replace()'s $replace array.
+ * The bytes live in a shared pool blob (walker values are transient), so the
+ * item stores pool offsets, mirroring the strtr_entry technique. */
+typedef struct substr_repl_item substr_repl_item;
+struct substr_repl_item
+{
+	sxu32 nOfft; /* Offset of the string inside the pool */
+	sxu32 nLen;  /* Length of the string */
+};
+typedef struct substr_replace_collect substr_replace_collect;
+struct substr_replace_collect
+{
+	SyBlob *pPool;  /* Byte pool for string items (string walker only) */
+	SySet *pSet;    /* substr_repl_item set (string) or sxi64 set (int) */
+	sxi32 rc;       /* SXRET_OK or SXERR_MEM on collector failure */
+};
+/* ph7_array_walk() callback: append one $replace element to the pool. */
+static int SubstrReplaceStrWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
+{
+	substr_replace_collect *pCol = (substr_replace_collect *)pUserData;
+	substr_repl_item sItem;
+	const char *zStr;
+	int nLen;
+	SXUNUSED(pKey);
+	zStr = ph7_value_to_string(pData,&nLen);
+	sItem.nOfft = SyBlobLength(pCol->pPool);
+	sItem.nLen = (sxu32)nLen;
+	if( nLen > 0 && SXRET_OK != SyBlobAppend(pCol->pPool,(const void *)zStr,(sxu32)nLen) ){
+		pCol->rc = SXERR_MEM;
+		return SXERR_ABORT;
+	}
+	if( SXRET_OK != SySetPut(pCol->pSet,(const void *)&sItem) ){
+		pCol->rc = SXERR_MEM;
+		return SXERR_ABORT;
+	}
+	return PH7_OK;
+}
+/* ph7_array_walk() callback: collect one $offset/$length element as an int. */
+static int SubstrReplaceIntWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
+{
+	substr_replace_collect *pCol = (substr_replace_collect *)pUserData;
+	sxi64 iVal = ph7_value_to_int64(pData);
+	SXUNUSED(pKey);
+	if( SXRET_OK != SySetPut(pCol->pSet,(const void *)&iVal) ){
+		pCol->rc = SXERR_MEM;
+		return SXERR_ABORT;
+	}
+	return PH7_OK;
+}
+/* Per-element state while walking substr_replace()'s array $string. */
+typedef struct substr_replace_ctx substr_replace_ctx;
+struct substr_replace_ctx
+{
+	ph7_value *pResult;   /* Result array (keys preserved) */
+	ph7_value *pScratch;  /* Reusable string value for each element */
+	SyBlob *pReplPool;    /* Pool behind aRepl items */
+	SySet *pRepl;         /* substr_repl_item set or NULL when $replace is scalar */
+	SySet *pFrom;         /* sxi64 set or NULL when $offset is scalar */
+	SySet *pLen;          /* sxi64 set or NULL when $length is scalar/absent */
+	sxu32 iReplCur;       /* Next-position cursors into the three sets */
+	sxu32 iFromCur;
+	sxu32 iLenCur;
+	const char *zRepl;    /* Scalar $replace */
+	int nRepl;
+	sxi64 iFrom;          /* Scalar $offset */
+	sxi64 iLen;           /* Scalar $length */
+	int bLenGiven;        /* FALSE: $length absent/null -> element length */
+	sxi32 rc;             /* SXRET_OK or SXERR_MEM */
+};
+/*
+ * ph7_array_walk() callback over the array $string: replace the window of one
+ * element and insert the result under the element's original key. Array-form
+ * $replace/$offset/$length are consumed positionally; when a set runs out PHP
+ * falls back to ""/0/element-length respectively.
+ */
+static int SubstrReplaceElemWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
+{
+	substr_replace_ctx *pRep = (substr_replace_ctx *)pUserData;
+	const char *zStr,*zRepl;
+	sxi64 f,l;
+	int nLen,nRepl;
+	zStr = ph7_value_to_string(pData,&nLen);
+	/* Positional $replace element ("" when exhausted) */
+	if( pRep->pRepl ){
+		if( pRep->iReplCur < SySetUsed(pRep->pRepl) ){
+			substr_repl_item *pItem = (substr_repl_item *)SySetAt(pRep->pRepl,pRep->iReplCur++);
+			zRepl = (const char *)SyBlobDataAt(pRep->pReplPool,pItem->nOfft);
+			nRepl = (int)pItem->nLen;
+		}else{
+			zRepl = "";
+			nRepl = 0;
+		}
+	}else{
+		zRepl = pRep->zRepl;
+		nRepl = pRep->nRepl;
+	}
+	/* Positional $offset element (0 when exhausted) */
+	if( pRep->pFrom ){
+		sxi64 *pVal = 0;
+		if( pRep->iFromCur < SySetUsed(pRep->pFrom) ){
+			pVal = (sxi64 *)SySetAt(pRep->pFrom,pRep->iFromCur++);
+		}
+		f = pVal ? *pVal : 0;
+	}else{
+		f = pRep->iFrom;
+	}
+	/* Positional $length element (element length when exhausted) */
+	if( pRep->pLen ){
+		sxi64 *pVal = 0;
+		if( pRep->iLenCur < SySetUsed(pRep->pLen) ){
+			pVal = (sxi64 *)SySetAt(pRep->pLen,pRep->iLenCur++);
+		}
+		l = pVal ? *pVal : nLen;
+	}else{
+		l = pRep->bLenGiven ? pRep->iLen : nLen;
+	}
+	SubstrReplaceWindow(&f,&l,nLen);
+	/* Assemble prefix + replacement + suffix in the scratch value */
+	ph7_value_reset_string_cursor(pRep->pScratch);
+	if( (f > 0 && SXRET_OK != ph7_value_string(pRep->pScratch,zStr,(int)f))
+	 || (nRepl > 0 && SXRET_OK != ph7_value_string(pRep->pScratch,zRepl,nRepl))
+	 || (nLen - (int)(f+l) > 0 && SXRET_OK != ph7_value_string(pRep->pScratch,&zStr[f+l],nLen - (int)(f+l))) ){
+		pRep->rc = SXERR_MEM;
+		return SXERR_ABORT;
+	}
+	if( SXRET_OK != ph7_array_add_elem(pRep->pResult,pKey,pRep->pScratch) ){
+		pRep->rc = SXERR_MEM;
+		return SXERR_ABORT;
+	}
+	return PH7_OK;
+}
+/*
+ * mixed substr_replace(array|string $string,array|string $replace,array|int $offset[,array|int|null $length = null])
+ *  Replace text within a portion of a string.
+ * Parameters
+ *  $string
+ *   The input string or an array of strings (each element is processed with
+ *   its own positional replace/offset/length when those are arrays too).
+ *  $replace
+ *   The replacement string. When $string is scalar and $replace is an array,
+ *   only its first element is used (PHP quirk).
+ *  $offset
+ *   Window start; negative counts from the end of the string.
+ *  $length
+ *   Window length; negative leaves that many bytes at the end; null/absent
+ *   means "to the end of the string".
+ * Return
+ *  The processed string, or an array of processed strings (keys preserved).
+ * Errors
+ *  ArgumentCountError on fewer than 3 arguments; TypeError when an array
+ *  $offset/$length is combined with a scalar $string.
+ */
+static int PH7_builtin_substr_replace(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value sStrTmp,sReplTmp;
+	const char *zStr = 0,*zRepl = 0;
+	int nLen = 0,nRepl = 0;
+	int bLenGiven;
+	sxi64 f = 0,l = 0;
+	sxi32 rc;
+	if( nArg < 3 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"substr_replace() expects at least 3 arguments, %d given",
+			nArg
+			);
+	}
+	/* $length counts as given unless absent or null (php: ?null semantics) */
+	bLenGiven = (nArg > 3 && !ph7_value_is_null(apArg[3]));
+	/* php ZPP validates all four args, in order, before the body runs: the
+	 * non-array forms resolve here (null deprecation, __toString objects,
+	 * numeric strings), arrays pass through to the per-mode handling. */
+	PH7_MemObjInit(pCtx->pVm,&sStrTmp);
+	PH7_MemObjInit(pCtx->pVm,&sReplTmp);
+	if( !ph7_value_is_array(apArg[0]) ){
+		rc = StrPredicateResolveArg(pCtx,apArg[0],"substr_replace",1,"$string","array|string",
+			"substr_replace(): Passing null to parameter #1 ($string) "
+			"of type array|string is deprecated",
+			&sStrTmp,&zStr,&nLen);
+		if( rc != PH7_OK ) goto out;
+	}
+	if( !ph7_value_is_array(apArg[1]) ){
+		rc = StrPredicateResolveArg(pCtx,apArg[1],"substr_replace",2,"$replace","array|string",
+			"substr_replace(): Passing null to parameter #2 ($replace) "
+			"of type array|string is deprecated",
+			&sReplTmp,&zRepl,&nRepl);
+		if( rc != PH7_OK ) goto out;
+	}
+	if( !ph7_value_is_array(apArg[2]) ){
+		rc = IntArgResolve(pCtx,apArg[2],"substr_replace",3,"$offset","array|int",&f);
+		if( rc != PH7_OK ) goto out;
+	}
+	if( bLenGiven && !ph7_value_is_array(apArg[3]) ){
+		rc = IntArgResolve(pCtx,apArg[3],"substr_replace",4,"$length","array|int|null",&l);
+		if( rc != PH7_OK ) goto out;
+	}
+	if( ph7_value_is_array(apArg[0]) ){
+		/* Array form: process each element, preserving keys */
+		substr_replace_ctx sRep;
+		substr_replace_collect sCol;
+		SyBlob sReplPool;
+		SySet sRepl,sFrom,sLen;
+		ph7_value *pResult,*pScratch;
+		sxi32 rcWalk = SXRET_OK;
+		SyBlobInit(&sReplPool,&pCtx->pVm->sAllocator);
+		SySetInit(&sRepl,&pCtx->pVm->sAllocator,sizeof(substr_repl_item));
+		SySetInit(&sFrom,&pCtx->pVm->sAllocator,sizeof(sxi64));
+		SySetInit(&sLen,&pCtx->pVm->sAllocator,sizeof(sxi64));
+		SyZero(&sRep,sizeof(substr_replace_ctx));
+		sRep.bLenGiven = bLenGiven;
+		sCol.rc = SXRET_OK;
+		/* Collect array-form $replace/$offset/$length positionally; the
+		 * scalar forms were already resolved above. */
+		if( ph7_value_is_array(apArg[1]) ){
+			sCol.pPool = &sReplPool;
+			sCol.pSet = &sRepl;
+			ph7_array_walk(apArg[1],SubstrReplaceStrWalker,&sCol);
+			sRep.pRepl = &sRepl;
+			sRep.pReplPool = &sReplPool;
+		}else{
+			sRep.zRepl = zRepl;
+			sRep.nRepl = nRepl;
+		}
+		if( sCol.rc == SXRET_OK && ph7_value_is_array(apArg[2]) ){
+			sCol.pSet = &sFrom;
+			ph7_array_walk(apArg[2],SubstrReplaceIntWalker,&sCol);
+			sRep.pFrom = &sFrom;
+		}else{
+			sRep.iFrom = f;
+		}
+		if( sCol.rc == SXRET_OK && bLenGiven ){
+			if( ph7_value_is_array(apArg[3]) ){
+				sCol.pSet = &sLen;
+				ph7_array_walk(apArg[3],SubstrReplaceIntWalker,&sCol);
+				sRep.pLen = &sLen;
+			}else{
+				sRep.iLen = l;
+			}
+		}
+		pResult = ph7_context_new_array(pCtx);
+		pScratch = ph7_context_new_scalar(pCtx);
+		if( sCol.rc != SXRET_OK || pResult == 0 || pScratch == 0 ){
+			rcWalk = SXERR_MEM;
+		}else{
+			sRep.pResult = pResult;
+			sRep.pScratch = pScratch;
+			ph7_value_string(pScratch,"",0); /* Force string representation */
+			ph7_array_walk(apArg[0],SubstrReplaceElemWalker,&sRep);
+			rcWalk = sRep.rc;
+		}
+		SyBlobRelease(&sReplPool);
+		SySetRelease(&sRepl);
+		SySetRelease(&sFrom);
+		SySetRelease(&sLen);
+		if( rcWalk != SXRET_OK ){
+			rc = PH7_ContextMemoryError(pCtx);
+			goto out;
+		}
+		ph7_result_value(pCtx,pResult);
+		rc = PH7_OK;
+		goto out;
+	}
+	/* Scalar form: array $offset/$length are a TypeError, array $replace
+	 * degrades to its first element (php quirk). */
+	if( ph7_value_is_array(apArg[2]) ){
+		rc = PH7_VmThrowException(pCtx,
+			"TypeError",
+			"substr_replace(): Argument #3 ($offset) cannot be an array when working on a single string"
+			);
+		goto out;
+	}
+	if( bLenGiven && ph7_value_is_array(apArg[3]) ){
+		rc = PH7_VmThrowException(pCtx,
+			"TypeError",
+			"substr_replace(): Argument #4 ($length) cannot be an array when working on a single string"
+			);
+		goto out;
+	}
+	if( ph7_value_is_array(apArg[1]) ){
+		/* First element of the replace array, or "" when empty */
+		ph7_hashmap *pMap = (ph7_hashmap *)apArg[1]->x.pOther;
+		zRepl = "";
+		nRepl = 0;
+		if( pMap->pFirst ){
+			ph7_value *pVal = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pMap->pFirst->nValIdx);
+			if( pVal ){
+				zRepl = ph7_value_to_string(pVal,&nRepl);
+			}
+		}
+	}
+	if( !bLenGiven ){
+		l = nLen;
+	}
+	SubstrReplaceWindow(&f,&l,nLen);
+	/* Assemble prefix + replacement + suffix straight into the call result
+	 * (ph7_result_string appends), no scratch buffer needed. */
+	rc = SXRET_OK;
+	if( f > 0 ){
+		rc = ph7_result_string(pCtx,zStr,(int)f);
+	}
+	if( rc == SXRET_OK && nRepl > 0 ){
+		rc = ph7_result_string(pCtx,zRepl,nRepl);
+	}
+	if( rc == SXRET_OK && nLen - (int)(f+l) > 0 ){
+		rc = ph7_result_string(pCtx,&zStr[f+l],nLen - (int)(f+l));
+	}
+	if( rc != SXRET_OK ){
+		rc = PH7_ContextMemoryError(pCtx);
+		goto out;
+	}
+	/* Force a string result even when all three segments are empty */
+	rc = ph7_result_string(pCtx,"",0);
+	if( rc != SXRET_OK ){
+		rc = PH7_ContextMemoryError(pCtx);
+		goto out;
+	}
+	rc = PH7_OK;
+out:
+	PH7_MemObjRelease(&sStrTmp);
+	PH7_MemObjRelease(&sReplTmp);
+	return rc;
+}
+/*
+ * int levenshtein(string $string1,string $string2[,int $insertion_cost = 1[,int $replacement_cost = 1[,int $deletion_cost = 1]]])
+ *  Calculate the Levenshtein distance between two strings, byte per byte
+ *  (case-sensitive), with optional per-operation costs. Mirrors PHP's
+ *  reference_levdist(): two rolling rows over string2.
+ * Return
+ *  The minimal number of weighted edit operations turning $string1 into
+ *  $string2.
+ */
+static int PH7_builtin_levenshtein(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	static const char *azParam[] = { "$insertion_cost","$replacement_cost","$deletion_cost" };
+	const char *zStr1,*zStr2;
+	sxi64 iCostIns = 1,iCostRep = 1,iCostDel = 1;
+	sxi64 *p1,*p2,*pTmp;
+	sxi64 c0,c1,c2;
+	ph7_value sTmp1,sTmp2;
+	int nLen1,nLen2;
+	int i1,i2;
+	sxi32 rc;
+	int i;
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"levenshtein() expects at least 2 arguments, %d given",
+			nArg
+			);
+	}
+	/* $string1/$string2: null deprecates to "", __toString objects resolve,
+	 * everything non-stringish is a TypeError (php ZPP weak mode). */
+	PH7_MemObjInit(pCtx->pVm,&sTmp1);
+	PH7_MemObjInit(pCtx->pVm,&sTmp2);
+	rc = StrPredicateResolveArg(pCtx,apArg[0],"levenshtein",1,"$string1","string",
+		"levenshtein(): Passing null to parameter #1 ($string1) "
+		"of type string is deprecated",
+		&sTmp1,&zStr1,&nLen1);
+	if( rc != PH7_OK ) goto out;
+	rc = StrPredicateResolveArg(pCtx,apArg[1],"levenshtein",2,"$string2","string",
+		"levenshtein(): Passing null to parameter #2 ($string2) "
+		"of type string is deprecated",
+		&sTmp2,&zStr2,&nLen2);
+	if( rc != PH7_OK ) goto out;
+	/* Optional integer costs */
+	for( i = 2 ; i < nArg && i < 5 ; i++ ){
+		sxi64 iVal;
+		rc = IntArgResolve(pCtx,apArg[i],"levenshtein",i+1,azParam[i-2],"int",&iVal);
+		if( rc != PH7_OK ) goto out;
+		if( i == 2 ){
+			iCostIns = iVal;
+		}else if( i == 3 ){
+			iCostRep = iVal;
+		}else{
+			iCostDel = iVal;
+		}
+	}
+	if( nLen1 == 0 ){
+		ph7_result_int64(pCtx,(sxi64)nLen2 * iCostIns);
+		rc = PH7_OK;
+		goto out;
+	}
+	if( nLen2 == 0 ){
+		ph7_result_int64(pCtx,(sxi64)nLen1 * iCostDel);
+		rc = PH7_OK;
+		goto out;
+	}
+	/* Two rolling DP rows over string2 (auto-released on return). Reject a
+	 * string2 long enough to overflow the 32-bit allocation size. */
+	if( (sxu32)nLen2 >= (SXU32_HIGH / sizeof(sxi64)) - 1 ){
+		rc = PH7_ContextMemoryError(pCtx);
+		goto out;
+	}
+	p1 = (sxi64 *)ph7_context_alloc_chunk(pCtx,(unsigned int)(sizeof(sxi64) * (sxu32)(nLen2 + 1)),FALSE,TRUE);
+	p2 = (sxi64 *)ph7_context_alloc_chunk(pCtx,(unsigned int)(sizeof(sxi64) * (sxu32)(nLen2 + 1)),FALSE,TRUE);
+	if( p1 == 0 || p2 == 0 ){
+		rc = PH7_ContextMemoryError(pCtx);
+		goto out;
+	}
+	for( i2 = 0 ; i2 <= nLen2 ; i2++ ){
+		p1[i2] = (sxi64)i2 * iCostIns;
+	}
+	for( i1 = 0 ; i1 < nLen1 ; i1++ ){
+		p2[0] = p1[0] + iCostDel;
+		for( i2 = 0 ; i2 < nLen2 ; i2++ ){
+			c0 = p1[i2] + ((zStr1[i1] == zStr2[i2]) ? 0 : iCostRep);
+			c1 = p1[i2 + 1] + iCostDel;
+			if( c1 < c0 ){
+				c0 = c1;
+			}
+			c2 = p2[i2] + iCostIns;
+			if( c2 < c0 ){
+				c0 = c2;
+			}
+			p2[i2 + 1] = c0;
+		}
+		pTmp = p1;
+		p1 = p2;
+		p2 = pTmp;
+	}
+	ph7_result_int64(pCtx,p1[nLen2]);
+	rc = PH7_OK;
+out:
+	PH7_MemObjRelease(&sTmp1);
+	PH7_MemObjRelease(&sTmp2);
+	return rc;
+}
+/*
+ * Longest common substring scan behind similar_text() — a faithful port of
+ * PHP's php_similar_str(): O(n*m) scan recording the first longest run.
+ */
+static void SimilarStr(const char *zTxt1,int nLen1,const char *zTxt2,int nLen2,
+	int *pPos1,int *pPos2,int *pMax,int *pCount)
+{
+	const char *p,*q;
+	const char *zEnd1 = &zTxt1[nLen1];
+	const char *zEnd2 = &zTxt2[nLen2];
+	int l;
+	*pMax = 0;
+	*pCount = 0;
+	for( p = zTxt1 ; p < zEnd1 ; p++ ){
+		for( q = zTxt2 ; q < zEnd2 ; q++ ){
+			for( l = 0 ; (p+l < zEnd1) && (q+l < zEnd2) && (p[l] == q[l]) ; l++ );
+			if( l > *pMax ){
+				*pMax = l;
+				*pCount += 1;
+				*pPos1 = (int)(p - zTxt1);
+				*pPos2 = (int)(q - zTxt2);
+			}
+		}
+	}
+}
+/*
+ * Recursive divide-and-conquer behind similar_text() — a faithful port of
+ * PHP's php_similar_char(), including its quirky `count > 1` guard on the
+ * left-side recursion.
+ */
+static int SimilarChar(const char *zTxt1,int nLen1,const char *zTxt2,int nLen2)
+{
+	int nSum;
+	int nPos1 = 0,nPos2 = 0,nMax,nCount;
+	SimilarStr(zTxt1,nLen1,zTxt2,nLen2,&nPos1,&nPos2,&nMax,&nCount);
+	if( (nSum = nMax) != 0 ){
+		if( nPos1 && nPos2 && nCount > 1 ){
+			nSum += SimilarChar(zTxt1,nPos1,zTxt2,nPos2);
+		}
+		if( (nPos1 + nMax < nLen1) && (nPos2 + nMax < nLen2) ){
+			nSum += SimilarChar(&zTxt1[nPos1 + nMax],nLen1 - nPos1 - nMax,
+				&zTxt2[nPos2 + nMax],nLen2 - nPos2 - nMax);
+		}
+	}
+	return nSum;
+}
+/*
+ * int similar_text(string $string1,string $string2[,float &$percent])
+ *  Calculate the similarity between two strings, as the number of matching
+ *  characters found by PHP's greedy longest-common-substring recursion.
+ *  When $percent is given it receives the similarity in percent:
+ *  matching * 200 / (len1 + len2).
+ * Return
+ *  The number of matching characters in both strings.
+ */
+static int PH7_builtin_similar_text(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zStr1,*zStr2;
+	ph7_value sTmp1,sTmp2;
+	int nLen1,nLen2;
+	int nSim;
+	sxi32 rc;
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"similar_text() expects at least 2 arguments, %d given",
+			nArg
+			);
+	}
+	PH7_MemObjInit(pCtx->pVm,&sTmp1);
+	PH7_MemObjInit(pCtx->pVm,&sTmp2);
+	rc = StrPredicateResolveArg(pCtx,apArg[0],"similar_text",1,"$string1","string",
+		"similar_text(): Passing null to parameter #1 ($string1) "
+		"of type string is deprecated",
+		&sTmp1,&zStr1,&nLen1);
+	if( rc != PH7_OK ) goto out;
+	rc = StrPredicateResolveArg(pCtx,apArg[1],"similar_text",2,"$string2","string",
+		"similar_text(): Passing null to parameter #2 ($string2) "
+		"of type string is deprecated",
+		&sTmp2,&zStr2,&nLen2);
+	if( rc != PH7_OK ) goto out;
+	if( nLen1 + nLen2 == 0 ){
+		nSim = 0;
+	}else{
+		nSim = SimilarChar(zStr1,nLen1,zStr2,nLen2);
+	}
+	if( nArg > 2 ){
+		/* Write the percentage through the by-ref out-param */
+		ph7_value *pPercent = ph7_context_new_scalar(pCtx);
+		if( pPercent == 0 ){
+			rc = PH7_ContextMemoryError(pCtx);
+			goto out;
+		}else{
+			double dPct = (nLen1 + nLen2 == 0) ? 0.0 : (double)nSim * 200.0 / (double)(nLen1 + nLen2);
+			ph7_value_double(pPercent,dPct);
+			PH7_VmStoreArgByRef(pCtx->pVm,apArg[2],pPercent);
+		}
+	}
+	ph7_result_int(pCtx,nSim);
+	rc = PH7_OK;
+out:
+	PH7_MemObjRelease(&sTmp1);
+	PH7_MemObjRelease(&sTmp2);
+	return rc;
+}
+/*
+ * array|int str_word_count(string $string[,int $format = 0[,?string $characters = null]])
+ *  Count (or return) the words inside a string. A word is a run of alphabetic
+ *  characters, which may contain (but not start the string with) "'" and "-";
+ *  $characters adds extra bytes to the word set ("a..z" ranges supported, as
+ *  in PHP's php_charmask).
+ *  $format: 0 -> word count, 1 -> array of words, 2 -> array of words keyed
+ *  by their byte position in $string.
+ * Errors
+ *  ValueError when $format is not 0, 1 or 2.
+ */
+static int PH7_builtin_str_word_count(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zIn,*zEnd,*zPtr;
+	ph7_value *pArray = 0,*pValue = 0;
+	ph7_value sTmp,sListTmp;
+	char aMask[256];
+	int bMask = 0;
+	int iFormat = 0;
+	int nCount = 0;
+	int nLen;
+	sxi32 rc;
+	if( nArg < 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"str_word_count() expects at least 1 argument, %d given",
+			nArg
+			);
+	}
+	PH7_MemObjInit(pCtx->pVm,&sTmp);
+	PH7_MemObjInit(pCtx->pVm,&sListTmp);
+	rc = StrPredicateResolveArg(pCtx,apArg[0],"str_word_count",1,"$string","string",
+		"str_word_count(): Passing null to parameter #1 ($string) "
+		"of type string is deprecated",
+		&sTmp,&zIn,&nLen);
+	if( rc != PH7_OK ) goto out;
+	if( nArg > 1 ){
+		sxi64 iVal;
+		rc = IntArgResolve(pCtx,apArg[1],"str_word_count",2,"$format","int",&iVal);
+		if( rc != PH7_OK ) goto out;
+		if( iVal < 0 || iVal > 2 ){
+			rc = PH7_VmThrowException(pCtx,
+				"ValueError",
+				"str_word_count(): Argument #2 ($format) must be a valid format value"
+				);
+			goto out;
+		}
+		iFormat = (int)iVal;
+	}
+	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){
+		/* $characters is ?string: null (skipped above) simply keeps the
+		 * default word set, no deprecation. */
+		const char *zList;
+		int nList;
+		rc = StrPredicateResolveArg(pCtx,apArg[2],"str_word_count",3,"$characters","?string",
+			"" /* unreachable: null never gets here */,
+			&sListTmp,&zList,&nList);
+		if( rc != PH7_OK ) goto out;
+		PH7_BuildCharMask(pCtx,zList,nList,aMask);
+		bMask = 1;
+	}
+	if( iFormat != 0 ){
+		pArray = ph7_context_new_array(pCtx);
+		pValue = ph7_context_new_scalar(pCtx);
+		if( pArray == 0 || pValue == 0 ){
+			rc = PH7_ContextMemoryError(pCtx);
+			goto out;
+		}
+	}
+	zPtr = zIn;
+	zEnd = &zIn[nLen];
+	if( nLen > 0 ){
+		/* php: the string's first byte cannot be ' or -, and its last byte
+		 * cannot be -, unless the charlist explicitly allows them. */
+		if( (zPtr[0] == '\'' && (!bMask || !aMask[(unsigned char)'\''])) ||
+			(zPtr[0] == '-'  && (!bMask || !aMask[(unsigned char)'-'])) ){
+			zPtr++;
+		}
+		if( zEnd[-1] == '-' && (!bMask || !aMask[(unsigned char)'-']) ){
+			zEnd--;
+		}
+	}
+	while( zPtr < zEnd ){
+		const char *zStart = zPtr;
+		while( zPtr < zEnd && ( SyisAlpha((unsigned char)zPtr[0])
+			|| (bMask && aMask[(unsigned char)zPtr[0]])
+			|| zPtr[0] == '\'' || zPtr[0] == '-' ) ){
+			zPtr++;
+		}
+		if( zPtr > zStart ){
+			if( iFormat == 0 ){
+				nCount++;
+			}else{
+				ph7_value_reset_string_cursor(pValue);
+				if( SXRET_OK != ph7_value_string(pValue,zStart,(int)(zPtr-zStart)) ){
+					rc = PH7_ContextMemoryError(pCtx);
+					goto out;
+				}
+				if( iFormat == 1 ){
+					if( SXRET_OK != ph7_array_add_elem(pArray,0,pValue) ){
+						rc = PH7_ContextMemoryError(pCtx);
+						goto out;
+					}
+				}else{
+					if( SXRET_OK != ph7_array_add_intkey_elem(pArray,(int)(zStart-zIn),pValue) ){
+						rc = PH7_ContextMemoryError(pCtx);
+						goto out;
+					}
+				}
+			}
+		}
+		zPtr++;
+	}
+	if( iFormat == 0 ){
+		ph7_result_int(pCtx,nCount);
+	}else{
+		ph7_result_value(pCtx,pArray);
+	}
+	rc = PH7_OK;
+out:
+	PH7_MemObjRelease(&sTmp);
+	PH7_MemObjRelease(&sListTmp);
+	return rc;
+}
 /*
  * string chunk_split(string $body[,int $chunklen = 76 [, string $end = "\r\n" ]])
  *   Split a string into smaller chunks.
@@ -2479,6 +3292,7 @@ static sxi32 StrPredicateResolveArg(
 	const char *zFunc,
 	int iArgNum,
 	const char *zParamName,
+	const char *zTypeStr, /* Declared type in the TypeError, e.g. "string" / "?string" */
 	const char *zNullMsg,
 	ph7_value *pTmp,
 	const char **pzOut,
@@ -2506,8 +3320,8 @@ static sxi32 StrPredicateResolveArg(
 		}
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
-			"%s(): Argument #%d (%s) must be of type string, %s given",
-			zFunc, iArgNum, zParamName, zType
+			"%s(): Argument #%d (%s) must be of type %s, %s given",
+			zFunc, iArgNum, zParamName, zTypeStr, zType
 			);
 	}
 	if( ph7_value_is_object(pArg) ){
@@ -2543,12 +3357,12 @@ static int PH7_builtin_str_contains(ph7_context *pCtx,int nArg,ph7_value **apArg
 	}
 	PH7_MemObjInit(pCtx->pVm,&sHayTmp);
 	PH7_MemObjInit(pCtx->pVm,&sNeedleTmp);
-	rc = StrPredicateResolveArg(pCtx,apArg[0],"str_contains",1,"$haystack",
+	rc = StrPredicateResolveArg(pCtx,apArg[0],"str_contains",1,"$haystack","string",
 		"str_contains(): Passing null to parameter #1 ($haystack) "
 		"of type string is deprecated",
 		&sHayTmp,&zHaystack,&nHayLen);
 	if( rc != PH7_OK ) goto out;
-	rc = StrPredicateResolveArg(pCtx,apArg[1],"str_contains",2,"$needle",
+	rc = StrPredicateResolveArg(pCtx,apArg[1],"str_contains",2,"$needle","string",
 		"str_contains(): Passing null to parameter #2 ($needle) "
 		"of type string is deprecated",
 		&sNeedleTmp,&zNeedle,&nNeedleLen);
@@ -2590,12 +3404,12 @@ static int PH7_builtin_str_starts_with(ph7_context *pCtx,int nArg,ph7_value **ap
 	}
 	PH7_MemObjInit(pCtx->pVm,&sHayTmp);
 	PH7_MemObjInit(pCtx->pVm,&sNeedleTmp);
-	rc = StrPredicateResolveArg(pCtx,apArg[0],"str_starts_with",1,"$haystack",
+	rc = StrPredicateResolveArg(pCtx,apArg[0],"str_starts_with",1,"$haystack","string",
 		"str_starts_with(): Passing null to parameter #1 ($haystack) "
 		"of type string is deprecated",
 		&sHayTmp,&zHaystack,&nHayLen);
 	if( rc != PH7_OK ) goto out;
-	rc = StrPredicateResolveArg(pCtx,apArg[1],"str_starts_with",2,"$needle",
+	rc = StrPredicateResolveArg(pCtx,apArg[1],"str_starts_with",2,"$needle","string",
 		"str_starts_with(): Passing null to parameter #2 ($needle) "
 		"of type string is deprecated",
 		&sNeedleTmp,&zNeedle,&nNeedleLen);
@@ -2636,12 +3450,12 @@ static int PH7_builtin_str_ends_with(ph7_context *pCtx,int nArg,ph7_value **apAr
 	}
 	PH7_MemObjInit(pCtx->pVm,&sHayTmp);
 	PH7_MemObjInit(pCtx->pVm,&sNeedleTmp);
-	rc = StrPredicateResolveArg(pCtx,apArg[0],"str_ends_with",1,"$haystack",
+	rc = StrPredicateResolveArg(pCtx,apArg[0],"str_ends_with",1,"$haystack","string",
 		"str_ends_with(): Passing null to parameter #1 ($haystack) "
 		"of type string is deprecated",
 		&sHayTmp,&zHaystack,&nHayLen);
 	if( rc != PH7_OK ) goto out;
-	rc = StrPredicateResolveArg(pCtx,apArg[1],"str_ends_with",2,"$needle",
+	rc = StrPredicateResolveArg(pCtx,apArg[1],"str_ends_with",2,"$needle","string",
 		"str_ends_with(): Passing null to parameter #2 ($needle) "
 		"of type string is deprecated",
 		&sNeedleTmp,&zNeedle,&nNeedleLen);
@@ -8497,6 +9311,10 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "substr",          PH7_builtin_substr     },
 	{ "substr_compare",  PH7_builtin_substr_compare },
 	{ "substr_count",    PH7_builtin_substr_count },
+	{ "substr_replace",  PH7_builtin_substr_replace },
+	{ "levenshtein",     PH7_builtin_levenshtein },
+	{ "similar_text",    PH7_builtin_similar_text },
+	{ "str_word_count",  PH7_builtin_str_word_count },
 	{ "chunk_split",     PH7_builtin_chunk_split},
 	{ "addslashes" ,     PH7_builtin_addslashes },
 	{ "addcslashes",     PH7_builtin_addcslashes},

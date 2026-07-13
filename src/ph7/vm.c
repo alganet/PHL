@@ -3017,6 +3017,8 @@ static const struct VmBuiltinSig {
 	{ "array_intersect_key", "array $array, array ...$arrays = ?", "array" },
 	{ "array_is_list", "array $array", "bool" },
 	{ "array_key_exists", "$key, array $array", "bool" },
+	{ "array_key_first", "array $array", "string|int|null" },
+	{ "array_key_last", "array $array", "string|int|null" },
 	{ "array_keys", "array $array, mixed $filter_value = ?, bool $strict = false", "array" },
 	{ "array_last", "array $array", "mixed" },
 	{ "array_map", "?callable $callback, array $array, array ...$arrays = ?", "array" },
@@ -3233,6 +3235,7 @@ static const struct VmBuiltinSig {
 	{ "krsort", "array &$array, int $flags = 0", "true" },
 	{ "ksort", "array &$array, int $flags = 0", "true" },
 	{ "lcfirst", "string $string", "string" },
+	{ "levenshtein", "string $string1, string $string2, int $insertion_cost = 1, int $replacement_cost = 1, int $deletion_cost = 1", "int" },
 	{ "link", "string $target, string $link", "bool" },
 	{ "localtime", "?int $timestamp = NULL, bool $associative = false", "array" },
 	{ "log", "float $num, float $base = 2.718281828459045", "float" },
@@ -3328,6 +3331,7 @@ static const struct VmBuiltinSig {
 	{ "sha1", "string $string, bool $binary = false", "string" },
 	{ "sha1_file", "string $filename, bool $binary = false", "string|false" },
 	{ "shuffle", "array &$array", "true" },
+	{ "similar_text", "string $string1, string $string2, &$percent = NULL", "int" },
 	{ "sin", "float $num", "float" },
 	{ "sinh", "float $num", "float" },
 	{ "sizeof", "Countable|array $value, int $mode = 0", "int" },
@@ -3354,6 +3358,7 @@ static const struct VmBuiltinSig {
 	{ "str_shuffle", "string $string", "string" },
 	{ "str_split", "string $string, int $length = 1", "array" },
 	{ "str_starts_with", "string $haystack, string $needle", "bool" },
+	{ "str_word_count", "string $string, int $format = 0, ?string $characters = NULL", "array|int" },
 	{ "strcasecmp", "string $string1, string $string2", "int" },
 	{ "strchr", "string $haystack, string $needle, bool $before_needle = false", "string|false" },
 	{ "strcmp", "string $string1, string $string2", "int" },
@@ -3383,6 +3388,7 @@ static const struct VmBuiltinSig {
 	{ "substr", "string $string, int $offset, ?int $length = NULL", "string" },
 	{ "substr_compare", "string $haystack, string $needle, int $offset, ?int $length = NULL, bool $case_insensitive = false", "int" },
 	{ "substr_count", "string $haystack, string $needle, int $offset = 0, ?int $length = NULL", "int" },
+	{ "substr_replace", "array|string $string, array|string $replace, array|int $offset, array|int|null $length = NULL", "array|string" },
 	{ "symlink", "string $target, string $link", "bool" },
 	{ "sys_get_temp_dir", "", "string" },
 	{ "tan", "float $num", "float" },
@@ -3483,6 +3489,37 @@ PH7_PRIVATE const char * PH7_VmBuiltinSigLookup(const char *zName,sxu32 nLen,con
 		}
 	}
 	return 0;
+}
+/*
+ * Write a value back to the caller's variable through a builtin argument's
+ * stack-slot nIdx — the shared write-back for builtin by-reference
+ * out-parameters (preg_match $matches, preg_replace &$count, similar_text
+ * &$percent, ...).
+ *
+ * For a positional out-param argument the call compiler auto-vivifies known
+ * by-reference out-params (see GenStateByRefBuiltinMask in compile.c), so a
+ * bare undefined variable, an array subscript, and a declared/untyped
+ * property all arrive with a real nIdx and are written back here, matching
+ * PHP's reference semantics.
+ *
+ * nIdx stays SXU32_HIGH and the write-back to the caller is skipped (the
+ * value still lands in the local stack slot) when the argument cannot expose
+ * a stable memobj slot: a literal, a function-call result, a subscript of a
+ * non-lvalue parent (foo()['k']), or any variable in a call that also uses
+ * named or spread arguments (compile-time positions no longer map to the
+ * runtime arg slots, so the compiler conservatively does not vivify). An
+ * uninitialized typed property is also not wired (it throws before the
+ * write) -- see PLAN.md deferrals.
+ */
+PH7_PRIVATE void PH7_VmStoreArgByRef(ph7_vm *pVm,ph7_value *pArg,ph7_value *pNewVal)
+{
+	if( pArg->nIdx != SXU32_HIGH ){
+		ph7_value *pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pArg->nIdx);
+		if( pObj ){
+			PH7_MemObjStore(pNewVal,pObj);
+		}
+	}
+	PH7_MemObjStore(pNewVal,pArg);
 }
 PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	ph7_vm *pVm /* Target VM */

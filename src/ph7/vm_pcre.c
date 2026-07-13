@@ -247,35 +247,6 @@ static pcre2_code *PcreCompile(
 	return pCode;
 }
 
-/*
- * Write a value back to the caller's variable through the stack slot's nIdx.
- *
- * For a positional out-param argument the call compiler auto-vivifies known
- * by-reference out-params (see GenStateByRefBuiltinMask in compile.c), so a
- * bare undefined variable (e.g. preg_match($p,$s,$m) with $m never assigned),
- * an array subscript (preg_match($p,$s,$a['k'])), and a declared/untyped
- * property (preg_match($p,$s,$o->prop)) all arrive with a real nIdx and are
- * written back here, matching PHP's reference semantics.
- *
- * nIdx stays SXU32_HIGH and the write-back to the caller is skipped (the value
- * still lands in the local stack slot) when the argument cannot expose a stable
- * memobj slot: a literal, a function-call result, a subscript of a non-lvalue
- * parent (foo()['k']), or any variable in a call that also uses named or spread
- * arguments (compile-time positions no longer map to the runtime arg slots, so
- * the compiler conservatively does not vivify). An uninitialized typed property
- * is also not wired (it throws before the write) -- see PLAN.md deferrals.
- */
-static void PcreStoreByRef(ph7_vm *pVm, ph7_value *pArg, ph7_value *pNewVal)
-{
-	if( pArg->nIdx != SXU32_HIGH ){
-		ph7_value *pObj = (ph7_value *)SySetAt(&pVm->aMemObj, pArg->nIdx);
-		if( pObj ){
-			PH7_MemObjStore(pNewVal, pObj);
-		}
-	}
-	PH7_MemObjStore(pNewVal, pArg);
-}
-
 /* ===== Map PCRE2 match error to PHP error code ===== */
 static void PcreSetMatchError(ph7_vm *pVm, int rc)
 {
@@ -487,7 +458,7 @@ static int PH7_builtin_preg_match(ph7_context *pCtx, int nArg, ph7_value **apArg
 		/* Populate empty matches if requested */
 		if( nArg >= 3 ){
 			ph7_value *pEmpty = ph7_context_new_array(pCtx);
-			PcreStoreByRef(pCtx->pVm, apArg[2], pEmpty);
+			PH7_VmStoreArgByRef(pCtx->pVm, apArg[2], pEmpty);
 			ph7_context_release_value(pCtx, pEmpty);
 		}
 		pcre2_match_data_free(pMatchData);
@@ -501,7 +472,7 @@ static int PH7_builtin_preg_match(ph7_context *pCtx, int nArg, ph7_value **apArg
 		ovector = pcre2_get_ovector_pointer(pMatchData);
 		PcrePopulateMatches(pCtx, pArray, zSubject, ovector, rc, pCode, iFlags);
 		/* Write the array back to the caller's variable */
-		PcreStoreByRef(pCtx->pVm, apArg[2], pArray);
+		PH7_VmStoreArgByRef(pCtx->pVm, apArg[2], pArray);
 		ph7_context_release_value(pCtx, pArray);
 	}
 	pcre2_match_data_free(pMatchData);
@@ -644,7 +615,7 @@ static int PH7_builtin_preg_match_all(ph7_context *pCtx, int nArg, ph7_value **a
 		}
 		/* Write output array to caller's variable */
 		if( pOutArray && nArg >= 3 ){
-			PcreStoreByRef(pCtx->pVm, apArg[2], pOutArray);
+			PH7_VmStoreArgByRef(pCtx->pVm, apArg[2], pOutArray);
 			ph7_context_release_value(pCtx, pOutArray);
 		}
 	}
@@ -1136,7 +1107,7 @@ set_count:
 	if( nArg >= 5 ){
 		ph7_value sCount;
 		PH7_MemObjInitFromInt(pCtx->pVm, &sCount, count);
-		PcreStoreByRef(pCtx->pVm, apArg[4], &sCount);
+		PH7_VmStoreArgByRef(pCtx->pVm, apArg[4], &sCount);
 		PH7_MemObjRelease(&sCount);
 	}
 	return PH7_OK;
@@ -1251,7 +1222,7 @@ static int PH7_builtin_preg_replace_callback(ph7_context *pCtx, int nArg, ph7_va
 	if( nArg >= 5 ){
 		ph7_value sCount;
 		PH7_MemObjInitFromInt(pCtx->pVm, &sCount, count);
-		PcreStoreByRef(pCtx->pVm, apArg[4], &sCount);
+		PH7_VmStoreArgByRef(pCtx->pVm, apArg[4], &sCount);
 		PH7_MemObjRelease(&sCount);
 	}
 	return PH7_OK;
