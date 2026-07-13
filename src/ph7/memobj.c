@@ -704,6 +704,72 @@ PH7_PRIVATE ProcMemObjCast PH7_MemObjCastMethod(sxi32 iFlags)
 	return PH7_MemObjToNull;
 }
 /*
+ * Return TRUE only if the entire string held by pValue (optionally surrounded
+ * by whitespace, with an optional sign) is a well-formed PHP numeric string.
+ * This mirrors PHP's is_numeric_string grammar used for is_numeric() and the
+ * loose-comparison numeric gate:
+ *
+ *   [ws] [sign] ( D+ [.D*] | .D+ ) [ (e|E) [sign] D+ ] [ws]   (whole string)
+ *
+ * Implemented directly rather than via SyStrIsNumeric — which returns OK on any
+ * numeric PREFIX (so it wrongly accepts "10abc"/"0x1A"/"0b101") and requires a
+ * leading digit (so it wrongly rejects ".5"/"-.5", valid in PHP). Unlike a
+ * strtod-based classifier this needs no NUL-terminated buffer. Returns FALSE for
+ * a non-string value.
+ */
+PH7_PRIVATE int PH7_MemObjStringIsNumeric(ph7_value *pValue)
+{
+	const char *z, *zEnd;
+	sxu32 n;
+	int bDigit = 0;
+	if( (pValue->iFlags & MEMOBJ_STRING) == 0 ){
+		return 0;
+	}
+	z = (const char *)SyBlobData(&pValue->sBlob);
+	n = SyBlobLength(&pValue->sBlob);
+	if( n == 0 ){
+		return 0;
+	}
+	zEnd = z + n;
+	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisSpace(z[0]) ){
+		z++;
+	}
+	if( z < zEnd && (z[0] == '+' || z[0] == '-') ){
+		z++;
+	}
+	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){
+		z++; bDigit = 1;
+	}
+	if( z < zEnd && z[0] == '.' ){
+		z++;
+		while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){
+			z++; bDigit = 1;
+		}
+	}
+	/* At least one mantissa digit required (rejects "", ".", "+", "e5"). */
+	if( !bDigit ){
+		return 0;
+	}
+	/* Optional exponent — must carry at least one digit (rejects "1e", "1e+"). */
+	if( z < zEnd && (z[0] == 'e' || z[0] == 'E') ){
+		z++;
+		if( z < zEnd && (z[0] == '+' || z[0] == '-') ){
+			z++;
+		}
+		if( z >= zEnd || (unsigned char)z[0] >= 0xc0 || !SyisDigit(z[0]) ){
+			return 0;
+		}
+		while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){
+			z++;
+		}
+	}
+	/* Trailing whitespace allowed; anything else means not a numeric string. */
+	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisSpace(z[0]) ){
+		z++;
+	}
+	return z == zEnd ? 1 : 0;
+}
+/*
  * Check whether the ph7_value is numeric [i.e: int/float/bool] or looks
  * like a numeric number [i.e: if the ph7_value is of type string.].
  * Return TRUE if numeric.FALSE otherwise.
@@ -715,16 +781,8 @@ PH7_PRIVATE sxi32 PH7_MemObjIsNumeric(ph7_value *pObj)
 	}else if( pObj->iFlags & (MEMOBJ_NULL|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES) ){
 		return FALSE;
 	}else if( pObj->iFlags & MEMOBJ_STRING ){
-		SyString sStr;
-		sxi32 rc;
-		SyStringInitFromBuf(&sStr,SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob));
-		if( sStr.nByte <= 0 ){
-			/* Empty string */
-			return FALSE;
-		}
-		/* Check if the string representation looks like a numeric number */
-		rc = SyStrIsNumeric(sStr.zString,sStr.nByte,0,0);
-		return rc == SXRET_OK ? TRUE : FALSE;
+		/* TRUE only if the whole string is a well-formed PHP numeric string. */
+		return PH7_MemObjStringIsNumeric(pObj) ? TRUE : FALSE;
 	}
 	/* NOT REACHED */
 	return FALSE;
@@ -803,6 +861,20 @@ PH7_PRIVATE sxi32 PH7_MemObjToNumeric(ph7_value *pObj)
 		/* Check if the given string looks like a numeric number */
 		if( sString.nByte > 0 ){
 			rc = SyStrIsNumeric(sString.zString,sString.nByte,&bReal,0);
+			if( rc != SXRET_OK && !bReal ){
+				/* SyStrIsNumeric requires a leading digit, so it mis-classifies
+				 * a leading-decimal real such as ".5"/"-.5"/".5e2" (returns
+				 * non-OK with bReal FALSE) — PHP treats these as float. Detect
+				 * that shape so it coerces to real (strtod parses it) instead of
+				 * falling through to the int(0) "not a number" branch below. */
+				const char *z = sString.zString;
+				const char *zEnd = z + sString.nByte;
+				while( z < zEnd && SyisSpace(z[0]) ){ z++; }
+				if( z < zEnd && (z[0] == '+' || z[0] == '-') ){ z++; }
+				if( z < zEnd && z[0] == '.' && (z + 1) < zEnd && SyisDigit(z[1]) ){
+					bReal = TRUE;
+				}
+			}
 		}
 		if( bReal ){
 			PH7_MemObjToReal(&(*pObj));

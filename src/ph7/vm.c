@@ -4550,70 +4550,6 @@ static sxi32 VmCheckReadonlyMutate(ph7_vm *pVm,sxu32 nIdx)
  * Returns SXRET_OK on success (value may have been coerced), PH7_EXCEPTION
  * after throwing TypeError, or PH7_ABORT on fatal error.
  */
-/*
- * PHP-strict numeric-string check used by typed-property enforcement.
- * Returns TRUE only if the entire string (optionally surrounded by
- * whitespace, with optional sign) is a valid numeric literal. Unlike the
- * permissive is_numeric() implementation which accepts leading-numeric
- * strings like "43x", this mirrors PHP's rules for coercing to int/float.
- */
-static int VmStringIsStrictNumeric(ph7_value *pValue)
-{
-	const char *z, *zEnd;
-	sxu32 n;
-	int bDigit = 0;
-	if( (pValue->iFlags & MEMOBJ_STRING) == 0 ){
-		return 0;
-	}
-	z = (const char *)SyBlobData(&pValue->sBlob);
-	n = SyBlobLength(&pValue->sBlob);
-	if( n == 0 ){
-		return 0;
-	}
-	zEnd = z + n;
-	/* PHP's numeric-string grammar (used for int/float coercion), implemented
-	 * directly rather than via SyStrIsNumeric — which requires a leading digit
-	 * (so it rejects ".5"/"-.5", valid in PHP) and accepts a dangling exponent
-	 * ("1e", invalid in PHP). Grammar: [ws] [sign] ( D+ [.D*] | .D+ ) [ (e|E)
-	 * [sign] D+ ] [ws], entire string consumed. */
-	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisSpace(z[0]) ){
-		z++;
-	}
-	if( z < zEnd && (z[0] == '+' || z[0] == '-') ){
-		z++;
-	}
-	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){
-		z++; bDigit = 1;
-	}
-	if( z < zEnd && z[0] == '.' ){
-		z++;
-		while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){
-			z++; bDigit = 1;
-		}
-	}
-	/* At least one mantissa digit required (rejects "", ".", "+", "e5"). */
-	if( !bDigit ){
-		return 0;
-	}
-	/* Optional exponent — must carry at least one digit (rejects "1e", "1e+"). */
-	if( z < zEnd && (z[0] == 'e' || z[0] == 'E') ){
-		z++;
-		if( z < zEnd && (z[0] == '+' || z[0] == '-') ){
-			z++;
-		}
-		if( z >= zEnd || (unsigned char)z[0] >= 0xc0 || !SyisDigit(z[0]) ){
-			return 0;
-		}
-		while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){
-			z++;
-		}
-	}
-	/* Trailing whitespace allowed; anything else means not a numeric string. */
-	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisSpace(z[0]) ){
-		z++;
-	}
-	return z == zEnd ? 1 : 0;
-}
 
 /*
  * Numeric-string classification used by union weak-mode coercion. Returns:
@@ -4921,7 +4857,7 @@ static sxi32 VmEnforceScalarType(ph7_value *pVal, sxu32 nType, int bStrict)
 	}
 	if( (nType == MEMOBJ_INT || nType == MEMOBJ_REAL)
 		&& (pVal->iFlags & MEMOBJ_STRING)
-		&& !VmStringIsStrictNumeric(pVal) ){
+		&& !PH7_MemObjStringIsNumeric(pVal) ){
 		return SXERR_INVALID;
 	}
 	{
@@ -5114,7 +5050,7 @@ static sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pVal
 			 * would hide bugs and diverges from PHP's TypeError. */
 			if( (pAttr->nType == MEMOBJ_INT || pAttr->nType == MEMOBJ_REAL)
 			 && (pValue->iFlags & MEMOBJ_STRING)
-			 && !VmStringIsStrictNumeric(pValue) ){
+			 && !PH7_MemObjStringIsNumeric(pValue) ){
 				return VmThrowPropertyTypeError(pVm,pVmAttr,"string");
 			}
 			xCast(pValue);
@@ -5712,7 +5648,7 @@ static sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value *pVa
 	if( !bStrict
 	 && (pFunc->nReturnType == MEMOBJ_INT || pFunc->nReturnType == MEMOBJ_REAL)
 	 && (pValue->iFlags & MEMOBJ_STRING)
-	 && !VmStringIsStrictNumeric(pValue) ){
+	 && !PH7_MemObjStringIsNumeric(pValue) ){
 		return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,
 			VmScalarTypeName(pFunc->nReturnType,&pFunc->sReturnTypeName,zTypeBuf,sizeof(zTypeBuf)),
 			"string");
