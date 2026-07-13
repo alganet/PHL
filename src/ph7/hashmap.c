@@ -476,24 +476,44 @@ static int HashmapIsIntKey(SyBlob *pKey)
 {
 	const char *zIn  = (const char *)SyBlobData(pKey);
 	const char *zEnd = &zIn[SyBlobLength(pKey)];
+	const char *zDigit;
+	int isNeg = FALSE, nDigit;
+	if( zIn >= zEnd ){
+		return FALSE;
+	}
 	if( (int)(zEnd-zIn) > 1 && zIn[0] == '0' ){
 		/* Octal not decimal number */
 		return FALSE;
 	}
 	if( (zIn[0] == '-' || zIn[0] == '+') && &zIn[1] < zEnd ){
+		isNeg = (zIn[0] == '-');
 		zIn++;
 	}
+	zDigit = zIn;
 	for(;;){
 		if( zIn >= zEnd ){
-			return TRUE;
+			break;
 		}
 		if( (unsigned char)zIn[0] >= 0xc0 /* UTF-8 stream */  || !SyisDigit(zIn[0]) ){
-			break;
+			/* Key does not look like a decimal number */
+			return FALSE;
 		}
 		zIn++;
 	}
-	/* Key does not look like a decimal number */
-	return FALSE;
+	/* An all-digit key that overflows the signed 64-bit range is NOT an integer
+	 * key: php keeps it a string key (its (string)(int)$k === $k round-trip
+	 * fails). Treating it as an int would let PH7_MemObjToInteger saturate it to
+	 * PHP_INT_MAX/MIN and collide with the genuine boundary key. */
+	nDigit = (int)(zEnd - zDigit);
+	if( nDigit < 1 ){
+		/* A lone sign ("-"/"+") */
+		return FALSE;
+	}
+	if( nDigit > 19 ||
+		(nDigit == 19 && SyMemcmp(zDigit, isNeg ? "9223372036854775808" : "9223372036854775807", 19) > 0) ){
+		return FALSE;
+	}
+	return TRUE;
 }
 /*
  * Check if a given key exists in the given hashmap.
