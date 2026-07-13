@@ -941,6 +941,12 @@ static void ReflectFillFuncCommon(ph7_context *pCtx, ph7_value *pInfo, ph7_vm_fu
 	if( SyStringLength(&pFunc->sReturnTypeName) > 0 ){
 		ReflectMapAddStr(pCtx, pInfo, "rettext", SyStringData(&pFunc->sReturnTypeName),
 			(int)SyStringLength(&pFunc->sReturnTypeName));
+	}else if( pFunc->nReturnType == MEMOBJ_VOID ){
+		/* The type-text renderer omits void/never atoms (compile.c notes the
+		 * root fix belongs there); name them here for getReturnType(). */
+		ReflectMapAddStr(pCtx, pInfo, "rettext", "void", sizeof("void")-1);
+	}else if( pFunc->nReturnType == MEMOBJ_NEVER ){
+		ReflectMapAddStr(pCtx, pInfo, "rettext", "never", sizeof("never")-1);
 	}else{
 		ReflectMapAddNull(pCtx, pInfo, "rettext");
 	}
@@ -1680,7 +1686,7 @@ static const char zReflectLib2[] =
 " }"
 " public function getDocComment(){ return false; }"
 " public function hasReturnType(){ $i = $this->__rfinfo(); return $i['rettext'] !== null; }"
-" public function getReturnType(){ return null; }"
+" public function getReturnType(){ $i = $this->__rfinfo(); return __reflect_make_type($i['rettext']); }"
 " public function hasTentativeReturnType(){ return false; }"
 " public function getTentativeReturnType(){ return null; }"
 " public function getNumberOfParameters(){"
@@ -1982,7 +1988,7 @@ static const char zReflectLib2[] =
 "  return $p['typetext'] === 'mixed' || $p['typetext'] === 'null';"
 " }"
 " public function hasType(){ $p = $this->__rpinfo(); return $p['typetext'] !== null; }"
-" public function getType(){ return null; }"
+" public function getType(){ $p = $this->__rpinfo(); return __reflect_make_type($p['typetext']); }"
 " public function getDeclaringFunction(){"
 "  if($this->__m !== null){ return new ReflectionMethod($this->__t, $this->__m); }"
 "  return new ReflectionFunction($this->__t);"
@@ -2116,7 +2122,7 @@ static const char zReflectLib3[] =
 "  return __reflect_prop_default($this->class, $this->name);"
 " }"
 " public function hasType(){ $m = $this->__rpmeta(); return $m['typed']; }"
-" public function getType(){ return null; }"
+" public function getType(){ $m = $this->__rpmeta(); return $m['typed'] ? __reflect_make_type($m['typetext']) : null; }"
 " public function getSettableType(){ return $this->getType(); }"
 " public function getDocComment(){ return false; }"
 " public function getAttributes($name = null, $flags = 0){ return array(); }"
@@ -2168,12 +2174,105 @@ static const char zReflectLib3[] =
 " public function isEnumCase(){ return false; }"
 " public function isDeprecated(){ return false; }"
 " public function hasType(){ $m = $this->__rcmeta(); return $m['typed']; }"
-" public function getType(){ return null; }"
+" public function getType(){ $m = $this->__rcmeta(); return $m['typed'] ? __reflect_make_type($m['typetext']) : null; }"
 " public function getDocComment(){ return false; }"
 " public function getAttributes($name = null, $flags = 0){ return array(); }"
 " public function __toString(){"
 "  return 'Constant [ public '.$this->name.' ]'.\"\\n\";"
 " }"
+"}"
+;
+/*
+ * Chunk 4: the ReflectionType family, built from the engine's canonical
+ * type text ("?int", "string|float", "(A&B)|C" — normalized at compile
+ * time). __reflect_make_type is the internal factory; PHP itself never
+ * lets user code construct these, so the public constructors here are a
+ * recorded PHL-only surface.
+ */
+static const char zReflectLib4[] =
+"abstract class ReflectionType implements Stringable {"
+" protected $__text = '';"
+" protected $__nullable = false;"
+" public function allowsNull(){ return $this->__nullable; }"
+" public function __toString(){ return $this->__text; }"
+"}"
+"class ReflectionNamedType extends ReflectionType {"
+" protected $__tname = '';"
+" public function __construct($name = '', $nullable = false, $text = null){"
+"  $this->__tname = $name;"
+"  $l = strtolower($name);"
+"  $this->__nullable = $nullable || $l === 'null' || $l === 'mixed';"
+"  $this->__text = $text === null ? $name : $text;"
+" }"
+" public function getName(){ return $this->__tname; }"
+" public function isBuiltin(){"
+"  $l = strtolower($this->__tname);"
+"  return in_array($l, array('int','float','string','bool','array','object','mixed',"
+"   'void','never','null','callable','iterable','true','false'), true);"
+" }"
+"}"
+"class ReflectionUnionType extends ReflectionType {"
+" protected $__types = array();"
+" public function __construct($text = '', $nullable = false, $types = array()){"
+"  $this->__text = $text;"
+"  $this->__nullable = $nullable;"
+"  $this->__types = $types;"
+" }"
+" public function getTypes(){ return $this->__types; }"
+"}"
+"class ReflectionIntersectionType extends ReflectionType {"
+" protected $__types = array();"
+" public function __construct($text = '', $types = array()){"
+"  $this->__text = $text;"
+"  $this->__nullable = false;"
+"  $this->__types = $types;"
+" }"
+" public function getTypes(){ return $this->__types; }"
+"}"
+"function __reflect_make_atom($p){"
+" $nullable = false;"
+" if($p !== '' && $p[0] === '?'){ $nullable = true; $p = substr($p, 1); }"
+" if($p !== '' && $p[0] === '('){ $p = substr($p, 1, strlen($p) - 2); }"
+" if(strpos($p, '&') !== false){"
+"  $subs = array();"
+"  foreach(explode('&', $p) as $s){ $subs[] = new ReflectionNamedType($s, false, $s); }"
+"  return new ReflectionIntersectionType($p, $subs);"
+" }"
+" return new ReflectionNamedType($p, $nullable, $nullable ? '?'.$p : $p);"
+"}"
+"function __reflect_make_type($text){"
+" if($text === null || $text === ''){ return null; }"
+" $nullable = false;"
+" $body = $text;"
+" if($body[0] === '?'){ $nullable = true; $body = substr($body, 1); }"
+" $parts = array();"
+" $depth = 0;"
+" $cur = '';"
+" $n = strlen($body);"
+" for($k = 0; $k < $n; $k++){"
+"  $ch = $body[$k];"
+"  if($ch === '('){ $depth++; $cur .= $ch; }"
+"  else if($ch === ')'){ $depth--; $cur .= $ch; }"
+"  else if($ch === '|' && $depth === 0){ $parts[] = $cur; $cur = ''; }"
+"  else{ $cur .= $ch; }"
+" }"
+" $parts[] = $cur;"
+" if(count($parts) > 1){"
+"  $nonNull = array();"
+"  $hasNull = false;"
+"  foreach($parts as $p){"
+"   if(strtolower($p) === 'null'){ $hasNull = true; }"
+"   else{ $nonNull[] = $p; }"
+"  }"
+"  if($hasNull && count($nonNull) === 1 && strpos($nonNull[0], '&') === false){"
+"   return new ReflectionNamedType($nonNull[0], true, '?'.$nonNull[0]);"
+"  }"
+"  $types = array();"
+"  foreach($parts as $p){ $types[] = __reflect_make_atom($p); }"
+"  return new ReflectionUnionType($body, $nullable || $hasNull, $types);"
+" }"
+" if(strpos($body, '&') !== false){ return __reflect_make_atom($body); }"
+" return __reflect_make_atom($nullable ? '?'.$body : $body);"
 "}"
 ;
 /*
@@ -2217,5 +2316,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 	if( rc != SXRET_OK ){
 		return rc;
 	}
-	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib3, sizeof(zReflectLib3)-1);
+	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib3, sizeof(zReflectLib3)-1);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib4, sizeof(zReflectLib4)-1);
 }
