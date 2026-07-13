@@ -1235,9 +1235,10 @@ static int PH7_builtin_strncmp(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Desired comparison length */
 	n  = ph7_value_to_int(apArg[2]);
 	if( n < 0 ){
-		/* Invalid length */
-		ph7_result_int(pCtx,-1);
-		return PH7_OK;
+		/* PHP 8 throws a catchable ValueError for a negative length. */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #3 ($length) must be greater than or equal to 0",
+			ph7_function_name(pCtx));
 	}
 	/* Perform the comparison */
 	z1 = ph7_value_to_string(apArg[0],0);
@@ -1298,9 +1299,10 @@ static int PH7_builtin_strncasecmp(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Desired comparison length */
 	n  = ph7_value_to_int(apArg[2]);
 	if( n < 0 ){
-		/* Invalid length */
-		ph7_result_int(pCtx,-1);
-		return PH7_OK;
+		/* PHP 8 throws a catchable ValueError for a negative length. */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #3 ($length) must be greater than or equal to 0",
+			ph7_function_name(pCtx));
 	}
 	/* Perform the comparison */
 	z1 = ph7_value_to_string(apArg[0],0);
