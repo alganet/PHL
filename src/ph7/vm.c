@@ -7079,6 +7079,26 @@ static void VmForeachStepAbandon(ph7_vm *pVm,ph7_foreach_info *pInfo,ph7_foreach
 	PH7_ClassInstanceUnref(pThis);
 }
 /*
+ * Tear down a HASHMAP-mode foreach step: unhook its private cursor from the
+ * map's active-step registry, free the step, optionally pop it off the info's
+ * step stack, then drop the step's map reference. The single home for this
+ * teardown (the hashmap twin of VmForeachStepAbandon above) — the ordering is
+ * load-bearing: a step freed while still registered is walked by the next
+ * PH7_HashmapUnlinkNode as a recycled pool slot (the SyHash-layout incident
+ * class), and the unregister must precede the unref in case the step held the
+ * map's last reference.
+ */
+static void VmForeachHashmapStepRelease(ph7_vm *pVm,ph7_foreach_info *pInfo,ph7_foreach_step *pStep,int bPop)
+{
+	ph7_hashmap *pMap = pStep->xIter.pMap;
+	PH7_HashmapUnregisterForeachStep(pMap,pStep);
+	SyMemBackendPoolFree(&pVm->sAllocator,pStep);
+	if( bPop ){
+		SySetPop(&pInfo->aStep);
+	}
+	PH7_HashmapUnref(pMap);
+}
+/*
  * Boundary state of one VmByteCodeExec activation (BYTECODE.md stage 1):
  * everything the executor must restore to continue an activation after a
  * nested call returns. pc/pTos are authoritative here only at activation
@@ -11567,7 +11587,7 @@ case PH7_OP_FOREACH_INIT: {
 			/* Prepare the step */
 			pStep->iFlags = pInfo->iFlags;
 			if( pTos->iFlags & MEMOBJ_HASHMAP ){
-				ph7_hashmap *pMap;
+				ph7_hashmap *pMap,*pIterMap;
 				/* COW: For by-reference foreach, eagerly separate the
 				 * source array so mutations don't affect other sharers. */
 				if( (pStep->iFlags & PH7_4EACH_STEP_REF) && pTos->nIdx != SXU32_HIGH ){
@@ -11588,6 +11608,7 @@ case PH7_OP_FOREACH_INIT: {
 					}
 				}
 				pMap = (ph7_hashmap *)pTos->x.pOther;
+				pIterMap = pMap;
 				if( pMap == pVm->pGlobal && (pStep->iFlags & PH7_4EACH_STEP_REF) == 0 ){
 					/* php 8.1: foreach ($GLOBALS as ...) by value iterates a
 					 * SNAPSHOT of the symbol table — globals created inside
@@ -11596,27 +11617,21 @@ case PH7_OP_FOREACH_INIT: {
 					 * map, like php. On OOM fall back to the live map. */
 					ph7_hashmap *pSnap = PH7_NewHashmap(&(*pVm),0,0);
 					if( pSnap && PH7_HashmapDupMaterialized(pMap,pSnap) == SXRET_OK ){
-						PH7_HashmapResetLoopCursor(pSnap);
-						pStep->iFlags |= PH7_4EACH_STEP_HASHMAP;
 						/* The step consumes the snapshot's initial reference */
-						pStep->xIter.pMap = pSnap;
-					}else{
-						if( pSnap ){
-							PH7_HashmapUnref(pSnap);
-						}
-						PH7_HashmapResetLoopCursor(pMap);
-						pStep->iFlags |= PH7_4EACH_STEP_HASHMAP;
-						pStep->xIter.pMap = pMap;
-						pMap->iRef++;
+						pIterMap = pSnap;
+					}else if( pSnap ){
+						PH7_HashmapUnref(pSnap);
 					}
-				}else{
-					/* Reset the internal loop cursor */
-					PH7_HashmapResetLoopCursor(pMap);
-					/* Mark the step */
-					pStep->iFlags |= PH7_4EACH_STEP_HASHMAP;
-					pStep->xIter.pMap = pMap;
+				}
+				pStep->iFlags |= PH7_4EACH_STEP_HASHMAP;
+				pStep->xIter.pMap = pIterMap;
+				if( pIterMap == pMap ){
 					pMap->iRef++;
 				}
+				/* Private cursor + registry (php: nested foreach over one
+				 * array are independent; foreach never moves the internal
+				 * pointer — see PH7_HashmapRegisterForeachStep) */
+				PH7_HashmapRegisterForeachStep(pIterMap,pStep);
 			}else{
 				ph7_class_instance *pThis = (ph7_class_instance *)pTos->x.pOther;
 				ph7_class *pIteratorClass;
@@ -11714,7 +11729,11 @@ case PH7_OP_FOREACH_INIT: {
 		if( pStep ){
 			if( SXRET_OK != SySetPut(&pInfo->aStep,(const void *)&pStep) ){
 				PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"PH7 is running out of memory while preparing the 'foreach' step");
-				SyMemBackendPoolFree(&pVm->sAllocator,pStep);
+				if( pStep->iFlags & PH7_4EACH_STEP_HASHMAP ){
+					VmForeachHashmapStepRelease(&(*pVm),pInfo,pStep,FALSE/*never made it onto aStep*/);
+				}else{
+					SyMemBackendPoolFree(&pVm->sAllocator,pStep);
+				}
 				/* Jump out of the loop */
 				pc = pInstr->iP2 - 1;
 			}
@@ -11738,10 +11757,10 @@ case PH7_OP_FOREACH_STEP: {
 	pFrameLocal = pVm->pFrame;
 	pFrameLocal = VmSkipExceptionFrames(pFrameLocal);
 	if( pStep->iFlags & PH7_4EACH_STEP_HASHMAP ){
-		ph7_hashmap *pMap = pStep->xIter.pMap;
 		ph7_hashmap_node *pNode;
-		/* Extract the current node value */
-		pNode = PH7_HashmapGetNextEntry(pMap);
+		/* Extract the current node via this loop's PRIVATE cursor (php:
+		 * nested foreach over the same array are independent iterations) */
+		pNode = pStep->pCursor;
 		if( pNode == 0 ){
 			/* No more entry to process */
 			pc = pInstr->iP2 - 1; /* Jump to this destination */
@@ -11749,13 +11768,11 @@ case PH7_OP_FOREACH_STEP: {
 				/* Break the reference with the last element */
 				SyHashDeleteEntry(&pFrameLocal->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue),0);
 			}
-			/* Automatically reset the loop cursor */
-			PH7_HashmapResetLoopCursor(pMap);
 			/* Cleanup the mess left behind */
-			SyMemBackendPoolFree(&pVm->sAllocator,pStep);
-			SySetPop(&pInfo->aStep);
-			PH7_HashmapUnref(pMap);
+			VmForeachHashmapStepRelease(&(*pVm),pInfo,pStep,TRUE);
 		}else{
+			/* Advance the private cursor */
+			pStep->pCursor = pNode->pPrev; /* Reverse link */
 			if( (pStep->iFlags & PH7_4EACH_STEP_KEY) && SyStringLength(&pInfo->sKey) > 0 ){
 				ph7_value *pKey = VmExtractMemObj(&(*pVm),&pInfo->sKey,FALSE,TRUE);
 				if( pKey ){

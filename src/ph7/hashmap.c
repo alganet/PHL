@@ -157,6 +157,20 @@ static void HashmapNodeLink(ph7_hashmap *pMap,ph7_hashmap_node *pNode,sxu32 nBuc
 	}else{
 		MACRO_LD_PUSH(pMap->pLast,pNode);
 	}
+	if( pMap->pActiveSteps ){
+		/* Re-arm any live foreach cursor parked past the end: php's by-ref
+		 * foreach iterates the LIVE array, so an element appended while the
+		 * loop stands on the last node (worklist idiom), or after the body
+		 * emptied the map, is still visited. A registered step with a NULL
+		 * cursor is always mid-loop — natural exhaustion unregisters before
+		 * the loop ends. */
+		ph7_foreach_step *pStep;
+		for( pStep = pMap->pActiveSteps ; pStep ; pStep = pStep->pNextActive ){
+			if( pStep->pCursor == 0 ){
+				pStep->pCursor = pNode;
+			}
+		}
+	}
 	++pMap->nEntry;
 }
 /*
@@ -182,6 +196,16 @@ PH7_PRIVATE void PH7_HashmapUnlinkNode(ph7_hashmap_node *pNode,int bRestore)
 	if( pMap->pCur == pNode ){
 		/* Advance the node cursor */
 		pMap->pCur = pMap->pCur->pPrev; /* Reverse link */
+	}
+	if( pMap->pActiveSteps ){
+		/* Advance any live foreach cursor parked on this node (delete during
+		 * live-map iteration: by-ref foreach, $GLOBALS, snapshot fallbacks). */
+		ph7_foreach_step *pStep;
+		for( pStep = pMap->pActiveSteps ; pStep ; pStep = pStep->pNextActive ){
+			if( pStep->pCursor == pNode ){
+				pStep->pCursor = pNode->pPrev; /* Reverse link */
+			}
+		}
 	}
 	/* Unlink from the map list */
 	MACRO_LD_REMOVE(pMap->pLast,pNode);
@@ -1371,10 +1395,33 @@ PH7_PRIVATE sxi32 PH7_HashmapDupMaterialized(ph7_hashmap *pSrc,ph7_hashmap *pDes
 	return SXRET_OK;
 }
 /*
+ * Count the map references held by BY-REFERENCE foreach steps iterating the
+ * given hashmap. php's `foreach ($a as &$v)` iterates the LIVE array —
+ * appends/deletes inside the body are visited — so a by-ref step's retain
+ * must not make writes through the source variable COW-separate away from
+ * the loop's map. By-VALUE steps are deliberately NOT discounted: their
+ * retain is exactly what makes an in-loop write separate, which is php's
+ * iterate-a-snapshot semantic.
+ */
+static sxi32 HashmapByRefStepRefs(ph7_hashmap *pMap)
+{
+	ph7_foreach_step *pStep;
+	sxi32 nRef = 0;
+	for( pStep = pMap->pActiveSteps ; pStep ; pStep = pStep->pNextActive ){
+		if( pStep->iFlags & PH7_4EACH_STEP_REF ){
+			nRef++;
+		}
+	}
+	return nRef;
+}
+/*
  * Copy-on-write separation for arrays.
  * If the hashmap inside pValue has iRef > 1 (shared), duplicate it so that
  * pValue owns a private copy. The original map's refcount is decremented.
  * Returns the (possibly new) hashmap pointer.
+ * References held by active by-ref foreach steps do not count as sharers
+ * (see HashmapByRefStepRefs): writes during `foreach ($a as &$v)` must land
+ * on the live map the loop is walking, like php.
  */
 PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue)
 {
@@ -1383,7 +1430,8 @@ PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue)
 	ph7_value *pBacking;
 	sxu32 nValIdx;
 	int bValueInPool;
-	if( pMap->iRef < 2 ){
+	sxi32 nByRefSteps = pMap->pActiveSteps ? HashmapByRefStepRefs(pMap) : 0;
+	if( pMap->iRef - nByRefSteps < 2 ){
 		/* Sole owner, no separation needed */
 		return pMap;
 	}
@@ -1403,7 +1451,7 @@ PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue)
 			&& (ph7_hashmap *)pBacking->x.pOther == pMap ){
 			/* Undo the stack ref to reveal true sharing count */
 			pMap->iRef--;
-			if( pMap->iRef < 2 ){
+			if( pMap->iRef - nByRefSteps < 2 ){
 				/* After undoing stack ref, sole owner — no separation */
 				pMap->iRef++;
 				return pMap;
@@ -1684,6 +1732,18 @@ PH7_PRIVATE sxi32 PH7_HashmapRelease(ph7_hashmap *pMap,int FreeDS)
 		PH7_VmThrowError(pMap->pVm,0,PH7_CTX_NOTICE,"$GLOBALS is a read-only array,deletion is forbidden");
 		return SXRET_OK;
 	}
+	if( pMap->pActiveSteps ){
+		/* Every node is about to be freed WITHOUT going through
+		 * PH7_HashmapUnlinkNode, so its cursor fixup never runs. Park any
+		 * live foreach cursor on this map (reachable: array_erase() on the
+		 * live map of a by-ref foreach — the CowSeparate discount keeps the
+		 * loop's map writable). A NULL cursor ends the loop cleanly at the
+		 * next step, or resumes on a fresh insert via the link-time re-arm. */
+		ph7_foreach_step *pStep;
+		for( pStep = pMap->pActiveSteps ; pStep ; pStep = pStep->pNextActive ){
+			pStep->pCursor = 0;
+		}
+	}
 	/* Start the release process */
 	n = 0;
 	pEntry = pMap->pFirst;
@@ -1832,12 +1892,36 @@ PH7_PRIVATE sxi32 PH7_HashmapInsertByRef(
 	return rc;
 }
 /*
- * Reset the node cursor of a given hashmap.
+ * Register a foreach step as an active iterator of the given hashmap.
+ * Each foreach owns a PRIVATE cursor (pStep->pCursor) — php semantics:
+ * nested loops over the same array never disturb each other. The map keeps
+ * the list of active steps so PH7_HashmapUnlinkNode can advance any cursor
+ * parked on a node being deleted (live-map iteration: by-ref foreach,
+ * $GLOBALS, OOM snapshot fallbacks).
  */
-PH7_PRIVATE void PH7_HashmapResetLoopCursor(ph7_hashmap *pMap)
+PH7_PRIVATE void PH7_HashmapRegisterForeachStep(ph7_hashmap *pMap,ph7_foreach_step *pStep)
 {
-	/* Reset the loop cursor */
-	pMap->pCur = pMap->pFirst;
+	pStep->pCursor = pMap->pFirst;
+	pStep->pNextActive = pMap->pActiveSteps;
+	pMap->pActiveSteps = pStep;
+}
+/*
+ * Unregister a foreach step from the map's active-iterator list. Must run
+ * before the step is freed AND before the step's map reference is dropped —
+ * a step left on the list after its pool slot is recycled is a use-after-free
+ * on the next unlink fixup (the SyHash-layout incident class).
+ */
+PH7_PRIVATE void PH7_HashmapUnregisterForeachStep(ph7_hashmap *pMap,ph7_foreach_step *pStep)
+{
+	ph7_foreach_step **ppLink = &pMap->pActiveSteps;
+	while( *ppLink ){
+		if( *ppLink == pStep ){
+			*ppLink = pStep->pNextActive;
+			pStep->pNextActive = 0;
+			return;
+		}
+		ppLink = &(*ppLink)->pNextActive;
+	}
 }
 /*
  * Return a pointer to the node currently pointed by the node cursor.

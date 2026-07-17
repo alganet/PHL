@@ -3,8 +3,6 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Array cursor unset operation
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
 // Test array cursor operations to cover hashmap edge cases
@@ -31,7 +29,7 @@ echo "Current after unset: " . current($arr) . "\n";
 --EXPECT--
 Current before unset: 2
 Array after unset: a => 1 c => 3 
-Current after unset: 1
+Current after unset: 3
 --CLEAN--
 <?php
 unset($arr, $current);
