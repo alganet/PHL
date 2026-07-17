@@ -104,20 +104,20 @@ Coverage: 1108/1119 lines (99.02%)
 |      - |   94 | ` * Expand the largest integer supported.` |
 |      - |   95 | ` * Note that PH7 deals with 64-bit integer for all platforms.` |
 |      - |   96 | ` */` |
-|     64 |   97 | `static void PH7_INTMAX_Const(ph7_value *pVal,void *pUnused)` |
+|     66 |   97 | `static void PH7_INTMAX_Const(ph7_value *pVal,void *pUnused)` |
 |      3 |   98 | `{` |
-|     32 |   99 | `	SXUNUSED(pUnused);` |
-|     67 |  100 | `	ph7_value_int64(pVal,SXI64_HIGH);` |
-|     67 |  101 | `}` |
+|     33 |   99 | `	SXUNUSED(pUnused);` |
+|     69 |  100 | `	ph7_value_int64(pVal,SXI64_HIGH);` |
+|     69 |  101 | `}` |
 |      - |  102 | `/*` |
 |      - |  103 | ` * PHP_INT_MIN (php 7.0)` |
 |      - |  104 | ` * Expand the smallest integer supported.` |
 |      - |  105 | ` */` |
-|     22 |  106 | `static void PH7_INTMIN_Const(ph7_value *pVal,void *pUnused)` |
+|     24 |  106 | `static void PH7_INTMIN_Const(ph7_value *pVal,void *pUnused)` |
 |      1 |  107 | `{` |
-|     11 |  108 | `	SXUNUSED(pUnused);` |
-|     23 |  109 | `	ph7_value_int64(pVal,SMALLEST_INT64);` |
-|     23 |  110 | `}` |
+|     12 |  108 | `	SXUNUSED(pUnused);` |
+|     25 |  109 | `	ph7_value_int64(pVal,SMALLEST_INT64);` |
+|     25 |  110 | `}` |
 |      - |  111 | `/*` |
 |      - |  112 | ` * PHP_INT_SIZE` |
 |      - |  113 | ` * Expand the size in bytes of a 64-bit integer.` |
@@ -251,19 +251,19 @@ Coverage: 1108/1119 lines (99.02%)
 |      - |  241 | ` * __FILE__` |
 |      - |  242 | ` *  Path of the processed script.` |
 |      - |  243 | ` */` |
-|   2248 |  244 | `static void PH7_FILE_Const(ph7_value *pVal,void *pUserData)` |
+|   2262 |  244 | `static void PH7_FILE_Const(ph7_value *pVal,void *pUserData)` |
 |      5 |  245 | `{` |
-|   2253 |  246 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
+|   2267 |  246 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
 |      - |  247 | `	SyString *pFile;` |
 |      - |  248 | `	/* Peek the top entry */` |
-|   2253 |  249 | `	pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
-|   2253 |  250 | `	if( pFile == 0 ){` |
+|   2267 |  249 | `	pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
+|   2267 |  250 | `	if( pFile == 0 ){` |
 |      - |  251 | `		/* Expand the magic word: ":MEMORY:" */` |
 |      3 |  252 | `		ph7_value_string(pVal,":MEMORY:",(int)sizeof(":MEMORY:")-1);` |
 |      2 |  253 | `	}else{` |
-|   2251 |  254 | `		ph7_value_string(pVal,pFile->zString,pFile->nByte);` |
+|   2265 |  254 | `		ph7_value_string(pVal,pFile->zString,pFile->nByte);` |
 |      - |  255 | `	}` |
-|   2253 |  256 | `}` |
+|   2267 |  256 | `}` |
 |      - |  257 | `/*` |
 |      - |  258 | ` * __DIR__` |
 |      - |  259 | ` *  Directory holding the processed script.` |
@@ -1139,20 +1139,20 @@ Coverage: 1108/1119 lines (99.02%)
 |      - | 1129 | ` * PATHINFO_EXTENSION` |
 |      - | 1130 | ` *  Expand 3.` |
 |      - | 1131 | ` */` |
-|   6380 | 1132 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
+|   6382 | 1132 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1133 | `{` |
-|   3190 | 1134 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6385 | 1135 | `	ph7_value_int(pVal,3);` |
-|   6385 | 1136 | `}` |
+|   3191 | 1134 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6387 | 1135 | `	ph7_value_int(pVal,3);` |
+|   6387 | 1136 | `}` |
 |      - | 1137 | `/*` |
 |      - | 1138 | ` * PATHINFO_FILENAME` |
 |      - | 1139 | ` *  Expand 4.` |
 |      - | 1140 | ` */` |
-|   6372 | 1141 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
+|   6374 | 1141 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1142 | `{` |
-|   3186 | 1143 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6377 | 1144 | `	ph7_value_int(pVal,4);` |
-|   6377 | 1145 | `}` |
+|   3187 | 1143 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6379 | 1144 | `	ph7_value_int(pVal,4);` |
+|   6379 | 1145 | `}` |
 |      - | 1146 | `/*` |
 |      - | 1147 | ` * ASSERT_ACTIVE.` |
 |      - | 1148 | ` *  PHP ASSERT_ACTIVE = 1` |
