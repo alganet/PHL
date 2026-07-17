@@ -21,37 +21,37 @@ Coverage: 650/706 lines (92.07%)
 |       - |   11 | ` * Create an empty class.` |
 |       - |   12 | ` * Return a pointer to a raw class (ph7_class instance) on success. NULL otherwise.` |
 |       - |   13 | ` */` |
-|  259356 |   14 | `PH7_PRIVATE ph7_class * PH7_NewRawClass(ph7_vm *pVm,const SyString *pName,sxu32 nLine)` |
+|  260294 |   14 | `PH7_PRIVATE ph7_class * PH7_NewRawClass(ph7_vm *pVm,const SyString *pName,sxu32 nLine)` |
 |       5 |   15 | `{` |
 |       - |   16 | `	ph7_class *pClass;` |
 |       - |   17 | `	char *zName;` |
 |       - |   18 | `	/* Allocate a new instance */` |
-|  259361 |   19 | `	pClass = (ph7_class *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_class));` |
-|  259361 |   20 | `	if( pClass == 0 ){` |
+|  260299 |   19 | `	pClass = (ph7_class *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_class));` |
+|  260299 |   20 | `	if( pClass == 0 ){` |
 |     ! 0 |   21 | `		return 0;` |
 |       - |   22 | `	}` |
 |       - |   23 | `	/* Zero the structure */` |
-|  259361 |   24 | `	SyZero(pClass,sizeof(ph7_class));` |
+|  260299 |   24 | `	SyZero(pClass,sizeof(ph7_class));` |
 |       - |   25 | `	/* Duplicate class name */` |
-|  259361 |   26 | `	zName = SyMemBackendStrDup(&pVm->sAllocator,pName->zString,pName->nByte);` |
-|  259361 |   27 | `	if( zName == 0 ){` |
+|  260299 |   26 | `	zName = SyMemBackendStrDup(&pVm->sAllocator,pName->zString,pName->nByte);` |
+|  260299 |   27 | `	if( zName == 0 ){` |
 |     ! 0 |   28 | `		SyMemBackendPoolFree(&pVm->sAllocator,pClass);` |
 |     ! 0 |   29 | `		return 0;` |
 |       - |   30 | `	}` |
 |       - |   31 | `	/* Initialize fields */` |
-|  259361 |   32 | `	SyStringInitFromBuf(&pClass->sName,zName,pName->nByte);` |
-|  259361 |   33 | `	SyHashInit(&pClass->hMethod,&pVm->sAllocator,0,0);` |
-|  259361 |   34 | `	SyHashInit(&pClass->hAttr,&pVm->sAllocator,0,0);` |
-|  259361 |   35 | `	SyHashInit(&pClass->hDerived,&pVm->sAllocator,0,0);` |
-|  259361 |   36 | `	SySetInit(&pClass->aInterface,&pVm->sAllocator,sizeof(ph7_class *));` |
-|  259361 |   37 | `	SySetInit(&pClass->aTrait,&pVm->sAllocator,sizeof(ph7_class *));` |
-|  259361 |   38 | `	SySetInit(&pClass->aAttrs,&pVm->sAllocator,sizeof(ph7_attribute));` |
-|  259361 |   39 | `	pClass->nLine = nLine;` |
-|  259361 |   40 | `	if( pVm->bCompilingBuiltin ){` |
+|  260299 |   32 | `	SyStringInitFromBuf(&pClass->sName,zName,pName->nByte);` |
+|  260299 |   33 | `	SyHashInit(&pClass->hMethod,&pVm->sAllocator,0,0);` |
+|  260299 |   34 | `	SyHashInit(&pClass->hAttr,&pVm->sAllocator,0,0);` |
+|  260299 |   35 | `	SyHashInit(&pClass->hDerived,&pVm->sAllocator,0,0);` |
+|  260299 |   36 | `	SySetInit(&pClass->aInterface,&pVm->sAllocator,sizeof(ph7_class *));` |
+|  260299 |   37 | `	SySetInit(&pClass->aTrait,&pVm->sAllocator,sizeof(ph7_class *));` |
+|  260299 |   38 | `	SySetInit(&pClass->aAttrs,&pVm->sAllocator,sizeof(ph7_attribute));` |
+|  260299 |   39 | `	pClass->nLine = nLine;` |
+|  260299 |   40 | `	if( pVm->bCompilingBuiltin ){` |
 |       - |   41 | `		/* Defined by an embedded builtin chunk: internal, no defining file.` |
 |       - |   42 | `		 * Class compilers merge further flags with \|= so this survives. */` |
-|  257687 |   43 | `		pClass->iFlags \|= PH7_CLASS_INTERNAL;` |
-|  128846 |   44 | `	}else{` |
+|  258625 |   43 | `		pClass->iFlags \|= PH7_CLASS_INTERNAL;` |
+|  129315 |   44 | `	}else{` |
 |       - |   45 | `		/* Alias the VM-lifetime path dup on top of the include stack */` |
 |    1679 |   46 | `		SyString *pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
 |    1679 |   47 | `		if( pFile ){` |
@@ -59,46 +59,46 @@ Coverage: 650/706 lines (92.07%)
 |     837 |   49 | `		}` |
 |       - |   50 | `	}` |
 |       - |   51 | `	/* All done */` |
-|  259361 |   52 | `	return pClass;` |
-|  129683 |   53 | `}` |
+|  260299 |   52 | `	return pClass;` |
+|  130152 |   53 | `}` |
 |       - |   54 | `/*` |
 |       - |   55 | ` * Allocate and initialize a new class attribute.` |
 |       - |   56 | ` * Return a pointer to the class attribute on success. NULL otherwise.` |
 |       - |   57 | ` */` |
-|  350956 |   58 | `PH7_PRIVATE ph7_class_attr * PH7_NewClassAttr(ph7_vm *pVm,const SyString *pName,sxu32 nLine,sxi32 iProtection,sxi32 iFlags)` |
+|  352230 |   58 | `PH7_PRIVATE ph7_class_attr * PH7_NewClassAttr(ph7_vm *pVm,const SyString *pName,sxu32 nLine,sxi32 iProtection,sxi32 iFlags)` |
 |       5 |   59 | `{` |
 |       - |   60 | `	ph7_class_attr *pAttr;` |
 |       - |   61 | `	char *zName;` |
-|  350961 |   62 | `	pAttr = (ph7_class_attr *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_class_attr));` |
-|  350961 |   63 | `	if( pAttr == 0 ){` |
+|  352235 |   62 | `	pAttr = (ph7_class_attr *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_class_attr));` |
+|  352235 |   63 | `	if( pAttr == 0 ){` |
 |     ! 0 |   64 | `		return 0;` |
 |       - |   65 | `	}` |
 |       - |   66 | `	/* Zero the structure */` |
-|  350961 |   67 | `	SyZero(pAttr,sizeof(ph7_class_attr));` |
-|  350961 |   68 | `	SySetInit(&pAttr->aAttrs,&pVm->sAllocator,sizeof(ph7_attribute));` |
+|  352235 |   67 | `	SyZero(pAttr,sizeof(ph7_class_attr));` |
+|  352235 |   68 | `	SySetInit(&pAttr->aAttrs,&pVm->sAllocator,sizeof(ph7_attribute));` |
 |       - |   69 | `	/* Duplicate attribute name */` |
-|  350961 |   70 | `	zName = SyMemBackendStrDup(&pVm->sAllocator,pName->zString,pName->nByte);` |
-|  350961 |   71 | `	if( zName == 0 ){` |
+|  352235 |   70 | `	zName = SyMemBackendStrDup(&pVm->sAllocator,pName->zString,pName->nByte);` |
+|  352235 |   71 | `	if( zName == 0 ){` |
 |     ! 0 |   72 | `		SyMemBackendPoolFree(&pVm->sAllocator,pAttr);` |
 |     ! 0 |   73 | `		return 0;` |
 |       - |   74 | `	}` |
 |       - |   75 | `	/* Initialize fields */` |
-|  350961 |   76 | `	SySetInit(&pAttr->aByteCode,&pVm->sAllocator,sizeof(VmInstr));` |
-|  350961 |   77 | `	SySetInit(&pAttr->aUnionAlts,&pVm->sAllocator,sizeof(ph7_type_alt));` |
-|  350961 |   78 | `	SyStringInitFromBuf(&pAttr->sName,zName,pName->nByte);` |
-|  350961 |   79 | `	pAttr->iProtection = iProtection;` |
-|  350961 |   80 | `	pAttr->nIdx = SXU32_HIGH;` |
-|  350961 |   81 | `	pAttr->iFlags = iFlags;` |
-|  350961 |   82 | `	pAttr->nLine = nLine;` |
-|  350961 |   83 | `	return pAttr;` |
-|  175483 |   84 | `}` |
+|  352235 |   76 | `	SySetInit(&pAttr->aByteCode,&pVm->sAllocator,sizeof(VmInstr));` |
+|  352235 |   77 | `	SySetInit(&pAttr->aUnionAlts,&pVm->sAllocator,sizeof(ph7_type_alt));` |
+|  352235 |   78 | `	SyStringInitFromBuf(&pAttr->sName,zName,pName->nByte);` |
+|  352235 |   79 | `	pAttr->iProtection = iProtection;` |
+|  352235 |   80 | `	pAttr->nIdx = SXU32_HIGH;` |
+|  352235 |   81 | `	pAttr->iFlags = iFlags;` |
+|  352235 |   82 | `	pAttr->nLine = nLine;` |
+|  352235 |   83 | `	return pAttr;` |
+|  176120 |   84 | `}` |
 |       - |   85 | `/*` |
 |       - |   86 | ` * Allocate and initialize a new class method.` |
 |       - |   87 | ` * Return a pointer to the class method on success. NULL otherwise` |
 |       - |   88 | ` * This function associate with the newly created method an automatically generated` |
 |       - |   89 | ` * random unique name.` |
 |       - |   90 | ` */` |
-| 1374410 |   91 | `PH7_PRIVATE ph7_class_method * PH7_NewClassMethod(ph7_vm *pVm,ph7_class *pClass,const SyString *pName,sxu32 nLine,` |
+| 1379408 |   91 | `PH7_PRIVATE ph7_class_method * PH7_NewClassMethod(ph7_vm *pVm,ph7_class *pClass,const SyString *pName,sxu32 nLine,` |
 |       - |   92 | `	sxi32 iProtection,sxi32 iFlags,sxi32 iFuncFlags)` |
 |       5 |   93 | `{` |
 |       - |   94 | `	ph7_class_method *pMeth;` |
@@ -108,28 +108,28 @@ Coverage: 650/706 lines (92.07%)
 |       - |   98 | `	char *zName;` |
 |       - |   99 | `	sxu32 nByte;` |
 |       - |  100 | `	/* Allocate a new class method instance */` |
-| 1374415 |  101 | `	pMeth = (ph7_class_method *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_class_method));` |
-| 1374415 |  102 | `	if( pMeth == 0 ){` |
+| 1379413 |  101 | `	pMeth = (ph7_class_method *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_class_method));` |
+| 1379413 |  102 | `	if( pMeth == 0 ){` |
 |     ! 0 |  103 | `		return 0;` |
 |       - |  104 | `	}` |
 |       - |  105 | `	/* Zero the structure */` |
-| 1374415 |  106 | `	SyZero(pMeth,sizeof(ph7_class_method));` |
+| 1379413 |  106 | `	SyZero(pMeth,sizeof(ph7_class_method));` |
 |       - |  107 | `	/* Check for an already installed method with the same name */` |
-| 1374415 |  108 | `	pEntry = SyHashGet(&pClass->hMethod,(const void *)pName->zString,pName->nByte);` |
-| 1374415 |  109 | `	if( pEntry == 0 ){` |
+| 1379413 |  108 | `	pEntry = SyHashGet(&pClass->hMethod,(const void *)pName->zString,pName->nByte);` |
+| 1379413 |  109 | `	if( pEntry == 0 ){` |
 |       - |  110 | `		/* Associate an unique VM name to this method */` |
-| 1374413 |  111 | `		nByte = sizeof(zSalt) + pName->nByte + SyStringLength(&pClass->sName)+sizeof(char)*7/*[[__'\0'*/;` |
-| 1374413 |  112 | `		zName = (char *)SyMemBackendAlloc(&pVm->sAllocator,nByte);` |
-| 1374413 |  113 | `		if( zName == 0 ){` |
+| 1379411 |  111 | `		nByte = sizeof(zSalt) + pName->nByte + SyStringLength(&pClass->sName)+sizeof(char)*7/*[[__'\0'*/;` |
+| 1379411 |  112 | `		zName = (char *)SyMemBackendAlloc(&pVm->sAllocator,nByte);` |
+| 1379411 |  113 | `		if( zName == 0 ){` |
 |     ! 0 |  114 | `			SyMemBackendPoolFree(&pVm->sAllocator,pMeth);` |
 |     ! 0 |  115 | `			return 0;` |
 |       - |  116 | `		}` |
-| 1374413 |  117 | `		pNamePtr = &pMeth->sVmName;` |
+| 1379411 |  117 | `		pNamePtr = &pMeth->sVmName;` |
 |       - |  118 | `		/* Generate a random string */` |
-| 1374413 |  119 | `		PH7_VmRandomString(&(*pVm),zSalt,sizeof(zSalt));` |
-| 1374413 |  120 | `		pNamePtr->nByte = SyBufferFormat(zName,nByte,"[__%z@%z_%.*s]",&pClass->sName,pName,sizeof(zSalt),zSalt);` |
-| 1374413 |  121 | `		pNamePtr->zString = zName;` |
-|  687209 |  122 | `	}else{` |
+| 1379411 |  119 | `		PH7_VmRandomString(&(*pVm),zSalt,sizeof(zSalt));` |
+| 1379411 |  120 | `		pNamePtr->nByte = SyBufferFormat(zName,nByte,"[__%z@%z_%.*s]",&pClass->sName,pName,sizeof(zSalt),zSalt);` |
+| 1379411 |  121 | `		pNamePtr->zString = zName;` |
+|  689708 |  122 | `	}else{` |
 |       - |  123 | `		/* Method is condidate for 'overloading' */` |
 |       3 |  124 | `		ph7_class_method *pCurrent = (ph7_class_method *)pEntry->pUserData;` |
 |       3 |  125 | `		pNamePtr = &pMeth->sVmName;` |
@@ -137,9 +137,9 @@ Coverage: 650/706 lines (92.07%)
 |       3 |  127 | `		SyStringDupPtr(pNamePtr,&pCurrent->sVmName);` |
 |       3 |  128 | `		zName = (char *)pNamePtr->zString;` |
 |       - |  129 | `	}` |
-| 1374415 |  130 | `	if( iProtection != PH7_CLASS_PROT_PUBLIC ){` |
-|   57730 |  131 | `		if( (pName->nByte == sizeof("__destruct") - 1 && SyMemcmp(pName->zString,"__destruct",sizeof("__destruct") - 1 ) == 0)` |
-|   57735 |  132 | `			\|\| SyStringCmp(pName,&pClass->sName,SyMemcmp) == 0 ){` |
+| 1379413 |  130 | `	if( iProtection != PH7_CLASS_PROT_PUBLIC ){` |
+|   57940 |  131 | `		if( (pName->nByte == sizeof("__destruct") - 1 && SyMemcmp(pName->zString,"__destruct",sizeof("__destruct") - 1 ) == 0)` |
+|   57945 |  132 | `			\|\| SyStringCmp(pName,&pClass->sName,SyMemcmp) == 0 ){` |
 |       - |  133 | `				/* Switch to public visibility for destructors and legacy class-name` |
 |       - |  134 | `				 * constructors (the engine invokes destructors internally, bypassing` |
 |       - |  135 | `				 * visibility either way). __construct KEEPS its declared visibility` |
@@ -148,74 +148,74 @@ Coverage: 650/706 lines (92.07%)
 |       - |  138 | `				 * and ReflectionClass::isInstantiable()/newInstance() now see it. */` |
 |     ! 0 |  139 | `				iProtection = PH7_CLASS_PROT_PUBLIC;` |
 |     ! 0 |  140 | `		}` |
-|   28865 |  141 | `	}` |
+|   28970 |  141 | `	}` |
 |       - |  142 | `	/* Initialize method fields */` |
-| 1374415 |  143 | `	pMeth->iProtection = iProtection;` |
-| 1374415 |  144 | `	pMeth->iFlags = iFlags;` |
-| 1374415 |  145 | `	pMeth->nLine = nLine;` |
-| 2061620 |  146 | `	PH7_VmInitFuncState(&(*pVm),&pMeth->sFunc,&zName[sizeof(char)*4/*[__@*/+SyStringLength(&pClass->sName)],` |
-| 1374410 |  147 | `		pName->nByte,iFuncFlags\|VM_FUNC_CLASS_METHOD,pClass);` |
-| 1374415 |  148 | `	return pMeth;` |
-|  687210 |  149 | `}` |
+| 1379413 |  143 | `	pMeth->iProtection = iProtection;` |
+| 1379413 |  144 | `	pMeth->iFlags = iFlags;` |
+| 1379413 |  145 | `	pMeth->nLine = nLine;` |
+| 2069117 |  146 | `	PH7_VmInitFuncState(&(*pVm),&pMeth->sFunc,&zName[sizeof(char)*4/*[__@*/+SyStringLength(&pClass->sName)],` |
+| 1379408 |  147 | `		pName->nByte,iFuncFlags\|VM_FUNC_CLASS_METHOD,pClass);` |
+| 1379413 |  148 | `	return pMeth;` |
+|  689709 |  149 | `}` |
 |       - |  150 | `/*` |
 |       - |  151 | ` * Check if the given name have a class method associated with it.` |
 |       - |  152 | ` * Return the desired method [i.e: ph7_class_method instance] on success. NULL otherwise.` |
 |       - |  153 | ` */` |
-|  313720 |  154 | `PH7_PRIVATE ph7_class_method * PH7_ClassExtractMethod(ph7_class *pClass,const char *zName,sxu32 nByte)` |
+|  314742 |  154 | `PH7_PRIVATE ph7_class_method * PH7_ClassExtractMethod(ph7_class *pClass,const char *zName,sxu32 nByte)` |
 |       5 |  155 | `{` |
 |       - |  156 | `	SyHashEntry *pEntry;` |
 |       - |  157 | `	/* Perform a hash lookup */` |
-|  313725 |  158 | `	pEntry = SyHashGet(&pClass->hMethod,(const void *)zName,nByte);` |
-|  313725 |  159 | `	if( pEntry == 0 ){` |
+|  314747 |  158 | `	pEntry = SyHashGet(&pClass->hMethod,(const void *)zName,nByte);` |
+|  314747 |  159 | `	if( pEntry == 0 ){` |
 |       - |  160 | `		/* No such entry */` |
 |    6755 |  161 | `		return 0;` |
 |       - |  162 | `	}` |
 |       - |  163 | `	/* Point to the desired method */` |
-|  306975 |  164 | `	return (ph7_class_method *)pEntry->pUserData;` |
-|  156865 |  165 | `}` |
+|  307997 |  164 | `	return (ph7_class_method *)pEntry->pUserData;` |
+|  157376 |  165 | `}` |
 |       - |  166 | `/*` |
 |       - |  167 | ` * Check if the given name is a class attribute.` |
 |       - |  168 | ` * Return the desired attribute [i.e: ph7_class_attr instance] on success.NULL otherwise.` |
 |       - |  169 | ` */` |
-|  208834 |  170 | `PH7_PRIVATE ph7_class_attr * PH7_ClassExtractAttribute(ph7_class *pClass,const char *zName,sxu32 nByte)` |
+|  209590 |  170 | `PH7_PRIVATE ph7_class_attr * PH7_ClassExtractAttribute(ph7_class *pClass,const char *zName,sxu32 nByte)` |
 |       5 |  171 | `{` |
 |       - |  172 | `	SyHashEntry *pEntry;` |
 |       - |  173 | `	/* Perform a hash lookup */` |
-|  208839 |  174 | `	pEntry = SyHashGet(&pClass->hAttr,(const void *)zName,nByte);` |
-|  208839 |  175 | `	if( pEntry == 0 ){` |
+|  209595 |  174 | `	pEntry = SyHashGet(&pClass->hAttr,(const void *)zName,nByte);` |
+|  209595 |  175 | `	if( pEntry == 0 ){` |
 |       - |  176 | `		/* No such entry */` |
-|  208613 |  177 | `		return 0;` |
+|  209369 |  177 | `		return 0;` |
 |       - |  178 | `	}` |
 |       - |  179 | `	/* Point to the desierd method */` |
 |     231 |  180 | `	return (ph7_class_attr *)pEntry->pUserData;` |
-|  104422 |  181 | `}` |
+|  104800 |  181 | `}` |
 |       - |  182 | `/*` |
 |       - |  183 | ` * Install a class attribute in the corresponding container.` |
 |       - |  184 | ` * Return SXRET_OK on success. Any other return value indicates failure.` |
 |       - |  185 | ` */` |
-|  350956 |  186 | `PH7_PRIVATE sxi32 PH7_ClassInstallAttr(ph7_class *pClass,ph7_class_attr *pAttr)` |
+|  352230 |  186 | `PH7_PRIVATE sxi32 PH7_ClassInstallAttr(ph7_class *pClass,ph7_class_attr *pAttr)` |
 |       5 |  187 | `{` |
-|  350961 |  188 | `	SyString *pName = &pAttr->sName;` |
+|  352235 |  188 | `	SyString *pName = &pAttr->sName;` |
 |       - |  189 | `	sxi32 rc;` |
 |       - |  190 | `	/* Remember where this attribute was originally declared so that later` |
 |       - |  191 | `	 * inheritance/trait copies still know the declaring class (needed for` |
 |       - |  192 | `	 * PHP-compatible error messages on typed properties). */` |
-|  350961 |  193 | `	if( pAttr->pDeclClass == 0 ){` |
-|  350961 |  194 | `		pAttr->pDeclClass = pClass;` |
-|  175478 |  195 | `	}` |
-|  350961 |  196 | `	rc = SyHashInsert(&pClass->hAttr,(const void *)pName->zString,pName->nByte,pAttr);` |
-|  350961 |  197 | `	return rc;` |
+|  352235 |  193 | `	if( pAttr->pDeclClass == 0 ){` |
+|  352235 |  194 | `		pAttr->pDeclClass = pClass;` |
+|  176115 |  195 | `	}` |
+|  352235 |  196 | `	rc = SyHashInsert(&pClass->hAttr,(const void *)pName->zString,pName->nByte,pAttr);` |
+|  352235 |  197 | `	return rc;` |
 |       5 |  198 | `}` |
 |       - |  199 | `/*` |
 |       - |  200 | ` * Install a class method in the corresponding container.` |
 |       - |  201 | ` * Return SXRET_OK on success. Any other return value indicates failure.` |
 |       - |  202 | ` */` |
-| 1374398 |  203 | `PH7_PRIVATE sxi32 PH7_ClassInstallMethod(ph7_class *pClass,ph7_class_method *pMeth)` |
+| 1379396 |  203 | `PH7_PRIVATE sxi32 PH7_ClassInstallMethod(ph7_class *pClass,ph7_class_method *pMeth)` |
 |       5 |  204 | `{` |
-| 1374403 |  205 | `	SyString *pName = &pMeth->sFunc.sName;` |
+| 1379401 |  205 | `	SyString *pName = &pMeth->sFunc.sName;` |
 |       - |  206 | `	sxi32 rc;` |
-| 1374403 |  207 | `	rc = SyHashInsert(&pClass->hMethod,(const void *)pName->zString,pName->nByte,pMeth);` |
-| 1374403 |  208 | `	return rc;` |
+| 1379401 |  207 | `	rc = SyHashInsert(&pClass->hMethod,(const void *)pName->zString,pName->nByte,pMeth);` |
+| 1379401 |  208 | `	return rc;` |
 |       5 |  209 | `}` |
 |       - |  210 | `/*` |
 |       - |  211 | ` * Method-override compatibility (variance) checking.` |
@@ -240,15 +240,15 @@ Coverage: 650/706 lines (92.07%)
 |       - |  230 | ` * resolved by a direct, autoload-free hClass lookup: a miss (forward reference,` |
 |       - |  231 | ` * namespaced, or not-yet-loaded) yields OVT_SKIP, which the caller accepts.` |
 |       - |  232 | ` */` |
-|   30908 |  233 | `static int OoClassifyOverrideType(ph7_vm *pVm, sxu32 nType, const SyString *pClass,` |
+|   31020 |  233 | `static int OoClassifyOverrideType(ph7_vm *pVm, sxu32 nType, const SyString *pClass,` |
 |       - |  234 | `	int bUnion, ph7_class **ppClass)` |
 |       5 |  235 | `{` |
-|   30913 |  236 | `	*ppClass = 0;` |
-|   30913 |  237 | `	if( bUnion ){` |
+|   31025 |  236 | `	*ppClass = 0;` |
+|   31025 |  237 | `	if( bUnion ){` |
 |       3 |  238 | `		return OVT_SKIP; /* union/intersection — full lattice, skip */` |
 |       - |  239 | `	}` |
-|   30911 |  240 | `	if( nType == 0 ){` |
-|   30837 |  241 | `		return OVT_NONE; /* no declared type */` |
+|   31023 |  240 | `	if( nType == 0 ){` |
+|   30949 |  241 | `		return OVT_NONE; /* no declared type */` |
 |       - |  242 | `	}` |
 |      78 |  243 | `	if( nType == SXU32_HIGH ){` |
 |       - |  244 | `		/* A class name OR a pseudo-type stored as a name atom. Skip every pseudo` |
@@ -280,7 +280,7 @@ Coverage: 650/706 lines (92.07%)
 |       - |  270 | `	/* MEMOBJ_OBJ (object — subtypes against classes), MEMOBJ_VOID/NULL/RES,` |
 |       - |  271 | `	 * or anything unexpected: skip. */` |
 |      26 |  272 | `	return OVT_SKIP;` |
-|   15459 |  273 | `}` |
+|   15515 |  273 | `}` |
 |       - |  274 |  |
 |       - |  275 | `/*` |
 |       - |  276 | ` * A declared type normalized for override comparison: the raw type code, the` |
@@ -294,14 +294,14 @@ Coverage: 650/706 lines (92.07%)
 |       - |  284 | `	int bUnion;` |
 |       - |  285 | `	int bNullable;` |
 |       - |  286 | `};` |
-|   30872 |  287 | `static OvType OoTypeFromReturn(ph7_vm_func *pF)` |
+|   30984 |  287 | `static OvType OoTypeFromReturn(ph7_vm_func *pF)` |
 |       5 |  288 | `{` |
 |       - |  289 | `	OvType t;` |
-|   30877 |  290 | `	t.nType = pF->nReturnType;` |
-|   30877 |  291 | `	t.pClass = &pF->sReturnClass;` |
-|   30877 |  292 | `	t.bUnion = SySetUsed(&pF->aReturnUnion) > 0;` |
-|   30877 |  293 | `	t.bNullable = (pF->iFlags & VM_FUNC_RETURN_NULLABLE) != 0;` |
-|   30877 |  294 | `	return t;` |
+|   30989 |  290 | `	t.nType = pF->nReturnType;` |
+|   30989 |  291 | `	t.pClass = &pF->sReturnClass;` |
+|   30989 |  292 | `	t.bUnion = SySetUsed(&pF->aReturnUnion) > 0;` |
+|   30989 |  293 | `	t.bNullable = (pF->iFlags & VM_FUNC_RETURN_NULLABLE) != 0;` |
+|   30989 |  294 | `	return t;` |
 |       5 |  295 | `}` |
 |      36 |  296 | `static OvType OoTypeFromArg(ph7_vm_func_arg *pA)` |
 |       3 |  297 | `{` |
@@ -318,12 +318,12 @@ Coverage: 650/706 lines (92.07%)
 |       - |  308 | ` * 0 for a parameter (child must be ⊇ parent). Returns FALSE (accept) on any` |
 |       - |  309 | ` * skipped/ambiguous shape.` |
 |       - |  310 | ` */` |
-|   15454 |  311 | `static int OoOverrideTypeBad(ph7_vm *pVm, OvType parent, OvType child, int bCovariant)` |
+|   15510 |  311 | `static int OoOverrideTypeBad(ph7_vm *pVm, OvType parent, OvType child, int bCovariant)` |
 |       5 |  312 | `{` |
 |       - |  313 | `	ph7_class *pParentCls, *pChildCls;` |
-|   15459 |  314 | `	int kP = OoClassifyOverrideType(pVm, parent.nType, parent.pClass, parent.bUnion, &pParentCls);` |
-|   15459 |  315 | `	int kC = OoClassifyOverrideType(pVm, child.nType, child.pClass, child.bUnion, &pChildCls);` |
-|   15459 |  316 | `	if( kP == OVT_SKIP \|\| kC == OVT_SKIP ){` |
+|   15515 |  314 | `	int kP = OoClassifyOverrideType(pVm, parent.nType, parent.pClass, parent.bUnion, &pParentCls);` |
+|   15515 |  315 | `	int kC = OoClassifyOverrideType(pVm, child.nType, child.pClass, child.bUnion, &pChildCls);` |
+|   15515 |  316 | `	if( kP == OVT_SKIP \|\| kC == OVT_SKIP ){` |
 |      18 |  317 | `		return 0; /* ambiguous shape — conservatively accept */` |
 |       - |  318 | `	}` |
 |       - |  319 | `	/* A missing type is the TOP type. covariant (return): a concrete child is a` |
@@ -331,10 +331,10 @@ Coverage: 650/706 lines (92.07%)
 |       - |  321 | `	 * contravariant (param): a top child is a supertype of anything, fine; a` |
 |       - |  322 | `	 * concrete child over a top parent NARROWS → bad. (A union/intersection child` |
 |       - |  323 | `	 * already fell into OVT_SKIP above, so a flagged child here is scalar/class.) */` |
-|   15443 |  324 | `	if( kP == OVT_NONE \|\| kC == OVT_NONE ){` |
-|   15423 |  325 | `		if( bCovariant && kC == OVT_NONE && kP != OVT_NONE ) return 1;` |
-|   15423 |  326 | `		if( !bCovariant && kP == OVT_NONE && kC != OVT_NONE ) return 1;` |
-|   15423 |  327 | `		return 0;` |
+|   15499 |  324 | `	if( kP == OVT_NONE \|\| kC == OVT_NONE ){` |
+|   15479 |  325 | `		if( bCovariant && kC == OVT_NONE && kP != OVT_NONE ) return 1;` |
+|   15479 |  326 | `		if( !bCovariant && kP == OVT_NONE && kC != OVT_NONE ) return 1;` |
+|   15479 |  327 | `		return 0;` |
 |       - |  328 | `	}` |
 |       - |  329 | `	/* Nullability: a covariant return may not ADD null; a contravariant param may` |
 |       - |  330 | `	 * not REMOVE null. */` |
@@ -355,56 +355,56 @@ Coverage: 650/706 lines (92.07%)
 |       - |  345 | `	}` |
 |       - |  346 | `	/* One scalar and one class — disjoint. */` |
 |     ! 0 |  347 | `	return 1;` |
-|    7732 |  348 | `}` |
+|    7760 |  348 | `}` |
 |       - |  349 |  |
 |       - |  350 | `/*` |
 |       - |  351 | ` * Check a child method's signature against the parent method it overrides.` |
 |       - |  352 | ` * Emits a PHP-style "Declaration of … must be compatible …" fatal on a clear` |
 |       - |  353 | `` * incompatibility. `__construct` is exempt (PHP does not apply variance to it).`` |
 |       - |  354 | ` */` |
-|   30826 |  355 | `static sxi32 OoCheckOverrideCompat(ph7_gen_state *pGen, ph7_class *pBase, ph7_class *pSub,` |
+|   30938 |  355 | `static sxi32 OoCheckOverrideCompat(ph7_gen_state *pGen, ph7_class *pBase, ph7_class *pSub,` |
 |       - |  356 | `	ph7_class_method *pParent, ph7_class_method *pChild)` |
 |       5 |  357 | `{` |
-|   30831 |  358 | `	ph7_vm *pVm = pGen->pVm;` |
-|   30831 |  359 | `	ph7_vm_func *pPF = &pParent->sFunc;` |
-|   30831 |  360 | `	ph7_vm_func *pCF = &pChild->sFunc;` |
-|   30831 |  361 | `	SyString *pMName = &pCF->sName;` |
+|   30943 |  358 | `	ph7_vm *pVm = pGen->pVm;` |
+|   30943 |  359 | `	ph7_vm_func *pPF = &pParent->sFunc;` |
+|   30943 |  360 | `	ph7_vm_func *pCF = &pChild->sFunc;` |
+|   30943 |  361 | `	SyString *pMName = &pCF->sName;` |
 |       - |  362 | `	ph7_vm_func_arg *aP, *aC;` |
 |       - |  363 | `	sxu32 nPArg, nCArg, k;` |
-|   30831 |  364 | `	int bBad = 0;` |
-|   30826 |  365 | `	if( pMName->nByte == sizeof("__construct")-1` |
-|   23117 |  366 | `	 && SyStrnmicmp(pMName->zString,"__construct",pMName->nByte) == 0 ){` |
-|   15395 |  367 | `		return SXRET_OK;` |
+|   30943 |  364 | `	int bBad = 0;` |
+|   30938 |  365 | `	if( pMName->nByte == sizeof("__construct")-1` |
+|   23201 |  366 | `	 && SyStrnmicmp(pMName->zString,"__construct",pMName->nByte) == 0 ){` |
+|   15451 |  367 | `		return SXRET_OK;` |
 |       - |  368 | `	}` |
 |       - |  369 | `	/* Return type — covariant. */` |
-|   15441 |  370 | `	bBad = OoOverrideTypeBad(pVm, OoTypeFromReturn(pPF), OoTypeFromReturn(pCF), /* bCovariant */ 1);` |
+|   15497 |  370 | `	bBad = OoOverrideTypeBad(pVm, OoTypeFromReturn(pPF), OoTypeFromReturn(pCF), /* bCovariant */ 1);` |
 |       - |  371 | `	/* Each overlapping parameter — contravariant. */` |
-|   15441 |  372 | `	nPArg = SySetUsed(&pPF->aArgs);` |
-|   15441 |  373 | `	nCArg = SySetUsed(&pCF->aArgs);` |
-|   15441 |  374 | `	aP = (ph7_vm_func_arg *)SySetBasePtr(&pPF->aArgs);` |
-|   15441 |  375 | `	aC = (ph7_vm_func_arg *)SySetBasePtr(&pCF->aArgs);` |
-|   15459 |  376 | `	for( k = 0; !bBad && k < nPArg && k < nCArg; k++ ){` |
+|   15497 |  372 | `	nPArg = SySetUsed(&pPF->aArgs);` |
+|   15497 |  373 | `	nCArg = SySetUsed(&pCF->aArgs);` |
+|   15497 |  374 | `	aP = (ph7_vm_func_arg *)SySetBasePtr(&pPF->aArgs);` |
+|   15497 |  375 | `	aC = (ph7_vm_func_arg *)SySetBasePtr(&pCF->aArgs);` |
+|   15515 |  376 | `	for( k = 0; !bBad && k < nPArg && k < nCArg; k++ ){` |
 |      21 |  377 | `		bBad = OoOverrideTypeBad(pVm, OoTypeFromArg(&aP[k]), OoTypeFromArg(&aC[k]), /* bCovariant */ 0);` |
 |      12 |  378 | `	}` |
 |       - |  379 | `	/* Parameter arity: the child must declare at least the parent's parameters and` |
 |       - |  380 | `	 * may add only OPTIONAL ones — PHP rejects dropping any param (even an optional` |
 |       - |  381 | `	 * one) or adding a required one. Skip the rule if either signature is variadic` |
 |       - |  382 | `	 * (arity semantics differ). */` |
-|   15441 |  383 | `	if( !bBad ){` |
-|   15437 |  384 | `		int bVariadic = 0;` |
-|   15453 |  385 | `		for( k = 0; k < nPArg; k++ ){ if( aP[k].iFlags & VM_FUNC_ARG_VARIADIC ) bVariadic = 1; }` |
-|   15455 |  386 | `		for( k = 0; k < nCArg; k++ ){ if( aC[k].iFlags & VM_FUNC_ARG_VARIADIC ) bVariadic = 1; }` |
-|   15437 |  387 | `		if( !bVariadic ){` |
-|   15437 |  388 | `			if( nCArg < nPArg ){` |
+|   15497 |  383 | `	if( !bBad ){` |
+|   15493 |  384 | `		int bVariadic = 0;` |
+|   15509 |  385 | `		for( k = 0; k < nPArg; k++ ){ if( aP[k].iFlags & VM_FUNC_ARG_VARIADIC ) bVariadic = 1; }` |
+|   15511 |  386 | `		for( k = 0; k < nCArg; k++ ){ if( aC[k].iFlags & VM_FUNC_ARG_VARIADIC ) bVariadic = 1; }` |
+|   15493 |  387 | `		if( !bVariadic ){` |
+|   15493 |  388 | `			if( nCArg < nPArg ){` |
 |     ! 0 |  389 | `				bBad = 1; /* dropped a parent parameter */` |
 |     ! 0 |  390 | `			}else{` |
-|   15439 |  391 | `				for( k = nPArg; k < nCArg; k++ ){` |
+|   15495 |  391 | `				for( k = nPArg; k < nCArg; k++ ){` |
 |       3 |  392 | `					if( SySetUsed(&aC[k].aByteCode) == 0 ){ bBad = 1; break; } /* new required */` |
 |       2 |  393 | `				}` |
 |       - |  394 | `			}` |
-|    7716 |  395 | `		}` |
-|    7716 |  396 | `	}` |
-|   15441 |  397 | `	if( bBad ){` |
+|    7744 |  395 | `		}` |
+|    7744 |  396 | `	}` |
+|   15497 |  397 | `	if( bBad ){` |
 |       8 |  398 | `		sxi32 rc = PH7_GenCompileError(&(*pGen),E_ERROR,pChild->nLine,` |
 |       - |  399 | `			"Declaration of %z::%z() must be compatible with %z::%z()",` |
 |       2 |  400 | `			&pSub->sName,pMName,&pBase->sName,&pParent->sFunc.sName);` |
@@ -412,8 +412,8 @@ Coverage: 650/706 lines (92.07%)
 |     ! 0 |  402 | `			return SXERR_ABORT;` |
 |       - |  403 | `		}` |
 |       2 |  404 | `	}` |
-|   15441 |  405 | `	return SXRET_OK;` |
-|   15418 |  406 | `}` |
+|   15497 |  405 | `	return SXRET_OK;` |
+|   15474 |  406 | `}` |
 |       - |  407 | `/*` |
 |       - |  408 | ` * Perform an inheritance operation.` |
 |       - |  409 | ` * According to the PHP language reference manual` |
@@ -455,7 +455,7 @@ Coverage: 650/706 lines (92.07%)
 |       - |  445 | ` * Any other return value indicates failure and the upper layer must generate an appropriate` |
 |       - |  446 | ` * error message.` |
 |       - |  447 | ` */` |
-|  123276 |  448 | `PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class *pBase)` |
+|  123724 |  448 | `PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class *pBase)` |
 |       5 |  449 | `{` |
 |       - |  450 | `	ph7_class_method *pMeth;` |
 |       - |  451 | `	ph7_class_attr *pAttr;` |
@@ -463,13 +463,13 @@ Coverage: 650/706 lines (92.07%)
 |       - |  453 | `	SyString *pName;` |
 |       - |  454 | `	sxi32 rc;` |
 |       - |  455 | `	/* Install in the derived hashtable */` |
-|  123281 |  456 | `	rc = SyHashInsert(&pBase->hDerived,(const void *)SyStringData(&pSub->sName),SyStringLength(&pSub->sName),pSub);` |
-|  123281 |  457 | `	if( rc != SXRET_OK ){` |
+|  123729 |  456 | `	rc = SyHashInsert(&pBase->hDerived,(const void *)SyStringData(&pSub->sName),SyStringLength(&pSub->sName),pSub);` |
+|  123729 |  457 | `	if( rc != SXRET_OK ){` |
 |     ! 0 |  458 | `		return rc;` |
 |       - |  459 | `	}` |
 |       - |  460 | `	/* readonly class inheritance (PHP 8.2): a readonly class may only extend a` |
 |       - |  461 | `	 * readonly class, and a non-readonly class may not extend a readonly one. */` |
-|  123281 |  462 | `	if( (pBase->iFlags & PH7_CLASS_READONLY) != (pSub->iFlags & PH7_CLASS_READONLY) ){` |
+|  123729 |  462 | `	if( (pBase->iFlags & PH7_CLASS_READONLY) != (pSub->iFlags & PH7_CLASS_READONLY) ){` |
 |       5 |  463 | `		if( pBase->iFlags & PH7_CLASS_READONLY ){` |
 |       4 |  464 | `			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,` |
 |       - |  465 | `				"Non-readonly class %z cannot extend readonly class %z",` |
@@ -484,12 +484,12 @@ Coverage: 650/706 lines (92.07%)
 |       - |  474 | `		}` |
 |       2 |  475 | `	}` |
 |       - |  476 | `	/* Copy public/protected attributes from the base class */` |
-|  123281 |  477 | `	SyHashResetLoopCursor(&pBase->hAttr);` |
-|  800611 |  478 | `	while((pEntry = SyHashGetNextEntry(&pBase->hAttr)) != 0 ){` |
+|  123729 |  477 | `	SyHashResetLoopCursor(&pBase->hAttr);` |
+|  803523 |  478 | `	while((pEntry = SyHashGetNextEntry(&pBase->hAttr)) != 0 ){` |
 |       - |  479 | `		/* Make sure the private attributes are not redeclared in the subclass */` |
-|  677335 |  480 | `		pAttr = (ph7_class_attr *)pEntry->pUserData;` |
-|  677335 |  481 | `		pName = &pAttr->sName;` |
-|  677335 |  482 | `		if( (pEntry = SyHashGet(&pSub->hAttr,(const void *)pName->zString,pName->nByte)) != 0 ){` |
+|  679799 |  480 | `		pAttr = (ph7_class_attr *)pEntry->pUserData;` |
+|  679799 |  481 | `		pName = &pAttr->sName;` |
+|  679799 |  482 | `		if( (pEntry = SyHashGet(&pSub->hAttr,(const void *)pName->zString,pName->nByte)) != 0 ){` |
 |       6 |  483 | `			if( (pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT\|PH7_CLASS_ATTR_FINAL))` |
 |       6 |  484 | `				== (PH7_CLASS_ATTR_CONSTANT\|PH7_CLASS_ATTR_FINAL) ){` |
 |       - |  485 | `				/* Cannot override a final class constant (PHP 8.1). Report the` |
@@ -514,20 +514,20 @@ Coverage: 650/706 lines (92.07%)
 |       9 |  504 | `			continue;` |
 |       - |  505 | `		}` |
 |       - |  506 | `		/* Install the attribute */` |
-|  677329 |  507 | `		if( pAttr->iProtection != PH7_CLASS_PROT_PRIVATE ){` |
-|  677325 |  508 | `			rc = SyHashInsert(&pSub->hAttr,(const void *)pName->zString,pName->nByte,pAttr);` |
-|  677325 |  509 | `			if( rc != SXRET_OK ){` |
+|  679793 |  507 | `		if( pAttr->iProtection != PH7_CLASS_PROT_PRIVATE ){` |
+|  679789 |  508 | `			rc = SyHashInsert(&pSub->hAttr,(const void *)pName->zString,pName->nByte,pAttr);` |
+|  679789 |  509 | `			if( rc != SXRET_OK ){` |
 |     ! 0 |  510 | `				return rc;` |
 |       - |  511 | `			}` |
-|  338660 |  512 | `		}` |
+|  339892 |  512 | `		}` |
 |       5 |  513 | `	}` |
-|  123281 |  514 | `	SyHashResetLoopCursor(&pBase->hMethod);` |
-| 1854731 |  515 | `	while((pEntry = SyHashGetNextEntry(&pBase->hMethod)) != 0 ){` |
+|  123729 |  514 | `	SyHashResetLoopCursor(&pBase->hMethod);` |
+| 1861479 |  515 | `	while((pEntry = SyHashGetNextEntry(&pBase->hMethod)) != 0 ){` |
 |       - |  516 | `		/* Make sure the private/final methods are not redeclared in the subclass */` |
-| 1731455 |  517 | `		pMeth = (ph7_class_method *)pEntry->pUserData;` |
-| 1731455 |  518 | `		pName = &pMeth->sFunc.sName;` |
-| 1731455 |  519 | `		if( (pEntry = SyHashGet(&pSub->hMethod,(const void *)pName->zString,pName->nByte)) != 0 ){` |
-|   30835 |  520 | `			 if( pMeth->iFlags & PH7_CLASS_ATTR_FINAL ){` |
+| 1737755 |  517 | `		pMeth = (ph7_class_method *)pEntry->pUserData;` |
+| 1737755 |  518 | `		pName = &pMeth->sFunc.sName;` |
+| 1737755 |  519 | `		if( (pEntry = SyHashGet(&pSub->hMethod,(const void *)pName->zString,pName->nByte)) != 0 ){` |
+|   30947 |  520 | `			 if( pMeth->iFlags & PH7_CLASS_ATTR_FINAL ){` |
 |       - |  521 | `				/* Cannot Overwrite final method */` |
 |       7 |  522 | `				rc = PH7_GenCompileError(&(*pGen),E_ERROR,((ph7_class_method *)pEntry->pUserData)->nLine,` |
 |       - |  523 | `					"Cannot Overwrite final method '%z:%z' inside child class '%z'",` |
@@ -537,27 +537,27 @@ Coverage: 650/706 lines (92.07%)
 |       - |  527 | `				}` |
 |       3 |  528 | `			}else{` |
 |       - |  529 | `				/* Check the override's signature is compatible with the parent's. */` |
-|   46244 |  530 | `				rc = OoCheckOverrideCompat(&(*pGen),pBase,pSub,pMeth,` |
-|   30826 |  531 | `					(ph7_class_method *)pEntry->pUserData);` |
-|   30831 |  532 | `				if( rc == SXERR_ABORT ){` |
+|   46412 |  530 | `				rc = OoCheckOverrideCompat(&(*pGen),pBase,pSub,pMeth,` |
+|   30938 |  531 | `					(ph7_class_method *)pEntry->pUserData);` |
+|   30943 |  532 | `				if( rc == SXERR_ABORT ){` |
 |     ! 0 |  533 | `					return SXERR_ABORT;` |
 |       - |  534 | `				}` |
 |       - |  535 | `			}` |
-|   30835 |  536 | `			continue;` |
+|   30947 |  536 | `			continue;` |
 |       - |  537 | `		}` |
 |       - |  538 | `		/* Install the method */` |
-| 1700625 |  539 | `		if( pMeth->iProtection != PH7_CLASS_PROT_PRIVATE ){` |
-| 1700621 |  540 | `			rc = SyHashInsert(&pSub->hMethod,(const void *)pName->zString,pName->nByte,pMeth);` |
-| 1700621 |  541 | `			if( rc != SXRET_OK ){` |
+| 1706813 |  539 | `		if( pMeth->iProtection != PH7_CLASS_PROT_PRIVATE ){` |
+| 1706809 |  540 | `			rc = SyHashInsert(&pSub->hMethod,(const void *)pName->zString,pName->nByte,pMeth);` |
+| 1706809 |  541 | `			if( rc != SXRET_OK ){` |
 |     ! 0 |  542 | `				return rc;` |
 |       - |  543 | `			}` |
-|  850308 |  544 | `		}` |
+|  853402 |  544 | `		}` |
 |       5 |  545 | `	}` |
 |       - |  546 | `	/* Mark as subclass */` |
-|  123281 |  547 | `	pSub->pBase = pBase;` |
+|  123729 |  547 | `	pSub->pBase = pBase;` |
 |       - |  548 | `	/* All done */` |
-|  123281 |  549 | `	return SXRET_OK;` |
-|   61643 |  550 | `}` |
+|  123729 |  549 | `	return SXRET_OK;` |
+|   61867 |  550 | `}` |
 |       - |  551 | `/*` |
 |       - |  552 | ` * Apply a trait to a class: copy all methods and attributes from the trait` |
 |       - |  553 | ` * into the target class. Unlike inheritance, traits copy ALL members including` |
@@ -681,7 +681,7 @@ Coverage: 650/706 lines (92.07%)
 |       - |  671 | ` * Any other return value indicates failure and the upper layer must generate an appropriate` |
 |       - |  672 | ` * error message.` |
 |       - |  673 | ` */` |
-|   15394 |  674 | `PH7_PRIVATE sxi32 PH7_ClassInterfaceInherit(ph7_class *pSub,ph7_class *pBase)` |
+|   15450 |  674 | `PH7_PRIVATE sxi32 PH7_ClassInterfaceInherit(ph7_class *pSub,ph7_class *pBase)` |
 |       5 |  675 | `{` |
 |       - |  676 | `	ph7_class_method *pMeth;` |
 |       - |  677 | `	ph7_class_attr *pAttr;` |
@@ -689,10 +689,10 @@ Coverage: 650/706 lines (92.07%)
 |       - |  679 | `	SyString *pName;` |
 |       - |  680 | `	sxi32 rc;` |
 |       - |  681 | `	/* Install in the derived hashtable */` |
-|   15399 |  682 | `	SyHashInsert(&pBase->hDerived,(const void *)SyStringData(&pSub->sName),SyStringLength(&pSub->sName),pSub);` |
-|   15399 |  683 | `	SyHashResetLoopCursor(&pBase->hAttr);` |
+|   15455 |  682 | `	SyHashInsert(&pBase->hDerived,(const void *)SyStringData(&pSub->sName),SyStringLength(&pSub->sName),pSub);` |
+|   15455 |  683 | `	SyHashResetLoopCursor(&pBase->hAttr);` |
 |       - |  684 | `	/* Copy constants */` |
-|   23098 |  685 | `	while((pEntry = SyHashGetNextEntry(&pBase->hAttr)) != 0 ){` |
+|   23182 |  685 | `	while((pEntry = SyHashGetNextEntry(&pBase->hAttr)) != 0 ){` |
 |       - |  686 | `		/* Make sure the constants are not redeclared in the subclass */` |
 |       3 |  687 | `		pAttr = (ph7_class_attr *)pEntry->pUserData;` |
 |       3 |  688 | `		pName = &pAttr->sName;` |
@@ -704,25 +704,25 @@ Coverage: 650/706 lines (92.07%)
 |       - |  694 | `			}` |
 |       1 |  695 | `		}` |
 |       1 |  696 | `	}` |
-|   15399 |  697 | `	SyHashResetLoopCursor(&pBase->hMethod);` |
+|   15455 |  697 | `	SyHashResetLoopCursor(&pBase->hMethod);` |
 |       - |  698 | `	/* Copy methods signature */` |
-|   30830 |  699 | `	while((pEntry = SyHashGetNextEntry(&pBase->hMethod)) != 0 ){` |
+|   30942 |  699 | `	while((pEntry = SyHashGetNextEntry(&pBase->hMethod)) != 0 ){` |
 |       - |  700 | `		/* Make sure the method are not redeclared in the subclass */` |
-|    7739 |  701 | `		pMeth = (ph7_class_method *)pEntry->pUserData;` |
-|    7739 |  702 | `		pName = &pMeth->sFunc.sName;` |
-|    7739 |  703 | `		if( SyHashGet(&pSub->hMethod,(const void *)pName->zString,pName->nByte) == 0 ){` |
+|    7767 |  701 | `		pMeth = (ph7_class_method *)pEntry->pUserData;` |
+|    7767 |  702 | `		pName = &pMeth->sFunc.sName;` |
+|    7767 |  703 | `		if( SyHashGet(&pSub->hMethod,(const void *)pName->zString,pName->nByte) == 0 ){` |
 |       - |  704 | `			/* Install the method */` |
-|    7739 |  705 | `			rc = SyHashInsert(&pSub->hMethod,(const void *)pName->zString,pName->nByte,pMeth);` |
-|    7739 |  706 | `			if( rc != SXRET_OK ){` |
+|    7767 |  705 | `			rc = SyHashInsert(&pSub->hMethod,(const void *)pName->zString,pName->nByte,pMeth);` |
+|    7767 |  706 | `			if( rc != SXRET_OK ){` |
 |     ! 0 |  707 | `				return rc;` |
 |       - |  708 | `			}` |
-|    3867 |  709 | `		}` |
+|    3881 |  709 | `		}` |
 |       5 |  710 | `	}` |
 |       - |  711 | `	/* Mark as subclass */` |
-|   15399 |  712 | `	pSub->pBase = pBase;` |
+|   15455 |  712 | `	pSub->pBase = pBase;` |
 |       - |  713 | `	/* All done */` |
-|   15399 |  714 | `	return SXRET_OK;` |
-|    7702 |  715 | `}` |
+|   15455 |  714 | `	return SXRET_OK;` |
+|    7730 |  715 | `}` |
 |       - |  716 | `/*` |
 |       - |  717 | ` * Implements an object interface in the given main class.` |
 |       - |  718 | ` * According to the PHP language reference manual.` |
@@ -736,15 +736,15 @@ Coverage: 650/706 lines (92.07%)
 |       - |  726 | ` * Any other return value indicates failure and the upper layer must generate an appropriate` |
 |       - |  727 | ` * error message.` |
 |       - |  728 | ` */` |
-|  211816 |  729 | `PH7_PRIVATE sxi32 PH7_ClassImplement(ph7_class *pMain,ph7_class *pInterface)` |
+|  212586 |  729 | `PH7_PRIVATE sxi32 PH7_ClassImplement(ph7_class *pMain,ph7_class *pInterface)` |
 |       5 |  730 | `{` |
 |       - |  731 | `	ph7_class_attr *pAttr;` |
 |       - |  732 | `	SyHashEntry *pEntry;` |
 |       - |  733 | `	SyString *pName;` |
 |       - |  734 | `	sxi32 rc;` |
 |       - |  735 | `	/* First off,copy all constants declared inside the interface */` |
-|  211821 |  736 | `	SyHashResetLoopCursor(&pInterface->hAttr);` |
-|  317735 |  737 | `	while((pEntry = SyHashGetNextEntry(&pInterface->hAttr)) != 0 ){` |
+|  212591 |  736 | `	SyHashResetLoopCursor(&pInterface->hAttr);` |
+|  318890 |  737 | `	while((pEntry = SyHashGetNextEntry(&pInterface->hAttr)) != 0 ){` |
 |       - |  738 | `		/* Point to the constant declaration */` |
 |       7 |  739 | `		pAttr = (ph7_class_attr *)pEntry->pUserData;` |
 |       7 |  740 | `		pName = &pAttr->sName;` |
@@ -758,7 +758,7 @@ Coverage: 650/706 lines (92.07%)
 |       3 |  748 | `		}` |
 |       1 |  749 | `	}` |
 |       - |  750 | `	/* Install in the interface container */` |
-|  211821 |  751 | `	SySetPut(&pMain->aInterface,(const void *)&pInterface);` |
+|  212591 |  751 | `	SySetPut(&pMain->aInterface,(const void *)&pInterface);` |
 |       - |  752 | `	/* Install interface method stubs into the implementing class.` |
 |       - |  753 | `	 * Methods already defined in the class take precedence (they satisfy` |
 |       - |  754 | `	 * the interface contract). Stubs retain PH7_CLASS_ATTR_ABSTRACT so` |
@@ -768,11 +768,11 @@ Coverage: 650/706 lines (92.07%)
 |       - |  758 | `		ph7_class_method *pMeth;` |
 |       - |  759 | `		SyHashEntry *pMEntry;` |
 |       - |  760 | `		SyString *pMName;` |
-|  211821 |  761 | `		SyHashResetLoopCursor(&pInterface->hMethod);` |
-|  598997 |  762 | `		while((pMEntry = SyHashGetNextEntry(&pInterface->hMethod)) != 0 ){` |
-|  281273 |  763 | `			pMeth = (ph7_class_method *)pMEntry->pUserData;` |
-|  281273 |  764 | `			pMName = &pMeth->sFunc.sName;` |
-|  281273 |  765 | `			if( SyHashGet(&pMain->hMethod,(const void *)pMName->zString,pMName->nByte) == 0 ){` |
+|  212591 |  761 | `		SyHashResetLoopCursor(&pInterface->hMethod);` |
+|  601174 |  762 | `		while((pMEntry = SyHashGetNextEntry(&pInterface->hMethod)) != 0 ){` |
+|  282295 |  763 | `			pMeth = (ph7_class_method *)pMEntry->pUserData;` |
+|  282295 |  764 | `			pMName = &pMeth->sFunc.sName;` |
+|  282295 |  765 | `			if( SyHashGet(&pMain->hMethod,(const void *)pMName->zString,pMName->nByte) == 0 ){` |
 |      18 |  766 | `				rc = SyHashInsert(&pMain->hMethod,(const void *)pMName->zString,pMName->nByte,pMeth);` |
 |      18 |  767 | `				if( rc != SXRET_OK ){` |
 |     ! 0 |  768 | `					return rc;` |
@@ -780,8 +780,8 @@ Coverage: 650/706 lines (92.07%)
 |       7 |  770 | `			}` |
 |       5 |  771 | `		}` |
 |       - |  772 | `	}` |
-|  211821 |  773 | `	return SXRET_OK;` |
-|  105913 |  774 | `}` |
+|  212591 |  773 | `	return SXRET_OK;` |
+|  106298 |  774 | `}` |
 |       - |  775 | `/*` |
 |       - |  776 | ` * Create a class instance [i.e: Object in the PHP jargon] at run-time.` |
 |       - |  777 | ` * The following function is called when an object is created at run-time` |

@@ -3249,7 +3249,7 @@ Coverage: 1000/1172 lines (85.32%)
 |     - | 3239 | ` * Called from PH7_VmInit while pVm->bCompilingBuiltin is set, right after` |
 |     - | 3240 | ` * the core builtin chunks (Exception and friends must exist already).` |
 |     - | 3241 | ` */` |
-|  3846 | 3242 | `PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)` |
+|  3860 | 3242 | `PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)` |
 |     5 | 3243 | `{` |
 |     - | 3244 | `	static const struct {` |
 |     - | 3245 | `		const char *zName;` |
@@ -3279,41 +3279,41 @@ Coverage: 1000/1172 lines (85.32%)
 |     - | 3269 | `	};` |
 |     - | 3270 | `	sxu32 n;` |
 |     - | 3271 | `	sxi32 rc;` |
-| 84617 | 3272 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
-| 80771 | 3273 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
-| 40388 | 3274 | `	}` |
-|  3851 | 3275 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib1, sizeof(zReflectLib1)-1);` |
-|  3851 | 3276 | `	if( rc != SXRET_OK ){` |
+| 84925 | 3272 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
+| 81065 | 3273 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
+| 40535 | 3274 | `	}` |
+|  3865 | 3275 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib1, sizeof(zReflectLib1)-1);` |
+|  3865 | 3276 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3277 | `		return rc;` |
 |     - | 3278 | `	}` |
-|  3851 | 3279 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib2, sizeof(zReflectLib2)-1);` |
-|  3851 | 3280 | `	if( rc != SXRET_OK ){` |
+|  3865 | 3279 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib2, sizeof(zReflectLib2)-1);` |
+|  3865 | 3280 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3281 | `		return rc;` |
 |     - | 3282 | `	}` |
-|  3851 | 3283 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib3, sizeof(zReflectLib3)-1);` |
-|  3851 | 3284 | `	if( rc != SXRET_OK ){` |
+|  3865 | 3283 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib3, sizeof(zReflectLib3)-1);` |
+|  3865 | 3284 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3285 | `		return rc;` |
 |     - | 3286 | `	}` |
-|  3851 | 3287 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib4, sizeof(zReflectLib4)-1);` |
-|  3851 | 3288 | `	if( rc != SXRET_OK ){` |
+|  3865 | 3287 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib4, sizeof(zReflectLib4)-1);` |
+|  3865 | 3288 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3289 | `		return rc;` |
 |     - | 3290 | `	}` |
-|  3851 | 3291 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib5, sizeof(zReflectLib5)-1);` |
-|  3851 | 3292 | `	if( rc != SXRET_OK ){` |
+|  3865 | 3291 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib5, sizeof(zReflectLib5)-1);` |
+|  3865 | 3292 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3293 | `		return rc;` |
 |     - | 3294 | `	}` |
-|  3851 | 3295 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib6, sizeof(zReflectLib6)-1);` |
-|  3851 | 3296 | `	if( rc != SXRET_OK ){` |
+|  3865 | 3295 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib6, sizeof(zReflectLib6)-1);` |
+|  3865 | 3296 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3297 | `		return rc;` |
 |     - | 3298 | `	}` |
-|  3851 | 3299 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib7, sizeof(zReflectLib7)-1);` |
-|  3851 | 3300 | `	if( rc != SXRET_OK ){` |
+|  3865 | 3299 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib7, sizeof(zReflectLib7)-1);` |
+|  3865 | 3300 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3301 | `		return rc;` |
 |     - | 3302 | `	}` |
-|  3851 | 3303 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib8, sizeof(zReflectLib8)-1);` |
-|  3851 | 3304 | `	if( rc != SXRET_OK ){` |
+|  3865 | 3303 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib8, sizeof(zReflectLib8)-1);` |
+|  3865 | 3304 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3305 | `		return rc;` |
 |     - | 3306 | `	}` |
-|  3851 | 3307 | `	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib9, sizeof(zReflectLib9)-1);` |
-|  1928 | 3308 | `}` |
+|  3865 | 3307 | `	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib9, sizeof(zReflectLib9)-1);` |
+|  1935 | 3308 | `}` |
 |     - | 3309 |  |
