@@ -268,8 +268,19 @@ struct ph7_hashmap
 	sxu32 (*xIntHash)(sxi64);     /* Hash function for int_keys */
 	sxu32 (*xBlobHash)(const void *,sxu32); /* Hash function for blob_keys */
 	sxi64 iNextIdx;               /* Next available automatically assigned index */
-	sxi32 iRef;                   /* Reference count */
+	sxi32 iRef;                   /* Reference count. INVARIANT: the number of
+								   * SHARERS for copy-on-write purposes is
+								   * iRef minus the by-REFERENCE foreach steps
+								   * on pActiveSteps (a by-ref loop iterates
+								   * the LIVE map, php semantics) — any future
+								   * separate/dup gate must use the discounted
+								   * count like PH7_HashmapCowSeparate, never
+								   * raw iRef. */
 	sxi32 iFlags;                 /* Control flags (see HASHMAP_* below) */
+	ph7_foreach_step *pActiveSteps; /* foreach steps currently iterating this map
+									 * (per-step cursors — PH7_HashmapUnlinkNode
+									 * advances any cursor parked on a dying node,
+									 * node link re-arms parked cursors) */
 };
 /*
  * Hashmap control flags.
@@ -301,6 +312,11 @@ struct ph7_foreach_step
 		ph7_class_instance *pThis;  /* Class instance [i.e: object] iteration */
 	}xIter;
 	ph7_class_instance *pOwner;     /* IteratorAggregate: keeps aggregate alive during foreach */
+	ph7_hashmap_node *pCursor;      /* Hashmap iteration: this loop's PRIVATE cursor.
+									 * php iterates each foreach independently — the map's
+									 * shared pCur would make nested loops over one array
+									 * rewind each other (infinite loop). */
+	ph7_foreach_step *pNextActive;  /* Next step on the map's pActiveSteps list */
 };
 /* Foreach step control flags */
 #define PH7_4EACH_STEP_HASHMAP 0x001 /* Hashmap iteration */
@@ -2113,7 +2129,8 @@ PH7_PRIVATE sxi32 PH7_HashmapDup(ph7_hashmap *pSrc,ph7_hashmap *pDest);
 PH7_PRIVATE sxi32 PH7_HashmapDupMaterialized(ph7_hashmap *pSrc,ph7_hashmap *pDest);
 PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue);
 PH7_PRIVATE sxi32 PH7_HashmapCmp(ph7_hashmap *pLeft,ph7_hashmap *pRight,int bStrict);
-PH7_PRIVATE void PH7_HashmapResetLoopCursor(ph7_hashmap *pMap);
+PH7_PRIVATE void PH7_HashmapRegisterForeachStep(ph7_hashmap *pMap,ph7_foreach_step *pStep);
+PH7_PRIVATE void PH7_HashmapUnregisterForeachStep(ph7_hashmap *pMap,ph7_foreach_step *pStep);
 PH7_PRIVATE ph7_hashmap_node * PH7_HashmapGetNextEntry(ph7_hashmap *pMap);
 PH7_PRIVATE void PH7_HashmapExtractNodeValue(ph7_hashmap_node *pNode,ph7_value *pValue,int bStore);
 PH7_PRIVATE void PH7_HashmapExtractNodeKey(ph7_hashmap_node *pNode,ph7_value *pKey);
