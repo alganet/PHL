@@ -3521,6 +3521,19 @@ PH7_PRIVATE void PH7_VmStoreArgByRef(ph7_vm *pVm,ph7_value *pArg,ph7_value *pNew
 	}
 	PH7_MemObjStore(pNewVal,pArg);
 }
+/*
+ * Emit a formatted E_DEPRECATED diagnostic WITHOUT the active-function-name
+ * prefix that ph7_context_throw_error_format() prepends — php's implicit-
+ * conversion notices carry no prefix, and the ZPP null notices embed the
+ * function name mid-message themselves.
+ */
+PH7_PRIVATE void PH7_VmThrowDeprecatedFmt(ph7_vm *pVm,const char *zFmt,...)
+{
+	va_list ap;
+	va_start(ap,zFmt);
+	PH7_VmThrowErrorAp(pVm,0,E_DEPRECATED,zFmt,ap);
+	va_end(ap);
+}
 PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	ph7_vm *pVm /* Target VM */
 	)

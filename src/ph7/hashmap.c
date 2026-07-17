@@ -7103,11 +7103,44 @@ static int ph7_hashmap_chunk(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * $pad_value
  *   Value to pad if input is less than pad_size.
  */
+/*
+ * Shared "requested array size too large" guard (band A #8). php throws a
+ * catchable ValueError when a builtin's caller-controlled target length
+ * exceeds its hashtable capacity HT_MAX_SIZE (2^30 elements; probed against
+ * php 8.5.7 — the boundary sits exactly between 1073741824 and 1073741825,
+ * independent of the input array's size and symmetric for negative lengths).
+ * Without this, a call like array_pad([1,2], 2000000000, 0) sits in the fill
+ * loop for minutes and then OOMs. nRequested is the ABSOLUTE requested
+ * length; pass a still-negative value (e.g. the unnegatable INT64_MIN,
+ * mirroring php's ZEND_ABS overflow) to fail the guard unconditionally.
+ * Returns SXRET_OK when the size is acceptable, else the throw status to
+ * propagate. The cap constant is shared with range()'s guards
+ * (PH7_RANGE_HT_MAX_SIZE above).
+ */
+static sxi32 HashmapGuardArraySize(
+	ph7_context *pCtx,
+	const char *zFunc,     /* Function name for the message */
+	int iArg,              /* 1-based argument position */
+	const char *zParam     /* "$length"-style parameter name */,
+	sxi64 nRequested       /* Absolute requested element count */
+	)
+{
+	if( nRequested < 0 || nRequested > PH7_RANGE_HT_MAX_SIZE ){
+		return PH7_VmThrowException(pCtx,
+			"ValueError",
+			"%s(): Argument #%d (%s) must not exceed the maximum allowed array size",
+			zFunc,iArg,zParam
+			);
+	}
+	return SXRET_OK;
+}
 static int ph7_hashmap_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_hashmap *pMap;
 	ph7_value *pArray;
+	sxi64 iLen,iAbs;
 	int nEntry;
+	sxi32 rc;
 	if( nArg != 3 ){
 		return PH7_VmThrowException(pCtx,
 			"ArgumentCountError",
@@ -7147,17 +7180,47 @@ static int ph7_hashmap_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				"array_pad(): Argument #2 ($length) must be of type int, string given"
 				);
 		}
-		nEntry = (int)(iKind == RANGE_IN_DOUBLE ? (sxi64)dReal : iLong);
+		if( iKind == RANGE_IN_DOUBLE ){
+			/* php ZPP: a float-string outside the int64 range (or NaN) fails
+			 * outright — also keeps the (sxi64) cast below UB-free. */
+			if( dReal != dReal || dReal >= 9223372036854775808.0 || dReal < -9223372036854775808.0 ){
+				return PH7_VmThrowException(pCtx,
+					"TypeError",
+					"array_pad(): Argument #2 ($length) must be of type int, string given"
+					);
+			}
+			iLen = (sxi64)dReal;
+			if( (double)iLen != dReal ){
+				PH7_VmThrowDeprecatedFmt(pCtx->pVm,
+					"Implicit conversion from float-string \"%s\" to int loses precision",
+					zStr
+					);
+			}
+		}else{
+			iLen = iLong;
+		}
 	}else{
-		nEntry = ph7_value_to_int(apArg[1]);
+		iLen = ph7_value_to_int64(apArg[1]);
 	}
+	/* Point to the internal representation of the input hashmap */
+	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
+	/* php caps abs($length) at HT_MAX_SIZE either direction (INT64_MIN stays
+	 * negative through the ABS, failing the guard like php's own ZEND_ABS
+	 * overflow). */
+	iAbs = iLen;
+	if( iAbs < 0 && iAbs != (sxi64)-9223372036854775807LL - 1 ){
+		iAbs = -iAbs;
+	}
+	rc = HashmapGuardArraySize(pCtx,"array_pad",2,"$length",iAbs);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	nEntry = (int)iLen;
 	/* Create a new array */
 	pArray = ph7_context_new_array(pCtx);
 	if( pArray == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
-	/* Point to the internal representation of the input hashmap */
-	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	if( nEntry < 0 ){
 		nEntry = -nEntry;
 		if( nEntry > (int)pMap->nEntry ){
