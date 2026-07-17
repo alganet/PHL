@@ -599,19 +599,6 @@ static sxi32 StrPredicateResolveArg(ph7_context *pCtx,ph7_value *pArg,const char
 	int iArgNum,const char *zParamName,const char *zTypeStr,const char *zNullMsg,
 	ph7_value *pTmp,const char **pzOut,int *pnOut);
 /*
- * Emit a formatted E_DEPRECATED diagnostic WITHOUT the active-function-name
- * prefix that ph7_context_throw_error_format() prepends — php's implicit-
- * conversion notices carry no prefix, and the ZPP null notices embed the
- * function name mid-message themselves.
- */
-static void BuiltinThrowDeprecatedFmt(ph7_vm *pVm,const char *zFmt,...)
-{
-	va_list ap;
-	va_start(ap,zFmt);
-	PH7_VmThrowErrorAp(pVm,0,E_DEPRECATED,zFmt,ap);
-	va_end(ap);
-}
-/*
  * Validate and resolve an int-typed builtin parameter with php-8 ZPP weak-mode
  * semantics: ints and bools pass through; null emits the 8.1 deprecation and
  * resolves to 0; floats and float-strings convert, with the implicit-conversion
@@ -630,7 +617,7 @@ static sxi32 IntArgResolve(
 	sxi64 *pOut
 ){
 	if( ph7_value_is_null(pArg) ){
-		BuiltinThrowDeprecatedFmt(pCtx->pVm,
+		PH7_VmThrowDeprecatedFmt(pCtx->pVm,
 			"%s(): Passing null to parameter #%d (%s) of type %s is deprecated",
 			zFunc,iArgNum,zParamName,zTypeStr
 			);
@@ -650,7 +637,7 @@ static sxi32 IntArgResolve(
 		}
 		iVal = (sxi64)dVal;
 		if( (double)iVal != dVal ){
-			BuiltinThrowDeprecatedFmt(pCtx->pVm,
+			PH7_VmThrowDeprecatedFmt(pCtx->pVm,
 				"Implicit conversion from float %s to int loses precision",
 				ph7_value_to_string(pArg,0)
 				);
@@ -689,7 +676,7 @@ static sxi32 IntArgResolve(
 			}
 			iVal = (sxi64)dVal;
 			if( (double)iVal != dVal ){
-				BuiltinThrowDeprecatedFmt(pCtx->pVm,
+				PH7_VmThrowDeprecatedFmt(pCtx->pVm,
 					"Implicit conversion from float-string \"%s\" to int loses precision",
 					zNum
 					);
