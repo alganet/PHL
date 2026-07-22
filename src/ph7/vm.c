@@ -1864,7 +1864,7 @@ static ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue);
 static sxi32 VmIterCallMethod(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,sxu32 nLen,ph7_value *pResult);
 static sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 	ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg,
-	int bStrict, ph7_class *pSelfHint);
+	int bStrict, ph7_class *pSelfHint, int bCallSiteInMsg);
 static void VmBoundaryPark(ph7_vm *pVm,sxi32 rc);
 static sxi32 VmCallClassMethodWithMap(ph7_vm *pVm, ph7_class_instance *pThis,
 	ph7_class_method *pMethod, ph7_value *pResult, int nArg,
@@ -6030,6 +6030,110 @@ static sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,ph7_class *pOwnerClass,SyString 
 		return PH7_ABORT;
 	}
 	return PH7_EXCEPTION;
+}
+/*
+ * Count php's REQUIRED arity for a user function: formals up to and including
+ * the LAST one with no default value (php 8 treats an optional declared
+ * before a required parameter as implicitly required), excluding a trailing
+ * variadic. Also reports the total non-variadic formal count so callers can
+ * pick php's wording — "exactly N expected" when required == total,
+ * "at least N" when trailing optionals exist.
+ */
+static sxu32 VmFuncRequiredArgCount(ph7_vm_func *pFunc,sxu32 *pnNonVariadic)
+{
+	ph7_vm_func_arg *aFormal = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);
+	sxu32 nFormal = SySetUsed(&pFunc->aArgs);
+	sxu32 nRequired = 0;
+	sxu32 n;
+	if( nFormal > 0 && (aFormal[nFormal - 1].iFlags & VM_FUNC_ARG_VARIADIC) ){
+		nFormal--;
+	}
+	for( n = 0 ; n < nFormal ; ++n ){
+		if( SySetUsed(&aFormal[n].aByteCode) < 1 ){
+			nRequired = n + 1;
+		}
+	}
+	*pnNonVariadic = nFormal;
+	return nRequired;
+}
+/*
+ * Throw php's catchable ArgumentCountError for a user function/method called
+ * with too few arguments:
+ *   Too few arguments to function C::f(), N passed in FILE on line L and
+ *   {exactly|at least} M expected
+ * php embeds the CALL SITE's file+line mid-message; VmInstr carries no line
+ * info yet (the runtime line-tracking gate, NEWPLAN §6), so the line is a
+ * fixed 1 — the SHAPE stays php-exact for --EXPECTF-- tests and self-heals
+ * when line tracking lands. bCallSite=FALSE omits the segment entirely,
+ * matching php for Fiber::start() (no userland call site in the message).
+ */
+static sxi32 VmThrowTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName,
+	sxu32 nPassed,sxu32 nRequired,sxu32 nNonVariadic,int bCallSite)
+{
+	static const SyString sUnknown = { "unknown", sizeof("unknown") - 1 };
+	SyBlob sMsg;
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	if( pOwnerClass ){
+		SyBlobFormat(&sMsg,"Too few arguments to function %z::%z(), %u passed",
+			&pOwnerClass->sName,pFuncName,nPassed);
+	}else{
+		SyBlobFormat(&sMsg,"Too few arguments to function %z(), %u passed",pFuncName,nPassed);
+	}
+	if( bCallSite ){
+		const SyString *pFile = (const SyString *)SySetPeek(&pVm->aFiles);
+		SyBlobFormat(&sMsg," in %z on line %d",pFile ? pFile : &sUnknown,1);
+	}
+	SyBlobFormat(&sMsg," and %s %u expected",
+		nRequired >= nNonVariadic ? "exactly" : "at least",nRequired);
+	/* VmThrowBuiltinError consumes (releases) sMsg */
+	return VmThrowBuiltinError(pVm,"ArgumentCountError",sizeof("ArgumentCountError")-1,&sMsg);
+}
+/*
+ * Throw php's ArgumentCountError for an INTERNAL (builtin-chunk) method
+ * called with too few arguments, in php's ZPP wording:
+ *   ReflectionProperty::__construct() expects exactly 2 arguments, 0 given
+ * (php words internal callables this way — no call-site segment, argument(s)
+ * pluralized on the expected count). Hosted builtin FUNCTIONS are not routed
+ * here: their PHL signatures don't always mirror php's true arity (e.g.
+ * array_unshift is (&$pArray)+func_get_args for php's (array, ...$values)),
+ * so their in-body self-checks own the message.
+ */
+static sxi32 VmThrowBuiltinTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName,
+	sxu32 nPassed,sxu32 nRequired,sxu32 nNonVariadic)
+{
+	SyBlob sMsg;
+	const char *zKind = (nRequired >= nNonVariadic) ? "exactly" : "at least";
+	const char *zPlural = (nRequired == 1) ? "" : "s";
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	if( pOwnerClass ){
+		SyBlobFormat(&sMsg,"%z::%z() expects %s %u argument%s, %u given",
+			&pOwnerClass->sName,pFuncName,zKind,nRequired,zPlural,nPassed);
+	}else{
+		SyBlobFormat(&sMsg,"%z() expects %s %u argument%s, %u given",
+			pFuncName,zKind,nRequired,zPlural,nPassed);
+	}
+	/* VmThrowBuiltinError consumes (releases) sMsg */
+	return VmThrowBuiltinError(pVm,"ArgumentCountError",sizeof("ArgumentCountError")-1,&sMsg);
+}
+/*
+ * Throw php's named-call ArgumentCountError for a required parameter no
+ * named or positional argument resolved to:
+ *   C::f(): Argument #N ($x) not passed
+ * (php's named-hole shape — no file/line or expected-count segment).
+ */
+static sxi32 VmThrowArgNotPassed(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName,
+	sxu32 nArg,SyString *pArgName)
+{
+	SyBlob sMsg;
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	if( pOwnerClass ){
+		SyBlobFormat(&sMsg,"%z::%z(): Argument #%u ($%z) not passed",
+			&pOwnerClass->sName,pFuncName,nArg,pArgName);
+	}else{
+		SyBlobFormat(&sMsg,"%z(): Argument #%u ($%z) not passed",pFuncName,nArg,pArgName);
+	}
+	/* VmThrowBuiltinError consumes (releases) sMsg */
+	return VmThrowBuiltinError(pVm,"ArgumentCountError",sizeof("ArgumentCountError")-1,&sMsg);
 }
 /*
  * Throw a PHP-compatible TypeError describing a return-value type mismatch.
@@ -12739,24 +12843,9 @@ case PH7_OP_NEW: {
 				SySetPut(&aArg,(const void *)&pArg);
 				pArg++;
 			}
-			if( pVm->bErrReport && !(pNewMap && pNewMap->bHasNamed) ){
-				ph7_vm_func_arg *pFuncArg;
-				sxu32 n;
-				n = SySetUsed(&aArg);
-				/* Emit a notice for missing arguments (positional-only:
-				 * for named args the missing-arg check happens downstream
-				 * after resolution). */
-				while( n < SySetUsed(&pCons->sFunc.aArgs) ){
-					pFuncArg = (ph7_vm_func_arg *)SySetAt(&pCons->sFunc.aArgs,n);
-					if( pFuncArg ){
-						if( SySetUsed(&pFuncArg->aByteCode) < 1 ){
-							VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,"Missing constructor argument %u($%z) for class '%z'",
-								n+1,&pFuncArg->sName,&pClass->sName);
-						}
-					}
-					n++;
-				}
-			}
+			/* Too-few-arguments is php's catchable ArgumentCountError, raised
+			 * by the shared OP_CALL install path this ctor call routes through
+			 * (was a PHL-only notice here). */
 			rcCons = VmCallClassMethodWithMap(&(*pVm),pNew,pCons,0,(int)SySetUsed(&aArg),(ph7_value **)SySetBasePtr(&aArg),pNewMap);
 			/* TICKET 1433-52: Unsetting $this in the constructor body */
 			if( pNew->iRef < 1 ){
@@ -13715,6 +13804,55 @@ case PH7_OP_CALL: {
 								SyMemBackendFree(&pVm->sAllocator, apCallArgs);
 								goto Abort;
 							}
+							if( (pVmFunc->iFlags & (VM_FUNC_INTERNAL|VM_FUNC_CLASS_METHOD)) != VM_FUNC_INTERNAL ){
+								/* php's named-hole ArgumentCountError, checked BEFORE
+								 * hole compaction: compacting first would report the
+								 * positional wording with a fictitious count (g(b:2)
+								 * must be `g(): Argument #1 ($a) not passed`, not
+								 * "1 passed"). Implicit-required watermark, like the
+								 * plain-call named path; a hole with NOTHING filled
+								 * above it keeps php's count wording — fall through
+								 * to VmFiberSetupFrame's check (the compacted count
+								 * equals php's num_args there). */
+								sxu32 nNVIgnored,nReqG,gHole,nMaxFilledG = 0;
+								sxi32 iHole = -1;
+								nReqG = VmFuncRequiredArgCount(pVmFunc,&nNVIgnored);
+								for( gHole = 0; gHole < (sxu32)nGenArgs; gHole++ ){
+									if( aGSlot[gHole] >= 0 && (sxu32)(aGSlot[gHole] + 1) > nMaxFilledG ){
+										nMaxFilledG = (sxu32)(aGSlot[gHole] + 1);
+									}
+								}
+								for( gHole = 0; gHole < nReqG && iHole < 0; gHole++ ){
+									sxu32 gj;
+									int bFound = 0;
+									for( gj = 0; gj < (sxu32)nGenArgs; gj++ ){
+										if( aGSlot[gj] == (sxi32)gHole ){ bFound = 1; break; }
+									}
+									if( !bFound && gHole + 1 <= nMaxFilledG ){
+										iHole = (sxi32)gHole;
+									}
+								}
+								if( iHole >= 0 ){
+									rc = VmThrowArgNotPassed(&(*pVm),pSelfHint,&pVmFunc->sName,
+										(sxu32)iHole+1,&aFA[iHole].sName);
+									SyMemBackendFree(&pVm->sAllocator, aGSlot);
+									SyMemBackendFree(&pVm->sAllocator, apCallArgs);
+									if( rc == PH7_ABORT ){
+										goto Abort;
+									}
+									/* Route like the VmFiberSetupFrame throw below */
+									PH7_INLINE_RESUME_BREAK()
+									VmPopOperand(&pTos,nCallArgs + 1);
+									{
+										sxi32 iRpH;
+										if( VmRecordedResume(pVm,&iRpH,sState.pEntryFrame,aInstr) ){
+											pc = iRpH;
+											break;
+										}
+									}
+									goto Exception;
+								}
+							}
 							/* Build apCallArgs in formal-parameter order, then
 							 * append overflow (variadic / positional beyond
 							 * formals) so downstream sees every argument. */
@@ -13770,7 +13908,8 @@ case PH7_OP_CALL: {
 			pExecCtx->pFrame->pParent = pVm->pFrame;
 			pVm->pFrame = pExecCtx->pFrame;
 			rc = VmFiberSetupFrame(pVm, pExecCtx, pThis, nGenArgs, apCallArgs,
-				(pInstr->p3 && ((VmCallArgMap *)pInstr->p3)->bStrict) ? 1 : 0, pSelfHint);
+				(pInstr->p3 && ((VmCallArgMap *)pInstr->p3)->bStrict) ? 1 : 0, pSelfHint,
+				TRUE/*generator: the g(...) call site is in the message*/);
 			pVm->pFrame = pExecCtx->pFrame->pParent;
 			pExecCtx->pFrame->pParent = 0;
 			if( apCallArgs ){
@@ -13944,6 +14083,25 @@ case PH7_OP_CALL: {
 				goto Abort;
 			}
 			/* Pass 2: install arguments into the frame by formal parameter order */
+			{
+			/* php's required watermark for the hole check below (0 disables it
+			 * for hosted builtin FUNCTIONS, which self-manage — hosted-class
+			 * methods and all user code get php's named-hole error), plus the
+			 * highest formal slot an actual resolved to: php words a hole
+			 * BELOW a filled slot `Argument #N ($x) not passed`, but a hole
+			 * with nothing filled above it gets the positional count message
+			 * (zend's RECV arg_num > EX(num_args) distinction). */
+			sxu32 nReqNamed = 0;
+			sxu32 nNVNamed = 0;
+			sxu32 nMaxFilled = 0;
+			if( (pVmFunc->iFlags & (VM_FUNC_INTERNAL|VM_FUNC_CLASS_METHOD)) != VM_FUNC_INTERNAL ){
+				nReqNamed = VmFuncRequiredArgCount(pVmFunc,&nNVNamed);
+				for( i = 0; i < nActual; i++ ){
+					if( aSlot[i] >= 0 && (sxu32)(aSlot[i] + 1) > nMaxFilled ){
+						nMaxFilled = (sxu32)(aSlot[i] + 1);
+					}
+				}
+			}
 			for( n = 0; n < nNonVariadic; n++ ){
 				/* Find the stack arg mapped to formal n */
 				sxi32 iSrc = -1;
@@ -14121,6 +14279,38 @@ case PH7_OP_CALL: {
 					/* Argument was NOT provided — use default or leave unset */
 					if( aFormalArg[n].iFlags & VM_FUNC_ARG_VARIADIC ){
 						/* Should not reach here; variadic handled separately below */
+					}else if( n < nReqNamed ){
+						/* php's implicit-required rule applies to named calls
+						 * too: a hole below the required watermark throws even
+						 * when the formal carries a default — f($a,$b=2,$c)
+						 * called as f(a:1,c:3) is `Argument #2 ($b) not
+						 * passed` (a hole with NO default is always below the
+						 * watermark, so this subsumes the no-default case).
+						 * A hole with nothing filled ABOVE it uses php's
+						 * positional count wording instead. The passed stack
+						 * args were not released yet on this path (that loop
+						 * runs after Pass 2) — release them before the exit. */
+						if( n + 1 > nMaxFilled ){
+							rc = (pVmFunc->iFlags & VM_FUNC_INTERNAL)
+								? VmThrowBuiltinTooFewArgs(&(*pVm),pSelfHint,&pVmFunc->sName,
+									nMaxFilled,nReqNamed,nNVNamed)
+								: VmThrowTooFewArgs(&(*pVm),pSelfHint,&pVmFunc->sName,
+									nMaxFilled,nReqNamed,nNVNamed,TRUE);
+						}else{
+							rc = VmThrowArgNotPassed(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,&aFormalArg[n].sName);
+						}
+						SyMemBackendFree(&pVm->sAllocator, aSlot);
+						for( i = 0; i < nActual; i++ ){
+							PH7_MemObjRelease(&pArg[i]);
+						}
+						if( rc == PH7_ABORT ){
+							goto Abort;
+						}
+						PH7_MemObjRelease(pTos);
+						pTos = &pTos[-nCallArgs];
+						pFrameStack = 0;
+						rc = PH7_EXCEPTION;
+						goto SkipFuncBody;
 					}else if( SySetUsed(&aFormalArg[n].aByteCode) > 0 ){
 						pObj = VmExtractMemObj(&(*pVm),&aFormalArg[n].sName,FALSE,TRUE);
 						if( pObj ){
@@ -14139,9 +14329,9 @@ case PH7_OP_CALL: {
 							}
 						}
 					}
-					/* else: required param missing — leave unset (matches existing behavior) */
 				}
 			}
+			} /* end nReqNamed scope */
 			/* Handle variadic parameter */
 			if( iVariadicIdx >= 0 ){
 				pObj = VmExtractMemObj(&(*pVm),&aFormalArg[iVariadicIdx].sName,FALSE,TRUE);
@@ -14514,6 +14704,40 @@ case PH7_OP_CALL: {
 				PH7_MemObjRelease(pValue);
 				/* Duplicate bound variable value */
 				PH7_MemObjStore(&pEnv->sValue,pValue);
+			}
+		}
+		/* Too-few-arguments check, placed AFTER the passed arguments were
+		 * installed and type-checked: php's RECV order means a type error on
+		 * a PASSED argument beats the count error (`f(int $x,$y)` called
+		 * f("str") is a TypeError, not ArgumentCountError). The passed args
+		 * were already released by the install loop, so the standard throw
+		 * exit leaks nothing. The named path never fires this (its per-hole
+		 * check ran in-loop; n == nNonVariadic >= nRequired here). Hosted
+		 * builtin FUNCTIONS (VM_FUNC_INTERNAL) are exempt — their PHL
+		 * signatures don't always mirror php's true arity and their in-body
+		 * self-checks own php's wording (stage-2 family); hosted-class
+		 * METHODS get php's ZPP wording via VmThrowBuiltinTooFewArgs. */
+		if( n < SySetUsed(&pVmFunc->aArgs)
+		 && (pVmFunc->iFlags & (VM_FUNC_INTERNAL|VM_FUNC_CLASS_METHOD)) != VM_FUNC_INTERNAL ){
+			sxu32 nNonVar,nReq;
+			nReq = VmFuncRequiredArgCount(pVmFunc,&nNonVar);
+			if( n < nReq ){
+				sxu32 nPassed = pFrame->nActualArgs >= 0 ? (sxu32)pFrame->nActualArgs : n;
+				if( pVmFunc->iFlags & VM_FUNC_INTERNAL ){
+					rc = VmThrowBuiltinTooFewArgs(&(*pVm),pSelfHint,&pVmFunc->sName,
+						nPassed,nReq,nNonVar);
+				}else{
+					rc = VmThrowTooFewArgs(&(*pVm),pSelfHint,&pVmFunc->sName,
+						nPassed,nReq,nNonVar,TRUE);
+				}
+				if( rc == PH7_ABORT ){
+					goto Abort;
+				}
+				PH7_MemObjRelease(pTos);
+				pTos = &pTos[-nCallArgs];
+				pFrameStack = 0;
+				rc = PH7_EXCEPTION;
+				goto SkipFuncBody;
 			}
 		}
 		/* Process default values for remaining formal parameters */
@@ -16315,11 +16539,12 @@ static sxi32 VmEnforceGenArgType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_vm_func_ar
 }
 static sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 	ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg,
-	int bStrict, ph7_class *pSelfHint)
+	int bStrict, ph7_class *pSelfHint, int bCallSiteInMsg)
 {
 	ph7_vm_func *pFunc = pExecCtx->pFunc;
 	ph7_vm_func_arg *aFormalArg;
 	sxu32 nFormal, n;
+	sxu32 nReqGF = 0, nNonVarGF = 0; /* too-few-args watermark (0 = exempt) */
 	VmSlot sSlot;
 	sxi32 rc;
 	/* Install $this for closure/method callables */
@@ -16355,6 +16580,18 @@ static sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 	nFormal = SySetUsed(&pFunc->aArgs);
 	/* Actual call arity for func_num_args()/func_get_args() (band A #4) */
 	pExecCtx->pFrame->nActualArgs = nArg;
+	{
+		/* Too-few-arguments watermark — checked per formal INSIDE the install
+		 * loop below, after the passed args' type checks, matching php's
+		 * RECV order (a type error on a passed argument beats the count
+		 * error). Generators throw at the g(...) call site (message embeds
+		 * it); fibers at Fiber::start() (php omits the call-site segment).
+		 * Hosted builtin FUNCTIONS self-check; hosted-class methods get
+		 * php's ZPP wording. */
+	if( (pFunc->iFlags & (VM_FUNC_INTERNAL|VM_FUNC_CLASS_METHOD)) != VM_FUNC_INTERNAL ){
+		nReqGF = VmFuncRequiredArgCount(pFunc,&nNonVarGF);
+	}
+	}
 	for( n = 0; n < nFormal; n++ ){
 		ph7_value *pObj;
 		if( aFormalArg[n].iFlags & VM_FUNC_ARG_VARIADIC ){
@@ -16411,6 +16648,15 @@ static sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 				sSlot.pUserData = 0;
 				SySetPut(&pExecCtx->pFrame->sArg, &sSlot);
 			}
+		}else if( n < nReqGF ){
+			/* Required formal with no actual: php's ArgumentCountError, at
+			 * this point in the install order (see the watermark comment). */
+			return VmGenArgThrowStatus(pVm,
+				(pFunc->iFlags & VM_FUNC_INTERNAL)
+					? VmThrowBuiltinTooFewArgs(pVm,pSelfHint,&pFunc->sName,
+						(sxu32)nArg,nReqGF,nNonVarGF)
+					: VmThrowTooFewArgs(pVm,pSelfHint,&pFunc->sName,
+						(sxu32)nArg,nReqGF,nNonVarGF,bCallSiteInMsg));
 		}else if( SySetUsed(&aFormalArg[n].aByteCode) > 0 ){
 			/* Default value */
 			pObj = VmExtractMemObj(pVm, &aFormalArg[n].sName, FALSE, TRUE);
@@ -16546,7 +16792,8 @@ static int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **apArg
 			}
 		}
 		rc = VmFiberSetupFrame(pVm, pExecCtx, pClosureThis, nActual, apValues,
-			0 /* weak-mode arg binding, like call_user_func */, 0);
+			0 /* weak-mode arg binding, like call_user_func */, 0,
+			FALSE/*Fiber::start(): php omits the call-site segment*/);
 		if( aStore ){
 			SyMemBackendFree(&pVm->sAllocator, aStore);
 		}
@@ -16774,7 +17021,8 @@ PH7_PRIVATE sxi32 PH7_VmFiberStart(ph7_vm *pVm, ph7_value *pFiber, int nArg, ph7
 	pCtx->pFrame->pParent = pVm->pFrame;
 	pVm->pFrame = pCtx->pFrame;
 	rc = VmFiberSetupFrame(pVm, pCtx, pClosureThis, nArg, apArg,
-		0 /* weak-mode arg binding (embedder entry) */, 0);
+		0 /* weak-mode arg binding (embedder entry) */, 0,
+		FALSE/*embedder entry: no userland call site*/);
 	pVm->pFrame = pCtx->pFrame->pParent;
 	pCtx->pFrame->pParent = 0;
 	if( rc != SXRET_OK ){

@@ -176,14 +176,20 @@ PH7_PRIVATE int VmObConsumer(const void *pData,unsigned int nDataLen,void *pUser
 	}
 	PH7_MemObjInit(pVm,&sResult);
 	if( ph7_value_is_callable(&pEntry->sCallback) && pVm->nObDepth < 15 ){
-		ph7_value sArg,*apArg[2];
+		ph7_value sArg,sPhase,*apArg[2];
 		/* Fill the first argument */
 		PH7_MemObjInitFromString(pVm,&sArg,0);
 		PH7_MemObjStringAppend(&sArg,(const char *)pData,nDataLen);
 		apArg[0] = &sArg;
+		/* php calls the handler as ($buffer, int $phase) — a handler
+		 * declaring both as required must not trip the arity check. The
+		 * phase is PHP_OUTPUT_HANDLER_WRITE (0); the per-write phase
+		 * bitmask semantics (START/FINAL) are not modeled. */
+		PH7_MemObjInitFromInt(pVm,&sPhase,0);
+		apArg[1] = &sPhase;
 		/* Call the 'filter' callback */
 		pVm->nObDepth++;
-		PH7_VmCallUserFunction(pVm,&pEntry->sCallback,1,apArg,&sResult);
+		PH7_VmCallUserFunction(pVm,&pEntry->sCallback,2,apArg,&sResult);
 		pVm->nObDepth--;
 		if( sResult.iFlags & MEMOBJ_STRING ){
 			/* Extract the function result */
@@ -191,6 +197,7 @@ PH7_PRIVATE int VmObConsumer(const void *pData,unsigned int nDataLen,void *pUser
 			nDataLen = SyBlobLength(&sResult.sBlob);
 		}
 		PH7_MemObjRelease(&sArg);
+		PH7_MemObjRelease(&sPhase);
 	}
 	if( nDataLen > 0 ){
 		/* Redirect the VM output to the internal buffer */

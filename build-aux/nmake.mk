@@ -21,8 +21,13 @@ VCPKG_INSTALLED = C:\vcpkg\installed\x64-windows-static
 PCRE2_CFLAGS = /I "$(VCPKG_INSTALLED)\include"
 PCRE2_LIBS = "$(VCPKG_INSTALLED)\lib\pcre2-8.lib"
 
-# Base flags shared by all modes
-BASE_CFLAGS = /nologo /I src /I src/sx /I src/ph7 /W4 /WX
+# Base flags shared by all modes.
+# /wd4127 (constant conditional) and /wd4702 (unreachable code) are noisy MSVC
+# warnings that this SQLite/PH7-lineage code triggers legitimately (parameterized
+# macros with constant args; branches an aggressive optimizer proves dead). Newer
+# MSVC toolsets flag them under /WX where older ones did not; disable them the way
+# SQLite itself does, rather than distort the extracted VM code.
+BASE_CFLAGS = /nologo /I src /I src/sx /I src/ph7 /W4 /WX /wd4127 /wd4702
 
 # Per-mode CFLAGS (used by patterns.mk generated rules)
 full_CFLAGS = $(BASE_CFLAGS) /Ox $(full_DEFINES:-=/) $(full_EXTRA_CFLAGS) /Fd$(BUILD_DIR:/=\)\ph7.pdb

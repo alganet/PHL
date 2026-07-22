@@ -5,13 +5,10 @@ SPDX-License-Identifier: BSD-3-Clause
 Test file_put_contents()
 --SKIPIF--
 <?php
-
-if (PHP_OS === 'WINNT' && function_exists('zend_version')) {
-    echo "skip: platform";
-}
-if (!function_exists('file_put_contents') || !function_exists('flock') || !function_exists('fopen')) {
-    echo 'skip: file functions not available';
-}
+// This test asserts POSIX advisory-lock semantics (writing to a flock'd file
+// succeeds). Windows locks are mandatory, so the write fails there — that case
+// is covered by file_put_contents_zend_win.phpt. Skip the advisory version here.
+if (DIRECTORY_SEPARATOR === '\\') { echo 'skip advisory-lock semantics: Windows locks are mandatory'; }
 ?>
 --FILE--
 <?php
