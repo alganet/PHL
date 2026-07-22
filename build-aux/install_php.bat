@@ -2,40 +2,30 @@
 :: SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 :: SPDX-License-Identifier: BSD-3-Clause
 
-:: Script to download and install the latest Windows PHP release
+:: Download the Windows PHP build used as the cross-check oracle for test-compat.
+:: The exact patch filename is resolved from windows.php.net's releases.json at run
+:: time, so it never 404s when a release rotates from /releases/ into the archive.
+:: Usage: install_php.bat [branch]   (branch defaults to 8.5 to match the corpus)
 
-set "PHP_VERSION=8.4.16"
-set "PHP_ZIP=php-%PHP_VERSION%-nts-Win32-vs17-x64.zip"
-set "PHP_DIR=%~dp0\..\php"
-set "URL=https://windows.php.net/downloads/releases/%PHP_ZIP%"
-
+setlocal
+set "PHP_BRANCH=%~1"
+if "%PHP_BRANCH%"=="" set "PHP_BRANCH=8.5"
+set "PHP_DIR=%~dp0..\php"
 
 if exist "%PHP_DIR%\php.exe" (
     echo PHP is already installed in: %PHP_DIR%
+    "%PHP_DIR%\php.exe" --version
     exit /b 0
 )
 
-if exist "%PHP_ZIP%" (
-    echo PHP zip already exists, skipping download.
-) else (
-    echo Downloading PHP %PHP_VERSION%...
-    powershell -Command "Invoke-WebRequest -Uri '%URL%' -OutFile '%PHP_ZIP%'"
-
-    if %errorlevel% neq 0 (
-        echo Failed to download PHP.
-        exit /b 1
-    )
-)
-
-echo Extracting PHP...
-powershell -Command "Expand-Archive -Path '%PHP_ZIP%' -DestinationPath '%PHP_DIR%' -Force"
-
+echo Resolving latest %PHP_BRANCH% NTS x64 build from windows.php.net...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $b='%PHP_BRANCH%'; $dir='%PHP_DIR%'; $j=Invoke-RestMethod 'https://windows.php.net/downloads/releases/releases.json'; $v=$j.$b; if(-not $v){throw \"no releases for branch $b\"}; $p=$v.PSObject.Properties | Where-Object { $_.Name -match 'nts-vs\d+-x64' } | Select-Object -First 1; if(-not $p){throw \"no NTS x64 build for $b\"}; $zip=$p.Value.zip.path; $url='https://windows.php.net/downloads/releases/'+$zip; Write-Host \"Downloading $url\"; Invoke-WebRequest -Uri $url -OutFile $zip; if(Test-Path $dir){Remove-Item -Recurse -Force $dir}; Expand-Archive -Path $zip -DestinationPath $dir -Force; if(-not (Test-Path (Join-Path $dir 'php.exe'))){throw 'php.exe missing after extract'}"
 if %errorlevel% neq 0 (
-    echo Failed to extract PHP.
+    echo Failed to install PHP.
     exit /b 1
 )
 
-move "%PHP_DIR%\php-win.exe" "%PHP_DIR%\php.exe"
-
-echo PHP installed successfully in: %PHP_DIR%
-echo PHP executable: %PHP_DIR%\php.exe
+echo.
+echo PHP oracle installed in: %PHP_DIR%
+"%PHP_DIR%\php.exe" --version
+endlocal

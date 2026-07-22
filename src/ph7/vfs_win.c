@@ -15,6 +15,8 @@
 #include <stdio.h> /* For popen/pclose pipe stream support */
 #include <io.h>    /* For _open_osfhandle, _close */
 #include <fcntl.h> /* For _O_RDONLY, _O_WRONLY, _O_TEXT */
+#include <sys/stat.h> /* For _wchmod and the _S_IREAD/_S_IWRITE mode bits */
+#include <errno.h> /* For mapping GetLastError() to a POSIX errno */
 /* SPDX-SnippetBegin */
 /* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */
 /* SPDX-License-Identifier: blessing */
@@ -77,6 +79,47 @@ static char *unicodeToUtf8(const WCHAR *zWideFilename){
   return zFilename;
 }
 /* SPDX-SnippetEnd */
+/* Map the most recent Win32 error to a POSIX errno, so the shared IO-failure
+ * reporting (which formats strerror(errno), php-style) yields real text on
+ * Windows — the Win32 API sets GetLastError() rather than errno. Call this right
+ * after the failing API, before any HeapFree/CloseHandle that could reset it. */
+static void WinVfsMapErrno(void)
+{
+	switch( GetLastError() ){
+		case ERROR_FILE_NOT_FOUND:
+		case ERROR_PATH_NOT_FOUND:
+		case ERROR_INVALID_NAME:      errno = ENOENT; break;
+		case ERROR_ACCESS_DENIED:
+		case ERROR_SHARING_VIOLATION:
+		case ERROR_LOCK_VIOLATION:    errno = EACCES; break;
+		case ERROR_FILE_EXISTS:
+		case ERROR_ALREADY_EXISTS:    errno = EEXIST; break;
+		case ERROR_DIR_NOT_EMPTY:     errno = ENOTEMPTY; break;
+		default:                      errno = EIO; break;
+	}
+}
+/* php's file:// is the default local-file wrapper: a stat-family builtin given
+ * "file://[authority]/path" acts on the plain path. On Windows php also accepts
+ * a drive path after the scheme, so strip "file://", an optional "localhost"
+ * authority, and a slash sitting in front of a "X:" drive (file:///C:/x). The
+ * native calls do not understand the scheme; anything unrecognised is returned
+ * intact so the call fails exactly as php does. */
+static const char * WinVfsLocalPath(const char *zPath)
+{
+	const char *zRest;
+	if( zPath == 0 || SyStrnicmp(zPath,"file://",sizeof("file://")-1) != 0 ){
+		return zPath;
+	}
+	zRest = &zPath[sizeof("file://")-1];
+	if( SyStrnicmp(zRest,"localhost/",sizeof("localhost/")-1) == 0 ){
+		zRest = &zRest[sizeof("localhost")-1]; /* keep the leading slash */
+	}
+	if( zRest[0] == '/' && zRest[1] != 0 && zRest[2] == ':' ){
+		/* file:///C:/path or file://localhost/C:/path -> C:/path */
+		return &zRest[1];
+	}
+	return zRest;
+}
 /* int (*xchdir)(const char *) */
 static int WinVfs_chdir(const char *zPath)
 {
@@ -87,6 +130,7 @@ static int WinVfs_chdir(const char *zPath)
 		return -1;
 	}
 	rc = SetCurrentDirectoryW((LPCWSTR)pConverted);
+	if( !rc ){ WinVfsMapErrno(); }
 	HeapFree(GetProcessHeap(),0,pConverted);
 	return rc ? PH7_OK : -1;
 }
@@ -121,6 +165,7 @@ static int WinVfs_mkdir(const char *zPath,int mode,int recursive)
 	mode= 0; /* MSVC warning */
 	recursive = 0;
 	rc = CreateDirectoryW((LPCWSTR)pConverted,0);
+	if( !rc ){ WinVfsMapErrno(); }
 	HeapFree(GetProcessHeap(),0,pConverted);
 	return rc ? PH7_OK : -1;
 }
@@ -134,12 +179,14 @@ static int WinVfs_rmdir(const char *zPath)
 		return -1;
 	}
 	rc = RemoveDirectoryW((LPCWSTR)pConverted);
+	if( !rc ){ WinVfsMapErrno(); }
 	HeapFree(GetProcessHeap(),0,pConverted);
 	return rc ? PH7_OK : -1;
 }
 /* int (*xIsdir)(const char *) */
 static int WinVfs_isdir(const char *zPath)
 {
+	zPath = WinVfsLocalPath(zPath);
 	void * pConverted;
 	DWORD dwAttr;
 	pConverted = convertUtf8Filename(zPath);
@@ -166,6 +213,7 @@ static int WinVfs_Rename(const char *zOld,const char *zNew)
 	if( pNew  ){
 		rc = MoveFileW((LPCWSTR)pOld,(LPCWSTR)pNew);
 	}
+	if( !rc ){ WinVfsMapErrno(); }
 	HeapFree(GetProcessHeap(),0,pOld);
 	if( pNew ){
 		HeapFree(GetProcessHeap(),0,pNew);
@@ -218,8 +266,25 @@ static int WinVfs_unlink(const char *zPath)
 		return -1;
 	}
 	rc = DeleteFileW((LPCWSTR)pConverted);
+	if( !rc ){ WinVfsMapErrno(); }
 	HeapFree(GetProcessHeap(),0,pConverted);
 	return rc ? PH7_OK : - 1;
+}
+/* int (*xChmod)(const char *,int) */
+static int WinVfs_chmod(const char *zPath,int mode)
+{
+	void * pConverted;
+	int rc;
+	pConverted = convertUtf8Filename(zPath);
+	if( pConverted == 0 ){
+		return -1;
+	}
+	/* Windows honors only the read-only attribute: a set owner-write bit (0200)
+	 * clears it, otherwise the file is made read-only. This mirrors php, whose
+	 * chmod() on Windows likewise maps through _wchmod and returns success. */
+	rc = _wchmod((const wchar_t *)pConverted,(mode & 0200) ? (_S_IREAD|_S_IWRITE) : _S_IREAD);
+	HeapFree(GetProcessHeap(),0,pConverted);
+	return rc == 0 ? PH7_OK : - 1;
 }
 /* ph7_int64 (*xFreeSpace)(const char *) */
 static ph7_int64 WinVfs_DiskFreeSpace(const char *zPath)
@@ -284,6 +349,7 @@ static ph7_int64 WinVfs_DiskTotalSpace(const char *zPath)
 /* int (*xFileExists)(const char *) */
 static int WinVfs_FileExists(const char *zPath)
 {
+	zPath = WinVfsLocalPath(zPath);
 	void * pConverted;
 	DWORD dwAttr;
 	pConverted = convertUtf8Filename(zPath);
@@ -314,6 +380,7 @@ static HANDLE OpenReadOnly(LPCWSTR pPath)
 /* ph7_int64 (*xFileSize)(const char *) */
 static ph7_int64 WinVfs_FileSize(const char *zPath)
 {
+	zPath = WinVfsLocalPath(zPath);
 	DWORD dwLow,dwHigh;
 	void * pConverted;
 	ph7_int64 nSize;
@@ -393,6 +460,7 @@ static int WinVfs_Touch(const char *zPath,ph7_int64 touch_time,ph7_int64 access_
 /* ph7_int64 (*xFileAtime)(const char *) */
 static ph7_int64 WinVfs_FileAtime(const char *zPath)
 {
+	zPath = WinVfsLocalPath(zPath);
 	BY_HANDLE_FILE_INFORMATION sInfo;
 	void * pConverted;
 	ph7_int64 atime;
@@ -421,6 +489,7 @@ static ph7_int64 WinVfs_FileAtime(const char *zPath)
 /* ph7_int64 (*xFileMtime)(const char *) */
 static ph7_int64 WinVfs_FileMtime(const char *zPath)
 {
+	zPath = WinVfsLocalPath(zPath);
 	BY_HANDLE_FILE_INFORMATION sInfo;
 	void * pConverted;
 	ph7_int64 mtime;
@@ -449,6 +518,7 @@ static ph7_int64 WinVfs_FileMtime(const char *zPath)
 /* ph7_int64 (*xFileCtime)(const char *) */
 static ph7_int64 WinVfs_FileCtime(const char *zPath)
 {
+	zPath = WinVfsLocalPath(zPath);
 	BY_HANDLE_FILE_INFORMATION sInfo;
 	void * pConverted;
 	ph7_int64 ctime;
@@ -478,6 +548,7 @@ static ph7_int64 WinVfs_FileCtime(const char *zPath)
 /* int (*xlStat)(const char *,ph7_value *,ph7_value *) */
 static int WinVfs_Stat(const char *zPath,ph7_value *pArray,ph7_value *pWorker)
 {
+	zPath = WinVfsLocalPath(zPath);
 	BY_HANDLE_FILE_INFORMATION sInfo;
 	void *pConverted;
 	HANDLE pHandle;
@@ -535,6 +606,7 @@ static int WinVfs_Stat(const char *zPath,ph7_value *pArray,ph7_value *pWorker)
 /* int (*xIsfile)(const char *) */
 static int WinVfs_isfile(const char *zPath)
 {
+	zPath = WinVfsLocalPath(zPath);
 	void * pConverted;
 	DWORD dwAttr;
 	pConverted = convertUtf8Filename(zPath);
@@ -551,6 +623,7 @@ static int WinVfs_isfile(const char *zPath)
 /* int (*xIslink)(const char *) */
 static int WinVfs_islink(const char *zPath)
 {
+	zPath = WinVfsLocalPath(zPath);
 	void * pConverted;
 	DWORD dwAttr;
 	pConverted = convertUtf8Filename(zPath);
@@ -567,6 +640,7 @@ static int WinVfs_islink(const char *zPath)
 /* int (*xWritable)(const char *) */
 static int WinVfs_iswritable(const char *zPath)
 {
+	zPath = WinVfsLocalPath(zPath);
 	void * pConverted;
 	DWORD dwAttr;
 	pConverted = convertUtf8Filename(zPath);
@@ -592,6 +666,7 @@ static int WinVfs_iswritable(const char *zPath)
 /* int (*xExecutable)(const char *) */
 static int WinVfs_isexecutable(const char *zPath)
 {
+	zPath = WinVfsLocalPath(zPath);
 	void * pConverted;
 	DWORD dwAttr;
 	pConverted = convertUtf8Filename(zPath);
@@ -613,6 +688,7 @@ static int WinVfs_isexecutable(const char *zPath)
 /* int (*xFiletype)(const char *,ph7_context *) */
 static int WinVfs_Filetype(const char *zPath,ph7_context *pCtx)
 {
+	zPath = WinVfsLocalPath(zPath);
 	void * pConverted;
 	DWORD dwAttr;
 	pConverted = convertUtf8Filename(zPath);
@@ -760,12 +836,72 @@ static void WinVfs_Username(ph7_context *pCtx)
 	}
 
 }
+/* int (*xChroot)(const char *) — Windows has no chroot; fail cleanly so chroot()
+ * returns false. (php has no chroot symbol at all; PHL exposes it as an extension
+ * and this reports the failure without a "not implemented in the VFS" warning.) */
+static int WinVfs_chroot(const char *zPath)
+{
+	(void)zPath;
+	return -1;
+}
+#ifndef SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
+#define SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE 0x2
+#endif
+#ifndef SYMBOLIC_LINK_FLAG_DIRECTORY
+#define SYMBOLIC_LINK_FLAG_DIRECTORY 0x1
+#endif
+/* int (*xLink)(const char *,const char *,int) — hard link (iSym==0) via
+ * CreateHardLink or symbolic link (iSym!=0) via CreateSymbolicLink, mirroring
+ * php on Windows. Developer-mode symlink creation is allowed. */
+static int WinVfs_Link(const char *zOld,const char *zNew,int iSym)
+{
+	void *pOld, *pNew;
+	BOOL rc;
+	pOld = convertUtf8Filename(zOld);
+	if( pOld == 0 ){
+		return -1;
+	}
+	pNew = convertUtf8Filename(zNew);
+	if( pNew == 0 ){
+		HeapFree(GetProcessHeap(),0,pOld);
+		return -1;
+	}
+	if( iSym ){
+		DWORD dwFlags = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
+		DWORD attr = GetFileAttributesW((LPCWSTR)pOld);
+		if( attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY) ){
+			dwFlags |= SYMBOLIC_LINK_FLAG_DIRECTORY;
+		}
+		rc = CreateSymbolicLinkW((LPCWSTR)pNew,(LPCWSTR)pOld,dwFlags) ? TRUE : FALSE;
+	}else{
+		rc = CreateHardLinkW((LPCWSTR)pNew,(LPCWSTR)pOld,0);
+	}
+	HeapFree(GetProcessHeap(),0,pNew);
+	HeapFree(GetProcessHeap(),0,pOld);
+	return rc ? PH7_OK : -1;
+}
+/* int (*xUmask)(int) — Windows has no umask; php's umask() returns 0 there. */
+static int WinVfs_Umask(int iMask)
+{
+	(void)iMask;
+	return 0;
+}
+/* int (*xUid)(void) / int (*xGid)(void) — no uid/gid on Windows; php's
+ * getmyuid()/getmygid() both return 0. */
+static int WinVfs_Uid(void)
+{
+	return 0;
+}
+static int WinVfs_Gid(void)
+{
+	return 0;
+}
 /* Export the windows vfs */
 PH7_PRIVATE const ph7_vfs sWinVfs = {
 	"Windows_vfs",
 	PH7_VFS_VERSION,
 	WinVfs_chdir,    /* int (*xChdir)(const char *) */
-	0,               /* int (*xChroot)(const char *); */
+	WinVfs_chroot,   /* int (*xChroot)(const char *); */
 	WinVfs_getcwd,   /* int (*xGetcwd)(ph7_context *) */
 	WinVfs_mkdir,    /* int (*xMkdir)(const char *,int,int) */
 	WinVfs_rmdir,    /* int (*xRmdir)(const char *) */
@@ -775,7 +911,7 @@ PH7_PRIVATE const ph7_vfs sWinVfs = {
 	WinVfs_Sleep,               /* int (*xSleep)(unsigned int) */
 	WinVfs_unlink,   /* int (*xUnlink)(const char *) */
 	WinVfs_FileExists, /* int (*xFileExists)(const char *) */
-	0, /*int (*xChmod)(const char *,int)*/
+	WinVfs_chmod, /*int (*xChmod)(const char *,int)*/
 	0, /*int (*xChown)(const char *,const char *)*/
 	0, /*int (*xChgrp)(const char *,const char *)*/
 	WinVfs_DiskFreeSpace,/* ph7_int64 (*xFreeSpace)(const char *) */
@@ -797,12 +933,12 @@ PH7_PRIVATE const ph7_vfs sWinVfs = {
 	WinVfs_Touch,      /* int (*xTouch)(const char *,ph7_int64,ph7_int64) */
 	WinVfs_Mmap,       /* int (*xMmap)(const char *,void **,ph7_int64 *) */
 	WinVfs_Unmap,      /* void (*xUnmap)(void *,ph7_int64);  */
-	0,                 /* int (*xLink)(const char *,const char *,int) */
-	0,                 /* int (*xUmask)(int) */
+	WinVfs_Link,       /* int (*xLink)(const char *,const char *,int) */
+	WinVfs_Umask,      /* int (*xUmask)(int) */
 	WinVfs_TempDir,    /* void (*xTempDir)(ph7_context *) */
 	WinVfs_ProcessId,  /* unsigned int (*xProcessId)(void) */
-	0, /* int (*xUid)(void) */
-	0, /* int (*xGid)(void) */
+	WinVfs_Uid, /* int (*xUid)(void) */
+	WinVfs_Gid, /* int (*xGid)(void) */
 	WinVfs_Username,    /* void (*xUsername)(ph7_context *) */
 	0 /* int (*xExec)(const char *,ph7_context *) */
 };
@@ -947,28 +1083,17 @@ static int WinDir_Read(void *pUserData,ph7_context *pCtx)
 	LPWIN32_FIND_DATAW pData;
 	char *zName;
 	BOOL rc;
-	sxu32 n;
 	if( pDirInfo->rc != SXRET_OK ){
 		/* No more entry to process */
 		return -1;
 	}
 	pData = &pDirInfo->sInfo;
-	for(;;){
-		zName = unicodeToUtf8(pData->cFileName);
-		if( zName == 0 ){
-			/* Out of memory */
-			return -1;
-		}
-		n = SyStrlen(zName);
-		/* Ignore '.' && '..' */
-		if( n > sizeof("..")-1 || zName[0] != '.' || ( n == sizeof("..")-1 && zName[1] != '.') ){
-			break;
-		}
-		HeapFree(GetProcessHeap(),0,zName);
-		rc = FindNextFileW(pDirInfo->pDirHandle,&pDirInfo->sInfo);
-		if( !rc ){
-			return -1;
-		}
+	/* php parity: readdir()/scandir() include the '.' and '..' entries, so unlike
+	 * the historical PH7 behaviour we return them instead of skipping. */
+	zName = unicodeToUtf8(pData->cFileName);
+	if( zName == 0 ){
+		/* Out of memory */
+		return -1;
 	}
 	/* Return the current file name */
 	ph7_result_string(pCtx,zName,-1);
@@ -1021,7 +1146,9 @@ static ph7_int64 WinFile_Write(void *pOS,const void *pBuffer,ph7_int64 nWrite)
 		}
 		rc = WriteFile(pHandle,zData,(DWORD)nWrite,&nWr,0);
 		if( !rc ){
-			/* IO error */
+			/* IO error — surface a POSIX errno for the caller's diagnostic
+			 * (e.g. a byte-range lock violation reports EACCES like php). */
+			WinVfsMapErrno();
 			break;
 		}
 		nWrite -= nWr;
@@ -1062,22 +1189,22 @@ static int WinFile_Seek(void *pUserData,ph7_int64 iOfft,int whence)
 static int WinFile_Lock(void *pUserData,int lock_type)
 {
 	HANDLE pHandle = (HANDLE)pUserData;
-	static DWORD dwLo = 0,dwHi = 0; /* xx: MT-SAFE */
 	OVERLAPPED sDummy;
 	BOOL rc;
 	SyZero(&sDummy,sizeof(sDummy));
-	/* Get the file size */
+	/* Lock/unlock the whole file. php locks the maximal byte range, so the lock
+	 * is effective even for an empty or freshly-truncated file — the previous
+	 * code locked only GetFileSize() bytes (i.e. nothing for a 0-byte file). */
 	if( lock_type < 1 ){
 		/* Unlock the file */
-		rc = UnlockFileEx(pHandle,0,dwLo,dwHi,&sDummy);
+		rc = UnlockFileEx(pHandle,0,0xFFFFFFFF,0xFFFFFFFF,&sDummy);
 	}else{
 		DWORD dwFlags = LOCKFILE_FAIL_IMMEDIATELY; /* Shared non-blocking lock by default*/
 		/* Lock the file */
 		if( lock_type == 1 /* LOCK_EXCL */ ){
 			dwFlags |= LOCKFILE_EXCLUSIVE_LOCK;
 		}
-		dwLo = GetFileSize(pHandle,&dwHi);
-		rc = LockFileEx(pHandle,dwFlags,0,dwLo,dwHi,&sDummy);
+		rc = LockFileEx(pHandle,dwFlags,0,0xFFFFFFFF,0xFFFFFFFF,&sDummy);
 	}
 	return rc ? PH7_OK : -1 /* Lock error */;
 }
