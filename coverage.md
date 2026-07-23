@@ -12,15 +12,15 @@
 | src/ph7/net.c                  | 50.48%   | 53/105      |
 | src/ph7/oo.c                   | 92.07%   | 650/706     |
 | src/ph7/parse.c                | 87.25%   | 1150/1318   |
-| src/ph7/vfs.c                  | 64.92%   | 1854/2856   |
+| src/ph7/vfs.c                  | 64.88%   | 1853/2856   |
 | src/ph7/vfs_unix.c             | 88.06%   | 376/427     |
-| src/ph7/vfs_win.c              | 75.43%   | 485/643     |
+| src/ph7/vfs_win.c              | 68.59%   | 487/710     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
-| src/ph7/vm.c                   | 81.82%   | 9523/11639  |
+| src/ph7/vm.c                   | 81.84%   | 9636/11774  |
 | src/ph7/vm_builtin_class.c     | 86.64%   | 506/584     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
-| src/ph7/vm_builtin_ob.c        | 76.21%   | 157/206     |
-| src/ph7/vm_builtin_reflection.c | 85.32%   | 1000/1172   |
+| src/ph7/vm_builtin_ob.c        | 75.12%   | 157/209     |
+| src/ph7/vm_builtin_reflection.c | 85.41%   | 1001/1172   |
 | src/ph7/vm_http.c              | 68.02%   | 302/444     |
 | src/ph7/vm_http_response.c     | 44.71%   | 114/255     |
 | src/ph7/vm_json.c              | 77.45%   | 443/572     |
@@ -45,6 +45,6 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.22%   | 40885/50337 |
-| Functions                      | 96.61%   | 1909/1976   |
+| Lines                          | 81.12%   | 41000/50542 |
+| Functions                      | 96.62%   | 1913/1980   |
 
