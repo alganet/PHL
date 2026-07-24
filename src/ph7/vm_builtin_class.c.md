@@ -797,48 +797,48 @@ Coverage: 506/584 lines (86.64%)
 |     - |  787 | ` * This function returns TRUE if the given class is an implemented` |
 |     - |  788 | ` * interface.Otherwise FALSE is returned.` |
 |     - |  789 | ` */` |
-| 17396 |  790 | `static int VmQueryInterfaceSet(ph7_class *pClass,SySet *pSet)` |
+| 17408 |  790 | `static int VmQueryInterfaceSet(ph7_class *pClass,SySet *pSet)` |
 |     5 |  791 | `{` |
 |     - |  792 | `	ph7_class **apInterface;` |
 |     - |  793 | `	sxu32 n;` |
-| 17401 |  794 | `	if( SySetUsed(pSet) < 1 ){` |
+| 17413 |  794 | `	if( SySetUsed(pSet) < 1 ){` |
 |     - |  795 | `		/* Empty interface container */` |
 |   243 |  796 | `		return FALSE;` |
 |     - |  797 | `	}` |
 |     - |  798 | `	/* Point to the set of implemented interfaces */` |
-| 17163 |  799 | `	apInterface = (ph7_class **)SySetBasePtr(pSet);` |
+| 17175 |  799 | `	apInterface = (ph7_class **)SySetBasePtr(pSet);` |
 |     - |  800 | `	/* Perform the lookup, walking each interface's parent chain so that` |
 |     - |  801 | `	 * Iterator extends Traversable (and similar) is recognized. */` |
-| 32987 |  802 | `	for( n = 0 ; n < SySetUsed(pSet) ; n++ ){` |
-| 17285 |  803 | `		ph7_class *pIface = apInterface[n];` |
-| 17285 |  804 | `		int iDepth = 0;` |
-| 33201 |  805 | `		while( pIface && iDepth <= PH7_INTERFACE_WALK_MAX_DEPTH ){` |
-| 17377 |  806 | `			if( pIface == pClass ){` |
-|  1461 |  807 | `				return TRUE;` |
+| 32999 |  802 | `	for( n = 0 ; n < SySetUsed(pSet) ; n++ ){` |
+| 17297 |  803 | `		ph7_class *pIface = apInterface[n];` |
+| 17297 |  804 | `		int iDepth = 0;` |
+| 33213 |  805 | `		while( pIface && iDepth <= PH7_INTERFACE_WALK_MAX_DEPTH ){` |
+| 17389 |  806 | `			if( pIface == pClass ){` |
+|  1473 |  807 | `				return TRUE;` |
 |     - |  808 | `			}` |
 | 15921 |  809 | `			pIface = pIface->pBase;` |
 | 15921 |  810 | `			iDepth++;` |
 |     5 |  811 | `		}` |
 |  7917 |  812 | `	}` |
 | 15707 |  813 | `	return FALSE;` |
-|  8703 |  814 | `}` |
+|  8709 |  814 | `}` |
 |     - |  815 | `/*` |
 |     - |  816 | ` * This function returns TRUE if the given class (first argument)` |
 |     - |  817 | ` * is an instance of the main class (second argument).` |
 |     - |  818 | ` * Otherwise FALSE is returned.` |
 |     - |  819 | ` */` |
-| 21262 |  820 | `PH7_PRIVATE int PH7_VmInstanceOf(ph7_class *pThis,ph7_class *pClass)` |
+| 21274 |  820 | `PH7_PRIVATE int PH7_VmInstanceOf(ph7_class *pThis,ph7_class *pClass)` |
 |     5 |  821 | `{` |
 |     - |  822 | `	ph7_class *pParent;` |
 |     - |  823 | `	sxi32 rc;` |
-| 21267 |  824 | `	if( pThis == pClass ){` |
+| 21279 |  824 | `	if( pThis == pClass ){` |
 |     - |  825 | `		/* Instance of the same class */` |
 |  8387 |  826 | `		return TRUE;` |
 |     - |  827 | `	}` |
 |     - |  828 | `	/* Check implemented interfaces */` |
-| 12885 |  829 | `	rc = VmQueryInterfaceSet(pClass,&pThis->aInterface);` |
-| 12885 |  830 | `	if( rc ){` |
-|   945 |  831 | `		return TRUE;` |
+| 12897 |  829 | `	rc = VmQueryInterfaceSet(pClass,&pThis->aInterface);` |
+| 12897 |  830 | `	if( rc ){` |
+|   957 |  831 | `		return TRUE;` |
 |     - |  832 | `	}` |
 |     - |  833 | `	/* Check parent classes */` |
 | 11945 |  834 | `	pParent = pThis->pBase;` |
@@ -857,7 +857,7 @@ Coverage: 506/584 lines (86.64%)
 |     5 |  847 | `	}` |
 |     - |  848 | `	/* Not an instance of the the given class */` |
 |   253 |  849 | `	return FALSE;` |
-| 10636 |  850 | `}` |
+| 10642 |  850 | `}` |
 |     - |  851 | `/*` |
 |     - |  852 | ` * This function returns TRUE if the given class (first argument)` |
 |     - |  853 | ` * is a subclass of the main class (second argument).` |
