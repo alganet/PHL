@@ -104,20 +104,20 @@ Coverage: 1108/1119 lines (99.02%)
 |      - |   94 | ` * Expand the largest integer supported.` |
 |      - |   95 | ` * Note that PH7 deals with 64-bit integer for all platforms.` |
 |      - |   96 | ` */` |
-|     66 |   97 | `static void PH7_INTMAX_Const(ph7_value *pVal,void *pUnused)` |
+|     98 |   97 | `static void PH7_INTMAX_Const(ph7_value *pVal,void *pUnused)` |
 |      3 |   98 | `{` |
-|     33 |   99 | `	SXUNUSED(pUnused);` |
-|     69 |  100 | `	ph7_value_int64(pVal,SXI64_HIGH);` |
-|     69 |  101 | `}` |
+|     49 |   99 | `	SXUNUSED(pUnused);` |
+|    101 |  100 | `	ph7_value_int64(pVal,SXI64_HIGH);` |
+|    101 |  101 | `}` |
 |      - |  102 | `/*` |
 |      - |  103 | ` * PHP_INT_MIN (php 7.0)` |
 |      - |  104 | ` * Expand the smallest integer supported.` |
 |      - |  105 | ` */` |
-|     24 |  106 | `static void PH7_INTMIN_Const(ph7_value *pVal,void *pUnused)` |
+|     46 |  106 | `static void PH7_INTMIN_Const(ph7_value *pVal,void *pUnused)` |
 |      1 |  107 | `{` |
-|     12 |  108 | `	SXUNUSED(pUnused);` |
-|     25 |  109 | `	ph7_value_int64(pVal,SMALLEST_INT64);` |
-|     25 |  110 | `}` |
+|     23 |  108 | `	SXUNUSED(pUnused);` |
+|     47 |  109 | `	ph7_value_int64(pVal,SMALLEST_INT64);` |
+|     47 |  110 | `}` |
 |      - |  111 | `/*` |
 |      - |  112 | ` * PHP_INT_SIZE` |
 |      - |  113 | ` * Expand the size in bytes of a 64-bit integer.` |
@@ -1139,20 +1139,20 @@ Coverage: 1108/1119 lines (99.02%)
 |      - | 1129 | ` * PATHINFO_EXTENSION` |
 |      - | 1130 | ` *  Expand 3.` |
 |      - | 1131 | ` */` |
-|   6400 | 1132 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
+|   6402 | 1132 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1133 | `{` |
-|   3200 | 1134 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6405 | 1135 | `	ph7_value_int(pVal,3);` |
-|   6405 | 1136 | `}` |
+|   3201 | 1134 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6407 | 1135 | `	ph7_value_int(pVal,3);` |
+|   6407 | 1136 | `}` |
 |      - | 1137 | `/*` |
 |      - | 1138 | ` * PATHINFO_FILENAME` |
 |      - | 1139 | ` *  Expand 4.` |
 |      - | 1140 | ` */` |
-|   6392 | 1141 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
+|   6394 | 1141 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1142 | `{` |
-|   3196 | 1143 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6397 | 1144 | `	ph7_value_int(pVal,4);` |
-|   6397 | 1145 | `}` |
+|   3197 | 1143 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6399 | 1144 | `	ph7_value_int(pVal,4);` |
+|   6399 | 1145 | `}` |
 |      - | 1146 | `/*` |
 |      - | 1147 | ` * ASSERT_ACTIVE.` |
 |      - | 1148 | ` *  PHP ASSERT_ACTIVE = 1` |

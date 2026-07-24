@@ -95,11 +95,11 @@ Coverage: 16/16 lines (100.00%)
 |    - |   85 | ` * do not depend on the math library.  Values are treated as double because` |
 |    - |   86 | ` * all engine code currently uses 64‑bit reals.` |
 |    - |   87 | ` */` |
-| 2158 |   88 | `SX_STATIC_INLINE int PH7_IS_NAN_DOUBLE(double v){` |
+| 2206 |   88 | `SX_STATIC_INLINE int PH7_IS_NAN_DOUBLE(double v){` |
 |    - |   89 | `    union { double d; sxu64 u; } u;` |
-| 2158 |   90 | `    u.d = v;` |
-| 2278 |   91 | `    return ((u.u & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL)` |
-| 2154 |   92 | `           && ((u.u & 0x000fffffffffffffULL) != 0);` |
+| 2206 |   90 | `    u.d = v;` |
+| 2326 |   91 | `    return ((u.u & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL)` |
+| 2202 |   92 | `           && ((u.u & 0x000fffffffffffffULL) != 0);` |
 |    4 |   93 | `}` |
 |  980 |   94 | `SX_STATIC_INLINE int PH7_IS_INF_DOUBLE(double v){` |
 |    - |   95 | `    union { double d; sxu64 u; } u;` |
