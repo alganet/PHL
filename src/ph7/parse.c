@@ -1389,7 +1389,29 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 					ExprFreeTree(&(*pGen),apNode[iNode]);
 					apNode[iNode] = 0;
 			}
-			ExprMakeTree(&(*pGen),&apNode[iNode],iCur-iNode);
+			{
+				/* `...$expr` flags the argument's FIRST node at extraction
+				 * time; when the expression is more than a lone terminal
+				 * (a call, member access, ...) tree-building roots the span
+				 * at a DIFFERENT node — carry the spread mark onto the root
+				 * or the code generator never emits OP_SPREAD (f(...mk())
+				 * used to pass the whole array as one argument). Scan for
+				 * the first LIVE node: an outer paren pass may already have
+				 * collapsed a leading group — `...(new S)->pair()` — leaving
+				 * NULL slots ahead of the flagged subtree. */
+				int bSpreadArg = 0;
+				sxi32 iScan;
+				for( iScan = iNode ; iScan < iCur ; iScan++ ){
+					if( apNode[iScan] ){
+						bSpreadArg = (apNode[iScan]->iFlags & EXPR_NODE_SPREAD) != 0;
+						break;
+					}
+				}
+				ExprMakeTree(&(*pGen),&apNode[iNode],iCur-iNode);
+				if( bSpreadArg && apNode[iNode] ){
+					apNode[iNode]->iFlags |= EXPR_NODE_SPREAD;
+				}
+			}
 			if( apNode[iNode] ){
 				if( sArgName.nByte > 0 ){
 					apNode[iNode]->iFlags |= EXPR_NODE_NAMED_ARG;
@@ -1478,10 +1500,14 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 			 }
 			 /* Mark the subtree root as coming from an explicit parenthesised
 			  * group. Consumed by the ** precedence-5 phase so it does not
-			  * hoist a unary operator that the user explicitly isolated. */
+			  * hoist a unary operator that the user explicitly isolated.
+			  * A spread mark on the '(' itself — `...($expr)` flags the paren
+			  * node at extraction — must survive onto the root too, or the
+			  * group's free below silently drops the unpacking. */
 			 for( j = iLeft + 1 ; j < iCur ; ++j ){
 				 if( apNode[j] ){
-					 apNode[j]->iFlags |= EXPR_NODE_PARENS;
+					 apNode[j]->iFlags |= EXPR_NODE_PARENS
+						 | (apNode[iLeft]->iFlags & EXPR_NODE_SPREAD);
 					 break;
 				 }
 			 }

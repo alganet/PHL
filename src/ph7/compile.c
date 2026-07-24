@@ -11962,18 +11962,30 @@ static sxi32 GenStateEmitExprCode(
 				bFcc = 1;
 				nArgs = 0;
 			}
-			/* Validate: no positional arguments after named arguments */
+			/* Validate argument order like php: no positional argument after a
+			 * named one OR after unpacking, and `name: ...$x` is a parse error. */
 			{
 				int seenNamed = 0;
+				int seenSpread = 0;
 				for( n = 0; n < nArgs; ++n ){
-					if( apNode[n]->iFlags & EXPR_NODE_NAMED_ARG ){
+					if( apNode[n]->iFlags & EXPR_NODE_SPREAD ){
+						bAnySpread = 1;
+						seenSpread = 1;
+						if( apNode[n]->iFlags & EXPR_NODE_NAMED_ARG ){
+							rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[n]->pStart->nLine,
+								"syntax error, unexpected token \"...\"");
+							return SXERR_SYNTAX;
+						}
+					}else if( apNode[n]->iFlags & EXPR_NODE_NAMED_ARG ){
 						seenNamed = 1;
 						hasNamed = 1;
-					}else if( apNode[n]->iFlags & EXPR_NODE_SPREAD ){
-						bAnySpread = 1;
 					}else if( seenNamed ){
 						rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[n]->pStart->nLine,
 							"Cannot use positional argument after named argument");
+						return SXERR_SYNTAX;
+					}else if( seenSpread ){
+						rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[n]->pStart->nLine,
+							"Cannot use positional argument after argument unpacking");
 						return SXERR_SYNTAX;
 					}
 				}
@@ -12132,20 +12144,23 @@ static sxi32 GenStateEmitExprCode(
 						nQual = GenStateNsQualifyName(pGen,nOrig,&pGen->hUseFuncImports,&fromImport);
 						pInstr->iP2 = (sxi32)nQual;
 						if( nQual != nOrig ){
-							/* Store original literal index in CALL's iP2 so the
-							 * NEW handler can recover the unqualified name. */
-							iP2 = (sxi32)(nOrig + 1); /* +1 to distinguish from default 0 */
-							if( !fromImport ){
-								/* Mark as namespace-qualified via VmCallArgMap */
-								if( p3 == 0 ){
-									VmCallArgMap *pMap = (VmCallArgMap *)SyMemBackendAlloc(
-										&pGen->pVm->sAllocator, sizeof(VmCallArgMap));
-									if( pMap ){
-										SyZero(pMap, sizeof(VmCallArgMap));
-										p3 = (void *)pMap;
-									}
+							/* Record the original literal index in the arg map
+							 * (NOT in the CALL's iP2 — that is the hasSpread
+							 * flag) so the NEW handler can recover the
+							 * unqualified name and re-qualify with CLASS
+							 * imports. */
+							if( p3 == 0 ){
+								VmCallArgMap *pMap = (VmCallArgMap *)SyMemBackendAlloc(
+									&pGen->pVm->sAllocator, sizeof(VmCallArgMap));
+								if( pMap ){
+									SyZero(pMap, sizeof(VmCallArgMap));
+									p3 = (void *)pMap;
 								}
-								if( p3 ){
+							}
+							if( p3 ){
+								((VmCallArgMap *)p3)->nOrigNameLit = nOrig + 1;
+								if( !fromImport ){
+									/* Mark as namespace-qualified */
 									((VmCallArgMap *)p3)->bIsNamespaced = 1;
 								}
 							}
@@ -12332,11 +12347,15 @@ static sxi32 GenStateEmitExprCode(
 				if( pPeek && pPeek->iOp == PH7_OP_LOADC ){
 					int bAbsolute = (pPeek->iP1 & PH7_LOADC_ABSOLUTE) != 0;
 					sxu32 nLitForClass;
-					/* If the CALL handler already qualified the name using
-					 * function imports, recover the original unqualified
-					 * literal so we can re-qualify with class imports. */
-					if( pCallInstr && pCallInstr->iP2 > 0 ){
-						nLitForClass = (sxu32)(pCallInstr->iP2 - 1); /* undo +1 encoding */
+					VmCallArgMap *pCallNsMap = pCallInstr ? (VmCallArgMap *)pCallInstr->p3 : 0;
+					/* If the CALL handler qualified the name with FUNCTION
+					 * imports, recover the original literal (recorded in the
+					 * arg map — OP_CALL's iP2 is the hasSpread flag, and
+					 * misreading it as a literal index made `new C(...$args)`
+					 * fatal with "Class ' ' is not defined") and re-qualify
+					 * with class imports. */
+					if( pCallNsMap && pCallNsMap->nOrigNameLit > 0 ){
+						nLitForClass = pCallNsMap->nOrigNameLit - 1;
 					}else{
 						nLitForClass = (sxu32)pPeek->iP2;
 					}
@@ -12353,8 +12372,11 @@ static sxi32 GenStateEmitExprCode(
 				VmInstr *pPrev;
 				pPrev = PH7_VmPeekNextInstr(pGen->pVm);
 				if( pPrev == 0 || pPrev->iOp != PH7_OP_MEMBER ){
-					/* Pop the call instruction, preserve named-arg map */
+					/* Pop the call instruction, preserve named-arg map and
+					 * the hasSpread flag (OP_NEW consumes the spread
+					 * accumulator exactly like OP_CALL would have). */
 					iP1 = pInstr->iP1;
+					iP2 = pInstr->iP2;
 					if( pInstr->p3 ){
 						p3 = pInstr->p3; /* Transfer VmCallArgMap to NEW */
 					}

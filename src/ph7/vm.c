@@ -7069,6 +7069,75 @@ static sxi32 VmSpreadValuesStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue,
 	return SXRET_OK;
 }
 /*
+ * Shared OP_SPREAD expansion tail: replace the stack slot holding an
+ * array-to-unpack with the map's elements in insertion order, accumulating
+ * the net stack growth in pVm->iSpreadExtra. Used by both the plain-array
+ * path (*ppTos holds the map value) and the materialized-Traversable path
+ * (*ppTos holds the iterator object; pMap is the temp).
+ * The map is kept alive across the walk — the stack slot may hold its ONLY
+ * reference (literal / call-result temp), and releasing it mid-walk restores
+ * the nodes' value slots to the freelist (the old open-coded copy then read
+ * the reset slots and pushed nulls: f(...[1,2]) bound null/null). A
+ * sole-owner temp's elements are deep-copied (PH7_MemObjStore) so nested
+ * containers and blobs survive the trailing unref; a shared map keeps the
+ * historical zero-copy aliasing (PH7_MemObjLoad) for f(...$var).
+ */
+static void VmSpreadExpandMap(ph7_vm *pVm, ph7_value **ppTos, ph7_hashmap *pMap)
+{
+	ph7_value *pTos = *ppTos;
+	sxu32 nEntry = pMap->nEntry;
+	if( nEntry == 0 ){
+		/* Nothing to unpack — remove the source from the stack */
+		VmPopOperand(&pTos, 1);
+		pVm->iSpreadExtra--; /* One expression produced zero args */
+	}else if( pVm->iSpreadExtra + (sxi32)(nEntry - 1) >= VM_STACK_GUARD ){
+		/* Safety: refuse to expand beyond the stack guard margin */
+		VmErrorFormat(&(*pVm), PH7_CTX_ERR,
+			"Argument unpacking: cumulative expansion exceeds stack guard (%d)",
+			VM_STACK_GUARD);
+	}else{
+		ph7_hashmap_node *pNode;
+		ph7_value *pElem;
+		sxu32 i;
+		int bTemp;
+		pMap->iRef++;
+		bTemp = (pMap->iRef == 2); /* the stack slot held the only reference */
+		/* Overwrite the source slot with the first element */
+		pNode = pMap->pFirst;
+		pElem = (ph7_value *)SySetAt(&pVm->aMemObj, pNode->nValIdx);
+		PH7_MemObjRelease(pTos);
+		if( pElem ){
+			if( bTemp ){
+				PH7_MemObjStore(pElem, pTos);
+			}else{
+				PH7_MemObjLoad(pElem, pTos);
+			}
+		}
+		pTos->nIdx = SXU32_HIGH;
+		/* Traverse in insertion order (pPrev is the forward link
+		 * in PHL's circular doubly-linked hashmap node list). */
+		pNode = pNode->pPrev;
+		/* Push the remaining elements */
+		for( i = 1; i < nEntry; i++ ){
+			pTos++;
+			PH7_MemObjInit(pVm, pTos);
+			pTos->nIdx = SXU32_HIGH;
+			pElem = (ph7_value *)SySetAt(&pVm->aMemObj, pNode->nValIdx);
+			if( pElem ){
+				if( bTemp ){
+					PH7_MemObjStore(pElem, pTos);
+				}else{
+					PH7_MemObjLoad(pElem, pTos);
+				}
+			}
+			pNode = pNode->pPrev;
+		}
+		pVm->iSpreadExtra += (sxi32)(nEntry - 1);
+		PH7_HashmapUnref(pMap);
+	}
+	*ppTos = pTos;
+}
+/*
  * Raise the PHP "Cannot use <type> as array" warning for a non-array source used in a
  * list / array-destructuring assignment. Shared by the positional OP_LOAD_LIST path and the
  * keyed OP_LOAD_IDX (iP2=7) path. The CALLER decides whether to warn at all — the two paths
@@ -10699,6 +10768,8 @@ case PH7_OP_NULLC_STORE: {
  * Replace TOS with the array's individual elements pushed onto the stack.
  * Accumulates the net stack growth in pVm->iSpreadExtra so the next CALL
  * can adjust its argument count (the CALL may not be the next instruction).
+ * The expansion tail is shared between the plain-array and the materialized
+ * Traversable paths — see VmSpreadExpandMap right above the dispatch loop.
  */
 case PH7_OP_SPREAD: {
 #ifdef UNTRUST
@@ -10714,7 +10785,6 @@ case PH7_OP_SPREAD: {
 	if( VmValueIsTraversable(pVm,pTos) ){
 		ph7_hashmap *pTmpMap = PH7_NewHashmap(&(*pVm),0,0);
 		sxi32 rcW;
-		sxu32 nEnt;
 		if( pTmpMap == 0 ){ goto Abort; }
 		rcW = PH7_VmIteratorWalk(&(*pVm),pTos,VmSpreadValuesStep,pTmpMap);
 		if( rcW == PH7_EXCEPTION || rcW == PH7_ABORT ){
@@ -10722,74 +10792,12 @@ case PH7_OP_SPREAD: {
 			if( rcW == PH7_ABORT ){ goto Abort; }
 			goto Exception;
 		}
-		nEnt = pTmpMap->nEntry;
-		if( nEnt == 0 ){
-			VmPopOperand(&pTos,1);
-			pVm->iSpreadExtra--;
-		}else if( pVm->iSpreadExtra + (sxi32)(nEnt - 1) >= VM_STACK_GUARD ){
-			VmErrorFormat(&(*pVm), PH7_CTX_ERR,
-				"Argument unpacking: cumulative expansion exceeds stack guard (%d)", VM_STACK_GUARD);
-		}else{
-			ph7_hashmap_node *pNodeT = pTmpMap->pFirst;
-			ph7_value *pElemT;
-			sxu32 iT;
-			pElemT = (ph7_value *)SySetAt(&pVm->aMemObj, pNodeT->nValIdx);
-			if( pElemT ){ PH7_MemObjStore(pElemT, pTos); }else{ PH7_MemObjRelease(pTos); }
-			pTos->nIdx = SXU32_HIGH;
-			pNodeT = pNodeT->pPrev;
-			for( iT = 1; iT < nEnt; iT++ ){
-				pTos++;
-				PH7_MemObjInit(pVm, pTos);
-				pTos->nIdx = SXU32_HIGH;
-				pElemT = (ph7_value *)SySetAt(&pVm->aMemObj, pNodeT->nValIdx);
-				if( pElemT ){ PH7_MemObjStore(pElemT, pTos); }
-				pNodeT = pNodeT->pPrev;
-			}
-			pVm->iSpreadExtra += (sxi32)(nEnt - 1);
-		}
+		VmSpreadExpandMap(pVm, &pTos, pTmpMap);
 		PH7_HashmapRelease(pTmpMap,TRUE);
 		break;
 	}
 	if( pTos->iFlags & MEMOBJ_HASHMAP ){
-		ph7_hashmap *pMap = (ph7_hashmap *)pTos->x.pOther;
-		sxu32 nEntry = pMap->nEntry;
-		if( nEntry == 0 ){
-			/* Empty array — remove from stack */
-			VmPopOperand(&pTos, 1);
-			pVm->iSpreadExtra--; /* One expression produced zero args */
-		}else if( pVm->iSpreadExtra + (sxi32)(nEntry - 1) >= VM_STACK_GUARD ){
-			/* Safety: refuse to expand beyond the stack guard margin */
-			VmErrorFormat(&(*pVm), PH7_CTX_ERR,
-				"Argument unpacking: cumulative expansion exceeds stack guard (%d)",
-				VM_STACK_GUARD);
-		}else{
-			ph7_hashmap_node *pNode2;
-			ph7_value *pElem;
-			sxu32 i;
-			/* Overwrite TOS with first element */
-			pNode2 = pMap->pFirst;
-			pElem = (ph7_value *)SySetAt(&pVm->aMemObj, pNode2->nValIdx);
-			PH7_MemObjRelease(pTos);
-			if( pElem ){
-				PH7_MemObjLoad(pElem, pTos);
-			}
-			pTos->nIdx = SXU32_HIGH;
-			/* Traverse in insertion order (pPrev is the forward link
-			 * in PHL's circular doubly-linked hashmap node list). */
-			pNode2 = pNode2->pPrev;
-			/* Push remaining elements */
-			for( i = 1; i < nEntry; i++ ){
-				pTos++;
-				PH7_MemObjInit(pVm, pTos);
-				pTos->nIdx = SXU32_HIGH;
-				pElem = (ph7_value *)SySetAt(&pVm->aMemObj, pNode2->nValIdx);
-				if( pElem ){
-					PH7_MemObjLoad(pElem, pTos);
-				}
-				pNode2 = pNode2->pPrev;
-			}
-			pVm->iSpreadExtra += (sxi32)(nEntry - 1);
-		}
+		VmSpreadExpandMap(pVm, &pTos, (ph7_hashmap *)pTos->x.pOther);
 	}
 	/* else: not an array — leave as-is (single arg) */
 	break;
@@ -12757,9 +12765,19 @@ case PH7_OP_MEMBER: {
  *  Create a new class instance (Object in the PHP jargon) and push that object on the stack.
  */
 case PH7_OP_NEW: {
-	ph7_value *pArg = &pTos[-pInstr->iP1]; /* Constructor arguments (if available) */
+	/* Constructor arg count: compile-time args plus any pending spread
+	 * expansion (iP2 = hasSpread, transferred from the popped OP_CALL —
+	 * `new C(...$args)` used to ignore the extras, leaving the expanded
+	 * elements ABOVE the class-name slot and fataling "Class ' ' is not
+	 * defined"). Consume the accumulator only when this NEW owns it. */
+	sxi32 nCtorArgs = pInstr->iP1 + (pInstr->iP2 ? pVm->iSpreadExtra : 0);
+	ph7_value *pArg;
 	ph7_class *pClass = 0;
 	ph7_class_instance *pNew;
+	if( pInstr->iP2 ){
+		pVm->iSpreadExtra = 0;
+	}
+	pArg = &pTos[-nCtorArgs]; /* Constructor arguments (if available) */
 	if( (pTos->iFlags & MEMOBJ_STRING) && SyBlobLength(&pTos->sBlob) > 0 ){
 		/* Try to extract the desired class */
 		pClass = PH7_VmExtractClass(&(*pVm),(const char *)SyBlobData(&pTos->sBlob),
@@ -12775,9 +12793,9 @@ case PH7_OP_NEW: {
 			);
 		/* Release the class operand and any constructor arguments, then abort */
 		PH7_MemObjRelease(pTos);
-		if( pInstr->iP1 > 0 ){
+		if( nCtorArgs > 0 ){
 			/* Pop given arguments */
-			VmPopOperand(&pTos,pInstr->iP1);
+			VmPopOperand(&pTos,nCtorArgs);
 		}
 		goto Abort;
 	}else{
@@ -12809,8 +12827,8 @@ case PH7_OP_NEW: {
 				/* Pop ctor args + release the class-name operand, leave NULL
 				 * as the expression value; the fetch-point router lands the
 				 * throw. No instance was created. */
-				if( pInstr->iP1 > 0 ){
-					VmPopOperand(&pTos,pInstr->iP1);
+				if( nCtorArgs > 0 ){
+					VmPopOperand(&pTos,nCtorArgs);
 				}
 				PH7_MemObjRelease(pTos);
 				pTos->nIdx = SXU32_HIGH;
@@ -12825,9 +12843,9 @@ case PH7_OP_NEW: {
 				&pClass->sName
 			);
 			PH7_MemObjRelease(pTos);
-			if( pInstr->iP1 > 0 ){
+			if( nCtorArgs > 0 ){
 				/* Pop given arguments */
-				VmPopOperand(&pTos,pInstr->iP1);
+				VmPopOperand(&pTos,nCtorArgs);
 			}
 			break;
 		}
@@ -12864,8 +12882,8 @@ case PH7_OP_NEW: {
 				if( VmRecordedResume(pVm,&iResumePc,sState.pEntryFrame,aInstr) ){
 					/* This frame's own try caught it in-place: tidy the stack
 					 * (pop ctor args + release the class-name slot) and resume. */
-					if( pInstr->iP1 > 0 ){
-						VmPopOperand(&pTos,pInstr->iP1);
+					if( nCtorArgs > 0 ){
+						VmPopOperand(&pTos,nCtorArgs);
 					}
 					PH7_MemObjRelease(pTos);
 					pc = iResumePc;
@@ -12874,9 +12892,9 @@ case PH7_OP_NEW: {
 				goto Exception;
 			}
 		}
-		if( pInstr->iP1 > 0 ){
+		if( nCtorArgs > 0 ){
 			/* Pop given arguments */
-			VmPopOperand(&pTos,pInstr->iP1);
+			VmPopOperand(&pTos,nCtorArgs);
 		}
 		PH7_MemObjRelease(pTos);
 		pTos->x.pOther = pNew;
@@ -13457,9 +13475,16 @@ yf_propagate:
  *  function on the stack.
  */
 case PH7_OP_CALL: {
-	sxi32 nCallArgs = pInstr->iP1 + pVm->iSpreadExtra;
+	/* iP2 = hasSpread (compile-time). Consume the spread accumulator ONLY
+	 * when this call's own argument list contains a spread — an INNER call
+	 * evaluated between an earlier spread and this one (f(...[1,2], ...mk()))
+	 * used to steal the pending extras: mk() received a phantom argument and
+	 * the outer call dropped the expanded elements. */
+	sxi32 nCallArgs = pInstr->iP1 + (pInstr->iP2 ? pVm->iSpreadExtra : 0);
 	ph7_value *pArg;
-	pVm->iSpreadExtra = 0; /* Always reset, even if zero */
+	if( pInstr->iP2 ){
+		pVm->iSpreadExtra = 0;
+	}
 	pArg = &pTos[-nCallArgs];
 	SyHashEntry *pEntry;
 	SyString sName;
