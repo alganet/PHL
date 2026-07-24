@@ -7,6 +7,56 @@
 #include <stdio.h>  /* snprintf — the default float->string conversion needs
                      * correctly-rounded digits like php (see MemObjStringValue) */
 
+/* Portable 64-bit overflow-detecting arithmetic for compilers that lack the
+ * GCC/Clang __builtin_*_overflow intrinsics (i.e. MSVC). The header exposes
+ * these through the PH7_{ADD,SUB,MUL}_OVERFLOW64 macros; the intrinsic path
+ * needs no out-of-line definition, so gate the whole block off there to avoid
+ * an unused-function warning. Each sets *pR to the two's-complement wrapped
+ * result and returns non-zero on overflow. The additive checks compute the
+ * wrapped result via unsigned math (no signed-overflow UB) and test the sign
+ * bits; the multiplicative check mirrors vm.c's proven bound-check form. */
+#if !(defined(__GNUC__) || defined(__clang__))
+PH7_PRIVATE int PH7_AddOverflow64(sxi64 a,sxi64 b,sxi64 *pR)
+{
+	*pR = (sxi64)((sxu64)a + (sxu64)b);
+	/* Overflow iff the operands share a sign and the result's sign differs. */
+	return ((a ^ *pR) & (b ^ *pR)) < 0;
+}
+PH7_PRIVATE int PH7_SubOverflow64(sxi64 a,sxi64 b,sxi64 *pR)
+{
+	*pR = (sxi64)((sxu64)a - (sxu64)b);
+	/* Overflow iff the operands differ in sign and the result's sign differs
+	 * from the minuend's. */
+	return ((a ^ b) & (a ^ *pR)) < 0;
+}
+PH7_PRIVATE int PH7_MulOverflow64(sxi64 a,sxi64 b,sxi64 *pR)
+{
+	*pR = (sxi64)((sxu64)a * (sxu64)b);
+	if( a == 0 || b == 0 || a == 1 || b == 1 ){
+		return 0;
+	}
+	if( a == -1 ){
+		return b == SMALLEST_INT64;
+	}
+	if( b == -1 ){
+		return a == SMALLEST_INT64;
+	}
+	if( a > 0 ){
+		if( b > 0 ){
+			return a > LARGEST_INT64 / b;
+		}else{
+			return b < SMALLEST_INT64 / a;
+		}
+	}else{
+		if( b > 0 ){
+			return a < SMALLEST_INT64 / b;
+		}else{
+			return b < LARGEST_INT64 / a;
+		}
+	}
+}
+#endif
+
 /* Provide PHP-style type names for values.  This utility may be reused
  * by any subsystem that works with ph7_value.
  */
@@ -1474,12 +1524,24 @@ PH7_PRIVATE sxi32 PH7_MemObjAdd(ph7_value *pObj1,ph7_value *pObj2,int bAddStore)
 				/* Try to get an integer representation also */
 				MemObjTryIntger(&(*pObj1));
 			}else{
-				/* Integer arithmetic */
-				sxi64 a,b;
+				/* Integer arithmetic; PHP promotes an overflowing sum to float.
+				 * The integer-only build (PH7_OMIT_FLOATING_POINT) has no float
+				 * type, so it wraps like OP_POW's OMIT path. */
+				sxi64 a,b,r;
 				a = pObj1->x.iVal;
 				b = pObj2->x.iVal;
-				pObj1->x.iVal = a+b;
-				MemObjSetType(pObj1,MEMOBJ_INT);
+				if( PH7_ADD_OVERFLOW64(a,b,&r) ){
+#ifndef PH7_OMIT_FLOATING_POINT
+					pObj1->rVal = (ph7_real)a + (ph7_real)b;
+					MemObjSetType(pObj1,MEMOBJ_REAL);
+#else
+					pObj1->x.iVal = r;
+					MemObjSetType(pObj1,MEMOBJ_INT);
+#endif
+				}else{
+					pObj1->x.iVal = r;
+					MemObjSetType(pObj1,MEMOBJ_INT);
+				}
 			}
 	}else{
 		if( (pObj1->iFlags|pObj2->iFlags) & MEMOBJ_HASHMAP ){

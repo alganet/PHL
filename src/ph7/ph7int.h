@@ -115,6 +115,27 @@ struct ph7_value
  * it with the given one.
  */
 #define MemObjSetType(OBJ,TYPE) ((OBJ)->iFlags = ((OBJ)->iFlags&~MEMOBJ_ALL)|TYPE)
+/*
+ * Signed 64-bit arithmetic with overflow detection. PHP promotes an integer
+ * operation that overflows sxi64 to a floating-point result, so the executor
+ * checks for overflow on every +,-,* (and ++/--) and re-runs the operation in
+ * double precision when it trips. GCC/Clang expose the __builtin_*_overflow
+ * intrinsics (zero cost, no UB); MSVC lacks them, so we fall back to portable
+ * implementations defined in memobj.c. Each macro sets *pR to the wrapped
+ * result and evaluates to non-zero on overflow.
+ */
+#if defined(__GNUC__) || defined(__clang__)
+#define PH7_ADD_OVERFLOW64(a,b,pR) __builtin_add_overflow((a),(b),(pR))
+#define PH7_SUB_OVERFLOW64(a,b,pR) __builtin_sub_overflow((a),(b),(pR))
+#define PH7_MUL_OVERFLOW64(a,b,pR) __builtin_mul_overflow((a),(b),(pR))
+#else
+PH7_PRIVATE int PH7_AddOverflow64(sxi64 a,sxi64 b,sxi64 *pR);
+PH7_PRIVATE int PH7_SubOverflow64(sxi64 a,sxi64 b,sxi64 *pR);
+PH7_PRIVATE int PH7_MulOverflow64(sxi64 a,sxi64 b,sxi64 *pR);
+#define PH7_ADD_OVERFLOW64(a,b,pR) PH7_AddOverflow64((a),(b),(pR))
+#define PH7_SUB_OVERFLOW64(a,b,pR) PH7_SubOverflow64((a),(b),(pR))
+#define PH7_MUL_OVERFLOW64(a,b,pR) PH7_MulOverflow64((a),(b),(pR))
+#endif
 /* ph7_value cast method signature */
 typedef sxi32 (*ProcMemObjCast)(ph7_value *);
 /* Forward reference */

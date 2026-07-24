@@ -9,49 +9,10 @@
 #ifndef PH7_OMIT_FLOATING_POINT
 #include <math.h>
 #endif
-/* Signed 64-bit multiplication with overflow detection. GCC/Clang expose
- * __builtin_mul_overflow; MSVC does not, so we fall back to a portable
- * UB-free bound-check implementation. Sets *pR to the wrapped product and
- * returns non-zero on overflow. The fallback never divides a potentially-
- * overflowed intermediate: all divisions are of compile-time constants
- * (LARGEST_INT64/SMALLEST_INT64) by a factor already proven not to be -1,
- * and the product itself is computed via unsigned multiplication to avoid
- * signed-overflow UB. */
-#if defined(__GNUC__) || defined(__clang__)
-#define VmMulOverflow64(a,b,pR) __builtin_mul_overflow((a),(b),(pR))
-#else
-static int VmMulOverflow64(sxi64 a, sxi64 b, sxi64 *pR)
-{
-	*pR = (sxi64)((sxu64)a * (sxu64)b);
-	/* Factors of 0 or ±1 never overflow; handle up front so the divisions
-	 * below are guaranteed safe (no SMALLEST_INT64 / -1, no /0). */
-	if( a == 0 || b == 0 || a == 1 || b == 1 ){
-		return 0;
-	}
-	if( a == -1 ){
-		return b == SMALLEST_INT64;
-	}
-	if( b == -1 ){
-		return a == SMALLEST_INT64;
-	}
-	/* |a|,|b| >= 2 and neither is -1.  Bound check against the MAX/MIN
-	 * thresholds.  No division by -1 is possible here, and the quotients
-	 * of compile-time constants by {a,b} always fit in sxi64. */
-	if( a > 0 ){
-		if( b > 0 ){
-			return a > LARGEST_INT64 / b;
-		}else{
-			return b < SMALLEST_INT64 / a;
-		}
-	}else{
-		if( b > 0 ){
-			return a < SMALLEST_INT64 / b;
-		}else{
-			return b < LARGEST_INT64 / a;
-		}
-	}
-}
-#endif
+/* Signed 64-bit integer overflow detection lives in ph7int.h as the shared
+ * PH7_{ADD,SUB,MUL}_OVERFLOW64 macros (GCC/Clang intrinsics, MSVC fallbacks in
+ * memobj.c). The executor uses them to promote an overflowing integer
+ * operation to a float, matching PHP. */
 /*
  * The code in this file implements execution method of the PH7 Virtual Machine.
  * The PH7 compiler (implemented in 'compiler.c' and 'parse.c') generates a bytecode program
@@ -9565,7 +9526,19 @@ case PH7_OP_INCR:
 						 * integer-valued real. */
 						PH7_MemObjTryInteger(pObj);
 					}else{
-						pObj->x.iVal++;
+						/* PHP promotes PHP_INT_MAX++ to float; the integer-only
+						 * build wraps like OP_POW's OMIT path. */
+						sxi64 r;
+						if( PH7_ADD_OVERFLOW64(pObj->x.iVal,1,&r) ){
+#ifndef PH7_OMIT_FLOATING_POINT
+							pObj->rVal = (ph7_real)pObj->x.iVal + 1.0;
+							MemObjSetType(pObj,MEMOBJ_REAL);
+#else
+							pObj->x.iVal = r;
+#endif
+						}else{
+							pObj->x.iVal = r;
+						}
 					}
 					if( pInstr->iP1 ){
 						/* Pre-increment: result is the new value. */
@@ -9588,8 +9561,21 @@ case PH7_OP_INCR:
 						/* Try to get an integer representation */
 						PH7_MemObjTryInteger(pTos);
 					}else{
-						pTos->x.iVal++;
-						MemObjSetType(pTos,MEMOBJ_INT);
+						/* PHP promotes PHP_INT_MAX++ to float; the integer-only
+						 * build wraps like OP_POW's OMIT path. */
+						sxi64 r;
+						if( PH7_ADD_OVERFLOW64(pTos->x.iVal,1,&r) ){
+#ifndef PH7_OMIT_FLOATING_POINT
+							pTos->rVal = (ph7_real)pTos->x.iVal + 1.0;
+							MemObjSetType(pTos,MEMOBJ_REAL);
+#else
+							pTos->x.iVal = r;
+							MemObjSetType(pTos,MEMOBJ_INT);
+#endif
+						}else{
+							pTos->x.iVal = r;
+							MemObjSetType(pTos,MEMOBJ_INT);
+						}
 					}
 				}
 			}
@@ -9645,7 +9631,19 @@ case PH7_OP_DECR:
 						 * integer-valued real. */
 						PH7_MemObjTryInteger(pObj);
 					}else{
-						pObj->x.iVal--;
+						/* PHP promotes PHP_INT_MIN-- to float; the integer-only
+						 * build wraps like OP_POW's OMIT path. */
+						sxi64 r;
+						if( PH7_SUB_OVERFLOW64(pObj->x.iVal,1,&r) ){
+#ifndef PH7_OMIT_FLOATING_POINT
+							pObj->rVal = (ph7_real)pObj->x.iVal - 1.0;
+							MemObjSetType(pObj,MEMOBJ_REAL);
+#else
+							pObj->x.iVal = r;
+#endif
+						}else{
+							pObj->x.iVal = r;
+						}
 					}
 					if( pInstr->iP1 ){
 						/* Pre-decrement: result is the new value. */
@@ -9667,8 +9665,21 @@ case PH7_OP_DECR:
 						/* Keep the cached int consistent with the new rVal. */
 						PH7_MemObjTryInteger(pTos);
 					}else{
-						pTos->x.iVal--;
-						MemObjSetType(pTos,MEMOBJ_INT);
+						/* PHP promotes PHP_INT_MIN-- to float; the integer-only
+						 * build wraps like OP_POW's OMIT path. */
+						sxi64 r;
+						if( PH7_SUB_OVERFLOW64(pTos->x.iVal,1,&r) ){
+#ifndef PH7_OMIT_FLOATING_POINT
+							pTos->rVal = (ph7_real)pTos->x.iVal - 1.0;
+							MemObjSetType(pTos,MEMOBJ_REAL);
+#else
+							pTos->x.iVal = r;
+							MemObjSetType(pTos,MEMOBJ_INT);
+#endif
+						}else{
+							pTos->x.iVal = r;
+							MemObjSetType(pTos,MEMOBJ_INT);
+						}
 					}
 				}
 			}
@@ -9692,7 +9703,25 @@ case PH7_OP_UMINUS:
 		pTos->rVal = -pTos->rVal;
 	}
 	if( pTos->iFlags & MEMOBJ_INT ){
-		pTos->x.iVal = -pTos->x.iVal;
+		if( pTos->x.iVal == SMALLEST_INT64 ){
+			/* -PHP_INT_MIN overflows sxi64; PHP promotes it to float. When a
+			 * REAL representation is already present it is the negated
+			 * authoritative value, so just drop the now-stale cached int. The
+			 * integer-only build has no float type, so it wraps (two's
+			 * complement -INT_MIN == INT_MIN) like OP_POW's OMIT path. */
+#ifndef PH7_OMIT_FLOATING_POINT
+			if( (pTos->iFlags & MEMOBJ_REAL) == 0 ){
+				pTos->rVal = -(ph7_real)pTos->x.iVal;
+				MemObjSetType(pTos,MEMOBJ_REAL);
+			}else{
+				pTos->iFlags &= ~MEMOBJ_INT;
+			}
+#else
+			pTos->x.iVal = (sxi64)(0 - (sxu64)pTos->x.iVal);
+#endif
+		}else{
+			pTos->x.iVal = -pTos->x.iVal;
+		}
 	}
 	break;
 /*
@@ -9787,14 +9816,23 @@ case PH7_OP_MUL_STORE: {
 		/* Try to get an integer representation */
 		PH7_MemObjTryInteger(pNos);
 	}else{
-		/* Integer arithmetic */
+		/* Integer arithmetic; PHP promotes an overflowing product to float.
+		 * The integer-only build wraps like OP_POW's OMIT path. */
 		sxi64 a,b,r;
 		a = pNos->x.iVal;
 		b = pTos->x.iVal;
-		r = a * b;
-		/* Push the result */
-		pNos->x.iVal = r;
-		MemObjSetType(pNos,MEMOBJ_INT);
+		if( PH7_MUL_OVERFLOW64(a,b,&r) ){
+#ifndef PH7_OMIT_FLOATING_POINT
+			pNos->rVal = (ph7_real)a * (ph7_real)b;
+			MemObjSetType(pNos,MEMOBJ_REAL);
+#else
+			pNos->x.iVal = r;
+			MemObjSetType(pNos,MEMOBJ_INT);
+#endif
+		}else{
+			pNos->x.iVal = r;
+			MemObjSetType(pNos,MEMOBJ_INT);
+		}
 	}
 	if( pInstr->iOp == PH7_OP_MUL_STORE ){
 		ph7_value *pObj;
@@ -9866,14 +9904,14 @@ case PH7_OP_POW_STORE: {
 		int overflow = 0;
 		while( cur_exp > 0 ){
 			if( cur_exp & 1 ){
-				if( VmMulOverflow64(result_i, cur_base, &result_i) ){
+				if( PH7_MUL_OVERFLOW64(result_i, cur_base, &result_i) ){
 					overflow = 1;
 					break;
 				}
 			}
 			cur_exp >>= 1;
 			if( cur_exp > 0 ){
-				if( VmMulOverflow64(cur_base, cur_base, &cur_base) ){
+				if( PH7_MUL_OVERFLOW64(cur_base, cur_base, &cur_base) ){
 					overflow = 1;
 					break;
 				}
@@ -10017,14 +10055,23 @@ case PH7_OP_SUB: {
 		/* Try to get an integer representation */
 		PH7_MemObjTryInteger(pNos);
 	}else{
-		/* Integer arithmetic */
+		/* Integer arithmetic; PHP promotes an overflowing difference to float.
+		 * The integer-only build wraps like OP_POW's OMIT path. */
 		sxi64 a,b,r;
 		a = pNos->x.iVal;
 		b = pTos->x.iVal;
-		r = a - b;
-		/* Push the result */
-		pNos->x.iVal = r;
-		MemObjSetType(pNos,MEMOBJ_INT);
+		if( PH7_SUB_OVERFLOW64(a,b,&r) ){
+#ifndef PH7_OMIT_FLOATING_POINT
+			pNos->rVal = (ph7_real)a - (ph7_real)b;
+			MemObjSetType(pNos,MEMOBJ_REAL);
+#else
+			pNos->x.iVal = r;
+			MemObjSetType(pNos,MEMOBJ_INT);
+#endif
+		}else{
+			pNos->x.iVal = r;
+			MemObjSetType(pNos,MEMOBJ_INT);
+		}
 	}
 	VmPopOperand(&pTos,1);
 	break;
@@ -10061,14 +10108,23 @@ case PH7_OP_SUB_STORE: {
 		/* Try to get an integer representation */
 		PH7_MemObjTryInteger(pNos);
 	}else{
-		/* Integer arithmetic */
+		/* Integer arithmetic; PHP promotes an overflowing difference to float.
+		 * The integer-only build wraps like OP_POW's OMIT path. */
 		sxi64 a,b,r;
 		a = pTos->x.iVal;
 		b = pNos->x.iVal;
-		r = a - b;
-		/* Push the result */
-		pNos->x.iVal = r;
-		MemObjSetType(pNos,MEMOBJ_INT);
+		if( PH7_SUB_OVERFLOW64(a,b,&r) ){
+#ifndef PH7_OMIT_FLOATING_POINT
+			pNos->rVal = (ph7_real)a - (ph7_real)b;
+			MemObjSetType(pNos,MEMOBJ_REAL);
+#else
+			pNos->x.iVal = r;
+			MemObjSetType(pNos,MEMOBJ_INT);
+#endif
+		}else{
+			pNos->x.iVal = r;
+			MemObjSetType(pNos,MEMOBJ_INT);
+		}
 	}
 	if( pTos->nIdx == SXU32_HIGH ){
 		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
@@ -10113,6 +10169,12 @@ case PH7_OP_MOD:{
 		rc = VmThrowFixedError(&(*pVm),"DivisionByZeroError","Modulo by zero");
 		PH7_DISPATCH_ENFORCE_RC(rc)
 		r = 0; /* unreachable — ENFORCE_RC jumps/breaks for a throw */
+	}else if( b == -1 ){
+		/* `a % -1` is 0 for every a. Computing it as `a%b` would be a signed
+		 * -overflow trap (SIGFPE on x86) when a == PHP_INT_MIN, since the CPU
+		 * evaluates the overflowing quotient PHP_INT_MIN/-1 alongside the
+		 * remainder. php's result here is 0. */
+		r = 0;
 	}else{
 		r = a%b;
 	}
@@ -10156,6 +10218,10 @@ case PH7_OP_MOD_STORE: {
 		rc = VmThrowFixedError(&(*pVm),"DivisionByZeroError","Modulo by zero");
 		PH7_DISPATCH_ENFORCE_RC(rc)
 		r = 0; /* unreachable — ENFORCE_RC jumps/breaks for a throw */
+	}else if( b == -1 ){
+		/* `a % -1` is 0 for every a; see OP_MOD — computing `a%b` would trap
+		 * (SIGFPE on x86) for a == PHP_INT_MIN. php's result here is 0. */
+		r = 0;
 	}else{
 		r = a%b;
 	}
