@@ -928,6 +928,11 @@ struct VmCallArgMap
 	sxu8 bHasNamed;      /* 1 if any argument uses name: syntax */
 	sxu8 bIsNamespaced;  /* 1 if compiler namespace-qualified the call */
 	sxu8 bStrict;        /* 1 if the call site's file declared strict_types=1 */
+	sxu32 nOrigNameLit;  /* Original (unqualified) name-literal index + 1, stored
+						  * when the CALL handler namespace-qualified the name so
+						  * a following NEW can re-qualify with CLASS imports.
+						  * 0 = unset. (Formerly abused OP_CALL's iP2, colliding
+						  * with the hasSpread flag: `new N\C(...$args)`.) */
 	sxu32 nTotal;        /* Total number of compile-time arguments */
 	SyString *aNames;    /* Array of nTotal names. nByte==0 means positional. */
 };
