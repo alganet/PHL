@@ -18902,11 +18902,11 @@ Coverage: 9636/11774 lines (81.84%)
 |        - | 18892 | ` * PH7 uses its own private PRNG (the SQLite3-derived RC4 generator` |
 |        - | 18893 | ` * implemented in src/sx/sxrand.c).` |
 |        - | 18894 | ` */` |
-|     5195 | 18895 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
+|     5197 | 18895 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
 |        5 | 18896 | `{` |
 |        - | 18897 | `	sxu32 iNum;` |
-|     5200 | 18898 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
-|     5200 | 18899 | `	return iNum;` |
+|     5202 | 18898 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
+|     5202 | 18899 | `	return iNum;` |
 |        5 | 18900 | `}` |
 |        - | 18901 | `/*` |
 |        - | 18902 | ` * Generate a random string (English Alphabet) of length nLen.` |
@@ -19122,23 +19122,23 @@ Coverage: 9636/11774 lines (81.84%)
 |      225 | 19112 | `	uMask \|= uMask >> 16;` |
 |      225 | 19113 | `	uMask \|= uMask >> 32;` |
 |      225 | 19114 | `	uResult = 0;` |
-|      354 | 19115 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
+|      369 | 19115 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
 |        - | 19116 | `		/* Always draw a full 8 bytes so endianness of the cast doesn't matter` |
 |        - | 19117 | `		 * (a 4-byte fill into a sxu64 would land in the high half on big-endian` |
 |        - | 19118 | `		 * and the low-half mask would always read 0). */` |
 |        - | 19119 | `		sxu64 uDraw;` |
-|      354 | 19120 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
+|      369 | 19120 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
 |      ! 0 | 19121 | `			return PH7_VmThrowException(pCtx,` |
 |        - | 19122 | `				"Random\\RandomException",` |
 |        - | 19123 | `				"Cannot gather sufficient random data"` |
 |        - | 19124 | `				);` |
 |        - | 19125 | `		}` |
-|      354 | 19126 | `		uDraw &= uMask;` |
-|      354 | 19127 | `		if( uDraw <= uRange ){` |
+|      369 | 19126 | `		uDraw &= uMask;` |
+|      369 | 19127 | `		if( uDraw <= uRange ){` |
 |      225 | 19128 | `			uResult = uDraw;` |
 |      225 | 19129 | `			break;` |
 |        - | 19130 | `		}` |
-|       70 | 19131 | `	}` |
+|       83 | 19131 | `	}` |
 |      225 | 19132 | `	if( nAttempt >= 50 ){` |
 |      ! 0 | 19133 | `		return PH7_VmThrowException(pCtx,` |
 |        - | 19134 | `			"Random\\RandomException",` |
@@ -23202,10 +23202,10 @@ Coverage: 9636/11774 lines (81.84%)
 |        - | 23192 | ` * Default hash function used by the reference table` |
 |        - | 23193 | ` * for lookup/insertion operations.` |
 |        - | 23194 | ` */` |
-| 19973131 | 23195 | `static sxu32 VmRefHash(sxu32 nIdx)` |
+| 19973302 | 23195 | `static sxu32 VmRefHash(sxu32 nIdx)` |
 |        5 | 23196 | `{` |
 |        - | 23197 | `	/* Calculate the hash based on the memory object index */` |
-| 19973136 | 23198 | `	return nIdx ^ (nIdx << 8) ^ (nIdx >> 8);` |
+| 19973307 | 23198 | `	return nIdx ^ (nIdx << 8) ^ (nIdx >> 8);` |
 |        5 | 23199 | `}` |
 |        - | 23200 | `/*` |
 |        - | 23201 | ` * Check if a memory object [i.e: a variable] is already installed` |
@@ -23228,15 +23228,15 @@ Coverage: 9636/11774 lines (81.84%)
 |        - | 23218 | `	/* Perform the lookup */` |
 | 10814865 | 23219 | `	pRef = pVm->apRefObj[nBucket];` |
 | 23685890 | 23220 | `	for(;;){` |
-| 47384498 | 23221 | `		if( pRef == 0 ){` |
+| 47367169 | 23221 | `		if( pRef == 0 ){` |
 |  3991701 | 23222 | `			break;` |
 |        - | 23223 | `		}` |
-| 43392802 | 23224 | `		if( pRef->nIdx == nObjIdx ){` |
+| 43375473 | 23224 | `		if( pRef->nIdx == nObjIdx ){` |
 |        - | 23225 | `			/* Entry found */` |
 |  6823169 | 23226 | `			return pRef;` |
 |        - | 23227 | `		}` |
 |        - | 23228 | `		/* Point to the next entry */` |
-| 36569638 | 23229 | `		pRef = pRef->pNextCollide;` |
+| 36552309 | 23229 | `		pRef = pRef->pNextCollide;` |
 |        5 | 23230 | `	}` |
 |        - | 23231 | `	/* No such entry,return NULL */` |
 |  3991701 | 23232 | `	return 0;` |
@@ -23292,7 +23292,7 @@ Coverage: 9636/11774 lines (81.84%)
 |        - | 23282 | `	/* Insert the entry */` |
 |  3792625 | 23283 | `	pRef->pNextCollide = pVm->apRefObj[nBucket];` |
 |  3792625 | 23284 | `	if( pVm->apRefObj[nBucket] ){` |
-|  2778047 | 23285 | `		pVm->apRefObj[nBucket]->pPrevCollide = pRef;` |
+|  2778036 | 23285 | `		pVm->apRefObj[nBucket]->pPrevCollide = pRef;` |
 |  1389020 | 23286 | `	}` |
 |  3792625 | 23287 | `	pVm->apRefObj[nBucket] = pRef;` |
 |  3792625 | 23288 | `	MACRO_LD_PUSH(pVm->pRefList,pRef);` |
@@ -23331,12 +23331,12 @@ Coverage: 9636/11774 lines (81.84%)
 |     3697 | 23321 | `		}` |
 |  1642461 | 23322 | `	}` |
 |  3499185 | 23323 | `	if( pRef->pPrevCollide ){` |
-|  1296002 | 23324 | `		pRef->pPrevCollide->pNextCollide = pRef->pNextCollide;` |
+|  1295831 | 23324 | `		pRef->pPrevCollide->pNextCollide = pRef->pNextCollide;` |
 |   647949 | 23325 | `	}else{` |
-|  2203188 | 23326 | `		pVm->apRefObj[VmRefHash(pRef->nIdx) & (pVm->nRefSize - 1)] = pRef->pNextCollide;` |
+|  2203359 | 23326 | `		pVm->apRefObj[VmRefHash(pRef->nIdx) & (pVm->nRefSize - 1)] = pRef->pNextCollide;` |
 |        - | 23327 | `	}` |
 |  3499185 | 23328 | `	if( pRef->pNextCollide ){` |
-|  1963863 | 23329 | `		pRef->pNextCollide->pPrevCollide = pRef->pPrevCollide;` |
+|  1963840 | 23329 | `		pRef->pNextCollide->pPrevCollide = pRef->pPrevCollide;` |
 |   981923 | 23330 | `	}` |
 |  3499185 | 23331 | `	MACRO_LD_REMOVE(pVm->pRefList,pRef);` |
 |        - | 23332 | `	/* Release the node */` |
@@ -23474,14 +23474,14 @@ Coverage: 9636/11774 lines (81.84%)
 |        - | 23464 | `	/* Check if a scheme [i.e: file://,http://,zip://...] is available */` |
 |    30917 | 23465 | `	zNext = zCur = zIn = *pzDevice;` |
 |    30917 | 23466 | `	zEnd = &zIn[nByte];` |
-|  1967620 | 23467 | `	while( zIn < zEnd ){` |
-|  1936710 | 23468 | `		if( zIn < &zEnd[-3]/*://*/ && zIn[0] == ':' && zIn[1] == '/' && zIn[2] == '/' ){` |
+|  1967622 | 23467 | `	while( zIn < zEnd ){` |
+|  1936712 | 23468 | `		if( zIn < &zEnd[-3]/*://*/ && zIn[0] == ':' && zIn[1] == '/' && zIn[2] == '/' ){` |
 |        - | 23469 | `			/* Got one */` |
 |        3 | 23470 | `			zNext = &zIn[sizeof("://")-1];` |
 |        3 | 23471 | `			break;` |
 |        - | 23472 | `		}` |
 |        - | 23473 | `		/* Advance the cursor */` |
-|  1936708 | 23474 | `		zIn++;` |
+|  1936710 | 23474 | `		zIn++;` |
 |        5 | 23475 | `	}` |
 |    30917 | 23476 | `	if( zIn >= zEnd ){` |
 |        - | 23477 | `		/* No such scheme,return the default stream */` |

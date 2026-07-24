@@ -672,15 +672,15 @@ Coverage: 376/427 lines (88.06%)
 |  8360 |  662 | `	char *zName = 0; /* cc warning */` |
 |  8360 |  663 | `	sxu32 n = 0;` |
 |  5166 |  664 | `	for(;;){` |
-| 10328 |  665 | `		pEntry = readdir(pDir);` |
-| 10328 |  666 | `		if( pEntry == 0 ){` |
+| 10332 |  665 | `		pEntry = readdir(pDir);` |
+| 10332 |  666 | `		if( pEntry == 0 ){` |
 |     - |  667 | `			/* No more entries to process */` |
 |   982 |  668 | `			return -1;` |
 |     - |  669 | `		}` |
-|  9346 |  670 | `		zName = pEntry->d_name;` |
-|  9346 |  671 | `		n = SyStrlen(zName);` |
+|  9350 |  670 | `		zName = pEntry->d_name;` |
+|  9350 |  671 | `		n = SyStrlen(zName);` |
 |     - |  672 | `		/* Ignore '.' && '..' */` |
-|  9346 |  673 | `		if( n > sizeof("..")-1 \|\| zName[0] != '.' \|\| ( n == sizeof("..")-1 && zName[1] != '.') ){` |
+|  9350 |  673 | `		if( n > sizeof("..")-1 \|\| zName[0] != '.' \|\| ( n == sizeof("..")-1 && zName[1] != '.') ){` |
 |  3689 |  674 | `			break;` |
 |     - |  675 | `		}` |
 |     - |  676 | `		/* Next entry */` |

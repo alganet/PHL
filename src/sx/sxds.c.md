@@ -146,16 +146,16 @@ Coverage: 289/304 lines (95.07%)
 |    3873055 |  136 | `	pData =  (void *)&zBase[pSet->nUsed * pSet->eSize];` |
 |    3873055 |  137 | `	return pData;` |
 |    3133613 |  138 | `}` |
-|   21205898 |  139 | `PH7_PRIVATE void * SySetAt(SySet *pSet,sxu32 nIdx)` |
+|   21205937 |  139 | `PH7_PRIVATE void * SySetAt(SySet *pSet,sxu32 nIdx)` |
 |          5 |  140 | `{` |
 |          - |  141 | `	const char *zBase;` |
-|   21205903 |  142 | `	if( nIdx >= pSet->nUsed ){` |
+|   21205942 |  142 | `	if( nIdx >= pSet->nUsed ){` |
 |          - |  143 | `		/* Out of range */` |
 |        ! 0 |  144 | `		return 0;` |
 |          - |  145 | `	}` |
-|   21205903 |  146 | `	zBase = (const char *)pSet->pBase;` |
-|   21205903 |  147 | `	return (void *)&zBase[nIdx * pSet->eSize];` |
-|   10603257 |  148 | `}` |
+|   21205942 |  146 | `	zBase = (const char *)pSet->pBase;` |
+|   21205942 |  147 | `	return (void *)&zBase[nIdx * pSet->eSize];` |
+|   10603253 |  148 | `}` |
 |          - |  149 | `/* Private hash entry */` |
 |          - |  150 | `struct SyHashEntry_Pr` |
 |          - |  151 | `{` |
@@ -225,15 +225,15 @@ Coverage: 289/304 lines (95.07%)
 |          - |  215 |  |
 |   39740193 |  216 | `	nHash = pHash->xHash(pKey,nKeyLen);` |
 |   39740193 |  217 | `	pEntry = pHash->apBucket[nHash & (pHash->nBucketSize - 1)];` |
-|   37209518 |  218 | `	for(;;){` |
-|   74411403 |  219 | `		if( pEntry == 0 ){` |
+|   37328612 |  218 | `	for(;;){` |
+|   74664220 |  219 | `		if( pEntry == 0 ){` |
 |   15919747 |  220 | `			break;` |
 |          - |  221 | `		}` |
-|   70401648 |  222 | `		if( pEntry->nHash == nHash && pEntry->nKeyLen == nKeyLen &&` |
+|   70654465 |  222 | `		if( pEntry->nHash == nHash && pEntry->nKeyLen == nKeyLen &&` |
 |   23820484 |  223 | `			pHash->xCmp(pEntry->pKey,pKey,nKeyLen) == 0 ){` |
 |   23820451 |  224 | `				return pEntry;` |
 |          - |  225 | `		}` |
-|   34671215 |  226 | `		pEntry = pEntry->pNextCollide;` |
+|   34924032 |  226 | `		pEntry = pEntry->pNextCollide;` |
 |          5 |  227 | `	}` |
 |          - |  228 | `	/* Entry not found */` |
 |   15919747 |  229 | `	return 0;` |
@@ -265,7 +265,7 @@ Coverage: 289/304 lines (95.07%)
 |      41939 |  255 | `		pEntry->pPrevCollide->pNextCollide = pEntry->pNextCollide;` |
 |          - |  256 | `	}` |
 |     205653 |  257 | `	if( pEntry->pNextCollide ){` |
-|       3722 |  258 | `		pEntry->pNextCollide->pPrevCollide = pEntry->pPrevCollide;` |
+|       3720 |  258 | `		pEntry->pNextCollide->pPrevCollide = pEntry->pPrevCollide;` |
 |       1860 |  259 | `	}` |
 |          - |  260 | `	/* Keep the tail pointer valid when the last entry is the one removed. */` |
 |     205653 |  261 | `	if( pHash->pLast == pEntry ){` |
@@ -381,8 +381,8 @@ Coverage: 289/304 lines (95.07%)
 |    9154181 |  371 | `		iBucket = pEntry->nHash & (nNewSize - 1);` |
 |    9154181 |  372 | `		pEntry->pNextCollide = apNew[iBucket];` |
 |    9154181 |  373 | `		if( apNew[iBucket] != 0 ){` |
-|    4404833 |  374 | `			apNew[iBucket]->pPrevCollide = pEntry;` |
-|    2202641 |  375 | `		}` |
+|    4405322 |  374 | `			apNew[iBucket]->pPrevCollide = pEntry;` |
+|    2202699 |  375 | `		}` |
 |    9154181 |  376 | `		apNew[iBucket] = pEntry;` |
 |          - |  377 | `		/* Point to the next entry */` |
 |    9154181 |  378 | `		pEntry = pEntry->pNext;` |
@@ -399,8 +399,8 @@ Coverage: 289/304 lines (95.07%)
 |          - |  389 | `	/* Insert the entry in its corresponding bucket */` |
 |   11355693 |  390 | `	pEntry->pNextCollide = pHash->apBucket[iBucket];` |
 |   11355693 |  391 | `	if( pHash->apBucket[iBucket] != 0 ){` |
-|    7134276 |  392 | `		pHash->apBucket[iBucket]->pPrevCollide = pEntry;` |
-|    3566953 |  393 | `	}` |
+|    7134612 |  392 | `		pHash->apBucket[iBucket]->pPrevCollide = pEntry;` |
+|    3567230 |  393 | `	}` |
 |   11355693 |  394 | `	pHash->apBucket[iBucket] = pEntry;` |
 |          - |  395 | `	/* Link to the entry list. The default is head-insert (LIFO); bTail appends` |
 |          - |  396 | `	 * to the tail (O(1) via pLast) so iteration follows insertion order — for` |

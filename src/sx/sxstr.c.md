@@ -17,21 +17,21 @@ Coverage: 92/98 lines (93.88%)
 |        - |    7 | `#include "sxmacros.h"` |
 |        - |    8 | `#include "sxstr.h"` |
 |        - |    9 |  |
-|  9980511 |   10 | `PH7_PRIVATE sxu32 SyStrlen(const char *zSrc)` |
+|  9980515 |   10 | `PH7_PRIVATE sxu32 SyStrlen(const char *zSrc)` |
 |        5 |   11 | `{` |
-|  9980516 |   12 | `	register const char *zIn = zSrc;` |
+|  9980520 |   12 | `	register const char *zIn = zSrc;` |
 |        - |   13 | `#if defined(UNTRUST)` |
 |        - |   14 | `	if( zIn == 0 ){` |
 |        - |   15 | `		return 0;` |
 |        - |   16 | `	}` |
 |        - |   17 | `#endif` |
-| 16692045 |   18 | `	for(;;){` |
-| 33379849 |   19 | `		if( !zIn[0] ){ break; } zIn++;` |
-| 31091329 |   20 | `		if( !zIn[0] ){ break; } zIn++;` |
-| 28385916 |   21 | `		if( !zIn[0] ){ break; } zIn++;` |
-| 25522319 |   22 | `		if( !zIn[0] ){ break; } zIn++;` |
+| 16692040 |   18 | `	for(;;){` |
+| 33379843 |   19 | `		if( !zIn[0] ){ break; } zIn++;` |
+| 31091336 |   20 | `		if( !zIn[0] ){ break; } zIn++;` |
+| 28385918 |   21 | `		if( !zIn[0] ){ break; } zIn++;` |
+| 25522314 |   22 | `		if( !zIn[0] ){ break; } zIn++;` |
 |        5 |   23 | `	}` |
-|  9980516 |   24 | `	return (sxu32)(zIn - zSrc);` |
+|  9980520 |   24 | `	return (sxu32)(zIn - zSrc);` |
 |        5 |   25 | `}` |
 |      418 |   26 | `PH7_PRIVATE sxi32 SyByteFind(const char *zStr,sxu32 nLen,sxi32 c,sxu32 *pPos)` |
 |        1 |   27 | `{` |
@@ -136,9 +136,9 @@ Coverage: 92/98 lines (93.88%)
 |  5011663 |  126 | `	zEnd = &zBuf[nDestLen - 1]; /* reserve a room for the null terminator */` |
 |  8285006 |  127 | `	for(;;){` |
 | 16569779 |  128 | `		if( zBuf >= zEnd \|\| nLen == 0 ){ break;} zBuf[0] = zIn[0]; zIn++; zBuf++; nLen--;` |
-| 15220769 |  129 | `		if( zBuf >= zEnd \|\| nLen == 0 ){ break;} zBuf[0] = zIn[0]; zIn++; zBuf++; nLen--;` |
+| 15220770 |  129 | `		if( zBuf >= zEnd \|\| nLen == 0 ){ break;} zBuf[0] = zIn[0]; zIn++; zBuf++; nLen--;` |
 | 13936040 |  130 | `		if( zBuf >= zEnd \|\| nLen == 0 ){ break;} zBuf[0] = zIn[0]; zIn++; zBuf++; nLen--;` |
-| 12706707 |  131 | `		if( zBuf >= zEnd \|\| nLen == 0 ){ break;} zBuf[0] = zIn[0]; zIn++; zBuf++; nLen--;` |
+| 12706708 |  131 | `		if( zBuf >= zEnd \|\| nLen == 0 ){ break;} zBuf[0] = zIn[0]; zIn++; zBuf++; nLen--;` |
 |        5 |  132 | `	}` |
 |  5011663 |  133 | `	zBuf[0] = 0;` |
 |  5011663 |  134 | `	return (sxu32)(zBuf-(unsigned char *)zDest);` |
