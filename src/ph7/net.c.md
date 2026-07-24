@@ -111,9 +111,9 @@ Coverage: 53/105 lines (50.48%)
 |    - |  101 | ` * If pAddr and pAddrLen are non-NULL, the client address is stored there.` |
 |    - |  102 | ` * Returns the client socket, or PH7_NET_INVALID_SOCKET on error.` |
 |    - |  103 | ` */` |
-|   51 |  104 | `PH7_PRIVATE ph7_socket PH7_NetAccept(ph7_socket listenSock, struct sockaddr *pAddr, ph7_socklen *pAddrLen)` |
+|   52 |  104 | `PH7_PRIVATE ph7_socket PH7_NetAccept(ph7_socket listenSock, struct sockaddr *pAddr, ph7_socklen *pAddrLen)` |
 |  ! 0 |  105 | `{` |
-|   51 |  106 | `	return accept(listenSock, pAddr, pAddrLen);` |
+|   52 |  106 | `	return accept(listenSock, pAddr, pAddrLen);` |
 |  ! 0 |  107 | `}` |
 |    - |  108 | `/*` |
 |    - |  109 | ` * Receive data from a socket.` |
