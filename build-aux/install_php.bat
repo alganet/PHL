@@ -19,7 +19,12 @@ if exist "%PHP_DIR%\php.exe" (
 )
 
 echo Resolving latest %PHP_BRANCH% NTS x64 build from windows.php.net...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $b='%PHP_BRANCH%'; $dir='%PHP_DIR%'; $j=Invoke-RestMethod 'https://windows.php.net/downloads/releases/releases.json'; $v=$j.$b; if(-not $v){throw \"no releases for branch $b\"}; $p=$v.PSObject.Properties | Where-Object { $_.Name -match 'nts-vs\d+-x64' } | Select-Object -First 1; if(-not $p){throw \"no NTS x64 build for $b\"}; $zip=$p.Value.zip.path; $url='https://windows.php.net/downloads/releases/'+$zip; Write-Host \"Downloading $url\"; Invoke-WebRequest -Uri $url -OutFile $zip; if(Test-Path $dir){Remove-Item -Recurse -Force $dir}; Expand-Archive -Path $zip -DestinationPath $dir -Force; if(-not (Test-Path (Join-Path $dir 'php.exe'))){throw 'php.exe missing after extract'}"
+:: TLS 1.2 is mandatory: Windows PowerShell 5.1 negotiates TLS 1.0/1.1 by default,
+:: which windows.php.net's CDN refuses ("underlying connection was closed"), so the
+:: download fails on a stock VM without it. A php.ini pinning the oracle's config to
+:: match CI (assertions off like php's production ini; UTC clock) is written next to
+:: php.exe so test-compat is reproducible instead of depending on ambient defaults.
+powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $ErrorActionPreference='Stop'; $b='%PHP_BRANCH%'; $dir='%PHP_DIR%'; $j=Invoke-RestMethod 'https://windows.php.net/downloads/releases/releases.json'; $v=$j.$b; if(-not $v){throw \"no releases for branch $b\"}; $p=$v.PSObject.Properties | Where-Object { $_.Name -match 'nts-vs\d+-x64' } | Select-Object -First 1; if(-not $p){throw \"no NTS x64 build for $b\"}; $zip=$p.Value.zip.path; $url='https://windows.php.net/downloads/releases/'+$zip; Write-Host \"Downloading $url\"; Invoke-WebRequest -Uri $url -OutFile $zip; if(Test-Path $dir){Remove-Item -Recurse -Force $dir}; Expand-Archive -Path $zip -DestinationPath $dir -Force; if(-not (Test-Path (Join-Path $dir 'php.exe'))){throw 'php.exe missing after extract'}; Set-Content -Path (Join-Path $dir 'php.ini') -Value @('zend.assertions=-1','date.timezone=UTC') -Encoding ASCII"
 if %errorlevel% neq 0 (
     echo Failed to install PHP.
     exit /b 1

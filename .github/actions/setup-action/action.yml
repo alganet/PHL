@@ -40,6 +40,10 @@ runs:
     - if: runner.os == 'Windows'
       shell: cmd
       run: build-aux\install_opencppcoverage.bat
+    # Pin the Windows oracle php to the version PHL targets (8.5), matching the
+    # Linux/macOS oracle above. The runner's DEFAULT php drifts by image version,
+    # so test-compat was silently comparing against an arbitrary php on Windows.
     - if: runner.os == 'Windows'
-      shell: cmd
-      run: rem PHP is installed by default on Windows runners
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.5'
