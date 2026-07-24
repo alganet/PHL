@@ -7203,13 +7203,39 @@ static int VmMemberNextIsWrite(const VmInstr *pNext)
  * drifts produces a leak or pool-masked use-after-free on exactly one throw
  * path (the SyHash-layout incident class).
  */
+/*
+ * Remove pStep's pointer from the per-statement aStep set. The step being torn
+ * down is not necessarily the last one pushed — two generator/fiber instances
+ * of the same foreach suspend and finish out of LIFO order — so find it by
+ * pointer. Removal is ORDER-PRESERVING (shift the tail down): OP_FOREACH_STEP's
+ * top-down scan relies on the running activation's step (always the most-recent
+ * push for its statement) sitting ABOVE any leaked older step that may share a
+ * recycled frame address. A swap-with-last would move a newer step below such a
+ * leaked step and let the scan match the stale one. A no-op if the step was
+ * never linked (INIT error path).
+ */
+static void VmForeachStepUnlink(ph7_foreach_info *pInfo,ph7_foreach_step *pStep)
+{
+	ph7_foreach_step **apStep = (ph7_foreach_step **)SySetBasePtr(&pInfo->aStep);
+	sxu32 n = SySetUsed(&pInfo->aStep);
+	sxu32 i;
+	for( i = 0 ; i < n ; ++i ){
+		if( apStep[i] == pStep ){
+			for( ; i + 1 < n ; ++i ){
+				apStep[i] = apStep[i + 1];
+			}
+			(void)SySetPop(&pInfo->aStep);
+			return;
+		}
+	}
+}
 static void VmForeachStepAbandon(ph7_vm *pVm,ph7_foreach_info *pInfo,ph7_foreach_step *pStep,ph7_class_instance *pThis)
 {
 	if( pStep->pOwner ){
 		PH7_ClassInstanceUnref(pStep->pOwner);
 	}
+	VmForeachStepUnlink(pInfo,pStep);
 	SyMemBackendPoolFree(&pVm->sAllocator,pStep);
-	SySetPop(&pInfo->aStep);
 	PH7_ClassInstanceUnref(pThis);
 }
 /*
@@ -7226,10 +7252,12 @@ static void VmForeachHashmapStepRelease(ph7_vm *pVm,ph7_foreach_info *pInfo,ph7_
 {
 	ph7_hashmap *pMap = pStep->xIter.pMap;
 	PH7_HashmapUnregisterForeachStep(pMap,pStep);
-	SyMemBackendPoolFree(&pVm->sAllocator,pStep);
 	if( bPop ){
-		SySetPop(&pInfo->aStep);
+		/* Remove by pointer, not position: an out-of-LIFO-order generator/fiber
+		 * teardown may leave this step below newer ones on the shared aStep. */
+		VmForeachStepUnlink(pInfo,pStep);
 	}
+	SyMemBackendPoolFree(&pVm->sAllocator,pStep);
 	PH7_HashmapUnref(pMap);
 }
 /*
@@ -11764,6 +11792,11 @@ case PH7_OP_FOREACH_INIT: {
 			SyZero(pStep,sizeof(ph7_foreach_step));
 			/* Prepare the step */
 			pStep->iFlags = pInfo->iFlags;
+			/* Record the owning activation so OP_FOREACH_STEP can pick THIS
+			 * activation's step out of the per-statement stack — two suspended
+			 * generator/fiber instances (or a recursive call) paused in the same
+			 * textual foreach otherwise resume onto each other's cursor. */
+			pStep->pFrame = VmSkipExceptionFrames(pVm->pFrame);
 			if( pTos->iFlags & MEMOBJ_HASHMAP ){
 				ph7_hashmap *pMap,*pIterMap;
 				/* COW: For by-reference foreach, eagerly separate the
@@ -11929,11 +11962,32 @@ case PH7_OP_FOREACH_STEP: {
 	ph7_foreach_step **apStep,*pStep;
 	ph7_value *pValue;
 	VmFrame *pFrameLocal;
-	/* Peek the last step */
-	apStep = (ph7_foreach_step **)SySetBasePtr(&pInfo->aStep);
-	pStep = apStep[SySetUsed(&pInfo->aStep) - 1];
+	sxu32 nStep;
 	pFrameLocal = pVm->pFrame;
 	pFrameLocal = VmSkipExceptionFrames(pFrameLocal);
+	/* Select THIS activation's step. aStep is per-STATEMENT and shared by every
+	 * activation, so peeking the last entry resumes onto a sibling's cursor when
+	 * two instances of one generator/fiber are suspended in the same textual
+	 * foreach. Scan from the top (most-recent push) for the step whose owning
+	 * frame matches the running activation; top-down makes the current push win
+	 * over any leaked older step that happens to share a recycled frame address. */
+	apStep = (ph7_foreach_step **)SySetBasePtr(&pInfo->aStep);
+	nStep = SySetUsed(&pInfo->aStep);
+	if( nStep < 1 ){
+		/* Defensive: OP_FOREACH_INIT always pushes this activation's step before
+		 * STEP runs (and jumps past the loop when the push fails), so an empty
+		 * set is unreachable — guard the apStep[-1] read anyway. Jump out. */
+		pc = pInstr->iP2 - 1;
+		break;
+	}
+	pStep = apStep[nStep - 1];
+	while( nStep > 0 ){
+		if( apStep[nStep - 1]->pFrame == pFrameLocal ){
+			pStep = apStep[nStep - 1];
+			break;
+		}
+		nStep--;
+	}
 	if( pStep->iFlags & PH7_4EACH_STEP_HASHMAP ){
 		ph7_hashmap_node *pNode;
 		/* Extract the current node via this loop's PRIVATE cursor (php:
@@ -12079,8 +12133,8 @@ case PH7_OP_FOREACH_STEP: {
 				/* Break the reference with the last element */
 				SyHashDeleteEntry(&pFrameLocal->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue),0);
 			}
+			VmForeachStepUnlink(pInfo,pStep);
 			SyMemBackendPoolFree(&pVm->sAllocator,pStep);
-			SySetPop(&pInfo->aStep);
 			PH7_ClassInstanceUnref(pThis);
 		}else{
 			SyString *pAttrName = &pVmAttr->pAttr->sName;

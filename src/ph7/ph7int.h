@@ -337,6 +337,13 @@ struct ph7_foreach_step
 									 * php iterates each foreach independently — the map's
 									 * shared pCur would make nested loops over one array
 									 * rewind each other (infinite loop). */
+	struct VmFrame *pFrame;         /* Owning activation's frame (normalized past exception
+									 * frames). aStep is per-STATEMENT and shared by every
+									 * activation; OP_FOREACH_STEP selects the step whose
+									 * pFrame matches the running activation so two suspended
+									 * instances of one generator/fiber (or a recursive call)
+									 * paused in the same textual foreach cannot clash on
+									 * each other's cursor. */
 	ph7_foreach_step *pNextActive;  /* Next step on the map's pActiveSteps list */
 };
 /* Foreach step control flags */
