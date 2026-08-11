@@ -7156,11 +7156,6 @@ static void VmSpreadExpandMap(ph7_vm *pVm, ph7_value **ppTos, ph7_hashmap *pMap)
 		VmSpreadCaptureRun(pVm, pTos, pMap, 0); /* empty run: keeps compile-arg alignment */
 		VmPopOperand(&pTos, 1);
 		pVm->iSpreadExtra--; /* One expression produced zero args */
-	}else if( pVm->iSpreadExtra + (sxi32)(nEntry - 1) >= VM_STACK_GUARD ){
-		/* Safety: refuse to expand beyond the stack guard margin */
-		VmErrorFormat(&(*pVm), PH7_CTX_ERR,
-			"Argument unpacking: cumulative expansion exceeds stack guard (%d)",
-			VM_STACK_GUARD);
 	}else{
 		ph7_hashmap_node *pNode;
 		ph7_value *pElem;
@@ -7511,6 +7506,9 @@ struct VmExecState
 	VmInstr *aInstr;        /* Bytecode of this activation */
 	ph7_value *pStack;      /* Operand-stack base (owned by this activation) */
 	ph7_value *pTos;        /* Top-of-stack (synced at boundaries) */
+	sxu32 nStackCap;        /* pStack's allocated slot count; grows when an OP_SPREAD in
+	                         * this activation reallocs the operand stack (see
+	                         * VmGrowOperandStack). Saved/restored with the activation. */
 	sxi32 pc;               /* Program counter (synced at boundaries) */
 	sxu32 nExceptionBase;   /* Exception-stack depth at entry (finally-drain floor) */
 	VmFrame *pEntryFrame;   /* Active frame at entry (exec identity for VmRecordedResume) */
@@ -7530,6 +7528,9 @@ struct VmCallRecord
 	ph7_vm_func *pVmFunc;   /* Callee */
 	VmFrame *pFrame;        /* Callee's VM frame (entered by the OP_CALL setup) */
 	ph7_value *pFrameStack; /* Callee's operand stack (owned; freed here). NULL when the body was skipped */
+	sxu32 nStackCap;        /* pFrameStack's allocated slot count — nMaxStack+VM_STACK_GUARD
+	                         * at setup, updated if an OP_SPREAD in the callee grew it; the
+	                         * pop-time recycle releases exactly this many slots */
 	sxu32 nLastRef;         /* Callee body's last-referenced slot (by-ref return) */
 	sxu8 bSelfPushed;       /* TRUE when the setup pushed onto pVm->aSelf */
 };
@@ -7551,6 +7552,129 @@ struct VmCallFrame
 	VmCallRecord sCall;    /* The in-flight call, finished (VmCallFinish) on pop */
 	VmCallFrame *pPrev;    /* Next-outer record, or NULL at this invocation's base */
 };
+/*
+ * OP_SPREAD stack growth (removes the old VM_STACK_GUARD expansion cap).
+ *
+ * The operand stack of the CURRENTLY-RUNNING activation is about to receive more
+ * spread elements than its remaining slack holds. Realloc the buffer so the
+ * expansion — and the rest of the body's normal pushes — fit, then fix up every
+ * pointer that aimed into the old buffer. Returns 1 on success (the caller may
+ * proceed with the expansion), 0 on OOM (the caller keeps the old buffer and
+ * raises the historical guard error, preserving pre-growth soundness).
+ *
+ * nNeed is the live-slot count the stack must hold after the pending expansion;
+ * the grown capacity adds VM_STACK_GUARD back on top so the remainder of the body
+ * keeps its slack. ONLY this activation's references move, and they are all here:
+ *   - the dispatch locals pStack/pTos (via *ppStack / *ppTos) and the boundary
+ *     copies in sState (pState->pStack/pTos + the tracked capacity nStackCap)
+ *   - the owner slot: for a trampoline callee, its record's pFrameStack and the
+ *     recycle capacity nStackCap; for the base activation (top-level, mini-program,
+ *     coroutine body, callback), *ppBaseOwner / *pnBaseCap — whatever storage the
+ *     native entry frees (a local, pVm->aOps, or pCtx->pStack/nStackCap)
+ *   - aSpreadRun[].pStart entries anchored in the OLD buffer (this call's earlier
+ *     spreads) — an unfixed pStart would desync PHP 8.1 named-arg replay after the
+ *     realloc. Enclosing activations own DISTINCT buffers, so their runs (pStart
+ *     outside [pOld, pOld+nOldCap)) are deliberately left untouched.
+ */
+static int VmGrowOperandStack(ph7_vm *pVm, sxu32 nNeed,
+	ph7_value **ppStack, ph7_value **ppTos, VmExecState *pState,
+	VmCallFrame *pCallTop, ph7_value **ppBaseOwner, sxu32 *pnBaseCap)
+{
+	ph7_value *pOld = *ppStack;
+	sxu32 nOldCap = pState->nStackCap;
+	sxu32 nUsed = (sxu32)(*ppTos - pOld + 1); /* live slots incl. the spread source */
+	sxu32 nDelta = nNeed - nUsed;             /* extra slots this spread adds (== nEntry-1) */
+	sxu32 nNewCap, nReq, nMaxCap, i, nRun;
+	ph7_value *pNew;
+	VmSpreadRun *aRun;
+	/* The grown buffer must preserve the ORIGINAL compile-time headroom, not just
+	 * the immediate expansion: only OP_SPREAD re-checks capacity, so any ordinary
+	 * arg pushes that FOLLOW this spread in the same call rely on the slack that
+	 * nOldCap (= nMaxStack + VM_STACK_GUARD, plus prior spreads' growth) already
+	 * budgeted. Shift that whole budget up by this expansion's delta — nOldCap +
+	 * nDelta — so `foo(...$big, a1..aN)` keeps room for the trailing args. That
+	 * dominates nNeed+VM_STACK_GUARD (nUsed <= nOldCap - VM_STACK_GUARD by the
+	 * static depth bound), but keep the latter as an explicit floor. */
+	nReq = nNeed + VM_STACK_GUARD;
+	if( nOldCap + nDelta > nReq ){
+		nReq = nOldCap + nDelta; /* overflow-safe: nOldCap, nDelta each < nMaxCap < 2^31 */
+	}
+	/* SyMemBackendRealloc's size argument is sxu32, so the byte count
+	 * nNewCap*sizeof(ph7_value) must not overflow 32 bits — a huge unpack
+	 * (~2^32/sizeof elements) would otherwise truncate to a tiny allocation and
+	 * the init loop below would run off it. If the true requirement exceeds the
+	 * representable cap, treat it as OOM (the caller raises the guard error). */
+	nMaxCap = SXU32_HIGH / (sxu32)sizeof(ph7_value);
+	if( nReq > nMaxCap ){
+		return 0;
+	}
+	if( nReq <= nOldCap ){
+		return 1; /* already fits — no growth needed */
+	}
+	nNewCap = nReq;
+	/* Amortize repeated spreads in one argument list: at least double, but never
+	 * past the byte-count cap. (nOldCap <= nMaxCap < 2^31, so nOldCap*2 can't
+	 * itself overflow.) */
+	if( nNewCap < nOldCap * 2 ){
+		sxu32 nDbl = nOldCap * 2;
+		if( nDbl > nMaxCap ){ nDbl = nMaxCap; }
+		if( nNewCap < nDbl ){ nNewCap = nDbl; }
+	}
+	pNew = (ph7_value *)SyMemBackendRealloc(&pVm->sAllocator, pOld,
+		nNewCap * sizeof(ph7_value));
+	if( pNew == 0 ){
+		return 0; /* OOM: caller keeps pOld and raises the guard error */
+	}
+	/* realloc preserves [0, nOldCap); initialize the freshly grown slots. */
+	for( i = nOldCap; i < nNewCap; i++ ){
+		PH7_MemObjInit(pVm, &pNew[i]);
+		pNew[i].nIdx = SXU32_HIGH;
+	}
+	/* Fix up every pointer into the old buffer (delta = pNew - pOld). */
+	*ppTos = pNew + (*ppTos - pOld);
+	*ppStack = pNew;
+	pState->pStack = pNew + (pState->pStack - pOld);
+	pState->pTos = pNew + (pState->pTos - pOld);
+	pState->nStackCap = nNewCap;
+	if( pCallTop ){
+		/* This activation is a trampoline callee: its record owns the buffer. */
+		pCallTop->sCall.pFrameStack = pNew;
+		pCallTop->sCall.nStackCap = nNewCap;
+	}else{
+		/* Base activation: the native entry frees *ppBaseOwner (and, for a
+		 * resumable coroutine, persists *pnBaseCap across suspend/resume). */
+		if( ppBaseOwner ){ *ppBaseOwner = pNew; }
+		if( pnBaseCap ){ *pnBaseCap = nNewCap; }
+	}
+	/* Re-anchor this activation's captured spread runs (pStart into the old
+	 * buffer). Enclosing-activation runs live in other buffers — leave them. */
+	nRun = SySetUsed(&pVm->aSpreadRun);
+	aRun = (VmSpreadRun *)SySetBasePtr(&pVm->aSpreadRun);
+	for( i = 0; i < nRun; i++ ){
+		if( aRun[i].pStart >= pOld && aRun[i].pStart < pOld + nOldCap ){
+			aRun[i].pStart = pNew + (aRun[i].pStart - pOld);
+		}
+	}
+	return 1;
+}
+/*
+ * Ensure the running activation's operand stack can hold a spread of nEntry
+ * elements pushed at *ppTos (the source slot becomes the first element, so the
+ * net new slots are nEntry-1). Grows via VmGrowOperandStack when it can't.
+ * Returns 1 if the caller may proceed with VmSpreadExpandMap, 0 on OOM.
+ */
+static int VmSpreadEnsureCapacity(ph7_vm *pVm, sxu32 nEntry,
+	ph7_value **ppStack, ph7_value **ppTos, VmExecState *pState,
+	VmCallFrame *pCallTop, ph7_value **ppBaseOwner, sxu32 *pnBaseCap)
+{
+	sxu32 nNeed;
+	if( nEntry == 0 ){
+		return 1; /* empty spread never grows the stack */
+	}
+	nNeed = (sxu32)(*ppTos - *ppStack + 1) + (nEntry - 1);
+	return VmGrowOperandStack(pVm, nNeed, ppStack, ppTos, pState,
+		pCallTop, ppBaseOwner, pnBaseCap);
+}
 /*
  * BYTECODE stage 4: a Fiber::suspend() from inside a nested PHP call parks the
  * whole trampoline record segment here instead of unwinding it. The records,
@@ -7690,9 +7814,9 @@ static sxi32 VmCallFinish(ph7_vm *pVm,VmExecState *pCaller,VmCallRecord *pCallee
 		}
 	}
 	/* Recycle the operand stack for the next same-size call (BYTECODE stage 7),
-	 * or free it if the pool is full. Its allocated size is the callee's cached
-	 * nMaxStack + VM_STACK_GUARD — exactly what VmOperandStackAlloc handed out.
-	 * (NULL when the function body was skipped.)
+	 * or free it if the pool is full. Its allocated size is tracked in
+	 * pCallee->nStackCap (nMaxStack + VM_STACK_GUARD, or larger if an OP_SPREAD grew
+	 * it) — exactly what the buffer holds. (NULL when the function body was skipped.)
 	 *
 	 * Never on rc == PH7_SUSPEND: that path (unreachable in the stage-4 model,
 	 * where a deep suspend parks its whole record segment before reaching here)
@@ -7700,8 +7824,10 @@ static sxi32 VmCallFinish(ph7_vm *pVm,VmExecState *pCaller,VmCallRecord *pCallee
 	 * would hand a live fiber's operand stack to the next call. The guard keeps
 	 * that invariant explicit and robust to future coroutine changes. */
 	if( rc != PH7_SUSPEND && pCallee->pFrameStack ){
-		VmOperandStackRecycle(pVm,pCallee->pFrameStack,
-			pCallee->pVmFunc->nMaxStack + VM_STACK_GUARD);
+		/* nStackCap is nMaxStack+VM_STACK_GUARD unless an OP_SPREAD in this callee
+		 * grew the buffer (VmGrowOperandStack updated the record) — recycle exactly
+		 * the allocated slot count either way. */
+		VmOperandStackRecycle(pVm,pCallee->pFrameStack,pCallee->nStackCap);
 	}
 	/* Leave the frame */
 	VmLeaveFrame(&(*pVm));
@@ -7737,7 +7863,8 @@ static sxi32 VmCallFinish(ph7_vm *pVm,VmExecState *pCaller,VmCallRecord *pCallee
  */
 static sxi32 VmByteCodeExecBody(ph7_vm *pVm,VmInstr *aInstr,ph7_value *pStack,int nTos,
 	ph7_value *pResult,sxu32 *pLastRef,int is_callback,sxi32 nPc,
-	ph7_vm_func *pEnforceRetFunc,int bReturnPropagates,VmParkedSegment *pAdoptSegment);
+	ph7_vm_func *pEnforceRetFunc,int bReturnPropagates,VmParkedSegment *pAdoptSegment,
+	ph7_value **ppBaseOwner,sxu32 *pnBaseCap);
 /*
  * Native-nesting guard around the executor. PHP->PHP calls run iteratively
  * (the stage-2 trampoline), but every OTHER (re-)entry — mini-programs,
@@ -7767,7 +7894,9 @@ static sxi32 VmByteCodeExec(
 	sxi32 nPc,           /* Starting program counter (0 for normal, >0 for resume) */
 	ph7_vm_func *pEnforceRetFunc, /* NULL except when this invocation is a user-fn body; when set, the terminating OP_DONE validates the return value against pEnforceRetFunc's declared type. */
 	int bReturnPropagates, /* TRUE only for a catch/finally mini-program: an explicit-return OP_DONE (iP2=1) defers its value onto the enclosing body frame's sRet slot for that body to return. */
-	VmParkedSegment *pAdoptSegment /* NULL except on a deep-fiber RESUME (VmResumeCtx): the parked record segment this body invocation re-enters inside (BYTECODE stage 4). */
+	VmParkedSegment *pAdoptSegment, /* NULL except on a deep-fiber RESUME (VmResumeCtx): the parked record segment this body invocation re-enters inside (BYTECODE stage 4). */
+	ph7_value **ppBaseOwner, /* Storage slot the native entry frees for this invocation's BASE (pCallTop==0) operand stack — a local, pVm->aOps or pCtx->pStack. An OP_SPREAD that grows the base stack writes the new pointer here so the entry frees the right buffer. */
+	sxu32 *pnBaseCap /* Storage for the base stack's capacity (resumable coroutines persist it across suspend/resume); updated alongside *ppBaseOwner on base-stack growth. Also the initial capacity read at entry. */
 	)
 {
 	sxi32 rc;
@@ -7786,7 +7915,7 @@ static sxi32 VmByteCodeExec(
 	pVm->nBoundaryRc = 0;
 	pVm->nVmExecDepth++;
 	rc = VmByteCodeExecBody(&(*pVm),aInstr,pStack,nTos,pResult,pLastRef,is_callback,nPc,
-		pEnforceRetFunc,bReturnPropagates,pAdoptSegment);
+		pEnforceRetFunc,bReturnPropagates,pAdoptSegment,ppBaseOwner,pnBaseCap);
 	pVm->nVmExecDepth--;
 	if( nSavedBrc != 0 && (nSavedBrc == PH7_ABORT || pVm->nBoundaryRc == 0) ){
 		pVm->nBoundaryRc = nSavedBrc;
@@ -7804,7 +7933,9 @@ static sxi32 VmByteCodeExecBody(
 	sxi32 nPc,           /* Starting program counter (0 for normal, >0 for resume) */
 	ph7_vm_func *pEnforceRetFunc, /* NULL except when this invocation is a user-fn body; when set, the terminating OP_DONE validates the return value against pEnforceRetFunc's declared type. */
 	int bReturnPropagates, /* TRUE only for a catch/finally mini-program: an explicit-return OP_DONE (iP2=1) defers its value onto the enclosing body frame's sRet slot for that body to return. */
-	VmParkedSegment *pAdoptSegment /* NULL except on a deep-fiber RESUME (VmResumeCtx): the parked record segment this body invocation re-enters inside (BYTECODE stage 4). */
+	VmParkedSegment *pAdoptSegment, /* NULL except on a deep-fiber RESUME (VmResumeCtx): the parked record segment this body invocation re-enters inside (BYTECODE stage 4). */
+	ph7_value **ppBaseOwner, /* Base (pCallTop==0) operand-stack owner slot the native entry frees; OP_SPREAD growth of the base stack writes the new pointer here (see VmGrowOperandStack). */
+	sxu32 *pnBaseCap /* Base stack capacity (persisted across coroutine suspend/resume); read for the initial capacity and updated on base-stack growth. */
 	)
 {
 	VmInstr *pInstr;
@@ -7822,6 +7953,7 @@ static sxi32 VmByteCodeExecBody(
 	sxi32 rc;
 	sState.aInstr = aInstr;
 	sState.pStack = pStack;
+	sState.nStackCap = pnBaseCap ? *pnBaseCap : 0; /* base capacity for OP_SPREAD growth */
 	sState.pResult = pResult;
 	sState.pLastRef = pLastRef;
 	sState.pEnforceRetFunc = pEnforceRetFunc;
@@ -11123,12 +11255,31 @@ case PH7_OP_SPREAD: {
 			if( rcW == PH7_ABORT ){ goto Abort; }
 			goto Exception;
 		}
+		/* Grow the operand stack if this expansion would overflow it (no longer a
+		 * VM_STACK_GUARD cap). On OOM keep the old buffer and leave the source as a
+		 * single argument — the historical bounded-fallback, now only under OOM. */
+		if( !VmSpreadEnsureCapacity(pVm, pTmpMap->nEntry, &pStack, &pTos, &sState,
+		                            pCallTop, ppBaseOwner, pnBaseCap) ){
+			PH7_HashmapRelease(pTmpMap,TRUE);
+			VmErrorFormat(&(*pVm), PH7_CTX_ERR,
+				"Argument unpacking: out of memory while expanding %u elements",
+				pTmpMap->nEntry);
+			break;
+		}
 		VmSpreadExpandMap(pVm, &pTos, pTmpMap);
 		PH7_HashmapRelease(pTmpMap,TRUE);
 		break;
 	}
 	if( pTos->iFlags & MEMOBJ_HASHMAP ){
-		VmSpreadExpandMap(pVm, &pTos, (ph7_hashmap *)pTos->x.pOther);
+		ph7_hashmap *pMap = (ph7_hashmap *)pTos->x.pOther;
+		if( !VmSpreadEnsureCapacity(pVm, pMap->nEntry, &pStack, &pTos, &sState,
+		                            pCallTop, ppBaseOwner, pnBaseCap) ){
+			VmErrorFormat(&(*pVm), PH7_CTX_ERR,
+				"Argument unpacking: out of memory while expanding %u elements",
+				pMap->nEntry);
+			break;
+		}
+		VmSpreadExpandMap(pVm, &pTos, pMap);
 	}
 	/* else: not an array — leave as-is (single arg) */
 	break;
@@ -15257,6 +15408,7 @@ SkipFuncBody:
 			sCallee.pVmFunc = pVmFunc;
 			sCallee.pFrame = pFrame;
 			sCallee.pFrameStack = pFrameStack;
+			sCallee.nStackCap = pVmFunc->nMaxStack + VM_STACK_GUARD;
 			sCallee.nLastRef = SXU32_HIGH;
 			sCallee.bSelfPushed = (sxu8)(pSelf ? 1 : 0);
 			sState.pTos = pTos;
@@ -15303,6 +15455,7 @@ SkipFuncBody:
 			pRec->sCall.pVmFunc = pVmFunc;
 			pRec->sCall.pFrame = pFrame;
 			pRec->sCall.pFrameStack = pFrameStack;
+			pRec->sCall.nStackCap = pVmFunc->nMaxStack + VM_STACK_GUARD;
 			pRec->sCall.nLastRef = SXU32_HIGH;
 			pRec->sCall.bSelfPushed = (sxu8)(pSelf ? 1 : 0);
 			pRec->pPrev = pCallTop;
@@ -15315,6 +15468,7 @@ SkipFuncBody:
 			pc = 0;
 			sState.aInstr = aInstr;
 			sState.pStack = pStack;
+			sState.nStackCap = pRec->sCall.nStackCap; /* callee's operand-stack capacity for OP_SPREAD growth */
 			sState.pTos = pTos;
 			sState.pc = 0;
 			sState.nExceptionBase = SySetUsed(&pVm->aException);
@@ -15621,14 +15775,17 @@ Unwind:
 PH7_PRIVATE sxi32 VmLocalExec(ph7_vm *pVm,SySet *pByteCode,ph7_value *pResult,int bReturnPropagates)
 {
 	ph7_value *pStack;
+	sxu32 nCap;
 	sxi32 rc;
 	/* Allocate a new operand stack */
 	pStack = VmNewOperandStack(&(*pVm),SySetUsed(pByteCode));
 	if( pStack == 0 ){
 		return SXERR_MEM;
 	}
-	/* Execute the program */
-	rc = VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(pByteCode),pStack,-1,&(*pResult),0,FALSE,0,0,bReturnPropagates,0);
+	nCap = SySetUsed(pByteCode) + VM_STACK_GUARD; /* what VmNewOperandStack handed out */
+	/* Execute the program. A base-level OP_SPREAD may realloc pStack (updating it +
+	 * nCap through the owner slots) — free whatever pStack ends up pointing at. */
+	rc = VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(pByteCode),pStack,-1,&(*pResult),0,FALSE,0,0,bReturnPropagates,0,&pStack,&nCap);
 	/* Free the operand stack */
 	SyMemBackendFree(&pVm->sAllocator,pStack);
 	/* Execution result */
@@ -15703,8 +15860,12 @@ PH7_PRIVATE sxi32 PH7_VmByteCodeExec(ph7_vm *pVm)
 	}
 	/* Set the execution magic number  */
 	pVm->nMagic = PH7_VM_EXEC;
-	/* Execute the program */
-	VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(pVm->pByteContainer),pVm->aOps,-1,&pVm->sExec,0,FALSE,0,0,FALSE,0);
+	/* Execute the program. A top-level OP_SPREAD may realloc the operand stack;
+	 * pass &pVm->aOps so the growth updates the field that VM release frees. */
+	{
+		sxu32 nOpsCap = SySetUsed(pVm->pByteContainer) + VM_STACK_GUARD;
+		VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(pVm->pByteContainer),pVm->aOps,-1,&pVm->sExec,0,FALSE,0,0,FALSE,0,&pVm->aOps,&nOpsCap);
+	}
 	/* Invoke any shutdown callbacks */
 	VmInvokeShutdownCallbacks(&(*pVm));
 	/*
@@ -15757,6 +15918,7 @@ static ph7_exec_ctx * VmNewExecCtx(ph7_vm *pVm, ph7_vm_func *pFunc)
 		return 0;
 	}
 	pCtx->pStack = pStack;
+	pCtx->nStackCap = SySetUsed(&pFunc->aByteCode) + VM_STACK_GUARD; /* grows with pStack on OP_SPREAD */
 	/* Create a detached frame for the fiber */
 	pFrame = VmNewFrame(pVm, pFunc, 0);
 	if( pFrame == 0 ){
@@ -15959,10 +16121,12 @@ static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)
 	 * Fiber::suspend() at a deeper depth is inside a C->PHP callback and gets a
 	 * FiberError instead of parking across the native frame (stage 4). */
 	pCtx->nBodyExecDepth = pVm->nVmExecDepth + 1;
-	/* Execute from the beginning (no parked segment). */
+	/* Execute from the beginning (no parked segment). An OP_SPREAD in the body may
+	 * realloc pCtx->pStack — pass &pCtx->pStack / &pCtx->nStackCap so the grown
+	 * buffer + capacity persist for the next resume and for ctx teardown. */
 	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),
 		pCtx->pStack, -1, &pCtx->sRetValue, 0, FALSE, 0,
-		VmCtxEnforceRetFunc(pCtx), FALSE, 0);
+		VmCtxEnforceRetFunc(pCtx), FALSE, 0, &pCtx->pStack, &pCtx->nStackCap);
 	return VmFinishCtxRun(pVm, pCtx, pOldCtx, rc, pResult);
 }
 /*
@@ -16046,7 +16210,7 @@ static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValu
 	 * re-enter inside the innermost parked callee (deep fiber resume, stage 4). */
 	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),
 		pCtx->pStack, pCtx->nTos, &pCtx->sRetValue, 0, FALSE, pCtx->pc,
-		VmCtxEnforceRetFunc(pCtx), FALSE, pSeg);
+		VmCtxEnforceRetFunc(pCtx), FALSE, pSeg, &pCtx->pStack, &pCtx->nStackCap);
 	return VmFinishCtxRun(pVm, pCtx, pOldCtx, rc, pResult);
 }
 /*
@@ -18621,7 +18785,10 @@ static sxi32 VmCallClassMethodWithMap(
 	aInstr[1].iP1 = 1;
 	aInstr[1].iP2 = 0;
 	aInstr[1].p3  = 0;
-	rc = VmByteCodeExec(&(*pVm),aInstr,aStack,iCursor,pResult,0,TRUE,0,0,FALSE,0);
+	{
+		sxu32 nStkCap = (sxu32)(2+nArg) + VM_STACK_GUARD; /* what VmNewOperandStack handed out */
+		rc = VmByteCodeExec(&(*pVm),aInstr,aStack,iCursor,pResult,0,TRUE,0,0,FALSE,0,&aStack,&nStkCap);
+	}
 	SyMemBackendFree(&pVm->sAllocator,aStack);
 	/* Propagate the real exec status (PH7_EXCEPTION / PH7_ABORT) so callers
 	 * can unwind instead of continuing past a method that raised — and park
@@ -19002,7 +19169,8 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 	/* Execute the function body (if available) */
 	{
 		sxi32 rcExec;
-		rcExec = VmByteCodeExec(&(*pVm),aInstr,aStack,nArg,pResult,0,TRUE,0,0,FALSE,0);
+		sxu32 nStkCap = (sxu32)(1+nArg) + VM_STACK_GUARD; /* what VmNewOperandStack handed out */
+		rcExec = VmByteCodeExec(&(*pVm),aInstr,aStack,nArg,pResult,0,TRUE,0,0,FALSE,0,&aStack,&nStkCap);
 		/* Clean up the mess left behind */
 		SyMemBackendFree(&pVm->sAllocator,aStack);
 		/* Propagate PH7_EXCEPTION/PH7_ABORT so a callback that raised unwinds —
