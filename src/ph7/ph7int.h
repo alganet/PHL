@@ -577,6 +577,8 @@ struct ph7_exec_ctx
 	ph7_vm_func *pFunc;       /* The function being executed */
 	VmFrame *pFrame;          /* Detached execution frame */
 	ph7_value *pStack;        /* Private operand stack */
+	sxu32 nStackCap;          /* Its allocated slot count (VmNewOperandStack size); grows
+	                           * with pStack when an OP_SPREAD in this body reallocs it */
 	sxi32 nTos;               /* Saved top-of-stack index */
 	sxi32 pc;                 /* Saved program counter (resume point) */
 	sxi32 iState;             /* One of PH7_CTX_STATE_* */
