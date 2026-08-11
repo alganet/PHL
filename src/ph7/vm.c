@@ -13,6 +13,28 @@
  * PH7_{ADD,SUB,MUL}_OVERFLOW64 macros (GCC/Clang intrinsics, MSVC fallbacks in
  * memobj.c). The executor uses them to promote an overflowing integer
  * operation to a float, matching PHP. */
+/* Argument-unpacking key capture (PHP 8.1 named-parameter semantics for spreads).
+ * `pMap->aNames` is COMPILE-TIME metadata indexed by compile-time argument
+ * position, but a runtime spread expands its slot to a variable element count,
+ * so any spread that expands to !=1 element shifts the following actual stack
+ * positions out of alignment with aNames — and the element keys (which PHP 8.1
+ * treats as named arguments) are otherwise discarded. OP_SPREAD records one
+ * VmSpreadRun per expansion plus one VmSpreadKey per element (in order) on the
+ * VM; CALL/NEW replay them (VmBuildEffectiveArgMap) into an effective map with
+ * one name entry per ACTUAL slot, then let the existing named-argument resolver
+ * run unchanged. Cleared per call, mirroring iSpreadExtra. */
+typedef struct VmSpreadRun VmSpreadRun;
+struct VmSpreadRun {
+	ph7_value *pStart;   /* First stack slot the expansion wrote (the source slot) */
+	sxu32 nCount;        /* Elements produced (0 for an empty array) */
+	sxu32 nKeyStart;     /* aSpreadKey index of this run's first element key */
+	sxu32 nBlobStart;    /* sSpreadKeyBlob length before this run's keys were appended */
+};
+typedef struct VmSpreadKey VmSpreadKey;
+struct VmSpreadKey {
+	sxu32 nOff;          /* Byte offset into pVm->sSpreadKeyBlob (valid iff nLen>0) */
+	sxu32 nLen;          /* Key length; 0 == integer key == positional element */
+};
 /*
  * The code in this file implements execution method of the PH7 Virtual Machine.
  * The PH7 compiler (implemented in 'compiler.c' and 'parse.c') generates a bytecode program
@@ -885,6 +907,7 @@ static VmFrame * VmNewFrame(
 /* Forward declaration */
 static VmFrame * VmSkipExceptionFrames(VmFrame *pFrame);
 static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValue, ph7_value *pResult);
+static void VmSpreadCaptureReset(ph7_vm *pVm);
 /*
  * Enter a VM frame.
  */
@@ -2371,6 +2394,11 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	/* Object containers */
 	SySetInit(&pVm->aMemObj,&pVm->sAllocator,sizeof(ph7_value));
 	SySetAlloc(&pVm->aMemObj,0xFF);
+	/* Argument-unpacking key capture (see VmSpreadRun/VmSpreadKey in vm.c) */
+	SySetInit(&pVm->aSpreadRun,&pVm->sAllocator,sizeof(VmSpreadRun));
+	SySetInit(&pVm->aSpreadKey,&pVm->sAllocator,sizeof(VmSpreadKey));
+	SyBlobInit(&pVm->sSpreadKeyBlob,&pVm->sAllocator);
+	SySetInit(&pVm->aEffArgName,&pVm->sAllocator,sizeof(SyString));
 	/* Virtual machine internal containers */
 	SyBlobInit(&pVm->sConsumer,&pVm->sAllocator);
 	SyBlobInit(&pVm->sWorker,&pVm->sAllocator);
@@ -3883,6 +3911,7 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	pVm->bHaltRequested = 0;
 	pVm->iExitStatus = 0;
 	pVm->iSpreadExtra = 0;
+	VmSpreadCaptureReset(pVm);
 	pVm->nRecursionDepth = 0;
 	pVm->pActiveCtx = 0;
 	pVm->pCoalesceObj = 0;
@@ -7043,12 +7072,88 @@ static sxi32 VmSpreadValuesStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue,
  * containers and blobs survive the trailing unref; a shared map keeps the
  * historical zero-copy aliasing (PH7_MemObjLoad) for f(...$var).
  */
+/*
+ * Record one OP_SPREAD expansion for PHP 8.1 named-key replay: a run anchored at
+ * the first stack slot written (pFirst) plus one key entry per element, walked in
+ * insertion order (string key -> named, integer key -> positional). Best-effort —
+ * on OOM the capture is skipped and the call falls back to positional binding
+ * (pre-8.1 behavior). Must run while pMap's nodes are still alive (before unref).
+ */
+static void VmSpreadCaptureRun(ph7_vm *pVm, ph7_value *pFirst, ph7_hashmap *pMap, sxu32 nCount)
+{
+	VmSpreadRun sRun;
+	ph7_hashmap_node *pNode;
+	sxu32 i;
+	sRun.pStart = pFirst;
+	sRun.nCount = nCount;
+	sRun.nKeyStart = SySetUsed(&pVm->aSpreadKey);
+	sRun.nBlobStart = SyBlobLength(&pVm->sSpreadKeyBlob);
+	if( SySetPut(&pVm->aSpreadRun, (const void *)&sRun) != SXRET_OK ){
+		return;
+	}
+	pNode = pMap->pFirst;
+	for( i = 0; i < nCount && pNode; i++ ){
+		VmSpreadKey sKey;
+		if( pNode->iType == HASHMAP_BLOB_NODE && SyBlobLength(&pNode->xKey.sKey) > 0 ){
+			/* String key -> named argument. Copy the bytes so the name survives
+			 * the source map's release before CALL replays them. */
+			sKey.nOff = (sxu32)SyBlobLength(&pVm->sSpreadKeyBlob);
+			sKey.nLen = (sxu32)SyBlobLength(&pNode->xKey.sKey);
+			SyBlobAppend(&pVm->sSpreadKeyBlob, SyBlobData(&pNode->xKey.sKey), sKey.nLen);
+		}else{
+			/* Integer key (or empty-string key, treated positionally) */
+			sKey.nOff = 0;
+			sKey.nLen = 0;
+		}
+		SySetPut(&pVm->aSpreadKey, (const void *)&sKey);
+		pNode = pNode->pPrev; /* forward link */
+	}
+}
+/* Clear the spread-key capture buffers (runs/keys/blob). aEffArgName is left
+ * intact — it is rebuilt (and its blob dependency retired) at the next build. */
+static void VmSpreadCaptureReset(ph7_vm *pVm)
+{
+	SySetReset(&pVm->aSpreadRun);
+	SySetReset(&pVm->aSpreadKey);
+	SyBlobReset(&pVm->sSpreadKeyBlob);
+}
+/* Truncate THIS call's captured spread runs (the suffix whose pStart lands at or
+ * above pArg), restoring the buffers to the enclosing call's state. A no-op when
+ * this call captured no spread. Every spread-bearing CALL/NEW MUST invoke this
+ * (directly, or via VmBuildEffectiveArgMap which ends with it) before returning —
+ * an unconsumed run outlives the call in the VM-global buffers and corrupts a
+ * later call in the same interpreter (e.g. across .phpt files sharing one VM). */
+static void VmSpreadConsume(ph7_vm *pVm, ph7_value *pArg)
+{
+	sxu32 nRun = SySetUsed(&pVm->aSpreadRun);
+	VmSpreadRun *aRun;
+	sxu32 ri, nKeyTrunc, nBlobTrunc;
+	if( nRun == 0 ){
+		return;
+	}
+	aRun = (VmSpreadRun *)SySetBasePtr(&pVm->aSpreadRun);
+	ri = 0;
+	while( ri < nRun && aRun[ri].pStart < pArg ){
+		ri++;
+	}
+	if( ri >= nRun ){
+		return; /* only enclosing-call runs remain */
+	}
+	nKeyTrunc = aRun[ri].nKeyStart;
+	nBlobTrunc = aRun[ri].nBlobStart;
+	SySetTruncate(&pVm->aSpreadRun, ri);
+	SySetTruncate(&pVm->aSpreadKey, nKeyTrunc);
+	if( nBlobTrunc <= SyBlobLength(&pVm->sSpreadKeyBlob) ){
+		pVm->sSpreadKeyBlob.nByte = nBlobTrunc;
+	}
+}
 static void VmSpreadExpandMap(ph7_vm *pVm, ph7_value **ppTos, ph7_hashmap *pMap)
 {
 	ph7_value *pTos = *ppTos;
 	sxu32 nEntry = pMap->nEntry;
 	if( nEntry == 0 ){
 		/* Nothing to unpack — remove the source from the stack */
+		VmSpreadCaptureRun(pVm, pTos, pMap, 0); /* empty run: keeps compile-arg alignment */
 		VmPopOperand(&pTos, 1);
 		pVm->iSpreadExtra--; /* One expression produced zero args */
 	}else if( pVm->iSpreadExtra + (sxi32)(nEntry - 1) >= VM_STACK_GUARD ){
@@ -7063,6 +7168,9 @@ static void VmSpreadExpandMap(ph7_vm *pVm, ph7_value **ppTos, ph7_hashmap *pMap)
 		int bTemp;
 		pMap->iRef++;
 		bTemp = (pMap->iRef == 2); /* the stack slot held the only reference */
+		/* Record the run + element keys before any release (nodes still alive).
+		 * pTos is the source slot, which becomes the first element's slot. */
+		VmSpreadCaptureRun(pVm, pTos, pMap, nEntry);
 		/* Overwrite the source slot with the first element */
 		pNode = pMap->pFirst;
 		pElem = (ph7_value *)SySetAt(&pVm->aMemObj, pNode->nValIdx);
@@ -7097,6 +7205,135 @@ static void VmSpreadExpandMap(ph7_vm *pVm, ph7_value **ppTos, ph7_hashmap *pMap)
 		PH7_HashmapUnref(pMap);
 	}
 	*ppTos = pTos;
+}
+/*
+ * Build the effective per-actual-slot argument-name map for a CALL/NEW whose
+ * argument list contained an unpack (spread). `pCompile` is the compile-time
+ * VmCallArgMap (indexed by compile-time argument position); pArg/nActual describe
+ * the flattened actual arguments on the stack. Replays the captured spread runs +
+ * element keys, interleaving them with the compile-time names at their real
+ * post-expansion positions, into pVm->aEffArgName (one SyString per actual slot).
+ *
+ * Per-call scope: OP_SPREAD accumulates runs from EVERY currently-evaluating call
+ * (an inner spread-bearing call runs between two of an outer call's spreads), so a
+ * call's runs are the contiguous SUFFIX whose pStart lands in [pArg, top). Runs
+ * below pArg belong to an enclosing, not-yet-built call and are skipped. Before
+ * returning, this call's runs (and their keys/blob bytes) are TRUNCATED away,
+ * restoring the buffers to the enclosing call's state — this is the per-call reset
+ * (there is no global lazy flag). MUST run once per spread call, hence the caller
+ * invokes it against the FINAL argument base (methods rebuild after their
+ * method-name slot pop shifts pArg).
+ *
+ * Returns 1 and fills *pEff (nTotal == nActual, aNames -> aEffArgName base,
+ * bHasNamed set) when at least one actual slot is named; returns 0 to keep the
+ * positional fast path. The returned names alias pVm->sSpreadKeyBlob (spread keys)
+ * and the compile map (compile names); both stay valid until the next OP_SPREAD,
+ * which is after this call's synchronous named-arg resolution.
+ */
+static int VmBuildEffectiveArgMap(ph7_vm *pVm, VmCallArgMap *pCompile,
+	ph7_value *pArg, sxu32 nActual, VmCallArgMap *pEff)
+{
+	sxu32 nRun = SySetUsed(&pVm->aSpreadRun);
+	VmSpreadRun *aRun;
+	VmSpreadKey *aKey;
+	const char *zKeyBase;
+	sxu32 nTotal = pCompile ? pCompile->nTotal : 0;
+	int bAnyNamed = 0;
+	sxu32 ai, ci, ri, rStart;
+	if( nRun == 0 ){
+		/* No spread captured at all — the compile map is already aligned. */
+		return 0;
+	}
+	aRun = (VmSpreadRun *)SySetBasePtr(&pVm->aSpreadRun);
+	aKey = (VmSpreadKey *)SySetBasePtr(&pVm->aSpreadKey);
+	zKeyBase = (const char *)SyBlobData(&pVm->sSpreadKeyBlob);
+	/* Skip runs belonging to an enclosing, not-yet-built call (slots below pArg). */
+	ri = 0;
+	while( ri < nRun && aRun[ri].pStart < pArg ){
+		ri++;
+	}
+	rStart = ri;
+	if( rStart >= nRun ){
+		/* No run anchored in this call's argument region — nothing to realign. */
+		return 0;
+	}
+	SySetReset(&pVm->aEffArgName);
+	ci = 0;
+	ai = 0;
+	while( ai < nActual ){
+		SyString sName;
+		SyZero(&sName, sizeof(sName)); /* positional by default (nByte == 0) */
+		/* Empty runs (spread of []) anchored here consumed a compile arg but no
+		 * slot — skip past their compile-name entry to keep alignment. */
+		while( ri < nRun && aRun[ri].pStart == &pArg[ai] && aRun[ri].nCount == 0 ){
+			ci++; ri++;
+		}
+		if( ri < nRun && aRun[ri].pStart == &pArg[ai] && aRun[ri].nCount > 0 ){
+			/* A run of spread elements: one name per element from its key. Keys
+			 * are indexed by the run's own nKeyStart, so a non-matching (leaked)
+			 * run never desyncs the key stream. */
+			sxu32 j, K = aRun[ri].nCount, ks = aRun[ri].nKeyStart;
+			for( j = 0; j < K; j++ ){
+				SyZero(&sName, sizeof(sName));
+				if( aKey[ks + j].nLen > 0 ){
+					SyStringInitFromBuf(&sName, zKeyBase + aKey[ks + j].nOff, aKey[ks + j].nLen);
+					bAnyNamed = 1;
+				}
+				SySetPut(&pVm->aEffArgName, (const void *)&sName);
+			}
+			ai += K;
+			ci++; ri++;
+		}else{
+			/* Non-spread compile argument: carry its compile-time name (if any). */
+			if( ci < nTotal && pCompile->aNames[ci].nByte > 0 ){
+				sName = pCompile->aNames[ci];
+				bAnyNamed = 1;
+			}
+			SySetPut(&pVm->aEffArgName, (const void *)&sName);
+			ai++;
+			ci++;
+		}
+	}
+	/* Consume this call's runs, restoring the buffers to the enclosing call's
+	 * state. The just-built names still alias the (now logically-truncated) blob
+	 * bytes until this call's synchronous resolution completes, before the next
+	 * spread — the truncation only lowers the length, it does not free. */
+	VmSpreadConsume(pVm, pArg);
+	if( !bAnyNamed ){
+		/* Every actual slot is positional — keep the fast positional path. */
+		return 0;
+	}
+	pEff->bHasNamed = 1;
+	pEff->bIsNamespaced = pCompile ? pCompile->bIsNamespaced : 0;
+	pEff->bStrict = pCompile ? pCompile->bStrict : 0;
+	pEff->nOrigNameLit = pCompile ? pCompile->nOrigNameLit : 0;
+	pEff->nTotal = nActual;
+	pEff->aNames = (SyString *)SySetBasePtr(&pVm->aEffArgName);
+	return 1;
+}
+/*
+ * One-stop resolver for a CALL/NEW dispatch site: returns the effective argument
+ * name map (the built spread-key map when it contributes names, else the compile
+ * map) AND guarantees this call's captured spread runs are consumed. The build is
+ * only meaningful with actual slots (nActual > 0); a net-zero-arg spread (`f(...[])`
+ * — one compile arg, zero elements) still captured an empty run that MUST be
+ * truncated, else it desyncs a later call in the VM-global buffers. So consume
+ * unconditionally for a spread call when the build didn't run (after a build that
+ * ran, VmSpreadConsume already fired and the second call is a harmless no-op).
+ * pArg must be the site's FINAL argument base.
+ */
+static VmCallArgMap *VmEffCallArgMap(ph7_vm *pVm, VmInstr *pInstr,
+	ph7_value *pArg, sxu32 nActual, VmCallArgMap *pStorage)
+{
+	VmCallArgMap *pCompile = (VmCallArgMap *)pInstr->p3;
+	if( pInstr->iP2 == 0 ){
+		return pCompile; /* no spread: compile map already aligned, nothing captured */
+	}
+	if( nActual > 0 && VmBuildEffectiveArgMap(pVm, pCompile, pArg, nActual, pStorage) ){
+		return pStorage;
+	}
+	VmSpreadConsume(pVm, pArg);
+	return pCompile;
 }
 /*
  * Raise the PHP "Cannot use <type> as array" warning for a non-array source used in a
@@ -12898,6 +13135,13 @@ case PH7_OP_NEW: {
 		pVm->iSpreadExtra = 0;
 	}
 	pArg = &pTos[-nCtorArgs]; /* Constructor arguments (if available) */
+	/* Same PHP 8.1 spread-key realignment as OP_CALL: build a per-actual-slot name
+	 * map when the ctor arg list unpacked string-keyed elements. NEW keeps the
+	 * class-name slot at pTos (above the args), so pArg is already the correct base;
+	 * the build also truncates this call's captured runs. */
+	VmCallArgMap sEffNewMap;
+	VmCallArgMap *pEffNewMap = VmEffCallArgMap(pVm,pInstr,pArg,
+		nCtorArgs > 0 ? (sxu32)nCtorArgs : 0,&sEffNewMap);
 	if( (pTos->iFlags & MEMOBJ_STRING) && SyBlobLength(&pTos->sBlob) > 0 ){
 		/* Try to extract the desired class */
 		pClass = PH7_VmExtractClass(&(*pVm),(const char *)SyBlobData(&pTos->sBlob),
@@ -12974,7 +13218,7 @@ case PH7_OP_NEW: {
 			 * forward any VmCallArgMap from the NEW instruction so the
 			 * receiving OP_CALL path runs its named-argument matching
 			 * (including variadic string-key packing). */
-			VmCallArgMap *pNewMap = (VmCallArgMap *)pInstr->p3;
+			VmCallArgMap *pNewMap = pEffNewMap;
 			sxi32 rcCons;
 			SySetReset(&aArg);
 			while( pArg < pTos ){
@@ -13606,6 +13850,15 @@ case PH7_OP_CALL: {
 		pVm->iSpreadExtra = 0;
 	}
 	pArg = &pTos[-nCallArgs];
+	/* PHP 8.1: an unpack whose elements carry string keys binds them as NAMED
+	 * arguments, and a spread expanding to !=1 element shifts the actual positions
+	 * of any following compile-time named args. The effective per-actual-slot name
+	 * map (VmBuildEffectiveArgMap, which also truncates this call's captured runs)
+	 * is built PER PATH against that path's finalized arg base — a method call pops
+	 * its method-name slot below, shifting pArg — so it is deferred to each dispatch
+	 * site rather than built once here. */
+	VmCallArgMap sEffMap;
+	VmCallArgMap *pEffCallMap = (VmCallArgMap *)pInstr->p3;
 	SyHashEntry *pEntry;
 	SyString sName;
 	/* A Closure object is callable: unwrap it to its underlying string callable so the
@@ -13626,6 +13879,10 @@ case PH7_OP_CALL: {
 		if( pTos->iFlags & MEMOBJ_HASHMAP ){
 			ph7_value sResult;
 			sxi32 rcArr;
+			/* Build the effective spread-key map (and consume this call's runs)
+			 * against this path's arg base (the array-callable slot isn't popped). */
+			pEffCallMap = VmEffCallArgMap(pVm,pInstr,pArg,
+				nCallArgs > 0 ? (sxu32)nCallArgs : 0,&sEffMap);
 			SySetReset(&aArg);
 			while( pArg < pTos ){
 				SySetPut(&aArg,(const void *)&pArg);
@@ -13635,7 +13892,7 @@ case PH7_OP_CALL: {
 			/* May be a class instance and it's static method. Forward this call's named-arg map
 			 * (pInstr->p3) so an FCC array callable invoked as `$c(name: …)` binds by name —
 			 * mirroring the __invoke-object branch below. */
-			rcArr = PH7_VmCallUserFunctionWithMap(pVm,pTos,(int)SySetUsed(&aArg),(ph7_value **)SySetBasePtr(&aArg),&sResult,(VmCallArgMap *)pInstr->p3);
+			rcArr = PH7_VmCallUserFunctionWithMap(pVm,pTos,(int)SySetUsed(&aArg),(ph7_value **)SySetBasePtr(&aArg),&sResult,pEffCallMap);
 			SySetReset(&aArg);
 			/* Pop given arguments */
 			if( nCallArgs > 0 ){
@@ -13664,6 +13921,10 @@ case PH7_OP_CALL: {
 			ph7_class_instance *pThis = (ph7_class_instance *)pTos->x.pOther;
 			ph7_value sResult;
 			sxi32 rcInv;
+			/* __invoke object callable: the object slot isn't popped, so pArg is
+			 * already this call's arg base — build the map + consume the runs. */
+			pEffCallMap = VmEffCallArgMap(pVm,pInstr,pArg,
+				nCallArgs > 0 ? (sxu32)nCallArgs : 0,&sEffMap);
 			SySetReset(&aArg);
 			while( pArg < pTos ){
 				SySetPut(&aArg,(const void *)&pArg);
@@ -13674,7 +13935,7 @@ case PH7_OP_CALL: {
 				(int)SySetUsed(&aArg),
 				(ph7_value **)SySetBasePtr(&aArg),
 				&sResult,
-				(VmCallArgMap *)pInstr->p3);
+				pEffCallMap);
 			SySetReset(&aArg);
 			/* Pin pThis BEFORE popping operands: VmPopOperand releases the callable
 			 * slot itself (it pops top-down and the callable IS pTos), which for a
@@ -13730,6 +13991,11 @@ case PH7_OP_CALL: {
 		}else{
 			/* Raise exception: Invalid function name */
 			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Invalid function name,NULL will be returned");
+			/* Consume this call's captured spread runs — a non-callable target
+			 * (int/float/bool/null) reaches no dispatch build site. */
+			if( pInstr->iP2 ){
+				VmSpreadConsume(pVm, pArg);
+			}
 			/* Pop given arguments */
 			if( nCallArgs > 0 ){
 				VmPopOperand(&pTos,nCallArgs);
@@ -13750,7 +14016,7 @@ case PH7_OP_CALL: {
 	 * This mirrors PHP's lookup order for unqualified function calls inside
 	 * namespaces. The namespace flag is stored in VmCallArgMap.bIsNamespaced. */
 	{
-	VmCallArgMap *pCallMap = (VmCallArgMap *)pInstr->p3;
+	VmCallArgMap *pCallMap = pEffCallMap;
 	if( pEntry == 0 && pCallMap && pCallMap->bIsNamespaced ){
 		const char *zFunc;
 		const char *zEnd;
@@ -13863,6 +14129,11 @@ case PH7_OP_CALL: {
 							SyBufferFormat(zMsg,sizeof(zMsg),"Call to %s method %.*s::%.*s() from global scope",
 								zVis,(int)pSelf->sName.nByte,pSelf->sName.zString,
 								(int)pVmFunc->sName.nByte,pVmFunc->sName.zString);
+							/* Consume this call's captured spread runs — this visibility
+							 * error exits before the pVmFunc build below. */
+							if( pInstr->iP2 ){
+								VmSpreadConsume(pVm, pArg);
+							}
 							/* Pop given arguments */
 							if( nCallArgs > 0 ){
 								VmPopOperand(&pTos,nCallArgs);
@@ -13874,6 +14145,13 @@ case PH7_OP_CALL: {
 				}
 			}
 		}
+		/* pArg is now finalized for every pVmFunc callee (a method call popped its
+		 * method-name slot above; functions/closures/generators keep the top base).
+		 * Build the PHP 8.1 effective spread-key map here so the generator and the
+		 * install path below both see it — and so this call's captured runs are
+		 * consumed exactly once, against the correct base. */
+		pEffCallMap = VmEffCallArgMap(pVm,pInstr,pArg,
+			nCallArgs > 0 ? (sxu32)nCallArgs : 0,&sEffMap);
 		/* Check the PHP call-depth cap (the sole site — BYTECODE.md stage 5).
 		 * Default is unbounded (heap-bound recursion, decoupled from the C stack
 		 * by the stage-2 trampoline); the C stack is guarded separately by
@@ -13924,7 +14202,7 @@ case PH7_OP_CALL: {
 					/* OOM: fall back to zero args rather than NULL-deref */
 					nGenArgs = 0;
 				}else{
-					VmCallArgMap *pGenMap = (VmCallArgMap *)pInstr->p3;
+					VmCallArgMap *pGenMap = pEffCallMap;
 					int didReorder = 0;
 					if( pGenMap && pGenMap->bHasNamed ){
 						/* Named-argument reordering for generator */
@@ -14053,7 +14331,7 @@ case PH7_OP_CALL: {
 			pExecCtx->pFrame->pParent = pVm->pFrame;
 			pVm->pFrame = pExecCtx->pFrame;
 			rc = VmFiberSetupFrame(pVm, pExecCtx, pThis, nGenArgs, apCallArgs,
-				(pInstr->p3 && ((VmCallArgMap *)pInstr->p3)->bStrict) ? 1 : 0, pSelfHint,
+				(pEffCallMap && pEffCallMap->bStrict) ? 1 : 0, pSelfHint,
 				TRUE/*generator: the g(...) call site is in the message*/);
 			pVm->pFrame = pExecCtx->pFrame->pParent;
 			pExecCtx->pFrame->pParent = 0;
@@ -14186,7 +14464,7 @@ case PH7_OP_CALL: {
 		}
 		/* Push arguments in the local frame */
 		{
-		VmCallArgMap *pCallMap3 = (VmCallArgMap *)pInstr->p3;
+		VmCallArgMap *pCallMap3 = pEffCallMap;
 		/* Caller file's strict_types mode — governs parameter coercion
 		 * (but NOT return coercion, which uses the callee's file). */
 		int bCallIsStrict = (pCallMap3 && pCallMap3->bStrict) ? 1 : 0;
@@ -15059,7 +15337,7 @@ SkipFuncBody:
 		 * global fallback for unqualified function calls in namespaces. */
 		pEntry = SyHashGet(&pVm->hHostFunction,(const void *)sName.zString,sName.nByte);
 		{
-		VmCallArgMap *pCallMap2 = (VmCallArgMap *)pInstr->p3;
+		VmCallArgMap *pCallMap2 = pEffCallMap;
 		if( pEntry == 0 && pCallMap2 && pCallMap2->bIsNamespaced ){
 			/* Compiler-qualified: try short name as global fallback */
 			const char *zShort = sName.zString;
@@ -15078,6 +15356,11 @@ SkipFuncBody:
 		if( pEntry == 0 ){
 			/* Call to undefined function */
 			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Call to undefined function '%z',NULL will be returned",&sName);
+			/* Consume this call's captured spread runs so they don't leak into a
+			 * later call (this path never reaches VmBuildEffectiveArgMap). */
+			if( pInstr->iP2 ){
+				VmSpreadConsume(pVm, pArg);
+			}
 			/* Pop given arguments */
 			if( pInstr->iP1 > 0 ){
 				VmPopOperand(&pTos,pInstr->iP1);
@@ -15087,6 +15370,12 @@ SkipFuncBody:
 			break;
 		}
 		pFunc = (ph7_user_func *)pEntry->pUserData;
+		/* Host function (builtin): build the effective spread-key map so the
+		 * name-forwarding builtins (call_user_func & friends) relay string keys as
+		 * named args, and — critically — so this call's captured runs are consumed.
+		 * pArg is the top base here (a builtin call pops no method-name slot). */
+		pEffCallMap = VmEffCallArgMap(pVm,pInstr,pArg,
+			nCallArgs > 0 ? (sxu32)nCallArgs : 0,&sEffMap);
 		/* Start collecting function arguments */
 		SySetReset(&aArg);
 		while( pArg < pTos ){
@@ -15103,7 +15392,7 @@ SkipFuncBody:
 		 * gated on bHasNamed) because call_user_func_array reads bStrict from it even
 		 * when its own call site is purely positional; only the two forwarding
 		 * builtins read pArgMap, so this is inert for every other host function. */
-		sCtx.pArgMap = (VmCallArgMap *)pInstr->p3;
+		sCtx.pArgMap = pEffCallMap;
 		{
 		int nGiven = (int)SySetUsed(&aArg);
 		/* PHP-8 arity enforcement (band A #5): a builtin declaring a minimum

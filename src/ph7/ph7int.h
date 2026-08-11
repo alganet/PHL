@@ -1283,6 +1283,13 @@ struct ph7_vm
 	/* Index of the shared empty-string literal reserved at VM init */
 	sxu32 nEmptyStringIdx;
 	sxi32 iSpreadExtra;        /* Cumulative extra args from PH7_OP_SPREAD (reset by CALL) */
+	/* Argument-unpacking key capture (PHP 8.1 named-parameter semantics for spreads).
+	 * Populated by OP_SPREAD, replayed and cleared by CALL/NEW alongside iSpreadExtra.
+	 * See the VmSpreadRun/VmSpreadKey/VmBuildEffectiveArgMap machinery in vm.c. */
+	SySet aSpreadRun;          /* VmSpreadRun: one entry per expansion in the current arg list */
+	SySet aSpreadKey;          /* VmSpreadKey: one (off,len) per expanded element, in order */
+	SyBlob sSpreadKeyBlob;     /* Backing bytes for the string keys referenced by aSpreadKey */
+	SySet aEffArgName;         /* SyString: effective per-actual-slot arg names built at CALL */
 	sxi32 iCmpCallbackExc;     /* Set when a comparison callback raised an exception so the
 								* driver (usort/uasort/uksort and the array_udiff/
 								* array_uintersect families) can abort and propagate
