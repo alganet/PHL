@@ -2324,6 +2324,7 @@ static sxi32 GenStateArrowAddCapture(
 	}
 	SyZero(&sEnv,sizeof(ph7_vm_func_closure_env));
 	sEnv.iFlags = 0;
+	sEnv.nIdx = SXU32_HIGH;
 	PH7_MemObjInit(pGen->pVm,&sEnv.sValue);
 	SyStringInitFromBuf(&sEnv.sName,zDup,nByte);
 	SySetPut(&pFunc->aClosureEnv,(const void *)&sEnv);
@@ -2760,6 +2761,7 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		}
 		SyZero(&sEnv,sizeof(ph7_vm_func_closure_env));
 		sEnv.iFlags = VM_FUNC_ARG_IGNORE;
+		sEnv.nIdx = SXU32_HIGH;
 		PH7_MemObjInit(pGen->pVm,&sEnv.sValue);
 		SyStringInitFromBuf(&sEnv.sName,zThisDup,sizeof("this")-1);
 		SySetPut(&pFunc->aClosureEnv,(const void *)&sEnv);
@@ -7431,10 +7433,8 @@ static sxi32 GenStateCompileFunc(
 					}
 					nLineLocal = pGen->pIn->nLine;
 					if( pGen->pIn->nType & PH7_TK_AMPER ){
-						/* Pass by reference,record that */
-						PH7_GenCompileError(pGen,E_WARNING,nLineLocal,
-							"Closure: Pass by reference is disabled in the current release of the PH7 engine,PH7 is switching to pass by value"
-							);
+						/* Capture by reference: OP_LOAD_CLOSURE binds the env entry
+						 * to the variable's memory slot instead of copying its value. */
 						iFlagsLocal = VM_FUNC_ARG_BY_REF;
 						pGen->pIn++;
 					}
@@ -7464,6 +7464,7 @@ static sxi32 GenStateCompileFunc(
 							/* Zero the structure */
 							SyZero(&sEnv,sizeof(ph7_vm_func_closure_env));
 							sEnv.iFlags = iFlagsLocal;
+							sEnv.nIdx = SXU32_HIGH;
 							PH7_MemObjInit(pGen->pVm,&sEnv.sValue);
 							SyStringInitFromBuf(&sEnv.sName,zDup,pNameLocal->nByte);
 							if( !got_this && pNameLocal->nByte == sizeof("this")-1 &&
@@ -7489,6 +7490,7 @@ static sxi32 GenStateCompileFunc(
 					 */
 					SyZero(&sEnv,sizeof(ph7_vm_func_closure_env));
 					sEnv.iFlags = VM_FUNC_ARG_IGNORE; /* Do not install if NULL */
+					sEnv.nIdx = SXU32_HIGH;
 					PH7_MemObjInit(pGen->pVm,&sEnv.sValue);
 					SyStringInitFromBuf(&sEnv.sName,"this",sizeof("this")-1);
 					SySetPut(&pFunc->aClosureEnv,(const void *)&sEnv);
