@@ -1029,6 +1029,7 @@ static void ReflectFillFuncCommon(ph7_context *pCtx, ph7_value *pInfo, ph7_vm_fu
 	ReflectMapAddStr(pCtx, pInfo, "name", SyStringData(&pFunc->sName), (int)SyStringLength(&pFunc->sName));
 	ReflectMapAddBool(pCtx, pInfo, "internal", (pFunc->iFlags & VM_FUNC_INTERNAL) != 0);
 	ReflectMapAddBool(pCtx, pInfo, "closure", bAnon);
+	ReflectMapAddBool(pCtx, pInfo, "fstatic", (pFunc->iFlags & VM_FUNC_STATIC_CL) != 0);
 	ReflectMapAddBool(pCtx, pInfo, "byref", (pFunc->iFlags & VM_FUNC_REF_RETURN) != 0);
 	ReflectMapAddBool(pCtx, pInfo, "generator", (pFunc->iFlags & VM_FUNC_GENERATOR) != 0);
 	ReflectMapAddBool(pCtx, pInfo, "strict", pFunc->bStrictTypes != 0);
@@ -1147,6 +1148,7 @@ static int vm_builtin_reflect_func_info(ph7_context *pCtx, int nArg, ph7_value *
 		ReflectMapAddStr(pCtx, pInfo, "name", SyStringData(&pHost->sName), (int)SyStringLength(&pHost->sName));
 		ReflectMapAddBool(pCtx, pInfo, "internal", 1);
 		ReflectMapAddBool(pCtx, pInfo, "closure", 0);
+		ReflectMapAddBool(pCtx, pInfo, "fstatic", 0);
 		ReflectMapAddBool(pCtx, pInfo, "byref", 0);
 		ReflectMapAddBool(pCtx, pInfo, "generator", 0);
 		ReflectMapAddBool(pCtx, pInfo, "strict", 0);
@@ -2096,7 +2098,7 @@ static const char zReflectLib2[] =
 " public function isInternal(){ $i = $this->__rfinfo(); return $i['internal']; }"
 " public function isUserDefined(){ return !$this->isInternal(); }"
 " public function isDeprecated(){ $i = $this->__rfinfo(); return __reflect_has_deprecated($i['attrs']); }"
-" public function isStatic(){ return false; }"
+" public function isStatic(){ $i = $this->__rfinfo(); return $i['fstatic']; }"
 " public function getFileName(){ $i = $this->__rfinfo(); return $i['file']; }"
 " public function getStartLine(){"
 "  $i = $this->__rfinfo();"
