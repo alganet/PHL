@@ -27,6 +27,8 @@ struct json_private_data
 	int nRecCount;     /* Recursion count */
 	int exc;           /* True if a jsonSerialize() callback threw an exception */
 	int oom;           /* True if a result append ran out of memory (raises a fatal) */
+	int fail;          /* True if the value is unencodable (php 8.1: a non-backed
+	                    * enum case) — json_encode returns FALSE */
 };
 /*
  * Emit into the JSON result, flagging OOM on the shared data and bailing out
@@ -214,10 +216,25 @@ static sxi32 VmJsonEncode(
 			ph7_vm *pVm = pIn->pVm;
 			ph7_class_method *pMethod = 0;
 			/* If the object implements JsonSerializable, encode the value
-			 * returned by jsonSerialize() instead of its public properties. */
+			 * returned by jsonSerialize() instead of its public properties.
+			 * An enum implementing it explicitly also takes this path (php). */
 			if( pVm->pJsonSerializableClass
 				&& PH7_VmInstanceOf(pThis->pClass,pVm->pJsonSerializableClass) ){
 				pMethod = PH7_ClassExtractMethod(pThis->pClass,"jsonSerialize",sizeof("jsonSerialize")-1);
+			}
+			if( pMethod == 0 && (pThis->pClass->iFlags & PH7_CLASS_ENUM) != 0 ){
+				/* php 8.1: a BACKED enum case encodes as its backing value; a
+				 * pure enum case has no default serialization — json_encode
+				 * returns false. */
+				ph7_value *pBacking = PH7_EnumCaseBackingValueOf(pThis);
+				if( pBacking ){
+					pData->nRecCount++;
+					VmJsonEncode(pBacking,pData);
+					pData->nRecCount--;
+				}else{
+					pData->fail = 1;
+				}
+				return PH7_OK;
 			}
 			if( pMethod ){
 				ph7_value sResult;
@@ -360,10 +377,12 @@ PH7_PRIVATE int vm_builtin_json_encode(ph7_context *pCtx,int nArg,ph7_value **ap
 	sJson.iFlags = 0;
 	sJson.exc = 0;
 	sJson.oom = 0;
+	sJson.fail = 0;
 	if( nArg > 1 && ph7_value_is_int(apArg[1]) ){
 		/* Extract option flags */
 		sJson.iFlags = ph7_value_to_int(apArg[1]);
 	}
+	pCtx->pVm->json_rc = JSON_ERROR_NONE;
 	/* Perform the encoding operation */
 	rc = VmJsonEncode(apArg[0],&sJson);
 	if( sJson.oom ){
@@ -374,6 +393,13 @@ PH7_PRIVATE int vm_builtin_json_encode(ph7_context *pCtx,int nArg,ph7_value **ap
 	if( rc == PH7_EXCEPTION || sJson.exc ){
 		/* A jsonSerialize() callback threw — propagate so the exception unwinds */
 		return PH7_EXCEPTION;
+	}
+	if( sJson.fail ){
+		/* Unencodable value (php 8.1: non-backed enum case): the whole encode
+		 * fails — discard whatever was emitted and return FALSE. */
+		pCtx->pVm->json_rc = JSON_ERROR_NON_BACKED_ENUM;
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
 	}
 	/* All done */
 	return PH7_OK;
@@ -433,6 +459,9 @@ PH7_PRIVATE int vm_builtin_json_last_error_msg(ph7_context *pCtx,int nArg,ph7_va
 		break;
 	case JSON_ERROR_UTF8:
 		zMsg = "Malformed UTF-8 characters, possibly incorrectly encoded";
+		break;
+	case JSON_ERROR_NON_BACKED_ENUM:
+		zMsg = "Non-backed enums have no default serialization";
 		break;
 	default:
 		zMsg = "Unknown error";

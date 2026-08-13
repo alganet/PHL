@@ -857,6 +857,11 @@ struct ph7_class
 	sxu32 nEndLine;       /* Line of the class body's closing brace (Reflection getEndLine) */
 	SyString sDoc;        /* Doc-comment preceding the declaration (duplicated; empty = none) */
 	SySet aAttrs;         /* Declared #[...] attributes (ph7_attribute records) */
+	sxu32 nEnumBacking;   /* Enum backing type: 0 = pure/not an enum, MEMOBJ_INT or MEMOBJ_STRING */
+	SySet aEnumCases;     /* Enum cases (ph7_class_attr *) in declaration order. Case singletons
+	                       * materialize lazily and INDIVIDUALLY on first access (php 8.1: a broken
+	                       * sibling case does not poison a valid one); an unmaterialized case has
+	                       * nIdx == SXU32_HIGH. */
 };
 /* Class configuration flags */
 #define PH7_CLASS_FINAL       0x001 /* Class is final [cannot be extended] */
@@ -868,6 +873,7 @@ struct ph7_class
 #define PH7_CLASS_INTERNAL    0x040 /* Class was defined while compiling a builtin chunk (embedded PHP
                                      * library). Reflection reports it as internal: isInternal() true,
                                      * getFileName() false. */
+#define PH7_CLASS_ENUM        0x080 /* Class is an enum (PHP 8.1). Also carries PH7_CLASS_FINAL. */
 /* Class attribute/methods/constants protection levels */
 #define PH7_CLASS_PROT_PUBLIC     1 /* public */
 #define PH7_CLASS_PROT_PROTECTED  2 /* protected */
@@ -904,7 +910,13 @@ struct ph7_class_attr
 #define PH7_CLASS_ATTR_DYNAMIC      0x100  /* Runtime-added (dynamic) property: the ph7_class_attr is
                                             * instance-owned (synthesized, not class-declared) and must
                                             * be freed when the instance is released. */
-/* next free bit: 0x200 */
+#define PH7_CLASS_ATTR_ENUMCASE     0x200  /* Enum case: a class constant whose value is the lazily
+                                            * materialized case singleton (aByteCode holds the BACKING
+                                            * value expression for backed enums; empty when pure). */
+#define PH7_CLASS_ATTR_EVALING      0x400  /* Transient: this constant's initializer is being evaluated
+                                            * (on-demand, VmClassConstEvalOnDemand). Re-entry means a
+                                            * self-referencing constant — php's catchable Error. */
+/* next free bit: 0x800 */
 /*
  * Each class method is parsed out and stored in an instance of the following
  * structure.
@@ -1212,6 +1224,17 @@ struct ph7_vm
 	                             * (vm_builtin_magic_call), which consumes this + the class +
 	                             * the original name. Holds a reference; NULL for __callStatic. */
 	ph7_class *pMagicCallClass; /* Pending __call/__callStatic declaring class */
+	ph7_class *pConstEvalClass; /* Transient: class whose constant/property initializer bytecode is
+	                             * being evaluated (VmLocalExec has no method frame, so self::/parent::
+	                             * inside an initializer resolve through this fallback — consulted by
+	                             * PH7_VmPeekDeclaringClass/PH7_VmPeekTopClass when no frame matches). */
+	sxi32 nConstEvalDepth;      /* Nesting depth of constant/enum-case initializer evaluations. A
+	                             * cycle detected at an inner level (pConstCycleAttr) is thrown only
+	                             * when depth returns to 0 — a throw INSIDE an initializer mini-exec
+	                             * cannot be routed to a user catch (pre-existing engine restriction),
+	                             * so the outermost, opcode-level evaluation raises it instead. */
+	ph7_class_attr *pConstCycleAttr;  /* Self-referencing constant detected during evaluation */
+	ph7_class *pConstCycleClass;      /* ...and the class it belongs to (for the Error message) */
 	SyBlob sMagicCallName;      /* Pending original method name (stable copy) */
 	sxi32 nBoundaryRc;          /* C-boundary parked throw status (0 / PH7_EXCEPTION / PH7_ABORT).
 	                             * Set by VmBoundaryPark when a PHP callee invoked from a C site
@@ -1725,7 +1748,8 @@ enum json_err_code{
 	JSON_ERROR_STATE_MISMATCH, /* Occurs with underflow or with the modes mismatch.  */
 	JSON_ERROR_CTRL_CHAR, /* Control character error, possibly incorrectly encoded.  */
 	JSON_ERROR_SYNTAX,    /* Syntax error. */
-	JSON_ERROR_UTF8       /* Malformed UTF-8 characters */
+	JSON_ERROR_UTF8,      /* Malformed UTF-8 characters */
+	JSON_ERROR_NON_BACKED_ENUM = 11 /* Non-backed enum given to json_encode (php 8.1 value) */
 };
 /* The following constants can be combined to form options for json_encode(). */
 #define	JSON_HEX_TAG           0x01  /* All < and > are converted to \u003C and \u003E. */
@@ -1862,6 +1886,7 @@ PH7_PRIVATE sxi32 PH7_VmRefObjRemove(ph7_vm *pVm,sxu32 nIdx,SyHashEntry *pEntry,
 PH7_PRIVATE sxi32 PH7_VmRefObjInstall(ph7_vm *pVm,sxu32 nIdx,SyHashEntry *pEntry,ph7_hashmap_node *pMapEntry,sxi32 iFlags);
 PH7_PRIVATE sxi32 PH7_VmPushFilePath(ph7_vm *pVm,const char *zPath,int nLen,sxu8 bMain,sxi32 *pNew);
 PH7_PRIVATE ph7_class * PH7_VmExtractClass(ph7_vm *pVm,const char *zName,sxu32 nByte,sxi32 iLoadable,sxi32 iNest);
+PH7_PRIVATE sxi32 PH7_VmMaterializeClassConst(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr);
 PH7_PRIVATE ph7_class * PH7_VmTriggerAutoload(ph7_vm *pVm,const char *zName,sxu32 nByte,sxi32 iLoadable);
 PH7_PRIVATE sxi32 PH7_VmRegisterConstant(ph7_vm *pVm,const SyString *pName,ProcConstant xExpand,void *pUserData);
 PH7_PRIVATE sxi32 PH7_VmRegisterConstantEx(ph7_vm *pVm,const SyString *pName,ProcConstant xExpand,
@@ -2238,6 +2263,8 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 PH7_PRIVATE sxi32 PH7_ClassInstanceCallMagicMethod(ph7_vm *pVm,ph7_class *pClass,ph7_class_instance *pThis,const char *zMethod,
 	sxu32 nByte,const SyString *pAttrName,ph7_value *pResult);
 PH7_PRIVATE ph7_value * PH7_ClassInstanceExtractAttrValue(ph7_class_instance *pThis,VmClassAttr *pAttr);
+PH7_PRIVATE ph7_value * PH7_EnumCaseNameValue(ph7_class_instance *pThis);
+PH7_PRIVATE ph7_value * PH7_EnumCaseBackingValueOf(ph7_class_instance *pThis);
 PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmap(ph7_class_instance *pThis,ph7_hashmap *pMap);
 PH7_PRIVATE sxi32 PH7_ClassInstanceWalk(ph7_class_instance *pThis,
 	int (*xWalk)(const char *,ph7_value *,void *),void *pUserData);

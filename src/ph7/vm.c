@@ -522,6 +522,7 @@ static const struct VmBuiltinArity {
 	/* Class/reflection family */
 	{ "class_alias",               2, 1 },
 	{ "class_exists",              1, 1 },
+	{ "enum_exists",               1, 1 },
 	{ "get_class_methods",         1, 0 },
 	{ "get_class_vars",            1, 0 },
 	{ "get_object_vars",           1, 0 },
@@ -1394,6 +1395,8 @@ static ph7_vm_func * VmOverload(
 /* Forward declaration */
 /* VmLocalExec and VmErrorFormat forward declarations removed - now PH7_PRIVATE in ph7int.h */
 static sxi32 VmEnforceConstantType(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue);
+static void VmBoundaryPark(ph7_vm *pVm,sxi32 rc);
+static sxi32 VmConstCycleThrow(ph7_vm *pVm);
 /*
  * Mount a compiled class into the freshly created vitual machine so that
  * it can be instanciated from the executed PHP script.
@@ -1420,8 +1423,28 @@ static sxi32 VmMountUserClassAttrs(
 	while( (pEntry = SyHashGetNextEntry(&pClass->hAttr)) != 0 ){
 		/* Extract the current attribute */
 		pAttr = (ph7_class_attr *)pEntry->pUserData;
-		if( pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC) ){
+		if( (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT)
+		 && ((pAttr->iFlags & PH7_CLASS_ATTR_TYPED) == 0
+			|| (pAttr->iFlags & PH7_CLASS_ATTR_ENUMCASE) != 0) ){
+			/* Untyped class constants and enum cases are evaluated LAZILY, on
+			 * first access (VmClassConstEvalOnDemand / VmEnumMaterializeCase),
+			 * matching php. Eager evaluation here ran BEFORE execution for
+			 * top-level classes (PH7_VmMakeReady), so an initializer error
+			 * (self-reference, enum backing mismatch) could never reach a
+			 * user catch, and initializers referencing constants of a class
+			 * mounted later in hash order silently read NULL. TYPED constants
+			 * stay eager: php validates them at DECLARATION time ("Cannot use
+			 * %s as value for class constant" fatal without any access). */
+			continue;
+		}
+		if( pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT) ){
 			ph7_value *pMemObj;
+			if( pAttr->nIdx != SXU32_HIGH ){
+				/* Already materialized (an attr shared with an earlier-mounted
+				 * class). PH7_VmReset invalidates every nIdx before its
+				 * re-mount pass, so VM reuse still re-evaluates. */
+				continue;
+			}
 			/* Reserve a memory object for this constant/static attribute */
 			pMemObj = PH7_ReserveMemObj(&(*pVm));
 			if( pMemObj == 0 ){
@@ -1432,8 +1455,29 @@ static sxi32 VmMountUserClassAttrs(
 				return SXERR_MEM;
 			}
 			if( SySetUsed(&pAttr->aByteCode) > 0 ){
-				/* Initialize attribute default value (any complex expression) */
-				VmLocalExec(&(*pVm),&pAttr->aByteCode,pMemObj,FALSE);
+				/* Initialize attribute default value (any complex expression).
+				 * pConstEvalClass lets self::/parent:: in the initializer
+				 * resolve (VmLocalExec runs without a method frame). */
+				ph7_class *pSaveCtx = pVm->pConstEvalClass;
+				sxi32 rcExec;
+				pVm->pConstEvalClass = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+				pAttr->iFlags |= PH7_CLASS_ATTR_EVALING; /* cycle guard, shared with the on-demand path */
+				pVm->nConstEvalDepth++;
+				rcExec = VmLocalExec(&(*pVm),&pAttr->aByteCode,pMemObj,FALSE);
+				pVm->nConstEvalDepth--;
+				pAttr->iFlags &= ~PH7_CLASS_ATTR_EVALING;
+				pVm->pConstEvalClass = pSaveCtx;
+				if( rcExec == PH7_EXCEPTION || rcExec == PH7_ABORT ){
+					/* The initializer raised (self-referencing constant, or a
+					 * throwing enum-case reference): park it for the fetch-point
+					 * router — user classes mount mid-execution, so the throw
+					 * lands catchably at the declaration site. */
+					VmBoundaryPark(&(*pVm),rcExec);
+				}else if( pVm->pConstCycleAttr && pVm->nConstEvalDepth == 0 ){
+					/* A nested evaluation detected a self-referencing constant:
+					 * raise it at this, the outermost level. */
+					VmBoundaryPark(&(*pVm),VmConstCycleThrow(&(*pVm)));
+				}
 				/* Typed class constant (PHP 8.3): enforce the computed value
 				 * against the declared type. A mismatch is a non-catchable
 				 * fatal, raised here at definition time (matching PHP). */
@@ -1559,8 +1603,13 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 			pVmAttr->iState = 0;
 			pVmAttr->pOwner = pClass;
 			if( SySetUsed(&pAttr->aByteCode) > 0 ){
-				/* Initialize attribute default value (any complex expression) */
+				/* Initialize attribute default value (any complex expression).
+				 * pConstEvalClass: self::CONST in a property default resolves
+				 * against the declaring class (no method frame here). */
+				ph7_class *pSaveCtx = pVm->pConstEvalClass;
+				pVm->pConstEvalClass = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
 				VmLocalExec(&(*pVm),&pAttr->aByteCode,pMemObj,FALSE);
+				pVm->pConstEvalClass = pSaveCtx;
 			}else if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
 				/* Typed property without a default: mark uninitialized. Reading
 				 * it before the first write is an Error in PHP 7.4+. */
@@ -2442,6 +2491,10 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->pResumeInstr = 0;
 	pVm->iResumeStackDepth = 0;
 	pVm->nBoundaryRc = 0;
+	pVm->pConstEvalClass = 0;
+	pVm->nConstEvalDepth = 0;
+	pVm->pConstCycleAttr = 0;
+	pVm->pConstCycleClass = 0;
 	SySetReset(&pVm->aMagicGuard);
 	if( pVm->pMagicSetThis ){
 		PH7_ClassInstanceUnref(pVm->pMagicSetThis);
@@ -3058,6 +3111,7 @@ static const struct VmBuiltinSig {
 	{ "chunk_split", "string $string, int $length = 76, string $separator = ?", "string" },
 	{ "class_alias", "string $class, string $alias, bool $autoload = true", "bool" },
 	{ "class_exists", "string $class, bool $autoload = true", "bool" },
+	{ "enum_exists", "string $enum, bool $autoload = true", "bool" },
 	{ "closedir", "$dir_handle = NULL", "void" },
 	{ "compact", "$var_name, ...$var_names = ?", "array" },
 	{ "constant", "string $name", "mixed" },
@@ -3833,6 +3887,10 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	pVm->pResumeInstr = 0;
 	pVm->iResumeStackDepth = 0;
 	pVm->nBoundaryRc = 0;
+	pVm->pConstEvalClass = 0;
+	pVm->nConstEvalDepth = 0;
+	pVm->pConstCycleAttr = 0;
+	pVm->pConstCycleClass = 0;
 	SySetReset(&pVm->aMagicGuard);
 	if( pVm->pMagicSetThis ){
 		PH7_ClassInstanceUnref(pVm->pMagicSetThis);
@@ -3880,9 +3938,27 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 			return rc;
 		}
 	}
-	/* (10) Re-mount the static/const attribute slots of every class. */
+	/* (10) Re-mount the static/const attribute slots of every class. First
+	 * invalidate every const/static slot index across ALL classes: the object
+	 * pool was truncated, so the old indexes are stale, and the mount loop
+	 * (plus the on-demand constant evaluator it can trigger) skips attributes
+	 * whose nIdx is already set. Enum case singletons re-materialize lazily. */
 	{
 		SyHashEntry *pEntry;
+		SyHashResetLoopCursor(&pVm->hClass);
+		while( (pEntry = SyHashGetNextEntry(&pVm->hClass)) != 0 ){
+			ph7_class *pClass = (ph7_class *)pEntry->pUserData;
+			ph7_class_attr *pAttr;
+			SyHashEntry *pAttrEntry;
+			SyHashResetLoopCursor(&pClass->hAttr);
+			while( (pAttrEntry = SyHashGetNextEntry(&pClass->hAttr)) != 0 ){
+				pAttr = (ph7_class_attr *)pAttrEntry->pUserData;
+				if( pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC) ){
+					pAttr->nIdx = SXU32_HIGH;
+					pAttr->iFlags &= ~PH7_CLASS_ATTR_EVALING;
+				}
+			}
+		}
 		SyHashResetLoopCursor(&pVm->hClass);
 		while( (pEntry = SyHashGetNextEntry(&pVm->hClass)) != 0 ){
 			sxi32 rc = VmMountUserClassAttrs(&(*pVm),(ph7_class *)pEntry->pUserData);
@@ -5127,6 +5203,339 @@ static sxi32 VmThrowFixedError(ph7_vm *pVm, const char *zClass, const char *zMsg
 	SyBlobInit(&sMsg, &pVm->sAllocator);
 	SyBlobAppend(&sMsg, zMsg, SyStrlen(zMsg));
 	return VmThrowBuiltinError(pVm, zClass, SyStrlen(zClass), &sMsg);
+}
+/*
+ * Enum case singletons (PHP 8.1).
+ *
+ * Each `case` of an enum is a class constant (PH7_CLASS_ATTR_ENUMCASE) whose
+ * slot holds THE singleton instance of the enum class for that case; strict
+ * `===` between two accesses is then the ordinary instance-pointer identity.
+ * Materialization is lazy and all-at-once on first access, matching php: the
+ * backing-value type check and the duplicate-value check only fire when a
+ * case (or cases()/from()/tryFrom()) is first touched.
+ */
+/* Write [pSrcVal] into the instance property [zProp] of [pObj], clearing the
+ * readonly write-once latch so later user writes raise php's "Cannot modify
+ * readonly property" through the normal store path. */
+static void VmEnumSetInstanceProp(ph7_vm *pVm,ph7_class_instance *pObj,
+	const char *zProp,sxu32 nProp,ph7_value *pSrcVal)
+{
+	SyHashEntry *pEntry = SyHashGet(&pObj->hAttr,(const void *)zProp,nProp);
+	VmClassAttr *pVmAttr;
+	ph7_value *pSlot;
+	if( pEntry == 0 ){
+		return;
+	}
+	pVmAttr = (VmClassAttr *)pEntry->pUserData;
+	pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,pVmAttr->nIdx);
+	if( pSlot == 0 ){
+		return;
+	}
+	PH7_MemObjStore(pSrcVal,pSlot);
+	pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
+}
+/* Return the backing value (the `value` property) of an already-materialized
+ * enum case, or 0 when unavailable (pure enum / not yet materialized). */
+static ph7_value * VmEnumCaseBackingValue(ph7_vm *pVm,ph7_class_attr *pCase)
+{
+	ph7_value *pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,pCase->nIdx);
+	ph7_class_instance *pObj;
+	SyHashEntry *pEntry;
+	if( pSlot == 0 || (pSlot->iFlags & MEMOBJ_OBJ) == 0 ){
+		return 0;
+	}
+	pObj = (ph7_class_instance *)pSlot->x.pOther;
+	pEntry = SyHashGet(&pObj->hAttr,"value",sizeof("value")-1);
+	if( pEntry == 0 ){
+		return 0;
+	}
+	return (ph7_value *)SySetAt(&pVm->aMemObj,((VmClassAttr *)pEntry->pUserData)->nIdx);
+}
+/*
+ * Raise the pending self-referencing-constant Error recorded by an inner
+ * initializer evaluation (pConstCycleAttr). Called only at nConstEvalDepth 0 —
+ * a throw inside an initializer mini-exec cannot be routed to a user catch
+ * (pre-existing engine restriction), so the outermost, opcode-level evaluation
+ * raises it. Returns the throw status to park/route.
+ */
+static sxi32 VmConstCycleThrow(ph7_vm *pVm)
+{
+	SyBlob sMsg;
+	ph7_class_attr *pAttr = pVm->pConstCycleAttr;
+	ph7_class *pOwner = pVm->pConstCycleClass;
+	pVm->pConstCycleAttr = 0;
+	pVm->pConstCycleClass = 0;
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	SyBlobFormat(&sMsg,"Cannot declare self-referencing constant %z::%z",
+		pOwner ? &pOwner->sName : &pAttr->sName,&pAttr->sName);
+	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
+}
+/*
+ * Materialize ONE case singleton of an enum class. php 8.1 semantics: cases
+ * materialize lazily and individually on first access — the backing-value
+ * type check fires per case, and the duplicate-value check compares only
+ * against cases that have already materialized (a broken sibling case does
+ * not poison a valid one). Returns SXRET_OK, or the PH7_EXCEPTION/PH7_ABORT
+ * of a thrown catchable error — TypeError (backing type mismatch) or Error
+ * (duplicate value / self-reference) — which the caller routes
+ * (VmBoundaryPark at an opcode site, direct return from a builtin thunk).
+ */
+static sxi32 VmEnumMaterializeCase(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pCase)
+{
+	ph7_class_attr **apCase;
+	ph7_class_instance *pObj;
+	ph7_value *pSlot;
+	ph7_value sBacking,sPropVal;
+	sxu32 i;
+	if( pCase->nIdx != SXU32_HIGH ){
+		return SXRET_OK;
+	}
+	if( pCase->iFlags & PH7_CLASS_ATTR_EVALING ){
+		/* `case A = self::A->value` — record the cycle; the outermost
+		 * evaluation raises it (see VmConstCycleThrow). */
+		if( pVm->pConstCycleAttr == 0 ){
+			pVm->pConstCycleAttr = pCase;
+			pVm->pConstCycleClass = pClass;
+		}
+		return SXRET_OK;
+	}
+	PH7_MemObjInit(pVm,&sBacking);
+	if( pClass->nEnumBacking != 0 ){
+		if( SySetUsed(&pCase->aByteCode) > 0 ){
+			/* pConstEvalClass: `case A = self::OFF + 1` resolves self:: */
+			ph7_class *pSaveCtx = pVm->pConstEvalClass;
+			sxi32 rcExec;
+			pVm->pConstEvalClass = pClass;
+			pCase->iFlags |= PH7_CLASS_ATTR_EVALING;
+			pVm->nConstEvalDepth++;
+			rcExec = VmLocalExec(&(*pVm),&pCase->aByteCode,&sBacking,FALSE);
+			pVm->nConstEvalDepth--;
+			pCase->iFlags &= ~PH7_CLASS_ATTR_EVALING;
+			pVm->pConstEvalClass = pSaveCtx;
+			if( rcExec == PH7_EXCEPTION || rcExec == PH7_ABORT ){
+				/* The backing expression raised: abandon materialization and
+				 * hand the status to the caller to park/route. */
+				PH7_MemObjRelease(&sBacking);
+				return rcExec;
+			}
+			if( pVm->pConstCycleAttr && pVm->nConstEvalDepth == 0 ){
+				PH7_MemObjRelease(&sBacking);
+				return VmConstCycleThrow(&(*pVm));
+			}
+		}
+		if( (sBacking.iFlags & pClass->nEnumBacking) == 0 ){
+			/* php: TypeError, checked lazily at first case access */
+			SyBlob sMsg;
+			const char *zGiven = ph7_type_name(&sBacking);
+			PH7_MemObjRelease(&sBacking);
+			SyBlobInit(&sMsg,&pVm->sAllocator);
+			SyBlobFormat(&sMsg,"Enum case type %s does not match enum backing type %s",
+				zGiven,(pClass->nEnumBacking == MEMOBJ_INT) ? "int" : "string");
+			return VmThrowBuiltinError(pVm,"TypeError",sizeof("TypeError")-1,&sMsg);
+		}
+		if( pClass->nEnumBacking == MEMOBJ_INT ){
+			/* Normalize a whole-real (PHL flags them MEMOBJ_REAL|MEMOBJ_INT,
+			 * the typed-constant leniency) to a genuine int. */
+			PH7_MemObjToInteger(&sBacking);
+		}else{
+			PH7_MemObjToString(&sBacking);
+		}
+		/* php: two cases sharing one backing value are an Error — compared
+		 * against already-materialized cases only (php registers values as
+		 * each case evaluates). */
+		apCase = (ph7_class_attr **)SySetBasePtr(&pClass->aEnumCases);
+		for( i = 0 ; i < SySetUsed(&pClass->aEnumCases) ; i++ ){
+			ph7_value *pPrev;
+			int bDup = 0;
+			if( apCase[i] == pCase ){
+				continue;
+			}
+			pPrev = VmEnumCaseBackingValue(&(*pVm),apCase[i]);
+			if( pPrev ){
+				if( pClass->nEnumBacking == MEMOBJ_INT ){
+					bDup = (pPrev->x.iVal == sBacking.x.iVal);
+				}else{
+					bDup = SyBlobLength(&pPrev->sBlob) == SyBlobLength(&sBacking.sBlob)
+						&& SyMemcmp(SyBlobData(&pPrev->sBlob),SyBlobData(&sBacking.sBlob),
+							SyBlobLength(&sBacking.sBlob)) == 0;
+				}
+			}
+			if( bDup ){
+				/* php prints the two cases in DECLARATION order regardless of
+				 * which one is being evaluated. */
+				ph7_class_attr *pFirst = apCase[i], *pSecond = pCase;
+				SyBlob sMsg;
+				sxu32 j;
+				for( j = 0 ; j < SySetUsed(&pClass->aEnumCases) ; j++ ){
+					if( apCase[j] == pCase ){ break; }
+				}
+				if( j < i ){
+					pFirst = pCase;
+					pSecond = apCase[i];
+				}
+				PH7_MemObjRelease(&sBacking);
+				SyBlobInit(&sMsg,&pVm->sAllocator);
+				SyBlobFormat(&sMsg,"Duplicate value in enum %z for cases %z and %z",
+					&pClass->sName,&pFirst->sName,&pSecond->sName);
+				return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
+			}
+		}
+	}
+	/* Create the singleton and fill its readonly props */
+	pObj = PH7_NewClassInstance(&(*pVm),pClass);
+	if( pObj == 0 ){
+		PH7_MemObjRelease(&sBacking);
+		VmErrorFormat(&(*pVm),PH7_CTX_ERR,
+			"Cannot create enum case %z::%z due to a memory failure",
+			&pClass->sName,&pCase->sName);
+		return PH7_ABORT;
+	}
+	PH7_MemObjInitFromString(pVm,&sPropVal,&pCase->sName);
+	VmEnumSetInstanceProp(&(*pVm),pObj,"name",sizeof("name")-1,&sPropVal);
+	PH7_MemObjRelease(&sPropVal);
+	if( pClass->nEnumBacking != 0 ){
+		VmEnumSetInstanceProp(&(*pVm),pObj,"value",sizeof("value")-1,&sBacking);
+	}
+	PH7_MemObjRelease(&sBacking);
+	/* Park the singleton in the case's constant slot. The slot takes over
+	 * the instance's initial iRef=1 (synthesized-object invariant). */
+	pSlot = PH7_ReserveMemObj(&(*pVm));
+	if( pSlot == 0 ){
+		PH7_ClassInstanceUnref(pObj);
+		VmErrorFormat(&(*pVm),PH7_CTX_ERR,
+			"Cannot reserve a memory object for enum case %z::%z",
+			&pClass->sName,&pCase->sName);
+		return PH7_ABORT;
+	}
+	pSlot->x.pOther = pObj;
+	MemObjSetType(pSlot,MEMOBJ_OBJ);
+	PH7_VmRefObjInstall(&(*pVm),pSlot->nIdx,0,0,VM_REF_IDX_KEEP);
+	pCase->nIdx = pSlot->nIdx;
+	return SXRET_OK;
+}
+/*
+ * Materialize EVERY case singleton of [pClass], in declaration order — the
+ * cases()/from()/tryFrom() entry point (php equally evaluates all cases
+ * there, so a broken case surfaces its error at the same point).
+ */
+static sxi32 VmEnumMaterialize(ph7_vm *pVm,ph7_class *pClass)
+{
+	ph7_class_attr **apCase;
+	sxu32 n;
+	if( (pClass->iFlags & PH7_CLASS_ENUM) == 0 ){
+		return SXRET_OK;
+	}
+	apCase = (ph7_class_attr **)SySetBasePtr(&pClass->aEnumCases);
+	for( n = 0 ; n < SySetUsed(&pClass->aEnumCases) ; n++ ){
+		sxi32 rc = VmEnumMaterializeCase(&(*pVm),pClass,apCase[n]);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	return SXRET_OK;
+}
+/*
+ * Resolve [pName] (a string ph7_value holding an enum FQN) to its enum class,
+ * or 0 when the name does not name an enum.
+ */
+static ph7_class * VmExtractEnumClass(ph7_vm *pVm,ph7_value *pName)
+{
+	ph7_class *pClass;
+	if( (pName->iFlags & MEMOBJ_STRING) == 0 || SyBlobLength(&pName->sBlob) < 1 ){
+		return 0;
+	}
+	pClass = PH7_VmExtractClass(&(*pVm),(const char *)SyBlobData(&pName->sBlob),
+		SyBlobLength(&pName->sBlob),FALSE,0);
+	while( pClass && (pClass->iFlags & PH7_CLASS_ENUM) == 0 ){
+		pClass = pClass->pNextName;
+	}
+	return pClass;
+}
+/*
+ * Evaluate a class constant's initializer on demand.
+ *
+ * Constant slots are normally filled eagerly at class mount, but a constant
+ * whose initializer references ANOTHER not-yet-mounted constant (same class —
+ * `const B = self::A + 1` — or a class mounted later in hash order) reaches
+ * OP_MEMBER with nIdx still unset; before this helper the load silently
+ * produced NULL (a mount-order-dependent silent wrong answer, surfaced by the
+ * enum work, 13 Jul 2026). Evaluates the initializer now — with
+ * pConstEvalClass set so self::/parent:: resolve — memoizes the slot, and
+ * leaves the mount loop's later visit to skip it (nIdx already set).
+ * A re-entrant evaluation of the SAME constant is php's catchable
+ * "Cannot declare self-referencing constant" Error.
+ */
+static sxi32 VmClassConstEvalOnDemand(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr)
+{
+	ph7_value *pMemObj;
+	if( pAttr->nIdx != SXU32_HIGH
+		|| (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0
+		|| (pAttr->iFlags & PH7_CLASS_ATTR_ENUMCASE) != 0 ){
+		return SXRET_OK;
+	}
+	if( pAttr->iFlags & PH7_CLASS_ATTR_EVALING ){
+		/* Cycle: record it for the OUTERMOST evaluation to raise
+		 * (VmConstCycleThrow) — a throw at this inner level would be lost
+		 * inside the initializer mini-exec. Loads NULL benignly here. */
+		if( pVm->pConstCycleAttr == 0 ){
+			pVm->pConstCycleAttr = pAttr;
+			pVm->pConstCycleClass = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+		}
+		return SXRET_OK;
+	}
+	pMemObj = PH7_ReserveMemObj(&(*pVm));
+	if( pMemObj == 0 ){
+		return SXERR_MEM;
+	}
+	if( SySetUsed(&pAttr->aByteCode) > 0 ){
+		ph7_class *pSaveCtx = pVm->pConstEvalClass;
+		sxi32 rcExec;
+		pAttr->iFlags |= PH7_CLASS_ATTR_EVALING;
+		pVm->pConstEvalClass = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+		pVm->nConstEvalDepth++;
+		rcExec = VmLocalExec(&(*pVm),&pAttr->aByteCode,pMemObj,FALSE);
+		pVm->nConstEvalDepth--;
+		pVm->pConstEvalClass = pSaveCtx;
+		pAttr->iFlags &= ~PH7_CLASS_ATTR_EVALING;
+		/* Memoize before any throw so re-access doesn't loop. */
+		pAttr->nIdx = pMemObj->nIdx;
+		PH7_VmRefObjInstall(&(*pVm),pMemObj->nIdx,0,0,VM_REF_IDX_KEEP);
+		if( rcExec == PH7_EXCEPTION || rcExec == PH7_ABORT ){
+			/* The initializer raised: hand the status to the caller to
+			 * park/route. */
+			return rcExec;
+		}
+		if( pVm->pConstCycleAttr && pVm->nConstEvalDepth == 0 ){
+			/* A nested evaluation detected a self-referencing constant:
+			 * raise it here, at opcode level, where it routes to a catch. */
+			return VmConstCycleThrow(&(*pVm));
+		}
+		if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
+			sxi32 rcType = VmEnforceConstantType(&(*pVm),pClass,pAttr,pMemObj);
+			if( rcType != SXRET_OK ){
+				return rcType;
+			}
+		}
+		return SXRET_OK;
+	}
+	pAttr->nIdx = pMemObj->nIdx;
+	PH7_VmRefObjInstall(&(*pVm),pMemObj->nIdx,0,0,VM_REF_IDX_KEEP);
+	return SXRET_OK;
+}
+/*
+ * Public seam for the constant-slot readers outside vm.c (reflection,
+ * get_class_vars): class constants evaluate lazily, so a listing-style read
+ * must materialize the slot first. Returns SXRET_OK or a throw status.
+ */
+PH7_PRIVATE sxi32 PH7_VmMaterializeClassConst(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr)
+{
+	if( pAttr->nIdx != SXU32_HIGH || (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){
+		return SXRET_OK;
+	}
+	if( pAttr->iFlags & PH7_CLASS_ATTR_ENUMCASE ){
+		return VmEnumMaterializeCase(&(*pVm),pClass,pAttr);
+	}
+	return VmClassConstEvalOnDemand(&(*pVm),pClass,pAttr);
 }
 /*
  * Throw php's catchable Error for an append (`$a[] = v`) whose saturated
@@ -13280,6 +13689,35 @@ case PH7_OP_MEMBER: {
 											}
 										}
 									}
+									if( pAttr->nIdx == SXU32_HIGH ){
+										/* Unmaterialized slot. Enum case: first access
+										 * materializes ALL the singletons. Plain constant: its
+										 * initializer hasn't run yet (mount-order-dependent
+										 * cross-constant reference) — evaluate on demand. A
+										 * raised TypeError/Error (backing mismatch, duplicate
+										 * value, self-reference) parks on the boundary rail;
+										 * the op completes benignly with NULL and the
+										 * fetch-point router lands the throw. */
+										sxi32 rcEnum;
+										if( pAttr->iFlags & PH7_CLASS_ATTR_ENUMCASE ){
+											/* php: a DIRECT static access evaluates every case
+											 * of the enum (whole-class constant update) — a
+											 * broken sibling case throws here too. A reference
+											 * from inside another constant's initializer
+											 * (nConstEvalDepth > 0) evaluates only the
+											 * requested case. */
+											if( pVm->nConstEvalDepth > 0 ){
+												rcEnum = VmEnumMaterializeCase(&(*pVm),pClass,pAttr);
+											}else{
+												rcEnum = VmEnumMaterialize(&(*pVm),pClass);
+											}
+										}else{
+											rcEnum = VmClassConstEvalOnDemand(&(*pVm),pClass,pAttr);
+										}
+										if( rcEnum != SXRET_OK ){
+											VmBoundaryPark(&(*pVm),rcEnum);
+										}
+									}
 									/* Load the desired attribute */
 									pValue = (ph7_value *)SySetAt(&pVm->aMemObj,pAttr->nIdx);
 									if( pValue ){
@@ -13369,6 +13807,19 @@ case PH7_OP_NEW: {
 			VmPopOperand(&pTos,nCtorArgs);
 		}
 		goto Abort;
+	}else if( pClass->iFlags & PH7_CLASS_ENUM ){
+		/* php 8.1: enums cannot be instantiated — a catchable Error, raised
+		 * BEFORE any construction (no instance, no __destruct). */
+		SyBlob sErrMsg;
+		SyBlobInit(&sErrMsg,&pVm->sAllocator);
+		SyBlobFormat(&sErrMsg,"Cannot instantiate enum %z",&pClass->sName);
+		VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
+		if( nCtorArgs > 0 ){
+			VmPopOperand(&pTos,nCtorArgs);
+		}
+		PH7_MemObjRelease(pTos);
+		pTos->nIdx = SXU32_HIGH;
+		break;
 	}else{
 		ph7_class_method *pCons;
 		/* Check if a constructor is available — BEFORE instantiation: a
@@ -13508,6 +13959,28 @@ case PH7_OP_CLONE: {
 	}
 	/* Point to the source */
 	pSrc = (ph7_class_instance *)pTos->x.pOther;
+	/* Enum cases are not cloneable — php's catchable Error (the singleton
+	 * identity would break). */
+	if( pSrc->pClass->iFlags & PH7_CLASS_ENUM ){
+		SyBlob sMsg;
+		SyBlobInit(&sMsg,&pVm->sAllocator);
+		SyBlobFormat(&sMsg,"Trying to clone an uncloneable object of class %z",
+			&pSrc->pClass->sName);
+		rc = VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
+		PH7_MemObjRelease(pTos);
+		pTos->nIdx = SXU32_HIGH;
+		if( rc == PH7_ABORT ){
+			goto Abort;
+		}
+		{
+			sxi32 iRp;
+			if( VmRecordedResume(pVm,&iRp,sState.pEntryFrame,aInstr) ){
+				pc = iRp;
+				break;
+			}
+		}
+		goto Exception;
+	}
 	/* Generator and Fiber objects are not cloneable (matches PHP) */
 	if( pSrc->pClass == pVm->pGeneratorClass || pSrc->pClass == pVm->pFiberClass ){
 		VmErrorFormat(&(*pVm),PH7_CTX_ERR,
@@ -18722,8 +19195,9 @@ PH7_PRIVATE ph7_class * PH7_VmPeekTopClass(ph7_vm *pVm)
 	SySet *pSet = &pVm->aSelf;
 	ph7_class **apClass;
 	if( SySetUsed(pSet) <= 0 ){
-		/* Empty stack,return NULL */
-		return 0;
+		/* Empty stack: fall back to the initializer-eval class (see
+		 * pConstEvalClass) so static:: degrades to self:: there. */
+		return pVm->pConstEvalClass;
 	}
 	/* Peek the last entry */
 	apClass = (ph7_class **)SySetBasePtr(pSet);
@@ -18764,8 +19238,9 @@ PH7_PRIVATE ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm)
 			return (ph7_class *)pVmFunc->pUserData;
 		}
 	}
-
-	return 0;
+	/* No method frame: a constant/property initializer evaluated via
+	 * VmLocalExec resolves self:: against the class being initialized. */
+	return pVm->pConstEvalClass;
 }
 
 /* Class/OOP builtin functions moved to vm_builtin_class.c */
@@ -19435,6 +19910,126 @@ static int vm_builtin_define(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Return
  *  Constant value or NULL if not defined.
  */
+/*
+ * Enum method thunks (PHP 8.1). Every enum's synthesized cases()/from()/
+ * tryFrom() methods (GenStateCompileEnumMethods, compile.c) forward here with
+ * the enum's FQN as a literal first argument — the same forwarder pattern the
+ * Generator/Fiber/Reflection builtins use.
+ */
+/* array __phl_enum_cases(string $enumFqn) — declaration-order case list */
+static int vm_builtin_enum_cases(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_attr **apCase;
+	ph7_class *pClass;
+	ph7_value *pArray;
+	sxu32 n;
+	sxi32 rc;
+	if( nArg < 1 || (pClass = VmExtractEnumClass(pVm,apArg[0])) == 0 ){
+		ph7_result_null(pCtx);
+		return SXRET_OK;
+	}
+	rc = VmEnumMaterialize(pVm,pClass);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	pArray = ph7_context_new_array(pCtx);
+	if( pArray == 0 ){
+		ph7_result_null(pCtx);
+		return SXRET_OK;
+	}
+	apCase = (ph7_class_attr **)SySetBasePtr(&pClass->aEnumCases);
+	for( n = 0 ; n < SySetUsed(&pClass->aEnumCases) ; n++ ){
+		ph7_value *pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,apCase[n]->nIdx);
+		if( pSlot ){
+			ph7_array_add_elem(pArray,0,pSlot); /* Copies; the object ref is retained */
+		}
+	}
+	ph7_result_value(pCtx,pArray);
+	return SXRET_OK;
+}
+/* Shared scan for from()/tryFrom(): return the slot of the case whose backing
+ * value equals *pNeedle (already coerced to the backing type by the synthesized
+ * method's signature), or 0 on miss. */
+static ph7_value * VmEnumFindCaseByValue(ph7_vm *pVm,ph7_class *pClass,ph7_value *pNeedle)
+{
+	ph7_class_attr **apCase = (ph7_class_attr **)SySetBasePtr(&pClass->aEnumCases);
+	sxu32 n;
+	for( n = 0 ; n < SySetUsed(&pClass->aEnumCases) ; n++ ){
+		ph7_value *pVal = VmEnumCaseBackingValue(pVm,apCase[n]);
+		int bMatch = 0;
+		if( pVal ){
+			if( pClass->nEnumBacking == MEMOBJ_INT ){
+				bMatch = (pNeedle->iFlags & MEMOBJ_INT) && pVal->x.iVal == pNeedle->x.iVal;
+			}else{
+				bMatch = (pNeedle->iFlags & MEMOBJ_STRING)
+					&& SyBlobLength(&pVal->sBlob) == SyBlobLength(&pNeedle->sBlob)
+					&& SyMemcmp(SyBlobData(&pVal->sBlob),SyBlobData(&pNeedle->sBlob),
+						SyBlobLength(&pNeedle->sBlob)) == 0;
+			}
+		}
+		if( bMatch ){
+			return (ph7_value *)SySetAt(&pVm->aMemObj,apCase[n]->nIdx);
+		}
+	}
+	return 0;
+}
+/* static from(int|string $value) / static tryFrom(int|string $value) */
+static int VmEnumFromCommon(ph7_context *pCtx,int nArg,ph7_value **apArg,int bTry)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class *pClass;
+	ph7_value *pFound;
+	sxi32 rc;
+	if( nArg < 2 || (pClass = VmExtractEnumClass(pVm,apArg[0])) == 0 ){
+		ph7_result_null(pCtx);
+		return SXRET_OK;
+	}
+	rc = VmEnumMaterialize(pVm,pClass);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	pFound = VmEnumFindCaseByValue(pVm,pClass,apArg[1]);
+	if( pFound ){
+		ph7_result_value(pCtx,pFound);
+		return SXRET_OK;
+	}
+	if( bTry ){
+		ph7_result_null(pCtx);
+		return SXRET_OK;
+	}
+	if( pClass->nEnumBacking == MEMOBJ_INT ){
+		char zVal[32];
+		SyBufferFormat(zVal,sizeof(zVal),"%qd",ph7_value_to_int64(apArg[1]));
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s is not a valid backing value for enum %z",zVal,&pClass->sName);
+	}
+	return PH7_VmThrowException(pCtx,"ValueError",
+		"\"%.*s\" is not a valid backing value for enum %z",
+		(int)SyBlobLength(&apArg[1]->sBlob),(const char *)SyBlobData(&apArg[1]->sBlob),
+		&pClass->sName);
+}
+static int vm_builtin_enum_from(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return VmEnumFromCommon(pCtx,nArg,apArg,FALSE);
+}
+static int vm_builtin_enum_tryfrom(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return VmEnumFromCommon(pCtx,nArg,apArg,TRUE);
+}
+/*
+ * bool enum_exists(string $enum, bool $autoload = true)
+ *  TRUE only for a declared enum (PHP 8.1); a plain class/interface is FALSE.
+ */
+static int vm_builtin_enum_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class *pClass = 0;
+	if( nArg > 0 ){
+		pClass = VmExtractEnumClass(pCtx->pVm,apArg[0]);
+	}
+	ph7_result_bool(pCtx,pClass != 0);
+	return SXRET_OK;
+}
 static int vm_builtin_constant(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	SyHashEntry *pEntry;
@@ -19472,6 +20067,20 @@ static int vm_builtin_constant(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			if( iSep + 2 < nLen ){
 				ph7_class_attr *pAttr = PH7_ClassExtractAttribute(pClass,
 					&zName[iSep+2],(sxu32)(nLen - iSep - 2));
+				if( pAttr && pAttr->nIdx == SXU32_HIGH ){
+					/* Unmaterialized: enum case → materialize the singletons
+					 * (all of them: constant("S::A") is a direct access, like
+					 * OP_MEMBER); plain constant → run its initializer. */
+					sxi32 rcEnum;
+					if( pAttr->iFlags & PH7_CLASS_ATTR_ENUMCASE ){
+						rcEnum = VmEnumMaterialize(pCtx->pVm,pClass);
+					}else{
+						rcEnum = VmClassConstEvalOnDemand(pCtx->pVm,pClass,pAttr);
+					}
+					if( rcEnum != SXRET_OK ){
+						return rcEnum;
+					}
+				}
 				if( pAttr && (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) ){
 					ph7_value *pValue = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pAttr->nIdx);
 					if( pValue ){
@@ -20483,7 +21092,16 @@ static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)
 		}
 	}else if( ph7_value_is_object(pVal) ){
 		ph7_class_instance *pThis = (ph7_class_instance *)pVal->x.pOther;
-		if( pThis->iFlags & VM_INSTANCE_DUMPING ){
+		if( pThis->pClass->iFlags & PH7_CLASS_ENUM ){
+			/* php 8.1: an enum case exports as `\S::A` */
+			ph7_value *pName = PH7_EnumCaseNameValue(pThis);
+			SyBlobAppend(pOut,"\\",1);
+			SyBlobAppend(pOut,pThis->pClass->sName.zString,pThis->pClass->sName.nByte);
+			SyBlobAppend(pOut,"::",2);
+			if( pName && SyBlobLength(&pName->sBlob) > 0 ){
+				SyBlobAppend(pOut,SyBlobData(&pName->sBlob),SyBlobLength(&pName->sBlob));
+			}
+		}else if( pThis->iFlags & VM_INSTANCE_DUMPING ){
 			SyBlobAppend(pOut,"NULL",4); /* circular reference -> NULL, like PHP */
 		}else{
 			SyString *pClassName = &pThis->pClass->sName;
@@ -23533,6 +24151,10 @@ static int vm_builtin_magic_call(ph7_context *pCtx,int nArg,ph7_value **apArg)
 }
 static const ph7_builtin_func aVmFunc[] = {
 	{ "__phl_magic_call", vm_builtin_magic_call },
+	{ "__phl_enum_cases",   vm_builtin_enum_cases },
+	{ "__phl_enum_from",    vm_builtin_enum_from },
+	{ "__phl_enum_tryfrom", vm_builtin_enum_tryfrom },
+	{ "enum_exists",        vm_builtin_enum_exists },
 	{ "func_num_args"  , vm_builtin_func_num_args },
 	{ "func_get_arg"   , vm_builtin_func_get_arg  },
 	{ "func_get_args"  , vm_builtin_func_get_args },

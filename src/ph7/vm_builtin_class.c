@@ -599,6 +599,11 @@ PH7_PRIVATE int PH7_VmClassMemberAccess(
 			pCallerScope = pFrame->pBoundScope;
 		}else if( pVmFunc && (pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) ){
 			pCallerScope = (ph7_class *)pVmFunc->pUserData;
+		}else if( pVm->pConstEvalClass ){
+			/* Constant/property initializer bytecode runs without a method
+			 * frame; its scope is the class being initialized (php: a private
+			 * constant is reachable from its own class's initializers). */
+			pCallerScope = pVm->pConstEvalClass;
 		}else{
 			goto dis; /* Not in a class scope: access is forbidden */
 		}
@@ -686,7 +691,8 @@ PH7_PRIVATE int vm_builtin_get_class_vars(ph7_context *pCtx,int nArg,ph7_value *
 			SyString *pAttrName = &pAttr->sName;
 			ph7_value *pValue = 0;
 			if( pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC) ){
-				/* Extract static attribute value which is always computed */
+				/* Static slots are computed at mount; constants lazily */
+				PH7_VmMaterializeClassConst(pCtx->pVm,pClass,pAttr);
 				pValue = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pAttr->nIdx);
 			}else{
 				if( SySetUsed(&pAttr->aByteCode) > 0 ){

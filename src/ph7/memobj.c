@@ -1645,6 +1645,27 @@ PH7_PRIVATE sxi32 PH7_MemObjDump(
 	for( i = 0 ; i < nTab ; i++ ){
 		SyBlobAppend(&(*pOut)," ",sizeof(char));
 	}
+	if( ShowType && (pObj->iFlags & (MEMOBJ_OBJ|MEMOBJ_NULL)) == MEMOBJ_OBJ ){
+		/* php 8.1: var_dump of an enum case prints `enum(S::A)` — no body */
+		ph7_class_instance *pInst = (ph7_class_instance *)pObj->x.pOther;
+		if( pInst->pClass->iFlags & PH7_CLASS_ENUM ){
+			ph7_value *pName = PH7_EnumCaseNameValue(pInst);
+			if( isRef ){
+				SyBlobAppend(&(*pOut),"&",sizeof(char));
+			}
+			SyBlobFormat(&(*pOut),"enum(%z::",&pInst->pClass->sName);
+			if( pName && SyBlobLength(&pName->sBlob) > 0 ){
+				SyBlobAppend(&(*pOut),SyBlobData(&pName->sBlob),SyBlobLength(&pName->sBlob));
+			}
+			SyBlobAppend(&(*pOut),")",sizeof(char));
+#ifdef __WINNT__
+			SyBlobAppend(&(*pOut),"\r\n",sizeof("\r\n")-1);
+#else
+			SyBlobAppend(&(*pOut),"\n",sizeof(char));
+#endif
+			return SXRET_OK;
+		}
+	}
 	if( ShowType ){
 		if( isRef ){
 			SyBlobAppend(&(*pOut),"&",sizeof(char));
