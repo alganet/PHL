@@ -9364,6 +9364,228 @@ static int GenStateClassIsExceptionOrError(ph7_class *pBase)
 	return FALSE;
 }
 /*
+ * Compile a single `case NAME [= value];` member of an enum body (PHP 8.1).
+ * A case is stored as a class constant (PH7_CLASS_ATTR_CONSTANT|ENUMCASE) whose
+ * aByteCode holds the BACKING value expression for backed enums (empty for pure
+ * enums). The case's runtime value — the singleton instance — is materialized
+ * lazily on first access (VmEnumMaterialize, vm.c), matching PHP's lazy
+ * backing-value type/duplicate checks. Declaration order is recorded in
+ * pClass->aEnumCases for cases().
+ */
+static sxi32 GenStateCompileEnumCase(ph7_gen_state *pGen,ph7_class *pClass)
+{
+	sxu32 nLine = pGen->pIn->nLine;
+	SySet *pInstrContainer;
+	ph7_class_attr *pCase;
+	SyString *pName;
+	sxi32 rc;
+	pGen->pIn++; /* Jump the 'case' keyword */
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+			"Invalid enum case name inside enum '%z'",&pClass->sName);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		goto Synchronize;
+	}
+	pName = &pGen->pIn->sData;
+	/* Cases share the class-constant namespace (php: "Cannot redefine class constant") */
+	if( SyHashGet(&pClass->hAttr,(const void *)pName->zString,pName->nByte) != 0 ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+			"Cannot redefine class constant %z::%z",&pClass->sName,pName);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		goto Synchronize;
+	}
+	pCase = PH7_NewClassAttr(pGen->pVm,pName,pGen->pIn->nLine,PH7_CLASS_PROT_PUBLIC,
+		PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_ENUMCASE);
+	if( pCase == 0 ){
+		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
+		return SXERR_ABORT;
+	}
+	GenStateConsumeDoc(&(*pGen),&pCase->sDoc);
+	if( GenStateConsumeAttrs(&(*pGen),&pCase->aAttrs) == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
+	pGen->pIn++; /* Jump the case name */
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_EQUAL /* '=' */) ){
+		if( pClass->nEnumBacking == 0 ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+				"Case %z of non-backed enum %z must not have a value",pName,&pClass->sName);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			goto Synchronize;
+		}
+		pGen->pIn++; /* Jump the equal sign */
+		/* Compile the backing value expression into the case's own container
+		 * (same technique as class constants). */
+		pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
+		PH7_VmSetByteCodeContainer(pGen->pVm,&pCase->aByteCode);
+		rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_COMMA_STATEMENT,0);
+		if( rc == SXERR_EMPTY ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+				"Empty value for enum case %z::%z",&pClass->sName,pName);
+		}
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,1,0,0,0);
+		PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+	}else{
+		if( pClass->nEnumBacking != 0 ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+				"Case %z of backed enum %z must have a value",pName,&pClass->sName);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			goto Synchronize;
+		}
+	}
+	rc = PH7_ClassInstallAttr(pClass,pCase);
+	if( rc != SXRET_OK ){
+		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
+		return SXERR_ABORT;
+	}
+	SySetPut(&pClass->aEnumCases,(const void *)&pCase);
+	return SXRET_OK;
+Synchronize:
+	/* Synchronize with the first semi-colon */
+	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI/*';'*/) == 0 ){
+		pGen->pIn++;
+	}
+	return SXERR_CORRUPT;
+}
+/*
+ * Synthesize the enum interface methods (PHP 8.1): cases() for every enum,
+ * plus from()/tryFrom() for backed enums. Each is an ordinary public static
+ * method whose body forwards to a __phl_enum_* engine thunk (vm.c) with the
+ * enum's FQN embedded as a literal — the same forwarder pattern the
+ * Generator/Fiber/Reflection builtins use. The source buffer is owned by the
+ * VM allocator and never freed: tokens (method and parameter names) keep
+ * pointers into it (see the constructor-promotion precedent above).
+ */
+static sxi32 GenStateCompileEnumMethods(ph7_gen_state *pGen,ph7_class *pClass)
+{
+	SyToken *pSaveIn,*pSaveEnd;
+	const char *zBack;
+	SySet sToken;
+	char *zSrc;
+	sxu32 nSrc,nMax;
+	sxi32 rc = SXRET_OK;
+	nMax = 3*(sxu32)sizeof("function tryFrom(string $value){return __phl_enum_tryfrom('',$value);}")
+		+ 3*SyStringLength(&pClass->sName) + 64;
+	zSrc = (char *)SyMemBackendAlloc(&pGen->pVm->sAllocator,nMax);
+	if( zSrc == 0 ){
+		PH7_GenCompileError(pGen,E_ERROR,pClass->nLine,"Fatal, PH7 is running out of memory");
+		return SXERR_ABORT;
+	}
+	zBack = (pClass->nEnumBacking == MEMOBJ_INT) ? "int" : "string";
+	if( pClass->nEnumBacking != 0 ){
+		nSrc = SyBufferFormat(zSrc,nMax,
+			"function cases(){return __phl_enum_cases('%z');}"
+			"function from(%s $value){return __phl_enum_from('%z',$value);}"
+			"function tryFrom(%s $value){return __phl_enum_tryfrom('%z',$value);}",
+			&pClass->sName,zBack,&pClass->sName,zBack,&pClass->sName);
+	}else{
+		nSrc = SyBufferFormat(zSrc,nMax,
+			"function cases(){return __phl_enum_cases('%z');}",&pClass->sName);
+	}
+	SySetInit(&sToken,&pGen->pVm->sAllocator,sizeof(SyToken));
+	PH7_TokenizePHP(zSrc,nSrc,pClass->nLine,&sToken,0);
+	pSaveIn = pGen->pIn;
+	pSaveEnd = pGen->pEnd;
+	pGen->pIn = (SyToken *)SySetBasePtr(&sToken);
+	pGen->pEnd = &pGen->pIn[SySetUsed(&sToken)];
+	while( pGen->pIn < pGen->pEnd && rc != SXERR_ABORT ){
+		rc = GenStateCompileClassMethod(&(*pGen),PH7_TKWRD_PUBLIC,PH7_CLASS_ATTR_STATIC,TRUE,pClass);
+	}
+	pGen->pIn = pSaveIn;
+	pGen->pEnd = pSaveEnd;
+	SySetRelease(&sToken);
+	return (rc == SXERR_ABORT) ? SXERR_ABORT : SXRET_OK;
+}
+/*
+ * Magic methods an enum may not declare (php 8.1, zend_enum.c list —
+ * __call/__callStatic/__invoke stay allowed).
+ */
+static const char *azEnumBannedMagic[] = {
+	"__construct","__destruct","__clone","__get","__set","__isset","__unset",
+	"__toString","__sleep","__wakeup","__serialize","__unserialize","__set_state"
+};
+/*
+ * Enum post-body validation + synthesis: reject declared properties (including
+ * trait-imported ones) and banned magic methods, install the readonly `name`
+ * (and, for backed enums, `value`) instance properties the case singletons
+ * carry, and synthesize cases()/from()/tryFrom(). Runs after trait application
+ * and before the class is installed.
+ */
+static sxi32 GenStateEnumFinalize(ph7_gen_state *pGen,ph7_class *pClass,sxu32 nLine)
+{
+	SyHashEntry *pEntry;
+	sxi32 rc;
+	sxu32 n;
+	/* php: "Enum %s cannot include properties" */
+	SyHashResetLoopCursor(&pClass->hAttr);
+	while( (pEntry = SyHashGetNextEntry(&pClass->hAttr)) != 0 ){
+		ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
+		if( (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,pAttr->nLine ? pAttr->nLine : nLine,
+				"Enum %z cannot include properties",&pClass->sName);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			break;
+		}
+	}
+	/* php: "Enum %s cannot include magic method %s" */
+	for( n = 0 ; n < SX_ARRAYSIZE(azEnumBannedMagic) ; n++ ){
+		if( SyHashGet(&pClass->hMethod,(const void *)azEnumBannedMagic[n],
+			SyStrlen(azEnumBannedMagic[n])) != 0 ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+				"Enum %z cannot include magic method %s",&pClass->sName,azEnumBannedMagic[n]);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+		}
+	}
+	/* Install the case-singleton instance properties: readonly `name` (every
+	 * enum) and `value` (backed only). Materialization (vm.c) fills them and
+	 * clears the readonly write-once latch; user writes then raise php's
+	 * "Cannot modify readonly property" through the normal store path. */
+	{
+		static const SyString sNameProp = { "name",sizeof("name")-1 };
+		static const SyString sValueProp = { "value",sizeof("value")-1 };
+		ph7_class_attr *pAttr;
+		pAttr = PH7_NewClassAttr(pGen->pVm,&sNameProp,nLine,PH7_CLASS_PROT_PUBLIC,
+			PH7_CLASS_ATTR_READONLY|PH7_CLASS_ATTR_TYPED);
+		if( pAttr == 0 ){
+			PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
+			return SXERR_ABORT;
+		}
+		pAttr->nType = MEMOBJ_STRING;
+		SyStringInitFromBuf(&pAttr->sTypeName,"string",sizeof("string")-1);
+		PH7_ClassInstallAttr(pClass,pAttr);
+		if( pClass->nEnumBacking != 0 ){
+			pAttr = PH7_NewClassAttr(pGen->pVm,&sValueProp,nLine,PH7_CLASS_PROT_PUBLIC,
+				PH7_CLASS_ATTR_READONLY|PH7_CLASS_ATTR_TYPED);
+			if( pAttr == 0 ){
+				PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
+				return SXERR_ABORT;
+			}
+			pAttr->nType = pClass->nEnumBacking;
+			if( pClass->nEnumBacking == MEMOBJ_INT ){
+				SyStringInitFromBuf(&pAttr->sTypeName,"int",sizeof("int")-1);
+			}else{
+				SyStringInitFromBuf(&pAttr->sTypeName,"string",sizeof("string")-1);
+			}
+			PH7_ClassInstallAttr(pClass,pAttr);
+		}
+	}
+	return GenStateCompileEnumMethods(&(*pGen),pClass);
+}
+/*
  * Compile a class declaration, named or anonymous.
  *
  * For a named class pAnonName is 0 and the class name is read from the token
@@ -9435,6 +9657,31 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
 		return SXERR_ABORT;
 	}
+	if( (iFlags & PH7_CLASS_ENUM) && pGen->pIn < pGen->pEnd
+		&& (pGen->pIn->nType & PH7_TK_COLON /* ':' */) ){
+		/* Backed enum: `enum Name: int|string` (PHP 8.1) */
+		pGen->pIn++; /* Jump ':' */
+		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD)
+			&& SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_INT ){
+			pClass->nEnumBacking = MEMOBJ_INT;
+			pGen->pIn++;
+		}else if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD)
+			&& SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_STRING ){
+			pClass->nEnumBacking = MEMOBJ_STRING;
+			pGen->pIn++;
+		}else{
+			SyToken *pTok = pGen->pIn;
+			if( pTok >= pGen->pEnd ){ pTok--; }
+			rc = PH7_GenCompileError(pGen,E_ERROR,pTok->nLine,
+				"Enum backing type must be int or string, %z given",&pTok->sData);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OCB) == 0 ){
+				pGen->pIn++; /* Skip the bogus type token */
+			}
+		}
+	}
 	GenStateConsumeDoc(&(*pGen),&pClass->sDoc);
 	if( GenStateConsumeAttrs(&(*pGen),&pClass->aAttrs) == SXERR_ABORT ){
 		return SXERR_ABORT;
@@ -9450,6 +9697,14 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 			SyBlob sResolved;
 			SyString sBaseName;
 			sxu32 nRefLine;
+			if( iFlags & PH7_CLASS_ENUM ){
+				/* php parse-fatals here (enums have no inheritance) */
+				rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+					"Enum %z cannot extend a class",&pClass->sName);
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+			}
 			pGen->pIn++; /* Advance past 'extends' */
 			nRefLine = (pGen->pIn < pGen->pEnd) ? pGen->pIn->nLine : nLine;
 			SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
@@ -9480,7 +9735,15 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 					return SXERR_ABORT;
 				}
 			}else{
-				if( pBase->iFlags & PH7_CLASS_FINAL ){
+				if( pBase->iFlags & PH7_CLASS_ENUM ){
+					rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+						"Class %z cannot extend enum %z",pName,&pBase->sName);
+					if( rc == SXERR_ABORT ){
+						SyBlobRelease(&sResolved);
+						return SXERR_ABORT;
+					}
+					pBase = 0; /* Never inherit from an enum */
+				}else if( pBase->iFlags & PH7_CLASS_FINAL ){
 					rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 						"Class '%z' may not inherit from final class '%z'",pName,&pBase->sName);
 					if( rc == SXERR_ABORT ){
@@ -9490,6 +9753,9 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 				}
 			}
 			SyBlobRelease(&sResolved);
+			if( iFlags & PH7_CLASS_ENUM ){
+				pBase = 0; /* Error already reported: enums have no base class */
+			}
 		}
 		if (pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) && SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_IMPLEMENTS ){
 			ph7_class *pInterface;
@@ -9651,6 +9917,17 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
 			/* Extract the current keyword */
 			nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
+			if( nKwrd == PH7_TKWRD_CASE && (pClass->iFlags & PH7_CLASS_ENUM) ){
+				/* Enum case declaration: `case NAME [= value];` */
+				rc = GenStateCompileEnumCase(&(*pGen),pClass);
+				if( rc != SXRET_OK ){
+					if( rc == SXERR_ABORT ){
+						return SXERR_ABORT;
+					}
+					goto done;
+				}
+				continue;
+			}
 			if( nKwrd == PH7_TKWRD_USE ){
 				/* Trait use: use TraitA, TraitB [{ ... }]; */
 				TraitUseEntry sUse;
@@ -10157,6 +10434,16 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 			SySetRelease(&pUse->aTraits);
 		}
 	}
+	if( pClass->iFlags & PH7_CLASS_ENUM ){
+		/* Enum validation + name/value props + cases()/from()/tryFrom() synthesis.
+		 * Runs after trait application so trait-imported properties are caught. */
+		rc = GenStateEnumFinalize(&(*pGen),pClass,nLine);
+		if( rc == SXERR_ABORT ){
+			SySetRelease(&aUseEntries);
+			SySetRelease(&aInterfaces);
+			return SXERR_ABORT;
+		}
+	}
 	/* Install the class */
 	rc = PH7_VmInstallClass(pGen->pVm,pClass);
 	if( rc == SXRET_OK ){
@@ -10172,6 +10459,26 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 			rc = PH7_ClassImplement(pClass,apInterface[n]);
 			if( rc != SXRET_OK ){
 				break;
+			}
+		}
+		/* Auto-implement UnitEnum (and BackedEnum for backed enums) — php 8.1:
+		 * every enum satisfies `instanceof UnitEnum` implicitly. */
+		if( rc == SXRET_OK && (pClass->iFlags & PH7_CLASS_ENUM) ){
+			ph7_class *pIntf = PH7_VmExtractClass(pGen->pVm,"UnitEnum",sizeof("UnitEnum")-1,FALSE,0);
+			while( pIntf && (pIntf->iFlags & PH7_CLASS_INTERFACE) == 0 ){
+				pIntf = pIntf->pNextName;
+			}
+			if( pIntf ){
+				PH7_ClassImplement(pClass,pIntf);
+			}
+			if( pClass->nEnumBacking != 0 ){
+				pIntf = PH7_VmExtractClass(pGen->pVm,"BackedEnum",sizeof("BackedEnum")-1,FALSE,0);
+				while( pIntf && (pIntf->iFlags & PH7_CLASS_INTERFACE) == 0 ){
+					pIntf = pIntf->pNextName;
+				}
+				if( pIntf ){
+					PH7_ClassImplement(pClass,pIntf);
+				}
 			}
 		}
 		/* Auto-implement Stringable when class declares __toString (PHP 8.0+).
@@ -10709,6 +11016,30 @@ static sxi32 PH7_CompileClass(ph7_gen_state *pGen)
 	sxi32 rc;
 	rc = GenStateCompileClass(&(*pGen),0);
 	return rc;
+}
+/*
+ * Return TRUE if the token stream starts an enum declaration (PHP 8.1):
+ * the context-sensitive identifier `enum` (not a reserved word — it stays
+ * valid as a function/constant name, like `readonly`) directly followed by
+ * an identifier. `enum(...)`/`enum;`/`$enum` all keep their expression
+ * meaning; `enum Name` can never start a valid expression.
+ */
+static int GenStateStartsEnumDecl(SyToken *pIn,SyToken *pEnd)
+{
+	return (pIn->nType & PH7_TK_ID)
+		&& pIn->sData.nByte == sizeof("enum")-1
+		&& SyStrnicmp(pIn->sData.zString,"enum",sizeof("enum")-1) == 0
+		&& &pIn[1] < pEnd && (pIn[1].nType & PH7_TK_ID);
+}
+/*
+ * Compile an enum declaration (PHP 8.1). An enum is a final class carrying
+ * PH7_CLASS_ENUM: `case` members become lazily-materialized singleton
+ * constants, cases()/from()/tryFrom() are synthesized, and UnitEnum/BackedEnum
+ * are implemented implicitly (GenStateCompileClassEx handles the specifics).
+ */
+static sxi32 PH7_CompileEnum(ph7_gen_state *pGen)
+{
+	return GenStateCompileClass(&(*pGen),PH7_CLASS_ENUM|PH7_CLASS_FINAL);
 }
 /*
  * Exception handling.
@@ -13103,6 +13434,10 @@ static sxi32 GenStateCompileChunk(
 				 * here rather than the keyword-only dispatcher because `readonly`
 				 * is a context-sensitive ID and combos need a full-run scan. */
 				xCons = PH7_CompileClassModifiers;
+			}else if( GenStateStartsEnumDecl(pGen->pIn,pGen->pEnd) ){
+				/* `enum Name …` (PHP 8.1) — `enum` is a context-sensitive ID,
+				 * so it is detected here rather than the keyword dispatcher. */
+				xCons = PH7_CompileEnum;
 			}else if( pGen->pIn->nType & PH7_TK_KEYWORD ){
 				sxu32 nKeyword = (sxu32)SX_PTR_TO_INT(pGen->pIn->pUserData);
 				/* Try to extract a language construct handler */

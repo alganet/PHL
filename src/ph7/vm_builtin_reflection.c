@@ -264,6 +264,30 @@ static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value 
 	ReflectMapAddBool(pCtx, pInfo, "abstract", (pClass->iFlags & PH7_CLASS_ABSTRACT) != 0);
 	ReflectMapAddBool(pCtx, pInfo, "final", (pClass->iFlags & PH7_CLASS_FINAL) != 0);
 	ReflectMapAddBool(pCtx, pInfo, "readonly", (pClass->iFlags & PH7_CLASS_READONLY) != 0);
+	ReflectMapAddBool(pCtx, pInfo, "enum", (pClass->iFlags & PH7_CLASS_ENUM) != 0);
+	if( pClass->nEnumBacking == MEMOBJ_INT ){
+		ReflectMapAddStr(pCtx, pInfo, "enumbacking", "int", (int)sizeof("int")-1);
+	}else if( pClass->nEnumBacking == MEMOBJ_STRING ){
+		ReflectMapAddStr(pCtx, pInfo, "enumbacking", "string", (int)sizeof("string")-1);
+	}else{
+		ReflectMapAddStr(pCtx, pInfo, "enumbacking", "", 0);
+	}
+	{
+		/* Enum case names in declaration order (empty list for non-enums) */
+		ph7_value *pCases = ph7_context_new_array(pCtx);
+		if( pCases ){
+			ph7_class_attr **apCase = (ph7_class_attr **)SySetBasePtr(&pClass->aEnumCases);
+			sxu32 nCase;
+			for( nCase = 0 ; nCase < SySetUsed(&pClass->aEnumCases) ; nCase++ ){
+				ph7_value *pNm = ph7_context_new_scalar(pCtx);
+				if( pNm ){
+					ph7_value_string(pNm,apCase[nCase]->sName.zString,(int)apCase[nCase]->sName.nByte);
+					ph7_array_add_elem(pCases,0,pNm);
+				}
+			}
+			ph7_array_add_strkey_elem(pInfo,"cases",pCases);
+		}
+	}
 	if( pClass->pBase ){
 		ReflectMapAddStr(pCtx, pInfo, "parent", SyStringData(&pClass->pBase->sName),
 			(int)SyStringLength(&pClass->pBase->sName));
@@ -378,6 +402,7 @@ static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value 
 				}
 				if( pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT ){
 					ReflectMapAddBool(pCtx, pMeta, "final", (pAttr->iFlags & PH7_CLASS_ATTR_FINAL) != 0);
+					ReflectMapAddBool(pCtx, pMeta, "enumcase", (pAttr->iFlags & PH7_CLASS_ATTR_ENUMCASE) != 0);
 					ReflectMapAddDyn(pCtx, pConsts, &pAttr->sName, pMeta);
 				}else{
 					ReflectMapAddBool(pCtx, pMeta, "static", (pAttr->iFlags & PH7_CLASS_ATTR_STATIC) != 0);
@@ -485,7 +510,12 @@ static int vm_builtin_reflect_const_value(ph7_context *pCtx, int nArg, ph7_value
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	/* Constant slots are evaluated when the class is mounted */
+	/* Constant slots are evaluated lazily on first access */
+	if( PH7_VmMaterializeClassConst(pCtx->pVm,pClass,pAttr) != SXRET_OK ){
+		/* Initializer raised: the throw is in flight; report null here */
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
 	pValue = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
 	if( pValue ){
 		ph7_result_value(pCtx, pValue);
@@ -1716,7 +1746,7 @@ static const char zReflectLib1[] =
 " public function isAbstract(){ $i = $this->__rinfo(); return $i['abstract']; }"
 " public function isFinal(){ $i = $this->__rinfo(); return $i['final']; }"
 " public function isReadOnly(){ $i = $this->__rinfo(); return $i['readonly']; }"
-" public function isEnum(){ return false; }"
+" public function isEnum(){ $i = $this->__rinfo(); return $i['enum']; }"
 " public function isAnonymous(){ return strpos($this->name,'class@anonymous') === 0; }"
 " public function getModifiers(){"
 "  $i = $this->__rinfo();"
@@ -1829,7 +1859,7 @@ static const char zReflectLib1[] =
 " public function getDocComment(){ $i = $this->__rinfo(); return $i['doc']; }"
 " public function isInstantiable(){"
 "  $i = $this->__rinfo();"
-"  if($i['interface'] || $i['trait'] || $i['abstract']){ return false; }"
+"  if($i['interface'] || $i['trait'] || $i['abstract'] || $i['enum']){ return false; }"
 "  if($i['ctorvis'] !== 0 && $i['ctorvis'] !== 1){ return false; }"
 "  return true;"
 " }"
@@ -2589,7 +2619,7 @@ static const char zReflectLib3[] =
 " public function isProtected(){ $m = $this->__rcmeta(); return $m['vis'] === 2; }"
 " public function isPrivate(){ $m = $this->__rcmeta(); return $m['vis'] === 3; }"
 " public function isFinal(){ $m = $this->__rcmeta(); return $m['final']; }"
-" public function isEnumCase(){ return false; }"
+" public function isEnumCase(){ $m = $this->__rcmeta(); return $m['enumcase']; }"
 " public function isDeprecated(){ $m = $this->__rcmeta(); return __reflect_has_deprecated($m['attrs']); }"
 " public function hasType(){ $m = $this->__rcmeta(); return $m['typed']; }"
 " public function getType(){ $m = $this->__rcmeta(); return $m['typed'] ? __reflect_make_type($m['typetext']) : null; }"
@@ -2841,23 +2871,55 @@ static const char zReflectLib6[] =
 "  if($info === null){"
 "   throw new ReflectionException('Class \"'.$objectOrClass.'\" does not exist');"
 "  }"
-"  throw new ReflectionException('Class \"'.$info['name'].'\" is not an enum');"
+"  if(!$info['enum']){"
+"   throw new ReflectionException('Class \"'.$info['name'].'\" is not an enum');"
+"  }"
+"  parent::__construct($objectOrClass);"
 " }"
-" public function hasCase($name){ return false; }"
-" public function getCase($name){ throw new ReflectionException('Case '.$name.' does not exist'); }"
-" public function getCases(){ return array(); }"
-" public function isBacked(){ return false; }"
-" public function getBackingType(){ return null; }"
+" public function hasCase($name){"
+"  $i = $this->__rinfo();"
+"  return in_array($name, $i['cases'], true);"
+" }"
+" public function getCase($name){"
+"  if(!$this->hasCase($name)){"
+"   throw new ReflectionException('Case '.$this->name.'::'.$name.' does not exist');"
+"  }"
+"  if($this->isBacked()){ return new ReflectionEnumBackedCase($this->name, $name); }"
+"  return new ReflectionEnumUnitCase($this->name, $name);"
+" }"
+" public function getCases(){"
+"  $i = $this->__rinfo();"
+"  $out = array();"
+"  foreach($i['cases'] as $c){"
+"   $out[] = $this->isBacked()"
+"    ? new ReflectionEnumBackedCase($this->name, $c)"
+"    : new ReflectionEnumUnitCase($this->name, $c);"
+"  }"
+"  return $out;"
+" }"
+" public function isBacked(){ $i = $this->__rinfo(); return $i['enumbacking'] !== ''; }"
+" public function getBackingType(){"
+"  $i = $this->__rinfo();"
+"  if($i['enumbacking'] === ''){ return null; }"
+"  return __reflect_make_type($i['enumbacking']);"
+" }"
 "}"
 "class ReflectionEnumUnitCase extends ReflectionClassConstant {"
 " public function __construct($class, $constant){"
 "  parent::__construct($class, $constant);"
-"  throw new ReflectionException('Class \"'.$this->class.'\" is not an enum');"
+"  $ci = __reflect_class_info($class);"
+"  if(!$ci['enum']){"
+"   throw new ReflectionException('Class \"'.$this->class.'\" is not an enum');"
+"  }"
+"  $m = $this->__rcmeta();"
+"  if(!$m['enumcase']){"
+"   throw new ReflectionException('Constant '.$this->class.'::'.$constant.' is not a case');"
+"  }"
 " }"
-" public function getEnum(){ return null; }"
+" public function getEnum(){ return new ReflectionEnum($this->class); }"
 "}"
 "class ReflectionEnumBackedCase extends ReflectionEnumUnitCase {"
-" public function getBackingValue(){ return null; }"
+" public function getBackingValue(){ return $this->getValue()->value; }"
 "}"
 "final class ReflectionReference {"
 " protected $__id = '';"

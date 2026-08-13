@@ -1890,6 +1890,15 @@ static void PH7_JSON_ERROR_UTF8_Const(ph7_value *pVal,void *pUserData)
 	ph7_value_int(pVal,JSON_ERROR_UTF8);
 }
 /*
+ * JSON_ERROR_NON_BACKED_ENUM.
+ *   Expand the value of JSON_ERROR_NON_BACKED_ENUM defined in ph7Int.h (php 8.1).
+ */
+static void PH7_JSON_ERROR_NON_BACKED_ENUM_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,JSON_ERROR_NON_BACKED_ENUM);
+}
+/*
  * static
  *  Expand the name of the current class. 'static' otherwise.
  */
@@ -2279,6 +2288,7 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"JSON_ERROR_CTRL_CHAR", PH7_JSON_ERROR_CTRL_CHAR_Const},
 	{"JSON_ERROR_SYNTAX",    PH7_JSON_ERROR_SYNTAX_Const},
 	{"JSON_ERROR_UTF8",      PH7_JSON_ERROR_UTF8_Const},
+	{"JSON_ERROR_NON_BACKED_ENUM", PH7_JSON_ERROR_NON_BACKED_ENUM_Const},
 	{"static",               PH7_static_Const       },
 	{"self",                 PH7_self_Const         },
 	{"__CLASS__",            PH7_self_Const         },

@@ -223,6 +223,20 @@ static sxi32 VmSerializeObject(ph7_value *pIn, serialize_data *pData)
 		pData->exc = 1;
 		return PH7_EXCEPTION;
 	}
+	/* Enum cases serialize as php 8.1's E: tag — E:<len>:"Class:CASE"; — so
+	 * unserialize restores THE case singleton, preserving `===` identity. */
+	if( pThis->pClass->iFlags & PH7_CLASS_ENUM ){
+		ph7_value *pName = PH7_EnumCaseNameValue(pThis);
+		sxu32 nName = pName ? SyBlobLength(&pName->sBlob) : 0;
+		SyBlobFormat(pData->pOut,"E:%u:\"",(unsigned)(pClassName->nByte + 1 + nName));
+		SyBlobAppend(pData->pOut,pClassName->zString,pClassName->nByte);
+		SyBlobAppend(pData->pOut,":",1);
+		if( nName > 0 ){
+			SyBlobAppend(pData->pOut,SyBlobData(&pName->sBlob),nName);
+		}
+		SyBlobAppend(pData->pOut,"\";",2);
+		return SXRET_OK;
+	}
 	SyBlobInit(&sBody,&pVm->sAllocator);
 	pSave = pData->pOut;
 	pData->pOut = &sBody;     /* recursion appends to the body blob */
@@ -526,6 +540,43 @@ fail:
 	ph7_context_release_value(ud->pCtx,pObjVal);
 	return 0;
 }
+/* Parse E:<len>:"Class:CASE"; into the enum case SINGLETON (php 8.1). */
+static ph7_value * VmUnserializeEnumCase(unserialize_data *ud)
+{
+	sxu32 nLen, nCls, i;
+	const char *zBody;
+	ph7_class *pClass;
+	ph7_class_attr *pAttr;
+	ph7_value *pSlot, *pOut;
+	if( !VmUnExpect(ud,'E') || !VmUnExpect(ud,':') ){ return 0; }
+	if( !VmUnParseUInt(ud,&nLen) ){ return 0; }
+	if( !VmUnExpect(ud,':') || !VmUnExpect(ud,'"') ){ return 0; }
+	if( nLen > (sxu32)(ud->zEnd - ud->zCur) ){ return 0; }
+	zBody = ud->zCur; ud->zCur += nLen;
+	if( !VmUnExpect(ud,'"') || !VmUnExpect(ud,';') ){ return 0; }
+	/* Split "Class:CASE" at the LAST ':' (class names never contain ':') */
+	nCls = 0;
+	for( i = nLen ; i > 0 ; i-- ){
+		if( zBody[i-1] == ':' ){ nCls = i - 1; break; }
+	}
+	if( nCls == 0 || nCls + 1 >= nLen ){ return 0; }
+	pClass = PH7_VmExtractClass(ud->pVm,zBody,nCls,FALSE,0);
+	while( pClass && (pClass->iFlags & PH7_CLASS_ENUM) == 0 ){
+		pClass = pClass->pNextName;
+	}
+	if( pClass == 0 ){ return 0; }
+	pAttr = PH7_ClassExtractAttribute(pClass,&zBody[nCls+1],nLen - nCls - 1);
+	if( pAttr == 0 || (pAttr->iFlags & PH7_CLASS_ATTR_ENUMCASE) == 0 ){ return 0; }
+	if( PH7_VmMaterializeClassConst(ud->pVm,pClass,pAttr) != SXRET_OK ){
+		ud->exc = 1;
+		return 0;
+	}
+	pSlot = (ph7_value *)SySetAt(&ud->pVm->aMemObj,pAttr->nIdx);
+	if( pSlot == 0 ){ return 0; }
+	pOut = ph7_context_new_scalar(ud->pCtx);
+	if( pOut ){ PH7_MemObjStore(pSlot,pOut); } /* retains the singleton */
+	return pOut;
+}
 static ph7_value * VmUnserializeValue(unserialize_data *ud)
 {
 	ph7_value *pOut;
@@ -593,6 +644,8 @@ static ph7_value * VmUnserializeValue(unserialize_data *ud)
 		return VmUnserializeArray(ud);
 	case 'O':
 		return VmUnserializeObject(ud);
+	case 'E':
+		return VmUnserializeEnumCase(ud);
 	default:
 		/* r:/R: back-references and anything else are unsupported */
 		return 0;

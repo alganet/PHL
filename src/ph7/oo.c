@@ -36,6 +36,7 @@ PH7_PRIVATE ph7_class * PH7_NewRawClass(ph7_vm *pVm,const SyString *pName,sxu32 
 	SySetInit(&pClass->aInterface,&pVm->sAllocator,sizeof(ph7_class *));
 	SySetInit(&pClass->aTrait,&pVm->sAllocator,sizeof(ph7_class *));
 	SySetInit(&pClass->aAttrs,&pVm->sAllocator,sizeof(ph7_attribute));
+	SySetInit(&pClass->aEnumCases,&pVm->sAllocator,sizeof(ph7_class_attr *));
 	pClass->nLine = nLine;
 	if( pVm->bCompilingBuiltin ){
 		/* Defined by an embedded builtin chunk: internal, no defining file.
@@ -1342,14 +1343,51 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceCmp(ph7_class_instance *pLeft,ph7_class_insta
  * SXERR_LIMIT(infinite recursion) indicates failure.
  */
 /*
+ * Return the `name` property value of an enum case instance (the case name),
+ * or 0 when unavailable. Shared by the var_dump/var_export/json/serialize
+ * renderers, which all print enum cases as Class::CaseName forms.
+ */
+PH7_PRIVATE ph7_value * PH7_EnumCaseNameValue(ph7_class_instance *pThis)
+{
+	SyHashEntry *pEntry;
+	if( (pThis->pClass->iFlags & PH7_CLASS_ENUM) == 0 ){
+		return 0;
+	}
+	pEntry = SyHashGet(&pThis->hAttr,(const void *)"name",sizeof("name")-1);
+	if( pEntry == 0 ){
+		return 0;
+	}
+	return PH7_ClassInstanceExtractAttrValue(pThis,(VmClassAttr *)pEntry->pUserData);
+}
+/*
+ * Return the `value` property value (the backing value) of an enum case
+ * instance, or 0 when unavailable (pure enums have none).
+ */
+PH7_PRIVATE ph7_value * PH7_EnumCaseBackingValueOf(ph7_class_instance *pThis)
+{
+	SyHashEntry *pEntry;
+	if( (pThis->pClass->iFlags & PH7_CLASS_ENUM) == 0 ){
+		return 0;
+	}
+	pEntry = SyHashGet(&pThis->hAttr,(const void *)"value",sizeof("value")-1);
+	if( pEntry == 0 ){
+		return 0;
+	}
+	return PH7_ClassInstanceExtractAttrValue(pThis,(VmClassAttr *)pEntry->pUserData);
+}
+/*
  * Emit a class-instance dump header plus its trailing newline. For var_dump
  * (ShowType) it completes the "object(" prefix the caller already emitted as
  *   ClassName)#<id> (<count>) {
  * for print_r it emits the legacy PHL  Object(ClassName) {  (count/id unused).
+ * Enum cases print php's `ClassName Enum {` print_r header (var_dump never
+ * reaches here for enums — PH7_MemObjDump prints `enum(S::A)` directly).
  */
 static void DumpClassInstanceHeader(SyBlob *pOut,ph7_class *pClass,sxu32 nObjId,int ShowType,sxu32 nCount)
 {
-	if( !ShowType ){
+	if( !ShowType && (pClass->iFlags & PH7_CLASS_ENUM) != 0 ){
+		SyBlobFormat(&(*pOut),"%z Enum {",&pClass->sName);
+	}else if( !ShowType ){
 		SyBlobAppend(&(*pOut),"Object(",sizeof("Object(")-1);
 		SyBlobFormat(&(*pOut),"%z) {",&pClass->sName);
 	}else{
