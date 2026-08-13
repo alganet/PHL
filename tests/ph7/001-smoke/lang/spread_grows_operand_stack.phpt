@@ -67,6 +67,14 @@ echo sgrowT(...range(1, 100), k: [
     21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,
     41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,
 ]), "\n"; // 100:60
+
+// A spread inside a generator/fiber body run across many resumes must NOT ratchet
+// the (persisted, reused) operand stack up on each resume — the headroom is sized
+// off the body's ORIGINAL capacity, not the grown one, else it false-OOMs mid-loop.
+function sgrowGen2() { $i = 0; while ($i < 300) { yield array_sum([...[1, 2, 3, 4, 5]]); $i++; } }
+$sgrowSum = 0;
+foreach (sgrowGen2() as $sgrowV2) { $sgrowSum += $sgrowV2; }
+echo $sgrowSum, "\n"; // 4500
 ?>
 --EXPECT--
 20/210
@@ -82,5 +90,6 @@ echo sgrowT(...range(1, 100), k: [
 50/1275
 21/675
 100:60
+4500
 --CLEAN--
 <?php

@@ -579,6 +579,9 @@ struct ph7_exec_ctx
 	ph7_value *pStack;        /* Private operand stack */
 	sxu32 nStackCap;          /* Its allocated slot count (VmNewOperandStack size); grows
 	                           * with pStack when an OP_SPREAD in this body reallocs it */
+	sxu32 nStackOrig;         /* The ORIGINAL (ungrown) capacity — fixed at creation and used
+	                           * to seed each resume's headroom reference, so a spread inside a
+	                           * yield loop can't ratchet the stack up across resumes */
 	sxi32 nTos;               /* Saved top-of-stack index */
 	sxi32 pc;                 /* Saved program counter (resume point) */
 	sxi32 iState;             /* One of PH7_CTX_STATE_* */
@@ -1284,11 +1287,15 @@ struct ph7_vm
 								* bleed or unbounded heap growth. */
 	/* Index of the shared empty-string literal reserved at VM init */
 	sxu32 nEmptyStringIdx;
-	sxi32 iSpreadExtra;        /* Cumulative extra args from PH7_OP_SPREAD (reset by CALL) */
-	/* Argument-unpacking key capture (PHP 8.1 named-parameter semantics for spreads).
-	 * Populated by OP_SPREAD, replayed and cleared by CALL/NEW alongside iSpreadExtra.
-	 * See the VmSpreadRun/VmSpreadKey/VmBuildEffectiveArgMap machinery in vm.c. */
+	/* Argument-unpacking capture (PHP 8.1 named-parameter semantics for spreads).
+	 * Populated by OP_SPREAD; CALL/NEW derive each call's own arg-count growth from
+	 * these runs (VmSpreadOwnExtra) and replay the keys (VmBuildEffectiveArgMap),
+	 * then consume this call's runs. See the VmSpreadRun/VmSpreadKey machinery in vm.c. */
 	SySet aSpreadRun;          /* VmSpreadRun: one entry per expansion in the current arg list */
+	sxu32 nSpreadCallBase;     /* Index into aSpreadRun of the first run owned by the CALL/NEW
+	                            * currently dispatching (VmSpreadOwnExtra records it; the replay
+	                            * and consume use it instead of an ambiguous pStart scan, which a
+	                            * zero-width `...[]` run sharing a nested call's base slot fooled) */
 	SySet aSpreadKey;          /* VmSpreadKey: one (off,len) per expanded element, in order */
 	SyBlob sSpreadKeyBlob;     /* Backing bytes for the string keys referenced by aSpreadKey */
 	SySet aEffArgName;         /* SyString: effective per-actual-slot arg names built at CALL */
