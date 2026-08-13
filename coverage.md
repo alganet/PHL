@@ -16,7 +16,7 @@
 | src/ph7/vfs_unix.c             | 88.06%   | 376/427     |
 | src/ph7/vfs_win.c              | 68.59%   | 487/710     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
-| src/ph7/vm.c                   | 82.23%   | 10281/12502 |
+| src/ph7/vm.c                   | 82.21%   | 10297/12525 |
 | src/ph7/vm_builtin_class.c     | 86.71%   | 509/587     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
 | src/ph7/vm_builtin_ob.c        | 75.12%   | 157/209     |
@@ -45,6 +45,6 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.21%   | 41983/51697 |
+| Lines                          | 81.20%   | 41999/51720 |
 | Functions                      | 96.62%   | 1946/2014   |
 
