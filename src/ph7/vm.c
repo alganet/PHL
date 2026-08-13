@@ -3614,6 +3614,143 @@ PH7_PRIVATE void PH7_VmThrowDeprecatedFmt(ph7_vm *pVm,const char *zFmt,...)
 	PH7_VmThrowErrorAp(pVm,0,E_DEPRECATED,zFmt,ap);
 	va_end(ap);
 }
+/*
+ * Emit a formatted E_USER_DEPRECATED diagnostic with no function-name prefix:
+ * php reports #[\Deprecated] as USER-deprecated (16384, it is userland-authored),
+ * not the engine's E_DEPRECATED (8192) — handler-visible errno matters.
+ */
+static void VmThrowUserDeprecatedFmt(ph7_vm *pVm,const char *zFmt,...)
+{
+	va_list ap;
+	va_start(ap,zFmt);
+	PH7_VmThrowErrorAp(pVm,0,E_USER_DEPRECATED,zFmt,ap);
+	va_end(ap);
+}
+/*
+ * php 8.4 #[\Deprecated]: emit the E_USER_DEPRECATED notice for a call to a user
+ * function/method carrying the attribute. Message shapes (php-exact):
+ *   Function f() is deprecated
+ *   Method C::m() is deprecated since 2.0, use g() instead
+ * ("since" from the attribute's since: argument; the trailing ", msg" from
+ * message:/positional #1.) The attribute arguments are compiled constant
+ * expressions — evaluated via VmLocalExec, the reflection thunks' pattern.
+ * Called from OP_CALL once per call, only when the callee HAS attributes;
+ * pDeclClass names the method's declaring class (0 for plain functions).
+ */
+/*
+ * Scan a declared-attribute set for #[\Deprecated]; when found, evaluate its
+ * message:/since: arguments (positional #0 = message, #1 = since) into the
+ * caller's values and return TRUE. The base subject text ("Function f()",
+ * "Constant C::K") is the caller's business.
+ */
+static int VmDeprecatedAttrExtract(ph7_vm *pVm,SySet *pAttrs,
+	ph7_value *pMsg,int *pbMsg,ph7_value *pSince,int *pbSince)
+{
+	ph7_attribute *aAttr = (ph7_attribute *)SySetBasePtr(pAttrs);
+	sxu32 n;
+	*pbMsg = *pbSince = 0;
+	for( n = 0 ; n < SySetUsed(pAttrs) ; ++n ){
+		ph7_attribute *pAttr = &aAttr[n];
+		ph7_attr_arg *aArg;
+		sxu32 i,nPos = 0;
+		if( SyStringLength(&pAttr->sName) != sizeof("Deprecated")-1
+		 || SyStrnicmp(SyStringData(&pAttr->sName),"Deprecated",sizeof("Deprecated")-1) != 0 ){
+			continue;
+		}
+		aArg = (ph7_attr_arg *)SySetBasePtr(&pAttr->aArgs);
+		for( i = 0 ; i < SySetUsed(&pAttr->aArgs) ; ++i ){
+			ph7_attr_arg *pArg = &aArg[i];
+			int isMsg = 0,isSince = 0;
+			if( SyStringLength(&pArg->sName) == 0 ){
+				isMsg = (nPos == 0);
+				isSince = (nPos == 1);
+				nPos++;
+			}else if( SyStringLength(&pArg->sName) == sizeof("message")-1
+			 && SyMemcmp(SyStringData(&pArg->sName),"message",sizeof("message")-1) == 0 ){
+				isMsg = 1;
+			}else if( SyStringLength(&pArg->sName) == sizeof("since")-1
+			 && SyMemcmp(SyStringData(&pArg->sName),"since",sizeof("since")-1) == 0 ){
+				isSince = 1;
+			}
+			if( isMsg && !*pbMsg && SySetUsed(&pArg->aByteCode) > 0 ){
+				if( VmLocalExec(pVm,&pArg->aByteCode,pMsg,FALSE) == SXRET_OK ){
+					if( (pMsg->iFlags & MEMOBJ_STRING) == 0 ){
+						PH7_MemObjToString(pMsg);
+					}
+					*pbMsg = 1;
+				}
+			}else if( isSince && !*pbSince && SySetUsed(&pArg->aByteCode) > 0 ){
+				if( VmLocalExec(pVm,&pArg->aByteCode,pSince,FALSE) == SXRET_OK ){
+					if( (pSince->iFlags & MEMOBJ_STRING) == 0 ){
+						PH7_MemObjToString(pSince);
+					}
+					*pbSince = 1;
+				}
+			}
+		}
+		return 1;
+	}
+	return 0;
+}
+/*
+ * Append php's " since X" / ", message" suffixes to a built base subject and
+ * emit the E_USER_DEPRECATED notice.
+ */
+static void VmDeprecatedEmit(ph7_vm *pVm,SyBlob *pOut,
+	ph7_value *pMsg,int bMsg,ph7_value *pSince,int bSince)
+{
+	if( bSince && SyBlobLength(&pSince->sBlob) > 0 ){
+		SyBlobFormat(pOut," since %.*s",(int)SyBlobLength(&pSince->sBlob),
+			(const char *)SyBlobData(&pSince->sBlob));
+	}
+	if( bMsg && SyBlobLength(&pMsg->sBlob) > 0 ){
+		SyBlobFormat(pOut,", %.*s",(int)SyBlobLength(&pMsg->sBlob),
+			(const char *)SyBlobData(&pMsg->sBlob));
+	}
+	VmThrowUserDeprecatedFmt(pVm,"%.*s",(int)SyBlobLength(pOut),(const char *)SyBlobData(pOut));
+}
+static void VmDeprecatedAttrNotice(ph7_vm *pVm,ph7_vm_func *pFunc,ph7_class *pDeclClass)
+{
+	ph7_value sMsg,sSince;
+	SyBlob sOut;
+	int bMsg,bSince;
+	PH7_MemObjInit(pVm,&sMsg);
+	PH7_MemObjInit(pVm,&sSince);
+	if( VmDeprecatedAttrExtract(pVm,&pFunc->aAttrs,&sMsg,&bMsg,&sSince,&bSince) ){
+		SyBlobInit(&sOut,&pVm->sAllocator);
+		if( pDeclClass ){
+			SyBlobFormat(&sOut,"Method %z::%z() is deprecated",&pDeclClass->sName,&pFunc->sName);
+		}else{
+			SyBlobFormat(&sOut,"Function %z() is deprecated",&pFunc->sName);
+		}
+		VmDeprecatedEmit(pVm,&sOut,&sMsg,bMsg,&sSince,bSince);
+		SyBlobRelease(&sOut);
+	}
+	PH7_MemObjRelease(&sMsg);
+	PH7_MemObjRelease(&sSince);
+}
+/*
+ * Same notice for a #[\Deprecated] class constant, at its static-access site:
+ * php's `Constant C::K is deprecated` (each access re-warns).
+ */
+static void VmDeprecatedConstNotice(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pMember)
+{
+	ph7_value sMsg,sSince;
+	SyBlob sOut;
+	int bMsg,bSince;
+	PH7_MemObjInit(pVm,&sMsg);
+	PH7_MemObjInit(pVm,&sSince);
+	if( VmDeprecatedAttrExtract(pVm,&pMember->aAttrs,&sMsg,&bMsg,&sSince,&bSince) ){
+		SyBlobInit(&sOut,&pVm->sAllocator);
+		SyBlobFormat(&sOut,"%s %z::%z is deprecated",
+			(pMember->iFlags & PH7_CLASS_ATTR_ENUMCASE) ? "Enum case" : "Constant",
+			&pClass->sName,&pMember->sName);
+		VmDeprecatedEmit(pVm,&sOut,&sMsg,bMsg,&sSince,bSince);
+		SyBlobRelease(&sOut);
+	}
+	PH7_MemObjRelease(&sMsg);
+	PH7_MemObjRelease(&sSince);
+}
 PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	ph7_vm *pVm /* Target VM */
 	)
@@ -13750,6 +13887,12 @@ case PH7_OP_MEMBER: {
 											}
 										}
 									}
+									if( (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT)
+									 && SySetUsed(&pAttr->aAttrs) > 0 ){
+										/* php 8.4 #[\Deprecated] on a class constant:
+										 * every access re-warns. */
+										VmDeprecatedConstNotice(&(*pVm),pClass,pAttr);
+									}
 									if( pAttr->nIdx == SXU32_HIGH ){
 										/* Unmaterialized slot. Enum case: first access
 										 * materializes ALL the singletons. Plain constant: its
@@ -14952,6 +15095,12 @@ case PH7_OP_CALL: {
 			if( pDecl && (pDecl->iFlags & PH7_CLASS_TRAIT) == 0 ){
 				pSelfHint = pDecl;
 			}
+		}
+		if( SySetUsed(&pVmFunc->aAttrs) > 0 ){
+			/* php 8.4 #[\Deprecated] runtime notice — once per call, before
+			 * execution (generators: at the g(...) call site, like php). */
+			VmDeprecatedAttrNotice(&(*pVm),pVmFunc,
+				(pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) ? pSelfHint : 0);
 		}
 		if( pVmFunc->iFlags & VM_FUNC_GENERATOR ){
 			/* Generator function: return a Generator object instead of executing */
