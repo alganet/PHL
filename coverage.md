@@ -4,23 +4,23 @@
 | src/ph7/builtin.c              | 86.27%   | 4265/4944   |
 | src/ph7/builtin_date.c         | 66.25%   | 481/726     |
 | src/ph7/builtin_math.c         | 87.35%   | 525/601     |
-| src/ph7/compile.c              | 80.81%   | 6563/8122   |
+| src/ph7/compile.c              | 80.89%   | 6586/8142   |
 | src/ph7/constant.c             | 98.58%   | 1108/1124   |
 | src/ph7/hashmap.c              | 89.71%   | 3925/4375   |
 | src/ph7/lex.c                  | 93.44%   | 784/839     |
 | src/ph7/memobj.c               | 89.78%   | 870/969     |
 | src/ph7/net.c                  | 50.48%   | 53/105      |
 | src/ph7/oo.c                   | 91.75%   | 667/727     |
-| src/ph7/parse.c                | 87.35%   | 1160/1328   |
+| src/ph7/parse.c                | 87.38%   | 1163/1331   |
 | src/ph7/vfs.c                  | 64.88%   | 1853/2856   |
 | src/ph7/vfs_unix.c             | 88.06%   | 376/427     |
 | src/ph7/vfs_win.c              | 68.59%   | 487/710     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
-| src/ph7/vm.c                   | 82.15%   | 10200/12416 |
+| src/ph7/vm.c                   | 82.23%   | 10281/12502 |
 | src/ph7/vm_builtin_class.c     | 86.71%   | 509/587     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
 | src/ph7/vm_builtin_ob.c        | 75.12%   | 157/209     |
-| src/ph7/vm_builtin_reflection.c | 85.44%   | 1021/1195   |
+| src/ph7/vm_builtin_reflection.c | 85.51%   | 1027/1201   |
 | src/ph7/vm_http.c              | 68.02%   | 302/444     |
 | src/ph7/vm_http_response.c     | 44.71%   | 114/255     |
 | src/ph7/vm_json.c              | 77.63%   | 458/590     |
@@ -45,6 +45,6 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.17%   | 41870/51582 |
-| Functions                      | 96.62%   | 1945/2013   |
+| Lines                          | 81.21%   | 41983/51697 |
+| Functions                      | 96.62%   | 1946/2014   |
 
