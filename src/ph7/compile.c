@@ -2249,11 +2249,18 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 						      */
 	SyString sName;
 	sxu32 nKwLine;
+	sxi32 iFlags = 0;
 	sxu32 nLen;
 	sxi32 rc;
 	SXUNUSED(iCompileFlag); /* cc warning */
 
 	nKwLine = pGen->pIn->nLine; /* Line of the 'function' keyword (Reflection getStartLine) */
+	if( (pGen->pIn->nType & PH7_TK_KEYWORD)
+		&& SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_STATIC ){
+		/* Static closure: no $this auto-capture, bind refused */
+		iFlags |= VM_FUNC_STATIC_CL;
+		pGen->pIn++; /* Jump the 'static' keyword */
+	}
 	pGen->pIn++; /* Jump the 'function' keyword */
 	if( pGen->pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD) ){
 		pGen->pIn++;
@@ -2266,7 +2273,7 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	}
 	SyStringInitFromBuf(&sName,zName,nLen);
 	/* Compile the lambda body */
-	rc = GenStateCompileFunc(&(*pGen),&sName,0,TRUE,&pAnnonFunc);
+	rc = GenStateCompileFunc(&(*pGen),&sName,iFlags,TRUE,&pAnnonFunc);
 	if( rc == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
@@ -2635,6 +2642,7 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD)
 		&& SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_STATIC ){
 		bStatic = 1;
+		iFlags |= VM_FUNC_STATIC_CL;
 		pGen->pIn++;
 	}
 	/* 'fn' keyword (guaranteed by ExprExtractNode's dispatch) */
@@ -5270,6 +5278,20 @@ static sxi32 PH7_CompileStatic(ph7_gen_state *pGen)
 	char *zDup;
 	sxu32 nLine;
 	sxi32 rc;
+	/* `static function () {}` / `static fn () =>` at statement position is an
+	 * EXPRESSION statement (a bare static closure), not a static-variable
+	 * declaration — hand it to the expression compiler (php accepts it). */
+	if( &pGen->pIn[1] < pGen->pEnd && (pGen->pIn[1].nType & PH7_TK_KEYWORD)
+	 && (SX_PTR_TO_INT(pGen->pIn[1].pUserData) == PH7_TKWRD_FUNCTION
+	  || SX_PTR_TO_INT(pGen->pIn[1].pUserData) == PH7_TKWRD_FN) ){
+		rc = PH7_CompileExpr(&(*pGen),0,0);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}else if( rc != SXERR_EMPTY ){
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
+		}
+		return SXRET_OK;
+	}
 	/* Jump the static keyword */
 	nLine = pGen->pIn->nLine;
 	pGen->pIn++;
@@ -7484,21 +7506,6 @@ static sxi32 GenStateCompileFunc(
 						pGen->pIn++;
 					}
 				}
-				if( !got_this ){
-					/* Make the $this variable [Current processed Object (class instance)]
-					 * available to the closure environment.
-					 */
-					SyZero(&sEnv,sizeof(ph7_vm_func_closure_env));
-					sEnv.iFlags = VM_FUNC_ARG_IGNORE; /* Do not install if NULL */
-					sEnv.nIdx = SXU32_HIGH;
-					PH7_MemObjInit(pGen->pVm,&sEnv.sValue);
-					SyStringInitFromBuf(&sEnv.sName,"this",sizeof("this")-1);
-					SySetPut(&pFunc->aClosureEnv,(const void *)&sEnv);
-				}
-				if( SySetUsed(&pFunc->aClosureEnv) > 0 ){
-					/* Mark as closure */
-					pFunc->iFlags |= VM_FUNC_CLOSURE;
-				}
 				/* php 7.1+: the return type follows the use clause —
 				 * `function (...) use (...) : int {`. Gated on the colon:
 				 * GenStateParseReturnType resets the type fields at entry,
@@ -7512,6 +7519,25 @@ static sxi32 GenStateCompileFunc(
 						return SXERR_SYNTAX;
 					}
 				}
+		}
+		if( !got_this && (iFlags & VM_FUNC_STATIC_CL) == 0 ){
+			/* Make the $this variable [Current processed Object (class instance)]
+			 * available to the closure environment — for EVERY non-static
+			 * anonymous function, use list or not (php binds $this to any
+			 * closure declared in a method; pre-fix only `use (...)` closures
+			 * captured it). Flagged VM_FUNC_ARG_IGNORE so the null capture of
+			 * a global-scope closure is silently dropped at install. A static
+			 * closure never binds $this (php). */
+			SyZero(&sEnv,sizeof(ph7_vm_func_closure_env));
+			sEnv.iFlags = VM_FUNC_ARG_IGNORE; /* Do not install if NULL */
+			sEnv.nIdx = SXU32_HIGH;
+			PH7_MemObjInit(pGen->pVm,&sEnv.sValue);
+			SyStringInitFromBuf(&sEnv.sName,"this",sizeof("this")-1);
+			SySetPut(&pFunc->aClosureEnv,(const void *)&sEnv);
+		}
+		if( SySetUsed(&pFunc->aClosureEnv) > 0 ){
+			/* Mark as closure */
+			pFunc->iFlags |= VM_FUNC_CLOSURE;
 		}
 	}
 	/* Compile the body */

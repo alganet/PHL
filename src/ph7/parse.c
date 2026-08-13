@@ -1085,8 +1085,11 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 				 PH7_TK_LPAREN|PH7_TK_OCB|PH7_TK_OSB,
 				 PH7_TK_RPAREN|PH7_TK_CCB|PH7_TK_CSB,&pCur);
 			 pNode->xCode = PH7_CompileYield;
-		 }else if( nKeyword == PH7_TKWRD_FUNCTION ){
-			 /* Annonymous function */
+		 }else if( nKeyword == PH7_TKWRD_FUNCTION
+			|| ( nKeyword == PH7_TKWRD_STATIC && &pCur[1] < pGen->pEnd
+				 && (pCur[1].nType & PH7_TK_KEYWORD)
+				 && SX_PTR_TO_INT(pCur[1].pUserData) == PH7_TKWRD_FUNCTION ) ){
+			 /* Annonymous function: function (...) {...} or static function (...) {...} */
 			  if( &pCur[1] >= pGen->pEnd ){
 				 /* Assume a literal */
 				ExprAssembleLiteral(&pCur,pGen->pEnd);

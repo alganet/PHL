@@ -764,7 +764,9 @@ struct ph7_vm_func_closure_env
 #define VM_FUNC_INTERNAL     0x2000 /* Function was defined while compiling a builtin chunk
                                      * (embedded PHP library). Reflection reports it as internal:
                                      * isInternal() true, getFileName() false. */
-/* next free bit: 0x4000 */
+#define VM_FUNC_STATIC_CL    0x4000 /* Static closure/arrow fn (`static function () {}` /
+                                     * `static fn () =>`): no $this auto-capture, bind refused. */
+/* next free bit: 0x8000 */
 /*
  * Each user defined function is parsed out and stored in an instance
  * of the following structure.
