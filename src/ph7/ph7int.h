@@ -193,6 +193,8 @@ struct ph7_constant
 	sxu32 nLine;           /* Declaration line for `const`; 0 for define()/engine */
 	sxu8 bUserDefined;     /* 1 when created by user code (const / define()):
 	                        * Reflection isInternal()/getFileName() input */
+	SySet aAttrs;          /* Declared #[...] attributes (ph7_attribute records) —
+	                        * php 8.5 attributes on `const` statements */
 };
 typedef struct ph7_aux_data ph7_aux_data;
 /*

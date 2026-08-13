@@ -2248,6 +2248,8 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 							  * one thread is allowed to compile the script.
 						      */
 	SyString sName;
+	SyToken *pTokKw = pGen->pIn; /* Attribute-sidecar key: `$f = #[A] function…` trivia
+	                              * is keyed to this ['static'] 'function' token */
 	sxu32 nKwLine;
 	sxi32 iFlags = 0;
 	sxu32 nLen;
@@ -2279,6 +2281,11 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	}
 	if( pAnnonFunc ){
 		pAnnonFunc->nLine = nKwLine;
+		/* Expression-position attributes (`$f = #[A] function () {}`): the trivia
+		 * sidecar keys them to the closure's first keyword token. */
+		if( GenStateCollectParamAttrs(&(*pGen),pTokKw,&pAnnonFunc->aAttrs) == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
 	}
 	/* Every anonymous function is a Closure object in PHP, so emit OP_LOAD_CLOSURE for
 	 * both real closures (per-instantiation captured env) and plain lambdas (no captures);
@@ -2629,6 +2636,7 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	char zName[512];
 	static int iCnt = 1;
 	char *zDup;
+	SyToken *pTokKw;
 	sxu32 nLen;
 	sxu32 nLine;
 	sxi32 iFlags = 0;
@@ -2638,6 +2646,8 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	SXUNUSED(iCompileFlag); /* cc warning */
 
 	nLine = pGen->pIn->nLine;
+	/* Attribute-sidecar key: `#[A] [static] fn` trivia is keyed to this token */
+	pTokKw = pGen->pIn;
 	/* Optional 'static' prefix */
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD)
 		&& SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_STATIC ){
@@ -2699,6 +2709,10 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	PH7_VmInitFuncState(pGen->pVm,pFunc,zDup,nLen,iFlags,0);
 	/* Reflection getStartLine(): line of the ['static'] 'fn' keyword */
 	pFunc->nLine = nLine;
+	/* Expression-position attributes (`$f = #[A] fn () => …`) */
+	if( GenStateCollectParamAttrs(&(*pGen),pTokKw,&pFunc->aAttrs) == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
 	/* Collect function arguments */
 	if( pGen->pIn < pSigEnd ){
 		rc = GenStateCollectFuncArgs(pFunc,&(*pGen),pSigEnd,0,0);
@@ -3569,6 +3583,19 @@ static sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 		SyStringInitFromBuf(&sFQNStr,(const char *)SyBlobData(&sFQN),SyBlobLength(&sFQN));
 		rc = PH7_VmRegisterConstantEx(pGen->pVm,&sFQNStr,PH7_VmExpandConstantValue,pConsCode,
 			(SyString *)SySetPeek(&pGen->pVm->aFiles),nLineLocal,1);
+		if( rc == SXRET_OK && SySetUsed(&pGen->aPendingAttrs) > 0 ){
+			/* php 8.5: attributes on `const` statements — attach the pending
+			 * groups to the registered constant record for Reflection. */
+			SyHashEntry *pCEntry = SyHashGet(&pGen->pVm->hConstant,
+				SyBlobData(&sFQN),SyBlobLength(&sFQN));
+			if( pCEntry ){
+				ph7_constant *pRegCons = (ph7_constant *)pCEntry->pUserData;
+				if( GenStateConsumeAttrs(&(*pGen),&pRegCons->aAttrs) == SXERR_ABORT ){
+					SyBlobRelease(&sFQN);
+					return SXERR_ABORT;
+				}
+			}
+		}
 		SyBlobRelease(&sFQN);
 	}
 	if( rc != SXRET_OK ){
@@ -10582,6 +10609,8 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	static int iCnt = 1;     /* Single-threaded compile: no locking needed */
 	SyString sName;
 	SyToken *pArgStart,*pArgEnd;
+	SyToken *pTokKw = pGen->pIn; /* Attribute-sidecar key: `new #[A] class` trivia
+	                              * is keyed to this 'class' token */
 	ph7_value *pObj;
 	sxu32 nLine = pGen->pIn->nLine;
 	sxu32 nIdx,nLen;
@@ -10600,6 +10629,14 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	rc = GenStateCompileClassEx(pGen,0,&sName,&pArgStart,&pArgEnd);
 	if( rc != SXRET_OK ){
 		return rc;
+	}
+	{
+		/* Expression-position attributes (`new #[A] class {…}`) */
+		ph7_class *pAnonClass = PH7_VmExtractClass(pGen->pVm,zName,nLen,FALSE,0);
+		if( pAnonClass
+		 && GenStateCollectParamAttrs(&(*pGen),pTokKw,&pAnonClass->aAttrs) == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
 	}
 	/* Emit the instantiation. OP_NEW expects the class name on the stack top
 	 * with the constructor arguments beneath it, so push the args first. */
@@ -13436,6 +13473,36 @@ static sxi32 GenStateCompileChunk(
 		}
 		/* Bind a directly-preceding docblock to this statement */
 		GenStateSetPendingDoc(&(*pGen));
+		if( SySetUsed(&pGen->aPendingAttrs) > 0 ){
+			/* php: a statement-position attribute group must be followed by a
+			 * declaration (function/class-like/const) — `#[A] $x = 1;` is a
+			 * parse error, never a silent discard. `static`/`fn`/`function`
+			 * cover bare closure-expression statements; `readonly`/`enum` are
+			 * context-sensitive IDs handled by the modified-class/enum scans. */
+			int bAttrTarget = 0;
+			if( GenStateStartsModifiedClass(pGen->pIn,pGen->pEnd)
+			 || GenStateStartsEnumDecl(pGen->pIn,pGen->pEnd) ){
+				bAttrTarget = 1;
+			}else if( pGen->pIn->nType & PH7_TK_KEYWORD ){
+				sxu32 nKw = (sxu32)SX_PTR_TO_INT(pGen->pIn->pUserData);
+				if( nKw == PH7_TKWRD_FUNCTION || nKw == PH7_TKWRD_CLASS
+				 || nKw == PH7_TKWRD_INTERFACE || nKw == PH7_TKWRD_TRAIT
+				 || nKw == PH7_TKWRD_ABSTRACT || nKw == PH7_TKWRD_FINAL
+				 || nKw == PH7_TKWRD_CONST || nKw == PH7_TKWRD_STATIC
+				 || nKw == PH7_TKWRD_FN ){
+					bAttrTarget = 1;
+				}
+			}
+			if( !bAttrTarget ){
+				rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+					"syntax error, unexpected token \"%z\" after attribute group; expecting a declaration",
+					&pGen->pIn->sData);
+				if( rc == SXERR_ABORT ){
+					break;
+				}
+				SySetReset(&pGen->aPendingAttrs);
+			}
+		}
 		/* Peek to detect a top-level `declare` so the strict_types lock
 		 * below doesn't fire before the directive has a chance to run. */
 		if( pGen->pIn->nType & PH7_TK_KEYWORD ){

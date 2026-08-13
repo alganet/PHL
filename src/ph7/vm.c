@@ -231,6 +231,7 @@ PH7_PRIVATE sxi32 PH7_VmRegisterConstantEx(
 		}
 		pCons->nLine = nLine;
 		pCons->bUserDefined = (sxu8)(bUser ? 1 : 0);
+		SySetReset(&pCons->aAttrs); /* redefinition drops the old attributes */
 		return SXRET_OK;
 	}
 	/* Allocate a new constant instance */
@@ -254,6 +255,7 @@ PH7_PRIVATE sxi32 PH7_VmRegisterConstantEx(
 	SyStringInitFromBuf(&pCons->sName,zDupName,pName->nByte);
 	pCons->xExpand = xExpand;
 	pCons->pUserData = pUserData;
+	SySetInit(&pCons->aAttrs,&pVm->sAllocator,sizeof(ph7_attribute));
 	rc = SyHashInsert(&pVm->hConstant,(const void *)zDupName,SyStringLength(&pCons->sName),pCons);
 	if( rc != SXRET_OK ){
 		SyMemBackendFree(&pVm->sAllocator,zDupName);
@@ -3638,6 +3640,20 @@ static void VmThrowUserDeprecatedFmt(ph7_vm *pVm,const char *zFmt,...)
  * pDeclClass names the method's declaring class (0 for plain functions).
  */
 /*
+ * Expand a global constant's value, emitting the php 8.5 #[\Deprecated]
+ * E_USER_DEPRECATED notice first when the constant carries attributes
+ * (`Constant GD is deprecated since 1.2` — every access re-warns).
+ */
+static void VmDeprecatedAttrNoticeSubject(ph7_vm *pVm,SySet *pAttrs,
+	const char *zKind,const SyString *pQual,const SyString *pName);
+static void VmExpandConstantWithNotice(ph7_vm *pVm,ph7_constant *pCons,ph7_value *pOut)
+{
+	if( SySetUsed(&pCons->aAttrs) > 0 ){
+		VmDeprecatedAttrNoticeSubject(pVm,&pCons->aAttrs,"Constant",0,&pCons->sName);
+	}
+	pCons->xExpand(pOut,pCons->pUserData);
+}
+/*
  * Scan a declared-attribute set for #[\Deprecated]; when found, evaluate its
  * message:/since: arguments (positional #0 = message, #1 = since) into the
  * caller's values and return TRUE. The base subject text ("Function f()",
@@ -3709,6 +3725,31 @@ static void VmDeprecatedEmit(ph7_vm *pVm,SyBlob *pOut,
 	}
 	VmThrowUserDeprecatedFmt(pVm,"%.*s",(int)SyBlobLength(pOut),(const char *)SyBlobData(pOut));
 }
+/*
+ * Generic #[\Deprecated] notice for a named subject:
+ * "<Kind> [Qual::]Name is deprecated[ since X][, message]".
+ */
+static void VmDeprecatedAttrNoticeSubject(ph7_vm *pVm,SySet *pAttrs,
+	const char *zKind,const SyString *pQual,const SyString *pName)
+{
+	ph7_value sMsg,sSince;
+	SyBlob sOut;
+	int bMsg,bSince;
+	PH7_MemObjInit(pVm,&sMsg);
+	PH7_MemObjInit(pVm,&sSince);
+	if( VmDeprecatedAttrExtract(pVm,pAttrs,&sMsg,&bMsg,&sSince,&bSince) ){
+		SyBlobInit(&sOut,&pVm->sAllocator);
+		if( pQual ){
+			SyBlobFormat(&sOut,"%s %z::%z is deprecated",zKind,pQual,pName);
+		}else{
+			SyBlobFormat(&sOut,"%s %z is deprecated",zKind,pName);
+		}
+		VmDeprecatedEmit(pVm,&sOut,&sMsg,bMsg,&sSince,bSince);
+		SyBlobRelease(&sOut);
+	}
+	PH7_MemObjRelease(&sMsg);
+	PH7_MemObjRelease(&sSince);
+}
 static void VmDeprecatedAttrNotice(ph7_vm *pVm,ph7_vm_func *pFunc,ph7_class *pDeclClass)
 {
 	ph7_value sMsg,sSince;
@@ -3735,21 +3776,9 @@ static void VmDeprecatedAttrNotice(ph7_vm *pVm,ph7_vm_func *pFunc,ph7_class *pDe
  */
 static void VmDeprecatedConstNotice(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pMember)
 {
-	ph7_value sMsg,sSince;
-	SyBlob sOut;
-	int bMsg,bSince;
-	PH7_MemObjInit(pVm,&sMsg);
-	PH7_MemObjInit(pVm,&sSince);
-	if( VmDeprecatedAttrExtract(pVm,&pMember->aAttrs,&sMsg,&bMsg,&sSince,&bSince) ){
-		SyBlobInit(&sOut,&pVm->sAllocator);
-		SyBlobFormat(&sOut,"%s %z::%z is deprecated",
-			(pMember->iFlags & PH7_CLASS_ATTR_ENUMCASE) ? "Enum case" : "Constant",
-			&pClass->sName,&pMember->sName);
-		VmDeprecatedEmit(pVm,&sOut,&sMsg,bMsg,&sSince,bSince);
-		SyBlobRelease(&sOut);
-	}
-	PH7_MemObjRelease(&sMsg);
-	PH7_MemObjRelease(&sSince);
+	VmDeprecatedAttrNoticeSubject(pVm,&pMember->aAttrs,
+		(pMember->iFlags & PH7_CLASS_ATTR_ENUMCASE) ? "Enum case" : "Constant",
+		&pClass->sName,&pMember->sName);
 }
 PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	ph7_vm *pVm /* Target VM */
@@ -9387,7 +9416,7 @@ case PH7_OP_LOADC: {
 						ph7_constant *pCons = (ph7_constant *)pEntry->pUserData;
 						MemObjSetType(pTos,MEMOBJ_NULL);
 						SyBlobReset(&pTos->sBlob);
-						pCons->xExpand(pTos,pCons->pUserData);
+						VmExpandConstantWithNotice(&(*pVm),pCons,pTos);
 						pTos->nIdx = SXU32_HIGH;
 						break;
 					}
@@ -9402,7 +9431,7 @@ case PH7_OP_LOADC: {
 				MemObjSetType(pTos,MEMOBJ_NULL);
 				SyBlobReset(&pTos->sBlob);
 				/* Invoke the callback and deal with the expanded value */
-				pCons->xExpand(pTos,pCons->pUserData);
+				VmExpandConstantWithNotice(&(*pVm),pCons,pTos);
 				/* Mark as constant */
 				pTos->nIdx = SXU32_HIGH;
 				break;
@@ -9430,7 +9459,7 @@ case PH7_OP_LOADC: {
 						ph7_constant *pCons = (ph7_constant *)pEntry->pUserData;
 						MemObjSetType(pTos,MEMOBJ_NULL);
 						SyBlobReset(&pTos->sBlob);
-						pCons->xExpand(pTos,pCons->pUserData);
+						VmExpandConstantWithNotice(&(*pVm),pCons,pTos);
 						pTos->nIdx = SXU32_HIGH;
 						break;
 					}
@@ -20498,6 +20527,10 @@ static int vm_builtin_constant(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				if( pAttr && (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) ){
 					ph7_value *pValue = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pAttr->nIdx);
 					if( pValue ){
+						if( SySetUsed(&pAttr->aAttrs) > 0 ){
+							/* #[\Deprecated] warns through constant() too (php) */
+							VmDeprecatedConstNotice(pCtx->pVm,pClass,pAttr);
+						}
 						ph7_result_value(pCtx,pValue);
 						return SXRET_OK;
 					}
@@ -20517,8 +20550,9 @@ static int vm_builtin_constant(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	PH7_MemObjInit(pCtx->pVm,&sVal);
 	/* Point to the structure that describe the constant */
 	pCons = (ph7_constant *)SyHashEntryGetUserData(pEntry);
-	/* Extract constant value by calling it's associated callback */
-	pCons->xExpand(&sVal,pCons->pUserData);
+	/* Extract constant value by calling it's associated callback
+	 * (emits the #[\Deprecated] notice first when attributed, php) */
+	VmExpandConstantWithNotice(pCtx->pVm,pCons,&sVal);
 	/* Return that value */
 	ph7_result_value(pCtx,&sVal);
 	/* Cleanup */

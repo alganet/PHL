@@ -1588,6 +1588,7 @@ static int vm_builtin_reflect_const_info(ph7_context *pCtx, int nArg, ph7_value 
 		ReflectMapAddBool(pCtx, pInfo, "file", 0);
 	}
 	ReflectMapAddInt(pCtx, pInfo, "line", (sxi64)pCons->nLine);
+	ReflectMapAddAttrs(pCtx, pInfo, &pCons->aAttrs);
 	ph7_result_value(pCtx, pInfo);
 	return PH7_OK;
 }
@@ -1657,6 +1658,14 @@ static int vm_builtin_reflect_attr_args(ph7_context *pCtx, int nArg, ph7_value *
 		ph7_vm_func_arg *pParam = pFunc
 			? (ph7_vm_func_arg *)SySetAt(&pFunc->aArgs, (sxu32)ph7_value_to_int(apArg[3])) : 0;
 		if( pParam ){ pAttrs = &pParam->aAttrs; }
+	}else if( nKind == 5 && SyMemcmp(zKind, "const", 5) == 0 ){
+		/* Global constant (php 8.5 attributes on `const` statements) */
+		const char *zCName;
+		int nCName;
+		SyHashEntry *pCEntry;
+		zCName = ph7_value_to_string(apArg[1], &nCName);
+		pCEntry = nCName > 0 ? SyHashGet(&pVm->hConstant, (const void *)zCName, (sxu32)nCName) : 0;
+		if( pCEntry ){ pAttrs = &((ph7_constant *)pCEntry->pUserData)->aAttrs; }
 	}
 	if( pAttrs == 0 || (pAttrRec = (ph7_attribute *)SySetAt(pAttrs, nAttrIdx)) == 0
 	 || (pOut = ph7_context_new_array(pCtx)) == 0 ){
@@ -2834,7 +2843,11 @@ static const char zReflectLib6[] =
 "  $i = __reflect_const_info($this->name);"
 "  return $i['internal'] ? 'Core' : false;"
 " }"
-" public function getAttributes($name = null, $flags = 0){ return array(); }"
+" public function getAttributes($name = null, $flags = 0){"
+"  $i = __reflect_const_info($this->name);"
+"  if($i === null){ return array(); }"
+"  return __reflect_build_attrs($i['attrs'], array('const', $this->name, null, 0), 64, $name, $flags);"
+" }"
 " public function __toString(){"
 "  return 'Constant [ '.$this->name.' ]'.\"\\n\";"
 " }"
