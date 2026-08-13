@@ -1030,6 +1030,41 @@ static void VmLeaveFrame(ph7_vm *pVm)
 	}
 }
 /*
+ * Pin a memory-object slot past its owning frame: remove it from whichever
+ * active frame's local-teardown set records it (walking the parent chain
+ * covers by-ref argument aliases whose slot belongs to a caller), and flag
+ * its reference record VM_REF_IDX_KEEP so unset() cannot recycle the index.
+ * Used for by-reference closure captures (`use (&$x)`), whose slot must stay
+ * alive as long as the closure itself: the slot then lives until VM reset —
+ * php frees it by refcount, PHL trades that for a script-lifetime pin.
+ */
+static VmRefObj * VmRefObjExtract(ph7_vm *pVm,sxu32 nObjIdx);
+static void VmPinMemObjSlot(ph7_vm *pVm,sxu32 nIdx)
+{
+	VmFrame *pFrame;
+	VmRefObj *pRef;
+	for( pFrame = pVm->pFrame ; pFrame ; pFrame = pFrame->pParent ){
+		VmSlot *aSlot = (VmSlot *)SySetBasePtr(&pFrame->sLocal);
+		sxu32 n;
+		for( n = 0 ; n < SySetUsed(&pFrame->sLocal) ; ++n ){
+			if( aSlot[n].nIdx == nIdx ){
+				/* Swap-remove: teardown order over sLocal is immaterial */
+				aSlot[n] = aSlot[SySetUsed(&pFrame->sLocal)-1];
+				(void)SySetPop(&pFrame->sLocal);
+				pFrame = 0; /* Slot owned by exactly one frame */
+				break;
+			}
+		}
+		if( pFrame == 0 ){
+			break;
+		}
+	}
+	pRef = VmRefObjExtract(&(*pVm),nIdx);
+	if( pRef ){
+		pRef->iFlags |= VM_REF_IDX_KEEP;
+	}
+}
+/*
  * Skip exception frames to reach the nearest non-exception frame.
  * Exception frames are transparent wrappers pushed by try/catch and
  * should be skipped when looking for the real execution context.
@@ -9889,17 +9924,27 @@ case PH7_OP_LOAD_CLOSURE:{
 			sEnv.iFlags = pEnv->iFlags;
 			sEnv.nIdx = SXU32_HIGH;
 			PH7_MemObjInit(pVm,&sEnv.sValue);
-			if( sEnv.iFlags & VM_FUNC_ARG_BY_REF ){
-				/* Pass by reference */
-				PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,
-					"Closure: Pass by reference is disabled in the current release of the PH7 engine,PH7 is switching to pass by value"
-					);
-			}
-			/* Standard pass by value */
-			pValue = VmExtractMemObj(pVm,&sEnv.sName,FALSE,FALSE);
-			if( pValue ){
-				/* Copy imported value */
-				PH7_MemObjStore(pValue,&sEnv.sValue);
+			if( (sEnv.iFlags & (VM_FUNC_ARG_BY_REF|VM_FUNC_ARG_IGNORE)) == VM_FUNC_ARG_BY_REF
+			 && !(SyStringLength(&sEnv.sName) == sizeof("this")-1
+				&& SyMemcmp(SyStringData(&sEnv.sName),"this",sizeof("this")-1) == 0) ){
+				/* Capture by reference: bind the env entry to the variable's
+				 * memory slot — creating a fresh null variable when missing,
+				 * as php does (`use (&$f)` before $f is assigned) — and pin
+				 * the slot past the creating frame's teardown so the closure
+				 * can outlive its birth scope. The call-time env install
+				 * aliases the name to this slot instead of copying a value. */
+				pValue = VmExtractMemObj(pVm,&sEnv.sName,FALSE,TRUE);
+				if( pValue ){
+					sEnv.nIdx = pValue->nIdx;
+					VmPinMemObjSlot(pVm,pValue->nIdx);
+				}
+			}else{
+				/* Standard pass by value */
+				pValue = VmExtractMemObj(pVm,&sEnv.sName,FALSE,FALSE);
+				if( pValue ){
+					/* Copy imported value */
+					PH7_MemObjStore(pValue,&sEnv.sValue);
+				}
 			}
 			/* Insert the imported variable */
 			SySetPut(&pClosure->aClosureEnv,(const void *)&sEnv);
@@ -15802,6 +15847,15 @@ case PH7_OP_CALL: {
 					/* Do not install null value */
 					continue;
 				}
+				if( (pEnv->iFlags & VM_FUNC_ARG_BY_REF) && pEnv->nIdx != SXU32_HIGH ){
+					/* Captured by reference: link the name to the shared slot
+					 * (no copy), mirroring the by-ref argument install above. */
+					if( SyHashGet(&pFrame->hVar,SyStringData(&pEnv->sName),SyStringLength(&pEnv->sName)) == 0 ){
+						SyHashInsert(&pFrame->hVar,SyStringData(&pEnv->sName),
+							SyStringLength(&pEnv->sName),SX_INT_TO_PTR(pEnv->nIdx));
+					}
+					continue;
+				}
 				pValue = VmExtractMemObj(pVm,&pEnv->sName,FALSE,TRUE);
 				if( pValue == 0 ){
 					continue;
@@ -17827,6 +17881,15 @@ static sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 		for( iEnv = 0; iEnv < SySetUsed(&pFunc->aClosureEnv); ++iEnv ){
 			pEnv = &aEnv[iEnv];
 			if( (pEnv->iFlags & VM_FUNC_ARG_IGNORE) && (pEnv->sValue.iFlags & MEMOBJ_NULL) ){
+				continue;
+			}
+			if( (pEnv->iFlags & VM_FUNC_ARG_BY_REF) && pEnv->nIdx != SXU32_HIGH ){
+				/* Captured by reference: link the name to the shared slot
+				 * (no copy), mirroring the OP_CALL env install. */
+				if( SyHashGet(&pExecCtx->pFrame->hVar,SyStringData(&pEnv->sName),SyStringLength(&pEnv->sName)) == 0 ){
+					SyHashInsert(&pExecCtx->pFrame->hVar,SyStringData(&pEnv->sName),
+						SyStringLength(&pEnv->sName),SX_INT_TO_PTR(pEnv->nIdx));
+				}
 				continue;
 			}
 			pValue = VmExtractMemObj(pVm, &pEnv->sName, FALSE, TRUE);
