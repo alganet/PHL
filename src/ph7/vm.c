@@ -1926,6 +1926,7 @@ static void VmReleaseExecCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx);
 static ph7_generator * VmGeneratorExtractCtx(ph7_vm *pVm, ph7_value *pGenObj);
 static int VmValueIsClosure(ph7_vm *pVm, ph7_value *pVal);
 static sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut);
+static ph7_class * VmFccResolveScope(ph7_vm *pVm, ph7_value *pTarget);
 static ph7_class_instance * VmCreateClosure(ph7_vm *pVm, const SyString *pName,
 	ph7_class_instance *pBoundThis, const SyString *pScope);
 static ph7_class * VmFccResolveScope(ph7_vm *pVm, ph7_value *pTarget);
@@ -9913,6 +9914,12 @@ case PH7_OP_LOAD_CLOSURE:{
 		pClosure->sReturnTypeName = pFunc->sReturnTypeName;
 		pClosure->bStrictTypes = pFunc->bStrictTypes;
 		pClosure->nMaxStack = pFunc->nMaxStack;
+		if( pClosure->pUserData == 0 ){
+			/* Stamp the creation-site class scope (see PH7_VmPeekDeclaringClass):
+			 * a closure made in a method — or in another closure, whose own stamp
+			 * the peek reads — resolves self::/parent:: against it like php. */
+			pClosure->pUserData = (void *)PH7_VmPeekDeclaringClass(pVm);
+		}
 		/* Reflection descriptor fields (getDocComment/getAttributes/getStartLine/
 		 * getEndLine/getFileName read the INSTANTIATED copy via $__fn) */
 		pClosure->aAttrs = pFunc->aAttrs;
@@ -13842,9 +13849,31 @@ case PH7_OP_NEW: {
 	VmCallArgMap *pEffNewMap = VmEffCallArgMap(pVm,pInstr,pArg,
 		nCtorArgs > 0 ? (sxu32)nCtorArgs : 0,&sEffNewMap);
 	if( (pTos->iFlags & MEMOBJ_STRING) && SyBlobLength(&pTos->sBlob) > 0 ){
-		/* Try to extract the desired class */
-		pClass = PH7_VmExtractClass(&(*pVm),(const char *)SyBlobData(&pTos->sBlob),
-			SyBlobLength(&pTos->sBlob),TRUE /* Only loadable class but not 'interface' or 'abstract' class*/,0);
+		const char *zCls = (const char *)SyBlobData(&pTos->sBlob);
+		sxu32 nCls = SyBlobLength(&pTos->sBlob);
+		if( (nCls == sizeof("self")-1 && SyMemcmp(zCls,"self",sizeof("self")-1) == 0)
+		 || (nCls == sizeof("static")-1 && SyMemcmp(zCls,"static",sizeof("static")-1) == 0)
+		 || (nCls == sizeof("parent")-1 && SyMemcmp(zCls,"parent",sizeof("parent")-1) == 0) ){
+			/* new self() / new static() / new parent(): resolve against the live
+			 * class context (LSB for static), sharing the FCC resolver. */
+			pClass = VmFccResolveScope(&(*pVm),pTos);
+			if( pClass && (pClass->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_ABSTRACT)) ){
+				/* Not new-able (the named path's iLoadable extract excludes these
+				 * before it ever gets here): php's wording, with the RESOLVED name. */
+				VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Cannot instantiate %s %z",
+					(pClass->iFlags & PH7_CLASS_INTERFACE) ? "interface" : "abstract class",
+					&pClass->sName);
+				PH7_MemObjRelease(pTos);
+				if( nCtorArgs > 0 ){
+					VmPopOperand(&pTos,nCtorArgs);
+				}
+				goto Abort;
+			}
+		}else{
+			/* Try to extract the desired class */
+			pClass = PH7_VmExtractClass(&(*pVm),zCls,nCls,
+				TRUE /* Only loadable class but not 'interface' or 'abstract' class*/,0);
+		}
 	}else if( pTos->iFlags & MEMOBJ_OBJ ){
 		/* Take the base class from the loaded instance */
 		pClass = ((ph7_class_instance *)pTos->x.pOther)->pClass;
@@ -19380,9 +19409,21 @@ PH7_PRIVATE ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm)
 
 	/* Check if we're in a method context */
 	if( pFrame->pParent ){
+		if( pFrame->pBoundScope ){
+			/* Closure::bind/bindTo/call scope override: it REPLACES the closure's
+			 * class scope (php), so self::/parent:: resolve against it. */
+			return pFrame->pBoundScope;
+		}
 		pVmFunc = (ph7_vm_func *)pFrame->pUserData;
 		if( pVmFunc && (pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) ){
 			/* Return the declaring class */
+			return (ph7_class *)pVmFunc->pUserData;
+		}
+		if( pVmFunc && (pVmFunc->iFlags & VM_FUNC_CLOSURE) && pVmFunc->pUserData ){
+			/* A closure inherits the class scope of its creation site: OP_LOAD_CLOSURE
+			 * stamps the then-declaring class into the instantiated copy's pUserData
+			 * (0 for global-scope closures — methods own the field the same way), so
+			 * self::/parent::/new self() inside a closure body resolve like php. */
 			return (ph7_class *)pVmFunc->pUserData;
 		}
 	}
