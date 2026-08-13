@@ -16294,6 +16294,68 @@ SkipFuncBody:
 		}
 		} /* end VmCallArgMap namespace scope */
 		if( pEntry == 0 ){
+			/* php accepts the "Class::method" STATIC-callable string everywhere a
+			 * callable goes ($f = "C::s"; $f(), call_user_func, array_map, …).
+			 * Split on the first "::" and route through the shared array-callable
+			 * machinery ([class-name, method-name]) instead of warning undefined. */
+			sxu32 iSep;
+			int bScoped = 0;
+			for( iSep = 1 ; iSep + 2 < sName.nByte ; ++iSep ){
+				if( sName.zString[iSep] == ':' && sName.zString[iSep+1] == ':' ){
+					bScoped = 1;
+					break;
+				}
+			}
+			if( bScoped ){
+				ph7_hashmap *pCbMap = PH7_NewHashmap(&(*pVm),0,0);
+				if( pCbMap ){
+					ph7_value sCallable,sElem,sResult;
+					sxi32 rcSm;
+					pEffCallMap = VmEffCallArgMap(pVm,pInstr,pArg,
+						nCallArgs > 0 ? (sxu32)nCallArgs : 0,&sEffMap);
+					SySetReset(&aArg);
+					while( pArg < pTos ){
+						SySetPut(&aArg,(const void *)&pArg);
+						pArg++;
+					}
+					PH7_MemObjInit(pVm,&sElem);
+					PH7_MemObjStringAppend(&sElem,sName.zString,iSep);
+					PH7_HashmapInsert(pCbMap,0,&sElem);
+					PH7_MemObjRelease(&sElem);
+					PH7_MemObjInit(pVm,&sElem);
+					PH7_MemObjStringAppend(&sElem,&sName.zString[iSep+2],sName.nByte-(iSep+2));
+					PH7_HashmapInsert(pCbMap,0,&sElem);
+					PH7_MemObjRelease(&sElem);
+					PH7_MemObjInit(pVm,&sCallable);
+					sCallable.x.pOther = pCbMap;
+					MemObjSetType(&sCallable,MEMOBJ_HASHMAP);
+					PH7_MemObjInit(pVm,&sResult);
+					rcSm = PH7_VmCallUserFunctionWithMap(pVm,&sCallable,(int)SySetUsed(&aArg),
+						(ph7_value **)SySetBasePtr(&aArg),&sResult,pEffCallMap);
+					SySetReset(&aArg);
+					PH7_MemObjRelease(&sCallable);
+					if( nCallArgs > 0 ){
+						VmPopOperand(&pTos,nCallArgs);
+					}
+					if( rcSm == PH7_ABORT ){
+						PH7_MemObjRelease(&sResult);
+						goto Abort;
+					}
+					if( rcSm == PH7_EXCEPTION ){
+						sxi32 iResumePc;
+						PH7_MemObjRelease(&sResult);
+						if( VmRecordedResume(pVm,&iResumePc,sState.pEntryFrame,aInstr) ){
+							PH7_MemObjRelease(pTos);
+							pc = iResumePc;
+							break;
+						}
+						goto Exception;
+					}
+					PH7_MemObjStore(&sResult,pTos);
+					PH7_MemObjRelease(&sResult);
+					break;
+				}
+			}
 			/* Call to undefined function */
 			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Call to undefined function '%z',NULL will be returned",&sName);
 			/* Consume this call's captured spread runs so they don't leak into a
@@ -19356,6 +19418,18 @@ PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)
 			SyHashGet(&pVm->hHostFunction,(const void *)zName,(sxu32)nLen) != 0 ){
 				/* Function is callable */
 				res = 1;
+		}else if( nLen > 3 ){
+			/* php's "Class::method" static-callable string */
+			int i;
+			for( i = 1 ; i + 2 < nLen ; ++i ){
+				if( zName[i] == ':' && zName[i+1] == ':' ){
+					ph7_class *pClass = PH7_VmExtractClass(pVm,zName,(sxu32)i,FALSE,0);
+					if( pClass && PH7_ClassExtractMethod(pClass,&zName[i+2],(sxu32)(nLen-(i+2))) ){
+						res = 1;
+					}
+					break;
+				}
+			}
 		}
 	}
 	return res;
