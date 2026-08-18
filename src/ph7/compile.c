@@ -2219,6 +2219,7 @@ static int GenStateIsReservedConstant(SyString *pName);
 static int GenStateIsReadonly(SyToken *pTok);
 static sxi32 GenStatePeekSetVisibility(SyToken *pTok,SyToken *pEnd,int *pnTok);
 static sxi32 GenStateSetVisFlag(sxi32 nKw);
+static sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pClass,ph7_class_attr *pAttr);
 static sxi32 GenStateValidateMemberType(ph7_gen_state *pGen,ph7_class *pClass,const SyString *pMemberName,
 	sxu32 nType,const SyString *pTypeClass,const SyString *pTypeText,SySet *pUnionAlts,const char *zErrFmt,sxu32 nLine);
 static void GenStateBuildFQN(ph7_gen_state *pGen,const SyString *pName,SyBlob *pOut);
@@ -8458,7 +8459,7 @@ loop:
 	pName = &pGen->pIn->sData;
 	/* Advance the stream cursor */
 	pGen->pIn++;
-	if(pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_EQUAL/*'='*/|PH7_TK_SEMI/*';'*/|PH7_TK_COMMA/*','*/)) == 0 ){
+	if(pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_EQUAL/*'='*/|PH7_TK_SEMI/*';'*/|PH7_TK_COMMA/*','*/|PH7_TK_OCB/*'{' hooks*/)) == 0 ){
 		/* Invalid declaration */
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected '=' or ';' after attribute name '%z'",pName);
 		if( rc == SXERR_ABORT ){
@@ -8560,7 +8561,27 @@ loop:
 	}
 	if( pGen->pIn->nType & PH7_TK_EQUAL /*'='*/ ){
 		SySet *pInstrContainer;
+		SyToken *pSavedDefEnd = pGen->pEnd;
 		pGen->pIn++; /*Jump the equal sign */
+		{
+			/* Delimit the default expression: it ends at the declaration's
+			 * ';'/',' or at a top-level '{' opening a PHP 8.4 hook list
+			 * (`public string $w = "init" { get => …; }`) — the expression
+			 * compiler would otherwise run into the hook tokens. */
+			SyToken *pScan = pGen->pIn;
+			sxi32 iNest = 0;
+			while( pScan < pGen->pEnd ){
+				if( pScan->nType & (PH7_TK_LPAREN|PH7_TK_OSB) ){
+					iNest++;
+				}else if( pScan->nType & (PH7_TK_RPAREN|PH7_TK_CSB) ){
+					iNest--;
+				}else if( iNest <= 0 && (pScan->nType & (PH7_TK_SEMI|PH7_TK_COMMA|PH7_TK_OCB)) ){
+					break;
+				}
+				pScan++;
+			}
+			pGen->pEnd = pScan;
+		}
 		/* Swap bytecode container */
 		pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
 		PH7_VmSetByteCodeContainer(pGen->pVm,&pAttr->aByteCode);
@@ -8576,12 +8597,27 @@ loop:
 		/* Emit the done instruction */
 		PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,1,0,0,0);
 		PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
+		pGen->pIn = pGen->pEnd;   /* land exactly on the delimiter */
+		pGen->pEnd = pSavedDefEnd;
 	}
 	/* All done,install the attribute */
 	rc = PH7_ClassInstallAttr(pClass,pAttr);
 	if( rc != SXRET_OK ){
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
 		return SXERR_ABORT;
+	}
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OCB /*'{'*/) ){
+		/* PHP 8.4 property hooks: `public [T] $x [= default] { get ...; set ...; }`.
+		 * The list ends the declaration at '}' — no trailing ';', no comma list. */
+		rc = GenStateCompilePropertyHooks(&(*pGen),pClass,pAttr);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		if( rc != SXRET_OK ){
+			goto Synchronize;
+		}
+		SySetRelease(&aUnionAlts);
+		return SXRET_OK;
 	}
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_COMMA /*','*/) ){
 		/* Multiple attribute declarations [i.e: public $var1,$var2=5<<1,$var3] */
@@ -8890,6 +8926,164 @@ Synchronize:
 	/* Synchronize with the first semi-colon */
 	while(pGen->pIn < pGen->pEnd && ((pGen->pIn->nType & PH7_TK_SEMI/*';'*/) == 0) ){
 		pGen->pIn++;
+	}
+	return SXERR_CORRUPT;
+}
+/*
+ * Compile a PHP 8.4 property-hook list `{ get ...; set ...; }` following a
+ * property declaration. Each hook body is synthesized into a hidden public
+ * class method (__phl_hook_get_NAME / __phl_hook_set_NAME) so inheritance,
+ * $this binding, and dispatch ride the ordinary method machinery; OP_MEMBER /
+ * OP_STORE route reads and plain writes through them (a per-instance guard
+ * makes $this->NAME inside a hook body address the raw backing slot — php's
+ * rule that hooks see the backing store). `get => expr;` compiles as an
+ * implicit return (the arrow-fn pattern); `set => expr;` compiles the same
+ * and is flagged VM_FUNC_HOOK_SET_EXPR — the dispatcher assigns its return
+ * value to the backing slot. A `set` without a parameter list receives the
+ * implicit `$value` formal.
+ * On entry pGen->pIn sits on '{'; on success it sits just past '}'.
+ */
+static sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pClass,ph7_class_attr *pAttr)
+{
+	sxu32 nLine = pGen->pIn->nLine;
+	sxi32 rc;
+	pGen->pIn++; /* Jump '{' */
+	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_CCB) == 0 ){
+		char zHook[384];
+		SyString sHookName;
+		ph7_class_method *pMeth;
+		int bGet;
+		sxu32 nHLine = pGen->pIn->nLine;
+		if( pGen->pIn->nType & PH7_TK_SEMI ){
+			pGen->pIn++; /* stray ';' between hooks */
+			continue;
+		}
+		if( pGen->pIn->nType & PH7_TK_AMPER ){
+			/* by-reference get hook: not modeled (loud, recorded) */
+			rc = PH7_GenCompileError(pGen,E_ERROR,nHLine,
+				"By-reference property hooks are not supported for %z::$%z",
+				&pClass->sName,&pAttr->sName);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			return SXERR_CORRUPT;
+		}
+		if( (pGen->pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
+			goto HookSyntax;
+		}
+		if( pGen->pIn->sData.nByte == 3
+		 && SyStrnicmp(pGen->pIn->sData.zString,"get",3) == 0 ){
+			bGet = 1;
+		}else if( pGen->pIn->sData.nByte == 3
+		 && SyStrnicmp(pGen->pIn->sData.zString,"set",3) == 0 ){
+			bGet = 0;
+		}else{
+			goto HookSyntax;
+		}
+		pGen->pIn++; /* Jump 'get'/'set' */
+		sHookName.zString = zHook;
+		sHookName.nByte = SyBufferFormat(zHook,sizeof(zHook),"__phl_hook_%s_%z",
+			bGet ? "get" : "set",&pAttr->sName);
+		pMeth = PH7_NewClassMethod(pGen->pVm,pClass,&sHookName,nHLine,
+			PH7_CLASS_PROT_PUBLIC,0,0);
+		if( pMeth == 0 ){
+			PH7_GenCompileError(pGen,E_ERROR,nHLine,"Fatal, PH7 is running out of memory");
+			return SXERR_ABORT;
+		}
+		pMeth->sFunc.nLine = nHLine;
+		if( !bGet ){
+			/* Parameter list: explicit `set(Type $v)` or the implicit `$value` */
+			if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_LPAREN) ){
+				SyToken *pRp = 0;
+				pGen->pIn++;
+				PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pRp);
+				if( pRp >= pGen->pEnd ){
+					goto HookSyntax;
+				}
+				if( pGen->pIn < pRp ){
+					rc = GenStateCollectFuncArgs(&pMeth->sFunc,&(*pGen),pRp,0,0);
+					if( rc == SXERR_ABORT ){
+						return SXERR_ABORT;
+					}
+				}
+				pGen->pIn = &pRp[1];
+			}
+			if( SySetUsed(&pMeth->sFunc.aArgs) < 1 ){
+				/* Implicit $value formal */
+				ph7_vm_func_arg sVArg;
+				char *zVName = SyMemBackendStrDup(&pGen->pVm->sAllocator,"value",sizeof("value")-1);
+				if( zVName == 0 ){
+					PH7_GenCompileError(pGen,E_ERROR,nHLine,"Fatal, PH7 is running out of memory");
+					return SXERR_ABORT;
+				}
+				SyZero(&sVArg,sizeof(ph7_vm_func_arg));
+				SyStringInitFromBuf(&sVArg.sName,zVName,sizeof("value")-1);
+				SySetInit(&sVArg.aByteCode,&pGen->pVm->sAllocator,sizeof(VmInstr));
+				SySetInit(&sVArg.aUnionAlts,&pGen->pVm->sAllocator,sizeof(ph7_type_alt));
+				SySetInit(&sVArg.aAttrs,&pGen->pVm->sAllocator,sizeof(ph7_attribute));
+				SyStringInitFromBuf(&sVArg.sTypeName,0,0);
+				SySetPut(&pMeth->sFunc.aArgs,(const void *)&sVArg);
+			}
+		}
+		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OCB) ){
+			/* Block body */
+			rc = GenStateCompileFuncBody(&(*pGen),&pMeth->sFunc);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			pMeth->sFunc.nEndLine = pGen->pIn[-1].nLine;
+		}else if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_ARRAY_OP) ){
+			/* `=> expr;` — implicit-return body (the arrow-fn pattern) */
+			GenBlock *pBlock;
+			SySet *pInstrContainer;
+			pGen->pIn++; /* Jump '=>' */
+			rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_PROTECTED|GEN_BLOCK_FUNC,
+				PH7_VmInstrLength(pGen->pVm),&pMeth->sFunc,&pBlock);
+			if( rc != SXRET_OK ){
+				PH7_GenCompileError(pGen,E_ERROR,nHLine,"PH7 engine is running out-of-memory");
+				return SXERR_ABORT;
+			}
+			pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
+			PH7_VmSetByteCodeContainer(pGen->pVm,&pMeth->sFunc.aByteCode);
+			rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_COMMA_STATEMENT,0);
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,(rc != SXERR_EMPTY ? 1 : 0),0,0,0);
+			GenStateFixJumps(pGen->pCurrent,PH7_OP_THROW,PH7_VmInstrLength(pGen->pVm));
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,0,0,0,0);
+			PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
+			GenStateLeaveBlock(&(*pGen),0);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			pMeth->sFunc.nEndLine = (pGen->pIn < pGen->pEnd) ? pGen->pIn->nLine : nHLine;
+			if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) ){
+				pGen->pIn++; /* Jump ';' */
+			}
+			if( !bGet ){
+				/* `set => expr` assigns the expression to the backing store:
+				 * the dispatcher consumes the implicit return value. */
+				pMeth->sFunc.iFlags |= VM_FUNC_HOOK_SET_EXPR;
+			}
+		}else{
+			goto HookSyntax;
+		}
+		rc = PH7_ClassInstallMethod(pClass,pMeth);
+		if( rc != SXRET_OK ){
+			PH7_GenCompileError(pGen,E_ERROR,nHLine,"Fatal, PH7 is running out of memory");
+			return SXERR_ABORT;
+		}
+		pAttr->iFlags |= bGet ? PH7_CLASS_ATTR_HOOK_GET : PH7_CLASS_ATTR_HOOK_SET;
+	}
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_CCB) == 0 ){
+		goto HookSyntax;
+	}
+	pGen->pIn++; /* Jump '}' */
+	return SXRET_OK;
+HookSyntax:
+	rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+		"Invalid property hook declaration for %z::$%z: expecting 'get' or 'set'",
+		&pClass->sName,&pAttr->sName);
+	if( rc == SXERR_ABORT ){
+		return SXERR_ABORT;
 	}
 	return SXERR_CORRUPT;
 }

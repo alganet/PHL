@@ -2512,6 +2512,9 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SySetInit(&pVm->aMagicGuard,&pVm->sAllocator,sizeof(VmMagicGuard));
 	pVm->pMagicSetThis = 0;
 	SyBlobInit(&pVm->sMagicSetName,&pVm->sAllocator);
+	pVm->pHookSetThis = 0;
+	pVm->pHookSetAttr = 0;
+	pVm->nHookSetIdx = SXU32_HIGH;
 	pVm->pMagicCallThis = 0;
 	pVm->pMagicCallClass = 0;
 	SyBlobInit(&pVm->sMagicCallName,&pVm->sAllocator);
@@ -2539,6 +2542,12 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 		pVm->pMagicSetThis = 0;
 	}
 	SyBlobRelease(&pVm->sMagicSetName);
+	if( pVm->pHookSetThis ){
+		PH7_ClassInstanceUnref(pVm->pHookSetThis);
+		pVm->pHookSetThis = 0;
+	}
+	pVm->pHookSetAttr = 0;
+	pVm->nHookSetIdx = SXU32_HIGH;
 	if( pVm->pMagicCallThis ){
 		PH7_ClassInstanceUnref(pVm->pMagicCallThis);
 		pVm->pMagicCallThis = 0;
@@ -4099,6 +4108,12 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 		pVm->pMagicSetThis = 0;
 	}
 	SyBlobRelease(&pVm->sMagicSetName);
+	if( pVm->pHookSetThis ){
+		PH7_ClassInstanceUnref(pVm->pHookSetThis);
+		pVm->pHookSetThis = 0;
+	}
+	pVm->pHookSetAttr = 0;
+	pVm->nHookSetIdx = SXU32_HIGH;
 	if( pVm->pMagicCallThis ){
 		PH7_ClassInstanceUnref(pVm->pMagicCallThis);
 		pVm->pMagicCallThis = 0;
@@ -10318,6 +10333,74 @@ case PH7_OP_STORE: {
 			SyBlobReset(&pVm->sMagicSetName);
 			break;
 		}
+		if( pVm->pHookSetThis ){
+			/* Pending property-hook set (PHP 8.4): the preceding OP_MEMBER found a
+			 * plain store to a hooked property. Dispatch __phl_hook_set_NAME with
+			 * the rvalue (which stays on the stack as the assignment expression's
+			 * result); a `set => expr` hook's return value is stored into the
+			 * BACKING slot with the ordinary typed enforcement. A property with
+			 * only a get hook is php's catchable "is read-only" Error. */
+			ph7_class_instance *pHThis = pVm->pHookSetThis;
+			ph7_class_attr *pHAttr = pVm->pHookSetAttr;
+			sxu32 nBackIdx = pVm->nHookSetIdx;
+			pVm->pHookSetThis = 0;
+			pVm->pHookSetAttr = 0;
+			pVm->nHookSetIdx = SXU32_HIGH;
+			if( (pHAttr->iFlags & PH7_CLASS_ATTR_HOOK_SET) == 0 ){
+				/* get-only hooked property: php's read-only Error */
+				SyBlob sErrMsg;
+				SyBlobInit(&sErrMsg,&pVm->sAllocator);
+				SyBlobFormat(&sErrMsg,"Property %z::$%z is read-only",
+					&pHThis->pClass->sName,&pHAttr->sName);
+				VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
+				PH7_ClassInstanceUnref(pHThis);
+				break;
+			}
+			if( pHAttr->iFlags & (PH7_CLASS_ATTR_PRIVATE_SET|PH7_CLASS_ATTR_PROTECTED_SET) ){
+				/* Asymmetric set-visibility is checked BEFORE the hook dispatches (php) */
+				sxi32 rcVis = VmCheckSetVisibility(&(*pVm),pHThis->pClass,pHAttr);
+				if( rcVis != SXRET_OK ){
+					VmBoundaryPark(&(*pVm),rcVis);
+					PH7_ClassInstanceUnref(pHThis);
+					break;
+				}
+			}
+			{
+				char zHName[384];
+				sxu32 nHName = SyBufferFormat(zHName,sizeof(zHName),
+					"__phl_hook_set_%z",&pHAttr->sName);
+				ph7_class_method *pSetHook = PH7_ClassExtractMethod(pHThis->pClass,zHName,nHName);
+				if( pSetHook ){
+					ph7_value sHookRet;
+					ph7_value *apHArg[1];
+					apHArg[0] = pTos;
+					PH7_MemObjInit(pVm,&sHookRet);
+					VmMagicGuardPush(pVm,(void *)pHThis,&pHAttr->sName,'S');
+					PH7_VmCallClassMethod(&(*pVm),pHThis,pSetHook,&sHookRet,1,apHArg);
+					VmMagicGuardPop(pVm);
+					if( (pSetHook->sFunc.iFlags & VM_FUNC_HOOK_SET_EXPR)
+					 && nBackIdx != SXU32_HIGH && pVm->nBoundaryRc == 0 ){
+						sxi32 rcH = VmEnforcePropertyTypeOnStore(&(*pVm),nBackIdx,&sHookRet,0);
+						if( rcH == SXRET_OK ){
+							ph7_value *pBack = (ph7_value *)SySetAt(&pVm->aMemObj,nBackIdx);
+							if( pBack ){
+								PH7_MemObjStore(&sHookRet,pBack);
+							}
+						}else if( rcH == PH7_ABORT ){
+							PH7_MemObjRelease(&sHookRet);
+							PH7_ClassInstanceUnref(pHThis);
+							goto Abort;
+						}
+						/* PH7_EXCEPTION: the TypeError was routed/parked by the
+						 * enforcement — the store is skipped, execution lands at
+						 * the fetch point like any parked throw. */
+					}
+					PH7_MemObjRelease(&sHookRet);
+				}
+			}
+			PH7_ClassInstanceUnref(pHThis);
+			break;
+		}
 		if( nIdx == SXU32_HIGH ){
 			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
 				"Cannot perform assignment on a constant class attribute,PH7 is loading NULL");
@@ -13618,6 +13701,88 @@ case PH7_OP_MEMBER: {
 					ph7_value *pValue = 0; /* cc warning */
 					/* Check attribute access */
 					if( PH7_VmClassMemberAccess(&(*pVm),pClass,&pObjAttr->pAttr->sName,pObjAttr->pAttr->iProtection,FALSE) ){
+						if( pObjAttr->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_SET) ){
+							/* PHP 8.4 property hooks: route reads and plain writes through
+							 * the synthesized hook methods. A held guard means we are
+							 * INSIDE this property's hook body — fall through to the raw
+							 * backing slot (php: hooks see the backing store). */
+							VmInstr *pNextH = pInstr + 1;
+							int bPlainStore = (pNextH->iOp == PH7_OP_STORE && pNextH->iP2 != 0);
+							int bOtherWrite = (pInstr->iP2 == PH7_MEMBER_WRITE)
+								|| (!bPlainStore && VmMemberNextIsWrite(pNextH));
+							if( bPlainStore && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'S') ){
+								/* Arm the pending hook-set for the following OP_STORE — it
+								 * dispatches the set hook, or throws the read-only Error
+								 * when the property only has a get hook. */
+								pThis->iRef++;
+								pVm->pHookSetThis = pThis;
+								pVm->pHookSetAttr = pObjAttr->pAttr;
+								pVm->nHookSetIdx = pObjAttr->nIdx;
+								pTos->nIdx = SXU32_HIGH; /* sentinel slot for OP_STORE */
+								PH7_ClassInstanceUnref(pThis);
+								break;
+							}
+							if( VmMemberCtxIsLookup(pInstr->iP2)
+							 && (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_HOOK_GET)
+							 && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'G') ){
+								/* isset()/empty() on a hooked property calls the get hook
+								 * (php): isset is "get() !== null", empty tests the value. */
+								char zHName[384];
+								sxu32 nHName = SyBufferFormat(zHName,sizeof(zHName),
+									"__phl_hook_get_%z",&pObjAttr->pAttr->sName);
+								ph7_class_method *pGetHook =
+									PH7_ClassExtractMethod(pThis->pClass,zHName,nHName);
+								if( pGetHook ){
+									ph7_value sHookRet;
+									PH7_MemObjInit(pVm,&sHookRet);
+									VmMagicGuardPush(pVm,(void *)pThis,&sName,'G');
+									PH7_VmCallClassMethod(&(*pVm),pThis,pGetHook,&sHookRet,0,0);
+									VmMagicGuardPop(pVm);
+									if( pInstr->iP2 == PH7_MEMBER_ISSET ){
+										pTos->x.iVal = (sHookRet.iFlags & MEMOBJ_NULL) == 0;
+										MemObjSetType(pTos,MEMOBJ_BOOL);
+									}else{
+										/* empty(): hand the value to the truthiness test */
+										PH7_MemObjStore(&sHookRet,pTos);
+									}
+									pTos->nIdx = SXU32_HIGH;
+									PH7_MemObjRelease(&sHookRet);
+									PH7_ClassInstanceUnref(pThis);
+									break;
+								}
+							}
+							if( !bPlainStore && !bOtherWrite && !VmMemberCtxIsLookup(pInstr->iP2)
+							 && (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_HOOK_GET)
+							 && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'G') ){
+								/* Read: dispatch __phl_hook_get_NAME (inheritance-aware) */
+								char zHName[384];
+								sxu32 nHName = SyBufferFormat(zHName,sizeof(zHName),
+									"__phl_hook_get_%z",&pObjAttr->pAttr->sName);
+								ph7_class_method *pGetHook =
+									PH7_ClassExtractMethod(pThis->pClass,zHName,nHName);
+								if( pGetHook ){
+									ph7_value sHookRet;
+									PH7_MemObjInit(pVm,&sHookRet);
+									VmMagicGuardPush(pVm,(void *)pThis,&sName,'G');
+									PH7_VmCallClassMethod(&(*pVm),pThis,pGetHook,&sHookRet,0,0);
+									VmMagicGuardPop(pVm);
+									PH7_MemObjStore(&sHookRet,pTos);
+									pTos->nIdx = SXU32_HIGH;
+									PH7_MemObjRelease(&sHookRet);
+									PH7_ClassInstanceUnref(pThis);
+									break;
+								}
+							}
+							if( bOtherWrite && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'S')
+							 && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'G') ){
+								/* Read-modify-write (`++`, `.=`, subscript writes…) on a
+								 * hooked property: not yet modeled — LOUD, never a silent
+								 * hook bypass (recorded residual; the raw slot is used). */
+								VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
+									"Read-modify-write on hooked property %z::$%z bypasses its hooks (not yet supported)",
+									&pClass->sName,&pObjAttr->pAttr->sName);
+							}
+						}
 						/* PHP 7.4+: reading an uninitialized typed property is an Error.
 						 * We can only raise it on a real read, not when the slot is the
 						 * LHS of an assignment — peek at the next instruction to decide.
