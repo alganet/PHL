@@ -407,6 +407,8 @@ static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value 
 				}else{
 					ReflectMapAddBool(pCtx, pMeta, "static", (pAttr->iFlags & PH7_CLASS_ATTR_STATIC) != 0);
 					ReflectMapAddBool(pCtx, pMeta, "readonly", (pAttr->iFlags & PH7_CLASS_ATTR_READONLY) != 0);
+					ReflectMapAddBool(pCtx, pMeta, "privset", (pAttr->iFlags & PH7_CLASS_ATTR_PRIVATE_SET) != 0);
+					ReflectMapAddBool(pCtx, pMeta, "protset", (pAttr->iFlags & PH7_CLASS_ATTR_PROTECTED_SET) != 0);
 					ReflectMapAddBool(pCtx, pMeta, "hasdef", SySetUsed(&pAttr->aByteCode) > 0);
 					ReflectMapAddDyn(pCtx, pProps, &pAttr->sName, pMeta);
 				}
@@ -2524,6 +2526,8 @@ static const char zReflectLib3[] =
 " public function isPrivate(){ $m = $this->__rpmeta(); return $m['vis'] === 3; }"
 " public function isStatic(){ $m = $this->__rpmeta(); return $m['static']; }"
 " public function isReadOnly(){ $m = $this->__rpmeta(); return $m['readonly']; }"
+" public function isPrivateSet(){ $m = $this->__rpmeta(); return isset($m['privset']) ? $m['privset'] : false; }"
+" public function isProtectedSet(){ $m = $this->__rpmeta(); return isset($m['protset']) ? $m['protset'] : false; }"
 " public function isDefault(){ $m = $this->__rpmeta(); return !isset($m['dyn']); }"
 " public function isDynamic(){ $m = $this->__rpmeta(); return isset($m['dyn']); }"
 " public function isAbstract(){ return false; }"

@@ -5808,6 +5808,48 @@ static sxi32 VmThrowUninitializedPropertyError(ph7_vm *pVm,ph7_class *pClass,ph7
  * a scope that cannot satisfy the readonly set-scope ("Cannot modify
  * protected(set) readonly property C::$x from {global scope|scope X}").
  */
+/*
+ * Throw the PHP 8.4 Error raised on a write to an asymmetric-visibility
+ * property from a scope its set-visibility excludes:
+ * "Cannot modify private(set) property C::$x from {global scope|scope X}".
+ */
+static sxi32 VmThrowSetVisibilityError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr)
+{
+	ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+	ph7_class *pActive = VmCurrentSelf(pVm);
+	const char *zVis = (pAttr->iFlags & PH7_CLASS_ATTR_PRIVATE_SET) ? "private(set)" : "protected(set)";
+	SyBlob sMsg;
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	if( pActive ){
+		SyBlobFormat(&sMsg,"Cannot modify %s property %z::$%z from scope %z",
+			zVis,&pOwner->sName,&pAttr->sName,&pActive->sName);
+	}else{
+		SyBlobFormat(&sMsg,"Cannot modify %s property %z::$%z from global scope",
+			zVis,&pOwner->sName,&pAttr->sName);
+	}
+	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
+}
+/*
+ * Check the PHP 8.4 asymmetric set-visibility of a property write against the
+ * active class scope. private(set): only the DECLARING class scope may write
+ * (subclasses excluded); protected(set): the declaring class or a subclass.
+ * Returns SXRET_OK when allowed, else the throw status.
+ */
+static sxi32 VmCheckSetVisibility(ph7_vm *pVm,ph7_class *pOwner,ph7_class_attr *pAttr)
+{
+	ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pOwner;
+	ph7_class *pActive = VmCurrentSelf(pVm);
+	int bOk;
+	if( pAttr->iFlags & PH7_CLASS_ATTR_PRIVATE_SET ){
+		bOk = (pActive != 0 && pActive == pDecl);
+	}else{
+		bOk = (pActive != 0 && pDecl != 0 && PH7_VmInstanceOf(pActive,pDecl));
+	}
+	if( !bOk ){
+		return VmThrowSetVisibilityError(pVm,pOwner,pAttr);
+	}
+	return SXRET_OK;
+}
 static sxi32 VmThrowReadonlyError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,int bModify)
 {
 	ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
@@ -5850,6 +5892,11 @@ static sxi32 VmCheckReadonlyMutate(ph7_vm *pVm,sxu32 nIdx)
 	pVmAttr = (VmClassAttr *)pSlot->pUserData;
 	if( pVmAttr->pAttr && (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_READONLY) ){
 		return VmThrowReadonlyError(pVm,pVmAttr->pOwner,pVmAttr->pAttr,1);
+	}
+	if( pVmAttr->pAttr
+	 && (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_PRIVATE_SET|PH7_CLASS_ATTR_PROTECTED_SET)) ){
+		/* `++`/`--` is a write: enforce the asymmetric set-visibility (PHP 8.4) */
+		return VmCheckSetVisibility(pVm,pVmAttr->pOwner,pVmAttr->pAttr);
 	}
 	return SXRET_OK;
 }
@@ -6244,20 +6291,28 @@ static sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pVal
 		 * write below — making it the write-once latch (a type-rejected write
 		 * leaves it set, so a later valid initialization still works). */
 		if( !bCloneInit && (pVmAttr->iState & VM_CLASS_ATTR_UNINIT) == 0 ){
-			/* Already initialized: any further write is forbidden, any scope.
+			/* Already initialized: any further write is forbidden, any scope —
+			 * checked BEFORE the set-visibility scope, matching php's order.
 			 * (PHP 8.5 clone($o,[...]) is the sole exception — bCloneInit — which
 			 * re-initializes a readonly property from an allowed scope, so it
 			 * falls through to the set-scope check below.) */
 			return VmThrowReadonlyError(pVm,pVmAttr->pOwner,pAttr,1);
 		}
-		{
-			/* First write (or a clone re-init) must come from within the declaring
-			 * class scope (readonly's set-scope is protected — a subclass may set). */
-			ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pVmAttr->pOwner;
-			ph7_class *pActive = VmCurrentSelf(pVm);
-			if( pActive == 0 || pDecl == 0 || !PH7_VmInstanceOf(pActive,pDecl) ){
-				return VmThrowReadonlyError(pVm,pVmAttr->pOwner,pAttr,0);
-			}
+	}
+	if( pAttr->iFlags & (PH7_CLASS_ATTR_PRIVATE_SET|PH7_CLASS_ATTR_PROTECTED_SET) ){
+		/* Asymmetric set-visibility (PHP 8.4): EVERY write is scope-checked.
+		 * An explicit set-visibility replaces readonly's implicit protected(set). */
+		sxi32 rcVis = VmCheckSetVisibility(pVm,pVmAttr->pOwner,pAttr);
+		if( rcVis != SXRET_OK ){
+			return rcVis;
+		}
+	}else if( pAttr->iFlags & PH7_CLASS_ATTR_READONLY ){
+		/* First write (or a clone re-init) must come from within the declaring
+		 * class scope (readonly's set-scope is protected — a subclass may set). */
+		ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pVmAttr->pOwner;
+		ph7_class *pActive = VmCurrentSelf(pVm);
+		if( pActive == 0 || pDecl == 0 || !PH7_VmInstanceOf(pActive,pDecl) ){
+			return VmThrowReadonlyError(pVm,pVmAttr->pOwner,pAttr,0);
 		}
 	}
 	/* Union type: dispatch to the shared coercion helper. Typed properties
