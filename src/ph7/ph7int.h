@@ -770,7 +770,9 @@ struct ph7_vm_func_closure_env
                                      * `static fn () =>`): no $this auto-capture, bind refused. */
 #define VM_FUNC_ARG_PRIV_SET 0x8000  /* Promoted property is private(set) (PHP 8.4) */
 #define VM_FUNC_ARG_PROT_SET 0x10000 /* Promoted property is protected(set) (PHP 8.4) */
-/* next free bit: 0x20000 */
+#define VM_FUNC_HOOK_SET_EXPR 0x20000 /* `set => expr` property hook (PHP 8.4): the dispatcher
+                                       * stores the implicit return value into the backing slot */
+/* next free bit: 0x40000 */
 /*
  * Each user defined function is parsed out and stored in an instance
  * of the following structure.
@@ -928,7 +930,11 @@ struct ph7_class_attr
                                             * from the declaring class or a subclass scope */
 #define PH7_CLASS_ATTR_PUBLIC_SET   0x2000 /* explicit public(set): behaviorally the default, kept
                                             * for the weaker-than-set check and reflection output */
-/* next free bit: 0x4000 */
+#define PH7_CLASS_ATTR_HOOK_GET     0x4000 /* property has a `get` hook (PHP 8.4): reads dispatch
+                                            * __phl_hook_get_NAME (guard-bypassed inside hooks) */
+#define PH7_CLASS_ATTR_HOOK_SET     0x8000 /* property has a `set` hook (PHP 8.4): plain writes
+                                            * dispatch __phl_hook_set_NAME */
+/* next free bit: 0x10000 */
 /*
  * Each class method is parsed out and stored in an instance of the following
  * structure.
@@ -1230,6 +1236,14 @@ struct ph7_vm
 	                             * and dispatches __set($name,$value). Holds a reference;
 	                             * one-instruction lifetime by construction. */
 	SyBlob sMagicSetName;       /* Pending __set property name (stable copy) */
+	ph7_class_instance *pHookSetThis; /* Pending property-hook set receiver (PHP 8.4): OP_MEMBER
+	                             * detected a plain store to a hooked property; the following
+	                             * OP_STORE consumes this (with pHookSetAttr/nHookSetIdx) and
+	                             * dispatches __phl_hook_set_NAME — or throws the read-only
+	                             * Error when the property has no set hook. Owns one instance
+	                             * reference while armed. */
+	ph7_class_attr *pHookSetAttr; /* Pending hook-set property (declared attr; name + flags) */
+	sxu32 nHookSetIdx;          /* Pending hook-set BACKING slot index (for `set => expr`) */
 	ph7_class_instance *pMagicCallThis; /* Pending __call receiver (band A #3b): OP_MEMBER hit a
 	                             * missing method on a class declaring __call/__callStatic and
 	                             * redirected the callee to the hidden packing trampoline
