@@ -6,7 +6,7 @@ array_erase() on the live map of a by-ref foreach ends the loop cleanly (regress
 --SKIPIF--
 <?php
 if (function_exists('zend_version')) {
-    echo "skip array_erase is a PHL extension (documented PH7-ism, NEWPLAN.md §10)";
+    echo "skip array_erase is a PHL extension (documented PH7-ism)";
 }
 ?>
 --FILE--

@@ -25,7 +25,7 @@ echo ty(0b1000000000000000000000000000000000000000000000000000000000000000), "\n
  * overflow values are intentionally NOT asserted here: they can differ from php
  * in the low bit(s) because php's zend_{oct,bin}_strtod rounds differently than
  * the dv*base+digit doubling (php's binary 2**63 is 2**63-1024; phl returns the
- * exact 2**63). Recorded as a residual in PLAN.md §3.1. */
+ * exact 2**63). Recorded as a residual. */
 echo 9223372036854775808 === 9.223372036854776E+18 ? "dec_ok\n" : "dec_bad\n";
 echo 0xFFFFFFFFFFFFFFFF === 1.8446744073709552E+19 ? "hex_ok\n" : "hex_bad\n";
 ?>

@@ -1170,7 +1170,7 @@ static int VmRecordedResume(ph7_vm *pVm,sxi32 *pResumePc,VmFrame *pEntryFrame,Vm
  * object itself onto pVm->aException meant every recursive activation of the
  * same try shared one pFrame/iFinallyDone/iInCatch/pInflight — unwinding a
  * deep throw then ran every level's catch/finally against the deepest frame
- * (silent wrong answers; see PLAN.md §3.1 and the try_unwind_recursive_frames
+ * (silent wrong answers; see the try_unwind_recursive_frames
  * twins). OP_LOAD_EXCEPTION now pushes a pool-allocated ACTIVATION: a shallow
  * copy of the compiled object (sEntry/sFinally share the read-only compiled
  * containers) with fresh mutable state and pCompiled pointing at the origin.
@@ -1695,7 +1695,7 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 }
 /*
  * Whether [pClass] permits runtime-created (dynamic) properties. Scoped to
- * stdClass for now; the future general-dynamic-props work (PLAN.md §3.1) turns
+ * stdClass for now; the future general-dynamic-props work turns
  * this into a class-flag / #[AllowDynamicProperties] check at this one site.
  */
 static int VmClassAllowsDynamicProps(ph7_vm *pVm,ph7_class *pClass)
@@ -3591,7 +3591,7 @@ PH7_PRIVATE const char * PH7_VmBuiltinSigLookup(const char *zName,sxu32 nLen,con
  * named or spread arguments (compile-time positions no longer map to the
  * runtime arg slots, so the compiler conservatively does not vivify). An
  * uninitialized typed property is also not wired (it throws before the
- * write) -- see PLAN.md deferrals.
+ * write) -- see the recorded deferrals.
  */
 PH7_PRIVATE void PH7_VmStoreArgByRef(ph7_vm *pVm,ph7_value *pArg,ph7_value *pNewVal)
 {
@@ -17116,7 +17116,7 @@ static sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValu
  * left to plain release (generators never park one — yield is body-level only). A
  * `yield` reached inside a finally during close is rejected by OP_YIELD via
  * pCtx->bClosing (PHP-exact "Cannot yield from finally in a force-closed
- * generator"). Deferred edges recorded in PLAN.md §3.9.
+ * generator"). Deferred edges remain.
  *
  * Returns whatever the body run returns: SXRET_OK on a clean close, PH7_ABORT if a
  * finally aborts, or PH7_EXCEPTION if a finally threw past itself (surfaced to the
@@ -17837,8 +17837,8 @@ static int vm_builtin_Fiber_suspend(ph7_context *pCtx, int nArg, ph7_value **apA
 	 * code, all of which run via VmLocalExec. php does all of these via full
 	 * native-stack switching; PHL raises a catchable FiberError instead of the
 	 * old silent corruption. A suspend in a fiber's try BODY (not catch/finally)
-	 * runs in the main dispatch loop and parks normally. Recorded in PLAN.md
-	 * §3.9; making the catch/finally case work needs fibers on the inline
+	 * runs in the main dispatch loop and parks normally. A recorded
+	 * residual; making the catch/finally case work needs fibers on the inline
 	 * try machinery (the generator ROOT C path), a follow-up. */
 	if( pVm->nVmExecDepth != pVm->pActiveCtx->nBodyExecDepth ){
 		return PH7_VmThrowException(pCtx, "FiberError",

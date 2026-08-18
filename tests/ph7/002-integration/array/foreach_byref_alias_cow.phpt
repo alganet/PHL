@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Value alias taken INSIDE a by-ref foreach: PHL's COW hands the writer a fresh map, detaching the loop (php follows the variable live — divergence recorded in NEWPLAN.md §7)
+Value alias taken INSIDE a by-ref foreach: PHL's COW hands the writer a fresh map, detaching the loop (php follows the variable live — a recorded divergence)
 --SKIPIF--
 <?php
 if (function_exists('zend_version')) {

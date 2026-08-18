@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-ArgumentCountError call-site line: PHL reports a fixed line 1 pending the runtime line-tracking gate (NEWPLAN.md §6; php half in the _zend twin)
+ArgumentCountError call-site line: PHL reports a fixed line 1 pending the runtime line-tracking gate (php half in the _zend twin)
 --SKIPIF--
 <?php
 if (function_exists('zend_version')) {
