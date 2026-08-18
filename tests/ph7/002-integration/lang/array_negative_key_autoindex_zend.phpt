@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Auto-index after a negative first key: php 8.3+ seeds the next index from the negative key (PHL continues from 0 — divergence recorded in PLAN.md §3.9)
+Auto-index after a negative first key: php 8.3+ seeds the next index from the negative key (PHL continues from 0 — a recorded divergence)
 --SKIPIF--
 <?php
 if (!function_exists('zend_version')) {

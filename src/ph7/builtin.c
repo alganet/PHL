@@ -1818,7 +1818,7 @@ static int PH7_builtin_stripslashes(ph7_context *pCtx,int nArg,ph7_value **apArg
  * The implementations live further down in this file, next to the filter_var
  * FULL_SPECIAL_CHARS machinery they reuse (aHtml401Ent[]/FvHtml401Lookup()/
  * FvUtf8Next()). Semantics are byte-exact vs php 8.5.7; PHL is UTF-8-only
- * (PLAN.md §6) so every charset argument other than a UTF-8 alias gets PHP's
+ * so every charset argument other than a UTF-8 alias gets PHP's
  * unsupported-charset warning and is treated as UTF-8.
  *
  * Flag model (the PHP-exact ENT_* values, see constant.c): bit 1 = encode/
@@ -6121,7 +6121,7 @@ static const struct { const char *zEnt; int n; sxu32 cp; } aHtmlSpecEnt[] = {
 };
 /* Does this doctype consult the named-entity table (aHtml401Ent)? XML 1.0 has
  * no named entities beyond the specials; XHTML/HTML5 are approximated by the
- * HTML 4.01 table (documented divergence, PLAN.md §3.9). */
+ * HTML 4.01 table (documented divergence). */
 static int HtmlDocHasNamedTable(int iDoc){
 	return iDoc != PH7_ENT_DOC_XML1;
 }
@@ -6332,8 +6332,8 @@ static void HtmlUnescape(ph7_context *pCtx,const char *zIn,int nIn,
 }
 /* Validate the optional charset argument at apArg[idx]: UTF-8 aliases (and
  * ""/NULL meaning the default) are accepted; anything else — including
- * php-supported single-byte charsets like ISO-8859-1, PHL is UTF-8-only per
- * PLAN.md §6 — raises PHP's unsupported-charset warning and is treated as
+ * php-supported single-byte charsets like ISO-8859-1, PHL is UTF-8-only by
+ * policy — raises PHP's unsupported-charset warning and is treated as
  * UTF-8 (ph7_context_throw_error_format prepends the function name). */
 static void HtmlCheckCharset(ph7_context *pCtx,int nArg,ph7_value **apArg,int idx){
 	const char *zCs;

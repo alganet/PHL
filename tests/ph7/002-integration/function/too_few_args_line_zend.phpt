@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-ArgumentCountError call-site line: php embeds the REAL call-site line (zend half of the twin pair — NEWPLAN.md §6 line-tracking gate)
+ArgumentCountError call-site line: php embeds the REAL call-site line (zend half of the twin pair — the line-tracking gate)
 --SKIPIF--
 <?php
 if (!function_exists('zend_version')) {

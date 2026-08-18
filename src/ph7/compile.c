@@ -646,7 +646,7 @@ static sxi32 GenStateStripNumericSeparators(
  * doubling). Octal/binary overflow values can differ from php by the low bit(s):
  * php's zend_{oct,bin}_strtod rounds differently than this doubling — e.g. php's
  * binary 2**63 is 2**63-1024 whereas this returns the exact 2**63. Recorded as a
- * residual in PLAN.md; matching php exactly would need a port of those functions.
+ * residual; matching php exactly would need a port of those functions.
  */
 static int GenStateIntLiteralOverflows(const SyString *pNum, ph7_real *pReal, int *pbDecimal)
 {
@@ -6423,7 +6423,7 @@ static int GenStateGenRetNameOk(const char *zName,sxu32 nName)
  * the parser strips a leading `\`, so inside `namespace Foo;` a
  * fully-qualified `\Generator` (php: accept) and a bare `Generator`
  * (php: reject as Foo\Generator) are indistinguishable here — we accept
- * both rather than fatal on valid code (divergence recorded in PLAN.md).
+ * both rather than fatal on valid code (a recorded divergence).
  */
 static int GenStateGenRetAtomOk(ph7_gen_state *pGen,sxu32 nType,const SyString *pName)
 {
@@ -12421,7 +12421,7 @@ static sxi32 GenStateEmitExprCode(
 				 * set write-context so a subscript target (preg_match($p,$s,$a['k']))
 				 * auto-vivifies its element and exposes a writable memobj slot for the
 				 * builtin to write back through. A plain $var target is unaffected
-				 * (iP1=0 either way). See PLAN.md §2 for the full rationale. */
+				 * (iP1=0 either way). */
 				if( n < 31 && (byRefMask & (1u<<n)) ){
 					iArgFlags &= ~EXPR_FLAG_RDONLY_LOAD;
 					iArgFlags |= EXPR_FLAG_LOAD_IDX_STORE;
