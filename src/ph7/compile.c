@@ -2217,6 +2217,8 @@ PH7_PRIVATE sxi32 PH7_CompileShortList(ph7_gen_state *pGen,sxi32 iCompileFlag)
 static sxi32 GenStateCompileFunc(ph7_gen_state *pGen,SyString *pName,sxi32 iFlags,int bHandleClosure,ph7_vm_func **ppFunc);
 static int GenStateIsReservedConstant(SyString *pName);
 static int GenStateIsReadonly(SyToken *pTok);
+static sxi32 GenStatePeekSetVisibility(SyToken *pTok,SyToken *pEnd,int *pnTok);
+static sxi32 GenStateSetVisFlag(sxi32 nKw);
 static sxi32 GenStateValidateMemberType(ph7_gen_state *pGen,ph7_class *pClass,const SyString *pMemberName,
 	sxu32 nType,const SyString *pTypeClass,const SyString *pTypeText,SySet *pUnionAlts,const char *zErrFmt,sxu32 nLine);
 static void GenStateBuildFQN(ph7_gen_state *pGen,const SyString *pName,SyBlob *pOut);
@@ -6143,11 +6145,24 @@ static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyTo
 		{
 			int bReadonly = 0, bVisSeen = 0;
 			sxi32 iVis = PH7_CLASS_PROT_PUBLIC;
+			sxi32 iSetVisFlag = 0;
+			int nSetTok;
+			sxi32 nSetVis;
 			if( pIn < pEnd && GenStateIsReadonly(pIn) ){
 				bReadonly = 1;
 				pIn++;
 			}
-			if( pIn < pEnd && (pIn->nType & PH7_TK_KEYWORD) ){
+			nSetVis = GenStatePeekSetVisibility(pIn,pEnd,&nSetTok);
+			if( nSetVis ){
+				/* Leading `private(set)` etc: promoted with a public read side */
+				iSetVisFlag = GenStateSetVisFlag(nSetVis);
+				bVisSeen = 1;
+				pIn += nSetTok;
+				if( pIn < pEnd && GenStateIsReadonly(pIn) ){
+					bReadonly = 1;
+					pIn++;
+				}
+			}else if( pIn < pEnd && (pIn->nType & PH7_TK_KEYWORD) ){
 				sxu32 nKw = (sxu32)SX_PTR_TO_INT(pIn->pUserData);
 				if( nKw == PH7_TKWRD_PUBLIC || nKw == PH7_TKWRD_PROTECTED || nKw == PH7_TKWRD_PRIVATE ){
 					bVisSeen = 1;
@@ -6155,11 +6170,22 @@ static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyTo
 						: (nKw == PH7_TKWRD_PROTECTED) ? PH7_CLASS_PROT_PROTECTED
 						: PH7_CLASS_PROT_PUBLIC;
 					pIn++;
+					nSetVis = GenStatePeekSetVisibility(pIn,pEnd,&nSetTok);
+					if( nSetVis ){
+						/* `public private(set) T $x` promoted form */
+						iSetVisFlag = GenStateSetVisFlag(nSetVis);
+						pIn += nSetTok;
+					}
 					if( pIn < pEnd && GenStateIsReadonly(pIn) ){
 						bReadonly = 1;
 						pIn++;
 					}
 				}
+			}
+			if( iSetVisFlag == PH7_CLASS_ATTR_PRIVATE_SET ){
+				sArg.iFlags |= VM_FUNC_ARG_PRIV_SET;
+			}else if( iSetVisFlag == PH7_CLASS_ATTR_PROTECTED_SET ){
+				sArg.iFlags |= VM_FUNC_ARG_PROT_SET;
 			}
 			if( bVisSeen || bReadonly ){
 				if( !bCtorCtx ){
@@ -8335,6 +8361,41 @@ static int GenStateIsReadonly(SyToken *pTok)
 		&& pTok->sData.nByte == sizeof("readonly")-1
 		&& SyStrnicmp(pTok->sData.zString,"readonly",sizeof("readonly")-1) == 0;
 }
+/*
+ * Detect an asymmetric set-visibility modifier `public(set)` / `protected(set)`
+ * / `private(set)` (PHP 8.4) starting at pTok. Returns the visibility keyword id
+ * (PH7_TKWRD_*) and sets *pnTok to the 4 tokens consumed, or 0 when not present
+ * (a bare visibility keyword is NOT a set-modifier; the '(' 'set' ')' run is).
+ */
+static sxi32 GenStatePeekSetVisibility(SyToken *pTok,SyToken *pEnd,int *pnTok)
+{
+	*pnTok = 0;
+	if( &pTok[3] < pEnd
+	 && (pTok->nType & PH7_TK_KEYWORD)
+	 && (pTok[1].nType & PH7_TK_LPAREN)
+	 && (pTok[2].nType & (PH7_TK_ID|PH7_TK_KEYWORD))
+	 && pTok[2].sData.nByte == sizeof("set")-1
+	 && SyStrnicmp(pTok[2].sData.zString,"set",sizeof("set")-1) == 0
+	 && (pTok[3].nType & PH7_TK_RPAREN) ){
+		sxi32 nKw = SX_PTR_TO_INT(pTok->pUserData);
+		if( nKw == PH7_TKWRD_PUBLIC || nKw == PH7_TKWRD_PRIVATE || nKw == PH7_TKWRD_PROTECTED ){
+			*pnTok = 4;
+			return nKw;
+		}
+	}
+	return 0;
+}
+/* Map a set-visibility keyword to its PH7_CLASS_ATTR_* flag. */
+static sxi32 GenStateSetVisFlag(sxi32 nKw)
+{
+	if( nKw == PH7_TKWRD_PRIVATE ){
+		return PH7_CLASS_ATTR_PRIVATE_SET;
+	}
+	if( nKw == PH7_TKWRD_PROTECTED ){
+		return PH7_CLASS_ATTR_PROTECTED_SET;
+	}
+	return PH7_CLASS_ATTR_PUBLIC_SET;
+}
 static sxi32 GenStateCompileClassAttr(ph7_gen_state *pGen,sxi32 iProtection,sxi32 iFlags,ph7_class *pClass)
 {
 	sxu32 nLine = pGen->pIn->nLine;
@@ -8405,6 +8466,26 @@ loop:
 			return SXERR_ABORT;
 		}
 		goto Synchronize;
+	}
+	/* Asymmetric-visibility rules (PHP 8.4): the property must be typed, and
+	 * the read visibility must not be narrower than the set visibility. */
+	if( iFlags & (PH7_CLASS_ATTR_PRIVATE_SET|PH7_CLASS_ATTR_PROTECTED_SET|PH7_CLASS_ATTR_PUBLIC_SET) ){
+		const char *zAvErr = 0;
+		sxi32 iSetLevel = (iFlags & PH7_CLASS_ATTR_PRIVATE_SET) ? PH7_CLASS_PROT_PRIVATE
+			: (iFlags & PH7_CLASS_ATTR_PROTECTED_SET) ? PH7_CLASS_PROT_PROTECTED
+			: PH7_CLASS_PROT_PUBLIC;
+		if( (iTypeFlags & PH7_CLASS_ATTR_TYPED) == 0 ){
+			zAvErr = "Property with asymmetric visibility %z::$%z must have type";
+		}else if( iProtection > iSetLevel ){
+			zAvErr = "Visibility of property %z::$%z must not be weaker than set visibility";
+		}
+		if( zAvErr ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,zAvErr,&pClass->sName,pName);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			goto Synchronize;
+		}
 	}
 	/* readonly property rules (PHP 8.1): cannot be static, must be typed, and
 	 * cannot carry a default value. PHP-exact diagnostics. */
@@ -8735,6 +8816,20 @@ static sxi32 GenStateCompileClassMethod(
 					goto Synchronize;
 				}
 				iAttrFlags |= PH7_CLASS_ATTR_READONLY;
+			}
+			if( pArg->iFlags & (VM_FUNC_ARG_PRIV_SET|VM_FUNC_ARG_PROT_SET) ){
+				/* Asymmetric set-visibility on a promoted property (PHP 8.4) */
+				if( (iAttrFlags & PH7_CLASS_ATTR_TYPED) == 0 ){
+					rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+						"Property with asymmetric visibility %z::$%z must have type",
+						&pClass->sName,&pArg->sName);
+					if( rc == SXERR_ABORT ){
+						return SXERR_ABORT;
+					}
+					goto Synchronize;
+				}
+				iAttrFlags |= (pArg->iFlags & VM_FUNC_ARG_PRIV_SET)
+					? PH7_CLASS_ATTR_PRIVATE_SET : PH7_CLASS_ATTR_PROTECTED_SET;
 			}
 			pAttr = PH7_NewClassAttr(pGen->pVm,&pArg->sName,nLine,pArg->iPromoteVis,iAttrFlags);
 			if( pAttr == 0 ){
@@ -10046,9 +10141,26 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 				continue;
 			}
 			if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
-				iProtection = nKwrd;
-				pGen->pIn++; /* Jump the visibility token */
-				/* Optional `readonly` after the visibility: `public readonly int $x`. */
+				int nSetTok;
+				sxi32 nSetVis = GenStatePeekSetVisibility(pGen->pIn,pGen->pEnd,&nSetTok);
+				if( nSetVis ){
+					/* Leading `private(set)`/`protected(set)` with no read
+					 * visibility: the read side defaults to public (php 8.4). */
+					iAttrflags |= GenStateSetVisFlag(nSetVis);
+					pGen->pIn += nSetTok;
+				}else{
+					iProtection = nKwrd;
+					pGen->pIn++; /* Jump the visibility token */
+					/* Optional asymmetric set-visibility after the read
+					 * visibility: `public private(set) int $x`. */
+					nSetVis = GenStatePeekSetVisibility(pGen->pIn,pGen->pEnd,&nSetTok);
+					if( nSetVis ){
+						iAttrflags |= GenStateSetVisFlag(nSetVis);
+						pGen->pIn += nSetTok;
+					}
+				}
+				/* Optional `readonly` after the visibility: `public readonly int $x`,
+				 * `public private(set) readonly int $x`. */
 				if( pGen->pIn < pGen->pEnd && GenStateIsReadonly(pGen->pIn) ){
 					iAttrflags |= PH7_CLASS_ATTR_READONLY;
 					pGen->pIn++; /* Jump the 'readonly' modifier */
@@ -10104,11 +10216,24 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 					iAttrflags |= PH7_CLASS_ATTR_STATIC;
 					pGen->pIn++; /* Jump the static keyword */
 					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
-						/* Extract the keyword */
-						nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
-						if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
-							iProtection = nKwrd;
-							pGen->pIn++; /* Jump the visibility token */
+						int nSetTok;
+						sxi32 nSetVis = GenStatePeekSetVisibility(pGen->pIn,pGen->pEnd,&nSetTok);
+						if( nSetVis ){
+							/* `static private(set) int $x` — read side stays public */
+							iAttrflags |= GenStateSetVisFlag(nSetVis);
+							pGen->pIn += nSetTok;
+						}else{
+							/* Extract the keyword */
+							nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
+							if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
+								iProtection = nKwrd;
+								pGen->pIn++; /* Jump the visibility token */
+								nSetVis = GenStatePeekSetVisibility(pGen->pIn,pGen->pEnd,&nSetTok);
+								if( nSetVis ){
+									iAttrflags |= GenStateSetVisFlag(nSetVis);
+									pGen->pIn += nSetTok;
+								}
+							}
 						}
 					}
 					/* `readonly` after `static` (an invalid combination): detect it so the

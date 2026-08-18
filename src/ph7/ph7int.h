@@ -768,7 +768,9 @@ struct ph7_vm_func_closure_env
                                      * isInternal() true, getFileName() false. */
 #define VM_FUNC_STATIC_CL    0x4000 /* Static closure/arrow fn (`static function () {}` /
                                      * `static fn () =>`): no $this auto-capture, bind refused. */
-/* next free bit: 0x8000 */
+#define VM_FUNC_ARG_PRIV_SET 0x8000  /* Promoted property is private(set) (PHP 8.4) */
+#define VM_FUNC_ARG_PROT_SET 0x10000 /* Promoted property is protected(set) (PHP 8.4) */
+/* next free bit: 0x20000 */
 /*
  * Each user defined function is parsed out and stored in an instance
  * of the following structure.
@@ -920,7 +922,13 @@ struct ph7_class_attr
 #define PH7_CLASS_ATTR_EVALING      0x400  /* Transient: this constant's initializer is being evaluated
                                             * (on-demand, VmClassConstEvalOnDemand). Re-entry means a
                                             * self-referencing constant — php's catchable Error. */
-/* next free bit: 0x800 */
+#define PH7_CLASS_ATTR_PRIVATE_SET  0x800  /* private(set) asymmetric visibility (PHP 8.4): writes
+                                            * only from the DECLARING class scope (subclasses excluded) */
+#define PH7_CLASS_ATTR_PROTECTED_SET 0x1000 /* protected(set) asymmetric visibility (PHP 8.4): writes
+                                            * from the declaring class or a subclass scope */
+#define PH7_CLASS_ATTR_PUBLIC_SET   0x2000 /* explicit public(set): behaviorally the default, kept
+                                            * for the weaker-than-set check and reflection output */
+/* next free bit: 0x4000 */
 /*
  * Each class method is parsed out and stored in an instance of the following
  * structure.
