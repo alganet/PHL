@@ -656,7 +656,7 @@ Coverage: 6619/8186 lines (80.86%)
 |        - |   646 | ` * doubling). Octal/binary overflow values can differ from php by the low bit(s):` |
 |        - |   647 | ` * php's zend_{oct,bin}_strtod rounds differently than this doubling — e.g. php's` |
 |        - |   648 | ` * binary 2**63 is 2**63-1024 whereas this returns the exact 2**63. Recorded as a` |
-|        - |   649 | ` * residual in PLAN.md; matching php exactly would need a port of those functions.` |
+|        - |   649 | ` * residual; matching php exactly would need a port of those functions.` |
 |        - |   650 | ` */` |
 |  1295852 |   651 | `static int GenStateIntLiteralOverflows(const SyString *pNum, ph7_real *pReal, int *pbDecimal)` |
 |        5 |   652 | `{` |
@@ -1178,14 +1178,14 @@ Coverage: 6619/8186 lines (80.86%)
 |    36607 |  1168 | `	iCons = 0;` |
 |    19535 |  1169 | `	for(;;){` |
 |    62919 |  1170 | `		zCur = zIn;` |
-|   215273 |  1171 | `		while( zIn < zEnd && zIn[0] != '\\'  ){` |
-|   154827 |  1172 | `			if( zIn[0] == '{' && &zIn[1] < zEnd && zIn[1] == '$' ){` |
+|   215239 |  1171 | `		while( zIn < zEnd && zIn[0] != '\\'  ){` |
+|   154793 |  1172 | `			if( zIn[0] == '{' && &zIn[1] < zEnd && zIn[1] == '$' ){` |
 |       72 |  1173 | `				break;` |
-|   154693 |  1174 | `			}else if(zIn[0] == '$' && &zIn[1] < zEnd &&` |
+|   154659 |  1174 | `			}else if(zIn[0] == '$' && &zIn[1] < zEnd &&` |
 |     2338 |  1175 | `				(((unsigned char)zIn[1] >= 0xc0 \|\| SyisAlpha(zIn[1]) \|\| zIn[1] == '{' \|\| zIn[1] == '_')) ){` |
 |     1170 |  1176 | `					break;` |
 |        - |  1177 | `			}` |
-|   152359 |  1178 | `			zIn++;` |
+|   152325 |  1178 | `			zIn++;` |
 |        5 |  1179 | `		}` |
 |    62919 |  1180 | `		if( zIn > zCur ){` |
 |    20435 |  1181 | `			if( pObj == 0 ){` |
@@ -6433,7 +6433,7 @@ Coverage: 6619/8186 lines (80.86%)
 |        - |  6423 | `` * the parser strips a leading `\`, so inside `namespace Foo;` a`` |
 |        - |  6424 | ``  * fully-qualified `\Generator` (php: accept) and a bare `Generator` `` |
 |        - |  6425 | ` * (php: reject as Foo\Generator) are indistinguishable here — we accept` |
-|        - |  6426 | ` * both rather than fatal on valid code (divergence recorded in PLAN.md).` |
+|        - |  6426 | ` * both rather than fatal on valid code (a recorded divergence).` |
 |        - |  6427 | ` */` |
 |       26 |  6428 | `static int GenStateGenRetAtomOk(ph7_gen_state *pGen,sxu32 nType,const SyString *pName)` |
 |        4 |  6429 | `{` |
@@ -12431,7 +12431,7 @@ Coverage: 6619/8186 lines (80.86%)
 |        - | 12421 | `				 * set write-context so a subscript target (preg_match($p,$s,$a['k']))` |
 |        - | 12422 | `				 * auto-vivifies its element and exposes a writable memobj slot for the` |
 |        - | 12423 | `				 * builtin to write back through. A plain $var target is unaffected` |
-|        - | 12424 | `				 * (iP1=0 either way). See PLAN.md §2 for the full rationale. */` |
+|        - | 12424 | `				 * (iP1=0 either way). */` |
 |  3167655 | 12425 | `				if( n < 31 && (byRefMask & (1u<<n)) ){` |
 |       61 | 12426 | `					iArgFlags &= ~EXPR_FLAG_RDONLY_LOAD;` |
 |       61 | 12427 | `					iArgFlags \|= EXPR_FLAG_LOAD_IDX_STORE;` |

@@ -325,14 +325,14 @@ Coverage: 279/407 lines (68.55%)
 |    62527 |  315 | `          cset = infop->charset;` |
 |    62527 |  316 | `          base = infop->base;` |
 |    31261 |  317 | `          do{                                           /* Convert to ascii */` |
-|   185001 |  318 | `            *(--bufpt) = cset[ulongvalue%base];` |
-|   185001 |  319 | `            ulongvalue = ulongvalue/base;` |
-|   185001 |  320 | `          }while( ulongvalue>0 );` |
+|   185017 |  318 | `            *(--bufpt) = cset[ulongvalue%base];` |
+|   185017 |  319 | `            ulongvalue = ulongvalue/base;` |
+|   185017 |  320 | `          }while( ulongvalue>0 );` |
 |        - |  321 | `        }` |
 |    62527 |  322 | `        length = (int)(&buf[SXFMT_BUFSIZ-1]-bufpt);` |
-|    62927 |  323 | `        for(idx=precision-length; idx>0; idx--){` |
-|      402 |  324 | `          *(--bufpt) = '0';                             /* Zero pad */` |
-|      202 |  325 | `        }` |
+|    62931 |  323 | `        for(idx=precision-length; idx>0; idx--){` |
+|      406 |  324 | `          *(--bufpt) = '0';                             /* Zero pad */` |
+|      206 |  325 | `        }` |
 |    62527 |  326 | `        if( prefix ) *(--bufpt) = prefix;               /* Add sign */` |
 |    62527 |  327 | `        if( flag_alternateform && infop->prefix ){      /* Add "0" or "0x" */` |
 |        - |  328 | `          char *pre, x;` |
