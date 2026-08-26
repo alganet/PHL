@@ -1155,6 +1155,52 @@ struct VmMagicGuard
 	sxu32 nNameHash;  /* property-name hash (SyBinHash) */
 	sxu8 cKind;       /* accessor kind: 'g' = __get */
 };
+/* Pending property write-back entry (PHP 8.4 hooks + magic ??=): a LIFO of
+ * these (ph7_vm.aHookRmw) carries every write whose dispatch is deferred past
+ * OP_MEMBER to a later opcode:
+ *   VM_HOOK_PEND_RMW        — read-modify-write on a hooked property: OP_MEMBER
+ *                             dispatched the get hook (or read the raw backing
+ *                             store when set-only) into a fresh SCRATCH memobj
+ *                             slot; the modify op (++/--/compound-assign)
+ *                             mutates the scratch and its tail consumes the
+ *                             entry (matched by kind + scratch index) to
+ *                             dispatch the set hook with the computed value.
+ *   VM_HOOK_PEND_COAL_HOOK  — `$o->p ??= v` on a hooked property: the entry is
+ *                             consumed by the OP_NULLC_STORE at nPc (matched by
+ *                             owner + pc) to dispatch the set hook.
+ *   VM_HOOK_PEND_COAL_MAGIC — `$o->p ??= v` on a missing property whose class
+ *                             declares __set: consumed the same way, dispatching
+ *                             __set(sName, value).
+ * The armed window is [nJmpPc, nPc]: an owner fetch outside it means the
+ * statement was abandoned (a routed throw) or the ??= short-circuit jump was
+ * taken — the entry is dropped, no set dispatch (php: the throw/skip discards
+ * the write). LIFO order makes nested arms (a ??= RHS containing further
+ * hooked stores or coalesce-assigns, a recursive re-entry through a cast
+ * inside a modify op) nest correctly. Each entry owns one instance reference;
+ * MAGIC entries own their name blob. */
+#define VM_HOOK_PEND_RMW         0
+#define VM_HOOK_PEND_COAL_HOOK   1
+#define VM_HOOK_PEND_COAL_MAGIC  2
+typedef struct VmHookRmw VmHookRmw;
+struct VmHookRmw
+{
+	sxu8 iKind;                 /* VM_HOOK_PEND_* */
+	ph7_class_instance *pThis;  /* receiver (owns one reference while pending) */
+	ph7_class_attr *pAttr;      /* hooked property (hook kinds; 0 for MAGIC) */
+	sxu32 nBackIdx;             /* BACKING slot index (for `set => expr` stores) */
+	sxu32 nScratchIdx;          /* RMW: scratch slot the modify op operates on;
+	                             * SXU32_HIGH for the coalesce kinds */
+	SyBlob sName;               /* COAL_MAGIC: property name copy (entry-owned) */
+	void *pOwnerStack;          /* arming activation's operand-stack base (identity;
+	                             * a nested exec — even a recursive one over the same
+	                             * bytecode — has a different base, so it never drops
+	                             * an enclosing activation's pending entry) */
+	void *pInstrs;              /* arming activation's bytecode array */
+	sxu32 nJmpPc;               /* first pc of the armed window (RMW: == nPc;
+	                             * coalesce: the OP_NULLC_JMP right after the arm) */
+	sxu32 nPc;                  /* pc of the consuming op (RMW: the modify op;
+	                             * coalesce: the OP_NULLC_STORE) */
+};
 struct ph7_vm
 {
 	SyMemBackend sAllocator;	/* Memory backend */
@@ -1244,6 +1290,8 @@ struct ph7_vm
 	                             * reference while armed. */
 	ph7_class_attr *pHookSetAttr; /* Pending hook-set property (declared attr; name + flags) */
 	sxu32 nHookSetIdx;          /* Pending hook-set BACKING slot index (for `set => expr`) */
+	SySet aHookRmw;             /* Pending property-hook read-modify-write write-backs (LIFO;
+	                             * VmHookRmw entries — see the struct above ph7_vm). */
 	ph7_class_instance *pMagicCallThis; /* Pending __call receiver (band A #3b): OP_MEMBER hit a
 	                             * missing method on a class declaring __call/__callStatic and
 	                             * redirected the callee to the hidden packing trampoline
@@ -2289,6 +2337,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 PH7_PRIVATE sxi32 PH7_ClassInstanceCallMagicMethod(ph7_vm *pVm,ph7_class *pClass,ph7_class_instance *pThis,const char *zMethod,
 	sxu32 nByte,const SyString *pAttrName,ph7_value *pResult);
 PH7_PRIVATE ph7_value * PH7_ClassInstanceExtractAttrValue(ph7_class_instance *pThis,VmClassAttr *pAttr);
+PH7_PRIVATE sxi32 PH7_VmHookGetAttrValue(ph7_class_instance *pThis,VmClassAttr *pVmAttr,ph7_value *pOut);
 PH7_PRIVATE ph7_value * PH7_EnumCaseNameValue(ph7_class_instance *pThis);
 PH7_PRIVATE ph7_value * PH7_EnumCaseBackingValueOf(ph7_class_instance *pThis);
 PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmap(ph7_class_instance *pThis,ph7_hashmap *pMap);

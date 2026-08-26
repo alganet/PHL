@@ -7886,7 +7886,16 @@ static int GenStateInitHasNewExpr(ph7_gen_state *pGen)
 			}
 			continue;
 		}
-		if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+		if( p->nType & PH7_TK_OCB ){
+			if( iDepth == 0 ){
+				/* A depth-0 '{' can only open a PHP 8.4 property-hook list
+				 * (`public T $x = default { get …; }`): the default expression
+				 * ends here. A `new` inside a hook BODY runs at access time and
+				 * is legal — don't scan into it. */
+				break;
+			}
+			iDepth++;
+		}else if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB) ){
 			iDepth++;
 		}else if( p->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
 			if( iDepth > 0 ){
@@ -12824,6 +12833,16 @@ static sxi32 GenStateEmitExprCode(
 					|| pNode->pOp->iOp == EXPR_OP_NULLSAFE_ARROW
 					|| pNode->pOp->iOp == EXPR_OP_DC) ){
 				iLeftFlags &= ~EXPR_FLAG_MEMBER_WRITE;
+			}
+			/* `++`/`--` mutate their operand in place — the operand is a write
+			 * lvalue exactly like a compound assign's (`$o->m[0]++` must tag the
+			 * member base PH7_MEMBER_WRITE the way `$o->m[0] += 1` does: hooked
+			 * properties throw php's Indirect-modification Error, missing ones
+			 * auto-vivify). The prec-18 site below handles the assign family;
+			 * `++`/`--` are unary, their operand is pLeft. */
+			if( pNode->pOp
+				&& (pNode->pOp->iVmOp == PH7_OP_INCR || pNode->pOp->iVmOp == PH7_OP_DECR) ){
+				iLeftFlags |= EXPR_FLAG_LOAD_IDX_STORE | EXPR_FLAG_MEMBER_WRITE;
 			}
 			rc = GenStateEmitExprCode(&(*pGen),pNode->pLeft,iLeftFlags);
 		}

@@ -753,29 +753,70 @@ PH7_PRIVATE int vm_builtin_get_object_vars(ph7_context *pCtx,int nArg,ph7_value 
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	/* Fill the array with the defined attribute visible from the current scope */
-	SyHashResetLoopCursor(&pThis->hAttr);
-	while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
-		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
-		SyString *pAttrName;
-		if( pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT) ){
-			/* Only non-static/constant attributes are extracted */
-			continue;
-		}
-		pAttrName = &pVmAttr->pAttr->sName;
-		/* Check if the access is allowed */
-		if( PH7_VmClassMemberAccess(pCtx->pVm,pThis->pClass,pAttrName,pVmAttr->pAttr->iProtection,FALSE) ){
-			ph7_value *pValue = 0;
-			/* Extract attribute */
-			pValue = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
-			if( pValue ){
-				/* Insert attribute name in the array */
-				ph7_value_string(pName,pAttrName->zString,pAttrName->nByte);
-				ph7_array_add_elem(pArray,pName,pValue); /* Will make it's own copy */
+	/* Fill the array with the defined attribute visible from the current scope.
+	 * SNAPSHOT the attribute names first: a PHP 8.4 get hook dispatched mid-walk
+	 * runs user code that may re-enter an hAttr walk on this instance (resetting
+	 * the hash's single embedded loop cursor) or unset()/create properties. The
+	 * names point into CLASS-owned attr storage (they outlive instance mutation);
+	 * each is re-looked-up before use so an entry unset by an earlier hook is
+	 * skipped instead of read after free. */
+	{
+		SySet sNames;
+		SyString *aName;
+		sxu32 iName,nName;
+		SySetInit(&sNames,&pCtx->pVm->sAllocator,sizeof(SyString));
+		SyHashResetLoopCursor(&pThis->hAttr);
+		while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
+			VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
+			if( pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT) ){
+				/* Only non-static/constant attributes are extracted */
+				continue;
 			}
-			/* Reset the cursor */
-			ph7_value_reset_string_cursor(pName);
+			SySetPut(&sNames,(const void *)&pVmAttr->pAttr->sName);
 		}
+		aName = (SyString *)SySetBasePtr(&sNames);
+		nName = SySetUsed(&sNames);
+		for( iName = 0 ; iName < nName ; ++iName ){
+			SyString *pAttrName = &aName[iName];
+			VmClassAttr *pVmAttr;
+			pEntry = SyHashGet(&pThis->hAttr,(const void *)pAttrName->zString,pAttrName->nByte);
+			if( pEntry == 0 ){
+				continue; /* unset by an earlier hook */
+			}
+			pVmAttr = (VmClassAttr *)pEntry->pUserData;
+			/* Check if the access is allowed */
+			if( PH7_VmClassMemberAccess(pCtx->pVm,pThis->pClass,pAttrName,pVmAttr->pAttr->iProtection,FALSE) ){
+				ph7_value *pValue = 0;
+				ph7_value sHookVal;
+				sxi32 rcHk;
+				/* PHP 8.4 property hooks: get_object_vars() reads through the get
+				 * hook (virtual properties included); raw slot otherwise. */
+				PH7_MemObjInit(pCtx->pVm,&sHookVal);
+				rcHk = PH7_VmHookGetAttrValue(pThis,pVmAttr,&sHookVal);
+				if( rcHk == SXRET_OK ){
+					pValue = &sHookVal;
+				}else if( rcHk == SXERR_NOTFOUND ){
+					/* Extract attribute */
+					pValue = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
+				}else{
+					/* the hook threw — parked on the boundary rail; php aborts the
+					 * whole builtin at the first throw (the helper's boundary gate
+					 * keeps LATER hooks from running; raw values it falls back to
+					 * are discarded when the throw routes) */
+					PH7_MemObjRelease(&sHookVal);
+					break;
+				}
+				if( pValue ){
+					/* Insert attribute name in the array */
+					ph7_value_string(pName,pAttrName->zString,pAttrName->nByte);
+					ph7_array_add_elem(pArray,pName,pValue); /* Will make it's own copy */
+				}
+				PH7_MemObjRelease(&sHookVal);
+				/* Reset the cursor */
+				ph7_value_reset_string_cursor(pName);
+			}
+		}
+		SySetRelease(&sNames);
 	}
 	/* Return the created array */
 	ph7_result_value(pCtx,pArray);

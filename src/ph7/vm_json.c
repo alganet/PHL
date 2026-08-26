@@ -259,15 +259,77 @@ static sxi32 VmJsonEncode(
 					return PH7_OK;
 				}
 			}else{
-				/* Encode the class instance */
+				SyHashEntry *pAttrEntry;
+				SySet sNames;
+				SyString *aName;
+				sxu32 iName,nName;
+				/* Encode the class instance: php serializes only PUBLIC
+				 * non-static properties, reading through a PHP 8.4 get hook
+				 * when one is declared (virtual properties included). The
+				 * names are SNAPSHOTTED first — a hook dispatched mid-walk may
+				 * re-enter an hAttr walk on this instance (the hash has a
+				 * single embedded loop cursor) or unset()/create properties;
+				 * names point into class-owned attr storage and each is
+				 * re-looked-up before use. */
 				pData->isFirst = 1;
 				/* Append the curly braces */
 				JSON_EMIT(pData,ph7_result_string(pCtx,"{",(int)sizeof(char)));
-				/* Iterate throw class attribute */
-				ph7_object_walk(pIn,VmJsonObjectEncode,pData);
-				if( pData->oom ){
-					return PH7_OK;
+				SySetInit(&sNames,&pVm->sAllocator,sizeof(SyString));
+				SyHashResetLoopCursor(&pThis->hAttr);
+				while( (pAttrEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
+					VmClassAttr *pVmAttr = (VmClassAttr *)pAttrEntry->pUserData;
+					if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT))
+					 || pVmAttr->pAttr->iProtection != PH7_CLASS_PROT_PUBLIC ){
+						continue;
+					}
+					SySetPut(&sNames,(const void *)&pVmAttr->pAttr->sName);
 				}
+				aName = (SyString *)SySetBasePtr(&sNames);
+				nName = SySetUsed(&sNames);
+				for( iName = 0 ; iName < nName ; ++iName ){
+					VmClassAttr *pVmAttr;
+					ph7_value *pAttrVal = 0;
+					ph7_value sHookVal;
+					sxi32 rcHk;
+					pAttrEntry = SyHashGet(&pThis->hAttr,(const void *)aName[iName].zString,aName[iName].nByte);
+					if( pAttrEntry == 0 ){
+						continue; /* unset by an earlier hook */
+					}
+					pVmAttr = (VmClassAttr *)pAttrEntry->pUserData;
+					PH7_MemObjInit(pVm,&sHookVal);
+					rcHk = PH7_VmHookGetAttrValue(pThis,pVmAttr,&sHookVal);
+					if( rcHk == SXRET_OK ){
+						pAttrVal = &sHookVal;
+					}else if( rcHk == SXERR_NOTFOUND ){
+						/* Encode a COPY: the encoder casts scalars in place
+						 * (ph7_value_to_string), which must not corrupt the
+						 * live attribute slot. */
+						ph7_value *pRaw = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
+						if( pRaw ){
+							PH7_MemObjStore(pRaw,&sHookVal);
+							pAttrVal = &sHookVal;
+						}
+					}else{
+						/* the get hook threw — propagate like jsonSerialize() */
+						PH7_MemObjRelease(&sHookVal);
+						SySetRelease(&sNames);
+						pData->exc = 1;
+						return PH7_EXCEPTION;
+					}
+					if( pAttrVal ){
+						VmJsonObjectEncode(SyStringData(&pVmAttr->pAttr->sName),pAttrVal,pData);
+					}
+					PH7_MemObjRelease(&sHookVal);
+					if( pData->exc ){
+						SySetRelease(&sNames);
+						return PH7_EXCEPTION; /* a nested jsonSerialize()/hook threw */
+					}
+					if( pData->oom ){
+						SySetRelease(&sNames);
+						return PH7_OK;
+					}
+				}
+				SySetRelease(&sNames);
 				/* Append the closing curly braces  */
 				JSON_EMIT(pData,ph7_result_string(pCtx,"}",(int)sizeof(char)));
 			}
