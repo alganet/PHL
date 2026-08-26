@@ -13674,6 +13674,10 @@ case PH7_OP_FOREACH_STEP: {
 		/* Point to the next attribute */
 		while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
 			pVmAttr = (VmClassAttr *)pEntry->pUserData;
+			if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_VIRTUAL))
+			 == PH7_CLASS_ATTR_HOOK_VIRTUAL ){
+				continue; /* virtual set-only property: iteration skips it (php) */
+			}
 			/* Check access permission */
 			if( PH7_VmClassMemberAccess(&(*pVm),pThis->pClass,&pVmAttr->pAttr->sName,
 				pVmAttr->pAttr->iProtection,FALSE) ){
@@ -13884,7 +13888,16 @@ case PH7_OP_MEMBER: {
 					 * outside the class); without __unset, an inaccessible unset is php's
 					 * catchable "Cannot access ..." Error and a missing one stays a no-op. */
 					int bUnsAccessible = pEntry ? PH7_VmClassMemberAccess(&(*pVm),pClass,&pObjAttr->pAttr->sName,pObjAttr->pAttr->iProtection,FALSE) : 0;
-					if( pEntry && bUnsAccessible ){
+					if( pEntry && (pObjAttr->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_SET)) != 0 ){
+						/* php 8.4: a hooked property (virtual or backed) can never be
+						 * unset — catchable Error, even from inside its own hook body
+						 * (probe-verified). */
+						SyBlob sErrMsg;
+						SyBlobInit(&sErrMsg,&pVm->sAllocator);
+						SyBlobFormat(&sErrMsg,"Cannot unset hooked property %z::$%z",
+							&pThis->pClass->sName,&pObjAttr->pAttr->sName);
+						VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
+					}else if( pEntry && bUnsAccessible ){
 						PH7_VmReleaseInstanceAttr(&(*pVm),pObjAttr);
 						SyHashDeleteEntry2(pEntry);
 					}else{
@@ -14206,6 +14219,21 @@ case PH7_OP_MEMBER: {
 								SyBlob sErrMsg;
 								SyBlobInit(&sErrMsg,&pVm->sAllocator);
 								SyBlobFormat(&sErrMsg,"Indirect modification of %z::$%z is not allowed",
+									&pThis->pClass->sName,&pObjAttr->pAttr->sName);
+								VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
+								PH7_ClassInstanceUnref(pThis);
+								break;
+							}
+							if( (pObjAttr->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_VIRTUAL))
+							 == PH7_CLASS_ATTR_HOOK_VIRTUAL ){
+								/* VIRTUAL set-only property: there is no backing store to
+								 * fall back to, so EVERY read context — plain read,
+								 * isset()/empty() (php throws there too, probe-verified),
+								 * the ??= test, an RMW read — is php's catchable
+								 * write-only Error. */
+								SyBlob sErrMsg;
+								SyBlobInit(&sErrMsg,&pVm->sAllocator);
+								SyBlobFormat(&sErrMsg,"Property %z::$%z is write-only",
 									&pThis->pClass->sName,&pObjAttr->pAttr->sName);
 								VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 								PH7_ClassInstanceUnref(pThis);
@@ -22344,6 +22372,10 @@ static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)
 			while( (pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
 				VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
 				if( pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT) ){ continue; }
+				if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_VIRTUAL))
+				 == PH7_CLASS_ATTR_HOOK_VIRTUAL ){
+					continue; /* virtual set-only property: no value to export (php) */
+				}
 				SySetPut(&sNames,(const void *)&pVmAttr->pAttr->sName);
 			}
 			aName = (SyString *)SySetBasePtr(&sNames);

@@ -282,6 +282,10 @@ static sxi32 VmJsonEncode(
 					 || pVmAttr->pAttr->iProtection != PH7_CLASS_PROT_PUBLIC ){
 						continue;
 					}
+					if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_VIRTUAL))
+					 == PH7_CLASS_ATTR_HOOK_VIRTUAL ){
+						continue; /* virtual set-only property: no value to encode (php) */
+					}
 					SySetPut(&sNames,(const void *)&pVmAttr->pAttr->sName);
 				}
 				aName = (SyString *)SySetBasePtr(&sNames);
