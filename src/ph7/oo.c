@@ -1451,18 +1451,19 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 			SyHashResetLoopCursor(&pThis->hAttr);
 			while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0){
 				VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
-				if((pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC)) == 0 ){
+				if((pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_HOOK_VIRTUAL)) == 0 ){
 					nProp++;
 				}
 			}
 		}
 		DumpClassInstanceHeader(&(*pOut),pThis->pClass,pThis->nObjId,ShowType,nProp);
 	}
-	/* Dump object attributes */
+	/* Dump object attributes (php 8.4: VIRTUAL hooked properties have no
+	 * backing store — excluded from var_dump/print_r) */
 	SyHashResetLoopCursor(&pThis->hAttr);
 	while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0){
 		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
-		if((pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC)) == 0 ){
+		if((pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_HOOK_VIRTUAL)) == 0 ){
 			/* Dump non-static/constant attribute only */
 			for( i = 0 ; i < nTab ; i++ ){
 				SyBlobAppend(&(*pOut)," ",sizeof(char));
@@ -1619,6 +1620,11 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmap(ph7_class_instance *pThis,ph7_hashm
 	while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
 		/* Point to the current attribute */
 		pAttr = (VmClassAttr *)pEntry->pUserData;
+		if( pAttr->pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL ){
+			/* php 8.4: a VIRTUAL hooked property has no backing store — the
+			 * (array) cast excludes it (raw surface, get is NOT dispatched) */
+			continue;
+		}
 		/* Extract attribute value */
 		pValue = ExtractClassAttrValue(pThis->pVm,pAttr);
 		if( pValue ){

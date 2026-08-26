@@ -686,6 +686,11 @@ PH7_PRIVATE int vm_builtin_get_class_vars(ph7_context *pCtx,int nArg,ph7_value *
 	SyHashResetLoopCursor(&pClass->hAttr);
 	while((pEntry = SyHashGetNextEntry(&pClass->hAttr)) != 0 ){
 		ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
+		if( pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL ){
+			/* php 8.4: VIRTUAL hooked properties have no backing store —
+			 * get_class_vars() excludes them (raw surface) */
+			continue;
+		}
 		/* Check if the access is allowed */
 		if( PH7_VmClassMemberAccess(pCtx->pVm,pClass,&pAttr->sName,pAttr->iProtection,FALSE) ){
 			SyString *pAttrName = &pAttr->sName;
@@ -771,6 +776,10 @@ PH7_PRIVATE int vm_builtin_get_object_vars(ph7_context *pCtx,int nArg,ph7_value 
 			if( pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT) ){
 				/* Only non-static/constant attributes are extracted */
 				continue;
+			}
+			if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_VIRTUAL))
+			 == PH7_CLASS_ATTR_HOOK_VIRTUAL ){
+				continue; /* virtual set-only property: no value to expose (php) */
 			}
 			SySetPut(&sNames,(const void *)&pVmAttr->pAttr->sName);
 		}

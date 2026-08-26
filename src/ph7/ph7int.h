@@ -934,7 +934,15 @@ struct ph7_class_attr
                                             * __phl_hook_get_NAME (guard-bypassed inside hooks) */
 #define PH7_CLASS_ATTR_HOOK_SET     0x8000 /* property has a `set` hook (PHP 8.4): plain writes
                                             * dispatch __phl_hook_set_NAME */
-/* next free bit: 0x10000 */
+#define PH7_CLASS_ATTR_HOOK_VIRTUAL 0x10000 /* PHP 8.4 VIRTUAL hooked property: none of its own
+                                            * hook bodies references `$this->NAME`, so php gives it
+                                            * no backing store — excluded from the raw object
+                                            * surfaces (var_dump/(array)/print_r/serialize/
+                                            * get_class_vars and the get-dispatching walks when it
+                                            * has no get hook), no default allowed, reads without a
+                                            * get hook are php's "is write-only" Error. PHL still
+                                            * allocates the (null) backing slot; this flag hides it. */
+/* next free bit: 0x20000 */
 /*
  * Each class method is parsed out and stored in an instance of the following
  * structure.

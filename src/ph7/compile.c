@@ -8952,10 +8952,41 @@ Synchronize:
  * implicit `$value` formal.
  * On entry pGen->pIn sits on '{'; on success it sits just past '}'.
  */
+/*
+ * Whether any token in [pStart, pEnd) spells `$this->NAME` (this property's own
+ * name; `?->` and `::` member ops count too). php 8.4's virtual-vs-backed rule:
+ * a hooked property is BACKED iff any of its OWN hook bodies references it by
+ * name through $this — otherwise it is VIRTUAL: no backing store, no default
+ * allowed, excluded from the raw object surfaces.
+ */
+static int GenStateHookBodyRefsProp(SyToken *pStart,SyToken *pEnd,const SyString *pName)
+{
+	SyToken *p;
+	for( p = pStart ; p + 3 < pEnd ; p++ ){
+		if( (p->nType & PH7_TK_DOLLAR) == 0 ){
+			continue;
+		}
+		if( (p[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0
+		 || p[1].sData.nByte != sizeof("this")-1
+		 || SyMemcmp((const void *)p[1].sData.zString,(const void *)"this",sizeof("this")-1) != 0 ){
+			continue;
+		}
+		if( !GenStateTokenIsMemberOp(&p[2]) ){
+			continue;
+		}
+		if( (p[3].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) != 0
+		 && p[3].sData.nByte == pName->nByte
+		 && SyMemcmp((const void *)p[3].sData.zString,(const void *)pName->zString,pName->nByte) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
 static sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pClass,ph7_class_attr *pAttr)
 {
 	sxu32 nLine = pGen->pIn->nLine;
 	sxi32 rc;
+	int bRefsSelf = 0;
 	pGen->pIn++; /* Jump '{' */
 	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_CCB) == 0 ){
 		char zHook[384];
@@ -9036,16 +9067,22 @@ static sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pClass,
 		}
 		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OCB) ){
 			/* Block body */
+			SyToken *pBodyStart = pGen->pIn;
 			rc = GenStateCompileFuncBody(&(*pGen),&pMeth->sFunc);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
 			pMeth->sFunc.nEndLine = pGen->pIn[-1].nLine;
+			if( !bRefsSelf && GenStateHookBodyRefsProp(pBodyStart,pGen->pIn,&pAttr->sName) ){
+				bRefsSelf = 1;
+			}
 		}else if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_ARRAY_OP) ){
 			/* `=> expr;` — implicit-return body (the arrow-fn pattern) */
 			GenBlock *pBlock;
 			SySet *pInstrContainer;
+			SyToken *pBodyStart;
 			pGen->pIn++; /* Jump '=>' */
+			pBodyStart = pGen->pIn;
 			rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_PROTECTED|GEN_BLOCK_FUNC,
 				PH7_VmInstrLength(pGen->pVm),&pMeth->sFunc,&pBlock);
 			if( rc != SXRET_OK ){
@@ -9064,13 +9101,19 @@ static sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pClass,
 				return SXERR_ABORT;
 			}
 			pMeth->sFunc.nEndLine = (pGen->pIn < pGen->pEnd) ? pGen->pIn->nLine : nHLine;
+			if( !bRefsSelf && GenStateHookBodyRefsProp(pBodyStart,pGen->pIn,&pAttr->sName) ){
+				bRefsSelf = 1;
+			}
 			if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) ){
 				pGen->pIn++; /* Jump ';' */
 			}
 			if( !bGet ){
 				/* `set => expr` assigns the expression to the backing store:
-				 * the dispatcher consumes the implicit return value. */
+				 * the dispatcher consumes the implicit return value — which
+				 * also makes the property BACKED (php: the shorthand is sugar
+				 * for `$this->NAME = expr`). */
 				pMeth->sFunc.iFlags |= VM_FUNC_HOOK_SET_EXPR;
+				bRefsSelf = 1;
 			}
 		}else{
 			goto HookSyntax;
@@ -9086,6 +9129,21 @@ static sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pClass,
 		goto HookSyntax;
 	}
 	pGen->pIn++; /* Jump '}' */
+	if( !bRefsSelf ){
+		/* php 8.4 virtual-vs-backed: no hook body referenced `$this->NAME`, so
+		 * this property is VIRTUAL — php gives it no backing store and forbids
+		 * a default value (compile fatal, php's exact wording). */
+		pAttr->iFlags |= PH7_CLASS_ATTR_HOOK_VIRTUAL;
+		if( SySetUsed(&pAttr->aByteCode) > 0 ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+				"Cannot specify default value for virtual hooked property %z::$%z",
+				&pClass->sName,&pAttr->sName);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			return SXERR_CORRUPT;
+		}
+	}
 	return SXRET_OK;
 HookSyntax:
 	rc = PH7_GenCompileError(pGen,E_ERROR,nLine,

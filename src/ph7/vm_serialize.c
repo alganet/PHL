@@ -153,7 +153,10 @@ static void VmSerializePropKey(SyBlob *pOut, ph7_class_attr *pAttr)
 /* True if an attribute is a serializable instance property (not static/const). */
 static int VmAttrIsProperty(VmClassAttr *pVmAttr)
 {
-	return (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0;
+	/* php 8.4: VIRTUAL hooked properties have no backing store — serialize()
+	 * excludes them (raw surface; the get hook is NOT consulted). */
+	return (pVmAttr->pAttr->iFlags
+		& (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_HOOK_VIRTUAL)) == 0;
 }
 /* __sleep() walker state: emit each named property in the array's order. */
 typedef struct sleep_ctx sleep_ctx;

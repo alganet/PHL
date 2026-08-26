@@ -409,6 +409,9 @@ static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value 
 					ReflectMapAddBool(pCtx, pMeta, "readonly", (pAttr->iFlags & PH7_CLASS_ATTR_READONLY) != 0);
 					ReflectMapAddBool(pCtx, pMeta, "privset", (pAttr->iFlags & PH7_CLASS_ATTR_PRIVATE_SET) != 0);
 					ReflectMapAddBool(pCtx, pMeta, "protset", (pAttr->iFlags & PH7_CLASS_ATTR_PROTECTED_SET) != 0);
+					ReflectMapAddBool(pCtx, pMeta, "hookget", (pAttr->iFlags & PH7_CLASS_ATTR_HOOK_GET) != 0);
+					ReflectMapAddBool(pCtx, pMeta, "hookset", (pAttr->iFlags & PH7_CLASS_ATTR_HOOK_SET) != 0);
+					ReflectMapAddBool(pCtx, pMeta, "virtual", (pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL) != 0);
 					ReflectMapAddBool(pCtx, pMeta, "hasdef", SySetUsed(&pAttr->aByteCode) > 0);
 					ReflectMapAddDyn(pCtx, pProps, &pAttr->sName, pMeta);
 				}
@@ -2464,9 +2467,13 @@ static const char zReflectLib2[] =
 "}"
 ;
 /*
- * Chunk 3: ReflectionProperty, ReflectionClassConstant.
+ * Chunk 3: PropertyHookType, ReflectionProperty, ReflectionClassConstant.
  */
 static const char zReflectLib3[] =
+"enum PropertyHookType: string {"
+" case Get = 'get';"
+" case Set = 'set';"
+"}"
 "class ReflectionProperty implements Reflector {"
 " const IS_PUBLIC = 1;"
 " const IS_PROTECTED = 2;"
@@ -2532,13 +2539,24 @@ static const char zReflectLib3[] =
 " public function isDynamic(){ $m = $this->__rpmeta(); return isset($m['dyn']); }"
 " public function isAbstract(){ return false; }"
 " public function isFinal(){ return false; }"
-" public function isVirtual(){ return false; }"
-" public function isPrivateSet(){ return false; }"
-" public function isProtectedSet(){ return false; }"
-" public function hasHooks(){ return false; }"
-" public function getHooks(){ return array(); }"
-" public function hasHook($type){ return false; }"
-" public function getHook($type){ return null; }"
+" public function isVirtual(){ $m = $this->__rpmeta(); return isset($m['virtual']) ? $m['virtual'] : false; }"
+" public function hasHooks(){ $m = $this->__rpmeta();"
+"  return (isset($m['hookget']) && $m['hookget']) || (isset($m['hookset']) && $m['hookset']); }"
+" public function getHooks(){"
+"  $m = $this->__rpmeta(); $h = array();"
+"  if(isset($m['hookget']) && $m['hookget']){ $h['get'] = new ReflectionMethod($m['decl'], '__phl_hook_get_'.$this->name); }"
+"  if(isset($m['hookset']) && $m['hookset']){ $h['set'] = new ReflectionMethod($m['decl'], '__phl_hook_set_'.$this->name); }"
+"  return $h; }"
+" public function hasHook($type){"
+"  $t = $type instanceof PropertyHookType ? $type->value : $type;"
+"  $m = $this->__rpmeta();"
+"  if($t === 'get'){ return isset($m['hookget']) && $m['hookget']; }"
+"  if($t === 'set'){ return isset($m['hookset']) && $m['hookset']; }"
+"  return false; }"
+" public function getHook($type){"
+"  $t = $type instanceof PropertyHookType ? $type->value : $type;"
+"  $h = $this->getHooks();"
+"  return isset($h[$t]) ? $h[$t] : null; }"
 " public function isLazy($object){ return false; }"
 " public function setAccessible($accessible){ }"
 " public function getValue($object = null){"
