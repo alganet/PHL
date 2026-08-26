@@ -4,28 +4,28 @@
 | src/ph7/builtin.c              | 86.27%   | 4265/4944   |
 | src/ph7/builtin_date.c         | 66.25%   | 481/726     |
 | src/ph7/builtin_math.c         | 87.35%   | 525/601     |
-| src/ph7/compile.c              | 80.74%   | 6797/8418   |
+| src/ph7/compile.c              | 80.76%   | 6828/8455   |
 | src/ph7/constant.c             | 98.58%   | 1108/1124   |
 | src/ph7/hashmap.c              | 89.69%   | 3924/4375   |
 | src/ph7/lex.c                  | 93.44%   | 784/839     |
 | src/ph7/memobj.c               | 89.78%   | 870/969     |
 | src/ph7/net.c                  | 50.48%   | 53/105      |
-| src/ph7/oo.c                   | 89.55%   | 651/727     |
+| src/ph7/oo.c                   | 89.57%   | 653/729     |
 | src/ph7/parse.c                | 87.38%   | 1163/1331   |
 | src/ph7/vfs.c                  | 64.88%   | 1853/2856   |
 | src/ph7/vfs_unix.c             | 88.06%   | 376/427     |
 | src/ph7/vfs_win.c              | 68.59%   | 487/710     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
-| src/ph7/vm.c                   | 82.67%   | 10898/13183 |
-| src/ph7/vm_builtin_class.c     | 86.66%   | 526/607     |
+| src/ph7/vm.c                   | 82.69%   | 10917/13202 |
+| src/ph7/vm_builtin_class.c     | 87.58%   | 536/612     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
 | src/ph7/vm_builtin_ob.c        | 75.12%   | 157/209     |
-| src/ph7/vm_builtin_reflection.c | 85.60%   | 1034/1208   |
+| src/ph7/vm_builtin_reflection.c | 85.63%   | 1037/1211   |
 | src/ph7/vm_http.c              | 68.02%   | 302/444     |
 | src/ph7/vm_http_response.c     | 44.71%   | 114/255     |
-| src/ph7/vm_json.c              | 77.81%   | 491/631     |
+| src/ph7/vm_json.c              | 77.92%   | 494/634     |
 | src/ph7/vm_pcre.c              | 64.89%   | 595/917     |
-| src/ph7/vm_serialize.c         | 96.01%   | 457/476     |
+| src/ph7/vm_serialize.c         | 96.02%   | 458/477     |
 | src/ph7/vm_xml.c               | 67.82%   | 392/578     |
 | src/phl/phl.c                  | 78.66%   | 199/253     |
 | src/phl/server.c               | 61.56%   | 277/450     |
@@ -45,6 +45,6 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.26%   | 42844/52722 |
-| Functions                      | 96.56%   | 1963/2033   |
+| Lines                          | 81.29%   | 42913/52792 |
+| Functions                      | 96.56%   | 1964/2034   |
 
