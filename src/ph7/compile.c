@@ -8628,6 +8628,18 @@ loop:
 		SySetRelease(&aUnionAlts);
 		return SXRET_OK;
 	}
+	if( iFlags & PH7_CLASS_ATTR_ABSTRACT ){
+		/* php 8.4: `abstract` on a property requires a hook list (php's exact
+		 * wording differs per declaration site) */
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+			(pClass->iFlags & PH7_CLASS_INTERFACE)
+				? "Interfaces may only include hooked properties"
+				: "Only hooked properties may be declared abstract");
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		goto Synchronize;
+	}
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_COMMA /*','*/) ){
 		/* Multiple attribute declarations [i.e: public $var1,$var2=5<<1,$var3] */
 		pGen->pIn++; /* Jump the comma */
@@ -8962,25 +8974,94 @@ Synchronize:
 static int GenStateHookBodyRefsProp(SyToken *pStart,SyToken *pEnd,const SyString *pName)
 {
 	SyToken *p;
-	for( p = pStart ; p + 3 < pEnd ; p++ ){
+	for( p = pStart ; p + 1 < pEnd ; p++ ){
 		if( (p->nType & PH7_TK_DOLLAR) == 0 ){
 			continue;
 		}
-		if( (p[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0
-		 || p[1].sData.nByte != sizeof("this")-1
-		 || SyMemcmp((const void *)p[1].sData.zString,(const void *)"this",sizeof("this")-1) != 0 ){
-			continue;
-		}
-		if( !GenStateTokenIsMemberOp(&p[2]) ){
-			continue;
-		}
-		if( (p[3].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) != 0
+		/* `$this->NAME` (also `?->`/`::`) */
+		if( p + 3 < pEnd
+		 && (p[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) != 0
+		 && p[1].sData.nByte == sizeof("this")-1
+		 && SyMemcmp((const void *)p[1].sData.zString,(const void *)"this",sizeof("this")-1) == 0
+		 && GenStateTokenIsMemberOp(&p[2])
+		 && (p[3].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) != 0
 		 && p[3].sData.nByte == pName->nByte
 		 && SyMemcmp((const void *)p[3].sData.zString,(const void *)pName->zString,pName->nByte) == 0 ){
 			return 1;
 		}
+		/* `parent::$NAME` (the parent::$x::get() hook-call form): the parent
+		 * hook operates on the shared per-instance backing store, so the
+		 * property is backed (php compiles a default alongside it). */
+		if( p > pStart
+		 && GenStateTokenIsMemberOp(&p[-1])
+		 && (p[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) != 0
+		 && p[1].sData.nByte == pName->nByte
+		 && SyMemcmp((const void *)p[1].sData.zString,(const void *)pName->zString,pName->nByte) == 0 ){
+			return 1;
+		}
 	}
 	return 0;
+}
+/*
+ * True when p opens php 8.4's parent-hook call form
+ * `parent :: $ NAME :: get|set (` (7 tokens through the '(').
+ */
+static int GenStateIsParentHookCallAt(SyToken *p,SyToken *pEnd)
+{
+	return p + 6 < pEnd
+	 && (p->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) != 0
+	 && p->sData.nByte == sizeof("parent")-1
+	 && SyMemcmp((const void *)p->sData.zString,(const void *)"parent",sizeof("parent")-1) == 0
+	 && GenStateTokenIsMemberOp(&p[1])
+	 && (p[2].nType & PH7_TK_DOLLAR) != 0
+	 && (p[3].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) != 0
+	 && GenStateTokenIsMemberOp(&p[4])
+	 && (p[5].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) != 0
+	 && p[5].sData.nByte == 3
+	 && (SyMemcmp((const void *)p[5].sData.zString,(const void *)"get",3) == 0
+	  || SyMemcmp((const void *)p[5].sData.zString,(const void *)"set",3) == 0)
+	 && (p[6].nType & PH7_TK_LPAREN) != 0;
+}
+/*
+ * Rewrite php 8.4 `parent::$x::get(...)` / `parent::$x::set(...)` calls in a
+ * hook body into calls of the parent class's synthesized hook method
+ * (`parent::__phl_hook_get_x(...)`). Builds a token COPY into pCopy (only
+ * called when GenStateIsParentHookCallAt matched somewhere in the range);
+ * copied tokens keep pointing at source-owned lexeme storage, and the
+ * synthesized method-name lexemes are VM-allocator owned. Returns SXRET_OK
+ * or SXERR_MEM.
+ */
+static sxi32 GenStateRewriteParentHookCalls(ph7_gen_state *pGen,SySet *pCopy,
+	SyToken *pStart,SyToken *pEnd)
+{
+	SyToken *p = pStart;
+	while( p < pEnd ){
+		if( GenStateIsParentHookCallAt(p,pEnd) ){
+			SyToken sTok;
+			char zName[384];
+			sxu32 nName;
+			char *zDup;
+			/* `parent` `::` */
+			SySetPut(pCopy,(const void *)&p[0]);
+			SySetPut(pCopy,(const void *)&p[1]);
+			nName = SyBufferFormat(zName,sizeof(zName),"__phl_hook_%.3s_%.*s",
+				p[5].sData.zString,(int)p[3].sData.nByte,p[3].sData.zString);
+			zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,zName,nName);
+			if( zDup == 0 ){
+				return SXERR_MEM;
+			}
+			sTok = p[3]; /* keep the line info of the property name */
+			sTok.nType = PH7_TK_ID;
+			SyStringInitFromBuf(&sTok.sData,zDup,nName);
+			sTok.pUserData = 0;
+			SySetPut(pCopy,(const void *)&sTok);
+			p += 6; /* continue at the '(' — arguments copy through unchanged */
+			continue;
+		}
+		SySetPut(pCopy,(const void *)p);
+		p++;
+	}
+	return SXRET_OK;
 }
 static sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pClass,ph7_class_attr *pAttr)
 {
@@ -9024,6 +9105,72 @@ static sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pClass,
 		sHookName.zString = zHook;
 		sHookName.nByte = SyBufferFormat(zHook,sizeof(zHook),"__phl_hook_%s_%z",
 			bGet ? "get" : "set",&pAttr->sName);
+		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_SEMI|PH7_TK_CCB)) ){
+			/* Bare `get;` / `set;` — an ABSTRACT hook declaration (php 8.4):
+			 * legal only on an `abstract` property or inside an interface. The
+			 * synthesized method carries PH7_CLASS_ATTR_ABSTRACT and rides the
+			 * existing must-implement machinery; a concrete hook override (or a
+			 * plain property, see GenStateCheckAbstractMethods) satisfies it. */
+			if( (pAttr->iFlags & PH7_CLASS_ATTR_ABSTRACT) == 0
+			 && (pClass->iFlags & PH7_CLASS_INTERFACE) == 0 ){
+				rc = PH7_GenCompileError(pGen,E_ERROR,nHLine,
+					"Non-abstract property hook must have a body");
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				return SXERR_CORRUPT;
+			}
+			pMeth = PH7_NewClassMethod(pGen->pVm,pClass,&sHookName,nHLine,
+				PH7_CLASS_PROT_PUBLIC,PH7_CLASS_ATTR_ABSTRACT,0);
+			if( pMeth == 0 ){
+				PH7_GenCompileError(pGen,E_ERROR,nHLine,"Fatal, PH7 is running out of memory");
+				return SXERR_ABORT;
+			}
+			pMeth->sFunc.nLine = nHLine;
+			if( !bGet ){
+				/* The implicit `$value` formal keeps the stub's signature
+				 * compatible with concrete set-hook implementations (which
+				 * always carry one parameter). It takes the PROPERTY's declared
+				 * type (php: the abstract set's parameter type IS the property
+				 * type), so the override contravariance check accepts a typed
+				 * `set(int $v)` implementation on an `int $x` requirement. */
+				ph7_vm_func_arg sVArg;
+				char *zVName = SyMemBackendStrDup(&pGen->pVm->sAllocator,"value",sizeof("value")-1);
+				if( zVName == 0 ){
+					PH7_GenCompileError(pGen,E_ERROR,nHLine,"Fatal, PH7 is running out of memory");
+					return SXERR_ABORT;
+				}
+				SyZero(&sVArg,sizeof(ph7_vm_func_arg));
+				SyStringInitFromBuf(&sVArg.sName,zVName,sizeof("value")-1);
+				SySetInit(&sVArg.aByteCode,&pGen->pVm->sAllocator,sizeof(VmInstr));
+				SySetInit(&sVArg.aUnionAlts,&pGen->pVm->sAllocator,sizeof(ph7_type_alt));
+				SySetInit(&sVArg.aAttrs,&pGen->pVm->sAllocator,sizeof(ph7_attribute));
+				sVArg.nType = pAttr->nType;
+				sVArg.sClass = pAttr->sClass;
+				sVArg.sTypeName = pAttr->sTypeName;
+				if( pAttr->iFlags & PH7_CLASS_ATTR_NULLABLE ){
+					sVArg.iFlags |= VM_FUNC_ARG_NULLABLE;
+				}
+				SySetPut(&pMeth->sFunc.aArgs,(const void *)&sVArg);
+			}
+			rc = PH7_ClassInstallMethod(pClass,pMeth);
+			if( rc != SXRET_OK ){
+				PH7_GenCompileError(pGen,E_ERROR,nHLine,"Fatal, PH7 is running out of memory");
+				return SXERR_ABORT;
+			}
+			pAttr->iFlags |= bGet ? PH7_CLASS_ATTR_HOOK_GET : PH7_CLASS_ATTR_HOOK_SET;
+			continue; /* the loop consumes the ';' as a stray separator */
+		}
+		if( (pAttr->iFlags & PH7_CLASS_ATTR_ABSTRACT) != 0
+		 || (pClass->iFlags & PH7_CLASS_INTERFACE) != 0 ){
+			/* php: an abstract/interface property hook cannot carry a body */
+			rc = PH7_GenCompileError(pGen,E_ERROR,nHLine,
+				"Abstract property hook cannot have body");
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			return SXERR_CORRUPT;
+		}
 		pMeth = PH7_NewClassMethod(pGen->pVm,pClass,&sHookName,nHLine,
 			PH7_CLASS_PROT_PUBLIC,0,0);
 		if( pMeth == 0 ){
@@ -9068,11 +9215,48 @@ static sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pClass,
 		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OCB) ){
 			/* Block body */
 			SyToken *pBodyStart = pGen->pIn;
-			rc = GenStateCompileFuncBody(&(*pGen),&pMeth->sFunc);
-			if( rc == SXERR_ABORT ){
-				return SXERR_ABORT;
+			SyToken *pCloser = 0;
+			int bParentCall = 0;
+			PH7_DelimitNestedTokens(&pBodyStart[1],pGen->pEnd,PH7_TK_OCB,PH7_TK_CCB,&pCloser);
+			if( pCloser < pGen->pEnd ){
+				SyToken *pScan;
+				for( pScan = &pBodyStart[1] ; pScan < pCloser ; pScan++ ){
+					if( GenStateIsParentHookCallAt(pScan,pCloser) ){
+						bParentCall = 1;
+						break;
+					}
+				}
 			}
-			pMeth->sFunc.nEndLine = pGen->pIn[-1].nLine;
+			if( bParentCall ){
+				/* `parent::$x::get()` inside the body: compile a REWRITTEN copy
+				 * of the body tokens (the call becomes the parent's synthesized
+				 * hook method), then continue past the original body. */
+				SySet sBody;
+				SyToken *pSavedEnd = pGen->pEnd;
+				SySetInit(&sBody,&pGen->pVm->sAllocator,sizeof(SyToken));
+				rc = GenStateRewriteParentHookCalls(&(*pGen),&sBody,pBodyStart,&pCloser[1]);
+				if( rc != SXRET_OK ){
+					SySetRelease(&sBody);
+					PH7_GenCompileError(pGen,E_ERROR,nHLine,"Fatal, PH7 is running out of memory");
+					return SXERR_ABORT;
+				}
+				pGen->pIn = (SyToken *)SySetBasePtr(&sBody);
+				pGen->pEnd = &pGen->pIn[SySetUsed(&sBody)];
+				rc = GenStateCompileFuncBody(&(*pGen),&pMeth->sFunc);
+				pGen->pIn = &pCloser[1];
+				pGen->pEnd = pSavedEnd;
+				SySetRelease(&sBody);
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				pMeth->sFunc.nEndLine = pCloser->nLine;
+			}else{
+				rc = GenStateCompileFuncBody(&(*pGen),&pMeth->sFunc);
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				pMeth->sFunc.nEndLine = pGen->pIn[-1].nLine;
+			}
 			if( !bRefsSelf && GenStateHookBodyRefsProp(pBodyStart,pGen->pIn,&pAttr->sName) ){
 				bRefsSelf = 1;
 			}
@@ -9081,8 +9265,54 @@ static sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pClass,
 			GenBlock *pBlock;
 			SySet *pInstrContainer;
 			SyToken *pBodyStart;
+			SyToken *pExprEnd;
+			SyToken *pSavedEnd = 0;
+			SySet sBody;
+			int bParentCall = 0;
 			pGen->pIn++; /* Jump '=>' */
 			pBodyStart = pGen->pIn;
+			/* Delimit the expression (first top-level ';', or a closer that
+			 * would end the enclosing hook list) and rewrite any
+			 * `parent::$x::get()` calls into the parent's synthesized hook
+			 * method on a token copy. */
+			{
+				sxi32 iNest = 0;
+				pExprEnd = pBodyStart;
+				while( pExprEnd < pGen->pEnd ){
+					if( pExprEnd->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+						iNest++;
+					}else if( pExprEnd->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+						if( iNest <= 0 ){
+							break;
+						}
+						iNest--;
+					}else if( iNest <= 0 && (pExprEnd->nType & PH7_TK_SEMI) ){
+						break;
+					}
+					pExprEnd++;
+				}
+			}
+			{
+				SyToken *pScan;
+				for( pScan = pBodyStart ; pScan < pExprEnd ; pScan++ ){
+					if( GenStateIsParentHookCallAt(pScan,pExprEnd) ){
+						bParentCall = 1;
+						break;
+					}
+				}
+			}
+			if( bParentCall ){
+				SySetInit(&sBody,&pGen->pVm->sAllocator,sizeof(SyToken));
+				rc = GenStateRewriteParentHookCalls(&(*pGen),&sBody,pBodyStart,pExprEnd);
+				if( rc != SXRET_OK ){
+					SySetRelease(&sBody);
+					PH7_GenCompileError(pGen,E_ERROR,nHLine,"Fatal, PH7 is running out of memory");
+					return SXERR_ABORT;
+				}
+				pSavedEnd = pGen->pEnd;
+				pGen->pIn = (SyToken *)SySetBasePtr(&sBody);
+				pGen->pEnd = &pGen->pIn[SySetUsed(&sBody)];
+			}
 			rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_PROTECTED|GEN_BLOCK_FUNC,
 				PH7_VmInstrLength(pGen->pVm),&pMeth->sFunc,&pBlock);
 			if( rc != SXRET_OK ){
@@ -9097,6 +9327,11 @@ static sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pClass,
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,0,0,0,0);
 			PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
 			GenStateLeaveBlock(&(*pGen),0);
+			if( bParentCall ){
+				pGen->pIn = pExprEnd; /* land on the original ';' */
+				pGen->pEnd = pSavedEnd;
+				SySetRelease(&sBody);
+			}
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
@@ -9339,7 +9574,40 @@ static sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 		if( nKwrd == PH7_TKWRD_PUBLIC ){
 			/* Advance the stream cursor */
 			pGen->pIn++;
+			if( pGen->pIn < pGen->pEnd
+			 && ((pGen->pIn->nType & PH7_TK_DOLLAR) != 0
+			  || (pGen->pIn->sData.nByte == 1 && pGen->pIn->sData.zString[0] == '?')) ){
+				/* PHP 8.4: `public [?T] $x { get; set; }` — a hooked-property
+				 * requirement. The attribute compiler + hook parser handle it
+				 * (bare hooks are implicitly abstract inside an interface; a
+				 * property without hooks is ITS "Interfaces may only include
+				 * hooked properties" error). */
+				rc = GenStateCompileClassAttr(&(*pGen),PH7_CLASS_PROT_PUBLIC,
+					PH7_CLASS_ATTR_ABSTRACT,pClass);
+				if( rc != SXRET_OK ){
+					if( rc == SXERR_ABORT ){
+						return SXERR_ABORT;
+					}
+					goto done;
+				}
+				continue;
+			}
 			if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ){
+				/* A type NAME (a plain identifier, e.g. a class type) followed by
+				 * '$' also opens a hooked-property requirement. */
+				if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_ID) != 0
+				 && (pGen->pIn + 1) < pGen->pEnd
+				 && ((pGen->pIn + 1)->nType & PH7_TK_DOLLAR) != 0 ){
+					rc = GenStateCompileClassAttr(&(*pGen),PH7_CLASS_PROT_PUBLIC,
+						PH7_CLASS_ATTR_ABSTRACT,pClass);
+					if( rc != SXRET_OK ){
+						if( rc == SXERR_ABORT ){
+							return SXERR_ABORT;
+						}
+						goto done;
+					}
+					continue;
+				}
 				rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 					"Expecting method signature inside interface '%z'",pName);
 				if( rc == SXERR_ABORT ){
@@ -9350,6 +9618,20 @@ static sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 			}
 			nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
 			if( nKwrd != PH7_TKWRD_FUNCTION && nKwrd != PH7_TKWRD_CONST && nKwrd != PH7_TKWRD_STATIC ){
+				/* A type KEYWORD (int/string/bool/…) followed by '$' opens a
+				 * hooked-property requirement (PHP 8.4). */
+				if( (pGen->pIn + 1) < pGen->pEnd
+				 && ((pGen->pIn + 1)->nType & PH7_TK_DOLLAR) != 0 ){
+					rc = GenStateCompileClassAttr(&(*pGen),PH7_CLASS_PROT_PUBLIC,
+						PH7_CLASS_ATTR_ABSTRACT,pClass);
+					if( rc != SXRET_OK ){
+						if( rc == SXERR_ABORT ){
+							return SXERR_ABORT;
+						}
+						goto done;
+					}
+					continue;
+				}
 				rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 					"Expecting method signature or constant declaration inside interface '%z'",pName);
 				if( rc == SXERR_ABORT ){
@@ -9527,6 +9809,46 @@ static sxi32 GenStateCheckInterfaceSignatures(ph7_gen_state *pGen,ph7_class *pCl
 	return SXRET_OK;
 }
 /*
+ * An abstract property-hook stub (__phl_hook_{get,set}_NAME) is satisfied by
+ * the class declaring a PLAIN (non-abstract, non-hooked) property NAME: php
+ * lets a plain property implement `{ get; set; }` requirements — its raw
+ * read/write IS the default get/set. A concrete hook override replaced the
+ * stub in hMethod already, so a surviving stub next to a HOOKED property
+ * means that specific hook is still missing.
+ */
+static int GenStateAbstractHookSatisfied(ph7_class *pClass,const SyString *pMName)
+{
+	static const sxu32 nPfx = sizeof("__phl_hook_get_")-1;
+	ph7_class_attr *pProp;
+	if( pMName->nByte <= nPfx
+	 || (SyMemcmp((const void *)pMName->zString,(const void *)"__phl_hook_get_",nPfx) != 0
+	  && SyMemcmp((const void *)pMName->zString,(const void *)"__phl_hook_set_",nPfx) != 0) ){
+		return 0; /* not a hook stub */
+	}
+	pProp = PH7_ClassExtractAttribute(pClass,&pMName->zString[nPfx],pMName->nByte - nPfx);
+	return pProp != 0
+		&& (pProp->iFlags & (PH7_CLASS_ATTR_ABSTRACT|PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT
+			|PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_SET)) == 0;
+}
+/*
+ * Append an abstract member's display name to the message blob, translating a
+ * property-hook stub (__phl_hook_get_x) to php's `$x::get` form.
+ */
+static void GenStateAppendAbstractMemberName(SyBlob *pMsg,const SyString *pMName)
+{
+	static const sxu32 nPfx = sizeof("__phl_hook_get_")-1;
+	if( pMName->nByte > nPfx
+	 && (SyMemcmp((const void *)pMName->zString,(const void *)"__phl_hook_get_",nPfx) == 0
+	  || SyMemcmp((const void *)pMName->zString,(const void *)"__phl_hook_set_",nPfx) == 0) ){
+		SyBlobAppend(pMsg,"$",1);
+		SyBlobAppend(pMsg,(const void *)&pMName->zString[nPfx],pMName->nByte - nPfx);
+		SyBlobAppend(pMsg,"::",2);
+		SyBlobAppend(pMsg,(const void *)&pMName->zString[sizeof("__phl_hook_")-1],3);
+		return;
+	}
+	SyBlobAppend(pMsg,(const void *)pMName->zString,pMName->nByte);
+}
+/*
  * Check that a concrete class has no remaining abstract methods.
  * If it does, emit a PHP-compatible fatal error listing them all.
  */
@@ -9547,6 +9869,9 @@ static sxi32 GenStateCheckAbstractMethods(ph7_gen_state *pGen,ph7_class *pClass)
 	while((pEntry = SyHashGetNextEntry(&pClass->hMethod)) != 0 ){
 		pMeth = (ph7_class_method *)pEntry->pUserData;
 		if( pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT ){
+			if( GenStateAbstractHookSatisfied(pClass,&pMeth->sFunc.sName) ){
+				continue; /* hook requirement met by a plain property (php) */
+			}
 			nAbstract++;
 		}
 	}
@@ -9572,6 +9897,9 @@ static sxi32 GenStateCheckAbstractMethods(ph7_gen_state *pGen,ph7_class *pClass)
 				continue;
 			}
 			pMName = &pMeth->sFunc.sName;
+			if( GenStateAbstractHookSatisfied(pClass,pMName) ){
+				continue; /* hook requirement met by a plain property (php) */
+			}
 			if( nListed > 0 ){
 				SyBlobAppend(&sMsg,", ",2);
 			}
@@ -9660,11 +9988,12 @@ static sxi32 GenStateCheckAbstractMethods(ph7_gen_state *pGen,ph7_class *pClass)
 				}
 			}
 			if( pOrigin ){
-				SyBlobFormat(&sMsg,"%z::%z",&pOrigin->sName,pMName);
+				SyBlobFormat(&sMsg,"%z::",&pOrigin->sName);
 			}else{
 				/* Origin is the class itself (trait method adopted into class namespace) */
-				SyBlobFormat(&sMsg,"%z::%z",&pClass->sName,pMName);
+				SyBlobFormat(&sMsg,"%z::",&pClass->sName);
 			}
+			GenStateAppendAbstractMemberName(&sMsg,pMName);
 			nListed++;
 		}
 	}
@@ -10561,6 +10890,23 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 					}
 					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ||
 						SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_FUNCTION ){
+							/* PHP 8.4: `abstract public [T] $x { get; set; }` — an abstract
+							 * HOOKED property declaration. Route anything that is not a
+							 * method through the attribute compiler with the ABSTRACT flag;
+							 * the hook parser accepts the bare `get;`/`set;` forms there
+							 * (and a non-hooked abstract property is ITS error to raise). */
+							if( pGen->pIn < pGen->pEnd
+							 && ((pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_ID|PH7_TK_DOLLAR)) != 0
+							  || (pGen->pIn->sData.nByte == 1 && pGen->pIn->sData.zString[0] == '?')) ){
+								rc = GenStateCompileClassAttr(&(*pGen),iProtection,iAttrflags,pClass);
+								if( rc != SXRET_OK ){
+									if( rc == SXERR_ABORT ){
+										return SXERR_ABORT;
+									}
+									goto done;
+								}
+								continue;
+							}
 							rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 								"Unexpected token '%z',Expecting method declaration after 'abstract' keyword inside class '%z'",
 								&pGen->pIn->sData,pName);
