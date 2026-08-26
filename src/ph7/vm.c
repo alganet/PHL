@@ -2515,6 +2515,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->pHookSetThis = 0;
 	pVm->pHookSetAttr = 0;
 	pVm->nHookSetIdx = SXU32_HIGH;
+	SySetInit(&pVm->aHookRmw,&pVm->sAllocator,sizeof(VmHookRmw));
 	pVm->pMagicCallThis = 0;
 	pVm->pMagicCallClass = 0;
 	SyBlobInit(&pVm->sMagicCallName,&pVm->sAllocator);
@@ -4103,6 +4104,18 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	pVm->pConstCycleAttr = 0;
 	pVm->pConstCycleClass = 0;
 	SySetReset(&pVm->aMagicGuard);
+	{
+		/* Drop any pending write-back entries (each owns one instance ref;
+		 * MAGIC entries own a name blob; scratch slots die with aMemObj) */
+		VmHookRmw *aRmw = (VmHookRmw *)SySetBasePtr(&pVm->aHookRmw);
+		sxu32 nRmw = SySetUsed(&pVm->aHookRmw);
+		sxu32 iRmw;
+		for( iRmw = 0 ; iRmw < nRmw ; ++iRmw ){
+			SyBlobRelease(&aRmw[iRmw].sName);
+			PH7_ClassInstanceUnref(aRmw[iRmw].pThis);
+		}
+		SySetReset(&pVm->aHookRmw);
+	}
 	if( pVm->pMagicSetThis ){
 		PH7_ClassInstanceUnref(pVm->pMagicSetThis);
 		pVm->pMagicSetThis = 0;
@@ -8108,9 +8121,16 @@ static int VmMemberCtxIsLookup(sxi32 iP2)
  */
 static int VmMagicGuardHeld(ph7_vm *pVm,void *pThis,const SyString *pName,sxu8 cKind)
 {
-	VmMagicGuard *aG = (VmMagicGuard *)SySetBasePtr(&pVm->aMagicGuard);
-	sxu32 nHash = SyBinHash((const void *)pName->zString,pName->nByte);
+	VmMagicGuard *aG;
+	sxu32 nHash;
 	sxu32 n;
+	if( SySetUsed(&pVm->aMagicGuard) == 0 ){
+		/* Common case (no accessor in flight): skip the name hash entirely —
+		 * every hooked-property access consults the guard, often twice. */
+		return FALSE;
+	}
+	aG = (VmMagicGuard *)SySetBasePtr(&pVm->aMagicGuard);
+	nHash = SyBinHash((const void *)pName->zString,pName->nByte);
 	for( n = 0; n < SySetUsed(&pVm->aMagicGuard); ++n ){
 		if( aG[n].pThis == pThis && aG[n].nNameHash == nHash && aG[n].cKind == cKind ){
 			return TRUE;
@@ -8154,6 +8174,216 @@ static int VmMemberNextIsWrite(const VmInstr *pNext)
 			return 1;
 		default:
 			return 0;
+	}
+}
+/*
+ * Whether execution is currently INSIDE one of pName's own hook bodies on this
+ * instance. php's rule: within ANY hook of property x (get or set alike),
+ * `$this->x` addresses the raw backing store for BOTH reads and writes — so
+ * every hook-dispatch decision checks both guard kinds, not just its own.
+ */
+static int VmHookGuardHeld(ph7_vm *pVm,void *pThis,const SyString *pName)
+{
+	return VmMagicGuardHeld(pVm,pThis,pName,'G') || VmMagicGuardHeld(pVm,pThis,pName,'S');
+}
+/*
+ * Dispatch the SET side of a hooked-property write: php's read-only Error when
+ * the property has no set hook, the asymmetric set-visibility check (php checks
+ * it before the hook runs), then __phl_hook_set_NAME with pValue; a
+ * `set => expr` hook's return value is stored into the BACKING slot through the
+ * ordinary typed enforcement. Errors park on the boundary rail (the caller's
+ * opcode completes benignly; the fetch-point router lands them). Shared by the
+ * plain-store consume (OP_STORE), the coalesce-assign consume (OP_NULLC_STORE)
+ * and the read-modify-write write-back (VmHookRmwConsume). Does NOT release the
+ * caller's reference on pHThis. Returns PH7_ABORT only for the enforcement's
+ * abort path; SXRET_OK otherwise.
+ */
+static sxi32 VmHookSetDispatch(ph7_vm *pVm,ph7_class_instance *pHThis,ph7_class_attr *pHAttr,sxu32 nBackIdx,ph7_value *pValue)
+{
+	char zHName[384];
+	sxu32 nHName;
+	ph7_class_method *pSetHook;
+	if( (pHAttr->iFlags & PH7_CLASS_ATTR_HOOK_SET) == 0 ){
+		/* get-only hooked property: php's read-only Error */
+		SyBlob sErrMsg;
+		SyBlobInit(&sErrMsg,&pVm->sAllocator);
+		SyBlobFormat(&sErrMsg,"Property %z::$%z is read-only",
+			&pHThis->pClass->sName,&pHAttr->sName);
+		VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
+		return SXRET_OK;
+	}
+	if( pHAttr->iFlags & (PH7_CLASS_ATTR_PRIVATE_SET|PH7_CLASS_ATTR_PROTECTED_SET) ){
+		/* Asymmetric set-visibility is checked BEFORE the hook dispatches (php) */
+		sxi32 rcVis = VmCheckSetVisibility(&(*pVm),pHThis->pClass,pHAttr);
+		if( rcVis != SXRET_OK ){
+			VmBoundaryPark(&(*pVm),rcVis);
+			return SXRET_OK;
+		}
+	}
+	nHName = SyBufferFormat(zHName,sizeof(zHName),"__phl_hook_set_%z",&pHAttr->sName);
+	pSetHook = PH7_ClassExtractMethod(pHThis->pClass,zHName,nHName);
+	if( pSetHook ){
+		ph7_value sHookRet;
+		ph7_value *apHArg[1];
+		apHArg[0] = pValue;
+		PH7_MemObjInit(pVm,&sHookRet);
+		VmMagicGuardPush(pVm,(void *)pHThis,&pHAttr->sName,'S');
+		PH7_VmCallClassMethod(&(*pVm),pHThis,pSetHook,&sHookRet,1,apHArg);
+		VmMagicGuardPop(pVm);
+		if( (pSetHook->sFunc.iFlags & VM_FUNC_HOOK_SET_EXPR)
+		 && nBackIdx != SXU32_HIGH && pVm->nBoundaryRc == 0 ){
+			sxi32 rcH = VmEnforcePropertyTypeOnStore(&(*pVm),nBackIdx,&sHookRet,0);
+			if( rcH == SXRET_OK ){
+				ph7_value *pBack = (ph7_value *)SySetAt(&pVm->aMemObj,nBackIdx);
+				if( pBack ){
+					PH7_MemObjStore(&sHookRet,pBack);
+				}
+			}else if( rcH == PH7_ABORT ){
+				PH7_MemObjRelease(&sHookRet);
+				return PH7_ABORT;
+			}
+			/* PH7_EXCEPTION: the TypeError was routed/parked by the enforcement —
+			 * the store is skipped, execution lands at the fetch point like any
+			 * parked throw. */
+		}
+		PH7_MemObjRelease(&sHookRet);
+	}
+	return SXRET_OK;
+}
+/*
+ * Consume the top pending hook-RMW entry if it targets slot nIdx — called from
+ * the tail of every read-modify-write opcode (++/--/compound-assign) with the
+ * slot it just wrote. A non-matching top (an ordinary variable RMW running
+ * inside a nested exec while an outer write-back is pending) is left alone.
+ * On match: copy the computed value out of the scratch slot, return the slot
+ * to the free pool, and dispatch the set side (VmHookSetDispatch) — unless a
+ * throw parked during the modify op, which wins (php: the exception discards
+ * the write). Returns SXERR_NOTFOUND when nothing was consumed, PH7_ABORT to
+ * propagate the enforcement abort, SXRET_OK otherwise.
+ */
+/*
+ * Hook-aware attribute read for the C-side object walks — foreach over an
+ * object, get_object_vars(), json_encode(), var_export(): php dispatches the
+ * GET hook on these surfaces, while var_dump / (array) / print_r / serialize
+ * read the raw backing store. Fills pOut (an initialized ph7_value the caller
+ * owns) with the hook's return value and returns SXRET_OK — or the call's
+ * PH7_EXCEPTION/PH7_ABORT when the hook threw (also parked on the boundary
+ * rail like any C-boundary callee). Returns SXERR_NOTFOUND when the property
+ * has no get hook (or execution is inside one of its own hook bodies): the
+ * caller reads the raw slot then.
+ */
+PH7_PRIVATE sxi32 PH7_VmHookGetAttrValue(ph7_class_instance *pThis,VmClassAttr *pVmAttr,ph7_value *pOut)
+{
+	ph7_vm *pVm = pThis->pVm;
+	char zHName[384];
+	sxu32 nHName;
+	ph7_class_method *pGetHook;
+	sxi32 rc;
+	if( (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_HOOK_GET) == 0
+	 || VmHookGuardHeld(pVm,(void *)pThis,&pVmAttr->pAttr->sName)
+	 || pVm->nBoundaryRc != 0 ){
+		/* The boundary-rc gate keeps a C-side walk (get_object_vars/var_export/
+		 * foreach) from running FURTHER hooks after one already threw — php
+		 * aborts the whole builtin at the first throw; the walk falls back to
+		 * raw values whose output the routed throw then discards. */
+		return SXERR_NOTFOUND;
+	}
+	nHName = SyBufferFormat(zHName,sizeof(zHName),"__phl_hook_get_%z",&pVmAttr->pAttr->sName);
+	pGetHook = PH7_ClassExtractMethod(pThis->pClass,zHName,nHName);
+	if( pGetHook == 0 ){
+		return SXERR_NOTFOUND;
+	}
+	VmMagicGuardPush(pVm,(void *)pThis,&pVmAttr->pAttr->sName,'G');
+	rc = PH7_VmCallClassMethod(&(*pVm),pThis,pGetHook,pOut,0,0);
+	VmMagicGuardPop(pVm);
+	return rc;
+}
+/*
+ * Release a hook-RMW SCRATCH slot: drop its contents and return the index to
+ * the free pool. Scratch slots come from PH7_ReserveMemObj and are never
+ * ref-linked, so this bypasses PH7_VmUnsetMemObj's VmRefObj bookkeeping.
+ */
+static void VmHookRmwFreeScratch(ph7_vm *pVm,sxu32 nIdx)
+{
+	ph7_value *pScr = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
+	VmSlot sFree;
+	if( pScr ){
+		PH7_MemObjRelease(pScr);
+	}
+	sFree.nIdx = nIdx;
+	sFree.pUserData = 0;
+	SySetPut(&pVm->aFreeObj,(const void *)&sFree);
+}
+/*
+ * Drop the top pending write-back entry without dispatching its set side: the
+ * arming statement was abandoned by a throw, or a ??= short-circuit jump
+ * skipped its assign (php: the throw/skip discards the write). Releases the
+ * scratch slot (RMW kind), the name blob (MAGIC kind) and the entry's
+ * instance reference.
+ */
+static void VmHookRmwDropTop(ph7_vm *pVm)
+{
+	VmHookRmw *pEnt = (VmHookRmw *)SySetPeek(&pVm->aHookRmw);
+	if( pEnt == 0 ){
+		return;
+	}
+	if( pEnt->nScratchIdx != SXU32_HIGH ){
+		VmHookRmwFreeScratch(&(*pVm),pEnt->nScratchIdx);
+	}
+	SyBlobRelease(&pEnt->sName);
+	PH7_ClassInstanceUnref(pEnt->pThis);
+	(void)SySetPop(&pVm->aHookRmw);
+}
+static sxi32 VmHookRmwConsume(ph7_vm *pVm,sxu32 nIdx)
+{
+	VmHookRmw sEnt;
+	VmHookRmw *pEnt;
+	ph7_value *pScr;
+	ph7_value sVal;
+	sxi32 rc = SXRET_OK;
+	pEnt = (VmHookRmw *)SySetPeek(&pVm->aHookRmw);
+	if( pEnt == 0 || pEnt->iKind != VM_HOOK_PEND_RMW || pEnt->nScratchIdx != nIdx ){
+		return SXERR_NOTFOUND;
+	}
+	sEnt = *pEnt;
+	(void)SySetPop(&pVm->aHookRmw);
+	/* Copy the computed value out of the scratch slot, then free the slot
+	 * (the set dispatch below may reserve slots — nothing may read the
+	 * scratch index past this point). */
+	PH7_MemObjInit(pVm,&sVal);
+	pScr = (ph7_value *)SySetAt(&pVm->aMemObj,sEnt.nScratchIdx);
+	if( pScr ){
+		PH7_MemObjStore(pScr,&sVal);
+	}
+	VmHookRmwFreeScratch(&(*pVm),sEnt.nScratchIdx);
+	sVal.nIdx = SXU32_HIGH;
+	if( pVm->nBoundaryRc == 0 ){
+		rc = VmHookSetDispatch(&(*pVm),sEnt.pThis,sEnt.pAttr,sEnt.nBackIdx,&sVal);
+	}
+	PH7_MemObjRelease(&sVal);
+	PH7_ClassInstanceUnref(sEnt.pThis);
+	return rc;
+}
+/*
+ * Dispatch __set($name, $value) on pSetThis — the shared consume for a pending
+ * magic-set: OP_STORE's plain-store transient and OP_NULLC_STORE's coalesce
+ * entry both funnel here. The guard makes a same-name write inside __set fall
+ * through to creation, like php. Does NOT release the caller's reference.
+ */
+static void VmMagicSetDispatch(ph7_vm *pVm,ph7_class_instance *pSetThis,const SyString *pName,ph7_value *pValue)
+{
+	ph7_class_method *pSetMeth = PH7_ClassExtractMethod(pSetThis->pClass,"__set",sizeof("__set")-1);
+	if( pSetMeth ){
+		ph7_value sNameVal;
+		ph7_value *apSetArg[2];
+		PH7_MemObjInitFromString(pVm,&sNameVal,pName);
+		sNameVal.nIdx = SXU32_HIGH;
+		apSetArg[0] = &sNameVal;
+		apSetArg[1] = pValue;
+		VmMagicGuardPush(pVm,(void *)pSetThis,pName,'s');
+		PH7_VmCallClassMethod(&(*pVm),pSetThis,pSetMeth,0,2,apSetArg);
+		VmMagicGuardPop(pVm);
+		PH7_MemObjRelease(&sNameVal);
 	}
 }
 /*
@@ -8840,6 +9070,25 @@ static sxi32 VmByteCodeExecBody(
 		sxi32 _rcR = VmCheckReadonlyMutate(&(*pVm),(nIdxArg)); \
 		PH7_DISPATCH_ENFORCE_RC(_rcR) \
 	}
+/*
+ * Hook-RMW write-back for the tail of every read-modify-write opcode: if the
+ * top pending VmHookRmw entry targets the slot this op just wrote (a SCRATCH
+ * slot armed by the preceding OP_MEMBER on a hooked property), dispatch the
+ * property's set hook with the computed value. pResArg (may be 0) is the
+ * op's surviving stack result whose nIdx still points at the freed scratch
+ * slot — sanitize it to a pure temp so no later op treats it as an lvalue.
+ * Must be used inside a case of the main switch.
+ */
+#define PH7_HOOK_RMW_WRITEBACK(nIdxArg, pResArg) \
+	if( SySetUsed(&pVm->aHookRmw) > 0 ){ \
+		sxi32 _rcHk = VmHookRmwConsume(&(*pVm),(nIdxArg)); \
+		if( _rcHk == PH7_ABORT ){ \
+			goto Abort; \
+		} \
+		if( _rcHk == SXRET_OK && (pResArg) != 0 ){ \
+			((ph7_value *)(pResArg))->nIdx = SXU32_HIGH; \
+		} \
+	}
 	/* Generator::throw() inject-at-yield: when this invocation is a resumed generator/fiber
 	 * body carrying a pending injected exception, raise it HERE — once, before the dispatch
 	 * loop (pc is already at the resume point) — so the existing OP_THROW route
@@ -8952,39 +9201,61 @@ VmLoopFetch:
 		 * the abandoned mid-expression operands to the catching try's base), or
 		 * propagate out of this exec. Checked at the fetch point, so a swallowed
 		 * throw outlives at most the C remainder of ONE opcode instead of
-		 * silently resuming the surrounding PHP code with a bogus value. */
-		if( pVm->nBoundaryRc != 0 ){
-			sxi32 rcBr = pVm->nBoundaryRc;
-			pVm->nBoundaryRc = 0;
-			if( rcBr == PH7_ABORT ){
-				goto Abort;
-			}
-			if( pVm->pInlineInstr == (void *)aInstr ){
-				/* Caught by an inline try (generator body) THIS exec owns: drain
-				 * and land (pre-fetch path: pc is used directly, no trailing ++). */
-				while( (sxi32)(pTos - pStack) > pVm->iInlineDrain ){
-					PH7_MemObjRelease(pTos);
-					pTos--;
+		 * silently resuming the surrounding PHP code with a bogus value.
+		 * The pending write-back sweep shares this one guard so the hot
+		 * no-hooks path pays a single predicted branch per fetch. */
+		if( pVm->nBoundaryRc != 0 || SySetUsed(&pVm->aHookRmw) > 0 ){
+			if( pVm->nBoundaryRc != 0 ){
+				sxi32 rcBr = pVm->nBoundaryRc;
+				pVm->nBoundaryRc = 0;
+				if( rcBr == PH7_ABORT ){
+					goto Abort;
 				}
-				pc = (sxi32)pVm->iInlinePc;
-				pVm->pInlineInstr = 0;
-			}else{
-				sxi32 iBrPc;
-				if( VmRecordedResume(pVm,&iBrPc,sState.pEntryFrame,aInstr) ){
-					/* Caught in place by a try THIS exec owns: drain the abandoned
-					 * operands to the catching try's base and land at its pad
-					 * (iBrPc is landing-1 for the dispatcher's trailing pc++;
-					 * pre-fetch here, so +1 lands on the pad itself). */
-					while( (sxi32)(pTos - pStack) > pVm->iResumeStackDepth ){
+				if( pVm->pInlineInstr == (void *)aInstr ){
+					/* Caught by an inline try (generator body) THIS exec owns: drain
+					 * and land (pre-fetch path: pc is used directly, no trailing ++). */
+					while( (sxi32)(pTos - pStack) > pVm->iInlineDrain ){
 						PH7_MemObjRelease(pTos);
 						pTos--;
 					}
-					pc = iBrPc + 1;
+					pc = (sxi32)pVm->iInlinePc;
+					pVm->pInlineInstr = 0;
 				}else{
-					/* Caught by an outer exec (or uncaught-with-report pending):
-					 * unwind out of this exec; the owner's macros/router land it. */
-					goto Exception;
+					sxi32 iBrPc;
+					if( VmRecordedResume(pVm,&iBrPc,sState.pEntryFrame,aInstr) ){
+						/* Caught in place by a try THIS exec owns: drain the abandoned
+						 * operands to the catching try's base and land at its pad
+						 * (iBrPc is landing-1 for the dispatcher's trailing pc++;
+						 * pre-fetch here, so +1 lands on the pad itself). */
+						while( (sxi32)(pTos - pStack) > pVm->iResumeStackDepth ){
+							PH7_MemObjRelease(pTos);
+							pTos--;
+						}
+						pc = iBrPc + 1;
+					}else{
+						/* Caught by an outer exec (or uncaught-with-report pending):
+						 * unwind out of this exec; the owner's macros/router land it. */
+						goto Exception;
+					}
 				}
+			}
+			/* Stale write-back sweep: a pending entry whose OWNING activation is
+			 * fetching any pc outside its armed window [nJmpPc, nPc] is dead — for
+			 * an RMW entry (window = the modify op alone) a routed throw abandoned
+			 * the arming statement mid-flight; for a ??= entry either a throw
+			 * abandoned the RHS or the short-circuit jump landed past the
+			 * OP_NULLC_STORE (the assign is skipped). Drop it — no set dispatch
+			 * (php: the throw/skip discards the write). A nested exec (even a
+			 * recursive one over the same bytecode) has a different operand-stack
+			 * base and leaves enclosing entries alone; entries below a live top
+			 * are reached as the drops expose them. */
+			while( SySetUsed(&pVm->aHookRmw) > 0 ){
+				VmHookRmw *pTopRmw = (VmHookRmw *)SySetPeek(&pVm->aHookRmw);
+				if( pTopRmw->pOwnerStack != (void *)pStack || pTopRmw->pInstrs != (void *)aInstr
+				 || ((sxu32)pc >= pTopRmw->nJmpPc && (sxu32)pc <= pTopRmw->nPc) ){
+					break; /* not ours, or legitimately in flight */
+				}
+				VmHookRmwDropTop(&(*pVm));
 			}
 		}
 		/* Fetch the instruction to execute */
@@ -10008,6 +10279,31 @@ case PH7_OP_LOAD_IDX: {
 		if( pTos->nIdx != SXU32_HIGH ){
 			ph7_value *pObj;
 			if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+				/* php 8 write-context auto-vivify rules: NULL converts to array
+				 * silently; FALSE converts with the 8.1 deprecation; any other
+				 * scalar base — int/float/true/resource — is php's catchable
+				 * "Cannot use a scalar value as an array" Error and the variable
+				 * stays untouched (pre-fix the base was silently CONVERTED,
+				 * corrupting e.g. `$i = 5; $i[0]++` into array(0 => 6); string
+				 * bases were intercepted by the string-offset paths above). */
+				if( (pObj->iFlags & (MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_RES)) != 0
+				 || ((pObj->iFlags & MEMOBJ_BOOL) != 0 && pObj->x.iVal != 0) ){
+					SyBlob sErrMsg;
+					SyBlobInit(&sErrMsg,&pVm->sAllocator);
+					SyBlobAppend(&sErrMsg,"Cannot use a scalar value as an array",
+						sizeof("Cannot use a scalar value as an array")-1);
+					VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
+					if( pIdx ){
+						PH7_MemObjRelease(pIdx);
+					}
+					PH7_MemObjRelease(pTos);
+					pTos->nIdx = SXU32_HIGH;
+					break;
+				}
+				if( (pObj->iFlags & MEMOBJ_BOOL) != 0 ){
+					VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,
+						"Automatic conversion of false to array is deprecated");
+				}
 				PH7_MemObjToHashmap(pObj);
 				PH7_MemObjLoad(pObj,pTos);
 			}
@@ -10312,23 +10608,10 @@ case PH7_OP_STORE: {
 			 * the stack as the assignment expression's result — php's semantics
 			 * (no property is created; a throw rides the boundary rail). */
 			ph7_class_instance *pSetThis = pVm->pMagicSetThis;
-			ph7_class_method *pSetMeth;
 			SyString sSetName;
 			pVm->pMagicSetThis = 0;
 			SyStringInitFromBuf(&sSetName,SyBlobData(&pVm->sMagicSetName),SyBlobLength(&pVm->sMagicSetName));
-			pSetMeth = PH7_ClassExtractMethod(pSetThis->pClass,"__set",sizeof("__set")-1);
-			if( pSetMeth ){
-				ph7_value sNameVal;
-				ph7_value *apSetArg[2];
-				PH7_MemObjInitFromString(pVm,&sNameVal,&sSetName);
-				sNameVal.nIdx = SXU32_HIGH;
-				apSetArg[0] = &sNameVal;
-				apSetArg[1] = pTos;
-				VmMagicGuardPush(pVm,(void *)pSetThis,&sSetName,'s');
-				PH7_VmCallClassMethod(&(*pVm),pSetThis,pSetMeth,0,2,apSetArg);
-				VmMagicGuardPop(pVm);
-				PH7_MemObjRelease(&sNameVal);
-			}
+			VmMagicSetDispatch(&(*pVm),pSetThis,&sSetName,pTos);
 			PH7_ClassInstanceUnref(pSetThis);
 			SyBlobReset(&pVm->sMagicSetName);
 			break;
@@ -10343,62 +10626,15 @@ case PH7_OP_STORE: {
 			ph7_class_instance *pHThis = pVm->pHookSetThis;
 			ph7_class_attr *pHAttr = pVm->pHookSetAttr;
 			sxu32 nBackIdx = pVm->nHookSetIdx;
+			sxi32 rcHs;
 			pVm->pHookSetThis = 0;
 			pVm->pHookSetAttr = 0;
 			pVm->nHookSetIdx = SXU32_HIGH;
-			if( (pHAttr->iFlags & PH7_CLASS_ATTR_HOOK_SET) == 0 ){
-				/* get-only hooked property: php's read-only Error */
-				SyBlob sErrMsg;
-				SyBlobInit(&sErrMsg,&pVm->sAllocator);
-				SyBlobFormat(&sErrMsg,"Property %z::$%z is read-only",
-					&pHThis->pClass->sName,&pHAttr->sName);
-				VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
-				PH7_ClassInstanceUnref(pHThis);
-				break;
-			}
-			if( pHAttr->iFlags & (PH7_CLASS_ATTR_PRIVATE_SET|PH7_CLASS_ATTR_PROTECTED_SET) ){
-				/* Asymmetric set-visibility is checked BEFORE the hook dispatches (php) */
-				sxi32 rcVis = VmCheckSetVisibility(&(*pVm),pHThis->pClass,pHAttr);
-				if( rcVis != SXRET_OK ){
-					VmBoundaryPark(&(*pVm),rcVis);
-					PH7_ClassInstanceUnref(pHThis);
-					break;
-				}
-			}
-			{
-				char zHName[384];
-				sxu32 nHName = SyBufferFormat(zHName,sizeof(zHName),
-					"__phl_hook_set_%z",&pHAttr->sName);
-				ph7_class_method *pSetHook = PH7_ClassExtractMethod(pHThis->pClass,zHName,nHName);
-				if( pSetHook ){
-					ph7_value sHookRet;
-					ph7_value *apHArg[1];
-					apHArg[0] = pTos;
-					PH7_MemObjInit(pVm,&sHookRet);
-					VmMagicGuardPush(pVm,(void *)pHThis,&pHAttr->sName,'S');
-					PH7_VmCallClassMethod(&(*pVm),pHThis,pSetHook,&sHookRet,1,apHArg);
-					VmMagicGuardPop(pVm);
-					if( (pSetHook->sFunc.iFlags & VM_FUNC_HOOK_SET_EXPR)
-					 && nBackIdx != SXU32_HIGH && pVm->nBoundaryRc == 0 ){
-						sxi32 rcH = VmEnforcePropertyTypeOnStore(&(*pVm),nBackIdx,&sHookRet,0);
-						if( rcH == SXRET_OK ){
-							ph7_value *pBack = (ph7_value *)SySetAt(&pVm->aMemObj,nBackIdx);
-							if( pBack ){
-								PH7_MemObjStore(&sHookRet,pBack);
-							}
-						}else if( rcH == PH7_ABORT ){
-							PH7_MemObjRelease(&sHookRet);
-							PH7_ClassInstanceUnref(pHThis);
-							goto Abort;
-						}
-						/* PH7_EXCEPTION: the TypeError was routed/parked by the
-						 * enforcement — the store is skipped, execution lands at
-						 * the fetch point like any parked throw. */
-					}
-					PH7_MemObjRelease(&sHookRet);
-				}
-			}
+			rcHs = VmHookSetDispatch(&(*pVm),pHThis,pHAttr,nBackIdx,pTos);
 			PH7_ClassInstanceUnref(pHThis);
+			if( rcHs == PH7_ABORT ){
+				goto Abort;
+			}
 			break;
 		}
 		if( nIdx == SXU32_HIGH ){
@@ -10716,6 +10952,30 @@ case PH7_OP_INCR:
 	 * type (it bypasses the store path), so enforce before the type guard below
 	 * — which otherwise skips object/array/resource operands. */
 	PH7_ENFORCE_READONLY_MUTATE(pTos->nIdx);
+	/* A hooked property whose get hook returned an array/object/resource:
+	 * php's TypeError, raised BEFORE any set dispatch (the type guard below
+	 * would skip the mutation and the tail write-back would otherwise call
+	 * the set hook with the unchanged value). */
+	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)) != 0
+	 && SySetUsed(&pVm->aHookRmw) > 0 ){
+		VmHookRmw *pTopInc = (VmHookRmw *)SySetPeek(&pVm->aHookRmw);
+		if( pTopInc->iKind == VM_HOOK_PEND_RMW && pTopInc->nScratchIdx == pTos->nIdx ){
+			SyBlob sErrMsg;
+			SyBlobInit(&sErrMsg,&pVm->sAllocator);
+			if( pTos->iFlags & MEMOBJ_HASHMAP ){
+				SyBlobAppend(&sErrMsg,"Cannot increment array",sizeof("Cannot increment array")-1);
+			}else if( pTos->iFlags & MEMOBJ_OBJ ){
+				SyBlobFormat(&sErrMsg,"Cannot increment %z",
+					&((ph7_class_instance *)pTos->x.pOther)->pClass->sName);
+			}else{
+				SyBlobAppend(&sErrMsg,"Cannot increment resource",sizeof("Cannot increment resource")-1);
+			}
+			VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sErrMsg));
+			VmHookRmwDropTop(&(*pVm));
+			pTos->nIdx = SXU32_HIGH;
+			break;
+		}
+	}
 	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)) == 0 ){
 		if( pTos->nIdx != SXU32_HIGH ){
 			ph7_value *pObj;
@@ -10808,6 +11068,7 @@ case PH7_OP_INCR:
 			}
 		}
 	}
+	PH7_HOOK_RMW_WRITEBACK(pTos->nIdx,pTos);
 	break;
 /*
  * DECR: P1 * *
@@ -10827,6 +11088,29 @@ case PH7_OP_DECR:
 	 * — which otherwise skips null/object/array/resource operands (e.g. a readonly
 	 * property currently holding null). */
 	PH7_ENFORCE_READONLY_MUTATE(pTos->nIdx);
+	/* A hooked property whose get hook returned an array/object/resource:
+	 * php's TypeError, raised BEFORE any set dispatch (null stays excluded —
+	 * `--` on null is php's no-op and its write-back still dispatches set). */
+	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)) != 0
+	 && SySetUsed(&pVm->aHookRmw) > 0 ){
+		VmHookRmw *pTopDec = (VmHookRmw *)SySetPeek(&pVm->aHookRmw);
+		if( pTopDec->iKind == VM_HOOK_PEND_RMW && pTopDec->nScratchIdx == pTos->nIdx ){
+			SyBlob sErrMsg;
+			SyBlobInit(&sErrMsg,&pVm->sAllocator);
+			if( pTos->iFlags & MEMOBJ_HASHMAP ){
+				SyBlobAppend(&sErrMsg,"Cannot decrement array",sizeof("Cannot decrement array")-1);
+			}else if( pTos->iFlags & MEMOBJ_OBJ ){
+				SyBlobFormat(&sErrMsg,"Cannot decrement %z",
+					&((ph7_class_instance *)pTos->x.pOther)->pClass->sName);
+			}else{
+				SyBlobAppend(&sErrMsg,"Cannot decrement resource",sizeof("Cannot decrement resource")-1);
+			}
+			VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sErrMsg));
+			VmHookRmwDropTop(&(*pVm));
+			pTos->nIdx = SXU32_HIGH;
+			break;
+		}
+	}
 	/* NULL stays excluded: PHP leaves `--` on null untouched (no-op). */
 	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_NULL)) == 0 ){
 		if( pTos->nIdx != SXU32_HIGH ){
@@ -10912,6 +11196,7 @@ case PH7_OP_DECR:
 			}
 		}
 	}
+	PH7_HOOK_RMW_WRITEBACK(pTos->nIdx,pTos);
 	break;
 /*
  * UMINUS: * * *
@@ -11070,6 +11355,7 @@ case PH7_OP_MUL_STORE: {
 			PH7_MemObjStore(pNos,pObj);
 		}
 	}
+	PH7_HOOK_RMW_WRITEBACK(pTos->nIdx,0);
 	VmPopOperand(&pTos,1);
 	break;
 				 }
@@ -11192,6 +11478,7 @@ case PH7_OP_POW_STORE: {
 			PH7_MemObjStore(pNos,pObj);
 		}
 	}
+	PH7_HOOK_RMW_WRITEBACK(pTos->nIdx,0);
 	VmPopOperand(&pTos,1);
 	break;
 				 }
@@ -11246,6 +11533,7 @@ case PH7_OP_ADD_STORE:{
 		PH7_ENFORCE_TYPED_STORE(nIdx,pTos);
 		PH7_MemObjStore(pTos,pObj);
 	}
+	PH7_HOOK_RMW_WRITEBACK(nIdx,0);
 	/* Ticket 1433-35: Perform a stack dup */
 	PH7_MemObjStore(pTos,pNos);
 	VmPopOperand(&pTos,1);
@@ -11359,6 +11647,7 @@ case PH7_OP_SUB_STORE: {
 		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 		PH7_MemObjStore(pNos,pObj);
 	}
+	PH7_HOOK_RMW_WRITEBACK(pTos->nIdx,0);
 	VmPopOperand(&pTos,1);
 	break;
 				 }
@@ -11461,6 +11750,7 @@ case PH7_OP_MOD_STORE: {
 		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 		PH7_MemObjStore(pNos,pObj);
 	}
+	PH7_HOOK_RMW_WRITEBACK(pTos->nIdx,0);
 	VmPopOperand(&pTos,1);
 	break;
 				}
@@ -11552,6 +11842,7 @@ case PH7_OP_DIV_STORE:{
 		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 		PH7_MemObjStore(pNos,pObj);
 	}
+	PH7_HOOK_RMW_WRITEBACK(pTos->nIdx,0);
 	VmPopOperand(&pTos,1);
 	break;
 				}
@@ -11665,6 +11956,7 @@ case PH7_OP_BXOR_STORE:{
 		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 		PH7_MemObjStore(pNos,pObj);
 	}
+	PH7_HOOK_RMW_WRITEBACK(pTos->nIdx,0);
 	VmPopOperand(&pTos,1);
 	break;
 				 }
@@ -11762,6 +12054,7 @@ case PH7_OP_SHR_STORE: {
 		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 		PH7_MemObjStore(pNos,pObj);
 	}
+	PH7_HOOK_RMW_WRITEBACK(pTos->nIdx,0);
 	VmPopOperand(&pTos,1);
 	break;
 				 }
@@ -11867,6 +12160,9 @@ case PH7_OP_CAT_STORE:{
 		if( (pInstr+1)->iOp != PH7_OP_POP ){
 			PH7_MemObjStore(pObj,pNos);
 		}
+		/* A hooked lvalue's scratch slot was appended in place — dispatch the
+		 * set side now (the consume reads the computed value from the slot). */
+		PH7_HOOK_RMW_WRITEBACK(nIdx,0);
 		pNos->nIdx = SXU32_HIGH;
 		VmPopOperand(&pTos,1);
 		break;
@@ -11892,6 +12188,7 @@ case PH7_OP_CAT_STORE:{
 		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pTos);
 		PH7_MemObjStore(pTos,pObj);
 	}
+	PH7_HOOK_RMW_WRITEBACK(pTos->nIdx,0);
 	PH7_MemObjStore(pTos,pNos);
 	VmPopOperand(&pTos,1);
 	break;
@@ -11982,7 +12279,10 @@ case PH7_OP_NULLC_JMP: {
 	}
 #endif
 	if( (pTos->iFlags & MEMOBJ_NULL) == 0 ){
-		pc = pInstr->iP2 - 1; /* Jump (will be incremented by the loop) */
+		pc = pInstr->iP2 - 1; /* Jump (will be incremented by the loop) —
+		 * a pending ??= write-back entry armed by the preceding OP_MEMBER is
+		 * dropped by the fetch-point sweep (the landing pc is past its
+		 * OP_NULLC_STORE window): the skipped assign never dispatches. */
 	}
 	break;
 }
@@ -12023,6 +12323,40 @@ case PH7_OP_NULLC_STORE: {
 		goto Abort;
 	}
 #endif
+	if( SySetUsed(&pVm->aHookRmw) > 0 ){
+		/* `$o->p ??= v` whose test value was null: the OP_MEMBER pushed a
+		 * COAL entry targeting exactly THIS store (owner + pc identity — a
+		 * stale entry from an abandoned statement can never match, and nested
+		 * arms in the RHS were consumed/dropped above this one). Dispatch the
+		 * set hook (COAL_HOOK) or __set (COAL_MAGIC — the band A #3b ??=
+		 * residual: pre-fix the assign bypassed __set through the normal slot
+		 * path). The RHS stays as the expression result. */
+		VmHookRmw *pTop = (VmHookRmw *)SySetPeek(&pVm->aHookRmw);
+		if( pTop->pOwnerStack == (void *)pStack && pTop->pInstrs == (void *)aInstr
+		 && pTop->nPc == (sxu32)pc
+		 && (pTop->iKind == VM_HOOK_PEND_COAL_HOOK || pTop->iKind == VM_HOOK_PEND_COAL_MAGIC) ){
+			VmHookRmw sPend = *pTop;
+			(void)SySetPop(&pVm->aHookRmw);
+			if( sPend.iKind == VM_HOOK_PEND_COAL_HOOK ){
+				sxi32 rcHs = VmHookSetDispatch(&(*pVm),sPend.pThis,sPend.pAttr,sPend.nBackIdx,pTos);
+				if( rcHs == PH7_ABORT ){
+					SyBlobRelease(&sPend.sName);
+					PH7_ClassInstanceUnref(sPend.pThis);
+					goto Abort;
+				}
+			}else{
+				SyString sSetName;
+				SyStringInitFromBuf(&sSetName,SyBlobData(&sPend.sName),SyBlobLength(&sPend.sName));
+				VmMagicSetDispatch(&(*pVm),sPend.pThis,&sSetName,pTos);
+			}
+			SyBlobRelease(&sPend.sName);
+			PH7_ClassInstanceUnref(sPend.pThis);
+			PH7_MemObjStore(pTos,pNos);
+			pNos->nIdx = SXU32_HIGH;
+			VmPopOperand(&pTos,1);
+			break;
+		}
+	}
 	/* ArrayAccess null-coalesce-assign target: the preceding LOAD_IDX iP2=3
 	 * armed pVm with the (object, key) on a missing key. Dispatch to
 	 * offsetSet instead of writing through the synthetic pNos->nIdx. */
@@ -13368,6 +13702,58 @@ case PH7_OP_FOREACH_STEP: {
 					MemObjSetType(pKey,MEMOBJ_STRING);
 				}
 			}
+			if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_SET))
+			 && (pStep->iFlags & PH7_4EACH_STEP_REF)
+			 && !VmHookGuardHeld(pVm,(void *)pThis,&pVmAttr->pAttr->sName) ){
+				/* php: a hooked property (virtual or backed) cannot be iterated
+				 * by reference — catchable Error. Tear the step down like the
+				 * exhausted-iteration path (break the by-ref binding, unlink,
+				 * free, drop the instance retain) so nothing leaks and a
+				 * re-entered foreach starts fresh; the fetch-point router lands
+				 * the parked throw right after this op. Inside the property's
+				 * own hook body the guard keeps raw semantics (no Error). */
+				SyBlob sErrMsg;
+				SyBlobInit(&sErrMsg,&pVm->sAllocator);
+				SyBlobFormat(&sErrMsg,"Cannot create reference to property %z::$%z",
+					&pThis->pClass->sName,&pVmAttr->pAttr->sName);
+				VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
+				SyHashDeleteEntry(&pFrameLocal->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue),0);
+				VmForeachStepUnlink(pInfo,pStep);
+				SyMemBackendPoolFree(&pVm->sAllocator,pStep);
+				PH7_ClassInstanceUnref(pThis);
+				break;
+			}
+			if( (pStep->iFlags & PH7_4EACH_STEP_REF) == 0
+			 && (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_HOOK_GET) != 0 ){
+				/* PHP 8.4 property hooks: object iteration reads through the
+				 * get hook (virtual properties included; the flag gate keeps
+				 * hook-free classes on the raw zero-copy path below). The
+				 * object step walks hAttr with the hash's single EMBEDDED
+				 * cursor — save/restore it around the dispatch so a hook that
+				 * re-enters an hAttr walk on this instance (get_object_vars,
+				 * json_encode of $this) can't truncate THIS iteration. A hook
+				 * that unset()s the property the saved cursor points at stays
+				 * a recorded hazard (php's own semantics there are murky). */
+				ph7_value sHookVal;
+				sxi32 rcHk;
+				SyHashEntry_Pr *pSavedCur = pThis->hAttr.pCurrent;
+				PH7_MemObjInit(pVm,&sHookVal);
+				rcHk = PH7_VmHookGetAttrValue(pThis,pVmAttr,&sHookVal);
+				pThis->hAttr.pCurrent = pSavedCur;
+				if( rcHk != SXERR_NOTFOUND ){
+					if( rcHk == SXRET_OK ){
+						pValue = VmExtractMemObj(&(*pVm),&pInfo->sValue,FALSE,TRUE);
+						if( pValue ){
+							PH7_MemObjStore(&sHookVal,pValue);
+						}
+					}
+					/* a throw parked on the boundary rail: the fetch-point
+					 * router lands it right after this op */
+					PH7_MemObjRelease(&sHookVal);
+					break;
+				}
+				PH7_MemObjRelease(&sHookVal);
+			}
 			/* Extract attribute value */
 			pAttrValue = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
 			if( pAttrValue ){
@@ -13557,6 +13943,7 @@ case PH7_OP_MEMBER: {
 							 * stdClass and #[AllowDynamicProperties]); a readonly
 							 * class raises php's catchable Error instead. */
 							ph7_class_method *pSetMagic = 0;
+							ph7_class_method *pCoalIsset = 0, *pCoalGet = 0, *pCoalSet = 0;
 							int bPlainStore = (pNext->iOp == PH7_OP_STORE && pNext->iP2 != 0);
 							if( bPlainStore ){
 								pSetMagic = PH7_ClassExtractMethod(pClass,"__set",sizeof("__set")-1);
@@ -13568,14 +13955,89 @@ case PH7_OP_MEMBER: {
 								SyBlobAppend(&pVm->sMagicSetName,(const void *)sName.zString,sName.nByte);
 								/* pObjAttr stays NULL; the miss path below stays silent. */
 							}else if( !bPlainStore && pInstr->iP2 == PH7_MEMBER_WRITE
+							 && pNext->iOp == PH7_OP_NULLC_JMP
+							 && ((pCoalIsset = PH7_ClassExtractMethod(pClass,"__isset",sizeof("__isset")-1)) != 0
+							  || (pCoalGet = PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1)) != 0
+							  || (pCoalSet = PH7_ClassExtractMethod(pClass,"__set",sizeof("__set")-1)) != 0) ){
+								/* `$o->p ??= v` on a missing property with magic accessors:
+								 * php consults __isset first when declared — false means
+								 * assign directly through __set with NO __get call (the
+								 * test value stays null); true (or no __isset) means __get
+								 * provides the test value. A COAL_MAGIC entry is pushed
+								 * for the OP_NULLC_STORE at the jump target; the
+								 * fetch-point sweep drops it when the short-circuit jump
+								 * skips the assign or a throw abandons the RHS. Without
+								 * __set the assign side keeps the pre-existing loud
+								 * "Cannot perform assignment" path (php would create a
+								 * dynamic property there — recorded residual). Note the
+								 * condition's short-circuit assignment chain: a hit on an
+								 * earlier method leaves the later pointers unresolved, so
+								 * re-resolve the leftovers here (each is one hash probe,
+								 * only on this ??=-miss path). */
+								ph7_value sTest;
+								int bMiss = 0; /* __isset said false: skip __get, test value stays null */
+								if( pCoalIsset != 0 ){
+									pCoalGet = PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1);
+								}
+								if( pCoalIsset != 0 || pCoalGet != 0 ){
+									pCoalSet = PH7_ClassExtractMethod(pClass,"__set",sizeof("__set")-1);
+								}
+								PH7_MemObjInit(pVm,&sTest);
+								if( pCoalIsset && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'i') ){
+									ph7_value sIssetRet;
+									PH7_MemObjInit(pVm,&sIssetRet);
+									VmMagicGuardPush(pVm,(void *)pThis,&sName,'i');
+									PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,pThis,"__isset",sizeof("__isset")-1,&sName,&sIssetRet);
+									VmMagicGuardPop(pVm);
+									PH7_MemObjToBool(&sIssetRet);
+									bMiss = sIssetRet.x.iVal == 0;
+									PH7_MemObjRelease(&sIssetRet);
+								}
+								if( !bMiss && pCoalGet && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'g') ){
+									VmMagicGuardPush(pVm,(void *)pThis,&sName,'g');
+									PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,pThis,"__get",sizeof("__get")-1,&sName,&sTest);
+									VmMagicGuardPop(pVm);
+								}
+								if( pCoalSet && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'s')
+								 && pVm->nBoundaryRc == 0 ){
+									VmHookRmw sPend;
+									sPend.iKind = VM_HOOK_PEND_COAL_MAGIC;
+									sPend.pThis = pThis;
+									sPend.pAttr = 0;
+									sPend.nBackIdx = SXU32_HIGH;
+									sPend.nScratchIdx = SXU32_HIGH;
+									SyBlobInit(&sPend.sName,&pVm->sAllocator);
+									SyBlobAppend(&sPend.sName,(const void *)sName.zString,sName.nByte);
+									sPend.pOwnerStack = (void *)pStack;
+									sPend.pInstrs = (void *)aInstr;
+									sPend.nJmpPc = (sxu32)(pc + 1);        /* the OP_NULLC_JMP */
+									sPend.nPc = (sxu32)(pNext->iP2 - 1);   /* the OP_NULLC_STORE */
+									pThis->iRef++;
+									SySetPut(&pVm->aHookRmw,(const void *)&sPend);
+								}
+								/* Pop the attribute name; the test value becomes the
+								 * expression slot (a temp, not an lvalue). */
+								VmPopOperand(&pTos,1);
+								pThis->iRef++;
+								PH7_MemObjRelease(pTos);
+								PH7_MemObjStore(&sTest,pTos);
+								pTos->nIdx = SXU32_HIGH;
+								PH7_MemObjRelease(&sTest);
+								PH7_ClassInstanceUnref(pThis);
+								break;
+							}else if( !bPlainStore && pInstr->iP2 == PH7_MEMBER_WRITE
+							 && !VmMemberNextIsWrite(pNext)
 							 && PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1) ){
-								/* `$o->p ??= v` / subscript-write base on a class with
-								 * __get: php reads through the magic layer (the ??= then
-								 * skips its assign on a non-null value; a subscript write
-								 * lands on the temp and is lost, like php's
-								 * indirect-modification case). A PLAIN store (bPlainStore
-								 * — the compiler tags those PH7_MEMBER_WRITE too) is NOT
-								 * this case: it falls through to dynamic creation.
+								/* Subscript-write base on a class with __get: php reads
+								 * through the magic layer (the write lands on the temp and
+								 * is lost, like php's indirect-modification case). A PLAIN
+								 * store (bPlainStore — the compiler tags those
+								 * PH7_MEMBER_WRITE too) is NOT this case: it falls through
+								 * to dynamic creation. A direct ++/--/compound-assign
+								 * (VmMemberNextIsWrite — the compiler now tags those
+								 * PH7_MEMBER_WRITE as well) is NOT this case either: it
+								 * falls through to dynamic creation like before (the
+								 * recorded RMW-vivifies-instead-of-__get residual, §7).
 								 * Leave the miss path — the read gate below dispatches
 								 * __get. */
 							}else if( pThis->pClass->iFlags & PH7_CLASS_READONLY ){
@@ -13701,19 +14163,32 @@ case PH7_OP_MEMBER: {
 					ph7_value *pValue = 0; /* cc warning */
 					/* Check attribute access */
 					if( PH7_VmClassMemberAccess(&(*pVm),pClass,&pObjAttr->pAttr->sName,pObjAttr->pAttr->iProtection,FALSE) ){
-						if( pObjAttr->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_SET) ){
-							/* PHP 8.4 property hooks: route reads and plain writes through
-							 * the synthesized hook methods. A held guard means we are
-							 * INSIDE this property's hook body — fall through to the raw
-							 * backing slot (php: hooks see the backing store). */
+						if( (pObjAttr->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_SET))
+						 && !VmHookGuardHeld(pVm,(void *)pThis,&sName) ){
+							/* PHP 8.4 property hooks: route reads, writes, and the
+							 * read-modify-write forms through the synthesized hook
+							 * methods. A held guard (either kind) means we are INSIDE
+							 * one of this property's own hook bodies — fall through to
+							 * the raw backing slot for BOTH directions (php: `$this->x`
+							 * within any of x's hooks addresses the backing store). */
 							VmInstr *pNextH = pInstr + 1;
 							int bPlainStore = (pNextH->iOp == PH7_OP_STORE && pNextH->iP2 != 0);
-							int bOtherWrite = (pInstr->iP2 == PH7_MEMBER_WRITE)
-								|| (!bPlainStore && VmMemberNextIsWrite(pNextH));
-							if( bPlainStore && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'S') ){
+							int bCoalesceW = pInstr->iP2 == PH7_MEMBER_WRITE
+								&& pNextH->iOp == PH7_OP_NULLC_JMP;
+							/* ++/--/compound-assign: the modify op FOLLOWS the member
+							 * directly (the compiler tags compound-assign members
+							 * PH7_MEMBER_WRITE too, so classify by the next op, not iP2;
+							 * the !bPlainStore term is load-bearing — VmMemberNextIsWrite
+							 * returns 1 for a member OP_STORE too) */
+							int bRmwNext = !bPlainStore && VmMemberNextIsWrite(pNextH);
+							int bSubscriptW = !bPlainStore && !bCoalesceW && !bRmwNext
+								&& pInstr->iP2 == PH7_MEMBER_WRITE;
+							if( bPlainStore ){
 								/* Arm the pending hook-set for the following OP_STORE — it
 								 * dispatches the set hook, or throws the read-only Error
-								 * when the property only has a get hook. */
+								 * when the property only has a get hook. (The scalar
+								 * transient is safe here: its window is exactly one
+								 * instruction, MEMBER -> STORE, nothing runs in between.) */
 								pThis->iRef++;
 								pVm->pHookSetThis = pThis;
 								pVm->pHookSetAttr = pObjAttr->pAttr;
@@ -13722,22 +14197,26 @@ case PH7_OP_MEMBER: {
 								PH7_ClassInstanceUnref(pThis);
 								break;
 							}
-							if( VmMemberCtxIsLookup(pInstr->iP2)
-							 && (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_HOOK_GET)
-							 && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'G') ){
+							if( bSubscriptW ){
+								/* Subscript write base ($o->m[] = v, $o->m[$k] = v):
+								 * php's catchable Error, with or without a set hook
+								 * (only a by-ref `&get` hook would allow it — a loud
+								 * compile error in PHL). The op completes benignly with
+								 * a null temp; the fetch-point router lands the throw. */
+								SyBlob sErrMsg;
+								SyBlobInit(&sErrMsg,&pVm->sAllocator);
+								SyBlobFormat(&sErrMsg,"Indirect modification of %z::$%z is not allowed",
+									&pThis->pClass->sName,&pObjAttr->pAttr->sName);
+								VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
+								PH7_ClassInstanceUnref(pThis);
+								break;
+							}
+							if( VmMemberCtxIsLookup(pInstr->iP2) ){
 								/* isset()/empty() on a hooked property calls the get hook
 								 * (php): isset is "get() !== null", empty tests the value. */
-								char zHName[384];
-								sxu32 nHName = SyBufferFormat(zHName,sizeof(zHName),
-									"__phl_hook_get_%z",&pObjAttr->pAttr->sName);
-								ph7_class_method *pGetHook =
-									PH7_ClassExtractMethod(pThis->pClass,zHName,nHName);
-								if( pGetHook ){
-									ph7_value sHookRet;
-									PH7_MemObjInit(pVm,&sHookRet);
-									VmMagicGuardPush(pVm,(void *)pThis,&sName,'G');
-									PH7_VmCallClassMethod(&(*pVm),pThis,pGetHook,&sHookRet,0,0);
-									VmMagicGuardPop(pVm);
+								ph7_value sHookRet;
+								PH7_MemObjInit(pVm,&sHookRet);
+								if( PH7_VmHookGetAttrValue(pThis,pObjAttr,&sHookRet) != SXERR_NOTFOUND ){
 									if( pInstr->iP2 == PH7_MEMBER_ISSET ){
 										pTos->x.iVal = (sHookRet.iFlags & MEMOBJ_NULL) == 0;
 										MemObjSetType(pTos,MEMOBJ_BOOL);
@@ -13750,37 +14229,102 @@ case PH7_OP_MEMBER: {
 									PH7_ClassInstanceUnref(pThis);
 									break;
 								}
+								PH7_MemObjRelease(&sHookRet);
 							}
-							if( !bPlainStore && !bOtherWrite && !VmMemberCtxIsLookup(pInstr->iP2)
-							 && (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_HOOK_GET)
-							 && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'G') ){
+							if( !bCoalesceW && !bRmwNext && !VmMemberCtxIsLookup(pInstr->iP2) ){
 								/* Read: dispatch __phl_hook_get_NAME (inheritance-aware) */
-								char zHName[384];
-								sxu32 nHName = SyBufferFormat(zHName,sizeof(zHName),
-									"__phl_hook_get_%z",&pObjAttr->pAttr->sName);
-								ph7_class_method *pGetHook =
-									PH7_ClassExtractMethod(pThis->pClass,zHName,nHName);
-								if( pGetHook ){
-									ph7_value sHookRet;
-									PH7_MemObjInit(pVm,&sHookRet);
-									VmMagicGuardPush(pVm,(void *)pThis,&sName,'G');
-									PH7_VmCallClassMethod(&(*pVm),pThis,pGetHook,&sHookRet,0,0);
-									VmMagicGuardPop(pVm);
+								ph7_value sHookRet;
+								PH7_MemObjInit(pVm,&sHookRet);
+								if( PH7_VmHookGetAttrValue(pThis,pObjAttr,&sHookRet) != SXERR_NOTFOUND ){
 									PH7_MemObjStore(&sHookRet,pTos);
 									pTos->nIdx = SXU32_HIGH;
 									PH7_MemObjRelease(&sHookRet);
 									PH7_ClassInstanceUnref(pThis);
 									break;
 								}
+								PH7_MemObjRelease(&sHookRet);
 							}
-							if( bOtherWrite && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'S')
-							 && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'G') ){
-								/* Read-modify-write (`++`, `.=`, subscript writes…) on a
-								 * hooked property: not yet modeled — LOUD, never a silent
-								 * hook bypass (recorded residual; the raw slot is used). */
-								VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
-									"Read-modify-write on hooked property %z::$%z bypasses its hooks (not yet supported)",
-									&pClass->sName,&pObjAttr->pAttr->sName);
+							if( bCoalesceW || bRmwNext ){
+								/* `$o->x ??= v` (bCoalesceW) and the read-modify-write
+								 * forms `$o->x++`, `$o->x .= v`, … (bRmwNext): php reads
+								 * through the get hook (raw backing when the property is
+								 * set-only) and writes through the set hook.
+								 *   - ??=: the test value goes on the stack and a
+								 *     COAL_HOOK entry is pushed for the OP_NULLC_STORE
+								 *     at the jump target; the fetch-point sweep drops it
+								 *     when the short-circuit jump skips the assign or a
+								 *     throw abandons the RHS (the entry is NOT a scalar
+								 *     transient — nested stores/coalesces in the RHS
+								 *     stack their own entries above it).
+								 *   - RMW: the value goes into a fresh SCRATCH slot the
+								 *     modify op mutates in place; the entry makes the
+								 *     op's tail dispatch the set side with the computed
+								 *     value (PH7_HOOK_RMW_WRITEBACK). */
+								ph7_value sCur;
+								sxi32 rcCur;
+								PH7_MemObjInit(pVm,&sCur);
+								rcCur = PH7_VmHookGetAttrValue(pThis,pObjAttr,&sCur);
+								if( rcCur == SXERR_NOTFOUND ){
+									/* set-only hook (or guard edge): the read side is the
+									 * raw backing store (php) */
+									ph7_value *pBack = (ph7_value *)SySetAt(&pVm->aMemObj,pObjAttr->nIdx);
+									if( pBack ){
+										PH7_MemObjStore(pBack,&sCur);
+									}
+								}else if( pVm->nBoundaryRc != 0 ){
+									/* the get hook threw: leave the null temp; the
+									 * fetch-point router lands the parked throw —
+									 * nothing is armed. */
+									PH7_MemObjRelease(&sCur);
+									PH7_ClassInstanceUnref(pThis);
+									break;
+								}
+								if( bCoalesceW ){
+									VmHookRmw sPend;
+									PH7_MemObjStore(&sCur,pTos);
+									pTos->nIdx = SXU32_HIGH;
+									PH7_MemObjRelease(&sCur);
+									sPend.iKind = VM_HOOK_PEND_COAL_HOOK;
+									sPend.pThis = pThis;
+									sPend.pAttr = pObjAttr->pAttr;
+									sPend.nBackIdx = pObjAttr->nIdx;
+									sPend.nScratchIdx = SXU32_HIGH;
+									SyBlobInit(&sPend.sName,&pVm->sAllocator);
+									sPend.pOwnerStack = (void *)pStack;
+									sPend.pInstrs = (void *)aInstr;
+									sPend.nJmpPc = (sxu32)(pc + 1);            /* the OP_NULLC_JMP */
+									sPend.nPc = (sxu32)(pNextH->iP2 - 1);      /* the OP_NULLC_STORE */
+									pThis->iRef++;
+									SySetPut(&pVm->aHookRmw,(const void *)&sPend);
+									PH7_ClassInstanceUnref(pThis);
+									break;
+								}
+								{
+									ph7_value *pScr = PH7_ReserveMemObj(&(*pVm));
+									if( pScr ){
+										VmHookRmw sRmw;
+										PH7_MemObjStore(&sCur,pScr);
+										PH7_MemObjStore(&sCur,pTos);
+										pTos->nIdx = pScr->nIdx;
+										sRmw.iKind = VM_HOOK_PEND_RMW;
+										sRmw.pThis = pThis;
+										sRmw.pAttr = pObjAttr->pAttr;
+										sRmw.nBackIdx = pObjAttr->nIdx;
+										sRmw.nScratchIdx = pScr->nIdx;
+										SyBlobInit(&sRmw.sName,&pVm->sAllocator);
+										sRmw.pOwnerStack = (void *)pStack;
+										sRmw.pInstrs = (void *)aInstr;
+										sRmw.nJmpPc = (sxu32)(pc + 1);  /* the modify op ... */
+										sRmw.nPc = (sxu32)(pc + 1);     /* ... is the whole window */
+										pThis->iRef++;
+										SySetPut(&pVm->aHookRmw,(const void *)&sRmw);
+									}
+									/* OOM: pScr == 0 — leave the null temp (loud allocator
+									 * diagnostics already fired) */
+									PH7_MemObjRelease(&sCur);
+									PH7_ClassInstanceUnref(pThis);
+									break;
+								}
 							}
 						}
 						/* PHP 7.4+: reading an uninitialized typed property is an Error.
@@ -16839,6 +17383,16 @@ Unwind:
 	 * with the pre-stage-2 lossy deep-suspend (stage 4 replaces this).
 	 * At the bottom, VmExecFinalize hands the status to the native caller. */
 	for(;;){
+		if( rc == PH7_ABORT || rc == PH7_EXCEPTION ){
+			/* Drop any pending hook-RMW write-backs this activation armed — its
+			 * statement is abandoned (only the innermost activation at throw time
+			 * can own entries: the armed window spans exactly one instruction, so
+			 * no OP_CALL record ever intervenes). */
+			while( SySetUsed(&pVm->aHookRmw) > 0
+			 && ((VmHookRmw *)SySetPeek(&pVm->aHookRmw))->pOwnerStack == (void *)pStack ){
+				VmHookRmwDropTop(&(*pVm));
+			}
+		}
 		if( pCallTop == 0 ){
 			return VmExecFinalize(&(*pVm),&sState,&aArg,pTos,rc);
 		}
@@ -21774,22 +22328,63 @@ static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)
 		}else{
 			SyString *pClassName = &pThis->pClass->sName;
 			SyHashEntry *pEntry;
+			SySet sNames;
+			SyString *aName;
+			sxu32 iName,nName;
 			pThis->iFlags |= VM_INSTANCE_DUMPING;
 			SyBlobAppend(pOut,"\\",1);
 			SyBlobAppend(pOut,pClassName->zString,pClassName->nByte);
 			SyBlobAppend(pOut,"::__set_state(array(\n",21);
+			/* SNAPSHOT the attribute names first: a PHP 8.4 get hook dispatched
+			 * mid-walk may re-enter an hAttr walk on this instance (the hash has
+			 * a single embedded loop cursor) or unset()/create properties; names
+			 * point into class-owned attr storage and each is re-looked-up. */
+			SySetInit(&sNames,&pThis->pVm->sAllocator,sizeof(SyString));
 			SyHashResetLoopCursor(&pThis->hAttr);
 			while( (pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
 				VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
-				SyString *pAName = &pVmAttr->pAttr->sName;
-				ph7_value *pAttrVal;
 				if( pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT) ){ continue; }
+				SySetPut(&sNames,(const void *)&pVmAttr->pAttr->sName);
+			}
+			aName = (SyString *)SySetBasePtr(&sNames);
+			nName = SySetUsed(&sNames);
+			for( iName = 0 ; iName < nName ; ++iName ){
+				SyString *pAName = &aName[iName];
+				VmClassAttr *pVmAttr;
+				ph7_value *pAttrVal;
+				pEntry = SyHashGet(&pThis->hAttr,(const void *)pAName->zString,pAName->nByte);
+				if( pEntry == 0 ){ continue; } /* unset by an earlier hook */
+				pVmAttr = (VmClassAttr *)pEntry->pUserData;
 				VmExportIndent(pOut,nIndent+3); /* object property lines sit one deeper than arrays */
 				VmExportQuoted(pOut,pAName->zString,(int)pAName->nByte);
+				/* PHP 8.4 property hooks: var_export() reads through the get hook
+				 * (every visibility — php exports private hooked values too). A
+				 * throwing hook parks on the boundary rail; the helper's boundary
+				 * gate keeps LATER hooks from running (the raw values the tail of
+				 * the export falls back to are discarded when the throw routes). */
+				{
+					ph7_value sHookVal;
+					sxi32 rcHk;
+					PH7_MemObjInit(pThis->pVm,&sHookVal);
+					rcHk = PH7_VmHookGetAttrValue(pThis,pVmAttr,&sHookVal);
+					if( rcHk == SXRET_OK ){
+						VmExportEntryValue(pOut,&sHookVal,nIndent,depth);
+						PH7_MemObjRelease(&sHookVal);
+						continue;
+					}
+					PH7_MemObjRelease(&sHookVal);
+					if( rcHk != SXERR_NOTFOUND ){
+						/* the hook threw (parked on the boundary rail): NULL
+						 * placeholder keeps the output well-formed */
+						SyBlobAppend(pOut," => NULL,\n",10);
+						continue;
+					}
+				}
 				pAttrVal = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
 				if( pAttrVal ){ VmExportEntryValue(pOut,pAttrVal,nIndent,depth); }
 				else { SyBlobAppend(pOut," => NULL,\n",10); }
 			}
+			SySetRelease(&sNames);
 			VmExportIndent(pOut,nIndent);
 			SyBlobAppend(pOut,"))",2);
 			pThis->iFlags &= ~VM_INSTANCE_DUMPING;

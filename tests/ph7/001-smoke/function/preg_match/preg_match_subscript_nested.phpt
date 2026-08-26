@@ -13,8 +13,8 @@ echo $a['x']['y'][0] . "\n";
 echo $a['x']['y'][1] . "\n";
 var_export($b['x']['y']); echo "\n"; // shared copy untouched (still 0, not an array)
 // deeper, fully auto-vivified
-preg_match('/(\w+)/', 'Hi', $c['p']['q']['r']);
-echo $c['p']['q']['r'][0] . "\n";
+preg_match('/(\w+)/', 'Hi', $pmsnC['p']['q']['r']);
+echo $pmsnC['p']['q']['r'][0] . "\n";
 ?>
 --EXPECT--
 1
