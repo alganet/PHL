@@ -15,7 +15,7 @@ $space = disk_total_space('/');
 echo is_numeric($space) && $space > 0 ? 'OK' : 'FAIL';
 ?>
 --EXPECTF--
-%s Warning:  disk_total_space(): IO routine(disk_total_space) not implemented in the underlying VFS,PH7 is returning FALSE
+Warning: disk_total_space(): IO routine(disk_total_space) not implemented in the underlying VFS,PH7 is returning FALSE in %s on line %d
 FAIL
 --CLEAN--
 <?php

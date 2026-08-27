@@ -17,7 +17,7 @@ $b->ref = $a;
 $result = $a == $b;
 ?>
 --EXPECTF--
-%s Error:  Nesting limit reached: Infinite recursion?
+Error: Nesting limit reached: Infinite recursion? in %s on line %d
 --CLEAN--
 <?php
 unset($a, $b, $result);

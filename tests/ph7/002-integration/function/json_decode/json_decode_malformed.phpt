@@ -33,7 +33,7 @@ echo ($result !== null && isset($result['test']) && $result['test'] == 'value') 
 --EXPECTF--
 malformed_ok
 malformed_ok
-%s Warning:  json_decode(): JSON Objects are always returned as an associative array
+Warning: json_decode(): JSON Objects are always returned as an associative array in %s on line %d
 error_fail
 valid_ok
 --CLEAN--
