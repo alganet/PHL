@@ -17,7 +17,7 @@ fclose($fp);
 echo $out;
 ?>
 --EXPECT--
-phl [-h|--help|-b|-i|-l|-v|--version|-r code] path/to/php_file [script args]
+phl [-h|--help|-b|-i|-l|-v|--version|-r code|--rf name|--rc name] path/to/php_file [script args]
 phl -S host:port [-t docroot] [router.php]
 	-b: Dump PH7 byte-code instructions
 	-i: Display interpreter information and exit

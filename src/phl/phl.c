@@ -65,7 +65,7 @@ static void Fatal(const char *zMsg)
  */
 static void Help(void)
 {
-	puts("phl [-h|--help|-b|-i|-l|-v|--version|-r code] path/to/php_file [script args]");
+	puts("phl [-h|--help|-b|-i|-l|-v|--version|-r code|--rf name|--rc name] path/to/php_file [script args]");
 #ifdef PHL_ENABLE_SERVER
 	puts("phl -S host:port [-t docroot] [router.php]");
 #endif
@@ -258,6 +258,51 @@ int main(int argc,char **argv)
 				Version();
 			}else if( strcmp(argv[n], "--help") == 0 ){
 				Help();
+			}else if( strcmp(argv[n], "--rf") == 0 || strcmp(argv[n], "--rc") == 0 ){
+				/* php CLI parity: `--rf <function>` / `--rc <class>` print the
+				 * Reflection export (the __toString machinery is byte-exact vs
+				 * php) and exit 1 with `Exception: <message>` when the target
+				 * does not exist. Implemented as an inline snippet riding the
+				 * -r code path; the NAME is charset-validated (identifier +
+				 * namespace separators) so it embeds safely in the snippet. */
+				static char zReflCode[768];
+				const char *zWhat = (argv[n][3] == 'f') ? "ReflectionFunction" : "ReflectionClass";
+				const char *zName;
+				const char *zChk;
+				if( n + 1 >= argc ){
+					FatalCode("Missing name argument for --rf/--rc",1);
+				}
+				zName = argv[++n];
+				for( zChk = zName ; *zChk ; zChk++ ){
+					char ch = *zChk;
+					if( !(ch == '_' || ch == '\\'
+					   || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')
+					   || (ch >= '0' && ch <= '9')) ){
+						FatalCode("Invalid name for --rf/--rc",1);
+					}
+				}
+				if( strlen(zName) > 250 ){
+					FatalCode("Name too long for --rf/--rc",1);
+				}
+				{
+					/* Double the namespace separators: inside the snippet's
+					 * double-quoted string a lone backslash could form an
+					 * escape sequence ("App\name" -> newline). */
+					static char zEsc[512];
+					char *pOut = zEsc;
+					for( zChk = zName ; *zChk ; zChk++ ){
+						if( *zChk == '\\' ){
+							*pOut++ = '\\';
+						}
+						*pOut++ = *zChk;
+					}
+					*pOut = 0;
+					snprintf(zReflCode,sizeof(zReflCode),
+						"try { echo new %s(\"%s\"), \"\\n\"; } catch (Throwable $e) { echo \"Exception: \", $e->getMessage(), \"\\n\"; exit(1); }",
+						zWhat,zEsc);
+				}
+				zRunCode = zReflCode;
+				run_code = 1;
 			}else{
 				/* Unknown long option */
 				Help();
