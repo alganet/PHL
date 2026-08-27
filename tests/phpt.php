@@ -421,6 +421,7 @@ $phpt_skipped = 0;
 $phpt_nimp = 0;
 $phpt_count = 1;
 $phpt_failures = array();
+$phpt_skip_reasons = array();
 
 foreach ($phpt_files as $phpt_file) {
     $phpt_sections = parse_phpt_sections($phpt_file, $phpt_valid_sections);
@@ -454,10 +455,12 @@ foreach ($phpt_files as $phpt_file) {
 
     // SKIPIF check
     $phpt_skip = false;
+    $phpt_skip_reason = '';
     if ($phpt_env_unsupported) {
         // --ENV-- is only honored for a fresh child process (see the parse note);
         // skip rather than run in-process with the env silently dropped.
         $phpt_skip = true;
+        $phpt_skip_reason = '--ENV-- requires --target-executable';
     } elseif (isset($phpt_sections['skipif'])) {
         $phpt_skipif_path = $phpt_file . '.skipif';
         if (!empty($phpt_target_executable)) {
@@ -477,15 +480,30 @@ foreach ($phpt_files as $phpt_file) {
         $phpt_skip_output = trim($phpt_skip_output);
         if (!empty($phpt_skip_output)) {
             $phpt_skip = true;
+            // Normalize the SKIPIF's message into a one-line TAP reason: drop
+            // the conventional leading "skip" word (the directive adds its
+            // own) and collapse newlines.
+            $phpt_skip_reason = str_replace(array("\r", "\n"), ' ', $phpt_skip_output);
+            if (strncasecmp($phpt_skip_reason, 'skip', 4) === 0) {
+                $phpt_skip_reason = ltrim(substr($phpt_skip_reason, 4), " \t-:");
+            }
+            $phpt_skip_reason = trim($phpt_skip_reason);
         }
     }
 
     if ($phpt_skip) {
+        if ($phpt_skip_reason === '') {
+            $phpt_skip_reason = '(no reason given)';
+        }
         if ($phpt_output_format == "tap") {
-            echo "ok $phpt_count - $phpt_test_name # skip\n";
+            echo "ok $phpt_count - $phpt_test_name # skip $phpt_skip_reason\n";
         } else {
             echo "S";
         }
+        if (!isset($phpt_skip_reasons[$phpt_skip_reason])) {
+            $phpt_skip_reasons[$phpt_skip_reason] = 0;
+        }
+        $phpt_skip_reasons[$phpt_skip_reason]++;
         $phpt_skipped++;
     } else {
         // Check for unimplemented sections
@@ -612,6 +630,15 @@ if ($phpt_output_format == "tap") {
     echo "# ----------------\n";
     echo "#  Total: " . ($phpt_skipped + $phpt_nimp) . " incomplete\n";
     echo "\n";
+    if (!empty($phpt_skip_reasons)) {
+        echo "# Skips by reason\n";
+        echo "# ----------------\n";
+        arsort($phpt_skip_reasons);
+        foreach ($phpt_skip_reasons as $phpt_reason => $phpt_reason_count) {
+            echo "# " . $phpt_reason_count . "\t" . $phpt_reason . "\n";
+        }
+        echo "\n";
+    }
     echo "# Test Summary\n";
     echo "# ----------------\n";
     echo "#     ok: " . ($phpt_passed + $phpt_skipped) . "\n";
