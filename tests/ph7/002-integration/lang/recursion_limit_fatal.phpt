@@ -25,5 +25,5 @@ g();
 echo "AFTER\n";
 ?>
 --EXPECTF--
-%s Error:  Maximum recursion depth of 64 reached
+Error: Maximum recursion depth of 64 reached in %s on line %d
 SHUTDOWN

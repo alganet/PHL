@@ -687,6 +687,10 @@ static sxi32 ProcessScript(
 	if( zFilePath ){
 		/* Push processed file path */
 		PH7_VmPushFilePath(pVm,zFilePath,-1,TRUE,0);
+	}else{
+		/* Anonymous source (phl -r / an embedder snippet): php names it
+		 * "Command line code" in every diagnostic location suffix. */
+		PH7_VmPushFilePath(pVm,"Command line code",-1,TRUE,0);
 	}
 	/* Reset the error message consumer */
 	SyBlobReset(&pEngine->xConf.sErrConsumer);

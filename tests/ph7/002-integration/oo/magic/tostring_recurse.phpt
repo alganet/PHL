@@ -25,7 +25,7 @@ $a = new A();
 echo $a;
 ?>
 --EXPECTF--
-%s Error:  Maximum native nesting depth reached
+Error: Maximum native nesting depth reached in %s on line %d
 Object
 --CLEAN--
 <?php

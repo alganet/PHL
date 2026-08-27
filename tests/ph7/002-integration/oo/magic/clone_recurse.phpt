@@ -17,7 +17,7 @@ $a = new A;
 $b = clone $a;
 ?>
 --EXPECTF--
-%s Error:  Object clone limit reached,no more call to __clone()
+Error: Object clone limit reached,no more call to __clone() in %s on line %d
 --CLEAN--
 <?php
 unset($a, $b);

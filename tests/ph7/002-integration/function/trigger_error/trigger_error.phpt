@@ -16,9 +16,9 @@ $result = trigger_error("Test warning", E_USER_WARNING);
 if ($result) { echo "warning_ok\n"; } else { echo "warning_failed\n"; }
 ?>
 --EXPECTF--
-%s Notice:  Test notice
+Notice: Test notice in %s on line %d
 notice_ok
-%s Warning:  Test warning
+Warning: Test warning in %s on line %d
 warning_ok
 --CLEAN--
 <?php

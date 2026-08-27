@@ -16,9 +16,9 @@ $result = file(array("test"));
 echo "array_arg: " . (is_array($result) ? count($result) : "false") . "\n";
 ?>
 --EXPECTF--
-%s Error:  file(): IO error while opening '/nonexistent/path/file.txt'
+Error: file(): IO error while opening '/nonexistent/path/file.txt' in %s on line %d
 invalid_path: false
-%s Warning:  file(): Expecting a file path
+Warning: file(): Expecting a file path in %s on line %d
 array_arg: false
 --CLEAN--
 <?php

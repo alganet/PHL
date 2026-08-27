@@ -14,7 +14,7 @@ $t = new Test();
 $t->MY_CONST = 123;
 ?>
 --EXPECTF--
-%s Error:  Cannot perform assignment on a constant class attribute,PH7 is loading NULL
+Error: Cannot perform assignment on a constant class attribute,PH7 is loading NULL in %s on line %d
 --CLEAN--
 <?php
 unset($t);

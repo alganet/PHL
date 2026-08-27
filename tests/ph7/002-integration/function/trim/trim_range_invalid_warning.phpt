@@ -16,15 +16,15 @@ echo rtrim("Zx", "y..a"), "\n";    // wrong order in rtrim()
 echo addcslashes("aZ", "Z..A"), "\n"; // wrong order in addcslashes()
 ?>
 --EXPECTF--
-%s Warning:  trim(): Invalid '..'-range, '..'-range needs to be incrementing
+Warning: trim(): Invalid '..'-range, '..'-range needs to be incrementing in %s on line %d
 Xb
-%s Warning:  trim(): Invalid '..'-range, no character to the right of '..'
+Warning: trim(): Invalid '..'-range, no character to the right of '..' in %s on line %d
 b
-%s Warning:  trim(): Invalid '..'-range, no character to the left of '..'
+Warning: trim(): Invalid '..'-range, no character to the left of '..' in %s on line %d
 a
-%s Warning:  rtrim(): Invalid '..'-range, '..'-range needs to be incrementing
+Warning: rtrim(): Invalid '..'-range, '..'-range needs to be incrementing in %s on line %d
 Zx
-%s Warning:  addcslashes(): Invalid '..'-range, '..'-range needs to be incrementing
+Warning: addcslashes(): Invalid '..'-range, '..'-range needs to be incrementing in %s on line %d
 a\Z
 --CLEAN--
 <?php

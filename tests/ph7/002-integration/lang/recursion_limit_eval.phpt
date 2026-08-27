@@ -25,4 +25,4 @@ r();
 echo "AFTER\n";
 ?>
 --EXPECTF--
-%s Error:  Maximum native nesting depth reached
+Error: Maximum native nesting depth reached in %s on line %d

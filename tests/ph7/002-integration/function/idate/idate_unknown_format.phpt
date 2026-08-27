@@ -11,7 +11,7 @@ $result = idate('q');
 echo "Result: $result\n";
 ?>
 --EXPECTF--
-%s Warning:  idate(): Unknown date format token
+Warning: idate(): Unknown date format token in %s on line %d
 Result: 0
 --CLEAN--
 <?php

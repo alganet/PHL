@@ -5149,6 +5149,57 @@ static sxi32 VmInvokeErrorHandler(ph7_vm *pVm, sxi32 iErr, const char *zMessage,
 	/* No handler, always call error handler */
 	return TRUE;
 }
+/*
+ * php's diagnostic label for a severity/errno (display shape; the caller
+ * appends ": " after it). The PH7_CTX_* levels map to their php analogs, and
+ * raw E_* errnos passed through by builtins/deprecation sites map by value.
+ * PH7_CTX_ERR keeps the engine's native "Error" label: many CTX_ERR
+ * diagnostics are PHL-specific continue-running notices php never prints, so
+ * claiming php's "Fatal error" there would mislabel them — the per-diagnostic
+ * severity reclassification is the remaining §6 audit tail. Note the raw
+ * errno reaches user handlers untouched (e.g. 8192 for E_DEPRECATED); this
+ * only picks the DISPLAY label.
+ */
+static const char * VmDiagnosticLabel(sxi32 iErr)
+{
+	switch(iErr){
+	case PH7_CTX_WARNING:          /* == 2 == E_WARNING */
+	case 512  /* E_USER_WARNING */:
+		return "Warning";
+	case PH7_CTX_NOTICE:           /* 3 */
+	case 8    /* E_NOTICE */:
+	case 1024 /* E_USER_NOTICE */:
+		return "Notice";
+	case 8192  /* E_DEPRECATED */:
+	case 16384 /* E_USER_DEPRECATED */:
+		return "Deprecated";
+	case 256 /* E_USER_ERROR */:
+		return "Fatal error";
+	default:
+		return "Error";
+	}
+}
+/*
+ * Append php's display-shape diagnostic header/trailer around a message:
+ * `LABEL: <func(): >message in FILE on line LINE`. The LINE is a fixed 1
+ * pending the §6 runtime-line-tracking gate (correct for `-r` one-liners;
+ * cross-engine tests wildcard it with %d) — the SHAPE is php's, so tests can
+ * be authored cross-engine with --EXPECTF--.
+ */
+static void VmDiagnosticHeader(SyBlob *pWorker,sxi32 iErr,SyString *pFuncName)
+{
+	SyBlobFormat(pWorker,"%s: ",VmDiagnosticLabel(iErr));
+	if( pFuncName ){
+		SyBlobAppend(pWorker,pFuncName->zString,pFuncName->nByte);
+		SyBlobAppend(pWorker,"(): ",sizeof("(): ")-1);
+	}
+}
+static void VmDiagnosticLocation(SyBlob *pWorker,SyString *pFile)
+{
+	if( pFile ){
+		SyBlobFormat(pWorker," in %.*s on line %d",(int)pFile->nByte,pFile->zString,1);
+	}
+}
 PH7_PRIVATE sxi32 PH7_VmThrowError(
 	ph7_vm *pVm,         /* Target VM */
 	SyString *pFuncName, /* Function name. NULL otherwise */
@@ -5158,7 +5209,6 @@ PH7_PRIVATE sxi32 PH7_VmThrowError(
 {
 	SyBlob *pWorker = &pVm->sWorker;
 	SyString *pFile;
-	char *zErr;
 	sxi32 rc = SXRET_OK;
 	if( !pVm->bErrReport ){
 		/* Don't bother reporting errors */
@@ -5168,34 +5218,9 @@ PH7_PRIVATE sxi32 PH7_VmThrowError(
 	SyBlobReset(pWorker);
 	/* Peek the processed file if available */
 	pFile = (SyString *)SySetPeek(&pVm->aFiles);
-	if( pFile ){
-		/* Append file name */
-		SyBlobAppend(pWorker,pFile->zString,pFile->nByte);
-		SyBlobAppend(pWorker,(const void *)" ",sizeof(char));
-	}
-	/* Default prefix is "Error:".  Only the built-in warning/notice
-	 * severities adjust the textual prefix.  Do not modify the raw error
-	 * code; user handlers rely on seeing the original value (e.g. 8192 for
-	 * E_DEPRECATED). */
-	zErr = "Error:  ";
-	switch(iErr){
-	case PH7_CTX_WARNING:
-		zErr = "Warning:  ";
-		break;
-	case PH7_CTX_NOTICE:
-		zErr = "Notice:  ";
-		break;
-	default:
-		/* keep iErr unchanged */
-		break;
-	}
-	SyBlobAppend(pWorker,zErr,SyStrlen(zErr));
-	if( pFuncName ){
-		/* Append function name first */
-		SyBlobAppend(pWorker,pFuncName->zString,pFuncName->nByte);
-		SyBlobAppend(pWorker,"(): ",sizeof("(): ")-1);
-	}
+	VmDiagnosticHeader(pWorker,iErr,pFuncName);
 	SyBlobAppend(pWorker,zMessage,SyStrlen(zMessage));
+	VmDiagnosticLocation(pWorker,pFile);
 	/* Check for user error handler.  compute length of C string */
 	if( VmInvokeErrorHandler(pVm, iErr, zMessage, (sxi32)SyStrlen(zMessage), pFile, 0) ){
 		rc = VmCallErrorHandler(&(*pVm),pWorker);
@@ -5312,7 +5337,6 @@ static sxi32 VmThrowErrorAp(
 	SyBlob *pWorker = &pVm->sWorker;
 	SyBlob sMsg;
 	SyString *pFile;
-	char *zErr;
 	sxi32 rc = SXRET_OK;
 	if( !pVm->bErrReport ){
 		/* Don't bother reporting errors */
@@ -5322,32 +5346,7 @@ static sxi32 VmThrowErrorAp(
 	SyBlobReset(pWorker);
 	/* Peek the processed file if available */
 	pFile = (SyString *)SySetPeek(&pVm->aFiles);
-	if( pFile ){
-		/* Append file name */
-		SyBlobAppend(pWorker,pFile->zString,pFile->nByte);
-		SyBlobAppend(pWorker,(const void *)" ",sizeof(char));
-	}
-	/* Default prefix is "Error:".  Only WARNING/NOTICE use a special
-	 * prefix; leave other error codes untouched so the handler receives
-	 * the correct errno value. */
-	zErr = "Error:  ";
-	switch(iErr){
-	case PH7_CTX_WARNING:
-		zErr = "Warning:  ";
-		break;
-	case PH7_CTX_NOTICE:
-		zErr = "Notice:  ";
-		break;
-	default:
-		/* do not change iErr */
-		break;
-	}
-	SyBlobAppend(pWorker,zErr,SyStrlen(zErr));
-	if( pFuncName ){
-		/* Append function name first */
-		SyBlobAppend(pWorker,pFuncName->zString,pFuncName->nByte);
-		SyBlobAppend(pWorker,"(): ",sizeof("(): ")-1);
-	}
+	VmDiagnosticHeader(pWorker,iErr,pFuncName);
 	/* Format the raw message */
 	SyBlobInit(&sMsg, &pVm->sAllocator);
 	SyBlobFormatAp(&sMsg,zFormat,ap);
@@ -5355,6 +5354,7 @@ static sxi32 VmThrowErrorAp(
 	if( VmInvokeErrorHandler(pVm, iErr, (const char *)SyBlobData(&sMsg), (sxi32)SyBlobLength(&sMsg), pFile, 0) ){
 		/* No handler or handler returned TRUE, normal processing */
 		SyBlobAppend(pWorker,SyBlobData(&sMsg),SyBlobLength(&sMsg));
+		VmDiagnosticLocation(pWorker,pFile);
 		rc = VmCallErrorHandler(&(*pVm),pWorker);
 	}
 	SyBlobRelease(&sMsg);
@@ -22656,39 +22656,40 @@ static int vm_builtin_assert(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 static int vm_builtin_trigger_error(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	int nErr = PH7_CTX_NOTICE;
-	int rc = PH7_OK;
+	int nErr = 1024; /* E_USER_NOTICE — php's default level */
 	if( nArg > 0 ){
 		const char *zErr;
 		int nLen;
 		/* Extract the error message */
 		zErr = ph7_value_to_string(apArg[0],&nLen);
 		if( nArg > 1 ){
-			/* Extract the error type */
+			/* php 8: only the E_USER_* levels are accepted — anything else is a
+			 * catchable ValueError. The RAW errno flows to the display label map
+			 * and to a user error handler (php hands the handler 1024, not a
+			 * translated engine severity). */
 			nErr = ph7_value_to_int(apArg[1]);
-			switch( nErr ){
-			case 1:   /* E_ERROR */
-			case 16:  /* E_CORE_ERROR */
-			case 64:  /* E_COMPILE_ERROR */
-			case 256: /* E_USER_ERROR */
-				nErr = PH7_CTX_ERR;
-				rc = PH7_ABORT; /* Abort processing immediately */
-				break;
-			case 2:   /* E_WARNING */
-			case 32:  /* E_CORE_WARNING */
-			case 123: /* E_COMPILE_WARNING */
-			case 512: /* E_USER_WARNING */
-				nErr = PH7_CTX_WARNING;
-				break;
-			default:
-				nErr = PH7_CTX_NOTICE;
-				break;
+			if( nErr != 256 && nErr != 512 && nErr != 1024 && nErr != 16384 ){
+				return PH7_VmThrowException(pCtx,"ValueError",
+					"trigger_error(): Argument #2 ($error_level) must be one of E_USER_ERROR, E_USER_WARNING, E_USER_NOTICE, or E_USER_DEPRECATED");
+			}
+			if( nErr == 256 /* E_USER_ERROR */ ){
+				/* php 8.4 deprecates the user-fatal level */
+				PH7_VmThrowDeprecatedFmt(pCtx->pVm,
+					"Passing E_USER_ERROR to trigger_error() is deprecated since 8.4, throw an exception or call exit with a string message instead");
 			}
 		}
-		/* Report error */
-		rc = PH7_VmThrowError(pCtx->pVm, NULL, nErr, zErr);
-		if( rc == PH7_ABORT ){
-			return rc;
+		/* Report error (consults an installed error handler, then displays) */
+		PH7_VmThrowError(pCtx->pVm, NULL, nErr, zErr);
+		if( nErr == 256 /* E_USER_ERROR */
+		 && !ph7_value_is_callable(&pCtx->pVm->aErrCB[1]) ){
+			/* php: an unhandled user fatal halts with exit 255 (pre-fix the
+			 * PH7_ABORT here was overwritten by the throw's status, so
+			 * E_USER_ERROR silently CONTINUED). With a handler installed the
+			 * script continues — the handler-returned-false renormalization is
+			 * a recorded nuance. No php stack trace either (recorded). */
+			pCtx->pVm->iExitStatus = 255;
+			pCtx->pVm->bHaltRequested = 1;
+			return PH7_ABORT;
 		}
 		/* Return true */
 		ph7_result_bool(pCtx,1);
@@ -22696,7 +22697,7 @@ static int vm_builtin_trigger_error(ph7_context *pCtx,int nArg,ph7_value **apArg
 		/* Missing arguments,return FALSE */
 		ph7_result_bool(pCtx,0);
 	}
-	return rc;
+	return PH7_OK;
 }
 /*
  * int error_reporting([int $level])
