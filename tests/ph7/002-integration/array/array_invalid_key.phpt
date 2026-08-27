@@ -14,9 +14,9 @@ var_dump($arr);
 ?>
 --EXPECTF--
 array(1) {
- [Object] =>
+  ["Object"]=>
   string(5) "value"
- }
+}
 --CLEAN--
 <?php
 unset($obj, $arr);

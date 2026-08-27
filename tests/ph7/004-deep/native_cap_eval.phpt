@@ -20,6 +20,6 @@ function r(int $n): int { return $n === 0 ? 0 : 1 + eval("return r(" . ($n - 1) 
 echo r(50000), "\n";
 ?>
 --EXPECTF--
-%s Error:  Maximum native nesting depth reached
+Error: Maximum native nesting depth reached in %s on line %d
 --CLEAN--
 <?php

@@ -15,6 +15,6 @@ $a = array_fill(0, 4000000, 0);
 echo "UNREACHABLE count=" . count($a) . "\n";
 ?>
 --EXPECTF--
-%s Error:  PH7 is running out of memory
+Error: PH7 is running out of memory in %s on line %d
 --CLEAN--
 <?php

@@ -7,8 +7,6 @@ var_dump and print_r consult __debugInfo(); var_export and foreach use real prop
 PHL-only on the dump byte format. Semantics match PHP: var_dump/print_r show the
 __debugInfo() array (real "secret" hidden), while var_export and foreach see the
 real properties.
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
 class D {
@@ -25,17 +23,16 @@ foreach ($o as $k => $v) { echo "$k=$v\n"; }
 ?>
 --EXPECT--
 object(D)#1 (2) {
- [shown] =>
+  ["shown"]=>
   string(3) "yes"
- [n] =>
+  ["n"]=>
   int(7)
- }
-Object(D) {
- [shown] =>
-  yes
- [n] =>
-  7
- }
+}
+D Object
+(
+    [shown] => yes
+    [n] => 7
+)
 
 \D::__set_state(array(
    'secret' => 42,

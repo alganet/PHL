@@ -17,7 +17,7 @@ var_dump($result);
 unlink($tmp);
 ?>
 --EXPECT--
-bool(FALSE)
+bool(false)
 --CLEAN--
 <?php
 if (file_exists($tmp)) unlink($tmp);

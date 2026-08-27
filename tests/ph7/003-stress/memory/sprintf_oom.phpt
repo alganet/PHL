@@ -17,6 +17,6 @@ $out = sprintf('%s%s', $s, $s);
 echo "UNREACHABLE len=" . strlen($out) . "\n";
 ?>
 --EXPECTF--
-%s Error:  PH7 is running out of memory
+Error: PH7 is running out of memory in %s on line %d
 --CLEAN--
 <?php

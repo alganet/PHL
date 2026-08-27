@@ -10,7 +10,7 @@ parse_url with empty string
 var_dump(parse_url(""));
 ?>
 --EXPECT--
-bool(FALSE)
+bool(false)
 --CLEAN--
 <?php
 

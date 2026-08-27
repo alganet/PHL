@@ -1,8 +1,6 @@
 --CREDITS--
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --TEST--
 Test PH7 logical operators with lower precedence
 --FILE--
@@ -39,15 +37,15 @@ $result9 = true and false || true;
 var_dump($result9); // bool(true) - or has lower precedence than and
 ?>
 --EXPECT--
-bool(TRUE)
-bool(TRUE)
-bool(FALSE)
-bool(FALSE)
-bool(TRUE)
-bool(TRUE)
-bool(FALSE)
-bool(TRUE)
-bool(TRUE)
+bool(true)
+bool(true)
+bool(false)
+bool(false)
+bool(true)
+bool(true)
+bool(false)
+bool(true)
+bool(true)
 --CLEAN--
 <?php
 unset($result1, $result2, $result3, $result4, $result5, $result6, $result7, $result8, $result9);

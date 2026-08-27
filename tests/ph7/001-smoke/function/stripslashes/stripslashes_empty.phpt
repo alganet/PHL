@@ -10,7 +10,7 @@ stripslashes with empty string
 var_dump(stripslashes(''));
 ?>
 --EXPECT--
-null
+NULL
 --CLEAN--
 <?php
 

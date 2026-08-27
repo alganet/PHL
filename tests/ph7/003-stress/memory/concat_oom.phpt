@@ -17,6 +17,6 @@ $c = $a . $b;
 echo "UNREACHABLE len=" . strlen($c) . "\n";
 ?>
 --EXPECTF--
-%s Error:  PH7 is running out of memory
+Error: PH7 is running out of memory in %s on line %d
 --CLEAN--
 <?php
