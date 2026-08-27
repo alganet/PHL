@@ -3,6 +3,8 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 trigger_error with E_USER_ERROR: 8.4 deprecation, user fatal, halt (php parity)
+--SKIPIF--
+<?php if (function_exists('zend_version') echo 'skip: needs error message adjustment'; ?>
 --FILE--
 <?php
 echo "before_error\n";

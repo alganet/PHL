@@ -7,6 +7,7 @@ strftime with %D format specifier returns date in MM/DD/YY format
 <?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
+set_error_handler(function(){ return true; }); // suppress the 8.1 strftime deprecation; the notice has its own test
 $result = strftime("%D");
 // %D should return MM/DD/YY format, so length should be 8 (MM/DD/YY)
 if (is_string($result) && strlen($result) === 8 && strpos($result, '/') !== false) {

@@ -6310,6 +6310,21 @@ static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyTo
 					&& pIn->sData.nByte == sizeof("null")-1
 					&& SyStrnicmp(SyStringData(&pIn->sData),"null",sizeof("null")-1) == 0 ){
 					sArg.iFlags |= VM_FUNC_ARG_NULLABLE;
+					/* php 8.4: the implicit form is deprecated at COMPILE time —
+					 * `f(): Implicitly marking parameter $x as nullable …`
+					 * (methods carry the Class:: prefix when the class link is
+					 * already up at this point). */
+					{
+						const char *zSep = "";
+						SyString sCls = { "", 0 };
+						if( (pFunc->iFlags & VM_FUNC_CLASS_METHOD) && pFunc->pUserData ){
+							sCls = ((ph7_class *)pFunc->pUserData)->sName;
+							zSep = "::";
+						}
+						PH7_GenCompileError(&(*pGen),8192 /* E_DEPRECATED */,pIn->nLine,
+							"%z%s%z(): Implicitly marking parameter $%z as nullable is deprecated, the explicit nullable type must be used instead",
+							&sCls,zSep,&pFunc->sName,&sArg.sName);
+					}
 				}
 				/* Point beyond the default value */
 				pIn = pDefend;
@@ -14646,6 +14661,7 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 	case E_USER_ERROR:   zErr = "User error";   break;
 	case E_USER_WARNING: zErr = "User warning"; break;
 	case E_USER_NOTICE:  zErr = "User notice";  break;
+	case 8192 /* E_DEPRECATED */: zErr = "Deprecated"; break;
 	default:
 		break;
 	}

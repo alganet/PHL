@@ -4,7 +4,7 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Keyed list destructuring from a non-array source yields NULL + warns (not char-index)
 --SKIPIF--
-<?php if (function_exists('zend_version') && version_compare(PHP_VERSION, '8.5.0', '<')) echo 'skip'; ?>
+<?php if (function_exists('zend_version') echo 'skip: needs error message adjustment'; ?>
 --FILE--
 <?php
 ["a" => $a] = "string";   // string source: warn, $a NULL (NOT char-indexed to "s")

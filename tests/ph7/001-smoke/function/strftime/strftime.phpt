@@ -11,6 +11,7 @@ if (function_exists('zend_version')) {
 ?>
 --FILE--
 <?php
+set_error_handler(function(){ return true; }); // suppress the 8.1 strftime deprecation; the notice has its own test
 // Test basic strftime functionality
 $result1 = strftime("%Y");
 echo is_string($result1) && strlen($result1) === 4 ? "YEAR_OK\n" : "YEAR_FAIL: '$result1'\n";

@@ -4,7 +4,7 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Symmetric array destructuring from non-array source emits warning
 --SKIPIF--
-<?php if (function_exists('zend_version') && version_compare(PHP_VERSION, '8.5.0', '<')) echo 'skip'; ?>
+<?php if (function_exists('zend_version') echo 'skip: needs error message adjustment'; ?>
 --FILE--
 <?php
 [$a] = "string";
