@@ -504,8 +504,14 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 			}
 			continue;
 		}
-		/* Install the attribute */
-		if( pAttr->iProtection != PH7_CLASS_PROT_PRIVATE ){
+		/* Install the attribute. php: a base class's private INSTANCE property
+		 * lives on every child instance too (its own methods read/write it
+		 * through $this on the child; the access check grants private access by
+		 * DECLARING class, so child methods and outsiders still can't touch it).
+		 * Private STATICS/CONSTANTS stay uncopied — base methods reach those
+		 * through self:: against the declaring class directly. */
+		if( pAttr->iProtection != PH7_CLASS_PROT_PRIVATE
+		 || (pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
 			rc = SyHashInsert(&pSub->hAttr,(const void *)pName->zString,pName->nByte,pAttr);
 			if( rc != SXRET_OK ){
 				return rc;
@@ -1413,17 +1419,9 @@ static void DumpClassInstanceHeader(SyBlob *pOut,ph7_class *pClass,sxu32 nObjId,
  */
 static ph7_class * OoAttrDeclaringClass(ph7_class *pClass,ph7_class_attr *pAttr)
 {
-	ph7_class *pDecl = pClass;
-	ph7_class *pWalk = pClass;
-	while( pWalk ){
-		SyHashEntry *pE = SyHashGet(&pWalk->hAttr,
-			(const void *)SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName));
-		if( pE && (ph7_class_attr *)pE->pUserData == pAttr ){
-			pDecl = pWalk;
-		}
-		pWalk = pWalk->pBase;
-	}
-	return pDecl;
+	/* Attrs record their declaring class at install time (inheritance/trait
+	 * copies share the pointer, so the field survives the chain). */
+	return pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
 }
 /*
  * Emit a property's dump key: var_dump `["x"]=>` / `["p":"C":private]=>` /

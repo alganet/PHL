@@ -14481,6 +14481,16 @@ case PH7_OP_MEMBER: {
 								}
 							}
 						}
+						if( ((pInstr + 1)->iOp == PH7_OP_NULLC || (pInstr + 1)->iOp == PH7_OP_NULLC_JMP)
+						 && pInstr->iP2 != PH7_MEMBER_WRITE ){
+							/* `$o->priv ?? default` (OP_NULLC; NULLC_JMP is the `??=`
+							 * pre-test): php treats `??` as an isset-style lookup — an
+							 * inaccessible property yields null SILENTLY (the
+							 * __isset/__get consults already ran above), letting the
+							 * coalesce pick the default. */
+							PH7_ClassInstanceUnref(pThis);
+							break; /* pTos is already the null temp */
+						}
 						/* Throw Error exception (PHP-compatible).
 						 * Build message before unref — pObjAttr belongs to pThis->hAttr. */
 						{
