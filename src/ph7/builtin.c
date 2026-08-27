@@ -12,6 +12,12 @@
 #include <errno.h>   /* ERANGE (strtod range-error signal) */
 #include <stdio.h>   /* snprintf (printf-family float conversions — correctly
                       * rounded digits like php's zend_dtoa; see PH7_InputFormat) */
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+/* Forward decl: null-to-string ZPP deprecation notice (defined near the ZPP
+ * helpers; both live inside the same DISABLE_BUILTIN_FUNC region as every
+ * caller — the tiny build compiles none of them). */
+static void StrNullArgNotice(ph7_context *pCtx,ph7_value *pArg,const char *zFunc,int iArgNum,const char *zParamName);
+#endif /* PH7_DISABLE_BUILTIN_FUNC */
 /* This file implement built-in 'foreign' functions for the PH7 engine */
 /*
  * Section:
@@ -352,6 +358,7 @@ static int PH7_builtin_empty(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 static int PH7_builtin_substr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	if( nArg > 0 ){ StrNullArgNotice(pCtx,apArg[0],"substr",1,"$string"); }
 	const char *zSource,*zOfft;
 	int nOfft,nLen,nSrcLen;
 	if( nArg < 2 ){
@@ -595,6 +602,20 @@ static int PH7_builtin_substr_count(ph7_context *pCtx,int nArg,ph7_value **apArg
 /* Forward declarations: defined with the trim/addcslashes and str_contains
  * families below. */
 static void PH7_BuildCharMask(ph7_context *pCtx,const char *zList,int nLen,char aMask[256]);
+/*
+ * php 8.1 null-to-non-nullable ZPP deprecation, notice-only form for the
+ * legacy string builtins that still coerce null to "" themselves: emit
+ * `f(): Passing null to parameter #N ($name) of type string is deprecated`
+ * when the arg is an actual null, leaving the resolution unchanged.
+ */
+static void StrNullArgNotice(ph7_context *pCtx,ph7_value *pArg,const char *zFunc,int iArgNum,const char *zParamName)
+{
+	if( ph7_value_is_null(pArg) ){
+		PH7_VmThrowDeprecatedFmt(pCtx->pVm,
+			"%s(): Passing null to parameter #%d (%s) of type string is deprecated",
+			zFunc,iArgNum,zParamName);
+	}
+}
 static sxi32 StrPredicateResolveArg(ph7_context *pCtx,ph7_value *pArg,const char *zFunc,
 	int iArgNum,const char *zParamName,const char *zTypeStr,const char *zNullMsg,
 	ph7_value *pTmp,const char **pzOut,int *pnOut);
@@ -1979,6 +2000,7 @@ static int PH7_builtin_strlen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	int iLen = 0;
 	if( nArg > 0 ){
+		StrNullArgNotice(pCtx,apArg[0],"strlen",1,"$string");
 		ph7_value_to_string(apArg[0],&iLen);
 	}
 	/* String length */
@@ -2491,6 +2513,7 @@ static int PH7_builtin_explode(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 static int PH7_builtin_trim(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	if( nArg > 0 ){ StrNullArgNotice(pCtx,apArg[0],"trim",1,"$string"); }
 	const char *zString;
 	int nLen;
 	if( nArg < 1 ){
@@ -2560,6 +2583,7 @@ static int PH7_builtin_trim(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 static int PH7_builtin_rtrim(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	if( nArg > 0 ){ StrNullArgNotice(pCtx,apArg[0],"rtrim",1,"$string"); }
 	const char *zString;
 	int nLen;
 	if( nArg < 1 ){
@@ -2625,6 +2649,7 @@ static int PH7_builtin_rtrim(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 static int PH7_builtin_ltrim(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	if( nArg > 0 ){ StrNullArgNotice(pCtx,apArg[0],"ltrim",1,"$string"); }
 	const char *zString;
 	int nLen;
 	if( nArg < 1 ){
@@ -2684,6 +2709,7 @@ static int PH7_builtin_ltrim(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 static int PH7_builtin_strtolower(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	if( nArg > 0 ){ StrNullArgNotice(pCtx,apArg[0],"strtolower",1,"$string"); }
 	const char *zString,*zCur,*zEnd;
 	int nLen;
 	if( nArg < 1 ){
@@ -2738,6 +2764,7 @@ static int PH7_builtin_strtolower(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 static int PH7_builtin_strtoupper(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	if( nArg > 0 ){ StrNullArgNotice(pCtx,apArg[0],"strtoupper",1,"$string"); }
 	const char *zString,*zCur,*zEnd;
 	int nLen;
 	if( nArg < 1 ){
@@ -3216,6 +3243,8 @@ static int PH7_builtin_stristr(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 static int PH7_builtin_strpos(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	if( nArg > 0 ){ StrNullArgNotice(pCtx,apArg[0],"strpos",1,"$haystack"); }
+	if( nArg > 1 ){ StrNullArgNotice(pCtx,apArg[1],"strpos",2,"$needle"); }
 	ProcStringMatch xPatternMatch = SyBlobSearch; /* Case-sensitive pattern match */
 	const char *zBlob,*zPattern;
 	int nLen,nPatLen,nStart;

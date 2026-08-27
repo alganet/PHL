@@ -7,6 +7,7 @@ strftime with %a format specifier returns abbreviated day name
 <?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
+set_error_handler(function(){ return true; }); // suppress the 8.1 strftime deprecation; the notice has its own test
 $result = strftime("%a");
 if (is_string($result) && strlen($result) === 3) {
     echo "PASS\n";
