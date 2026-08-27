@@ -608,24 +608,44 @@ PH7_PRIVATE int PH7_VmClassMemberAccess(
 			goto dis; /* Not in a class scope: access is forbidden */
 		}
 		if( iProtection == PH7_CLASS_PROT_PRIVATE ){
-			/* Must be the same instance or a trait used by the class */
+			/* php grants private access by DECLARING class: the caller's own
+			 * class must declare a private attribute of this name (a base
+			 * method touching its own private on a CHILD instance passes; a
+			 * child method touching an inherited base-private fails). An attr
+			 * whose declaring "class" is a TRAIT behaves as if declared by the
+			 * adopting class. Fallbacks: the caller being a trait used by the
+			 * instance's class (legacy trait-body scope), or — when the caller
+			 * class carries no such attr entry at all — the legacy exact-class
+			 * match (dynamic props and other non-declared shapes). */
 			ph7_class *pCaller = pCallerScope;
-			if( pCaller != pClass ){
+			SyHashEntry *pOwnE = SyHashGet(&pCaller->hAttr,
+				(const void *)pAttrName->zString,pAttrName->nByte);
+			ph7_class_attr *pOwn = pOwnE ? (ph7_class_attr *)pOwnE->pUserData : 0;
+			int bGranted = 0;
+			if( pOwn && pOwn->iProtection == PH7_CLASS_PROT_PRIVATE ){
+				if( pOwn->pDeclClass == 0
+				 || pOwn->pDeclClass == pCaller
+				 || (pOwn->pDeclClass->iFlags & PH7_CLASS_TRAIT) != 0 ){
+					bGranted = 1;
+				}
+			}else if( pOwn == 0 && pCaller == pClass ){
+				bGranted = 1;
+			}
+			if( !bGranted ){
 				/* Check if the caller is a trait used by pClass */
 				ph7_class **apTrait;
 				sxu32 nTrait,k;
-				int iFound = 0;
 				apTrait = (ph7_class **)SySetBasePtr(&pClass->aTrait);
 				nTrait = SySetUsed(&pClass->aTrait);
 				for(k = 0; k < nTrait; k++){
 					if( apTrait[k] == pCaller ){
-						iFound = 1;
+						bGranted = 1;
 						break;
 					}
 				}
-				if( !iFound ){
-					goto dis; /* Access is forbidden */
-				}
+			}
+			if( !bGranted ){
+				goto dis; /* Access is forbidden */
 			}
 		}else{
 			/* Protected */
