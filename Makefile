@@ -165,9 +165,41 @@ $(BUILD_DIR)-test-stress: $(PHL_BIN)
 
 $(BUILD_DIR)-test-integration-compat: $(PHL_BIN)
 	"$(PHP_BIN)" --version
-	$(TEST_INTEGRATION_PHP_CMD) 
+	$(TEST_INTEGRATION_PHP_CMD)
 	"$(PHL_BIN)" --version
-	$(TEST_INTEGRATION_CMD) 
+	$(TEST_INTEGRATION_CMD)
+
+# Oracle-coverage gap report (POSIX shell): lists every test that SKIPS under
+# exactly one engine — the §6 oracle-blind debt as a tracked, only-goes-down
+# number. Runs smoke + integration in TAP mode under both engines and compares
+# the skip sets; the skip REASONS printed by the runner say why each side skips.
+test-oracle-gap: .ALWAYS $(PHL_BIN)
+	@mkdir -p "$(BUILD_DIR)/oracle-gap"
+	@echo "# collecting smoke skips (phl in-process / php oracle)..."
+	@"$(PHL_BIN)" tests/phpt.php --target-dir tests/ph7/001-smoke \
+		| grep '^ok .* # skip' | awk '{print $$4}' | sort > "$(BUILD_DIR)/oracle-gap/smoke-phl.txt" || true
+	@"$(PHP_BIN)" tests/phpt.php --target-dir tests/ph7/001-smoke \
+		| grep '^ok .* # skip' | awk '{print $$4}' | sort > "$(BUILD_DIR)/oracle-gap/smoke-php.txt" || true
+	@echo "# collecting integration skips (phl target / php target)..."
+	@"$(PHL_BIN)" tests/phpt.php --target-executable "$(PHL_BIN)" --target-dir tests/ph7/002-integration \
+		| grep '^ok .* # skip' | awk '{print $$4}' | sort > "$(BUILD_DIR)/oracle-gap/integ-phl.txt" || true
+	@"$(PHL_BIN)" tests/phpt.php --target-executable "$(PHP_BIN)" --target-dir tests/ph7/002-integration \
+		| grep '^ok .* # skip' | awk '{print $$4}' | sort > "$(BUILD_DIR)/oracle-gap/integ-php.txt" || true
+	@echo ""
+	@echo "# ============ ORACLE GAP REPORT ============"
+	@echo "# smoke: skip under php only (oracle-blind):"
+	@comm -13 "$(BUILD_DIR)/oracle-gap/smoke-phl.txt" "$(BUILD_DIR)/oracle-gap/smoke-php.txt" | sed 's/^/#   /'
+	@echo "# smoke: skip under phl only:"
+	@comm -23 "$(BUILD_DIR)/oracle-gap/smoke-phl.txt" "$(BUILD_DIR)/oracle-gap/smoke-php.txt" | sed 's/^/#   /'
+	@echo "# integration: skip under php target only (oracle-blind):"
+	@comm -13 "$(BUILD_DIR)/oracle-gap/integ-phl.txt" "$(BUILD_DIR)/oracle-gap/integ-php.txt" | sed 's/^/#   /'
+	@echo "# integration: skip under phl target only:"
+	@comm -23 "$(BUILD_DIR)/oracle-gap/integ-phl.txt" "$(BUILD_DIR)/oracle-gap/integ-php.txt" | sed 's/^/#   /'
+	@echo "# ------------------------------------------"
+	@printf '# oracle-blind totals: smoke %s + integration %s = ' \
+		"$$(comm -13 '$(BUILD_DIR)/oracle-gap/smoke-phl.txt' '$(BUILD_DIR)/oracle-gap/smoke-php.txt' | wc -l | tr -d ' ')" \
+		"$$(comm -13 '$(BUILD_DIR)/oracle-gap/integ-phl.txt' '$(BUILD_DIR)/oracle-gap/integ-php.txt' | wc -l | tr -d ' ')"
+	@echo "$$(( $$(comm -13 '$(BUILD_DIR)/oracle-gap/smoke-phl.txt' '$(BUILD_DIR)/oracle-gap/smoke-php.txt' | wc -l) + $$(comm -13 '$(BUILD_DIR)/oracle-gap/integ-phl.txt' '$(BUILD_DIR)/oracle-gap/integ-php.txt' | wc -l) )) tests never run under the php oracle"
 
 $(BUILD_DIR)/coverage/markdown:
 	@"$(PHL_BIN)" \
