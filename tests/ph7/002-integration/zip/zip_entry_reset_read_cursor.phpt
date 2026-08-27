@@ -46,11 +46,11 @@ zip_close($res);
 unlink($fn);
 ?>
 --EXPECTF--
-bool(TRUE)
+bool(true)
 Error: zip_entry_reset_read_cursor(): Expecting a ZIP archive entry in %s on line %d
-bool(FALSE)
+bool(false)
 Error: zip_entry_reset_read_cursor(): Expecting a ZIP archive entry in %s on line %d
-bool(FALSE)
+bool(false)
 --CLEAN--
 <?php
 unset($fn, $zip_b64, $bin, $res, $entry, $result1, $result2, $result3);

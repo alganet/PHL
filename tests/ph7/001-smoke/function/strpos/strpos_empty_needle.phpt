@@ -10,7 +10,7 @@ strpos with empty needle
 var_dump(strpos("hello world", ""));
 ?>
 --EXPECT--
-bool(FALSE)
+bool(false)
 --CLEAN--
 <?php
 

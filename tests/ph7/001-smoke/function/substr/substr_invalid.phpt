@@ -10,7 +10,7 @@ substr with invalid offset
 var_dump(substr("abc", 10));
 ?>
 --EXPECT--
-bool(FALSE)
+bool(false)
 --CLEAN--
 <?php
 

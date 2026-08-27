@@ -21,7 +21,7 @@ var_dump($opts);
 --EXPECTF--
 getopt called successfully
 array(0) {
- }
+}
 --CLEAN--
 <?php
 unset($opts);

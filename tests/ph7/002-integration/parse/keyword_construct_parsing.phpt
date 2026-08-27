@@ -38,10 +38,10 @@ var_dump($result4); // 3
 --EXPECTF--
 Test: 3
 Print: 2
-bool(TRUE)
-bool(TRUE)
+bool(true)
+bool(true)
 Warning: include(): IO error while importing: 'nonexistent.php' in %s on line %d
-bool(TRUE)
+bool(true)
 int(3)
 --CLEAN--
 <?php

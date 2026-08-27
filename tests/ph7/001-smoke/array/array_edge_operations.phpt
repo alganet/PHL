@@ -37,12 +37,12 @@ var_dump(isset($array[$large_key])); // Should be true
 ?>
 --EXPECT--
 int(0)
-bool(TRUE)
+bool(true)
 int(3)
-bool(TRUE)
-bool(TRUE)
+bool(true)
+bool(true)
 int(2)
-bool(TRUE)
+bool(true)
 --CLEAN--
 <?php
 unset($array, $flip_array, $flipped, $large_key);

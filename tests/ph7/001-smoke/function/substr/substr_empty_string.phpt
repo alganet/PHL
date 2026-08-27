@@ -10,7 +10,7 @@ substr with empty string
 var_dump(substr("", 0, 1));
 ?>
 --EXPECT--
-bool(FALSE)
+bool(false)
 --CLEAN--
 <?php
 

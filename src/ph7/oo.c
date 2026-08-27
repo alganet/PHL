@@ -1385,19 +1385,62 @@ PH7_PRIVATE ph7_value * PH7_EnumCaseBackingValueOf(ph7_class_instance *pThis)
  */
 static void DumpClassInstanceHeader(SyBlob *pOut,ph7_class *pClass,sxu32 nObjId,int ShowType,sxu32 nCount)
 {
-	if( !ShowType && (pClass->iFlags & PH7_CLASS_ENUM) != 0 ){
-		SyBlobFormat(&(*pOut),"%z Enum {",&pClass->sName);
-	}else if( !ShowType ){
-		SyBlobAppend(&(*pOut),"Object(",sizeof("Object(")-1);
-		SyBlobFormat(&(*pOut),"%z) {",&pClass->sName);
-	}else{
-		SyBlobFormat(&(*pOut),"%z)#%u (%u) {",&pClass->sName,nObjId,nCount);
+	if( ShowType ){
+		/* var_dump: `object(C)#id (n) {` */
+		SyBlobFormat(&(*pOut),"object(%z)#%u (%u) {",&pClass->sName,nObjId,nCount);
+		SyBlobAppend(&(*pOut),"\n",sizeof(char));
+		return;
 	}
-#ifdef __WINNT__
-	SyBlobAppend(&(*pOut),"\r\n",sizeof("\r\n")-1);
-#else
+	/* print_r: `C Object` / `E Enum[:backing]` — the '(' line is emitted by
+	 * the body renderer at the container indent. */
+	if( pClass->iFlags & PH7_CLASS_ENUM ){
+		SyBlobFormat(&(*pOut),"%z Enum",&pClass->sName);
+		if( pClass->nEnumBacking == MEMOBJ_INT ){
+			SyBlobAppend(&(*pOut),":int",sizeof(":int")-1);
+		}else if( pClass->nEnumBacking == MEMOBJ_STRING ){
+			SyBlobAppend(&(*pOut),":string",sizeof(":string")-1);
+		}
+	}else{
+		SyBlobFormat(&(*pOut),"%z Object",&pClass->sName);
+	}
 	SyBlobAppend(&(*pOut),"\n",sizeof(char));
-#endif
+}
+/*
+ * The class that DECLARED pAttr: inheritance shares attr pointers down the
+ * chain, so the declaring class is the most ANCESTRAL class whose hAttr still
+ * maps the name to this exact pointer. php's var_dump/print_r use it for the
+ * `["p":"Decl":private]` annotation.
+ */
+static ph7_class * OoAttrDeclaringClass(ph7_class *pClass,ph7_class_attr *pAttr)
+{
+	ph7_class *pDecl = pClass;
+	ph7_class *pWalk = pClass;
+	while( pWalk ){
+		SyHashEntry *pE = SyHashGet(&pWalk->hAttr,
+			(const void *)SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName));
+		if( pE && (ph7_class_attr *)pE->pUserData == pAttr ){
+			pDecl = pWalk;
+		}
+		pWalk = pWalk->pBase;
+	}
+	return pDecl;
+}
+/*
+ * Emit a property's dump key: var_dump `["x"]=>` / `["p":"C":private]=>` /
+ * `["q":protected]=>`; print_r `[x] => ` / `[p:C:private] => ` /
+ * `[q:protected] => ` (php's exact annotations).
+ */
+static void OoDumpPropKey(SyBlob *pOut,ph7_class_instance *pThis,ph7_class_attr *pAttr,int ShowType)
+{
+	const char *zQ = ShowType ? "\"" : "";
+	SyBlobFormat(&(*pOut),"[%s%z%s",zQ,&pAttr->sName,zQ);
+	if( pAttr->iProtection == PH7_CLASS_PROT_PRIVATE ){
+		ph7_class *pDecl = OoAttrDeclaringClass(pThis->pClass,pAttr);
+		SyBlobFormat(&(*pOut),":%s%z%s:private",zQ,&pDecl->sName,zQ);
+	}else if( pAttr->iProtection == PH7_CLASS_PROT_PROTECTED ){
+		SyBlobAppend(&(*pOut),":protected",sizeof(":protected")-1);
+	}
+	SyBlobAppend(&(*pOut),ShowType ? "]=>" : "] => ",ShowType ? 3 : 5);
 }
 PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,int ShowType,int nTab,int nDepth)
 {
@@ -1409,9 +1452,6 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 		static const char zInfinite[] = "Nesting limit reached: Infinite recursion?";
 		/* Nesting limit reached..halt immediately*/
 		SyBlobAppend(&(*pOut),zInfinite,sizeof(zInfinite)-1);
-		if( ShowType ){
-			SyBlobAppend(&(*pOut),")",sizeof(char));
-		}
 		return SXERR_LIMIT;
 	}
 	rc = SXRET_OK;
@@ -1431,11 +1471,21 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 				ph7_hashmap *pMap = (ph7_hashmap *)sResult.x.pOther;
 				/* Header count is the debug array's entry count. */
 				DumpClassInstanceHeader(&(*pOut),pThis->pClass,pThis->nObjId,ShowType,pMap->nEntry);
+				if( !ShowType ){
+					for( i = 0 ; i < nTab ; i++ ){
+						SyBlobAppend(&(*pOut)," ",sizeof(char));
+					}
+					SyBlobAppend(&(*pOut),"(\n",sizeof("(\n")-1);
+				}
 				rc = PH7_HashmapDumpEntries(&(*pOut),pMap,ShowType,nTab,nDepth);
 				for( i = 0 ; i < nTab ; i++ ){
 					SyBlobAppend(&(*pOut)," ",sizeof(char));
 				}
-				SyBlobAppend(&(*pOut),"}",sizeof(char));
+				if( ShowType ){
+					SyBlobAppend(&(*pOut),"}",sizeof(char));
+				}else{
+					SyBlobAppend(&(*pOut),")\n",sizeof(")\n")-1);
+				}
 				PH7_MemObjRelease(&sResult);
 				return rc;
 			}
@@ -1458,6 +1508,13 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 		}
 		DumpClassInstanceHeader(&(*pOut),pThis->pClass,pThis->nObjId,ShowType,nProp);
 	}
+	if( !ShowType ){
+		/* print_r body opener: '(' at the container indent */
+		for( i = 0 ; i < nTab ; i++ ){
+			SyBlobAppend(&(*pOut)," ",sizeof(char));
+		}
+		SyBlobAppend(&(*pOut),"(\n",sizeof("(\n")-1);
+	}
 	/* Dump object attributes (php 8.4: VIRTUAL hooked properties have no
 	 * backing store — excluded from var_dump/print_r) */
 	SyHashResetLoopCursor(&pThis->hAttr);
@@ -1465,20 +1522,39 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
 		if((pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_HOOK_VIRTUAL)) == 0 ){
 			/* Dump non-static/constant attribute only */
-			for( i = 0 ; i < nTab ; i++ ){
-				SyBlobAppend(&(*pOut)," ",sizeof(char));
-			}
 			pValue = ExtractClassAttrValue(pThis->pVm,pVmAttr);
-			if( pValue ){
-				SyBlobFormat(&(*pOut),"['%z'] =>",&pVmAttr->pAttr->sName);
-#ifdef __WINNT__
-				SyBlobAppend(&(*pOut),"\r\n",sizeof("\r\n")-1);
-#else
+			if( pValue == 0 ){
+				continue;
+			}
+			if( ShowType ){
+				/* var_dump prop: `["x"(:…)]=>` at nTab+2, the value on the next
+				 * line at the same indent (php). */
+				for( i = 0 ; i < nTab + 2 ; i++ ){
+					SyBlobAppend(&(*pOut)," ",sizeof(char));
+				}
+				OoDumpPropKey(&(*pOut),pThis,pVmAttr->pAttr,TRUE);
 				SyBlobAppend(&(*pOut),"\n",sizeof(char));
-#endif
-				rc = PH7_MemObjDump(&(*pOut),pValue,ShowType,nTab+1,nDepth,0);
+				rc = PH7_MemObjDump(&(*pOut),pValue,TRUE,nTab+2,nDepth,0);
 				if( rc == SXERR_LIMIT ){
 					break;
+				}
+			}else{
+				/* print_r prop: `[x(:…)] => value` at nTab+4; container values
+				 * render their block at nTab+8 followed by php's blank line. */
+				for( i = 0 ; i < nTab + 4 ; i++ ){
+					SyBlobAppend(&(*pOut)," ",sizeof(char));
+				}
+				OoDumpPropKey(&(*pOut),pThis,pVmAttr->pAttr,FALSE);
+				if( (pValue->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ))
+				 && (pValue->iFlags & MEMOBJ_NULL) == 0 ){
+					rc = PH7_MemObjDump(&(*pOut),pValue,FALSE,nTab+8,nDepth,0);
+					SyBlobAppend(&(*pOut),"\n",sizeof(char));
+					if( rc == SXERR_LIMIT ){
+						break;
+					}
+				}else{
+					PH7_MemObjPrintRInline(&(*pOut),pValue);
+					SyBlobAppend(&(*pOut),"\n",sizeof(char));
 				}
 			}
 		}
@@ -1486,7 +1562,11 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 	for( i = 0 ; i < nTab ; i++ ){
 		SyBlobAppend(&(*pOut)," ",sizeof(char));
 	}
-	SyBlobAppend(&(*pOut),"}",sizeof(char));
+	if( ShowType ){
+		SyBlobAppend(&(*pOut),"}",sizeof(char));
+	}else{
+		SyBlobAppend(&(*pOut),")\n",sizeof(")\n")-1);
+	}
 	return rc;
 }
 /*

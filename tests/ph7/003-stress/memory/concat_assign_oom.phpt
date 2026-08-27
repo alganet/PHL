@@ -21,6 +21,6 @@ for ($i = 0; $i < 100; $i++) { $s .= $chunk; }
 echo "UNREACHABLE len=" . strlen($s) . "\n";
 ?>
 --EXPECTF--
-%s Error:  PH7 is running out of memory
+Error: PH7 is running out of memory in %s on line %d
 --CLEAN--
 <?php
