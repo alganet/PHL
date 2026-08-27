@@ -6246,6 +6246,30 @@ static sxi32 VmEnforceScalarType(ph7_value *pVal, sxu32 nType, int bStrict)
 		&& !PH7_MemObjStringIsNumeric(pVal) ){
 		return SXERR_INVALID;
 	}
+	if( nType == MEMOBJ_INT && pVal->pVm ){
+		/* php 8.1: a lossy float(-string) -> int weak coercion emits
+		 * E_DEPRECATED before truncating (typed params, returns, typed
+		 * property stores all funnel through here). */
+		if( pVal->iFlags & MEMOBJ_REAL ){
+			ph7_real r = pVal->rVal;
+			if( r != (ph7_real)(sxi64)r ){
+				PH7_VmThrowDeprecatedFmt(pVal->pVm,
+					"Implicit conversion from float %g to int loses precision",r);
+			}
+		}else if( pVal->iFlags & MEMOBJ_STRING ){
+			SyString sStr;
+			ph7_value sProbe;
+			SyStringInitFromBuf(&sStr,SyBlobData(&pVal->sBlob),SyBlobLength(&pVal->sBlob));
+			PH7_MemObjInitFromString(pVal->pVm,&sProbe,&sStr);
+			PH7_MemObjToNumeric(&sProbe);
+			if( (sProbe.iFlags & MEMOBJ_REAL) && sProbe.rVal != (ph7_real)(sxi64)sProbe.rVal ){
+				PH7_VmThrowDeprecatedFmt(pVal->pVm,
+					"Implicit conversion from float-string \"%.*s\" to int loses precision",
+					(int)sStr.nByte,sStr.zString);
+			}
+			PH7_MemObjRelease(&sProbe);
+		}
+	}
 	{
 		ProcMemObjCast xCast = PH7_MemObjCastMethod(nType);
 		if( xCast ) xCast(pVal);
