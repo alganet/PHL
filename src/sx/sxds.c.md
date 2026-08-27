@@ -21,81 +21,81 @@ Coverage: 290/304 lines (95.39%)
 |          - |   11 | `#include "sxhash.h"` |
 |          - |   12 | `#include "sxstr.h"` |
 |          - |   13 |  |
-|   84820370 |   14 | `PH7_PRIVATE sxi32 SySetInit(SySet *pSet,SyMemBackend *pAllocator,sxu32 ElemSize)` |
+|   84821570 |   14 | `PH7_PRIVATE sxi32 SySetInit(SySet *pSet,SyMemBackend *pAllocator,sxu32 ElemSize)` |
 |          5 |   15 | `{` |
-|   84820375 |   16 | `	pSet->nSize = 0 ;` |
-|   84820375 |   17 | `	pSet->nUsed = 0;` |
-|   84820375 |   18 | `	pSet->nCursor = 0;` |
-|   84820375 |   19 | `	pSet->eSize = ElemSize;` |
-|   84820375 |   20 | `	pSet->pAllocator = pAllocator;` |
-|   84820375 |   21 | `	pSet->pBase =  0;` |
-|   84820375 |   22 | `	pSet->pUserData = 0;` |
-|   84820375 |   23 | `	return SXRET_OK;` |
+|   84821575 |   16 | `	pSet->nSize = 0 ;` |
+|   84821575 |   17 | `	pSet->nUsed = 0;` |
+|   84821575 |   18 | `	pSet->nCursor = 0;` |
+|   84821575 |   19 | `	pSet->eSize = ElemSize;` |
+|   84821575 |   20 | `	pSet->pAllocator = pAllocator;` |
+|   84821575 |   21 | `	pSet->pBase =  0;` |
+|   84821575 |   22 | `	pSet->pUserData = 0;` |
+|   84821575 |   23 | `	return SXRET_OK;` |
 |          5 |   24 | `}` |
-|  183314921 |   25 | `PH7_PRIVATE sxi32 SySetPut(SySet *pSet,const void *pItem)` |
+|  183317315 |   25 | `PH7_PRIVATE sxi32 SySetPut(SySet *pSet,const void *pItem)` |
 |          5 |   26 | `{` |
 |          - |   27 | `	unsigned char *zbase;` |
-|  183314926 |   28 | `	if( pSet->nUsed >= pSet->nSize ){` |
+|  183317320 |   28 | `	if( pSet->nUsed >= pSet->nSize ){` |
 |          - |   29 | `		void *pNew;` |
-|   12306995 |   30 | `		if( pSet->pAllocator == 0 ){` |
+|   12307263 |   30 | `		if( pSet->pAllocator == 0 ){` |
 |        ! 0 |   31 | `			return  SXERR_LOCKED;` |
 |          - |   32 | `		}` |
-|   12306995 |   33 | `		if( pSet->nSize <= 0 ){` |
-|   10825143 |   34 | `			pSet->nSize = 4;` |
-|    5412569 |   35 | `		}` |
-|   12306995 |   36 | `		pNew = SyMemBackendRealloc(pSet->pAllocator,pSet->pBase,pSet->eSize * pSet->nSize * 2);` |
-|   12306995 |   37 | `		if( pNew == 0 ){` |
+|   12307263 |   33 | `		if( pSet->nSize <= 0 ){` |
+|   10825411 |   34 | `			pSet->nSize = 4;` |
+|    5412703 |   35 | `		}` |
+|   12307263 |   36 | `		pNew = SyMemBackendRealloc(pSet->pAllocator,pSet->pBase,pSet->eSize * pSet->nSize * 2);` |
+|   12307263 |   37 | `		if( pNew == 0 ){` |
 |        ! 0 |   38 | `			return SXERR_MEM;` |
 |          - |   39 | `		}` |
-|   12306995 |   40 | `		pSet->pBase = pNew;` |
-|   12306995 |   41 | `		pSet->nSize <<= 1;` |
-|    6153495 |   42 | `	}` |
-|  183314926 |   43 | `	zbase = (unsigned char *)pSet->pBase;` |
-| 1343528466 |   44 | `	SX_MACRO_FAST_MEMCPY(pItem,&zbase[pSet->nUsed * pSet->eSize],pSet->eSize);` |
-|  183314926 |   45 | `	pSet->nUsed++;` |
-|  183314926 |   46 | `	return SXRET_OK;` |
-|   91657508 |   47 | `}` |
-|    8938522 |   48 | `PH7_PRIVATE sxi32 SySetAlloc(SySet *pSet,sxi32 nItem)` |
+|   12307263 |   40 | `		pSet->pBase = pNew;` |
+|   12307263 |   41 | `		pSet->nSize <<= 1;` |
+|    6153629 |   42 | `	}` |
+|  183317320 |   43 | `	zbase = (unsigned char *)pSet->pBase;` |
+| 1343543612 |   44 | `	SX_MACRO_FAST_MEMCPY(pItem,&zbase[pSet->nUsed * pSet->eSize],pSet->eSize);` |
+|  183317320 |   45 | `	pSet->nUsed++;` |
+|  183317320 |   46 | `	return SXRET_OK;` |
+|   91658705 |   47 | `}` |
+|    8938622 |   48 | `PH7_PRIVATE sxi32 SySetAlloc(SySet *pSet,sxi32 nItem)` |
 |          5 |   49 | `{` |
-|    8938527 |   50 | `	if( pSet->nSize > 0 ){` |
+|    8938627 |   50 | `	if( pSet->nSize > 0 ){` |
 |        ! 0 |   51 | `		return SXERR_LOCKED;` |
 |          - |   52 | `	}` |
-|    8938527 |   53 | `	if( nItem < 8 ){` |
+|    8938627 |   53 | `	if( nItem < 8 ){` |
 |        ! 0 |   54 | `		nItem = 8;` |
 |        ! 0 |   55 | `	}` |
-|    8938527 |   56 | `	pSet->pBase = SyMemBackendAlloc(pSet->pAllocator,pSet->eSize * nItem);` |
-|    8938527 |   57 | `	if( pSet->pBase == 0 ){` |
+|    8938627 |   56 | `	pSet->pBase = SyMemBackendAlloc(pSet->pAllocator,pSet->eSize * nItem);` |
+|    8938627 |   57 | `	if( pSet->pBase == 0 ){` |
 |        ! 0 |   58 | `		return SXERR_MEM;` |
 |          - |   59 | `	}` |
-|    8938527 |   60 | `	pSet->nSize = nItem;` |
-|    8938527 |   61 | `	return SXRET_OK;` |
-|    4469266 |   62 | `}` |
-|   13907537 |   63 | `PH7_PRIVATE sxi32 SySetReset(SySet *pSet)` |
+|    8938627 |   60 | `	pSet->nSize = nItem;` |
+|    8938627 |   61 | `	return SXRET_OK;` |
+|    4469316 |   62 | `}` |
+|   13907877 |   63 | `PH7_PRIVATE sxi32 SySetReset(SySet *pSet)` |
 |          5 |   64 | `{` |
-|   13907542 |   65 | `	pSet->nUsed   = 0;` |
-|   13907542 |   66 | `	pSet->nCursor = 0;` |
-|   13907542 |   67 | `	return SXRET_OK;` |
+|   13907882 |   65 | `	pSet->nUsed   = 0;` |
+|   13907882 |   66 | `	pSet->nCursor = 0;` |
+|   13907882 |   67 | `	return SXRET_OK;` |
 |          5 |   68 | `}` |
-|      68956 |   69 | `PH7_PRIVATE sxi32 SySetResetCursor(SySet *pSet)` |
+|      69008 |   69 | `PH7_PRIVATE sxi32 SySetResetCursor(SySet *pSet)` |
 |          5 |   70 | `{` |
-|      68961 |   71 | `	pSet->nCursor = 0;` |
-|      68961 |   72 | `	return SXRET_OK;` |
+|      69013 |   71 | `	pSet->nCursor = 0;` |
+|      69013 |   72 | `	return SXRET_OK;` |
 |          5 |   73 | `}` |
-|      73140 |   74 | `PH7_PRIVATE sxi32 SySetGetNextEntry(SySet *pSet,void **ppEntry)` |
+|      73218 |   74 | `PH7_PRIVATE sxi32 SySetGetNextEntry(SySet *pSet,void **ppEntry)` |
 |          5 |   75 | `{` |
 |          - |   76 | `	register unsigned char *zSrc;` |
-|      73145 |   77 | `	if( pSet->nCursor >= pSet->nUsed ){` |
+|      73223 |   77 | `	if( pSet->nCursor >= pSet->nUsed ){` |
 |          - |   78 | `		/* Reset cursor */` |
-|      29671 |   79 | `		pSet->nCursor = 0;` |
-|      29671 |   80 | `		return SXERR_EOF;` |
+|      29697 |   79 | `		pSet->nCursor = 0;` |
+|      29697 |   80 | `		return SXERR_EOF;` |
 |          - |   81 | `	}` |
-|      43479 |   82 | `	zSrc = (unsigned char *)SySetBasePtr(pSet);` |
-|      43479 |   83 | `	if( ppEntry ){` |
-|      43479 |   84 | `		*ppEntry = (void *)&zSrc[pSet->nCursor * pSet->eSize];` |
-|      21737 |   85 | `	}` |
-|      43479 |   86 | `	pSet->nCursor++;` |
-|      43479 |   87 | `	return SXRET_OK;` |
-|      36575 |   88 | `}` |
+|      43531 |   82 | `	zSrc = (unsigned char *)SySetBasePtr(pSet);` |
+|      43531 |   83 | `	if( ppEntry ){` |
+|      43531 |   84 | `		*ppEntry = (void *)&zSrc[pSet->nCursor * pSet->eSize];` |
+|      21763 |   85 | `	}` |
+|      43531 |   86 | `	pSet->nCursor++;` |
+|      43531 |   87 | `	return SXRET_OK;` |
+|      36614 |   88 | `}` |
 |          - |   89 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
 |          8 |   90 | `PH7_PRIVATE void * SySetPeekCurrentEntry(SySet *pSet)` |
 |          1 |   91 | `{` |
@@ -114,48 +114,48 @@ Coverage: 290/304 lines (95.39%)
 |        587 |  104 | `	}` |
 |    1418409 |  105 | `	return SXRET_OK;` |
 |          5 |  106 | `}` |
-|   31438678 |  107 | `PH7_PRIVATE sxi32 SySetRelease(SySet *pSet)` |
+|   31439156 |  107 | `PH7_PRIVATE sxi32 SySetRelease(SySet *pSet)` |
 |          5 |  108 | `{` |
-|   31438683 |  109 | `	sxi32 rc = SXRET_OK;` |
-|   31438683 |  110 | `	if( pSet->pAllocator && pSet->pBase ){` |
-|   16880043 |  111 | `		rc = SyMemBackendFree(pSet->pAllocator,pSet->pBase);` |
-|    8440019 |  112 | `	}` |
-|   31438683 |  113 | `	pSet->pBase = 0;` |
-|   31438683 |  114 | `	pSet->nUsed = 0;` |
-|   31438683 |  115 | `	pSet->nCursor = 0;` |
-|   31438683 |  116 | `	return rc;` |
+|   31439161 |  109 | `	sxi32 rc = SXRET_OK;` |
+|   31439161 |  110 | `	if( pSet->pAllocator && pSet->pBase ){` |
+|   16880377 |  111 | `		rc = SyMemBackendFree(pSet->pAllocator,pSet->pBase);` |
+|    8440186 |  112 | `	}` |
+|   31439161 |  113 | `	pSet->pBase = 0;` |
+|   31439161 |  114 | `	pSet->nUsed = 0;` |
+|   31439161 |  115 | `	pSet->nCursor = 0;` |
+|   31439161 |  116 | `	return rc;` |
 |          5 |  117 | `}` |
-|   31945798 |  118 | `PH7_PRIVATE void * SySetPeek(SySet *pSet)` |
+|   31946176 |  118 | `PH7_PRIVATE void * SySetPeek(SySet *pSet)` |
 |          5 |  119 | `{` |
 |          - |  120 | `	const char *zBase;` |
-|   31945803 |  121 | `	if( pSet->nUsed <= 0 ){` |
+|   31946181 |  121 | `	if( pSet->nUsed <= 0 ){` |
 |        133 |  122 | `		return 0;` |
 |          - |  123 | `	}` |
-|   31945675 |  124 | `	zBase = (const char *)pSet->pBase;` |
-|   31945675 |  125 | `	return (void *)&zBase[(pSet->nUsed - 1) * pSet->eSize];` |
-|   15972904 |  126 | `}` |
-|    6254738 |  127 | `PH7_PRIVATE void * SySetPop(SySet *pSet)` |
+|   31946053 |  124 | `	zBase = (const char *)pSet->pBase;` |
+|   31946053 |  125 | `	return (void *)&zBase[(pSet->nUsed - 1) * pSet->eSize];` |
+|   15973093 |  126 | `}` |
+|    6254892 |  127 | `PH7_PRIVATE void * SySetPop(SySet *pSet)` |
 |          5 |  128 | `{` |
 |          - |  129 | `	const char *zBase;` |
 |          - |  130 | `	void *pData;` |
-|    6254743 |  131 | `	if( pSet->nUsed <= 0 ){` |
-|    2195423 |  132 | `		return 0;` |
+|    6254897 |  131 | `	if( pSet->nUsed <= 0 ){` |
+|    2195445 |  132 | `		return 0;` |
 |          - |  133 | `	}` |
-|    4059325 |  134 | `	zBase = (const char *)pSet->pBase;` |
-|    4059325 |  135 | `	pSet->nUsed--;` |
-|    4059325 |  136 | `	pData =  (void *)&zBase[pSet->nUsed * pSet->eSize];` |
-|    4059325 |  137 | `	return pData;` |
-|    3127374 |  138 | `}` |
-|   21564342 |  139 | `PH7_PRIVATE void * SySetAt(SySet *pSet,sxu32 nIdx)` |
+|    4059457 |  134 | `	zBase = (const char *)pSet->pBase;` |
+|    4059457 |  135 | `	pSet->nUsed--;` |
+|    4059457 |  136 | `	pData =  (void *)&zBase[pSet->nUsed * pSet->eSize];` |
+|    4059457 |  137 | `	return pData;` |
+|    3127451 |  138 | `}` |
+|   21578607 |  139 | `PH7_PRIVATE void * SySetAt(SySet *pSet,sxu32 nIdx)` |
 |          5 |  140 | `{` |
 |          - |  141 | `	const char *zBase;` |
-|   21564347 |  142 | `	if( nIdx >= pSet->nUsed ){` |
+|   21578612 |  142 | `	if( nIdx >= pSet->nUsed ){` |
 |          - |  143 | `		/* Out of range */` |
 |         24 |  144 | `		return 0;` |
 |          - |  145 | `	}` |
-|   21564325 |  146 | `	zBase = (const char *)pSet->pBase;` |
-|   21564325 |  147 | `	return (void *)&zBase[nIdx * pSet->eSize];` |
-|   10782512 |  148 | `}` |
+|   21578590 |  146 | `	zBase = (const char *)pSet->pBase;` |
+|   21578590 |  147 | `	return (void *)&zBase[nIdx * pSet->eSize];` |
+|   10789647 |  148 | `}` |
 |          - |  149 | `/* Private hash entry */` |
 |          - |  150 | `struct SyHashEntry_Pr` |
 |          - |  151 | `{` |
@@ -218,27 +218,27 @@ Coverage: 290/304 lines (95.39%)
 |     311395 |  208 | `	pHash->pAllocator = 0;` |
 |     311395 |  209 | `	return SXRET_OK;` |
 |          5 |  210 | `}` |
-|   41052863 |  211 | `static SyHashEntry_Pr * HashGetEntry(SyHash *pHash,const void *pKey,sxu32 nKeyLen)` |
+|   41067045 |  211 | `static SyHashEntry_Pr * HashGetEntry(SyHash *pHash,const void *pKey,sxu32 nKeyLen)` |
 |          5 |  212 | `{` |
 |          - |  213 | `	SyHashEntry_Pr *pEntry;` |
 |          - |  214 | `	sxu32 nHash;` |
 |          - |  215 |  |
-|   41052868 |  216 | `	nHash = pHash->xHash(pKey,nKeyLen);` |
-|   41052868 |  217 | `	pEntry = pHash->apBucket[nHash & (pHash->nBucketSize - 1)];` |
-|   38289956 |  218 | `	for(;;){` |
-|   76894461 |  219 | `		if( pEntry == 0 ){` |
-|   16263970 |  220 | `			break;` |
+|   41067050 |  216 | `	nHash = pHash->xHash(pKey,nKeyLen);` |
+|   41067050 |  217 | `	pEntry = pHash->apBucket[nHash & (pHash->nBucketSize - 1)];` |
+|   38387823 |  218 | `	for(;;){` |
+|   76769994 |  219 | `		if( pEntry == 0 ){` |
+|   16271030 |  220 | `			break;` |
 |          - |  221 | `		}` |
-|   73024711 |  222 | `		if( pEntry->nHash == nHash && pEntry->nKeyLen == nKeyLen &&` |
-|   24788940 |  223 | `			pHash->xCmp(pEntry->pKey,pKey,nKeyLen) == 0 ){` |
-|   24788903 |  224 | `				return pEntry;` |
+|   72896745 |  222 | `		if( pEntry->nHash == nHash && pEntry->nKeyLen == nKeyLen &&` |
+|   24796062 |  223 | `			pHash->xCmp(pEntry->pKey,pKey,nKeyLen) == 0 ){` |
+|   24796025 |  224 | `				return pEntry;` |
 |          - |  225 | `		}` |
-|   35841598 |  226 | `		pEntry = pEntry->pNextCollide;` |
+|   35702949 |  226 | `		pEntry = pEntry->pNextCollide;` |
 |          5 |  227 | `	}` |
 |          - |  228 | `	/* Entry not found */` |
-|   16263970 |  229 | `	return 0;` |
-|   20526948 |  230 | `}` |
-|   44822469 |  231 | `PH7_PRIVATE SyHashEntry * SyHashGet(SyHash *pHash,const void *pKey,sxu32 nKeyLen)` |
+|   16271030 |  229 | `	return 0;` |
+|   20534039 |  230 | `}` |
+|   44836683 |  231 | `PH7_PRIVATE SyHashEntry * SyHashGet(SyHash *pHash,const void *pKey,sxu32 nKeyLen)` |
 |          5 |  232 | `{` |
 |          - |  233 | `	SyHashEntry_Pr *pEntry;` |
 |          - |  234 | `#if defined(UNTRUST)` |
@@ -246,40 +246,40 @@ Coverage: 290/304 lines (95.39%)
 |          - |  236 | `		return 0;` |
 |          - |  237 | `	}` |
 |          - |  238 | `#endif` |
-|   44822474 |  239 | `	if( pHash->nEntry < 1 \|\| nKeyLen < 1 ){` |
+|   44836688 |  239 | `	if( pHash->nEntry < 1 \|\| nKeyLen < 1 ){` |
 |          - |  240 | `		/* Don't bother hashing,return immediately */` |
-|    3769933 |  241 | `		return 0;` |
+|    3769965 |  241 | `		return 0;` |
 |          - |  242 | `	}` |
-|   41052546 |  243 | `	pEntry = HashGetEntry(&(*pHash),pKey,nKeyLen);` |
-|   41052546 |  244 | `	if( pEntry == 0 ){` |
-|   16263970 |  245 | `		return 0;` |
+|   41066728 |  243 | `	pEntry = HashGetEntry(&(*pHash),pKey,nKeyLen);` |
+|   41066728 |  244 | `	if( pEntry == 0 ){` |
+|   16271030 |  245 | `		return 0;` |
 |          - |  246 | `	}` |
-|   24788581 |  247 | `	return (SyHashEntry *)pEntry;` |
-|   22411751 |  248 | `}` |
-|     212094 |  249 | `static sxi32 HashDeleteEntry(SyHash *pHash,SyHashEntry_Pr *pEntry,void **ppUserData)` |
+|   24795703 |  247 | `	return (SyHashEntry *)pEntry;` |
+|   22418858 |  248 | `}` |
+|     212098 |  249 | `static sxi32 HashDeleteEntry(SyHash *pHash,SyHashEntry_Pr *pEntry,void **ppUserData)` |
 |          5 |  250 | `{` |
 |          - |  251 | `	sxi32 rc;` |
-|     212099 |  252 | `	if( pEntry->pPrevCollide == 0 ){` |
-|     169647 |  253 | `		pHash->apBucket[pEntry->nHash & (pHash->nBucketSize - 1)] = pEntry->pNextCollide;` |
-|      84826 |  254 | `	}else{` |
-|      42457 |  255 | `		pEntry->pPrevCollide->pNextCollide = pEntry->pNextCollide;` |
+|     212103 |  252 | `	if( pEntry->pPrevCollide == 0 ){` |
+|     169649 |  253 | `		pHash->apBucket[pEntry->nHash & (pHash->nBucketSize - 1)] = pEntry->pNextCollide;` |
+|      84827 |  254 | `	}else{` |
+|      42459 |  255 | `		pEntry->pPrevCollide->pNextCollide = pEntry->pNextCollide;` |
 |          - |  256 | `	}` |
-|     212099 |  257 | `	if( pEntry->pNextCollide ){` |
-|       4156 |  258 | `		pEntry->pNextCollide->pPrevCollide = pEntry->pPrevCollide;` |
-|       2077 |  259 | `	}` |
+|     212103 |  257 | `	if( pEntry->pNextCollide ){` |
+|       4162 |  258 | `		pEntry->pNextCollide->pPrevCollide = pEntry->pPrevCollide;` |
+|       2079 |  259 | `	}` |
 |          - |  260 | `	/* Keep the tail pointer valid when the last entry is the one removed. */` |
-|     212099 |  261 | `	if( pHash->pLast == pEntry ){` |
+|     212103 |  261 | `	if( pHash->pLast == pEntry ){` |
 |     205341 |  262 | `		pHash->pLast = pEntry->pPrev;` |
 |     102668 |  263 | `	}` |
-|     212099 |  264 | `	MACRO_LD_REMOVE(pHash->pList,pEntry);` |
-|     212099 |  265 | `	pHash->nEntry--;` |
-|     212099 |  266 | `	if( ppUserData ){` |
+|     212103 |  264 | `	MACRO_LD_REMOVE(pHash->pList,pEntry);` |
+|     212103 |  265 | `	pHash->nEntry--;` |
+|     212103 |  266 | `	if( ppUserData ){` |
 |          - |  267 | `		/* Write a pointer to the user data */` |
 |        ! 0 |  268 | `		*ppUserData = pEntry->pUserData;` |
 |        ! 0 |  269 | `	}` |
 |          - |  270 | `	/* Release the entry */` |
-|     212099 |  271 | `	rc = SyMemBackendPoolFree(pHash->pAllocator,pEntry);` |
-|     212099 |  272 | `	return rc;` |
+|     212103 |  271 | `	rc = SyMemBackendPoolFree(pHash->pAllocator,pEntry);` |
+|     212103 |  272 | `	return rc;` |
 |          5 |  273 | `}` |
 |        322 |  274 | `PH7_PRIVATE sxi32 SyHashDeleteEntry(SyHash *pHash,const void *pKey,sxu32 nKeyLen,void **ppUserData)` |
 |          5 |  275 | `{` |
@@ -297,17 +297,17 @@ Coverage: 290/304 lines (95.39%)
 |        327 |  287 | `	rc = HashDeleteEntry(&(*pHash),pEntry,ppUserData);` |
 |        327 |  288 | `	return rc;` |
 |        166 |  289 | `}` |
-|     211772 |  290 | `PH7_PRIVATE sxi32 SyHashDeleteEntry2(SyHashEntry *pEntry)` |
+|     211776 |  290 | `PH7_PRIVATE sxi32 SyHashDeleteEntry2(SyHashEntry *pEntry)` |
 |          5 |  291 | `{` |
-|     211777 |  292 | `	SyHashEntry_Pr *pPtr = (SyHashEntry_Pr *)pEntry;` |
+|     211781 |  292 | `	SyHashEntry_Pr *pPtr = (SyHashEntry_Pr *)pEntry;` |
 |          - |  293 | `	sxi32 rc;` |
 |          - |  294 | `#if defined(UNTRUST)` |
 |          - |  295 | `	if( pPtr == 0 \|\| INVALID_HASH(pPtr->pHash) ){` |
 |          - |  296 | `		return SXERR_CORRUPT;` |
 |          - |  297 | `	}` |
 |          - |  298 | `#endif` |
-|     211777 |  299 | `	rc = HashDeleteEntry(pPtr->pHash,pPtr,0);` |
-|     211777 |  300 | `	return rc;` |
+|     211781 |  299 | `	rc = HashDeleteEntry(pPtr->pHash,pPtr,0);` |
+|     211781 |  300 | `	return rc;` |
 |          5 |  301 | `}` |
 |    1797516 |  302 | `PH7_PRIVATE sxi32 SyHashResetLoopCursor(SyHash *pHash)` |
 |          5 |  303 | `{` |
@@ -348,15 +348,15 @@ Coverage: 290/304 lines (95.39%)
 |          - |  338 | `	}` |
 |          - |  339 | `#endif` |
 |         11 |  340 | `	pEntry = pHash->pList;` |
-|       3123 |  341 | `	for( n = 0 ; n < pHash->nEntry ; n++ ){` |
+|       3127 |  341 | `	for( n = 0 ; n < pHash->nEntry ; n++ ){` |
 |          - |  342 | `		/* Invoke the callback */` |
-|       3113 |  343 | `		rc = xStep((SyHashEntry *)pEntry,pUserData);` |
-|       3113 |  344 | `		if( rc != SXRET_OK ){` |
+|       3117 |  343 | `		rc = xStep((SyHashEntry *)pEntry,pUserData);` |
+|       3117 |  344 | `		if( rc != SXRET_OK ){` |
 |        ! 0 |  345 | `			return rc;` |
 |          - |  346 | `		}` |
 |          - |  347 | `		/* Point to the next entry */` |
-|       3113 |  348 | `		pEntry = pEntry->pNext;` |
-|       1557 |  349 | `	}` |
+|       3117 |  348 | `		pEntry = pEntry->pNext;` |
+|       1559 |  349 | `	}` |
 |         11 |  350 | `	return SXRET_OK;` |
 |          6 |  351 | `}` |
 |      77794 |  352 | `static sxi32 HashGrowTable(SyHash *pHash)` |
@@ -381,8 +381,8 @@ Coverage: 290/304 lines (95.39%)
 |    9184613 |  371 | `		iBucket = pEntry->nHash & (nNewSize - 1);` |
 |    9184613 |  372 | `		pEntry->pNextCollide = apNew[iBucket];` |
 |    9184613 |  373 | `		if( apNew[iBucket] != 0 ){` |
-|    4414612 |  374 | `			apNew[iBucket]->pPrevCollide = pEntry;` |
-|    2207025 |  375 | `		}` |
+|    4415017 |  374 | `			apNew[iBucket]->pPrevCollide = pEntry;` |
+|    2207481 |  375 | `		}` |
 |    9184613 |  376 | `		apNew[iBucket] = pEntry;` |
 |          - |  377 | `		/* Point to the next entry */` |
 |    9184613 |  378 | `		pEntry = pEntry->pNext;` |
@@ -393,34 +393,34 @@ Coverage: 290/304 lines (95.39%)
 |      77799 |  383 | `	pHash->nBucketSize = nNewSize;` |
 |      77799 |  384 | `	return SXRET_OK;` |
 |      38902 |  385 | `}` |
-|   11573384 |  386 | `static sxi32 HashInsert(SyHash *pHash,SyHashEntry_Pr *pEntry,int bTail)` |
+|   11573428 |  386 | `static sxi32 HashInsert(SyHash *pHash,SyHashEntry_Pr *pEntry,int bTail)` |
 |          5 |  387 | `{` |
-|   11573389 |  388 | `	sxu32 iBucket = pEntry->nHash & (pHash->nBucketSize - 1);` |
+|   11573433 |  388 | `	sxu32 iBucket = pEntry->nHash & (pHash->nBucketSize - 1);` |
 |          - |  389 | `	/* Insert the entry in its corresponding bucket */` |
-|   11573389 |  390 | `	pEntry->pNextCollide = pHash->apBucket[iBucket];` |
-|   11573389 |  391 | `	if( pHash->apBucket[iBucket] != 0 ){` |
-|    7293711 |  392 | `		pHash->apBucket[iBucket]->pPrevCollide = pEntry;` |
-|    3646945 |  393 | `	}` |
-|   11573389 |  394 | `	pHash->apBucket[iBucket] = pEntry;` |
+|   11573433 |  390 | `	pEntry->pNextCollide = pHash->apBucket[iBucket];` |
+|   11573433 |  391 | `	if( pHash->apBucket[iBucket] != 0 ){` |
+|    7292936 |  392 | `		pHash->apBucket[iBucket]->pPrevCollide = pEntry;` |
+|    3646519 |  393 | `	}` |
+|   11573433 |  394 | `	pHash->apBucket[iBucket] = pEntry;` |
 |          - |  395 | `	/* Link to the entry list. The default is head-insert (LIFO); bTail appends` |
 |          - |  396 | `	 * to the tail (O(1) via pLast) so iteration follows insertion order — for` |
 |          - |  397 | `	 * callers that need a FIFO traversal. */` |
-|   11573389 |  398 | `	if( bTail && pHash->pLast != 0 ){` |
+|   11573433 |  398 | `	if( bTail && pHash->pLast != 0 ){` |
 |         53 |  399 | `		pHash->pLast->pNext = pEntry;` |
 |         53 |  400 | `		pEntry->pPrev = pHash->pLast;` |
 |         53 |  401 | `		pHash->pLast = pEntry;` |
 |         27 |  402 | `	}else{` |
-|   11573337 |  403 | `		MACRO_LD_PUSH(pHash->pList,pEntry);` |
+|   11573381 |  403 | `		MACRO_LD_PUSH(pHash->pList,pEntry);` |
 |          - |  404 | `	}` |
-|   11573389 |  405 | `	if( pHash->nEntry == 0 ){` |
+|   11573433 |  405 | `	if( pHash->nEntry == 0 ){` |
 |          - |  406 | `		/* First entry: it is simultaneously the head, the tail and the cursor. */` |
 |     613225 |  407 | `		pHash->pCurrent = pHash->pList;` |
 |     613225 |  408 | `		pHash->pLast = pEntry;` |
 |     306610 |  409 | `	}` |
-|   11573389 |  410 | `	pHash->nEntry++;` |
-|   11573389 |  411 | `	return SXRET_OK;` |
+|   11573433 |  410 | `	pHash->nEntry++;` |
+|   11573433 |  411 | `	return SXRET_OK;` |
 |          5 |  412 | `}` |
-|   11573384 |  413 | `static sxi32 SyHashInsertCore(SyHash *pHash,const void *pKey,sxu32 nKeyLen,void *pUserData,int bTail)` |
+|   11573428 |  413 | `static sxi32 SyHashInsertCore(SyHash *pHash,const void *pKey,sxu32 nKeyLen,void *pUserData,int bTail)` |
 |          5 |  414 | `{` |
 |          - |  415 | `	SyHashEntry_Pr *pEntry;` |
 |          - |  416 | `	sxi32 rc;` |
@@ -429,31 +429,31 @@ Coverage: 290/304 lines (95.39%)
 |          - |  419 | `		return SXERR_CORRUPT;` |
 |          - |  420 | `	}` |
 |          - |  421 | `#endif` |
-|   11573389 |  422 | `	if( pHash->nEntry >= pHash->nBucketSize * SXHASH_FILL_FACTOR ){` |
+|   11573433 |  422 | `	if( pHash->nEntry >= pHash->nBucketSize * SXHASH_FILL_FACTOR ){` |
 |      77799 |  423 | `		rc = HashGrowTable(&(*pHash));` |
 |      77799 |  424 | `		if( rc != SXRET_OK ){` |
 |        ! 0 |  425 | `			return rc;` |
 |          - |  426 | `		}` |
 |      38897 |  427 | `	}` |
 |          - |  428 | `	/* Allocate a new hash entry */` |
-|   11573389 |  429 | `	pEntry = (SyHashEntry_Pr *)SyMemBackendPoolAlloc(pHash->pAllocator,sizeof(SyHashEntry_Pr));` |
-|   11573389 |  430 | `	if( pEntry == 0 ){` |
+|   11573433 |  429 | `	pEntry = (SyHashEntry_Pr *)SyMemBackendPoolAlloc(pHash->pAllocator,sizeof(SyHashEntry_Pr));` |
+|   11573433 |  430 | `	if( pEntry == 0 ){` |
 |        ! 0 |  431 | `		return SXERR_MEM;` |
 |          - |  432 | `	}` |
 |          - |  433 | `	/* Zero the entry */` |
-|   11573389 |  434 | `	SyZero(pEntry,sizeof(SyHashEntry_Pr));` |
-|   11573389 |  435 | `	pEntry->pHash = pHash;` |
-|   11573389 |  436 | `	pEntry->pKey = pKey;` |
-|   11573389 |  437 | `	pEntry->nKeyLen = nKeyLen;` |
-|   11573389 |  438 | `	pEntry->pUserData = pUserData;` |
-|   11573389 |  439 | `	pEntry->nHash = pHash->xHash(pEntry->pKey,pEntry->nKeyLen);` |
+|   11573433 |  434 | `	SyZero(pEntry,sizeof(SyHashEntry_Pr));` |
+|   11573433 |  435 | `	pEntry->pHash = pHash;` |
+|   11573433 |  436 | `	pEntry->pKey = pKey;` |
+|   11573433 |  437 | `	pEntry->nKeyLen = nKeyLen;` |
+|   11573433 |  438 | `	pEntry->pUserData = pUserData;` |
+|   11573433 |  439 | `	pEntry->nHash = pHash->xHash(pEntry->pKey,pEntry->nKeyLen);` |
 |          - |  440 | `	/* Finally insert the entry in its corresponding bucket */` |
-|   11573389 |  441 | `	rc = HashInsert(&(*pHash),pEntry,bTail);` |
-|   11573389 |  442 | `	return rc;` |
-|    5786697 |  443 | `}` |
-|   11573256 |  444 | `PH7_PRIVATE sxi32 SyHashInsert(SyHash *pHash,const void *pKey,sxu32 nKeyLen,void *pUserData)` |
+|   11573433 |  441 | `	rc = HashInsert(&(*pHash),pEntry,bTail);` |
+|   11573433 |  442 | `	return rc;` |
+|    5786719 |  443 | `}` |
+|   11573300 |  444 | `PH7_PRIVATE sxi32 SyHashInsert(SyHash *pHash,const void *pKey,sxu32 nKeyLen,void *pUserData)` |
 |          5 |  445 | `{` |
-|   11573261 |  446 | `	return SyHashInsertCore(&(*pHash),pKey,nKeyLen,pUserData,0);` |
+|   11573305 |  446 | `	return SyHashInsertCore(&(*pHash),pKey,nKeyLen,pUserData,0);` |
 |          5 |  447 | `}` |
 |          - |  448 | `/*` |
 |          - |  449 | ` * Like SyHashInsert but appends the entry to the tail of the iteration list, so` |
@@ -465,7 +465,7 @@ Coverage: 290/304 lines (95.39%)
 |          2 |  455 | `{` |
 |        130 |  456 | `	return SyHashInsertCore(&(*pHash),pKey,nKeyLen,pUserData,1);` |
 |          2 |  457 | `}` |
-|     252908 |  458 | `PH7_PRIVATE SyHashEntry * SyHashLastEntry(SyHash *pHash)` |
+|     252920 |  458 | `PH7_PRIVATE SyHashEntry * SyHashLastEntry(SyHash *pHash)` |
 |          5 |  459 | `{` |
 |          - |  460 | `#if defined(UNTRUST)` |
 |          - |  461 | `	if( INVALID_HASH(pHash) ){` |
@@ -473,6 +473,6 @@ Coverage: 290/304 lines (95.39%)
 |          - |  463 | `	}` |
 |          - |  464 | `#endif` |
 |          - |  465 | `	/* Last inserted entry */` |
-|     252913 |  466 | `	return (SyHashEntry *)pHash->pList;` |
+|     252925 |  466 | `	return (SyHashEntry *)pHash->pList;` |
 |          5 |  467 | `}` |
 |          - |  468 |  |
