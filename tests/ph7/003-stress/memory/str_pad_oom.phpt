@@ -15,6 +15,6 @@ $s = str_pad('x', 2000000, 'AB');
 echo "UNREACHABLE len=" . strlen($s) . "\n";
 ?>
 --EXPECTF--
-%s Error:  PH7 is running out of memory
+Error: PH7 is running out of memory in %s on line %d
 --CLEAN--
 <?php

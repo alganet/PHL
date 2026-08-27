@@ -1,8 +1,6 @@
 --CREDITS--
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --TEST--
 Test complex operator precedence and expression parsing
 --FILE--
@@ -30,10 +28,10 @@ $result4 = $arr[$a - $b - 2] + $c;
 var_dump($result4); // int(12)
 
 // Test function call with complex expression
-function test_func($x) {
+function copTestFunc($x) {
     return $x * 2;
 }
-$result5 = test_func($a + $b) - $c;
+$result5 = copTestFunc($a + $b) - $c;
 var_dump($result5); // int(14)
 
 // Test modulus and division precedence
@@ -41,7 +39,7 @@ $result6 = 10 + 5 % 3 * 2 - 1;
 var_dump($result6); // int(13) - (10 + ((5 % 3) * 2) - 1)
 ?>
 --EXPECT--
-bool(TRUE)
+bool(true)
 int(7)
 string(9) "Value: 17"
 int(12)

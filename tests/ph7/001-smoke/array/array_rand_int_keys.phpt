@@ -1,8 +1,6 @@
 --CREDITS--
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --TEST--
 array_rand returns integer keys
 --FILE--
@@ -13,8 +11,8 @@ var_dump(is_int($key));
 var_dump(in_array($key, array(10, 20, 30)));
 ?>
 --EXPECT--
-bool(TRUE)
-bool(TRUE)
+bool(true)
+bool(true)
 --CLEAN--
 <?php
 unset($array, $key);

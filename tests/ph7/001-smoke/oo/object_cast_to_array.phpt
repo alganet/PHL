@@ -19,13 +19,13 @@ var_dump($array);
 ?>
 --EXPECT--
 array(3) {
- [publicVar] =>
+  ["publicVar"]=>
   string(6) "public"
- [privateVar] =>
+  ["privateVar"]=>
   string(7) "private"
- [protectedVar] =>
+  ["protectedVar"]=>
   string(9) "protected"
- }
+}
 --CLEAN--
 <?php
 unset($obj, $array);

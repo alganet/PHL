@@ -8669,32 +8669,52 @@ PH7_PRIVATE sxi32 PH7_HashmapDumpEntries(SyBlob *pOut,ph7_hashmap *pMap,int Show
 		if( n >= pMap->nEntry ){
 			break;
 		}
-		for( i = 0 ; i < nTab ; i++ ){
-			SyBlobAppend(&(*pOut)," ",sizeof(char));
-		}
-		/* Dump key */
-		if( pEntry->iType == HASHMAP_INT_NODE){
-			SyBlobFormat(&(*pOut),"[%qd] =>",pEntry->xKey.iKey);
-		}else{
-			SyBlobFormat(&(*pOut),"[%.*s] =>",
-				SyBlobLength(&pEntry->xKey.sKey),SyBlobData(&pEntry->xKey.sKey));
-		}
-#ifdef __WINNT__
-		SyBlobAppend(&(*pOut),"\r\n",sizeof("\r\n")-1);
-#else
-		SyBlobAppend(&(*pOut),"\n",sizeof(char));
-#endif
-		/* Dump node value */
 		pObj = HashmapExtractNodeValue(pEntry);
-		isRef = 0;
-		if( pObj ){
-			if( pEntry->iFlags & HASHMAP_NODE_FOREIGN_OBJ ){
-				/* Referenced object */
-				isRef = 1;
+		isRef = (pEntry->iFlags & HASHMAP_NODE_FOREIGN_OBJ) != 0;
+		if( ShowType ){
+			/* var_dump entry: `[key]=>` on its own line at nTab+2, the value
+			 * on the next line at the same indent (php). */
+			for( i = 0 ; i < nTab + 2 ; i++ ){
+				SyBlobAppend(&(*pOut)," ",sizeof(char));
 			}
-			rc = PH7_MemObjDump(&(*pOut),pObj,ShowType,nTab+1,nDepth,isRef);
-			if( rc == SXERR_LIMIT ){
-				break;
+			if( pEntry->iType == HASHMAP_INT_NODE){
+				SyBlobFormat(&(*pOut),"[%qd]=>",pEntry->xKey.iKey);
+			}else{
+				SyBlobFormat(&(*pOut),"[\"%.*s\"]=>",
+					SyBlobLength(&pEntry->xKey.sKey),SyBlobData(&pEntry->xKey.sKey));
+			}
+			SyBlobAppend(&(*pOut),"\n",sizeof(char));
+			if( pObj ){
+				rc = PH7_MemObjDump(&(*pOut),pObj,TRUE,nTab+2,nDepth,isRef);
+				if( rc == SXERR_LIMIT ){
+					break;
+				}
+			}
+		}else{
+			/* print_r entry: `[key] => value` at nTab+4; a container value
+			 * renders its block inline (its parens at nTab+8) followed by
+			 * php's extra blank line. References carry no marker. */
+			for( i = 0 ; i < nTab + 4 ; i++ ){
+				SyBlobAppend(&(*pOut)," ",sizeof(char));
+			}
+			if( pEntry->iType == HASHMAP_INT_NODE){
+				SyBlobFormat(&(*pOut),"[%qd] => ",pEntry->xKey.iKey);
+			}else{
+				SyBlobFormat(&(*pOut),"[%.*s] => ",
+					SyBlobLength(&pEntry->xKey.sKey),SyBlobData(&pEntry->xKey.sKey));
+			}
+			if( pObj && (pObj->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ))
+			 && (pObj->iFlags & MEMOBJ_NULL) == 0 ){
+				rc = PH7_MemObjDump(&(*pOut),pObj,FALSE,nTab+8,nDepth,0);
+				SyBlobAppend(&(*pOut),"\n",sizeof(char));
+				if( rc == SXERR_LIMIT ){
+					break;
+				}
+			}else{
+				if( pObj ){
+					PH7_MemObjPrintRInline(&(*pOut),pObj);
+				}
+				SyBlobAppend(&(*pOut),"\n",sizeof(char));
 			}
 		}
 		/* Point to the next entry */
@@ -8711,26 +8731,31 @@ PH7_PRIVATE sxi32 PH7_HashmapDump(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,in
 		static const char zInfinite[] = "Nesting limit reached: Infinite recursion?";
 		/* Nesting limit reached */
 		SyBlobAppend(&(*pOut),zInfinite,sizeof(zInfinite)-1);
-		if( ShowType ){
-			SyBlobAppend(&(*pOut),")",sizeof(char));
-		}
 		return SXERR_LIMIT;
 	}
-	if( !ShowType ){
-		SyBlobAppend(&(*pOut),"Array(",sizeof("Array(")-1);
+	if( ShowType ){
+		/* var_dump: `array(N) {\n … \n<nTab>}` — the caller adds the final
+		 * newline (a nested array is itself an entry value line). */
+		SyBlobFormat(&(*pOut),"array(%u) {",pMap->nEntry);
+		SyBlobAppend(&(*pOut),"\n",sizeof(char));
+		rc = PH7_HashmapDumpEntries(&(*pOut),pMap,TRUE,nTab,nDepth);
+		for( i = 0 ; i < nTab ; i++ ){
+			SyBlobAppend(&(*pOut)," ",sizeof(char));
+		}
+		SyBlobAppend(&(*pOut),"}",sizeof(char));
+		return rc;
 	}
-	/* Total entries */
-	SyBlobFormat(&(*pOut),"%u) {",pMap->nEntry);
-#ifdef __WINNT__
-	SyBlobAppend(&(*pOut),"\r\n",sizeof("\r\n")-1);
-#else
-	SyBlobAppend(&(*pOut),"\n",sizeof(char));
-#endif
-	rc = PH7_HashmapDumpEntries(&(*pOut),pMap,ShowType,nTab,nDepth);
+	/* print_r: `Array\n<nTab>(\n … <nTab>)\n` */
+	SyBlobAppend(&(*pOut),"Array\n",sizeof("Array\n")-1);
 	for( i = 0 ; i < nTab ; i++ ){
 		SyBlobAppend(&(*pOut)," ",sizeof(char));
 	}
-	SyBlobAppend(&(*pOut),"}",sizeof(char));
+	SyBlobAppend(&(*pOut),"(\n",sizeof("(\n")-1);
+	rc = PH7_HashmapDumpEntries(&(*pOut),pMap,FALSE,nTab,nDepth);
+	for( i = 0 ; i < nTab ; i++ ){
+		SyBlobAppend(&(*pOut)," ",sizeof(char));
+	}
+	SyBlobAppend(&(*pOut),")\n",sizeof(")\n")-1);
 	return rc;
 }
 /*

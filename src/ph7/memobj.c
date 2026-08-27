@@ -6,6 +6,8 @@
 #include "ph7int.h" /* This file handle low-level stuff related to indexed memory objects [i.e: ph7_value] */
 #include <stdio.h>  /* snprintf — the default float->string conversion needs
                      * correctly-rounded digits like php (see MemObjStringValue) */
+#include <stdlib.h> /* strtod — var_dump's shortest-round-trip float shape
+                     * verifies each candidate by parsing it back */
 
 /* Portable 64-bit overflow-detecting arithmetic for compilers that lack the
  * GCC/Clang __builtin_*_overflow intrinsics (i.e. MSVC). The header exposes
@@ -1630,95 +1632,166 @@ PH7_PRIVATE const char * PH7_MemObjTypeDump(ph7_value *pVal)
  * Dump a ph7_value [i.e: get a printable representation of it's type and contents.].
  * Store the dump in the given blob.
  */
+/*
+ * php's var_dump float shape (serialize_precision = -1): the SHORTEST decimal
+ * string that round-trips to the same double — 0.1+0.2 dumps every digit
+ * (0.30000000000000004), 1.0 dumps "1" — pushed through the same
+ * exponent/fraction normalization as echo (PH7_PhpFloatShape: uppercase E,
+ * "1.0E+100"). Distinct from echo/casts, which use EG(precision)=14.
+ */
+static void MemObjDumpRealValue(SyBlob *pOut,ph7_real rVal)
+{
+	if( PH7_IS_NAN(rVal) ){
+		SyBlobAppend(&(*pOut),"NAN",3);
+		return;
+	}
+	if( PH7_IS_INF(rVal) ){
+		SyBlobAppend(&(*pOut),rVal < 0.0 ? "-INF" : "INF",rVal < 0.0 ? 4 : 3);
+		return;
+	}
+#ifndef PH7_OMIT_FLOATING_POINT
+	{
+		char zNum[48];
+		sxi32 n = 0;
+		int p;
+		for( p = 1 ; p <= 17 ; p++ ){
+			n = (sxi32)snprintf(zNum,sizeof(zNum),"%.*G",p,rVal);
+			if( n < 0 || n >= (sxi32)sizeof(zNum) ){
+				n = (sxi32)SyStrlen(zNum);
+			}
+			if( strtod(zNum,0) == rVal ){
+				break; /* shortest round-trip found */
+			}
+		}
+		n = PH7_PhpFloatShape(zNum,n,TRUE);
+		SyBlobAppend(&(*pOut),zNum,(sxu32)n);
+	}
+#else
+	SyBlobFormat(&(*pOut),"%.15g",rVal);
+#endif
+}
+/*
+ * Emit a value's print_r INLINE representation (php: the echo conversion,
+ * except true -> "1" and false/null -> ""). Containers never come through
+ * here — the entry renderers recurse into the container dumpers instead.
+ */
+PH7_PRIVATE void PH7_MemObjPrintRInline(SyBlob *pOut,ph7_value *pObj)
+{
+	if( pObj->iFlags & MEMOBJ_NULL ){
+		return;
+	}
+	if( pObj->iFlags & MEMOBJ_BOOL ){
+		if( pObj->x.iVal != 0 ){
+			SyBlobAppend(&(*pOut),"1",sizeof(char));
+		}
+		return;
+	}
+	if( pObj->iFlags & MEMOBJ_STRING ){
+		/* Strings already hold their bytes (MemObjStringValue only CONVERTS
+		 * non-strings into the output) */
+		if( SyBlobLength(&pObj->sBlob) > 0 ){
+			SyBlobAppend(&(*pOut),SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob));
+		}
+		return;
+	}
+	MemObjStringValue(&(*pOut),&(*pObj),FALSE);
+}
 PH7_PRIVATE sxi32 PH7_MemObjDump(
 	SyBlob *pOut,      /* Store the dump here */
 	ph7_value *pObj,   /* Dump this */
-	int ShowType,      /* TRUE to output value type */
-	int nTab,          /* # of Whitespace to insert */
+	int ShowType,      /* TRUE for var_dump; FALSE for print_r */
+	int nTab,          /* Indent in SPACES: var_dump = this value's own line;
+	                    * print_r = the container's parenthesis column */
 	int nDepth,        /* Nesting level */
-	int isRef          /* TRUE if referenced object */
+	int isRef          /* TRUE if referenced entry (var_dump prints '&') */
 	)
 {
 	sxi32 rc = SXRET_OK;
-	const char *zType;
 	int i;
+	if( !ShowType ){
+		/* ---- print_r ---- php prints scalars inline with NO newline; only
+		 * containers render the Array/Object block (which the container
+		 * dumpers terminate with ")\n"). References carry no marker. */
+		if( pObj->iFlags & MEMOBJ_HASHMAP ){
+			return PH7_HashmapDump(&(*pOut),(ph7_hashmap *)pObj->x.pOther,FALSE,nTab,nDepth+1);
+		}
+		if( (pObj->iFlags & (MEMOBJ_OBJ|MEMOBJ_NULL)) == MEMOBJ_OBJ ){
+			return PH7_ClassInstanceDump(&(*pOut),(ph7_class_instance *)pObj->x.pOther,FALSE,nTab,nDepth+1);
+		}
+		PH7_MemObjPrintRInline(&(*pOut),pObj);
+		return SXRET_OK;
+	}
+	/* ---- var_dump ---- every value renders on its own line at nTab spaces,
+	 * php's exact shapes: bool(true), NULL, int(n), float(shortest),
+	 * string(N) "s", array(N) { … }, object(C)#id (n) { … }, &-references. */
 	for( i = 0 ; i < nTab ; i++ ){
 		SyBlobAppend(&(*pOut)," ",sizeof(char));
 	}
-	if( ShowType && (pObj->iFlags & (MEMOBJ_OBJ|MEMOBJ_NULL)) == MEMOBJ_OBJ ){
-		/* php 8.1: var_dump of an enum case prints `enum(S::A)` — no body */
+	if( isRef ){
+		SyBlobAppend(&(*pOut),"&",sizeof(char));
+	}
+	if( (pObj->iFlags & (MEMOBJ_OBJ|MEMOBJ_NULL)) == MEMOBJ_OBJ ){
 		ph7_class_instance *pInst = (ph7_class_instance *)pObj->x.pOther;
 		if( pInst->pClass->iFlags & PH7_CLASS_ENUM ){
+			/* php 8.1: var_dump of an enum case prints `enum(S::A)` — no body */
 			ph7_value *pName = PH7_EnumCaseNameValue(pInst);
-			if( isRef ){
-				SyBlobAppend(&(*pOut),"&",sizeof(char));
-			}
 			SyBlobFormat(&(*pOut),"enum(%z::",&pInst->pClass->sName);
 			if( pName && SyBlobLength(&pName->sBlob) > 0 ){
 				SyBlobAppend(&(*pOut),SyBlobData(&pName->sBlob),SyBlobLength(&pName->sBlob));
 			}
-			SyBlobAppend(&(*pOut),")",sizeof(char));
-#ifdef __WINNT__
-			SyBlobAppend(&(*pOut),"\r\n",sizeof("\r\n")-1);
-#else
-			SyBlobAppend(&(*pOut),"\n",sizeof(char));
-#endif
+			SyBlobAppend(&(*pOut),")\n",sizeof(")\n")-1);
 			return SXRET_OK;
 		}
+		rc = PH7_ClassInstanceDump(&(*pOut),pInst,TRUE,nTab,nDepth+1);
+		SyBlobAppend(&(*pOut),"\n",sizeof(char));
+		return rc;
 	}
-	if( ShowType ){
-		if( isRef ){
-			SyBlobAppend(&(*pOut),"&",sizeof(char));
-		}
-		/* Get value type first. var_dump() labels reals "float" (PHP), whereas
-		 * gettype()/PH7_MemObjTypeDump use the legacy "double" spelling. */
-		if( (pObj->iFlags & MEMOBJ_REAL) && (pObj->iFlags & MEMOBJ_NULL) == 0 ){
-			zType = "float";
+	if( pObj->iFlags & MEMOBJ_NULL ){
+		SyBlobAppend(&(*pOut),"NULL\n",sizeof("NULL\n")-1);
+		return SXRET_OK;
+	}
+	if( pObj->iFlags & MEMOBJ_HASHMAP ){
+		rc = PH7_HashmapDump(&(*pOut),(ph7_hashmap *)pObj->x.pOther,TRUE,nTab,nDepth+1);
+		SyBlobAppend(&(*pOut),"\n",sizeof(char));
+		return rc;
+	}
+	if( pObj->iFlags & MEMOBJ_BOOL ){
+		if( pObj->x.iVal != 0 ){
+			SyBlobAppend(&(*pOut),"bool(true)\n",sizeof("bool(true)\n")-1);
 		}else{
-			zType = PH7_MemObjTypeDump(pObj);
+			SyBlobAppend(&(*pOut),"bool(false)\n",sizeof("bool(false)\n")-1);
 		}
+		return SXRET_OK;
+	}
+	if( pObj->iFlags & MEMOBJ_REAL ){
+		/* Checked BEFORE the int flag: an integer-valued real carries a cached
+		 * MEMOBJ_INT view too, and php dumps it as float(1). */
+		SyBlobAppend(&(*pOut),"float(",sizeof("float(")-1);
+		MemObjDumpRealValue(&(*pOut),pObj->rVal);
+		SyBlobAppend(&(*pOut),")\n",sizeof(")\n")-1);
+		return SXRET_OK;
+	}
+	if( pObj->iFlags & MEMOBJ_INT ){
+		SyBlobFormat(&(*pOut),"int(%qd)",pObj->x.iVal);
+		SyBlobAppend(&(*pOut),"\n",sizeof(char));
+		return SXRET_OK;
+	}
+	if( pObj->iFlags & MEMOBJ_STRING ){
+		SyBlobFormat(&(*pOut),"string(%u) \"",SyBlobLength(&pObj->sBlob));
+		if( SyBlobLength(&pObj->sBlob) > 0 ){
+			SyBlobAppend(&(*pOut),SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob));
+		}
+		SyBlobAppend(&(*pOut),"\"\n",sizeof("\"\n")-1);
+		return SXRET_OK;
+	}
+	/* Resources and anything else: the legacy `type(value)` shape (php's
+	 * `resource(N) of type (stream)` needs the §8 typed-resource model). */
+	{
+		const char *zType = PH7_MemObjTypeDump(pObj);
 		SyBlobAppend(&(*pOut),zType,SyStrlen(zType));
+		SyBlobAppend(&(*pOut),"(",sizeof(char));
+		MemObjStringValue(&(*pOut),&(*pObj),FALSE);
+		SyBlobAppend(&(*pOut),")\n",sizeof(")\n")-1);
 	}
-	if((pObj->iFlags & MEMOBJ_NULL) == 0 ){
-		if ( ShowType ){
-			SyBlobAppend(&(*pOut),"(",sizeof(char));
-		}
-		if( pObj->iFlags & MEMOBJ_HASHMAP ){
-			/* Dump hashmap entries */
-			rc = PH7_HashmapDump(&(*pOut),(ph7_hashmap *)pObj->x.pOther,ShowType,nTab+1,nDepth+1);
-		}else if(pObj->iFlags & MEMOBJ_OBJ ){
-			/* Dump class instance attributes */
-			rc = PH7_ClassInstanceDump(&(*pOut),(ph7_class_instance *)pObj->x.pOther,ShowType,nTab+1,nDepth+1);
-		}else{
-			SyBlob *pContents = &pObj->sBlob;
-			/* Get a printable representation of the contents */
-			if((pObj->iFlags & MEMOBJ_STRING) == 0 ){
-				MemObjStringValue(&(*pOut),&(*pObj),FALSE);
-			}else{
-				/* PHP format: string(N) "content" */
-				if( ShowType ){
-					SyBlobFormat(&(*pOut),"%u) \"",SyBlobLength(&pObj->sBlob));
-				}
-				if( SyBlobLength(pContents) > 0 ){
-					SyBlobAppend(&(*pOut),SyBlobData(pContents),SyBlobLength(pContents));
-				}
-				if( ShowType ){
-					SyBlobAppend(&(*pOut),"\"",sizeof(char));
-				}
-			}
-		}
-		if( ShowType ){
-			/* Strings already emitted their own ')' as part of the
-			 * "N) \"content\"" format above. */
-			if( (pObj->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_STRING)) == 0 ){
-				SyBlobAppend(&(*pOut),")",sizeof(char));
-			}
-		}
-	}
-#ifdef __WINNT__
-	SyBlobAppend(&(*pOut),"\r\n",sizeof("\r\n")-1);
-#else
-	SyBlobAppend(&(*pOut),"\n",sizeof(char));
-#endif
 	return rc;
 }

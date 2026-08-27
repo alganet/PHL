@@ -15,6 +15,6 @@ $r = explode(',', str_repeat('a,', 450000));
 echo "UNREACHABLE count=" . count($r) . "\n";
 ?>
 --EXPECTF--
-%s Error:  PH7 is running out of memory
+Error: PH7 is running out of memory in %s on line %d
 --CLEAN--
 <?php

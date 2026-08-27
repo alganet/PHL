@@ -46,22 +46,18 @@ echo "Array string keys test completed\n";
 ?>
 --EXPECT--
 String keys: string_key another
-Array(2) {
- [0] =>
-  zero_int
- [1] =>
-  one_int
- }
-Array(4) {
- [0] =>
-  first
- [1] =>
-  second
- [custom] =>
-  custom_key
- [2] =>
-  auto_index
- }
+Array
+(
+    [0] => zero_int
+    [1] => one_int
+)
+Array
+(
+    [0] => first
+    [1] => second
+    [custom] => custom_key
+    [2] => auto_index
+)
 Key collision result: overwritten
 Float keys: float_key another_float
 Empty string key: empty_key

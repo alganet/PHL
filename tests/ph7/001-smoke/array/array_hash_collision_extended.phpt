@@ -1,8 +1,6 @@
 --CREDITS--
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --TEST--
 Array hash collision extended test
 --FILE--
@@ -25,7 +23,7 @@ var_dump(isset($array["a"]));
 ?>
 --EXPECT--
 int(18)
-bool(TRUE)
+bool(true)
 --CLEAN--
 <?php
 unset($array, $keys);
