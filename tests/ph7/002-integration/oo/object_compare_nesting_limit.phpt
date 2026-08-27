@@ -34,7 +34,7 @@ if ($a == $b) {
 }
 ?>
 --EXPECTF--
-%s Error:  Nesting limit reached: Infinite recursion?
+Error: Nesting limit reached: Infinite recursion? in %s on line %d
 not equal
 --CLEAN--
 <?php

@@ -15,7 +15,7 @@ echo isset($i) ? "i-set" : "i-unset", "\n";
 echo isset($n) ? "n-set" : "n-unset", "\n";
 ?>
 --EXPECTF--
-%s Warning:  Cannot use string as array%A Warning:  Cannot use int as array%Aa-unset%Ai-unset%An-unset
+%AWarning: Cannot use string as array in %s on line %d%AWarning: Cannot use int as array in %s on line %d%Aa-unset%Ai-unset%An-unset
 --CLEAN--
 <?php
 unset($a, $i, $n);

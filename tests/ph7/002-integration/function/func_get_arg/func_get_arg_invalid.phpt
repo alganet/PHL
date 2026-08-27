@@ -11,7 +11,7 @@ func_get_arg called outside function context
 func_get_arg(0);
 ?>
 --EXPECTF--
-%s Warning:  func_get_arg(): Called in the global scope
+Warning: func_get_arg(): Called in the global scope in %s on line %d
 --CLEAN--
 <?php
 

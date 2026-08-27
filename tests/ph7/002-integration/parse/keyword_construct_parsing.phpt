@@ -40,7 +40,7 @@ Test: 3
 Print: 2
 bool(TRUE)
 bool(TRUE)
-%s Warning:  include(): IO error while importing: 'nonexistent.php'
+Warning: include(): IO error while importing: 'nonexistent.php' in %s on line %d
 bool(TRUE)
 int(3)
 --CLEAN--
