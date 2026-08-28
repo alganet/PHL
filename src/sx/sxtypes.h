@@ -19,7 +19,9 @@ typedef unsigned short int sxu16; /* 16 bits(2 bytes) unsigned integer */
 typedef int                sxi32; /* 32 bits(4 bytes) integer */
 typedef unsigned int       sxu32; /* 32 bits(4 bytes) unsigned integer */
 typedef long               sxptr;
-typedef unsigned long      sxuptr;
+/* Pointer-sized: MUST hold a round-tripped pointer. `unsigned long` is 32-bit on
+ * LLP64 (64-bit Windows) and silently truncates a pointer's high half. */
+typedef sxu64              sxuptr;
 typedef long               sxlong;
 typedef unsigned long      sxulong;
 typedef sxi32              sxofft;
