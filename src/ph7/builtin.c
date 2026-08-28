@@ -9443,9 +9443,19 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "chop"        , PH7_builtin_rtrim      },
 	{ "ltrim"       , PH7_builtin_ltrim      },
 	{ "strtolower",   PH7_builtin_strtolower },
-	{ "mb_strtolower",PH7_builtin_strtolower }, /* Only UTF-8 encoding is supported */
+	{ "mb_strtolower",PH7_builtin_mb_case_f }, /* UTF-8 only (builtin_mb.c) */
 	{ "strtoupper",   PH7_builtin_strtoupper },
-	{ "mb_strtoupper",PH7_builtin_strtoupper }, /* Only UTF-8 encoding is supported */
+	{ "mb_strtoupper",PH7_builtin_mb_case_f }, /* UTF-8 only (builtin_mb.c) */
+	{ "mb_strlen",    PH7_builtin_mb_strlen_f },
+	{ "mb_substr",    PH7_builtin_mb_substr_f },
+	{ "mb_convert_case", PH7_builtin_mb_convert_case_f },
+	{ "mb_strpos",    PH7_builtin_mb_strpos_f },
+	{ "mb_stripos",   PH7_builtin_mb_strpos_f },
+	{ "mb_strrpos",   PH7_builtin_mb_strpos_f },
+	{ "mb_str_split", PH7_builtin_mb_str_split_f },
+	{ "mb_internal_encoding", PH7_builtin_mb_internal_encoding_f },
+	{ "mb_check_encoding",    PH7_builtin_mb_check_encoding_f },
+	{ "mb_strwidth",  PH7_builtin_mb_strwidth_f },
 	{ "ucfirst",      PH7_builtin_ucfirst    },
 	{ "lcfirst",      PH7_builtin_lcfirst    },
 	{ "ord",          PH7_builtin_ord        },
