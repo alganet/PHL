@@ -44,6 +44,12 @@
 
 /* Shutdown flag set by signal handler */
 static volatile int g_shutdown = 0;
+#ifndef __WINNT__
+/* Pre-forked worker pids (parent only) — signalled on shutdown so killing
+ * the parent doesn't orphan workers holding the port */
+static pid_t g_aWorkerPid[64];
+static int g_nWorkerPid = 0;
+#endif
 
 /* Resolved interpreter path, exposed to scripts as the PHP_BINARY constant.
  * Set once in phl_serve(); the matching expand callback mirrors the CLI's
@@ -804,6 +810,44 @@ int phl_serve(const char *zHost, int iPort, const char *zDocRoot, const char *zR
 		fprintf(stderr, "Router script: %s\n", zRouter);
 	}
 	fprintf(stderr, "Press Ctrl+C to stop.\n");
+#ifndef __WINNT__
+	/* php CLI-server parity: PHP_CLI_SERVER_WORKERS=N pre-forks N workers
+	 * that all accept() on the shared listen socket (the kernel load-balances
+	 * connections). Each worker keeps its own warm VM cache and runs the
+	 * unchanged sequential loop, so no locking is needed anywhere. Like php,
+	 * the default (unset/1) stays single-process; Windows keeps the
+	 * single-process model (no fork — recorded). */
+	{
+		const char *zWorkers = getenv("PHP_CLI_SERVER_WORKERS");
+		int nWorkers = zWorkers ? atoi(zWorkers) : 0;
+		if( nWorkers > 1 ){
+			int iWorker;
+			int bChild = 0;
+			if( nWorkers > 64 ){
+				nWorkers = 64;
+			}
+			/* No zombies if a worker crashes mid-run */
+			signal(SIGCHLD, SIG_IGN);
+			for( iWorker = 1 ; iWorker < nWorkers ; iWorker++ ){
+				pid_t pid = fork();
+				if( pid == 0 ){
+					/* worker child: fall through to the accept loop */
+					bChild = 1;
+					g_nWorkerPid = 0; /* children propagate nothing */
+					break;
+				}
+				if( pid < 0 ){
+					fprintf(stderr, "Warning: fork failed; continuing with %d worker(s)\n", iWorker);
+					break;
+				}
+				g_aWorkerPid[g_nWorkerPid++] = pid;
+			}
+			if( !bChild ){
+				fprintf(stderr, "Using %d worker processes\n", nWorkers);
+			}
+		}
+	}
+#endif
 	/* Allocate request buffer */
 	zRequestBuf = (char *)malloc(PHL_MAX_REQUEST);
 	if( zRequestBuf == 0 ){
@@ -845,6 +889,15 @@ int phl_serve(const char *zHost, int iPort, const char *zDocRoot, const char *zR
 		PH7_NetClose(clientSock);
 	}
 	/* Cleanup */
+#ifndef __WINNT__
+	/* Parent: take the workers down with us */
+	{
+		int k;
+		for( k = 0 ; k < g_nWorkerPid ; k++ ){
+			kill(g_aWorkerPid[k], SIGTERM);
+		}
+	}
+#endif
 	fprintf(stderr, "\nShutting down...\n");
 	ReleaseVmCache();
 	free(zRequestBuf);
