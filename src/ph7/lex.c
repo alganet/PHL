@@ -1381,6 +1381,15 @@ PH7_PRIVATE sxi32 PH7_TokenizeRawText(const char *zInput,sxu32 nLen,SySet *pOut)
 		if( zIn < zEnd ){
 			/* Jump the trailing closing tag */
 			zIn += sCtag.nByte;
+			/* php's lexer swallows exactly ONE newline immediately after the
+			 * closing tag ("?>\n" emits nothing) */
+			if( zIn < zEnd && zIn[0] == '\r' && zIn + 1 < zEnd && zIn[1] == '\n' ){
+				zIn += 2;
+				nLine++;
+			}else if( zIn < zEnd && zIn[0] == '\n' ){
+				zIn++;
+				nLine++;
+			}
 		}
 	} /* For(;;) */
 

@@ -2037,12 +2037,611 @@ static int vm_builtin_dt_make(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_result_int64(pCtx,DtMakeTs(y,mo,d,h,mi,s,iOff));
 	return PH7_OK;
 }
+/* Days in a civil month (php's overflow rules use it during diff borrows) */
+static int DtDaysInMonth(sxi64 y,int m)
+{
+	static const int aMonDays[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+	if( m == 2 && ((y % 4 == 0 && y % 100 != 0) || y % 400 == 0) ){
+		return 29;
+	}
+	return aMonDays[(m - 1) % 12];
+}
+/* int __dt_civil_add(int ts, int off, int y, int m, int d, int h, int i,
+ *                    int s, int sign)
+ *   php's DateTime::add/sub: month arithmetic with linear day/time overflow
+ *   (Jan 31 + P1M == Mar 02), all in the instant's own fixed offset. */
+static int vm_builtin_dt_civil_add(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi64 iTs,iLocal,iDays,iSecs,y0,moT,dayCount;
+	sxi32 iOff;
+	int mo0,d0,iSign;
+	sxi64 y,m,d,h,i,s;
+	if( nArg < 9 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	iTs   = ph7_value_to_int64(apArg[0]);
+	iOff  = (sxi32)ph7_value_to_int64(apArg[1]);
+	y     = ph7_value_to_int64(apArg[2]);
+	m     = ph7_value_to_int64(apArg[3]);
+	d     = ph7_value_to_int64(apArg[4]);
+	h     = ph7_value_to_int64(apArg[5]);
+	i     = ph7_value_to_int64(apArg[6]);
+	s     = ph7_value_to_int64(apArg[7]);
+	iSign = ph7_value_to_int(apArg[8]) < 0 ? -1 : 1;
+	iLocal = iTs + iOff;
+	iDays  = DtFloorDiv(iLocal,86400);
+	iSecs  = iLocal - iDays*86400;
+	DtCivilFromDays(iDays,&y0,&mo0,&d0);
+	y0 += iSign * y;
+	moT = (sxi64)(mo0 - 1) + iSign * m;
+	y0 += DtFloorDiv(moT,12);
+	moT -= DtFloorDiv(moT,12) * 12;
+	dayCount = DtDaysFromCivil(y0,(int)moT + 1,1) + (d0 - 1) + iSign * d;
+	iLocal = dayCount*86400 + iSecs + iSign * (h*3600 + i*60 + s);
+	ph7_result_int64(pCtx,iLocal - iOff);
+	return PH7_OK;
+}
+/* array __dt_civil_diff(int ts1, int off1, int ts2)
+ *   -> [y,m,d,h,i,s,days,invert]: timelib's breakdown — field-wise deltas in
+ *   the FIRST operand's offset, then borrow seconds→minutes→hours→days, then
+ *   the day borrow walks whole months backward from the later date (that walk
+ *   is why Jan 31 → Mar 02 reports m=0 d=30, not "1 month"). */
+static int vm_builtin_dt_civil_diff(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi64 iTs1,iTs2,iA,iB,iLa,iLb,daysA,daysB,yA,yB;
+	sxi32 iOff;
+	int moA,dA,moB,dB,bInvert;
+	sxi64 sA,sB,y,m,d,h,i,s;
+	ph7_value *pArr,*pV;
+	if( nArg < 3 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	iTs1 = ph7_value_to_int64(apArg[0]);
+	iOff = (sxi32)ph7_value_to_int64(apArg[1]);
+	iTs2 = ph7_value_to_int64(apArg[2]);
+	bInvert = iTs1 > iTs2;
+	iA = bInvert ? iTs2 : iTs1;
+	iB = bInvert ? iTs1 : iTs2;
+	iLa = iA + iOff;
+	iLb = iB + iOff;
+	daysA = DtFloorDiv(iLa,86400);
+	daysB = DtFloorDiv(iLb,86400);
+	sA = iLa - daysA*86400;
+	sB = iLb - daysB*86400;
+	DtCivilFromDays(daysA,&yA,&moA,&dA);
+	DtCivilFromDays(daysB,&yB,&moB,&dB);
+	s = (sB % 60) - (sA % 60);
+	i = ((sB / 60) % 60) - ((sA / 60) % 60);
+	h = (sB / 3600) - (sA / 3600);
+	d = dB - dA;
+	m = moB - moA;
+	y = yB - yA;
+	if( s < 0 ){ s += 60; i--; }
+	if( i < 0 ){ i += 60; h--; }
+	if( h < 0 ){ h += 24; d--; }
+	while( d < 0 ){
+		moB--;
+		if( moB < 1 ){ moB = 12; yB--; }
+		d += DtDaysInMonth(yB,moB);
+		m--;
+	}
+	if( m < 0 ){ m += 12; y--; }
+	pArr = ph7_context_new_array(pCtx);
+	pV = ph7_context_new_scalar(pCtx);
+	if( pArr == 0 || pV == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	ph7_value_int64(pV,y);  ph7_array_add_elem(pArr,0,pV);
+	ph7_value_int64(pV,m);  ph7_array_add_elem(pArr,0,pV);
+	ph7_value_int64(pV,d);  ph7_array_add_elem(pArr,0,pV);
+	ph7_value_int64(pV,h);  ph7_array_add_elem(pArr,0,pV);
+	ph7_value_int64(pV,i);  ph7_array_add_elem(pArr,0,pV);
+	ph7_value_int64(pV,s);  ph7_array_add_elem(pArr,0,pV);
+	ph7_value_int64(pV,(iB - iA) / 86400); ph7_array_add_elem(pArr,0,pV);
+	ph7_value_int64(pV,bInvert); ph7_array_add_elem(pArr,0,pV);
+	ph7_result_value(pCtx,pArr);
+	return PH7_OK;
+}
+/* int __dt_isodate(int ts, int off, int y, int w, int dow)
+ *   setISODate: jump to ISO year/week/weekday, preserving the time of day. */
+static int vm_builtin_dt_isodate(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi64 iTs,iLocal,iTod,jan4,monday1,target,y;
+	sxi32 iOff;
+	sxi64 w,dow;
+	int isoDow;
+	if( nArg < 5 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	iTs = ph7_value_to_int64(apArg[0]);
+	iOff = (sxi32)ph7_value_to_int64(apArg[1]);
+	y   = ph7_value_to_int64(apArg[2]);
+	w   = ph7_value_to_int64(apArg[3]);
+	dow = ph7_value_to_int64(apArg[4]);
+	iLocal = iTs + iOff;
+	iTod = iLocal - DtFloorDiv(iLocal,86400)*86400;
+	jan4 = DtDaysFromCivil(y,1,4);
+	isoDow = (int)(((jan4 + 3) % 7 + 7) % 7) + 1;
+	monday1 = jan4 - (isoDow - 1);
+	target = monday1 + (w - 1)*7 + (dow - 1);
+	ph7_result_int64(pCtx,target*86400 + iTod - iOff);
+	return PH7_OK;
+}
+/* Consume nMin..nMax digits from *pz; returns count consumed (0 = failure) */
+static int DtEatDigits(const char **pz,const char *zEnd,int nMin,int nMax,sxi64 *pVal)
+{
+	const char *z = *pz;
+	sxi64 v = 0;
+	int n = 0;
+	while( z < zEnd && n < nMax && SyisDigit(z[0]) ){
+		v = v*10 + (z[0] - '0');
+		z++;
+		n++;
+	}
+	if( n < nMin ){
+		return 0;
+	}
+	*pz = z;
+	*pVal = v;
+	return n;
+}
+/* timelib_get_nr's recovery: skip non-digits hunting for the field.
+ * Returns 1 = found+read, 0 = digits present but short, -1 = exhausted. */
+static int DtHuntDigits(const char **pz,const char *zEnd,int nMin,int nMax,sxi64 *pVal)
+{
+	const char *z = *pz;
+	while( z < zEnd && !SyisDigit(z[0]) ){ z++; }
+	*pz = z;
+	if( z >= zEnd ){
+		return -1;
+	}
+	return DtEatDigits(pz,zEnd,nMin,nMax,pVal) ? 1 : 0;
+}
+/* Case-insensitive name-table lookup; returns 1-based index or 0 */
+static int DtEatName(const char **pz,const char *zEnd,const char **azNames,int nNames)
+{
+	int k;
+	for( k = 0 ; k < nNames ; k++ ){
+		int n = (int)SyStrlen(azNames[k]);
+		if( zEnd - *pz >= n && SyStrnicmp(*pz,azNames[k],(sxu32)n) == 0 ){
+			*pz += n;
+			return k + 1;
+		}
+	}
+	return 0;
+}
+/* mixed __dt_from_format(string fmt, string input, int nowTs, int defOff)
+ *   php's DateTime::createFromFormat engine. Success: [ts, off, offKind, name]
+ *   where offKind 0=none-parsed, 1=numeric offset, 2=literal Z, 3=named id.
+ *   Failure: "POS\tMESSAGE" (timelib's message strings; PHL reports the FIRST
+ *   error where php may accumulate several — recorded). A trailing-data
+ *   warning rides as [4]=pos, [5]=msg on the success array. */
+static int vm_builtin_dt_from_format(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	static const char *azDay3[] = {"sun","mon","tue","wed","thu","fri","sat"};
+	static const char *azDayFull[] = {"sunday","monday","tuesday","wednesday",
+		"thursday","friday","saturday"};
+	static const char *azMon3[] = {"jan","feb","mar","apr","may","jun","jul",
+		"aug","sep","oct","nov","dec"};
+	static const char *azMonFull[] = {"january","february","march","april",
+		"may","june","july","august","september","october","november","december"};
+	const char *zFmt,*zIn,*zEnd,*zInEnd,*z;
+	int nFmt,nIn;
+	sxi64 iNow,v;
+	sxi32 iDefOff;
+	/* -1 == unset */
+	sxi64 y = -1,mo = -1,d = -1,h = -1,mi = -1,s = -1,h12 = -1,uVal = 0;
+	int iMeridiem = -1,bHasU = 0,bPipe = 0,bPlus = 0;
+	int iOffKind = 0;
+	sxi32 iOffVal = 0;
+	char zName[16];
+	const char *zErr = 0;
+	const char *aWarnMsg[3];
+	int aWarnPos[3];
+	int nWarn = 0,bAborted = 0;
+	const char *aErrMsg[8];
+	int aErrPos[8];
+	int nErr = 0,nErrKept = 0;
+	if( nArg < 4 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zFmt = ph7_value_to_string(apArg[0],&nFmt);
+	zIn  = ph7_value_to_string(apArg[1],&nIn);
+	iNow = ph7_value_to_int64(apArg[2]);
+	iDefOff = (sxi32)ph7_value_to_int64(apArg[3]);
+	zEnd = &zFmt[nFmt];
+	zInEnd = &zIn[nIn];
+	z = zIn;
+	zName[0] = 0;
+#define DT_FF_LOGERR(iPos,zMsg) \
+	{ int _p = (iPos),_k,_f = -1; \
+	  nErr++; \
+	  for( _k = 0 ; _k < nErrKept ; _k++ ){ if( aErrPos[_k] == _p ){ _f = _k; break; } } \
+	  if( _f >= 0 ){ aErrMsg[_f] = (zMsg); } \
+	  else if( nErrKept < 8 ){ aErrPos[nErrKept] = _p; aErrMsg[nErrKept] = (zMsg); nErrKept++; } }
+	while( zFmt < zEnd ){
+		char c = zFmt[0];
+		zFmt++;
+		zErr = 0;
+		if( c == '!' ){
+			y = 1970; mo = 1; d = 1; h = 0; mi = 0; s = 0;
+			h12 = -1; iMeridiem = -1;
+			continue;
+		}
+		if( c == '|' ){ bPipe = 1; continue; }
+		if( c == '+' ){ bPlus = 1; continue; }
+		if( z >= zInEnd ){
+			/* timelib aborts the scan once input is exhausted */
+			DT_FF_LOGERR(nIn,"Not enough data available to satisfy format");
+			break;
+		}
+		switch( c ){
+		case 'd': case 'j':
+			if( !DtEatDigits(&z,zInEnd,1,2,&d) ){
+				DT_FF_LOGERR((int)(z - zIn),"A two digit day could not be found");
+				if( DtHuntDigits(&z,zInEnd,1,2,&d) < 0 ){
+					DT_FF_LOGERR(nIn,"A two digit day could not be found");
+				}
+			}
+			break;
+		case 'D':
+			if( !DtEatName(&z,zInEnd,azDay3,7) ){
+				zErr = "A textual day could not be found";
+			}
+			break;
+		case 'l':
+			if( !DtEatName(&z,zInEnd,azDayFull,7) ){
+				zErr = "A textual day could not be found";
+			}
+			break;
+		case 'S':
+			/* ordinal suffix: st nd rd th */
+			if( zInEnd-z >= 2 && ((z[0]=='s'&&z[1]=='t')||(z[0]=='n'&&z[1]=='d')
+			 ||(z[0]=='r'&&z[1]=='d')||(z[0]=='t'&&z[1]=='h')) ){
+				z += 2;
+			}
+			break;
+		case 'm': case 'n':
+			if( !DtEatDigits(&z,zInEnd,1,2,&mo) ){
+				DT_FF_LOGERR((int)(z - zIn),"A two digit month could not be found");
+				if( DtHuntDigits(&z,zInEnd,1,2,&mo) < 0 ){
+					DT_FF_LOGERR(nIn,"A two digit month could not be found");
+				}
+			}
+			break;
+		case 'M':{
+			int k = DtEatName(&z,zInEnd,azMon3,12);
+			if( k ){ mo = k; }else{ zErr = "A textual month could not be found"; }
+			break;
+				 }
+		case 'F':{
+			int k = DtEatName(&z,zInEnd,azMonFull,12);
+			if( k ){ mo = k; }else{ zErr = "A textual month could not be found"; }
+			break;
+				 }
+		case 'y':
+			if( DtEatDigits(&z,zInEnd,2,2,&y) ){
+				y += (y <= 69) ? 2000 : 1900;
+			}else{
+				DT_FF_LOGERR((int)(z - zIn),"A two digit year could not be found");
+				if( DtHuntDigits(&z,zInEnd,2,2,&y) < 0 ){
+					DT_FF_LOGERR(nIn,"A two digit year could not be found");
+				}else if( y >= 0 ){
+					y += (y <= 69) ? 2000 : 1900;
+				}
+			}
+			break;
+		case 'Y':{
+			int neg = 0;
+			if( z < zInEnd && (z[0]=='-'||z[0]=='+') ){ neg = (z[0]=='-'); z++; }
+			if( DtEatDigits(&z,zInEnd,1,4,&y) ){
+				if( neg ){ y = -y; }
+			}else{
+				DT_FF_LOGERR((int)(z - zIn),"A four digit year could not be found");
+				if( DtHuntDigits(&z,zInEnd,1,4,&y) < 0 ){
+					DT_FF_LOGERR(nIn,"A four digit year could not be found");
+				}
+			}
+			break;
+				 }
+		case 'H': case 'G':
+			if( !DtEatDigits(&z,zInEnd,1,2,&h) ){
+				DT_FF_LOGERR((int)(z - zIn),"A two digit hour could not be found");
+				if( DtHuntDigits(&z,zInEnd,1,2,&h) < 0 ){
+					DT_FF_LOGERR(nIn,"A two digit hour could not be found");
+				}
+			}
+			break;
+		case 'h': case 'g':
+			if( !DtEatDigits(&z,zInEnd,1,2,&h12) ){
+				DT_FF_LOGERR((int)(z - zIn),"A two digit hour could not be found");
+				if( DtHuntDigits(&z,zInEnd,1,2,&h12) < 0 ){
+					DT_FF_LOGERR(nIn,"A two digit hour could not be found");
+				}
+			}
+			break;
+		case 'i':
+			if( !DtEatDigits(&z,zInEnd,1,2,&mi) ){
+				DT_FF_LOGERR((int)(z - zIn),"A two digit minute could not be found");
+				if( DtHuntDigits(&z,zInEnd,1,2,&mi) < 0 ){
+					DT_FF_LOGERR(nIn,"A two digit minute could not be found");
+				}
+			}
+			break;
+		case 's':
+			if( !DtEatDigits(&z,zInEnd,1,2,&s) ){
+				DT_FF_LOGERR((int)(z - zIn),"A two digit second could not be found");
+				if( DtHuntDigits(&z,zInEnd,1,2,&s) < 0 ){
+					DT_FF_LOGERR(nIn,"A two digit second could not be found");
+				}
+			}
+			break;
+		case 'u':
+			/* micro parsed then dropped: PHL keeps whole seconds (recorded) */
+			if( !DtEatDigits(&z,zInEnd,1,6,&v) ){
+				DT_FF_LOGERR((int)(z - zIn),"A six digit microsecond could not be found");
+				if( DtHuntDigits(&z,zInEnd,1,6,&v) < 0 ){
+					DT_FF_LOGERR(nIn,"A six digit microsecond could not be found");
+				}
+			}
+			break;
+		case 'v':
+			if( !DtEatDigits(&z,zInEnd,1,3,&v) ){
+				DT_FF_LOGERR((int)(z - zIn),"A three digit millisecond could not be found");
+				if( DtHuntDigits(&z,zInEnd,1,3,&v) < 0 ){
+					DT_FF_LOGERR(nIn,"A three digit millisecond could not be found");
+				}
+			}
+			break;
+		case 'a': case 'A':{
+			static const char *azMer[] = {"am","pm","a.m.","p.m."};
+			int k = DtEatName(&z,zInEnd,azMer,4);
+			if( k ){
+				iMeridiem = ((k - 1) & 1);
+			}else{
+				zErr = "A meridian could not be found";
+			}
+			break;
+				 }
+		case 'U':{
+			int neg = 0;
+			if( z < zInEnd && z[0]=='-' ){ neg = 1; z++; }
+			if( DtEatDigits(&z,zInEnd,1,19,&uVal) ){
+				if( neg ){ uVal = -uVal; }
+				bHasU = 1;
+			}else{
+				DT_FF_LOGERR((int)(z - zIn),"A unix timestamp could not be found");
+				if( DtHuntDigits(&z,zInEnd,1,19,&uVal) < 0 ){
+					DT_FF_LOGERR(nIn,"A unix timestamp could not be found");
+				}else{
+					if( neg ){ uVal = -uVal; }
+					bHasU = 1;
+				}
+			}
+			break;
+				 }
+		case 'e': case 'T':{
+			static const char *azZone[] = {"UTC","GMT","Z"};
+			int k = DtEatName(&z,zInEnd,azZone,3);
+			if( k == 3 ){
+				iOffKind = 2; iOffVal = 0;
+			}else if( k ){
+				iOffKind = 3; iOffVal = 0;
+				SyMemcpy(azZone[k-1],zName,4);
+			}else if( z < zInEnd && (z[0]=='+' || z[0]=='-') ){
+				goto parse_num_off;
+			}else{
+				zErr = "The timezone could not be found in the database";
+			}
+			break;
+				 }
+		case 'O': case 'P':
+parse_num_off:	{
+			int sign,oh,om = 0;
+			sxi64 t;
+			if( z >= zInEnd || (z[0] != '+' && z[0] != '-') ){
+				zErr = "The timezone could not be found in the database";
+				break;
+			}
+			sign = (z[0]=='-') ? -1 : 1;
+			z++;
+			if( !DtEatDigits(&z,zInEnd,2,2,&t) ){
+				zErr = "The timezone could not be found in the database";
+				break;
+			}
+			oh = (int)t;
+			if( z < zInEnd && z[0]==':' ){ z++; }
+			if( DtEatDigits(&z,zInEnd,2,2,&t) ){ om = (int)t; }
+			iOffKind = 1;
+			iOffVal = sign * (oh*3600 + om*60);
+			break;
+				 }
+		case '?':
+			if( z < zInEnd ){ z++; }
+			break;
+		case '*':
+			/* skip input until the next separator byte */
+			while( z < zInEnd && !SyisDigit(z[0]) && z[0] != ';' && z[0] != ':'
+			 && z[0] != '/' && z[0] != '.' && z[0] != ',' && z[0] != '-'
+			 && z[0] != '(' && z[0] != ')' && z[0] != ' ' ){
+				z++;
+			}
+			break;
+		case '#':
+			if( z < zInEnd && (z[0]==';'||z[0]==':'||z[0]=='/'||z[0]=='.'
+			 ||z[0]==','||z[0]=='-'||z[0]=='('||z[0]==')') ){
+				z++;
+			}else{
+				zErr = "The separation symbol could not be found";
+			}
+			break;
+		case '\\':
+			if( zFmt < zEnd ){
+				if( z < zInEnd && z[0] == zFmt[0] ){
+					z++;
+					zFmt++;
+				}else{
+					/* a literal mismatch aborts timelib's scan */
+					DT_FF_LOGERR((int)(z - zIn),"The format separator does not match");
+					zFmt = zEnd;
+					bAborted = 1;
+				}
+			}
+			break;
+		case ';': case ':': case '/': case '.': case ',': case '-':
+		case '(' : case ')':
+			if( z < zInEnd && z[0] == c ){
+				z++;
+			}else{
+				/* timelib logs BOTH messages (count +2, last-wins on the
+				 * position), consumes the offending byte, and keeps going */
+				DT_FF_LOGERR((int)(z - zIn),"The separation symbol could not be found");
+				DT_FF_LOGERR((int)(z - zIn),"Unexpected data found.");
+				z++;
+			}
+			break;
+		case ' ':
+			if( z < zInEnd && (z[0] == ' ' || z[0] == '\t') ){
+				z++;
+			}else{
+				DT_FF_LOGERR((int)(z - zIn),"The separation symbol could not be found");
+				DT_FF_LOGERR((int)(z - zIn),"Unexpected data found.");
+				z++;
+			}
+			break;
+		default:
+			/* any other format byte must match the input verbatim; a mismatch
+			 * aborts timelib's scan */
+			if( z < zInEnd && z[0] == c ){
+				z++;
+			}else{
+				DT_FF_LOGERR((int)(z - zIn),"The format separator does not match");
+				zFmt = zEnd;
+				bAborted = 1;
+			}
+			break;
+		}
+		if( zErr ){
+			/* name/zone/separator mismatch: log and keep scanning (timelib) */
+			DT_FF_LOGERR((int)(z - zIn),zErr);
+		}
+	}
+	if( z < zInEnd && !bAborted ){
+		if( bPlus ){
+			/* '+' downgrades trailing data to a warning */
+			aWarnPos[nWarn] = (int)(z - zIn);
+			aWarnMsg[nWarn] = "Trailing data";
+			nWarn++;
+		}else{
+			DT_FF_LOGERR((int)(z - zIn),"Trailing data");
+		}
+	}
+	if( nErr > 0 ){
+		SyBlob sOut;
+		int k;
+		SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+		SyBlobFormat(&sOut,"%d",nErr);
+		for( k = 0 ; k < nErrKept ; k++ ){
+			SyBlobFormat(&sOut,"\n%d\t%s",aErrPos[k],aErrMsg[k]);
+		}
+		ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+		SyBlobRelease(&sOut);
+		return PH7_OK;
+	}
+	if( bPipe ){
+		if( y < 0 ){ y = 1970; }
+		if( mo < 0 ){ mo = 1; }
+		if( d < 0 ){ d = 1; }
+		if( h < 0 && h12 < 0 ){ h = 0; }
+		if( mi < 0 ){ mi = 0; }
+		if( s < 0 ){ s = 0; }
+	}
+	{
+		/* remaining unset fields come from "now" in the default offset */
+		sxi64 iLocal = iNow + iDefOff;
+		sxi64 days = DtFloorDiv(iLocal,86400);
+		sxi64 secs = iLocal - days*86400;
+		sxi64 ny;
+		int nmo,nd;
+		DtCivilFromDays(days,&ny,&nmo,&nd);
+		if( y < 0 ){ y = ny; }
+		if( mo < 0 ){ mo = nmo; }
+		if( d < 0 ){ d = nd; }
+		if( h12 >= 0 ){
+			h = (h12 % 12) + ((iMeridiem == 1) ? 12 : 0);
+		}
+		/* php: parsing a time component zeroes the finer unset units */
+		if( h >= 0 ){
+			if( mi < 0 ){ mi = 0; }
+			if( s < 0 ){ s = 0; }
+		}else if( mi >= 0 ){
+			if( s < 0 ){ s = 0; }
+		}
+		if( h < 0 ){ h = secs / 3600; }
+		if( mi < 0 ){ mi = (secs / 60) % 60; }
+		if( s < 0 ){ s = secs % 60; }
+	}
+	/* php validates the RESOLVED fields and warns (parse still succeeds,
+	 * values roll over via civil arithmetic) */
+	if( mo < 1 || mo > 12 || d < 1 || d > DtDaysInMonth(y,(int)mo) ){
+		if( nWarn < 3 ){
+			aWarnPos[nWarn] = nIn;
+			aWarnMsg[nWarn] = "The parsed date was invalid";
+			nWarn++;
+		}
+	}
+	if( h > 24 || mi > 59 || s > 59 ){
+		if( nWarn < 3 ){
+			aWarnPos[nWarn] = nIn;
+			aWarnMsg[nWarn] = "The parsed time was invalid";
+			nWarn++;
+		}
+	}
+	{
+		ph7_value *pArr = ph7_context_new_array(pCtx);
+		ph7_value *pV = ph7_context_new_scalar(pCtx);
+		sxi64 iTs;
+		sxi32 iUseOff = (iOffKind != 0) ? iOffVal : iDefOff;
+		if( pArr == 0 || pV == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		if( bHasU ){
+			iTs = uVal;
+			iUseOff = 0;
+			iOffKind = 1;
+		}else{
+			iTs = DtMakeTs(y,(int)mo,(int)d,(int)h,(int)mi,(int)s,iUseOff);
+		}
+		ph7_value_int64(pV,iTs);           ph7_array_add_elem(pArr,0,pV);
+		ph7_value_int64(pV,iUseOff);       ph7_array_add_elem(pArr,0,pV);
+		ph7_value_int64(pV,iOffKind);      ph7_array_add_elem(pArr,0,pV);
+		ph7_value_string(pV,zName,-1);     ph7_array_add_elem(pArr,0,pV);
+		{
+			int k;
+			for( k = 0 ; k < nWarn ; k++ ){
+				ph7_value_int64(pV,aWarnPos[k]);
+				ph7_array_add_elem(pArr,0,pV);
+				ph7_value_string(pV,aWarnMsg[k],-1);
+				ph7_array_add_elem(pArr,0,pV);
+			}
+		}
+		ph7_result_value(pCtx,pArr);
+	}
+	return PH7_OK;
+}
 /*
  * The embedded DateTime library. Timezone scope: UTC + fixed offsets.
  */
 static const char zDateTimeLib[] =
-"class DateMalformedStringException extends Exception {}"
-"class DateInvalidTimeZoneException extends Exception {}"
+"class DateException extends Exception {}"
+"class DateMalformedStringException extends DateException {}"
+"class DateInvalidTimeZoneException extends DateException {}"
+"class DateMalformedIntervalStringException extends DateException {}"
+"class DateMalformedPeriodStringException extends DateException {}"
 "interface DateTimeInterface {"
 " const ATOM = 'Y-m-d\\TH:i:sP';"
 " const COOKIE = 'l, d-M-Y H:i:s T';"
@@ -2120,6 +2719,66 @@ static const char zDateTimeLib[] =
 " public function getTimestamp(){ return $this->__dtTs; }"
 " public function getOffset(){ return $this->__dtOff; }"
 " public function getTimezone(){ return new DateTimeZone($this->__dtName); }"
+" public function diff($targetObject, $absolute = false){"
+"  $r = __dt_civil_diff($this->__dtTs, $this->__dtOff, $targetObject->getTimestamp());"
+"  $iv = new DateInterval('P0D');"
+"  $iv->y = $r[0]; $iv->m = $r[1]; $iv->d = $r[2];"
+"  $iv->h = $r[3]; $iv->i = $r[4]; $iv->s = $r[5];"
+"  $iv->days = $r[6];"
+"  $iv->invert = $absolute ? 0 : $r[7];"
+"  return $iv;"
+" }"
+" private function __dtAddTs($interval, $sign){"
+"  if( $interval->invert ){ $sign = -$sign; }"
+"  return __dt_civil_add($this->__dtTs, $this->__dtOff, $interval->y, $interval->m,"
+"   $interval->d, $interval->h, $interval->i, $interval->s, $sign);"
+" }"
+" private static function __dtFromFormat($format, $datetime, $timezone, $class){"
+"  $off = 0; $name = __dt_default_tz();"
+"  if( $timezone !== null ){"
+"   $off = $timezone->getOffset(null);"
+"   $name = $timezone->getName();"
+"  }"
+"  $r = __dt_from_format((string)$format, (string)$datetime, __dt_now(), $off);"
+"  if( is_string($r) ){"
+"   $lines = explode(\"\\n\", $r);"
+"   $errs = [];"
+"   $nl = count($lines);"
+"   for( $k = 1; $k < $nl; $k++ ){"
+"    $p = strpos($lines[$k], \"\\t\");"
+"    $errs[(int)substr($lines[$k], 0, $p)] = substr($lines[$k], $p + 1);"
+"   }"
+"   DateTime::$__dtLastErr = ['warning_count' => 0, 'warnings' => [],"
+"    'error_count' => (int)$lines[0], 'errors' => $errs];"
+"   return false;"
+"  }"
+"  if( isset($r[4]) ){"
+"   $warns = [];"
+"   $wc = 0;"
+"   for( $k = 4; isset($r[$k]); $k += 2 ){"
+"    $warns[$r[$k]] = $r[$k + 1];"
+"    $wc++;"
+"   }"
+"   DateTime::$__dtLastErr = ['warning_count' => $wc, 'warnings' => $warns,"
+"    'error_count' => 0, 'errors' => []];"
+"  }else{"
+"   DateTime::$__dtLastErr = false;"
+"  }"
+"  $obj = new $class('@0');"
+"  $obj->__dtTs = $r[0];"
+"  if( $r[2] === 0 ){ $obj->__dtOff = $off; $obj->__dtName = $name; }"
+"  elseif( $r[2] === 2 ){ $obj->__dtOff = 0; $obj->__dtName = 'Z'; }"
+"  elseif( $r[2] === 3 ){ $obj->__dtOff = $r[1]; $obj->__dtName = $r[3]; }"
+"  else { $obj->__dtOff = $r[1]; $obj->__dtName = $obj->__dtOffName($r[1]); }"
+"  return $obj;"
+" }"
+" private static function __dtCopyOf($object, $class){"
+"  $d = new $class('@0');"
+"  $d->__dtTs = $object->getTimestamp();"
+"  $d->__dtOff = $object->getOffset();"
+"  $d->__dtName = $object->getTimezone()->getName();"
+"  return $d;"
+" }"
 "}"
 "class DateTime implements DateTimeInterface {"
 " use __DtCoreT;"
@@ -2146,6 +2805,19 @@ static const char zDateTimeLib[] =
 "  $this->__dtTs = __dt_make((int)$this->format('Y'), (int)$this->format('n'), (int)$this->format('j'), $hour, $minute, $second, $this->__dtOff);"
 "  return $this;"
 " }"
+" public function add($interval){ $this->__dtTs = $this->__dtAddTs($interval, 1); return $this; }"
+" public function sub($interval){ $this->__dtTs = $this->__dtAddTs($interval, -1); return $this; }"
+" public function setISODate($year, $week, $dayOfWeek = 1){"
+"  $this->__dtTs = __dt_isodate($this->__dtTs, $this->__dtOff, $year, $week, $dayOfWeek);"
+"  return $this;"
+" }"
+" public static $__dtLastErr = false;"
+" public static function getLastErrors(){ return DateTime::$__dtLastErr; }"
+" public static function createFromFormat($format, $datetime, $timezone = null){"
+"  return self::__dtFromFormat($format, $datetime, $timezone, 'DateTime');"
+" }"
+" public static function createFromImmutable($object){ return self::__dtCopyOf($object, 'DateTime'); }"
+" public static function createFromInterface($object){ return self::__dtCopyOf($object, 'DateTime'); }"
 "}"
 "class DateTimeImmutable implements DateTimeInterface {"
 " use __DtCoreT;"
@@ -2176,6 +2848,19 @@ static const char zDateTimeLib[] =
 "  $c->__dtTs = __dt_make((int)$this->format('Y'), (int)$this->format('n'), (int)$this->format('j'), $hour, $minute, $second, $this->__dtOff);"
 "  return $c;"
 " }"
+" public function add($interval){ $c = clone $this; $c->__dtTs = $this->__dtAddTs($interval, 1); return $c; }"
+" public function sub($interval){ $c = clone $this; $c->__dtTs = $this->__dtAddTs($interval, -1); return $c; }"
+" public function setISODate($year, $week, $dayOfWeek = 1){"
+"  $c = clone $this;"
+"  $c->__dtTs = __dt_isodate($this->__dtTs, $this->__dtOff, $year, $week, $dayOfWeek);"
+"  return $c;"
+" }"
+" public static function getLastErrors(){ return DateTime::$__dtLastErr; }"
+" public static function createFromFormat($format, $datetime, $timezone = null){"
+"  return self::__dtFromFormat($format, $datetime, $timezone, 'DateTimeImmutable');"
+" }"
+" public static function createFromMutable($object){ return self::__dtCopyOf($object, 'DateTimeImmutable'); }"
+" public static function createFromInterface($object){ return self::__dtCopyOf($object, 'DateTimeImmutable'); }"
 "}"
 "function date_create($datetime = 'now', $timezone = null){"
 " try { return new DateTime($datetime, $timezone); } catch (Exception $e) { return false; }"
@@ -2183,6 +2868,199 @@ static const char zDateTimeLib[] =
 "function date_create_immutable($datetime = 'now', $timezone = null){"
 " try { return new DateTimeImmutable($datetime, $timezone); } catch (Exception $e) { return false; }"
 "}"
+"class DateInterval {"
+" public $y = 0;"
+" public $m = 0;"
+" public $d = 0;"
+" public $h = 0;"
+" public $i = 0;"
+" public $s = 0;"
+" public $f = 0;"
+" public $invert = 0;"
+" public $days = false;"
+" public $from_string = false;"
+" public function __construct($duration = 'P0D'){"
+"  $dur = (string)$duration;"
+"  $mm = null;"
+"  if( strlen($dur) < 2 || substr($dur, -1) === 'T'"
+"   || !preg_match('/^P(?:(\\d+)Y)?(?:(\\d+)M)?(?:(\\d+)W)?(?:(\\d+)D)?(?:T(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)S)?)?$/', $dur, $mm) ){"
+"   throw new DateMalformedIntervalStringException('Unknown or bad format (' . $dur . ')');"
+"  }"
+"  $this->y = (int)($mm[1] ?? 0);"
+"  $this->m = (int)($mm[2] ?? 0);"
+"  $this->d = (int)($mm[4] ?? 0) + 7 * (int)($mm[3] ?? 0);"
+"  $this->h = (int)($mm[5] ?? 0);"
+"  $this->i = (int)($mm[6] ?? 0);"
+"  $this->s = (int)($mm[7] ?? 0);"
+" }"
+" public static function createFromDateString($datetime){"
+"  $s = trim((string)$datetime);"
+"  $iv = new DateInterval('P0D');"
+"  $rest = $s;"
+"  $any = false;"
+"  while( $rest !== '' ){"
+"   $mm = null;"
+"   if( !preg_match('/^[\\s,+]*([+-]?\\d+)\\s*(sec|secs|second|seconds|min|mins|minute|minutes|hour|hours|day|days|week|weeks|fortnight|fortnights|month|months|year|years)\\b/i', $rest, $mm) ){"
+"    throw new DateMalformedIntervalStringException("
+"     'DateInterval::createFromDateString(): Unknown or bad format (' . $s . ')');"
+"   }"
+"   $n = (int)$mm[1];"
+"   $u = strtolower($mm[2]);"
+"   if( $u === 'sec' || $u === 'secs' || $u === 'second' || $u === 'seconds' ){ $iv->s += $n; }"
+"   elseif( $u === 'min' || $u === 'mins' || $u === 'minute' || $u === 'minutes' ){ $iv->i += $n; }"
+"   elseif( $u === 'hour' || $u === 'hours' ){ $iv->h += $n; }"
+"   elseif( $u === 'day' || $u === 'days' ){ $iv->d += $n; }"
+"   elseif( $u === 'week' || $u === 'weeks' ){ $iv->d += 7 * $n; }"
+"   elseif( $u === 'fortnight' || $u === 'fortnights' ){ $iv->d += 14 * $n; }"
+"   elseif( $u === 'month' || $u === 'months' ){ $iv->m += $n; }"
+"   else { $iv->y += $n; }"
+"   $any = true;"
+"   $rest = ltrim(substr($rest, strlen($mm[0])));"
+"  }"
+"  if( !$any ){"
+"   throw new DateMalformedIntervalStringException("
+"    'DateInterval::createFromDateString(): Unknown or bad format (' . $s . ')');"
+"  }"
+"  return $iv;"
+" }"
+" public function format($format){"
+"  $f = (string)$format;"
+"  $out = '';"
+"  $n = strlen($f);"
+"  for( $k = 0; $k < $n; $k++ ){"
+"   $c = $f[$k];"
+"   if( $c !== '%' ){ $out .= $c; continue; }"
+"   $k++;"
+"   if( $k >= $n ){ $out .= '%'; break; }"
+"   $t = $f[$k];"
+"   if( $t === 'Y' ){ $out .= sprintf('%02d', $this->y); }"
+"   elseif( $t === 'y' ){ $out .= $this->y; }"
+"   elseif( $t === 'M' ){ $out .= sprintf('%02d', $this->m); }"
+"   elseif( $t === 'm' ){ $out .= $this->m; }"
+"   elseif( $t === 'D' ){ $out .= sprintf('%02d', $this->d); }"
+"   elseif( $t === 'd' ){ $out .= $this->d; }"
+"   elseif( $t === 'H' ){ $out .= sprintf('%02d', $this->h); }"
+"   elseif( $t === 'h' ){ $out .= $this->h; }"
+"   elseif( $t === 'I' ){ $out .= sprintf('%02d', $this->i); }"
+"   elseif( $t === 'i' ){ $out .= $this->i; }"
+"   elseif( $t === 'S' ){ $out .= sprintf('%02d', $this->s); }"
+"   elseif( $t === 's' ){ $out .= $this->s; }"
+"   elseif( $t === 'F' ){ $out .= sprintf('%06d', (int)round($this->f * 1000000)); }"
+"   elseif( $t === 'f' ){ $out .= (int)round($this->f * 1000000); }"
+"   elseif( $t === 'R' ){ $out .= $this->invert ? '-' : '+'; }"
+"   elseif( $t === 'r' ){ $out .= $this->invert ? '-' : ''; }"
+"   elseif( $t === 'a' ){ $out .= $this->days === false ? '(unknown)' : $this->days; }"
+"   elseif( $t === '%' ){ $out .= '%'; }"
+"   else { $out .= $t; }"
+"  }"
+"  return $out;"
+" }"
+"}"
+"class DatePeriod implements IteratorAggregate {"
+" const EXCLUDE_START_DATE = 1;"
+" const INCLUDE_END_DATE = 2;"
+" public $start = null;"
+" public $current = null;"
+" public $end = null;"
+" public $interval = null;"
+" public $recurrences = 1;"
+" public $include_start_date = true;"
+" public $include_end_date = false;"
+" private $__dpN = null;"
+" public function __construct($start, $interval = null, $end = null, $options = 0){"
+"  if( is_string($start) ){"
+"   $mm = null;"
+"   if( !preg_match('/^R(\\d+)\\/(.+)\\/(P.+)$/', $start, $mm) ){"
+"    throw new DateMalformedPeriodStringException("
+"     'DatePeriod::__construct(): Unknown or bad format (' . $start . ')');"
+"   }"
+"   $options = is_int($interval) ? $interval : 0;"
+"   $this->start = new DateTimeImmutable($mm[2]);"
+"   $this->interval = new DateInterval($mm[3]);"
+"   $this->__dpN = (int)$mm[1];"
+"   $this->recurrences = $this->__dpN + 1;"
+"  }else{"
+"   $this->start = clone $start;"
+"   $this->interval = $interval;"
+"   if( is_int($end) ){"
+"    $this->__dpN = $end;"
+"    $this->recurrences = $end + 1;"
+"   }else{"
+"    $this->end = $end === null ? null : (clone $end);"
+"   }"
+"  }"
+"  $this->include_start_date = !((int)$options & 1);"
+"  $this->include_end_date = ((int)$options & 2) !== 0;"
+" }"
+" public static function createFromISO8601String($specification, $options = 0){"
+"  return new DatePeriod((string)$specification, (int)$options);"
+" }"
+" public function getStartDate(){ return $this->start; }"
+" public function getEndDate(){ return $this->end; }"
+" public function getDateInterval(){ return $this->interval; }"
+" public function getRecurrences(){ return $this->__dpN; }"
+" public function getIterator(): Generator {"
+"  $cur = $this->start;"
+"  $iv = $this->interval;"
+"  $k = 0;"
+"  if( $this->end !== null ){"
+"   $endTs = $this->end->getTimestamp();"
+"   $first = true;"
+"   while( true ){"
+"    $ts = $cur->getTimestamp();"
+"    if( $this->include_end_date ? ($ts > $endTs) : ($ts >= $endTs) ){ break; }"
+"    if( !$first || $this->include_start_date ){"
+"     yield $k => (clone $cur);"
+"     $k++;"
+"    }"
+"    $first = false;"
+"    $next = clone $cur;"
+"    $cur = $next->add($iv);"
+"   }"
+"   return;"
+"  }"
+"  $total = $this->__dpN + 1 + ($this->include_end_date ? 1 : 0);"
+"  for( $j = 0; $j < $total; $j++ ){"
+"   if( $j > 0 || $this->include_start_date ){"
+"    yield $k => (clone $cur);"
+"    $k++;"
+"   }"
+"   $next = clone $cur;"
+"   $cur = $next->add($iv);"
+"  }"
+" }"
+"}"
+"function date_format($object, $format){ return $object->format($format); }"
+"function date_modify($object, $modifier){"
+" try { return $object->modify($modifier); } catch (Exception $e) { return false; }"
+"}"
+"function date_add($object, $interval){ return $object->add($interval); }"
+"function date_sub($object, $interval){ return $object->sub($interval); }"
+"function date_diff($baseObject, $targetObject, $absolute = false){"
+" return $baseObject->diff($targetObject, $absolute);"
+"}"
+"function date_timestamp_get($object){ return $object->getTimestamp(); }"
+"function date_timestamp_set($object, $timestamp){ return $object->setTimestamp($timestamp); }"
+"function date_timezone_get($object){ return $object->getTimezone(); }"
+"function date_timezone_set($object, $timezone){ return $object->setTimezone($timezone); }"
+"function date_offset_get($object){ return $object->getOffset(); }"
+"function date_date_set($object, $year, $month, $day){ return $object->setDate($year, $month, $day); }"
+"function date_time_set($object, $hour, $minute, $second = 0, $microsecond = 0){"
+" return $object->setTime($hour, $minute, $second, $microsecond);"
+"}"
+"function date_isodate_set($object, $year, $week, $dayOfWeek = 1){"
+" return $object->setISODate($year, $week, $dayOfWeek);"
+"}"
+"function date_interval_create_from_date_string($datetime){"
+" return DateInterval::createFromDateString($datetime);"
+"}"
+"function date_interval_format($object, $format){ return $object->format($format); }"
+"function date_get_last_errors(){ return DateTime::getLastErrors(); }"
+"function timezone_open($timezone){"
+" try { return new DateTimeZone($timezone); } catch (Exception $e) { return false; }"
+"}"
+"function timezone_name_get($object){ return $object->getName(); }"
+"function timezone_offset_get($object, $datetime){ return $object->getOffset($datetime); }"
 ;
 /*
  * Install the DateTime family: thunks first, then the chunk. Called from
@@ -2197,6 +3075,10 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 	} aFunc[] = {
 		{ "__dt_now",    vm_builtin_dt_now },
 		{ "__dt_default_tz", vm_builtin_dt_default_tz },
+		{ "__dt_civil_add",  vm_builtin_dt_civil_add },
+		{ "__dt_civil_diff", vm_builtin_dt_civil_diff },
+		{ "__dt_isodate",    vm_builtin_dt_isodate },
+		{ "__dt_from_format", vm_builtin_dt_from_format },
 		{ "__dt_parse",  vm_builtin_dt_parse },
 		{ "__dt_format", vm_builtin_dt_format },
 		{ "__dt_make",   vm_builtin_dt_make },
