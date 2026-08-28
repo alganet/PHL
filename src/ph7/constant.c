@@ -554,6 +554,25 @@ static void PH7_PHP_ROUND_HALF_UP_Const(ph7_value *pVal,void *pUserData)
 	SXUNUSED(pUserData);
 }
 /*
+ * PHP_SESSION_DISABLED / PHP_SESSION_NONE / PHP_SESSION_ACTIVE
+ *  session_status() states (0 / 1 / 2).
+ */
+static void PH7_PHP_SESSION_DISABLED_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,0);
+	SXUNUSED(pUserData);
+}
+static void PH7_PHP_SESSION_NONE_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,1);
+	SXUNUSED(pUserData);
+}
+static void PH7_PHP_SESSION_ACTIVE_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,2);
+	SXUNUSED(pUserData);
+}
+/*
  * SPHP_ROUND_HALF_DOWN
  *  Expands 2.
  */
@@ -2044,6 +2063,9 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"PHP_VERSION_ID",       PH7_PHPVerIdConst  },
 	{"PHP_OS",               PH7_OS_Const       },
 	{"PHP_EOL",              PH7_EOL_Const      },
+	{"PHP_SESSION_DISABLED", PH7_PHP_SESSION_DISABLED_Const },
+	{"PHP_SESSION_NONE",     PH7_PHP_SESSION_NONE_Const },
+	{"PHP_SESSION_ACTIVE",   PH7_PHP_SESSION_ACTIVE_Const },
 	{"PASSWORD_BCRYPT",      PH7_PASSWORD_BCRYPT_Const },
 	{"PASSWORD_DEFAULT",     PH7_PASSWORD_BCRYPT_Const },
 	{"PASSWORD_BCRYPT_DEFAULT_COST", PH7_PASSWORD_COST_Const },
