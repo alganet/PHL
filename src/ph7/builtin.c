@@ -9455,6 +9455,8 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "localtime",   PH7_builtin_localtime    },
 	{ "mktime",      PH7_builtin_mktime       },
 	{ "gmmktime",    PH7_builtin_mktime       },
+	{ "date_default_timezone_get", PH7_builtin_date_default_timezone_get },
+	{ "date_default_timezone_set", PH7_builtin_date_default_timezone_set },
 	        /* URL functions */
 	{ "base64_encode",PH7_builtin_base64_encode },
 	{ "base64_decode",PH7_builtin_base64_decode },
