@@ -1161,6 +1161,17 @@ static void PH7_ClassInstanceRelease(ph7_class_instance *pThis)
 		pThis->iRef = 2; /* Prevent garbage collection */
 		PH7_VmCallClassMethod(pVm,pThis,pDestr,0,0,0);
 	}
+	/* Weak-reference registry: kill the cell for this instance so every
+	 * WeakReference/WeakMap handle observes the death (the cell outlives the
+	 * instance until its own handles drop; removing the hash entry here keeps
+	 * a pool-reused address from resurrecting a dead cell). */
+	if( SyHashTotalEntry(&pVm->hWeakCell) > 0 ){
+		void *pCellData = 0;
+		if( SyHashDeleteEntry(&pVm->hWeakCell,(const void *)&pThis,sizeof(void *),&pCellData) == SXRET_OK
+		 && pCellData ){
+			((VmWeakCell *)pCellData)->pObj = 0;
+		}
+	}
 	/* Release non-static attributes (the wholesale SyHashRelease below frees the entry nodes,
 	 * so the helper must not delete them mid-walk). */
 	SyHashResetLoopCursor(&pThis->hAttr);

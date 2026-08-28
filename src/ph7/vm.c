@@ -2511,6 +2511,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SySetInit(&pVm->aIniCli,&pVm->sAllocator,sizeof(VmIniEntry));
 	SySetInit(&pVm->aAutoload,&pVm->sAllocator,sizeof(VmAutoloadCB));
 	SyHashInit(&pVm->hAutoloadActive,&pVm->sAllocator,0,0);
+	SyHashInit(&pVm->hWeakCell,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hTypedSlot,&pVm->sAllocator,0,0);
 	SySetInit(&pVm->aException,&pVm->sAllocator,sizeof(ph7_exception *));
 	SySetInit(&pVm->aMagicGuard,&pVm->sAllocator,sizeof(VmMagicGuard));
@@ -4159,6 +4160,7 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	if( SyHashTotalEntry(&pVm->hAutoloadActive) ){
 		SyHashRelease(&pVm->hAutoloadActive);
 		SyHashInit(&pVm->hAutoloadActive,&pVm->sAllocator,0,0);
+	SyHashInit(&pVm->hWeakCell,&pVm->sAllocator,0,0);
 	}
 	/* Output buffers */
 	for( n = 0 ; n < SySetUsed(&pVm->aOB) ; ++n ){

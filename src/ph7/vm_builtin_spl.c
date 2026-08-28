@@ -27,6 +27,90 @@ static int vm_builtin_spl_deprecated(ph7_context *pCtx,int nArg,ph7_value **apAr
 	return PH7_OK;
 }
 
+/* int __weak_create(object $obj) — register/share the weak cell for $obj,
+ * returning the cell pointer as an opaque int handle */
+static int vm_builtin_weak_create(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pObj;
+	VmWeakCell *pCell = 0;
+	SyHashEntry *pEntry;
+	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+		ph7_result_int(pCtx,0);
+		return PH7_OK;
+	}
+	pObj = (ph7_class_instance *)apArg[0]->x.pOther;
+	pEntry = SyHashGet(&pVm->hWeakCell,(const void *)&pObj,sizeof(void *));
+	if( pEntry ){
+		pCell = (VmWeakCell *)pEntry->pUserData;
+		pCell->nRef++;
+	}else{
+		pCell = (VmWeakCell *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmWeakCell));
+		if( pCell == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		pCell->pObj = pObj;
+		pCell->nRef = 1;
+		/* SyHash stores the key POINTER (no copy): key off the cell's own
+		 * pObj field — heap-stable for the entry's whole lifetime, and it
+		 * holds the live pointer bytes until the release hook nulls it
+		 * (which happens only after the entry is deleted). */
+		if( SyHashInsert(&pVm->hWeakCell,(const void *)&pCell->pObj,sizeof(void *),pCell) != SXRET_OK ){
+			SyMemBackendFree(&pVm->sAllocator,pCell);
+			return PH7_ContextMemoryError(pCtx);
+		}
+	}
+	ph7_result_int64(pCtx,(ph7_int64)(sxu64)(sxuptr)pCell);
+	return PH7_OK;
+}
+/* ?object __weak_get(int $handle) — the target instance, or null once dead */
+static int vm_builtin_weak_get(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	VmWeakCell *pCell;
+	if( nArg < 1 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pCell = (VmWeakCell *)(sxuptr)(sxu64)ph7_value_to_int64(apArg[0]);
+	if( pCell == 0 || pCell->pObj == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	{
+		/* Hand the instance back: ph7_result_value's MemObjStore takes the
+		 * reference, so the temp holds none of its own. */
+		ph7_value sObj;
+		PH7_MemObjInit(pCtx->pVm,&sObj);
+		sObj.x.pOther = pCell->pObj;
+		MemObjSetType(&sObj,MEMOBJ_OBJ);
+		ph7_result_value(pCtx,&sObj);
+	}
+	return PH7_OK;
+}
+/* void __weak_drop(int $handle) — release one PHP-side handle */
+static int vm_builtin_weak_drop(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	VmWeakCell *pCell;
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	pCell = (VmWeakCell *)(sxuptr)(sxu64)ph7_value_to_int64(apArg[0]);
+	if( pCell == 0 || pCell->nRef == 0 ){
+		return PH7_OK;
+	}
+	pCell->nRef--;
+	if( pCell->nRef == 0 ){
+		if( pCell->pObj ){
+			/* Still alive: unhook the registry entry before freeing */
+			void *pDummy = 0;
+			SyHashDeleteEntry(&pVm->hWeakCell,(const void *)&pCell->pObj,sizeof(void *),&pDummy);
+		}
+		SyMemBackendFree(&pVm->sAllocator,pCell);
+	}
+	return PH7_OK;
+}
+
 static const char zSplLib[] =
 "interface SeekableIterator extends Iterator {"
 " public function seek($offset);"
@@ -333,6 +417,89 @@ static const char zSplLib[] =
 "}"
 "class NoRewindIterator extends IteratorIterator {"
 " public function rewind(){}"
+"}"
+"class WeakReference {"
+" private $__h = 0;"
+" private function __construct(){}"
+" public static function create($object){"
+"  if( !is_object($object) ){"
+"   throw new TypeError('WeakReference::create(): Argument #1 ($object) must be"
+" of type object, ' . get_debug_type($object) . ' given');"
+"  }"
+"  $w = new WeakReference();"
+"  $w->__h = __weak_create($object);"
+"  return $w;"
+" }"
+" public function get(){ return $this->__h ? __weak_get($this->__h) : null; }"
+" public function __destruct(){"
+"  if( $this->__h ){ __weak_drop($this->__h); $this->__h = 0; }"
+" }"
+"}"
+"class WeakMap implements ArrayAccess, Countable, IteratorAggregate {"
+" private $__e = [];"
+" private function __wmPrune(){"
+"  foreach( $this->__e as $id => $p ){"
+"   if( __weak_get($p[0]) === null ){"
+"    __weak_drop($p[0]);"
+"    unset($this->__e[$id]);"
+"   }"
+"  }"
+" }"
+" public function offsetSet($object, $value){"
+"  if( !is_object($object) ){"
+"   throw new TypeError('WeakMap key must be an object');"
+"  }"
+"  $id = spl_object_id($object);"
+"  if( isset($this->__e[$id]) && __weak_get($this->__e[$id][0]) !== null ){"
+"   $this->__e[$id][1] = $value;"
+"   return;"
+"  }"
+"  if( isset($this->__e[$id]) ){ __weak_drop($this->__e[$id][0]); }"
+"  $this->__e[$id] = [__weak_create($object), $value];"
+" }"
+" public function offsetGet($object){"
+"  if( !is_object($object) ){"
+"   throw new TypeError('WeakMap key must be an object');"
+"  }"
+"  $id = spl_object_id($object);"
+"  if( isset($this->__e[$id]) && __weak_get($this->__e[$id][0]) === $object ){"
+"   return $this->__e[$id][1];"
+"  }"
+"  throw new Error('Object ' . get_class($object) . '#' . $id . ' not contained"
+" in WeakMap');"
+" }"
+" public function offsetExists($object){"
+"  if( !is_object($object) ){"
+"   throw new TypeError('WeakMap key must be an object');"
+"  }"
+"  $id = spl_object_id($object);"
+"  return isset($this->__e[$id]) && __weak_get($this->__e[$id][0]) === $object;"
+" }"
+" public function offsetUnset($object){"
+"  if( !is_object($object) ){"
+"   throw new TypeError('WeakMap key must be an object');"
+"  }"
+"  $id = spl_object_id($object);"
+"  if( isset($this->__e[$id]) ){"
+"   __weak_drop($this->__e[$id][0]);"
+"   unset($this->__e[$id]);"
+"  }"
+" }"
+" public function count(){"
+"  $this->__wmPrune();"
+"  return count($this->__e);"
+" }"
+" public function getIterator(): Generator {"
+"  $this->__wmPrune();"
+"  foreach( $this->__e as $p ){"
+"   $o = __weak_get($p[0]);"
+"   if( $o !== null ){ yield $o => $p[1]; }"
+"  }"
+" }"
+" public function __destruct(){"
+"  foreach( $this->__e as $p ){ __weak_drop($p[0]); }"
+"  $this->__e = [];"
+" }"
 "}"
 "class EmptyIterator implements Iterator {"
 " public function current(){"
@@ -745,6 +912,9 @@ static const char zSplLib[] =
 PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)
 {
 	ph7_create_function(&(*pVm),"__spl_deprecated",vm_builtin_spl_deprecated,0);
+	ph7_create_function(&(*pVm),"__weak_create",vm_builtin_weak_create,0);
+	ph7_create_function(&(*pVm),"__weak_get",vm_builtin_weak_get,0);
+	ph7_create_function(&(*pVm),"__weak_drop",vm_builtin_weak_drop,0);
 	return PH7_VmEvalBuiltinChunk(&(*pVm),zSplLib,sizeof(zSplLib)-1);
 }
 
