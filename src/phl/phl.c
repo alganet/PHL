@@ -65,7 +65,7 @@ static void Fatal(const char *zMsg)
  */
 static void Help(void)
 {
-	puts("phl [-h|--help|-b|-i|-l|-v|--version|-r code|--rf name|--rc name] path/to/php_file [script args]");
+	puts("phl [-h|--help|-b|-i|-l|-v|--version|-r code|--rf name|--rc name|-d name=value|-c inifile] path/to/php_file [script args]");
 #ifdef PHL_ENABLE_SERVER
 	puts("phl -S host:port [-t docroot] [router.php]");
 #endif
@@ -228,6 +228,80 @@ static int PHL_EnvULong(const char *zName,unsigned long uFloor,unsigned long uCe
 	return 1;
 }
 /*
+ * Apply one "name=value" php.ini directive to the VM (used by -d and each
+ * -c file line). Trims surrounding whitespace and one layer of quotes off
+ * the value, php.ini style.
+ */
+static void PHL_ApplyIniPair(ph7_vm *pVm,const char *zPair)
+{
+	char zName[128];
+	char zValue[512];
+	const char *zEq = strchr(zPair,'=');
+	const char *zEnd;
+	size_t n;
+	if( zEq == 0 ){
+		/* php: a bare -d name defines the entry with value "1" */
+		zEq = zPair + strlen(zPair);
+	}
+	/* name: trim */
+	while( *zPair == ' ' || *zPair == '\t' ){ zPair++; }
+	zEnd = zEq;
+	while( zEnd > zPair && (zEnd[-1] == ' ' || zEnd[-1] == '\t') ){ zEnd--; }
+	n = (size_t)(zEnd - zPair);
+	if( n == 0 || n >= sizeof(zName) ){
+		return;
+	}
+	memcpy(zName,zPair,n);
+	zName[n] = 0;
+	/* value: trim + unquote */
+	if( *zEq == '=' ){
+		const char *zV = zEq + 1;
+		const char *zVEnd;
+		while( *zV == ' ' || *zV == '\t' ){ zV++; }
+		zVEnd = zV + strlen(zV);
+		while( zVEnd > zV && (zVEnd[-1] == ' ' || zVEnd[-1] == '\t'
+		    || zVEnd[-1] == '\r' || zVEnd[-1] == '\n') ){ zVEnd--; }
+		if( zVEnd - zV >= 2 && (zV[0] == '"' || zV[0] == '\'') && zVEnd[-1] == zV[0] ){
+			zV++;
+			zVEnd--;
+		}
+		n = (size_t)(zVEnd - zV);
+		if( n >= sizeof(zValue) ){
+			n = sizeof(zValue) - 1;
+		}
+		memcpy(zValue,zV,n);
+		zValue[n] = 0;
+	}else{
+		/* default "on" flag; avoid strcpy (MSVC C4996 under /WX) */
+		zValue[0] = '1';
+		zValue[1] = 0;
+	}
+	ph7_vm_config(pVm,PH7_VM_CONFIG_INI_ENTRY,zName,zValue);
+}
+/*
+ * Load php.ini directives from a -c file: name=value lines; [sections],
+ * empty lines and ;/# comments are ignored (enough of php's ini grammar
+ * for CLI configuration).
+ */
+static void PHL_LoadIniFile(ph7_vm *pVm,const char *zPath)
+{
+	char zLine[768];
+	FILE *pFile = fopen(zPath,"r");
+	if( pFile == 0 ){
+		fprintf(stderr,"Could not open php.ini file: %s\n",zPath);
+		return;
+	}
+	while( fgets(zLine,sizeof(zLine),pFile) ){
+		const char *z = zLine;
+		while( *z == ' ' || *z == '\t' ){ z++; }
+		if( *z == 0 || *z == ';' || *z == '#' || *z == '[' || *z == '\n' || *z == '\r' ){
+			continue;
+		}
+		PHL_ApplyIniPair(pVm,z);
+	}
+	fclose(pFile);
+}
+/*
  * Main program: Compile and execute the PHP file.
  */
 int main(int argc,char **argv)
@@ -245,6 +319,9 @@ int main(int argc,char **argv)
 #endif
 	int n;              /* Script arguments */
 	int rc;
+	const char *azIniDefine[64]; /* -d name=value directives, in order */
+	int nIniDefine = 0;
+	const char *zIniFile = 0;    /* -c php.ini path */
 	/* Process interpreter arguments first*/
 	for(n = 1 ; n < argc ; ++n ){
 		int c;
@@ -351,6 +428,24 @@ int main(int argc,char **argv)
 		}else if( c == 'v' ){
 			/* Display version */
 			Version();
+		}else if( c == 'd' ){
+			/* php CLI parity: -d name=value defines a php.ini entry
+			 * (repeatable; applied to the VM after compile, in order). */
+			if( n + 1 >= argc ){
+				FatalCode("Missing name=value argument for -d",1);
+			}
+			if( nIniDefine < (int)(sizeof(azIniDefine)/sizeof(azIniDefine[0])) ){
+				azIniDefine[nIniDefine++] = argv[++n];
+			}else{
+				FatalCode("Too many -d directives",1);
+			}
+		}else if( c == 'c' ){
+			/* php CLI parity: -c file loads php.ini directives from a file
+			 * (name=value lines; [sections] and ;/# comments ignored). */
+			if( n + 1 >= argc ){
+				FatalCode("Missing file argument for -c",1);
+			}
+			zIniFile = argv[++n];
 		}else{
 			/* Display a help message and exit */
 			Help();
@@ -572,6 +667,18 @@ int main(int argc,char **argv)
 	}
 	/* Report script run-time errors (now default behavior) */
 	ph7_vm_config(pVm,PH7_VM_CONFIG_ERR_REPORT);
+	/* Apply php.ini directives AFTER the error-report default so
+	 * `-d error_reporting=0` can lower it: the -c file first, then -d
+	 * overrides in CLI order (php's precedence). */
+	if( zIniFile ){
+		PHL_LoadIniFile(pVm,zIniFile);
+	}
+	{
+		int i;
+		for( i = 0 ; i < nIniDefine ; i++ ){
+			PHL_ApplyIniPair(pVm,azIniDefine[i]);
+		}
+	}
 	if( dump_vm ){
 		/* Dump PH7 byte-code instructions */
 		ph7_vm_dump_v2(pVm,

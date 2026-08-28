@@ -2508,6 +2508,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SySetInit(&pVm->aFreeObj,&pVm->sAllocator,sizeof(VmSlot));
 	SySetInit(&pVm->aSelf,&pVm->sAllocator,sizeof(ph7_class *));
 	SySetInit(&pVm->aShutdown,&pVm->sAllocator,sizeof(VmShutdownCB));
+	SySetInit(&pVm->aIniCli,&pVm->sAllocator,sizeof(VmIniEntry));
 	SySetInit(&pVm->aAutoload,&pVm->sAllocator,sizeof(VmAutoloadCB));
 	SyHashInit(&pVm->hAutoloadActive,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hTypedSlot,&pVm->sAllocator,0,0);
@@ -2711,6 +2712,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	PH7_VmInstallDateTime(&(*pVm));
 	PH7_VmInstallSpl(&(*pVm));
 	PH7_VmInstallSession(&(*pVm));
+	PH7_VmInstallIni(&(*pVm));
 	pVm->bCompilingBuiltin = 0;
 	/* Reset the code generator */
 	PH7_ResetCodeGenerator(&(*pVm),pEngine->xConf.xErr,pEngine->xConf.pErrData);
@@ -4915,6 +4917,51 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 				SyBlobAppend(&pVm->sArgv,(const void *)" ",sizeof(char));
 			}
 			SyBlobAppend(&pVm->sArgv,(const void *)zValue,n);
+		}
+		break;
+								  }
+	case PH7_VM_CONFIG_INI_ENTRY: {
+		/* A php.ini directive from the CLI (-d name=value or a -c file line).
+		 * Copies are queued for the INI chunk's lazy seed; engine-level knobs
+		 * apply immediately so they take effect even if the script never
+		 * touches the INI API. */
+		const char *zName = va_arg(ap,const char *);
+		const char *zValue = va_arg(ap,const char *);
+		VmIniEntry sEntry;
+		char *zDupN,*zDupV;
+		sxu32 nName,nValue;
+		if( SX_EMPTY_STR(zName) ){
+			rc = SXERR_EMPTY;
+			break;
+		}
+		if( zValue == 0 ){
+			zValue = "";
+		}
+		nName = (sxu32)SyStrlen(zName);
+		nValue = (sxu32)SyStrlen(zValue);
+		zDupN = SyMemBackendStrDup(&pVm->sAllocator,zName,nName);
+		zDupV = SyMemBackendStrDup(&pVm->sAllocator,zValue,nValue);
+		if( zDupN == 0 || zDupV == 0 ){
+			rc = SXERR_MEM;
+			break;
+		}
+		SyStringInitFromBuf(&sEntry.sName,zDupN,nName);
+		SyStringInitFromBuf(&sEntry.sValue,zDupV,nValue);
+		rc = SySetPut(&pVm->aIniCli,(const void *)&sEntry);
+		if( rc == SXRET_OK ){
+			if( nName == sizeof("error_reporting")-1
+			 && SyMemcmp(zName,"error_reporting",nName) == 0 ){
+				sxi64 iLevel = 0;
+				SyStrToInt64(zValue,nValue,(void *)&iLevel,0);
+				pVm->bErrReport = iLevel != 0;
+			}else if( nName == sizeof("date.timezone")-1
+			 && SyMemcmp(zName,"date.timezone",nName) == 0
+			 && nValue == 3
+			 && (SyStrnicmp(zValue,"UTC",3) == 0 || SyStrnicmp(zValue,"GMT",3) == 0) ){
+				SyMemcpy(zValue,pVm->zDefTz,3);
+				pVm->zDefTz[3] = 0;
+				pVm->nDefTz = 3;
+			}
 		}
 		break;
 								  }

@@ -221,6 +221,7 @@ typedef int (*ph7_clock)(void *pUserData, ph7_int64 *pSec, ph7_int64 *pUsec);
 #define PH7_VM_CONFIG_RESPONSE_STATUS  22  /* ONE ARGUMENT: int *pStatusCode */
 #define PH7_VM_CONFIG_RESPONSE_HEADERS 23  /* TWO ARGUMENTS: int (*xCallback)(const char *zName,unsigned int nName,const char *zValue,unsigned int nValue,void *pUserData), void *pUserData */
 #define PH7_VM_CONFIG_NATIVE_DEPTH    24  /* ONE ARGUMENT: int nMaxNativeDepth (native VmByteCodeExec nesting: eval/include, callbacks, coroutine resume; default 256 host / 16 embedded) */
+#define PH7_VM_CONFIG_INI_ENTRY       25  /* TWO ARGUMENTS: const char *zName,const char *zValue (a php.ini directive from -d/-c) */
 /*
  * Global Library Configuration Commands.
  *
