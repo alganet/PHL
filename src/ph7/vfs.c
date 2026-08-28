@@ -2432,6 +2432,9 @@ struct io_private
 	sxu32 iMagic;   /* Sanity check to avoid misuse */
 };
 #define IO_PRIVATE_MAGIC 0xFEAC14
+/* Stream-device predicates (devices defined later in this file) */
+static int is_php_stream(const ph7_io_stream *pStream);
+static int is_data_stream(const ph7_io_stream *pStream);
 /* Make sure we are dealing with a valid io_private instance */
 #define IO_PRIVATE_INVALID(IO) ( IO == 0 || IO->iMagic != IO_PRIVATE_MAGIC )
 /* Forward declaration */
@@ -2922,10 +2925,19 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 {
 	void *pHandle = 0; /* cc warning */
 	SyString sFile;
+	ph7_value sDummy;
 	int rc;
 	if( pStream == 0 ){
 		/* No such stream device */
 		return 0;
+	}
+	if( pResource == 0 && (is_php_stream(pStream) || is_data_stream(pStream)) ){
+		/* These devices reach the VM through pResource->pVm (their xOpen has
+		 * no vm parameter); callers like file_get_contents pass no resource,
+		 * so hand them a synthesized stack value carrying the VM — xOpen only
+		 * reads it during the call. */
+		PH7_MemObjInit(pVm,&sDummy);
+		pResource = &sDummy;
 	}
 	SyStringInitFromBuf(&sFile,zFile,SyStrlen(zFile));
 	if( use_include ){
@@ -4805,7 +4817,7 @@ static void ResetIOPrivate(io_private *pDev)
 	pDev->nOfft = 0;
 }
 /* Forward declaration */
-static int is_php_stream(const ph7_io_stream *pStream);
+
 /*
  * resource fopen(string $filename,string $mode [,bool $use_include_path = false[,resource $context ]])
  *  Open a file,a URL or any other IO stream.
@@ -4826,6 +4838,151 @@ static int is_php_stream(const ph7_io_stream *pStream);
  * Return
  *  File handle on success or FALSE on failure.
  */
+/*
+ * string|false stream_get_contents(resource $stream, int $maxLength = -1,
+ *                                  int $offset = -1)
+ *  Read the remaining contents of a stream into a string.
+ */
+static int PH7_builtin_stream_get_contents(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const ph7_io_stream *pStream;
+	io_private *pDev;
+	ph7_int64 nMax = -1;
+	char zBuf[4096];
+	ph7_int64 nRead;
+	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
+	if( IO_PRIVATE_INVALID(pDev) ){
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pStream = pDev->pStream;
+	if( pStream == 0 || pStream->xRead == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( nArg > 1 ){
+		nMax = ph7_value_to_int64(apArg[1]);
+	}
+	if( nArg > 2 ){
+		ph7_int64 iOfft = ph7_value_to_int64(apArg[2]);
+		if( iOfft >= 0 && pStream->xSeek ){
+			pStream->xSeek(pDev->pHandle,iOfft,0/*SEEK_SET*/);
+		}
+	}
+	ph7_result_string(pCtx,"",0); /* seed an empty string result */
+	while( nMax != 0 ){
+		ph7_int64 nAsk = (ph7_int64)sizeof(zBuf);
+		if( nMax > 0 && nMax < nAsk ){
+			nAsk = nMax;
+		}
+		nRead = pStream->xRead(pDev->pHandle,zBuf,nAsk);
+		if( nRead < 1 ){
+			break;
+		}
+		ph7_result_string(pCtx,zBuf,(int)nRead); /* appends */
+		if( nMax > 0 ){
+			nMax -= nRead;
+		}
+	}
+	return PH7_OK;
+}
+/*
+ * array stream_get_wrappers(void) — names of the registered stream devices.
+ */
+static int PH7_builtin_stream_get_wrappers(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pArr,*pV;
+	ph7_io_stream **apDev;
+	sxu32 n;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	pArr = ph7_context_new_array(pCtx);
+	pV = ph7_context_new_scalar(pCtx);
+	if( pArr == 0 || pV == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	apDev = (ph7_io_stream **)SySetBasePtr(&pCtx->pVm->aIOstream);
+	for( n = 0 ; n < SySetUsed(&pCtx->pVm->aIOstream) ; n++ ){
+		ph7_value_string(pV,apDev[n]->zName,-1);
+		ph7_array_add_elem(pArr,0,pV);
+		ph7_value_reset_string_cursor(pV);
+	}
+	ph7_result_value(pCtx,pArr);
+	return PH7_OK;
+}
+/*
+ * array stream_get_meta_data(resource $stream) — best-effort php shape over
+ * the io_private state (uri/wrapper_type/seekable/eof; recorded approximation).
+ */
+static int PH7_builtin_stream_get_meta_data(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	io_private *pDev;
+	ph7_value *pArr,*pV;
+	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
+	if( IO_PRIVATE_INVALID(pDev) ){
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pArr = ph7_context_new_array(pCtx);
+	pV = ph7_context_new_scalar(pCtx);
+	if( pArr == 0 || pV == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	ph7_value_bool(pV,0);
+	ph7_array_add_strkey_elem(pArr,"timed_out",pV);
+	ph7_value_bool(pV,1);
+	ph7_array_add_strkey_elem(pArr,"blocked",pV);
+	/* eof is best-effort: a read probe would consume state on unseekable
+	 * devices, so report FALSE and let feof() answer properly */
+	ph7_value_bool(pV,0);
+	ph7_array_add_strkey_elem(pArr,"eof",pV);
+	ph7_value_int(pV,0);
+	ph7_array_add_strkey_elem(pArr,"unread_bytes",pV);
+	ph7_value_string(pV,pDev->pStream ? pDev->pStream->zName : "",-1);
+	ph7_array_add_strkey_elem(pArr,"wrapper_type",pV);
+	ph7_value_reset_string_cursor(pV);
+	ph7_value_string(pV,pDev->pStream ? pDev->pStream->zName : "",-1);
+	ph7_array_add_strkey_elem(pArr,"stream_type",pV);
+	ph7_value_reset_string_cursor(pV);
+	ph7_value_bool(pV,pDev->pStream && pDev->pStream->xSeek != 0);
+	ph7_array_add_strkey_elem(pArr,"seekable",pV);
+	ph7_result_value(pCtx,pArr);
+	return PH7_OK;
+}
+/*
+ * stream_context_create([array $options[, array $params]]) — INERT: PHL has
+ * no context plumbing yet; the options array itself is returned so code that
+ * creates and passes contexts keeps working (recorded divergence: not a
+ * resource, options unconsumed).
+ */
+static int PH7_builtin_stream_context_create(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	if( nArg > 0 && ph7_value_is_array(apArg[0]) ){
+		ph7_result_value(pCtx,apArg[0]);
+	}else{
+		ph7_value *pArr = ph7_context_new_array(pCtx);
+		if( pArr == 0 ){
+			ph7_result_null(pCtx);
+			return PH7_OK;
+		}
+		ph7_result_value(pCtx,pArr);
+	}
+	return PH7_OK;
+}
 static int PH7_builtin_fopen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const ph7_io_stream *pStream;
@@ -4867,9 +5024,9 @@ static int PH7_builtin_fopen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	pResource = 0;
 	if( nArg > 3 ){
 		pResource = apArg[3];
-	}else if( is_php_stream(pStream) ){
-		/* TICKET 1433-80: The php:// stream need a ph7_value to access the underlying
-		 * virtual machine.
+	}else if( is_php_stream(pStream) || is_data_stream(pStream) ){
+		/* TICKET 1433-80: The php:// and data:// streams need a ph7_value to
+		 * access the underlying virtual machine.
 		 */
 		pResource = apArg[0];
 	}
@@ -5291,6 +5448,7 @@ typedef struct ph7_stream_data ph7_stream_data;
 #define PH7_IO_STREAM_STDOUT 2 /* php://stdout */
 #define PH7_IO_STREAM_STDERR 3 /* php://stderr */
 #define PH7_IO_STREAM_OUTPUT 4 /* php://output */
+#define PH7_IO_STREAM_MEMORY 5 /* php://memory, php://temp, and data:// payloads */
  /* The following structure is the private data associated with the php:// stream */
 struct ph7_stream_data
 {
@@ -5300,6 +5458,9 @@ struct ph7_stream_data
 		void *pHandle; /* Stream handle */
 		ph7_output_consumer sConsumer; /* VM output consumer */
 	}x;
+	SyBlob sMem;     /* MEMORY type: backing buffer */
+	sxu32 nCur;      /* MEMORY type: read/write cursor */
+	int bReadOnly;   /* MEMORY type: TRUE for data:// payloads */
 };
 /*
  * Allocate a new instance of the ph7_stream_data structure.
@@ -5319,7 +5480,12 @@ static ph7_stream_data * PHPStreamDataInit(ph7_vm *pVm,int iType)
 	SyZero(pData,sizeof(ph7_stream_data));
 	/* Initialize fields */
 	pData->iType = iType;
-	if( iType == PH7_IO_STREAM_OUTPUT ){
+	SyBlobInit(&pData->sMem,&pVm->sAllocator);
+	pData->nCur = 0;
+	pData->bReadOnly = 0;
+	if( iType == PH7_IO_STREAM_MEMORY ){
+		/* Nothing else to set up: the buffer is the stream */
+	}else if( iType == PH7_IO_STREAM_OUTPUT ){
 		/* Point to the default VM consumer routine. */
 		pData->x.sConsumer = pVm->sVmConsumer;
 	}else{
@@ -5370,6 +5536,11 @@ static int PHPStreamData_Open(const char *zName,int iMode,ph7_value *pResource,v
 		iMode = PH7_IO_STREAM_STDOUT;
 	}else if( SyStrnicmp(sStream.zString,"stderr",sizeof("stderr")-1) == 0 ){
 		iMode = PH7_IO_STREAM_STDERR;
+	}else if( SyStrnicmp(sStream.zString,"memory",sizeof("memory")-1) == 0
+	       || SyStrnicmp(sStream.zString,"temp",sizeof("temp")-1) == 0 ){
+		/* php://memory and php://temp (PHL keeps temp fully in memory —
+		 * php's 2MB disk spill is a memory-pressure detail, recorded) */
+		iMode = PH7_IO_STREAM_MEMORY;
 	}else{
 		/* unknown stream name */
 		return -1;
@@ -5389,6 +5560,20 @@ static ph7_int64 PHPStreamData_Read(void *pHandle,void *pBuffer,ph7_int64 nDatat
 	ph7_stream_data *pData = (ph7_stream_data *)pHandle;
 	if( pData == 0 ){
 		return -1;
+	}
+	if( pData->iType == PH7_IO_STREAM_MEMORY ){
+		sxu32 nAvail = SyBlobLength(&pData->sMem);
+		sxu32 nRead;
+		if( pData->nCur >= nAvail ){
+			return 0; /* EOF */
+		}
+		nRead = nAvail - pData->nCur;
+		if( (ph7_int64)nRead > nDatatoRead ){
+			nRead = (sxu32)nDatatoRead;
+		}
+		SyMemcpy((const char *)SyBlobData(&pData->sMem) + pData->nCur,pBuffer,nRead);
+		pData->nCur += nRead;
+		return (ph7_int64)nRead;
 	}
 	if( pData->iType != PH7_IO_STREAM_STDIN ){
 		/* Forbidden */
@@ -5430,6 +5615,42 @@ static ph7_int64 PHPStreamData_Write(void *pHandle,const void *pBuf,ph7_int64 nW
 	if( pData->iType == PH7_IO_STREAM_STDIN ){
 		/* Forbidden */
 		return -1;
+	}else if( pData->iType == PH7_IO_STREAM_MEMORY ){
+		sxu32 nLen,nEnd;
+		if( pData->bReadOnly ){
+			return -1;
+		}
+		nLen = SyBlobLength(&pData->sMem);
+		if( pData->nCur > nLen ){
+			/* seek past end: php zero-fills the gap */
+			static const char zZero[64] = {0};
+			while( SyBlobLength(&pData->sMem) < pData->nCur ){
+				sxu32 nPad = pData->nCur - SyBlobLength(&pData->sMem);
+				if( nPad > sizeof(zZero) ){ nPad = sizeof(zZero); }
+				if( SyBlobAppend(&pData->sMem,zZero,nPad) != SXRET_OK ){
+					return -1;
+				}
+			}
+			nLen = SyBlobLength(&pData->sMem);
+		}
+		nEnd = pData->nCur + (sxu32)nWrite;
+		if( pData->nCur < nLen ){
+			/* overwrite in place up to the current end */
+			sxu32 nOver = nLen - pData->nCur;
+			if( nOver > (sxu32)nWrite ){ nOver = (sxu32)nWrite; }
+			SyMemcpy(pBuf,(char *)SyBlobData(&pData->sMem) + pData->nCur,nOver);
+			if( nEnd > nLen ){
+				if( SyBlobAppend(&pData->sMem,(const char *)pBuf + nOver,nEnd - nLen) != SXRET_OK ){
+					return -1;
+				}
+			}
+		}else{
+			if( SyBlobAppend(&pData->sMem,pBuf,(sxu32)nWrite) != SXRET_OK ){
+				return -1;
+			}
+		}
+		pData->nCur = nEnd;
+		return nWrite;
 	}else if( pData->iType == PH7_IO_STREAM_OUTPUT ){
 		ph7_output_consumer *pCons = &pData->x.sConsumer;
 		int rc;
@@ -5475,9 +5696,152 @@ static void PHPStreamData_Close(void *pHandle)
 		return;
 	}
 	pVm = pData->pVm;
+	SyBlobRelease(&pData->sMem);
 	/* Free the instance */
 	SyMemBackendFree(&pVm->sAllocator,pData);
 }
+/* int (*xSeek)(void *,ph7_int64,int); MEMORY type only */
+static int PHPStreamData_Seek(void *pHandle,ph7_int64 iOfft,int whence)
+{
+	ph7_stream_data *pData = (ph7_stream_data *)pHandle;
+	ph7_int64 iNew;
+	if( pData == 0 || pData->iType != PH7_IO_STREAM_MEMORY ){
+		return -1;
+	}
+	switch(whence){
+	case 1/*SEEK_CUR*/: iNew = (ph7_int64)pData->nCur + iOfft; break;
+	case 2/*SEEK_END*/: iNew = (ph7_int64)SyBlobLength(&pData->sMem) + iOfft; break;
+	default:            iNew = iOfft; break;
+	}
+	if( iNew < 0 ){
+		return -1;
+	}
+	pData->nCur = (sxu32)iNew;
+	return PH7_OK;
+}
+/* ph7_int64 (*xTell)(void *); MEMORY type only */
+static ph7_int64 PHPStreamData_Tell(void *pHandle)
+{
+	ph7_stream_data *pData = (ph7_stream_data *)pHandle;
+	if( pData == 0 || pData->iType != PH7_IO_STREAM_MEMORY ){
+		return -1;
+	}
+	return (ph7_int64)pData->nCur;
+}
+/* int (*xTrunc)(void *,ph7_int64); MEMORY type only */
+static int PHPStreamData_Trunc(void *pHandle,ph7_int64 nLen)
+{
+	ph7_stream_data *pData = (ph7_stream_data *)pHandle;
+	if( pData == 0 || pData->iType != PH7_IO_STREAM_MEMORY || pData->bReadOnly ){
+		return -1;
+	}
+	if( nLen < (ph7_int64)SyBlobLength(&pData->sMem) ){
+		/* shrink in place: the blob keeps its allocation */
+		pData->sMem.nByte = (sxu32)nLen;
+	}else{
+		static const char zZero[64] = {0};
+		while( (ph7_int64)SyBlobLength(&pData->sMem) < nLen ){
+			sxu32 nPad = (sxu32)(nLen - SyBlobLength(&pData->sMem));
+			if( nPad > sizeof(zZero) ){ nPad = sizeof(zZero); }
+			if( SyBlobAppend(&pData->sMem,zZero,nPad) != SXRET_OK ){
+				return -1;
+			}
+		}
+	}
+	return PH7_OK;
+}
+/*
+ * data:// stream: read-only in-memory payloads parsed from RFC 2397 URIs
+ * (data://[mediatype][;base64],payload — the payload percent-decodes unless
+ * base64). Shares the MEMORY machinery above.
+ */
+static sxi32 DataStreamB64Consumer(const void *pData,unsigned int nLen,void *pUserData)
+{
+	return SyBlobAppend((SyBlob *)pUserData,pData,nLen);
+}
+static int DataStreamData_Open(const char *zName,int iMode,ph7_value *pResource,void ** ppHandle)
+{
+	ph7_stream_data *pData;
+	const char *zIn = zName;
+	const char *zEnd = &zName[SyStrlen(zName)];
+	const char *zComma = 0;
+	int bBase64 = 0;
+	SXUNUSED(iMode);
+	/* Find the comma separating the mediatype from the payload */
+	while( zIn < zEnd ){
+		if( zIn[0] == ',' ){
+			zComma = zIn;
+			break;
+		}
+		zIn++;
+	}
+	if( zComma == 0 ){
+		return -1;
+	}
+	if( zComma - zName >= (int)sizeof(";base64")-1
+	 && SyStrnicmp(&zComma[-((int)sizeof(";base64")-1)],";base64",sizeof(";base64")-1) == 0 ){
+		bBase64 = 1;
+	}
+	pData = PHPStreamDataInit(pResource?pResource->pVm:0,PH7_IO_STREAM_MEMORY);
+	if( pData == 0 ){
+		return -1;
+	}
+	pData->bReadOnly = 1;
+	zIn = &zComma[1];
+	if( bBase64 ){
+		if( SyBase64Decode(zIn,(sxu32)(zEnd - zIn),DataStreamB64Consumer,&pData->sMem) != SXRET_OK ){
+			SyBlobRelease(&pData->sMem);
+			SyMemBackendFree(&pData->pVm->sAllocator,pData);
+			return -1;
+		}
+	}else{
+		/* percent-decode the payload */
+		while( zIn < zEnd ){
+			char c = zIn[0];
+			if( c == '%' && zIn + 2 < zEnd && SyisHex(zIn[1]) && SyisHex(zIn[2]) ){
+				int hi = SyHexToint(zIn[1]);
+				int lo = SyHexToint(zIn[2]);
+				c = (char)((hi << 4) | lo);
+				zIn += 3;
+			}else{
+				zIn++;
+			}
+			if( SyBlobAppend(&pData->sMem,&c,1) != SXRET_OK ){
+				SyBlobRelease(&pData->sMem);
+				SyMemBackendFree(&pData->pVm->sAllocator,pData);
+				return -1;
+			}
+		}
+	}
+	*ppHandle = (void *)pData;
+	return PH7_OK;
+}
+/* data:// rejects writes outright */
+static ph7_int64 DataStreamData_Write(void *pHandle,const void *pBuf,ph7_int64 nWrite)
+{
+	SXUNUSED(pHandle);
+	SXUNUSED(pBuf);
+	SXUNUSED(nWrite);
+	return -1;
+}
+static const ph7_io_stream sDATA_Stream = {
+	"data",
+	PH7_IO_STREAM_VERSION,
+	DataStreamData_Open,  /* xOpen */
+	0,   /* xOpenDir */
+	PHPStreamData_Close, /* xClose */
+	0,  /* xCloseDir */
+	PHPStreamData_Read,  /* xRead */
+	0,  /* xReadDir */
+	DataStreamData_Write, /* xWrite */
+	PHPStreamData_Seek,  /* xSeek */
+	0,  /* xLock */
+	0,  /* xRewindDir */
+	PHPStreamData_Tell,  /* xTell */
+	0,  /* xTrunc */
+	0,  /* xSync */
+	0   /* xStat */
+};
 /*
  * Pipe stream implementation for popen/pclose.
  * This stream wraps the system's popen/pclose APIs to provide
@@ -5989,12 +6353,12 @@ static const ph7_io_stream sPHP_Stream = {
 	PHPStreamData_Read,  /* xRead */
 	0,  /* xReadDir */
 	PHPStreamData_Write, /* xWrite */
-	0,  /* xSeek */
+	PHPStreamData_Seek,  /* xSeek (php://memory & php://temp) */
 	0,  /* xLock */
 	0,  /* xRewindDir */
-	0,  /* xTell */
-	0,  /* xTrunc */
-	0,  /* xSeek */
+	PHPStreamData_Tell,  /* xTell */
+	PHPStreamData_Trunc, /* xTrunc */
+	0,  /* xSync */
 	0   /* xStat */
 };
 #endif /* PH7_DISABLE_DISK_IO */
@@ -6006,6 +6370,18 @@ static int is_php_stream(const ph7_io_stream *pStream)
 {
 #ifndef PH7_DISABLE_DISK_IO
 	return pStream == &sPHP_Stream;
+#else
+	SXUNUSED(pStream); /* cc warning */
+	return 0;
+#endif /* PH7_DISABLE_DISK_IO */
+}
+/*
+ * Return TRUE if we are dealing with the data:// stream.
+ */
+static int is_data_stream(const ph7_io_stream *pStream)
+{
+#ifndef PH7_DISABLE_DISK_IO
+	return pStream == &sDATA_Stream;
 #else
 	SXUNUSED(pStream); /* cc warning */
 	return 0;
@@ -6108,6 +6484,10 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"flock",     PH7_builtin_flock  },
 		{"fclose",    PH7_builtin_fclose },
 		{"fopen",     PH7_builtin_fopen  },
+		{"stream_get_contents",  PH7_builtin_stream_get_contents },
+		{"stream_get_wrappers",  PH7_builtin_stream_get_wrappers },
+		{"stream_get_meta_data", PH7_builtin_stream_get_meta_data },
+		{"stream_context_create",PH7_builtin_stream_context_create },
 		{"popen",     PH7_builtin_popen  },
 		{"pclose",    PH7_builtin_pclose },
 		{"fpassthru", PH7_builtin_fpassthru },
@@ -6172,6 +6552,7 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 #endif
 	/* Install the php:// stream */
 	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sPHP_Stream);
+	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sDATA_Stream);
 	if( pFileStream ){
 		/* Install the file:// stream */
 		ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,pFileStream);
