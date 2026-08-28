@@ -24,18 +24,18 @@ Coverage: 126/255 lines (49.41%)
 |     - |   14 | ` * Free all response header strings and reset the set.` |
 |     - |   15 | ` * Called from PH7_VmReset() and header_remove() with no arguments.` |
 |     - |   16 | ` */` |
-|     6 |   17 | `PH7_PRIVATE void PH7_VmReleaseResponseHeaders(ph7_vm *pVm)` |
+|     8 |   17 | `PH7_PRIVATE void PH7_VmReleaseResponseHeaders(ph7_vm *pVm)` |
 |   ! 0 |   18 | `{` |
 |     - |   19 | `	VmResponseHeader *aHdr;` |
 |     - |   20 | `	sxu32 i, n;` |
-|     6 |   21 | `	aHdr = (VmResponseHeader *)SySetBasePtr(&pVm->aResponseHeaders);` |
-|     6 |   22 | `	n = SySetUsed(&pVm->aResponseHeaders);` |
-|     6 |   23 | `	for( i = 0; i < n; i++ ){` |
+|     8 |   21 | `	aHdr = (VmResponseHeader *)SySetBasePtr(&pVm->aResponseHeaders);` |
+|     8 |   22 | `	n = SySetUsed(&pVm->aResponseHeaders);` |
+|     8 |   23 | `	for( i = 0; i < n; i++ ){` |
 |   ! 0 |   24 | `		SyMemBackendFree(&pVm->sAllocator, (void *)aHdr[i].sName.zString);` |
 |   ! 0 |   25 | `		SyMemBackendFree(&pVm->sAllocator, (void *)aHdr[i].sValue.zString);` |
 |   ! 0 |   26 | `	}` |
-|     6 |   27 | `	SySetReset(&pVm->aResponseHeaders);` |
-|     6 |   28 | `}` |
+|     8 |   27 | `	SySetReset(&pVm->aResponseHeaders);` |
+|     8 |   28 | `}` |
 |     - |   29 | `/*` |
 |     - |   30 | ` * Remove all response headers matching the given name (case-insensitive).` |
 |     - |   31 | ` */` |
@@ -404,7 +404,7 @@ Coverage: 126/255 lines (49.41%)
 |     - |  394 | `/*` |
 |     - |  395 | ` * Register all HTTP response functions with the VM.` |
 |     - |  396 | ` */` |
-|  3538 |  397 | `PH7_PRIVATE void PH7_RegisterHttpResponseFunctions(ph7_vm *pVm)` |
+|  3550 |  397 | `PH7_PRIVATE void PH7_RegisterHttpResponseFunctions(ph7_vm *pVm)` |
 |     5 |  398 | `{` |
 |     - |  399 | `	static const ph7_builtin_func aFunc[] = {` |
 |     - |  400 | `		{ "header",             vm_builtin_header             },` |
@@ -416,8 +416,8 @@ Coverage: 126/255 lines (49.41%)
 |     - |  406 | `		{ "setrawcookie",       vm_builtin_setrawcookie       },` |
 |     - |  407 | `	};` |
 |     - |  408 | `	sxu32 n;` |
-| 28309 |  409 | `	for( n = 0; n < SX_ARRAYSIZE(aFunc); n++ ){` |
-| 24771 |  410 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
-| 12388 |  411 | `	}` |
-|  3543 |  412 | `}` |
+| 28405 |  409 | `	for( n = 0; n < SX_ARRAYSIZE(aFunc); n++ ){` |
+| 24855 |  410 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
+| 12430 |  411 | `	}` |
+|  3555 |  412 | `}` |
 |     - |  413 |  |

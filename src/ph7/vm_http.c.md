@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 302/444 lines (68.02%)
+Coverage: 310/444 lines (69.82%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -32,30 +32,30 @@ Coverage: 302/444 lines (68.02%)
 |    - |   22 | `  * as the first argument. Otherwise SXERR_* is returned when a malformed` |
 |    - |   23 | `  * input is encountered.` |
 |    - |   24 | `  */` |
-|   68 |   25 | ` PH7_PRIVATE sxi32 PH7_VmHttpSplitURI(SyhttpUri *pOut,const char *zUri,sxu32 nLen)` |
+|   70 |   25 | ` PH7_PRIVATE sxi32 PH7_VmHttpSplitURI(SyhttpUri *pOut,const char *zUri,sxu32 nLen)` |
 |    1 |   26 | ` {` |
-|   69 |   27 | `	 const char *zEnd = &zUri[nLen];` |
-|   69 |   28 | `	 sxu8 bHostOnly = FALSE;` |
-|   69 |   29 | `	 sxu8 bIPv6 = FALSE	;` |
+|   71 |   27 | `	 const char *zEnd = &zUri[nLen];` |
+|   71 |   28 | `	 sxu8 bHostOnly = FALSE;` |
+|   71 |   29 | `	 sxu8 bIPv6 = FALSE	;` |
 |    - |   30 | `	 const char *zCur;` |
 |    - |   31 | `	 SyString *pComp;` |
-|   69 |   32 | `	 sxu32 nPos = 0;` |
+|   71 |   32 | `	 sxu32 nPos = 0;` |
 |    - |   33 | `	 sxi32 rc;` |
 |    - |   34 | `	 /* Zero the structure first */` |
-|   69 |   35 | `	 SyZero(pOut,sizeof(SyhttpUri));` |
+|   71 |   35 | `	 SyZero(pOut,sizeof(SyhttpUri));` |
 |    - |   36 | `	 /* Remove leading and trailing white spaces  */` |
-|   69 |   37 | `	 SyStringInitFromBuf(&pOut->sRaw,zUri,nLen);` |
-|   69 |   38 | `	 SyStringFullTrim(&pOut->sRaw);` |
+|   71 |   37 | `	 SyStringInitFromBuf(&pOut->sRaw,zUri,nLen);` |
+|   71 |   38 | `	 SyStringFullTrim(&pOut->sRaw);` |
 |    - |   39 | `	 /* Find the first '/' separator */` |
-|   69 |   40 | `	 rc = SyByteFind(zUri,(sxu32)(zEnd - zUri),'/',&nPos);` |
-|   69 |   41 | `	 if( rc != SXRET_OK ){` |
+|   71 |   40 | `	 rc = SyByteFind(zUri,(sxu32)(zEnd - zUri),'/',&nPos);` |
+|   71 |   41 | `	 if( rc != SXRET_OK ){` |
 |    - |   42 | `		 /* Assume a host name only */` |
 |    9 |   43 | `		 zCur = zEnd;` |
 |    9 |   44 | `		 bHostOnly = TRUE;` |
 |    9 |   45 | `		 goto ProcessHost;` |
 |    - |   46 | `	 }` |
-|   61 |   47 | `	 zCur = &zUri[nPos];` |
-|   61 |   48 | `	 if( zUri != zCur && zCur[-1] == ':' ){` |
+|   63 |   47 | `	 zCur = &zUri[nPos];` |
+|   63 |   48 | `	 if( zUri != zCur && zCur[-1] == ':' ){` |
 |    - |   49 | `		 /* Extract a scheme:` |
 |    - |   50 | `		  * Not that we can get an invalid scheme here.` |
 |    - |   51 | `		  * Fortunately the caller can discard any URI by comparing this scheme with its` |
@@ -66,10 +66,10 @@ Coverage: 302/444 lines (68.02%)
 |   29 |   56 | `		SyStringInitFromBuf(pComp,zUri,(sxu32)(zCur - zUri - 1));` |
 |   29 |   57 | `		SyStringLeftTrim(pComp);` |
 |   14 |   58 | `	 }` |
-|   61 |   59 | `	 if( zCur[1] != '/' ){` |
-|   28 |   60 | `		 if( zCur == zUri \|\| zCur[-1] == ':' ){` |
+|   63 |   59 | `	 if( zCur[1] != '/' ){` |
+|   30 |   60 | `		 if( zCur == zUri \|\| zCur[-1] == ':' ){` |
 |    - |   61 | `		  /* No authority */` |
-|   28 |   62 | `		  goto PathSplit;` |
+|   30 |   62 | `		  goto PathSplit;` |
 |    - |   63 | `		}` |
 |    - |   64 | `		 /* There is something here , we will assume its an authority` |
 |    - |   65 | `		  * and someone has forgot the two prefix slashes "//",` |
@@ -138,18 +138,18 @@ Coverage: 302/444 lines (68.02%)
 |    9 |  128 | `		 return SXRET_OK;` |
 |    - |  129 | `	 }` |
 |   16 |  130 | `PathSplit:` |
-|   61 |  131 | `	 zUri = zCur;` |
-|   61 |  132 | `	 pComp = &pOut->sPath;` |
-|   61 |  133 | `	 SyStringInitFromBuf(pComp,zUri,(sxu32)(zEnd-zUri));` |
-|   61 |  134 | `	 if( pComp->nByte == 0 ){` |
+|   63 |  131 | `	 zUri = zCur;` |
+|   63 |  132 | `	 pComp = &pOut->sPath;` |
+|   63 |  133 | `	 SyStringInitFromBuf(pComp,zUri,(sxu32)(zEnd-zUri));` |
+|   63 |  134 | `	 if( pComp->nByte == 0 ){` |
 |   15 |  135 | `		 return SXRET_OK; /* Empty path */` |
 |    - |  136 | `	 }` |
-|   47 |  137 | `	 if( SXRET_OK == SyByteFind(zUri,(sxu32)(zEnd-zUri),'?',&nPos) ){` |
+|   49 |  137 | `	 if( SXRET_OK == SyByteFind(zUri,(sxu32)(zEnd-zUri),'?',&nPos) ){` |
 |   15 |  138 | `		 pComp->nByte = nPos; /* Update path length */` |
 |   15 |  139 | `		 pComp = &pOut->sQuery;` |
 |   15 |  140 | `		 SyStringInitFromBuf(pComp,&zUri[nPos+1],(sxu32)(zEnd-&zUri[nPos+1]));` |
 |    7 |  141 | `	 }` |
-|   47 |  142 | `	 if( SXRET_OK == SyByteFind(zUri,(sxu32)(zEnd-zUri),'#',&nPos) ){` |
+|   49 |  142 | `	 if( SXRET_OK == SyByteFind(zUri,(sxu32)(zEnd-zUri),'#',&nPos) ){` |
 |    - |  143 | `		 /* Update path or query length */` |
 |    7 |  144 | `		 if( pComp == &pOut->sPath ){` |
 |  ! 0 |  145 | `			 pComp->nByte = nPos;` |
@@ -163,36 +163,36 @@ Coverage: 302/444 lines (68.02%)
 |    7 |  153 | `		 pComp = &pOut->sFragment;` |
 |    7 |  154 | `		 SyStringInitFromBuf(pComp,&zUri[nPos+1],(sxu32)(zEnd-&zUri[nPos+1]))` |
 |    3 |  155 | `	 }` |
-|   47 |  156 | `	 return SXRET_OK;` |
-|   35 |  157 | ` }` |
+|   49 |  156 | `	 return SXRET_OK;` |
+|   36 |  157 | ` }` |
 |    - |  158 | ` /*` |
 |    - |  159 | ` * Extract a single line from a raw HTTP request.` |
 |    - |  160 | ` * Return SXRET_OK on success,SXERR_EOF when end of input` |
 |    - |  161 | ` * and SXERR_MORE when more input is needed.` |
 |    - |  162 | ` */` |
-|  112 |  163 | `static sxi32 VmGetNextLine(SyString *pCursor,SyString *pCurrent)` |
+|  120 |  163 | `static sxi32 VmGetNextLine(SyString *pCursor,SyString *pCurrent)` |
 |  ! 0 |  164 | `{` |
 |    - |  165 | `  	const char *zIn;` |
 |    - |  166 | `  	sxu32 nPos;` |
 |    - |  167 | `	/* Jump leading white spaces */` |
-|  280 |  168 | `	SyStringLeftTrim(pCursor);` |
-|  112 |  169 | `	if( pCursor->nByte < 1 ){` |
+|  296 |  168 | `	SyStringLeftTrim(pCursor);` |
+|  120 |  169 | `	if( pCursor->nByte < 1 ){` |
 |  ! 0 |  170 | `		SyStringInitFromBuf(pCurrent,0,0);` |
 |  ! 0 |  171 | `		return SXERR_EOF; /* End of input */` |
 |    - |  172 | `	}` |
-|  112 |  173 | `	zIn = SyStringData(pCursor);` |
-|  112 |  174 | `	if( SXRET_OK != SyByteListFind(pCursor->zString,pCursor->nByte,"\r\n",&nPos) ){` |
+|  120 |  173 | `	zIn = SyStringData(pCursor);` |
+|  120 |  174 | `	if( SXRET_OK != SyByteListFind(pCursor->zString,pCursor->nByte,"\r\n",&nPos) ){` |
 |    - |  175 | `		/* Line not found,tell the caller to read more input from source */` |
-|   28 |  176 | `		SyStringDupPtr(pCurrent,pCursor);` |
-|   28 |  177 | `		return SXERR_MORE;` |
+|   32 |  176 | `		SyStringDupPtr(pCurrent,pCursor);` |
+|   32 |  177 | `		return SXERR_MORE;` |
 |    - |  178 | `	}` |
-|   84 |  179 | `  	pCurrent->zString = zIn;` |
-|   84 |  180 | `  	pCurrent->nByte	= nPos;` |
+|   88 |  179 | `  	pCurrent->zString = zIn;` |
+|   88 |  180 | `  	pCurrent->nByte	= nPos;` |
 |    - |  181 | `  	/* advance the cursor so we can call this routine again */` |
-|   84 |  182 | `  	pCursor->zString = &zIn[nPos];` |
-|   84 |  183 | `  	pCursor->nByte -= nPos;` |
-|   84 |  184 | `  	return SXRET_OK;` |
-|   56 |  185 | ` }` |
+|   88 |  182 | `  	pCursor->zString = &zIn[nPos];` |
+|   88 |  183 | `  	pCursor->nByte -= nPos;` |
+|   88 |  184 | `  	return SXRET_OK;` |
+|   60 |  185 | ` }` |
 |    - |  186 | ` /*` |
 |    - |  187 | `  * Split a single MIME header into a name value pair.` |
 |    - |  188 | `  * This function return SXRET_OK,SXERR_CONTINUE on success.` |
@@ -200,16 +200,16 @@ Coverage: 302/444 lines (68.02%)
 |    - |  190 | `  * is encountered.` |
 |    - |  191 | `  * Note: This function handle also mult-line headers.` |
 |    - |  192 | `  */` |
-|   84 |  193 | ` static sxi32 VmHttpProcessOneHeader(SyhttpHeader *pHdr,SyhttpHeader *pLast,const char *zLine,sxu32 nLen)` |
+|   88 |  193 | ` static sxi32 VmHttpProcessOneHeader(SyhttpHeader *pHdr,SyhttpHeader *pLast,const char *zLine,sxu32 nLen)` |
 |  ! 0 |  194 | ` {` |
 |    - |  195 | `	 SyString *pName;` |
 |    - |  196 | `	 sxu32 nPos;` |
 |    - |  197 | `	 sxi32 rc;` |
-|   84 |  198 | `	 if( nLen < 1 ){` |
+|   88 |  198 | `	 if( nLen < 1 ){` |
 |  ! 0 |  199 | `		 return SXERR_NEXT;` |
 |    - |  200 | `	 }` |
 |    - |  201 | `	 /* Check for multi-line header */` |
-|   84 |  202 | `	if( pLast && (zLine[-1] == ' ' \|\| zLine[-1] == '\t') ){` |
+|   88 |  202 | `	if( pLast && (zLine[-1] == ' ' \|\| zLine[-1] == '\t') ){` |
 |  ! 0 |  203 | `		SyString *pTmp = &pLast->sValue;` |
 |  ! 0 |  204 | `		SyStringFullTrim(pTmp);` |
 |  ! 0 |  205 | `		if( pTmp->nByte == 0 ){` |
@@ -222,19 +222,19 @@ Coverage: 302/444 lines (68.02%)
 |  ! 0 |  212 | `		 return SXERR_CONTINUE;` |
 |    - |  213 | `	 }` |
 |    - |  214 | `	/* Split the header */` |
-|   84 |  215 | `	pName = &pHdr->sName;` |
-|   84 |  216 | `	rc = SyByteFind(zLine,nLen,':',&nPos);` |
-|   84 |  217 | `	if(rc != SXRET_OK ){` |
+|   88 |  215 | `	pName = &pHdr->sName;` |
+|   88 |  216 | `	rc = SyByteFind(zLine,nLen,':',&nPos);` |
+|   88 |  217 | `	if(rc != SXRET_OK ){` |
 |  ! 0 |  218 | `		return SXERR_NEXT; /* Malformed header;Check the next entry */` |
 |    - |  219 | `	}` |
-|   84 |  220 | `	SyStringInitFromBuf(pName,zLine,nPos);` |
-|   84 |  221 | `	SyStringFullTrim(pName);` |
+|   88 |  220 | `	SyStringInitFromBuf(pName,zLine,nPos);` |
+|   88 |  221 | `	SyStringFullTrim(pName);` |
 |    - |  222 | `	/* Extract a header value */` |
-|   84 |  223 | `	SyStringInitFromBuf(&pHdr->sValue,&zLine[nPos + 1],nLen - nPos - 1);` |
+|   88 |  223 | `	SyStringInitFromBuf(&pHdr->sValue,&zLine[nPos + 1],nLen - nPos - 1);` |
 |    - |  224 | `	/* Remove leading and trailing whitespaces */` |
-|  168 |  225 | `	SyStringFullTrim(&pHdr->sValue);` |
-|   84 |  226 | `	return SXRET_OK;` |
-|   42 |  227 | ` }` |
+|  176 |  225 | `	SyStringFullTrim(&pHdr->sValue);` |
+|   88 |  226 | `	return SXRET_OK;` |
+|   44 |  227 | ` }` |
 |    - |  228 | ` /*` |
 |    - |  229 | `  * Extract all MIME headers associated with a HTTP request.` |
 |    - |  230 | `  * After processing the first line of a HTTP request,the following` |
@@ -243,42 +243,42 @@ Coverage: 302/444 lines (68.02%)
 |    - |  233 | `  * more inputs.` |
 |    - |  234 | `  * Note: Any malformed header is simply discarded.` |
 |    - |  235 | `  */` |
-|   28 |  236 | ` static sxi32 VmHttpExtractHeaders(SyString *pRequest,SySet *pOut)` |
+|   30 |  236 | ` static sxi32 VmHttpExtractHeaders(SyString *pRequest,SySet *pOut)` |
 |  ! 0 |  237 | ` {` |
-|   28 |  238 | `	 SyhttpHeader *pLast = 0;` |
+|   30 |  238 | `	 SyhttpHeader *pLast = 0;` |
 |    - |  239 | `	 SyString sCurrent;` |
 |    - |  240 | `	 SyhttpHeader sHdr;` |
 |    - |  241 | `	 sxu8 bEol;` |
 |    - |  242 | `	 sxi32 rc;` |
-|   28 |  243 | `	 if( SySetUsed(pOut) > 0 ){` |
+|   30 |  243 | `	 if( SySetUsed(pOut) > 0 ){` |
 |  ! 0 |  244 | `		 pLast = (SyhttpHeader *)SySetAt(pOut,SySetUsed(pOut)-1);` |
 |  ! 0 |  245 | `	 }` |
-|   28 |  246 | `	 bEol = FALSE;` |
-|   42 |  247 | `	 for(;;){` |
-|   84 |  248 | `		 SyZero(&sHdr,sizeof(SyhttpHeader));` |
+|   30 |  246 | `	 bEol = FALSE;` |
+|   44 |  247 | `	 for(;;){` |
+|   88 |  248 | `		 SyZero(&sHdr,sizeof(SyhttpHeader));` |
 |    - |  249 | `		 /* Extract a single line from the raw HTTP request */` |
-|   84 |  250 | `		 rc = VmGetNextLine(pRequest,&sCurrent);` |
-|   84 |  251 | `		 if(rc != SXRET_OK ){` |
-|   28 |  252 | `			 if( sCurrent.nByte < 1 ){` |
+|   88 |  250 | `		 rc = VmGetNextLine(pRequest,&sCurrent);` |
+|   88 |  251 | `		 if(rc != SXRET_OK ){` |
+|   30 |  252 | `			 if( sCurrent.nByte < 1 ){` |
 |  ! 0 |  253 | `				 break;` |
 |    - |  254 | `			 }` |
-|   28 |  255 | `			 bEol = TRUE;` |
-|   14 |  256 | `		 }` |
+|   30 |  255 | `			 bEol = TRUE;` |
+|   15 |  256 | `		 }` |
 |    - |  257 | `		 /* Process the header */` |
-|   84 |  258 | `		 if( SXRET_OK == VmHttpProcessOneHeader(&sHdr,pLast,sCurrent.zString,sCurrent.nByte)){` |
-|   84 |  259 | `			 if( SXRET_OK != SySetPut(pOut,(const void *)&sHdr) ){` |
+|   88 |  258 | `		 if( SXRET_OK == VmHttpProcessOneHeader(&sHdr,pLast,sCurrent.zString,sCurrent.nByte)){` |
+|   88 |  259 | `			 if( SXRET_OK != SySetPut(pOut,(const void *)&sHdr) ){` |
 |  ! 0 |  260 | `				 break;` |
 |    - |  261 | `			 }` |
 |    - |  262 | `			 /* Retrieve the last parsed header so we can handle multi-line header` |
 |    - |  263 | `			  * in case we face one of them.` |
 |    - |  264 | `			  */` |
-|   84 |  265 | `			 pLast = (SyhttpHeader *)SySetPeek(pOut);` |
-|   42 |  266 | `		 }` |
-|   84 |  267 | `		 if( bEol ){` |
-|   28 |  268 | `			 break;` |
+|   88 |  265 | `			 pLast = (SyhttpHeader *)SySetPeek(pOut);` |
+|   44 |  266 | `		 }` |
+|   88 |  267 | `		 if( bEol ){` |
+|   30 |  268 | `			 break;` |
 |    - |  269 | `		 }` |
 |  ! 0 |  270 | `	 } /* for(;;) */` |
-|   28 |  271 | `	 return SXRET_OK;` |
+|   30 |  271 | `	 return SXRET_OK;` |
 |  ! 0 |  272 | ` }` |
 |    - |  273 | ` /*` |
 |    - |  274 | `  * Process the first line of a HTTP request.` |
@@ -287,7 +287,7 @@ Coverage: 302/444 lines (68.02%)
 |    - |  277 | `  *  2) Split the request URI to it's fields [ie: host,path,query,...].` |
 |    - |  278 | `  *  3) Extract the HTTP protocol version.` |
 |    - |  279 | `  */` |
-|   28 |  280 | ` static sxi32 VmHttpProcessFirstLine(` |
+|   32 |  280 | ` static sxi32 VmHttpProcessFirstLine(` |
 |    - |  281 | `	 SyString *pRequest, /* Raw HTTP request */` |
 |    - |  282 | `	 sxi32 *pMethod,     /* OUT: HTTP method */` |
 |    - |  283 | `	 SyhttpUri *pUri,    /* OUT: Parse of the URI */` |
@@ -301,69 +301,69 @@ Coverage: 302/444 lines (68.02%)
 |    - |  291 | `	 sxu32 nLen;` |
 |    - |  292 | `	 sxi32 rc;` |
 |    - |  293 | `	 /* Extract the first line and update the pointer */` |
-|   28 |  294 | `	 rc = VmGetNextLine(pRequest,&sLine);` |
-|   28 |  295 | `	 if( rc != SXRET_OK ){` |
-|  ! 0 |  296 | `		 return rc;` |
+|   32 |  294 | `	 rc = VmGetNextLine(pRequest,&sLine);` |
+|   32 |  295 | `	 if( rc != SXRET_OK ){` |
+|    2 |  296 | `		 return rc;` |
 |    - |  297 | `	 }` |
-|   28 |  298 | `	 if ( sLine.nByte < 1 ){` |
+|   30 |  298 | `	 if ( sLine.nByte < 1 ){` |
 |    - |  299 | `		 /* Empty HTTP request */` |
 |  ! 0 |  300 | `		 return SXERR_EMPTY;` |
 |    - |  301 | `	 }` |
 |    - |  302 | `	 /* Delimit the line and ignore trailing and leading white spaces */` |
-|   28 |  303 | `	 zIn = sLine.zString;` |
-|   28 |  304 | `	 zEnd = &zIn[sLine.nByte];` |
-|   28 |  305 | `	 while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && SyisSpace(zIn[0]) ){` |
+|   30 |  303 | `	 zIn = sLine.zString;` |
+|   30 |  304 | `	 zEnd = &zIn[sLine.nByte];` |
+|   30 |  305 | `	 while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && SyisSpace(zIn[0]) ){` |
 |  ! 0 |  306 | `		 zIn++;` |
 |  ! 0 |  307 | `	 }` |
 |    - |  308 | `	 /* Extract the HTTP method */` |
-|   28 |  309 | `	 zPtr = zIn;` |
-|  112 |  310 | `	 while( zIn < zEnd && !SyisSpace(zIn[0]) ){` |
-|   84 |  311 | `		 zIn++;` |
+|   30 |  309 | `	 zPtr = zIn;` |
+|  120 |  310 | `	 while( zIn < zEnd && !SyisSpace(zIn[0]) ){` |
+|   90 |  311 | `		 zIn++;` |
 |  ! 0 |  312 | `	 }` |
-|   28 |  313 | `	 *pMethod = HTTP_METHOD_OTHR;` |
-|   28 |  314 | `	 if( zIn > zPtr ){` |
+|   30 |  313 | `	 *pMethod = HTTP_METHOD_OTHR;` |
+|   30 |  314 | `	 if( zIn > zPtr ){` |
 |    - |  315 | `		 sxu32 i;` |
-|   28 |  316 | `		 nLen = (sxu32)(zIn-zPtr);` |
-|   28 |  317 | `		 for( i = 0 ; i < SX_ARRAYSIZE(azMethods) ; ++i ){` |
-|   28 |  318 | `			 if( SyStrnicmp(azMethods[i],zPtr,nLen) == 0 ){` |
-|   28 |  319 | `				 *pMethod = aMethods[i];` |
-|   28 |  320 | `				 break;` |
+|   30 |  316 | `		 nLen = (sxu32)(zIn-zPtr);` |
+|   30 |  317 | `		 for( i = 0 ; i < SX_ARRAYSIZE(azMethods) ; ++i ){` |
+|   30 |  318 | `			 if( SyStrnicmp(azMethods[i],zPtr,nLen) == 0 ){` |
+|   30 |  319 | `				 *pMethod = aMethods[i];` |
+|   30 |  320 | `				 break;` |
 |    - |  321 | `			 }` |
 |  ! 0 |  322 | `		 }` |
-|   14 |  323 | `	 }` |
+|   15 |  323 | `	 }` |
 |    - |  324 | `	 /* Jump trailing white spaces */` |
-|   56 |  325 | `	 while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && SyisSpace(zIn[0]) ){` |
-|   28 |  326 | `		 zIn++;` |
+|   60 |  325 | `	 while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && SyisSpace(zIn[0]) ){` |
+|   30 |  326 | `		 zIn++;` |
 |  ! 0 |  327 | `	 }` |
 |    - |  328 | `	  /* Extract the request URI */` |
-|   28 |  329 | `	 zPtr = zIn;` |
-|  296 |  330 | `	 while( zIn < zEnd && !SyisSpace(zIn[0]) ){` |
-|  268 |  331 | `		 zIn++;` |
+|   30 |  329 | `	 zPtr = zIn;` |
+|  310 |  330 | `	 while( zIn < zEnd && !SyisSpace(zIn[0]) ){` |
+|  280 |  331 | `		 zIn++;` |
 |  ! 0 |  332 | `	 }` |
-|   28 |  333 | `	 if( zIn > zPtr ){` |
-|   28 |  334 | `		 nLen = (sxu32)(zIn-zPtr);` |
+|   30 |  333 | `	 if( zIn > zPtr ){` |
+|   30 |  334 | `		 nLen = (sxu32)(zIn-zPtr);` |
 |    - |  335 | `		 /* Split raw URI to it's fields */` |
-|   28 |  336 | `		 PH7_VmHttpSplitURI(pUri,zPtr,nLen);` |
-|   14 |  337 | `	 }` |
+|   30 |  336 | `		 PH7_VmHttpSplitURI(pUri,zPtr,nLen);` |
+|   15 |  337 | `	 }` |
 |    - |  338 | `	 /* Jump trailing white spaces */` |
-|   56 |  339 | `	 while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && SyisSpace(zIn[0]) ){` |
-|   28 |  340 | `		 zIn++;` |
+|   60 |  339 | `	 while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && SyisSpace(zIn[0]) ){` |
+|   30 |  340 | `		 zIn++;` |
 |  ! 0 |  341 | `	 }` |
 |    - |  342 | `	 /* Extract the HTTP version */` |
-|   28 |  343 | `	 zPtr = zIn;` |
-|  252 |  344 | `	 while( zIn < zEnd && !SyisSpace(zIn[0]) ){` |
-|  224 |  345 | `		 zIn++;` |
+|   30 |  343 | `	 zPtr = zIn;` |
+|  270 |  344 | `	 while( zIn < zEnd && !SyisSpace(zIn[0]) ){` |
+|  240 |  345 | `		 zIn++;` |
 |  ! 0 |  346 | `	 }` |
-|   28 |  347 | `	 *pProto = HTTP_PROTO_11; /* HTTP/1.1 */` |
-|   28 |  348 | `	 rc = 1;` |
-|   28 |  349 | `	 if( zIn > zPtr ){` |
-|   28 |  350 | `		 rc = SyStrnicmp(zPtr,"http/1.0",(sxu32)(zIn-zPtr));` |
-|   14 |  351 | `	 }` |
-|   28 |  352 | `	 if( !rc ){` |
-|  ! 0 |  353 | `		 *pProto = HTTP_PROTO_10; /* HTTP/1.0 */` |
-|  ! 0 |  354 | `	 }` |
-|   28 |  355 | `	 return SXRET_OK;` |
-|   14 |  356 | ` }` |
+|   30 |  347 | `	 *pProto = HTTP_PROTO_11; /* HTTP/1.1 */` |
+|   30 |  348 | `	 rc = 1;` |
+|   30 |  349 | `	 if( zIn > zPtr ){` |
+|   30 |  350 | `		 rc = SyStrnicmp(zPtr,"http/1.0",(sxu32)(zIn-zPtr));` |
+|   15 |  351 | `	 }` |
+|   30 |  352 | `	 if( !rc ){` |
+|    2 |  353 | `		 *pProto = HTTP_PROTO_10; /* HTTP/1.0 */` |
+|    1 |  354 | `	 }` |
+|   30 |  355 | `	 return SXRET_OK;` |
+|   16 |  356 | ` }` |
 |    - |  357 | ` /*` |
 |    - |  358 | `  * Tokenize,decode and split a raw query encoded as: "x-www-form-urlencoded"` |
 |    - |  359 | `  * into a name value pair.` |
@@ -456,25 +456,25 @@ Coverage: 302/444 lines (68.02%)
 |    - |  446 | `  * Extract MIME header value from the given set.` |
 |    - |  447 | `  * Return header value on success. NULL otherwise.` |
 |    - |  448 | `  */` |
-|  252 |  449 | ` static SyString * VmHttpExtractHeaderValue(SySet *pSet,const char *zMime,sxu32 nByte)` |
+|  270 |  449 | ` static SyString * VmHttpExtractHeaderValue(SySet *pSet,const char *zMime,sxu32 nByte)` |
 |  ! 0 |  450 | ` {` |
 |    - |  451 | `	 SyhttpHeader *aMime,*pMime;` |
 |    - |  452 | `	 SyString sMime;` |
 |    - |  453 | `	 sxu32 n;` |
-|  252 |  454 | `	 SyStringInitFromBuf(&sMime,zMime,nByte);` |
+|  270 |  454 | `	 SyStringInitFromBuf(&sMime,zMime,nByte);` |
 |    - |  455 | `	 /* Point to the MIME entries */` |
-|  252 |  456 | `	 aMime = (SyhttpHeader *)SySetBasePtr(pSet);` |
+|  270 |  456 | `	 aMime = (SyhttpHeader *)SySetBasePtr(pSet);` |
 |    - |  457 | `	 /* Perform the lookup */` |
-|  840 |  458 | `	 for( n = 0 ; n < SySetUsed(pSet) ; ++n ){` |
-|  672 |  459 | `		 pMime = &aMime[n];` |
-|  672 |  460 | `		 if( SyStringCmp(&sMime,&pMime->sName,SyStrnicmp) == 0 ){` |
+|  888 |  458 | `	 for( n = 0 ; n < SySetUsed(pSet) ; ++n ){` |
+|  706 |  459 | `		 pMime = &aMime[n];` |
+|  706 |  460 | `		 if( SyStringCmp(&sMime,&pMime->sName,SyStrnicmp) == 0 ){` |
 |    - |  461 | `			 /* Header found,return it's associated value */` |
-|   84 |  462 | `			 return &pMime->sValue;` |
+|   88 |  462 | `			 return &pMime->sValue;` |
 |    - |  463 | `		 }` |
-|  294 |  464 | `	 }` |
+|  309 |  464 | `	 }` |
 |    - |  465 | `	 /* No such MIME header */` |
-|  168 |  466 | `	 return 0;` |
-|  126 |  467 | ` }` |
+|  182 |  466 | `	 return 0;` |
+|  135 |  467 | ` }` |
 |    - |  468 | ` /*` |
 |    - |  469 | `  * Tokenize and decode a raw "Cookie:" MIME header into a name value pair` |
 |    - |  470 | `  * and insert it's fields [i.e name,value] in the $_COOKIE superglobal.` |
@@ -542,7 +542,7 @@ Coverage: 302/444 lines (68.02%)
 |    - |  532 | `  * This function return SXRET_OK on success. Any other return value indicates` |
 |    - |  533 | `  * a malformed HTTP request.` |
 |    - |  534 | `  */` |
-|   28 |  535 | ` PH7_PRIVATE sxi32 PH7_VmHttpProcessRequest(ph7_vm *pVm,const char *zRequest,int nByte)` |
+|   32 |  535 | ` PH7_PRIVATE sxi32 PH7_VmHttpProcessRequest(ph7_vm *pVm,const char *zRequest,int nByte)` |
 |  ! 0 |  536 | ` {` |
 |    - |  537 | `	 SyString *pName,*pValue,sRequest; /* Raw HTTP request */` |
 |    - |  538 | `	 ph7_value *pHeaderArray;          /* $_HEADER superglobal (Symisc eXtension to the PHP specification)*/` |
@@ -553,39 +553,39 @@ Coverage: 302/444 lines (68.02%)
 |    - |  543 | `	 sxi32 iMethod;      /* HTTP method [i.e: GET,POST,HEAD...]*/` |
 |    - |  544 | `	 sxi32 iVer;         /* HTTP protocol version */` |
 |    - |  545 | `	 sxi32 rc;` |
-|   28 |  546 | `	 SyStringInitFromBuf(&sRequest,zRequest,nByte);` |
-|   28 |  547 | `	 SySetInit(&sHeader,&pVm->sAllocator,sizeof(SyhttpHeader));` |
-|   28 |  548 | `	 SyBlobInit(&sWorker,&pVm->sAllocator);` |
+|   32 |  546 | `	 SyStringInitFromBuf(&sRequest,zRequest,nByte);` |
+|   32 |  547 | `	 SySetInit(&sHeader,&pVm->sAllocator,sizeof(SyhttpHeader));` |
+|   32 |  548 | `	 SyBlobInit(&sWorker,&pVm->sAllocator);` |
 |    - |  549 | `	 /* Ignore leading and trailing white spaces*/` |
-|  140 |  550 | `	 SyStringFullTrim(&sRequest);` |
+|  160 |  550 | `	 SyStringFullTrim(&sRequest);` |
 |    - |  551 | `	 /* Process the first line */` |
-|   28 |  552 | `	 rc = VmHttpProcessFirstLine(&sRequest,&iMethod,&sUri,&iVer);` |
-|   28 |  553 | `	 if( rc != SXRET_OK ){` |
-|  ! 0 |  554 | `		 return rc;` |
+|   32 |  552 | `	 rc = VmHttpProcessFirstLine(&sRequest,&iMethod,&sUri,&iVer);` |
+|   32 |  553 | `	 if( rc != SXRET_OK ){` |
+|    2 |  554 | `		 return rc;` |
 |    - |  555 | `	 }` |
 |    - |  556 | `	 /* Process MIME headers */` |
-|   28 |  557 | `	 VmHttpExtractHeaders(&sRequest,&sHeader);` |
+|   30 |  557 | `	 VmHttpExtractHeaders(&sRequest,&sHeader);` |
 |    - |  558 | `	 /*` |
 |    - |  559 | `	  * Setup $_SERVER environments` |
 |    - |  560 | `	  */` |
 |    - |  561 | `	 /* 'SERVER_PROTOCOL': Name and revision of the information protocol via which the page was requested */` |
-|   28 |  562 | `	 ph7_vm_config(pVm,` |
+|   45 |  562 | `	 ph7_vm_config(pVm,` |
 |    - |  563 | `		 PH7_VM_CONFIG_SERVER_ATTR,` |
 |    - |  564 | `		 "SERVER_PROTOCOL",` |
-|   28 |  565 | `		 iVer == HTTP_PROTO_10 ? "HTTP/1.0" : "HTTP/1.1",` |
+|   30 |  565 | `		 iVer == HTTP_PROTO_10 ? "HTTP/1.0" : "HTTP/1.1",` |
 |    - |  566 | `		 sizeof("HTTP/1.1")-1` |
 |    - |  567 | `		 );` |
 |    - |  568 | `	 /* 'REQUEST_METHOD':  Which request method was used to access the page */` |
-|   28 |  569 | `	 ph7_vm_config(pVm,` |
+|   30 |  569 | `	 ph7_vm_config(pVm,` |
 |    - |  570 | `		 PH7_VM_CONFIG_SERVER_ATTR,` |
 |    - |  571 | `		 "REQUEST_METHOD",` |
-|   28 |  572 | `		 iMethod == HTTP_METHOD_GET ?   "GET" :` |
+|   30 |  572 | `		 iMethod == HTTP_METHOD_GET ?   "GET" :` |
 |  ! 0 |  573 | `		 (iMethod == HTTP_METHOD_POST ? "POST":` |
 |  ! 0 |  574 | `		 (iMethod == HTTP_METHOD_PUT  ? "PUT" :` |
 |  ! 0 |  575 | `		 (iMethod == HTTP_METHOD_HEAD ?  "HEAD" : "OTHER"))),` |
 |    - |  576 | `		 -1 /* Compute attribute length automatically */` |
 |    - |  577 | `		 );` |
-|   28 |  578 | `	 if( SyStringLength(&sUri.sQuery) > 0 && iMethod == HTTP_METHOD_GET ){` |
+|   30 |  578 | `	 if( SyStringLength(&sUri.sQuery) > 0 && iMethod == HTTP_METHOD_GET ){` |
 |    8 |  579 | `		 pValue = &sUri.sQuery;` |
 |    - |  580 | `		 /* 'QUERY_STRING': The query string, if any, via which the page was accessed */` |
 |   12 |  581 | `		 ph7_vm_config(pVm,` |
@@ -598,12 +598,12 @@ Coverage: 302/444 lines (68.02%)
 |    8 |  588 | `		 VmHttpSplitEncodedQuery(&(*pVm),pValue,&sWorker,FALSE);` |
 |    4 |  589 | `	 }` |
 |    - |  590 | `	 /* REQUEST_URI: The URI which was given in order to access this page; for instance, '/index.html' */` |
-|   28 |  591 | `	 pValue = &sUri.sRaw;` |
-|   42 |  592 | `	 ph7_vm_config(pVm,` |
+|   30 |  591 | `	 pValue = &sUri.sRaw;` |
+|   45 |  592 | `	 ph7_vm_config(pVm,` |
 |    - |  593 | `		 PH7_VM_CONFIG_SERVER_ATTR,` |
 |    - |  594 | `		 "REQUEST_URI",` |
-|   14 |  595 | `		 pValue->zString,` |
-|   14 |  596 | `		 pValue->nByte` |
+|   15 |  595 | `		 pValue->zString,` |
+|   15 |  596 | `		 pValue->nByte` |
 |    - |  597 | `		 );` |
 |    - |  598 | `	 /*` |
 |    - |  599 | `	  * 'PATH_INFO'` |
@@ -613,22 +613,22 @@ Coverage: 302/444 lines (68.02%)
 |    - |  603 | `	  * http://www.example.com/php/path_info.php/some/stuff?foo=bar, then $_SERVER['PATH_INFO'] would contain` |
 |    - |  604 | `	  * /some/stuff.` |
 |    - |  605 | `	  */` |
-|   28 |  606 | `	 pValue = &sUri.sPath;` |
-|   42 |  607 | `	 ph7_vm_config(pVm,` |
+|   30 |  606 | `	 pValue = &sUri.sPath;` |
+|   45 |  607 | `	 ph7_vm_config(pVm,` |
 |    - |  608 | `		 PH7_VM_CONFIG_SERVER_ATTR,` |
 |    - |  609 | `		 "PATH_INFO",` |
-|   14 |  610 | `		 pValue->zString,` |
-|   14 |  611 | `		 pValue->nByte` |
+|   15 |  610 | `		 pValue->zString,` |
+|   15 |  611 | `		 pValue->nByte` |
 |    - |  612 | `		 );` |
-|   42 |  613 | `	 ph7_vm_config(pVm,` |
+|   45 |  613 | `	 ph7_vm_config(pVm,` |
 |    - |  614 | `		 PH7_VM_CONFIG_SERVER_ATTR,` |
 |    - |  615 | `		 "ORIG_PATH_INFO",` |
-|   14 |  616 | `		 pValue->zString,` |
-|   14 |  617 | `		 pValue->nByte` |
+|   15 |  616 | `		 pValue->zString,` |
+|   15 |  617 | `		 pValue->nByte` |
 |    - |  618 | `		 );` |
 |    - |  619 | `	 /* 'HTTP_ACCEPT': Contents of the Accept: header from the current request, if there is one */` |
-|   28 |  620 | `	 pValue = VmHttpExtractHeaderValue(&sHeader,"Accept",sizeof("Accept")-1);` |
-|   28 |  621 | `	 if( pValue ){` |
+|   30 |  620 | `	 pValue = VmHttpExtractHeaderValue(&sHeader,"Accept",sizeof("Accept")-1);` |
+|   30 |  621 | `	 if( pValue ){` |
 |   42 |  622 | `		 ph7_vm_config(pVm,` |
 |    - |  623 | `			 PH7_VM_CONFIG_SERVER_ATTR,` |
 |    - |  624 | `			 "HTTP_ACCEPT",` |
@@ -637,8 +637,8 @@ Coverage: 302/444 lines (68.02%)
 |    - |  627 | `		 );` |
 |   14 |  628 | `	 }` |
 |    - |  629 | `	 /* 'HTTP_ACCEPT_CHARSET': Contents of the Accept-Charset: header from the current request, if there is one. */` |
-|   28 |  630 | `	 pValue = VmHttpExtractHeaderValue(&sHeader,"Accept-Charset",sizeof("Accept-Charset")-1);` |
-|   28 |  631 | `	 if( pValue ){` |
+|   30 |  630 | `	 pValue = VmHttpExtractHeaderValue(&sHeader,"Accept-Charset",sizeof("Accept-Charset")-1);` |
+|   30 |  631 | `	 if( pValue ){` |
 |  ! 0 |  632 | `		 ph7_vm_config(pVm,` |
 |    - |  633 | `			 PH7_VM_CONFIG_SERVER_ATTR,` |
 |    - |  634 | `			 "HTTP_ACCEPT_CHARSET",` |
@@ -647,8 +647,8 @@ Coverage: 302/444 lines (68.02%)
 |    - |  637 | `		 );` |
 |  ! 0 |  638 | `	 }` |
 |    - |  639 | `	 /* 'HTTP_ACCEPT_ENCODING': Contents of the Accept-Encoding: header from the current request, if there is one. */` |
-|   28 |  640 | `	 pValue = VmHttpExtractHeaderValue(&sHeader,"Accept-Encoding",sizeof("Accept-Encoding")-1);` |
-|   28 |  641 | `	 if( pValue ){` |
+|   30 |  640 | `	 pValue = VmHttpExtractHeaderValue(&sHeader,"Accept-Encoding",sizeof("Accept-Encoding")-1);` |
+|   30 |  641 | `	 if( pValue ){` |
 |  ! 0 |  642 | `		 ph7_vm_config(pVm,` |
 |    - |  643 | `			 PH7_VM_CONFIG_SERVER_ATTR,` |
 |    - |  644 | `			 "HTTP_ACCEPT_ENCODING",` |
@@ -657,8 +657,8 @@ Coverage: 302/444 lines (68.02%)
 |    - |  647 | `		 );` |
 |  ! 0 |  648 | `	 }` |
 |    - |  649 | `	  /* 'HTTP_ACCEPT_LANGUAGE': Contents of the Accept-Language: header from the current request, if there is one */` |
-|   28 |  650 | `	 pValue = VmHttpExtractHeaderValue(&sHeader,"Accept-Language",sizeof("Accept-Language")-1);` |
-|   28 |  651 | `	 if( pValue ){` |
+|   30 |  650 | `	 pValue = VmHttpExtractHeaderValue(&sHeader,"Accept-Language",sizeof("Accept-Language")-1);` |
+|   30 |  651 | `	 if( pValue ){` |
 |  ! 0 |  652 | `		 ph7_vm_config(pVm,` |
 |    - |  653 | `			 PH7_VM_CONFIG_SERVER_ATTR,` |
 |    - |  654 | `			 "HTTP_ACCEPT_LANGUAGE",` |
@@ -667,28 +667,28 @@ Coverage: 302/444 lines (68.02%)
 |    - |  657 | `		 );` |
 |  ! 0 |  658 | `	 }` |
 |    - |  659 | `	 /* 'HTTP_CONNECTION': Contents of the Connection: header from the current request, if there is one. */` |
-|   28 |  660 | `	 pValue = VmHttpExtractHeaderValue(&sHeader,"Connection",sizeof("Connection")-1);` |
-|   28 |  661 | `	 if( pValue ){` |
-|  ! 0 |  662 | `		 ph7_vm_config(pVm,` |
+|   30 |  660 | `	 pValue = VmHttpExtractHeaderValue(&sHeader,"Connection",sizeof("Connection")-1);` |
+|   30 |  661 | `	 if( pValue ){` |
+|    3 |  662 | `		 ph7_vm_config(pVm,` |
 |    - |  663 | `			 PH7_VM_CONFIG_SERVER_ATTR,` |
 |    - |  664 | `			 "HTTP_CONNECTION",` |
-|  ! 0 |  665 | `			 pValue->zString,` |
-|  ! 0 |  666 | `			 pValue->nByte` |
+|    1 |  665 | `			 pValue->zString,` |
+|    1 |  666 | `			 pValue->nByte` |
 |    - |  667 | `		 );` |
-|  ! 0 |  668 | `	 }` |
+|    1 |  668 | `	 }` |
 |    - |  669 | `	 /* 'HTTP_HOST': Contents of the Host: header from the current request, if there is one. */` |
-|   28 |  670 | `	 pValue = VmHttpExtractHeaderValue(&sHeader,"Host",sizeof("Host")-1);` |
-|   28 |  671 | `	 if( pValue ){` |
-|   42 |  672 | `		 ph7_vm_config(pVm,` |
+|   30 |  670 | `	 pValue = VmHttpExtractHeaderValue(&sHeader,"Host",sizeof("Host")-1);` |
+|   30 |  671 | `	 if( pValue ){` |
+|   45 |  672 | `		 ph7_vm_config(pVm,` |
 |    - |  673 | `			 PH7_VM_CONFIG_SERVER_ATTR,` |
 |    - |  674 | `			 "HTTP_HOST",` |
-|   14 |  675 | `			 pValue->zString,` |
-|   14 |  676 | `			 pValue->nByte` |
+|   15 |  675 | `			 pValue->zString,` |
+|   15 |  676 | `			 pValue->nByte` |
 |    - |  677 | `		 );` |
-|   14 |  678 | `	 }` |
+|   15 |  678 | `	 }` |
 |    - |  679 | `	 /* 'HTTP_REFERER': Contents of the Referer: header from the current request, if there is one. */` |
-|   28 |  680 | `	 pValue = VmHttpExtractHeaderValue(&sHeader,"Referer",sizeof("Referer")-1);` |
-|   28 |  681 | `	 if( pValue ){` |
+|   30 |  680 | `	 pValue = VmHttpExtractHeaderValue(&sHeader,"Referer",sizeof("Referer")-1);` |
+|   30 |  681 | `	 if( pValue ){` |
 |  ! 0 |  682 | `		 ph7_vm_config(pVm,` |
 |    - |  683 | `			 PH7_VM_CONFIG_SERVER_ATTR,` |
 |    - |  684 | `			 "HTTP_REFERER",` |
@@ -697,8 +697,8 @@ Coverage: 302/444 lines (68.02%)
 |    - |  687 | `		 );` |
 |  ! 0 |  688 | `	 }` |
 |    - |  689 | `	 /* 'HTTP_USER_AGENT': Contents of the Referer: header from the current request, if there is one. */` |
-|   28 |  690 | `	 pValue = VmHttpExtractHeaderValue(&sHeader,"User-Agent",sizeof("User-Agent")-1);` |
-|   28 |  691 | `	 if( pValue ){` |
+|   30 |  690 | `	 pValue = VmHttpExtractHeaderValue(&sHeader,"User-Agent",sizeof("User-Agent")-1);` |
+|   30 |  691 | `	 if( pValue ){` |
 |   42 |  692 | `		 ph7_vm_config(pVm,` |
 |    - |  693 | `			 PH7_VM_CONFIG_SERVER_ATTR,` |
 |    - |  694 | `			 "HTTP_USER_AGENT",` |
@@ -709,8 +709,8 @@ Coverage: 302/444 lines (68.02%)
 |    - |  699 | `	  /* 'PHP_AUTH_DIGEST': When doing Digest HTTP authentication this variable is set to the 'Authorization'` |
 |    - |  700 | `	   * header sent by the client (which you should then use to make the appropriate validation).` |
 |    - |  701 | `	   */` |
-|   28 |  702 | `	 pValue = VmHttpExtractHeaderValue(&sHeader,"Authorization",sizeof("Authorization")-1);` |
-|   28 |  703 | `	 if( pValue ){` |
+|   30 |  702 | `	 pValue = VmHttpExtractHeaderValue(&sHeader,"Authorization",sizeof("Authorization")-1);` |
+|   30 |  703 | `	 if( pValue ){` |
 |  ! 0 |  704 | `		 ph7_vm_config(pVm,` |
 |    - |  705 | `			 PH7_VM_CONFIG_SERVER_ATTR,` |
 |    - |  706 | `			 "PHP_AUTH_DIGEST",` |
@@ -725,27 +725,27 @@ Coverage: 302/444 lines (68.02%)
 |    - |  715 | `		 );` |
 |  ! 0 |  716 | `	 }` |
 |    - |  717 | `	 /* Install all clients HTTP headers in the $_HEADER superglobal */` |
-|   28 |  718 | `	 pHeaderArray = PH7_VmExtractSuper(&(*pVm),"_HEADER",sizeof("_HEADER")-1);` |
+|   30 |  718 | `	 pHeaderArray = PH7_VmExtractSuper(&(*pVm),"_HEADER",sizeof("_HEADER")-1);` |
 |    - |  719 | `	 /* Iterate throw the available MIME headers*/` |
-|   28 |  720 | `	 SySetResetCursor(&sHeader);` |
-|   28 |  721 | `	 pHeader = 0; /* stupid cc warning */` |
-|  126 |  722 | `	 while( SXRET_OK == SySetGetNextEntry(&sHeader,(void **)&pHeader) ){` |
-|   84 |  723 | `		 pName  = &pHeader->sName;` |
-|   84 |  724 | `		 pValue = &pHeader->sValue;` |
-|   84 |  725 | `		 if( pHeaderArray && (pHeaderArray->iFlags & MEMOBJ_HASHMAP)){` |
+|   30 |  720 | `	 SySetResetCursor(&sHeader);` |
+|   30 |  721 | `	 pHeader = 0; /* stupid cc warning */` |
+|  133 |  722 | `	 while( SXRET_OK == SySetGetNextEntry(&sHeader,(void **)&pHeader) ){` |
+|   88 |  723 | `		 pName  = &pHeader->sName;` |
+|   88 |  724 | `		 pValue = &pHeader->sValue;` |
+|   88 |  725 | `		 if( pHeaderArray && (pHeaderArray->iFlags & MEMOBJ_HASHMAP)){` |
 |    - |  726 | `			 /* Insert the MIME header and it's associated value */` |
-|  126 |  727 | `			 PH7_VmHashmapInsert((ph7_hashmap *)pHeaderArray->x.pOther,` |
-|   84 |  728 | `				 pName->zString,(int)pName->nByte,` |
-|   84 |  729 | `				 pValue->zString,(int)pValue->nByte` |
+|  132 |  727 | `			 PH7_VmHashmapInsert((ph7_hashmap *)pHeaderArray->x.pOther,` |
+|   88 |  728 | `				 pName->zString,(int)pName->nByte,` |
+|   88 |  729 | `				 pValue->zString,(int)pValue->nByte` |
 |    - |  730 | `				 );` |
-|   42 |  731 | `		 }` |
-|   84 |  732 | `		 if( pName->nByte == sizeof("Cookie")-1 && SyStrnicmp(pName->zString,"Cookie",sizeof("Cookie")-1) == 0` |
+|   44 |  731 | `		 }` |
+|   88 |  732 | `		 if( pName->nByte == sizeof("Cookie")-1 && SyStrnicmp(pName->zString,"Cookie",sizeof("Cookie")-1) == 0` |
 |   14 |  733 | `			 && pValue->nByte > 0){` |
 |    - |  734 | `				 /* Process the name=value pair and insert them in the $_COOKIE superglobal array */` |
 |  ! 0 |  735 | `				 VmHttpPorcessCookie(&(*pVm),&sWorker,pValue->zString,pValue->nByte);` |
 |  ! 0 |  736 | `		 }` |
 |  ! 0 |  737 | `	 }` |
-|   28 |  738 | `	 if( iMethod == HTTP_METHOD_POST ){` |
+|   30 |  738 | `	 if( iMethod == HTTP_METHOD_POST ){` |
 |    - |  739 | `		 /* Extract raw POST data */` |
 |  ! 0 |  740 | `		 pValue = VmHttpExtractHeaderValue(&sHeader,"Content-Type",sizeof("Content-Type") - 1);` |
 |  ! 0 |  741 | `		 if( pValue && pValue->nByte >= sizeof("application/x-www-form-urlencoded") - 1 &&` |
@@ -768,8 +768,8 @@ Coverage: 302/444 lines (68.02%)
 |  ! 0 |  758 | `		 }` |
 |  ! 0 |  759 | `	 }` |
 |    - |  760 | `	 /* All done,clean-up the mess left behind */` |
-|   28 |  761 | `	 SySetRelease(&sHeader);` |
-|   28 |  762 | `	 SyBlobRelease(&sWorker);` |
-|   28 |  763 | `	 return SXRET_OK;` |
-|   14 |  764 | ` }` |
+|   30 |  761 | `	 SySetRelease(&sHeader);` |
+|   30 |  762 | `	 SyBlobRelease(&sWorker);` |
+|   30 |  763 | `	 return SXRET_OK;` |
+|   16 |  764 | ` }` |
 |    - |  765 |  |

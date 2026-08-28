@@ -234,30 +234,30 @@ Coverage: 564/645 lines (87.44%)
 |     - |  224 | ` *   TRUE if class_name is a defined class, FALSE otherwise.` |
 |     - |  225 | ` */` |
 |    72 |  226 | `PH7_PRIVATE int vm_builtin_class_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     5 |  227 | `{` |
-|    77 |  228 | `	int res = 0; /* Assume class does not exist */` |
-|    77 |  229 | `	if( nArg > 0 ){` |
-|    77 |  230 | `		SyHashEntry *pEntry = 0;` |
+|     4 |  227 | `{` |
+|    76 |  228 | `	int res = 0; /* Assume class does not exist */` |
+|    76 |  229 | `	if( nArg > 0 ){` |
+|    76 |  230 | `		SyHashEntry *pEntry = 0;` |
 |     - |  231 | `		const char *zName;` |
 |     - |  232 | `		int nLen;` |
-|    77 |  233 | `		int iAutoload = 1; /* Default: autoload enabled */` |
+|    76 |  233 | `		int iAutoload = 1; /* Default: autoload enabled */` |
 |     - |  234 | `		/* Extract given name */` |
-|    77 |  235 | `		zName = ph7_value_to_string(apArg[0],&nLen);` |
-|    77 |  236 | `		if( nArg >= 2 ){` |
+|    76 |  235 | `		zName = ph7_value_to_string(apArg[0],&nLen);` |
+|    76 |  236 | `		if( nArg >= 2 ){` |
 |     6 |  237 | `			iAutoload = ph7_value_to_bool(apArg[1]);` |
 |     2 |  238 | `		}` |
-|    77 |  239 | `		if( nLen > 0 ){` |
+|    76 |  239 | `		if( nLen > 0 ){` |
 |     - |  240 | `			/* Perform a hash lookup first */` |
-|    77 |  241 | `			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);` |
+|    76 |  241 | `			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);` |
 |    36 |  242 | `		}` |
-|    77 |  243 | `		if( pEntry == 0 && nLen > 0 && iAutoload ){` |
+|    76 |  243 | `		if( pEntry == 0 && nLen > 0 && iAutoload ){` |
 |     - |  244 | `			/* Try autoload, then re-check */` |
-|    23 |  245 | `			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,(sxu32)nLen,FALSE);` |
-|    23 |  246 | `			if( pClass ){` |
+|    22 |  245 | `			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,(sxu32)nLen,FALSE);` |
+|    22 |  246 | `			if( pClass ){` |
 |     6 |  247 | `				pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);` |
 |     2 |  248 | `			}` |
 |     9 |  249 | `		}` |
-|    77 |  250 | `		if( pEntry ){` |
+|    76 |  250 | `		if( pEntry ){` |
 |     - |  251 | `			/* Walk the collision chain: return TRUE only for concrete or abstract classes,` |
 |     - |  252 | `			 * not for interfaces or traits (matching PHP behavior). */` |
 |    60 |  253 | `			ph7_class *pClass = (ph7_class *)pEntry->pUserData;` |
@@ -270,9 +270,9 @@ Coverage: 564/645 lines (87.44%)
 |   ! 0 |  260 | `			}` |
 |    28 |  261 | `		}` |
 |    36 |  262 | `	}` |
-|    77 |  263 | `	ph7_result_bool(pCtx,res);` |
-|    77 |  264 | `	return PH7_OK;` |
-|     5 |  265 | `}` |
+|    76 |  263 | `	ph7_result_bool(pCtx,res);` |
+|    76 |  264 | `	return PH7_OK;` |
+|     4 |  265 | `}` |
 |     - |  266 | `/*` |
 |     - |  267 | ` * bool interface_exists(string $class_name [, bool $autoload = true ] )` |
 |     - |  268 | ` *   Checks if the interface has been defined.` |
@@ -586,7 +586,7 @@ Coverage: 564/645 lines (87.44%)
 |     - |  576 | ` * in the pAttrName parameter is visible and thus can be extracted` |
 |     - |  577 | ` * from the current scope.Otherwise FALSE is returned.` |
 |     - |  578 | ` */` |
-| 36766 |  579 | `PH7_PRIVATE int PH7_VmClassMemberAccess(` |
+| 36834 |  579 | `PH7_PRIVATE int PH7_VmClassMemberAccess(` |
 |     - |  580 | `	ph7_vm *pVm,               /* Target VM */` |
 |     - |  581 | `	ph7_class *pClass,         /* Target Class */` |
 |     - |  582 | `	const SyString *pAttrName, /* Attribute name */` |
@@ -594,22 +594,22 @@ Coverage: 564/645 lines (87.44%)
 |     - |  584 | `	int bLog                   /* TRUE to log forbidden access. */` |
 |     - |  585 | `	)` |
 |     5 |  586 | `{` |
-| 36771 |  587 | `	if( iProtection != PH7_CLASS_PROT_PUBLIC ){` |
-| 28951 |  588 | `		VmFrame *pFrame = pVm->pFrame;` |
+| 36839 |  587 | `	if( iProtection != PH7_CLASS_PROT_PUBLIC ){` |
+| 28997 |  588 | `		VmFrame *pFrame = pVm->pFrame;` |
 |     - |  589 | `		ph7_vm_func *pVmFunc;` |
 |     - |  590 | `		ph7_class *pCallerScope;` |
-| 28971 |  591 | `		while( pFrame->pParent && (pFrame->iFlags & (VM_FRAME_EXCEPTION\|VM_FRAME_CATCH) ) ){` |
+| 29017 |  591 | `		while( pFrame->pParent && (pFrame->iFlags & (VM_FRAME_EXCEPTION\|VM_FRAME_CATCH) ) ){` |
 |     - |  592 | `			/* Safely ignore the exception frame */` |
 |    21 |  593 | `			pFrame = pFrame->pParent;` |
 |     1 |  594 | `		}` |
-| 28951 |  595 | `		pVmFunc = (ph7_vm_func *)pFrame->pUserData;` |
+| 28997 |  595 | `		pVmFunc = (ph7_vm_func *)pFrame->pUserData;` |
 |     - |  596 | `		/* The calling scope is the executing method's declaring class — OR, for a bound closure` |
 |     - |  597 | `		 * (Closure::bindTo/call), the explicit scope override carried on the frame (Increment 2). */` |
-| 28951 |  598 | `		if( pFrame->pBoundScope ){` |
+| 28997 |  598 | `		if( pFrame->pBoundScope ){` |
 |    15 |  599 | `			pCallerScope = pFrame->pBoundScope;` |
-| 28944 |  600 | `		}else if( pVmFunc && (pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) ){` |
-| 28895 |  601 | `			pCallerScope = (ph7_class *)pVmFunc->pUserData;` |
-| 14489 |  602 | `		}else if( pVm->pConstEvalClass ){` |
+| 28990 |  600 | `		}else if( pVmFunc && (pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) ){` |
+| 28941 |  601 | `			pCallerScope = (ph7_class *)pVmFunc->pUserData;` |
+| 14512 |  602 | `		}else if( pVm->pConstEvalClass ){` |
 |     - |  603 | `			/* Constant/property initializer bytecode runs without a method` |
 |     - |  604 | `			 * frame; its scope is the class being initialized (php: a private` |
 |     - |  605 | `			 * constant is reachable from its own class's initializers). */` |
@@ -617,7 +617,7 @@ Coverage: 564/645 lines (87.44%)
 |     2 |  607 | `		}else{` |
 |    42 |  608 | `			goto dis; /* Not in a class scope: access is forbidden */` |
 |     - |  609 | `		}` |
-| 28911 |  610 | `		if( iProtection == PH7_CLASS_PROT_PRIVATE ){` |
+| 28957 |  610 | `		if( iProtection == PH7_CLASS_PROT_PRIVATE ){` |
 |     - |  611 | `			/* php grants private access by DECLARING class: the caller's own` |
 |     - |  612 | `			 * class must declare a private attribute of this name (a base` |
 |     - |  613 | `			 * method touching its own private on a CHILD instance passes; a` |
@@ -627,21 +627,21 @@ Coverage: 564/645 lines (87.44%)
 |     - |  617 | `			 * instance's class (legacy trait-body scope), or — when the caller` |
 |     - |  618 | `			 * class carries no such attr entry at all — the legacy exact-class` |
 |     - |  619 | `			 * match (dynamic props and other non-declared shapes). */` |
-|  9365 |  620 | `			ph7_class *pCaller = pCallerScope;` |
-| 14045 |  621 | `			SyHashEntry *pOwnE = SyHashGet(&pCaller->hAttr,` |
-|  9360 |  622 | `				(const void *)pAttrName->zString,pAttrName->nByte);` |
-|  9365 |  623 | `			ph7_class_attr *pOwn = pOwnE ? (ph7_class_attr *)pOwnE->pUserData : 0;` |
-|  9365 |  624 | `			int bGranted = 0;` |
-|  9365 |  625 | `			if( pOwn && pOwn->iProtection == PH7_CLASS_PROT_PRIVATE ){` |
-|  7808 |  626 | `				if( pOwn->pDeclClass == 0` |
-|  7808 |  627 | `				 \|\| pOwn->pDeclClass == pCaller` |
-|  4729 |  628 | `				 \|\| (pOwn->pDeclClass->iFlags & PH7_CLASS_TRAIT) != 0 ){` |
-|  7809 |  629 | `					bGranted = 1;` |
-|  3907 |  630 | `				}` |
-|  5458 |  631 | `			}else if( pOwn == 0 && pCaller == pClass ){` |
+|  9411 |  620 | `			ph7_class *pCaller = pCallerScope;` |
+| 14114 |  621 | `			SyHashEntry *pOwnE = SyHashGet(&pCaller->hAttr,` |
+|  9406 |  622 | `				(const void *)pAttrName->zString,pAttrName->nByte);` |
+|  9411 |  623 | `			ph7_class_attr *pOwn = pOwnE ? (ph7_class_attr *)pOwnE->pUserData : 0;` |
+|  9411 |  624 | `			int bGranted = 0;` |
+|  9411 |  625 | `			if( pOwn && pOwn->iProtection == PH7_CLASS_PROT_PRIVATE ){` |
+|  7854 |  626 | `				if( pOwn->pDeclClass == 0` |
+|  7854 |  627 | `				 \|\| pOwn->pDeclClass == pCaller` |
+|  4752 |  628 | `				 \|\| (pOwn->pDeclClass->iFlags & PH7_CLASS_TRAIT) != 0 ){` |
+|  7855 |  629 | `					bGranted = 1;` |
+|  3930 |  630 | `				}` |
+|  5481 |  631 | `			}else if( pOwn == 0 && pCaller == pClass ){` |
 |   807 |  632 | `				bGranted = 1;` |
 |   403 |  633 | `			}` |
-|  9365 |  634 | `			if( !bGranted ){` |
+|  9411 |  634 | `			if( !bGranted ){` |
 |     - |  635 | `				/* Check if the caller is a trait used by pClass */` |
 |     - |  636 | `				ph7_class **apTrait;` |
 |     - |  637 | `				sxu32 nTrait,k;` |
@@ -654,7 +654,7 @@ Coverage: 564/645 lines (87.44%)
 |     - |  644 | `					}` |
 |   ! 0 |  645 | `				}` |
 |   375 |  646 | `			}` |
-|  9365 |  647 | `			if( !bGranted && (pClass->iFlags & PH7_CLASS_TRAIT) != 0 ){` |
+|  9411 |  647 | `			if( !bGranted && (pClass->iFlags & PH7_CLASS_TRAIT) != 0 ){` |
 |     - |  648 | `				/* The target "class" is itself a trait: a trait-copied private` |
 |     - |  649 | `				 * member behaves as if declared in the adopting class, so a` |
 |     - |  650 | `` 				 * caller that USES the trait gets access (php: `self::s()` `` |
@@ -672,10 +672,10 @@ Coverage: 564/645 lines (87.44%)
 |     - |  662 | `					}` |
 |   ! 0 |  663 | `				}` |
 |   371 |  664 | `			}` |
-|  9365 |  665 | `			if( !bGranted ){` |
+|  9411 |  665 | `			if( !bGranted ){` |
 |    10 |  666 | `				goto dis; /* Access is forbidden */` |
 |     - |  667 | `			}` |
-|  4681 |  668 | `		}else{` |
+|  4704 |  668 | `		}else{` |
 |     - |  669 | `			/* Protected */` |
 | 19551 |  670 | `			ph7_class *pBase = pCallerScope;` |
 |     - |  671 | `			/* Must be in the same class hierarchy */` |
@@ -699,8 +699,8 @@ Coverage: 564/645 lines (87.44%)
 |     - |  689 | `				}` |
 |     2 |  690 | `			}` |
 |     - |  691 | `		}` |
-| 14448 |  692 | `	}` |
-| 36721 |  693 | `	return 1; /* Access is granted */` |
+| 14471 |  692 | `	}` |
+| 36789 |  693 | `	return 1; /* Access is granted */` |
 |    25 |  694 | `dis:` |
 |    53 |  695 | `	if( bLog ){` |
 |   ! 0 |  696 | `		VmErrorFormat(&(*pVm),PH7_CTX_ERR,` |
@@ -708,7 +708,7 @@ Coverage: 564/645 lines (87.44%)
 |   ! 0 |  698 | `			&pClass->sName,pAttrName);` |
 |   ! 0 |  699 | `	}` |
 |    53 |  700 | `	return 0; /* Access is forbidden */` |
-| 18388 |  701 | `}` |
+| 18422 |  701 | `}` |
 |     - |  702 | `/*` |
 |     - |  703 | ` * array get_class_vars(string/object $class_name)` |
 |     - |  704 | ` *   Get the default properties of the class` |

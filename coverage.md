@@ -10,10 +10,10 @@
 | src/ph7/hashmap.c              | 90.55%   | 3997/4414   |
 | src/ph7/lex.c                  | 92.91%   | 786/846     |
 | src/ph7/memobj.c               | 88.57%   | 891/1006    |
-| src/ph7/net.c                  | 50.48%   | 53/105      |
+| src/ph7/net.c                  | 57.45%   | 81/141      |
 | src/ph7/oo.c                   | 88.07%   | 694/788     |
 | src/ph7/parse.c                | 87.38%   | 1163/1331   |
-| src/ph7/vfs.c                  | 65.78%   | 2047/3112   |
+| src/ph7/vfs.c                  | 66.78%   | 2344/3510   |
 | src/ph7/vfs_unix.c             | 88.06%   | 376/427     |
 | src/ph7/vfs_win.c              | 68.59%   | 487/710     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
@@ -25,7 +25,7 @@
 | src/ph7/vm_builtin_reflection.c | 85.47%   | 1035/1211   |
 | src/ph7/vm_builtin_session.c   | 100.00%  | 4/4         |
 | src/ph7/vm_builtin_spl.c       | 76.71%   | 56/73       |
-| src/ph7/vm_http.c              | 68.02%   | 302/444     |
+| src/ph7/vm_http.c              | 69.82%   | 310/444     |
 | src/ph7/vm_http_response.c     | 49.41%   | 126/255     |
 | src/ph7/vm_json.c              | 77.92%   | 494/634     |
 | src/ph7/vm_pcre.c              | 65.87%   | 604/917     |
@@ -43,11 +43,11 @@
 | src/sx/sxrand.c                | 71.15%   | 74/104      |
 | src/sx/sxstr.c                 | 93.88%   | 92/98       |
 | src/sx/sxtypes.h               | 100.00%  | 16/16       |
-| src/sx/sxutils.c               | 78.35%   | 304/388     |
+| src/sx/sxutils.c               | 79.12%   | 307/388     |
 | src/sx/sxxml.c                 | 68.86%   | 533/774     |
 | src/sx/sxzip.c                 | 73.75%   | 222/301     |
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.37%   | 44914/55198 |
-| Functions                      | 96.67%   | 2064/2135   |
+| Lines                          | 81.34%   | 45250/55632 |
+| Functions                      | 96.34%   | 2079/2158   |
