@@ -2,22 +2,22 @@
 |--------------------------------|----------|-------------|
 | src/ph7/api.c                  | 70.86%   | 778/1098    |
 | src/ph7/builtin.c              | 86.35%   | 4283/4960   |
-| src/ph7/builtin_date.c         | 66.30%   | 482/727     |
+| src/ph7/builtin_date.c         | 71.63%   | 833/1163    |
 | src/ph7/builtin_math.c         | 87.35%   | 525/601     |
 | src/ph7/compile.c              | 80.73%   | 7013/8687   |
 | src/ph7/constant.c             | 98.22%   | 1104/1124   |
-| src/ph7/hashmap.c              | 89.63%   | 3941/4397   |
+| src/ph7/hashmap.c              | 89.61%   | 3940/4397   |
 | src/ph7/lex.c                  | 93.44%   | 784/839     |
 | src/ph7/memobj.c               | 88.47%   | 890/1006    |
 | src/ph7/net.c                  | 50.48%   | 53/105      |
-| src/ph7/oo.c                   | 87.69%   | 684/780     |
+| src/ph7/oo.c                   | 87.95%   | 686/780     |
 | src/ph7/parse.c                | 87.38%   | 1163/1331   |
 | src/ph7/vfs.c                  | 64.88%   | 1853/2856   |
 | src/ph7/vfs_unix.c             | 88.06%   | 376/427     |
 | src/ph7/vfs_win.c              | 68.59%   | 487/710     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
-| src/ph7/vm.c                   | 82.55%   | 10908/13214 |
-| src/ph7/vm_builtin_class.c     | 87.18%   | 544/624     |
+| src/ph7/vm.c                   | 82.56%   | 10910/13215 |
+| src/ph7/vm_builtin_class.c     | 87.66%   | 547/624     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
 | src/ph7/vm_builtin_ob.c        | 75.12%   | 157/209     |
 | src/ph7/vm_builtin_reflection.c | 85.63%   | 1037/1211   |
@@ -31,7 +31,7 @@
 | src/phl/server.c               | 61.56%   | 277/450     |
 | src/sx/sxblowfish.c            | 98.82%   | 168/170     |
 | src/sx/sxds.c                  | 95.39%   | 290/304     |
-| src/sx/sxfmt.c                 | 69.53%   | 283/407     |
+| src/sx/sxfmt.c                 | 69.29%   | 282/407     |
 | src/sx/sxhash.c                | 91.06%   | 377/414     |
 | src/sx/sxlib.c                 | 90.12%   | 228/253     |
 | src/sx/sxmem.c                 | 85.29%   | 435/510     |
@@ -45,6 +45,6 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.21%   | 43205/53204 |
-| Functions                      | 96.58%   | 1976/2046   |
+| Lines                          | 81.21%   | 43561/53641 |
+| Functions                      | 96.61%   | 1992/2062   |
 
