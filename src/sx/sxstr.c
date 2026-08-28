@@ -68,7 +68,7 @@ PH7_PRIVATE sxi32 SyByteListFind(const char *zSrc,sxu32 nLen,const char *zList,s
 	}
 	return SXERR_NOTFOUND;
 }
-#ifndef PH7_DISABLE_BUILTIN_FUNC
+/* used by hashmap.c's key sorting — must stay in the tiny build */
 PH7_PRIVATE sxi32 SyStrncmp(const char *zLeft,const char *zRight,sxu32 nLen)
 {
 	const unsigned char *zP = (const unsigned char *)zLeft;
@@ -88,7 +88,6 @@ PH7_PRIVATE sxi32 SyStrncmp(const char *zLeft,const char *zRight,sxu32 nLen)
 	}
 	return (sxi32)(zP[0] - zQ[0]);
 }
-#endif
 PH7_PRIVATE sxi32 SyStrnicmp(const char *zLeft, const char *zRight,sxu32 SLen)
 {
   	register unsigned char *p = (unsigned char *)zLeft;

@@ -2157,25 +2157,26 @@ static sxi32 HashmapCmpCallback1(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void 
 	return rc;
 }
 /*
- * Node comparison callback: Compare nodes by keys only.
- * used-by: [ksort()]
+ * Shared key comparison for ksort()/krsort(): php 8 semantics. Two string
+ * keys compare bytewise. Mixed int/string keys: a NUMERIC string compares
+ * numerically with the int key; a non-numeric one makes the int key compare
+ * AS A STRING ("5" < "b", so int keys land before alphabetic ones — pre-fix
+ * PHL cast "b" to 0 and sorted string keys first).
  */
-static sxi32 HashmapCmpCallback2(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)
+static sxi32 HashmapKeyNodeCmp(ph7_hashmap_node *pA,ph7_hashmap_node *pB)
 {
 	sxi32 rc;
-	SXUNUSED(pCmpData); /* cc warning */
 	if( pA->iType == HASHMAP_BLOB_NODE && pB->iType == HASHMAP_BLOB_NODE ){
 		/* Perform a string comparison */
 		rc = SyBlobCmp(&pA->xKey.sKey,&pB->xKey.sKey);
 	}else{
 		SyString sStr;
-		sxi64 iA,iB;
-		/* Perform a numeric comparison */
+		sxi64 iA = 0,iB = 0;
+		int bNum = 1;
 		if( pA->iType == HASHMAP_BLOB_NODE ){
-			/* Cast to 64-bit integer */
 			SyStringInitFromBuf(&sStr,SyBlobData(&pA->xKey.sKey),SyBlobLength(&pA->xKey.sKey));
-			if( sStr.nByte < 1 ){
-				iA = 0;
+			if( sStr.nByte < 1 || SyStrIsNumeric(sStr.zString,sStr.nByte,0,0) != SXRET_OK ){
+				bNum = 0;
 			}else{
 				SyStrToInt64(sStr.zString,sStr.nByte,(void *)&iA,0);
 			}
@@ -2183,20 +2184,46 @@ static sxi32 HashmapCmpCallback2(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void 
 			iA = pA->xKey.iKey;
 		}
 		if( pB->iType == HASHMAP_BLOB_NODE ){
-			/* Cast to 64-bit integer */
 			SyStringInitFromBuf(&sStr,SyBlobData(&pB->xKey.sKey),SyBlobLength(&pB->xKey.sKey));
-			if( sStr.nByte < 1 ){
-				iB = 0;
+			if( sStr.nByte < 1 || SyStrIsNumeric(sStr.zString,sStr.nByte,0,0) != SXRET_OK ){
+				bNum = 0;
 			}else{
 				SyStrToInt64(sStr.zString,sStr.nByte,(void *)&iB,0);
 			}
 		}else{
 			iB = pB->xKey.iKey;
 		}
-		rc = (sxi32)(iA-iB);
+		if( bNum ){
+			rc = iA < iB ? -1 : (iA > iB ? 1 : 0);
+		}else{
+			/* Render the int key and compare bytewise like php */
+			char zNumA[24],zNumB[24];
+			SyString sA,sB;
+			if( pA->iType != HASHMAP_BLOB_NODE ){
+				sxu32 n = SyBufferFormat(zNumA,sizeof(zNumA),"%qd",pA->xKey.iKey);
+				SyStringInitFromBuf(&sA,zNumA,n);
+			}else{
+				SyStringInitFromBuf(&sA,SyBlobData(&pA->xKey.sKey),SyBlobLength(&pA->xKey.sKey));
+			}
+			if( pB->iType != HASHMAP_BLOB_NODE ){
+				sxu32 n = SyBufferFormat(zNumB,sizeof(zNumB),"%qd",pB->xKey.iKey);
+				SyStringInitFromBuf(&sB,zNumB,n);
+			}else{
+				SyStringInitFromBuf(&sB,SyBlobData(&pB->xKey.sKey),SyBlobLength(&pB->xKey.sKey));
+			}
+			rc = SyStrncmp(sA.zString,sB.zString,SXMAX(sA.nByte,sB.nByte));
+		}
 	}
-	/* Comparison result */
 	return rc;
+}
+/*
+ * Node comparison callback: Compare nodes by keys only.
+ * used-by: [ksort()]
+ */
+static sxi32 HashmapCmpCallback2(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)
+{
+	SXUNUSED(pCmpData); /* cc warning */
+	return HashmapKeyNodeCmp(pA,pB);
 }
 /*
  * Node comparison callback.
@@ -2301,40 +2328,8 @@ static sxi32 HashmapCmpCallback4(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void 
  */
 static sxi32 HashmapCmpCallback5(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)
 {
-	sxi32 rc;
 	SXUNUSED(pCmpData); /* cc warning */
-	if( pA->iType == HASHMAP_BLOB_NODE && pB->iType == HASHMAP_BLOB_NODE ){
-		/* Perform a string comparison */
-		rc = SyBlobCmp(&pA->xKey.sKey,&pB->xKey.sKey);
-	}else{
-		SyString sStr;
-		sxi64 iA,iB;
-		/* Perform a numeric comparison */
-		if( pA->iType == HASHMAP_BLOB_NODE ){
-			/* Cast to 64-bit integer */
-			SyStringInitFromBuf(&sStr,SyBlobData(&pA->xKey.sKey),SyBlobLength(&pA->xKey.sKey));
-			if( sStr.nByte < 1 ){
-				iA = 0;
-			}else{
-				SyStrToInt64(sStr.zString,sStr.nByte,(void *)&iA,0);
-			}
-		}else{
-			iA = pA->xKey.iKey;
-		}
-		if( pB->iType == HASHMAP_BLOB_NODE ){
-			/* Cast to 64-bit integer */
-			SyStringInitFromBuf(&sStr,SyBlobData(&pB->xKey.sKey),SyBlobLength(&pB->xKey.sKey));
-			if( sStr.nByte < 1 ){
-				iB = 0;
-			}else{
-				SyStrToInt64(sStr.zString,sStr.nByte,(void *)&iB,0);
-			}
-		}else{
-			iB = pB->xKey.iKey;
-		}
-		rc = (sxi32)(iA-iB);
-	}
-	return -rc; /* Reverse result */
+	return -HashmapKeyNodeCmp(pA,pB); /* Reverse result */
 }
 /*
  * Node comparison callback: Invoke an user-defined callback for the purpose of node comparison.

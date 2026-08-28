@@ -428,6 +428,8 @@ static const struct VmBuiltinArity {
 	{ "strcasecmp",                2, 0 },
 	{ "strchr",                    2, 1 },
 	{ "strcmp",                    2, 0 },
+	{ "strnatcasecmp",             2, 0 },
+	{ "strnatcmp",                 2, 0 },
 	{ "strcoll",                   2, 0 },
 	{ "strip_tags",                1, 1 },
 	{ "stripslashes",              1, 0 },
@@ -2707,6 +2709,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	 * internal; the Traversable pointer above must already be cached. */
 	PH7_VmInstallReflection(&(*pVm));
 	PH7_VmInstallDateTime(&(*pVm));
+	PH7_VmInstallSpl(&(*pVm));
 	pVm->bCompilingBuiltin = 0;
 	/* Reset the code generator */
 	PH7_ResetCodeGenerator(&(*pVm),pEngine->xConf.xErr,pEngine->xConf.pErrData);
@@ -3458,6 +3461,8 @@ static const struct VmBuiltinSig {
 	{ "strcasecmp", "string $string1, string $string2", "int" },
 	{ "strchr", "string $haystack, string $needle, bool $before_needle = false", "string|false" },
 	{ "strcmp", "string $string1, string $string2", "int" },
+	{ "strnatcasecmp", "string $string1, string $string2", "int" },
+	{ "strnatcmp", "string $string1, string $string2", "int" },
 	{ "strcoll", "string $string1, string $string2", "int" },
 	{ "strcspn", "string $string, string $characters, int $offset = 0, ?int $length = NULL", "int" },
 	{ "strftime", "string $format, ?int $timestamp = NULL", "string|false" },
@@ -13870,11 +13875,34 @@ case PH7_OP_MEMBER: {
 				}else{
 					ph7_class_method *pDeniedCall = 0;
 					if( pMeth->iProtection != PH7_CLASS_PROT_PUBLIC
-					 && !PH7_VmClassMemberAccess(&(*pVm),pClass,&sName,pMeth->iProtection,FALSE) ){
-						/* Inaccessible from this scope: php routes through __call when
-						 * declared (band A #3b); without it OP_CALL raises its
-						 * "Call to private/protected method" Error as before. */
-						pDeniedCall = PH7_ClassExtractMethod(pClass,"__call",sizeof("__call")-1);
+					 && !PH7_VmClassMemberAccess(&(*pVm),
+						pMeth->sFunc.pUserData ? (ph7_class *)pMeth->sFunc.pUserData : pClass,
+						&sName,pMeth->iProtection,FALSE) ){
+						int bRebound = 0;
+						if( pMeth->iProtection == PH7_CLASS_PROT_PRIVATE ){
+							/* php: when the instance's class SHADOWS the caller's
+							 * private method (child redeclares private m), code in
+							 * the caller's class dispatches its OWN private m, not
+							 * the shadow. Rebind to the calling scope's method when
+							 * that scope declares a private one of this name. */
+							VmFrame *pFrameLocal = VmSkipExceptionFrames(pVm->pFrame);
+							ph7_vm_func *pCallerFunc = (ph7_vm_func *)pFrameLocal->pUserData;
+							if( pCallerFunc && (pCallerFunc->iFlags & VM_FUNC_CLASS_METHOD) && pCallerFunc->pUserData ){
+								ph7_class *pScope = (ph7_class *)pCallerFunc->pUserData;
+								ph7_class_method *pOwn = PH7_ClassExtractMethod(pScope,sName.zString,sName.nByte);
+								if( pOwn && pOwn->iProtection == PH7_CLASS_PROT_PRIVATE
+								 && (ph7_class *)pOwn->sFunc.pUserData == pScope ){
+									pMeth = pOwn;
+									bRebound = 1;
+								}
+							}
+						}
+						if( !bRebound ){
+							/* Inaccessible from this scope: php routes through __call when
+							 * declared (band A #3b); without it OP_CALL raises its
+							 * "Call to private/protected method" Error as before. */
+							pDeniedCall = PH7_ClassExtractMethod(pClass,"__call",sizeof("__call")-1);
+						}
 					}
 					if( pDeniedCall ){
 						SyBlobReset(&pVm->sMagicCallName);
@@ -15891,15 +15919,25 @@ case PH7_OP_CALL: {
 					pVm->bReflectBypass = 0;
 				}else
 				if( pSelf ){ /* Paranoid edition */
-					/* Check if the call is allowed */
-					pMeth = PH7_ClassExtractMethod(pSelf,pVmFunc->sName.zString,pVmFunc->sName.nByte);
+					/* Check if the call is allowed. php binds non-public method
+					 * access by the DECLARING class (pVmFunc->pUserData — the class
+					 * the callee was compiled in), NOT the instance's class: an
+					 * inherited base method calling $this->priv() on a child
+					 * instance passes, a child's private SHADOW doesn't hijack the
+					 * check for a parent callee, and the denial message names the
+					 * declaring class like php. */
+					ph7_class *pDeclClass = pVmFunc->pUserData ? (ph7_class *)pVmFunc->pUserData : pSelf;
+					pMeth = PH7_ClassExtractMethod(pDeclClass,pVmFunc->sName.zString,pVmFunc->sName.nByte);
+					if( pMeth == 0 && pDeclClass != pSelf ){
+						pMeth = PH7_ClassExtractMethod(pSelf,pVmFunc->sName.zString,pVmFunc->sName.nByte);
+					}
 					if( pMeth && pMeth->iProtection != PH7_CLASS_PROT_PUBLIC ){
-						if( !PH7_VmClassMemberAccess(&(*pVm),pSelf,&pVmFunc->sName,pMeth->iProtection,FALSE) ){
+						if( !PH7_VmClassMemberAccess(&(*pVm),pDeclClass,&pVmFunc->sName,pMeth->iProtection,FALSE) ){
 							/* Throw Error exception (PHP-compatible) */
 							char zMsg[256];
 							const char *zVis = pMeth->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected";
 							SyBufferFormat(zMsg,sizeof(zMsg),"Call to %s method %.*s::%.*s() from global scope",
-								zVis,(int)pSelf->sName.nByte,pSelf->sName.zString,
+								zVis,(int)pDeclClass->sName.nByte,pDeclClass->sName.zString,
 								(int)pVmFunc->sName.nByte,pVmFunc->sName.zString);
 							/* Consume this call's captured spread runs — this visibility
 							 * error exits before the pVmFunc build below. */

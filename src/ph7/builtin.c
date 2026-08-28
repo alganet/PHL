@@ -2036,6 +2036,90 @@ static int PH7_builtin_strcmp(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
+ * Natural-order comparison core (Martin Pool's natcompare as adapted by php's
+ * ext/standard/strnatcmp.c): digit runs compare numerically — the longer run
+ * wins, a leading zero flips to fractional first-difference-wins semantics —
+ * everything else compares bytewise with whitespace skipped.
+ */
+static int StrNatCompareRight(const char **pa,const char *aEnd,const char **pb,const char *bEnd)
+{
+	int bias = 0;
+	for(;;){
+		int da = (*pa < aEnd) && SyisDigit(**pa);
+		int db = (*pb < bEnd) && SyisDigit(**pb);
+		if( !da && !db ){ return bias; }
+		if( !da ){ return -1; }
+		if( !db ){ return 1; }
+		if( **pa < **pb ){ if( !bias ){ bias = -1; } }
+		else if( **pa > **pb ){ if( !bias ){ bias = 1; } }
+		(*pa)++;
+		(*pb)++;
+	}
+}
+static int StrNatCompareLeft(const char **pa,const char *aEnd,const char **pb,const char *bEnd)
+{
+	for(;;){
+		int da = (*pa < aEnd) && SyisDigit(**pa);
+		int db = (*pb < bEnd) && SyisDigit(**pb);
+		if( !da && !db ){ return 0; }
+		if( !da ){ return -1; }
+		if( !db ){ return 1; }
+		if( **pa < **pb ){ return -1; }
+		if( **pa > **pb ){ return 1; }
+		(*pa)++;
+		(*pb)++;
+	}
+}
+static int StrNatCmpCore(const char *zA,int nA,const char *zB,int nB,int bFold)
+{
+	const char *a = zA,*aEnd = &zA[nA];
+	const char *b = zB,*bEnd = &zB[nB];
+	for(;;){
+		int ca,cb;
+		while( a < aEnd && SyisSpace(a[0]) ){ a++; }
+		while( b < bEnd && SyisSpace(b[0]) ){ b++; }
+		ca = (a < aEnd) ? (unsigned char)a[0] : 0;
+		cb = (b < bEnd) ? (unsigned char)b[0] : 0;
+		if( SyisDigit(ca) && SyisDigit(cb) ){
+			int r = (ca == '0' || cb == '0')
+				? StrNatCompareLeft(&a,aEnd,&b,bEnd)
+				: StrNatCompareRight(&a,aEnd,&b,bEnd);
+			if( r ){ return r; }
+			continue;
+		}
+		if( ca == 0 && cb == 0 ){ return 0; }
+		if( bFold ){
+			ca = SyToLower(ca);
+			cb = SyToLower(cb);
+		}
+		if( ca < cb ){ return -1; }
+		if( ca > cb ){ return 1; }
+		a++;
+		b++;
+	}
+}
+/*
+ * int strnatcmp(string $string1, string $string2)
+ * int strnatcasecmp(string $string1, string $string2)
+ *  Natural-order string comparison ("img2" < "img10"), case folded for the
+ *  latter. php 8.2+ normalizes the result to -1/0/1.
+ */
+static int PH7_builtin_strnatcmp(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *z1,*z2,*zFunc;
+	int n1,n2,bFold;
+	if( nArg < 2 ){
+		ph7_result_int(pCtx,0);
+		return PH7_OK;
+	}
+	zFunc = ph7_function_name(pCtx);
+	bFold = zFunc[sizeof("strnat")-1] == 'c'; /* strnatCasecmp */
+	z1 = ph7_value_to_string(apArg[0],&n1);
+	z2 = ph7_value_to_string(apArg[1],&n2);
+	ph7_result_int(pCtx,StrNatCmpCore(z1,n1,z2,n2,bFold));
+	return PH7_OK;
+}
+/*
  * int strncmp(string $str1,string $str2,int n)
  *  Perform a binary safe string comparison of the first n characters.
  * Parameter
@@ -9344,6 +9428,8 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "strlen"     , PH7_builtin_strlen     },
 	{ "strcmp"     , PH7_builtin_strcmp     },
 	{ "strcoll"    , PH7_builtin_strcmp     },
+	{ "strnatcmp"  , PH7_builtin_strnatcmp  },
+	{ "strnatcasecmp", PH7_builtin_strnatcmp },
 	{ "strncmp"    , PH7_builtin_strncmp    },
 	{ "strcasecmp" , PH7_builtin_strcasecmp },
 	{ "strncasecmp", PH7_builtin_strncasecmp},
