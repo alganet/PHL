@@ -148,18 +148,225 @@ Coverage: 5/13 lines (38.46%)
 |    - |  138 | `"}"` |
 |    - |  139 | `"function natsort(&$array){ return uasort($array, 'strnatcmp'); }"` |
 |    - |  140 | `"function natcasesort(&$array){ return uasort($array, 'strnatcasecmp'); }"` |
-|    - |  141 | `;` |
-|    - |  142 |  |
-| 3876 |  143 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)` |
-|    5 |  144 | `{` |
-| 3881 |  145 | `	ph7_create_function(&(*pVm),"__spl_deprecated",vm_builtin_spl_deprecated,0);` |
-| 3881 |  146 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zSplLib,sizeof(zSplLib)-1);` |
-|    5 |  147 | `}` |
-|    - |  148 |  |
-|    - |  149 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
-|    - |  150 |  |
-|    - |  151 | `#ifdef PH7_DISABLE_BUILTIN_FUNC` |
-|    - |  152 | `/* Tiny build: no SPL (builtin layer disabled) */` |
-|    - |  153 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm){ (void)pVm; return SXRET_OK; }` |
-|    - |  154 | `#endif` |
-|    - |  155 |  |
+|    - |  141 | `"interface OuterIterator extends Iterator {"` |
+|    - |  142 | `" public function getInnerIterator();"` |
+|    - |  143 | `"}"` |
+|    - |  144 | `"class IteratorIterator implements OuterIterator {"` |
+|    - |  145 | `" private $__in = null;"` |
+|    - |  146 | `" public function __construct($iterator, $class = null){"` |
+|    - |  147 | `"  while( $iterator instanceof IteratorAggregate ){ $iterator = $iterator->getIterator(); }"` |
+|    - |  148 | `"  if( !($iterator instanceof Iterator) ){"` |
+|    - |  149 | `"   throw new TypeError(get_class($this) . '::__construct(): Argument #1 ($iterator)"` |
+|    - |  150 | `" must be of type Traversable, ' . get_debug_type($iterator) . ' given');"` |
+|    - |  151 | `"  }"` |
+|    - |  152 | `"  $this->__in = $iterator;"` |
+|    - |  153 | `" }"` |
+|    - |  154 | `" public function getInnerIterator(){ return $this->__in; }"` |
+|    - |  155 | `" public function current(){ return $this->__in->current(); }"` |
+|    - |  156 | `" public function key(){ return $this->__in->key(); }"` |
+|    - |  157 | `" public function next(){ $this->__in->next(); }"` |
+|    - |  158 | `" public function rewind(){ $this->__in->rewind(); }"` |
+|    - |  159 | `" public function valid(){ return $this->__in->valid(); }"` |
+|    - |  160 | `"}"` |
+|    - |  161 | `"class LimitIterator extends IteratorIterator {"` |
+|    - |  162 | `" private $__off = 0;"` |
+|    - |  163 | `" private $__lim = -1;"` |
+|    - |  164 | `" private $__pos = 0;"` |
+|    - |  165 | `" public function __construct($iterator, $offset = 0, $limit = -1){"` |
+|    - |  166 | `"  $offset = (int)$offset; $limit = (int)$limit;"` |
+|    - |  167 | `"  if( $offset < 0 ){"` |
+|    - |  168 | `"   throw new ValueError('LimitIterator::__construct(): Argument #2 ($offset) must be"` |
+|    - |  169 | `" greater than or equal to 0');"` |
+|    - |  170 | `"  }"` |
+|    - |  171 | `"  if( $limit < -1 ){"` |
+|    - |  172 | `"   throw new ValueError('LimitIterator::__construct(): Argument #3 ($limit) must be"` |
+|    - |  173 | `" greater than or equal to -1');"` |
+|    - |  174 | `"  }"` |
+|    - |  175 | `"  parent::__construct($iterator);"` |
+|    - |  176 | `"  $this->__off = $offset;"` |
+|    - |  177 | `"  $this->__lim = $limit;"` |
+|    - |  178 | `" }"` |
+|    - |  179 | `" public function rewind(){"` |
+|    - |  180 | `"  $in = $this->getInnerIterator();"` |
+|    - |  181 | `"  $in->rewind();"` |
+|    - |  182 | `"  for( $i = 0; $i < $this->__off && $in->valid(); $i++ ){ $in->next(); }"` |
+|    - |  183 | `"  $this->__pos = $this->__off;"` |
+|    - |  184 | `" }"` |
+|    - |  185 | `" public function valid(){"` |
+|    - |  186 | `"  if( $this->__lim != -1 && $this->__pos >= $this->__off + $this->__lim ){ return false; }"` |
+|    - |  187 | `"  return $this->getInnerIterator()->valid();"` |
+|    - |  188 | `" }"` |
+|    - |  189 | `" public function next(){ $this->__pos++; $this->getInnerIterator()->next(); }"` |
+|    - |  190 | `" public function getPosition(){ return $this->__pos; }"` |
+|    - |  191 | `" public function seek($offset){"` |
+|    - |  192 | `"  $offset = (int)$offset;"` |
+|    - |  193 | `"  if( $offset < $this->__off ){"` |
+|    - |  194 | `"   throw new OutOfBoundsException('Cannot seek to ' . $offset . ' which is below the"` |
+|    - |  195 | `" offset ' . $this->__off);"` |
+|    - |  196 | `"  }"` |
+|    - |  197 | `"  if( $this->__lim != -1 && $offset >= $this->__off + $this->__lim ){"` |
+|    - |  198 | `"   throw new OutOfBoundsException('Cannot seek to ' . $offset . ' which is behind or"` |
+|    - |  199 | `" equal to the limit ' . $this->__lim . ' plus the offset ' . $this->__off);"` |
+|    - |  200 | `"  }"` |
+|    - |  201 | `"  $in = $this->getInnerIterator();"` |
+|    - |  202 | `"  $in->rewind();"` |
+|    - |  203 | `"  for( $i = 0; $i < $offset && $in->valid(); $i++ ){ $in->next(); }"` |
+|    - |  204 | `"  $this->__pos = $offset;"` |
+|    - |  205 | `"  return $this->__pos;"` |
+|    - |  206 | `" }"` |
+|    - |  207 | `"}"` |
+|    - |  208 | `"abstract class FilterIterator extends IteratorIterator {"` |
+|    - |  209 | `" abstract public function accept();"` |
+|    - |  210 | `" private function __fiFetch(){"` |
+|    - |  211 | `"  $in = $this->getInnerIterator();"` |
+|    - |  212 | `"  while( $in->valid() && !$this->accept() ){ $in->next(); }"` |
+|    - |  213 | `" }"` |
+|    - |  214 | `" public function rewind(){ $this->getInnerIterator()->rewind(); $this->__fiFetch(); }"` |
+|    - |  215 | `" public function next(){ $this->getInnerIterator()->next(); $this->__fiFetch(); }"` |
+|    - |  216 | `"}"` |
+|    - |  217 | `"class CallbackFilterIterator extends FilterIterator {"` |
+|    - |  218 | `" private $__cb = null;"` |
+|    - |  219 | `" public function __construct($iterator, $callback){"` |
+|    - |  220 | `"  parent::__construct($iterator);"` |
+|    - |  221 | `"  $this->__cb = $callback;"` |
+|    - |  222 | `" }"` |
+|    - |  223 | `" public function accept(){"` |
+|    - |  224 | `"  $in = $this->getInnerIterator();"` |
+|    - |  225 | `"  return (bool)call_user_func($this->__cb, $in->current(), $in->key(), $in);"` |
+|    - |  226 | `" }"` |
+|    - |  227 | `"}"` |
+|    - |  228 | `"class RegexIterator extends FilterIterator {"` |
+|    - |  229 | `" const USE_KEY = 1;"` |
+|    - |  230 | `" const INVERT_MATCH = 2;"` |
+|    - |  231 | `" const MATCH = 0;"` |
+|    - |  232 | `" const GET_MATCH = 1;"` |
+|    - |  233 | `" const ALL_MATCHES = 2;"` |
+|    - |  234 | `" const SPLIT = 3;"` |
+|    - |  235 | `" const REPLACE = 4;"` |
+|    - |  236 | `" public $replacement = null;"` |
+|    - |  237 | `" private $__re = '';"` |
+|    - |  238 | `" private $__mode = 0;"` |
+|    - |  239 | `" private $__rflags = 0;"` |
+|    - |  240 | `" private $__pflags = 0;"` |
+|    - |  241 | `" private $__cur = null;"` |
+|    - |  242 | `" public function __construct($iterator, $pattern, $mode = 0, $flags = 0, $pregFlags = 0){"` |
+|    - |  243 | `"  parent::__construct($iterator);"` |
+|    - |  244 | `"  $this->__re = (string)$pattern;"` |
+|    - |  245 | `"  $this->__mode = (int)$mode;"` |
+|    - |  246 | `"  $this->__rflags = (int)$flags;"` |
+|    - |  247 | `"  $this->__pflags = (int)$pregFlags;"` |
+|    - |  248 | `" }"` |
+|    - |  249 | `" public function accept(){"` |
+|    - |  250 | `"  $in = $this->getInnerIterator();"` |
+|    - |  251 | `"  if( !$in->valid() ){ return false; }"` |
+|    - |  252 | `"  $subject = ($this->__rflags & self::USE_KEY) ? $in->key() : $in->current();"` |
+|    - |  253 | `"  $subject = (string)$subject;"` |
+|    - |  254 | `"  $this->__cur = null;"` |
+|    - |  255 | `"  $ok = false;"` |
+|    - |  256 | `"  if( $this->__mode === self::MATCH ){"` |
+|    - |  257 | `"   $ok = preg_match($this->__re, $subject) > 0;"` |
+|    - |  258 | `"  }elseif( $this->__mode === self::GET_MATCH ){"` |
+|    - |  259 | `"   $m = null;"` |
+|    - |  260 | `"   $ok = preg_match($this->__re, $subject, $m, $this->__pflags) > 0;"` |
+|    - |  261 | `"   $this->__cur = $m;"` |
+|    - |  262 | `"  }elseif( $this->__mode === self::ALL_MATCHES ){"` |
+|    - |  263 | `"   $m = null;"` |
+|    - |  264 | `"   $ok = preg_match_all($this->__re, $subject, $m, $this->__pflags) > 0;"` |
+|    - |  265 | `"   $this->__cur = $m;"` |
+|    - |  266 | `"  }elseif( $this->__mode === self::SPLIT ){"` |
+|    - |  267 | `"   $this->__cur = preg_split($this->__re, $subject, -1, $this->__pflags);"` |
+|    - |  268 | `"   $ok = is_array($this->__cur) && count($this->__cur) > 1;"` |
+|    - |  269 | `"  }elseif( $this->__mode === self::REPLACE ){"` |
+|    - |  270 | `"   $n = 0;"` |
+|    - |  271 | `"   $this->__cur = preg_replace($this->__re, (string)$this->replacement, $subject, -1, $n);"` |
+|    - |  272 | `"   $ok = $n > 0;"` |
+|    - |  273 | `"  }"` |
+|    - |  274 | `"  if( $this->__rflags & self::INVERT_MATCH ){ $ok = !$ok; }"` |
+|    - |  275 | `"  return $ok;"` |
+|    - |  276 | `" }"` |
+|    - |  277 | `" public function current(){"` |
+|    - |  278 | `"  if( $this->__mode === self::MATCH ){ return $this->getInnerIterator()->current(); }"` |
+|    - |  279 | `"  return $this->__cur;"` |
+|    - |  280 | `" }"` |
+|    - |  281 | `" public function getRegex(){ return $this->__re; }"` |
+|    - |  282 | `" public function getMode(){ return $this->__mode; }"` |
+|    - |  283 | `" public function setMode($mode){ $this->__mode = (int)$mode; }"` |
+|    - |  284 | `" public function getFlags(){ return $this->__rflags; }"` |
+|    - |  285 | `" public function setFlags($flags){ $this->__rflags = (int)$flags; }"` |
+|    - |  286 | `" public function getPregFlags(){ return $this->__pflags; }"` |
+|    - |  287 | `" public function setPregFlags($pregFlags){ $this->__pflags = (int)$pregFlags; }"` |
+|    - |  288 | `"}"` |
+|    - |  289 | `"class AppendIterator implements OuterIterator {"` |
+|    - |  290 | `" private $__its = [];"` |
+|    - |  291 | `" private $__idx = 0;"` |
+|    - |  292 | `" public function __construct(){}"` |
+|    - |  293 | `" public function append($iterator){"` |
+|    - |  294 | `"  $this->__its[] = $iterator;"` |
+|    - |  295 | `"  if( count($this->__its) === 1 ){ $iterator->rewind(); }"` |
+|    - |  296 | `" }"` |
+|    - |  297 | `" public function getInnerIterator(){ return $this->__its[$this->__idx] ?? null; }"` |
+|    - |  298 | `" public function getIteratorIndex(){"` |
+|    - |  299 | `"  return isset($this->__its[$this->__idx]) ? $this->__idx : null;"` |
+|    - |  300 | `" }"` |
+|    - |  301 | `" public function getArrayIterator(){ return new ArrayIterator($this->__its); }"` |
+|    - |  302 | `" private function __apAdvance(){"` |
+|    - |  303 | `"  while( isset($this->__its[$this->__idx])"` |
+|    - |  304 | `"   && !$this->__its[$this->__idx]->valid()"` |
+|    - |  305 | `"   && isset($this->__its[$this->__idx + 1]) ){"` |
+|    - |  306 | `"   $this->__idx++;"` |
+|    - |  307 | `"   $this->__its[$this->__idx]->rewind();"` |
+|    - |  308 | `"  }"` |
+|    - |  309 | `" }"` |
+|    - |  310 | `" public function rewind(){"` |
+|    - |  311 | `"  $this->__idx = 0;"` |
+|    - |  312 | `"  if( isset($this->__its[0]) ){ $this->__its[0]->rewind(); }"` |
+|    - |  313 | `"  $this->__apAdvance();"` |
+|    - |  314 | `" }"` |
+|    - |  315 | `" public function valid(){"` |
+|    - |  316 | `"  $in = $this->getInnerIterator();"` |
+|    - |  317 | `"  return $in !== null && $in->valid();"` |
+|    - |  318 | `" }"` |
+|    - |  319 | `" public function current(){ $in = $this->getInnerIterator(); return $in ? $in->current() : null; }"` |
+|    - |  320 | `" public function key(){ $in = $this->getInnerIterator(); return $in ? $in->key() : null; }"` |
+|    - |  321 | `" public function next(){"` |
+|    - |  322 | `"  $in = $this->getInnerIterator();"` |
+|    - |  323 | `"  if( $in ){ $in->next(); }"` |
+|    - |  324 | `"  $this->__apAdvance();"` |
+|    - |  325 | `" }"` |
+|    - |  326 | `"}"` |
+|    - |  327 | `"class InfiniteIterator extends IteratorIterator {"` |
+|    - |  328 | `" public function next(){"` |
+|    - |  329 | `"  $in = $this->getInnerIterator();"` |
+|    - |  330 | `"  $in->next();"` |
+|    - |  331 | `"  if( !$in->valid() ){ $in->rewind(); }"` |
+|    - |  332 | `" }"` |
+|    - |  333 | `"}"` |
+|    - |  334 | `"class NoRewindIterator extends IteratorIterator {"` |
+|    - |  335 | `" public function rewind(){}"` |
+|    - |  336 | `"}"` |
+|    - |  337 | `"class EmptyIterator implements Iterator {"` |
+|    - |  338 | `" public function current(){"` |
+|    - |  339 | `"  throw new BadMethodCallException('Accessing the value of an EmptyIterator');"` |
+|    - |  340 | `" }"` |
+|    - |  341 | `" public function key(){"` |
+|    - |  342 | `"  throw new BadMethodCallException('Accessing the key of an EmptyIterator');"` |
+|    - |  343 | `" }"` |
+|    - |  344 | `" public function next(){}"` |
+|    - |  345 | `" public function rewind(){}"` |
+|    - |  346 | `" public function valid(){ return false; }"` |
+|    - |  347 | `"}"` |
+|    - |  348 | `;` |
+|    - |  349 |  |
+| 3876 |  350 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)` |
+|    5 |  351 | `{` |
+| 3881 |  352 | `	ph7_create_function(&(*pVm),"__spl_deprecated",vm_builtin_spl_deprecated,0);` |
+| 3881 |  353 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zSplLib,sizeof(zSplLib)-1);` |
+|    5 |  354 | `}` |
+|    - |  355 |  |
+|    - |  356 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
+|    - |  357 |  |
+|    - |  358 | `#ifdef PH7_DISABLE_BUILTIN_FUNC` |
+|    - |  359 | `/* Tiny build: no SPL (builtin layer disabled) */` |
+|    - |  360 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm){ (void)pVm; return SXRET_OK; }` |
+|    - |  361 | `#endif` |
+|    - |  362 |  |
