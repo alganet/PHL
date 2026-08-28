@@ -597,6 +597,24 @@ static void PH7_INI_ALL_Const(ph7_value *pVal,void *pUserData)
 	SXUNUSED(pUserData);
 }
 /*
+ * MB_CASE_UPPER / MB_CASE_LOWER / MB_CASE_TITLE (0 / 1 / 2)
+ */
+static void PH7_MB_CASE_UPPER_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,0);
+	SXUNUSED(pUserData);
+}
+static void PH7_MB_CASE_LOWER_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,1);
+	SXUNUSED(pUserData);
+}
+static void PH7_MB_CASE_TITLE_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,2);
+	SXUNUSED(pUserData);
+}
+/*
  * SPHP_ROUND_HALF_DOWN
  *  Expands 2.
  */
@@ -2094,6 +2112,9 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"INI_PERDIR",           PH7_INI_PERDIR_Const },
 	{"INI_SYSTEM",           PH7_INI_SYSTEM_Const },
 	{"INI_ALL",              PH7_INI_ALL_Const },
+	{"MB_CASE_UPPER",        PH7_MB_CASE_UPPER_Const },
+	{"MB_CASE_LOWER",        PH7_MB_CASE_LOWER_Const },
+	{"MB_CASE_TITLE",        PH7_MB_CASE_TITLE_Const },
 	{"PASSWORD_BCRYPT",      PH7_PASSWORD_BCRYPT_Const },
 	{"PASSWORD_DEFAULT",     PH7_PASSWORD_BCRYPT_Const },
 	{"PASSWORD_BCRYPT_DEFAULT_COST", PH7_PASSWORD_COST_Const },
