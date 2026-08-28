@@ -5,8 +5,8 @@
 | src/ph7/builtin_date.c         | 73.04%   | 1192/1632   |
 | src/ph7/builtin_math.c         | 87.35%   | 525/601     |
 | src/ph7/compile.c              | 80.73%   | 7013/8687   |
-| src/ph7/constant.c             | 98.24%   | 1119/1139   |
-| src/ph7/hashmap.c              | 90.58%   | 3989/4404   |
+| src/ph7/constant.c             | 98.27%   | 1139/1159   |
+| src/ph7/hashmap.c              | 90.55%   | 3997/4414   |
 | src/ph7/lex.c                  | 92.91%   | 786/846     |
 | src/ph7/memobj.c               | 88.57%   | 891/1006    |
 | src/ph7/net.c                  | 50.48%   | 53/105      |
@@ -16,9 +16,10 @@
 | src/ph7/vfs_unix.c             | 88.06%   | 376/427     |
 | src/ph7/vfs_win.c              | 68.59%   | 487/710     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
-| src/ph7/vm.c                   | 82.60%   | 10936/13239 |
+| src/ph7/vm.c                   | 82.56%   | 10961/13276 |
 | src/ph7/vm_builtin_class.c     | 87.44%   | 564/645     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
+| src/ph7/vm_builtin_ini.c       | 95.45%   | 21/22       |
 | src/ph7/vm_builtin_ob.c        | 75.12%   | 157/209     |
 | src/ph7/vm_builtin_reflection.c | 85.47%   | 1035/1211   |
 | src/ph7/vm_builtin_session.c   | 100.00%  | 4/4         |
@@ -29,23 +30,23 @@
 | src/ph7/vm_pcre.c              | 65.87%   | 604/917     |
 | src/ph7/vm_serialize.c         | 96.02%   | 458/477     |
 | src/ph7/vm_xml.c               | 67.82%   | 392/578     |
-| src/phl/phl.c                  | 77.94%   | 219/281     |
+| src/phl/phl.c                  | 78.75%   | 278/353     |
 | src/phl/server.c               | 61.56%   | 277/450     |
 | src/sx/sxblowfish.c            | 98.82%   | 168/170     |
 | src/sx/sxds.c                  | 95.39%   | 290/304     |
 | src/sx/sxfmt.c                 | 69.29%   | 282/407     |
 | src/sx/sxhash.c                | 91.06%   | 377/414     |
 | src/sx/sxlib.c                 | 90.12%   | 228/253     |
-| src/sx/sxmem.c                 | 85.29%   | 435/510     |
+| src/sx/sxmem.c                 | 83.92%   | 428/510     |
 | src/sx/sxmutex.c               | 83.70%   | 77/92       |
 | src/sx/sxrand.c                | 71.15%   | 74/104      |
 | src/sx/sxstr.c                 | 93.88%   | 92/98       |
 | src/sx/sxtypes.h               | 100.00%  | 16/16       |
-| src/sx/sxutils.c               | 78.09%   | 303/388     |
+| src/sx/sxutils.c               | 78.35%   | 304/388     |
 | src/sx/sxxml.c                 | 68.86%   | 533/774     |
 | src/sx/sxzip.c                 | 73.75%   | 222/301     |
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.31%   | 44126/54269 |
-| Functions                      | 96.68%   | 2012/2081   |
+| Lines                          | 81.30%   | 44253/54430 |
+| Functions                      | 96.65%   | 2020/2090   |
