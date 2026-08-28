@@ -92,9 +92,9 @@ Coverage: 1192/1632 lines (73.04%)
 |     - |   82 | ` * Centralising this here gives microtime()/gettimeofday() a single sub-second` |
 |     - |   83 | `` * source instead of the old nonsensical `tt % SX_USEC_PER_SEC` off-Unix path.`` |
 |     - |   84 | ` */` |
-|    34 |   85 | `static void DateNow(ph7_vm *pVm,sytime *pOut)` |
+|    38 |   85 | `static void DateNow(ph7_vm *pVm,sytime *pOut)` |
 |     1 |   86 | `{` |
-|    35 |   87 | `	if( pVm && pVm->pEngine->xConf.xClock ){` |
+|    39 |   87 | `	if( pVm && pVm->pEngine->xConf.xClock ){` |
 |   ! 0 |   88 | `		ph7_int64 sec = 0,usec = 0;` |
 |   ! 0 |   89 | `		if( pVm->pEngine->xConf.xClock(pVm->pEngine->xConf.pClockData,&sec,&usec) == PH7_OK ){` |
 |   ! 0 |   90 | `			pOut->tm_sec  = (long)sec;` |
@@ -105,9 +105,9 @@ Coverage: 1192/1632 lines (73.04%)
 |     - |   95 | `#if defined(__UNIXES__)` |
 |     - |   96 | `	{` |
 |     - |   97 | `		struct timeval tv;` |
-|    34 |   98 | `		gettimeofday(&tv,0);` |
-|    34 |   99 | `		pOut->tm_sec  = (long)tv.tv_sec;` |
-|    34 |  100 | `		pOut->tm_usec = (long)tv.tv_usec;` |
+|    38 |   98 | `		gettimeofday(&tv,0);` |
+|    38 |   99 | `		pOut->tm_sec  = (long)tv.tv_sec;` |
+|    38 |  100 | `		pOut->tm_usec = (long)tv.tv_usec;` |
 |     - |  101 | `	}` |
 |     - |  102 | `#elif defined(__WINNT__)` |
 |     - |  103 | `	{` |
@@ -131,7 +131,7 @@ Coverage: 1192/1632 lines (73.04%)
 |     - |  121 | `		pOut->tm_usec = 0; /* no sub-second source; embedders supply one via PH7_CONFIG_CLOCK */` |
 |     - |  122 | `	}` |
 |     - |  123 | `#endif /* __UNIXES__ */` |
-|    18 |  124 | `}` |
+|    20 |  124 | `}` |
 |     - |  125 | ` /*` |
 |     - |  126 | `  * int64 time(void)` |
 |     - |  127 | `  *  Current Unix timestamp` |
@@ -167,25 +167,25 @@ Coverage: 1192/1632 lines (73.04%)
 |     - |  157 | `  *  If get_as_float is set to TRUE, then microtime() returns a float, which represents` |
 |     - |  158 | `  *  the current time in seconds since the Unix epoch accurate to the nearest microsecond.` |
 |     - |  159 | `  */` |
-|    26 |  160 | `PH7_PRIVATE int PH7_builtin_microtime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    30 |  160 | `PH7_PRIVATE int PH7_builtin_microtime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 |  161 | `{` |
-|    27 |  162 | `	int bFloat = 0;` |
+|    31 |  162 | `	int bFloat = 0;` |
 |     - |  163 | `	sytime sTime;` |
-|    27 |  164 | `	DateNow(pCtx->pVm,&sTime);` |
-|    27 |  165 | `	if( nArg > 0 ){` |
-|    21 |  166 | `		bFloat = ph7_value_to_bool(apArg[0]);` |
-|    10 |  167 | `	}` |
-|    27 |  168 | `	if( bFloat ){` |
+|    31 |  164 | `	DateNow(pCtx->pVm,&sTime);` |
+|    31 |  165 | `	if( nArg > 0 ){` |
+|    25 |  166 | `		bFloat = ph7_value_to_bool(apArg[0]);` |
+|    12 |  167 | `	}` |
+|    31 |  168 | `	if( bFloat ){` |
 |     - |  169 | `		/* Return as float: seconds accurate to the nearest microsecond */` |
-|    21 |  170 | `		ph7_result_double(pCtx,(double)sTime.tm_sec + (double)sTime.tm_usec/(double)SX_USEC_PER_SEC);` |
-|    11 |  171 | `	}else{` |
+|    25 |  170 | `		ph7_result_double(pCtx,(double)sTime.tm_sec + (double)sTime.tm_usec/(double)SX_USEC_PER_SEC);` |
+|    13 |  171 | `	}else{` |
 |     - |  172 | `		/* Return PHP's "msec sec" form: the sub-second part as fractional` |
 |     - |  173 | `		 * seconds to 8 decimals, e.g. "0.50667100 1700000000". tm_usec is in` |
 |     - |  174 | `		 * microseconds (0..999999), so scaling by 100 yields the 8-digit` |
 |     - |  175 | `		 * fraction — matching PHP's "%.8F" output exactly. */` |
 |     7 |  176 | `		ph7_result_string_format(pCtx,"0.%08ld %ld",sTime.tm_usec*100,sTime.tm_sec);` |
 |     - |  177 | `	}` |
-|    27 |  178 | `	return PH7_OK;` |
+|    31 |  178 | `	return PH7_OK;` |
 |     1 |  179 | `}` |
 |     - |  180 | `/*` |
 |     - |  181 | ` * array getdate ([ int $timestamp = time() ])` |
@@ -3077,7 +3077,7 @@ Coverage: 1192/1632 lines (73.04%)
 |     - | 3067 | ` * PH7_VmInit inside the bCompilingBuiltin window, after the Reflection` |
 |     - | 3068 | ` * install (Exception must exist).` |
 |     - | 3069 | ` */` |
-|  3916 | 3070 | `PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)` |
+|  3926 | 3070 | `PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)` |
 |     5 | 3071 | `{` |
 |     - | 3072 | `	static const struct {` |
 |     - | 3073 | `		const char *zName;` |
@@ -3095,12 +3095,12 @@ Coverage: 1192/1632 lines (73.04%)
 |     - | 3085 | `	};` |
 |     - | 3086 | `	sxu32 n;` |
 |     - | 3087 | `	/* php's date.timezone default */` |
-|  3921 | 3088 | `	SyMemcpy("UTC",pVm->zDefTz,sizeof("UTC"));` |
-|  3921 | 3089 | `	pVm->nDefTz = sizeof("UTC") - 1;` |
-| 39165 | 3090 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
-| 35249 | 3091 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
-| 17627 | 3092 | `	}` |
-|  3921 | 3093 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zDateTimeLib,sizeof(zDateTimeLib)-1);` |
+|  3931 | 3088 | `	SyMemcpy("UTC",pVm->zDefTz,sizeof("UTC"));` |
+|  3931 | 3089 | `	pVm->nDefTz = sizeof("UTC") - 1;` |
+| 39265 | 3090 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
+| 35339 | 3091 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
+| 17672 | 3092 | `	}` |
+|  3931 | 3093 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zDateTimeLib,sizeof(zDateTimeLib)-1);` |
 |     5 | 3094 | `}` |
 |     - | 3095 |  |
 |     - | 3096 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
