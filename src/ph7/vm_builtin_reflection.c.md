@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 1037/1211 lines (85.63%)
+Coverage: 1035/1211 lines (85.47%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -193,23 +193,23 @@ Coverage: 1037/1211 lines (85.63%)
 |     - |  183 | ` * copied in from traits are not on the pBase chain and thus report the` |
 |     - |  184 | ` * using class, which is what PHP reports too.` |
 |     - |  185 | ` */` |
-|  4980 |  186 | `static ph7_class * ReflectMethodDeclClass(ph7_class *pClass, ph7_class_method *pMeth)` |
+|  5000 |  186 | `static ph7_class * ReflectMethodDeclClass(ph7_class *pClass, ph7_class_method *pMeth)` |
 |     1 |  187 | `{` |
-|  4981 |  188 | `	ph7_class *pDecl = pClass;` |
-|  4981 |  189 | `	ph7_class *pBase = pClass->pBase;` |
-|  4981 |  190 | `	int iDepth = 0;` |
-|  6061 |  191 | `	while( pBase && iDepth <= REFLECT_WALK_MAX_DEPTH ){` |
+|  5001 |  188 | `	ph7_class *pDecl = pClass;` |
+|  5001 |  189 | `	ph7_class *pBase = pClass->pBase;` |
+|  5001 |  190 | `	int iDepth = 0;` |
+|  6101 |  191 | `	while( pBase && iDepth <= REFLECT_WALK_MAX_DEPTH ){` |
 |     - |  192 | `		SyHashEntry *pEntry;` |
-|  4015 |  193 | `		pEntry = SyHashGet(&pBase->hMethod, (const void *)SyStringData(&pMeth->sFunc.sName),` |
-|  1338 |  194 | `			SyStringLength(&pMeth->sFunc.sName));` |
-|  2677 |  195 | `		if( pEntry == 0 \|\| (ph7_class_method *)pEntry->pUserData != pMeth ){` |
+|  4045 |  193 | `		pEntry = SyHashGet(&pBase->hMethod, (const void *)SyStringData(&pMeth->sFunc.sName),` |
+|  1348 |  194 | `			SyStringLength(&pMeth->sFunc.sName));` |
+|  2697 |  195 | `		if( pEntry == 0 \|\| (ph7_class_method *)pEntry->pUserData != pMeth ){` |
 |   799 |  196 | `			break;` |
 |     - |  197 | `		}` |
-|  1081 |  198 | `		pDecl = pBase;` |
-|  1081 |  199 | `		pBase = pBase->pBase;` |
-|  1081 |  200 | `		iDepth++;` |
+|  1101 |  198 | `		pDecl = pBase;` |
+|  1101 |  199 | `		pBase = pBase->pBase;` |
+|  1101 |  200 | `		iDepth++;` |
 |     1 |  201 | `	}` |
-|  4981 |  202 | `	return pDecl;` |
+|  5001 |  202 | `	return pDecl;` |
 |     1 |  203 | `}` |
 |     - |  204 | `/* Fetch a class attribute (property or constant) by plain name. */` |
 |    86 |  205 | `static ph7_class_attr * ReflectFetchAttr(ph7_class *pClass, ph7_value *pName)` |
@@ -431,15 +431,15 @@ Coverage: 1037/1211 lines (85.63%)
 |     - |  421 | `			 * sFunc.sName keeps the original, and PHP reports the alias. --- */` |
 |  1259 |  422 | `			SySetReset(&aTmp);` |
 |  1259 |  423 | `			SyHashResetLoopCursor(&pLevel->hMethod);` |
-|  3785 |  424 | `			while( (pEntry = SyHashGetNextEntry(&pLevel->hMethod)) != 0 ){` |
-|  2527 |  425 | `				ph7_class_method *pMeth = (ph7_class_method *)pEntry->pUserData;` |
-|  2527 |  426 | `				ph7_class *pDecl = ReflectMethodDeclClass(pClass, pMeth);` |
-|  2527 |  427 | `				if( iLevel == 0 ){` |
+|  3805 |  424 | `			while( (pEntry = SyHashGetNextEntry(&pLevel->hMethod)) != 0 ){` |
+|  2547 |  425 | `				ph7_class_method *pMeth = (ph7_class_method *)pEntry->pUserData;` |
+|  2547 |  426 | `				ph7_class *pDecl = ReflectMethodDeclClass(pClass, pMeth);` |
+|  2547 |  427 | `				if( iLevel == 0 ){` |
 |     - |  428 | `					sxu32 j;` |
-|  2919 |  429 | `					for( j = 1 ; j < nChain ; j++ ){` |
-|  1011 |  430 | `						if( aChain[j] == pDecl ){ break; }` |
+|  2939 |  429 | `					for( j = 1 ; j < nChain ; j++ ){` |
+|  1031 |  430 | `						if( aChain[j] == pDecl ){ break; }` |
 |   372 |  431 | `					}` |
-|  2177 |  432 | `					if( j < nChain ){ continue; }` |
+|  2197 |  432 | `					if( j < nChain ){ continue; }` |
 |   955 |  433 | `				}else{` |
 |     - |  434 | `					SyHashEntry *pSub;` |
 |   351 |  435 | `					if( pDecl != pLevel ){ continue; }` |
@@ -448,10 +448,10 @@ Coverage: 1037/1211 lines (85.63%)
 |     - |  438 | `						/* Not in the subclass table: inheritance skips private` |
 |     - |  439 | `						 * methods, but PHP still reports them on the subclass` |
 |     - |  440 | `						 * (Zend copies privates into the child function table). */` |
-|    21 |  441 | `						if( pMeth->iProtection != PH7_CLASS_PROT_PRIVATE ){` |
+|   ! 0 |  441 | `						if( pMeth->iProtection != PH7_CLASS_PROT_PRIVATE ){` |
 |   ! 0 |  442 | `							continue;` |
-|     1 |  443 | `						}` |
-|   305 |  444 | `					}else if( pSub->pUserData != (void *)pMeth ){` |
+|   ! 0 |  443 | `						}` |
+|   315 |  444 | `					}else if( pSub->pUserData != (void *)pMeth ){` |
 |     - |  445 | `						/* Overridden below this level: already reported */` |
 |    27 |  446 | `						continue;` |
 |     - |  447 | `					}` |

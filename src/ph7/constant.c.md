@@ -251,19 +251,19 @@ Coverage: 1104/1124 lines (98.22%)
 |      - |  241 | ` * __FILE__` |
 |      - |  242 | ` *  Path of the processed script.` |
 |      - |  243 | ` */` |
-|   2414 |  244 | `static void PH7_FILE_Const(ph7_value *pVal,void *pUserData)` |
+|   2426 |  244 | `static void PH7_FILE_Const(ph7_value *pVal,void *pUserData)` |
 |      5 |  245 | `{` |
-|   2419 |  246 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
+|   2431 |  246 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
 |      - |  247 | `	SyString *pFile;` |
 |      - |  248 | `	/* Peek the top entry */` |
-|   2419 |  249 | `	pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
-|   2419 |  250 | `	if( pFile == 0 ){` |
+|   2431 |  249 | `	pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
+|   2431 |  250 | `	if( pFile == 0 ){` |
 |      - |  251 | `		/* Expand the magic word: ":MEMORY:" */` |
 |    ! 0 |  252 | `		ph7_value_string(pVal,":MEMORY:",(int)sizeof(":MEMORY:")-1);` |
 |    ! 0 |  253 | `	}else{` |
-|   2419 |  254 | `		ph7_value_string(pVal,pFile->zString,pFile->nByte);` |
+|   2431 |  254 | `		ph7_value_string(pVal,pFile->zString,pFile->nByte);` |
 |      - |  255 | `	}` |
-|   2419 |  256 | `}` |
+|   2431 |  256 | `}` |
 |      - |  257 | `/*` |
 |      - |  258 | ` * __DIR__` |
 |      - |  259 | ` *  Directory holding the processed script.` |
@@ -1139,20 +1139,20 @@ Coverage: 1104/1124 lines (98.22%)
 |      - | 1129 | ` * PATHINFO_EXTENSION` |
 |      - | 1130 | ` *  Expand 3.` |
 |      - | 1131 | ` */` |
-|   6474 | 1132 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
+|   6480 | 1132 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1133 | `{` |
-|   3237 | 1134 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6479 | 1135 | `	ph7_value_int(pVal,3);` |
-|   6479 | 1136 | `}` |
+|   3240 | 1134 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6485 | 1135 | `	ph7_value_int(pVal,3);` |
+|   6485 | 1136 | `}` |
 |      - | 1137 | `/*` |
 |      - | 1138 | ` * PATHINFO_FILENAME` |
 |      - | 1139 | ` *  Expand 4.` |
 |      - | 1140 | ` */` |
-|   6466 | 1141 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
+|   6472 | 1141 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1142 | `{` |
-|   3233 | 1143 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6471 | 1144 | `	ph7_value_int(pVal,4);` |
-|   6471 | 1145 | `}` |
+|   3236 | 1143 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6477 | 1144 | `	ph7_value_int(pVal,4);` |
+|   6477 | 1145 | `}` |
 |      - | 1146 | `/*` |
 |      - | 1147 | ` * ASSERT_ACTIVE.` |
 |      - | 1148 | ` *  PHP ASSERT_ACTIVE = 1` |
@@ -1310,20 +1310,20 @@ Coverage: 1104/1124 lines (98.22%)
 |      - | 1300 | ` * SCANDIR_SORT_ASCENDING` |
 |      - | 1301 | ` *  Expand 0` |
 |      - | 1302 | ` */` |
-|   1962 | 1303 | `static void PH7_SCANDIR_SORT_ASCENDING_Const(ph7_value *pVal,void *pUserData)` |
+|   1966 | 1303 | `static void PH7_SCANDIR_SORT_ASCENDING_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1304 | `{` |
-|    981 | 1305 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   1967 | 1306 | `	ph7_value_int(pVal,0);` |
-|   1967 | 1307 | `}` |
+|    983 | 1305 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   1971 | 1306 | `	ph7_value_int(pVal,0);` |
+|   1971 | 1307 | `}` |
 |      - | 1308 | `/*` |
 |      - | 1309 | ` * SCANDIR_SORT_DESCENDING` |
 |      - | 1310 | ` *  Expand 1` |
 |      - | 1311 | ` */` |
-|    982 | 1312 | `static void PH7_SCANDIR_SORT_DESCENDING_Const(ph7_value *pVal,void *pUserData)` |
+|    984 | 1312 | `static void PH7_SCANDIR_SORT_DESCENDING_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1313 | `{` |
-|    491 | 1314 | `	SXUNUSED(pUserData); /* cc warning */` |
-|    987 | 1315 | `	ph7_value_int(pVal,1);` |
-|    987 | 1316 | `}` |
+|    492 | 1314 | `	SXUNUSED(pUserData); /* cc warning */` |
+|    989 | 1315 | `	ph7_value_int(pVal,1);` |
+|    989 | 1316 | `}` |
 |      - | 1317 | `/*` |
 |      - | 1318 | ` * SCANDIR_SORT_NONE` |
 |      - | 1319 | ` *  Expand 2` |
