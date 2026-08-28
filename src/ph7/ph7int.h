@@ -1253,6 +1253,9 @@ struct ph7_vm
 	int bReflectBypass;         /* Consume-once: the next method OP_CALL skips the visibility
 	                             * check (ReflectionMethod::invoke bypasses protection like PHP
 	                             * 8.1+). Cleared by the check site; never survives past one call. */
+	char zDefTz[68];            /* date_default_timezone_set() identifier, stored verbatim like php
+	                             * (default "UTC"; only UTC/GMT are accepted — no tz database) */
+	sxu32 nDefTz;               /* zDefTz length in bytes */
 	SySet aShutdown;            /* Stack of shutdown user callbacks */
 	SySet aAutoload;            /* Stack of spl_autoload callbacks */
 	SyHash hAutoloadActive;     /* Classes currently being autoloaded (reentrancy guard) */
@@ -1992,6 +1995,7 @@ PH7_PRIVATE sxi32 PH7_VmThrowExceptionTrace(ph7_context *pCtx,const char *zClass
 PH7_PRIVATE void  PH7_VmExpandConstantValue(ph7_value *pVal,void *pUserData);
 PH7_PRIVATE sxi32 PH7_VmDump(ph7_vm *pVm,ProcConsumer xConsumer,void *pUserData);
 PH7_PRIVATE sxi32 PH7_VmEvalBuiltinChunk(ph7_vm *pVm,const char *zSrc,sxu32 nLen);
+PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm);
 PH7_PRIVATE const char * PH7_VmBuiltinSigLookup(const char *zName,sxu32 nLen,const char **pzRet);
 PH7_PRIVATE void PH7_VmStoreArgByRef(ph7_vm *pVm,ph7_value *pArg,ph7_value *pNewVal);
 PH7_PRIVATE void PH7_VmThrowDeprecatedFmt(ph7_vm *pVm,const char *zFmt,...);
@@ -2208,6 +2212,8 @@ PH7_PRIVATE int PH7_builtin_gmdate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 PH7_PRIVATE int PH7_builtin_localtime(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_mktime(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_date_default_timezone_get(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_date_default_timezone_set(ph7_context *pCtx,int nArg,ph7_value **apArg);
 /* vfs_zip.c function prototypes */
 PH7_PRIVATE int PH7_builtin_zip_open(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_zip_close(ph7_context *pCtx,int nArg,ph7_value **apArg);

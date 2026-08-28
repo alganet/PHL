@@ -583,6 +583,7 @@ static const struct VmBuiltinArity {
 	{ "stat",                      1, 0 },
 	/* Date family */
 	{ "date",                      1, 1 },
+	{ "date_default_timezone_set", 1, 1 },
 	{ "gmdate",                    1, 1 },
 	{ "gmmktime",                  1, 1 },
 	{ "idate",                     1, 1 },
@@ -2705,6 +2706,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	 * Still inside the bCompilingBuiltin window so its classes are flagged
 	 * internal; the Traversable pointer above must already be cached. */
 	PH7_VmInstallReflection(&(*pVm));
+	PH7_VmInstallDateTime(&(*pVm));
 	pVm->bCompilingBuiltin = 0;
 	/* Reset the code generator */
 	PH7_ResetCodeGenerator(&(*pVm),pEngine->xConf.xErr,pEngine->xConf.pErrData);
@@ -3183,6 +3185,8 @@ static const struct VmBuiltinSig {
 	{ "ctype_xdigit", "mixed $text", "bool" },
 	{ "current", "object|array $array", "mixed" },
 	{ "date", "string $format, ?int $timestamp = NULL", "string" },
+	{ "date_default_timezone_get", "", "string" },
+	{ "date_default_timezone_set", "string $timezoneId", "bool" },
 	{ "debug_backtrace", "int $options = 1, int $limit = 0", "array" },
 	{ "debug_print_backtrace", "int $options = 0, int $limit = 0", "void" },
 	{ "decbin", "int $num", "string" },
