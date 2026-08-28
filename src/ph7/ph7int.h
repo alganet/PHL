@@ -1209,6 +1209,15 @@ struct VmHookRmw
 	sxu32 nPc;                  /* pc of the consuming op (RMW: the modify op;
 	                             * coalesce: the OP_NULLC_STORE) */
 };
+
+/* One -d/-c php.ini directive queued for the INI chunk (name/value are
+ * allocator-owned copies; see PH7_VM_CONFIG_INI_ENTRY) */
+typedef struct VmIniEntry VmIniEntry;
+struct VmIniEntry
+{
+	SyString sName;
+	SyString sValue;
+};
 struct ph7_vm
 {
 	SyMemBackend sAllocator;	/* Memory backend */
@@ -1257,6 +1266,8 @@ struct ph7_vm
 	                             * (default "UTC"; only UTC/GMT are accepted — no tz database) */
 	sxu32 nDefTz;               /* zDefTz length in bytes */
 	SySet aShutdown;            /* Stack of shutdown user callbacks */
+	SySet aIniCli;              /* php.ini directives from the CLI (-d/-c): VmIniEntry copies,
+	                             * drained lazily by the INI chunk's __ini_cli() thunk */
 	SySet aAutoload;            /* Stack of spl_autoload callbacks */
 	SyHash hAutoloadActive;     /* Classes currently being autoloaded (reentrancy guard) */
 	SyHash hTypedSlot;          /* memobj nIdx -> VmClassAttr* for typed property enforcement */
@@ -2218,6 +2229,8 @@ PH7_PRIVATE int PH7_builtin_date_default_timezone_set(ph7_context *pCtx,int nArg
 PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm);
 /* vm_builtin_session.c */
 PH7_PRIVATE sxi32 PH7_VmInstallSession(ph7_vm *pVm);
+/* vm_builtin_ini.c */
+PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm);
 /* vfs_zip.c function prototypes */
 PH7_PRIVATE int PH7_builtin_zip_open(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_zip_close(ph7_context *pCtx,int nArg,ph7_value **apArg);

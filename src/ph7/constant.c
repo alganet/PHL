@@ -573,6 +573,30 @@ static void PH7_PHP_SESSION_ACTIVE_Const(ph7_value *pVal,void *pUserData)
 	SXUNUSED(pUserData);
 }
 /*
+ * INI_USER / INI_PERDIR / INI_SYSTEM / INI_ALL
+ *  php.ini access levels (1 / 2 / 4 / 7).
+ */
+static void PH7_INI_USER_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,1);
+	SXUNUSED(pUserData);
+}
+static void PH7_INI_PERDIR_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,2);
+	SXUNUSED(pUserData);
+}
+static void PH7_INI_SYSTEM_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,4);
+	SXUNUSED(pUserData);
+}
+static void PH7_INI_ALL_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,7);
+	SXUNUSED(pUserData);
+}
+/*
  * SPHP_ROUND_HALF_DOWN
  *  Expands 2.
  */
@@ -2066,6 +2090,10 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"PHP_SESSION_DISABLED", PH7_PHP_SESSION_DISABLED_Const },
 	{"PHP_SESSION_NONE",     PH7_PHP_SESSION_NONE_Const },
 	{"PHP_SESSION_ACTIVE",   PH7_PHP_SESSION_ACTIVE_Const },
+	{"INI_USER",             PH7_INI_USER_Const },
+	{"INI_PERDIR",           PH7_INI_PERDIR_Const },
+	{"INI_SYSTEM",           PH7_INI_SYSTEM_Const },
+	{"INI_ALL",              PH7_INI_ALL_Const },
 	{"PASSWORD_BCRYPT",      PH7_PASSWORD_BCRYPT_Const },
 	{"PASSWORD_DEFAULT",     PH7_PASSWORD_BCRYPT_Const },
 	{"PASSWORD_BCRYPT_DEFAULT_COST", PH7_PASSWORD_COST_Const },

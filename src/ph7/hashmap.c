@@ -2163,12 +2163,25 @@ static sxi32 HashmapCmpCallback1(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void 
  * AS A STRING ("5" < "b", so int keys land before alphabetic ones — pre-fix
  * PHL cast "b" to 0 and sorted string keys first).
  */
+/* True lexicographic compare (memcmp on the common prefix, length breaks
+ * ties) — SyBlobCmp compares LENGTH first, which is fine for equality but
+ * wrong for ordering ("c" would sort before "a.y"). */
+static sxi32 HashmapLexCmp(const char *zA,sxu32 nA,const char *zB,sxu32 nB)
+{
+	sxu32 nMin = nA < nB ? nA : nB;
+	sxi32 rc = nMin ? SyMemcmp(zA,zB,nMin) : 0;
+	if( rc == 0 ){
+		rc = (sxi32)nA - (sxi32)nB;
+	}
+	return rc;
+}
 static sxi32 HashmapKeyNodeCmp(ph7_hashmap_node *pA,ph7_hashmap_node *pB)
 {
 	sxi32 rc;
 	if( pA->iType == HASHMAP_BLOB_NODE && pB->iType == HASHMAP_BLOB_NODE ){
 		/* Perform a string comparison */
-		rc = SyBlobCmp(&pA->xKey.sKey,&pB->xKey.sKey);
+		rc = HashmapLexCmp((const char *)SyBlobData(&pA->xKey.sKey),SyBlobLength(&pA->xKey.sKey),
+			(const char *)SyBlobData(&pB->xKey.sKey),SyBlobLength(&pB->xKey.sKey));
 	}else{
 		SyString sStr;
 		sxi64 iA = 0,iB = 0;
@@ -2211,7 +2224,7 @@ static sxi32 HashmapKeyNodeCmp(ph7_hashmap_node *pA,ph7_hashmap_node *pB)
 			}else{
 				SyStringInitFromBuf(&sB,SyBlobData(&pB->xKey.sKey),SyBlobLength(&pB->xKey.sKey));
 			}
-			rc = SyStrncmp(sA.zString,sB.zString,SXMAX(sA.nByte,sB.nByte));
+			rc = HashmapLexCmp(sA.zString,sA.nByte,sB.zString,sB.nByte);
 		}
 	}
 	return rc;

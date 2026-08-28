@@ -53,6 +53,7 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/vm$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_builtin_class$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_builtin_getopt$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/vm_builtin_ini$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_builtin_ob$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_builtin_reflection$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_builtin_session$(OBJ_SUFFIX) \
