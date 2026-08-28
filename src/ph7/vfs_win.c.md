@@ -165,20 +165,20 @@ Coverage: 487/710 lines (68.59%)
 |    5 |  155 | `}` |
 |    - |  156 | `/* int (*xMkdir)(const char *,int,int) */` |
 |    - |  157 | `static int WinVfs_mkdir(const char *zPath,int mode,int recursive)` |
-|    1 |  158 | `{` |
+|    2 |  158 | `{` |
 |    - |  159 | `	void * pConverted;` |
 |    - |  160 | `	BOOL rc;` |
-|    1 |  161 | `	pConverted = convertUtf8Filename(zPath);` |
-|    1 |  162 | `	if( pConverted == 0 ){` |
+|    2 |  161 | `	pConverted = convertUtf8Filename(zPath);` |
+|    2 |  162 | `	if( pConverted == 0 ){` |
 |  ! 0 |  163 | `		return -1;` |
 |    - |  164 | `	}` |
-|    1 |  165 | `	mode= 0; /* MSVC warning */` |
-|    1 |  166 | `	recursive = 0;` |
-|    1 |  167 | `	rc = CreateDirectoryW((LPCWSTR)pConverted,0);` |
-|    1 |  168 | `	if( !rc ){ WinVfsMapErrno(); }` |
-|    1 |  169 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    1 |  170 | `	return rc ? PH7_OK : -1;` |
-|    1 |  171 | `}` |
+|    2 |  165 | `	mode= 0; /* MSVC warning */` |
+|    2 |  166 | `	recursive = 0;` |
+|    2 |  167 | `	rc = CreateDirectoryW((LPCWSTR)pConverted,0);` |
+|    2 |  168 | `	if( !rc ){ WinVfsMapErrno(); }` |
+|    2 |  169 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    2 |  170 | `	return rc ? PH7_OK : -1;` |
+|    2 |  171 | `}` |
 |    - |  172 | `/* int (*xRmdir)(const char *) */` |
 |    - |  173 | `static int WinVfs_rmdir(const char *zPath)` |
 |    1 |  174 | `{` |
@@ -358,21 +358,21 @@ Coverage: 487/710 lines (68.59%)
 |  ! 0 |  348 | `}` |
 |    - |  349 | `/* int (*xFileExists)(const char *) */` |
 |    - |  350 | `static int WinVfs_FileExists(const char *zPath)` |
-|    1 |  351 | `{` |
-|    1 |  352 | `	zPath = WinVfsLocalPath(zPath);` |
+|    2 |  351 | `{` |
+|    2 |  352 | `	zPath = WinVfsLocalPath(zPath);` |
 |    - |  353 | `	void * pConverted;` |
 |    - |  354 | `	DWORD dwAttr;` |
-|    1 |  355 | `	pConverted = convertUtf8Filename(zPath);` |
-|    1 |  356 | `	if( pConverted == 0 ){` |
+|    2 |  355 | `	pConverted = convertUtf8Filename(zPath);` |
+|    2 |  356 | `	if( pConverted == 0 ){` |
 |  ! 0 |  357 | `		return -1;` |
 |    - |  358 | `	}` |
-|    1 |  359 | `	dwAttr = GetFileAttributesW((LPCWSTR)pConverted);` |
-|    1 |  360 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    1 |  361 | `	if( dwAttr == INVALID_FILE_ATTRIBUTES ){` |
-|    1 |  362 | `		return -1;` |
+|    2 |  359 | `	dwAttr = GetFileAttributesW((LPCWSTR)pConverted);` |
+|    2 |  360 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    2 |  361 | `	if( dwAttr == INVALID_FILE_ATTRIBUTES ){` |
+|    2 |  362 | `		return -1;` |
 |    - |  363 | `	}` |
-|    1 |  364 | `	return PH7_OK;` |
-|    1 |  365 | `}` |
+|    2 |  364 | `	return PH7_OK;` |
+|    2 |  365 | `}` |
 |    - |  366 | `/* Open a file in a read-only mode */` |
 |    - |  367 | `static HANDLE OpenReadOnly(LPCWSTR pPath)` |
 |    5 |  368 | `{` |
@@ -803,26 +803,26 @@ Coverage: 487/710 lines (68.59%)
 |    5 |  793 | `}` |
 |    - |  794 | `/* void (*xTempDir)(ph7_context *) */` |
 |    - |  795 | `static void WinVfs_TempDir(ph7_context *pCtx)` |
-|    3 |  796 | `{` |
+|    5 |  796 | `{` |
 |    - |  797 | `	CHAR zTemp[1024];` |
 |    - |  798 | `	DWORD n;` |
-|    3 |  799 | `	n = GetTempPathA(sizeof(zTemp),zTemp);` |
-|    3 |  800 | `	if( n < 1 ){` |
+|    5 |  799 | `	n = GetTempPathA(sizeof(zTemp),zTemp);` |
+|    5 |  800 | `	if( n < 1 ){` |
 |    - |  801 | `		/* Assume the default windows temp directory */` |
 |  ! 0 |  802 | `		ph7_result_string(pCtx,"C:\\Windows\\Temp",-1/*Compute length automatically*/);` |
 |  ! 0 |  803 | `	}else{` |
-|    3 |  804 | `		ph7_result_string(pCtx,zTemp,(int)n);` |
+|    5 |  804 | `		ph7_result_string(pCtx,zTemp,(int)n);` |
 |    - |  805 | `	}` |
-|    3 |  806 | `}` |
+|    5 |  806 | `}` |
 |    - |  807 | `/* unsigned int (*xProcessId)(void) */` |
 |    - |  808 | `static unsigned int WinVfs_ProcessId(void)` |
-|    1 |  809 | `{` |
-|    1 |  810 | `	DWORD nID = 0;` |
+|    2 |  809 | `{` |
+|    2 |  810 | `	DWORD nID = 0;` |
 |    - |  811 | `#ifndef __MINGW32__` |
-|    1 |  812 | `	nID = GetProcessId(GetCurrentProcess());` |
+|    2 |  812 | `	nID = GetProcessId(GetCurrentProcess());` |
 |    - |  813 | `#endif /* __MINGW32__ */` |
-|    1 |  814 | `	return (unsigned int)nID;` |
-|    1 |  815 | `}` |
+|    2 |  814 | `	return (unsigned int)nID;` |
+|    2 |  815 | `}` |
 |    - |  816 | `/* void (*xUsername)(ph7_context *) */` |
 |    - |  817 | `static void WinVfs_Username(ph7_context *pCtx)` |
 |    1 |  818 | `{` |

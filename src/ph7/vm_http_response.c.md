@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 114/255 lines (44.71%)
+Coverage: 126/255 lines (49.41%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -203,12 +203,12 @@ Coverage: 114/255 lines (44.71%)
 |     - |  193 | ` * bool headers_sent()` |
 |     - |  194 | ` *   Returns TRUE if headers have already been sent (output started).` |
 |     - |  195 | ` */` |
-|     8 |  196 | `static int vm_builtin_headers_sent(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     1 |  197 | `{` |
-|     4 |  198 | `	(void)nArg; (void)apArg;` |
-|     9 |  199 | `	ph7_result_bool(pCtx, pCtx->pVm->bHeadersSent);` |
-|     9 |  200 | `	return PH7_OK;` |
-|     1 |  201 | `}` |
+|    16 |  196 | `static int vm_builtin_headers_sent(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     3 |  197 | `{` |
+|     8 |  198 | `	(void)nArg; (void)apArg;` |
+|    19 |  199 | `	ph7_result_bool(pCtx, pCtx->pVm->bHeadersSent);` |
+|    19 |  200 | `	return PH7_OK;` |
+|     3 |  201 | `}` |
 |     - |  202 | `/*` |
 |     - |  203 | ` * array headers_list()` |
 |     - |  204 | ` *   Returns a list of response headers as "Name: Value" strings.` |
@@ -280,19 +280,19 @@ Coverage: 114/255 lines (44.71%)
 |     - |  270 | ` * Internal helper for setcookie/setrawcookie.` |
 |     - |  271 | ` * Builds a Set-Cookie header and appends it (never replaces).` |
 |     - |  272 | ` */` |
-|   ! 0 |  273 | `static int VmSetCookieImpl(ph7_context *pCtx, int nArg, ph7_value **apArg, int bEncode)` |
-|   ! 0 |  274 | `{` |
-|   ! 0 |  275 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     2 |  273 | `static int VmSetCookieImpl(ph7_context *pCtx, int nArg, ph7_value **apArg, int bEncode)` |
+|     1 |  274 | `{` |
+|     3 |  275 | `	ph7_vm *pVm = pCtx->pVm;` |
 |     - |  276 | `	const char *zName, *zValue;` |
 |     - |  277 | `	int nNameLen, nValueLen;` |
 |     - |  278 | `	SyBlob sWorker;` |
-|   ! 0 |  279 | `	if( nArg < 1 ){` |
+|     3 |  279 | `	if( nArg < 1 ){` |
 |   ! 0 |  280 | `		ph7_result_bool(pCtx, 0);` |
 |   ! 0 |  281 | `		return PH7_OK;` |
 |     - |  282 | `	}` |
-|   ! 0 |  283 | `	if( !pVm->bHttpContext ){` |
-|   ! 0 |  284 | `		ph7_result_bool(pCtx, 0);` |
-|   ! 0 |  285 | `		return PH7_OK;` |
+|     3 |  283 | `	if( !pVm->bHttpContext ){` |
+|     3 |  284 | `		ph7_result_bool(pCtx, 0);` |
+|     3 |  285 | `		return PH7_OK;` |
 |     - |  286 | `	}` |
 |   ! 0 |  287 | `	if( pVm->bHeadersSent ){` |
 |   ! 0 |  288 | `		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Cannot modify header information - headers already sent");` |
@@ -385,15 +385,15 @@ Coverage: 114/255 lines (44.71%)
 |   ! 0 |  375 | `	SyBlobRelease(&sWorker);` |
 |   ! 0 |  376 | `	ph7_result_bool(pCtx, 1);` |
 |   ! 0 |  377 | `	return PH7_OK;` |
-|   ! 0 |  378 | `}` |
+|     2 |  378 | `}` |
 |     - |  379 | `/*` |
 |     - |  380 | ` * bool setcookie(string $name [, string $value [, int $expires [, string $path` |
 |     - |  381 | ` *                [, string $domain [, bool $secure [, bool $httponly]]]]]])` |
 |     - |  382 | ` */` |
-|   ! 0 |  383 | `static int vm_builtin_setcookie(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|   ! 0 |  384 | `{` |
-|   ! 0 |  385 | `	return VmSetCookieImpl(pCtx, nArg, apArg, 1 /* URL-encode */);` |
-|   ! 0 |  386 | `}` |
+|     2 |  383 | `static int vm_builtin_setcookie(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     1 |  384 | `{` |
+|     3 |  385 | `	return VmSetCookieImpl(pCtx, nArg, apArg, 1 /* URL-encode */);` |
+|     1 |  386 | `}` |
 |     - |  387 | `/*` |
 |     - |  388 | ` * bool setrawcookie(string $name [, string $value [, ...]])` |
 |     - |  389 | ` */` |
@@ -404,7 +404,7 @@ Coverage: 114/255 lines (44.71%)
 |     - |  394 | `/*` |
 |     - |  395 | ` * Register all HTTP response functions with the VM.` |
 |     - |  396 | ` */` |
-|  3488 |  397 | `PH7_PRIVATE void PH7_RegisterHttpResponseFunctions(ph7_vm *pVm)` |
+|  3496 |  397 | `PH7_PRIVATE void PH7_RegisterHttpResponseFunctions(ph7_vm *pVm)` |
 |     5 |  398 | `{` |
 |     - |  399 | `	static const ph7_builtin_func aFunc[] = {` |
 |     - |  400 | `		{ "header",             vm_builtin_header             },` |
@@ -416,8 +416,8 @@ Coverage: 114/255 lines (44.71%)
 |     - |  406 | `		{ "setrawcookie",       vm_builtin_setrawcookie       },` |
 |     - |  407 | `	};` |
 |     - |  408 | `	sxu32 n;` |
-| 27909 |  409 | `	for( n = 0; n < SX_ARRAYSIZE(aFunc); n++ ){` |
-| 24421 |  410 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
-| 12213 |  411 | `	}` |
-|  3493 |  412 | `}` |
+| 27973 |  409 | `	for( n = 0; n < SX_ARRAYSIZE(aFunc); n++ ){` |
+| 24477 |  410 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
+| 12241 |  411 | `	}` |
+|  3501 |  412 | `}` |
 |     - |  413 |  |

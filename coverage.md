@@ -1,11 +1,11 @@
 | Filename                       | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
 | src/ph7/api.c                  | 70.86%   | 778/1098    |
-| src/ph7/builtin.c              | 86.41%   | 4344/5027   |
+| src/ph7/builtin.c              | 86.53%   | 4350/5027   |
 | src/ph7/builtin_date.c         | 73.04%   | 1192/1632   |
 | src/ph7/builtin_math.c         | 87.35%   | 525/601     |
 | src/ph7/compile.c              | 80.73%   | 7013/8687   |
-| src/ph7/constant.c             | 98.22%   | 1104/1124   |
+| src/ph7/constant.c             | 98.24%   | 1119/1139   |
 | src/ph7/hashmap.c              | 90.58%   | 3989/4404   |
 | src/ph7/lex.c                  | 92.91%   | 786/846     |
 | src/ph7/memobj.c               | 88.57%   | 891/1006    |
@@ -16,14 +16,15 @@
 | src/ph7/vfs_unix.c             | 88.06%   | 376/427     |
 | src/ph7/vfs_win.c              | 68.59%   | 487/710     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
-| src/ph7/vm.c                   | 82.60%   | 10935/13238 |
+| src/ph7/vm.c                   | 82.60%   | 10936/13239 |
 | src/ph7/vm_builtin_class.c     | 87.44%   | 564/645     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
 | src/ph7/vm_builtin_ob.c        | 75.12%   | 157/209     |
 | src/ph7/vm_builtin_reflection.c | 85.47%   | 1035/1211   |
+| src/ph7/vm_builtin_session.c   | 100.00%  | 4/4         |
 | src/ph7/vm_builtin_spl.c       | 38.46%   | 5/13        |
 | src/ph7/vm_http.c              | 68.02%   | 302/444     |
-| src/ph7/vm_http_response.c     | 44.71%   | 114/255     |
+| src/ph7/vm_http_response.c     | 49.41%   | 126/255     |
 | src/ph7/vm_json.c              | 77.92%   | 494/634     |
 | src/ph7/vm_pcre.c              | 65.87%   | 604/917     |
 | src/ph7/vm_serialize.c         | 96.02%   | 458/477     |
@@ -46,5 +47,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.27%   | 44088/54249 |
-| Functions                      | 96.58%   | 2006/2077   |
+| Lines                          | 81.31%   | 44126/54269 |
+| Functions                      | 96.68%   | 2012/2081   |

@@ -119,21 +119,21 @@ Coverage: 458/477 lines (96.02%)
 |   53 |  109 | `	SyBlobAppend(pOut,";",1);` |
 |   53 |  110 | `}` |
 |    - |  111 | `/* Emit s:<bytelen>:"<raw>"; for an arbitrary byte string. */` |
-|   60 |  112 | `static void VmSerializeRawString(SyBlob *pOut, const char *z, int n)` |
-|    1 |  113 | `{` |
-|   61 |  114 | `	SyBlobFormat(pOut,"s:%u:\"",(unsigned)n);` |
-|   61 |  115 | `	if( n > 0 ){ SyBlobAppend(pOut,z,(sxu32)n); }` |
-|   61 |  116 | `	SyBlobAppend(pOut,"\";",2);` |
-|   61 |  117 | `}` |
+|   64 |  112 | `static void VmSerializeRawString(SyBlob *pOut, const char *z, int n)` |
+|    2 |  113 | `{` |
+|   66 |  114 | `	SyBlobFormat(pOut,"s:%u:\"",(unsigned)n);` |
+|   66 |  115 | `	if( n > 0 ){ SyBlobAppend(pOut,z,(sxu32)n); }` |
+|   66 |  116 | `	SyBlobAppend(pOut,"\";",2);` |
+|   66 |  117 | `}` |
 |    - |  118 | `/* Array walker: serialize key then value. */` |
-|   64 |  119 | `static int VmSerializeArrayWalk(ph7_value *pKey, ph7_value *pValue, void *pUserData)` |
-|    1 |  120 | `{` |
-|   65 |  121 | `	serialize_data *pData = (serialize_data *)pUserData;` |
-|   65 |  122 | `	if( pData->err \|\| pData->exc ){ return PH7_OK; }` |
-|   63 |  123 | `	VmSerialize(pKey,pData);   /* an int or string key -> i:/s: */` |
-|   63 |  124 | `	VmSerialize(pValue,pData);` |
-|   63 |  125 | `	return PH7_OK;` |
-|   33 |  126 | `}` |
+|   68 |  119 | `static int VmSerializeArrayWalk(ph7_value *pKey, ph7_value *pValue, void *pUserData)` |
+|    2 |  120 | `{` |
+|   70 |  121 | `	serialize_data *pData = (serialize_data *)pUserData;` |
+|   70 |  122 | `	if( pData->err \|\| pData->exc ){ return PH7_OK; }` |
+|   68 |  123 | `	VmSerialize(pKey,pData);   /* an int or string key -> i:/s: */` |
+|   68 |  124 | `	VmSerialize(pValue,pData);` |
+|   68 |  125 | `	return PH7_OK;` |
+|   36 |  126 | `}` |
 |    - |  127 | `/* Emit an object property key with the proper visibility mangling. */` |
 |   26 |  128 | `static void VmSerializePropKey(SyBlob *pOut, ph7_class_attr *pAttr)` |
 |    1 |  129 | `{` |
@@ -304,72 +304,72 @@ Coverage: 458/477 lines (96.02%)
 |   23 |  294 | `	SyBlobRelease(&sBody);` |
 |   23 |  295 | `	return pData->exc ? PH7_EXCEPTION : PH7_OK;` |
 |   18 |  296 | `}` |
-|  292 |  297 | `static sxi32 VmSerialize(ph7_value *pIn, serialize_data *pData)` |
-|    1 |  298 | `{` |
-|  293 |  299 | `	SyBlob *pOut = pData->pOut;` |
-|  293 |  300 | `	if( pData->err \|\| pData->exc ){ return PH7_OK; }` |
-|  293 |  301 | `	if( pData->depth > SERIALIZE_MAX_DEPTH ){ pData->err = 1; return PH7_OK; }` |
-|  293 |  302 | `	if( ph7_value_is_null(pIn) ){` |
+|  306 |  297 | `static sxi32 VmSerialize(ph7_value *pIn, serialize_data *pData)` |
+|    2 |  298 | `{` |
+|  308 |  299 | `	SyBlob *pOut = pData->pOut;` |
+|  308 |  300 | `	if( pData->err \|\| pData->exc ){ return PH7_OK; }` |
+|  308 |  301 | `	if( pData->depth > SERIALIZE_MAX_DEPTH ){ pData->err = 1; return PH7_OK; }` |
+|  308 |  302 | `	if( ph7_value_is_null(pIn) ){` |
 |    7 |  303 | `		SyBlobAppend(pOut,"N;",2);` |
-|  290 |  304 | `	}else if( ph7_value_is_bool(pIn) ){` |
+|  305 |  304 | `	}else if( ph7_value_is_bool(pIn) ){` |
 |   11 |  305 | `		SyBlobAppend(pOut, ph7_value_to_bool(pIn) ? "b:1;" : "b:0;", 4);` |
-|  282 |  306 | `	}else if( ph7_value_is_float(pIn) ){` |
+|  297 |  306 | `	}else if( ph7_value_is_float(pIn) ){` |
 |    - |  307 | `		/* Check float (MEMOBJ_REAL) before int: ph7_value_is_int is lenient and` |
 |    - |  308 | `		 * also reports true for an integer-valued real (which caches its int). */` |
 |   53 |  309 | `		VmSerializeReal(pOut,ph7_value_to_double(pIn));` |
-|  251 |  310 | `	}else if( ph7_value_is_int(pIn) ){` |
-|  119 |  311 | `		SyBlobFormat(pOut,"i:%qd;",ph7_value_to_int64(pIn));` |
-|  166 |  312 | `	}else if( ph7_value_is_string(pIn) ){` |
+|  266 |  310 | `	}else if( ph7_value_is_int(pIn) ){` |
+|  128 |  311 | `		SyBlobFormat(pOut,"i:%qd;",ph7_value_to_int64(pIn));` |
+|  177 |  312 | `	}else if( ph7_value_is_string(pIn) ){` |
 |    - |  313 | `		int nByte;` |
-|   45 |  314 | `		const char *z = ph7_value_to_string(pIn,&nByte);` |
-|   45 |  315 | `		VmSerializeRawString(pOut,z,nByte);` |
-|   85 |  316 | `	}else if( ph7_value_is_array(pIn) ){` |
-|   29 |  317 | `		SyBlobFormat(pOut,"a:%u:{",ph7_array_count(pIn));` |
-|   29 |  318 | `		pData->depth++;` |
-|   29 |  319 | `		ph7_array_walk(pIn,VmSerializeArrayWalk,pData);` |
-|   29 |  320 | `		pData->depth--;` |
-|   29 |  321 | `		SyBlobAppend(pOut,"}",1);` |
-|   49 |  322 | `	}else if( ph7_value_is_object(pIn) ){` |
+|   50 |  314 | `		const char *z = ph7_value_to_string(pIn,&nByte);` |
+|   50 |  315 | `		VmSerializeRawString(pOut,z,nByte);` |
+|   90 |  316 | `	}else if( ph7_value_is_array(pIn) ){` |
+|   32 |  317 | `		SyBlobFormat(pOut,"a:%u:{",ph7_array_count(pIn));` |
+|   32 |  318 | `		pData->depth++;` |
+|   32 |  319 | `		ph7_array_walk(pIn,VmSerializeArrayWalk,pData);` |
+|   32 |  320 | `		pData->depth--;` |
+|   32 |  321 | `		SyBlobAppend(pOut,"}",1);` |
+|   50 |  322 | `	}else if( ph7_value_is_object(pIn) ){` |
 |   35 |  323 | `		return VmSerializeObject(pIn,pData);` |
 |  ! 0 |  324 | `	}else{` |
 |    - |  325 | `		/* resource or unknown -> PHP emits i:0; for resources */` |
 |  ! 0 |  326 | `		SyBlobAppend(pOut,"i:0;",4);` |
 |    - |  327 | `	}` |
-|  259 |  328 | `	return PH7_OK;` |
-|  147 |  329 | `}` |
+|  274 |  328 | `	return PH7_OK;` |
+|  155 |  329 | `}` |
 |    - |  330 | `/*` |
 |    - |  331 | ` * string serialize(mixed $value)` |
 |    - |  332 | ` *  Returns a storable representation of a value.` |
 |    - |  333 | ` */` |
-|  142 |  334 | `PH7_PRIVATE int vm_builtin_serialize(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|    1 |  335 | `{` |
+|  148 |  334 | `PH7_PRIVATE int vm_builtin_serialize(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|    2 |  335 | `{` |
 |    - |  336 | `	serialize_data sData;` |
 |    - |  337 | `	SyBlob sOut;` |
-|  143 |  338 | `	if( nArg < 1 ){` |
+|  150 |  338 | `	if( nArg < 1 ){` |
 |  ! 0 |  339 | `		ph7_result_bool(pCtx,0);` |
 |  ! 0 |  340 | `		return PH7_OK;` |
 |    - |  341 | `	}` |
-|  143 |  342 | `	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);` |
-|  143 |  343 | `	sData.pVm = pCtx->pVm;` |
-|  143 |  344 | `	sData.pCtx = pCtx;` |
-|  143 |  345 | `	sData.pOut = &sOut;` |
-|  143 |  346 | `	sData.depth = 0;` |
-|  143 |  347 | `	sData.exc = 0;` |
-|  143 |  348 | `	sData.err = 0;` |
-|  143 |  349 | `	VmSerialize(apArg[0],&sData);` |
-|  143 |  350 | `	if( sData.exc ){` |
+|  150 |  342 | `	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);` |
+|  150 |  343 | `	sData.pVm = pCtx->pVm;` |
+|  150 |  344 | `	sData.pCtx = pCtx;` |
+|  150 |  345 | `	sData.pOut = &sOut;` |
+|  150 |  346 | `	sData.depth = 0;` |
+|  150 |  347 | `	sData.exc = 0;` |
+|  150 |  348 | `	sData.err = 0;` |
+|  150 |  349 | `	VmSerialize(apArg[0],&sData);` |
+|  150 |  350 | `	if( sData.exc ){` |
 |    9 |  351 | `		SyBlobRelease(&sOut);` |
 |    9 |  352 | `		return PH7_EXCEPTION;` |
 |    - |  353 | `	}` |
-|  135 |  354 | `	if( sData.err ){` |
+|  142 |  354 | `	if( sData.err ){` |
 |  ! 0 |  355 | `		SyBlobRelease(&sOut);` |
 |  ! 0 |  356 | `		ph7_result_bool(pCtx,0);` |
 |  ! 0 |  357 | `		return PH7_OK;` |
 |    - |  358 | `	}` |
-|  135 |  359 | `	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));` |
-|  135 |  360 | `	SyBlobRelease(&sOut);` |
-|  135 |  361 | `	return PH7_OK;` |
-|   72 |  362 | `}` |
+|  142 |  359 | `	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));` |
+|  142 |  360 | `	SyBlobRelease(&sOut);` |
+|  142 |  361 | `	return PH7_OK;` |
+|   76 |  362 | `}` |
 |    - |  363 |  |
 |    - |  364 | `/* ----------------------------------------------------------------------------` |
 |    - |  365 | ` * Unserializer` |
@@ -386,56 +386,56 @@ Coverage: 458/477 lines (96.02%)
 |    - |  376 | `};` |
 |    - |  377 | `static ph7_value * VmUnserializeValue(unserialize_data *ud);` |
 |    - |  378 | `/* Consume the single expected character; 0 on mismatch/EOF. */` |
-|  444 |  379 | `static int VmUnExpect(unserialize_data *ud, char c)` |
-|    1 |  380 | `{` |
-|  445 |  381 | `	if( ud->zCur < ud->zEnd && ud->zCur[0] == c ){ ud->zCur++; return 1; }` |
+|  502 |  379 | `static int VmUnExpect(unserialize_data *ud, char c)` |
+|    2 |  380 | `{` |
+|  504 |  381 | `	if( ud->zCur < ud->zEnd && ud->zCur[0] == c ){ ud->zCur++; return 1; }` |
 |    7 |  382 | `	return 0;` |
-|  223 |  383 | `}` |
+|  253 |  383 | `}` |
 |    - |  384 | `/* Parse an unsigned decimal into *pOut; 0 on no-digit/overflow. */` |
-|   52 |  385 | `static int VmUnParseUInt(unserialize_data *ud, sxu32 *pOut)` |
-|    1 |  386 | `{` |
-|   53 |  387 | `	sxu32 v = 0;` |
-|   53 |  388 | `	int n = 0;` |
-|  111 |  389 | `	while( ud->zCur < ud->zEnd && ud->zCur[0] >= '0' && ud->zCur[0] <= '9' ){` |
-|   59 |  390 | `		sxu32 d = (sxu32)(ud->zCur[0] - '0');` |
-|   59 |  391 | `		if( v > (0xFFFFFFFFU - d)/10 ){ return 0; } /* overflow */` |
-|   59 |  392 | `		v = v*10 + d;` |
-|   59 |  393 | `		ud->zCur++; n++;` |
-|    1 |  394 | `	}` |
-|   53 |  395 | `	if( n == 0 ){ return 0; }` |
-|   53 |  396 | `	*pOut = v;` |
-|   53 |  397 | `	return 1;` |
-|   27 |  398 | `}` |
+|   58 |  385 | `static int VmUnParseUInt(unserialize_data *ud, sxu32 *pOut)` |
+|    2 |  386 | `{` |
+|   60 |  387 | `	sxu32 v = 0;` |
+|   60 |  388 | `	int n = 0;` |
+|  124 |  389 | `	while( ud->zCur < ud->zEnd && ud->zCur[0] >= '0' && ud->zCur[0] <= '9' ){` |
+|   66 |  390 | `		sxu32 d = (sxu32)(ud->zCur[0] - '0');` |
+|   66 |  391 | `		if( v > (0xFFFFFFFFU - d)/10 ){ return 0; } /* overflow */` |
+|   66 |  392 | `		v = v*10 + d;` |
+|   66 |  393 | `		ud->zCur++; n++;` |
+|    2 |  394 | `	}` |
+|   60 |  395 | `	if( n == 0 ){ return 0; }` |
+|   60 |  396 | `	*pOut = v;` |
+|   60 |  397 | `	return 1;` |
+|   31 |  398 | `}` |
 |    - |  399 | `/* Parse a signed 64-bit decimal into *pOut; 0 on failure. */` |
-|   54 |  400 | `static int VmUnParseInt64(unserialize_data *ud, ph7_int64 *pOut)` |
-|    1 |  401 | `{` |
-|   55 |  402 | `	int neg = 0, n = 0;` |
-|   55 |  403 | `	sxu64 v = 0;` |
-|   55 |  404 | `	if( ud->zCur < ud->zEnd && (ud->zCur[0]=='-' \|\| ud->zCur[0]=='+') ){` |
+|   62 |  400 | `static int VmUnParseInt64(unserialize_data *ud, ph7_int64 *pOut)` |
+|    2 |  401 | `{` |
+|   64 |  402 | `	int neg = 0, n = 0;` |
+|   64 |  403 | `	sxu64 v = 0;` |
+|   64 |  404 | `	if( ud->zCur < ud->zEnd && (ud->zCur[0]=='-' \|\| ud->zCur[0]=='+') ){` |
 |    5 |  405 | `		neg = (ud->zCur[0]=='-'); ud->zCur++;` |
 |    2 |  406 | `	}` |
-|  119 |  407 | `	while( ud->zCur < ud->zEnd && ud->zCur[0] >= '0' && ud->zCur[0] <= '9' ){` |
-|   65 |  408 | `		v = v*10 + (sxu64)(ud->zCur[0]-'0');` |
-|   65 |  409 | `		ud->zCur++; n++;` |
-|    1 |  410 | `	}` |
-|   55 |  411 | `	if( n == 0 ){ return 0; }` |
-|   55 |  412 | `	*pOut = neg ? (ph7_int64)(0ULL - v) : (ph7_int64)v;` |
-|   55 |  413 | `	return 1;` |
-|   28 |  414 | `}` |
+|  138 |  407 | `	while( ud->zCur < ud->zEnd && ud->zCur[0] >= '0' && ud->zCur[0] <= '9' ){` |
+|   76 |  408 | `		v = v*10 + (sxu64)(ud->zCur[0]-'0');` |
+|   76 |  409 | `		ud->zCur++; n++;` |
+|    2 |  410 | `	}` |
+|   64 |  411 | `	if( n == 0 ){ return 0; }` |
+|   64 |  412 | `	*pOut = neg ? (ph7_int64)(0ULL - v) : (ph7_int64)v;` |
+|   64 |  413 | `	return 1;` |
+|   33 |  414 | `}` |
 |    - |  415 | `/* Parse s:<len>:"<len bytes>"; returning the raw view (zStr,nStr). */` |
-|   20 |  416 | `static int VmUnParseString(unserialize_data *ud, const char **pzStr, int *pnStr)` |
-|    1 |  417 | `{` |
+|   24 |  416 | `static int VmUnParseString(unserialize_data *ud, const char **pzStr, int *pnStr)` |
+|    2 |  417 | `{` |
 |    - |  418 | `	sxu32 nLen;` |
-|   21 |  419 | `	if( !VmUnExpect(ud,'s') \|\| !VmUnExpect(ud,':') ){ return 0; }` |
-|   21 |  420 | `	if( !VmUnParseUInt(ud,&nLen) ){ return 0; }` |
-|   21 |  421 | `	if( !VmUnExpect(ud,':') \|\| !VmUnExpect(ud,'"') ){ return 0; }` |
-|   21 |  422 | `	if( nLen > (sxu32)(ud->zEnd - ud->zCur) ){ return 0; } /* length compare avoids 32-bit pointer wrap */` |
-|   19 |  423 | `	*pzStr = ud->zCur;` |
-|   19 |  424 | `	*pnStr = (int)nLen;` |
-|   19 |  425 | `	ud->zCur += nLen;` |
-|   19 |  426 | `	if( !VmUnExpect(ud,'"') \|\| !VmUnExpect(ud,';') ){ return 0; }` |
-|   17 |  427 | `	return 1;` |
-|   11 |  428 | `}` |
+|   26 |  419 | `	if( !VmUnExpect(ud,'s') \|\| !VmUnExpect(ud,':') ){ return 0; }` |
+|   26 |  420 | `	if( !VmUnParseUInt(ud,&nLen) ){ return 0; }` |
+|   26 |  421 | `	if( !VmUnExpect(ud,':') \|\| !VmUnExpect(ud,'"') ){ return 0; }` |
+|   26 |  422 | `	if( nLen > (sxu32)(ud->zEnd - ud->zCur) ){ return 0; } /* length compare avoids 32-bit pointer wrap */` |
+|   24 |  423 | `	*pzStr = ud->zCur;` |
+|   24 |  424 | `	*pnStr = (int)nLen;` |
+|   24 |  425 | `	ud->zCur += nLen;` |
+|   24 |  426 | `	if( !VmUnExpect(ud,'"') \|\| !VmUnExpect(ud,';') ){ return 0; }` |
+|   22 |  427 | `	return 1;` |
+|   14 |  428 | `}` |
 |    - |  429 | `/* Strip object-property key mangling: "\0*\0name" / "\0Class\0name" -> name. */` |
 |    8 |  430 | `static void VmUnstripKey(const char *z, int n, const char **pzName, int *pnName)` |
 |    1 |  431 | `{` |
@@ -448,32 +448,32 @@ Coverage: 458/477 lines (96.02%)
 |    5 |  438 | `	*pzName = z; *pnName = n;` |
 |    5 |  439 | `}` |
 |    - |  440 | `/* Parse a:<count>:{ <key><val> ... } into a fresh array value. */` |
-|   12 |  441 | `static ph7_value * VmUnserializeArray(unserialize_data *ud)` |
-|    1 |  442 | `{` |
+|   14 |  441 | `static ph7_value * VmUnserializeArray(unserialize_data *ud)` |
+|    2 |  442 | `{` |
 |    - |  443 | `	sxu32 count, i;` |
 |    - |  444 | `	ph7_value *pArray;` |
-|   13 |  445 | `	if( !VmUnExpect(ud,'a') \|\| !VmUnExpect(ud,':') ){ return 0; }` |
-|   13 |  446 | `	if( !VmUnParseUInt(ud,&count) ){ return 0; }` |
-|   13 |  447 | `	if( !VmUnExpect(ud,':') \|\| !VmUnExpect(ud,'{') ){ return 0; }` |
-|   13 |  448 | `	pArray = ph7_context_new_array(ud->pCtx);` |
-|   13 |  449 | `	if( pArray == 0 ){ return 0; }` |
-|   13 |  450 | `	ud->depth++;` |
-|   31 |  451 | `	for( i = 0; i < count; i++ ){` |
-|   23 |  452 | `		ph7_value *pKey = VmUnserializeValue(ud);` |
+|   16 |  445 | `	if( !VmUnExpect(ud,'a') \|\| !VmUnExpect(ud,':') ){ return 0; }` |
+|   16 |  446 | `	if( !VmUnParseUInt(ud,&count) ){ return 0; }` |
+|   16 |  447 | `	if( !VmUnExpect(ud,':') \|\| !VmUnExpect(ud,'{') ){ return 0; }` |
+|   16 |  448 | `	pArray = ph7_context_new_array(ud->pCtx);` |
+|   16 |  449 | `	if( pArray == 0 ){ return 0; }` |
+|   16 |  450 | `	ud->depth++;` |
+|   38 |  451 | `	for( i = 0; i < count; i++ ){` |
+|   28 |  452 | `		ph7_value *pKey = VmUnserializeValue(ud);` |
 |    - |  453 | `		ph7_value *pVal;` |
-|   23 |  454 | `		if( pKey == 0 ){ ud->depth--; return 0; }` |
-|   21 |  455 | `		pVal = VmUnserializeValue(ud);` |
-|   21 |  456 | `		if( pVal == 0 ){ ph7_context_release_value(ud->pCtx,pKey); ud->depth--; return 0; }` |
-|   19 |  457 | `		ph7_array_add_elem(pArray,pKey,pVal); /* makes its own copies */` |
+|   28 |  454 | `		if( pKey == 0 ){ ud->depth--; return 0; }` |
+|   26 |  455 | `		pVal = VmUnserializeValue(ud);` |
+|   26 |  456 | `		if( pVal == 0 ){ ph7_context_release_value(ud->pCtx,pKey); ud->depth--; return 0; }` |
+|   24 |  457 | `		ph7_array_add_elem(pArray,pKey,pVal); /* makes its own copies */` |
 |    - |  458 | `		/* The pKey/pVal temporaries are intentionally NOT released per node:` |
 |    - |  459 | `		 * ph7_context_release_value() linear-scans the context value set, which` |
 |    - |  460 | `		 * would make a large unserialize O(N^2). They are reclaimed in bulk when` |
 |    - |  461 | `		 * the call context is torn down. */` |
-|   10 |  462 | `	}` |
-|    9 |  463 | `	ud->depth--;` |
-|    9 |  464 | `	if( !VmUnExpect(ud,'}') ){ return 0; }` |
-|    9 |  465 | `	return pArray;` |
-|    7 |  466 | `}` |
+|   13 |  462 | `	}` |
+|   12 |  463 | `	ud->depth--;` |
+|   12 |  464 | `	if( !VmUnExpect(ud,'}') ){ return 0; }` |
+|   12 |  465 | `	return pArray;` |
+|    9 |  466 | `}` |
 |    - |  467 | `/* Parse O:<namelen>:"<Class>":<count>:{ ... } into a fresh object value. */` |
 |   10 |  468 | `static ph7_value * VmUnserializeObject(unserialize_data *ud)` |
 |    1 |  469 | `{` |
@@ -590,13 +590,13 @@ Coverage: 458/477 lines (96.02%)
 |    3 |  580 | `	if( pOut ){ PH7_MemObjStore(pSlot,pOut); } /* retains the singleton */` |
 |    3 |  581 | `	return pOut;` |
 |    2 |  582 | `}` |
-|  132 |  583 | `static ph7_value * VmUnserializeValue(unserialize_data *ud)` |
-|    1 |  584 | `{` |
+|  146 |  583 | `static ph7_value * VmUnserializeValue(unserialize_data *ud)` |
+|    2 |  584 | `{` |
 |    - |  585 | `	ph7_value *pOut;` |
 |    - |  586 | `	char c;` |
-|  133 |  587 | `	if( ud->depth > SERIALIZE_MAX_DEPTH \|\| ud->zCur >= ud->zEnd ){ return 0; }` |
-|  133 |  588 | `	c = ud->zCur[0];` |
-|  133 |  589 | `	switch( c ){` |
+|  148 |  587 | `	if( ud->depth > SERIALIZE_MAX_DEPTH \|\| ud->zCur >= ud->zEnd ){ return 0; }` |
+|  148 |  588 | `	c = ud->zCur[0];` |
+|  148 |  589 | `	switch( c ){` |
 |    2 |  590 | `	case 'N': /* N; */` |
 |    5 |  591 | `		if( ud->zCur+2 > ud->zEnd \|\| ud->zCur[1] != ';' ){ return 0; }` |
 |    3 |  592 | `		ud->zCur += 2;` |
@@ -610,13 +610,13 @@ Coverage: 458/477 lines (96.02%)
 |    7 |  600 | `		if( pOut ){ ph7_value_bool(pOut, ud->zCur[2]=='1'); }` |
 |    7 |  601 | `		ud->zCur += 4;` |
 |    7 |  602 | `		return pOut;` |
-|   27 |  603 | `	case 'i': { /* i:<int>; */` |
+|   31 |  603 | `	case 'i': { /* i:<int>; */` |
 |    - |  604 | `		ph7_int64 v;` |
-|   55 |  605 | `		if( !VmUnExpect(ud,'i') \|\| !VmUnExpect(ud,':') ){ return 0; }` |
-|   55 |  606 | `		if( !VmUnParseInt64(ud,&v) \|\| !VmUnExpect(ud,';') ){ return 0; }` |
-|   51 |  607 | `		pOut = ph7_context_new_scalar(ud->pCtx);` |
-|   51 |  608 | `		if( pOut ){ ph7_value_int64(pOut,v); }` |
-|   51 |  609 | `		return pOut;` |
+|   64 |  605 | `		if( !VmUnExpect(ud,'i') \|\| !VmUnExpect(ud,':') ){ return 0; }` |
+|   64 |  606 | `		if( !VmUnParseInt64(ud,&v) \|\| !VmUnExpect(ud,';') ){ return 0; }` |
+|   60 |  607 | `		pOut = ph7_context_new_scalar(ud->pCtx);` |
+|   60 |  608 | `		if( pOut ){ ph7_value_int64(pOut,v); }` |
+|   60 |  609 | `		return pOut;` |
 |    - |  610 | `	}` |
 |    5 |  611 | `	case 'd': { /* d:<float>; */` |
 |    - |  612 | `		const char *zStart;` |
@@ -646,15 +646,15 @@ Coverage: 458/477 lines (96.02%)
 |   11 |  636 | `		if( pOut ){ ph7_value_double(pOut,d); }` |
 |   11 |  637 | `		return pOut;` |
 |    - |  638 | `	}` |
-|   10 |  639 | `	case 's': { /* s:<len>:"..."; */` |
+|   12 |  639 | `	case 's': { /* s:<len>:"..."; */` |
 |    - |  640 | `		const char *zStr; int nStr;` |
-|   21 |  641 | `		if( !VmUnParseString(ud,&zStr,&nStr) ){ return 0; }` |
-|   17 |  642 | `		pOut = ph7_context_new_scalar(ud->pCtx);` |
-|   17 |  643 | `		if( pOut ){ ph7_value_string(pOut,zStr,nStr); }` |
-|   17 |  644 | `		return pOut;` |
+|   26 |  641 | `		if( !VmUnParseString(ud,&zStr,&nStr) ){ return 0; }` |
+|   22 |  642 | `		pOut = ph7_context_new_scalar(ud->pCtx);` |
+|   22 |  643 | `		if( pOut ){ ph7_value_string(pOut,zStr,nStr); }` |
+|   22 |  644 | `		return pOut;` |
 |    - |  645 | `	}` |
-|    6 |  646 | `	case 'a':` |
-|   13 |  647 | `		return VmUnserializeArray(ud);` |
+|    7 |  646 | `	case 'a':` |
+|   16 |  647 | `		return VmUnserializeArray(ud);` |
 |    5 |  648 | `	case 'O':` |
 |   11 |  649 | `		return VmUnserializeObject(ud);` |
 |    1 |  650 | `	case 'E':` |
@@ -663,43 +663,43 @@ Coverage: 458/477 lines (96.02%)
 |    - |  653 | `		/* r:/R: back-references and anything else are unsupported */` |
 |    9 |  654 | `		return 0;` |
 |    - |  655 | `	}` |
-|   65 |  656 | `}` |
+|   73 |  656 | `}` |
 |    - |  657 | `/*` |
 |    - |  658 | ` * mixed unserialize(string $str)` |
 |    - |  659 | ` *  Create a PHP value from a stored representation. Returns false on failure.` |
 |    - |  660 | ` */` |
-|   68 |  661 | `PH7_PRIVATE int vm_builtin_unserialize(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|    1 |  662 | `{` |
+|   74 |  661 | `PH7_PRIVATE int vm_builtin_unserialize(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|    2 |  662 | `{` |
 |    - |  663 | `	unserialize_data ud;` |
 |    - |  664 | `	const char *zIn;` |
 |    - |  665 | `	int nByte;` |
 |    - |  666 | `	ph7_value *pVal;` |
-|   69 |  667 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|   76 |  667 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
 |  ! 0 |  668 | `		ph7_result_bool(pCtx,0);` |
 |  ! 0 |  669 | `		return PH7_OK;` |
 |    - |  670 | `	}` |
-|   69 |  671 | `	zIn = ph7_value_to_string(apArg[0],&nByte);` |
-|   69 |  672 | `	if( nByte < 1 ){` |
+|   76 |  671 | `	zIn = ph7_value_to_string(apArg[0],&nByte);` |
+|   76 |  672 | `	if( nByte < 1 ){` |
 |    3 |  673 | `		ph7_result_bool(pCtx,0);` |
 |    3 |  674 | `		return PH7_OK;` |
 |    - |  675 | `	}` |
-|   67 |  676 | `	ud.pVm = pCtx->pVm;` |
-|   67 |  677 | `	ud.pCtx = pCtx;` |
-|   67 |  678 | `	ud.zCur = zIn;` |
-|   67 |  679 | `	ud.zEnd = &zIn[nByte];` |
-|   67 |  680 | `	ud.depth = 0;` |
-|   67 |  681 | `	ud.exc = 0;` |
-|   67 |  682 | `	pVal = VmUnserializeValue(&ud);` |
-|   67 |  683 | `	if( ud.exc ){` |
+|   74 |  676 | `	ud.pVm = pCtx->pVm;` |
+|   74 |  677 | `	ud.pCtx = pCtx;` |
+|   74 |  678 | `	ud.zCur = zIn;` |
+|   74 |  679 | `	ud.zEnd = &zIn[nByte];` |
+|   74 |  680 | `	ud.depth = 0;` |
+|   74 |  681 | `	ud.exc = 0;` |
+|   74 |  682 | `	pVal = VmUnserializeValue(&ud);` |
+|   74 |  683 | `	if( ud.exc ){` |
 |    - |  684 | `		/* A __wakeup()/__unserialize() threw: let the exception unwind. */` |
 |    3 |  685 | `		return PH7_EXCEPTION;` |
 |    - |  686 | `	}` |
-|   65 |  687 | `	if( pVal == 0 ){` |
+|   72 |  687 | `	if( pVal == 0 ){` |
 |   23 |  688 | `		ph7_result_bool(pCtx,0);` |
 |   23 |  689 | `		return PH7_OK;` |
 |    - |  690 | `	}` |
-|   43 |  691 | `	ph7_result_value(pCtx,pVal);` |
-|   43 |  692 | `	ph7_context_release_value(pCtx,pVal);` |
-|   43 |  693 | `	return PH7_OK;` |
-|   35 |  694 | `}` |
+|   50 |  691 | `	ph7_result_value(pCtx,pVal);` |
+|   50 |  692 | `	ph7_context_release_value(pCtx,pVal);` |
+|   50 |  693 | `	return PH7_OK;` |
+|   39 |  694 | `}` |
 |    - |  695 |  |

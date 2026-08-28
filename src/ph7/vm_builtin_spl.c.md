@@ -752,10 +752,10 @@ Coverage: 5/13 lines (38.46%)
 |    - |  742 | `"}"` |
 |    - |  743 | `;` |
 |    - |  744 |  |
-| 3876 |  745 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)` |
+| 3884 |  745 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)` |
 |    5 |  746 | `{` |
-| 3881 |  747 | `	ph7_create_function(&(*pVm),"__spl_deprecated",vm_builtin_spl_deprecated,0);` |
-| 3881 |  748 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zSplLib,sizeof(zSplLib)-1);` |
+| 3889 |  747 | `	ph7_create_function(&(*pVm),"__spl_deprecated",vm_builtin_spl_deprecated,0);` |
+| 3889 |  748 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zSplLib,sizeof(zSplLib)-1);` |
 |    5 |  749 | `}` |
 |    - |  750 |  |
 |    - |  751 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
