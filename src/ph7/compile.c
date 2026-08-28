@@ -5259,6 +5259,9 @@ static sxi32 PH7_CompileHalt(ph7_gen_state *pGen)
 static sxi32 PH7_CompileEcho(ph7_gen_state *pGen)
 {
 	SyToken *pTmp,*pNext = 0;
+	sxu32 nLine = pGen->pIn->nLine;
+	int nExpr = 0;      /* expressions actually compiled */
+	int bExpectMore = 1;/* after 'echo' or a comma an expression is REQUIRED */
 	sxi32 rc;
 	/* Jump the 'echo' keyword */
 	pGen->pIn++;
@@ -5273,16 +5276,32 @@ static sxi32 PH7_CompileEcho(ph7_gen_state *pGen)
 			}else if( rc != SXERR_EMPTY ){
 				/* Emit the consume instruction */
 				PH7_VmEmitInstr(pGen->pVm,PH7_OP_CONSUME,1,0,0,0);
+				nExpr++;
+				bExpectMore = 0;
 			}
 		}
-		/* Jump trailing commas */
+		/* Jump trailing commas (php: exactly one between expressions; a
+		 * dangling or doubled comma is a parse error, enforced below) */
 		while( pNext < pTmp && (pNext->nType & PH7_TK_COMMA) ){
+			if( bExpectMore ){
+				/* two commas in a row */
+				rc = PH7_GenCompileError(&(*pGen),E_PARSE,pNext->nLine,
+					"syntax error, unexpected token \",\"");
+				return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;
+			}
+			bExpectMore = 1;
 			pNext++;
 		}
 		pGen->pIn = pNext;
 	}
 	/* Restore token stream */
 	pGen->pEnd = pTmp;
+	if( nExpr == 0 || bExpectMore ){
+		/* `echo ;` or `echo expr, ;` — php rejects both */
+		rc = PH7_GenCompileError(&(*pGen),E_PARSE,nLine,
+			"syntax error, unexpected token \";\"");
+		return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;
+	}
 	return SXRET_OK;
 }
 /*
