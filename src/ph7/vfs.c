@@ -2931,11 +2931,12 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 		/* No such stream device */
 		return 0;
 	}
-	if( pResource == 0 && (is_php_stream(pStream) || is_data_stream(pStream)) ){
-		/* These devices reach the VM through pResource->pVm (their xOpen has
-		 * no vm parameter); callers like file_get_contents pass no resource,
-		 * so hand them a synthesized stack value carrying the VM — xOpen only
-		 * reads it during the call. */
+	if( pResource == 0 ){
+		/* VM-dependent devices (php://, data://, tcp://, userland wrappers)
+		 * reach the VM only through pResource->pVm — their xOpen has no vm
+		 * parameter. Callers like file_get_contents pass no resource, so hand
+		 * every device a synthesized stack value carrying the VM; xOpen only
+		 * reads it during the call, and file:// ignores it. */
 		PH7_MemObjInit(pVm,&sDummy);
 		pResource = &sDummy;
 	}
@@ -4983,6 +4984,597 @@ static int PH7_builtin_stream_context_create(ph7_context *pCtx,int nArg,ph7_valu
 	}
 	return PH7_OK;
 }
+/*
+ * tcp:// socket stream (fsockopen / stream_socket_client). The handle is a
+ * small struct carrying the OS socket plus an EOF latch, so feof() works.
+ */
+#ifdef PH7_ENABLE_NET
+typedef struct sock_private sock_private;
+struct sock_private
+{
+	ph7_vm *pVm;
+	ph7_socket sock;
+	int bEof;
+};
+static ph7_int64 SockStreamData_Read(void *pHandle,void *pBuffer,ph7_int64 nRead)
+{
+	sock_private *pSock = (sock_private *)pHandle;
+	int n;
+	if( pSock == 0 || pSock->bEof ){
+		return 0;
+	}
+	n = PH7_NetRecv(pSock->sock,pBuffer,(int)nRead,0);
+	if( n <= 0 ){
+		pSock->bEof = 1;
+		return 0;
+	}
+	return (ph7_int64)n;
+}
+static ph7_int64 SockStreamData_Write(void *pHandle,const void *pBuf,ph7_int64 nWrite)
+{
+	sock_private *pSock = (sock_private *)pHandle;
+	int n;
+	if( pSock == 0 ){
+		return -1;
+	}
+	n = PH7_NetSendAll(pSock->sock,pBuf,(int)nWrite);
+	return n < 0 ? -1 : (ph7_int64)n;
+}
+static void SockStreamData_Close(void *pHandle)
+{
+	sock_private *pSock = (sock_private *)pHandle;
+	if( pSock == 0 ){
+		return;
+	}
+	PH7_NetClose(pSock->sock);
+	SyMemBackendFree(&pSock->pVm->sAllocator,pSock);
+}
+/* xOpen for "host:port" (the scheme is already stripped by the device lookup) */
+static int SockStreamData_Open(const char *zName,int iMode,ph7_value *pResource,void ** ppHandle)
+{
+	sock_private *pSock;
+	ph7_socket sock;
+	char zHost[256];
+	const char *zColon;
+	int iPort = 0,iErrno = 0;
+	const char *zErr = "";
+	ph7_vm *pVm = pResource ? pResource->pVm : 0;
+	SXUNUSED(iMode);
+	if( pVm == 0 ){
+		return -1;
+	}
+	zColon = SyStrlen(zName) ? &zName[SyStrlen(zName)-1] : zName;
+	while( zColon > zName && zColon[0] != ':' ){
+		zColon--;
+	}
+	if( zColon <= zName || zColon[0] != ':' ){
+		return -1;
+	}
+	{
+		sxu32 n = (sxu32)(zColon - zName);
+		if( n >= sizeof(zHost) ){
+			n = sizeof(zHost) - 1;
+		}
+		SyMemcpy(zName,zHost,n);
+		zHost[n] = 0;
+	}
+	{
+		sxi32 iTmp = 0;
+		SyStrToInt32(&zColon[1],(sxu32)SyStrlen(&zColon[1]),(void *)&iTmp,0);
+		iPort = (int)iTmp;
+	}
+	sock = PH7_NetConnect(zHost,iPort,0,&iErrno,&zErr);
+	if( sock == PH7_NET_INVALID_SOCKET ){
+		return -1;
+	}
+	pSock = (sock_private *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(sock_private));
+	if( pSock == 0 ){
+		PH7_NetClose(sock);
+		return -1;
+	}
+	pSock->pVm = pVm;
+	pSock->sock = sock;
+	pSock->bEof = 0;
+	*ppHandle = (void *)pSock;
+	return PH7_OK;
+}
+static const ph7_io_stream sTCP_Stream = {
+	"tcp",
+	PH7_IO_STREAM_VERSION,
+	SockStreamData_Open, /* xOpen */
+	0,   /* xOpenDir */
+	SockStreamData_Close,/* xClose */
+	0,  /* xCloseDir */
+	SockStreamData_Read, /* xRead */
+	0,  /* xReadDir */
+	SockStreamData_Write,/* xWrite */
+	0,  /* xSeek (sockets are not seekable) */
+	0,  /* xLock */
+	0,  /* xRewindDir */
+	0,  /* xTell */
+	0,  /* xTrunc */
+	0,  /* xSync */
+	0   /* xStat */
+};
+#endif /* PH7_ENABLE_NET */
+/*
+ * Userland stream wrappers (stream_wrapper_register). The engine's device
+ * callbacks receive no device pointer, so each registered wrapper needs its
+ * OWN xOpen thunk: PHL keeps a bounded pool of PHL_UWRAP_MAX slots, each with
+ * a static thunk that knows its index (recorded limit; php has no cap).
+ * The handle carries the userland object, and every stream op dispatches the
+ * php streamWrapper protocol method on it.
+ */
+#define PHL_UWRAP_MAX 8
+typedef struct uwrap_slot uwrap_slot;
+struct uwrap_slot
+{
+	ph7_vm *pVm;              /* owning VM (0 = free slot) */
+	char zScheme[32];         /* protocol name */
+	char zClass[128];         /* userland wrapper class */
+	ph7_io_stream sStream;    /* the device handed to the VM */
+};
+typedef struct uwrap_handle uwrap_handle;
+struct uwrap_handle
+{
+	ph7_vm *pVm;
+	ph7_class_instance *pObj; /* the wrapper instance (one per open stream) */
+	int iSlot;
+	int bEof;
+};
+static uwrap_slot g_aUwrap[PHL_UWRAP_MAX];
+/* Call $obj->$zMethod(...) and copy the result into pResult (may be 0) */
+static int UwrapCall(uwrap_handle *pH,const char *zMethod,int nArg,ph7_value **apArg,
+	ph7_value *pResult)
+{
+	ph7_class_method *pMeth;
+	if( pH == 0 || pH->pObj == 0 ){
+		return -1;
+	}
+	pMeth = PH7_ClassExtractMethod(pH->pObj->pClass,zMethod,(sxu32)SyStrlen(zMethod));
+	if( pMeth == 0 ){
+		return -1;
+	}
+	if( PH7_VmCallClassMethod(pH->pVm,pH->pObj,pMeth,pResult,nArg,apArg) != SXRET_OK ){
+		return -1;
+	}
+	return 0;
+}
+static ph7_int64 UwrapRead(void *pHandle,void *pBuffer,ph7_int64 nRead)
+{
+	uwrap_handle *pH = (uwrap_handle *)pHandle;
+	ph7_value sArg,sRet;
+	const char *zData;
+	int nData = 0;
+	ph7_int64 n = 0;
+	if( pH == 0 || pH->bEof ){
+		return 0;
+	}
+	PH7_MemObjInit(pH->pVm,&sArg);
+	PH7_MemObjInit(pH->pVm,&sRet);
+	ph7_value_int64(&sArg,nRead);
+	{
+		ph7_value *apArg[1];
+		apArg[0] = &sArg;
+		if( UwrapCall(pH,"stream_read",1,apArg,&sRet) != 0 ){
+			PH7_MemObjRelease(&sArg);
+			PH7_MemObjRelease(&sRet);
+			return -1;
+		}
+	}
+	zData = ph7_value_to_string(&sRet,&nData);
+	if( nData > 0 ){
+		if( (ph7_int64)nData > nRead ){
+			nData = (int)nRead;
+		}
+		SyMemcpy(zData,pBuffer,(sxu32)nData);
+		n = nData;
+	}else{
+		pH->bEof = 1;
+	}
+	PH7_MemObjRelease(&sArg);
+	PH7_MemObjRelease(&sRet);
+	return n;
+}
+static ph7_int64 UwrapWrite(void *pHandle,const void *pBuf,ph7_int64 nWrite)
+{
+	uwrap_handle *pH = (uwrap_handle *)pHandle;
+	ph7_value sArg,sRet;
+	ph7_int64 n;
+	if( pH == 0 ){
+		return -1;
+	}
+	PH7_MemObjInit(pH->pVm,&sArg);
+	PH7_MemObjInit(pH->pVm,&sRet);
+	ph7_value_string(&sArg,(const char *)pBuf,(int)nWrite);
+	{
+		ph7_value *apArg[1];
+		apArg[0] = &sArg;
+		if( UwrapCall(pH,"stream_write",1,apArg,&sRet) != 0 ){
+			PH7_MemObjRelease(&sArg);
+			PH7_MemObjRelease(&sRet);
+			return -1;
+		}
+	}
+	n = ph7_value_to_int64(&sRet);
+	PH7_MemObjRelease(&sArg);
+	PH7_MemObjRelease(&sRet);
+	return n;
+}
+static int UwrapSeek(void *pHandle,ph7_int64 iOfft,int whence)
+{
+	uwrap_handle *pH = (uwrap_handle *)pHandle;
+	ph7_value sOfft,sWhence,sRet;
+	ph7_value *apArg[2];
+	int rc;
+	if( pH == 0 ){
+		return -1;
+	}
+	PH7_MemObjInit(pH->pVm,&sOfft);
+	PH7_MemObjInit(pH->pVm,&sWhence);
+	PH7_MemObjInit(pH->pVm,&sRet);
+	ph7_value_int64(&sOfft,iOfft);
+	ph7_value_int(&sWhence,whence);
+	apArg[0] = &sOfft;
+	apArg[1] = &sWhence;
+	rc = UwrapCall(pH,"stream_seek",2,apArg,&sRet);
+	if( rc == 0 ){
+		pH->bEof = 0;
+		rc = ph7_value_to_bool(&sRet) ? PH7_OK : -1;
+	}
+	PH7_MemObjRelease(&sOfft);
+	PH7_MemObjRelease(&sWhence);
+	PH7_MemObjRelease(&sRet);
+	return rc;
+}
+static ph7_int64 UwrapTell(void *pHandle)
+{
+	uwrap_handle *pH = (uwrap_handle *)pHandle;
+	ph7_value sRet;
+	ph7_int64 n;
+	if( pH == 0 ){
+		return -1;
+	}
+	PH7_MemObjInit(pH->pVm,&sRet);
+	if( UwrapCall(pH,"stream_tell",0,0,&sRet) != 0 ){
+		PH7_MemObjRelease(&sRet);
+		return -1;
+	}
+	n = ph7_value_to_int64(&sRet);
+	PH7_MemObjRelease(&sRet);
+	return n;
+}
+static void UwrapClose(void *pHandle)
+{
+	uwrap_handle *pH = (uwrap_handle *)pHandle;
+	if( pH == 0 ){
+		return;
+	}
+	UwrapCall(pH,"stream_close",0,0,0);
+	if( pH->pObj ){
+		PH7_ClassInstanceUnref(pH->pObj);
+	}
+	SyMemBackendFree(&pH->pVm->sAllocator,pH);
+}
+/* Shared open: instantiate the wrapper class and call stream_open() */
+static int UwrapOpenSlot(int iSlot,const char *zName,int iMode,ph7_value *pResource,void **ppHandle)
+{
+	uwrap_slot *pSlot = &g_aUwrap[iSlot];
+	ph7_vm *pVm = pResource ? pResource->pVm : 0;
+	ph7_class *pClass;
+	uwrap_handle *pH;
+	ph7_value sPath,sMode,sOpts,sOpened,sRet;
+	ph7_value *apArg[4];
+	int rc;
+	if( pVm == 0 || pSlot->pVm == 0 ){
+		return -1;
+	}
+	pClass = PH7_VmExtractClass(pVm,pSlot->zClass,(sxu32)SyStrlen(pSlot->zClass),TRUE,0);
+	if( pClass == 0 ){
+		return -1;
+	}
+	pH = (uwrap_handle *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(uwrap_handle));
+	if( pH == 0 ){
+		return -1;
+	}
+	pH->pVm = pVm;
+	pH->iSlot = iSlot;
+	pH->bEof = 0;
+	pH->pObj = PH7_NewClassInstance(pVm,pClass);
+	if( pH->pObj == 0 ){
+		SyMemBackendFree(&pVm->sAllocator,pH);
+		return -1;
+	}
+	/* php hands stream_open the FULL url, scheme included */
+	PH7_MemObjInit(pVm,&sPath);
+	PH7_MemObjInit(pVm,&sMode);
+	PH7_MemObjInit(pVm,&sOpts);
+	PH7_MemObjInit(pVm,&sRet);
+	/* $opened_path is BY REFERENCE: the callee's binding needs a real memobj
+	 * slot (a stack ph7_value has nIdx == SXU32_HIGH and the engine rejects
+	 * it as "could not be passed by reference"). */
+	{
+		ph7_value *pRefSlot = PH7_ReserveMemObj(pVm);
+		if( pRefSlot == 0 ){
+			PH7_ClassInstanceUnref(pH->pObj);
+			SyMemBackendFree(&pVm->sAllocator,pH);
+			return -1;
+		}
+		PH7_MemObjInit(pVm,&sOpened);
+		sOpened.nIdx = pRefSlot->nIdx;
+	}
+	{
+		SyBlob sUrl;
+		SyBlobInit(&sUrl,&pVm->sAllocator);
+		SyBlobFormat(&sUrl,"%s://%s",pSlot->zScheme,zName);
+		ph7_value_string(&sPath,(const char *)SyBlobData(&sUrl),(int)SyBlobLength(&sUrl));
+		SyBlobRelease(&sUrl);
+	}
+	ph7_value_string(&sMode,(iMode & PH7_IO_OPEN_WRONLY) ? "w"
+		: ((iMode & PH7_IO_OPEN_APPEND) ? "a" : "r"),-1);
+	ph7_value_int(&sOpts,0);
+	apArg[0] = &sPath;
+	apArg[1] = &sMode;
+	apArg[2] = &sOpts;
+	apArg[3] = &sOpened;
+	rc = UwrapCall(pH,"stream_open",4,apArg,&sRet);
+	if( rc == 0 && !ph7_value_to_bool(&sRet) ){
+		rc = -1;
+	}
+	PH7_MemObjRelease(&sPath);
+	PH7_MemObjRelease(&sMode);
+	PH7_MemObjRelease(&sOpts);
+	PH7_MemObjRelease(&sOpened);
+	PH7_MemObjRelease(&sRet);
+	if( rc != 0 ){
+		PH7_ClassInstanceUnref(pH->pObj);
+		SyMemBackendFree(&pVm->sAllocator,pH);
+		return -1;
+	}
+	*ppHandle = (void *)pH;
+	return PH7_OK;
+}
+/* One xOpen thunk per slot (the device callbacks get no device pointer) */
+#define PHL_UWRAP_THUNK(N) \
+	static int UwrapOpen##N(const char *zName,int iMode,ph7_value *pResource,void **ppHandle) \
+	{ return UwrapOpenSlot(N,zName,iMode,pResource,ppHandle); }
+PHL_UWRAP_THUNK(0)
+PHL_UWRAP_THUNK(1)
+PHL_UWRAP_THUNK(2)
+PHL_UWRAP_THUNK(3)
+PHL_UWRAP_THUNK(4)
+PHL_UWRAP_THUNK(5)
+PHL_UWRAP_THUNK(6)
+PHL_UWRAP_THUNK(7)
+static int (* const g_aUwrapOpen[PHL_UWRAP_MAX])(const char *,int,ph7_value *,void **) = {
+	UwrapOpen0,UwrapOpen1,UwrapOpen2,UwrapOpen3,
+	UwrapOpen4,UwrapOpen5,UwrapOpen6,UwrapOpen7
+};
+/*
+ * bool stream_wrapper_register(string $protocol, string $class, int $flags = 0)
+ * bool stream_wrapper_unregister(string $protocol)
+ */
+static int PH7_builtin_stream_wrapper_register(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zScheme,*zClass;
+	int nScheme,nClass,i,iFree = -1;
+	if( nArg < 2 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zScheme = ph7_value_to_string(apArg[0],&nScheme);
+	zClass  = ph7_value_to_string(apArg[1],&nClass);
+	if( nScheme < 1 || nScheme >= (int)sizeof(g_aUwrap[0].zScheme)
+	 || nClass < 1 || nClass >= (int)sizeof(g_aUwrap[0].zClass) ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* php: registering an already-taken protocol warns and returns false.
+	 * (Scan the device list directly — PH7_VmGetStreamDevice falls back to
+	 * the DEFAULT device for a scheme-less name, so it can't answer this.) */
+	{
+		ph7_io_stream **apDev = (ph7_io_stream **)SySetBasePtr(&pCtx->pVm->aIOstream);
+		sxu32 n;
+		for( n = 0 ; n < SySetUsed(&pCtx->pVm->aIOstream) ; n++ ){
+			if( (int)SyStrlen(apDev[n]->zName) == nScheme
+			 && SyStrnicmp(apDev[n]->zName,zScheme,(sxu32)nScheme) == 0 ){
+				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+					"Protocol %.*s:// is already defined.",nScheme,zScheme);
+				ph7_result_bool(pCtx,0);
+				return PH7_OK;
+			}
+		}
+	}
+	for( i = 0 ; i < PHL_UWRAP_MAX ; i++ ){
+		if( g_aUwrap[i].pVm == 0 ){
+			iFree = i;
+			break;
+		}
+	}
+	if( iFree < 0 ){
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+			"Too many registered stream wrappers (PHL limit: %d)",PHL_UWRAP_MAX);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	{
+		uwrap_slot *pSlot = &g_aUwrap[iFree];
+		SyMemcpy(zScheme,pSlot->zScheme,(sxu32)nScheme);
+		pSlot->zScheme[nScheme] = 0;
+		SyMemcpy(zClass,pSlot->zClass,(sxu32)nClass);
+		pSlot->zClass[nClass] = 0;
+		pSlot->pVm = pCtx->pVm;
+		SyZero(&pSlot->sStream,sizeof(ph7_io_stream));
+		pSlot->sStream.zName = pSlot->zScheme;
+		pSlot->sStream.iVersion = PH7_IO_STREAM_VERSION;
+		pSlot->sStream.xOpen = g_aUwrapOpen[iFree];
+		pSlot->sStream.xClose = UwrapClose;
+		pSlot->sStream.xRead = UwrapRead;
+		pSlot->sStream.xWrite = UwrapWrite;
+		pSlot->sStream.xSeek = UwrapSeek;
+		pSlot->sStream.xTell = UwrapTell;
+		ph7_vm_config(pCtx->pVm,PH7_VM_CONFIG_IO_STREAM,&pSlot->sStream);
+	}
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+static int PH7_builtin_stream_wrapper_unregister(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zScheme;
+	int nScheme,i;
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zScheme = ph7_value_to_string(apArg[0],&nScheme);
+	for( i = 0 ; i < PHL_UWRAP_MAX ; i++ ){
+		if( g_aUwrap[i].pVm == pCtx->pVm
+		 && (int)SyStrlen(g_aUwrap[i].zScheme) == nScheme
+		 && SyMemcmp(g_aUwrap[i].zScheme,zScheme,(sxu32)nScheme) == 0 ){
+			/* The device stays in the VM's list (the engine has no removal
+			 * API); neutering the slot makes every later open fail, which is
+			 * what unregister means to a script — recorded. */
+			g_aUwrap[i].pVm = 0;
+			ph7_result_bool(pCtx,1);
+			return PH7_OK;
+		}
+	}
+	ph7_result_bool(pCtx,0);
+	return PH7_OK;
+}
+#ifdef PH7_ENABLE_NET
+/*
+ * resource|false fsockopen(string $hostname, int $port = -1, int &$error_code,
+ *                          string &$error_message, ?float $timeout = null)
+ * resource|false stream_socket_client(string $address, int &$error_code,
+ *                          string &$error_message, ?float $timeout = null, ...)
+ * TCP only (the recorded scope: no ssl://, udp:// or unix:// yet).
+ */
+static int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zFunc = ph7_function_name(pCtx);
+	int bClientForm = (zFunc[0] == 's'); /* stream_socket_client */
+	const char *zTarget,*zErr = "";
+	char zHost[256];
+	int nTarget,iPort = -1,iErrno = 0,iTimeoutMs = 0;
+	ph7_socket sock;
+	io_private *pDev;
+	sock_private *pSock;
+	int iArgErrno = bClientForm ? 1 : 2;
+	int iArgErrstr = bClientForm ? 2 : 3;
+	int iArgTimeout = bClientForm ? 3 : 4;
+	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zTarget = ph7_value_to_string(apArg[0],&nTarget);
+	/* Strip a scheme; only tcp:// (and the bare form) are supported */
+	{
+		const char *z = zTarget,*zEnd = &zTarget[nTarget];
+		const char *zSep = 0;
+		while( z < zEnd - 2 ){
+			if( z[0] == ':' && z[1] == '/' && z[2] == '/' ){
+				zSep = z;
+				break;
+			}
+			z++;
+		}
+		if( zSep ){
+			if( !((zSep - zTarget) == 3 && SyStrnicmp(zTarget,"tcp",3) == 0) ){
+				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+					"Unable to connect to %.*s (unsupported transport; PHL supports tcp:// only)",
+					nTarget,zTarget);
+				ph7_result_bool(pCtx,0);
+				return PH7_OK;
+			}
+			nTarget -= (int)(zSep + 3 - zTarget);
+			zTarget = zSep + 3;
+		}
+	}
+	/* host[:port] */
+	{
+		int i = nTarget - 1;
+		int nHost = nTarget;
+		while( i > 0 && zTarget[i] != ':' ){
+			i--;
+		}
+		if( i > 0 && zTarget[i] == ':' ){
+			sxi32 iTmp = 0;
+			SyStrToInt32(&zTarget[i+1],(sxu32)(nTarget - i - 1),(void *)&iTmp,0);
+			iPort = (int)iTmp;
+			nHost = i;
+		}
+		if( nHost >= (int)sizeof(zHost) ){
+			nHost = (int)sizeof(zHost) - 1;
+		}
+		SyMemcpy(zTarget,zHost,(sxu32)nHost);
+		zHost[nHost] = 0;
+	}
+	if( !bClientForm && nArg > 1 && !ph7_value_is_null(apArg[1]) ){
+		iPort = ph7_value_to_int(apArg[1]);
+	}
+	if( nArg > iArgTimeout && !ph7_value_is_null(apArg[iArgTimeout]) ){
+		double rTimeout = ph7_value_to_double(apArg[iArgTimeout]);
+		if( rTimeout > 0 ){
+			iTimeoutMs = (int)(rTimeout * 1000);
+		}
+	}
+	if( iPort < 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	sock = PH7_NetConnect(zHost,iPort,iTimeoutMs,&iErrno,&zErr);
+	if( sock == PH7_NET_INVALID_SOCKET ){
+		/* php reports the failure through the by-ref out-params + a warning */
+		{
+			ph7_value *pTmp = ph7_context_new_scalar(pCtx);
+			if( pTmp ){
+				if( nArg > iArgErrno ){
+					ph7_value_int(pTmp,iErrno);
+					PH7_VmStoreArgByRef(pCtx->pVm,apArg[iArgErrno],pTmp);
+				}
+				if( nArg > iArgErrstr ){
+					ph7_value_string(pTmp,zErr,-1);
+					PH7_VmStoreArgByRef(pCtx->pVm,apArg[iArgErrstr],pTmp);
+				}
+			}
+		}
+		/* NOTE: ph7_context_throw_error_format already prepends "fname(): " */
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+			"Unable to connect to %s:%d (%s)",zHost,iPort,zErr);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	{
+		ph7_value *pTmp = ph7_context_new_scalar(pCtx);
+		if( pTmp ){
+			if( nArg > iArgErrno ){
+				ph7_value_int(pTmp,0);
+				PH7_VmStoreArgByRef(pCtx->pVm,apArg[iArgErrno],pTmp);
+			}
+			if( nArg > iArgErrstr ){
+				ph7_value_string(pTmp,"",0);
+				PH7_VmStoreArgByRef(pCtx->pVm,apArg[iArgErrstr],pTmp);
+			}
+		}
+	}
+	/* Wrap the socket in an io_private so the whole f* family works on it */
+	pDev = (io_private *)ph7_context_alloc_chunk(pCtx,sizeof(io_private),TRUE,FALSE);
+	pSock = (sock_private *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,sizeof(sock_private));
+	if( pDev == 0 || pSock == 0 ){
+		PH7_NetClose(sock);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pSock->pVm = pCtx->pVm;
+	pSock->sock = sock;
+	pSock->bEof = 0;
+	InitIOPrivate(pCtx->pVm,&sTCP_Stream,pDev);
+	pDev->pHandle = (void *)pSock;
+	ph7_result_resource(pCtx,pDev);
+	return PH7_OK;
+}
+#endif /* PH7_ENABLE_NET */
 static int PH7_builtin_fopen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const ph7_io_stream *pStream;
@@ -6488,6 +7080,14 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"stream_get_wrappers",  PH7_builtin_stream_get_wrappers },
 		{"stream_get_meta_data", PH7_builtin_stream_get_meta_data },
 		{"stream_context_create",PH7_builtin_stream_context_create },
+		{"stream_wrapper_register",   PH7_builtin_stream_wrapper_register },
+		{"stream_register_wrapper",   PH7_builtin_stream_wrapper_register },
+		{"stream_wrapper_unregister", PH7_builtin_stream_wrapper_unregister },
+#ifdef PH7_ENABLE_NET
+		{"fsockopen",  PH7_builtin_fsockopen },
+		{"pfsockopen", PH7_builtin_fsockopen },
+		{"stream_socket_client", PH7_builtin_fsockopen },
+#endif
 		{"popen",     PH7_builtin_popen  },
 		{"pclose",    PH7_builtin_pclose },
 		{"fpassthru", PH7_builtin_fpassthru },
@@ -6553,6 +7153,9 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 	/* Install the php:// stream */
 	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sPHP_Stream);
 	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sDATA_Stream);
+#ifdef PH7_ENABLE_NET
+	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sTCP_Stream);
+#endif
 	if( pFileStream ){
 		/* Install the file:// stream */
 		ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,pFileStream);
