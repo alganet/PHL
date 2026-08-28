@@ -97,6 +97,57 @@ PH7_PRIVATE ph7_socket PH7_NetListen(const char *zHost, int iPort, int iBacklog)
 	return sock;
 }
 /*
+ * Connect a TCP socket to the given host and port (blocking; the caller sets
+ * a timeout with PH7_NetSetTimeout afterwards). *pErrno receives the OS error
+ * code and *pzErr a static description on failure, matching what fsockopen()
+ * reports through its by-ref out-params.
+ * Returns the connected socket, or PH7_NET_INVALID_SOCKET on error.
+ */
+PH7_PRIVATE ph7_socket PH7_NetConnect(const char *zHost, int iPort, int iTimeoutMs,
+	int *pErrno, const char **pzErr)
+{
+	struct addrinfo hints, *res = 0, *rp;
+	char zPort[16];
+	ph7_socket sock = PH7_NET_INVALID_SOCKET;
+	if( pErrno ){ *pErrno = 0; }
+	if( pzErr ){ *pzErr = ""; }
+	if( zHost == 0 || zHost[0] == 0 ){
+		if( pErrno ){ *pErrno = -1; }
+		if( pzErr ){ *pzErr = "Empty host"; }
+		return PH7_NET_INVALID_SOCKET;
+	}
+	snprintf(zPort, sizeof(zPort), "%d", iPort);
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+	if( getaddrinfo(zHost, zPort, &hints, &res) != 0 || res == 0 ){
+		if( pErrno ){ *pErrno = -3; }
+		if( pzErr ){ *pzErr = "php_network_getaddresses: getaddrinfo failed: Name or service not known"; }
+		return PH7_NET_INVALID_SOCKET;
+	}
+	for( rp = res ; rp != 0 ; rp = rp->ai_next ){
+		sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+		if( sock == PH7_NET_INVALID_SOCKET ){
+			continue;
+		}
+		if( iTimeoutMs > 0 ){
+			/* the connect() itself stays blocking; the timeout bounds the
+			 * subsequent recv/send (php applies it to both — recorded) */
+			PH7_NetSetTimeout(sock, iTimeoutMs);
+		}
+		if( connect(sock, rp->ai_addr, (ph7_socklen)rp->ai_addrlen) == 0 ){
+			freeaddrinfo(res);
+			return sock;
+		}
+		PH7_NetClose(sock);
+		sock = PH7_NET_INVALID_SOCKET;
+	}
+	freeaddrinfo(res);
+	if( pErrno ){ *pErrno = 111; }
+	if( pzErr ){ *pzErr = "Connection refused"; }
+	return PH7_NET_INVALID_SOCKET;
+}
+/*
  * Accept an incoming connection on a listening socket.
  * If pAddr and pAddrLen are non-NULL, the client address is stored there.
  * Returns the client socket, or PH7_NET_INVALID_SOCKET on error.

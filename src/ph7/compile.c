@@ -12863,6 +12863,9 @@ static sxu32 GenStateByRefBuiltinMask(SyString *pName)
 		{ "preg_replace",          12, 1u<<4 },  /* &$count  (apArg[4]) */
 		{ "preg_replace_callback", 21, 1u<<4 },  /* &$count  (apArg[4]) */
 		{ "similar_text",          12, 1u<<2 },  /* &$percent (apArg[2]) */
+		{ "fsockopen",              9, (1u<<2)|(1u<<3) },  /* &$error_code, &$error_message */
+		{ "pfsockopen",            10, (1u<<2)|(1u<<3) },  /* same */
+		{ "stream_socket_client",  20, (1u<<1)|(1u<<2) },  /* &$error_code, &$error_message */
 	};
 	sxu32 i;
 	if( pName == 0 || pName->zString == 0 || pName->nByte == 0 ){
