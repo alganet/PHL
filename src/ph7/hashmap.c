@@ -4736,11 +4736,8 @@ static int ph7_hashmap_splice(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			pRep->pCur = pRep->pFirst;
 		}
 	}
-	/* Early return if nothing to remove and no replacement */
-	if( iLength < 1 && pRep == 0 ){
-		ph7_result_value(pCtx,pArray);
-		return PH7_OK;
-	}
+	/* No early return for the nothing-to-do case: php reindexes the input
+	 * array's integer keys on EVERY splice, even a no-op one. */
 	/* Navigate to the offset position */
 	pCur = pSrc->pFirst;
 	for( i = 0 ; i < iOfft && pCur ; i++ ){
@@ -4779,6 +4776,23 @@ static int ph7_hashmap_splice(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				}
 			}
 		}
+	}
+	/* php renumbers ALL integer keys of the input array in iteration order
+	 * (string keys preserved) — same pass as array_shift. Pre-fix the spliced
+	 * array kept its old keys, so inserts landed with out-of-sequence keys
+	 * and removals left gaps. */
+	{
+		ph7_hashmap_node *pEntry = pSrc->pFirst;
+		sxu32 n = pSrc->nEntry;
+		pSrc->iNextIdx = 0;
+		while( n > 0 ){
+			if( pEntry->iType == HASHMAP_INT_NODE ){
+				HashmapRehashIntNode(pEntry);
+			}
+			pEntry = pEntry->pPrev; /* Reverse link */
+			n--;
+		}
+		pSrc->pCur = pSrc->pFirst;
 	}
 	/* Return the freshly created array */
 	ph7_result_value(pCtx,pArray);
