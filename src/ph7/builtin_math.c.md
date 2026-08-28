@@ -496,10 +496,10 @@ Coverage: 525/601 lines (87.35%)
 |    - |  486 | ` *  The absolute value of number.` |
 |    - |  487 | ` */` |
 |  138 |  488 | `PH7_PRIVATE int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    4 |  489 | `{` |
+|    5 |  489 | `{` |
 |    - |  490 | `	int is_float;` |
 |    - |  491 | `	/* PHP requires exactly one argument. */` |
-|  142 |  492 | `	if( nArg != 1 ){` |
+|  143 |  492 | `	if( nArg != 1 ){` |
 |   15 |  493 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  494 | `			"ArgumentCountError",` |
 |    - |  495 | `			"abs() expects exactly 1 argument, %d given",` |
@@ -508,8 +508,8 @@ Coverage: 525/601 lines (87.35%)
 |    - |  498 | `	}` |
 |    - |  499 |  |
 |    - |  500 | `	/* Numeric strings with decimal/exponent are treated as real values. */` |
-|  132 |  501 | `	is_float = ph7_value_is_float(apArg[0]);` |
-|  132 |  502 | `	if( !is_float && ph7_value_is_string(apArg[0]) ){` |
+|  133 |  501 | `	is_float = ph7_value_is_float(apArg[0]);` |
+|  133 |  502 | `	if( !is_float && ph7_value_is_string(apArg[0]) ){` |
 |    - |  503 | `		int len;` |
 |   10 |  504 | `		sxu8 bReal = FALSE;` |
 |   10 |  505 | `		const char *zStr = ph7_value_to_string(apArg[0], &len);` |
@@ -543,7 +543,7 @@ Coverage: 525/601 lines (87.35%)
 |    - |  533 | `		}` |
 |    - |  534 | `	}` |
 |  130 |  535 | `	return PH7_OK;` |
-|   73 |  536 | `}` |
+|   74 |  536 | `}` |
 |    - |  537 | `/*` |
 |    - |  538 | ` * float log(float $arg,[int/float $base])` |
 |    - |  539 | ` *  Natural logarithm.` |
@@ -881,21 +881,21 @@ Coverage: 525/601 lines (87.35%)
 |    - |  871 | ` * Return` |
 |    - |  872 | ` *  The rounded value as a float.` |
 |    - |  873 | ` */` |
-|  174 |  874 | `PH7_PRIVATE int PH7_builtin_round(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  178 |  874 | `PH7_PRIVATE int PH7_builtin_round(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  875 | `{` |
 |    - |  876 | `	double value, r;` |
-|  175 |  877 | `	int places = 0;` |
-|  175 |  878 | `	int mode = PH7_ROUND_HALF_UP;` |
+|  179 |  877 | `	int places = 0;` |
+|  179 |  878 | `	int mode = PH7_ROUND_HALF_UP;` |
 |    - |  879 | `	/*` |
 |    - |  880 | `	 * Legacy PHL contract: no argument -> int(0). PHP throws an` |
 |    - |  881 | `	 * ArgumentCountError here, but two PHL-only (--SKIPIF-- zend_version)` |
 |    - |  882 | `	 * tests assert round()===0, so keep the historical behavior.` |
 |    - |  883 | `	 */` |
-|  175 |  884 | `	if( nArg < 1 ){` |
+|  179 |  884 | `	if( nArg < 1 ){` |
 |  ! 0 |  885 | `		ph7_result_int(pCtx,0);` |
 |  ! 0 |  886 | `		return PH7_OK;` |
 |    - |  887 | `	}` |
-|  175 |  888 | `	if( nArg > 3 ){` |
+|  179 |  888 | `	if( nArg > 3 ){` |
 |    4 |  889 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  890 | `			"ArgumentCountError",` |
 |    - |  891 | `			"round() expects at most 3 arguments, %d given",` |
@@ -906,7 +906,7 @@ Coverage: 525/601 lines (87.35%)
 |    - |  896 | `	 * Validate argument #1: only int/float (and numeric strings) are` |
 |    - |  897 | `	 * accepted; every other type raises a TypeError (mirrors floor()/ceil()).` |
 |    - |  898 | `	 */` |
-|  173 |  899 | `	if( ph7_value_is_int(apArg[0]) == 0 && ph7_value_is_float(apArg[0]) == 0 ){` |
+|  177 |  899 | `	if( ph7_value_is_int(apArg[0]) == 0 && ph7_value_is_float(apArg[0]) == 0 ){` |
 |    7 |  900 | `		if( ph7_value_is_string(apArg[0]) ){` |
 |    - |  901 | `			int len;` |
 |    5 |  902 | `			sxu8 bReal = FALSE;` |
@@ -927,7 +927,7 @@ Coverage: 525/601 lines (87.35%)
 |    - |  917 | `		}` |
 |    1 |  918 | `	}` |
 |    - |  919 | `	/* Precision (arg #2). Negative values are valid; clamp to int range. */` |
-|  169 |  920 | `	if( nArg > 1 ){` |
+|  173 |  920 | `	if( nArg > 1 ){` |
 |  143 |  921 | `		sxi64 prec = ph7_value_to_int64(apArg[1]);` |
 |  143 |  922 | `		if( prec > 2147483647 ){` |
 |  ! 0 |  923 | `			places = 2147483647;` |
@@ -942,7 +942,7 @@ Coverage: 525/601 lines (87.35%)
 |    - |  932 | `	 * 64-bit value before range-checking so a large out-of-range mode cannot` |
 |    - |  933 | `	 * alias a valid 1..8 via a truncating 32-bit cast (e.g. 0x1_0000_0003).` |
 |    - |  934 | `	 */` |
-|  169 |  935 | `	if( nArg > 2 ){` |
+|  173 |  935 | `	if( nArg > 2 ){` |
 |   73 |  936 | `		sxi64 m = ph7_value_to_int64(apArg[2]);` |
 |   73 |  937 | `		if( m < PH7_ROUND_HALF_UP \|\| m > PH7_ROUND_AWAY_FROM_ZERO ){` |
 |    5 |  938 | `			return PH7_VmThrowException(pCtx,` |
@@ -952,16 +952,16 @@ Coverage: 525/601 lines (87.35%)
 |    - |  942 | `		}` |
 |   69 |  943 | `		mode = (int)m;` |
 |   34 |  944 | `	}` |
-|  165 |  945 | `	value = ph7_value_to_double(apArg[0]);` |
+|  169 |  945 | `	value = ph7_value_to_double(apArg[0]);` |
 |    - |  946 | `	/* Integer input with non-negative precision needs no rounding. */` |
-|  165 |  947 | `	if( ph7_value_is_int(apArg[0]) && places >= 0 ){` |
-|   15 |  948 | `		ph7_result_double(pCtx,value);` |
-|   15 |  949 | `		return PH7_OK;` |
+|  169 |  947 | `	if( ph7_value_is_int(apArg[0]) && places >= 0 ){` |
+|   19 |  948 | `		ph7_result_double(pCtx,value);` |
+|   19 |  949 | `		return PH7_OK;` |
 |    - |  950 | `	}` |
 |  151 |  951 | `	r = MathRound(value, places, mode);` |
 |  151 |  952 | `	ph7_result_double(pCtx,r);` |
 |  151 |  953 | `	return PH7_OK;` |
-|   88 |  954 | `}` |
+|   90 |  954 | `}` |
 |    - |  955 | `/*` |
 |    - |  956 | ` * int intdiv(int $a, int $b)` |
 |    - |  957 | ` *  Integer division.` |
@@ -973,11 +973,11 @@ Coverage: 525/601 lines (87.35%)
 |    - |  963 | ` * Return` |
 |    - |  964 | ` *  The integer quotient of the division of $a by $b.` |
 |    - |  965 | ` */` |
-|   40 |  966 | `PH7_PRIVATE int PH7_builtin_intdiv(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  148 |  966 | `PH7_PRIVATE int PH7_builtin_intdiv(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    4 |  967 | `{` |
 |    - |  968 | `	sxi64 a,b;` |
 |    - |  969 | `	/* PHP requires exactly two arguments. */` |
-|   44 |  970 | `	if( nArg != 2 ){` |
+|  152 |  970 | `	if( nArg != 2 ){` |
 |    4 |  971 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  972 | `			"ArgumentCountError",` |
 |    - |  973 | `			"intdiv() expects exactly 2 arguments, %d given",` |
@@ -985,15 +985,15 @@ Coverage: 525/601 lines (87.35%)
 |    - |  975 | `			);` |
 |    - |  976 | `	}` |
 |    - |  977 | `	/* Type-check argument 1 */` |
-|   38 |  978 | `	if( ph7_value_is_array(apArg[0]) \|\| ph7_value_is_object(apArg[0])` |
-|   41 |  979 | `		\|\| ph7_value_is_resource(apArg[0]) ){` |
+|  146 |  978 | `	if( ph7_value_is_array(apArg[0]) \|\| ph7_value_is_object(apArg[0])` |
+|  149 |  979 | `		\|\| ph7_value_is_resource(apArg[0]) ){` |
 |  ! 0 |  980 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  981 | `			"TypeError",` |
 |    - |  982 | `			"intdiv(): Argument #1 ($num1) must be of type int, %s given",` |
 |  ! 0 |  983 | `			ph7_type_name(apArg[0])` |
 |    - |  984 | `			);` |
 |    - |  985 | `	}` |
-|   41 |  986 | `	if( ph7_value_is_string(apArg[0]) ){` |
+|  149 |  986 | `	if( ph7_value_is_string(apArg[0]) ){` |
 |    - |  987 | `		int len;` |
 |  ! 0 |  988 | `		const char *zStr = ph7_value_to_string(apArg[0], &len);` |
 |  ! 0 |  989 | `		if( SyStrIsNumeric(zStr, (sxu32)len, 0, 0) != SXRET_OK ){` |
@@ -1004,15 +1004,15 @@ Coverage: 525/601 lines (87.35%)
 |    - |  994 | `		}` |
 |  ! 0 |  995 | `	}` |
 |    - |  996 | `	/* Type-check argument 2 */` |
-|   38 |  997 | `	if( ph7_value_is_array(apArg[1]) \|\| ph7_value_is_object(apArg[1])` |
-|   41 |  998 | `		\|\| ph7_value_is_resource(apArg[1]) ){` |
+|  146 |  997 | `	if( ph7_value_is_array(apArg[1]) \|\| ph7_value_is_object(apArg[1])` |
+|  149 |  998 | `		\|\| ph7_value_is_resource(apArg[1]) ){` |
 |  ! 0 |  999 | `		return PH7_VmThrowException(pCtx,` |
 |    - | 1000 | `			"TypeError",` |
 |    - | 1001 | `			"intdiv(): Argument #2 ($num2) must be of type int, %s given",` |
 |  ! 0 | 1002 | `			ph7_type_name(apArg[1])` |
 |    - | 1003 | `			);` |
 |    - | 1004 | `	}` |
-|   41 | 1005 | `	if( ph7_value_is_string(apArg[1]) ){` |
+|  149 | 1005 | `	if( ph7_value_is_string(apArg[1]) ){` |
 |    - | 1006 | `		int len;` |
 |  ! 0 | 1007 | `		const char *zStr = ph7_value_to_string(apArg[1], &len);` |
 |  ! 0 | 1008 | `		if( SyStrIsNumeric(zStr, (sxu32)len, 0, 0) != SXRET_OK ){` |
@@ -1023,26 +1023,26 @@ Coverage: 525/601 lines (87.35%)
 |    - | 1013 | `		}` |
 |  ! 0 | 1014 | `	}` |
 |    - | 1015 | `	/* Convert both arguments to int64 */` |
-|   41 | 1016 | `	a = ph7_value_to_int64(apArg[0]);` |
-|   41 | 1017 | `	b = ph7_value_to_int64(apArg[1]);` |
+|  149 | 1016 | `	a = ph7_value_to_int64(apArg[0]);` |
+|  149 | 1017 | `	b = ph7_value_to_int64(apArg[1]);` |
 |    - | 1018 | `	/* Check for division by zero */` |
-|   41 | 1019 | `	if( b == 0 ){` |
+|  149 | 1019 | `	if( b == 0 ){` |
 |    3 | 1020 | `		return PH7_VmThrowException(pCtx,` |
 |    - | 1021 | `			"DivisionByZeroError",` |
 |    - | 1022 | `			"Division by zero"` |
 |    - | 1023 | `			);` |
 |    - | 1024 | `	}` |
 |    - | 1025 | `	/* Check for overflow: PHP_INT_MIN / -1 */` |
-|   38 | 1026 | `	if( a == SMALLEST_INT64 && b == -1 ){` |
+|  146 | 1026 | `	if( a == SMALLEST_INT64 && b == -1 ){` |
 |    3 | 1027 | `		return PH7_VmThrowException(pCtx,` |
 |    - | 1028 | `			"ArithmeticError",` |
 |    - | 1029 | `			"Division of PHP_INT_MIN by -1 is not an integer"` |
 |    - | 1030 | `			);` |
 |    - | 1031 | `	}` |
 |    - | 1032 | `	/* Perform integer division */` |
-|   35 | 1033 | `	ph7_result_int64(pCtx, a / b);` |
-|   35 | 1034 | `	return PH7_OK;` |
-|   24 | 1035 | `}` |
+|  143 | 1033 | `	ph7_result_int64(pCtx, a / b);` |
+|  143 | 1034 | `	return PH7_OK;` |
+|   78 | 1035 | `}` |
 |    - | 1036 | `/*` |
 |    - | 1037 | ` * string dechex(int $number)` |
 |    - | 1038 | ` *  Decimal to hexadecimal.` |
