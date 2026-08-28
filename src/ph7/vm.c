@@ -2710,6 +2710,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	PH7_VmInstallReflection(&(*pVm));
 	PH7_VmInstallDateTime(&(*pVm));
 	PH7_VmInstallSpl(&(*pVm));
+	PH7_VmInstallSession(&(*pVm));
 	pVm->bCompilingBuiltin = 0;
 	/* Reset the code generator */
 	PH7_ResetCodeGenerator(&(*pVm),pEngine->xConf.xErr,pEngine->xConf.pErrData);

@@ -2216,6 +2216,8 @@ PH7_PRIVATE int PH7_builtin_date_default_timezone_get(ph7_context *pCtx,int nArg
 PH7_PRIVATE int PH7_builtin_date_default_timezone_set(ph7_context *pCtx,int nArg,ph7_value **apArg);
 /* vm_builtin_spl.c */
 PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm);
+/* vm_builtin_session.c */
+PH7_PRIVATE sxi32 PH7_VmInstallSession(ph7_vm *pVm);
 /* vfs_zip.c function prototypes */
 PH7_PRIVATE int PH7_builtin_zip_open(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_zip_close(ph7_context *pCtx,int nArg,ph7_value **apArg);
