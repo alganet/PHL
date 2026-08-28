@@ -38,20 +38,20 @@ Coverage: 1037/1211 lines (85.63%)
 |     - |   28 | ` * triggering autoload for unknown string names. Returns NULL when the` |
 |     - |   29 | ` * class does not exist (the PHP layer turns that into ReflectionException).` |
 |     - |   30 | ` */` |
-|  1470 |   31 | `static ph7_class * ReflectResolveClass(ph7_vm *pVm, ph7_value *pArg)` |
-|     1 |   32 | `{` |
+|  1472 |   31 | `static ph7_class * ReflectResolveClass(ph7_vm *pVm, ph7_value *pArg)` |
+|     2 |   32 | `{` |
 |     - |   33 | `	ph7_class *pClass;` |
-|  1471 |   34 | `	pClass = PH7_VmExtractClassFromValue(pVm, pArg);` |
-|  1471 |   35 | `	if( pClass == 0 && ph7_value_is_string(pArg) ){` |
+|  1474 |   34 | `	pClass = PH7_VmExtractClassFromValue(pVm, pArg);` |
+|  1474 |   35 | `	if( pClass == 0 && ph7_value_is_string(pArg) ){` |
 |     - |   36 | `		const char *zName;` |
 |     - |   37 | `		int nLen;` |
-|    13 |   38 | `		zName = ph7_value_to_string(pArg, &nLen);` |
-|    13 |   39 | `		if( nLen > 0 ){` |
-|    13 |   40 | `			pClass = PH7_VmTriggerAutoload(pVm, zName, (sxu32)nLen, FALSE);` |
-|     6 |   41 | `		}` |
-|     6 |   42 | `	}` |
-|  1471 |   43 | `	return pClass;` |
-|     1 |   44 | `}` |
+|    16 |   38 | `		zName = ph7_value_to_string(pArg, &nLen);` |
+|    16 |   39 | `		if( nLen > 0 ){` |
+|    16 |   40 | `			pClass = PH7_VmTriggerAutoload(pVm, zName, (sxu32)nLen, FALSE);` |
+|     7 |   41 | `		}` |
+|     7 |   42 | `	}` |
+|  1474 |   43 | `	return pClass;` |
+|     2 |   44 | `}` |
 |     - |   45 | `/*` |
 |     - |   46 | ` * Hand a freshly created class instance to the caller. The return slot` |
 |     - |   47 | ` * takes over the initial reference from PH7_NewClassInstance (iRef=1):` |
@@ -70,28 +70,28 @@ Coverage: 1037/1211 lines (85.63%)
 |    89 |   60 | `	return PH7_OK;` |
 |    45 |   61 | `}` |
 |     - |   62 | `/* --- Marshaling helpers: build the descriptor arrays handed to the PHP layer --- */` |
-| 54272 |   63 | `static void ReflectMapAddBool(ph7_context *pCtx, ph7_value *pMap, const char *zKey, int b)` |
-|     1 |   64 | `{` |
-| 54273 |   65 | `	ph7_value *p = ph7_context_new_scalar(pCtx);` |
-| 54273 |   66 | `	if( p == 0 ){ return; }` |
-| 54273 |   67 | `	ph7_value_bool(p, b);` |
-| 54273 |   68 | `	ph7_array_add_strkey_elem(pMap, zKey, p);` |
-| 27137 |   69 | `}` |
-| 18346 |   70 | `static void ReflectMapAddInt(ph7_context *pCtx, ph7_value *pMap, const char *zKey, sxi64 iVal)` |
-|     1 |   71 | `{` |
-| 18347 |   72 | `	ph7_value *p = ph7_context_new_scalar(pCtx);` |
-| 18347 |   73 | `	if( p == 0 ){ return; }` |
-| 18347 |   74 | `	ph7_value_int64(p, iVal);` |
-| 18347 |   75 | `	ph7_array_add_strkey_elem(pMap, zKey, p);` |
-|  9174 |   76 | `}` |
-| 13370 |   77 | `static void ReflectMapAddStr(ph7_context *pCtx, ph7_value *pMap, const char *zKey,` |
+| 54512 |   63 | `static void ReflectMapAddBool(ph7_context *pCtx, ph7_value *pMap, const char *zKey, int b)` |
+|     2 |   64 | `{` |
+| 54514 |   65 | `	ph7_value *p = ph7_context_new_scalar(pCtx);` |
+| 54514 |   66 | `	if( p == 0 ){ return; }` |
+| 54514 |   67 | `	ph7_value_bool(p, b);` |
+| 54514 |   68 | `	ph7_array_add_strkey_elem(pMap, zKey, p);` |
+| 27258 |   69 | `}` |
+| 18418 |   70 | `static void ReflectMapAddInt(ph7_context *pCtx, ph7_value *pMap, const char *zKey, sxi64 iVal)` |
+|     2 |   71 | `{` |
+| 18420 |   72 | `	ph7_value *p = ph7_context_new_scalar(pCtx);` |
+| 18420 |   73 | `	if( p == 0 ){ return; }` |
+| 18420 |   74 | `	ph7_value_int64(p, iVal);` |
+| 18420 |   75 | `	ph7_array_add_strkey_elem(pMap, zKey, p);` |
+|  9211 |   76 | `}` |
+| 13442 |   77 | `static void ReflectMapAddStr(ph7_context *pCtx, ph7_value *pMap, const char *zKey,` |
 |     - |   78 | `	const char *zVal, int nVal)` |
-|     1 |   79 | `{` |
-| 13371 |   80 | `	ph7_value *p = ph7_context_new_scalar(pCtx);` |
-| 13371 |   81 | `	if( p == 0 ){ return; }` |
-| 13371 |   82 | `	ph7_value_string(p, zVal, nVal);` |
-| 13371 |   83 | `	ph7_array_add_strkey_elem(pMap, zKey, p);` |
-|  6686 |   84 | `}` |
+|     2 |   79 | `{` |
+| 13444 |   80 | `	ph7_value *p = ph7_context_new_scalar(pCtx);` |
+| 13444 |   81 | `	if( p == 0 ){ return; }` |
+| 13444 |   82 | `	ph7_value_string(p, zVal, nVal);` |
+| 13444 |   83 | `	ph7_array_add_strkey_elem(pMap, zKey, p);` |
+|  6723 |   84 | `}` |
 |  4388 |   85 | `static void ReflectMapAddNull(ph7_context *pCtx, ph7_value *pMap, const char *zKey)` |
 |     1 |   86 | `{` |
 |  4389 |   87 | `	ph7_value *p = ph7_context_new_scalar(pCtx);` |
@@ -240,24 +240,24 @@ Coverage: 1037/1211 lines (85.63%)
 |     - |  230 | ` *   props   {name: {vis, static, readonly, hasdef, decl, line}},` |
 |     - |  231 | ` *   methods {name: {vis, static, abstract, final, decl, line}}` |
 |     - |  232 | ` */` |
-|   988 |  233 | `static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     1 |  234 | `{` |
-|   989 |  235 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   990 |  233 | `static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     2 |  234 | `{` |
+|   992 |  235 | `	ph7_vm *pVm = pCtx->pVm;` |
 |     - |  236 | `	ph7_class *pClass;` |
 |     - |  237 | `	ph7_value *pInfo, *pConsts, *pProps, *pMethods, *pList;` |
 |     - |  238 | `	SyHashEntry *pEntry;` |
 |     - |  239 | `	SySet aIfaceSet;` |
-|   989 |  240 | `	sxi32 iCtorVis = 0, iCloneVis = 0;` |
-|   989 |  241 | `	int bIterable = 0;` |
+|   992 |  240 | `	sxi32 iCtorVis = 0, iCloneVis = 0;` |
+|   992 |  241 | `	int bIterable = 0;` |
 |     - |  242 | `	sxu32 n;` |
-|   989 |  243 | `	if( nArg < 1 ){` |
+|   992 |  243 | `	if( nArg < 1 ){` |
 |   ! 0 |  244 | `		ph7_result_null(pCtx);` |
 |   ! 0 |  245 | `		return PH7_OK;` |
 |     - |  246 | `	}` |
-|   989 |  247 | `	pClass = ReflectResolveClass(pVm, apArg[0]);` |
-|   989 |  248 | `	if( pClass == 0 ){` |
-|    13 |  249 | `		ph7_result_null(pCtx);` |
-|    13 |  250 | `		return PH7_OK;` |
+|   992 |  247 | `	pClass = ReflectResolveClass(pVm, apArg[0]);` |
+|   992 |  248 | `	if( pClass == 0 ){` |
+|    16 |  249 | `		ph7_result_null(pCtx);` |
+|    16 |  250 | `		return PH7_OK;` |
 |     - |  251 | `	}` |
 |   977 |  252 | `	pInfo = ph7_context_new_array(pCtx);` |
 |   977 |  253 | `	pConsts = ph7_context_new_array(pCtx);` |
@@ -509,7 +509,7 @@ Coverage: 1037/1211 lines (85.63%)
 |   977 |  499 | `	ph7_array_add_strkey_elem(pInfo, "methods", pMethods);` |
 |   977 |  500 | `	ph7_result_value(pCtx, pInfo);` |
 |   977 |  501 | `	return PH7_OK;` |
-|   495 |  502 | `}` |
+|   497 |  502 | `}` |
 |     - |  503 | `/*` |
 |     - |  504 | ` * mixed __reflect_const_value(string $class, string $name)` |
 |     - |  505 | ` * Value of a class constant. The PHP layer guarantees existence.` |
@@ -943,15 +943,15 @@ Coverage: 1037/1211 lines (85.63%)
 |     5 |  933 | `	return PH7_OK;` |
 |     3 |  934 | `}` |
 |     - |  935 | `/* pVal is a Closure instance? Return it, else NULL. */` |
-|   442 |  936 | `static ph7_class_instance * ReflectValueClosure(ph7_vm *pVm, ph7_value *pVal)` |
-|     1 |  937 | `{` |
+|   468 |  936 | `static ph7_class_instance * ReflectValueClosure(ph7_vm *pVm, ph7_value *pVal)` |
+|     2 |  937 | `{` |
 |     - |  938 | `	ph7_class_instance *pThis;` |
-|   443 |  939 | `	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 \|\| pVal->x.pOther == 0 \|\| pVm->pClosureClass == 0 ){` |
-|   391 |  940 | `		return 0;` |
+|   470 |  939 | `	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 \|\| pVal->x.pOther == 0 \|\| pVm->pClosureClass == 0 ){` |
+|   418 |  940 | `		return 0;` |
 |     - |  941 | `	}` |
 |    53 |  942 | `	pThis = (ph7_class_instance *)pVal->x.pOther;` |
 |    53 |  943 | `	return (pThis->pClass == pVm->pClosureClass) ? pThis : 0;` |
-|   222 |  944 | `}` |
+|   236 |  944 | `}` |
 |     - |  945 | `/*` |
 |     - |  946 | ` * Resolve a reflection callable target into its compiled function.` |
 |     - |  947 | ` *   - pMethodArg a non-empty string  -> method mode: pTarget is a class name` |
@@ -961,17 +961,17 @@ Coverage: 1037/1211 lines (85.63%)
 |     - |  951 | ` *     (*ppHost set, returns NULL).` |
 |     - |  952 | ` * Returns the ph7_vm_func, or NULL (host function or unresolvable).` |
 |     - |  953 | ` */` |
-|   722 |  954 | `static ph7_vm_func * ReflectResolveCallable(ph7_context *pCtx, ph7_value *pTarget,` |
+|   748 |  954 | `static ph7_vm_func * ReflectResolveCallable(ph7_context *pCtx, ph7_value *pTarget,` |
 |     - |  955 | `	ph7_value *pMethodArg, ph7_class **ppClass, ph7_class_method **ppMeth,` |
 |     - |  956 | `	ph7_user_func **ppHost, ph7_class_instance **ppClosure)` |
-|     1 |  957 | `{` |
-|   723 |  958 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     2 |  957 | `{` |
+|   750 |  958 | `	ph7_vm *pVm = pCtx->pVm;` |
 |     - |  959 | `	SyHashEntry *pEntry;` |
-|   723 |  960 | `	if( ppClass ){ *ppClass = 0; }` |
-|   723 |  961 | `	if( ppMeth ){ *ppMeth = 0; }` |
-|   723 |  962 | `	if( ppHost ){ *ppHost = 0; }` |
-|   723 |  963 | `	if( ppClosure ){ *ppClosure = 0; }` |
-|   723 |  964 | `	if( pMethodArg && (pMethodArg->iFlags & MEMOBJ_STRING) && SyBlobLength(&pMethodArg->sBlob) > 0 ){` |
+|   750 |  960 | `	if( ppClass ){ *ppClass = 0; }` |
+|   750 |  961 | `	if( ppMeth ){ *ppMeth = 0; }` |
+|   750 |  962 | `	if( ppHost ){ *ppHost = 0; }` |
+|   750 |  963 | `	if( ppClosure ){ *ppClosure = 0; }` |
+|   750 |  964 | `	if( pMethodArg && (pMethodArg->iFlags & MEMOBJ_STRING) && SyBlobLength(&pMethodArg->sBlob) > 0 ){` |
 |   281 |  965 | `		ph7_class *pClass = ReflectResolveClass(pVm, pTarget);` |
 |     - |  966 | `		ph7_class_method *pMeth;` |
 |   281 |  967 | `		if( pClass == 0 ){` |
@@ -987,8 +987,8 @@ Coverage: 1037/1211 lines (85.63%)
 |   281 |  977 | `		return &pMeth->sFunc;` |
 |     - |  978 | `	}` |
 |     - |  979 | `	{` |
-|   443 |  980 | `		ph7_class_instance *pClo = ReflectValueClosure(pVm, pTarget);` |
-|   443 |  981 | `		if( pClo ){` |
+|   470 |  980 | `		ph7_class_instance *pClo = ReflectValueClosure(pVm, pTarget);` |
+|   470 |  981 | `		if( pClo ){` |
 |     - |  982 | `			SyString sAttr;` |
 |     - |  983 | `			ph7_value *pFn;` |
 |    53 |  984 | `			SyStringInitFromBuf(&sAttr, "__fn", 4);` |
@@ -1010,21 +1010,21 @@ Coverage: 1037/1211 lines (85.63%)
 |    53 | 1000 | `			return (ph7_vm_func *)pEntry->pUserData;` |
 |     - | 1001 | `		}` |
 |     - | 1002 | `	}` |
-|   391 | 1003 | `	if( pTarget->iFlags & MEMOBJ_STRING ){` |
-|   391 | 1004 | `		if( SyBlobLength(&pTarget->sBlob) < 1 ){` |
+|   418 | 1003 | `	if( pTarget->iFlags & MEMOBJ_STRING ){` |
+|   418 | 1004 | `		if( SyBlobLength(&pTarget->sBlob) < 1 ){` |
 |   ! 0 | 1005 | `			return 0;` |
 |     - | 1006 | `		}` |
-|   391 | 1007 | `		pEntry = SyHashGet(&pVm->hFunction, SyBlobData(&pTarget->sBlob), SyBlobLength(&pTarget->sBlob));` |
-|   391 | 1008 | `		if( pEntry ){` |
+|   418 | 1007 | `		pEntry = SyHashGet(&pVm->hFunction, SyBlobData(&pTarget->sBlob), SyBlobLength(&pTarget->sBlob));` |
+|   418 | 1008 | `		if( pEntry ){` |
 |   285 | 1009 | `			return (ph7_vm_func *)pEntry->pUserData;` |
 |     - | 1010 | `		}` |
-|   107 | 1011 | `		pEntry = SyHashGet(&pVm->hHostFunction, SyBlobData(&pTarget->sBlob), SyBlobLength(&pTarget->sBlob));` |
-|   107 | 1012 | `		if( pEntry && ppHost ){` |
-|   105 | 1013 | `			*ppHost = (ph7_user_func *)pEntry->pUserData;` |
-|    52 | 1014 | `		}` |
-|    53 | 1015 | `	}` |
-|   107 | 1016 | `	return 0;` |
-|   362 | 1017 | `}` |
+|   134 | 1011 | `		pEntry = SyHashGet(&pVm->hHostFunction, SyBlobData(&pTarget->sBlob), SyBlobLength(&pTarget->sBlob));` |
+|   134 | 1012 | `		if( pEntry && ppHost ){` |
+|   130 | 1013 | `			*ppHost = (ph7_user_func *)pEntry->pUserData;` |
+|    64 | 1014 | `		}` |
+|    66 | 1015 | `	}` |
+|   134 | 1016 | `	return 0;` |
+|   376 | 1017 | `}` |
 |     - | 1018 | `/* Emit the shared descriptor fields of a compiled function. */` |
 |   570 | 1019 | `static void ReflectFillFuncCommon(ph7_context *pCtx, ph7_value *pInfo, ph7_vm_func *pFunc)` |
 |     1 | 1020 | `{` |
@@ -1134,67 +1134,67 @@ Coverage: 1037/1211 lines (85.63%)
 |     - | 1124 | ` * array\|null __reflect_func_info(string\|Closure $target [, string $method])` |
 |     - | 1125 | ` * Function/method/closure descriptor for the PHP layer.` |
 |     - | 1126 | ` */` |
-|   676 | 1127 | `static int vm_builtin_reflect_func_info(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     1 | 1128 | `{` |
+|   702 | 1127 | `static int vm_builtin_reflect_func_info(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     2 | 1128 | `{` |
 |     - | 1129 | `	ph7_vm_func *pFunc;` |
-|   677 | 1130 | `	ph7_class *pClass = 0;` |
-|   677 | 1131 | `	ph7_class_method *pMeth = 0;` |
-|   677 | 1132 | `	ph7_user_func *pHost = 0;` |
-|   677 | 1133 | `	ph7_class_instance *pClosure = 0;` |
+|   704 | 1130 | `	ph7_class *pClass = 0;` |
+|   704 | 1131 | `	ph7_class_method *pMeth = 0;` |
+|   704 | 1132 | `	ph7_user_func *pHost = 0;` |
+|   704 | 1133 | `	ph7_class_instance *pClosure = 0;` |
 |     - | 1134 | `	ph7_value *pInfo;` |
-|   677 | 1135 | `	if( nArg < 1 ){` |
+|   704 | 1135 | `	if( nArg < 1 ){` |
 |   ! 0 | 1136 | `		ph7_result_null(pCtx);` |
 |   ! 0 | 1137 | `		return PH7_OK;` |
 |     - | 1138 | `	}` |
-|   677 | 1139 | `	pFunc = ReflectResolveCallable(pCtx, apArg[0], nArg > 1 ? apArg[1] : 0,` |
+|   704 | 1139 | `	pFunc = ReflectResolveCallable(pCtx, apArg[0], nArg > 1 ? apArg[1] : 0,` |
 |     - | 1140 | `		&pClass, &pMeth, &pHost, &pClosure);` |
-|   677 | 1141 | `	if( pFunc == 0 && pHost == 0 ){` |
-|     3 | 1142 | `		ph7_result_null(pCtx);` |
-|     3 | 1143 | `		return PH7_OK;` |
+|   704 | 1141 | `	if( pFunc == 0 && pHost == 0 ){` |
+|     6 | 1142 | `		ph7_result_null(pCtx);` |
+|     6 | 1143 | `		return PH7_OK;` |
 |     - | 1144 | `	}` |
-|   675 | 1145 | `	pInfo = ph7_context_new_array(pCtx);` |
-|   675 | 1146 | `	if( pInfo == 0 ){` |
+|   700 | 1145 | `	pInfo = ph7_context_new_array(pCtx);` |
+|   700 | 1146 | `	if( pInfo == 0 ){` |
 |   ! 0 | 1147 | `		ph7_result_null(pCtx);` |
 |   ! 0 | 1148 | `		return PH7_OK;` |
 |     - | 1149 | `	}` |
-|   675 | 1150 | `	if( pFunc == 0 ){` |
+|   700 | 1150 | `	if( pFunc == 0 ){` |
 |     - | 1151 | `		/* Host (C builtin) function: no parameter metadata beyond arity */` |
-|   105 | 1152 | `		ph7_value *pParams = ph7_context_new_array(pCtx);` |
-|   105 | 1153 | `		ReflectMapAddStr(pCtx, pInfo, "name", SyStringData(&pHost->sName), (int)SyStringLength(&pHost->sName));` |
-|   105 | 1154 | `		ReflectMapAddBool(pCtx, pInfo, "internal", 1);` |
-|   105 | 1155 | `		ReflectMapAddBool(pCtx, pInfo, "closure", 0);` |
-|   105 | 1156 | `		ReflectMapAddBool(pCtx, pInfo, "fstatic", 0);` |
-|   105 | 1157 | `		ReflectMapAddBool(pCtx, pInfo, "byref", 0);` |
-|   105 | 1158 | `		ReflectMapAddBool(pCtx, pInfo, "generator", 0);` |
-|   105 | 1159 | `		ReflectMapAddBool(pCtx, pInfo, "strict", 0);` |
-|   105 | 1160 | `		ReflectMapAddBool(pCtx, pInfo, "file", 0);` |
-|   105 | 1161 | `		ReflectMapAddInt(pCtx, pInfo, "line", 0);` |
-|   105 | 1162 | `		ReflectMapAddInt(pCtx, pInfo, "endline", 0);` |
-|   105 | 1163 | `		ReflectMapAddBool(pCtx, pInfo, "doc", 0);` |
+|   130 | 1152 | `		ph7_value *pParams = ph7_context_new_array(pCtx);` |
+|   130 | 1153 | `		ReflectMapAddStr(pCtx, pInfo, "name", SyStringData(&pHost->sName), (int)SyStringLength(&pHost->sName));` |
+|   130 | 1154 | `		ReflectMapAddBool(pCtx, pInfo, "internal", 1);` |
+|   130 | 1155 | `		ReflectMapAddBool(pCtx, pInfo, "closure", 0);` |
+|   130 | 1156 | `		ReflectMapAddBool(pCtx, pInfo, "fstatic", 0);` |
+|   130 | 1157 | `		ReflectMapAddBool(pCtx, pInfo, "byref", 0);` |
+|   130 | 1158 | `		ReflectMapAddBool(pCtx, pInfo, "generator", 0);` |
+|   130 | 1159 | `		ReflectMapAddBool(pCtx, pInfo, "strict", 0);` |
+|   130 | 1160 | `		ReflectMapAddBool(pCtx, pInfo, "file", 0);` |
+|   130 | 1161 | `		ReflectMapAddInt(pCtx, pInfo, "line", 0);` |
+|   130 | 1162 | `		ReflectMapAddInt(pCtx, pInfo, "endline", 0);` |
+|   130 | 1163 | `		ReflectMapAddBool(pCtx, pInfo, "doc", 0);` |
 |     - | 1164 | `		{` |
-|   105 | 1165 | `			ph7_value *pEmpty = ph7_context_new_array(pCtx);` |
-|   105 | 1166 | `			if( pEmpty ){` |
-|   105 | 1167 | `				ph7_array_add_strkey_elem(pInfo, "attrs", pEmpty);` |
-|    52 | 1168 | `			}` |
+|   130 | 1165 | `			ph7_value *pEmpty = ph7_context_new_array(pCtx);` |
+|   130 | 1166 | `			if( pEmpty ){` |
+|   130 | 1167 | `				ph7_array_add_strkey_elem(pInfo, "attrs", pEmpty);` |
+|    64 | 1168 | `			}` |
 |     - | 1169 | `		}` |
-|   105 | 1170 | `		if( pHost->zRet ){` |
-|   105 | 1171 | `			ReflectMapAddStr(pCtx, pInfo, "rettext", pHost->zRet, (int)SyStrlen(pHost->zRet));` |
-|    53 | 1172 | `		}else{` |
+|   130 | 1170 | `		if( pHost->zRet ){` |
+|   130 | 1171 | `			ReflectMapAddStr(pCtx, pInfo, "rettext", pHost->zRet, (int)SyStrlen(pHost->zRet));` |
+|    66 | 1172 | `		}else{` |
 |   ! 0 | 1173 | `			ReflectMapAddNull(pCtx, pInfo, "rettext");` |
 |     - | 1174 | `		}` |
-|   105 | 1175 | `		ReflectMapAddBool(pCtx, pInfo, "retnullable", 0);` |
-|   105 | 1176 | `		if( pParams ){` |
-|   105 | 1177 | `			ph7_array_add_strkey_elem(pInfo, "params", pParams);` |
-|    52 | 1178 | `		}` |
-|   105 | 1179 | `		ReflectMapAddBool(pCtx, pInfo, "variadic", 0);` |
-|   105 | 1180 | `		ReflectMapAddInt(pCtx, pInfo, "minarg", (sxi64)pHost->nMinArg);` |
-|   105 | 1181 | `		if( pHost->zSig ){` |
-|   105 | 1182 | `			ReflectMapAddStr(pCtx, pInfo, "sig", pHost->zSig, (int)SyStrlen(pHost->zSig));` |
-|    53 | 1183 | `		}else{` |
+|   130 | 1175 | `		ReflectMapAddBool(pCtx, pInfo, "retnullable", 0);` |
+|   130 | 1176 | `		if( pParams ){` |
+|   130 | 1177 | `			ph7_array_add_strkey_elem(pInfo, "params", pParams);` |
+|    64 | 1178 | `		}` |
+|   130 | 1179 | `		ReflectMapAddBool(pCtx, pInfo, "variadic", 0);` |
+|   130 | 1180 | `		ReflectMapAddInt(pCtx, pInfo, "minarg", (sxi64)pHost->nMinArg);` |
+|   130 | 1181 | `		if( pHost->zSig ){` |
+|   130 | 1182 | `			ReflectMapAddStr(pCtx, pInfo, "sig", pHost->zSig, (int)SyStrlen(pHost->zSig));` |
+|    66 | 1183 | `		}else{` |
 |   ! 0 | 1184 | `			ReflectMapAddStr(pCtx, pInfo, "sig", "", 0);` |
 |     - | 1185 | `		}` |
-|   105 | 1186 | `		ph7_result_value(pCtx, pInfo);` |
-|   105 | 1187 | `		return PH7_OK;` |
+|   130 | 1186 | `		ph7_result_value(pCtx, pInfo);` |
+|   130 | 1187 | `		return PH7_OK;` |
 |     - | 1188 | `	}` |
 |   571 | 1189 | `	ReflectFillFuncCommon(pCtx, pInfo, pFunc);` |
 |   571 | 1190 | `	ReflectMapAddInt(pCtx, pInfo, "minarg", -1);` |
@@ -1268,7 +1268,7 @@ Coverage: 1037/1211 lines (85.63%)
 |    24 | 1258 | `	}` |
 |   571 | 1259 | `	ph7_result_value(pCtx, pInfo);` |
 |   571 | 1260 | `	return PH7_OK;` |
-|   339 | 1261 | `}` |
+|   353 | 1261 | `}` |
 |     - | 1262 | `/*` |
 |     - | 1263 | ` * mixed __reflect_param_default(string\|Closure $target, ?string $method, int $idx)` |
 |     - | 1264 | ` * Evaluate a parameter's compiled default expression.` |
@@ -3354,7 +3354,7 @@ Coverage: 1037/1211 lines (85.63%)
 |     - | 3344 | ` * Called from PH7_VmInit while pVm->bCompilingBuiltin is set, right after` |
 |     - | 3345 | ` * the core builtin chunks (Exception and friends must exist already).` |
 |     - | 3346 | ` */` |
-|  3884 | 3347 | `PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)` |
+|  3872 | 3347 | `PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)` |
 |     5 | 3348 | `{` |
 |     - | 3349 | `	static const struct {` |
 |     - | 3350 | `		const char *zName;` |
@@ -3384,41 +3384,41 @@ Coverage: 1037/1211 lines (85.63%)
 |     - | 3374 | `	};` |
 |     - | 3375 | `	sxu32 n;` |
 |     - | 3376 | `	sxi32 rc;` |
-| 85453 | 3377 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
-| 81569 | 3378 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
-| 40787 | 3379 | `	}` |
-|  3889 | 3380 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib1, sizeof(zReflectLib1)-1);` |
-|  3889 | 3381 | `	if( rc != SXRET_OK ){` |
+| 85189 | 3377 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
+| 81317 | 3378 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
+| 40661 | 3379 | `	}` |
+|  3877 | 3380 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib1, sizeof(zReflectLib1)-1);` |
+|  3877 | 3381 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3382 | `		return rc;` |
 |     - | 3383 | `	}` |
-|  3889 | 3384 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib2, sizeof(zReflectLib2)-1);` |
-|  3889 | 3385 | `	if( rc != SXRET_OK ){` |
+|  3877 | 3384 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib2, sizeof(zReflectLib2)-1);` |
+|  3877 | 3385 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3386 | `		return rc;` |
 |     - | 3387 | `	}` |
-|  3889 | 3388 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib3, sizeof(zReflectLib3)-1);` |
-|  3889 | 3389 | `	if( rc != SXRET_OK ){` |
+|  3877 | 3388 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib3, sizeof(zReflectLib3)-1);` |
+|  3877 | 3389 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3390 | `		return rc;` |
 |     - | 3391 | `	}` |
-|  3889 | 3392 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib4, sizeof(zReflectLib4)-1);` |
-|  3889 | 3393 | `	if( rc != SXRET_OK ){` |
+|  3877 | 3392 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib4, sizeof(zReflectLib4)-1);` |
+|  3877 | 3393 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3394 | `		return rc;` |
 |     - | 3395 | `	}` |
-|  3889 | 3396 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib5, sizeof(zReflectLib5)-1);` |
-|  3889 | 3397 | `	if( rc != SXRET_OK ){` |
+|  3877 | 3396 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib5, sizeof(zReflectLib5)-1);` |
+|  3877 | 3397 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3398 | `		return rc;` |
 |     - | 3399 | `	}` |
-|  3889 | 3400 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib6, sizeof(zReflectLib6)-1);` |
-|  3889 | 3401 | `	if( rc != SXRET_OK ){` |
+|  3877 | 3400 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib6, sizeof(zReflectLib6)-1);` |
+|  3877 | 3401 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3402 | `		return rc;` |
 |     - | 3403 | `	}` |
-|  3889 | 3404 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib7, sizeof(zReflectLib7)-1);` |
-|  3889 | 3405 | `	if( rc != SXRET_OK ){` |
+|  3877 | 3404 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib7, sizeof(zReflectLib7)-1);` |
+|  3877 | 3405 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3406 | `		return rc;` |
 |     - | 3407 | `	}` |
-|  3889 | 3408 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib8, sizeof(zReflectLib8)-1);` |
-|  3889 | 3409 | `	if( rc != SXRET_OK ){` |
+|  3877 | 3408 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib8, sizeof(zReflectLib8)-1);` |
+|  3877 | 3409 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3410 | `		return rc;` |
 |     - | 3411 | `	}` |
-|  3889 | 3412 | `	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib9, sizeof(zReflectLib9)-1);` |
-|  1947 | 3413 | `}` |
+|  3877 | 3412 | `	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib9, sizeof(zReflectLib9)-1);` |
+|  1941 | 3413 | `}` |
 |     - | 3414 |  |

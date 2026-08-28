@@ -1,23 +1,23 @@
 | Filename                       | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| src/ph7/api.c                  | 70.83%   | 777/1097    |
-| src/ph7/builtin.c              | 86.31%   | 4267/4944   |
-| src/ph7/builtin_date.c         | 66.25%   | 481/726     |
+| src/ph7/api.c                  | 70.86%   | 778/1098    |
+| src/ph7/builtin.c              | 86.35%   | 4283/4960   |
+| src/ph7/builtin_date.c         | 66.30%   | 482/727     |
 | src/ph7/builtin_math.c         | 87.35%   | 525/601     |
-| src/ph7/compile.c              | 80.61%   | 6995/8678   |
-| src/ph7/constant.c             | 98.58%   | 1108/1124   |
-| src/ph7/hashmap.c              | 89.71%   | 3925/4375   |
+| src/ph7/compile.c              | 80.73%   | 7013/8687   |
+| src/ph7/constant.c             | 98.22%   | 1104/1124   |
+| src/ph7/hashmap.c              | 89.63%   | 3941/4397   |
 | src/ph7/lex.c                  | 93.44%   | 784/839     |
-| src/ph7/memobj.c               | 89.78%   | 870/969     |
+| src/ph7/memobj.c               | 88.47%   | 890/1006    |
 | src/ph7/net.c                  | 50.48%   | 53/105      |
-| src/ph7/oo.c                   | 89.57%   | 653/729     |
+| src/ph7/oo.c                   | 87.69%   | 684/780     |
 | src/ph7/parse.c                | 87.38%   | 1163/1331   |
 | src/ph7/vfs.c                  | 64.88%   | 1853/2856   |
 | src/ph7/vfs_unix.c             | 88.06%   | 376/427     |
 | src/ph7/vfs_win.c              | 68.59%   | 487/710     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
-| src/ph7/vm.c                   | 82.69%   | 10917/13202 |
-| src/ph7/vm_builtin_class.c     | 87.58%   | 536/612     |
+| src/ph7/vm.c                   | 82.55%   | 10908/13214 |
+| src/ph7/vm_builtin_class.c     | 87.18%   | 544/624     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
 | src/ph7/vm_builtin_ob.c        | 75.12%   | 157/209     |
 | src/ph7/vm_builtin_reflection.c | 85.63%   | 1037/1211   |
@@ -27,7 +27,7 @@
 | src/ph7/vm_pcre.c              | 64.89%   | 595/917     |
 | src/ph7/vm_serialize.c         | 96.02%   | 458/477     |
 | src/ph7/vm_xml.c               | 67.82%   | 392/578     |
-| src/phl/phl.c                  | 78.66%   | 199/253     |
+| src/phl/phl.c                  | 77.94%   | 219/281     |
 | src/phl/server.c               | 61.56%   | 277/450     |
 | src/sx/sxblowfish.c            | 98.82%   | 168/170     |
 | src/sx/sxds.c                  | 95.39%   | 290/304     |
@@ -45,6 +45,6 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.27%   | 43087/53015 |
-| Functions                      | 96.57%   | 1968/2038   |
+| Lines                          | 81.21%   | 43205/53204 |
+| Functions                      | 96.58%   | 1976/2046   |
 
