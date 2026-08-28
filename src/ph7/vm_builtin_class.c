@@ -644,6 +644,24 @@ PH7_PRIVATE int PH7_VmClassMemberAccess(
 					}
 				}
 			}
+			if( !bGranted && (pClass->iFlags & PH7_CLASS_TRAIT) != 0 ){
+				/* The target "class" is itself a trait: a trait-copied private
+				 * member behaves as if declared in the adopting class, so a
+				 * caller that USES the trait gets access (php: `self::s()`
+				 * from a using class's static method reaching a trait-private
+				 * static — the callee resolves via the shared trait VmFunc
+				 * whose owner is the trait, not the class). */
+				ph7_class **apTrait;
+				sxu32 nTrait,k;
+				apTrait = (ph7_class **)SySetBasePtr(&pCaller->aTrait);
+				nTrait = SySetUsed(&pCaller->aTrait);
+				for(k = 0; k < nTrait; k++){
+					if( apTrait[k] == pClass ){
+						bGranted = 1;
+						break;
+					}
+				}
+			}
 			if( !bGranted ){
 				goto dis; /* Access is forbidden */
 			}
@@ -652,7 +670,23 @@ PH7_PRIVATE int PH7_VmClassMemberAccess(
 			ph7_class *pBase = pCallerScope;
 			/* Must be in the same class hierarchy */
 			if( !PH7_VmInstanceOf(pClass,pBase) && !PH7_VmInstanceOf(pBase,pClass) ){
-				goto dis; /* Access is forbidden */
+				int bTraitGrant = 0;
+				if( (pClass->iFlags & PH7_CLASS_TRAIT) != 0 ){
+					/* Same trait-target rule as the private branch above */
+					ph7_class **apTrait;
+					sxu32 nTrait,k;
+					apTrait = (ph7_class **)SySetBasePtr(&pBase->aTrait);
+					nTrait = SySetUsed(&pBase->aTrait);
+					for(k = 0; k < nTrait; k++){
+						if( apTrait[k] == pClass ){
+							bTraitGrant = 1;
+							break;
+						}
+					}
+				}
+				if( !bTraitGrant ){
+					goto dis; /* Access is forbidden */
+				}
 			}
 		}
 	}

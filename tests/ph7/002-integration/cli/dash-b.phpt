@@ -29,9 +29,9 @@ echo $out;
 PH7 VM Dump
 ====================================================
 NSSWITCH           0        0        0 [0]
-LOADC              0      %d        0 [1]
+LOADC              0 %A [1]
 CONSUME            1        0        0 [2]
-LOADC              0      %d        0 [3]
+LOADC              0 %A [3]
 CONSUME            1        0        0 [4]
 DONE               0        0        0 [5]
 Hello World!
