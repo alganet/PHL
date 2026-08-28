@@ -180,9 +180,9 @@ Coverage: 219/281 lines (77.94%)
 |     - |  170 | ` * This function is registered later via a call to ph7_vm_config()` |
 |     - |  171 | ` * with a configuration verb set to: PH7_VM_CONFIG_OUTPUT.` |
 |     - |  172 | ` */` |
-| 11996 |  173 | `static int Output_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUserData /* Unused */)` |
+| 12000 |  173 | `static int Output_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUserData /* Unused */)` |
 |     5 |  174 | `{` |
-|  5998 |  175 | `	(void)pUserData;` |
+|  6000 |  175 | `	(void)pUserData;` |
 |     - |  176 | `#ifdef __WINNT__` |
 |     - |  177 | `	BOOL rc;` |
 |     5 |  178 | `	rc = WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),pOutput,(DWORD)nOutputLen,0,0);` |
@@ -192,15 +192,15 @@ Coverage: 219/281 lines (77.94%)
 |     - |  182 | `	}` |
 |     - |  183 | `#else` |
 |     - |  184 | `	ssize_t nWr;` |
-| 11996 |  185 | `	nWr = write(STDOUT_FILENO,pOutput,nOutputLen);` |
-| 11996 |  186 | `	if( nWr < 0 ){` |
+| 12000 |  185 | `	nWr = write(STDOUT_FILENO,pOutput,nOutputLen);` |
+| 12000 |  186 | `	if( nWr < 0 ){` |
 |     - |  187 | `		/* Abort processing */` |
 |   ! 0 |  188 | `		return PH7_ABORT;` |
 |     - |  189 | `	}` |
 |     - |  190 | `#endif /* __WINT__ */` |
 |     - |  191 | `	/* All done,VM output was redirected to STDOUT */` |
-| 12001 |  192 | `	return PH7_OK;` |
-|  6003 |  193 | `}` |
+| 12005 |  192 | `	return PH7_OK;` |
+|  6005 |  193 | `}` |
 |     - |  194 | `/*` |
 |     - |  195 | ` * Parse an unsigned-long testing knob from the environment (PHL_MAX_ALLOC /` |
 |     - |  196 | ` * PHL_MAX_INPUT / PHL_MAX_RECURSION / PHL_MAX_NATIVE_DEPTH). Returns 1 and writes` |
