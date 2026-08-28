@@ -542,8 +542,16 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 			}
 			continue;
 		}
-		/* Install the method */
-		if( pMeth->iProtection != PH7_CLASS_PROT_PRIVATE ){
+		/* Install the method. php: a base class's private INSTANCE method is
+		 * dispatchable on child instances too — an inherited public method
+		 * calling $this->priv() must find it (the call-site visibility check
+		 * binds by DECLARING class, sFunc.pUserData, so child code and
+		 * outsiders still can't call it; a private ctor copied down also
+		 * blocks `new Child` from outside like php). Private STATICS stay
+		 * uncopied — base methods reach those through self:: against the
+		 * declaring class directly. */
+		if( pMeth->iProtection != PH7_CLASS_PROT_PRIVATE
+		 || (pMeth->iFlags & PH7_CLASS_ATTR_STATIC) == 0 ){
 			rc = SyHashInsert(&pSub->hMethod,(const void *)pName->zString,pName->nByte,pMeth);
 			if( rc != SXRET_OK ){
 				return rc;
