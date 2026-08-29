@@ -34,10 +34,6 @@ $b = "world";
 $result = $a . $b;
 $result2 = $a !== $b;
 
-// Test comma operator (PH7 extension)
-$counter = 5;
-$result = ($counter++, $counter * 2, $counter + 1);
-
 // Test complex ternary operator
 $score = 85;
 $grade = ($score >= 90) ? 'A' : (($score >= 80) ? 'B' : 'C');

@@ -4401,6 +4401,11 @@ static sxi32 PH7_CompileFor(ph7_gen_state *pGen)
 	/* Swap token streams */
 	pTmp = pGen->pEnd;
 	pGen->pEnd = pEnd;
+	/* for() clauses are the ONLY place php's grammar allows a comma-separated
+	 * expression list, so the comma operator is permitted for their duration
+	 * (see GenStateTreeHasComma). A closure body nested inside a clause is
+	 * compiled through this same window — recorded as a known leniency. */
+	pGen->nCommaExprOk++;
 	/* Compile initialization expressions if available */
 	rc = PH7_CompileExpr(&(*pGen),0,0);
 	/* Pop operand lvalues */
@@ -4454,7 +4459,9 @@ static sxi32 PH7_CompileFor(ph7_gen_state *pGen)
 	pGen->pIn++;
 	/* Save the post condition stream */
 	pPostStart = pGen->pIn;
-	/* Compile the loop body */
+	/* Compile the loop body — OUTSIDE the comma window (the body is ordinary
+	 * php, so `(1, 2)` inside it is the parse error it should be). */
+	pGen->nCommaExprOk--;
 	pGen->pIn  = &pEnd[1]; /* Jump the trailing parenthesis ')' */
 	pGen->pEnd = pTmp;
 	rc = PH7_CompileBlock(&(*pGen),PH7_TKWRD_ENDFOR);
@@ -4484,7 +4491,9 @@ static sxi32 PH7_CompileFor(ph7_gen_state *pGen)
 	if( pPostStart < pEnd ){
 		SyToken *pTmpIn,*pTmpEnd;
 		SWAP_DELIMITER(pGen,pPostStart,pEnd);
+		pGen->nCommaExprOk++; /* post-expressions are a clause list again */
 		rc = PH7_CompileExpr(&(*pGen),0,0);
+		pGen->nCommaExprOk--;
 		if( pGen->pIn < pGen->pEnd ){
 			/* Syntax error */
 			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,"for: Expected ')' after post-expressions");
@@ -13667,6 +13676,39 @@ static sxi32 GenStateEmitExprCode(
  * function takes care of generating the appropriate error
  * message.
  */
+/*
+ * Does this expression tree contain a comma OPERATOR node?
+ *
+ * PH7 shipped `,` as a lowest-precedence binary operator (IMP-0139-COMMA), so
+ * `(1, 2)` and `$x = (f(), $y)` compile and evaluate to the right operand.
+ * php 8 has no comma operator: its grammar only allows comma-separated
+ * expression LISTS inside for(...) clauses (call arguments, array literals and
+ * list() are split by the parser, never by this node). Accepting it changes the
+ * meaning of source php rejects, which §10 classes as a bug — so every context
+ * except for() now reports php's parse error.
+ */
+static int GenStateTreeHasComma(ph7_expr_node *pNode)
+{
+	ph7_expr_node **apArg;
+	sxu32 n;
+	if( pNode == 0 ){
+		return 0;
+	}
+	if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_COMMA ){
+		return 1;
+	}
+	if( GenStateTreeHasComma(pNode->pLeft) || GenStateTreeHasComma(pNode->pRight)
+	 || GenStateTreeHasComma(pNode->pCond) ){
+		return 1;
+	}
+	apArg = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);
+	for( n = 0 ; n < SySetUsed(&pNode->aNodeArgs) ; n++ ){
+		if( GenStateTreeHasComma(apArg[n]) ){
+			return 1;
+		}
+	}
+	return 0;
+}
 static sxi32 PH7_CompileExpr(
 	ph7_gen_state *pGen, /* Code generator state */
 	sxi32 iFlags,        /* Control flags */
@@ -13731,6 +13773,21 @@ static sxi32 PH7_CompileExpr(
 		pGen->pEnd = pEnd;
 		/* Try to get an expression tree */
 		rc = PH7_ExprMakeTree(&(*pGen),&sExprNode,&pRoot);
+		if( rc == SXRET_OK && pRoot && pGen->nCommaExprOk < 1
+		 && GenStateTreeHasComma(pRoot) ){
+			/* php has no comma operator outside a for() clause */
+			rc = PH7_GenCompileError(&(*pGen),E_PARSE,pRoot->pStart->nLine,
+				"syntax error, unexpected token \",\"");
+			pGen->pEnd = pTmp;
+			if( rc == SXERR_ABORT ){
+				SySetRelease(&sExprNode);
+				return SXERR_ABORT;
+			}
+			pGen->pIn = pEnd;
+			SySetRelease(&sExprNode);
+			SySetTruncate(&pGen->aNullsafeJmp,nNullsafeBase);
+			return SXRET_OK;
+		}
 		if( rc == SXRET_OK && pRoot ){
 			rc = SXRET_OK;
 			if( xTreeValidator ){
