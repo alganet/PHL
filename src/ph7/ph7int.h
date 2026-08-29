@@ -504,6 +504,9 @@ struct ph7_gen_state
 	SySet aLabel;        /* Label table */
 	SySet aGoto;         /* Gotos table */
 	SySet aNullsafeJmp;  /* Pending NULLSAFE_JMP instruction indices (sxu32) */
+	int nCommaExprOk;    /* > 0 while compiling a for() clause, the ONLY place php's grammar
+	                      * allows a comma-separated expression list (PH7's comma OPERATOR
+	                      * is otherwise a PH7-ism php rejects — §10) */
 	SyBlob sWorker;      /* General purpose working buffer */
 	SyBlob sErrBuf;      /* Error buffer */
 	SyBlob sNamespace;   /* Current namespace path (e.g. "App\\Models") */
