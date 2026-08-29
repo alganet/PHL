@@ -7,8 +7,8 @@ PH7 / PHP: FNM_CASEFOLD constant
 <?php
 echo "FNM_CASEFOLD=" . FNM_CASEFOLD . "\n";
 ?>
---EXPECTF--
-FNM_CASEFOLD=%d
+--EXPECT--
+FNM_CASEFOLD=16
 --CLEAN--
 <?php
 

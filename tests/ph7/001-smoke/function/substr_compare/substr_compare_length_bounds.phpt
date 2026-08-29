@@ -4,7 +4,7 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 PH7: substr_compare length bounds checking
 --SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+flaky
 --FILE--
 <?php
 // Test length that exceeds remaining string after offset

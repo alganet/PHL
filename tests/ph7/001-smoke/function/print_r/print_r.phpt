@@ -3,11 +3,7 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 print_r outputs variable information
---SKIPIF--
-<?php
-if (!function_exists('print_r')) { echo 'skip: print_r not available'; }
-if (function_exists('zend_version')) { echo 'skip: PHP print_r output differs'; }
-?>
+
 --FILE--
 <?php
 $output = print_r("test", true);

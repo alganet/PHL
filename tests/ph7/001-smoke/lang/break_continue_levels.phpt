@@ -1,7 +1,6 @@
 --TEST--
 Break and continue with levels
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+
 --FILE--
 <?php
 $i = 0;

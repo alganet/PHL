@@ -3,12 +3,7 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 disk_free_space() should return a number greater than zero
---SKIPIF--
-<?php
-if (!function_exists('zend_version')) {
-    echo "skip: platform";
-}
-?>
+
 --FILE--
 <?php
 $val = disk_free_space(sys_get_temp_dir());

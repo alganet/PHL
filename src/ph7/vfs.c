@@ -1966,10 +1966,10 @@ static int PH7_builtin_fnmatch(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Extract the flags if avaialble */
 	if( nArg > 2 && ph7_value_is_int(apArg[2]) ){
 		rc = ph7_value_to_int(apArg[2]);
-		if( rc & 0x01 /*FNM_NOESCAPE*/){
+		if( rc & 2 /*FNM_NOESCAPE (php value)*/){
 			iEsc = 0;
 		}
-		if( rc & 0x08 /*FNM_CASEFOLD*/){
+		if( rc & 16 /*FNM_CASEFOLD (php value)*/){
 			noCase = 1;
 		}
 	}
