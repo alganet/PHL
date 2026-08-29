@@ -73,19 +73,19 @@ Coverage: 2344/3510 lines (66.78%)
 |      - |   63 | ` * Return` |
 |      - |   64 | ` *  TRUE on success or FALSE on failure.` |
 |      - |   65 | ` */` |
-|  13650 |   66 | `static int PH7_vfs_chdir(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  13638 |   66 | `static int PH7_vfs_chdir(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 |   67 | `{` |
 |      - |   68 | `	const char *zPath;` |
 |      - |   69 | `	ph7_vfs *pVfs;` |
 |      - |   70 | `	int rc;` |
-|  13655 |   71 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|  13643 |   71 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
 |      - |   72 | `		/* Missing/Invalid argument,return FALSE */` |
 |      6 |   73 | `		ph7_result_bool(pCtx,0);` |
 |      6 |   74 | `		return PH7_OK;` |
 |      - |   75 | `	}` |
 |      - |   76 | `	/* Point to the underlying vfs */` |
-|  13651 |   77 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
-|  13651 |   78 | `	if( pVfs == 0 \|\| pVfs->xChdir == 0 ){` |
+|  13639 |   77 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
+|  13639 |   78 | `	if( pVfs == 0 \|\| pVfs->xChdir == 0 ){` |
 |      - |   79 | `		/* IO routine not implemented,return NULL */` |
 |    ! 0 |   80 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - |   81 | `			"IO routine(%s) not implemented in the underlying VFS,PH7 is returning FALSE",` |
@@ -95,13 +95,13 @@ Coverage: 2344/3510 lines (66.78%)
 |    ! 0 |   85 | `		return PH7_OK;` |
 |      - |   86 | `	}` |
 |      - |   87 | `	/* Point to the desired directory */` |
-|  13651 |   88 | `	zPath = ph7_value_to_string(apArg[0],0);` |
+|  13639 |   88 | `	zPath = ph7_value_to_string(apArg[0],0);` |
 |      - |   89 | `	/* Perform the requested operation */` |
-|  13651 |   90 | `	rc = pVfs->xChdir(zPath);` |
+|  13639 |   90 | `	rc = pVfs->xChdir(zPath);` |
 |      - |   91 | `	/* IO return value */` |
-|  13651 |   92 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
-|  13651 |   93 | `	return PH7_OK;` |
-|   6830 |   94 | `}` |
+|  13639 |   92 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
+|  13639 |   93 | `	return PH7_OK;` |
+|   6824 |   94 | `}` |
 |      - |   95 | `/*` |
 |      - |   96 | ` * bool chroot(string $directory)` |
 |      - |   97 | ` *  Change the root directory.` |
@@ -221,19 +221,19 @@ Coverage: 2344/3510 lines (66.78%)
 |      - |  211 | ` * Return` |
 |      - |  212 | ` *  TRUE on success or FALSE on failure.` |
 |      - |  213 | ` */` |
-|   8504 |  214 | `static int PH7_vfs_is_dir(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   8502 |  214 | `static int PH7_vfs_is_dir(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 |  215 | `{` |
 |      - |  216 | `	const char *zPath;` |
 |      - |  217 | `	ph7_vfs *pVfs;` |
 |      - |  218 | `	int rc;` |
-|   8509 |  219 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|   8507 |  219 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
 |      - |  220 | `		/* Missing/Invalid argument,return FALSE */` |
 |    ! 0 |  221 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 |  222 | `		return PH7_OK;` |
 |      - |  223 | `	}` |
 |      - |  224 | `	/* Point to the underlying vfs */` |
-|   8509 |  225 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
-|   8509 |  226 | `	if( pVfs == 0 \|\| pVfs->xIsdir == 0 ){` |
+|   8507 |  225 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
+|   8507 |  226 | `	if( pVfs == 0 \|\| pVfs->xIsdir == 0 ){` |
 |      - |  227 | `		/* IO routine not implemented,return NULL */` |
 |    ! 0 |  228 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - |  229 | `			"IO routine(%s) not implemented in the underlying VFS,PH7 is returning FALSE",` |
@@ -243,13 +243,13 @@ Coverage: 2344/3510 lines (66.78%)
 |    ! 0 |  233 | `		return PH7_OK;` |
 |      - |  234 | `	}` |
 |      - |  235 | `	/* Point to the desired directory */` |
-|   8509 |  236 | `	zPath = ph7_value_to_string(apArg[0],0);` |
+|   8507 |  236 | `	zPath = ph7_value_to_string(apArg[0],0);` |
 |      - |  237 | `	/* Perform the requested operation */` |
-|   8509 |  238 | `	rc = pVfs->xIsdir(zPath);` |
+|   8507 |  238 | `	rc = pVfs->xIsdir(zPath);` |
 |      - |  239 | `	/* IO return value */` |
-|   8509 |  240 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
-|   8509 |  241 | `	return PH7_OK;` |
-|   4257 |  242 | `}` |
+|   8507 |  240 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
+|   8507 |  241 | `	return PH7_OK;` |
+|   4256 |  242 | `}` |
 |      - |  243 | `/*` |
 |      - |  244 | ` * bool mkdir(string $pathname[,int $mode = 0777 [,bool $recursive = false])` |
 |      - |  245 | ` *  Make a directory.` |
@@ -484,19 +484,19 @@ Coverage: 2344/3510 lines (66.78%)
 |      - |  474 | ` * Return` |
 |      - |  475 | ` *  TRUE on success or FALSE on failure.` |
 |      - |  476 | ` */` |
-|  32734 |  477 | `static int PH7_vfs_unlink(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  32724 |  477 | `static int PH7_vfs_unlink(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 |  478 | `{` |
 |      - |  479 | `	const char *zPath;` |
 |      - |  480 | `	ph7_vfs *pVfs;` |
 |      - |  481 | `	int rc;` |
-|  32739 |  482 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|  32729 |  482 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
 |      - |  483 | `		/* Missing/Invalid argument,return FALSE */` |
 |    ! 0 |  484 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 |  485 | `		return PH7_OK;` |
 |      - |  486 | `	}` |
 |      - |  487 | `	/* Point to the underlying vfs */` |
-|  32739 |  488 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
-|  32739 |  489 | `	if( pVfs == 0 \|\| pVfs->xUnlink == 0 ){` |
+|  32729 |  488 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
+|  32729 |  489 | `	if( pVfs == 0 \|\| pVfs->xUnlink == 0 ){` |
 |      - |  490 | `		/* IO routine not implemented,return NULL */` |
 |    ! 0 |  491 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - |  492 | `			"IO routine(%s) not implemented in the underlying VFS,PH7 is returning FALSE",` |
@@ -506,13 +506,13 @@ Coverage: 2344/3510 lines (66.78%)
 |    ! 0 |  496 | `		return PH7_OK;` |
 |      - |  497 | `	}` |
 |      - |  498 | `	/* Point to the desired directory */` |
-|  32739 |  499 | `	zPath = ph7_value_to_string(apArg[0],0);` |
+|  32729 |  499 | `	zPath = ph7_value_to_string(apArg[0],0);` |
 |      - |  500 | `	/* Perform the requested operation */` |
-|  32739 |  501 | `	rc = pVfs->xUnlink(zPath);` |
+|  32729 |  501 | `	rc = pVfs->xUnlink(zPath);` |
 |      - |  502 | `	/* IO return value */` |
-|  32739 |  503 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
-|  32739 |  504 | `	return PH7_OK;` |
-|  16372 |  505 | `}` |
+|  32729 |  503 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
+|  32729 |  504 | `	return PH7_OK;` |
+|  16367 |  505 | `}` |
 |      - |  506 | `/*` |
 |      - |  507 | ` * bool chmod(string $filename,int $mode)` |
 |      - |  508 | ` *  Attempts to change the mode of the specified file to that given in mode.` |
@@ -915,19 +915,19 @@ Coverage: 2344/3510 lines (66.78%)
 |      - |  905 | ` * Return` |
 |      - |  906 | ` *  TRUE on success or FALSE on failure.` |
 |      - |  907 | ` */` |
-|   6518 |  908 | `static int PH7_vfs_is_file(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   6516 |  908 | `static int PH7_vfs_is_file(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 |  909 | `{` |
 |      - |  910 | `	const char *zPath;` |
 |      - |  911 | `	ph7_vfs *pVfs;` |
 |      - |  912 | `	int rc;` |
-|   6523 |  913 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|   6521 |  913 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
 |      - |  914 | `		/* Missing/Invalid argument,return FALSE */` |
 |    ! 0 |  915 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 |  916 | `		return PH7_OK;` |
 |      - |  917 | `	}` |
 |      - |  918 | `	/* Point to the underlying vfs */` |
-|   6523 |  919 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
-|   6523 |  920 | `	if( pVfs == 0 \|\| pVfs->xIsfile == 0 ){` |
+|   6521 |  919 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
+|   6521 |  920 | `	if( pVfs == 0 \|\| pVfs->xIsfile == 0 ){` |
 |      - |  921 | `		/* IO routine not implemented,return NULL */` |
 |    ! 0 |  922 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - |  923 | `			"IO routine(%s) not implemented in the underlying VFS,PH7 is returning FALSE",` |
@@ -937,13 +937,13 @@ Coverage: 2344/3510 lines (66.78%)
 |    ! 0 |  927 | `		return PH7_OK;` |
 |      - |  928 | `	}` |
 |      - |  929 | `	/* Point to the desired directory */` |
-|   6523 |  930 | `	zPath = ph7_value_to_string(apArg[0],0);` |
+|   6521 |  930 | `	zPath = ph7_value_to_string(apArg[0],0);` |
 |      - |  931 | `	/* Perform the requested operation */` |
-|   6523 |  932 | `	rc = pVfs->xIsfile(zPath);` |
+|   6521 |  932 | `	rc = pVfs->xIsfile(zPath);` |
 |      - |  933 | `	/* IO return value */` |
-|   6523 |  934 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
-|   6523 |  935 | `	return PH7_OK;` |
-|   3264 |  936 | `}` |
+|   6521 |  934 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
+|   6521 |  935 | `	return PH7_OK;` |
+|   3263 |  936 | `}` |
 |      - |  937 | `/*` |
 |      - |  938 | ` * bool is_link(string $filename)` |
 |      - |  939 | ` *  Tells whether the filename is a symbolic link.` |
@@ -1562,19 +1562,19 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 1552 | `/*` |
 |      - | 1553 | ` * Extract path fields.` |
 |      - | 1554 | ` */` |
-|  13026 | 1555 | `static sxi32 ExtractPathInfo(const char *zPath,int nByte,path_info *pOut)` |
+|  13022 | 1555 | `static sxi32 ExtractPathInfo(const char *zPath,int nByte,path_info *pOut)` |
 |      5 | 1556 | `{` |
-|  13031 | 1557 | `	const char *zPtr,*zEnd = &zPath[nByte - 1];` |
+|  13027 | 1557 | `	const char *zPtr,*zEnd = &zPath[nByte - 1];` |
 |      - | 1558 | `	SyString *pCur;` |
 |      - | 1559 | `	int c,d;` |
-|  13031 | 1560 | `	c = d = '/';` |
+|  13027 | 1560 | `	c = d = '/';` |
 |      - | 1561 | `#ifdef __WINNT__` |
 |      5 | 1562 | `	d = '\\';` |
 |      - | 1563 | `#endif` |
 |      - | 1564 | `	/* Zero the structure */` |
-|  13031 | 1565 | `	SyZero(pOut,sizeof(path_info));` |
+|  13027 | 1565 | `	SyZero(pOut,sizeof(path_info));` |
 |      - | 1566 | `	/* Handle special case */` |
-|  13031 | 1567 | `	if( nByte == sizeof(char) && ( (int)zPath[0] == c \|\| (int)zPath[0] == d ) ){` |
+|  13027 | 1567 | `	if( nByte == sizeof(char) && ( (int)zPath[0] == c \|\| (int)zPath[0] == d ) ){` |
 |      - | 1568 | `#ifdef __WINNT__` |
 |    ! 0 | 1569 | `		SyStringInitFromBuf(&pOut->sDir,"\\",sizeof(char));` |
 |      - | 1570 | `#else` |
@@ -1583,20 +1583,20 @@ Coverage: 2344/3510 lines (66.78%)
 |    ! 0 | 1573 | `		return SXRET_OK;` |
 |      - | 1574 | `	}` |
 |      - | 1575 | `	/* Extract the basename */` |
-| 351424 | 1576 | `	while( zEnd > zPath && ( (int)zEnd[0] != c && (int)zEnd[0] != d ) ){` |
-| 331885 | 1577 | `		zEnd--;` |
+| 351346 | 1576 | `	while( zEnd > zPath && ( (int)zEnd[0] != c && (int)zEnd[0] != d ) ){` |
+| 331813 | 1577 | `		zEnd--;` |
 |      5 | 1578 | `	}` |
-|  13031 | 1579 | `	zPtr = (zEnd > zPath) ? &zEnd[1] : zPath;` |
-|  13031 | 1580 | `	zEnd = &zPath[nByte];` |
+|  13027 | 1579 | `	zPtr = (zEnd > zPath) ? &zEnd[1] : zPath;` |
+|  13027 | 1580 | `	zEnd = &zPath[nByte];` |
 |      - | 1581 | `	/* dirname */` |
-|  13031 | 1582 | `	pCur = &pOut->sDir;` |
-|  13031 | 1583 | `	SyStringInitFromBuf(pCur,zPath,zPtr-zPath);` |
-|  13031 | 1584 | `	if( pCur->nByte > 1 ){` |
-|  26057 | 1585 | `		SyStringTrimTrailingChar(pCur,'/');` |
+|  13027 | 1582 | `	pCur = &pOut->sDir;` |
+|  13027 | 1583 | `	SyStringInitFromBuf(pCur,zPath,zPtr-zPath);` |
+|  13027 | 1584 | `	if( pCur->nByte > 1 ){` |
+|  26049 | 1585 | `		SyStringTrimTrailingChar(pCur,'/');` |
 |      - | 1586 | `#ifdef __WINNT__` |
 |      5 | 1587 | `		SyStringTrimTrailingChar(pCur,'\\');` |
 |      - | 1588 | `#endif` |
-|   6518 | 1589 | `	}else if( (int)zPath[0] == c \|\| (int)zPath[0] == d ){` |
+|   6516 | 1589 | `	}else if( (int)zPath[0] == c \|\| (int)zPath[0] == d ){` |
 |      - | 1590 | `#ifdef __WINNT__` |
 |    ! 0 | 1591 | `		SyStringInitFromBuf(&pOut->sDir,"\\",sizeof(char));` |
 |      - | 1592 | `#else` |
@@ -1604,59 +1604,59 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 1594 | `#endif` |
 |    ! 0 | 1595 | `	}` |
 |      - | 1596 | `	/* basename/filename */` |
-|  13031 | 1597 | `	pCur = &pOut->sBasename;` |
-|  13031 | 1598 | `	SyStringInitFromBuf(pCur,zPtr,zEnd-zPtr);` |
-|  13031 | 1599 | `	SyStringTrimLeadingChar(pCur,'/');` |
+|  13027 | 1597 | `	pCur = &pOut->sBasename;` |
+|  13027 | 1598 | `	SyStringInitFromBuf(pCur,zPtr,zEnd-zPtr);` |
+|  13027 | 1599 | `	SyStringTrimLeadingChar(pCur,'/');` |
 |      - | 1600 | `#ifdef __WINNT__` |
 |      5 | 1601 | `	SyStringTrimLeadingChar(pCur,'\\');` |
 |      - | 1602 | `#endif` |
-|  13031 | 1603 | `	SyStringDupPtr(&pOut->sFilename,pCur);` |
-|  13031 | 1604 | `	if( pCur->nByte > 0 ){` |
+|  13027 | 1603 | `	SyStringDupPtr(&pOut->sFilename,pCur);` |
+|  13027 | 1604 | `	if( pCur->nByte > 0 ){` |
 |      - | 1605 | `		/* extension */` |
-|  13031 | 1606 | `		zEnd--;` |
-|  65129 | 1607 | `		while( zEnd > pCur->zString /*basename*/ && zEnd[0] != '.' ){` |
-|  52103 | 1608 | `			zEnd--;` |
+|  13027 | 1606 | `		zEnd--;` |
+|  65109 | 1607 | `		while( zEnd > pCur->zString /*basename*/ && zEnd[0] != '.' ){` |
+|  52087 | 1608 | `			zEnd--;` |
 |      5 | 1609 | `		}` |
-|  13031 | 1610 | `		if( zEnd > pCur->zString ){` |
-|  13029 | 1611 | `			zEnd++; /* Jump leading dot */` |
-|  13029 | 1612 | `			SyStringInitFromBuf(&pOut->sExtension,zEnd,&zPath[nByte]-zEnd);` |
+|  13027 | 1610 | `		if( zEnd > pCur->zString ){` |
+|  13025 | 1611 | `			zEnd++; /* Jump leading dot */` |
+|  13025 | 1612 | `			SyStringInitFromBuf(&pOut->sExtension,zEnd,&zPath[nByte]-zEnd);` |
 |      - | 1613 | `			/* Fix filename */` |
-|  13029 | 1614 | `			pCur = &pOut->sFilename;` |
-|  13029 | 1615 | `			if( pCur->nByte > SyStringLength(&pOut->sExtension) ){` |
-|  13029 | 1616 | `				pCur->nByte -= 1 + SyStringLength(&pOut->sExtension);` |
-|   6512 | 1617 | `			}` |
-|   6512 | 1618 | `		}` |
-|   6513 | 1619 | `	}` |
-|  13031 | 1620 | `	return SXRET_OK;` |
-|   6518 | 1621 | `}` |
+|  13025 | 1614 | `			pCur = &pOut->sFilename;` |
+|  13025 | 1615 | `			if( pCur->nByte > SyStringLength(&pOut->sExtension) ){` |
+|  13025 | 1616 | `				pCur->nByte -= 1 + SyStringLength(&pOut->sExtension);` |
+|   6510 | 1617 | `			}` |
+|   6510 | 1618 | `		}` |
+|   6511 | 1619 | `	}` |
+|  13027 | 1620 | `	return SXRET_OK;` |
+|   6516 | 1621 | `}` |
 |      - | 1622 | `/*` |
 |      - | 1623 | ` * value pathinfo(string $path [,int $options = PATHINFO_DIRNAME \| PATHINFO_BASENAME \| PATHINFO_EXTENSION \| PATHINFO_FILENAME ])` |
 |      - | 1624 | ` *  See block comment above.` |
 |      - | 1625 | ` */` |
-|  13026 | 1626 | `static int PH7_builtin_pathinfo(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  13022 | 1626 | `static int PH7_builtin_pathinfo(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 1627 | `{` |
 |      - | 1628 | `	const char *zPath;` |
 |      - | 1629 | `	path_info sInfo;` |
 |      - | 1630 | `	SyString *pComp;` |
 |      - | 1631 | `	int iLen;` |
-|  13031 | 1632 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|  13027 | 1632 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
 |      - | 1633 | `		/* Missing/Invalid argument,return the empty string */` |
 |    ! 0 | 1634 | `		ph7_result_string(pCtx,"",0);` |
 |    ! 0 | 1635 | `		return PH7_OK;` |
 |      - | 1636 | `	}` |
 |      - | 1637 | `	/* Point to the target path */` |
-|  13031 | 1638 | `	zPath = ph7_value_to_string(apArg[0],&iLen);` |
-|  13031 | 1639 | `	if( iLen < 1 ){` |
+|  13027 | 1638 | `	zPath = ph7_value_to_string(apArg[0],&iLen);` |
+|  13027 | 1639 | `	if( iLen < 1 ){` |
 |      - | 1640 | `		/* Empty string */` |
 |    ! 0 | 1641 | `		ph7_result_string(pCtx,"",0);` |
 |    ! 0 | 1642 | `		return PH7_OK;` |
 |      - | 1643 | `	}` |
 |      - | 1644 | `	/* Extract path info */` |
-|  13031 | 1645 | `	ExtractPathInfo(zPath,iLen,&sInfo);` |
-|  19543 | 1646 | `	if( nArg > 1 && ph7_value_is_int(apArg[1]) ){` |
+|  13027 | 1645 | `	ExtractPathInfo(zPath,iLen,&sInfo);` |
+|  19537 | 1646 | `	if( nArg > 1 && ph7_value_is_int(apArg[1]) ){` |
 |      - | 1647 | `		/* Return path component */` |
-|  13029 | 1648 | `		int nComp = ph7_value_to_int(apArg[1]);` |
-|  13029 | 1649 | `		switch(nComp){` |
+|  13025 | 1648 | `		int nComp = ph7_value_to_int(apArg[1]);` |
+|  13025 | 1649 | `		switch(nComp){` |
 |      1 | 1650 | `		case 1: /* PATHINFO_DIRNAME */` |
 |      3 | 1651 | `			pComp = &sInfo.sDir;` |
 |      3 | 1652 | `			if( pComp->nByte > 0 ){` |
@@ -1675,30 +1675,30 @@ Coverage: 2344/3510 lines (66.78%)
 |    ! 0 | 1665 | `				ph7_result_string(pCtx,"",0);` |
 |      - | 1666 | `			}` |
 |      3 | 1667 | `			break;` |
-|   3257 | 1668 | `		case 3: /*PATHINFO_EXTENSION*/` |
-|   6519 | 1669 | `			pComp = &sInfo.sExtension;` |
-|   6519 | 1670 | `			if( pComp->nByte > 0 ){` |
-|   6517 | 1671 | `				ph7_result_string(pCtx,pComp->zString,(int)pComp->nByte);` |
-|   3261 | 1672 | `			}else{` |
+|   3256 | 1668 | `		case 3: /*PATHINFO_EXTENSION*/` |
+|   6517 | 1669 | `			pComp = &sInfo.sExtension;` |
+|   6517 | 1670 | `			if( pComp->nByte > 0 ){` |
+|   6515 | 1671 | `				ph7_result_string(pCtx,pComp->zString,(int)pComp->nByte);` |
+|   3260 | 1672 | `			}else{` |
 |      - | 1673 | `				/* Expand the empty string */` |
 |      3 | 1674 | `				ph7_result_string(pCtx,"",0);` |
 |      - | 1675 | `			}` |
-|   6519 | 1676 | `			break;` |
-|   3253 | 1677 | `		case 4: /*PATHINFO_FILENAME*/` |
-|   6511 | 1678 | `			pComp = &sInfo.sFilename;` |
-|   6511 | 1679 | `			if( pComp->nByte > 0 ){` |
-|   6511 | 1680 | `				ph7_result_string(pCtx,pComp->zString,(int)pComp->nByte);` |
-|   3258 | 1681 | `			}else{` |
+|   6517 | 1676 | `			break;` |
+|   3252 | 1677 | `		case 4: /*PATHINFO_FILENAME*/` |
+|   6509 | 1678 | `			pComp = &sInfo.sFilename;` |
+|   6509 | 1679 | `			if( pComp->nByte > 0 ){` |
+|   6509 | 1680 | `				ph7_result_string(pCtx,pComp->zString,(int)pComp->nByte);` |
+|   3257 | 1681 | `			}else{` |
 |      - | 1682 | `				/* Expand the empty string */` |
 |    ! 0 | 1683 | `				ph7_result_string(pCtx,"",0);` |
 |      - | 1684 | `			}` |
-|   6511 | 1685 | `			break;` |
+|   6509 | 1685 | `			break;` |
 |    ! 0 | 1686 | `		default:` |
 |      - | 1687 | `			/* Expand the empty string */` |
 |    ! 0 | 1688 | `			ph7_result_string(pCtx,"",0);` |
 |    ! 0 | 1689 | `			break;` |
 |      - | 1690 | `		}` |
-|   6517 | 1691 | `	}else{` |
+|   6515 | 1691 | `	}else{` |
 |      - | 1692 | `		/* Return an associative array */` |
 |      - | 1693 | `		ph7_value *pArray,*pValue;` |
 |      3 | 1694 | `		pArray = ph7_context_new_array(pCtx);` |
@@ -1748,8 +1748,8 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 1738 | `		 * automatically as soon we return from this foreign function.` |
 |      - | 1739 | `		 */` |
 |      - | 1740 | `	}` |
-|  13031 | 1741 | `	return PH7_OK;` |
-|   6518 | 1742 | `}` |
+|  13027 | 1741 | `	return PH7_OK;` |
+|   6516 | 1742 | `}` |
 |      - | 1743 | `/* SPDX-SnippetBegin */` |
 |      - | 1744 | `/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */` |
 |      - | 1745 | `/* SPDX-License-Identifier: blessing */` |
@@ -2148,13 +2148,13 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 2138 | ` *  Returns the path of the temporary directory.` |
 |      - | 2139 | ` */` |
 |    214 | 2140 | `static int PH7_vfs_sys_get_temp_dir(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      4 | 2141 | `{` |
+|      3 | 2141 | `{` |
 |      - | 2142 | `	ph7_vfs *pVfs;` |
 |      - | 2143 | `	/* Set the empty string as the default return value */` |
-|    218 | 2144 | `	ph7_result_string(pCtx,"",0);` |
+|    217 | 2144 | `	ph7_result_string(pCtx,"",0);` |
 |      - | 2145 | `	/* Point to the underlying vfs */` |
-|    218 | 2146 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
-|    218 | 2147 | `	if( pVfs == 0 \|\| pVfs->xTempDir == 0 ){` |
+|    217 | 2146 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
+|    217 | 2147 | `	if( pVfs == 0 \|\| pVfs->xTempDir == 0 ){` |
 |    ! 0 | 2148 | `		SXUNUSED(nArg); /* cc warning */` |
 |    ! 0 | 2149 | `		SXUNUSED(apArg);` |
 |      - | 2150 | `		/* IO routine not implemented,return "" */` |
@@ -2165,9 +2165,9 @@ Coverage: 2344/3510 lines (66.78%)
 |    ! 0 | 2155 | `		return PH7_OK;` |
 |      - | 2156 | `	}` |
 |      - | 2157 | `	/* Perform the requested operation */` |
-|    218 | 2158 | `	pVfs->xTempDir(pCtx);` |
-|    218 | 2159 | `	return PH7_OK;` |
-|    111 | 2160 | `}` |
+|    217 | 2158 | `	pVfs->xTempDir(pCtx);` |
+|    217 | 2159 | `	return PH7_OK;` |
+|    110 | 2160 | `}` |
 |      - | 2161 | `/*` |
 |      - | 2162 | ` * string get_current_user()` |
 |      - | 2163 | ` *  Returns the name of the current working user.` |
@@ -2733,29 +2733,29 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 2723 | ` * Return` |
 |      - | 2724 | ` *  Returns TRUE if the file pointer is at EOF.FALSE otherwise` |
 |      - | 2725 | ` */` |
-|  10709 | 2726 | `static int PH7_builtin_feof(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  10720 | 2726 | `static int PH7_builtin_feof(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 2727 | `{` |
 |      - | 2728 | `	const ph7_io_stream *pStream;` |
 |      - | 2729 | `	io_private *pDev;` |
 |      - | 2730 | `	int rc;` |
-|  10714 | 2731 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
+|  10725 | 2731 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |      - | 2732 | `		/* Missing/Invalid arguments */` |
 |    ! 0 | 2733 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");` |
 |    ! 0 | 2734 | `		ph7_result_bool(pCtx,1);` |
 |    ! 0 | 2735 | `		return PH7_OK;` |
 |      - | 2736 | `	}` |
 |      - | 2737 | `	/* Extract our private data */` |
-|  10714 | 2738 | `	pDev = (io_private *)ph7_value_to_resource(apArg[0]);` |
+|  10725 | 2738 | `	pDev = (io_private *)ph7_value_to_resource(apArg[0]);` |
 |      - | 2739 | `	/* Make sure we are dealing with a valid io_private instance */` |
-|  10714 | 2740 | `	if( IO_PRIVATE_INVALID(pDev) ){` |
+|  10725 | 2740 | `	if( IO_PRIVATE_INVALID(pDev) ){` |
 |      - | 2741 | `		/*Expecting an IO handle */` |
 |    ! 0 | 2742 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");` |
 |    ! 0 | 2743 | `		ph7_result_bool(pCtx,1);` |
 |    ! 0 | 2744 | `		return PH7_OK;` |
 |      - | 2745 | `	}` |
 |      - | 2746 | `	/* Point to the target IO stream device */` |
-|  10714 | 2747 | `	pStream = pDev->pStream;` |
-|  10714 | 2748 | `	if( pStream == 0 ){` |
+|  10725 | 2747 | `	pStream = pDev->pStream;` |
+|  10725 | 2748 | `	if( pStream == 0 ){` |
 |    ! 0 | 2749 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - | 2750 | `			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",` |
 |    ! 0 | 2751 | `			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"` |
@@ -2763,112 +2763,112 @@ Coverage: 2344/3510 lines (66.78%)
 |    ! 0 | 2753 | `		ph7_result_bool(pCtx,1);` |
 |    ! 0 | 2754 | `		return PH7_OK;` |
 |      - | 2755 | `	}` |
-|  10714 | 2756 | `	rc = SXERR_EOF;` |
+|  10725 | 2756 | `	rc = SXERR_EOF;` |
 |      - | 2757 | `	/* Perform the requested operation */` |
-|  10714 | 2758 | `	if( SyBlobLength(&pDev->sBuffer) > pDev->nOfft ){` |
+|  10725 | 2758 | `	if( SyBlobLength(&pDev->sBuffer) > pDev->nOfft ){` |
 |      - | 2759 | `		/* Data is available */` |
 |   4935 | 2760 | `		rc = PH7_OK;` |
 |   2470 | 2761 | `	}else{` |
 |      - | 2762 | `		char zBuf[4096];` |
 |      - | 2763 | `		ph7_int64 n;` |
 |      - | 2764 | `		/* Perform a buffered read */` |
-|   5784 | 2765 | `		n = pStream->xRead(pDev->pHandle,zBuf,sizeof(zBuf));` |
-|   5784 | 2766 | `		if( n > 0 ){` |
+|   5795 | 2765 | `		n = pStream->xRead(pDev->pHandle,zBuf,sizeof(zBuf));` |
+|   5795 | 2766 | `		if( n > 0 ){` |
 |      - | 2767 | `			/* Copy buffered data */` |
-|   1828 | 2768 | `			SyBlobAppend(&pDev->sBuffer,zBuf,(sxu32)n);` |
-|   1828 | 2769 | `			rc = PH7_OK;` |
-|    911 | 2770 | `		}` |
+|   1831 | 2768 | `			SyBlobAppend(&pDev->sBuffer,zBuf,(sxu32)n);` |
+|   1831 | 2769 | `			rc = PH7_OK;` |
+|    913 | 2770 | `		}` |
 |      - | 2771 | `	}` |
 |      - | 2772 | `	/* EOF or not */` |
-|  10714 | 2773 | `	ph7_result_bool(pCtx,rc == SXERR_EOF);` |
-|  10714 | 2774 | `	return PH7_OK;` |
-|   5359 | 2775 | `}` |
+|  10725 | 2773 | `	ph7_result_bool(pCtx,rc == SXERR_EOF);` |
+|  10725 | 2774 | `	return PH7_OK;` |
+|   5365 | 2775 | `}` |
 |      - | 2776 | `/*` |
 |      - | 2777 | ` * Read n bytes from the underlying IO stream device.` |
 |      - | 2778 | ` * Return total numbers of bytes readen on success. A number < 1 on failure` |
 |      - | 2779 | ` * [i.e: IO error ] or EOF.` |
 |      - | 2780 | ` */` |
-|     37 | 2781 | `static ph7_int64 StreamRead(io_private *pDev,void *pBuf,ph7_int64 nLen)` |
+|     36 | 2781 | `static ph7_int64 StreamRead(io_private *pDev,void *pBuf,ph7_int64 nLen)` |
 |      2 | 2782 | `{` |
-|     39 | 2783 | `	const ph7_io_stream *pStream = pDev->pStream;` |
-|     39 | 2784 | `	char *zBuf = (char *)pBuf;` |
+|     38 | 2783 | `	const ph7_io_stream *pStream = pDev->pStream;` |
+|     38 | 2784 | `	char *zBuf = (char *)pBuf;` |
 |      - | 2785 | `	ph7_int64 n,nRead;` |
-|     39 | 2786 | `	n = SyBlobLength(&pDev->sBuffer) - pDev->nOfft;` |
-|     39 | 2787 | `	if( n > 0 ){` |
-|      3 | 2788 | `		if( n > nLen ){` |
+|     38 | 2786 | `	n = SyBlobLength(&pDev->sBuffer) - pDev->nOfft;` |
+|     38 | 2787 | `	if( n > 0 ){` |
+|      2 | 2788 | `		if( n > nLen ){` |
 |    ! 0 | 2789 | `			n = nLen;` |
 |    ! 0 | 2790 | `		}` |
 |      - | 2791 | `		/* Copy the buffered data */` |
-|      3 | 2792 | `		SyMemcpy(SyBlobDataAt(&pDev->sBuffer,pDev->nOfft),pBuf,(sxu32)n);` |
+|      2 | 2792 | `		SyMemcpy(SyBlobDataAt(&pDev->sBuffer,pDev->nOfft),pBuf,(sxu32)n);` |
 |      - | 2793 | `		/* Update the read offset */` |
-|      3 | 2794 | `		pDev->nOfft += (sxu32)n;` |
-|      3 | 2795 | `		if( pDev->nOfft >= SyBlobLength(&pDev->sBuffer) ){` |
+|      2 | 2794 | `		pDev->nOfft += (sxu32)n;` |
+|      2 | 2795 | `		if( pDev->nOfft >= SyBlobLength(&pDev->sBuffer) ){` |
 |      - | 2796 | `			/* Reset the working buffer so that we avoid excessive memory allocation */` |
-|      3 | 2797 | `			SyBlobReset(&pDev->sBuffer);` |
-|      3 | 2798 | `			pDev->nOfft = 0;` |
+|      2 | 2797 | `			SyBlobReset(&pDev->sBuffer);` |
+|      2 | 2798 | `			pDev->nOfft = 0;` |
 |      1 | 2799 | `		}` |
-|      3 | 2800 | `		nLen -= n;` |
-|      3 | 2801 | `		if( nLen < 1 ){` |
+|      2 | 2800 | `		nLen -= n;` |
+|      2 | 2801 | `		if( nLen < 1 ){` |
 |      - | 2802 | `			/* All done */` |
 |    ! 0 | 2803 | `			return n;` |
 |      - | 2804 | `		}` |
 |      - | 2805 | `		/* Advance the cursor */` |
-|      3 | 2806 | `		zBuf += n;` |
+|      2 | 2806 | `		zBuf += n;` |
 |      1 | 2807 | `	}` |
 |      - | 2808 | `	/* Read without buffering */` |
-|     39 | 2809 | `	nRead = pStream->xRead(pDev->pHandle,zBuf,nLen);` |
-|     39 | 2810 | `	if( nRead > 0 ){` |
+|     38 | 2809 | `	nRead = pStream->xRead(pDev->pHandle,zBuf,nLen);` |
+|     38 | 2810 | `	if( nRead > 0 ){` |
 |     35 | 2811 | `		n += nRead;` |
-|     21 | 2812 | `	}else if( n < 1 ){` |
+|     20 | 2812 | `	}else if( n < 1 ){` |
 |      - | 2813 | `		/* EOF or IO error */` |
 |      3 | 2814 | `		return nRead;` |
 |      - | 2815 | `	}` |
-|     37 | 2816 | `	return n;` |
+|     36 | 2816 | `	return n;` |
 |     20 | 2817 | `}` |
 |      - | 2818 | `/*` |
 |      - | 2819 | ` * Extract a single line from the buffered input.` |
 |      - | 2820 | ` */` |
-|   6818 | 2821 | `static sxi32 GetLine(io_private *pDev,ph7_int64 *pLen,const char **pzLine)` |
+|   6822 | 2821 | `static sxi32 GetLine(io_private *pDev,ph7_int64 *pLen,const char **pzLine)` |
 |      5 | 2822 | `{` |
 |      - | 2823 | `	const char *zIn,*zEnd,*zPtr;` |
-|   6823 | 2824 | `	zIn = (const char *)SyBlobDataAt(&pDev->sBuffer,pDev->nOfft);` |
-|   6823 | 2825 | `	zEnd = &zIn[SyBlobLength(&pDev->sBuffer)-pDev->nOfft];` |
-|   6823 | 2826 | `	zPtr = zIn;` |
-| 394596 | 2827 | `	while( zIn < zEnd ){` |
-| 394494 | 2828 | `		if( zIn[0] == '\n' ){` |
+|   6827 | 2824 | `	zIn = (const char *)SyBlobDataAt(&pDev->sBuffer,pDev->nOfft);` |
+|   6827 | 2825 | `	zEnd = &zIn[SyBlobLength(&pDev->sBuffer)-pDev->nOfft];` |
+|   6827 | 2826 | `	zPtr = zIn;` |
+| 395121 | 2827 | `	while( zIn < zEnd ){` |
+| 395019 | 2828 | `		if( zIn[0] == '\n' ){` |
 |      - | 2829 | `			/* Line found */` |
-|   6721 | 2830 | `			zIn++; /* Include the line ending as requested by the PHP specification */` |
-|   6721 | 2831 | `			*pLen = (ph7_int64)(zIn-zPtr);` |
-|   6721 | 2832 | `			*pzLine = zPtr;` |
-|   6721 | 2833 | `			return SXRET_OK;` |
+|   6725 | 2830 | `			zIn++; /* Include the line ending as requested by the PHP specification */` |
+|   6725 | 2831 | `			*pLen = (ph7_int64)(zIn-zPtr);` |
+|   6725 | 2832 | `			*pzLine = zPtr;` |
+|   6725 | 2833 | `			return SXRET_OK;` |
 |      - | 2834 | `		}` |
-| 387778 | 2835 | `		zIn++;` |
+| 388299 | 2835 | `		zIn++;` |
 |      5 | 2836 | `	}` |
 |      - | 2837 | `	/* No line were found */` |
 |    107 | 2838 | `	return SXERR_NOTFOUND;` |
-|   3414 | 2839 | `}` |
+|   3416 | 2839 | `}` |
 |      - | 2840 | `/*` |
 |      - | 2841 | ` * Read a single line from the underlying IO stream device.` |
 |      - | 2842 | ` */` |
-|   6822 | 2843 | `static ph7_int64 StreamReadLine(io_private *pDev,const char **pzData,ph7_int64 nMaxLen)` |
+|   6826 | 2843 | `static ph7_int64 StreamReadLine(io_private *pDev,const char **pzData,ph7_int64 nMaxLen)` |
 |      5 | 2844 | `{` |
-|   6827 | 2845 | `	const ph7_io_stream *pStream = pDev->pStream;` |
+|   6831 | 2845 | `	const ph7_io_stream *pStream = pDev->pStream;` |
 |      - | 2846 | `	char zBuf[8192];` |
 |      - | 2847 | `	ph7_int64 n;` |
 |      - | 2848 | `	sxi32 rc;` |
-|   6827 | 2849 | `	n = 0;` |
-|   6827 | 2850 | `	if( pDev->nOfft >= SyBlobLength(&pDev->sBuffer) ){` |
+|   6831 | 2849 | `	n = 0;` |
+|   6831 | 2850 | `	if( pDev->nOfft >= SyBlobLength(&pDev->sBuffer) ){` |
 |      - | 2851 | `		/* Reset the working buffer so that we avoid excessive memory allocation */` |
 |     73 | 2852 | `		SyBlobReset(&pDev->sBuffer);` |
 |     73 | 2853 | `		pDev->nOfft = 0;` |
 |     34 | 2854 | `	}` |
-|   6827 | 2855 | `	if( SyBlobLength(&pDev->sBuffer) > pDev->nOfft ){` |
+|   6831 | 2855 | `	if( SyBlobLength(&pDev->sBuffer) > pDev->nOfft ){` |
 |      - | 2856 | `		/* Check if there is a line */` |
-|   6759 | 2857 | `		rc = GetLine(pDev,&n,pzData);` |
-|   6759 | 2858 | `		if( rc == SXRET_OK ){` |
+|   6763 | 2857 | `		rc = GetLine(pDev,&n,pzData);` |
+|   6763 | 2858 | `		if( rc == SXRET_OK ){` |
 |      - | 2859 | `			/* Got line,update the cursor  */` |
-|   6661 | 2860 | `			pDev->nOfft += (sxu32)n;` |
-|   6661 | 2861 | `			return n;` |
+|   6665 | 2860 | `			pDev->nOfft += (sxu32)n;` |
+|   6665 | 2861 | `			return n;` |
 |      - | 2862 | `		}` |
 |     49 | 2863 | `	}` |
 |      - | 2864 | `	/* Perform the read operation until a new line is extracted or length` |
@@ -2908,7 +2908,7 @@ Coverage: 2344/3510 lines (66.78%)
 |    107 | 2898 | `		pDev->nOfft = 0;` |
 |     51 | 2899 | `	}` |
 |    111 | 2900 | `	return n;` |
-|   3416 | 2901 | `}` |
+|   3418 | 2901 | `}` |
 |      - | 2902 | `/*` |
 |      - | 2903 | ` * Open an IO stream handle.` |
 |      - | 2904 | ` * Notes on stream:` |
@@ -2930,34 +2930,34 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 2920 | ` * Please refer to the official documentation for a full discussion.` |
 |      - | 2921 | ` * This function return a handle on success. Otherwise null.` |
 |      - | 2922 | ` */` |
-|  30344 | 2923 | `PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream,const char *zFile,` |
+|  30310 | 2923 | `PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream,const char *zFile,` |
 |      - | 2924 | `	int iFlags,int use_include,ph7_value *pResource,int bPushInclude,int *pNew)` |
 |      5 | 2925 | `{` |
-|  30349 | 2926 | `	void *pHandle = 0; /* cc warning */` |
+|  30315 | 2926 | `	void *pHandle = 0; /* cc warning */` |
 |      - | 2927 | `	SyString sFile;` |
 |      - | 2928 | `	ph7_value sDummy;` |
 |      - | 2929 | `	int rc;` |
-|  30349 | 2930 | `	if( pStream == 0 ){` |
+|  30315 | 2930 | `	if( pStream == 0 ){` |
 |      - | 2931 | `		/* No such stream device */` |
 |    ! 0 | 2932 | `		return 0;` |
 |      - | 2933 | `	}` |
-|  30349 | 2934 | `	if( pResource == 0 ){` |
+|  30315 | 2934 | `	if( pResource == 0 ){` |
 |      - | 2935 | `		/* VM-dependent devices (php://, data://, tcp://, userland wrappers)` |
 |      - | 2936 | `		 * reach the VM only through pResource->pVm — their xOpen has no vm` |
 |      - | 2937 | `		 * parameter. Callers like file_get_contents pass no resource, so hand` |
 |      - | 2938 | `		 * every device a synthesized stack value carrying the VM; xOpen only` |
 |      - | 2939 | `		 * reads it during the call, and file:// ignores it. */` |
-|  30331 | 2940 | `		PH7_MemObjInit(pVm,&sDummy);` |
-|  30331 | 2941 | `		pResource = &sDummy;` |
-|  15163 | 2942 | `	}` |
-|  30349 | 2943 | `	SyStringInitFromBuf(&sFile,zFile,SyStrlen(zFile));` |
-|  30349 | 2944 | `	if( use_include ){` |
-|   9798 | 2945 | `		if(	sFile.zString[0] == '/' \|\|` |
+|  30297 | 2940 | `		PH7_MemObjInit(pVm,&sDummy);` |
+|  30297 | 2941 | `		pResource = &sDummy;` |
+|  15146 | 2942 | `	}` |
+|  30315 | 2943 | `	SyStringInitFromBuf(&sFile,zFile,SyStrlen(zFile));` |
+|  30315 | 2944 | `	if( use_include ){` |
+|   9778 | 2945 | `		if(	sFile.zString[0] == '/' \|\|` |
 |      - | 2946 | `#ifdef __WINNT__` |
 |      - | 2947 | `			(sFile.nByte > 2 && sFile.zString[1] == ':' && (sFile.zString[2] == '\\' \|\| sFile.zString[2] == '/') ) \|\|` |
 |      - | 2948 | `#endif` |
-|   9784 | 2949 | `			(sFile.nByte > 1 && sFile.zString[0] == '.' && sFile.zString[1] == '/') \|\|` |
-|   9780 | 2950 | `			(sFile.nByte > 2 && sFile.zString[0] == '.' && sFile.zString[1] == '.' && sFile.zString[2] == '/') ){` |
+|   9764 | 2949 | `			(sFile.nByte > 1 && sFile.zString[0] == '.' && sFile.zString[1] == '/') \|\|` |
+|   9760 | 2950 | `			(sFile.nByte > 2 && sFile.zString[0] == '.' && sFile.zString[1] == '.' && sFile.zString[2] == '/') ){` |
 |      - | 2951 | `				/*  Open the file directly */` |
 |     19 | 2952 | `				rc = pStream->xOpen(zFile,iFlags,pResource,&pHandle);` |
 |     10 | 2953 | `		}else{` |
@@ -2969,83 +2969,83 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 2959 | `			static const int c = '/';` |
 |      - | 2960 | `#endif` |
 |      - | 2961 | `			/* Init the path builder working buffer */` |
-|   9784 | 2962 | `			SyBlobInit(&sWorker,&pVm->sAllocator);` |
+|   9764 | 2962 | `			SyBlobInit(&sWorker,&pVm->sAllocator);` |
 |      - | 2963 | `			/* Build a path from the set of include path */` |
-|   9784 | 2964 | `			SySetResetCursor(&pVm->aPaths);` |
-|   9784 | 2965 | `			rc = SXERR_IO;` |
-|   9790 | 2966 | `			while( SXRET_OK == SySetGetNextEntry(&pVm->aPaths,(void **)&pPath) ){` |
+|   9764 | 2964 | `			SySetResetCursor(&pVm->aPaths);` |
+|   9764 | 2965 | `			rc = SXERR_IO;` |
+|   9770 | 2966 | `			while( SXRET_OK == SySetGetNextEntry(&pVm->aPaths,(void **)&pPath) ){` |
 |      - | 2967 | `				/* Build full path */` |
-|   9784 | 2968 | `				SyBlobFormat(&sWorker,"%z%c%z",pPath,c,&sFile);` |
+|   9764 | 2968 | `				SyBlobFormat(&sWorker,"%z%c%z",pPath,c,&sFile);` |
 |      - | 2969 | `				/* Append null terminator */` |
-|   9784 | 2970 | `				if( SXRET_OK != SyBlobNullAppend(&sWorker) ){` |
+|   9764 | 2970 | `				if( SXRET_OK != SyBlobNullAppend(&sWorker) ){` |
 |    ! 0 | 2971 | `					continue;` |
 |      - | 2972 | `				}` |
 |      - | 2973 | `				/* Try to open the file */` |
-|   9784 | 2974 | `				rc = pStream->xOpen((const char *)SyBlobData(&sWorker),iFlags,pResource,&pHandle);` |
-|   9784 | 2975 | `				if( rc == PH7_OK ){` |
-|   9777 | 2976 | `					if( bPushInclude ){` |
+|   9764 | 2974 | `				rc = pStream->xOpen((const char *)SyBlobData(&sWorker),iFlags,pResource,&pHandle);` |
+|   9764 | 2975 | `				if( rc == PH7_OK ){` |
+|   9758 | 2976 | `					if( bPushInclude ){` |
 |      - | 2977 | `						/* Mark as included */` |
-|   9777 | 2978 | `						PH7_VmPushFilePath(pVm,(const char *)SyBlobData(&sWorker),SyBlobLength(&sWorker),FALSE,pNew);` |
-|   4887 | 2979 | `					}` |
-|   9777 | 2980 | `					break;` |
+|   9758 | 2978 | `						PH7_VmPushFilePath(pVm,(const char *)SyBlobData(&sWorker),SyBlobLength(&sWorker),FALSE,pNew);` |
+|   4877 | 2979 | `					}` |
+|   9758 | 2980 | `					break;` |
 |      - | 2981 | `				}` |
 |      - | 2982 | `				/* Reset the working buffer */` |
 |      8 | 2983 | `				SyBlobReset(&sWorker);` |
 |      - | 2984 | `				/* Check the next path */` |
 |      2 | 2985 | `			}` |
-|   9784 | 2986 | `			SyBlobRelease(&sWorker);` |
+|   9764 | 2986 | `			SyBlobRelease(&sWorker);` |
 |      - | 2987 | `		}` |
-|   9802 | 2988 | `		if( rc == PH7_OK ){` |
-|   9795 | 2989 | `			if( bPushInclude ){` |
+|   9782 | 2988 | `		if( rc == PH7_OK ){` |
+|   9776 | 2989 | `			if( bPushInclude ){` |
 |      - | 2990 | `				/* Mark as included */` |
-|   9795 | 2991 | `				PH7_VmPushFilePath(pVm,sFile.zString,sFile.nByte,FALSE,pNew);` |
-|   4896 | 2992 | `			}` |
-|   4896 | 2993 | `		}` |
-|   4903 | 2994 | `	}else{` |
+|   9776 | 2991 | `				PH7_VmPushFilePath(pVm,sFile.zString,sFile.nByte,FALSE,pNew);` |
+|   4886 | 2992 | `			}` |
+|   4886 | 2993 | `		}` |
+|   4893 | 2994 | `	}else{` |
 |      - | 2995 | `		/* Open the URI direcly */` |
-|  20551 | 2996 | `		rc = pStream->xOpen(zFile,iFlags,pResource,&pHandle);` |
+|  20537 | 2996 | `		rc = pStream->xOpen(zFile,iFlags,pResource,&pHandle);` |
 |      - | 2997 | `	}` |
-|  30349 | 2998 | `	if( rc != PH7_OK ){` |
+|  30315 | 2998 | `	if( rc != PH7_OK ){` |
 |      - | 2999 | `		/* IO error */` |
-|     16 | 3000 | `		return 0;` |
+|     15 | 3000 | `		return 0;` |
 |      - | 3001 | `	}` |
 |      - | 3002 | `	/* Return the file handle */` |
-|  30337 | 3003 | `	return pHandle;` |
-|  15177 | 3004 | `}` |
+|  30303 | 3003 | `	return pHandle;` |
+|  15160 | 3004 | `}` |
 |      - | 3005 | `/*` |
 |      - | 3006 | ` * Read the whole contents of an open IO stream handle [i.e local file/URL..]` |
 |      - | 3007 | ` * Store the read data in the given BLOB (last argument).` |
 |      - | 3008 | ` * The read operation is stopped when he hit the EOF or an IO error occurs.` |
 |      - | 3009 | ` */` |
-|   9786 | 3010 | `PH7_PRIVATE sxi32 PH7_StreamReadWholeFile(void *pHandle,const ph7_io_stream *pStream,SyBlob *pOut)` |
-|      3 | 3011 | `{` |
+|   9766 | 3010 | `PH7_PRIVATE sxi32 PH7_StreamReadWholeFile(void *pHandle,const ph7_io_stream *pStream,SyBlob *pOut)` |
+|      4 | 3011 | `{` |
 |      - | 3012 | `	ph7_int64 nRead;` |
 |      - | 3013 | `	char zBuf[8192]; /* 8K */` |
 |      - | 3014 | `	int rc;` |
 |      - | 3015 | `	/* Perform the requested operation */` |
-|   9786 | 3016 | `	for(;;){` |
-|  19575 | 3017 | `		nRead = pStream->xRead(pHandle,zBuf,sizeof(zBuf));` |
-|  19575 | 3018 | `		if( nRead < 1 ){` |
+|   9766 | 3016 | `	for(;;){` |
+|  19536 | 3017 | `		nRead = pStream->xRead(pHandle,zBuf,sizeof(zBuf));` |
+|  19536 | 3018 | `		if( nRead < 1 ){` |
 |      - | 3019 | `			/* EOF or IO error */` |
-|   9789 | 3020 | `			break;` |
+|   9770 | 3020 | `			break;` |
 |      - | 3021 | `		}` |
 |      - | 3022 | `		/* Append contents */` |
-|   9789 | 3023 | `		rc = SyBlobAppend(pOut,zBuf,(sxu32)nRead);` |
-|   9789 | 3024 | `		if( rc != SXRET_OK ){` |
+|   9770 | 3023 | `		rc = SyBlobAppend(pOut,zBuf,(sxu32)nRead);` |
+|   9770 | 3024 | `		if( rc != SXRET_OK ){` |
 |    ! 0 | 3025 | `			break;` |
 |      - | 3026 | `		}` |
-|      3 | 3027 | `	}` |
-|   9789 | 3028 | `	return SyBlobLength(pOut) > 0 ? SXRET_OK : -1;` |
-|      3 | 3029 | `}` |
+|      4 | 3027 | `	}` |
+|   9770 | 3028 | `	return SyBlobLength(pOut) > 0 ? SXRET_OK : -1;` |
+|      4 | 3029 | `}` |
 |      - | 3030 | `/*` |
 |      - | 3031 | ` * Close an open IO stream handle [i.e local file/URI..].` |
 |      - | 3032 | ` */` |
-|  30430 | 3033 | `PH7_PRIVATE void PH7_StreamCloseHandle(const ph7_io_stream *pStream,void *pHandle)` |
+|  30396 | 3033 | `PH7_PRIVATE void PH7_StreamCloseHandle(const ph7_io_stream *pStream,void *pHandle)` |
 |      5 | 3034 | `{` |
-|  30435 | 3035 | `	if( pStream->xClose ){` |
-|  30435 | 3036 | `		pStream->xClose(pHandle);` |
-|  15215 | 3037 | `	}` |
-|  30435 | 3038 | `}` |
+|  30401 | 3035 | `	if( pStream->xClose ){` |
+|  30401 | 3036 | `		pStream->xClose(pHandle);` |
+|  15198 | 3037 | `	}` |
+|  30401 | 3038 | `}` |
 |      - | 3039 | `/*` |
 |      - | 3040 | ` * string fgetc(resource $handle)` |
 |      - | 3041 | ` *  Gets a character from the given file pointer.` |
@@ -3116,30 +3116,30 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 3106 | ` *  If there is no more data to read in the file pointer, then FALSE is returned.` |
 |      - | 3107 | ` *  If an error occurs, FALSE is returned.` |
 |      - | 3108 | ` */` |
-|   6812 | 3109 | `static int PH7_builtin_fgets(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   6816 | 3109 | `static int PH7_builtin_fgets(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 3110 | `{` |
 |      - | 3111 | `	const ph7_io_stream *pStream;` |
 |      - | 3112 | `	const char *zLine;` |
 |      - | 3113 | `	io_private *pDev;` |
 |      - | 3114 | `	ph7_int64 n,nLen;` |
-|   6817 | 3115 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
+|   6821 | 3115 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |      - | 3116 | `		/* Missing/Invalid arguments,return FALSE */` |
 |    ! 0 | 3117 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");` |
 |    ! 0 | 3118 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3119 | `		return PH7_OK;` |
 |      - | 3120 | `	}` |
 |      - | 3121 | `	/* Extract our private data */` |
-|   6817 | 3122 | `	pDev = (io_private *)ph7_value_to_resource(apArg[0]);` |
+|   6821 | 3122 | `	pDev = (io_private *)ph7_value_to_resource(apArg[0]);` |
 |      - | 3123 | `	/* Make sure we are dealing with a valid io_private instance */` |
-|   6817 | 3124 | `	if( IO_PRIVATE_INVALID(pDev) ){` |
+|   6821 | 3124 | `	if( IO_PRIVATE_INVALID(pDev) ){` |
 |      - | 3125 | `		/*Expecting an IO handle */` |
 |    ! 0 | 3126 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");` |
 |    ! 0 | 3127 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3128 | `		return PH7_OK;` |
 |      - | 3129 | `	}` |
 |      - | 3130 | `	/* Point to the target IO stream device */` |
-|   6817 | 3131 | `	pStream = pDev->pStream;` |
-|   6817 | 3132 | `	if( pStream == 0  ){` |
+|   6821 | 3131 | `	pStream = pDev->pStream;` |
+|   6821 | 3132 | `	if( pStream == 0  ){` |
 |    ! 0 | 3133 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - | 3134 | `			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",` |
 |    ! 0 | 3135 | `			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"` |
@@ -3147,22 +3147,22 @@ Coverage: 2344/3510 lines (66.78%)
 |    ! 0 | 3137 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3138 | `		return PH7_OK;` |
 |      - | 3139 | `	}` |
-|   6817 | 3140 | `	nLen = -1;` |
-|   6817 | 3141 | `	if( nArg > 1 ){` |
+|   6821 | 3140 | `	nLen = -1;` |
+|   6821 | 3141 | `	if( nArg > 1 ){` |
 |      - | 3142 | `		/* Maximum data to read */` |
 |    ! 0 | 3143 | `		nLen = ph7_value_to_int64(apArg[1]);` |
 |    ! 0 | 3144 | `	}` |
 |      - | 3145 | `	/* Perform the requested operation */` |
-|   6817 | 3146 | `	n = StreamReadLine(pDev,&zLine,nLen);` |
-|   6817 | 3147 | `	if( n < 1 ){` |
+|   6821 | 3146 | `	n = StreamReadLine(pDev,&zLine,nLen);` |
+|   6821 | 3147 | `	if( n < 1 ){` |
 |      - | 3148 | `		/* EOF or IO error,return FALSE */` |
 |      7 | 3149 | `		ph7_result_bool(pCtx,0);` |
 |      6 | 3150 | `	}else{` |
 |      - | 3151 | `		/* Return the freshly extracted line */` |
-|   6815 | 3152 | `		ph7_result_string(pCtx,zLine,(int)n);` |
+|   6819 | 3152 | `		ph7_result_string(pCtx,zLine,(int)n);` |
 |      - | 3153 | `	}` |
-|   6817 | 3154 | `	return PH7_OK;` |
-|   3411 | 3155 | `}` |
+|   6821 | 3154 | `	return PH7_OK;` |
+|   3413 | 3155 | `}` |
 |      - | 3156 | `/*` |
 |      - | 3157 | ` * string fread(resource $handle,int64 $length)` |
 |      - | 3158 | ` *  Binary-safe file read.` |
@@ -3174,31 +3174,31 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 3164 | ` * Return` |
 |      - | 3165 | ` *  The data readen on success or FALSE on failure.` |
 |      - | 3166 | ` */` |
-|     29 | 3167 | `static int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     28 | 3167 | `static int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      2 | 3168 | `{` |
 |      - | 3169 | `	const ph7_io_stream *pStream;` |
 |      - | 3170 | `	io_private *pDev;` |
 |      - | 3171 | `	ph7_int64 nRead;` |
 |      - | 3172 | `	void *pBuf;` |
 |      - | 3173 | `	int nLen;` |
-|     31 | 3174 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
+|     30 | 3174 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |      - | 3175 | `		/* Missing/Invalid arguments,return FALSE */` |
 |    ! 0 | 3176 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");` |
 |    ! 0 | 3177 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3178 | `		return PH7_OK;` |
 |      - | 3179 | `	}` |
 |      - | 3180 | `	/* Extract our private data */` |
-|     31 | 3181 | `	pDev = (io_private *)ph7_value_to_resource(apArg[0]);` |
+|     30 | 3181 | `	pDev = (io_private *)ph7_value_to_resource(apArg[0]);` |
 |      - | 3182 | `	/* Make sure we are dealing with a valid io_private instance */` |
-|     31 | 3183 | `	if( IO_PRIVATE_INVALID(pDev) ){` |
+|     30 | 3183 | `	if( IO_PRIVATE_INVALID(pDev) ){` |
 |      - | 3184 | `		/*Expecting an IO handle */` |
 |    ! 0 | 3185 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");` |
 |    ! 0 | 3186 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3187 | `		return PH7_OK;` |
 |      - | 3188 | `	}` |
 |      - | 3189 | `	/* Point to the target IO stream device */` |
-|     31 | 3190 | `	pStream = pDev->pStream;` |
-|     31 | 3191 | `	if( pStream == 0  ){` |
+|     30 | 3190 | `	pStream = pDev->pStream;` |
+|     30 | 3191 | `	if( pStream == 0  ){` |
 |    ! 0 | 3192 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - | 3193 | `			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",` |
 |    ! 0 | 3194 | `			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"` |
@@ -3206,33 +3206,33 @@ Coverage: 2344/3510 lines (66.78%)
 |    ! 0 | 3196 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3197 | `		return PH7_OK;` |
 |      - | 3198 | `	}` |
-|     31 | 3199 | `        nLen = 4096;` |
-|     31 | 3200 | `	if( nArg > 1 ){` |
-|     31 | 3201 | ` 	  nLen = ph7_value_to_int(apArg[1]);` |
-|     31 | 3202 | `	  if( nLen < 1 ){` |
+|     30 | 3199 | `        nLen = 4096;` |
+|     30 | 3200 | `	if( nArg > 1 ){` |
+|     30 | 3201 | ` 	  nLen = ph7_value_to_int(apArg[1]);` |
+|     30 | 3202 | `	  if( nLen < 1 ){` |
 |      - | 3203 | `		/* Invalid length,set a default length */` |
 |    ! 0 | 3204 | `		nLen = 4096;` |
 |    ! 0 | 3205 | `	  }` |
 |     14 | 3206 | `        }` |
 |      - | 3207 | `	/* Allocate enough buffer */` |
-|     31 | 3208 | `	pBuf = ph7_context_alloc_chunk(pCtx,(unsigned int)nLen,FALSE,FALSE);` |
-|     31 | 3209 | `	if( pBuf == 0 ){` |
+|     30 | 3208 | `	pBuf = ph7_context_alloc_chunk(pCtx,(unsigned int)nLen,FALSE,FALSE);` |
+|     30 | 3209 | `	if( pBuf == 0 ){` |
 |    ! 0 | 3210 | `		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");` |
 |    ! 0 | 3211 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3212 | `		return PH7_OK;` |
 |      - | 3213 | `	}` |
 |      - | 3214 | `	/* Perform the requested operation */` |
-|     31 | 3215 | `	nRead = StreamRead(pDev,pBuf,(ph7_int64)nLen);` |
-|     31 | 3216 | `	if( nRead < 1 ){` |
+|     30 | 3215 | `	nRead = StreamRead(pDev,pBuf,(ph7_int64)nLen);` |
+|     30 | 3216 | `	if( nRead < 1 ){` |
 |      - | 3217 | `		/* Nothing read,return FALSE */` |
 |    ! 0 | 3218 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3219 | `	}else{` |
 |      - | 3220 | `		/* Make a copy of the data just read */` |
-|     31 | 3221 | `		ph7_result_string(pCtx,(const char *)pBuf,(int)nRead);` |
+|     30 | 3221 | `		ph7_result_string(pCtx,(const char *)pBuf,(int)nRead);` |
 |      - | 3222 | `	}` |
 |      - | 3223 | `	/* Release the buffer */` |
-|     31 | 3224 | `	ph7_context_free_chunk(pCtx,pBuf);` |
-|     31 | 3225 | `	return PH7_OK;` |
+|     30 | 3224 | `	ph7_context_free_chunk(pCtx,pBuf);` |
+|     30 | 3225 | `	return PH7_OK;` |
 |     16 | 3226 | `}` |
 |      - | 3227 | `/*` |
 |      - | 3228 | ` * array fgetcsv(resource $handle [, int $length = 0` |
@@ -3425,29 +3425,29 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 3415 | ` * Return` |
 |      - | 3416 | ` *  Returns the filename on success or FALSE on failure.` |
 |      - | 3417 | ` */` |
-|   8502 | 3418 | `static int PH7_builtin_readdir(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   8500 | 3418 | `static int PH7_builtin_readdir(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 3419 | `{` |
 |      - | 3420 | `	const ph7_io_stream *pStream;` |
 |      - | 3421 | `	io_private *pDev;` |
 |      - | 3422 | `	int rc;` |
-|   8507 | 3423 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
+|   8505 | 3423 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |      - | 3424 | `		/* Missing/Invalid arguments,return FALSE */` |
 |    ! 0 | 3425 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");` |
 |    ! 0 | 3426 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3427 | `		return PH7_OK;` |
 |      - | 3428 | `	}` |
 |      - | 3429 | `	/* Extract our private data */` |
-|   8507 | 3430 | `	pDev = (io_private *)ph7_value_to_resource(apArg[0]);` |
+|   8505 | 3430 | `	pDev = (io_private *)ph7_value_to_resource(apArg[0]);` |
 |      - | 3431 | `	/* Make sure we are dealing with a valid io_private instance */` |
-|   8507 | 3432 | `	if( IO_PRIVATE_INVALID(pDev) ){` |
+|   8505 | 3432 | `	if( IO_PRIVATE_INVALID(pDev) ){` |
 |      - | 3433 | `		/*Expecting an IO handle */` |
 |    ! 0 | 3434 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");` |
 |    ! 0 | 3435 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3436 | `		return PH7_OK;` |
 |      - | 3437 | `	}` |
 |      - | 3438 | `	/* Point to the target IO stream device */` |
-|   8507 | 3439 | `	pStream = pDev->pStream;` |
-|   8507 | 3440 | `	if( pStream == 0  \|\| pStream->xReadDir == 0 ){` |
+|   8505 | 3439 | `	pStream = pDev->pStream;` |
+|   8505 | 3440 | `	if( pStream == 0  \|\| pStream->xReadDir == 0 ){` |
 |    ! 0 | 3441 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - | 3442 | `			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",` |
 |    ! 0 | 3443 | `			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"` |
@@ -3455,15 +3455,15 @@ Coverage: 2344/3510 lines (66.78%)
 |    ! 0 | 3445 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3446 | `		return PH7_OK;` |
 |      - | 3447 | `	}` |
-|   8507 | 3448 | `	ph7_result_bool(pCtx,0);` |
+|   8505 | 3448 | `	ph7_result_bool(pCtx,0);` |
 |      - | 3449 | `	/* Perform the requested operation */` |
-|   8507 | 3450 | `	rc = pStream->xReadDir(pDev->pHandle,pCtx);` |
-|   8507 | 3451 | `	if( rc != PH7_OK ){` |
+|   8505 | 3450 | `	rc = pStream->xReadDir(pDev->pHandle,pCtx);` |
+|   8505 | 3451 | `	if( rc != PH7_OK ){` |
 |      - | 3452 | `		/* Return FALSE */` |
 |    999 | 3453 | `		ph7_result_bool(pCtx,0);` |
 |    497 | 3454 | `	}` |
-|   8507 | 3455 | `	return PH7_OK;` |
-|   4256 | 3456 | `}` |
+|   8505 | 3455 | `	return PH7_OK;` |
+|   4255 | 3456 | `}` |
 |      - | 3457 | `/*` |
 |      - | 3458 | ` * void rewinddir(resource $dir_handle)` |
 |      - | 3459 | ` *   Rewind directory handle.` |
@@ -3707,43 +3707,43 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 3697 | ` * Return` |
 |      - | 3698 | ` *   The function returns the read data or FALSE on failure.` |
 |      - | 3699 | ` */` |
-|   6558 | 3700 | `static int PH7_builtin_file_get_contents(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   6556 | 3700 | `static int PH7_builtin_file_get_contents(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 3701 | `{` |
 |      - | 3702 | `	const ph7_io_stream *pStream;` |
 |      - | 3703 | `	ph7_int64 n,nRead,nMaxlen;` |
-|   6563 | 3704 | `	int use_include  = FALSE;` |
+|   6561 | 3704 | `	int use_include  = FALSE;` |
 |      - | 3705 | `	const char *zFile;` |
 |      - | 3706 | `	char zBuf[8192];` |
 |      - | 3707 | `	void *pHandle;` |
 |      - | 3708 | `	int nLen;` |
 |      - | 3709 |  |
-|   6563 | 3710 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|   6561 | 3710 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
 |      - | 3711 | `		/* Missing/Invalid arguments,return FALSE */` |
 |    ! 0 | 3712 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting a file path");` |
 |    ! 0 | 3713 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3714 | `		return PH7_OK;` |
 |      - | 3715 | `	}` |
 |      - | 3716 | `	/* Extract the file path */` |
-|   6563 | 3717 | `	zFile = ph7_value_to_string(apArg[0],&nLen);` |
+|   6561 | 3717 | `	zFile = ph7_value_to_string(apArg[0],&nLen);` |
 |      - | 3718 | `	/* Point to the target IO stream device */` |
-|   6563 | 3719 | `	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);` |
-|   6563 | 3720 | `	if( pStream == 0 ){` |
+|   6561 | 3719 | `	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);` |
+|   6561 | 3720 | `	if( pStream == 0 ){` |
 |    ! 0 | 3721 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"No such stream device,PH7 is returning FALSE");` |
 |    ! 0 | 3722 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3723 | `		return PH7_OK;` |
 |      - | 3724 | `	}` |
-|   6563 | 3725 | `	nMaxlen = -1;` |
-|   6563 | 3726 | `	if( nArg > 1 ){` |
+|   6561 | 3725 | `	nMaxlen = -1;` |
+|   6561 | 3726 | `	if( nArg > 1 ){` |
 |      5 | 3727 | `		use_include = ph7_value_to_bool(apArg[1]);` |
 |      2 | 3728 | `	}` |
 |      - | 3729 | `	/* Try to open the file in read-only mode */` |
-|   6563 | 3730 | `	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,use_include,nArg > 2 ? apArg[2] : 0,FALSE,0);` |
-|   6563 | 3731 | `	if( pHandle == 0 ){` |
+|   6561 | 3730 | `	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,use_include,nArg > 2 ? apArg[2] : 0,FALSE,0);` |
+|   6561 | 3731 | `	if( pHandle == 0 ){` |
 |    ! 0 | 3732 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_ERR,"IO error while opening '%s'",zFile);` |
 |    ! 0 | 3733 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3734 | `		return PH7_OK;` |
 |      - | 3735 | `	}` |
-|   6563 | 3736 | `	if( nArg > 3 ){` |
+|   6561 | 3736 | `	if( nArg > 3 ){` |
 |      - | 3737 | `		/* Extract the offset */` |
 |      5 | 3738 | `		n = ph7_value_to_int64(apArg[3]);` |
 |      5 | 3739 | `		if( n > 0 ){` |
@@ -3758,32 +3758,32 @@ Coverage: 2344/3510 lines (66.78%)
 |      2 | 3748 | `		}` |
 |      2 | 3749 | `	}` |
 |      - | 3750 | `	/* Perform the requested operation */` |
-|   6563 | 3751 | `	nRead = 0;` |
-|   6556 | 3752 | `	for(;;){` |
-|  19676 | 3753 | `		n = pStream->xRead(pHandle,zBuf,` |
-|   6559 | 3754 | `			(nMaxlen > 0 && (nMaxlen < (ph7_int64)sizeof(zBuf))) ? nMaxlen : (ph7_int64)sizeof(zBuf));` |
-|  13117 | 3755 | `		if( n < 1 ){` |
+|   6561 | 3751 | `	nRead = 0;` |
+|   6554 | 3752 | `	for(;;){` |
+|  19670 | 3753 | `		n = pStream->xRead(pHandle,zBuf,` |
+|   6557 | 3754 | `			(nMaxlen > 0 && (nMaxlen < (ph7_int64)sizeof(zBuf))) ? nMaxlen : (ph7_int64)sizeof(zBuf));` |
+|  13113 | 3755 | `		if( n < 1 ){` |
 |      - | 3756 | `			/* EOF or IO error,break immediately */` |
-|   6561 | 3757 | `			break;` |
+|   6559 | 3757 | `			break;` |
 |      - | 3758 | `		}` |
 |      - | 3759 | `		/* Append data */` |
-|   6561 | 3760 | `		ph7_result_string(pCtx,zBuf,(int)n);` |
+|   6559 | 3760 | `		ph7_result_string(pCtx,zBuf,(int)n);` |
 |      - | 3761 | `		/* Increment read counter */` |
-|   6561 | 3762 | `		nRead += n;` |
-|   6561 | 3763 | `		if( nMaxlen > 0 && nRead >= nMaxlen ){` |
+|   6559 | 3762 | `		nRead += n;` |
+|   6559 | 3763 | `		if( nMaxlen > 0 && nRead >= nMaxlen ){` |
 |      - | 3764 | `			/* Read limit reached */` |
 |      3 | 3765 | `			break;` |
 |      - | 3766 | `		}` |
 |      5 | 3767 | `	}` |
 |      - | 3768 | `	/* Close the stream */` |
-|   6563 | 3769 | `	PH7_StreamCloseHandle(pStream,pHandle);` |
+|   6561 | 3769 | `	PH7_StreamCloseHandle(pStream,pHandle);` |
 |      - | 3770 | `	/* Check if we have read something */` |
-|   6563 | 3771 | `	if( ph7_context_result_buf_length(pCtx) < 1 ){` |
+|   6561 | 3771 | `	if( ph7_context_result_buf_length(pCtx) < 1 ){` |
 |      - | 3772 | `		/* Nothing read,return FALSE */` |
 |      3 | 3773 | `		ph7_result_bool(pCtx,0);` |
 |      1 | 3774 | `	}` |
-|   6563 | 3775 | `	return PH7_OK;` |
-|   3284 | 3776 | `}` |
+|   6561 | 3775 | `	return PH7_OK;` |
+|   3283 | 3776 | `}` |
 |      - | 3777 | `/*` |
 |      - | 3778 | ` * int file_put_contents(string $filename,mixed $data[,int $flags = 0[,resource $context]])` |
 |      - | 3779 | ` *  Write a string to a file.` |
@@ -3803,9 +3803,9 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 3793 | ` * Return` |
 |      - | 3794 | ` *  The function returns the number of bytes that were written to the file, or FALSE on failure.` |
 |      - | 3795 | ` */` |
-|  13888 | 3796 | `static int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  13876 | 3796 | `static int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 3797 | `{` |
-|  13893 | 3798 | `	int use_include  = FALSE;` |
+|  13881 | 3798 | `	int use_include  = FALSE;` |
 |      - | 3799 | `	const ph7_io_stream *pStream;` |
 |      - | 3800 | `	const char *zFile;` |
 |      - | 3801 | `	const char *zData;` |
@@ -3814,28 +3814,28 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 3804 | `	int iFlags;` |
 |      - | 3805 | `	int nLen;` |
 |      - | 3806 |  |
-|  13893 | 3807 | `	if( nArg < 2 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|  13881 | 3807 | `	if( nArg < 2 \|\| !ph7_value_is_string(apArg[0]) ){` |
 |      - | 3808 | `		/* Missing/Invalid arguments,return FALSE */` |
 |    ! 0 | 3809 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting a file path");` |
 |    ! 0 | 3810 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3811 | `		return PH7_OK;` |
 |      - | 3812 | `	}` |
 |      - | 3813 | `	/* Extract the file path */` |
-|  13893 | 3814 | `	zFile = ph7_value_to_string(apArg[0],&nLen);` |
+|  13881 | 3814 | `	zFile = ph7_value_to_string(apArg[0],&nLen);` |
 |      - | 3815 | `	/* Point to the target IO stream device */` |
-|  13893 | 3816 | `	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);` |
-|  13893 | 3817 | `	if( pStream == 0 ){` |
+|  13881 | 3816 | `	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);` |
+|  13881 | 3817 | `	if( pStream == 0 ){` |
 |    ! 0 | 3818 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"No such stream device,PH7 is returning FALSE");` |
 |    ! 0 | 3819 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3820 | `		return PH7_OK;` |
 |      - | 3821 | `	}` |
 |      - | 3822 | `	/* Data to write */` |
-|  13893 | 3823 | `	zData = ph7_value_to_string(apArg[1],&nLen);` |
+|  13881 | 3823 | `	zData = ph7_value_to_string(apArg[1],&nLen);` |
 |      - | 3824 | `	/* Try to open the file in read-write mode */` |
-|  13893 | 3825 | `	iOpenFlags = PH7_IO_OPEN_CREATE\|PH7_IO_OPEN_RDWR\|PH7_IO_OPEN_TRUNC;` |
+|  13881 | 3825 | `	iOpenFlags = PH7_IO_OPEN_CREATE\|PH7_IO_OPEN_RDWR\|PH7_IO_OPEN_TRUNC;` |
 |      - | 3826 | `	/* Extract the flags */` |
-|  13893 | 3827 | `	iFlags = 0;` |
-|  13893 | 3828 | `	if( nArg > 2 ){` |
+|  13881 | 3827 | `	iFlags = 0;` |
+|  13881 | 3828 | `	if( nArg > 2 ){` |
 |    ! 0 | 3829 | `		iFlags = ph7_value_to_int(apArg[2]);` |
 |    ! 0 | 3830 | `		if( iFlags & 0x01 /*FILE_USE_INCLUDE_PATH*/){` |
 |    ! 0 | 3831 | `			use_include = TRUE;` |
@@ -3849,35 +3849,35 @@ Coverage: 2344/3510 lines (66.78%)
 |    ! 0 | 3839 | `			iOpenFlags \|= PH7_IO_OPEN_APPEND;` |
 |    ! 0 | 3840 | `		}` |
 |    ! 0 | 3841 | `	}` |
-|  20837 | 3842 | `	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,iOpenFlags,use_include,` |
-|   6944 | 3843 | `		nArg > 3 ? apArg[3] : 0,FALSE,FALSE);` |
-|  13893 | 3844 | `	if( pHandle == 0 ){` |
+|  20819 | 3842 | `	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,iOpenFlags,use_include,` |
+|   6938 | 3843 | `		nArg > 3 ? apArg[3] : 0,FALSE,FALSE);` |
+|  13881 | 3844 | `	if( pHandle == 0 ){` |
 |    ! 0 | 3845 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_ERR,"IO error while opening '%s'",zFile);` |
 |    ! 0 | 3846 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3847 | `		return PH7_OK;` |
 |      - | 3848 | `	}` |
-|  13893 | 3849 | `	if( nLen < 1 ){` |
+|  13881 | 3849 | `	if( nLen < 1 ){` |
 |      - | 3850 | `		/* Empty data, file is created/truncated */` |
 |      7 | 3851 | `		ph7_result_int64(pCtx,0);` |
 |      7 | 3852 | `		PH7_StreamCloseHandle(pStream,pHandle);` |
 |      7 | 3853 | `		return PH7_OK;` |
 |      - | 3854 | `	}` |
-|  13887 | 3855 | `	if( pStream->xWrite ){` |
+|  13875 | 3855 | `	if( pStream->xWrite ){` |
 |      - | 3856 | `		ph7_int64 n;` |
-|  13887 | 3857 | `		if( (iFlags & 0x01/* LOCK_EX */) && pStream->xLock ){` |
+|  13875 | 3857 | `		if( (iFlags & 0x01/* LOCK_EX */) && pStream->xLock ){` |
 |      - | 3858 | `			/* Try to acquire an exclusive lock */` |
 |    ! 0 | 3859 | `			pStream->xLock(pHandle,1/* LOCK_EX */);` |
 |    ! 0 | 3860 | `		}` |
 |      - | 3861 | `		/* Perform the write operation */` |
-|  13887 | 3862 | `		n = pStream->xWrite(pHandle,(const void *)zData,nLen);` |
-|  13887 | 3863 | `		if( n < 0 ){` |
+|  13875 | 3862 | `		n = pStream->xWrite(pHandle,(const void *)zData,nLen);` |
+|  13875 | 3863 | `		if( n < 0 ){` |
 |      - | 3864 | `			/* IO error,return FALSE */` |
 |    ! 0 | 3865 | `			ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3866 | `		}else{` |
 |      - | 3867 | `			/* Total number of bytes written */` |
-|  13887 | 3868 | `			ph7_result_int64(pCtx,n);` |
+|  13875 | 3868 | `			ph7_result_int64(pCtx,n);` |
 |      - | 3869 | `		}` |
-|   6946 | 3870 | `	}else{` |
+|   6940 | 3870 | `	}else{` |
 |      - | 3871 | `		/* Read-only stream */` |
 |    ! 0 | 3872 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_ERR,` |
 |      - | 3873 | `			"Read-only stream(%s): Cannot perform write operation",` |
@@ -3886,9 +3886,9 @@ Coverage: 2344/3510 lines (66.78%)
 |    ! 0 | 3876 | `		ph7_result_bool(pCtx,0);` |
 |      - | 3877 | `	}` |
 |      - | 3878 | `	/* Close the handle */` |
-|  13887 | 3879 | `	PH7_StreamCloseHandle(pStream,pHandle);` |
-|  13887 | 3880 | `	return PH7_OK;` |
-|   6949 | 3881 | `}` |
+|  13875 | 3879 | `	PH7_StreamCloseHandle(pStream,pHandle);` |
+|  13875 | 3880 | `	return PH7_OK;` |
+|   6943 | 3881 | `}` |
 |      - | 3882 | `/*` |
 |      - | 3883 | ` * array file(string $filename[,int $flags = 0[,resource $context]])` |
 |      - | 3884 | ` *  Reads entire file into an array.` |
@@ -4801,24 +4801,24 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 4791 | `/*` |
 |      - | 4792 | ` * Initialize the IO private structure.` |
 |      - | 4793 | ` */` |
-|   5130 | 4794 | `static void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_private *pOut)` |
+|   5138 | 4794 | `static void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_private *pOut)` |
 |      5 | 4795 | `{` |
-|   5135 | 4796 | `	pOut->pStream = pStream;` |
-|   5135 | 4797 | `	SyBlobInit(&pOut->sBuffer,&pVm->sAllocator);` |
-|   5135 | 4798 | `	pOut->nOfft = 0;` |
+|   5143 | 4796 | `	pOut->pStream = pStream;` |
+|   5143 | 4797 | `	SyBlobInit(&pOut->sBuffer,&pVm->sAllocator);` |
+|   5143 | 4798 | `	pOut->nOfft = 0;` |
 |      - | 4799 | `	/* Set the magic number */` |
-|   5135 | 4800 | `	pOut->iMagic = IO_PRIVATE_MAGIC;` |
-|   5135 | 4801 | `}` |
+|   5143 | 4800 | `	pOut->iMagic = IO_PRIVATE_MAGIC;` |
+|   5143 | 4801 | `}` |
 |      - | 4802 | `/*` |
 |      - | 4803 | ` * Release the IO private structure.` |
 |      - | 4804 | ` */` |
-|   5090 | 4805 | `static void ReleaseIOPrivate(ph7_context *pCtx,io_private *pDev)` |
+|   5098 | 4805 | `static void ReleaseIOPrivate(ph7_context *pCtx,io_private *pDev)` |
 |      5 | 4806 | `{` |
-|   5095 | 4807 | `	SyBlobRelease(&pDev->sBuffer);` |
-|   5095 | 4808 | `	pDev->iMagic = 0x2126; /* Invalid magic number so we can detetct misuse */` |
+|   5103 | 4807 | `	SyBlobRelease(&pDev->sBuffer);` |
+|   5103 | 4808 | `	pDev->iMagic = 0x2126; /* Invalid magic number so we can detetct misuse */` |
 |      - | 4809 | `	/* Release the whole structure */` |
-|   5095 | 4810 | `	ph7_context_free_chunk(pCtx,pDev);` |
-|   5095 | 4811 | `}` |
+|   5103 | 4810 | `	ph7_context_free_chunk(pCtx,pDev);` |
+|   5103 | 4811 | `}` |
 |      - | 4812 | `/*` |
 |      - | 4813 | ` * Reset the IO private structure.` |
 |      - | 4814 | ` */` |
@@ -5006,19 +5006,19 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 4996 | `	ph7_socket sock;` |
 |      - | 4997 | `	int bEof;` |
 |      - | 4998 | `};` |
-|     15 | 4999 | `static ph7_int64 SockStreamData_Read(void *pHandle,void *pBuffer,ph7_int64 nRead)` |
+|     13 | 4999 | `static ph7_int64 SockStreamData_Read(void *pHandle,void *pBuffer,ph7_int64 nRead)` |
 |    ! 0 | 5000 | `{` |
-|     15 | 5001 | `	sock_private *pSock = (sock_private *)pHandle;` |
+|     13 | 5001 | `	sock_private *pSock = (sock_private *)pHandle;` |
 |      - | 5002 | `	int n;` |
-|     15 | 5003 | `	if( pSock == 0 \|\| pSock->bEof ){` |
-|      2 | 5004 | `		return 0;` |
+|     13 | 5003 | `	if( pSock == 0 \|\| pSock->bEof ){` |
+|      1 | 5004 | `		return 0;` |
 |      - | 5005 | `	}` |
-|     13 | 5006 | `	n = PH7_NetRecv(pSock->sock,pBuffer,(int)nRead,0);` |
-|     13 | 5007 | `	if( n <= 0 ){` |
+|     12 | 5006 | `	n = PH7_NetRecv(pSock->sock,pBuffer,(int)nRead,0);` |
+|     12 | 5007 | `	if( n <= 0 ){` |
 |      4 | 5008 | `		pSock->bEof = 1;` |
 |      4 | 5009 | `		return 0;` |
 |      - | 5010 | `	}` |
-|      9 | 5011 | `	return (ph7_int64)n;` |
+|      8 | 5011 | `	return (ph7_int64)n;` |
 |      5 | 5012 | `}` |
 |      4 | 5013 | `static ph7_int64 SockStreamData_Write(void *pHandle,const void *pBuf,ph7_int64 nWrite)` |
 |    ! 0 | 5014 | `{` |
@@ -5997,7 +5997,7 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 5987 | ` *  If the engine is compiled with the PH7_DISABLE_DISK_IO/PH7_DISABLE_BUILTIN_FUNC` |
 |      - | 5988 | ` *  directives defined then this function return the null_vfs instead.` |
 |      - | 5989 | ` */` |
-|   3970 | 5990 | `PH7_PRIVATE const ph7_vfs * PH7_ExportBuiltinVfs(void)` |
+|   3978 | 5990 | `PH7_PRIVATE const ph7_vfs * PH7_ExportBuiltinVfs(void)` |
 |      5 | 5991 | `{` |
 |      - | 5992 | `#if !defined(PH7_DISABLE_BUILTIN_FUNC) \|\| !defined(PH7_DISABLE_DISK_IO)` |
 |      - | 5993 | `#ifdef PH7_DISABLE_DISK_IO` |
@@ -6006,7 +6006,7 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 5996 | `#ifdef __WINNT__` |
 |      5 | 5997 | `	return &sWinVfs;` |
 |      - | 5998 | `#elif defined(__UNIXES__)` |
-|   3970 | 5999 | `	return &sUnixVfs;` |
+|   3978 | 5999 | `	return &sUnixVfs;` |
 |      - | 6000 | `#else` |
 |      - | 6001 | `	return &null_vfs;` |
 |      - | 6002 | `#endif /* __WINNT__/__UNIXES__ */` |
@@ -6624,15 +6624,15 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 6614 | ` * Open a pipe to a process.` |
 |      - | 6615 | ` * This is called internally by popen(), not through the stream device interface.` |
 |      - | 6616 | ` */` |
-|   4038 | 6617 | `static pipe_private * PipeOpen(ph7_vm *pVm, const char *zCommand, const char *zMode)` |
+|   4046 | 6617 | `static pipe_private * PipeOpen(ph7_vm *pVm, const char *zCommand, const char *zMode)` |
 |      5 | 6618 | `{` |
 |      - | 6619 | `	pipe_private *pPipe;` |
 |      - | 6620 | `	FILE *pFile;` |
-|   4043 | 6621 | `	if( pVm == 0 \|\| zCommand == 0 \|\| zMode == 0 ){` |
+|   4051 | 6621 | `	if( pVm == 0 \|\| zCommand == 0 \|\| zMode == 0 ){` |
 |    ! 0 | 6622 | `		return 0;` |
 |      - | 6623 | `	}` |
 |      - | 6624 | `	/* Validate mode - only 'r' or 'w' allowed */` |
-|   4043 | 6625 | `	if( zMode[0] != 'r' && zMode[0] != 'w' ){` |
+|   4051 | 6625 | `	if( zMode[0] != 'r' && zMode[0] != 'w' ){` |
 |    ! 0 | 6626 | `		return 0;` |
 |      - | 6627 | `	}` |
 |      - | 6628 | `	/* Open the pipe using system popen */` |
@@ -6696,64 +6696,64 @@ Coverage: 2344/3510 lines (66.78%)
 |      5 | 6686 | `		pPipe->iMode = zMode[0];` |
 |      - | 6687 | `	}` |
 |      - | 6688 | `#elif defined(__UNIXES__) /* Unix */` |
-|   4038 | 6689 | `	pFile = popen(zCommand, zMode);` |
-|   4038 | 6690 | `	if( pFile == 0 ){` |
+|   4046 | 6689 | `	pFile = popen(zCommand, zMode);` |
+|   4046 | 6690 | `	if( pFile == 0 ){` |
 |    ! 0 | 6691 | `		return 0;` |
 |      - | 6692 | `	}` |
 |      - | 6693 | `	/* Allocate pipe private structure */` |
-|   4038 | 6694 | `	pPipe = (pipe_private *)SyMemBackendAlloc(&pVm->sAllocator, sizeof(pipe_private));` |
-|   4038 | 6695 | `	if( pPipe == 0 ){` |
+|   4046 | 6694 | `	pPipe = (pipe_private *)SyMemBackendAlloc(&pVm->sAllocator, sizeof(pipe_private));` |
+|   4046 | 6695 | `	if( pPipe == 0 ){` |
 |      - | 6696 | `		/* Out of memory, close the pipe */` |
 |    ! 0 | 6697 | `		pclose(pFile);` |
 |    ! 0 | 6698 | `		return 0;` |
 |      - | 6699 | `	}` |
 |      - | 6700 | `	/* Initialize the structure */` |
-|   4038 | 6701 | `	pPipe->pFile = pFile;` |
-|   4038 | 6702 | `	pPipe->pVm = pVm;` |
-|   4038 | 6703 | `	pPipe->iMode = zMode[0];` |
+|   4046 | 6701 | `	pPipe->pFile = pFile;` |
+|   4046 | 6702 | `	pPipe->pVm = pVm;` |
+|   4046 | 6703 | `	pPipe->iMode = zMode[0];` |
 |      - | 6704 | `#else /* OS_OTHER: no process pipes on this platform */` |
 |      - | 6705 | `	(void)pFile;` |
 |      - | 6706 | `	return 0;` |
 |      - | 6707 | `#endif` |
-|   4043 | 6708 | `	return pPipe;` |
-|   2024 | 6709 | `}` |
+|   4051 | 6708 | `	return pPipe;` |
+|   2028 | 6709 | `}` |
 |      - | 6710 | `/*` |
 |      - | 6711 | ` * Close a pipe and return the exit status of the process.` |
 |      - | 6712 | ` * Returns the exit status, or -1 on error.` |
 |      - | 6713 | ` */` |
-|   4012 | 6714 | `static int PipeClose(pipe_private *pPipe)` |
+|   4020 | 6714 | `static int PipeClose(pipe_private *pPipe)` |
 |      5 | 6715 | `{` |
 |      - | 6716 | `	int status;` |
 |      - | 6717 | `	ph7_vm *pVm;` |
-|   4017 | 6718 | `	if( pPipe == 0 \|\| pPipe->pFile == 0 ){` |
+|   4025 | 6718 | `	if( pPipe == 0 \|\| pPipe->pFile == 0 ){` |
 |    ! 0 | 6719 | `		return -1;` |
 |      - | 6720 | `	}` |
-|   4017 | 6721 | `	pVm = pPipe->pVm;` |
+|   4025 | 6721 | `	pVm = pPipe->pVm;` |
 |      - | 6722 | `	/* Close the pipe and get exit status */` |
 |      - | 6723 | `#ifdef __WINNT__` |
 |      - | 6724 | `	/* Use our custom WinPclose that properly waits for process completion */` |
 |      5 | 6725 | `	status = WinPclose(pPipe->pFile, pPipe->hProcess);` |
 |      - | 6726 | `#elif defined(__UNIXES__)` |
-|   4012 | 6727 | `	status = pclose(pPipe->pFile);` |
+|   4020 | 6727 | `	status = pclose(pPipe->pFile);` |
 |      - | 6728 | `	/* On Unix, pclose returns the status from waitpid, need to extract exit code */` |
-|   4012 | 6729 | `	if( status != -1 ){` |
-|   4012 | 6730 | `		if( WIFEXITED(status) ){` |
-|   4012 | 6731 | `			status = WEXITSTATUS(status);` |
-|   2006 | 6732 | `		}else if( WIFSIGNALED(status) ){` |
+|   4020 | 6729 | `	if( status != -1 ){` |
+|   4020 | 6730 | `		if( WIFEXITED(status) ){` |
+|   4020 | 6731 | `			status = WEXITSTATUS(status);` |
+|   2010 | 6732 | `		}else if( WIFSIGNALED(status) ){` |
 |      - | 6733 | `			/* Process was killed by a signal - use shell convention: 128 + signal number */` |
 |    ! 0 | 6734 | `			status = 128 + WTERMSIG(status);` |
 |    ! 0 | 6735 | `		}else{` |
 |      - | 6736 | `			/* Unknown termination reason */` |
 |    ! 0 | 6737 | `			status = -1;` |
 |      - | 6738 | `		}` |
-|   2006 | 6739 | `	}` |
+|   2010 | 6739 | `	}` |
 |      - | 6740 | `#else /* OS_OTHER: no process pipes on this platform */` |
 |      - | 6741 | `	status = -1;` |
 |      - | 6742 | `#endif` |
 |      - | 6743 | `	/* Free the structure */` |
-|   4017 | 6744 | `	SyMemBackendFree(&pVm->sAllocator, pPipe);` |
-|   4017 | 6745 | `	return status;` |
-|   2011 | 6746 | `}` |
+|   4025 | 6744 | `	SyMemBackendFree(&pVm->sAllocator, pPipe);` |
+|   4025 | 6745 | `	return status;` |
+|   2015 | 6746 | `}` |
 |      - | 6747 | `/*` |
 |      - | 6748 | ` * Pipe stream xClose implementation.` |
 |      - | 6749 | ` * Note: This is called by fclose(), not pclose().` |
@@ -6769,26 +6769,26 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 6759 | `/*` |
 |      - | 6760 | ` * Pipe stream xRead implementation.` |
 |      - | 6761 | ` */` |
-|   5918 | 6762 | `static ph7_int64 PipeStream_Read(void *pHandle, void *pBuffer, ph7_int64 nDatatoRead)` |
+|   5930 | 6762 | `static ph7_int64 PipeStream_Read(void *pHandle, void *pBuffer, ph7_int64 nDatatoRead)` |
 |      4 | 6763 | `{` |
-|   5922 | 6764 | `	pipe_private *pPipe = (pipe_private *)pHandle;` |
+|   5934 | 6764 | `	pipe_private *pPipe = (pipe_private *)pHandle;` |
 |      - | 6765 | `	size_t nRead;` |
-|   5922 | 6766 | `	if( pPipe == 0 \|\| pPipe->pFile == 0 ){` |
+|   5934 | 6766 | `	if( pPipe == 0 \|\| pPipe->pFile == 0 ){` |
 |    ! 0 | 6767 | `		return -1;` |
 |      - | 6768 | `	}` |
-|   5922 | 6769 | `	if( pPipe->iMode != 'r' ){` |
+|   5934 | 6769 | `	if( pPipe->iMode != 'r' ){` |
 |      - | 6770 | `		/* Cannot read from a write-only pipe */` |
 |    ! 0 | 6771 | `		return -1;` |
 |      - | 6772 | `	}` |
-|   5922 | 6773 | `	nRead = fread(pBuffer, 1, (size_t)nDatatoRead, pPipe->pFile);` |
-|   5922 | 6774 | `	if( nRead == 0 ){` |
-|   4048 | 6775 | `		if( feof(pPipe->pFile) ){` |
-|   4048 | 6776 | `			return 0; /* EOF */` |
+|   5934 | 6773 | `	nRead = fread(pBuffer, 1, (size_t)nDatatoRead, pPipe->pFile);` |
+|   5934 | 6774 | `	if( nRead == 0 ){` |
+|   4056 | 6775 | `		if( feof(pPipe->pFile) ){` |
+|   4056 | 6776 | `			return 0; /* EOF */` |
 |      - | 6777 | `		}` |
 |    ! 0 | 6778 | `		return -1; /* Error */` |
 |      - | 6779 | `	}` |
-|   1878 | 6780 | `	return (ph7_int64)nRead;` |
-|   2963 | 6781 | `}` |
+|   1882 | 6780 | `	return (ph7_int64)nRead;` |
+|   2969 | 6781 | `}` |
 |      - | 6782 | `/*` |
 |      - | 6783 | ` * Pipe stream xWrite implementation.` |
 |      - | 6784 | ` */` |
@@ -6832,9 +6832,9 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 6822 | ` * Return TRUE if we are dealing with the pipe:// stream.` |
 |      - | 6823 | ` * FALSE otherwise.` |
 |      - | 6824 | ` */` |
-|   3912 | 6825 | `static int is_pipe_stream(const ph7_io_stream *pStream)` |
+|   3920 | 6825 | `static int is_pipe_stream(const ph7_io_stream *pStream)` |
 |      5 | 6826 | `{` |
-|   3917 | 6827 | `	return pStream == &sPipe_Stream;` |
+|   3925 | 6827 | `	return pStream == &sPipe_Stream;` |
 |      5 | 6828 | `}` |
 |      - | 6829 | `/*` |
 |      - | 6830 | ` * resource popen(string $command, string $mode)` |
@@ -6849,53 +6849,53 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 6839 | ` * Return` |
 |      - | 6840 | ` *  Returns a file pointer on success, or FALSE on error.` |
 |      - | 6841 | ` */` |
-|   4038 | 6842 | `static int PH7_builtin_popen(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   4046 | 6842 | `static int PH7_builtin_popen(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 6843 | `{` |
 |      - | 6844 | `	const char *zCommand, *zMode;` |
 |      - | 6845 | `	pipe_private *pPipe;` |
 |      - | 6846 | `	io_private *pDev;` |
 |      - | 6847 | `	int nCmdLen, nModeLen;` |
-|   4043 | 6848 | `	if( nArg < 2 \|\| !ph7_value_is_string(apArg[0]) \|\| !ph7_value_is_string(apArg[1]) ){` |
+|   4051 | 6848 | `	if( nArg < 2 \|\| !ph7_value_is_string(apArg[0]) \|\| !ph7_value_is_string(apArg[1]) ){` |
 |      - | 6849 | `		/* Missing/Invalid arguments, return FALSE */` |
 |    ! 0 | 6850 | `		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Expecting a command string and mode");` |
 |    ! 0 | 6851 | `		ph7_result_bool(pCtx, 0);` |
 |    ! 0 | 6852 | `		return PH7_OK;` |
 |      - | 6853 | `	}` |
 |      - | 6854 | `	/* Extract the command and mode */` |
-|   4043 | 6855 | `	zCommand = ph7_value_to_string(apArg[0], &nCmdLen);` |
-|   4043 | 6856 | `	zMode = ph7_value_to_string(apArg[1], &nModeLen);` |
-|   4043 | 6857 | `	if( nCmdLen < 1 ){` |
+|   4051 | 6855 | `	zCommand = ph7_value_to_string(apArg[0], &nCmdLen);` |
+|   4051 | 6856 | `	zMode = ph7_value_to_string(apArg[1], &nModeLen);` |
+|   4051 | 6857 | `	if( nCmdLen < 1 ){` |
 |    ! 0 | 6858 | `		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Empty command");` |
 |    ! 0 | 6859 | `		ph7_result_bool(pCtx, 0);` |
 |    ! 0 | 6860 | `		return PH7_OK;` |
 |      - | 6861 | `	}` |
-|   4043 | 6862 | `	if( nModeLen < 1 \|\| (zMode[0] != 'r' && zMode[0] != 'w') ){` |
+|   4051 | 6862 | `	if( nModeLen < 1 \|\| (zMode[0] != 'r' && zMode[0] != 'w') ){` |
 |    ! 0 | 6863 | `		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Invalid mode, expected 'r' or 'w'");` |
 |    ! 0 | 6864 | `		ph7_result_bool(pCtx, 0);` |
 |    ! 0 | 6865 | `		return PH7_OK;` |
 |      - | 6866 | `	}` |
 |      - | 6867 | `	/* Open the pipe */` |
-|   4043 | 6868 | `	pPipe = PipeOpen(pCtx->pVm, zCommand, zMode);` |
-|   4043 | 6869 | `	if( pPipe == 0 ){` |
+|   4051 | 6868 | `	pPipe = PipeOpen(pCtx->pVm, zCommand, zMode);` |
+|   4051 | 6869 | `	if( pPipe == 0 ){` |
 |      - | 6870 | `		/* Failed to open pipe */` |
 |    ! 0 | 6871 | `		ph7_result_bool(pCtx, 0);` |
 |    ! 0 | 6872 | `		return PH7_OK;` |
 |      - | 6873 | `	}` |
 |      - | 6874 | `	/* Allocate an io_private instance to wrap the pipe */` |
-|   4043 | 6875 | `	pDev = (io_private *)ph7_context_alloc_chunk(pCtx, sizeof(io_private), TRUE, FALSE);` |
-|   4043 | 6876 | `	if( pDev == 0 ){` |
+|   4051 | 6875 | `	pDev = (io_private *)ph7_context_alloc_chunk(pCtx, sizeof(io_private), TRUE, FALSE);` |
+|   4051 | 6876 | `	if( pDev == 0 ){` |
 |    ! 0 | 6877 | `		ph7_context_throw_error(pCtx, PH7_CTX_ERR, "PH7 is running out of memory");` |
 |    ! 0 | 6878 | `		PipeClose(pPipe);` |
 |    ! 0 | 6879 | `		ph7_result_bool(pCtx, 0);` |
 |    ! 0 | 6880 | `		return PH7_OK;` |
 |      - | 6881 | `	}` |
 |      - | 6882 | `	/* Initialize the io_private structure */` |
-|   4043 | 6883 | `	InitIOPrivate(pCtx->pVm, &sPipe_Stream, pDev);` |
-|   4043 | 6884 | `	pDev->pHandle = pPipe;` |
+|   4051 | 6883 | `	InitIOPrivate(pCtx->pVm, &sPipe_Stream, pDev);` |
+|   4051 | 6884 | `	pDev->pHandle = pPipe;` |
 |      - | 6885 | `	/* Return the io_private instance as a resource */` |
-|   4043 | 6886 | `	ph7_result_resource(pCtx, pDev);` |
-|   4043 | 6887 | `	return PH7_OK;` |
-|   2024 | 6888 | `}` |
+|   4051 | 6886 | `	ph7_result_resource(pCtx, pDev);` |
+|   4051 | 6887 | `	return PH7_OK;` |
+|   2028 | 6888 | `}` |
 |      - | 6889 | `/*` |
 |      - | 6890 | ` * int pclose(resource $handle)` |
 |      - | 6891 | ` *  Closes a process file pointer opened by popen() and returns the exit code.` |
@@ -6905,45 +6905,45 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 6895 | ` * Return` |
 |      - | 6896 | ` *  Returns the termination status of the process that was run, or -1 on error.` |
 |      - | 6897 | ` */` |
-|   3912 | 6898 | `static int PH7_builtin_pclose(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   3920 | 6898 | `static int PH7_builtin_pclose(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 6899 | `{` |
 |      - | 6900 | `	const ph7_io_stream *pStream;` |
 |      - | 6901 | `	pipe_private *pPipe;` |
 |      - | 6902 | `	io_private *pDev;` |
 |      - | 6903 | `	int status;` |
-|   3917 | 6904 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
+|   3925 | 6904 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |      - | 6905 | `		/* Missing/Invalid arguments, return -1 */` |
 |    ! 0 | 6906 | `		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Expecting an IO handle");` |
 |    ! 0 | 6907 | `		ph7_result_int(pCtx, -1);` |
 |    ! 0 | 6908 | `		return PH7_OK;` |
 |      - | 6909 | `	}` |
 |      - | 6910 | `	/* Extract our private data */` |
-|   3917 | 6911 | `	pDev = (io_private *)ph7_value_to_resource(apArg[0]);` |
+|   3925 | 6911 | `	pDev = (io_private *)ph7_value_to_resource(apArg[0]);` |
 |      - | 6912 | `	/* Make sure we are dealing with a valid io_private instance */` |
-|   3917 | 6913 | `	if( IO_PRIVATE_INVALID(pDev) ){` |
+|   3925 | 6913 | `	if( IO_PRIVATE_INVALID(pDev) ){` |
 |    ! 0 | 6914 | `		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Expecting an IO handle");` |
 |    ! 0 | 6915 | `		ph7_result_int(pCtx, -1);` |
 |    ! 0 | 6916 | `		return PH7_OK;` |
 |      - | 6917 | `	}` |
 |      - | 6918 | `	/* Point to the target IO stream device */` |
-|   3917 | 6919 | `	pStream = pDev->pStream;` |
-|   3917 | 6920 | `	if( pStream == 0 \|\| !is_pipe_stream(pStream) ){` |
+|   3925 | 6919 | `	pStream = pDev->pStream;` |
+|   3925 | 6920 | `	if( pStream == 0 \|\| !is_pipe_stream(pStream) ){` |
 |    ! 0 | 6921 | `		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Expecting a pipe handle from popen()");` |
 |    ! 0 | 6922 | `		ph7_result_int(pCtx, -1);` |
 |    ! 0 | 6923 | `		return PH7_OK;` |
 |      - | 6924 | `	}` |
 |      - | 6925 | `	/* Get the pipe handle */` |
-|   3917 | 6926 | `	pPipe = (pipe_private *)pDev->pHandle;` |
+|   3925 | 6926 | `	pPipe = (pipe_private *)pDev->pHandle;` |
 |      - | 6927 | `	/* Close the pipe and get exit status */` |
-|   3917 | 6928 | `	status = PipeClose(pPipe);` |
+|   3925 | 6928 | `	status = PipeClose(pPipe);` |
 |      - | 6929 | `	/* Release the IO private structure */` |
-|   3917 | 6930 | `	ReleaseIOPrivate(pCtx, pDev);` |
+|   3925 | 6930 | `	ReleaseIOPrivate(pCtx, pDev);` |
 |      - | 6931 | `	/* Invalidate the resource handle */` |
-|   3917 | 6932 | `	ph7_value_release(apArg[0]);` |
+|   3925 | 6932 | `	ph7_value_release(apArg[0]);` |
 |      - | 6933 | `	/* Return the exit status */` |
-|   3917 | 6934 | `	ph7_result_int(pCtx, status);` |
-|   3917 | 6935 | `	return PH7_OK;` |
-|   1961 | 6936 | `}` |
+|   3925 | 6934 | `	ph7_result_int(pCtx, status);` |
+|   3925 | 6935 | `	return PH7_OK;` |
+|   1965 | 6936 | `}` |
 |      - | 6937 | `/* Export the php:// stream */` |
 |      - | 6938 | `static const ph7_io_stream sPHP_Stream = {` |
 |      - | 6939 | `	"php",` |
@@ -6998,7 +6998,7 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 6988 | ` *  If the engine is compiled with the PH7_DISABLE_BUILTIN_FUNC directive` |
 |      - | 6989 | ` *  defined then this function is a no-op.` |
 |      - | 6990 | ` */` |
-|   3550 | 6991 | `PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)` |
+|   3558 | 6991 | `PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)` |
 |      5 | 6992 | `{` |
 |      - | 6993 | `	/*` |
 |      - | 6994 | `	 * Disk I/O routines are independent of PH7_DISABLE_BUILTIN_FUNC.` |
@@ -7110,15 +7110,15 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 7100 | `		{"parse_ini_file", PH7_builtin_parse_ini_file},` |
 |      - | 7101 | `		{"vfprintf",  PH7_builtin_vfprintf}` |
 |      - | 7102 | `	};` |
-|   3555 | 7103 | `	const ph7_io_stream *pFileStream = 0;` |
-|   3555 | 7104 | `	sxu32 n = 0;` |
+|   3563 | 7103 | `	const ph7_io_stream *pFileStream = 0;` |
+|   3563 | 7104 | `	sxu32 n = 0;` |
 |      - | 7105 | `	/* Register disk-related functions */` |
-| 173955 | 7106 | `	for( n = 0 ; n < SX_ARRAYSIZE(aVfsDiskFunc) ; ++n ){` |
-| 170405 | 7107 | `		ph7_create_function(&(*pVm),aVfsDiskFunc[n].zName,aVfsDiskFunc[n].xFunc,(void *)pVm->pEngine->pVfs);` |
-|  85205 | 7108 | `	}` |
-| 163305 | 7109 | `	for( n = 0 ; n < SX_ARRAYSIZE(aIOFunc) ; ++n ){` |
-| 159755 | 7110 | `		ph7_create_function(&(*pVm),aIOFunc[n].zName,aIOFunc[n].xFunc,pVm);` |
-|  79880 | 7111 | `	}` |
+| 174347 | 7106 | `	for( n = 0 ; n < SX_ARRAYSIZE(aVfsDiskFunc) ; ++n ){` |
+| 170789 | 7107 | `		ph7_create_function(&(*pVm),aVfsDiskFunc[n].zName,aVfsDiskFunc[n].xFunc,(void *)pVm->pEngine->pVfs);` |
+|  85397 | 7108 | `	}` |
+| 163673 | 7109 | `	for( n = 0 ; n < SX_ARRAYSIZE(aIOFunc) ; ++n ){` |
+| 160115 | 7110 | `		ph7_create_function(&(*pVm),aIOFunc[n].zName,aIOFunc[n].xFunc,pVm);` |
+|  80060 | 7111 | `	}` |
 |      - | 7112 | `#else` |
 |      - | 7113 | `	SXUNUSED(pVm);` |
 |      - | 7114 | `#endif /* PH7_DISABLE_DISK_IO */` |
@@ -7148,9 +7148,9 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 7138 | `		{"zip_entry_reset_read_cursor",PH7_builtin_zip_entry_reset_read_cursor},` |
 |      - | 7139 | `		{"zip_entry_compressionmethod",PH7_builtin_zip_entry_compressionmethod}` |
 |      - | 7140 | `	};` |
-|  60355 | 7141 | `	for( n = 0 ; n < SX_ARRAYSIZE(aVfsHelperFunc) ; ++n ){` |
-|  56805 | 7142 | `		ph7_create_function(&(*pVm),aVfsHelperFunc[n].zName,aVfsHelperFunc[n].xFunc,pVm);` |
-|  28405 | 7143 | `	}` |
+|  60491 | 7141 | `	for( n = 0 ; n < SX_ARRAYSIZE(aVfsHelperFunc) ; ++n ){` |
+|  56933 | 7142 | `		ph7_create_function(&(*pVm),aVfsHelperFunc[n].zName,aVfsHelperFunc[n].xFunc,pVm);` |
+|  28469 | 7143 | `	}` |
 |      - | 7144 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
 |      - | 7145 |  |
 |      - | 7146 | `	/* Install streams if disk I/O is enabled */` |
@@ -7158,21 +7158,21 @@ Coverage: 2344/3510 lines (66.78%)
 |      - | 7148 | `#ifdef __WINNT__` |
 |      5 | 7149 | `	pFileStream = &sWinFileStream;` |
 |      - | 7150 | `#elif defined(__UNIXES__)` |
-|   3550 | 7151 | `	pFileStream = &sUnixFileStream;` |
+|   3558 | 7151 | `	pFileStream = &sUnixFileStream;` |
 |      - | 7152 | `#endif` |
 |      - | 7153 | `	/* Install the php:// stream */` |
-|   3555 | 7154 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sPHP_Stream);` |
-|   3555 | 7155 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sDATA_Stream);` |
+|   3563 | 7154 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sPHP_Stream);` |
+|   3563 | 7155 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sDATA_Stream);` |
 |      - | 7156 | `#ifdef PH7_ENABLE_NET` |
-|   3555 | 7157 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sTCP_Stream);` |
+|   3563 | 7157 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,&sTCP_Stream);` |
 |      - | 7158 | `#endif` |
-|   3555 | 7159 | `	if( pFileStream ){` |
+|   3563 | 7159 | `	if( pFileStream ){` |
 |      - | 7160 | `		/* Install the file:// stream */` |
-|   3555 | 7161 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,pFileStream);` |
-|   1775 | 7162 | `	}` |
+|   3563 | 7161 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_IO_STREAM,pFileStream);` |
+|   1779 | 7162 | `	}` |
 |      - | 7163 | `#endif /* PH7_DISABLE_DISK_IO */` |
 |      - | 7164 |  |
-|   3555 | 7165 | `	return SXRET_OK;` |
+|   3563 | 7165 | `	return SXRET_OK;` |
 |      5 | 7166 | `}` |
 |      - | 7167 | `/*` |
 |      - | 7168 | ` * Export the STDIN handle.` |
