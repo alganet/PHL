@@ -3,11 +3,7 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 xml parser handlers and line/column checks
---SKIPIF--
-<?php
-if (!function_exists('xml_parser_create')) { echo "skip: xml not available\n"; }
-if (function_exists('zend_version')) echo "skip";
-?>
+
 --FILE--
 <?php
 $xml = "<root>\n  <child attr=\"x\">value</child>\n</root>";

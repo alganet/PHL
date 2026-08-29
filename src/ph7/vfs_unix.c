@@ -16,6 +16,7 @@
 #include <unistd.h>
 #include <sys/uio.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/mman.h>
 #include <sys/file.h>
 #include <sys/wait.h>
@@ -119,6 +120,25 @@ static int UnixVfs_FileExists(const char *zPath)
 	return rc == 0 ? PH7_OK : -1;
 }
 /* ph7_int64 (*xFileSize)(const char *) */
+/* ph7_int64 (*xFreeSpace)(const char *) */
+static ph7_int64 UnixVfs_FreeSpace(const char *zPath)
+{
+	struct statvfs sInfo;
+	if( statvfs(zPath,&sInfo) != 0 ){
+		return -1;
+	}
+	/* php reports the space available to an UNPRIVILEGED user (f_bavail) */
+	return (ph7_int64)sInfo.f_bavail * (ph7_int64)sInfo.f_frsize;
+}
+/* ph7_int64 (*xTotalSpace)(const char *) */
+static ph7_int64 UnixVfs_TotalSpace(const char *zPath)
+{
+	struct statvfs sInfo;
+	if( statvfs(zPath,&sInfo) != 0 ){
+		return -1;
+	}
+	return (ph7_int64)sInfo.f_blocks * (ph7_int64)sInfo.f_frsize;
+}
 static ph7_int64 UnixVfs_FileSize(const char *zPath)
 {
 	struct stat st;
@@ -546,8 +566,8 @@ PH7_PRIVATE const ph7_vfs sUnixVfs = {
 	UnixVfs_Chmod, /*int (*xChmod)(const char *,int)*/
 	UnixVfs_Chown, /*int (*xChown)(const char *,const char *)*/
 	UnixVfs_Chgrp, /*int (*xChgrp)(const char *,const char *)*/
-	0,             /* ph7_int64 (*xFreeSpace)(const char *) */
-	0,             /* ph7_int64 (*xTotalSpace)(const char *) */
+	UnixVfs_FreeSpace,  /* ph7_int64 (*xFreeSpace)(const char *) */
+	UnixVfs_TotalSpace, /* ph7_int64 (*xTotalSpace)(const char *) */
 	UnixVfs_FileSize, /* ph7_int64 (*xFileSize)(const char *) */
 	UnixVfs_FileAtime,/* ph7_int64 (*xFileAtime)(const char *) */
 	UnixVfs_FileMtime,/* ph7_int64 (*xFileMtime)(const char *) */

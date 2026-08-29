@@ -3,8 +3,7 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 PH7: parse_ini_string with process_sections = true
---SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+
 --FILE--
 <?php
 $ini = "global_key = global_value\n[section1]\nkey1 = value1\nkey2 = value2\n[section2]\nkey3 = value3";

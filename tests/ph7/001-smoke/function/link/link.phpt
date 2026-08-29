@@ -3,12 +3,7 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 link should create a hard link to a file
---SKIPIF--
-<?php
-if (PHP_OS == 'WINNT' && !function_exists('zend_version')) {
-    echo "skip: platform";
-}
-?>
+
 --FILE--
 <?php
 $src = tempnam(sys_get_temp_dir(), 'ph7_link_src_');

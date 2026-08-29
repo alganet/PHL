@@ -3,8 +3,7 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Lexer handles heredoc with UTF-8 characters in delimiter identifier
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+
 --FILE--
 <?php
 // Test heredoc/nowdoc with UTF-8 in delimiter (lex.c lines 821-828)

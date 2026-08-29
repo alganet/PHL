@@ -3,11 +3,7 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 var_dump outputs variable information
---SKIPIF--
-<?php
-if (!function_exists('var_dump')) { echo 'skip: var_dump not available'; }
-if (function_exists('zend_version')) { echo 'skip: PHP var_dump output differs'; }
-?>
+
 --FILE--
 <?php
 ob_start();

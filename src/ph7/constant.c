@@ -1132,41 +1132,44 @@ static void PH7_PHP_QUERY_RFC3986_Const(ph7_value *pVal,void *pUserData)
 	SXUNUSED(pUserData); /* cc warning */
 	ph7_value_int(pVal,2);
 }
-/*
- * FNM_NOESCAPE
- *  Expand 0x01 (Must be a power of two)
- */
-static void PH7_FNM_NOESCAPE_Const(ph7_value *pVal,void *pUserData)
-{
-	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x01);
-}
+/* php's FNM_* values (ext/standard): PATHNAME=1, NOESCAPE=2, PERIOD=4, CASEFOLD=16.
+ * PHL previously had PATHNAME/NOESCAPE swapped and CASEFOLD=8; fnmatch() reads these
+ * bits, so PH7_builtin_fnmatch was updated to the same values. */
 /*
  * FNM_PATHNAME
- *  Expand 0x02 (Must be a power of two)
+ *  Expand 1 (php value)
  */
 static void PH7_FNM_PATHNAME_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x02);
+	ph7_value_int(pVal,1);
+}
+/*
+ * FNM_NOESCAPE
+ *  Expand 2 (php value)
+ */
+static void PH7_FNM_NOESCAPE_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,2);
 }
 /*
  * FNM_PERIOD
- *  Expand 0x04 (Must be a power of two)
+ *  Expand 4 (php value)
  */
 static void PH7_FNM_PERIOD_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x04);
+	ph7_value_int(pVal,4);
 }
 /*
  * FNM_CASEFOLD
- *  Expand 0x08 (Must be a power of two)
+ *  Expand 16 (php value)
  */
 static void PH7_FNM_CASEFOLD_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x08);
+	ph7_value_int(pVal,16);
 }
 /*
  * PATHINFO_DIRNAME

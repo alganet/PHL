@@ -3,8 +3,7 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Parse unary to binary operator conversion with alpha-stream variable names
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+
 --FILE--
 <?php
 // Test expression starting with + or - (unary operators, parse.c lines 362-363)
