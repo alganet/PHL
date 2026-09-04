@@ -5,8 +5,10 @@ SPDX-License-Identifier: BSD-3-Clause
 debug_string_backtrace contains called function
 --SKIPIF--
 <?php
-if (!function_exists('debug_string_backtrace')) { echo 'skip: debug_string_backtrace not available'; }
-if (function_exists('zend_version')) { echo 'skip: PHP debug_string_backtrace output differs'; }
+// PHL extension: `debug_string_backtrace()` does not exist in php (it is an added API surface,
+// allowed by the section 10 scope policy as a documented PHL extension —
+// it does not change the meaning of valid php source). Engine-specific by design.
+if (function_exists('zend_version')) { echo 'skip PHL extension: debug_string_backtrace() is not a php symbol'; }
 ?>
 --FILE--
 <?php

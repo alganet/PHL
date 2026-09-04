@@ -5326,6 +5326,26 @@ PH7_PRIVATE sxi32 PH7_ContextMemoryError(ph7_context *pCtx)
 	return PH7_VmMemoryError(pCtx->pVm);
 }
 /*
+ * php 8.1: an implicit float->int conversion deprecates when it loses
+ * precision. Used by the integer-only OPERATORS (%, |, &, ^, <<, >>, ~),
+ * which truncate their operands. An integral float like 2.0 is silent.
+ * (Builtin int PARAMETERS need the same treatment — they coerce through each
+ * function's own ph7_value_to_int call, so they ride the recorded ZPP sweep.)
+ */
+static void VmDeprecateFloatOperand(ph7_vm *pVm,ph7_value *pVal)
+{
+	double r;
+	if( pVal == 0 || (pVal->iFlags & MEMOBJ_REAL) == 0 ){
+		return;
+	}
+	r = (double)pVal->rVal;
+	if( r == (double)(sxi64)r ){
+		return;
+	}
+	VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,
+		"Implicit conversion from float %g to int loses precision",r);
+}
+/*
  * php 8.1: a FLOAT array subscript truncates to int, and deprecates when that
  * loses precision (an integral float like 2.0 is silent). Fires in every
  * subscript context — read, write, isset/empty, ?? and even unset (probed).
@@ -11443,7 +11463,8 @@ case PH7_OP_BITNOT:
 		goto Abort;
 	}
 #endif
-	/* Force an integer cast */
+	/* Force an integer cast (php deprecates a lossy float here too) */
+	VmDeprecateFloatOperand(&(*pVm),pTos);
 	if( (pTos->iFlags & MEMOBJ_INT) == 0 ){
 		PH7_MemObjToInteger(pTos);
 	}
@@ -11826,7 +11847,9 @@ case PH7_OP_MOD:{
 		goto Abort;
 	}
 #endif
-	/* Force the operands to be integer */
+	/* Force the operands to be integer (php deprecates a lossy float here) */
+	VmDeprecateFloatOperand(&(*pVm),pNos);
+	VmDeprecateFloatOperand(&(*pVm),pTos);
 	if( (pTos->iFlags & MEMOBJ_INT) == 0 ){
 		PH7_MemObjToInteger(pTos);
 	}
@@ -11875,7 +11898,9 @@ case PH7_OP_MOD_STORE: {
 		goto Abort;
 	}
 #endif
-	/* Force the operands to be integer */
+	/* Force the operands to be integer (php deprecates a lossy float here) */
+	VmDeprecateFloatOperand(&(*pVm),pNos);
+	VmDeprecateFloatOperand(&(*pVm),pTos);
 	if( (pTos->iFlags & MEMOBJ_INT) == 0 ){
 		PH7_MemObjToInteger(pTos);
 	}
@@ -12031,7 +12056,9 @@ case PH7_OP_BXOR:{
 		goto Abort;
 	}
 #endif
-	/* Force the operands to be integer */
+	/* Force the operands to be integer (php deprecates a lossy float here) */
+	VmDeprecateFloatOperand(&(*pVm),pNos);
+	VmDeprecateFloatOperand(&(*pVm),pTos);
 	if( (pTos->iFlags & MEMOBJ_INT) == 0 ){
 		PH7_MemObjToInteger(pTos);
 	}
@@ -12085,7 +12112,9 @@ case PH7_OP_BXOR_STORE:{
 		goto Abort;
 	}
 #endif
-	/* Force the operands to be integer */
+	/* Force the operands to be integer (php deprecates a lossy float here) */
+	VmDeprecateFloatOperand(&(*pVm),pNos);
+	VmDeprecateFloatOperand(&(*pVm),pTos);
 	if( (pTos->iFlags & MEMOBJ_INT) == 0 ){
 		PH7_MemObjToInteger(pTos);
 	}
@@ -12141,7 +12170,9 @@ case PH7_OP_SHR: {
 		goto Abort;
 	}
 #endif
-	/* Force the operands to be integer */
+	/* Force the operands to be integer (php deprecates a lossy float here) */
+	VmDeprecateFloatOperand(&(*pVm),pNos);
+	VmDeprecateFloatOperand(&(*pVm),pTos);
 	if( (pTos->iFlags & MEMOBJ_INT) == 0 ){
 		PH7_MemObjToInteger(pTos);
 	}
@@ -12187,7 +12218,9 @@ case PH7_OP_SHR_STORE: {
 		goto Abort;
 	}
 #endif
-	/* Force the operands to be integer */
+	/* Force the operands to be integer (php deprecates a lossy float here) */
+	VmDeprecateFloatOperand(&(*pVm),pNos);
+	VmDeprecateFloatOperand(&(*pVm),pTos);
 	if( (pTos->iFlags & MEMOBJ_INT) == 0 ){
 		PH7_MemObjToInteger(pTos);
 	}

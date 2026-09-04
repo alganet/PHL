@@ -5,9 +5,10 @@ SPDX-License-Identifier: BSD-3-Clause
 ph7credits returns TRUE and prints credits (printed content is ignored via ob buffering)
 --SKIPIF--
 <?php
-if (function_exists('zend_version')) {
-    echo "skip";
-}
+// PHL extension: `ph7credits()` does not exist in php (it is an added API surface,
+// allowed by the section 10 scope policy as a documented PHL extension —
+// it does not change the meaning of valid php source). Engine-specific by design.
+if (function_exists('zend_version')) { echo 'skip PHL extension: ph7credits() is not a php symbol'; }
 ?>
 --FILE--
 <?php
