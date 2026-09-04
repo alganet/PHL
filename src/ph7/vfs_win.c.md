@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 487/710 lines (68.59%)
+Coverage: 566/710 lines (79.72%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -282,23 +282,23 @@ Coverage: 487/710 lines (68.59%)
 |    5 |  272 | `}` |
 |    - |  273 | `/* int (*xChmod)(const char *,int) */` |
 |    - |  274 | `static int WinVfs_chmod(const char *zPath,int mode)` |
-|  ! 0 |  275 | `{` |
+|    1 |  275 | `{` |
 |    - |  276 | `	void * pConverted;` |
 |    - |  277 | `	int rc;` |
-|  ! 0 |  278 | `	pConverted = convertUtf8Filename(zPath);` |
-|  ! 0 |  279 | `	if( pConverted == 0 ){` |
+|    1 |  278 | `	pConverted = convertUtf8Filename(zPath);` |
+|    1 |  279 | `	if( pConverted == 0 ){` |
 |  ! 0 |  280 | `		return -1;` |
 |    - |  281 | `	}` |
 |    - |  282 | `	/* Windows honors only the read-only attribute: a set owner-write bit (0200)` |
 |    - |  283 | `	 * clears it, otherwise the file is made read-only. This mirrors php, whose` |
 |    - |  284 | `	 * chmod() on Windows likewise maps through _wchmod and returns success. */` |
-|  ! 0 |  285 | `	rc = _wchmod((const wchar_t *)pConverted,(mode & 0200) ? (_S_IREAD\|_S_IWRITE) : _S_IREAD);` |
-|  ! 0 |  286 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|  ! 0 |  287 | `	return rc == 0 ? PH7_OK : - 1;` |
-|  ! 0 |  288 | `}` |
+|    1 |  285 | `	rc = _wchmod((const wchar_t *)pConverted,(mode & 0200) ? (_S_IREAD\|_S_IWRITE) : _S_IREAD);` |
+|    1 |  286 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    1 |  287 | `	return rc == 0 ? PH7_OK : - 1;` |
+|    1 |  288 | `}` |
 |    - |  289 | `/* ph7_int64 (*xFreeSpace)(const char *) */` |
 |    - |  290 | `static ph7_int64 WinVfs_DiskFreeSpace(const char *zPath)` |
-|  ! 0 |  291 | `{` |
+|    1 |  291 | `{` |
 |    - |  292 | `#ifdef _WIN32_WCE` |
 |    - |  293 | `	/* GetDiskFreeSpace is not supported under WINCE */` |
 |    - |  294 | `	SXUNUSED(zPath);` |
@@ -308,27 +308,27 @@ Coverage: 487/710 lines (68.59%)
 |    - |  298 | `	void * pConverted;` |
 |    - |  299 | `	WCHAR *p;` |
 |    - |  300 | `	BOOL rc;` |
-|  ! 0 |  301 | `	pConverted = convertUtf8Filename(zPath);` |
-|  ! 0 |  302 | `	if( pConverted == 0 ){` |
+|    1 |  301 | `	pConverted = convertUtf8Filename(zPath);` |
+|    1 |  302 | `	if( pConverted == 0 ){` |
 |  ! 0 |  303 | `		return 0;` |
 |    - |  304 | `	}` |
-|  ! 0 |  305 | `	p = (WCHAR *)pConverted;` |
-|  ! 0 |  306 | `	for(;*p;p++){` |
-|  ! 0 |  307 | `		if( *p == '\\' \|\| *p == '/'){` |
-|  ! 0 |  308 | `			*p = '\0';` |
-|  ! 0 |  309 | `			break;` |
+|    1 |  305 | `	p = (WCHAR *)pConverted;` |
+|    1 |  306 | `	for(;*p;p++){` |
+|    1 |  307 | `		if( *p == '\\' \|\| *p == '/'){` |
+|    1 |  308 | `			*p = '\0';` |
+|    1 |  309 | `			break;` |
 |    - |  310 | `		}` |
-|  ! 0 |  311 | `	}` |
-|  ! 0 |  312 | `	rc = GetDiskFreeSpaceW((LPCWSTR)pConverted,&dwSectPerClust,&dwBytesPerSect,&dwFreeClusters,&dwTotalClusters);` |
-|  ! 0 |  313 | `	if( !rc ){` |
+|    1 |  311 | `	}` |
+|    1 |  312 | `	rc = GetDiskFreeSpaceW((LPCWSTR)pConverted,&dwSectPerClust,&dwBytesPerSect,&dwFreeClusters,&dwTotalClusters);` |
+|    1 |  313 | `	if( !rc ){` |
 |  ! 0 |  314 | `		return 0;` |
 |    - |  315 | `	}` |
-|  ! 0 |  316 | `	return (ph7_int64)dwFreeClusters * dwSectPerClust * dwBytesPerSect;` |
+|    1 |  316 | `	return (ph7_int64)dwFreeClusters * dwSectPerClust * dwBytesPerSect;` |
 |    - |  317 | `#endif` |
-|  ! 0 |  318 | `}` |
+|    1 |  318 | `}` |
 |    - |  319 | `/* ph7_int64 (*xTotalSpace)(const char *) */` |
 |    - |  320 | `static ph7_int64 WinVfs_DiskTotalSpace(const char *zPath)` |
-|  ! 0 |  321 | `{` |
+|    1 |  321 | `{` |
 |    - |  322 | `#ifdef _WIN32_WCE` |
 |    - |  323 | `	/* GetDiskFreeSpace is not supported under WINCE */` |
 |    - |  324 | `	SXUNUSED(zPath);` |
@@ -338,24 +338,24 @@ Coverage: 487/710 lines (68.59%)
 |    - |  328 | `	void * pConverted;` |
 |    - |  329 | `	WCHAR *p;` |
 |    - |  330 | `	BOOL rc;` |
-|  ! 0 |  331 | `	pConverted = convertUtf8Filename(zPath);` |
-|  ! 0 |  332 | `	if( pConverted == 0 ){` |
+|    1 |  331 | `	pConverted = convertUtf8Filename(zPath);` |
+|    1 |  332 | `	if( pConverted == 0 ){` |
 |  ! 0 |  333 | `		return 0;` |
 |    - |  334 | `	}` |
-|  ! 0 |  335 | `	p = (WCHAR *)pConverted;` |
-|  ! 0 |  336 | `	for(;*p;p++){` |
-|  ! 0 |  337 | `		if( *p == '\\' \|\| *p == '/'){` |
-|  ! 0 |  338 | `			*p = '\0';` |
-|  ! 0 |  339 | `			break;` |
+|    1 |  335 | `	p = (WCHAR *)pConverted;` |
+|    1 |  336 | `	for(;*p;p++){` |
+|    1 |  337 | `		if( *p == '\\' \|\| *p == '/'){` |
+|    1 |  338 | `			*p = '\0';` |
+|    1 |  339 | `			break;` |
 |    - |  340 | `		}` |
-|  ! 0 |  341 | `	}` |
-|  ! 0 |  342 | `	rc = GetDiskFreeSpaceW((LPCWSTR)pConverted,&dwSectPerClust,&dwBytesPerSect,&dwFreeClusters,&dwTotalClusters);` |
-|  ! 0 |  343 | `	if( !rc ){` |
+|    1 |  341 | `	}` |
+|    1 |  342 | `	rc = GetDiskFreeSpaceW((LPCWSTR)pConverted,&dwSectPerClust,&dwBytesPerSect,&dwFreeClusters,&dwTotalClusters);` |
+|    1 |  343 | `	if( !rc ){` |
 |  ! 0 |  344 | `		return 0;` |
 |    - |  345 | `	}` |
-|  ! 0 |  346 | `	return (ph7_int64)dwTotalClusters * dwSectPerClust * dwBytesPerSect;` |
+|    1 |  346 | `	return (ph7_int64)dwTotalClusters * dwSectPerClust * dwBytesPerSect;` |
 |    - |  347 | `#endif` |
-|  ! 0 |  348 | `}` |
+|    1 |  348 | `}` |
 |    - |  349 | `/* int (*xFileExists)(const char *) */` |
 |    - |  350 | `static int WinVfs_FileExists(const char *zPath)` |
 |    2 |  351 | `{` |
@@ -649,52 +649,52 @@ Coverage: 487/710 lines (68.59%)
 |  ! 0 |  639 | `}` |
 |    - |  640 | `/* int (*xWritable)(const char *) */` |
 |    - |  641 | `static int WinVfs_iswritable(const char *zPath)` |
-|  ! 0 |  642 | `{` |
-|  ! 0 |  643 | `	zPath = WinVfsLocalPath(zPath);` |
+|    1 |  642 | `{` |
+|    1 |  643 | `	zPath = WinVfsLocalPath(zPath);` |
 |    - |  644 | `	void * pConverted;` |
 |    - |  645 | `	DWORD dwAttr;` |
-|  ! 0 |  646 | `	pConverted = convertUtf8Filename(zPath);` |
-|  ! 0 |  647 | `	if( pConverted == 0 ){` |
+|    1 |  646 | `	pConverted = convertUtf8Filename(zPath);` |
+|    1 |  647 | `	if( pConverted == 0 ){` |
 |  ! 0 |  648 | `		return -1;` |
 |    - |  649 | `	}` |
-|  ! 0 |  650 | `	dwAttr = GetFileAttributesW((LPCWSTR)pConverted);` |
-|  ! 0 |  651 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|  ! 0 |  652 | `	if( dwAttr == INVALID_FILE_ATTRIBUTES ){` |
+|    1 |  650 | `	dwAttr = GetFileAttributesW((LPCWSTR)pConverted);` |
+|    1 |  651 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    1 |  652 | `	if( dwAttr == INVALID_FILE_ATTRIBUTES ){` |
 |  ! 0 |  653 | `		return -1;` |
 |    - |  654 | `	}` |
-|  ! 0 |  655 | `	if( (dwAttr & (FILE_ATTRIBUTE_ARCHIVE\|FILE_ATTRIBUTE_NORMAL)) == 0 ){` |
+|    1 |  655 | `	if( (dwAttr & (FILE_ATTRIBUTE_ARCHIVE\|FILE_ATTRIBUTE_NORMAL)) == 0 ){` |
 |    - |  656 | `		/* Not a regular file */` |
 |  ! 0 |  657 | `		return -1;` |
 |    - |  658 | `	}` |
-|  ! 0 |  659 | `	if( dwAttr & FILE_ATTRIBUTE_READONLY ){` |
+|    1 |  659 | `	if( dwAttr & FILE_ATTRIBUTE_READONLY ){` |
 |    - |  660 | `		/* Read-only file */` |
 |  ! 0 |  661 | `		return -1;` |
 |    - |  662 | `	}` |
 |    - |  663 | `	/* File is writable */` |
-|  ! 0 |  664 | `	return PH7_OK;` |
-|  ! 0 |  665 | `}` |
+|    1 |  664 | `	return PH7_OK;` |
+|    1 |  665 | `}` |
 |    - |  666 | `/* int (*xExecutable)(const char *) */` |
 |    - |  667 | `static int WinVfs_isexecutable(const char *zPath)` |
-|  ! 0 |  668 | `{` |
-|  ! 0 |  669 | `	zPath = WinVfsLocalPath(zPath);` |
+|    1 |  668 | `{` |
+|    1 |  669 | `	zPath = WinVfsLocalPath(zPath);` |
 |    - |  670 | `	void * pConverted;` |
 |    - |  671 | `	DWORD dwAttr;` |
-|  ! 0 |  672 | `	pConverted = convertUtf8Filename(zPath);` |
-|  ! 0 |  673 | `	if( pConverted == 0 ){` |
+|    1 |  672 | `	pConverted = convertUtf8Filename(zPath);` |
+|    1 |  673 | `	if( pConverted == 0 ){` |
 |  ! 0 |  674 | `		return -1;` |
 |    - |  675 | `	}` |
-|  ! 0 |  676 | `	dwAttr = GetFileAttributesW((LPCWSTR)pConverted);` |
-|  ! 0 |  677 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|  ! 0 |  678 | `	if( dwAttr == INVALID_FILE_ATTRIBUTES ){` |
+|    1 |  676 | `	dwAttr = GetFileAttributesW((LPCWSTR)pConverted);` |
+|    1 |  677 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    1 |  678 | `	if( dwAttr == INVALID_FILE_ATTRIBUTES ){` |
 |  ! 0 |  679 | `		return -1;` |
 |    - |  680 | `	}` |
-|  ! 0 |  681 | `	if( (dwAttr & FILE_ATTRIBUTE_NORMAL) == 0 ){` |
+|    1 |  681 | `	if( (dwAttr & FILE_ATTRIBUTE_NORMAL) == 0 ){` |
 |    - |  682 | `		/* Not a regular file */` |
-|  ! 0 |  683 | `		return -1;` |
+|    1 |  683 | `		return -1;` |
 |    - |  684 | `	}` |
 |    - |  685 | `	/* File is executable */` |
 |  ! 0 |  686 | `	return PH7_OK;` |
-|  ! 0 |  687 | `}` |
+|    1 |  687 | `}` |
 |    - |  688 | `/* int (*xFiletype)(const char *,ph7_context *) */` |
 |    - |  689 | `static int WinVfs_Filetype(const char *zPath,ph7_context *pCtx)` |
 |    1 |  690 | `{` |
@@ -864,48 +864,48 @@ Coverage: 487/710 lines (68.59%)
 |    - |  854 | ` * CreateHardLink or symbolic link (iSym!=0) via CreateSymbolicLink, mirroring` |
 |    - |  855 | ` * php on Windows. Developer-mode symlink creation is allowed. */` |
 |    - |  856 | `static int WinVfs_Link(const char *zOld,const char *zNew,int iSym)` |
-|  ! 0 |  857 | `{` |
+|    1 |  857 | `{` |
 |    - |  858 | `	void *pOld, *pNew;` |
 |    - |  859 | `	BOOL rc;` |
-|  ! 0 |  860 | `	pOld = convertUtf8Filename(zOld);` |
-|  ! 0 |  861 | `	if( pOld == 0 ){` |
+|    1 |  860 | `	pOld = convertUtf8Filename(zOld);` |
+|    1 |  861 | `	if( pOld == 0 ){` |
 |  ! 0 |  862 | `		return -1;` |
 |    - |  863 | `	}` |
-|  ! 0 |  864 | `	pNew = convertUtf8Filename(zNew);` |
-|  ! 0 |  865 | `	if( pNew == 0 ){` |
+|    1 |  864 | `	pNew = convertUtf8Filename(zNew);` |
+|    1 |  865 | `	if( pNew == 0 ){` |
 |  ! 0 |  866 | `		HeapFree(GetProcessHeap(),0,pOld);` |
 |  ! 0 |  867 | `		return -1;` |
 |    - |  868 | `	}` |
-|  ! 0 |  869 | `	if( iSym ){` |
-|  ! 0 |  870 | `		DWORD dwFlags = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;` |
-|  ! 0 |  871 | `		DWORD attr = GetFileAttributesW((LPCWSTR)pOld);` |
-|  ! 0 |  872 | `		if( attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY) ){` |
+|    1 |  869 | `	if( iSym ){` |
+|    1 |  870 | `		DWORD dwFlags = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;` |
+|    1 |  871 | `		DWORD attr = GetFileAttributesW((LPCWSTR)pOld);` |
+|    1 |  872 | `		if( attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY) ){` |
 |  ! 0 |  873 | `			dwFlags \|= SYMBOLIC_LINK_FLAG_DIRECTORY;` |
 |    - |  874 | `		}` |
-|  ! 0 |  875 | `		rc = CreateSymbolicLinkW((LPCWSTR)pNew,(LPCWSTR)pOld,dwFlags) ? TRUE : FALSE;` |
-|  ! 0 |  876 | `	}else{` |
-|  ! 0 |  877 | `		rc = CreateHardLinkW((LPCWSTR)pNew,(LPCWSTR)pOld,0);` |
+|    1 |  875 | `		rc = CreateSymbolicLinkW((LPCWSTR)pNew,(LPCWSTR)pOld,dwFlags) ? TRUE : FALSE;` |
+|    1 |  876 | `	}else{` |
+|    1 |  877 | `		rc = CreateHardLinkW((LPCWSTR)pNew,(LPCWSTR)pOld,0);` |
 |    - |  878 | `	}` |
-|  ! 0 |  879 | `	HeapFree(GetProcessHeap(),0,pNew);` |
-|  ! 0 |  880 | `	HeapFree(GetProcessHeap(),0,pOld);` |
-|  ! 0 |  881 | `	return rc ? PH7_OK : -1;` |
-|  ! 0 |  882 | `}` |
+|    1 |  879 | `	HeapFree(GetProcessHeap(),0,pNew);` |
+|    1 |  880 | `	HeapFree(GetProcessHeap(),0,pOld);` |
+|    1 |  881 | `	return rc ? PH7_OK : -1;` |
+|    1 |  882 | `}` |
 |    - |  883 | `/* int (*xUmask)(int) — Windows has no umask; php's umask() returns 0 there. */` |
 |    - |  884 | `static int WinVfs_Umask(int iMask)` |
-|  ! 0 |  885 | `{` |
+|    1 |  885 | `{` |
 |    - |  886 | `	(void)iMask;` |
-|  ! 0 |  887 | `	return 0;` |
-|  ! 0 |  888 | `}` |
+|    1 |  887 | `	return 0;` |
+|    1 |  888 | `}` |
 |    - |  889 | `/* int (*xUid)(void) / int (*xGid)(void) — no uid/gid on Windows; php's` |
 |    - |  890 | ` * getmyuid()/getmygid() both return 0. */` |
 |    - |  891 | `static int WinVfs_Uid(void)` |
-|  ! 0 |  892 | `{` |
-|  ! 0 |  893 | `	return 0;` |
-|  ! 0 |  894 | `}` |
+|    1 |  892 | `{` |
+|    1 |  893 | `	return 0;` |
+|    1 |  894 | `}` |
 |    - |  895 | `static int WinVfs_Gid(void)` |
-|  ! 0 |  896 | `{` |
-|  ! 0 |  897 | `	return 0;` |
-|  ! 0 |  898 | `}` |
+|    1 |  896 | `{` |
+|    1 |  897 | `	return 0;` |
+|    1 |  898 | `}` |
 |    - |  899 | `/* Export the windows vfs */` |
 |    - |  900 | `PH7_PRIVATE const ph7_vfs sWinVfs = {` |
 |    - |  901 | `	"Windows_vfs",` |

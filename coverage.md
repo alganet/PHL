@@ -1,21 +1,21 @@
 | Filename                       | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
 | src/ph7/api.c                  | 70.86%   | 778/1098    |
-| src/ph7/builtin.c              | 86.53%   | 4350/5027   |
+| src/ph7/builtin.c              | 86.49%   | 4348/5027   |
 | src/ph7/builtin_date.c         | 73.04%   | 1192/1632   |
 | src/ph7/builtin_math.c         | 87.35%   | 525/601     |
 | src/ph7/builtin_mb.c           | 90.77%   | 354/390     |
 | src/ph7/compile.c              | 80.79%   | 7053/8730   |
-| src/ph7/constant.c             | 98.30%   | 1154/1174   |
+| src/ph7/constant.c             | 97.44%   | 1144/1174   |
 | src/ph7/hashmap.c              | 90.55%   | 3997/4414   |
-| src/ph7/lex.c                  | 92.91%   | 786/846     |
+| src/ph7/lex.c                  | 93.26%   | 789/846     |
 | src/ph7/memobj.c               | 88.57%   | 891/1006    |
 | src/ph7/net.c                  | 57.45%   | 81/141      |
 | src/ph7/oo.c                   | 88.07%   | 694/788     |
 | src/ph7/parse.c                | 87.38%   | 1163/1331   |
-| src/ph7/vfs.c                  | 66.78%   | 2344/3510   |
-| src/ph7/vfs_unix.c             | 88.06%   | 376/427     |
-| src/ph7/vfs_win.c              | 68.59%   | 487/710     |
+| src/ph7/vfs.c                  | 67.26%   | 2361/3510   |
+| src/ph7/vfs_unix.c             | 87.87%   | 384/437     |
+| src/ph7/vfs_win.c              | 79.72%   | 566/710     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
 | src/ph7/vm.c                   | 82.57%   | 10964/13278 |
 | src/ph7/vm_builtin_class.c     | 87.44%   | 564/645     |
@@ -49,5 +49,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.34%   | 45278/55663 |
-| Functions                      | 96.34%   | 2080/2159   |
+| Lines                          | 81.50%   | 45373/55673 |
+| Functions                      | 96.25%   | 2080/2161   |
