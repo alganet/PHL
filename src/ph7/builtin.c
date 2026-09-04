@@ -12,6 +12,108 @@
 #include <errno.h>   /* ERANGE (strtod range-error signal) */
 #include <stdio.h>   /* snprintf (printf-family float conversions — correctly
                       * rounded digits like php's zend_dtoa; see PH7_InputFormat) */
+/* Shared ZPP helper for `int` parameters — defined OUTSIDE the
+ * PH7_DISABLE_BUILTIN_FUNC guard because hashmap.c (array_slice) and
+ * builtin_math.c (intdiv) call it and both compile in the tiny build. */
+PH7_PRIVATE sxi32 PH7_IntArgResolve(
+	ph7_context *pCtx,
+	ph7_value *pArg,
+	const char *zFunc,
+	int iArgNum,
+	const char *zParamName,
+	const char *zTypeStr,
+	sxi64 *pOut
+){
+	if( ph7_value_is_null(pArg) ){
+		PH7_VmThrowDeprecatedFmt(pCtx->pVm,
+			"%s(): Passing null to parameter #%d (%s) of type %s is deprecated",
+			zFunc,iArgNum,zParamName,zTypeStr
+			);
+		*pOut = 0;
+		return PH7_OK;
+	}
+	if( ph7_value_is_float(pArg) ){
+		double dVal = ph7_value_to_double(pArg);
+		sxi64 iVal;
+		/* php: NAN/INF/out-of-int64-range floats fail ZPP outright */
+		if( dVal != dVal || dVal >= 9223372036854775808.0 || dVal < -9223372036854775808.0 ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"%s(): Argument #%d (%s) must be of type %s, float given",
+				zFunc,iArgNum,zParamName,zTypeStr
+				);
+		}
+		iVal = (sxi64)dVal;
+		if( (double)iVal != dVal ){
+			PH7_VmThrowDeprecatedFmt(pCtx->pVm,
+				"Implicit conversion from float %s to int loses precision",
+				ph7_value_to_string(pArg,0)
+				);
+		}
+		*pOut = iVal;
+		return PH7_OK;
+	}
+	if( ph7_value_is_string(pArg) ){
+		const char *zNum;
+		int nSlen;
+		int i,bFloat = 0;
+		if( !PH7_MemObjStringIsNumeric(pArg) ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"%s(): Argument #%d (%s) must be of type %s, string given",
+				zFunc,iArgNum,zParamName,zTypeStr
+				);
+		}
+		zNum = ph7_value_to_string(pArg,&nSlen);
+		for( i = 0 ; i < nSlen ; i++ ){
+			if( zNum[i] == '.' || zNum[i] == 'e' || zNum[i] == 'E' ){
+				bFloat = 1;
+				break;
+			}
+		}
+		if( bFloat ){
+			double dVal = 0;
+			sxi64 iVal;
+			SyStrToReal(zNum,(sxu32)nSlen,(void *)&dVal,0);
+			if( dVal != dVal || dVal >= 9223372036854775808.0 || dVal < -9223372036854775808.0 ){
+				return PH7_VmThrowException(pCtx,
+					"TypeError",
+					"%s(): Argument #%d (%s) must be of type %s, string given",
+					zFunc,iArgNum,zParamName,zTypeStr
+					);
+			}
+			iVal = (sxi64)dVal;
+			if( (double)iVal != dVal ){
+				PH7_VmThrowDeprecatedFmt(pCtx->pVm,
+					"Implicit conversion from float-string \"%s\" to int loses precision",
+					zNum
+					);
+			}
+			*pOut = iVal;
+			return PH7_OK;
+		}
+		*pOut = ph7_value_to_int64(pArg);
+		return PH7_OK;
+	}
+	if( !ph7_value_is_int(pArg) && !ph7_value_is_bool(pArg) ){
+		/* Arrays, resources and objects: php names the class for objects */
+		const char *zType = ph7_type_name(pArg);
+		if( ph7_value_is_object(pArg) ){
+			ph7_class_instance *pInst = (ph7_class_instance *)pArg->x.pOther;
+			if( pInst && pInst->pClass ){
+				zType = SyStringData(&pInst->pClass->sName);
+			}
+		}
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"%s(): Argument #%d (%s) must be of type %s, %s given",
+			zFunc,iArgNum,zParamName,zTypeStr,zType
+			);
+	}
+	*pOut = ph7_value_to_int64(pArg);
+	return PH7_OK;
+}
+
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 /* Forward decl: null-to-string ZPP deprecation notice (defined near the ZPP
  * helpers; both live inside the same DISABLE_BUILTIN_FUNC region as every
@@ -375,7 +477,14 @@ static int PH7_builtin_substr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	nLen = nSrcLen; /* cc warning */
 	/* Extract the offset */
-	nOfft = ph7_value_to_int(apArg[1]);
+	{
+		sxi64 iTmp = 0;
+		sxi32 rcArg = PH7_IntArgResolve(pCtx,apArg[1],"substr",2,"$offset","int",&iTmp);
+		if( rcArg != PH7_OK ){
+			return rcArg;
+		}
+		nOfft = (int)iTmp;
+	}
 	if( nOfft < 0 ){
 		zOfft = &zSource[nSrcLen+nOfft];
 		if( zOfft < zSource ){
@@ -628,104 +737,6 @@ static sxi32 StrPredicateResolveArg(ph7_context *pCtx,ph7_value *pArg,const char
  * objects, non-numeric strings) is a TypeError naming zTypeStr (e.g. "int",
  * "array|int"). Returns PH7_OK with *pOut set, or the throw status.
  */
-static sxi32 IntArgResolve(
-	ph7_context *pCtx,
-	ph7_value *pArg,
-	const char *zFunc,
-	int iArgNum,
-	const char *zParamName,
-	const char *zTypeStr,
-	sxi64 *pOut
-){
-	if( ph7_value_is_null(pArg) ){
-		PH7_VmThrowDeprecatedFmt(pCtx->pVm,
-			"%s(): Passing null to parameter #%d (%s) of type %s is deprecated",
-			zFunc,iArgNum,zParamName,zTypeStr
-			);
-		*pOut = 0;
-		return PH7_OK;
-	}
-	if( ph7_value_is_float(pArg) ){
-		double dVal = ph7_value_to_double(pArg);
-		sxi64 iVal;
-		/* php: NAN/INF/out-of-int64-range floats fail ZPP outright */
-		if( dVal != dVal || dVal >= 9223372036854775808.0 || dVal < -9223372036854775808.0 ){
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"%s(): Argument #%d (%s) must be of type %s, float given",
-				zFunc,iArgNum,zParamName,zTypeStr
-				);
-		}
-		iVal = (sxi64)dVal;
-		if( (double)iVal != dVal ){
-			PH7_VmThrowDeprecatedFmt(pCtx->pVm,
-				"Implicit conversion from float %s to int loses precision",
-				ph7_value_to_string(pArg,0)
-				);
-		}
-		*pOut = iVal;
-		return PH7_OK;
-	}
-	if( ph7_value_is_string(pArg) ){
-		const char *zNum;
-		int nSlen;
-		int i,bFloat = 0;
-		if( !PH7_MemObjStringIsNumeric(pArg) ){
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"%s(): Argument #%d (%s) must be of type %s, string given",
-				zFunc,iArgNum,zParamName,zTypeStr
-				);
-		}
-		zNum = ph7_value_to_string(pArg,&nSlen);
-		for( i = 0 ; i < nSlen ; i++ ){
-			if( zNum[i] == '.' || zNum[i] == 'e' || zNum[i] == 'E' ){
-				bFloat = 1;
-				break;
-			}
-		}
-		if( bFloat ){
-			double dVal = 0;
-			sxi64 iVal;
-			SyStrToReal(zNum,(sxu32)nSlen,(void *)&dVal,0);
-			if( dVal != dVal || dVal >= 9223372036854775808.0 || dVal < -9223372036854775808.0 ){
-				return PH7_VmThrowException(pCtx,
-					"TypeError",
-					"%s(): Argument #%d (%s) must be of type %s, string given",
-					zFunc,iArgNum,zParamName,zTypeStr
-					);
-			}
-			iVal = (sxi64)dVal;
-			if( (double)iVal != dVal ){
-				PH7_VmThrowDeprecatedFmt(pCtx->pVm,
-					"Implicit conversion from float-string \"%s\" to int loses precision",
-					zNum
-					);
-			}
-			*pOut = iVal;
-			return PH7_OK;
-		}
-		*pOut = ph7_value_to_int64(pArg);
-		return PH7_OK;
-	}
-	if( !ph7_value_is_int(pArg) && !ph7_value_is_bool(pArg) ){
-		/* Arrays, resources and objects: php names the class for objects */
-		const char *zType = ph7_type_name(pArg);
-		if( ph7_value_is_object(pArg) ){
-			ph7_class_instance *pInst = (ph7_class_instance *)pArg->x.pOther;
-			if( pInst && pInst->pClass ){
-				zType = SyStringData(&pInst->pClass->sName);
-			}
-		}
-		return PH7_VmThrowException(pCtx,
-			"TypeError",
-			"%s(): Argument #%d (%s) must be of type %s, %s given",
-			zFunc,iArgNum,zParamName,zTypeStr,zType
-			);
-	}
-	*pOut = ph7_value_to_int64(pArg);
-	return PH7_OK;
-}
 /*
  * Normalize a substr_replace() offset/length pair against a string of nStrLen
  * bytes, exactly like PHP: a negative offset counts from the end (clamped to 0),
@@ -946,11 +957,11 @@ static int PH7_builtin_substr_replace(ph7_context *pCtx,int nArg,ph7_value **apA
 		if( rc != PH7_OK ) goto out;
 	}
 	if( !ph7_value_is_array(apArg[2]) ){
-		rc = IntArgResolve(pCtx,apArg[2],"substr_replace",3,"$offset","array|int",&f);
+		rc = PH7_IntArgResolve(pCtx,apArg[2],"substr_replace",3,"$offset","array|int",&f);
 		if( rc != PH7_OK ) goto out;
 	}
 	if( bLenGiven && !ph7_value_is_array(apArg[3]) ){
-		rc = IntArgResolve(pCtx,apArg[3],"substr_replace",4,"$length","array|int|null",&l);
+		rc = PH7_IntArgResolve(pCtx,apArg[3],"substr_replace",4,"$length","array|int|null",&l);
 		if( rc != PH7_OK ) goto out;
 	}
 	if( ph7_value_is_array(apArg[0]) ){
@@ -1124,7 +1135,7 @@ static int PH7_builtin_levenshtein(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Optional integer costs */
 	for( i = 2 ; i < nArg && i < 5 ; i++ ){
 		sxi64 iVal;
-		rc = IntArgResolve(pCtx,apArg[i],"levenshtein",i+1,azParam[i-2],"int",&iVal);
+		rc = PH7_IntArgResolve(pCtx,apArg[i],"levenshtein",i+1,azParam[i-2],"int",&iVal);
 		if( rc != PH7_OK ) goto out;
 		if( i == 2 ){
 			iCostIns = iVal;
@@ -1327,7 +1338,7 @@ static int PH7_builtin_str_word_count(ph7_context *pCtx,int nArg,ph7_value **apA
 	if( rc != PH7_OK ) goto out;
 	if( nArg > 1 ){
 		sxi64 iVal;
-		rc = IntArgResolve(pCtx,apArg[1],"str_word_count",2,"$format","int",&iVal);
+		rc = PH7_IntArgResolve(pCtx,apArg[1],"str_word_count",2,"$format","int",&iVal);
 		if( rc != PH7_OK ) goto out;
 		if( iVal < 0 || iVal > 2 ){
 			rc = PH7_VmThrowException(pCtx,
@@ -3989,11 +4000,15 @@ static int PH7_builtin_str_repeat(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Extract the target string */
 	zIn = ph7_value_to_string(apArg[0],&nLen);
-	/* Extract the multiplier as a 64-bit value (a 32-bit read would wrap a large
-	 * positive $times into a negative one and trip a spurious ValueError). PHP
-	 * validates $times regardless of the string contents: a negative count throws
-	 * a catchable ValueError. */
-	nMul = ph7_value_to_int64(apArg[1]);
+	/* Resolve $times through the shared ZPP helper so a lossy float / float-string
+	 * carries php's precision deprecation and NAN/INF/non-numeric fail with php's
+	 * TypeError — a bare ph7_value_to_int64() coerced them silently. */
+	{
+		sxi32 rcArg = PH7_IntArgResolve(pCtx,apArg[1],"str_repeat",2,"$times","int",&nMul);
+		if( rcArg != PH7_OK ){
+			return rcArg;
+		}
+	}
 	if( nMul < 0 ){
 		return PH7_VmThrowException(pCtx,"ValueError",
 			"str_repeat(): Argument #2 ($times) must be greater than or equal to 0");
@@ -7894,7 +7909,14 @@ static int PH7_builtin_str_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Extract the target string */
 	zIn = ph7_value_to_string(apArg[0],&iLen);
 	/* Padding length */
-	iRealPad = iPadlen = ph7_value_to_int(apArg[1]);
+	{
+		sxi64 iTmp = 0;
+		sxi32 rcArg = PH7_IntArgResolve(pCtx,apArg[1],"str_pad",2,"$length","int",&iTmp);
+		if( rcArg != PH7_OK ){
+			return rcArg;
+		}
+		iRealPad = iPadlen = (int)iTmp;
+	}
 	if( iPadlen > 0 ){
 		iPadlen -= iLen;
 	}

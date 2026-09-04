@@ -4524,7 +4524,14 @@ static int ph7_hashmap_slice(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;
 	bPreserve = FALSE;
 	/* Get the offset */
-	iOfft = ph7_value_to_int(apArg[1]);
+	{
+		sxi64 iTmp = 0;
+		sxi32 rcArg = PH7_IntArgResolve(pCtx,apArg[1],"array_slice",2,"$offset","int",&iTmp);
+		if( rcArg != PH7_OK ){
+			return rcArg;
+		}
+		iOfft = (int)iTmp;
+	}
 	if( iOfft < 0 ){
 		iOfft = (int)pSrc->nEntry + iOfft;
 		if( iOfft < 0 ){
