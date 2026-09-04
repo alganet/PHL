@@ -218,873 +218,876 @@ Coverage: 56/73 lines (76.71%)
 |    - |  208 | `" }"` |
 |    - |  209 | `" public function getIteratorClass(){ return $this->__it; }"` |
 |    - |  210 | `" public function __get($name){"` |
-|    - |  211 | `"  if( $this->__f & 2 ){ return $this->__d[$name]; }"` |
-|    - |  212 | `"  return null;"` |
-|    - |  213 | `" }"` |
-|    - |  214 | `" public function __set($name, $value){"` |
-|    - |  215 | `"  if( $this->__f & 2 ){ $this->__d[$name] = $value; return; }"` |
-|    - |  216 | `"  $this->{$name} = $value;"` |
-|    - |  217 | `" }"` |
-|    - |  218 | `" public function __isset($name){"` |
-|    - |  219 | `"  if( $this->__f & 2 ){ return isset($this->__d[$name]); }"` |
-|    - |  220 | `"  return false;"` |
-|    - |  221 | `" }"` |
-|    - |  222 | `" public function __unset($name){"` |
-|    - |  223 | `"  if( $this->__f & 2 ){ unset($this->__d[$name]); }"` |
+|    - |  211 | `"  /* ?? null: a missing key must not raise php's undefined-array-key warning"` |
+|    - |  212 | `"   * from INSIDE the wrapper (php's ArrayObject warns about the PROPERTY, and"` |
+|    - |  213 | `"   * PHL's own magic-read path already diagnoses that) */"` |
+|    - |  214 | `"  if( $this->__f & 2 ){ return $this->__d[$name] ?? null; }"` |
+|    - |  215 | `"  return null;"` |
+|    - |  216 | `" }"` |
+|    - |  217 | `" public function __set($name, $value){"` |
+|    - |  218 | `"  if( $this->__f & 2 ){ $this->__d[$name] = $value; return; }"` |
+|    - |  219 | `"  $this->{$name} = $value;"` |
+|    - |  220 | `" }"` |
+|    - |  221 | `" public function __isset($name){"` |
+|    - |  222 | `"  if( $this->__f & 2 ){ return isset($this->__d[$name]); }"` |
+|    - |  223 | `"  return false;"` |
 |    - |  224 | `" }"` |
-|    - |  225 | `"}"` |
-|    - |  226 | `"function natsort(&$array){ return uasort($array, 'strnatcmp'); }"` |
-|    - |  227 | `"function natcasesort(&$array){ return uasort($array, 'strnatcasecmp'); }"` |
-|    - |  228 | `"interface OuterIterator extends Iterator {"` |
-|    - |  229 | `" public function getInnerIterator();"` |
-|    - |  230 | `"}"` |
-|    - |  231 | `"class IteratorIterator implements OuterIterator {"` |
-|    - |  232 | `" private $__in = null;"` |
-|    - |  233 | `" public function __construct($iterator, $class = null){"` |
-|    - |  234 | `"  while( $iterator instanceof IteratorAggregate ){ $iterator = $iterator->getIterator(); }"` |
-|    - |  235 | `"  if( !($iterator instanceof Iterator) ){"` |
-|    - |  236 | `"   throw new TypeError(get_class($this) . '::__construct(): Argument #1 ($iterator)"` |
-|    - |  237 | `" must be of type Traversable, ' . get_debug_type($iterator) . ' given');"` |
-|    - |  238 | `"  }"` |
-|    - |  239 | `"  $this->__in = $iterator;"` |
-|    - |  240 | `" }"` |
-|    - |  241 | `" public function getInnerIterator(){ return $this->__in; }"` |
-|    - |  242 | `" public function current(){ return $this->__in->current(); }"` |
-|    - |  243 | `" public function key(){ return $this->__in->key(); }"` |
-|    - |  244 | `" public function next(){ $this->__in->next(); }"` |
-|    - |  245 | `" public function rewind(){ $this->__in->rewind(); }"` |
-|    - |  246 | `" public function valid(){ return $this->__in->valid(); }"` |
-|    - |  247 | `"}"` |
-|    - |  248 | `"class LimitIterator extends IteratorIterator {"` |
-|    - |  249 | `" private $__off = 0;"` |
-|    - |  250 | `" private $__lim = -1;"` |
-|    - |  251 | `" private $__pos = 0;"` |
-|    - |  252 | `" public function __construct($iterator, $offset = 0, $limit = -1){"` |
-|    - |  253 | `"  $offset = (int)$offset; $limit = (int)$limit;"` |
-|    - |  254 | `"  if( $offset < 0 ){"` |
-|    - |  255 | `"   throw new ValueError('LimitIterator::__construct(): Argument #2 ($offset) must be"` |
-|    - |  256 | `" greater than or equal to 0');"` |
-|    - |  257 | `"  }"` |
-|    - |  258 | `"  if( $limit < -1 ){"` |
-|    - |  259 | `"   throw new ValueError('LimitIterator::__construct(): Argument #3 ($limit) must be"` |
-|    - |  260 | `" greater than or equal to -1');"` |
-|    - |  261 | `"  }"` |
-|    - |  262 | `"  parent::__construct($iterator);"` |
-|    - |  263 | `"  $this->__off = $offset;"` |
-|    - |  264 | `"  $this->__lim = $limit;"` |
-|    - |  265 | `" }"` |
-|    - |  266 | `" public function rewind(){"` |
-|    - |  267 | `"  $in = $this->getInnerIterator();"` |
-|    - |  268 | `"  $in->rewind();"` |
-|    - |  269 | `"  for( $i = 0; $i < $this->__off && $in->valid(); $i++ ){ $in->next(); }"` |
-|    - |  270 | `"  $this->__pos = $this->__off;"` |
-|    - |  271 | `" }"` |
-|    - |  272 | `" public function valid(){"` |
-|    - |  273 | `"  if( $this->__lim != -1 && $this->__pos >= $this->__off + $this->__lim ){ return false; }"` |
-|    - |  274 | `"  return $this->getInnerIterator()->valid();"` |
-|    - |  275 | `" }"` |
-|    - |  276 | `" public function next(){ $this->__pos++; $this->getInnerIterator()->next(); }"` |
-|    - |  277 | `" public function getPosition(){ return $this->__pos; }"` |
-|    - |  278 | `" public function seek($offset){"` |
-|    - |  279 | `"  $offset = (int)$offset;"` |
-|    - |  280 | `"  if( $offset < $this->__off ){"` |
-|    - |  281 | `"   throw new OutOfBoundsException('Cannot seek to ' . $offset . ' which is below the"` |
-|    - |  282 | `" offset ' . $this->__off);"` |
-|    - |  283 | `"  }"` |
-|    - |  284 | `"  if( $this->__lim != -1 && $offset >= $this->__off + $this->__lim ){"` |
-|    - |  285 | `"   throw new OutOfBoundsException('Cannot seek to ' . $offset . ' which is behind or"` |
-|    - |  286 | `" equal to the limit ' . $this->__lim . ' plus the offset ' . $this->__off);"` |
-|    - |  287 | `"  }"` |
-|    - |  288 | `"  $in = $this->getInnerIterator();"` |
-|    - |  289 | `"  $in->rewind();"` |
-|    - |  290 | `"  for( $i = 0; $i < $offset && $in->valid(); $i++ ){ $in->next(); }"` |
-|    - |  291 | `"  $this->__pos = $offset;"` |
-|    - |  292 | `"  return $this->__pos;"` |
-|    - |  293 | `" }"` |
-|    - |  294 | `"}"` |
-|    - |  295 | `"abstract class FilterIterator extends IteratorIterator {"` |
-|    - |  296 | `" abstract public function accept();"` |
-|    - |  297 | `" private function __fiFetch(){"` |
-|    - |  298 | `"  $in = $this->getInnerIterator();"` |
-|    - |  299 | `"  while( $in->valid() && !$this->accept() ){ $in->next(); }"` |
-|    - |  300 | `" }"` |
-|    - |  301 | `" public function rewind(){ $this->getInnerIterator()->rewind(); $this->__fiFetch(); }"` |
-|    - |  302 | `" public function next(){ $this->getInnerIterator()->next(); $this->__fiFetch(); }"` |
-|    - |  303 | `"}"` |
-|    - |  304 | `"class CallbackFilterIterator extends FilterIterator {"` |
-|    - |  305 | `" private $__cb = null;"` |
-|    - |  306 | `" public function __construct($iterator, $callback){"` |
-|    - |  307 | `"  parent::__construct($iterator);"` |
-|    - |  308 | `"  $this->__cb = $callback;"` |
-|    - |  309 | `" }"` |
-|    - |  310 | `" public function accept(){"` |
-|    - |  311 | `"  $in = $this->getInnerIterator();"` |
-|    - |  312 | `"  return (bool)call_user_func($this->__cb, $in->current(), $in->key(), $in);"` |
-|    - |  313 | `" }"` |
-|    - |  314 | `"}"` |
-|    - |  315 | `"class RegexIterator extends FilterIterator {"` |
-|    - |  316 | `" const USE_KEY = 1;"` |
-|    - |  317 | `" const INVERT_MATCH = 2;"` |
-|    - |  318 | `" const MATCH = 0;"` |
-|    - |  319 | `" const GET_MATCH = 1;"` |
-|    - |  320 | `" const ALL_MATCHES = 2;"` |
-|    - |  321 | `" const SPLIT = 3;"` |
-|    - |  322 | `" const REPLACE = 4;"` |
-|    - |  323 | `" public $replacement = null;"` |
-|    - |  324 | `" private $__re = '';"` |
-|    - |  325 | `" private $__mode = 0;"` |
-|    - |  326 | `" private $__rflags = 0;"` |
-|    - |  327 | `" private $__pflags = 0;"` |
-|    - |  328 | `" private $__cur = null;"` |
-|    - |  329 | `" public function __construct($iterator, $pattern, $mode = 0, $flags = 0, $pregFlags = 0){"` |
-|    - |  330 | `"  parent::__construct($iterator);"` |
-|    - |  331 | `"  $this->__re = (string)$pattern;"` |
-|    - |  332 | `"  $this->__mode = (int)$mode;"` |
-|    - |  333 | `"  $this->__rflags = (int)$flags;"` |
-|    - |  334 | `"  $this->__pflags = (int)$pregFlags;"` |
-|    - |  335 | `" }"` |
-|    - |  336 | `" public function accept(){"` |
-|    - |  337 | `"  $in = $this->getInnerIterator();"` |
-|    - |  338 | `"  if( !$in->valid() ){ return false; }"` |
-|    - |  339 | `"  $subject = ($this->__rflags & self::USE_KEY) ? $in->key() : $in->current();"` |
-|    - |  340 | `"  $subject = (string)$subject;"` |
-|    - |  341 | `"  $this->__cur = null;"` |
-|    - |  342 | `"  $ok = false;"` |
-|    - |  343 | `"  if( $this->__mode === self::MATCH ){"` |
-|    - |  344 | `"   $ok = preg_match($this->__re, $subject) > 0;"` |
-|    - |  345 | `"  }elseif( $this->__mode === self::GET_MATCH ){"` |
-|    - |  346 | `"   $m = null;"` |
-|    - |  347 | `"   $ok = preg_match($this->__re, $subject, $m, $this->__pflags) > 0;"` |
-|    - |  348 | `"   $this->__cur = $m;"` |
-|    - |  349 | `"  }elseif( $this->__mode === self::ALL_MATCHES ){"` |
-|    - |  350 | `"   $m = null;"` |
-|    - |  351 | `"   $ok = preg_match_all($this->__re, $subject, $m, $this->__pflags) > 0;"` |
-|    - |  352 | `"   $this->__cur = $m;"` |
-|    - |  353 | `"  }elseif( $this->__mode === self::SPLIT ){"` |
-|    - |  354 | `"   $this->__cur = preg_split($this->__re, $subject, -1, $this->__pflags);"` |
-|    - |  355 | `"   $ok = is_array($this->__cur) && count($this->__cur) > 1;"` |
-|    - |  356 | `"  }elseif( $this->__mode === self::REPLACE ){"` |
-|    - |  357 | `"   $n = 0;"` |
-|    - |  358 | `"   $this->__cur = preg_replace($this->__re, (string)$this->replacement, $subject, -1, $n);"` |
-|    - |  359 | `"   $ok = $n > 0;"` |
-|    - |  360 | `"  }"` |
-|    - |  361 | `"  if( $this->__rflags & self::INVERT_MATCH ){ $ok = !$ok; }"` |
-|    - |  362 | `"  return $ok;"` |
-|    - |  363 | `" }"` |
-|    - |  364 | `" public function current(){"` |
-|    - |  365 | `"  if( $this->__mode === self::MATCH ){ return $this->getInnerIterator()->current(); }"` |
-|    - |  366 | `"  return $this->__cur;"` |
-|    - |  367 | `" }"` |
-|    - |  368 | `" public function getRegex(){ return $this->__re; }"` |
-|    - |  369 | `" public function getMode(){ return $this->__mode; }"` |
-|    - |  370 | `" public function setMode($mode){ $this->__mode = (int)$mode; }"` |
-|    - |  371 | `" public function getFlags(){ return $this->__rflags; }"` |
-|    - |  372 | `" public function setFlags($flags){ $this->__rflags = (int)$flags; }"` |
-|    - |  373 | `" public function getPregFlags(){ return $this->__pflags; }"` |
-|    - |  374 | `" public function setPregFlags($pregFlags){ $this->__pflags = (int)$pregFlags; }"` |
-|    - |  375 | `"}"` |
-|    - |  376 | `"class AppendIterator implements OuterIterator {"` |
-|    - |  377 | `" private $__its = [];"` |
-|    - |  378 | `" private $__idx = 0;"` |
-|    - |  379 | `" public function __construct(){}"` |
-|    - |  380 | `" public function append($iterator){"` |
-|    - |  381 | `"  $this->__its[] = $iterator;"` |
-|    - |  382 | `"  if( count($this->__its) === 1 ){ $iterator->rewind(); }"` |
-|    - |  383 | `" }"` |
-|    - |  384 | `" public function getInnerIterator(){ return $this->__its[$this->__idx] ?? null; }"` |
-|    - |  385 | `" public function getIteratorIndex(){"` |
-|    - |  386 | `"  return isset($this->__its[$this->__idx]) ? $this->__idx : null;"` |
-|    - |  387 | `" }"` |
-|    - |  388 | `" public function getArrayIterator(){ return new ArrayIterator($this->__its); }"` |
-|    - |  389 | `" private function __apAdvance(){"` |
-|    - |  390 | `"  while( isset($this->__its[$this->__idx])"` |
-|    - |  391 | `"   && !$this->__its[$this->__idx]->valid()"` |
-|    - |  392 | `"   && isset($this->__its[$this->__idx + 1]) ){"` |
-|    - |  393 | `"   $this->__idx++;"` |
-|    - |  394 | `"   $this->__its[$this->__idx]->rewind();"` |
-|    - |  395 | `"  }"` |
-|    - |  396 | `" }"` |
-|    - |  397 | `" public function rewind(){"` |
-|    - |  398 | `"  $this->__idx = 0;"` |
-|    - |  399 | `"  if( isset($this->__its[0]) ){ $this->__its[0]->rewind(); }"` |
-|    - |  400 | `"  $this->__apAdvance();"` |
-|    - |  401 | `" }"` |
-|    - |  402 | `" public function valid(){"` |
-|    - |  403 | `"  $in = $this->getInnerIterator();"` |
-|    - |  404 | `"  return $in !== null && $in->valid();"` |
-|    - |  405 | `" }"` |
-|    - |  406 | `" public function current(){ $in = $this->getInnerIterator(); return $in ? $in->current() : null; }"` |
-|    - |  407 | `" public function key(){ $in = $this->getInnerIterator(); return $in ? $in->key() : null; }"` |
-|    - |  408 | `" public function next(){"` |
-|    - |  409 | `"  $in = $this->getInnerIterator();"` |
-|    - |  410 | `"  if( $in ){ $in->next(); }"` |
-|    - |  411 | `"  $this->__apAdvance();"` |
-|    - |  412 | `" }"` |
-|    - |  413 | `"}"` |
-|    - |  414 | `"class InfiniteIterator extends IteratorIterator {"` |
-|    - |  415 | `" public function next(){"` |
-|    - |  416 | `"  $in = $this->getInnerIterator();"` |
-|    - |  417 | `"  $in->next();"` |
-|    - |  418 | `"  if( !$in->valid() ){ $in->rewind(); }"` |
-|    - |  419 | `" }"` |
-|    - |  420 | `"}"` |
-|    - |  421 | `"class NoRewindIterator extends IteratorIterator {"` |
-|    - |  422 | `" public function rewind(){}"` |
+|    - |  225 | `" public function __unset($name){"` |
+|    - |  226 | `"  if( $this->__f & 2 ){ unset($this->__d[$name]); }"` |
+|    - |  227 | `" }"` |
+|    - |  228 | `"}"` |
+|    - |  229 | `"function natsort(&$array){ return uasort($array, 'strnatcmp'); }"` |
+|    - |  230 | `"function natcasesort(&$array){ return uasort($array, 'strnatcasecmp'); }"` |
+|    - |  231 | `"interface OuterIterator extends Iterator {"` |
+|    - |  232 | `" public function getInnerIterator();"` |
+|    - |  233 | `"}"` |
+|    - |  234 | `"class IteratorIterator implements OuterIterator {"` |
+|    - |  235 | `" private $__in = null;"` |
+|    - |  236 | `" public function __construct($iterator, $class = null){"` |
+|    - |  237 | `"  while( $iterator instanceof IteratorAggregate ){ $iterator = $iterator->getIterator(); }"` |
+|    - |  238 | `"  if( !($iterator instanceof Iterator) ){"` |
+|    - |  239 | `"   throw new TypeError(get_class($this) . '::__construct(): Argument #1 ($iterator)"` |
+|    - |  240 | `" must be of type Traversable, ' . get_debug_type($iterator) . ' given');"` |
+|    - |  241 | `"  }"` |
+|    - |  242 | `"  $this->__in = $iterator;"` |
+|    - |  243 | `" }"` |
+|    - |  244 | `" public function getInnerIterator(){ return $this->__in; }"` |
+|    - |  245 | `" public function current(){ return $this->__in->current(); }"` |
+|    - |  246 | `" public function key(){ return $this->__in->key(); }"` |
+|    - |  247 | `" public function next(){ $this->__in->next(); }"` |
+|    - |  248 | `" public function rewind(){ $this->__in->rewind(); }"` |
+|    - |  249 | `" public function valid(){ return $this->__in->valid(); }"` |
+|    - |  250 | `"}"` |
+|    - |  251 | `"class LimitIterator extends IteratorIterator {"` |
+|    - |  252 | `" private $__off = 0;"` |
+|    - |  253 | `" private $__lim = -1;"` |
+|    - |  254 | `" private $__pos = 0;"` |
+|    - |  255 | `" public function __construct($iterator, $offset = 0, $limit = -1){"` |
+|    - |  256 | `"  $offset = (int)$offset; $limit = (int)$limit;"` |
+|    - |  257 | `"  if( $offset < 0 ){"` |
+|    - |  258 | `"   throw new ValueError('LimitIterator::__construct(): Argument #2 ($offset) must be"` |
+|    - |  259 | `" greater than or equal to 0');"` |
+|    - |  260 | `"  }"` |
+|    - |  261 | `"  if( $limit < -1 ){"` |
+|    - |  262 | `"   throw new ValueError('LimitIterator::__construct(): Argument #3 ($limit) must be"` |
+|    - |  263 | `" greater than or equal to -1');"` |
+|    - |  264 | `"  }"` |
+|    - |  265 | `"  parent::__construct($iterator);"` |
+|    - |  266 | `"  $this->__off = $offset;"` |
+|    - |  267 | `"  $this->__lim = $limit;"` |
+|    - |  268 | `" }"` |
+|    - |  269 | `" public function rewind(){"` |
+|    - |  270 | `"  $in = $this->getInnerIterator();"` |
+|    - |  271 | `"  $in->rewind();"` |
+|    - |  272 | `"  for( $i = 0; $i < $this->__off && $in->valid(); $i++ ){ $in->next(); }"` |
+|    - |  273 | `"  $this->__pos = $this->__off;"` |
+|    - |  274 | `" }"` |
+|    - |  275 | `" public function valid(){"` |
+|    - |  276 | `"  if( $this->__lim != -1 && $this->__pos >= $this->__off + $this->__lim ){ return false; }"` |
+|    - |  277 | `"  return $this->getInnerIterator()->valid();"` |
+|    - |  278 | `" }"` |
+|    - |  279 | `" public function next(){ $this->__pos++; $this->getInnerIterator()->next(); }"` |
+|    - |  280 | `" public function getPosition(){ return $this->__pos; }"` |
+|    - |  281 | `" public function seek($offset){"` |
+|    - |  282 | `"  $offset = (int)$offset;"` |
+|    - |  283 | `"  if( $offset < $this->__off ){"` |
+|    - |  284 | `"   throw new OutOfBoundsException('Cannot seek to ' . $offset . ' which is below the"` |
+|    - |  285 | `" offset ' . $this->__off);"` |
+|    - |  286 | `"  }"` |
+|    - |  287 | `"  if( $this->__lim != -1 && $offset >= $this->__off + $this->__lim ){"` |
+|    - |  288 | `"   throw new OutOfBoundsException('Cannot seek to ' . $offset . ' which is behind or"` |
+|    - |  289 | `" equal to the limit ' . $this->__lim . ' plus the offset ' . $this->__off);"` |
+|    - |  290 | `"  }"` |
+|    - |  291 | `"  $in = $this->getInnerIterator();"` |
+|    - |  292 | `"  $in->rewind();"` |
+|    - |  293 | `"  for( $i = 0; $i < $offset && $in->valid(); $i++ ){ $in->next(); }"` |
+|    - |  294 | `"  $this->__pos = $offset;"` |
+|    - |  295 | `"  return $this->__pos;"` |
+|    - |  296 | `" }"` |
+|    - |  297 | `"}"` |
+|    - |  298 | `"abstract class FilterIterator extends IteratorIterator {"` |
+|    - |  299 | `" abstract public function accept();"` |
+|    - |  300 | `" private function __fiFetch(){"` |
+|    - |  301 | `"  $in = $this->getInnerIterator();"` |
+|    - |  302 | `"  while( $in->valid() && !$this->accept() ){ $in->next(); }"` |
+|    - |  303 | `" }"` |
+|    - |  304 | `" public function rewind(){ $this->getInnerIterator()->rewind(); $this->__fiFetch(); }"` |
+|    - |  305 | `" public function next(){ $this->getInnerIterator()->next(); $this->__fiFetch(); }"` |
+|    - |  306 | `"}"` |
+|    - |  307 | `"class CallbackFilterIterator extends FilterIterator {"` |
+|    - |  308 | `" private $__cb = null;"` |
+|    - |  309 | `" public function __construct($iterator, $callback){"` |
+|    - |  310 | `"  parent::__construct($iterator);"` |
+|    - |  311 | `"  $this->__cb = $callback;"` |
+|    - |  312 | `" }"` |
+|    - |  313 | `" public function accept(){"` |
+|    - |  314 | `"  $in = $this->getInnerIterator();"` |
+|    - |  315 | `"  return (bool)call_user_func($this->__cb, $in->current(), $in->key(), $in);"` |
+|    - |  316 | `" }"` |
+|    - |  317 | `"}"` |
+|    - |  318 | `"class RegexIterator extends FilterIterator {"` |
+|    - |  319 | `" const USE_KEY = 1;"` |
+|    - |  320 | `" const INVERT_MATCH = 2;"` |
+|    - |  321 | `" const MATCH = 0;"` |
+|    - |  322 | `" const GET_MATCH = 1;"` |
+|    - |  323 | `" const ALL_MATCHES = 2;"` |
+|    - |  324 | `" const SPLIT = 3;"` |
+|    - |  325 | `" const REPLACE = 4;"` |
+|    - |  326 | `" public $replacement = null;"` |
+|    - |  327 | `" private $__re = '';"` |
+|    - |  328 | `" private $__mode = 0;"` |
+|    - |  329 | `" private $__rflags = 0;"` |
+|    - |  330 | `" private $__pflags = 0;"` |
+|    - |  331 | `" private $__cur = null;"` |
+|    - |  332 | `" public function __construct($iterator, $pattern, $mode = 0, $flags = 0, $pregFlags = 0){"` |
+|    - |  333 | `"  parent::__construct($iterator);"` |
+|    - |  334 | `"  $this->__re = (string)$pattern;"` |
+|    - |  335 | `"  $this->__mode = (int)$mode;"` |
+|    - |  336 | `"  $this->__rflags = (int)$flags;"` |
+|    - |  337 | `"  $this->__pflags = (int)$pregFlags;"` |
+|    - |  338 | `" }"` |
+|    - |  339 | `" public function accept(){"` |
+|    - |  340 | `"  $in = $this->getInnerIterator();"` |
+|    - |  341 | `"  if( !$in->valid() ){ return false; }"` |
+|    - |  342 | `"  $subject = ($this->__rflags & self::USE_KEY) ? $in->key() : $in->current();"` |
+|    - |  343 | `"  $subject = (string)$subject;"` |
+|    - |  344 | `"  $this->__cur = null;"` |
+|    - |  345 | `"  $ok = false;"` |
+|    - |  346 | `"  if( $this->__mode === self::MATCH ){"` |
+|    - |  347 | `"   $ok = preg_match($this->__re, $subject) > 0;"` |
+|    - |  348 | `"  }elseif( $this->__mode === self::GET_MATCH ){"` |
+|    - |  349 | `"   $m = null;"` |
+|    - |  350 | `"   $ok = preg_match($this->__re, $subject, $m, $this->__pflags) > 0;"` |
+|    - |  351 | `"   $this->__cur = $m;"` |
+|    - |  352 | `"  }elseif( $this->__mode === self::ALL_MATCHES ){"` |
+|    - |  353 | `"   $m = null;"` |
+|    - |  354 | `"   $ok = preg_match_all($this->__re, $subject, $m, $this->__pflags) > 0;"` |
+|    - |  355 | `"   $this->__cur = $m;"` |
+|    - |  356 | `"  }elseif( $this->__mode === self::SPLIT ){"` |
+|    - |  357 | `"   $this->__cur = preg_split($this->__re, $subject, -1, $this->__pflags);"` |
+|    - |  358 | `"   $ok = is_array($this->__cur) && count($this->__cur) > 1;"` |
+|    - |  359 | `"  }elseif( $this->__mode === self::REPLACE ){"` |
+|    - |  360 | `"   $n = 0;"` |
+|    - |  361 | `"   $this->__cur = preg_replace($this->__re, (string)$this->replacement, $subject, -1, $n);"` |
+|    - |  362 | `"   $ok = $n > 0;"` |
+|    - |  363 | `"  }"` |
+|    - |  364 | `"  if( $this->__rflags & self::INVERT_MATCH ){ $ok = !$ok; }"` |
+|    - |  365 | `"  return $ok;"` |
+|    - |  366 | `" }"` |
+|    - |  367 | `" public function current(){"` |
+|    - |  368 | `"  if( $this->__mode === self::MATCH ){ return $this->getInnerIterator()->current(); }"` |
+|    - |  369 | `"  return $this->__cur;"` |
+|    - |  370 | `" }"` |
+|    - |  371 | `" public function getRegex(){ return $this->__re; }"` |
+|    - |  372 | `" public function getMode(){ return $this->__mode; }"` |
+|    - |  373 | `" public function setMode($mode){ $this->__mode = (int)$mode; }"` |
+|    - |  374 | `" public function getFlags(){ return $this->__rflags; }"` |
+|    - |  375 | `" public function setFlags($flags){ $this->__rflags = (int)$flags; }"` |
+|    - |  376 | `" public function getPregFlags(){ return $this->__pflags; }"` |
+|    - |  377 | `" public function setPregFlags($pregFlags){ $this->__pflags = (int)$pregFlags; }"` |
+|    - |  378 | `"}"` |
+|    - |  379 | `"class AppendIterator implements OuterIterator {"` |
+|    - |  380 | `" private $__its = [];"` |
+|    - |  381 | `" private $__idx = 0;"` |
+|    - |  382 | `" public function __construct(){}"` |
+|    - |  383 | `" public function append($iterator){"` |
+|    - |  384 | `"  $this->__its[] = $iterator;"` |
+|    - |  385 | `"  if( count($this->__its) === 1 ){ $iterator->rewind(); }"` |
+|    - |  386 | `" }"` |
+|    - |  387 | `" public function getInnerIterator(){ return $this->__its[$this->__idx] ?? null; }"` |
+|    - |  388 | `" public function getIteratorIndex(){"` |
+|    - |  389 | `"  return isset($this->__its[$this->__idx]) ? $this->__idx : null;"` |
+|    - |  390 | `" }"` |
+|    - |  391 | `" public function getArrayIterator(){ return new ArrayIterator($this->__its); }"` |
+|    - |  392 | `" private function __apAdvance(){"` |
+|    - |  393 | `"  while( isset($this->__its[$this->__idx])"` |
+|    - |  394 | `"   && !$this->__its[$this->__idx]->valid()"` |
+|    - |  395 | `"   && isset($this->__its[$this->__idx + 1]) ){"` |
+|    - |  396 | `"   $this->__idx++;"` |
+|    - |  397 | `"   $this->__its[$this->__idx]->rewind();"` |
+|    - |  398 | `"  }"` |
+|    - |  399 | `" }"` |
+|    - |  400 | `" public function rewind(){"` |
+|    - |  401 | `"  $this->__idx = 0;"` |
+|    - |  402 | `"  if( isset($this->__its[0]) ){ $this->__its[0]->rewind(); }"` |
+|    - |  403 | `"  $this->__apAdvance();"` |
+|    - |  404 | `" }"` |
+|    - |  405 | `" public function valid(){"` |
+|    - |  406 | `"  $in = $this->getInnerIterator();"` |
+|    - |  407 | `"  return $in !== null && $in->valid();"` |
+|    - |  408 | `" }"` |
+|    - |  409 | `" public function current(){ $in = $this->getInnerIterator(); return $in ? $in->current() : null; }"` |
+|    - |  410 | `" public function key(){ $in = $this->getInnerIterator(); return $in ? $in->key() : null; }"` |
+|    - |  411 | `" public function next(){"` |
+|    - |  412 | `"  $in = $this->getInnerIterator();"` |
+|    - |  413 | `"  if( $in ){ $in->next(); }"` |
+|    - |  414 | `"  $this->__apAdvance();"` |
+|    - |  415 | `" }"` |
+|    - |  416 | `"}"` |
+|    - |  417 | `"class InfiniteIterator extends IteratorIterator {"` |
+|    - |  418 | `" public function next(){"` |
+|    - |  419 | `"  $in = $this->getInnerIterator();"` |
+|    - |  420 | `"  $in->next();"` |
+|    - |  421 | `"  if( !$in->valid() ){ $in->rewind(); }"` |
+|    - |  422 | `" }"` |
 |    - |  423 | `"}"` |
-|    - |  424 | `"interface RecursiveIterator extends Iterator {"` |
-|    - |  425 | `" public function hasChildren();"` |
-|    - |  426 | `" public function getChildren();"` |
-|    - |  427 | `"}"` |
-|    - |  428 | `"class RecursiveArrayIterator extends ArrayIterator implements RecursiveIterator {"` |
-|    - |  429 | `" const CHILD_ARRAYS_ONLY = 4;"` |
-|    - |  430 | `" public function hasChildren(){"` |
-|    - |  431 | `"  $c = $this->current();"` |
-|    - |  432 | `"  return is_array($c) \|\| is_object($c);"` |
-|    - |  433 | `" }"` |
-|    - |  434 | `" public function getChildren(){"` |
-|    - |  435 | `"  $c = get_class($this);"` |
-|    - |  436 | `"  return new $c($this->current());"` |
-|    - |  437 | `" }"` |
-|    - |  438 | `"}"` |
-|    - |  439 | `"class RecursiveIteratorIterator implements OuterIterator {"` |
-|    - |  440 | `" const LEAVES_ONLY = 0;"` |
-|    - |  441 | `" const SELF_FIRST = 1;"` |
-|    - |  442 | `" const CHILD_FIRST = 2;"` |
-|    - |  443 | `" const CATCH_GET_CHILD = 16;"` |
-|    - |  444 | `" private $__root = null;"` |
-|    - |  445 | `" private $__st = [];"` |
-|    - |  446 | `" private $__mode = 0;"` |
-|    - |  447 | `" private $__maxDepth = false;"` |
-|    - |  448 | `" private $__post = false;"` |
-|    - |  449 | `" private $__live = false;"` |
-|    - |  450 | `" public function __construct($iterator, $mode = 0, $flags = 0){"` |
-|    - |  451 | `"  while( $iterator instanceof IteratorAggregate ){ $iterator = $iterator->getIterator(); }"` |
-|    - |  452 | `"  if( !($iterator instanceof RecursiveIterator) ){"` |
-|    - |  453 | `"   throw new TypeError('RecursiveIteratorIterator::__construct(): Argument #1"` |
-|    - |  454 | `" ($iterator) must be of type RecursiveIterator, ' . get_debug_type($iterator) . ' given');"` |
-|    - |  455 | `"  }"` |
-|    - |  456 | `"  $this->__root = $iterator;"` |
-|    - |  457 | `"  $this->__mode = (int)$mode \| (int)$flags;"` |
-|    - |  458 | `" }"` |
-|    - |  459 | `" public function getInnerIterator(){ return end($this->__st) ?: $this->__root; }"` |
-|    - |  460 | `" public function getSubIterator($level = null){"` |
-|    - |  461 | `"  if( $level === null ){ $level = count($this->__st) - 1; }"` |
-|    - |  462 | `"  return $this->__st[$level] ?? null;"` |
-|    - |  463 | `" }"` |
-|    - |  464 | `" public function getDepth(){ return count($this->__st) - 1; }"` |
-|    - |  465 | `" public function getMaxDepth(){ return $this->__maxDepth; }"` |
-|    - |  466 | `" public function setMaxDepth($maxDepth = -1){"` |
-|    - |  467 | `"  $maxDepth = (int)$maxDepth;"` |
-|    - |  468 | `"  if( $maxDepth < -1 ){"` |
-|    - |  469 | `"   throw new Exception('Parameter max_depth must be >= -1');"` |
-|    - |  470 | `"  }"` |
-|    - |  471 | `"  $this->__maxDepth = $maxDepth === -1 ? false : $maxDepth;"` |
-|    - |  472 | `" }"` |
-|    - |  473 | `" public function callHasChildren(){"` |
-|    - |  474 | `"  $it = end($this->__st);"` |
-|    - |  475 | `"  return $it ? $it->hasChildren() : false;"` |
-|    - |  476 | `" }"` |
-|    - |  477 | `" public function callGetChildren(){"` |
-|    - |  478 | `"  $it = end($this->__st);"` |
-|    - |  479 | `"  return $it ? $it->getChildren() : null;"` |
-|    - |  480 | `" }"` |
-|    - |  481 | `" public function beginIteration(){}"` |
-|    - |  482 | `" public function endIteration(){}"` |
-|    - |  483 | `" public function beginChildren(){}"` |
-|    - |  484 | `" public function endChildren(){}"` |
-|    - |  485 | `" public function nextElement(){}"` |
-|    - |  486 | `" private function __riDepthOk(){"` |
-|    - |  487 | `"  return $this->__maxDepth === false \|\| (count($this->__st) - 1) < $this->__maxDepth;"` |
-|    - |  488 | `" }"` |
-|    - |  489 | `" private function __riDescend(){"` |
-|    - |  490 | `"  /* push the current element's children, positioned at their start */"` |
-|    - |  491 | `"  if( $this->__mode & self::CATCH_GET_CHILD ){"` |
-|    - |  492 | `"   try { $child = $this->callGetChildren(); }"` |
-|    - |  493 | `"   catch (Exception $e) { return false; }"` |
-|    - |  494 | `"  }else{"` |
-|    - |  495 | `"   $child = $this->callGetChildren();"` |
-|    - |  496 | `"  }"` |
-|    - |  497 | `"  if( !($child instanceof RecursiveIterator) ){ return false; }"` |
-|    - |  498 | `"  $child->rewind();"` |
-|    - |  499 | `"  $this->__st[] = $child;"` |
-|    - |  500 | `"  $this->beginChildren();"` |
-|    - |  501 | `"  return true;"` |
-|    - |  502 | `" }"` |
-|    - |  503 | `" private function __riFetch(){"` |
-|    - |  504 | `"  $m = $this->__mode & 3;"` |
-|    - |  505 | `"  for(;;){"` |
-|    - |  506 | `"   if( count($this->__st) === 0 ){"` |
-|    - |  507 | `"    $this->__live = false;"` |
-|    - |  508 | `"    /* php keeps the root level addressable after exhaustion (getDepth 0,"` |
-|    - |  509 | `"     * getSubIterator() returns the root) */"` |
-|    - |  510 | `"    $this->__st = [$this->__root];"` |
-|    - |  511 | `"    $this->endIteration();"` |
-|    - |  512 | `"    return;"` |
-|    - |  513 | `"   }"` |
-|    - |  514 | `"   $it = end($this->__st);"` |
-|    - |  515 | `"   if( !$it->valid() ){"` |
-|    - |  516 | `"    array_pop($this->__st);"` |
-|    - |  517 | `"    $this->endChildren();"` |
-|    - |  518 | `"    if( count($this->__st) === 0 ){ continue; }"` |
-|    - |  519 | `"    if( $m === self::CHILD_FIRST ){"` |
-|    - |  520 | `"     /* the parent node yields now, after its subtree */"` |
-|    - |  521 | `"     $this->__post = true;"` |
-|    - |  522 | `"     $this->__live = true;"` |
-|    - |  523 | `"     return;"` |
-|    - |  524 | `"    }"` |
-|    - |  525 | `"    end($this->__st)->next();"` |
-|    - |  526 | `"    continue;"` |
-|    - |  527 | `"   }"` |
-|    - |  528 | `"   if( $m === self::LEAVES_ONLY && $it->hasChildren() && $this->__riDepthOk() ){"` |
-|    - |  529 | `"    if( $this->__riDescend() ){ continue; }"` |
+|    - |  424 | `"class NoRewindIterator extends IteratorIterator {"` |
+|    - |  425 | `" public function rewind(){}"` |
+|    - |  426 | `"}"` |
+|    - |  427 | `"interface RecursiveIterator extends Iterator {"` |
+|    - |  428 | `" public function hasChildren();"` |
+|    - |  429 | `" public function getChildren();"` |
+|    - |  430 | `"}"` |
+|    - |  431 | `"class RecursiveArrayIterator extends ArrayIterator implements RecursiveIterator {"` |
+|    - |  432 | `" const CHILD_ARRAYS_ONLY = 4;"` |
+|    - |  433 | `" public function hasChildren(){"` |
+|    - |  434 | `"  $c = $this->current();"` |
+|    - |  435 | `"  return is_array($c) \|\| is_object($c);"` |
+|    - |  436 | `" }"` |
+|    - |  437 | `" public function getChildren(){"` |
+|    - |  438 | `"  $c = get_class($this);"` |
+|    - |  439 | `"  return new $c($this->current());"` |
+|    - |  440 | `" }"` |
+|    - |  441 | `"}"` |
+|    - |  442 | `"class RecursiveIteratorIterator implements OuterIterator {"` |
+|    - |  443 | `" const LEAVES_ONLY = 0;"` |
+|    - |  444 | `" const SELF_FIRST = 1;"` |
+|    - |  445 | `" const CHILD_FIRST = 2;"` |
+|    - |  446 | `" const CATCH_GET_CHILD = 16;"` |
+|    - |  447 | `" private $__root = null;"` |
+|    - |  448 | `" private $__st = [];"` |
+|    - |  449 | `" private $__mode = 0;"` |
+|    - |  450 | `" private $__maxDepth = false;"` |
+|    - |  451 | `" private $__post = false;"` |
+|    - |  452 | `" private $__live = false;"` |
+|    - |  453 | `" public function __construct($iterator, $mode = 0, $flags = 0){"` |
+|    - |  454 | `"  while( $iterator instanceof IteratorAggregate ){ $iterator = $iterator->getIterator(); }"` |
+|    - |  455 | `"  if( !($iterator instanceof RecursiveIterator) ){"` |
+|    - |  456 | `"   throw new TypeError('RecursiveIteratorIterator::__construct(): Argument #1"` |
+|    - |  457 | `" ($iterator) must be of type RecursiveIterator, ' . get_debug_type($iterator) . ' given');"` |
+|    - |  458 | `"  }"` |
+|    - |  459 | `"  $this->__root = $iterator;"` |
+|    - |  460 | `"  $this->__mode = (int)$mode \| (int)$flags;"` |
+|    - |  461 | `" }"` |
+|    - |  462 | `" public function getInnerIterator(){ return end($this->__st) ?: $this->__root; }"` |
+|    - |  463 | `" public function getSubIterator($level = null){"` |
+|    - |  464 | `"  if( $level === null ){ $level = count($this->__st) - 1; }"` |
+|    - |  465 | `"  return $this->__st[$level] ?? null;"` |
+|    - |  466 | `" }"` |
+|    - |  467 | `" public function getDepth(){ return count($this->__st) - 1; }"` |
+|    - |  468 | `" public function getMaxDepth(){ return $this->__maxDepth; }"` |
+|    - |  469 | `" public function setMaxDepth($maxDepth = -1){"` |
+|    - |  470 | `"  $maxDepth = (int)$maxDepth;"` |
+|    - |  471 | `"  if( $maxDepth < -1 ){"` |
+|    - |  472 | `"   throw new Exception('Parameter max_depth must be >= -1');"` |
+|    - |  473 | `"  }"` |
+|    - |  474 | `"  $this->__maxDepth = $maxDepth === -1 ? false : $maxDepth;"` |
+|    - |  475 | `" }"` |
+|    - |  476 | `" public function callHasChildren(){"` |
+|    - |  477 | `"  $it = end($this->__st);"` |
+|    - |  478 | `"  return $it ? $it->hasChildren() : false;"` |
+|    - |  479 | `" }"` |
+|    - |  480 | `" public function callGetChildren(){"` |
+|    - |  481 | `"  $it = end($this->__st);"` |
+|    - |  482 | `"  return $it ? $it->getChildren() : null;"` |
+|    - |  483 | `" }"` |
+|    - |  484 | `" public function beginIteration(){}"` |
+|    - |  485 | `" public function endIteration(){}"` |
+|    - |  486 | `" public function beginChildren(){}"` |
+|    - |  487 | `" public function endChildren(){}"` |
+|    - |  488 | `" public function nextElement(){}"` |
+|    - |  489 | `" private function __riDepthOk(){"` |
+|    - |  490 | `"  return $this->__maxDepth === false \|\| (count($this->__st) - 1) < $this->__maxDepth;"` |
+|    - |  491 | `" }"` |
+|    - |  492 | `" private function __riDescend(){"` |
+|    - |  493 | `"  /* push the current element's children, positioned at their start */"` |
+|    - |  494 | `"  if( $this->__mode & self::CATCH_GET_CHILD ){"` |
+|    - |  495 | `"   try { $child = $this->callGetChildren(); }"` |
+|    - |  496 | `"   catch (Exception $e) { return false; }"` |
+|    - |  497 | `"  }else{"` |
+|    - |  498 | `"   $child = $this->callGetChildren();"` |
+|    - |  499 | `"  }"` |
+|    - |  500 | `"  if( !($child instanceof RecursiveIterator) ){ return false; }"` |
+|    - |  501 | `"  $child->rewind();"` |
+|    - |  502 | `"  $this->__st[] = $child;"` |
+|    - |  503 | `"  $this->beginChildren();"` |
+|    - |  504 | `"  return true;"` |
+|    - |  505 | `" }"` |
+|    - |  506 | `" private function __riFetch(){"` |
+|    - |  507 | `"  $m = $this->__mode & 3;"` |
+|    - |  508 | `"  for(;;){"` |
+|    - |  509 | `"   if( count($this->__st) === 0 ){"` |
+|    - |  510 | `"    $this->__live = false;"` |
+|    - |  511 | `"    /* php keeps the root level addressable after exhaustion (getDepth 0,"` |
+|    - |  512 | `"     * getSubIterator() returns the root) */"` |
+|    - |  513 | `"    $this->__st = [$this->__root];"` |
+|    - |  514 | `"    $this->endIteration();"` |
+|    - |  515 | `"    return;"` |
+|    - |  516 | `"   }"` |
+|    - |  517 | `"   $it = end($this->__st);"` |
+|    - |  518 | `"   if( !$it->valid() ){"` |
+|    - |  519 | `"    array_pop($this->__st);"` |
+|    - |  520 | `"    $this->endChildren();"` |
+|    - |  521 | `"    if( count($this->__st) === 0 ){ continue; }"` |
+|    - |  522 | `"    if( $m === self::CHILD_FIRST ){"` |
+|    - |  523 | `"     /* the parent node yields now, after its subtree */"` |
+|    - |  524 | `"     $this->__post = true;"` |
+|    - |  525 | `"     $this->__live = true;"` |
+|    - |  526 | `"     return;"` |
+|    - |  527 | `"    }"` |
+|    - |  528 | `"    end($this->__st)->next();"` |
+|    - |  529 | `"    continue;"` |
 |    - |  530 | `"   }"` |
-|    - |  531 | `"   if( $m === self::CHILD_FIRST && $it->hasChildren() && $this->__riDepthOk() ){"` |
+|    - |  531 | `"   if( $m === self::LEAVES_ONLY && $it->hasChildren() && $this->__riDepthOk() ){"` |
 |    - |  532 | `"    if( $this->__riDescend() ){ continue; }"` |
 |    - |  533 | `"   }"` |
-|    - |  534 | `"   $this->__post = false;"` |
-|    - |  535 | `"   $this->__live = true;"` |
-|    - |  536 | `"   $this->nextElement();"` |
-|    - |  537 | `"   return;"` |
-|    - |  538 | `"  }"` |
-|    - |  539 | `" }"` |
-|    - |  540 | `" public function rewind(){"` |
-|    - |  541 | `"  $this->__st = [$this->__root];"` |
-|    - |  542 | `"  $this->__root->rewind();"` |
-|    - |  543 | `"  $this->__post = false;"` |
-|    - |  544 | `"  $this->beginIteration();"` |
-|    - |  545 | `"  $this->__riFetch();"` |
-|    - |  546 | `" }"` |
-|    - |  547 | `" public function valid(){ return $this->__live; }"` |
-|    - |  548 | `" public function current(){"` |
-|    - |  549 | `"  $it = end($this->__st);"` |
-|    - |  550 | `"  return $it ? $it->current() : null;"` |
-|    - |  551 | `" }"` |
-|    - |  552 | `" public function key(){"` |
-|    - |  553 | `"  $it = end($this->__st);"` |
-|    - |  554 | `"  return $it ? $it->key() : null;"` |
-|    - |  555 | `" }"` |
-|    - |  556 | `" public function next(){"` |
-|    - |  557 | `"  if( !$this->__live ){ return; }"` |
-|    - |  558 | `"  $m = $this->__mode & 3;"` |
-|    - |  559 | `"  $it = end($this->__st);"` |
-|    - |  560 | `"  if( $this->__post ){"` |
-|    - |  561 | `"   /* leaving a CHILD_FIRST post-visit: advance past the node */"` |
-|    - |  562 | `"   $this->__post = false;"` |
-|    - |  563 | `"   $it->next();"` |
-|    - |  564 | `"   $this->__riFetch();"` |
-|    - |  565 | `"   return;"` |
-|    - |  566 | `"  }"` |
-|    - |  567 | `"  if( $m === self::SELF_FIRST && $it->hasChildren() && $this->__riDepthOk() ){"` |
-|    - |  568 | `"   if( $this->__riDescend() ){ $this->__riFetch(); return; }"` |
+|    - |  534 | `"   if( $m === self::CHILD_FIRST && $it->hasChildren() && $this->__riDepthOk() ){"` |
+|    - |  535 | `"    if( $this->__riDescend() ){ continue; }"` |
+|    - |  536 | `"   }"` |
+|    - |  537 | `"   $this->__post = false;"` |
+|    - |  538 | `"   $this->__live = true;"` |
+|    - |  539 | `"   $this->nextElement();"` |
+|    - |  540 | `"   return;"` |
+|    - |  541 | `"  }"` |
+|    - |  542 | `" }"` |
+|    - |  543 | `" public function rewind(){"` |
+|    - |  544 | `"  $this->__st = [$this->__root];"` |
+|    - |  545 | `"  $this->__root->rewind();"` |
+|    - |  546 | `"  $this->__post = false;"` |
+|    - |  547 | `"  $this->beginIteration();"` |
+|    - |  548 | `"  $this->__riFetch();"` |
+|    - |  549 | `" }"` |
+|    - |  550 | `" public function valid(){ return $this->__live; }"` |
+|    - |  551 | `" public function current(){"` |
+|    - |  552 | `"  $it = end($this->__st);"` |
+|    - |  553 | `"  return $it ? $it->current() : null;"` |
+|    - |  554 | `" }"` |
+|    - |  555 | `" public function key(){"` |
+|    - |  556 | `"  $it = end($this->__st);"` |
+|    - |  557 | `"  return $it ? $it->key() : null;"` |
+|    - |  558 | `" }"` |
+|    - |  559 | `" public function next(){"` |
+|    - |  560 | `"  if( !$this->__live ){ return; }"` |
+|    - |  561 | `"  $m = $this->__mode & 3;"` |
+|    - |  562 | `"  $it = end($this->__st);"` |
+|    - |  563 | `"  if( $this->__post ){"` |
+|    - |  564 | `"   /* leaving a CHILD_FIRST post-visit: advance past the node */"` |
+|    - |  565 | `"   $this->__post = false;"` |
+|    - |  566 | `"   $it->next();"` |
+|    - |  567 | `"   $this->__riFetch();"` |
+|    - |  568 | `"   return;"` |
 |    - |  569 | `"  }"` |
-|    - |  570 | `"  $it->next();"` |
-|    - |  571 | `"  $this->__riFetch();"` |
-|    - |  572 | `" }"` |
-|    - |  573 | `"}"` |
-|    - |  574 | `"class WeakReference {"` |
-|    - |  575 | `" private $__h = 0;"` |
-|    - |  576 | `" private function __construct(){}"` |
-|    - |  577 | `" public static function create($object){"` |
-|    - |  578 | `"  if( !is_object($object) ){"` |
-|    - |  579 | `"   throw new TypeError('WeakReference::create(): Argument #1 ($object) must be"` |
-|    - |  580 | `" of type object, ' . get_debug_type($object) . ' given');"` |
-|    - |  581 | `"  }"` |
-|    - |  582 | `"  $w = new WeakReference();"` |
-|    - |  583 | `"  $w->__h = __weak_create($object);"` |
-|    - |  584 | `"  return $w;"` |
-|    - |  585 | `" }"` |
-|    - |  586 | `" public function get(){ return $this->__h ? __weak_get($this->__h) : null; }"` |
-|    - |  587 | `" public function __destruct(){"` |
-|    - |  588 | `"  if( $this->__h ){ __weak_drop($this->__h); $this->__h = 0; }"` |
-|    - |  589 | `" }"` |
-|    - |  590 | `"}"` |
-|    - |  591 | `"class WeakMap implements ArrayAccess, Countable, IteratorAggregate {"` |
-|    - |  592 | `" private $__e = [];"` |
-|    - |  593 | `" private function __wmPrune(){"` |
-|    - |  594 | `"  foreach( $this->__e as $id => $p ){"` |
-|    - |  595 | `"   if( __weak_get($p[0]) === null ){"` |
-|    - |  596 | `"    __weak_drop($p[0]);"` |
-|    - |  597 | `"    unset($this->__e[$id]);"` |
-|    - |  598 | `"   }"` |
-|    - |  599 | `"  }"` |
-|    - |  600 | `" }"` |
-|    - |  601 | `" public function offsetSet($object, $value){"` |
-|    - |  602 | `"  if( !is_object($object) ){"` |
-|    - |  603 | `"   throw new TypeError('WeakMap key must be an object');"` |
-|    - |  604 | `"  }"` |
-|    - |  605 | `"  $id = spl_object_id($object);"` |
-|    - |  606 | `"  if( isset($this->__e[$id]) && __weak_get($this->__e[$id][0]) !== null ){"` |
-|    - |  607 | `"   $this->__e[$id][1] = $value;"` |
-|    - |  608 | `"   return;"` |
-|    - |  609 | `"  }"` |
-|    - |  610 | `"  if( isset($this->__e[$id]) ){ __weak_drop($this->__e[$id][0]); }"` |
-|    - |  611 | `"  $this->__e[$id] = [__weak_create($object), $value];"` |
-|    - |  612 | `" }"` |
-|    - |  613 | `" public function offsetGet($object){"` |
-|    - |  614 | `"  if( !is_object($object) ){"` |
-|    - |  615 | `"   throw new TypeError('WeakMap key must be an object');"` |
-|    - |  616 | `"  }"` |
-|    - |  617 | `"  $id = spl_object_id($object);"` |
-|    - |  618 | `"  if( isset($this->__e[$id]) && __weak_get($this->__e[$id][0]) === $object ){"` |
-|    - |  619 | `"   return $this->__e[$id][1];"` |
-|    - |  620 | `"  }"` |
-|    - |  621 | `"  throw new Error('Object ' . get_class($object) . '#' . $id . ' not contained"` |
-|    - |  622 | `" in WeakMap');"` |
-|    - |  623 | `" }"` |
-|    - |  624 | `" public function offsetExists($object){"` |
-|    - |  625 | `"  if( !is_object($object) ){"` |
-|    - |  626 | `"   throw new TypeError('WeakMap key must be an object');"` |
-|    - |  627 | `"  }"` |
-|    - |  628 | `"  $id = spl_object_id($object);"` |
-|    - |  629 | `"  return isset($this->__e[$id]) && __weak_get($this->__e[$id][0]) === $object;"` |
-|    - |  630 | `" }"` |
-|    - |  631 | `" public function offsetUnset($object){"` |
-|    - |  632 | `"  if( !is_object($object) ){"` |
-|    - |  633 | `"   throw new TypeError('WeakMap key must be an object');"` |
-|    - |  634 | `"  }"` |
-|    - |  635 | `"  $id = spl_object_id($object);"` |
-|    - |  636 | `"  if( isset($this->__e[$id]) ){"` |
-|    - |  637 | `"   __weak_drop($this->__e[$id][0]);"` |
-|    - |  638 | `"   unset($this->__e[$id]);"` |
-|    - |  639 | `"  }"` |
-|    - |  640 | `" }"` |
-|    - |  641 | `" public function count(){"` |
-|    - |  642 | `"  $this->__wmPrune();"` |
-|    - |  643 | `"  return count($this->__e);"` |
-|    - |  644 | `" }"` |
-|    - |  645 | `" public function getIterator(): Generator {"` |
-|    - |  646 | `"  $this->__wmPrune();"` |
-|    - |  647 | `"  foreach( $this->__e as $p ){"` |
-|    - |  648 | `"   $o = __weak_get($p[0]);"` |
-|    - |  649 | `"   if( $o !== null ){ yield $o => $p[1]; }"` |
-|    - |  650 | `"  }"` |
-|    - |  651 | `" }"` |
-|    - |  652 | `" public function __destruct(){"` |
-|    - |  653 | `"  foreach( $this->__e as $p ){ __weak_drop($p[0]); }"` |
-|    - |  654 | `"  $this->__e = [];"` |
-|    - |  655 | `" }"` |
-|    - |  656 | `"}"` |
-|    - |  657 | `"class EmptyIterator implements Iterator {"` |
-|    - |  658 | `" public function current(){"` |
-|    - |  659 | `"  throw new BadMethodCallException('Accessing the value of an EmptyIterator');"` |
-|    - |  660 | `" }"` |
-|    - |  661 | `" public function key(){"` |
-|    - |  662 | `"  throw new BadMethodCallException('Accessing the key of an EmptyIterator');"` |
+|    - |  570 | `"  if( $m === self::SELF_FIRST && $it->hasChildren() && $this->__riDepthOk() ){"` |
+|    - |  571 | `"   if( $this->__riDescend() ){ $this->__riFetch(); return; }"` |
+|    - |  572 | `"  }"` |
+|    - |  573 | `"  $it->next();"` |
+|    - |  574 | `"  $this->__riFetch();"` |
+|    - |  575 | `" }"` |
+|    - |  576 | `"}"` |
+|    - |  577 | `"class WeakReference {"` |
+|    - |  578 | `" private $__h = 0;"` |
+|    - |  579 | `" private function __construct(){}"` |
+|    - |  580 | `" public static function create($object){"` |
+|    - |  581 | `"  if( !is_object($object) ){"` |
+|    - |  582 | `"   throw new TypeError('WeakReference::create(): Argument #1 ($object) must be"` |
+|    - |  583 | `" of type object, ' . get_debug_type($object) . ' given');"` |
+|    - |  584 | `"  }"` |
+|    - |  585 | `"  $w = new WeakReference();"` |
+|    - |  586 | `"  $w->__h = __weak_create($object);"` |
+|    - |  587 | `"  return $w;"` |
+|    - |  588 | `" }"` |
+|    - |  589 | `" public function get(){ return $this->__h ? __weak_get($this->__h) : null; }"` |
+|    - |  590 | `" public function __destruct(){"` |
+|    - |  591 | `"  if( $this->__h ){ __weak_drop($this->__h); $this->__h = 0; }"` |
+|    - |  592 | `" }"` |
+|    - |  593 | `"}"` |
+|    - |  594 | `"class WeakMap implements ArrayAccess, Countable, IteratorAggregate {"` |
+|    - |  595 | `" private $__e = [];"` |
+|    - |  596 | `" private function __wmPrune(){"` |
+|    - |  597 | `"  foreach( $this->__e as $id => $p ){"` |
+|    - |  598 | `"   if( __weak_get($p[0]) === null ){"` |
+|    - |  599 | `"    __weak_drop($p[0]);"` |
+|    - |  600 | `"    unset($this->__e[$id]);"` |
+|    - |  601 | `"   }"` |
+|    - |  602 | `"  }"` |
+|    - |  603 | `" }"` |
+|    - |  604 | `" public function offsetSet($object, $value){"` |
+|    - |  605 | `"  if( !is_object($object) ){"` |
+|    - |  606 | `"   throw new TypeError('WeakMap key must be an object');"` |
+|    - |  607 | `"  }"` |
+|    - |  608 | `"  $id = spl_object_id($object);"` |
+|    - |  609 | `"  if( isset($this->__e[$id]) && __weak_get($this->__e[$id][0]) !== null ){"` |
+|    - |  610 | `"   $this->__e[$id][1] = $value;"` |
+|    - |  611 | `"   return;"` |
+|    - |  612 | `"  }"` |
+|    - |  613 | `"  if( isset($this->__e[$id]) ){ __weak_drop($this->__e[$id][0]); }"` |
+|    - |  614 | `"  $this->__e[$id] = [__weak_create($object), $value];"` |
+|    - |  615 | `" }"` |
+|    - |  616 | `" public function offsetGet($object){"` |
+|    - |  617 | `"  if( !is_object($object) ){"` |
+|    - |  618 | `"   throw new TypeError('WeakMap key must be an object');"` |
+|    - |  619 | `"  }"` |
+|    - |  620 | `"  $id = spl_object_id($object);"` |
+|    - |  621 | `"  if( isset($this->__e[$id]) && __weak_get($this->__e[$id][0]) === $object ){"` |
+|    - |  622 | `"   return $this->__e[$id][1];"` |
+|    - |  623 | `"  }"` |
+|    - |  624 | `"  throw new Error('Object ' . get_class($object) . '#' . $id . ' not contained"` |
+|    - |  625 | `" in WeakMap');"` |
+|    - |  626 | `" }"` |
+|    - |  627 | `" public function offsetExists($object){"` |
+|    - |  628 | `"  if( !is_object($object) ){"` |
+|    - |  629 | `"   throw new TypeError('WeakMap key must be an object');"` |
+|    - |  630 | `"  }"` |
+|    - |  631 | `"  $id = spl_object_id($object);"` |
+|    - |  632 | `"  return isset($this->__e[$id]) && __weak_get($this->__e[$id][0]) === $object;"` |
+|    - |  633 | `" }"` |
+|    - |  634 | `" public function offsetUnset($object){"` |
+|    - |  635 | `"  if( !is_object($object) ){"` |
+|    - |  636 | `"   throw new TypeError('WeakMap key must be an object');"` |
+|    - |  637 | `"  }"` |
+|    - |  638 | `"  $id = spl_object_id($object);"` |
+|    - |  639 | `"  if( isset($this->__e[$id]) ){"` |
+|    - |  640 | `"   __weak_drop($this->__e[$id][0]);"` |
+|    - |  641 | `"   unset($this->__e[$id]);"` |
+|    - |  642 | `"  }"` |
+|    - |  643 | `" }"` |
+|    - |  644 | `" public function count(){"` |
+|    - |  645 | `"  $this->__wmPrune();"` |
+|    - |  646 | `"  return count($this->__e);"` |
+|    - |  647 | `" }"` |
+|    - |  648 | `" public function getIterator(): Generator {"` |
+|    - |  649 | `"  $this->__wmPrune();"` |
+|    - |  650 | `"  foreach( $this->__e as $p ){"` |
+|    - |  651 | `"   $o = __weak_get($p[0]);"` |
+|    - |  652 | `"   if( $o !== null ){ yield $o => $p[1]; }"` |
+|    - |  653 | `"  }"` |
+|    - |  654 | `" }"` |
+|    - |  655 | `" public function __destruct(){"` |
+|    - |  656 | `"  foreach( $this->__e as $p ){ __weak_drop($p[0]); }"` |
+|    - |  657 | `"  $this->__e = [];"` |
+|    - |  658 | `" }"` |
+|    - |  659 | `"}"` |
+|    - |  660 | `"class EmptyIterator implements Iterator {"` |
+|    - |  661 | `" public function current(){"` |
+|    - |  662 | `"  throw new BadMethodCallException('Accessing the value of an EmptyIterator');"` |
 |    - |  663 | `" }"` |
-|    - |  664 | `" public function next(){}"` |
-|    - |  665 | `" public function rewind(){}"` |
-|    - |  666 | `" public function valid(){ return false; }"` |
-|    - |  667 | `"}"` |
-|    - |  668 | `"class SplDoublyLinkedList implements Iterator, Countable, ArrayAccess {"` |
-|    - |  669 | `" const IT_MODE_LIFO = 2;"` |
-|    - |  670 | `" const IT_MODE_FIFO = 0;"` |
-|    - |  671 | `" const IT_MODE_DELETE = 1;"` |
-|    - |  672 | `" const IT_MODE_KEEP = 0;"` |
-|    - |  673 | `" private $__q = [];"` |
-|    - |  674 | `" private $__mode = 0;"` |
-|    - |  675 | `" private $__i = 0;"` |
-|    - |  676 | `" public function __construct(){"` |
-|    - |  677 | `"  if( $this instanceof SplStack ){ $this->__mode = 2; }"` |
-|    - |  678 | `" }"` |
-|    - |  679 | `" public function setIteratorMode($mode){"` |
-|    - |  680 | `"  $mode = (int)$mode;"` |
-|    - |  681 | `"  if( ($this instanceof SplStack \|\| $this instanceof SplQueue)"` |
-|    - |  682 | `"   && ($mode & 2) !== ($this->__mode & 2) ){"` |
-|    - |  683 | `"   throw new RuntimeException(\"Iterators' LIFO/FIFO modes for SplStack/SplQueue"` |
-|    - |  684 | `" objects are frozen\");"` |
-|    - |  685 | `"  }"` |
-|    - |  686 | `"  $this->__mode = $mode;"` |
-|    - |  687 | `" }"` |
-|    - |  688 | `" public function getIteratorMode(){ return $this->__mode; }"` |
-|    - |  689 | `" public function push($value){ $this->__q[] = $value; }"` |
-|    - |  690 | `" public function pop(){"` |
-|    - |  691 | `"  if( count($this->__q) === 0 ){"` |
-|    - |  692 | `"   throw new RuntimeException(\"Can't pop from an empty datastructure\");"` |
-|    - |  693 | `"  }"` |
-|    - |  694 | `"  return array_pop($this->__q);"` |
-|    - |  695 | `" }"` |
-|    - |  696 | `" public function shift(){"` |
-|    - |  697 | `"  if( count($this->__q) === 0 ){"` |
-|    - |  698 | `"   throw new RuntimeException(\"Can't shift from an empty datastructure\");"` |
-|    - |  699 | `"  }"` |
-|    - |  700 | `"  return array_shift($this->__q);"` |
-|    - |  701 | `" }"` |
-|    - |  702 | `" public function unshift($value){ array_unshift($this->__q, $value); }"` |
-|    - |  703 | `" public function top(){"` |
-|    - |  704 | `"  if( count($this->__q) === 0 ){"` |
-|    - |  705 | `"   throw new RuntimeException(\"Can't peek at an empty datastructure\");"` |
-|    - |  706 | `"  }"` |
-|    - |  707 | `"  return $this->__q[count($this->__q) - 1];"` |
-|    - |  708 | `" }"` |
-|    - |  709 | `" public function bottom(){"` |
-|    - |  710 | `"  if( count($this->__q) === 0 ){"` |
-|    - |  711 | `"   throw new RuntimeException(\"Can't peek at an empty datastructure\");"` |
-|    - |  712 | `"  }"` |
-|    - |  713 | `"  return $this->__q[0];"` |
-|    - |  714 | `" }"` |
-|    - |  715 | `" public function isEmpty(){ return count($this->__q) === 0; }"` |
-|    - |  716 | `" public function count(){ return count($this->__q); }"` |
-|    - |  717 | `" public function toArray(){ return $this->__q; }"` |
-|    - |  718 | `" public function add($index, $value){"` |
-|    - |  719 | `"  $index = (int)$index;"` |
-|    - |  720 | `"  if( $index < 0 \|\| $index > count($this->__q) ){"` |
-|    - |  721 | `"   throw new OutOfRangeException(get_class($this) === 'SplDoublyLinkedList'"` |
-|    - |  722 | `"    ? 'SplDoublyLinkedList::add(): Argument #1 ($index) is out of range'"` |
-|    - |  723 | `"    : get_class($this) . '::add(): Argument #1 ($index) is out of range');"` |
-|    - |  724 | `"  }"` |
-|    - |  725 | `"  array_splice($this->__q, $index, 0, [$value]);"` |
-|    - |  726 | `" }"` |
-|    - |  727 | `" public function offsetExists($index){"` |
-|    - |  728 | `"  return is_int($index) \|\| ctype_digit((string)$index)"` |
-|    - |  729 | `"   ? ((int)$index >= 0 && (int)$index < count($this->__q)) : false;"` |
-|    - |  730 | `" }"` |
-|    - |  731 | `" public function offsetGet($index){"` |
-|    - |  732 | `"  $index = (int)$index;"` |
-|    - |  733 | `"  if( $index < 0 \|\| $index >= count($this->__q) ){"` |
-|    - |  734 | `"   throw new OutOfRangeException('SplDoublyLinkedList::offsetGet(): Argument #1"` |
-|    - |  735 | `" ($index) is out of range');"` |
-|    - |  736 | `"  }"` |
-|    - |  737 | `"  return $this->__q[$index];"` |
-|    - |  738 | `" }"` |
-|    - |  739 | `" public function offsetSet($index, $value){"` |
-|    - |  740 | `"  if( $index === null ){ $this->__q[] = $value; return; }"` |
-|    - |  741 | `"  $index = (int)$index;"` |
-|    - |  742 | `"  if( $index < 0 \|\| $index >= count($this->__q) ){"` |
-|    - |  743 | `"   throw new OutOfRangeException('SplDoublyLinkedList::offsetSet(): Argument #1"` |
-|    - |  744 | `" ($index) is out of range');"` |
-|    - |  745 | `"  }"` |
-|    - |  746 | `"  $this->__q[$index] = $value;"` |
-|    - |  747 | `" }"` |
-|    - |  748 | `" public function offsetUnset($index){"` |
-|    - |  749 | `"  $index = (int)$index;"` |
-|    - |  750 | `"  if( $index < 0 \|\| $index >= count($this->__q) ){"` |
-|    - |  751 | `"   throw new OutOfRangeException('SplDoublyLinkedList::offsetUnset(): Argument #1"` |
-|    - |  752 | `" ($index) is out of range');"` |
-|    - |  753 | `"  }"` |
-|    - |  754 | `"  array_splice($this->__q, $index, 1);"` |
-|    - |  755 | `" }"` |
-|    - |  756 | `" public function rewind(){"` |
-|    - |  757 | `"  $this->__i = ($this->__mode & 2) ? count($this->__q) - 1 : 0;"` |
+|    - |  664 | `" public function key(){"` |
+|    - |  665 | `"  throw new BadMethodCallException('Accessing the key of an EmptyIterator');"` |
+|    - |  666 | `" }"` |
+|    - |  667 | `" public function next(){}"` |
+|    - |  668 | `" public function rewind(){}"` |
+|    - |  669 | `" public function valid(){ return false; }"` |
+|    - |  670 | `"}"` |
+|    - |  671 | `"class SplDoublyLinkedList implements Iterator, Countable, ArrayAccess {"` |
+|    - |  672 | `" const IT_MODE_LIFO = 2;"` |
+|    - |  673 | `" const IT_MODE_FIFO = 0;"` |
+|    - |  674 | `" const IT_MODE_DELETE = 1;"` |
+|    - |  675 | `" const IT_MODE_KEEP = 0;"` |
+|    - |  676 | `" private $__q = [];"` |
+|    - |  677 | `" private $__mode = 0;"` |
+|    - |  678 | `" private $__i = 0;"` |
+|    - |  679 | `" public function __construct(){"` |
+|    - |  680 | `"  if( $this instanceof SplStack ){ $this->__mode = 2; }"` |
+|    - |  681 | `" }"` |
+|    - |  682 | `" public function setIteratorMode($mode){"` |
+|    - |  683 | `"  $mode = (int)$mode;"` |
+|    - |  684 | `"  if( ($this instanceof SplStack \|\| $this instanceof SplQueue)"` |
+|    - |  685 | `"   && ($mode & 2) !== ($this->__mode & 2) ){"` |
+|    - |  686 | `"   throw new RuntimeException(\"Iterators' LIFO/FIFO modes for SplStack/SplQueue"` |
+|    - |  687 | `" objects are frozen\");"` |
+|    - |  688 | `"  }"` |
+|    - |  689 | `"  $this->__mode = $mode;"` |
+|    - |  690 | `" }"` |
+|    - |  691 | `" public function getIteratorMode(){ return $this->__mode; }"` |
+|    - |  692 | `" public function push($value){ $this->__q[] = $value; }"` |
+|    - |  693 | `" public function pop(){"` |
+|    - |  694 | `"  if( count($this->__q) === 0 ){"` |
+|    - |  695 | `"   throw new RuntimeException(\"Can't pop from an empty datastructure\");"` |
+|    - |  696 | `"  }"` |
+|    - |  697 | `"  return array_pop($this->__q);"` |
+|    - |  698 | `" }"` |
+|    - |  699 | `" public function shift(){"` |
+|    - |  700 | `"  if( count($this->__q) === 0 ){"` |
+|    - |  701 | `"   throw new RuntimeException(\"Can't shift from an empty datastructure\");"` |
+|    - |  702 | `"  }"` |
+|    - |  703 | `"  return array_shift($this->__q);"` |
+|    - |  704 | `" }"` |
+|    - |  705 | `" public function unshift($value){ array_unshift($this->__q, $value); }"` |
+|    - |  706 | `" public function top(){"` |
+|    - |  707 | `"  if( count($this->__q) === 0 ){"` |
+|    - |  708 | `"   throw new RuntimeException(\"Can't peek at an empty datastructure\");"` |
+|    - |  709 | `"  }"` |
+|    - |  710 | `"  return $this->__q[count($this->__q) - 1];"` |
+|    - |  711 | `" }"` |
+|    - |  712 | `" public function bottom(){"` |
+|    - |  713 | `"  if( count($this->__q) === 0 ){"` |
+|    - |  714 | `"   throw new RuntimeException(\"Can't peek at an empty datastructure\");"` |
+|    - |  715 | `"  }"` |
+|    - |  716 | `"  return $this->__q[0];"` |
+|    - |  717 | `" }"` |
+|    - |  718 | `" public function isEmpty(){ return count($this->__q) === 0; }"` |
+|    - |  719 | `" public function count(){ return count($this->__q); }"` |
+|    - |  720 | `" public function toArray(){ return $this->__q; }"` |
+|    - |  721 | `" public function add($index, $value){"` |
+|    - |  722 | `"  $index = (int)$index;"` |
+|    - |  723 | `"  if( $index < 0 \|\| $index > count($this->__q) ){"` |
+|    - |  724 | `"   throw new OutOfRangeException(get_class($this) === 'SplDoublyLinkedList'"` |
+|    - |  725 | `"    ? 'SplDoublyLinkedList::add(): Argument #1 ($index) is out of range'"` |
+|    - |  726 | `"    : get_class($this) . '::add(): Argument #1 ($index) is out of range');"` |
+|    - |  727 | `"  }"` |
+|    - |  728 | `"  array_splice($this->__q, $index, 0, [$value]);"` |
+|    - |  729 | `" }"` |
+|    - |  730 | `" public function offsetExists($index){"` |
+|    - |  731 | `"  return is_int($index) \|\| ctype_digit((string)$index)"` |
+|    - |  732 | `"   ? ((int)$index >= 0 && (int)$index < count($this->__q)) : false;"` |
+|    - |  733 | `" }"` |
+|    - |  734 | `" public function offsetGet($index){"` |
+|    - |  735 | `"  $index = (int)$index;"` |
+|    - |  736 | `"  if( $index < 0 \|\| $index >= count($this->__q) ){"` |
+|    - |  737 | `"   throw new OutOfRangeException('SplDoublyLinkedList::offsetGet(): Argument #1"` |
+|    - |  738 | `" ($index) is out of range');"` |
+|    - |  739 | `"  }"` |
+|    - |  740 | `"  return $this->__q[$index];"` |
+|    - |  741 | `" }"` |
+|    - |  742 | `" public function offsetSet($index, $value){"` |
+|    - |  743 | `"  if( $index === null ){ $this->__q[] = $value; return; }"` |
+|    - |  744 | `"  $index = (int)$index;"` |
+|    - |  745 | `"  if( $index < 0 \|\| $index >= count($this->__q) ){"` |
+|    - |  746 | `"   throw new OutOfRangeException('SplDoublyLinkedList::offsetSet(): Argument #1"` |
+|    - |  747 | `" ($index) is out of range');"` |
+|    - |  748 | `"  }"` |
+|    - |  749 | `"  $this->__q[$index] = $value;"` |
+|    - |  750 | `" }"` |
+|    - |  751 | `" public function offsetUnset($index){"` |
+|    - |  752 | `"  $index = (int)$index;"` |
+|    - |  753 | `"  if( $index < 0 \|\| $index >= count($this->__q) ){"` |
+|    - |  754 | `"   throw new OutOfRangeException('SplDoublyLinkedList::offsetUnset(): Argument #1"` |
+|    - |  755 | `" ($index) is out of range');"` |
+|    - |  756 | `"  }"` |
+|    - |  757 | `"  array_splice($this->__q, $index, 1);"` |
 |    - |  758 | `" }"` |
-|    - |  759 | `" public function valid(){"` |
-|    - |  760 | `"  return $this->__i >= 0 && $this->__i < count($this->__q);"` |
+|    - |  759 | `" public function rewind(){"` |
+|    - |  760 | `"  $this->__i = ($this->__mode & 2) ? count($this->__q) - 1 : 0;"` |
 |    - |  761 | `" }"` |
-|    - |  762 | `" public function current(){ return $this->__q[$this->__i] ?? null; }"` |
-|    - |  763 | `" public function key(){ return $this->__i; }"` |
-|    - |  764 | `" public function next(){"` |
-|    - |  765 | `"  if( $this->__mode & 1 ){"` |
-|    - |  766 | `"   /* IT_MODE_DELETE consumes the element just visited */"` |
-|    - |  767 | `"   if( $this->__mode & 2 ){ array_pop($this->__q); $this->__i = count($this->__q) - 1; }"` |
-|    - |  768 | `"   else { array_shift($this->__q); }"` |
-|    - |  769 | `"  }else{"` |
-|    - |  770 | `"   $this->__i += ($this->__mode & 2) ? -1 : 1;"` |
-|    - |  771 | `"  }"` |
-|    - |  772 | `" }"` |
-|    - |  773 | `" public function prev(){ $this->__i += ($this->__mode & 2) ? 1 : -1; }"` |
-|    - |  774 | `"}"` |
-|    - |  775 | `"class SplStack extends SplDoublyLinkedList {}"` |
-|    - |  776 | `"class SplQueue extends SplDoublyLinkedList {"` |
-|    - |  777 | `" public function enqueue($value){ $this->push($value); }"` |
-|    - |  778 | `" public function dequeue(){ return $this->shift(); }"` |
-|    - |  779 | `"}"` |
-|    - |  780 | `"abstract class SplHeap implements Iterator, Countable {"` |
-|    - |  781 | `" private $__h = [];"` |
-|    - |  782 | `" abstract protected function compare($value1, $value2);"` |
-|    - |  783 | `" private function __hSiftUp($i){"` |
-|    - |  784 | `"  while( $i > 0 ){"` |
-|    - |  785 | `"   $p = ($i - 1) >> 1;"` |
-|    - |  786 | `"   if( $this->compare($this->__h[$i], $this->__h[$p]) <= 0 ){ break; }"` |
-|    - |  787 | `"   $t = $this->__h[$p]; $this->__h[$p] = $this->__h[$i]; $this->__h[$i] = $t;"` |
-|    - |  788 | `"   $i = $p;"` |
-|    - |  789 | `"  }"` |
-|    - |  790 | `" }"` |
-|    - |  791 | `" private function __hSiftDown($i){"` |
-|    - |  792 | `"  $n = count($this->__h);"` |
-|    - |  793 | `"  for(;;){"` |
-|    - |  794 | `"   $l = 2 * $i + 1; $r = $l + 1; $b = $i;"` |
-|    - |  795 | `"   if( $l < $n && $this->compare($this->__h[$l], $this->__h[$b]) > 0 ){ $b = $l; }"` |
-|    - |  796 | `"   if( $r < $n && $this->compare($this->__h[$r], $this->__h[$b]) > 0 ){ $b = $r; }"` |
-|    - |  797 | `"   if( $b === $i ){ break; }"` |
-|    - |  798 | `"   $t = $this->__h[$b]; $this->__h[$b] = $this->__h[$i]; $this->__h[$i] = $t;"` |
-|    - |  799 | `"   $i = $b;"` |
-|    - |  800 | `"  }"` |
-|    - |  801 | `" }"` |
-|    - |  802 | `" public function insert($value){"` |
-|    - |  803 | `"  $this->__h[] = $value;"` |
-|    - |  804 | `"  $this->__hSiftUp(count($this->__h) - 1);"` |
-|    - |  805 | `"  return true;"` |
-|    - |  806 | `" }"` |
-|    - |  807 | `" public function extract(){"` |
-|    - |  808 | `"  $n = count($this->__h);"` |
-|    - |  809 | `"  if( $n === 0 ){"` |
-|    - |  810 | `"   throw new RuntimeException(\"Can't extract from an empty heap\");"` |
-|    - |  811 | `"  }"` |
-|    - |  812 | `"  $top = $this->__h[0];"` |
-|    - |  813 | `"  $last = array_pop($this->__h);"` |
-|    - |  814 | `"  if( $n > 1 ){"` |
-|    - |  815 | `"   $this->__h[0] = $last;"` |
-|    - |  816 | `"   $this->__hSiftDown(0);"` |
-|    - |  817 | `"  }"` |
-|    - |  818 | `"  return $top;"` |
-|    - |  819 | `" }"` |
-|    - |  820 | `" public function top(){"` |
-|    - |  821 | `"  if( count($this->__h) === 0 ){"` |
-|    - |  822 | `"   throw new RuntimeException(\"Can't peek at an empty heap\");"` |
-|    - |  823 | `"  }"` |
-|    - |  824 | `"  return $this->__h[0];"` |
-|    - |  825 | `" }"` |
-|    - |  826 | `" public function isEmpty(){ return count($this->__h) === 0; }"` |
-|    - |  827 | `" public function count(){ return count($this->__h); }"` |
-|    - |  828 | `" public function isCorrupted(){ return false; }"` |
-|    - |  829 | `" public function recoverFromCorruption(){ return true; }"` |
-|    - |  830 | `" public function rewind(){}"` |
-|    - |  831 | `" public function valid(){ return count($this->__h) > 0; }"` |
-|    - |  832 | `" public function current(){ return count($this->__h) ? $this->__h[0] : null; }"` |
-|    - |  833 | `" public function key(){ return count($this->__h) - 1; }"` |
-|    - |  834 | `" public function next(){ if( count($this->__h) ){ $this->extract(); } }"` |
-|    - |  835 | `"}"` |
-|    - |  836 | `"class SplMinHeap extends SplHeap {"` |
-|    - |  837 | `" protected function compare($value1, $value2){ return $value2 <=> $value1; }"` |
+|    - |  762 | `" public function valid(){"` |
+|    - |  763 | `"  return $this->__i >= 0 && $this->__i < count($this->__q);"` |
+|    - |  764 | `" }"` |
+|    - |  765 | `" public function current(){ return $this->__q[$this->__i] ?? null; }"` |
+|    - |  766 | `" public function key(){ return $this->__i; }"` |
+|    - |  767 | `" public function next(){"` |
+|    - |  768 | `"  if( $this->__mode & 1 ){"` |
+|    - |  769 | `"   /* IT_MODE_DELETE consumes the element just visited */"` |
+|    - |  770 | `"   if( $this->__mode & 2 ){ array_pop($this->__q); $this->__i = count($this->__q) - 1; }"` |
+|    - |  771 | `"   else { array_shift($this->__q); }"` |
+|    - |  772 | `"  }else{"` |
+|    - |  773 | `"   $this->__i += ($this->__mode & 2) ? -1 : 1;"` |
+|    - |  774 | `"  }"` |
+|    - |  775 | `" }"` |
+|    - |  776 | `" public function prev(){ $this->__i += ($this->__mode & 2) ? 1 : -1; }"` |
+|    - |  777 | `"}"` |
+|    - |  778 | `"class SplStack extends SplDoublyLinkedList {}"` |
+|    - |  779 | `"class SplQueue extends SplDoublyLinkedList {"` |
+|    - |  780 | `" public function enqueue($value){ $this->push($value); }"` |
+|    - |  781 | `" public function dequeue(){ return $this->shift(); }"` |
+|    - |  782 | `"}"` |
+|    - |  783 | `"abstract class SplHeap implements Iterator, Countable {"` |
+|    - |  784 | `" private $__h = [];"` |
+|    - |  785 | `" abstract protected function compare($value1, $value2);"` |
+|    - |  786 | `" private function __hSiftUp($i){"` |
+|    - |  787 | `"  while( $i > 0 ){"` |
+|    - |  788 | `"   $p = ($i - 1) >> 1;"` |
+|    - |  789 | `"   if( $this->compare($this->__h[$i], $this->__h[$p]) <= 0 ){ break; }"` |
+|    - |  790 | `"   $t = $this->__h[$p]; $this->__h[$p] = $this->__h[$i]; $this->__h[$i] = $t;"` |
+|    - |  791 | `"   $i = $p;"` |
+|    - |  792 | `"  }"` |
+|    - |  793 | `" }"` |
+|    - |  794 | `" private function __hSiftDown($i){"` |
+|    - |  795 | `"  $n = count($this->__h);"` |
+|    - |  796 | `"  for(;;){"` |
+|    - |  797 | `"   $l = 2 * $i + 1; $r = $l + 1; $b = $i;"` |
+|    - |  798 | `"   if( $l < $n && $this->compare($this->__h[$l], $this->__h[$b]) > 0 ){ $b = $l; }"` |
+|    - |  799 | `"   if( $r < $n && $this->compare($this->__h[$r], $this->__h[$b]) > 0 ){ $b = $r; }"` |
+|    - |  800 | `"   if( $b === $i ){ break; }"` |
+|    - |  801 | `"   $t = $this->__h[$b]; $this->__h[$b] = $this->__h[$i]; $this->__h[$i] = $t;"` |
+|    - |  802 | `"   $i = $b;"` |
+|    - |  803 | `"  }"` |
+|    - |  804 | `" }"` |
+|    - |  805 | `" public function insert($value){"` |
+|    - |  806 | `"  $this->__h[] = $value;"` |
+|    - |  807 | `"  $this->__hSiftUp(count($this->__h) - 1);"` |
+|    - |  808 | `"  return true;"` |
+|    - |  809 | `" }"` |
+|    - |  810 | `" public function extract(){"` |
+|    - |  811 | `"  $n = count($this->__h);"` |
+|    - |  812 | `"  if( $n === 0 ){"` |
+|    - |  813 | `"   throw new RuntimeException(\"Can't extract from an empty heap\");"` |
+|    - |  814 | `"  }"` |
+|    - |  815 | `"  $top = $this->__h[0];"` |
+|    - |  816 | `"  $last = array_pop($this->__h);"` |
+|    - |  817 | `"  if( $n > 1 ){"` |
+|    - |  818 | `"   $this->__h[0] = $last;"` |
+|    - |  819 | `"   $this->__hSiftDown(0);"` |
+|    - |  820 | `"  }"` |
+|    - |  821 | `"  return $top;"` |
+|    - |  822 | `" }"` |
+|    - |  823 | `" public function top(){"` |
+|    - |  824 | `"  if( count($this->__h) === 0 ){"` |
+|    - |  825 | `"   throw new RuntimeException(\"Can't peek at an empty heap\");"` |
+|    - |  826 | `"  }"` |
+|    - |  827 | `"  return $this->__h[0];"` |
+|    - |  828 | `" }"` |
+|    - |  829 | `" public function isEmpty(){ return count($this->__h) === 0; }"` |
+|    - |  830 | `" public function count(){ return count($this->__h); }"` |
+|    - |  831 | `" public function isCorrupted(){ return false; }"` |
+|    - |  832 | `" public function recoverFromCorruption(){ return true; }"` |
+|    - |  833 | `" public function rewind(){}"` |
+|    - |  834 | `" public function valid(){ return count($this->__h) > 0; }"` |
+|    - |  835 | `" public function current(){ return count($this->__h) ? $this->__h[0] : null; }"` |
+|    - |  836 | `" public function key(){ return count($this->__h) - 1; }"` |
+|    - |  837 | `" public function next(){ if( count($this->__h) ){ $this->extract(); } }"` |
 |    - |  838 | `"}"` |
-|    - |  839 | `"class SplMaxHeap extends SplHeap {"` |
-|    - |  840 | `" protected function compare($value1, $value2){ return $value1 <=> $value2; }"` |
+|    - |  839 | `"class SplMinHeap extends SplHeap {"` |
+|    - |  840 | `" protected function compare($value1, $value2){ return $value2 <=> $value1; }"` |
 |    - |  841 | `"}"` |
-|    - |  842 | `"class SplPriorityQueue implements Iterator, Countable {"` |
-|    - |  843 | `" const EXTR_DATA = 1;"` |
-|    - |  844 | `" const EXTR_PRIORITY = 2;"` |
-|    - |  845 | `" const EXTR_BOTH = 3;"` |
-|    - |  846 | `" private $__h = [];"` |
-|    - |  847 | `" private $__serial = PHP_INT_MAX;"` |
-|    - |  848 | `" private $__flags = 1;"` |
-|    - |  849 | `" public function compare($priority1, $priority2){ return $priority1 <=> $priority2; }"` |
-|    - |  850 | `" private function __pqCmp($a, $b){"` |
-|    - |  851 | `"  /* NO tie-break: php's heap swaps only on strictly-greater, which fixes"` |
-|    - |  852 | `"   * the (documented-as-undefined) equal-priority order it exhibits */"` |
-|    - |  853 | `"  return $this->compare($a[0], $b[0]);"` |
-|    - |  854 | `" }"` |
-|    - |  855 | `" private function __pqSiftUp($i){"` |
-|    - |  856 | `"  while( $i > 0 ){"` |
-|    - |  857 | `"   $p = ($i - 1) >> 1;"` |
-|    - |  858 | `"   if( $this->__pqCmp($this->__h[$i], $this->__h[$p]) <= 0 ){ break; }"` |
-|    - |  859 | `"   $t = $this->__h[$p]; $this->__h[$p] = $this->__h[$i]; $this->__h[$i] = $t;"` |
-|    - |  860 | `"   $i = $p;"` |
-|    - |  861 | `"  }"` |
-|    - |  862 | `" }"` |
-|    - |  863 | `" private function __pqSiftDown($i){"` |
-|    - |  864 | `"  $n = count($this->__h);"` |
-|    - |  865 | `"  for(;;){"` |
-|    - |  866 | `"   $l = 2 * $i + 1; $r = $l + 1; $b = $i;"` |
-|    - |  867 | `"   if( $l < $n && $this->__pqCmp($this->__h[$l], $this->__h[$b]) > 0 ){ $b = $l; }"` |
-|    - |  868 | `"   if( $r < $n && $this->__pqCmp($this->__h[$r], $this->__h[$b]) > 0 ){ $b = $r; }"` |
-|    - |  869 | `"   if( $b === $i ){ break; }"` |
-|    - |  870 | `"   $t = $this->__h[$b]; $this->__h[$b] = $this->__h[$i]; $this->__h[$i] = $t;"` |
-|    - |  871 | `"   $i = $b;"` |
-|    - |  872 | `"  }"` |
-|    - |  873 | `" }"` |
-|    - |  874 | `" public function insert($value, $priority){"` |
-|    - |  875 | `"  $this->__h[] = [$priority, $this->__serial--, $value];"` |
-|    - |  876 | `"  $this->__pqSiftUp(count($this->__h) - 1);"` |
-|    - |  877 | `"  return true;"` |
-|    - |  878 | `" }"` |
-|    - |  879 | `" private function __pqShape($node){"` |
-|    - |  880 | `"  if( $this->__flags === self::EXTR_BOTH ){"` |
-|    - |  881 | `"   return ['data' => $node[2], 'priority' => $node[0]];"` |
-|    - |  882 | `"  }"` |
-|    - |  883 | `"  if( $this->__flags === self::EXTR_PRIORITY ){ return $node[0]; }"` |
-|    - |  884 | `"  return $node[2];"` |
-|    - |  885 | `" }"` |
-|    - |  886 | `" public function extract(){"` |
-|    - |  887 | `"  $n = count($this->__h);"` |
-|    - |  888 | `"  if( $n === 0 ){"` |
-|    - |  889 | `"   throw new RuntimeException(\"Can't extract from an empty heap\");"` |
-|    - |  890 | `"  }"` |
-|    - |  891 | `"  $top = $this->__h[0];"` |
-|    - |  892 | `"  $last = array_pop($this->__h);"` |
-|    - |  893 | `"  if( $n > 1 ){"` |
-|    - |  894 | `"   $this->__h[0] = $last;"` |
-|    - |  895 | `"   $this->__pqSiftDown(0);"` |
-|    - |  896 | `"  }"` |
-|    - |  897 | `"  return $this->__pqShape($top);"` |
-|    - |  898 | `" }"` |
-|    - |  899 | `" public function top(){"` |
-|    - |  900 | `"  if( count($this->__h) === 0 ){"` |
-|    - |  901 | `"   throw new RuntimeException(\"Can't peek at an empty heap\");"` |
-|    - |  902 | `"  }"` |
-|    - |  903 | `"  return $this->__pqShape($this->__h[0]);"` |
-|    - |  904 | `" }"` |
-|    - |  905 | `" public function setExtractFlags($flags){ $this->__flags = (int)$flags; }"` |
-|    - |  906 | `" public function getExtractFlags(){ return $this->__flags; }"` |
-|    - |  907 | `" public function isEmpty(){ return count($this->__h) === 0; }"` |
-|    - |  908 | `" public function count(){ return count($this->__h); }"` |
-|    - |  909 | `" public function isCorrupted(){ return false; }"` |
-|    - |  910 | `" public function recoverFromCorruption(){ return true; }"` |
-|    - |  911 | `" public function rewind(){}"` |
-|    - |  912 | `" public function valid(){ return count($this->__h) > 0; }"` |
-|    - |  913 | `" public function current(){ return count($this->__h) ? $this->__pqShape($this->__h[0]) : null; }"` |
-|    - |  914 | `" public function key(){ return count($this->__h) - 1; }"` |
-|    - |  915 | `" public function next(){ if( count($this->__h) ){ $this->extract(); } }"` |
-|    - |  916 | `"}"` |
-|    - |  917 | `"class SplFixedArray implements ArrayAccess, Countable, IteratorAggregate, JsonSerializable {"` |
-|    - |  918 | `" private $__a = [];"` |
-|    - |  919 | `" private $__n = 0;"` |
-|    - |  920 | `" public function __construct($size = 0){"` |
-|    - |  921 | `"  $this->setSize((int)$size);"` |
-|    - |  922 | `" }"` |
-|    - |  923 | `" private function __faIdx($index, $method){"` |
-|    - |  924 | `"  if( !is_int($index) ){"` |
-|    - |  925 | `"   if( is_string($index) && ctype_digit($index) ){"` |
-|    - |  926 | `"    $index = (int)$index;"` |
-|    - |  927 | `"   }else{"` |
-|    - |  928 | `"    throw new TypeError('Cannot access offset of type ' . get_debug_type($index)"` |
-|    - |  929 | `"     . ' on SplFixedArray');"` |
-|    - |  930 | `"   }"` |
-|    - |  931 | `"  }"` |
-|    - |  932 | `"  if( $index < 0 \|\| $index >= $this->__n ){"` |
-|    - |  933 | `"   throw new OutOfBoundsException('Index invalid or out of range');"` |
+|    - |  842 | `"class SplMaxHeap extends SplHeap {"` |
+|    - |  843 | `" protected function compare($value1, $value2){ return $value1 <=> $value2; }"` |
+|    - |  844 | `"}"` |
+|    - |  845 | `"class SplPriorityQueue implements Iterator, Countable {"` |
+|    - |  846 | `" const EXTR_DATA = 1;"` |
+|    - |  847 | `" const EXTR_PRIORITY = 2;"` |
+|    - |  848 | `" const EXTR_BOTH = 3;"` |
+|    - |  849 | `" private $__h = [];"` |
+|    - |  850 | `" private $__serial = PHP_INT_MAX;"` |
+|    - |  851 | `" private $__flags = 1;"` |
+|    - |  852 | `" public function compare($priority1, $priority2){ return $priority1 <=> $priority2; }"` |
+|    - |  853 | `" private function __pqCmp($a, $b){"` |
+|    - |  854 | `"  /* NO tie-break: php's heap swaps only on strictly-greater, which fixes"` |
+|    - |  855 | `"   * the (documented-as-undefined) equal-priority order it exhibits */"` |
+|    - |  856 | `"  return $this->compare($a[0], $b[0]);"` |
+|    - |  857 | `" }"` |
+|    - |  858 | `" private function __pqSiftUp($i){"` |
+|    - |  859 | `"  while( $i > 0 ){"` |
+|    - |  860 | `"   $p = ($i - 1) >> 1;"` |
+|    - |  861 | `"   if( $this->__pqCmp($this->__h[$i], $this->__h[$p]) <= 0 ){ break; }"` |
+|    - |  862 | `"   $t = $this->__h[$p]; $this->__h[$p] = $this->__h[$i]; $this->__h[$i] = $t;"` |
+|    - |  863 | `"   $i = $p;"` |
+|    - |  864 | `"  }"` |
+|    - |  865 | `" }"` |
+|    - |  866 | `" private function __pqSiftDown($i){"` |
+|    - |  867 | `"  $n = count($this->__h);"` |
+|    - |  868 | `"  for(;;){"` |
+|    - |  869 | `"   $l = 2 * $i + 1; $r = $l + 1; $b = $i;"` |
+|    - |  870 | `"   if( $l < $n && $this->__pqCmp($this->__h[$l], $this->__h[$b]) > 0 ){ $b = $l; }"` |
+|    - |  871 | `"   if( $r < $n && $this->__pqCmp($this->__h[$r], $this->__h[$b]) > 0 ){ $b = $r; }"` |
+|    - |  872 | `"   if( $b === $i ){ break; }"` |
+|    - |  873 | `"   $t = $this->__h[$b]; $this->__h[$b] = $this->__h[$i]; $this->__h[$i] = $t;"` |
+|    - |  874 | `"   $i = $b;"` |
+|    - |  875 | `"  }"` |
+|    - |  876 | `" }"` |
+|    - |  877 | `" public function insert($value, $priority){"` |
+|    - |  878 | `"  $this->__h[] = [$priority, $this->__serial--, $value];"` |
+|    - |  879 | `"  $this->__pqSiftUp(count($this->__h) - 1);"` |
+|    - |  880 | `"  return true;"` |
+|    - |  881 | `" }"` |
+|    - |  882 | `" private function __pqShape($node){"` |
+|    - |  883 | `"  if( $this->__flags === self::EXTR_BOTH ){"` |
+|    - |  884 | `"   return ['data' => $node[2], 'priority' => $node[0]];"` |
+|    - |  885 | `"  }"` |
+|    - |  886 | `"  if( $this->__flags === self::EXTR_PRIORITY ){ return $node[0]; }"` |
+|    - |  887 | `"  return $node[2];"` |
+|    - |  888 | `" }"` |
+|    - |  889 | `" public function extract(){"` |
+|    - |  890 | `"  $n = count($this->__h);"` |
+|    - |  891 | `"  if( $n === 0 ){"` |
+|    - |  892 | `"   throw new RuntimeException(\"Can't extract from an empty heap\");"` |
+|    - |  893 | `"  }"` |
+|    - |  894 | `"  $top = $this->__h[0];"` |
+|    - |  895 | `"  $last = array_pop($this->__h);"` |
+|    - |  896 | `"  if( $n > 1 ){"` |
+|    - |  897 | `"   $this->__h[0] = $last;"` |
+|    - |  898 | `"   $this->__pqSiftDown(0);"` |
+|    - |  899 | `"  }"` |
+|    - |  900 | `"  return $this->__pqShape($top);"` |
+|    - |  901 | `" }"` |
+|    - |  902 | `" public function top(){"` |
+|    - |  903 | `"  if( count($this->__h) === 0 ){"` |
+|    - |  904 | `"   throw new RuntimeException(\"Can't peek at an empty heap\");"` |
+|    - |  905 | `"  }"` |
+|    - |  906 | `"  return $this->__pqShape($this->__h[0]);"` |
+|    - |  907 | `" }"` |
+|    - |  908 | `" public function setExtractFlags($flags){ $this->__flags = (int)$flags; }"` |
+|    - |  909 | `" public function getExtractFlags(){ return $this->__flags; }"` |
+|    - |  910 | `" public function isEmpty(){ return count($this->__h) === 0; }"` |
+|    - |  911 | `" public function count(){ return count($this->__h); }"` |
+|    - |  912 | `" public function isCorrupted(){ return false; }"` |
+|    - |  913 | `" public function recoverFromCorruption(){ return true; }"` |
+|    - |  914 | `" public function rewind(){}"` |
+|    - |  915 | `" public function valid(){ return count($this->__h) > 0; }"` |
+|    - |  916 | `" public function current(){ return count($this->__h) ? $this->__pqShape($this->__h[0]) : null; }"` |
+|    - |  917 | `" public function key(){ return count($this->__h) - 1; }"` |
+|    - |  918 | `" public function next(){ if( count($this->__h) ){ $this->extract(); } }"` |
+|    - |  919 | `"}"` |
+|    - |  920 | `"class SplFixedArray implements ArrayAccess, Countable, IteratorAggregate, JsonSerializable {"` |
+|    - |  921 | `" private $__a = [];"` |
+|    - |  922 | `" private $__n = 0;"` |
+|    - |  923 | `" public function __construct($size = 0){"` |
+|    - |  924 | `"  $this->setSize((int)$size);"` |
+|    - |  925 | `" }"` |
+|    - |  926 | `" private function __faIdx($index, $method){"` |
+|    - |  927 | `"  if( !is_int($index) ){"` |
+|    - |  928 | `"   if( is_string($index) && ctype_digit($index) ){"` |
+|    - |  929 | `"    $index = (int)$index;"` |
+|    - |  930 | `"   }else{"` |
+|    - |  931 | `"    throw new TypeError('Cannot access offset of type ' . get_debug_type($index)"` |
+|    - |  932 | `"     . ' on SplFixedArray');"` |
+|    - |  933 | `"   }"` |
 |    - |  934 | `"  }"` |
-|    - |  935 | `"  return $index;"` |
-|    - |  936 | `" }"` |
-|    - |  937 | `" public function offsetExists($index){"` |
-|    - |  938 | `"  if( !is_int($index) && !(is_string($index) && ctype_digit($index)) ){ return false; }"` |
-|    - |  939 | `"  $index = (int)$index;"` |
-|    - |  940 | `"  return $index >= 0 && $index < $this->__n && $this->__a[$index] !== null;"` |
-|    - |  941 | `" }"` |
-|    - |  942 | `" public function offsetGet($index){ return $this->__a[$this->__faIdx($index, 'offsetGet')]; }"` |
-|    - |  943 | `" public function offsetSet($index, $value){ $this->__a[$this->__faIdx($index, 'offsetSet')] = $value; }"` |
-|    - |  944 | `" public function offsetUnset($index){ $this->__a[$this->__faIdx($index, 'offsetUnset')] = null; }"` |
-|    - |  945 | `" public function getSize(){ return $this->__n; }"` |
-|    - |  946 | `" public function setSize($size){"` |
-|    - |  947 | `"  $size = (int)$size;"` |
-|    - |  948 | `"  if( $size < 0 ){"` |
-|    - |  949 | `"   throw new ValueError('SplFixedArray::setSize(): Argument #1 ($size) must be"` |
-|    - |  950 | `" greater than or equal to 0');"` |
-|    - |  951 | `"  }"` |
-|    - |  952 | `"  if( $size < $this->__n ){"` |
-|    - |  953 | `"   $this->__a = array_slice($this->__a, 0, $size);"` |
-|    - |  954 | `"  }else{"` |
-|    - |  955 | `"   for( $i = $this->__n; $i < $size; $i++ ){ $this->__a[$i] = null; }"` |
-|    - |  956 | `"  }"` |
-|    - |  957 | `"  $this->__n = $size;"` |
-|    - |  958 | `"  return true;"` |
-|    - |  959 | `" }"` |
-|    - |  960 | `" public function count(){ return $this->__n; }"` |
-|    - |  961 | `" public function toArray(){ return $this->__a; }"` |
-|    - |  962 | `" public static function fromArray($array, $preserveKeys = true){"` |
-|    - |  963 | `"  $f = new SplFixedArray(0);"` |
-|    - |  964 | `"  if( $preserveKeys ){"` |
-|    - |  965 | `"   $max = -1;"` |
-|    - |  966 | `"   foreach( $array as $k => $v ){"` |
-|    - |  967 | `"    if( !is_int($k) \|\| $k < 0 ){"` |
-|    - |  968 | `"     throw new InvalidArgumentException('array must contain only positive integer keys');"` |
-|    - |  969 | `"    }"` |
-|    - |  970 | `"    if( $k > $max ){ $max = $k; }"` |
-|    - |  971 | `"   }"` |
-|    - |  972 | `"   $f->setSize($max + 1);"` |
-|    - |  973 | `"   foreach( $array as $k => $v ){ $f[$k] = $v; }"` |
-|    - |  974 | `"  }else{"` |
-|    - |  975 | `"   $vals = array_values($array);"` |
-|    - |  976 | `"   $f->setSize(count($vals));"` |
-|    - |  977 | `"   foreach( $vals as $k => $v ){ $f[$k] = $v; }"` |
-|    - |  978 | `"  }"` |
-|    - |  979 | `"  return $f;"` |
-|    - |  980 | `" }"` |
-|    - |  981 | `" public function getIterator(): Generator {"` |
-|    - |  982 | `"  for( $i = 0; $i < $this->__n; $i++ ){ yield $i => $this->__a[$i]; }"` |
+|    - |  935 | `"  if( $index < 0 \|\| $index >= $this->__n ){"` |
+|    - |  936 | `"   throw new OutOfBoundsException('Index invalid or out of range');"` |
+|    - |  937 | `"  }"` |
+|    - |  938 | `"  return $index;"` |
+|    - |  939 | `" }"` |
+|    - |  940 | `" public function offsetExists($index){"` |
+|    - |  941 | `"  if( !is_int($index) && !(is_string($index) && ctype_digit($index)) ){ return false; }"` |
+|    - |  942 | `"  $index = (int)$index;"` |
+|    - |  943 | `"  return $index >= 0 && $index < $this->__n && $this->__a[$index] !== null;"` |
+|    - |  944 | `" }"` |
+|    - |  945 | `" public function offsetGet($index){ return $this->__a[$this->__faIdx($index, 'offsetGet')]; }"` |
+|    - |  946 | `" public function offsetSet($index, $value){ $this->__a[$this->__faIdx($index, 'offsetSet')] = $value; }"` |
+|    - |  947 | `" public function offsetUnset($index){ $this->__a[$this->__faIdx($index, 'offsetUnset')] = null; }"` |
+|    - |  948 | `" public function getSize(){ return $this->__n; }"` |
+|    - |  949 | `" public function setSize($size){"` |
+|    - |  950 | `"  $size = (int)$size;"` |
+|    - |  951 | `"  if( $size < 0 ){"` |
+|    - |  952 | `"   throw new ValueError('SplFixedArray::setSize(): Argument #1 ($size) must be"` |
+|    - |  953 | `" greater than or equal to 0');"` |
+|    - |  954 | `"  }"` |
+|    - |  955 | `"  if( $size < $this->__n ){"` |
+|    - |  956 | `"   $this->__a = array_slice($this->__a, 0, $size);"` |
+|    - |  957 | `"  }else{"` |
+|    - |  958 | `"   for( $i = $this->__n; $i < $size; $i++ ){ $this->__a[$i] = null; }"` |
+|    - |  959 | `"  }"` |
+|    - |  960 | `"  $this->__n = $size;"` |
+|    - |  961 | `"  return true;"` |
+|    - |  962 | `" }"` |
+|    - |  963 | `" public function count(){ return $this->__n; }"` |
+|    - |  964 | `" public function toArray(){ return $this->__a; }"` |
+|    - |  965 | `" public static function fromArray($array, $preserveKeys = true){"` |
+|    - |  966 | `"  $f = new SplFixedArray(0);"` |
+|    - |  967 | `"  if( $preserveKeys ){"` |
+|    - |  968 | `"   $max = -1;"` |
+|    - |  969 | `"   foreach( $array as $k => $v ){"` |
+|    - |  970 | `"    if( !is_int($k) \|\| $k < 0 ){"` |
+|    - |  971 | `"     throw new InvalidArgumentException('array must contain only positive integer keys');"` |
+|    - |  972 | `"    }"` |
+|    - |  973 | `"    if( $k > $max ){ $max = $k; }"` |
+|    - |  974 | `"   }"` |
+|    - |  975 | `"   $f->setSize($max + 1);"` |
+|    - |  976 | `"   foreach( $array as $k => $v ){ $f[$k] = $v; }"` |
+|    - |  977 | `"  }else{"` |
+|    - |  978 | `"   $vals = array_values($array);"` |
+|    - |  979 | `"   $f->setSize(count($vals));"` |
+|    - |  980 | `"   foreach( $vals as $k => $v ){ $f[$k] = $v; }"` |
+|    - |  981 | `"  }"` |
+|    - |  982 | `"  return $f;"` |
 |    - |  983 | `" }"` |
-|    - |  984 | `" public function jsonSerialize(){ return $this->__a; }"` |
-|    - |  985 | `"}"` |
-|    - |  986 | `"class SplObjectStorage implements Countable, Iterator, ArrayAccess {"` |
-|    - |  987 | `" private $__o = [];"` |
-|    - |  988 | `" private $__i = 0;"` |
-|    - |  989 | `" public function attach($object, $info = null){"` |
-|    - |  990 | `"  __spl_deprecated('Method SplObjectStorage::attach() is deprecated since 8.5, use"` |
-|    - |  991 | `" method SplObjectStorage::offsetSet() instead');"` |
-|    - |  992 | `"  $this->offsetSet($object, $info);"` |
-|    - |  993 | `" }"` |
-|    - |  994 | `" public function detach($object){"` |
-|    - |  995 | `"  __spl_deprecated('Method SplObjectStorage::detach() is deprecated since 8.5, use"` |
-|    - |  996 | `" method SplObjectStorage::offsetUnset() instead');"` |
-|    - |  997 | `"  $this->offsetUnset($object);"` |
-|    - |  998 | `" }"` |
-|    - |  999 | `" public function contains($object){"` |
-|    - | 1000 | `"  __spl_deprecated('Method SplObjectStorage::contains() is deprecated since 8.5, use"` |
-|    - | 1001 | `" method SplObjectStorage::offsetExists() instead');"` |
-|    - | 1002 | `"  return $this->offsetExists($object);"` |
-|    - | 1003 | `" }"` |
-|    - | 1004 | `" public function offsetSet($object, $info = null){"` |
-|    - | 1005 | `"  $this->__o[spl_object_id($object)] = [$object, $info];"` |
+|    - |  984 | `" public function getIterator(): Generator {"` |
+|    - |  985 | `"  for( $i = 0; $i < $this->__n; $i++ ){ yield $i => $this->__a[$i]; }"` |
+|    - |  986 | `" }"` |
+|    - |  987 | `" public function jsonSerialize(){ return $this->__a; }"` |
+|    - |  988 | `"}"` |
+|    - |  989 | `"class SplObjectStorage implements Countable, Iterator, ArrayAccess {"` |
+|    - |  990 | `" private $__o = [];"` |
+|    - |  991 | `" private $__i = 0;"` |
+|    - |  992 | `" public function attach($object, $info = null){"` |
+|    - |  993 | `"  __spl_deprecated('Method SplObjectStorage::attach() is deprecated since 8.5, use"` |
+|    - |  994 | `" method SplObjectStorage::offsetSet() instead');"` |
+|    - |  995 | `"  $this->offsetSet($object, $info);"` |
+|    - |  996 | `" }"` |
+|    - |  997 | `" public function detach($object){"` |
+|    - |  998 | `"  __spl_deprecated('Method SplObjectStorage::detach() is deprecated since 8.5, use"` |
+|    - |  999 | `" method SplObjectStorage::offsetUnset() instead');"` |
+|    - | 1000 | `"  $this->offsetUnset($object);"` |
+|    - | 1001 | `" }"` |
+|    - | 1002 | `" public function contains($object){"` |
+|    - | 1003 | `"  __spl_deprecated('Method SplObjectStorage::contains() is deprecated since 8.5, use"` |
+|    - | 1004 | `" method SplObjectStorage::offsetExists() instead');"` |
+|    - | 1005 | `"  return $this->offsetExists($object);"` |
 |    - | 1006 | `" }"` |
-|    - | 1007 | `" public function offsetExists($object){"` |
-|    - | 1008 | `"  return isset($this->__o[spl_object_id($object)]);"` |
+|    - | 1007 | `" public function offsetSet($object, $info = null){"` |
+|    - | 1008 | `"  $this->__o[spl_object_id($object)] = [$object, $info];"` |
 |    - | 1009 | `" }"` |
-|    - | 1010 | `" public function offsetGet($object){"` |
-|    - | 1011 | `"  $id = spl_object_id($object);"` |
-|    - | 1012 | `"  if( !isset($this->__o[$id]) ){"` |
-|    - | 1013 | `"   throw new UnexpectedValueException('Object not found');"` |
-|    - | 1014 | `"  }"` |
-|    - | 1015 | `"  return $this->__o[$id][1];"` |
-|    - | 1016 | `" }"` |
-|    - | 1017 | `" public function offsetUnset($object){"` |
-|    - | 1018 | `"  unset($this->__o[spl_object_id($object)]);"` |
+|    - | 1010 | `" public function offsetExists($object){"` |
+|    - | 1011 | `"  return isset($this->__o[spl_object_id($object)]);"` |
+|    - | 1012 | `" }"` |
+|    - | 1013 | `" public function offsetGet($object){"` |
+|    - | 1014 | `"  $id = spl_object_id($object);"` |
+|    - | 1015 | `"  if( !isset($this->__o[$id]) ){"` |
+|    - | 1016 | `"   throw new UnexpectedValueException('Object not found');"` |
+|    - | 1017 | `"  }"` |
+|    - | 1018 | `"  return $this->__o[$id][1];"` |
 |    - | 1019 | `" }"` |
-|    - | 1020 | `" public function addAll($storage){"` |
-|    - | 1021 | `"  foreach( $storage as $obj ){"` |
-|    - | 1022 | `"   $this->offsetSet($obj, $storage[$obj]);"` |
-|    - | 1023 | `"  }"` |
-|    - | 1024 | `"  return $this->count();"` |
-|    - | 1025 | `" }"` |
-|    - | 1026 | `" public function removeAll($storage){"` |
-|    - | 1027 | `"  foreach( $storage as $obj ){ $this->offsetUnset($obj); }"` |
-|    - | 1028 | `"  return $this->count();"` |
-|    - | 1029 | `" }"` |
-|    - | 1030 | `" public function removeAllExcept($storage){"` |
-|    - | 1031 | `"  foreach( $this->__o as $id => $pair ){"` |
-|    - | 1032 | `"   if( !$storage->offsetExists($pair[0]) ){ unset($this->__o[$id]); }"` |
-|    - | 1033 | `"  }"` |
-|    - | 1034 | `"  return $this->count();"` |
-|    - | 1035 | `" }"` |
-|    - | 1036 | `" public function getHash($object){ return spl_object_hash($object); }"` |
-|    - | 1037 | `" public function count($mode = 0){ return count($this->__o); }"` |
-|    - | 1038 | `" public function getInfo(){"` |
-|    - | 1039 | `"  $pair = array_values($this->__o)[$this->__i] ?? null;"` |
-|    - | 1040 | `"  return $pair === null ? null : $pair[1];"` |
-|    - | 1041 | `" }"` |
-|    - | 1042 | `" public function setInfo($info){"` |
-|    - | 1043 | `"  $keys = array_keys($this->__o);"` |
-|    - | 1044 | `"  if( isset($keys[$this->__i]) ){ $this->__o[$keys[$this->__i]][1] = $info; }"` |
-|    - | 1045 | `" }"` |
-|    - | 1046 | `" public function rewind(){ $this->__i = 0; }"` |
-|    - | 1047 | `" public function valid(){ return $this->__i < count($this->__o); }"` |
-|    - | 1048 | `" public function key(){ return $this->__i; }"` |
-|    - | 1049 | `" public function current(){"` |
-|    - | 1050 | `"  $pair = array_values($this->__o)[$this->__i] ?? null;"` |
-|    - | 1051 | `"  return $pair === null ? null : $pair[0];"` |
-|    - | 1052 | `" }"` |
-|    - | 1053 | `" public function next(){ $this->__i++; }"` |
-|    - | 1054 | `"}"` |
-|    - | 1055 | `"interface SplObserver {"` |
-|    - | 1056 | `" public function update(SplSubject $subject);"` |
+|    - | 1020 | `" public function offsetUnset($object){"` |
+|    - | 1021 | `"  unset($this->__o[spl_object_id($object)]);"` |
+|    - | 1022 | `" }"` |
+|    - | 1023 | `" public function addAll($storage){"` |
+|    - | 1024 | `"  foreach( $storage as $obj ){"` |
+|    - | 1025 | `"   $this->offsetSet($obj, $storage[$obj]);"` |
+|    - | 1026 | `"  }"` |
+|    - | 1027 | `"  return $this->count();"` |
+|    - | 1028 | `" }"` |
+|    - | 1029 | `" public function removeAll($storage){"` |
+|    - | 1030 | `"  foreach( $storage as $obj ){ $this->offsetUnset($obj); }"` |
+|    - | 1031 | `"  return $this->count();"` |
+|    - | 1032 | `" }"` |
+|    - | 1033 | `" public function removeAllExcept($storage){"` |
+|    - | 1034 | `"  foreach( $this->__o as $id => $pair ){"` |
+|    - | 1035 | `"   if( !$storage->offsetExists($pair[0]) ){ unset($this->__o[$id]); }"` |
+|    - | 1036 | `"  }"` |
+|    - | 1037 | `"  return $this->count();"` |
+|    - | 1038 | `" }"` |
+|    - | 1039 | `" public function getHash($object){ return spl_object_hash($object); }"` |
+|    - | 1040 | `" public function count($mode = 0){ return count($this->__o); }"` |
+|    - | 1041 | `" public function getInfo(){"` |
+|    - | 1042 | `"  $pair = array_values($this->__o)[$this->__i] ?? null;"` |
+|    - | 1043 | `"  return $pair === null ? null : $pair[1];"` |
+|    - | 1044 | `" }"` |
+|    - | 1045 | `" public function setInfo($info){"` |
+|    - | 1046 | `"  $keys = array_keys($this->__o);"` |
+|    - | 1047 | `"  if( isset($keys[$this->__i]) ){ $this->__o[$keys[$this->__i]][1] = $info; }"` |
+|    - | 1048 | `" }"` |
+|    - | 1049 | `" public function rewind(){ $this->__i = 0; }"` |
+|    - | 1050 | `" public function valid(){ return $this->__i < count($this->__o); }"` |
+|    - | 1051 | `" public function key(){ return $this->__i; }"` |
+|    - | 1052 | `" public function current(){"` |
+|    - | 1053 | `"  $pair = array_values($this->__o)[$this->__i] ?? null;"` |
+|    - | 1054 | `"  return $pair === null ? null : $pair[0];"` |
+|    - | 1055 | `" }"` |
+|    - | 1056 | `" public function next(){ $this->__i++; }"` |
 |    - | 1057 | `"}"` |
-|    - | 1058 | `"interface SplSubject {"` |
-|    - | 1059 | `" public function attach(SplObserver $observer);"` |
-|    - | 1060 | `" public function detach(SplObserver $observer);"` |
-|    - | 1061 | `" public function notify();"` |
-|    - | 1062 | `"}"` |
-|    - | 1063 | `;` |
-|    - | 1064 |  |
-| 3946 | 1065 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)` |
-|    5 | 1066 | `{` |
-| 3951 | 1067 | `	ph7_create_function(&(*pVm),"__spl_deprecated",vm_builtin_spl_deprecated,0);` |
-| 3951 | 1068 | `	ph7_create_function(&(*pVm),"__weak_create",vm_builtin_weak_create,0);` |
-| 3951 | 1069 | `	ph7_create_function(&(*pVm),"__weak_get",vm_builtin_weak_get,0);` |
-| 3951 | 1070 | `	ph7_create_function(&(*pVm),"__weak_drop",vm_builtin_weak_drop,0);` |
-| 3951 | 1071 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zSplLib,sizeof(zSplLib)-1);` |
-|    5 | 1072 | `}` |
-|    - | 1073 |  |
-|    - | 1074 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
-|    - | 1075 |  |
-|    - | 1076 | `#ifdef PH7_DISABLE_BUILTIN_FUNC` |
-|    - | 1077 | `/* Tiny build: no SPL (builtin layer disabled) */` |
-|    - | 1078 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm){ (void)pVm; return SXRET_OK; }` |
-|    - | 1079 | `#endif` |
-|    - | 1080 |  |
+|    - | 1058 | `"interface SplObserver {"` |
+|    - | 1059 | `" public function update(SplSubject $subject);"` |
+|    - | 1060 | `"}"` |
+|    - | 1061 | `"interface SplSubject {"` |
+|    - | 1062 | `" public function attach(SplObserver $observer);"` |
+|    - | 1063 | `" public function detach(SplObserver $observer);"` |
+|    - | 1064 | `" public function notify();"` |
+|    - | 1065 | `"}"` |
+|    - | 1066 | `;` |
+|    - | 1067 |  |
+| 3946 | 1068 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)` |
+|    5 | 1069 | `{` |
+| 3951 | 1070 | `	ph7_create_function(&(*pVm),"__spl_deprecated",vm_builtin_spl_deprecated,0);` |
+| 3951 | 1071 | `	ph7_create_function(&(*pVm),"__weak_create",vm_builtin_weak_create,0);` |
+| 3951 | 1072 | `	ph7_create_function(&(*pVm),"__weak_get",vm_builtin_weak_get,0);` |
+| 3951 | 1073 | `	ph7_create_function(&(*pVm),"__weak_drop",vm_builtin_weak_drop,0);` |
+| 3951 | 1074 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zSplLib,sizeof(zSplLib)-1);` |
+|    5 | 1075 | `}` |
+|    - | 1076 |  |
+|    - | 1077 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
+|    - | 1078 |  |
+|    - | 1079 | `#ifdef PH7_DISABLE_BUILTIN_FUNC` |
+|    - | 1080 | `/* Tiny build: no SPL (builtin layer disabled) */` |
+|    - | 1081 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm){ (void)pVm; return SXRET_OK; }` |
+|    - | 1082 | `#endif` |
+|    - | 1083 |  |
