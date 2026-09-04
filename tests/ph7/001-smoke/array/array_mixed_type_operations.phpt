@@ -3,8 +3,7 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Array operations with mixed key and value types
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+
 --FILE--
 <?php
 /* Test array with mixed types to exercise hashmap with different data */
@@ -30,10 +29,12 @@ echo "Empty key false_key: " . (empty($a["false_key"]) ? 'yes' : 'no') . "\n";
 
 echo "Test completed\n";
 ?>
---EXPECT--
+--EXPECTF--
+Error [8192]: Implicit conversion from float 2.5 to int loses precision in %s on line %d
 Count: 5
 Key zero: string
 Key one: 42
+Error [8192]: Implicit conversion from float 2.5 to int loses precision in %s on line %d
 Key 2.5: true
 Key null_key: array
 Key false_key: null

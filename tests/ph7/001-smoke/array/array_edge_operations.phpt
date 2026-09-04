@@ -3,8 +3,7 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Array edge operations
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+
 --FILE--
 <?php
 // Test array operations that might trigger edge cases in hashmap
@@ -35,9 +34,10 @@ $large_key = str_repeat("x", 100);
 $array[$large_key] = "large";
 var_dump(isset($array[$large_key])); // Should be true
 ?>
---EXPECT--
+--EXPECTF--
 int(0)
 bool(true)
+Error [8192]: Implicit conversion from float 2.5 to int loses precision in %s on line %d
 int(3)
 bool(true)
 bool(true)

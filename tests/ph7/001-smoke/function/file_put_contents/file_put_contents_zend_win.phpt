@@ -1,19 +1,19 @@
 --CREDITS--
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
+--SKIPIF--
+<?php
+// Windows-only semantics: this asserts a MANDATORY file lock (write fails with
+// EACCES). POSIX locks are advisory, so the write succeeds on every unix — the
+// test is about the platform, not the engine. My guard-lift sweep wrongly
+// unskipped it because both engines AGREE here; agreement is not the same as
+// passing the expectation.
+if (PHP_OS !== 'WINNT' || !function_exists('zend_version')) { echo 'skip Windows-only: POSIX locks are advisory'; }
+?>
 --TEST--
 Test file_put_contents()
 Compatibility test with Zend PHP on Windows
---SKIPIF--
-<?php
 
-if (PHP_OS !== 'WINNT' || !function_exists('zend_version')) {
-    echo "skip: platform";
-}
-if (!function_exists('file_put_contents') || !function_exists('flock') || !function_exists('fopen')) {
-    echo 'skip: file functions not available';
-}
-?>
 --FILE--
 <?php
 
