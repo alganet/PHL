@@ -1760,8 +1760,15 @@ static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)
 			}
 			return SXRET_OK;
 		}
-		/* Compile indice value */
-		rc = GenStateCompileArrayEntry(&(*pGen),pCur,pGen->pIn,EXPR_FLAG_RDONLY_LOAD/*Do not create the variable if inexistant*/,xValidator);
+		/* Compile indice value. A BY-REF element (`'k' => &$a[$i]`) is an
+		 * lvalue: php VIVIFIES a missing subscript when a reference is taken,
+		 * so compile it in write context (LOAD_IDX iP2=1, create-if-missing)
+		 * instead of a read-only load — which also keeps the undefined-key
+		 * warning (a read-only diagnostic) from false-firing here. */
+		rc = GenStateCompileArrayEntry(&(*pGen),pCur,pGen->pIn,
+			iEmitRef ? EXPR_FLAG_LOAD_IDX_STORE
+			         : EXPR_FLAG_RDONLY_LOAD/*Do not create the variable if inexistant*/,
+			xValidator);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}

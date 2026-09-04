@@ -10,7 +10,8 @@ array access with non-existent int key
 $a = array();
 echo $a[0];
 ?>
---EXPECT--
+--EXPECTF--
+Error [2]: Undefined array key 0 in %s on line %d
 --CLEAN--
 <?php
 unset($a);
