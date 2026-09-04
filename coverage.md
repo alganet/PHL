@@ -15,9 +15,9 @@
 | src/ph7/parse.c                | 87.38%   | 1163/1331   |
 | src/ph7/vfs.c                  | 67.26%   | 2361/3510   |
 | src/ph7/vfs_unix.c             | 87.87%   | 384/437     |
-| src/ph7/vfs_win.c              | 79.72%   | 566/710     |
+| src/ph7/vfs_win.c              | 80.14%   | 569/710     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
-| src/ph7/vm.c                   | 82.62%   | 10999/13313 |
+| src/ph7/vm.c                   | 82.65%   | 11022/13336 |
 | src/ph7/vm_builtin_class.c     | 87.44%   | 564/645     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
 | src/ph7/vm_builtin_ini.c       | 95.45%   | 21/22       |
@@ -49,5 +49,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.51%   | 45409/55710 |
-| Functions                      | 96.25%   | 2081/2162   |
+| Lines                          | 81.52%   | 45435/55733 |
+| Functions                      | 96.26%   | 2082/2163   |

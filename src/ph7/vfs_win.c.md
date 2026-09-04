@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 566/710 lines (79.72%)
+Coverage: 569/710 lines (80.14%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -850,10 +850,10 @@ Coverage: 566/710 lines (79.72%)
 |    - |  840 | ` * returns false. (php has no chroot symbol at all; PHL exposes it as an extension` |
 |    - |  841 | ` * and this reports the failure without a "not implemented in the VFS" warning.) */` |
 |    - |  842 | `static int WinVfs_chroot(const char *zPath)` |
-|  ! 0 |  843 | `{` |
+|    1 |  843 | `{` |
 |    - |  844 | `	(void)zPath;` |
-|  ! 0 |  845 | `	return -1;` |
-|  ! 0 |  846 | `}` |
+|    1 |  845 | `	return -1;` |
+|    1 |  846 | `}` |
 |    - |  847 | `#ifndef SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE` |
 |    - |  848 | `#define SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE 0x2` |
 |    - |  849 | `#endif` |
