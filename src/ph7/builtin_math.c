@@ -1013,8 +1013,19 @@ PH7_PRIVATE int PH7_builtin_intdiv(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 	}
 	/* Convert both arguments to int64 */
-	a = ph7_value_to_int64(apArg[0]);
-	b = ph7_value_to_int64(apArg[1]);
+	{
+		/* php's ZPP contract for the two int params (lossy float / float-string
+		 * deprecations); the manual type checks above already covered arrays,
+		 * objects and non-numeric strings with the same messages. */
+		sxi32 rcArg = PH7_IntArgResolve(pCtx,apArg[0],"intdiv",1,"$num1","int",&a);
+		if( rcArg != PH7_OK ){
+			return rcArg;
+		}
+		rcArg = PH7_IntArgResolve(pCtx,apArg[1],"intdiv",2,"$num2","int",&b);
+		if( rcArg != PH7_OK ){
+			return rcArg;
+		}
+	}
 	/* Check for division by zero */
 	if( b == 0 ){
 		return PH7_VmThrowException(pCtx,

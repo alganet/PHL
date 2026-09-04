@@ -2241,6 +2241,12 @@ PH7_PRIVATE int PH7_builtin_mktime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 PH7_PRIVATE int PH7_builtin_date_default_timezone_get(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_date_default_timezone_set(ph7_context *pCtx,int nArg,ph7_value **apArg);
 /* builtin_mb.c (UTF-8-only mb_* family) */
+/* Shared ZPP helper: resolve an `int`-typed parameter with php's full contract
+ * (null deprecation, lossy float / float-string deprecations, TypeErrors for
+ * NAN/INF/non-numeric). Builtins with int params should use it instead of a
+ * bare ph7_value_to_int64(), which coerces silently. */
+PH7_PRIVATE sxi32 PH7_IntArgResolve(ph7_context *pCtx,ph7_value *pArg,const char *zFunc,
+	int iArgNum,const char *zParamName,const char *zTypeStr,sxi64 *pOut);
 PH7_PRIVATE int PH7_builtin_mb_strlen_f(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_mb_substr_f(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_mb_case_f(ph7_context *pCtx,int nArg,ph7_value **apArg);
