@@ -10405,6 +10405,14 @@ case PH7_OP_LOAD_IDX: {
 		}
 	}
 	rc = SXERR_NOTFOUND; /* Assume the index is invalid */
+	if( (pTos->iFlags & MEMOBJ_HASHMAP) && pIdx && (pIdx->iFlags & MEMOBJ_NULL)
+	 && pInstr->iP2 != 5 /* unset() is the ONLY silent context (probed) */ ){
+		/* php 8.1: a NULL subscript normalizes to the empty-string key, with a
+		 * deprecation — on reads, writes, isset()/empty() and `??` alike; only
+		 * unset() stays quiet. PHL already normalized it, it just never said so. */
+		VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,
+			"Using null as an array offset is deprecated, use an empty string instead");
+	}
 	if( pTos->iFlags & MEMOBJ_HASHMAP ){
 		if( pInstr->iP2 == 1 || pInstr->iP2 == 5 ){
 			/* Write-context access (iP2 = create-if-missing).  COW-separate
@@ -10464,14 +10472,35 @@ case PH7_OP_LOAD_IDX: {
 			}
 		}
 	}
-	if( rc != SXRET_OK && pInstr->iP2 == 2 && pIdx ){
-		/* List destructuring context: emit PHP-compatible warning for missing key */
-		char zMsg[128];
-		if( (pIdx->iFlags & MEMOBJ_INT) == 0 ){
-			PH7_MemObjToInteger(pIdx);
+	if( rc != SXRET_OK && pIdx && (pInstr->iP2 == 2 || pInstr->iP2 == 0)
+	 && (pTos->iFlags & MEMOBJ_HASHMAP)
+	 && !((pInstr+1)->iOp == PH7_OP_NULLC || (pInstr+1)->iOp == PH7_OP_NULLC_JMP) ){
+		/* `$a['k'] ?? $d` compiles its LHS as a plain read (iP2 == 0) followed
+		 * by NULLC/NULLC_JMP — php does NOT warn there, so peek ahead and stay
+		 * silent (same guard the magic-accessor read path uses). */
+		/* php warns when a missing key is READ (iP2 == 0) or destructured
+		 * (iP2 == 2). isset/empty/??/unset (iP2 3-6) and write-context
+		 * vivification (iP2 == 1) stay silent, as does a read on a non-array
+		 * base (already diagnosed above). php prints an INT key bare and a
+		 * STRING key quoted. */
+		SyBlob sMsg;
+		SyBlobInit(&sMsg,&pVm->sAllocator);
+		if( pIdx->iFlags & (MEMOBJ_STRING|MEMOBJ_BOOL|MEMOBJ_NULL) ){
+			SyString sKey;
+			if( (pIdx->iFlags & MEMOBJ_STRING) == 0 ){
+				PH7_MemObjToString(pIdx);
+			}
+			SyStringInitFromBuf(&sKey,SyBlobData(&pIdx->sBlob),SyBlobLength(&pIdx->sBlob));
+			SyBlobFormat(&sMsg,"Undefined array key \"%z\"",&sKey);
+		}else{
+			if( (pIdx->iFlags & MEMOBJ_INT) == 0 ){
+				PH7_MemObjToInteger(pIdx);
+			}
+			SyBlobFormat(&sMsg,"Undefined array key %qd",pIdx->x.iVal);
 		}
-		SyBufferFormat(zMsg,sizeof(zMsg),"Undefined array key %d",(int)pIdx->x.iVal);
-		PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,zMsg);
+		SyBlobNullAppend(&sMsg);
+		PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,(const char *)SyBlobData(&sMsg));
+		SyBlobRelease(&sMsg);
 	}
 	if( pIdx ){
 		PH7_MemObjRelease(pIdx);
@@ -10832,6 +10861,13 @@ case PH7_OP_STORE_IDX_REF: {
 		pTos--;
 	}else{
 		pKey = 0;
+	}
+	if( pKey && (pKey->iFlags & MEMOBJ_NULL) && (pTos->iFlags & MEMOBJ_HASHMAP) ){
+		/* php 8.1: writing through a NULL subscript normalizes to the
+		 * empty-string key, with a deprecation (the matching READ path lives
+		 * in OP_LOAD_IDX — array writes never pass through it). */
+		VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,
+			"Using null as an array offset is deprecated, use an empty string instead");
 	}
 	nIdx = pTos->nIdx;
 	{

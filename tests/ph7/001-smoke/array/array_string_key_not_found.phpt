@@ -10,7 +10,8 @@ array access with non-existent string key
 $a = array('key' => 'value');
 echo $a['nonexistent'];
 ?>
---EXPECT--
+--EXPECTF--
+Error [2]: Undefined array key "nonexistent" in %s on line %d
 --CLEAN--
 <?php
 unset($a);

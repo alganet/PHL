@@ -68,9 +68,10 @@ echo "Numeric string keys array: " . count($numeric_strings) . " elements\n";
 
 echo "Array edge case operations test completed\n";
 ?>
---EXPECT--
+--EXPECTF--
 Large array created with 3000 elements
 Test array after insertions/deletions: 162 elements
+Error [8192]: Using null as an array offset is deprecated, use an empty string instead in %s on line %d
 Edge keys array: 3 elements
 Nested array created
 Merged array: 200 elements
