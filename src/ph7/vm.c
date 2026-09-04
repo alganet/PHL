@@ -5326,6 +5326,25 @@ PH7_PRIVATE sxi32 PH7_ContextMemoryError(ph7_context *pCtx)
 	return PH7_VmMemoryError(pCtx->pVm);
 }
 /*
+ * php 8.1: a FLOAT array subscript truncates to int, and deprecates when that
+ * loses precision (an integral float like 2.0 is silent). Fires in every
+ * subscript context — read, write, isset/empty, ?? and even unset (probed).
+ */
+static void VmDeprecateFloatKey(ph7_vm *pVm,ph7_value *pKey)
+{
+	double r;
+	if( pKey == 0 || (pKey->iFlags & MEMOBJ_REAL) == 0 ){
+		return;
+	}
+	r = (double)pKey->rVal;
+	if( r == (double)(sxi64)r ){
+		/* integral value: no precision is lost */
+		return;
+	}
+	VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,
+		"Implicit conversion from float %g to int loses precision",r);
+}
+/*
  * Single source of truth for the PHP call-depth cap policy (BYTECODE.md stage
  * 5). Only OP_CALL tests this — a PHP->PHP call is the sole thing that grows
  * nRecursionDepth. Native re-entries (eval/include, coroutine start/resume,
@@ -10405,6 +10424,10 @@ case PH7_OP_LOAD_IDX: {
 		}
 	}
 	rc = SXERR_NOTFOUND; /* Assume the index is invalid */
+	if( (pTos->iFlags & MEMOBJ_HASHMAP) && pIdx ){
+		/* float subscript → int truncation deprecation (all contexts) */
+		VmDeprecateFloatKey(&(*pVm),pIdx);
+	}
 	if( (pTos->iFlags & MEMOBJ_HASHMAP) && pIdx && (pIdx->iFlags & MEMOBJ_NULL)
 	 && pInstr->iP2 != 5 /* unset() is the ONLY silent context (probed) */ ){
 		/* php 8.1: a NULL subscript normalizes to the empty-string key, with a
@@ -10861,6 +10884,9 @@ case PH7_OP_STORE_IDX_REF: {
 		pTos--;
 	}else{
 		pKey = 0;
+	}
+	if( pKey && (pTos->iFlags & MEMOBJ_HASHMAP) ){
+		VmDeprecateFloatKey(&(*pVm),pKey);
 	}
 	if( pKey && (pKey->iFlags & MEMOBJ_NULL) && (pTos->iFlags & MEMOBJ_HASHMAP) ){
 		/* php 8.1: writing through a NULL subscript normalizes to the

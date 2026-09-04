@@ -3,11 +3,7 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 error_log basic functionality
---SKIPIF--
-<?php
-if (!function_exists('error_log')) { echo 'skip: error_log not available'; }
-if (function_exists('zend_version')) { echo 'skip'; }
-?>
+
 --FILE--
 <?php
 $result = error_log("Test error message");

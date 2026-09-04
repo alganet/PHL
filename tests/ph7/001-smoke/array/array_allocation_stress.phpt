@@ -3,8 +3,7 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Array operations under allocation stress
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+
 --FILE--
 <?php
 // Test allocation failure paths in hashmap operations
@@ -35,9 +34,10 @@ echo "Mixed keys operation completed\n";
 
 echo "All allocation stress tests passed\n";
 ?>
---EXPECT--
+--EXPECTF--
 Flip operation completed
 Merge operation completed
+Error [8192]: Implicit conversion from float 1.5 to int loses precision in %s on line %d
 Mixed keys operation completed
 All allocation stress tests passed
 --CLEAN--
