@@ -4,7 +4,12 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 array_erase should clear the content of the array
 --SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+<?php
+// PHL extension: `array_erase()` does not exist in php (it is an added API surface,
+// allowed by the section 10 scope policy as a documented PHL extension —
+// it does not change the meaning of valid php source). Engine-specific by design.
+if (function_exists('zend_version')) { echo 'skip PHL extension: array_erase() is not a php symbol'; }
+?>
 --FILE--
 <?php
 $a = array('x' => 1, 'y' => 2);

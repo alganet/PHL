@@ -4,7 +4,12 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 PH7: implode_recursive missing argument returns NULL
 --SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+<?php
+// PHL extension: `implode_recursive()` does not exist in php (it is an added API surface,
+// allowed by the section 10 scope policy as a documented PHL extension —
+// it does not change the meaning of valid php source). Engine-specific by design.
+if (function_exists('zend_version')) { echo 'skip PHL extension: implode_recursive() is not a php symbol'; }
+?>
 --FILE--
 <?php
 if (implode_recursive() === null) {

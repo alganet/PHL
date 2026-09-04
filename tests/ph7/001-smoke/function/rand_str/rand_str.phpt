@@ -5,9 +5,10 @@ SPDX-License-Identifier: BSD-3-Clause
 rand_str returns a string with requested length and default length on invalid argument
 --SKIPIF--
 <?php
-if (function_exists('zend_version')) {
-    echo "skip";
-}
+// PHL extension: `rand_str()` does not exist in php (it is an added API surface,
+// allowed by the section 10 scope policy as a documented PHL extension —
+// it does not change the meaning of valid php source). Engine-specific by design.
+if (function_exists('zend_version')) { echo 'skip PHL extension: rand_str() is not a php symbol'; }
 ?>
 --FILE--
 <?php
