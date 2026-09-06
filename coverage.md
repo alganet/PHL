@@ -1,13 +1,13 @@
 | Filename                       | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
 | src/ph7/api.c                  | 70.86%   | 778/1098    |
-| src/ph7/builtin.c              | 86.49%   | 4348/5027   |
+| src/ph7/builtin.c              | 86.54%   | 4359/5037   |
 | src/ph7/builtin_date.c         | 73.04%   | 1192/1632   |
-| src/ph7/builtin_math.c         | 87.35%   | 525/601     |
+| src/ph7/builtin_math.c         | 87.11%   | 527/605     |
 | src/ph7/builtin_mb.c           | 90.77%   | 354/390     |
 | src/ph7/compile.c              | 80.79%   | 7055/8732   |
 | src/ph7/constant.c             | 97.44%   | 1144/1174   |
-| src/ph7/hashmap.c              | 90.53%   | 3996/4414   |
+| src/ph7/hashmap.c              | 90.52%   | 3999/4418   |
 | src/ph7/lex.c                  | 93.26%   | 789/846     |
 | src/ph7/memobj.c               | 88.57%   | 891/1006    |
 | src/ph7/net.c                  | 57.45%   | 81/141      |
@@ -49,5 +49,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.52%   | 45435/55733 |
+| Lines                          | 81.52%   | 45451/55751 |
 | Functions                      | 96.26%   | 2082/2163   |

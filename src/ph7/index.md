@@ -1,19 +1,19 @@
 # src/ph7/
 
-Coverage: 41761/51073 lines (81.77%)
+Coverage: 41777/51091 lines (81.77%)
 
 [Up](../index.md)
 
 | Name | Rate | Hit/Total |
 |:---|---:|---:|
 |[api.c](api.c.md)|70.86%|778/1098|
-|[builtin.c](builtin.c.md)|86.49%|4348/5027|
+|[builtin.c](builtin.c.md)|86.54%|4359/5037|
 |[builtin_date.c](builtin_date.c.md)|73.04%|1192/1632|
-|[builtin_math.c](builtin_math.c.md)|87.35%|525/601|
+|[builtin_math.c](builtin_math.c.md)|87.11%|527/605|
 |[builtin_mb.c](builtin_mb.c.md)|90.77%|354/390|
 |[compile.c](compile.c.md)|80.79%|7055/8732|
 |[constant.c](constant.c.md)|97.44%|1144/1174|
-|[hashmap.c](hashmap.c.md)|90.53%|3996/4414|
+|[hashmap.c](hashmap.c.md)|90.52%|3999/4418|
 |[lex.c](lex.c.md)|93.26%|789/846|
 |[memobj.c](memobj.c.md)|88.57%|891/1006|
 |[net.c](net.c.md)|57.45%|81/141|

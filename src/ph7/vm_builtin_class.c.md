@@ -252,8 +252,8 @@ Coverage: 564/645 lines (87.44%)
 |    36 |  242 | `		}` |
 |    77 |  243 | `		if( pEntry == 0 && nLen > 0 && iAutoload ){` |
 |     - |  244 | `			/* Try autoload, then re-check */` |
-|    23 |  245 | `			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,(sxu32)nLen,FALSE);` |
-|    23 |  246 | `			if( pClass ){` |
+|    22 |  245 | `			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,(sxu32)nLen,FALSE);` |
+|    22 |  246 | `			if( pClass ){` |
 |     6 |  247 | `				pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);` |
 |     2 |  248 | `			}` |
 |     9 |  249 | `		}` |
