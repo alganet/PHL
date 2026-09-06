@@ -10,8 +10,10 @@ hexdec handles non-hex prefix characters correctly
 echo hexdec('x1a') . "\n";  // 'x' is non-hex, '1a' should be converted
 echo hexdec('0xFF') . "\n";  // '0x' prefix, 'FF' should be converted
 ?>
---EXPECT--
+--EXPECTF--
+Error [8192]: Invalid characters passed for attempted conversion, these have been ignored in %s on line %d
 26
+Error [8192]: Invalid characters passed for attempted conversion, these have been ignored in %s on line %d
 255
 --CLEAN--
 <?php

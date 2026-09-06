@@ -335,6 +335,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallForeignFunction(
 		 * — otherwise an embedder overriding a listed builtin (e.g. a 1-arg
 		 * custom "substr") would inherit the old ArgumentCountError threshold. */
 		pFunc->nMinArg  = 0;
+		pFunc->zDeprecated = 0;
 		pFunc->bAtLeast = 0;
 		return SXRET_OK;
 	}
@@ -3571,9 +3572,39 @@ static const struct VmBuiltinSig {
  * Stamp the signature strings onto the registered host functions.
  * Runs once at PH7_VmMakeReady, after the builtins are registered.
  */
+/*
+ * Builtins php has DEPRECATED (the whole function, not an argument shape). The
+ * notice is a property of the function name, so it is emitted once at the
+ * OP_CALL choke point rather than smeared across each C implementation.
+ * Texts are php 8.5's, byte-for-byte.
+ */
+static const struct {
+	const char *zName;
+	const char *zMsg;
+} aBuiltinDeprecated[] = {
+	{ "zip_open",  "Function zip_open() is deprecated since 8.0, use ZipArchive::open() instead" },
+	{ "zip_close", "Function zip_close() is deprecated since 8.0, use ZipArchive::close() instead" },
+	{ "zip_read",  "Function zip_read() is deprecated since 8.0, use ZipArchive::statIndex() instead" },
+	{ "zip_entry_open",  "Function zip_entry_open() is deprecated since 8.0" },
+	{ "zip_entry_close", "Function zip_entry_close() is deprecated since 8.0" },
+	{ "zip_entry_name",  "Function zip_entry_name() is deprecated since 8.0, use ZipArchive::statIndex() instead" },
+	{ "zip_entry_read",  "Function zip_entry_read() is deprecated since 8.0, use ZipArchive::getFromIndex() instead" },
+	{ "zip_entry_filesize", "Function zip_entry_filesize() is deprecated since 8.0, use ZipArchive::statIndex() instead" },
+	{ "zip_entry_compressedsize", "Function zip_entry_compressedsize() is deprecated since 8.0, use ZipArchive::statIndex() instead" },
+	{ "zip_entry_compressionmethod", "Function zip_entry_compressionmethod() is deprecated since 8.0, use ZipArchive::statIndex() instead" },
+	{ "xml_parser_free", "Function xml_parser_free() is deprecated since 8.5, as it has no effect since PHP 8.0" },
+};
 static void VmSetBuiltinSignatures(ph7_vm *pVm)
 {
 	sxu32 n;
+	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltinDeprecated) ; n++ ){
+		SyHashEntry *pE = SyHashGet(&pVm->hHostFunction,
+			(const void *)aBuiltinDeprecated[n].zName,
+			(sxu32)SyStrlen(aBuiltinDeprecated[n].zName));
+		if( pE ){
+			((ph7_user_func *)pE->pUserData)->zDeprecated = aBuiltinDeprecated[n].zMsg;
+		}
+	}
 	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltinSig) ; n++ ){
 		SyHashEntry *pEntry = SyHashGet(&pVm->hHostFunction,
 			(const void *)aBuiltinSig[n].zName,(sxu32)SyStrlen(aBuiltinSig[n].zName));
@@ -11158,10 +11189,13 @@ case PH7_OP_INCR:
 			ph7_value *pObj;
 			if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
 				if( VmStringWantsPerlIncr(pObj) ){
-					/* Perl-style string increment.
+					/* Perl-style string increment. php 8.3 deprecates it (it points
+					 * at str_increment() instead) — the BEHAVIOUR is unchanged.
 					 * Post-increment: pTos may alias pObj's buffer via SXBLOB_RDONLY
 					 * (set by PH7_MemObjLoad).  Force ownership so the upcoming
 					 * mutation of pObj doesn't bleed into pTos's old-value view. */
+					VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,
+						"Increment on non-numeric string is deprecated, use str_increment() instead");
 					if( pInstr->iP1 == 0 ){
 						SyBlobNullAppend(&pTos->sBlob);
 					}
@@ -11296,7 +11330,10 @@ case PH7_OP_DECR:
 				if( VmStringWantsPerlIncr(pObj) ){
 					/* PHP has no string decrement: `--` on a non-numeric string
 					 * is a no-op (unlike `++`, which is Perl-style). Leave pObj
-					 * unchanged; the result is simply that unchanged value. */
+					 * unchanged; the result is simply that unchanged value.
+					 * php 8.3 deprecates the no-op itself. */
+					VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,
+						"Decrement on non-numeric string has no effect and is deprecated");
 					if( pInstr->iP1 ){
 						/* Pre-decrement: result is the (unchanged) value. */
 						PH7_MemObjStore(pObj,pTos);
@@ -17468,6 +17505,10 @@ SkipFuncBody:
 				pFunc->nMinArg == 1 ? "" : "s",
 				nGiven);
 		}else{
+			if( pFunc->zDeprecated ){
+				/* php deprecates this builtin outright */
+				VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,"%s",pFunc->zDeprecated);
+			}
 			/* Call the foreign function */
 			rc = pFunc->xFunc(&sCtx,nGiven,(ph7_value **)SySetBasePtr(&aArg));
 		}

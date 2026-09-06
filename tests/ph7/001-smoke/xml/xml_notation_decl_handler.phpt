@@ -28,8 +28,9 @@ function notation_handler($parser, $notation_name, $base, $system_id, $public_id
 
 xml_parser_free($parser);
 ?>
---EXPECT--
+--EXPECTF--
 Notation handler set successfully
+Error [8192]: Function xml_parser_free() is deprecated since 8.5, as it has no effect since PHP 8.0 in %s on line %d
 --CLEAN--
 <?php
 unset($parser);

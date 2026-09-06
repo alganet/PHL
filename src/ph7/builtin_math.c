@@ -1134,6 +1134,7 @@ static void MathBaseToNumber(ph7_context *pCtx,const char *zStr,int nLen,int bas
 	int mode = 0;       /* 0 -> integer accumulation, 1 -> switched to float */
 	sxi64 cutoff = SXI64_HIGH / base;      /* PHP_INT_MAX / base */
 	int cutlim = (int)(SXI64_HIGH % base); /* PHP_INT_MAX % base */
+	int bIgnored = 0;   /* any character skipped below? php deprecates that */
 	int i;
 	for( i = 0 ; i < nLen ; ++i ){
 		int c = (unsigned char)zStr[i];
@@ -1144,9 +1145,11 @@ static void MathBaseToNumber(ph7_context *pCtx,const char *zStr,int nLen,int bas
 		}else if( c >= 'a' && c <= 'z' ){
 			c -= 'a' - 10;
 		}else{
+			bIgnored = 1;
 			continue; /* Not a digit character: skip */
 		}
 		if( c >= base ){
+			bIgnored = 1;
 			continue; /* Digit out of range for this base: skip */
 		}
 		if( mode == 0 ){
@@ -1160,6 +1163,12 @@ static void MathBaseToNumber(ph7_context *pCtx,const char *zStr,int nLen,int bas
 			mode = 1;
 		}
 		fnum = fnum * base + c;
+	}
+	if( bIgnored ){
+		/* php 8: characters that are not valid digits for this base are skipped,
+		 * and the skipping itself is deprecated (the VALUE is unaffected). */
+		PH7_VmThrowDeprecatedFmt(pCtx->pVm,
+			"Invalid characters passed for attempted conversion, these have been ignored");
 	}
 	if( mode == 1 ){
 		ph7_result_double(pCtx,fnum);

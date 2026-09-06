@@ -30,8 +30,13 @@ zip_entry_close($entry);
 zip_close($res);
 unlink($fn);
 ?>
---EXPECT--
+--EXPECTF--
+Error [8192]: Function zip_open() is deprecated since 8.0, use ZipArchive::open() instead in %s on line %d
+Error [8192]: Function zip_read() is deprecated since 8.0, use ZipArchive::statIndex() instead in %s on line %d
+Error [8192]: Function zip_entry_compressionmethod() is deprecated since 8.0, use ZipArchive::statIndex() instead in %s on line %d
 ok
+Error [8192]: Function zip_entry_close() is deprecated since 8.0 in %s on line %d
+Error [8192]: Function zip_close() is deprecated since 8.0, use ZipArchive::close() instead in %s on line %d
 --CLEAN--
 <?php
 unset($fn, $zip_b64, $bin, $res, $entry, $method);

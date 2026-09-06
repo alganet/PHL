@@ -21,11 +21,12 @@ echo "Parse result: $result\n";
 function start_element($parser, $name, $attrs) { echo "Start: $name\n"; }
 function end_element($parser, $name) { echo "End: $name\n"; }
 ?>
---EXPECT--
+--EXPECTF--
 Start: root
 Start: tag
 End: tag
 End: root
+Error [8192]: Function xml_parser_free() is deprecated since 8.5, as it has no effect since PHP 8.0 in %s on line %d
 Parse result: 1
 --CLEAN--
 <?php

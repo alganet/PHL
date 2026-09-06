@@ -19,7 +19,8 @@ if ($result === 255) {
     echo "FAIL\n";
 }
 ?>
---EXPECT--
+--EXPECTF--
+Error [8192]: Invalid characters passed for attempted conversion, these have been ignored in %s on line %d
 hexdec('ñFF') = 255
 Expected: 255 (0xFF)
 PASS
