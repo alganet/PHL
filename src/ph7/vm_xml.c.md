@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 392/578 lines (67.82%)
+Coverage: 395/578 lines (68.34%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -681,24 +681,24 @@ Coverage: 392/578 lines (67.82%)
 |    - |  671 | `	ph7_xml_engine *pEngine;` |
 |    3 |  672 | `	if( nArg < 2 \|\| !ph7_value_is_resource(apArg[0]) \|\| !ph7_value_is_object(apArg[1]) ){` |
 |    - |  673 | `		/* Missing/Ivalid argument,return FALSE */` |
-|    3 |  674 | `		ph7_result_bool(pCtx,0);` |
-|    3 |  675 | `		return PH7_OK;` |
+|  ! 0 |  674 | `		ph7_result_bool(pCtx,0);` |
+|  ! 0 |  675 | `		return PH7_OK;` |
 |    - |  676 | `	}` |
 |    - |  677 | `	/* Point to the XML engine */` |
-|  ! 0 |  678 | `	pEngine = (ph7_xml_engine *)ph7_value_to_resource(apArg[0]);` |
-|  ! 0 |  679 | `	if( IS_INVALID_XML_ENGINE(pEngine) ){` |
+|    3 |  678 | `	pEngine = (ph7_xml_engine *)ph7_value_to_resource(apArg[0]);` |
+|    3 |  679 | `	if( IS_INVALID_XML_ENGINE(pEngine) ){` |
 |    - |  680 | `		/* Corrupt engine,return FALSE */` |
 |  ! 0 |  681 | `		ph7_result_bool(pCtx,0);` |
 |  ! 0 |  682 | `		return PH7_OK;` |
 |    - |  683 | `	}` |
 |    - |  684 | `	/*  Throw a notice and return */` |
-|  ! 0 |  685 | `	ph7_context_throw_error(pCtx,PH7_CTX_NOTICE,"This function is depreceated and is a no-op."` |
+|    3 |  685 | `	ph7_context_throw_error(pCtx,PH7_CTX_NOTICE,"This function is depreceated and is a no-op."` |
 |    - |  686 | `		"In order to mimic this behaviour,you can supply instead of a function name an array "` |
 |    - |  687 | `		"containing an object reference and a method name."` |
 |    - |  688 | `		);` |
 |    - |  689 | `	/* Return FALSE */` |
-|  ! 0 |  690 | `	ph7_result_bool(pCtx,0);` |
-|  ! 0 |  691 | `	return PH7_OK;` |
+|    3 |  690 | `	ph7_result_bool(pCtx,0);` |
+|    3 |  691 | `	return PH7_OK;` |
 |    2 |  692 | `}` |
 |    - |  693 | `/*` |
 |    - |  694 | ` * int xml_get_current_column_number(resource $parser)` |

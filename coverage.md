@@ -1,24 +1,24 @@
 | Filename                       | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
 | src/ph7/api.c                  | 70.86%   | 778/1098    |
-| src/ph7/builtin.c              | 86.54%   | 4359/5037   |
-| src/ph7/builtin_date.c         | 73.04%   | 1192/1632   |
-| src/ph7/builtin_math.c         | 87.23%   | 533/611     |
+| src/ph7/builtin.c              | 85.27%   | 4295/5037   |
+| src/ph7/builtin_date.c         | 72.90%   | 1189/1631   |
+| src/ph7/builtin_math.c         | 84.94%   | 519/611     |
 | src/ph7/builtin_mb.c           | 90.77%   | 354/390     |
-| src/ph7/compile.c              | 80.79%   | 7055/8732   |
+| src/ph7/compile.c              | 80.80%   | 7058/8735   |
 | src/ph7/constant.c             | 97.44%   | 1144/1174   |
-| src/ph7/hashmap.c              | 90.53%   | 4007/4426   |
+| src/ph7/hashmap.c              | 88.70%   | 3926/4426   |
 | src/ph7/lex.c                  | 93.26%   | 789/846     |
-| src/ph7/memobj.c               | 88.57%   | 891/1006    |
+| src/ph7/memobj.c               | 88.47%   | 890/1006    |
 | src/ph7/net.c                  | 57.45%   | 81/141      |
 | src/ph7/oo.c                   | 88.07%   | 694/788     |
-| src/ph7/parse.c                | 87.38%   | 1163/1331   |
-| src/ph7/vfs.c                  | 67.26%   | 2361/3510   |
+| src/ph7/parse.c                | 87.04%   | 1169/1343   |
+| src/ph7/vfs.c                  | 66.64%   | 2339/3510   |
 | src/ph7/vfs_unix.c             | 87.87%   | 384/437     |
 | src/ph7/vfs_win.c              | 80.14%   | 569/710     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
-| src/ph7/vm.c                   | 82.67%   | 11036/13350 |
-| src/ph7/vm_builtin_class.c     | 87.44%   | 564/645     |
+| src/ph7/vm.c                   | 82.83%   | 11205/13527 |
+| src/ph7/vm_builtin_class.c     | 86.24%   | 564/654     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
 | src/ph7/vm_builtin_ini.c       | 95.45%   | 21/22       |
 | src/ph7/vm_builtin_ob.c        | 75.12%   | 157/209     |
@@ -30,7 +30,7 @@
 | src/ph7/vm_json.c              | 77.92%   | 494/634     |
 | src/ph7/vm_pcre.c              | 65.87%   | 604/917     |
 | src/ph7/vm_serialize.c         | 96.02%   | 458/477     |
-| src/ph7/vm_xml.c               | 67.82%   | 392/578     |
+| src/ph7/vm_xml.c               | 68.34%   | 395/578     |
 | src/phl/phl.c                  | 78.75%   | 278/353     |
 | src/phl/server.c               | 62.82%   | 299/476     |
 | src/sx/sxblowfish.c            | 98.82%   | 168/170     |
@@ -49,5 +49,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.53%   | 45479/55779 |
-| Functions                      | 96.26%   | 2082/2163   |
+| Lines                          | 81.24%   | 45475/55979 |
+| Functions                      | 96.22%   | 2086/2168   |

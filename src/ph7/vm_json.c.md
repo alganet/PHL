@@ -1076,99 +1076,101 @@ Coverage: 494/634 lines (77.92%)
 |    - | 1066 | `	int nByte;` |
 |   40 | 1067 | `	int iAssoc = 0;` |
 |   40 | 1068 | `	int nDepth = 32;` |
-|   40 | 1069 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
-|    - | 1070 | `		/* Missing/Invalid arguments, return NULL */` |
-|  ! 0 | 1071 | `		ph7_result_null(pCtx);` |
-|  ! 0 | 1072 | `		return PH7_OK;` |
-|    - | 1073 | `	}` |
-|    - | 1074 | `	/* Extract the JSON string */` |
-|   40 | 1075 | `	zIn = ph7_value_to_string(apArg[0],&nByte);` |
-|   40 | 1076 | `	if( nByte < 1 ){` |
-|    - | 1077 | `		/* Empty string,return NULL */` |
-|    6 | 1078 | `		ph7_result_null(pCtx);` |
-|    6 | 1079 | `		return PH7_OK;` |
-|    - | 1080 | `	}` |
-|   36 | 1081 | `	if( nArg > 1 && ph7_value_to_bool(apArg[1]) != 0 ){` |
-|   24 | 1082 | `		iAssoc = 1;` |
-|   11 | 1083 | `	}` |
-|   36 | 1084 | `	if( nArg > 2 && ph7_value_is_int(apArg[2]) ){` |
-|    - | 1085 | `		/* PHP 8: $depth must be in 1 .. INT_MAX (a catchable ValueError otherwise);` |
-|    - | 1086 | `		 * read as int64 so a value above INT_MAX is detected, not truncated. */` |
-|   13 | 1087 | `		ph7_int64 nWant = ph7_value_to_int64(apArg[2]);` |
-|    - | 1088 | `		/* php clears the json error state before validating $depth, so a caught` |
-|    - | 1089 | `		 * depth ValueError leaves json_last_error() == JSON_ERROR_NONE (the normal` |
-|    - | 1090 | `		 * path resets it again inside VmJsonDecodeInput). */` |
-|   13 | 1091 | `		pCtx->pVm->json_rc = JSON_ERROR_NONE;` |
-|   13 | 1092 | `		if( nWant <= 0 ){` |
-|    9 | 1093 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
-|    - | 1094 | `				"json_decode(): Argument #3 ($depth) must be greater than 0");` |
-|    - | 1095 | `		}` |
-|    5 | 1096 | `		if( nWant > 2147483647 ){` |
-|    3 | 1097 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
-|    - | 1098 | `				"json_decode(): Argument #3 ($depth) must be less than 2147483647");` |
-|    - | 1099 | `		}` |
-|    3 | 1100 | `		nDepth = (int)nWant;` |
-|    1 | 1101 | `	}` |
-|    - | 1102 | `	/* Decode the raw JSON input.The default consumer sets the decoded value as the` |
-|    - | 1103 | `	 * call-context result; on failure we replace it with NULL. */` |
-|   26 | 1104 | `	if( VmJsonDecodeInput(pCtx,zIn,nByte,iAssoc,nDepth) != JSON_ERROR_NONE ){` |
-|    - | 1105 | `		/* Something goes wrong while decoding JSON input.Return NULL. */` |
-|   12 | 1106 | `		ph7_result_null(pCtx);` |
-|    5 | 1107 | `	}` |
-|    - | 1108 | `	/* All done */` |
-|   26 | 1109 | `	return PH7_OK;` |
-|   21 | 1110 | `}` |
-|    - | 1111 | `/*` |
-|    - | 1112 | ` * bool json_validate(string $json[,int $depth = 512[,int $flags = 0]])` |
-|    - | 1113 | ` *  Validates whether a string is valid JSON without materializing a value.` |
-|    - | 1114 | ` * Parameters` |
-|    - | 1115 | ` *  $json   The string to validate.` |
-|    - | 1116 | ` *  $depth  Maximum nesting depth (clamped to the engine limit of 32).` |
-|    - | 1117 | ` *  $flags  Bitmask of decode options (currently none are implemented; accepted/ignored).` |
-|    - | 1118 | ` * Return` |
-|    - | 1119 | ` *  TRUE if the string is valid JSON, FALSE otherwise. Updates json_last_error().` |
-|    - | 1120 | ` */` |
-|   20 | 1121 | `PH7_PRIVATE int vm_builtin_json_validate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 | 1122 | `{` |
-|   21 | 1123 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    - | 1124 | `	const char *zIn;` |
-|    - | 1125 | `	int nByte;` |
-|   21 | 1126 | `	int nDepth = 32;` |
-|   21 | 1127 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
-|    - | 1128 | `		/* Missing/Invalid argument: not valid JSON */` |
-|  ! 0 | 1129 | `		pVm->json_rc = JSON_ERROR_SYNTAX;` |
-|  ! 0 | 1130 | `		ph7_result_bool(pCtx,0);` |
-|  ! 0 | 1131 | `		return PH7_OK;` |
-|    - | 1132 | `	}` |
-|    - | 1133 | `	/* Extract the JSON string */` |
-|   21 | 1134 | `	zIn = ph7_value_to_string(apArg[0],&nByte);` |
-|   21 | 1135 | `	if( nByte < 1 ){` |
-|    - | 1136 | `		/* The empty string is not valid JSON (unlike json_decode, which returns NULL` |
-|    - | 1137 | `		 * silently, json_validate must record the syntax error) */` |
-|    3 | 1138 | `		pVm->json_rc = JSON_ERROR_SYNTAX;` |
-|    3 | 1139 | `		ph7_result_bool(pCtx,0);` |
-|    3 | 1140 | `		return PH7_OK;` |
-|    - | 1141 | `	}` |
-|   19 | 1142 | `	if( nArg > 1 && ph7_value_is_int(apArg[1]) ){` |
-|    - | 1143 | `		/* PHP 8: $depth must be in 1 .. INT_MAX (a catchable ValueError otherwise). */` |
-|    9 | 1144 | `		ph7_int64 nWant = ph7_value_to_int64(apArg[1]);` |
-|    - | 1145 | `		/* Clear the json error state before validating $depth (php parity), so a` |
-|    - | 1146 | `		 * caught depth ValueError leaves json_last_error() == JSON_ERROR_NONE. */` |
-|    9 | 1147 | `		pVm->json_rc = JSON_ERROR_NONE;` |
-|    9 | 1148 | `		if( nWant <= 0 ){` |
-|    5 | 1149 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
-|    - | 1150 | `				"json_validate(): Argument #2 ($depth) must be greater than 0");` |
-|    - | 1151 | `		}` |
-|    5 | 1152 | `		if( nWant > 2147483647 ){` |
-|    3 | 1153 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
-|    - | 1154 | `				"json_validate(): Argument #2 ($depth) must be less than 2147483647");` |
-|    - | 1155 | `		}` |
-|    3 | 1156 | `		nDepth = (int)nWant;` |
-|    1 | 1157 | `	}` |
-|    - | 1158 | `	/* apArg[2] ($flags) is accepted and ignored: no decode flag is implemented.` |
-|    - | 1159 | `	 * Decode in associative mode so the "objects are returned as an array" warning is` |
-|    - | 1160 | `	 * not raised - the decoded value is discarded, only its validity matters. */` |
-|   13 | 1161 | `	ph7_result_bool(pCtx,VmJsonDecodeInput(pCtx,zIn,nByte,1,nDepth) == JSON_ERROR_NONE);` |
-|   13 | 1162 | `	return PH7_OK;` |
-|   11 | 1163 | `}` |
-|    - | 1164 |  |
+|    - | 1069 | `	/* php coerces a scalar argument to string here (weak mode); the shared ZPP` |
+|    - | 1070 | `	 * screen in vm.c has already rejected the values that cannot coerce. */` |
+|   40 | 1071 | `	if( nArg < 1 ){` |
+|    - | 1072 | `		/* Missing/Invalid arguments, return NULL */` |
+|  ! 0 | 1073 | `		ph7_result_null(pCtx);` |
+|  ! 0 | 1074 | `		return PH7_OK;` |
+|    - | 1075 | `	}` |
+|    - | 1076 | `	/* Extract the JSON string */` |
+|   40 | 1077 | `	zIn = ph7_value_to_string(apArg[0],&nByte);` |
+|   40 | 1078 | `	if( nByte < 1 ){` |
+|    - | 1079 | `		/* Empty string,return NULL */` |
+|    6 | 1080 | `		ph7_result_null(pCtx);` |
+|    6 | 1081 | `		return PH7_OK;` |
+|    - | 1082 | `	}` |
+|   36 | 1083 | `	if( nArg > 1 && ph7_value_to_bool(apArg[1]) != 0 ){` |
+|   24 | 1084 | `		iAssoc = 1;` |
+|   11 | 1085 | `	}` |
+|   36 | 1086 | `	if( nArg > 2 && ph7_value_is_int(apArg[2]) ){` |
+|    - | 1087 | `		/* PHP 8: $depth must be in 1 .. INT_MAX (a catchable ValueError otherwise);` |
+|    - | 1088 | `		 * read as int64 so a value above INT_MAX is detected, not truncated. */` |
+|   13 | 1089 | `		ph7_int64 nWant = ph7_value_to_int64(apArg[2]);` |
+|    - | 1090 | `		/* php clears the json error state before validating $depth, so a caught` |
+|    - | 1091 | `		 * depth ValueError leaves json_last_error() == JSON_ERROR_NONE (the normal` |
+|    - | 1092 | `		 * path resets it again inside VmJsonDecodeInput). */` |
+|   13 | 1093 | `		pCtx->pVm->json_rc = JSON_ERROR_NONE;` |
+|   13 | 1094 | `		if( nWant <= 0 ){` |
+|    9 | 1095 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
+|    - | 1096 | `				"json_decode(): Argument #3 ($depth) must be greater than 0");` |
+|    - | 1097 | `		}` |
+|    5 | 1098 | `		if( nWant > 2147483647 ){` |
+|    3 | 1099 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
+|    - | 1100 | `				"json_decode(): Argument #3 ($depth) must be less than 2147483647");` |
+|    - | 1101 | `		}` |
+|    3 | 1102 | `		nDepth = (int)nWant;` |
+|    1 | 1103 | `	}` |
+|    - | 1104 | `	/* Decode the raw JSON input.The default consumer sets the decoded value as the` |
+|    - | 1105 | `	 * call-context result; on failure we replace it with NULL. */` |
+|   26 | 1106 | `	if( VmJsonDecodeInput(pCtx,zIn,nByte,iAssoc,nDepth) != JSON_ERROR_NONE ){` |
+|    - | 1107 | `		/* Something goes wrong while decoding JSON input.Return NULL. */` |
+|   12 | 1108 | `		ph7_result_null(pCtx);` |
+|    5 | 1109 | `	}` |
+|    - | 1110 | `	/* All done */` |
+|   26 | 1111 | `	return PH7_OK;` |
+|   21 | 1112 | `}` |
+|    - | 1113 | `/*` |
+|    - | 1114 | ` * bool json_validate(string $json[,int $depth = 512[,int $flags = 0]])` |
+|    - | 1115 | ` *  Validates whether a string is valid JSON without materializing a value.` |
+|    - | 1116 | ` * Parameters` |
+|    - | 1117 | ` *  $json   The string to validate.` |
+|    - | 1118 | ` *  $depth  Maximum nesting depth (clamped to the engine limit of 32).` |
+|    - | 1119 | ` *  $flags  Bitmask of decode options (currently none are implemented; accepted/ignored).` |
+|    - | 1120 | ` * Return` |
+|    - | 1121 | ` *  TRUE if the string is valid JSON, FALSE otherwise. Updates json_last_error().` |
+|    - | 1122 | ` */` |
+|   20 | 1123 | `PH7_PRIVATE int vm_builtin_json_validate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1 | 1124 | `{` |
+|   21 | 1125 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    - | 1126 | `	const char *zIn;` |
+|    - | 1127 | `	int nByte;` |
+|   21 | 1128 | `	int nDepth = 32;` |
+|   21 | 1129 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|    - | 1130 | `		/* Missing/Invalid argument: not valid JSON */` |
+|  ! 0 | 1131 | `		pVm->json_rc = JSON_ERROR_SYNTAX;` |
+|  ! 0 | 1132 | `		ph7_result_bool(pCtx,0);` |
+|  ! 0 | 1133 | `		return PH7_OK;` |
+|    - | 1134 | `	}` |
+|    - | 1135 | `	/* Extract the JSON string */` |
+|   21 | 1136 | `	zIn = ph7_value_to_string(apArg[0],&nByte);` |
+|   21 | 1137 | `	if( nByte < 1 ){` |
+|    - | 1138 | `		/* The empty string is not valid JSON (unlike json_decode, which returns NULL` |
+|    - | 1139 | `		 * silently, json_validate must record the syntax error) */` |
+|    3 | 1140 | `		pVm->json_rc = JSON_ERROR_SYNTAX;` |
+|    3 | 1141 | `		ph7_result_bool(pCtx,0);` |
+|    3 | 1142 | `		return PH7_OK;` |
+|    - | 1143 | `	}` |
+|   19 | 1144 | `	if( nArg > 1 && ph7_value_is_int(apArg[1]) ){` |
+|    - | 1145 | `		/* PHP 8: $depth must be in 1 .. INT_MAX (a catchable ValueError otherwise). */` |
+|    9 | 1146 | `		ph7_int64 nWant = ph7_value_to_int64(apArg[1]);` |
+|    - | 1147 | `		/* Clear the json error state before validating $depth (php parity), so a` |
+|    - | 1148 | `		 * caught depth ValueError leaves json_last_error() == JSON_ERROR_NONE. */` |
+|    9 | 1149 | `		pVm->json_rc = JSON_ERROR_NONE;` |
+|    9 | 1150 | `		if( nWant <= 0 ){` |
+|    5 | 1151 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
+|    - | 1152 | `				"json_validate(): Argument #2 ($depth) must be greater than 0");` |
+|    - | 1153 | `		}` |
+|    5 | 1154 | `		if( nWant > 2147483647 ){` |
+|    3 | 1155 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
+|    - | 1156 | `				"json_validate(): Argument #2 ($depth) must be less than 2147483647");` |
+|    - | 1157 | `		}` |
+|    3 | 1158 | `		nDepth = (int)nWant;` |
+|    1 | 1159 | `	}` |
+|    - | 1160 | `	/* apArg[2] ($flags) is accepted and ignored: no decode flag is implemented.` |
+|    - | 1161 | `	 * Decode in associative mode so the "objects are returned as an array" warning is` |
+|    - | 1162 | `	 * not raised - the decoded value is discarded, only its validity matters. */` |
+|   13 | 1163 | `	ph7_result_bool(pCtx,VmJsonDecodeInput(pCtx,zIn,nByte,1,nDepth) == JSON_ERROR_NONE);` |
+|   13 | 1164 | `	return PH7_OK;` |
+|   11 | 1165 | `}` |
+|    - | 1166 |  |
