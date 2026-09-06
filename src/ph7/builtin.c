@@ -460,22 +460,17 @@ static int PH7_builtin_empty(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 static int PH7_builtin_substr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	const char *zSource;
+	int nSrcLen;
+	sxi64 iStart,iEnd;
 	if( nArg > 0 ){ StrNullArgNotice(pCtx,apArg[0],"substr",1,"$string"); }
-	const char *zSource,*zOfft;
-	int nOfft,nLen,nSrcLen;
 	if( nArg < 2 ){
-		/* return FALSE */
-		ph7_result_bool(pCtx,0);
+		/* Arity is enforced at the call boundary; nothing sensible to return here. */
+		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
 	/* Extract the target string */
 	zSource = ph7_value_to_string(apArg[0],&nSrcLen);
-	if( nSrcLen < 1 ){
-		/* Empty string,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
-	nLen = nSrcLen; /* cc warning */
 	/* Extract the offset */
 	{
 		sxi64 iTmp = 0;
@@ -483,46 +478,45 @@ static int PH7_builtin_substr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( rcArg != PH7_OK ){
 			return rcArg;
 		}
-		nOfft = (int)iTmp;
+		iStart = iTmp;
 	}
-	if( nOfft < 0 ){
-		zOfft = &zSource[nSrcLen+nOfft];
-		if( zOfft < zSource ){
-			/* Invalid offset */
-			ph7_result_bool(pCtx,0);
-			return PH7_OK;
+	/*
+	 * php 8 never answers substr() with FALSE — every out-of-range window simply
+	 * clamps to the empty string (substr("",0), substr("abc",5) and
+	 * substr("abc",1,-5) are all ""). PH7 returned FALSE for each of those, which
+	 * then flowed on as a bool into string context.
+	 *
+	 * A negative offset counts back from the end (clamped to 0); a negative length
+	 * leaves that many bytes off the end. Computed in sxi64 so an INT64 offset or
+	 * length cannot overflow the window arithmetic.
+	 */
+	if( iStart < 0 ){
+		iStart += nSrcLen;
+		if( iStart < 0 ){
+			iStart = 0;
 		}
-		nLen = (int)(&zSource[nSrcLen]-zOfft);
-		nOfft = (int)(zOfft-zSource);
-	}else if( nOfft >= nSrcLen ){
-		/* Invalid offset */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}else{
-		zOfft = &zSource[nOfft];
-		nLen = nSrcLen - nOfft;
+	}else if( iStart > nSrcLen ){
+		iStart = nSrcLen;
 	}
-	if( nArg > 2 ){
-		/* Extract the length */
-		nLen = ph7_value_to_int(apArg[2]);
-		if( nLen == 0 ){
-			/* Invalid length,return an empty string */
-			ph7_result_string(pCtx,"",0);
-			return PH7_OK;
-		}else if( nLen < 0 ){
-			nLen = nSrcLen + nLen - nOfft;
-			if( nLen < 1 ){
-				/* Invalid  length */
-				nLen = nSrcLen - nOfft;
-			}
+	iEnd = nSrcLen;
+	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){
+		sxi64 iLen = 0;
+		sxi32 rcArg = PH7_IntArgResolve(pCtx,apArg[2],"substr",3,"$length","?int",&iLen);
+		if( rcArg != PH7_OK ){
+			return rcArg;
 		}
-		if( nLen + nOfft > nSrcLen ){
-			/* Invalid length */
-			nLen = nSrcLen - nOfft;
+		if( iLen < 0 ){
+			iEnd = (sxi64)nSrcLen + iLen;
+		}else if( iLen > (sxi64)nSrcLen - iStart ){
+			iEnd = nSrcLen;
+		}else{
+			iEnd = iStart + iLen;
 		}
 	}
-	/* Return the substring */
-	ph7_result_string(pCtx,zOfft,nLen);
+	if( iEnd < iStart ){
+		iEnd = iStart;
+	}
+	ph7_result_string(pCtx,&zSource[iStart],(int)(iEnd - iStart));
 	return PH7_OK;
 }
 /*
@@ -548,72 +542,74 @@ static int PH7_builtin_substr(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 static int PH7_builtin_substr_compare(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const char *zSource,*zOfft,*zSub;
-	int nOfft,nLen,nSrcLen,nSublen;
+	const char *zSource,*zSub;
+	int nSrcLen,nSubLen;
+	sxi64 iOfft,iLen,l1,l2,nCmp;
 	int iCase = 0;
 	int rc;
 	if( nArg < 3 ){
-		/* Missing arguments,return FALSE */
-		ph7_result_bool(pCtx,0);
+		ph7_result_int(pCtx,0);
 		return PH7_OK;
 	}
-	/* Extract the target string */
 	zSource = ph7_value_to_string(apArg[0],&nSrcLen);
-	if( nSrcLen < 1 ){
-		/* Empty string,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
-	nLen = nSrcLen; /* cc warning */
-	/* Extract the substring */
-	zSub = ph7_value_to_string(apArg[1],&nSublen);
-	if( nSublen < 1 || nSublen > nSrcLen){
-		/* Empty string,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
-	/* Extract the offset */
-	nOfft = ph7_value_to_int(apArg[2]);
-	if( nOfft < 0 ){
-		zOfft = &zSource[nSrcLen+nOfft];
-		if( zOfft < zSource ){
-			/* Invalid offset */
-			ph7_result_bool(pCtx,0);
-			return PH7_OK;
+	zSub    = ph7_value_to_string(apArg[1],&nSubLen);
+	{
+		sxi64 iTmp = 0;
+		sxi32 rcArg = PH7_IntArgResolve(pCtx,apArg[2],"substr_compare",3,"$offset","int",&iTmp);
+		if( rcArg != PH7_OK ){
+			return rcArg;
 		}
-		nLen = (int)(&zSource[nSrcLen]-zOfft);
-		nOfft = (int)(zOfft-zSource);
-	}else if( nOfft >= nSrcLen ){
-		/* Invalid offset */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}else{
-		zOfft = &zSource[nOfft];
-		nLen = nSrcLen - nOfft;
+		iOfft = iTmp;
 	}
-	if( nArg > 3 ){
-		/* Extract the length */
-		nLen = ph7_value_to_int(apArg[3]);
-		if( nLen < 1 ){
-			/* Invalid  length */
-			ph7_result_int(pCtx,1);
-			return PH7_OK;
-		}else if( nLen + nOfft > nSrcLen ){
-			/* Invalid length */
-			nLen = nSrcLen - nOfft;
-		}
-		if( nArg > 4 ){
-			/* Case-sensitive or not */
-			iCase = ph7_value_to_bool(apArg[4]);
+	if( iOfft < 0 ){
+		iOfft += nSrcLen;
+		if( iOfft < 0 ){
+			iOfft = 0;
 		}
 	}
-	/* Perform the comparison */
+	if( iOfft > nSrcLen ){
+		/* php rejects an offset past the end of the haystack outright */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"substr_compare(): Argument #3 ($offset) must be contained in argument #1 ($haystack)");
+	}
+	/* A NULL/absent length compares as far as the longer of the two operands reaches */
+	iLen = (sxi64)nSrcLen - iOfft;
+	if( iLen < nSubLen ){
+		iLen = nSubLen;
+	}
+	if( nArg > 3 && !ph7_value_is_null(apArg[3]) ){
+		sxi64 iTmp = 0;
+		sxi32 rcArg = PH7_IntArgResolve(pCtx,apArg[3],"substr_compare",4,"$length","?int",&iTmp);
+		if( rcArg != PH7_OK ){
+			return rcArg;
+		}
+		if( iTmp < 0 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"substr_compare(): Argument #4 ($length) must be greater than or equal to 0");
+		}
+		iLen = iTmp;
+	}
+	if( nArg > 4 ){
+		iCase = ph7_value_to_bool(apArg[4]);
+	}
+	/* Each side contributes at most what it actually has left */
+	l1 = (sxi64)nSrcLen - iOfft;
+	if( l1 > iLen ){ l1 = iLen; }
+	l2 = nSubLen;
+	if( l2 > iLen ){ l2 = iLen; }
+	nCmp = (l1 < l2) ? l1 : l2;
 	if( iCase ){
-		rc = SyStrnicmp(zOfft,zSub,(sxu32)nLen);
+		rc = SyStrnicmp(&zSource[iOfft],zSub,(sxu32)nCmp);
 	}else{
-		rc = SyStrncmp(zOfft,zSub,(sxu32)nLen);
+		rc = SyStrncmp(&zSource[iOfft],zSub,(sxu32)nCmp);
 	}
-	/* Comparison result */
+	if( rc == 0 ){
+		/* Prefixes equal: php falls back to a THREE-WAY compare of the lengths, so this
+		 * arm is normalized to -1/0/1 (substr_compare("abc","",0) is 1, not 3). */
+		rc = (l1 == l2) ? 0 : (l1 < l2 ? -1 : 1);
+	}
+	/* ...but when the prefixes differ php returns the RAW byte difference, not its sign:
+	 * substr_compare("abc","def",1,10) is -2 ('b' - 'd'), which is what SyMemcmp gives. */
 	ph7_result_int(pCtx,rc);
 	return PH7_OK;
 }

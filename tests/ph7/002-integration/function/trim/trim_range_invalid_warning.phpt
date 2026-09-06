@@ -1,8 +1,6 @@
 --CREDITS--
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --TEST--
 PH7: malformed `..`-range charlists emit PHP-exact warning text
 --FILE--
@@ -16,15 +14,6 @@ echo rtrim("Zx", "y..a"), "\n";    // wrong order in rtrim()
 echo addcslashes("aZ", "Z..A"), "\n"; // wrong order in addcslashes()
 ?>
 --EXPECTF--
-Warning: trim(): Invalid '..'-range, '..'-range needs to be incrementing in %s on line %d
-Xb
-Warning: trim(): Invalid '..'-range, no character to the right of '..' in %s on line %d
-b
-Warning: trim(): Invalid '..'-range, no character to the left of '..' in %s on line %d
-a
-Warning: rtrim(): Invalid '..'-range, '..'-range needs to be incrementing in %s on line %d
-Zx
-Warning: addcslashes(): Invalid '..'-range, '..'-range needs to be incrementing in %s on line %d
-a\Z
+%AWarning:%Atrim(): Invalid '..'-range, '..'-range needs to be incrementing%AXb%AWarning:%Atrim(): Invalid '..'-range, no character to the right of '..'%Ab%AWarning:%Atrim(): Invalid '..'-range, no character to the left of '..'%Aa%AWarning:%Artrim(): Invalid '..'-range, '..'-range needs to be incrementing%AZx%AWarning:%Aaddcslashes(): Invalid '..'-range, '..'-range needs to be incrementing%Aa\Z%A
 --CLEAN--
 <?php

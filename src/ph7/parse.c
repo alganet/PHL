@@ -424,49 +424,14 @@ static sxi32 ExprVerifyNodes(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nN
 		}else if( apNode[i]->pStart->nType & PH7_TK_OCB /*'{'*/){
 			iBraces++;
 			if( i > 0 && ( apNode[i - 1]->xCode == PH7_CompileVariable || (apNode[i - 1]->pStart->nType & PH7_TK_CSB/*]*/)) ){
-				const ph7_expr_op *pOp,*pEnd;
-				int iNest = 1;
-				sxi32 j=i+1;
-				/*
-				 * Dirty Hack: $a{'x'} == > $a['x']
-				 */
-				apNode[i]->pStart->nType &= ~PH7_TK_OCB /*'{'*/;
-				apNode[i]->pStart->nType |= PH7_TK_OSB /*'['*/;
-				pOp = aOpTable;
-				pEnd = aOpTable + SX_ARRAYSIZE(aOpTable);
-				while( pOp < pEnd ){
-					if( pOp->iOp == EXPR_OP_SUBSCRIPT ){
-						break;
-					}
-					pOp++;
+				/* php 8 REMOVED curly-brace offsets: `$a{0}` used to be rewritten here
+				 * into `$a[0]` (PH7's "dirty hack"), which quietly accepted source php
+				 * rejects outright. It is a parse error now, like php's. */
+				rc = PH7_GenSyntaxError(&(*pGen),apNode[i]->pStart,0);
+				if( rc != SXERR_ABORT ){
+					rc = SXERR_SYNTAX;
 				}
-				if( pOp >= pEnd ){
-					pOp = 0;
-				}
-				if( pOp ){
-					apNode[i]->pOp = pOp;
-					apNode[i]->pStart->nType |= PH7_TK_OP;
-				}
-				iBraces--;
-				iSquare++;
-				while( j < nNode ){
-					if( apNode[j]->pStart->nType & PH7_TK_OCB /*{*/){
-						/* Increment nesting level */
-						iNest++;
-					}else if( apNode[j]->pStart->nType & PH7_TK_CCB/*}*/ ){
-						/* Decrement nesting level */
-						iNest--;
-						if( iNest < 1 ){
-							break;
-						}
-					}
-					j++;
-				}
-				if( j < nNode ){
-					apNode[j]->pStart->nType &= ~PH7_TK_CCB /*'}'*/;
-					apNode[j]->pStart->nType |= PH7_TK_CSB /*']'*/;
-				}
-
+				return rc;
 			}
 		}else if (apNode[i]->pStart->nType & PH7_TK_CCB /*'}'*/){
 			if( iBraces <= 0 ){

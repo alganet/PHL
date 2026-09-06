@@ -4,13 +4,13 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 backtick quoted string
 --SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+<?php if (function_exists('zend_version')) echo 'skip php only deprecates the backtick operator, and the stock php.ini masks E_DEPRECATED'; ?>
 --FILE--
 <?php
 echo `echo test`;
 ?>
 --EXPECTF--
-%s Notice:  Command line invocation is disabled in the current release of the PH7(2.1.4) engine %s
+%ADeprecated:%AThe backtick (`) operator is deprecated, use shell_exec() instead%Atest%A
 --CLEAN--
 <?php
 
