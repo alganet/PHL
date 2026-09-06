@@ -2,24 +2,23 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-file with invalid arguments (PHL-native diagnostics)
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+file() on a missing path warns and returns false; a non-string path is a TypeError
 --FILE--
 <?php
-// Test with invalid file path
-$result = file("/nonexistent/path/file.txt");
+// A missing file is a runtime failure: warning + false
+$result = @file("/nonexistent/path/file.txt");
 echo "invalid_path: " . (is_array($result) ? count($result) : "false") . "\n";
 
-// Test with array argument
-$result = file(array("test"));
-echo "array_arg: " . (is_array($result) ? count($result) : "false") . "\n";
+// A non-string path cannot be coerced: php rejects it at the call boundary
+try {
+    file(array("test"));
+} catch (TypeError $e) {
+    echo "array_arg: ", $e->getMessage(), "\n";
+}
 ?>
---EXPECTF--
-Error: file(): IO error while opening '/nonexistent/path/file.txt' in %s on line %d
+--EXPECT--
 invalid_path: false
-Warning: file(): Expecting a file path in %s on line %d
-array_arg: false
+array_arg: file(): Argument #1 ($filename) must be of type string, array given
 --CLEAN--
 <?php
 unset($result);

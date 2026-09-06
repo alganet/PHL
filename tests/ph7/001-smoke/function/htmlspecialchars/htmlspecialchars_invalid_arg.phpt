@@ -1,21 +1,13 @@
 --CREDITS--
-SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
+SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-htmlspecialchars with invalid argument
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+htmlspecialchars() coerces a scalar argument to string
 --FILE--
 <?php
-$result = htmlspecialchars(123);
-if ($result === null) {
-    echo "PASS";
-} else {
-    echo "FAIL: expected null, got " . var_export($result, true);
-}
+echo htmlspecialchars(123), "\n";
 ?>
 --EXPECT--
-PASS
+123
 --CLEAN--
 <?php
-unset($result);

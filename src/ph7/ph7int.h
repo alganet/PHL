@@ -1069,6 +1069,10 @@ struct ph7_exception
 	void *pOwnerInstr;/* Bytecode array (VmInstr*) this try was compiled into. iLandingPc
 					   * indexes THIS array; the resume only fires in the exec running it
 					   * (distinguishes a mini-program from the body that shares its frame). */
+	sxi32 iErrSuppress;/* '@' suppression depth at try entry. A throw from inside `@expr`
+	                    * unwinds past the ERR_CTRL that would have closed the window, so
+	                    * the catch restores this snapshot instead of leaking the depth —
+	                    * and a try/catch nested INSIDE an `@` still stays suppressed. */
 	sxi32 iStackDepth;/* Operand-stack base (0-based TOS index = pTos-pStack, -1 when empty)
 					   * captured when this try opened at OP_LOAD_EXCEPTION. Used only by
 					   * Generator::throw() inject-at-yield to drain the abandoned
@@ -1367,6 +1371,9 @@ struct ph7_vm
 	void *pStderr;             /* STDERR IO stream */
 	int bErrReport;            /* TRUE to report all runtime Error/Warning/Notice */
 	int nRecursionDepth;       /* Current PHP call depth (OP_CALL frames only) */
+	int nErrSuppress;          /* '@' error-control depth: >0 means the diagnostics raised
+	                            * while evaluating the suppressed expression are not printed
+	                            * (a user error handler is still invoked, as in php). Nests. */
 	int nMaxDepth;             /* Maximum PHP call depth; 0 == unbounded (the host
 	                            * default: PHP frames are heap-bound since the
 	                            * iterative executor, so recursion is limited by

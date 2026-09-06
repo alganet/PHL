@@ -5,12 +5,9 @@ SPDX-License-Identifier: BSD-3-Clause
 phl interpreter -d/-c php.ini directives
 --SKIPIF--
 <?php
-// Only run under PHL; the flags are tested through the phl binary itself.
-if (!defined('PH7_VERSION')) {
-    echo "skip";
-}
-// The harness spawns the interpreter with single-quoted `-r '...'` arguments —
+// Spawns the interpreter through popen() with single-quoted `-r '...'` arguments —
 // POSIX shell quoting that cmd.exe does not honour (php fails this on Windows too).
+// The -d/-c behaviour itself is platform-neutral; only this harness is POSIX-shell.
 if (DIRECTORY_SEPARATOR === '\\') { echo 'skip POSIX shell quoting in the subprocess harness'; }
 ?>
 --FILE--

@@ -723,9 +723,23 @@ PH7_PRIVATE int vm_builtin_get_class_vars(ph7_context *pCtx,int nArg,ph7_value *
 		pClass = PH7_VmExtractClassFromValue(pCtx->pVm,apArg[0]);
 	}
 	if( pClass == 0 ){
-		/* No such class,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		/* php screens the VALUE, not the type: anything stringifiable is accepted,
+		 * and a name that does not resolve to a class is a TypeError quoting the
+		 * stringified argument ("...must be a valid class name, Array given"). This
+		 * is why get_class_vars() opts out of the shared ZPP type screen in vm.c. */
+		int nLen = 0;
+		const char *zVal = "";
+		if( nArg > 0 ){
+			if( (apArg[0]->iFlags & MEMOBJ_HASHMAP) != 0 ){
+				zVal = "Array";
+				nLen = (int)sizeof("Array") - 1;
+			}else{
+				zVal = ph7_value_to_string(apArg[0],&nLen);
+			}
+		}
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"get_class_vars(): Argument #1 ($class) must be a valid class name, %.*s given",
+			nLen,zVal);
 	}
 	/* Create a new array  */
 	pArray = ph7_context_new_array(pCtx);

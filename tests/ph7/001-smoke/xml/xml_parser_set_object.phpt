@@ -12,7 +12,8 @@ if (function_exists('zend_version')) {
 --FILE--
 <?php
 $parser = xml_parser_create();
-xml_set_object($parser, $parser);
+// php's $object parameter is an object; the parser handle itself is not one here
+xml_set_object($parser, new stdClass());
 xml_set_element_handler($parser, 'startElement', 'endElement');
 
 $elements = array();
@@ -34,6 +35,7 @@ echo "Parse result: $result\n";
 echo "Elements found: " . count($elements) . "\n";
 ?>
 --EXPECTF--
+Error [3]: This function is depreceated and is a no-op.In order to mimic this behaviour,you can supply instead of a function name an array containing an object reference and a method name. in %s on line %d
 Error [8192]: Function xml_parser_free() is deprecated since 8.5, as it has no effect since PHP 8.0 in %s on line %d
 Parse result: 1
 Elements found: 4

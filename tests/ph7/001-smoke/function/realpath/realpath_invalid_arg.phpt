@@ -1,21 +1,17 @@
 --CREDITS--
-SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
+SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-realpath() invalid argument type (expect false)
---SKIPIF--
-<?php
-if (function_exists('zend_version')) {
-    echo "skip";
-}
-?>
+realpath() rejects a non-string path with php's TypeError
 --FILE--
 <?php
-// Passing an array should be invalid
-echo (realpath(array()) === false ? 'false' : 'true') . "\n";
+try {
+    realpath(array());
+} catch (TypeError $e) {
+    echo $e->getMessage(), "\n";
+}
 ?>
 --EXPECT--
-false
+realpath(): Argument #1 ($path) must be of type string, array given
 --CLEAN--
 <?php
-

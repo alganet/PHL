@@ -1460,6 +1460,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
  {
 	 sxi32 i,iLeft,iRight;
 	 ph7_expr_node *pNode;
+	 ph7_expr_node *pSuppress;
 	 sxi32 iCur;
 	 sxi32 rc;
 	 if( nToken <= 0 || (nToken == 1 && apNode[0]->xCode) ){
@@ -2148,6 +2149,19 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				 }
 				 return rc;
 			 }
+			 /* php parses `@$x = expr` as `@($x = expr)` — the suppression covers the
+			  * whole assignment, not just its target. The unary phase already bound '@'
+			  * to the LHS, which left the assignment staring at a non-lvalue, so detach
+			  * it here, let the assignment bind to the real target, and re-wrap below.
+			  * Same shape as the '**'-beneath-unary hoist further up. */
+			 pSuppress = 0;
+			 if( apNode[iLeft]->pOp
+				 && apNode[iLeft]->pOp->iVmOp == PH7_OP_ERR_CTRL
+				 && apNode[iLeft]->pLeft != 0
+				 && (apNode[iLeft]->iFlags & EXPR_NODE_PARENS) == 0 ){
+				 pSuppress = apNode[iLeft];
+				 apNode[iLeft] = pSuppress->pLeft;
+			 }
 			 if( ExprIsModifiableValue(apNode[iLeft],FALSE) == FALSE ){
 				 if( pNode->pOp->iVmOp != PH7_OP_STORE ||
 					 (apNode[iLeft]->xCode != PH7_CompileList && apNode[iLeft]->xCode != PH7_CompileShortList) ){
@@ -2170,6 +2184,11 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 			 pNode->pLeft = apNode[iRight];
 			 pNode->pRight = apNode[iLeft];
 			 apNode[iLeft] = apNode[iRight] = 0;
+			 if( pSuppress ){
+				 /* Re-wrap: the '@' now suppresses the whole assignment */
+				 pSuppress->pLeft = pNode;
+				 apNode[iCur] = pSuppress;
+			 }
 		 }
 		 iRight = iCur;
 	 }

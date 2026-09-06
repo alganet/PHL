@@ -1032,10 +1032,9 @@ PH7_PRIVATE int PH7_builtin_strftime(ph7_context *pCtx,int nArg,ph7_value **apAr
 	const char *zFormat;
 	int nLen;
 	Sytm sTm;
-	/* php 8.1 deprecates the whole function (exact wording; the display rides
-	 * the engine's Deprecated label + location suffix). */
-	PH7_VmThrowDeprecatedFmt(pCtx->pVm,
-		"Function strftime() is deprecated since 8.1, use IntlDateFormatter::format() instead");
+	/* The php 8.1 whole-function deprecation is declared in aBuiltinDeprecated[] and
+	 * emitted at the OP_CALL choke point, which is what puts it BEFORE the
+	 * ArgumentCountError for a no-arg call — php's order. */
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);

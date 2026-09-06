@@ -46,7 +46,6 @@ zip_close($res);
 unlink($fn);
 ?>
 --EXPECTF--
-Deprecated: Function zip_open() is deprecated since 8.0, use ZipArchive::open() instead in %s on line %d
 Deprecated: Function zip_read() is deprecated since 8.0, use ZipArchive::statIndex() instead in %s on line %d
 bool(true)
 Error: zip_entry_reset_read_cursor(): Expecting a ZIP archive entry in %s on line %d
