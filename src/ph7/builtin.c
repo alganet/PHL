@@ -1441,7 +1441,9 @@ static int PH7_builtin_chunk_split(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zIn,*zEnd,*zSep = "\r\n";
 	int nSepLen,nChunkLen,nLen;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	/* php coerces a scalar argument to string here (weak mode); the shared ZPP
+	 * screen in vm.c has already rejected the values that cannot coerce. */
+	if( nArg < 1 ){
 		/* Nothing to split,return null */
 		ph7_result_null(pCtx);
 		return PH7_OK;
@@ -1878,7 +1880,9 @@ static int PH7_builtin_htmlspecialchars(ph7_context *pCtx,int nArg,ph7_value **a
 	int iFlags = PH7_ENT_DEFAULT; /* ENT_QUOTES|ENT_SUBSTITUTE|ENT_HTML401 */
 	const char *zIn;
 	int nLen,bDouble = 1;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	/* php coerces a scalar argument to string here (weak mode); the shared ZPP
+	 * screen in vm.c has already rejected the values that cannot coerce. */
+	if( nArg < 1 ){
 		/* Missing/Invalid arguments,return NULL */
 		ph7_result_null(pCtx);
 		return PH7_OK;
@@ -1907,7 +1911,9 @@ static int PH7_builtin_htmlspecialchars_decode(ph7_context *pCtx,int nArg,ph7_va
 	int iFlags = PH7_ENT_DEFAULT; /* ENT_QUOTES|ENT_SUBSTITUTE|ENT_HTML401 */
 	const char *zIn;
 	int nLen;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	/* php coerces a scalar argument to string here (weak mode); the shared ZPP
+	 * screen in vm.c has already rejected the values that cannot coerce. */
+	if( nArg < 1 ){
 		/* Missing/Invalid arguments,return NULL */
 		ph7_result_null(pCtx);
 		return PH7_OK;
@@ -1955,7 +1961,9 @@ static int PH7_builtin_htmlentities(ph7_context *pCtx,int nArg,ph7_value **apArg
 	int iFlags = PH7_ENT_DEFAULT; /* ENT_QUOTES|ENT_SUBSTITUTE|ENT_HTML401 */
 	const char *zIn;
 	int nLen,bDouble = 1;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	/* php coerces a scalar argument to string here (weak mode); the shared ZPP
+	 * screen in vm.c has already rejected the values that cannot coerce. */
+	if( nArg < 1 ){
 		/* Missing/Invalid arguments,return NULL */
 		ph7_result_null(pCtx);
 		return PH7_OK;
@@ -1985,7 +1993,9 @@ static int PH7_builtin_html_entity_decode(ph7_context *pCtx,int nArg,ph7_value *
 	int iFlags = PH7_ENT_DEFAULT; /* ENT_QUOTES|ENT_SUBSTITUTE|ENT_HTML401 */
 	const char *zIn;
 	int nLen;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	/* php coerces a scalar argument to string here (weak mode); the shared ZPP
+	 * screen in vm.c has already rejected the values that cannot coerce. */
+	if( nArg < 1 ){
 		/* Missing/Invalid arguments,return NULL */
 		ph7_result_null(pCtx);
 		return PH7_OK;

@@ -1066,7 +1066,9 @@ PH7_PRIVATE int vm_builtin_json_decode(ph7_context *pCtx,int nArg,ph7_value **ap
 	int nByte;
 	int iAssoc = 0;
 	int nDepth = 32;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	/* php coerces a scalar argument to string here (weak mode); the shared ZPP
+	 * screen in vm.c has already rejected the values that cannot coerce. */
+	if( nArg < 1 ){
 		/* Missing/Invalid arguments, return NULL */
 		ph7_result_null(pCtx);
 		return PH7_OK;

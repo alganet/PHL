@@ -13301,6 +13301,11 @@ static sxi32 GenStateEmitExprCode(
 				&& (pNode->pOp->iVmOp == PH7_OP_INCR || pNode->pOp->iVmOp == PH7_OP_DECR) ){
 				iLeftFlags |= EXPR_FLAG_LOAD_IDX_STORE | EXPR_FLAG_MEMBER_WRITE;
 			}
+			if( iVmOp == PH7_OP_ERR_CTRL ){
+				/* '@' must suppress the diagnostics raised WHILE its operand runs, so
+				 * open the window here; the trailing emit below closes it (iP1 = 0). */
+				PH7_VmEmitInstr(pGen->pVm,PH7_OP_ERR_CTRL,1,0,0,0);
+			}
 			rc = GenStateEmitExprCode(&(*pGen),pNode->pLeft,iLeftFlags);
 		}
 		if( rc != SXRET_OK ){

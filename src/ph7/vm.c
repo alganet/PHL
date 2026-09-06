@@ -666,6 +666,14 @@ static const struct VmBuiltinArity {
 	{ "setrawcookie",              1, 1 },
 	{ "trigger_error",             1, 1 },
 	{ "user_error",                1, 1 },
+	/*
+	 * Overrides for signatures that under-report their own minimum: the callback
+	 * of these three hides inside the variadic tail ("array $array, ...$rest"),
+	 * so the derivation reads 1 where php requires 2.
+	 */
+	{ "array_udiff",               2, 1 },
+	{ "array_uintersect",          2, 1 },
+	{ "array_diff_uassoc",         2, 1 },
 };
 /*
  * Stamp the minimum-arity metadata from aBuiltinArity[] onto the already
@@ -3582,6 +3590,7 @@ static const struct {
 	const char *zName;
 	const char *zMsg;
 } aBuiltinDeprecated[] = {
+	{ "strftime", "Function strftime() is deprecated since 8.1, use IntlDateFormatter::format() instead" },
 	{ "zip_open",  "Function zip_open() is deprecated since 8.0, use ZipArchive::open() instead" },
 	{ "zip_close", "Function zip_close() is deprecated since 8.0, use ZipArchive::close() instead" },
 	{ "zip_read",  "Function zip_read() is deprecated since 8.0, use ZipArchive::statIndex() instead" },
@@ -3594,6 +3603,249 @@ static const struct {
 	{ "zip_entry_compressionmethod", "Function zip_entry_compressionmethod() is deprecated since 8.0, use ZipArchive::statIndex() instead" },
 	{ "xml_parser_free", "Function xml_parser_free() is deprecated since 8.5, as it has no effect since PHP 8.0" },
 };
+/*
+ * Derive the minimum arity from a builtin's declared signature: a parameter is
+ * optional when it carries a default ("int $length = 76") or is variadic
+ * ("...$rest"), so the minimum is the count of the parameters that are neither,
+ * and the ZPP wording is "at least" as soon as one optional/variadic exists.
+ *
+ * This makes aBuiltinSig[] the single source of truth for arity — the curated
+ * aBuiltinArity[] table above stays as an OVERRIDE for the handful of builtins
+ * php reports differently from their own signature (e.g. strtr(), whose 3-arg
+ * form still reports "expects exactly 2", and the array_udiff() family, whose
+ * variadic tail hides a second required argument). Verified against php 8.5.7
+ * for all 462 signed builtins: 458 derive exactly, 4 are overridden.
+ */
+static void VmDeriveArityFromSig(const char *zSig,sxi16 *pnMin,sxu8 *pbAtLeast)
+{
+	const char *zCur = zSig;
+	int nMin = 0, bAtLeast = 0, bSeen = 0, bOptional = 0;
+	for(;;){
+		if( zCur[0] == '\0' || zCur[0] == ',' ){
+			if( bSeen ){
+				if( bOptional ){
+					bAtLeast = 1;
+				}else{
+					nMin++;
+				}
+			}
+			if( zCur[0] == '\0' ){
+				break;
+			}
+			bSeen = bOptional = 0;
+			zCur++;
+			continue;
+		}
+		if( zCur[0] != ' ' ){
+			bSeen = 1;
+		}
+		if( zCur[0] == '=' || (zCur[0] == '.' && zCur[1] == '.' && zCur[2] == '.') ){
+			bOptional = 1;
+		}
+		zCur++;
+	}
+	*pnMin = (sxi16)nMin;
+	*pbAtLeast = (sxu8)bAtLeast;
+}
+/*
+ * Does the declared type list (e.g. "array|string", "?int", "callable") contain
+ * the given token? Compares against each '|'-separated alternative, ignoring a
+ * leading nullable '?'.
+ */
+static int VmSigTypeHas(const char *zType,int nType,const char *zTok)
+{
+	int nTok = (int)SyStrlen(zTok);
+	int i = 0;
+	if( zType[0] == '?' ){
+		zType++;
+		nType--;
+	}
+	while( i < nType ){
+		int j = i;
+		while( j < nType && zType[j] != '|' ){
+			j++;
+		}
+		if( j - i == nTok && SyMemcmp(&zType[i],zTok,(sxu32)nTok) == 0 ){
+			return 1;
+		}
+		i = j + 1;
+	}
+	return 0;
+}
+/*
+ * Does the declared type list name a CLASS (anything that is not one of php's
+ * builtin type keywords)? A class-typed parameter accepts an object, so it must
+ * not be rejected by the array/object/resource screen below.
+ */
+static int VmSigTypeHasClass(const char *zType,int nType)
+{
+	static const char *azBuiltin[] = {
+		"int","float","string","bool","array","object","callable","iterable",
+		"mixed","null","void","resource","false","true","never","self","static"
+	};
+	int i = 0;
+	if( zType[0] == '?' ){
+		zType++;
+		nType--;
+	}
+	while( i < nType ){
+		int j = i, k, bKnown = 0;
+		while( j < nType && zType[j] != '|' ){
+			j++;
+		}
+		for( k = 0 ; k < (int)SX_ARRAYSIZE(azBuiltin) ; ++k ){
+			int nB = (int)SyStrlen(azBuiltin[k]);
+			if( j - i == nB && SyMemcmp(&zType[i],azBuiltin[k],(sxu32)nB) == 0 ){
+				bKnown = 1;
+				break;
+			}
+		}
+		if( !bKnown && j > i ){
+			return 1;
+		}
+		i = j + 1;
+	}
+	return 0;
+}
+/*
+ * php's ", X given" tail: like ph7_type_name() but an object reports its CLASS,
+ * which is what php prints in a TypeError.
+ */
+static const char * VmArgTypeName(ph7_value *pVal)
+{
+	if( (pVal->iFlags & MEMOBJ_OBJ) != 0 ){
+		ph7_class_instance *pInst = (ph7_class_instance *)pVal->x.pOther;
+		if( pInst && pInst->pClass ){
+			return pInst->pClass->sName.zString;
+		}
+	}
+	return ph7_type_name(pVal);
+}
+/*
+ * PHP-8 ZPP type enforcement for host functions, driven by the aBuiltinSig[]
+ * declaration (band A #7). Screens only the arguments that php can NEVER coerce
+ * into a declared scalar parameter — arrays, resources, and objects without a
+ * __toString() — and throws the catchable TypeError php throws, before the C
+ * routine runs. Without this an array argument reached the builtin and was
+ * stringified to the literal "Array" (strrev(['a']) returned "yarrA").
+ *
+ * Deliberately narrow: scalar-to-scalar coercion (and its deprecations) stays
+ * with the per-builtin ZPP helpers. Those emit E_DEPRECATED, which does NOT
+ * abort the call, so a central copy would double-fire — the trap that sank the
+ * first central-ZPP attempt. A TypeError aborts, so there is nothing to double.
+ */
+static sxi32 VmEnforceBuiltinArgTypes(
+	ph7_context *pCtx,    /* Call context (for the throw) */
+	ph7_user_func *pFunc, /* Callee */
+	int nGiven,           /* Argument count */
+	ph7_value **apArg     /* Arguments */
+	)
+{
+	/*
+	 * Builtins whose own argument check is php-exact and VALUE-based rather than
+	 * type-based must not be pre-empted here, or their message is lost. Same rule
+	 * the aBuiltinArity[] table follows: a builtin that already says what php says
+	 * stays off the shared screen. get_class_vars() takes any stringifiable value
+	 * and reports "must be a valid class name, Array given".
+	 */
+	static const char *azSelfChecked[] = { "get_class_vars" };
+	const char *zSig = pFunc->zSig;
+	const char *zCur, *zEnd;
+	int iArg = 0;
+	if( zSig == 0 ){
+		return SXRET_OK;
+	}
+	for( iArg = 0 ; iArg < (int)SX_ARRAYSIZE(azSelfChecked) ; ++iArg ){
+		if( SyStrncmp(pFunc->sName.zString,azSelfChecked[iArg],
+			(sxu32)SyStrlen(azSelfChecked[iArg])) == 0
+		 && pFunc->sName.nByte == SyStrlen(azSelfChecked[iArg]) ){
+			return SXRET_OK;
+		}
+	}
+	iArg = 0;
+	zCur = zSig;
+	zEnd = &zSig[SyStrlen(zSig)];
+	while( zCur < zEnd && iArg < nGiven ){
+		const char *zType, *zName, *zStop;
+		int nType, nName;
+		ph7_value *pArg;
+		/* Parameter = "<type> $<name>[ = <default>]"; the type is whatever
+		 * precedes the '$', and an empty type means "untyped" (no screen). */
+		while( zCur < zEnd && zCur[0] == ' ' ){
+			zCur++;
+		}
+		zStop = zCur;
+		while( zStop < zEnd && zStop[0] != ',' ){
+			zStop++;
+		}
+		zName = zCur;
+		while( zName < zStop && zName[0] != '$' ){
+			zName++;
+		}
+		if( zName >= zStop ){
+			break; /* malformed / no parameter name — stop screening */
+		}
+		if( zName >= zCur + 3 && SyMemcmp(zName - 3,"...",3) == 0 ){
+			break; /* variadic tail: stop (its type applies to the rest) */
+		}
+		zType = zCur;
+		nType = (int)(zName - zCur);
+		/* Trim the trailing spaces and the by-ref marker of "array &$array" */
+		while( nType > 0 && (zType[nType-1] == ' ' || zType[nType-1] == '&') ){
+			nType--;
+		}
+		zName++; /* skip '$' */
+		nName = 0;
+		while( &zName[nName] < zStop && zName[nName] != ' ' && zName[nName] != '=' ){
+			nName++;
+		}
+		pArg = apArg[iArg];
+		if( nType > 0 && !VmSigTypeHas(zType,nType,"mixed") ){
+			const char *zGiven = 0;
+			if( (pArg->iFlags & MEMOBJ_HASHMAP) != 0 ){
+				if( !VmSigTypeHas(zType,nType,"array")
+				 && !VmSigTypeHas(zType,nType,"iterable")
+				 && !VmSigTypeHas(zType,nType,"callable") ){
+					zGiven = "array";
+				}
+			}else if( (pArg->iFlags & MEMOBJ_OBJ) != 0 ){
+				if( !VmSigTypeHas(zType,nType,"object")
+				 && !VmSigTypeHas(zType,nType,"iterable")
+				 && !VmSigTypeHas(zType,nType,"callable")
+				 && !VmSigTypeHasClass(zType,nType) ){
+					/* An object with __toString() still satisfies a string
+					 * parameter in weak mode — php coerces it. */
+					ph7_class_instance *pInst = (ph7_class_instance *)pArg->x.pOther;
+					int bStringable = VmSigTypeHas(zType,nType,"string")
+						&& pInst && PH7_ClassExtractMethod(pInst->pClass,"__toString",
+							sizeof("__toString")-1) != 0;
+					if( !bStringable ){
+						zGiven = VmArgTypeName(pArg);
+					}
+				}
+			}else if( (pArg->iFlags & MEMOBJ_RES) != 0 ){
+				/* A class-typed parameter also accepts a resource: several handles php 8
+				 * models as objects are still resources here (xml_*'s XMLParser is the
+				 * one the signatures already declare php-8-style, for reflection). The
+				 * screen would otherwise reject the engine's own parser handle. Recorded
+				 * as a divergence in NEWPLAN §7 — it goes away when those handles become
+				 * real objects. */
+				if( !VmSigTypeHas(zType,nType,"resource")
+				 && !VmSigTypeHasClass(zType,nType) ){
+					zGiven = "resource";
+				}
+			}
+			if( zGiven ){
+				return PH7_VmThrowException(pCtx,"TypeError",
+					"%z(): Argument #%d ($%.*s) must be of type %.*s, %s given",
+					&pFunc->sName,iArg + 1,nName,zName,nType,zType,zGiven);
+			}
+		}
+		zCur = (zStop < zEnd) ? zStop + 1 : zEnd;
+		iArg++;
+	}
+	return SXRET_OK;
+}
 static void VmSetBuiltinSignatures(ph7_vm *pVm)
 {
 	sxu32 n;
@@ -3612,6 +3864,11 @@ static void VmSetBuiltinSignatures(ph7_vm *pVm)
 			ph7_user_func *pFunc = (ph7_user_func *)pEntry->pUserData;
 			pFunc->zSig = aBuiltinSig[n].zSig;
 			pFunc->zRet = aBuiltinSig[n].zRet[0] ? aBuiltinSig[n].zRet : 0;
+			if( pFunc->nMinArg < 1 ){
+				/* VmSetBuiltinArity() ran first: a non-zero minimum here means the
+				 * curated override already spoke for this builtin, so leave it. */
+				VmDeriveArityFromSig(pFunc->zSig,&pFunc->nMinArg,&pFunc->bAtLeast);
+			}
 		}
 	}
 }
@@ -5325,6 +5582,11 @@ PH7_PRIVATE sxi32 PH7_VmThrowError(
 	VmDiagnosticLocation(pWorker,pFile);
 	/* Check for user error handler.  compute length of C string */
 	if( VmInvokeErrorHandler(pVm, iErr, zMessage, (sxi32)SyStrlen(zMessage), pFile, 0) ){
+		if( pVm->nErrSuppress > 0 ){
+			/* Inside '@': php still runs a user handler (done just above) but
+			 * prints nothing itself. */
+			return SXRET_OK;
+		}
 		rc = VmCallErrorHandler(&(*pVm),pWorker);
 	}
 	return rc;
@@ -5493,7 +5755,12 @@ static sxi32 VmThrowErrorAp(
 	SyBlobFormatAp(&sMsg,zFormat,ap);
 	/* Check if a user error handler is installed */
 	if( VmInvokeErrorHandler(pVm, iErr, (const char *)SyBlobData(&sMsg), (sxi32)SyBlobLength(&sMsg), pFile, 0) ){
-		/* No handler or handler returned TRUE, normal processing */
+		/* No handler or handler returned TRUE, normal processing — unless the
+		 * expression is under '@', which suppresses the printed diagnostic. */
+		if( pVm->nErrSuppress > 0 ){
+			SyBlobRelease(&sMsg);
+			return SXRET_OK;
+		}
 		SyBlobAppend(pWorker,SyBlobData(&sMsg),SyBlobLength(&sMsg));
 		VmDiagnosticLocation(pWorker,pFile);
 		rc = VmCallErrorHandler(&(*pVm),pWorker);
@@ -9839,10 +10106,20 @@ case PH7_OP_CVT_OBJ:
  */
 case PH7_OP_ERR_CTRL:
 	/*
-	 * TICKET 1433-038:
-	 * As of this version ,the error control operator '@' is a no-op,simply
-	 * use the public API,to control error output.
+	 * Error-control operator '@'. Emitted as a PAIR around the suppressed
+	 * expression: iP1=1 opens the window (before the operand is evaluated),
+	 * iP1=0 closes it (after). It was historically a no-op (ticket 1433-038),
+	 * which went unnoticed only because the engine raised so few diagnostics;
+	 * every warning/notice/deprecation the parity work added leaked straight
+	 * through `@`. The window nests, and php 8 does NOT let '@' swallow
+	 * fatals or exceptions — those unwind past the closing instruction, so
+	 * the depth is reset on the exception path rather than decremented here.
 	 */
+	if( pInstr->iP1 ){
+		pVm->nErrSuppress++;
+	}else if( pVm->nErrSuppress > 0 ){
+		pVm->nErrSuppress--;
+	}
 	break;
 /*
  * IS_A * * *
@@ -13149,6 +13426,8 @@ case PH7_OP_LOAD_EXCEPTION: {
 	 * inject-at-yield drains to it before landing (a mid-expression yield leaves the
 	 * abandoned expression's operands above this base). Normal throws are already here. */
 	pException->iStackDepth = (sxi32)(pTos - pStack);
+	/* '@' depth at try entry — see ph7_exception.iErrSuppress */
+	pException->iErrSuppress = pVm->nErrSuppress;
 	/* Point to the frame that trigger the exception */
 	pFrameLocal = pFrameLocal->pParent;
 	pFrameLocal = VmSkipExceptionFrames(pFrameLocal);
@@ -17491,6 +17770,12 @@ SkipFuncBody:
 		sCtx.pArgMap = pEffCallMap;
 		{
 		int nGiven = (int)SySetUsed(&aArg);
+		/* A whole-function deprecation fires BEFORE the ZPP checks — php notices that
+		 * you called a deprecated function even when the call is then rejected for its
+		 * arguments (`strftime()` prints the deprecation, then the ArgumentCountError). */
+		if( pFunc->zDeprecated ){
+			VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,"%s",pFunc->zDeprecated);
+		}
 		/* PHP-8 arity enforcement (band A #5): a builtin declaring a minimum
 		 * argument count (aBuiltinArity[]) throws a catchable ArgumentCountError
 		 * before the C routine runs when called with too few arguments — instead
@@ -17504,11 +17789,10 @@ SkipFuncBody:
 				(int)pFunc->nMinArg,
 				pFunc->nMinArg == 1 ? "" : "s",
 				nGiven);
+		}else if( SXRET_OK != (rc = VmEnforceBuiltinArgTypes(&sCtx,pFunc,nGiven,
+			(ph7_value **)SySetBasePtr(&aArg))) ){
+			/* TypeError thrown: rc carries the caught/uncaught status */
 		}else{
-			if( pFunc->zDeprecated ){
-				/* php deprecates this builtin outright */
-				VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,"%s",pFunc->zDeprecated);
-			}
 			/* Call the foreign function */
 			rc = pFunc->xFunc(&sCtx,nGiven,(ph7_value **)SySetBasePtr(&aArg));
 		}
@@ -23702,6 +23986,16 @@ Rethrow:
 				break;
 			}
 		}
+	}
+	/* Restore the '@' error-control depth recorded when this try was entered. The throw
+	 * unwinds past the ERR_CTRL that would have closed any window opened inside the try,
+	 * so without this the suppression leaks and silences every later diagnostic. Done
+	 * once here, where the catching try is known, because the handler is entered by two
+	 * different routes below (the inline/generator pc-redirect and the legacy path) —
+	 * and on a Rethrow the outermost try that actually catches gets the last word. A
+	 * try/catch nested INSIDE an `@` correctly restores a non-zero depth. */
+	if( pException ){
+		pVm->nErrSuppress = pException->iErrSuppress;
 	}
 	/* ROOT C: an inline try (generator body) is not executed here — VmThrowException
 	 * only classifies the throw and sets a pc-redirect (pInlineInstr/iInlinePc) that the

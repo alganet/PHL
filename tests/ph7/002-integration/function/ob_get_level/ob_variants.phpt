@@ -3,10 +3,6 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Output buffering APIs: ob_start, ob_get_level, ob_get_contents, ob_get_clean
---SKIPIF--
-<?php
-if (function_exists('zend_version')) { echo "skip: not PH7\n"; }
-?>
 --FILE--
 <?php
 echo ob_get_level() . "\n";

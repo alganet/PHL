@@ -1,17 +1,13 @@
 --CREDITS--
-SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
+SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-chunk_split with non-string argument
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+chunk_split() coerces a scalar argument to string
 --FILE--
 <?php
-$result = chunk_split(123);
-echo $result === null ? 'PASS' : 'FAIL';
+echo rtrim(chunk_split(123)), "\n";
 ?>
 --EXPECT--
-PASS
+123
 --CLEAN--
 <?php
-unset($result);
