@@ -589,6 +589,15 @@ result:
  */
 static void HashmapAdvanceAutoIndex(ph7_hashmap *pMap,sxi64 iKey)
 {
+	if( !pMap->bIntKeySeen ){
+		/* php 8.3: the first integer key sets the auto-index even if it is negative */
+		pMap->bIntKeySeen = 1;
+		pMap->iNextIdx = iKey < SXI64_HIGH ? iKey + 1 : SXI64_HIGH;
+		while( pMap->iNextIdx < SXI64_HIGH && SXRET_OK == HashmapLookupIntKey(&(*pMap),pMap->iNextIdx,0) ){
+			pMap->iNextIdx++;
+		}
+		return;
+	}
 	if( iKey >= pMap->iNextIdx ){
 		pMap->iNextIdx = iKey < SXI64_HIGH ? iKey + 1 : SXI64_HIGH;
 		/* Make sure the automatic index is not reserved */
@@ -1778,6 +1787,7 @@ PH7_PRIVATE sxi32 PH7_HashmapRelease(ph7_hashmap *pMap,int FreeDS)
 		/* Keep the instance but reset it's fields */
 		pMap->apBucket = 0;
 		pMap->iNextIdx = 0;
+	pMap->bIntKeySeen = 0;
 		pMap->nEntry = pMap->nSize = 0;
 		pMap->pFirst = pMap->pLast = pMap->pCur = 0;
 	}
@@ -2423,7 +2433,8 @@ static void HashmapSortRehash(ph7_hashmap *pMap)
 	sxu32 i;
 	/* Rehash all entries */
 	pLast = p = pMap->pFirst;
-	pMap->iNextIdx = 0; /* Reset the automatic index */
+	pMap->iNextIdx = 0;
+	pMap->bIntKeySeen = 0; /* Reset the automatic index */
 	i = 0;
 	for( ;; ){
 		if( i >= pMap->nEntry ){
@@ -3239,7 +3250,8 @@ static int ph7_hashmap_shift(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Rehash all int keys */
 		n = pMap->nEntry;
 		pEntry = pMap->pFirst;
-		pMap->iNextIdx = 0; /* Reset the automatic index */
+		pMap->iNextIdx = 0;
+	pMap->bIntKeySeen = 0; /* Reset the automatic index */
 		for(;;){
 			if( n < 1 ){
 				break;
