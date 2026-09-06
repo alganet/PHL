@@ -12,7 +12,7 @@ if (function_exists('zend_version')) echo 'skip';
 echo 1 + * 2;
 ?>
 --EXPECTF--
-%s Fatal error:  '*': Missing/Invalid operand %s
+%AParse error:%Asyntax error, unexpected token ";"%A
 --CLEAN--
 <?php
 

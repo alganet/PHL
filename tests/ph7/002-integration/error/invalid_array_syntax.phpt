@@ -12,7 +12,7 @@ $a = array(1, 2, 3 => );
 echo "Should not reach here";
 ?>
 --EXPECTF--
-%s Fatal error:  array(): Missing entry value %s
+%AParse error:%Asyntax error, unexpected token "=>"%A
 --CLEAN--
 <?php
 unset($a);

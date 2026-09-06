@@ -14,7 +14,7 @@ function foo() {
 echo "ok";
 ?>
 --EXPECTF--
-%s Fatal error:  Label 'bar' is unreachable %s
+%AFatal error:%A'goto' to undefined label 'bar'%A
 --CLEAN--
 <?php
 

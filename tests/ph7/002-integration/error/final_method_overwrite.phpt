@@ -15,7 +15,7 @@ class B extends A {
 }
 ?>
 --EXPECTF--
-%s Fatal error:  Cannot Overwrite final method 'A:test' inside child class 'B' %s
+%AFatal error:%ACannot override final method A::test()%A
 --CLEAN--
 <?php
 

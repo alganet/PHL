@@ -102,7 +102,7 @@ echo "deep";
 }
 ?>
 --EXPECTF--
-%s Fatal error:  Missing closing braces '}' %s
+%AParse error:%AUnclosed '{' on line 11%AParse error:%AUnclosed '{' on line 10%AParse error:%AUnclosed '{' on line 9%AParse error:%AUnclosed '{' on line 8%AParse error:%AUnclosed '{' on line 7%AParse error:%AUnclosed '{' on line 6%AParse error:%AUnclosed '{' on line 5%AParse error:%AUnclosed '{' on line 4%AParse error:%AUnclosed '{' on line 3%A
 --CLEAN--
 <?php
 

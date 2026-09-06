@@ -21,7 +21,7 @@ inside_try:
 echo "Done\n";
 ?>
 --EXPECTF--
-%s Fatal error:  goto inside try/catch block is disallowed %s
+%AFatal error:%A'goto' to undefined label 'nonexistent_label'%A
 --CLEAN--
 <?php
 

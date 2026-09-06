@@ -11,7 +11,7 @@ $a = 0xG;
 echo "Should not reach here\n";
 ?>
 --EXPECTF--
-%s Fatal error:  Unexpected token 'G' %s
+%AParse error:%Asyntax error, unexpected identifier "G"%A
 --CLEAN--
 <?php
 unset($a);

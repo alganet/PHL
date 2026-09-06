@@ -30,7 +30,7 @@ $s = ;
 $t = ;
 ?>
 --EXPECTF--
-%s Fatal error:  '=': Missing/Invalid operand %s
+%AParse error:%Asyntax error, unexpected token ";"%AFatal error:%AError count limit reached,PH7 is aborting compilation%A
 --CLEAN--
 <?php
 unset($a, $b, $c, $d, $e, $f, $g, $h, $i, $j, $k, $l, $m, $n, $o, $p, $q, $r, $s, $t);

@@ -45,7 +45,7 @@ INVALID;
 
 ?>
 --EXPECTF--
-%s Fatal error:  Syntax error,mismatched '(','[','{' or '?' %s
+%AParse error:%Asyntax error, unexpected token ";"%AFatal error:%A'->': Missing/Invalid member name%AFatal error:%A'::': Missing/Invalid member name%A
 --CLEAN--
 <?php
 unset($var, $array, $result, $obj);

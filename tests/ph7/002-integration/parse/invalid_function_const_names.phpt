@@ -12,7 +12,7 @@ const 456 = 789;
 echo "Should not reach here\n";
 ?>
 --EXPECTF--
-%s Fatal error:  Invalid function name %s
+%AParse error:%Asyntax error, unexpected integer "123", expecting "("%AParse error:%Asyntax error, unexpected integer "456", expecting identifier%A
 --CLEAN--
 <?php
 

@@ -10,7 +10,7 @@ goto undefined label
 goto LABEL;
 ?>
 --EXPECTF--
-%s Fatal error:  Label 'LABEL' was referenced but not defined %s
+%AFatal error:%A'goto' to undefined label 'LABEL'%A
 --CLEAN--
 <?php
 

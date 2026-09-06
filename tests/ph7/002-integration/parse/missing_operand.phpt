@@ -3,8 +3,6 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Test missing operand error in expression parsing
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
 // Test missing operand after unary operator
@@ -17,7 +15,7 @@ $result2 = 5 + ;
 $result3 = (2 * ) + 3;
 ?>
 --EXPECTF--
-%s Fatal error:  '+': Missing operand %s
+%AParse error:%Asyntax error, unexpected token ";"%A
 --CLEAN--
 <?php
 unset($result, $result2, $result3);

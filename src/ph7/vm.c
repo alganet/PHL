@@ -17726,8 +17726,13 @@ SkipFuncBody:
 					break;
 				}
 			}
-			/* Call to undefined function */
-			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Call to undefined function '%z',NULL will be returned",&sName);
+			/* Call to an undefined function is a catchable Error in php 8 — it does
+			 * NOT warn and hand back null and carry on, which is what PH7 did (and
+			 * which quietly turned a typo into a null-propagating program). */
+			{
+			SyBlob sMsg;
+			SyBlobInit(&sMsg,&pVm->sAllocator);
+			SyBlobFormat(&sMsg,"Call to undefined function %z()",&sName);
 			/* Consume this call's captured spread runs so they don't leak into a
 			 * later call (this path never reaches VmBuildEffectiveArgMap). */
 			if( pInstr->iP2 ){
@@ -17740,9 +17745,15 @@ SkipFuncBody:
 			if( nCallArgs > 0 ){
 				VmPopOperand(&pTos,nCallArgs);
 			}
-			/* Assume a null return value so that the program continue it's execution normally */
 			PH7_MemObjRelease(pTos);
-			break;
+			rc = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sMsg),
+				SyBlobLength(&sMsg));
+			SyBlobRelease(&sMsg);
+			if( rc == SXERR_ABORT ){
+				goto Abort;
+			}
+			goto Exception;
+			}
 		}
 		pFunc = (ph7_user_func *)pEntry->pUserData;
 		/* Host function (builtin): build the effective spread-key map so the

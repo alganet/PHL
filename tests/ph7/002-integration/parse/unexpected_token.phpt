@@ -31,7 +31,7 @@ foreach ([1,2] as $val) {
 
 ?>
 --EXPECTF--
-%s Fatal error:  Syntax error: Unexpected token '}' %s
+%AParse error:%AUnmatched '}'%AParse error:%AUnmatched ']'%AParse error:%Asyntax error, unexpected token ";"%A
 --CLEAN--
 <?php
 unset($a, $array, $func, $x);

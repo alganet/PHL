@@ -39,6 +39,7 @@ struct Label
 	sxu32 nJumpDest;     /* Jump destination */
 	SyString sName;      /* Label name */
 	sxu32 nLine;         /* Line number this label occurs */
+	sxu32 nLoopId;       /* Innermost loop/switch enclosing this label (0 = none) */
 	sxu8 bRef;           /* True if the label was referenced */
 };
 /*
@@ -57,6 +58,7 @@ struct JumpFixup
 	SyString sLabel;    /* Label name */
 	ph7_vm_func *pFunc; /* Compiled function inside which the goto was emitted. NULL otherwise */
 	sxu32 nLine;        /* Track line number */
+	sxu32 nLoopId;      /* Innermost loop/switch enclosing this goto (0 = none) */
 };
 /*
  * Each language construct is represented by an instance
@@ -205,6 +207,16 @@ static sxi32 GenStateEnterBlock(
 	GenStateInitBlock(&(*pGen),pBlock,iType,nFirstInstr,pUserData);
 	/* Link to the parent block */
 	pBlock->pParent = pGen->pCurrent;
+	/* A loop or switch gets an id, and remembers the loop it nests inside, so a goto's
+	 * and a label's positions can be compared after compilation (see aLoopParent). */
+	if( iType & (GEN_BLOCK_LOOP|GEN_BLOCK_SWITCH) ){
+		sxu32 nParent = pGen->nCurLoopId;
+		pGen->nLoopId++;
+		SySetPut(&pGen->aLoopParent,(const void *)&nParent);
+		pBlock->nLoopId = pGen->nLoopId;
+		pBlock->nOuterLoopId = nParent;
+		pGen->nCurLoopId = pGen->nLoopId;
+	}
 	/* Mark as the current block */
 	pGen->pCurrent = pBlock;
 	if( ppBlock ){
@@ -240,6 +252,9 @@ static sxi32 GenStateLeaveBlock(ph7_gen_state *pGen,GenBlock **ppBlock)
 	if( pBlock == 0 ){
 		/* No more block to pop */
 		return SXERR_EMPTY;
+	}
+	if( pBlock->iFlags & (GEN_BLOCK_LOOP|GEN_BLOCK_SWITCH) ){
+		pGen->nCurLoopId = pBlock->nOuterLoopId;
 	}
 	/* Point to the upper block */
 	pGen->pCurrent = pBlock->pParent;
@@ -324,7 +339,7 @@ static sxu32 GenStateFixJumps(GenBlock *pBlock,sxi32 nJumpType,sxu32 nJumpDest)
 static sxi32 GenStateFixGoto(ph7_gen_state *pGen,sxu32 nOfft)
 {
 	JumpFixup *pJump,*aJumps;
-	Label *pLabel,*aLabel;
+	Label *pLabel;
 	VmInstr *pInstr;
 	sxi32 rc;
 	sxu32 n;
@@ -337,15 +352,39 @@ static sxi32 GenStateFixGoto(ph7_gen_state *pGen,sxu32 nOfft)
 		rc = GenStateGetLabel(&(*pGen),&pJump->sLabel,&pLabel);
 		if( rc != SXRET_OK ){
 			/* No such label */
-			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pJump->nLine,"Label '%z' was referenced but not defined",&pJump->sLabel);
+			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pJump->nLine,"'goto' to undefined label '%z'",&pJump->sLabel);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
 			continue;
 		}
+		/* php's one goto restriction: you may not jump INTO a loop or a switch. The label
+		 * is inside one exactly when it carries a loop id; that is legal only if the same
+		 * loop also encloses the goto, i.e. the label's loop is the goto's loop or one of
+		 * its ancestors. Walk up from the goto's loop looking for the label's. */
+		if( pLabel->nLoopId != 0 ){
+			sxu32 *aParent = (sxu32 *)SySetBasePtr(&pGen->aLoopParent);
+			sxu32 nCur = pJump->nLoopId;
+			int bInside = 0;
+			while( nCur != 0 ){
+				if( nCur == pLabel->nLoopId ){
+					bInside = 1;
+					break;
+				}
+				nCur = (nCur <= SySetUsed(&pGen->aLoopParent)) ? aParent[nCur - 1] : 0;
+			}
+			if( !bInside ){
+				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pJump->nLine,
+					"'goto' into loop or switch statement is disallowed");
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				continue;
+			}
+		}
 		/* Make sure the target label is reachable */
 		if( pLabel->pFunc != pJump->pFunc ){
-			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pJump->nLine,"Label '%z' is unreachable",&pJump->sLabel);
+			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pJump->nLine,"'goto' to undefined label '%z'",&pJump->sLabel);
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
@@ -356,14 +395,8 @@ static sxi32 GenStateFixGoto(ph7_gen_state *pGen,sxu32 nOfft)
 			pInstr->iP2 = pLabel->nJumpDest;
 		}
 	}
-	aLabel = (Label *)SySetBasePtr(&pGen->aLabel);
-	for( n = 0 ; n < SySetUsed(&pGen->aLabel) ; ++n ){
-		if( aLabel[n].bRef == FALSE ){
-			/* Emit a warning */
-			PH7_GenCompileError(&(*pGen),E_WARNING,aLabel[n].nLine,
-				"Label '%z' is defined but not referenced",&aLabel[n].sName);
-		}
-	}
+	/* php says nothing about a label nobody jumps to — the old "defined but not
+	 * referenced" warning was a PH7-ism with no counterpart in the oracle. */
 	return SXRET_OK;
 }
 /*
@@ -1562,16 +1595,14 @@ static sxi32 GenStateArrayNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRoot
 			pRoot->pOp->iOp != EXPR_OP_FUNC_CALL /* function() [Symisc extension: i.e: array(&foo())] */
 			&& pRoot->pOp->iOp != EXPR_OP_ARROW /* -> */ && pRoot->pOp->iOp != EXPR_OP_DC /* :: */){
 			/* Unexpected expression */
-			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pRoot->pStart? pRoot->pStart->nLine : 0,
-				"array(): Expecting a variable/array member/function call after reference operator '&'");
+			rc = PH7_GenSyntaxError(&(*pGen),pRoot->pStart,"\"->\" or \"?->\" or \"[\"");
 			if( rc != SXERR_ABORT ){
 				rc = SXERR_INVALID;
 			}
 		}
 	}else if( pRoot->xCode != PH7_CompileVariable ){
 		/* Unexpected expression */
-		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pRoot->pStart? pRoot->pStart->nLine : 0,
-			"array(): Expecting a variable after reference operator '&'");
+		rc = PH7_GenSyntaxError(&(*pGen),pRoot->pStart,0);
 		if( rc != SXERR_ABORT ){
 			rc = SXERR_INVALID;
 		}
@@ -1703,7 +1734,7 @@ static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)
 		if( pCur < pGen->pIn ){
 			if( &pCur[1] >= pGen->pIn ){
 				/* Missing value */
-				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pCur->nLine,"array(): Missing entry value");
+				rc = PH7_GenSyntaxError(&(*pGen),pCur,0);
 				if( rc == SXERR_ABORT ){
 					return SXERR_ABORT;
 				}
@@ -1927,7 +1958,7 @@ static sxi32 GenStateListNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRoot)
 			&& pRoot->pOp->iOp != EXPR_OP_DC /* :: */ ){
 				/* Unexpected expression */
 				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pRoot->pStart? pRoot->pStart->nLine : 0,
-					"list(): Expecting a variable not an expression");
+					"Assignments can only happen to writable values");
 				if( rc != SXERR_ABORT ){
 					rc = SXERR_INVALID;
 				}
@@ -1935,7 +1966,7 @@ static sxi32 GenStateListNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRoot)
 	}else if( pRoot->xCode != PH7_CompileVariable ){
 		/* Unexpected expression */
 		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pRoot->pStart? pRoot->pStart->nLine : 0,
-			"list(): Expecting a variable not an expression");
+			"Assignments can only happen to writable values");
 		if( rc != SXERR_ABORT ){
 			rc = SXERR_INVALID;
 		}
@@ -3204,7 +3235,7 @@ PH7_PRIVATE sxi32 PH7_CompileVariable(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	}
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD|PH7_TK_OCB/*'{'*/)) == 0 ){
 		/* Invalid variable name */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"Invalid variable name");
+		rc = PH7_GenSyntaxError(pGen,pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"variable or \"{\" or \"$\"");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -3218,7 +3249,13 @@ PH7_PRIVATE sxi32 PH7_CompileVariable(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		pGen->pEnd--; /* Ignore the trailing curly */
 		if( pGen->pIn >= pGen->pEnd ){
 			/* Empty expression */
-			PH7_GenCompileError(&(*pGen),E_ERROR,nLineLocal,"Invalid variable name");
+			{
+			/* php names the offending token and, for an empty "${}", stops there:
+			 * the "expecting" tail only appears when something could still follow. */
+			SyToken *pBad = pGen->pIn < pGen->pEnd ? pGen->pIn : 0;
+			PH7_GenSyntaxError(&(*pGen),pBad,
+				(pBad && (pBad->nType & PH7_TK_CCB)) ? 0 : "variable or \"{\" or \"$\"");
+			}
 			return SXRET_OK;
 		}
 		/* Compile the expression holding the variable name */
@@ -3226,7 +3263,7 @@ PH7_PRIVATE sxi32 PH7_CompileVariable(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}else if( rc == SXERR_EMPTY ){
-			PH7_GenCompileError(&(*pGen),E_ERROR,nLineLocal,"Missing variable name");
+			PH7_GenSyntaxError(&(*pGen),pGen->pIn < pGen->pEnd ? pGen->pIn : 0,0);
 			return SXRET_OK;
 		}
 	}else{
@@ -3534,7 +3571,7 @@ static sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 	pGen->pIn++; /* Jump the 'const' keyword */
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_SSTR|PH7_TK_DSTR|PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
 		/* Invalid constant name */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"const: Invalid constant name");
+		rc = PH7_GenSyntaxError(pGen,pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"identifier");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -3546,7 +3583,7 @@ static sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 	/* Make sure the constant name isn't reserved */
 	if( GenStateIsReservedConstant(pName) ){
 		/* Reserved constant */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"const: Cannot redeclare a reserved constant '%z'",pName);
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"Cannot redeclare constant '%z'",pName);
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -3556,7 +3593,7 @@ static sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 	pGen->pIn++;
 	if(pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_EQUAL /* '=' */) == 0 ){
 		/* Invalid statement*/
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"const: Expected '=' after constant name");
+		rc = PH7_GenSyntaxError(pGen,pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\"=\"");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -3707,7 +3744,7 @@ static sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 	pLoop = GenStateFetchBlock(pGen->pCurrent,GEN_BLOCK_LOOP,iLevel);
 	if( pLoop == 0 ){
 		/* Illegal continue */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"A 'continue' statement may only be used within a loop or switch");
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"'continue' not in the 'loop' or 'switch' context");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -3793,7 +3830,7 @@ static sxi32 PH7_CompileBreak(ph7_gen_state *pGen)
 	pLoop = GenStateFetchBlock(pGen->pCurrent,GEN_BLOCK_LOOP,iLevel);
 	if( pLoop == 0 ){
 		/* Illegal break */
-		rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,"A 'break' statement may only be used within a loop or switch");
+		rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,"'break' not in the 'loop' or 'switch' context");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -3829,16 +3866,11 @@ static sxi32 PH7_CompileLabel(ph7_gen_state *pGen)
 {
 	GenBlock *pBlock;
 	Label sLabel;
-	/* Make sure the label does not occur inside a loop or a try{}catch(); block */
-	pBlock = GenStateFetchBlock(pGen->pCurrent,GEN_BLOCK_LOOP|GEN_BLOCK_EXCEPTION,0);
-	if( pBlock ){
-		sxi32 rc;
-		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
-			"Label '%z' inside loop or try/catch block is disallowed",&pGen->pIn->sData);
-		if( rc == SXERR_ABORT ){
-			return SXERR_ABORT;
-		}
-	}else{
+	/* php places NO restriction on where a label may be DEFINED — inside a loop, a switch
+	 * or a try{} is all fine. The only rule is on the jump: you may not goto INTO a loop
+	 * or switch from outside it, which is checked once the labels are all known (see
+	 * GenStateFixJumps). Record the loop this label sits in so that check can run. */
+	{
 		SyString *pTarget = &pGen->pIn->sData;
 		char *zDup;
 		/* Initialize label fields */
@@ -3852,6 +3884,7 @@ static sxi32 PH7_CompileLabel(ph7_gen_state *pGen)
 		SyStringInitFromBuf(&sLabel.sName,zDup,pTarget->nByte);
 		sLabel.bRef  = FALSE;
 		sLabel.nLine = pGen->pIn->nLine;
+		sLabel.nLoopId = pGen->nCurLoopId;
 		pBlock = pGen->pCurrent;
 		while( pBlock ){
 			if( pBlock->iFlags & (GEN_BLOCK_FUNC|GEN_BLOCK_EXCEPTION) ){
@@ -3900,7 +3933,7 @@ static sxi32 PH7_CompileGoto(ph7_gen_state *pGen)
 		return SXRET_OK;
 	}
 	if( (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_ID)) == 0 ){
-		rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,"goto: Invalid label name: '%z'",&pGen->pIn->sData);
+		rc = PH7_GenSyntaxError(pGen,pGen->pIn,"identifier");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -3919,20 +3952,17 @@ static sxi32 PH7_CompileGoto(ph7_gen_state *pGen)
 			return SXERR_ABORT;
 		}
 		SyStringInitFromBuf(&sJump.sLabel,zDup,pTarget->nByte);
+		/* The loop/switch this goto sits in, for the "goto into a loop" check later. */
+		sJump.nLoopId = pGen->nCurLoopId;
+		/* A goto inside a try{}/catch{} is legal php (jumping OUT of the block is fine);
+		 * only the owning function matters here, since a goto may not cross functions. */
 		pBlock = pGen->pCurrent;
 		while( pBlock ){
-			if( pBlock->iFlags & (GEN_BLOCK_FUNC|GEN_BLOCK_EXCEPTION) ){
+			if( pBlock->iFlags & GEN_BLOCK_FUNC ){
 				break;
 			}
 			/* Point to the upper block */
 			pBlock = pBlock->pParent;
-		}
-		if( pBlock && pBlock->iFlags & GEN_BLOCK_EXCEPTION ){
-			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,"goto inside try/catch block is disallowed");
-			if( rc == SXERR_ABORT ){
-				/* Error count limit reached,abort immediately */
-				return SXERR_ABORT;
-			}
 		}
 		if( pBlock && (pBlock->iFlags & GEN_BLOCK_FUNC)){
 			sJump.pFunc = (ph7_vm_func *)pBlock->pUserData;
@@ -4048,8 +4078,9 @@ static sxi32 PH7_CompileBlock(
 			 	   return SXERR_ABORT;
 				}
 				if( rc == SXERR_EOF ){
-					/* No more token to process. Missing closing braces */
-					PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Missing closing braces '}'");
+					/* No more token to process: the block was never closed. php reports
+					 * the line the '{' was opened on, not where the input ran out. */
+					PH7_GenCompileError(&(*pGen),E_PARSE,nLine,"Unclosed '{' on line %u",nLine);
 					break;
 				}
 			}
@@ -4186,7 +4217,7 @@ static sxi32 PH7_CompileWhile(ph7_gen_state *pGen)
 	}
 	/* Update token stream */
 	while(pGen->pIn < pEnd ){
-		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"Unexpected token '%z'",&pGen->pIn->sData);
+		rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn,0);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -4323,7 +4354,7 @@ static sxi32 PH7_CompileDoWhile(ph7_gen_state *pGen)
 	}
 	/* Update token stream */
 	while(pGen->pIn < pEnd ){
-		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"Unexpected token '%z'",&pGen->pIn->sData);
+		rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn,0);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -4424,8 +4455,7 @@ static sxi32 PH7_CompileFor(ph7_gen_state *pGen)
 	}
 	if( (pGen->pIn->nType & PH7_TK_SEMI) == 0 ){
 		/* Syntax error */
-		rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-			"for: Expected ';' after initialization expressions");
+		rc = PH7_GenSyntaxError(pGen,pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\";\"");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -4454,8 +4484,7 @@ static sxi32 PH7_CompileFor(ph7_gen_state *pGen)
 	}
 	if( (pGen->pIn->nType & PH7_TK_SEMI) == 0 ){
 		/* Syntax error */
-		rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-			"for: Expected ';' after conditionals expressions");
+		rc = PH7_GenSyntaxError(pGen,pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\";\"");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -4947,7 +4976,7 @@ static sxi32 PH7_CompileIf(ph7_gen_state *pGen)
 		rc = PH7_CompileExpr(&(*pGen),0,0);
 		/* Update token stream */
 		while(pGen->pIn < pEnd ){
-			PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"Unexpected token '%z'",&pGen->pIn->sData);
+			PH7_GenSyntaxError(&(*pGen),pGen->pIn,0);
 			pGen->pIn++;
 		}
 		pGen->pIn  = &pEnd[1];
@@ -5897,7 +5926,7 @@ static sxi32 PH7_CompileDeclare(ph7_gen_state *pGen)
 	sxi32 rc;
 	pGen->pIn++; /* Jump the 'declare' keyword */
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 /*'('*/ ){
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"declare: Expecting opening parenthesis '('");
+		rc = PH7_GenSyntaxError(pGen,pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\"(\"");
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -7475,7 +7504,8 @@ static sxi32 GenStateCompileFunc(
 	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN /* '(' */,PH7_TK_RPAREN /* ')' */,&pEnd);
 	if( pEnd >= pGen->pEnd ){
 		/* Syntax error */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Missing ')' after function '%z' signature",pName);
+		rc = PH7_GenSyntaxError(pGen,pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"variable");
+		(void)pName;
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -7694,7 +7724,7 @@ static sxi32 PH7_CompileFunction(ph7_gen_state *pGen)
 	}
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
 		/* Invalid function name */
-		rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Invalid function name");
+		rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\"(\"");
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -7710,7 +7740,7 @@ static sxi32 PH7_CompileFunction(ph7_gen_state *pGen)
 	pGen->pIn++;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
 		/* Syntax error */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected '(' after function name '%z'",pName);
+		rc = PH7_GenSyntaxError(pGen,pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\"(\"");
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -12484,7 +12514,7 @@ static sxi32 GenStateCompileSwitchBlock(ph7_gen_state *pGen,sxu32 iTokenDelim,sx
 	sxi32 rc = SXRET_OK;
 	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_SEMI/*';'*/|PH7_TK_COLON/*':'*/)) == 0 ){
 		/* Unexpected token */
-		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"Unexpected token '%z'",&pGen->pIn->sData);
+		rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn,0);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -14634,6 +14664,8 @@ PH7_PRIVATE sxi32 PH7_InitCodeGenerator(
 	pGen->pErrData = pErrData;
 	SySetInit(&pGen->aLabel,&pVm->sAllocator,sizeof(Label));
 	SySetInit(&pGen->aGoto,&pVm->sAllocator,sizeof(JumpFixup));
+	SySetInit(&pGen->aLoopParent,&pVm->sAllocator,sizeof(sxu32));
+	pGen->nLoopId = pGen->nCurLoopId = 0;
 	SySetInit(&pGen->aNullsafeJmp,&pVm->sAllocator,sizeof(sxu32));
 	SySetInit(&pGen->aTrivia,&pVm->sAllocator,sizeof(ph7_trivia));
 	SySetInit(&pGen->aPendingAttrs,&pVm->sAllocator,sizeof(ph7_trivia));
@@ -14704,6 +14736,66 @@ PH7_PRIVATE sxi32 PH7_ResetCodeGenerator(
 	return SXRET_OK;
 }
 /*
+ * Raise php's parse error for an unexpected token: E_PARSE with the exact text
+ * php's parser prints, e.g.
+ *
+ *   syntax error, unexpected token ";", expecting "{"
+ *   syntax error, unexpected identifier "invalid", expecting "("
+ *   syntax error, unexpected end of file
+ *
+ * php names the token by CLASS, not just by text: an identifier, a variable and
+ * a number each get their own noun, while everything else (keywords, operators,
+ * punctuation) is a "token". zExpecting is the optional ", expecting ..." tail
+ * — pass NULL when the site cannot say what it wanted (php often can't either).
+ * pTok == NULL means the input ran out: "unexpected end of file".
+ *
+ * PHL's hand-written recursive-descent parser has no bison expectation sets, so
+ * a site can only claim an "expecting" clause it genuinely knows; every clause
+ * emitted here was verified against php 8.5.7 for the construct in question.
+ */
+PH7_PRIVATE sxi32 PH7_GenSyntaxError(
+	ph7_gen_state *pGen,   /* Code generator state */
+	SyToken *pTok,         /* Offending token, or NULL for end of file */
+	const char *zExpecting /* ", expecting <this>" tail, or NULL */
+	)
+{
+	const char *zNoun = "token";
+	sxu32 nLine;
+	if( pTok == 0 && pGen->pTokenSet ){
+		/* The caller ran out of tokens inside its own slice — but a statement's slice stops
+		 * BEFORE its terminator, so the token php actually names (typically the ';') is the
+		 * one sitting just past the slice, still inside the chunk's token stream. Reach for
+		 * it before concluding "end of file". */
+		SyToken *pBase = (SyToken *)SySetBasePtr(pGen->pTokenSet);
+		SyToken *pStreamEnd = &pBase[SySetUsed(pGen->pTokenSet)];
+		if( pGen->pEnd >= pBase && pGen->pEnd < pStreamEnd ){
+			pTok = pGen->pEnd;
+		}
+	}
+	nLine = pTok ? pTok->nLine : (pGen->pIn > (SyToken *)SySetBasePtr(pGen->pTokenSet) ? pGen->pIn[-1].nLine : 1);
+	if( pTok == 0 ){
+		return PH7_GenCompileError(pGen,E_PARSE,nLine,
+			zExpecting ? "syntax error, unexpected end of file, expecting %s"
+			           : "syntax error, unexpected end of file",
+			zExpecting);
+	}
+	if( pTok->nType & PH7_TK_ID ){
+		zNoun = "identifier";
+	}else if( pTok->nType & PH7_TK_DOLLAR ){
+		zNoun = "variable";
+	}else if( pTok->nType & PH7_TK_INTEGER ){
+		zNoun = "integer";
+	}else if( pTok->nType & PH7_TK_REAL ){
+		zNoun = "float";
+	}
+	if( zExpecting ){
+		return PH7_GenCompileError(pGen,E_PARSE,nLine,
+			"syntax error, unexpected %s \"%z\", expecting %s",zNoun,&pTok->sData,zExpecting);
+	}
+	return PH7_GenCompileError(pGen,E_PARSE,nLine,
+		"syntax error, unexpected %s \"%z\"",zNoun,&pTok->sData);
+}
+/*
  * Generate a compile-time error message.
  * If the error count limit is reached (usually 15 error message)
  * this function return SXERR_ABORT.In that case upper-layers must
@@ -14720,8 +14812,11 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 	SyBlobReset(pWorker);
 	/* Peek the processed file path if available */
 	pFile = (SyString *)SySetPeek(&pGen->pVm->aFiles);
-	if( nErrType == E_ERROR ){
-		/* Increment the error counter */
+	if( nErrType == E_ERROR || nErrType == E_PARSE ){
+		/* Increment the error counter. A PARSE error is every bit as fatal as an
+		 * E_ERROR one: php compiles nothing, runs nothing and exits 255. Counting
+		 * only E_ERROR let a parse error print its diagnostic and then fall through
+		 * into execution with a 0 exit status. */
 		pGen->nErr++;
 		if( pGen->nErr > 15 ){
 			/* Error count limit reached */

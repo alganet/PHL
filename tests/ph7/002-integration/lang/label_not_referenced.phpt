@@ -2,22 +2,16 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PHL: Label defined but not referenced should emit a warning
---SKIPIF--
-<?php
-if (function_exists('zend_version')) {
-    echo "skip";
-}
-?>
+A label nobody jumps to is silent (php has no "defined but not referenced" warning)
 --FILE--
 <?php
 function foo() {
     label_unreferenced:
     echo "hello";
 }
+echo "no-diagnostic";
 ?>
---EXPECTF--
-%s Warning:  Label 'label_unreferenced' is defined but not referenced %s
+--EXPECT--
+no-diagnostic
 --CLEAN--
 <?php
-

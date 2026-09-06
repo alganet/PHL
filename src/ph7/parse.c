@@ -403,7 +403,7 @@ static sxi32 ExprVerifyNodes(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nN
 			iParen++;
 		}else if( apNode[i]->pStart->nType & PH7_TK_RPAREN/*')*/){
 			if( iParen <= 0 ){
-				rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[i]->pStart->nLine,"Syntax error: Unexpected token ')'");
+				rc = PH7_GenCompileError(&(*pGen),E_PARSE,apNode[i]->pStart->nLine,"Unmatched ')'");
 				if( rc != SXERR_ABORT ){
 					rc = SXERR_SYNTAX;
 				}
@@ -414,7 +414,7 @@ static sxi32 ExprVerifyNodes(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nN
 			iSquare++;
 		}else if (apNode[i]->pStart->nType & PH7_TK_CSB /*']'*/){
 			if( iSquare <= 0 ){
-				rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[i]->pStart->nLine,"Syntax error: Unexpected token ']'");
+				rc = PH7_GenCompileError(&(*pGen),E_PARSE,apNode[i]->pStart->nLine,"Unmatched ']'");
 				if( rc != SXERR_ABORT ){
 					rc = SXERR_SYNTAX;
 				}
@@ -470,7 +470,7 @@ static sxi32 ExprVerifyNodes(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nN
 			}
 		}else if (apNode[i]->pStart->nType & PH7_TK_CCB /*'}'*/){
 			if( iBraces <= 0 ){
-				rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[i]->pStart->nLine,"Syntax error: Unexpected token '}'");
+				rc = PH7_GenCompileError(&(*pGen),E_PARSE,apNode[i]->pStart->nLine,"Unmatched '}'");
 				if( rc != SXERR_ABORT ){
 					rc = SXERR_SYNTAX;
 				}
@@ -517,7 +517,7 @@ static sxi32 ExprVerifyNodes(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nN
 		}
 	}
 	if( iParen != 0 || iSquare != 0 || iQuesty != 0 || iBraces != 0){
-		rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[0]->pStart->nLine,"Syntax error,mismatched '(','[','{' or '?'");
+		rc = PH7_GenSyntaxError(&(*pGen),0,0);
 		if( rc != SXERR_ABORT ){
 			rc = SXERR_SYNTAX;
 		}
@@ -639,17 +639,20 @@ static void ExprSkipReturnType(SyToken **ppIn,SyToken *pEnd)
 static sxi32 ExprAssembleAnnon(ph7_gen_state *pGen,SyToken **ppCur,SyToken *pEnd)
 {
 	SyToken *pIn = *ppCur;
-	sxu32 nLine;
 	sxi32 rc;
-	/* Jump the 'function' keyword */
-	nLine = pIn->nLine;
+	/* Jump the leading keyword. The caller may hand us either `function (...)` or
+	 * `static function (...)`, so a 'function' keyword still sitting here belongs to
+	 * the static form and is jumped too. An IDENTIFIER, on the other hand, is not a
+	 * name to skip over — a closure is anonymous, so that is precisely the syntax
+	 * error php reports ("unexpected identifier, expecting \"(\"") . */
 	pIn++;
-	if( pIn < pEnd && (pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) ){
+	if( pIn < pEnd && (pIn->nType & PH7_TK_KEYWORD)
+		&& SX_PTR_TO_INT(pIn->pUserData) == PH7_TKWRD_FUNCTION ){
 		pIn++;
 	}
 	if( pIn >= pEnd || (pIn->nType & PH7_TK_LPAREN) == 0 ){
 		/* Syntax error */
-		rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Missing opening parenthesis '(' while declaring annonymous function");
+		rc = PH7_GenSyntaxError(&(*pGen),pIn < pEnd ? pIn : 0,"\"(\"");
 		if( rc != SXERR_ABORT ){
 			rc = SXERR_SYNTAX;
 		}
@@ -658,8 +661,11 @@ static sxi32 ExprAssembleAnnon(ph7_gen_state *pGen,SyToken **ppCur,SyToken *pEnd
 	pIn++; /* Jump the leading parenthesis '(' */
 	PH7_DelimitNestedTokens(pIn,pEnd,PH7_TK_LPAREN/*'('*/,PH7_TK_RPAREN/*')'*/,&pIn);
 	if( pIn >= pEnd || &pIn[1] >= pEnd ){
-		/* Syntax error */
-		rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Syntax error while declaring annonymous function");
+		/* Nothing follows the parameter list inside our slice: the body is missing.
+		 * php names the token that actually comes next (it lives just past the
+		 * expression slice, still in the raw stream) and says it wanted the '{'. */
+		SyToken *pBad = pEnd < pGen->pEnd ? pEnd : 0;
+		rc = PH7_GenSyntaxError(&(*pGen),pBad,"\"{\"");
 		if( rc != SXERR_ABORT ){
 			rc = SXERR_SYNTAX;
 		}
@@ -675,7 +681,7 @@ static sxi32 ExprAssembleAnnon(ph7_gen_state *pGen,SyToken **ppCur,SyToken *pEnd
 			pIn++; /* Jump the 'use' keyword */
 			if( pIn >= pEnd || (pIn->nType & PH7_TK_LPAREN) == 0 ){
 				/* Syntax error */
-				rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Syntax error while declaring annonymous function");
+				rc = PH7_GenSyntaxError(&(*pGen),pIn < pEnd ? pIn : 0,"\"(\"");
 				if( rc != SXERR_ABORT ){
 					rc = SXERR_SYNTAX;
 				}
@@ -685,7 +691,7 @@ static sxi32 ExprAssembleAnnon(ph7_gen_state *pGen,SyToken **ppCur,SyToken *pEnd
 			PH7_DelimitNestedTokens(pIn,pEnd,PH7_TK_LPAREN/*'('*/,PH7_TK_RPAREN/*')'*/,&pIn);
 			if( pIn >= pEnd || &pIn[1] >= pEnd ){
 				/* Syntax error */
-				rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Syntax error while declaring annonymous function");
+				rc = PH7_GenSyntaxError(&(*pGen),0 /* ran off the end */,0);
 				if( rc != SXERR_ABORT ){
 					rc = SXERR_SYNTAX;
 				}
@@ -697,7 +703,7 @@ static sxi32 ExprAssembleAnnon(ph7_gen_state *pGen,SyToken **ppCur,SyToken *pEnd
 			ExprSkipReturnType(&pIn,pEnd);
 		}else{
 			/* Syntax error */
-			rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Syntax error while declaring annonymous function");
+			rc = PH7_GenSyntaxError(&(*pGen),pIn < pEnd ? pIn : 0,"\"{\"");
 			if( rc != SXERR_ABORT ){
 				rc = SXERR_SYNTAX;
 			}
@@ -714,8 +720,12 @@ static sxi32 ExprAssembleAnnon(ph7_gen_state *pGen,SyToken **ppCur,SyToken *pEnd
 			pIn++;
 		}
 	}else{
-		/* Syntax error */
-		rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Syntax error while declaring annonymous function,missing '{'");
+		/* Syntax error. The closure's token range stops at the expression end, so on
+		 * `$f = function() ;` the '{' is missing and pIn has already reached pEnd —
+		 * php names the token that actually follows (the ';'), which is still in the
+		 * raw stream just past our slice. Peek at it rather than claiming EOF. */
+		SyToken *pBad = pIn < pEnd ? pIn : (pEnd < pGen->pEnd ? pEnd : 0);
+		rc = PH7_GenSyntaxError(&(*pGen),pBad,"\"{\"");
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -1023,7 +1033,7 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 				if( pCur < pGen->pEnd ){
 					pCur++;
 				}else{
-					rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"Syntax error: Missing closing brace '}'");
+					rc = PH7_GenSyntaxError(pGen,pNode->pStart,0);
 					if( rc != SXERR_ABORT ){
 						rc = SXERR_SYNTAX;
 					}
@@ -1069,7 +1079,7 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 					 ph7_expr_op *pOp = (pCur < pGen->pEnd) ? (ph7_expr_op *)pCur->pUserData : 0;
 					 if( pCur >= pGen->pEnd || (pCur->nType & PH7_TK_OP) == 0  || pOp == 0 || pOp->iVmOp != PH7_OP_STORE /*'='*/){
 						 /* Syntax error */
-						 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"list(): expecting '=' after construct");
+						 rc = PH7_GenSyntaxError(pGen,pNode->pStart,"\"=\"");
 						 if( rc != SXERR_ABORT ){
 							 rc = SXERR_SYNTAX;
 						 }
@@ -1164,7 +1174,7 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 			 /* Point to the code generator routine */
 			 pNode->xCode = PH7_GetNodeHandler(pCur->nType);
 			 if( pNode->xCode == 0 ){
-				 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"Syntax error: Unexpected token '%z'",&pNode->pStart->sData);
+				 rc = PH7_GenSyntaxError(pGen,pNode->pStart,0);
 				 if( rc != SXERR_ABORT ){
 					 rc = SXERR_SYNTAX;
 				 }
@@ -1870,7 +1880,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 					  if( pNode->pLeft && pNode->pLeft->pOp && pNode->pLeft->pOp->iPrec > 4 ){
 						  if( pNode->pLeft->pLeft == 0 || pNode->pLeft->pRight == 0 ){
 							   /* Syntax error */
-							  rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pLeft->pStart->nLine,"'%z': Missing operand",&pNode->pLeft->pOp->sOp);
+							  rc = PH7_GenSyntaxError(pGen,0,0);
 							  if( rc != SXERR_ABORT ){
 								  rc = SXERR_SYNTAX;
 							  }
@@ -1879,7 +1889,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 					  }
 				  }else{
 					  /* Syntax error */
-					  rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"'%z': Missing operand",&pNode->pOp->sOp);
+					  rc = PH7_GenSyntaxError(pGen,0,0);
 					  if( rc != SXERR_ABORT ){
 						  rc = SXERR_SYNTAX;
 					  }
@@ -1918,8 +1928,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				 }
 			 }
 			 if( iR < 0 || iL < 0 || !NODE_ISTERM(iR) || !NODE_ISTERM(iL) ){
-				 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
-					 "'%z': Missing/Invalid operand",&pNode->pOp->sOp);
+				 rc = PH7_GenSyntaxError(pGen,0,0);
 				 if( rc != SXERR_ABORT ){
 					 rc = SXERR_SYNTAX;
 				 }
@@ -1978,7 +1987,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				 }
 				 if( iRight >= nToken || iLeft < 0 || !NODE_ISTERM(iRight) || !NODE_ISTERM(iLeft) ){
 					 /* Syntax error */
-					 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"'%z': Missing/Invalid operand",&pNode->pOp->sOp);
+					 rc = PH7_GenSyntaxError(pGen,0,0);
 					 if( rc != SXERR_ABORT ){
 						 rc = SXERR_SYNTAX;
 					 }
@@ -2047,7 +2056,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 			  sxi32 iNest = 1;
 			  if( iLeft < 0 || !NODE_ISTERM(iLeft) ){
 				  /* Missing condition */
-				  rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"'%z': Syntax error",&pNode->pOp->sOp);
+				  rc = PH7_GenSyntaxError(pGen,pNode->pStart,0);
 				  if( rc != SXERR_ABORT ){
 					  rc = SXERR_SYNTAX;
 				  }
@@ -2129,7 +2138,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 					 rc = PH7_GenCompileError(pGen,E_PARSE,pNode->pStart->nLine,
 						 "syntax error, unexpected token \"%z\"",&pNode->pOp->sOp);
 				 }else{
-					 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"'%z': Missing/Invalid operand",&pNode->pOp->sOp);
+					 rc = PH7_GenSyntaxError(pGen,0,0);
 				 }
 				 if( rc != SXERR_ABORT ){
 					 rc = SXERR_SYNTAX;
@@ -2208,7 +2217,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				 }
 				 if( iRight >= nToken || iLeft < 0 || !NODE_ISTERM(iRight) || !NODE_ISTERM(iLeft) ){
 					 /* Syntax error */
-					 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"'%z': Missing/Invalid operand",&pNode->pOp->sOp);
+					 rc = PH7_GenSyntaxError(pGen,0,0);
 					 if( rc != SXERR_ABORT ){
 						 rc = SXERR_SYNTAX;
 					 }
@@ -2226,7 +2235,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 	 for( iCur = 1 ; iCur < nToken ; ++iCur ){
 		 if( apNode[iCur] ){
 			 if( (apNode[iCur]->pOp || apNode[iCur]->xCode ) && apNode[0] != 0){
-				 rc = PH7_GenCompileError(pGen,E_ERROR,apNode[iCur]->pStart->nLine,"Unexpected token '%z'",&apNode[iCur]->pStart->sData);
+				 rc = PH7_GenSyntaxError(pGen,apNode[iCur]->pStart,pGen->nCommaExprOk > 0 ? "\";\"" : 0);
 				  if( rc != SXERR_ABORT ){
 					  rc = SXERR_SYNTAX;
 				  }

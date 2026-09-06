@@ -3,8 +3,6 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 PHL: Syntax error while declaring anonymous function
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
 $f = function {
@@ -12,7 +10,7 @@ $f = function {
 };
 ?>
 --EXPECTF--
-%s Fatal error:  Missing opening parenthesis '(' while declaring annonymous function %s
+%AParse error:%Asyntax error, unexpected token "{", expecting "("%A
 --CLEAN--
 <?php
 unset($f);

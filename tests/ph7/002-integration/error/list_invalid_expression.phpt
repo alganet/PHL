@@ -11,7 +11,7 @@ list() construct with invalid expression error
 list(1) = array(1);
 ?>
 --EXPECTF--
-%s Fatal error:  list(): Expecting a variable not an expression %s
+%AFatal error:%AAssignments can only happen to writable values%A
 --CLEAN--
 <?php
 

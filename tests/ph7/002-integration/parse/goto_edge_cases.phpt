@@ -37,7 +37,7 @@ outer_function();
 
 ?>
 --EXPECTF--
-%s Fatal error:  Label 'NONEXISTENT_LABEL' was referenced but not defined %s
+%AFatal error:%A'goto' to undefined label 'NONEXISTENT_LABEL'%AFatal error:%A'goto' to undefined label 'MISSING_LABEL'%AFatal error:%A'goto' to undefined label 'INNER_MISSING'%AFatal error:%A'goto' to undefined label 'GLOBAL_MISSING_LABEL'%A
 --CLEAN--
 <?php
 

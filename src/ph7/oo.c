@@ -525,10 +525,11 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 		pName = &pMeth->sFunc.sName;
 		if( (pEntry = SyHashGet(&pSub->hMethod,(const void *)pName->zString,pName->nByte)) != 0 ){
 			 if( pMeth->iFlags & PH7_CLASS_ATTR_FINAL ){
-				/* Cannot Overwrite final method */
+				/* php: "Cannot override final method A::test()" */
 				rc = PH7_GenCompileError(&(*pGen),E_ERROR,((ph7_class_method *)pEntry->pUserData)->nLine,
-					"Cannot Overwrite final method '%z:%z' inside child class '%z'",
-					&pBase->sName,pName,&pSub->sName);
+					"Cannot override final method %z::%z()",
+					&pBase->sName,pName);
+				(void)pSub;
 				if( rc == SXERR_ABORT ){
 					return SXERR_ABORT;
 				}
