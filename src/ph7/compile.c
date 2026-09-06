@@ -3111,17 +3111,36 @@ PH7_PRIVATE sxi32 PH7_CompileMatch(ph7_gen_state *pGen,sxi32 iCompileFlag)
  */
 static sxi32 PH7_CompileBacktic(ph7_gen_state *pGen,sxi32 iCompileFlag)
 {
-	/* TICKET 1433-40: This construct is disabled in the current release of the PH7 engine.
-	 * If you want this feature,please contact symisc systems via contact@symisc.net
+	static const SyString sName = { "shell_exec", sizeof("shell_exec")-1 };
+	sxu32 nIdx = 0;
+	sxi32 rc;
+	/*
+	 * `cmd` IS shell_exec("cmd") in php — it interpolates like a double-quoted string,
+	 * runs the command and yields its output. PH7 refused to run it at all (TICKET
+	 * 1433-40) and quietly evaluated to NULL. php 8.5 deprecates the syntax but still
+	 * executes it, so compile it to the real call and say what php says.
 	 */
-	PH7_GenCompileError(&(*pGen),E_NOTICE,pGen->pIn->nLine,
-		"Command line invocation is disabled in the current release of the PH7(%s) engine",
-		ph7_lib_version()
-		);
-	/* Load NULL */
-	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,0,0,0);
-	SXUNUSED(iCompileFlag); /* cc warning */
-	/* Node successfully compiled */
+	PH7_GenCompileError(&(*pGen),8192 /* E_DEPRECATED */,pGen->pIn->nLine,
+		"The backtick (`) operator is deprecated, use shell_exec() instead");
+	/* The body interpolates exactly like a double-quoted string */
+	pGen->pIn->nType &= ~PH7_TK_BSTR;
+	pGen->pIn->nType |= PH7_TK_DSTR;
+	rc = PH7_CompileString(&(*pGen),iCompileFlag);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* ... and the command string is then handed to shell_exec() */
+	if( SXRET_OK != GenStateFindLiteral(&(*pGen),&sName,&nIdx) ){
+		ph7_value *pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);
+		if( pObj == 0 ){
+			PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"PH7 engine is running out of memory");
+			return SXERR_ABORT;
+		}
+		PH7_MemObjInitFromString(pGen->pVm,pObj,&sName);
+		GenStateInstallLiteral(&(*pGen),pObj,nIdx);
+	}
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_CALL,1,0,GenStateAttachStrictFlag(pGen,0),0);
 	return SXRET_OK;
 }
 /*
@@ -3757,11 +3776,15 @@ static sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 		 * finallys first. OP_SET_FINALLY_JMP(iP1=count) does that then takes the loop jump. */
 		sxi32 iJmpOp = nCross > 0 ? PH7_OP_SET_FINALLY_JMP : PH7_OP_JMP;
 		if( pLoop->iFlags & GEN_BLOCK_SWITCH ){
-			/* According to the PHP language reference manual
-			 *  Note that unlike some other languages, the continue statement applies to switch
-			 *  and acts similar to break. If you have a switch inside a loop and wish to continue
-			 *  to the next iteration of the outer loop, use continue 2.
-			 */
+			/* `continue` inside a switch acts like `break` — which is almost never what
+			 * the author meant, so php 7.3+ says so at compile time. The generated jump
+			 * is unchanged; only the diagnostic was missing. An explicit level
+			 * (`continue 2`) targets the enclosing loop and stays silent. */
+			if( iLevel < 1 ){
+				PH7_GenCompileError(&(*pGen),E_WARNING,nLineLocal,
+					"\"continue\" targeting switch is equivalent to \"break\"."
+					" Did you mean to use \"continue 2\"?");
+			}
 			rc = PH7_VmEmitInstr(pGen->pVm,iJmpOp,nCross,0,0,&nInstrIdx);
 			if( rc == SXRET_OK ){
 				GenStateNewJumpFixup(pLoop,PH7_OP_JMP,nInstrIdx);

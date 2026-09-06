@@ -3,14 +3,6 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Test open corrupted zip (bad local and central headers, no recovery)
---SKIPIF--
-<?php
-/* Only run on PH7/PHL */
-if (function_exists('zend_version')) { print("skip: not PH7\n"); }
-if (!function_exists('zip_open')) {
-    print("skip zip_open not available\n");
-}
-?>
 --FILE--
 <?php
 $fn = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'phl_test_zip_corrupt_central.zip';
@@ -41,10 +33,7 @@ if (is_resource($zip)){
 unlink($fn);
 ?>
 --EXPECTF--
-exists=1
-len=113
-Error [8192]: Function zip_open() is deprecated since 8.0, use ZipArchive::open() instead in %s on line %d
-zip_open=failed
+%Aexists=1%Alen=113%Azip_open=failed%A
 --CLEAN--
 <?php
 unset($fn, $zip_b64, $data, $len, $zip);

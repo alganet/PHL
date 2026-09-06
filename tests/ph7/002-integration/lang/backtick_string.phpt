@@ -4,7 +4,7 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Backtick quoted string processing
 --SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+<?php if (function_exists('zend_version')) echo 'skip php only deprecates the backtick operator, and the stock php.ini masks E_DEPRECATED'; ?>
 --FILE--
 <?php
 // Test backtick quoted string processing - this should trigger uncovered lexer code
@@ -12,7 +12,7 @@ Backtick quoted string processing
 echo `echo "test"`;
 ?>
 --EXPECTF--
-%s Notice:  Command line invocation is disabled in the current release of the %s %s
+%ADeprecated:%AThe backtick (`) operator is deprecated, use shell_exec() instead%Atest%A
 --CLEAN--
 <?php
 

@@ -6839,6 +6839,52 @@ static int is_pipe_stream(const ph7_io_stream *pStream)
  * Return
  *  Returns a file pointer on success, or FALSE on error.
  */
+/*
+ * string|false|null shell_exec(string $command)
+ *  Execute a command via the shell and return the complete output as a string.
+ * Returns NULL when the command produces no output, FALSE when the pipe cannot be
+ * opened. This is what the backtick operator compiles to, exactly as in php.
+ */
+static int PH7_builtin_shell_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zCommand;
+	pipe_private *pPipe;
+	SyBlob sOut;
+	char zBuf[4096];
+	size_t nRead;
+	int nCmdLen;
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zCommand = ph7_value_to_string(apArg[0],&nCmdLen);
+	if( nCmdLen < 1 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pPipe = PipeOpen(pCtx->pVm,zCommand,"r");
+	if( pPipe == 0 || pPipe->pFile == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+	for(;;){
+		nRead = fread(zBuf,1,sizeof(zBuf),pPipe->pFile);
+		if( nRead < 1 ){
+			break;
+		}
+		SyBlobAppend(&sOut,zBuf,(sxu32)nRead);
+	}
+	PipeClose(pPipe);
+	if( SyBlobLength(&sOut) < 1 ){
+		/* php answers NULL, not "", when the command printed nothing */
+		ph7_result_null(pCtx);
+	}else{
+		ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	}
+	SyBlobRelease(&sOut);
+	return PH7_OK;
+}
 static int PH7_builtin_popen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zCommand, *zMode;
@@ -7089,6 +7135,7 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"stream_socket_client", PH7_builtin_fsockopen },
 #endif
 		{"popen",     PH7_builtin_popen  },
+		{"shell_exec", PH7_builtin_shell_exec },
 		{"pclose",    PH7_builtin_pclose },
 		{"fpassthru", PH7_builtin_fpassthru },
 		{"fputcsv",   PH7_builtin_fputcsv },

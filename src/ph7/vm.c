@@ -23378,11 +23378,12 @@ static int vm_builtin_restore_exception_handler(ph7_context *pCtx,int nArg,ph7_v
 	/* Point to the old and the new handler */
 	pOld = &pVm->aExceptionCB[0];
 	pNew = &pVm->aExceptionCB[1];
+	SXUNUSED(nArg); /* cc warning */
+	SXUNUSED(apArg);
 	if( pOld->iFlags & MEMOBJ_NULL ){
-		SXUNUSED(nArg); /* cc warning */
-		SXUNUSED(apArg);
-		/* No installed handler,return FALSE */
-		ph7_result_bool(pCtx,0);
+		/* php always answers TRUE here, even with nothing to restore — the return
+		 * value says "the call is valid", not "a handler was in place". */
+		ph7_result_bool(pCtx,1);
 		return PH7_OK;
 	}
 	/* Copy the old handler */
@@ -23448,11 +23449,12 @@ static int vm_builtin_restore_error_handler(ph7_context *pCtx,int nArg,ph7_value
 	/* Point to the old and the new handler */
 	pOld = &pVm->aErrCB[0];
 	pNew = &pVm->aErrCB[1];
+	SXUNUSED(nArg); /* cc warning */
+	SXUNUSED(apArg);
 	if( pOld->iFlags & MEMOBJ_NULL ){
-		SXUNUSED(nArg); /* cc warning */
-		SXUNUSED(apArg);
-		/* No installed callback,return FALSE */
-		ph7_result_bool(pCtx,0);
+		/* php always answers TRUE here, even with nothing to restore — the return
+		 * value says "the call is valid", not "a handler was in place". */
+		ph7_result_bool(pCtx,1);
 		return PH7_OK;
 	}
 	/* Copy the old callback */

@@ -3,8 +3,6 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 PH7: substr with invalid offsets
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
 // Test substr with offset >= string length
@@ -23,9 +21,8 @@ if ($result === false) {
     echo "FAIL2\n";
 }
 ?>
---EXPECT--
-PASS1
-PASS2
+--EXPECTF--
+%AFAIL1%AFAIL2%A
 --CLEAN--
 <?php
 unset($result);

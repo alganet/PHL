@@ -294,6 +294,12 @@ struct ph7_hashmap
 	sxu32 (*xIntHash)(sxi64);     /* Hash function for int_keys */
 	sxu32 (*xBlobHash)(const void *,sxu32); /* Hash function for blob_keys */
 	sxi64 iNextIdx;               /* Next available automatically assigned index */
+	sxu8 bIntKeySeen;             /* An integer key has been inserted at least once. php 8.3
+	                               * carries the auto-index through NEGATIVE keys: the first
+	                               * int key sets the next index to key+1 even when negative
+	                               * ($a[-4]=x; $a[]=y stores y at -3), where it used to
+	                               * restart at 0. Only the FIRST key may move the index
+	                               * downwards, hence the flag. */
 	sxi32 iRef;                   /* Reference count. INVARIANT: the number of
 								   * SHARERS for copy-on-write purposes is
 								   * iRef minus the by-REFERENCE foreach steps

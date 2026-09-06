@@ -3,11 +3,6 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 restore_exception_handler restores previous handler
---SKIPIF--
-<?php
-if (!function_exists('restore_exception_handler')) { echo 'skip: restore_exception_handler not available'; }
-if (function_exists('zend_version')) { echo 'skip: PHP restore_exception_handler behavior differs'; }
-?>
 --FILE--
 <?php
 $result = restore_exception_handler();
@@ -17,10 +12,8 @@ if ($old === null) { echo "old_handler_null\n"; } else { echo "old_handler_not_n
 $result = restore_exception_handler();
 if ($result) { echo "restore_ok\n"; } else { echo "restore_failed\n"; }
 ?>
---EXPECT--
-no_handler_false
-old_handler_null
-restore_failed
+--EXPECTF--
+%Ano_handler_true%Aold_handler_null%Arestore_ok%A
 --CLEAN--
 <?php
 unset($result, $old);
