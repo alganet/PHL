@@ -10,7 +10,7 @@ PH7: Syntax error in anonymous function declaration - missing body after use
 $func = function() use ($x) ;
 ?>
 --EXPECTF--
-%s Fatal error:  Syntax error while declaring annonymous function %s
+%AParse error:%Asyntax error, unexpected token ";"%A
 --CLEAN--
 <?php
 unset($func);

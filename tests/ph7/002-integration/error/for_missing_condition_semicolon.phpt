@@ -11,7 +11,7 @@ for($i=0; $i<10 $i++) {
 }
 ?>
 --EXPECTF--
-%s Fatal error:  Unexpected token '++' %s
+%AParse error:%Asyntax error, unexpected token "++", expecting ";"%AParse error:%Asyntax error, unexpected token ")", expecting ";"%A
 --CLEAN--
 <?php
 

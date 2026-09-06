@@ -46,7 +46,7 @@ class InvalidClass {
 }
 ?>
 --EXPECTF--
-%s Fatal error:  '=': Missing/Invalid operand %s
+%AParse error:%Asyntax error, unexpected token ";"%AParse error:%Asyntax error, unexpected token ";", expecting variable%A
 --CLEAN--
 <?php
 unset($a, $arr, $result, $value);

@@ -10,7 +10,7 @@ PHL: echo with invalid syntax triggers unexpected token error
 echo 1 2;
 ?>
 --EXPECTF--
-%s Fatal error:  Unexpected token '2' %s
+%AParse error:%Asyntax error, unexpected integer "2"%AParse error:%Asyntax error, unexpected token ";"%A
 --CLEAN--
 <?php
 

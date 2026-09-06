@@ -13,7 +13,7 @@ const false = 3;
 echo "Should not reach here\n";
 ?>
 --EXPECTF--
-%s Fatal error:  const: Cannot redeclare a reserved constant 'null' %s
+%AFatal error:%ACannot redeclare constant 'null'%AFatal error:%ACannot redeclare constant 'true'%AFatal error:%ACannot redeclare constant 'false'%A
 --CLEAN--
 <?php
 

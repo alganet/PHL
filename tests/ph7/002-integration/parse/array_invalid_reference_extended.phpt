@@ -13,7 +13,7 @@ $a = array(&$e + $f);
 echo "Should not reach here\n";
 ?>
 --EXPECTF--
-%s Fatal error:  array(): Expecting a variable/array member/function call after reference operator '&' %s
+%AParse error:%Asyntax error, unexpected token "++", expecting "->" or "?->" or "["%AParse error:%Asyntax error, unexpected token "+", expecting "->" or "?->" or "["%A
 --CLEAN--
 <?php
 unset($a);

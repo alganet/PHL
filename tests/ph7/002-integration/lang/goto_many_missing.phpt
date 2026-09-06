@@ -25,7 +25,7 @@ goto label15;
 goto label16;
 ?>
 --EXPECTF--
-%s Fatal error:  Label 'label1' was referenced but not defined %s
+%AFatal error:%A'goto' to undefined label 'label1'%AFatal error:%A'goto' to undefined label 'label2'%AFatal error:%A'goto' to undefined label 'label3'%AFatal error:%A'goto' to undefined label 'label4'%AFatal error:%A'goto' to undefined label 'label5'%AFatal error:%A'goto' to undefined label 'label6'%AFatal error:%A'goto' to undefined label 'label7'%AFatal error:%A'goto' to undefined label 'label8'%AFatal error:%A'goto' to undefined label 'label9'%AFatal error:%A'goto' to undefined label 'label10'%AFatal error:%A'goto' to undefined label 'label11'%AFatal error:%A'goto' to undefined label 'label12'%AFatal error:%A'goto' to undefined label 'label13'%AFatal error:%A'goto' to undefined label 'label14'%AFatal error:%A'goto' to undefined label 'label15'%AFatal error:%AError count limit reached,PH7 is aborting compilation%A
 --CLEAN--
 <?php
 

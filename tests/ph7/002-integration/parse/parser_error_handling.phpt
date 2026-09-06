@@ -58,7 +58,7 @@ try {
 
 ?>
 --EXPECTF--
-%s Fatal error:  goto: Invalid label name: ';' %s
+%AParse error:%Asyntax error, unexpected token ";", expecting identifier%AFatal error:%AExpected semi-colon ';' after 'goto' statement%AFatal error:%ASyntax error: Unexpected token ':'%AFatal error:%ASyntax error: Unexpected keyword 'interface'%AFatal error:%ASyntax error: Unexpected keyword 'trait'%AFatal error:%ASyntax error: Unexpected keyword 'abstract'%AFatal error:%ASyntax error: Unexpected keyword 'final'%AFatal error:%AMissing argument default value%AFatal error:%AEmpty constant 'CONSTANT' value%AFatal error:%AMissing ')' after method 'method' declaration%A
 --CLEAN--
 <?php
 

@@ -16,7 +16,7 @@ goto bar;
 }
 ?>
 --EXPECTF--
-%s Warning:  Label 'bar' is defined but not referenced %s
+%AFatal error:%A'goto' to undefined label 'bar'%A
 --CLEAN--
 <?php
 

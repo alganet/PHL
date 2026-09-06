@@ -3,8 +3,6 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Test compilation error recovery paths to cover uncovered error handling
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
 // Test error recovery during compilation to cover uncovered paths
@@ -21,7 +19,7 @@ function test_error_recovery() {
 test_error_recovery();
 ?>
 --EXPECTF--
-%s Fatal error:  '=': Missing/Invalid operand %s
+%AParse error:%Asyntax error, unexpected token ";"%A
 --CLEAN--
 <?php
 unset($invalid_syntax);

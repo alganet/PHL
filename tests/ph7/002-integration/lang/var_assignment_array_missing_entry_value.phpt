@@ -12,7 +12,7 @@ Var assignment on array with key but missing value generates compile error
 array(1 =>);
 ?>
 --EXPECTF--
-%s Fatal error:  array(): Missing entry value %s
+%AParse error:%Asyntax error, unexpected token "=>"%A
 --CLEAN--
 <?php
 

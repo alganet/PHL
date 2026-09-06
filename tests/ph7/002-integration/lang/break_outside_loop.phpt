@@ -12,7 +12,7 @@ break;
 echo "After break\n";
 ?>
 --EXPECTF--
-%s Fatal error:  A 'break' statement may only be used within a loop or switch %s
+%AFatal error:%A'break' not in the 'loop' or 'switch' context%A
 --CLEAN--
 <?php
 

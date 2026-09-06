@@ -10,7 +10,7 @@ array with missing entry value
 $a = array(key => );
 ?>
 --EXPECTF--
-%s Fatal error:  array(): Missing entry value %s
+%AParse error:%Asyntax error, unexpected token "=>"%A
 --CLEAN--
 <?php
 unset($a);

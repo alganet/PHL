@@ -10,7 +10,7 @@ PHL: missing variable name
 $a = ${};
 ?>
 --EXPECTF--
-%s Fatal error:  Invalid variable name %s
+%AParse error:%Asyntax error, unexpected token "}", expecting variable or "{" or "$"%A
 --CLEAN--
 <?php
 unset($a);

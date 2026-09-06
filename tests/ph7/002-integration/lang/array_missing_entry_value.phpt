@@ -14,7 +14,7 @@ if (function_exists('zend_version')) {
 $x = array(0 => );
 ?>
 --EXPECTF--
-%s Fatal error:  array(): Missing entry value %s
+%AParse error:%Asyntax error, unexpected token "=>"%A
 --CLEAN--
 <?php
 unset($x);

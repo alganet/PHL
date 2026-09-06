@@ -10,7 +10,7 @@ PHL: array() with missing entry value should produce a compile error
 $x = array(1 => );
 ?>
 --EXPECTF--
-%s Fatal error:  array(): Missing entry value %s
+%AParse error:%Asyntax error, unexpected token "=>"%A
 --CLEAN--
 <?php
 unset($x);

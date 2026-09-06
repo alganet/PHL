@@ -11,7 +11,7 @@ $result = $(;
 echo "Result: $result\n";
 ?>
 --EXPECTF--
-%s Fatal error:  Syntax error,mismatched '(','[','{' or '?' %s
+%AParse error:%Asyntax error, unexpected token ";"%A
 --CLEAN--
 <?php
 unset($result);

@@ -479,6 +479,8 @@ struct GenBlock
 	sxi32 iFlags;         /* Block control flags (see below) */
 	SySet aJumpFix;       /* Jump fixup (JumpFixup instance) */
 	void *pUserData;      /* Upper layer private data */
+	sxu32 nLoopId;        /* This block's loop/switch id (0 when it is neither) */
+	sxu32 nOuterLoopId;   /* Loop/switch that was innermost when this one was entered */
 	/* The following two fields are used only when compiling
 	 * the 'do..while()' language construct.
 	 */
@@ -510,6 +512,14 @@ struct ph7_gen_state
 	int nCommaExprOk;    /* > 0 while compiling a for() clause, the ONLY place php's grammar
 	                      * allows a comma-separated expression list (PH7's comma OPERATOR
 	                      * is otherwise a PH7-ism php rejects — §10) */
+	sxu32 nLoopId;       /* Monotonic id handed to each loop/switch block as it is entered */
+	sxu32 nCurLoopId;    /* Innermost loop/switch currently open (0 = none) */
+	SySet aLoopParent;   /* aLoopParent[id-1] = enclosing loop id, so the ancestry of any loop
+	                      * can be walked after compilation. php's only goto restriction is
+	                      * "'goto' into loop or switch statement is disallowed": a jump is
+	                      * illegal exactly when the LABEL sits in a loop that does not also
+	                      * enclose the GOTO. Both ends record their loop id; the fixup pass
+	                      * walks up from the goto's to look for the label's. */
 	SyBlob sWorker;      /* General purpose working buffer */
 	SyBlob sErrBuf;      /* Error buffer */
 	SyBlob sNamespace;   /* Current namespace path (e.g. "App\\Models") */
@@ -2329,6 +2339,7 @@ PH7_PRIVATE sxi32 PH7_CompileThrowExpr(ph7_gen_state *pGen,sxi32 iCompileFlag);
 PH7_PRIVATE sxi32 PH7_InitCodeGenerator(ph7_vm *pVm,ProcConsumer xErr,void *pErrData);
 PH7_PRIVATE sxi32 PH7_ResetCodeGenerator(ph7_vm *pVm,ProcConsumer xErr,void *pErrData);
 PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 nLine,const char *zFormat,...);
+PH7_PRIVATE sxi32 PH7_GenSyntaxError(ph7_gen_state *pGen,SyToken *pTok,const char *zExpecting);
 PH7_PRIVATE sxi32 PH7_CompileScript(ph7_vm *pVm,SyString *pScript,sxi32 iFlags);
 /* constant.c function prototypes */
 PH7_PRIVATE void PH7_RegisterBuiltInConstant(ph7_vm *pVm);

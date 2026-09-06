@@ -61,6 +61,16 @@ static void Fatal(const char *zMsg)
 	FatalCode(zMsg,255);
 }
 /*
+ * Exit 255 without printing anything: used when the diagnostic has already been
+ * emitted by the error consumer (a compile/parse error), which is exactly what
+ * php does — it prints the parse error and nothing more.
+ */
+static void FatalSilent(void)
+{
+	ph7_lib_shutdown();
+	exit(255);
+}
+/*
  * Display the banner,a help message and exit.
  */
 static void Help(void)
@@ -562,8 +572,9 @@ int main(int argc,char **argv)
 			if( rc == PH7_VM_ERR ){
 				Fatal("VM initialization error");
 			}else{
-				/* Compile-time error, your output (STDOUT) should display the error messages */
-				Fatal("Compile error");
+				/* Compile-time error. The diagnostic has already been printed by the
+				 * error consumer; php adds nothing else, it just exits 255. */
+				FatalSilent();
 			}
 		}
 	}else{
@@ -579,8 +590,9 @@ int main(int argc,char **argv)
 			}else if( rc == PH7_VM_ERR ){
 				Fatal("VM initialization error");
 			}else{
-				/* Compile-time error, your output (STDOUT) should display the error messages */
-				Fatal("Compile error");
+				/* Compile-time error. The diagnostic has already been printed by the
+				 * error consumer; php prints nothing further and exits 255. */
+				FatalSilent();
 			}
 		}
 	}

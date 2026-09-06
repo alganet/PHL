@@ -3,8 +3,6 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 compilation boundary conditions and syntax error edge cases
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
 // Test various compilation boundary conditions and syntax errors
@@ -75,7 +73,7 @@ class Child extends Parent implements {
 
 ?>
 --EXPECTF--
-%s Fatal error:  Missing ')' after function 'invalid_func' signature %s
+%AParse error:%Asyntax error, unexpected token "{", expecting variable%A
 --CLEAN--
 <?php
 unset($empty, $bad);

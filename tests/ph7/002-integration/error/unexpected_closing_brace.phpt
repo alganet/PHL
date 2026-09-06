@@ -3,14 +3,12 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 PH7: Syntax error for unexpected closing brace '}'
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
 if (true) { echo 1; } }
 ?>
 --EXPECTF--
-%s Fatal error:  Syntax error: Unexpected token '}' %s
+%AParse error:%AUnmatched '}'%A
 --CLEAN--
 <?php
 

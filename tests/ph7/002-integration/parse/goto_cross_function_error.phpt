@@ -15,7 +15,7 @@ function foo() {
 goto LABEL;
 ?>
 --EXPECTF--
-%s Warning:  Label 'LABEL' is defined but not referenced %s
+%AFatal error:%A'goto' to undefined label 'LABEL'%A
 --CLEAN--
 <?php
 
