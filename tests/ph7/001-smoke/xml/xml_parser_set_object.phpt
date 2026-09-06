@@ -33,7 +33,8 @@ xml_parser_free($parser);
 echo "Parse result: $result\n";
 echo "Elements found: " . count($elements) . "\n";
 ?>
---EXPECT--
+--EXPECTF--
+Error [8192]: Function xml_parser_free() is deprecated since 8.5, as it has no effect since PHP 8.0 in %s on line %d
 Parse result: 1
 Elements found: 4
 --CLEAN--

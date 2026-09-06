@@ -10,8 +10,9 @@ hexdec with long hex and invalid character behavior
 echo "long:" . hexdec('0123456789abcdef0') . "\n";
 echo "invalid:" . hexdec('DEADBEEFZ') . "\n";
 ?>
---EXPECT--
+--EXPECTF--
 long:1311768467463790320
+Error [8192]: Invalid characters passed for attempted conversion, these have been ignored in %s on line %d
 invalid:3735928559
 --CLEAN--
 <?php

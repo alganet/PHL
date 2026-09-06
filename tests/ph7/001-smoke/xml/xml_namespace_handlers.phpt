@@ -30,11 +30,12 @@ function character_data($parser, $data) { if(trim($data)) { echo "Data: $data\n"
 --EXPECTF--
 NS START: ns http://example.com
 Start: root
-Start: %s
+Start: http://example.com:child>
 Data: ok
-End: %s
+End: http://example.com:child>
 End: root
 NS END: ns
+Error [8192]: Function xml_parser_free() is deprecated since 8.5, as it has no effect since PHP 8.0 in %s on line %d
 Parse result: 1
 --CLEAN--
 <?php

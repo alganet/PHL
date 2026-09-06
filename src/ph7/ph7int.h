@@ -225,6 +225,9 @@ struct ph7_user_func
 	sxi16 nMinArg;            /* Minimum required arguments for the PHP-8 ArgumentCountError
 	                           * check at the OP_CALL choke point; 0 = no central enforcement
 	                           * (the builtin self-validates, or genuinely accepts zero args). */
+	const char *zDeprecated;  /* php's E_DEPRECATED text for a deprecated BUILTIN (the
+	                           * deprecation is a property of the function itself, so the
+	                           * OP_CALL choke point emits it); 0 = not deprecated. */
 	sxu8 bAtLeast;            /* 0 -> "expects exactly N", 1 -> "expects at least N" (the
 	                           * wording depends on whether the builtin has optional params). */
 	const char *zSig;         /* PHP-style parameter list ("string $s, int $o = 0") from the

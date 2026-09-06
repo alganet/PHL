@@ -29,9 +29,10 @@ if (is_resource($zip)){
 }
 unlink($fn);
 ?>
---EXPECT--
+--EXPECTF--
 exists=1
 len=10
+Error [8192]: Function zip_open() is deprecated since 8.0, use ZipArchive::open() instead in %s on line %d
 zip_open=failed
 --CLEAN--
 <?php

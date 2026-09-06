@@ -84,7 +84,8 @@ if ($res === false) {
 
 unlink($fn);
 ?>
---EXPECT--
+--EXPECTF--
+Error [8192]: Function zip_open() is deprecated since 8.0, use ZipArchive::open() instead in %s on line %d
 status=ok
 zip_open correctly rejected malformed archive with oversized filename length
 --CLEAN--

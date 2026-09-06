@@ -40,7 +40,8 @@ echo $content . PHP_EOL;
 unlink($fn);
 ?>
 --EXPECTF--
-status=%s
+Error [8192]: Function zip_open() is deprecated since 8.0, use ZipArchive::open() instead in %s on line %d
+status=failed
 --CLEAN--
 <?php
 unset($fn, $zip_b64, $bin, $created, $res, $entry, $name, $size, $content);

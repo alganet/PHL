@@ -29,8 +29,9 @@ function end_element($parser, $name) {
     echo "End: $name\n";
 }
 ?>
---EXPECT--
+--EXPECTF--
 Start: root
+Error [8192]: Function xml_parser_free() is deprecated since 8.5, as it has no effect since PHP 8.0 in %s on line %d
 Parse result: 0
 Error code: 18
 Error string: Misplaced processing instruction

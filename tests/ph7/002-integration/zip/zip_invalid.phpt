@@ -16,6 +16,7 @@ $res = @zip_open($fn);
 echo (is_resource($res) ? 'open_ok' : 'open_failed') . PHP_EOL;
 ?>
 --EXPECTF--
+Deprecated: Function zip_open() is deprecated since 8.0, use ZipArchive::open() instead in %s on line %d
 Error: zip_open(): IO error while opening %s in %s on line %d
 open_failed
 --CLEAN--

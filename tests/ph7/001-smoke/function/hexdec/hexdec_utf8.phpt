@@ -13,7 +13,8 @@ $result = hexdec("\xC2\xA9FF"); // UTF-8 copyright symbol followed by FF
 echo "Result: " . $result . "\n";
 echo "Expected: 255\n";
 ?>
---EXPECT--
+--EXPECTF--
+Error [8192]: Invalid characters passed for attempted conversion, these have been ignored in %s on line %d
 Result: 255
 Expected: 255
 --CLEAN--

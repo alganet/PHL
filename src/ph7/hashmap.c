@@ -6637,7 +6637,12 @@ static void DoubleSum(ph7_context *pCtx,ph7_hashmap *pMap)
 			}else if( pObj->iFlags & (MEMOBJ_INT|MEMOBJ_BOOL) ){
 				dSum += (double)pObj->x.iVal;
 			}else if( pObj->iFlags & MEMOBJ_STRING ){
-				if( SyBlobLength(&pObj->sBlob) > 0 ){
+				if( !PH7_MemObjStringIsNumeric(pObj) ){
+					/* php warns and SKIPS a non-numeric string (the array/object/
+					 * resource cases below already did; only this one was silent) */
+					ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+						"Addition is not supported on type string");
+				}else if( SyBlobLength(&pObj->sBlob) > 0 ){
 					double dv = 0;
 					SyStrToReal((const char *)SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),(void *)&dv,0);
 					dSum += dv;
@@ -6646,8 +6651,11 @@ static void DoubleSum(ph7_context *pCtx,ph7_hashmap *pMap)
 				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
 					"array_sum(): Addition is not supported on type array");
 			}else if( pObj->iFlags & MEMOBJ_OBJ ){
-				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
-					"array_sum(): Addition is not supported on type object");
+				/* php names the CLASS here, not the literal word "object" */
+				ph7_class_instance *pInst = (ph7_class_instance *)pObj->x.pOther;
+				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+					"Addition is not supported on type %s",
+					pInst && pInst->pClass ? pInst->pClass->sName.zString : "object");
 			}else if( pObj->iFlags & MEMOBJ_RES ){
 				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
 					"array_sum(): Addition is not supported on type resource");
@@ -6673,7 +6681,11 @@ static void Int64Sum(ph7_context *pCtx,ph7_hashmap *pMap)
 			if( pObj->iFlags & (MEMOBJ_INT|MEMOBJ_BOOL) ){
 				nSum += pObj->x.iVal;
 			}else if( pObj->iFlags & MEMOBJ_STRING ){
-				if( SyBlobLength(&pObj->sBlob) > 0 ){
+				if( !PH7_MemObjStringIsNumeric(pObj) ){
+					/* php warns and SKIPS a non-numeric string */
+					ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+						"Addition is not supported on type string");
+				}else if( SyBlobLength(&pObj->sBlob) > 0 ){
 					sxi64 nv = 0;
 					SyStrToInt64((const char *)SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),(void *)&nv,0);
 					nSum += nv;
@@ -6682,8 +6694,11 @@ static void Int64Sum(ph7_context *pCtx,ph7_hashmap *pMap)
 				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
 					"array_sum(): Addition is not supported on type array");
 			}else if( pObj->iFlags & MEMOBJ_OBJ ){
-				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
-					"array_sum(): Addition is not supported on type object");
+				/* php names the CLASS here, not the literal word "object" */
+				ph7_class_instance *pInst = (ph7_class_instance *)pObj->x.pOther;
+				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+					"Addition is not supported on type %s",
+					pInst && pInst->pClass ? pInst->pClass->sName.zString : "object");
 			}else if( pObj->iFlags & MEMOBJ_RES ){
 				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
 					"array_sum(): Addition is not supported on type resource");
