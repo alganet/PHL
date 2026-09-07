@@ -818,12 +818,24 @@ PH7_PRIVATE sxi32 PH7_VmEmitInstr(
 	)
 {
 	VmInstr sInstr;
+	ph7_gen_state *pGen = &pVm->sCodeGen;
 	sxi32 rc;
 	/* Fill the VM instruction */
 	sInstr.iOp = (sxu8)iOp;
 	sInstr.iP1 = iP1;
 	sInstr.iP2 = iP2;
 	sInstr.p3  = p3;
+	/* Stamp the source line. The node handlers point pGen->pIn at the token being
+	 * compiled (that is how they read its text), so the current token IS this
+	 * instruction's source position; pIn can sit one past the end of the stream
+	 * between statements, hence the range check. */
+	sInstr.nLine = 0;
+	if( pGen->pIn && pGen->pEnd && pGen->pIn < pGen->pEnd ){
+		sInstr.nLine = pGen->pIn->nLine;
+	}else if( pGen->pIn && pGen->pEnd && pGen->pIn >= pGen->pEnd && pGen->pEnd > (SyToken *)0 ){
+		/* Past the end (statement tail): blame the last real token. */
+		sInstr.nLine = pGen->pEnd[-1].nLine;
+	}
 	if( pIndex ){
 		/* Instruction index in the bytecode array */
 		*pIndex = SySetUsed(pVm->pByteContainer);
@@ -949,6 +961,8 @@ static sxi32 VmEnterFrame(
 	if( pFrame == 0 ){
 		return SXERR_MEM;
 	}
+	/* The line currently executing IS the call site for the frame being pushed. */
+	pFrame->nCallLine = pVm->nCurLine;
 	/* Link to the list of active VM frame */
 	pFrame->pParent = pVm->pFrame;
 	pVm->pFrame = pFrame;
@@ -2031,9 +2045,6 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
 	"	  $this->message = $message;"\
 	"   }"\
 	"   $this->code = $code;"\
-	"   $this->file = __FILE__;"\
-	"   $this->line = __LINE__;"\
-	"   $this->trace = debug_backtrace();"\
 	"   if( isset($previous) ){"\
 	"     $this->previous = $previous;"\
 	"   }"\
@@ -2054,7 +2065,14 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
 	"   return $this->trace;"\
 	"}"\
 	"public function getTraceAsString(){"\
-	"  return debug_string_backtrace();"\
+	"  $s = ''; $i = 0;"\
+	"  if( is_array($this->trace) ){"\
+	"    foreach( $this->trace as $f ){"\
+	"      $s .= '#' . $i . ' ' . $f['file'] . '(' . $f['line'] . '): ' . $f['function'] . \"()\\n\";"\
+	"      $i++;"\
+	"    }"\
+	"  }"\
+	"  return $s . '#' . $i . ' {main}';"\
 	"}"\
 	"public function getPrevious(){"\
 	"    return $this->previous;"\
@@ -2075,9 +2093,6 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
 	"	  $this->message = $message;"\
 	"   }"\
 	"   $this->code = $code;"\
-	"   $this->file = __FILE__;"\
-	"   $this->line = __LINE__;"\
-	"   $this->trace = debug_backtrace();"\
 	"   if( isset($previous) ){"\
 	"     $this->previous = $previous;"\
 	"   }"\
@@ -2098,7 +2113,14 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
 	"   return $this->trace;"\
 	"}"\
 	"public function getTraceAsString(){"\
-	"  return debug_string_backtrace();"\
+	"  $s = ''; $i = 0;"\
+	"  if( is_array($this->trace) ){"\
+	"    foreach( $this->trace as $f ){"\
+	"      $s .= '#' . $i . ' ' . $f['file'] . '(' . $f['line'] . '): ' . $f['function'] . \"()\\n\";"\
+	"      $i++;"\
+	"    }"\
+	"  }"\
+	"  return $s . '#' . $i . ' {main}';"\
 	"}"\
 	"public function getPrevious(){"\
 	"    return $this->previous;"\
@@ -5436,9 +5458,9 @@ static sxi32 VmByteCodeDump(
 			break;
 		}
 		/* Format and call the consumer callback */
-		rc = SyProcFormat(xConsumer,pUserData,"%s %8d %8u %#8x [%u]\n",
+		rc = SyProcFormat(xConsumer,pUserData,"%s %8d %8u %#8x [%u] L%u\n",
 			VmInstrToString(pInstr->iOp),pInstr->iP1,pInstr->iP2,
-			SX_PTR_TO_INT(pInstr->p3),n);
+			SX_PTR_TO_INT(pInstr->p3),n,pInstr->nLine);
 		if( rc != SXRET_OK ){
 			/* Consumer routine request an operation abort */
 			return rc;
@@ -5617,10 +5639,11 @@ static void VmDiagnosticHeader(SyBlob *pWorker,sxi32 iErr,SyString *pFuncName)
 		SyBlobAppend(pWorker,"(): ",sizeof("(): ")-1);
 	}
 }
-static void VmDiagnosticLocation(SyBlob *pWorker,SyString *pFile)
+static void VmDiagnosticLocation(SyBlob *pWorker,SyString *pFile,sxu32 nLine)
 {
 	if( pFile ){
-		SyBlobFormat(pWorker," in %.*s on line %d",(int)pFile->nByte,pFile->zString,1);
+		SyBlobFormat(pWorker," in %.*s on line %u",(int)pFile->nByte,pFile->zString,
+			nLine ? nLine : 1);
 	}
 }
 PH7_PRIVATE sxi32 PH7_VmThrowError(
@@ -5633,19 +5656,20 @@ PH7_PRIVATE sxi32 PH7_VmThrowError(
 	SyBlob *pWorker = &pVm->sWorker;
 	SyString *pFile;
 	sxi32 rc = SXRET_OK;
-	if( !VmErrReportWants(pVm,iErr) ){
-		/* error_reporting() masks this severity out */
-		return SXRET_OK;
-	}
 	/* Reset the working buffer */
 	SyBlobReset(pWorker);
 	/* Peek the processed file if available */
 	pFile = (SyString *)SySetPeek(&pVm->aFiles);
 	VmDiagnosticHeader(pWorker,iErr,pFuncName);
 	SyBlobAppend(pWorker,zMessage,SyStrlen(zMessage));
-	VmDiagnosticLocation(pWorker,pFile);
-	/* Check for user error handler.  compute length of C string */
-	if( VmInvokeErrorHandler(pVm, iErr, zMessage, (sxi32)SyStrlen(zMessage), pFile, 0) ){
+	VmDiagnosticLocation(pWorker,pFile,pVm->nCurLine);
+	/* Check for user error handler. php calls it whatever error_reporting() says
+	 * (see VmThrowErrorAp) -- the mask gates only the printed copy below. */
+	if( VmInvokeErrorHandler(pVm, iErr, zMessage, (sxi32)SyStrlen(zMessage), pFile, (sxi32)pVm->nCurLine) ){
+		if( !VmErrReportWants(pVm,iErr) ){
+			/* error_reporting() masks this severity out of the DISPLAY */
+			return SXRET_OK;
+		}
 		if( pVm->nErrSuppress > 0 ){
 			/* Inside '@': php still runs a user handler (done just above) but
 			 * prints nothing itself. */
@@ -5817,7 +5841,7 @@ static sxi32 VmThrowErrorAp(
 	 * whatever error_reporting() says -- the mask only gates the built-in printer,
 	 * and a handler is expected to consult error_reporting() itself. Testing the
 	 * mask up here instead skipped the handler entirely for a masked severity. */
-	if( VmInvokeErrorHandler(pVm, iErr, (const char *)SyBlobData(&sMsg), (sxi32)SyBlobLength(&sMsg), pFile, 0) ){
+	if( VmInvokeErrorHandler(pVm, iErr, (const char *)SyBlobData(&sMsg), (sxi32)SyBlobLength(&sMsg), pFile, (sxi32)pVm->nCurLine) ){
 		/* No handler or handler returned TRUE, normal processing — unless the
 		 * expression is under '@', which suppresses the printed diagnostic. */
 		if( !VmErrReportWants(pVm,iErr) || pVm->nErrSuppress > 0 ){
@@ -5825,7 +5849,7 @@ static sxi32 VmThrowErrorAp(
 			return SXRET_OK;
 		}
 		SyBlobAppend(pWorker,SyBlobData(&sMsg),SyBlobLength(&sMsg));
-		VmDiagnosticLocation(pWorker,pFile);
+		VmDiagnosticLocation(pWorker,pFile,pVm->nCurLine);
 		rc = VmCallErrorHandler(&(*pVm),pWorker);
 	}
 	SyBlobRelease(&sMsg);
@@ -7718,9 +7742,18 @@ static void VmGetFrameContext(ph7_vm *pVm,const char **pzFuncName,int *pnFuncLen
 static void VmRenderUncaughtEntry(
 	ph7_vm *pVm,SyBlob *pOut,
 	const char *zClass,sxu32 nClass,const char *zMsg,sxu32 nMsg,
-	const char *zFuncName,int nFuncLen,int bFirst,int bLast)
+	const char *zFuncName,int nFuncLen,int bFirst,int bLast,
+	sxu32 nThrowLine,  /* line the exception was raised at (0 -> the line running now) */
+	sxu32 nCallLine)   /* line of the call that entered the throwing frame (0 -> same) */
 {
 	SyString *pFile;
+	if( nThrowLine == 0 ){
+		nThrowLine = pVm->nCurLine ? pVm->nCurLine : 1;
+	}
+	if( nCallLine == 0 ){
+		VmFrame *pTraceFrame = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;
+		nCallLine = (pTraceFrame && pTraceFrame->nCallLine) ? pTraceFrame->nCallLine : nThrowLine;
+	}
 	if( zClass == 0 || nClass == 0 ){
 		zClass = "Exception";
 		nClass = (sxu32)sizeof("Exception") - 1;
@@ -7740,18 +7773,18 @@ static void VmRenderUncaughtEntry(
 		SyBlobAppend(pOut,zMsg,nMsg);
 	}
 	if( pFile ){
-		SyBlobAppend(pOut," in ",sizeof(" in ")-1);
-		SyBlobAppend(pOut,pFile->zString,pFile->nByte);
-		SyBlobAppend(pOut,":1",sizeof(":1")-1);
+		SyBlobFormat(pOut," in %.*s:%u",(int)pFile->nByte,pFile->zString,nThrowLine);
 	}
 	SyBlobAppend(pOut,"\nStack trace:\n",sizeof("\nStack trace:\n")-1);
 	if( pFile ){
 		SyBlobAppend(pOut,"#0 ",sizeof("#0 ")-1);
 		SyBlobAppend(pOut,pFile->zString,pFile->nByte);
 		if( zFuncName && nFuncLen > 0 ){
-			SyBlobFormat(pOut,"(1): %.*s()\n",nFuncLen,zFuncName);
+			/* php reports a trace frame at its CALL SITE, not at the line running
+			 * inside it. */
+			SyBlobFormat(pOut,"(%u): %.*s()\n",nCallLine,nFuncLen,zFuncName);
 		}else{
-			SyBlobAppend(pOut,"(1): {main}\n",sizeof("(1): {main}\n")-1);
+			SyBlobFormat(pOut,"(%u): {main}\n",nCallLine);
 		}
 	}else if( zFuncName && nFuncLen > 0 ){
 		SyBlobFormat(pOut,"#0 [internal function]: %.*s()\n",nFuncLen,zFuncName);
@@ -7761,9 +7794,7 @@ static void VmRenderUncaughtEntry(
 	SyBlobAppend(pOut,"#1 {main}",sizeof("#1 {main}")-1);
 	if( bLast && pFile ){
 		SyBlobAppend(pOut,"\n",sizeof("\n")-1);
-		SyBlobAppend(pOut,"  thrown in ",sizeof("  thrown in ")-1);
-		SyBlobAppend(pOut,pFile->zString,pFile->nByte);
-		SyBlobAppend(pOut," on line 1",sizeof(" on line 1")-1);
+		SyBlobFormat(pOut,"  thrown in %.*s on line %u",(int)pFile->nByte,pFile->zString,nThrowLine);
 	}
 }
 /*
@@ -7781,7 +7812,7 @@ static sxi32 VmReportUncaughtException(ph7_vm *pVm,const char *zClass,sxu32 nCla
 		return PH7_OK;
 	}
 	SyBlobInit(&sOut,&pVm->sAllocator);
-	VmRenderUncaughtEntry(pVm,&sOut,zClass,nClass,zMsg,nMsg,zFuncName,nFuncLen,TRUE,TRUE);
+	VmRenderUncaughtEntry(pVm,&sOut,zClass,nClass,zMsg,nMsg,zFuncName,nFuncLen,TRUE,TRUE,0,0);
 	VmCallErrorHandler(pVm,&sOut);
 	SyBlobRelease(&sOut);
 	return PH7_ABORT;
@@ -7843,6 +7874,29 @@ static void VmExceptionLinkPrevious(ph7_class_instance *pThis,ph7_class_instance
  * getMessage() (so a user override is honored). A no-op if the method is
  * absent or yields an empty string.
  */
+/*
+ * Read a Throwable's `line` (the site it was created at — see PH7_VmStampThrowableSite).
+ * 0 when the class exposes no getLine().
+ */
+static sxu32 VmExtractExceptionLine(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_class_method *pGetLine;
+	ph7_value sLine;
+	sxu32 nLine = 0;
+	pGetLine = PH7_ClassExtractMethod(pThis->pClass,"getLine",sizeof("getLine")-1);
+	if( pGetLine == 0 ){
+		return 0;
+	}
+	PH7_MemObjInit(pVm,&sLine);
+	if( PH7_VmCallClassMethod(&(*pVm),pThis,pGetLine,&sLine,0,0) == SXRET_OK ){
+		sxi64 n = ph7_value_to_int64(&sLine);
+		if( n > 0 ){
+			nLine = (sxu32)n;
+		}
+	}
+	PH7_MemObjRelease(&sLine);
+	return nLine;
+}
 static void VmExtractExceptionMessage(ph7_vm *pVm,ph7_class_instance *pThis,SyBlob *pOut)
 {
 	ph7_class_method *pGetMessage;
@@ -7915,7 +7969,8 @@ static sxi32 VmReportUncaughtChain(ph7_vm *pVm,ph7_class_instance *pThis,const c
 			(const char *)SyBlobData(&sMsg),(sxu32)SyBlobLength(&sMsg),
 			zFuncName,nFuncLen,
 			(i == nChain - 1) ? TRUE : FALSE,   /* bFirst: deepest entry */
-			(i == 0) ? TRUE : FALSE);           /* bLast: outermost entry */
+			(i == 0) ? TRUE : FALSE,            /* bLast: outermost entry */
+			VmExtractExceptionLine(pVm,pEnt),0);
 		SyBlobRelease(&sMsg);
 	}
 	VmCallErrorHandler(pVm,&sOut);
@@ -8009,6 +8064,92 @@ static sxi32 VmThrowFromVm(
  *
  * Returns SXRET_OK to proceed, or the status of the thrown TypeError.
  */
+/*
+ * Stamp a freshly created Throwable with the site it was created at.
+ *
+ * php records `file`/`line` on the OBJECT at creation time -- not inside
+ * Exception::__construct -- so a subclass that overrides the constructor and never
+ * calls parent::__construct still reports the right position. The embedded
+ * Exception/Error constructors used to assign `$this->line = __LINE__`, which
+ * resolved against the EMBEDDED chunk (always line 1); they no longer touch either
+ * field, and this runs for every instantiation path (OP_NEW and the engine's own
+ * VmThrowBuiltinError / VmThrowFixedError).
+ */
+PH7_PRIVATE void PH7_VmStampThrowableSite(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	static const char *azField[] = { "file", "line", "trace" };
+	ph7_class *pThrowable;
+	SyString *pFile;
+	sxu32 n;
+	if( pThis == 0 || pThis->pClass == 0 ){
+		return;
+	}
+	pThrowable = PH7_VmExtractClass(&(*pVm),"Throwable",sizeof("Throwable")-1,FALSE,0);
+	if( pThrowable == 0 || !PH7_VmInstanceOf(pThis->pClass,pThrowable) ){
+		return;
+	}
+	pFile = (SyString *)SySetPeek(&pVm->aFiles);
+	for( n = 0 ; n < SX_ARRAYSIZE(azField) ; ++n ){
+		SyHashEntry *pEntry;
+		VmClassAttr *pVmAttr;
+		ph7_value *pAttrValue;
+		pEntry = SyHashGet(&pThis->hAttr,(const void *)azField[n],SyStrlen(azField[n]));
+		if( pEntry == 0 ){
+			continue;
+		}
+		pVmAttr = (VmClassAttr *)pEntry->pUserData;
+		pAttrValue = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
+		if( pAttrValue == 0 ){
+			continue;
+		}
+		if( n == 0 ){
+			if( pFile ){
+				PH7_MemObjRelease(pAttrValue);
+				PH7_MemObjInitFromString(&(*pVm),pAttrValue,pFile);
+			}
+		}else if( n == 1 ){
+			PH7_MemObjRelease(pAttrValue);
+			PH7_MemObjInitFromInt(&(*pVm),pAttrValue,(sxi64)(pVm->nCurLine ? pVm->nCurLine : 1));
+		}else{
+			/* trace: php captures it at the CREATION site, so the innermost entry is the
+			 * function that ran `new` -- reported at ITS call site. Building it here (the
+			 * ctors used to call debug_backtrace(), which described the __construct frame
+			 * instead) also gives php's shape: a LIST of frame maps. */
+			ph7_value *pList;
+			const char *zFunc = 0;
+			int nFunc = 0;
+			VmFrame *pFrame = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;
+			pList = ph7_new_array(&(*pVm));
+			if( pList == 0 ){
+				continue;
+			}
+			VmGetFrameContext(&(*pVm),&zFunc,&nFunc);
+			if( zFunc && nFunc > 0 ){
+				ph7_value *pEntry = ph7_new_array(&(*pVm));
+				ph7_value *pSlot = ph7_new_scalar(&(*pVm));
+				if( pEntry && pSlot ){
+					sxu32 nCall = (pFrame && pFrame->nCallLine) ? pFrame->nCallLine
+						: (pVm->nCurLine ? pVm->nCurLine : 1);
+					if( pFile ){
+						ph7_value_string(pSlot,pFile->zString,(int)pFile->nByte);
+						ph7_array_add_strkey_elem(pEntry,"file",pSlot);
+						ph7_value_reset_string_cursor(pSlot);
+					}
+					ph7_value_int(pSlot,(int)nCall);
+					ph7_array_add_strkey_elem(pEntry,"line",pSlot);
+					ph7_value_string(pSlot,zFunc,nFunc);
+					ph7_array_add_strkey_elem(pEntry,"function",pSlot);
+					ph7_array_add_elem(pList,0,pEntry);
+				}
+				if( pEntry ){ ph7_release_value(&(*pVm),pEntry); }
+				if( pSlot ){ ph7_release_value(&(*pVm),pSlot); }
+			}
+			PH7_MemObjRelease(pAttrValue);
+			PH7_MemObjStore(pList,pAttrValue);
+			ph7_release_value(&(*pVm),pList);
+		}
+	}
+}
 static const char * VmArithTypeName(ph7_value *pVal)
 {
 	if( (pVal->iFlags & MEMOBJ_OBJ) != 0 ){
@@ -9435,6 +9576,7 @@ static sxi32 VmByteCodeExec(
 {
 	sxi32 rc;
 	sxi32 nSavedBrc;
+	sxu32 nSavedLine;
 	if( VmNativeNestingExceeded(pVm) ){
 		return VmNativeNestingFatal(pVm);
 	}
@@ -9447,10 +9589,18 @@ static sxi32 VmByteCodeExec(
 	 * PH7_ABORT dominating either way. */
 	nSavedBrc = pVm->nBoundaryRc;
 	pVm->nBoundaryRc = 0;
+	/* The executing source line belongs to the ACTIVATION. A nested body -- a called
+	 * function, but equally an attribute-default or default-argument mini-program --
+	 * runs its own bytecode with its own lines, so it must not leave the caller
+	 * reporting the callee's position: `new Exception` stamped line 1 because the
+	 * class's `protected $message = '';` default ran (from the embedded chunk) between
+	 * OP_NEW and the stamp. Save on entry, restore on exit. */
+	nSavedLine = pVm->nCurLine;
 	pVm->nVmExecDepth++;
 	rc = VmByteCodeExecBody(&(*pVm),aInstr,pStack,nTos,pResult,pLastRef,is_callback,nPc,
 		pEnforceRetFunc,bReturnPropagates,pAdoptSegment,ppBaseOwner,pnBaseCap,nStackOrig);
 	pVm->nVmExecDepth--;
+	pVm->nCurLine = nSavedLine;
 	if( nSavedBrc != 0 && (nSavedBrc == PH7_ABORT || pVm->nBoundaryRc == 0) ){
 		pVm->nBoundaryRc = nSavedBrc;
 	}
@@ -9864,6 +10014,12 @@ VmLoopFetch:
 		}
 		/* Fetch the instruction to execute */
 		pInstr = &aInstr[pc];
+		if( pInstr->nLine ){
+			/* Publish the source position for diagnostics, debug_backtrace() and
+			 * Throwable. Instructions the compiler could not attribute (nLine 0)
+			 * leave the last known line standing rather than reporting line 0. */
+			pVm->nCurLine = pInstr->nLine;
+		}
 		rc = SXRET_OK;
 /*
  * What follows here is a massive switch statement where each case implements a
@@ -24271,10 +24427,15 @@ static int vm_builtin_debug_backtrace(ph7_context *pCtx,int nArg,ph7_value **apA
 			ph7_array_add_strkey_elem(pArray,"args",pArg);
 		}
 	}
-	ph7_value_int(pValue,1);
-	/* Append the current line (which is always 1 since PH7 does not track
-	 * line numbers at run-time. )
-	 */
+	{
+		/* php reports a trace entry's line as the CALL SITE — the line of the call
+		 * that entered this frame — not the line executing inside it. (PHL still
+		 * emits a single entry; the multi-frame walk is a separate gap.) */
+		VmFrame *pLineFrame = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;
+		sxu32 nLine = (pLineFrame && pLineFrame->nCallLine) ? pLineFrame->nCallLine
+			: (pVm->nCurLine ? pVm->nCurLine : 1);
+		ph7_value_int(pValue,(int)nLine);
+	}
 	ph7_array_add_strkey_elem(pArray,"line",pValue);
 	/* Current processed script */
 	pFile = (SyString *)SySetPeek(&pVm->aFiles);

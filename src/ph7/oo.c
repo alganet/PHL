@@ -904,6 +904,10 @@ PH7_PRIVATE ph7_class_instance * PH7_NewClassInstance(ph7_vm *pVm,ph7_class *pCl
 		SyMemBackendPoolFree(&pVm->sAllocator,pNew);
 		return 0;
 	}
+	/* php stamps a Throwable's file/line at CREATION, not in its constructor, so a
+	 * subclass that overrides __construct without calling parent::__construct still
+	 * reports the right site. Every instantiation path lands here. */
+	PH7_VmStampThrowableSite(&(*pVm),pNew);
 	return pNew;
 }
 /*

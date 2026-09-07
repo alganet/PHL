@@ -21,7 +21,7 @@ foo();
 --EXPECT--
 is_array
 fn_foo
-line_1
+line_8
 --CLEAN--
 <?php
 unset($e);

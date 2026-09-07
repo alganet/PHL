@@ -25,7 +25,7 @@ foo(10, "abc");
 is_array
 fn_foo
 args_2
-line_1
+line_11
 file_present
 --CLEAN--
 <?php
