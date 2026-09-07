@@ -1026,8 +1026,9 @@ PH7_PRIVATE sxi32 PH7_CompileNowDoc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	pStr = &sStripped;
 	nIdx = 0; /* Prevent compiler warning */
 	if( pStr->nByte <= 0 ){
-		/* Empty string,load NULL */
-		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,0,0,0);
+		/* An empty nowdoc is the empty STRING, like '' -- loading NULL here made
+		 * strlen(<<<'EOD'EOD;) deprecation-warn about a null argument. */
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,pGen->pVm->nEmptyStringIdx,0,0);
 		return SXRET_OK;
 	}
 	/* Reserve a new constant */
@@ -1804,9 +1805,24 @@ static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)
 	sxi32 rc;
 	xValidator = 0;
 	for(;;){
-		/* Jump leading commas */
-		while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_COMMA) ){
-			pGen->pIn++;
+		/* Jump leading commas. Exactly ONE separates two entries; a second one (or a comma
+		 * at the very start) means an EMPTY element, which php rejects outright — PH7 just
+		 * skipped them, so `array(,)` and `array(1,,2)` compiled silently. A TRAILING comma
+		 * is legal and is handled by the loop exiting on the next pass. */
+		{
+			int nSkip = 0;
+			while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_COMMA) ){
+				nSkip++;
+				pGen->pIn++;
+			}
+			if( nSkip > 1 || (nSkip > 0 && nPair < 1) ){
+				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn[-1].nLine,
+					"Cannot use empty array elements in arrays");
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				return SXRET_OK;
+			}
 		}
 		pCur = pGen->pIn;
 		if( SXRET_OK != PH7_GetNextExpr(pGen->pIn,pGen->pEnd,&pGen->pIn) ){
@@ -1821,9 +1837,25 @@ static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)
 		pCur = GenStateFindTopLevelArrow(pCur,pGen->pIn);
 		rc = SXERR_EMPTY;
 		if( pCur < pGen->pIn ){
+			if( pKey == pCur ){
+				/* `array( => 2)`: the entry STARTS with '=>', so it has no key. php rejects
+				 * it; PH7 warned about a "Missing entry key" and compiled on, accepting
+				 * source php refuses. (The `else if` below could never see this: the arrow
+				 * IS found here, so control never reached it.)
+				 * php names the literal's own closer, so short syntax expects ']'. */
+				const char *zClose = (pGen->pEnd && (pGen->pEnd->nType & PH7_TK_CSB))
+					? "\"]\"" : "\")\"";
+				rc = PH7_GenSyntaxError(&(*pGen),pCur,zClose);
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				return SXRET_OK;
+			}
 			if( &pCur[1] >= pGen->pIn ){
-				/* Missing value */
-				rc = PH7_GenSyntaxError(&(*pGen),pCur,0);
+				/* `array(1 => )`: php names the token that SHOULD have started the value —
+				 * the ')' or ']' closing the literal — not the '=>' it just read. Passing 0
+				 * makes the helper reach for the token past this entry's slice. */
+				rc = PH7_GenSyntaxError(&(*pGen),0,0);
 				if( rc == SXERR_ABORT ){
 					return SXERR_ABORT;
 				}
@@ -1835,10 +1867,6 @@ static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
-			pCur++; /* Jump the '=>' operator */
-		}else if( pKey == pCur ){
-			/* Key is omitted,emit a warning */
-			PH7_GenCompileError(&(*pGen),E_WARNING,pCur->nLine,"array(): Missing entry key");
 			pCur++; /* Jump the '=>' operator */
 		}else{
 			/* Reset back the cursor and point to the entry value */

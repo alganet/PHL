@@ -161,9 +161,12 @@ PH7_PRIVATE sxi64 PH7_TokenValueToInt64(SyString *pVal)
  */
 static sxi64 MemObjStringToInt(ph7_value *pObj)
 {
-	SyString sVal;
-	SyStringInitFromBuf(&sVal,SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob));
-	return PH7_TokenValueToInt64(&sVal);
+	sxi64 iVal = 0;
+	/* A *string* is always read in base 10 by php: "012" is 12, "0x1A" and "0b11"
+	 * are 0. Only a source *literal* carries a base prefix, and that is decoded by
+	 * the compiler (PH7_TokenValueToInt64) -- not here. */
+	SyStrToInt64((const char *)SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),(void *)&iVal,0);
+	return iVal;
 }
 /*
  * Call a magic class method [i.e: __toString(),__toInt(),...]
@@ -762,7 +765,15 @@ PH7_PRIVATE ProcMemObjCast PH7_MemObjCastMethod(sxi32 iFlags)
  * strtod-based classifier this needs no NUL-terminated buffer. Returns FALSE for
  * a non-string value.
  */
-PH7_PRIVATE int PH7_MemObjStringIsNumeric(ph7_value *pValue)
+/*
+ * Scan php's numeric-string grammar and report the longest numeric PREFIX.
+ * Returns 1 when the string starts with a number, 0 when nothing numeric is
+ * there at all ("abc", "", ".", "e5"). On success *pzTail points just past the
+ * prefix, so the caller can tell a fully numeric string ("1e3", " 5 ") from a
+ * merely leading-numeric one ("5abc", "1e", "0x1A") -- php warns on the latter
+ * and rejects a string with no prefix outright.
+ */
+PH7_PRIVATE int PH7_MemObjStringNumericPrefix(ph7_value *pValue,const char **pzTail)
 {
 	const char *z, *zEnd;
 	sxu32 n;
@@ -795,24 +806,42 @@ PH7_PRIVATE int PH7_MemObjStringIsNumeric(ph7_value *pValue)
 	if( !bDigit ){
 		return 0;
 	}
-	/* Optional exponent — must carry at least one digit (rejects "1e", "1e+"). */
+	/* Optional exponent — only joins the prefix if it carries a digit. "1e" has
+	 * the numeric prefix "1" with the 'e' left in the tail, exactly as php reads it. */
 	if( z < zEnd && (z[0] == 'e' || z[0] == 'E') ){
+		const char *zExp = z;
 		z++;
 		if( z < zEnd && (z[0] == '+' || z[0] == '-') ){
 			z++;
 		}
 		if( z >= zEnd || (unsigned char)z[0] >= 0xc0 || !SyisDigit(z[0]) ){
-			return 0;
-		}
-		while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){
-			z++;
+			z = zExp;
+		}else{
+			while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){
+				z++;
+			}
 		}
 	}
-	/* Trailing whitespace allowed; anything else means not a numeric string. */
-	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisSpace(z[0]) ){
-		z++;
+	if( pzTail ){
+		*pzTail = z;
 	}
-	return z == zEnd ? 1 : 0;
+	return 1;
+}
+/*
+ * TRUE only if the WHOLE string is a well-formed php numeric string
+ * (trailing whitespace allowed, nothing else).
+ */
+PH7_PRIVATE int PH7_MemObjStringIsNumeric(ph7_value *pValue)
+{
+	const char *zTail = 0, *zEnd;
+	if( !PH7_MemObjStringNumericPrefix(pValue,&zTail) ){
+		return 0;
+	}
+	zEnd = (const char *)SyBlobData(&pValue->sBlob) + SyBlobLength(&pValue->sBlob);
+	while( zTail < zEnd && (unsigned char)zTail[0] < 0xc0 && SyisSpace(zTail[0]) ){
+		zTail++;
+	}
+	return zTail == zEnd ? 1 : 0;
 }
 /*
  * Check whether the ph7_value is numeric [i.e: int/float/bool] or looks
@@ -899,32 +928,27 @@ PH7_PRIVATE sxi32 PH7_MemObjToNumeric(ph7_value *pObj)
 		return  SXRET_OK;
 	}
 	if( pObj->iFlags & MEMOBJ_STRING ){
-		sxi32 rc = SXERR_INVALID;
-		sxu8 bReal = FALSE;
-		SyString sString;
-		SyStringInitFromBuf(&sString,SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob));
-		/* Check if the given string looks like a numeric number */
-		if( sString.nByte > 0 ){
-			rc = SyStrIsNumeric(sString.zString,sString.nByte,&bReal,0);
-			if( rc != SXRET_OK && !bReal ){
-				/* SyStrIsNumeric requires a leading digit, so it mis-classifies
-				 * a leading-decimal real such as ".5"/"-.5"/".5e2" (returns
-				 * non-OK with bReal FALSE) — PHP treats these as float. Detect
-				 * that shape so it coerces to real (strtod parses it) instead of
-				 * falling through to the int(0) "not a number" branch below. */
-				const char *z = sString.zString;
-				const char *zEnd = z + sString.nByte;
-				while( z < zEnd && SyisSpace(z[0]) ){ z++; }
-				if( z < zEnd && (z[0] == '+' || z[0] == '-') ){ z++; }
-				if( z < zEnd && z[0] == '.' && (z + 1) < zEnd && SyisDigit(z[1]) ){
-					bReal = TRUE;
+		const char *zTail = 0;
+		int bNum, bReal = 0;
+		/* php reads the longest numeric PREFIX and its shape decides the type: a
+		 * '.' or a *complete* exponent inside that prefix makes it a float, else an
+		 * int. Deciding from the raw string instead mistyped "1e" as float(1) --
+		 * php sees the prefix "1" there and yields int(1). */
+		bNum = PH7_MemObjStringNumericPrefix(pObj,&zTail);
+		if( bNum ){
+			const char *z = (const char *)SyBlobData(&pObj->sBlob);
+			while( z < zTail ){
+				if( z[0] == '.' || z[0] == 'e' || z[0] == 'E' ){
+					bReal = 1;
+					break;
 				}
+				z++;
 			}
 		}
 		if( bReal ){
 			PH7_MemObjToReal(&(*pObj));
 		}else{
-			if( rc != SXRET_OK ){
+			if( !bNum ){
 				/* The input does not look at all like a number,set the value to 0 */
 				pObj->x.iVal = 0;
 			}else{

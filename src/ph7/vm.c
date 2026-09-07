@@ -5805,10 +5805,6 @@ static sxi32 VmThrowErrorAp(
 	SyBlob sMsg;
 	SyString *pFile;
 	sxi32 rc = SXRET_OK;
-	if( !VmErrReportWants(pVm,iErr) ){
-		/* error_reporting() masks this severity out */
-		return SXRET_OK;
-	}
 	/* Reset the working buffer */
 	SyBlobReset(pWorker);
 	/* Peek the processed file if available */
@@ -5817,11 +5813,14 @@ static sxi32 VmThrowErrorAp(
 	/* Format the raw message */
 	SyBlobInit(&sMsg, &pVm->sAllocator);
 	SyBlobFormatAp(&sMsg,zFormat,ap);
-	/* Check if a user error handler is installed */
+	/* Check if a user error handler is installed. php calls it for EVERY diagnostic,
+	 * whatever error_reporting() says -- the mask only gates the built-in printer,
+	 * and a handler is expected to consult error_reporting() itself. Testing the
+	 * mask up here instead skipped the handler entirely for a masked severity. */
 	if( VmInvokeErrorHandler(pVm, iErr, (const char *)SyBlobData(&sMsg), (sxi32)SyBlobLength(&sMsg), pFile, 0) ){
 		/* No handler or handler returned TRUE, normal processing — unless the
 		 * expression is under '@', which suppresses the printed diagnostic. */
-		if( pVm->nErrSuppress > 0 ){
+		if( !VmErrReportWants(pVm,iErr) || pVm->nErrSuppress > 0 ){
 			SyBlobRelease(&sMsg);
 			return SXRET_OK;
 		}
@@ -7994,6 +7993,80 @@ static sxi32 VmThrowFromVm(
 	rc = VmThrowException(pVm,pThis);
 	PH7_ClassInstanceUnref(pThis);
 	return rc;
+}
+/*
+ * php's arithmetic operand contract, which PH7 never enforced — every case below was a
+ * SILENT WRONG ANSWER: `5 + "abc"` evaluated to int(5), `1 * "x"` to int(0), `[1] + 1`
+ * returned the array, and `5 / "x"` raised DivisionByZero instead of a TypeError.
+ *
+ *   int/float/bool/null      arithmetic proceeds
+ *   fully numeric string     proceeds ("1e3", " 5 ")
+ *   LEADING-numeric string   proceeds on the numeric prefix, with a warning
+ *                            ("5abc" + 1 == 6, "A non-numeric value encountered")
+ *   non-numeric string       TypeError: Unsupported operand types: int + string
+ *   array                    TypeError, EXCEPT array + array, which is php's union
+ *   object/resource          TypeError, naming the object's CLASS
+ *
+ * Returns SXRET_OK to proceed, or the status of the thrown TypeError.
+ */
+static const char * VmArithTypeName(ph7_value *pVal)
+{
+	if( (pVal->iFlags & MEMOBJ_OBJ) != 0 ){
+		ph7_class_instance *pInst = (ph7_class_instance *)pVal->x.pOther;
+		if( pInst && pInst->pClass ){
+			return pInst->pClass->sName.zString;
+		}
+	}
+	return ph7_type_name(pVal);
+}
+static sxi32 VmArithOperandCheck(ph7_vm *pVm,ph7_value *pLeft,ph7_value *pRight,const char *zOp,SyBlob *pMsgOut)
+{
+	int bBadL = 0, bBadR = 0;
+	int i;
+	ph7_value *apOperand[2];
+	apOperand[0] = pLeft;
+	apOperand[1] = pRight;
+	/* array + array is php's union operator, not arithmetic */
+	if( zOp[0] == '+' && zOp[1] == '\0'
+	 && (pLeft->iFlags & MEMOBJ_HASHMAP) && (pRight->iFlags & MEMOBJ_HASHMAP) ){
+		return SXRET_OK;
+	}
+	for( i = 0 ; i < 2 ; ++i ){
+		ph7_value *pVal = apOperand[i];
+		int bBad = 0;
+		if( pVal->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES) ){
+			bBad = 1;
+		}else if( pVal->iFlags & MEMOBJ_STRING ){
+			const char *zTail = 0;
+			const char *zEnd = (const char *)SyBlobData(&pVal->sBlob) + SyBlobLength(&pVal->sBlob);
+			if( !PH7_MemObjStringNumericPrefix(pVal,&zTail) ){
+				/* Nothing numeric at all ("abc", "") -> TypeError. */
+				bBad = 1;
+			}else{
+				/* Starts with a number. php only calls it numeric when the WHOLE string
+				 * is consumed (bar trailing space); a leftover tail ("5abc", "0x1A") is a
+				 * leading-numeric string -- php warns and computes with the prefix. */
+				while( zTail < zEnd && (unsigned char)zTail[0] < 0xc0 && SyisSpace(zTail[0]) ){
+					zTail++;
+				}
+				if( zTail < zEnd ){
+					VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"A non-numeric value encountered");
+				}
+			}
+		}
+		if( bBad ){
+			if( i == 0 ){ bBadL = 1; } else { bBadR = 1; }
+		}
+	}
+	if( bBadL || bBadR ){
+		/* Only CLASSIFY here — the caller must settle the operand stack BEFORE the throw,
+		 * or the catch runs with the abandoned operands still on it and execution resumes
+		 * inside the try (the catch fired, then `5 + "abc"` carried on and produced 5). */
+		SyBlobFormat(pMsgOut,"Unsupported operand types: %s %s %s",
+			VmArithTypeName(pLeft),zOp,VmArithTypeName(pRight));
+		return SXERR_INVALID;
+	}
+	return SXRET_OK;
 }
 /*
  * Throw an internal exception instance that can be intercepted by try/catch.
@@ -11758,7 +11831,13 @@ case PH7_OP_DECR:
 			break;
 		}
 	}
-	/* NULL stays excluded: PHP leaves `--` on null untouched (no-op). */
+	/* NULL stays excluded: PHP leaves `--` on null untouched (no-op) -- but 8.3
+	 * deprecates that no-op, same as the non-numeric-string one below. */
+	if( pTos->iFlags & MEMOBJ_NULL ){
+		/* E_WARNING, not E_DEPRECATED -- php reports this one at errno 2. */
+		VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
+			"Decrement on type null has no effect, this will change in the next major version of PHP");
+	}
 	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_NULL)) == 0 ){
 		if( pTos->nIdx != SXU32_HIGH ){
 			ph7_value *pObj;
@@ -11952,6 +12031,27 @@ case PH7_OP_BITNOT:
 case PH7_OP_MUL:
 case PH7_OP_MUL_STORE: {
 	ph7_value *pNos = &pTos[-1];
+	{
+		/* php's operand contract (VmArithOperandCheck): a non-numeric string, array,
+		 * object or resource operand is a TypeError, not a silent 0. Settle the stack
+		 * BEFORE throwing, so the catch does not run over the abandoned operands. */
+		SyBlob sArMsg;
+		SyBlobInit(&sArMsg,&pVm->sAllocator);
+		if( VmArithOperandCheck(&(*pVm),pNos,pTos,"*",&sArMsg) != SXRET_OK ){
+			sxi32 rcAr;
+			VmPopOperand(&pTos,1);
+			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
+				SyBlobLength(&sArMsg));
+			SyBlobRelease(&sArMsg);
+			if( rcAr == SXERR_ABORT ){ goto Abort; }
+			rc = rcAr;
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}
+		SyBlobRelease(&sArMsg);
+	}
 	/* Force the operand to be numeric */
 #ifdef UNTRUST
 	if( pNos < pStack ){
@@ -12021,6 +12121,27 @@ case PH7_OP_MUL_STORE: {
 case PH7_OP_POW:
 case PH7_OP_POW_STORE: {
 	ph7_value *pNos = &pTos[-1];
+	{
+		/* php's operand contract (VmArithOperandCheck): a non-numeric string, array,
+		 * object or resource operand is a TypeError, not a silent 0. Settle the stack
+		 * BEFORE throwing, so the catch does not run over the abandoned operands. */
+		SyBlob sArMsg;
+		SyBlobInit(&sArMsg,&pVm->sAllocator);
+		if( VmArithOperandCheck(&(*pVm),pNos,pTos,"**",&sArMsg) != SXRET_OK ){
+			sxi32 rcAr;
+			VmPopOperand(&pTos,1);
+			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
+				SyBlobLength(&sArMsg));
+			SyBlobRelease(&sArMsg);
+			if( rcAr == SXERR_ABORT ){ goto Abort; }
+			rc = rcAr;
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}
+		SyBlobRelease(&sArMsg);
+	}
 	int bStore = (pInstr->iOp == PH7_OP_POW_STORE);
 	/* Operand order convention (matches DIV/SUB_STORE):
 	 *   POW:       base = pNos (evaluated first),   exp = pTos
@@ -12145,6 +12266,27 @@ case PH7_OP_ADD:{
 		goto Abort;
 	}
 #endif
+	{
+		/* php's operand contract (VmArithOperandCheck): a non-numeric string, array,
+		 * object or resource operand is a TypeError, not a silent 0. Settle the stack
+		 * BEFORE throwing, so the catch does not run over the abandoned operands. */
+		SyBlob sArMsg;
+		SyBlobInit(&sArMsg,&pVm->sAllocator);
+		if( VmArithOperandCheck(&(*pVm),pNos,pTos,"+",&sArMsg) != SXRET_OK ){
+			sxi32 rcAr;
+			VmPopOperand(&pTos,1);
+			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
+				SyBlobLength(&sArMsg));
+			SyBlobRelease(&sArMsg);
+			if( rcAr == SXERR_ABORT ){ goto Abort; }
+			rc = rcAr;
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}
+		SyBlobRelease(&sArMsg);
+	}
 	/* Perform the addition */
 	PH7_MemObjAdd(pNos,pTos,FALSE);
 	VmPopOperand(&pTos,1);
@@ -12165,6 +12307,26 @@ case PH7_OP_ADD_STORE:{
 		goto Abort;
 	}
 #endif
+	{
+		/* php's operand contract: a compound-assign with a non-numeric string,
+		 * array, object or resource operand is a TypeError too. */
+		SyBlob sArMsg;
+		SyBlobInit(&sArMsg,&pVm->sAllocator);
+		if( VmArithOperandCheck(&(*pVm),pTos,pNos,"+",&sArMsg) != SXRET_OK ){
+			sxi32 rcAr;
+			VmPopOperand(&pTos,1);
+			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
+				SyBlobLength(&sArMsg));
+			SyBlobRelease(&sArMsg);
+			if( rcAr == SXERR_ABORT ){ goto Abort; }
+			rc = rcAr;
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}
+		SyBlobRelease(&sArMsg);
+	}
 	/* Perform the addition */
 	nIdx = pTos->nIdx;
 	if( nIdx == pVm->nGlobalIdx ){
@@ -12203,6 +12365,32 @@ case PH7_OP_SUB: {
 		goto Abort;
 	}
 #endif
+	{
+		/* php's operand contract (VmArithOperandCheck): a non-numeric string, array,
+		 * object or resource operand is a TypeError, not a silent 0. Settle the stack
+		 * BEFORE throwing, so the catch does not run over the abandoned operands. */
+		SyBlob sArMsg;
+		SyBlobInit(&sArMsg,&pVm->sAllocator);
+		if( VmArithOperandCheck(&(*pVm),pNos,pTos,"-",&sArMsg) != SXRET_OK ){
+			sxi32 rcAr;
+			VmPopOperand(&pTos,1);
+			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
+				SyBlobLength(&sArMsg));
+			SyBlobRelease(&sArMsg);
+			if( rcAr == SXERR_ABORT ){ goto Abort; }
+			rc = rcAr;
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}
+		SyBlobRelease(&sArMsg);
+	}
+	/* Force the operands to be numeric. Without this a string operand fell through
+	 * to the integer branch below, which read the raw x.iVal union member: "10" - "4"
+	 * quietly evaluated to 0. */
+	PH7_MemObjToNumeric(pTos);
+	PH7_MemObjToNumeric(pNos);
 	if( MEMOBJ_REAL & (pTos->iFlags|pNos->iFlags) ){
 		/* Floating point arithemic */
 		ph7_real a,b,r;
@@ -12256,6 +12444,29 @@ case PH7_OP_SUB_STORE: {
 		goto Abort;
 	}
 #endif
+	{
+		/* php's operand contract: a compound-assign with a non-numeric string,
+		 * array, object or resource operand is a TypeError too. */
+		SyBlob sArMsg;
+		SyBlobInit(&sArMsg,&pVm->sAllocator);
+		if( VmArithOperandCheck(&(*pVm),pTos,pNos,"-",&sArMsg) != SXRET_OK ){
+			sxi32 rcAr;
+			VmPopOperand(&pTos,1);
+			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
+				SyBlobLength(&sArMsg));
+			SyBlobRelease(&sArMsg);
+			if( rcAr == SXERR_ABORT ){ goto Abort; }
+			rc = rcAr;
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}
+		SyBlobRelease(&sArMsg);
+	}
+	/* Force the operands to be numeric (see OP_SUB) */
+	PH7_MemObjToNumeric(pTos);
+	PH7_MemObjToNumeric(pNos);
 	if( MEMOBJ_REAL & (pTos->iFlags|pNos->iFlags) ){
 		/* Floating point arithemic */
 		ph7_real a,b,r;
@@ -12314,6 +12525,27 @@ case PH7_OP_SUB_STORE: {
  */
 case PH7_OP_MOD:{
 	ph7_value *pNos = &pTos[-1];
+	{
+		/* php's operand contract (VmArithOperandCheck): a non-numeric string, array,
+		 * object or resource operand is a TypeError, not a silent 0. Settle the stack
+		 * BEFORE throwing, so the catch does not run over the abandoned operands. */
+		SyBlob sArMsg;
+		SyBlobInit(&sArMsg,&pVm->sAllocator);
+		if( VmArithOperandCheck(&(*pVm),pNos,pTos,"%",&sArMsg) != SXRET_OK ){
+			sxi32 rcAr;
+			VmPopOperand(&pTos,1);
+			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
+				SyBlobLength(&sArMsg));
+			SyBlobRelease(&sArMsg);
+			if( rcAr == SXERR_ABORT ){ goto Abort; }
+			rc = rcAr;
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}
+		SyBlobRelease(&sArMsg);
+	}
 	sxi64 a,b,r;
 #ifdef UNTRUST
 	if( pNos < pStack ){
@@ -12371,6 +12603,26 @@ case PH7_OP_MOD_STORE: {
 		goto Abort;
 	}
 #endif
+	{
+		/* php's operand contract: a compound-assign with a non-numeric string,
+		 * array, object or resource operand is a TypeError too. */
+		SyBlob sArMsg;
+		SyBlobInit(&sArMsg,&pVm->sAllocator);
+		if( VmArithOperandCheck(&(*pVm),pTos,pNos,"%",&sArMsg) != SXRET_OK ){
+			sxi32 rcAr;
+			VmPopOperand(&pTos,1);
+			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
+				SyBlobLength(&sArMsg));
+			SyBlobRelease(&sArMsg);
+			if( rcAr == SXERR_ABORT ){ goto Abort; }
+			rc = rcAr;
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}
+		SyBlobRelease(&sArMsg);
+	}
 	/* Force the operands to be integer (php deprecates a lossy float here) */
 	VmDeprecateFloatOperand(&(*pVm),pNos);
 	VmDeprecateFloatOperand(&(*pVm),pTos);
@@ -12419,12 +12671,53 @@ case PH7_OP_MOD_STORE: {
  */
 case PH7_OP_DIV:{
 	ph7_value *pNos = &pTos[-1];
+	{
+		/* php's operand contract (VmArithOperandCheck): a non-numeric string, array,
+		 * object or resource operand is a TypeError, not a silent 0. Settle the stack
+		 * BEFORE throwing, so the catch does not run over the abandoned operands. */
+		SyBlob sArMsg;
+		SyBlobInit(&sArMsg,&pVm->sAllocator);
+		if( VmArithOperandCheck(&(*pVm),pNos,pTos,"/",&sArMsg) != SXRET_OK ){
+			sxi32 rcAr;
+			VmPopOperand(&pTos,1);
+			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
+				SyBlobLength(&sArMsg));
+			SyBlobRelease(&sArMsg);
+			if( rcAr == SXERR_ABORT ){ goto Abort; }
+			rc = rcAr;
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}
+		SyBlobRelease(&sArMsg);
+	}
 	ph7_real a,b,r;
 #ifdef UNTRUST
 	if( pNos < pStack ){
 		goto Abort;
 	}
 #endif
+	/* php's `/`: an int/int division whose remainder is 0 yields an *int*
+	 * (6/3 === 2, not 2.0); anything else -- a float operand, an inexact
+	 * quotient, or PHP_INT_MIN/-1 which does not fit -- yields a float.
+	 * PH7 always produced a float and then called PH7_MemObjTryInteger, which
+	 * ORs MEMOBJ_INT onto a value that keeps rendering as a float. */
+	PH7_MemObjToNumeric(pTos);
+	PH7_MemObjToNumeric(pNos);
+	if( ((pTos->iFlags|pNos->iFlags) & MEMOBJ_REAL) == 0 ){
+		sxi64 ia = pNos->x.iVal;
+		sxi64 ib = pTos->x.iVal;
+		if( ib == 0 ){
+			rc = VmThrowFixedError(&(*pVm),"DivisionByZeroError","Division by zero");
+			PH7_DISPATCH_ENFORCE_RC(rc)
+		}else if( ia % ib == 0 && !(ib == -1 && ia == SMALLEST_INT64) ){
+			pNos->x.iVal = ia / ib;
+			MemObjSetType(pNos,MEMOBJ_INT);
+			VmPopOperand(&pTos,1);
+			break;
+		}
+	}
 	/* Force the operands to be real */
 	if( (pTos->iFlags & MEMOBJ_REAL) == 0 ){
 		PH7_MemObjToReal(pTos);
@@ -12445,8 +12738,6 @@ case PH7_OP_DIV:{
 		/* Push the result */
 		pNos->rVal = r;
 		MemObjSetType(pNos,MEMOBJ_REAL);
-		/* Try to get an integer representation */
-		PH7_MemObjTryInteger(pNos);
 	}
 	VmPopOperand(&pTos,1);
 	break;
@@ -12468,6 +12759,26 @@ case PH7_OP_DIV_STORE:{
 		goto Abort;
 	}
 #endif
+	{
+		/* php's operand contract: a compound-assign with a non-numeric string,
+		 * array, object or resource operand is a TypeError too. */
+		SyBlob sArMsg;
+		SyBlobInit(&sArMsg,&pVm->sAllocator);
+		if( VmArithOperandCheck(&(*pVm),pTos,pNos,"/",&sArMsg) != SXRET_OK ){
+			sxi32 rcAr;
+			VmPopOperand(&pTos,1);
+			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
+				SyBlobLength(&sArMsg));
+			SyBlobRelease(&sArMsg);
+			if( rcAr == SXERR_ABORT ){ goto Abort; }
+			rc = rcAr;
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}
+		SyBlobRelease(&sArMsg);
+	}
 	/* Force the operands to be real */
 	if( (pTos->iFlags & MEMOBJ_REAL) == 0 ){
 		PH7_MemObjToReal(pTos);
