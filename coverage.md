@@ -5,11 +5,11 @@
 | src/ph7/builtin_date.c         | 72.90%   | 1189/1631   |
 | src/ph7/builtin_math.c         | 85.21%   | 530/622     |
 | src/ph7/builtin_mb.c           | 90.77%   | 354/390     |
-| src/ph7/compile.c              | 80.79%   | 7172/8877   |
+| src/ph7/compile.c              | 80.79%   | 7181/8888   |
 | src/ph7/constant.c             | 97.65%   | 1122/1149   |
-| src/ph7/hashmap.c              | 88.54%   | 3941/4451   |
+| src/ph7/hashmap.c              | 88.56%   | 3942/4451   |
 | src/ph7/lex.c                  | 93.26%   | 789/846     |
-| src/ph7/memobj.c               | 88.67%   | 892/1006    |
+| src/ph7/memobj.c               | 88.89%   | 904/1017    |
 | src/ph7/net.c                  | 57.45%   | 81/141      |
 | src/ph7/oo.c                   | 88.09%   | 695/789     |
 | src/ph7/parse.c                | 87.07%   | 1145/1315   |
@@ -17,7 +17,7 @@
 | src/ph7/vfs_unix.c             | 88.10%   | 385/437     |
 | src/ph7/vfs_win.c              | 80.14%   | 569/710     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
-| src/ph7/vm.c                   | 82.84%   | 11358/13711 |
+| src/ph7/vm.c                   | 82.63%   | 11489/13904 |
 | src/ph7/vm_builtin_class.c     | 86.26%   | 565/655     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
 | src/ph7/vm_builtin_ini.c       | 95.45%   | 21/22       |
@@ -43,11 +43,11 @@
 | src/sx/sxrand.c                | 71.15%   | 74/104      |
 | src/sx/sxstr.c                 | 94.90%   | 93/98       |
 | src/sx/sxtypes.h               | 100.00%  | 16/16       |
-| src/sx/sxutils.c               | 79.12%   | 307/388     |
+| src/sx/sxutils.c               | 79.38%   | 308/388     |
 | src/sx/sxxml.c                 | 68.86%   | 533/774     |
 | src/sx/sxzip.c                 | 73.75%   | 222/301     |
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.22%   | 45749/56329 |
-| Functions                      | 96.13%   | 2088/2172   |
+| Lines                          | 81.18%   | 45903/56544 |
+| Functions                      | 96.14%   | 2091/2175   |

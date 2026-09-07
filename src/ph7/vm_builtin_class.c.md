@@ -586,7 +586,7 @@ Coverage: 565/655 lines (86.26%)
 |     - |  576 | ` * in the pAttrName parameter is visible and thus can be extracted` |
 |     - |  577 | ` * from the current scope.Otherwise FALSE is returned.` |
 |     - |  578 | ` */` |
-| 37102 |  579 | `PH7_PRIVATE int PH7_VmClassMemberAccess(` |
+| 37186 |  579 | `PH7_PRIVATE int PH7_VmClassMemberAccess(` |
 |     - |  580 | `	ph7_vm *pVm,               /* Target VM */` |
 |     - |  581 | `	ph7_class *pClass,         /* Target Class */` |
 |     - |  582 | `	const SyString *pAttrName, /* Attribute name */` |
@@ -594,22 +594,22 @@ Coverage: 565/655 lines (86.26%)
 |     - |  584 | `	int bLog                   /* TRUE to log forbidden access. */` |
 |     - |  585 | `	)` |
 |     5 |  586 | `{` |
-| 37107 |  587 | `	if( iProtection != PH7_CLASS_PROT_PUBLIC ){` |
-| 29249 |  588 | `		VmFrame *pFrame = pVm->pFrame;` |
+| 37191 |  587 | `	if( iProtection != PH7_CLASS_PROT_PUBLIC ){` |
+| 29333 |  588 | `		VmFrame *pFrame = pVm->pFrame;` |
 |     - |  589 | `		ph7_vm_func *pVmFunc;` |
 |     - |  590 | `		ph7_class *pCallerScope;` |
-| 29269 |  591 | `		while( pFrame->pParent && (pFrame->iFlags & (VM_FRAME_EXCEPTION\|VM_FRAME_CATCH) ) ){` |
+| 29353 |  591 | `		while( pFrame->pParent && (pFrame->iFlags & (VM_FRAME_EXCEPTION\|VM_FRAME_CATCH) ) ){` |
 |     - |  592 | `			/* Safely ignore the exception frame */` |
 |    21 |  593 | `			pFrame = pFrame->pParent;` |
 |     1 |  594 | `		}` |
-| 29249 |  595 | `		pVmFunc = (ph7_vm_func *)pFrame->pUserData;` |
+| 29333 |  595 | `		pVmFunc = (ph7_vm_func *)pFrame->pUserData;` |
 |     - |  596 | `		/* The calling scope is the executing method's declaring class — OR, for a bound closure` |
 |     - |  597 | `		 * (Closure::bindTo/call), the explicit scope override carried on the frame (Increment 2). */` |
-| 29249 |  598 | `		if( pFrame->pBoundScope ){` |
+| 29333 |  598 | `		if( pFrame->pBoundScope ){` |
 |    15 |  599 | `			pCallerScope = pFrame->pBoundScope;` |
-| 29242 |  600 | `		}else if( pVmFunc && (pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) ){` |
-| 29193 |  601 | `			pCallerScope = (ph7_class *)pVmFunc->pUserData;` |
-| 14638 |  602 | `		}else if( pVm->pConstEvalClass ){` |
+| 29326 |  600 | `		}else if( pVmFunc && (pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) ){` |
+| 29277 |  601 | `			pCallerScope = (ph7_class *)pVmFunc->pUserData;` |
+| 14680 |  602 | `		}else if( pVm->pConstEvalClass ){` |
 |     - |  603 | `			/* Constant/property initializer bytecode runs without a method` |
 |     - |  604 | `			 * frame; its scope is the class being initialized (php: a private` |
 |     - |  605 | `			 * constant is reachable from its own class's initializers). */` |
@@ -617,7 +617,7 @@ Coverage: 565/655 lines (86.26%)
 |     2 |  607 | `		}else{` |
 |    42 |  608 | `			goto dis; /* Not in a class scope: access is forbidden */` |
 |     - |  609 | `		}` |
-| 29209 |  610 | `		if( iProtection == PH7_CLASS_PROT_PRIVATE ){` |
+| 29293 |  610 | `		if( iProtection == PH7_CLASS_PROT_PRIVATE ){` |
 |     - |  611 | `			/* php grants private access by DECLARING class: the caller's own` |
 |     - |  612 | `			 * class must declare a private attribute of this name (a base` |
 |     - |  613 | `			 * method touching its own private on a CHILD instance passes; a` |
@@ -677,9 +677,9 @@ Coverage: 565/655 lines (86.26%)
 |     - |  667 | `			}` |
 |  4704 |  668 | `		}else{` |
 |     - |  669 | `			/* Protected */` |
-| 19803 |  670 | `			ph7_class *pBase = pCallerScope;` |
+| 19887 |  670 | `			ph7_class *pBase = pCallerScope;` |
 |     - |  671 | `			/* Must be in the same class hierarchy */` |
-| 19803 |  672 | `			if( !PH7_VmInstanceOf(pClass,pBase) && !PH7_VmInstanceOf(pBase,pClass) ){` |
+| 19887 |  672 | `			if( !PH7_VmInstanceOf(pClass,pBase) && !PH7_VmInstanceOf(pBase,pClass) ){` |
 |     8 |  673 | `				int bTraitGrant = 0;` |
 |     8 |  674 | `				if( (pClass->iFlags & PH7_CLASS_TRAIT) != 0 ){` |
 |     - |  675 | `					/* Same trait-target rule as the private branch above */` |
@@ -699,8 +699,8 @@ Coverage: 565/655 lines (86.26%)
 |     - |  689 | `				}` |
 |     2 |  690 | `			}` |
 |     - |  691 | `		}` |
-| 14597 |  692 | `	}` |
-| 37057 |  693 | `	return 1; /* Access is granted */` |
+| 14639 |  692 | `	}` |
+| 37141 |  693 | `	return 1; /* Access is granted */` |
 |    25 |  694 | `dis:` |
 |    53 |  695 | `	if( bLog ){` |
 |   ! 0 |  696 | `		VmErrorFormat(&(*pVm),PH7_CTX_ERR,` |
@@ -708,7 +708,7 @@ Coverage: 565/655 lines (86.26%)
 |   ! 0 |  698 | `			&pClass->sName,pAttrName);` |
 |   ! 0 |  699 | `	}` |
 |    53 |  700 | `	return 0; /* Access is forbidden */` |
-| 18556 |  701 | `}` |
+| 18598 |  701 | `}` |
 |     - |  702 | `/*` |
 |     - |  703 | ` * array get_class_vars(string/object $class_name)` |
 |     - |  704 | ` *   Get the default properties of the class` |
@@ -921,55 +921,55 @@ Coverage: 565/655 lines (86.26%)
 |     - |  911 | ` * This function returns TRUE if the given class is an implemented` |
 |     - |  912 | ` * interface.Otherwise FALSE is returned.` |
 |     - |  913 | ` */` |
-| 19932 |  914 | `static int VmQueryInterfaceSet(ph7_class *pClass,SySet *pSet)` |
+| 20016 |  914 | `static int VmQueryInterfaceSet(ph7_class *pClass,SySet *pSet)` |
 |     5 |  915 | `{` |
 |     - |  916 | `	ph7_class **apInterface;` |
 |     - |  917 | `	sxu32 n;` |
-| 19937 |  918 | `	if( SySetUsed(pSet) < 1 ){` |
+| 20021 |  918 | `	if( SySetUsed(pSet) < 1 ){` |
 |     - |  919 | `		/* Empty interface container */` |
 |   425 |  920 | `		return FALSE;` |
 |     - |  921 | `	}` |
 |     - |  922 | `	/* Point to the set of implemented interfaces */` |
-| 19517 |  923 | `	apInterface = (ph7_class **)SySetBasePtr(pSet);` |
+| 19601 |  923 | `	apInterface = (ph7_class **)SySetBasePtr(pSet);` |
 |     - |  924 | `	/* Perform the lookup, walking each interface's parent chain so that` |
 |     - |  925 | `	 * Iterator extends Traversable (and similar) is recognized. */` |
-| 37625 |  926 | `	for( n = 0 ; n < SySetUsed(pSet) ; n++ ){` |
-| 20111 |  927 | `		ph7_class *pIface = apInterface[n];` |
-| 20111 |  928 | `		int iDepth = 0;` |
-| 38833 |  929 | `		while( pIface && iDepth <= PH7_INTERFACE_WALK_MAX_DEPTH ){` |
-| 20725 |  930 | `			if( pIface == pClass ){` |
+| 37793 |  926 | `	for( n = 0 ; n < SySetUsed(pSet) ; n++ ){` |
+| 20195 |  927 | `		ph7_class *pIface = apInterface[n];` |
+| 20195 |  928 | `		int iDepth = 0;` |
+| 39001 |  929 | `		while( pIface && iDepth <= PH7_INTERFACE_WALK_MAX_DEPTH ){` |
+| 20809 |  930 | `			if( pIface == pClass ){` |
 |  2003 |  931 | `				return TRUE;` |
 |     - |  932 | `			}` |
-| 18727 |  933 | `			pIface = pIface->pBase;` |
-| 18727 |  934 | `			iDepth++;` |
+| 18811 |  933 | `			pIface = pIface->pBase;` |
+| 18811 |  934 | `			iDepth++;` |
 |     5 |  935 | `		}` |
-|  9059 |  936 | `	}` |
-| 17519 |  937 | `	return FALSE;` |
-|  9971 |  938 | `}` |
+|  9101 |  936 | `	}` |
+| 17603 |  937 | `	return FALSE;` |
+| 10013 |  938 | `}` |
 |     - |  939 | `/*` |
 |     - |  940 | ` * This function returns TRUE if the given class (first argument)` |
 |     - |  941 | ` * is an instance of the main class (second argument).` |
 |     - |  942 | ` * Otherwise FALSE is returned.` |
 |     - |  943 | ` */` |
-| 24388 |  944 | `PH7_PRIVATE int PH7_VmInstanceOf(ph7_class *pThis,ph7_class *pClass)` |
+| 24486 |  944 | `PH7_PRIVATE int PH7_VmInstanceOf(ph7_class *pThis,ph7_class *pClass)` |
 |     5 |  945 | `{` |
 |     - |  946 | `	ph7_class *pParent;` |
 |     - |  947 | `	sxi32 rc;` |
-| 24393 |  948 | `	if( pThis == pClass ){` |
+| 24491 |  948 | `	if( pThis == pClass ){` |
 |     - |  949 | `		/* Instance of the same class */` |
-|  9739 |  950 | `		return TRUE;` |
+|  9753 |  950 | `		return TRUE;` |
 |     - |  951 | `	}` |
 |     - |  952 | `	/* Check implemented interfaces */` |
-| 14659 |  953 | `	rc = VmQueryInterfaceSet(pClass,&pThis->aInterface);` |
-| 14659 |  954 | `	if( rc ){` |
+| 14743 |  953 | `	rc = VmQueryInterfaceSet(pClass,&pThis->aInterface);` |
+| 14743 |  954 | `	if( rc ){` |
 |  1321 |  955 | `		return TRUE;` |
 |     - |  956 | `	}` |
 |     - |  957 | `	/* Check parent classes */` |
-| 13343 |  958 | `	pParent = pThis->pBase;` |
-| 17929 |  959 | `	while( pParent ){` |
-| 17387 |  960 | `		if( pParent == pClass ){` |
+| 13427 |  958 | `	pParent = pThis->pBase;` |
+| 18013 |  959 | `	while( pParent ){` |
+| 17471 |  960 | `		if( pParent == pClass ){` |
 |     - |  961 | `			/* Same instance */` |
-| 12119 |  962 | `			return TRUE;` |
+| 12203 |  962 | `			return TRUE;` |
 |     - |  963 | `		}` |
 |     - |  964 | `		/* Check the implemented interfaces */` |
 |  5273 |  965 | `		rc = VmQueryInterfaceSet(pClass,&pParent->aInterface);` |
@@ -981,7 +981,7 @@ Coverage: 565/655 lines (86.26%)
 |     5 |  971 | `	}` |
 |     - |  972 | `	/* Not an instance of the the given class */` |
 |   547 |  973 | `	return FALSE;` |
-| 12199 |  974 | `}` |
+| 12248 |  974 | `}` |
 |     - |  975 | `/*` |
 |     - |  976 | ` * This function returns TRUE if the given class (first argument)` |
 |     - |  977 | ` * is a subclass of the main class (second argument).` |
