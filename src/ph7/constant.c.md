@@ -439,13 +439,13 @@ Coverage: 1144/1174 lines (97.44%)
 |      3 |  429 | `}` |
 |      - |  430 | `/*` |
 |      - |  431 | ` * E_ALL` |
-|      - |  432 | ` *  Expands 32767` |
+|      - |  432 | ` *  Expands 30719 (php 8: E_STRICT is no longer part of E_ALL)` |
 |      - |  433 | ` */` |
-|     26 |  434 | `static void PH7_E_ALL_Const(ph7_value *pVal,void *pUserData)` |
+|     30 |  434 | `static void PH7_E_ALL_Const(ph7_value *pVal,void *pUserData)` |
 |      5 |  435 | `{` |
-|     31 |  436 | `	ph7_value_int(pVal,32767);` |
-|     13 |  437 | `	SXUNUSED(pUserData);` |
-|     31 |  438 | `}` |
+|     35 |  436 | `	ph7_value_int(pVal,30719);` |
+|     15 |  437 | `	SXUNUSED(pUserData);` |
+|     35 |  438 | `}` |
 |      - |  439 | `/*` |
 |      - |  440 | ` * CASE_LOWER` |
 |      - |  441 | ` *  Expands 0.` |
