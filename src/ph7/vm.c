@@ -1062,6 +1062,7 @@ static void VmLeaveFrame(ph7_vm *pVm)
  * php frees it by refcount, PHL trades that for a script-lifetime pin.
  */
 static VmRefObj * VmRefObjExtract(ph7_vm *pVm,sxu32 nObjIdx);
+static sxi32 VmUnsetVarByName(ph7_vm *pVm,VmFrame *pFrame,const char *zName,sxu32 nByte);
 static void VmPinMemObjSlot(ph7_vm *pVm,sxu32 nIdx)
 {
 	VmFrame *pFrame;
@@ -3979,6 +3980,7 @@ static const struct VmConstDeprecated {
 	const char *zName;
 	const char *zMsg;
 } aConstDeprecated[] = {
+	{ "E_STRICT",         "Constant E_STRICT is deprecated since 8.4, the error level was removed" },
 	{ "ASSERT_ACTIVE",    "Constant ASSERT_ACTIVE is deprecated since 8.3, as assert_options() is deprecated" },
 	{ "ASSERT_CALLBACK",  "Constant ASSERT_CALLBACK is deprecated since 8.3, as assert_options() is deprecated" },
 	{ "ASSERT_BAIL",      "Constant ASSERT_BAIL is deprecated since 8.3, as assert_options() is deprecated" },
@@ -10201,6 +10203,33 @@ case PH7_OP_CVT_OBJ:
  *
  * Error control operator.
  */
+case PH7_OP_UNSET_VAR: {
+	/* unset($name): p3 is the variable name. Drops the NAME only — see VmUnsetVarByName */
+	SyString *pName = (SyString *)pInstr->p3;
+	if( pName && pVm->pFrame ){
+		/* Inside a try{} the VM pushes an EXCEPTION frame; variables live in the body
+		 * frame below it, so skip past it exactly as every other variable path does.
+		 * Without this, unset($x) inside a try silently found nothing and did nothing. */
+		VmFrame *pVarFrame = VmSkipExceptionFrames(pVm->pFrame);
+		sxi32 rcU = VmUnsetVarByName(&(*pVm),pVarFrame,pName->zString,pName->nByte);
+		if( rcU == PH7_ABORT ){
+			goto Abort;
+		}
+		/* Releasing the last holder can run a __destruct(), and that destructor may
+		 * throw. Such a throw is PARKED in nBoundaryRc by the boundary rail; consume it
+		 * here and route it, or the catch runs and execution resumes inside the try
+		 * ("resumed-dtor" instead of php's "caught-dtor"). */
+		if( pVm->nBoundaryRc != 0 ){
+			rc = pVm->nBoundaryRc;
+			pVm->nBoundaryRc = 0;
+			if( rc == PH7_ABORT ){
+				goto Abort;
+			}
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}
+	}
+	break;
+					   }
 case PH7_OP_ERR_CTRL:
 	/*
 	 * Error-control operator '@'. Emitted as a PAIR around the suppressed
@@ -20581,6 +20610,7 @@ static const char * VmInstrToString(sxi32 nOp)
 	case PH7_OP_MEMBER:     zOp = "MEMBER     "; break;
 	case PH7_OP_UPLINK:     zOp = "UPLINK     "; break;
 	case PH7_OP_ERR_CTRL:   zOp = "ERR_CTRL   "; break;
+	case PH7_OP_UNSET_VAR:  zOp = "UNSET_VAR  "; break;
 	case PH7_OP_IS_A:       zOp = "IS_A       "; break;
 	case PH7_OP_SWITCH:     zOp = "SWITCH     "; break;
 	case PH7_OP_MATCH:      zOp = "MATCH      "; break;
@@ -22669,6 +22699,149 @@ static int vm_builtin_isset(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * frame,the reference table and discard it's contents.
  * This function never fail and always return SXRET_OK.
  */
+/*
+ * unset($name) for a SIMPLE variable: drop exactly one NAME binding.
+ *
+ * PH7 routed every unset() through PH7_VmUnsetMemObj(), which releases the shared memory
+ * object and then has VmRefObjUnlink() delete EVERY name bound to that slot and unlink
+ * EVERY array node pointing at it. For an aliased variable that is data loss, not an
+ * unset: `$b = &$a; unset($b);` destroyed $a, `$r = &$arr[$k]; unset($r);` deleted the
+ * array element, and `function f(&$p){ unset($p); }` wiped out the caller's variable.
+ * php removes the NAME and nothing else; the value survives as long as anything still
+ * refers to it.
+ *
+ * So: unlink this one name, forget it in the slot's reference record, and release the
+ * slot only once no name and no array entry still holds it.
+ */
+static sxi32 VmUnsetVarByName(ph7_vm *pVm,VmFrame *pFrame,const char *zName,sxu32 nByte)
+{
+	SyHashEntry *pEntry;
+	VmRefObj *pRef;
+	sxu32 nIdx;
+	/* php 8.1 forbids unset($GLOBALS) outright. Checked by NAME: the superglobal is not an
+	 * ordinary hVar binding, so the slot-index test below never sees it. */
+	if( nByte == sizeof("GLOBALS")-1 && SyMemcmp(zName,"GLOBALS",nByte) == 0 ){
+		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
+			"$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax");
+		pVm->iExitStatus = 255;
+		pVm->bHaltRequested = 1;
+		return PH7_ABORT;
+	}
+	pEntry = SyHashGet(&pFrame->hVar,(const void *)zName,nByte);
+	if( pEntry == 0 ){
+		/* No such variable: unset() is a no-op on an undefined name, as in php */
+		return SXRET_OK;
+	}
+	nIdx = SX_PTR_TO_INT(pEntry->pUserData);
+	if( nIdx == pVm->nGlobalIdx ){
+		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
+			"$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax");
+		pVm->iExitStatus = 255;
+		pVm->bHaltRequested = 1;
+		return PH7_ABORT;
+	}
+	pRef = VmRefObjExtract(&(*pVm),nIdx);
+	/*
+	 * A GLOBAL variable is ALSO an entry of the $GLOBALS array, and that node points at the
+	 * same slot. php's unset($x) in global scope drops $GLOBALS['x'] too, so unlink the node
+	 * — otherwise it stays a live holder and the value is never released ($o = new D;
+	 * unset($o); stopped running the destructor). Clear the reference table's row for the
+	 * node BEFORE unlinking it: unlinking frees the node, and the holder count below would
+	 * otherwise dereference freed memory.
+	 */
+	if( pFrame->pParent == 0 ){
+		ph7_value *pGlobals = (ph7_value *)SySetAt(&pVm->aMemObj,pVm->nGlobalIdx);
+		if( pGlobals && (pGlobals->iFlags & MEMOBJ_HASHMAP) ){
+			ph7_hashmap_node *pNode = 0;
+			ph7_value sKey;
+			SyString sName;
+			PH7_MemObjInit(&(*pVm),&sKey);
+			SyStringInitFromBuf(&sName,zName,nByte);
+			PH7_MemObjInitFromString(&(*pVm),&sKey,&sName);
+			if( SXRET_OK == PH7_HashmapLookup((ph7_hashmap *)pGlobals->x.pOther,&sKey,&pNode)
+			 && pNode && pNode->nValIdx == nIdx ){
+				if( pRef ){
+					ph7_hashmap_node **apN = (ph7_hashmap_node **)SySetBasePtr(&pRef->aArrEntries);
+					sxu32 k;
+					for( k = 0 ; k < SySetUsed(&pRef->aArrEntries) ; ++k ){
+						if( apN[k] == pNode ){
+							apN[k] = 0;
+						}
+					}
+				}
+				PH7_HashmapUnlinkNode(pNode,FALSE);
+			}
+			PH7_MemObjRelease(&sKey);
+		}
+	}
+
+	if( pRef == 0 ){
+		/* Unaliased variable: nobody else holds the slot, so the old path is right */
+		SyHashDeleteEntry2(pEntry);
+		PH7_VmUnsetMemObj(&(*pVm),nIdx,FALSE);
+		return SXRET_OK;
+	}
+	{
+		SyHashEntry **apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);
+		ph7_hashmap_node **apNode = (ph7_hashmap_node **)SySetBasePtr(&pRef->aArrEntries);
+		sxu32 n, nLive = 0;
+		/* Forget THIS name in the slot's reference record (leave the others alone) */
+		for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){
+			if( apEntry[n] == pEntry ){
+				apEntry[n] = 0;
+			}
+		}
+		SyHashDeleteEntry2(pEntry);
+		/* Anything else still holding the slot? */
+		for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){
+			if( apEntry[n] ){
+				nLive++;
+			}
+		}
+		for( n = 0 ; n < SySetUsed(&pRef->aArrEntries) ; ++n ){
+			/* Only a node that STILL points at this slot is a holder. The reference table
+			 * keeps stale rows (a slot index is recycled through the free list, and the row
+			 * outlives the node that put it there), so an un-filtered count reports holders
+			 * that no longer exist and the value would never be released — the destructor
+			 * of `$o = new D; unset($o);` stopped running. */
+			if( apNode[n] && apNode[n]->nValIdx == nIdx ){
+				nLive++;
+			}
+		}
+		if( nLive < 1 ){
+			/* Last holder gone: now the value may go too */
+			PH7_VmUnsetMemObj(&(*pVm),nIdx,FALSE);
+		}
+	}
+	return SXRET_OK;
+}
+/*
+ * Is this memory slot aliased — i.e. does anything other than its owner refer to it?
+ * var_dump marks such an array element with '&' ("&int(2)"). PH7 only flagged nodes that
+ * were FOREIGN (`array(&$x)`, where the node points at an outside slot) and so missed the
+ * common case, a reference taken TO an element (`$r = &$a[1]`), where the array still owns
+ * the value but is no longer its only holder.
+ */
+PH7_PRIVATE int PH7_VmSlotIsReferenced(ph7_vm *pVm,sxu32 nIdx)
+{
+	VmRefObj *pRef;
+	sxu32 n, nLive = 0;
+	SyHashEntry **apEntry;
+	if( nIdx == SXU32_HIGH ){
+		return 0;
+	}
+	pRef = VmRefObjExtract(&(*pVm),nIdx);
+	if( pRef == 0 ){
+		return 0;
+	}
+	apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);
+	for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){
+		if( apEntry[n] ){
+			nLive++;
+		}
+	}
+	return nLive > 0;
+}
 PH7_PRIVATE sxi32 PH7_VmUnsetMemObj(ph7_vm *pVm,sxu32 nObjIdx,int bForce)
 {
 	ph7_value *pObj;

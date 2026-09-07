@@ -3854,7 +3854,7 @@ static int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_value **
 	}
 	if( pStream->xWrite ){
 		ph7_int64 n;
-		if( (iFlags & 0x01/* LOCK_EX */) && pStream->xLock ){
+		if( (iFlags & 2/* LOCK_EX, php's value */) && pStream->xLock ){
 			/* Try to acquire an exclusive lock */
 			pStream->xLock(pHandle,1/* LOCK_EX */);
 		}
@@ -4271,6 +4271,21 @@ static int PH7_builtin_flock(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Requested lock operation */
 	nLock = ph7_value_to_int(apArg[1]);
+	/*
+	 * Translate php's operation (LOCK_SH=1, LOCK_EX=2, LOCK_UN=3, optionally |LOCK_NB=4)
+	 * into the xLock() vtable contract, which is a PUBLIC C API and stays as it is:
+	 * negative = unlock, 1 = exclusive, anything else = shared.
+	 */
+	{
+		int iOp = nLock & ~4 /* strip LOCK_NB */;
+		if( iOp == 3 /* LOCK_UN */ ){
+			nLock = -1;
+		}else if( iOp == 2 /* LOCK_EX */ ){
+			nLock = 1;
+		}else{
+			nLock = 0; /* LOCK_SH */
+		}
+	}
 	/* Lock operation */
 	rc = pStream->xLock(pDev->pHandle,nLock);
 	/* IO result */

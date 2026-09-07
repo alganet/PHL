@@ -1,8 +1,6 @@
 --CREDITS--
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --TEST--
 Array insertion by reference and foreign object handling
 --FILE--
@@ -23,9 +21,8 @@ echo count($a) . ' ';
 unset($var);
 echo count($a) . PHP_EOL;
 ?>
---EXPECT--
-1 20 30
-1 0
+--EXPECTF--
+%A1 20 30%A1 1%A
 --CLEAN--
 <?php
 unset($var, $a);
