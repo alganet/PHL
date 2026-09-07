@@ -2068,7 +2068,20 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
 	"  $s = ''; $i = 0;"\
 	"  if( is_array($this->trace) ){"\
 	"    foreach( $this->trace as $f ){"\
-	"      $s .= '#' . $i . ' ' . $f['file'] . '(' . $f['line'] . '): ' . $f['function'] . \"()\\n\";"\
+	"      $a = array();"\
+	"      if( isset($f['args']) && is_array($f['args']) ){"\
+	"        foreach( $f['args'] as $v ){"\
+	"          if( is_string($v) ){"\
+	"            $a[] = strlen($v) > 15 ? \"'\" . substr($v, 0, 15) . \"...'\" : \"'\" . $v . \"'\";"\
+	"          } elseif( is_array($v) ){ $a[] = 'Array'; }"\
+	"          elseif( is_object($v) ){ $a[] = 'Object(' . get_class($v) . ')'; }"\
+	"          elseif( is_null($v) ){ $a[] = 'NULL'; }"\
+	"          elseif( is_bool($v) ){ $a[] = $v ? 'true' : 'false'; }"\
+	"          else { $a[] = (string)$v; }"\
+	"        }"\
+	"      }"\
+	"      $s .= '#' . $i . ' ' . $f['file'] . '(' . $f['line'] . '): ' . $f['function']"\
+	"         . '(' . implode(', ', $a) . \")\\n\";"\
 	"      $i++;"\
 	"    }"\
 	"  }"\
@@ -2116,7 +2129,20 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
 	"  $s = ''; $i = 0;"\
 	"  if( is_array($this->trace) ){"\
 	"    foreach( $this->trace as $f ){"\
-	"      $s .= '#' . $i . ' ' . $f['file'] . '(' . $f['line'] . '): ' . $f['function'] . \"()\\n\";"\
+	"      $a = array();"\
+	"      if( isset($f['args']) && is_array($f['args']) ){"\
+	"        foreach( $f['args'] as $v ){"\
+	"          if( is_string($v) ){"\
+	"            $a[] = strlen($v) > 15 ? \"'\" . substr($v, 0, 15) . \"...'\" : \"'\" . $v . \"'\";"\
+	"          } elseif( is_array($v) ){ $a[] = 'Array'; }"\
+	"          elseif( is_object($v) ){ $a[] = 'Object(' . get_class($v) . ')'; }"\
+	"          elseif( is_null($v) ){ $a[] = 'NULL'; }"\
+	"          elseif( is_bool($v) ){ $a[] = $v ? 'true' : 'false'; }"\
+	"          else { $a[] = (string)$v; }"\
+	"        }"\
+	"      }"\
+	"      $s .= '#' . $i . ' ' . $f['file'] . '(' . $f['line'] . '): ' . $f['function']"\
+	"         . '(' . implode(', ', $a) . \")\\n\";"\
 	"      $i++;"\
 	"    }"\
 	"  }"\
@@ -2534,6 +2560,8 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	/* Virtual machine internal containers */
 	SyBlobInit(&pVm->sConsumer,&pVm->sAllocator);
 	SyBlobInit(&pVm->sWorker,&pVm->sAllocator);
+	SyBlobInit(&pVm->sLastErrMsg,&pVm->sAllocator);
+	SyBlobInit(&pVm->sLastErrFile,&pVm->sAllocator);
 	SyBlobInit(&pVm->sArgv,&pVm->sAllocator);
 	SySetInit(&pVm->aLitObj,&pVm->sAllocator,sizeof(ph7_value));
 	SySetAlloc(&pVm->aLitObj,0xFF);
@@ -5481,6 +5509,25 @@ static sxi32 VmReportUncaughtException(ph7_vm *pVm,const char *zClass,sxu32 nCla
  * Consume a generated run-time error message by invoking the VM output
  * consumer callback.
  */
+/*
+ * Remember a diagnostic for error_get_last(). php records the last error that reached
+ * DEFAULT processing: one hidden by '@' or by error_reporting() still counts, but one a
+ * user handler claimed (by returning true) does not -- so this is called only on the
+ * default-processing path.
+ */
+static void VmRecordLastError(ph7_vm *pVm,sxi32 iErr,const char *zMsg,sxu32 nMsg,SyString *pFile)
+{
+	pVm->nLastErrType = iErr;
+	pVm->nLastErrLine = pVm->nCurLine ? pVm->nCurLine : 1;
+	SyBlobReset(&pVm->sLastErrMsg);
+	if( zMsg && nMsg > 0 ){
+		SyBlobAppend(&pVm->sLastErrMsg,zMsg,nMsg);
+	}
+	SyBlobReset(&pVm->sLastErrFile);
+	if( pFile ){
+		SyBlobAppend(&pVm->sLastErrFile,pFile->zString,pFile->nByte);
+	}
+}
 static sxi32 VmCallErrorHandler(ph7_vm *pVm,SyBlob *pMsg)
 {
 	ph7_output_consumer *pCons = &pVm->sVmConsumer;
@@ -5666,6 +5713,7 @@ PH7_PRIVATE sxi32 PH7_VmThrowError(
 	/* Check for user error handler. php calls it whatever error_reporting() says
 	 * (see VmThrowErrorAp) -- the mask gates only the printed copy below. */
 	if( VmInvokeErrorHandler(pVm, iErr, zMessage, (sxi32)SyStrlen(zMessage), pFile, (sxi32)pVm->nCurLine) ){
+		VmRecordLastError(&(*pVm),iErr,zMessage,SyStrlen(zMessage),pFile);
 		if( !VmErrReportWants(pVm,iErr) ){
 			/* error_reporting() masks this severity out of the DISPLAY */
 			return SXRET_OK;
@@ -5844,6 +5892,7 @@ static sxi32 VmThrowErrorAp(
 	if( VmInvokeErrorHandler(pVm, iErr, (const char *)SyBlobData(&sMsg), (sxi32)SyBlobLength(&sMsg), pFile, (sxi32)pVm->nCurLine) ){
 		/* No handler or handler returned TRUE, normal processing — unless the
 		 * expression is under '@', which suppresses the printed diagnostic. */
+		VmRecordLastError(&(*pVm),iErr,(const char *)SyBlobData(&sMsg),SyBlobLength(&sMsg),pFile);
 		if( !VmErrReportWants(pVm,iErr) || pVm->nErrSuppress > 0 ){
 			SyBlobRelease(&sMsg);
 			return SXRET_OK;
@@ -7705,6 +7754,32 @@ PH7_PRIVATE sxi32 PH7_VmThrowErrorAp(ph7_vm *pVm,SyString *pFuncName,sxi32 iErr,
 /*
  * Resolve function context from the current frame.
  */
+/*
+ * The name to SHOW for a function. Closures/lambdas carry a synthesized internal name
+ * ("[closure_3]") that doubles as their lookup key; php reports them as
+ * "{closure:/path/file.php:22}". Result points into pVm->zDisplayName for those, or
+ * straight at the function's own name otherwise.
+ */
+static int VmFuncDisplayName(ph7_vm *pVm,ph7_vm_func *pFunc,const char **pzOut)
+{
+	const char *zName = pFunc->sName.zString;
+	int nName = (int)pFunc->sName.nByte;
+	int bClosure = (nName > 9 && SyMemcmp(zName,"[closure_",9) == 0)
+		|| (nName > 8 && SyMemcmp(zName,"[lambda_",8) == 0);
+	if( bClosure ){
+		int n;
+		if( pFunc->sFile.nByte > 0 ){
+			n = (int)SyBufferFormat(pVm->zDisplayName,sizeof(pVm->zDisplayName),
+				"{closure:%.*s:%u}",(int)pFunc->sFile.nByte,pFunc->sFile.zString,pFunc->nLine);
+		}else{
+			n = (int)SyBufferFormat(pVm->zDisplayName,sizeof(pVm->zDisplayName),"{closure}");
+		}
+		*pzOut = pVm->zDisplayName;
+		return n;
+	}
+	*pzOut = zName;
+	return nName;
+}
 static void VmGetFrameContext(ph7_vm *pVm,const char **pzFuncName,int *pnFuncLen)
 {
 	VmFrame *pFrame;
@@ -7723,8 +7798,7 @@ static void VmGetFrameContext(ph7_vm *pVm,const char **pzFuncName,int *pnFuncLen
 	if( pFunc == 0 ){
 		return;
 	}
-	*pzFuncName = pFunc->sName.zString;
-	*pnFuncLen = (int)pFunc->sName.nByte;
+	*pnFuncLen = VmFuncDisplayName(&(*pVm),pFunc,pzFuncName);
 }
 /*
  * Render one exception entry of an uncaught-exception report into pOut.
@@ -8139,6 +8213,22 @@ PH7_PRIVATE void PH7_VmStampThrowableSite(ph7_vm *pVm,ph7_class_instance *pThis)
 					ph7_array_add_strkey_elem(pEntry,"line",pSlot);
 					ph7_value_string(pSlot,zFunc,nFunc);
 					ph7_array_add_strkey_elem(pEntry,"function",pSlot);
+					if( pFrame ){
+						/* php renders the call's ARGUMENTS in the trace line. */
+						ph7_value *pArgs = ph7_new_array(&(*pVm));
+						if( pArgs ){
+							VmSlot *aSlot = (VmSlot *)SySetBasePtr(&pFrame->sArg);
+							sxu32 nA;
+							for( nA = 0 ; nA < SySetUsed(&pFrame->sArg) ; ++nA ){
+								ph7_value *pObj = (ph7_value *)SySetAt(&pVm->aMemObj,aSlot[nA].nIdx);
+								if( pObj ){
+									ph7_array_add_elem(pArgs,0,pObj);
+								}
+							}
+							ph7_array_add_strkey_elem(pEntry,"args",pArgs);
+							ph7_release_value(&(*pVm),pArgs);
+						}
+					}
 					ph7_array_add_elem(pList,0,pEntry);
 				}
 				if( pEntry ){ ph7_release_value(&(*pVm),pEntry); }
@@ -24379,80 +24469,120 @@ static int vm_builtin_set_error_handler(ph7_context *pCtx,int nArg,ph7_value **a
  *          args        array     If inside a function, this lists the functions arguments.
  *                                If inside an included file, this lists the included file name(s).
  */
-static int vm_builtin_debug_backtrace(ph7_context *pCtx,int nArg,ph7_value **apArg)
+/*
+ * array error_get_last()
+ *  Return the last error that reached default processing, or NULL if there was none.
+ *  PH7 registered debug_backtrace() under this name, so it answered with a stack trace
+ *  and never reported an error at all.
+ */
+static int vm_builtin_error_get_last(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
-	ph7_value *pArray;
-	ph7_class *pClass;
-	ph7_value *pValue;
-	SyString *pFile;
-	/* Create a new array */
+	ph7_value *pArray,*pValue;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pVm->nLastErrType == 0 ){
+		/* No error yet */
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
 	pArray = ph7_context_new_array(pCtx);
 	pValue = ph7_context_new_scalar(pCtx);
 	if( pArray == 0 || pValue == 0 ){
-		/* Out of memory,return NULL */
+		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	ph7_value_int(pValue,(int)pVm->nLastErrType);
+	ph7_array_add_strkey_elem(pArray,"type",pValue);
+	ph7_value_string(pValue,(const char *)SyBlobData(&pVm->sLastErrMsg),
+		(int)SyBlobLength(&pVm->sLastErrMsg));
+	ph7_array_add_strkey_elem(pArray,"message",pValue);
+	ph7_value_reset_string_cursor(pValue);
+	ph7_value_string(pValue,(const char *)SyBlobData(&pVm->sLastErrFile),
+		(int)SyBlobLength(&pVm->sLastErrFile));
+	ph7_array_add_strkey_elem(pArray,"file",pValue);
+	ph7_value_reset_string_cursor(pValue);
+	ph7_value_int(pValue,(int)pVm->nLastErrLine);
+	ph7_array_add_strkey_elem(pArray,"line",pValue);
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+static int vm_builtin_debug_backtrace(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_value *pList;
+	ph7_value *pValue;
+	SyString *pFile;
+	VmFrame *pFrame;
+	/* php returns a LIST of frames, innermost first -- one entry per ACTIVE call, each
+	 * describing the callee (function/class) and the position of the CALL SITE. PH7
+	 * returned a single flat map of the innermost frame only, so a caller could never
+	 * see who called it. */
+	pList = ph7_context_new_array(pCtx);
+	pValue = ph7_context_new_scalar(pCtx);
+	if( pList == 0 || pValue == 0 ){
 		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");
 		ph7_result_null(pCtx);
 		SXUNUSED(nArg); /* cc warning */
 		SXUNUSED(apArg);
 		return PH7_OK;
 	}
-	/* Dump running function name and it's arguments  */
-	if( pVm->pFrame->pParent ){
-		VmFrame *pFrame = pVm->pFrame;
-		ph7_vm_func *pFunc;
+	pFile = (SyString *)SySetPeek(&pVm->aFiles);
+	pFrame = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;
+	while( pFrame ){
+		ph7_vm_func *pFunc = (ph7_vm_func *)pFrame->pUserData;
+		ph7_value *pEntry;
 		ph7_value *pArg;
-		pFrame = VmSkipExceptionFrames(pFrame);
-		pFunc = (ph7_vm_func *)pFrame->pUserData;
-		if( pFrame->pParent && pFunc ){
-			ph7_value_string(pValue,pFunc->sName.zString,(int)pFunc->sName.nByte);
-			ph7_array_add_strkey_elem(pArray,"function",pValue);
+		if( pFrame->pParent == 0 || pFunc == 0 ){
+			/* The global frame is not a call: php stops before it (no "{main}" entry). */
+			break;
+		}
+		pEntry = ph7_context_new_array(pCtx);
+		if( pEntry == 0 ){
+			break;
+		}
+		/* php's key order: file, line, function[, class, type], args */
+		if( pFile ){
+			ph7_value_string(pValue,pFile->zString,(int)pFile->nByte);
+			ph7_array_add_strkey_elem(pEntry,"file",pValue);
 			ph7_value_reset_string_cursor(pValue);
 		}
-		/* Function arguments */
+		ph7_value_int(pValue,(int)(pFrame->nCallLine ? pFrame->nCallLine : 1));
+		ph7_array_add_strkey_elem(pEntry,"line",pValue);
+		{
+			const char *zDisp = 0;
+			int nDisp = VmFuncDisplayName(&(*pVm),pFunc,&zDisp);
+			ph7_value_string(pValue,zDisp,nDisp);
+		}
+		ph7_array_add_strkey_elem(pEntry,"function",pValue);
+		ph7_value_reset_string_cursor(pValue);
+		if( pFrame->pThis && pFrame->pThis->pClass ){
+			ph7_value_string(pValue,pFrame->pThis->pClass->sName.zString,
+				(int)pFrame->pThis->pClass->sName.nByte);
+			ph7_array_add_strkey_elem(pEntry,"class",pValue);
+			ph7_value_reset_string_cursor(pValue);
+			ph7_value_string(pValue,"->",sizeof("->")-1);
+			ph7_array_add_strkey_elem(pEntry,"type",pValue);
+			ph7_value_reset_string_cursor(pValue);
+		}
 		pArg = ph7_context_new_array(pCtx);
-		if( pArg  ){
-			ph7_value *pObj;
-			VmSlot *aSlot;
+		if( pArg ){
+			VmSlot *aSlot = (VmSlot *)SySetBasePtr(&pFrame->sArg);
 			sxu32 n;
-			/* Start filling the array with the given arguments */
-			aSlot = (VmSlot *)SySetBasePtr(&pFrame->sArg);
-			for( n = 0;  n < SySetUsed(&pFrame->sArg) ; n++ ){
-				pObj = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,aSlot[n].nIdx);
+			for( n = 0 ; n < SySetUsed(&pFrame->sArg) ; ++n ){
+				ph7_value *pObj = (ph7_value *)SySetAt(&pVm->aMemObj,aSlot[n].nIdx);
 				if( pObj ){
 					ph7_array_add_elem(pArg,0/* Automatic index assign*/,pObj);
 				}
 			}
-			/* Save the array */
-			ph7_array_add_strkey_elem(pArray,"args",pArg);
+			ph7_array_add_strkey_elem(pEntry,"args",pArg);
 		}
+		ph7_array_add_elem(pList,0/* Automatic index assign*/,pEntry);
+		pFrame = pFrame->pParent ? VmSkipExceptionFrames(pFrame->pParent) : 0;
 	}
-	{
-		/* php reports a trace entry's line as the CALL SITE — the line of the call
-		 * that entered this frame — not the line executing inside it. (PHL still
-		 * emits a single entry; the multi-frame walk is a separate gap.) */
-		VmFrame *pLineFrame = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;
-		sxu32 nLine = (pLineFrame && pLineFrame->nCallLine) ? pLineFrame->nCallLine
-			: (pVm->nCurLine ? pVm->nCurLine : 1);
-		ph7_value_int(pValue,(int)nLine);
-	}
-	ph7_array_add_strkey_elem(pArray,"line",pValue);
-	/* Current processed script */
-	pFile = (SyString *)SySetPeek(&pVm->aFiles);
-	if( pFile ){
-		ph7_value_string(pValue,pFile->zString,(int)pFile->nByte);
-		ph7_array_add_strkey_elem(pArray,"file",pValue);
-		ph7_value_reset_string_cursor(pValue);
-	}
-	/* Top class */
-	pClass = PH7_VmPeekTopClass(pVm);
-	if( pClass ){
-		ph7_value_reset_string_cursor(pValue);
-		ph7_value_string(pValue,pClass->sName.zString,(int)pClass->sName.nByte);
-		ph7_array_add_strkey_elem(pArray,"class",pValue);
-	}
-	/* Return the freshly created array */
-	ph7_result_value(pCtx,pArray);
+	/* Return the freshly created list */
+	ph7_result_value(pCtx,pList);
 	/*
 	 * Don't worry about freeing memory, everything will be released automatically
 	 * as soon we return from this function.
@@ -26972,7 +27102,7 @@ static const ph7_builtin_func aVmFunc[] = {
 	{ "restore_error_handler", vm_builtin_restore_error_handler },
 	{ "set_error_handler",vm_builtin_set_error_handler },
 	{ "debug_backtrace",  vm_builtin_debug_backtrace},
-	{ "error_get_last" ,  vm_builtin_debug_backtrace },
+	{ "error_get_last" ,  vm_builtin_error_get_last },
 	{ "debug_print_backtrace", vm_builtin_debug_print_backtrace  },
 	{ "debug_string_backtrace",vm_builtin_debug_string_backtrace },
 	  /* Release info */
