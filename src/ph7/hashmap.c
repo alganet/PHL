@@ -845,6 +845,30 @@ static sxi32 HashmapInsertNode(ph7_hashmap *pMap,ph7_hashmap_node *pNode,int bPr
 	if( pObj == 0 ){
 		return SXERR_EMPTY;
 	}
+	if( (pNode->iFlags & HASHMAP_NODE_FOREIGN_OBJ)
+	 || PH7_VmSlotIsReferenced(pMap->pVm,pNode->nValIdx) ){
+		/* A referenced element keeps its reference through the copy (php: array_slice()
+		 * of an array holding `$r = &$a[1]` still var_dumps that element as &int(2)).
+		 * Same rule HashmapDuplicateNode applies for array_merge()/spread. */
+		sxu32 nRefIdx = pNode->nValIdx;
+		ph7_value sKey;
+		if( pNode->iType == HASHMAP_INT_NODE ){
+			if( !bPreserve ){
+				return HashmapInsertByRef(&(*pMap),0 /* auto index */,nRefIdx);
+			}
+			PH7_MemObjInitFromInt(pMap->pVm,&sKey,pNode->xKey.iKey);
+		}else{
+			if( !bPreserve ){
+				return HashmapInsertByRef(&(*pMap),0 /* auto index */,nRefIdx);
+			}
+			PH7_MemObjInitFromString(pMap->pVm,&sKey,0);
+			PH7_MemObjStringAppend(&sKey,(const char *)SyBlobData(&pNode->xKey.sKey),
+				SyBlobLength(&pNode->xKey.sKey));
+		}
+		rc = HashmapInsertByRef(&(*pMap),&sKey,nRefIdx);
+		PH7_MemObjRelease(&sKey);
+		return rc;
+	}
 	/* Preserve key */
 	if( pNode->iType == HASHMAP_INT_NODE){
 		/* Int64 key */
@@ -1185,12 +1209,13 @@ static sxi32 HashmapDuplicateNode(
 	ph7_value sKey;
 	sxi32 rc;
 
-	if( pEntry->iFlags & HASHMAP_NODE_FOREIGN_OBJ ){
-		/* The source node holds a reference to a foreign ph7_value (e.g: [&$x]).
-		 * Re-insert it by reference so the reference survives the duplication
-		 * instead of being flattened to a value copy. This keeps spread
-		 * ([...$a]), array_merge(), array_replace() and array copies in sync
-		 * with PHP semantics. */
+	if( (pEntry->iFlags & HASHMAP_NODE_FOREIGN_OBJ)
+	 || PH7_VmSlotIsReferenced(pDest->pVm,pEntry->nValIdx) ){
+		/* The source node is a reference — either a FOREIGN one (`[&$x]`, the node points
+		 * at an outside slot) or, the case PH7 missed, an element somebody took a
+		 * reference TO (`$r = &$a[1]`). php carries an element's reference bit through
+		 * array COPIES, so array_merge()/array_slice()/array_replace()/spread all keep
+		 * var_dump'ing it as `&int(2)`; flattening it to a value copy lost that. */
 		sxu32 nRefIdx = pEntry->nValIdx;
 		if( pEntry->iType == HASHMAP_BLOB_NODE ){
 			PH7_MemObjInitFromString(pDest->pVm,&sKey,0);

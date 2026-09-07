@@ -9301,8 +9301,9 @@ static int PH7_builtin_base64_decode(ph7_context *pCtx,int nArg,ph7_value **apAr
 	/* Extract the input string */
 	zIn = ph7_value_to_string(apArg[0],&nLen);
 	if( nLen < 1 ){
-		/* Nothing to process,return FALSE */
-		ph7_result_bool(pCtx,0);
+		/* php decodes the empty string to the EMPTY STRING, not FALSE (FALSE is reserved
+		 * for input that cannot be decoded at all). */
+		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
 	/* Perform the BASE64 decoding */

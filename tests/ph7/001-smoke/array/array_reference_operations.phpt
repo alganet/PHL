@@ -3,15 +3,6 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Array operations with references
---SKIPIF--
-<?php
-// php propagates an element's reference marker through array COPIES: after
-// $b = &$a[1], both array_merge($a,...) and array_slice(...) still var_dump that
-// element as &int(2). PHL copies the value and loses the is_ref bit, so only the
-// ORIGINAL array shows the marker. Recorded in NEWPLAN section 7; engine-specific
-// until reference propagation through array copies is implemented.
-if (function_exists('zend_version')) echo 'skip PHL does not propagate is_ref through array copies';
-?>
 --FILE--
 <?php
 // Test array operations that involve references to exercise uncovered code paths
@@ -36,7 +27,7 @@ array(6) {
   [0]=>
   int(1)
   [1]=>
-  int(2)
+  &int(2)
   [2]=>
   int(3)
   [3]=>
@@ -48,7 +39,7 @@ array(6) {
 }
 array(2) {
   [0]=>
-  int(2)
+  &int(2)
   [1]=>
   int(3)
 }
