@@ -497,6 +497,11 @@ PH7_PRIVATE int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			);
 	}
 
+	if( ph7_value_is_null(apArg[0]) ){
+		/* php's 8.1 null-to-scalar-parameter deprecation; abs(null) is still 0 */
+		PH7_VmThrowDeprecatedFmt(pCtx->pVm,
+			"abs(): Passing null to parameter #1 ($num) of type int|float is deprecated");
+	}
 	/* Numeric strings with decimal/exponent are treated as real values. */
 	is_float = ph7_value_is_float(apArg[0]);
 	if( !is_float && ph7_value_is_string(apArg[0]) ){

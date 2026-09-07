@@ -14066,6 +14066,34 @@ static sxi32 PH7_CompileUnset(ph7_gen_state *pGen)
 	/* Compile each comma-separated argument */
 	while( SXRET_OK == PH7_GetNextExpr(pGen->pIn,pEnd,&pNext) ){
 		if( pGen->pIn < pNext ){
+			/*
+			 * A PLAIN variable (`unset($x)`, exactly two tokens: '$' and the name) drops a
+			 * single NAME binding, which the unset() builtin cannot express — all it ever
+			 * receives is the value's slot index, and unsetting the slot destroys whatever
+			 * else aliases it. Emit OP_UNSET_VAR with the name instead. Subscripts and
+			 * properties (`unset($a[k])`, `unset($o->p)`) keep the existing path, which
+			 * already removes just the element/property.
+			 */
+			if( &pGen->pIn[2] == pNext
+				&& (pGen->pIn[0].nType & PH7_TK_DOLLAR)
+				&& (pGen->pIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) ){
+				SyString *pVarName;
+				char *zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+					pGen->pIn[1].sData.zString,pGen->pIn[1].sData.nByte);
+				pVarName = (SyString *)SyMemBackendAlloc(&pGen->pVm->sAllocator,sizeof(SyString));
+				if( zDup == 0 || pVarName == 0 ){
+					PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
+						"Fatal, PH7 is running out of memory");
+					return SXERR_ABORT;
+				}
+				SyStringInitFromBuf(pVarName,zDup,pGen->pIn[1].sData.nByte);
+				PH7_VmEmitInstr(pGen->pVm,PH7_OP_UNSET_VAR,0,0,pVarName,0);
+				pGen->pIn = pNext;
+				if( pGen->pIn < pEnd ){
+					pGen->pIn++; /* Jump the trailing comma */
+				}
+				continue;
+			}
 			pGen->pEnd = pNext;
 			rc = PH7_CompileExpr(&(*pGen),
 				EXPR_FLAG_RDONLY_LOAD|EXPR_FLAG_LOAD_IDX_UNSET,

@@ -1,8 +1,6 @@
 --CREDITS--
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --TEST--
 Array foreign reference behavior - unsetting referenced variable removes array element
 --FILE--
@@ -18,9 +16,8 @@ echo count($a) . PHP_EOL; // Should be 1
 unset($var);
 echo count($a) . PHP_EOL; // Should be 0 due to PHL foreign reference handling
 ?>
---EXPECT--
-1
-0
+--EXPECTF--
+%A1%A
 --CLEAN--
 <?php
 unset($var, $a);

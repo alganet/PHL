@@ -8731,7 +8731,10 @@ PH7_PRIVATE sxi32 PH7_HashmapDumpEntries(SyBlob *pOut,ph7_hashmap *pMap,int Show
 			break;
 		}
 		pObj = HashmapExtractNodeValue(pEntry);
-		isRef = (pEntry->iFlags & HASHMAP_NODE_FOREIGN_OBJ) != 0;
+		/* '&' marks an element ANY other holder refers to: a foreign node (array(&$x))
+		 * or, the case PH7 missed, an element someone took a reference to ($r = &$a[1]). */
+		isRef = ((pEntry->iFlags & HASHMAP_NODE_FOREIGN_OBJ) != 0)
+			|| PH7_VmSlotIsReferenced(pMap->pVm,pEntry->nValIdx);
 		if( ShowType ){
 			/* var_dump entry: `[key]=>` on its own line at nTab+2, the value
 			 * on the next line at the same indent (php). */

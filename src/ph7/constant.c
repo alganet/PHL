@@ -1290,30 +1290,31 @@ static void PH7_LOCK_SH_Const(ph7_value *pVal,void *pUserData)
 }
 /*
  * LOCK_NB.
- *  Expand 5
+ *  Expand 4 (php)
  */
 static void PH7_LOCK_NB_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,5);
+	ph7_value_int(pVal,4);
 }
 /*
  * LOCK_EX.
- *  Expand 0x01 (MUST BE A POWER OF TWO)
+ *  Expand 2 (php). PH7 used 1, which collided with LOCK_SH, and LOCK_UN was 0 — so
+ *  flock($h, LOCK_UN) asked the stream for a SHARED lock instead of releasing one.
  */
 static void PH7_LOCK_EX_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x01);
+	ph7_value_int(pVal,2);
 }
 /*
  * LOCK_UN.
- *  Expand 0
+ *  Expand 3 (php)
  */
 static void PH7_LOCK_UN_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0);
+	ph7_value_int(pVal,3);
 }
 /*
  * FILE_USE_INCLUDE_PATH
@@ -1973,6 +1974,27 @@ static void PH7_static_Const(ph7_value *pVal,void *pUserData)
 	}
 }
 /*
+ * __CLASS__
+ *  The current class name, or the EMPTY STRING outside any class — php answers "",
+ *  not null (`__CLASS__ === ""` is true in global scope). `self` keeps its own
+ *  expander below because php treats IT differently outside a class scope.
+ */
+static void PH7_class_magic_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_vm *pVm = (ph7_vm *)pUserData;
+	ph7_class *pClass;
+	pClass = PH7_VmPeekDeclaringClass(pVm);
+	if( pClass == 0 ){
+		pClass = PH7_VmPeekTopClass(pVm);
+	}
+	if( pClass ){
+		SyString *pName = &pClass->sName;
+		ph7_value_string(pVal,pName->zString,(int)pName->nByte);
+	}else{
+		ph7_value_string(pVal,"",0);
+	}
+}
+/*
  * self
  * __CLASS__
  *  Expand the name of the current class. NULL otherwise.
@@ -2356,7 +2378,7 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"JSON_ERROR_NON_BACKED_ENUM", PH7_JSON_ERROR_NON_BACKED_ENUM_Const},
 	{"static",               PH7_static_Const       },
 	{"self",                 PH7_self_Const         },
-	{"__CLASS__",            PH7_self_Const         },
+	{"__CLASS__",            PH7_class_magic_Const  },
 	{"parent",               PH7_parent_Const       }
 };
 /*

@@ -1661,7 +1661,8 @@ enum ph7_vm_op {
   PH7_OP_CATCH,         /* Bind the in-flight exception into a catch variable (ROOT C inline catch) */
   PH7_OP_END_FINALLY,   /* Terminate an inline finally: dispatch the pending action (ROOT C) */
   PH7_OP_SET_FINALLY_RET,/* Seed a pending RETURN and enter the innermost enclosing finally (ROOT C) */
-  PH7_OP_SET_FINALLY_JMP /* Seed a pending BREAK/CONTINUE (jump target) and enter a finally (ROOT C) */
+  PH7_OP_SET_FINALLY_JMP,/* Seed a pending BREAK/CONTINUE (jump target) and enter a finally (ROOT C) */
+  PH7_OP_UNSET_VAR      /* unset($name): drop ONE name binding (p3 = name), never the shared slot */
 };
 /* LOADC.iP1 bit flags */
 #define PH7_LOADC_EXPAND   0x01 /* Candidate for constant/function/class expansion */
@@ -2098,6 +2099,7 @@ typedef sxi32 (*ProcIterStep)(ph7_vm *pVm,ph7_value *pKey,ph7_value *pValue,void
 PH7_PRIVATE sxi32 PH7_VmIteratorWalk(ph7_vm *pVm,ph7_value *pObj,ProcIterStep xStep,void *pUserData);
 PH7_PRIVATE sxi32 PH7_VmCallUserFunctionAp(ph7_vm *pVm,ph7_value *pFunc,ph7_value *pResult,...);
 PH7_PRIVATE sxi32 PH7_VmUnsetMemObj(ph7_vm *pVm,sxu32 nObjIdx,int bForce);
+PH7_PRIVATE int PH7_VmSlotIsReferenced(ph7_vm *pVm,sxu32 nIdx);
 PH7_PRIVATE void PH7_VmRandomString(ph7_vm *pVm,char *zBuf,int nLen);
 PH7_PRIVATE ph7_class * PH7_VmPeekTopClass(ph7_vm *pVm);
 PH7_PRIVATE ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm);
