@@ -2,31 +2,24 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-debug_backtrace returns function name, args and file
---SKIPIF--
-<?php
-if (!function_exists('debug_backtrace')) { echo 'skip: debug_backtrace not available'; }
-if (function_exists('zend_version')) { echo 'skip: PHP debug_backtrace output differs'; }
-?>
+debug_backtrace() returns a list of frames, each at its call site
 --FILE--
 <?php
-function foo($x, $y) {
-    $bt = debug_backtrace();
-    if (is_array($bt)) { echo "is_array\n"; }
-    if (isset($bt['function'])) { echo "fn_{$bt['function']}\n"; }
-    if (isset($bt['args'])) { echo "args_" . count($bt['args']) . "\n"; }
-    if (isset($bt['line'])) { echo "line_{$bt['line']}\n"; }
-    if (isset($bt['file'])) { echo "file_present\n"; }
+function btInner($x, $y) {
+    foreach (debug_backtrace() as $i => $f) {
+        printf("#%d %s%s%s(%d args) at line %d, file %s\n", $i,
+            $f['class'] ?? '', $f['type'] ?? '', $f['function'],
+            count($f['args'] ?? []), $f['line'],
+            basename($f['file']));
+    }
 }
-
-foo(10, "abc");
+function btOuter($z) {
+    btInner($z, "two");
+}
+btOuter(1);
 ?>
---EXPECT--
-is_array
-fn_foo
-args_2
-line_11
-file_present
+--EXPECTF--
+#0 btInner(2 args) at line 11, file %s
+#1 btOuter(1 args) at line 13, file %s
 --CLEAN--
 <?php
-unset($bt);

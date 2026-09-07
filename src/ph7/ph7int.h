@@ -1455,6 +1455,16 @@ struct ph7_vm
 	sxu32 nCurLine;            /* Line of the instruction currently executing (0 outside the
 	                            * dispatch loop). Every runtime diagnostic, debug_backtrace()
 	                            * and Throwable reads its line from here. */
+	sxi32 nLastErrType;        /* error_get_last(): severity of the last UNHANDLED diagnostic
+	                            * (0 = none yet). php records one even when '@' or
+	                            * error_reporting() hides it, but NOT when a user handler
+	                            * claimed it by returning true. */
+	sxu32 nLastErrLine;        /* ... its line */
+	SyBlob sLastErrMsg;        /* ... its message */
+	SyBlob sLastErrFile;       /* ... its file */
+	char zDisplayName[256];    /* Scratch for VmFuncDisplayName: a closure's INTERNAL name is a
+	                            * synthesized unique key ("[closure_3]"), but php shows
+	                            * "{closure:file:line}". Valid until the next call. */
 	sxu32 nSuperBaseline;      /* SySetUsed(aMemObj) snapshot taken in PH7_VmMakeReady
 								* right before the superglobals are created. ph7_vm_reset()
 								* releases and truncates aMemObj back to this watermark then

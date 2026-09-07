@@ -4578,8 +4578,11 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 				zBuf = (char *)ph7_value_to_string(pArg,&length);
 			}
 			if( length < 1 ){
-				zBuf = " ";
-				length = (int)sizeof(char);
+				/* An empty %s substitutes NOTHING in php. PH7 substituted a single
+				 * SPACE here, so printf("[%s]","") printed "[ ]" and any format with an
+				 * absent optional part gained a stray space. */
+				zBuf = "";
+				length = 0;
 			}
 			if( precision>=0 && precision<length ){
 				length = precision;
