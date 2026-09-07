@@ -1,6 +1,6 @@
 # src/sx/
 
-Coverage: 3097/3831 lines (80.84%)
+Coverage: 3098/3831 lines (80.87%)
 
 [Up](../index.md)
 
@@ -14,7 +14,7 @@ Coverage: 3097/3831 lines (80.84%)
 |[sxmem.c](sxmem.c.md)|83.92%|428/510|
 |[sxmutex.c](sxmutex.c.md)|83.70%|77/92|
 |[sxrand.c](sxrand.c.md)|71.15%|74/104|
-|[sxstr.c](sxstr.c.md)|93.88%|92/98|
+|[sxstr.c](sxstr.c.md)|94.90%|93/98|
 |[sxtypes.h](sxtypes.h.md)|100.00%|16/16|
 |[sxutils.c](sxutils.c.md)|79.12%|307/388|
 |[sxxml.c](sxxml.c.md)|68.86%|533/774|

@@ -1,19 +1,19 @@
 | Filename                       | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
 | src/ph7/api.c                  | 70.86%   | 778/1098    |
-| src/ph7/builtin.c              | 85.27%   | 4295/5037   |
+| src/ph7/builtin.c              | 85.26%   | 4291/5033   |
 | src/ph7/builtin_date.c         | 72.90%   | 1189/1631   |
 | src/ph7/builtin_math.c         | 84.94%   | 519/611     |
 | src/ph7/builtin_mb.c           | 90.77%   | 354/390     |
-| src/ph7/compile.c              | 80.69%   | 7085/8780   |
+| src/ph7/compile.c              | 80.70%   | 7098/8796   |
 | src/ph7/constant.c             | 97.44%   | 1144/1174   |
-| src/ph7/hashmap.c              | 88.70%   | 3926/4426   |
+| src/ph7/hashmap.c              | 88.66%   | 3933/4436   |
 | src/ph7/lex.c                  | 93.26%   | 789/846     |
 | src/ph7/memobj.c               | 88.47%   | 890/1006    |
 | src/ph7/net.c                  | 57.45%   | 81/141      |
 | src/ph7/oo.c                   | 88.09%   | 695/789     |
-| src/ph7/parse.c                | 87.05%   | 1170/1344   |
-| src/ph7/vfs.c                  | 66.64%   | 2339/3510   |
+| src/ph7/parse.c                | 87.07%   | 1145/1315   |
+| src/ph7/vfs.c                  | 66.68%   | 2359/3538   |
 | src/ph7/vfs_unix.c             | 87.87%   | 384/437     |
 | src/ph7/vfs_win.c              | 80.14%   | 569/710     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
@@ -41,7 +41,7 @@
 | src/sx/sxmem.c                 | 83.92%   | 428/510     |
 | src/sx/sxmutex.c               | 83.70%   | 77/92       |
 | src/sx/sxrand.c                | 71.15%   | 74/104      |
-| src/sx/sxstr.c                 | 93.88%   | 92/98       |
+| src/sx/sxstr.c                 | 94.90%   | 93/98       |
 | src/sx/sxtypes.h               | 100.00%  | 16/16       |
 | src/sx/sxutils.c               | 79.12%   | 307/388     |
 | src/sx/sxxml.c                 | 68.86%   | 533/774     |
@@ -49,5 +49,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.20%   | 45504/56037 |
-| Functions                      | 96.13%   | 2086/2170   |
+| Lines                          | 81.19%   | 45516/56058 |
+| Functions                      | 96.13%   | 2087/2171   |
