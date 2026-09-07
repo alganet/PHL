@@ -9497,6 +9497,41 @@ static sxi32 VmByteCodeExecBody(
 		pVm->nBoundaryRc = 0; /* redirect consumed: drop any parked copy of this throw */ \
 		break; \
 	}
+/*
+ * Route a throw raised by the VM in the MIDDLE of an expression (an opcode that is not a
+ * call boundary: OP_LOADC, OP_LOAD_IDX, ...). Mirrors OP_THROW's tail, which is the only
+ * place that got this right, with one difference: OP_THROW is handed its enclosing try's
+ * landing pad by the compiler (pInstr->iP2), and a mid-expression opcode has none. The
+ * frame recorded exactly that value when the try was entered (iExceptionJump), so use it.
+ *
+ * Getting this wrong is subtle and was shipped twice: a plain `break` resumes at the NEXT
+ * instruction, so the catch runs and then execution carries on INSIDE the try, running the
+ * code the throw should have skipped; while `goto Exception` unwinds the whole invocation,
+ * which is right at a call boundary but corrupts the frame here — even for a CAUGHT Error.
+ *
+ * Use as the last statement of the opcode's throw path; it always breaks or jumps.
+ * rcVar is the status VmThrowFromVm/VmThrowException returned.
+ */
+#define PH7_THROW_ROUTE_MIDEXPR(rcVar) \
+	PH7_INLINE_RESUME_BREAK() \
+	if( (rcVar) == PH7_EXCEPTION || pVm->pResumeFrame || pVm->pInlineInstr ){ \
+		sxi32 _iRpM; \
+		if( VmRecordedResume(pVm,&_iRpM,sState.pEntryFrame,aInstr) ){ \
+			pc = _iRpM; \
+			break; \
+		} \
+		goto Exception; \
+	} \
+	{ \
+		VmFrame *_pFrM = VmSkipExceptionFrames(pVm->pFrame); \
+		if( _pFrM && (_pFrM->iFlags & VM_FRAME_THROW) && _pFrM->iExceptionJump > 0 ){ \
+			/* An enclosing try in THIS frame caught it: land on its OP_POP_EXCEPTION, \
+			 * which tears the try frame down, runs finally and balances the stack. */ \
+			pc = (sxi32)_pFrM->iExceptionJump - 1; \
+			break; \
+		} \
+	} \
+	goto Exception;
 #define PH7_DISPATCH_ENFORCE_RC(rcVar) \
 	if( (rcVar) == PH7_ABORT ){ goto Abort; } \
 	if( (rcVar) == PH7_EXCEPTION || pVm->pInlineInstr ){ \
@@ -10318,29 +10353,30 @@ case PH7_OP_LOADC: {
 					}
 					/* Not in current namespace either — fall through to global/string */
 				}
-				if( isQualified ){
-					/* Qualified name: must be a real constant.
+				{
+					/*
+					 * php 8 has no bare-word fallback: an unresolved constant is a catchable
+					 * Error, not its own name as a string. PH7 answered "X" for an unknown
+					 * X, so a typo — or a constant php REMOVED, like ASSERT_QUIET_EVAL —
+					 * silently became a string and flowed on.
 					 *
-					 * NOTE: an UNQUALIFIED unknown constant still falls back to its own name
-					 * as a string (php 8 throws Error: Undefined constant "X"). Removing that
-					 * fallback is a one-line change here, but the throw has no safe route out
-					 * of OP_LOADC: `goto Exception` unwinds the whole invocation and corrupts
-					 * the frame even for a CAUGHT Error (get_defined_vars then reads the wrong
-					 * scope), while a plain `break` resumes inside the try block. Recorded in
-					 * NEWPLAN section 7 — it needs the mid-expression throw route fixed first. */
-					SyString *pErrFile = (SyString *)SySetPeek(&pVm->aFiles);
-					SyBlob sErr;
-					SyBlobInit(&sErr,&pVm->sAllocator);
-					SyBlobFormat(&sErr,"PHP Fatal error:  Uncaught Error: Undefined constant \"%.*s\"",nLit,zLit);
-					if( pErrFile ){
-						SyBlobFormat(&sErr," in %.*s:%u",pErrFile->nByte,pErrFile->zString,1);
-					}
-					SyBlobAppend(&sErr,"\n",1);
-					VmCallErrorHandler(&(*pVm),&sErr);
-					SyBlobRelease(&sErr);
+					 * Routed through PH7_THROW_ROUTE_MIDEXPR: OP_LOADC is not a call
+					 * boundary, so neither a bare `break` nor `goto Exception` is correct
+					 * here (see the macro).
+					 */
+					SyBlob sMsg;
+					SyBlobInit(&sMsg,&pVm->sAllocator);
+					SyBlobFormat(&sMsg,"Undefined constant \"%.*s\"",nLit,zLit);
 					MemObjSetType(pTos,MEMOBJ_NULL);
+					SyBlobReset(&pTos->sBlob);
 					pTos->nIdx = SXU32_HIGH;
-					goto LoadC_Done;
+					rc = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sMsg),
+						SyBlobLength(&sMsg));
+					SyBlobRelease(&sMsg);
+					if( rc == SXERR_ABORT ){
+						goto Abort;
+					}
+					PH7_THROW_ROUTE_MIDEXPR(rc)
 				}
 			}
 		}
@@ -10349,7 +10385,6 @@ case PH7_OP_LOADC: {
 		/* Set a NULL value */
 		MemObjSetType(pTos,MEMOBJ_NULL);
 	}
-LoadC_Done:
 	/* Mark as constant */
 	pTos->nIdx = SXU32_HIGH;
 	break;
@@ -10804,9 +10839,12 @@ case PH7_OP_LOAD_IDX: {
 			rc = VmThrowFromVm(pVm,"Error",zMsg,nMsg);
 			if( pIdx ){ PH7_MemObjRelease(pIdx); }
 			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
 			pTos->nIdx = SXU32_HIGH;
 			if( rc == SXERR_ABORT ){ goto Abort; }
-			break;
+			/* `break` used to resume at the NEXT instruction: the catch ran and then
+			 * execution carried on inside the try block. */
+			PH7_THROW_ROUTE_MIDEXPR(rc)
 		}
 	}
 	if( (pInstr->iP2 == 1 || pInstr->iP2 == 3 || pInstr->iP2 == 5) && (pTos->iFlags & MEMOBJ_HASHMAP) == 0 ){
@@ -11379,7 +11417,7 @@ case PH7_OP_STORE_IDX_REF: {
 				if( pKey ){ PH7_MemObjRelease(pKey); }
 				VmPopOperand(&pTos,2); /* container + value */
 				if( rc == SXERR_ABORT ){ goto Abort; }
-				break;
+				PH7_THROW_ROUTE_MIDEXPR(rc)
 			}
 		}
 	}

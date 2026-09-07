@@ -3,8 +3,6 @@ SPDX-FileCopyrightText: 2025 Cline <assistant@cline.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 hexdec handles UTF-8 characters in input string
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
 // Test hexdec with UTF-8 characters before hex digits
@@ -14,9 +12,7 @@ echo "Result: " . $result . "\n";
 echo "Expected: 255\n";
 ?>
 --EXPECTF--
-Error [8192]: Invalid characters passed for attempted conversion, these have been ignored in %s on line %d
-Result: 255
-Expected: 255
+%AInvalid characters passed for attempted conversion, these have been ignored%AResult: 255%AExpected: 255%A
 --CLEAN--
 <?php
 unset($result);

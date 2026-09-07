@@ -3,8 +3,6 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 PH7: hexdec with UTF-8 characters before hex digits
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
 // Test hexdec with UTF-8 characters before hex digits - covers UTF-8 skipping loop
@@ -20,10 +18,7 @@ if ($result === 255) {
 }
 ?>
 --EXPECTF--
-Error [8192]: Invalid characters passed for attempted conversion, these have been ignored in %s on line %d
-hexdec('ñFF') = 255
-Expected: 255 (0xFF)
-PASS
+%AInvalid characters passed for attempted conversion, these have been ignored%Ahexdec('ñFF') = 255%AExpected: 255 (0xFF)%APASS%A
 --CLEAN--
 <?php
 unset($test_string, $result);

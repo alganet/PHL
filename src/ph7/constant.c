@@ -1253,15 +1253,6 @@ static void PH7_ASSERT_EXCEPTION_Const(ph7_value *pVal,void *pUserData)
 	ph7_value_int(pVal,5); /* PHP ASSERT_EXCEPTION = 5 */
 }
 /*
- * ASSERT_QUIET_EVAL.
- *  Removed in PHP 8.0, kept for compatibility.
- */
-static void PH7_ASSERT_QUIET_EVAL_Const(ph7_value *pVal,void *pUserData)
-{
-	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,6); /* Arbitrary value, removed in PHP 8 */
-}
-/*
  * SEEK_SET.
  *  Expand 0
  */
@@ -2280,7 +2271,7 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"ASSERT_BAIL",          PH7_ASSERT_BAIL_Const       },
 	{"ASSERT_WARNING",       PH7_ASSERT_WARNING_Const    },
 	{"ASSERT_EXCEPTION",     PH7_ASSERT_EXCEPTION_Const  },
-	{"ASSERT_QUIET_EVAL",    PH7_ASSERT_QUIET_EVAL_Const },
+	/* ASSERT_QUIET_EVAL was REMOVED in php 8.0: referencing it is an Error there */
 	{"SEEK_SET",             PH7_SEEK_SET_Const      },
 	{"SEEK_CUR",             PH7_SEEK_CUR_Const      },
 	{"SEEK_END",             PH7_SEEK_END_Const      },
