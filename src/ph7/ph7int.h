@@ -2011,6 +2011,7 @@ PH7_PRIVATE sxi32 PH7_MemObjStringIncrement(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjTryInteger(ph7_value *pObj);
 PH7_PRIVATE ProcMemObjCast PH7_MemObjCastMethod(sxi32 iFlags);
 PH7_PRIVATE int PH7_MemObjStringIsNumeric(ph7_value *pValue);
+PH7_PRIVATE int PH7_MemObjStringNumericPrefix(ph7_value *pValue,const char **pzTail);
 PH7_PRIVATE sxi32 PH7_MemObjIsNumeric(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjIsEmpty(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjToHashmap(ph7_value *pObj);

@@ -1,30 +1,28 @@
+--CREDITS--
+SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
+SPDX-License-Identifier: BSD-3-Clause
 --TEST--
--- on a non-numeric string or null is a no-op (value unchanged)
---DESCRIPTION--
-Regression: PH7_OP_DECR lacked the non-numeric-string guard, so "abc"-- coerced
-to int(-1) instead of leaving the string unchanged. PHP has no string decrement,
-so "abc"--, "5x"-- and null-- are no-ops. This guards the VALUE behavior.
-
-PHL-only: on PHP 8.3+ each of these operations additionally emits a deprecation
-("Decrement on non-numeric string has no effect and is deprecated") / warning
-("Decrement on type null has no effect"). PHL does not yet emit engine
-deprecation notices (tracked separately in the roadmap, §3.7; PHL's "abc"++
-likewise emits no notice), so the combined output diverges from PHP only by those
-notices. Skipped on real PHP rather than suppressing them, until PHL mirrors them.
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+Decrement on a non-numeric string or null is a no-op, and php diagnoses it
 --FILE--
 <?php
-$s="abc"; $s--; echo "[$s]\n";
-$s="a";   $s--; echo "[$s]\n";
-$s="5x";  $s--; echo "[$s]\n";
-$n=null;  $n--; echo ($n===null?'null-noop':'CHANGED'),"\n";
+set_error_handler(function ($no, $msg) { echo "[$no] $msg\n"; return true; });
+$decS = "abc"; $decS--; echo "[$decS]\n";
+$decS = "a";   $decS--; echo "[$decS]\n";
+$decS = "5x";  $decS--; echo "[$decS]\n";
+$decN = null;  $decN--; echo ($decN === null ? 'null-noop' : 'CHANGED'), "\n";
+$decI = null;  $decI++; echo var_export($decI, true), "\n";
+restore_error_handler();
 ?>
 --EXPECT--
+[8192] Decrement on non-numeric string has no effect and is deprecated
 [abc]
+[8192] Decrement on non-numeric string has no effect and is deprecated
 [a]
+[8192] Decrement on non-numeric string has no effect and is deprecated
 [5x]
+[2] Decrement on type null has no effect, this will change in the next major version of PHP
 null-noop
+1
 --CLEAN--
 <?php
-?>
+unset($decS, $decN, $decI);

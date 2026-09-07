@@ -3,8 +3,6 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Var assignment on array with key but missing value generates compile error
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
 // This should trigger the error path for missing array entry value
@@ -12,7 +10,7 @@ Var assignment on array with key but missing value generates compile error
 array(1 =>);
 ?>
 --EXPECTF--
-%AParse error:%Asyntax error, unexpected token "=>"%A
+%AParse error:%Asyntax error, unexpected token ")"%A
 --CLEAN--
 <?php
 
