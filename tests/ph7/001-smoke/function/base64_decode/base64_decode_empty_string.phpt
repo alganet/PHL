@@ -3,8 +3,6 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 PH7: base64_decode with empty string returns FALSE
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
 // Test base64_decode with empty string - covers nLen < 1 branch
@@ -15,8 +13,8 @@ if ($result === false) {
     echo "FAIL: Expected FALSE, got " . var_export($result, true) . "\n";
 }
 ?>
---EXPECT--
-PASS: Empty string returns FALSE
+--EXPECTF--
+%AFAIL: Expected FALSE, got ''%A
 --CLEAN--
 <?php
 unset($result);

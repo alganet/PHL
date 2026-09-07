@@ -17120,10 +17120,29 @@ case PH7_OP_CALL: {
 							goto SkipFuncBody;
 						}
 						if( pVal->nIdx == SXU32_HIGH ){
-							if( (pVal->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_NULL)) == 0 ){
-								VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
-									"Function '%z',%d argument: Pass by reference,expecting a variable not a "
-									"constant,PH7 is switching to pass by value",&pVmFunc->sName,n+1);
+							if( (pVal->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_NULL)) == 0
+							 && (pVal->iFlags & MEMOBJ_AUX_CUFVAL) == 0 ){
+								/* A non-lvalue bound to a by-ref parameter is a catchable Error in
+								 * php — f(5) where f(&$x). PH7 only warned and quietly passed by
+								 * value, so the call ran with a copy and the caller never knew.
+								 * The one legitimate copy is call_user_func()'s (MEMOBJ_AUX_CUFVAL),
+								 * which php also permits, with its own warning. */
+								SyBlob sMsg;
+								sxi32 rcRef;
+								SyBlobInit(&sMsg,&pVm->sAllocator);
+								SyBlobFormat(&sMsg,"%z(): Argument #%d ($%z) could not be passed by reference",
+									&pVmFunc->sName,n+1,&aFormalArg[n].sName);
+								rcRef = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sMsg),
+									SyBlobLength(&sMsg));
+								SyBlobRelease(&sMsg);
+								if( rcRef == SXERR_ABORT ){
+									pFrameStack = 0;
+									rc = PH7_ABORT;
+									goto SkipFuncBody;
+								}
+								pFrameStack = 0;
+								rc = PH7_EXCEPTION;
+								goto SkipFuncBody;
 							}
 							pObj = VmExtractMemObj(&(*pVm),&aFormalArg[n].sName,FALSE,TRUE);
 						}else{
@@ -17510,11 +17529,20 @@ case PH7_OP_CALL: {
 						goto SkipFuncBody;
 					}
 					if( pArg->nIdx == SXU32_HIGH ){
-						/* Expecting a variable,not a constant,raise an exception */
-						if((pArg->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_NULL)) == 0){
-							VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
-								"Function '%z',%d argument: Pass by reference,expecting a variable not a "
-								"constant,PH7 is switching to pass by value",&pVmFunc->sName,n+1);
+						if((pArg->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_NULL)) == 0
+						 && (pArg->iFlags & MEMOBJ_AUX_CUFVAL) == 0 ){
+							/* php: a non-lvalue bound to a by-ref parameter is a catchable Error.
+							 * PH7 warned and silently passed by value (same site as the other
+							 * binder above). call_user_func()'s deliberate copy is exempt. */
+							SyBlob sMsg;
+							sxi32 rcRef;
+							SyBlobInit(&sMsg,&pVm->sAllocator);
+							SyBlobFormat(&sMsg,"%z(): Argument #%d ($%z) could not be passed by reference",
+								&pVmFunc->sName,n+1,&aFormalArg[n].sName);
+							rcRef = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sMsg),
+								SyBlobLength(&sMsg));
+							SyBlobRelease(&sMsg);
+							return (rcRef == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
 						}
 						/* Switch to pass by value */
 						pObj = VmExtractMemObj(&(*pVm),&aFormalArg[n].sName,FALSE,TRUE);
@@ -21540,6 +21568,50 @@ static sxi32 VmRaiseNotCallable(ph7_vm *pVm, ph7_class_instance *pThis)
  * Return SXRET_OK if the function was successfuly called.Any other
  * return value indicates failure.
  */
+/*
+ * php's call_user_func() passes its arguments BY VALUE, even when the callback declares a
+ * by-reference parameter: it warns and hands the callee a copy. PH7 forwarded the caller's
+ * stack values with their slot index intact, so the callee silently aliased the caller's
+ * variable — call_user_func('ref_incr', $v) actually incremented $v.
+ *
+ * Warn like php and clear the slot index so the binding can only copy. Only a plain
+ * function NAME can be resolved here (an array/closure callable falls through unchanged);
+ * call_user_func_ARRAY is untouched — php honours by-ref there.
+ */
+PH7_PRIVATE void PH7_VmCufDropByRefArgs(ph7_context *pCtx,ph7_value *pCallable,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	SyHashEntry *pEntry;
+	ph7_vm_func *pFunc;
+	ph7_vm_func_arg *aFormal;
+	int i, nFormal;
+	if( pCallable == 0 || (pCallable->iFlags & MEMOBJ_STRING) == 0 ){
+		return;
+	}
+	if( SyBlobLength(&pCallable->sBlob) < 1 ){
+		return;
+	}
+	pEntry = SyHashGet(&pVm->hFunction,SyBlobData(&pCallable->sBlob),
+		SyBlobLength(&pCallable->sBlob));
+	if( pEntry == 0 ){
+		return;
+	}
+	pFunc = (ph7_vm_func *)pEntry->pUserData;
+	aFormal = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);
+	nFormal = (int)SySetUsed(&pFunc->aArgs);
+	for( i = 0 ; i < nFormal && i < nArg ; ++i ){
+		if( (aFormal[i].iFlags & VM_FUNC_ARG_BY_REF) == 0 ){
+			continue;
+		}
+		VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
+			"%z(): Argument #%d ($%z) must be passed by reference, value given",
+			&pFunc->sName,i + 1,&aFormal[i].sName);
+		if( apArg[i] ){
+			apArg[i]->nIdx = SXU32_HIGH; /* not an l-value any more: force a copy */
+			apArg[i]->iFlags |= MEMOBJ_AUX_CUFVAL; /* ...and this copy is INTENTIONAL */
+		}
+	}
+}
 PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 	ph7_vm *pVm,       /* Target VM */
 	ph7_value *pFunc,  /* Callback name */

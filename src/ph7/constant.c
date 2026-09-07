@@ -1955,25 +1955,6 @@ static void PH7_JSON_ERROR_NON_BACKED_ENUM_Const(ph7_value *pVal,void *pUserData
 	ph7_value_int(pVal,JSON_ERROR_NON_BACKED_ENUM);
 }
 /*
- * static
- *  Expand the name of the current class. 'static' otherwise.
- */
-static void PH7_static_Const(ph7_value *pVal,void *pUserData)
-{
-	ph7_vm *pVm = (ph7_vm *)pUserData;
-	ph7_class *pClass;
-	/* Extract the target class if available */
-	pClass = PH7_VmPeekTopClass(pVm);
-	if( pClass ){
-		SyString *pName = &pClass->sName;
-		/* Expand class name */
-		ph7_value_string(pVal,pName->zString,(int)pName->nByte);
-	}else{
-		/* Expand 'static' */
-		ph7_value_string(pVal,"static",sizeof("static")-1);
-	}
-}
-/*
  * __CLASS__
  *  The current class name, or the EMPTY STRING outside any class — php answers "",
  *  not null (`__CLASS__ === ""` is true in global scope). `self` keeps its own
@@ -1992,51 +1973,6 @@ static void PH7_class_magic_Const(ph7_value *pVal,void *pUserData)
 		ph7_value_string(pVal,pName->zString,(int)pName->nByte);
 	}else{
 		ph7_value_string(pVal,"",0);
-	}
-}
-/*
- * self
- * __CLASS__
- *  Expand the name of the current class. NULL otherwise.
- */
-static void PH7_self_Const(ph7_value *pVal,void *pUserData)
-{
-	ph7_vm *pVm = (ph7_vm *)pUserData;
-	ph7_class *pClass;
-
-	/* Get the declaring class of the current method */
-	pClass = PH7_VmPeekDeclaringClass(pVm);
-	if( pClass == 0 ){
-		/* Not in a method, fall back to runtime class */
-		pClass = PH7_VmPeekTopClass(pVm);
-	}
-
-	if( pClass ){
-		SyString *pName = &pClass->sName;
-		/* Expand class name */
-		ph7_value_string(pVal,pName->zString,(int)pName->nByte);
-	}else{
-		/* Expand null */
-		ph7_value_null(pVal);
-	}
-}
-/* parent
- *  Expand the name of the parent class. NULL otherwise.
- */
-static void PH7_parent_Const(ph7_value *pVal,void *pUserData)
-{
-	ph7_vm *pVm = (ph7_vm *)pUserData;
-	ph7_class *pClass;
-
-	/* Get the declaring class, then its parent */
-	pClass = PH7_VmPeekDeclaringClass(pVm);
-	if( pClass && pClass->pBase ){
-		SyString *pName = &pClass->pBase->sName;
-		/* Expand parent class name */
-		ph7_value_string(pVal,pName->zString,(int)pName->nByte);
-	}else{
-		/* Expand null */
-		ph7_value_null(pVal);
 	}
 }
 
@@ -2376,10 +2312,12 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"JSON_ERROR_SYNTAX",    PH7_JSON_ERROR_SYNTAX_Const},
 	{"JSON_ERROR_UTF8",      PH7_JSON_ERROR_UTF8_Const},
 	{"JSON_ERROR_NON_BACKED_ENUM", PH7_JSON_ERROR_NON_BACKED_ENUM_Const},
-	{"static",               PH7_static_Const       },
-	{"self",                 PH7_self_Const         },
-	{"__CLASS__",            PH7_class_magic_Const  },
-	{"parent",               PH7_parent_Const       }
+	/* `self`, `parent` and `static` are KEYWORDS in php, not constants: using one as a bare
+	 * word is an "Undefined constant" Error (or a parse error for `static`). PH7 registered
+	 * them as constants that quietly expanded to the class name / NULL, so a typo'd bare
+	 * word silently produced a value. The `self::`/`parent::`/`static::` forms are handled
+	 * by the `::` compile path and do not go through the constant table. */
+	{"__CLASS__",            PH7_class_magic_Const  }
 };
 /*
  * Register the built-in constants defined above.

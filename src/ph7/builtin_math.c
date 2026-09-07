@@ -1314,6 +1314,7 @@ PH7_PRIVATE int PH7_builtin_base_convert(ph7_context *pCtx,int nArg,ph7_value **
 {
 	static const char zDigits[] = "0123456789abcdefghijklmnopqrstuvwxyz";
 	int nLen,iFbase,iTobase,i;
+	int bIgnored;
 	ph7_int64 iFbase64,iTobase64;
 	const char *zNum;
 	sxu64 uNum = 0;
@@ -1340,10 +1341,14 @@ PH7_PRIVATE int PH7_builtin_base_convert(ph7_context *pCtx,int nArg,ph7_value **
 	iFbase  = (int)iFbase64;
 	iTobase = (int)iTobase64;
 	/* Parse the input number in from_base. Every base is handled the same way:
-	 * digits 0-9 then a-z/A-Z map to 0-35; a character that is not a valid digit
-	 * for from_base is ignored (PHP additionally raises an E_DEPRECATED for the
-	 * ignored characters — not yet emitted, see PLAN §3.1). */
+	 * digits 0-9 then a-z/A-Z map to 0-35; a character that is not a valid digit for
+	 * from_base is ignored, and php raises an E_DEPRECATED saying so. */
+	if( ph7_value_is_null(apArg[0]) ){
+		PH7_VmThrowDeprecatedFmt(pCtx->pVm,
+			"base_convert(): Passing null to parameter #1 ($num) of type string is deprecated");
+	}
 	zNum = ph7_value_to_string(apArg[0],&nLen);
+	bIgnored = 0;
 	for( i = 0 ; i < nLen ; ++i ){
 		int c = (unsigned char)zNum[i];
 		int d;
@@ -1357,10 +1362,15 @@ PH7_PRIVATE int PH7_builtin_base_convert(ph7_context *pCtx,int nArg,ph7_value **
 			d = 99;
 		}
 		if( d >= iFbase ){
-			/* Not a valid digit for this base: skip it (PHP). */
+			/* Not a valid digit for this base: skip it (php), but say so afterwards. */
+			bIgnored = 1;
 			continue;
 		}
 		uNum = uNum * (sxu64)iFbase + (sxu64)d;
+	}
+	if( bIgnored ){
+		PH7_VmThrowDeprecatedFmt(pCtx->pVm,
+			"Invalid characters passed for attempted conversion, these have been ignored");
 	}
 	/* Format the result in to_base using lowercase digits. */
 	if( uNum == 0 ){

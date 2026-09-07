@@ -1105,6 +1105,8 @@ PH7_PRIVATE int vm_builtin_call_user_func(ph7_context *pCtx,int nArg,ph7_value *
 	}
 	PH7_MemObjInit(pCtx->pVm,&sResult);
 	sResult.nIdx = SXU32_HIGH; /* Mark as constant */
+	/* php passes call_user_func()'s arguments BY VALUE: warn on a by-ref formal and copy */
+	PH7_VmCufDropByRefArgs(pCtx,apArg[0],nArg - 1,&apArg[1]);
 	/* Try to invoke the callback. If the call_user_func() call site used
 	 * name: arguments (e.g. call_user_func('f', b: 9)), forward them to the
 	 * callback. The inner call's argument i is the outer argument i+1 (outer

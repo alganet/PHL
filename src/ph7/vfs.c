@@ -1508,6 +1508,12 @@ static int PH7_builtin_basename(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	while( zEnd > zPath && ( (int)zEnd[0] == c || (int)zEnd[0] == d ) ){
 		zEnd--;
 	}
+	if( (int)zEnd[0] == c || (int)zEnd[0] == d ){
+		/* Nothing but separators ("/", "///"): php answers the EMPTY string, where the
+		 * strip loop above stops one short and left PH7 returning "/". */
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
 	iLen = (int)(&zEnd[1]-zPath);
 	while( zEnd > zPath && ( (int)zEnd[0] != c && (int)zEnd[0] != d ) ){
 		zEnd--;

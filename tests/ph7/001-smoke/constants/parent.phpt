@@ -1,25 +1,20 @@
 --CREDITS--
-SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
+SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: parent constant returns null when used outside class context
---SKIPIF--
-<?php
-// PHL extension: `parent` does not exist in php (it is an added API surface,
-// allowed by the section 10 scope policy as a documented PHL extension —
-// it does not change the meaning of valid php source). Engine-specific by design.
-if (function_exists('zend_version')) { echo 'skip PHL extension: parent is not a php symbol'; }
-?>
+`parent` is a keyword, not a constant: using it as a bare word is an Error
 --FILE--
 <?php
-if (parent === null) {
-    echo "NULL\n";
-} else {
-    echo "not null\n";
+// Caught, not uncaught: the smoke tier shares one interpreter, so an escaping fatal
+// would bail the whole run.
+try {
+    echo parent;
+    echo "FAIL: parent expanded to a value";
+} catch (Error $e) {
+    echo $e->getMessage();
 }
 ?>
 --EXPECT--
-NULL
+Undefined constant "parent"
 --CLEAN--
 <?php
-
