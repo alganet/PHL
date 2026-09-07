@@ -14739,6 +14739,7 @@ PH7_PRIVATE sxi32 PH7_CompileScript(
 	int is_expr;
 	sxi8 bSavedStrict;
 	sxi8 bSavedStrictLocked;
+	SyToken *pSavedIn,*pSavedEnd;
 	sxi32 rc;
 	if( pScript->nByte < 1 ){
 		/* Nothing to compile */
@@ -14747,6 +14748,14 @@ PH7_PRIVATE sxi32 PH7_CompileScript(
 	/* Each compiled file has its own strict_types scope. Save the outer
 	 * file's flags so include/require restore them on return. */
 	pCodeGen = &pVm->sCodeGen;
+	/* aPhpToken below is a LOCAL token set: once it is released at `cleanup`, any
+	 * pGen->pIn/pEnd still pointing into it DANGLE. PH7_VmEmitInstr reads pIn to stamp
+	 * each instruction's source line, and instructions are still emitted after this
+	 * function returns (VmEvalChunk's trailing OP_DONE) -- a use-after-free ASan caught
+	 * immediately. Save the caller's cursor and restore it on the way out, so an
+	 * enclosing compile keeps its (live) tokens and the top level goes back to NULL. */
+	pSavedIn = pCodeGen->pIn;
+	pSavedEnd = pCodeGen->pEnd;
 	bSavedStrict = pCodeGen->bStrictTypes;
 	bSavedStrictLocked = pCodeGen->bStrictTypesLocked;
 	pCodeGen->bStrictTypes = 0;
@@ -14821,6 +14830,9 @@ PH7_PRIVATE sxi32 PH7_CompileScript(
 		}
 	}
 cleanup:
+	/* Drop the cursor into the token set BEFORE the set is freed (see above). */
+	pCodeGen->pIn = pSavedIn;
+	pCodeGen->pEnd = pSavedEnd;
 	SySetRelease(&aRawToken);
 	SySetRelease(&aPhpToken);
 	/* Restore outer file's strict_types scope */

@@ -580,6 +580,9 @@ struct VmFrame
 	ph7_value sRet;   /* Deferred catch/finally `return` value targeting THIS body frame */
 	int bHasRet;      /* TRUE when sRet holds a live pending return */
 	sxu32 nRetGen;    /* Bumped on every sRet write (see VmThrowException finally path) */
+	sxu32 nCallLine;  /* Line of the OP_CALL that pushed this frame (0 for the global frame).
+	                   * debug_backtrace() reports a frame's line as the line of the call
+	                   * SITE, not of the code running inside it. */
 	int nActualArgs;  /* Actual call arity (band A #4): how many arguments the CALLER passed,
 	                   * stamped by the OP_CALL / generator-fiber install sites; -1 when
 	                   * unknown (non-call frames) - func_num_args()/func_get_args() then fall
@@ -1016,6 +1019,9 @@ struct VmInstr
 	sxi32 iP1; /* First operand */
 	sxu32 iP2; /* Second operand (Often the jump destination) */
 	void *p3;  /* Third operand (Often Upper layer private data) */
+	sxu32 nLine; /* Source line this instruction was compiled from (0 = unknown).
+	              * Stamped by PH7_VmEmitInstr from the codegen's current token, so
+	              * every one of its ~150 call sites keeps its signature. */
 };
 /*
  * Named-argument metadata attached to PH7_OP_CALL instructions via p3.
@@ -1446,6 +1452,9 @@ struct ph7_vm
 	SySet aSelf;               /* 'self' stack used for static member access [i.e: self::MyConstant] */
 	ph7_hashmap *pGlobal;      /* $GLOBALS hashmap */
 	sxu32 nGlobalIdx;          /* $GLOBALS index */
+	sxu32 nCurLine;            /* Line of the instruction currently executing (0 outside the
+	                            * dispatch loop). Every runtime diagnostic, debug_backtrace()
+	                            * and Throwable reads its line from here. */
 	sxu32 nSuperBaseline;      /* SySetUsed(aMemObj) snapshot taken in PH7_VmMakeReady
 								* right before the superglobals are created. ph7_vm_reset()
 								* releases and truncates aMemObj back to this watermark then
@@ -2199,6 +2208,7 @@ PH7_PRIVATE sxi32 VmLocalExec(ph7_vm *pVm,SySet *pByteCode,ph7_value *pResult,in
 PH7_PRIVATE sxi32 VmErrorFormat(ph7_vm *pVm,sxi32 iErr,const char *zFormat,...);
 /* vm_builtin_class.c function prototypes */
 PH7_PRIVATE int PH7_VmInstanceOf(ph7_class *pThis,ph7_class *pClass);
+PH7_PRIVATE void PH7_VmStampThrowableSite(ph7_vm *pVm,ph7_class_instance *pThis);
 PH7_PRIVATE int PH7_VmClassMemberAccess(ph7_vm *pVm,ph7_class *pClass,const SyString *pAttrName,sxi32 iProtection,int bLog);
 PH7_PRIVATE ph7_class * PH7_VmExtractClassFromValue(ph7_vm *pVm,ph7_value *pArg);
 PH7_PRIVATE int vm_builtin_get_class(ph7_context *pCtx,int nArg,ph7_value **apArg);
@@ -2415,6 +2425,7 @@ PH7_PRIVATE sxi32 PH7_InputFormat(int (*xConsumer)(ph7_context *,const char *,in
 	ph7_context *pCtx,const char *zIn,int nByte,int nArg,ph7_value **apArg,void *pUserData,int vf);
 PH7_PRIVATE sxi32 PH7_FormatValidate(ph7_context *pCtx,const char *zFormat,int nByte);
 PH7_PRIVATE sxi32 PH7_FormatCheckFormatArg(ph7_context *pCtx,ph7_value *pArg,int iArg);
+PH7_PRIVATE sxi32 PH7_CheckStreamArg(ph7_context *pCtx,ph7_value *pArg,int iArg,const char *zName);
 PH7_PRIVATE sxi32 PH7_ProcessCsv(const char *zInput,int nByte,int delim,int encl,
 	int escape,sxi32 (*xConsumer)(const char *,int,void *),void *pUserData);
 PH7_PRIVATE sxi32 PH7_CsvConsumer(const char *zToken,int nTokenLen,void *pUserData);

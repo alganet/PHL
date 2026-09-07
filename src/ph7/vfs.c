@@ -4544,11 +4544,17 @@ static int PH7_builtin_fprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zFormat;
 	io_private *pDev;
 	int nLen;
-	if( nArg < 2 || !ph7_value_is_resource(apArg[0]) ){
-		/* Missing/Invalid arguments,return zero */
+	if( nArg < 2 ){
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Invalid arguments");
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
+	}
+	{
+		/* php: a non-resource $stream is a TypeError (#1), not a warn-and-return-0. */
+		sxi32 rcs = PH7_CheckStreamArg(pCtx,apArg[0],1,"stream");
+		if( rcs != PH7_OK ){
+			return rcs;
+		}
 	}
 	/* Extract our private data */
 	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
@@ -4620,11 +4626,17 @@ static int PH7_builtin_vfprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	io_private *pDev;
 	SySet sArg;
 	int n,nLen;
-	if( nArg < 3 || !ph7_value_is_resource(apArg[0]) ){
-		/* Missing/Invalid arguments,return zero */
+	if( nArg < 3 ){
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Invalid arguments");
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
+	}
+	{
+		/* php: a non-resource $stream is a TypeError (#1), not a warn-and-return-0. */
+		sxi32 rcs = PH7_CheckStreamArg(pCtx,apArg[0],1,"stream");
+		if( rcs != PH7_OK ){
+			return rcs;
+		}
 	}
 	/* PHP 8 checks argument types left-to-right: $format (#2) then $values (#3). */
 	{

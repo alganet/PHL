@@ -4335,6 +4335,20 @@ PH7_PRIVATE sxi32 PH7_FormatValidate(ph7_context *pCtx,const char *zFormat,int n
  * PH7_OK when the value is string-coercible (the caller then uses
  * ph7_value_to_string, which renders scalars/null verbatim).
  */
+/*
+ * php 8: a stream parameter that is not a resource is a TypeError, not a warning
+ * with a 0 return -- the caller never learned its write went nowhere.
+ */
+PH7_PRIVATE sxi32 PH7_CheckStreamArg(ph7_context *pCtx,ph7_value *pArg,int iArg,const char *zName)
+{
+	if( !ph7_value_is_resource(pArg) ){
+		char zBuf[64];
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): Argument #%d ($%s) must be of type resource, %s given",
+			ph7_function_name(pCtx),iArg,zName,VmValueGivenName(pArg,zBuf,sizeof(zBuf)));
+	}
+	return PH7_OK;
+}
 PH7_PRIVATE sxi32 PH7_FormatCheckFormatArg(ph7_context *pCtx,ph7_value *pArg,int iArg)
 {
 	if( ph7_value_is_array(pArg) || ph7_value_is_object(pArg) || ph7_value_is_resource(pArg) ){

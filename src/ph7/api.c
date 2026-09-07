@@ -1009,6 +1009,12 @@ int ph7_vm_release(ph7_vm *pVm)
 #if defined(PH7_ENABLE_THREADS)
 	 /* Leave VM mutex */
 	 SyMutexLeave(sMPGlobal.pMutexMethods,pVm->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */
+	 if( rc == PH7_OK && pVm->pMutex ){
+		 /* The per-VM mutex was allocated in ProcessScript and never freed — one
+		  * leak per VM, which LeakSanitizer reports on every single run. */
+		 SyMutexRelease(sMPGlobal.pMutexMethods,pVm->pMutex);
+		 pVm->pMutex = 0;
+	 }
 #endif
 	if( rc == PH7_OK ){
 		/* Unlink from the list of active VM */
