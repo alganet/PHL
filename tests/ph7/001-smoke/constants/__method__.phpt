@@ -3,27 +3,23 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 PH7 / PHP: __METHOD__ magic constant
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
 echo "__METHOD__ in global scope: '" . __METHOD__ . "'\n";
-function test_func() {
+function MethConstFunc() {
     echo "__METHOD__ in function: '" . __METHOD__ . "'\n";
 }
-test_func();
-class TestClass {
-    public function test_method() {
+MethConstFunc();
+class MethConstClass {
+    public function methConstMethod() {
         echo "__METHOD__ in method: '" . __METHOD__ . "'\n";
     }
 }
-$obj = new TestClass();
-$obj->test_method();
+$obj = new MethConstClass();
+$obj->methConstMethod();
 ?>
---EXPECT--
-__METHOD__ in global scope: ''
-__METHOD__ in function: ''
-__METHOD__ in method: 'test_method'
+--EXPECTF--
+%A__METHOD__ in global scope: ''%A__METHOD__ in function: 'MethConstFunc'%A__METHOD__ in method: 'MethConstClass::methConstMethod'%A
 --CLEAN--
 <?php
 unset($obj);
