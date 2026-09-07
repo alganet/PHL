@@ -1488,6 +1488,95 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen,int bHeredoc)
 					break;
 				}
 			}
+			/*
+			 * "$a[name]" — php's SIMPLE syntax takes an unquoted subscript as the string key
+			 * 'name', never as a constant. PH7 handed "$a[name]" straight to the expression
+			 * compiler, where the bare word only resolved because an unknown constant used to
+			 * fall back to its own name as a string. With undefined constants now a real
+			 * Error, quote the key here so the simple syntax keeps meaning what php means.
+			 * A numeric ($a[0]) or variable ($a[$k]) subscript is already unambiguous.
+			 */
+			{
+				const char *zBr = zExpr;
+				while( zBr < zIn && zBr[0] != '[' ){
+					zBr++;
+				}
+				if( zBr < zIn && zIn[-1] == ']' ){
+					const char *zKey = &zBr[1];
+					const char *zKeyEnd = &zIn[-1];
+					const char *zScan = zKey;
+					int bBare = (zKey < zKeyEnd) && !SyisDigit(zKey[0]);
+					while( bBare && zScan < zKeyEnd ){
+						if( !SyisAlphaNum(zScan[0]) && zScan[0] != '_' ){
+							bBare = 0;
+						}
+						zScan++;
+					}
+					if( bBare ){
+						SyBlob sSub;
+						SyBlobInit(&sSub,&pGen->pVm->sAllocator);
+						SyBlobAppend(&sSub,zExpr,(sxu32)(zBr - zExpr));
+						SyBlobAppend(&sSub,"['",2);
+						SyBlobAppend(&sSub,zKey,(sxu32)(zKeyEnd - zKey));
+						SyBlobAppend(&sSub,"']",2);
+						rc = GenStateProcessStringExpression(&(*pGen),pGen->pIn->nLine,
+							(const char *)SyBlobData(&sSub),
+							(const char *)SyBlobData(&sSub) + SyBlobLength(&sSub));
+						SyBlobRelease(&sSub);
+						if( rc == SXERR_ABORT ){
+							return SXERR_ABORT;
+						}
+						if( rc != SXERR_EMPTY ){
+							++iCons;
+						}
+						pObj = 0;
+						continue;
+					}
+				}
+			}
+			/*
+			 * "${name}" is php's DEPRECATED (8.2) spelling of the variable $name — NOT an
+			 * expression. PH7 handed the whole "${name}" to the expression compiler, whose
+			 * `${expr}` (variable-variable) rule evaluated the bare word `name`; that only
+			 * appeared to work while an unknown bare word fell back to its own name as a
+			 * string. Now that an undefined constant is a real Error, rewrite the simple
+			 * form to the variable it means. "${$x}" keeps the variable-variable meaning.
+			 */
+			if( &zExpr[1] < zIn && zExpr[0] == '$' && zExpr[1] == '{' && zIn[-1] == '}'
+				&& zExpr[2] != '$' ){
+				const char *zName = &zExpr[2];
+				const char *zStop = &zIn[-1];
+				const char *zScan = zName;
+				while( zScan < zStop && (SyisAlphaNum(zScan[0]) || zScan[0] == '_') ){
+					zScan++;
+				}
+				if( zScan == zStop && zName < zStop ){
+					SyBlob sVar;
+					PH7_GenCompileError(&(*pGen),8192 /* E_DEPRECATED */,pGen->pIn->nLine,
+						"Using ${var} in strings is deprecated, use {$var} instead");
+					SyBlobInit(&sVar,&pGen->pVm->sAllocator);
+					SyBlobAppend(&sVar,"$",1);
+					SyBlobAppend(&sVar,zName,(sxu32)(zStop - zName));
+					/* The scanner reads one byte PAST the length it is given, so the rewritten
+					 * source has to be NUL-terminated: in the ordinary path the byte after the
+					 * expression is the string's own closing quote, which stops an identifier,
+					 * but here it is whatever the allocator left after the blob -- and an
+					 * identifier byte there silently EXTENDS the variable name. */
+					SyBlobNullAppend(&sVar);
+					rc = GenStateProcessStringExpression(&(*pGen),pGen->pIn->nLine,
+						(const char *)SyBlobData(&sVar),
+						(const char *)SyBlobData(&sVar) + SyBlobLength(&sVar));
+					SyBlobRelease(&sVar);
+					if( rc == SXERR_ABORT ){
+						return SXERR_ABORT;
+					}
+					if( rc != SXERR_EMPTY ){
+						++iCons;
+					}
+					pObj = 0;
+					continue;
+				}
+			}
 			/* Process the expression */
 			rc = GenStateProcessStringExpression(&(*pGen),pGen->pIn->nLine,zExpr,zIn);
 			if( rc == SXERR_ABORT ){
@@ -1756,8 +1845,9 @@ static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)
 			pCur = pKey;
 		}
 		if( rc == SXERR_EMPTY ){
-			/* No available key,load NULL */
-			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,0 /* nil index */,0,0);
+			/* No key given: load the nil, TAGGED so LOAD_MAP knows this is an absent key
+			 * (auto-index) rather than an explicit `null =>` one, which php deprecates. */
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,PH7_LOADC_NOKEY,0 /* nil index */,0,0);
 		}
 		if( pCur->nType & PH7_TK_AMPER /*'&'*/){
 			/* Insertion by reference, [i.e: $a = array(&$x);] */
@@ -3397,19 +3487,32 @@ static sxi32 GenStateLoadLiteral(ph7_gen_state *pGen)
 			}else{
 				/* Extract the target function/method */
 				ph7_vm_func *pFunc = (ph7_vm_func *)pBlock->pUserData;
-				if( pStr->zString[2] == 'M' /* METHOD */ && (pFunc->iFlags & VM_FUNC_CLASS_METHOD) == 0 ){
-					/* Not a class method,Load null */
-					PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,0,0,0);
-				}else{
-					pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);
-					if( pObj == 0 ){
-						PH7_GenCompileError(pGen,E_ERROR,pToken->nLine,"Fatal, PH7 engine is running out of memory");
-						return SXERR_ABORT;
-					}
-					PH7_MemObjInitFromString(pGen->pVm,pObj,&pFunc->sName);
-					/* Emit the load constant instruction */
-					PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);
+				int bMethod = (pStr->zString[2] == 'M'); /* __METHOD__ vs __FUNCTION__ */
+				pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);
+				if( pObj == 0 ){
+					PH7_GenCompileError(pGen,E_ERROR,pToken->nLine,"Fatal, PH7 engine is running out of memory");
+					return SXERR_ABORT;
 				}
+				/*
+				 * __METHOD__ is the QUALIFIED name: "C::m" inside a method, and the plain
+				 * function name inside a plain function (php does not answer "" there —
+				 * PH7 loaded NULL, so __METHOD__ was empty in every free function and
+				 * unqualified in every method).
+				 */
+				if( bMethod && (pFunc->iFlags & VM_FUNC_CLASS_METHOD) && pFunc->pUserData ){
+					SyString *pCls = &((ph7_class *)pFunc->pUserData)->sName;
+					SyBlob sQual;
+					SyString sOut;
+					SyBlobInit(&sQual,&pGen->pVm->sAllocator);
+					SyBlobFormat(&sQual,"%z::%z",pCls,&pFunc->sName);
+					SyStringInitFromBuf(&sOut,SyBlobData(&sQual),SyBlobLength(&sQual));
+					PH7_MemObjInitFromString(pGen->pVm,pObj,&sOut);
+					SyBlobRelease(&sQual);
+				}else{
+					PH7_MemObjInitFromString(pGen->pVm,pObj,&pFunc->sName);
+				}
+				/* Emit the load constant instruction */
+				PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);
 			}
 			return SXRET_OK;
 	}

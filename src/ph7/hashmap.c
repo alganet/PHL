@@ -552,13 +552,15 @@ static sxi32 HashmapLookup(
 {
 	ph7_hashmap_node *pNode = 0; /* cc -O6 warning */
 	sxi32 rc;
-	if( pKey->iFlags & (MEMOBJ_STRING|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES) ){
+	if( pKey->iFlags & (MEMOBJ_STRING|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_NULL) ){
 		if( (pKey->iFlags & MEMOBJ_STRING) == 0 ){
-			/* Force a string cast */
+			/* Force a string cast (NULL becomes "", php's empty-string key) */
 			PH7_MemObjToString(&(*pKey));
 		}
-		if( SyBlobLength(&pKey->sBlob) > 0 && !HashmapIsIntKey(&pKey->sBlob) ){
-			/* Perform a blob lookup */
+		if( !HashmapIsIntKey(&pKey->sBlob) ){
+			/* Blob lookup. The EMPTY string is a real key here, symmetric with the insert
+			 * path: reading $a[""] must find what writing $a[""] stored, not fall through
+			 * to an integer lookup for key 0. */
 			rc = HashmapLookupBlobKey(&(*pMap),SyBlobData(&pKey->sBlob),SyBlobLength(&pKey->sBlob),&pNode);
 			goto result;
 		}
@@ -634,18 +636,19 @@ static sxi32 HashmapInsert(
 {
 	ph7_hashmap_node *pNode = 0;
 	sxi32 rc = SXRET_OK;
-	if( pKey && pKey->iFlags & (MEMOBJ_STRING|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES) ){
+	if( pKey && pKey->iFlags & (MEMOBJ_STRING|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_NULL) ){
 		if( (pKey->iFlags & MEMOBJ_STRING) == 0 ){
-			/* Force a string cast */
+			/* Force a string cast. NULL casts to "": php stores $a[null] under the EMPTY
+			 * STRING key, it does not treat it as an integer (PH7 fell through to the int
+			 * path and filed it under 0). */
 			PH7_MemObjToString(&(*pKey));
 		}
-		if( SyBlobLength(&pKey->sBlob) < 1 || HashmapIsIntKey(&pKey->sBlob) ){
-			if(SyBlobLength(&pKey->sBlob) < 1){
-				/* Automatic index assign */
-				pKey = 0;
-			}
+		if( HashmapIsIntKey(&pKey->sBlob) ){
 			goto IntKey;
 		}
+		/* An empty key is a real key: $a[""] = v stores under "", it does NOT
+		 * auto-index (PH7 turned it into the next integer slot, silently
+		 * overwriting nothing and bumping the auto-index). */
 		if( SXRET_OK == HashmapLookupBlobKey(&(*pMap),SyBlobData(&pKey->sBlob),
 			SyBlobLength(&pKey->sBlob),&pNode) ){
 				/* Overwrite the old value */
@@ -3061,7 +3064,9 @@ static int ph7_hashmap_key_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Emit deprecation warnings matching PHP behaviour */
 	if( apArg[0]->iFlags & MEMOBJ_NULL ){
-		ph7_context_throw_error_format(pCtx,8192,
+		/* PH7_VmThrowDeprecatedFmt, not ph7_context_throw_error_format: the latter PREPENDS
+		 * "array_key_exists(): " and php's message carries no such prefix. */
+		PH7_VmThrowDeprecatedFmt(pCtx->pVm,
 			"Using null as the key parameter for array_key_exists() is deprecated, "
 			"use an empty string instead"
 			);

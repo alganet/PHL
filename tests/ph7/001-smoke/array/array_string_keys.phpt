@@ -1,8 +1,6 @@
 --CREDITS--
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --TEST--
 Array string keys and automatic indexing
 --FILE--
@@ -44,24 +42,8 @@ echo "Empty string key: " . $arr6[""] . "\n";
 
 echo "Array string keys test completed\n";
 ?>
---EXPECT--
-String keys: string_key another
-Array
-(
-    [0] => zero_int
-    [1] => one_int
-)
-Array
-(
-    [0] => first
-    [1] => second
-    [custom] => custom_key
-    [2] => auto_index
-)
-Key collision result: overwritten
-Float keys: float_key another_float
-Empty string key: empty_key
-Array string keys test completed
+--EXPECTF--
+%AString keys: string_key another%AArray%A(%A[0] => zero_int%A[1] => one_int%A)%A[0] => first%A[1] => second%A[custom] => custom_key%A[2] => auto_index%AKey collision result: overwritten%AImplicit conversion from float 1.5 to int loses precision%AImplicit conversion from float 2.9 to int loses precision%AFloat keys: float_key another_float%AEmpty string key: empty_key%AArray string keys test completed%A
 --CLEAN--
 <?php
 unset($arr1, $arr2, $arr3, $arr4, $arr5, $arr6);

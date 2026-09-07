@@ -3,8 +3,6 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Array hashmap edge cases
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
 // Test array operations that may trigger hashmap edge cases
@@ -32,10 +30,8 @@ echo "Keys count: " . count($keys) . "\n";
 
 echo "Test completed\n";
 ?>
---EXPECT--
-Recursive count: 6
-Keys count: 2
-Test completed
+--EXPECTF--
+%ARecursive count: 6%AImplicit conversion from float 1.5 to int loses precision%AKeys count: 2%ATest completed%A
 --CLEAN--
 <?php
 unset($array, $nested, $count, $mixed, $keys);

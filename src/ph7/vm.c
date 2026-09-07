@@ -3969,10 +3969,34 @@ static void VmThrowUserDeprecatedFmt(ph7_vm *pVm,const char *zFmt,...)
  */
 static void VmDeprecatedAttrNoticeSubject(ph7_vm *pVm,SySet *pAttrs,
 	const char *zKind,const SyString *pQual,const SyString *pName);
+/*
+ * Builtin constants php deprecates outright. A userland constant carries its notice in
+ * an attribute set (#[\Deprecated]); an ENGINE constant has no attributes to hang one
+ * on, so the deprecated ones are declared here and emitted at the single point every
+ * constant expansion passes through.
+ */
+static const struct VmConstDeprecated {
+	const char *zName;
+	const char *zMsg;
+} aConstDeprecated[] = {
+	{ "ASSERT_ACTIVE",    "Constant ASSERT_ACTIVE is deprecated since 8.3, as assert_options() is deprecated" },
+	{ "ASSERT_CALLBACK",  "Constant ASSERT_CALLBACK is deprecated since 8.3, as assert_options() is deprecated" },
+	{ "ASSERT_BAIL",      "Constant ASSERT_BAIL is deprecated since 8.3, as assert_options() is deprecated" },
+	{ "ASSERT_WARNING",   "Constant ASSERT_WARNING is deprecated since 8.3, as assert_options() is deprecated" },
+	{ "ASSERT_EXCEPTION", "Constant ASSERT_EXCEPTION is deprecated since 8.3, as assert_options() is deprecated" },
+};
 static void VmExpandConstantWithNotice(ph7_vm *pVm,ph7_constant *pCons,ph7_value *pOut)
 {
+	sxu32 n;
 	if( SySetUsed(&pCons->aAttrs) > 0 ){
 		VmDeprecatedAttrNoticeSubject(pVm,&pCons->aAttrs,"Constant",0,&pCons->sName);
+	}
+	for( n = 0 ; n < SX_ARRAYSIZE(aConstDeprecated) ; ++n ){
+		if( pCons->sName.nByte == SyStrlen(aConstDeprecated[n].zName)
+		 && SyMemcmp(pCons->sName.zString,aConstDeprecated[n].zName,pCons->sName.nByte) == 0 ){
+			VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,"%s",aConstDeprecated[n].zMsg);
+			break;
+		}
 	}
 	pCons->xExpand(pOut,pCons->pUserData);
 }
@@ -4968,8 +4992,11 @@ PH7_PRIVATE sxi32 PH7_VmHashmapInsert(
 		}
 		PH7_MemObjStringAppend(&sValue,zData,(sxu32)nLen);
 	}
-	/* Perform the insertion */
-	rc = PH7_HashmapInsert(&(*pMap),&sKey,&sValue);
+	/* Perform the insertion. A NULL zKey means "append": pass a NULL key, NOT the empty
+	 * string sKey — an empty string is a real key now ($a[""]), it no longer collapses
+	 * into an automatic index. $argv is built through here, so getting this wrong files
+	 * every argument under "". */
+	rc = PH7_HashmapInsert(&(*pMap),zKey ? &sKey : 0,&sValue);
 	PH7_MemObjRelease(&sKey);
 	PH7_MemObjRelease(&sValue);
 	return rc;
@@ -5038,6 +5065,7 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 	case PH7_VM_CONFIG_ERR_REPORT:
 		/* Run-Time Error report */
 		pVm->bErrReport = 1;
+		pVm->iErrMask = 32767; /* E_ALL */
 		break;
 	case PH7_VM_CONFIG_RECURSION_DEPTH:{
 		/* PHP call-depth cap (OP_CALL frames). The host default is UNBOUNDED
@@ -5519,6 +5547,40 @@ static sxi32 VmInvokeErrorHandler(ph7_vm *pVm, sxi32 iErr, const char *zMessage,
  * errno reaches user handlers untouched (e.g. 8192 for E_DEPRECATED); this
  * only picks the DISPLAY label.
  */
+/*
+ * Map an internal severity onto php's error_reporting bit, then ask whether the current
+ * error_reporting() level wants it. PH7 only had the bErrReport boolean, so ANY non-zero
+ * level reported everything and `error_reporting(E_ALL & ~E_DEPRECATED)` still printed
+ * every deprecation.
+ */
+static int VmErrReportWants(ph7_vm *pVm,sxi32 iErr)
+{
+	sxi32 iBit;
+	if( !pVm->bErrReport ){
+		return 0;
+	}
+	switch( iErr ){
+	case PH7_CTX_WARNING:            /* == 2 == E_WARNING */
+		iBit = 2; break;
+	case 512  /* E_USER_WARNING */:
+		iBit = 512; break;
+	case PH7_CTX_NOTICE:             /* 3 */
+	case 8    /* E_NOTICE */:
+		iBit = 8; break;
+	case 1024 /* E_USER_NOTICE */:
+		iBit = 1024; break;
+	case 8192 /* E_DEPRECATED */:
+		iBit = 8192; break;
+	case 16384 /* E_USER_DEPRECATED */:
+		iBit = 16384; break;
+	case 256  /* E_USER_ERROR */:
+		iBit = 256; break;
+	default:
+		iBit = 1; /* E_ERROR and everything else fatal-ish */
+		break;
+	}
+	return (pVm->iErrMask & iBit) != 0;
+}
 static const char * VmDiagnosticLabel(sxi32 iErr)
 {
 	switch(iErr){
@@ -5569,8 +5631,8 @@ PH7_PRIVATE sxi32 PH7_VmThrowError(
 	SyBlob *pWorker = &pVm->sWorker;
 	SyString *pFile;
 	sxi32 rc = SXRET_OK;
-	if( !pVm->bErrReport ){
-		/* Don't bother reporting errors */
+	if( !VmErrReportWants(pVm,iErr) ){
+		/* error_reporting() masks this severity out */
 		return SXRET_OK;
 	}
 	/* Reset the working buffer */
@@ -5741,8 +5803,8 @@ static sxi32 VmThrowErrorAp(
 	SyBlob sMsg;
 	SyString *pFile;
 	sxi32 rc = SXRET_OK;
-	if( !pVm->bErrReport ){
-		/* Don't bother reporting errors */
+	if( !VmErrReportWants(pVm,iErr) ){
+		/* error_reporting() masks this severity out */
 		return SXRET_OK;
 	}
 	/* Reset the working buffer */
@@ -10184,6 +10246,14 @@ case PH7_OP_LOADC: {
 	ph7_value *pObj;
 	/* Reserve a room */
 	pTos++;
+	if( pInstr->iP1 & PH7_LOADC_NOKEY ){
+		/* Absent array-literal key: mark it so LOAD_MAP auto-indexes without a diagnostic */
+		MemObjSetType(pTos,MEMOBJ_NULL);
+		SyBlobReset(&pTos->sBlob);
+		pTos->iFlags |= MEMOBJ_AUX_NOKEY;
+		pTos->nIdx = SXU32_HIGH;
+		break;
+	}
 	if( (pObj = (ph7_value *)SySetAt(&pVm->aLitObj,pInstr->iP2)) != 0 ){
 		if( (pInstr->iP1 & PH7_LOADC_EXPAND) && SyBlobLength(&pObj->sBlob) <= 64 ){
 			SyHashEntry *pEntry;
@@ -10249,7 +10319,15 @@ case PH7_OP_LOADC: {
 					/* Not in current namespace either — fall through to global/string */
 				}
 				if( isQualified ){
-					/* Qualified name: must be a real constant. */
+					/* Qualified name: must be a real constant.
+					 *
+					 * NOTE: an UNQUALIFIED unknown constant still falls back to its own name
+					 * as a string (php 8 throws Error: Undefined constant "X"). Removing that
+					 * fallback is a one-line change here, but the throw has no safe route out
+					 * of OP_LOADC: `goto Exception` unwinds the whole invocation and corrupts
+					 * the frame even for a CAUGHT Error (get_defined_vars then reads the wrong
+					 * scope), while a plain `break` resumes inside the try block. Recorded in
+					 * NEWPLAN section 7 — it needs the mid-expression throw route fixed first. */
 					SyString *pErrFile = (SyString *)SySetPeek(&pVm->aFiles);
 					SyBlob sErr;
 					SyBlobInit(&sErr,&pVm->sAllocator);
@@ -10383,9 +10461,23 @@ case PH7_OP_LOAD_MAP: {
 					(sxu32)pEntry[1].x.iVal
 					);
 			}else{
+				/* An explicit key in an array LITERAL gets the same php diagnostics a
+				 * subscript does — a float key that truncates deprecates, and so does an
+				 * explicit null key. Only the subscript sites (LOAD_IDX/STORE_IDX) used to
+				 * emit these, so `[1.5 => "v"]` and `[null => "v"]` were silent. A key that
+				 * is ABSENT (auto-index) is a NULL slot here, not a null key, so the
+				 * MEMOBJ_NULL check below is what tells the two apart. */
+				if( (pEntry->iFlags & MEMOBJ_AUX_NOKEY) == 0 ){
+					if( pEntry->iFlags & MEMOBJ_NULL ){
+						VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,
+							"Using null as an array offset is deprecated, use an empty string instead");
+					}else{
+						VmDeprecateFloatKey(&(*pVm),pEntry);
+					}
+				}
 				/* Standard insertion */
 				PH7_HashmapInsert(pMap,
-					(pEntry->iFlags & MEMOBJ_NULL) ? 0 /* Automatic index assign */ : pEntry,
+					(pEntry->iFlags & MEMOBJ_AUX_NOKEY) ? 0 /* Automatic index assign */ : pEntry,
 					&pEntry[1]
 				);
 			}
@@ -23288,18 +23380,13 @@ static int vm_builtin_error_reporting(ph7_context *pCtx,int nArg,ph7_value **apA
 	ph7_vm *pVm = pCtx->pVm;
 	int nOld;
 	/* Extract the old reporting level */
-	nOld = pVm->bErrReport ? 32767 /* E_ALL */ : 0;
+	nOld = pVm->bErrReport ? (int)pVm->iErrMask : 0;
 	if( nArg > 0 ){
 		int nNew;
-		/* Extract the desired error reporting level */
+		/* Keep the LEVEL, not just an on/off bit: php masks per-severity. */
 		nNew = ph7_value_to_int(apArg[0]);
-		if( !nNew ){
-			/* Do not report errors at all */
-			pVm->bErrReport = 0;
-		}else{
-			/* Report all errors */
-			pVm->bErrReport = 1;
-		}
+		pVm->iErrMask = (sxi32)nNew;
+		pVm->bErrReport = nNew != 0;
 	}
 	/* Return the old level */
 	ph7_result_int(pCtx,nOld);

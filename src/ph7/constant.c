@@ -429,11 +429,11 @@ static void PH7_E_USER_DEPRECATED_Const(ph7_value *pVal,void *pUserData)
 }
 /*
  * E_ALL
- *  Expands 32767
+ *  Expands 30719 (php 8: E_STRICT is no longer part of E_ALL)
  */
 static void PH7_E_ALL_Const(ph7_value *pVal,void *pUserData)
 {
-	ph7_value_int(pVal,32767);
+	ph7_value_int(pVal,30719);
 	SXUNUSED(pUserData);
 }
 /*

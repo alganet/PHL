@@ -101,6 +101,7 @@ struct ph7_value
 #define MEMOBJ_REFERENCE 0x400  /* Memory value hold a reference (64-bit index) of another ph7_value */
 #define MEMOBJ_AUX_SPREAD 0x800 /* Stack-only marker: this value is a spread source for the next LOAD_MAP */
 #define MEMOBJ_NEVER     0x1000 /* Pseudo-type (return-only): never-returning function must not return at all */
+#define MEMOBJ_AUX_NOKEY 0x2000 /* Stack-only marker: absent array-literal key (see PH7_LOADC_NOKEY) */
 /* Mask of all known types */
 #define MEMOBJ_ALL (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)
 /* Scalar variables
@@ -109,7 +110,7 @@ struct ph7_value
  *  Types array, object and resource are not scalar.
  */
 #define MEMOBJ_SCALAR (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL)
-#define MEMOBJ_AUX (MEMOBJ_REFERENCE|MEMOBJ_AUX_SPREAD)
+#define MEMOBJ_AUX (MEMOBJ_REFERENCE|MEMOBJ_AUX_SPREAD|MEMOBJ_AUX_NOKEY)
 /*
  * The following macro clear the current ph7_value type and replace
  * it with the given one.
@@ -1386,6 +1387,9 @@ struct ph7_vm
 	void *pStdout;             /* STDOUT IO stream */
 	void *pStderr;             /* STDERR IO stream */
 	int bErrReport;            /* TRUE to report all runtime Error/Warning/Notice */
+	sxi32 iErrMask;      /* error_reporting() level. PH7 collapsed it to the bErrReport
+	                      * boolean, so E_ALL & ~E_DEPRECATED still printed every
+	                      * deprecation — any non-zero level meant "report all". */
 	int nRecursionDepth;       /* Current PHP call depth (OP_CALL frames only) */
 	int nErrSuppress;          /* '@' error-control depth: >0 means the diagnostics raised
 	                            * while evaluating the suppressed expression are not printed
@@ -1661,6 +1665,10 @@ enum ph7_vm_op {
 };
 /* LOADC.iP1 bit flags */
 #define PH7_LOADC_EXPAND   0x01 /* Candidate for constant/function/class expansion */
+#define PH7_LOADC_NOKEY    0x04 /* The nil this pushes is an ABSENT array-literal key (auto-index),
+                                 * not an explicit `null =>` one. The two are both MEMOBJ_NULL on the
+                                 * stack, and LOAD_MAP must tell them apart: an absent key auto-indexes
+                                 * silently, an explicit null key deprecates and stores under "". */
 #define PH7_LOADC_ABSOLUTE 0x02 /* Fully-qualified — skip namespace prefixing */
 /* MEMBER.iP2 — member-access context. 0=read is the default; the unset/isset/empty modes mirror the
  * array LOAD_IDX context modes so unset()/isset()/empty() on a property behave like on an array elem. */
