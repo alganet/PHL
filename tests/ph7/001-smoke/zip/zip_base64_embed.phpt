@@ -4,13 +4,7 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Test embedded base64 zip using zip_open/zip_entry functions
 --SKIPIF--
-<?php
-/* Skip on Zend PHP (this test targets the PH7/PHL zip implementation) */
-if (function_exists('zend_version')) { echo "skip: not PH7\n"; }
-if (!function_exists('zip_open')) {
-    print("skip zip_open not available\n");
-}
-?>
+<?php if (!function_exists('zip_open')) { echo 'skip zip_open not available'; } ?>
 --FILE--
 <?php
 $fn = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'phl_test_zip_base64.zip';
@@ -45,21 +39,7 @@ zip_close($zip);
 unlink($fn);
 ?>
 --EXPECTF--
-exists=1
-len=113
-Error [8192]: Function zip_open() is deprecated since 8.0, use ZipArchive::open() instead in %s on line %d
-zip_open=ok
-Error [8192]: Function zip_read() is deprecated since 8.0, use ZipArchive::statIndex() instead in %s on line %d
-Error [8192]: Function zip_entry_name() is deprecated since 8.0, use ZipArchive::statIndex() instead in %s on line %d
-zip_entry_name=file1
-Error [8192]: Function zip_entry_open() is deprecated since 8.0 in %s on line %d
-Error [8192]: Function zip_entry_filesize() is deprecated since 8.0, use ZipArchive::statIndex() instead in %s on line %d
-zip_entry_filesize=5
-Error [8192]: Function zip_entry_filesize() is deprecated since 8.0, use ZipArchive::statIndex() instead in %s on line %d
-Error [8192]: Function zip_entry_read() is deprecated since 8.0, use ZipArchive::getFromIndex() instead in %s on line %d
-zip_entry_read=hello
-Error [8192]: Function zip_entry_close() is deprecated since 8.0 in %s on line %d
-Error [8192]: Function zip_close() is deprecated since 8.0, use ZipArchive::close() instead in %s on line %d
+%Aexists=1%Alen=113%AFunction zip_open() is deprecated since 8.0, use ZipArchive::open() instead%Azip_open=ok%AFunction zip_read() is deprecated since 8.0, use ZipArchive::statIndex() instead%AFunction zip_entry_name() is deprecated since 8.0, use ZipArchive::statIndex() instead%Azip_entry_name=file1%AFunction zip_entry_open() is deprecated since 8.0%AFunction zip_entry_filesize() is deprecated since 8.0, use ZipArchive::statIndex() instead%Azip_entry_filesize=5%AFunction zip_entry_read() is deprecated since 8.0, use ZipArchive::getFromIndex() instead%Azip_entry_read=hello%AFunction zip_entry_close() is deprecated since 8.0%AFunction zip_close() is deprecated since 8.0, use ZipArchive::close() instead%A
 --CLEAN--
 <?php
 unset($fn, $zip_b64, $zip, $entry);

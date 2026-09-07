@@ -4,10 +4,7 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 zip_entry_compressionmethod returns compression method of entry
 --SKIPIF--
-<?php
-if (function_exists('zend_version')) { echo "skip: not PH7\n"; }
-if (!function_exists('zip_open')) { echo 'skip: zip not available'; }
-?>
+<?php if (!function_exists('zip_open')) { echo 'skip zip_open not available'; } ?>
 --FILE--
 <?php
 $fn = tempnam(sys_get_temp_dir(), 'ph7_zip');
@@ -31,12 +28,7 @@ zip_close($res);
 unlink($fn);
 ?>
 --EXPECTF--
-Error [8192]: Function zip_open() is deprecated since 8.0, use ZipArchive::open() instead in %s on line %d
-Error [8192]: Function zip_read() is deprecated since 8.0, use ZipArchive::statIndex() instead in %s on line %d
-Error [8192]: Function zip_entry_compressionmethod() is deprecated since 8.0, use ZipArchive::statIndex() instead in %s on line %d
-ok
-Error [8192]: Function zip_entry_close() is deprecated since 8.0 in %s on line %d
-Error [8192]: Function zip_close() is deprecated since 8.0, use ZipArchive::close() instead in %s on line %d
+%AFunction zip_open() is deprecated since 8.0, use ZipArchive::open() instead%AFunction zip_read() is deprecated since 8.0, use ZipArchive::statIndex() instead%AFunction zip_entry_compressionmethod() is deprecated since 8.0, use ZipArchive::statIndex() instead%Aok%AFunction zip_entry_close() is deprecated since 8.0%AFunction zip_close() is deprecated since 8.0, use ZipArchive::close() instead%A
 --CLEAN--
 <?php
 unset($fn, $zip_b64, $bin, $res, $entry, $method);

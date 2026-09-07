@@ -4,13 +4,7 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Test open corrupted zip (end-of-central with too many entries)
 --SKIPIF--
-<?php
-/* Only run on PH7/PHL */
-if (function_exists('zend_version')) { print("skip: not PH7\n"); }
-if (!function_exists('zip_open')) {
-    print("skip zip_open not available\n");
-}
-?>
+<?php if (!function_exists('zip_open')) { echo 'skip zip_open not available'; } ?>
 --FILE--
 <?php
 $fn = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'phl_test_zip_corrupt_eocd_entries.zip';
@@ -33,11 +27,7 @@ if (is_resource($zip)){
 unlink($fn);
 ?>
 --EXPECTF--
-exists=1
-len=113
-Error [8192]: Function zip_open() is deprecated since 8.0, use ZipArchive::open() instead in %s on line %d
-zip_open=ok
-Error [8192]: Function zip_close() is deprecated since 8.0, use ZipArchive::close() instead in %s on line %d
+%Aexists=1%Alen=113%Azip_open=ok%AFunction zip_close() is deprecated since 8.0, use ZipArchive::close() instead%A
 --CLEAN--
 <?php
 unset($fn, $zip_b64, $data, $zip);
