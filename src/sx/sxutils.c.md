@@ -95,7 +95,7 @@ Coverage: 308/388 lines (79.38%)
 |      15 |   85 | `	}` |
 |     146 |   86 | `	if( pzTail ){` |
 |       - |   87 | `		/* Point to the non numeric part */` |
-|      91 |   88 | `		*pzTail = zSrc;` |
+|      90 |   88 | `		*pzTail = zSrc;` |
 |      44 |   89 | `	}` |
 |     146 |   90 | `	return zSrc > zCur ? SXRET_OK /* String prefix is numeric */ : SXERR_INVALID /* Not a digit stream */;` |
 |       4 |   91 | `}` |
@@ -174,9 +174,9 @@ Coverage: 308/388 lines (79.38%)
 |       6 |  164 | `	}` |
 |      13 |  165 | `	return (zSrc >= zEnd) ? SXRET_OK : SXERR_SYNTAX;` |
 |       1 |  166 | `}` |
-| 1673230 |  167 | `PH7_PRIVATE sxi32 SyStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,const char **zRest)` |
+| 1674990 |  167 | `PH7_PRIVATE sxi32 SyStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,const char **zRest)` |
 |       5 |  168 | `{` |
-| 1673235 |  169 | `	int isNeg = FALSE;` |
+| 1674995 |  169 | `	int isNeg = FALSE;` |
 |       - |  170 | `	const char *zEnd;` |
 |       - |  171 | `	sxi64 nVal;` |
 |       - |  172 | `	/* Magnitude accumulated unsigned so overflow can be detected and the result` |
@@ -185,7 +185,7 @@ Coverage: 308/388 lines (79.38%)
 |       - |  175 | `	 * fits: PHP_INT_MAX for a positive value, \|PHP_INT_MIN\| == 2^63 for a` |
 |       - |  176 | `	 * negative one. */` |
 |       - |  177 | `	sxu64 uVal, cutoff;` |
-| 1673235 |  178 | `	int bOverflow = FALSE;` |
+| 1674995 |  178 | `	int bOverflow = FALSE;` |
 |       - |  179 | `#if defined(UNTRUST)` |
 |       - |  180 | `	if( SX_EMPTY_STR(zSrc) ){` |
 |       - |  181 | `		if( pOutVal ){` |
@@ -194,50 +194,50 @@ Coverage: 308/388 lines (79.38%)
 |       - |  184 | `		return SXERR_EMPTY;` |
 |       - |  185 | `	}` |
 |       - |  186 | `#endif` |
-| 1673235 |  187 | `	zEnd = &zSrc[nLen];` |
-| 1673261 |  188 | `	while(zSrc < zEnd && SyisSpace(zSrc[0]) ){` |
+| 1674995 |  187 | `	zEnd = &zSrc[nLen];` |
+| 1675021 |  188 | `	while(zSrc < zEnd && SyisSpace(zSrc[0]) ){` |
 |      28 |  189 | `		zSrc++;` |
 |       2 |  190 | `	}` |
-| 1673235 |  191 | `	if( zSrc < zEnd && ( zSrc[0] == '-' \|\| zSrc[0] == '+' ) ){` |
+| 1674995 |  191 | `	if( zSrc < zEnd && ( zSrc[0] == '-' \|\| zSrc[0] == '+' ) ){` |
 |      21 |  192 | `		isNeg = (zSrc[0] == '-') ? TRUE :FALSE;` |
 |      21 |  193 | `		zSrc++;` |
 |      10 |  194 | `	}` |
 |       - |  195 | `	/* Skip leading zero */` |
-| 1673355 |  196 | `	while(zSrc < zEnd && zSrc[0] == '0' ){` |
+| 1675115 |  196 | `	while(zSrc < zEnd && zSrc[0] == '0' ){` |
 |     121 |  197 | `		zSrc++;` |
 |       1 |  198 | `	}` |
-| 1673235 |  199 | `	cutoff = isNeg ? ((sxu64)SXI64_HIGH + 1) : (sxu64)SXI64_HIGH;` |
-| 1673235 |  200 | `	uVal = 0;` |
-| 3932591 |  201 | `	while( zSrc < zEnd && (unsigned char)zSrc[0] < 0xc0 && SyisDigit(zSrc[0]) ){` |
-| 2259361 |  202 | `		int d = zSrc[0] - '0';` |
-| 2259361 |  203 | `		if( uVal > cutoff / 10 \|\| (uVal == cutoff / 10 && (sxu64)d > cutoff % 10) ){` |
+| 1674995 |  199 | `	cutoff = isNeg ? ((sxu64)SXI64_HIGH + 1) : (sxu64)SXI64_HIGH;` |
+| 1674995 |  200 | `	uVal = 0;` |
+| 3936723 |  201 | `	while( zSrc < zEnd && (unsigned char)zSrc[0] < 0xc0 && SyisDigit(zSrc[0]) ){` |
+| 2261733 |  202 | `		int d = zSrc[0] - '0';` |
+| 2261733 |  203 | `		if( uVal > cutoff / 10 \|\| (uVal == cutoff / 10 && (sxu64)d > cutoff % 10) ){` |
 |      33 |  204 | `			bOverflow = TRUE;` |
 |      17 |  205 | `		}else{` |
-| 2259329 |  206 | `			uVal = uVal * 10 + (sxu64)d;` |
+| 2261701 |  206 | `			uVal = uVal * 10 + (sxu64)d;` |
 |       - |  207 | `		}` |
-| 2259361 |  208 | `		zSrc++;` |
+| 2261733 |  208 | `		zSrc++;` |
 |       5 |  209 | `	}` |
-| 1673235 |  210 | `	if( bOverflow ){` |
+| 1674995 |  210 | `	if( bOverflow ){` |
 |      25 |  211 | `		uVal = cutoff;` |
 |      12 |  212 | `	}` |
 |       - |  213 | `	/* Skip trailing spaces */` |
-| 1673261 |  214 | `	while(zSrc < zEnd && SyisSpace(zSrc[0])){` |
+| 1675021 |  214 | `	while(zSrc < zEnd && SyisSpace(zSrc[0])){` |
 |      28 |  215 | `		zSrc++;` |
 |       2 |  216 | `	}` |
-| 1673235 |  217 | `	if( zRest ){` |
+| 1674995 |  217 | `	if( zRest ){` |
 |     ! 0 |  218 | `		*zRest = (char *)zSrc;` |
 |     ! 0 |  219 | `	}` |
-| 1673235 |  220 | `	if( pOutVal ){` |
-| 1673235 |  221 | `		if( isNeg ){` |
+| 1674995 |  220 | `	if( pOutVal ){` |
+| 1674995 |  221 | `		if( isNeg ){` |
 |       - |  222 | `			/* uVal <= 2^63; the cap value 2^63 is PHP_INT_MIN and has no positive` |
 |       - |  223 | `			 * sxi64 representation, so materialize it directly to dodge UB. */` |
 |      21 |  224 | `			nVal = ( uVal > (sxu64)SXI64_HIGH ) ? (-SXI64_HIGH - 1) : -(sxi64)uVal;` |
 |      11 |  225 | `		}else{` |
-| 1673215 |  226 | `			nVal = (sxi64)uVal;` |
+| 1674975 |  226 | `			nVal = (sxi64)uVal;` |
 |       - |  227 | `		}` |
-| 1673235 |  228 | `		*(sxi64 *)pOutVal = nVal;` |
-|  836615 |  229 | `	}` |
-| 1673235 |  230 | `	return (zSrc >= zEnd) ? SXRET_OK : SXERR_SYNTAX;` |
+| 1674995 |  228 | `		*(sxi64 *)pOutVal = nVal;` |
+|  837495 |  229 | `	}` |
+| 1674995 |  230 | `	return (zSrc >= zEnd) ? SXRET_OK : SXERR_SYNTAX;` |
 |       5 |  231 | `}` |
 |    1662 |  232 | `PH7_PRIVATE sxi32 SyHexToint(sxi32 c)` |
 |       2 |  233 | `{` |
