@@ -130,12 +130,12 @@ Coverage: 565/655 lines (86.26%)
 |     - |  120 | `		const char *zClass;` |
 |     - |  121 | `		int nLen;` |
 |     - |  122 | `		/* Extract class name */` |
-|  1624 |  123 | `		zClass = ph7_value_to_string(pArg,&nLen);` |
-|  1624 |  124 | `		if( nLen > 0 ){` |
+|  1623 |  123 | `		zClass = ph7_value_to_string(pArg,&nLen);` |
+|  1623 |  124 | `		if( nLen > 0 ){` |
 |     - |  125 | `			SyHashEntry *pEntry;` |
 |     - |  126 | `			/* Perform a lookup */` |
-|  1624 |  127 | `			pEntry = SyHashGet(&pVm->hClass,(const void *)zClass,(sxu32)nLen);` |
-|  1624 |  128 | `			if( pEntry ){` |
+|  1623 |  127 | `			pEntry = SyHashGet(&pVm->hClass,(const void *)zClass,(sxu32)nLen);` |
+|  1623 |  128 | `			if( pEntry ){` |
 |     - |  129 | `				/* Point to the desired class */` |
 |  1600 |  130 | `				pClass = (ph7_class *)pEntry->pUserData;` |
 |   799 |  131 | `			}` |
