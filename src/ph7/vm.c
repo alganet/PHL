@@ -2380,6 +2380,116 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
    "  $pHandle = fopen($zTempDir.DIRECTORY_SEPARATOR.'PH7'.rand_str(12),'w+');"\
    "  return $pHandle;"\
    "}"\
+   "/* php's number_format(): missing entirely from PH7. */"\
+   "function number_format($num, $decimals = 0, $dec_point = '.', $thousands_sep = ','){"\
+   "  $num = (float)$num;"\
+   "  $decimals = (int)$decimals;"\
+   "  if( $decimals < 0 ){ $decimals = 0; }"\
+   "  if( $dec_point === null ){ $dec_point = '.'; }"\
+   "  if( $thousands_sep === null ){ $thousands_sep = ','; }"\
+   "  /* round() first: sprintf uses banker's rounding, php's number_format rounds"\
+   "   * half AWAY FROM ZERO (number_format(0.5) is '1', not '0'). */"\
+   "  $num = round($num, $decimals);"\
+   "  $s = sprintf('%.' . $decimals . 'f', $num);"\
+   "  $neg = false;"\
+   "  if( substr($s, 0, 1) === '-' ){ $neg = true; $s = substr($s, 1); }"\
+   "  $parts = explode('.', $s);"\
+   "  $int = $parts[0];"\
+   "  $frac = count($parts) > 1 ? $parts[1] : '';"\
+   "  $out = '';"\
+   "  $len = strlen($int);"\
+   "  $c = 0;"\
+   "  for( $i = $len - 1 ; $i >= 0 ; $i-- ){"\
+   "    $out = $int[$i] . $out;"\
+   "    $c++;"\
+   "    if( $c % 3 === 0 && $i > 0 ){ $out = $thousands_sep . $out; }"\
+   "  }"\
+   "  if( $decimals > 0 ){ $out = $out . $dec_point . $frac; }"\
+   "  if( $neg ){ $out = '-' . $out; }"\
+   "  return $out;"\
+   "}"\
+   "function is_nan($v){ $v = (float)$v; return $v != $v; }"\
+   "function is_infinite($v){ $v = (float)$v; return $v == INF || $v == -INF; }"\
+   "function is_finite($v){ $v = (float)$v; return !is_nan($v) && !is_infinite($v); }"\
+   "/* Inverse of bin2hex() */"\
+   "function hex2bin($str){"\
+   "  $str = (string)$str;"\
+   "  $len = strlen($str);"\
+   "  if( $len % 2 !== 0 ){"\
+   "    trigger_error('hex2bin(): Hexadecimal input string must have an even length', E_USER_WARNING);"\
+   "    return false;"\
+   "  }"\
+   "  $out = '';"\
+   "  for( $i = 0 ; $i < $len ; $i += 2 ){"\
+   "    $pair = substr($str, $i, 2);"\
+   "    if( !ctype_xdigit($pair) ){"\
+   "      trigger_error('hex2bin(): Input string must be hexadecimal string', E_USER_WARNING);"\
+   "      return false;"\
+   "    }"\
+   "    $out = $out . chr(hexdec($pair));"\
+   "  }"\
+   "  return $out;"\
+   "}"\
+   "/* Division that never throws: INF/-INF/NAN like php */"\
+   "function fdiv($a, $b){"\
+   "  $a = (float)$a;"\
+   "  $b = (float)$b;"\
+   "  if( $b == 0.0 ){"\
+   "    if( $a == 0.0 || is_nan($a) ){ return NAN; }"\
+   "    return $a > 0 ? INF : -INF;"\
+   "  }"\
+   "  return $a / $b;"\
+   "}"\
+   "function checkdate($month, $day, $year){"\
+   "  $month = (int)$month; $day = (int)$day; $year = (int)$year;"\
+   "  if( $month < 1 || $month > 12 || $year < 1 || $year > 32767 || $day < 1 ){ return false; }"\
+   "  $days = array(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31);"\
+   "  $max = $days[$month - 1];"\
+   "  if( $month === 2 && ((($year % 4 === 0) && ($year % 100 !== 0)) || ($year % 400 === 0)) ){"\
+   "    $max = 29;"\
+   "  }"\
+   "  return $day <= $max;"\
+   "}"\
+   "function cal_days_in_month($calendar, $month, $year){"\
+   "  $month = (int)$month; $year = (int)$year;"\
+   "  $days = array(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31);"\
+   "  if( $month < 1 || $month > 12 ){"\
+   "    throw new ValueError('cal_days_in_month(): Argument #2 ($month) must be a valid month');"\
+   "  }"\
+   "  if( $month === 2 && ((($year % 4 === 0) && ($year % 100 !== 0)) || ($year % 400 === 0)) ){"\
+   "    return 29;"\
+   "  }"\
+   "  return $days[$month - 1];"\
+   "}"\
+   "function preg_grep($pattern, $array, $flags = 0){"\
+   "  $out = array();"\
+   "  foreach( $array as $k => $v ){"\
+   "    $m = preg_match($pattern, (string)$v);"\
+   "    if( $flags & PREG_GREP_INVERT ){ $m = !$m; }"\
+   "    if( $m ){ $out[$k] = $v; }"\
+   "  }"\
+   "  return $out;"\
+   "}"\
+   "function class_implements($what, $autoload = true){"\
+   "  $c = is_object($what) ? get_class($what) : (string)$what;"\
+   "  if( !class_exists($c) && !interface_exists($c) ){ return false; }"\
+   "  $out = array();"\
+   "  $r = new ReflectionClass($c);"\
+   "  foreach( $r->getInterfaceNames() as $i ){ $out[$i] = $i; }"\
+   "  return $out;"\
+   "}"\
+   "function class_parents($what, $autoload = true){"\
+   "  $c = is_object($what) ? get_class($what) : (string)$what;"\
+   "  if( !class_exists($c) ){ return false; }"\
+   "  $out = array();"\
+   "  $r = new ReflectionClass($c);"\
+   "  while( ($p = $r->getParentClass()) ){"\
+   "    $n = $p->getName();"\
+   "    $out[$n] = $n;"\
+   "    $r = $p;"\
+   "  }"\
+   "  return $out;"\
+   "}"\
    "/* Creates a temporary file and returns its name */"\
    "function tempnam(string $zDir = sys_get_temp_dir() /* Symisc eXtension */,string $zPrefix = 'PH7')"\
    "{"\
