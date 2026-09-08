@@ -2380,10 +2380,23 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
    "  $pHandle = fopen($zTempDir.DIRECTORY_SEPARATOR.'PH7'.rand_str(12),'w+');"\
    "  return $pHandle;"\
    "}"\
-   "/* Creates a temporary filename */"\
+   "/* Creates a temporary file and returns its name */"\
    "function tempnam(string $zDir = sys_get_temp_dir() /* Symisc eXtension */,string $zPrefix = 'PH7')"\
    "{"\
-   "   return $zDir.DIRECTORY_SEPARATOR.$zPrefix.rand_str(12);"\
+   "   /* php CREATES the file (empty, mode 0600) and guarantees the name is unique --"\
+   "    * returning a bare name left the caller with a path that does not exist, so"\
+   "    * file_exists() was false and unlink() failed on it. */"\
+   "   $zDir = rtrim($zDir, DIRECTORY_SEPARATOR);"\
+   "   for( $i = 0 ; $i < 64 ; ++$i ){"\
+   "     $zPath = $zDir.DIRECTORY_SEPARATOR.$zPrefix.rand_str(12);"\
+   "     if( file_exists($zPath) ){ continue; }"\
+   "     $pHandle = @fopen($zPath,'x');"\
+   "     if( $pHandle === false ){ continue; }"\
+   "     fclose($pHandle);"\
+   "     @chmod($zPath, 0600);"\
+   "     return $zPath;"\
+   "   }"\
+   "   return false;"\
    "}"\
    "function array_unshift(&$pArray ){"\
    " if( func_num_args() < 1 ){ throw new ArgumentCountError('array_unshift() expects at least 1 argument, 0 given'); }"\
@@ -3988,6 +4001,20 @@ PH7_PRIVATE void PH7_VmThrowDeprecatedFmt(ph7_vm *pVm,const char *zFmt,...)
 	va_list ap;
 	va_start(ap,zFmt);
 	PH7_VmThrowErrorAp(pVm,0,E_DEPRECATED,zFmt,ap);
+	va_end(ap);
+}
+/*
+ * Raise an E_WARNING whose text is used VERBATIM.
+ * ph7_context_throw_error_format() prepends "func(): " to whatever it is given, but php's
+ * IO warnings put the offending path inside those parens -- "file_get_contents(/nope):
+ * Failed to open stream: ..." -- so a caller that needs php's exact shape must build the
+ * whole line itself and come through here.
+ */
+PH7_PRIVATE void PH7_VmThrowWarningFmt(ph7_vm *pVm,const char *zFmt,...)
+{
+	va_list ap;
+	va_start(ap,zFmt);
+	PH7_VmThrowErrorAp(pVm,0,PH7_CTX_WARNING,zFmt,ap);
 	va_end(ap);
 }
 /*
@@ -24308,8 +24335,14 @@ static int vm_builtin_restore_exception_handler(ph7_context *pCtx,int nArg,ph7_v
 	SXUNUSED(nArg); /* cc warning */
 	SXUNUSED(apArg);
 	if( pOld->iFlags & MEMOBJ_NULL ){
-		/* php always answers TRUE here, even with nothing to restore — the return
-		 * value says "the call is valid", not "a handler was in place". */
+		/* Nothing SAVED underneath — but php pops the handler stack regardless, so the
+		 * ACTIVE handler must still go (reporting reverts to the engine's own). Returning
+		 * early here left it installed, making restore_error_handler() a no-op after a
+		 * single set_error_handler().
+		 * php answers TRUE either way: the return value says "the call is valid", not
+		 * "a handler was in place". */
+		PH7_MemObjRelease(pNew);
+		MemObjSetType(pNew,MEMOBJ_NULL);
 		ph7_result_bool(pCtx,1);
 		return PH7_OK;
 	}
@@ -24379,8 +24412,14 @@ static int vm_builtin_restore_error_handler(ph7_context *pCtx,int nArg,ph7_value
 	SXUNUSED(nArg); /* cc warning */
 	SXUNUSED(apArg);
 	if( pOld->iFlags & MEMOBJ_NULL ){
-		/* php always answers TRUE here, even with nothing to restore — the return
-		 * value says "the call is valid", not "a handler was in place". */
+		/* Nothing SAVED underneath — but php pops the handler stack regardless, so the
+		 * ACTIVE handler must still go (reporting reverts to the engine's own). Returning
+		 * early here left it installed, making restore_error_handler() a no-op after a
+		 * single set_error_handler().
+		 * php answers TRUE either way: the return value says "the call is valid", not
+		 * "a handler was in place". */
+		PH7_MemObjRelease(pNew);
+		MemObjSetType(pNew,MEMOBJ_NULL);
 		ph7_result_bool(pCtx,1);
 		return PH7_OK;
 	}
