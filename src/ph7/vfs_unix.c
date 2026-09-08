@@ -11,6 +11,7 @@
  *    Stable.
  */
 #include <sys/types.h>
+#include <string.h>
 #include <limits.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -303,11 +304,20 @@ static int UnixVfs_Chown(const char *zPath,const char *zUser)
   struct passwd *pwd;
   uid_t uid;
   int rc;
-  pwd = getpwnam(zUser);   /* Try getting UID for username */
-  if (pwd == 0) {
-    return -1;
+  /* php accepts a numeric uid as well as a name; PH7 only ever did getpwnam(), so
+   * chown($f, 0) failed on the NAME lookup and never reached the syscall (leaving errno
+   * unset, hence a bogus "Undefined error: 0" in the warning). */
+  if( zUser[0] >= '0' && zUser[0] <= '9' ){
+    uid = (uid_t)atoi(zUser);
+  }else{
+    pwd = getpwnam(zUser);   /* Try getting UID for username */
+    if (pwd == 0) {
+      /* -2 = the NAME could not be resolved (no syscall ran, so errno means nothing).
+       * php words that case differently: "chown(): Unable to find uid for bogus". */
+      return -2;
+    }
+    uid = pwd->pw_uid;
   }
-  uid = pwd->pw_uid;
   rc = chown(zPath,uid,-1);
   return rc == 0 ? PH7_OK : -1;
 #else
@@ -323,11 +333,16 @@ static int UnixVfs_Chgrp(const char *zPath,const char *zGroup)
   struct group *group;
   gid_t gid;
   int rc;
-  group = getgrnam(zGroup);
-  if (group == 0) {
-    return -1;
+  /* Numeric gid accepted too (see UnixVfs_Chown) */
+  if( zGroup[0] >= '0' && zGroup[0] <= '9' ){
+    gid = (gid_t)atoi(zGroup);
+  }else{
+    group = getgrnam(zGroup);
+    if (group == 0) {
+      return -2;   /* name lookup failed -- see UnixVfs_Chown */
+    }
+    gid = group->gr_gid;
   }
-  gid = group->gr_gid;
   rc = chown(zPath,-1,gid);
   return rc == 0 ? PH7_OK : -1;
 #else
@@ -462,30 +477,22 @@ static void UnixVfs_Unmap(void *pView,ph7_int64 nSize)
 /* void (*xTempDir)(ph7_context *) */
 static void UnixVfs_TempDir(ph7_context *pCtx)
 {
-	static const char *azDirs[] = {
-     "/var/tmp",
-     "/usr/tmp",
-	 "/usr/local/tmp"
-  };
-  unsigned int i;
-  struct stat buf;
   const char *zDir;
+  /* php's php_get_temporary_directory: honour TMPDIR, else fall back to P_tmpdir
+   * ("/tmp" on Unix). PH7 also scanned /var/tmp, /usr/tmp, /usr/local/tmp first,
+   * which returned /var/tmp on a typical box where php returns /tmp — a divergence
+   * observable through sys_get_temp_dir()/tempnam()/session paths. */
   zDir = getenv("TMPDIR");
   if( zDir && zDir[0] != 0 && !access(zDir,07) ){
-	  ph7_result_string(pCtx,zDir,-1);
+	  /* php reports the temp dir WITHOUT a trailing separator; macOS's TMPDIR ends with
+	   * one, so returning it verbatim produced paths like "/var/.../T//file". */
+	  int nDir = (int)strlen(zDir);
+	  while( nDir > 1 && zDir[nDir-1] == '/' ){
+		  nDir--;
+	  }
+	  ph7_result_string(pCtx,zDir,nDir);
 	  return;
   }
-  for(i=0; i<sizeof(azDirs)/sizeof(azDirs[0]); i++){
-	zDir=azDirs[i];
-    if( zDir==0 ) continue;
-    if( stat(zDir, &buf) ) continue;
-    if( !S_ISDIR(buf.st_mode) ) continue;
-    if( access(zDir, 07) ) continue;
-    /* Got one */
-	ph7_result_string(pCtx,zDir,-1);
-	return;
-  }
-  /* Default temp dir */
   ph7_result_string(pCtx,"/tmp",(int)sizeof("/tmp")-1);
 }
 /* unsigned int (*xProcessId)(void) */

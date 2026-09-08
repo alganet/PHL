@@ -5,6 +5,9 @@
  */
 #include "ph7int.h"
 #include <stdio.h>
+#include <errno.h>
+#include <string.h>
+
 #ifdef __UNIXES__
 #include <unistd.h>
 #include <sys/wait.h>
@@ -55,6 +58,39 @@ PH7_PRIVATE const char * PH7_ExtractDirName(const char *zPath,int nByte,int *pLe
  */
 #ifndef PH7_DISABLE_DISK_IO
 /*
+ * strerror() trips MSVC's C4996 "may be unsafe" deprecation under /WX. It is a
+ * standard C function we use deliberately to mirror php's IO error text; wrap it
+ * once with the deprecation suppressed. The pragma is _MSC_VER-guarded so the
+ * GCC/-Werror Linux build never sees an unknown-pragma warning.
+ */
+static const char * VfsStrerror(int iErr)
+{
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable:4996)
+#endif
+	return strerror(iErr);
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+}
+/*
+ * php's non-open IO failures: "unlink(/nope): No such file or directory".
+ * PH7 returned FALSE in SILENCE for unlink/rmdir/mkdir/rename/chdir/opendir/scandir and
+ * filesize, so a script could not tell a failed operation from a successful one without
+ * checking the return value it never got told to check.
+ */
+static void VfsThrowSysWarning(ph7_context *pCtx,const char *zPath)
+{
+	PH7_VmThrowWarningFmt(pCtx->pVm,"%s(%s): %s",
+		ph7_function_name(pCtx),zPath ? zPath : "",VfsStrerror(errno));
+}
+static void VfsThrowOpenWarning(ph7_context *pCtx,const char *zFile)
+{
+	PH7_VmThrowWarningFmt(pCtx->pVm,"%s(%s): Failed to open stream: %s",
+		ph7_function_name(pCtx),zFile ? zFile : "",VfsStrerror(errno));
+}
+/*
  * bool chdir(string $directory)
  *  Change the current directory.
  * Parameters
@@ -87,7 +123,13 @@ static int PH7_vfs_chdir(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Point to the desired directory */
 	zPath = ph7_value_to_string(apArg[0],0);
 	/* Perform the requested operation */
+	errno = 0;
 	rc = pVfs->xChdir(zPath);
+	if( rc != PH7_OK ){
+		/* chdir has its own php shape: no path, and the errno spelled out. */
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s (errno %d)",
+			ph7_function_name(pCtx),VfsStrerror(errno),errno);
+	}
 	/* IO return value */
 	ph7_result_bool(pCtx,rc == PH7_OK);
 	return PH7_OK;
@@ -197,7 +239,11 @@ static int PH7_vfs_rmdir(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Point to the desired directory */
 	zPath = ph7_value_to_string(apArg[0],0);
 	/* Perform the requested operation */
+	errno = 0;
 	rc = pVfs->xRmdir(zPath);
+	if( rc != PH7_OK ){
+		VfsThrowSysWarning(pCtx,zPath);
+	}
 	/* IO return value */
 	ph7_result_bool(pCtx,rc == PH7_OK);
 	return PH7_OK;
@@ -296,7 +342,13 @@ static int PH7_vfs_mkdir(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 	}
 	/* Perform the requested operation */
+	errno = 0;
 	rc = pVfs->xMkdir(zPath,iMode,iRecursive);
+	if( rc != PH7_OK ){
+		/* php does NOT name the path for mkdir: "mkdir(): File exists" */
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s",
+			ph7_function_name(pCtx),VfsStrerror(errno));
+	}
 	/* IO return value */
 	ph7_result_bool(pCtx,rc == PH7_OK);
 	return PH7_OK;
@@ -336,7 +388,13 @@ static int PH7_vfs_rename(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Perform the requested operation */
 	zOld = ph7_value_to_string(apArg[0],0);
 	zNew = ph7_value_to_string(apArg[1],0);
+	errno = 0;
 	rc = pVfs->xRename(zOld,zNew);
+	if( rc != PH7_OK ){
+		/* php names BOTH paths here */
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(%s,%s): %s",
+			ph7_function_name(pCtx),zOld,zNew,VfsStrerror(errno));
+	}
 	/* IO result */
 	ph7_result_bool(pCtx,rc == PH7_OK );
 	return PH7_OK;
@@ -498,7 +556,11 @@ static int PH7_vfs_unlink(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Point to the desired directory */
 	zPath = ph7_value_to_string(apArg[0],0);
 	/* Perform the requested operation */
+	errno = 0;
 	rc = pVfs->xUnlink(zPath);
+	if( rc != PH7_OK ){
+		VfsThrowSysWarning(pCtx,zPath);
+	}
 	/* IO return value */
 	ph7_result_bool(pCtx,rc == PH7_OK);
 	return PH7_OK;
@@ -583,7 +645,20 @@ static int PH7_vfs_chown(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Extract the user */
 	zUser = ph7_value_to_string(apArg[1],0);
 	/* Perform the requested operation */
+	errno = 0;
 	rc = pVfs->xChown(zPath,zUser);
+	if( rc != PH7_OK ){
+		/* php words a failed NAME lookup differently from a failed syscall, and names no
+		 * path in either: "chown(): Unable to find uid for bogus" vs
+		 * "chown(): Operation not permitted". */
+		if( rc == -2 ){
+			PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): Unable to find uid for %s",
+				ph7_function_name(pCtx),zUser);
+		}else{
+			PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s",
+				ph7_function_name(pCtx),VfsStrerror(errno));
+		}
+	}
 	/* IO return value */
 	ph7_result_bool(pCtx,rc == PH7_OK);
 	return PH7_OK;
@@ -625,7 +700,20 @@ static int PH7_vfs_chgrp(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Extract the user */
 	zGroup = ph7_value_to_string(apArg[1],0);
 	/* Perform the requested operation */
+	errno = 0;
 	rc = pVfs->xChgrp(zPath,zGroup);
+	if( rc != PH7_OK ){
+		/* php words a failed NAME lookup differently from a failed syscall, and names no
+		 * path in either: "chown(): Unable to find uid for bogus" vs
+		 * "chown(): Operation not permitted". */
+		if( rc == -2 ){
+			PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): Unable to find gid for %s",
+				ph7_function_name(pCtx),zGroup);
+		}else{
+			PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s",
+				ph7_function_name(pCtx),VfsStrerror(errno));
+		}
+	}
 	/* IO return value */
 	ph7_result_bool(pCtx,rc == PH7_OK);
 	return PH7_OK;
@@ -778,6 +866,14 @@ static int PH7_vfs_file_size(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	zPath = ph7_value_to_string(apArg[0],0);
 	/* Perform the requested operation */
 	iSize = pVfs->xFileSize(zPath);
+	if( iSize < 0 ){
+		/* php: a stat failure warns and returns FALSE -- PH7 returned int(-1), which is
+		 * truthy and compares equal to nothing a caller would test for. */
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): stat failed for %s",
+			ph7_function_name(pCtx),zPath);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
 	/* IO return value */
 	ph7_result_int64(pCtx,iSize);
 	return PH7_OK;
@@ -3626,6 +3722,14 @@ static int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Return
  *  The number of bytes read from the file on success or FALSE on failure.
  */
+/*
+ * php's IO failures are E_WARNINGs naming the function, the path and the system reason:
+ *   file_get_contents(/nope): Failed to open stream: No such file or directory
+ * PH7 raised an E_ERROR reading "func(): IO error while opening '/nope'" for every one of
+ * them -- wrong severity, wrong text, and no reason. errno still holds the failing
+ * syscall's code at this point (a successful call never clears it), which is where the
+ * trailing reason comes from.
+ */
 static int PH7_builtin_readfile(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	int use_include  = FALSE;
@@ -3657,7 +3761,7 @@ static int PH7_builtin_readfile(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,
 		use_include,nArg > 2 ? apArg[2] : 0,FALSE,0);
 	if( pHandle == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_ERR,"IO error while opening '%s'",zFile);
+		VfsThrowOpenWarning(pCtx,zFile);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -3735,7 +3839,7 @@ static int PH7_builtin_file_get_contents(ph7_context *pCtx,int nArg,ph7_value **
 	/* Try to open the file in read-only mode */
 	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,use_include,nArg > 2 ? apArg[2] : 0,FALSE,0);
 	if( pHandle == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_ERR,"IO error while opening '%s'",zFile);
+		VfsThrowOpenWarning(pCtx,zFile);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -3848,7 +3952,7 @@ static int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_value **
 	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,iOpenFlags,use_include,
 		nArg > 3 ? apArg[3] : 0,FALSE,FALSE);
 	if( pHandle == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_ERR,"IO error while opening '%s'",zFile);
+		VfsThrowOpenWarning(pCtx,zFile);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -3957,7 +4061,7 @@ static int PH7_builtin_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Try to open the file in read-only mode */
 	pDev->pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,use_include,nArg > 2 ? apArg[2] : 0,FALSE,0);
 	if( pDev->pHandle == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_ERR,"IO error while opening '%s'",zFile);
+		VfsThrowOpenWarning(pCtx,zFile);
 		ph7_result_bool(pCtx,0);
 		/* Don't worry about freeing memory, everything will be released automatically
 		 * as soon we return from this function.
@@ -4050,7 +4154,7 @@ static int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Try to open the source file in a read-only mode */
 	pIn = PH7_StreamOpenHandle(pCtx->pVm,pSin,zFile,PH7_IO_OPEN_RDONLY,FALSE,nArg > 2 ? apArg[2] : 0,FALSE,0);
 	if( pIn == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_ERR,"IO error while opening source: '%s'",zFile);
+		VfsThrowOpenWarning(pCtx,zFile);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -4077,7 +4181,7 @@ static int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	pOut = PH7_StreamOpenHandle(pCtx->pVm,pSout,zFile,
 		PH7_IO_OPEN_CREATE|PH7_IO_OPEN_TRUNC|PH7_IO_OPEN_RDWR,FALSE,nArg > 2 ? apArg[2] : 0,FALSE,0);
 	if( pOut == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_ERR,"IO error while opening destination: '%s'",zFile);
+		VfsThrowOpenWarning(pCtx,zFile);
 		ph7_result_bool(pCtx,0);
 		PH7_StreamCloseHandle(pSin,pIn);
 		return PH7_OK;
@@ -5663,7 +5767,7 @@ static int PH7_builtin_fopen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	pDev->pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zUri,iOpenFlags,
 		nArg > 2 ? ph7_value_to_bool(apArg[2]) : FALSE,pResource,FALSE,0);
 	if( pDev->pHandle == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_ERR,"IO error while opening '%s'",zUri);
+		VfsThrowOpenWarning(pCtx,zUri);
 		ph7_result_bool(pCtx,0);
 		ph7_context_free_chunk(pCtx,pDev);
 		return PH7_OK;
@@ -5779,7 +5883,7 @@ static int PH7_builtin_md5_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Try to open the file in read-only mode */
 	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,FALSE,0,FALSE,0);
 	if( pHandle == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_ERR,"IO error while opening '%s'",zFile);
+		VfsThrowOpenWarning(pCtx,zFile);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -5850,7 +5954,7 @@ static int PH7_builtin_sha1_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Try to open the file in read-only mode */
 	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,FALSE,0,FALSE,0);
 	if( pHandle == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_ERR,"IO error while opening '%s'",zFile);
+		VfsThrowOpenWarning(pCtx,zFile);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -5922,7 +6026,7 @@ static int PH7_builtin_parse_ini_file(ph7_context *pCtx,int nArg,ph7_value **apA
 	/* Try to open the file in read-only mode */
 	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,FALSE,0,FALSE,0);
 	if( pHandle == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_ERR,"IO error while opening '%s'",zFile);
+		VfsThrowOpenWarning(pCtx,zFile);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
