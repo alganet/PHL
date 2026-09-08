@@ -204,11 +204,11 @@ Coverage: 126/255 lines (49.41%)
 |     - |  194 | ` *   Returns TRUE if headers have already been sent (output started).` |
 |     - |  195 | ` */` |
 |    22 |  196 | `static int vm_builtin_headers_sent(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     3 |  197 | `{` |
+|     4 |  197 | `{` |
 |    11 |  198 | `	(void)nArg; (void)apArg;` |
-|    25 |  199 | `	ph7_result_bool(pCtx, pCtx->pVm->bHeadersSent);` |
-|    25 |  200 | `	return PH7_OK;` |
-|     3 |  201 | `}` |
+|    26 |  199 | `	ph7_result_bool(pCtx, pCtx->pVm->bHeadersSent);` |
+|    26 |  200 | `	return PH7_OK;` |
+|     4 |  201 | `}` |
 |     - |  202 | `/*` |
 |     - |  203 | ` * array headers_list()` |
 |     - |  204 | ` *   Returns a list of response headers as "Name: Value" strings.` |
@@ -404,7 +404,7 @@ Coverage: 126/255 lines (49.41%)
 |     - |  394 | `/*` |
 |     - |  395 | ` * Register all HTTP response functions with the VM.` |
 |     - |  396 | ` */` |
-|  3344 |  397 | `PH7_PRIVATE void PH7_RegisterHttpResponseFunctions(ph7_vm *pVm)` |
+|  3348 |  397 | `PH7_PRIVATE void PH7_RegisterHttpResponseFunctions(ph7_vm *pVm)` |
 |     5 |  398 | `{` |
 |     - |  399 | `	static const ph7_builtin_func aFunc[] = {` |
 |     - |  400 | `		{ "header",             vm_builtin_header             },` |
@@ -416,8 +416,8 @@ Coverage: 126/255 lines (49.41%)
 |     - |  406 | `		{ "setrawcookie",       vm_builtin_setrawcookie       },` |
 |     - |  407 | `	};` |
 |     - |  408 | `	sxu32 n;` |
-| 26757 |  409 | `	for( n = 0; n < SX_ARRAYSIZE(aFunc); n++ ){` |
-| 23413 |  410 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
-| 11709 |  411 | `	}` |
-|  3349 |  412 | `}` |
+| 26789 |  409 | `	for( n = 0; n < SX_ARRAYSIZE(aFunc); n++ ){` |
+| 23441 |  410 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
+| 11723 |  411 | `	}` |
+|  3353 |  412 | `}` |
 |     - |  413 |  |
