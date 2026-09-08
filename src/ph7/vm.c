@@ -4010,6 +4010,62 @@ PH7_PRIVATE void PH7_VmThrowDeprecatedFmt(ph7_vm *pVm,const char *zFmt,...)
  * Failed to open stream: ..." -- so a caller that needs php's exact shape must build the
  * whole line itself and come through here.
  */
+/*
+ * Validate a callback argument and throw php's TypeError when it cannot be called.
+ *
+ * The shared dispatcher (PH7_VmCallUserFunctionWithMap) answers SXRET_OK with a NULL
+ * result for an unresolvable callable, so every caller that did not check first failed
+ * SILENTLY: call_user_func() returned NULL and usort() left the array sorted by nothing
+ * at all. php rejects the ARGUMENT up front, naming exactly why.
+ */
+PH7_PRIVATE sxi32 PH7_CheckCallbackArg(
+	ph7_context *pCtx,   /* Calling context (names the function in the message) */
+	ph7_value *pCb,      /* The callback argument */
+	int iArg,            /* Its 1-based position */
+	const char *zParam,  /* Its php parameter name, e.g. "callback" */
+	int bNullable        /* TRUE when php's text says "or null" */
+	)
+{
+	const char *zOrNull = bNullable ? " or null" : "";
+	if( ph7_value_is_callable(pCb) ){
+		return PH7_OK;
+	}
+	if( ph7_value_is_string(pCb) ){
+		int nLen;
+		const char *zName = ph7_value_to_string(pCb,&nLen);
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): Argument #%d ($%s) must be a valid callback%s, function \"%.*s\" not found or invalid function name",
+			ph7_function_name(pCtx),iArg,zParam,zOrNull,nLen,zName);
+	}
+	if( ph7_value_is_array(pCb) ){
+		ph7_hashmap *pMap = (ph7_hashmap *)pCb->x.pOther;
+		if( pMap == 0 || pMap->nEntry != 2 ){
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"%s(): Argument #%d ($%s) must be a valid callback%s, array callback must have exactly two members",
+				ph7_function_name(pCtx),iArg,zParam,zOrNull);
+		}else{
+			ph7_vm *pVm = pCtx->pVm;
+			ph7_value *pCls = (ph7_value *)SySetAt(&pVm->aMemObj,pMap->pFirst->nValIdx);
+			ph7_value *pMeth = (ph7_value *)SySetAt(&pVm->aMemObj,pMap->pFirst->pPrev->nValIdx);
+			ph7_class *pClass = pCls ? PH7_VmExtractClassFromValue(&(*pVm),pCls) : 0;
+			if( pClass == 0 ){
+				return PH7_VmThrowException(pCtx,"TypeError",
+					"%s(): Argument #%d ($%s) must be a valid callback%s, class \"%.*s\" not found",
+					ph7_function_name(pCtx),iArg,zParam,zOrNull,
+					pCls ? (int)SyBlobLength(&pCls->sBlob) : 0,
+					pCls ? (const char *)SyBlobData(&pCls->sBlob) : "");
+			}
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"%s(): Argument #%d ($%s) must be a valid callback%s, class %z does not have a method \"%.*s\"",
+				ph7_function_name(pCtx),iArg,zParam,zOrNull,&pClass->sName,
+				pMeth ? (int)SyBlobLength(&pMeth->sBlob) : 0,
+				pMeth ? (const char *)SyBlobData(&pMeth->sBlob) : "");
+		}
+	}
+	return PH7_VmThrowException(pCtx,"TypeError",
+		"%s(): Argument #%d ($%s) must be a valid callback%s, no array or string given",
+		ph7_function_name(pCtx),iArg,zParam,zOrNull);
+}
 PH7_PRIVATE void PH7_VmThrowWarningFmt(ph7_vm *pVm,const char *zFmt,...)
 {
 	va_list ap;
