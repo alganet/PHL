@@ -99,6 +99,12 @@ static void PH7_INTMAX_Const(ph7_value *pVal,void *pUnused)
 	SXUNUSED(pUnused);
 	ph7_value_int64(pVal,SXI64_HIGH);
 }
+/* ext/calendar: the only calendar cal_days_in_month() is asked for in practice. */
+static void PH7_CAL_GREGORIAN_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,0);
+}
 /*
  * PHP_INT_MIN (php 7.0)
  * Expand the smallest integer supported.
@@ -2108,6 +2114,7 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"INPUT_COOKIE",                PH7_INPUT_COOKIE_Const },
 	{"INPUT_ENV",                   PH7_INPUT_ENV_Const },
 	{"INPUT_SERVER",                PH7_INPUT_SERVER_Const },
+	{"CAL_GREGORIAN",        PH7_CAL_GREGORIAN_Const },
 	{"PHP_INT_MAX",          PH7_INTMAX_Const   },
 	{"MAXINT",               PH7_INTMAX_Const   },
 	{"PHP_INT_MIN",          PH7_INTMIN_Const   },
