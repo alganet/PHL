@@ -9630,6 +9630,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	         /* Time functions */
 	{ "time"    ,    PH7_builtin_time         },
 	{ "microtime",   PH7_builtin_microtime    },
+	{ "hrtime",      PH7_builtin_hrtime       },
 	{ "getdate" ,    PH7_builtin_getdate      },
 	{ "gettimeofday",PH7_builtin_gettimeofday },
 	{ "date",        PH7_builtin_date         },
