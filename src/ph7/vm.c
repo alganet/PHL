@@ -2450,6 +2450,96 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
    "  }"\
    "  return $day <= $max;"\
    "}"\
+   "function is_iterable($v){ return is_array($v) || ($v instanceof Traversable); }"\
+   "function is_countable($v){ return is_array($v) || ($v instanceof Countable); }"\
+   "function key_exists($key, $array){ return array_key_exists($key, $array); }"\
+   "function doubleval($v){ return (float)$v; }"\
+   "function array_count_values($array){"\
+   "  $out = array();"\
+   "  foreach( $array as $v ){"\
+   "    if( !is_int($v) && !is_string($v) ){"\
+   "      trigger_error('array_count_values(): Can only count string and integer values, entry skipped', E_USER_WARNING);"\
+   "      continue;"\
+   "    }"\
+   "    if( isset($out[$v]) ){ $out[$v] = $out[$v] + 1; } else { $out[$v] = 1; }"\
+   "  }"\
+   "  return $out;"\
+   "}"\
+   "function array_change_key_case($array, $case = CASE_LOWER){"\
+   "  $out = array();"\
+   "  foreach( $array as $k => $v ){"\
+   "    if( is_string($k) ){ $k = ($case == CASE_UPPER) ? strtoupper($k) : strtolower($k); }"\
+   "    $out[$k] = $v;"\
+   "  }"\
+   "  return $out;"\
+   "}"\
+   "function array_replace_recursive($array, ...$others){"\
+   "  foreach( $others as $o ){"\
+   "    foreach( $o as $k => $v ){"\
+   "      if( is_array($v) && isset($array[$k]) && is_array($array[$k]) ){"\
+   "        $array[$k] = array_replace_recursive($array[$k], $v);"\
+   "      }else{"\
+   "        $array[$k] = $v;"\
+   "      }"\
+   "    }"\
+   "  }"\
+   "  return $array;"\
+   "}"\
+   "function class_uses($what, $autoload = true){"\
+   "  $c = is_object($what) ? get_class($what) : (string)$what;"\
+   "  if( !class_exists($c) ){ return false; }"\
+   "  return array();  /* PHL has no traits yet -- always the empty set */"\
+   "}"\
+   "function count_chars($str, $mode = 0){"\
+   "  $str = (string)$str;"\
+   "  $counts = array();"\
+   "  for( $i = 0 ; $i < 256 ; $i++ ){ $counts[$i] = 0; }"\
+   "  $len = strlen($str);"\
+   "  for( $i = 0 ; $i < $len ; $i++ ){ $b = ord($str[$i]); $counts[$b] = $counts[$b] + 1; }"\
+   "  if( $mode == 1 ){"\
+   "    $out = array();"\
+   "    foreach( $counts as $b => $n ){ if( $n > 0 ){ $out[$b] = $n; } }"\
+   "    return $out;"\
+   "  }"\
+   "  if( $mode == 3 ){"\
+   "    $out = '';"\
+   "    foreach( $counts as $b => $n ){ if( $n > 0 ){ $out = $out . chr($b); } }"\
+   "    return $out;"\
+   "  }"\
+   "  return $counts;"\
+   "}"\
+   "function ip2long($ip){"\
+   "  $p = explode('.', (string)$ip);"\
+   "  if( count($p) !== 4 ){ return false; }"\
+   "  $n = 0;"\
+   "  foreach( $p as $o ){"\
+   "    if( !ctype_digit($o) || (int)$o < 0 || (int)$o > 255 ){ return false; }"\
+   "    $n = $n * 256 + (int)$o;"\
+   "  }"\
+   "  return $n;"\
+   "}"\
+   "function long2ip($n){"\
+   "  $n = (int)$n;"\
+   "  return (($n >> 24) & 255) . '.' . (($n >> 16) & 255) . '.' . (($n >> 8) & 255) . '.' . ($n & 255);"\
+   "}"\
+   "function preg_filter($pattern, $replacement, $subject, $limit = -1){"\
+   "  if( is_array($subject) ){"\
+   "    $out = array();"\
+   "    foreach( $subject as $k => $v ){"\
+   "      $r = preg_replace($pattern, $replacement, (string)$v, $limit, $cnt);"\
+   "      if( $cnt > 0 ){ $out[$k] = $r; }"\
+   "    }"\
+   "    return $out;"\
+   "  }"\
+   "  $r = preg_replace($pattern, $replacement, (string)$subject, $limit, $cnt);"\
+   "  return $cnt > 0 ? $r : null;"\
+   "}"\
+   "function preg_replace_callback_array($patterns, $subject, $limit = -1){"\
+   "  foreach( $patterns as $pat => $cb ){"\
+   "    $subject = preg_replace_callback($pat, $cb, $subject, $limit);"\
+   "  }"\
+   "  return $subject;"\
+   "}"\
    "function cal_days_in_month($calendar, $month, $year){"\
    "  $month = (int)$month; $year = (int)$year;"\
    "  $days = array(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31);"\

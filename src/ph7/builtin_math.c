@@ -31,6 +31,61 @@
  * Return
  *  The square root of arg or the special value Nan of failure.
  */
+/*
+ * The libm-backed float functions php has and PH7 lacked entirely. Doing these in PHP
+ * (log1p as log(1+x), acosh via logs, ...) would lose precision, so they go through libm.
+ */
+#define PH7_MATH_UNARY(NAME,CFUNC)                                        \
+PH7_PRIVATE int PH7_builtin_##NAME(ph7_context *pCtx,int nArg,ph7_value **apArg) \
+{                                                                          \
+	double x;                                                              \
+	if( nArg < 1 ){                                                        \
+		ph7_result_int(pCtx,0);                                            \
+		return PH7_OK;                                                     \
+	}                                                                      \
+	x = ph7_value_to_double(apArg[0]);                                     \
+	ph7_result_double(pCtx,CFUNC(x));                                      \
+	return PH7_OK;                                                          \
+}
+PH7_MATH_UNARY(acosh,acosh)
+PH7_MATH_UNARY(asinh,asinh)
+PH7_MATH_UNARY(atanh,atanh)
+PH7_MATH_UNARY(expm1,expm1)
+PH7_MATH_UNARY(log1p,log1p)
+PH7_PRIVATE int PH7_builtin_deg2rad(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	double x;
+	if( nArg < 1 ){
+		ph7_result_int(pCtx,0);
+		return PH7_OK;
+	}
+	x = ph7_value_to_double(apArg[0]);
+	ph7_result_double(pCtx,x * (3.14159265358979323846 / 180.0));
+	return PH7_OK;
+}
+PH7_PRIVATE int PH7_builtin_rad2deg(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	double x;
+	if( nArg < 1 ){
+		ph7_result_int(pCtx,0);
+		return PH7_OK;
+	}
+	x = ph7_value_to_double(apArg[0]);
+	ph7_result_double(pCtx,x * (180.0 / 3.14159265358979323846));
+	return PH7_OK;
+}
+PH7_PRIVATE int PH7_builtin_fpow(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	double x,y;
+	if( nArg < 2 ){
+		ph7_result_int(pCtx,0);
+		return PH7_OK;
+	}
+	x = ph7_value_to_double(apArg[0]);
+	y = ph7_value_to_double(apArg[1]);
+	ph7_result_double(pCtx,pow(x,y));
+	return PH7_OK;
+}
 PH7_PRIVATE int PH7_builtin_sqrt(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	double r,x;

@@ -35,7 +35,10 @@ PH7_PRIVATE const char *ph7_type_name(ph7_value *pVal);
 
 #ifndef PH7_PI
 /* Value of PI */
-#define PH7_PI 3.1415926535898
+/* pi to DOUBLE precision. It used to be 3.1415926535898 -- only 14 significant
+ * digits -- so M_PI differed from php's in the 13th place and every trig result
+ * built on it was quietly off (rad2deg(M_PI) gave 180.0000000000004). */
+#define PH7_PI 3.14159265358979323846
 #endif
 /* Uncaught/in-flight exception code value. A foreign function (built-in) that
  * propagates a callback-raised exception returns this so the OP_CALL dispatcher
@@ -2260,6 +2263,14 @@ PH7_PRIVATE int vm_builtin_getopt(ph7_context *pCtx,int nArg,ph7_value **apArg);
 /* builtin_math.c function prototypes */
 #ifdef PH7_ENABLE_MATH_FUNC
 PH7_PRIVATE int PH7_builtin_sqrt(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_acosh(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_asinh(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_atanh(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_expm1(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_log1p(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_deg2rad(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_rad2deg(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_fpow(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_exp(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_floor(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_cos(ph7_context *pCtx,int nArg,ph7_value **apArg);
