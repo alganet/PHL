@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 354/390 lines (90.77%)
+Coverage: 384/422 lines (91.00%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -27,110 +27,110 @@ Coverage: 354/390 lines (90.77%)
 |    - |   17 | `/* Decode the codepoint at z (n bytes available); *pLen = sequence length.` |
 |    - |   18 | ` * Invalid lead bytes decode as themselves with length 1 (byte-transparent,` |
 |    - |   19 | ` * so malformed input degrades instead of exploding). */` |
-|  766 |   20 | `static sxu32 MbUtf8Decode(const unsigned char *z,sxu32 n,sxu32 *pLen)` |
+| 1258 |   20 | `static sxu32 MbUtf8Decode(const unsigned char *z,sxu32 n,sxu32 *pLen)` |
 |    1 |   21 | `{` |
-|  767 |   22 | `	sxu32 c = z[0];` |
-|  767 |   23 | `	if( c < 0x80 ){` |
-|  477 |   24 | `		*pLen = 1;` |
-|  477 |   25 | `		return c;` |
+| 1259 |   22 | `	sxu32 c = z[0];` |
+| 1259 |   23 | `	if( c < 0x80 ){` |
+|  823 |   24 | `		*pLen = 1;` |
+|  823 |   25 | `		return c;` |
 |    - |   26 | `	}` |
-|  291 |   27 | `	if( (c & 0xE0) == 0xC0 && n >= 2 && (z[1] & 0xC0) == 0x80 ){` |
-|  205 |   28 | `		*pLen = 2;` |
-|  205 |   29 | `		return ((c & 0x1F) << 6) \| (z[1] & 0x3F);` |
+|  437 |   27 | `	if( (c & 0xE0) == 0xC0 && n >= 2 && (z[1] & 0xC0) == 0x80 ){` |
+|  337 |   28 | `		*pLen = 2;` |
+|  337 |   29 | `		return ((c & 0x1F) << 6) \| (z[1] & 0x3F);` |
 |    - |   30 | `	}` |
-|   87 |   31 | `	if( (c & 0xF0) == 0xE0 && n >= 3 && (z[1] & 0xC0) == 0x80 && (z[2] & 0xC0) == 0x80 ){` |
-|   67 |   32 | `		*pLen = 3;` |
-|   67 |   33 | `		return ((c & 0x0F) << 12) \| ((z[1] & 0x3F) << 6) \| (z[2] & 0x3F);` |
+|  101 |   31 | `	if( (c & 0xF0) == 0xE0 && n >= 3 && (z[1] & 0xC0) == 0x80 && (z[2] & 0xC0) == 0x80 ){` |
+|   73 |   32 | `		*pLen = 3;` |
+|   73 |   33 | `		return ((c & 0x0F) << 12) \| ((z[1] & 0x3F) << 6) \| (z[2] & 0x3F);` |
 |    - |   34 | `	}` |
-|   20 |   35 | `	if( (c & 0xF8) == 0xF0 && n >= 4 && (z[1] & 0xC0) == 0x80 && (z[2] & 0xC0) == 0x80` |
-|   19 |   36 | `	 && (z[3] & 0xC0) == 0x80 ){` |
-|   19 |   37 | `		*pLen = 4;` |
-|   19 |   38 | `		return ((c & 0x07) << 18) \| ((z[1] & 0x3F) << 12) \| ((z[2] & 0x3F) << 6) \| (z[3] & 0x3F);` |
+|   28 |   35 | `	if( (c & 0xF8) == 0xF0 && n >= 4 && (z[1] & 0xC0) == 0x80 && (z[2] & 0xC0) == 0x80` |
+|   21 |   36 | `	 && (z[3] & 0xC0) == 0x80 ){` |
+|   21 |   37 | `		*pLen = 4;` |
+|   21 |   38 | `		return ((c & 0x07) << 18) \| ((z[1] & 0x3F) << 12) \| ((z[2] & 0x3F) << 6) \| (z[3] & 0x3F);` |
 |    - |   39 | `	}` |
-|    3 |   40 | `	*pLen = 1;` |
-|    3 |   41 | `	return c;` |
-|  384 |   42 | `}` |
+|    9 |   40 | `	*pLen = 1;` |
+|    9 |   41 | `	return c;` |
+|  630 |   42 | `}` |
 |    - |   43 | `/* Encode cp into z (up to 4 bytes); returns the byte count */` |
-|  186 |   44 | `static sxu32 MbUtf8Encode(sxu32 cp,unsigned char *z)` |
+|  276 |   44 | `static sxu32 MbUtf8Encode(sxu32 cp,unsigned char *z)` |
 |    1 |   45 | `{` |
-|  187 |   46 | `	if( cp < 0x80 ){` |
-|  101 |   47 | `		z[0] = (unsigned char)cp;` |
-|  101 |   48 | `		return 1;` |
+|  277 |   46 | `	if( cp < 0x80 ){` |
+|  133 |   47 | `		z[0] = (unsigned char)cp;` |
+|  133 |   48 | `		return 1;` |
 |    - |   49 | `	}` |
-|   87 |   50 | `	if( cp < 0x800 ){` |
-|   79 |   51 | `		z[0] = (unsigned char)(0xC0 \| (cp >> 6));` |
-|   79 |   52 | `		z[1] = (unsigned char)(0x80 \| (cp & 0x3F));` |
-|   79 |   53 | `		return 2;` |
+|  145 |   50 | `	if( cp < 0x800 ){` |
+|   95 |   51 | `		z[0] = (unsigned char)(0xC0 \| (cp >> 6));` |
+|   95 |   52 | `		z[1] = (unsigned char)(0x80 \| (cp & 0x3F));` |
+|   95 |   53 | `		return 2;` |
 |    - |   54 | `	}` |
-|    9 |   55 | `	if( cp < 0x10000 ){` |
-|    7 |   56 | `		z[0] = (unsigned char)(0xE0 \| (cp >> 12));` |
-|    7 |   57 | `		z[1] = (unsigned char)(0x80 \| ((cp >> 6) & 0x3F));` |
-|    7 |   58 | `		z[2] = (unsigned char)(0x80 \| (cp & 0x3F));` |
-|    7 |   59 | `		return 3;` |
+|   51 |   55 | `	if( cp < 0x10000 ){` |
+|   45 |   56 | `		z[0] = (unsigned char)(0xE0 \| (cp >> 12));` |
+|   45 |   57 | `		z[1] = (unsigned char)(0x80 \| ((cp >> 6) & 0x3F));` |
+|   45 |   58 | `		z[2] = (unsigned char)(0x80 \| (cp & 0x3F));` |
+|   45 |   59 | `		return 3;` |
 |    - |   60 | `	}` |
-|    3 |   61 | `	z[0] = (unsigned char)(0xF0 \| (cp >> 18));` |
-|    3 |   62 | `	z[1] = (unsigned char)(0x80 \| ((cp >> 12) & 0x3F));` |
-|    3 |   63 | `	z[2] = (unsigned char)(0x80 \| ((cp >> 6) & 0x3F));` |
-|    3 |   64 | `	z[3] = (unsigned char)(0x80 \| (cp & 0x3F));` |
-|    3 |   65 | `	return 4;` |
-|   94 |   66 | `}` |
+|    7 |   61 | `	z[0] = (unsigned char)(0xF0 \| (cp >> 18));` |
+|    7 |   62 | `	z[1] = (unsigned char)(0x80 \| ((cp >> 12) & 0x3F));` |
+|    7 |   63 | `	z[2] = (unsigned char)(0x80 \| ((cp >> 6) & 0x3F));` |
+|    7 |   64 | `	z[3] = (unsigned char)(0x80 \| (cp & 0x3F));` |
+|    7 |   65 | `	return 4;` |
+|  139 |   66 | `}` |
 |    - |   67 | `/* Codepoint count of a UTF-8 buffer */` |
-|   26 |   68 | `static sxu32 MbUtf8Strlen(const char *zIn,sxu32 nByte)` |
+|   74 |   68 | `static sxu32 MbUtf8Strlen(const char *zIn,sxu32 nByte)` |
 |    1 |   69 | `{` |
-|   27 |   70 | `	const unsigned char *z = (const unsigned char *)zIn;` |
-|   27 |   71 | `	sxu32 i = 0,nCp = 0,nLen;` |
-|  313 |   72 | `	while( i < nByte ){` |
-|  287 |   73 | `		MbUtf8Decode(&z[i],nByte - i,&nLen);` |
-|  287 |   74 | `		i += nLen;` |
-|  287 |   75 | `		nCp++;` |
+|   75 |   70 | `	const unsigned char *z = (const unsigned char *)zIn;` |
+|   75 |   71 | `	sxu32 i = 0,nCp = 0,nLen;` |
+|  541 |   72 | `	while( i < nByte ){` |
+|  467 |   73 | `		MbUtf8Decode(&z[i],nByte - i,&nLen);` |
+|  467 |   74 | `		i += nLen;` |
+|  467 |   75 | `		nCp++;` |
 |    1 |   76 | `	}` |
-|   27 |   77 | `	return nCp;` |
+|   75 |   77 | `	return nCp;` |
 |    1 |   78 | `}` |
 |    - |   79 | `/* Byte offset of codepoint index iCp (clamped to the buffer end) */` |
-|   52 |   80 | `static sxu32 MbUtf8Skip(const char *zIn,sxu32 nByte,sxu32 iCp)` |
+|  300 |   80 | `static sxu32 MbUtf8Skip(const char *zIn,sxu32 nByte,sxu32 iCp)` |
 |    1 |   81 | `{` |
-|   53 |   82 | `	const unsigned char *z = (const unsigned char *)zIn;` |
-|   53 |   83 | `	sxu32 i = 0,nLen;` |
-|  211 |   84 | `	while( i < nByte && iCp > 0 ){` |
-|  159 |   85 | `		MbUtf8Decode(&z[i],nByte - i,&nLen);` |
-|  159 |   86 | `		i += nLen;` |
-|  159 |   87 | `		iCp--;` |
+|  301 |   82 | `	const unsigned char *z = (const unsigned char *)zIn;` |
+|  301 |   83 | `	sxu32 i = 0,nLen;` |
+|  729 |   84 | `	while( i < nByte && iCp > 0 ){` |
+|  429 |   85 | `		MbUtf8Decode(&z[i],nByte - i,&nLen);` |
+|  429 |   86 | `		i += nLen;` |
+|  429 |   87 | `		iCp--;` |
 |    1 |   88 | `	}` |
-|   53 |   89 | `	return i;` |
+|  301 |   89 | `	return i;` |
 |    1 |   90 | `}` |
 |    - |   91 |  |
 |    - |   92 | `/* --- Case mapping (ASCII, Latin-1, Latin Ext-A, Greek, Cyrillic) ------ */` |
 |    - |   93 |  |
-|  118 |   94 | `static sxu32 MbToLower(sxu32 c)` |
+|  128 |   94 | `static sxu32 MbToLower(sxu32 c)` |
 |    1 |   95 | `{` |
-|  119 |   96 | `	if( c < 0x80 ){ return (c >= 'A' && c <= 'Z') ? c + 0x20 : c; }` |
-|   55 |   97 | `	if( c >= 0x00C0 && c <= 0x00DE && c != 0x00D7 ){ return c + 0x20; }` |
-|   49 |   98 | `	if( c >= 0x0100 && c <= 0x0137 ){ return c \| 1; }` |
-|   45 |   99 | `	if( c >= 0x0139 && c <= 0x0148 ){ return ((c - 1) \| 1) + 1; }` |
-|   41 |  100 | `	if( c >= 0x014A && c <= 0x0177 ){ return c \| 1; }` |
-|   41 |  101 | `	if( c == 0x0178 ){ return 0x00FF; }` |
-|   41 |  102 | `	if( c >= 0x0179 && c <= 0x017E ){ return ((c - 1) \| 1) + 1; }` |
-|   37 |  103 | `	if( c >= 0x0391 && c <= 0x03A9 && c != 0x03A2 ){ return c + 0x20; }` |
+|  129 |   96 | `	if( c < 0x80 ){ return (c >= 'A' && c <= 'Z') ? c + 0x20 : c; }` |
+|   59 |   97 | `	if( c >= 0x00C0 && c <= 0x00DE && c != 0x00D7 ){ return c + 0x20; }` |
+|   51 |   98 | `	if( c >= 0x0100 && c <= 0x0137 ){ return c \| 1; }` |
+|   47 |   99 | `	if( c >= 0x0139 && c <= 0x0148 ){ return ((c - 1) \| 1) + 1; }` |
+|   43 |  100 | `	if( c >= 0x014A && c <= 0x0177 ){ return c \| 1; }` |
+|   43 |  101 | `	if( c == 0x0178 ){ return 0x00FF; }` |
+|   43 |  102 | `	if( c >= 0x0179 && c <= 0x017E ){ return ((c - 1) \| 1) + 1; }` |
+|   39 |  103 | `	if( c >= 0x0391 && c <= 0x03A9 && c != 0x03A2 ){ return c + 0x20; }` |
 |   31 |  104 | `	if( c >= 0x0410 && c <= 0x042F ){ return c + 0x20; }` |
 |   19 |  105 | `	if( c >= 0x0400 && c <= 0x040F ){ return c + 0x50; }` |
 |   19 |  106 | `	return c;` |
-|   60 |  107 | `}` |
-|   62 |  108 | `static sxu32 MbToUpper(sxu32 c)` |
+|   65 |  107 | `}` |
+|   76 |  108 | `static sxu32 MbToUpper(sxu32 c)` |
 |    1 |  109 | `{` |
-|   63 |  110 | `	if( c < 0x80 ){ return (c >= 'a' && c <= 'z') ? c - 0x20 : c; }` |
-|   31 |  111 | `	if( c >= 0x00E0 && c <= 0x00FE && c != 0x00F7 ){ return c - 0x20; }` |
-|   27 |  112 | `	if( c == 0x00FF ){ return 0x0178; }` |
-|   27 |  113 | `	if( c >= 0x0100 && c <= 0x0137 ){ return c & ~(sxu32)1; }` |
-|   25 |  114 | `	if( c >= 0x0139 && c <= 0x0148 ){ return ((c - 1) & ~(sxu32)1) + 1; }` |
-|   23 |  115 | `	if( c >= 0x014A && c <= 0x0177 ){ return c & ~(sxu32)1; }` |
-|   23 |  116 | `	if( c >= 0x0179 && c <= 0x017E ){ return ((c - 1) & ~(sxu32)1) + 1; }` |
-|   21 |  117 | `	if( c == 0x017F ){ return 'S'; } /* long s */` |
-|   21 |  118 | `	if( c >= 0x03B1 && c <= 0x03C9 && c != 0x03C2 ){ return c - 0x20; }` |
-|   13 |  119 | `	if( c == 0x03C2 ){ return 0x03A3; } /* final sigma */` |
-|   13 |  120 | `	if( c >= 0x0430 && c <= 0x044F ){ return c - 0x20; }` |
-|  ! 0 |  121 | `	if( c >= 0x0450 && c <= 0x045F ){ return c - 0x50; }` |
-|  ! 0 |  122 | `	return c;` |
-|   32 |  123 | `}` |
+|   77 |  110 | `	if( c < 0x80 ){ return (c >= 'a' && c <= 'z') ? c - 0x20 : c; }` |
+|   37 |  111 | `	if( c >= 0x00E0 && c <= 0x00FE && c != 0x00F7 ){ return c - 0x20; }` |
+|   31 |  112 | `	if( c == 0x00FF ){ return 0x0178; }` |
+|   31 |  113 | `	if( c >= 0x0100 && c <= 0x0137 ){ return c & ~(sxu32)1; }` |
+|   29 |  114 | `	if( c >= 0x0139 && c <= 0x0148 ){ return ((c - 1) & ~(sxu32)1) + 1; }` |
+|   27 |  115 | `	if( c >= 0x014A && c <= 0x0177 ){ return c & ~(sxu32)1; }` |
+|   27 |  116 | `	if( c >= 0x0179 && c <= 0x017E ){ return ((c - 1) & ~(sxu32)1) + 1; }` |
+|   25 |  117 | `	if( c == 0x017F ){ return 'S'; } /* long s */` |
+|   25 |  118 | `	if( c >= 0x03B1 && c <= 0x03C9 && c != 0x03C2 ){ return c - 0x20; }` |
+|   15 |  119 | `	if( c == 0x03C2 ){ return 0x03A3; } /* final sigma */` |
+|   15 |  120 | `	if( c >= 0x0430 && c <= 0x044F ){ return c - 0x20; }` |
+|    3 |  121 | `	if( c >= 0x0450 && c <= 0x045F ){ return c - 0x50; }` |
+|    3 |  122 | `	return c;` |
+|   39 |  123 | `}` |
 |    - |  124 | `/* A codepoint counts as a letter for title-case word boundaries */` |
 |   30 |  125 | `static int MbIsAlnum(sxu32 c)` |
 |    1 |  126 | `{` |
@@ -149,12 +149,12 @@ Coverage: 354/390 lines (90.77%)
 |    - |  139 | ` * byte encodings → 1, anything else raises php's ValueError and returns -1.` |
 |    - |  140 | ` * (php accepts dozens of encodings; PHL's recorded scope is UTF-8 — a` |
 |    - |  141 | ` * php-VALID encoding like SJIS gets the same loud ValueError.) */` |
-|   66 |  142 | `static int MbEncodingArg(ph7_context *pCtx,ph7_value *pArg,const char *zFunc,int iArgNo)` |
+|  260 |  142 | `static int MbEncodingArg(ph7_context *pCtx,ph7_value *pArg,const char *zFunc,int iArgNo)` |
 |    1 |  143 | `{` |
 |    - |  144 | `	const char *zEnc;` |
 |    - |  145 | `	int nEnc;` |
-|   67 |  146 | `	if( pArg == 0 \|\| ph7_value_is_null(pArg) ){` |
-|   57 |  147 | `		return 0;` |
+|  261 |  146 | `	if( pArg == 0 \|\| ph7_value_is_null(pArg) ){` |
+|  251 |  147 | `		return 0;` |
 |    - |  148 | `	}` |
 |   11 |  149 | `	zEnc = ph7_value_to_string(pArg,&nEnc);` |
 |   10 |  150 | `	if( (nEnc == 5 && SyStrnicmp(zEnc,"UTF-8",5) == 0)` |
@@ -170,7 +170,7 @@ Coverage: 354/390 lines (90.77%)
 |    - |  160 | `		"%s(): Argument #%d ($encoding) must be a valid encoding, \"%.*s\" given",` |
 |    1 |  161 | `		zFunc,iArgNo,nEnc,zEnc);` |
 |    3 |  162 | `	return -1;` |
-|   34 |  163 | `}` |
+|  131 |  163 | `}` |
 |    - |  164 |  |
 |    - |  165 | `/* --- The functions ----------------------------------------------------- */` |
 |    - |  166 |  |
@@ -194,75 +194,75 @@ Coverage: 354/390 lines (90.77%)
 |    3 |  184 | `}` |
 |    - |  185 | `/* string mb_substr(string $string, int $start, ?int $length = null,` |
 |    - |  186 | ` *                  ?string $encoding = null) */` |
-|   12 |  187 | `static int PH7_builtin_mb_substr(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   60 |  187 | `static int PH7_builtin_mb_substr(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  188 | `{` |
 |    - |  189 | `	const char *zIn;` |
 |    - |  190 | `	int nByte,iEnc;` |
 |    - |  191 | `	sxi64 iStart,iLen;` |
 |    - |  192 | `	sxu32 nCp,iOfft,iEnd;` |
-|   13 |  193 | `	int bLenSet = 0;` |
-|   13 |  194 | `	if( nArg < 2 ){` |
+|   61 |  193 | `	int bLenSet = 0;` |
+|   61 |  194 | `	if( nArg < 2 ){` |
 |  ! 0 |  195 | `		ph7_result_string(pCtx,"",0);` |
 |  ! 0 |  196 | `		return PH7_OK;` |
 |    - |  197 | `	}` |
-|   13 |  198 | `	iEnc = MbEncodingArg(pCtx,nArg > 3 ? apArg[3] : 0,"mb_substr",4);` |
-|   13 |  199 | `	if( iEnc < 0 ){` |
+|   61 |  198 | `	iEnc = MbEncodingArg(pCtx,nArg > 3 ? apArg[3] : 0,"mb_substr",4);` |
+|   61 |  199 | `	if( iEnc < 0 ){` |
 |  ! 0 |  200 | `		return PH7_OK;` |
 |    - |  201 | `	}` |
-|   13 |  202 | `	zIn = ph7_value_to_string(apArg[0],&nByte);` |
-|   13 |  203 | `	iStart = ph7_value_to_int64(apArg[1]);` |
-|   13 |  204 | `	iLen = 0;` |
-|   13 |  205 | `	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){` |
-|    7 |  206 | `		iLen = ph7_value_to_int64(apArg[2]);` |
-|    7 |  207 | `		bLenSet = 1;` |
-|    3 |  208 | `	}` |
-|   13 |  209 | `	nCp = (iEnc == 1) ? (sxu32)nByte : MbUtf8Strlen(zIn,(sxu32)nByte);` |
-|   13 |  210 | `	if( iStart < 0 ){` |
+|   61 |  202 | `	zIn = ph7_value_to_string(apArg[0],&nByte);` |
+|   61 |  203 | `	iStart = ph7_value_to_int64(apArg[1]);` |
+|   61 |  204 | `	iLen = 0;` |
+|   61 |  205 | `	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){` |
+|   31 |  206 | `		iLen = ph7_value_to_int64(apArg[2]);` |
+|   31 |  207 | `		bLenSet = 1;` |
+|   15 |  208 | `	}` |
+|   61 |  209 | `	nCp = (iEnc == 1) ? (sxu32)nByte : MbUtf8Strlen(zIn,(sxu32)nByte);` |
+|   61 |  210 | `	if( iStart < 0 ){` |
 |    3 |  211 | `		iStart = (sxi64)nCp + iStart;` |
 |    3 |  212 | `		if( iStart < 0 ){ iStart = 0; }` |
 |    1 |  213 | `	}` |
-|   13 |  214 | `	if( iStart >= (sxi64)nCp ){` |
-|    3 |  215 | `		ph7_result_string(pCtx,"",0);` |
-|    3 |  216 | `		return PH7_OK;` |
+|   61 |  214 | `	if( iStart >= (sxi64)nCp ){` |
+|    7 |  215 | `		ph7_result_string(pCtx,"",0);` |
+|    7 |  216 | `		return PH7_OK;` |
 |    - |  217 | `	}` |
-|   11 |  218 | `	if( !bLenSet ){` |
-|    5 |  219 | `		iLen = (sxi64)nCp - iStart;` |
-|    9 |  220 | `	}else if( iLen < 0 ){` |
+|   55 |  218 | `	if( !bLenSet ){` |
+|   25 |  219 | `		iLen = (sxi64)nCp - iStart;` |
+|   43 |  220 | `	}else if( iLen < 0 ){` |
 |    3 |  221 | `		iLen = ((sxi64)nCp - iStart) + iLen;` |
 |    3 |  222 | `		if( iLen < 0 ){ iLen = 0; }` |
 |    1 |  223 | `	}` |
-|   11 |  224 | `	if( iStart + iLen > (sxi64)nCp ){` |
+|   55 |  224 | `	if( iStart + iLen > (sxi64)nCp ){` |
 |    3 |  225 | `		iLen = (sxi64)nCp - iStart;` |
 |    1 |  226 | `	}` |
-|   11 |  227 | `	if( iEnc == 1 ){` |
+|   55 |  227 | `	if( iEnc == 1 ){` |
 |  ! 0 |  228 | `		ph7_result_string(pCtx,&zIn[iStart],(int)iLen);` |
 |  ! 0 |  229 | `		return PH7_OK;` |
 |    - |  230 | `	}` |
-|   11 |  231 | `	iOfft = MbUtf8Skip(zIn,(sxu32)nByte,(sxu32)iStart);` |
-|   11 |  232 | `	iEnd  = iOfft + MbUtf8Skip(&zIn[iOfft],(sxu32)nByte - iOfft,(sxu32)iLen);` |
-|   11 |  233 | `	ph7_result_string(pCtx,&zIn[iOfft],(int)(iEnd - iOfft));` |
-|   11 |  234 | `	return PH7_OK;` |
-|    7 |  235 | `}` |
+|   55 |  231 | `	iOfft = MbUtf8Skip(zIn,(sxu32)nByte,(sxu32)iStart);` |
+|   55 |  232 | `	iEnd  = iOfft + MbUtf8Skip(&zIn[iOfft],(sxu32)nByte - iOfft,(sxu32)iLen);` |
+|   55 |  233 | `	ph7_result_string(pCtx,&zIn[iOfft],(int)(iEnd - iOfft));` |
+|   55 |  234 | `	return PH7_OK;` |
+|   31 |  235 | `}` |
 |    - |  236 | `/* Shared case transform: iMode 0 = lower, 1 = upper, 2 = title */` |
-|   20 |  237 | `static int MbCaseTransform(ph7_context *pCtx,const char *zIn,sxu32 nByte,int iMode)` |
+|   44 |  237 | `static int MbCaseTransform(ph7_context *pCtx,const char *zIn,sxu32 nByte,int iMode)` |
 |    1 |  238 | `{` |
 |    - |  239 | `	SyBlob sOut;` |
-|   21 |  240 | `	const unsigned char *z = (const unsigned char *)zIn;` |
-|   21 |  241 | `	sxu32 i = 0,nLen,cp,mapped;` |
+|   45 |  240 | `	const unsigned char *z = (const unsigned char *)zIn;` |
+|   45 |  241 | `	sxu32 i = 0,nLen,cp,mapped;` |
 |    - |  242 | `	unsigned char zEnc[4];` |
-|   21 |  243 | `	int bWordStart = 1;` |
-|   21 |  244 | `	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);` |
-|  155 |  245 | `	while( i < nByte ){` |
-|  135 |  246 | `		cp = MbUtf8Decode(&z[i],nByte - i,&nLen);` |
-|  135 |  247 | `		i += nLen;` |
-|  135 |  248 | `		if( iMode == 1 ){` |
-|   59 |  249 | `			if( cp == 0x00DF ){ /* php: mb_strtoupper('ß') === 'SS' */` |
+|   45 |  243 | `	int bWordStart = 1;` |
+|   45 |  244 | `	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);` |
+|  203 |  245 | `	while( i < nByte ){` |
+|  159 |  246 | `		cp = MbUtf8Decode(&z[i],nByte - i,&nLen);` |
+|  159 |  247 | `		i += nLen;` |
+|  159 |  248 | `		if( iMode == 1 ){` |
+|   73 |  249 | `			if( cp == 0x00DF ){ /* php: mb_strtoupper('ß') === 'SS' */` |
 |    3 |  250 | `				SyBlobAppend(&sOut,"SS",2);` |
 |    3 |  251 | `				continue;` |
 |    - |  252 | `			}` |
-|   57 |  253 | `			mapped = MbToUpper(cp);` |
-|  105 |  254 | `		}else if( iMode == 0 ){` |
-|   47 |  255 | `			if( cp == 0x03A3 ){` |
+|   71 |  253 | `			mapped = MbToUpper(cp);` |
+|  122 |  254 | `		}else if( iMode == 0 ){` |
+|   57 |  255 | `			if( cp == 0x03A3 ){` |
 |    - |  256 | `				/* Greek capital sigma: final position lowers to ς, else σ */` |
 |    3 |  257 | `				sxu32 nPeek,cpNext = 0;` |
 |    3 |  258 | `				if( i < nByte ){` |
@@ -270,9 +270,9 @@ Coverage: 354/390 lines (90.77%)
 |  ! 0 |  260 | `				}` |
 |    3 |  261 | `				mapped = (i >= nByte \|\| !MbIsAlnum(cpNext) ) ? 0x03C2 : 0x03C3;` |
 |    2 |  262 | `			}else{` |
-|   45 |  263 | `				mapped = MbToLower(cp);` |
+|   55 |  263 | `				mapped = MbToLower(cp);` |
 |    - |  264 | `			}` |
-|   24 |  265 | `		}else{` |
+|   29 |  265 | `		}else{` |
 |   31 |  266 | `			if( MbIsAlnum(cp) ){` |
 |   27 |  267 | `				mapped = bWordStart ? MbToUpper(cp) : MbToLower(cp);` |
 |   27 |  268 | `				bWordStart = 0;` |
@@ -281,29 +281,29 @@ Coverage: 354/390 lines (90.77%)
 |    5 |  271 | `				bWordStart = 1;` |
 |    - |  272 | `			}` |
 |    - |  273 | `		}` |
-|  133 |  274 | `		SyBlobAppend(&sOut,zEnc,MbUtf8Encode(mapped,zEnc));` |
+|  157 |  274 | `		SyBlobAppend(&sOut,zEnc,MbUtf8Encode(mapped,zEnc));` |
 |    1 |  275 | `	}` |
-|   21 |  276 | `	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));` |
-|   21 |  277 | `	SyBlobRelease(&sOut);` |
-|   21 |  278 | `	return PH7_OK;` |
+|   45 |  276 | `	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));` |
+|   45 |  277 | `	SyBlobRelease(&sOut);` |
+|   45 |  278 | `	return PH7_OK;` |
 |    1 |  279 | `}` |
 |    - |  280 | `/* string mb_strtolower/mb_strtoupper(string $string, ?string $encoding) */` |
-|   14 |  281 | `static int PH7_builtin_mb_strtolower(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   38 |  281 | `static int PH7_builtin_mb_strtolower(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  282 | `{` |
 |    - |  283 | `	const char *zIn,*zFunc;` |
 |    - |  284 | `	int nByte;` |
-|   15 |  285 | `	if( nArg < 1 ){` |
+|   39 |  285 | `	if( nArg < 1 ){` |
 |  ! 0 |  286 | `		ph7_result_string(pCtx,"",0);` |
 |  ! 0 |  287 | `		return PH7_OK;` |
 |    - |  288 | `	}` |
-|   15 |  289 | `	zFunc = ph7_function_name(pCtx);` |
-|   15 |  290 | `	if( MbEncodingArg(pCtx,nArg > 1 ? apArg[1] : 0,zFunc,2) < 0 ){` |
+|   39 |  289 | `	zFunc = ph7_function_name(pCtx);` |
+|   39 |  290 | `	if( MbEncodingArg(pCtx,nArg > 1 ? apArg[1] : 0,zFunc,2) < 0 ){` |
 |  ! 0 |  291 | `		return PH7_OK;` |
 |    - |  292 | `	}` |
-|   15 |  293 | `	zIn = ph7_value_to_string(apArg[0],&nByte);` |
-|   22 |  294 | `	return MbCaseTransform(pCtx,zIn,(sxu32)nByte,` |
-|   14 |  295 | `		zFunc[sizeof("mb_strto")-1] == 'u' ? 1 : 0); /* mb_strtoUpper */` |
-|    8 |  296 | `}` |
+|   39 |  293 | `	zIn = ph7_value_to_string(apArg[0],&nByte);` |
+|   58 |  294 | `	return MbCaseTransform(pCtx,zIn,(sxu32)nByte,` |
+|   38 |  295 | `		zFunc[sizeof("mb_strto")-1] == 'u' ? 1 : 0); /* mb_strtoUpper */` |
+|   20 |  296 | `}` |
 |    - |  297 | `/* string mb_convert_case(string $string, int $mode, ?string $encoding) */` |
 |    6 |  298 | `static int PH7_builtin_mb_convert_case(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  299 | `{` |
@@ -418,43 +418,43 @@ Coverage: 354/390 lines (90.77%)
 |   13 |  408 | `	return PH7_OK;` |
 |    7 |  409 | `}` |
 |    - |  410 | `/* array mb_str_split(string $string, int $length = 1, ?string $encoding) */` |
-|    8 |  411 | `static int PH7_builtin_mb_str_split(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   38 |  411 | `static int PH7_builtin_mb_str_split(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  412 | `{` |
 |    - |  413 | `	const char *zIn;` |
 |    - |  414 | `	int nByte;` |
-|    9 |  415 | `	sxi64 iChunk = 1;` |
+|   39 |  415 | `	sxi64 iChunk = 1;` |
 |    - |  416 | `	ph7_value *pArr,*pV;` |
 |    - |  417 | `	sxu32 i;` |
-|    9 |  418 | `	if( nArg < 1 ){` |
+|   39 |  418 | `	if( nArg < 1 ){` |
 |  ! 0 |  419 | `		ph7_result_bool(pCtx,0);` |
 |  ! 0 |  420 | `		return PH7_OK;` |
 |    - |  421 | `	}` |
-|    9 |  422 | `	if( MbEncodingArg(pCtx,nArg > 2 ? apArg[2] : 0,"mb_str_split",3) < 0 ){` |
+|   39 |  422 | `	if( MbEncodingArg(pCtx,nArg > 2 ? apArg[2] : 0,"mb_str_split",3) < 0 ){` |
 |  ! 0 |  423 | `		return PH7_OK;` |
 |    - |  424 | `	}` |
-|    9 |  425 | `	if( nArg > 1 ){` |
+|   39 |  425 | `	if( nArg > 1 ){` |
 |    7 |  426 | `		iChunk = ph7_value_to_int64(apArg[1]);` |
 |    7 |  427 | `		if( iChunk < 1 ){` |
 |    3 |  428 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
 |    - |  429 | `				"mb_str_split(): Argument #2 ($length) must be greater than 0");` |
 |    - |  430 | `		}` |
 |    2 |  431 | `	}` |
-|    7 |  432 | `	zIn = ph7_value_to_string(apArg[0],&nByte);` |
-|    7 |  433 | `	pArr = ph7_context_new_array(pCtx);` |
-|    7 |  434 | `	pV = ph7_context_new_scalar(pCtx);` |
-|    7 |  435 | `	if( pArr == 0 \|\| pV == 0 ){` |
+|   37 |  432 | `	zIn = ph7_value_to_string(apArg[0],&nByte);` |
+|   37 |  433 | `	pArr = ph7_context_new_array(pCtx);` |
+|   37 |  434 | `	pV = ph7_context_new_scalar(pCtx);` |
+|   37 |  435 | `	if( pArr == 0 \|\| pV == 0 ){` |
 |  ! 0 |  436 | `		return PH7_ContextMemoryError(pCtx);` |
 |    - |  437 | `	}` |
-|   27 |  438 | `	for( i = 0 ; i < (sxu32)nByte ; ){` |
-|   21 |  439 | `		sxu32 iEnd = i + MbUtf8Skip(&zIn[i],(sxu32)nByte - i,(sxu32)iChunk);` |
-|   21 |  440 | `		ph7_value_string(pV,&zIn[i],(int)(iEnd - i));` |
-|   21 |  441 | `		ph7_array_add_elem(pArr,0,pV);` |
-|   21 |  442 | `		ph7_value_reset_string_cursor(pV);` |
-|   21 |  443 | `		i = iEnd;` |
+|  217 |  438 | `	for( i = 0 ; i < (sxu32)nByte ; ){` |
+|  181 |  439 | `		sxu32 iEnd = i + MbUtf8Skip(&zIn[i],(sxu32)nByte - i,(sxu32)iChunk);` |
+|  181 |  440 | `		ph7_value_string(pV,&zIn[i],(int)(iEnd - i));` |
+|  181 |  441 | `		ph7_array_add_elem(pArr,0,pV);` |
+|  181 |  442 | `		ph7_value_reset_string_cursor(pV);` |
+|  181 |  443 | `		i = iEnd;` |
 |    1 |  444 | `	}` |
-|    7 |  445 | `	ph7_result_value(pCtx,pArr);` |
-|    7 |  446 | `	return PH7_OK;` |
-|    5 |  447 | `}` |
+|   37 |  445 | `	ph7_result_value(pCtx,pArr);` |
+|   37 |  446 | `	return PH7_OK;` |
+|   20 |  447 | `}` |
 |    - |  448 | `/* string\|bool mb_internal_encoding(?string $encoding = null) */` |
 |    6 |  449 | `static int PH7_builtin_mb_internal_encoding(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  450 | `{` |
@@ -531,19 +531,73 @@ Coverage: 354/390 lines (90.77%)
 |    3 |  521 | `	return PH7_OK;` |
 |    2 |  522 | `}` |
 |    - |  523 |  |
-|    - |  524 | `/*` |
-|    - |  525 | ` * Install the mb_* functions (called from PH7_RegisterBuiltInFunction's` |
-|    - |  526 | ` * table in builtin.c via these PH7_PRIVATE symbols).` |
-|    - |  527 | ` */` |
-|    5 |  528 | `PH7_PRIVATE int PH7_builtin_mb_strlen_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strlen(pCtx,nArg,apArg); }` |
-|   13 |  529 | `PH7_PRIVATE int PH7_builtin_mb_substr_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_substr(pCtx,nArg,apArg); }` |
-|   15 |  530 | `PH7_PRIVATE int PH7_builtin_mb_case_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strtolower(pCtx,nArg,apArg); }` |
-|    7 |  531 | `PH7_PRIVATE int PH7_builtin_mb_convert_case_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_convert_case(pCtx,nArg,apArg); }` |
-|   13 |  532 | `PH7_PRIVATE int PH7_builtin_mb_strpos_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strpos(pCtx,nArg,apArg); }` |
-|    9 |  533 | `PH7_PRIVATE int PH7_builtin_mb_str_split_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_str_split(pCtx,nArg,apArg); }` |
-|    7 |  534 | `PH7_PRIVATE int PH7_builtin_mb_internal_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_internal_encoding(pCtx,nArg,apArg); }` |
-|    5 |  535 | `PH7_PRIVATE int PH7_builtin_mb_check_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_check_encoding(pCtx,nArg,apArg); }` |
-|    3 |  536 | `PH7_PRIVATE int PH7_builtin_mb_strwidth_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strwidth(pCtx,nArg,apArg); }` |
-|    - |  537 |  |
-|    - |  538 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
-|    - |  539 |  |
+|    - |  524 | `/* string\|false mb_chr(int $codepoint, ?string $encoding = null) */` |
+|   72 |  525 | `static int PH7_builtin_mb_chr(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1 |  526 | `{` |
+|    - |  527 | `	sxi64 cp;` |
+|    - |  528 | `	unsigned char zOut[4];` |
+|    - |  529 | `	sxu32 n;` |
+|   73 |  530 | `	if( nArg < 1 ){` |
+|  ! 0 |  531 | `		ph7_result_bool(pCtx,0);` |
+|  ! 0 |  532 | `		return PH7_OK;` |
+|    - |  533 | `	}` |
+|   73 |  534 | `	if( MbEncodingArg(pCtx,nArg > 1 ? apArg[1] : 0,"mb_chr",2) < 0 ){` |
+|  ! 0 |  535 | `		return PH7_OK;` |
+|    - |  536 | `	}` |
+|   73 |  537 | `	cp = ph7_value_to_int64(apArg[0]);` |
+|    - |  538 | `	/* php rejects negatives, code points past U+10FFFF and the UTF-16` |
+|    - |  539 | `	 * surrogate range with FALSE. */` |
+|   73 |  540 | `	if( cp < 0 \|\| cp > 0x10FFFF \|\| (cp >= 0xD800 && cp <= 0xDFFF) ){` |
+|    7 |  541 | `		ph7_result_bool(pCtx,0);` |
+|    7 |  542 | `		return PH7_OK;` |
+|    - |  543 | `	}` |
+|   67 |  544 | `	n = MbUtf8Encode((sxu32)cp,zOut);` |
+|   67 |  545 | `	ph7_result_string(pCtx,(const char *)zOut,(int)n);` |
+|   67 |  546 | `	return PH7_OK;` |
+|   37 |  547 | `}` |
+|    - |  548 | `/* int\|false mb_ord(string $string, ?string $encoding = null) */` |
+|   20 |  549 | `static int PH7_builtin_mb_ord(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1 |  550 | `{` |
+|    - |  551 | `	const char *zIn;` |
+|    - |  552 | `	const unsigned char *z;` |
+|    - |  553 | `	int nByte;` |
+|    - |  554 | `	sxu32 cp,nLen;` |
+|   21 |  555 | `	if( MbEncodingArg(pCtx,nArg > 1 ? apArg[1] : 0,"mb_ord",2) < 0 ){` |
+|  ! 0 |  556 | `		return PH7_OK;` |
+|    - |  557 | `	}` |
+|   21 |  558 | `	zIn = ph7_value_to_string(apArg[0],&nByte);` |
+|   21 |  559 | `	if( nByte < 1 ){` |
+|    - |  560 | `		/* php throws on an empty string rather than returning FALSE */` |
+|    3 |  561 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
+|    - |  562 | `			"mb_ord(): Argument #1 ($string) must not be empty");` |
+|    - |  563 | `	}` |
+|   19 |  564 | `	z = (const unsigned char *)zIn;` |
+|   19 |  565 | `	cp = MbUtf8Decode(z,(sxu32)nByte,&nLen);` |
+|    - |  566 | `	/* Reject a malformed first character (invalid lead / truncated / bad` |
+|    - |  567 | `	 * continuation): MbUtf8Decode is byte-transparent, so a high byte that did` |
+|    - |  568 | `	 * not form a valid sequence comes back with nLen == 1. */` |
+|   19 |  569 | `	if( nLen == 1 && z[0] >= 0x80 ){` |
+|    7 |  570 | `		ph7_result_bool(pCtx,0);` |
+|    7 |  571 | `		return PH7_OK;` |
+|    - |  572 | `	}` |
+|   13 |  573 | `	ph7_result_int64(pCtx,(sxi64)cp);` |
+|   13 |  574 | `	return PH7_OK;` |
+|   11 |  575 | `}` |
+|    - |  576 | `/*` |
+|    - |  577 | ` * Install the mb_* functions (called from PH7_RegisterBuiltInFunction's` |
+|    - |  578 | ` * table in builtin.c via these PH7_PRIVATE symbols).` |
+|    - |  579 | ` */` |
+|    5 |  580 | `PH7_PRIVATE int PH7_builtin_mb_strlen_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strlen(pCtx,nArg,apArg); }` |
+|   61 |  581 | `PH7_PRIVATE int PH7_builtin_mb_substr_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_substr(pCtx,nArg,apArg); }` |
+|   39 |  582 | `PH7_PRIVATE int PH7_builtin_mb_case_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strtolower(pCtx,nArg,apArg); }` |
+|    7 |  583 | `PH7_PRIVATE int PH7_builtin_mb_convert_case_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_convert_case(pCtx,nArg,apArg); }` |
+|   13 |  584 | `PH7_PRIVATE int PH7_builtin_mb_strpos_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strpos(pCtx,nArg,apArg); }` |
+|   39 |  585 | `PH7_PRIVATE int PH7_builtin_mb_str_split_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_str_split(pCtx,nArg,apArg); }` |
+|    7 |  586 | `PH7_PRIVATE int PH7_builtin_mb_internal_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_internal_encoding(pCtx,nArg,apArg); }` |
+|    5 |  587 | `PH7_PRIVATE int PH7_builtin_mb_check_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_check_encoding(pCtx,nArg,apArg); }` |
+|    3 |  588 | `PH7_PRIVATE int PH7_builtin_mb_strwidth_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strwidth(pCtx,nArg,apArg); }` |
+|   73 |  589 | `PH7_PRIVATE int PH7_builtin_mb_chr_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_chr(pCtx,nArg,apArg); }` |
+|   21 |  590 | `PH7_PRIVATE int PH7_builtin_mb_ord_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_ord(pCtx,nArg,apArg); }` |
+|    - |  591 |  |
+|    - |  592 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
+|    - |  593 |  |
