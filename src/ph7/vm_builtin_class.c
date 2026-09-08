@@ -1103,6 +1103,14 @@ PH7_PRIVATE int vm_builtin_call_user_func(ph7_context *pCtx,int nArg,ph7_value *
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	{
+		/* php validates the callback BEFORE calling anything; the dispatcher below would
+		 * otherwise answer NULL in silence for an unresolvable one. */
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[0],1,"callback",0);
+		if( rcCb != PH7_OK ){
+			return rcCb;
+		}
+	}
 	PH7_MemObjInit(pCtx->pVm,&sResult);
 	sResult.nIdx = SXU32_HIGH; /* Mark as constant */
 	/* php passes call_user_func()'s arguments BY VALUE: warn on a by-ref formal and copy */
@@ -1170,6 +1178,12 @@ PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_v
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
+	}
+	{
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[0],1,"callback",0);
+		if( rcCb != PH7_OK ){
+			return rcCb;
+		}
 	}
 	PH7_MemObjInit(pCtx->pVm,&sResult);
 	sResult.nIdx = SXU32_HIGH; /* Mark as constant */

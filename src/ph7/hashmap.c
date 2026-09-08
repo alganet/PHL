@@ -2807,6 +2807,15 @@ static int ph7_hashmap_usort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	if( nArg > 1 ){
+		/* php rejects an uncallable comparator with a TypeError, BEFORE touching the
+		 * array. PH7 handed it to the dispatcher, which answers NULL in silence -- so
+		 * usort() with a bogus comparator reordered the array anyway, by nothing. */
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",0);
+		if( rcCb != PH7_OK ){
+			return rcCb;
+		}
+	}
 	/* Point to the internal representation of the input hashmap */
 	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
@@ -2859,6 +2868,15 @@ static int ph7_hashmap_uasort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
+	}
+	if( nArg > 1 ){
+		/* php rejects an uncallable comparator with a TypeError, BEFORE touching the
+		 * array. PH7 handed it to the dispatcher, which answers NULL in silence -- so
+		 * usort() with a bogus comparator reordered the array anyway, by nothing. */
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",0);
+		if( rcCb != PH7_OK ){
+			return rcCb;
+		}
 	}
 	/* Point to the internal representation of the input hashmap */
 	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
@@ -2914,6 +2932,15 @@ static int ph7_hashmap_uksort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
+	}
+	if( nArg > 1 ){
+		/* php rejects an uncallable comparator with a TypeError, BEFORE touching the
+		 * array. PH7 handed it to the dispatcher, which answers NULL in silence -- so
+		 * usort() with a bogus comparator reordered the array anyway, by nothing. */
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",0);
+		if( rcCb != PH7_OK ){
+			return rcCb;
+		}
 	}
 	/* Point to the internal representation of the input hashmap */
 	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
