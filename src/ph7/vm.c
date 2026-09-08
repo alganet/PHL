@@ -2580,6 +2580,131 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
    "  }"\
    "  return $out;"\
    "}"\
+   "/* php's http_build_query() -- missing from PH7. Skips null values, casts"\
+   " * bool to 1/0, prefixes numeric top-level keys, urlencodes per RFC. */"\
+   "function __phl_hbq_enc($s, $enc){"\
+   "  return $enc == PHP_QUERY_RFC3986 ? rawurlencode((string)$s) : urlencode((string)$s);"\
+   "}"\
+   "function __phl_hbq(&$pairs, $data, $key_prefix, $numeric_prefix, $sep, $enc){"\
+   "  foreach( $data as $k => $v ){"\
+   "    if( $v === null ){ continue; }"\
+   "    if( $key_prefix === '' ){"\
+   "      $ek = is_int($k) ? __phl_hbq_enc($numeric_prefix . $k, $enc) : __phl_hbq_enc($k, $enc);"\
+   "    } else {"\
+   "      $ek = $key_prefix . '%5B' . __phl_hbq_enc($k, $enc) . '%5D';"\
+   "    }"\
+   "    if( is_array($v) ){"\
+   "      __phl_hbq($pairs, $v, $ek, $numeric_prefix, $sep, $enc);"\
+   "    } elseif( is_object($v) ){"\
+   "      __phl_hbq($pairs, get_object_vars($v), $ek, $numeric_prefix, $sep, $enc);"\
+   "    } else {"\
+   "      if( $v === true ){ $v = '1'; } elseif( $v === false ){ $v = '0'; }"\
+   "      $pairs[] = $ek . '=' . __phl_hbq_enc($v, $enc);"\
+   "    }"\
+   "  }"\
+   "}"\
+   "function http_build_query($data, $numeric_prefix = '', $arg_separator = null, $encoding_type = PHP_QUERY_RFC1738){"\
+   "  if( !is_array($data) && !is_object($data) ){"\
+   "    throw new TypeError('http_build_query(): Argument #1 ($data) must be of type array|object, ' . gettype($data) . ' given');"\
+   "  }"\
+   "  if( $arg_separator === null ){ $arg_separator = '&'; }"\
+   "  $pairs = array();"\
+   "  __phl_hbq($pairs, is_object($data) ? get_object_vars($data) : $data, '', (string)$numeric_prefix, $arg_separator, $encoding_type);"\
+   "  return implode($arg_separator, $pairs);"\
+   "}"\
+   "/* php's parse_str() -- missing from PH7. Mangles the base name ('.'/' ' -> '_'),"\
+   " * parses [key] nesting and [] appends, urldecodes keys and values. */"\
+   "function __phl_parsestr_assign(&$arr, $segments, $i, $val){"\
+   "  $seg = $segments[$i];"\
+   "  $last = ($i === count($segments) - 1);"\
+   "  if( $seg === '' ){"\
+   "    if( $last ){ $arr[] = $val; return; }"\
+   "    $arr[] = array();"\
+   "    $k = array_key_last($arr);"\
+   "    __phl_parsestr_assign($arr[$k], $segments, $i + 1, $val);"\
+   "  } else {"\
+   "    if( $last ){ $arr[$seg] = $val; return; }"\
+   "    if( !isset($arr[$seg]) || !is_array($arr[$seg]) ){ $arr[$seg] = array(); }"\
+   "    __phl_parsestr_assign($arr[$seg], $segments, $i + 1, $val);"\
+   "  }"\
+   "}"\
+   "function parse_str($string, &$result){"\
+   "  $result = array();"\
+   "  $string = (string)$string;"\
+   "  if( $string === '' ){ return; }"\
+   "  foreach( explode('&', $string) as $pair ){"\
+   "    if( $pair === '' ){ continue; }"\
+   "    $eq = strpos($pair, '=');"\
+   "    if( $eq === false ){ $rawkey = $pair; $val = ''; }"\
+   "    else { $rawkey = substr($pair, 0, $eq); $val = urldecode(substr($pair, $eq + 1)); }"\
+   "    if( $rawkey === '' ){ continue; }"\
+   "    $bpos = strpos($rawkey, '[');"\
+   "    if( $bpos === false ){ $base = $rawkey; $subs = array(); }"\
+   "    else {"\
+   "      $base = substr($rawkey, 0, $bpos);"\
+   "      preg_match_all('/\\[([^\\]]*)\\]/', substr($rawkey, $bpos), $m);"\
+   "      $subs = $m[1];"\
+   "    }"\
+   "    $base = str_replace(array(' ', '.'), '_', urldecode($base));"\
+   "    if( $base === '' ){ continue; }"\
+   "    $segs = array($base);"\
+   "    foreach( $subs as $s ){ $segs[] = urldecode($s); }"\
+   "    __phl_parsestr_assign($result, $segs, 0, $val);"\
+   "  }"\
+   "}"\
+   "/* php 8.3 str_increment(): Perl-style alphanumeric increment. */"\
+   "function str_increment($string){"\
+   "  $string = (string)$string;"\
+   "  if( $string === '' ){ throw new ValueError('str_increment(): Argument #1 ($string) must not be empty'); }"\
+   "  if( !ctype_alnum($string) ){ throw new ValueError('str_increment(): Argument #1 ($string) must be composed only of alphanumeric ASCII characters'); }"\
+   "  for( $i = strlen($string) - 1 ; $i >= 0 ; $i-- ){"\
+   "    $c = $string[$i];"\
+   "    if( $c === 'z' ){ $string[$i] = 'a'; }"\
+   "    elseif( $c === 'Z' ){ $string[$i] = 'A'; }"\
+   "    elseif( $c === '9' ){ $string[$i] = '0'; }"\
+   "    else { $string[$i] = chr(ord($c) + 1); return $string; }"\
+   "  }"\
+   "  $first = $string[0];"\
+   "  if( $first === '0' ){ return '1' . $string; }"\
+   "  if( $first === 'a' ){ return 'a' . $string; }"\
+   "  return 'A' . $string;"\
+   "}"\
+   "/* php 8.3 str_decrement(): inverse of str_increment(); throws out of range"\
+   " * at the bottom of the counting sequence. */"\
+   "function str_decrement($string){"\
+   "  $string = (string)$string;"\
+   "  if( $string === '' ){ throw new ValueError('str_decrement(): Argument #1 ($string) must not be empty'); }"\
+   "  if( !ctype_alnum($string) ){ throw new ValueError('str_decrement(): Argument #1 ($string) must be composed only of alphanumeric ASCII characters'); }"\
+   "  $orig = $string;"\
+   "  $borrowed = false;"\
+   "  for( $i = strlen($string) - 1 ; $i >= 0 ; $i-- ){"\
+   "    $c = $string[$i];"\
+   "    if( $c === 'a' ){ $string[$i] = 'z'; }"\
+   "    elseif( $c === 'A' ){ $string[$i] = 'Z'; }"\
+   "    elseif( $c === '0' ){ $string[$i] = '9'; }"\
+   "    else { $string[$i] = chr(ord($c) - 1); $borrowed = false; break; }"\
+   "    if( $i === 0 ){ $borrowed = true; }"\
+   "  }"\
+   "  if( $borrowed ){"\
+   "    if( $string[0] === '9' ){ throw new ValueError('str_decrement(): Argument #1 ($string) \"' . $orig . '\" is out of decrement range'); }"\
+   "    $string = substr($string, 1);"\
+   "    if( $string === '' ){ throw new ValueError('str_decrement(): Argument #1 ($string) \"' . $orig . '\" is out of decrement range'); }"\
+   "  } elseif( strlen($string) > 1 && $string[0] === '0' ){"\
+   "    $string = substr($string, 1);"\
+   "  }"\
+   "  return $string;"\
+   "}"\
+   "/* Permission bits via stat(); false + warning when stat fails, like php. */"\
+   "function fileperms($filename){"\
+   "  $s = @stat($filename);"\
+   "  if( $s === false ){"\
+   "    trigger_error('fileperms(): stat failed for ' . $filename, E_USER_WARNING);"\
+   "    return false;"\
+   "  }"\
+   "  return $s['mode'];"\
+   "}"\
+   "/* PH7 keeps no stat cache, so this is a no-op like php on a clean cache. */"\
+   "function clearstatcache($clear_realpath_cache = false, $filename = ''){}"\
    "/* Creates a temporary file and returns its name */"\
    "function tempnam(string $zDir = sys_get_temp_dir() /* Symisc eXtension */,string $zPrefix = 'PH7')"\
    "{"\

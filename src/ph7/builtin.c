@@ -9358,12 +9358,36 @@ static int PH7_builtin_urlencode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Extract the input string */
 	zIn = ph7_value_to_string(apArg[0],&nLen);
 	if( nLen < 1 ){
-		/* Nothing to process,return FALSE */
-		ph7_result_bool(pCtx,0);
+		/* php returns an empty string for empty input, not FALSE */
+		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
 	/* Perform the URL encoding */
 	SyUriEncode(zIn,(sxu32)nLen,Consumer,pCtx);
+	return PH7_OK;
+}
+/*
+ * string rawurlencode(string $str)
+ *  RFC 3986 URL encoding: spaces become %20 (not '+') and '~' is left intact.
+ */
+static int PH7_builtin_rawurlencode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zIn;
+	int nLen;
+	if( nArg < 1 ){
+		/* Missing arguments,return FALSE */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* Extract the input string */
+	zIn = ph7_value_to_string(apArg[0],&nLen);
+	if( nLen < 1 ){
+		/* php returns an empty string for empty input, not FALSE */
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
+	/* Perform the RFC 3986 URL encoding */
+	SyUriEncodeRaw(zIn,(sxu32)nLen,Consumer,pCtx);
 	return PH7_OK;
 }
 /*
@@ -9388,8 +9412,8 @@ static int PH7_builtin_urldecode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Extract the input string */
 	zIn = ph7_value_to_string(apArg[0],&nLen);
 	if( nLen < 1 ){
-		/* Nothing to process,return FALSE */
-		ph7_result_bool(pCtx,0);
+		/* php returns an empty string for empty input, not FALSE */
+		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
 	/* Perform the URL decoding */
@@ -9622,7 +9646,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "convert_uudecode",PH7_builtin_base64_decode },
 	{ "urlencode",    PH7_builtin_urlencode },
 	{ "urldecode",    PH7_builtin_urldecode },
-	{ "rawurlencode", PH7_builtin_urlencode },
+	{ "rawurlencode", PH7_builtin_rawurlencode },
 	{ "rawurldecode", PH7_builtin_urldecode },
 #endif /* PH7_NEED_BUILTIN_REG */
 };
