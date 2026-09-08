@@ -3888,6 +3888,9 @@ static const struct VmBuiltinSig {
 	{ "serialize", "mixed $value", "string" },
 	{ "set_error_handler", "?callable $callback, int $error_levels = 30719", "" },
 	{ "set_exception_handler", "?callable $callback", "" },
+	{ "get_error_handler", "", "?callable" },
+	{ "get_exception_handler", "", "?callable" },
+	{ "hrtime", "bool $as_number = false", "array|int" },
 	{ "setcookie", "string $name, string $value = '', array|int $expires_or_options = 0, string $path = '', string $domain = '', bool $secure = false, bool $httponly = false", "bool" },
 	{ "setrawcookie", "string $name, string $value = '', array|int $expires_or_options = 0, string $path = '', string $domain = '', bool $secure = false, bool $httponly = false", "bool" },
 	{ "sha1", "string $string, bool $binary = false", "string" },
@@ -25163,6 +25166,36 @@ static int vm_builtin_set_error_handler(ph7_context *pCtx,int nArg,ph7_value **a
 	return PH7_OK;
 }
 /*
+ * ?callable get_error_handler(void)     -- php 8.5
+ * ?callable get_exception_handler(void) -- php 8.5
+ *  Return the currently installed handler callable (the ACTIVE slot [1] that the
+ *  dispatch paths call), or NULL when none is set.
+ */
+static int vm_builtin_get_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( ph7_value_is_callable(&pVm->aErrCB[1]) ){
+		ph7_result_value(pCtx,&pVm->aErrCB[1]);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_get_exception_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( ph7_value_is_callable(&pVm->aExceptionCB[1]) ){
+		ph7_result_value(pCtx,&pVm->aExceptionCB[1]);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+/*
  * array debug_backtrace([ int $options = DEBUG_BACKTRACE_PROVIDE_OBJECT [, int $limit = 0 ]] )
  *  Generates a backtrace.
  * Paramaeter
@@ -27817,6 +27850,8 @@ static const ph7_builtin_func aVmFunc[] = {
 	{ "set_exception_handler",     vm_builtin_set_exception_handler     },
 	{ "restore_error_handler", vm_builtin_restore_error_handler },
 	{ "set_error_handler",vm_builtin_set_error_handler },
+	{ "get_error_handler", vm_builtin_get_error_handler },
+	{ "get_exception_handler", vm_builtin_get_exception_handler },
 	{ "debug_backtrace",  vm_builtin_debug_backtrace},
 	{ "error_get_last" ,  vm_builtin_error_get_last },
 	{ "debug_print_backtrace", vm_builtin_debug_print_backtrace  },

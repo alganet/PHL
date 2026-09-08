@@ -178,6 +178,58 @@ PH7_PRIVATE int PH7_builtin_microtime(ph7_context *pCtx,int nArg,ph7_value **apA
 	return PH7_OK;
 }
 /*
+ * array|int hrtime(bool $as_number = false)
+ *  The system's high-resolution time, counted from an arbitrary monotonic
+ *  point in nanoseconds. Returns [seconds, nanoseconds] by default, or the
+ *  total nanoseconds as an int when $as_number is true.
+ */
+PH7_PRIVATE int PH7_builtin_hrtime(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_int64 sec = 0,nsec = 0;
+	int bAsNumber = 0;
+	if( nArg > 0 ){
+		bAsNumber = ph7_value_to_bool(apArg[0]);
+	}
+#if defined(CLOCK_MONOTONIC)
+	{
+		struct timespec ts;
+		if( clock_gettime(CLOCK_MONOTONIC,&ts) == 0 ){
+			sec  = (ph7_int64)ts.tv_sec;
+			nsec = (ph7_int64)ts.tv_nsec;
+		}
+	}
+#else
+	{
+		/* No monotonic clock available: fall back to the wall-clock microsecond
+		 * source (embedder clock / gettimeofday). Coarser and not strictly
+		 * monotonic, but keeps hrtime() usable off-Unix. */
+		sytime sTime;
+		DateNow(pCtx->pVm,&sTime);
+		sec  = (ph7_int64)sTime.tm_sec;
+		nsec = (ph7_int64)sTime.tm_usec * 1000;
+	}
+#endif
+	if( bAsNumber ){
+		ph7_result_int64(pCtx,sec * 1000000000LL + nsec);
+	}else{
+		ph7_value *pValue,*pArray;
+		pArray = ph7_context_new_array(pCtx);
+		pValue = ph7_context_new_scalar(pCtx);
+		if( pArray == 0 || pValue == 0 ){
+			ph7_result_null(pCtx);
+			return PH7_OK;
+		}
+		ph7_value_int64(pValue,sec);
+		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);
+		ph7_value_int64(pValue,nsec);
+		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);
+		ph7_result_value(pCtx,pArray);
+		ph7_context_release_value(pCtx,pValue);
+		ph7_context_release_value(pCtx,pArray);
+	}
+	return PH7_OK;
+}
+/*
  * array getdate ([ int $timestamp = time() ])
  *  Returns an associative array containing the date information
  *  of the timestamp, or the current local time if no timestamp is given.
