@@ -15081,12 +15081,23 @@ case PH7_OP_MEMBER: {
 						SyBlobAppend(&pTos->sBlob,"__phl_magic_call",sizeof("__phl_magic_call")-1);
 						MemObjSetType(pTos,MEMOBJ_STRING);
 					}else{
-						VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Undefined class method '%z->%z',PH7 is loading NULL",
-							&pClass->sName,&sName
-							);
-						/* Pop the method name from the stack */
-						VmPopOperand(&pTos,1);
-						PH7_MemObjRelease(pTos);
+						{
+							/* php raises a catchable Error here; PH7 printed a notice and CARRIED ON
+							 * with NULL, so the call silently produced nothing. */
+							SyBlob sErrM;
+							sxi32 rcErr;
+							SyBlobInit(&sErrM,&pVm->sAllocator);
+							SyBlobFormat(&sErrM,"Call to undefined method %z::%z()",&pClass->sName,&sName);
+							VmPopOperand(&pTos,1);
+							PH7_MemObjRelease(pTos);
+							pTos->nIdx = SXU32_HIGH;
+							rcErr = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sErrM),
+								SyBlobLength(&sErrM));
+							SyBlobRelease(&sErrM);
+							if( rcErr == SXERR_ABORT ){ goto Abort; }
+							rc = rcErr;
+							PH7_THROW_ROUTE_MIDEXPR(rc)
+						}
 					}
 				}else{
 					ph7_class_method *pDeniedCall = 0;
@@ -15432,7 +15443,7 @@ case PH7_OP_MEMBER: {
 					 * fetch-point router lands it right after this op). */
 					if( !VmMemberCtxIsLookup(pInstr->iP2) && pVm->pMagicSetThis == 0
 					 && pVm->nBoundaryRc == 0 ){
-						VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Undefined class attribute '%z->%z',PH7 is loading NULL",
+						VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Undefined property: %z::$%z",
 							&pClass->sName,&sName);
 					}
 				}
@@ -15784,7 +15795,31 @@ case PH7_OP_MEMBER: {
 			/* `->` on a non-object (e.g. a null intermediate). Silent in isset()/empty()/unset()
 			 * context (iP2 2/3/4) so `isset($o->missing->x)` / `unset($o->missing->x)` match PHP. */
 			if( pInstr->iP2 != PH7_MEMBER_UNSET && !VmMemberCtxIsLookup(pInstr->iP2) ){
-				VmErrorFormat(&(*pVm),PH7_CTX_ERR,"'->': Expecting class instance as left operand,PH7 is loading NULL");
+				/* php draws a sharp line here, and PH7 drew none: CALLING a method on a
+				 * non-object is a catchable Error, while READING a property off one is a
+				 * Warning that yields NULL. PH7 raised the same notice for both and
+				 * carried on with NULL, so `$null->m()` silently did nothing. */
+				SyString sMemb;
+				SyStringInitFromBuf(&sMemb,(const char *)SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
+				if( pInstr->iP2 == PH7_MEMBER_METHOD ){
+					SyBlob sErrM;
+					sxi32 rcErr;
+					SyBlobInit(&sErrM,&pVm->sAllocator);
+					SyBlobFormat(&sErrM,"Call to a member function %z() on %s",
+						&sMemb,VmArithTypeName(pNos));
+					VmPopOperand(&pTos,1);
+					PH7_MemObjRelease(pTos);
+					MemObjSetType(pTos,MEMOBJ_NULL);
+					pTos->nIdx = SXU32_HIGH;
+					rcErr = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sErrM),
+						SyBlobLength(&sErrM));
+					SyBlobRelease(&sErrM);
+					if( rcErr == SXERR_ABORT ){ goto Abort; }
+					rc = rcErr;
+					PH7_THROW_ROUTE_MIDEXPR(rc)
+				}
+				VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Attempt to read property \"%z\" on %s",
+					&sMemb,VmArithTypeName(pNos));
 			}
 			VmPopOperand(&pTos,1);
 			PH7_MemObjRelease(pTos);
@@ -15838,15 +15873,23 @@ case PH7_OP_MEMBER: {
 				}
 			}
 			if( pClass == 0 ){
-				/* Undefined class */
-				VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Call to undefined class '%.*s',PH7 is loading NULL",
-					SyBlobLength(&pNos->sBlob),(const char *)SyBlobData(&pNos->sBlob)
-					);
+				/* Undefined class: php throws a catchable Error */
+				SyBlob sErrM;
+				sxi32 rcErr;
+				SyBlobInit(&sErrM,&pVm->sAllocator);
+				SyBlobFormat(&sErrM,"Class \"%.*s\" not found",
+					SyBlobLength(&pNos->sBlob),(const char *)SyBlobData(&pNos->sBlob));
 				if( !pInstr->p3 ){
 					VmPopOperand(&pTos,1);
 				}
 				PH7_MemObjRelease(pTos);
 				pTos->nIdx = SXU32_HIGH;
+				rcErr = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sErrM),
+					SyBlobLength(&sErrM));
+				SyBlobRelease(&sErrM);
+				if( rcErr == SXERR_ABORT ){ goto Abort; }
+				rc = rcErr;
+				PH7_THROW_ROUTE_MIDEXPR(rc)
 			}else{
 				if( pInstr->iP2 == PH7_MEMBER_METHOD ){
 					/* Method call */
@@ -15857,9 +15900,22 @@ case PH7_OP_MEMBER: {
 					}
 					if( pMeth == 0 || (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) ){
 						if( pMeth ){
-							VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Cannot call abstract method '%z:%z',PH7 is loading NULL",
-								&pClass->sName,&sName
-								);
+							SyBlob sErrM;
+							sxi32 rcErr;
+							SyBlobInit(&sErrM,&pVm->sAllocator);
+							SyBlobFormat(&sErrM,"Cannot call abstract method %z::%z()",
+								&pClass->sName,&sName);
+							if( !pInstr->p3 ){
+								VmPopOperand(&pTos,1);
+							}
+							PH7_MemObjRelease(pTos);
+							pTos->nIdx = SXU32_HIGH;
+							rcErr = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sErrM),
+								SyBlobLength(&sErrM));
+							SyBlobRelease(&sErrM);
+							if( rcErr == SXERR_ABORT ){ goto Abort; }
+							rc = rcErr;
+							PH7_THROW_ROUTE_MIDEXPR(rc)
 						}else{
 							ph7_class_method *pCallStaticMagic = PH7_ClassExtractMethod(pClass,"__callStatic",sizeof("__callStatic")-1);
 							if( pCallStaticMagic ){
@@ -15878,9 +15934,26 @@ case PH7_OP_MEMBER: {
 								pTos->nIdx = SXU32_HIGH;
 								break;
 							}
-							VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Undefined class static method '%z::%z',PH7 is loading NULL",
-								&pClass->sName,&sName
-								);
+							{
+								/* php: the STATIC form reports the same "Call to undefined
+								 * method C::m()" as the instance one. */
+								SyBlob sErrM;
+								sxi32 rcErr;
+								SyBlobInit(&sErrM,&pVm->sAllocator);
+								SyBlobFormat(&sErrM,"Call to undefined method %z::%z()",
+									&pClass->sName,&sName);
+								if( !pInstr->p3 ){
+									VmPopOperand(&pTos,1);
+								}
+								PH7_MemObjRelease(pTos);
+								pTos->nIdx = SXU32_HIGH;
+								rcErr = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sErrM),
+									SyBlobLength(&sErrM));
+								SyBlobRelease(&sErrM);
+								if( rcErr == SXERR_ABORT ){ goto Abort; }
+								rc = rcErr;
+								PH7_THROW_ROUTE_MIDEXPR(rc)
+							}
 						}
 						/* Pop the method name from the stack */
 						if( !pInstr->p3 ){
@@ -16125,17 +16198,42 @@ case PH7_OP_NEW: {
 		pClass = ((ph7_class_instance *)pTos->x.pOther)->pClass;
 	}
 	if( pClass == 0 ){
-		/* No such class — fatal error, stop execution (matches PHP behavior) */
-		VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Class '%.*s' is not defined",
-			SyBlobLength(&pTos->sBlob),(const char *)SyBlobData(&pTos->sBlob)
-			);
-		/* Release the class operand and any constructor arguments, then abort */
-		PH7_MemObjRelease(pTos);
+		/* php: `new NoSuch()` is a CATCHABLE Error ('Class "NoSuch" not found'), not a
+		 * hard stop. Aborting here killed the script outright -- and with exit status 0,
+		 * so a caller could not even tell it had failed. */
+		SyBlob sErrM;
+		sxi32 rcErr;
+		ph7_class *pNotNew = 0;
+		SyBlobInit(&sErrM,&pVm->sAllocator);
+		if( (pTos->iFlags & MEMOBJ_STRING) && SyBlobLength(&pTos->sBlob) > 0 ){
+			/* The extract above only accepts NEW-able classes, so an interface or an
+			 * abstract class comes back as 0 and used to be reported as "not found".
+			 * Look again without that filter so php's real message can be given. */
+			pNotNew = PH7_VmExtractClass(&(*pVm),(const char *)SyBlobData(&pTos->sBlob),
+				SyBlobLength(&pTos->sBlob),FALSE,0);
+		}
+		if( pNotNew && (pNotNew->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_ABSTRACT)) ){
+			SyBlobFormat(&sErrM,"Cannot instantiate %s %z",
+				(pNotNew->iFlags & PH7_CLASS_INTERFACE) ? "interface" : "abstract class",
+				&pNotNew->sName);
+		}else{
+			SyBlobFormat(&sErrM,"Class \"%.*s\" not found",
+				SyBlobLength(&pTos->sBlob),(const char *)SyBlobData(&pTos->sBlob));
+		}
+		/* Settle the stack BEFORE throwing: the class-name slot becomes the (NULL)
+		 * expression result and the ctor arguments go. */
 		if( nCtorArgs > 0 ){
-			/* Pop given arguments */
 			VmPopOperand(&pTos,nCtorArgs);
 		}
-		goto Abort;
+		PH7_MemObjRelease(pTos);
+		MemObjSetType(pTos,MEMOBJ_NULL);
+		pTos->nIdx = SXU32_HIGH;
+		rcErr = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sErrM),
+			SyBlobLength(&sErrM));
+		SyBlobRelease(&sErrM);
+		if( rcErr == SXERR_ABORT ){ goto Abort; }
+		rc = rcErr;
+		PH7_THROW_ROUTE_MIDEXPR(rc)
 	}else if( pClass->iFlags & PH7_CLASS_ENUM ){
 		/* php 8.1: enums cannot be instantiated — a catchable Error, raised
 		 * BEFORE any construction (no instance, no __destruct). */
@@ -16885,6 +16983,57 @@ case PH7_OP_CALL: {
 		if( pTos->iFlags & MEMOBJ_HASHMAP ){
 			ph7_value sResult;
 			sxi32 rcArr;
+			{
+				/* php validates the SHAPE of an array callable first: it must hold exactly
+				 * two elements. PH7 handed any array to the dispatcher, which failed
+				 * silently and left NULL behind, so `$a()` on [1] evaluated to nothing. */
+				ph7_hashmap *pCbMap = (ph7_hashmap *)pTos->x.pOther;
+				char zCbMsg[192];
+				const char *zCbErr = 0;
+				if( pCbMap && pCbMap->nEntry == 2 ){
+					/* Shape is right; now check it actually RESOLVES. The shared dispatcher
+					 * (PH7_VmCallUserFunctionWithMap) answers SXRET_OK with a NULL result for
+					 * an unresolvable [class,method] pair -- silence a caller cannot detect --
+					 * and its contract is relied on by call_user_func/usort, so the throw
+					 * belongs here at the call site. */
+					ph7_value *pCbCls = (ph7_value *)SySetAt(&pVm->aMemObj,pCbMap->pFirst->nValIdx);
+					ph7_value *pCbMeth = (ph7_value *)SySetAt(&pVm->aMemObj,pCbMap->pFirst->pPrev->nValIdx);
+					ph7_class *pCbClass = pCbCls ? PH7_VmExtractClassFromValue(&(*pVm),pCbCls) : 0;
+					if( pCbClass == 0 ){
+						SyBufferFormat(zCbMsg,sizeof(zCbMsg),"Class \"%.*s\" not found",
+							pCbCls ? (int)SyBlobLength(&pCbCls->sBlob) : 0,
+							pCbCls ? (const char *)SyBlobData(&pCbCls->sBlob) : "");
+						zCbErr = zCbMsg;
+					}else if( pCbMeth == 0 || (pCbMeth->iFlags & MEMOBJ_STRING) == 0
+						|| PH7_ClassExtractMethod(pCbClass,(const char *)SyBlobData(&pCbMeth->sBlob),
+							SyBlobLength(&pCbMeth->sBlob)) == 0 ){
+						SyBufferFormat(zCbMsg,sizeof(zCbMsg),"Call to undefined method %z::%.*s()",
+							&pCbClass->sName,
+							pCbMeth ? (int)SyBlobLength(&pCbMeth->sBlob) : 0,
+							pCbMeth ? (const char *)SyBlobData(&pCbMeth->sBlob) : "");
+						zCbErr = zCbMsg;
+					}
+				}
+				if( pCbMap == 0 || pCbMap->nEntry != 2 || zCbErr ){
+					sxi32 rcCb;
+					if( pInstr->iP2 ){
+						VmSpreadConsume(pVm);
+					}
+					if( nCallArgs > 0 ){
+						VmPopOperand(&pTos,nCallArgs);
+					}
+					PH7_MemObjRelease(pTos);
+					MemObjSetType(pTos,MEMOBJ_NULL);
+					pTos->nIdx = SXU32_HIGH;
+					if( zCbErr == 0 ){
+						zCbErr = "Array callback must have exactly two elements";
+					}
+					rcCb = VmThrowFromVm(&(*pVm),"Error",zCbErr,(sxu32)SyStrlen(zCbErr));
+					if( rcCb == SXERR_ABORT ){ goto Abort; }
+					rc = rcCb;
+					PH7_DISPATCH_ENFORCE_RC(rc)
+				}
+			}
 			/* Build the effective spread-key map (and consume this call's runs)
 			 * against this path's arg base (the array-callable slot isn't popped). */
 			pEffCallMap = VmEffCallArgMap(pVm,pInstr,pArg,
@@ -16995,8 +17144,18 @@ case PH7_OP_CALL: {
 			PH7_MemObjStore(&sResult,pTos);
 			PH7_MemObjRelease(&sResult);
 		}else{
-			/* Raise exception: Invalid function name */
-			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Invalid function name,NULL will be returned");
+			/* php: calling a non-callable is a catchable Error naming the type
+			 * ("Value of type int is not callable"), or -- for an array -- the shape it
+			 * expected. PH7 printed "Invalid function name" and CONTINUED with NULL, so
+			 * `$x()` on a number quietly evaluated to nothing. */
+			sxi32 rcNc;
+			char zMsg[128];
+			if( pTos->iFlags & MEMOBJ_HASHMAP ){
+				SyBufferFormat(zMsg,sizeof(zMsg),"Array callback must have exactly two elements");
+			}else{
+				SyBufferFormat(zMsg,sizeof(zMsg),"Value of type %s is not callable",
+					VmArithTypeName(pTos));
+			}
 			/* Consume this call's captured spread runs — a non-callable target
 			 * (int/float/bool/null) reaches no dispatch build site. */
 			if( pInstr->iP2 ){
@@ -17006,8 +17165,14 @@ case PH7_OP_CALL: {
 			if( nCallArgs > 0 ){
 				VmPopOperand(&pTos,nCallArgs);
 			}
-			/* Assume a null return value so that the program continue it's execution normally */
+			/* Settle the call's result slot BEFORE throwing. */
 			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			rcNc = VmThrowFromVm(&(*pVm),"Error",zMsg,(sxu32)SyStrlen(zMsg));
+			if( rcNc == SXERR_ABORT ){ goto Abort; }
+			rc = rcNc;
+			PH7_DISPATCH_ENFORCE_RC(rc)
 		}
 		break;
 	}
@@ -17149,8 +17314,11 @@ case PH7_OP_CALL: {
 					}
 					if( pMeth && pMeth->iProtection != PH7_CLASS_PROT_PUBLIC ){
 						if( !PH7_VmClassMemberAccess(&(*pVm),pDeclClass,&pVmFunc->sName,pMeth->iProtection,FALSE) ){
-							/* Throw Error exception (PHP-compatible) */
+							/* php throws a CATCHABLE Error here. The old code merely PRINTED an
+							 * uncaught-exception report and aborted, so `try { $o->priv(); }
+							 * catch (Error $e)` never caught it and the script died. */
 							char zMsg[256];
+							sxi32 rcVis;
 							const char *zVis = pMeth->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected";
 							SyBufferFormat(zMsg,sizeof(zMsg),"Call to %s method %.*s::%.*s() from global scope",
 								zVis,(int)pDeclClass->sName.nByte,pDeclClass->sName.zString,
@@ -17160,12 +17328,17 @@ case PH7_OP_CALL: {
 							if( pInstr->iP2 ){
 								VmSpreadConsume(pVm);
 							}
-							/* Pop given arguments */
+							/* Pop given arguments, and leave the call's NULL result behind. */
 							if( nCallArgs > 0 ){
 								VmPopOperand(&pTos,nCallArgs);
 							}
-							VmReportUncaughtException(&(*pVm),"Error",5,zMsg,(sxu32)SyStrlen(zMsg),0,0);
-							goto Abort;
+							PH7_MemObjRelease(pTos);
+							MemObjSetType(pTos,MEMOBJ_NULL);
+							pTos->nIdx = SXU32_HIGH;
+							rcVis = VmThrowFromVm(&(*pVm),"Error",zMsg,(sxu32)SyStrlen(zMsg));
+							if( rcVis == SXERR_ABORT ){ goto Abort; }
+							rc = rcVis;
+							PH7_DISPATCH_ENFORCE_RC(rc)
 						}
 					}
 				}
