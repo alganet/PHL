@@ -2551,6 +2551,7 @@ PH7_PRIVATE const char *SyTimeGetDay(sxi32 iDay);
 PH7_PRIVATE sxi32 SyUriDecode(const char *zSrc,sxu32 nLen,ProcConsumer xConsumer,void *pUserData,int bUTF8);
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 PH7_PRIVATE sxi32 SyUriEncode(const char *zSrc,sxu32 nLen,ProcConsumer xConsumer,void *pUserData);
+PH7_PRIVATE sxi32 SyUriEncodeRaw(const char *zSrc,sxu32 nLen,ProcConsumer xConsumer,void *pUserData);
 #endif
 PH7_PRIVATE sxi32 SyLexRelease(SyLex *pLex);
 PH7_PRIVATE sxi32 SyLexTokenizeInput(SyLex *pLex,const char *zInput,sxu32 nLen,void *pCtxData,ProcSort xSort,ProcCmp xCmp);

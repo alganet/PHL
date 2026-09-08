@@ -237,8 +237,12 @@ PH7_PRIVATE sxi32 SyLexRelease(SyLex *pLex)
 	return rc;
 }
 #ifndef PH7_DISABLE_BUILTIN_FUNC
-#define SAFE_HTTP(C)	(SyisAlphaNum(c) || c == '_' || c == '-' || c == '$' || c == '.' )
-PH7_PRIVATE sxi32 SyUriEncode(const char *zSrc,sxu32 nLen,ProcConsumer xConsumer,void *pUserData)
+/* php's urlencode() keeps only alnum and -_. safe (space becomes '+'); rawurlencode()
+ * additionally keeps '~' and encodes space as %20 (RFC 3986). '$' is NOT safe in
+ * either -- php encodes it %24. */
+#define SAFE_URL(C)	(SyisAlphaNum(c) || c == '_' || c == '-' || c == '.' )
+#define SAFE_RAW(C)	(SyisAlphaNum(c) || c == '_' || c == '-' || c == '.' || c == '~' )
+static sxi32 SyUriEncodeInternal(const char *zSrc,sxu32 nLen,ProcConsumer xConsumer,void *pUserData,int bRaw)
 {
 	unsigned char *zIn = (unsigned char *)zSrc;
 	unsigned char zHex[3] = { '%',0,0 };
@@ -261,13 +265,13 @@ PH7_PRIVATE sxi32 SyUriEncode(const char *zSrc,sxu32 nLen,ProcConsumer xConsumer
 			break;
 		}
 		c = zCur[0];
-		if( SAFE_HTTP(c) ){
+		if( bRaw ? SAFE_RAW(c) : SAFE_URL(c) ){
 			zCur++; continue;
 		}
 		if( zCur != zIn && SXRET_OK != (rc = xConsumer(zIn,(sxu32)(zCur-zIn),pUserData))){
 			break;
 		}
-		if( c == ' ' ){
+		if( c == ' ' && !bRaw ){
 			zOut[0] = '+';
 			rc = xConsumer((const void *)zOut,sizeof(unsigned char),pUserData);
 		}else{
@@ -281,6 +285,14 @@ PH7_PRIVATE sxi32 SyUriEncode(const char *zSrc,sxu32 nLen,ProcConsumer xConsumer
 		zIn = &zCur[1]; zCur = zIn ;
 	}
 	return rc == SXRET_OK ? SXRET_OK : SXERR_ABORT;
+}
+PH7_PRIVATE sxi32 SyUriEncode(const char *zSrc,sxu32 nLen,ProcConsumer xConsumer,void *pUserData)
+{
+	return SyUriEncodeInternal(zSrc,nLen,xConsumer,pUserData,0);
+}
+PH7_PRIVATE sxi32 SyUriEncodeRaw(const char *zSrc,sxu32 nLen,ProcConsumer xConsumer,void *pUserData)
+{
+	return SyUriEncodeInternal(zSrc,nLen,xConsumer,pUserData,1);
 }
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
 static sxi32 SyAsciiToHex(sxi32 c)
