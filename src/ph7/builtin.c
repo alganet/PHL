@@ -2334,6 +2334,14 @@ static int PH7_builtin_implode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	imp_data.rc = SXRET_OK;
 	if( !ph7_value_is_array(apArg[0]) ){
 		imp_data.zSep = ph7_value_to_string(apArg[0],&imp_data.nSeplen);
+		if( nArg > 1 && !ph7_value_is_array(apArg[1]) && !ph7_value_is_null(apArg[1]) ){
+			/* php: implode($glue, $pieces) requires an ARRAY. PH7 stringified whatever it
+			 * was handed, so implode(",", 5) quietly returned "5". */
+			char zBuf[64];
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"implode(): Argument #2 ($array) must be of type ?array, %s given",
+				VmValueGivenName(apArg[1],zBuf,sizeof(zBuf)));
+		}
 	}else{
 		imp_data.zSep = 0;
 		imp_data.nSeplen = 0;
