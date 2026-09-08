@@ -1147,20 +1147,20 @@ Coverage: 557/655 lines (85.04%)
 |    - | 1137 | ` * Return` |
 |    - | 1138 | ` *  Octal string representation of number` |
 |    - | 1139 | ` */` |
-|   12 | 1140 | `PH7_PRIVATE int PH7_builtin_decoct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   16 | 1140 | `PH7_PRIVATE int PH7_builtin_decoct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 | 1141 | `{` |
 |    - | 1142 | `	ph7_int64 iVal;` |
-|   13 | 1143 | `	if( nArg < 1 ){` |
+|   17 | 1143 | `	if( nArg < 1 ){` |
 |    - | 1144 | `		/* Missing arguments,return null */` |
 |  ! 0 | 1145 | `		ph7_result_null(pCtx);` |
 |  ! 0 | 1146 | `		return PH7_OK;` |
 |    - | 1147 | `	}` |
 |    - | 1148 | `	/* Extract the given number as a full 64-bit integer (PHP casts $num to int). */` |
-|   13 | 1149 | `	iVal = ph7_value_to_int64(apArg[0]);` |
+|   17 | 1149 | `	iVal = ph7_value_to_int64(apArg[0]);` |
 |    - | 1150 | `	/* Format: the 'q' modifier emits the full unsigned 64-bit two's-complement. */` |
-|   13 | 1151 | `	ph7_result_string_format(pCtx,"%qo",iVal);` |
-|   13 | 1152 | `	return PH7_OK;` |
-|    7 | 1153 | `}` |
+|   17 | 1151 | `	ph7_result_string_format(pCtx,"%qo",iVal);` |
+|   17 | 1152 | `	return PH7_OK;` |
+|    9 | 1153 | `}` |
 |    - | 1154 | `/*` |
 |    - | 1155 | ` * string decbin(int $number)` |
 |    - | 1156 | ` *  Decimal to binary.` |
