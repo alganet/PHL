@@ -11092,18 +11092,38 @@ case PH7_OP_LOAD_IDX: {
 	if( pTos->iFlags & MEMOBJ_STRING ){
 		/* String access */
 		if( pIdx ){
-			sxu32 nOfft;
+			sxi64 iOfft;
+			sxi64 nLen = (sxi64)SyBlobLength(&pTos->sBlob);
 			if( (pIdx->iFlags & MEMOBJ_INT) == 0 ){
 				/* Force an int cast */
 				PH7_MemObjToInteger(pIdx);
 			}
-			nOfft = (sxu32)pIdx->x.iVal;
-			if( nOfft >= SyBlobLength(&pTos->sBlob) ){
-				/* Invalid offset,load null */
+			iOfft = pIdx->x.iVal;
+			/* php 7.1: a NEGATIVE offset counts back from the end ($s[-1] is the last
+			 * character). The offset used to be cast to UNSIGNED, so -1 became a huge
+			 * number, ran past the end and quietly produced NULL. */
+			if( iOfft < 0 ){
+				iOfft += nLen;
+			}
+			if( iOfft < 0 || iOfft >= nLen ){
+				/* Out of range. In an isset()/empty() lookup php answers FALSE, so load
+				 * NULL there; everywhere else it WARNS and yields the empty string (PH7
+				 * silently produced NULL in both cases). */
+				/* LOAD_IDX carries its OWN iP2 codes, which do NOT line up with the
+				 * PH7_MEMBER_* ones: 4 = isset, 5 = unset, 6 = empty. All three are
+				 * lookups and must stay silent. */
+				int bQuiet = pInstr->iP2 == 4 || pInstr->iP2 == 5 || pInstr->iP2 == 6;
 				PH7_MemObjRelease(pTos);
+				if( bQuiet ){
+					MemObjSetType(pTos,MEMOBJ_NULL);
+				}else{
+					MemObjSetType(pTos,MEMOBJ_STRING);
+					VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Uninitialized string offset %qd",
+						pIdx->x.iVal);
+				}
 			}else{
 				const char *zData = (const char *)SyBlobData(&pTos->sBlob);
-				int c = zData[nOfft];
+				int c = zData[iOfft];
 				PH7_MemObjRelease(pTos);
 				MemObjSetType(pTos,MEMOBJ_STRING);
 				SyBlobAppend(&pTos->sBlob,(const void *)&c,sizeof(char));
@@ -11413,6 +11433,13 @@ case PH7_OP_LOAD_IDX: {
 		SyBlobNullAppend(&sMsg);
 		PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,(const char *)SyBlobData(&sMsg));
 		SyBlobRelease(&sMsg);
+	}
+	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_STRING|MEMOBJ_OBJ)) == 0
+	 && (pInstr->iP2 == 0 || pInstr->iP2 == 2) ){
+		/* Subscripting a scalar base is a WARNING in php ("Trying to access array offset
+		 * on int") that yields NULL. PH7 yielded NULL in silence. */
+		VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Trying to access array offset on %s",
+			VmArithTypeName(pTos));
 	}
 	if( pIdx ){
 		PH7_MemObjRelease(pIdx);
@@ -11910,20 +11937,42 @@ case PH7_OP_STORE_IDX_REF: {
 					SyBlobAppend(&pObj->sBlob,SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
 				}
 			}else{
-				sxu32 nOfft;
-				if((pKey->iFlags & MEMOBJ_INT)){
+				sxi64 iOfft;
+				sxi64 nLen;
+				if((pKey->iFlags & MEMOBJ_INT) == 0 ){
 					/* Force an int cast */
 					PH7_MemObjToInteger(pKey);
 				}
-				nOfft = (sxu32)pKey->x.iVal;
-				if( nOfft < SyBlobLength(&pObj->sBlob) && SyBlobLength(&pTos->sBlob) > 0 ){
+				iOfft = pKey->x.iVal;
+				nLen = (sxi64)SyBlobLength(&pObj->sBlob);
+				if( iOfft < 0 ){
+					/* php 7.1: a negative offset writes back from the end. */
+					iOfft += nLen;
+					if( iOfft < 0 ){
+						VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Illegal string offset %qd",
+							pKey->x.iVal);
+						PH7_MemObjRelease(pKey);
+						break;
+					}
+				}
+				if( SyBlobLength(&pTos->sBlob) > 0 ){
 					const char *zBlob = (const char *)SyBlobData(&pTos->sBlob);
-					char *zData = (char *)SyBlobData(&pObj->sBlob);
-					zData[nOfft] = zBlob[0];
-				}else{
-					if( SyBlobLength(&pTos->sBlob) >= sizeof(char) ){
-						/* Perform an append operation */
-						SyBlobAppend(&pObj->sBlob,SyBlobData(&pTos->sBlob),sizeof(char));
+					if( SyBlobLength(&pTos->sBlob) > 1 ){
+						VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
+							"Only the first byte will be assigned to the string offset");
+					}
+					if( iOfft >= nLen ){
+						/* php PADS WITH SPACES up to the offset. PH7 simply appended the
+						 * byte, so "abc" with [6]="Z" became "abcZ" rather than "abc   Z"
+						 * -- a silently wrong string. */
+						sxi64 nPad;
+						for( nPad = nLen ; nPad < iOfft ; ++nPad ){
+							SyBlobAppend(&pObj->sBlob," ",sizeof(char));
+						}
+						SyBlobAppend(&pObj->sBlob,(const void *)zBlob,sizeof(char));
+					}else{
+						char *zData = (char *)SyBlobData(&pObj->sBlob);
+						zData[iOfft] = zBlob[0];
 					}
 				}
 			}
@@ -11932,6 +11981,28 @@ case PH7_OP_STORE_IDX_REF: {
 			}
 			break;
 		}else if( (pObj->iFlags & MEMOBJ_HASHMAP) == 0 ){
+			/* php: only NULL and FALSE auto-vivify into an array. Writing an index into an
+			 * int/float/resource/TRUE is a catchable Error -- PH7 quietly REPLACED the value
+			 * with an array, destroying it ($x = 5; $x[0] = 1; left $x === [1]). */
+			int bScalar = (pObj->iFlags & (MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_RES)) != 0
+				|| ((pObj->iFlags & MEMOBJ_BOOL) != 0 && pObj->x.iVal != 0);
+			if( bScalar ){
+				sxi32 rcSc;
+				if( pKey ){
+					PH7_MemObjRelease(pKey);
+				}
+				VmPopOperand(&pTos,1);
+				rcSc = VmThrowFromVm(&(*pVm),"Error","Cannot use a scalar value as an array",
+					sizeof("Cannot use a scalar value as an array")-1);
+				if( rcSc == SXERR_ABORT ){ goto Abort; }
+				rc = rcSc;
+				PH7_THROW_ROUTE_MIDEXPR(rc)
+			}
+			if( (pObj->iFlags & MEMOBJ_BOOL) != 0 ){
+				/* php 8.1 deprecates auto-vivifying FALSE. */
+				VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,
+					"Automatic conversion of false to array is deprecated");
+			}
 			/* Force a hashmap cast  */
 			rc = PH7_MemObjToHashmap(pObj);
 			if( rc != SXRET_OK ){
@@ -14635,8 +14706,11 @@ case PH7_OP_FOREACH_INIT: {
 	/* Make sure we are dealing with a hashmap aka 'array' or an object */
 	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ)) == 0 || SyStringLength(&pInfo->sValue) < 1 ){
 		/* Jump out of the loop */
-		if( (pTos->iFlags & MEMOBJ_NULL) == 0 ){
-			PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,"Invalid argument supplied for the foreach statement,expecting array or class instance");
+		if( SyStringLength(&pInfo->sValue) > 0 ){
+			/* php warns for EVERY non-iterable, null included (PH7 exempted null). */
+			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
+				"foreach() argument must be of type array|object, %s given",
+				VmArithTypeName(pTos));
 		}
 		pc = pInstr->iP2 - 1;
 	}else{
