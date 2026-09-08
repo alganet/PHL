@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 569/710 lines (80.14%)
+Coverage: 570/710 lines (80.28%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -282,20 +282,20 @@ Coverage: 569/710 lines (80.14%)
 |    5 |  272 | `}` |
 |    - |  273 | `/* int (*xChmod)(const char *,int) */` |
 |    - |  274 | `static int WinVfs_chmod(const char *zPath,int mode)` |
-|    1 |  275 | `{` |
+|    3 |  275 | `{` |
 |    - |  276 | `	void * pConverted;` |
 |    - |  277 | `	int rc;` |
-|    1 |  278 | `	pConverted = convertUtf8Filename(zPath);` |
-|    1 |  279 | `	if( pConverted == 0 ){` |
+|    3 |  278 | `	pConverted = convertUtf8Filename(zPath);` |
+|    3 |  279 | `	if( pConverted == 0 ){` |
 |  ! 0 |  280 | `		return -1;` |
 |    - |  281 | `	}` |
 |    - |  282 | `	/* Windows honors only the read-only attribute: a set owner-write bit (0200)` |
 |    - |  283 | `	 * clears it, otherwise the file is made read-only. This mirrors php, whose` |
 |    - |  284 | `	 * chmod() on Windows likewise maps through _wchmod and returns success. */` |
-|    1 |  285 | `	rc = _wchmod((const wchar_t *)pConverted,(mode & 0200) ? (_S_IREAD\|_S_IWRITE) : _S_IREAD);` |
-|    1 |  286 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    1 |  287 | `	return rc == 0 ? PH7_OK : - 1;` |
-|    1 |  288 | `}` |
+|    3 |  285 | `	rc = _wchmod((const wchar_t *)pConverted,(mode & 0200) ? (_S_IREAD\|_S_IWRITE) : _S_IREAD);` |
+|    3 |  286 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    3 |  287 | `	return rc == 0 ? PH7_OK : - 1;` |
+|    3 |  288 | `}` |
 |    - |  289 | `/* ph7_int64 (*xFreeSpace)(const char *) */` |
 |    - |  290 | `static ph7_int64 WinVfs_DiskFreeSpace(const char *zPath)` |
 |    1 |  291 | `{` |
@@ -358,21 +358,21 @@ Coverage: 569/710 lines (80.14%)
 |    1 |  348 | `}` |
 |    - |  349 | `/* int (*xFileExists)(const char *) */` |
 |    - |  350 | `static int WinVfs_FileExists(const char *zPath)` |
-|    2 |  351 | `{` |
-|    2 |  352 | `	zPath = WinVfsLocalPath(zPath);` |
+|    4 |  351 | `{` |
+|    4 |  352 | `	zPath = WinVfsLocalPath(zPath);` |
 |    - |  353 | `	void * pConverted;` |
 |    - |  354 | `	DWORD dwAttr;` |
-|    2 |  355 | `	pConverted = convertUtf8Filename(zPath);` |
-|    2 |  356 | `	if( pConverted == 0 ){` |
+|    4 |  355 | `	pConverted = convertUtf8Filename(zPath);` |
+|    4 |  356 | `	if( pConverted == 0 ){` |
 |  ! 0 |  357 | `		return -1;` |
 |    - |  358 | `	}` |
-|    2 |  359 | `	dwAttr = GetFileAttributesW((LPCWSTR)pConverted);` |
-|    2 |  360 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    2 |  361 | `	if( dwAttr == INVALID_FILE_ATTRIBUTES ){` |
-|    2 |  362 | `		return -1;` |
+|    4 |  359 | `	dwAttr = GetFileAttributesW((LPCWSTR)pConverted);` |
+|    4 |  360 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    4 |  361 | `	if( dwAttr == INVALID_FILE_ATTRIBUTES ){` |
+|    4 |  362 | `		return -1;` |
 |    - |  363 | `	}` |
 |    2 |  364 | `	return PH7_OK;` |
-|    2 |  365 | `}` |
+|    4 |  365 | `}` |
 |    - |  366 | `/* Open a file in a read-only mode */` |
 |    - |  367 | `static HANDLE OpenReadOnly(LPCWSTR pPath)` |
 |    5 |  368 | `{` |
@@ -803,17 +803,17 @@ Coverage: 569/710 lines (80.14%)
 |    5 |  793 | `}` |
 |    - |  794 | `/* void (*xTempDir)(ph7_context *) */` |
 |    - |  795 | `static void WinVfs_TempDir(ph7_context *pCtx)` |
-|    4 |  796 | `{` |
+|    5 |  796 | `{` |
 |    - |  797 | `	CHAR zTemp[1024];` |
 |    - |  798 | `	DWORD n;` |
-|    4 |  799 | `	n = GetTempPathA(sizeof(zTemp),zTemp);` |
-|    4 |  800 | `	if( n < 1 ){` |
+|    5 |  799 | `	n = GetTempPathA(sizeof(zTemp),zTemp);` |
+|    5 |  800 | `	if( n < 1 ){` |
 |    - |  801 | `		/* Assume the default windows temp directory */` |
 |  ! 0 |  802 | `		ph7_result_string(pCtx,"C:\\Windows\\Temp",-1/*Compute length automatically*/);` |
 |  ! 0 |  803 | `	}else{` |
-|    4 |  804 | `		ph7_result_string(pCtx,zTemp,(int)n);` |
+|    5 |  804 | `		ph7_result_string(pCtx,zTemp,(int)n);` |
 |    - |  805 | `	}` |
-|    4 |  806 | `}` |
+|    5 |  806 | `}` |
 |    - |  807 | `/* unsigned int (*xProcessId)(void) */` |
 |    - |  808 | `static unsigned int WinVfs_ProcessId(void)` |
 |    2 |  809 | `{` |
@@ -981,7 +981,7 @@ Coverage: 569/710 lines (80.14%)
 |    - |  971 | `		/* Creates a new file, only if it does not already exist.` |
 |    - |  972 | `		* If the file exists, it fails.` |
 |    - |  973 | `		*/` |
-|  ! 0 |  974 | `		dwCreate = CREATE_NEW;` |
+|    3 |  974 | `		dwCreate = CREATE_NEW;` |
 |    5 |  975 | `	}else if( iOpenMode & PH7_IO_OPEN_TRUNC ){` |
 |    - |  976 | `		/* Opens a file and truncates it so that its size is zero bytes` |
 |    - |  977 | `		 * The file must exist.` |
@@ -996,7 +996,7 @@ Coverage: 569/710 lines (80.14%)
 |    5 |  986 | `		dwAccess \|= GENERIC_WRITE;` |
 |    5 |  987 | `	}else if( iOpenMode & PH7_IO_OPEN_WRONLY ){` |
 |    - |  988 | `		/* Write only access */` |
-|    1 |  989 | `		dwAccess = GENERIC_WRITE;` |
+|    3 |  989 | `		dwAccess = GENERIC_WRITE;` |
 |    - |  990 | `	}` |
 |    5 |  991 | `	if( iOpenMode & PH7_IO_OPEN_APPEND ){` |
 |    - |  992 | `		/* Append mode */` |
