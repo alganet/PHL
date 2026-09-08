@@ -417,7 +417,9 @@ static const struct VmBuiltinArity {
 	{ "lcfirst",                   1, 0 },
 	{ "ltrim",                     1, 1 },
 	{ "mb_check_encoding",         1, 0 },
+	{ "mb_chr",                    1, 1 },
 	{ "mb_convert_case",           2, 1 },
+	{ "mb_ord",                    1, 1 },
 	{ "mb_str_split",              1, 1 },
 	{ "mb_stripos",                2, 1 },
 	{ "mb_strlen",                 1, 1 },
@@ -2705,6 +2707,51 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
    "}"\
    "/* PH7 keeps no stat cache, so this is a no-op like php on a clean cache. */"\
    "function clearstatcache($clear_realpath_cache = false, $filename = ''){}"\
+   "/* php 8.4 mb_ucfirst/mb_lcfirst: case-map only the first multibyte char. */"\
+   "function mb_ucfirst($string, $encoding = null){"\
+   "  $string = (string)$string;"\
+   "  if( $string === '' ){ return ''; }"\
+   "  return mb_strtoupper(mb_substr($string, 0, 1)) . mb_substr($string, 1);"\
+   "}"\
+   "function mb_lcfirst($string, $encoding = null){"\
+   "  $string = (string)$string;"\
+   "  if( $string === '' ){ return ''; }"\
+   "  return mb_strtolower(mb_substr($string, 0, 1)) . mb_substr($string, 1);"\
+   "}"\
+   "/* php 8.4 mb_trim family: strip leading/trailing characters (whole"\
+   " * multibyte chars, NO range syntax), defaulting to php's Unicode"\
+   " * whitespace set. */"\
+   "function __phl_mb_ws(){"\
+   "  static $set = null;"\
+   "  if( $set === null ){"\
+   "    $set = array();"\
+   "    foreach( array(0x00,0x09,0x0A,0x0B,0x0C,0x0D,0x20,0x85,0xA0,0x1680,"\
+   "      0x180E,0x2000,0x2001,0x2002,0x2003,0x2004,0x2005,0x2006,0x2007,0x2008,"\
+   "      0x2009,0x200A,0x2028,0x2029,0x202F,0x205F,0x3000) as $cp ){"\
+   "      $set[mb_chr($cp)] = true;"\
+   "    }"\
+   "  }"\
+   "  return $set;"\
+   "}"\
+   "function __phl_mb_trim($string, $characters, $left, $right){"\
+   "  $string = (string)$string;"\
+   "  if( $string === '' ){ return ''; }"\
+   "  if( $characters === null ){"\
+   "    $set = __phl_mb_ws();"\
+   "  } else {"\
+   "    $set = array();"\
+   "    foreach( mb_str_split((string)$characters) as $c ){ $set[$c] = true; }"\
+   "  }"\
+   "  $chars = mb_str_split($string);"\
+   "  $n = count($chars);"\
+   "  $i = 0; $j = $n;"\
+   "  if( $left ){ while( $i < $j && isset($set[$chars[$i]]) ){ $i++; } }"\
+   "  if( $right ){ while( $j > $i && isset($set[$chars[$j - 1]]) ){ $j--; } }"\
+   "  return implode('', array_slice($chars, $i, $j - $i));"\
+   "}"\
+   "function mb_trim($string, $characters = null, $encoding = null){ return __phl_mb_trim($string, $characters, true, true); }"\
+   "function mb_ltrim($string, $characters = null, $encoding = null){ return __phl_mb_trim($string, $characters, true, false); }"\
+   "function mb_rtrim($string, $characters = null, $encoding = null){ return __phl_mb_trim($string, $characters, false, true); }"\
    "/* Creates a temporary file and returns its name */"\
    "function tempnam(string $zDir = sys_get_temp_dir() /* Symisc eXtension */,string $zPrefix = 'PH7')"\
    "{"\
@@ -3753,6 +3800,8 @@ static const struct VmBuiltinSig {
 	{ "lstat", "string $filename", "array|false" },
 	{ "ltrim", "string $string, string $characters = ?", "string" },
 	{ "max", "mixed $value, mixed ...$values = ?", "mixed" },
+	{ "mb_chr", "int $codepoint, ?string $encoding = NULL", "string|false" },
+	{ "mb_ord", "string $string, ?string $encoding = NULL", "int|false" },
 	{ "mb_strtolower", "string $string, ?string $encoding = NULL", "string" },
 	{ "mb_strtoupper", "string $string, ?string $encoding = NULL", "string" },
 	{ "md5", "string $string, bool $binary = false", "string" },

@@ -521,6 +521,58 @@ static int PH7_builtin_mb_strwidth(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 
+/* string|false mb_chr(int $codepoint, ?string $encoding = null) */
+static int PH7_builtin_mb_chr(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi64 cp;
+	unsigned char zOut[4];
+	sxu32 n;
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( MbEncodingArg(pCtx,nArg > 1 ? apArg[1] : 0,"mb_chr",2) < 0 ){
+		return PH7_OK;
+	}
+	cp = ph7_value_to_int64(apArg[0]);
+	/* php rejects negatives, code points past U+10FFFF and the UTF-16
+	 * surrogate range with FALSE. */
+	if( cp < 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	n = MbUtf8Encode((sxu32)cp,zOut);
+	ph7_result_string(pCtx,(const char *)zOut,(int)n);
+	return PH7_OK;
+}
+/* int|false mb_ord(string $string, ?string $encoding = null) */
+static int PH7_builtin_mb_ord(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zIn;
+	const unsigned char *z;
+	int nByte;
+	sxu32 cp,nLen;
+	if( MbEncodingArg(pCtx,nArg > 1 ? apArg[1] : 0,"mb_ord",2) < 0 ){
+		return PH7_OK;
+	}
+	zIn = ph7_value_to_string(apArg[0],&nByte);
+	if( nByte < 1 ){
+		/* php throws on an empty string rather than returning FALSE */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"mb_ord(): Argument #1 ($string) must not be empty");
+	}
+	z = (const unsigned char *)zIn;
+	cp = MbUtf8Decode(z,(sxu32)nByte,&nLen);
+	/* Reject a malformed first character (invalid lead / truncated / bad
+	 * continuation): MbUtf8Decode is byte-transparent, so a high byte that did
+	 * not form a valid sequence comes back with nLen == 1. */
+	if( nLen == 1 && z[0] >= 0x80 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_int64(pCtx,(sxi64)cp);
+	return PH7_OK;
+}
 /*
  * Install the mb_* functions (called from PH7_RegisterBuiltInFunction's
  * table in builtin.c via these PH7_PRIVATE symbols).
@@ -534,5 +586,7 @@ PH7_PRIVATE int PH7_builtin_mb_str_split_f(ph7_context *pCtx,int nArg,ph7_value 
 PH7_PRIVATE int PH7_builtin_mb_internal_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_internal_encoding(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_check_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_check_encoding(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_strwidth_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strwidth(pCtx,nArg,apArg); }
+PH7_PRIVATE int PH7_builtin_mb_chr_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_chr(pCtx,nArg,apArg); }
+PH7_PRIVATE int PH7_builtin_mb_ord_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_ord(pCtx,nArg,apArg); }
 
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
