@@ -2052,6 +2052,12 @@ static int PH7_builtin_strcmp(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_result_int(pCtx,res);
 	return PH7_OK;
 }
+#endif /* PH7_DISABLE_BUILTIN_FUNC */
+/*
+ * The natural-order comparison core lives OUTSIDE the PH7_DISABLE_BUILTIN_FUNC
+ * guard: hashmap.c's SORT_NATURAL path (always compiled) calls PH7_StrNatCmp, so
+ * it must exist in the tiny build too. [[tiny-build-disk-io-guard-fragility]]
+ */
 /*
  * Natural-order comparison core (Martin Pool's natcompare as adapted by php's
  * ext/standard/strnatcmp.c): digit runs compare numerically — the longer run
@@ -2087,7 +2093,7 @@ static int StrNatCompareLeft(const char **pa,const char *aEnd,const char **pb,co
 		(*pb)++;
 	}
 }
-static int StrNatCmpCore(const char *zA,int nA,const char *zB,int nB,int bFold)
+PH7_PRIVATE int PH7_StrNatCmp(const char *zA,int nA,const char *zB,int nB,int bFold)
 {
 	const char *a = zA,*aEnd = &zA[nA];
 	const char *b = zB,*bEnd = &zB[nB];
@@ -2115,6 +2121,7 @@ static int StrNatCmpCore(const char *zA,int nA,const char *zB,int nB,int bFold)
 		b++;
 	}
 }
+#ifndef PH7_DISABLE_BUILTIN_FUNC
 /*
  * int strnatcmp(string $string1, string $string2)
  * int strnatcasecmp(string $string1, string $string2)
@@ -2133,7 +2140,7 @@ static int PH7_builtin_strnatcmp(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	bFold = zFunc[sizeof("strnat")-1] == 'c'; /* strnatCasecmp */
 	z1 = ph7_value_to_string(apArg[0],&n1);
 	z2 = ph7_value_to_string(apArg[1],&n2);
-	ph7_result_int(pCtx,StrNatCmpCore(z1,n1,z2,n2,bFold));
+	ph7_result_int(pCtx,PH7_StrNatCmp(z1,n1,z2,n2,bFold));
 	return PH7_OK;
 }
 /*
