@@ -2413,6 +2413,61 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
    "function is_nan($v){ $v = (float)$v; return $v != $v; }"\
    "function is_infinite($v){ $v = (float)$v; return $v == INF || $v == -INF; }"\
    "function is_finite($v){ $v = (float)$v; return !is_nan($v) && !is_infinite($v); }"\
+   "/* php's version_compare: canonicalise (separators + digit/alpha boundaries all"\
+   " * become '.'), then compare parts with the special dev<alpha<beta<RC<#<pl ordering. */"\
+   "function __phl_vcanon($v){"\
+   "  $v = (string)$v; $len = strlen($v); $out = '';"\
+   "  for( $i = 0; $i < $len; $i++ ){"\
+   "   $c = $v[$i]; $rp = $i + 1 < $len ? $v[$i + 1] : '';"\
+   "   $cd = ($c >= '0' && $c <= '9');"\
+   "   $ca = $cd || ($c >= 'a' && $c <= 'z') || ($c >= 'A' && $c <= 'Z');"\
+   "   if( !$ca ){"\
+   "    /* any non-alphanumeric (., -, _, +, ...) is a separator: emit one '.' */"\
+   "    if( $out !== '' && substr($out, -1) !== '.' ){ $out .= '.'; }"\
+   "   }else{"\
+   "    $out .= $c;"\
+   "    $rd = ($rp >= '0' && $rp <= '9');"\
+   "    $ra = $rd || ($rp >= 'a' && $rp <= 'z') || ($rp >= 'A' && $rp <= 'Z');"\
+   "    if( $rp !== '' && $ra && ($cd !== $rd) ){ $out .= '.'; }"\
+   "   }"\
+   "  }"\
+   "  return explode('.', $out);"\
+   "}"\
+   "function __phl_vform($s){"\
+   "  if( $s === '' ){ return -1; }"\
+   "  if( ctype_digit($s) ){ return 4; }"\
+   "  $f = array('dev' => 0, 'alpha' => 1, 'a' => 1, 'beta' => 2, 'b' => 2, 'RC' => 3, 'rc' => 3, 'pl' => 5, 'p' => 5);"\
+   "  foreach( $f as $name => $ord ){ if( strncmp($s, $name, strlen($name)) === 0 ){ return $ord; } }"\
+   "  return -1;"\
+   "}"\
+   "function version_compare($version1, $version2, $operator = null){"\
+   "  $v1 = __phl_vcanon($version1); $v2 = __phl_vcanon($version2);"\
+   "  $n1 = count($v1); $n2 = count($v2); $n = $n1 > $n2 ? $n1 : $n2; $cmp = 0;"\
+   "  for( $i = 0; $i < $n; $i++ ){"\
+   "   $a = $i < $n1 ? $v1[$i] : null; $b = $i < $n2 ? $v2[$i] : null;"\
+   "   if( $a === null ){ $cmp = ctype_digit($b) ? -1 : (4 <=> __phl_vform($b)); }"\
+   "   elseif( $b === null ){ $cmp = ctype_digit($a) ? 1 : (__phl_vform($a) <=> 4); }"\
+   "   elseif( ctype_digit($a) && ctype_digit($b) ){ $cmp = (int)$a <=> (int)$b; }"\
+   "   else{ $cmp = __phl_vform($a) <=> __phl_vform($b); }"\
+   "   if( $cmp !== 0 ){ break; }"\
+   "  }"\
+   "  if( $operator === null ){ return $cmp; }"\
+   "  switch( (string)$operator ){"\
+   "   case '<': case 'lt': return $cmp < 0;"\
+   "   case '<=': case 'le': return $cmp <= 0;"\
+   "   case '>': case 'gt': return $cmp > 0;"\
+   "   case '>=': case 'ge': return $cmp >= 0;"\
+   "   case '==': case '=': case 'eq': return $cmp === 0;"\
+   "   case '!=': case '<>': case 'ne': return $cmp !== 0;"\
+   "  }"\
+   "  return null;"\
+   "}"\
+   "function extension_loaded($name){"\
+   "  static $ext = array('core' => 1, 'standard' => 1, 'pcre' => 1, 'json' => 1,"\
+   "   'ctype' => 1, 'date' => 1, 'spl' => 1, 'reflection' => 1, 'mbstring' => 1,"\
+   "   'hash' => 1, 'filter' => 1, 'session' => 1, 'libxml' => 1, 'xml' => 1);"\
+   "  return isset($ext[strtolower((string)$name)]);"\
+   "}"\
    "/* Inverse of bin2hex() */"\
    "function hex2bin($str){"\
    "  $str = (string)$str;"\
