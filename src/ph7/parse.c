@@ -2137,6 +2137,30 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				 apNode[iLeft] = pSuppress->pLeft;
 			 }
 			 if( ExprIsModifiableValue(apNode[iLeft],FALSE) == FALSE ){
+				 /* php binds `A op $lv = B` as `A op ($lv = B)`: assignment takes the
+				  * immediate lvalue on its left, not the whole binary subtree. When the
+				  * left operand is a (non-lvalue) binary/comparison/logical subtree, walk
+				  * its right spine down to the deepest modifiable lvalue and reparent the
+				  * assignment there, leaving the binary operator as the outer node.
+				  * Covers the very common `while (false !== $p = strpos(...))` idiom. */
+				 if( pSuppress == 0 && apNode[iLeft]->pOp && apNode[iLeft]->pRight ){
+					 ph7_expr_node *pHost = apNode[iLeft];
+					 ph7_expr_node *pParent = pHost;
+					 while( pParent->pRight && pParent->pRight->pOp && pParent->pRight->pRight
+						 && ExprIsModifiableValue(pParent->pRight,FALSE) == FALSE ){
+						 pParent = pParent->pRight;
+					 }
+					 if( pParent->pRight && ExprIsModifiableValue(pParent->pRight,FALSE)
+						 && PH7_ExprContainsNullsafe(pParent->pRight) == 0 ){
+						 pNode->pLeft = apNode[iRight];   /* assignment RHS value */
+						 pNode->pRight = pParent->pRight; /* the extracted lvalue */
+						 pParent->pRight = pNode;         /* assignment becomes the op's right child */
+						 apNode[iCur] = pHost;            /* the binary subtree root is the result */
+						 apNode[iLeft] = apNode[iRight] = 0;
+						 iRight = iCur;
+						 continue;
+					 }
+				 }
 				 if( pNode->pOp->iVmOp != PH7_OP_STORE ||
 					 (apNode[iLeft]->xCode != PH7_CompileList && apNode[iLeft]->xCode != PH7_CompileShortList) ){
 					 /* Left operand must be a modifiable l-value */
