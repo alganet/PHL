@@ -3112,6 +3112,18 @@ static const char zDateTimeLib[] =
 "}"
 "function timezone_name_get($object){ return $object->getName(); }"
 "function timezone_offset_get($object, $datetime){ return $object->getOffset($datetime); }"
+/* int|false strtotime(string $datetime, ?int $baseTimestamp = null). Rides the
+ * same DtParse the DateTime constructor uses, so its format coverage is identical.
+ * php: the EMPTY string is false, but whitespace-only is 'now'; a parse failure is
+ * false (never an exception). The default timezone is treated as offset 0, exactly
+ * as the DateTime constructor does for a null $timezone. */
+"function strtotime($datetime, $baseTimestamp = null){"
+" $s = (string)$datetime;"
+" if( $s === '' ){ return false; }"
+" $base = $baseTimestamp === null ? __dt_now() : (int)$baseTimestamp;"
+" $r = __dt_parse($s, $base, 0);"
+" return is_string($r) ? false : $r[0];"
+"}"
 ;
 /*
  * Install the DateTime family: thunks first, then the chunk. Called from
