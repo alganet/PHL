@@ -2194,6 +2194,28 @@ static sxi32 HashmapScalarFlagCmp(ph7_value *pA,ph7_value *pB,int base,int bFold
 	return rc;
 }
 /*
+ * Are two live values equal under an array_unique() sort_flags? A non-mutating
+ * wrapper (works on private copies): base 0 = SORT_REGULAR loose comparison,
+ * explicit flags route through HashmapScalarFlagCmp. Used by array_unique.
+ */
+static int HashmapValueFlagEqual(ph7_vm *pVm,ph7_value *pA,ph7_value *pB,int base,int bFold)
+{
+	ph7_value sA,sB;
+	sxi32 rc;
+	PH7_MemObjInit(pVm,&sA);
+	PH7_MemObjInit(pVm,&sB);
+	PH7_MemObjStore(pA,&sA);
+	PH7_MemObjStore(pB,&sB);
+	if( base == 0 ){
+		rc = PH7_MemObjCmp(&sA,&sB,FALSE,0); /* SORT_REGULAR: loose comparison */
+	}else{
+		rc = HashmapScalarFlagCmp(&sA,&sB,base,bFold);
+	}
+	PH7_MemObjRelease(&sA);
+	PH7_MemObjRelease(&sB);
+	return rc == 0;
+}
+/*
  * Compare two node VALUES under php's sort_flags (base 0 = SORT_REGULAR uses the
  * standard value comparison; explicit flags route through HashmapScalarFlagCmp).
  */
@@ -6556,8 +6578,7 @@ static int ph7_hashmap_unique(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_value *pNeedle;
 	ph7_hashmap *pSrc;
 	ph7_value *pArray;
-	int bStrict;
-	sxi32 rc;
+	int iFlags,base,bFold;
 	sxu32 n;
 	if( nArg < 1 ){
 		/* Missing arguments, throw ArgumentCountError */
@@ -6583,7 +6604,11 @@ static int ph7_hashmap_unique(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			ph7_type_name(apArg[0])
 			);
 	}
-	bStrict = FALSE;
+	/* php's default is SORT_STRING (2): elements compare as strings. Explicit
+	 * flags select numeric / natural / case-insensitive comparison. */
+	iFlags = nArg > 1 ? ph7_value_to_int(apArg[1]) : 2 /* SORT_STRING */;
+	base = iFlags & ~8;
+	bFold = (iFlags & 8) != 0;
 	/* Point to the internal representation of the input hashmap */
 	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;
 	/* Create a new array */
@@ -6596,13 +6621,25 @@ static int ph7_hashmap_unique(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	pEntry = pSrc->pFirst;
 	for( n = 0 ; n < pSrc->nEntry ; n++ ){
 		pNeedle = HashmapExtractNodeValue(pEntry);
-		rc = SXERR_NOTFOUND;
 		if( pNeedle ){
-			rc = HashmapFindValue((ph7_hashmap *)pArray->x.pOther,pNeedle,0,bStrict);
-		}
-		if( rc != SXRET_OK ){
-			/* Perform the insertion */
-			HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);
+			/* Keep this element unless a flag-equal one is already present. */
+			ph7_hashmap *pKept = (ph7_hashmap *)pArray->x.pOther;
+			ph7_hashmap_node *pK = pKept->pFirst;
+			int bDup = 0;
+			sxu32 i;
+			/* Forward iteration in this map uses the pPrev link (see the outer
+			 * loop over pSrc). */
+			for( i = 0 ; i < pKept->nEntry && pK ; ++i ){
+				ph7_value *pV = HashmapExtractNodeValue(pK);
+				if( pV && HashmapValueFlagEqual(pCtx->pVm,pNeedle,pV,base,bFold) ){
+					bDup = 1;
+					break;
+				}
+				pK = pK->pPrev;
+			}
+			if( !bDup ){
+				HashmapInsertNode(pKept,pEntry,TRUE);
+			}
 		}
 		/* Point to the next entry */
 		pEntry = pEntry->pPrev; /* Reverse link */
