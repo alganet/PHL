@@ -4336,6 +4336,90 @@ PH7_PRIVATE sxi32 PH7_FormatValidate(ph7_context *pCtx,const char *zFormat,int n
 	return PH7_OK;
 }
 /*
+ * Count the number of VALUE arguments a format string needs: the greater of the
+ * sequential (non-positional) conversion count and the highest positional index
+ * (`%N$`). `%%` consumes nothing. Mirrors FormatUnknownSpec's specifier walk.
+ */
+static int FormatRequiredArgs(const char *zIn,int nByte)
+{
+	const char *zEnd = &zIn[nByte];
+	int c,seq = 0,maxpos = 0;
+	while( zIn < zEnd ){
+		int numVal = 0,pos = 0;
+		if( zIn[0] != '%' ){
+			zIn++;
+			continue;
+		}
+		zIn++; /* jump the percent sign */
+		/* leading flags (incl. the "'<pad>'" custom-pad form) */
+		while( zIn < zEnd ){
+			c = zIn[0];
+			if( c=='-' || c=='+' || c==' ' || c=='0' ){ zIn++; continue; }
+			if( c=='\'' ){ zIn++; if( zIn < zEnd ){ zIn++; } continue; }
+			break;
+		}
+		/* leading number: a positional index when a '$' follows, else the width */
+		while( zIn < zEnd && zIn[0]>='0' && zIn[0]<='9' ){
+			numVal = numVal*10 + (zIn[0]-'0');
+			zIn++;
+		}
+		if( zIn < zEnd && zIn[0]=='$' ){
+			pos = numVal;
+			zIn++;
+			/* flags then width may follow the positional marker */
+			while( zIn < zEnd ){
+				c = zIn[0];
+				if( c=='-' || c=='+' || c==' ' || c=='0' ){ zIn++; continue; }
+				if( c=='\'' ){ zIn++; if( zIn < zEnd ){ zIn++; } continue; }
+				break;
+			}
+			while( zIn < zEnd && zIn[0]>='0' && zIn[0]<='9' ){ zIn++; }
+		}
+		/* precision */
+		if( zIn < zEnd && zIn[0]=='.' ){
+			zIn++;
+			while( zIn < zEnd && zIn[0]>='0' && zIn[0]<='9' ){ zIn++; }
+		}
+		/* a single 'l' length modifier (ignored, php compat) */
+		if( zIn < zEnd && zIn[0]=='l' ){ zIn++; }
+		if( zIn >= zEnd ){ break; }
+		c = zIn[0];
+		zIn++; /* jump the conversion specifier */
+		if( c == '%' ){ continue; } /* %% consumes no argument */
+		if( pos > 0 ){
+			if( pos > maxpos ){ maxpos = pos; }
+		}else{
+			seq++;
+		}
+	}
+	return seq > maxpos ? seq : maxpos;
+}
+/*
+ * PHP 8: a printf-family call with fewer VALUE arguments than the format needs
+ * throws BEFORE any output. The non-vararg family (sprintf/printf/fprintf) raises
+ * ArgumentCountError counting the format itself ("N arguments are required, M
+ * given"); the vararg family (vsprintf/vprintf/vfprintf) raises a ValueError over
+ * the values array ("The arguments array must contain N items, M given"). nValues
+ * is the count of value arguments actually supplied; nFixed is the number of
+ * fixed leading parameters counted in the ArgumentCountError totals (1 for the
+ * $format of sprintf/printf, 2 for fprintf's $stream + $format — the vararg
+ * ValueError counts only the array, so nFixed is ignored there). Returns PH7_OK
+ * when enough.
+ */
+PH7_PRIVATE sxi32 PH7_FormatCheckArgCount(ph7_context *pCtx,const char *zFormat,int nByte,int nValues,int nFixed,int bVararg)
+{
+	int required = FormatRequiredArgs(zFormat,nByte);
+	if( nValues < required ){
+		if( bVararg ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"The arguments array must contain %d items, %d given",required,nValues);
+		}
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"%d arguments are required, %d given",required+nFixed,nValues+nFixed);
+	}
+	return PH7_OK;
+}
+/*
  * PHP 8: a printf-family `$format` argument is a `string` parameter — scalars
  * (int/float/bool) and null coerce to a string, but an array/object/resource
  * raises a catchable TypeError. iArg is the 1-based argument position ($format
@@ -4881,6 +4965,11 @@ static int PH7_builtin_sprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	if( rc != PH7_OK ){
 		return rc;
 	}
+	/* PHP 8: too few value arguments is a catchable ArgumentCountError before output. */
+	rc = PH7_FormatCheckArgCount(pCtx,zFormat,nLen,nArg-1,1,FALSE);
+	if( rc != PH7_OK ){
+		return rc;
+	}
 	/* Format the string; sprintfConsumer reports an allocation failure via &rc. */
 	PH7_InputFormat(sprintfConsumer,pCtx,zFormat,nLen,nArg,apArg,(void *)&rc,FALSE);
 	if( rc != SXRET_OK ){
@@ -4942,6 +5031,11 @@ static int PH7_builtin_printf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( rcv != PH7_OK ){
 			return rcv;
 		}
+		/* PHP 8: too few value arguments is a catchable ArgumentCountError before output. */
+		rcv = PH7_FormatCheckArgCount(pCtx,zFormat,nLen,nArg-1,1,FALSE);
+		if( rcv != PH7_OK ){
+			return rcv;
+		}
 	}
 	/* Format the string */
 	PH7_InputFormat(printfConsumer,pCtx,zFormat,nLen,nArg,apArg,(void *)&nCounter,FALSE);
@@ -4998,6 +5092,12 @@ static int PH7_builtin_vprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Point to the hashmap */
 	pMap = (ph7_hashmap *)apArg[1]->x.pOther;
+	/* PHP 8: too few items in the $values array is a catchable ValueError before output.
+	 * Checked on the entry count before materialising the value set. */
+	rcFmt = PH7_FormatCheckArgCount(pCtx,zFormat,nLen,(int)pMap->nEntry,1,TRUE);
+	if( rcFmt != PH7_OK ){
+		return rcFmt;
+	}
 	/* Extract arguments from the hashmap */
 	n = PH7_HashmapValuesToSet(pMap,&sArg);
 	/* Format the string */
@@ -5057,6 +5157,11 @@ static int PH7_builtin_vsprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Point to hashmap */
 	pMap = (ph7_hashmap *)apArg[1]->x.pOther;
+	/* PHP 8: too few items in the $values array is a catchable ValueError before output. */
+	rcFmt = PH7_FormatCheckArgCount(pCtx,zFormat,nLen,(int)pMap->nEntry,1,TRUE);
+	if( rcFmt != PH7_OK ){
+		return rcFmt;
+	}
 	/* Extract arguments from the hashmap */
 	n = PH7_HashmapValuesToSet(pMap,&sArg);
 	/* Format the string; sprintfConsumer reports an allocation failure via &rc. */
