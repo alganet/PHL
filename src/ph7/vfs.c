@@ -4699,6 +4699,12 @@ static int PH7_builtin_fprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( rcv != PH7_OK ){
 			return rcv;
 		}
+		/* PHP 8: too few value arguments is a catchable ArgumentCountError before output.
+		 * fprintf's values start at apArg[2] (apArg[0]=stream, apArg[1]=format). */
+		rcv = PH7_FormatCheckArgCount(pCtx,zFormat,nLen,nArg - 2,2,FALSE);
+		if( rcv != PH7_OK ){
+			return rcv;
+		}
 	}
 	/* Prepare our private data */
 	sFdata.nCount = 0;
@@ -4791,6 +4797,13 @@ static int PH7_builtin_vfprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Point to hashmap */
 	pMap = (ph7_hashmap *)apArg[2]->x.pOther;
+	/* PHP 8: too few items in the $values array is a catchable ValueError before output. */
+	{
+		sxi32 rcc = PH7_FormatCheckArgCount(pCtx,zFormat,nLen,(int)pMap->nEntry,1,TRUE);
+		if( rcc != PH7_OK ){
+			return rcc;
+		}
+	}
 	/* Extract arguments from the hashmap */
 	n = PH7_HashmapValuesToSet(pMap,&sArg);
 	/* Prepare our private data */
