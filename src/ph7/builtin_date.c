@@ -413,7 +413,7 @@ static const int aISO8601[] = { 7 /* Sunday */,1 /* Monday */,2,3,4,5,6 };
  *            east of UTC is always positive.
  * c         ISO 8601 date
  */
-static sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pTm)
+static sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pTm,int uSec)
 {
 	const char *zEnd = &zIn[nLen];
 	const char *zCur;
@@ -576,12 +576,13 @@ static sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pTm)
 			ph7_result_string_format(pCtx,"%02d",pTm->tm_sec);
 			break;
 		case 'u':
-			/* 	Microseconds (whole-second timestamps only: php pads zeros) */
-			ph7_result_string(pCtx,"000000",6);
+			/* 	Microseconds. date()/gmdate() have no sub-second part (uSec == 0);
+			 * 	DateTime::format passes its stored microseconds. */
+			ph7_result_string_format(pCtx,"%06d",uSec);
 			break;
 		case 'v':
-			/* 	Milliseconds (same) */
-			ph7_result_string(pCtx,"000",3);
+			/* 	Milliseconds */
+			ph7_result_string_format(pCtx,"%03d",uSec/1000);
 			break;
 		case 'S':{
 			/* English ordinal suffix for the day of the month, 2 characters */
@@ -1062,7 +1063,7 @@ PH7_PRIVATE int PH7_builtin_date(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		DtSytmFillOffset(&sTm,t);
 	}
 	/* Format the given string */
-	DateFormat(pCtx,zFormat,nLen,&sTm);
+	DateFormat(pCtx,zFormat,nLen,&sTm,0);
 	return PH7_OK;
 }
 /*
@@ -1198,7 +1199,7 @@ PH7_PRIVATE int PH7_builtin_gmdate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		DtSytmFillOffset(&sTm,t);
 	}
 	/* Format the given string */
-	DateFormat(pCtx,zFormat,nLen,&sTm);
+	DateFormat(pCtx,zFormat,nLen,&sTm,0);
 	return PH7_OK;
 }
 /*
@@ -1766,15 +1767,33 @@ static sxi64 DtAddMonths(sxi64 iTs,sxi32 iOff,sxi64 nMonths)
 	return DtDaysFromCivil(y,mo,d) * 86400 + secs - iOff;
 }
 /*
+ * Read a fractional-seconds part at z (which points at the '.'): up to 6 digits
+ * become microseconds (right-padded to 6, extra digits ignored). Advances *pz.
+ */
+static int DtReadFraction(const char **pz,const char *zEnd)
+{
+	const char *z = *pz;
+	int us = 0,n = 0;
+	z++; /* skip '.' */
+	while( z < zEnd && SyisDigit(z[0]) ){
+		if( n < 6 ){ us = us*10 + (z[0]-'0'); n++; }
+		z++;
+	}
+	while( n < 6 ){ us *= 10; n++; }
+	*pz = z;
+	return us;
+}
+/*
  * Parse an OPTIONAL time-of-day suffix after a date component:
  * "[( |T)]HH:MM[:SS][.frac][Z|±hh[:mm]]". On entry *pz points just past the date;
  * the h/mi/s outs must be pre-zeroed and the offset outs pre-seeded with the current
- * offset. Advances *pz over whatever it consumes. Returns 0 on success (whether or
+ * offset; *pUs receives the microseconds from a fractional part (unchanged when
+ * absent). Advances *pz over whatever it consumes. Returns 0 on success (whether or
  * not a time was present), or a 1-based error position into zIn (negative encodes
  * php's "Double time specification"). Shared by every absolute-date branch.
  */
 static int DtTimeSuffix(const char **pz,const char *zEnd,const char *zIn,
-	int *ph,int *pmi,int *ps,sxi32 *piOff,int *pbOffSet)
+	int *ph,int *pmi,int *ps,sxi32 *piOff,int *pbOffSet,int *pUs)
 {
 	const char *z = *pz;
 	if( z < zEnd && (z[0]=='T' || z[0]==' ') && zEnd-z >= 6
@@ -1793,9 +1812,8 @@ static int DtTimeSuffix(const char **pz,const char *zEnd,const char *zIn,
 			if( *ps > 59 ){ return (int)(&z[2] - zIn) + 1; }
 			z += 3;
 		}
-		if( z < zEnd && z[0]=='.' ){ /* fractional seconds: consume */
-			z++;
-			while( z < zEnd && SyisDigit(z[0]) ){ z++; }
+		if( z < zEnd && z[0]=='.' && zEnd-z >= 2 && SyisDigit(z[1]) ){ /* fractional seconds */
+			*pUs = DtReadFraction(&z,zEnd);
 		}
 		if( z < zEnd && (z[0]=='Z' || z[0]=='z') ){
 			*piOff = 0; *pbOffSet = 2; z++;
@@ -1845,11 +1863,11 @@ static int DtRead1or2(const char *z,const char *zEnd,int *pn)
  * shape matched but a component is out of range.
  */
 static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
-	sxi64 *pTs,sxi32 *pOff,int *pbOff,const char *zIn)
+	sxi64 *pTs,sxi32 *pOff,int *pbOff,const char *zIn,int *pUs)
 {
 	int a,b,c,na,nb,nc;
 	char sep;
-	int y,mo,d,h = 0,mi = 0,s = 0;
+	int y,mo,d,h = 0,mi = 0,s = 0,us = 0;
 	sxi32 iOff = *pOff;
 	int rcT;
 	/* first field: 1-4 digits */
@@ -1900,10 +1918,11 @@ static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
 	if( mo == 0 ){ mo = 12; y--; }
 	if( d > 31 ){ return (int)(z - zIn) + 1; }
 	/* optional time-of-day suffix, then commit */
-	rcT = DtTimeSuffix(&z,zEnd,zIn,&h,&mi,&s,&iOff,pbOff);
+	rcT = DtTimeSuffix(&z,zEnd,zIn,&h,&mi,&s,&iOff,pbOff,&us);
 	if( rcT != 0 ){ return rcT; }
 	*pTs = DtMakeTs(y,mo,d,h,mi,s,iOff);
 	*pOff = iOff;
+	*pUs = us;
 	*pzOut = z;
 	return 1;
 }
@@ -1973,11 +1992,11 @@ static int DtIsOrdinal(const char *z,const char *zEnd)
  * 1 on success, or a DtParse error code (out-of-range day).
  */
 static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
-	sxi64 *pTs,sxi32 *pOff,int *pbOff,const char *zIn,sxi64 iBaseTs)
+	sxi64 *pTs,sxi32 *pOff,int *pbOff,const char *zIn,sxi64 iBaseTs,int *pUs)
 {
 	int mo,d = 1,adv,haveDay = 0,haveYear = 0;
 	sxi64 y = 0;
-	int h = 0,mi = 0,s = 0;
+	int h = 0,mi = 0,s = 0,us = 0;
 	sxi32 iOff = *pOff;
 	int rcT;
 #define MDSKIPWS() while( z < zEnd && (z[0]==' '||z[0]=='\t'||z[0]==',') ){ z++; }
@@ -2032,7 +2051,7 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
 	}
 	if( d > 31 ){ return (int)(z - zIn) + 1; }
 	/* optional time-of-day suffix */
-	rcT = DtTimeSuffix(&z,zEnd,zIn,&h,&mi,&s,&iOff,pbOff);
+	rcT = DtTimeSuffix(&z,zEnd,zIn,&h,&mi,&s,&iOff,pbOff,&us);
 	if( rcT != 0 ){ return rcT; }
 	/* optional trailing UTC/GMT zone name (PHL's default zone is already UTC) */
 	MDSKIPWS();
@@ -2042,6 +2061,7 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
 	}
 	*pTs = DtMakeTs(y,mo,d,h,mi,s,iOff);
 	*pOff = iOff;
+	*pUs = us;
 	*pzOut = z;
 	return 1;
 #undef MDSKIPWS
@@ -2055,7 +2075,7 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
  * unparseable character +1 (for php's "at position N" message).
  */
 static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,
-	sxi64 *pTs,sxi32 *pOff,int *pbOffSet)
+	sxi64 *pTs,sxi32 *pOff,int *pbOffSet,int *pUs)
 {
 	const char *z = zIn, *zEnd = &zIn[nLen];
 	sxi64 iTs = iBaseTs;
@@ -2063,6 +2083,8 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,
 	int bOffSet = 0;
 	int bAny = 0;
 	int iNumRc,iMonRc;
+	int uSec = 0;
+	*pUs = 0;
 #define DT_SKIP_WS() while( z < zEnd && (z[0]==' '||z[0]=='\t'||z[0]==',') ){ z++; }
 #define DT_LOWEQ(zKw,nKw) (zEnd-z >= (nKw) && SyStrnicmp(z,zKw,nKw) == 0 \
 	&& (zEnd-z == (nKw) || !SyisAlpha(z[(nKw)])))
@@ -2084,6 +2106,10 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,
 		/* php's lexer rejects the whole token: the error points at the '@' */
 		if( z >= zEnd || !SyisDigit(z[0]) ){ return (int)(zAt - zIn) + 1; }
 		while( z < zEnd && SyisDigit(z[0]) ){ v = v*10 + (z[0]-'0'); z++; }
+		/* php accepts a fractional epoch ("@1600000000.5" -> .5s = 500000us) */
+		if( z < zEnd && z[0]=='.' && zEnd-z >= 2 && SyisDigit(z[1]) ){
+			*pUs = DtReadFraction(&z,zEnd);
+		}
 		*pTs = neg ? -v : v;
 		*pOff = 0;
 		*pbOffSet = 1;
@@ -2109,13 +2135,13 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,
 		if( mo == 0 ){ mo = 12; y--; }
 		z += 10;
 		{
-			int rcT = DtTimeSuffix(&z,zEnd,zIn,&h,&mi,&s,&iOff,&bOffSet);
+			int rcT = DtTimeSuffix(&z,zEnd,zIn,&h,&mi,&s,&iOff,&bOffSet,&uSec);
 			if( rcT != 0 ){ return rcT; }
 		}
 		iTs = DtMakeTs(y,mo,d,h,mi,s,iOff);
 		bAny = 1;
 	}else if( SyisDigit(z[0])
-	 && (iNumRc = DtTryNumericDate(z,zEnd,&z,&iTs,&iOff,&bOffSet,zIn)) != 0 ){
+	 && (iNumRc = DtTryNumericDate(z,zEnd,&z,&iTs,&iOff,&bOffSet,zIn,&uSec)) != 0 ){
 		/* DD-MM-YYYY / DD.MM.YYYY (day first), MM/DD/YYYY (slash, American), and
 		 * YYYY/MM/DD (slash, year first) — see DtTryNumericDate. Anything other than
 		 * 1 is an error code in DtParse's own convention (positive position / negative
@@ -2123,7 +2149,7 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,
 		if( iNumRc != 1 ){ return iNumRc; }
 		bAny = 1;
 	}else if( (SyisAlpha(z[0]) || SyisDigit(z[0]))
-	 && (iMonRc = DtTryMonthDate(z,zEnd,&z,&iTs,&iOff,&bOffSet,zIn,iBaseTs)) != 0 ){
+	 && (iMonRc = DtTryMonthDate(z,zEnd,&z,&iTs,&iOff,&bOffSet,zIn,iBaseTs,&uSec)) != 0 ){
 		/* MonthName Day Year / Day MonthName Year, in any of php's spellings. As with
 		 * DtTryNumericDate, anything other than 1 is an error code to propagate. */
 		if( iMonRc != 1 ){ return iMonRc; }
@@ -2365,6 +2391,7 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,
 	*pTs = iTs;
 	*pOff = iOff;
 	*pbOffSet = bOffSet;
+	*pUs = uSec;
 	return 0;
 #undef DT_SKIP_WS
 #undef DT_LOWEQ
@@ -2389,6 +2416,7 @@ static int vm_builtin_dt_parse(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	sxi64 iTs = 0;
 	sxi32 iOff = 0;
 	int bOffSet = 0;
+	int uSec = 0;
 	int iErrPos;
 	if( nArg < 3 ){
 		ph7_result_bool(pCtx,0);
@@ -2397,7 +2425,7 @@ static int vm_builtin_dt_parse(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	zIn = ph7_value_to_string(apArg[0],&nLen);
 	iBaseTs  = ph7_value_to_int64(apArg[1]);
 	iBaseOff = (sxi32)ph7_value_to_int64(apArg[2]);
-	iErrPos = DtParse(zIn,nLen,iBaseTs,iBaseOff,&iTs,&iOff,&bOffSet);
+	iErrPos = DtParse(zIn,nLen,iBaseTs,iBaseOff,&iTs,&iOff,&bOffSet,&uSec);
 	if( iErrPos != 0 ){
 		/* Negative encoding: php's "Double time specification" reason */
 		int bDouble = iErrPos < 0;
@@ -2428,6 +2456,9 @@ static int vm_builtin_dt_parse(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		 * 2 = literal "Z" (php keeps the distinction in the zone name) */
 		ph7_value_int64(pV,bOffSet);
 		ph7_array_add_elem(pArr,0,pV);
+		/* [3] = microseconds parsed from a fractional-seconds part (0 when absent) */
+		ph7_value_int64(pV,uSec);
+		ph7_array_add_elem(pArr,0,pV);
 		ph7_result_value(pCtx,pArr);
 	}
 	return PH7_OK;
@@ -2440,14 +2471,14 @@ static int vm_builtin_dt_default_tz(ph7_context *pCtx,int nArg,ph7_value **apArg
 	ph7_result_string(pCtx,pCtx->pVm->zDefTz,(int)pCtx->pVm->nDefTz);
 	return PH7_OK;
 }
-/* string __dt_format(int $ts, int $off, string $tzname, string $format) */
+/* string __dt_format(int $ts, int $off, string $tzname, string $format, int $us = 0) */
 static int vm_builtin_dt_format(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	Sytm sTm;
 	sxi64 iTs;
 	sxi32 iOff;
 	const char *zName,*zFmt;
-	int nName,nFmt;
+	int nName,nFmt,uSec = 0;
 	char zZone[64];
 	if( nArg < 4 ){
 		ph7_result_bool(pCtx,0);
@@ -2457,11 +2488,12 @@ static int vm_builtin_dt_format(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	iOff = (sxi32)ph7_value_to_int64(apArg[1]);
 	zName = ph7_value_to_string(apArg[2],&nName);
 	zFmt  = ph7_value_to_string(apArg[3],&nFmt);
+	if( nArg > 4 ){ uSec = ph7_value_to_int(apArg[4]); }
 	if( nName >= (int)sizeof(zZone) ){ nName = (int)sizeof(zZone) - 1; }
 	SyMemcpy(zName,zZone,(sxu32)nName);
 	zZone[nName] = 0;
 	DtFillSytm(iTs,iOff,zZone,&sTm);
-	DateFormat(pCtx,zFmt,nFmt,&sTm);
+	DateFormat(pCtx,zFmt,nFmt,&sTm,uSec);
 	return PH7_OK;
 }
 /* int __dt_make(int y, int mo, int d, int h, int i, int s, int off) */
@@ -2682,6 +2714,7 @@ static int vm_builtin_dt_from_format(ph7_context *pCtx,int nArg,ph7_value **apAr
 	/* -1 == unset */
 	sxi64 y = -1,mo = -1,d = -1,h = -1,mi = -1,s = -1,h12 = -1,uVal = 0;
 	int iMeridiem = -1,bHasU = 0,bPipe = 0,bPlus = 0;
+	int uSecFF = 0,bHasUs = 0;
 	int iOffKind = 0;
 	sxi32 iOffVal = 0;
 	char zName[16];
@@ -2827,23 +2860,41 @@ static int vm_builtin_dt_from_format(ph7_context *pCtx,int nArg,ph7_value **apAr
 				}
 			}
 			break;
-		case 'u':
-			/* micro parsed then dropped: PHL keeps whole seconds (recorded) */
+		case 'u':{
+			/* Microseconds: the digits parsed are right-padded to 6 (".5" -> 500000). */
+			const char *zStart = z;
 			if( !DtEatDigits(&z,zInEnd,1,6,&v) ){
 				DT_FF_LOGERR((int)(z - zIn),"A six digit microsecond could not be found");
 				if( DtHuntDigits(&z,zInEnd,1,6,&v) < 0 ){
 					DT_FF_LOGERR(nIn,"A six digit microsecond could not be found");
+				}else{
+					zStart = z; /* HuntDigits repositioned; treat as freshly read */
 				}
 			}
+			{
+				int nd = (int)(z - zStart);
+				while( nd > 0 && nd < 6 ){ v *= 10; nd++; }
+				uSecFF = (int)v; bHasUs = 1;
+			}
 			break;
-		case 'v':
+				 }
+		case 'v':{
+			const char *zStart = z;
 			if( !DtEatDigits(&z,zInEnd,1,3,&v) ){
 				DT_FF_LOGERR((int)(z - zIn),"A three digit millisecond could not be found");
 				if( DtHuntDigits(&z,zInEnd,1,3,&v) < 0 ){
 					DT_FF_LOGERR(nIn,"A three digit millisecond could not be found");
+				}else{
+					zStart = z;
 				}
 			}
+			{
+				int nd = (int)(z - zStart);
+				while( nd > 0 && nd < 3 ){ v *= 10; nd++; }
+				uSecFF = (int)v * 1000; bHasUs = 1; /* ms -> us */
+			}
 			break;
+				 }
 		case 'a': case 'A':{
 			static const char *azMer[] = {"am","pm","a.m.","p.m."};
 			int k = DtEatName(&z,zInEnd,azMer,4);
@@ -3067,6 +3118,9 @@ parse_num_off:	{
 		ph7_value_int64(pV,iUseOff);       ph7_array_add_elem(pArr,0,pV);
 		ph7_value_int64(pV,iOffKind);      ph7_array_add_elem(pArr,0,pV);
 		ph7_value_string(pV,zName,-1);     ph7_array_add_elem(pArr,0,pV);
+		/* microseconds from a u/v token ride an associative key so they never
+		 * collide with the numeric [4+] trailing-warning pairs */
+		if( bHasUs ){ ph7_value_int64(pV,uSecFF); ph7_array_add_strkey_elem(pArr,"us",pV); }
 		{
 			int k;
 			for( k = 0 ; k < nWarn ; k++ ){
@@ -3140,6 +3194,7 @@ static const char zDateTimeLib[] =
 " private $__dtTs = 0;"
 " private $__dtOff = 0;"
 " private $__dtName = 'UTC';"
+" private $__dtUs = 0;"
 " private function __dtInit($datetime, $timezone){"
 "  $off = 0; $name = __dt_default_tz();"
 "  if( $timezone !== null ){"
@@ -3149,6 +3204,7 @@ static const char zDateTimeLib[] =
 "  $r = __dt_parse((string)$datetime, __dt_now(), $off);"
 "  if( is_string($r) ){ throw new DateMalformedStringException($r); }"
 "  $this->__dtTs = $r[0];"
+"  $this->__dtUs = $r[3];"
 "  if( $r[2] ){"
 "   $this->__dtOff = $r[1];"
 "   $this->__dtName = $r[2] === 2 ? 'Z' : $this->__dtOffName($r[1]);"
@@ -3162,7 +3218,7 @@ static const char zDateTimeLib[] =
 "  $a = $off < 0 ? -$off : $off;"
 "  return $s . sprintf('%02d:%02d', intdiv($a, 3600), intdiv($a % 3600, 60));"
 " }"
-" public function format($format){ return __dt_format($this->__dtTs, $this->__dtOff, $this->__dtName, (string)$format); }"
+" public function format($format){ return __dt_format($this->__dtTs, $this->__dtOff, $this->__dtName, (string)$format, $this->__dtUs); }"
 " public function getTimestamp(){ return $this->__dtTs; }"
 " public function getOffset(){ return $this->__dtOff; }"
 " public function getTimezone(){ return new DateTimeZone($this->__dtName); }"
@@ -3213,6 +3269,7 @@ static const char zDateTimeLib[] =
 "  }"
 "  $obj = new $class('@0');"
 "  $obj->__dtTs = $r[0];"
+"  $obj->__dtUs = $r['us'] ?? 0;"
 "  if( $r[2] === 0 ){ $obj->__dtOff = $off; $obj->__dtName = $name; }"
 "  elseif( $r[2] === 2 ){ $obj->__dtOff = 0; $obj->__dtName = 'Z'; }"
 "  elseif( $r[2] === 3 ){ $obj->__dtOff = $r[1]; $obj->__dtName = $r[3]; }"
@@ -3238,7 +3295,7 @@ static const char zDateTimeLib[] =
 "  $this->__dtTs = $r[0];"
 "  return $this;"
 " }"
-" public function setTimestamp($timestamp){ $this->__dtTs = (int)$timestamp; return $this; }"
+" public function setTimestamp($timestamp){ $this->__dtTs = (int)$timestamp; $this->__dtUs = 0; return $this; }"
 " public function setTimezone($timezone){"
 "  $this->__dtOff = $timezone->getOffset($this);"
 "  $this->__dtName = $timezone->getName();"
@@ -3250,6 +3307,7 @@ static const char zDateTimeLib[] =
 " }"
 " public function setTime($hour, $minute, $second = 0, $microsecond = 0){"
 "  $this->__dtTs = __dt_make((int)$this->format('Y'), (int)$this->format('n'), (int)$this->format('j'), $hour, $minute, $second, $this->__dtOff);"
+"  $this->__dtUs = (int)$microsecond;"
 "  return $this;"
 " }"
 " public function add($interval){ $this->__dtTs = $this->__dtAddTs($interval, 1); return $this; }"
@@ -3278,7 +3336,7 @@ static const char zDateTimeLib[] =
 "  $c->__dtTs = $r[0];"
 "  return $c;"
 " }"
-" public function setTimestamp($timestamp){ $c = clone $this; $c->__dtTs = (int)$timestamp; return $c; }"
+" public function setTimestamp($timestamp){ $c = clone $this; $c->__dtTs = (int)$timestamp; $c->__dtUs = 0; return $c; }"
 " public function setTimezone($timezone){"
 "  $c = clone $this;"
 "  $c->__dtOff = $timezone->getOffset($this);"
@@ -3293,6 +3351,7 @@ static const char zDateTimeLib[] =
 " public function setTime($hour, $minute, $second = 0, $microsecond = 0){"
 "  $c = clone $this;"
 "  $c->__dtTs = __dt_make((int)$this->format('Y'), (int)$this->format('n'), (int)$this->format('j'), $hour, $minute, $second, $this->__dtOff);"
+"  $c->__dtUs = (int)$microsecond;"
 "  return $c;"
 " }"
 " public function add($interval){ $c = clone $this; $c->__dtTs = $this->__dtAddTs($interval, 1); return $c; }"
