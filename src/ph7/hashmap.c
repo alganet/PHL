@@ -2147,52 +2147,71 @@ static sxi32 HashmapMergeSort(ph7_hashmap *pMap,ProcNodeCmp xCmp,void *pCmpData)
  * Node comparison callback.
  * used-by: [sort(),asort(),...]
  */
-static sxi32 HashmapCmpCallback1(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)
+/*
+ * Compare two node VALUES under php's sort_flags. The flag carries a base type
+ * in its low bits and the optional SORT_FLAG_CASE (8) modifier:
+ *   SORT_REGULAR 0 · SORT_NUMERIC 1 · SORT_STRING 2 · SORT_LOCALE_STRING 5 ·
+ *   SORT_NATURAL 6   (| SORT_FLAG_CASE for a case-insensitive string/natural sort)
+ * PHL has no locale tables, so SORT_LOCALE_STRING behaves like SORT_STRING.
+ */
+static sxi32 HashmapFlagValueCmp(ph7_hashmap_node *pA,ph7_hashmap_node *pB,sxi32 iFlags)
 {
 	ph7_value sA,sB;
-	sxi32 iFlags;
-	int rc;
-	if( pCmpData == 0 ){
-		/* Perform a standard comparison */
-		rc = HashmapNodeCmp(pA,pB,FALSE);
-		return rc;
+	int base = iFlags & ~8;      /* strip SORT_FLAG_CASE */
+	int bFold = (iFlags & 8) != 0;
+	sxi32 rc;
+	if( base == 0 ){
+		/* SORT_REGULAR */
+		return HashmapNodeCmp(pA,pB,FALSE);
 	}
-	iFlags = SX_PTR_TO_INT(pCmpData);
-	/* Duplicate node values */
 	PH7_MemObjInit(pA->pMap->pVm,&sA);
 	PH7_MemObjInit(pA->pMap->pVm,&sB);
 	PH7_HashmapExtractNodeValue(pA,&sA,FALSE);
 	PH7_HashmapExtractNodeValue(pB,&sB,FALSE);
-	if( iFlags == 5 ){
-		/* String cast */
+	if( base == 1 ){
+		/* SORT_NUMERIC */
+		PH7_MemObjToNumeric(&sA);
+		PH7_MemObjToNumeric(&sB);
+		rc = PH7_MemObjCmp(&sA,&sB,FALSE,0);
+	}else{
+		/* SORT_STRING (2) / SORT_LOCALE_STRING (5) / SORT_NATURAL (6) */
 		const char *zA,*zB;
-		sxu32 nA,nB,nMin;
-		if( (sA.iFlags & MEMOBJ_STRING) == 0 ){
-			PH7_MemObjToString(&sA);
-		}
-		if( (sB.iFlags & MEMOBJ_STRING) == 0 ){
-			PH7_MemObjToString(&sB);
-		}
-		/* Lexicographic string comparison to avoid numeric string coercion */
+		sxu32 nA,nB,nMin,i;
+		if( (sA.iFlags & MEMOBJ_STRING) == 0 ){ PH7_MemObjToString(&sA); }
+		if( (sB.iFlags & MEMOBJ_STRING) == 0 ){ PH7_MemObjToString(&sB); }
 		zA = (const char *)SyBlobData(&sA.sBlob);
 		zB = (const char *)SyBlobData(&sB.sBlob);
 		nA = SyBlobLength(&sA.sBlob);
 		nB = SyBlobLength(&sB.sBlob);
-		nMin = nA < nB ? nA : nB;
-		rc = SyMemcmp(zA,zB,nMin);
-		if( rc == 0 ){
-			if( nA < nB ) rc = -1;
-			else if( nA > nB ) rc = 1;
+		if( base == 6 ){
+			rc = PH7_StrNatCmp(zA,(int)nA,zB,(int)nB,bFold);
+		}else{
+			/* Lexicographic comparison (binary-safe), case-folded on request. */
+			nMin = nA < nB ? nA : nB;
+			rc = 0;
+			for( i = 0 ; i < nMin ; ++i ){
+				int ca = (unsigned char)zA[i];
+				int cb = (unsigned char)zB[i];
+				if( bFold ){ ca = SyToLower(ca); cb = SyToLower(cb); }
+				if( ca != cb ){ rc = ca < cb ? -1 : 1; break; }
+			}
+			if( rc == 0 ){
+				if( nA < nB ) rc = -1;
+				else if( nA > nB ) rc = 1;
+			}
 		}
-	}else{
-		/* Numeric cast */
-		PH7_MemObjToNumeric(&sA);
-		PH7_MemObjToNumeric(&sB);
-		rc = PH7_MemObjCmp(&sA,&sB,FALSE,0);
 	}
 	PH7_MemObjRelease(&sA);
 	PH7_MemObjRelease(&sB);
 	return rc;
+}
+static sxi32 HashmapCmpCallback1(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)
+{
+	if( pCmpData == 0 ){
+		/* SORT_REGULAR fast path */
+		return HashmapNodeCmp(pA,pB,FALSE);
+	}
+	return HashmapFlagValueCmp(pA,pB,SX_PTR_TO_INT(pCmpData));
 }
 /*
  * Shared key comparison for ksort()/krsort(): php 8 semantics. Two string
@@ -2282,50 +2301,11 @@ static sxi32 HashmapCmpCallback2(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void 
  */
 static sxi32 HashmapCmpCallback3(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)
 {
-	ph7_value sA,sB;
-	sxi32 iFlags;
-	int rc;
 	if( pCmpData == 0 ){
-		/* Perform a standard comparison */
-		rc = HashmapNodeCmp(pA,pB,FALSE);
-		return -rc;
+		/* SORT_REGULAR fast path, reversed */
+		return -HashmapNodeCmp(pA,pB,FALSE);
 	}
-	iFlags = SX_PTR_TO_INT(pCmpData);
-	/* Duplicate node values */
-	PH7_MemObjInit(pA->pMap->pVm,&sA);
-	PH7_MemObjInit(pA->pMap->pVm,&sB);
-	PH7_HashmapExtractNodeValue(pA,&sA,FALSE);
-	PH7_HashmapExtractNodeValue(pB,&sB,FALSE);
-	if( iFlags == 5 ){
-		/* String cast */
-		const char *zA,*zB;
-		sxu32 nA,nB,nMin;
-		if( (sA.iFlags & MEMOBJ_STRING) == 0 ){
-			PH7_MemObjToString(&sA);
-		}
-		if( (sB.iFlags & MEMOBJ_STRING) == 0 ){
-			PH7_MemObjToString(&sB);
-		}
-		/* Lexicographic string comparison to avoid numeric string coercion */
-		zA = (const char *)SyBlobData(&sA.sBlob);
-		zB = (const char *)SyBlobData(&sB.sBlob);
-		nA = SyBlobLength(&sA.sBlob);
-		nB = SyBlobLength(&sB.sBlob);
-		nMin = nA < nB ? nA : nB;
-		rc = SyMemcmp(zA,zB,nMin);
-		if( rc == 0 ){
-			if( nA < nB ) rc = -1;
-			else if( nA > nB ) rc = 1;
-		}
-	}else{
-		/* Numeric cast */
-		PH7_MemObjToNumeric(&sA);
-		PH7_MemObjToNumeric(&sB);
-		rc = PH7_MemObjCmp(&sA,&sB,FALSE,0);
-	}
-	PH7_MemObjRelease(&sA);
-	PH7_MemObjRelease(&sB);
-	return -rc;
+	return -HashmapFlagValueCmp(pA,pB,SX_PTR_TO_INT(pCmpData));
 }
 /*
  * Node comparison callback: Invoke an user-defined callback for the purpose of node comparison.
@@ -2520,9 +2500,6 @@ static int ph7_hashmap_sort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( nArg > 1 ){
 			/* Extract comparison flags */
 			iCmpFlags = ph7_value_to_int(apArg[1]);
-			if( iCmpFlags == 3 /* SORT_REGULAR */ ){
-				iCmpFlags = 0; /* Standard comparison */
-			}
 		}
 		/* Do the merge sort */
 		HashmapMergeSort(pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));
@@ -2574,9 +2551,6 @@ static int ph7_hashmap_asort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( nArg > 1 ){
 			/* Extract comparison flags */
 			iCmpFlags = ph7_value_to_int(apArg[1]);
-			if( iCmpFlags == 3 /* SORT_REGULAR */ ){
-				iCmpFlags = 0; /* Standard comparison */
-			}
 		}
 		/* Do the merge sort */
 		HashmapMergeSort(pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));
@@ -2630,9 +2604,6 @@ static int ph7_hashmap_arsort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( nArg > 1 ){
 			/* Extract comparison flags */
 			iCmpFlags = ph7_value_to_int(apArg[1]);
-			if( iCmpFlags == 3 /* SORT_REGULAR */ ){
-				iCmpFlags = 0; /* Standard comparison */
-			}
 		}
 		/* Do the merge sort */
 		HashmapMergeSort(pMap,HashmapCmpCallback3,SX_INT_TO_PTR(iCmpFlags));
@@ -2677,9 +2648,6 @@ static int ph7_hashmap_ksort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( nArg > 1 ){
 			/* Extract comparison flags */
 			iCmpFlags = ph7_value_to_int(apArg[1]);
-			if( iCmpFlags == 3 /* SORT_REGULAR */ ){
-				iCmpFlags = 0; /* Standard comparison */
-			}
 		}
 		/* Do the merge sort */
 		HashmapMergeSort(pMap,HashmapCmpCallback2,SX_INT_TO_PTR(iCmpFlags));
@@ -2724,9 +2692,6 @@ static int ph7_hashmap_krsort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( nArg > 1 ){
 			/* Extract comparison flags */
 			iCmpFlags = ph7_value_to_int(apArg[1]);
-			if( iCmpFlags == 3 /* SORT_REGULAR */ ){
-				iCmpFlags = 0; /* Standard comparison */
-			}
 		}
 		/* Do the merge sort */
 		HashmapMergeSort(pMap,HashmapCmpCallback5,SX_INT_TO_PTR(iCmpFlags));
@@ -2771,9 +2736,6 @@ static int ph7_hashmap_rsort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( nArg > 1 ){
 			/* Extract comparison flags */
 			iCmpFlags = ph7_value_to_int(apArg[1]);
-			if( iCmpFlags == 3 /* SORT_REGULAR */ ){
-				iCmpFlags = 0; /* Standard comparison */
-			}
 		}
 		/* Do the merge sort */
 		HashmapMergeSort(pMap,HashmapCmpCallback3,SX_INT_TO_PTR(iCmpFlags));

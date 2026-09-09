@@ -2459,6 +2459,9 @@ PH7_PRIVATE sxi32 PH7_CsvConsumer(const char *zToken,int nTokenLen,void *pUserDa
 PH7_PRIVATE sxi32 PH7_StripTagsFromString(ph7_context *pCtx,const char *zIn,int nByte,const char *zTaglist,int nTaglen);
 PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nByte,int bProcessSection);
 #endif /* PH7_DISABLE_BUILTIN_FUNC || PH7_DISABLE_DISK_IO */
+/* Natural-order compare: unguarded because hashmap.c's SORT_NATURAL path (always
+ * compiled) uses it, even in the tiny build. [[tiny-build-disk-io-guard-fragility]] */
+PH7_PRIVATE int PH7_StrNatCmp(const char *zA,int nA,const char *zB,int nB,int bFold);
 /* oo.c function prototypes */
 PH7_PRIVATE ph7_class * PH7_NewRawClass(ph7_vm *pVm,const SyString *pName,sxu32 nLine);
 PH7_PRIVATE ph7_class_attr * PH7_NewClassAttr(ph7_vm *pVm,const SyString *pName,sxu32 nLine,sxi32 iProtection,sxi32 iFlags);

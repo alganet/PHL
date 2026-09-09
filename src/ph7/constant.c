@@ -506,48 +506,51 @@ static void PH7_COUNT_RECURSIVE_Const(ph7_value *pVal,void *pUserData)
 	SXUNUSED(pUserData);
 }
 /*
- * SORT_ASC
- *  Expands 1.
+ * php's sort-flag constants. The VALUES must match php exactly: they are a
+ * public ABI (code passes literal ints, dumps them, and OR-combines the base
+ * type with SORT_FLAG_CASE). SORT_ASC/SORT_DESC are the array_multisort
+ * direction flags.
+ * SORT_REGULAR 0 · SORT_NUMERIC 1 · SORT_STRING 2 · SORT_DESC 3 · SORT_ASC 4 ·
+ * SORT_LOCALE_STRING 5 · SORT_NATURAL 6 · SORT_FLAG_CASE 8
  */
 static void PH7_SORT_ASC_Const(ph7_value *pVal,void *pUserData)
-{
-	ph7_value_int(pVal,1);
-	SXUNUSED(pUserData);
-}
-/*
- * SORT_DESC
- *  Expands 2.
- */
-static void PH7_SORT_DESC_Const(ph7_value *pVal,void *pUserData)
-{
-	ph7_value_int(pVal,2);
-	SXUNUSED(pUserData);
-}
-/*
- * SORT_REGULAR
- *  Expands 3.
- */
-static void PH7_SORT_REG_Const(ph7_value *pVal,void *pUserData)
-{
-	ph7_value_int(pVal,3);
-	SXUNUSED(pUserData);
-}
-/*
- * SORT_NUMERIC
- *  Expands 4.
- */
-static void PH7_SORT_NUMERIC_Const(ph7_value *pVal,void *pUserData)
 {
 	ph7_value_int(pVal,4);
 	SXUNUSED(pUserData);
 }
-/*
- * SORT_STRING
- *  Expands 5.
- */
+static void PH7_SORT_DESC_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,3);
+	SXUNUSED(pUserData);
+}
+static void PH7_SORT_REG_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,0);
+	SXUNUSED(pUserData);
+}
+static void PH7_SORT_NUMERIC_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,1);
+	SXUNUSED(pUserData);
+}
 static void PH7_SORT_STRING_Const(ph7_value *pVal,void *pUserData)
 {
+	ph7_value_int(pVal,2);
+	SXUNUSED(pUserData);
+}
+static void PH7_SORT_LOCALE_STRING_Const(ph7_value *pVal,void *pUserData)
+{
 	ph7_value_int(pVal,5);
+	SXUNUSED(pUserData);
+}
+static void PH7_SORT_NATURAL_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,6);
+	SXUNUSED(pUserData);
+}
+static void PH7_SORT_FLAG_CASE_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,8);
 	SXUNUSED(pUserData);
 }
 /*
@@ -2159,6 +2162,9 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"SORT_REGULAR",         PH7_SORT_REG_Const     },
 	{"SORT_NUMERIC",         PH7_SORT_NUMERIC_Const },
 	{"SORT_STRING",          PH7_SORT_STRING_Const  },
+	{"SORT_LOCALE_STRING",   PH7_SORT_LOCALE_STRING_Const },
+	{"SORT_NATURAL",         PH7_SORT_NATURAL_Const },
+	{"SORT_FLAG_CASE",       PH7_SORT_FLAG_CASE_Const },
 	{"PHP_ROUND_HALF_DOWN",  PH7_PHP_ROUND_HALF_DOWN_Const },
 	{"PHP_ROUND_HALF_EVEN",  PH7_PHP_ROUND_HALF_EVEN_Const },
 	{"PHP_ROUND_HALF_UP",    PH7_PHP_ROUND_HALF_UP_Const   },
