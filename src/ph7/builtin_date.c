@@ -3315,6 +3315,14 @@ static const char zDateTimeLib[] =
 "function date_create_immutable($datetime = 'now', $timezone = null){"
 " try { return new DateTimeImmutable($datetime, $timezone); } catch (Exception $e) { return false; }"
 "}"
+/* Procedural aliases of the createFromFormat statics: same (format, datetime,
+ * ?timezone) order, returning false on failure like php. */
+"function date_create_from_format($format, $datetime, $timezone = null){"
+" return DateTime::createFromFormat($format, $datetime, $timezone);"
+"}"
+"function date_create_immutable_from_format($format, $datetime, $timezone = null){"
+" return DateTimeImmutable::createFromFormat($format, $datetime, $timezone);"
+"}"
 "class DateInterval {"
 " public $y = 0;"
 " public $m = 0;"
