@@ -1908,6 +1908,124 @@ static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
 	return 1;
 }
 /*
+ * Match a month name at z (full name or its distinct 3-letter abbreviation, plus
+ * "sept"), case-insensitively and only at a word boundary. Returns the month 1-12
+ * and sets *pAdv to the bytes consumed, or 0 when no month name is present.
+ */
+static int DtMatchMonth(const char *z,const char *zEnd,int *pAdv)
+{
+	static const struct { const char *z; int n; int mo; } aM[] = {
+		{ "january",7,1 },{ "february",8,2 },{ "march",5,3 },{ "april",5,4 },
+		{ "june",4,6 },{ "july",4,7 },{ "august",6,8 },{ "september",9,9 },
+		{ "sept",4,9 },{ "october",7,10 },{ "november",8,11 },{ "december",8,12 },
+		{ "may",3,5 },
+		{ "jan",3,1 },{ "feb",3,2 },{ "mar",3,3 },{ "apr",3,4 },{ "jun",3,6 },
+		{ "jul",3,7 },{ "aug",3,8 },{ "sep",3,9 },{ "oct",3,10 },{ "nov",3,11 },
+		{ "dec",3,12 }
+	};
+	sxu32 i;
+	for( i = 0 ; i < SX_ARRAYSIZE(aM) ; ++i ){
+		int n = aM[i].n;
+		if( zEnd - z >= n && SyStrnicmp(z,aM[i].z,(sxu32)n) == 0
+		 && (zEnd - z == n || !SyisAlpha(z[n])) ){
+			*pAdv = n;
+			return aM[i].mo;
+		}
+	}
+	return 0;
+}
+/* True if z points at a two-letter English ordinal suffix (st/nd/rd/th). */
+static int DtIsOrdinal(const char *z,const char *zEnd)
+{
+	if( zEnd - z < 2 ){ return 0; }
+	return SyStrnicmp(z,"st",2) == 0 || SyStrnicmp(z,"nd",2) == 0
+		|| SyStrnicmp(z,"rd",2) == 0 || SyStrnicmp(z,"th",2) == 0;
+}
+/*
+ * Try to read a textual-month date at z, in either order:
+ *   MonthName [Day] [Year]   ("Jan 15 2020", "January", "January 2020")
+ *   Day MonthName [Year]     ("15 January 2020", "15th Jan")
+ * A missing day defaults to 1, a missing year to the base timestamp's year (php).
+ * Day may carry an ordinal suffix, fields may be comma-separated, month names are
+ * case-insensitive, and an optional time-of-day suffix + trailing UTC/GMT is
+ * consumed. Returns 0 (not a month date — caller falls through, *pzOut untouched),
+ * 1 on success, or a DtParse error code (out-of-range day).
+ */
+static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
+	sxi64 *pTs,sxi32 *pOff,int *pbOff,const char *zIn,sxi64 iBaseTs)
+{
+	int mo,d = 1,adv,haveDay = 0,haveYear = 0;
+	sxi64 y = 0;
+	int h = 0,mi = 0,s = 0;
+	sxi32 iOff = *pOff;
+	int rcT;
+#define MDSKIPWS() while( z < zEnd && (z[0]==' '||z[0]=='\t'||z[0]==',') ){ z++; }
+	if( (mo = DtMatchMonth(z,zEnd,&adv)) != 0 ){
+		/* MonthName [Day] [Year]. A 4-digit number here is the YEAR, not the day
+		 * ("January 2020" is month+year, day defaults); a 1-2 digit number is the day. */
+		z += adv;
+		MDSKIPWS();
+		if( z < zEnd && SyisDigit(z[0]) ){
+			int nrun = 0;
+			const char *zp = z;
+			while( zp < zEnd && SyisDigit(zp[0]) && nrun < 4 ){ zp++; nrun++; }
+			if( nrun < 4 ){
+				d = DtRead1or2(z,zEnd,&adv); z += adv;
+				if( DtIsOrdinal(z,zEnd) ){ z += 2; }
+				haveDay = 1;
+				MDSKIPWS();
+			}
+		}
+	}else if( SyisDigit(z[0]) ){
+		/* Day MonthName [Year] */
+		d = DtRead1or2(z,zEnd,&adv); z += adv;
+		if( DtIsOrdinal(z,zEnd) ){ z += 2; }
+		haveDay = 1;
+		MDSKIPWS();
+		if( (mo = DtMatchMonth(z,zEnd,&adv)) == 0 ){ return 0; }
+		z += adv;
+		MDSKIPWS();
+	}else{
+		return 0;
+	}
+	/* optional year */
+	if( z < zEnd && SyisDigit(z[0]) ){
+		int ny = 0;
+		y = 0;
+		while( z < zEnd && SyisDigit(z[0]) && ny < 4 ){ y = y*10 + (z[0]-'0'); z++; ny++; }
+		if( ny <= 2 ){
+			if( y >= 0 && y <= 69 ){ y += 2000; }
+			else if( y >= 70 && y <= 99 ){ y += 1900; }
+		}
+		haveYear = 1;
+	}
+	/* Default the unspecified fields from the base timestamp. php overlays: a
+	 * missing year takes the base year; a missing day is 1 when a year WAS given
+	 * ("January 2020" -> the 1st) but the base day when only the month was named
+	 * ("January" -> the base day). */
+	{
+		sxi64 by; int bm,bd;
+		DtCivilFromDays(DtFloorDiv(iBaseTs + *pOff,86400),&by,&bm,&bd);
+		if( !haveYear ){ y = by; }
+		if( !haveDay ){ d = haveYear ? 1 : bd; }
+	}
+	if( d > 31 ){ return (int)(z - zIn) + 1; }
+	/* optional time-of-day suffix */
+	rcT = DtTimeSuffix(&z,zEnd,zIn,&h,&mi,&s,&iOff,pbOff);
+	if( rcT != 0 ){ return rcT; }
+	/* optional trailing UTC/GMT zone name (PHL's default zone is already UTC) */
+	MDSKIPWS();
+	if( (zEnd-z >= 3 && SyStrnicmp(z,"utc",3) == 0 && (zEnd-z==3 || !SyisAlpha(z[3])))
+	 || (zEnd-z >= 3 && SyStrnicmp(z,"gmt",3) == 0 && (zEnd-z==3 || !SyisAlpha(z[3]))) ){
+		iOff = 0; z += 3;
+	}
+	*pTs = DtMakeTs(y,mo,d,h,mi,s,iOff);
+	*pOff = iOff;
+	*pzOut = z;
+	return 1;
+#undef MDSKIPWS
+}
+/*
  * Minimal php-datetime-string parser (slice 1): absolute forms
  * "now" | "@<ts>" | "YYYY-MM-DD[( |T)HH:MM[:SS]][Z|±HH[:MM]]" | "HH:MM[:SS]",
  * keywords today/midnight/noon/tomorrow/yesterday, and relative sequences
@@ -1923,7 +2041,7 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,
 	sxi32 iOff = iBaseOff;
 	int bOffSet = 0;
 	int bAny = 0;
-	int iNumRc;
+	int iNumRc,iMonRc;
 #define DT_SKIP_WS() while( z < zEnd && (z[0]==' '||z[0]=='\t'||z[0]==',') ){ z++; }
 #define DT_LOWEQ(zKw,nKw) (zEnd-z >= (nKw) && SyStrnicmp(z,zKw,nKw) == 0 \
 	&& (zEnd-z == (nKw) || !SyisAlpha(z[(nKw)])))
@@ -1982,6 +2100,12 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,
 		 * 1 is an error code in DtParse's own convention (positive position / negative
 		 * "double time"); propagate it verbatim. */
 		if( iNumRc != 1 ){ return iNumRc; }
+		bAny = 1;
+	}else if( (SyisAlpha(z[0]) || SyisDigit(z[0]))
+	 && (iMonRc = DtTryMonthDate(z,zEnd,&z,&iTs,&iOff,&bOffSet,zIn,iBaseTs)) != 0 ){
+		/* MonthName Day Year / Day MonthName Year, in any of php's spellings. As with
+		 * DtTryNumericDate, anything other than 1 is an error code to propagate. */
+		if( iMonRc != 1 ){ return iMonRc; }
 		bAny = 1;
 	}else if( zEnd-z >= 5 && SyisDigit(z[0]) && SyisDigit(z[1]) && z[2]==':'
 	 && SyisDigit(z[3]) && SyisDigit(z[4]) ){
