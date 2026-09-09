@@ -1204,7 +1204,7 @@ PH7_PRIVATE sxi32 PH7_TokenizePHP(const char *zInput,sxu32 nLen,sxu32 nLineStart
  * 3.  <? echo 'this is the simplest, an SGML processing instruction'; ?>
  *   <?= expression ?> This is a shortcut for "<? echo expression ?>"
  */
-PH7_PRIVATE sxi32 PH7_TokenizeRawText(const char *zInput,sxu32 nLen,SySet *pOut)
+PH7_PRIVATE sxi32 PH7_TokenizeRawText(const char *zInput,sxu32 nLen,SySet *pOut,sxu32 nBaseLine)
 {
 	const char *zEnd = &zInput[nLen];
 	const char *zIn  = zInput;
@@ -1215,8 +1215,9 @@ PH7_PRIVATE sxi32 PH7_TokenizeRawText(const char *zInput,sxu32 nLen,SySet *pOut)
 	sxu32 nLine;
 	sxi32 iNest;
 	sxi32 rc;
-	/* Tokenize the input into PHP tokens and raw tokens */
-	nLine = 1;
+	/* Tokenize the input into PHP tokens and raw tokens. nBaseLine is normally 1,
+	 * but 2 when a "#!" shebang line was stripped so error lines still match php. */
+	nLine = nBaseLine;
 	zCur = zCurEnd   = 0; /* Prevent compiler warning */
 	sToken.pUserData = 0;
 	iNest = 0;

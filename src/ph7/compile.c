@@ -13613,8 +13613,17 @@ static sxi32 GenStateEmitExprCode(
 				}
 			}
 			pInstr->iP1 = 0;
-			if( !isSpecial ){
-				pInstr->iP2 = (sxi32)GenStateNsQualifyName(pGen,(sxu32)pInstr->iP2,&pGen->hUseImports,0);
+			/* A leading `\` (NSSEP) makes the class name ABSOLUTE: it names the
+			 * global class, so it must NOT be re-qualified with the current namespace.
+			 * `\Closure::bind(...)` inside `namespace X` is Closure, not X\Closure.
+			 * (Multi-component `\A\B::m` already resolves absolutely because its
+			 * literal keeps a backslash; the single-component `\Closure` lost it.) */
+			{
+				int bAbsolute = (pNode->pLeft && pNode->pLeft->pStart
+					&& (pNode->pLeft->pStart->nType & PH7_TK_NSSEP));
+				if( !isSpecial && !bAbsolute ){
+					pInstr->iP2 = (sxi32)GenStateNsQualifyName(pGen,(sxu32)pInstr->iP2,&pGen->hUseImports,0);
+				}
 			}
 			/* Foo::class — resolve at compile time. The LOADC already holds the
 			 * namespace-qualified name. self/static/parent need runtime resolution. */
@@ -14742,9 +14751,25 @@ PH7_PRIVATE sxi32 PH7_CompileScript(
 	sxi8 bSavedStrictLocked;
 	SyToken *pSavedIn,*pSavedEnd;
 	sxi32 rc;
+	sxu32 nBaseLine = 1;
 	if( pScript->nByte < 1 ){
 		/* Nothing to compile */
 		return PH7_OK;
+	}
+	/* php skips a "#!" shebang on the first line of a CLI script: consume it
+	 * (including its newline) so it is not echoed as inline text, and bump the
+	 * base line to 2 so the code below still reports php-matching line numbers. */
+	if( pScript->nByte >= 2 && pScript->zString[0]=='#' && pScript->zString[1]=='!' ){
+		const char *z = pScript->zString;
+		const char *zEnd = &z[pScript->nByte];
+		while( z < zEnd && z[0] != '\n' ){ z++; }
+		if( z < zEnd ){ z++; } /* consume the newline too */
+		pScript->nByte -= (sxu32)(z - pScript->zString);
+		pScript->zString = z;
+		nBaseLine = 2;
+		if( pScript->nByte < 1 ){
+			return PH7_OK;
+		}
 	}
 	/* Each compiled file has its own strict_types scope. Save the outer
 	 * file's flags so include/require restore them on return. */
@@ -14781,7 +14806,7 @@ PH7_PRIVATE sxi32 PH7_CompileScript(
 	}else{
 		/* Tokenize raw text */
 		SySetAlloc(&aRawToken,32);
-		PH7_TokenizeRawText(pScript->zString,pScript->nByte,&aRawToken);
+		PH7_TokenizeRawText(pScript->zString,pScript->nByte,&aRawToken,nBaseLine);
 	}
 	/* Process high-level tokens */
 	pCodeGen->pRawIn = (SyToken *)SySetBasePtr(&aRawToken);
