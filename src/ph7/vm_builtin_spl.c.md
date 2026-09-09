@@ -1075,13 +1075,13 @@ Coverage: 56/73 lines (76.71%)
 |    - | 1065 | `"}"` |
 |    - | 1066 | `;` |
 |    - | 1067 |  |
-| 3812 | 1068 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)` |
+| 3816 | 1068 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)` |
 |    5 | 1069 | `{` |
-| 3817 | 1070 | `	ph7_create_function(&(*pVm),"__spl_deprecated",vm_builtin_spl_deprecated,0);` |
-| 3817 | 1071 | `	ph7_create_function(&(*pVm),"__weak_create",vm_builtin_weak_create,0);` |
-| 3817 | 1072 | `	ph7_create_function(&(*pVm),"__weak_get",vm_builtin_weak_get,0);` |
-| 3817 | 1073 | `	ph7_create_function(&(*pVm),"__weak_drop",vm_builtin_weak_drop,0);` |
-| 3817 | 1074 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zSplLib,sizeof(zSplLib)-1);` |
+| 3821 | 1070 | `	ph7_create_function(&(*pVm),"__spl_deprecated",vm_builtin_spl_deprecated,0);` |
+| 3821 | 1071 | `	ph7_create_function(&(*pVm),"__weak_create",vm_builtin_weak_create,0);` |
+| 3821 | 1072 | `	ph7_create_function(&(*pVm),"__weak_get",vm_builtin_weak_get,0);` |
+| 3821 | 1073 | `	ph7_create_function(&(*pVm),"__weak_drop",vm_builtin_weak_drop,0);` |
+| 3821 | 1074 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zSplLib,sizeof(zSplLib)-1);` |
 |    5 | 1075 | `}` |
 |    - | 1076 |  |
 |    - | 1077 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
