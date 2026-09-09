@@ -2218,6 +2218,71 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,
 			}
 			z = zSave; /* prefix did not introduce a weekday: rewind and try the rest */
 		}
+		/* "first|last day of (this|next|last month | MonthName [Year])": jump to the
+		 * first or last day of a target month. A this/next/last-month target keeps the
+		 * base time-of-day; an absolute MonthName [Year] target resets it to midnight
+		 * (php). */
+		if( DT_LOWEQ("first",5) || DT_LOWEQ("last",4) ){
+			const char *zSave = z;
+			int bFirst = (SyToLower((unsigned char)z[0]) == 'f');
+			z += bFirst ? 5 : 4;
+			DT_SKIP_WS();
+			if( DT_LOWEQ("day",3) ){
+				z += 3;
+				DT_SKIP_WS();
+				if( DT_LOWEQ("of",2) ){
+					sxi64 days0 = DtFloorDiv(iTs + iOff,86400);
+					sxi64 yy,tod;
+					int mm,dd0,keepTime = 1,ok = 1;
+					z += 2;
+					DT_SKIP_WS();
+					DtCivilFromDays(days0,&yy,&mm,&dd0);
+					tod = (iTs + iOff) - days0*86400;
+					if( DT_LOWEQ("this",4) ){ z += 4; DT_SKIP_WS();
+						if( DT_LOWEQ("month",5) ){ z += 5; }else{ ok = 0; } }
+					else if( DT_LOWEQ("next",4) ){ z += 4; DT_SKIP_WS();
+						if( DT_LOWEQ("month",5) ){ z += 5; mm++; if(mm>12){ mm=1; yy++; } }else{ ok = 0; } }
+					else if( DT_LOWEQ("last",4) ){ z += 4; DT_SKIP_WS();
+						if( DT_LOWEQ("month",5) ){ z += 5; mm--; if(mm<1){ mm=12; yy--; } }else{ ok = 0; } }
+					else if( z < zEnd ){
+						int mo,adv;
+						mo = DtMatchMonth(z,zEnd,&adv);
+						if( mo == 0 ){ return (int)(z - zIn) + 1; }
+						z += adv; DT_SKIP_WS();
+						mm = mo; keepTime = 0; tod = 0;
+						if( z < zEnd && SyisDigit(z[0]) ){
+							int ny = 0; sxi64 yv = 0;
+							while( z < zEnd && SyisDigit(z[0]) && ny < 4 ){ yv = yv*10 + (z[0]-'0'); z++; ny++; }
+							if( ny <= 2 ){ if( yv <= 69 ){ yv += 2000; } else if( yv <= 99 ){ yv += 1900; } }
+							yy = yv;
+						}
+					}
+					/* else: "... day of" with nothing after — php defaults to this
+					 * month (mm/yy/tod stay the base, keepTime stays 1). */
+					if( ok ){
+						int dim = (int)(DtDaysFromCivil(yy,mm+1,1) - DtDaysFromCivil(yy,mm,1));
+						int day = bFirst ? 1 : dim;
+						iTs = DtDaysFromCivil(yy,mm,day)*86400 + (keepTime ? tod : 0) - iOff;
+						bAny = 1;
+						continue;
+					}
+				}
+			}
+			z = zSave; /* not the "first|last day of ..." shape: rewind */
+		}
+		/* Standalone month navigation: "this|next|last month" shifts the month,
+		 * keeping the day/time (php: "next month" is +1 month). Week navigation is a
+		 * recorded gap. */
+		{
+			const char *zSave = z;
+			if( DT_LOWEQ("next",4) ){ z += 4; DT_SKIP_WS();
+				if( DT_LOWEQ("month",5) ){ z += 5; iTs = DtAddMonths(iTs,iOff,1); bAny = 1; continue; } }
+			else if( DT_LOWEQ("last",4) ){ z += 4; DT_SKIP_WS();
+				if( DT_LOWEQ("month",5) ){ z += 5; iTs = DtAddMonths(iTs,iOff,-1); bAny = 1; continue; } }
+			else if( DT_LOWEQ("this",4) ){ z += 4; DT_SKIP_WS();
+				if( DT_LOWEQ("month",5) ){ z += 5; bAny = 1; continue; } }
+			z = zSave;
+		}
 		/* Trailing time-of-day in a relative sequence ("next thursday 15:00"): set
 		 * the clock on the current day. The leading absolute HH:MM branch handles a
 		 * time at the START; this handles one AFTER a date/relative token. */
