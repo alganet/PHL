@@ -4438,6 +4438,10 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 		/* Find out what flags are present */
 		flag_leftjustify = flag_plussign = flag_blanksign =
 			flag_alternateform = flag_zeropad = 0;
+		/* Reset the pad buffer to spaces: a custom pad char ('X) — or the string
+		 * zero-pad below — from a PREVIOUS specifier must not bleed into this one.
+		 * php resets the pad character for every specifier. */
+		for( idx = 0 ; idx < etSPACESIZE ; ++idx ){ spaces[idx] = ' '; }
 		zIn++; /* Jump the precent sign */
 		do{
 			c = zIn[0];
