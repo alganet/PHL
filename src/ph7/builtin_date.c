@@ -623,14 +623,10 @@ static sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pTm,int
 			break;
 				 }
 		case 'I':
-			/* Whether or not the date is in daylight saving time */
-#ifdef __WINNT__
-#ifdef _MSC_VER
-#ifndef _WIN32_WCE
-			_get_daylight(&pTm->tm_isdst);
-#endif
-#endif
-#endif
+			/* Whether or not the date is in daylight saving time. Use the
+			 * broken-down time's own tm_isdst (as every other platform does):
+			 * the old Windows _get_daylight() override reported whether the
+			 * timezone observes DST at all, not whether THIS date is in it. */
 			ph7_result_string_format(pCtx,"%d",pTm->tm_isdst == 1);
 			break;
 		case 'r':{
@@ -3220,6 +3216,7 @@ static const char zDateTimeLib[] =
 " }"
 " public function format($format){ return __dt_format($this->__dtTs, $this->__dtOff, $this->__dtName, (string)$format, $this->__dtUs); }"
 " public function getTimestamp(){ return $this->__dtTs; }"
+" public function getMicrosecond(){ return $this->__dtUs; }"
 " public function getOffset(){ return $this->__dtOff; }"
 " public function getTimezone(){ return new DateTimeZone($this->__dtName); }"
 " public function diff($targetObject, $absolute = false){"
@@ -3279,6 +3276,7 @@ static const char zDateTimeLib[] =
 " private static function __dtCopyOf($object, $class){"
 "  $d = new $class('@0');"
 "  $d->__dtTs = $object->getTimestamp();"
+"  $d->__dtUs = $object->getMicrosecond();"
 "  $d->__dtOff = $object->getOffset();"
 "  $d->__dtName = $object->getTimezone()->getName();"
 "  return $d;"
@@ -3296,6 +3294,7 @@ static const char zDateTimeLib[] =
 "  return $this;"
 " }"
 " public function setTimestamp($timestamp){ $this->__dtTs = (int)$timestamp; $this->__dtUs = 0; return $this; }"
+" public function setMicrosecond($microsecond){ $this->__dtUs = (int)$microsecond; return $this; }"
 " public function setTimezone($timezone){"
 "  $this->__dtOff = $timezone->getOffset($this);"
 "  $this->__dtName = $timezone->getName();"
@@ -3337,6 +3336,7 @@ static const char zDateTimeLib[] =
 "  return $c;"
 " }"
 " public function setTimestamp($timestamp){ $c = clone $this; $c->__dtTs = (int)$timestamp; $c->__dtUs = 0; return $c; }"
+" public function setMicrosecond($microsecond){ $c = clone $this; $c->__dtUs = (int)$microsecond; return $c; }"
 " public function setTimezone($timezone){"
 "  $c = clone $this;"
 "  $c->__dtOff = $timezone->getOffset($this);"
