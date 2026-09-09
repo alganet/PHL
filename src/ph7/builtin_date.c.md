@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 1439/1848 lines (77.87%)
+Coverage: 1488/1899 lines (78.36%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -1659,29 +1659,29 @@ Coverage: 1439/1848 lines (77.87%)
 |     - | 1649 | ` *  only UTC and GMT are accepted; every other id — including region names php` |
 |     - | 1650 | ` *  would accept — is rejected with php's invalid-id notice (recorded scope cut).` |
 |     - | 1651 | ` */` |
-|    14 | 1652 | `PH7_PRIVATE int PH7_builtin_date_default_timezone_set(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    16 | 1652 | `PH7_PRIVATE int PH7_builtin_date_default_timezone_set(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 | 1653 | `{` |
-|    15 | 1654 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    17 | 1654 | `	ph7_vm *pVm = pCtx->pVm;` |
 |     - | 1655 | `	const char *zId;` |
 |     - | 1656 | `	int nId;` |
-|    15 | 1657 | `	if( nArg < 1 ){` |
+|    17 | 1657 | `	if( nArg < 1 ){` |
 |   ! 0 | 1658 | `		ph7_result_bool(pCtx,0);` |
 |   ! 0 | 1659 | `		return PH7_OK;` |
 |     - | 1660 | `	}` |
-|    15 | 1661 | `	zId = ph7_value_to_string(apArg[0],&nId);` |
-|    15 | 1662 | `	if( nId == 3 && (SyStrnicmp(zId,"UTC",3) == 0 \|\| SyStrnicmp(zId,"GMT",3) == 0) ){` |
-|    15 | 1663 | `		SyMemcpy(zId,pVm->zDefTz,3);` |
-|    15 | 1664 | `		pVm->zDefTz[3] = 0;` |
-|    15 | 1665 | `		pVm->nDefTz = 3;` |
-|    15 | 1666 | `		ph7_result_bool(pCtx,1);` |
-|    15 | 1667 | `		return PH7_OK;` |
+|    17 | 1661 | `	zId = ph7_value_to_string(apArg[0],&nId);` |
+|    17 | 1662 | `	if( nId == 3 && (SyStrnicmp(zId,"UTC",3) == 0 \|\| SyStrnicmp(zId,"GMT",3) == 0) ){` |
+|    17 | 1663 | `		SyMemcpy(zId,pVm->zDefTz,3);` |
+|    17 | 1664 | `		pVm->zDefTz[3] = 0;` |
+|    17 | 1665 | `		pVm->nDefTz = 3;` |
+|    17 | 1666 | `		ph7_result_bool(pCtx,1);` |
+|    17 | 1667 | `		return PH7_OK;` |
 |     - | 1668 | `	}` |
 |     - | 1669 | `	/* ph7_context_throw_error_format prepends "date_default_timezone_set(): "` |
 |     - | 1670 | `	 * — exactly php's notice shape here */` |
 |   ! 0 | 1671 | `	ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,"Timezone ID '%.*s' is invalid",nId,zId);` |
 |   ! 0 | 1672 | `	ph7_result_bool(pCtx,0);` |
 |   ! 0 | 1673 | `	return PH7_OK;` |
-|     8 | 1674 | `}` |
+|     9 | 1674 | `}` |
 |     - | 1675 |  |
 |     - | 1676 | `/* ===========================================================================` |
 |     - | 1677 | ` * DateTime family (NEWPLAN band D slice 1): DateTimeInterface, DateTime,` |
@@ -1697,41 +1697,41 @@ Coverage: 1439/1848 lines (77.87%)
 |     - | 1687 | ` * algorithms): no time_t / libc dependence, correct far past 2038 and` |
 |     - | 1688 | ` * before 1970 on every platform. Day 0 == 1970-01-01.` |
 |     - | 1689 | ` */` |
-|   628 | 1690 | `static sxi64 DtDaysFromCivil(sxi64 y,int m,int d)` |
+|   722 | 1690 | `static sxi64 DtDaysFromCivil(sxi64 y,int m,int d)` |
 |     1 | 1691 | `{` |
 |     - | 1692 | `	sxi64 era;` |
 |     - | 1693 | `	unsigned yoe,doy,doe;` |
-|   629 | 1694 | `	y -= (m <= 2);` |
-|   629 | 1695 | `	era = (y >= 0 ? y : y - 399) / 400;` |
-|   629 | 1696 | `	yoe = (unsigned)(y - era * 400);` |
-|   629 | 1697 | `	doy = (unsigned)((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1);` |
-|   629 | 1698 | `	doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;` |
-|   629 | 1699 | `	return era * 146097 + (sxi64)doe - 719468;` |
+|   723 | 1694 | `	y -= (m <= 2);` |
+|   723 | 1695 | `	era = (y >= 0 ? y : y - 399) / 400;` |
+|   723 | 1696 | `	yoe = (unsigned)(y - era * 400);` |
+|   723 | 1697 | `	doy = (unsigned)((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1);` |
+|   723 | 1698 | `	doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;` |
+|   723 | 1699 | `	return era * 146097 + (sxi64)doe - 719468;` |
 |     1 | 1700 | `}` |
-|   310 | 1701 | `static void DtCivilFromDays(sxi64 z,sxi64 *py,int *pm,int *pd)` |
+|   344 | 1701 | `static void DtCivilFromDays(sxi64 z,sxi64 *py,int *pm,int *pd)` |
 |     1 | 1702 | `{` |
 |     - | 1703 | `	sxi64 era;` |
 |     - | 1704 | `	unsigned doe,yoe,doy,mp;` |
-|   311 | 1705 | `	z += 719468;` |
-|   311 | 1706 | `	era = (z >= 0 ? z : z - 146096) / 146097;` |
-|   311 | 1707 | `	doe = (unsigned)(z - era * 146097);` |
-|   311 | 1708 | `	yoe = (doe - doe/1460 + doe/36524 - doe/146096) / 365;` |
-|   311 | 1709 | `	*py = (sxi64)yoe + era * 400;` |
-|   311 | 1710 | `	doy = doe - (365 * yoe + yoe/4 - yoe/100);` |
-|   311 | 1711 | `	mp = (5 * doy + 2) / 153;` |
-|   311 | 1712 | `	*pd = (int)(doy - (153 * mp + 2) / 5 + 1);` |
-|   311 | 1713 | `	*pm = (int)(mp < 10 ? mp + 3 : mp - 9);` |
-|   311 | 1714 | `	if( *pm <= 2 ){` |
+|   345 | 1705 | `	z += 719468;` |
+|   345 | 1706 | `	era = (z >= 0 ? z : z - 146096) / 146097;` |
+|   345 | 1707 | `	doe = (unsigned)(z - era * 146097);` |
+|   345 | 1708 | `	yoe = (doe - doe/1460 + doe/36524 - doe/146096) / 365;` |
+|   345 | 1709 | `	*py = (sxi64)yoe + era * 400;` |
+|   345 | 1710 | `	doy = doe - (365 * yoe + yoe/4 - yoe/100);` |
+|   345 | 1711 | `	mp = (5 * doy + 2) / 153;` |
+|   345 | 1712 | `	*pd = (int)(doy - (153 * mp + 2) / 5 + 1);` |
+|   345 | 1713 | `	*pm = (int)(mp < 10 ? mp + 3 : mp - 9);` |
+|   345 | 1714 | `	if( *pm <= 2 ){` |
 |   157 | 1715 | `		*py += 1;` |
 |    78 | 1716 | `	}` |
-|   311 | 1717 | `}` |
-|   566 | 1718 | `static sxi64 DtFloorDiv(sxi64 a,sxi64 b)` |
+|   345 | 1717 | `}` |
+|   608 | 1718 | `static sxi64 DtFloorDiv(sxi64 a,sxi64 b)` |
 |     1 | 1719 | `{` |
-|   567 | 1720 | `	sxi64 q = a / b;` |
-|   567 | 1721 | `	if( (a % b) != 0 && ((a < 0) != (b < 0)) ){` |
+|   609 | 1720 | `	sxi64 q = a / b;` |
+|   609 | 1721 | `	if( (a % b) != 0 && ((a < 0) != (b < 0)) ){` |
 |     3 | 1722 | `		q--;` |
 |     1 | 1723 | `	}` |
-|   567 | 1724 | `	return q;` |
+|   609 | 1724 | `	return q;` |
 |     1 | 1725 | `}` |
 |     - | 1726 | `/* Timestamp + offset -> Sytm (with zone metadata for DateFormat's T/e/O/P/Z) */` |
 |   130 | 1727 | `static void DtFillSytm(sxi64 iTs,sxi32 iOff,char *zZone,Sytm *pTm)` |
@@ -1761,19 +1761,19 @@ Coverage: 1439/1848 lines (77.87%)
 |     - | 1751 | `/* Month-arithmetic with php's overflow semantics (Jan 31 +1 month -> Mar 2/3):` |
 |     - | 1752 | ` * normalize the month, keep the day — the civil day-count formula is linear in` |
 |     - | 1753 | ` * d, so an out-of-range day simply lands in the following month. */` |
-|    10 | 1754 | `static sxi64 DtAddMonths(sxi64 iTs,sxi32 iOff,sxi64 nMonths)` |
+|    14 | 1754 | `static sxi64 DtAddMonths(sxi64 iTs,sxi32 iOff,sxi64 nMonths)` |
 |     1 | 1755 | `{` |
-|    11 | 1756 | `	sxi64 t = iTs + iOff;` |
-|    11 | 1757 | `	sxi64 days = DtFloorDiv(t,86400);` |
-|    11 | 1758 | `	sxi64 secs = t - days * 86400;` |
+|    15 | 1756 | `	sxi64 t = iTs + iOff;` |
+|    15 | 1757 | `	sxi64 days = DtFloorDiv(t,86400);` |
+|    15 | 1758 | `	sxi64 secs = t - days * 86400;` |
 |     - | 1759 | `	sxi64 y;` |
 |     - | 1760 | `	int mo,d;` |
 |     - | 1761 | `	sxi64 m0;` |
-|    11 | 1762 | `	DtCivilFromDays(days,&y,&mo,&d);` |
-|    11 | 1763 | `	m0 = (y * 12 + (mo - 1)) + nMonths;` |
-|    11 | 1764 | `	y  = DtFloorDiv(m0,12);` |
-|    11 | 1765 | `	mo = (int)(m0 - y * 12) + 1;` |
-|    11 | 1766 | `	return DtDaysFromCivil(y,mo,d) * 86400 + secs - iOff;` |
+|    15 | 1762 | `	DtCivilFromDays(days,&y,&mo,&d);` |
+|    15 | 1763 | `	m0 = (y * 12 + (mo - 1)) + nMonths;` |
+|    15 | 1764 | `	y  = DtFloorDiv(m0,12);` |
+|    15 | 1765 | `	mo = (int)(m0 - y * 12) + 1;` |
+|    15 | 1766 | `	return DtDaysFromCivil(y,mo,d) * 86400 + secs - iOff;` |
 |     1 | 1767 | `}` |
 |     - | 1768 | `/*` |
 |     - | 1769 | ` * Parse an OPTIONAL time-of-day suffix after a date component:` |
@@ -1922,7 +1922,7 @@ Coverage: 1439/1848 lines (77.87%)
 |     - | 1912 | ` * "sept"), case-insensitively and only at a word boundary. Returns the month 1-12` |
 |     - | 1913 | ` * and sets *pAdv to the bytes consumed, or 0 when no month name is present.` |
 |     - | 1914 | ` */` |
-|   170 | 1915 | `static int DtMatchMonth(const char *z,const char *zEnd,int *pAdv)` |
+|   218 | 1915 | `static int DtMatchMonth(const char *z,const char *zEnd,int *pAdv)` |
 |     1 | 1916 | `{` |
 |     - | 1917 | `	static const struct { const char *z; int n; int mo; } aM[] = {` |
 |     - | 1918 | `		{ "january",7,1 },{ "february",8,2 },{ "march",5,3 },{ "april",5,4 },` |
@@ -1934,19 +1934,19 @@ Coverage: 1439/1848 lines (77.87%)
 |     - | 1924 | `		{ "dec",3,12 }` |
 |     - | 1925 | `	};` |
 |     - | 1926 | `	sxu32 i;` |
-|  3381 | 1927 | `	for( i = 0 ; i < SX_ARRAYSIZE(aM) ; ++i ){` |
-|  3261 | 1928 | `		int n = aM[i].n;` |
-|  3260 | 1929 | `		if( zEnd - z >= n && SyStrnicmp(z,aM[i].z,(sxu32)n) == 0` |
-|  1500 | 1930 | `		 && (zEnd - z == n \|\| !SyisAlpha(z[n])) ){` |
-|    51 | 1931 | `			*pAdv = n;` |
-|    51 | 1932 | `			return aM[i].mo;` |
+|  4355 | 1927 | `	for( i = 0 ; i < SX_ARRAYSIZE(aM) ; ++i ){` |
+|  4199 | 1928 | `		int n = aM[i].n;` |
+|  4198 | 1929 | `		if( zEnd - z >= n && SyStrnicmp(z,aM[i].z,(sxu32)n) == 0` |
+|  1970 | 1930 | `		 && (zEnd - z == n \|\| !SyisAlpha(z[n])) ){` |
+|    63 | 1931 | `			*pAdv = n;` |
+|    63 | 1932 | `			return aM[i].mo;` |
 |     - | 1933 | `		}` |
-|  1606 | 1934 | `	}` |
-|   121 | 1935 | `	return 0;` |
-|    86 | 1936 | `}` |
+|  2069 | 1934 | `	}` |
+|   157 | 1935 | `	return 0;` |
+|   110 | 1936 | `}` |
 |     - | 1937 | `/* Match a weekday name at z (full or 3-letter, case-insensitive, word boundary).` |
 |     - | 1938 | ` * Returns the day-of-week 0=Sunday..6=Saturday and sets *pAdv, or -1. */` |
-|    92 | 1939 | `static int DtMatchWeekday(const char *z,const char *zEnd,int *pAdv)` |
+|   130 | 1939 | `static int DtMatchWeekday(const char *z,const char *zEnd,int *pAdv)` |
 |     1 | 1940 | `{` |
 |     - | 1941 | `	static const struct { const char *z; int n; int dow; } aW[] = {` |
 |     - | 1942 | `		{ "sunday",6,0 },{ "monday",6,1 },{ "tuesday",7,2 },{ "wednesday",9,3 },` |
@@ -1955,16 +1955,16 @@ Coverage: 1439/1848 lines (77.87%)
 |     - | 1945 | `		{ "fri",3,5 },{ "sat",3,6 }` |
 |     - | 1946 | `	};` |
 |     - | 1947 | `	sxu32 i;` |
-|   935 | 1948 | `	for( i = 0 ; i < SX_ARRAYSIZE(aW) ; ++i ){` |
-|   887 | 1949 | `		int n = aW[i].n;` |
-|   886 | 1950 | `		if( zEnd - z >= n && SyStrnicmp(z,aW[i].z,(sxu32)n) == 0` |
-|   389 | 1951 | `		 && (zEnd - z == n \|\| !SyisAlpha(z[n])) ){` |
+|  1505 | 1948 | `	for( i = 0 ; i < SX_ARRAYSIZE(aW) ; ++i ){` |
+|  1419 | 1949 | `		int n = aW[i].n;` |
+|  1418 | 1950 | `		if( zEnd - z >= n && SyStrnicmp(z,aW[i].z,(sxu32)n) == 0` |
+|   626 | 1951 | `		 && (zEnd - z == n \|\| !SyisAlpha(z[n])) ){` |
 |    45 | 1952 | `			*pAdv = n;` |
 |    45 | 1953 | `			return aW[i].dow;` |
 |     - | 1954 | `		}` |
-|   422 | 1955 | `	}` |
-|    49 | 1956 | `	return -1;` |
-|    47 | 1957 | `}` |
+|   688 | 1955 | `	}` |
+|    87 | 1956 | `	return -1;` |
+|    66 | 1957 | `}` |
 |     - | 1958 | `/* True if z points at a two-letter English ordinal suffix (st/nd/rd/th). */` |
 |    62 | 1959 | `static int DtIsOrdinal(const char *z,const char *zEnd)` |
 |     1 | 1960 | `{` |
@@ -1982,16 +1982,16 @@ Coverage: 1439/1848 lines (77.87%)
 |     - | 1972 | ` * consumed. Returns 0 (not a month date — caller falls through, *pzOut untouched),` |
 |     - | 1973 | ` * 1 on success, or a DtParse error code (out-of-range day).` |
 |     - | 1974 | ` */` |
-|   134 | 1975 | `static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,` |
+|   170 | 1975 | `static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,` |
 |     - | 1976 | `	sxi64 *pTs,sxi32 *pOff,int *pbOff,const char *zIn,sxi64 iBaseTs)` |
 |     1 | 1977 | `{` |
-|   135 | 1978 | `	int mo,d = 1,adv,haveDay = 0,haveYear = 0;` |
-|   135 | 1979 | `	sxi64 y = 0;` |
-|   135 | 1980 | `	int h = 0,mi = 0,s = 0;` |
-|   135 | 1981 | `	sxi32 iOff = *pOff;` |
+|   171 | 1978 | `	int mo,d = 1,adv,haveDay = 0,haveYear = 0;` |
+|   171 | 1979 | `	sxi64 y = 0;` |
+|   171 | 1980 | `	int h = 0,mi = 0,s = 0;` |
+|   171 | 1981 | `	sxi32 iOff = *pOff;` |
 |     - | 1982 | `	int rcT;` |
 |     - | 1983 | `#define MDSKIPWS() while( z < zEnd && (z[0]==' '\|\|z[0]=='\t'\|\|z[0]==',') ){ z++; }` |
-|   135 | 1984 | `	if( (mo = DtMatchMonth(z,zEnd,&adv)) != 0 ){` |
+|   171 | 1984 | `	if( (mo = DtMatchMonth(z,zEnd,&adv)) != 0 ){` |
 |     - | 1985 | `		/* MonthName [Day] [Year]. A 4-digit number here is the YEAR, not the day` |
 |     - | 1986 | `		 * ("January 2020" is month+year, day defaults); a 1-2 digit number is the day. */` |
 |    31 | 1987 | `		z += adv;` |
@@ -2007,7 +2007,7 @@ Coverage: 1439/1848 lines (77.87%)
 |    68 | 1997 | `				MDSKIPWS();` |
 |    13 | 1998 | `			}` |
 |    16 | 1999 | `		}` |
-|   120 | 2000 | `	}else if( SyisDigit(z[0]) ){` |
+|   156 | 2000 | `	}else if( SyisDigit(z[0]) ){` |
 |     - | 2001 | `		/* Day MonthName [Year] */` |
 |    37 | 2002 | `		d = DtRead1or2(z,zEnd,&adv); z += adv;` |
 |    37 | 2003 | `		if( DtIsOrdinal(z,zEnd) ){ z += 2; }` |
@@ -2017,7 +2017,7 @@ Coverage: 1439/1848 lines (77.87%)
 |    21 | 2007 | `		z += adv;` |
 |    49 | 2008 | `		MDSKIPWS();` |
 |    11 | 2009 | `	}else{` |
-|    69 | 2010 | `		return 0;` |
+|   105 | 2010 | `		return 0;` |
 |     - | 2011 | `	}` |
 |     - | 2012 | `	/* optional year */` |
 |    51 | 2013 | `	if( z < zEnd && SyisDigit(z[0]) ){` |
@@ -2055,7 +2055,7 @@ Coverage: 1439/1848 lines (77.87%)
 |    51 | 2045 | `	*pzOut = z;` |
 |    51 | 2046 | `	return 1;` |
 |     - | 2047 | `#undef MDSKIPWS` |
-|    68 | 2048 | `}` |
+|    86 | 2048 | `}` |
 |     - | 2049 | `/*` |
 |     - | 2050 | ` * Minimal php-datetime-string parser (slice 1): absolute forms` |
 |     - | 2051 | ` * "now" \| "@<ts>" \| "YYYY-MM-DD[( \|T)HH:MM[:SS]][Z\|±HH[:MM]]" \| "HH:MM[:SS]",` |
@@ -2064,20 +2064,20 @@ Coverage: 1439/1848 lines (77.87%)
 |     - | 2054 | ` * success (ts/off/bOffSet out), or the byte position of the first` |
 |     - | 2055 | ` * unparseable character +1 (for php's "at position N" message).` |
 |     - | 2056 | ` */` |
-|   356 | 2057 | `static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,` |
+|   392 | 2057 | `static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,` |
 |     - | 2058 | `	sxi64 *pTs,sxi32 *pOff,int *pbOffSet)` |
 |     1 | 2059 | `{` |
-|   357 | 2060 | `	const char *z = zIn, *zEnd = &zIn[nLen];` |
-|   357 | 2061 | `	sxi64 iTs = iBaseTs;` |
-|   357 | 2062 | `	sxi32 iOff = iBaseOff;` |
-|   357 | 2063 | `	int bOffSet = 0;` |
-|   357 | 2064 | `	int bAny = 0;` |
+|   393 | 2060 | `	const char *z = zIn, *zEnd = &zIn[nLen];` |
+|   393 | 2061 | `	sxi64 iTs = iBaseTs;` |
+|   393 | 2062 | `	sxi32 iOff = iBaseOff;` |
+|   393 | 2063 | `	int bOffSet = 0;` |
+|   393 | 2064 | `	int bAny = 0;` |
 |     - | 2065 | `	int iNumRc,iMonRc;` |
 |     - | 2066 | `#define DT_SKIP_WS() while( z < zEnd && (z[0]==' '\|\|z[0]=='\t'\|\|z[0]==',') ){ z++; }` |
 |     - | 2067 | `#define DT_LOWEQ(zKw,nKw) (zEnd-z >= (nKw) && SyStrnicmp(z,zKw,nKw) == 0 \` |
 |     - | 2068 | `	&& (zEnd-z == (nKw) \|\| !SyisAlpha(z[(nKw)])))` |
-|   541 | 2069 | `	DT_SKIP_WS();` |
-|   357 | 2070 | `	if( z >= zEnd ){` |
+|   595 | 2069 | `	DT_SKIP_WS();` |
+|   393 | 2070 | `	if( z >= zEnd ){` |
 |     - | 2071 | `		/* php: the empty string is "now" */` |
 |     3 | 2072 | `		*pTs = iTs;` |
 |     3 | 2073 | `		*pOff = iOff;` |
@@ -2085,7 +2085,7 @@ Coverage: 1439/1848 lines (77.87%)
 |     3 | 2075 | `		return 0;` |
 |     - | 2076 | `	}` |
 |     - | 2077 | `	/* "@<seconds>" absolute epoch */` |
-|   355 | 2078 | `	if( z[0] == '@' ){` |
+|   391 | 2078 | `	if( z[0] == '@' ){` |
 |    63 | 2079 | `		int neg = 0;` |
 |    63 | 2080 | `		sxi64 v = 0;` |
 |    63 | 2081 | `		const char *zAt = z;` |
@@ -2101,7 +2101,7 @@ Coverage: 1439/1848 lines (77.87%)
 |    61 | 2091 | `		return (z < zEnd) ? (int)(z - zIn) + 1 : 0;` |
 |     - | 2092 | `	}` |
 |     - | 2093 | `	/* Absolute date: YYYY-MM-DD[...] */` |
-|   292 | 2094 | `	if( zEnd-z >= 10 && SyisDigit(z[0]) && SyisDigit(z[1]) && SyisDigit(z[2])` |
+|   328 | 2094 | `	if( zEnd-z >= 10 && SyisDigit(z[0]) && SyisDigit(z[1]) && SyisDigit(z[2])` |
 |   119 | 2095 | `	 && SyisDigit(z[3]) && z[4]=='-' ){` |
 |    83 | 2096 | `		sxi64 y = (z[0]-'0')*1000 + (z[1]-'0')*100 + (z[2]-'0')*10 + (z[3]-'0');` |
 |    83 | 2097 | `		int mo,d,h=0,mi=0,s=0;` |
@@ -2124,21 +2124,21 @@ Coverage: 1439/1848 lines (77.87%)
 |     - | 2114 | `		}` |
 |    67 | 2115 | `		iTs = DtMakeTs(y,mo,d,h,mi,s,iOff);` |
 |    67 | 2116 | `		bAny = 1;` |
-|   244 | 2117 | `	}else if( SyisDigit(z[0])` |
-|   151 | 2118 | `	 && (iNumRc = DtTryNumericDate(z,zEnd,&z,&iTs,&iOff,&bOffSet,zIn)) != 0 ){` |
+|   280 | 2117 | `	}else if( SyisDigit(z[0])` |
+|   169 | 2118 | `	 && (iNumRc = DtTryNumericDate(z,zEnd,&z,&iTs,&iOff,&bOffSet,zIn)) != 0 ){` |
 |     - | 2119 | `		/* DD-MM-YYYY / DD.MM.YYYY (day first), MM/DD/YYYY (slash, American), and` |
 |     - | 2120 | `		 * YYYY/MM/DD (slash, year first) — see DtTryNumericDate. Anything other than` |
 |     - | 2121 | `		 * 1 is an error code in DtParse's own convention (positive position / negative` |
 |     - | 2122 | `		 * "double time"); propagate it verbatim. */` |
 |    55 | 2123 | `		if( iNumRc != 1 ){ return iNumRc; }` |
 |    47 | 2124 | `		bAny = 1;` |
-|   180 | 2125 | `	}else if( (SyisAlpha(z[0]) \|\| SyisDigit(z[0]))` |
-|   146 | 2126 | `	 && (iMonRc = DtTryMonthDate(z,zEnd,&z,&iTs,&iOff,&bOffSet,zIn,iBaseTs)) != 0 ){` |
+|   216 | 2125 | `	}else if( (SyisAlpha(z[0]) \|\| SyisDigit(z[0]))` |
+|   182 | 2126 | `	 && (iMonRc = DtTryMonthDate(z,zEnd,&z,&iTs,&iOff,&bOffSet,zIn,iBaseTs)) != 0 ){` |
 |     - | 2127 | `		/* MonthName Day Year / Day MonthName Year, in any of php's spellings. As with` |
 |     - | 2128 | `		 * DtTryNumericDate, anything other than 1 is an error code to propagate. */` |
 |    51 | 2129 | `		if( iMonRc != 1 ){ return iMonRc; }` |
 |    51 | 2130 | `		bAny = 1;` |
-|   132 | 2131 | `	}else if( zEnd-z >= 5 && SyisDigit(z[0]) && SyisDigit(z[1]) && z[2]==':'` |
+|   168 | 2131 | `	}else if( zEnd-z >= 5 && SyisDigit(z[0]) && SyisDigit(z[1]) && z[2]==':'` |
 |    14 | 2132 | `	 && SyisDigit(z[3]) && SyisDigit(z[4]) ){` |
 |     - | 2133 | `		/* Time-only: HH:MM[:SS] on the base date */` |
 |    11 | 2134 | `		sxi64 t = iTs + iOff;` |
@@ -2158,38 +2158,38 @@ Coverage: 1439/1848 lines (77.87%)
 |     1 | 2148 | `		}` |
 |     5 | 2149 | `		iTs = days*86400 + (sxi64)h*3600 + (sxi64)mi*60 + s - iOff;` |
 |     5 | 2150 | `		bAny = 1;` |
-|    99 | 2151 | `	}else if( DT_LOWEQ("now",3) ){` |
+|   135 | 2151 | `	}else if( DT_LOWEQ("now",3) ){` |
 |     3 | 2152 | `		z += 3;` |
 |     3 | 2153 | `		bAny = 1;` |
 |     1 | 2154 | `	}` |
 |     - | 2155 | `	/* Relative / keyword sequence */` |
-|   131 | 2156 | `	for(;;){` |
-|   410 | 2157 | `		DT_SKIP_WS();` |
-|   347 | 2158 | `		if( z >= zEnd ){` |
-|   245 | 2159 | `			break;` |
+|   149 | 2156 | `	for(;;){` |
+|   512 | 2157 | `		DT_SKIP_WS();` |
+|   423 | 2158 | `		if( z >= zEnd ){` |
+|   281 | 2159 | `			break;` |
 |     - | 2160 | `		}` |
-|   103 | 2161 | `		if( DT_LOWEQ("today",5) \|\| DT_LOWEQ("midnight",8) ){` |
-|     5 | 2162 | `			sxi64 days = DtFloorDiv(iTs + iOff,86400);` |
-|     5 | 2163 | `			iTs = days*86400 - iOff;` |
-|     5 | 2164 | `			z += (SyToLower(z[0])=='t') ? 5 : 8;` |
-|     5 | 2165 | `			bAny = 1;` |
-|     5 | 2166 | `			continue;` |
+|   143 | 2161 | `		if( DT_LOWEQ("today",5) \|\| DT_LOWEQ("midnight",8) ){` |
+|     7 | 2162 | `			sxi64 days = DtFloorDiv(iTs + iOff,86400);` |
+|     7 | 2163 | `			iTs = days*86400 - iOff;` |
+|     7 | 2164 | `			z += (SyToLower(z[0])=='t') ? 5 : 8;` |
+|     7 | 2165 | `			bAny = 1;` |
+|     7 | 2166 | `			continue;` |
 |     - | 2167 | `		}` |
-|    99 | 2168 | `		if( DT_LOWEQ("noon",4) ){` |
+|   137 | 2168 | `		if( DT_LOWEQ("noon",4) ){` |
 |     3 | 2169 | `			sxi64 days = DtFloorDiv(iTs + iOff,86400);` |
 |     3 | 2170 | `			iTs = days*86400 + 12*3600 - iOff;` |
 |     3 | 2171 | `			z += 4;` |
 |     3 | 2172 | `			bAny = 1;` |
 |     3 | 2173 | `			continue;` |
 |     - | 2174 | `		}` |
-|    97 | 2175 | `		if( DT_LOWEQ("tomorrow",8) ){` |
+|   135 | 2175 | `		if( DT_LOWEQ("tomorrow",8) ){` |
 |     3 | 2176 | `			sxi64 days = DtFloorDiv(iTs + iOff,86400) + 1;` |
 |     3 | 2177 | `			iTs = days*86400 - iOff;` |
 |     3 | 2178 | `			z += 8;` |
 |     3 | 2179 | `			bAny = 1;` |
 |     3 | 2180 | `			continue;` |
 |     - | 2181 | `		}` |
-|    95 | 2182 | `		if( DT_LOWEQ("yesterday",9) ){` |
+|   133 | 2182 | `		if( DT_LOWEQ("yesterday",9) ){` |
 |     3 | 2183 | `			sxi64 days = DtFloorDiv(iTs + iOff,86400) - 1;` |
 |     3 | 2184 | `			iTs = days*86400 - iOff;` |
 |     3 | 2185 | `			z += 9;` |
@@ -2200,15 +2200,15 @@ Coverage: 1439/1848 lines (77.87%)
 |     - | 2190 | `		 * midnight of the target weekday. Bare/"this" = the this-week occurrence on` |
 |     - | 2191 | `		 * or after the base day; "next"/"last"/"previous" skip a matching base day. */` |
 |     - | 2192 | `		{` |
-|    93 | 2193 | `			const char *zSave = z;` |
-|    93 | 2194 | `			int dir = 0;         /* 0 = this-week occurrence, 1 = next, -1 = last */` |
+|   131 | 2193 | `			const char *zSave = z;` |
+|   131 | 2194 | `			int dir = 0;         /* 0 = this-week occurrence, 1 = next, -1 = last */` |
 |     - | 2195 | `			int adv,dow;` |
-|   114 | 2196 | `			if( DT_LOWEQ("next",4) ){ dir = 1; z += 4; DT_SKIP_WS(); }` |
-|    82 | 2197 | `			else if( DT_LOWEQ("previous",8) ){ dir = -1; z += 8; DT_SKIP_WS(); }` |
-|    92 | 2198 | `			else if( DT_LOWEQ("last",4) ){ dir = -1; z += 4; DT_SKIP_WS(); }` |
-|    70 | 2199 | `			else if( DT_LOWEQ("this",4) ){ dir = 0; z += 4; DT_SKIP_WS(); }` |
-|    93 | 2200 | `			dow = DtMatchWeekday(z,zEnd,&adv);` |
-|    93 | 2201 | `			if( dow >= 0 ){` |
+|   155 | 2196 | `			if( DT_LOWEQ("next",4) ){ dir = 1; z += 4; DT_SKIP_WS(); }` |
+|   118 | 2197 | `			else if( DT_LOWEQ("previous",8) ){ dir = -1; z += 8; DT_SKIP_WS(); }` |
+|   152 | 2198 | `			else if( DT_LOWEQ("last",4) ){ dir = -1; z += 4; DT_SKIP_WS(); }` |
+|    93 | 2199 | `			else if( DT_LOWEQ("this",4) ){ dir = 0; z += 4; DT_SKIP_WS(); }` |
+|   131 | 2200 | `			dow = DtMatchWeekday(z,zEnd,&adv);` |
+|   131 | 2201 | `			if( dow >= 0 ){` |
 |    45 | 2202 | `				sxi64 days = DtFloorDiv(iTs + iOff,86400);` |
 |    45 | 2203 | `				int bdow = (int)(((days + 4) % 7 + 7) % 7); /* 1970-01-01 was Thursday */` |
 |     - | 2204 | `				sxi64 delta;` |
@@ -2226,1267 +2226,1332 @@ Coverage: 1439/1848 lines (77.87%)
 |    45 | 2216 | `				bAny = 1;` |
 |    45 | 2217 | `				continue;` |
 |     - | 2218 | `			}` |
-|    49 | 2219 | `			z = zSave; /* prefix did not introduce a weekday: rewind and try the rest */` |
+|    87 | 2219 | `			z = zSave; /* prefix did not introduce a weekday: rewind and try the rest */` |
 |     - | 2220 | `		}` |
-|     - | 2221 | `		/* Trailing time-of-day in a relative sequence ("next thursday 15:00"): set` |
-|     - | 2222 | `		 * the clock on the current day. The leading absolute HH:MM branch handles a` |
-|     - | 2223 | `		 * time at the START; this handles one AFTER a date/relative token. */` |
-|    48 | 2224 | `		if( zEnd-z >= 5 && SyisDigit(z[0]) && SyisDigit(z[1]) && z[2]==':'` |
-|    10 | 2225 | `		 && SyisDigit(z[3]) && SyisDigit(z[4]) ){` |
-|     7 | 2226 | `			sxi64 days = DtFloorDiv(iTs + iOff,86400);` |
-|     7 | 2227 | `			int hh = (z[0]-'0')*10 + (z[1]-'0');` |
-|     7 | 2228 | `			int mm = (z[3]-'0')*10 + (z[4]-'0');` |
-|     7 | 2229 | `			int ss = 0;` |
-|     7 | 2230 | `			if( hh > 24 ){ return (int)(z - zIn) + 1; }` |
-|     7 | 2231 | `			if( mm > 59 ){ return (int)(&z[4] - zIn) + 1; }` |
-|     7 | 2232 | `			z += 5;` |
-|     7 | 2233 | `			if( z < zEnd && z[0]==':' && zEnd-z >= 3 && SyisDigit(z[1]) && SyisDigit(z[2]) ){` |
-|     5 | 2234 | `				ss = (z[1]-'0')*10 + (z[2]-'0');` |
-|     5 | 2235 | `				if( ss > 59 ){ return (int)(&z[2] - zIn) + 1; }` |
-|     5 | 2236 | `				z += 3;` |
-|     2 | 2237 | `			}` |
-|     7 | 2238 | `			iTs = days*86400 + (sxi64)hh*3600 + (sxi64)mm*60 + ss - iOff;` |
-|     7 | 2239 | `			bAny = 1;` |
-|     7 | 2240 | `			continue;` |
-|     - | 2241 | `		}` |
-|    43 | 2242 | `		if( SyisDigit(z[0]) \|\| z[0]=='+' \|\| z[0]=='-' ){` |
-|    31 | 2243 | `			int neg = 0;` |
-|    31 | 2244 | `			sxi64 v = 0;` |
-|    31 | 2245 | `			const char *zNumStart = z;` |
-|    31 | 2246 | `			if( z[0]=='+' \|\| z[0]=='-' ){ neg = (z[0]=='-'); z++; }` |
-|    31 | 2247 | `			if( z >= zEnd \|\| !SyisDigit(z[0]) ){ return (int)(zNumStart - zIn) + 1; }` |
-|    77 | 2248 | `			while( z < zEnd && SyisDigit(z[0]) ){ v = v*10 + (z[0]-'0'); z++; }` |
-|    31 | 2249 | `			if( neg ){ v = -v; }` |
-|    74 | 2250 | `			DT_SKIP_WS();` |
-|    31 | 2251 | `			if( DT_LOWEQ("seconds",7) )     { iTs += v;            z += 7; }` |
-|    31 | 2252 | `			else if( DT_LOWEQ("second",6) ) { iTs += v;            z += 6; }` |
-|    31 | 2253 | `			else if( DT_LOWEQ("secs",4) )   { iTs += v;            z += 4; }` |
-|    31 | 2254 | `			else if( DT_LOWEQ("sec",3) )    { iTs += v;            z += 3; }` |
-|    31 | 2255 | `			else if( DT_LOWEQ("minutes",7) ){ iTs += v*60;         z += 7; }` |
-|    29 | 2256 | `			else if( DT_LOWEQ("minute",6) ) { iTs += v*60;         z += 6; }` |
-|    29 | 2257 | `			else if( DT_LOWEQ("mins",4) )   { iTs += v*60;         z += 4; }` |
-|    29 | 2258 | `			else if( DT_LOWEQ("min",3) )    { iTs += v*60;         z += 3; }` |
-|    29 | 2259 | `			else if( DT_LOWEQ("hours",5) )  { iTs += v*3600;       z += 5; }` |
-|    27 | 2260 | `			else if( DT_LOWEQ("hour",4) )   { iTs += v*3600;       z += 4; }` |
-|    27 | 2261 | `			else if( DT_LOWEQ("days",4) )   { iTs += v*86400;      z += 4; }` |
-|    27 | 2262 | `			else if( DT_LOWEQ("day",3) )    { iTs += v*86400;      z += 3; }` |
-|    23 | 2263 | `			else if( DT_LOWEQ("weeks",5) )  { iTs += v*7*86400;    z += 5; }` |
-|    21 | 2264 | `			else if( DT_LOWEQ("week",4) )   { iTs += v*7*86400;    z += 4; }` |
-|    19 | 2265 | `			else if( DT_LOWEQ("fortnights",10) ){ iTs += v*14*86400; z += 10; }` |
-|    17 | 2266 | `			else if( DT_LOWEQ("fortnight",9) )  { iTs += v*14*86400; z += 9; }` |
-|    17 | 2267 | `			else if( DT_LOWEQ("months",6) ) { iTs = DtAddMonths(iTs,iOff,v); z += 6; }` |
-|    15 | 2268 | `			else if( DT_LOWEQ("month",5) )  { iTs = DtAddMonths(iTs,iOff,v); z += 5; }` |
-|     9 | 2269 | `			else if( DT_LOWEQ("years",5) )  { iTs = DtAddMonths(iTs,iOff,v*12); z += 5; }` |
-|     9 | 2270 | `			else if( DT_LOWEQ("year",4) )   { iTs = DtAddMonths(iTs,iOff,v*12); z += 4; }` |
-|     - | 2271 | `			else{` |
-|     7 | 2272 | `				return (int)(z - zIn) + 1;` |
-|     - | 2273 | `			}` |
-|    25 | 2274 | `			bAny = 1;` |
-|    25 | 2275 | `			continue;` |
-|     - | 2276 | `		}` |
-|    13 | 2277 | `		return (int)(z - zIn) + 1;` |
-|   ! 0 | 2278 | `	}` |
-|   245 | 2279 | `	if( !bAny ){` |
-|   ! 0 | 2280 | `		return 1;` |
-|     - | 2281 | `	}` |
-|   245 | 2282 | `	*pTs = iTs;` |
-|   245 | 2283 | `	*pOff = iOff;` |
-|   245 | 2284 | `	*pbOffSet = bOffSet;` |
-|   245 | 2285 | `	return 0;` |
-|     - | 2286 | `#undef DT_SKIP_WS` |
-|     - | 2287 | `#undef DT_LOWEQ` |
-|   179 | 2288 | `}` |
-|     - | 2289 | `/* int __dt_now() */` |
-|   180 | 2290 | `static int vm_builtin_dt_now(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 2291 | `{` |
-|    90 | 2292 | `	SXUNUSED(nArg);` |
-|    90 | 2293 | `	SXUNUSED(apArg);` |
-|   181 | 2294 | `	ph7_result_int64(pCtx,(ph7_int64)time(0));` |
-|   181 | 2295 | `	return PH7_OK;` |
-|     1 | 2296 | `}` |
-|     - | 2297 | `/* mixed __dt_parse(string $s, int $baseTs, int $baseOff)` |
-|     - | 2298 | ` *   -> [ts, off, offWasExplicit] on success; php's error MESSAGE string on` |
-|     - | 2299 | ` *      failure (the chunk wraps it in DateMalformedStringException). */` |
-|   356 | 2300 | `static int vm_builtin_dt_parse(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 2301 | `{` |
-|     - | 2302 | `	const char *zIn;` |
-|     - | 2303 | `	int nLen;` |
-|     - | 2304 | `	sxi64 iBaseTs;` |
-|     - | 2305 | `	sxi32 iBaseOff;` |
-|   357 | 2306 | `	sxi64 iTs = 0;` |
-|   357 | 2307 | `	sxi32 iOff = 0;` |
-|   357 | 2308 | `	int bOffSet = 0;` |
-|     - | 2309 | `	int iErrPos;` |
-|   357 | 2310 | `	if( nArg < 3 ){` |
-|   ! 0 | 2311 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 | 2312 | `		return PH7_OK;` |
-|     - | 2313 | `	}` |
-|   357 | 2314 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
-|   357 | 2315 | `	iBaseTs  = ph7_value_to_int64(apArg[1]);` |
-|   357 | 2316 | `	iBaseOff = (sxi32)ph7_value_to_int64(apArg[2]);` |
-|   357 | 2317 | `	iErrPos = DtParse(zIn,nLen,iBaseTs,iBaseOff,&iTs,&iOff,&bOffSet);` |
-|   357 | 2318 | `	if( iErrPos != 0 ){` |
-|     - | 2319 | `		/* Negative encoding: php's "Double time specification" reason */` |
-|    51 | 2320 | `		int bDouble = iErrPos < 0;` |
-|    51 | 2321 | `		int iPos = (bDouble ? -iErrPos : iErrPos) - 1;` |
-|    51 | 2322 | `		char cAt = (iPos < nLen) ? zIn[iPos] : ' ';` |
-|     - | 2323 | `		/* php appends a reason: an alphabetic token is assumed to be a timezone` |
-|     - | 2324 | `		 * lookup miss, anything else an unexpected character. */` |
-|   100 | 2325 | `		ph7_result_string_format(pCtx,` |
-|     - | 2326 | `			"Failed to parse time string (%.*s) at position %d (%c): %s",` |
-|    25 | 2327 | `			nLen,zIn,iPos,cAt,` |
-|    49 | 2328 | `			bDouble ? "Double time specification"` |
-|    48 | 2329 | `			: ((cAt >= 'a' && cAt <= 'z') \|\| (cAt >= 'A' && cAt <= 'Z'))` |
-|     - | 2330 | `				? "The timezone could not be found in the database"` |
-|    48 | 2331 | `				: "Unexpected character");` |
-|    51 | 2332 | `		return PH7_OK;` |
-|     - | 2333 | `	}` |
-|     - | 2334 | `	{` |
-|   307 | 2335 | `		ph7_value *pArr = ph7_context_new_array(pCtx);` |
-|   307 | 2336 | `		ph7_value *pV = ph7_context_new_scalar(pCtx);` |
-|   307 | 2337 | `		if( pArr == 0 \|\| pV == 0 ){` |
-|   ! 0 | 2338 | `			return PH7_ContextMemoryError(pCtx);` |
-|     - | 2339 | `		}` |
-|   307 | 2340 | `		ph7_value_int64(pV,iTs);` |
-|   307 | 2341 | `		ph7_array_add_elem(pArr,0,pV);` |
-|   307 | 2342 | `		ph7_value_int64(pV,iOff);` |
-|   307 | 2343 | `		ph7_array_add_elem(pArr,0,pV);` |
-|     - | 2344 | `		/* int, not bool: 0 = no explicit offset, 1 = numeric offset/@epoch,` |
-|     - | 2345 | `		 * 2 = literal "Z" (php keeps the distinction in the zone name) */` |
-|   307 | 2346 | `		ph7_value_int64(pV,bOffSet);` |
-|   307 | 2347 | `		ph7_array_add_elem(pArr,0,pV);` |
-|   307 | 2348 | `		ph7_result_value(pCtx,pArr);` |
-|     - | 2349 | `	}` |
-|   307 | 2350 | `	return PH7_OK;` |
-|   179 | 2351 | `}` |
-|     - | 2352 | `/* string __dt_default_tz(void) — the date_default_timezone_set() identifier */` |
-|   180 | 2353 | `static int vm_builtin_dt_default_tz(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 2354 | `{` |
-|    90 | 2355 | `	SXUNUSED(nArg);` |
-|    90 | 2356 | `	SXUNUSED(apArg);` |
-|   181 | 2357 | `	ph7_result_string(pCtx,pCtx->pVm->zDefTz,(int)pCtx->pVm->nDefTz);` |
-|   181 | 2358 | `	return PH7_OK;` |
-|     1 | 2359 | `}` |
-|     - | 2360 | `/* string __dt_format(int $ts, int $off, string $tzname, string $format) */` |
-|   130 | 2361 | `static int vm_builtin_dt_format(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 2362 | `{` |
-|     - | 2363 | `	Sytm sTm;` |
-|     - | 2364 | `	sxi64 iTs;` |
-|     - | 2365 | `	sxi32 iOff;` |
-|     - | 2366 | `	const char *zName,*zFmt;` |
-|     - | 2367 | `	int nName,nFmt;` |
-|     - | 2368 | `	char zZone[64];` |
-|   131 | 2369 | `	if( nArg < 4 ){` |
-|   ! 0 | 2370 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 | 2371 | `		return PH7_OK;` |
-|     - | 2372 | `	}` |
-|   131 | 2373 | `	iTs  = ph7_value_to_int64(apArg[0]);` |
-|   131 | 2374 | `	iOff = (sxi32)ph7_value_to_int64(apArg[1]);` |
-|   131 | 2375 | `	zName = ph7_value_to_string(apArg[2],&nName);` |
-|   131 | 2376 | `	zFmt  = ph7_value_to_string(apArg[3],&nFmt);` |
-|   131 | 2377 | `	if( nName >= (int)sizeof(zZone) ){ nName = (int)sizeof(zZone) - 1; }` |
-|   131 | 2378 | `	SyMemcpy(zName,zZone,(sxu32)nName);` |
-|   131 | 2379 | `	zZone[nName] = 0;` |
-|   131 | 2380 | `	DtFillSytm(iTs,iOff,zZone,&sTm);` |
-|   131 | 2381 | `	DateFormat(pCtx,zFmt,nFmt,&sTm);` |
-|   131 | 2382 | `	return PH7_OK;` |
-|    66 | 2383 | `}` |
-|     - | 2384 | `/* int __dt_make(int y, int mo, int d, int h, int i, int s, int off) */` |
-|     4 | 2385 | `static int vm_builtin_dt_make(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 2386 | `{` |
-|     - | 2387 | `	sxi64 y;` |
-|     - | 2388 | `	int mo,d,h,mi,s;` |
-|     - | 2389 | `	sxi32 iOff;` |
-|     5 | 2390 | `	if( nArg < 7 ){` |
-|   ! 0 | 2391 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 | 2392 | `		return PH7_OK;` |
-|     - | 2393 | `	}` |
-|     5 | 2394 | `	y   = ph7_value_to_int64(apArg[0]);` |
-|     5 | 2395 | `	mo  = ph7_value_to_int(apArg[1]);` |
-|     5 | 2396 | `	d   = ph7_value_to_int(apArg[2]);` |
-|     5 | 2397 | `	h   = ph7_value_to_int(apArg[3]);` |
-|     5 | 2398 | `	mi  = ph7_value_to_int(apArg[4]);` |
-|     5 | 2399 | `	s   = ph7_value_to_int(apArg[5]);` |
-|     5 | 2400 | `	iOff = (sxi32)ph7_value_to_int64(apArg[6]);` |
-|     5 | 2401 | `	ph7_result_int64(pCtx,DtMakeTs(y,mo,d,h,mi,s,iOff));` |
-|     5 | 2402 | `	return PH7_OK;` |
-|     3 | 2403 | `}` |
-|     - | 2404 | `/* Days in a civil month (php's overflow rules use it during diff borrows) */` |
-|    50 | 2405 | `static int DtDaysInMonth(sxi64 y,int m)` |
-|     1 | 2406 | `{` |
-|     - | 2407 | `	static const int aMonDays[] = {31,28,31,30,31,30,31,31,30,31,30,31};` |
-|    51 | 2408 | `	if( m == 2 && ((y % 4 == 0 && y % 100 != 0) \|\| y % 400 == 0) ){` |
-|     9 | 2409 | `		return 29;` |
-|     - | 2410 | `	}` |
-|    43 | 2411 | `	return aMonDays[(m - 1) % 12];` |
-|    26 | 2412 | `}` |
-|     - | 2413 | `/* int __dt_civil_add(int ts, int off, int y, int m, int d, int h, int i,` |
-|     - | 2414 | ` *                    int s, int sign)` |
-|     - | 2415 | ` *   php's DateTime::add/sub: month arithmetic with linear day/time overflow` |
-|     - | 2416 | ` *   (Jan 31 + P1M == Mar 02), all in the instant's own fixed offset. */` |
-|    54 | 2417 | `static int vm_builtin_dt_civil_add(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 2418 | `{` |
-|     - | 2419 | `	sxi64 iTs,iLocal,iDays,iSecs,y0,moT,dayCount;` |
-|     - | 2420 | `	sxi32 iOff;` |
-|     - | 2421 | `	int mo0,d0,iSign;` |
-|     - | 2422 | `	sxi64 y,m,d,h,i,s;` |
-|    55 | 2423 | `	if( nArg < 9 ){` |
-|   ! 0 | 2424 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 | 2425 | `		return PH7_OK;` |
-|     - | 2426 | `	}` |
-|    55 | 2427 | `	iTs   = ph7_value_to_int64(apArg[0]);` |
-|    55 | 2428 | `	iOff  = (sxi32)ph7_value_to_int64(apArg[1]);` |
-|    55 | 2429 | `	y     = ph7_value_to_int64(apArg[2]);` |
-|    55 | 2430 | `	m     = ph7_value_to_int64(apArg[3]);` |
-|    55 | 2431 | `	d     = ph7_value_to_int64(apArg[4]);` |
-|    55 | 2432 | `	h     = ph7_value_to_int64(apArg[5]);` |
-|    55 | 2433 | `	i     = ph7_value_to_int64(apArg[6]);` |
-|    55 | 2434 | `	s     = ph7_value_to_int64(apArg[7]);` |
-|    55 | 2435 | `	iSign = ph7_value_to_int(apArg[8]) < 0 ? -1 : 1;` |
-|    55 | 2436 | `	iLocal = iTs + iOff;` |
-|    55 | 2437 | `	iDays  = DtFloorDiv(iLocal,86400);` |
-|    55 | 2438 | `	iSecs  = iLocal - iDays*86400;` |
-|    55 | 2439 | `	DtCivilFromDays(iDays,&y0,&mo0,&d0);` |
-|    55 | 2440 | `	y0 += iSign * y;` |
-|    55 | 2441 | `	moT = (sxi64)(mo0 - 1) + iSign * m;` |
-|    55 | 2442 | `	y0 += DtFloorDiv(moT,12);` |
-|    55 | 2443 | `	moT -= DtFloorDiv(moT,12) * 12;` |
-|    55 | 2444 | `	dayCount = DtDaysFromCivil(y0,(int)moT + 1,1) + (d0 - 1) + iSign * d;` |
-|    55 | 2445 | `	iLocal = dayCount*86400 + iSecs + iSign * (h*3600 + i*60 + s);` |
-|    55 | 2446 | `	ph7_result_int64(pCtx,iLocal - iOff);` |
-|    55 | 2447 | `	return PH7_OK;` |
-|    28 | 2448 | `}` |
-|     - | 2449 | `/* array __dt_civil_diff(int ts1, int off1, int ts2)` |
-|     - | 2450 | ` *   -> [y,m,d,h,i,s,days,invert]: timelib's breakdown — field-wise deltas in` |
-|     - | 2451 | ` *   the FIRST operand's offset, then borrow seconds→minutes→hours→days, then` |
-|     - | 2452 | ` *   the day borrow walks whole months backward from the later date (that walk` |
-|     - | 2453 | ` *   is why Jan 31 → Mar 02 reports m=0 d=30, not "1 month"). */` |
-|    14 | 2454 | `static int vm_builtin_dt_civil_diff(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 2455 | `{` |
-|     - | 2456 | `	sxi64 iTs1,iTs2,iA,iB,iLa,iLb,daysA,daysB,yA,yB;` |
-|     - | 2457 | `	sxi32 iOff;` |
-|     - | 2458 | `	int moA,dA,moB,dB,bInvert;` |
-|     - | 2459 | `	sxi64 sA,sB,y,m,d,h,i,s;` |
-|     - | 2460 | `	ph7_value *pArr,*pV;` |
-|    15 | 2461 | `	if( nArg < 3 ){` |
-|   ! 0 | 2462 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 | 2463 | `		return PH7_OK;` |
-|     - | 2464 | `	}` |
-|    15 | 2465 | `	iTs1 = ph7_value_to_int64(apArg[0]);` |
-|    15 | 2466 | `	iOff = (sxi32)ph7_value_to_int64(apArg[1]);` |
-|    15 | 2467 | `	iTs2 = ph7_value_to_int64(apArg[2]);` |
-|    15 | 2468 | `	bInvert = iTs1 > iTs2;` |
-|    15 | 2469 | `	iA = bInvert ? iTs2 : iTs1;` |
-|    15 | 2470 | `	iB = bInvert ? iTs1 : iTs2;` |
-|    15 | 2471 | `	iLa = iA + iOff;` |
-|    15 | 2472 | `	iLb = iB + iOff;` |
-|    15 | 2473 | `	daysA = DtFloorDiv(iLa,86400);` |
-|    15 | 2474 | `	daysB = DtFloorDiv(iLb,86400);` |
-|    15 | 2475 | `	sA = iLa - daysA*86400;` |
-|    15 | 2476 | `	sB = iLb - daysB*86400;` |
-|    15 | 2477 | `	DtCivilFromDays(daysA,&yA,&moA,&dA);` |
-|    15 | 2478 | `	DtCivilFromDays(daysB,&yB,&moB,&dB);` |
-|    15 | 2479 | `	s = (sB % 60) - (sA % 60);` |
-|    15 | 2480 | `	i = ((sB / 60) % 60) - ((sA / 60) % 60);` |
-|    15 | 2481 | `	h = (sB / 3600) - (sA / 3600);` |
-|    15 | 2482 | `	d = dB - dA;` |
-|    15 | 2483 | `	m = moB - moA;` |
-|    15 | 2484 | `	y = yB - yA;` |
-|    15 | 2485 | `	if( s < 0 ){ s += 60; i--; }` |
-|    15 | 2486 | `	if( i < 0 ){ i += 60; h--; }` |
-|    15 | 2487 | `	if( h < 0 ){ h += 24; d--; }` |
-|    27 | 2488 | `	while( d < 0 ){` |
-|    13 | 2489 | `		moB--;` |
-|    13 | 2490 | `		if( moB < 1 ){ moB = 12; yB--; }` |
-|    13 | 2491 | `		d += DtDaysInMonth(yB,moB);` |
-|    13 | 2492 | `		m--;` |
-|     1 | 2493 | `	}` |
-|    15 | 2494 | `	if( m < 0 ){ m += 12; y--; }` |
-|    15 | 2495 | `	pArr = ph7_context_new_array(pCtx);` |
-|    15 | 2496 | `	pV = ph7_context_new_scalar(pCtx);` |
-|    15 | 2497 | `	if( pArr == 0 \|\| pV == 0 ){` |
-|   ! 0 | 2498 | `		return PH7_ContextMemoryError(pCtx);` |
-|     - | 2499 | `	}` |
-|    15 | 2500 | `	ph7_value_int64(pV,y);  ph7_array_add_elem(pArr,0,pV);` |
-|    15 | 2501 | `	ph7_value_int64(pV,m);  ph7_array_add_elem(pArr,0,pV);` |
-|    15 | 2502 | `	ph7_value_int64(pV,d);  ph7_array_add_elem(pArr,0,pV);` |
-|    15 | 2503 | `	ph7_value_int64(pV,h);  ph7_array_add_elem(pArr,0,pV);` |
-|    15 | 2504 | `	ph7_value_int64(pV,i);  ph7_array_add_elem(pArr,0,pV);` |
-|    15 | 2505 | `	ph7_value_int64(pV,s);  ph7_array_add_elem(pArr,0,pV);` |
-|    15 | 2506 | `	ph7_value_int64(pV,(iB - iA) / 86400); ph7_array_add_elem(pArr,0,pV);` |
-|    15 | 2507 | `	ph7_value_int64(pV,bInvert); ph7_array_add_elem(pArr,0,pV);` |
-|    15 | 2508 | `	ph7_result_value(pCtx,pArr);` |
-|    15 | 2509 | `	return PH7_OK;` |
-|     8 | 2510 | `}` |
-|     - | 2511 | `/* int __dt_isodate(int ts, int off, int y, int w, int dow)` |
-|     - | 2512 | ` *   setISODate: jump to ISO year/week/weekday, preserving the time of day. */` |
-|     8 | 2513 | `static int vm_builtin_dt_isodate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 2514 | `{` |
-|     - | 2515 | `	sxi64 iTs,iLocal,iTod,jan4,monday1,target,y;` |
-|     - | 2516 | `	sxi32 iOff;` |
-|     - | 2517 | `	sxi64 w,dow;` |
-|     - | 2518 | `	int isoDow;` |
-|     9 | 2519 | `	if( nArg < 5 ){` |
-|   ! 0 | 2520 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 | 2521 | `		return PH7_OK;` |
-|     - | 2522 | `	}` |
-|     9 | 2523 | `	iTs = ph7_value_to_int64(apArg[0]);` |
-|     9 | 2524 | `	iOff = (sxi32)ph7_value_to_int64(apArg[1]);` |
-|     9 | 2525 | `	y   = ph7_value_to_int64(apArg[2]);` |
-|     9 | 2526 | `	w   = ph7_value_to_int64(apArg[3]);` |
-|     9 | 2527 | `	dow = ph7_value_to_int64(apArg[4]);` |
-|     9 | 2528 | `	iLocal = iTs + iOff;` |
-|     9 | 2529 | `	iTod = iLocal - DtFloorDiv(iLocal,86400)*86400;` |
-|     9 | 2530 | `	jan4 = DtDaysFromCivil(y,1,4);` |
-|     9 | 2531 | `	isoDow = (int)(((jan4 + 3) % 7 + 7) % 7) + 1;` |
-|     9 | 2532 | `	monday1 = jan4 - (isoDow - 1);` |
-|     9 | 2533 | `	target = monday1 + (w - 1)*7 + (dow - 1);` |
-|     9 | 2534 | `	ph7_result_int64(pCtx,target*86400 + iTod - iOff);` |
-|     9 | 2535 | `	return PH7_OK;` |
-|     5 | 2536 | `}` |
-|     - | 2537 | `/* Consume nMin..nMax digits from *pz; returns count consumed (0 = failure) */` |
-|   130 | 2538 | `static int DtEatDigits(const char **pz,const char *zEnd,int nMin,int nMax,sxi64 *pVal)` |
-|     1 | 2539 | `{` |
-|   131 | 2540 | `	const char *z = *pz;` |
-|   131 | 2541 | `	sxi64 v = 0;` |
-|   131 | 2542 | `	int n = 0;` |
-|   473 | 2543 | `	while( z < zEnd && n < nMax && SyisDigit(z[0]) ){` |
-|   343 | 2544 | `		v = v*10 + (z[0] - '0');` |
-|   343 | 2545 | `		z++;` |
-|   343 | 2546 | `		n++;` |
-|     1 | 2547 | `	}` |
-|   131 | 2548 | `	if( n < nMin ){` |
-|     3 | 2549 | `		return 0;` |
-|     - | 2550 | `	}` |
-|   129 | 2551 | `	*pz = z;` |
-|   129 | 2552 | `	*pVal = v;` |
-|   129 | 2553 | `	return n;` |
-|    66 | 2554 | `}` |
-|     - | 2555 | `/* timelib_get_nr's recovery: skip non-digits hunting for the field.` |
-|     - | 2556 | ` * Returns 1 = found+read, 0 = digits present but short, -1 = exhausted. */` |
-|     2 | 2557 | `static int DtHuntDigits(const char **pz,const char *zEnd,int nMin,int nMax,sxi64 *pVal)` |
-|     1 | 2558 | `{` |
-|     3 | 2559 | `	const char *z = *pz;` |
-|    13 | 2560 | `	while( z < zEnd && !SyisDigit(z[0]) ){ z++; }` |
-|     3 | 2561 | `	*pz = z;` |
-|     3 | 2562 | `	if( z >= zEnd ){` |
-|     3 | 2563 | `		return -1;` |
+|     - | 2221 | `		/* "first\|last day of (this\|next\|last month \| MonthName [Year])": jump to the` |
+|     - | 2222 | `		 * first or last day of a target month. A this/next/last-month target keeps the` |
+|     - | 2223 | `		 * base time-of-day; an absolute MonthName [Year] target resets it to midnight` |
+|     - | 2224 | `		 * (php). */` |
+|    87 | 2225 | `		if( DT_LOWEQ("first",5) \|\| DT_LOWEQ("last",4) ){` |
+|    33 | 2226 | `			const char *zSave = z;` |
+|    33 | 2227 | `			int bFirst = (SyToLower((unsigned char)z[0]) == 'f');` |
+|    33 | 2228 | `			z += bFirst ? 5 : 4;` |
+|    81 | 2229 | `			DT_SKIP_WS();` |
+|    33 | 2230 | `			if( DT_LOWEQ("day",3) ){` |
+|    31 | 2231 | `				z += 3;` |
+|    76 | 2232 | `				DT_SKIP_WS();` |
+|    31 | 2233 | `				if( DT_LOWEQ("of",2) ){` |
+|    31 | 2234 | `					sxi64 days0 = DtFloorDiv(iTs + iOff,86400);` |
+|     - | 2235 | `					sxi64 yy,tod;` |
+|    31 | 2236 | `					int mm,dd0,keepTime = 1,ok = 1;` |
+|    31 | 2237 | `					z += 2;` |
+|    74 | 2238 | `					DT_SKIP_WS();` |
+|    31 | 2239 | `					DtCivilFromDays(days0,&yy,&mm,&dd0);` |
+|    31 | 2240 | `					tod = (iTs + iOff) - days0*86400;` |
+|    40 | 2241 | `					if( DT_LOWEQ("this",4) ){ z += 4; DT_SKIP_WS();` |
+|     7 | 2242 | `						if( DT_LOWEQ("month",5) ){ z += 5; }else{ ok = 0; } }` |
+|    34 | 2243 | `					else if( DT_LOWEQ("next",4) ){ z += 4; DT_SKIP_WS();` |
+|     7 | 2244 | `						if( DT_LOWEQ("month",5) ){ z += 5; mm++; if(mm>12){ mm=1; yy++; } }else{ ok = 0; } }` |
+|    25 | 2245 | `					else if( DT_LOWEQ("last",4) ){ z += 4; DT_SKIP_WS();` |
+|     5 | 2246 | `						if( DT_LOWEQ("month",5) ){ z += 5; mm--; if(mm<1){ mm=12; yy--; } }else{ ok = 0; } }` |
+|    15 | 2247 | `					else if( z < zEnd ){` |
+|     - | 2248 | `						int mo,adv;` |
+|    13 | 2249 | `						mo = DtMatchMonth(z,zEnd,&adv);` |
+|    13 | 2250 | `						if( mo == 0 ){ return (int)(z - zIn) + 1; }` |
+|    27 | 2251 | `						z += adv; DT_SKIP_WS();` |
+|    13 | 2252 | `						mm = mo; keepTime = 0; tod = 0;` |
+|    13 | 2253 | `						if( z < zEnd && SyisDigit(z[0]) ){` |
+|     9 | 2254 | `							int ny = 0; sxi64 yv = 0;` |
+|    41 | 2255 | `							while( z < zEnd && SyisDigit(z[0]) && ny < 4 ){ yv = yv*10 + (z[0]-'0'); z++; ny++; }` |
+|     9 | 2256 | `							if( ny <= 2 ){ if( yv <= 69 ){ yv += 2000; } else if( yv <= 99 ){ yv += 1900; } }` |
+|     9 | 2257 | `							yy = yv;` |
+|     4 | 2258 | `						}` |
+|     6 | 2259 | `					}` |
+|     - | 2260 | `					/* else: "... day of" with nothing after — php defaults to this` |
+|     - | 2261 | `					 * month (mm/yy/tod stay the base, keepTime stays 1). */` |
+|    31 | 2262 | `					if( ok ){` |
+|    31 | 2263 | `						int dim = (int)(DtDaysFromCivil(yy,mm+1,1) - DtDaysFromCivil(yy,mm,1));` |
+|    31 | 2264 | `						int day = bFirst ? 1 : dim;` |
+|    31 | 2265 | `						iTs = DtDaysFromCivil(yy,mm,day)*86400 + (keepTime ? tod : 0) - iOff;` |
+|    31 | 2266 | `						bAny = 1;` |
+|    31 | 2267 | `						continue;` |
+|     - | 2268 | `					}` |
+|   ! 0 | 2269 | `				}` |
+|   ! 0 | 2270 | `			}` |
+|     3 | 2271 | `			z = zSave; /* not the "first\|last day of ..." shape: rewind */` |
+|     1 | 2272 | `		}` |
+|     - | 2273 | `		/* Standalone month navigation: "this\|next\|last month" shifts the month,` |
+|     - | 2274 | `		 * keeping the day/time (php: "next month" is +1 month). Week navigation is a` |
+|     - | 2275 | `		 * recorded gap. */` |
+|     - | 2276 | `		{` |
+|    73 | 2277 | `			const char *zSave = z;` |
+|    79 | 2278 | `			if( DT_LOWEQ("next",4) ){ z += 4; DT_SKIP_WS();` |
+|     5 | 2279 | `				if( DT_LOWEQ("month",5) ){ z += 5; iTs = DtAddMonths(iTs,iOff,1); bAny = 1; continue; } }` |
+|    56 | 2280 | `			else if( DT_LOWEQ("last",4) ){ z += 4; DT_SKIP_WS();` |
+|     3 | 2281 | `				if( DT_LOWEQ("month",5) ){ z += 5; iTs = DtAddMonths(iTs,iOff,-1); bAny = 1; continue; } }` |
+|    54 | 2282 | `			else if( DT_LOWEQ("this",4) ){ z += 4; DT_SKIP_WS();` |
+|     3 | 2283 | `				if( DT_LOWEQ("month",5) ){ z += 5; bAny = 1; continue; } }` |
+|    51 | 2284 | `			z = zSave;` |
+|     - | 2285 | `		}` |
+|     - | 2286 | `		/* Trailing time-of-day in a relative sequence ("next thursday 15:00"): set` |
+|     - | 2287 | `		 * the clock on the current day. The leading absolute HH:MM branch handles a` |
+|     - | 2288 | `		 * time at the START; this handles one AFTER a date/relative token. */` |
+|    50 | 2289 | `		if( zEnd-z >= 5 && SyisDigit(z[0]) && SyisDigit(z[1]) && z[2]==':'` |
+|    12 | 2290 | `		 && SyisDigit(z[3]) && SyisDigit(z[4]) ){` |
+|     9 | 2291 | `			sxi64 days = DtFloorDiv(iTs + iOff,86400);` |
+|     9 | 2292 | `			int hh = (z[0]-'0')*10 + (z[1]-'0');` |
+|     9 | 2293 | `			int mm = (z[3]-'0')*10 + (z[4]-'0');` |
+|     9 | 2294 | `			int ss = 0;` |
+|     9 | 2295 | `			if( hh > 24 ){ return (int)(z - zIn) + 1; }` |
+|     9 | 2296 | `			if( mm > 59 ){ return (int)(&z[4] - zIn) + 1; }` |
+|     9 | 2297 | `			z += 5;` |
+|     9 | 2298 | `			if( z < zEnd && z[0]==':' && zEnd-z >= 3 && SyisDigit(z[1]) && SyisDigit(z[2]) ){` |
+|     5 | 2299 | `				ss = (z[1]-'0')*10 + (z[2]-'0');` |
+|     5 | 2300 | `				if( ss > 59 ){ return (int)(&z[2] - zIn) + 1; }` |
+|     5 | 2301 | `				z += 3;` |
+|     2 | 2302 | `			}` |
+|     9 | 2303 | `			iTs = days*86400 + (sxi64)hh*3600 + (sxi64)mm*60 + ss - iOff;` |
+|     9 | 2304 | `			bAny = 1;` |
+|     9 | 2305 | `			continue;` |
+|     - | 2306 | `		}` |
+|    43 | 2307 | `		if( SyisDigit(z[0]) \|\| z[0]=='+' \|\| z[0]=='-' ){` |
+|    31 | 2308 | `			int neg = 0;` |
+|    31 | 2309 | `			sxi64 v = 0;` |
+|    31 | 2310 | `			const char *zNumStart = z;` |
+|    31 | 2311 | `			if( z[0]=='+' \|\| z[0]=='-' ){ neg = (z[0]=='-'); z++; }` |
+|    31 | 2312 | `			if( z >= zEnd \|\| !SyisDigit(z[0]) ){ return (int)(zNumStart - zIn) + 1; }` |
+|    77 | 2313 | `			while( z < zEnd && SyisDigit(z[0]) ){ v = v*10 + (z[0]-'0'); z++; }` |
+|    31 | 2314 | `			if( neg ){ v = -v; }` |
+|    74 | 2315 | `			DT_SKIP_WS();` |
+|    31 | 2316 | `			if( DT_LOWEQ("seconds",7) )     { iTs += v;            z += 7; }` |
+|    31 | 2317 | `			else if( DT_LOWEQ("second",6) ) { iTs += v;            z += 6; }` |
+|    31 | 2318 | `			else if( DT_LOWEQ("secs",4) )   { iTs += v;            z += 4; }` |
+|    31 | 2319 | `			else if( DT_LOWEQ("sec",3) )    { iTs += v;            z += 3; }` |
+|    31 | 2320 | `			else if( DT_LOWEQ("minutes",7) ){ iTs += v*60;         z += 7; }` |
+|    29 | 2321 | `			else if( DT_LOWEQ("minute",6) ) { iTs += v*60;         z += 6; }` |
+|    29 | 2322 | `			else if( DT_LOWEQ("mins",4) )   { iTs += v*60;         z += 4; }` |
+|    29 | 2323 | `			else if( DT_LOWEQ("min",3) )    { iTs += v*60;         z += 3; }` |
+|    29 | 2324 | `			else if( DT_LOWEQ("hours",5) )  { iTs += v*3600;       z += 5; }` |
+|    27 | 2325 | `			else if( DT_LOWEQ("hour",4) )   { iTs += v*3600;       z += 4; }` |
+|    27 | 2326 | `			else if( DT_LOWEQ("days",4) )   { iTs += v*86400;      z += 4; }` |
+|    27 | 2327 | `			else if( DT_LOWEQ("day",3) )    { iTs += v*86400;      z += 3; }` |
+|    23 | 2328 | `			else if( DT_LOWEQ("weeks",5) )  { iTs += v*7*86400;    z += 5; }` |
+|    21 | 2329 | `			else if( DT_LOWEQ("week",4) )   { iTs += v*7*86400;    z += 4; }` |
+|    19 | 2330 | `			else if( DT_LOWEQ("fortnights",10) ){ iTs += v*14*86400; z += 10; }` |
+|    17 | 2331 | `			else if( DT_LOWEQ("fortnight",9) )  { iTs += v*14*86400; z += 9; }` |
+|    17 | 2332 | `			else if( DT_LOWEQ("months",6) ) { iTs = DtAddMonths(iTs,iOff,v); z += 6; }` |
+|    15 | 2333 | `			else if( DT_LOWEQ("month",5) )  { iTs = DtAddMonths(iTs,iOff,v); z += 5; }` |
+|     9 | 2334 | `			else if( DT_LOWEQ("years",5) )  { iTs = DtAddMonths(iTs,iOff,v*12); z += 5; }` |
+|     9 | 2335 | `			else if( DT_LOWEQ("year",4) )   { iTs = DtAddMonths(iTs,iOff,v*12); z += 4; }` |
+|     - | 2336 | `			else{` |
+|     7 | 2337 | `				return (int)(z - zIn) + 1;` |
+|     - | 2338 | `			}` |
+|    25 | 2339 | `			bAny = 1;` |
+|    25 | 2340 | `			continue;` |
+|     - | 2341 | `		}` |
+|    13 | 2342 | `		return (int)(z - zIn) + 1;` |
+|   ! 0 | 2343 | `	}` |
+|   281 | 2344 | `	if( !bAny ){` |
+|   ! 0 | 2345 | `		return 1;` |
+|     - | 2346 | `	}` |
+|   281 | 2347 | `	*pTs = iTs;` |
+|   281 | 2348 | `	*pOff = iOff;` |
+|   281 | 2349 | `	*pbOffSet = bOffSet;` |
+|   281 | 2350 | `	return 0;` |
+|     - | 2351 | `#undef DT_SKIP_WS` |
+|     - | 2352 | `#undef DT_LOWEQ` |
+|   197 | 2353 | `}` |
+|     - | 2354 | `/* int __dt_now() */` |
+|   180 | 2355 | `static int vm_builtin_dt_now(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 2356 | `{` |
+|    90 | 2357 | `	SXUNUSED(nArg);` |
+|    90 | 2358 | `	SXUNUSED(apArg);` |
+|   181 | 2359 | `	ph7_result_int64(pCtx,(ph7_int64)time(0));` |
+|   181 | 2360 | `	return PH7_OK;` |
+|     1 | 2361 | `}` |
+|     - | 2362 | `/* mixed __dt_parse(string $s, int $baseTs, int $baseOff)` |
+|     - | 2363 | ` *   -> [ts, off, offWasExplicit] on success; php's error MESSAGE string on` |
+|     - | 2364 | ` *      failure (the chunk wraps it in DateMalformedStringException). */` |
+|   392 | 2365 | `static int vm_builtin_dt_parse(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 2366 | `{` |
+|     - | 2367 | `	const char *zIn;` |
+|     - | 2368 | `	int nLen;` |
+|     - | 2369 | `	sxi64 iBaseTs;` |
+|     - | 2370 | `	sxi32 iBaseOff;` |
+|   393 | 2371 | `	sxi64 iTs = 0;` |
+|   393 | 2372 | `	sxi32 iOff = 0;` |
+|   393 | 2373 | `	int bOffSet = 0;` |
+|     - | 2374 | `	int iErrPos;` |
+|   393 | 2375 | `	if( nArg < 3 ){` |
+|   ! 0 | 2376 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 | 2377 | `		return PH7_OK;` |
+|     - | 2378 | `	}` |
+|   393 | 2379 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
+|   393 | 2380 | `	iBaseTs  = ph7_value_to_int64(apArg[1]);` |
+|   393 | 2381 | `	iBaseOff = (sxi32)ph7_value_to_int64(apArg[2]);` |
+|   393 | 2382 | `	iErrPos = DtParse(zIn,nLen,iBaseTs,iBaseOff,&iTs,&iOff,&bOffSet);` |
+|   393 | 2383 | `	if( iErrPos != 0 ){` |
+|     - | 2384 | `		/* Negative encoding: php's "Double time specification" reason */` |
+|    51 | 2385 | `		int bDouble = iErrPos < 0;` |
+|    51 | 2386 | `		int iPos = (bDouble ? -iErrPos : iErrPos) - 1;` |
+|    51 | 2387 | `		char cAt = (iPos < nLen) ? zIn[iPos] : ' ';` |
+|     - | 2388 | `		/* php appends a reason: an alphabetic token is assumed to be a timezone` |
+|     - | 2389 | `		 * lookup miss, anything else an unexpected character. */` |
+|   100 | 2390 | `		ph7_result_string_format(pCtx,` |
+|     - | 2391 | `			"Failed to parse time string (%.*s) at position %d (%c): %s",` |
+|    25 | 2392 | `			nLen,zIn,iPos,cAt,` |
+|    49 | 2393 | `			bDouble ? "Double time specification"` |
+|    48 | 2394 | `			: ((cAt >= 'a' && cAt <= 'z') \|\| (cAt >= 'A' && cAt <= 'Z'))` |
+|     - | 2395 | `				? "The timezone could not be found in the database"` |
+|    48 | 2396 | `				: "Unexpected character");` |
+|    51 | 2397 | `		return PH7_OK;` |
+|     - | 2398 | `	}` |
+|     - | 2399 | `	{` |
+|   343 | 2400 | `		ph7_value *pArr = ph7_context_new_array(pCtx);` |
+|   343 | 2401 | `		ph7_value *pV = ph7_context_new_scalar(pCtx);` |
+|   343 | 2402 | `		if( pArr == 0 \|\| pV == 0 ){` |
+|   ! 0 | 2403 | `			return PH7_ContextMemoryError(pCtx);` |
+|     - | 2404 | `		}` |
+|   343 | 2405 | `		ph7_value_int64(pV,iTs);` |
+|   343 | 2406 | `		ph7_array_add_elem(pArr,0,pV);` |
+|   343 | 2407 | `		ph7_value_int64(pV,iOff);` |
+|   343 | 2408 | `		ph7_array_add_elem(pArr,0,pV);` |
+|     - | 2409 | `		/* int, not bool: 0 = no explicit offset, 1 = numeric offset/@epoch,` |
+|     - | 2410 | `		 * 2 = literal "Z" (php keeps the distinction in the zone name) */` |
+|   343 | 2411 | `		ph7_value_int64(pV,bOffSet);` |
+|   343 | 2412 | `		ph7_array_add_elem(pArr,0,pV);` |
+|   343 | 2413 | `		ph7_result_value(pCtx,pArr);` |
+|     - | 2414 | `	}` |
+|   343 | 2415 | `	return PH7_OK;` |
+|   197 | 2416 | `}` |
+|     - | 2417 | `/* string __dt_default_tz(void) — the date_default_timezone_set() identifier */` |
+|   180 | 2418 | `static int vm_builtin_dt_default_tz(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 2419 | `{` |
+|    90 | 2420 | `	SXUNUSED(nArg);` |
+|    90 | 2421 | `	SXUNUSED(apArg);` |
+|   181 | 2422 | `	ph7_result_string(pCtx,pCtx->pVm->zDefTz,(int)pCtx->pVm->nDefTz);` |
+|   181 | 2423 | `	return PH7_OK;` |
+|     1 | 2424 | `}` |
+|     - | 2425 | `/* string __dt_format(int $ts, int $off, string $tzname, string $format) */` |
+|   130 | 2426 | `static int vm_builtin_dt_format(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 2427 | `{` |
+|     - | 2428 | `	Sytm sTm;` |
+|     - | 2429 | `	sxi64 iTs;` |
+|     - | 2430 | `	sxi32 iOff;` |
+|     - | 2431 | `	const char *zName,*zFmt;` |
+|     - | 2432 | `	int nName,nFmt;` |
+|     - | 2433 | `	char zZone[64];` |
+|   131 | 2434 | `	if( nArg < 4 ){` |
+|   ! 0 | 2435 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 | 2436 | `		return PH7_OK;` |
+|     - | 2437 | `	}` |
+|   131 | 2438 | `	iTs  = ph7_value_to_int64(apArg[0]);` |
+|   131 | 2439 | `	iOff = (sxi32)ph7_value_to_int64(apArg[1]);` |
+|   131 | 2440 | `	zName = ph7_value_to_string(apArg[2],&nName);` |
+|   131 | 2441 | `	zFmt  = ph7_value_to_string(apArg[3],&nFmt);` |
+|   131 | 2442 | `	if( nName >= (int)sizeof(zZone) ){ nName = (int)sizeof(zZone) - 1; }` |
+|   131 | 2443 | `	SyMemcpy(zName,zZone,(sxu32)nName);` |
+|   131 | 2444 | `	zZone[nName] = 0;` |
+|   131 | 2445 | `	DtFillSytm(iTs,iOff,zZone,&sTm);` |
+|   131 | 2446 | `	DateFormat(pCtx,zFmt,nFmt,&sTm);` |
+|   131 | 2447 | `	return PH7_OK;` |
+|    66 | 2448 | `}` |
+|     - | 2449 | `/* int __dt_make(int y, int mo, int d, int h, int i, int s, int off) */` |
+|     4 | 2450 | `static int vm_builtin_dt_make(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 2451 | `{` |
+|     - | 2452 | `	sxi64 y;` |
+|     - | 2453 | `	int mo,d,h,mi,s;` |
+|     - | 2454 | `	sxi32 iOff;` |
+|     5 | 2455 | `	if( nArg < 7 ){` |
+|   ! 0 | 2456 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 | 2457 | `		return PH7_OK;` |
+|     - | 2458 | `	}` |
+|     5 | 2459 | `	y   = ph7_value_to_int64(apArg[0]);` |
+|     5 | 2460 | `	mo  = ph7_value_to_int(apArg[1]);` |
+|     5 | 2461 | `	d   = ph7_value_to_int(apArg[2]);` |
+|     5 | 2462 | `	h   = ph7_value_to_int(apArg[3]);` |
+|     5 | 2463 | `	mi  = ph7_value_to_int(apArg[4]);` |
+|     5 | 2464 | `	s   = ph7_value_to_int(apArg[5]);` |
+|     5 | 2465 | `	iOff = (sxi32)ph7_value_to_int64(apArg[6]);` |
+|     5 | 2466 | `	ph7_result_int64(pCtx,DtMakeTs(y,mo,d,h,mi,s,iOff));` |
+|     5 | 2467 | `	return PH7_OK;` |
+|     3 | 2468 | `}` |
+|     - | 2469 | `/* Days in a civil month (php's overflow rules use it during diff borrows) */` |
+|    50 | 2470 | `static int DtDaysInMonth(sxi64 y,int m)` |
+|     1 | 2471 | `{` |
+|     - | 2472 | `	static const int aMonDays[] = {31,28,31,30,31,30,31,31,30,31,30,31};` |
+|    51 | 2473 | `	if( m == 2 && ((y % 4 == 0 && y % 100 != 0) \|\| y % 400 == 0) ){` |
+|     9 | 2474 | `		return 29;` |
+|     - | 2475 | `	}` |
+|    43 | 2476 | `	return aMonDays[(m - 1) % 12];` |
+|    26 | 2477 | `}` |
+|     - | 2478 | `/* int __dt_civil_add(int ts, int off, int y, int m, int d, int h, int i,` |
+|     - | 2479 | ` *                    int s, int sign)` |
+|     - | 2480 | ` *   php's DateTime::add/sub: month arithmetic with linear day/time overflow` |
+|     - | 2481 | ` *   (Jan 31 + P1M == Mar 02), all in the instant's own fixed offset. */` |
+|    54 | 2482 | `static int vm_builtin_dt_civil_add(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 2483 | `{` |
+|     - | 2484 | `	sxi64 iTs,iLocal,iDays,iSecs,y0,moT,dayCount;` |
+|     - | 2485 | `	sxi32 iOff;` |
+|     - | 2486 | `	int mo0,d0,iSign;` |
+|     - | 2487 | `	sxi64 y,m,d,h,i,s;` |
+|    55 | 2488 | `	if( nArg < 9 ){` |
+|   ! 0 | 2489 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 | 2490 | `		return PH7_OK;` |
+|     - | 2491 | `	}` |
+|    55 | 2492 | `	iTs   = ph7_value_to_int64(apArg[0]);` |
+|    55 | 2493 | `	iOff  = (sxi32)ph7_value_to_int64(apArg[1]);` |
+|    55 | 2494 | `	y     = ph7_value_to_int64(apArg[2]);` |
+|    55 | 2495 | `	m     = ph7_value_to_int64(apArg[3]);` |
+|    55 | 2496 | `	d     = ph7_value_to_int64(apArg[4]);` |
+|    55 | 2497 | `	h     = ph7_value_to_int64(apArg[5]);` |
+|    55 | 2498 | `	i     = ph7_value_to_int64(apArg[6]);` |
+|    55 | 2499 | `	s     = ph7_value_to_int64(apArg[7]);` |
+|    55 | 2500 | `	iSign = ph7_value_to_int(apArg[8]) < 0 ? -1 : 1;` |
+|    55 | 2501 | `	iLocal = iTs + iOff;` |
+|    55 | 2502 | `	iDays  = DtFloorDiv(iLocal,86400);` |
+|    55 | 2503 | `	iSecs  = iLocal - iDays*86400;` |
+|    55 | 2504 | `	DtCivilFromDays(iDays,&y0,&mo0,&d0);` |
+|    55 | 2505 | `	y0 += iSign * y;` |
+|    55 | 2506 | `	moT = (sxi64)(mo0 - 1) + iSign * m;` |
+|    55 | 2507 | `	y0 += DtFloorDiv(moT,12);` |
+|    55 | 2508 | `	moT -= DtFloorDiv(moT,12) * 12;` |
+|    55 | 2509 | `	dayCount = DtDaysFromCivil(y0,(int)moT + 1,1) + (d0 - 1) + iSign * d;` |
+|    55 | 2510 | `	iLocal = dayCount*86400 + iSecs + iSign * (h*3600 + i*60 + s);` |
+|    55 | 2511 | `	ph7_result_int64(pCtx,iLocal - iOff);` |
+|    55 | 2512 | `	return PH7_OK;` |
+|    28 | 2513 | `}` |
+|     - | 2514 | `/* array __dt_civil_diff(int ts1, int off1, int ts2)` |
+|     - | 2515 | ` *   -> [y,m,d,h,i,s,days,invert]: timelib's breakdown — field-wise deltas in` |
+|     - | 2516 | ` *   the FIRST operand's offset, then borrow seconds→minutes→hours→days, then` |
+|     - | 2517 | ` *   the day borrow walks whole months backward from the later date (that walk` |
+|     - | 2518 | ` *   is why Jan 31 → Mar 02 reports m=0 d=30, not "1 month"). */` |
+|    14 | 2519 | `static int vm_builtin_dt_civil_diff(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 2520 | `{` |
+|     - | 2521 | `	sxi64 iTs1,iTs2,iA,iB,iLa,iLb,daysA,daysB,yA,yB;` |
+|     - | 2522 | `	sxi32 iOff;` |
+|     - | 2523 | `	int moA,dA,moB,dB,bInvert;` |
+|     - | 2524 | `	sxi64 sA,sB,y,m,d,h,i,s;` |
+|     - | 2525 | `	ph7_value *pArr,*pV;` |
+|    15 | 2526 | `	if( nArg < 3 ){` |
+|   ! 0 | 2527 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 | 2528 | `		return PH7_OK;` |
+|     - | 2529 | `	}` |
+|    15 | 2530 | `	iTs1 = ph7_value_to_int64(apArg[0]);` |
+|    15 | 2531 | `	iOff = (sxi32)ph7_value_to_int64(apArg[1]);` |
+|    15 | 2532 | `	iTs2 = ph7_value_to_int64(apArg[2]);` |
+|    15 | 2533 | `	bInvert = iTs1 > iTs2;` |
+|    15 | 2534 | `	iA = bInvert ? iTs2 : iTs1;` |
+|    15 | 2535 | `	iB = bInvert ? iTs1 : iTs2;` |
+|    15 | 2536 | `	iLa = iA + iOff;` |
+|    15 | 2537 | `	iLb = iB + iOff;` |
+|    15 | 2538 | `	daysA = DtFloorDiv(iLa,86400);` |
+|    15 | 2539 | `	daysB = DtFloorDiv(iLb,86400);` |
+|    15 | 2540 | `	sA = iLa - daysA*86400;` |
+|    15 | 2541 | `	sB = iLb - daysB*86400;` |
+|    15 | 2542 | `	DtCivilFromDays(daysA,&yA,&moA,&dA);` |
+|    15 | 2543 | `	DtCivilFromDays(daysB,&yB,&moB,&dB);` |
+|    15 | 2544 | `	s = (sB % 60) - (sA % 60);` |
+|    15 | 2545 | `	i = ((sB / 60) % 60) - ((sA / 60) % 60);` |
+|    15 | 2546 | `	h = (sB / 3600) - (sA / 3600);` |
+|    15 | 2547 | `	d = dB - dA;` |
+|    15 | 2548 | `	m = moB - moA;` |
+|    15 | 2549 | `	y = yB - yA;` |
+|    15 | 2550 | `	if( s < 0 ){ s += 60; i--; }` |
+|    15 | 2551 | `	if( i < 0 ){ i += 60; h--; }` |
+|    15 | 2552 | `	if( h < 0 ){ h += 24; d--; }` |
+|    27 | 2553 | `	while( d < 0 ){` |
+|    13 | 2554 | `		moB--;` |
+|    13 | 2555 | `		if( moB < 1 ){ moB = 12; yB--; }` |
+|    13 | 2556 | `		d += DtDaysInMonth(yB,moB);` |
+|    13 | 2557 | `		m--;` |
+|     1 | 2558 | `	}` |
+|    15 | 2559 | `	if( m < 0 ){ m += 12; y--; }` |
+|    15 | 2560 | `	pArr = ph7_context_new_array(pCtx);` |
+|    15 | 2561 | `	pV = ph7_context_new_scalar(pCtx);` |
+|    15 | 2562 | `	if( pArr == 0 \|\| pV == 0 ){` |
+|   ! 0 | 2563 | `		return PH7_ContextMemoryError(pCtx);` |
 |     - | 2564 | `	}` |
-|   ! 0 | 2565 | `	return DtEatDigits(pz,zEnd,nMin,nMax,pVal) ? 1 : 0;` |
-|     2 | 2566 | `}` |
-|     - | 2567 | `/* Case-insensitive name-table lookup; returns 1-based index or 0 */` |
-|    14 | 2568 | `static int DtEatName(const char **pz,const char *zEnd,const char **azNames,int nNames)` |
-|     1 | 2569 | `{` |
-|     - | 2570 | `	int k;` |
-|    23 | 2571 | `	for( k = 0 ; k < nNames ; k++ ){` |
-|    23 | 2572 | `		int n = (int)SyStrlen(azNames[k]);` |
-|    23 | 2573 | `		if( zEnd - *pz >= n && SyStrnicmp(*pz,azNames[k],(sxu32)n) == 0 ){` |
-|    15 | 2574 | `			*pz += n;` |
-|    15 | 2575 | `			return k + 1;` |
-|     - | 2576 | `		}` |
-|     5 | 2577 | `	}` |
-|   ! 0 | 2578 | `	return 0;` |
-|     8 | 2579 | `}` |
-|     - | 2580 | `/* mixed __dt_from_format(string fmt, string input, int nowTs, int defOff)` |
-|     - | 2581 | ` *   php's DateTime::createFromFormat engine. Success: [ts, off, offKind, name]` |
-|     - | 2582 | ` *   where offKind 0=none-parsed, 1=numeric offset, 2=literal Z, 3=named id.` |
-|     - | 2583 | ` *   Failure: "POS\tMESSAGE" (timelib's message strings; PHL reports the FIRST` |
-|     - | 2584 | ` *   error where php may accumulate several — recorded). A trailing-data` |
-|     - | 2585 | ` *   warning rides as [4]=pos, [5]=msg on the success array. */` |
-|    44 | 2586 | `static int vm_builtin_dt_from_format(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 2587 | `{` |
-|     - | 2588 | `	static const char *azDay3[] = {"sun","mon","tue","wed","thu","fri","sat"};` |
-|     - | 2589 | `	static const char *azDayFull[] = {"sunday","monday","tuesday","wednesday",` |
-|     - | 2590 | `		"thursday","friday","saturday"};` |
-|     - | 2591 | `	static const char *azMon3[] = {"jan","feb","mar","apr","may","jun","jul",` |
-|     - | 2592 | `		"aug","sep","oct","nov","dec"};` |
-|     - | 2593 | `	static const char *azMonFull[] = {"january","february","march","april",` |
-|     - | 2594 | `		"may","june","july","august","september","october","november","december"};` |
-|     - | 2595 | `	const char *zFmt,*zIn,*zEnd,*zInEnd,*z;` |
-|     - | 2596 | `	int nFmt,nIn;` |
-|     - | 2597 | `	sxi64 iNow,v;` |
-|     - | 2598 | `	sxi32 iDefOff;` |
-|     - | 2599 | `	/* -1 == unset */` |
-|    45 | 2600 | `	sxi64 y = -1,mo = -1,d = -1,h = -1,mi = -1,s = -1,h12 = -1,uVal = 0;` |
-|    45 | 2601 | `	int iMeridiem = -1,bHasU = 0,bPipe = 0,bPlus = 0;` |
-|    45 | 2602 | `	int iOffKind = 0;` |
-|    45 | 2603 | `	sxi32 iOffVal = 0;` |
-|     - | 2604 | `	char zName[16];` |
-|    45 | 2605 | `	const char *zErr = 0;` |
-|     - | 2606 | `	const char *aWarnMsg[3];` |
-|     - | 2607 | `	int aWarnPos[3];` |
-|    45 | 2608 | `	int nWarn = 0,bAborted = 0;` |
-|     - | 2609 | `	const char *aErrMsg[8];` |
-|     - | 2610 | `	int aErrPos[8];` |
-|    45 | 2611 | `	int nErr = 0,nErrKept = 0;` |
-|    45 | 2612 | `	if( nArg < 4 ){` |
-|   ! 0 | 2613 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 | 2614 | `		return PH7_OK;` |
+|    15 | 2565 | `	ph7_value_int64(pV,y);  ph7_array_add_elem(pArr,0,pV);` |
+|    15 | 2566 | `	ph7_value_int64(pV,m);  ph7_array_add_elem(pArr,0,pV);` |
+|    15 | 2567 | `	ph7_value_int64(pV,d);  ph7_array_add_elem(pArr,0,pV);` |
+|    15 | 2568 | `	ph7_value_int64(pV,h);  ph7_array_add_elem(pArr,0,pV);` |
+|    15 | 2569 | `	ph7_value_int64(pV,i);  ph7_array_add_elem(pArr,0,pV);` |
+|    15 | 2570 | `	ph7_value_int64(pV,s);  ph7_array_add_elem(pArr,0,pV);` |
+|    15 | 2571 | `	ph7_value_int64(pV,(iB - iA) / 86400); ph7_array_add_elem(pArr,0,pV);` |
+|    15 | 2572 | `	ph7_value_int64(pV,bInvert); ph7_array_add_elem(pArr,0,pV);` |
+|    15 | 2573 | `	ph7_result_value(pCtx,pArr);` |
+|    15 | 2574 | `	return PH7_OK;` |
+|     8 | 2575 | `}` |
+|     - | 2576 | `/* int __dt_isodate(int ts, int off, int y, int w, int dow)` |
+|     - | 2577 | ` *   setISODate: jump to ISO year/week/weekday, preserving the time of day. */` |
+|     8 | 2578 | `static int vm_builtin_dt_isodate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 2579 | `{` |
+|     - | 2580 | `	sxi64 iTs,iLocal,iTod,jan4,monday1,target,y;` |
+|     - | 2581 | `	sxi32 iOff;` |
+|     - | 2582 | `	sxi64 w,dow;` |
+|     - | 2583 | `	int isoDow;` |
+|     9 | 2584 | `	if( nArg < 5 ){` |
+|   ! 0 | 2585 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 | 2586 | `		return PH7_OK;` |
+|     - | 2587 | `	}` |
+|     9 | 2588 | `	iTs = ph7_value_to_int64(apArg[0]);` |
+|     9 | 2589 | `	iOff = (sxi32)ph7_value_to_int64(apArg[1]);` |
+|     9 | 2590 | `	y   = ph7_value_to_int64(apArg[2]);` |
+|     9 | 2591 | `	w   = ph7_value_to_int64(apArg[3]);` |
+|     9 | 2592 | `	dow = ph7_value_to_int64(apArg[4]);` |
+|     9 | 2593 | `	iLocal = iTs + iOff;` |
+|     9 | 2594 | `	iTod = iLocal - DtFloorDiv(iLocal,86400)*86400;` |
+|     9 | 2595 | `	jan4 = DtDaysFromCivil(y,1,4);` |
+|     9 | 2596 | `	isoDow = (int)(((jan4 + 3) % 7 + 7) % 7) + 1;` |
+|     9 | 2597 | `	monday1 = jan4 - (isoDow - 1);` |
+|     9 | 2598 | `	target = monday1 + (w - 1)*7 + (dow - 1);` |
+|     9 | 2599 | `	ph7_result_int64(pCtx,target*86400 + iTod - iOff);` |
+|     9 | 2600 | `	return PH7_OK;` |
+|     5 | 2601 | `}` |
+|     - | 2602 | `/* Consume nMin..nMax digits from *pz; returns count consumed (0 = failure) */` |
+|   130 | 2603 | `static int DtEatDigits(const char **pz,const char *zEnd,int nMin,int nMax,sxi64 *pVal)` |
+|     1 | 2604 | `{` |
+|   131 | 2605 | `	const char *z = *pz;` |
+|   131 | 2606 | `	sxi64 v = 0;` |
+|   131 | 2607 | `	int n = 0;` |
+|   473 | 2608 | `	while( z < zEnd && n < nMax && SyisDigit(z[0]) ){` |
+|   343 | 2609 | `		v = v*10 + (z[0] - '0');` |
+|   343 | 2610 | `		z++;` |
+|   343 | 2611 | `		n++;` |
+|     1 | 2612 | `	}` |
+|   131 | 2613 | `	if( n < nMin ){` |
+|     3 | 2614 | `		return 0;` |
 |     - | 2615 | `	}` |
-|    45 | 2616 | `	zFmt = ph7_value_to_string(apArg[0],&nFmt);` |
-|    45 | 2617 | `	zIn  = ph7_value_to_string(apArg[1],&nIn);` |
-|    45 | 2618 | `	iNow = ph7_value_to_int64(apArg[2]);` |
-|    45 | 2619 | `	iDefOff = (sxi32)ph7_value_to_int64(apArg[3]);` |
-|    45 | 2620 | `	zEnd = &zFmt[nFmt];` |
-|    45 | 2621 | `	zInEnd = &zIn[nIn];` |
-|    45 | 2622 | `	z = zIn;` |
-|    45 | 2623 | `	zName[0] = 0;` |
-|     - | 2624 | `#define DT_FF_LOGERR(iPos,zMsg) \` |
-|     - | 2625 | `	{ int _p = (iPos),_k,_f = -1; \` |
-|     - | 2626 | `	  nErr++; \` |
-|     - | 2627 | `	  for( _k = 0 ; _k < nErrKept ; _k++ ){ if( aErrPos[_k] == _p ){ _f = _k; break; } } \` |
-|     - | 2628 | `	  if( _f >= 0 ){ aErrMsg[_f] = (zMsg); } \` |
-|     - | 2629 | `	  else if( nErrKept < 8 ){ aErrPos[nErrKept] = _p; aErrMsg[nErrKept] = (zMsg); nErrKept++; } }` |
-|   299 | 2630 | `	while( zFmt < zEnd ){` |
-|   257 | 2631 | `		char c = zFmt[0];` |
-|   257 | 2632 | `		zFmt++;` |
-|   257 | 2633 | `		zErr = 0;` |
-|   257 | 2634 | `		if( c == '!' ){` |
-|     7 | 2635 | `			y = 1970; mo = 1; d = 1; h = 0; mi = 0; s = 0;` |
-|     7 | 2636 | `			h12 = -1; iMeridiem = -1;` |
-|     7 | 2637 | `			continue;` |
-|     - | 2638 | `		}` |
-|   251 | 2639 | `		if( c == '\|' ){ bPipe = 1; continue; }` |
-|   247 | 2640 | `		if( c == '+' ){ bPlus = 1; continue; }` |
-|   245 | 2641 | `		if( z >= zInEnd ){` |
-|     - | 2642 | `			/* timelib aborts the scan once input is exhausted */` |
-|     5 | 2643 | `			DT_FF_LOGERR(nIn,"Not enough data available to satisfy format");` |
-|     3 | 2644 | `			break;` |
-|     - | 2645 | `		}` |
-|   243 | 2646 | `		switch( c ){` |
-|    15 | 2647 | `		case 'd': case 'j':` |
-|    31 | 2648 | `			if( !DtEatDigits(&z,zInEnd,1,2,&d) ){` |
-|   ! 0 | 2649 | `				DT_FF_LOGERR((int)(z - zIn),"A two digit day could not be found");` |
-|   ! 0 | 2650 | `				if( DtHuntDigits(&z,zInEnd,1,2,&d) < 0 ){` |
-|   ! 0 | 2651 | `					DT_FF_LOGERR(nIn,"A two digit day could not be found");` |
-|   ! 0 | 2652 | `				}` |
-|   ! 0 | 2653 | `			}` |
-|    31 | 2654 | `			break;` |
-|     1 | 2655 | `		case 'D':` |
-|     3 | 2656 | `			if( !DtEatName(&z,zInEnd,azDay3,7) ){` |
-|   ! 0 | 2657 | `				zErr = "A textual day could not be found";` |
-|   ! 0 | 2658 | `			}` |
-|     3 | 2659 | `			break;` |
-|     1 | 2660 | `		case 'l':` |
-|     3 | 2661 | `			if( !DtEatName(&z,zInEnd,azDayFull,7) ){` |
-|   ! 0 | 2662 | `				zErr = "A textual day could not be found";` |
-|   ! 0 | 2663 | `			}` |
-|     3 | 2664 | `			break;` |
-|     1 | 2665 | `		case 'S':` |
-|     - | 2666 | `			/* ordinal suffix: st nd rd th */` |
-|     4 | 2667 | `			if( zInEnd-z >= 2 && ((z[0]=='s'&&z[1]=='t')\|\|(z[0]=='n'&&z[1]=='d')` |
-|     2 | 2668 | `			 \|\|(z[0]=='r'&&z[1]=='d')\|\|(z[0]=='t'&&z[1]=='h')) ){` |
-|     3 | 2669 | `				z += 2;` |
-|     1 | 2670 | `			}` |
-|     3 | 2671 | `			break;` |
-|    13 | 2672 | `		case 'm': case 'n':` |
-|    27 | 2673 | `			if( !DtEatDigits(&z,zInEnd,1,2,&mo) ){` |
-|   ! 0 | 2674 | `				DT_FF_LOGERR((int)(z - zIn),"A two digit month could not be found");` |
-|   ! 0 | 2675 | `				if( DtHuntDigits(&z,zInEnd,1,2,&mo) < 0 ){` |
-|   ! 0 | 2676 | `					DT_FF_LOGERR(nIn,"A two digit month could not be found");` |
-|   ! 0 | 2677 | `				}` |
-|   ! 0 | 2678 | `			}` |
-|    27 | 2679 | `			break;` |
-|     1 | 2680 | `		case 'M':{` |
-|     3 | 2681 | `			int k = DtEatName(&z,zInEnd,azMon3,12);` |
-|     3 | 2682 | `			if( k ){ mo = k; }else{ zErr = "A textual month could not be found"; }` |
-|     3 | 2683 | `			break;` |
-|     - | 2684 | `				 }` |
-|     1 | 2685 | `		case 'F':{` |
-|     3 | 2686 | `			int k = DtEatName(&z,zInEnd,azMonFull,12);` |
-|     3 | 2687 | `			if( k ){ mo = k; }else{ zErr = "A textual month could not be found"; }` |
-|     3 | 2688 | `			break;` |
-|     - | 2689 | `				 }` |
-|   ! 0 | 2690 | `		case 'y':` |
-|   ! 0 | 2691 | `			if( DtEatDigits(&z,zInEnd,2,2,&y) ){` |
-|   ! 0 | 2692 | `				y += (y <= 69) ? 2000 : 1900;` |
-|   ! 0 | 2693 | `			}else{` |
-|   ! 0 | 2694 | `				DT_FF_LOGERR((int)(z - zIn),"A two digit year could not be found");` |
-|   ! 0 | 2695 | `				if( DtHuntDigits(&z,zInEnd,2,2,&y) < 0 ){` |
-|   ! 0 | 2696 | `					DT_FF_LOGERR(nIn,"A two digit year could not be found");` |
-|   ! 0 | 2697 | `				}else if( y >= 0 ){` |
-|   ! 0 | 2698 | `					y += (y <= 69) ? 2000 : 1900;` |
-|   ! 0 | 2699 | `				}` |
-|     - | 2700 | `			}` |
-|   ! 0 | 2701 | `			break;` |
-|    17 | 2702 | `		case 'Y':{` |
-|    35 | 2703 | `			int neg = 0;` |
-|    35 | 2704 | `			if( z < zInEnd && (z[0]=='-'\|\|z[0]=='+') ){ neg = (z[0]=='-'); z++; }` |
-|    35 | 2705 | `			if( DtEatDigits(&z,zInEnd,1,4,&y) ){` |
-|    33 | 2706 | `				if( neg ){ y = -y; }` |
-|    17 | 2707 | `			}else{` |
-|     3 | 2708 | `				DT_FF_LOGERR((int)(z - zIn),"A four digit year could not be found");` |
-|     3 | 2709 | `				if( DtHuntDigits(&z,zInEnd,1,4,&y) < 0 ){` |
-|     5 | 2710 | `					DT_FF_LOGERR(nIn,"A four digit year could not be found");` |
-|     1 | 2711 | `				}` |
-|     - | 2712 | `			}` |
-|    35 | 2713 | `			break;` |
-|     - | 2714 | `				 }` |
-|     4 | 2715 | `		case 'H': case 'G':` |
-|     9 | 2716 | `			if( !DtEatDigits(&z,zInEnd,1,2,&h) ){` |
-|   ! 0 | 2717 | `				DT_FF_LOGERR((int)(z - zIn),"A two digit hour could not be found");` |
-|   ! 0 | 2718 | `				if( DtHuntDigits(&z,zInEnd,1,2,&h) < 0 ){` |
-|   ! 0 | 2719 | `					DT_FF_LOGERR(nIn,"A two digit hour could not be found");` |
-|   ! 0 | 2720 | `				}` |
-|   ! 0 | 2721 | `			}` |
-|     9 | 2722 | `			break;` |
-|     2 | 2723 | `		case 'h': case 'g':` |
-|     5 | 2724 | `			if( !DtEatDigits(&z,zInEnd,1,2,&h12) ){` |
-|   ! 0 | 2725 | `				DT_FF_LOGERR((int)(z - zIn),"A two digit hour could not be found");` |
-|   ! 0 | 2726 | `				if( DtHuntDigits(&z,zInEnd,1,2,&h12) < 0 ){` |
-|   ! 0 | 2727 | `					DT_FF_LOGERR(nIn,"A two digit hour could not be found");` |
-|   ! 0 | 2728 | `				}` |
-|   ! 0 | 2729 | `			}` |
-|     5 | 2730 | `			break;` |
-|     6 | 2731 | `		case 'i':` |
-|    13 | 2732 | `			if( !DtEatDigits(&z,zInEnd,1,2,&mi) ){` |
-|   ! 0 | 2733 | `				DT_FF_LOGERR((int)(z - zIn),"A two digit minute could not be found");` |
-|   ! 0 | 2734 | `				if( DtHuntDigits(&z,zInEnd,1,2,&mi) < 0 ){` |
-|   ! 0 | 2735 | `					DT_FF_LOGERR(nIn,"A two digit minute could not be found");` |
-|   ! 0 | 2736 | `				}` |
-|   ! 0 | 2737 | `			}` |
-|    13 | 2738 | `			break;` |
-|     2 | 2739 | `		case 's':` |
-|     5 | 2740 | `			if( !DtEatDigits(&z,zInEnd,1,2,&s) ){` |
-|   ! 0 | 2741 | `				DT_FF_LOGERR((int)(z - zIn),"A two digit second could not be found");` |
-|   ! 0 | 2742 | `				if( DtHuntDigits(&z,zInEnd,1,2,&s) < 0 ){` |
-|   ! 0 | 2743 | `					DT_FF_LOGERR(nIn,"A two digit second could not be found");` |
-|   ! 0 | 2744 | `				}` |
-|   ! 0 | 2745 | `			}` |
-|     5 | 2746 | `			break;` |
-|   ! 0 | 2747 | `		case 'u':` |
-|     - | 2748 | `			/* micro parsed then dropped: PHL keeps whole seconds (recorded) */` |
-|   ! 0 | 2749 | `			if( !DtEatDigits(&z,zInEnd,1,6,&v) ){` |
-|   ! 0 | 2750 | `				DT_FF_LOGERR((int)(z - zIn),"A six digit microsecond could not be found");` |
-|   ! 0 | 2751 | `				if( DtHuntDigits(&z,zInEnd,1,6,&v) < 0 ){` |
-|   ! 0 | 2752 | `					DT_FF_LOGERR(nIn,"A six digit microsecond could not be found");` |
-|   ! 0 | 2753 | `				}` |
-|   ! 0 | 2754 | `			}` |
-|   ! 0 | 2755 | `			break;` |
-|   ! 0 | 2756 | `		case 'v':` |
-|   ! 0 | 2757 | `			if( !DtEatDigits(&z,zInEnd,1,3,&v) ){` |
-|   ! 0 | 2758 | `				DT_FF_LOGERR((int)(z - zIn),"A three digit millisecond could not be found");` |
-|   ! 0 | 2759 | `				if( DtHuntDigits(&z,zInEnd,1,3,&v) < 0 ){` |
-|   ! 0 | 2760 | `					DT_FF_LOGERR(nIn,"A three digit millisecond could not be found");` |
-|   ! 0 | 2761 | `				}` |
-|   ! 0 | 2762 | `			}` |
-|   ! 0 | 2763 | `			break;` |
-|     2 | 2764 | `		case 'a': case 'A':{` |
-|     - | 2765 | `			static const char *azMer[] = {"am","pm","a.m.","p.m."};` |
-|     5 | 2766 | `			int k = DtEatName(&z,zInEnd,azMer,4);` |
-|     5 | 2767 | `			if( k ){` |
-|     5 | 2768 | `				iMeridiem = ((k - 1) & 1);` |
-|     3 | 2769 | `			}else{` |
-|   ! 0 | 2770 | `				zErr = "A meridian could not be found";` |
-|     - | 2771 | `			}` |
-|     5 | 2772 | `			break;` |
-|     - | 2773 | `				 }` |
-|     2 | 2774 | `		case 'U':{` |
-|     5 | 2775 | `			int neg = 0;` |
-|     5 | 2776 | `			if( z < zInEnd && z[0]=='-' ){ neg = 1; z++; }` |
-|     5 | 2777 | `			if( DtEatDigits(&z,zInEnd,1,19,&uVal) ){` |
-|     5 | 2778 | `				if( neg ){ uVal = -uVal; }` |
-|     5 | 2779 | `				bHasU = 1;` |
-|     3 | 2780 | `			}else{` |
-|   ! 0 | 2781 | `				DT_FF_LOGERR((int)(z - zIn),"A unix timestamp could not be found");` |
-|   ! 0 | 2782 | `				if( DtHuntDigits(&z,zInEnd,1,19,&uVal) < 0 ){` |
-|   ! 0 | 2783 | `					DT_FF_LOGERR(nIn,"A unix timestamp could not be found");` |
-|   ! 0 | 2784 | `				}else{` |
-|   ! 0 | 2785 | `					if( neg ){ uVal = -uVal; }` |
-|   ! 0 | 2786 | `					bHasU = 1;` |
-|     - | 2787 | `				}` |
-|     - | 2788 | `			}` |
-|     5 | 2789 | `			break;` |
-|     - | 2790 | `				 }` |
-|     1 | 2791 | `		case 'e': case 'T':{` |
-|     - | 2792 | `			static const char *azZone[] = {"UTC","GMT","Z"};` |
-|     3 | 2793 | `			int k = DtEatName(&z,zInEnd,azZone,3);` |
-|     3 | 2794 | `			if( k == 3 ){` |
-|   ! 0 | 2795 | `				iOffKind = 2; iOffVal = 0;` |
-|     3 | 2796 | `			}else if( k ){` |
-|     3 | 2797 | `				iOffKind = 3; iOffVal = 0;` |
-|     3 | 2798 | `				SyMemcpy(azZone[k-1],zName,4);` |
-|     1 | 2799 | `			}else if( z < zInEnd && (z[0]=='+' \|\| z[0]=='-') ){` |
-|   ! 0 | 2800 | `				goto parse_num_off;` |
-|   ! 0 | 2801 | `			}else{` |
-|   ! 0 | 2802 | `				zErr = "The timezone could not be found in the database";` |
-|     - | 2803 | `			}` |
-|     3 | 2804 | `			break;` |
-|     2 | 2805 | `				 }` |
-|     - | 2806 | `		case 'O': case 'P':` |
-|     2 | 2807 | `parse_num_off:	{` |
-|     5 | 2808 | `			int sign,oh,om = 0;` |
-|     - | 2809 | `			sxi64 t;` |
-|     5 | 2810 | `			if( z >= zInEnd \|\| (z[0] != '+' && z[0] != '-') ){` |
-|   ! 0 | 2811 | `				zErr = "The timezone could not be found in the database";` |
-|   ! 0 | 2812 | `				break;` |
-|     - | 2813 | `			}` |
-|     5 | 2814 | `			sign = (z[0]=='-') ? -1 : 1;` |
-|     5 | 2815 | `			z++;` |
-|     5 | 2816 | `			if( !DtEatDigits(&z,zInEnd,2,2,&t) ){` |
-|   ! 0 | 2817 | `				zErr = "The timezone could not be found in the database";` |
-|   ! 0 | 2818 | `				break;` |
-|     - | 2819 | `			}` |
-|     5 | 2820 | `			oh = (int)t;` |
-|     5 | 2821 | `			if( z < zInEnd && z[0]==':' ){ z++; }` |
-|     5 | 2822 | `			if( DtEatDigits(&z,zInEnd,2,2,&t) ){ om = (int)t; }` |
-|     5 | 2823 | `			iOffKind = 1;` |
-|     5 | 2824 | `			iOffVal = sign * (oh*3600 + om*60);` |
-|     5 | 2825 | `			break;` |
-|     - | 2826 | `				 }` |
-|   ! 0 | 2827 | `		case '?':` |
-|   ! 0 | 2828 | `			if( z < zInEnd ){ z++; }` |
-|   ! 0 | 2829 | `			break;` |
-|   ! 0 | 2830 | `		case '*':` |
-|     - | 2831 | `			/* skip input until the next separator byte */` |
-|   ! 0 | 2832 | `			while( z < zInEnd && !SyisDigit(z[0]) && z[0] != ';' && z[0] != ':'` |
-|   ! 0 | 2833 | `			 && z[0] != '/' && z[0] != '.' && z[0] != ',' && z[0] != '-'` |
-|   ! 0 | 2834 | `			 && z[0] != '(' && z[0] != ')' && z[0] != ' ' ){` |
-|   ! 0 | 2835 | `				z++;` |
-|   ! 0 | 2836 | `			}` |
-|   ! 0 | 2837 | `			break;` |
-|     1 | 2838 | `		case '#':` |
-|     3 | 2839 | `			if( z < zInEnd && (z[0]==';'\|\|z[0]==':'\|\|z[0]=='/'\|\|z[0]=='.'` |
-|   ! 0 | 2840 | `			 \|\|z[0]==','\|\|z[0]=='-'\|\|z[0]=='('\|\|z[0]==')') ){` |
-|     3 | 2841 | `				z++;` |
-|     2 | 2842 | `			}else{` |
-|   ! 0 | 2843 | `				zErr = "The separation symbol could not be found";` |
-|     - | 2844 | `			}` |
-|     3 | 2845 | `			break;` |
-|     1 | 2846 | `		case '\\':` |
-|     3 | 2847 | `			if( zFmt < zEnd ){` |
-|     3 | 2848 | `				if( z < zInEnd && z[0] == zFmt[0] ){` |
-|     3 | 2849 | `					z++;` |
-|     3 | 2850 | `					zFmt++;` |
-|     2 | 2851 | `				}else{` |
-|     - | 2852 | `					/* a literal mismatch aborts timelib's scan */` |
-|   ! 0 | 2853 | `					DT_FF_LOGERR((int)(z - zIn),"The format separator does not match");` |
-|   ! 0 | 2854 | `					zFmt = zEnd;` |
-|   ! 0 | 2855 | `					bAborted = 1;` |
-|     - | 2856 | `				}` |
-|     1 | 2857 | `			}` |
-|     3 | 2858 | `			break;` |
-|    34 | 2859 | `		case ';': case ':': case '/': case '.': case ',': case '-':` |
-|     - | 2860 | `		case '(' : case ')':` |
-|    69 | 2861 | `			if( z < zInEnd && z[0] == c ){` |
-|    69 | 2862 | `				z++;` |
-|    35 | 2863 | `			}else{` |
-|     - | 2864 | `				/* timelib logs BOTH messages (count +2, last-wins on the` |
-|     - | 2865 | `				 * position), consumes the offending byte, and keeps going */` |
-|   ! 0 | 2866 | `				DT_FF_LOGERR((int)(z - zIn),"The separation symbol could not be found");` |
-|   ! 0 | 2867 | `				DT_FF_LOGERR((int)(z - zIn),"Unexpected data found.");` |
-|   ! 0 | 2868 | `				z++;` |
-|     - | 2869 | `			}` |
-|    69 | 2870 | `			break;` |
-|    13 | 2871 | `		case ' ':` |
-|    27 | 2872 | `			if( z < zInEnd && (z[0] == ' ' \|\| z[0] == '\t') ){` |
-|    27 | 2873 | `				z++;` |
-|    14 | 2874 | `			}else{` |
-|   ! 0 | 2875 | `				DT_FF_LOGERR((int)(z - zIn),"The separation symbol could not be found");` |
-|   ! 0 | 2876 | `				DT_FF_LOGERR((int)(z - zIn),"Unexpected data found.");` |
-|   ! 0 | 2877 | `				z++;` |
+|   129 | 2616 | `	*pz = z;` |
+|   129 | 2617 | `	*pVal = v;` |
+|   129 | 2618 | `	return n;` |
+|    66 | 2619 | `}` |
+|     - | 2620 | `/* timelib_get_nr's recovery: skip non-digits hunting for the field.` |
+|     - | 2621 | ` * Returns 1 = found+read, 0 = digits present but short, -1 = exhausted. */` |
+|     2 | 2622 | `static int DtHuntDigits(const char **pz,const char *zEnd,int nMin,int nMax,sxi64 *pVal)` |
+|     1 | 2623 | `{` |
+|     3 | 2624 | `	const char *z = *pz;` |
+|    13 | 2625 | `	while( z < zEnd && !SyisDigit(z[0]) ){ z++; }` |
+|     3 | 2626 | `	*pz = z;` |
+|     3 | 2627 | `	if( z >= zEnd ){` |
+|     3 | 2628 | `		return -1;` |
+|     - | 2629 | `	}` |
+|   ! 0 | 2630 | `	return DtEatDigits(pz,zEnd,nMin,nMax,pVal) ? 1 : 0;` |
+|     2 | 2631 | `}` |
+|     - | 2632 | `/* Case-insensitive name-table lookup; returns 1-based index or 0 */` |
+|    14 | 2633 | `static int DtEatName(const char **pz,const char *zEnd,const char **azNames,int nNames)` |
+|     1 | 2634 | `{` |
+|     - | 2635 | `	int k;` |
+|    23 | 2636 | `	for( k = 0 ; k < nNames ; k++ ){` |
+|    23 | 2637 | `		int n = (int)SyStrlen(azNames[k]);` |
+|    23 | 2638 | `		if( zEnd - *pz >= n && SyStrnicmp(*pz,azNames[k],(sxu32)n) == 0 ){` |
+|    15 | 2639 | `			*pz += n;` |
+|    15 | 2640 | `			return k + 1;` |
+|     - | 2641 | `		}` |
+|     5 | 2642 | `	}` |
+|   ! 0 | 2643 | `	return 0;` |
+|     8 | 2644 | `}` |
+|     - | 2645 | `/* mixed __dt_from_format(string fmt, string input, int nowTs, int defOff)` |
+|     - | 2646 | ` *   php's DateTime::createFromFormat engine. Success: [ts, off, offKind, name]` |
+|     - | 2647 | ` *   where offKind 0=none-parsed, 1=numeric offset, 2=literal Z, 3=named id.` |
+|     - | 2648 | ` *   Failure: "POS\tMESSAGE" (timelib's message strings; PHL reports the FIRST` |
+|     - | 2649 | ` *   error where php may accumulate several — recorded). A trailing-data` |
+|     - | 2650 | ` *   warning rides as [4]=pos, [5]=msg on the success array. */` |
+|    44 | 2651 | `static int vm_builtin_dt_from_format(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 2652 | `{` |
+|     - | 2653 | `	static const char *azDay3[] = {"sun","mon","tue","wed","thu","fri","sat"};` |
+|     - | 2654 | `	static const char *azDayFull[] = {"sunday","monday","tuesday","wednesday",` |
+|     - | 2655 | `		"thursday","friday","saturday"};` |
+|     - | 2656 | `	static const char *azMon3[] = {"jan","feb","mar","apr","may","jun","jul",` |
+|     - | 2657 | `		"aug","sep","oct","nov","dec"};` |
+|     - | 2658 | `	static const char *azMonFull[] = {"january","february","march","april",` |
+|     - | 2659 | `		"may","june","july","august","september","october","november","december"};` |
+|     - | 2660 | `	const char *zFmt,*zIn,*zEnd,*zInEnd,*z;` |
+|     - | 2661 | `	int nFmt,nIn;` |
+|     - | 2662 | `	sxi64 iNow,v;` |
+|     - | 2663 | `	sxi32 iDefOff;` |
+|     - | 2664 | `	/* -1 == unset */` |
+|    45 | 2665 | `	sxi64 y = -1,mo = -1,d = -1,h = -1,mi = -1,s = -1,h12 = -1,uVal = 0;` |
+|    45 | 2666 | `	int iMeridiem = -1,bHasU = 0,bPipe = 0,bPlus = 0;` |
+|    45 | 2667 | `	int iOffKind = 0;` |
+|    45 | 2668 | `	sxi32 iOffVal = 0;` |
+|     - | 2669 | `	char zName[16];` |
+|    45 | 2670 | `	const char *zErr = 0;` |
+|     - | 2671 | `	const char *aWarnMsg[3];` |
+|     - | 2672 | `	int aWarnPos[3];` |
+|    45 | 2673 | `	int nWarn = 0,bAborted = 0;` |
+|     - | 2674 | `	const char *aErrMsg[8];` |
+|     - | 2675 | `	int aErrPos[8];` |
+|    45 | 2676 | `	int nErr = 0,nErrKept = 0;` |
+|    45 | 2677 | `	if( nArg < 4 ){` |
+|   ! 0 | 2678 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 | 2679 | `		return PH7_OK;` |
+|     - | 2680 | `	}` |
+|    45 | 2681 | `	zFmt = ph7_value_to_string(apArg[0],&nFmt);` |
+|    45 | 2682 | `	zIn  = ph7_value_to_string(apArg[1],&nIn);` |
+|    45 | 2683 | `	iNow = ph7_value_to_int64(apArg[2]);` |
+|    45 | 2684 | `	iDefOff = (sxi32)ph7_value_to_int64(apArg[3]);` |
+|    45 | 2685 | `	zEnd = &zFmt[nFmt];` |
+|    45 | 2686 | `	zInEnd = &zIn[nIn];` |
+|    45 | 2687 | `	z = zIn;` |
+|    45 | 2688 | `	zName[0] = 0;` |
+|     - | 2689 | `#define DT_FF_LOGERR(iPos,zMsg) \` |
+|     - | 2690 | `	{ int _p = (iPos),_k,_f = -1; \` |
+|     - | 2691 | `	  nErr++; \` |
+|     - | 2692 | `	  for( _k = 0 ; _k < nErrKept ; _k++ ){ if( aErrPos[_k] == _p ){ _f = _k; break; } } \` |
+|     - | 2693 | `	  if( _f >= 0 ){ aErrMsg[_f] = (zMsg); } \` |
+|     - | 2694 | `	  else if( nErrKept < 8 ){ aErrPos[nErrKept] = _p; aErrMsg[nErrKept] = (zMsg); nErrKept++; } }` |
+|   299 | 2695 | `	while( zFmt < zEnd ){` |
+|   257 | 2696 | `		char c = zFmt[0];` |
+|   257 | 2697 | `		zFmt++;` |
+|   257 | 2698 | `		zErr = 0;` |
+|   257 | 2699 | `		if( c == '!' ){` |
+|     7 | 2700 | `			y = 1970; mo = 1; d = 1; h = 0; mi = 0; s = 0;` |
+|     7 | 2701 | `			h12 = -1; iMeridiem = -1;` |
+|     7 | 2702 | `			continue;` |
+|     - | 2703 | `		}` |
+|   251 | 2704 | `		if( c == '\|' ){ bPipe = 1; continue; }` |
+|   247 | 2705 | `		if( c == '+' ){ bPlus = 1; continue; }` |
+|   245 | 2706 | `		if( z >= zInEnd ){` |
+|     - | 2707 | `			/* timelib aborts the scan once input is exhausted */` |
+|     5 | 2708 | `			DT_FF_LOGERR(nIn,"Not enough data available to satisfy format");` |
+|     3 | 2709 | `			break;` |
+|     - | 2710 | `		}` |
+|   243 | 2711 | `		switch( c ){` |
+|    15 | 2712 | `		case 'd': case 'j':` |
+|    31 | 2713 | `			if( !DtEatDigits(&z,zInEnd,1,2,&d) ){` |
+|   ! 0 | 2714 | `				DT_FF_LOGERR((int)(z - zIn),"A two digit day could not be found");` |
+|   ! 0 | 2715 | `				if( DtHuntDigits(&z,zInEnd,1,2,&d) < 0 ){` |
+|   ! 0 | 2716 | `					DT_FF_LOGERR(nIn,"A two digit day could not be found");` |
+|   ! 0 | 2717 | `				}` |
+|   ! 0 | 2718 | `			}` |
+|    31 | 2719 | `			break;` |
+|     1 | 2720 | `		case 'D':` |
+|     3 | 2721 | `			if( !DtEatName(&z,zInEnd,azDay3,7) ){` |
+|   ! 0 | 2722 | `				zErr = "A textual day could not be found";` |
+|   ! 0 | 2723 | `			}` |
+|     3 | 2724 | `			break;` |
+|     1 | 2725 | `		case 'l':` |
+|     3 | 2726 | `			if( !DtEatName(&z,zInEnd,azDayFull,7) ){` |
+|   ! 0 | 2727 | `				zErr = "A textual day could not be found";` |
+|   ! 0 | 2728 | `			}` |
+|     3 | 2729 | `			break;` |
+|     1 | 2730 | `		case 'S':` |
+|     - | 2731 | `			/* ordinal suffix: st nd rd th */` |
+|     4 | 2732 | `			if( zInEnd-z >= 2 && ((z[0]=='s'&&z[1]=='t')\|\|(z[0]=='n'&&z[1]=='d')` |
+|     2 | 2733 | `			 \|\|(z[0]=='r'&&z[1]=='d')\|\|(z[0]=='t'&&z[1]=='h')) ){` |
+|     3 | 2734 | `				z += 2;` |
+|     1 | 2735 | `			}` |
+|     3 | 2736 | `			break;` |
+|    13 | 2737 | `		case 'm': case 'n':` |
+|    27 | 2738 | `			if( !DtEatDigits(&z,zInEnd,1,2,&mo) ){` |
+|   ! 0 | 2739 | `				DT_FF_LOGERR((int)(z - zIn),"A two digit month could not be found");` |
+|   ! 0 | 2740 | `				if( DtHuntDigits(&z,zInEnd,1,2,&mo) < 0 ){` |
+|   ! 0 | 2741 | `					DT_FF_LOGERR(nIn,"A two digit month could not be found");` |
+|   ! 0 | 2742 | `				}` |
+|   ! 0 | 2743 | `			}` |
+|    27 | 2744 | `			break;` |
+|     1 | 2745 | `		case 'M':{` |
+|     3 | 2746 | `			int k = DtEatName(&z,zInEnd,azMon3,12);` |
+|     3 | 2747 | `			if( k ){ mo = k; }else{ zErr = "A textual month could not be found"; }` |
+|     3 | 2748 | `			break;` |
+|     - | 2749 | `				 }` |
+|     1 | 2750 | `		case 'F':{` |
+|     3 | 2751 | `			int k = DtEatName(&z,zInEnd,azMonFull,12);` |
+|     3 | 2752 | `			if( k ){ mo = k; }else{ zErr = "A textual month could not be found"; }` |
+|     3 | 2753 | `			break;` |
+|     - | 2754 | `				 }` |
+|   ! 0 | 2755 | `		case 'y':` |
+|   ! 0 | 2756 | `			if( DtEatDigits(&z,zInEnd,2,2,&y) ){` |
+|   ! 0 | 2757 | `				y += (y <= 69) ? 2000 : 1900;` |
+|   ! 0 | 2758 | `			}else{` |
+|   ! 0 | 2759 | `				DT_FF_LOGERR((int)(z - zIn),"A two digit year could not be found");` |
+|   ! 0 | 2760 | `				if( DtHuntDigits(&z,zInEnd,2,2,&y) < 0 ){` |
+|   ! 0 | 2761 | `					DT_FF_LOGERR(nIn,"A two digit year could not be found");` |
+|   ! 0 | 2762 | `				}else if( y >= 0 ){` |
+|   ! 0 | 2763 | `					y += (y <= 69) ? 2000 : 1900;` |
+|   ! 0 | 2764 | `				}` |
+|     - | 2765 | `			}` |
+|   ! 0 | 2766 | `			break;` |
+|    17 | 2767 | `		case 'Y':{` |
+|    35 | 2768 | `			int neg = 0;` |
+|    35 | 2769 | `			if( z < zInEnd && (z[0]=='-'\|\|z[0]=='+') ){ neg = (z[0]=='-'); z++; }` |
+|    35 | 2770 | `			if( DtEatDigits(&z,zInEnd,1,4,&y) ){` |
+|    33 | 2771 | `				if( neg ){ y = -y; }` |
+|    17 | 2772 | `			}else{` |
+|     3 | 2773 | `				DT_FF_LOGERR((int)(z - zIn),"A four digit year could not be found");` |
+|     3 | 2774 | `				if( DtHuntDigits(&z,zInEnd,1,4,&y) < 0 ){` |
+|     5 | 2775 | `					DT_FF_LOGERR(nIn,"A four digit year could not be found");` |
+|     1 | 2776 | `				}` |
+|     - | 2777 | `			}` |
+|    35 | 2778 | `			break;` |
+|     - | 2779 | `				 }` |
+|     4 | 2780 | `		case 'H': case 'G':` |
+|     9 | 2781 | `			if( !DtEatDigits(&z,zInEnd,1,2,&h) ){` |
+|   ! 0 | 2782 | `				DT_FF_LOGERR((int)(z - zIn),"A two digit hour could not be found");` |
+|   ! 0 | 2783 | `				if( DtHuntDigits(&z,zInEnd,1,2,&h) < 0 ){` |
+|   ! 0 | 2784 | `					DT_FF_LOGERR(nIn,"A two digit hour could not be found");` |
+|   ! 0 | 2785 | `				}` |
+|   ! 0 | 2786 | `			}` |
+|     9 | 2787 | `			break;` |
+|     2 | 2788 | `		case 'h': case 'g':` |
+|     5 | 2789 | `			if( !DtEatDigits(&z,zInEnd,1,2,&h12) ){` |
+|   ! 0 | 2790 | `				DT_FF_LOGERR((int)(z - zIn),"A two digit hour could not be found");` |
+|   ! 0 | 2791 | `				if( DtHuntDigits(&z,zInEnd,1,2,&h12) < 0 ){` |
+|   ! 0 | 2792 | `					DT_FF_LOGERR(nIn,"A two digit hour could not be found");` |
+|   ! 0 | 2793 | `				}` |
+|   ! 0 | 2794 | `			}` |
+|     5 | 2795 | `			break;` |
+|     6 | 2796 | `		case 'i':` |
+|    13 | 2797 | `			if( !DtEatDigits(&z,zInEnd,1,2,&mi) ){` |
+|   ! 0 | 2798 | `				DT_FF_LOGERR((int)(z - zIn),"A two digit minute could not be found");` |
+|   ! 0 | 2799 | `				if( DtHuntDigits(&z,zInEnd,1,2,&mi) < 0 ){` |
+|   ! 0 | 2800 | `					DT_FF_LOGERR(nIn,"A two digit minute could not be found");` |
+|   ! 0 | 2801 | `				}` |
+|   ! 0 | 2802 | `			}` |
+|    13 | 2803 | `			break;` |
+|     2 | 2804 | `		case 's':` |
+|     5 | 2805 | `			if( !DtEatDigits(&z,zInEnd,1,2,&s) ){` |
+|   ! 0 | 2806 | `				DT_FF_LOGERR((int)(z - zIn),"A two digit second could not be found");` |
+|   ! 0 | 2807 | `				if( DtHuntDigits(&z,zInEnd,1,2,&s) < 0 ){` |
+|   ! 0 | 2808 | `					DT_FF_LOGERR(nIn,"A two digit second could not be found");` |
+|   ! 0 | 2809 | `				}` |
+|   ! 0 | 2810 | `			}` |
+|     5 | 2811 | `			break;` |
+|   ! 0 | 2812 | `		case 'u':` |
+|     - | 2813 | `			/* micro parsed then dropped: PHL keeps whole seconds (recorded) */` |
+|   ! 0 | 2814 | `			if( !DtEatDigits(&z,zInEnd,1,6,&v) ){` |
+|   ! 0 | 2815 | `				DT_FF_LOGERR((int)(z - zIn),"A six digit microsecond could not be found");` |
+|   ! 0 | 2816 | `				if( DtHuntDigits(&z,zInEnd,1,6,&v) < 0 ){` |
+|   ! 0 | 2817 | `					DT_FF_LOGERR(nIn,"A six digit microsecond could not be found");` |
+|   ! 0 | 2818 | `				}` |
+|   ! 0 | 2819 | `			}` |
+|   ! 0 | 2820 | `			break;` |
+|   ! 0 | 2821 | `		case 'v':` |
+|   ! 0 | 2822 | `			if( !DtEatDigits(&z,zInEnd,1,3,&v) ){` |
+|   ! 0 | 2823 | `				DT_FF_LOGERR((int)(z - zIn),"A three digit millisecond could not be found");` |
+|   ! 0 | 2824 | `				if( DtHuntDigits(&z,zInEnd,1,3,&v) < 0 ){` |
+|   ! 0 | 2825 | `					DT_FF_LOGERR(nIn,"A three digit millisecond could not be found");` |
+|   ! 0 | 2826 | `				}` |
+|   ! 0 | 2827 | `			}` |
+|   ! 0 | 2828 | `			break;` |
+|     2 | 2829 | `		case 'a': case 'A':{` |
+|     - | 2830 | `			static const char *azMer[] = {"am","pm","a.m.","p.m."};` |
+|     5 | 2831 | `			int k = DtEatName(&z,zInEnd,azMer,4);` |
+|     5 | 2832 | `			if( k ){` |
+|     5 | 2833 | `				iMeridiem = ((k - 1) & 1);` |
+|     3 | 2834 | `			}else{` |
+|   ! 0 | 2835 | `				zErr = "A meridian could not be found";` |
+|     - | 2836 | `			}` |
+|     5 | 2837 | `			break;` |
+|     - | 2838 | `				 }` |
+|     2 | 2839 | `		case 'U':{` |
+|     5 | 2840 | `			int neg = 0;` |
+|     5 | 2841 | `			if( z < zInEnd && z[0]=='-' ){ neg = 1; z++; }` |
+|     5 | 2842 | `			if( DtEatDigits(&z,zInEnd,1,19,&uVal) ){` |
+|     5 | 2843 | `				if( neg ){ uVal = -uVal; }` |
+|     5 | 2844 | `				bHasU = 1;` |
+|     3 | 2845 | `			}else{` |
+|   ! 0 | 2846 | `				DT_FF_LOGERR((int)(z - zIn),"A unix timestamp could not be found");` |
+|   ! 0 | 2847 | `				if( DtHuntDigits(&z,zInEnd,1,19,&uVal) < 0 ){` |
+|   ! 0 | 2848 | `					DT_FF_LOGERR(nIn,"A unix timestamp could not be found");` |
+|   ! 0 | 2849 | `				}else{` |
+|   ! 0 | 2850 | `					if( neg ){ uVal = -uVal; }` |
+|   ! 0 | 2851 | `					bHasU = 1;` |
+|     - | 2852 | `				}` |
+|     - | 2853 | `			}` |
+|     5 | 2854 | `			break;` |
+|     - | 2855 | `				 }` |
+|     1 | 2856 | `		case 'e': case 'T':{` |
+|     - | 2857 | `			static const char *azZone[] = {"UTC","GMT","Z"};` |
+|     3 | 2858 | `			int k = DtEatName(&z,zInEnd,azZone,3);` |
+|     3 | 2859 | `			if( k == 3 ){` |
+|   ! 0 | 2860 | `				iOffKind = 2; iOffVal = 0;` |
+|     3 | 2861 | `			}else if( k ){` |
+|     3 | 2862 | `				iOffKind = 3; iOffVal = 0;` |
+|     3 | 2863 | `				SyMemcpy(azZone[k-1],zName,4);` |
+|     1 | 2864 | `			}else if( z < zInEnd && (z[0]=='+' \|\| z[0]=='-') ){` |
+|   ! 0 | 2865 | `				goto parse_num_off;` |
+|   ! 0 | 2866 | `			}else{` |
+|   ! 0 | 2867 | `				zErr = "The timezone could not be found in the database";` |
+|     - | 2868 | `			}` |
+|     3 | 2869 | `			break;` |
+|     2 | 2870 | `				 }` |
+|     - | 2871 | `		case 'O': case 'P':` |
+|     2 | 2872 | `parse_num_off:	{` |
+|     5 | 2873 | `			int sign,oh,om = 0;` |
+|     - | 2874 | `			sxi64 t;` |
+|     5 | 2875 | `			if( z >= zInEnd \|\| (z[0] != '+' && z[0] != '-') ){` |
+|   ! 0 | 2876 | `				zErr = "The timezone could not be found in the database";` |
+|   ! 0 | 2877 | `				break;` |
 |     - | 2878 | `			}` |
-|    27 | 2879 | `			break;` |
-|     1 | 2880 | `		default:` |
-|     - | 2881 | `			/* any other format byte must match the input verbatim; a mismatch` |
-|     - | 2882 | `			 * aborts timelib's scan */` |
-|     3 | 2883 | `			if( z < zInEnd && z[0] == c ){` |
-|   ! 0 | 2884 | `				z++;` |
-|   ! 0 | 2885 | `			}else{` |
-|     3 | 2886 | `				DT_FF_LOGERR((int)(z - zIn),"The format separator does not match");` |
-|     3 | 2887 | `				zFmt = zEnd;` |
-|     3 | 2888 | `				bAborted = 1;` |
-|     - | 2889 | `			}` |
-|     2 | 2890 | `			break;` |
-|     - | 2891 | `		}` |
-|   243 | 2892 | `		if( zErr ){` |
-|     - | 2893 | `			/* name/zone/separator mismatch: log and keep scanning (timelib) */` |
-|   ! 0 | 2894 | `			DT_FF_LOGERR((int)(z - zIn),zErr);` |
-|   ! 0 | 2895 | `		}` |
-|     1 | 2896 | `	}` |
-|    45 | 2897 | `	if( z < zInEnd && !bAborted ){` |
-|     5 | 2898 | `		if( bPlus ){` |
-|     - | 2899 | `			/* '+' downgrades trailing data to a warning */` |
-|     3 | 2900 | `			aWarnPos[nWarn] = (int)(z - zIn);` |
-|     3 | 2901 | `			aWarnMsg[nWarn] = "Trailing data";` |
-|     3 | 2902 | `			nWarn++;` |
-|     2 | 2903 | `		}else{` |
-|     3 | 2904 | `			DT_FF_LOGERR((int)(z - zIn),"Trailing data");` |
-|     - | 2905 | `		}` |
-|     2 | 2906 | `	}` |
-|    45 | 2907 | `	if( nErr > 0 ){` |
-|     - | 2908 | `		SyBlob sOut;` |
-|     - | 2909 | `		int k;` |
-|     7 | 2910 | `		SyBlobInit(&sOut,&pCtx->pVm->sAllocator);` |
-|     7 | 2911 | `		SyBlobFormat(&sOut,"%d",nErr);` |
-|    15 | 2912 | `		for( k = 0 ; k < nErrKept ; k++ ){` |
-|     9 | 2913 | `			SyBlobFormat(&sOut,"\n%d\t%s",aErrPos[k],aErrMsg[k]);` |
-|     5 | 2914 | `		}` |
-|     7 | 2915 | `		ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));` |
-|     7 | 2916 | `		SyBlobRelease(&sOut);` |
-|     7 | 2917 | `		return PH7_OK;` |
-|     - | 2918 | `	}` |
-|    39 | 2919 | `	if( bPipe ){` |
-|     5 | 2920 | `		if( y < 0 ){ y = 1970; }` |
-|     5 | 2921 | `		if( mo < 0 ){ mo = 1; }` |
-|     5 | 2922 | `		if( d < 0 ){ d = 1; }` |
-|     5 | 2923 | `		if( h < 0 && h12 < 0 ){ h = 0; }` |
-|     5 | 2924 | `		if( mi < 0 ){ mi = 0; }` |
-|     5 | 2925 | `		if( s < 0 ){ s = 0; }` |
-|     2 | 2926 | `	}` |
-|     - | 2927 | `	{` |
-|     - | 2928 | `		/* remaining unset fields come from "now" in the default offset */` |
-|    39 | 2929 | `		sxi64 iLocal = iNow + iDefOff;` |
-|    39 | 2930 | `		sxi64 days = DtFloorDiv(iLocal,86400);` |
-|    39 | 2931 | `		sxi64 secs = iLocal - days*86400;` |
-|     - | 2932 | `		sxi64 ny;` |
-|     - | 2933 | `		int nmo,nd;` |
-|    39 | 2934 | `		DtCivilFromDays(days,&ny,&nmo,&nd);` |
-|    39 | 2935 | `		if( y < 0 ){ y = ny; }` |
-|    39 | 2936 | `		if( mo < 0 ){ mo = nmo; }` |
-|    39 | 2937 | `		if( d < 0 ){ d = nd; }` |
-|    39 | 2938 | `		if( h12 >= 0 ){` |
-|     5 | 2939 | `			h = (h12 % 12) + ((iMeridiem == 1) ? 12 : 0);` |
-|     2 | 2940 | `		}` |
-|     - | 2941 | `		/* php: parsing a time component zeroes the finer unset units */` |
-|    39 | 2942 | `		if( h >= 0 ){` |
-|    19 | 2943 | `			if( mi < 0 ){ mi = 0; }` |
-|    19 | 2944 | `			if( s < 0 ){ s = 0; }` |
-|    30 | 2945 | `		}else if( mi >= 0 ){` |
-|     3 | 2946 | `			if( s < 0 ){ s = 0; }` |
-|     1 | 2947 | `		}` |
-|    39 | 2948 | `		if( h < 0 ){ h = secs / 3600; }` |
-|    39 | 2949 | `		if( mi < 0 ){ mi = (secs / 60) % 60; }` |
-|    39 | 2950 | `		if( s < 0 ){ s = secs % 60; }` |
-|     - | 2951 | `	}` |
-|     - | 2952 | `	/* php validates the RESOLVED fields and warns (parse still succeeds,` |
-|     - | 2953 | `	 * values roll over via civil arithmetic) */` |
-|    39 | 2954 | `	if( mo < 1 \|\| mo > 12 \|\| d < 1 \|\| d > DtDaysInMonth(y,(int)mo) ){` |
-|     3 | 2955 | `		if( nWarn < 3 ){` |
-|     3 | 2956 | `			aWarnPos[nWarn] = nIn;` |
-|     3 | 2957 | `			aWarnMsg[nWarn] = "The parsed date was invalid";` |
-|     3 | 2958 | `			nWarn++;` |
-|     1 | 2959 | `		}` |
-|     1 | 2960 | `	}` |
-|    39 | 2961 | `	if( h > 24 \|\| mi > 59 \|\| s > 59 ){` |
-|     3 | 2962 | `		if( nWarn < 3 ){` |
-|     3 | 2963 | `			aWarnPos[nWarn] = nIn;` |
-|     3 | 2964 | `			aWarnMsg[nWarn] = "The parsed time was invalid";` |
-|     3 | 2965 | `			nWarn++;` |
-|     1 | 2966 | `		}` |
-|     1 | 2967 | `	}` |
-|     - | 2968 | `	{` |
-|    39 | 2969 | `		ph7_value *pArr = ph7_context_new_array(pCtx);` |
-|    39 | 2970 | `		ph7_value *pV = ph7_context_new_scalar(pCtx);` |
-|     - | 2971 | `		sxi64 iTs;` |
-|    39 | 2972 | `		sxi32 iUseOff = (iOffKind != 0) ? iOffVal : iDefOff;` |
-|    39 | 2973 | `		if( pArr == 0 \|\| pV == 0 ){` |
-|   ! 0 | 2974 | `			return PH7_ContextMemoryError(pCtx);` |
-|     - | 2975 | `		}` |
-|    39 | 2976 | `		if( bHasU ){` |
-|     5 | 2977 | `			iTs = uVal;` |
-|     5 | 2978 | `			iUseOff = 0;` |
-|     5 | 2979 | `			iOffKind = 1;` |
-|     3 | 2980 | `		}else{` |
-|    35 | 2981 | `			iTs = DtMakeTs(y,(int)mo,(int)d,(int)h,(int)mi,(int)s,iUseOff);` |
-|     - | 2982 | `		}` |
-|    39 | 2983 | `		ph7_value_int64(pV,iTs);           ph7_array_add_elem(pArr,0,pV);` |
-|    39 | 2984 | `		ph7_value_int64(pV,iUseOff);       ph7_array_add_elem(pArr,0,pV);` |
-|    39 | 2985 | `		ph7_value_int64(pV,iOffKind);      ph7_array_add_elem(pArr,0,pV);` |
-|    39 | 2986 | `		ph7_value_string(pV,zName,-1);     ph7_array_add_elem(pArr,0,pV);` |
-|     - | 2987 | `		{` |
-|     - | 2988 | `			int k;` |
-|    45 | 2989 | `			for( k = 0 ; k < nWarn ; k++ ){` |
-|     7 | 2990 | `				ph7_value_int64(pV,aWarnPos[k]);` |
-|     7 | 2991 | `				ph7_array_add_elem(pArr,0,pV);` |
-|     7 | 2992 | `				ph7_value_string(pV,aWarnMsg[k],-1);` |
-|     7 | 2993 | `				ph7_array_add_elem(pArr,0,pV);` |
-|     4 | 2994 | `			}` |
-|     - | 2995 | `		}` |
-|    39 | 2996 | `		ph7_result_value(pCtx,pArr);` |
-|     - | 2997 | `	}` |
-|    39 | 2998 | `	return PH7_OK;` |
-|    23 | 2999 | `}` |
-|     - | 3000 | `/*` |
-|     - | 3001 | ` * The embedded DateTime library. Timezone scope: UTC + fixed offsets.` |
-|     - | 3002 | ` */` |
-|     - | 3003 | `static const char zDateTimeLib[] =` |
-|     - | 3004 | `"class DateException extends Exception {}"` |
-|     - | 3005 | `"class DateMalformedStringException extends DateException {}"` |
-|     - | 3006 | `"class DateInvalidTimeZoneException extends DateException {}"` |
-|     - | 3007 | `"class DateMalformedIntervalStringException extends DateException {}"` |
-|     - | 3008 | `"class DateMalformedPeriodStringException extends DateException {}"` |
-|     - | 3009 | `"interface DateTimeInterface {"` |
-|     - | 3010 | `" const ATOM = 'Y-m-d\\TH:i:sP';"` |
-|     - | 3011 | `" const COOKIE = 'l, d-M-Y H:i:s T';"` |
-|     - | 3012 | `" const ISO8601 = 'Y-m-d\\TH:i:sO';"` |
-|     - | 3013 | `" const ISO8601_EXPANDED = 'X-m-d\\TH:i:sP';"` |
-|     - | 3014 | `" const RFC822 = 'D, d M y H:i:s O';"` |
-|     - | 3015 | `" const RFC850 = 'l, d-M-y H:i:s T';"` |
-|     - | 3016 | `" const RFC1036 = 'D, d M y H:i:s O';"` |
-|     - | 3017 | `" const RFC1123 = 'D, d M Y H:i:s O';"` |
-|     - | 3018 | `" const RFC7231 = 'D, d M Y H:i:s \\G\\M\\T';"` |
-|     - | 3019 | `" const RFC2822 = 'D, d M Y H:i:s O';"` |
-|     - | 3020 | `" const RFC3339 = 'Y-m-d\\TH:i:sP';"` |
-|     - | 3021 | `" const RFC3339_EXTENDED = 'Y-m-d\\TH:i:s.vP';"` |
-|     - | 3022 | `" const RSS = 'D, d M Y H:i:s O';"` |
-|     - | 3023 | `" const W3C = 'Y-m-d\\TH:i:sP';"` |
-|     - | 3024 | `"}"` |
-|     - | 3025 | `"class DateTimeZone {"` |
-|     - | 3026 | `" private $__dtzOff = 0;"` |
-|     - | 3027 | `" private $__dtzName = 'UTC';"` |
-|     - | 3028 | `" public function __construct($timezone = 'UTC'){"` |
-|     - | 3029 | `"  $tz = (string)$timezone;"` |
-|     - | 3030 | `"  if( strcasecmp($tz, 'UTC') === 0 ){"` |
-|     - | 3031 | `"   $this->__dtzOff = 0; $this->__dtzName = 'UTC';"` |
-|     - | 3032 | `"   return;"` |
-|     - | 3033 | `"  }"` |
-|     - | 3034 | `"  if( $tz === 'Z' ){"` |
-|     - | 3035 | `"   $this->__dtzOff = 0; $this->__dtzName = 'Z';"` |
-|     - | 3036 | `"   return;"` |
-|     - | 3037 | `"  }"` |
-|     - | 3038 | `"  if( strcasecmp($tz, 'GMT') === 0 ){"` |
-|     - | 3039 | `"   $this->__dtzOff = 0; $this->__dtzName = 'GMT';"` |
-|     - | 3040 | `"   return;"` |
-|     - | 3041 | `"  }"` |
-|     - | 3042 | `"  $m = null;"` |
-|     - | 3043 | `"  if( preg_match('/^([+-])(\\d{2}):?(\\d{2})$/', $tz, $m) ){"` |
-|     - | 3044 | `"   $off = ((int)$m[2]) * 3600 + ((int)$m[3]) * 60;"` |
-|     - | 3045 | `"   if( $m[1] === '-' ){ $off = -$off; }"` |
-|     - | 3046 | `"   $this->__dtzOff = $off;"` |
-|     - | 3047 | `"   $this->__dtzName = $m[1] . $m[2] . ':' . $m[3];"` |
-|     - | 3048 | `"   return;"` |
-|     - | 3049 | `"  }"` |
-|     - | 3050 | `"  throw new DateInvalidTimeZoneException("` |
-|     - | 3051 | `"   'DateTimeZone::__construct(): Unknown or bad timezone (' . $tz . ')');"` |
-|     - | 3052 | `" }"` |
-|     - | 3053 | `" public function getName(){ return $this->__dtzName; }"` |
-|     - | 3054 | `" public function getOffset($datetime = null){ return $this->__dtzOff; }"` |
-|     - | 3055 | `"}"` |
-|     - | 3056 | `"trait __DtCoreT {"` |
-|     - | 3057 | `" private $__dtTs = 0;"` |
-|     - | 3058 | `" private $__dtOff = 0;"` |
-|     - | 3059 | `" private $__dtName = 'UTC';"` |
-|     - | 3060 | `" private function __dtInit($datetime, $timezone){"` |
-|     - | 3061 | `"  $off = 0; $name = __dt_default_tz();"` |
-|     - | 3062 | `"  if( $timezone !== null ){"` |
-|     - | 3063 | `"   $off = $timezone->getOffset($this);"` |
-|     - | 3064 | `"   $name = $timezone->getName();"` |
-|     - | 3065 | `"  }"` |
-|     - | 3066 | `"  $r = __dt_parse((string)$datetime, __dt_now(), $off);"` |
-|     - | 3067 | `"  if( is_string($r) ){ throw new DateMalformedStringException($r); }"` |
-|     - | 3068 | `"  $this->__dtTs = $r[0];"` |
-|     - | 3069 | `"  if( $r[2] ){"` |
-|     - | 3070 | `"   $this->__dtOff = $r[1];"` |
-|     - | 3071 | `"   $this->__dtName = $r[2] === 2 ? 'Z' : $this->__dtOffName($r[1]);"` |
-|     - | 3072 | `"  }else{"` |
-|     - | 3073 | `"   $this->__dtOff = $off;"` |
-|     - | 3074 | `"   $this->__dtName = $name;"` |
-|     - | 3075 | `"  }"` |
-|     - | 3076 | `" }"` |
-|     - | 3077 | `" private function __dtOffName($off){"` |
-|     - | 3078 | `"  $s = $off < 0 ? '-' : '+';"` |
-|     - | 3079 | `"  $a = $off < 0 ? -$off : $off;"` |
-|     - | 3080 | `"  return $s . sprintf('%02d:%02d', intdiv($a, 3600), intdiv($a % 3600, 60));"` |
-|     - | 3081 | `" }"` |
-|     - | 3082 | `" public function format($format){ return __dt_format($this->__dtTs, $this->__dtOff, $this->__dtName, (string)$format); }"` |
-|     - | 3083 | `" public function getTimestamp(){ return $this->__dtTs; }"` |
-|     - | 3084 | `" public function getOffset(){ return $this->__dtOff; }"` |
-|     - | 3085 | `" public function getTimezone(){ return new DateTimeZone($this->__dtName); }"` |
-|     - | 3086 | `" public function diff($targetObject, $absolute = false){"` |
-|     - | 3087 | `"  $r = __dt_civil_diff($this->__dtTs, $this->__dtOff, $targetObject->getTimestamp());"` |
-|     - | 3088 | `"  $iv = new DateInterval('P0D');"` |
-|     - | 3089 | `"  $iv->y = $r[0]; $iv->m = $r[1]; $iv->d = $r[2];"` |
-|     - | 3090 | `"  $iv->h = $r[3]; $iv->i = $r[4]; $iv->s = $r[5];"` |
-|     - | 3091 | `"  $iv->days = $r[6];"` |
-|     - | 3092 | `"  $iv->invert = $absolute ? 0 : $r[7];"` |
-|     - | 3093 | `"  return $iv;"` |
-|     - | 3094 | `" }"` |
-|     - | 3095 | `" private function __dtAddTs($interval, $sign){"` |
-|     - | 3096 | `"  if( $interval->invert ){ $sign = -$sign; }"` |
-|     - | 3097 | `"  return __dt_civil_add($this->__dtTs, $this->__dtOff, $interval->y, $interval->m,"` |
-|     - | 3098 | `"   $interval->d, $interval->h, $interval->i, $interval->s, $sign);"` |
-|     - | 3099 | `" }"` |
-|     - | 3100 | `" private static function __dtFromFormat($format, $datetime, $timezone, $class){"` |
-|     - | 3101 | `"  $off = 0; $name = __dt_default_tz();"` |
-|     - | 3102 | `"  if( $timezone !== null ){"` |
-|     - | 3103 | `"   $off = $timezone->getOffset(null);"` |
-|     - | 3104 | `"   $name = $timezone->getName();"` |
-|     - | 3105 | `"  }"` |
-|     - | 3106 | `"  $r = __dt_from_format((string)$format, (string)$datetime, __dt_now(), $off);"` |
-|     - | 3107 | `"  if( is_string($r) ){"` |
-|     - | 3108 | `"   $lines = explode(\"\\n\", $r);"` |
-|     - | 3109 | `"   $errs = [];"` |
-|     - | 3110 | `"   $nl = count($lines);"` |
-|     - | 3111 | `"   for( $k = 1; $k < $nl; $k++ ){"` |
-|     - | 3112 | `"    $p = strpos($lines[$k], \"\\t\");"` |
-|     - | 3113 | `"    $errs[(int)substr($lines[$k], 0, $p)] = substr($lines[$k], $p + 1);"` |
-|     - | 3114 | `"   }"` |
-|     - | 3115 | `"   DateTime::$__dtLastErr = ['warning_count' => 0, 'warnings' => [],"` |
-|     - | 3116 | `"    'error_count' => (int)$lines[0], 'errors' => $errs];"` |
-|     - | 3117 | `"   return false;"` |
-|     - | 3118 | `"  }"` |
-|     - | 3119 | `"  if( isset($r[4]) ){"` |
-|     - | 3120 | `"   $warns = [];"` |
-|     - | 3121 | `"   $wc = 0;"` |
-|     - | 3122 | `"   for( $k = 4; isset($r[$k]); $k += 2 ){"` |
-|     - | 3123 | `"    $warns[$r[$k]] = $r[$k + 1];"` |
-|     - | 3124 | `"    $wc++;"` |
-|     - | 3125 | `"   }"` |
-|     - | 3126 | `"   DateTime::$__dtLastErr = ['warning_count' => $wc, 'warnings' => $warns,"` |
-|     - | 3127 | `"    'error_count' => 0, 'errors' => []];"` |
-|     - | 3128 | `"  }else{"` |
-|     - | 3129 | `"   DateTime::$__dtLastErr = false;"` |
+|     5 | 2879 | `			sign = (z[0]=='-') ? -1 : 1;` |
+|     5 | 2880 | `			z++;` |
+|     5 | 2881 | `			if( !DtEatDigits(&z,zInEnd,2,2,&t) ){` |
+|   ! 0 | 2882 | `				zErr = "The timezone could not be found in the database";` |
+|   ! 0 | 2883 | `				break;` |
+|     - | 2884 | `			}` |
+|     5 | 2885 | `			oh = (int)t;` |
+|     5 | 2886 | `			if( z < zInEnd && z[0]==':' ){ z++; }` |
+|     5 | 2887 | `			if( DtEatDigits(&z,zInEnd,2,2,&t) ){ om = (int)t; }` |
+|     5 | 2888 | `			iOffKind = 1;` |
+|     5 | 2889 | `			iOffVal = sign * (oh*3600 + om*60);` |
+|     5 | 2890 | `			break;` |
+|     - | 2891 | `				 }` |
+|   ! 0 | 2892 | `		case '?':` |
+|   ! 0 | 2893 | `			if( z < zInEnd ){ z++; }` |
+|   ! 0 | 2894 | `			break;` |
+|   ! 0 | 2895 | `		case '*':` |
+|     - | 2896 | `			/* skip input until the next separator byte */` |
+|   ! 0 | 2897 | `			while( z < zInEnd && !SyisDigit(z[0]) && z[0] != ';' && z[0] != ':'` |
+|   ! 0 | 2898 | `			 && z[0] != '/' && z[0] != '.' && z[0] != ',' && z[0] != '-'` |
+|   ! 0 | 2899 | `			 && z[0] != '(' && z[0] != ')' && z[0] != ' ' ){` |
+|   ! 0 | 2900 | `				z++;` |
+|   ! 0 | 2901 | `			}` |
+|   ! 0 | 2902 | `			break;` |
+|     1 | 2903 | `		case '#':` |
+|     3 | 2904 | `			if( z < zInEnd && (z[0]==';'\|\|z[0]==':'\|\|z[0]=='/'\|\|z[0]=='.'` |
+|   ! 0 | 2905 | `			 \|\|z[0]==','\|\|z[0]=='-'\|\|z[0]=='('\|\|z[0]==')') ){` |
+|     3 | 2906 | `				z++;` |
+|     2 | 2907 | `			}else{` |
+|   ! 0 | 2908 | `				zErr = "The separation symbol could not be found";` |
+|     - | 2909 | `			}` |
+|     3 | 2910 | `			break;` |
+|     1 | 2911 | `		case '\\':` |
+|     3 | 2912 | `			if( zFmt < zEnd ){` |
+|     3 | 2913 | `				if( z < zInEnd && z[0] == zFmt[0] ){` |
+|     3 | 2914 | `					z++;` |
+|     3 | 2915 | `					zFmt++;` |
+|     2 | 2916 | `				}else{` |
+|     - | 2917 | `					/* a literal mismatch aborts timelib's scan */` |
+|   ! 0 | 2918 | `					DT_FF_LOGERR((int)(z - zIn),"The format separator does not match");` |
+|   ! 0 | 2919 | `					zFmt = zEnd;` |
+|   ! 0 | 2920 | `					bAborted = 1;` |
+|     - | 2921 | `				}` |
+|     1 | 2922 | `			}` |
+|     3 | 2923 | `			break;` |
+|    34 | 2924 | `		case ';': case ':': case '/': case '.': case ',': case '-':` |
+|     - | 2925 | `		case '(' : case ')':` |
+|    69 | 2926 | `			if( z < zInEnd && z[0] == c ){` |
+|    69 | 2927 | `				z++;` |
+|    35 | 2928 | `			}else{` |
+|     - | 2929 | `				/* timelib logs BOTH messages (count +2, last-wins on the` |
+|     - | 2930 | `				 * position), consumes the offending byte, and keeps going */` |
+|   ! 0 | 2931 | `				DT_FF_LOGERR((int)(z - zIn),"The separation symbol could not be found");` |
+|   ! 0 | 2932 | `				DT_FF_LOGERR((int)(z - zIn),"Unexpected data found.");` |
+|   ! 0 | 2933 | `				z++;` |
+|     - | 2934 | `			}` |
+|    69 | 2935 | `			break;` |
+|    13 | 2936 | `		case ' ':` |
+|    27 | 2937 | `			if( z < zInEnd && (z[0] == ' ' \|\| z[0] == '\t') ){` |
+|    27 | 2938 | `				z++;` |
+|    14 | 2939 | `			}else{` |
+|   ! 0 | 2940 | `				DT_FF_LOGERR((int)(z - zIn),"The separation symbol could not be found");` |
+|   ! 0 | 2941 | `				DT_FF_LOGERR((int)(z - zIn),"Unexpected data found.");` |
+|   ! 0 | 2942 | `				z++;` |
+|     - | 2943 | `			}` |
+|    27 | 2944 | `			break;` |
+|     1 | 2945 | `		default:` |
+|     - | 2946 | `			/* any other format byte must match the input verbatim; a mismatch` |
+|     - | 2947 | `			 * aborts timelib's scan */` |
+|     3 | 2948 | `			if( z < zInEnd && z[0] == c ){` |
+|   ! 0 | 2949 | `				z++;` |
+|   ! 0 | 2950 | `			}else{` |
+|     3 | 2951 | `				DT_FF_LOGERR((int)(z - zIn),"The format separator does not match");` |
+|     3 | 2952 | `				zFmt = zEnd;` |
+|     3 | 2953 | `				bAborted = 1;` |
+|     - | 2954 | `			}` |
+|     2 | 2955 | `			break;` |
+|     - | 2956 | `		}` |
+|   243 | 2957 | `		if( zErr ){` |
+|     - | 2958 | `			/* name/zone/separator mismatch: log and keep scanning (timelib) */` |
+|   ! 0 | 2959 | `			DT_FF_LOGERR((int)(z - zIn),zErr);` |
+|   ! 0 | 2960 | `		}` |
+|     1 | 2961 | `	}` |
+|    45 | 2962 | `	if( z < zInEnd && !bAborted ){` |
+|     5 | 2963 | `		if( bPlus ){` |
+|     - | 2964 | `			/* '+' downgrades trailing data to a warning */` |
+|     3 | 2965 | `			aWarnPos[nWarn] = (int)(z - zIn);` |
+|     3 | 2966 | `			aWarnMsg[nWarn] = "Trailing data";` |
+|     3 | 2967 | `			nWarn++;` |
+|     2 | 2968 | `		}else{` |
+|     3 | 2969 | `			DT_FF_LOGERR((int)(z - zIn),"Trailing data");` |
+|     - | 2970 | `		}` |
+|     2 | 2971 | `	}` |
+|    45 | 2972 | `	if( nErr > 0 ){` |
+|     - | 2973 | `		SyBlob sOut;` |
+|     - | 2974 | `		int k;` |
+|     7 | 2975 | `		SyBlobInit(&sOut,&pCtx->pVm->sAllocator);` |
+|     7 | 2976 | `		SyBlobFormat(&sOut,"%d",nErr);` |
+|    15 | 2977 | `		for( k = 0 ; k < nErrKept ; k++ ){` |
+|     9 | 2978 | `			SyBlobFormat(&sOut,"\n%d\t%s",aErrPos[k],aErrMsg[k]);` |
+|     5 | 2979 | `		}` |
+|     7 | 2980 | `		ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));` |
+|     7 | 2981 | `		SyBlobRelease(&sOut);` |
+|     7 | 2982 | `		return PH7_OK;` |
+|     - | 2983 | `	}` |
+|    39 | 2984 | `	if( bPipe ){` |
+|     5 | 2985 | `		if( y < 0 ){ y = 1970; }` |
+|     5 | 2986 | `		if( mo < 0 ){ mo = 1; }` |
+|     5 | 2987 | `		if( d < 0 ){ d = 1; }` |
+|     5 | 2988 | `		if( h < 0 && h12 < 0 ){ h = 0; }` |
+|     5 | 2989 | `		if( mi < 0 ){ mi = 0; }` |
+|     5 | 2990 | `		if( s < 0 ){ s = 0; }` |
+|     2 | 2991 | `	}` |
+|     - | 2992 | `	{` |
+|     - | 2993 | `		/* remaining unset fields come from "now" in the default offset */` |
+|    39 | 2994 | `		sxi64 iLocal = iNow + iDefOff;` |
+|    39 | 2995 | `		sxi64 days = DtFloorDiv(iLocal,86400);` |
+|    39 | 2996 | `		sxi64 secs = iLocal - days*86400;` |
+|     - | 2997 | `		sxi64 ny;` |
+|     - | 2998 | `		int nmo,nd;` |
+|    39 | 2999 | `		DtCivilFromDays(days,&ny,&nmo,&nd);` |
+|    39 | 3000 | `		if( y < 0 ){ y = ny; }` |
+|    39 | 3001 | `		if( mo < 0 ){ mo = nmo; }` |
+|    39 | 3002 | `		if( d < 0 ){ d = nd; }` |
+|    39 | 3003 | `		if( h12 >= 0 ){` |
+|     5 | 3004 | `			h = (h12 % 12) + ((iMeridiem == 1) ? 12 : 0);` |
+|     2 | 3005 | `		}` |
+|     - | 3006 | `		/* php: parsing a time component zeroes the finer unset units */` |
+|    39 | 3007 | `		if( h >= 0 ){` |
+|    19 | 3008 | `			if( mi < 0 ){ mi = 0; }` |
+|    19 | 3009 | `			if( s < 0 ){ s = 0; }` |
+|    30 | 3010 | `		}else if( mi >= 0 ){` |
+|     3 | 3011 | `			if( s < 0 ){ s = 0; }` |
+|     1 | 3012 | `		}` |
+|    39 | 3013 | `		if( h < 0 ){ h = secs / 3600; }` |
+|    39 | 3014 | `		if( mi < 0 ){ mi = (secs / 60) % 60; }` |
+|    39 | 3015 | `		if( s < 0 ){ s = secs % 60; }` |
+|     - | 3016 | `	}` |
+|     - | 3017 | `	/* php validates the RESOLVED fields and warns (parse still succeeds,` |
+|     - | 3018 | `	 * values roll over via civil arithmetic) */` |
+|    39 | 3019 | `	if( mo < 1 \|\| mo > 12 \|\| d < 1 \|\| d > DtDaysInMonth(y,(int)mo) ){` |
+|     3 | 3020 | `		if( nWarn < 3 ){` |
+|     3 | 3021 | `			aWarnPos[nWarn] = nIn;` |
+|     3 | 3022 | `			aWarnMsg[nWarn] = "The parsed date was invalid";` |
+|     3 | 3023 | `			nWarn++;` |
+|     1 | 3024 | `		}` |
+|     1 | 3025 | `	}` |
+|    39 | 3026 | `	if( h > 24 \|\| mi > 59 \|\| s > 59 ){` |
+|     3 | 3027 | `		if( nWarn < 3 ){` |
+|     3 | 3028 | `			aWarnPos[nWarn] = nIn;` |
+|     3 | 3029 | `			aWarnMsg[nWarn] = "The parsed time was invalid";` |
+|     3 | 3030 | `			nWarn++;` |
+|     1 | 3031 | `		}` |
+|     1 | 3032 | `	}` |
+|     - | 3033 | `	{` |
+|    39 | 3034 | `		ph7_value *pArr = ph7_context_new_array(pCtx);` |
+|    39 | 3035 | `		ph7_value *pV = ph7_context_new_scalar(pCtx);` |
+|     - | 3036 | `		sxi64 iTs;` |
+|    39 | 3037 | `		sxi32 iUseOff = (iOffKind != 0) ? iOffVal : iDefOff;` |
+|    39 | 3038 | `		if( pArr == 0 \|\| pV == 0 ){` |
+|   ! 0 | 3039 | `			return PH7_ContextMemoryError(pCtx);` |
+|     - | 3040 | `		}` |
+|    39 | 3041 | `		if( bHasU ){` |
+|     5 | 3042 | `			iTs = uVal;` |
+|     5 | 3043 | `			iUseOff = 0;` |
+|     5 | 3044 | `			iOffKind = 1;` |
+|     3 | 3045 | `		}else{` |
+|    35 | 3046 | `			iTs = DtMakeTs(y,(int)mo,(int)d,(int)h,(int)mi,(int)s,iUseOff);` |
+|     - | 3047 | `		}` |
+|    39 | 3048 | `		ph7_value_int64(pV,iTs);           ph7_array_add_elem(pArr,0,pV);` |
+|    39 | 3049 | `		ph7_value_int64(pV,iUseOff);       ph7_array_add_elem(pArr,0,pV);` |
+|    39 | 3050 | `		ph7_value_int64(pV,iOffKind);      ph7_array_add_elem(pArr,0,pV);` |
+|    39 | 3051 | `		ph7_value_string(pV,zName,-1);     ph7_array_add_elem(pArr,0,pV);` |
+|     - | 3052 | `		{` |
+|     - | 3053 | `			int k;` |
+|    45 | 3054 | `			for( k = 0 ; k < nWarn ; k++ ){` |
+|     7 | 3055 | `				ph7_value_int64(pV,aWarnPos[k]);` |
+|     7 | 3056 | `				ph7_array_add_elem(pArr,0,pV);` |
+|     7 | 3057 | `				ph7_value_string(pV,aWarnMsg[k],-1);` |
+|     7 | 3058 | `				ph7_array_add_elem(pArr,0,pV);` |
+|     4 | 3059 | `			}` |
+|     - | 3060 | `		}` |
+|    39 | 3061 | `		ph7_result_value(pCtx,pArr);` |
+|     - | 3062 | `	}` |
+|    39 | 3063 | `	return PH7_OK;` |
+|    23 | 3064 | `}` |
+|     - | 3065 | `/*` |
+|     - | 3066 | ` * The embedded DateTime library. Timezone scope: UTC + fixed offsets.` |
+|     - | 3067 | ` */` |
+|     - | 3068 | `static const char zDateTimeLib[] =` |
+|     - | 3069 | `"class DateException extends Exception {}"` |
+|     - | 3070 | `"class DateMalformedStringException extends DateException {}"` |
+|     - | 3071 | `"class DateInvalidTimeZoneException extends DateException {}"` |
+|     - | 3072 | `"class DateMalformedIntervalStringException extends DateException {}"` |
+|     - | 3073 | `"class DateMalformedPeriodStringException extends DateException {}"` |
+|     - | 3074 | `"interface DateTimeInterface {"` |
+|     - | 3075 | `" const ATOM = 'Y-m-d\\TH:i:sP';"` |
+|     - | 3076 | `" const COOKIE = 'l, d-M-Y H:i:s T';"` |
+|     - | 3077 | `" const ISO8601 = 'Y-m-d\\TH:i:sO';"` |
+|     - | 3078 | `" const ISO8601_EXPANDED = 'X-m-d\\TH:i:sP';"` |
+|     - | 3079 | `" const RFC822 = 'D, d M y H:i:s O';"` |
+|     - | 3080 | `" const RFC850 = 'l, d-M-y H:i:s T';"` |
+|     - | 3081 | `" const RFC1036 = 'D, d M y H:i:s O';"` |
+|     - | 3082 | `" const RFC1123 = 'D, d M Y H:i:s O';"` |
+|     - | 3083 | `" const RFC7231 = 'D, d M Y H:i:s \\G\\M\\T';"` |
+|     - | 3084 | `" const RFC2822 = 'D, d M Y H:i:s O';"` |
+|     - | 3085 | `" const RFC3339 = 'Y-m-d\\TH:i:sP';"` |
+|     - | 3086 | `" const RFC3339_EXTENDED = 'Y-m-d\\TH:i:s.vP';"` |
+|     - | 3087 | `" const RSS = 'D, d M Y H:i:s O';"` |
+|     - | 3088 | `" const W3C = 'Y-m-d\\TH:i:sP';"` |
+|     - | 3089 | `"}"` |
+|     - | 3090 | `"class DateTimeZone {"` |
+|     - | 3091 | `" private $__dtzOff = 0;"` |
+|     - | 3092 | `" private $__dtzName = 'UTC';"` |
+|     - | 3093 | `" public function __construct($timezone = 'UTC'){"` |
+|     - | 3094 | `"  $tz = (string)$timezone;"` |
+|     - | 3095 | `"  if( strcasecmp($tz, 'UTC') === 0 ){"` |
+|     - | 3096 | `"   $this->__dtzOff = 0; $this->__dtzName = 'UTC';"` |
+|     - | 3097 | `"   return;"` |
+|     - | 3098 | `"  }"` |
+|     - | 3099 | `"  if( $tz === 'Z' ){"` |
+|     - | 3100 | `"   $this->__dtzOff = 0; $this->__dtzName = 'Z';"` |
+|     - | 3101 | `"   return;"` |
+|     - | 3102 | `"  }"` |
+|     - | 3103 | `"  if( strcasecmp($tz, 'GMT') === 0 ){"` |
+|     - | 3104 | `"   $this->__dtzOff = 0; $this->__dtzName = 'GMT';"` |
+|     - | 3105 | `"   return;"` |
+|     - | 3106 | `"  }"` |
+|     - | 3107 | `"  $m = null;"` |
+|     - | 3108 | `"  if( preg_match('/^([+-])(\\d{2}):?(\\d{2})$/', $tz, $m) ){"` |
+|     - | 3109 | `"   $off = ((int)$m[2]) * 3600 + ((int)$m[3]) * 60;"` |
+|     - | 3110 | `"   if( $m[1] === '-' ){ $off = -$off; }"` |
+|     - | 3111 | `"   $this->__dtzOff = $off;"` |
+|     - | 3112 | `"   $this->__dtzName = $m[1] . $m[2] . ':' . $m[3];"` |
+|     - | 3113 | `"   return;"` |
+|     - | 3114 | `"  }"` |
+|     - | 3115 | `"  throw new DateInvalidTimeZoneException("` |
+|     - | 3116 | `"   'DateTimeZone::__construct(): Unknown or bad timezone (' . $tz . ')');"` |
+|     - | 3117 | `" }"` |
+|     - | 3118 | `" public function getName(){ return $this->__dtzName; }"` |
+|     - | 3119 | `" public function getOffset($datetime = null){ return $this->__dtzOff; }"` |
+|     - | 3120 | `"}"` |
+|     - | 3121 | `"trait __DtCoreT {"` |
+|     - | 3122 | `" private $__dtTs = 0;"` |
+|     - | 3123 | `" private $__dtOff = 0;"` |
+|     - | 3124 | `" private $__dtName = 'UTC';"` |
+|     - | 3125 | `" private function __dtInit($datetime, $timezone){"` |
+|     - | 3126 | `"  $off = 0; $name = __dt_default_tz();"` |
+|     - | 3127 | `"  if( $timezone !== null ){"` |
+|     - | 3128 | `"   $off = $timezone->getOffset($this);"` |
+|     - | 3129 | `"   $name = $timezone->getName();"` |
 |     - | 3130 | `"  }"` |
-|     - | 3131 | `"  $obj = new $class('@0');"` |
-|     - | 3132 | `"  $obj->__dtTs = $r[0];"` |
-|     - | 3133 | `"  if( $r[2] === 0 ){ $obj->__dtOff = $off; $obj->__dtName = $name; }"` |
-|     - | 3134 | `"  elseif( $r[2] === 2 ){ $obj->__dtOff = 0; $obj->__dtName = 'Z'; }"` |
-|     - | 3135 | `"  elseif( $r[2] === 3 ){ $obj->__dtOff = $r[1]; $obj->__dtName = $r[3]; }"` |
-|     - | 3136 | `"  else { $obj->__dtOff = $r[1]; $obj->__dtName = $obj->__dtOffName($r[1]); }"` |
-|     - | 3137 | `"  return $obj;"` |
-|     - | 3138 | `" }"` |
-|     - | 3139 | `" private static function __dtCopyOf($object, $class){"` |
-|     - | 3140 | `"  $d = new $class('@0');"` |
-|     - | 3141 | `"  $d->__dtTs = $object->getTimestamp();"` |
-|     - | 3142 | `"  $d->__dtOff = $object->getOffset();"` |
-|     - | 3143 | `"  $d->__dtName = $object->getTimezone()->getName();"` |
-|     - | 3144 | `"  return $d;"` |
-|     - | 3145 | `" }"` |
-|     - | 3146 | `"}"` |
-|     - | 3147 | `"class DateTime implements DateTimeInterface {"` |
-|     - | 3148 | `" use __DtCoreT;"` |
-|     - | 3149 | `" public function __construct($datetime = 'now', $timezone = null){"` |
-|     - | 3150 | `"  $this->__dtInit($datetime, $timezone);"` |
-|     - | 3151 | `" }"` |
-|     - | 3152 | `" public function modify($modifier){"` |
-|     - | 3153 | `"  $r = __dt_parse((string)$modifier, $this->__dtTs, $this->__dtOff);"` |
-|     - | 3154 | `"  if( is_string($r) ){ throw new DateMalformedStringException('DateTime::modify(): ' . $r); }"` |
-|     - | 3155 | `"  $this->__dtTs = $r[0];"` |
-|     - | 3156 | `"  return $this;"` |
-|     - | 3157 | `" }"` |
-|     - | 3158 | `" public function setTimestamp($timestamp){ $this->__dtTs = (int)$timestamp; return $this; }"` |
-|     - | 3159 | `" public function setTimezone($timezone){"` |
-|     - | 3160 | `"  $this->__dtOff = $timezone->getOffset($this);"` |
-|     - | 3161 | `"  $this->__dtName = $timezone->getName();"` |
-|     - | 3162 | `"  return $this;"` |
-|     - | 3163 | `" }"` |
-|     - | 3164 | `" public function setDate($year, $month, $day){"` |
-|     - | 3165 | `"  $this->__dtTs = __dt_make($year, $month, $day, (int)$this->format('G'), (int)$this->format('i'), (int)$this->format('s'), $this->__dtOff);"` |
-|     - | 3166 | `"  return $this;"` |
-|     - | 3167 | `" }"` |
-|     - | 3168 | `" public function setTime($hour, $minute, $second = 0, $microsecond = 0){"` |
-|     - | 3169 | `"  $this->__dtTs = __dt_make((int)$this->format('Y'), (int)$this->format('n'), (int)$this->format('j'), $hour, $minute, $second, $this->__dtOff);"` |
-|     - | 3170 | `"  return $this;"` |
-|     - | 3171 | `" }"` |
-|     - | 3172 | `" public function add($interval){ $this->__dtTs = $this->__dtAddTs($interval, 1); return $this; }"` |
-|     - | 3173 | `" public function sub($interval){ $this->__dtTs = $this->__dtAddTs($interval, -1); return $this; }"` |
-|     - | 3174 | `" public function setISODate($year, $week, $dayOfWeek = 1){"` |
-|     - | 3175 | `"  $this->__dtTs = __dt_isodate($this->__dtTs, $this->__dtOff, $year, $week, $dayOfWeek);"` |
-|     - | 3176 | `"  return $this;"` |
-|     - | 3177 | `" }"` |
-|     - | 3178 | `" public static $__dtLastErr = false;"` |
-|     - | 3179 | `" public static function getLastErrors(){ return DateTime::$__dtLastErr; }"` |
-|     - | 3180 | `" public static function createFromFormat($format, $datetime, $timezone = null){"` |
-|     - | 3181 | `"  return self::__dtFromFormat($format, $datetime, $timezone, 'DateTime');"` |
-|     - | 3182 | `" }"` |
-|     - | 3183 | `" public static function createFromImmutable($object){ return self::__dtCopyOf($object, 'DateTime'); }"` |
-|     - | 3184 | `" public static function createFromInterface($object){ return self::__dtCopyOf($object, 'DateTime'); }"` |
-|     - | 3185 | `"}"` |
-|     - | 3186 | `"class DateTimeImmutable implements DateTimeInterface {"` |
-|     - | 3187 | `" use __DtCoreT;"` |
-|     - | 3188 | `" public function __construct($datetime = 'now', $timezone = null){"` |
-|     - | 3189 | `"  $this->__dtInit($datetime, $timezone);"` |
-|     - | 3190 | `" }"` |
-|     - | 3191 | `" public function modify($modifier){"` |
-|     - | 3192 | `"  $r = __dt_parse((string)$modifier, $this->__dtTs, $this->__dtOff);"` |
-|     - | 3193 | `"  if( is_string($r) ){ throw new DateMalformedStringException('DateTimeImmutable::modify(): ' . $r); }"` |
-|     - | 3194 | `"  $c = clone $this;"` |
-|     - | 3195 | `"  $c->__dtTs = $r[0];"` |
-|     - | 3196 | `"  return $c;"` |
-|     - | 3197 | `" }"` |
-|     - | 3198 | `" public function setTimestamp($timestamp){ $c = clone $this; $c->__dtTs = (int)$timestamp; return $c; }"` |
-|     - | 3199 | `" public function setTimezone($timezone){"` |
-|     - | 3200 | `"  $c = clone $this;"` |
-|     - | 3201 | `"  $c->__dtOff = $timezone->getOffset($this);"` |
-|     - | 3202 | `"  $c->__dtName = $timezone->getName();"` |
-|     - | 3203 | `"  return $c;"` |
-|     - | 3204 | `" }"` |
-|     - | 3205 | `" public function setDate($year, $month, $day){"` |
-|     - | 3206 | `"  $c = clone $this;"` |
-|     - | 3207 | `"  $c->__dtTs = __dt_make($year, $month, $day, (int)$this->format('G'), (int)$this->format('i'), (int)$this->format('s'), $this->__dtOff);"` |
-|     - | 3208 | `"  return $c;"` |
-|     - | 3209 | `" }"` |
-|     - | 3210 | `" public function setTime($hour, $minute, $second = 0, $microsecond = 0){"` |
-|     - | 3211 | `"  $c = clone $this;"` |
-|     - | 3212 | `"  $c->__dtTs = __dt_make((int)$this->format('Y'), (int)$this->format('n'), (int)$this->format('j'), $hour, $minute, $second, $this->__dtOff);"` |
-|     - | 3213 | `"  return $c;"` |
-|     - | 3214 | `" }"` |
-|     - | 3215 | `" public function add($interval){ $c = clone $this; $c->__dtTs = $this->__dtAddTs($interval, 1); return $c; }"` |
-|     - | 3216 | `" public function sub($interval){ $c = clone $this; $c->__dtTs = $this->__dtAddTs($interval, -1); return $c; }"` |
-|     - | 3217 | `" public function setISODate($year, $week, $dayOfWeek = 1){"` |
-|     - | 3218 | `"  $c = clone $this;"` |
-|     - | 3219 | `"  $c->__dtTs = __dt_isodate($this->__dtTs, $this->__dtOff, $year, $week, $dayOfWeek);"` |
-|     - | 3220 | `"  return $c;"` |
-|     - | 3221 | `" }"` |
-|     - | 3222 | `" public static function getLastErrors(){ return DateTime::$__dtLastErr; }"` |
-|     - | 3223 | `" public static function createFromFormat($format, $datetime, $timezone = null){"` |
-|     - | 3224 | `"  return self::__dtFromFormat($format, $datetime, $timezone, 'DateTimeImmutable');"` |
-|     - | 3225 | `" }"` |
-|     - | 3226 | `" public static function createFromMutable($object){ return self::__dtCopyOf($object, 'DateTimeImmutable'); }"` |
-|     - | 3227 | `" public static function createFromInterface($object){ return self::__dtCopyOf($object, 'DateTimeImmutable'); }"` |
-|     - | 3228 | `"}"` |
-|     - | 3229 | `"function date_create($datetime = 'now', $timezone = null){"` |
-|     - | 3230 | `" try { return new DateTime($datetime, $timezone); } catch (Exception $e) { return false; }"` |
-|     - | 3231 | `"}"` |
-|     - | 3232 | `"function date_create_immutable($datetime = 'now', $timezone = null){"` |
-|     - | 3233 | `" try { return new DateTimeImmutable($datetime, $timezone); } catch (Exception $e) { return false; }"` |
-|     - | 3234 | `"}"` |
-|     - | 3235 | `"class DateInterval {"` |
-|     - | 3236 | `" public $y = 0;"` |
-|     - | 3237 | `" public $m = 0;"` |
-|     - | 3238 | `" public $d = 0;"` |
-|     - | 3239 | `" public $h = 0;"` |
-|     - | 3240 | `" public $i = 0;"` |
-|     - | 3241 | `" public $s = 0;"` |
-|     - | 3242 | `" public $f = 0;"` |
-|     - | 3243 | `" public $invert = 0;"` |
-|     - | 3244 | `" public $days = false;"` |
-|     - | 3245 | `" public $from_string = false;"` |
-|     - | 3246 | `" public function __construct($duration = 'P0D'){"` |
-|     - | 3247 | `"  $dur = (string)$duration;"` |
-|     - | 3248 | `"  $mm = null;"` |
-|     - | 3249 | `"  if( strlen($dur) < 2 \|\| substr($dur, -1) === 'T'"` |
-|     - | 3250 | `"   \|\| !preg_match('/^P(?:(\\d+)Y)?(?:(\\d+)M)?(?:(\\d+)W)?(?:(\\d+)D)?(?:T(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)S)?)?$/', $dur, $mm) ){"` |
-|     - | 3251 | `"   throw new DateMalformedIntervalStringException('Unknown or bad format (' . $dur . ')');"` |
-|     - | 3252 | `"  }"` |
-|     - | 3253 | `"  $this->y = (int)($mm[1] ?? 0);"` |
-|     - | 3254 | `"  $this->m = (int)($mm[2] ?? 0);"` |
-|     - | 3255 | `"  $this->d = (int)($mm[4] ?? 0) + 7 * (int)($mm[3] ?? 0);"` |
-|     - | 3256 | `"  $this->h = (int)($mm[5] ?? 0);"` |
-|     - | 3257 | `"  $this->i = (int)($mm[6] ?? 0);"` |
-|     - | 3258 | `"  $this->s = (int)($mm[7] ?? 0);"` |
-|     - | 3259 | `" }"` |
-|     - | 3260 | `" public static function createFromDateString($datetime){"` |
-|     - | 3261 | `"  $s = trim((string)$datetime);"` |
-|     - | 3262 | `"  $iv = new DateInterval('P0D');"` |
-|     - | 3263 | `"  $rest = $s;"` |
-|     - | 3264 | `"  $any = false;"` |
-|     - | 3265 | `"  while( $rest !== '' ){"` |
-|     - | 3266 | `"   $mm = null;"` |
-|     - | 3267 | `"   if( !preg_match('/^[\\s,+]*([+-]?\\d+)\\s*(sec\|secs\|second\|seconds\|min\|mins\|minute\|minutes\|hour\|hours\|day\|days\|week\|weeks\|fortnight\|fortnights\|month\|months\|year\|years)\\b/i', $rest, $mm) ){"` |
-|     - | 3268 | `"    throw new DateMalformedIntervalStringException("` |
-|     - | 3269 | `"     'DateInterval::createFromDateString(): Unknown or bad format (' . $s . ')');"` |
-|     - | 3270 | `"   }"` |
-|     - | 3271 | `"   $n = (int)$mm[1];"` |
-|     - | 3272 | `"   $u = strtolower($mm[2]);"` |
-|     - | 3273 | `"   if( $u === 'sec' \|\| $u === 'secs' \|\| $u === 'second' \|\| $u === 'seconds' ){ $iv->s += $n; }"` |
-|     - | 3274 | `"   elseif( $u === 'min' \|\| $u === 'mins' \|\| $u === 'minute' \|\| $u === 'minutes' ){ $iv->i += $n; }"` |
-|     - | 3275 | `"   elseif( $u === 'hour' \|\| $u === 'hours' ){ $iv->h += $n; }"` |
-|     - | 3276 | `"   elseif( $u === 'day' \|\| $u === 'days' ){ $iv->d += $n; }"` |
-|     - | 3277 | `"   elseif( $u === 'week' \|\| $u === 'weeks' ){ $iv->d += 7 * $n; }"` |
-|     - | 3278 | `"   elseif( $u === 'fortnight' \|\| $u === 'fortnights' ){ $iv->d += 14 * $n; }"` |
-|     - | 3279 | `"   elseif( $u === 'month' \|\| $u === 'months' ){ $iv->m += $n; }"` |
-|     - | 3280 | `"   else { $iv->y += $n; }"` |
-|     - | 3281 | `"   $any = true;"` |
-|     - | 3282 | `"   $rest = ltrim(substr($rest, strlen($mm[0])));"` |
-|     - | 3283 | `"  }"` |
-|     - | 3284 | `"  if( !$any ){"` |
-|     - | 3285 | `"   throw new DateMalformedIntervalStringException("` |
-|     - | 3286 | `"    'DateInterval::createFromDateString(): Unknown or bad format (' . $s . ')');"` |
-|     - | 3287 | `"  }"` |
-|     - | 3288 | `"  return $iv;"` |
-|     - | 3289 | `" }"` |
-|     - | 3290 | `" public function format($format){"` |
-|     - | 3291 | `"  $f = (string)$format;"` |
-|     - | 3292 | `"  $out = '';"` |
-|     - | 3293 | `"  $n = strlen($f);"` |
-|     - | 3294 | `"  for( $k = 0; $k < $n; $k++ ){"` |
-|     - | 3295 | `"   $c = $f[$k];"` |
-|     - | 3296 | `"   if( $c !== '%' ){ $out .= $c; continue; }"` |
-|     - | 3297 | `"   $k++;"` |
-|     - | 3298 | `"   if( $k >= $n ){ $out .= '%'; break; }"` |
-|     - | 3299 | `"   $t = $f[$k];"` |
-|     - | 3300 | `"   if( $t === 'Y' ){ $out .= sprintf('%02d', $this->y); }"` |
-|     - | 3301 | `"   elseif( $t === 'y' ){ $out .= $this->y; }"` |
-|     - | 3302 | `"   elseif( $t === 'M' ){ $out .= sprintf('%02d', $this->m); }"` |
-|     - | 3303 | `"   elseif( $t === 'm' ){ $out .= $this->m; }"` |
-|     - | 3304 | `"   elseif( $t === 'D' ){ $out .= sprintf('%02d', $this->d); }"` |
-|     - | 3305 | `"   elseif( $t === 'd' ){ $out .= $this->d; }"` |
-|     - | 3306 | `"   elseif( $t === 'H' ){ $out .= sprintf('%02d', $this->h); }"` |
-|     - | 3307 | `"   elseif( $t === 'h' ){ $out .= $this->h; }"` |
-|     - | 3308 | `"   elseif( $t === 'I' ){ $out .= sprintf('%02d', $this->i); }"` |
-|     - | 3309 | `"   elseif( $t === 'i' ){ $out .= $this->i; }"` |
-|     - | 3310 | `"   elseif( $t === 'S' ){ $out .= sprintf('%02d', $this->s); }"` |
-|     - | 3311 | `"   elseif( $t === 's' ){ $out .= $this->s; }"` |
-|     - | 3312 | `"   elseif( $t === 'F' ){ $out .= sprintf('%06d', (int)round($this->f * 1000000)); }"` |
-|     - | 3313 | `"   elseif( $t === 'f' ){ $out .= (int)round($this->f * 1000000); }"` |
-|     - | 3314 | `"   elseif( $t === 'R' ){ $out .= $this->invert ? '-' : '+'; }"` |
-|     - | 3315 | `"   elseif( $t === 'r' ){ $out .= $this->invert ? '-' : ''; }"` |
-|     - | 3316 | `"   elseif( $t === 'a' ){ $out .= $this->days === false ? '(unknown)' : $this->days; }"` |
-|     - | 3317 | `"   elseif( $t === '%' ){ $out .= '%'; }"` |
-|     - | 3318 | `"   else { $out .= $t; }"` |
-|     - | 3319 | `"  }"` |
-|     - | 3320 | `"  return $out;"` |
-|     - | 3321 | `" }"` |
-|     - | 3322 | `"}"` |
-|     - | 3323 | `"class DatePeriod implements IteratorAggregate {"` |
-|     - | 3324 | `" const EXCLUDE_START_DATE = 1;"` |
-|     - | 3325 | `" const INCLUDE_END_DATE = 2;"` |
-|     - | 3326 | `" public $start = null;"` |
-|     - | 3327 | `" public $current = null;"` |
-|     - | 3328 | `" public $end = null;"` |
-|     - | 3329 | `" public $interval = null;"` |
-|     - | 3330 | `" public $recurrences = 1;"` |
-|     - | 3331 | `" public $include_start_date = true;"` |
-|     - | 3332 | `" public $include_end_date = false;"` |
-|     - | 3333 | `" private $__dpN = null;"` |
-|     - | 3334 | `" public function __construct($start, $interval = null, $end = null, $options = 0){"` |
-|     - | 3335 | `"  if( is_string($start) ){"` |
-|     - | 3336 | `"   $mm = null;"` |
-|     - | 3337 | `"   if( !preg_match('/^R(\\d+)\\/(.+)\\/(P.+)$/', $start, $mm) ){"` |
-|     - | 3338 | `"    throw new DateMalformedPeriodStringException("` |
-|     - | 3339 | `"     'DatePeriod::__construct(): Unknown or bad format (' . $start . ')');"` |
-|     - | 3340 | `"   }"` |
-|     - | 3341 | `"   $options = is_int($interval) ? $interval : 0;"` |
-|     - | 3342 | `"   $this->start = new DateTimeImmutable($mm[2]);"` |
-|     - | 3343 | `"   $this->interval = new DateInterval($mm[3]);"` |
-|     - | 3344 | `"   $this->__dpN = (int)$mm[1];"` |
-|     - | 3345 | `"   $this->recurrences = $this->__dpN + 1;"` |
-|     - | 3346 | `"  }else{"` |
-|     - | 3347 | `"   $this->start = clone $start;"` |
-|     - | 3348 | `"   $this->interval = $interval;"` |
-|     - | 3349 | `"   if( is_int($end) ){"` |
-|     - | 3350 | `"    $this->__dpN = $end;"` |
-|     - | 3351 | `"    $this->recurrences = $end + 1;"` |
-|     - | 3352 | `"   }else{"` |
-|     - | 3353 | `"    $this->end = $end === null ? null : (clone $end);"` |
-|     - | 3354 | `"   }"` |
-|     - | 3355 | `"  }"` |
-|     - | 3356 | `"  $this->include_start_date = !((int)$options & 1);"` |
-|     - | 3357 | `"  $this->include_end_date = ((int)$options & 2) !== 0;"` |
-|     - | 3358 | `" }"` |
-|     - | 3359 | `" public static function createFromISO8601String($specification, $options = 0){"` |
-|     - | 3360 | `"  return new DatePeriod((string)$specification, (int)$options);"` |
-|     - | 3361 | `" }"` |
-|     - | 3362 | `" public function getStartDate(){ return $this->start; }"` |
-|     - | 3363 | `" public function getEndDate(){ return $this->end; }"` |
-|     - | 3364 | `" public function getDateInterval(){ return $this->interval; }"` |
-|     - | 3365 | `" public function getRecurrences(){ return $this->__dpN; }"` |
-|     - | 3366 | `" public function getIterator(): Generator {"` |
-|     - | 3367 | `"  $cur = $this->start;"` |
-|     - | 3368 | `"  $iv = $this->interval;"` |
-|     - | 3369 | `"  $k = 0;"` |
-|     - | 3370 | `"  if( $this->end !== null ){"` |
-|     - | 3371 | `"   $endTs = $this->end->getTimestamp();"` |
-|     - | 3372 | `"   $first = true;"` |
-|     - | 3373 | `"   while( true ){"` |
-|     - | 3374 | `"    $ts = $cur->getTimestamp();"` |
-|     - | 3375 | `"    if( $this->include_end_date ? ($ts > $endTs) : ($ts >= $endTs) ){ break; }"` |
-|     - | 3376 | `"    if( !$first \|\| $this->include_start_date ){"` |
-|     - | 3377 | `"     yield $k => (clone $cur);"` |
-|     - | 3378 | `"     $k++;"` |
-|     - | 3379 | `"    }"` |
-|     - | 3380 | `"    $first = false;"` |
-|     - | 3381 | `"    $next = clone $cur;"` |
-|     - | 3382 | `"    $cur = $next->add($iv);"` |
-|     - | 3383 | `"   }"` |
-|     - | 3384 | `"   return;"` |
-|     - | 3385 | `"  }"` |
-|     - | 3386 | `"  $total = $this->__dpN + 1 + ($this->include_end_date ? 1 : 0);"` |
-|     - | 3387 | `"  for( $j = 0; $j < $total; $j++ ){"` |
-|     - | 3388 | `"   if( $j > 0 \|\| $this->include_start_date ){"` |
-|     - | 3389 | `"    yield $k => (clone $cur);"` |
-|     - | 3390 | `"    $k++;"` |
-|     - | 3391 | `"   }"` |
-|     - | 3392 | `"   $next = clone $cur;"` |
-|     - | 3393 | `"   $cur = $next->add($iv);"` |
-|     - | 3394 | `"  }"` |
-|     - | 3395 | `" }"` |
-|     - | 3396 | `"}"` |
-|     - | 3397 | `"function date_format($object, $format){ return $object->format($format); }"` |
-|     - | 3398 | `"function date_modify($object, $modifier){"` |
-|     - | 3399 | `" try { return $object->modify($modifier); } catch (Exception $e) { return false; }"` |
-|     - | 3400 | `"}"` |
-|     - | 3401 | `"function date_add($object, $interval){ return $object->add($interval); }"` |
-|     - | 3402 | `"function date_sub($object, $interval){ return $object->sub($interval); }"` |
-|     - | 3403 | `"function date_diff($baseObject, $targetObject, $absolute = false){"` |
-|     - | 3404 | `" return $baseObject->diff($targetObject, $absolute);"` |
-|     - | 3405 | `"}"` |
-|     - | 3406 | `"function date_timestamp_get($object){ return $object->getTimestamp(); }"` |
-|     - | 3407 | `"function date_timestamp_set($object, $timestamp){ return $object->setTimestamp($timestamp); }"` |
-|     - | 3408 | `"function date_timezone_get($object){ return $object->getTimezone(); }"` |
-|     - | 3409 | `"function date_timezone_set($object, $timezone){ return $object->setTimezone($timezone); }"` |
-|     - | 3410 | `"function date_offset_get($object){ return $object->getOffset(); }"` |
-|     - | 3411 | `"function date_date_set($object, $year, $month, $day){ return $object->setDate($year, $month, $day); }"` |
-|     - | 3412 | `"function date_time_set($object, $hour, $minute, $second = 0, $microsecond = 0){"` |
-|     - | 3413 | `" return $object->setTime($hour, $minute, $second, $microsecond);"` |
-|     - | 3414 | `"}"` |
-|     - | 3415 | `"function date_isodate_set($object, $year, $week, $dayOfWeek = 1){"` |
-|     - | 3416 | `" return $object->setISODate($year, $week, $dayOfWeek);"` |
-|     - | 3417 | `"}"` |
-|     - | 3418 | `"function date_interval_create_from_date_string($datetime){"` |
-|     - | 3419 | `" return DateInterval::createFromDateString($datetime);"` |
-|     - | 3420 | `"}"` |
-|     - | 3421 | `"function date_interval_format($object, $format){ return $object->format($format); }"` |
-|     - | 3422 | `"function date_get_last_errors(){ return DateTime::getLastErrors(); }"` |
-|     - | 3423 | `"function timezone_open($timezone){"` |
-|     - | 3424 | `" try { return new DateTimeZone($timezone); } catch (Exception $e) { return false; }"` |
-|     - | 3425 | `"}"` |
-|     - | 3426 | `"function timezone_name_get($object){ return $object->getName(); }"` |
-|     - | 3427 | `"function timezone_offset_get($object, $datetime){ return $object->getOffset($datetime); }"` |
-|     - | 3428 | `/* int\|false strtotime(string $datetime, ?int $baseTimestamp = null). Rides the` |
-|     - | 3429 | ` * same DtParse the DateTime constructor uses, so its format coverage is identical.` |
-|     - | 3430 | ` * php: the EMPTY string is false, but whitespace-only is 'now'; a parse failure is` |
-|     - | 3431 | ` * false (never an exception). The default timezone is treated as offset 0, exactly` |
-|     - | 3432 | ` * as the DateTime constructor does for a null $timezone. */` |
-|     - | 3433 | `"function strtotime($datetime, $baseTimestamp = null){"` |
-|     - | 3434 | `" $s = (string)$datetime;"` |
-|     - | 3435 | `" if( $s === '' ){ return false; }"` |
-|     - | 3436 | `" $base = $baseTimestamp === null ? __dt_now() : (int)$baseTimestamp;"` |
-|     - | 3437 | `" $r = __dt_parse($s, $base, 0);"` |
-|     - | 3438 | `" return is_string($r) ? false : $r[0];"` |
-|     - | 3439 | `"}"` |
-|     - | 3440 | `;` |
-|     - | 3441 | `/*` |
-|     - | 3442 | ` * Install the DateTime family: thunks first, then the chunk. Called from` |
-|     - | 3443 | ` * PH7_VmInit inside the bCompilingBuiltin window, after the Reflection` |
-|     - | 3444 | ` * install (Exception must exist).` |
-|     - | 3445 | ` */` |
-|  3812 | 3446 | `PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)` |
-|     5 | 3447 | `{` |
-|     - | 3448 | `	static const struct {` |
-|     - | 3449 | `		const char *zName;` |
-|     - | 3450 | `		ProchHostFunction xFunc;` |
-|     - | 3451 | `	} aFunc[] = {` |
-|     - | 3452 | `		{ "__dt_now",    vm_builtin_dt_now },` |
-|     - | 3453 | `		{ "__dt_default_tz", vm_builtin_dt_default_tz },` |
-|     - | 3454 | `		{ "__dt_civil_add",  vm_builtin_dt_civil_add },` |
-|     - | 3455 | `		{ "__dt_civil_diff", vm_builtin_dt_civil_diff },` |
-|     - | 3456 | `		{ "__dt_isodate",    vm_builtin_dt_isodate },` |
-|     - | 3457 | `		{ "__dt_from_format", vm_builtin_dt_from_format },` |
-|     - | 3458 | `		{ "__dt_parse",  vm_builtin_dt_parse },` |
-|     - | 3459 | `		{ "__dt_format", vm_builtin_dt_format },` |
-|     - | 3460 | `		{ "__dt_make",   vm_builtin_dt_make },` |
-|     - | 3461 | `	};` |
-|     - | 3462 | `	sxu32 n;` |
-|     - | 3463 | `	/* php's date.timezone default */` |
-|  3817 | 3464 | `	SyMemcpy("UTC",pVm->zDefTz,sizeof("UTC"));` |
-|  3817 | 3465 | `	pVm->nDefTz = sizeof("UTC") - 1;` |
-| 38125 | 3466 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
-| 34313 | 3467 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
-| 17159 | 3468 | `	}` |
-|  3817 | 3469 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zDateTimeLib,sizeof(zDateTimeLib)-1);` |
-|     5 | 3470 | `}` |
-|     - | 3471 |  |
-|     - | 3472 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
-|     - | 3473 |  |
-|     - | 3474 | `#ifdef PH7_DISABLE_BUILTIN_FUNC` |
-|     - | 3475 | `/* Tiny build: no DateTime family (builtin layer disabled) */` |
-|     - | 3476 | `PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm){` |
-|     - | 3477 | `	SyMemcpy("UTC",pVm->zDefTz,sizeof("UTC"));` |
-|     - | 3478 | `	pVm->nDefTz = sizeof("UTC") - 1;` |
-|     - | 3479 | `	return SXRET_OK;` |
-|     - | 3480 | `}` |
-|     - | 3481 | `#endif` |
-|     - | 3482 |  |
+|     - | 3131 | `"  $r = __dt_parse((string)$datetime, __dt_now(), $off);"` |
+|     - | 3132 | `"  if( is_string($r) ){ throw new DateMalformedStringException($r); }"` |
+|     - | 3133 | `"  $this->__dtTs = $r[0];"` |
+|     - | 3134 | `"  if( $r[2] ){"` |
+|     - | 3135 | `"   $this->__dtOff = $r[1];"` |
+|     - | 3136 | `"   $this->__dtName = $r[2] === 2 ? 'Z' : $this->__dtOffName($r[1]);"` |
+|     - | 3137 | `"  }else{"` |
+|     - | 3138 | `"   $this->__dtOff = $off;"` |
+|     - | 3139 | `"   $this->__dtName = $name;"` |
+|     - | 3140 | `"  }"` |
+|     - | 3141 | `" }"` |
+|     - | 3142 | `" private function __dtOffName($off){"` |
+|     - | 3143 | `"  $s = $off < 0 ? '-' : '+';"` |
+|     - | 3144 | `"  $a = $off < 0 ? -$off : $off;"` |
+|     - | 3145 | `"  return $s . sprintf('%02d:%02d', intdiv($a, 3600), intdiv($a % 3600, 60));"` |
+|     - | 3146 | `" }"` |
+|     - | 3147 | `" public function format($format){ return __dt_format($this->__dtTs, $this->__dtOff, $this->__dtName, (string)$format); }"` |
+|     - | 3148 | `" public function getTimestamp(){ return $this->__dtTs; }"` |
+|     - | 3149 | `" public function getOffset(){ return $this->__dtOff; }"` |
+|     - | 3150 | `" public function getTimezone(){ return new DateTimeZone($this->__dtName); }"` |
+|     - | 3151 | `" public function diff($targetObject, $absolute = false){"` |
+|     - | 3152 | `"  $r = __dt_civil_diff($this->__dtTs, $this->__dtOff, $targetObject->getTimestamp());"` |
+|     - | 3153 | `"  $iv = new DateInterval('P0D');"` |
+|     - | 3154 | `"  $iv->y = $r[0]; $iv->m = $r[1]; $iv->d = $r[2];"` |
+|     - | 3155 | `"  $iv->h = $r[3]; $iv->i = $r[4]; $iv->s = $r[5];"` |
+|     - | 3156 | `"  $iv->days = $r[6];"` |
+|     - | 3157 | `"  $iv->invert = $absolute ? 0 : $r[7];"` |
+|     - | 3158 | `"  return $iv;"` |
+|     - | 3159 | `" }"` |
+|     - | 3160 | `" private function __dtAddTs($interval, $sign){"` |
+|     - | 3161 | `"  if( $interval->invert ){ $sign = -$sign; }"` |
+|     - | 3162 | `"  return __dt_civil_add($this->__dtTs, $this->__dtOff, $interval->y, $interval->m,"` |
+|     - | 3163 | `"   $interval->d, $interval->h, $interval->i, $interval->s, $sign);"` |
+|     - | 3164 | `" }"` |
+|     - | 3165 | `" private static function __dtFromFormat($format, $datetime, $timezone, $class){"` |
+|     - | 3166 | `"  $off = 0; $name = __dt_default_tz();"` |
+|     - | 3167 | `"  if( $timezone !== null ){"` |
+|     - | 3168 | `"   $off = $timezone->getOffset(null);"` |
+|     - | 3169 | `"   $name = $timezone->getName();"` |
+|     - | 3170 | `"  }"` |
+|     - | 3171 | `"  $r = __dt_from_format((string)$format, (string)$datetime, __dt_now(), $off);"` |
+|     - | 3172 | `"  if( is_string($r) ){"` |
+|     - | 3173 | `"   $lines = explode(\"\\n\", $r);"` |
+|     - | 3174 | `"   $errs = [];"` |
+|     - | 3175 | `"   $nl = count($lines);"` |
+|     - | 3176 | `"   for( $k = 1; $k < $nl; $k++ ){"` |
+|     - | 3177 | `"    $p = strpos($lines[$k], \"\\t\");"` |
+|     - | 3178 | `"    $errs[(int)substr($lines[$k], 0, $p)] = substr($lines[$k], $p + 1);"` |
+|     - | 3179 | `"   }"` |
+|     - | 3180 | `"   DateTime::$__dtLastErr = ['warning_count' => 0, 'warnings' => [],"` |
+|     - | 3181 | `"    'error_count' => (int)$lines[0], 'errors' => $errs];"` |
+|     - | 3182 | `"   return false;"` |
+|     - | 3183 | `"  }"` |
+|     - | 3184 | `"  if( isset($r[4]) ){"` |
+|     - | 3185 | `"   $warns = [];"` |
+|     - | 3186 | `"   $wc = 0;"` |
+|     - | 3187 | `"   for( $k = 4; isset($r[$k]); $k += 2 ){"` |
+|     - | 3188 | `"    $warns[$r[$k]] = $r[$k + 1];"` |
+|     - | 3189 | `"    $wc++;"` |
+|     - | 3190 | `"   }"` |
+|     - | 3191 | `"   DateTime::$__dtLastErr = ['warning_count' => $wc, 'warnings' => $warns,"` |
+|     - | 3192 | `"    'error_count' => 0, 'errors' => []];"` |
+|     - | 3193 | `"  }else{"` |
+|     - | 3194 | `"   DateTime::$__dtLastErr = false;"` |
+|     - | 3195 | `"  }"` |
+|     - | 3196 | `"  $obj = new $class('@0');"` |
+|     - | 3197 | `"  $obj->__dtTs = $r[0];"` |
+|     - | 3198 | `"  if( $r[2] === 0 ){ $obj->__dtOff = $off; $obj->__dtName = $name; }"` |
+|     - | 3199 | `"  elseif( $r[2] === 2 ){ $obj->__dtOff = 0; $obj->__dtName = 'Z'; }"` |
+|     - | 3200 | `"  elseif( $r[2] === 3 ){ $obj->__dtOff = $r[1]; $obj->__dtName = $r[3]; }"` |
+|     - | 3201 | `"  else { $obj->__dtOff = $r[1]; $obj->__dtName = $obj->__dtOffName($r[1]); }"` |
+|     - | 3202 | `"  return $obj;"` |
+|     - | 3203 | `" }"` |
+|     - | 3204 | `" private static function __dtCopyOf($object, $class){"` |
+|     - | 3205 | `"  $d = new $class('@0');"` |
+|     - | 3206 | `"  $d->__dtTs = $object->getTimestamp();"` |
+|     - | 3207 | `"  $d->__dtOff = $object->getOffset();"` |
+|     - | 3208 | `"  $d->__dtName = $object->getTimezone()->getName();"` |
+|     - | 3209 | `"  return $d;"` |
+|     - | 3210 | `" }"` |
+|     - | 3211 | `"}"` |
+|     - | 3212 | `"class DateTime implements DateTimeInterface {"` |
+|     - | 3213 | `" use __DtCoreT;"` |
+|     - | 3214 | `" public function __construct($datetime = 'now', $timezone = null){"` |
+|     - | 3215 | `"  $this->__dtInit($datetime, $timezone);"` |
+|     - | 3216 | `" }"` |
+|     - | 3217 | `" public function modify($modifier){"` |
+|     - | 3218 | `"  $r = __dt_parse((string)$modifier, $this->__dtTs, $this->__dtOff);"` |
+|     - | 3219 | `"  if( is_string($r) ){ throw new DateMalformedStringException('DateTime::modify(): ' . $r); }"` |
+|     - | 3220 | `"  $this->__dtTs = $r[0];"` |
+|     - | 3221 | `"  return $this;"` |
+|     - | 3222 | `" }"` |
+|     - | 3223 | `" public function setTimestamp($timestamp){ $this->__dtTs = (int)$timestamp; return $this; }"` |
+|     - | 3224 | `" public function setTimezone($timezone){"` |
+|     - | 3225 | `"  $this->__dtOff = $timezone->getOffset($this);"` |
+|     - | 3226 | `"  $this->__dtName = $timezone->getName();"` |
+|     - | 3227 | `"  return $this;"` |
+|     - | 3228 | `" }"` |
+|     - | 3229 | `" public function setDate($year, $month, $day){"` |
+|     - | 3230 | `"  $this->__dtTs = __dt_make($year, $month, $day, (int)$this->format('G'), (int)$this->format('i'), (int)$this->format('s'), $this->__dtOff);"` |
+|     - | 3231 | `"  return $this;"` |
+|     - | 3232 | `" }"` |
+|     - | 3233 | `" public function setTime($hour, $minute, $second = 0, $microsecond = 0){"` |
+|     - | 3234 | `"  $this->__dtTs = __dt_make((int)$this->format('Y'), (int)$this->format('n'), (int)$this->format('j'), $hour, $minute, $second, $this->__dtOff);"` |
+|     - | 3235 | `"  return $this;"` |
+|     - | 3236 | `" }"` |
+|     - | 3237 | `" public function add($interval){ $this->__dtTs = $this->__dtAddTs($interval, 1); return $this; }"` |
+|     - | 3238 | `" public function sub($interval){ $this->__dtTs = $this->__dtAddTs($interval, -1); return $this; }"` |
+|     - | 3239 | `" public function setISODate($year, $week, $dayOfWeek = 1){"` |
+|     - | 3240 | `"  $this->__dtTs = __dt_isodate($this->__dtTs, $this->__dtOff, $year, $week, $dayOfWeek);"` |
+|     - | 3241 | `"  return $this;"` |
+|     - | 3242 | `" }"` |
+|     - | 3243 | `" public static $__dtLastErr = false;"` |
+|     - | 3244 | `" public static function getLastErrors(){ return DateTime::$__dtLastErr; }"` |
+|     - | 3245 | `" public static function createFromFormat($format, $datetime, $timezone = null){"` |
+|     - | 3246 | `"  return self::__dtFromFormat($format, $datetime, $timezone, 'DateTime');"` |
+|     - | 3247 | `" }"` |
+|     - | 3248 | `" public static function createFromImmutable($object){ return self::__dtCopyOf($object, 'DateTime'); }"` |
+|     - | 3249 | `" public static function createFromInterface($object){ return self::__dtCopyOf($object, 'DateTime'); }"` |
+|     - | 3250 | `"}"` |
+|     - | 3251 | `"class DateTimeImmutable implements DateTimeInterface {"` |
+|     - | 3252 | `" use __DtCoreT;"` |
+|     - | 3253 | `" public function __construct($datetime = 'now', $timezone = null){"` |
+|     - | 3254 | `"  $this->__dtInit($datetime, $timezone);"` |
+|     - | 3255 | `" }"` |
+|     - | 3256 | `" public function modify($modifier){"` |
+|     - | 3257 | `"  $r = __dt_parse((string)$modifier, $this->__dtTs, $this->__dtOff);"` |
+|     - | 3258 | `"  if( is_string($r) ){ throw new DateMalformedStringException('DateTimeImmutable::modify(): ' . $r); }"` |
+|     - | 3259 | `"  $c = clone $this;"` |
+|     - | 3260 | `"  $c->__dtTs = $r[0];"` |
+|     - | 3261 | `"  return $c;"` |
+|     - | 3262 | `" }"` |
+|     - | 3263 | `" public function setTimestamp($timestamp){ $c = clone $this; $c->__dtTs = (int)$timestamp; return $c; }"` |
+|     - | 3264 | `" public function setTimezone($timezone){"` |
+|     - | 3265 | `"  $c = clone $this;"` |
+|     - | 3266 | `"  $c->__dtOff = $timezone->getOffset($this);"` |
+|     - | 3267 | `"  $c->__dtName = $timezone->getName();"` |
+|     - | 3268 | `"  return $c;"` |
+|     - | 3269 | `" }"` |
+|     - | 3270 | `" public function setDate($year, $month, $day){"` |
+|     - | 3271 | `"  $c = clone $this;"` |
+|     - | 3272 | `"  $c->__dtTs = __dt_make($year, $month, $day, (int)$this->format('G'), (int)$this->format('i'), (int)$this->format('s'), $this->__dtOff);"` |
+|     - | 3273 | `"  return $c;"` |
+|     - | 3274 | `" }"` |
+|     - | 3275 | `" public function setTime($hour, $minute, $second = 0, $microsecond = 0){"` |
+|     - | 3276 | `"  $c = clone $this;"` |
+|     - | 3277 | `"  $c->__dtTs = __dt_make((int)$this->format('Y'), (int)$this->format('n'), (int)$this->format('j'), $hour, $minute, $second, $this->__dtOff);"` |
+|     - | 3278 | `"  return $c;"` |
+|     - | 3279 | `" }"` |
+|     - | 3280 | `" public function add($interval){ $c = clone $this; $c->__dtTs = $this->__dtAddTs($interval, 1); return $c; }"` |
+|     - | 3281 | `" public function sub($interval){ $c = clone $this; $c->__dtTs = $this->__dtAddTs($interval, -1); return $c; }"` |
+|     - | 3282 | `" public function setISODate($year, $week, $dayOfWeek = 1){"` |
+|     - | 3283 | `"  $c = clone $this;"` |
+|     - | 3284 | `"  $c->__dtTs = __dt_isodate($this->__dtTs, $this->__dtOff, $year, $week, $dayOfWeek);"` |
+|     - | 3285 | `"  return $c;"` |
+|     - | 3286 | `" }"` |
+|     - | 3287 | `" public static function getLastErrors(){ return DateTime::$__dtLastErr; }"` |
+|     - | 3288 | `" public static function createFromFormat($format, $datetime, $timezone = null){"` |
+|     - | 3289 | `"  return self::__dtFromFormat($format, $datetime, $timezone, 'DateTimeImmutable');"` |
+|     - | 3290 | `" }"` |
+|     - | 3291 | `" public static function createFromMutable($object){ return self::__dtCopyOf($object, 'DateTimeImmutable'); }"` |
+|     - | 3292 | `" public static function createFromInterface($object){ return self::__dtCopyOf($object, 'DateTimeImmutable'); }"` |
+|     - | 3293 | `"}"` |
+|     - | 3294 | `"function date_create($datetime = 'now', $timezone = null){"` |
+|     - | 3295 | `" try { return new DateTime($datetime, $timezone); } catch (Exception $e) { return false; }"` |
+|     - | 3296 | `"}"` |
+|     - | 3297 | `"function date_create_immutable($datetime = 'now', $timezone = null){"` |
+|     - | 3298 | `" try { return new DateTimeImmutable($datetime, $timezone); } catch (Exception $e) { return false; }"` |
+|     - | 3299 | `"}"` |
+|     - | 3300 | `"class DateInterval {"` |
+|     - | 3301 | `" public $y = 0;"` |
+|     - | 3302 | `" public $m = 0;"` |
+|     - | 3303 | `" public $d = 0;"` |
+|     - | 3304 | `" public $h = 0;"` |
+|     - | 3305 | `" public $i = 0;"` |
+|     - | 3306 | `" public $s = 0;"` |
+|     - | 3307 | `" public $f = 0;"` |
+|     - | 3308 | `" public $invert = 0;"` |
+|     - | 3309 | `" public $days = false;"` |
+|     - | 3310 | `" public $from_string = false;"` |
+|     - | 3311 | `" public function __construct($duration = 'P0D'){"` |
+|     - | 3312 | `"  $dur = (string)$duration;"` |
+|     - | 3313 | `"  $mm = null;"` |
+|     - | 3314 | `"  if( strlen($dur) < 2 \|\| substr($dur, -1) === 'T'"` |
+|     - | 3315 | `"   \|\| !preg_match('/^P(?:(\\d+)Y)?(?:(\\d+)M)?(?:(\\d+)W)?(?:(\\d+)D)?(?:T(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)S)?)?$/', $dur, $mm) ){"` |
+|     - | 3316 | `"   throw new DateMalformedIntervalStringException('Unknown or bad format (' . $dur . ')');"` |
+|     - | 3317 | `"  }"` |
+|     - | 3318 | `"  $this->y = (int)($mm[1] ?? 0);"` |
+|     - | 3319 | `"  $this->m = (int)($mm[2] ?? 0);"` |
+|     - | 3320 | `"  $this->d = (int)($mm[4] ?? 0) + 7 * (int)($mm[3] ?? 0);"` |
+|     - | 3321 | `"  $this->h = (int)($mm[5] ?? 0);"` |
+|     - | 3322 | `"  $this->i = (int)($mm[6] ?? 0);"` |
+|     - | 3323 | `"  $this->s = (int)($mm[7] ?? 0);"` |
+|     - | 3324 | `" }"` |
+|     - | 3325 | `" public static function createFromDateString($datetime){"` |
+|     - | 3326 | `"  $s = trim((string)$datetime);"` |
+|     - | 3327 | `"  $iv = new DateInterval('P0D');"` |
+|     - | 3328 | `"  $rest = $s;"` |
+|     - | 3329 | `"  $any = false;"` |
+|     - | 3330 | `"  while( $rest !== '' ){"` |
+|     - | 3331 | `"   $mm = null;"` |
+|     - | 3332 | `"   if( !preg_match('/^[\\s,+]*([+-]?\\d+)\\s*(sec\|secs\|second\|seconds\|min\|mins\|minute\|minutes\|hour\|hours\|day\|days\|week\|weeks\|fortnight\|fortnights\|month\|months\|year\|years)\\b/i', $rest, $mm) ){"` |
+|     - | 3333 | `"    throw new DateMalformedIntervalStringException("` |
+|     - | 3334 | `"     'DateInterval::createFromDateString(): Unknown or bad format (' . $s . ')');"` |
+|     - | 3335 | `"   }"` |
+|     - | 3336 | `"   $n = (int)$mm[1];"` |
+|     - | 3337 | `"   $u = strtolower($mm[2]);"` |
+|     - | 3338 | `"   if( $u === 'sec' \|\| $u === 'secs' \|\| $u === 'second' \|\| $u === 'seconds' ){ $iv->s += $n; }"` |
+|     - | 3339 | `"   elseif( $u === 'min' \|\| $u === 'mins' \|\| $u === 'minute' \|\| $u === 'minutes' ){ $iv->i += $n; }"` |
+|     - | 3340 | `"   elseif( $u === 'hour' \|\| $u === 'hours' ){ $iv->h += $n; }"` |
+|     - | 3341 | `"   elseif( $u === 'day' \|\| $u === 'days' ){ $iv->d += $n; }"` |
+|     - | 3342 | `"   elseif( $u === 'week' \|\| $u === 'weeks' ){ $iv->d += 7 * $n; }"` |
+|     - | 3343 | `"   elseif( $u === 'fortnight' \|\| $u === 'fortnights' ){ $iv->d += 14 * $n; }"` |
+|     - | 3344 | `"   elseif( $u === 'month' \|\| $u === 'months' ){ $iv->m += $n; }"` |
+|     - | 3345 | `"   else { $iv->y += $n; }"` |
+|     - | 3346 | `"   $any = true;"` |
+|     - | 3347 | `"   $rest = ltrim(substr($rest, strlen($mm[0])));"` |
+|     - | 3348 | `"  }"` |
+|     - | 3349 | `"  if( !$any ){"` |
+|     - | 3350 | `"   throw new DateMalformedIntervalStringException("` |
+|     - | 3351 | `"    'DateInterval::createFromDateString(): Unknown or bad format (' . $s . ')');"` |
+|     - | 3352 | `"  }"` |
+|     - | 3353 | `"  return $iv;"` |
+|     - | 3354 | `" }"` |
+|     - | 3355 | `" public function format($format){"` |
+|     - | 3356 | `"  $f = (string)$format;"` |
+|     - | 3357 | `"  $out = '';"` |
+|     - | 3358 | `"  $n = strlen($f);"` |
+|     - | 3359 | `"  for( $k = 0; $k < $n; $k++ ){"` |
+|     - | 3360 | `"   $c = $f[$k];"` |
+|     - | 3361 | `"   if( $c !== '%' ){ $out .= $c; continue; }"` |
+|     - | 3362 | `"   $k++;"` |
+|     - | 3363 | `"   if( $k >= $n ){ $out .= '%'; break; }"` |
+|     - | 3364 | `"   $t = $f[$k];"` |
+|     - | 3365 | `"   if( $t === 'Y' ){ $out .= sprintf('%02d', $this->y); }"` |
+|     - | 3366 | `"   elseif( $t === 'y' ){ $out .= $this->y; }"` |
+|     - | 3367 | `"   elseif( $t === 'M' ){ $out .= sprintf('%02d', $this->m); }"` |
+|     - | 3368 | `"   elseif( $t === 'm' ){ $out .= $this->m; }"` |
+|     - | 3369 | `"   elseif( $t === 'D' ){ $out .= sprintf('%02d', $this->d); }"` |
+|     - | 3370 | `"   elseif( $t === 'd' ){ $out .= $this->d; }"` |
+|     - | 3371 | `"   elseif( $t === 'H' ){ $out .= sprintf('%02d', $this->h); }"` |
+|     - | 3372 | `"   elseif( $t === 'h' ){ $out .= $this->h; }"` |
+|     - | 3373 | `"   elseif( $t === 'I' ){ $out .= sprintf('%02d', $this->i); }"` |
+|     - | 3374 | `"   elseif( $t === 'i' ){ $out .= $this->i; }"` |
+|     - | 3375 | `"   elseif( $t === 'S' ){ $out .= sprintf('%02d', $this->s); }"` |
+|     - | 3376 | `"   elseif( $t === 's' ){ $out .= $this->s; }"` |
+|     - | 3377 | `"   elseif( $t === 'F' ){ $out .= sprintf('%06d', (int)round($this->f * 1000000)); }"` |
+|     - | 3378 | `"   elseif( $t === 'f' ){ $out .= (int)round($this->f * 1000000); }"` |
+|     - | 3379 | `"   elseif( $t === 'R' ){ $out .= $this->invert ? '-' : '+'; }"` |
+|     - | 3380 | `"   elseif( $t === 'r' ){ $out .= $this->invert ? '-' : ''; }"` |
+|     - | 3381 | `"   elseif( $t === 'a' ){ $out .= $this->days === false ? '(unknown)' : $this->days; }"` |
+|     - | 3382 | `"   elseif( $t === '%' ){ $out .= '%'; }"` |
+|     - | 3383 | `"   else { $out .= $t; }"` |
+|     - | 3384 | `"  }"` |
+|     - | 3385 | `"  return $out;"` |
+|     - | 3386 | `" }"` |
+|     - | 3387 | `"}"` |
+|     - | 3388 | `"class DatePeriod implements IteratorAggregate {"` |
+|     - | 3389 | `" const EXCLUDE_START_DATE = 1;"` |
+|     - | 3390 | `" const INCLUDE_END_DATE = 2;"` |
+|     - | 3391 | `" public $start = null;"` |
+|     - | 3392 | `" public $current = null;"` |
+|     - | 3393 | `" public $end = null;"` |
+|     - | 3394 | `" public $interval = null;"` |
+|     - | 3395 | `" public $recurrences = 1;"` |
+|     - | 3396 | `" public $include_start_date = true;"` |
+|     - | 3397 | `" public $include_end_date = false;"` |
+|     - | 3398 | `" private $__dpN = null;"` |
+|     - | 3399 | `" public function __construct($start, $interval = null, $end = null, $options = 0){"` |
+|     - | 3400 | `"  if( is_string($start) ){"` |
+|     - | 3401 | `"   $mm = null;"` |
+|     - | 3402 | `"   if( !preg_match('/^R(\\d+)\\/(.+)\\/(P.+)$/', $start, $mm) ){"` |
+|     - | 3403 | `"    throw new DateMalformedPeriodStringException("` |
+|     - | 3404 | `"     'DatePeriod::__construct(): Unknown or bad format (' . $start . ')');"` |
+|     - | 3405 | `"   }"` |
+|     - | 3406 | `"   $options = is_int($interval) ? $interval : 0;"` |
+|     - | 3407 | `"   $this->start = new DateTimeImmutable($mm[2]);"` |
+|     - | 3408 | `"   $this->interval = new DateInterval($mm[3]);"` |
+|     - | 3409 | `"   $this->__dpN = (int)$mm[1];"` |
+|     - | 3410 | `"   $this->recurrences = $this->__dpN + 1;"` |
+|     - | 3411 | `"  }else{"` |
+|     - | 3412 | `"   $this->start = clone $start;"` |
+|     - | 3413 | `"   $this->interval = $interval;"` |
+|     - | 3414 | `"   if( is_int($end) ){"` |
+|     - | 3415 | `"    $this->__dpN = $end;"` |
+|     - | 3416 | `"    $this->recurrences = $end + 1;"` |
+|     - | 3417 | `"   }else{"` |
+|     - | 3418 | `"    $this->end = $end === null ? null : (clone $end);"` |
+|     - | 3419 | `"   }"` |
+|     - | 3420 | `"  }"` |
+|     - | 3421 | `"  $this->include_start_date = !((int)$options & 1);"` |
+|     - | 3422 | `"  $this->include_end_date = ((int)$options & 2) !== 0;"` |
+|     - | 3423 | `" }"` |
+|     - | 3424 | `" public static function createFromISO8601String($specification, $options = 0){"` |
+|     - | 3425 | `"  return new DatePeriod((string)$specification, (int)$options);"` |
+|     - | 3426 | `" }"` |
+|     - | 3427 | `" public function getStartDate(){ return $this->start; }"` |
+|     - | 3428 | `" public function getEndDate(){ return $this->end; }"` |
+|     - | 3429 | `" public function getDateInterval(){ return $this->interval; }"` |
+|     - | 3430 | `" public function getRecurrences(){ return $this->__dpN; }"` |
+|     - | 3431 | `" public function getIterator(): Generator {"` |
+|     - | 3432 | `"  $cur = $this->start;"` |
+|     - | 3433 | `"  $iv = $this->interval;"` |
+|     - | 3434 | `"  $k = 0;"` |
+|     - | 3435 | `"  if( $this->end !== null ){"` |
+|     - | 3436 | `"   $endTs = $this->end->getTimestamp();"` |
+|     - | 3437 | `"   $first = true;"` |
+|     - | 3438 | `"   while( true ){"` |
+|     - | 3439 | `"    $ts = $cur->getTimestamp();"` |
+|     - | 3440 | `"    if( $this->include_end_date ? ($ts > $endTs) : ($ts >= $endTs) ){ break; }"` |
+|     - | 3441 | `"    if( !$first \|\| $this->include_start_date ){"` |
+|     - | 3442 | `"     yield $k => (clone $cur);"` |
+|     - | 3443 | `"     $k++;"` |
+|     - | 3444 | `"    }"` |
+|     - | 3445 | `"    $first = false;"` |
+|     - | 3446 | `"    $next = clone $cur;"` |
+|     - | 3447 | `"    $cur = $next->add($iv);"` |
+|     - | 3448 | `"   }"` |
+|     - | 3449 | `"   return;"` |
+|     - | 3450 | `"  }"` |
+|     - | 3451 | `"  $total = $this->__dpN + 1 + ($this->include_end_date ? 1 : 0);"` |
+|     - | 3452 | `"  for( $j = 0; $j < $total; $j++ ){"` |
+|     - | 3453 | `"   if( $j > 0 \|\| $this->include_start_date ){"` |
+|     - | 3454 | `"    yield $k => (clone $cur);"` |
+|     - | 3455 | `"    $k++;"` |
+|     - | 3456 | `"   }"` |
+|     - | 3457 | `"   $next = clone $cur;"` |
+|     - | 3458 | `"   $cur = $next->add($iv);"` |
+|     - | 3459 | `"  }"` |
+|     - | 3460 | `" }"` |
+|     - | 3461 | `"}"` |
+|     - | 3462 | `"function date_format($object, $format){ return $object->format($format); }"` |
+|     - | 3463 | `"function date_modify($object, $modifier){"` |
+|     - | 3464 | `" try { return $object->modify($modifier); } catch (Exception $e) { return false; }"` |
+|     - | 3465 | `"}"` |
+|     - | 3466 | `"function date_add($object, $interval){ return $object->add($interval); }"` |
+|     - | 3467 | `"function date_sub($object, $interval){ return $object->sub($interval); }"` |
+|     - | 3468 | `"function date_diff($baseObject, $targetObject, $absolute = false){"` |
+|     - | 3469 | `" return $baseObject->diff($targetObject, $absolute);"` |
+|     - | 3470 | `"}"` |
+|     - | 3471 | `"function date_timestamp_get($object){ return $object->getTimestamp(); }"` |
+|     - | 3472 | `"function date_timestamp_set($object, $timestamp){ return $object->setTimestamp($timestamp); }"` |
+|     - | 3473 | `"function date_timezone_get($object){ return $object->getTimezone(); }"` |
+|     - | 3474 | `"function date_timezone_set($object, $timezone){ return $object->setTimezone($timezone); }"` |
+|     - | 3475 | `"function date_offset_get($object){ return $object->getOffset(); }"` |
+|     - | 3476 | `"function date_date_set($object, $year, $month, $day){ return $object->setDate($year, $month, $day); }"` |
+|     - | 3477 | `"function date_time_set($object, $hour, $minute, $second = 0, $microsecond = 0){"` |
+|     - | 3478 | `" return $object->setTime($hour, $minute, $second, $microsecond);"` |
+|     - | 3479 | `"}"` |
+|     - | 3480 | `"function date_isodate_set($object, $year, $week, $dayOfWeek = 1){"` |
+|     - | 3481 | `" return $object->setISODate($year, $week, $dayOfWeek);"` |
+|     - | 3482 | `"}"` |
+|     - | 3483 | `"function date_interval_create_from_date_string($datetime){"` |
+|     - | 3484 | `" return DateInterval::createFromDateString($datetime);"` |
+|     - | 3485 | `"}"` |
+|     - | 3486 | `"function date_interval_format($object, $format){ return $object->format($format); }"` |
+|     - | 3487 | `"function date_get_last_errors(){ return DateTime::getLastErrors(); }"` |
+|     - | 3488 | `"function timezone_open($timezone){"` |
+|     - | 3489 | `" try { return new DateTimeZone($timezone); } catch (Exception $e) { return false; }"` |
+|     - | 3490 | `"}"` |
+|     - | 3491 | `"function timezone_name_get($object){ return $object->getName(); }"` |
+|     - | 3492 | `"function timezone_offset_get($object, $datetime){ return $object->getOffset($datetime); }"` |
+|     - | 3493 | `/* int\|false strtotime(string $datetime, ?int $baseTimestamp = null). Rides the` |
+|     - | 3494 | ` * same DtParse the DateTime constructor uses, so its format coverage is identical.` |
+|     - | 3495 | ` * php: the EMPTY string is false, but whitespace-only is 'now'; a parse failure is` |
+|     - | 3496 | ` * false (never an exception). The default timezone is treated as offset 0, exactly` |
+|     - | 3497 | ` * as the DateTime constructor does for a null $timezone. */` |
+|     - | 3498 | `"function strtotime($datetime, $baseTimestamp = null){"` |
+|     - | 3499 | `" $s = (string)$datetime;"` |
+|     - | 3500 | `" if( $s === '' ){ return false; }"` |
+|     - | 3501 | `" $base = $baseTimestamp === null ? __dt_now() : (int)$baseTimestamp;"` |
+|     - | 3502 | `" $r = __dt_parse($s, $base, 0);"` |
+|     - | 3503 | `" return is_string($r) ? false : $r[0];"` |
+|     - | 3504 | `"}"` |
+|     - | 3505 | `;` |
+|     - | 3506 | `/*` |
+|     - | 3507 | ` * Install the DateTime family: thunks first, then the chunk. Called from` |
+|     - | 3508 | ` * PH7_VmInit inside the bCompilingBuiltin window, after the Reflection` |
+|     - | 3509 | ` * install (Exception must exist).` |
+|     - | 3510 | ` */` |
+|  3812 | 3511 | `PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)` |
+|     5 | 3512 | `{` |
+|     - | 3513 | `	static const struct {` |
+|     - | 3514 | `		const char *zName;` |
+|     - | 3515 | `		ProchHostFunction xFunc;` |
+|     - | 3516 | `	} aFunc[] = {` |
+|     - | 3517 | `		{ "__dt_now",    vm_builtin_dt_now },` |
+|     - | 3518 | `		{ "__dt_default_tz", vm_builtin_dt_default_tz },` |
+|     - | 3519 | `		{ "__dt_civil_add",  vm_builtin_dt_civil_add },` |
+|     - | 3520 | `		{ "__dt_civil_diff", vm_builtin_dt_civil_diff },` |
+|     - | 3521 | `		{ "__dt_isodate",    vm_builtin_dt_isodate },` |
+|     - | 3522 | `		{ "__dt_from_format", vm_builtin_dt_from_format },` |
+|     - | 3523 | `		{ "__dt_parse",  vm_builtin_dt_parse },` |
+|     - | 3524 | `		{ "__dt_format", vm_builtin_dt_format },` |
+|     - | 3525 | `		{ "__dt_make",   vm_builtin_dt_make },` |
+|     - | 3526 | `	};` |
+|     - | 3527 | `	sxu32 n;` |
+|     - | 3528 | `	/* php's date.timezone default */` |
+|  3817 | 3529 | `	SyMemcpy("UTC",pVm->zDefTz,sizeof("UTC"));` |
+|  3817 | 3530 | `	pVm->nDefTz = sizeof("UTC") - 1;` |
+| 38125 | 3531 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
+| 34313 | 3532 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
+| 17159 | 3533 | `	}` |
+|  3817 | 3534 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zDateTimeLib,sizeof(zDateTimeLib)-1);` |
+|     5 | 3535 | `}` |
+|     - | 3536 |  |
+|     - | 3537 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
+|     - | 3538 |  |
+|     - | 3539 | `#ifdef PH7_DISABLE_BUILTIN_FUNC` |
+|     - | 3540 | `/* Tiny build: no DateTime family (builtin layer disabled) */` |
+|     - | 3541 | `PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm){` |
+|     - | 3542 | `	SyMemcpy("UTC",pVm->zDefTz,sizeof("UTC"));` |
+|     - | 3543 | `	pVm->nDefTz = sizeof("UTC") - 1;` |
+|     - | 3544 | `	return SXRET_OK;` |
+|     - | 3545 | `}` |
+|     - | 3546 | `#endif` |
+|     - | 3547 |  |
