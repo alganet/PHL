@@ -1766,6 +1766,148 @@ static sxi64 DtAddMonths(sxi64 iTs,sxi32 iOff,sxi64 nMonths)
 	return DtDaysFromCivil(y,mo,d) * 86400 + secs - iOff;
 }
 /*
+ * Parse an OPTIONAL time-of-day suffix after a date component:
+ * "[( |T)]HH:MM[:SS][.frac][Z|±hh[:mm]]". On entry *pz points just past the date;
+ * the h/mi/s outs must be pre-zeroed and the offset outs pre-seeded with the current
+ * offset. Advances *pz over whatever it consumes. Returns 0 on success (whether or
+ * not a time was present), or a 1-based error position into zIn (negative encodes
+ * php's "Double time specification"). Shared by every absolute-date branch.
+ */
+static int DtTimeSuffix(const char **pz,const char *zEnd,const char *zIn,
+	int *ph,int *pmi,int *ps,sxi32 *piOff,int *pbOffSet)
+{
+	const char *z = *pz;
+	if( z < zEnd && (z[0]=='T' || z[0]==' ') && zEnd-z >= 6
+	 && SyisDigit(z[1]) && SyisDigit(z[2]) && z[3]==':' ){
+		z++;
+		*ph  = (z[0]-'0')*10 + (z[1]-'0');
+		*pmi = (z[3]-'0')*10 + (z[4]-'0');
+		/* a 25+ hour kills php's whole time token: error at its start */
+		if( *ph > 24 ){ return (int)(z - zIn) + 1; }
+		/* php lexes HH:M, then the minute's second digit starts a SECOND time
+		 * token: "Double time specification" (negative encoding) */
+		if( *pmi > 59 ){ return -((int)(&z[4] - zIn) + 1); }
+		z += 5;
+		if( z < zEnd && z[0]==':' && zEnd-z >= 3 && SyisDigit(z[1]) && SyisDigit(z[2]) ){
+			*ps = (z[1]-'0')*10 + (z[2]-'0');
+			if( *ps > 59 ){ return (int)(&z[2] - zIn) + 1; }
+			z += 3;
+		}
+		if( z < zEnd && z[0]=='.' ){ /* fractional seconds: consume */
+			z++;
+			while( z < zEnd && SyisDigit(z[0]) ){ z++; }
+		}
+		if( z < zEnd && (z[0]=='Z' || z[0]=='z') ){
+			*piOff = 0; *pbOffSet = 2; z++;
+		}else if( z < zEnd && (z[0]=='+' || z[0]=='-') ){
+			int sign = (z[0]=='-') ? -1 : 1;
+			int oh,om = 0;
+			z++;
+			if( zEnd-z < 2 || !SyisDigit(z[0]) || !SyisDigit(z[1]) ){ return (int)(z - zIn) + 1; }
+			oh = (z[0]-'0')*10 + (z[1]-'0');
+			z += 2;
+			if( z < zEnd && z[0]==':' ){ z++; }
+			if( zEnd-z >= 2 && SyisDigit(z[0]) && SyisDigit(z[1]) ){
+				om = (z[0]-'0')*10 + (z[1]-'0');
+				z += 2;
+			}
+			*piOff = sign * (oh*3600 + om*60);
+			*pbOffSet = 1;
+		}
+	}
+	*pz = z;
+	return 0;
+}
+/*
+ * Read one or two decimal digits at z (z<zEnd guaranteed by caller for the first).
+ * Returns the value; *pn = digits consumed (1 or 2).
+ */
+static int DtRead1or2(const char *z,const char *zEnd,int *pn)
+{
+	int v = z[0]-'0';
+	if( z+1 < zEnd && SyisDigit(z[1]) ){ v = v*10 + (z[1]-'0'); *pn = 2; }
+	else { *pn = 1; }
+	return v;
+}
+/*
+ * Try to read a non-ISO numeric date at z: three integer components joined by ONE
+ * consistent separator, plus an optional time suffix. php's field order depends on
+ * the separator:
+ *   '/'      -> YYYY/MM/DD when the first field is 4 digits, else MM/DD/YYYY
+ *   '-','.'  -> DD-MM-YYYY (day first); a 4-digit-first '.' date (YYYY.MM.DD) is
+ *               NOT a php format and is rejected. (ISO YYYY-MM-DD is matched by the
+ *               dedicated branch BEFORE this one, so a 4-digit-first '-' never
+ *               reaches here.)
+ * A 1-2 digit year maps php-style (00-69 -> 2000s, 70-99 -> 1900s). Returns 0 when
+ * the text is not such a date (caller falls through), 1 on success (the ts/off outs
+ * set and *pzOut advanced past the whole token), or an error code in DtParse's own
+ * convention (positive 1-based position into zIn, negative = "double time") when the
+ * shape matched but a component is out of range.
+ */
+static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
+	sxi64 *pTs,sxi32 *pOff,int *pbOff,const char *zIn)
+{
+	int a,b,c,na,nb,nc;
+	char sep;
+	int y,mo,d,h = 0,mi = 0,s = 0;
+	sxi32 iOff = *pOff;
+	int rcT;
+	/* first field: 1-4 digits */
+	if( !SyisDigit(z[0]) ){ return 0; }
+	a = 0; na = 0;
+	while( z < zEnd && SyisDigit(z[0]) && na < 4 ){ a = a*10 + (z[0]-'0'); z++; na++; }
+	if( z >= zEnd || (z[0] != '-' && z[0] != '/' && z[0] != '.') ){ return 0; }
+	sep = z[0];
+	z++;
+	/* second field: 1-2 digits */
+	if( z >= zEnd || !SyisDigit(z[0]) ){ return 0; }
+	b = DtRead1or2(z,zEnd,&nb); z += nb;
+	if( z >= zEnd || z[0] != sep ){ return 0; }
+	z++;
+	/* third field: 1-4 digits */
+	if( z >= zEnd || !SyisDigit(z[0]) ){ return 0; }
+	c = 0; nc = 0;
+	while( z < zEnd && SyisDigit(z[0]) && nc < 4 ){ c = c*10 + (z[0]-'0'); z++; nc++; }
+	/* map fields to Y/M/D; nyear tracks the year field's width for 2-digit mapping.
+	 * '/'  : YYYY/MM/DD when the first field is 4 digits, else MM/DD/YYYY.
+	 * '-'/'.': a 4-digit LAST field is DD-MM-YYYY (day first); otherwise YY-MM-DD
+	 *          (year first) — php's width heuristic. (A 4-digit FIRST '-' field is
+	 *          ISO and never reaches here; a 4-digit-first '.' is not a php format.) */
+	{
+		int nyear;
+		if( sep == '/' ){
+			if( na == 4 ){ y = a; mo = b; d = c; nyear = na; }
+			else{ mo = a; d = b; y = c; nyear = nc; }
+		}else if( sep == '.' ){
+			/* php's dot date is DD.MM.YYYY only (a 4-digit year, day first). Other
+			 * widths are not a clean php format (php itself yields garbage there),
+			 * so don't claim the match — let the caller fail the parse. */
+			if( na == 4 || nc != 4 ){ return 0; }
+			d = a; mo = b; y = c; nyear = nc;
+		}else{ /* '-' : a 4-digit LAST field is DD-MM-YYYY, else YY-MM-DD */
+			if( nc == 4 ){ d = a; mo = b; y = c; nyear = nc; }
+			else{ y = a; mo = b; d = c; nyear = na; }
+		}
+		if( nyear <= 2 ){
+			if( y >= 0 && y <= 69 ){ y += 2000; }
+			else if( y >= 70 && y <= 99 ){ y += 1900; }
+		}
+	}
+	/* php normalizes month 0 to December of the previous year (like the ISO branch)
+	 * but fails a month past 12; a day past 31 fails, while day 0 normalizes in
+	 * DtMakeTs. Errors point at the field end. */
+	if( mo > 12 ){ return (int)(z - zIn) + 1; }
+	if( mo == 0 ){ mo = 12; y--; }
+	if( d > 31 ){ return (int)(z - zIn) + 1; }
+	/* optional time-of-day suffix, then commit */
+	rcT = DtTimeSuffix(&z,zEnd,zIn,&h,&mi,&s,&iOff,pbOff);
+	if( rcT != 0 ){ return rcT; }
+	*pTs = DtMakeTs(y,mo,d,h,mi,s,iOff);
+	*pOff = iOff;
+	*pzOut = z;
+	return 1;
+}
+/*
  * Minimal php-datetime-string parser (slice 1): absolute forms
  * "now" | "@<ts>" | "YYYY-MM-DD[( |T)HH:MM[:SS]][Z|±HH[:MM]]" | "HH:MM[:SS]",
  * keywords today/midnight/noon/tomorrow/yesterday, and relative sequences
@@ -1781,6 +1923,7 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,
 	sxi32 iOff = iBaseOff;
 	int bOffSet = 0;
 	int bAny = 0;
+	int iNumRc;
 #define DT_SKIP_WS() while( z < zEnd && (z[0]==' '||z[0]=='\t'||z[0]==',') ){ z++; }
 #define DT_LOWEQ(zKw,nKw) (zEnd-z >= (nKw) && SyStrnicmp(z,zKw,nKw) == 0 \
 	&& (zEnd-z == (nKw) || !SyisAlpha(z[(nKw)])))
@@ -1826,47 +1969,19 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,
 		if( d > 31 ){ return (int)(&z[9] - zIn) + 1; }
 		if( mo == 0 ){ mo = 12; y--; }
 		z += 10;
-		if( z < zEnd && (z[0]=='T' || z[0]==' ') && zEnd-z >= 6
-		 && SyisDigit(z[1]) && SyisDigit(z[2]) && z[3]==':' ){
-			z++;
-			h  = (z[0]-'0')*10 + (z[1]-'0');
-			mi = (z[3]-'0')*10 + (z[4]-'0');
-			/* a 25+ hour kills php's whole time token: error at its start */
-			if( h > 24 ){ return (int)(z - zIn) + 1; }
-			/* php lexes HH:M, then the minute's second digit starts a SECOND
-			 * time token: "Double time specification" (negative encoding) */
-			if( mi > 59 ){ return -((int)(&z[4] - zIn) + 1); }
-			z += 5;
-			if( z+2 < zEnd+1 && z < zEnd && z[0]==':' && zEnd-z >= 3
-			 && SyisDigit(z[1]) && SyisDigit(z[2]) ){
-				s = (z[1]-'0')*10 + (z[2]-'0');
-				if( s > 59 ){ return (int)(&z[2] - zIn) + 1; }
-				z += 3;
-			}
-			if( z < zEnd && z[0]=='.' ){ /* fractional seconds: consume */
-				z++;
-				while( z < zEnd && SyisDigit(z[0]) ){ z++; }
-			}
-			if( z < zEnd && (z[0]=='Z' || z[0]=='z') ){
-				/* 2 = explicit "Z" zone: php names it "Z", not "+00:00" */
-				iOff = 0; bOffSet = 2; z++;
-			}else if( z < zEnd && (z[0]=='+' || z[0]=='-') ){
-				int sign = (z[0]=='-') ? -1 : 1;
-				int oh,om = 0;
-				z++;
-				if( zEnd-z < 2 || !SyisDigit(z[0]) || !SyisDigit(z[1]) ){ return (int)(z - zIn) + 1; }
-				oh = (z[0]-'0')*10 + (z[1]-'0');
-				z += 2;
-				if( z < zEnd && z[0]==':' ){ z++; }
-				if( zEnd-z >= 2 && SyisDigit(z[0]) && SyisDigit(z[1]) ){
-					om = (z[0]-'0')*10 + (z[1]-'0');
-					z += 2;
-				}
-				iOff = sign * (oh*3600 + om*60);
-				bOffSet = 1;
-			}
+		{
+			int rcT = DtTimeSuffix(&z,zEnd,zIn,&h,&mi,&s,&iOff,&bOffSet);
+			if( rcT != 0 ){ return rcT; }
 		}
 		iTs = DtMakeTs(y,mo,d,h,mi,s,iOff);
+		bAny = 1;
+	}else if( SyisDigit(z[0])
+	 && (iNumRc = DtTryNumericDate(z,zEnd,&z,&iTs,&iOff,&bOffSet,zIn)) != 0 ){
+		/* DD-MM-YYYY / DD.MM.YYYY (day first), MM/DD/YYYY (slash, American), and
+		 * YYYY/MM/DD (slash, year first) — see DtTryNumericDate. Anything other than
+		 * 1 is an error code in DtParse's own convention (positive position / negative
+		 * "double time"); propagate it verbatim. */
+		if( iNumRc != 1 ){ return iNumRc; }
 		bAny = 1;
 	}else if( zEnd-z >= 5 && SyisDigit(z[0]) && SyisDigit(z[1]) && z[2]==':'
 	 && SyisDigit(z[3]) && SyisDigit(z[4]) ){
