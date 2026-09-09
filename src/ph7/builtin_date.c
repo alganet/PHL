@@ -1934,6 +1934,27 @@ static int DtMatchMonth(const char *z,const char *zEnd,int *pAdv)
 	}
 	return 0;
 }
+/* Match a weekday name at z (full or 3-letter, case-insensitive, word boundary).
+ * Returns the day-of-week 0=Sunday..6=Saturday and sets *pAdv, or -1. */
+static int DtMatchWeekday(const char *z,const char *zEnd,int *pAdv)
+{
+	static const struct { const char *z; int n; int dow; } aW[] = {
+		{ "sunday",6,0 },{ "monday",6,1 },{ "tuesday",7,2 },{ "wednesday",9,3 },
+		{ "thursday",8,4 },{ "friday",6,5 },{ "saturday",8,6 },
+		{ "sun",3,0 },{ "mon",3,1 },{ "tue",3,2 },{ "wed",3,3 },{ "thu",3,4 },
+		{ "fri",3,5 },{ "sat",3,6 }
+	};
+	sxu32 i;
+	for( i = 0 ; i < SX_ARRAYSIZE(aW) ; ++i ){
+		int n = aW[i].n;
+		if( zEnd - z >= n && SyStrnicmp(z,aW[i].z,(sxu32)n) == 0
+		 && (zEnd - z == n || !SyisAlpha(z[n])) ){
+			*pAdv = n;
+			return aW[i].dow;
+		}
+	}
+	return -1;
+}
 /* True if z points at a two-letter English ordinal suffix (st/nd/rd/th). */
 static int DtIsOrdinal(const char *z,const char *zEnd)
 {
@@ -2162,6 +2183,59 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,
 			sxi64 days = DtFloorDiv(iTs + iOff,86400) - 1;
 			iTs = days*86400 - iOff;
 			z += 9;
+			bAny = 1;
+			continue;
+		}
+		/* Weekday navigation: "[next|last|previous|this] <weekday>" moves to the
+		 * midnight of the target weekday. Bare/"this" = the this-week occurrence on
+		 * or after the base day; "next"/"last"/"previous" skip a matching base day. */
+		{
+			const char *zSave = z;
+			int dir = 0;         /* 0 = this-week occurrence, 1 = next, -1 = last */
+			int adv,dow;
+			if( DT_LOWEQ("next",4) ){ dir = 1; z += 4; DT_SKIP_WS(); }
+			else if( DT_LOWEQ("previous",8) ){ dir = -1; z += 8; DT_SKIP_WS(); }
+			else if( DT_LOWEQ("last",4) ){ dir = -1; z += 4; DT_SKIP_WS(); }
+			else if( DT_LOWEQ("this",4) ){ dir = 0; z += 4; DT_SKIP_WS(); }
+			dow = DtMatchWeekday(z,zEnd,&adv);
+			if( dow >= 0 ){
+				sxi64 days = DtFloorDiv(iTs + iOff,86400);
+				int bdow = (int)(((days + 4) % 7 + 7) % 7); /* 1970-01-01 was Thursday */
+				sxi64 delta;
+				if( dir == 1 ){
+					delta = ((dow - bdow) % 7 + 7) % 7;
+					if( delta == 0 ){ delta = 7; }
+				}else if( dir == -1 ){
+					delta = -(((bdow - dow) % 7 + 7) % 7);
+					if( delta == 0 ){ delta = -7; }
+				}else{
+					delta = ((dow - bdow) % 7 + 7) % 7;
+				}
+				iTs = (days + delta)*86400 - iOff; /* midnight of the target day */
+				z += adv;
+				bAny = 1;
+				continue;
+			}
+			z = zSave; /* prefix did not introduce a weekday: rewind and try the rest */
+		}
+		/* Trailing time-of-day in a relative sequence ("next thursday 15:00"): set
+		 * the clock on the current day. The leading absolute HH:MM branch handles a
+		 * time at the START; this handles one AFTER a date/relative token. */
+		if( zEnd-z >= 5 && SyisDigit(z[0]) && SyisDigit(z[1]) && z[2]==':'
+		 && SyisDigit(z[3]) && SyisDigit(z[4]) ){
+			sxi64 days = DtFloorDiv(iTs + iOff,86400);
+			int hh = (z[0]-'0')*10 + (z[1]-'0');
+			int mm = (z[3]-'0')*10 + (z[4]-'0');
+			int ss = 0;
+			if( hh > 24 ){ return (int)(z - zIn) + 1; }
+			if( mm > 59 ){ return (int)(&z[4] - zIn) + 1; }
+			z += 5;
+			if( z < zEnd && z[0]==':' && zEnd-z >= 3 && SyisDigit(z[1]) && SyisDigit(z[2]) ){
+				ss = (z[1]-'0')*10 + (z[2]-'0');
+				if( ss > 59 ){ return (int)(&z[2] - zIn) + 1; }
+				z += 3;
+			}
+			iTs = days*86400 + (sxi64)hh*3600 + (sxi64)mm*60 + ss - iOff;
 			bAny = 1;
 			continue;
 		}
