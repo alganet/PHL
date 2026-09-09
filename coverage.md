@@ -6,8 +6,8 @@
 | src/ph7/builtin_math.c         | 85.04%   | 557/655     |
 | src/ph7/builtin_mb.c           | 91.00%   | 384/422     |
 | src/ph7/compile.c              | 80.81%   | 7186/8892   |
-| src/ph7/constant.c             | 97.66%   | 1127/1154   |
-| src/ph7/hashmap.c              | 88.65%   | 3959/4466   |
+| src/ph7/constant.c             | 97.69%   | 1142/1169   |
+| src/ph7/hashmap.c              | 89.10%   | 3947/4430   |
 | src/ph7/lex.c                  | 93.26%   | 789/846     |
 | src/ph7/memobj.c               | 88.89%   | 904/1017    |
 | src/ph7/net.c                  | 57.45%   | 81/141      |
@@ -49,5 +49,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.55%   | 46695/57262 |
-| Functions                      | 96.20%   | 2124/2208   |
+| Lines                          | 81.58%   | 46698/57241 |
+| Functions                      | 96.20%   | 2128/2212   |
