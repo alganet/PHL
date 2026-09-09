@@ -2270,17 +2270,35 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,
 			}
 			z = zSave; /* not the "first|last day of ..." shape: rewind */
 		}
-		/* Standalone month navigation: "this|next|last month" shifts the month,
-		 * keeping the day/time (php: "next month" is +1 month). Week navigation is a
-		 * recorded gap. */
+		/* Standalone "this|next|last (month|week)": month shifts by ±1 keeping the
+		 * day/time; week moves to the Monday of this/next/last ISO week keeping the
+		 * time-of-day (php: weeks start on Monday). */
 		{
 			const char *zSave = z;
-			if( DT_LOWEQ("next",4) ){ z += 4; DT_SKIP_WS();
-				if( DT_LOWEQ("month",5) ){ z += 5; iTs = DtAddMonths(iTs,iOff,1); bAny = 1; continue; } }
-			else if( DT_LOWEQ("last",4) ){ z += 4; DT_SKIP_WS();
-				if( DT_LOWEQ("month",5) ){ z += 5; iTs = DtAddMonths(iTs,iOff,-1); bAny = 1; continue; } }
-			else if( DT_LOWEQ("this",4) ){ z += 4; DT_SKIP_WS();
-				if( DT_LOWEQ("month",5) ){ z += 5; bAny = 1; continue; } }
+			int dir = 2; /* 2 = no prefix */
+			if( DT_LOWEQ("next",4) ){ dir = 1; z += 4; }
+			else if( DT_LOWEQ("last",4) ){ dir = -1; z += 4; }
+			else if( DT_LOWEQ("this",4) ){ dir = 0; z += 4; }
+			if( dir != 2 ){
+				DT_SKIP_WS();
+				if( DT_LOWEQ("month",5) ){
+					z += 5;
+					iTs = DtAddMonths(iTs,iOff,dir);
+					bAny = 1;
+					continue;
+				}
+				if( DT_LOWEQ("week",4) ){
+					sxi64 days0 = DtFloorDiv(iTs + iOff,86400);
+					sxi64 tod = (iTs + iOff) - days0*86400;
+					int bdow = (int)(((days0 + 4) % 7 + 7) % 7);
+					sxi64 monday = days0 - ((bdow + 6) % 7); /* Monday of the base week */
+					z += 4;
+					monday += (sxi64)dir * 7;
+					iTs = monday*86400 + tod - iOff;
+					bAny = 1;
+					continue;
+				}
+			}
 			z = zSave;
 		}
 		/* Trailing time-of-day in a relative sequence ("next thursday 15:00"): set
