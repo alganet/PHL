@@ -543,26 +543,26 @@ Coverage: 1142/1169 lines (97.69%)
 |     15 |  533 | `	ph7_value_int(pVal,1);` |
 |      7 |  534 | `	SXUNUSED(pUserData);` |
 |     15 |  535 | `}` |
-|     20 |  536 | `static void PH7_SORT_STRING_Const(ph7_value *pVal,void *pUserData)` |
+|     24 |  536 | `static void PH7_SORT_STRING_Const(ph7_value *pVal,void *pUserData)` |
 |      1 |  537 | `{` |
-|     21 |  538 | `	ph7_value_int(pVal,2);` |
-|     10 |  539 | `	SXUNUSED(pUserData);` |
-|     21 |  540 | `}` |
+|     25 |  538 | `	ph7_value_int(pVal,2);` |
+|     12 |  539 | `	SXUNUSED(pUserData);` |
+|     25 |  540 | `}` |
 |      2 |  541 | `static void PH7_SORT_LOCALE_STRING_Const(ph7_value *pVal,void *pUserData)` |
 |      1 |  542 | `{` |
 |      3 |  543 | `	ph7_value_int(pVal,5);` |
 |      1 |  544 | `	SXUNUSED(pUserData);` |
 |      3 |  545 | `}` |
-|      8 |  546 | `static void PH7_SORT_NATURAL_Const(ph7_value *pVal,void *pUserData)` |
+|     10 |  546 | `static void PH7_SORT_NATURAL_Const(ph7_value *pVal,void *pUserData)` |
 |      1 |  547 | `{` |
-|      9 |  548 | `	ph7_value_int(pVal,6);` |
-|      4 |  549 | `	SXUNUSED(pUserData);` |
-|      9 |  550 | `}` |
-|      6 |  551 | `static void PH7_SORT_FLAG_CASE_Const(ph7_value *pVal,void *pUserData)` |
+|     11 |  548 | `	ph7_value_int(pVal,6);` |
+|      5 |  549 | `	SXUNUSED(pUserData);` |
+|     11 |  550 | `}` |
+|      8 |  551 | `static void PH7_SORT_FLAG_CASE_Const(ph7_value *pVal,void *pUserData)` |
 |      1 |  552 | `{` |
-|      7 |  553 | `	ph7_value_int(pVal,8);` |
-|      3 |  554 | `	SXUNUSED(pUserData);` |
-|      7 |  555 | `}` |
+|      9 |  553 | `	ph7_value_int(pVal,8);` |
+|      4 |  554 | `	SXUNUSED(pUserData);` |
+|      9 |  555 | `}` |
 |      - |  556 | `/*` |
 |      - |  557 | ` * PHP_ROUND_HALF_UP` |
 |      - |  558 | ` *  Expands 1.` |
