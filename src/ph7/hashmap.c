@@ -2148,41 +2148,31 @@ static sxi32 HashmapMergeSort(ph7_hashmap *pMap,ProcNodeCmp xCmp,void *pCmpData)
  * used-by: [sort(),asort(),...]
  */
 /*
- * Compare two node VALUES under php's sort_flags. The flag carries a base type
- * in its low bits and the optional SORT_FLAG_CASE (8) modifier:
- *   SORT_REGULAR 0 · SORT_NUMERIC 1 · SORT_STRING 2 · SORT_LOCALE_STRING 5 ·
- *   SORT_NATURAL 6   (| SORT_FLAG_CASE for a case-insensitive string/natural sort)
- * PHL has no locale tables, so SORT_LOCALE_STRING behaves like SORT_STRING.
+ * Compare two scalar values under an EXPLICIT php sort base type (never 0 —
+ * SORT_REGULAR is handled by the callers, which differ for keys vs values):
+ *   SORT_NUMERIC 1 · SORT_STRING 2 · SORT_LOCALE_STRING 5 · SORT_NATURAL 6,
+ * with bFold applying SORT_FLAG_CASE. PHL has no locale tables, so
+ * SORT_LOCALE_STRING behaves like SORT_STRING. Mutates both operands (numeric or
+ * string cast); the caller owns and releases them.
  */
-static sxi32 HashmapFlagValueCmp(ph7_hashmap_node *pA,ph7_hashmap_node *pB,sxi32 iFlags)
+static sxi32 HashmapScalarFlagCmp(ph7_value *pA,ph7_value *pB,int base,int bFold)
 {
-	ph7_value sA,sB;
-	int base = iFlags & ~8;      /* strip SORT_FLAG_CASE */
-	int bFold = (iFlags & 8) != 0;
 	sxi32 rc;
-	if( base == 0 ){
-		/* SORT_REGULAR */
-		return HashmapNodeCmp(pA,pB,FALSE);
-	}
-	PH7_MemObjInit(pA->pMap->pVm,&sA);
-	PH7_MemObjInit(pA->pMap->pVm,&sB);
-	PH7_HashmapExtractNodeValue(pA,&sA,FALSE);
-	PH7_HashmapExtractNodeValue(pB,&sB,FALSE);
 	if( base == 1 ){
 		/* SORT_NUMERIC */
-		PH7_MemObjToNumeric(&sA);
-		PH7_MemObjToNumeric(&sB);
-		rc = PH7_MemObjCmp(&sA,&sB,FALSE,0);
+		PH7_MemObjToNumeric(pA);
+		PH7_MemObjToNumeric(pB);
+		rc = PH7_MemObjCmp(pA,pB,FALSE,0);
 	}else{
 		/* SORT_STRING (2) / SORT_LOCALE_STRING (5) / SORT_NATURAL (6) */
 		const char *zA,*zB;
 		sxu32 nA,nB,nMin,i;
-		if( (sA.iFlags & MEMOBJ_STRING) == 0 ){ PH7_MemObjToString(&sA); }
-		if( (sB.iFlags & MEMOBJ_STRING) == 0 ){ PH7_MemObjToString(&sB); }
-		zA = (const char *)SyBlobData(&sA.sBlob);
-		zB = (const char *)SyBlobData(&sB.sBlob);
-		nA = SyBlobLength(&sA.sBlob);
-		nB = SyBlobLength(&sB.sBlob);
+		if( (pA->iFlags & MEMOBJ_STRING) == 0 ){ PH7_MemObjToString(pA); }
+		if( (pB->iFlags & MEMOBJ_STRING) == 0 ){ PH7_MemObjToString(pB); }
+		zA = (const char *)SyBlobData(&pA->sBlob);
+		zB = (const char *)SyBlobData(&pB->sBlob);
+		nA = SyBlobLength(&pA->sBlob);
+		nB = SyBlobLength(&pB->sBlob);
 		if( base == 6 ){
 			rc = PH7_StrNatCmp(zA,(int)nA,zB,(int)nB,bFold);
 		}else{
@@ -2201,6 +2191,27 @@ static sxi32 HashmapFlagValueCmp(ph7_hashmap_node *pA,ph7_hashmap_node *pB,sxi32
 			}
 		}
 	}
+	return rc;
+}
+/*
+ * Compare two node VALUES under php's sort_flags (base 0 = SORT_REGULAR uses the
+ * standard value comparison; explicit flags route through HashmapScalarFlagCmp).
+ */
+static sxi32 HashmapFlagValueCmp(ph7_hashmap_node *pA,ph7_hashmap_node *pB,sxi32 iFlags)
+{
+	ph7_value sA,sB;
+	int base = iFlags & ~8;      /* strip SORT_FLAG_CASE */
+	int bFold = (iFlags & 8) != 0;
+	sxi32 rc;
+	if( base == 0 ){
+		/* SORT_REGULAR */
+		return HashmapNodeCmp(pA,pB,FALSE);
+	}
+	PH7_MemObjInit(pA->pMap->pVm,&sA);
+	PH7_MemObjInit(pA->pMap->pVm,&sB);
+	PH7_HashmapExtractNodeValue(pA,&sA,FALSE);
+	PH7_HashmapExtractNodeValue(pB,&sB,FALSE);
+	rc = HashmapScalarFlagCmp(&sA,&sB,base,bFold);
 	PH7_MemObjRelease(&sA);
 	PH7_MemObjRelease(&sB);
 	return rc;
@@ -2287,13 +2298,50 @@ static sxi32 HashmapKeyNodeCmp(ph7_hashmap_node *pA,ph7_hashmap_node *pB)
 	return rc;
 }
 /*
+ * Materialise a node's KEY as a scalar ph7_value (int key -> integer, string key
+ * -> string) for a flag-aware key comparison.
+ */
+static void HashmapNodeKeyToValue(ph7_hashmap_node *pNode,ph7_value *pOut)
+{
+	if( pNode->iType == HASHMAP_INT_NODE ){
+		PH7_MemObjInitFromInt(pNode->pMap->pVm,pOut,pNode->xKey.iKey);
+	}else{
+		PH7_MemObjInitFromString(pNode->pMap->pVm,pOut,0);
+		PH7_MemObjStringAppend(pOut,(const char *)SyBlobData(&pNode->xKey.sKey),
+			SyBlobLength(&pNode->xKey.sKey));
+	}
+}
+/*
+ * Compare two node KEYS under php's sort_flags. base 0 = SORT_REGULAR keeps the
+ * php-8 mixed int/string key semantics (HashmapKeyNodeCmp); explicit flags route
+ * the materialised keys through HashmapScalarFlagCmp.
+ */
+static sxi32 HashmapFlagKeyCmp(ph7_hashmap_node *pA,ph7_hashmap_node *pB,sxi32 iFlags)
+{
+	ph7_value sA,sB;
+	int base = iFlags & ~8;      /* strip SORT_FLAG_CASE */
+	int bFold = (iFlags & 8) != 0;
+	sxi32 rc;
+	if( base == 0 ){
+		return HashmapKeyNodeCmp(pA,pB);
+	}
+	HashmapNodeKeyToValue(pA,&sA);
+	HashmapNodeKeyToValue(pB,&sB);
+	rc = HashmapScalarFlagCmp(&sA,&sB,base,bFold);
+	PH7_MemObjRelease(&sA);
+	PH7_MemObjRelease(&sB);
+	return rc;
+}
+/*
  * Node comparison callback: Compare nodes by keys only.
  * used-by: [ksort()]
  */
 static sxi32 HashmapCmpCallback2(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)
 {
-	SXUNUSED(pCmpData); /* cc warning */
-	return HashmapKeyNodeCmp(pA,pB);
+	if( pCmpData == 0 ){
+		return HashmapKeyNodeCmp(pA,pB);
+	}
+	return HashmapFlagKeyCmp(pA,pB,SX_PTR_TO_INT(pCmpData));
 }
 /*
  * Node comparison callback.
@@ -2359,8 +2407,10 @@ static sxi32 HashmapCmpCallback4(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void 
  */
 static sxi32 HashmapCmpCallback5(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)
 {
-	SXUNUSED(pCmpData); /* cc warning */
-	return -HashmapKeyNodeCmp(pA,pB); /* Reverse result */
+	if( pCmpData == 0 ){
+		return -HashmapKeyNodeCmp(pA,pB); /* Reverse result */
+	}
+	return -HashmapFlagKeyCmp(pA,pB,SX_PTR_TO_INT(pCmpData));
 }
 /*
  * Node comparison callback: Invoke an user-defined callback for the purpose of node comparison.
