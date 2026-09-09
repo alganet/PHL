@@ -2045,7 +2045,7 @@ PH7_PRIVATE sxi32 PH7_MemObjToInteger(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjToBool(ph7_value *pObj);
 PH7_PRIVATE sxi64 PH7_TokenValueToInt64(SyString *pData);
 /* lex.c function prototypes */
-PH7_PRIVATE sxi32 PH7_TokenizeRawText(const char *zInput,sxu32 nLen,SySet *pOut);
+PH7_PRIVATE sxi32 PH7_TokenizeRawText(const char *zInput,sxu32 nLen,SySet *pOut,sxu32 nBaseLine);
 PH7_PRIVATE sxi32 PH7_TokenizePHP(const char *zInput,sxu32 nLen,sxu32 nLineStart,SySet *pOut,SySet *pTrivia);
 /* vm.c function prototypes */
 PH7_PRIVATE void PH7_VmReleaseContextValue(ph7_context *pCtx,ph7_value *pValue);
