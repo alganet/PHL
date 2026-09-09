@@ -24311,9 +24311,30 @@ static int vm_builtin_get_defined_vars(ph7_context *pCtx,int nArg,ph7_value **ap
  */
 static int vm_builtin_gettype(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const char *zType = "Empty";
+	/* php's gettype() uses LONG type names ("integer"/"boolean"/"NULL"), distinct
+	 * from get_debug_type()'s short ones ("int"/"bool"/"null") — never route this
+	 * through PH7_MemObjTypeDump, which yields the short forms. */
+	const char *zType = "unknown type";
 	if( nArg > 0 ){
-		zType = PH7_MemObjTypeDump(apArg[0]);
+		ph7_value *pVal = apArg[0];
+		if( pVal->iFlags & MEMOBJ_NULL ){
+			zType = "NULL";
+		}else if( pVal->iFlags & MEMOBJ_REAL ){
+			/* REAL wins over a cached MEMOBJ_INT: 1.0 is "double" (php). */
+			zType = "double";
+		}else if( pVal->iFlags & MEMOBJ_INT ){
+			zType = "integer";
+		}else if( pVal->iFlags & MEMOBJ_STRING ){
+			zType = "string";
+		}else if( pVal->iFlags & MEMOBJ_BOOL ){
+			zType = "boolean";
+		}else if( pVal->iFlags & MEMOBJ_HASHMAP ){
+			zType = "array";
+		}else if( pVal->iFlags & MEMOBJ_OBJ ){
+			zType = "object";
+		}else if( pVal->iFlags & MEMOBJ_RES ){
+			zType = "resource";
+		}
 	}
 	/* Return the variable type */
 	ph7_result_string(pCtx,zType,-1/*Compute length automatically*/);
