@@ -341,6 +341,18 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 							pStream->zText++;
 						}
 					}
+				}else if( c == 'o' || c == 'O' ){
+					/* PHP 8.1 explicit octal 0o/0O (underscore separator allowed between two digits) */
+					pStream->zText++;
+					while( pStream->zText < pStream->zEnd && pStream->zText[0] >= '0' && pStream->zText[0] <= '7' ){
+						pStream->zText++;
+						if( pStream->zText < pStream->zEnd
+							&& pStream->zText[0] == '_'
+							&& pStream->zText + 1 < pStream->zEnd
+							&& pStream->zText[1] >= '0' && pStream->zText[1] <= '7' ){
+							pStream->zText++;
+						}
+					}
 				}
 			}
 			/* PHP 7.4: absorb a trailing malformed underscore run into the

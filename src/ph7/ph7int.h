@@ -1375,6 +1375,13 @@ struct ph7_vm
 	                             * being evaluated (VmLocalExec has no method frame, so self::/parent::
 	                             * inside an initializer resolve through this fallback — consulted by
 	                             * PH7_VmPeekDeclaringClass/PH7_VmPeekTopClass when no frame matches). */
+	void *pConstEvalFrame;      /* The VmFrame that was current when an ON-DEMAND const initializer
+	                             * eval began (VmLocalExec pushes no frame). While the current frame
+	                             * still equals it, self::/parent:: resolve to pConstEvalClass even
+	                             * though an outer method frame exists (e.g. Base::CONST accessed from
+	                             * Sub::method() must NOT resolve self to Sub). A method call inside the
+	                             * initializer pushes a new frame, so the marker no longer matches and
+	                             * that method's own declaring class wins. NULL outside on-demand eval. */
 	sxi32 nConstEvalDepth;      /* Nesting depth of constant/enum-case initializer evaluations. A
 	                             * cycle detected at an inner level (pConstCycleAttr) is thrown only
 	                             * when depth returns to 0 — a throw INSIDE an initializer mini-exec
