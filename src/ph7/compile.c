@@ -14991,6 +14991,105 @@ PH7_PRIVATE sxi32 PH7_ResetCodeGenerator(
 	return SXRET_OK;
 }
 /*
+ * Save the code generator's compile-position state and hand the live generator a
+ * fresh, empty one for a NESTED compilation unit.
+ *
+ * A require/include normally runs at execution time, when no compile is in flight,
+ * so VmEvalChunk can call PH7_ResetCodeGenerator to wipe the generator. But an
+ * autoload can fire in the MIDDLE of compiling a class: resolving `class Child
+ * extends Base` calls PH7_VmExtractClass, which triggers the autoloader, whose
+ * body `require`s Base's file — a nested compile while the outer one is mid-token.
+ * PH7_ResetCodeGenerator would then blow away the outer compile's cursor
+ * (pIn/pEnd), current block, use-imports, labels, etc.; the outer parse resumes
+ * with pIn == NULL and reports a bogus "Expected '{' after class 'Child'". (Common
+ * in every real framework: Composer autoloads parent classes on demand.)
+ *
+ * This snapshots the position/scope fields into *pSaved (a caller-stack
+ * ph7_gen_state used purely as storage) and re-initializes the live generator's
+ * position containers to FRESH, empty ones WITHOUT releasing the outer's (the
+ * snapshot now owns those). hLiteral/hNumLiteral/hVar are intentionally left LIVE
+ * and shared — compiled bytecode interns names/literals into them and they grow
+ * monotonically (exactly why PH7_ResetCodeGenerator keeps them); restoring an old
+ * copy of those headers after a nested grow would use-after-free the bucket array.
+ */
+PH7_PRIVATE void PH7_CompilerSaveState(ph7_vm *pVm,ph7_gen_state *pSaved,ProcConsumer xErr,void *pErrData)
+{
+	ph7_gen_state *pGen = &pVm->sCodeGen;
+	/* Shallow-copy every field; the position containers below are then replaced
+	 * with fresh ones on the live struct, so *pSaved keeps the outer's memory. */
+	*pSaved = *pGen;
+	SySetInit(&pGen->aLabel,&pVm->sAllocator,sizeof(Label));
+	SySetInit(&pGen->aGoto,&pVm->sAllocator,sizeof(JumpFixup));
+	SySetInit(&pGen->aNullsafeJmp,&pVm->sAllocator,sizeof(sxu32));
+	SySetInit(&pGen->aLoopParent,&pVm->sAllocator,sizeof(sxu32));
+	SySetInit(&pGen->aTrivia,&pVm->sAllocator,sizeof(ph7_trivia));
+	SySetInit(&pGen->aPendingAttrs,&pVm->sAllocator,sizeof(ph7_trivia));
+	SyBlobInit(&pGen->sWorker,&pVm->sAllocator);
+	SyBlobInit(&pGen->sErrBuf,&pVm->sAllocator);
+	SyBlobInit(&pGen->sNamespace,&pVm->sAllocator);
+	SyHashInit(&pGen->hUseImports,&pVm->sAllocator,0,0);
+	SyHashInit(&pGen->hUseFuncImports,&pVm->sAllocator,0,0);
+	SyHashInit(&pGen->hUseConstImports,&pVm->sAllocator,0,0);
+	/* Fresh global scope for the nested unit (address of the embedded sGlobal is
+	 * stable, so any outer block still parented to it stays valid across restore). */
+	GenStateInitBlock(pGen,&pGen->sGlobal,GEN_BLOCK_GLOBAL,PH7_VmInstrLength(pVm),0);
+	pGen->pCurrent = &pGen->sGlobal;
+	pGen->pIn = pGen->pEnd = 0;
+	pGen->pRawIn = pGen->pRawEnd = 0;
+	pGen->pTokenSet = 0;
+	pGen->nErr = 0;
+	pGen->nLoopId = pGen->nCurLoopId = 0;
+	pGen->nCommaExprOk = 0;
+	pGen->bInGenerator = 0;
+	pGen->bStrictTypes = 0;
+	pGen->bStrictTypesLocked = 0;
+	SyStringInitFromBuf(&pGen->sPendingDoc,0,0);
+	pGen->xErr = xErr;
+	pGen->pErrData = pErrData;
+}
+/*
+ * Restore the outer compile-position state saved by PH7_CompilerSaveState,
+ * releasing the nested unit's position containers first. The shared
+ * hLiteral/hNumLiteral/hVar tables (grown by the nested compile) are carried
+ * forward, NOT rolled back to the snapshot's stale headers.
+ */
+PH7_PRIVATE void PH7_CompilerRestoreState(ph7_vm *pVm,ph7_gen_state *pSaved)
+{
+	ph7_gen_state *pGen = &pVm->sCodeGen;
+	GenBlock *pBlock,*pParent;
+	SyHash hVar,hLiteral,hNumLiteral;
+	/* Free any nested blocks left open (e.g. an aborted nested compile), then the
+	 * nested global block's own fixup sets. */
+	pBlock = pGen->pCurrent;
+	while( pBlock && pBlock->pParent != 0 ){
+		pParent = pBlock->pParent;
+		GenStateFreeBlock(pBlock);
+		pBlock = pParent;
+	}
+	GenStateReleaseBlock(&pGen->sGlobal);
+	/* Release the nested unit's position containers. */
+	SySetRelease(&pGen->aLabel);
+	SySetRelease(&pGen->aGoto);
+	SySetRelease(&pGen->aNullsafeJmp);
+	SySetRelease(&pGen->aLoopParent);
+	SySetRelease(&pGen->aTrivia);
+	SySetRelease(&pGen->aPendingAttrs);
+	SyBlobRelease(&pGen->sWorker);
+	SyBlobRelease(&pGen->sErrBuf);
+	SyBlobRelease(&pGen->sNamespace);
+	SyHashRelease(&pGen->hUseImports);
+	SyHashRelease(&pGen->hUseFuncImports);
+	SyHashRelease(&pGen->hUseConstImports);
+	/* Preserve the (possibly grown) shared intern tables across the restore. */
+	hVar = pGen->hVar;
+	hLiteral = pGen->hLiteral;
+	hNumLiteral = pGen->hNumLiteral;
+	*pGen = *pSaved;
+	pGen->hVar = hVar;
+	pGen->hLiteral = hLiteral;
+	pGen->hNumLiteral = hNumLiteral;
+}
+/*
  * Raise php's parse error for an unexpected token: E_PARSE with the exact text
  * php's parser prints, e.g.
  *

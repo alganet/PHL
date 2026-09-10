@@ -27020,6 +27020,8 @@ static sxi32 VmEvalChunk(
 	SyBlob sSavedNs;
 	ProcConsumer xErr = 0;
 	void *pErrData = 0;
+	ph7_gen_state sSavedGen;
+	int bNested;
 	/* Initialize bytecode container */
 	SySetInit(&aByteCode,&pVm->sAllocator,sizeof(VmInstr));
 	SySetAlloc(&aByteCode,0x20);
@@ -27029,7 +27031,16 @@ static sxi32 VmEvalChunk(
 		xErr = pVm->pEngine->xConf.xErr;
 		pErrData = pVm->pEngine->xConf.pErrData;
 	}
-	PH7_ResetCodeGenerator(pVm,xErr,pErrData);
+	/* A non-zero cursor means an OUTER compile is in flight — this eval/include
+	 * was reached from inside it (an autoload fired while resolving a base class).
+	 * Wiping the generator would corrupt that outer parse, so snapshot it and hand
+	 * the nested unit a fresh one; a plain runtime eval/include just resets. */
+	bNested = (pVm->sCodeGen.pIn != 0);
+	if( bNested ){
+		PH7_CompilerSaveState(pVm,&sSavedGen,xErr,pErrData);
+	}else{
+		PH7_ResetCodeGenerator(pVm,xErr,pErrData);
+	}
 	/* Save and reset VM namespace state for the new compilation unit.
 	 * Each included file has its own namespace scope; after execution,
 	 * the caller's namespace is restored. */
@@ -27111,6 +27122,10 @@ Cleanup:
 	SyBlobReset(&pVm->sNamespace);
 	SyBlobDup(&sSavedNs,&pVm->sNamespace);
 	SyBlobRelease(&sSavedNs);
+	/* Restore the outer compile's generator state if this was a nested unit. */
+	if( bNested ){
+		PH7_CompilerRestoreState(pVm,&sSavedGen);
+	}
 	return SXRET_OK;
 }
 /*
