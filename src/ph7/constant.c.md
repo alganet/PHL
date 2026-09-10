@@ -212,15 +212,15 @@ Coverage: 1125/1197 lines (93.98%)
 |      - |  202 | ` * DIRECTORY_SEPARATOR.` |
 |      - |  203 | ` * Expand the directory separator character.` |
 |      - |  204 | ` */` |
-|    304 |  205 | `static void PH7_DIRSEP_Const(ph7_value *pVal,void *pUnused)` |
+|    308 |  205 | `static void PH7_DIRSEP_Const(ph7_value *pVal,void *pUnused)` |
 |      4 |  206 | `{` |
-|    152 |  207 | `	SXUNUSED(pUnused);` |
+|    154 |  207 | `	SXUNUSED(pUnused);` |
 |      - |  208 | `#ifdef __WINNT__` |
 |      4 |  209 | `	ph7_value_string(pVal,"\\",(int)sizeof(char));` |
 |      - |  210 | `#else` |
-|    304 |  211 | `	ph7_value_string(pVal,"/",(int)sizeof(char));` |
+|    308 |  211 | `	ph7_value_string(pVal,"/",(int)sizeof(char));` |
 |      - |  212 | `#endif` |
-|    308 |  213 | `}` |
+|    312 |  213 | `}` |
 |      - |  214 | `/*` |
 |      - |  215 | ` * PATH_SEPARATOR.` |
 |      - |  216 | ` * Expand the path separator character.` |
@@ -1262,20 +1262,20 @@ Coverage: 1125/1197 lines (93.98%)
 |      - | 1252 | ` * PATHINFO_EXTENSION` |
 |      - | 1253 | ` *  Expand 3.` |
 |      - | 1254 | ` */` |
-|   6594 | 1255 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
+|   6600 | 1255 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1256 | `{` |
-|   3297 | 1257 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6599 | 1258 | `	ph7_value_int(pVal,3);` |
-|   6599 | 1259 | `}` |
+|   3300 | 1257 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6605 | 1258 | `	ph7_value_int(pVal,3);` |
+|   6605 | 1259 | `}` |
 |      - | 1260 | `/*` |
 |      - | 1261 | ` * PATHINFO_FILENAME` |
 |      - | 1262 | ` *  Expand 4.` |
 |      - | 1263 | ` */` |
-|   6586 | 1264 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
+|   6592 | 1264 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1265 | `{` |
-|   3293 | 1266 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6591 | 1267 | `	ph7_value_int(pVal,4);` |
-|   6591 | 1268 | `}` |
+|   3296 | 1266 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6597 | 1267 | `	ph7_value_int(pVal,4);` |
+|   6597 | 1268 | `}` |
 |      - | 1269 | `/*` |
 |      - | 1270 | ` * ASSERT_ACTIVE.` |
 |      - | 1271 | ` *  PHP ASSERT_ACTIVE = 1` |
@@ -1526,24 +1526,24 @@ Coverage: 1125/1197 lines (93.98%)
 |      - | 1516 | ` * STDOUT` |
 |      - | 1517 | ` *   Expand the STDOUT handle as a resource.` |
 |      - | 1518 | ` */` |
-|      2 | 1519 | `static void PH7_STDOUT_Const(ph7_value *pVal,void *pUserData)` |
+|      4 | 1519 | `static void PH7_STDOUT_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1520 | `{` |
-|      3 | 1521 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
+|      5 | 1521 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
 |      - | 1522 | `	void *pResource;` |
-|      3 | 1523 | `	pResource = PH7_ExportStdout(pVm);` |
-|      3 | 1524 | `	ph7_value_resource(pVal,pResource);` |
-|      3 | 1525 | `}` |
+|      5 | 1523 | `	pResource = PH7_ExportStdout(pVm);` |
+|      5 | 1524 | `	ph7_value_resource(pVal,pResource);` |
+|      5 | 1525 | `}` |
 |      - | 1526 | `/*` |
 |      - | 1527 | ` * STDERR` |
 |      - | 1528 | ` *  Expand the STDERR handle as a resource.` |
 |      - | 1529 | ` */` |
-|      2 | 1530 | `static void PH7_STDERR_Const(ph7_value *pVal,void *pUserData)` |
+|      4 | 1530 | `static void PH7_STDERR_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1531 | `{` |
-|      3 | 1532 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
+|      5 | 1532 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
 |      - | 1533 | `	void *pResource;` |
-|      3 | 1534 | `	pResource = PH7_ExportStderr(pVm);` |
-|      3 | 1535 | `	ph7_value_resource(pVal,pResource);` |
-|      3 | 1536 | `}` |
+|      5 | 1534 | `	pResource = PH7_ExportStderr(pVm);` |
+|      5 | 1535 | `	ph7_value_resource(pVal,pResource);` |
+|      5 | 1536 | `}` |
 |      - | 1537 | `/*` |
 |      - | 1538 | ` * INI_SCANNER_NORMAL` |
 |      - | 1539 | ` *   Expand 1` |
