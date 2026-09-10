@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 1142/1169 lines (97.69%)
+Coverage: 1125/1169 lines (96.24%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -162,15 +162,15 @@ Coverage: 1142/1169 lines (97.69%)
 |      - |  152 | ` * DIRECTORY_SEPARATOR.` |
 |      - |  153 | ` * Expand the directory separator character.` |
 |      - |  154 | ` */` |
-|    298 |  155 | `static void PH7_DIRSEP_Const(ph7_value *pVal,void *pUnused)` |
+|    304 |  155 | `static void PH7_DIRSEP_Const(ph7_value *pVal,void *pUnused)` |
 |      4 |  156 | `{` |
-|    149 |  157 | `	SXUNUSED(pUnused);` |
+|    152 |  157 | `	SXUNUSED(pUnused);` |
 |      - |  158 | `#ifdef __WINNT__` |
 |      4 |  159 | `	ph7_value_string(pVal,"\\",(int)sizeof(char));` |
 |      - |  160 | `#else` |
-|    298 |  161 | `	ph7_value_string(pVal,"/",(int)sizeof(char));` |
+|    304 |  161 | `	ph7_value_string(pVal,"/",(int)sizeof(char));` |
 |      - |  162 | `#endif` |
-|    302 |  163 | `}` |
+|    308 |  163 | `}` |
 |      - |  164 | `/*` |
 |      - |  165 | ` * PATH_SEPARATOR.` |
 |      - |  166 | ` * Expand the path separator character.` |
@@ -257,44 +257,44 @@ Coverage: 1142/1169 lines (97.69%)
 |      - |  247 | ` * __FILE__` |
 |      - |  248 | ` *  Path of the processed script.` |
 |      - |  249 | ` */` |
-|     44 |  250 | `static void PH7_FILE_Const(ph7_value *pVal,void *pUserData)` |
-|      5 |  251 | `{` |
-|     49 |  252 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
+|    ! 0 |  250 | `static void PH7_FILE_Const(ph7_value *pVal,void *pUserData)` |
+|    ! 0 |  251 | `{` |
+|    ! 0 |  252 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
 |      - |  253 | `	SyString *pFile;` |
 |      - |  254 | `	/* Peek the top entry */` |
-|     49 |  255 | `	pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
-|     49 |  256 | `	if( pFile == 0 ){` |
+|    ! 0 |  255 | `	pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
+|    ! 0 |  256 | `	if( pFile == 0 ){` |
 |      - |  257 | `		/* Expand the magic word: ":MEMORY:" */` |
 |    ! 0 |  258 | `		ph7_value_string(pVal,":MEMORY:",(int)sizeof(":MEMORY:")-1);` |
 |    ! 0 |  259 | `	}else{` |
-|     49 |  260 | `		ph7_value_string(pVal,pFile->zString,pFile->nByte);` |
+|    ! 0 |  260 | `		ph7_value_string(pVal,pFile->zString,pFile->nByte);` |
 |      - |  261 | `	}` |
-|     49 |  262 | `}` |
+|    ! 0 |  262 | `}` |
 |      - |  263 | `/*` |
 |      - |  264 | ` * __DIR__` |
 |      - |  265 | ` *  Directory holding the processed script.` |
 |      - |  266 | ` */` |
-|     40 |  267 | `static void PH7_DIR_Const(ph7_value *pVal,void *pUserData)` |
-|      4 |  268 | `{` |
-|     44 |  269 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
+|    ! 0 |  267 | `static void PH7_DIR_Const(ph7_value *pVal,void *pUserData)` |
+|    ! 0 |  268 | `{` |
+|    ! 0 |  269 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
 |      - |  270 | `	SyString *pFile;` |
 |      - |  271 | `	/* Peek the top entry */` |
-|     44 |  272 | `	pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
-|     44 |  273 | `	if( pFile == 0 ){` |
+|    ! 0 |  272 | `	pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
+|    ! 0 |  273 | `	if( pFile == 0 ){` |
 |      - |  274 | `		/* Expand the magic word: ":MEMORY:" */` |
 |    ! 0 |  275 | `		ph7_value_string(pVal,":MEMORY:",(int)sizeof(":MEMORY:")-1);` |
 |    ! 0 |  276 | `	}else{` |
-|     44 |  277 | `		if( pFile->nByte > 0 ){` |
+|    ! 0 |  277 | `		if( pFile->nByte > 0 ){` |
 |      - |  278 | `			const char *zDir;` |
 |      - |  279 | `			int nLen;` |
-|     44 |  280 | `			zDir = PH7_ExtractDirName(pFile->zString,(int)pFile->nByte,&nLen);` |
-|     44 |  281 | `			ph7_value_string(pVal,zDir,nLen);` |
-|     24 |  282 | `		}else{` |
+|    ! 0 |  280 | `			zDir = PH7_ExtractDirName(pFile->zString,(int)pFile->nByte,&nLen);` |
+|    ! 0 |  281 | `			ph7_value_string(pVal,zDir,nLen);` |
+|    ! 0 |  282 | `		}else{` |
 |      - |  283 | `			/* Expand '.' as the current directory*/` |
 |    ! 0 |  284 | `			ph7_value_string(pVal,".",(int)sizeof(char));` |
 |      - |  285 | `		}` |
 |      - |  286 | `	}` |
-|     44 |  287 | `}` |
+|    ! 0 |  287 | `}` |
 |      - |  288 | `/*` |
 |      - |  289 | ` * PHP_SHLIB_SUFFIX` |
 |      - |  290 | ` *  Expand shared library suffix.` |
@@ -1212,20 +1212,20 @@ Coverage: 1142/1169 lines (97.69%)
 |      - | 1202 | ` * PATHINFO_EXTENSION` |
 |      - | 1203 | ` *  Expand 3.` |
 |      - | 1204 | ` */` |
-|   6582 | 1205 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
+|   6584 | 1205 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1206 | `{` |
-|   3291 | 1207 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6587 | 1208 | `	ph7_value_int(pVal,3);` |
-|   6587 | 1209 | `}` |
+|   3292 | 1207 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6589 | 1208 | `	ph7_value_int(pVal,3);` |
+|   6589 | 1209 | `}` |
 |      - | 1210 | `/*` |
 |      - | 1211 | ` * PATHINFO_FILENAME` |
 |      - | 1212 | ` *  Expand 4.` |
 |      - | 1213 | ` */` |
-|   6574 | 1214 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
+|   6576 | 1214 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1215 | `{` |
-|   3287 | 1216 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6579 | 1217 | `	ph7_value_int(pVal,4);` |
-|   6579 | 1218 | `}` |
+|   3288 | 1216 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6581 | 1217 | `	ph7_value_int(pVal,4);` |
+|   6581 | 1218 | `}` |
 |      - | 1219 | `/*` |
 |      - | 1220 | ` * ASSERT_ACTIVE.` |
 |      - | 1221 | ` *  PHP ASSERT_ACTIVE = 1` |
