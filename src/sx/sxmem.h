@@ -22,6 +22,9 @@ typedef struct SyMemBlock SyMemBlock;
 struct SyMemBlock
 {
 	SyMemBlock *pNext,*pPrev; /* Chain of allocated memory blocks */
+	sxu32 nSize;              /* Total bytes of this block (incl. this header), so the
+	                           * backend's live-byte counter can be decremented on free
+	                           * (feeds memory_get_usage()). */
 #ifdef UNTRUST
 	sxu32 nGuard;             /* magic number associated with each valid block,so we
 	                           * can detect misuse.
@@ -44,6 +47,10 @@ struct SyMemBackend
 	const SyMemMethods *pMethods;  /* Memory allocation methods */
 	SyMemBlock *pBlocks;           /* List of valid memory blocks */
 	sxu32 nBlock;                  /* Total number of memory blocks allocated so far */
+	sxu32 nMemUsed;                /* Live bytes currently allocated through this backend
+	                                * (direct + pool buckets; pool sub-allocations are
+	                                * covered by their bucket). Feeds memory_get_usage(). */
+	sxu32 nMemPeak;                /* High-water mark of nMemUsed (memory_get_peak_usage()). */
 	ProcMemError xMemError;        /* Out-of memory callback */
 	void *pUserData;               /* First arg to xMemError() */
 	SyMutex *pMutex;               /* Per instance mutex */

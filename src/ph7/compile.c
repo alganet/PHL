@@ -12293,6 +12293,12 @@ static sxi32 GenStateParseCatchHeader(ph7_gen_state *pGen, ph7_exception_block *
 		}
 		break;
 	}
+	/* PHP 8.0 non-capturing catch: `catch (Type)` / `catch (A|B)` with no
+	 * variable. sThis stays empty (SyZero'd above) so the runtime skips binding. */
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_RPAREN) ){
+		pGen->pIn++; /* ')' */
+		return SXRET_OK;
+	}
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 ||
 		&pGen->pIn[1] >= pGen->pEnd || (pGen->pIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
 		pToken = pGen->pIn; if( pToken >= pGen->pEnd ){ pToken--; }
@@ -12510,6 +12516,12 @@ static sxi32 PH7_CompileCatch(ph7_gen_state *pGen,ph7_exception *pException)
 		}
 		break;
 	}
+	/* PHP 8.0 non-capturing catch: `catch (Type)` / `catch (A|B)` with no
+	 * variable. sThis stays empty (SyZero'd above) so the runtime skips binding;
+	 * jump straight to compiling the block below. */
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_RPAREN) /*)*/ ){
+		goto CatchBody;
+	}
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 /*$*/ ||
 		&pGen->pIn[1] >= pGen->pEnd || (pGen->pIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
 			/* Unexpected token,break immediately */
@@ -12534,6 +12546,7 @@ static sxi32 PH7_CompileCatch(ph7_gen_state *pGen,ph7_exception *pException)
 	}
 	SyStringInitFromBuf(&sCatch.sThis,zDup,pName->nByte);
 	pGen->pIn++;
+CatchBody:
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_RPAREN) == 0 /*)*/ ){
 		/* Unexpected token,break immediately */
 		pToken = pGen->pIn;
@@ -13786,7 +13799,26 @@ static sxi32 GenStateEmitExprCode(
 					}
 					pPeek->iP1 = 0;
 					if( !bAbsolute ){
-						pPeek->iP2 = (sxi32)GenStateNsQualifyName(pGen,nLitForClass,&pGen->hUseImports,0);
+						/* self/static/parent are resolved at runtime against the
+						 * current class — never namespace-qualify them (else
+						 * `new self` in namespace N becomes "N\self"). Mirrors the
+						 * instanceof (IS_A) guard below. */
+						ph7_value *pLitChk = (ph7_value *)SySetAt(&pGen->pVm->aLitObj,nLitForClass);
+						int isSpecialNew = 0;
+						if( pLitChk && (pLitChk->iFlags & MEMOBJ_STRING) ){
+							const char *z = (const char *)SyBlobData(&pLitChk->sBlob);
+							sxu32 n = (sxu32)SyBlobLength(&pLitChk->sBlob);
+							if( (n == 4 && SyMemcmp(z,"self",4) == 0) ||
+								(n == 6 && SyMemcmp(z,"static",6) == 0) ||
+								(n == 6 && SyMemcmp(z,"parent",6) == 0) ){
+								isSpecialNew = 1;
+							}
+						}
+						if( isSpecialNew ){
+							pPeek->iP2 = (sxi32)nLitForClass;
+						}else{
+							pPeek->iP2 = (sxi32)GenStateNsQualifyName(pGen,nLitForClass,&pGen->hUseImports,0);
+						}
 					}else{
 						pPeek->iP2 = (sxi32)nLitForClass;
 					}

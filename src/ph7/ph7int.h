@@ -1400,6 +1400,9 @@ struct ph7_vm
 	void *pStdout;             /* STDOUT IO stream */
 	void *pStderr;             /* STDERR IO stream */
 	int bErrReport;            /* TRUE to report all runtime Error/Warning/Notice */
+	int bGcEnabled;            /* gc_enable()/gc_disable() state reported by gc_enabled()/
+	                            * gc_status(); PHL frees by refcount, so the cycle collector
+	                            * is a no-op and this flag is purely observational. */
 	sxi32 iErrMask;      /* error_reporting() level. PH7 collapsed it to the bErrReport
 	                      * boolean, so E_ALL & ~E_DEPRECATED still printed every
 	                      * deprecation — any non-zero level meant "report all". */

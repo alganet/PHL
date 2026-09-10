@@ -77,6 +77,56 @@ static void PH7_OS_Const(ph7_value *pVal,void *pUnused)
 	SXUNUSED(pUnused);
 }
 /*
+ * PHP_OS_FAMILY (php 7.2)
+ *  One of 'Windows', 'BSD', 'Darwin', 'Solaris', 'Linux' or 'Unknown', derived
+ *  from the host's uname sysname (php maps the same set at build time).
+ */
+static void PH7_OS_FAMILY_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+#if defined(__WINNT__)
+	ph7_value_string(pVal,"Windows",(int)sizeof("Windows")-1);
+#elif defined(__UNIXES__)
+	struct utsname sInfo;
+	const char *zFamily = "Unknown";
+	if( uname(&sInfo) == 0 ){
+		const char *z = sInfo.sysname;
+		if( SyStrnicmp(z,"Darwin",sizeof("Darwin")-1) == 0 ){
+			zFamily = "Darwin";
+		}else if( SyStrnicmp(z,"Linux",sizeof("Linux")-1) == 0 ){
+			zFamily = "Linux";
+		}else if( SyStrnicmp(z,"SunOS",sizeof("SunOS")-1) == 0 ){
+			zFamily = "Solaris";
+		}else{
+			/* FreeBSD/OpenBSD/NetBSD/DragonFly -> 'BSD' (scan for "BSD"). */
+			const char *p = z;
+			while( p[0] && p[1] && p[2] ){
+				if( (p[0]=='B'||p[0]=='b') && (p[1]=='S'||p[1]=='s') && (p[2]=='D'||p[2]=='d') ){
+					zFamily = "BSD";
+					break;
+				}
+				p++;
+			}
+		}
+	}
+	ph7_value_string(pVal,zFamily,-1);
+#else
+	ph7_value_string(pVal,"Unknown",(int)sizeof("Unknown")-1);
+#endif
+}
+/*
+ * PHP_SAPI
+ *  The interface between the interpreter and the host. PHL's host binary is a
+ *  command-line interpreter, so this is "cli" (matching the CLI default of
+ *  php_sapi_name(); the built-in -S server's per-request "cli-server" flavour is
+ *  only surfaced by php_sapi_name(), not this compile-time constant).
+ */
+static void PH7_SAPI_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_string(pVal,"cli",(int)sizeof("cli")-1);
+}
+/*
  * PHP_EOL
  *  Expand the correct 'End Of Line' symbol for this platform.
  */
@@ -2065,6 +2115,8 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"PHP_EXTRA_VERSION",    PH7_PHPExtraConst  },
 	{"PHP_VERSION_ID",       PH7_PHPVerIdConst  },
 	{"PHP_OS",               PH7_OS_Const       },
+	{"PHP_OS_FAMILY",        PH7_OS_FAMILY_Const},
+	{"PHP_SAPI",             PH7_SAPI_Const     },
 	{"PHP_EOL",              PH7_EOL_Const      },
 	{"PHP_SESSION_DISABLED", PH7_PHP_SESSION_DISABLED_Const },
 	{"PHP_SESSION_NONE",     PH7_PHP_SESSION_NONE_Const },
