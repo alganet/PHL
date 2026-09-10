@@ -9538,7 +9538,110 @@ static int PH7_builtin_urldecode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 }
 #endif /* PH7_NEED_BUILTIN_REG */
 /* Table of the built-in functions */
+/*
+ * int memory_get_usage([bool $real_usage = false])
+ *  Amount of memory, in bytes, currently allocated to the script through PHL's
+ *  memory backend. PHL tracks the backend's real allocated bytes, so the
+ *  $real_usage flag has no effect here (php's non-real figure would be smaller,
+ *  reflecting Zend's emalloc bookkeeping — recorded divergence).
+ */
+static int PH7_builtin_memory_get_usage(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_int64(pCtx,(ph7_int64)pCtx->pVm->sAllocator.nMemUsed);
+	return PH7_OK;
+}
+/*
+ * int memory_get_peak_usage([bool $real_usage = false])
+ *  High-water mark of memory_get_usage() over the script's lifetime.
+ */
+static int PH7_builtin_memory_get_peak_usage(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_int64(pCtx,(ph7_int64)pCtx->pVm->sAllocator.nMemPeak);
+	return PH7_OK;
+}
+/*
+ * PHL frees values by reference count as they go out of scope, so there is no
+ * mark-and-sweep cycle collector to drive. The gc_* family is provided for
+ * source compatibility (real frameworks call it around test runs): the state is
+ * observational and collection is a no-op. Recorded divergence from php, whose
+ * collector actually reclaims reference cycles.
+ */
+static int PH7_builtin_gc_enable(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	pCtx->pVm->bGcEnabled = 1;
+	return PH7_OK;
+}
+static int PH7_builtin_gc_disable(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	pCtx->pVm->bGcEnabled = 0;
+	return PH7_OK;
+}
+static int PH7_builtin_gc_enabled(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	ph7_result_bool(pCtx,pCtx->pVm->bGcEnabled);
+	return PH7_OK;
+}
+static int PH7_builtin_gc_collect_cycles(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	/* No cycle collector: nothing to reclaim. Returns the count collected (0). */
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	ph7_result_int(pCtx,0);
+	return PH7_OK;
+}
+static int PH7_builtin_gc_mem_caches(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	ph7_result_int(pCtx,0);
+	return PH7_OK;
+}
+/*
+ * array gc_status(void)
+ *  php 8.3 shape. PHL never runs a collection, so every counter is zero and the
+ *  timing fields are 0.0; 'running' reflects gc_enable()/gc_disable().
+ */
+static int PH7_builtin_gc_status(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pArray,*pVal;
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	pArray = ph7_context_new_array(pCtx);
+	pVal = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pVal == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	/* Key order matches php 8.3's gc_status(). */
+	ph7_value_bool(pVal,pCtx->pVm->bGcEnabled); ph7_array_add_strkey_elem(pArray,"running",pVal);
+	ph7_value_bool(pVal,0);      ph7_array_add_strkey_elem(pArray,"protected",pVal);
+	ph7_value_bool(pVal,0);      ph7_array_add_strkey_elem(pArray,"full",pVal);
+	ph7_value_int(pVal,0);       ph7_array_add_strkey_elem(pArray,"runs",pVal);
+	ph7_value_int(pVal,0);       ph7_array_add_strkey_elem(pArray,"collected",pVal);
+	ph7_value_int(pVal,1000);    ph7_array_add_strkey_elem(pArray,"threshold",pVal);
+	ph7_value_int(pVal,0);       ph7_array_add_strkey_elem(pArray,"buffer_size",pVal);
+	ph7_value_int(pVal,0);       ph7_array_add_strkey_elem(pArray,"roots",pVal);
+	ph7_value_double(pVal,0.0);  ph7_array_add_strkey_elem(pArray,"application_time",pVal);
+	ph7_value_double(pVal,0.0);  ph7_array_add_strkey_elem(pArray,"collector_time",pVal);
+	ph7_value_double(pVal,0.0);  ph7_array_add_strkey_elem(pArray,"destructor_time",pVal);
+	ph7_value_double(pVal,0.0);  ph7_array_add_strkey_elem(pArray,"free_time",pVal);
+	ph7_context_release_value(pCtx,pVal);
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
 static const ph7_builtin_func aBuiltInFunc[] = {
+	{ "memory_get_usage"     , PH7_builtin_memory_get_usage      },
+	{ "memory_get_peak_usage", PH7_builtin_memory_get_peak_usage },
+	{ "gc_enable"            , PH7_builtin_gc_enable             },
+	{ "gc_disable"           , PH7_builtin_gc_disable            },
+	{ "gc_enabled"           , PH7_builtin_gc_enabled            },
+	{ "gc_collect_cycles"    , PH7_builtin_gc_collect_cycles     },
+	{ "gc_mem_caches"        , PH7_builtin_gc_mem_caches         },
+	{ "gc_status"            , PH7_builtin_gc_status             },
 	   /* Variable handling functions */
 	{ "is_bool"    , PH7_builtin_is_bool     },
 	{ "is_float"   , PH7_builtin_is_float    },

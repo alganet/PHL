@@ -2499,6 +2499,11 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
    "   'hash' => 1, 'filter' => 1, 'session' => 1, 'libxml' => 1, 'xml' => 1);"\
    "  return isset($ext[strtolower((string)$name)]);"\
    "}"\
+   "function get_loaded_extensions($zend_extensions = false){"\
+   "  if( $zend_extensions ){ return array(); }"\
+   "  return array('Core','date','libxml','pcre','SPL','json','standard',"\
+   "   'ctype','filter','hash','Reflection','session','mbstring','xml');"\
+   "}"\
    "/* Inverse of bin2hex() */"\
    "function hex2bin($str){"\
    "  $str = (string)$str;"\
@@ -3015,6 +3020,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyZero(pVm,sizeof(ph7_vm));
 	/* Initialize VM fields */
 	pVm->pEngine = &(*pEngine);
+	pVm->bGcEnabled = 1; /* php default: the cycle collector is enabled */
 	SyMemBackendInitFromParent(&pVm->sAllocator,&pEngine->sAllocator);
 	/* Instructions containers */
 	SySetInit(&pVm->aByteCode,&pVm->sAllocator,sizeof(VmInstr));
@@ -3794,6 +3800,12 @@ static const struct VmBuiltinSig {
 	{ "func_num_args", "", "int" },
 	{ "function_exists", "string $function", "bool" },
 	{ "fwrite", "$stream, string $data, ?int $length = NULL", "int|false" },
+	{ "gc_collect_cycles", "", "int" },
+	{ "gc_disable", "", "void" },
+	{ "gc_enable", "", "void" },
+	{ "gc_enabled", "", "bool" },
+	{ "gc_mem_caches", "", "int" },
+	{ "gc_status", "", "array" },
 	{ "get_called_class", "", "string" },
 	{ "get_class", "object $object = ?", "string" },
 	{ "get_class_methods", "object|string $object_or_class", "array" },
@@ -3893,6 +3905,8 @@ static const struct VmBuiltinSig {
 	{ "md5", "string $string, bool $binary = false", "string" },
 	{ "md5_file", "string $filename, bool $binary = false", "string|false" },
 	{ "method_exists", "$object_or_class, string $method", "bool" },
+	{ "memory_get_peak_usage", "bool $real_usage = false", "int" },
+	{ "memory_get_usage", "bool $real_usage = false", "int" },
 	{ "microtime", "bool $as_float = false", "string|float" },
 	{ "min", "mixed $value, mixed ...$values = ?", "mixed" },
 	{ "mkdir", "string $directory, int $permissions = 511, bool $recursive = false, $context = NULL", "bool" },
@@ -14924,7 +14938,9 @@ case PH7_OP_CATCH: {
 	ph7_class_instance *pBind = pExc ? pExc->pInflight : 0;
 	VmFrame *pBody = VmSkipExceptionFrames(pVm->pFrame);
 	pBody->iFlags &= ~VM_FRAME_THROW;
-	if( pCatch && pBind ){
+	if( pCatch && pBind && pCatch->sThis.nByte > 0 ){
+		/* sThis empty => PHP 8.0 non-capturing catch (catch (Type) {}): the
+		 * exception is caught but not bound to any variable. */
 		ph7_value *pObj = VmExtractMemObj(&(*pVm),&pCatch->sThis,FALSE,TRUE);
 		if( pObj ){
 			/* Overwrite-then-release (mirrors PH7_MemObjStore): pin the new instance,
@@ -26052,7 +26068,9 @@ Rethrow:
 			 * stays 0, so the try-frame-only paths (all guarded by iExceptionJump>0)
 			 * are unaffected. Must be set BEFORE binding $e below. */
 			pFrame->iFlags |= VM_FRAME_CATCH | VM_FRAME_EXCEPTION;
-			pObj = VmExtractMemObj(&(*pVm),&pCatch->sThis,FALSE,TRUE);
+			/* sThis empty => PHP 8.0 non-capturing catch: caught, not bound. */
+			pObj = (pCatch->sThis.nByte > 0)
+				? VmExtractMemObj(&(*pVm),&pCatch->sThis,FALSE,TRUE) : 0;
 			if( pObj ){
 				/* The catch variable now resolves in the (shared) enclosing frame,
 				 * so it may already hold a value from a prior catch or assignment.

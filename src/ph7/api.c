@@ -42,7 +42,7 @@ static struct Global_Data
 	ph7 *pEngines;                          /* List of active engine */
 	sxu32 nMagic;                           /* Sanity check against library misuse */
 }sMPGlobal = {
-	{0,0,0,0,0,0,0,0,0,{0}},
+	{0,0,0,0,0,0,0,0,0,0,0,{0}},
 #if defined(PH7_ENABLE_THREADS)
 	0,
 	0,

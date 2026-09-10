@@ -175,6 +175,11 @@ static void * MemBackendAlloc(SyMemBackend *pBackend,sxu32 nByte)
 #if defined(UNTRUST)
 	pBlock->nGuard = SXMEM_BACKEND_MAGIC;
 #endif
+	pBlock->nSize = nByte;
+	pBackend->nMemUsed += nByte;
+	if( pBackend->nMemUsed > pBackend->nMemPeak ){
+		pBackend->nMemPeak = pBackend->nMemUsed;
+	}
 	pBackend->nBlock++;
 	return (void *)&pBlock[1];
 }
@@ -216,6 +221,10 @@ static void * MemBackendRealloc(SyMemBackend *pBackend,void * pOld,sxu32 nByte)
 	}
 	pPrev = pBlock->pPrev;
 	pNext = pBlock->pNext;
+	{
+		/* Old size, captured before realloc may move/free the block; the
+		 * live-byte counter is adjusted by the delta only on success below. */
+		sxu32 nOld = pBlock->nSize;
 	for(;;){
 		pNew = (SyMemBlock *)pBackend->pMethods->xRealloc(pBlock,nByte);
 		if( pNew != 0 || pBackend->xMemError == 0 || nRetry > SXMEM_BACKEND_RETRY ||
@@ -240,7 +249,15 @@ static void * MemBackendRealloc(SyMemBackend *pBackend,void * pOld,sxu32 nByte)
 		pNew->nGuard = SXMEM_BACKEND_MAGIC;
 #endif
 	}
+	/* Apply the size delta to the live-byte counter (underflow-guarded). */
+	pBackend->nMemUsed = (pBackend->nMemUsed >= nOld) ? (pBackend->nMemUsed - nOld) : 0;
+	pBackend->nMemUsed += nByte;
+	if( pBackend->nMemUsed > pBackend->nMemPeak ){
+		pBackend->nMemPeak = pBackend->nMemUsed;
+	}
+	pNew->nSize = nByte;
 	return (void *)&pNew[1];
+	}
 }
 PH7_PRIVATE void * SyMemBackendRealloc(SyMemBackend *pBackend,void * pOld,sxu32 nByte)
 {
@@ -277,6 +294,8 @@ static sxi32 MemBackendFree(SyMemBackend *pBackend,void * pChunk)
 #endif
 		MACRO_LD_REMOVE(pBackend->pBlocks,pBlock);
 		pBackend->nBlock--;
+		pBackend->nMemUsed = (pBackend->nMemUsed >= pBlock->nSize)
+			? (pBackend->nMemUsed - pBlock->nSize) : 0;
 		pBackend->pMethods->xFree(pBlock);
 	}
 	return SXRET_OK;
