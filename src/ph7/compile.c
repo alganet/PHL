@@ -7032,6 +7032,7 @@ struct PhlTypeAtom {
 static sxi32 GenStateParseOneTypeAtom(ph7_gen_state *pGen, PhlTypeAtom *pOut)
 {
 	SyToken *pIn = pGen->pIn;
+	int bAbsolute = 0;
 	SyZero(pOut, sizeof(*pOut));
 	SyStringInitFromBuf(&pOut->sClass, 0, 0);
 	if( pIn >= pGen->pEnd ){
@@ -7039,6 +7040,7 @@ static sxi32 GenStateParseOneTypeAtom(ph7_gen_state *pGen, PhlTypeAtom *pOut)
 	}
 	/* Optional leading namespace separator '\' on FQN class types */
 	if( pIn->nType & PH7_TK_NSSEP ){
+		bAbsolute = 1; /* fully-qualified: never prefix the current namespace */
 		pIn++;
 		if( pIn >= pGen->pEnd ){
 			return SXERR_SYNTAX;
@@ -7099,6 +7101,25 @@ static sxi32 GenStateParseOneTypeAtom(ph7_gen_state *pGen, PhlTypeAtom *pOut)
 				const char *zEnd = pLast->sData.zString + pLast->sData.nByte;
 				pOut->sClass.zString = zFirst;
 				pOut->sClass.nByte = (sxu32)(zEnd - zFirst);
+			}
+			/* Namespace-qualify a bare (single-segment, non-absolute) class type so
+			 * a `: Base` / `Base $x` hint in namespace N resolves to N\Base (or a
+			 * `use` alias) at type-check time instead of the global \Base — mirrors
+			 * the NEW/CALL/instanceof qualification. Absolute (\Base) and already-
+			 * qualified (A\B) names are left as written, matching GenStateNsQualifyName. */
+			if( !bAbsolute && pLast == pFirst ){
+				SyBlob sFqn;
+				SyBlobInit(&sFqn,&pGen->pVm->sAllocator);
+				GenStateResolveName(pGen,&pOut->sClass,&sFqn);
+				if( SyBlobLength(&sFqn) != pOut->sClass.nByte
+				 || SyMemcmp(SyBlobData(&sFqn),(const void *)pOut->sClass.zString,pOut->sClass.nByte) != 0 ){
+					char *zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+						(const char *)SyBlobData(&sFqn),SyBlobLength(&sFqn));
+					if( zDup ){
+						SyStringInitFromBuf(&pOut->sClass,zDup,SyBlobLength(&sFqn));
+					}
+				}
+				SyBlobRelease(&sFqn);
 			}
 		}
 	}
