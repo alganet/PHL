@@ -1201,14 +1201,14 @@ Coverage: 696/790 lines (88.10%)
 |       - | 1191 | ` * Decrement the reference count of a class instance [i.e Object in the PHP jargon].` |
 |       - | 1192 | ` * If the reference count reaches zero,release the whole instance.` |
 |       - | 1193 | ` */` |
-|  125540 | 1194 | `PH7_PRIVATE void PH7_ClassInstanceUnref(ph7_class_instance *pThis)` |
+|  125586 | 1194 | `PH7_PRIVATE void PH7_ClassInstanceUnref(ph7_class_instance *pThis)` |
 |       5 | 1195 | `{` |
-|  125545 | 1196 | `	pThis->iRef--;` |
-|  125545 | 1197 | `	if( pThis->iRef < 1 ){` |
+|  125591 | 1196 | `	pThis->iRef--;` |
+|  125591 | 1197 | `	if( pThis->iRef < 1 ){` |
 |       - | 1198 | `		/* No more reference to this instance */` |
 |    5403 | 1199 | `		PH7_ClassInstanceRelease(&(*pThis));` |
 |    2699 | 1200 | `	}` |
-|  125545 | 1201 | `}` |
+|  125591 | 1201 | `}` |
 |       - | 1202 | `/*` |
 |       - | 1203 | ` * Compare two class instances [i.e: Objects in the PHP jargon]` |
 |       - | 1204 | ` * Note on objects comparison:` |

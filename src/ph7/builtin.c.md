@@ -296,15 +296,15 @@ Coverage: 4445/5194 lines (85.58%)
 |      - |  286 | ` * Return` |
 |      - |  287 | ` *  True if var is an object. False otherwise.` |
 |      - |  288 | ` */` |
-|    516 |  289 | `static int PH7_builtin_is_object(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   1518 |  289 | `static int PH7_builtin_is_object(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      3 |  290 | `{` |
-|    519 |  291 | `	int res = 0; /* Assume false by default */` |
-|    519 |  292 | `	if( nArg > 0 ){` |
-|    519 |  293 | `		res = ph7_value_is_object(apArg[0]);` |
-|    258 |  294 | `	}` |
+|   1521 |  291 | `	int res = 0; /* Assume false by default */` |
+|   1521 |  292 | `	if( nArg > 0 ){` |
+|   1521 |  293 | `		res = ph7_value_is_object(apArg[0]);` |
+|    759 |  294 | `	}` |
 |      - |  295 | `	/* Query result */` |
-|    519 |  296 | `	ph7_result_bool(pCtx,res);` |
-|    519 |  297 | `	return PH7_OK;` |
+|   1521 |  296 | `	ph7_result_bool(pCtx,res);` |
+|   1521 |  297 | `	return PH7_OK;` |
 |      3 |  298 | `}` |
 |      - |  299 | `/*` |
 |      - |  300 | ` * bool is_resource($var)` |
