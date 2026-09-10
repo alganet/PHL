@@ -7175,6 +7175,40 @@ static int is_data_stream(const ph7_io_stream *pStream)
 	return 0;
 #endif /* PH7_DISABLE_DISK_IO */
 }
+/*
+ * bool stream_isatty(resource $stream)
+ *  TRUE when the stream is an interactive terminal. PHL answers this for the
+ *  php:// standard streams (STDIN/STDOUT/STDERR carry their fd) via the
+ *  platform isatty()/GetFileType(); file and memory streams are never a
+ *  terminal, so they answer FALSE (php-exact for those).
+ */
+static int PH7_builtin_stream_isatty(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	int bTty = 0;
+	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+#ifndef PH7_DISABLE_DISK_IO
+	{
+		io_private *pDev = (io_private *)ph7_value_to_resource(apArg[0]);
+		if( !IO_PRIVATE_INVALID(pDev) && is_php_stream(pDev->pStream) ){
+			ph7_stream_data *pData = (ph7_stream_data *)pDev->pHandle;
+			if( pData && (pData->iType == PH7_IO_STREAM_STDIN
+				|| pData->iType == PH7_IO_STREAM_STDOUT
+				|| pData->iType == PH7_IO_STREAM_STDERR) ){
+#ifdef __WINNT__
+				bTty = (GetFileType((HANDLE)pData->x.pHandle) == FILE_TYPE_CHAR) ? 1 : 0;
+#else
+				bTty = isatty(SX_PTR_TO_INT(pData->x.pHandle)) ? 1 : 0;
+#endif
+			}
+		}
+	}
+#endif /* PH7_DISABLE_DISK_IO */
+	ph7_result_bool(pCtx,bTty);
+	return PH7_OK;
+}
 
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
 /*
@@ -7267,6 +7301,7 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"file",      PH7_builtin_file   },
 		{"copy",      PH7_builtin_copy   },
 		{"fstat",     PH7_builtin_fstat  },
+		{"stream_isatty", PH7_builtin_stream_isatty },
 		{"fwrite",    PH7_builtin_fwrite },
 		{"fputs",     PH7_builtin_fwrite },
 		{"flock",     PH7_builtin_flock  },

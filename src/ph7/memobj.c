@@ -144,8 +144,14 @@ PH7_PRIVATE sxi64 PH7_TokenValueToInt64(SyString *pVal)
 		}else if( c == 'b' || c == 'B' ){
 			/* Binary digit stream */
 			SyBinaryStrToInt64(pVal->zString,pVal->nByte,(void *)&iVal,0);
+		}else if( c == 'o' || c == 'O' ){
+			/* PHP 8.1 explicit octal 0o/0O: skip the two-char prefix and parse the
+			 * remaining octal digits (SyOctalStrToInt64 expects no letter prefix). */
+			if( pVal->nByte > 2 ){
+				SyOctalStrToInt64(pVal->zString + 2,pVal->nByte - 2,(void *)&iVal,0);
+			}
 		}else{
-			/* Octal digit stream */
+			/* Legacy octal digit stream (leading 0) */
 			SyOctalStrToInt64(pVal->zString,pVal->nByte,(void *)&iVal,0);
 		}
 	}else{

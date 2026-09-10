@@ -6863,13 +6863,19 @@ static sxi32 VmClassConstEvalOnDemand(ph7_vm *pVm,ph7_class *pClass,ph7_class_at
 	}
 	if( SySetUsed(&pAttr->aByteCode) > 0 ){
 		ph7_class *pSaveCtx = pVm->pConstEvalClass;
+		void *pSaveFrame = pVm->pConstEvalFrame;
 		sxi32 rcExec;
 		pAttr->iFlags |= PH7_CLASS_ATTR_EVALING;
 		pVm->pConstEvalClass = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+		/* Mark the frame current at eval start: while it stays current, self::/
+		 * parent:: in the initializer resolve to pConstEvalClass rather than the
+		 * enclosing method's class (VmLocalExec pushes no frame of its own). */
+		pVm->pConstEvalFrame = (void *)VmSkipExceptionFrames(pVm->pFrame);
 		pVm->nConstEvalDepth++;
 		rcExec = VmLocalExecIntoObj(&(*pVm),&pAttr->aByteCode,&pMemObj,FALSE);
 		pVm->nConstEvalDepth--;
 		pVm->pConstEvalClass = pSaveCtx;
+		pVm->pConstEvalFrame = pSaveFrame;
 		pAttr->iFlags &= ~PH7_CLASS_ATTR_EVALING;
 		/* Memoize before any throw so re-access doesn't loop. */
 		pAttr->nIdx = pMemObj->nIdx;
@@ -22623,6 +22629,17 @@ PH7_PRIVATE ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm)
 
 	/* Skip exception frames to find the actual method frame */
 	pFrame = VmSkipExceptionFrames(pFrame);
+
+	/* An on-demand constant/property initializer is evaluated via VmLocalExec,
+	 * which pushes no frame — so the enclosing method's frame is still current.
+	 * While that frame is the one the eval started in, self::/parent:: inside the
+	 * initializer must resolve to the class whose constant is being evaluated
+	 * (pConstEvalClass), NOT the enclosing method's class. Once the initializer
+	 * calls a method (a new frame), the marker no longer matches and the normal
+	 * frame walk below picks that method's declaring class. */
+	if( pVm->pConstEvalClass && pVm->pConstEvalFrame == (void *)pFrame ){
+		return pVm->pConstEvalClass;
+	}
 
 	/* Check if we're in a method context */
 	if( pFrame->pParent ){

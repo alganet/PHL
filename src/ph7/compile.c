@@ -721,6 +721,21 @@ static int GenStateIntLiteralOverflows(const SyString *pNum, ph7_real *pReal, in
 		  *pReal = dv;
 		}
 		return TRUE;
+	}else if( z[0] == '0' && (z + 1) < zEnd && (z[1] == 'o' || z[1] == 'O') ){
+		/* PHP 8.1 explicit octal 0o/0O: 21 significant octal digits fit in int64. */
+		p = z + 2;
+		while( p < zEnd && p[0] == '0' ){ p++; }
+		for( q = p, n = 0; q < zEnd && q[0] >= '0' && q[0] <= '7'; q++ ){ n++; }
+		if( n <= 21 ){
+			return FALSE;
+		}
+		{ ph7_real dv = 0;
+		  for( q = p; q < zEnd && q[0] >= '0' && q[0] <= '7'; q++ ){
+			dv = dv * 8 + (ph7_real)(q[0] - '0');
+		  }
+		  *pReal = dv;
+		}
+		return TRUE;
 	}else if( z[0] == '0' ){
 		/* Octal: INT64_MAX == 0o777...7 (21 significant octal digits). Skip the
 		 * leading zeros (incl. the base '0'); a non-octal char such as the 8.1
@@ -7029,6 +7044,30 @@ struct PhlTypeAtom {
  * is advanced past the atom. The previous nullable `?` prefix must
  * already be consumed by the caller.
  */
+/*
+ * TRUE if pName is a reserved PHP type keyword (never a class name), so a type
+ * hint that spells it must not be namespace-qualified. Only the words that can
+ * reach GenStateParseOneTypeAtom's identifier branch as a bare name matter here
+ * (bool/int/float/string/array/object/self/static/parent arrive as keywords, and
+ * null/void/never are matched before the class path), but the full set is listed
+ * so the guard is robust to lexer changes.
+ */
+static int GenStateIsReservedTypeWord(const SyString *pName)
+{
+	static const char *azWords[] = {
+		"false","true","mixed","iterable","callable","null","void","never",
+		"bool","boolean","int","integer","float","double","string","array",
+		"object","self","static","parent"
+	};
+	sxu32 i;
+	for( i = 0 ; i < SX_ARRAYSIZE(azWords) ; i++ ){
+		sxu32 n = (sxu32)SyStrlen(azWords[i]);
+		if( pName->nByte == n && SyStrnicmp(pName->zString,azWords[i],n) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
 static sxi32 GenStateParseOneTypeAtom(ph7_gen_state *pGen, PhlTypeAtom *pOut)
 {
 	SyToken *pIn = pGen->pIn;
@@ -7107,7 +7146,10 @@ static sxi32 GenStateParseOneTypeAtom(ph7_gen_state *pGen, PhlTypeAtom *pOut)
 			 * `use` alias) at type-check time instead of the global \Base — mirrors
 			 * the NEW/CALL/instanceof qualification. Absolute (\Base) and already-
 			 * qualified (A\B) names are left as written, matching GenStateNsQualifyName. */
-			if( !bAbsolute && pLast == pFirst ){
+			/* Reserved type words that reach this identifier branch (false, true,
+			 * mixed, iterable, callable) are NOT classes and must not be qualified
+			 * (else `false|string` becomes `Ns\false|string`). */
+			if( !bAbsolute && pLast == pFirst && !GenStateIsReservedTypeWord(&pOut->sClass) ){
 				SyBlob sFqn;
 				SyBlobInit(&sFqn,&pGen->pVm->sAllocator);
 				GenStateResolveName(pGen,&pOut->sClass,&sFqn);
