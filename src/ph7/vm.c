@@ -16919,9 +16919,17 @@ case PH7_OP_NEW: {
 		 * the wrong scope is php's catchable Error. Reflection's
 		 * newInstance path sets bReflectBypass like method invoke. */
 		if( pCons && pCons->iProtection != PH7_CLASS_PROT_PUBLIC ){
+			/* php binds non-public access by the member's DECLARING class, not the
+			 * instantiated class: a private constructor declared in a base is
+			 * reachable from that base's own methods even when instantiating a
+			 * subclass (`new Child()` inside Base::factory()). __construct is a
+			 * method, so pass its declaring class (sFunc.pUserData) — mirroring the
+			 * method-call visibility check — rather than pClass, whose hAttr lookup
+			 * for a method name always misses and falls to a wrong exact-class test. */
+			ph7_class *pCtorDecl = pCons->sFunc.pUserData ? (ph7_class *)pCons->sFunc.pUserData : pClass;
 			if( pVm->bReflectBypass ){
 				pVm->bReflectBypass = 0;
-			}else if( !PH7_VmClassMemberAccess(&(*pVm),pClass,&pCons->sFunc.sName,pCons->iProtection,FALSE) ){
+			}else if( !PH7_VmClassMemberAccess(&(*pVm),pCtorDecl,&pCons->sFunc.sName,pCons->iProtection,FALSE) ){
 				SyBlob sErrMsg;
 				const char *zVis = pCons->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected";
 				SyBlobInit(&sErrMsg,&pVm->sAllocator);
@@ -19445,8 +19453,8 @@ SkipFuncBody:
 			/* Exception was caught in place by THIS body's try: pop args and the
 			 * result slot to restore the pre-try stack, then resume. */
 			PH7_MemObjRelease(&sRet);
-			if( pInstr->iP1 > 0 ){
-				VmPopOperand(&pTos,pInstr->iP1);
+			if( nCallArgs > 0 ){
+				VmPopOperand(&pTos,nCallArgs); /* spread-adjusted; see the normal-return path */
 			}
 			VmPopOperand(&pTos,1);
 			pc = iResumePc;
@@ -19460,19 +19468,25 @@ SkipFuncBody:
 			 * and we need to save state here. If it's a nested call (method
 			 * body), the user-function path above will handle re-saving. */
 			PH7_MemObjRelease(&sRet);
-			if( pInstr->iP1 > 0 ){
-				VmPopOperand(&pTos,pInstr->iP1);
+			if( nCallArgs > 0 ){
+				VmPopOperand(&pTos,nCallArgs); /* spread-adjusted; see the normal-return path */
 			}
 			/* Save fiber state: pc+1 is the instruction after this CALL.
 			 * nTos is one below pTos so resume pushes at the return-value slot. */
 			VmSuspendCtx(pVm,pVm->pActiveCtx,pc + 1,(sxi32)(pTos - pStack) - 1);
 			goto Suspend;
 		}
-		if( pInstr->iP1 > 0 ){
-			/* Pop function name and arguments */
-			VmPopOperand(&pTos,pInstr->iP1);
+		if( nCallArgs > 0 ){
+			/* Pop the arguments. nCallArgs (spread-adjusted), NOT iP1: an unpack
+			 * expanded the compile-time arg count on the stack, so popping iP1
+			 * strands the extra elements (or, for an unpack that expanded to fewer
+			 * than iP1 — e.g. array_merge(...[]) — underflows the operand stack,
+			 * reading a bogus value whose stray flags sent MemObjStore into the
+			 * hashmap-release path and hung). Mirrors every other CALL exit. The
+			 * function-name slot (pTos) receives the return value below. */
+			VmPopOperand(&pTos,nCallArgs);
 		}
-		/* Save foreign function return value */
+		/* Save foreign function return value into the (now top) function-name slot */
 		PH7_MemObjStore(&sRet,pTos);
 		PH7_MemObjRelease(&sRet);
 	}
