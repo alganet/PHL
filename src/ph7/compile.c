@@ -3482,6 +3482,41 @@ static sxi32 GenStateLoadLiteral(ph7_gen_state *pGen)
 			/* Emit the load constant instruction */
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);
 			return SXRET_OK;
+	}else if( (pStr->nByte == sizeof("__FILE__") - 1 &&
+		SyMemcmp(pStr->zString,"__FILE__",sizeof("__FILE__")-1) == 0) ||
+		(pStr->nByte == sizeof("__DIR__") - 1 &&
+		SyMemcmp(pStr->zString,"__DIR__",sizeof("__DIR__")-1) == 0) ){
+			/* __FILE__ / __DIR__ are magic constants resolved at COMPILE time to the
+			 * file being compiled (where the token is written), NOT the runtime
+			 * execution file. A function defined in a.php reporting __FILE__ must say
+			 * a.php even when called from b.php — php semantics, and what Composer's
+			 * autoloader (loadClassLoader's `require __DIR__ . '/ClassLoader.php'`)
+			 * relies on. The runtime-constant path returned the caller's file. */
+			int bDir = (pStr->zString[2] == 'D'); /* __DIR__ vs __FILE__ */
+			SyString *pFile = (SyString *)SySetPeek(&pGen->pVm->aFiles);
+			pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);
+			if( pObj == 0 ){
+				PH7_GenCompileError(pGen,E_ERROR,pToken->nLine,"Fatal, PH7 engine is running out of memory");
+				return SXERR_ABORT;
+			}
+			if( pFile && pFile->nByte > 0 ){
+				if( bDir ){
+					const char *zDir;
+					int nLen;
+					SyString sDir;
+					zDir = PH7_ExtractDirName(pFile->zString,(int)pFile->nByte,&nLen);
+					SyStringInitFromBuf(&sDir,zDir,nLen);
+					PH7_MemObjInitFromString(pGen->pVm,pObj,&sDir);
+				}else{
+					PH7_MemObjInitFromString(pGen->pVm,pObj,pFile);
+				}
+			}else{
+				SyString sMem;
+				SyStringInitFromBuf(&sMem,":MEMORY:",sizeof(":MEMORY:")-1);
+				PH7_MemObjInitFromString(pGen->pVm,pObj,&sMem);
+			}
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);
+			return SXRET_OK;
 	}else if( pStr->nByte == sizeof("__NAMESPACE__") - 1 &&
 		SyMemcmp(pStr->zString,"__NAMESPACE__",sizeof("__NAMESPACE__")-1) == 0 ){
 			/* __NAMESPACE__ magic constant: resolved at compile time */
