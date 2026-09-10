@@ -658,6 +658,8 @@ int main(int argc,char **argv)
 			ph7_vm_config(pVm,PH7_VM_CONFIG_CREATE_VAR,"argc",pArgc);
 			ph7_release_value(pVm,pArgc);
 		}
+		/* Mirror $argv/$argc into $_SERVER['argv']/$_SERVER['argc'] (php CLI). */
+		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ARGV);
 		/* $_SERVER entries frameworks read at CLI bootstrap. SCRIPT_FILENAME is
 		 * already set to the script path by PH7_HashmapCreateSuper. */
 		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"SCRIPT_NAME",zScriptName,-1);

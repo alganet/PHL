@@ -5817,6 +5817,46 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 		}
 		break;
 								  }
+	case PH7_VM_CONFIG_SERVER_ARGV: {
+		/* php CLI exposes the script arguments in $_SERVER['argv'] and their
+		 * count in $_SERVER['argc'], in addition to the top-level $argv/$argc.
+		 * Mirror the already-populated $argv array into $_SERVER once, after
+		 * all PH7_VM_CONFIG_ARGV_ENTRY calls are done. */
+		ph7_value *pArgv,*pServer;
+		ph7_hashmap *pServerMap,*pArgvMap,*pDup;
+		ph7_value sArgvVal,sKey,sCount;
+		pArgv   = PH7_VmExtractSuper(&(*pVm),"argv",sizeof("argv")-1);
+		pServer = PH7_VmExtractSuper(&(*pVm),"_SERVER",sizeof("_SERVER")-1);
+		if( pArgv == 0 || (pArgv->iFlags & MEMOBJ_HASHMAP) == 0
+		 || pServer == 0 || (pServer->iFlags & MEMOBJ_HASHMAP) == 0 ){
+			rc = SXERR_NOTFOUND;
+			break;
+		}
+		pArgvMap   = (ph7_hashmap *)pArgv->x.pOther;
+		pServerMap = (ph7_hashmap *)pServer->x.pOther;
+		/* Deep-copy $argv so $_SERVER['argv'] is an independent array. */
+		pDup = PH7_NewHashmap(&(*pVm),0,0);
+		if( pDup == 0 ){
+			rc = SXERR_MEM;
+			break;
+		}
+		PH7_HashmapDup(pArgvMap,pDup);
+		PH7_MemObjInitFromArray(&(*pVm),&sArgvVal,pDup);
+		PH7_MemObjInitFromString(&(*pVm),&sKey,0);
+		PH7_MemObjStringAppend(&sKey,"argv",sizeof("argv")-1);
+		PH7_HashmapInsert(pServerMap,&sKey,&sArgvVal);
+		PH7_MemObjRelease(&sArgvVal); /* drops the duplicated array */
+		PH7_MemObjRelease(&sKey);
+		/* $_SERVER['argc'] = count($argv). */
+		PH7_MemObjInitFromInt(&(*pVm),&sCount,(sxi64)pArgvMap->nEntry);
+		PH7_MemObjInitFromString(&(*pVm),&sKey,0);
+		PH7_MemObjStringAppend(&sKey,"argc",sizeof("argc")-1);
+		PH7_HashmapInsert(pServerMap,&sKey,&sCount);
+		PH7_MemObjRelease(&sCount);
+		PH7_MemObjRelease(&sKey);
+		rc = SXRET_OK;
+		break;
+								  }
 	case PH7_VM_CONFIG_INI_ENTRY: {
 		/* A php.ini directive from the CLI (-d name=value or a -c file line).
 		 * Copies are queued for the INI chunk's lazy seed; engine-level knobs
