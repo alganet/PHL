@@ -1473,6 +1473,37 @@ static sxi32 VmEnforceConstantType(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr 
 static void VmBoundaryPark(ph7_vm *pVm,sxi32 rc);
 static sxi32 VmConstCycleThrow(ph7_vm *pVm);
 /*
+ * Evaluate a constant/default initializer bytecode into a pool memory-object slot,
+ * safely across a pool reallocation.
+ *
+ * VmLocalExec writes its result through the caller's pResult pointer at
+ * end-of-exec. When pResult is a slot in the growable aMemObj pool AND the
+ * initializer allocates pool memobjs — a large array literal grows aMemObj via
+ * PH7_ReserveMemObj (per element), reallocating and FREEING the pool buffer —
+ * the reserved pResult pointer dangles and the final store is a heap
+ * use-after-free (confirmed via ASan on a >=~227-element class-const array; it
+ * is what blocked Composer's autoload class-map). Evaluate into a stable local
+ * instead, then store into the slot re-fetched by its (stable) index. On return
+ * *ppMemObj points at the valid post-eval slot. PH7_MemObjStore preserves the
+ * destination slot's nIdx (excluded from its memcpy), so the slot identity is
+ * kept. Mirrors the enum-case backing path, which already evaluates into a local.
+ */
+static sxi32 VmLocalExecIntoObj(ph7_vm *pVm,SySet *pByteCode,ph7_value **ppMemObj,int bReturnPropagates)
+{
+	ph7_value sVal;
+	sxu32 nIdx = (*ppMemObj)->nIdx;
+	sxi32 rc;
+	PH7_MemObjInit(&(*pVm),&sVal);
+	rc = VmLocalExec(&(*pVm),pByteCode,&sVal,bReturnPropagates);
+	/* aMemObj may have moved during the eval — re-fetch by the reserved index. */
+	*ppMemObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
+	if( *ppMemObj ){
+		PH7_MemObjStore(&sVal,*ppMemObj);
+	}
+	PH7_MemObjRelease(&sVal);
+	return rc;
+}
+/*
  * Mount a compiled class into the freshly created vitual machine so that
  * it can be instanciated from the executed PHP script.
  */
@@ -1538,7 +1569,7 @@ static sxi32 VmMountUserClassAttrs(
 				pVm->pConstEvalClass = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
 				pAttr->iFlags |= PH7_CLASS_ATTR_EVALING; /* cycle guard, shared with the on-demand path */
 				pVm->nConstEvalDepth++;
-				rcExec = VmLocalExec(&(*pVm),&pAttr->aByteCode,pMemObj,FALSE);
+				rcExec = VmLocalExecIntoObj(&(*pVm),&pAttr->aByteCode,&pMemObj,FALSE);
 				pVm->nConstEvalDepth--;
 				pAttr->iFlags &= ~PH7_CLASS_ATTR_EVALING;
 				pVm->pConstEvalClass = pSaveCtx;
@@ -1683,7 +1714,7 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 				 * against the declaring class (no method frame here). */
 				ph7_class *pSaveCtx = pVm->pConstEvalClass;
 				pVm->pConstEvalClass = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
-				VmLocalExec(&(*pVm),&pAttr->aByteCode,pMemObj,FALSE);
+				VmLocalExecIntoObj(&(*pVm),&pAttr->aByteCode,&pMemObj,FALSE);
 				pVm->pConstEvalClass = pSaveCtx;
 			}else if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
 				/* Typed property without a default: mark uninitialized. Reading
@@ -6822,7 +6853,7 @@ static sxi32 VmClassConstEvalOnDemand(ph7_vm *pVm,ph7_class *pClass,ph7_class_at
 		pAttr->iFlags |= PH7_CLASS_ATTR_EVALING;
 		pVm->pConstEvalClass = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
 		pVm->nConstEvalDepth++;
-		rcExec = VmLocalExec(&(*pVm),&pAttr->aByteCode,pMemObj,FALSE);
+		rcExec = VmLocalExecIntoObj(&(*pVm),&pAttr->aByteCode,&pMemObj,FALSE);
 		pVm->nConstEvalDepth--;
 		pVm->pConstEvalClass = pSaveCtx;
 		pAttr->iFlags &= ~PH7_CLASS_ATTR_EVALING;
