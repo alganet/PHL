@@ -2835,29 +2835,29 @@ Coverage: 2440/3620 lines (67.40%)
 |      - | 2825 | ` * Return` |
 |      - | 2826 | ` *  Returns TRUE if the file pointer is at EOF.FALSE otherwise` |
 |      - | 2827 | ` */` |
-|  10471 | 2828 | `static int PH7_builtin_feof(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  10470 | 2828 | `static int PH7_builtin_feof(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 2829 | `{` |
 |      - | 2830 | `	const ph7_io_stream *pStream;` |
 |      - | 2831 | `	io_private *pDev;` |
 |      - | 2832 | `	int rc;` |
-|  10476 | 2833 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
+|  10475 | 2833 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |      - | 2834 | `		/* Missing/Invalid arguments */` |
 |    ! 0 | 2835 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");` |
 |    ! 0 | 2836 | `		ph7_result_bool(pCtx,1);` |
 |    ! 0 | 2837 | `		return PH7_OK;` |
 |      - | 2838 | `	}` |
 |      - | 2839 | `	/* Extract our private data */` |
-|  10476 | 2840 | `	pDev = (io_private *)ph7_value_to_resource(apArg[0]);` |
+|  10475 | 2840 | `	pDev = (io_private *)ph7_value_to_resource(apArg[0]);` |
 |      - | 2841 | `	/* Make sure we are dealing with a valid io_private instance */` |
-|  10476 | 2842 | `	if( IO_PRIVATE_INVALID(pDev) ){` |
+|  10475 | 2842 | `	if( IO_PRIVATE_INVALID(pDev) ){` |
 |      - | 2843 | `		/*Expecting an IO handle */` |
 |    ! 0 | 2844 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");` |
 |    ! 0 | 2845 | `		ph7_result_bool(pCtx,1);` |
 |    ! 0 | 2846 | `		return PH7_OK;` |
 |      - | 2847 | `	}` |
 |      - | 2848 | `	/* Point to the target IO stream device */` |
-|  10476 | 2849 | `	pStream = pDev->pStream;` |
-|  10476 | 2850 | `	if( pStream == 0 ){` |
+|  10475 | 2849 | `	pStream = pDev->pStream;` |
+|  10475 | 2850 | `	if( pStream == 0 ){` |
 |    ! 0 | 2851 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - | 2852 | `			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",` |
 |    ! 0 | 2853 | `			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"` |
@@ -2865,67 +2865,67 @@ Coverage: 2440/3620 lines (67.40%)
 |    ! 0 | 2855 | `		ph7_result_bool(pCtx,1);` |
 |    ! 0 | 2856 | `		return PH7_OK;` |
 |      - | 2857 | `	}` |
-|  10476 | 2858 | `	rc = SXERR_EOF;` |
+|  10475 | 2858 | `	rc = SXERR_EOF;` |
 |      - | 2859 | `	/* Perform the requested operation */` |
-|  10476 | 2860 | `	if( SyBlobLength(&pDev->sBuffer) > pDev->nOfft ){` |
+|  10475 | 2860 | `	if( SyBlobLength(&pDev->sBuffer) > pDev->nOfft ){` |
 |      - | 2861 | `		/* Data is available */` |
 |   4793 | 2862 | `		rc = PH7_OK;` |
 |   2399 | 2863 | `	}else{` |
 |      - | 2864 | `		char zBuf[4096];` |
 |      - | 2865 | `		ph7_int64 n;` |
 |      - | 2866 | `		/* Perform a buffered read */` |
-|   5688 | 2867 | `		n = pStream->xRead(pDev->pHandle,zBuf,sizeof(zBuf));` |
-|   5688 | 2868 | `		if( n > 0 ){` |
+|   5687 | 2867 | `		n = pStream->xRead(pDev->pHandle,zBuf,sizeof(zBuf));` |
+|   5687 | 2868 | `		if( n > 0 ){` |
 |      - | 2869 | `			/* Copy buffered data */` |
-|   1854 | 2870 | `			SyBlobAppend(&pDev->sBuffer,zBuf,(sxu32)n);` |
-|   1854 | 2871 | `			rc = PH7_OK;` |
+|   1853 | 2870 | `			SyBlobAppend(&pDev->sBuffer,zBuf,(sxu32)n);` |
+|   1853 | 2871 | `			rc = PH7_OK;` |
 |    924 | 2872 | `		}` |
 |      - | 2873 | `	}` |
 |      - | 2874 | `	/* EOF or not */` |
-|  10476 | 2875 | `	ph7_result_bool(pCtx,rc == SXERR_EOF);` |
-|  10476 | 2876 | `	return PH7_OK;` |
+|  10475 | 2875 | `	ph7_result_bool(pCtx,rc == SXERR_EOF);` |
+|  10475 | 2876 | `	return PH7_OK;` |
 |   5240 | 2877 | `}` |
 |      - | 2878 | `/*` |
 |      - | 2879 | ` * Read n bytes from the underlying IO stream device.` |
 |      - | 2880 | ` * Return total numbers of bytes readen on success. A number < 1 on failure` |
 |      - | 2881 | ` * [i.e: IO error ] or EOF.` |
 |      - | 2882 | ` */` |
-|     37 | 2883 | `static ph7_int64 StreamRead(io_private *pDev,void *pBuf,ph7_int64 nLen)` |
+|     36 | 2883 | `static ph7_int64 StreamRead(io_private *pDev,void *pBuf,ph7_int64 nLen)` |
 |      2 | 2884 | `{` |
-|     39 | 2885 | `	const ph7_io_stream *pStream = pDev->pStream;` |
-|     39 | 2886 | `	char *zBuf = (char *)pBuf;` |
+|     38 | 2885 | `	const ph7_io_stream *pStream = pDev->pStream;` |
+|     38 | 2886 | `	char *zBuf = (char *)pBuf;` |
 |      - | 2887 | `	ph7_int64 n,nRead;` |
-|     39 | 2888 | `	n = SyBlobLength(&pDev->sBuffer) - pDev->nOfft;` |
-|     39 | 2889 | `	if( n > 0 ){` |
-|      3 | 2890 | `		if( n > nLen ){` |
+|     38 | 2888 | `	n = SyBlobLength(&pDev->sBuffer) - pDev->nOfft;` |
+|     38 | 2889 | `	if( n > 0 ){` |
+|      2 | 2890 | `		if( n > nLen ){` |
 |    ! 0 | 2891 | `			n = nLen;` |
 |    ! 0 | 2892 | `		}` |
 |      - | 2893 | `		/* Copy the buffered data */` |
-|      3 | 2894 | `		SyMemcpy(SyBlobDataAt(&pDev->sBuffer,pDev->nOfft),pBuf,(sxu32)n);` |
+|      2 | 2894 | `		SyMemcpy(SyBlobDataAt(&pDev->sBuffer,pDev->nOfft),pBuf,(sxu32)n);` |
 |      - | 2895 | `		/* Update the read offset */` |
-|      3 | 2896 | `		pDev->nOfft += (sxu32)n;` |
-|      3 | 2897 | `		if( pDev->nOfft >= SyBlobLength(&pDev->sBuffer) ){` |
+|      2 | 2896 | `		pDev->nOfft += (sxu32)n;` |
+|      2 | 2897 | `		if( pDev->nOfft >= SyBlobLength(&pDev->sBuffer) ){` |
 |      - | 2898 | `			/* Reset the working buffer so that we avoid excessive memory allocation */` |
-|      3 | 2899 | `			SyBlobReset(&pDev->sBuffer);` |
-|      3 | 2900 | `			pDev->nOfft = 0;` |
+|      2 | 2899 | `			SyBlobReset(&pDev->sBuffer);` |
+|      2 | 2900 | `			pDev->nOfft = 0;` |
 |      1 | 2901 | `		}` |
-|      3 | 2902 | `		nLen -= n;` |
-|      3 | 2903 | `		if( nLen < 1 ){` |
+|      2 | 2902 | `		nLen -= n;` |
+|      2 | 2903 | `		if( nLen < 1 ){` |
 |      - | 2904 | `			/* All done */` |
 |    ! 0 | 2905 | `			return n;` |
 |      - | 2906 | `		}` |
 |      - | 2907 | `		/* Advance the cursor */` |
-|      3 | 2908 | `		zBuf += n;` |
+|      2 | 2908 | `		zBuf += n;` |
 |      1 | 2909 | `	}` |
 |      - | 2910 | `	/* Read without buffering */` |
-|     39 | 2911 | `	nRead = pStream->xRead(pDev->pHandle,zBuf,nLen);` |
-|     39 | 2912 | `	if( nRead > 0 ){` |
+|     38 | 2911 | `	nRead = pStream->xRead(pDev->pHandle,zBuf,nLen);` |
+|     38 | 2912 | `	if( nRead > 0 ){` |
 |     35 | 2913 | `		n += nRead;` |
-|     21 | 2914 | `	}else if( n < 1 ){` |
+|     20 | 2914 | `	}else if( n < 1 ){` |
 |      - | 2915 | `		/* EOF or IO error */` |
 |      3 | 2916 | `		return nRead;` |
 |      - | 2917 | `	}` |
-|     37 | 2918 | `	return n;` |
+|     36 | 2918 | `	return n;` |
 |     20 | 2919 | `}` |
 |      - | 2920 | `/*` |
 |      - | 2921 | ` * Extract a single line from the buffered input.` |
@@ -2936,15 +2936,15 @@ Coverage: 2440/3620 lines (67.40%)
 |   6707 | 2926 | `	zIn = (const char *)SyBlobDataAt(&pDev->sBuffer,pDev->nOfft);` |
 |   6707 | 2927 | `	zEnd = &zIn[SyBlobLength(&pDev->sBuffer)-pDev->nOfft];` |
 |   6707 | 2928 | `	zPtr = zIn;` |
-| 391719 | 2929 | `	while( zIn < zEnd ){` |
-| 391617 | 2930 | `		if( zIn[0] == '\n' ){` |
+| 391713 | 2929 | `	while( zIn < zEnd ){` |
+| 391611 | 2930 | `		if( zIn[0] == '\n' ){` |
 |      - | 2931 | `			/* Line found */` |
 |   6605 | 2932 | `			zIn++; /* Include the line ending as requested by the PHP specification */` |
 |   6605 | 2933 | `			*pLen = (ph7_int64)(zIn-zPtr);` |
 |   6605 | 2934 | `			*pzLine = zPtr;` |
 |   6605 | 2935 | `			return SXRET_OK;` |
 |      - | 2936 | `		}` |
-| 385017 | 2937 | `		zIn++;` |
+| 385011 | 2937 | `		zIn++;` |
 |      5 | 2938 | `	}` |
 |      - | 2939 | `	/* No line were found */` |
 |    107 | 2940 | `	return SXERR_NOTFOUND;` |
@@ -3276,31 +3276,31 @@ Coverage: 2440/3620 lines (67.40%)
 |      - | 3266 | ` * Return` |
 |      - | 3267 | ` *  The data readen on success or FALSE on failure.` |
 |      - | 3268 | ` */` |
-|     29 | 3269 | `static int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     28 | 3269 | `static int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      2 | 3270 | `{` |
 |      - | 3271 | `	const ph7_io_stream *pStream;` |
 |      - | 3272 | `	io_private *pDev;` |
 |      - | 3273 | `	ph7_int64 nRead;` |
 |      - | 3274 | `	void *pBuf;` |
 |      - | 3275 | `	int nLen;` |
-|     31 | 3276 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
+|     30 | 3276 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |      - | 3277 | `		/* Missing/Invalid arguments,return FALSE */` |
 |    ! 0 | 3278 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");` |
 |    ! 0 | 3279 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3280 | `		return PH7_OK;` |
 |      - | 3281 | `	}` |
 |      - | 3282 | `	/* Extract our private data */` |
-|     31 | 3283 | `	pDev = (io_private *)ph7_value_to_resource(apArg[0]);` |
+|     30 | 3283 | `	pDev = (io_private *)ph7_value_to_resource(apArg[0]);` |
 |      - | 3284 | `	/* Make sure we are dealing with a valid io_private instance */` |
-|     31 | 3285 | `	if( IO_PRIVATE_INVALID(pDev) ){` |
+|     30 | 3285 | `	if( IO_PRIVATE_INVALID(pDev) ){` |
 |      - | 3286 | `		/*Expecting an IO handle */` |
 |    ! 0 | 3287 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");` |
 |    ! 0 | 3288 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3289 | `		return PH7_OK;` |
 |      - | 3290 | `	}` |
 |      - | 3291 | `	/* Point to the target IO stream device */` |
-|     31 | 3292 | `	pStream = pDev->pStream;` |
-|     31 | 3293 | `	if( pStream == 0  ){` |
+|     30 | 3292 | `	pStream = pDev->pStream;` |
+|     30 | 3293 | `	if( pStream == 0  ){` |
 |    ! 0 | 3294 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - | 3295 | `			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",` |
 |    ! 0 | 3296 | `			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"` |
@@ -3308,33 +3308,33 @@ Coverage: 2440/3620 lines (67.40%)
 |    ! 0 | 3298 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3299 | `		return PH7_OK;` |
 |      - | 3300 | `	}` |
-|     31 | 3301 | `        nLen = 4096;` |
-|     31 | 3302 | `	if( nArg > 1 ){` |
-|     31 | 3303 | ` 	  nLen = ph7_value_to_int(apArg[1]);` |
-|     31 | 3304 | `	  if( nLen < 1 ){` |
+|     30 | 3301 | `        nLen = 4096;` |
+|     30 | 3302 | `	if( nArg > 1 ){` |
+|     30 | 3303 | ` 	  nLen = ph7_value_to_int(apArg[1]);` |
+|     30 | 3304 | `	  if( nLen < 1 ){` |
 |      - | 3305 | `		/* Invalid length,set a default length */` |
 |    ! 0 | 3306 | `		nLen = 4096;` |
 |    ! 0 | 3307 | `	  }` |
 |     14 | 3308 | `        }` |
 |      - | 3309 | `	/* Allocate enough buffer */` |
-|     31 | 3310 | `	pBuf = ph7_context_alloc_chunk(pCtx,(unsigned int)nLen,FALSE,FALSE);` |
-|     31 | 3311 | `	if( pBuf == 0 ){` |
+|     30 | 3310 | `	pBuf = ph7_context_alloc_chunk(pCtx,(unsigned int)nLen,FALSE,FALSE);` |
+|     30 | 3311 | `	if( pBuf == 0 ){` |
 |    ! 0 | 3312 | `		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");` |
 |    ! 0 | 3313 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3314 | `		return PH7_OK;` |
 |      - | 3315 | `	}` |
 |      - | 3316 | `	/* Perform the requested operation */` |
-|     31 | 3317 | `	nRead = StreamRead(pDev,pBuf,(ph7_int64)nLen);` |
-|     31 | 3318 | `	if( nRead < 1 ){` |
+|     30 | 3317 | `	nRead = StreamRead(pDev,pBuf,(ph7_int64)nLen);` |
+|     30 | 3318 | `	if( nRead < 1 ){` |
 |      - | 3319 | `		/* Nothing read,return FALSE */` |
 |    ! 0 | 3320 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 3321 | `	}else{` |
 |      - | 3322 | `		/* Make a copy of the data just read */` |
-|     31 | 3323 | `		ph7_result_string(pCtx,(const char *)pBuf,(int)nRead);` |
+|     30 | 3323 | `		ph7_result_string(pCtx,(const char *)pBuf,(int)nRead);` |
 |      - | 3324 | `	}` |
 |      - | 3325 | `	/* Release the buffer */` |
-|     31 | 3326 | `	ph7_context_free_chunk(pCtx,pBuf);` |
-|     31 | 3327 | `	return PH7_OK;` |
+|     30 | 3326 | `	ph7_context_free_chunk(pCtx,pBuf);` |
+|     30 | 3327 | `	return PH7_OK;` |
 |     16 | 3328 | `}` |
 |      - | 3329 | `/*` |
 |      - | 3330 | ` * array fgetcsv(resource $handle [, int $length = 0` |
@@ -5156,19 +5156,19 @@ Coverage: 2440/3620 lines (67.40%)
 |      - | 5146 | `	ph7_socket sock;` |
 |      - | 5147 | `	int bEof;` |
 |      - | 5148 | `};` |
-|     15 | 5149 | `static ph7_int64 SockStreamData_Read(void *pHandle,void *pBuffer,ph7_int64 nRead)` |
+|     13 | 5149 | `static ph7_int64 SockStreamData_Read(void *pHandle,void *pBuffer,ph7_int64 nRead)` |
 |    ! 0 | 5150 | `{` |
-|     15 | 5151 | `	sock_private *pSock = (sock_private *)pHandle;` |
+|     13 | 5151 | `	sock_private *pSock = (sock_private *)pHandle;` |
 |      - | 5152 | `	int n;` |
-|     15 | 5153 | `	if( pSock == 0 \|\| pSock->bEof ){` |
-|      2 | 5154 | `		return 0;` |
+|     13 | 5153 | `	if( pSock == 0 \|\| pSock->bEof ){` |
+|      1 | 5154 | `		return 0;` |
 |      - | 5155 | `	}` |
-|     13 | 5156 | `	n = PH7_NetRecv(pSock->sock,pBuffer,(int)nRead,0);` |
-|     13 | 5157 | `	if( n <= 0 ){` |
+|     12 | 5156 | `	n = PH7_NetRecv(pSock->sock,pBuffer,(int)nRead,0);` |
+|     12 | 5157 | `	if( n <= 0 ){` |
 |      4 | 5158 | `		pSock->bEof = 1;` |
 |      4 | 5159 | `		return 0;` |
 |      - | 5160 | `	}` |
-|      9 | 5161 | `	return (ph7_int64)n;` |
+|      8 | 5161 | `	return (ph7_int64)n;` |
 |      5 | 5162 | `}` |
 |      4 | 5163 | `static ph7_int64 SockStreamData_Write(void *pHandle,const void *pBuf,ph7_int64 nWrite)` |
 |    ! 0 | 5164 | `{` |

@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 273/358 lines (76.26%)
+Coverage: 274/359 lines (76.32%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -668,59 +668,61 @@ Coverage: 273/358 lines (76.26%)
 |  3337 |  658 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_CREATE_VAR,"argc",pArgc);` |
 |  3337 |  659 | `			ph7_release_value(pVm,pArgc);` |
 |  1666 |  660 | `		}` |
-|     - |  661 | `		/* $_SERVER entries frameworks read at CLI bootstrap. SCRIPT_FILENAME is` |
-|     - |  662 | `		 * already set to the script path by PH7_HashmapCreateSuper. */` |
-|  3337 |  663 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"SCRIPT_NAME",zScriptName,-1);` |
-|  3337 |  664 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"PHP_SELF",zScriptName,-1);` |
-|  3337 |  665 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"DOCUMENT_ROOT","",0);` |
-|     - |  666 | `		{` |
-|     - |  667 | `			char zTime[32];` |
-|  3337 |  668 | `			snprintf(zTime,sizeof(zTime),"%ld",(long)time(0));` |
-|  3337 |  669 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"REQUEST_TIME",zTime,-1);` |
-|     - |  670 | `		}` |
-|     - |  671 | `#ifndef __WINNT__` |
-|     - |  672 | `		{` |
-|     - |  673 | `			char zCwd[PATH_MAX];` |
-|  3332 |  674 | `			if( getcwd(zCwd,sizeof(zCwd)) ){` |
-|  3332 |  675 | `				ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"PWD",zCwd,-1);` |
-|  1666 |  676 | `			}` |
-|     - |  677 | `		}` |
-|     - |  678 | `#endif` |
-|     - |  679 | `	}` |
-|     - |  680 | `	/* Report script run-time errors (now default behavior) */` |
-|  3337 |  681 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_ERR_REPORT);` |
-|     - |  682 | `	/* Apply php.ini directives AFTER the error-report default so` |
-|     - |  683 | ``	 * `-d error_reporting=0` can lower it: the -c file first, then -d`` |
-|     - |  684 | `	 * overrides in CLI order (php's precedence). */` |
-|  3337 |  685 | `	if( zIniFile ){` |
-|     4 |  686 | `		PHL_LoadIniFile(pVm,zIniFile);` |
-|     2 |  687 | `	}` |
-|     - |  688 | `	{` |
-|     - |  689 | `		int i;` |
-|  3345 |  690 | `		for( i = 0 ; i < nIniDefine ; i++ ){` |
-|     8 |  691 | `			PHL_ApplyIniPair(pVm,azIniDefine[i]);` |
-|     4 |  692 | `		}` |
-|     - |  693 | `	}` |
-|  3337 |  694 | `	if( dump_vm ){` |
-|     - |  695 | `		/* Dump PH7 byte-code instructions */` |
-|     3 |  696 | `		ph7_vm_dump_v2(pVm,` |
-|     - |  697 | `			Output_Consumer, /* Dump consumer callback */` |
-|     - |  698 | `			0` |
-|     - |  699 | `			);` |
-|     1 |  700 | `	}` |
-|     - |  701 | `	/*` |
-|     - |  702 | `	 * And finally, execute our program. Note that your output (STDOUT in our case)` |
-|     - |  703 | `	 * should display the result.` |
-|     - |  704 | `	 */` |
-|     - |  705 | `	{` |
-|  3337 |  706 | `		int iExitStatus = 0;` |
-|  3337 |  707 | `		ph7_vm_exec(pVm,&iExitStatus);` |
-|     - |  708 | `		/* All done, cleanup the mess left behind.` |
-|     - |  709 | `		*/` |
-|  3337 |  710 | `		ph7_vm_release(pVm);` |
-|  3337 |  711 | `		ph7_release(pEngine);` |
-|     - |  712 | `		/* Propagate the script exit status (set via exit()/die()) */` |
-|  3337 |  713 | `		return iExitStatus;` |
-|     - |  714 | `	}` |
-|  1686 |  715 | `}` |
-|     - |  716 |  |
+|     - |  661 | `		/* Mirror $argv/$argc into $_SERVER['argv']/$_SERVER['argc'] (php CLI). */` |
+|  3337 |  662 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ARGV);` |
+|     - |  663 | `		/* $_SERVER entries frameworks read at CLI bootstrap. SCRIPT_FILENAME is` |
+|     - |  664 | `		 * already set to the script path by PH7_HashmapCreateSuper. */` |
+|  3337 |  665 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"SCRIPT_NAME",zScriptName,-1);` |
+|  3337 |  666 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"PHP_SELF",zScriptName,-1);` |
+|  3337 |  667 | `		ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"DOCUMENT_ROOT","",0);` |
+|     - |  668 | `		{` |
+|     - |  669 | `			char zTime[32];` |
+|  3337 |  670 | `			snprintf(zTime,sizeof(zTime),"%ld",(long)time(0));` |
+|  3337 |  671 | `			ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"REQUEST_TIME",zTime,-1);` |
+|     - |  672 | `		}` |
+|     - |  673 | `#ifndef __WINNT__` |
+|     - |  674 | `		{` |
+|     - |  675 | `			char zCwd[PATH_MAX];` |
+|  3332 |  676 | `			if( getcwd(zCwd,sizeof(zCwd)) ){` |
+|  3332 |  677 | `				ph7_vm_config(pVm,PH7_VM_CONFIG_SERVER_ATTR,"PWD",zCwd,-1);` |
+|  1666 |  678 | `			}` |
+|     - |  679 | `		}` |
+|     - |  680 | `#endif` |
+|     - |  681 | `	}` |
+|     - |  682 | `	/* Report script run-time errors (now default behavior) */` |
+|  3337 |  683 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_ERR_REPORT);` |
+|     - |  684 | `	/* Apply php.ini directives AFTER the error-report default so` |
+|     - |  685 | ``	 * `-d error_reporting=0` can lower it: the -c file first, then -d`` |
+|     - |  686 | `	 * overrides in CLI order (php's precedence). */` |
+|  3337 |  687 | `	if( zIniFile ){` |
+|     4 |  688 | `		PHL_LoadIniFile(pVm,zIniFile);` |
+|     2 |  689 | `	}` |
+|     - |  690 | `	{` |
+|     - |  691 | `		int i;` |
+|  3345 |  692 | `		for( i = 0 ; i < nIniDefine ; i++ ){` |
+|     8 |  693 | `			PHL_ApplyIniPair(pVm,azIniDefine[i]);` |
+|     4 |  694 | `		}` |
+|     - |  695 | `	}` |
+|  3337 |  696 | `	if( dump_vm ){` |
+|     - |  697 | `		/* Dump PH7 byte-code instructions */` |
+|     3 |  698 | `		ph7_vm_dump_v2(pVm,` |
+|     - |  699 | `			Output_Consumer, /* Dump consumer callback */` |
+|     - |  700 | `			0` |
+|     - |  701 | `			);` |
+|     1 |  702 | `	}` |
+|     - |  703 | `	/*` |
+|     - |  704 | `	 * And finally, execute our program. Note that your output (STDOUT in our case)` |
+|     - |  705 | `	 * should display the result.` |
+|     - |  706 | `	 */` |
+|     - |  707 | `	{` |
+|  3337 |  708 | `		int iExitStatus = 0;` |
+|  3337 |  709 | `		ph7_vm_exec(pVm,&iExitStatus);` |
+|     - |  710 | `		/* All done, cleanup the mess left behind.` |
+|     - |  711 | `		*/` |
+|  3337 |  712 | `		ph7_vm_release(pVm);` |
+|  3337 |  713 | `		ph7_release(pEngine);` |
+|     - |  714 | `		/* Propagate the script exit status (set via exit()/die()) */` |
+|  3337 |  715 | `		return iExitStatus;` |
+|     - |  716 | `	}` |
+|  1686 |  717 | `}` |
+|     - |  718 |  |
