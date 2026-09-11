@@ -121,14 +121,16 @@ PH7_PRIVATE ph7_class * PH7_VmExtractClassFromValue(ph7_vm *pVm,ph7_value *pArg)
 		int nLen;
 		/* Extract class name */
 		zClass = ph7_value_to_string(pArg,&nLen);
+		/* php: a leading '\' anchors the name to the global namespace. */
+		if( nLen > 0 && zClass[0] == '\\' ){ zClass++; nLen--; }
 		if( nLen > 0 ){
-			SyHashEntry *pEntry;
-			/* Perform a lookup */
-			pEntry = SyHashGet(&pVm->hClass,(const void *)zClass,(sxu32)nLen);
-			if( pEntry ){
-				/* Point to the desired class */
-				pClass = (ph7_class *)pEntry->pUserData;
-			}
+			/* Resolve through PH7_VmExtractClass so a class named by STRING is
+			 * autoloaded on a miss — php autoloads the class of a [class,method]
+			 * callable (is_callable/array_map/call_user_func), and of the class
+			 * argument to method_exists()/property_exists(). iLoadable=FALSE keeps
+			 * abstract classes and interfaces (a static method on an abstract class
+			 * is a valid callable). */
+			pClass = PH7_VmExtractClass(pVm,zClass,(sxu32)nLen,FALSE,0);
 		}
 	}
 	return pClass;
