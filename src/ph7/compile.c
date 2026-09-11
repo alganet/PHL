@@ -3633,23 +3633,49 @@ static sxi32 GenStateResolveNamespaceLiteral(ph7_gen_state *pGen)
 			isAbsolute = 1;
 			pGen->pIn++; /* Skip leading backslash */
 		}
-		/* For relative qualified names in a namespace, prepend the NS */
-		if( !isAbsolute && SyBlobLength(&pGen->sNamespace) > 0 ){
-			SyBlobAppend(pWorker,SyBlobData(&pGen->sNamespace),SyBlobLength(&pGen->sNamespace));
-			SyBlobAppend(pWorker,"\\",1);
-		}
-		/* Collect all path components */
-		while( pGen->pIn <= &pGen->pEnd[-1] ){
-			if( pGen->pIn->nType & PH7_TK_NSSEP ){
-				SyBlobAppend(pWorker,"\\",1);
-			}else{
-				SyBlobAppend(pWorker,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);
-			}
-			if( pGen->pIn == &pGen->pEnd[-1] ){
+		/* Collect the raw path (no prefix yet) so its FIRST segment can be resolved
+		 * against use-imports below — php resolves `A\B\C` by mapping the leading
+		 * `A` through the imports (`use X\A;` makes it `X\A\B\C`), and only prepends
+		 * the current namespace when `A` matches no import. Blindly prefixing the
+		 * namespace here produced e.g. `Ns\Ev\Bus` for `use ...\Event as Ev; Ev\Bus`. */
+		{
+			SyBlob sRaw;
+			SyBlobInit(&sRaw,&pGen->pVm->sAllocator);
+			while( pGen->pIn <= &pGen->pEnd[-1] ){
+				if( pGen->pIn->nType & PH7_TK_NSSEP ){
+					SyBlobAppend(&sRaw,"\\",1);
+				}else{
+					SyBlobAppend(&sRaw,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);
+				}
+				if( pGen->pIn == &pGen->pEnd[-1] ){
+					pGen->pIn++;
+					break;
+				}
 				pGen->pIn++;
-				break;
 			}
-			pGen->pIn++;
+			if( isAbsolute ){
+				SyBlobAppend(pWorker,SyBlobData(&sRaw),SyBlobLength(&sRaw)); /* FQN as written */
+			}else{
+				const char *zRaw = (const char *)SyBlobData(&sRaw);
+				sxu32 nRaw = SyBlobLength(&sRaw);
+				sxu32 nFirst = 0;
+				SyHashEntry *pNsImp;
+				while( nFirst < nRaw && zRaw[nFirst] != '\\' ){ nFirst++; }
+				pNsImp = SyHashGet(&pGen->hUseImports,(const void *)zRaw,nFirst);
+				if( pNsImp ){
+					/* Leading segment is an imported alias: substitute its FQN. */
+					const char *zFQN = (const char *)pNsImp->pUserData;
+					SyBlobAppend(pWorker,zFQN,SyStrlen(zFQN));
+					SyBlobAppend(pWorker,zRaw + nFirst,nRaw - nFirst);
+				}else if( SyBlobLength(&pGen->sNamespace) > 0 ){
+					SyBlobAppend(pWorker,SyBlobData(&pGen->sNamespace),SyBlobLength(&pGen->sNamespace));
+					SyBlobAppend(pWorker,"\\",1);
+					SyBlobAppend(pWorker,zRaw,nRaw);
+				}else{
+					SyBlobAppend(pWorker,zRaw,nRaw); /* global scope, no import */
+				}
+			}
+			SyBlobRelease(&sRaw);
 		}
 		if( SyBlobLength(pWorker) > 0 ){
 			ph7_value *pObj;
