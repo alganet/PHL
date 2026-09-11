@@ -13732,8 +13732,16 @@ static sxi32 GenStateEmitExprCode(
 							}
 						}
 					}
-				}else if( pInstr->iOp == PH7_OP_MEMBER /* $a->b(1,2,3) */ || pInstr->iOp == PH7_OP_NEW ){
-					/* Method call,flag that */
+				}else if( (pInstr->iOp == PH7_OP_MEMBER /* $a->b(1,2,3) */
+						&& !(pNode->pLeft && (pNode->pLeft->iFlags & EXPR_NODE_PARENS)))
+					|| pInstr->iOp == PH7_OP_NEW ){
+					/* Method call,flag that. But NOT when the callee was an explicitly
+					 * PARENTHESISED member access: `($o->p)(...)` / `($o::$p)(...)` invokes
+					 * the VALUE of the property (php's variable-invocation), so the OP_MEMBER
+					 * must stay a plain property READ (leaving the callable on the stack for
+					 * OP_CALL to invoke) rather than being rewritten into a method-name
+					 * resolution — the parens are exactly what distinguishes `($o->p)()` from
+					 * the method call `$o->p()`. */
 					pInstr->iP2 = 1;
 					/* A static call with a DYNAMIC method name (`C::$m(...)`): the
 					 * static-`::` codegen folded the variable NAME into OP_MEMBER->p3
