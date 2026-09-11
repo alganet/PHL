@@ -679,8 +679,35 @@ PH7_PRIVATE int PH7_VmClassMemberAccess(
 		}else{
 			/* Protected */
 			ph7_class *pBase = pCallerScope;
-			/* Must be in the same class hierarchy */
-			if( !PH7_VmInstanceOf(pClass,pBase) && !PH7_VmInstanceOf(pBase,pClass) ){
+			/* php checks the hierarchy against the class that INTRODUCES the member,
+			 * not the one that (re)declares the override we resolved. A protected
+			 * member declared in a common ancestor B and overridden in a child C is
+			 * still reachable from a SIBLING scope S (also extending B) — S and C both
+			 * descend from B. Walk pClass up to the top-most ancestor that genuinely
+			 * declares a member of this name (a method via sFunc.pUserData, or an attr
+			 * via pDeclClass — hMethod/hAttr also carry inherited copies, so match on the
+			 * true declaring class) and test the hierarchy against that introducing
+			 * class. `child_only` (declared solely in C) keeps pClass and stays denied
+			 * from a sibling, matching php. */
+			ph7_class *pIntro = pClass;
+			ph7_class *pAnc;
+			for( pAnc = pClass ; pAnc ; pAnc = pAnc->pBase ){
+				ph7_class_method *pAncMeth = PH7_ClassExtractMethod(pAnc,pAttrName->zString,pAttrName->nByte);
+				SyHashEntry *pAncAttrE = SyHashGet(&pAnc->hAttr,(const void *)pAttrName->zString,pAttrName->nByte);
+				ph7_class_attr *pAncAttr = pAncAttrE ? (ph7_class_attr *)pAncAttrE->pUserData : 0;
+				int bHere = 0;
+				if( pAncMeth && (ph7_class *)pAncMeth->sFunc.pUserData == pAnc ){
+					bHere = 1;
+				}
+				if( pAncAttr && (pAncAttr->pDeclClass == pAnc || pAncAttr->pDeclClass == 0) ){
+					bHere = 1;
+				}
+				if( bHere ){
+					pIntro = pAnc; /* keep climbing: the LAST (highest) match wins */
+				}
+			}
+			/* Must be in the same class hierarchy as the introducing class */
+			if( !PH7_VmInstanceOf(pIntro,pBase) && !PH7_VmInstanceOf(pBase,pIntro) ){
 				int bTraitGrant = 0;
 				if( (pClass->iFlags & PH7_CLASS_TRAIT) != 0 ){
 					/* Same trait-target rule as the private branch above */
