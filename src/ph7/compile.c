@@ -850,6 +850,7 @@ PH7_PRIVATE sxi32 PH7_CompileSimpleString(ph7_gen_state *pGen,sxi32 iCompileFlag
 	const char *zIn,*zCur,*zEnd;
 	ph7_value *pObj;
 	sxu32 nIdx;
+	sxi32 bHasEsc;
 	nIdx = 0; /* Prevent compiler warning */
 	/* Delimit the string */
 	zIn  = pStr->zString;
@@ -860,7 +861,21 @@ PH7_PRIVATE sxi32 PH7_CompileSimpleString(ph7_gen_state *pGen,sxi32 iCompileFlag
 		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,pGen->pVm->nEmptyStringIdx,0,0);
 		return SXRET_OK;
 	}
-	if( SXRET_OK == GenStateFindLiteral(&(*pGen),pStr,&nIdx) ){
+	/* A single-quoted literal whose raw source holds a backslash unescapes to a
+	 * value that differs from that source (\\ -> \, \' -> '). The literal cache
+	 * keys FIND on the raw source text but INSTALL on the unescaped value, so
+	 * caching such a literal lets an unrelated one collide with it — e.g. '\\'
+	 * (raw \\, value \) would find the entry installed for '\\\\' (raw \\\\,
+	 * value \\) and load two backslashes. Only cache literals whose value equals
+	 * their source, i.e. those with no backslash to unescape. */
+	bHasEsc = 0;
+	{
+		const char *zScan;
+		for( zScan = zIn ; zScan < zEnd ; zScan++ ){
+			if( zScan[0] == '\\' ){ bHasEsc = 1; break; }
+		}
+	}
+	if( !bHasEsc && SXRET_OK == GenStateFindLiteral(&(*pGen),pStr,&nIdx) ){
 		/* Already processed,emit the load constant instruction
 		 * and return.
 		 */
@@ -909,8 +924,8 @@ PH7_PRIVATE sxi32 PH7_CompileSimpleString(ph7_gen_state *pGen,sxi32 iCompileFlag
 	}
 	/* Emit the load constant instruction */
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);
-	if( pStr->nByte < 1024 ){
-		/* Install in the literal table */
+	if( !bHasEsc && pStr->nByte < 1024 ){
+		/* Install in the literal table (only when value == source; see above) */
 		GenStateInstallLiteral(pGen,pObj,nIdx);
 	}
 	/* Node successfully compiled */
