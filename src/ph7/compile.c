@@ -13687,6 +13687,19 @@ static sxi32 GenStateEmitExprCode(
 				}else if( pInstr->iOp == PH7_OP_MEMBER /* $a->b(1,2,3) */ || pInstr->iOp == PH7_OP_NEW ){
 					/* Method call,flag that */
 					pInstr->iP2 = 1;
+					/* A static call with a DYNAMIC method name (`C::$m(...)`): the
+					 * static-`::` codegen folded the variable NAME into OP_MEMBER->p3
+					 * as if it were a static-PROPERTY read (`C::$m`), but in a CALL the
+					 * method name is the variable's VALUE. Rebuild the sequence
+					 * [class, OP_LOAD $m -> value, OP_MEMBER(static, method)] so the
+					 * dynamic name is read off the stack, matching the instance
+					 * (`$o->$m()`) path. iP1==1 marks a static member. */
+					if( pInstr->iOp == PH7_OP_MEMBER && pInstr->iP1 == 1 && pInstr->p3 ){
+						void *pDynName = pInstr->p3;
+						(void)PH7_VmPopInstr(pGen->pVm);
+						PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD,0,0,pDynName,0);
+						PH7_VmEmitInstr(pGen->pVm,PH7_OP_MEMBER,1,PH7_MEMBER_METHOD,0,0);
+					}
 				}
 			}
 		}else if( iVmOp == PH7_OP_LOAD_IDX ){
