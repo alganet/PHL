@@ -1079,10 +1079,21 @@ static void VmLeaveFrame(ph7_vm *pVm)
  */
 static VmRefObj * VmRefObjExtract(ph7_vm *pVm,sxu32 nObjIdx);
 static sxi32 VmUnsetVarByName(ph7_vm *pVm,VmFrame *pFrame,const char *zName,sxu32 nByte);
-static void VmPinMemObjSlot(ph7_vm *pVm,sxu32 nIdx)
+/*
+ * Remove a memobj slot from whichever active frame's local-teardown set (sLocal)
+ * records it — walking the parent chain covers by-reference aliases whose slot is
+ * owned by a caller. Returns TRUE if an entry was dropped.
+ *
+ * A slot lands in sLocal so VmLeaveFrame frees it when the frame exits. But a slot
+ * can leave its frame's ownership EARLY — pinned past the frame (VmPinMemObjSlot),
+ * or returned to the free pool by unset() — and once the index is recycled for a
+ * different owner (an object property reserved with VM_REF_IDX_KEEP, say) a stale
+ * sLocal entry makes VmLeaveFrame release that unrelated owner's value. Dropping the
+ * entry at the point the slot leaves the frame closes that use-after-free.
+ */
+static int VmDropFrameLocalSlot(ph7_vm *pVm,sxu32 nIdx)
 {
 	VmFrame *pFrame;
-	VmRefObj *pRef;
 	for( pFrame = pVm->pFrame ; pFrame ; pFrame = pFrame->pParent ){
 		VmSlot *aSlot = (VmSlot *)SySetBasePtr(&pFrame->sLocal);
 		sxu32 n;
@@ -1091,14 +1102,16 @@ static void VmPinMemObjSlot(ph7_vm *pVm,sxu32 nIdx)
 				/* Swap-remove: teardown order over sLocal is immaterial */
 				aSlot[n] = aSlot[SySetUsed(&pFrame->sLocal)-1];
 				(void)SySetPop(&pFrame->sLocal);
-				pFrame = 0; /* Slot owned by exactly one frame */
-				break;
+				return TRUE; /* Slot owned by exactly one frame */
 			}
 		}
-		if( pFrame == 0 ){
-			break;
-		}
 	}
+	return FALSE;
+}
+static void VmPinMemObjSlot(ph7_vm *pVm,sxu32 nIdx)
+{
+	VmRefObj *pRef;
+	VmDropFrameLocalSlot(&(*pVm),nIdx);
 	pRef = VmRefObjExtract(&(*pVm),nIdx);
 	if( pRef ){
 		pRef->iFlags |= VM_REF_IDX_KEEP;
@@ -16322,6 +16335,14 @@ case PH7_OP_MEMBER: {
 							if( pNext->iOp == PH7_OP_STORE && pNext->iP2 ){
 								bIsLhs = 1;
 							}
+							/* isset()/empty()/`??` read an uninitialized typed property
+							 * as "not set" — a silent miss, NOT the Error a plain read
+							 * raises (php). The compiler tags such an access iP2 =
+							 * ISSET/EMPTY; treat it like the assignment-LHS case and fall
+							 * through to load the slot's NULL. */
+							if( VmMemberCtxIsLookup(pInstr->iP2) ){
+								bIsLhs = 1;
+							}
 							if( !bIsLhs ){
 								sxi32 rcU = VmThrowUninitializedPropertyError(&(*pVm),pClass,pObjAttr->pAttr);
 								PH7_ClassInstanceUnref(pThis);
@@ -24317,6 +24338,10 @@ static sxi32 VmUnsetVarByName(ph7_vm *pVm,VmFrame *pFrame,const char *zName,sxu3
 		/* Unaliased variable: nobody else holds the slot, so the old path is right */
 		SyHashDeleteEntry2(pEntry);
 		PH7_VmUnsetMemObj(&(*pVm),nIdx,FALSE);
+		/* The slot is back in the free pool; drop its stale local-teardown entry so a
+		 * later reuse of the index (e.g. an object property) is not double-freed when
+		 * this frame exits. */
+		VmDropFrameLocalSlot(&(*pVm),nIdx);
 		return SXRET_OK;
 	}
 	{
@@ -24349,6 +24374,10 @@ static sxi32 VmUnsetVarByName(ph7_vm *pVm,VmFrame *pFrame,const char *zName,sxu3
 		if( nLive < 1 ){
 			/* Last holder gone: now the value may go too */
 			PH7_VmUnsetMemObj(&(*pVm),nIdx,FALSE);
+			/* Slot returned to the free pool: drop its stale local-teardown entry so a
+			 * later reuse of the index is not double-freed on frame exit (see
+			 * VmDropFrameLocalSlot). */
+			VmDropFrameLocalSlot(&(*pVm),nIdx);
 		}
 	}
 	return SXRET_OK;
@@ -24440,6 +24469,9 @@ static int vm_builtin_unset(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				return PH7_ABORT;
 			}
 			PH7_VmUnsetMemObj(&(*pVm),nIdx,FALSE);
+			/* Drop the stale local-teardown entry for the freed slot (see
+			 * VmDropFrameLocalSlot) so a later index reuse is not double-freed. */
+			VmDropFrameLocalSlot(&(*pVm),nIdx);
 		}
 	}
 	return SXRET_OK;
