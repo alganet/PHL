@@ -601,6 +601,15 @@ PH7_PRIVATE int PH7_VmClassMemberAccess(
 			pCallerScope = pFrame->pBoundScope;
 		}else if( pVmFunc && (pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) ){
 			pCallerScope = (ph7_class *)pVmFunc->pUserData;
+		}else if( pVmFunc && (pVmFunc->iFlags & VM_FUNC_CLOSURE) && pVmFunc->pUserData ){
+			/* A closure/arrow-fn defined inside a class carries its creation-site
+			 * class in pUserData (stamped by OP_LOAD_CLOSURE via
+			 * PH7_VmPeekDeclaringClass, the same scope `self::`/`parent::` resolve
+			 * against inside the body). php binds that class as the closure's scope,
+			 * so `$this->privateMethod()` / `self::$private` inside the closure are
+			 * allowed — an explicit Closure::bindTo/bind rebind still wins above via
+			 * pBoundScope. */
+			pCallerScope = (ph7_class *)pVmFunc->pUserData;
 		}else if( pVm->pConstEvalClass ){
 			/* Constant/property initializer bytecode runs without a method
 			 * frame; its scope is the class being initialized (php: a private
