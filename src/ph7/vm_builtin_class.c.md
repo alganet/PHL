@@ -14,11 +14,11 @@ Coverage: 578/668 lines (86.53%)
 |     - |    4 | ` * SPDX-License-Identifier: BSD-3-Clause` |
 |     - |    5 | ` */` |
 |     - |    6 | `#include "ph7int.h"` |
-|   734 |    7 | `PH7_PRIVATE int vm_builtin_get_class(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   738 |    7 | `PH7_PRIVATE int vm_builtin_get_class(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     5 |    8 | `{` |
 |     - |    9 | `	ph7_class *pClass;` |
 |     - |   10 | `	SyString *pName;` |
-|   739 |   11 | `	if( nArg < 1 ){` |
+|   743 |   11 | `	if( nArg < 1 ){` |
 |     - |   12 | `		/* Check if we are inside a class */` |
 |   ! 0 |   13 | `		pClass = PH7_VmPeekTopClass(pCtx->pVm);` |
 |   ! 0 |   14 | `		if( pClass ){` |
@@ -31,17 +31,17 @@ Coverage: 578/668 lines (86.53%)
 |     - |   21 | `		}` |
 |   ! 0 |   22 | `	}else{` |
 |     - |   23 | `		/* Extract the target class */` |
-|   739 |   24 | `		pClass = PH7_VmExtractClassFromValue(pCtx->pVm,apArg[0]);` |
-|   739 |   25 | `		if( pClass ){` |
-|   737 |   26 | `			pName = &pClass->sName;` |
+|   743 |   24 | `		pClass = PH7_VmExtractClassFromValue(pCtx->pVm,apArg[0]);` |
+|   743 |   25 | `		if( pClass ){` |
+|   741 |   26 | `			pName = &pClass->sName;` |
 |     - |   27 | `			/* Return the class name */` |
-|   737 |   28 | `			ph7_result_string(pCtx,pName->zString,(int)pName->nByte);` |
-|   371 |   29 | `		}else{` |
+|   741 |   28 | `			ph7_result_string(pCtx,pName->zString,(int)pName->nByte);` |
+|   373 |   29 | `		}else{` |
 |     - |   30 | `			/* Not a class instance,return FALSE */` |
 |     3 |   31 | `			ph7_result_bool(pCtx,0);` |
 |     - |   32 | `		}` |
 |     - |   33 | `	}` |
-|   739 |   34 | `	return PH7_OK;` |
+|   743 |   34 | `	return PH7_OK;` |
 |     5 |   35 | `}` |
 |     - |   36 | `/*` |
 |     - |   37 | ` * string get_parent_class([object $object = NULL ] )` |
@@ -120,13 +120,13 @@ Coverage: 578/668 lines (86.53%)
 |     - |  110 | ` * The given value must be of type object [i.e: class instance] or` |
 |     - |  111 | ` * string which hold the class name.` |
 |     - |  112 | ` */` |
-|  1738 |  113 | `PH7_PRIVATE ph7_class * PH7_VmExtractClassFromValue(ph7_vm *pVm,ph7_value *pArg)` |
+|  1742 |  113 | `PH7_PRIVATE ph7_class * PH7_VmExtractClassFromValue(ph7_vm *pVm,ph7_value *pArg)` |
 |     5 |  114 | `{` |
-|  1743 |  115 | `	ph7_class *pClass = 0;` |
-|  1743 |  116 | `	if( ph7_value_is_object(pArg) ){` |
+|  1747 |  115 | `	ph7_class *pClass = 0;` |
+|  1747 |  116 | `	if( ph7_value_is_object(pArg) ){` |
 |     - |  117 | `		/* Class instance already loaded,no need to perform a lookup */` |
-|   899 |  118 | `		pClass = ((ph7_class_instance *)pArg->x.pOther)->pClass;` |
-|  1296 |  119 | `	}else if( ph7_value_is_string(pArg) ){` |
+|   903 |  118 | `		pClass = ((ph7_class_instance *)pArg->x.pOther)->pClass;` |
+|  1298 |  119 | `	}else if( ph7_value_is_string(pArg) ){` |
 |     - |  120 | `		const char *zClass;` |
 |     - |  121 | `		int nLen;` |
 |     - |  122 | `		/* Extract class name */` |
@@ -143,7 +143,7 @@ Coverage: 578/668 lines (86.53%)
 |   847 |  133 | `			pClass = PH7_VmExtractClass(pVm,zClass,(sxu32)nLen,FALSE,0);` |
 |   421 |  134 | `		}` |
 |   421 |  135 | `	}` |
-|  1743 |  136 | `	return pClass;` |
+|  1747 |  136 | `	return pClass;` |
 |     5 |  137 | `}` |
 |     - |  138 | `/*` |
 |     - |  139 | ` * bool property_exists(mixed $class,string $property)` |
@@ -951,13 +951,13 @@ Coverage: 578/668 lines (86.53%)
 |     - |  941 | ` * This function returns TRUE if the given class is an implemented` |
 |     - |  942 | ` * interface.Otherwise FALSE is returned.` |
 |     - |  943 | ` */` |
-| 24332 |  944 | `static int VmQueryInterfaceSet(ph7_class *pClass,SySet *pSet)` |
+| 24338 |  944 | `static int VmQueryInterfaceSet(ph7_class *pClass,SySet *pSet)` |
 |     5 |  945 | `{` |
 |     - |  946 | `	ph7_class **apInterface;` |
 |     - |  947 | `	sxu32 n;` |
-| 24337 |  948 | `	if( SySetUsed(pSet) < 1 ){` |
+| 24343 |  948 | `	if( SySetUsed(pSet) < 1 ){` |
 |     - |  949 | `		/* Empty interface container */` |
-|  4077 |  950 | `		return FALSE;` |
+|  4083 |  950 | `		return FALSE;` |
 |     - |  951 | `	}` |
 |     - |  952 | `	/* Point to the set of implemented interfaces */` |
 | 20265 |  953 | `	apInterface = (ph7_class **)SySetBasePtr(pSet);` |
@@ -969,28 +969,28 @@ Coverage: 578/668 lines (86.53%)
 |     - |  959 | `		}` |
 |  8578 |  960 | `	}` |
 | 15547 |  961 | `	return FALSE;` |
-| 12171 |  962 | `}` |
+| 12174 |  962 | `}` |
 |     - |  963 | `/*` |
 |     - |  964 | ` * This function returns TRUE if the given class (first argument)` |
 |     - |  965 | ` * is an instance of the main class (second argument).` |
 |     - |  966 | ` * Otherwise FALSE is returned.` |
 |     - |  967 | ` */` |
-| 25856 |  968 | `PH7_PRIVATE int PH7_VmInstanceOf(ph7_class *pThis,ph7_class *pClass)` |
+| 25866 |  968 | `PH7_PRIVATE int PH7_VmInstanceOf(ph7_class *pThis,ph7_class *pClass)` |
 |     5 |  969 | `{` |
 |     - |  970 | `	ph7_class *pParent;` |
 |     - |  971 | `	sxi32 rc;` |
-| 25861 |  972 | `	if( pThis == pClass ){` |
+| 25871 |  972 | `	if( pThis == pClass ){` |
 |     - |  973 | `		/* Instance of the same class */` |
-|  8225 |  974 | `		return TRUE;` |
+|  8229 |  974 | `		return TRUE;` |
 |     - |  975 | `	}` |
 |     - |  976 | `	/* Check implemented interfaces */` |
-| 17641 |  977 | `	rc = VmQueryInterfaceSet(pClass,&pThis->aInterface);` |
-| 17641 |  978 | `	if( rc ){` |
+| 17647 |  977 | `	rc = VmQueryInterfaceSet(pClass,&pThis->aInterface);` |
+| 17647 |  978 | `	if( rc ){` |
 |  2003 |  979 | `		return TRUE;` |
 |     - |  980 | `	}` |
 |     - |  981 | `	/* Check parent classes */` |
-| 15643 |  982 | `	pParent = pThis->pBase;` |
-| 19609 |  983 | `	while( pParent ){` |
+| 15649 |  982 | `	pParent = pThis->pBase;` |
+| 19615 |  983 | `	while( pParent ){` |
 | 13891 |  984 | `		if( pParent == pClass ){` |
 |     - |  985 | `			/* Same instance */` |
 |  7205 |  986 | `			return TRUE;` |
@@ -1004,8 +1004,8 @@ Coverage: 578/668 lines (86.53%)
 |  3971 |  994 | `		pParent = pParent->pBase;` |
 |     5 |  995 | `	}` |
 |     - |  996 | `	/* Not an instance of the the given class */` |
-|  5723 |  997 | `	return FALSE;` |
-| 12933 |  998 | `}` |
+|  5729 |  997 | `	return FALSE;` |
+| 12938 |  998 | `}` |
 |     - |  999 | `/*` |
 |     - | 1000 | ` * This function returns TRUE if the given class (first argument)` |
 |     - | 1001 | ` * is a subclass of the main class (second argument).` |
