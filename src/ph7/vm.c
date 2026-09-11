@@ -2493,16 +2493,32 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
    "  }"\
    "  return null;"\
    "}"\
+   "/* phl.stub_extensions (a -d/php.ini list, comma-separated) declares extensions"\
+   " * PHL does not implement as LOADED, backed by no-op behaviour, so software that"\
+   " * only GATES on extension_loaded() (e.g. PHPUnit's dom/xmlwriter check) runs"\
+   " * unmodified. It does NOT synthesize the extension's classes/functions. */"\
+   "function __phl_stub_exts(){"\
+   "  $s = ini_get('phl.stub_extensions');"\
+   "  if( $s === false || $s === '' ){ return array(); }"\
+   "  $out = array();"\
+   "  foreach( explode(',', (string)$s) as $e ){ $e = trim($e); if( $e !== '' ){ $out[strtolower($e)] = $e; } }"\
+   "  return $out;"\
+   "}"\
    "function extension_loaded($name){"\
    "  static $ext = array('core' => 1, 'standard' => 1, 'pcre' => 1, 'json' => 1,"\
    "   'ctype' => 1, 'date' => 1, 'spl' => 1, 'reflection' => 1, 'mbstring' => 1,"\
    "   'hash' => 1, 'filter' => 1, 'session' => 1, 'libxml' => 1, 'xml' => 1);"\
-   "  return isset($ext[strtolower((string)$name)]);"\
+   "  $n = strtolower((string)$name);"\
+   "  if( isset($ext[$n]) ){ return true; }"\
+   "  $stub = __phl_stub_exts();"\
+   "  return isset($stub[$n]);"\
    "}"\
    "function get_loaded_extensions($zend_extensions = false){"\
    "  if( $zend_extensions ){ return array(); }"\
-   "  return array('Core','date','libxml','pcre','SPL','json','standard',"\
+   "  $base = array('Core','date','libxml','pcre','SPL','json','standard',"\
    "   'ctype','filter','hash','Reflection','session','mbstring','xml');"\
+   "  foreach( __phl_stub_exts() as $e ){ $base[] = $e; }"\
+   "  return $base;"\
    "}"\
    "/* Inverse of bin2hex() */"\
    "function hex2bin($str){"\
