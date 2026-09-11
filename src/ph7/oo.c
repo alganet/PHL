@@ -629,19 +629,39 @@ PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_cl
 	/* Copy methods from the trait */
 	SyHashResetLoopCursor(&pTrait->hMethod);
 	while((pEntry = SyHashGetNextEntry(&pTrait->hMethod)) != 0 ){
+		SyHashEntry *pClassMethEntry;
 		pMeth = (ph7_class_method *)pEntry->pUserData;
 		pName = &pMeth->sFunc.sName;
-		if( SyHashGet(&pClass->hMethod,(const void *)pName->zString,pName->nByte) != 0 ){
-			/* Method already exists in the class. Check if it came from another trait
-			 * (unresolved conflict) vs being defined by the class itself.
-			 */
+		pClassMethEntry = SyHashGet(&pClass->hMethod,(const void *)pName->zString,pName->nByte);
+		if( pClassMethEntry != 0 ){
+			/* Method already exists in the class. An ABSTRACT trait method is a
+			 * REQUIREMENT, not an implementation: php satisfies it with any concrete
+			 * method of the same name (from the class body or another trait) — no
+			 * collision. Only two CONCRETE trait methods actually conflict. */
+			ph7_class_method *pExistingMeth = (ph7_class_method *)pClassMethEntry->pUserData;
+			int bIncomingAbstract = (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) != 0;
+			int bExistingAbstract = (pExistingMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) != 0;
 			ph7_class **apUsedTraits;
 			sxu32 nUsed,k;
+			if( bIncomingAbstract ){
+				/* Incoming abstract requirement: the existing (concrete or abstract)
+				 * method already covers this name — keep it. */
+				continue;
+			}
+			if( bExistingAbstract ){
+				/* Existing entry is only an abstract requirement (from an earlier
+				 * trait): the incoming concrete method satisfies and replaces it. */
+				pClassMethEntry->pUserData = (void *)pMeth;
+				continue;
+			}
+			/* Both concrete: a genuine collision only when the OTHER definition came
+			 * from another trait (a concrete one). A class-body method wins silently. */
 			apUsedTraits = (ph7_class **)SySetBasePtr(&pClass->aTrait);
 			nUsed = SySetUsed(&pClass->aTrait);
 			for(k = 0; k < nUsed; k++){
-				if( PH7_ClassExtractMethod(apUsedTraits[k],pName->zString,pName->nByte) != 0 ){
-					/* Two different traits define the same method with no resolution */
+				ph7_class_method *pOtherMeth = PH7_ClassExtractMethod(apUsedTraits[k],pName->zString,pName->nByte);
+				if( pOtherMeth != 0 && (pOtherMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) == 0 ){
+					/* Two different traits define the same CONCRETE method with no resolution */
 					rc = PH7_GenCompileError(pGen,E_ERROR,pTrait->nLine,
 						"Trait method %z::%z has not been applied as %z::%z, "
 						"because of collision with %z::%z",
