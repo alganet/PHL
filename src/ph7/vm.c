@@ -1175,23 +1175,30 @@ static int VmRecordedResume(ph7_vm *pVm,sxi32 *pResumePc,VmFrame *pEntryFrame,Vm
 		 * never match a real frame. */
 		return FALSE;
 	}
-	/* The catch may have run at an OUTER try, several try-levels above the throw.
-	 * Each intervening try pushed its own VM_FRAME_EXCEPTION frame (at
-	 * OP_LOAD_EXCEPTION) that its OWN OP_POP_EXCEPTION would tear down — but we are
-	 * about to jump straight to the catching try's landing pad, skipping those inner
-	 * OP_POP_EXCEPTIONs. Pop the intermediate exception frames here so exactly one
-	 * frame (the catching try's) is left for the OP_POP_EXCEPTION we land on; without
-	 * this each skipped inner try leaks a frame, corrupting the stack for later code.
-	 * Their handlers/finally already ran in place during VmThrowException. The loop
-	 * stops on any of three terms, all load-bearing: the catching try is reached (its
-	 * iExceptionJump == the recorded landing); a non-exception (body) frame is reached
-	 * (structural floor — never pop a real body); or this exec's entry is reached.
-	 * Landing pads are unique per try within one bytecode array, and the function guard
-	 * above pins (frame,array) to this exec, so the iExceptionJump match cannot stop at
-	 * the wrong try. */
-	while( (pVm->pFrame->iFlags & VM_FRAME_EXCEPTION)
-	    && pVm->pFrame->iExceptionJump != pVm->iResumePc
-	    && pVm->pFrame != pEntryFrame ){
+	/* The catch may have run at an OUTER try, several call-levels above the throw.
+	 * VmThrowException runs the catch in place and then leaves pVm->pFrame at the
+	 * THROW SITE (its pThrowSite restore), so between here and the catching try's
+	 * landing pad the chain can hold: the intermediate try's own VM_FRAME_EXCEPTION
+	 * frames (each normally torn down by its OWN OP_POP_EXCEPTION, which we are about
+	 * to skip), AND — when the throw was raised in a DEEPER call than the one that
+	 * declared the catching try — the dead body frames of those abandoned callees
+	 * (the exception unwound past them, but the in-place-catch resume short-circuits
+	 * the per-record VmCallFinish that would otherwise have popped them). Pop them ALL
+	 * so exactly one frame (the catching try's exception frame) is left for the
+	 * OP_POP_EXCEPTION we land on; without this the skipped inner tries and the
+	 * dangling callee frames leak, and — worse — the landing code runs with pVm->pFrame
+	 * pointing at a dead callee, so its locals resolve against the wrong scope (a live
+	 * caller variable reads as an uninitialised fresh one). Their handlers/finally
+	 * already ran in place during VmThrowException. The loop stops on either term, both
+	 * load-bearing: the catching try's exception frame is reached (its iExceptionJump ==
+	 * the recorded landing); or this exec's entry is reached (structural floor). Landing
+	 * pads are unique per try within one bytecode array, and the function guard above
+	 * pins (frame,array) to this exec, so the iExceptionJump match cannot stop at the
+	 * wrong try. OP_POP_EXCEPTION's frame-leave is guarded on VM_FRAME_EXCEPTION, so
+	 * leaving the catching exception frame here (rather than the body) lands cleanly. */
+	while( pVm->pFrame != pEntryFrame
+	    && !((pVm->pFrame->iFlags & VM_FRAME_EXCEPTION)
+	         && pVm->pFrame->iExceptionJump == pVm->iResumePc) ){
 		VmLeaveFrame(&(*pVm));
 	}
 	*pResumePc = (sxi32)pVm->iResumePc - 1;
