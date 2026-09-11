@@ -2920,8 +2920,8 @@ Coverage: 2459/3639 lines (67.57%)
 |      - | 2910 | `	/* Read without buffering */` |
 |     38 | 2911 | `	nRead = pStream->xRead(pDev->pHandle,zBuf,nLen);` |
 |     38 | 2912 | `	if( nRead > 0 ){` |
-|     35 | 2913 | `		n += nRead;` |
-|     20 | 2914 | `	}else if( n < 1 ){` |
+|     34 | 2913 | `		n += nRead;` |
+|     21 | 2914 | `	}else if( n < 1 ){` |
 |      - | 2915 | `		/* EOF or IO error */` |
 |      3 | 2916 | `		return nRead;` |
 |      - | 2917 | `	}` |
@@ -5161,14 +5161,14 @@ Coverage: 2459/3639 lines (67.57%)
 |     13 | 5151 | `	sock_private *pSock = (sock_private *)pHandle;` |
 |      - | 5152 | `	int n;` |
 |     13 | 5153 | `	if( pSock == 0 \|\| pSock->bEof ){` |
-|      1 | 5154 | `		return 0;` |
+|      2 | 5154 | `		return 0;` |
 |      - | 5155 | `	}` |
-|     12 | 5156 | `	n = PH7_NetRecv(pSock->sock,pBuffer,(int)nRead,0);` |
-|     12 | 5157 | `	if( n <= 0 ){` |
+|     11 | 5156 | `	n = PH7_NetRecv(pSock->sock,pBuffer,(int)nRead,0);` |
+|     11 | 5157 | `	if( n <= 0 ){` |
 |      4 | 5158 | `		pSock->bEof = 1;` |
 |      4 | 5159 | `		return 0;` |
 |      - | 5160 | `	}` |
-|      8 | 5161 | `	return (ph7_int64)n;` |
+|      7 | 5161 | `	return (ph7_int64)n;` |
 |      5 | 5162 | `}` |
 |      4 | 5163 | `static ph7_int64 SockStreamData_Write(void *pHandle,const void *pBuf,ph7_int64 nWrite)` |
 |    ! 0 | 5164 | `{` |
