@@ -1014,7 +1014,11 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 			 /* A keyword immediately after a member operator (->, ?->, ::) is a
 			  * method/property NAME, not a language construct — PHP allows any
 			  * keyword there (e.g. $g->throw(), $o->list(), $o->print()). Treat it
-			  * as a plain literal like an ordinary identifier member name. */
+			  * as a plain literal like an ordinary identifier member name. Flag the
+			  * token so GenStateLoadLiteral does not fold a reserved VALUE word
+			  * (Enum::Null, C::Array, C::True) into its literal — the member name is
+			  * the word itself. */
+			 pCur->nType |= PH7_TK_MEMBER_NAME;
 			 ExprAssembleLiteral(&pCur,pGen->pEnd);
 			 pNode->xCode = PH7_CompileLiteral;
 		 }else if( nKeyword == PH7_TKWRD_ARRAY ||  nKeyword == PH7_TKWRD_LIST ){
@@ -1132,6 +1136,13 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 		 }
 	 }else if( pCur->nType & (PH7_TK_NSSEP|PH7_TK_ID) ){
 		 /* Constants,function name,namespace path,class name... */
+		 if( bAfterMemberOp ){
+			 /* An identifier used as a member NAME right after -> / ?-> / :: is the
+			  * name itself. null/true/false are lexed as PH7_TK_ID (not keywords), so
+			  * `Enum::Null` / `C::True` would otherwise be folded to the literal VALUE
+			  * by GenStateLoadLiteral, leaving an empty member name. Flag the token. */
+			 pCur->nType |= PH7_TK_MEMBER_NAME;
+		 }
 		 ExprAssembleLiteral(&pCur,pGen->pEnd);
 		 pNode->xCode = PH7_CompileLiteral;
 	 }else{

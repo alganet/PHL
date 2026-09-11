@@ -1818,6 +1818,9 @@ enum ph7_expr_id {
 #define PH7_TK_ARRAY_OP  0x0800000 /* Array operator '=>' */
 #define PH7_TK_ELLIPSIS  0x1000000 /* Ellipsis '...' */
 #define PH7_TK_OTHER     0x2000000 /* Other symbols */
+#define PH7_TK_MEMBER_NAME 0x4000000 /* Reserved word used as a member NAME right after -> / ?-> / ::
+                                      * (Enum::Null, C::Array, $o->list()): a plain identifier, never
+                                      * the literal value — GenStateLoadLiteral skips its value conversion. */
 /*
  * PHP keyword.
  * These words have special meaning in PHP. Some of them represent things which look like

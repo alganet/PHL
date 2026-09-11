@@ -3469,8 +3469,13 @@ static sxi32 GenStateLoadLiteral(ph7_gen_state *pGen)
 	sxu32 nIdx;
 	/* Extract token value */
 	pStr = &pToken->sData;
-	/* Deal with the reserved literals [i.e: null,false,true,...] first */
-	if( pStr->nByte == sizeof("NULL") - 1 ){
+	/* Deal with the reserved literals [i.e: null,false,true,...] first. A reserved
+	 * word used as a member NAME (Enum::Null, C::Array, $o->list()) is a plain
+	 * identifier — the parser flagged its token so the whole value-folding chain is
+	 * skipped and it falls through to the ordinary string-literal emit below. */
+	if( pToken->nType & PH7_TK_MEMBER_NAME ){
+		/* fall through to the plain-string literal path */
+	}else if( pStr->nByte == sizeof("NULL") - 1 ){
 		if( SyStrnicmp(pStr->zString,"null",sizeof("NULL")-1) == 0 ){
 			/* NULL constant are always indexed at 0 */
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,0,0,0);
