@@ -358,21 +358,21 @@ Coverage: 570/710 lines (80.28%)
 |    1 |  348 | `}` |
 |    - |  349 | `/* int (*xFileExists)(const char *) */` |
 |    - |  350 | `static int WinVfs_FileExists(const char *zPath)` |
-|    4 |  351 | `{` |
-|    4 |  352 | `	zPath = WinVfsLocalPath(zPath);` |
+|    3 |  351 | `{` |
+|    3 |  352 | `	zPath = WinVfsLocalPath(zPath);` |
 |    - |  353 | `	void * pConverted;` |
 |    - |  354 | `	DWORD dwAttr;` |
-|    4 |  355 | `	pConverted = convertUtf8Filename(zPath);` |
-|    4 |  356 | `	if( pConverted == 0 ){` |
+|    3 |  355 | `	pConverted = convertUtf8Filename(zPath);` |
+|    3 |  356 | `	if( pConverted == 0 ){` |
 |  ! 0 |  357 | `		return -1;` |
 |    - |  358 | `	}` |
-|    4 |  359 | `	dwAttr = GetFileAttributesW((LPCWSTR)pConverted);` |
-|    4 |  360 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    4 |  361 | `	if( dwAttr == INVALID_FILE_ATTRIBUTES ){` |
-|    4 |  362 | `		return -1;` |
+|    3 |  359 | `	dwAttr = GetFileAttributesW((LPCWSTR)pConverted);` |
+|    3 |  360 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    3 |  361 | `	if( dwAttr == INVALID_FILE_ATTRIBUTES ){` |
+|    3 |  362 | `		return -1;` |
 |    - |  363 | `	}` |
 |    2 |  364 | `	return PH7_OK;` |
-|    4 |  365 | `}` |
+|    3 |  365 | `}` |
 |    - |  366 | `/* Open a file in a read-only mode */` |
 |    - |  367 | `static HANDLE OpenReadOnly(LPCWSTR pPath)` |
 |    5 |  368 | `{` |

@@ -24,27 +24,27 @@ Coverage: 21/22 lines (95.45%)
 |    - |   14 | ` */` |
 |    - |   15 |  |
 |    - |   16 | `/* array __ini_cli(void) — the queued -d/-c directives, in order */` |
-|   12 |   17 | `static int vm_builtin_ini_cli(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |   18 | `{` |
+|   14 |   17 | `static int vm_builtin_ini_cli(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    2 |   18 | `{` |
 |    - |   19 | `	ph7_value *pArr,*pV;` |
 |    - |   20 | `	VmIniEntry *aEntry;` |
 |    - |   21 | `	sxu32 n;` |
-|    6 |   22 | `	SXUNUSED(nArg);` |
-|    6 |   23 | `	SXUNUSED(apArg);` |
-|   13 |   24 | `	pArr = ph7_context_new_array(pCtx);` |
-|   13 |   25 | `	pV = ph7_context_new_scalar(pCtx);` |
-|   13 |   26 | `	if( pArr == 0 \|\| pV == 0 ){` |
+|    7 |   22 | `	SXUNUSED(nArg);` |
+|    7 |   23 | `	SXUNUSED(apArg);` |
+|   16 |   24 | `	pArr = ph7_context_new_array(pCtx);` |
+|   16 |   25 | `	pV = ph7_context_new_scalar(pCtx);` |
+|   16 |   26 | `	if( pArr == 0 \|\| pV == 0 ){` |
 |  ! 0 |   27 | `		return PH7_ContextMemoryError(pCtx);` |
 |    - |   28 | `	}` |
-|   13 |   29 | `	aEntry = (VmIniEntry *)SySetBasePtr(&pCtx->pVm->aIniCli);` |
-|   27 |   30 | `	for( n = 0 ; n < SySetUsed(&pCtx->pVm->aIniCli) ; n++ ){` |
-|   14 |   31 | `		ph7_value_string(pV,aEntry[n].sValue.zString,(int)aEntry[n].sValue.nByte);` |
-|   14 |   32 | `		ph7_array_add_strkey_elem(pArr,aEntry[n].sName.zString,pV);` |
-|   14 |   33 | `		ph7_value_reset_string_cursor(pV);` |
-|    7 |   34 | `	}` |
-|   13 |   35 | `	ph7_result_value(pCtx,pArr);` |
-|   13 |   36 | `	return PH7_OK;` |
-|    7 |   37 | `}` |
+|   16 |   29 | `	aEntry = (VmIniEntry *)SySetBasePtr(&pCtx->pVm->aIniCli);` |
+|   32 |   30 | `	for( n = 0 ; n < SySetUsed(&pCtx->pVm->aIniCli) ; n++ ){` |
+|   17 |   31 | `		ph7_value_string(pV,aEntry[n].sValue.zString,(int)aEntry[n].sValue.nByte);` |
+|   17 |   32 | `		ph7_array_add_strkey_elem(pArr,aEntry[n].sName.zString,pV);` |
+|   17 |   33 | `		ph7_value_reset_string_cursor(pV);` |
+|    9 |   34 | `	}` |
+|   16 |   35 | `	ph7_result_value(pCtx,pArr);` |
+|   16 |   36 | `	return PH7_OK;` |
+|    9 |   37 | `}` |
 |    - |   38 |  |
 |    - |   39 | `static const char zIniLib[] =` |
 |    - |   40 | `"class __IniS {"` |
@@ -180,10 +180,10 @@ Coverage: 21/22 lines (95.45%)
 |    - |  170 | `"}"` |
 |    - |  171 | `;` |
 |    - |  172 |  |
-| 3814 |  173 | `PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm)` |
+| 3820 |  173 | `PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm)` |
 |    5 |  174 | `{` |
-| 3819 |  175 | `	ph7_create_function(&(*pVm),"__ini_cli",vm_builtin_ini_cli,0);` |
-| 3819 |  176 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zIniLib,sizeof(zIniLib)-1);` |
+| 3825 |  175 | `	ph7_create_function(&(*pVm),"__ini_cli",vm_builtin_ini_cli,0);` |
+| 3825 |  176 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zIniLib,sizeof(zIniLib)-1);` |
 |    5 |  177 | `}` |
 |    - |  178 |  |
 |    - |  179 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
