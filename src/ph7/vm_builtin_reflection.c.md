@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 1035/1211 lines (85.47%)
+Coverage: 1036/1219 lines (84.99%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -38,11 +38,11 @@ Coverage: 1035/1211 lines (85.47%)
 |     - |   28 | ` * triggering autoload for unknown string names. Returns NULL when the` |
 |     - |   29 | ` * class does not exist (the PHP layer turns that into ReflectionException).` |
 |     - |   30 | ` */` |
-|   616 |   31 | `static ph7_class * ReflectResolveClass(ph7_vm *pVm, ph7_value *pArg)` |
+|   634 |   31 | `static ph7_class * ReflectResolveClass(ph7_vm *pVm, ph7_value *pArg)` |
 |     3 |   32 | `{` |
 |     - |   33 | `	ph7_class *pClass;` |
-|   619 |   34 | `	pClass = PH7_VmExtractClassFromValue(pVm, pArg);` |
-|   619 |   35 | `	if( pClass == 0 && ph7_value_is_string(pArg) ){` |
+|   637 |   34 | `	pClass = PH7_VmExtractClassFromValue(pVm, pArg);` |
+|   637 |   35 | `	if( pClass == 0 && ph7_value_is_string(pArg) ){` |
 |     - |   36 | `		const char *zName;` |
 |     - |   37 | `		int nLen;` |
 |    16 |   38 | `		zName = ph7_value_to_string(pArg, &nLen);` |
@@ -50,7 +50,7 @@ Coverage: 1035/1211 lines (85.47%)
 |    16 |   40 | `			pClass = PH7_VmTriggerAutoload(pVm, zName, (sxu32)nLen, FALSE);` |
 |     7 |   41 | `		}` |
 |     7 |   42 | `	}` |
-|   619 |   43 | `	return pClass;` |
+|   637 |   43 | `	return pClass;` |
 |     3 |   44 | `}` |
 |     - |   45 | `/*` |
 |     - |   46 | ` * Hand a freshly created class instance to the caller. The return slot` |
@@ -70,74 +70,74 @@ Coverage: 1035/1211 lines (85.47%)
 |    89 |   60 | `	return PH7_OK;` |
 |    45 |   61 | `}` |
 |     - |   62 | `/* --- Marshaling helpers: build the descriptor arrays handed to the PHP layer --- */` |
-| 16656 |   63 | `static void ReflectMapAddBool(ph7_context *pCtx, ph7_value *pMap, const char *zKey, int b)` |
+| 16908 |   63 | `static void ReflectMapAddBool(ph7_context *pCtx, ph7_value *pMap, const char *zKey, int b)` |
 |     3 |   64 | `{` |
-| 16659 |   65 | `	ph7_value *p = ph7_context_new_scalar(pCtx);` |
-| 16659 |   66 | `	if( p == 0 ){ return; }` |
-| 16659 |   67 | `	ph7_value_bool(p, b);` |
-| 16659 |   68 | `	ph7_array_add_strkey_elem(pMap, zKey, p);` |
-|  8331 |   69 | `}` |
-|  4938 |   70 | `static void ReflectMapAddInt(ph7_context *pCtx, ph7_value *pMap, const char *zKey, sxi64 iVal)` |
+| 16911 |   65 | `	ph7_value *p = ph7_context_new_scalar(pCtx);` |
+| 16911 |   66 | `	if( p == 0 ){ return; }` |
+| 16911 |   67 | `	ph7_value_bool(p, b);` |
+| 16911 |   68 | `	ph7_array_add_strkey_elem(pMap, zKey, p);` |
+|  8457 |   69 | `}` |
+|  5046 |   70 | `static void ReflectMapAddInt(ph7_context *pCtx, ph7_value *pMap, const char *zKey, sxi64 iVal)` |
 |     3 |   71 | `{` |
-|  4941 |   72 | `	ph7_value *p = ph7_context_new_scalar(pCtx);` |
-|  4941 |   73 | `	if( p == 0 ){ return; }` |
-|  4941 |   74 | `	ph7_value_int64(p, iVal);` |
-|  4941 |   75 | `	ph7_array_add_strkey_elem(pMap, zKey, p);` |
-|  2472 |   76 | `}` |
-|  4814 |   77 | `static void ReflectMapAddStr(ph7_context *pCtx, ph7_value *pMap, const char *zKey,` |
+|  5049 |   72 | `	ph7_value *p = ph7_context_new_scalar(pCtx);` |
+|  5049 |   73 | `	if( p == 0 ){ return; }` |
+|  5049 |   74 | `	ph7_value_int64(p, iVal);` |
+|  5049 |   75 | `	ph7_array_add_strkey_elem(pMap, zKey, p);` |
+|  2526 |   76 | `}` |
+|  4902 |   77 | `static void ReflectMapAddStr(ph7_context *pCtx, ph7_value *pMap, const char *zKey,` |
 |     - |   78 | `	const char *zVal, int nVal)` |
 |     3 |   79 | `{` |
-|  4817 |   80 | `	ph7_value *p = ph7_context_new_scalar(pCtx);` |
-|  4817 |   81 | `	if( p == 0 ){ return; }` |
-|  4817 |   82 | `	ph7_value_string(p, zVal, nVal);` |
-|  4817 |   83 | `	ph7_array_add_strkey_elem(pMap, zKey, p);` |
-|  2410 |   84 | `}` |
-|  1584 |   85 | `static void ReflectMapAddNull(ph7_context *pCtx, ph7_value *pMap, const char *zKey)` |
+|  4905 |   80 | `	ph7_value *p = ph7_context_new_scalar(pCtx);` |
+|  4905 |   81 | `	if( p == 0 ){ return; }` |
+|  4905 |   82 | `	ph7_value_string(p, zVal, nVal);` |
+|  4905 |   83 | `	ph7_array_add_strkey_elem(pMap, zKey, p);` |
+|  2454 |   84 | `}` |
+|  1598 |   85 | `static void ReflectMapAddNull(ph7_context *pCtx, ph7_value *pMap, const char *zKey)` |
 |     2 |   86 | `{` |
-|  1586 |   87 | `	ph7_value *p = ph7_context_new_scalar(pCtx);` |
-|  1586 |   88 | `	if( p == 0 ){ return; }` |
-|  1586 |   89 | `	ph7_value_null(p);` |
-|  1586 |   90 | `	ph7_array_add_strkey_elem(pMap, zKey, p);` |
-|   794 |   91 | `}` |
+|  1600 |   87 | `	ph7_value *p = ph7_context_new_scalar(pCtx);` |
+|  1600 |   88 | `	if( p == 0 ){ return; }` |
+|  1600 |   89 | `	ph7_value_null(p);` |
+|  1600 |   90 | `	ph7_array_add_strkey_elem(pMap, zKey, p);` |
+|   801 |   91 | `}` |
 |     - |   92 | `/* Add an entry under a dynamic (SyString) key. */` |
-|   400 |   93 | `static void ReflectMapAddDyn(ph7_context *pCtx, ph7_value *pMap,` |
+|   418 |   93 | `static void ReflectMapAddDyn(ph7_context *pCtx, ph7_value *pMap,` |
 |     - |   94 | `	const SyString *pKey, ph7_value *pVal)` |
 |     1 |   95 | `{` |
-|   401 |   96 | `	ph7_value *pK = ph7_context_new_scalar(pCtx);` |
-|   401 |   97 | `	if( pK == 0 ){ return; }` |
-|   401 |   98 | `	ph7_value_string(pK, pKey->zString, (int)pKey->nByte);` |
-|   401 |   99 | `	ph7_array_add_elem(pMap, pK, pVal);` |
-|   201 |  100 | `}` |
+|   419 |   96 | `	ph7_value *pK = ph7_context_new_scalar(pCtx);` |
+|   419 |   97 | `	if( pK == 0 ){ return; }` |
+|   419 |   98 | `	ph7_value_string(pK, pKey->zString, (int)pKey->nByte);` |
+|   419 |   99 | `	ph7_array_add_elem(pMap, pK, pVal);` |
+|   210 |  100 | `}` |
 |     - |  101 | `/* Emit the declared #[...] attributes of a target as a summary list:` |
 |     - |  102 | ` * [ {name, line} ... ]. Argument values stay lazy — the PHP layer pulls` |
 |     - |  103 | ` * them through __reflect_attr_args when ReflectionAttribute needs them. */` |
-|  2154 |  104 | `static void ReflectMapAddAttrs(ph7_context *pCtx, ph7_value *pMap, SySet *pAttrs)` |
+|  2172 |  104 | `static void ReflectMapAddAttrs(ph7_context *pCtx, ph7_value *pMap, SySet *pAttrs)` |
 |     2 |  105 | `{` |
-|  2156 |  106 | `	ph7_value *pList = ph7_context_new_array(pCtx);` |
-|  2156 |  107 | `	ph7_attribute *aA = (ph7_attribute *)SySetBasePtr(pAttrs);` |
+|  2174 |  106 | `	ph7_value *pList = ph7_context_new_array(pCtx);` |
+|  2174 |  107 | `	ph7_attribute *aA = (ph7_attribute *)SySetBasePtr(pAttrs);` |
 |     - |  108 | `	sxu32 n;` |
-|  2156 |  109 | `	if( pList == 0 ){` |
+|  2174 |  109 | `	if( pList == 0 ){` |
 |   ! 0 |  110 | `		return;` |
 |     - |  111 | `	}` |
-|  2256 |  112 | `	for( n = 0 ; n < SySetUsed(pAttrs) ; n++ ){` |
+|  2274 |  112 | `	for( n = 0 ; n < SySetUsed(pAttrs) ; n++ ){` |
 |   101 |  113 | `		ph7_value *pMeta = ph7_context_new_array(pCtx);` |
 |   101 |  114 | `		if( pMeta == 0 ){ break; }` |
 |   101 |  115 | `		ReflectMapAddStr(pCtx, pMeta, "name", SyStringData(&aA[n].sName), (int)SyStringLength(&aA[n].sName));` |
 |   101 |  116 | `		ReflectMapAddInt(pCtx, pMeta, "line", (sxi64)aA[n].nLine);` |
 |   101 |  117 | `		ph7_array_add_elem(pList, 0, pMeta);` |
 |    51 |  118 | `	}` |
-|  2156 |  119 | `	ph7_array_add_strkey_elem(pMap, "attrs", pList);` |
-|  1079 |  120 | `}` |
+|  2174 |  119 | `	ph7_array_add_strkey_elem(pMap, "attrs", pList);` |
+|  1088 |  120 | `}` |
 |     - |  121 | `/* Emit a doc-comment field: the text when present, else boolean false` |
 |     - |  122 | ` * (getDocComment()'s exact return contract). */` |
-|   864 |  123 | `static void ReflectMapAddDoc(ph7_context *pCtx, ph7_value *pMap, const SyString *pDoc)` |
+|   882 |  123 | `static void ReflectMapAddDoc(ph7_context *pCtx, ph7_value *pMap, const SyString *pDoc)` |
 |     2 |  124 | `{` |
-|   866 |  125 | `	if( SyStringLength(pDoc) > 0 ){` |
+|   884 |  125 | `	if( SyStringLength(pDoc) > 0 ){` |
 |    21 |  126 | `		ReflectMapAddStr(pCtx, pMap, "doc", SyStringData(pDoc), (int)SyStringLength(pDoc));` |
 |    11 |  127 | `	}else{` |
-|   846 |  128 | `		ReflectMapAddBool(pCtx, pMap, "doc", 0);` |
+|   864 |  128 | `		ReflectMapAddBool(pCtx, pMap, "doc", 0);` |
 |     - |  129 | `	}` |
-|   866 |  130 | `}` |
+|   884 |  130 | `}` |
 |     - |  131 | `/*` |
 |     - |  132 | ` * Append pIface (and its parents / extended interfaces) to the dedup set` |
 |     - |  133 | ` * of ph7_class pointers.` |
@@ -171,21 +171,21 @@ Coverage: 1035/1211 lines (85.47%)
 |     - |  161 | ` * Collect the transitive set of interfaces implemented by pClass:` |
 |     - |  162 | ` * the parent chain's interfaces first, then the class's own.` |
 |     - |  163 | ` */` |
-|   142 |  164 | `static void ReflectCollectInterfaces(ph7_class *pClass, SySet *pOut, int iDepth)` |
+|   154 |  164 | `static void ReflectCollectInterfaces(ph7_class *pClass, SySet *pOut, int iDepth)` |
 |     2 |  165 | `{` |
 |     - |  166 | `	ph7_class **apIface;` |
 |     - |  167 | `	sxu32 n;` |
-|   144 |  168 | `	if( pClass == 0 \|\| iDepth > REFLECT_WALK_MAX_DEPTH ){` |
+|   156 |  168 | `	if( pClass == 0 \|\| iDepth > REFLECT_WALK_MAX_DEPTH ){` |
 |   ! 0 |  169 | `		return;` |
 |     - |  170 | `	}` |
-|   144 |  171 | `	if( pClass->pBase ){` |
-|    24 |  172 | `		ReflectCollectInterfaces(pClass->pBase, pOut, iDepth + 1);` |
-|    11 |  173 | `	}` |
-|   144 |  174 | `	apIface = (ph7_class **)SySetBasePtr(&pClass->aInterface);` |
-|   182 |  175 | `	for( n = 0 ; n < SySetUsed(&pClass->aInterface) ; n++ ){` |
+|   156 |  171 | `	if( pClass->pBase ){` |
+|    30 |  172 | `		ReflectCollectInterfaces(pClass->pBase, pOut, iDepth + 1);` |
+|    14 |  173 | `	}` |
+|   156 |  174 | `	apIface = (ph7_class **)SySetBasePtr(&pClass->aInterface);` |
+|   194 |  175 | `	for( n = 0 ; n < SySetUsed(&pClass->aInterface) ; n++ ){` |
 |    40 |  176 | `		ReflectAddInterface(apIface[n], pOut, iDepth + 1);` |
 |    21 |  177 | `	}` |
-|    73 |  178 | `}` |
+|    79 |  178 | `}` |
 |     - |  179 | `/*` |
 |     - |  180 | ` * Deepest base class whose method table maps the same name to the very` |
 |     - |  181 | ` * same ph7_class_method pointer: inheritance shares member pointers` |
@@ -193,23 +193,23 @@ Coverage: 1035/1211 lines (85.47%)
 |     - |  183 | ` * copied in from traits are not on the pBase chain and thus report the` |
 |     - |  184 | ` * using class, which is what PHP reports too.` |
 |     - |  185 | ` */` |
-|   674 |  186 | `static ph7_class * ReflectMethodDeclClass(ph7_class *pClass, ph7_class_method *pMeth)` |
+|   736 |  186 | `static ph7_class * ReflectMethodDeclClass(ph7_class *pClass, ph7_class_method *pMeth)` |
 |     1 |  187 | `{` |
-|   675 |  188 | `	ph7_class *pDecl = pClass;` |
-|   675 |  189 | `	ph7_class *pBase = pClass->pBase;` |
-|   675 |  190 | `	int iDepth = 0;` |
-|   929 |  191 | `	while( pBase && iDepth <= REFLECT_WALK_MAX_DEPTH ){` |
+|   737 |  188 | `	ph7_class *pDecl = pClass;` |
+|   737 |  189 | `	ph7_class *pBase = pClass->pBase;` |
+|   737 |  190 | `	int iDepth = 0;` |
+|  1059 |  191 | `	while( pBase && iDepth <= REFLECT_WALK_MAX_DEPTH ){` |
 |     - |  192 | `		SyHashEntry *pEntry;` |
-|   724 |  193 | `		pEntry = SyHashGet(&pBase->hMethod, (const void *)SyStringData(&pMeth->sFunc.sName),` |
-|   241 |  194 | `			SyStringLength(&pMeth->sFunc.sName));` |
-|   483 |  195 | `		if( pEntry == 0 \|\| (ph7_class_method *)pEntry->pUserData != pMeth ){` |
-|   115 |  196 | `			break;` |
+|   853 |  193 | `		pEntry = SyHashGet(&pBase->hMethod, (const void *)SyStringData(&pMeth->sFunc.sName),` |
+|   284 |  194 | `			SyStringLength(&pMeth->sFunc.sName));` |
+|   569 |  195 | `		if( pEntry == 0 \|\| (ph7_class_method *)pEntry->pUserData != pMeth ){` |
+|   124 |  196 | `			break;` |
 |     - |  197 | `		}` |
-|   255 |  198 | `		pDecl = pBase;` |
-|   255 |  199 | `		pBase = pBase->pBase;` |
-|   255 |  200 | `		iDepth++;` |
+|   323 |  198 | `		pDecl = pBase;` |
+|   323 |  199 | `		pBase = pBase->pBase;` |
+|   323 |  200 | `		iDepth++;` |
 |     1 |  201 | `	}` |
-|   675 |  202 | `	return pDecl;` |
+|   737 |  202 | `	return pDecl;` |
 |     1 |  203 | `}` |
 |     - |  204 | `/* Fetch a class attribute (property or constant) by plain name. */` |
 |    86 |  205 | `static ph7_class_attr * ReflectFetchAttr(ph7_class *pClass, ph7_value *pName)` |
@@ -240,83 +240,83 @@ Coverage: 1035/1211 lines (85.47%)
 |     - |  230 | ` *   props   {name: {vis, static, readonly, hasdef, decl, line}},` |
 |     - |  231 | ` *   methods {name: {vis, static, abstract, final, decl, line}}` |
 |     - |  232 | ` */` |
-|   134 |  233 | `static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|   140 |  233 | `static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
 |     3 |  234 | `{` |
-|   137 |  235 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   143 |  235 | `	ph7_vm *pVm = pCtx->pVm;` |
 |     - |  236 | `	ph7_class *pClass;` |
 |     - |  237 | `	ph7_value *pInfo, *pConsts, *pProps, *pMethods, *pList;` |
 |     - |  238 | `	SyHashEntry *pEntry;` |
 |     - |  239 | `	SySet aIfaceSet;` |
-|   137 |  240 | `	sxi32 iCtorVis = 0, iCloneVis = 0;` |
-|   137 |  241 | `	int bIterable = 0;` |
+|   143 |  240 | `	sxi32 iCtorVis = 0, iCloneVis = 0;` |
+|   143 |  241 | `	int bIterable = 0;` |
 |     - |  242 | `	sxu32 n;` |
-|   137 |  243 | `	if( nArg < 1 ){` |
+|   143 |  243 | `	if( nArg < 1 ){` |
 |   ! 0 |  244 | `		ph7_result_null(pCtx);` |
 |   ! 0 |  245 | `		return PH7_OK;` |
 |     - |  246 | `	}` |
-|   137 |  247 | `	pClass = ReflectResolveClass(pVm, apArg[0]);` |
-|   137 |  248 | `	if( pClass == 0 ){` |
+|   143 |  247 | `	pClass = ReflectResolveClass(pVm, apArg[0]);` |
+|   143 |  248 | `	if( pClass == 0 ){` |
 |    16 |  249 | `		ph7_result_null(pCtx);` |
 |    16 |  250 | `		return PH7_OK;` |
 |     - |  251 | `	}` |
-|   122 |  252 | `	pInfo = ph7_context_new_array(pCtx);` |
-|   122 |  253 | `	pConsts = ph7_context_new_array(pCtx);` |
-|   122 |  254 | `	pProps = ph7_context_new_array(pCtx);` |
-|   122 |  255 | `	pMethods = ph7_context_new_array(pCtx);` |
-|   122 |  256 | `	if( pInfo == 0 \|\| pConsts == 0 \|\| pProps == 0 \|\| pMethods == 0 ){` |
+|   128 |  252 | `	pInfo = ph7_context_new_array(pCtx);` |
+|   128 |  253 | `	pConsts = ph7_context_new_array(pCtx);` |
+|   128 |  254 | `	pProps = ph7_context_new_array(pCtx);` |
+|   128 |  255 | `	pMethods = ph7_context_new_array(pCtx);` |
+|   128 |  256 | `	if( pInfo == 0 \|\| pConsts == 0 \|\| pProps == 0 \|\| pMethods == 0 ){` |
 |   ! 0 |  257 | `		ph7_result_null(pCtx);` |
 |   ! 0 |  258 | `		return PH7_OK;` |
 |     - |  259 | `	}` |
-|   122 |  260 | `	ReflectMapAddStr(pCtx, pInfo, "name", SyStringData(&pClass->sName), (int)SyStringLength(&pClass->sName));` |
-|   122 |  261 | `	ReflectMapAddBool(pCtx, pInfo, "internal", (pClass->iFlags & PH7_CLASS_INTERNAL) != 0);` |
-|   122 |  262 | `	ReflectMapAddBool(pCtx, pInfo, "interface", (pClass->iFlags & PH7_CLASS_INTERFACE) != 0);` |
-|   122 |  263 | `	ReflectMapAddBool(pCtx, pInfo, "trait", (pClass->iFlags & PH7_CLASS_TRAIT) != 0);` |
-|   122 |  264 | `	ReflectMapAddBool(pCtx, pInfo, "abstract", (pClass->iFlags & PH7_CLASS_ABSTRACT) != 0);` |
-|   122 |  265 | `	ReflectMapAddBool(pCtx, pInfo, "final", (pClass->iFlags & PH7_CLASS_FINAL) != 0);` |
-|   122 |  266 | `	ReflectMapAddBool(pCtx, pInfo, "readonly", (pClass->iFlags & PH7_CLASS_READONLY) != 0);` |
-|   122 |  267 | `	ReflectMapAddBool(pCtx, pInfo, "enum", (pClass->iFlags & PH7_CLASS_ENUM) != 0);` |
-|   122 |  268 | `	if( pClass->nEnumBacking == MEMOBJ_INT ){` |
+|   128 |  260 | `	ReflectMapAddStr(pCtx, pInfo, "name", SyStringData(&pClass->sName), (int)SyStringLength(&pClass->sName));` |
+|   128 |  261 | `	ReflectMapAddBool(pCtx, pInfo, "internal", (pClass->iFlags & PH7_CLASS_INTERNAL) != 0);` |
+|   128 |  262 | `	ReflectMapAddBool(pCtx, pInfo, "interface", (pClass->iFlags & PH7_CLASS_INTERFACE) != 0);` |
+|   128 |  263 | `	ReflectMapAddBool(pCtx, pInfo, "trait", (pClass->iFlags & PH7_CLASS_TRAIT) != 0);` |
+|   128 |  264 | `	ReflectMapAddBool(pCtx, pInfo, "abstract", (pClass->iFlags & PH7_CLASS_ABSTRACT) != 0);` |
+|   128 |  265 | `	ReflectMapAddBool(pCtx, pInfo, "final", (pClass->iFlags & PH7_CLASS_FINAL) != 0);` |
+|   128 |  266 | `	ReflectMapAddBool(pCtx, pInfo, "readonly", (pClass->iFlags & PH7_CLASS_READONLY) != 0);` |
+|   128 |  267 | `	ReflectMapAddBool(pCtx, pInfo, "enum", (pClass->iFlags & PH7_CLASS_ENUM) != 0);` |
+|   128 |  268 | `	if( pClass->nEnumBacking == MEMOBJ_INT ){` |
 |   ! 0 |  269 | `		ReflectMapAddStr(pCtx, pInfo, "enumbacking", "int", (int)sizeof("int")-1);` |
-|   122 |  270 | `	}else if( pClass->nEnumBacking == MEMOBJ_STRING ){` |
+|   128 |  270 | `	}else if( pClass->nEnumBacking == MEMOBJ_STRING ){` |
 |     3 |  271 | `		ReflectMapAddStr(pCtx, pInfo, "enumbacking", "string", (int)sizeof("string")-1);` |
 |     2 |  272 | `	}else{` |
-|   120 |  273 | `		ReflectMapAddStr(pCtx, pInfo, "enumbacking", "", 0);` |
+|   126 |  273 | `		ReflectMapAddStr(pCtx, pInfo, "enumbacking", "", 0);` |
 |     - |  274 | `	}` |
 |     - |  275 | `	{` |
 |     - |  276 | `		/* Enum case names in declaration order (empty list for non-enums) */` |
-|   122 |  277 | `		ph7_value *pCases = ph7_context_new_array(pCtx);` |
-|   122 |  278 | `		if( pCases ){` |
-|   122 |  279 | `			ph7_class_attr **apCase = (ph7_class_attr **)SySetBasePtr(&pClass->aEnumCases);` |
+|   128 |  277 | `		ph7_value *pCases = ph7_context_new_array(pCtx);` |
+|   128 |  278 | `		if( pCases ){` |
+|   128 |  279 | `			ph7_class_attr **apCase = (ph7_class_attr **)SySetBasePtr(&pClass->aEnumCases);` |
 |     - |  280 | `			sxu32 nCase;` |
-|   128 |  281 | `			for( nCase = 0 ; nCase < SySetUsed(&pClass->aEnumCases) ; nCase++ ){` |
+|   134 |  281 | `			for( nCase = 0 ; nCase < SySetUsed(&pClass->aEnumCases) ; nCase++ ){` |
 |     7 |  282 | `				ph7_value *pNm = ph7_context_new_scalar(pCtx);` |
 |     7 |  283 | `				if( pNm ){` |
 |     7 |  284 | `					ph7_value_string(pNm,apCase[nCase]->sName.zString,(int)apCase[nCase]->sName.nByte);` |
 |     7 |  285 | `					ph7_array_add_elem(pCases,0,pNm);` |
 |     3 |  286 | `				}` |
 |     4 |  287 | `			}` |
-|   122 |  288 | `			ph7_array_add_strkey_elem(pInfo,"cases",pCases);` |
-|    60 |  289 | `		}` |
+|   128 |  288 | `			ph7_array_add_strkey_elem(pInfo,"cases",pCases);` |
+|    63 |  289 | `		}` |
 |     - |  290 | `	}` |
-|   122 |  291 | `	if( pClass->pBase ){` |
-|    32 |  292 | `		ReflectMapAddStr(pCtx, pInfo, "parent", SyStringData(&pClass->pBase->sName),` |
-|    20 |  293 | `			(int)SyStringLength(&pClass->pBase->sName));` |
-|    12 |  294 | `	}else{` |
-|   102 |  295 | `		ReflectMapAddNull(pCtx, pInfo, "parent");` |
+|   128 |  291 | `	if( pClass->pBase ){` |
+|    38 |  292 | `		ReflectMapAddStr(pCtx, pInfo, "parent", SyStringData(&pClass->pBase->sName),` |
+|    24 |  293 | `			(int)SyStringLength(&pClass->pBase->sName));` |
+|    14 |  294 | `	}else{` |
+|   104 |  295 | `		ReflectMapAddNull(pCtx, pInfo, "parent");` |
 |     - |  296 | `	}` |
 |     - |  297 | `	/* Transitive interfaces */` |
-|   122 |  298 | `	SySetInit(&aIfaceSet, &pVm->sAllocator, sizeof(ph7_class *));` |
-|   122 |  299 | `	ReflectCollectInterfaces(pClass, &aIfaceSet, 0);` |
-|   122 |  300 | `	if( pClass->iFlags & PH7_CLASS_INTERFACE ){` |
+|   128 |  298 | `	SySetInit(&aIfaceSet, &pVm->sAllocator, sizeof(ph7_class *));` |
+|   128 |  299 | `	ReflectCollectInterfaces(pClass, &aIfaceSet, 0);` |
+|   128 |  300 | `	if( pClass->iFlags & PH7_CLASS_INTERFACE ){` |
 |     - |  301 | `		/* An interface's own parents count as its interface list */` |
 |    11 |  302 | `		if( pClass->pBase ){` |
 |     3 |  303 | `			ReflectAddInterface(pClass->pBase, &aIfaceSet, 0);` |
 |     1 |  304 | `		}` |
 |     5 |  305 | `	}` |
-|   122 |  306 | `	pList = ph7_context_new_array(pCtx);` |
-|   122 |  307 | `	if( pList ){` |
-|   122 |  308 | `		ph7_class **apIface = (ph7_class **)SySetBasePtr(&aIfaceSet);` |
-|   162 |  309 | `		for( n = 0 ; n < SySetUsed(&aIfaceSet) ; n++ ){` |
+|   128 |  306 | `	pList = ph7_context_new_array(pCtx);` |
+|   128 |  307 | `	if( pList ){` |
+|   128 |  308 | `		ph7_class **apIface = (ph7_class **)SySetBasePtr(&aIfaceSet);` |
+|   168 |  309 | `		for( n = 0 ; n < SySetUsed(&aIfaceSet) ; n++ ){` |
 |    42 |  310 | `			ph7_value *pName = ph7_context_new_scalar(pCtx);` |
 |    42 |  311 | `			if( pName == 0 ){ break; }` |
 |    42 |  312 | `			ph7_value_string(pName, SyStringData(&apIface[n]->sName), (int)SyStringLength(&apIface[n]->sName));` |
@@ -325,32 +325,32 @@ Coverage: 1035/1211 lines (85.47%)
 |     3 |  315 | `				bIterable = 1;` |
 |     1 |  316 | `			}` |
 |    22 |  317 | `		}` |
-|   122 |  318 | `		ph7_array_add_strkey_elem(pInfo, "interfaces", pList);` |
-|    60 |  319 | `	}` |
-|   122 |  320 | `	SySetRelease(&aIfaceSet);` |
-|   122 |  321 | `	ReflectMapAddBool(pCtx, pInfo, "iterable", bIterable);` |
+|   128 |  318 | `		ph7_array_add_strkey_elem(pInfo, "interfaces", pList);` |
+|    63 |  319 | `	}` |
+|   128 |  320 | `	SySetRelease(&aIfaceSet);` |
+|   128 |  321 | `	ReflectMapAddBool(pCtx, pInfo, "iterable", bIterable);` |
 |     - |  322 | `	/* Used traits */` |
-|   122 |  323 | `	pList = ph7_context_new_array(pCtx);` |
-|   122 |  324 | `	if( pList ){` |
-|   122 |  325 | `		ph7_class **apTrait = (ph7_class **)SySetBasePtr(&pClass->aTrait);` |
-|   124 |  326 | `		for( n = 0 ; n < SySetUsed(&pClass->aTrait) ; n++ ){` |
+|   128 |  323 | `	pList = ph7_context_new_array(pCtx);` |
+|   128 |  324 | `	if( pList ){` |
+|   128 |  325 | `		ph7_class **apTrait = (ph7_class **)SySetBasePtr(&pClass->aTrait);` |
+|   130 |  326 | `		for( n = 0 ; n < SySetUsed(&pClass->aTrait) ; n++ ){` |
 |     3 |  327 | `			ph7_value *pName = ph7_context_new_scalar(pCtx);` |
 |     3 |  328 | `			if( pName == 0 ){ break; }` |
 |     3 |  329 | `			ph7_value_string(pName, SyStringData(&apTrait[n]->sName), (int)SyStringLength(&apTrait[n]->sName));` |
 |     3 |  330 | `			ph7_array_add_elem(pList, 0, pName);` |
 |     2 |  331 | `		}` |
-|   122 |  332 | `		ph7_array_add_strkey_elem(pInfo, "traits", pList);` |
-|    60 |  333 | `	}` |
+|   128 |  332 | `		ph7_array_add_strkey_elem(pInfo, "traits", pList);` |
+|    63 |  333 | `	}` |
 |     - |  334 | `	/* File / lines: no file recorded => false, like PHP internals */` |
-|   122 |  335 | `	if( SyStringLength(&pClass->sFile) > 0 ){` |
-|   110 |  336 | `		ReflectMapAddStr(pCtx, pInfo, "file", SyStringData(&pClass->sFile), (int)SyStringLength(&pClass->sFile));` |
-|    56 |  337 | `	}else{` |
+|   128 |  335 | `	if( SyStringLength(&pClass->sFile) > 0 ){` |
+|   116 |  336 | `		ReflectMapAddStr(pCtx, pInfo, "file", SyStringData(&pClass->sFile), (int)SyStringLength(&pClass->sFile));` |
+|    59 |  337 | `	}else{` |
 |    13 |  338 | `		ReflectMapAddBool(pCtx, pInfo, "file", 0);` |
 |     - |  339 | `	}` |
-|   122 |  340 | `	ReflectMapAddInt(pCtx, pInfo, "line", (sxi64)pClass->nLine);` |
-|   122 |  341 | `	ReflectMapAddInt(pCtx, pInfo, "endline", (sxi64)pClass->nEndLine);` |
-|   122 |  342 | `	ReflectMapAddDoc(pCtx, pInfo, &pClass->sDoc);` |
-|   122 |  343 | `	ReflectMapAddAttrs(pCtx, pInfo, &pClass->aAttrs);` |
+|   128 |  340 | `	ReflectMapAddInt(pCtx, pInfo, "line", (sxi64)pClass->nLine);` |
+|   128 |  341 | `	ReflectMapAddInt(pCtx, pInfo, "endline", (sxi64)pClass->nEndLine);` |
+|   128 |  342 | `	ReflectMapAddDoc(pCtx, pInfo, &pClass->sDoc);` |
+|   128 |  343 | `	ReflectMapAddAttrs(pCtx, pInfo, &pClass->aAttrs);` |
 |     - |  344 | `	/* Members are emitted in PHP's reporting order: the class's own members` |
 |     - |  345 | `	 * first (declaration order), then each inheritance level's, outward.` |
 |     - |  346 | `	 * Per level we iterate the DECLARING class's own hash — subclass hashes` |
@@ -360,20 +360,20 @@ Coverage: 1035/1211 lines (85.47%)
 |     - |  350 | `	 * visible there (base privates, overridden entries). */` |
 |     - |  351 | `	{` |
 |     - |  352 | `		ph7_class *aChain[REFLECT_WALK_MAX_DEPTH + 1];` |
-|   122 |  353 | `		ph7_class *pWalk = pClass;` |
+|   128 |  353 | `		ph7_class *pWalk = pClass;` |
 |     - |  354 | `		SySet aTmp;` |
-|   122 |  355 | `		sxu32 nChain = 0, iLevel, nT;` |
-|   264 |  356 | `		while( pWalk && nChain < (sxu32)(REFLECT_WALK_MAX_DEPTH + 1) ){` |
-|   144 |  357 | `			aChain[nChain++] = pWalk;` |
-|   144 |  358 | `			pWalk = pWalk->pBase;` |
+|   128 |  355 | `		sxu32 nChain = 0, iLevel, nT;` |
+|   282 |  356 | `		while( pWalk && nChain < (sxu32)(REFLECT_WALK_MAX_DEPTH + 1) ){` |
+|   156 |  357 | `			aChain[nChain++] = pWalk;` |
+|   156 |  358 | `			pWalk = pWalk->pBase;` |
 |     2 |  359 | `		}` |
-|   122 |  360 | `		SySetInit(&aTmp, &pVm->sAllocator, sizeof(SyHashEntry *));` |
-|   264 |  361 | `		for( iLevel = 0 ; iLevel < nChain ; iLevel++ ){` |
-|   144 |  362 | `			ph7_class *pLevel = aChain[iLevel];` |
+|   128 |  360 | `		SySetInit(&aTmp, &pVm->sAllocator, sizeof(SyHashEntry *));` |
+|   282 |  361 | `		for( iLevel = 0 ; iLevel < nChain ; iLevel++ ){` |
+|   156 |  362 | `			ph7_class *pLevel = aChain[iLevel];` |
 |     - |  363 | `			/* --- Constants and properties (shared attribute table) --- */` |
-|   144 |  364 | `			SySetReset(&aTmp);` |
-|   144 |  365 | `			SyHashResetLoopCursor(&pLevel->hAttr);` |
-|   364 |  366 | `			while( (pEntry = SyHashGetNextEntry(&pLevel->hAttr)) != 0 ){` |
+|   156 |  364 | `			SySetReset(&aTmp);` |
+|   156 |  365 | `			SyHashResetLoopCursor(&pLevel->hAttr);` |
+|   376 |  366 | `			while( (pEntry = SyHashGetNextEntry(&pLevel->hAttr)) != 0 ){` |
 |   221 |  367 | `				ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;` |
 |   221 |  368 | `				ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pLevel;` |
 |   221 |  369 | `				if( iLevel == 0 ){` |
@@ -392,7 +392,7 @@ Coverage: 1035/1211 lines (85.47%)
 |     - |  382 | `				}` |
 |   175 |  383 | `				SySetPut(&aTmp, (const void *)&pEntry);` |
 |     1 |  384 | `			}` |
-|   318 |  385 | `			for( nT = SySetUsed(&aTmp) ; nT > 0 ; nT-- ){` |
+|   330 |  385 | `			for( nT = SySetUsed(&aTmp) ; nT > 0 ; nT-- ){` |
 |   175 |  386 | `				SyHashEntry *pE = *(SyHashEntry **)SySetAt(&aTmp, nT - 1);` |
 |   175 |  387 | `				ph7_class_attr *pAttr = (ph7_class_attr *)pE->pUserData;` |
 |   175 |  388 | `				ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pLevel;` |
@@ -429,47 +429,47 @@ Coverage: 1035/1211 lines (85.47%)
 |     - |  419 | `			/* --- Methods. The reported name is the hash-entry key: trait` |
 |     - |  420 | `			 * aliasing installs a shallow copy under the alias name while` |
 |     - |  421 | `			 * sFunc.sName keeps the original, and PHP reports the alias. --- */` |
-|   144 |  422 | `			SySetReset(&aTmp);` |
-|   144 |  423 | `			SyHashResetLoopCursor(&pLevel->hMethod);` |
-|   384 |  424 | `			while( (pEntry = SyHashGetNextEntry(&pLevel->hMethod)) != 0 ){` |
-|   241 |  425 | `				ph7_class_method *pMeth = (ph7_class_method *)pEntry->pUserData;` |
-|   241 |  426 | `				ph7_class *pDecl = ReflectMethodDeclClass(pClass, pMeth);` |
-|   241 |  427 | `				if( iLevel == 0 ){` |
+|   156 |  422 | `			SySetReset(&aTmp);` |
+|   156 |  423 | `			SyHashResetLoopCursor(&pLevel->hMethod);` |
+|   428 |  424 | `			while( (pEntry = SyHashGetNextEntry(&pLevel->hMethod)) != 0 ){` |
+|   273 |  425 | `				ph7_class_method *pMeth = (ph7_class_method *)pEntry->pUserData;` |
+|   273 |  426 | `				ph7_class *pDecl = ReflectMethodDeclClass(pClass, pMeth);` |
+|   273 |  427 | `				if( iLevel == 0 ){` |
 |     - |  428 | `					sxu32 j;` |
-|   217 |  429 | `					for( j = 1 ; j < nChain ; j++ ){` |
-|    85 |  430 | `						if( aChain[j] == pDecl ){ break; }` |
-|    21 |  431 | `					}` |
-|   177 |  432 | `					if( j < nChain ){ continue; }` |
-|    67 |  433 | `				}else{` |
+|   245 |  429 | `					for( j = 1 ; j < nChain ; j++ ){` |
+|   105 |  430 | `						if( aChain[j] == pDecl ){ break; }` |
+|    26 |  431 | `					}` |
+|   195 |  432 | `					if( j < nChain ){ continue; }` |
+|    71 |  433 | `				}else{` |
 |     - |  434 | `					SyHashEntry *pSub;` |
-|    65 |  435 | `					if( pDecl != pLevel ){ continue; }` |
-|    47 |  436 | `					pSub = SyHashGet(&pClass->hMethod, pEntry->pKey, pEntry->nKeyLen);` |
-|    47 |  437 | `					if( pSub == 0 ){` |
+|    79 |  435 | `					if( pDecl != pLevel ){ continue; }` |
+|    57 |  436 | `					pSub = SyHashGet(&pClass->hMethod, pEntry->pKey, pEntry->nKeyLen);` |
+|    57 |  437 | `					if( pSub == 0 ){` |
 |     - |  438 | `						/* Not in the subclass table: inheritance skips private` |
 |     - |  439 | `						 * methods, but PHP still reports them on the subclass` |
 |     - |  440 | `						 * (Zend copies privates into the child function table). */` |
 |   ! 0 |  441 | `						if( pMeth->iProtection != PH7_CLASS_PROT_PRIVATE ){` |
 |   ! 0 |  442 | `							continue;` |
 |   ! 0 |  443 | `						}` |
-|    47 |  444 | `					}else if( pSub->pUserData != (void *)pMeth ){` |
+|    57 |  444 | `					}else if( pSub->pUserData != (void *)pMeth ){` |
 |     - |  445 | `						/* Overridden below this level: already reported */` |
 |     3 |  446 | `						continue;` |
 |     - |  447 | `					}` |
 |     - |  448 | `				}` |
-|   177 |  449 | `				SySetPut(&aTmp, (const void *)&pEntry);` |
+|   195 |  449 | `				SySetPut(&aTmp, (const void *)&pEntry);` |
 |     1 |  450 | `			}` |
-|   320 |  451 | `			for( nT = SySetUsed(&aTmp) ; nT > 0 ; nT-- ){` |
-|   177 |  452 | `				SyHashEntry *pE = *(SyHashEntry **)SySetAt(&aTmp, nT - 1);` |
-|   177 |  453 | `				ph7_class_method *pMeth = (ph7_class_method *)pE->pUserData;` |
-|   177 |  454 | `				ph7_class *pDecl = ReflectMethodDeclClass(pClass, pMeth);` |
+|   350 |  451 | `			for( nT = SySetUsed(&aTmp) ; nT > 0 ; nT-- ){` |
+|   195 |  452 | `				SyHashEntry *pE = *(SyHashEntry **)SySetAt(&aTmp, nT - 1);` |
+|   195 |  453 | `				ph7_class_method *pMeth = (ph7_class_method *)pE->pUserData;` |
+|   195 |  454 | `				ph7_class *pDecl = ReflectMethodDeclClass(pClass, pMeth);` |
 |     - |  455 | `				ph7_value *pMeta;` |
 |     - |  456 | `				SyString sKey;` |
 |     - |  457 | `				int bIsAlias;` |
-|   177 |  458 | `				SyStringInitFromBuf(&sKey, (const char *)pE->pKey, pE->nKeyLen);` |
-|   353 |  459 | `				bIsAlias = (sKey.nByte != SyStringLength(&pMeth->sFunc.sName)` |
-|   176 |  460 | `				 \|\| SyMemcmp(sKey.zString, SyStringData(&pMeth->sFunc.sName), sKey.nByte) != 0);` |
-|   176 |  461 | `				if( sKey.nByte == sizeof("__construct")-1` |
-|   104 |  462 | `				 && SyMemcmp(sKey.zString, "__construct", sKey.nByte) == 0 ){` |
+|   195 |  458 | `				SyStringInitFromBuf(&sKey, (const char *)pE->pKey, pE->nKeyLen);` |
+|   389 |  459 | `				bIsAlias = (sKey.nByte != SyStringLength(&pMeth->sFunc.sName)` |
+|   194 |  460 | `				 \|\| SyMemcmp(sKey.zString, SyStringData(&pMeth->sFunc.sName), sKey.nByte) != 0);` |
+|   194 |  461 | `				if( sKey.nByte == sizeof("__construct")-1` |
+|   113 |  462 | `				 && SyMemcmp(sKey.zString, "__construct", sKey.nByte) == 0 ){` |
 |    25 |  463 | `					if( iCtorVis == 0 ){` |
 |    25 |  464 | `						iCtorVis = pMeth->iProtection;` |
 |    12 |  465 | `					}` |
@@ -478,38 +478,38 @@ Coverage: 1035/1211 lines (85.47%)
 |     - |  468 | `						 * the method is already listed under its declared name. */` |
 |   ! 0 |  469 | `						continue;` |
 |     - |  470 | `					}` |
-|   165 |  471 | `				}else if( sKey.nByte == sizeof("__clone")-1` |
-|    89 |  472 | `				 && SyMemcmp(sKey.zString, "__clone", sKey.nByte) == 0 ){` |
+|   183 |  471 | `				}else if( sKey.nByte == sizeof("__clone")-1` |
+|    99 |  472 | `				 && SyMemcmp(sKey.zString, "__clone", sKey.nByte) == 0 ){` |
 |   ! 0 |  473 | `					if( iCloneVis == 0 ){` |
 |   ! 0 |  474 | `						iCloneVis = pMeth->iProtection;` |
 |   ! 0 |  475 | `					}` |
-|   152 |  476 | `				}else if( iCtorVis == 0` |
-|   120 |  477 | `				 && sKey.nByte == SyStringLength(&pClass->sName)` |
-|    47 |  478 | `				 && SyMemcmp(sKey.zString, SyStringData(&pClass->sName), sKey.nByte) == 0 ){` |
+|   170 |  476 | `				}else if( iCtorVis == 0` |
+|   138 |  477 | `				 && sKey.nByte == SyStringLength(&pClass->sName)` |
+|    56 |  478 | `				 && SyMemcmp(sKey.zString, SyStringData(&pClass->sName), sKey.nByte) == 0 ){` |
 |     - |  479 | `					/* Legacy class-name constructor before the mount alias exists */` |
 |   ! 0 |  480 | `					iCtorVis = pMeth->iProtection;` |
 |   ! 0 |  481 | `				}` |
-|   177 |  482 | `				pMeta = ph7_context_new_array(pCtx);` |
-|   177 |  483 | `				if( pMeta == 0 ){ break; }` |
-|   177 |  484 | `				ReflectMapAddInt(pCtx, pMeta, "vis", (sxi64)pMeth->iProtection);` |
-|   177 |  485 | `				ReflectMapAddBool(pCtx, pMeta, "static", (pMeth->iFlags & PH7_CLASS_ATTR_STATIC) != 0);` |
-|   177 |  486 | `				ReflectMapAddBool(pCtx, pMeta, "abstract", (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) != 0);` |
-|   177 |  487 | `				ReflectMapAddBool(pCtx, pMeta, "final", (pMeth->iFlags & PH7_CLASS_ATTR_FINAL) != 0);` |
-|   177 |  488 | `				ReflectMapAddStr(pCtx, pMeta, "decl", SyStringData(&pDecl->sName), (int)SyStringLength(&pDecl->sName));` |
-|   177 |  489 | `				ReflectMapAddInt(pCtx, pMeta, "line", (sxi64)pMeth->nLine);` |
-|   177 |  490 | `				ReflectMapAddDyn(pCtx, pMethods, &sKey, pMeta);` |
-|    89 |  491 | `			}` |
-|    73 |  492 | `		}` |
-|   122 |  493 | `		SySetRelease(&aTmp);` |
+|   195 |  482 | `				pMeta = ph7_context_new_array(pCtx);` |
+|   195 |  483 | `				if( pMeta == 0 ){ break; }` |
+|   195 |  484 | `				ReflectMapAddInt(pCtx, pMeta, "vis", (sxi64)pMeth->iProtection);` |
+|   195 |  485 | `				ReflectMapAddBool(pCtx, pMeta, "static", (pMeth->iFlags & PH7_CLASS_ATTR_STATIC) != 0);` |
+|   195 |  486 | `				ReflectMapAddBool(pCtx, pMeta, "abstract", (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) != 0);` |
+|   195 |  487 | `				ReflectMapAddBool(pCtx, pMeta, "final", (pMeth->iFlags & PH7_CLASS_ATTR_FINAL) != 0);` |
+|   195 |  488 | `				ReflectMapAddStr(pCtx, pMeta, "decl", SyStringData(&pDecl->sName), (int)SyStringLength(&pDecl->sName));` |
+|   195 |  489 | `				ReflectMapAddInt(pCtx, pMeta, "line", (sxi64)pMeth->nLine);` |
+|   195 |  490 | `				ReflectMapAddDyn(pCtx, pMethods, &sKey, pMeta);` |
+|    98 |  491 | `			}` |
+|    79 |  492 | `		}` |
+|   128 |  493 | `		SySetRelease(&aTmp);` |
 |     - |  494 | `	}` |
-|   122 |  495 | `	ReflectMapAddInt(pCtx, pInfo, "ctorvis", (sxi64)iCtorVis);` |
-|   122 |  496 | `	ReflectMapAddInt(pCtx, pInfo, "clonevis", (sxi64)iCloneVis);` |
-|   122 |  497 | `	ph7_array_add_strkey_elem(pInfo, "consts", pConsts);` |
-|   122 |  498 | `	ph7_array_add_strkey_elem(pInfo, "props", pProps);` |
-|   122 |  499 | `	ph7_array_add_strkey_elem(pInfo, "methods", pMethods);` |
-|   122 |  500 | `	ph7_result_value(pCtx, pInfo);` |
-|   122 |  501 | `	return PH7_OK;` |
-|    70 |  502 | `}` |
+|   128 |  495 | `	ReflectMapAddInt(pCtx, pInfo, "ctorvis", (sxi64)iCtorVis);` |
+|   128 |  496 | `	ReflectMapAddInt(pCtx, pInfo, "clonevis", (sxi64)iCloneVis);` |
+|   128 |  497 | `	ph7_array_add_strkey_elem(pInfo, "consts", pConsts);` |
+|   128 |  498 | `	ph7_array_add_strkey_elem(pInfo, "props", pProps);` |
+|   128 |  499 | `	ph7_array_add_strkey_elem(pInfo, "methods", pMethods);` |
+|   128 |  500 | `	ph7_result_value(pCtx, pInfo);` |
+|   128 |  501 | `	return PH7_OK;` |
+|    73 |  502 | `}` |
 |     - |  503 | `/*` |
 |     - |  504 | ` * mixed __reflect_const_value(string $class, string $name)` |
 |     - |  505 | ` * Value of a class constant. The PHP layer guarantees existence.` |
@@ -961,1373 +961,1373 @@ Coverage: 1035/1211 lines (85.47%)
 |     - |  951 | ` *     (*ppHost set, returns NULL).` |
 |     - |  952 | ` * Returns the ph7_vm_func, or NULL (host function or unresolvable).` |
 |     - |  953 | ` */` |
-|   748 |  954 | `static ph7_vm_func * ReflectResolveCallable(ph7_context *pCtx, ph7_value *pTarget,` |
+|   760 |  954 | `static ph7_vm_func * ReflectResolveCallable(ph7_context *pCtx, ph7_value *pTarget,` |
 |     - |  955 | `	ph7_value *pMethodArg, ph7_class **ppClass, ph7_class_method **ppMeth,` |
 |     - |  956 | `	ph7_user_func **ppHost, ph7_class_instance **ppClosure)` |
 |     2 |  957 | `{` |
-|   750 |  958 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   762 |  958 | `	ph7_vm *pVm = pCtx->pVm;` |
 |     - |  959 | `	SyHashEntry *pEntry;` |
-|   750 |  960 | `	if( ppClass ){ *ppClass = 0; }` |
-|   750 |  961 | `	if( ppMeth ){ *ppMeth = 0; }` |
-|   750 |  962 | `	if( ppHost ){ *ppHost = 0; }` |
-|   750 |  963 | `	if( ppClosure ){ *ppClosure = 0; }` |
-|   750 |  964 | `	if( pMethodArg && (pMethodArg->iFlags & MEMOBJ_STRING) && SyBlobLength(&pMethodArg->sBlob) > 0 ){` |
-|   281 |  965 | `		ph7_class *pClass = ReflectResolveClass(pVm, pTarget);` |
+|   762 |  960 | `	if( ppClass ){ *ppClass = 0; }` |
+|   762 |  961 | `	if( ppMeth ){ *ppMeth = 0; }` |
+|   762 |  962 | `	if( ppHost ){ *ppHost = 0; }` |
+|   762 |  963 | `	if( ppClosure ){ *ppClosure = 0; }` |
+|   762 |  964 | `	if( pMethodArg && (pMethodArg->iFlags & MEMOBJ_STRING) && SyBlobLength(&pMethodArg->sBlob) > 0 ){` |
+|   293 |  965 | `		ph7_class *pClass = ReflectResolveClass(pVm, pTarget);` |
 |     - |  966 | `		ph7_class_method *pMeth;` |
-|   281 |  967 | `		if( pClass == 0 ){` |
+|   293 |  967 | `		if( pClass == 0 ){` |
 |   ! 0 |  968 | `			return 0;` |
 |     - |  969 | `		}` |
-|   421 |  970 | `		pMeth = PH7_ClassExtractMethod(pClass, (const char *)SyBlobData(&pMethodArg->sBlob),` |
-|   140 |  971 | `			SyBlobLength(&pMethodArg->sBlob));` |
-|   281 |  972 | `		if( pMeth == 0 ){` |
-|   ! 0 |  973 | `			return 0;` |
-|     - |  974 | `		}` |
-|   281 |  975 | `		if( ppClass ){ *ppClass = pClass; }` |
-|   281 |  976 | `		if( ppMeth ){ *ppMeth = pMeth; }` |
-|   281 |  977 | `		return &pMeth->sFunc;` |
-|     - |  978 | `	}` |
-|     - |  979 | `	{` |
-|   470 |  980 | `		ph7_class_instance *pClo = ReflectValueClosure(pVm, pTarget);` |
-|   470 |  981 | `		if( pClo ){` |
-|     - |  982 | `			SyString sAttr;` |
-|     - |  983 | `			ph7_value *pFn;` |
-|    53 |  984 | `			SyStringInitFromBuf(&sAttr, "__fn", 4);` |
-|    53 |  985 | `			pFn = PH7_ClassInstanceFetchAttr(pClo, &sAttr);` |
-|    53 |  986 | `			if( pFn == 0 \|\| (pFn->iFlags & MEMOBJ_STRING) == 0 \|\| SyBlobLength(&pFn->sBlob) < 1 ){` |
-|   ! 0 |  987 | `				return 0;` |
-|     - |  988 | `			}` |
-|    53 |  989 | `			pEntry = SyHashGet(&pVm->hFunction, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));` |
-|    53 |  990 | `			if( pEntry == 0 ){` |
-|     - |  991 | `				/* A Closure over a host function (Closure::fromCallable('strlen')) */` |
-|   ! 0 |  992 | `				pEntry = SyHashGet(&pVm->hHostFunction, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));` |
-|   ! 0 |  993 | `				if( pEntry && ppHost ){` |
-|   ! 0 |  994 | `					*ppHost = (ph7_user_func *)pEntry->pUserData;` |
-|   ! 0 |  995 | `					if( ppClosure ){ *ppClosure = pClo; }` |
-|   ! 0 |  996 | `				}` |
-|   ! 0 |  997 | `				return 0;` |
-|     - |  998 | `			}` |
-|    53 |  999 | `			if( ppClosure ){ *ppClosure = pClo; }` |
-|    53 | 1000 | `			return (ph7_vm_func *)pEntry->pUserData;` |
-|     - | 1001 | `		}` |
-|     - | 1002 | `	}` |
-|   418 | 1003 | `	if( pTarget->iFlags & MEMOBJ_STRING ){` |
-|   418 | 1004 | `		if( SyBlobLength(&pTarget->sBlob) < 1 ){` |
-|   ! 0 | 1005 | `			return 0;` |
-|     - | 1006 | `		}` |
-|   418 | 1007 | `		pEntry = SyHashGet(&pVm->hFunction, SyBlobData(&pTarget->sBlob), SyBlobLength(&pTarget->sBlob));` |
-|   418 | 1008 | `		if( pEntry ){` |
-|   285 | 1009 | `			return (ph7_vm_func *)pEntry->pUserData;` |
-|     - | 1010 | `		}` |
-|   134 | 1011 | `		pEntry = SyHashGet(&pVm->hHostFunction, SyBlobData(&pTarget->sBlob), SyBlobLength(&pTarget->sBlob));` |
-|   134 | 1012 | `		if( pEntry && ppHost ){` |
-|   130 | 1013 | `			*ppHost = (ph7_user_func *)pEntry->pUserData;` |
-|    64 | 1014 | `		}` |
-|    66 | 1015 | `	}` |
-|   134 | 1016 | `	return 0;` |
-|   376 | 1017 | `}` |
-|     - | 1018 | `/* Emit the shared descriptor fields of a compiled function. */` |
-|   570 | 1019 | `static void ReflectFillFuncCommon(ph7_context *pCtx, ph7_value *pInfo, ph7_vm_func *pFunc)` |
-|     1 | 1020 | `{` |
-|     - | 1021 | `	ph7_vm_func_arg *aArg;` |
-|     - | 1022 | `	ph7_value *pParams, *pStatics;` |
-|   571 | 1023 | `	int bVariadic = 0;` |
-|     - | 1024 | `	int bAnon;` |
-|     - | 1025 | `	sxu32 n;` |
-|     - | 1026 | ``	/* A capture-free `function(){}` compiles without the CLOSURE flag but`` |
-|     - | 1027 | `	 * still carries the synthesized "[lambda_N]" / "[closure_N]" name. */` |
-|   571 | 1028 | `	bAnon = (pFunc->iFlags & VM_FUNC_CLOSURE) != 0;` |
-|   570 | 1029 | `	if( !bAnon && SyStringLength(&pFunc->sName) > 9` |
-|   306 | 1030 | `	 && (SyMemcmp(SyStringData(&pFunc->sName), "[lambda_", 8) == 0` |
-|    82 | 1031 | `	  \|\| SyMemcmp(SyStringData(&pFunc->sName), "[closure_", 9) == 0) ){` |
-|     5 | 1032 | `		bAnon = 1;` |
-|     2 | 1033 | `	}` |
-|   571 | 1034 | `	ReflectMapAddStr(pCtx, pInfo, "name", SyStringData(&pFunc->sName), (int)SyStringLength(&pFunc->sName));` |
-|   571 | 1035 | `	ReflectMapAddBool(pCtx, pInfo, "internal", (pFunc->iFlags & VM_FUNC_INTERNAL) != 0);` |
-|   571 | 1036 | `	ReflectMapAddBool(pCtx, pInfo, "closure", bAnon);` |
-|   571 | 1037 | `	ReflectMapAddBool(pCtx, pInfo, "fstatic", (pFunc->iFlags & VM_FUNC_STATIC_CL) != 0);` |
-|   571 | 1038 | `	ReflectMapAddBool(pCtx, pInfo, "byref", (pFunc->iFlags & VM_FUNC_REF_RETURN) != 0);` |
-|   571 | 1039 | `	ReflectMapAddBool(pCtx, pInfo, "generator", (pFunc->iFlags & VM_FUNC_GENERATOR) != 0);` |
-|   571 | 1040 | `	ReflectMapAddBool(pCtx, pInfo, "strict", pFunc->bStrictTypes != 0);` |
-|   571 | 1041 | `	if( SyStringLength(&pFunc->sFile) > 0 ){` |
-|   567 | 1042 | `		ReflectMapAddStr(pCtx, pInfo, "file", SyStringData(&pFunc->sFile), (int)SyStringLength(&pFunc->sFile));` |
-|   284 | 1043 | `	}else{` |
-|     5 | 1044 | `		ReflectMapAddBool(pCtx, pInfo, "file", 0);` |
-|     - | 1045 | `	}` |
-|   571 | 1046 | `	ReflectMapAddInt(pCtx, pInfo, "line", (sxi64)pFunc->nLine);` |
-|   571 | 1047 | `	ReflectMapAddInt(pCtx, pInfo, "endline", (sxi64)pFunc->nEndLine);` |
-|   571 | 1048 | `	ReflectMapAddDoc(pCtx, pInfo, &pFunc->sDoc);` |
-|   571 | 1049 | `	ReflectMapAddAttrs(pCtx, pInfo, &pFunc->aAttrs);` |
-|   571 | 1050 | `	if( SyStringLength(&pFunc->sReturnTypeName) > 0 ){` |
-|   145 | 1051 | `		ReflectMapAddStr(pCtx, pInfo, "rettext", SyStringData(&pFunc->sReturnTypeName),` |
-|    96 | 1052 | `			(int)SyStringLength(&pFunc->sReturnTypeName));` |
-|   523 | 1053 | `	}else if( pFunc->nReturnType == MEMOBJ_VOID ){` |
-|     - | 1054 | `		/* The type-text renderer omits void/never atoms (compile.c notes the` |
-|     - | 1055 | `		 * root fix belongs there); name them here for getReturnType(). */` |
-|     3 | 1056 | `		ReflectMapAddStr(pCtx, pInfo, "rettext", "void", sizeof("void")-1);` |
-|   474 | 1057 | `	}else if( pFunc->nReturnType == MEMOBJ_NEVER ){` |
-|     3 | 1058 | `		ReflectMapAddStr(pCtx, pInfo, "rettext", "never", sizeof("never")-1);` |
-|     2 | 1059 | `	}else{` |
-|   471 | 1060 | `		ReflectMapAddNull(pCtx, pInfo, "rettext");` |
-|     - | 1061 | `	}` |
-|   571 | 1062 | `	ReflectMapAddBool(pCtx, pInfo, "retnullable", (pFunc->iFlags & VM_FUNC_RETURN_NULLABLE) != 0);` |
-|     - | 1063 | `	/* Parameters */` |
-|   571 | 1064 | `	pParams = ph7_context_new_array(pCtx);` |
-|   571 | 1065 | `	aArg = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);` |
-|  1823 | 1066 | `	for( n = 0 ; pParams && n < SySetUsed(&pFunc->aArgs) ; n++ ){` |
-|  1253 | 1067 | `		ph7_value *pMeta = ph7_context_new_array(pCtx);` |
-|  1253 | 1068 | `		if( pMeta == 0 ){ break; }` |
-|  1253 | 1069 | `		ReflectMapAddStr(pCtx, pMeta, "name", SyStringData(&aArg[n].sName), (int)SyStringLength(&aArg[n].sName));` |
-|  1253 | 1070 | `		ReflectMapAddInt(pCtx, pMeta, "pos", (sxi64)n);` |
-|  1253 | 1071 | `		ReflectMapAddBool(pCtx, pMeta, "byref", (aArg[n].iFlags & VM_FUNC_ARG_BY_REF) != 0);` |
-|  1253 | 1072 | `		ReflectMapAddBool(pCtx, pMeta, "variadic", (aArg[n].iFlags & VM_FUNC_ARG_VARIADIC) != 0);` |
-|     - | 1073 | `		/* The compiler never sets ARG_HAS_DEF; a default = compiled bytecode` |
-|     - | 1074 | `		 * (same test the OP_CALL default-value path uses). */` |
-|  1253 | 1075 | `		ReflectMapAddBool(pCtx, pMeta, "hasdef", SySetUsed(&aArg[n].aByteCode) > 0);` |
-|  1253 | 1076 | `		ReflectMapAddBool(pCtx, pMeta, "nullable", (aArg[n].iFlags & VM_FUNC_ARG_NULLABLE) != 0);` |
-|  1253 | 1077 | `		ReflectMapAddBool(pCtx, pMeta, "promoted", (aArg[n].iFlags & VM_FUNC_ARG_PROMOTED) != 0);` |
-|  1253 | 1078 | `		if( SyStringLength(&aArg[n].sTypeName) > 0 ){` |
-|   715 | 1079 | `			ReflectMapAddStr(pCtx, pMeta, "typetext", SyStringData(&aArg[n].sTypeName),` |
-|   476 | 1080 | `				(int)SyStringLength(&aArg[n].sTypeName));` |
-|   239 | 1081 | `		}else{` |
-|   777 | 1082 | `			ReflectMapAddNull(pCtx, pMeta, "typetext");` |
-|     - | 1083 | `		}` |
-|  1253 | 1084 | `		ReflectMapAddAttrs(pCtx, pMeta, &aArg[n].aAttrs);` |
-|  1253 | 1085 | `		ph7_array_add_elem(pParams, 0, pMeta);` |
-|  1253 | 1086 | `		if( aArg[n].iFlags & VM_FUNC_ARG_VARIADIC ){` |
-|   183 | 1087 | `			bVariadic = 1;` |
-|    91 | 1088 | `		}` |
-|   627 | 1089 | `	}` |
-|   571 | 1090 | `	if( pParams ){` |
-|   571 | 1091 | `		ph7_array_add_strkey_elem(pInfo, "params", pParams);` |
-|   285 | 1092 | `	}` |
-|   571 | 1093 | `	ReflectMapAddBool(pCtx, pInfo, "variadic", bVariadic);` |
-|     - | 1094 | `	/* Static variables: current value when the slot was initialized (first` |
-|     - | 1095 | `	 * call), otherwise the evaluated default — PHP's getStaticVariables` |
-|     - | 1096 | `	 * initializes on demand and reports the same values. */` |
-|   571 | 1097 | `	pStatics = ph7_context_new_array(pCtx);` |
-|   571 | 1098 | `	if( pStatics ){` |
-|   571 | 1099 | `		ph7_vm_func_static_var *aStatic = (ph7_vm_func_static_var *)SySetBasePtr(&pFunc->aStatic);` |
-|   599 | 1100 | `		for( n = 0 ; n < SySetUsed(&pFunc->aStatic) ; n++ ){` |
-|    29 | 1101 | `			ph7_value *pVal = 0;` |
-|     - | 1102 | `			ph7_value sScratch;` |
-|    29 | 1103 | `			int bScratch = 0;` |
-|    29 | 1104 | `			if( aStatic[n].nIdx != SXU32_HIGH ){` |
-|    11 | 1105 | `				pVal = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, aStatic[n].nIdx);` |
-|     5 | 1106 | `			}` |
-|    29 | 1107 | `			if( pVal == 0 ){` |
-|    19 | 1108 | `				PH7_MemObjInit(pCtx->pVm, &sScratch);` |
-|    19 | 1109 | `				if( SySetUsed(&aStatic[n].aByteCode) > 0 ){` |
-|    19 | 1110 | `					VmLocalExec(pCtx->pVm, &aStatic[n].aByteCode, &sScratch, FALSE);` |
-|     9 | 1111 | `				}` |
-|    19 | 1112 | `				pVal = &sScratch;` |
-|    19 | 1113 | `				bScratch = 1;` |
-|     9 | 1114 | `			}` |
-|    29 | 1115 | `			ReflectMapAddDyn(pCtx, pStatics, &aStatic[n].sName, pVal);` |
-|    29 | 1116 | `			if( bScratch ){` |
-|    19 | 1117 | `				PH7_MemObjRelease(&sScratch);` |
-|     9 | 1118 | `			}` |
-|    15 | 1119 | `		}` |
-|   571 | 1120 | `		ph7_array_add_strkey_elem(pInfo, "statics", pStatics);` |
-|   285 | 1121 | `	}` |
-|   571 | 1122 | `}` |
-|     - | 1123 | `/*` |
-|     - | 1124 | ` * array\|null __reflect_func_info(string\|Closure $target [, string $method])` |
-|     - | 1125 | ` * Function/method/closure descriptor for the PHP layer.` |
-|     - | 1126 | ` */` |
-|   702 | 1127 | `static int vm_builtin_reflect_func_info(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     2 | 1128 | `{` |
-|     - | 1129 | `	ph7_vm_func *pFunc;` |
-|   704 | 1130 | `	ph7_class *pClass = 0;` |
-|   704 | 1131 | `	ph7_class_method *pMeth = 0;` |
-|   704 | 1132 | `	ph7_user_func *pHost = 0;` |
-|   704 | 1133 | `	ph7_class_instance *pClosure = 0;` |
-|     - | 1134 | `	ph7_value *pInfo;` |
-|   704 | 1135 | `	if( nArg < 1 ){` |
-|   ! 0 | 1136 | `		ph7_result_null(pCtx);` |
-|   ! 0 | 1137 | `		return PH7_OK;` |
-|     - | 1138 | `	}` |
-|   704 | 1139 | `	pFunc = ReflectResolveCallable(pCtx, apArg[0], nArg > 1 ? apArg[1] : 0,` |
-|     - | 1140 | `		&pClass, &pMeth, &pHost, &pClosure);` |
-|   704 | 1141 | `	if( pFunc == 0 && pHost == 0 ){` |
-|     6 | 1142 | `		ph7_result_null(pCtx);` |
-|     6 | 1143 | `		return PH7_OK;` |
-|     - | 1144 | `	}` |
-|   700 | 1145 | `	pInfo = ph7_context_new_array(pCtx);` |
-|   700 | 1146 | `	if( pInfo == 0 ){` |
-|   ! 0 | 1147 | `		ph7_result_null(pCtx);` |
-|   ! 0 | 1148 | `		return PH7_OK;` |
-|     - | 1149 | `	}` |
-|   700 | 1150 | `	if( pFunc == 0 ){` |
-|     - | 1151 | `		/* Host (C builtin) function: no parameter metadata beyond arity */` |
-|   130 | 1152 | `		ph7_value *pParams = ph7_context_new_array(pCtx);` |
-|   130 | 1153 | `		ReflectMapAddStr(pCtx, pInfo, "name", SyStringData(&pHost->sName), (int)SyStringLength(&pHost->sName));` |
-|   130 | 1154 | `		ReflectMapAddBool(pCtx, pInfo, "internal", 1);` |
-|   130 | 1155 | `		ReflectMapAddBool(pCtx, pInfo, "closure", 0);` |
-|   130 | 1156 | `		ReflectMapAddBool(pCtx, pInfo, "fstatic", 0);` |
-|   130 | 1157 | `		ReflectMapAddBool(pCtx, pInfo, "byref", 0);` |
-|   130 | 1158 | `		ReflectMapAddBool(pCtx, pInfo, "generator", 0);` |
-|   130 | 1159 | `		ReflectMapAddBool(pCtx, pInfo, "strict", 0);` |
-|   130 | 1160 | `		ReflectMapAddBool(pCtx, pInfo, "file", 0);` |
-|   130 | 1161 | `		ReflectMapAddInt(pCtx, pInfo, "line", 0);` |
-|   130 | 1162 | `		ReflectMapAddInt(pCtx, pInfo, "endline", 0);` |
-|   130 | 1163 | `		ReflectMapAddBool(pCtx, pInfo, "doc", 0);` |
-|     - | 1164 | `		{` |
-|   130 | 1165 | `			ph7_value *pEmpty = ph7_context_new_array(pCtx);` |
-|   130 | 1166 | `			if( pEmpty ){` |
-|   130 | 1167 | `				ph7_array_add_strkey_elem(pInfo, "attrs", pEmpty);` |
-|    64 | 1168 | `			}` |
-|     - | 1169 | `		}` |
-|   130 | 1170 | `		if( pHost->zRet ){` |
-|   130 | 1171 | `			ReflectMapAddStr(pCtx, pInfo, "rettext", pHost->zRet, (int)SyStrlen(pHost->zRet));` |
-|    66 | 1172 | `		}else{` |
-|   ! 0 | 1173 | `			ReflectMapAddNull(pCtx, pInfo, "rettext");` |
-|     - | 1174 | `		}` |
-|   130 | 1175 | `		ReflectMapAddBool(pCtx, pInfo, "retnullable", 0);` |
-|   130 | 1176 | `		if( pParams ){` |
-|   130 | 1177 | `			ph7_array_add_strkey_elem(pInfo, "params", pParams);` |
-|    64 | 1178 | `		}` |
-|   130 | 1179 | `		ReflectMapAddBool(pCtx, pInfo, "variadic", 0);` |
-|   130 | 1180 | `		ReflectMapAddInt(pCtx, pInfo, "minarg", (sxi64)pHost->nMinArg);` |
-|   130 | 1181 | `		if( pHost->zSig ){` |
-|   130 | 1182 | `			ReflectMapAddStr(pCtx, pInfo, "sig", pHost->zSig, (int)SyStrlen(pHost->zSig));` |
-|    66 | 1183 | `		}else{` |
-|   ! 0 | 1184 | `			ReflectMapAddStr(pCtx, pInfo, "sig", "", 0);` |
-|     - | 1185 | `		}` |
-|   130 | 1186 | `		ph7_result_value(pCtx, pInfo);` |
-|   130 | 1187 | `		return PH7_OK;` |
-|     - | 1188 | `	}` |
-|   571 | 1189 | `	ReflectFillFuncCommon(pCtx, pInfo, pFunc);` |
-|   571 | 1190 | `	ReflectMapAddInt(pCtx, pInfo, "minarg", -1);` |
-|   571 | 1191 | `	if( (pFunc->iFlags & VM_FUNC_INTERNAL) && SySetUsed(&pFunc->aArgs) == 0 && pMeth == 0 ){` |
-|     - | 1192 | `		/* Embedded-PHP builtin (max/min...): declared argless, actual` |
-|     - | 1193 | `		 * signature comes from the static table */` |
-|     5 | 1194 | `		const char *zRet = 0;` |
-|     5 | 1195 | `		const char *zSig = PH7_VmBuiltinSigLookup(SyStringData(&pFunc->sName), SyStringLength(&pFunc->sName), &zRet);` |
-|     5 | 1196 | `		if( zSig ){` |
-|     5 | 1197 | `			ReflectMapAddStr(pCtx, pInfo, "sig", zSig, (int)SyStrlen(zSig));` |
-|     2 | 1198 | `		}` |
-|     5 | 1199 | `		if( zRet && SyStringLength(&pFunc->sReturnTypeName) == 0 ){` |
-|     5 | 1200 | `			ReflectMapAddStr(pCtx, pInfo, "ret2", zRet, (int)SyStrlen(zRet));` |
-|     2 | 1201 | `		}` |
-|     2 | 1202 | `	}` |
-|   571 | 1203 | `	if( pMeth && pClass ){` |
-|   259 | 1204 | `		ph7_class *pDecl = ReflectMethodDeclClass(pClass, pMeth);` |
-|   259 | 1205 | `		ReflectMapAddStr(pCtx, pInfo, "class", SyStringData(&pClass->sName), (int)SyStringLength(&pClass->sName));` |
-|   259 | 1206 | `		ReflectMapAddStr(pCtx, pInfo, "decl", SyStringData(&pDecl->sName), (int)SyStringLength(&pDecl->sName));` |
-|   259 | 1207 | `		ReflectMapAddInt(pCtx, pInfo, "vis", (sxi64)pMeth->iProtection);` |
-|   259 | 1208 | `		ReflectMapAddBool(pCtx, pInfo, "mstatic", (pMeth->iFlags & PH7_CLASS_ATTR_STATIC) != 0);` |
-|   259 | 1209 | `		ReflectMapAddBool(pCtx, pInfo, "abstract", (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) != 0);` |
-|   259 | 1210 | `		ReflectMapAddBool(pCtx, pInfo, "final", (pMeth->iFlags & PH7_CLASS_ATTR_FINAL) != 0);` |
-|   129 | 1211 | `	}` |
-|   571 | 1212 | `	if( pClosure ){` |
-|     - | 1213 | `		SyString sAttr;` |
-|     - | 1214 | `		ph7_value *pAttr;` |
-|     - | 1215 | `		ph7_value *pUsed;` |
-|    49 | 1216 | `		SyStringInitFromBuf(&sAttr, "__this", 6);` |
-|    49 | 1217 | `		pAttr = PH7_ClassInstanceFetchAttr(pClosure, &sAttr);` |
-|    49 | 1218 | `		if( pAttr && (pAttr->iFlags & MEMOBJ_OBJ) ){` |
-|   ! 0 | 1219 | `			ph7_value *pKey = ph7_context_new_scalar(pCtx);` |
-|   ! 0 | 1220 | `			if( pKey ){` |
-|   ! 0 | 1221 | `				ph7_value_string(pKey, "this", 4);` |
-|   ! 0 | 1222 | `				ph7_array_add_elem(pInfo, pKey, pAttr);` |
-|   ! 0 | 1223 | `			}` |
-|   ! 0 | 1224 | `		}else{` |
-|    49 | 1225 | `			ReflectMapAddNull(pCtx, pInfo, "this");` |
-|     - | 1226 | `		}` |
-|    49 | 1227 | `		SyStringInitFromBuf(&sAttr, "__scope", 7);` |
-|    49 | 1228 | `		pAttr = PH7_ClassInstanceFetchAttr(pClosure, &sAttr);` |
-|    49 | 1229 | `		if( pAttr && (pAttr->iFlags & MEMOBJ_STRING) && SyBlobLength(&pAttr->sBlob) > 0 ){` |
-|   ! 0 | 1230 | `			ReflectMapAddStr(pCtx, pInfo, "scope", (const char *)SyBlobData(&pAttr->sBlob),` |
-|   ! 0 | 1231 | `				(int)SyBlobLength(&pAttr->sBlob));` |
-|   ! 0 | 1232 | `		}else{` |
-|    49 | 1233 | `			ReflectMapAddNull(pCtx, pInfo, "scope");` |
-|     - | 1234 | `		}` |
-|     - | 1235 | `		/* use(...) imports; the implicit auto-captured $this is flagged IGNORE */` |
-|    49 | 1236 | `		pUsed = ph7_context_new_array(pCtx);` |
-|    49 | 1237 | `		if( pUsed ){` |
-|    49 | 1238 | `			ph7_vm_func_closure_env *aEnv = (ph7_vm_func_closure_env *)SySetBasePtr(&pFunc->aClosureEnv);` |
-|     - | 1239 | `			sxu32 n;` |
-|   107 | 1240 | `			for( n = 0 ; n < SySetUsed(&pFunc->aClosureEnv) ; n++ ){` |
-|    59 | 1241 | `				if( aEnv[n].iFlags & VM_FUNC_ARG_IGNORE ){` |
-|    41 | 1242 | `					continue;` |
-|     - | 1243 | `				}` |
-|    18 | 1244 | `				if( SyStringLength(&aEnv[n].sName) == sizeof("this")-1` |
-|    10 | 1245 | `				 && SyMemcmp(SyStringData(&aEnv[n].sName), "this", sizeof("this")-1) == 0 ){` |
-|   ! 0 | 1246 | `					continue;` |
-|     - | 1247 | `				}` |
-|    19 | 1248 | `				if( (aEnv[n].iFlags & VM_FUNC_ARG_BY_REF) && aEnv[n].nIdx != SXU32_HIGH ){` |
-|     - | 1249 | `					/* Captured by reference: report the slot's live value */` |
-|     5 | 1250 | `					ph7_value *pLive = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, aEnv[n].nIdx);` |
-|     5 | 1251 | `					ReflectMapAddDyn(pCtx, pUsed, &aEnv[n].sName, pLive ? pLive : &aEnv[n].sValue);` |
-|     5 | 1252 | `					continue;` |
-|     - | 1253 | `				}` |
-|    15 | 1254 | `				ReflectMapAddDyn(pCtx, pUsed, &aEnv[n].sName, &aEnv[n].sValue);` |
-|     8 | 1255 | `			}` |
-|    49 | 1256 | `			ph7_array_add_strkey_elem(pInfo, "used", pUsed);` |
-|    24 | 1257 | `		}` |
-|    24 | 1258 | `	}` |
-|   571 | 1259 | `	ph7_result_value(pCtx, pInfo);` |
-|   571 | 1260 | `	return PH7_OK;` |
-|   353 | 1261 | `}` |
-|     - | 1262 | `/*` |
-|     - | 1263 | ` * mixed __reflect_param_default(string\|Closure $target, ?string $method, int $idx)` |
-|     - | 1264 | ` * Evaluate a parameter's compiled default expression.` |
-|     - | 1265 | ` */` |
-|    12 | 1266 | `static int vm_builtin_reflect_param_default(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     1 | 1267 | `{` |
-|     - | 1268 | `	ph7_vm_func *pFunc;` |
-|     - | 1269 | `	ph7_vm_func_arg *pArg;` |
-|     - | 1270 | `	ph7_value sValue;` |
-|     - | 1271 | `	sxu32 nIdx;` |
-|    13 | 1272 | `	if( nArg < 3 ){` |
-|   ! 0 | 1273 | `		ph7_result_null(pCtx);` |
-|   ! 0 | 1274 | `		return PH7_OK;` |
-|     - | 1275 | `	}` |
-|    13 | 1276 | `	pFunc = ReflectResolveCallable(pCtx, apArg[0], apArg[1], 0, 0, 0, 0);` |
-|    13 | 1277 | `	nIdx = (sxu32)ph7_value_to_int(apArg[2]);` |
-|    12 | 1278 | `	if( pFunc == 0 \|\| (pArg = (ph7_vm_func_arg *)SySetAt(&pFunc->aArgs, nIdx)) == 0` |
-|    13 | 1279 | `	 \|\| SySetUsed(&pArg->aByteCode) < 1 ){` |
-|   ! 0 | 1280 | `		ph7_result_null(pCtx);` |
-|   ! 0 | 1281 | `		return PH7_OK;` |
-|     - | 1282 | `	}` |
-|    13 | 1283 | `	PH7_MemObjInit(pCtx->pVm, &sValue);` |
-|    13 | 1284 | `	VmLocalExec(pCtx->pVm, &pArg->aByteCode, &sValue, FALSE);` |
-|    13 | 1285 | `	ph7_result_value(pCtx, &sValue);` |
-|    13 | 1286 | `	PH7_MemObjRelease(&sValue);` |
-|    13 | 1287 | `	return PH7_OK;` |
-|     7 | 1288 | `}` |
-|     - | 1289 | `/*` |
-|     - | 1290 | ` * string\|null __reflect_param_defconst(string\|Closure $target, ?string $method, int $idx)` |
-|     - | 1291 | ` * When a parameter's default is a plain global-constant reference, its` |
-|     - | 1292 | ` * source name; null otherwise. A constant default compiles to exactly` |
-|     - | 1293 | ` * [ OP_LOADC (EXPAND) , OP_DONE ] with the name in the literal table.` |
-|     - | 1294 | ` */` |
-|     6 | 1295 | `static int vm_builtin_reflect_param_defconst(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     1 | 1296 | `{` |
-|     - | 1297 | `	ph7_vm_func *pFunc;` |
-|     - | 1298 | `	ph7_vm_func_arg *pArg;` |
-|     - | 1299 | `	VmInstr *aInstr;` |
-|     - | 1300 | `	ph7_value *pLit;` |
-|     - | 1301 | `	sxu32 nIdx;` |
-|     7 | 1302 | `	if( nArg < 3 ){` |
-|   ! 0 | 1303 | `		ph7_result_null(pCtx);` |
-|   ! 0 | 1304 | `		return PH7_OK;` |
-|     - | 1305 | `	}` |
-|     7 | 1306 | `	pFunc = ReflectResolveCallable(pCtx, apArg[0], apArg[1], 0, 0, 0, 0);` |
-|     7 | 1307 | `	nIdx = (sxu32)ph7_value_to_int(apArg[2]);` |
-|     6 | 1308 | `	if( pFunc == 0 \|\| (pArg = (ph7_vm_func_arg *)SySetAt(&pFunc->aArgs, nIdx)) == 0` |
-|     7 | 1309 | `	 \|\| SySetUsed(&pArg->aByteCode) != 2 ){` |
-|     3 | 1310 | `		ph7_result_null(pCtx);` |
-|     3 | 1311 | `		return PH7_OK;` |
-|     - | 1312 | `	}` |
-|     5 | 1313 | `	aInstr = (VmInstr *)SySetBasePtr(&pArg->aByteCode);` |
-|     4 | 1314 | `	if( aInstr[0].iOp != PH7_OP_LOADC \|\| (aInstr[0].iP1 & PH7_LOADC_EXPAND) == 0` |
-|     5 | 1315 | `	 \|\| aInstr[1].iOp != PH7_OP_DONE ){` |
-|   ! 0 | 1316 | `		ph7_result_null(pCtx);` |
-|   ! 0 | 1317 | `		return PH7_OK;` |
-|     - | 1318 | `	}` |
-|     5 | 1319 | `	pLit = (ph7_value *)SySetAt(&pCtx->pVm->aLitObj, aInstr[0].iP2);` |
-|     5 | 1320 | `	if( pLit == 0 \|\| SyBlobLength(&pLit->sBlob) < 1 ){` |
-|   ! 0 | 1321 | `		ph7_result_null(pCtx);` |
-|   ! 0 | 1322 | `		return PH7_OK;` |
-|     - | 1323 | `	}` |
-|     5 | 1324 | `	ph7_result_string(pCtx, (const char *)SyBlobData(&pLit->sBlob), (int)SyBlobLength(&pLit->sBlob));` |
-|     5 | 1325 | `	return PH7_OK;` |
-|     4 | 1326 | `}` |
-|     - | 1327 | `/*` |
-|     - | 1328 | ` * mixed __reflect_invoke(mixed $target, ?string $method, ?object $this, array $args)` |
-|     - | 1329 | ` * Visibility-bypassing invocation (methods dispatch by VM name; functions` |
-|     - | 1330 | ` * and closures ride PH7_VmCallUserFunction like call_user_func_array).` |
-|     - | 1331 | ` */` |
-|    20 | 1332 | `static int vm_builtin_reflect_invoke(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     1 | 1333 | `{` |
-|    21 | 1334 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     - | 1335 | `	ph7_value sResult;` |
-|     - | 1336 | `	SySet aCallArg;` |
-|     - | 1337 | `	sxi32 rc;` |
-|    21 | 1338 | `	if( nArg < 4 ){` |
-|   ! 0 | 1339 | `		ph7_result_null(pCtx);` |
-|   ! 0 | 1340 | `		return PH7_OK;` |
-|     - | 1341 | `	}` |
-|    21 | 1342 | `	PH7_MemObjInit(pVm, &sResult);` |
-|    21 | 1343 | `	sResult.nIdx = SXU32_HIGH;` |
-|    21 | 1344 | `	SySetInit(&aCallArg, &pVm->sAllocator, sizeof(ph7_value *));` |
-|    21 | 1345 | `	ReflectCollectArgs(pCtx, apArg[3], &aCallArg, 0);` |
-|    21 | 1346 | `	if( (apArg[1]->iFlags & MEMOBJ_STRING) && SyBlobLength(&apArg[1]->sBlob) > 0 ){` |
-|    11 | 1347 | `		ph7_class *pClass = 0;` |
-|    11 | 1348 | `		ph7_class_method *pMeth = 0;` |
-|    11 | 1349 | `		ph7_class_instance *pThis = 0;` |
-|    11 | 1350 | `		ReflectResolveCallable(pCtx, apArg[0], apArg[1], &pClass, &pMeth, 0, 0);` |
-|    11 | 1351 | `		if( pMeth == 0 ){` |
-|   ! 0 | 1352 | `			SySetRelease(&aCallArg);` |
-|   ! 0 | 1353 | `			PH7_MemObjRelease(&sResult);` |
-|   ! 0 | 1354 | `			ph7_result_null(pCtx);` |
-|   ! 0 | 1355 | `			return PH7_OK;` |
-|     - | 1356 | `		}` |
-|    11 | 1357 | `		if( apArg[2]->iFlags & MEMOBJ_OBJ ){` |
-|     7 | 1358 | `			pThis = (ph7_class_instance *)apArg[2]->x.pOther;` |
-|     3 | 1359 | `		}` |
-|     - | 1360 | `		/* Reflection ignores method visibility (PHP 8.1+); the flag is` |
-|     - | 1361 | `		 * consumed by the first OP_CALL, i.e. this synthetic one. */` |
-|    11 | 1362 | `		pVm->bReflectBypass = 1;` |
-|    16 | 1363 | `		rc = PH7_VmCallClassMethod(pVm, pThis, pMeth, &sResult,` |
-|    10 | 1364 | `			(int)SySetUsed(&aCallArg), (ph7_value **)SySetBasePtr(&aCallArg));` |
-|    11 | 1365 | `		pVm->bReflectBypass = 0;` |
-|     6 | 1366 | `	}else{` |
-|    16 | 1367 | `		rc = PH7_VmCallUserFunction(pVm, apArg[0],` |
-|    10 | 1368 | `			(int)SySetUsed(&aCallArg), (ph7_value **)SySetBasePtr(&aCallArg), &sResult);` |
-|     - | 1369 | `	}` |
-|    21 | 1370 | `	SySetRelease(&aCallArg);` |
-|    21 | 1371 | `	if( rc == PH7_EXCEPTION \|\| rc == PH7_ABORT ){` |
-|   ! 0 | 1372 | `		PH7_MemObjRelease(&sResult);` |
-|   ! 0 | 1373 | `		return rc;` |
-|     - | 1374 | `	}` |
-|    21 | 1375 | `	ph7_result_value(pCtx, &sResult);` |
-|    21 | 1376 | `	PH7_MemObjRelease(&sResult);` |
-|    21 | 1377 | `	return PH7_OK;` |
-|    11 | 1378 | `}` |
-|     - | 1379 | `/*` |
-|     - | 1380 | ` * Closure __reflect_closure(mixed $target, ?string $method, ?object $this)` |
-|     - | 1381 | ` * Mint a Closure for a function or method, bound and scoped like the` |
-|     - | 1382 | ` * first-class-callable path.` |
-|     - | 1383 | ` */` |
-|     6 | 1384 | `static int vm_builtin_reflect_closure(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     1 | 1385 | `{` |
-|     7 | 1386 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     7 | 1387 | `	ph7_class *pClass = 0;` |
-|     7 | 1388 | `	ph7_class_method *pMeth = 0;` |
-|     7 | 1389 | `	ph7_class_instance *pClosure = 0;` |
-|     - | 1390 | `	ph7_vm_func *pFunc;` |
-|     7 | 1391 | `	if( nArg < 3 ){` |
-|   ! 0 | 1392 | `		ph7_result_null(pCtx);` |
-|   ! 0 | 1393 | `		return PH7_OK;` |
-|     - | 1394 | `	}` |
-|     7 | 1395 | `	pFunc = ReflectResolveCallable(pCtx, apArg[0], apArg[1], &pClass, &pMeth, 0, &pClosure);` |
-|     7 | 1396 | `	if( pClosure ){` |
-|     - | 1397 | `		/* Already a Closure: hand the same instance back */` |
-|   ! 0 | 1398 | `		return ReflectResultExistingObject(pCtx, pClosure);` |
-|     - | 1399 | `	}` |
-|     7 | 1400 | `	if( pMeth && pClass ){` |
-|     5 | 1401 | `		ph7_class_instance *pThis = 0;` |
-|     5 | 1402 | `		if( apArg[2]->iFlags & MEMOBJ_OBJ ){` |
-|     3 | 1403 | `			pThis = (ph7_class_instance *)apArg[2]->x.pOther;` |
-|     1 | 1404 | `		}` |
-|     7 | 1405 | `		return ReflectResultObject(pCtx,` |
-|     4 | 1406 | `			PH7_VmNewClosure(pVm, &pMeth->sFunc.sName, pThis, &pClass->sName));` |
-|     - | 1407 | `	}` |
-|     3 | 1408 | `	if( pFunc ){` |
-|     3 | 1409 | `		return ReflectResultObject(pCtx, PH7_VmNewClosure(pVm, &pFunc->sName, 0, 0));` |
-|     - | 1410 | `	}` |
-|     - | 1411 | `	/* Host function by name */` |
-|   ! 0 | 1412 | `	if( apArg[0]->iFlags & MEMOBJ_STRING ){` |
-|     - | 1413 | `		SyString sName;` |
-|   ! 0 | 1414 | `		SyStringInitFromBuf(&sName, (const char *)SyBlobData(&apArg[0]->sBlob), SyBlobLength(&apArg[0]->sBlob));` |
-|   ! 0 | 1415 | `		return ReflectResultObject(pCtx, PH7_VmNewClosure(pVm, &sName, 0, 0));` |
-|     - | 1416 | `	}` |
-|   ! 0 | 1417 | `	ph7_result_null(pCtx);` |
-|   ! 0 | 1418 | `	return PH7_OK;` |
-|     4 | 1419 | `}` |
-|     - | 1420 | `/*` |
-|     - | 1421 | ` * Resolve a Generator object into its wrapper. Mirrors the static` |
-|     - | 1422 | ` * VmGeneratorExtractCtx in vm.c: the $__ctx attribute carries the` |
-|     - | 1423 | ` * ph7_generator pointer as a resource value.` |
-|     - | 1424 | ` */` |
-|    22 | 1425 | `static ph7_generator * ReflectGeneratorCtx(ph7_vm *pVm, ph7_value *pVal)` |
-|     1 | 1426 | `{` |
-|     - | 1427 | `	ph7_class_instance *pThis;` |
-|     - | 1428 | `	ph7_value *pAttr;` |
-|     - | 1429 | `	SyString sAttr;` |
-|    23 | 1430 | `	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 \|\| pVm->pGeneratorClass == 0 ){` |
-|   ! 0 | 1431 | `		return 0;` |
-|     - | 1432 | `	}` |
-|    23 | 1433 | `	pThis = (ph7_class_instance *)pVal->x.pOther;` |
-|    23 | 1434 | `	if( pThis->pClass != pVm->pGeneratorClass ){` |
-|   ! 0 | 1435 | `		return 0;` |
-|     - | 1436 | `	}` |
-|    23 | 1437 | `	SyStringInitFromBuf(&sAttr, "__ctx", 5);` |
-|    23 | 1438 | `	pAttr = PH7_ClassInstanceFetchAttr(pThis, &sAttr);` |
-|    23 | 1439 | `	if( pAttr == 0 \|\| (pAttr->iFlags & MEMOBJ_RES) == 0 ){` |
-|   ! 0 | 1440 | `		return 0;` |
-|     - | 1441 | `	}` |
-|    23 | 1442 | `	return (ph7_generator *)pAttr->x.pOther;` |
-|    12 | 1443 | `}` |
-|     - | 1444 | `/*` |
-|     - | 1445 | ` * array\|null __reflect_gen_info(Generator $g)` |
-|     - | 1446 | ` * {state, closed, executing, kind ('fn'\|'method'), name, class?, this}` |
-|     - | 1447 | ` */` |
-|    16 | 1448 | `static int vm_builtin_reflect_gen_info(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     1 | 1449 | `{` |
-|    17 | 1450 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     - | 1451 | `	ph7_generator *pGen;` |
-|     - | 1452 | `	ph7_exec_ctx *pExec;` |
-|     - | 1453 | `	ph7_value *pInfo;` |
-|    17 | 1454 | `	if( nArg < 1 \|\| (pGen = ReflectGeneratorCtx(pVm, apArg[0])) == 0 \|\| pGen->pCtx == 0 ){` |
-|   ! 0 | 1455 | `		ph7_result_null(pCtx);` |
-|   ! 0 | 1456 | `		return PH7_OK;` |
-|     - | 1457 | `	}` |
-|    17 | 1458 | `	pExec = pGen->pCtx;` |
-|    17 | 1459 | `	pInfo = ph7_context_new_array(pCtx);` |
-|    17 | 1460 | `	if( pInfo == 0 ){` |
-|   ! 0 | 1461 | `		ph7_result_null(pCtx);` |
-|   ! 0 | 1462 | `		return PH7_OK;` |
-|     - | 1463 | `	}` |
-|    17 | 1464 | `	ReflectMapAddInt(pCtx, pInfo, "state", (sxi64)pExec->iState);` |
-|    24 | 1465 | `	ReflectMapAddBool(pCtx, pInfo, "closed",` |
-|    16 | 1466 | `		pExec->iState == PH7_CTX_STATE_COMPLETED \|\| pExec->iState == PH7_CTX_STATE_CLOSED);` |
-|    17 | 1467 | `	ReflectMapAddBool(pCtx, pInfo, "executing", pVm->pActiveCtx == pExec);` |
-|    17 | 1468 | `	if( pExec->pFunc ){` |
-|    17 | 1469 | `		ph7_vm_func *pFunc = pExec->pFunc;` |
-|    19 | 1470 | `		if( (pFunc->iFlags & VM_FUNC_CLASS_METHOD) && pFunc->pUserData ){` |
-|     5 | 1471 | `			ph7_class *pDecl = (ph7_class *)pFunc->pUserData;` |
-|     5 | 1472 | `			ReflectMapAddStr(pCtx, pInfo, "kind", "method", sizeof("method")-1);` |
-|     5 | 1473 | `			ReflectMapAddStr(pCtx, pInfo, "class", SyStringData(&pDecl->sName), (int)SyStringLength(&pDecl->sName));` |
-|     3 | 1474 | `		}else{` |
-|    13 | 1475 | `			ReflectMapAddStr(pCtx, pInfo, "kind", "fn", sizeof("fn")-1);` |
-|     - | 1476 | `		}` |
-|    17 | 1477 | `		ReflectMapAddStr(pCtx, pInfo, "name", SyStringData(&pFunc->sName), (int)SyStringLength(&pFunc->sName));` |
-|     8 | 1478 | `	}` |
-|     - | 1479 | `	{` |
-|     - | 1480 | `		/* The coroutine frame installs $this as a frame VARIABLE (see` |
-|     - | 1481 | `		 * VmFiberSetupFrame), not as pFrame->pThis — check both. */` |
-|    17 | 1482 | `		ph7_value *pThisVal = 0;` |
-|    17 | 1483 | `		if( pExec->pFrame ){` |
-|    17 | 1484 | `			SyHashEntry *pVar = SyHashGet(&pExec->pFrame->hVar, "this", sizeof("this")-1);` |
-|    17 | 1485 | `			if( pVar ){` |
-|     5 | 1486 | `				ph7_value *pSlot = (ph7_value *)SySetAt(&pVm->aMemObj, (sxu32)SX_PTR_TO_INT(pVar->pUserData));` |
-|     5 | 1487 | `				if( pSlot && (pSlot->iFlags & MEMOBJ_OBJ) ){` |
-|     5 | 1488 | `					pThisVal = pSlot;` |
-|     2 | 1489 | `				}` |
-|     2 | 1490 | `			}` |
-|    17 | 1491 | `			if( pThisVal == 0 && pExec->pFrame->pThis ){` |
-|     - | 1492 | `				ph7_value sThis;` |
-|   ! 0 | 1493 | `				ph7_value *pKey = ph7_context_new_scalar(pCtx);` |
-|   ! 0 | 1494 | `				PH7_MemObjInit(pVm, &sThis);` |
-|   ! 0 | 1495 | `				pExec->pFrame->pThis->iRef++;` |
-|   ! 0 | 1496 | `				sThis.x.pOther = pExec->pFrame->pThis;` |
-|   ! 0 | 1497 | `				MemObjSetType(&sThis, MEMOBJ_OBJ);` |
-|   ! 0 | 1498 | `				if( pKey ){` |
-|   ! 0 | 1499 | `					ph7_value_string(pKey, "this", 4);` |
-|   ! 0 | 1500 | `					ph7_array_add_elem(pInfo, pKey, &sThis); /* copies (takes its own ref) */` |
-|   ! 0 | 1501 | `				}` |
-|   ! 0 | 1502 | `				PH7_MemObjRelease(&sThis);` |
-|   ! 0 | 1503 | `				pThisVal = (ph7_value *)1; /* handled */` |
-|   ! 0 | 1504 | `			}` |
-|     8 | 1505 | `		}` |
-|    17 | 1506 | `		if( pThisVal == 0 ){` |
-|    13 | 1507 | `			ReflectMapAddNull(pCtx, pInfo, "this");` |
-|    11 | 1508 | `		}else if( pThisVal != (ph7_value *)1 ){` |
-|     5 | 1509 | `			ph7_value *pKey = ph7_context_new_scalar(pCtx);` |
-|     5 | 1510 | `			if( pKey ){` |
-|     5 | 1511 | `				ph7_value_string(pKey, "this", 4);` |
-|     5 | 1512 | `				ph7_array_add_elem(pInfo, pKey, pThisVal);` |
-|     2 | 1513 | `			}` |
-|     2 | 1514 | `		}` |
-|     - | 1515 | `	}` |
-|    17 | 1516 | `	ph7_result_value(pCtx, pInfo);` |
-|    17 | 1517 | `	return PH7_OK;` |
-|     9 | 1518 | `}` |
-|     - | 1519 | `/*` |
-|     - | 1520 | ` * Generator __reflect_gen_exec(Generator $g)` |
-|     - | 1521 | `` * Follow `yield from` delegation to the innermost executing generator`` |
-|     - | 1522 | ` * (PHP's ReflectionGenerator::getExecutingGenerator).` |
-|     - | 1523 | ` */` |
-|     4 | 1524 | `static int vm_builtin_reflect_gen_exec(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     1 | 1525 | `{` |
-|     5 | 1526 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     - | 1527 | `	ph7_generator *pGen;` |
-|     - | 1528 | `	ph7_value *pCur;` |
-|     5 | 1529 | `	int iDepth = 0;` |
-|     5 | 1530 | `	if( nArg < 1 \|\| (pGen = ReflectGeneratorCtx(pVm, apArg[0])) == 0 ){` |
-|   ! 0 | 1531 | `		ph7_result_null(pCtx);` |
-|   ! 0 | 1532 | `		return PH7_OK;` |
-|     - | 1533 | `	}` |
-|     5 | 1534 | `	pCur = apArg[0];` |
-|     9 | 1535 | `	while( pGen && pGen->pCtx && pGen->pCtx->iDelegateState == 3` |
-|     8 | 1536 | `	 && iDepth <= REFLECT_WALK_MAX_DEPTH ){` |
-|     3 | 1537 | `		ph7_generator *pInner = ReflectGeneratorCtx(pVm, &pGen->pCtx->sDelegate);` |
-|     3 | 1538 | `		if( pInner == 0 ){` |
-|   ! 0 | 1539 | `			break;` |
-|     - | 1540 | `		}` |
-|     3 | 1541 | `		pCur = &pGen->pCtx->sDelegate;` |
-|     3 | 1542 | `		pGen = pInner;` |
-|     3 | 1543 | `		iDepth++;` |
-|     1 | 1544 | `	}` |
-|     5 | 1545 | `	return ReflectResultExistingObject(pCtx, (ph7_class_instance *)pCur->x.pOther);` |
-|     3 | 1546 | `}` |
-|     - | 1547 | `/*` |
-|     - | 1548 | ` * array\|null __reflect_const_info(string $name)` |
-|     - | 1549 | ` * Global-constant descriptor: {value}. Null when undefined. File/origin` |
-|     - | 1550 | ` * metadata arrives with the C5 constant-metadata work.` |
-|     - | 1551 | ` */` |
-|    40 | 1552 | `static int vm_builtin_reflect_const_info(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     1 | 1553 | `{` |
-|    41 | 1554 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     - | 1555 | `	SyHashEntry *pEntry;` |
-|     - | 1556 | `	ph7_constant *pCons;` |
-|     - | 1557 | `	ph7_value *pInfo;` |
-|     - | 1558 | `	ph7_value sValue;` |
-|     - | 1559 | `	const char *zName;` |
-|     - | 1560 | `	int nLen;` |
-|    41 | 1561 | `	if( nArg < 1 ){` |
-|   ! 0 | 1562 | `		ph7_result_null(pCtx);` |
-|   ! 0 | 1563 | `		return PH7_OK;` |
-|     - | 1564 | `	}` |
-|    41 | 1565 | `	zName = ph7_value_to_string(apArg[0], &nLen);` |
-|    41 | 1566 | `	pEntry = nLen > 0 ? SyHashGet(&pVm->hConstant, (const void *)zName, (sxu32)nLen) : 0;` |
-|    41 | 1567 | `	if( pEntry == 0 ){` |
-|     3 | 1568 | `		ph7_result_null(pCtx);` |
-|     3 | 1569 | `		return PH7_OK;` |
-|     - | 1570 | `	}` |
-|    39 | 1571 | `	pCons = (ph7_constant *)pEntry->pUserData;` |
-|    39 | 1572 | `	pInfo = ph7_context_new_array(pCtx);` |
-|    39 | 1573 | `	if( pInfo == 0 ){` |
-|   ! 0 | 1574 | `		ph7_result_null(pCtx);` |
-|   ! 0 | 1575 | `		return PH7_OK;` |
-|     - | 1576 | `	}` |
-|    39 | 1577 | `	PH7_MemObjInit(pVm, &sValue);` |
-|    39 | 1578 | `	if( pCons->xExpand ){` |
-|    39 | 1579 | `		pCons->xExpand(&sValue, pCons->pUserData);` |
-|    19 | 1580 | `	}` |
-|     - | 1581 | `	{` |
-|    39 | 1582 | `		ph7_value *pKey = ph7_context_new_scalar(pCtx);` |
-|    39 | 1583 | `		if( pKey ){` |
-|    39 | 1584 | `			ph7_value_string(pKey, "value", 5);` |
-|    39 | 1585 | `			ph7_array_add_elem(pInfo, pKey, &sValue);` |
-|    19 | 1586 | `		}` |
-|     - | 1587 | `	}` |
-|    39 | 1588 | `	PH7_MemObjRelease(&sValue);` |
-|    39 | 1589 | `	ReflectMapAddBool(pCtx, pInfo, "internal", pCons->bUserDefined == 0);` |
-|    39 | 1590 | `	if( SyStringLength(&pCons->sFile) > 0 ){` |
-|    25 | 1591 | `		ReflectMapAddStr(pCtx, pInfo, "file", SyStringData(&pCons->sFile), (int)SyStringLength(&pCons->sFile));` |
-|    13 | 1592 | `	}else{` |
-|    15 | 1593 | `		ReflectMapAddBool(pCtx, pInfo, "file", 0);` |
-|     - | 1594 | `	}` |
-|    39 | 1595 | `	ReflectMapAddInt(pCtx, pInfo, "line", (sxi64)pCons->nLine);` |
-|    39 | 1596 | `	ReflectMapAddAttrs(pCtx, pInfo, &pCons->aAttrs);` |
-|    39 | 1597 | `	ph7_result_value(pCtx, pInfo);` |
-|    39 | 1598 | `	return PH7_OK;` |
-|    21 | 1599 | `}` |
-|     - | 1600 | `/*` |
-|     - | 1601 | ` * int\|null __reflect_ref_id(array $arr, int\|string $key)` |
-|     - | 1602 | ` * The element's slot index when the element is a reference (its slot has` |
-|     - | 1603 | ` * a reference-table record with at least two links), null otherwise.` |
-|     - | 1604 | ` */` |
-|     6 | 1605 | `static int vm_builtin_reflect_ref_id(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     1 | 1606 | `{` |
-|     - | 1607 | `	ph7_hashmap *pMap;` |
-|     7 | 1608 | `	ph7_hashmap_node *pNode = 0;` |
-|     7 | 1609 | `	if( nArg < 2 \|\| !ph7_value_is_array(apArg[0]) ){` |
-|   ! 0 | 1610 | `		ph7_result_null(pCtx);` |
-|   ! 0 | 1611 | `		return PH7_OK;` |
-|     - | 1612 | `	}` |
-|     7 | 1613 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|     7 | 1614 | `	if( PH7_HashmapLookup(pMap, apArg[1], &pNode) != SXRET_OK \|\| pNode == 0 ){` |
-|   ! 0 | 1615 | `		ph7_result_null(pCtx);` |
-|   ! 0 | 1616 | `		return PH7_OK;` |
-|     - | 1617 | `	}` |
-|     7 | 1618 | `	if( PH7_VmSlotRefCount(pCtx->pVm, pNode->nValIdx) < 2 ){` |
-|     3 | 1619 | `		ph7_result_null(pCtx);` |
-|     3 | 1620 | `		return PH7_OK;` |
-|     - | 1621 | `	}` |
-|     5 | 1622 | `	ph7_result_int64(pCtx, (sxi64)pNode->nValIdx);` |
-|     5 | 1623 | `	return PH7_OK;` |
-|     4 | 1624 | `}` |
-|     - | 1625 | `/*` |
-|     - | 1626 | ` * array\|null __reflect_attr_args(string $kind, mixed $target, ?string $member,` |
-|     - | 1627 | ` *                                int $paramIdx, int $attrIdx)` |
-|     - | 1628 | ` * Evaluate the recorded argument expressions of one declared attribute:` |
-|     - | 1629 | ` * kind 'class' (target = class), 'attr' (class + property/constant name),` |
-|     - | 1630 | ` * 'method' (class + method), 'fn' (function name or Closure), 'param'` |
-|     - | 1631 | ` * (function spec + parameter index). Named arguments become string keys.` |
-|     - | 1632 | ` */` |
-|    52 | 1633 | `static int vm_builtin_reflect_attr_args(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     1 | 1634 | `{` |
-|    53 | 1635 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    53 | 1636 | `	SySet *pAttrs = 0;` |
-|     - | 1637 | `	ph7_attribute *pAttrRec;` |
-|     - | 1638 | `	ph7_value *pOut;` |
-|     - | 1639 | `	const char *zKind;` |
-|     - | 1640 | `	int nKind;` |
-|     - | 1641 | `	sxu32 nAttrIdx, n;` |
-|    53 | 1642 | `	if( nArg < 5 ){` |
-|   ! 0 | 1643 | `		ph7_result_null(pCtx);` |
-|   ! 0 | 1644 | `		return PH7_OK;` |
-|     - | 1645 | `	}` |
-|    53 | 1646 | `	zKind = ph7_value_to_string(apArg[0], &nKind);` |
-|    53 | 1647 | `	nAttrIdx = (sxu32)ph7_value_to_int(apArg[4]);` |
-|    70 | 1648 | `	if( nKind == 5 && SyMemcmp(zKind, "class", 5) == 0 ){` |
-|    35 | 1649 | `		ph7_class *pClass = ReflectResolveClass(pVm, apArg[1]);` |
-|    35 | 1650 | `		if( pClass ){ pAttrs = &pClass->aAttrs; }` |
-|    38 | 1651 | `	}else if( nKind == 4 && SyMemcmp(zKind, "attr", 4) == 0 ){` |
-|     5 | 1652 | `		ph7_class *pClass = ReflectResolveClass(pVm, apArg[1]);` |
-|     5 | 1653 | `		ph7_class_attr *pMember = pClass ? ReflectFetchAttr(pClass, apArg[2]) : 0;` |
-|     5 | 1654 | `		if( pMember ){ pAttrs = &pMember->aAttrs; }` |
-|    18 | 1655 | `	}else if( nKind == 6 && SyMemcmp(zKind, "method", 6) == 0 ){` |
-|     3 | 1656 | `		ph7_vm_func *pFunc = ReflectResolveCallable(pCtx, apArg[1], apArg[2], 0, 0, 0, 0);` |
-|     3 | 1657 | `		if( pFunc ){ pAttrs = &pFunc->aAttrs; }` |
-|    18 | 1658 | `	}else if( nKind == 2 && SyMemcmp(zKind, "fn", 2) == 0 ){` |
-|     9 | 1659 | `		ph7_vm_func *pFunc = ReflectResolveCallable(pCtx, apArg[1], 0, 0, 0, 0, 0);` |
-|     9 | 1660 | `		if( pFunc ){ pAttrs = &pFunc->aAttrs; }` |
-|    10 | 1661 | `	}else if( nKind == 5 && SyMemcmp(zKind, "param", 5) == 0 ){` |
-|     3 | 1662 | `		ph7_vm_func *pFunc = ReflectResolveCallable(pCtx, apArg[1], apArg[2], 0, 0, 0, 0);` |
-|     3 | 1663 | `		ph7_vm_func_arg *pParam = pFunc` |
-|     2 | 1664 | `			? (ph7_vm_func_arg *)SySetAt(&pFunc->aArgs, (sxu32)ph7_value_to_int(apArg[3])) : 0;` |
-|     3 | 1665 | `		if( pParam ){ pAttrs = &pParam->aAttrs; }` |
-|     4 | 1666 | `	}else if( nKind == 5 && SyMemcmp(zKind, "const", 5) == 0 ){` |
-|     - | 1667 | ``		/* Global constant (php 8.5 attributes on `const` statements) */`` |
-|     - | 1668 | `		const char *zCName;` |
-|     - | 1669 | `		int nCName;` |
-|     - | 1670 | `		SyHashEntry *pCEntry;` |
-|     3 | 1671 | `		zCName = ph7_value_to_string(apArg[1], &nCName);` |
-|     3 | 1672 | `		pCEntry = nCName > 0 ? SyHashGet(&pVm->hConstant, (const void *)zCName, (sxu32)nCName) : 0;` |
-|     3 | 1673 | `		if( pCEntry ){ pAttrs = &((ph7_constant *)pCEntry->pUserData)->aAttrs; }` |
-|     1 | 1674 | `	}` |
-|    52 | 1675 | `	if( pAttrs == 0 \|\| (pAttrRec = (ph7_attribute *)SySetAt(pAttrs, nAttrIdx)) == 0` |
-|    53 | 1676 | `	 \|\| (pOut = ph7_context_new_array(pCtx)) == 0 ){` |
-|   ! 0 | 1677 | `		ph7_result_null(pCtx);` |
-|   ! 0 | 1678 | `		return PH7_OK;` |
-|     - | 1679 | `	}` |
-|    99 | 1680 | `	for( n = 0 ; n < SySetUsed(&pAttrRec->aArgs) ; n++ ){` |
-|    47 | 1681 | `		ph7_attr_arg *pArgRec = (ph7_attr_arg *)SySetAt(&pAttrRec->aArgs, n);` |
-|     - | 1682 | `		ph7_value sValue;` |
-|    47 | 1683 | `		PH7_MemObjInit(pVm, &sValue);` |
-|    47 | 1684 | `		if( SySetUsed(&pArgRec->aByteCode) > 0 ){` |
-|    47 | 1685 | `			VmLocalExec(pVm, &pArgRec->aByteCode, &sValue, FALSE);` |
-|    23 | 1686 | `		}` |
-|    47 | 1687 | `		if( SyStringLength(&pArgRec->sName) > 0 ){` |
-|     5 | 1688 | `			ReflectMapAddDyn(pCtx, pOut, &pArgRec->sName, &sValue);` |
-|     3 | 1689 | `		}else{` |
-|    43 | 1690 | `			ph7_array_add_elem(pOut, 0, &sValue);` |
-|     - | 1691 | `		}` |
-|    47 | 1692 | `		PH7_MemObjRelease(&sValue);` |
-|    24 | 1693 | `	}` |
-|    53 | 1694 | `	ph7_result_value(pCtx, pOut);` |
-|    53 | 1695 | `	return PH7_OK;` |
-|    27 | 1696 | `}` |
-|     - | 1697 | `/*` |
-|     - | 1698 | ` * The Reflection classes, in PHP. Chunk 1: exceptions, Reflector,` |
-|     - | 1699 | ` * Reflection, ReflectionClass, ReflectionObject (plus get_debug_type,` |
-|     - | 1700 | ` * which the TypeError messages need and PHP 8.0 ships natively).` |
-|     - | 1701 | ` */` |
-|     - | 1702 | `static const char zReflectLib1[] =` |
-|     - | 1703 | `/* Per-class memoization of the (expensive) C class descriptor. Every Reflection*` |
-|     - | 1704 | ` * accessor funnels through __rinfo()/the constructors, so without this a single` |
-|     - | 1705 | ` * test run rebuilds the full descriptor of the same class hundreds of times` |
-|     - | 1706 | ` * (real php caches the reflected class). Keyed by resolved class name; only` |
-|     - | 1707 | ` * successful lookups are cached, so a not-yet-autoloaded class is re-queried.` |
-|     - | 1708 | ` * The C builtin __reflect_class_info stays the real worker. */` |
-|     - | 1709 | `"function __phl_rcinfo($oc){"` |
-|     - | 1710 | `" static $c = array();"` |
-|     - | 1711 | `" $k = is_object($oc) ? get_class($oc) : (string)$oc;"` |
-|     - | 1712 | `" if( isset($c[$k]) ){ return $c[$k]; }"` |
-|     - | 1713 | `" $info = __reflect_class_info($oc);"` |
-|     - | 1714 | `" if( $info !== null ){ $c[$k] = $info; }"` |
-|     - | 1715 | `" return $info;"` |
-|     - | 1716 | `"}"` |
-|     - | 1717 | `"function get_debug_type($value){"` |
-|     - | 1718 | `" if(is_object($value)){ return get_class($value); }"` |
-|     - | 1719 | `" if(is_bool($value)){ return 'bool'; }"` |
-|     - | 1720 | `" if(is_int($value)){ return 'int'; }"` |
-|     - | 1721 | `" if(is_float($value)){ return 'float'; }"` |
-|     - | 1722 | `" if(is_string($value)){ return 'string'; }"` |
-|     - | 1723 | `" if(is_array($value)){ return 'array'; }"` |
-|     - | 1724 | `" if($value === null){ return 'null'; }"` |
-|     - | 1725 | `" return gettype($value);"` |
-|     - | 1726 | `"}"` |
-|     - | 1727 | `"interface Reflector extends Stringable {}"` |
-|     - | 1728 | `"class ReflectionException extends Exception {}"` |
-|     - | 1729 | `"class Reflection {"` |
-|     - | 1730 | `" public static function getModifierNames($modifiers){"` |
-|     - | 1731 | `"  $names = array();"` |
-|     - | 1732 | `"  if($modifiers & 64){ $names[] = 'abstract'; }"` |
-|     - | 1733 | `"  if($modifiers & 32){ $names[] = 'final'; }"` |
-|     - | 1734 | `"  if($modifiers & 1){ $names[] = 'public'; }"` |
-|     - | 1735 | `"  if($modifiers & 2){ $names[] = 'protected'; }"` |
-|     - | 1736 | `"  if($modifiers & 4){ $names[] = 'private'; }"` |
-|     - | 1737 | `"  if($modifiers & 16){ $names[] = 'static'; }"` |
-|     - | 1738 | `"  if($modifiers & 128){ $names[] = 'readonly'; }"` |
-|     - | 1739 | `"  return $names;"` |
-|     - | 1740 | `" }"` |
-|     - | 1741 | `"}"` |
-|     - | 1742 | `"class ReflectionClass implements Reflector {"` |
-|     - | 1743 | `" const IS_IMPLICIT_ABSTRACT = 16;"` |
-|     - | 1744 | `" const IS_EXPLICIT_ABSTRACT = 64;"` |
-|     - | 1745 | `" const IS_FINAL = 32;"` |
-|     - | 1746 | `" const IS_READONLY = 65536;"` |
-|     - | 1747 | `" const SKIP_INITIALIZATION_ON_SERIALIZE = 8;"` |
-|     - | 1748 | `" const SKIP_DESTRUCTOR = 16;"` |
-|     - | 1749 | `" public $name;"` |
-|     - | 1750 | `" protected $__obj = null;"` |
-|     - | 1751 | `" public function __construct($objectOrClass){"` |
-|     - | 1752 | `"  if(!is_object($objectOrClass) && !is_string($objectOrClass)){"` |
-|     - | 1753 | `"   if(is_int($objectOrClass) \|\| is_float($objectOrClass) \|\| is_bool($objectOrClass)){"` |
-|     - | 1754 | `"    $objectOrClass = (string)$objectOrClass;"` |
-|     - | 1755 | `"   }else{"` |
-|     - | 1756 | `"    throw new TypeError('ReflectionClass::__construct(): Argument #1 ($objectOrClass) must be of type object\|string, '.get_debug_type($objectOrClass).' given');"` |
-|     - | 1757 | `"   }"` |
-|     - | 1758 | `"  }"` |
-|     - | 1759 | `"  $info = __phl_rcinfo($objectOrClass);"` |
-|     - | 1760 | `"  if($info === null){"` |
-|     - | 1761 | `"   throw new ReflectionException('Class \"'.$objectOrClass.'\" does not exist');"` |
-|     - | 1762 | `"  }"` |
-|     - | 1763 | `"  $this->name = $info['name'];"` |
-|     - | 1764 | `" }"` |
-|     - | 1765 | `" protected function __rinfo(){ return __phl_rcinfo($this->name); }"` |
-|     - | 1766 | `" public function getName(){ return $this->name; }"` |
-|     - | 1767 | `" public function getShortName(){"` |
-|     - | 1768 | `"  $p = strrpos($this->name,'\\\\');"` |
-|     - | 1769 | `"  if($p === false){ return $this->name; }"` |
-|     - | 1770 | `"  return substr($this->name,$p+1);"` |
-|     - | 1771 | `" }"` |
-|     - | 1772 | `" public function getNamespaceName(){"` |
-|     - | 1773 | `"  $p = strrpos($this->name,'\\\\');"` |
-|     - | 1774 | `"  if($p === false){ return ''; }"` |
-|     - | 1775 | `"  return substr($this->name,0,$p);"` |
-|     - | 1776 | `" }"` |
-|     - | 1777 | `" public function inNamespace(){ return strrpos($this->name,'\\\\') !== false; }"` |
-|     - | 1778 | `" public function isInternal(){ $i = $this->__rinfo(); return $i['internal']; }"` |
-|     - | 1779 | `" public function isUserDefined(){ return !$this->isInternal(); }"` |
-|     - | 1780 | `" public function isInterface(){ $i = $this->__rinfo(); return $i['interface']; }"` |
-|     - | 1781 | `" public function isTrait(){ $i = $this->__rinfo(); return $i['trait']; }"` |
-|     - | 1782 | `" public function isAbstract(){ $i = $this->__rinfo(); return $i['abstract']; }"` |
-|     - | 1783 | `" public function isFinal(){ $i = $this->__rinfo(); return $i['final']; }"` |
-|     - | 1784 | `" public function isReadOnly(){ $i = $this->__rinfo(); return $i['readonly']; }"` |
-|     - | 1785 | `" public function isEnum(){ $i = $this->__rinfo(); return $i['enum']; }"` |
-|     - | 1786 | `" public function isAnonymous(){ return strpos($this->name,'class@anonymous') === 0; }"` |
-|     - | 1787 | `" public function getModifiers(){"` |
-|     - | 1788 | `"  $i = $this->__rinfo();"` |
-|     - | 1789 | `"  $m = 0;"` |
-|     - | 1790 | `"  if($i['abstract']){ $m \|= 64; }"` |
-|     - | 1791 | `"  if($i['final']){ $m \|= 32; }"` |
-|     - | 1792 | `"  if($i['readonly']){ $m \|= 65536; }"` |
-|     - | 1793 | `"  return $m;"` |
-|     - | 1794 | `" }"` |
-|     - | 1795 | `" public function getParentClass(){"` |
-|     - | 1796 | `"  $i = $this->__rinfo();"` |
-|     - | 1797 | `"  if($i['parent'] === null){ return false; }"` |
-|     - | 1798 | `"  return new ReflectionClass($i['parent']);"` |
-|     - | 1799 | `" }"` |
-|     - | 1800 | `" public function getInterfaceNames(){ $i = $this->__rinfo(); return $i['interfaces']; }"` |
-|     - | 1801 | `" public function getInterfaces(){"` |
+|   439 |  970 | `		pMeth = PH7_ClassExtractMethod(pClass, (const char *)SyBlobData(&pMethodArg->sBlob),` |
+|   146 |  971 | `			SyBlobLength(&pMethodArg->sBlob));` |
+|   293 |  972 | `		if( pMeth == 0 ){` |
+|     - |  973 | `			/* getMethods()/ReflectionClass reports a base class's PRIVATE methods on` |
+|     - |  974 | `			 * the subclass (php copies them into the child's table), but private` |
+|     - |  975 | `			 * methods are not inherited into the child's method table, so the plain` |
+|     - |  976 | `			 * extract misses them when a ReflectionMethod obtained from the subclass` |
+|     - |  977 | `			 * is re-resolved by (subclass, name). Walk the base chain to find the` |
+|     - |  978 | `			 * declaring class's own copy. */` |
+|   ! 0 |  979 | `			ph7_class *pWalk = pClass->pBase;` |
+|   ! 0 |  980 | `			while( pWalk && pMeth == 0 ){` |
+|   ! 0 |  981 | `				pMeth = PH7_ClassExtractMethod(pWalk, (const char *)SyBlobData(&pMethodArg->sBlob),` |
+|   ! 0 |  982 | `					SyBlobLength(&pMethodArg->sBlob));` |
+|   ! 0 |  983 | `				pWalk = pWalk->pBase;` |
+|   ! 0 |  984 | `			}` |
+|   ! 0 |  985 | `		}` |
+|   293 |  986 | `		if( pMeth == 0 ){` |
+|   ! 0 |  987 | `			return 0;` |
+|     - |  988 | `		}` |
+|   293 |  989 | `		if( ppClass ){ *ppClass = pClass; }` |
+|   293 |  990 | `		if( ppMeth ){ *ppMeth = pMeth; }` |
+|   293 |  991 | `		return &pMeth->sFunc;` |
+|     - |  992 | `	}` |
+|     - |  993 | `	{` |
+|   470 |  994 | `		ph7_class_instance *pClo = ReflectValueClosure(pVm, pTarget);` |
+|   470 |  995 | `		if( pClo ){` |
+|     - |  996 | `			SyString sAttr;` |
+|     - |  997 | `			ph7_value *pFn;` |
+|    53 |  998 | `			SyStringInitFromBuf(&sAttr, "__fn", 4);` |
+|    53 |  999 | `			pFn = PH7_ClassInstanceFetchAttr(pClo, &sAttr);` |
+|    53 | 1000 | `			if( pFn == 0 \|\| (pFn->iFlags & MEMOBJ_STRING) == 0 \|\| SyBlobLength(&pFn->sBlob) < 1 ){` |
+|   ! 0 | 1001 | `				return 0;` |
+|     - | 1002 | `			}` |
+|    53 | 1003 | `			pEntry = SyHashGet(&pVm->hFunction, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));` |
+|    53 | 1004 | `			if( pEntry == 0 ){` |
+|     - | 1005 | `				/* A Closure over a host function (Closure::fromCallable('strlen')) */` |
+|   ! 0 | 1006 | `				pEntry = SyHashGet(&pVm->hHostFunction, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));` |
+|   ! 0 | 1007 | `				if( pEntry && ppHost ){` |
+|   ! 0 | 1008 | `					*ppHost = (ph7_user_func *)pEntry->pUserData;` |
+|   ! 0 | 1009 | `					if( ppClosure ){ *ppClosure = pClo; }` |
+|   ! 0 | 1010 | `				}` |
+|   ! 0 | 1011 | `				return 0;` |
+|     - | 1012 | `			}` |
+|    53 | 1013 | `			if( ppClosure ){ *ppClosure = pClo; }` |
+|    53 | 1014 | `			return (ph7_vm_func *)pEntry->pUserData;` |
+|     - | 1015 | `		}` |
+|     - | 1016 | `	}` |
+|   418 | 1017 | `	if( pTarget->iFlags & MEMOBJ_STRING ){` |
+|   418 | 1018 | `		if( SyBlobLength(&pTarget->sBlob) < 1 ){` |
+|   ! 0 | 1019 | `			return 0;` |
+|     - | 1020 | `		}` |
+|   418 | 1021 | `		pEntry = SyHashGet(&pVm->hFunction, SyBlobData(&pTarget->sBlob), SyBlobLength(&pTarget->sBlob));` |
+|   418 | 1022 | `		if( pEntry ){` |
+|   285 | 1023 | `			return (ph7_vm_func *)pEntry->pUserData;` |
+|     - | 1024 | `		}` |
+|   134 | 1025 | `		pEntry = SyHashGet(&pVm->hHostFunction, SyBlobData(&pTarget->sBlob), SyBlobLength(&pTarget->sBlob));` |
+|   134 | 1026 | `		if( pEntry && ppHost ){` |
+|   130 | 1027 | `			*ppHost = (ph7_user_func *)pEntry->pUserData;` |
+|    64 | 1028 | `		}` |
+|    66 | 1029 | `	}` |
+|   134 | 1030 | `	return 0;` |
+|   382 | 1031 | `}` |
+|     - | 1032 | `/* Emit the shared descriptor fields of a compiled function. */` |
+|   582 | 1033 | `static void ReflectFillFuncCommon(ph7_context *pCtx, ph7_value *pInfo, ph7_vm_func *pFunc)` |
+|     1 | 1034 | `{` |
+|     - | 1035 | `	ph7_vm_func_arg *aArg;` |
+|     - | 1036 | `	ph7_value *pParams, *pStatics;` |
+|   583 | 1037 | `	int bVariadic = 0;` |
+|     - | 1038 | `	int bAnon;` |
+|     - | 1039 | `	sxu32 n;` |
+|     - | 1040 | ``	/* A capture-free `function(){}` compiles without the CLOSURE flag but`` |
+|     - | 1041 | `	 * still carries the synthesized "[lambda_N]" / "[closure_N]" name. */` |
+|   583 | 1042 | `	bAnon = (pFunc->iFlags & VM_FUNC_CLOSURE) != 0;` |
+|   582 | 1043 | `	if( !bAnon && SyStringLength(&pFunc->sName) > 9` |
+|   312 | 1044 | `	 && (SyMemcmp(SyStringData(&pFunc->sName), "[lambda_", 8) == 0` |
+|    82 | 1045 | `	  \|\| SyMemcmp(SyStringData(&pFunc->sName), "[closure_", 9) == 0) ){` |
+|     5 | 1046 | `		bAnon = 1;` |
+|     2 | 1047 | `	}` |
+|   583 | 1048 | `	ReflectMapAddStr(pCtx, pInfo, "name", SyStringData(&pFunc->sName), (int)SyStringLength(&pFunc->sName));` |
+|   583 | 1049 | `	ReflectMapAddBool(pCtx, pInfo, "internal", (pFunc->iFlags & VM_FUNC_INTERNAL) != 0);` |
+|   583 | 1050 | `	ReflectMapAddBool(pCtx, pInfo, "closure", bAnon);` |
+|   583 | 1051 | `	ReflectMapAddBool(pCtx, pInfo, "fstatic", (pFunc->iFlags & VM_FUNC_STATIC_CL) != 0);` |
+|   583 | 1052 | `	ReflectMapAddBool(pCtx, pInfo, "byref", (pFunc->iFlags & VM_FUNC_REF_RETURN) != 0);` |
+|   583 | 1053 | `	ReflectMapAddBool(pCtx, pInfo, "generator", (pFunc->iFlags & VM_FUNC_GENERATOR) != 0);` |
+|   583 | 1054 | `	ReflectMapAddBool(pCtx, pInfo, "strict", pFunc->bStrictTypes != 0);` |
+|   583 | 1055 | `	if( SyStringLength(&pFunc->sFile) > 0 ){` |
+|   579 | 1056 | `		ReflectMapAddStr(pCtx, pInfo, "file", SyStringData(&pFunc->sFile), (int)SyStringLength(&pFunc->sFile));` |
+|   290 | 1057 | `	}else{` |
+|     5 | 1058 | `		ReflectMapAddBool(pCtx, pInfo, "file", 0);` |
+|     - | 1059 | `	}` |
+|   583 | 1060 | `	ReflectMapAddInt(pCtx, pInfo, "line", (sxi64)pFunc->nLine);` |
+|   583 | 1061 | `	ReflectMapAddInt(pCtx, pInfo, "endline", (sxi64)pFunc->nEndLine);` |
+|   583 | 1062 | `	ReflectMapAddDoc(pCtx, pInfo, &pFunc->sDoc);` |
+|   583 | 1063 | `	ReflectMapAddAttrs(pCtx, pInfo, &pFunc->aAttrs);` |
+|   583 | 1064 | `	if( SyStringLength(&pFunc->sReturnTypeName) > 0 ){` |
+|   145 | 1065 | `		ReflectMapAddStr(pCtx, pInfo, "rettext", SyStringData(&pFunc->sReturnTypeName),` |
+|    96 | 1066 | `			(int)SyStringLength(&pFunc->sReturnTypeName));` |
+|   535 | 1067 | `	}else if( pFunc->nReturnType == MEMOBJ_VOID ){` |
+|     - | 1068 | `		/* The type-text renderer omits void/never atoms (compile.c notes the` |
+|     - | 1069 | `		 * root fix belongs there); name them here for getReturnType(). */` |
+|     3 | 1070 | `		ReflectMapAddStr(pCtx, pInfo, "rettext", "void", sizeof("void")-1);` |
+|   486 | 1071 | `	}else if( pFunc->nReturnType == MEMOBJ_NEVER ){` |
+|     3 | 1072 | `		ReflectMapAddStr(pCtx, pInfo, "rettext", "never", sizeof("never")-1);` |
+|     2 | 1073 | `	}else{` |
+|   483 | 1074 | `		ReflectMapAddNull(pCtx, pInfo, "rettext");` |
+|     - | 1075 | `	}` |
+|   583 | 1076 | `	ReflectMapAddBool(pCtx, pInfo, "retnullable", (pFunc->iFlags & VM_FUNC_RETURN_NULLABLE) != 0);` |
+|     - | 1077 | `	/* Parameters */` |
+|   583 | 1078 | `	pParams = ph7_context_new_array(pCtx);` |
+|   583 | 1079 | `	aArg = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);` |
+|  1835 | 1080 | `	for( n = 0 ; pParams && n < SySetUsed(&pFunc->aArgs) ; n++ ){` |
+|  1253 | 1081 | `		ph7_value *pMeta = ph7_context_new_array(pCtx);` |
+|  1253 | 1082 | `		if( pMeta == 0 ){ break; }` |
+|  1253 | 1083 | `		ReflectMapAddStr(pCtx, pMeta, "name", SyStringData(&aArg[n].sName), (int)SyStringLength(&aArg[n].sName));` |
+|  1253 | 1084 | `		ReflectMapAddInt(pCtx, pMeta, "pos", (sxi64)n);` |
+|  1253 | 1085 | `		ReflectMapAddBool(pCtx, pMeta, "byref", (aArg[n].iFlags & VM_FUNC_ARG_BY_REF) != 0);` |
+|  1253 | 1086 | `		ReflectMapAddBool(pCtx, pMeta, "variadic", (aArg[n].iFlags & VM_FUNC_ARG_VARIADIC) != 0);` |
+|     - | 1087 | `		/* The compiler never sets ARG_HAS_DEF; a default = compiled bytecode` |
+|     - | 1088 | `		 * (same test the OP_CALL default-value path uses). */` |
+|  1253 | 1089 | `		ReflectMapAddBool(pCtx, pMeta, "hasdef", SySetUsed(&aArg[n].aByteCode) > 0);` |
+|  1253 | 1090 | `		ReflectMapAddBool(pCtx, pMeta, "nullable", (aArg[n].iFlags & VM_FUNC_ARG_NULLABLE) != 0);` |
+|  1253 | 1091 | `		ReflectMapAddBool(pCtx, pMeta, "promoted", (aArg[n].iFlags & VM_FUNC_ARG_PROMOTED) != 0);` |
+|  1253 | 1092 | `		if( SyStringLength(&aArg[n].sTypeName) > 0 ){` |
+|   715 | 1093 | `			ReflectMapAddStr(pCtx, pMeta, "typetext", SyStringData(&aArg[n].sTypeName),` |
+|   476 | 1094 | `				(int)SyStringLength(&aArg[n].sTypeName));` |
+|   239 | 1095 | `		}else{` |
+|   777 | 1096 | `			ReflectMapAddNull(pCtx, pMeta, "typetext");` |
+|     - | 1097 | `		}` |
+|  1253 | 1098 | `		ReflectMapAddAttrs(pCtx, pMeta, &aArg[n].aAttrs);` |
+|  1253 | 1099 | `		ph7_array_add_elem(pParams, 0, pMeta);` |
+|  1253 | 1100 | `		if( aArg[n].iFlags & VM_FUNC_ARG_VARIADIC ){` |
+|   183 | 1101 | `			bVariadic = 1;` |
+|    91 | 1102 | `		}` |
+|   627 | 1103 | `	}` |
+|   583 | 1104 | `	if( pParams ){` |
+|   583 | 1105 | `		ph7_array_add_strkey_elem(pInfo, "params", pParams);` |
+|   291 | 1106 | `	}` |
+|   583 | 1107 | `	ReflectMapAddBool(pCtx, pInfo, "variadic", bVariadic);` |
+|     - | 1108 | `	/* Static variables: current value when the slot was initialized (first` |
+|     - | 1109 | `	 * call), otherwise the evaluated default — PHP's getStaticVariables` |
+|     - | 1110 | `	 * initializes on demand and reports the same values. */` |
+|   583 | 1111 | `	pStatics = ph7_context_new_array(pCtx);` |
+|   583 | 1112 | `	if( pStatics ){` |
+|   583 | 1113 | `		ph7_vm_func_static_var *aStatic = (ph7_vm_func_static_var *)SySetBasePtr(&pFunc->aStatic);` |
+|   611 | 1114 | `		for( n = 0 ; n < SySetUsed(&pFunc->aStatic) ; n++ ){` |
+|    29 | 1115 | `			ph7_value *pVal = 0;` |
+|     - | 1116 | `			ph7_value sScratch;` |
+|    29 | 1117 | `			int bScratch = 0;` |
+|    29 | 1118 | `			if( aStatic[n].nIdx != SXU32_HIGH ){` |
+|    11 | 1119 | `				pVal = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, aStatic[n].nIdx);` |
+|     5 | 1120 | `			}` |
+|    29 | 1121 | `			if( pVal == 0 ){` |
+|    19 | 1122 | `				PH7_MemObjInit(pCtx->pVm, &sScratch);` |
+|    19 | 1123 | `				if( SySetUsed(&aStatic[n].aByteCode) > 0 ){` |
+|    19 | 1124 | `					VmLocalExec(pCtx->pVm, &aStatic[n].aByteCode, &sScratch, FALSE);` |
+|     9 | 1125 | `				}` |
+|    19 | 1126 | `				pVal = &sScratch;` |
+|    19 | 1127 | `				bScratch = 1;` |
+|     9 | 1128 | `			}` |
+|    29 | 1129 | `			ReflectMapAddDyn(pCtx, pStatics, &aStatic[n].sName, pVal);` |
+|    29 | 1130 | `			if( bScratch ){` |
+|    19 | 1131 | `				PH7_MemObjRelease(&sScratch);` |
+|     9 | 1132 | `			}` |
+|    15 | 1133 | `		}` |
+|   583 | 1134 | `		ph7_array_add_strkey_elem(pInfo, "statics", pStatics);` |
+|   291 | 1135 | `	}` |
+|   583 | 1136 | `}` |
+|     - | 1137 | `/*` |
+|     - | 1138 | ` * array\|null __reflect_func_info(string\|Closure $target [, string $method])` |
+|     - | 1139 | ` * Function/method/closure descriptor for the PHP layer.` |
+|     - | 1140 | ` */` |
+|   714 | 1141 | `static int vm_builtin_reflect_func_info(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     2 | 1142 | `{` |
+|     - | 1143 | `	ph7_vm_func *pFunc;` |
+|   716 | 1144 | `	ph7_class *pClass = 0;` |
+|   716 | 1145 | `	ph7_class_method *pMeth = 0;` |
+|   716 | 1146 | `	ph7_user_func *pHost = 0;` |
+|   716 | 1147 | `	ph7_class_instance *pClosure = 0;` |
+|     - | 1148 | `	ph7_value *pInfo;` |
+|   716 | 1149 | `	if( nArg < 1 ){` |
+|   ! 0 | 1150 | `		ph7_result_null(pCtx);` |
+|   ! 0 | 1151 | `		return PH7_OK;` |
+|     - | 1152 | `	}` |
+|   716 | 1153 | `	pFunc = ReflectResolveCallable(pCtx, apArg[0], nArg > 1 ? apArg[1] : 0,` |
+|     - | 1154 | `		&pClass, &pMeth, &pHost, &pClosure);` |
+|   716 | 1155 | `	if( pFunc == 0 && pHost == 0 ){` |
+|     6 | 1156 | `		ph7_result_null(pCtx);` |
+|     6 | 1157 | `		return PH7_OK;` |
+|     - | 1158 | `	}` |
+|   712 | 1159 | `	pInfo = ph7_context_new_array(pCtx);` |
+|   712 | 1160 | `	if( pInfo == 0 ){` |
+|   ! 0 | 1161 | `		ph7_result_null(pCtx);` |
+|   ! 0 | 1162 | `		return PH7_OK;` |
+|     - | 1163 | `	}` |
+|   712 | 1164 | `	if( pFunc == 0 ){` |
+|     - | 1165 | `		/* Host (C builtin) function: no parameter metadata beyond arity */` |
+|   130 | 1166 | `		ph7_value *pParams = ph7_context_new_array(pCtx);` |
+|   130 | 1167 | `		ReflectMapAddStr(pCtx, pInfo, "name", SyStringData(&pHost->sName), (int)SyStringLength(&pHost->sName));` |
+|   130 | 1168 | `		ReflectMapAddBool(pCtx, pInfo, "internal", 1);` |
+|   130 | 1169 | `		ReflectMapAddBool(pCtx, pInfo, "closure", 0);` |
+|   130 | 1170 | `		ReflectMapAddBool(pCtx, pInfo, "fstatic", 0);` |
+|   130 | 1171 | `		ReflectMapAddBool(pCtx, pInfo, "byref", 0);` |
+|   130 | 1172 | `		ReflectMapAddBool(pCtx, pInfo, "generator", 0);` |
+|   130 | 1173 | `		ReflectMapAddBool(pCtx, pInfo, "strict", 0);` |
+|   130 | 1174 | `		ReflectMapAddBool(pCtx, pInfo, "file", 0);` |
+|   130 | 1175 | `		ReflectMapAddInt(pCtx, pInfo, "line", 0);` |
+|   130 | 1176 | `		ReflectMapAddInt(pCtx, pInfo, "endline", 0);` |
+|   130 | 1177 | `		ReflectMapAddBool(pCtx, pInfo, "doc", 0);` |
+|     - | 1178 | `		{` |
+|   130 | 1179 | `			ph7_value *pEmpty = ph7_context_new_array(pCtx);` |
+|   130 | 1180 | `			if( pEmpty ){` |
+|   130 | 1181 | `				ph7_array_add_strkey_elem(pInfo, "attrs", pEmpty);` |
+|    64 | 1182 | `			}` |
+|     - | 1183 | `		}` |
+|   130 | 1184 | `		if( pHost->zRet ){` |
+|   130 | 1185 | `			ReflectMapAddStr(pCtx, pInfo, "rettext", pHost->zRet, (int)SyStrlen(pHost->zRet));` |
+|    66 | 1186 | `		}else{` |
+|   ! 0 | 1187 | `			ReflectMapAddNull(pCtx, pInfo, "rettext");` |
+|     - | 1188 | `		}` |
+|   130 | 1189 | `		ReflectMapAddBool(pCtx, pInfo, "retnullable", 0);` |
+|   130 | 1190 | `		if( pParams ){` |
+|   130 | 1191 | `			ph7_array_add_strkey_elem(pInfo, "params", pParams);` |
+|    64 | 1192 | `		}` |
+|   130 | 1193 | `		ReflectMapAddBool(pCtx, pInfo, "variadic", 0);` |
+|   130 | 1194 | `		ReflectMapAddInt(pCtx, pInfo, "minarg", (sxi64)pHost->nMinArg);` |
+|   130 | 1195 | `		if( pHost->zSig ){` |
+|   130 | 1196 | `			ReflectMapAddStr(pCtx, pInfo, "sig", pHost->zSig, (int)SyStrlen(pHost->zSig));` |
+|    66 | 1197 | `		}else{` |
+|   ! 0 | 1198 | `			ReflectMapAddStr(pCtx, pInfo, "sig", "", 0);` |
+|     - | 1199 | `		}` |
+|   130 | 1200 | `		ph7_result_value(pCtx, pInfo);` |
+|   130 | 1201 | `		return PH7_OK;` |
+|     - | 1202 | `	}` |
+|   583 | 1203 | `	ReflectFillFuncCommon(pCtx, pInfo, pFunc);` |
+|   583 | 1204 | `	ReflectMapAddInt(pCtx, pInfo, "minarg", -1);` |
+|   583 | 1205 | `	if( (pFunc->iFlags & VM_FUNC_INTERNAL) && SySetUsed(&pFunc->aArgs) == 0 && pMeth == 0 ){` |
+|     - | 1206 | `		/* Embedded-PHP builtin (max/min...): declared argless, actual` |
+|     - | 1207 | `		 * signature comes from the static table */` |
+|     5 | 1208 | `		const char *zRet = 0;` |
+|     5 | 1209 | `		const char *zSig = PH7_VmBuiltinSigLookup(SyStringData(&pFunc->sName), SyStringLength(&pFunc->sName), &zRet);` |
+|     5 | 1210 | `		if( zSig ){` |
+|     5 | 1211 | `			ReflectMapAddStr(pCtx, pInfo, "sig", zSig, (int)SyStrlen(zSig));` |
+|     2 | 1212 | `		}` |
+|     5 | 1213 | `		if( zRet && SyStringLength(&pFunc->sReturnTypeName) == 0 ){` |
+|     5 | 1214 | `			ReflectMapAddStr(pCtx, pInfo, "ret2", zRet, (int)SyStrlen(zRet));` |
+|     2 | 1215 | `		}` |
+|     2 | 1216 | `	}` |
+|   583 | 1217 | `	if( pMeth && pClass ){` |
+|   271 | 1218 | `		ph7_class *pDecl = ReflectMethodDeclClass(pClass, pMeth);` |
+|   271 | 1219 | `		ReflectMapAddStr(pCtx, pInfo, "class", SyStringData(&pClass->sName), (int)SyStringLength(&pClass->sName));` |
+|   271 | 1220 | `		ReflectMapAddStr(pCtx, pInfo, "decl", SyStringData(&pDecl->sName), (int)SyStringLength(&pDecl->sName));` |
+|   271 | 1221 | `		ReflectMapAddInt(pCtx, pInfo, "vis", (sxi64)pMeth->iProtection);` |
+|   271 | 1222 | `		ReflectMapAddBool(pCtx, pInfo, "mstatic", (pMeth->iFlags & PH7_CLASS_ATTR_STATIC) != 0);` |
+|   271 | 1223 | `		ReflectMapAddBool(pCtx, pInfo, "abstract", (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) != 0);` |
+|   271 | 1224 | `		ReflectMapAddBool(pCtx, pInfo, "final", (pMeth->iFlags & PH7_CLASS_ATTR_FINAL) != 0);` |
+|   135 | 1225 | `	}` |
+|   583 | 1226 | `	if( pClosure ){` |
+|     - | 1227 | `		SyString sAttr;` |
+|     - | 1228 | `		ph7_value *pAttr;` |
+|     - | 1229 | `		ph7_value *pUsed;` |
+|    49 | 1230 | `		SyStringInitFromBuf(&sAttr, "__this", 6);` |
+|    49 | 1231 | `		pAttr = PH7_ClassInstanceFetchAttr(pClosure, &sAttr);` |
+|    49 | 1232 | `		if( pAttr && (pAttr->iFlags & MEMOBJ_OBJ) ){` |
+|   ! 0 | 1233 | `			ph7_value *pKey = ph7_context_new_scalar(pCtx);` |
+|   ! 0 | 1234 | `			if( pKey ){` |
+|   ! 0 | 1235 | `				ph7_value_string(pKey, "this", 4);` |
+|   ! 0 | 1236 | `				ph7_array_add_elem(pInfo, pKey, pAttr);` |
+|   ! 0 | 1237 | `			}` |
+|   ! 0 | 1238 | `		}else{` |
+|    49 | 1239 | `			ReflectMapAddNull(pCtx, pInfo, "this");` |
+|     - | 1240 | `		}` |
+|    49 | 1241 | `		SyStringInitFromBuf(&sAttr, "__scope", 7);` |
+|    49 | 1242 | `		pAttr = PH7_ClassInstanceFetchAttr(pClosure, &sAttr);` |
+|    49 | 1243 | `		if( pAttr && (pAttr->iFlags & MEMOBJ_STRING) && SyBlobLength(&pAttr->sBlob) > 0 ){` |
+|   ! 0 | 1244 | `			ReflectMapAddStr(pCtx, pInfo, "scope", (const char *)SyBlobData(&pAttr->sBlob),` |
+|   ! 0 | 1245 | `				(int)SyBlobLength(&pAttr->sBlob));` |
+|   ! 0 | 1246 | `		}else{` |
+|    49 | 1247 | `			ReflectMapAddNull(pCtx, pInfo, "scope");` |
+|     - | 1248 | `		}` |
+|     - | 1249 | `		/* use(...) imports; the implicit auto-captured $this is flagged IGNORE */` |
+|    49 | 1250 | `		pUsed = ph7_context_new_array(pCtx);` |
+|    49 | 1251 | `		if( pUsed ){` |
+|    49 | 1252 | `			ph7_vm_func_closure_env *aEnv = (ph7_vm_func_closure_env *)SySetBasePtr(&pFunc->aClosureEnv);` |
+|     - | 1253 | `			sxu32 n;` |
+|   107 | 1254 | `			for( n = 0 ; n < SySetUsed(&pFunc->aClosureEnv) ; n++ ){` |
+|    59 | 1255 | `				if( aEnv[n].iFlags & VM_FUNC_ARG_IGNORE ){` |
+|    41 | 1256 | `					continue;` |
+|     - | 1257 | `				}` |
+|    18 | 1258 | `				if( SyStringLength(&aEnv[n].sName) == sizeof("this")-1` |
+|    10 | 1259 | `				 && SyMemcmp(SyStringData(&aEnv[n].sName), "this", sizeof("this")-1) == 0 ){` |
+|   ! 0 | 1260 | `					continue;` |
+|     - | 1261 | `				}` |
+|    19 | 1262 | `				if( (aEnv[n].iFlags & VM_FUNC_ARG_BY_REF) && aEnv[n].nIdx != SXU32_HIGH ){` |
+|     - | 1263 | `					/* Captured by reference: report the slot's live value */` |
+|     5 | 1264 | `					ph7_value *pLive = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, aEnv[n].nIdx);` |
+|     5 | 1265 | `					ReflectMapAddDyn(pCtx, pUsed, &aEnv[n].sName, pLive ? pLive : &aEnv[n].sValue);` |
+|     5 | 1266 | `					continue;` |
+|     - | 1267 | `				}` |
+|    15 | 1268 | `				ReflectMapAddDyn(pCtx, pUsed, &aEnv[n].sName, &aEnv[n].sValue);` |
+|     8 | 1269 | `			}` |
+|    49 | 1270 | `			ph7_array_add_strkey_elem(pInfo, "used", pUsed);` |
+|    24 | 1271 | `		}` |
+|    24 | 1272 | `	}` |
+|   583 | 1273 | `	ph7_result_value(pCtx, pInfo);` |
+|   583 | 1274 | `	return PH7_OK;` |
+|   359 | 1275 | `}` |
+|     - | 1276 | `/*` |
+|     - | 1277 | ` * mixed __reflect_param_default(string\|Closure $target, ?string $method, int $idx)` |
+|     - | 1278 | ` * Evaluate a parameter's compiled default expression.` |
+|     - | 1279 | ` */` |
+|    12 | 1280 | `static int vm_builtin_reflect_param_default(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     1 | 1281 | `{` |
+|     - | 1282 | `	ph7_vm_func *pFunc;` |
+|     - | 1283 | `	ph7_vm_func_arg *pArg;` |
+|     - | 1284 | `	ph7_value sValue;` |
+|     - | 1285 | `	sxu32 nIdx;` |
+|    13 | 1286 | `	if( nArg < 3 ){` |
+|   ! 0 | 1287 | `		ph7_result_null(pCtx);` |
+|   ! 0 | 1288 | `		return PH7_OK;` |
+|     - | 1289 | `	}` |
+|    13 | 1290 | `	pFunc = ReflectResolveCallable(pCtx, apArg[0], apArg[1], 0, 0, 0, 0);` |
+|    13 | 1291 | `	nIdx = (sxu32)ph7_value_to_int(apArg[2]);` |
+|    12 | 1292 | `	if( pFunc == 0 \|\| (pArg = (ph7_vm_func_arg *)SySetAt(&pFunc->aArgs, nIdx)) == 0` |
+|    13 | 1293 | `	 \|\| SySetUsed(&pArg->aByteCode) < 1 ){` |
+|   ! 0 | 1294 | `		ph7_result_null(pCtx);` |
+|   ! 0 | 1295 | `		return PH7_OK;` |
+|     - | 1296 | `	}` |
+|    13 | 1297 | `	PH7_MemObjInit(pCtx->pVm, &sValue);` |
+|    13 | 1298 | `	VmLocalExec(pCtx->pVm, &pArg->aByteCode, &sValue, FALSE);` |
+|    13 | 1299 | `	ph7_result_value(pCtx, &sValue);` |
+|    13 | 1300 | `	PH7_MemObjRelease(&sValue);` |
+|    13 | 1301 | `	return PH7_OK;` |
+|     7 | 1302 | `}` |
+|     - | 1303 | `/*` |
+|     - | 1304 | ` * string\|null __reflect_param_defconst(string\|Closure $target, ?string $method, int $idx)` |
+|     - | 1305 | ` * When a parameter's default is a plain global-constant reference, its` |
+|     - | 1306 | ` * source name; null otherwise. A constant default compiles to exactly` |
+|     - | 1307 | ` * [ OP_LOADC (EXPAND) , OP_DONE ] with the name in the literal table.` |
+|     - | 1308 | ` */` |
+|     6 | 1309 | `static int vm_builtin_reflect_param_defconst(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     1 | 1310 | `{` |
+|     - | 1311 | `	ph7_vm_func *pFunc;` |
+|     - | 1312 | `	ph7_vm_func_arg *pArg;` |
+|     - | 1313 | `	VmInstr *aInstr;` |
+|     - | 1314 | `	ph7_value *pLit;` |
+|     - | 1315 | `	sxu32 nIdx;` |
+|     7 | 1316 | `	if( nArg < 3 ){` |
+|   ! 0 | 1317 | `		ph7_result_null(pCtx);` |
+|   ! 0 | 1318 | `		return PH7_OK;` |
+|     - | 1319 | `	}` |
+|     7 | 1320 | `	pFunc = ReflectResolveCallable(pCtx, apArg[0], apArg[1], 0, 0, 0, 0);` |
+|     7 | 1321 | `	nIdx = (sxu32)ph7_value_to_int(apArg[2]);` |
+|     6 | 1322 | `	if( pFunc == 0 \|\| (pArg = (ph7_vm_func_arg *)SySetAt(&pFunc->aArgs, nIdx)) == 0` |
+|     7 | 1323 | `	 \|\| SySetUsed(&pArg->aByteCode) != 2 ){` |
+|     3 | 1324 | `		ph7_result_null(pCtx);` |
+|     3 | 1325 | `		return PH7_OK;` |
+|     - | 1326 | `	}` |
+|     5 | 1327 | `	aInstr = (VmInstr *)SySetBasePtr(&pArg->aByteCode);` |
+|     4 | 1328 | `	if( aInstr[0].iOp != PH7_OP_LOADC \|\| (aInstr[0].iP1 & PH7_LOADC_EXPAND) == 0` |
+|     5 | 1329 | `	 \|\| aInstr[1].iOp != PH7_OP_DONE ){` |
+|   ! 0 | 1330 | `		ph7_result_null(pCtx);` |
+|   ! 0 | 1331 | `		return PH7_OK;` |
+|     - | 1332 | `	}` |
+|     5 | 1333 | `	pLit = (ph7_value *)SySetAt(&pCtx->pVm->aLitObj, aInstr[0].iP2);` |
+|     5 | 1334 | `	if( pLit == 0 \|\| SyBlobLength(&pLit->sBlob) < 1 ){` |
+|   ! 0 | 1335 | `		ph7_result_null(pCtx);` |
+|   ! 0 | 1336 | `		return PH7_OK;` |
+|     - | 1337 | `	}` |
+|     5 | 1338 | `	ph7_result_string(pCtx, (const char *)SyBlobData(&pLit->sBlob), (int)SyBlobLength(&pLit->sBlob));` |
+|     5 | 1339 | `	return PH7_OK;` |
+|     4 | 1340 | `}` |
+|     - | 1341 | `/*` |
+|     - | 1342 | ` * mixed __reflect_invoke(mixed $target, ?string $method, ?object $this, array $args)` |
+|     - | 1343 | ` * Visibility-bypassing invocation (methods dispatch by VM name; functions` |
+|     - | 1344 | ` * and closures ride PH7_VmCallUserFunction like call_user_func_array).` |
+|     - | 1345 | ` */` |
+|    20 | 1346 | `static int vm_builtin_reflect_invoke(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     1 | 1347 | `{` |
+|    21 | 1348 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     - | 1349 | `	ph7_value sResult;` |
+|     - | 1350 | `	SySet aCallArg;` |
+|     - | 1351 | `	sxi32 rc;` |
+|    21 | 1352 | `	if( nArg < 4 ){` |
+|   ! 0 | 1353 | `		ph7_result_null(pCtx);` |
+|   ! 0 | 1354 | `		return PH7_OK;` |
+|     - | 1355 | `	}` |
+|    21 | 1356 | `	PH7_MemObjInit(pVm, &sResult);` |
+|    21 | 1357 | `	sResult.nIdx = SXU32_HIGH;` |
+|    21 | 1358 | `	SySetInit(&aCallArg, &pVm->sAllocator, sizeof(ph7_value *));` |
+|    21 | 1359 | `	ReflectCollectArgs(pCtx, apArg[3], &aCallArg, 0);` |
+|    21 | 1360 | `	if( (apArg[1]->iFlags & MEMOBJ_STRING) && SyBlobLength(&apArg[1]->sBlob) > 0 ){` |
+|    11 | 1361 | `		ph7_class *pClass = 0;` |
+|    11 | 1362 | `		ph7_class_method *pMeth = 0;` |
+|    11 | 1363 | `		ph7_class_instance *pThis = 0;` |
+|    11 | 1364 | `		ReflectResolveCallable(pCtx, apArg[0], apArg[1], &pClass, &pMeth, 0, 0);` |
+|    11 | 1365 | `		if( pMeth == 0 ){` |
+|   ! 0 | 1366 | `			SySetRelease(&aCallArg);` |
+|   ! 0 | 1367 | `			PH7_MemObjRelease(&sResult);` |
+|   ! 0 | 1368 | `			ph7_result_null(pCtx);` |
+|   ! 0 | 1369 | `			return PH7_OK;` |
+|     - | 1370 | `		}` |
+|    11 | 1371 | `		if( apArg[2]->iFlags & MEMOBJ_OBJ ){` |
+|     7 | 1372 | `			pThis = (ph7_class_instance *)apArg[2]->x.pOther;` |
+|     3 | 1373 | `		}` |
+|     - | 1374 | `		/* Reflection ignores method visibility (PHP 8.1+); the flag is` |
+|     - | 1375 | `		 * consumed by the first OP_CALL, i.e. this synthetic one. */` |
+|    11 | 1376 | `		pVm->bReflectBypass = 1;` |
+|    16 | 1377 | `		rc = PH7_VmCallClassMethod(pVm, pThis, pMeth, &sResult,` |
+|    10 | 1378 | `			(int)SySetUsed(&aCallArg), (ph7_value **)SySetBasePtr(&aCallArg));` |
+|    11 | 1379 | `		pVm->bReflectBypass = 0;` |
+|     6 | 1380 | `	}else{` |
+|    16 | 1381 | `		rc = PH7_VmCallUserFunction(pVm, apArg[0],` |
+|    10 | 1382 | `			(int)SySetUsed(&aCallArg), (ph7_value **)SySetBasePtr(&aCallArg), &sResult);` |
+|     - | 1383 | `	}` |
+|    21 | 1384 | `	SySetRelease(&aCallArg);` |
+|    21 | 1385 | `	if( rc == PH7_EXCEPTION \|\| rc == PH7_ABORT ){` |
+|   ! 0 | 1386 | `		PH7_MemObjRelease(&sResult);` |
+|   ! 0 | 1387 | `		return rc;` |
+|     - | 1388 | `	}` |
+|    21 | 1389 | `	ph7_result_value(pCtx, &sResult);` |
+|    21 | 1390 | `	PH7_MemObjRelease(&sResult);` |
+|    21 | 1391 | `	return PH7_OK;` |
+|    11 | 1392 | `}` |
+|     - | 1393 | `/*` |
+|     - | 1394 | ` * Closure __reflect_closure(mixed $target, ?string $method, ?object $this)` |
+|     - | 1395 | ` * Mint a Closure for a function or method, bound and scoped like the` |
+|     - | 1396 | ` * first-class-callable path.` |
+|     - | 1397 | ` */` |
+|     6 | 1398 | `static int vm_builtin_reflect_closure(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     1 | 1399 | `{` |
+|     7 | 1400 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     7 | 1401 | `	ph7_class *pClass = 0;` |
+|     7 | 1402 | `	ph7_class_method *pMeth = 0;` |
+|     7 | 1403 | `	ph7_class_instance *pClosure = 0;` |
+|     - | 1404 | `	ph7_vm_func *pFunc;` |
+|     7 | 1405 | `	if( nArg < 3 ){` |
+|   ! 0 | 1406 | `		ph7_result_null(pCtx);` |
+|   ! 0 | 1407 | `		return PH7_OK;` |
+|     - | 1408 | `	}` |
+|     7 | 1409 | `	pFunc = ReflectResolveCallable(pCtx, apArg[0], apArg[1], &pClass, &pMeth, 0, &pClosure);` |
+|     7 | 1410 | `	if( pClosure ){` |
+|     - | 1411 | `		/* Already a Closure: hand the same instance back */` |
+|   ! 0 | 1412 | `		return ReflectResultExistingObject(pCtx, pClosure);` |
+|     - | 1413 | `	}` |
+|     7 | 1414 | `	if( pMeth && pClass ){` |
+|     5 | 1415 | `		ph7_class_instance *pThis = 0;` |
+|     5 | 1416 | `		if( apArg[2]->iFlags & MEMOBJ_OBJ ){` |
+|     3 | 1417 | `			pThis = (ph7_class_instance *)apArg[2]->x.pOther;` |
+|     1 | 1418 | `		}` |
+|     7 | 1419 | `		return ReflectResultObject(pCtx,` |
+|     4 | 1420 | `			PH7_VmNewClosure(pVm, &pMeth->sFunc.sName, pThis, &pClass->sName));` |
+|     - | 1421 | `	}` |
+|     3 | 1422 | `	if( pFunc ){` |
+|     3 | 1423 | `		return ReflectResultObject(pCtx, PH7_VmNewClosure(pVm, &pFunc->sName, 0, 0));` |
+|     - | 1424 | `	}` |
+|     - | 1425 | `	/* Host function by name */` |
+|   ! 0 | 1426 | `	if( apArg[0]->iFlags & MEMOBJ_STRING ){` |
+|     - | 1427 | `		SyString sName;` |
+|   ! 0 | 1428 | `		SyStringInitFromBuf(&sName, (const char *)SyBlobData(&apArg[0]->sBlob), SyBlobLength(&apArg[0]->sBlob));` |
+|   ! 0 | 1429 | `		return ReflectResultObject(pCtx, PH7_VmNewClosure(pVm, &sName, 0, 0));` |
+|     - | 1430 | `	}` |
+|   ! 0 | 1431 | `	ph7_result_null(pCtx);` |
+|   ! 0 | 1432 | `	return PH7_OK;` |
+|     4 | 1433 | `}` |
+|     - | 1434 | `/*` |
+|     - | 1435 | ` * Resolve a Generator object into its wrapper. Mirrors the static` |
+|     - | 1436 | ` * VmGeneratorExtractCtx in vm.c: the $__ctx attribute carries the` |
+|     - | 1437 | ` * ph7_generator pointer as a resource value.` |
+|     - | 1438 | ` */` |
+|    22 | 1439 | `static ph7_generator * ReflectGeneratorCtx(ph7_vm *pVm, ph7_value *pVal)` |
+|     1 | 1440 | `{` |
+|     - | 1441 | `	ph7_class_instance *pThis;` |
+|     - | 1442 | `	ph7_value *pAttr;` |
+|     - | 1443 | `	SyString sAttr;` |
+|    23 | 1444 | `	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 \|\| pVm->pGeneratorClass == 0 ){` |
+|   ! 0 | 1445 | `		return 0;` |
+|     - | 1446 | `	}` |
+|    23 | 1447 | `	pThis = (ph7_class_instance *)pVal->x.pOther;` |
+|    23 | 1448 | `	if( pThis->pClass != pVm->pGeneratorClass ){` |
+|   ! 0 | 1449 | `		return 0;` |
+|     - | 1450 | `	}` |
+|    23 | 1451 | `	SyStringInitFromBuf(&sAttr, "__ctx", 5);` |
+|    23 | 1452 | `	pAttr = PH7_ClassInstanceFetchAttr(pThis, &sAttr);` |
+|    23 | 1453 | `	if( pAttr == 0 \|\| (pAttr->iFlags & MEMOBJ_RES) == 0 ){` |
+|   ! 0 | 1454 | `		return 0;` |
+|     - | 1455 | `	}` |
+|    23 | 1456 | `	return (ph7_generator *)pAttr->x.pOther;` |
+|    12 | 1457 | `}` |
+|     - | 1458 | `/*` |
+|     - | 1459 | ` * array\|null __reflect_gen_info(Generator $g)` |
+|     - | 1460 | ` * {state, closed, executing, kind ('fn'\|'method'), name, class?, this}` |
+|     - | 1461 | ` */` |
+|    16 | 1462 | `static int vm_builtin_reflect_gen_info(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     1 | 1463 | `{` |
+|    17 | 1464 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     - | 1465 | `	ph7_generator *pGen;` |
+|     - | 1466 | `	ph7_exec_ctx *pExec;` |
+|     - | 1467 | `	ph7_value *pInfo;` |
+|    17 | 1468 | `	if( nArg < 1 \|\| (pGen = ReflectGeneratorCtx(pVm, apArg[0])) == 0 \|\| pGen->pCtx == 0 ){` |
+|   ! 0 | 1469 | `		ph7_result_null(pCtx);` |
+|   ! 0 | 1470 | `		return PH7_OK;` |
+|     - | 1471 | `	}` |
+|    17 | 1472 | `	pExec = pGen->pCtx;` |
+|    17 | 1473 | `	pInfo = ph7_context_new_array(pCtx);` |
+|    17 | 1474 | `	if( pInfo == 0 ){` |
+|   ! 0 | 1475 | `		ph7_result_null(pCtx);` |
+|   ! 0 | 1476 | `		return PH7_OK;` |
+|     - | 1477 | `	}` |
+|    17 | 1478 | `	ReflectMapAddInt(pCtx, pInfo, "state", (sxi64)pExec->iState);` |
+|    24 | 1479 | `	ReflectMapAddBool(pCtx, pInfo, "closed",` |
+|    16 | 1480 | `		pExec->iState == PH7_CTX_STATE_COMPLETED \|\| pExec->iState == PH7_CTX_STATE_CLOSED);` |
+|    17 | 1481 | `	ReflectMapAddBool(pCtx, pInfo, "executing", pVm->pActiveCtx == pExec);` |
+|    17 | 1482 | `	if( pExec->pFunc ){` |
+|    17 | 1483 | `		ph7_vm_func *pFunc = pExec->pFunc;` |
+|    19 | 1484 | `		if( (pFunc->iFlags & VM_FUNC_CLASS_METHOD) && pFunc->pUserData ){` |
+|     5 | 1485 | `			ph7_class *pDecl = (ph7_class *)pFunc->pUserData;` |
+|     5 | 1486 | `			ReflectMapAddStr(pCtx, pInfo, "kind", "method", sizeof("method")-1);` |
+|     5 | 1487 | `			ReflectMapAddStr(pCtx, pInfo, "class", SyStringData(&pDecl->sName), (int)SyStringLength(&pDecl->sName));` |
+|     3 | 1488 | `		}else{` |
+|    13 | 1489 | `			ReflectMapAddStr(pCtx, pInfo, "kind", "fn", sizeof("fn")-1);` |
+|     - | 1490 | `		}` |
+|    17 | 1491 | `		ReflectMapAddStr(pCtx, pInfo, "name", SyStringData(&pFunc->sName), (int)SyStringLength(&pFunc->sName));` |
+|     8 | 1492 | `	}` |
+|     - | 1493 | `	{` |
+|     - | 1494 | `		/* The coroutine frame installs $this as a frame VARIABLE (see` |
+|     - | 1495 | `		 * VmFiberSetupFrame), not as pFrame->pThis — check both. */` |
+|    17 | 1496 | `		ph7_value *pThisVal = 0;` |
+|    17 | 1497 | `		if( pExec->pFrame ){` |
+|    17 | 1498 | `			SyHashEntry *pVar = SyHashGet(&pExec->pFrame->hVar, "this", sizeof("this")-1);` |
+|    17 | 1499 | `			if( pVar ){` |
+|     5 | 1500 | `				ph7_value *pSlot = (ph7_value *)SySetAt(&pVm->aMemObj, (sxu32)SX_PTR_TO_INT(pVar->pUserData));` |
+|     5 | 1501 | `				if( pSlot && (pSlot->iFlags & MEMOBJ_OBJ) ){` |
+|     5 | 1502 | `					pThisVal = pSlot;` |
+|     2 | 1503 | `				}` |
+|     2 | 1504 | `			}` |
+|    17 | 1505 | `			if( pThisVal == 0 && pExec->pFrame->pThis ){` |
+|     - | 1506 | `				ph7_value sThis;` |
+|   ! 0 | 1507 | `				ph7_value *pKey = ph7_context_new_scalar(pCtx);` |
+|   ! 0 | 1508 | `				PH7_MemObjInit(pVm, &sThis);` |
+|   ! 0 | 1509 | `				pExec->pFrame->pThis->iRef++;` |
+|   ! 0 | 1510 | `				sThis.x.pOther = pExec->pFrame->pThis;` |
+|   ! 0 | 1511 | `				MemObjSetType(&sThis, MEMOBJ_OBJ);` |
+|   ! 0 | 1512 | `				if( pKey ){` |
+|   ! 0 | 1513 | `					ph7_value_string(pKey, "this", 4);` |
+|   ! 0 | 1514 | `					ph7_array_add_elem(pInfo, pKey, &sThis); /* copies (takes its own ref) */` |
+|   ! 0 | 1515 | `				}` |
+|   ! 0 | 1516 | `				PH7_MemObjRelease(&sThis);` |
+|   ! 0 | 1517 | `				pThisVal = (ph7_value *)1; /* handled */` |
+|   ! 0 | 1518 | `			}` |
+|     8 | 1519 | `		}` |
+|    17 | 1520 | `		if( pThisVal == 0 ){` |
+|    13 | 1521 | `			ReflectMapAddNull(pCtx, pInfo, "this");` |
+|    11 | 1522 | `		}else if( pThisVal != (ph7_value *)1 ){` |
+|     5 | 1523 | `			ph7_value *pKey = ph7_context_new_scalar(pCtx);` |
+|     5 | 1524 | `			if( pKey ){` |
+|     5 | 1525 | `				ph7_value_string(pKey, "this", 4);` |
+|     5 | 1526 | `				ph7_array_add_elem(pInfo, pKey, pThisVal);` |
+|     2 | 1527 | `			}` |
+|     2 | 1528 | `		}` |
+|     - | 1529 | `	}` |
+|    17 | 1530 | `	ph7_result_value(pCtx, pInfo);` |
+|    17 | 1531 | `	return PH7_OK;` |
+|     9 | 1532 | `}` |
+|     - | 1533 | `/*` |
+|     - | 1534 | ` * Generator __reflect_gen_exec(Generator $g)` |
+|     - | 1535 | `` * Follow `yield from` delegation to the innermost executing generator`` |
+|     - | 1536 | ` * (PHP's ReflectionGenerator::getExecutingGenerator).` |
+|     - | 1537 | ` */` |
+|     4 | 1538 | `static int vm_builtin_reflect_gen_exec(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     1 | 1539 | `{` |
+|     5 | 1540 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     - | 1541 | `	ph7_generator *pGen;` |
+|     - | 1542 | `	ph7_value *pCur;` |
+|     5 | 1543 | `	int iDepth = 0;` |
+|     5 | 1544 | `	if( nArg < 1 \|\| (pGen = ReflectGeneratorCtx(pVm, apArg[0])) == 0 ){` |
+|   ! 0 | 1545 | `		ph7_result_null(pCtx);` |
+|   ! 0 | 1546 | `		return PH7_OK;` |
+|     - | 1547 | `	}` |
+|     5 | 1548 | `	pCur = apArg[0];` |
+|     9 | 1549 | `	while( pGen && pGen->pCtx && pGen->pCtx->iDelegateState == 3` |
+|     8 | 1550 | `	 && iDepth <= REFLECT_WALK_MAX_DEPTH ){` |
+|     3 | 1551 | `		ph7_generator *pInner = ReflectGeneratorCtx(pVm, &pGen->pCtx->sDelegate);` |
+|     3 | 1552 | `		if( pInner == 0 ){` |
+|   ! 0 | 1553 | `			break;` |
+|     - | 1554 | `		}` |
+|     3 | 1555 | `		pCur = &pGen->pCtx->sDelegate;` |
+|     3 | 1556 | `		pGen = pInner;` |
+|     3 | 1557 | `		iDepth++;` |
+|     1 | 1558 | `	}` |
+|     5 | 1559 | `	return ReflectResultExistingObject(pCtx, (ph7_class_instance *)pCur->x.pOther);` |
+|     3 | 1560 | `}` |
+|     - | 1561 | `/*` |
+|     - | 1562 | ` * array\|null __reflect_const_info(string $name)` |
+|     - | 1563 | ` * Global-constant descriptor: {value}. Null when undefined. File/origin` |
+|     - | 1564 | ` * metadata arrives with the C5 constant-metadata work.` |
+|     - | 1565 | ` */` |
+|    40 | 1566 | `static int vm_builtin_reflect_const_info(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     1 | 1567 | `{` |
+|    41 | 1568 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     - | 1569 | `	SyHashEntry *pEntry;` |
+|     - | 1570 | `	ph7_constant *pCons;` |
+|     - | 1571 | `	ph7_value *pInfo;` |
+|     - | 1572 | `	ph7_value sValue;` |
+|     - | 1573 | `	const char *zName;` |
+|     - | 1574 | `	int nLen;` |
+|    41 | 1575 | `	if( nArg < 1 ){` |
+|   ! 0 | 1576 | `		ph7_result_null(pCtx);` |
+|   ! 0 | 1577 | `		return PH7_OK;` |
+|     - | 1578 | `	}` |
+|    41 | 1579 | `	zName = ph7_value_to_string(apArg[0], &nLen);` |
+|    41 | 1580 | `	pEntry = nLen > 0 ? SyHashGet(&pVm->hConstant, (const void *)zName, (sxu32)nLen) : 0;` |
+|    41 | 1581 | `	if( pEntry == 0 ){` |
+|     3 | 1582 | `		ph7_result_null(pCtx);` |
+|     3 | 1583 | `		return PH7_OK;` |
+|     - | 1584 | `	}` |
+|    39 | 1585 | `	pCons = (ph7_constant *)pEntry->pUserData;` |
+|    39 | 1586 | `	pInfo = ph7_context_new_array(pCtx);` |
+|    39 | 1587 | `	if( pInfo == 0 ){` |
+|   ! 0 | 1588 | `		ph7_result_null(pCtx);` |
+|   ! 0 | 1589 | `		return PH7_OK;` |
+|     - | 1590 | `	}` |
+|    39 | 1591 | `	PH7_MemObjInit(pVm, &sValue);` |
+|    39 | 1592 | `	if( pCons->xExpand ){` |
+|    39 | 1593 | `		pCons->xExpand(&sValue, pCons->pUserData);` |
+|    19 | 1594 | `	}` |
+|     - | 1595 | `	{` |
+|    39 | 1596 | `		ph7_value *pKey = ph7_context_new_scalar(pCtx);` |
+|    39 | 1597 | `		if( pKey ){` |
+|    39 | 1598 | `			ph7_value_string(pKey, "value", 5);` |
+|    39 | 1599 | `			ph7_array_add_elem(pInfo, pKey, &sValue);` |
+|    19 | 1600 | `		}` |
+|     - | 1601 | `	}` |
+|    39 | 1602 | `	PH7_MemObjRelease(&sValue);` |
+|    39 | 1603 | `	ReflectMapAddBool(pCtx, pInfo, "internal", pCons->bUserDefined == 0);` |
+|    39 | 1604 | `	if( SyStringLength(&pCons->sFile) > 0 ){` |
+|    25 | 1605 | `		ReflectMapAddStr(pCtx, pInfo, "file", SyStringData(&pCons->sFile), (int)SyStringLength(&pCons->sFile));` |
+|    13 | 1606 | `	}else{` |
+|    15 | 1607 | `		ReflectMapAddBool(pCtx, pInfo, "file", 0);` |
+|     - | 1608 | `	}` |
+|    39 | 1609 | `	ReflectMapAddInt(pCtx, pInfo, "line", (sxi64)pCons->nLine);` |
+|    39 | 1610 | `	ReflectMapAddAttrs(pCtx, pInfo, &pCons->aAttrs);` |
+|    39 | 1611 | `	ph7_result_value(pCtx, pInfo);` |
+|    39 | 1612 | `	return PH7_OK;` |
+|    21 | 1613 | `}` |
+|     - | 1614 | `/*` |
+|     - | 1615 | ` * int\|null __reflect_ref_id(array $arr, int\|string $key)` |
+|     - | 1616 | ` * The element's slot index when the element is a reference (its slot has` |
+|     - | 1617 | ` * a reference-table record with at least two links), null otherwise.` |
+|     - | 1618 | ` */` |
+|     6 | 1619 | `static int vm_builtin_reflect_ref_id(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     1 | 1620 | `{` |
+|     - | 1621 | `	ph7_hashmap *pMap;` |
+|     7 | 1622 | `	ph7_hashmap_node *pNode = 0;` |
+|     7 | 1623 | `	if( nArg < 2 \|\| !ph7_value_is_array(apArg[0]) ){` |
+|   ! 0 | 1624 | `		ph7_result_null(pCtx);` |
+|   ! 0 | 1625 | `		return PH7_OK;` |
+|     - | 1626 | `	}` |
+|     7 | 1627 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|     7 | 1628 | `	if( PH7_HashmapLookup(pMap, apArg[1], &pNode) != SXRET_OK \|\| pNode == 0 ){` |
+|   ! 0 | 1629 | `		ph7_result_null(pCtx);` |
+|   ! 0 | 1630 | `		return PH7_OK;` |
+|     - | 1631 | `	}` |
+|     7 | 1632 | `	if( PH7_VmSlotRefCount(pCtx->pVm, pNode->nValIdx) < 2 ){` |
+|     3 | 1633 | `		ph7_result_null(pCtx);` |
+|     3 | 1634 | `		return PH7_OK;` |
+|     - | 1635 | `	}` |
+|     5 | 1636 | `	ph7_result_int64(pCtx, (sxi64)pNode->nValIdx);` |
+|     5 | 1637 | `	return PH7_OK;` |
+|     4 | 1638 | `}` |
+|     - | 1639 | `/*` |
+|     - | 1640 | ` * array\|null __reflect_attr_args(string $kind, mixed $target, ?string $member,` |
+|     - | 1641 | ` *                                int $paramIdx, int $attrIdx)` |
+|     - | 1642 | ` * Evaluate the recorded argument expressions of one declared attribute:` |
+|     - | 1643 | ` * kind 'class' (target = class), 'attr' (class + property/constant name),` |
+|     - | 1644 | ` * 'method' (class + method), 'fn' (function name or Closure), 'param'` |
+|     - | 1645 | ` * (function spec + parameter index). Named arguments become string keys.` |
+|     - | 1646 | ` */` |
+|    52 | 1647 | `static int vm_builtin_reflect_attr_args(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     1 | 1648 | `{` |
+|    53 | 1649 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    53 | 1650 | `	SySet *pAttrs = 0;` |
+|     - | 1651 | `	ph7_attribute *pAttrRec;` |
+|     - | 1652 | `	ph7_value *pOut;` |
+|     - | 1653 | `	const char *zKind;` |
+|     - | 1654 | `	int nKind;` |
+|     - | 1655 | `	sxu32 nAttrIdx, n;` |
+|    53 | 1656 | `	if( nArg < 5 ){` |
+|   ! 0 | 1657 | `		ph7_result_null(pCtx);` |
+|   ! 0 | 1658 | `		return PH7_OK;` |
+|     - | 1659 | `	}` |
+|    53 | 1660 | `	zKind = ph7_value_to_string(apArg[0], &nKind);` |
+|    53 | 1661 | `	nAttrIdx = (sxu32)ph7_value_to_int(apArg[4]);` |
+|    70 | 1662 | `	if( nKind == 5 && SyMemcmp(zKind, "class", 5) == 0 ){` |
+|    35 | 1663 | `		ph7_class *pClass = ReflectResolveClass(pVm, apArg[1]);` |
+|    35 | 1664 | `		if( pClass ){ pAttrs = &pClass->aAttrs; }` |
+|    38 | 1665 | `	}else if( nKind == 4 && SyMemcmp(zKind, "attr", 4) == 0 ){` |
+|     5 | 1666 | `		ph7_class *pClass = ReflectResolveClass(pVm, apArg[1]);` |
+|     5 | 1667 | `		ph7_class_attr *pMember = pClass ? ReflectFetchAttr(pClass, apArg[2]) : 0;` |
+|     5 | 1668 | `		if( pMember ){ pAttrs = &pMember->aAttrs; }` |
+|    18 | 1669 | `	}else if( nKind == 6 && SyMemcmp(zKind, "method", 6) == 0 ){` |
+|     3 | 1670 | `		ph7_vm_func *pFunc = ReflectResolveCallable(pCtx, apArg[1], apArg[2], 0, 0, 0, 0);` |
+|     3 | 1671 | `		if( pFunc ){ pAttrs = &pFunc->aAttrs; }` |
+|    18 | 1672 | `	}else if( nKind == 2 && SyMemcmp(zKind, "fn", 2) == 0 ){` |
+|     9 | 1673 | `		ph7_vm_func *pFunc = ReflectResolveCallable(pCtx, apArg[1], 0, 0, 0, 0, 0);` |
+|     9 | 1674 | `		if( pFunc ){ pAttrs = &pFunc->aAttrs; }` |
+|    10 | 1675 | `	}else if( nKind == 5 && SyMemcmp(zKind, "param", 5) == 0 ){` |
+|     3 | 1676 | `		ph7_vm_func *pFunc = ReflectResolveCallable(pCtx, apArg[1], apArg[2], 0, 0, 0, 0);` |
+|     3 | 1677 | `		ph7_vm_func_arg *pParam = pFunc` |
+|     2 | 1678 | `			? (ph7_vm_func_arg *)SySetAt(&pFunc->aArgs, (sxu32)ph7_value_to_int(apArg[3])) : 0;` |
+|     3 | 1679 | `		if( pParam ){ pAttrs = &pParam->aAttrs; }` |
+|     4 | 1680 | `	}else if( nKind == 5 && SyMemcmp(zKind, "const", 5) == 0 ){` |
+|     - | 1681 | ``		/* Global constant (php 8.5 attributes on `const` statements) */`` |
+|     - | 1682 | `		const char *zCName;` |
+|     - | 1683 | `		int nCName;` |
+|     - | 1684 | `		SyHashEntry *pCEntry;` |
+|     3 | 1685 | `		zCName = ph7_value_to_string(apArg[1], &nCName);` |
+|     3 | 1686 | `		pCEntry = nCName > 0 ? SyHashGet(&pVm->hConstant, (const void *)zCName, (sxu32)nCName) : 0;` |
+|     3 | 1687 | `		if( pCEntry ){ pAttrs = &((ph7_constant *)pCEntry->pUserData)->aAttrs; }` |
+|     1 | 1688 | `	}` |
+|    52 | 1689 | `	if( pAttrs == 0 \|\| (pAttrRec = (ph7_attribute *)SySetAt(pAttrs, nAttrIdx)) == 0` |
+|    53 | 1690 | `	 \|\| (pOut = ph7_context_new_array(pCtx)) == 0 ){` |
+|   ! 0 | 1691 | `		ph7_result_null(pCtx);` |
+|   ! 0 | 1692 | `		return PH7_OK;` |
+|     - | 1693 | `	}` |
+|    99 | 1694 | `	for( n = 0 ; n < SySetUsed(&pAttrRec->aArgs) ; n++ ){` |
+|    47 | 1695 | `		ph7_attr_arg *pArgRec = (ph7_attr_arg *)SySetAt(&pAttrRec->aArgs, n);` |
+|     - | 1696 | `		ph7_value sValue;` |
+|    47 | 1697 | `		PH7_MemObjInit(pVm, &sValue);` |
+|    47 | 1698 | `		if( SySetUsed(&pArgRec->aByteCode) > 0 ){` |
+|    47 | 1699 | `			VmLocalExec(pVm, &pArgRec->aByteCode, &sValue, FALSE);` |
+|    23 | 1700 | `		}` |
+|    47 | 1701 | `		if( SyStringLength(&pArgRec->sName) > 0 ){` |
+|     5 | 1702 | `			ReflectMapAddDyn(pCtx, pOut, &pArgRec->sName, &sValue);` |
+|     3 | 1703 | `		}else{` |
+|    43 | 1704 | `			ph7_array_add_elem(pOut, 0, &sValue);` |
+|     - | 1705 | `		}` |
+|    47 | 1706 | `		PH7_MemObjRelease(&sValue);` |
+|    24 | 1707 | `	}` |
+|    53 | 1708 | `	ph7_result_value(pCtx, pOut);` |
+|    53 | 1709 | `	return PH7_OK;` |
+|    27 | 1710 | `}` |
+|     - | 1711 | `/*` |
+|     - | 1712 | ` * The Reflection classes, in PHP. Chunk 1: exceptions, Reflector,` |
+|     - | 1713 | ` * Reflection, ReflectionClass, ReflectionObject (plus get_debug_type,` |
+|     - | 1714 | ` * which the TypeError messages need and PHP 8.0 ships natively).` |
+|     - | 1715 | ` */` |
+|     - | 1716 | `static const char zReflectLib1[] =` |
+|     - | 1717 | `/* Per-class memoization of the (expensive) C class descriptor. Every Reflection*` |
+|     - | 1718 | ` * accessor funnels through __rinfo()/the constructors, so without this a single` |
+|     - | 1719 | ` * test run rebuilds the full descriptor of the same class hundreds of times` |
+|     - | 1720 | ` * (real php caches the reflected class). Keyed by resolved class name; only` |
+|     - | 1721 | ` * successful lookups are cached, so a not-yet-autoloaded class is re-queried.` |
+|     - | 1722 | ` * The C builtin __reflect_class_info stays the real worker. */` |
+|     - | 1723 | `"function __phl_rcinfo($oc){"` |
+|     - | 1724 | `" static $c = array();"` |
+|     - | 1725 | `" $k = is_object($oc) ? get_class($oc) : (string)$oc;"` |
+|     - | 1726 | `" if( isset($c[$k]) ){ return $c[$k]; }"` |
+|     - | 1727 | `" $info = __reflect_class_info($oc);"` |
+|     - | 1728 | `" if( $info !== null ){ $c[$k] = $info; }"` |
+|     - | 1729 | `" return $info;"` |
+|     - | 1730 | `"}"` |
+|     - | 1731 | `"function get_debug_type($value){"` |
+|     - | 1732 | `" if(is_object($value)){ return get_class($value); }"` |
+|     - | 1733 | `" if(is_bool($value)){ return 'bool'; }"` |
+|     - | 1734 | `" if(is_int($value)){ return 'int'; }"` |
+|     - | 1735 | `" if(is_float($value)){ return 'float'; }"` |
+|     - | 1736 | `" if(is_string($value)){ return 'string'; }"` |
+|     - | 1737 | `" if(is_array($value)){ return 'array'; }"` |
+|     - | 1738 | `" if($value === null){ return 'null'; }"` |
+|     - | 1739 | `" return gettype($value);"` |
+|     - | 1740 | `"}"` |
+|     - | 1741 | `"interface Reflector extends Stringable {}"` |
+|     - | 1742 | `"class ReflectionException extends Exception {}"` |
+|     - | 1743 | `"class Reflection {"` |
+|     - | 1744 | `" public static function getModifierNames($modifiers){"` |
+|     - | 1745 | `"  $names = array();"` |
+|     - | 1746 | `"  if($modifiers & 64){ $names[] = 'abstract'; }"` |
+|     - | 1747 | `"  if($modifiers & 32){ $names[] = 'final'; }"` |
+|     - | 1748 | `"  if($modifiers & 1){ $names[] = 'public'; }"` |
+|     - | 1749 | `"  if($modifiers & 2){ $names[] = 'protected'; }"` |
+|     - | 1750 | `"  if($modifiers & 4){ $names[] = 'private'; }"` |
+|     - | 1751 | `"  if($modifiers & 16){ $names[] = 'static'; }"` |
+|     - | 1752 | `"  if($modifiers & 128){ $names[] = 'readonly'; }"` |
+|     - | 1753 | `"  return $names;"` |
+|     - | 1754 | `" }"` |
+|     - | 1755 | `"}"` |
+|     - | 1756 | `"class ReflectionClass implements Reflector {"` |
+|     - | 1757 | `" const IS_IMPLICIT_ABSTRACT = 16;"` |
+|     - | 1758 | `" const IS_EXPLICIT_ABSTRACT = 64;"` |
+|     - | 1759 | `" const IS_FINAL = 32;"` |
+|     - | 1760 | `" const IS_READONLY = 65536;"` |
+|     - | 1761 | `" const SKIP_INITIALIZATION_ON_SERIALIZE = 8;"` |
+|     - | 1762 | `" const SKIP_DESTRUCTOR = 16;"` |
+|     - | 1763 | `" public $name;"` |
+|     - | 1764 | `" protected $__obj = null;"` |
+|     - | 1765 | `" public function __construct($objectOrClass){"` |
+|     - | 1766 | `"  if(!is_object($objectOrClass) && !is_string($objectOrClass)){"` |
+|     - | 1767 | `"   if(is_int($objectOrClass) \|\| is_float($objectOrClass) \|\| is_bool($objectOrClass)){"` |
+|     - | 1768 | `"    $objectOrClass = (string)$objectOrClass;"` |
+|     - | 1769 | `"   }else{"` |
+|     - | 1770 | `"    throw new TypeError('ReflectionClass::__construct(): Argument #1 ($objectOrClass) must be of type object\|string, '.get_debug_type($objectOrClass).' given');"` |
+|     - | 1771 | `"   }"` |
+|     - | 1772 | `"  }"` |
+|     - | 1773 | `"  $info = __phl_rcinfo($objectOrClass);"` |
+|     - | 1774 | `"  if($info === null){"` |
+|     - | 1775 | `"   throw new ReflectionException('Class \"'.$objectOrClass.'\" does not exist');"` |
+|     - | 1776 | `"  }"` |
+|     - | 1777 | `"  $this->name = $info['name'];"` |
+|     - | 1778 | `" }"` |
+|     - | 1779 | `" protected function __rinfo(){ return __phl_rcinfo($this->name); }"` |
+|     - | 1780 | `" public function getName(){ return $this->name; }"` |
+|     - | 1781 | `" public function getShortName(){"` |
+|     - | 1782 | `"  $p = strrpos($this->name,'\\\\');"` |
+|     - | 1783 | `"  if($p === false){ return $this->name; }"` |
+|     - | 1784 | `"  return substr($this->name,$p+1);"` |
+|     - | 1785 | `" }"` |
+|     - | 1786 | `" public function getNamespaceName(){"` |
+|     - | 1787 | `"  $p = strrpos($this->name,'\\\\');"` |
+|     - | 1788 | `"  if($p === false){ return ''; }"` |
+|     - | 1789 | `"  return substr($this->name,0,$p);"` |
+|     - | 1790 | `" }"` |
+|     - | 1791 | `" public function inNamespace(){ return strrpos($this->name,'\\\\') !== false; }"` |
+|     - | 1792 | `" public function isInternal(){ $i = $this->__rinfo(); return $i['internal']; }"` |
+|     - | 1793 | `" public function isUserDefined(){ return !$this->isInternal(); }"` |
+|     - | 1794 | `" public function isInterface(){ $i = $this->__rinfo(); return $i['interface']; }"` |
+|     - | 1795 | `" public function isTrait(){ $i = $this->__rinfo(); return $i['trait']; }"` |
+|     - | 1796 | `" public function isAbstract(){ $i = $this->__rinfo(); return $i['abstract']; }"` |
+|     - | 1797 | `" public function isFinal(){ $i = $this->__rinfo(); return $i['final']; }"` |
+|     - | 1798 | `" public function isReadOnly(){ $i = $this->__rinfo(); return $i['readonly']; }"` |
+|     - | 1799 | `" public function isEnum(){ $i = $this->__rinfo(); return $i['enum']; }"` |
+|     - | 1800 | `" public function isAnonymous(){ return strpos($this->name,'class@anonymous') === 0; }"` |
+|     - | 1801 | `" public function getModifiers(){"` |
 |     - | 1802 | `"  $i = $this->__rinfo();"` |
-|     - | 1803 | `"  $out = array();"` |
-|     - | 1804 | `"  foreach($i['interfaces'] as $n){ $out[$n] = new ReflectionClass($n); }"` |
-|     - | 1805 | `"  return $out;"` |
-|     - | 1806 | `" }"` |
-|     - | 1807 | `" public function getTraitNames(){ $i = $this->__rinfo(); return $i['traits']; }"` |
-|     - | 1808 | `" public function getTraits(){"` |
-|     - | 1809 | `"  $i = $this->__rinfo();"` |
-|     - | 1810 | `"  $out = array();"` |
-|     - | 1811 | `"  foreach($i['traits'] as $n){ $out[$n] = new ReflectionClass($n); }"` |
-|     - | 1812 | `"  return $out;"` |
+|     - | 1803 | `"  $m = 0;"` |
+|     - | 1804 | `"  if($i['abstract']){ $m \|= 64; }"` |
+|     - | 1805 | `"  if($i['final']){ $m \|= 32; }"` |
+|     - | 1806 | `"  if($i['readonly']){ $m \|= 65536; }"` |
+|     - | 1807 | `"  return $m;"` |
+|     - | 1808 | `" }"` |
+|     - | 1809 | `" public function getParentClass(){"` |
+|     - | 1810 | `"  $i = $this->__rinfo();"` |
+|     - | 1811 | `"  if($i['parent'] === null){ return false; }"` |
+|     - | 1812 | `"  return new ReflectionClass($i['parent']);"` |
 |     - | 1813 | `" }"` |
-|     - | 1814 | `" public function getTraitAliases(){ return array(); }"` |
-|     - | 1815 | `" public function implementsInterface($interface){"` |
-|     - | 1816 | `"  if($interface instanceof ReflectionClass){ $interface = $interface->name; }"` |
-|     - | 1817 | `"  $target = __phl_rcinfo($interface);"` |
-|     - | 1818 | `"  if($target === null){"` |
-|     - | 1819 | `"   throw new ReflectionException('Interface \"'.$interface.'\" does not exist');"` |
-|     - | 1820 | `"  }"` |
-|     - | 1821 | `"  if(!$target['interface']){"` |
-|     - | 1822 | `"   throw new ReflectionException($target['name'].' is not an interface');"` |
-|     - | 1823 | `"  }"` |
-|     - | 1824 | `"  $name = $target['name'];"` |
-|     - | 1825 | `"  if($this->name === $name){ return true; }"` |
-|     - | 1826 | `"  $i = $this->__rinfo();"` |
-|     - | 1827 | `"  foreach($i['interfaces'] as $n){ if($n === $name){ return true; } }"` |
-|     - | 1828 | `"  return false;"` |
-|     - | 1829 | `" }"` |
-|     - | 1830 | `" public function isSubclassOf($class){"` |
-|     - | 1831 | `"  if($class instanceof ReflectionClass){ $class = $class->name; }"` |
-|     - | 1832 | `"  $target = __phl_rcinfo($class);"` |
-|     - | 1833 | `"  if($target === null){"` |
-|     - | 1834 | `"   throw new ReflectionException('Class \"'.$class.'\" does not exist');"` |
-|     - | 1835 | `"  }"` |
-|     - | 1836 | `"  $name = $target['name'];"` |
-|     - | 1837 | `"  if($name === $this->name){ return false; }"` |
-|     - | 1838 | `"  $i = $this->__rinfo();"` |
-|     - | 1839 | `"  $p = $i['parent'];"` |
-|     - | 1840 | `"  while($p !== null){"` |
-|     - | 1841 | `"   if($p === $name){ return true; }"` |
-|     - | 1842 | `"   $pi = __phl_rcinfo($p);"` |
-|     - | 1843 | `"   $p = $pi['parent'];"` |
-|     - | 1844 | `"  }"` |
-|     - | 1845 | `"  foreach($i['interfaces'] as $n){ if($n === $name){ return true; } }"` |
-|     - | 1846 | `"  return false;"` |
-|     - | 1847 | `" }"` |
-|     - | 1848 | `" public function isInstance($object){"` |
-|     - | 1849 | `"  if(!is_object($object)){"` |
-|     - | 1850 | `"   throw new TypeError('ReflectionClass::isInstance(): Argument #1 ($object) must be of type object, '.get_debug_type($object).' given');"` |
-|     - | 1851 | `"  }"` |
-|     - | 1852 | `"  return is_a($object,$this->name);"` |
-|     - | 1853 | `" }"` |
-|     - | 1854 | `" public function hasMethod($name){"` |
-|     - | 1855 | `"  $i = $this->__rinfo();"` |
-|     - | 1856 | `"  $l = strtolower($name);"` |
-|     - | 1857 | `"  foreach($i['methods'] as $k => $m){ if(strtolower($k) === $l){ return true; } }"` |
-|     - | 1858 | `"  return false;"` |
-|     - | 1859 | `" }"` |
-|     - | 1860 | `" public function hasProperty($name){"` |
-|     - | 1861 | `"  $i = $this->__rinfo();"` |
-|     - | 1862 | `"  if(isset($i['props'][$name])){ return true; }"` |
-|     - | 1863 | `"  if($this->__obj !== null){ return (__reflect_prop_state($this->__obj, $name) & 1) !== 0; }"` |
-|     - | 1864 | `"  return false;"` |
-|     - | 1865 | `" }"` |
-|     - | 1866 | `" public function hasConstant($name){ $i = $this->__rinfo(); return isset($i['consts'][$name]); }"` |
-|     - | 1867 | `" public function getConstant($name){"` |
-|     - | 1868 | `"  $i = $this->__rinfo();"` |
-|     - | 1869 | `"  if(!isset($i['consts'][$name])){ return false; }"` |
-|     - | 1870 | `"  return __reflect_const_value($this->name,$name);"` |
-|     - | 1871 | `" }"` |
-|     - | 1872 | `" public function getConstants($filter = null){"` |
-|     - | 1873 | `"  $i = $this->__rinfo();"` |
-|     - | 1874 | `"  $out = array();"` |
-|     - | 1875 | `"  foreach($i['consts'] as $k => $c){"` |
-|     - | 1876 | `"   if($filter !== null){"` |
-|     - | 1877 | `"    $m = ($c['vis'] === 1 ? 1 : ($c['vis'] === 2 ? 2 : 4));"` |
-|     - | 1878 | `"    if(($m & $filter) === 0){ continue; }"` |
-|     - | 1879 | `"   }"` |
-|     - | 1880 | `"   $out[$k] = __reflect_const_value($this->name,$k);"` |
-|     - | 1881 | `"  }"` |
-|     - | 1882 | `"  return $out;"` |
-|     - | 1883 | `" }"` |
-|     - | 1884 | `" public function getStartLine(){"` |
-|     - | 1885 | `"  $i = $this->__rinfo();"` |
-|     - | 1886 | `"  if($i['internal']){ return false; }"` |
-|     - | 1887 | `"  return $i['line'];"` |
-|     - | 1888 | `" }"` |
-|     - | 1889 | `" public function getEndLine(){"` |
-|     - | 1890 | `"  $i = $this->__rinfo();"` |
-|     - | 1891 | `"  if($i['internal']){ return false; }"` |
-|     - | 1892 | `"  return $i['endline'];"` |
-|     - | 1893 | `" }"` |
-|     - | 1894 | `" public function getFileName(){ $i = $this->__rinfo(); return $i['file']; }"` |
-|     - | 1895 | `" public function getDocComment(){ $i = $this->__rinfo(); return $i['doc']; }"` |
-|     - | 1896 | `" public function isInstantiable(){"` |
-|     - | 1897 | `"  $i = $this->__rinfo();"` |
-|     - | 1898 | `"  if($i['interface'] \|\| $i['trait'] \|\| $i['abstract'] \|\| $i['enum']){ return false; }"` |
-|     - | 1899 | `"  if($i['ctorvis'] !== 0 && $i['ctorvis'] !== 1){ return false; }"` |
-|     - | 1900 | `"  return true;"` |
-|     - | 1901 | `" }"` |
-|     - | 1902 | `" public function isCloneable(){"` |
-|     - | 1903 | `"  $i = $this->__rinfo();"` |
-|     - | 1904 | `"  if($i['interface'] \|\| $i['trait'] \|\| $i['abstract']){ return false; }"` |
-|     - | 1905 | `"  if($i['clonevis'] !== 0 && $i['clonevis'] !== 1){ return false; }"` |
-|     - | 1906 | `"  return true;"` |
+|     - | 1814 | `" public function getInterfaceNames(){ $i = $this->__rinfo(); return $i['interfaces']; }"` |
+|     - | 1815 | `" public function getInterfaces(){"` |
+|     - | 1816 | `"  $i = $this->__rinfo();"` |
+|     - | 1817 | `"  $out = array();"` |
+|     - | 1818 | `"  foreach($i['interfaces'] as $n){ $out[$n] = new ReflectionClass($n); }"` |
+|     - | 1819 | `"  return $out;"` |
+|     - | 1820 | `" }"` |
+|     - | 1821 | `" public function getTraitNames(){ $i = $this->__rinfo(); return $i['traits']; }"` |
+|     - | 1822 | `" public function getTraits(){"` |
+|     - | 1823 | `"  $i = $this->__rinfo();"` |
+|     - | 1824 | `"  $out = array();"` |
+|     - | 1825 | `"  foreach($i['traits'] as $n){ $out[$n] = new ReflectionClass($n); }"` |
+|     - | 1826 | `"  return $out;"` |
+|     - | 1827 | `" }"` |
+|     - | 1828 | `" public function getTraitAliases(){ return array(); }"` |
+|     - | 1829 | `" public function implementsInterface($interface){"` |
+|     - | 1830 | `"  if($interface instanceof ReflectionClass){ $interface = $interface->name; }"` |
+|     - | 1831 | `"  $target = __phl_rcinfo($interface);"` |
+|     - | 1832 | `"  if($target === null){"` |
+|     - | 1833 | `"   throw new ReflectionException('Interface \"'.$interface.'\" does not exist');"` |
+|     - | 1834 | `"  }"` |
+|     - | 1835 | `"  if(!$target['interface']){"` |
+|     - | 1836 | `"   throw new ReflectionException($target['name'].' is not an interface');"` |
+|     - | 1837 | `"  }"` |
+|     - | 1838 | `"  $name = $target['name'];"` |
+|     - | 1839 | `"  if($this->name === $name){ return true; }"` |
+|     - | 1840 | `"  $i = $this->__rinfo();"` |
+|     - | 1841 | `"  foreach($i['interfaces'] as $n){ if($n === $name){ return true; } }"` |
+|     - | 1842 | `"  return false;"` |
+|     - | 1843 | `" }"` |
+|     - | 1844 | `" public function isSubclassOf($class){"` |
+|     - | 1845 | `"  if($class instanceof ReflectionClass){ $class = $class->name; }"` |
+|     - | 1846 | `"  $target = __phl_rcinfo($class);"` |
+|     - | 1847 | `"  if($target === null){"` |
+|     - | 1848 | `"   throw new ReflectionException('Class \"'.$class.'\" does not exist');"` |
+|     - | 1849 | `"  }"` |
+|     - | 1850 | `"  $name = $target['name'];"` |
+|     - | 1851 | `"  if($name === $this->name){ return false; }"` |
+|     - | 1852 | `"  $i = $this->__rinfo();"` |
+|     - | 1853 | `"  $p = $i['parent'];"` |
+|     - | 1854 | `"  while($p !== null){"` |
+|     - | 1855 | `"   if($p === $name){ return true; }"` |
+|     - | 1856 | `"   $pi = __phl_rcinfo($p);"` |
+|     - | 1857 | `"   $p = $pi['parent'];"` |
+|     - | 1858 | `"  }"` |
+|     - | 1859 | `"  foreach($i['interfaces'] as $n){ if($n === $name){ return true; } }"` |
+|     - | 1860 | `"  return false;"` |
+|     - | 1861 | `" }"` |
+|     - | 1862 | `" public function isInstance($object){"` |
+|     - | 1863 | `"  if(!is_object($object)){"` |
+|     - | 1864 | `"   throw new TypeError('ReflectionClass::isInstance(): Argument #1 ($object) must be of type object, '.get_debug_type($object).' given');"` |
+|     - | 1865 | `"  }"` |
+|     - | 1866 | `"  return is_a($object,$this->name);"` |
+|     - | 1867 | `" }"` |
+|     - | 1868 | `" public function hasMethod($name){"` |
+|     - | 1869 | `"  $i = $this->__rinfo();"` |
+|     - | 1870 | `"  $l = strtolower($name);"` |
+|     - | 1871 | `"  foreach($i['methods'] as $k => $m){ if(strtolower($k) === $l){ return true; } }"` |
+|     - | 1872 | `"  return false;"` |
+|     - | 1873 | `" }"` |
+|     - | 1874 | `" public function hasProperty($name){"` |
+|     - | 1875 | `"  $i = $this->__rinfo();"` |
+|     - | 1876 | `"  if(isset($i['props'][$name])){ return true; }"` |
+|     - | 1877 | `"  if($this->__obj !== null){ return (__reflect_prop_state($this->__obj, $name) & 1) !== 0; }"` |
+|     - | 1878 | `"  return false;"` |
+|     - | 1879 | `" }"` |
+|     - | 1880 | `" public function hasConstant($name){ $i = $this->__rinfo(); return isset($i['consts'][$name]); }"` |
+|     - | 1881 | `" public function getConstant($name){"` |
+|     - | 1882 | `"  $i = $this->__rinfo();"` |
+|     - | 1883 | `"  if(!isset($i['consts'][$name])){ return false; }"` |
+|     - | 1884 | `"  return __reflect_const_value($this->name,$name);"` |
+|     - | 1885 | `" }"` |
+|     - | 1886 | `" public function getConstants($filter = null){"` |
+|     - | 1887 | `"  $i = $this->__rinfo();"` |
+|     - | 1888 | `"  $out = array();"` |
+|     - | 1889 | `"  foreach($i['consts'] as $k => $c){"` |
+|     - | 1890 | `"   if($filter !== null){"` |
+|     - | 1891 | `"    $m = ($c['vis'] === 1 ? 1 : ($c['vis'] === 2 ? 2 : 4));"` |
+|     - | 1892 | `"    if(($m & $filter) === 0){ continue; }"` |
+|     - | 1893 | `"   }"` |
+|     - | 1894 | `"   $out[$k] = __reflect_const_value($this->name,$k);"` |
+|     - | 1895 | `"  }"` |
+|     - | 1896 | `"  return $out;"` |
+|     - | 1897 | `" }"` |
+|     - | 1898 | `" public function getStartLine(){"` |
+|     - | 1899 | `"  $i = $this->__rinfo();"` |
+|     - | 1900 | `"  if($i['internal']){ return false; }"` |
+|     - | 1901 | `"  return $i['line'];"` |
+|     - | 1902 | `" }"` |
+|     - | 1903 | `" public function getEndLine(){"` |
+|     - | 1904 | `"  $i = $this->__rinfo();"` |
+|     - | 1905 | `"  if($i['internal']){ return false; }"` |
+|     - | 1906 | `"  return $i['endline'];"` |
 |     - | 1907 | `" }"` |
-|     - | 1908 | `" public function isIterable(){"` |
-|     - | 1909 | `"  $i = $this->__rinfo();"` |
-|     - | 1910 | `"  if($i['interface'] \|\| $i['trait'] \|\| $i['abstract']){ return false; }"` |
-|     - | 1911 | `"  return $i['iterable'];"` |
-|     - | 1912 | `" }"` |
-|     - | 1913 | `" public function isIterateable(){ return $this->isIterable(); }"` |
-|     - | 1914 | `" public function newInstance(...$args){ return $this->__rnew($args); }"` |
-|     - | 1915 | `" public function newInstanceArgs(array $args = array()){ return $this->__rnew($args); }"` |
-|     - | 1916 | `" protected function __rnew($args){"` |
+|     - | 1908 | `" public function getFileName(){ $i = $this->__rinfo(); return $i['file']; }"` |
+|     - | 1909 | `" public function getDocComment(){ $i = $this->__rinfo(); return $i['doc']; }"` |
+|     - | 1910 | `" public function isInstantiable(){"` |
+|     - | 1911 | `"  $i = $this->__rinfo();"` |
+|     - | 1912 | `"  if($i['interface'] \|\| $i['trait'] \|\| $i['abstract'] \|\| $i['enum']){ return false; }"` |
+|     - | 1913 | `"  if($i['ctorvis'] !== 0 && $i['ctorvis'] !== 1){ return false; }"` |
+|     - | 1914 | `"  return true;"` |
+|     - | 1915 | `" }"` |
+|     - | 1916 | `" public function isCloneable(){"` |
 |     - | 1917 | `"  $i = $this->__rinfo();"` |
-|     - | 1918 | `"  $this->__rcheckInstantiable($i);"` |
-|     - | 1919 | `"  if($i['ctorvis'] !== 0 && $i['ctorvis'] !== 1){"` |
-|     - | 1920 | `"   throw new ReflectionException('Access to non-public constructor of class '.$this->name);"` |
-|     - | 1921 | `"  }"` |
-|     - | 1922 | `"  if($i['ctorvis'] === 0 && count($args) > 0){"` |
-|     - | 1923 | `"   throw new ReflectionException('Class '.$this->name.' does not have a constructor, so you cannot pass any constructor arguments');"` |
-|     - | 1924 | `"  }"` |
-|     - | 1925 | `"  return __reflect_new_instance($this->name,$args);"` |
+|     - | 1918 | `"  if($i['interface'] \|\| $i['trait'] \|\| $i['abstract']){ return false; }"` |
+|     - | 1919 | `"  if($i['clonevis'] !== 0 && $i['clonevis'] !== 1){ return false; }"` |
+|     - | 1920 | `"  return true;"` |
+|     - | 1921 | `" }"` |
+|     - | 1922 | `" public function isIterable(){"` |
+|     - | 1923 | `"  $i = $this->__rinfo();"` |
+|     - | 1924 | `"  if($i['interface'] \|\| $i['trait'] \|\| $i['abstract']){ return false; }"` |
+|     - | 1925 | `"  return $i['iterable'];"` |
 |     - | 1926 | `" }"` |
-|     - | 1927 | `" protected function __rcheckInstantiable($i){"` |
-|     - | 1928 | `"  if($i['interface']){ throw new Error('Cannot instantiate interface '.$this->name); }"` |
-|     - | 1929 | `"  if($i['trait']){ throw new Error('Cannot instantiate trait '.$this->name); }"` |
-|     - | 1930 | `"  if($i['abstract']){ throw new Error('Cannot instantiate abstract class '.$this->name); }"` |
-|     - | 1931 | `" }"` |
-|     - | 1932 | `" public function newInstanceWithoutConstructor(){"` |
-|     - | 1933 | `"  $i = $this->__rinfo();"` |
-|     - | 1934 | `"  $this->__rcheckInstantiable($i);"` |
-|     - | 1935 | `"  return __reflect_new_no_ctor($this->name);"` |
-|     - | 1936 | `" }"` |
-|     - | 1937 | `" public function getStaticProperties(){"` |
-|     - | 1938 | `"  $i = $this->__rinfo();"` |
-|     - | 1939 | `"  $out = array();"` |
-|     - | 1940 | `"  foreach($i['props'] as $k => $p){"` |
-|     - | 1941 | `"   if($p['static']){ $out[$k] = __reflect_static_value($this->name,$k); }"` |
-|     - | 1942 | `"  }"` |
-|     - | 1943 | `"  return $out;"` |
-|     - | 1944 | `" }"` |
-|     - | 1945 | `" public function getStaticPropertyValue($name, ...$def){"` |
-|     - | 1946 | `"  $i = $this->__rinfo();"` |
-|     - | 1947 | `"  if(!isset($i['props'][$name]) \|\| !$i['props'][$name]['static']){"` |
-|     - | 1948 | `"   if(count($def) > 0){ return $def[0]; }"` |
-|     - | 1949 | `"   throw new ReflectionException('Property '.$this->name.'::$'.$name.' does not exist');"` |
-|     - | 1950 | `"  }"` |
-|     - | 1951 | `"  return __reflect_static_value($this->name,$name);"` |
-|     - | 1952 | `" }"` |
-|     - | 1953 | `" public function setStaticPropertyValue($name,$value){"` |
-|     - | 1954 | `"  $i = $this->__rinfo();"` |
-|     - | 1955 | `"  if(!isset($i['props'][$name]) \|\| !$i['props'][$name]['static']){"` |
-|     - | 1956 | `"   throw new ReflectionException('Class '.$this->name.' does not have a property named '.$name);"` |
-|     - | 1957 | `"  }"` |
-|     - | 1958 | `"  __reflect_static_set($this->name,$name,$value);"` |
-|     - | 1959 | `" }"` |
-|     - | 1960 | `" public function getDefaultProperties(){"` |
-|     - | 1961 | `"  $i = $this->__rinfo();"` |
-|     - | 1962 | `"  $out = array();"` |
-|     - | 1963 | `"  foreach($i['props'] as $k => $p){"` |
-|     - | 1964 | `"   if($p['static']){ $out[$k] = __reflect_prop_default($this->name,$k); }"` |
-|     - | 1965 | `"  }"` |
-|     - | 1966 | `"  foreach($i['props'] as $k => $p){"` |
-|     - | 1967 | `"   if(!$p['static']){ $out[$k] = __reflect_prop_default($this->name,$k); }"` |
-|     - | 1968 | `"  }"` |
-|     - | 1969 | `"  return $out;"` |
-|     - | 1970 | `" }"` |
-|     - | 1971 | `" public function getProperty($name){"` |
-|     - | 1972 | `"  $i = $this->__rinfo();"` |
-|     - | 1973 | `"  if(isset($i['props'][$name])){"` |
-|     - | 1974 | `"   return new ReflectionProperty($this->name, $name);"` |
-|     - | 1975 | `"  }"` |
-|     - | 1976 | `"  if($this->__obj !== null && (__reflect_prop_state($this->__obj, $name) & 1)){"` |
-|     - | 1977 | `"   return new ReflectionProperty($this->__obj, $name);"` |
-|     - | 1978 | `"  }"` |
-|     - | 1979 | `"  throw new ReflectionException('Property '.$this->name.'::$'.$name.' does not exist');"` |
-|     - | 1980 | `" }"` |
-|     - | 1981 | `" public function getProperties($filter = null){"` |
-|     - | 1982 | `"  $i = $this->__rinfo();"` |
-|     - | 1983 | `"  $out = array();"` |
-|     - | 1984 | `"  foreach($i['props'] as $k => $p){"` |
-|     - | 1985 | `"   if($filter !== null){"` |
-|     - | 1986 | `"    $m = ($p['vis'] === 1 ? 1 : ($p['vis'] === 2 ? 2 : 4));"` |
-|     - | 1987 | `"    if($p['static']){ $m \|= 16; }"` |
-|     - | 1988 | `"    if($p['readonly']){ $m \|= 128; }"` |
-|     - | 1989 | `"    if(($m & $filter) === 0){ continue; }"` |
-|     - | 1990 | `"   }"` |
-|     - | 1991 | `"   $out[] = new ReflectionProperty($this->name, $k);"` |
+|     - | 1927 | `" public function isIterateable(){ return $this->isIterable(); }"` |
+|     - | 1928 | `" public function newInstance(...$args){ return $this->__rnew($args); }"` |
+|     - | 1929 | `" public function newInstanceArgs(array $args = array()){ return $this->__rnew($args); }"` |
+|     - | 1930 | `" protected function __rnew($args){"` |
+|     - | 1931 | `"  $i = $this->__rinfo();"` |
+|     - | 1932 | `"  $this->__rcheckInstantiable($i);"` |
+|     - | 1933 | `"  if($i['ctorvis'] !== 0 && $i['ctorvis'] !== 1){"` |
+|     - | 1934 | `"   throw new ReflectionException('Access to non-public constructor of class '.$this->name);"` |
+|     - | 1935 | `"  }"` |
+|     - | 1936 | `"  if($i['ctorvis'] === 0 && count($args) > 0){"` |
+|     - | 1937 | `"   throw new ReflectionException('Class '.$this->name.' does not have a constructor, so you cannot pass any constructor arguments');"` |
+|     - | 1938 | `"  }"` |
+|     - | 1939 | `"  return __reflect_new_instance($this->name,$args);"` |
+|     - | 1940 | `" }"` |
+|     - | 1941 | `" protected function __rcheckInstantiable($i){"` |
+|     - | 1942 | `"  if($i['interface']){ throw new Error('Cannot instantiate interface '.$this->name); }"` |
+|     - | 1943 | `"  if($i['trait']){ throw new Error('Cannot instantiate trait '.$this->name); }"` |
+|     - | 1944 | `"  if($i['abstract']){ throw new Error('Cannot instantiate abstract class '.$this->name); }"` |
+|     - | 1945 | `" }"` |
+|     - | 1946 | `" public function newInstanceWithoutConstructor(){"` |
+|     - | 1947 | `"  $i = $this->__rinfo();"` |
+|     - | 1948 | `"  $this->__rcheckInstantiable($i);"` |
+|     - | 1949 | `"  return __reflect_new_no_ctor($this->name);"` |
+|     - | 1950 | `" }"` |
+|     - | 1951 | `" public function getStaticProperties(){"` |
+|     - | 1952 | `"  $i = $this->__rinfo();"` |
+|     - | 1953 | `"  $out = array();"` |
+|     - | 1954 | `"  foreach($i['props'] as $k => $p){"` |
+|     - | 1955 | `"   if($p['static']){ $out[$k] = __reflect_static_value($this->name,$k); }"` |
+|     - | 1956 | `"  }"` |
+|     - | 1957 | `"  return $out;"` |
+|     - | 1958 | `" }"` |
+|     - | 1959 | `" public function getStaticPropertyValue($name, ...$def){"` |
+|     - | 1960 | `"  $i = $this->__rinfo();"` |
+|     - | 1961 | `"  if(!isset($i['props'][$name]) \|\| !$i['props'][$name]['static']){"` |
+|     - | 1962 | `"   if(count($def) > 0){ return $def[0]; }"` |
+|     - | 1963 | `"   throw new ReflectionException('Property '.$this->name.'::$'.$name.' does not exist');"` |
+|     - | 1964 | `"  }"` |
+|     - | 1965 | `"  return __reflect_static_value($this->name,$name);"` |
+|     - | 1966 | `" }"` |
+|     - | 1967 | `" public function setStaticPropertyValue($name,$value){"` |
+|     - | 1968 | `"  $i = $this->__rinfo();"` |
+|     - | 1969 | `"  if(!isset($i['props'][$name]) \|\| !$i['props'][$name]['static']){"` |
+|     - | 1970 | `"   throw new ReflectionException('Class '.$this->name.' does not have a property named '.$name);"` |
+|     - | 1971 | `"  }"` |
+|     - | 1972 | `"  __reflect_static_set($this->name,$name,$value);"` |
+|     - | 1973 | `" }"` |
+|     - | 1974 | `" public function getDefaultProperties(){"` |
+|     - | 1975 | `"  $i = $this->__rinfo();"` |
+|     - | 1976 | `"  $out = array();"` |
+|     - | 1977 | `"  foreach($i['props'] as $k => $p){"` |
+|     - | 1978 | `"   if($p['static']){ $out[$k] = __reflect_prop_default($this->name,$k); }"` |
+|     - | 1979 | `"  }"` |
+|     - | 1980 | `"  foreach($i['props'] as $k => $p){"` |
+|     - | 1981 | `"   if(!$p['static']){ $out[$k] = __reflect_prop_default($this->name,$k); }"` |
+|     - | 1982 | `"  }"` |
+|     - | 1983 | `"  return $out;"` |
+|     - | 1984 | `" }"` |
+|     - | 1985 | `" public function getProperty($name){"` |
+|     - | 1986 | `"  $i = $this->__rinfo();"` |
+|     - | 1987 | `"  if(isset($i['props'][$name])){"` |
+|     - | 1988 | `"   return new ReflectionProperty($this->name, $name);"` |
+|     - | 1989 | `"  }"` |
+|     - | 1990 | `"  if($this->__obj !== null && (__reflect_prop_state($this->__obj, $name) & 1)){"` |
+|     - | 1991 | `"   return new ReflectionProperty($this->__obj, $name);"` |
 |     - | 1992 | `"  }"` |
-|     - | 1993 | `"  if($this->__obj !== null){"` |
-|     - | 1994 | `"   foreach(__reflect_dyn_props($this->__obj) as $k){"` |
-|     - | 1995 | `"    if(isset($i['props'][$k])){ continue; }"` |
-|     - | 1996 | `"    if($filter !== null && ($filter & 1) === 0){ continue; }"` |
-|     - | 1997 | `"    $out[] = new ReflectionProperty($this->__obj, $k);"` |
-|     - | 1998 | `"   }"` |
-|     - | 1999 | `"  }"` |
-|     - | 2000 | `"  return $out;"` |
-|     - | 2001 | `" }"` |
-|     - | 2002 | `" public function getMethod($name){"` |
-|     - | 2003 | `"  $i = $this->__rinfo();"` |
-|     - | 2004 | `"  $found = null;"` |
-|     - | 2005 | `"  if(isset($i['methods'][$name])){"` |
-|     - | 2006 | `"   $found = $name;"` |
-|     - | 2007 | `"  }else{"` |
-|     - | 2008 | `"   $l = strtolower($name);"` |
-|     - | 2009 | `"   foreach($i['methods'] as $k => $m){ if(strtolower($k) === $l){ $found = $k; break; } }"` |
-|     - | 2010 | `"  }"` |
-|     - | 2011 | `"  if($found === null){"` |
-|     - | 2012 | `"   throw new ReflectionException('Method '.$this->name.'::'.$name.'() does not exist');"` |
+|     - | 1993 | `"  throw new ReflectionException('Property '.$this->name.'::$'.$name.' does not exist');"` |
+|     - | 1994 | `" }"` |
+|     - | 1995 | `" public function getProperties($filter = null){"` |
+|     - | 1996 | `"  $i = $this->__rinfo();"` |
+|     - | 1997 | `"  $out = array();"` |
+|     - | 1998 | `"  foreach($i['props'] as $k => $p){"` |
+|     - | 1999 | `"   if($filter !== null){"` |
+|     - | 2000 | `"    $m = ($p['vis'] === 1 ? 1 : ($p['vis'] === 2 ? 2 : 4));"` |
+|     - | 2001 | `"    if($p['static']){ $m \|= 16; }"` |
+|     - | 2002 | `"    if($p['readonly']){ $m \|= 128; }"` |
+|     - | 2003 | `"    if(($m & $filter) === 0){ continue; }"` |
+|     - | 2004 | `"   }"` |
+|     - | 2005 | `"   $out[] = new ReflectionProperty($this->name, $k);"` |
+|     - | 2006 | `"  }"` |
+|     - | 2007 | `"  if($this->__obj !== null){"` |
+|     - | 2008 | `"   foreach(__reflect_dyn_props($this->__obj) as $k){"` |
+|     - | 2009 | `"    if(isset($i['props'][$k])){ continue; }"` |
+|     - | 2010 | `"    if($filter !== null && ($filter & 1) === 0){ continue; }"` |
+|     - | 2011 | `"    $out[] = new ReflectionProperty($this->__obj, $k);"` |
+|     - | 2012 | `"   }"` |
 |     - | 2013 | `"  }"` |
-|     - | 2014 | `"  return new ReflectionMethod($this->name, $found);"` |
+|     - | 2014 | `"  return $out;"` |
 |     - | 2015 | `" }"` |
-|     - | 2016 | `" public function getMethods($filter = null){"` |
+|     - | 2016 | `" public function getMethod($name){"` |
 |     - | 2017 | `"  $i = $this->__rinfo();"` |
-|     - | 2018 | `"  $out = array();"` |
-|     - | 2019 | `"  foreach($i['methods'] as $k => $m){"` |
-|     - | 2020 | `"   if($filter !== null){"` |
-|     - | 2021 | `"    $mod = ($m['vis'] === 1 ? 1 : ($m['vis'] === 2 ? 2 : 4));"` |
-|     - | 2022 | `"    if($m['static']){ $mod \|= 16; }"` |
-|     - | 2023 | `"    if($m['abstract']){ $mod \|= 64; }"` |
-|     - | 2024 | `"    if($m['final']){ $mod \|= 32; }"` |
-|     - | 2025 | `"    if(($mod & $filter) === 0){ continue; }"` |
-|     - | 2026 | `"   }"` |
-|     - | 2027 | `"   $out[] = new ReflectionMethod($this->name, $k);"` |
-|     - | 2028 | `"  }"` |
-|     - | 2029 | `"  return $out;"` |
-|     - | 2030 | `" }"` |
-|     - | 2031 | `" public function getConstructor(){"` |
-|     - | 2032 | `"  $i = $this->__rinfo();"` |
-|     - | 2033 | `"  if(isset($i['methods']['__construct'])){"` |
-|     - | 2034 | `"   return new ReflectionMethod($this->name, '__construct');"` |
-|     - | 2035 | `"  }"` |
-|     - | 2036 | `"  foreach($i['methods'] as $k => $m){"` |
-|     - | 2037 | `"   if(strtolower($k) === '__construct'){ return new ReflectionMethod($this->name, $k); }"` |
-|     - | 2038 | `"  }"` |
-|     - | 2039 | `"  if($i['ctorvis'] !== 0 && isset($i['methods'][$this->name])){"` |
-|     - | 2040 | `"   return new ReflectionMethod($this->name, $this->name);"` |
-|     - | 2041 | `"  }"` |
-|     - | 2042 | `"  return null;"` |
-|     - | 2043 | `" }"` |
-|     - | 2044 | `" public function getReflectionConstant($name){"` |
-|     - | 2045 | `"  $i = $this->__rinfo();"` |
-|     - | 2046 | `"  if(!isset($i['consts'][$name])){ return false; }"` |
-|     - | 2047 | `"  return new ReflectionClassConstant($this->name, $name);"` |
-|     - | 2048 | `" }"` |
-|     - | 2049 | `" public function getReflectionConstants($filter = null){"` |
-|     - | 2050 | `"  $i = $this->__rinfo();"` |
-|     - | 2051 | `"  $out = array();"` |
-|     - | 2052 | `"  foreach($i['consts'] as $k => $c){"` |
-|     - | 2053 | `"   if($filter !== null){"` |
-|     - | 2054 | `"    $m = ($c['vis'] === 1 ? 1 : ($c['vis'] === 2 ? 2 : 4));"` |
-|     - | 2055 | `"    if($c['final']){ $m \|= 32; }"` |
-|     - | 2056 | `"    if(($m & $filter) === 0){ continue; }"` |
-|     - | 2057 | `"   }"` |
-|     - | 2058 | `"   $out[] = new ReflectionClassConstant($this->name, $k);"` |
-|     - | 2059 | `"  }"` |
-|     - | 2060 | `"  return $out;"` |
-|     - | 2061 | `" }"` |
-|     - | 2062 | `" public function getAttributes($name = null, $flags = 0){"` |
-|     - | 2063 | `"  $i = $this->__rinfo();"` |
-|     - | 2064 | `"  return __reflect_build_attrs($i['attrs'], array('class', $this->name, null, 0), 1, $name, $flags);"` |
-|     - | 2065 | `" }"` |
-|     - | 2066 | `" public function getExtensionName(){ $i = $this->__rinfo(); return $i['internal'] ? 'Core' : false; }"` |
-|     - | 2067 | `" public function getExtension(){ $i = $this->__rinfo(); return $i['internal'] ? new ReflectionExtension('Core') : null; }"` |
-|     - | 2068 | `" public function newLazyGhost($initializer, $options = 0){"` |
-|     - | 2069 | `"  throw new Error('ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)');"` |
-|     - | 2070 | `" }"` |
-|     - | 2071 | `" public function newLazyProxy($factory, $options = 0){"` |
-|     - | 2072 | `"  throw new Error('ReflectionClass::newLazyProxy() is not supported by PHL (no lazy objects)');"` |
-|     - | 2073 | `" }"` |
-|     - | 2074 | `" public function resetAsLazyGhost($object, $initializer, $options = 0){"` |
-|     - | 2075 | `"  throw new Error('ReflectionClass::resetAsLazyGhost() is not supported by PHL (no lazy objects)');"` |
-|     - | 2076 | `" }"` |
-|     - | 2077 | `" public function resetAsLazyProxy($object, $factory, $options = 0){"` |
-|     - | 2078 | `"  throw new Error('ReflectionClass::resetAsLazyProxy() is not supported by PHL (no lazy objects)');"` |
+|     - | 2018 | `"  $found = null;"` |
+|     - | 2019 | `"  if(isset($i['methods'][$name])){"` |
+|     - | 2020 | `"   $found = $name;"` |
+|     - | 2021 | `"  }else{"` |
+|     - | 2022 | `"   $l = strtolower($name);"` |
+|     - | 2023 | `"   foreach($i['methods'] as $k => $m){ if(strtolower($k) === $l){ $found = $k; break; } }"` |
+|     - | 2024 | `"  }"` |
+|     - | 2025 | `"  if($found === null){"` |
+|     - | 2026 | `"   throw new ReflectionException('Method '.$this->name.'::'.$name.'() does not exist');"` |
+|     - | 2027 | `"  }"` |
+|     - | 2028 | `"  return new ReflectionMethod($this->name, $found);"` |
+|     - | 2029 | `" }"` |
+|     - | 2030 | `" public function getMethods($filter = null){"` |
+|     - | 2031 | `"  $i = $this->__rinfo();"` |
+|     - | 2032 | `"  $out = array();"` |
+|     - | 2033 | `"  foreach($i['methods'] as $k => $m){"` |
+|     - | 2034 | `"   if($filter !== null){"` |
+|     - | 2035 | `"    $mod = ($m['vis'] === 1 ? 1 : ($m['vis'] === 2 ? 2 : 4));"` |
+|     - | 2036 | `"    if($m['static']){ $mod \|= 16; }"` |
+|     - | 2037 | `"    if($m['abstract']){ $mod \|= 64; }"` |
+|     - | 2038 | `"    if($m['final']){ $mod \|= 32; }"` |
+|     - | 2039 | `"    if(($mod & $filter) === 0){ continue; }"` |
+|     - | 2040 | `"   }"` |
+|     - | 2041 | `"   $out[] = new ReflectionMethod($this->name, $k);"` |
+|     - | 2042 | `"  }"` |
+|     - | 2043 | `"  return $out;"` |
+|     - | 2044 | `" }"` |
+|     - | 2045 | `" public function getConstructor(){"` |
+|     - | 2046 | `"  $i = $this->__rinfo();"` |
+|     - | 2047 | `"  if(isset($i['methods']['__construct'])){"` |
+|     - | 2048 | `"   return new ReflectionMethod($this->name, '__construct');"` |
+|     - | 2049 | `"  }"` |
+|     - | 2050 | `"  foreach($i['methods'] as $k => $m){"` |
+|     - | 2051 | `"   if(strtolower($k) === '__construct'){ return new ReflectionMethod($this->name, $k); }"` |
+|     - | 2052 | `"  }"` |
+|     - | 2053 | `"  if($i['ctorvis'] !== 0 && isset($i['methods'][$this->name])){"` |
+|     - | 2054 | `"   return new ReflectionMethod($this->name, $this->name);"` |
+|     - | 2055 | `"  }"` |
+|     - | 2056 | `"  return null;"` |
+|     - | 2057 | `" }"` |
+|     - | 2058 | `" public function getReflectionConstant($name){"` |
+|     - | 2059 | `"  $i = $this->__rinfo();"` |
+|     - | 2060 | `"  if(!isset($i['consts'][$name])){ return false; }"` |
+|     - | 2061 | `"  return new ReflectionClassConstant($this->name, $name);"` |
+|     - | 2062 | `" }"` |
+|     - | 2063 | `" public function getReflectionConstants($filter = null){"` |
+|     - | 2064 | `"  $i = $this->__rinfo();"` |
+|     - | 2065 | `"  $out = array();"` |
+|     - | 2066 | `"  foreach($i['consts'] as $k => $c){"` |
+|     - | 2067 | `"   if($filter !== null){"` |
+|     - | 2068 | `"    $m = ($c['vis'] === 1 ? 1 : ($c['vis'] === 2 ? 2 : 4));"` |
+|     - | 2069 | `"    if($c['final']){ $m \|= 32; }"` |
+|     - | 2070 | `"    if(($m & $filter) === 0){ continue; }"` |
+|     - | 2071 | `"   }"` |
+|     - | 2072 | `"   $out[] = new ReflectionClassConstant($this->name, $k);"` |
+|     - | 2073 | `"  }"` |
+|     - | 2074 | `"  return $out;"` |
+|     - | 2075 | `" }"` |
+|     - | 2076 | `" public function getAttributes($name = null, $flags = 0){"` |
+|     - | 2077 | `"  $i = $this->__rinfo();"` |
+|     - | 2078 | `"  return __reflect_build_attrs($i['attrs'], array('class', $this->name, null, 0), 1, $name, $flags);"` |
 |     - | 2079 | `" }"` |
-|     - | 2080 | `" public function getLazyInitializer($object){ return null; }"` |
-|     - | 2081 | `" public function initializeLazyObject($object){ return $object; }"` |
-|     - | 2082 | `" public function markLazyObjectAsInitialized($object){ return $object; }"` |
-|     - | 2083 | `" public function isUninitializedLazyObject($object){ return false; }"` |
-|     - | 2084 | `" public function __toString(){ return __reflect_export_class($this); }"` |
-|     - | 2085 | `"}"` |
-|     - | 2086 | `"class ReflectionObject extends ReflectionClass {"` |
-|     - | 2087 | `" public function __construct($object){"` |
-|     - | 2088 | `"  if(!is_object($object)){"` |
-|     - | 2089 | `"   throw new TypeError('ReflectionObject::__construct(): Argument #1 ($object) must be of type object, '.get_debug_type($object).' given');"` |
-|     - | 2090 | `"  }"` |
-|     - | 2091 | `"  parent::__construct($object);"` |
-|     - | 2092 | `"  $this->__obj = $object;"` |
+|     - | 2080 | `" public function getExtensionName(){ $i = $this->__rinfo(); return $i['internal'] ? 'Core' : false; }"` |
+|     - | 2081 | `" public function getExtension(){ $i = $this->__rinfo(); return $i['internal'] ? new ReflectionExtension('Core') : null; }"` |
+|     - | 2082 | `" public function newLazyGhost($initializer, $options = 0){"` |
+|     - | 2083 | `"  throw new Error('ReflectionClass::newLazyGhost() is not supported by PHL (no lazy objects)');"` |
+|     - | 2084 | `" }"` |
+|     - | 2085 | `" public function newLazyProxy($factory, $options = 0){"` |
+|     - | 2086 | `"  throw new Error('ReflectionClass::newLazyProxy() is not supported by PHL (no lazy objects)');"` |
+|     - | 2087 | `" }"` |
+|     - | 2088 | `" public function resetAsLazyGhost($object, $initializer, $options = 0){"` |
+|     - | 2089 | `"  throw new Error('ReflectionClass::resetAsLazyGhost() is not supported by PHL (no lazy objects)');"` |
+|     - | 2090 | `" }"` |
+|     - | 2091 | `" public function resetAsLazyProxy($object, $factory, $options = 0){"` |
+|     - | 2092 | `"  throw new Error('ReflectionClass::resetAsLazyProxy() is not supported by PHL (no lazy objects)');"` |
 |     - | 2093 | `" }"` |
-|     - | 2094 | `"}"` |
-|     - | 2095 | `;` |
-|     - | 2096 | `/*` |
-|     - | 2097 | ` * Chunk 2: ReflectionFunctionAbstract, ReflectionFunction, ReflectionMethod,` |
-|     - | 2098 | ` * ReflectionParameter.` |
-|     - | 2099 | ` */` |
-|     - | 2100 | `static const char zReflectLib2[] =` |
-|     - | 2101 | `"abstract class ReflectionFunctionAbstract implements Reflector {"` |
-|     - | 2102 | `" public $name;"` |
-|     - | 2103 | `" protected $__cl = null;"` |
-|     - | 2104 | `" protected function __rfinfo(){"` |
-|     - | 2105 | `"  if($this->__cl !== null){ return __reflect_sig_fixup(__reflect_func_info($this->__cl)); }"` |
-|     - | 2106 | `"  return __reflect_sig_fixup(__reflect_func_info($this->name));"` |
+|     - | 2094 | `" public function getLazyInitializer($object){ return null; }"` |
+|     - | 2095 | `" public function initializeLazyObject($object){ return $object; }"` |
+|     - | 2096 | `" public function markLazyObjectAsInitialized($object){ return $object; }"` |
+|     - | 2097 | `" public function isUninitializedLazyObject($object){ return false; }"` |
+|     - | 2098 | `" public function __toString(){ return __reflect_export_class($this); }"` |
+|     - | 2099 | `"}"` |
+|     - | 2100 | `"class ReflectionObject extends ReflectionClass {"` |
+|     - | 2101 | `" public function __construct($object){"` |
+|     - | 2102 | `"  if(!is_object($object)){"` |
+|     - | 2103 | `"   throw new TypeError('ReflectionObject::__construct(): Argument #1 ($object) must be of type object, '.get_debug_type($object).' given');"` |
+|     - | 2104 | `"  }"` |
+|     - | 2105 | `"  parent::__construct($object);"` |
+|     - | 2106 | `"  $this->__obj = $object;"` |
 |     - | 2107 | `" }"` |
-|     - | 2108 | `" protected function __rftarget(){ return $this->__cl !== null ? $this->__cl : $this->name; }"` |
-|     - | 2109 | `" protected function __rpspec(){ return $this->__rftarget(); }"` |
-|     - | 2110 | `" public function getName(){ return $this->name; }"` |
-|     - | 2111 | `" public function inNamespace(){ return strrpos($this->name,'\\\\') !== false; }"` |
-|     - | 2112 | `" public function getNamespaceName(){"` |
-|     - | 2113 | `"  $p = strrpos($this->name,'\\\\');"` |
-|     - | 2114 | `"  if($p === false){ return ''; }"` |
-|     - | 2115 | `"  return substr($this->name,0,$p);"` |
-|     - | 2116 | `" }"` |
-|     - | 2117 | `" public function getShortName(){"` |
-|     - | 2118 | `"  $p = strrpos($this->name,'\\\\');"` |
-|     - | 2119 | `"  if($p === false){ return $this->name; }"` |
-|     - | 2120 | `"  return substr($this->name,$p+1);"` |
+|     - | 2108 | `"}"` |
+|     - | 2109 | `;` |
+|     - | 2110 | `/*` |
+|     - | 2111 | ` * Chunk 2: ReflectionFunctionAbstract, ReflectionFunction, ReflectionMethod,` |
+|     - | 2112 | ` * ReflectionParameter.` |
+|     - | 2113 | ` */` |
+|     - | 2114 | `static const char zReflectLib2[] =` |
+|     - | 2115 | `"abstract class ReflectionFunctionAbstract implements Reflector {"` |
+|     - | 2116 | `" public $name;"` |
+|     - | 2117 | `" protected $__cl = null;"` |
+|     - | 2118 | `" protected function __rfinfo(){"` |
+|     - | 2119 | `"  if($this->__cl !== null){ return __reflect_sig_fixup(__reflect_func_info($this->__cl)); }"` |
+|     - | 2120 | `"  return __reflect_sig_fixup(__reflect_func_info($this->name));"` |
 |     - | 2121 | `" }"` |
-|     - | 2122 | `" public function isClosure(){ $i = $this->__rfinfo(); return $i['closure']; }"` |
-|     - | 2123 | `" public function isGenerator(){ $i = $this->__rfinfo(); return $i['generator']; }"` |
-|     - | 2124 | `" public function isVariadic(){ $i = $this->__rfinfo(); return $i['variadic']; }"` |
-|     - | 2125 | `" public function returnsReference(){ $i = $this->__rfinfo(); return $i['byref']; }"` |
-|     - | 2126 | `" public function isInternal(){ $i = $this->__rfinfo(); return $i['internal']; }"` |
-|     - | 2127 | `" public function isUserDefined(){ return !$this->isInternal(); }"` |
-|     - | 2128 | `" public function isDeprecated(){ $i = $this->__rfinfo(); return __reflect_has_deprecated($i['attrs']); }"` |
-|     - | 2129 | `" public function isStatic(){ $i = $this->__rfinfo(); return $i['fstatic']; }"` |
-|     - | 2130 | `" public function getFileName(){ $i = $this->__rfinfo(); return $i['file']; }"` |
-|     - | 2131 | `" public function getStartLine(){"` |
-|     - | 2132 | `"  $i = $this->__rfinfo();"` |
-|     - | 2133 | `"  if($i['internal']){ return false; }"` |
-|     - | 2134 | `"  return $i['line'];"` |
+|     - | 2122 | `" protected function __rftarget(){ return $this->__cl !== null ? $this->__cl : $this->name; }"` |
+|     - | 2123 | `" protected function __rpspec(){ return $this->__rftarget(); }"` |
+|     - | 2124 | `" public function getName(){ return $this->name; }"` |
+|     - | 2125 | `" public function inNamespace(){ return strrpos($this->name,'\\\\') !== false; }"` |
+|     - | 2126 | `" public function getNamespaceName(){"` |
+|     - | 2127 | `"  $p = strrpos($this->name,'\\\\');"` |
+|     - | 2128 | `"  if($p === false){ return ''; }"` |
+|     - | 2129 | `"  return substr($this->name,0,$p);"` |
+|     - | 2130 | `" }"` |
+|     - | 2131 | `" public function getShortName(){"` |
+|     - | 2132 | `"  $p = strrpos($this->name,'\\\\');"` |
+|     - | 2133 | `"  if($p === false){ return $this->name; }"` |
+|     - | 2134 | `"  return substr($this->name,$p+1);"` |
 |     - | 2135 | `" }"` |
-|     - | 2136 | `" public function getEndLine(){"` |
-|     - | 2137 | `"  $i = $this->__rfinfo();"` |
-|     - | 2138 | `"  if($i['internal']){ return false; }"` |
-|     - | 2139 | `"  return $i['endline'];"` |
-|     - | 2140 | `" }"` |
-|     - | 2141 | `" public function getDocComment(){ $i = $this->__rfinfo(); return $i['doc']; }"` |
-|     - | 2142 | `" public function hasReturnType(){ $i = $this->__rfinfo(); return $i['rettext'] !== null; }"` |
-|     - | 2143 | `" public function getReturnType(){ $i = $this->__rfinfo(); return __reflect_make_type($i['rettext']); }"` |
-|     - | 2144 | `" public function hasTentativeReturnType(){ return false; }"` |
-|     - | 2145 | `" public function getTentativeReturnType(){ return null; }"` |
-|     - | 2146 | `" public function getNumberOfParameters(){"` |
-|     - | 2147 | `"  $i = $this->__rfinfo();"` |
-|     - | 2148 | `"  if($i['minarg'] >= 0){ return $i['minarg']; }"` |
-|     - | 2149 | `"  return count($i['params']);"` |
-|     - | 2150 | `" }"` |
-|     - | 2151 | `" public function getNumberOfRequiredParameters(){"` |
-|     - | 2152 | `"  $i = $this->__rfinfo();"` |
-|     - | 2153 | `"  if($i['minarg'] >= 0){ return $i['minarg']; }"` |
-|     - | 2154 | `"  $req = 0;"` |
-|     - | 2155 | `"  $n = count($i['params']);"` |
-|     - | 2156 | `"  for($k = $n - 1; $k >= 0; $k--){"` |
-|     - | 2157 | `"   $p = $i['params'][$k];"` |
-|     - | 2158 | `"   if(!$p['variadic'] && !$p['hasdef']){ $req = $k + 1; break; }"` |
-|     - | 2159 | `"  }"` |
-|     - | 2160 | `"  return $req;"` |
-|     - | 2161 | `" }"` |
-|     - | 2162 | `" public function getParameters(){"` |
-|     - | 2163 | `"  $i = $this->__rfinfo();"` |
-|     - | 2164 | `"  $out = array();"` |
-|     - | 2165 | `"  $spec = $this->__rpspec();"` |
-|     - | 2166 | `"  foreach($i['params'] as $p){"` |
-|     - | 2167 | `"   $out[] = new ReflectionParameter($spec, $p['pos']);"` |
-|     - | 2168 | `"  }"` |
-|     - | 2169 | `"  return $out;"` |
-|     - | 2170 | `" }"` |
-|     - | 2171 | `" public function getStaticVariables(){ $i = $this->__rfinfo(); return $i['statics']; }"` |
-|     - | 2172 | `" public function getClosureThis(){"` |
-|     - | 2173 | `"  $i = $this->__rfinfo();"` |
-|     - | 2174 | `"  return isset($i['this']) ? $i['this'] : null;"` |
+|     - | 2136 | `" public function isClosure(){ $i = $this->__rfinfo(); return $i['closure']; }"` |
+|     - | 2137 | `" public function isGenerator(){ $i = $this->__rfinfo(); return $i['generator']; }"` |
+|     - | 2138 | `" public function isVariadic(){ $i = $this->__rfinfo(); return $i['variadic']; }"` |
+|     - | 2139 | `" public function returnsReference(){ $i = $this->__rfinfo(); return $i['byref']; }"` |
+|     - | 2140 | `" public function isInternal(){ $i = $this->__rfinfo(); return $i['internal']; }"` |
+|     - | 2141 | `" public function isUserDefined(){ return !$this->isInternal(); }"` |
+|     - | 2142 | `" public function isDeprecated(){ $i = $this->__rfinfo(); return __reflect_has_deprecated($i['attrs']); }"` |
+|     - | 2143 | `" public function isStatic(){ $i = $this->__rfinfo(); return $i['fstatic']; }"` |
+|     - | 2144 | `" public function getFileName(){ $i = $this->__rfinfo(); return $i['file']; }"` |
+|     - | 2145 | `" public function getStartLine(){"` |
+|     - | 2146 | `"  $i = $this->__rfinfo();"` |
+|     - | 2147 | `"  if($i['internal']){ return false; }"` |
+|     - | 2148 | `"  return $i['line'];"` |
+|     - | 2149 | `" }"` |
+|     - | 2150 | `" public function getEndLine(){"` |
+|     - | 2151 | `"  $i = $this->__rfinfo();"` |
+|     - | 2152 | `"  if($i['internal']){ return false; }"` |
+|     - | 2153 | `"  return $i['endline'];"` |
+|     - | 2154 | `" }"` |
+|     - | 2155 | `" public function getDocComment(){ $i = $this->__rfinfo(); return $i['doc']; }"` |
+|     - | 2156 | `" public function hasReturnType(){ $i = $this->__rfinfo(); return $i['rettext'] !== null; }"` |
+|     - | 2157 | `" public function getReturnType(){ $i = $this->__rfinfo(); return __reflect_make_type($i['rettext']); }"` |
+|     - | 2158 | `" public function hasTentativeReturnType(){ return false; }"` |
+|     - | 2159 | `" public function getTentativeReturnType(){ return null; }"` |
+|     - | 2160 | `" public function getNumberOfParameters(){"` |
+|     - | 2161 | `"  $i = $this->__rfinfo();"` |
+|     - | 2162 | `"  if($i['minarg'] >= 0){ return $i['minarg']; }"` |
+|     - | 2163 | `"  return count($i['params']);"` |
+|     - | 2164 | `" }"` |
+|     - | 2165 | `" public function getNumberOfRequiredParameters(){"` |
+|     - | 2166 | `"  $i = $this->__rfinfo();"` |
+|     - | 2167 | `"  if($i['minarg'] >= 0){ return $i['minarg']; }"` |
+|     - | 2168 | `"  $req = 0;"` |
+|     - | 2169 | `"  $n = count($i['params']);"` |
+|     - | 2170 | `"  for($k = $n - 1; $k >= 0; $k--){"` |
+|     - | 2171 | `"   $p = $i['params'][$k];"` |
+|     - | 2172 | `"   if(!$p['variadic'] && !$p['hasdef']){ $req = $k + 1; break; }"` |
+|     - | 2173 | `"  }"` |
+|     - | 2174 | `"  return $req;"` |
 |     - | 2175 | `" }"` |
-|     - | 2176 | `" public function getClosureScopeClass(){"` |
+|     - | 2176 | `" public function getParameters(){"` |
 |     - | 2177 | `"  $i = $this->__rfinfo();"` |
-|     - | 2178 | `"  if(isset($i['scope'])){ return new ReflectionClass($i['scope']); }"` |
-|     - | 2179 | `"  if(isset($i['this'])){ return new ReflectionClass(get_class($i['this'])); }"` |
-|     - | 2180 | `"  return null;"` |
-|     - | 2181 | `" }"` |
-|     - | 2182 | `" public function getClosureCalledClass(){ return $this->getClosureScopeClass(); }"` |
-|     - | 2183 | `" public function getClosureUsedVariables(){"` |
-|     - | 2184 | `"  $i = $this->__rfinfo();"` |
-|     - | 2185 | `"  return isset($i['used']) ? $i['used'] : array();"` |
-|     - | 2186 | `" }"` |
-|     - | 2187 | `" public function getExtensionName(){ $i = $this->__rfinfo(); return $i['internal'] ? 'Core' : false; }"` |
-|     - | 2188 | `" public function getExtension(){ $i = $this->__rfinfo(); return $i['internal'] ? new ReflectionExtension('Core') : null; }"` |
-|     - | 2189 | `" public function getAttributes($name = null, $flags = 0){"` |
-|     - | 2190 | `"  $i = $this->__rfinfo();"` |
-|     - | 2191 | `"  if($this instanceof ReflectionMethod){"` |
-|     - | 2192 | `"   $spec = array('method', $this->class, $this->name, 0);"` |
-|     - | 2193 | `"   $target = 4;"` |
-|     - | 2194 | `"  }else{"` |
-|     - | 2195 | `"   $spec = array('fn', $this->__rftarget(), null, 0);"` |
-|     - | 2196 | `"   $target = 2;"` |
-|     - | 2197 | `"  }"` |
-|     - | 2198 | `"  return __reflect_build_attrs($i['attrs'], $spec, $target, $name, $flags);"` |
-|     - | 2199 | `" }"` |
-|     - | 2200 | `" public function __toString(){ return __reflect_export_fnabs($this, ''); }"` |
-|     - | 2201 | `"}"` |
-|     - | 2202 | `"class ReflectionFunction extends ReflectionFunctionAbstract {"` |
-|     - | 2203 | `" const IS_DEPRECATED = 2048;"` |
-|     - | 2204 | `" public function __construct($function){"` |
-|     - | 2205 | `"  if($function instanceof Closure){"` |
-|     - | 2206 | `"   $this->__cl = $function;"` |
-|     - | 2207 | `"   $i = $this->__rfinfo();"` |
-|     - | 2208 | `"   if($i['closure']){"` |
-|     - | 2209 | `"    $f = $i['file'] === false ? '' : $i['file'];"` |
-|     - | 2210 | `"    $this->name = '{closure:'.$f.':'.$i['line'].'}';"` |
-|     - | 2211 | `"   }else{"` |
-|     - | 2212 | `"    $this->name = $i['name'];"` |
-|     - | 2213 | `"   }"` |
-|     - | 2214 | `"   return;"` |
-|     - | 2215 | `"  }"` |
-|     - | 2216 | `"  if(!is_string($function)){"` |
-|     - | 2217 | `"   throw new TypeError('ReflectionFunction::__construct(): Argument #1 ($function) must be of type Closure\|string, '.get_debug_type($function).' given');"` |
-|     - | 2218 | `"  }"` |
-|     - | 2219 | `"  $i = __reflect_func_info($function);"` |
-|     - | 2220 | `"  if($i === null){"` |
-|     - | 2221 | `"   throw new ReflectionException('Function '.$function.'() does not exist');"` |
-|     - | 2222 | `"  }"` |
-|     - | 2223 | `"  if($i['closure']){"` |
-|     - | 2224 | `"   $this->name = '{closure:'.($i['file'] === false ? '' : $i['file']).':'.$i['line'].'}';"` |
-|     - | 2225 | `"   $this->__cl = __reflect_closure($function, null, null);"` |
-|     - | 2226 | `"  }else{"` |
-|     - | 2227 | `"   $this->name = $i['name'];"` |
-|     - | 2228 | `"  }"` |
-|     - | 2229 | `" }"` |
-|     - | 2230 | `" public function invoke(...$args){ return __reflect_invoke($this->__rftarget(), null, null, $args); }"` |
-|     - | 2231 | `" public function invokeArgs(array $args){ return __reflect_invoke($this->__rftarget(), null, null, $args); }"` |
-|     - | 2232 | `" public function getClosure(){"` |
-|     - | 2233 | `"  if($this->__cl !== null){ return $this->__cl; }"` |
-|     - | 2234 | `"  return __reflect_closure($this->name, null, null);"` |
-|     - | 2235 | `" }"` |
-|     - | 2236 | `" public function isAnonymous(){ $i = $this->__rfinfo(); return $i['closure']; }"` |
-|     - | 2237 | `" public function isDisabled(){ return false; }"` |
-|     - | 2238 | `"}"` |
-|     - | 2239 | `"class ReflectionMethod extends ReflectionFunctionAbstract {"` |
-|     - | 2240 | `" const IS_PUBLIC = 1;"` |
-|     - | 2241 | `" const IS_PROTECTED = 2;"` |
-|     - | 2242 | `" const IS_PRIVATE = 4;"` |
-|     - | 2243 | `" const IS_STATIC = 16;"` |
-|     - | 2244 | `" const IS_FINAL = 32;"` |
-|     - | 2245 | `" const IS_ABSTRACT = 64;"` |
-|     - | 2246 | `" public $class;"` |
-|     - | 2247 | `" public function __construct($objectOrMethod, $method = null){"` |
-|     - | 2248 | `"  if($method === null){"` |
-|     - | 2249 | `"   if(!is_string($objectOrMethod) \|\| strpos($objectOrMethod,'::') === false){"` |
-|     - | 2250 | `"    throw new TypeError('ReflectionMethod::__construct(): Argument #1 ($objectOrMethod) must be of type object\|string, '.get_debug_type($objectOrMethod).' given');"` |
-|     - | 2251 | `"   }"` |
-|     - | 2252 | `"   $p = strpos($objectOrMethod,'::');"` |
-|     - | 2253 | `"   $method = substr($objectOrMethod,$p+2);"` |
-|     - | 2254 | `"   $objectOrMethod = substr($objectOrMethod,0,$p);"` |
-|     - | 2255 | `"  }"` |
-|     - | 2256 | `"  $ci = __phl_rcinfo($objectOrMethod);"` |
-|     - | 2257 | `"  if($ci === null){"` |
-|     - | 2258 | `"   throw new ReflectionException('Class \"'.$objectOrMethod.'\" does not exist');"` |
-|     - | 2259 | `"  }"` |
-|     - | 2260 | `"  $this->class = $ci['name'];"` |
-|     - | 2261 | `"  $found = null;"` |
-|     - | 2262 | `"  if(isset($ci['methods'][$method])){"` |
-|     - | 2263 | `"   $found = $method;"` |
-|     - | 2264 | `"  }else{"` |
-|     - | 2265 | `"   $l = strtolower($method);"` |
-|     - | 2266 | `"   foreach($ci['methods'] as $k => $m){"` |
-|     - | 2267 | `"    if(strtolower($k) === $l){ $found = $k; break; }"` |
-|     - | 2268 | `"   }"` |
+|     - | 2178 | `"  $out = array();"` |
+|     - | 2179 | `"  $spec = $this->__rpspec();"` |
+|     - | 2180 | `"  foreach($i['params'] as $p){"` |
+|     - | 2181 | `"   $out[] = new ReflectionParameter($spec, $p['pos']);"` |
+|     - | 2182 | `"  }"` |
+|     - | 2183 | `"  return $out;"` |
+|     - | 2184 | `" }"` |
+|     - | 2185 | `" public function getStaticVariables(){ $i = $this->__rfinfo(); return $i['statics']; }"` |
+|     - | 2186 | `" public function getClosureThis(){"` |
+|     - | 2187 | `"  $i = $this->__rfinfo();"` |
+|     - | 2188 | `"  return isset($i['this']) ? $i['this'] : null;"` |
+|     - | 2189 | `" }"` |
+|     - | 2190 | `" public function getClosureScopeClass(){"` |
+|     - | 2191 | `"  $i = $this->__rfinfo();"` |
+|     - | 2192 | `"  if(isset($i['scope'])){ return new ReflectionClass($i['scope']); }"` |
+|     - | 2193 | `"  if(isset($i['this'])){ return new ReflectionClass(get_class($i['this'])); }"` |
+|     - | 2194 | `"  return null;"` |
+|     - | 2195 | `" }"` |
+|     - | 2196 | `" public function getClosureCalledClass(){ return $this->getClosureScopeClass(); }"` |
+|     - | 2197 | `" public function getClosureUsedVariables(){"` |
+|     - | 2198 | `"  $i = $this->__rfinfo();"` |
+|     - | 2199 | `"  return isset($i['used']) ? $i['used'] : array();"` |
+|     - | 2200 | `" }"` |
+|     - | 2201 | `" public function getExtensionName(){ $i = $this->__rfinfo(); return $i['internal'] ? 'Core' : false; }"` |
+|     - | 2202 | `" public function getExtension(){ $i = $this->__rfinfo(); return $i['internal'] ? new ReflectionExtension('Core') : null; }"` |
+|     - | 2203 | `" public function getAttributes($name = null, $flags = 0){"` |
+|     - | 2204 | `"  $i = $this->__rfinfo();"` |
+|     - | 2205 | `"  if($this instanceof ReflectionMethod){"` |
+|     - | 2206 | `"   $spec = array('method', $this->class, $this->name, 0);"` |
+|     - | 2207 | `"   $target = 4;"` |
+|     - | 2208 | `"  }else{"` |
+|     - | 2209 | `"   $spec = array('fn', $this->__rftarget(), null, 0);"` |
+|     - | 2210 | `"   $target = 2;"` |
+|     - | 2211 | `"  }"` |
+|     - | 2212 | `"  return __reflect_build_attrs($i['attrs'], $spec, $target, $name, $flags);"` |
+|     - | 2213 | `" }"` |
+|     - | 2214 | `" public function __toString(){ return __reflect_export_fnabs($this, ''); }"` |
+|     - | 2215 | `"}"` |
+|     - | 2216 | `"class ReflectionFunction extends ReflectionFunctionAbstract {"` |
+|     - | 2217 | `" const IS_DEPRECATED = 2048;"` |
+|     - | 2218 | `" public function __construct($function){"` |
+|     - | 2219 | `"  if($function instanceof Closure){"` |
+|     - | 2220 | `"   $this->__cl = $function;"` |
+|     - | 2221 | `"   $i = $this->__rfinfo();"` |
+|     - | 2222 | `"   if($i['closure']){"` |
+|     - | 2223 | `"    $f = $i['file'] === false ? '' : $i['file'];"` |
+|     - | 2224 | `"    $this->name = '{closure:'.$f.':'.$i['line'].'}';"` |
+|     - | 2225 | `"   }else{"` |
+|     - | 2226 | `"    $this->name = $i['name'];"` |
+|     - | 2227 | `"   }"` |
+|     - | 2228 | `"   return;"` |
+|     - | 2229 | `"  }"` |
+|     - | 2230 | `"  if(!is_string($function)){"` |
+|     - | 2231 | `"   throw new TypeError('ReflectionFunction::__construct(): Argument #1 ($function) must be of type Closure\|string, '.get_debug_type($function).' given');"` |
+|     - | 2232 | `"  }"` |
+|     - | 2233 | `"  $i = __reflect_func_info($function);"` |
+|     - | 2234 | `"  if($i === null){"` |
+|     - | 2235 | `"   throw new ReflectionException('Function '.$function.'() does not exist');"` |
+|     - | 2236 | `"  }"` |
+|     - | 2237 | `"  if($i['closure']){"` |
+|     - | 2238 | `"   $this->name = '{closure:'.($i['file'] === false ? '' : $i['file']).':'.$i['line'].'}';"` |
+|     - | 2239 | `"   $this->__cl = __reflect_closure($function, null, null);"` |
+|     - | 2240 | `"  }else{"` |
+|     - | 2241 | `"   $this->name = $i['name'];"` |
+|     - | 2242 | `"  }"` |
+|     - | 2243 | `" }"` |
+|     - | 2244 | `" public function invoke(...$args){ return __reflect_invoke($this->__rftarget(), null, null, $args); }"` |
+|     - | 2245 | `" public function invokeArgs(array $args){ return __reflect_invoke($this->__rftarget(), null, null, $args); }"` |
+|     - | 2246 | `" public function getClosure(){"` |
+|     - | 2247 | `"  if($this->__cl !== null){ return $this->__cl; }"` |
+|     - | 2248 | `"  return __reflect_closure($this->name, null, null);"` |
+|     - | 2249 | `" }"` |
+|     - | 2250 | `" public function isAnonymous(){ $i = $this->__rfinfo(); return $i['closure']; }"` |
+|     - | 2251 | `" public function isDisabled(){ return false; }"` |
+|     - | 2252 | `"}"` |
+|     - | 2253 | `"class ReflectionMethod extends ReflectionFunctionAbstract {"` |
+|     - | 2254 | `" const IS_PUBLIC = 1;"` |
+|     - | 2255 | `" const IS_PROTECTED = 2;"` |
+|     - | 2256 | `" const IS_PRIVATE = 4;"` |
+|     - | 2257 | `" const IS_STATIC = 16;"` |
+|     - | 2258 | `" const IS_FINAL = 32;"` |
+|     - | 2259 | `" const IS_ABSTRACT = 64;"` |
+|     - | 2260 | `" public $class;"` |
+|     - | 2261 | `" public function __construct($objectOrMethod, $method = null){"` |
+|     - | 2262 | `"  if($method === null){"` |
+|     - | 2263 | `"   if(!is_string($objectOrMethod) \|\| strpos($objectOrMethod,'::') === false){"` |
+|     - | 2264 | `"    throw new TypeError('ReflectionMethod::__construct(): Argument #1 ($objectOrMethod) must be of type object\|string, '.get_debug_type($objectOrMethod).' given');"` |
+|     - | 2265 | `"   }"` |
+|     - | 2266 | `"   $p = strpos($objectOrMethod,'::');"` |
+|     - | 2267 | `"   $method = substr($objectOrMethod,$p+2);"` |
+|     - | 2268 | `"   $objectOrMethod = substr($objectOrMethod,0,$p);"` |
 |     - | 2269 | `"  }"` |
-|     - | 2270 | `"  if($found === null){"` |
-|     - | 2271 | `"   throw new ReflectionException('Method '.$this->class.'::'.$method.'() does not exist');"` |
-|     - | 2272 | `"  }"` |
-|     - | 2273 | `"  $this->name = $found;"` |
-|     - | 2274 | `" }"` |
-|     - | 2275 | `" public static function createFromMethodName($name){"` |
-|     - | 2276 | `"  return new ReflectionMethod($name);"` |
-|     - | 2277 | `" }"` |
-|     - | 2278 | `" protected function __rfinfo(){ return __reflect_func_info($this->class, $this->name); }"` |
-|     - | 2279 | `" protected function __rpspec(){ return array($this->class, $this->name); }"` |
-|     - | 2280 | `" public function getDeclaringClass(){"` |
-|     - | 2281 | `"  $i = $this->__rfinfo();"` |
-|     - | 2282 | `"  return new ReflectionClass($i['decl']);"` |
-|     - | 2283 | `" }"` |
-|     - | 2284 | `" public function getModifiers(){"` |
-|     - | 2285 | `"  $i = $this->__rfinfo();"` |
-|     - | 2286 | `"  $m = ($i['vis'] === 1 ? 1 : ($i['vis'] === 2 ? 2 : 4));"` |
-|     - | 2287 | `"  if($i['mstatic']){ $m \|= 16; }"` |
-|     - | 2288 | `"  if($i['abstract']){ $m \|= 64; }"` |
-|     - | 2289 | `"  if($i['final']){ $m \|= 32; }"` |
-|     - | 2290 | `"  return $m;"` |
+|     - | 2270 | `"  $ci = __phl_rcinfo($objectOrMethod);"` |
+|     - | 2271 | `"  if($ci === null){"` |
+|     - | 2272 | `"   throw new ReflectionException('Class \"'.$objectOrMethod.'\" does not exist');"` |
+|     - | 2273 | `"  }"` |
+|     - | 2274 | `"  $this->class = $ci['name'];"` |
+|     - | 2275 | `"  $found = null;"` |
+|     - | 2276 | `"  if(isset($ci['methods'][$method])){"` |
+|     - | 2277 | `"   $found = $method;"` |
+|     - | 2278 | `"  }else{"` |
+|     - | 2279 | `"   $l = strtolower($method);"` |
+|     - | 2280 | `"   foreach($ci['methods'] as $k => $m){"` |
+|     - | 2281 | `"    if(strtolower($k) === $l){ $found = $k; break; }"` |
+|     - | 2282 | `"   }"` |
+|     - | 2283 | `"  }"` |
+|     - | 2284 | `"  if($found === null){"` |
+|     - | 2285 | `"   throw new ReflectionException('Method '.$this->class.'::'.$method.'() does not exist');"` |
+|     - | 2286 | `"  }"` |
+|     - | 2287 | `"  $this->name = $found;"` |
+|     - | 2288 | `" }"` |
+|     - | 2289 | `" public static function createFromMethodName($name){"` |
+|     - | 2290 | `"  return new ReflectionMethod($name);"` |
 |     - | 2291 | `" }"` |
-|     - | 2292 | `" public function isPublic(){ $i = $this->__rfinfo(); return $i['vis'] === 1; }"` |
-|     - | 2293 | `" public function isProtected(){ $i = $this->__rfinfo(); return $i['vis'] === 2; }"` |
-|     - | 2294 | `" public function isPrivate(){ $i = $this->__rfinfo(); return $i['vis'] === 3; }"` |
-|     - | 2295 | `" public function isStatic(){ $i = $this->__rfinfo(); return $i['mstatic']; }"` |
-|     - | 2296 | `" public function isAbstract(){ $i = $this->__rfinfo(); return $i['abstract']; }"` |
-|     - | 2297 | `" public function isFinal(){ $i = $this->__rfinfo(); return $i['final']; }"` |
-|     - | 2298 | `" public function isConstructor(){ return strtolower($this->name) === '__construct'; }"` |
-|     - | 2299 | `" public function isDestructor(){ return strtolower($this->name) === '__destruct'; }"` |
-|     - | 2300 | `" public function invoke($object = null, ...$args){ return $this->__rinvoke($object, $args); }"` |
-|     - | 2301 | `" public function invokeArgs($object, array $args){ return $this->__rinvoke($object, $args); }"` |
-|     - | 2302 | `" protected function __rinvoke($object, $args){"` |
-|     - | 2303 | `"  $i = $this->__rfinfo();"` |
-|     - | 2304 | `"  if(!$i['mstatic']){"` |
-|     - | 2305 | `"   if(!is_object($object)){"` |
-|     - | 2306 | `"    throw new ReflectionException('Trying to invoke non static method '.$this->class.'::'.$this->name.'() without an object');"` |
-|     - | 2307 | `"   }"` |
-|     - | 2308 | `"   if(!is_a($object, $i['decl'])){"` |
-|     - | 2309 | `"    throw new ReflectionException('Given object is not an instance of the class this method was declared in');"` |
-|     - | 2310 | `"   }"` |
-|     - | 2311 | `"  }else{"` |
-|     - | 2312 | `"   $object = null;"` |
-|     - | 2313 | `"  }"` |
-|     - | 2314 | `"  return __reflect_invoke($this->class, $this->name, $object, $args);"` |
-|     - | 2315 | `" }"` |
-|     - | 2316 | `" public function getClosure($object = null){"` |
+|     - | 2292 | `" protected function __rfinfo(){ return __reflect_func_info($this->class, $this->name); }"` |
+|     - | 2293 | `" protected function __rpspec(){ return array($this->class, $this->name); }"` |
+|     - | 2294 | `" public function getDeclaringClass(){"` |
+|     - | 2295 | `"  $i = $this->__rfinfo();"` |
+|     - | 2296 | `"  return new ReflectionClass($i['decl']);"` |
+|     - | 2297 | `" }"` |
+|     - | 2298 | `" public function getModifiers(){"` |
+|     - | 2299 | `"  $i = $this->__rfinfo();"` |
+|     - | 2300 | `"  $m = ($i['vis'] === 1 ? 1 : ($i['vis'] === 2 ? 2 : 4));"` |
+|     - | 2301 | `"  if($i['mstatic']){ $m \|= 16; }"` |
+|     - | 2302 | `"  if($i['abstract']){ $m \|= 64; }"` |
+|     - | 2303 | `"  if($i['final']){ $m \|= 32; }"` |
+|     - | 2304 | `"  return $m;"` |
+|     - | 2305 | `" }"` |
+|     - | 2306 | `" public function isPublic(){ $i = $this->__rfinfo(); return $i['vis'] === 1; }"` |
+|     - | 2307 | `" public function isProtected(){ $i = $this->__rfinfo(); return $i['vis'] === 2; }"` |
+|     - | 2308 | `" public function isPrivate(){ $i = $this->__rfinfo(); return $i['vis'] === 3; }"` |
+|     - | 2309 | `" public function isStatic(){ $i = $this->__rfinfo(); return $i['mstatic']; }"` |
+|     - | 2310 | `" public function isAbstract(){ $i = $this->__rfinfo(); return $i['abstract']; }"` |
+|     - | 2311 | `" public function isFinal(){ $i = $this->__rfinfo(); return $i['final']; }"` |
+|     - | 2312 | `" public function isConstructor(){ return strtolower($this->name) === '__construct'; }"` |
+|     - | 2313 | `" public function isDestructor(){ return strtolower($this->name) === '__destruct'; }"` |
+|     - | 2314 | `" public function invoke($object = null, ...$args){ return $this->__rinvoke($object, $args); }"` |
+|     - | 2315 | `" public function invokeArgs($object, array $args){ return $this->__rinvoke($object, $args); }"` |
+|     - | 2316 | `" protected function __rinvoke($object, $args){"` |
 |     - | 2317 | `"  $i = $this->__rfinfo();"` |
 |     - | 2318 | `"  if(!$i['mstatic']){"` |
-|     - | 2319 | `"   if($object === null){"` |
-|     - | 2320 | `"    throw new ValueError('ReflectionMethod::getClosure(): Argument #1 ($object) cannot be null for non-static methods');"` |
+|     - | 2319 | `"   if(!is_object($object)){"` |
+|     - | 2320 | `"    throw new ReflectionException('Trying to invoke non static method '.$this->class.'::'.$this->name.'() without an object');"` |
 |     - | 2321 | `"   }"` |
 |     - | 2322 | `"   if(!is_a($object, $i['decl'])){"` |
 |     - | 2323 | `"    throw new ReflectionException('Given object is not an instance of the class this method was declared in');"` |
@@ -2335,1104 +2335,1118 @@ Coverage: 1035/1211 lines (85.47%)
 |     - | 2325 | `"  }else{"` |
 |     - | 2326 | `"   $object = null;"` |
 |     - | 2327 | `"  }"` |
-|     - | 2328 | `"  return __reflect_closure($this->class, $this->name, $object);"` |
+|     - | 2328 | `"  return __reflect_invoke($this->class, $this->name, $object, $args);"` |
 |     - | 2329 | `" }"` |
-|     - | 2330 | `" public function setAccessible($accessible){ }"` |
-|     - | 2331 | `" public function hasPrototype(){ return $this->__rproto() !== null; }"` |
-|     - | 2332 | `" public function getPrototype(){"` |
-|     - | 2333 | `"  $p = $this->__rproto();"` |
-|     - | 2334 | `"  if($p === null){"` |
-|     - | 2335 | `"   throw new ReflectionException('Method '.$this->class.'::'.$this->name.' does not have a prototype');"` |
-|     - | 2336 | `"  }"` |
-|     - | 2337 | `"  return new ReflectionMethod($p, $this->name);"` |
-|     - | 2338 | `" }"` |
-|     - | 2339 | `" protected function __rproto(){"` |
-|     - | 2340 | `"  $ci = __phl_rcinfo($this->class);"` |
-|     - | 2341 | `"  $l = strtolower($this->name);"` |
-|     - | 2342 | `"  $p = $ci['parent'];"` |
-|     - | 2343 | `"  while($p !== null){"` |
-|     - | 2344 | `"   $pi = __phl_rcinfo($p);"` |
-|     - | 2345 | `"   foreach($pi['methods'] as $k => $m){"` |
-|     - | 2346 | `"    if(strtolower($k) === $l && $m['vis'] !== 3){ return $m['decl']; }"` |
-|     - | 2347 | `"   }"` |
-|     - | 2348 | `"   $p = $pi['parent'];"` |
-|     - | 2349 | `"  }"` |
-|     - | 2350 | `"  foreach($ci['interfaces'] as $if){"` |
-|     - | 2351 | `"   $ii = __phl_rcinfo($if);"` |
-|     - | 2352 | `"   foreach($ii['methods'] as $k => $m){"` |
-|     - | 2353 | `"    if(strtolower($k) === $l){ return $ii['name']; }"` |
-|     - | 2354 | `"   }"` |
-|     - | 2355 | `"  }"` |
-|     - | 2356 | `"  return null;"` |
-|     - | 2357 | `" }"` |
-|     - | 2358 | `" public function __toString(){ return __reflect_export_fnabs($this, ''); }"` |
-|     - | 2359 | `"}"` |
-|     - | 2360 | `"class ReflectionParameter implements Reflector {"` |
-|     - | 2361 | `" public $name;"` |
-|     - | 2362 | `" protected $__t;"` |
-|     - | 2363 | `" protected $__m = null;"` |
-|     - | 2364 | `" protected $__p = 0;"` |
-|     - | 2365 | `" public function __construct($function, $param){"` |
-|     - | 2366 | `"  $m = null;"` |
-|     - | 2367 | `"  $t = $function;"` |
-|     - | 2368 | `"  if(is_array($function)){"` |
-|     - | 2369 | `"   $t = $function[0];"` |
-|     - | 2370 | `"   $m = $function[1];"` |
-|     - | 2371 | `"   if(is_object($t)){ $t = get_class($t); }"` |
-|     - | 2372 | `"  }else if(is_string($function) && strpos($function,'::') !== false){"` |
-|     - | 2373 | `"   $p = strpos($function,'::');"` |
-|     - | 2374 | `"   $m = substr($function,$p+2);"` |
-|     - | 2375 | `"   $t = substr($function,0,$p);"` |
-|     - | 2376 | `"  }"` |
-|     - | 2377 | `"  if($m !== null){"` |
-|     - | 2378 | `"   $rm = new ReflectionMethod($t, $m);"` |
-|     - | 2379 | `"   $t = $rm->class;"` |
-|     - | 2380 | `"   $m = $rm->name;"` |
-|     - | 2381 | `"   $i = __reflect_func_info($t, $m);"` |
-|     - | 2382 | `"  }else if($function instanceof Closure){"` |
-|     - | 2383 | `"   $t = $function;"` |
-|     - | 2384 | `"   $i = __reflect_func_info($function);"` |
-|     - | 2385 | `"  }else{"` |
-|     - | 2386 | `"   $i = __reflect_sig_fixup(__reflect_func_info($t));"` |
-|     - | 2387 | `"   if($i === null){"` |
-|     - | 2388 | `"    throw new ReflectionException('Function '.$t.'() does not exist');"` |
-|     - | 2389 | `"   }"` |
+|     - | 2330 | `" public function getClosure($object = null){"` |
+|     - | 2331 | `"  $i = $this->__rfinfo();"` |
+|     - | 2332 | `"  if(!$i['mstatic']){"` |
+|     - | 2333 | `"   if($object === null){"` |
+|     - | 2334 | `"    throw new ValueError('ReflectionMethod::getClosure(): Argument #1 ($object) cannot be null for non-static methods');"` |
+|     - | 2335 | `"   }"` |
+|     - | 2336 | `"   if(!is_a($object, $i['decl'])){"` |
+|     - | 2337 | `"    throw new ReflectionException('Given object is not an instance of the class this method was declared in');"` |
+|     - | 2338 | `"   }"` |
+|     - | 2339 | `"  }else{"` |
+|     - | 2340 | `"   $object = null;"` |
+|     - | 2341 | `"  }"` |
+|     - | 2342 | `"  return __reflect_closure($this->class, $this->name, $object);"` |
+|     - | 2343 | `" }"` |
+|     - | 2344 | `" public function setAccessible($accessible){ }"` |
+|     - | 2345 | `" public function hasPrototype(){ return $this->__rproto() !== null; }"` |
+|     - | 2346 | `" public function getPrototype(){"` |
+|     - | 2347 | `"  $p = $this->__rproto();"` |
+|     - | 2348 | `"  if($p === null){"` |
+|     - | 2349 | `"   throw new ReflectionException('Method '.$this->class.'::'.$this->name.' does not have a prototype');"` |
+|     - | 2350 | `"  }"` |
+|     - | 2351 | `"  return new ReflectionMethod($p, $this->name);"` |
+|     - | 2352 | `" }"` |
+|     - | 2353 | `" protected function __rproto(){"` |
+|     - | 2354 | `"  $ci = __phl_rcinfo($this->class);"` |
+|     - | 2355 | `"  $l = strtolower($this->name);"` |
+|     - | 2356 | `"  $p = $ci['parent'];"` |
+|     - | 2357 | `"  while($p !== null){"` |
+|     - | 2358 | `"   $pi = __phl_rcinfo($p);"` |
+|     - | 2359 | `"   foreach($pi['methods'] as $k => $m){"` |
+|     - | 2360 | `"    if(strtolower($k) === $l && $m['vis'] !== 3){ return $m['decl']; }"` |
+|     - | 2361 | `"   }"` |
+|     - | 2362 | `"   $p = $pi['parent'];"` |
+|     - | 2363 | `"  }"` |
+|     - | 2364 | `"  foreach($ci['interfaces'] as $if){"` |
+|     - | 2365 | `"   $ii = __phl_rcinfo($if);"` |
+|     - | 2366 | `"   foreach($ii['methods'] as $k => $m){"` |
+|     - | 2367 | `"    if(strtolower($k) === $l){ return $ii['name']; }"` |
+|     - | 2368 | `"   }"` |
+|     - | 2369 | `"  }"` |
+|     - | 2370 | `"  return null;"` |
+|     - | 2371 | `" }"` |
+|     - | 2372 | `" public function __toString(){ return __reflect_export_fnabs($this, ''); }"` |
+|     - | 2373 | `"}"` |
+|     - | 2374 | `"class ReflectionParameter implements Reflector {"` |
+|     - | 2375 | `" public $name;"` |
+|     - | 2376 | `" protected $__t;"` |
+|     - | 2377 | `" protected $__m = null;"` |
+|     - | 2378 | `" protected $__p = 0;"` |
+|     - | 2379 | `" public function __construct($function, $param){"` |
+|     - | 2380 | `"  $m = null;"` |
+|     - | 2381 | `"  $t = $function;"` |
+|     - | 2382 | `"  if(is_array($function)){"` |
+|     - | 2383 | `"   $t = $function[0];"` |
+|     - | 2384 | `"   $m = $function[1];"` |
+|     - | 2385 | `"   if(is_object($t)){ $t = get_class($t); }"` |
+|     - | 2386 | `"  }else if(is_string($function) && strpos($function,'::') !== false){"` |
+|     - | 2387 | `"   $p = strpos($function,'::');"` |
+|     - | 2388 | `"   $m = substr($function,$p+2);"` |
+|     - | 2389 | `"   $t = substr($function,0,$p);"` |
 |     - | 2390 | `"  }"` |
-|     - | 2391 | `"  $found = null;"` |
-|     - | 2392 | `"  if(is_int($param)){"` |
-|     - | 2393 | `"   if(isset($i['params'][$param])){ $found = $i['params'][$param]; }"` |
-|     - | 2394 | `"   if($found === null){"` |
-|     - | 2395 | `"    throw new ReflectionException('The parameter specified by its offset could not be found');"` |
-|     - | 2396 | `"   }"` |
-|     - | 2397 | `"  }else{"` |
-|     - | 2398 | `"   foreach($i['params'] as $pp){"` |
-|     - | 2399 | `"    if($pp['name'] === $param){ $found = $pp; break; }"` |
-|     - | 2400 | `"   }"` |
-|     - | 2401 | `"   if($found === null){"` |
-|     - | 2402 | `"    throw new ReflectionException('The parameter specified by its name could not be found');"` |
+|     - | 2391 | `"  if($m !== null){"` |
+|     - | 2392 | `"   $rm = new ReflectionMethod($t, $m);"` |
+|     - | 2393 | `"   $t = $rm->class;"` |
+|     - | 2394 | `"   $m = $rm->name;"` |
+|     - | 2395 | `"   $i = __reflect_func_info($t, $m);"` |
+|     - | 2396 | `"  }else if($function instanceof Closure){"` |
+|     - | 2397 | `"   $t = $function;"` |
+|     - | 2398 | `"   $i = __reflect_func_info($function);"` |
+|     - | 2399 | `"  }else{"` |
+|     - | 2400 | `"   $i = __reflect_sig_fixup(__reflect_func_info($t));"` |
+|     - | 2401 | `"   if($i === null){"` |
+|     - | 2402 | `"    throw new ReflectionException('Function '.$t.'() does not exist');"` |
 |     - | 2403 | `"   }"` |
 |     - | 2404 | `"  }"` |
-|     - | 2405 | `"  $this->name = $found['name'];"` |
-|     - | 2406 | `"  $this->__t = $t;"` |
-|     - | 2407 | `"  $this->__m = $m;"` |
-|     - | 2408 | `"  $this->__p = $found['pos'];"` |
-|     - | 2409 | `" }"` |
-|     - | 2410 | `" protected function __rffull(){"` |
-|     - | 2411 | `"  if($this->__m !== null){ return __reflect_func_info($this->__t, $this->__m); }"` |
-|     - | 2412 | `"  return __reflect_sig_fixup(__reflect_func_info($this->__t));"` |
-|     - | 2413 | `" }"` |
-|     - | 2414 | `" protected function __rpinfo(){"` |
-|     - | 2415 | `"  $i = $this->__rffull();"` |
-|     - | 2416 | `"  return $i['params'][$this->__p];"` |
-|     - | 2417 | `" }"` |
-|     - | 2418 | `" public function getName(){ return $this->name; }"` |
-|     - | 2419 | `" public function getPosition(){ return $this->__p; }"` |
-|     - | 2420 | `" public function isPassedByReference(){ $p = $this->__rpinfo(); return $p['byref']; }"` |
-|     - | 2421 | `" public function canBePassedByValue(){ return !$this->isPassedByReference(); }"` |
-|     - | 2422 | `" public function isVariadic(){ $p = $this->__rpinfo(); return $p['variadic']; }"` |
-|     - | 2423 | `" public function isPromoted(){ $p = $this->__rpinfo(); return $p['promoted']; }"` |
-|     - | 2424 | `" public function isDefaultValueAvailable(){ $p = $this->__rpinfo(); return $p['hasdef']; }"` |
-|     - | 2425 | `" public function isOptional(){"` |
-|     - | 2426 | `"  $i = $this->__rffull();"` |
-|     - | 2427 | `"  $n = count($i['params']);"` |
-|     - | 2428 | `"  for($k = $this->__p; $k < $n; $k++){"` |
-|     - | 2429 | `"   $p = $i['params'][$k];"` |
-|     - | 2430 | `"   if(!$p['variadic'] && !$p['hasdef']){ return false; }"` |
-|     - | 2431 | `"  }"` |
-|     - | 2432 | `"  return true;"` |
-|     - | 2433 | `" }"` |
-|     - | 2434 | `" public function getDefaultValue(){"` |
-|     - | 2435 | `"  if(!$this->isDefaultValueAvailable()){"` |
-|     - | 2436 | `"   throw new ReflectionException('Internal error: Failed to retrieve the default value');"` |
-|     - | 2437 | `"  }"` |
-|     - | 2438 | `"  $p = $this->__rpinfo();"` |
-|     - | 2439 | `"  if(isset($p['deftext'])){"` |
-|     - | 2440 | `"   $s = __reflect_sig_scalar($p['deftext']);"` |
-|     - | 2441 | `"   if($s[0]){ return $s[1]; }"` |
-|     - | 2442 | `"   if($p['deftext'] === 'array (' \|\| strpos($p['deftext'], '[') === 0){ return array(); }"` |
-|     - | 2443 | `"   throw new ReflectionException('Internal error: Failed to retrieve the default value');"` |
-|     - | 2444 | `"  }"` |
-|     - | 2445 | `"  return __reflect_param_default($this->__t, $this->__m, $this->__p);"` |
-|     - | 2446 | `" }"` |
-|     - | 2447 | `" public function isDefaultValueConstant(){"` |
-|     - | 2448 | `"  if(!$this->isDefaultValueAvailable()){ return false; }"` |
-|     - | 2449 | `"  $p = $this->__rpinfo();"` |
-|     - | 2450 | `"  if(isset($p['deftext'])){ return false; }"` |
-|     - | 2451 | `"  return __reflect_param_defconst($this->__t, $this->__m, $this->__p) !== null;"` |
-|     - | 2452 | `" }"` |
-|     - | 2453 | `" public function getDefaultValueConstantName(){"` |
-|     - | 2454 | `"  if(!$this->isDefaultValueAvailable()){"` |
-|     - | 2455 | `"   throw new ReflectionException('Internal error: Failed to retrieve the default value');"` |
-|     - | 2456 | `"  }"` |
-|     - | 2457 | `"  return __reflect_param_defconst($this->__t, $this->__m, $this->__p);"` |
-|     - | 2458 | `" }"` |
-|     - | 2459 | `" public function allowsNull(){"` |
-|     - | 2460 | `"  $p = $this->__rpinfo();"` |
-|     - | 2461 | `"  if($p['typetext'] === null){ return true; }"` |
-|     - | 2462 | `"  if($p['nullable']){ return true; }"` |
-|     - | 2463 | `"  return $p['typetext'] === 'mixed' \|\| $p['typetext'] === 'null';"` |
-|     - | 2464 | `" }"` |
-|     - | 2465 | `" public function hasType(){ $p = $this->__rpinfo(); return $p['typetext'] !== null; }"` |
-|     - | 2466 | `" public function getType(){ $p = $this->__rpinfo(); return __reflect_make_type($p['typetext']); }"` |
-|     - | 2467 | `" public function getDeclaringFunction(){"` |
-|     - | 2468 | `"  if($this->__m !== null){ return new ReflectionMethod($this->__t, $this->__m); }"` |
-|     - | 2469 | `"  return new ReflectionFunction($this->__t);"` |
-|     - | 2470 | `" }"` |
-|     - | 2471 | `" public function getDeclaringClass(){"` |
-|     - | 2472 | `"  if($this->__m === null){ return null; }"` |
-|     - | 2473 | `"  $i = $this->__rffull();"` |
-|     - | 2474 | `"  return new ReflectionClass($i['decl']);"` |
-|     - | 2475 | `" }"` |
-|     - | 2476 | `" public function getAttributes($name = null, $flags = 0){"` |
-|     - | 2477 | `"  $p = $this->__rpinfo();"` |
-|     - | 2478 | `"  return __reflect_build_attrs($p['attrs'], array('param', $this->__t, $this->__m, $this->__p), 32, $name, $flags);"` |
-|     - | 2479 | `" }"` |
-|     - | 2480 | `" public function __toString(){ return __reflect_export_param($this); }"` |
-|     - | 2481 | `"}"` |
-|     - | 2482 | `;` |
-|     - | 2483 | `/*` |
-|     - | 2484 | ` * Chunk 3: PropertyHookType, ReflectionProperty, ReflectionClassConstant.` |
-|     - | 2485 | ` */` |
-|     - | 2486 | `static const char zReflectLib3[] =` |
-|     - | 2487 | `"enum PropertyHookType: string {"` |
-|     - | 2488 | `" case Get = 'get';"` |
-|     - | 2489 | `" case Set = 'set';"` |
-|     - | 2490 | `"}"` |
-|     - | 2491 | `"class ReflectionProperty implements Reflector {"` |
-|     - | 2492 | `" const IS_PUBLIC = 1;"` |
-|     - | 2493 | `" const IS_PROTECTED = 2;"` |
-|     - | 2494 | `" const IS_PRIVATE = 4;"` |
-|     - | 2495 | `" const IS_STATIC = 16;"` |
-|     - | 2496 | `" const IS_FINAL = 32;"` |
-|     - | 2497 | `" const IS_ABSTRACT = 64;"` |
-|     - | 2498 | `" const IS_READONLY = 128;"` |
-|     - | 2499 | `" const IS_VIRTUAL = 512;"` |
-|     - | 2500 | `" const IS_PROTECTED_SET = 2048;"` |
-|     - | 2501 | `" const IS_PRIVATE_SET = 4096;"` |
-|     - | 2502 | `" public $name;"` |
-|     - | 2503 | `" public $class;"` |
-|     - | 2504 | `" protected $__dynobj = null;"` |
-|     - | 2505 | `" public function __construct($class, $property){"` |
-|     - | 2506 | `"  $obj = null;"` |
-|     - | 2507 | `"  if(is_object($class)){ $obj = $class; }"` |
-|     - | 2508 | `"  else if(!is_string($class)){"` |
-|     - | 2509 | `"   throw new TypeError('ReflectionProperty::__construct(): Argument #1 ($class) must be of type object\|string, '.get_debug_type($class).' given');"` |
-|     - | 2510 | `"  }"` |
-|     - | 2511 | `"  $ci = __phl_rcinfo($class);"` |
-|     - | 2512 | `"  if($ci === null){"` |
-|     - | 2513 | `"   throw new ReflectionException('Class \"'.$class.'\" does not exist');"` |
-|     - | 2514 | `"  }"` |
-|     - | 2515 | `"  $this->class = $ci['name'];"` |
-|     - | 2516 | `"  if(isset($ci['props'][$property])){"` |
-|     - | 2517 | `"   $this->name = $property;"` |
-|     - | 2518 | `"   return;"` |
-|     - | 2519 | `"  }"` |
-|     - | 2520 | `"  if($obj !== null && (__reflect_prop_state($obj, $property) & 1)){"` |
-|     - | 2521 | `"   $this->name = $property;"` |
-|     - | 2522 | `"   $this->__dynobj = $obj;"` |
-|     - | 2523 | `"   return;"` |
+|     - | 2405 | `"  $found = null;"` |
+|     - | 2406 | `"  if(is_int($param)){"` |
+|     - | 2407 | `"   if(isset($i['params'][$param])){ $found = $i['params'][$param]; }"` |
+|     - | 2408 | `"   if($found === null){"` |
+|     - | 2409 | `"    throw new ReflectionException('The parameter specified by its offset could not be found');"` |
+|     - | 2410 | `"   }"` |
+|     - | 2411 | `"  }else{"` |
+|     - | 2412 | `"   foreach($i['params'] as $pp){"` |
+|     - | 2413 | `"    if($pp['name'] === $param){ $found = $pp; break; }"` |
+|     - | 2414 | `"   }"` |
+|     - | 2415 | `"   if($found === null){"` |
+|     - | 2416 | `"    throw new ReflectionException('The parameter specified by its name could not be found');"` |
+|     - | 2417 | `"   }"` |
+|     - | 2418 | `"  }"` |
+|     - | 2419 | `"  $this->name = $found['name'];"` |
+|     - | 2420 | `"  $this->__t = $t;"` |
+|     - | 2421 | `"  $this->__m = $m;"` |
+|     - | 2422 | `"  $this->__p = $found['pos'];"` |
+|     - | 2423 | `" }"` |
+|     - | 2424 | `" protected function __rffull(){"` |
+|     - | 2425 | `"  if($this->__m !== null){ return __reflect_func_info($this->__t, $this->__m); }"` |
+|     - | 2426 | `"  return __reflect_sig_fixup(__reflect_func_info($this->__t));"` |
+|     - | 2427 | `" }"` |
+|     - | 2428 | `" protected function __rpinfo(){"` |
+|     - | 2429 | `"  $i = $this->__rffull();"` |
+|     - | 2430 | `"  return $i['params'][$this->__p];"` |
+|     - | 2431 | `" }"` |
+|     - | 2432 | `" public function getName(){ return $this->name; }"` |
+|     - | 2433 | `" public function getPosition(){ return $this->__p; }"` |
+|     - | 2434 | `" public function isPassedByReference(){ $p = $this->__rpinfo(); return $p['byref']; }"` |
+|     - | 2435 | `" public function canBePassedByValue(){ return !$this->isPassedByReference(); }"` |
+|     - | 2436 | `" public function isVariadic(){ $p = $this->__rpinfo(); return $p['variadic']; }"` |
+|     - | 2437 | `" public function isPromoted(){ $p = $this->__rpinfo(); return $p['promoted']; }"` |
+|     - | 2438 | `" public function isDefaultValueAvailable(){ $p = $this->__rpinfo(); return $p['hasdef']; }"` |
+|     - | 2439 | `" public function isOptional(){"` |
+|     - | 2440 | `"  $i = $this->__rffull();"` |
+|     - | 2441 | `"  $n = count($i['params']);"` |
+|     - | 2442 | `"  for($k = $this->__p; $k < $n; $k++){"` |
+|     - | 2443 | `"   $p = $i['params'][$k];"` |
+|     - | 2444 | `"   if(!$p['variadic'] && !$p['hasdef']){ return false; }"` |
+|     - | 2445 | `"  }"` |
+|     - | 2446 | `"  return true;"` |
+|     - | 2447 | `" }"` |
+|     - | 2448 | `" public function getDefaultValue(){"` |
+|     - | 2449 | `"  if(!$this->isDefaultValueAvailable()){"` |
+|     - | 2450 | `"   throw new ReflectionException('Internal error: Failed to retrieve the default value');"` |
+|     - | 2451 | `"  }"` |
+|     - | 2452 | `"  $p = $this->__rpinfo();"` |
+|     - | 2453 | `"  if(isset($p['deftext'])){"` |
+|     - | 2454 | `"   $s = __reflect_sig_scalar($p['deftext']);"` |
+|     - | 2455 | `"   if($s[0]){ return $s[1]; }"` |
+|     - | 2456 | `"   if($p['deftext'] === 'array (' \|\| strpos($p['deftext'], '[') === 0){ return array(); }"` |
+|     - | 2457 | `"   throw new ReflectionException('Internal error: Failed to retrieve the default value');"` |
+|     - | 2458 | `"  }"` |
+|     - | 2459 | `"  return __reflect_param_default($this->__t, $this->__m, $this->__p);"` |
+|     - | 2460 | `" }"` |
+|     - | 2461 | `" public function isDefaultValueConstant(){"` |
+|     - | 2462 | `"  if(!$this->isDefaultValueAvailable()){ return false; }"` |
+|     - | 2463 | `"  $p = $this->__rpinfo();"` |
+|     - | 2464 | `"  if(isset($p['deftext'])){ return false; }"` |
+|     - | 2465 | `"  return __reflect_param_defconst($this->__t, $this->__m, $this->__p) !== null;"` |
+|     - | 2466 | `" }"` |
+|     - | 2467 | `" public function getDefaultValueConstantName(){"` |
+|     - | 2468 | `"  if(!$this->isDefaultValueAvailable()){"` |
+|     - | 2469 | `"   throw new ReflectionException('Internal error: Failed to retrieve the default value');"` |
+|     - | 2470 | `"  }"` |
+|     - | 2471 | `"  return __reflect_param_defconst($this->__t, $this->__m, $this->__p);"` |
+|     - | 2472 | `" }"` |
+|     - | 2473 | `" public function allowsNull(){"` |
+|     - | 2474 | `"  $p = $this->__rpinfo();"` |
+|     - | 2475 | `"  if($p['typetext'] === null){ return true; }"` |
+|     - | 2476 | `"  if($p['nullable']){ return true; }"` |
+|     - | 2477 | `"  return $p['typetext'] === 'mixed' \|\| $p['typetext'] === 'null';"` |
+|     - | 2478 | `" }"` |
+|     - | 2479 | `" public function hasType(){ $p = $this->__rpinfo(); return $p['typetext'] !== null; }"` |
+|     - | 2480 | `" public function getType(){ $p = $this->__rpinfo(); return __reflect_make_type($p['typetext']); }"` |
+|     - | 2481 | `" public function getDeclaringFunction(){"` |
+|     - | 2482 | `"  if($this->__m !== null){ return new ReflectionMethod($this->__t, $this->__m); }"` |
+|     - | 2483 | `"  return new ReflectionFunction($this->__t);"` |
+|     - | 2484 | `" }"` |
+|     - | 2485 | `" public function getDeclaringClass(){"` |
+|     - | 2486 | `"  if($this->__m === null){ return null; }"` |
+|     - | 2487 | `"  $i = $this->__rffull();"` |
+|     - | 2488 | `"  return new ReflectionClass($i['decl']);"` |
+|     - | 2489 | `" }"` |
+|     - | 2490 | `" public function getAttributes($name = null, $flags = 0){"` |
+|     - | 2491 | `"  $p = $this->__rpinfo();"` |
+|     - | 2492 | `"  return __reflect_build_attrs($p['attrs'], array('param', $this->__t, $this->__m, $this->__p), 32, $name, $flags);"` |
+|     - | 2493 | `" }"` |
+|     - | 2494 | `" public function __toString(){ return __reflect_export_param($this); }"` |
+|     - | 2495 | `"}"` |
+|     - | 2496 | `;` |
+|     - | 2497 | `/*` |
+|     - | 2498 | ` * Chunk 3: PropertyHookType, ReflectionProperty, ReflectionClassConstant.` |
+|     - | 2499 | ` */` |
+|     - | 2500 | `static const char zReflectLib3[] =` |
+|     - | 2501 | `"enum PropertyHookType: string {"` |
+|     - | 2502 | `" case Get = 'get';"` |
+|     - | 2503 | `" case Set = 'set';"` |
+|     - | 2504 | `"}"` |
+|     - | 2505 | `"class ReflectionProperty implements Reflector {"` |
+|     - | 2506 | `" const IS_PUBLIC = 1;"` |
+|     - | 2507 | `" const IS_PROTECTED = 2;"` |
+|     - | 2508 | `" const IS_PRIVATE = 4;"` |
+|     - | 2509 | `" const IS_STATIC = 16;"` |
+|     - | 2510 | `" const IS_FINAL = 32;"` |
+|     - | 2511 | `" const IS_ABSTRACT = 64;"` |
+|     - | 2512 | `" const IS_READONLY = 128;"` |
+|     - | 2513 | `" const IS_VIRTUAL = 512;"` |
+|     - | 2514 | `" const IS_PROTECTED_SET = 2048;"` |
+|     - | 2515 | `" const IS_PRIVATE_SET = 4096;"` |
+|     - | 2516 | `" public $name;"` |
+|     - | 2517 | `" public $class;"` |
+|     - | 2518 | `" protected $__dynobj = null;"` |
+|     - | 2519 | `" public function __construct($class, $property){"` |
+|     - | 2520 | `"  $obj = null;"` |
+|     - | 2521 | `"  if(is_object($class)){ $obj = $class; }"` |
+|     - | 2522 | `"  else if(!is_string($class)){"` |
+|     - | 2523 | `"   throw new TypeError('ReflectionProperty::__construct(): Argument #1 ($class) must be of type object\|string, '.get_debug_type($class).' given');"` |
 |     - | 2524 | `"  }"` |
-|     - | 2525 | `"  throw new ReflectionException('Property '.$this->class.'::$'.$property.' does not exist');"` |
-|     - | 2526 | `" }"` |
-|     - | 2527 | `" protected function __rpmeta(){"` |
-|     - | 2528 | `"  $ci = __phl_rcinfo($this->class);"` |
-|     - | 2529 | `"  if(isset($ci['props'][$this->name])){ return $ci['props'][$this->name]; }"` |
-|     - | 2530 | `"  return array('vis' => 1, 'static' => false, 'readonly' => false, 'hasdef' => false,"` |
-|     - | 2531 | `"   'typed' => false, 'typetext' => null, 'decl' => $this->class, 'line' => 0, 'dyn' => true);"` |
-|     - | 2532 | `" }"` |
-|     - | 2533 | `" public function getName(){ return $this->name; }"` |
-|     - | 2534 | `" public function getDeclaringClass(){"` |
-|     - | 2535 | `"  $m = $this->__rpmeta();"` |
-|     - | 2536 | `"  return new ReflectionClass($m['decl']);"` |
-|     - | 2537 | `" }"` |
-|     - | 2538 | `" public function getModifiers(){"` |
-|     - | 2539 | `"  $m = $this->__rpmeta();"` |
-|     - | 2540 | `"  $mod = ($m['vis'] === 1 ? 1 : ($m['vis'] === 2 ? 2 : 4));"` |
-|     - | 2541 | `"  if($m['static']){ $mod \|= 16; }"` |
-|     - | 2542 | `"  if($m['readonly']){ $mod \|= 128; }"` |
-|     - | 2543 | `"  return $mod;"` |
-|     - | 2544 | `" }"` |
-|     - | 2545 | `" public function isPublic(){ $m = $this->__rpmeta(); return $m['vis'] === 1; }"` |
-|     - | 2546 | `" public function isProtected(){ $m = $this->__rpmeta(); return $m['vis'] === 2; }"` |
-|     - | 2547 | `" public function isPrivate(){ $m = $this->__rpmeta(); return $m['vis'] === 3; }"` |
-|     - | 2548 | `" public function isStatic(){ $m = $this->__rpmeta(); return $m['static']; }"` |
-|     - | 2549 | `" public function isReadOnly(){ $m = $this->__rpmeta(); return $m['readonly']; }"` |
-|     - | 2550 | `" public function isPrivateSet(){ $m = $this->__rpmeta(); return isset($m['privset']) ? $m['privset'] : false; }"` |
-|     - | 2551 | `" public function isProtectedSet(){ $m = $this->__rpmeta(); return isset($m['protset']) ? $m['protset'] : false; }"` |
-|     - | 2552 | `" public function isDefault(){ $m = $this->__rpmeta(); return !isset($m['dyn']); }"` |
-|     - | 2553 | `" public function isDynamic(){ $m = $this->__rpmeta(); return isset($m['dyn']); }"` |
-|     - | 2554 | `" public function isAbstract(){ return false; }"` |
-|     - | 2555 | `" public function isFinal(){ return false; }"` |
-|     - | 2556 | `" public function isVirtual(){ $m = $this->__rpmeta(); return isset($m['virtual']) ? $m['virtual'] : false; }"` |
-|     - | 2557 | `" public function hasHooks(){ $m = $this->__rpmeta();"` |
-|     - | 2558 | `"  return (isset($m['hookget']) && $m['hookget']) \|\| (isset($m['hookset']) && $m['hookset']); }"` |
-|     - | 2559 | `" public function getHooks(){"` |
-|     - | 2560 | `"  $m = $this->__rpmeta(); $h = array();"` |
-|     - | 2561 | `"  if(isset($m['hookget']) && $m['hookget']){ $h['get'] = new ReflectionMethod($m['decl'], '__phl_hook_get_'.$this->name); }"` |
-|     - | 2562 | `"  if(isset($m['hookset']) && $m['hookset']){ $h['set'] = new ReflectionMethod($m['decl'], '__phl_hook_set_'.$this->name); }"` |
-|     - | 2563 | `"  return $h; }"` |
-|     - | 2564 | `" public function hasHook($type){"` |
-|     - | 2565 | `"  $t = $type instanceof PropertyHookType ? $type->value : $type;"` |
-|     - | 2566 | `"  $m = $this->__rpmeta();"` |
-|     - | 2567 | `"  if($t === 'get'){ return isset($m['hookget']) && $m['hookget']; }"` |
-|     - | 2568 | `"  if($t === 'set'){ return isset($m['hookset']) && $m['hookset']; }"` |
-|     - | 2569 | `"  return false; }"` |
-|     - | 2570 | `" public function getHook($type){"` |
-|     - | 2571 | `"  $t = $type instanceof PropertyHookType ? $type->value : $type;"` |
-|     - | 2572 | `"  $h = $this->getHooks();"` |
-|     - | 2573 | `"  return isset($h[$t]) ? $h[$t] : null; }"` |
-|     - | 2574 | `" public function isLazy($object){ return false; }"` |
-|     - | 2575 | `" public function setAccessible($accessible){ }"` |
-|     - | 2576 | `" public function getValue($object = null){"` |
-|     - | 2577 | `"  $m = $this->__rpmeta();"` |
-|     - | 2578 | `"  if($m['static']){ return __reflect_static_value($this->class, $this->name); }"` |
-|     - | 2579 | `"  if(!is_object($object)){"` |
-|     - | 2580 | `"   throw new ReflectionException('Instance of '.$this->class.' expected, but '.get_debug_type($object).' given');"` |
-|     - | 2581 | `"  }"` |
-|     - | 2582 | `"  return __reflect_prop_read($object, $this->name);"` |
-|     - | 2583 | `" }"` |
-|     - | 2584 | `" public function setValue($objectOrValue = null, $value = null){"` |
-|     - | 2585 | `"  $m = $this->__rpmeta();"` |
-|     - | 2586 | `"  if($m['static']){"` |
-|     - | 2587 | `"   if($value === null && $objectOrValue !== null && !is_object($objectOrValue)){"` |
-|     - | 2588 | `"    __reflect_static_set($this->class, $this->name, $objectOrValue);"` |
-|     - | 2589 | `"   }else{"` |
-|     - | 2590 | `"    __reflect_static_set($this->class, $this->name, $value);"` |
-|     - | 2591 | `"   }"` |
-|     - | 2592 | `"   return;"` |
-|     - | 2593 | `"  }"` |
-|     - | 2594 | `"  __reflect_prop_write($objectOrValue, $this->name, $value);"` |
-|     - | 2595 | `" }"` |
-|     - | 2596 | `" public function getRawValue($object){ return $this->getValue($object); }"` |
-|     - | 2597 | `" public function setRawValue($object, $value){ $this->setValue($object, $value); }"` |
-|     - | 2598 | `" public function isInitialized($object = null){"` |
+|     - | 2525 | `"  $ci = __phl_rcinfo($class);"` |
+|     - | 2526 | `"  if($ci === null){"` |
+|     - | 2527 | `"   throw new ReflectionException('Class \"'.$class.'\" does not exist');"` |
+|     - | 2528 | `"  }"` |
+|     - | 2529 | `"  $this->class = $ci['name'];"` |
+|     - | 2530 | `"  if(isset($ci['props'][$property])){"` |
+|     - | 2531 | `"   $this->name = $property;"` |
+|     - | 2532 | `"   return;"` |
+|     - | 2533 | `"  }"` |
+|     - | 2534 | `"  if($obj !== null && (__reflect_prop_state($obj, $property) & 1)){"` |
+|     - | 2535 | `"   $this->name = $property;"` |
+|     - | 2536 | `"   $this->__dynobj = $obj;"` |
+|     - | 2537 | `"   return;"` |
+|     - | 2538 | `"  }"` |
+|     - | 2539 | `"  throw new ReflectionException('Property '.$this->class.'::$'.$property.' does not exist');"` |
+|     - | 2540 | `" }"` |
+|     - | 2541 | `" protected function __rpmeta(){"` |
+|     - | 2542 | `"  $ci = __phl_rcinfo($this->class);"` |
+|     - | 2543 | `"  if(isset($ci['props'][$this->name])){ return $ci['props'][$this->name]; }"` |
+|     - | 2544 | `"  return array('vis' => 1, 'static' => false, 'readonly' => false, 'hasdef' => false,"` |
+|     - | 2545 | `"   'typed' => false, 'typetext' => null, 'decl' => $this->class, 'line' => 0, 'dyn' => true);"` |
+|     - | 2546 | `" }"` |
+|     - | 2547 | `" public function getName(){ return $this->name; }"` |
+|     - | 2548 | `" public function getDeclaringClass(){"` |
+|     - | 2549 | `"  $m = $this->__rpmeta();"` |
+|     - | 2550 | `"  return new ReflectionClass($m['decl']);"` |
+|     - | 2551 | `" }"` |
+|     - | 2552 | `" public function getModifiers(){"` |
+|     - | 2553 | `"  $m = $this->__rpmeta();"` |
+|     - | 2554 | `"  $mod = ($m['vis'] === 1 ? 1 : ($m['vis'] === 2 ? 2 : 4));"` |
+|     - | 2555 | `"  if($m['static']){ $mod \|= 16; }"` |
+|     - | 2556 | `"  if($m['readonly']){ $mod \|= 128; }"` |
+|     - | 2557 | `"  return $mod;"` |
+|     - | 2558 | `" }"` |
+|     - | 2559 | `" public function isPublic(){ $m = $this->__rpmeta(); return $m['vis'] === 1; }"` |
+|     - | 2560 | `" public function isProtected(){ $m = $this->__rpmeta(); return $m['vis'] === 2; }"` |
+|     - | 2561 | `" public function isPrivate(){ $m = $this->__rpmeta(); return $m['vis'] === 3; }"` |
+|     - | 2562 | `" public function isStatic(){ $m = $this->__rpmeta(); return $m['static']; }"` |
+|     - | 2563 | `" public function isReadOnly(){ $m = $this->__rpmeta(); return $m['readonly']; }"` |
+|     - | 2564 | `" public function isPrivateSet(){ $m = $this->__rpmeta(); return isset($m['privset']) ? $m['privset'] : false; }"` |
+|     - | 2565 | `" public function isProtectedSet(){ $m = $this->__rpmeta(); return isset($m['protset']) ? $m['protset'] : false; }"` |
+|     - | 2566 | `" public function isDefault(){ $m = $this->__rpmeta(); return !isset($m['dyn']); }"` |
+|     - | 2567 | `" public function isDynamic(){ $m = $this->__rpmeta(); return isset($m['dyn']); }"` |
+|     - | 2568 | `" public function isAbstract(){ return false; }"` |
+|     - | 2569 | `" public function isFinal(){ return false; }"` |
+|     - | 2570 | `" public function isVirtual(){ $m = $this->__rpmeta(); return isset($m['virtual']) ? $m['virtual'] : false; }"` |
+|     - | 2571 | `" public function hasHooks(){ $m = $this->__rpmeta();"` |
+|     - | 2572 | `"  return (isset($m['hookget']) && $m['hookget']) \|\| (isset($m['hookset']) && $m['hookset']); }"` |
+|     - | 2573 | `" public function getHooks(){"` |
+|     - | 2574 | `"  $m = $this->__rpmeta(); $h = array();"` |
+|     - | 2575 | `"  if(isset($m['hookget']) && $m['hookget']){ $h['get'] = new ReflectionMethod($m['decl'], '__phl_hook_get_'.$this->name); }"` |
+|     - | 2576 | `"  if(isset($m['hookset']) && $m['hookset']){ $h['set'] = new ReflectionMethod($m['decl'], '__phl_hook_set_'.$this->name); }"` |
+|     - | 2577 | `"  return $h; }"` |
+|     - | 2578 | `" public function hasHook($type){"` |
+|     - | 2579 | `"  $t = $type instanceof PropertyHookType ? $type->value : $type;"` |
+|     - | 2580 | `"  $m = $this->__rpmeta();"` |
+|     - | 2581 | `"  if($t === 'get'){ return isset($m['hookget']) && $m['hookget']; }"` |
+|     - | 2582 | `"  if($t === 'set'){ return isset($m['hookset']) && $m['hookset']; }"` |
+|     - | 2583 | `"  return false; }"` |
+|     - | 2584 | `" public function getHook($type){"` |
+|     - | 2585 | `"  $t = $type instanceof PropertyHookType ? $type->value : $type;"` |
+|     - | 2586 | `"  $h = $this->getHooks();"` |
+|     - | 2587 | `"  return isset($h[$t]) ? $h[$t] : null; }"` |
+|     - | 2588 | `" public function isLazy($object){ return false; }"` |
+|     - | 2589 | `" public function setAccessible($accessible){ }"` |
+|     - | 2590 | `" public function getValue($object = null){"` |
+|     - | 2591 | `"  $m = $this->__rpmeta();"` |
+|     - | 2592 | `"  if($m['static']){ return __reflect_static_value($this->class, $this->name); }"` |
+|     - | 2593 | `"  if(!is_object($object)){"` |
+|     - | 2594 | `"   throw new ReflectionException('Instance of '.$this->class.' expected, but '.get_debug_type($object).' given');"` |
+|     - | 2595 | `"  }"` |
+|     - | 2596 | `"  return __reflect_prop_read($object, $this->name);"` |
+|     - | 2597 | `" }"` |
+|     - | 2598 | `" public function setValue($objectOrValue = null, $value = null){"` |
 |     - | 2599 | `"  $m = $this->__rpmeta();"` |
-|     - | 2600 | `"  if($m['static']){ return (__reflect_prop_state($this->class, $this->name) & 2) !== 0; }"` |
-|     - | 2601 | `"  if(!is_object($object)){"` |
-|     - | 2602 | `"   throw new ReflectionException('Instance of '.$this->class.' expected, but '.get_debug_type($object).' given');"` |
-|     - | 2603 | `"  }"` |
-|     - | 2604 | `"  return (__reflect_prop_state($object, $this->name) & 2) !== 0;"` |
-|     - | 2605 | `" }"` |
-|     - | 2606 | `" public function hasDefaultValue(){"` |
-|     - | 2607 | `"  $m = $this->__rpmeta();"` |
-|     - | 2608 | `"  if(isset($m['dyn'])){ return false; }"` |
-|     - | 2609 | `"  if($m['hasdef']){ return true; }"` |
-|     - | 2610 | `"  return !$m['typed'];"` |
-|     - | 2611 | `" }"` |
-|     - | 2612 | `" public function getDefaultValue(){"` |
+|     - | 2600 | `"  if($m['static']){"` |
+|     - | 2601 | `"   if($value === null && $objectOrValue !== null && !is_object($objectOrValue)){"` |
+|     - | 2602 | `"    __reflect_static_set($this->class, $this->name, $objectOrValue);"` |
+|     - | 2603 | `"   }else{"` |
+|     - | 2604 | `"    __reflect_static_set($this->class, $this->name, $value);"` |
+|     - | 2605 | `"   }"` |
+|     - | 2606 | `"   return;"` |
+|     - | 2607 | `"  }"` |
+|     - | 2608 | `"  __reflect_prop_write($objectOrValue, $this->name, $value);"` |
+|     - | 2609 | `" }"` |
+|     - | 2610 | `" public function getRawValue($object){ return $this->getValue($object); }"` |
+|     - | 2611 | `" public function setRawValue($object, $value){ $this->setValue($object, $value); }"` |
+|     - | 2612 | `" public function isInitialized($object = null){"` |
 |     - | 2613 | `"  $m = $this->__rpmeta();"` |
-|     - | 2614 | `"  if(isset($m['dyn']) \|\| !$m['hasdef']){ return null; }"` |
-|     - | 2615 | `"  return __reflect_prop_default($this->class, $this->name);"` |
-|     - | 2616 | `" }"` |
-|     - | 2617 | `" public function hasType(){ $m = $this->__rpmeta(); return $m['typed']; }"` |
-|     - | 2618 | `" public function getType(){ $m = $this->__rpmeta(); return $m['typed'] ? __reflect_make_type($m['typetext']) : null; }"` |
-|     - | 2619 | `" public function getSettableType(){ return $this->getType(); }"` |
-|     - | 2620 | `" public function setRawValueWithoutLazyInitialization($object, $value){"` |
-|     - | 2621 | `"  throw new Error('ReflectionProperty::setRawValueWithoutLazyInitialization() is not supported by PHL (no lazy objects)');"` |
-|     - | 2622 | `" }"` |
-|     - | 2623 | `" public function skipLazyInitialization($object){"` |
-|     - | 2624 | `"  throw new Error('ReflectionProperty::skipLazyInitialization() is not supported by PHL (no lazy objects)');"` |
+|     - | 2614 | `"  if($m['static']){ return (__reflect_prop_state($this->class, $this->name) & 2) !== 0; }"` |
+|     - | 2615 | `"  if(!is_object($object)){"` |
+|     - | 2616 | `"   throw new ReflectionException('Instance of '.$this->class.' expected, but '.get_debug_type($object).' given');"` |
+|     - | 2617 | `"  }"` |
+|     - | 2618 | `"  return (__reflect_prop_state($object, $this->name) & 2) !== 0;"` |
+|     - | 2619 | `" }"` |
+|     - | 2620 | `" public function hasDefaultValue(){"` |
+|     - | 2621 | `"  $m = $this->__rpmeta();"` |
+|     - | 2622 | `"  if(isset($m['dyn'])){ return false; }"` |
+|     - | 2623 | `"  if($m['hasdef']){ return true; }"` |
+|     - | 2624 | `"  return !$m['typed'];"` |
 |     - | 2625 | `" }"` |
-|     - | 2626 | `" public function getDocComment(){ $m = $this->__rpmeta(); return isset($m['doc']) ? $m['doc'] : false; }"` |
-|     - | 2627 | `" public function getAttributes($name = null, $flags = 0){"` |
-|     - | 2628 | `"  $m = $this->__rpmeta();"` |
-|     - | 2629 | `"  if(!isset($m['attrs'])){ return array(); }"` |
-|     - | 2630 | `"  return __reflect_build_attrs($m['attrs'], array('attr', $this->class, $this->name, 0), 8, $name, $flags);"` |
-|     - | 2631 | `" }"` |
-|     - | 2632 | `" public function __toString(){ return __reflect_export_prop($this); }"` |
-|     - | 2633 | `"}"` |
-|     - | 2634 | `"class ReflectionClassConstant implements Reflector {"` |
-|     - | 2635 | `" const IS_PUBLIC = 1;"` |
-|     - | 2636 | `" const IS_PROTECTED = 2;"` |
-|     - | 2637 | `" const IS_PRIVATE = 4;"` |
-|     - | 2638 | `" const IS_FINAL = 32;"` |
-|     - | 2639 | `" public $name;"` |
-|     - | 2640 | `" public $class;"` |
-|     - | 2641 | `" public function __construct($class, $constant){"` |
-|     - | 2642 | `"  if(!is_object($class) && !is_string($class)){"` |
-|     - | 2643 | `"   throw new TypeError('ReflectionClassConstant::__construct(): Argument #1 ($class) must be of type object\|string, '.get_debug_type($class).' given');"` |
-|     - | 2644 | `"  }"` |
-|     - | 2645 | `"  $ci = __phl_rcinfo($class);"` |
-|     - | 2646 | `"  if($ci === null){"` |
-|     - | 2647 | `"   throw new ReflectionException('Class \"'.$class.'\" does not exist');"` |
-|     - | 2648 | `"  }"` |
-|     - | 2649 | `"  $this->class = $ci['name'];"` |
-|     - | 2650 | `"  if(!isset($ci['consts'][$constant])){"` |
-|     - | 2651 | `"   throw new ReflectionException('Constant '.$this->class.'::'.$constant.' does not exist');"` |
-|     - | 2652 | `"  }"` |
-|     - | 2653 | `"  $this->name = $constant;"` |
-|     - | 2654 | `" }"` |
-|     - | 2655 | `" protected function __rcmeta(){"` |
-|     - | 2656 | `"  $ci = __phl_rcinfo($this->class);"` |
-|     - | 2657 | `"  return $ci['consts'][$this->name];"` |
-|     - | 2658 | `" }"` |
-|     - | 2659 | `" public function getName(){ return $this->name; }"` |
-|     - | 2660 | `" public function getValue(){ return __reflect_const_value($this->class, $this->name); }"` |
-|     - | 2661 | `" public function getDeclaringClass(){"` |
-|     - | 2662 | `"  $m = $this->__rcmeta();"` |
-|     - | 2663 | `"  return new ReflectionClass($m['decl']);"` |
-|     - | 2664 | `" }"` |
-|     - | 2665 | `" public function getModifiers(){"` |
-|     - | 2666 | `"  $m = $this->__rcmeta();"` |
-|     - | 2667 | `"  $mod = ($m['vis'] === 1 ? 1 : ($m['vis'] === 2 ? 2 : 4));"` |
-|     - | 2668 | `"  if($m['final']){ $mod \|= 32; }"` |
-|     - | 2669 | `"  return $mod;"` |
-|     - | 2670 | `" }"` |
-|     - | 2671 | `" public function isPublic(){ $m = $this->__rcmeta(); return $m['vis'] === 1; }"` |
-|     - | 2672 | `" public function isProtected(){ $m = $this->__rcmeta(); return $m['vis'] === 2; }"` |
-|     - | 2673 | `" public function isPrivate(){ $m = $this->__rcmeta(); return $m['vis'] === 3; }"` |
-|     - | 2674 | `" public function isFinal(){ $m = $this->__rcmeta(); return $m['final']; }"` |
-|     - | 2675 | `" public function isEnumCase(){ $m = $this->__rcmeta(); return $m['enumcase']; }"` |
-|     - | 2676 | `" public function isDeprecated(){ $m = $this->__rcmeta(); return __reflect_has_deprecated($m['attrs']); }"` |
-|     - | 2677 | `" public function hasType(){ $m = $this->__rcmeta(); return $m['typed']; }"` |
-|     - | 2678 | `" public function getType(){ $m = $this->__rcmeta(); return $m['typed'] ? __reflect_make_type($m['typetext']) : null; }"` |
-|     - | 2679 | `" public function getDocComment(){ $m = $this->__rcmeta(); return $m['doc']; }"` |
-|     - | 2680 | `" public function getAttributes($name = null, $flags = 0){"` |
-|     - | 2681 | `"  $m = $this->__rcmeta();"` |
-|     - | 2682 | `"  return __reflect_build_attrs($m['attrs'], array('attr', $this->class, $this->name, 0), 16, $name, $flags);"` |
-|     - | 2683 | `" }"` |
-|     - | 2684 | `" public function __toString(){ return __reflect_export_cconst($this); }"` |
-|     - | 2685 | `"}"` |
-|     - | 2686 | `;` |
-|     - | 2687 | `/*` |
-|     - | 2688 | ` * Chunk 4: the ReflectionType family, built from the engine's canonical` |
-|     - | 2689 | ` * type text ("?int", "string\|float", "(A&B)\|C" — normalized at compile` |
-|     - | 2690 | ` * time). __reflect_make_type is the internal factory; PHP itself never` |
-|     - | 2691 | ` * lets user code construct these, so the public constructors here are a` |
-|     - | 2692 | ` * recorded PHL-only surface.` |
-|     - | 2693 | ` */` |
-|     - | 2694 | `static const char zReflectLib4[] =` |
-|     - | 2695 | `"abstract class ReflectionType implements Stringable {"` |
-|     - | 2696 | `" protected $__text = '';"` |
-|     - | 2697 | `" protected $__nullable = false;"` |
-|     - | 2698 | `" public function allowsNull(){ return $this->__nullable; }"` |
-|     - | 2699 | `" public function __toString(){ return $this->__text; }"` |
-|     - | 2700 | `"}"` |
-|     - | 2701 | `"class ReflectionNamedType extends ReflectionType {"` |
-|     - | 2702 | `" protected $__tname = '';"` |
-|     - | 2703 | `" public function __construct($name = '', $nullable = false, $text = null){"` |
-|     - | 2704 | `"  $this->__tname = $name;"` |
-|     - | 2705 | `"  $l = strtolower($name);"` |
-|     - | 2706 | `"  $this->__nullable = $nullable \|\| $l === 'null' \|\| $l === 'mixed';"` |
-|     - | 2707 | `"  $this->__text = $text === null ? $name : $text;"` |
-|     - | 2708 | `" }"` |
-|     - | 2709 | `" public function getName(){ return $this->__tname; }"` |
-|     - | 2710 | `" public function isBuiltin(){"` |
-|     - | 2711 | `"  $l = strtolower($this->__tname);"` |
-|     - | 2712 | `"  return in_array($l, array('int','float','string','bool','array','object','mixed',"` |
-|     - | 2713 | `"   'void','never','null','callable','iterable','true','false'), true);"` |
-|     - | 2714 | `" }"` |
-|     - | 2715 | `"}"` |
-|     - | 2716 | `"class ReflectionUnionType extends ReflectionType {"` |
-|     - | 2717 | `" protected $__types = array();"` |
-|     - | 2718 | `" public function __construct($text = '', $nullable = false, $types = array()){"` |
-|     - | 2719 | `"  $this->__text = $text;"` |
-|     - | 2720 | `"  $this->__nullable = $nullable;"` |
-|     - | 2721 | `"  $this->__types = $types;"` |
+|     - | 2626 | `" public function getDefaultValue(){"` |
+|     - | 2627 | `"  $m = $this->__rpmeta();"` |
+|     - | 2628 | `"  if(isset($m['dyn']) \|\| !$m['hasdef']){ return null; }"` |
+|     - | 2629 | `"  return __reflect_prop_default($this->class, $this->name);"` |
+|     - | 2630 | `" }"` |
+|     - | 2631 | `" public function hasType(){ $m = $this->__rpmeta(); return $m['typed']; }"` |
+|     - | 2632 | `" public function getType(){ $m = $this->__rpmeta(); return $m['typed'] ? __reflect_make_type($m['typetext']) : null; }"` |
+|     - | 2633 | `" public function getSettableType(){ return $this->getType(); }"` |
+|     - | 2634 | `" public function setRawValueWithoutLazyInitialization($object, $value){"` |
+|     - | 2635 | `"  throw new Error('ReflectionProperty::setRawValueWithoutLazyInitialization() is not supported by PHL (no lazy objects)');"` |
+|     - | 2636 | `" }"` |
+|     - | 2637 | `" public function skipLazyInitialization($object){"` |
+|     - | 2638 | `"  throw new Error('ReflectionProperty::skipLazyInitialization() is not supported by PHL (no lazy objects)');"` |
+|     - | 2639 | `" }"` |
+|     - | 2640 | `" public function getDocComment(){ $m = $this->__rpmeta(); return isset($m['doc']) ? $m['doc'] : false; }"` |
+|     - | 2641 | `" public function getAttributes($name = null, $flags = 0){"` |
+|     - | 2642 | `"  $m = $this->__rpmeta();"` |
+|     - | 2643 | `"  if(!isset($m['attrs'])){ return array(); }"` |
+|     - | 2644 | `"  return __reflect_build_attrs($m['attrs'], array('attr', $this->class, $this->name, 0), 8, $name, $flags);"` |
+|     - | 2645 | `" }"` |
+|     - | 2646 | `" public function __toString(){ return __reflect_export_prop($this); }"` |
+|     - | 2647 | `"}"` |
+|     - | 2648 | `"class ReflectionClassConstant implements Reflector {"` |
+|     - | 2649 | `" const IS_PUBLIC = 1;"` |
+|     - | 2650 | `" const IS_PROTECTED = 2;"` |
+|     - | 2651 | `" const IS_PRIVATE = 4;"` |
+|     - | 2652 | `" const IS_FINAL = 32;"` |
+|     - | 2653 | `" public $name;"` |
+|     - | 2654 | `" public $class;"` |
+|     - | 2655 | `" public function __construct($class, $constant){"` |
+|     - | 2656 | `"  if(!is_object($class) && !is_string($class)){"` |
+|     - | 2657 | `"   throw new TypeError('ReflectionClassConstant::__construct(): Argument #1 ($class) must be of type object\|string, '.get_debug_type($class).' given');"` |
+|     - | 2658 | `"  }"` |
+|     - | 2659 | `"  $ci = __phl_rcinfo($class);"` |
+|     - | 2660 | `"  if($ci === null){"` |
+|     - | 2661 | `"   throw new ReflectionException('Class \"'.$class.'\" does not exist');"` |
+|     - | 2662 | `"  }"` |
+|     - | 2663 | `"  $this->class = $ci['name'];"` |
+|     - | 2664 | `"  if(!isset($ci['consts'][$constant])){"` |
+|     - | 2665 | `"   throw new ReflectionException('Constant '.$this->class.'::'.$constant.' does not exist');"` |
+|     - | 2666 | `"  }"` |
+|     - | 2667 | `"  $this->name = $constant;"` |
+|     - | 2668 | `" }"` |
+|     - | 2669 | `" protected function __rcmeta(){"` |
+|     - | 2670 | `"  $ci = __phl_rcinfo($this->class);"` |
+|     - | 2671 | `"  return $ci['consts'][$this->name];"` |
+|     - | 2672 | `" }"` |
+|     - | 2673 | `" public function getName(){ return $this->name; }"` |
+|     - | 2674 | `" public function getValue(){ return __reflect_const_value($this->class, $this->name); }"` |
+|     - | 2675 | `" public function getDeclaringClass(){"` |
+|     - | 2676 | `"  $m = $this->__rcmeta();"` |
+|     - | 2677 | `"  return new ReflectionClass($m['decl']);"` |
+|     - | 2678 | `" }"` |
+|     - | 2679 | `" public function getModifiers(){"` |
+|     - | 2680 | `"  $m = $this->__rcmeta();"` |
+|     - | 2681 | `"  $mod = ($m['vis'] === 1 ? 1 : ($m['vis'] === 2 ? 2 : 4));"` |
+|     - | 2682 | `"  if($m['final']){ $mod \|= 32; }"` |
+|     - | 2683 | `"  return $mod;"` |
+|     - | 2684 | `" }"` |
+|     - | 2685 | `" public function isPublic(){ $m = $this->__rcmeta(); return $m['vis'] === 1; }"` |
+|     - | 2686 | `" public function isProtected(){ $m = $this->__rcmeta(); return $m['vis'] === 2; }"` |
+|     - | 2687 | `" public function isPrivate(){ $m = $this->__rcmeta(); return $m['vis'] === 3; }"` |
+|     - | 2688 | `" public function isFinal(){ $m = $this->__rcmeta(); return $m['final']; }"` |
+|     - | 2689 | `" public function isEnumCase(){ $m = $this->__rcmeta(); return $m['enumcase']; }"` |
+|     - | 2690 | `" public function isDeprecated(){ $m = $this->__rcmeta(); return __reflect_has_deprecated($m['attrs']); }"` |
+|     - | 2691 | `" public function hasType(){ $m = $this->__rcmeta(); return $m['typed']; }"` |
+|     - | 2692 | `" public function getType(){ $m = $this->__rcmeta(); return $m['typed'] ? __reflect_make_type($m['typetext']) : null; }"` |
+|     - | 2693 | `" public function getDocComment(){ $m = $this->__rcmeta(); return $m['doc']; }"` |
+|     - | 2694 | `" public function getAttributes($name = null, $flags = 0){"` |
+|     - | 2695 | `"  $m = $this->__rcmeta();"` |
+|     - | 2696 | `"  return __reflect_build_attrs($m['attrs'], array('attr', $this->class, $this->name, 0), 16, $name, $flags);"` |
+|     - | 2697 | `" }"` |
+|     - | 2698 | `" public function __toString(){ return __reflect_export_cconst($this); }"` |
+|     - | 2699 | `"}"` |
+|     - | 2700 | `;` |
+|     - | 2701 | `/*` |
+|     - | 2702 | ` * Chunk 4: the ReflectionType family, built from the engine's canonical` |
+|     - | 2703 | ` * type text ("?int", "string\|float", "(A&B)\|C" — normalized at compile` |
+|     - | 2704 | ` * time). __reflect_make_type is the internal factory; PHP itself never` |
+|     - | 2705 | ` * lets user code construct these, so the public constructors here are a` |
+|     - | 2706 | ` * recorded PHL-only surface.` |
+|     - | 2707 | ` */` |
+|     - | 2708 | `static const char zReflectLib4[] =` |
+|     - | 2709 | `"abstract class ReflectionType implements Stringable {"` |
+|     - | 2710 | `" protected $__text = '';"` |
+|     - | 2711 | `" protected $__nullable = false;"` |
+|     - | 2712 | `" public function allowsNull(){ return $this->__nullable; }"` |
+|     - | 2713 | `" public function __toString(){ return $this->__text; }"` |
+|     - | 2714 | `"}"` |
+|     - | 2715 | `"class ReflectionNamedType extends ReflectionType {"` |
+|     - | 2716 | `" protected $__tname = '';"` |
+|     - | 2717 | `" public function __construct($name = '', $nullable = false, $text = null){"` |
+|     - | 2718 | `"  $this->__tname = $name;"` |
+|     - | 2719 | `"  $l = strtolower($name);"` |
+|     - | 2720 | `"  $this->__nullable = $nullable \|\| $l === 'null' \|\| $l === 'mixed';"` |
+|     - | 2721 | `"  $this->__text = $text === null ? $name : $text;"` |
 |     - | 2722 | `" }"` |
-|     - | 2723 | `" public function getTypes(){ return $this->__types; }"` |
-|     - | 2724 | `"}"` |
-|     - | 2725 | `"class ReflectionIntersectionType extends ReflectionType {"` |
-|     - | 2726 | `" protected $__types = array();"` |
-|     - | 2727 | `" public function __construct($text = '', $types = array()){"` |
-|     - | 2728 | `"  $this->__text = $text;"` |
-|     - | 2729 | `"  $this->__nullable = false;"` |
-|     - | 2730 | `"  $this->__types = $types;"` |
-|     - | 2731 | `" }"` |
-|     - | 2732 | `" public function getTypes(){ return $this->__types; }"` |
-|     - | 2733 | `"}"` |
-|     - | 2734 | `"function __reflect_make_atom($p){"` |
-|     - | 2735 | `" $nullable = false;"` |
-|     - | 2736 | `" if($p !== '' && $p[0] === '?'){ $nullable = true; $p = substr($p, 1); }"` |
-|     - | 2737 | `" if($p !== '' && $p[0] === '('){ $p = substr($p, 1, strlen($p) - 2); }"` |
-|     - | 2738 | `" if(strpos($p, '&') !== false){"` |
-|     - | 2739 | `"  $subs = array();"` |
-|     - | 2740 | `"  foreach(explode('&', $p) as $s){ $subs[] = new ReflectionNamedType($s, false, $s); }"` |
-|     - | 2741 | `"  return new ReflectionIntersectionType($p, $subs);"` |
-|     - | 2742 | `" }"` |
-|     - | 2743 | `" return new ReflectionNamedType($p, $nullable, $nullable ? '?'.$p : $p);"` |
-|     - | 2744 | `"}"` |
-|     - | 2745 | `"function __reflect_make_type($text){"` |
-|     - | 2746 | `" if($text === null \|\| $text === ''){ return null; }"` |
-|     - | 2747 | `" $nullable = false;"` |
-|     - | 2748 | `" $body = $text;"` |
-|     - | 2749 | `" if($body[0] === '?'){ $nullable = true; $body = substr($body, 1); }"` |
-|     - | 2750 | `" $parts = array();"` |
-|     - | 2751 | `" $depth = 0;"` |
-|     - | 2752 | `" $cur = '';"` |
-|     - | 2753 | `" $n = strlen($body);"` |
-|     - | 2754 | `" for($k = 0; $k < $n; $k++){"` |
-|     - | 2755 | `"  $ch = $body[$k];"` |
-|     - | 2756 | `"  if($ch === '('){ $depth++; $cur .= $ch; }"` |
-|     - | 2757 | `"  else if($ch === ')'){ $depth--; $cur .= $ch; }"` |
-|     - | 2758 | `"  else if($ch === '\|' && $depth === 0){ $parts[] = $cur; $cur = ''; }"` |
-|     - | 2759 | `"  else{ $cur .= $ch; }"` |
-|     - | 2760 | `" }"` |
-|     - | 2761 | `" $parts[] = $cur;"` |
-|     - | 2762 | `" if(count($parts) > 1){"` |
-|     - | 2763 | `"  $nonNull = array();"` |
-|     - | 2764 | `"  $hasNull = false;"` |
-|     - | 2765 | `"  foreach($parts as $p){"` |
-|     - | 2766 | `"   if(strtolower($p) === 'null'){ $hasNull = true; }"` |
-|     - | 2767 | `"   else{ $nonNull[] = $p; }"` |
-|     - | 2768 | `"  }"` |
-|     - | 2769 | `"  if($hasNull && count($nonNull) === 1 && strpos($nonNull[0], '&') === false){"` |
-|     - | 2770 | `"   return new ReflectionNamedType($nonNull[0], true, '?'.$nonNull[0]);"` |
-|     - | 2771 | `"  }"` |
-|     - | 2772 | `"  $types = array();"` |
-|     - | 2773 | `"  foreach($parts as $p){ $types[] = __reflect_make_atom($p); }"` |
-|     - | 2774 | `"  return new ReflectionUnionType($body, $nullable \|\| $hasNull, $types);"` |
-|     - | 2775 | `" }"` |
-|     - | 2776 | `" if(strpos($body, '&') !== false){ return __reflect_make_atom($body); }"` |
-|     - | 2777 | `" return __reflect_make_atom($nullable ? '?'.$body : $body);"` |
-|     - | 2778 | `"}"` |
-|     - | 2779 | `;` |
-|     - | 2780 | `/*` |
-|     - | 2781 | ` * Chunk 5: ReflectionGenerator, ReflectionFiber. Executing line/file and` |
-|     - | 2782 | ` * traces need runtime line tracking the VM does not have (same gap as` |
-|     - | 2783 | ` * debug_backtrace's line numbers) — those throw a loud Error, recorded in` |
-|     - | 2784 | ` * the plan ledger.` |
-|     - | 2785 | ` */` |
-|     - | 2786 | `static const char zReflectLib5[] =` |
-|     - | 2787 | `"class ReflectionGenerator {"` |
-|     - | 2788 | `" protected $__gen;"` |
-|     - | 2789 | `" public function __construct($generator){"` |
-|     - | 2790 | `"  if(!($generator instanceof Generator)){"` |
-|     - | 2791 | `"   throw new TypeError('ReflectionGenerator::__construct(): Argument #1 ($generator) must be of type Generator, '.get_debug_type($generator).' given');"` |
-|     - | 2792 | `"  }"` |
-|     - | 2793 | `"  $this->__gen = $generator;"` |
-|     - | 2794 | `" }"` |
-|     - | 2795 | `" protected function __rginfo(){ return __reflect_gen_info($this->__gen); }"` |
-|     - | 2796 | `" public function getFunction(){"` |
-|     - | 2797 | `"  $i = $this->__rginfo();"` |
-|     - | 2798 | `"  if($i['kind'] === 'method'){ return new ReflectionMethod($i['class'], $i['name']); }"` |
-|     - | 2799 | `"  return new ReflectionFunction($i['name']);"` |
-|     - | 2800 | `" }"` |
-|     - | 2801 | `" public function getThis(){ $i = $this->__rginfo(); return isset($i['this']) ? $i['this'] : null; }"` |
-|     - | 2802 | `" public function getExecutingGenerator(){ return __reflect_gen_exec($this->__gen); }"` |
-|     - | 2803 | `" public function isClosed(){ $i = $this->__rginfo(); return $i['closed']; }"` |
-|     - | 2804 | `" public function getExecutingLine(){"` |
-|     - | 2805 | `"  throw new Error('ReflectionGenerator::getExecutingLine() is not supported by PHL (no runtime line tracking)');"` |
-|     - | 2806 | `" }"` |
-|     - | 2807 | `" public function getExecutingFile(){"` |
-|     - | 2808 | `"  throw new Error('ReflectionGenerator::getExecutingFile() is not supported by PHL (no runtime line tracking)');"` |
-|     - | 2809 | `" }"` |
-|     - | 2810 | `" public function getTrace($options = 1){"` |
-|     - | 2811 | `"  throw new Error('ReflectionGenerator::getTrace() is not supported by PHL (no runtime line tracking)');"` |
-|     - | 2812 | `" }"` |
-|     - | 2813 | `"}"` |
-|     - | 2814 | `"class ReflectionFiber {"` |
-|     - | 2815 | `" protected $__fiber;"` |
-|     - | 2816 | `" public function __construct($fiber){"` |
-|     - | 2817 | `"  if(!($fiber instanceof Fiber)){"` |
-|     - | 2818 | `"   throw new TypeError('ReflectionFiber::__construct(): Argument #1 ($fiber) must be of type Fiber, '.get_debug_type($fiber).' given');"` |
-|     - | 2819 | `"  }"` |
-|     - | 2820 | `"  $this->__fiber = $fiber;"` |
-|     - | 2821 | `" }"` |
-|     - | 2822 | `" public function getFiber(){ return $this->__fiber; }"` |
-|     - | 2823 | `" public function getCallable(){ return __reflect_prop_read($this->__fiber, '__callable'); }"` |
-|     - | 2824 | `" public function getExecutingLine(){"` |
-|     - | 2825 | `"  throw new Error('ReflectionFiber::getExecutingLine() is not supported by PHL (no runtime line tracking)');"` |
+|     - | 2723 | `" public function getName(){ return $this->__tname; }"` |
+|     - | 2724 | `" public function isBuiltin(){"` |
+|     - | 2725 | `"  $l = strtolower($this->__tname);"` |
+|     - | 2726 | `"  return in_array($l, array('int','float','string','bool','array','object','mixed',"` |
+|     - | 2727 | `"   'void','never','null','callable','iterable','true','false'), true);"` |
+|     - | 2728 | `" }"` |
+|     - | 2729 | `"}"` |
+|     - | 2730 | `"class ReflectionUnionType extends ReflectionType {"` |
+|     - | 2731 | `" protected $__types = array();"` |
+|     - | 2732 | `" public function __construct($text = '', $nullable = false, $types = array()){"` |
+|     - | 2733 | `"  $this->__text = $text;"` |
+|     - | 2734 | `"  $this->__nullable = $nullable;"` |
+|     - | 2735 | `"  $this->__types = $types;"` |
+|     - | 2736 | `" }"` |
+|     - | 2737 | `" public function getTypes(){ return $this->__types; }"` |
+|     - | 2738 | `"}"` |
+|     - | 2739 | `"class ReflectionIntersectionType extends ReflectionType {"` |
+|     - | 2740 | `" protected $__types = array();"` |
+|     - | 2741 | `" public function __construct($text = '', $types = array()){"` |
+|     - | 2742 | `"  $this->__text = $text;"` |
+|     - | 2743 | `"  $this->__nullable = false;"` |
+|     - | 2744 | `"  $this->__types = $types;"` |
+|     - | 2745 | `" }"` |
+|     - | 2746 | `" public function getTypes(){ return $this->__types; }"` |
+|     - | 2747 | `"}"` |
+|     - | 2748 | `"function __reflect_make_atom($p){"` |
+|     - | 2749 | `" $nullable = false;"` |
+|     - | 2750 | `" if($p !== '' && $p[0] === '?'){ $nullable = true; $p = substr($p, 1); }"` |
+|     - | 2751 | `" if($p !== '' && $p[0] === '('){ $p = substr($p, 1, strlen($p) - 2); }"` |
+|     - | 2752 | `" if(strpos($p, '&') !== false){"` |
+|     - | 2753 | `"  $subs = array();"` |
+|     - | 2754 | `"  foreach(explode('&', $p) as $s){ $subs[] = new ReflectionNamedType($s, false, $s); }"` |
+|     - | 2755 | `"  return new ReflectionIntersectionType($p, $subs);"` |
+|     - | 2756 | `" }"` |
+|     - | 2757 | `" return new ReflectionNamedType($p, $nullable, $nullable ? '?'.$p : $p);"` |
+|     - | 2758 | `"}"` |
+|     - | 2759 | `"function __reflect_make_type($text){"` |
+|     - | 2760 | `" if($text === null \|\| $text === ''){ return null; }"` |
+|     - | 2761 | `" $nullable = false;"` |
+|     - | 2762 | `" $body = $text;"` |
+|     - | 2763 | `" if($body[0] === '?'){ $nullable = true; $body = substr($body, 1); }"` |
+|     - | 2764 | `" $parts = array();"` |
+|     - | 2765 | `" $depth = 0;"` |
+|     - | 2766 | `" $cur = '';"` |
+|     - | 2767 | `" $n = strlen($body);"` |
+|     - | 2768 | `" for($k = 0; $k < $n; $k++){"` |
+|     - | 2769 | `"  $ch = $body[$k];"` |
+|     - | 2770 | `"  if($ch === '('){ $depth++; $cur .= $ch; }"` |
+|     - | 2771 | `"  else if($ch === ')'){ $depth--; $cur .= $ch; }"` |
+|     - | 2772 | `"  else if($ch === '\|' && $depth === 0){ $parts[] = $cur; $cur = ''; }"` |
+|     - | 2773 | `"  else{ $cur .= $ch; }"` |
+|     - | 2774 | `" }"` |
+|     - | 2775 | `" $parts[] = $cur;"` |
+|     - | 2776 | `" if(count($parts) > 1){"` |
+|     - | 2777 | `"  $nonNull = array();"` |
+|     - | 2778 | `"  $hasNull = false;"` |
+|     - | 2779 | `"  foreach($parts as $p){"` |
+|     - | 2780 | `"   if(strtolower($p) === 'null'){ $hasNull = true; }"` |
+|     - | 2781 | `"   else{ $nonNull[] = $p; }"` |
+|     - | 2782 | `"  }"` |
+|     - | 2783 | `"  if($hasNull && count($nonNull) === 1 && strpos($nonNull[0], '&') === false){"` |
+|     - | 2784 | `"   return new ReflectionNamedType($nonNull[0], true, '?'.$nonNull[0]);"` |
+|     - | 2785 | `"  }"` |
+|     - | 2786 | `"  $types = array();"` |
+|     - | 2787 | `"  foreach($parts as $p){ $types[] = __reflect_make_atom($p); }"` |
+|     - | 2788 | `"  return new ReflectionUnionType($body, $nullable \|\| $hasNull, $types);"` |
+|     - | 2789 | `" }"` |
+|     - | 2790 | `" if(strpos($body, '&') !== false){ return __reflect_make_atom($body); }"` |
+|     - | 2791 | `" return __reflect_make_atom($nullable ? '?'.$body : $body);"` |
+|     - | 2792 | `"}"` |
+|     - | 2793 | `;` |
+|     - | 2794 | `/*` |
+|     - | 2795 | ` * Chunk 5: ReflectionGenerator, ReflectionFiber. Executing line/file and` |
+|     - | 2796 | ` * traces need runtime line tracking the VM does not have (same gap as` |
+|     - | 2797 | ` * debug_backtrace's line numbers) — those throw a loud Error, recorded in` |
+|     - | 2798 | ` * the plan ledger.` |
+|     - | 2799 | ` */` |
+|     - | 2800 | `static const char zReflectLib5[] =` |
+|     - | 2801 | `"class ReflectionGenerator {"` |
+|     - | 2802 | `" protected $__gen;"` |
+|     - | 2803 | `" public function __construct($generator){"` |
+|     - | 2804 | `"  if(!($generator instanceof Generator)){"` |
+|     - | 2805 | `"   throw new TypeError('ReflectionGenerator::__construct(): Argument #1 ($generator) must be of type Generator, '.get_debug_type($generator).' given');"` |
+|     - | 2806 | `"  }"` |
+|     - | 2807 | `"  $this->__gen = $generator;"` |
+|     - | 2808 | `" }"` |
+|     - | 2809 | `" protected function __rginfo(){ return __reflect_gen_info($this->__gen); }"` |
+|     - | 2810 | `" public function getFunction(){"` |
+|     - | 2811 | `"  $i = $this->__rginfo();"` |
+|     - | 2812 | `"  if($i['kind'] === 'method'){ return new ReflectionMethod($i['class'], $i['name']); }"` |
+|     - | 2813 | `"  return new ReflectionFunction($i['name']);"` |
+|     - | 2814 | `" }"` |
+|     - | 2815 | `" public function getThis(){ $i = $this->__rginfo(); return isset($i['this']) ? $i['this'] : null; }"` |
+|     - | 2816 | `" public function getExecutingGenerator(){ return __reflect_gen_exec($this->__gen); }"` |
+|     - | 2817 | `" public function isClosed(){ $i = $this->__rginfo(); return $i['closed']; }"` |
+|     - | 2818 | `" public function getExecutingLine(){"` |
+|     - | 2819 | `"  throw new Error('ReflectionGenerator::getExecutingLine() is not supported by PHL (no runtime line tracking)');"` |
+|     - | 2820 | `" }"` |
+|     - | 2821 | `" public function getExecutingFile(){"` |
+|     - | 2822 | `"  throw new Error('ReflectionGenerator::getExecutingFile() is not supported by PHL (no runtime line tracking)');"` |
+|     - | 2823 | `" }"` |
+|     - | 2824 | `" public function getTrace($options = 1){"` |
+|     - | 2825 | `"  throw new Error('ReflectionGenerator::getTrace() is not supported by PHL (no runtime line tracking)');"` |
 |     - | 2826 | `" }"` |
-|     - | 2827 | `" public function getExecutingFile(){"` |
-|     - | 2828 | `"  throw new Error('ReflectionFiber::getExecutingFile() is not supported by PHL (no runtime line tracking)');"` |
-|     - | 2829 | `" }"` |
-|     - | 2830 | `" public function getTrace($options = 1){"` |
-|     - | 2831 | `"  throw new Error('ReflectionFiber::getTrace() is not supported by PHL (no runtime line tracking)');"` |
-|     - | 2832 | `" }"` |
-|     - | 2833 | `"}"` |
-|     - | 2834 | `;` |
-|     - | 2835 | `/*` |
-|     - | 2836 | ` * Chunk 6: the long tail — ReflectionConstant (PHP 8.5), the synthetic` |
-|     - | 2837 | ` * "Core" ReflectionExtension, ReflectionZendExtension (throws: no Zend` |
-|     - | 2838 | ` * extensions exist), the ReflectionEnum family (throws: enums are not a` |
-|     - | 2839 | ` * PHL language feature yet), and ReflectionReference.` |
-|     - | 2840 | ` */` |
-|     - | 2841 | `static const char zReflectLib6[] =` |
-|     - | 2842 | `"class ReflectionConstant implements Reflector {"` |
-|     - | 2843 | `" public $name;"` |
-|     - | 2844 | `" public function __construct($name){"` |
-|     - | 2845 | `"  if(!is_string($name)){"` |
-|     - | 2846 | `"   throw new TypeError('ReflectionConstant::__construct(): Argument #1 ($name) must be of type string, '.get_debug_type($name).' given');"` |
-|     - | 2847 | `"  }"` |
-|     - | 2848 | `"  $i = __reflect_const_info($name);"` |
-|     - | 2849 | `"  if($i === null){"` |
-|     - | 2850 | `"   throw new ReflectionException('Constant \"'.$name.'\" does not exist');"` |
-|     - | 2851 | `"  }"` |
-|     - | 2852 | `"  $this->name = $name;"` |
-|     - | 2853 | `" }"` |
-|     - | 2854 | `" public function getName(){ return $this->name; }"` |
-|     - | 2855 | `" public function getNamespaceName(){"` |
-|     - | 2856 | `"  $p = strrpos($this->name,'\\\\');"` |
-|     - | 2857 | `"  if($p === false){ return ''; }"` |
-|     - | 2858 | `"  return substr($this->name,0,$p);"` |
-|     - | 2859 | `" }"` |
-|     - | 2860 | `" public function getShortName(){"` |
-|     - | 2861 | `"  $p = strrpos($this->name,'\\\\');"` |
-|     - | 2862 | `"  if($p === false){ return $this->name; }"` |
-|     - | 2863 | `"  return substr($this->name,$p+1);"` |
-|     - | 2864 | `" }"` |
-|     - | 2865 | `" public function getValue(){"` |
-|     - | 2866 | `"  $i = __reflect_const_info($this->name);"` |
-|     - | 2867 | `"  return $i['value'];"` |
-|     - | 2868 | `" }"` |
-|     - | 2869 | `" public function isDeprecated(){ return false; }"` |
-|     - | 2870 | `" public function getFileName(){"` |
-|     - | 2871 | `"  $i = __reflect_const_info($this->name);"` |
-|     - | 2872 | `"  return $i['file'];"` |
+|     - | 2827 | `"}"` |
+|     - | 2828 | `"class ReflectionFiber {"` |
+|     - | 2829 | `" protected $__fiber;"` |
+|     - | 2830 | `" public function __construct($fiber){"` |
+|     - | 2831 | `"  if(!($fiber instanceof Fiber)){"` |
+|     - | 2832 | `"   throw new TypeError('ReflectionFiber::__construct(): Argument #1 ($fiber) must be of type Fiber, '.get_debug_type($fiber).' given');"` |
+|     - | 2833 | `"  }"` |
+|     - | 2834 | `"  $this->__fiber = $fiber;"` |
+|     - | 2835 | `" }"` |
+|     - | 2836 | `" public function getFiber(){ return $this->__fiber; }"` |
+|     - | 2837 | `" public function getCallable(){ return __reflect_prop_read($this->__fiber, '__callable'); }"` |
+|     - | 2838 | `" public function getExecutingLine(){"` |
+|     - | 2839 | `"  throw new Error('ReflectionFiber::getExecutingLine() is not supported by PHL (no runtime line tracking)');"` |
+|     - | 2840 | `" }"` |
+|     - | 2841 | `" public function getExecutingFile(){"` |
+|     - | 2842 | `"  throw new Error('ReflectionFiber::getExecutingFile() is not supported by PHL (no runtime line tracking)');"` |
+|     - | 2843 | `" }"` |
+|     - | 2844 | `" public function getTrace($options = 1){"` |
+|     - | 2845 | `"  throw new Error('ReflectionFiber::getTrace() is not supported by PHL (no runtime line tracking)');"` |
+|     - | 2846 | `" }"` |
+|     - | 2847 | `"}"` |
+|     - | 2848 | `;` |
+|     - | 2849 | `/*` |
+|     - | 2850 | ` * Chunk 6: the long tail — ReflectionConstant (PHP 8.5), the synthetic` |
+|     - | 2851 | ` * "Core" ReflectionExtension, ReflectionZendExtension (throws: no Zend` |
+|     - | 2852 | ` * extensions exist), the ReflectionEnum family (throws: enums are not a` |
+|     - | 2853 | ` * PHL language feature yet), and ReflectionReference.` |
+|     - | 2854 | ` */` |
+|     - | 2855 | `static const char zReflectLib6[] =` |
+|     - | 2856 | `"class ReflectionConstant implements Reflector {"` |
+|     - | 2857 | `" public $name;"` |
+|     - | 2858 | `" public function __construct($name){"` |
+|     - | 2859 | `"  if(!is_string($name)){"` |
+|     - | 2860 | `"   throw new TypeError('ReflectionConstant::__construct(): Argument #1 ($name) must be of type string, '.get_debug_type($name).' given');"` |
+|     - | 2861 | `"  }"` |
+|     - | 2862 | `"  $i = __reflect_const_info($name);"` |
+|     - | 2863 | `"  if($i === null){"` |
+|     - | 2864 | `"   throw new ReflectionException('Constant \"'.$name.'\" does not exist');"` |
+|     - | 2865 | `"  }"` |
+|     - | 2866 | `"  $this->name = $name;"` |
+|     - | 2867 | `" }"` |
+|     - | 2868 | `" public function getName(){ return $this->name; }"` |
+|     - | 2869 | `" public function getNamespaceName(){"` |
+|     - | 2870 | `"  $p = strrpos($this->name,'\\\\');"` |
+|     - | 2871 | `"  if($p === false){ return ''; }"` |
+|     - | 2872 | `"  return substr($this->name,0,$p);"` |
 |     - | 2873 | `" }"` |
-|     - | 2874 | `" public function getExtension(){"` |
-|     - | 2875 | `"  $i = __reflect_const_info($this->name);"` |
-|     - | 2876 | `"  return $i['internal'] ? new ReflectionExtension('Core') : null;"` |
-|     - | 2877 | `" }"` |
-|     - | 2878 | `" public function getExtensionName(){"` |
-|     - | 2879 | `"  $i = __reflect_const_info($this->name);"` |
-|     - | 2880 | `"  return $i['internal'] ? 'Core' : false;"` |
-|     - | 2881 | `" }"` |
-|     - | 2882 | `" public function getAttributes($name = null, $flags = 0){"` |
-|     - | 2883 | `"  $i = __reflect_const_info($this->name);"` |
-|     - | 2884 | `"  if($i === null){ return array(); }"` |
-|     - | 2885 | `"  return __reflect_build_attrs($i['attrs'], array('const', $this->name, null, 0), 64, $name, $flags);"` |
-|     - | 2886 | `" }"` |
-|     - | 2887 | `" public function __toString(){"` |
-|     - | 2888 | `"  return 'Constant [ '.$this->name.' ]'.\"\\n\";"` |
-|     - | 2889 | `" }"` |
-|     - | 2890 | `"}"` |
-|     - | 2891 | `"class ReflectionExtension implements Reflector {"` |
-|     - | 2892 | `" public $name;"` |
-|     - | 2893 | `" public function __construct($name){"` |
-|     - | 2894 | `"  if(!is_string($name)){"` |
-|     - | 2895 | `"   throw new TypeError('ReflectionExtension::__construct(): Argument #1 ($name) must be of type string, '.get_debug_type($name).' given');"` |
-|     - | 2896 | `"  }"` |
-|     - | 2897 | `"  if(strtolower($name) !== 'core'){"` |
-|     - | 2898 | `"   throw new ReflectionException('Extension \"'.$name.'\" does not exist');"` |
-|     - | 2899 | `"  }"` |
-|     - | 2900 | `"  $this->name = 'Core';"` |
-|     - | 2901 | `" }"` |
-|     - | 2902 | `" public function getName(){ return $this->name; }"` |
-|     - | 2903 | `" public function getVersion(){ return phpversion(); }"` |
-|     - | 2904 | `" public function getFunctions(){ return array(); }"` |
-|     - | 2905 | `" public function getClasses(){ return array(); }"` |
-|     - | 2906 | `" public function getClassNames(){ return array(); }"` |
-|     - | 2907 | `" public function getConstants(){ return array(); }"` |
-|     - | 2908 | `" public function getINIEntries(){ return array(); }"` |
-|     - | 2909 | `" public function getDependencies(){ return array(); }"` |
-|     - | 2910 | `" public function isPersistent(){ return true; }"` |
-|     - | 2911 | `" public function isTemporary(){ return false; }"` |
-|     - | 2912 | `" public function info(){ }"` |
-|     - | 2913 | `" public function __toString(){"` |
-|     - | 2914 | `"  return 'Extension [ extension #1 '.$this->name.' ]'.\"\\n\";"` |
+|     - | 2874 | `" public function getShortName(){"` |
+|     - | 2875 | `"  $p = strrpos($this->name,'\\\\');"` |
+|     - | 2876 | `"  if($p === false){ return $this->name; }"` |
+|     - | 2877 | `"  return substr($this->name,$p+1);"` |
+|     - | 2878 | `" }"` |
+|     - | 2879 | `" public function getValue(){"` |
+|     - | 2880 | `"  $i = __reflect_const_info($this->name);"` |
+|     - | 2881 | `"  return $i['value'];"` |
+|     - | 2882 | `" }"` |
+|     - | 2883 | `" public function isDeprecated(){ return false; }"` |
+|     - | 2884 | `" public function getFileName(){"` |
+|     - | 2885 | `"  $i = __reflect_const_info($this->name);"` |
+|     - | 2886 | `"  return $i['file'];"` |
+|     - | 2887 | `" }"` |
+|     - | 2888 | `" public function getExtension(){"` |
+|     - | 2889 | `"  $i = __reflect_const_info($this->name);"` |
+|     - | 2890 | `"  return $i['internal'] ? new ReflectionExtension('Core') : null;"` |
+|     - | 2891 | `" }"` |
+|     - | 2892 | `" public function getExtensionName(){"` |
+|     - | 2893 | `"  $i = __reflect_const_info($this->name);"` |
+|     - | 2894 | `"  return $i['internal'] ? 'Core' : false;"` |
+|     - | 2895 | `" }"` |
+|     - | 2896 | `" public function getAttributes($name = null, $flags = 0){"` |
+|     - | 2897 | `"  $i = __reflect_const_info($this->name);"` |
+|     - | 2898 | `"  if($i === null){ return array(); }"` |
+|     - | 2899 | `"  return __reflect_build_attrs($i['attrs'], array('const', $this->name, null, 0), 64, $name, $flags);"` |
+|     - | 2900 | `" }"` |
+|     - | 2901 | `" public function __toString(){"` |
+|     - | 2902 | `"  return 'Constant [ '.$this->name.' ]'.\"\\n\";"` |
+|     - | 2903 | `" }"` |
+|     - | 2904 | `"}"` |
+|     - | 2905 | `"class ReflectionExtension implements Reflector {"` |
+|     - | 2906 | `" public $name;"` |
+|     - | 2907 | `" public function __construct($name){"` |
+|     - | 2908 | `"  if(!is_string($name)){"` |
+|     - | 2909 | `"   throw new TypeError('ReflectionExtension::__construct(): Argument #1 ($name) must be of type string, '.get_debug_type($name).' given');"` |
+|     - | 2910 | `"  }"` |
+|     - | 2911 | `"  if(strtolower($name) !== 'core'){"` |
+|     - | 2912 | `"   throw new ReflectionException('Extension \"'.$name.'\" does not exist');"` |
+|     - | 2913 | `"  }"` |
+|     - | 2914 | `"  $this->name = 'Core';"` |
 |     - | 2915 | `" }"` |
-|     - | 2916 | `"}"` |
-|     - | 2917 | `"class ReflectionZendExtension implements Reflector {"` |
-|     - | 2918 | `" public $name;"` |
-|     - | 2919 | `" public function __construct($name){"` |
-|     - | 2920 | `"  throw new ReflectionException('Zend Extension \"'.$name.'\" does not exist');"` |
-|     - | 2921 | `" }"` |
-|     - | 2922 | `" public function getName(){ return $this->name; }"` |
-|     - | 2923 | `" public function __toString(){ return ''; }"` |
-|     - | 2924 | `"}"` |
-|     - | 2925 | `"class ReflectionEnum extends ReflectionClass {"` |
-|     - | 2926 | `" public function __construct($objectOrClass){"` |
-|     - | 2927 | `"  $info = __phl_rcinfo($objectOrClass);"` |
-|     - | 2928 | `"  if($info === null){"` |
-|     - | 2929 | `"   throw new ReflectionException('Class \"'.$objectOrClass.'\" does not exist');"` |
-|     - | 2930 | `"  }"` |
-|     - | 2931 | `"  if(!$info['enum']){"` |
-|     - | 2932 | `"   throw new ReflectionException('Class \"'.$info['name'].'\" is not an enum');"` |
-|     - | 2933 | `"  }"` |
-|     - | 2934 | `"  parent::__construct($objectOrClass);"` |
+|     - | 2916 | `" public function getName(){ return $this->name; }"` |
+|     - | 2917 | `" public function getVersion(){ return phpversion(); }"` |
+|     - | 2918 | `" public function getFunctions(){ return array(); }"` |
+|     - | 2919 | `" public function getClasses(){ return array(); }"` |
+|     - | 2920 | `" public function getClassNames(){ return array(); }"` |
+|     - | 2921 | `" public function getConstants(){ return array(); }"` |
+|     - | 2922 | `" public function getINIEntries(){ return array(); }"` |
+|     - | 2923 | `" public function getDependencies(){ return array(); }"` |
+|     - | 2924 | `" public function isPersistent(){ return true; }"` |
+|     - | 2925 | `" public function isTemporary(){ return false; }"` |
+|     - | 2926 | `" public function info(){ }"` |
+|     - | 2927 | `" public function __toString(){"` |
+|     - | 2928 | `"  return 'Extension [ extension #1 '.$this->name.' ]'.\"\\n\";"` |
+|     - | 2929 | `" }"` |
+|     - | 2930 | `"}"` |
+|     - | 2931 | `"class ReflectionZendExtension implements Reflector {"` |
+|     - | 2932 | `" public $name;"` |
+|     - | 2933 | `" public function __construct($name){"` |
+|     - | 2934 | `"  throw new ReflectionException('Zend Extension \"'.$name.'\" does not exist');"` |
 |     - | 2935 | `" }"` |
-|     - | 2936 | `" public function hasCase($name){"` |
-|     - | 2937 | `"  $i = $this->__rinfo();"` |
-|     - | 2938 | `"  return in_array($name, $i['cases'], true);"` |
-|     - | 2939 | `" }"` |
-|     - | 2940 | `" public function getCase($name){"` |
-|     - | 2941 | `"  if(!$this->hasCase($name)){"` |
-|     - | 2942 | `"   throw new ReflectionException('Case '.$this->name.'::'.$name.' does not exist');"` |
-|     - | 2943 | `"  }"` |
-|     - | 2944 | `"  if($this->isBacked()){ return new ReflectionEnumBackedCase($this->name, $name); }"` |
-|     - | 2945 | `"  return new ReflectionEnumUnitCase($this->name, $name);"` |
-|     - | 2946 | `" }"` |
-|     - | 2947 | `" public function getCases(){"` |
-|     - | 2948 | `"  $i = $this->__rinfo();"` |
-|     - | 2949 | `"  $out = array();"` |
-|     - | 2950 | `"  foreach($i['cases'] as $c){"` |
-|     - | 2951 | `"   $out[] = $this->isBacked()"` |
-|     - | 2952 | `"    ? new ReflectionEnumBackedCase($this->name, $c)"` |
-|     - | 2953 | `"    : new ReflectionEnumUnitCase($this->name, $c);"` |
-|     - | 2954 | `"  }"` |
-|     - | 2955 | `"  return $out;"` |
-|     - | 2956 | `" }"` |
-|     - | 2957 | `" public function isBacked(){ $i = $this->__rinfo(); return $i['enumbacking'] !== ''; }"` |
-|     - | 2958 | `" public function getBackingType(){"` |
-|     - | 2959 | `"  $i = $this->__rinfo();"` |
-|     - | 2960 | `"  if($i['enumbacking'] === ''){ return null; }"` |
-|     - | 2961 | `"  return __reflect_make_type($i['enumbacking']);"` |
-|     - | 2962 | `" }"` |
-|     - | 2963 | `"}"` |
-|     - | 2964 | `"class ReflectionEnumUnitCase extends ReflectionClassConstant {"` |
-|     - | 2965 | `" public function __construct($class, $constant){"` |
-|     - | 2966 | `"  parent::__construct($class, $constant);"` |
-|     - | 2967 | `"  $ci = __phl_rcinfo($class);"` |
-|     - | 2968 | `"  if(!$ci['enum']){"` |
-|     - | 2969 | `"   throw new ReflectionException('Class \"'.$this->class.'\" is not an enum');"` |
-|     - | 2970 | `"  }"` |
-|     - | 2971 | `"  $m = $this->__rcmeta();"` |
-|     - | 2972 | `"  if(!$m['enumcase']){"` |
-|     - | 2973 | `"   throw new ReflectionException('Constant '.$this->class.'::'.$constant.' is not a case');"` |
-|     - | 2974 | `"  }"` |
-|     - | 2975 | `" }"` |
-|     - | 2976 | `" public function getEnum(){ return new ReflectionEnum($this->class); }"` |
+|     - | 2936 | `" public function getName(){ return $this->name; }"` |
+|     - | 2937 | `" public function __toString(){ return ''; }"` |
+|     - | 2938 | `"}"` |
+|     - | 2939 | `"class ReflectionEnum extends ReflectionClass {"` |
+|     - | 2940 | `" public function __construct($objectOrClass){"` |
+|     - | 2941 | `"  $info = __phl_rcinfo($objectOrClass);"` |
+|     - | 2942 | `"  if($info === null){"` |
+|     - | 2943 | `"   throw new ReflectionException('Class \"'.$objectOrClass.'\" does not exist');"` |
+|     - | 2944 | `"  }"` |
+|     - | 2945 | `"  if(!$info['enum']){"` |
+|     - | 2946 | `"   throw new ReflectionException('Class \"'.$info['name'].'\" is not an enum');"` |
+|     - | 2947 | `"  }"` |
+|     - | 2948 | `"  parent::__construct($objectOrClass);"` |
+|     - | 2949 | `" }"` |
+|     - | 2950 | `" public function hasCase($name){"` |
+|     - | 2951 | `"  $i = $this->__rinfo();"` |
+|     - | 2952 | `"  return in_array($name, $i['cases'], true);"` |
+|     - | 2953 | `" }"` |
+|     - | 2954 | `" public function getCase($name){"` |
+|     - | 2955 | `"  if(!$this->hasCase($name)){"` |
+|     - | 2956 | `"   throw new ReflectionException('Case '.$this->name.'::'.$name.' does not exist');"` |
+|     - | 2957 | `"  }"` |
+|     - | 2958 | `"  if($this->isBacked()){ return new ReflectionEnumBackedCase($this->name, $name); }"` |
+|     - | 2959 | `"  return new ReflectionEnumUnitCase($this->name, $name);"` |
+|     - | 2960 | `" }"` |
+|     - | 2961 | `" public function getCases(){"` |
+|     - | 2962 | `"  $i = $this->__rinfo();"` |
+|     - | 2963 | `"  $out = array();"` |
+|     - | 2964 | `"  foreach($i['cases'] as $c){"` |
+|     - | 2965 | `"   $out[] = $this->isBacked()"` |
+|     - | 2966 | `"    ? new ReflectionEnumBackedCase($this->name, $c)"` |
+|     - | 2967 | `"    : new ReflectionEnumUnitCase($this->name, $c);"` |
+|     - | 2968 | `"  }"` |
+|     - | 2969 | `"  return $out;"` |
+|     - | 2970 | `" }"` |
+|     - | 2971 | `" public function isBacked(){ $i = $this->__rinfo(); return $i['enumbacking'] !== ''; }"` |
+|     - | 2972 | `" public function getBackingType(){"` |
+|     - | 2973 | `"  $i = $this->__rinfo();"` |
+|     - | 2974 | `"  if($i['enumbacking'] === ''){ return null; }"` |
+|     - | 2975 | `"  return __reflect_make_type($i['enumbacking']);"` |
+|     - | 2976 | `" }"` |
 |     - | 2977 | `"}"` |
-|     - | 2978 | `"class ReflectionEnumBackedCase extends ReflectionEnumUnitCase {"` |
-|     - | 2979 | `" public function getBackingValue(){ return $this->getValue()->value; }"` |
-|     - | 2980 | `"}"` |
-|     - | 2981 | `"final class ReflectionReference {"` |
-|     - | 2982 | `" protected $__id = '';"` |
-|     - | 2983 | `" public function __construct(){"` |
-|     - | 2984 | `"  throw new Error('Call to private ReflectionReference::__construct() from global scope');"` |
-|     - | 2985 | `" }"` |
-|     - | 2986 | `" public static function fromArrayElement($array, $key){"` |
-|     - | 2987 | `"  if(!is_array($array)){"` |
-|     - | 2988 | `"   throw new TypeError('ReflectionReference::fromArrayElement(): Argument #1 ($array) must be of type array, '.get_debug_type($array).' given');"` |
-|     - | 2989 | `"  }"` |
-|     - | 2990 | `"  $id = __reflect_ref_id($array, $key);"` |
-|     - | 2991 | `"  if($id === null){ return null; }"` |
-|     - | 2992 | `"  $r = __reflect_new_no_ctor('ReflectionReference');"` |
-|     - | 2993 | `"  $r->__setId('phlref'.$id);"` |
-|     - | 2994 | `"  return $r;"` |
-|     - | 2995 | `" }"` |
-|     - | 2996 | `" public function __setId($id){ $this->__id = $id; }"` |
-|     - | 2997 | `" public function getId(){ return $this->__id; }"` |
-|     - | 2998 | `"}"` |
-|     - | 2999 | `;` |
-|     - | 3000 | `/*` |
-|     - | 3001 | ` * Chunk 7: ReflectionAttribute and the shared getAttributes() builder.` |
-|     - | 3002 | ` * The spec array rides as [kind, target, member, paramIdx]; argument` |
-|     - | 3003 | ` * values evaluate lazily through __reflect_attr_args (PHP semantics).` |
-|     - | 3004 | ` */` |
-|     - | 3005 | `static const char zReflectLib7[] =` |
-|     - | 3006 | `"function __reflect_has_deprecated($meta){"` |
-|     - | 3007 | `" foreach($meta as $a){"` |
-|     - | 3008 | `"  if(strtolower($a['name']) === 'deprecated'){ return true; }"` |
+|     - | 2978 | `"class ReflectionEnumUnitCase extends ReflectionClassConstant {"` |
+|     - | 2979 | `" public function __construct($class, $constant){"` |
+|     - | 2980 | `"  parent::__construct($class, $constant);"` |
+|     - | 2981 | `"  $ci = __phl_rcinfo($class);"` |
+|     - | 2982 | `"  if(!$ci['enum']){"` |
+|     - | 2983 | `"   throw new ReflectionException('Class \"'.$this->class.'\" is not an enum');"` |
+|     - | 2984 | `"  }"` |
+|     - | 2985 | `"  $m = $this->__rcmeta();"` |
+|     - | 2986 | `"  if(!$m['enumcase']){"` |
+|     - | 2987 | `"   throw new ReflectionException('Constant '.$this->class.'::'.$constant.' is not a case');"` |
+|     - | 2988 | `"  }"` |
+|     - | 2989 | `" }"` |
+|     - | 2990 | `" public function getEnum(){ return new ReflectionEnum($this->class); }"` |
+|     - | 2991 | `"}"` |
+|     - | 2992 | `"class ReflectionEnumBackedCase extends ReflectionEnumUnitCase {"` |
+|     - | 2993 | `" public function getBackingValue(){ return $this->getValue()->value; }"` |
+|     - | 2994 | `"}"` |
+|     - | 2995 | `"final class ReflectionReference {"` |
+|     - | 2996 | `" protected $__id = '';"` |
+|     - | 2997 | `" public function __construct(){"` |
+|     - | 2998 | `"  throw new Error('Call to private ReflectionReference::__construct() from global scope');"` |
+|     - | 2999 | `" }"` |
+|     - | 3000 | `" public static function fromArrayElement($array, $key){"` |
+|     - | 3001 | `"  if(!is_array($array)){"` |
+|     - | 3002 | `"   throw new TypeError('ReflectionReference::fromArrayElement(): Argument #1 ($array) must be of type array, '.get_debug_type($array).' given');"` |
+|     - | 3003 | `"  }"` |
+|     - | 3004 | `"  $id = __reflect_ref_id($array, $key);"` |
+|     - | 3005 | `"  if($id === null){ return null; }"` |
+|     - | 3006 | `"  $r = __reflect_new_no_ctor('ReflectionReference');"` |
+|     - | 3007 | `"  $r->__setId('phlref'.$id);"` |
+|     - | 3008 | `"  return $r;"` |
 |     - | 3009 | `" }"` |
-|     - | 3010 | `" return false;"` |
-|     - | 3011 | `"}"` |
-|     - | 3012 | `"function __reflect_target_names($mask){"` |
-|     - | 3013 | `" $parts = array();"` |
-|     - | 3014 | `" foreach(array('class' => 1, 'function' => 2, 'method' => 4, 'property' => 8,"` |
-|     - | 3015 | `"  'class constant' => 16, 'parameter' => 32, 'constant' => 64) as $nm => $bit){"` |
-|     - | 3016 | `"  if($mask & $bit){ $parts[] = $nm; }"` |
-|     - | 3017 | `" }"` |
-|     - | 3018 | `" return implode(', ', $parts);"` |
-|     - | 3019 | `"}"` |
-|     - | 3020 | `"function __reflect_build_attrs($meta, $spec, $target, $name, $flags){"` |
-|     - | 3021 | `" $out = array();"` |
-|     - | 3022 | `" $counts = array();"` |
-|     - | 3023 | `" foreach($meta as $a){"` |
-|     - | 3024 | `"  $k = strtolower($a['name']);"` |
-|     - | 3025 | `"  $counts[$k] = isset($counts[$k]) ? $counts[$k] + 1 : 1;"` |
-|     - | 3026 | `" }"` |
-|     - | 3027 | `" $idx = 0;"` |
-|     - | 3028 | `" foreach($meta as $a){"` |
-|     - | 3029 | `"  $keep = true;"` |
-|     - | 3030 | `"  if($name !== null){"` |
-|     - | 3031 | `"   $keep = strtolower($a['name']) === strtolower($name);"` |
-|     - | 3032 | `"   if(!$keep && ($flags & 2)){"` |
-|     - | 3033 | `"    $keep = is_subclass_of($a['name'], $name);"` |
-|     - | 3034 | `"   }"` |
-|     - | 3035 | `"  }"` |
-|     - | 3036 | `"  if($keep){"` |
-|     - | 3037 | `"   $r = __reflect_new_no_ctor('ReflectionAttribute');"` |
-|     - | 3038 | `"   $r->__init($a['name'], $spec, $idx, $target, $counts[strtolower($a['name'])] > 1);"` |
-|     - | 3039 | `"   $out[] = $r;"` |
-|     - | 3040 | `"  }"` |
-|     - | 3041 | `"  $idx++;"` |
-|     - | 3042 | `" }"` |
-|     - | 3043 | `" return $out;"` |
-|     - | 3044 | `"}"` |
-|     - | 3045 | `"final class ReflectionAttribute {"` |
-|     - | 3046 | `" const IS_INSTANCEOF = 2;"` |
-|     - | 3047 | `" protected $__name = '';"` |
-|     - | 3048 | `" protected $__spec = null;"` |
-|     - | 3049 | `" protected $__idx = 0;"` |
-|     - | 3050 | `" protected $__target = 0;"` |
-|     - | 3051 | `" protected $__rep = false;"` |
-|     - | 3052 | `" public function __construct(){"` |
-|     - | 3053 | `"  throw new Error('Call to private ReflectionAttribute::__construct() from global scope');"` |
-|     - | 3054 | `" }"` |
-|     - | 3055 | `" public function __init($name, $spec, $idx, $target, $rep){"` |
-|     - | 3056 | `"  $this->__name = $name;"` |
-|     - | 3057 | `"  $this->__spec = $spec;"` |
-|     - | 3058 | `"  $this->__idx = $idx;"` |
-|     - | 3059 | `"  $this->__target = $target;"` |
-|     - | 3060 | `"  $this->__rep = $rep;"` |
-|     - | 3061 | `" }"` |
-|     - | 3062 | `" public function getName(){ return $this->__name; }"` |
-|     - | 3063 | `" public function getTarget(){ return $this->__target; }"` |
-|     - | 3064 | `" public function isRepeated(){ return $this->__rep; }"` |
-|     - | 3065 | `" public function getArguments(){"` |
-|     - | 3066 | `"  $a = __reflect_attr_args($this->__spec[0], $this->__spec[1], $this->__spec[2], $this->__spec[3], $this->__idx);"` |
-|     - | 3067 | `"  return $a === null ? array() : $a;"` |
+|     - | 3010 | `" public function __setId($id){ $this->__id = $id; }"` |
+|     - | 3011 | `" public function getId(){ return $this->__id; }"` |
+|     - | 3012 | `"}"` |
+|     - | 3013 | `;` |
+|     - | 3014 | `/*` |
+|     - | 3015 | ` * Chunk 7: ReflectionAttribute and the shared getAttributes() builder.` |
+|     - | 3016 | ` * The spec array rides as [kind, target, member, paramIdx]; argument` |
+|     - | 3017 | ` * values evaluate lazily through __reflect_attr_args (PHP semantics).` |
+|     - | 3018 | ` */` |
+|     - | 3019 | `static const char zReflectLib7[] =` |
+|     - | 3020 | `"function __reflect_has_deprecated($meta){"` |
+|     - | 3021 | `" foreach($meta as $a){"` |
+|     - | 3022 | `"  if(strtolower($a['name']) === 'deprecated'){ return true; }"` |
+|     - | 3023 | `" }"` |
+|     - | 3024 | `" return false;"` |
+|     - | 3025 | `"}"` |
+|     - | 3026 | `"function __reflect_target_names($mask){"` |
+|     - | 3027 | `" $parts = array();"` |
+|     - | 3028 | `" foreach(array('class' => 1, 'function' => 2, 'method' => 4, 'property' => 8,"` |
+|     - | 3029 | `"  'class constant' => 16, 'parameter' => 32, 'constant' => 64) as $nm => $bit){"` |
+|     - | 3030 | `"  if($mask & $bit){ $parts[] = $nm; }"` |
+|     - | 3031 | `" }"` |
+|     - | 3032 | `" return implode(', ', $parts);"` |
+|     - | 3033 | `"}"` |
+|     - | 3034 | `"function __reflect_build_attrs($meta, $spec, $target, $name, $flags){"` |
+|     - | 3035 | `" $out = array();"` |
+|     - | 3036 | `" $counts = array();"` |
+|     - | 3037 | `" foreach($meta as $a){"` |
+|     - | 3038 | `"  $k = strtolower($a['name']);"` |
+|     - | 3039 | `"  $counts[$k] = isset($counts[$k]) ? $counts[$k] + 1 : 1;"` |
+|     - | 3040 | `" }"` |
+|     - | 3041 | `" $idx = 0;"` |
+|     - | 3042 | `" foreach($meta as $a){"` |
+|     - | 3043 | `"  $keep = true;"` |
+|     - | 3044 | `"  if($name !== null){"` |
+|     - | 3045 | `"   $keep = strtolower($a['name']) === strtolower($name);"` |
+|     - | 3046 | `"   if(!$keep && ($flags & 2)){"` |
+|     - | 3047 | `"    $keep = is_subclass_of($a['name'], $name);"` |
+|     - | 3048 | `"   }"` |
+|     - | 3049 | `"  }"` |
+|     - | 3050 | `"  if($keep){"` |
+|     - | 3051 | `"   $r = __reflect_new_no_ctor('ReflectionAttribute');"` |
+|     - | 3052 | `"   $r->__init($a['name'], $spec, $idx, $target, $counts[strtolower($a['name'])] > 1);"` |
+|     - | 3053 | `"   $out[] = $r;"` |
+|     - | 3054 | `"  }"` |
+|     - | 3055 | `"  $idx++;"` |
+|     - | 3056 | `" }"` |
+|     - | 3057 | `" return $out;"` |
+|     - | 3058 | `"}"` |
+|     - | 3059 | `"final class ReflectionAttribute {"` |
+|     - | 3060 | `" const IS_INSTANCEOF = 2;"` |
+|     - | 3061 | `" protected $__name = '';"` |
+|     - | 3062 | `" protected $__spec = null;"` |
+|     - | 3063 | `" protected $__idx = 0;"` |
+|     - | 3064 | `" protected $__target = 0;"` |
+|     - | 3065 | `" protected $__rep = false;"` |
+|     - | 3066 | `" public function __construct(){"` |
+|     - | 3067 | `"  throw new Error('Call to private ReflectionAttribute::__construct() from global scope');"` |
 |     - | 3068 | `" }"` |
-|     - | 3069 | `" public function newInstance(){"` |
-|     - | 3070 | `"  $name = $this->__name;"` |
-|     - | 3071 | `"  $ci = __phl_rcinfo($name);"` |
-|     - | 3072 | `"  if($ci === null){"` |
-|     - | 3073 | `"   throw new Error('Attribute class \"'.$name.'\" not found');"` |
-|     - | 3074 | `"  }"` |
-|     - | 3075 | `"  $name = $ci['name'];"` |
-|     - | 3076 | `"  $decl = null;"` |
-|     - | 3077 | `"  $didx = 0;"` |
-|     - | 3078 | `"  foreach($ci['attrs'] as $a){"` |
-|     - | 3079 | `"   if(strtolower($a['name']) === 'attribute'){ $decl = $didx; break; }"` |
-|     - | 3080 | `"   $didx++;"` |
-|     - | 3081 | `"  }"` |
-|     - | 3082 | `"  if($decl === null){"` |
-|     - | 3083 | `"   throw new Error('Attempting to use non-attribute class \"'.$name.'\" as attribute');"` |
-|     - | 3084 | `"  }"` |
-|     - | 3085 | `"  $dargs = __reflect_attr_args('class', $name, null, 0, $decl);"` |
-|     - | 3086 | `"  $flags = 127;"` |
-|     - | 3087 | `"  if(is_array($dargs)){"` |
-|     - | 3088 | `"   if(isset($dargs[0])){ $flags = $dargs[0]; }"` |
-|     - | 3089 | `"   else if(isset($dargs['flags'])){ $flags = $dargs['flags']; }"` |
-|     - | 3090 | `"  }"` |
-|     - | 3091 | `"  if(($flags & $this->__target) === 0){"` |
-|     - | 3092 | `"   $tnames = array(1 => 'class', 2 => 'function', 4 => 'method', 8 => 'property',"` |
-|     - | 3093 | `"    16 => 'class constant', 32 => 'parameter', 64 => 'constant');"` |
-|     - | 3094 | `"   throw new Error('Attribute \"'.$name.'\" cannot target '.$tnames[$this->__target]"` |
-|     - | 3095 | `"    .' (allowed targets: '.__reflect_target_names($flags).')');"` |
-|     - | 3096 | `"  }"` |
-|     - | 3097 | `"  if($this->__rep && ($flags & 128) === 0){"` |
-|     - | 3098 | `"   throw new Error('Attribute \"'.$name.'\" must not be repeated');"` |
-|     - | 3099 | `"  }"` |
-|     - | 3100 | `"  return __reflect_new_instance($name, $this->getArguments());"` |
-|     - | 3101 | `" }"` |
-|     - | 3102 | `" public function __toString(){"` |
-|     - | 3103 | `"  return 'Attribute [ '.$this->__name.' ]';"` |
-|     - | 3104 | `" }"` |
-|     - | 3105 | `"}"` |
-|     - | 3106 | `;` |
-|     - | 3107 | `/*` |
-|     - | 3108 | ` * Chunk 8: signature-table support. Internal (C builtin) functions carry a` |
-|     - | 3109 | ` * PHP-style parameter-list string; these helpers parse it into the same` |
-|     - | 3110 | ` * param-meta shape user functions get, so ReflectionFunction and` |
-|     - | 3111 | ` * ReflectionParameter work uniformly over builtins.` |
-|     - | 3112 | ` */` |
-|     - | 3113 | `static const char zReflectLib8[] =` |
-|     - | 3114 | `"function __reflect_sig_split($sig){"` |
-|     - | 3115 | `" $parts = array();"` |
-|     - | 3116 | `" $cur = '';"` |
-|     - | 3117 | `" $q = false;"` |
-|     - | 3118 | `" $n = strlen($sig);"` |
-|     - | 3119 | `" for($k = 0; $k < $n; $k++){"` |
-|     - | 3120 | `"  $ch = $sig[$k];"` |
-|     - | 3121 | `"  if($q){"` |
-|     - | 3122 | `"   $cur .= $ch;"` |
-|     - | 3123 | `"   if($ch === chr(92) && $k + 1 < $n){ $cur .= $sig[$k+1]; $k++; }"` |
-|     - | 3124 | `"   else if($ch === chr(39)){ $q = false; }"` |
-|     - | 3125 | `"  }else if($ch === chr(39)){ $q = true; $cur .= $ch; }"` |
-|     - | 3126 | `"  else if($ch === ',' ){ $parts[] = trim($cur); $cur = ''; }"` |
-|     - | 3127 | `"  else{ $cur .= $ch; }"` |
-|     - | 3128 | `" }"` |
-|     - | 3129 | `" if(trim($cur) !== ''){ $parts[] = trim($cur); }"` |
-|     - | 3130 | `" return $parts;"` |
-|     - | 3131 | `"}"` |
-|     - | 3132 | `"function __reflect_sig_scalar($t){"` |
-|     - | 3133 | `" if($t === '?'){ return array(false, null); }"` |
-|     - | 3134 | `" if($t === 'NULL' \|\| $t === 'null'){ return array(true, null); }"` |
-|     - | 3135 | `" if($t === 'true'){ return array(true, true); }"` |
-|     - | 3136 | `" if($t === 'false'){ return array(true, false); }"` |
-|     - | 3137 | `" if(is_numeric($t)){"` |
-|     - | 3138 | `"  if(strpos($t, '.') === false && stripos($t, 'e') === false && strpos($t, 'x') === false){"` |
-|     - | 3139 | `"   return array(true, (int)$t);"` |
-|     - | 3140 | `"  }"` |
-|     - | 3141 | `"  return array(true, (float)$t);"` |
+|     - | 3069 | `" public function __init($name, $spec, $idx, $target, $rep){"` |
+|     - | 3070 | `"  $this->__name = $name;"` |
+|     - | 3071 | `"  $this->__spec = $spec;"` |
+|     - | 3072 | `"  $this->__idx = $idx;"` |
+|     - | 3073 | `"  $this->__target = $target;"` |
+|     - | 3074 | `"  $this->__rep = $rep;"` |
+|     - | 3075 | `" }"` |
+|     - | 3076 | `" public function getName(){ return $this->__name; }"` |
+|     - | 3077 | `" public function getTarget(){ return $this->__target; }"` |
+|     - | 3078 | `" public function isRepeated(){ return $this->__rep; }"` |
+|     - | 3079 | `" public function getArguments(){"` |
+|     - | 3080 | `"  $a = __reflect_attr_args($this->__spec[0], $this->__spec[1], $this->__spec[2], $this->__spec[3], $this->__idx);"` |
+|     - | 3081 | `"  return $a === null ? array() : $a;"` |
+|     - | 3082 | `" }"` |
+|     - | 3083 | `" public function newInstance(){"` |
+|     - | 3084 | `"  $name = $this->__name;"` |
+|     - | 3085 | `"  $ci = __phl_rcinfo($name);"` |
+|     - | 3086 | `"  if($ci === null){"` |
+|     - | 3087 | `"   throw new Error('Attribute class \"'.$name.'\" not found');"` |
+|     - | 3088 | `"  }"` |
+|     - | 3089 | `"  $name = $ci['name'];"` |
+|     - | 3090 | `"  $decl = null;"` |
+|     - | 3091 | `"  $didx = 0;"` |
+|     - | 3092 | `"  foreach($ci['attrs'] as $a){"` |
+|     - | 3093 | `"   if(strtolower($a['name']) === 'attribute'){ $decl = $didx; break; }"` |
+|     - | 3094 | `"   $didx++;"` |
+|     - | 3095 | `"  }"` |
+|     - | 3096 | `"  if($decl === null){"` |
+|     - | 3097 | `"   throw new Error('Attempting to use non-attribute class \"'.$name.'\" as attribute');"` |
+|     - | 3098 | `"  }"` |
+|     - | 3099 | `"  $dargs = __reflect_attr_args('class', $name, null, 0, $decl);"` |
+|     - | 3100 | `"  $flags = 127;"` |
+|     - | 3101 | `"  if(is_array($dargs)){"` |
+|     - | 3102 | `"   if(isset($dargs[0])){ $flags = $dargs[0]; }"` |
+|     - | 3103 | `"   else if(isset($dargs['flags'])){ $flags = $dargs['flags']; }"` |
+|     - | 3104 | `"  }"` |
+|     - | 3105 | `"  if(($flags & $this->__target) === 0){"` |
+|     - | 3106 | `"   $tnames = array(1 => 'class', 2 => 'function', 4 => 'method', 8 => 'property',"` |
+|     - | 3107 | `"    16 => 'class constant', 32 => 'parameter', 64 => 'constant');"` |
+|     - | 3108 | `"   throw new Error('Attribute \"'.$name.'\" cannot target '.$tnames[$this->__target]"` |
+|     - | 3109 | `"    .' (allowed targets: '.__reflect_target_names($flags).')');"` |
+|     - | 3110 | `"  }"` |
+|     - | 3111 | `"  if($this->__rep && ($flags & 128) === 0){"` |
+|     - | 3112 | `"   throw new Error('Attribute \"'.$name.'\" must not be repeated');"` |
+|     - | 3113 | `"  }"` |
+|     - | 3114 | `"  return __reflect_new_instance($name, $this->getArguments());"` |
+|     - | 3115 | `" }"` |
+|     - | 3116 | `" public function __toString(){"` |
+|     - | 3117 | `"  return 'Attribute [ '.$this->__name.' ]';"` |
+|     - | 3118 | `" }"` |
+|     - | 3119 | `"}"` |
+|     - | 3120 | `;` |
+|     - | 3121 | `/*` |
+|     - | 3122 | ` * Chunk 8: signature-table support. Internal (C builtin) functions carry a` |
+|     - | 3123 | ` * PHP-style parameter-list string; these helpers parse it into the same` |
+|     - | 3124 | ` * param-meta shape user functions get, so ReflectionFunction and` |
+|     - | 3125 | ` * ReflectionParameter work uniformly over builtins.` |
+|     - | 3126 | ` */` |
+|     - | 3127 | `static const char zReflectLib8[] =` |
+|     - | 3128 | `"function __reflect_sig_split($sig){"` |
+|     - | 3129 | `" $parts = array();"` |
+|     - | 3130 | `" $cur = '';"` |
+|     - | 3131 | `" $q = false;"` |
+|     - | 3132 | `" $n = strlen($sig);"` |
+|     - | 3133 | `" for($k = 0; $k < $n; $k++){"` |
+|     - | 3134 | `"  $ch = $sig[$k];"` |
+|     - | 3135 | `"  if($q){"` |
+|     - | 3136 | `"   $cur .= $ch;"` |
+|     - | 3137 | `"   if($ch === chr(92) && $k + 1 < $n){ $cur .= $sig[$k+1]; $k++; }"` |
+|     - | 3138 | `"   else if($ch === chr(39)){ $q = false; }"` |
+|     - | 3139 | `"  }else if($ch === chr(39)){ $q = true; $cur .= $ch; }"` |
+|     - | 3140 | `"  else if($ch === ',' ){ $parts[] = trim($cur); $cur = ''; }"` |
+|     - | 3141 | `"  else{ $cur .= $ch; }"` |
 |     - | 3142 | `" }"` |
-|     - | 3143 | `" if(strlen($t) >= 2 && $t[0] === chr(39) && $t[strlen($t)-1] === chr(39)){"` |
-|     - | 3144 | `"  $body = substr($t, 1, strlen($t) - 2);"` |
-|     - | 3145 | `"  return array(true, strtr($body, array(chr(92).chr(39) => chr(39), chr(92).chr(92) => chr(92))));"` |
-|     - | 3146 | `" }"` |
-|     - | 3147 | `" return array(false, null);"` |
-|     - | 3148 | `"}"` |
-|     - | 3149 | `"function __reflect_parse_sig($sig){"` |
-|     - | 3150 | `" $params = array();"` |
-|     - | 3151 | `" $pos = 0;"` |
-|     - | 3152 | `" foreach(__reflect_sig_split($sig) as $part){"` |
-|     - | 3153 | `"  $deftext = null;"` |
-|     - | 3154 | `"  $q = false;"` |
-|     - | 3155 | `"  $n = strlen($part);"` |
-|     - | 3156 | `"  for($k = 0; $k < $n; $k++){"` |
-|     - | 3157 | `"   $ch = $part[$k];"` |
-|     - | 3158 | `"   if($q){"` |
-|     - | 3159 | `"    if($ch === chr(92)){ $k++; }"` |
-|     - | 3160 | `"    else if($ch === chr(39)){ $q = false; }"` |
-|     - | 3161 | `"   }else if($ch === chr(39)){ $q = true; }"` |
-|     - | 3162 | `"   else if($ch === '=' ){"` |
-|     - | 3163 | `"    $deftext = trim(substr($part, $k + 1));"` |
-|     - | 3164 | `"    $part = trim(substr($part, 0, $k));"` |
-|     - | 3165 | `"    break;"` |
-|     - | 3166 | `"   }"` |
-|     - | 3167 | `"  }"` |
-|     - | 3168 | `"  $variadic = strpos($part, '...') !== false;"` |
-|     - | 3169 | `"  $byref = strpos($part, '&') !== false;"` |
-|     - | 3170 | `"  $d = strpos($part, '$');"` |
-|     - | 3171 | `"  $name = $d === false ? $part : substr($part, $d + 1);"` |
-|     - | 3172 | `"  $typetext = null;"` |
-|     - | 3173 | `"  $sp = strpos($part, ' ');"` |
-|     - | 3174 | `"  if($sp !== false && $d !== false && $sp < $d){ $typetext = substr($part, 0, $sp); }"` |
-|     - | 3175 | `"  $nullable = $typetext !== null && ($typetext[0] === '?' \|\| stripos($typetext, 'null') !== false);"` |
-|     - | 3176 | `"  $params[] = array('name' => $name, 'pos' => $pos, 'byref' => $byref,"` |
-|     - | 3177 | `"   'variadic' => $variadic, 'hasdef' => $deftext !== null, 'nullable' => $nullable,"` |
-|     - | 3178 | `"   'promoted' => false, 'typetext' => $typetext, 'attrs' => array(), 'deftext' => $deftext);"` |
-|     - | 3179 | `"  $pos++;"` |
-|     - | 3180 | `" }"` |
-|     - | 3181 | `" return $params;"` |
-|     - | 3182 | `"}"` |
-|     - | 3183 | `"function __reflect_sig_fixup($i){"` |
-|     - | 3184 | `" if($i === null){ return $i; }"` |
-|     - | 3185 | `" if(isset($i['ret2'])){ $i['rettext'] = $i['ret2']; }"` |
-|     - | 3186 | `" if(!isset($i['sig']) \|\| $i['sig'] === ''){ return $i; }"` |
-|     - | 3187 | `" $i['params'] = __reflect_parse_sig($i['sig']);"` |
-|     - | 3188 | `" $i['minarg'] = -1;"` |
-|     - | 3189 | `" $v = false;"` |
-|     - | 3190 | `" foreach($i['params'] as $p){ if($p['variadic']){ $v = true; } }"` |
-|     - | 3191 | `" $i['variadic'] = $v;"` |
-|     - | 3192 | `" return $i;"` |
-|     - | 3193 | `"}"` |
-|     - | 3194 | `;` |
-|     - | 3195 | `/*` |
-|     - | 3196 | ` * Chunk 9: PHP's Reflection export format (__toString on every Reflector).` |
-|     - | 3197 | ` * Built entirely from the public reflection API of the target objects.` |
-|     - | 3198 | ` */` |
-|     - | 3199 | `static const char zReflectLib9[] =` |
-|     - | 3200 | `"function __reflect_export_value($v){"` |
-|     - | 3201 | `" if($v === null){ return 'NULL'; }"` |
-|     - | 3202 | `" if($v === true){ return 'true'; }"` |
-|     - | 3203 | `" if($v === false){ return 'false'; }"` |
-|     - | 3204 | `" if(is_string($v)){ return chr(39).$v.chr(39); }"` |
-|     - | 3205 | `" if(is_array($v)){"` |
-|     - | 3206 | `"  $parts = array();"` |
-|     - | 3207 | `"  $isList = true;"` |
-|     - | 3208 | `"  $next = 0;"` |
-|     - | 3209 | `"  foreach($v as $k => $x){"` |
-|     - | 3210 | `"   if($k !== $next){ $isList = false; break; }"` |
-|     - | 3211 | `"   $next++;"` |
-|     - | 3212 | `"  }"` |
-|     - | 3213 | `"  foreach($v as $k => $x){"` |
-|     - | 3214 | `"   $parts[] = $isList ? __reflect_export_value($x)"` |
-|     - | 3215 | `"    : (__reflect_export_value($k).' => '.__reflect_export_value($x));"` |
-|     - | 3216 | `"  }"` |
-|     - | 3217 | `"  return '['.implode(', ', $parts).']';"` |
-|     - | 3218 | `" }"` |
-|     - | 3219 | `" return (string)$v;"` |
-|     - | 3220 | `"}"` |
-|     - | 3221 | `"function __reflect_export_param($p){"` |
-|     - | 3222 | `" $s = 'Parameter #'.$p->getPosition().' [ <'.($p->isOptional() ? 'optional' : 'required').'> ';"` |
-|     - | 3223 | `" $t = $p->getType();"` |
-|     - | 3224 | `" if($t !== null){ $s .= (string)$t.' '; }"` |
-|     - | 3225 | `" if($p->isPassedByReference()){ $s .= '&'; }"` |
-|     - | 3226 | `" if($p->isVariadic()){ $s .= '...'; }"` |
-|     - | 3227 | `" $s .= '$'.$p->getName();"` |
-|     - | 3228 | `" if($p->isDefaultValueAvailable()){"` |
-|     - | 3229 | `"  try{ $s .= ' = '.__reflect_export_value($p->getDefaultValue()); }"` |
-|     - | 3230 | `"  catch(ReflectionException $e){ $s .= ' = <default>'; }"` |
-|     - | 3231 | `" }"` |
-|     - | 3232 | `" return $s.' ]';"` |
-|     - | 3233 | `"}"` |
-|     - | 3234 | `"function __reflect_export_prop($p){"` |
-|     - | 3235 | `" $s = 'Property [ ';"` |
-|     - | 3236 | `" $s .= $p->isPrivate() ? 'private ' : ($p->isProtected() ? 'protected ' : 'public ');"` |
-|     - | 3237 | `" if($p->isStatic()){ $s .= 'static '; }"` |
-|     - | 3238 | `" if($p->isReadOnly()){ $s .= 'readonly '; }"` |
-|     - | 3239 | `" $t = $p->getType();"` |
-|     - | 3240 | `" if($t !== null){ $s .= (string)$t.' '; }"` |
+|     - | 3143 | `" if(trim($cur) !== ''){ $parts[] = trim($cur); }"` |
+|     - | 3144 | `" return $parts;"` |
+|     - | 3145 | `"}"` |
+|     - | 3146 | `"function __reflect_sig_scalar($t){"` |
+|     - | 3147 | `" if($t === '?'){ return array(false, null); }"` |
+|     - | 3148 | `" if($t === 'NULL' \|\| $t === 'null'){ return array(true, null); }"` |
+|     - | 3149 | `" if($t === 'true'){ return array(true, true); }"` |
+|     - | 3150 | `" if($t === 'false'){ return array(true, false); }"` |
+|     - | 3151 | `" if(is_numeric($t)){"` |
+|     - | 3152 | `"  if(strpos($t, '.') === false && stripos($t, 'e') === false && strpos($t, 'x') === false){"` |
+|     - | 3153 | `"   return array(true, (int)$t);"` |
+|     - | 3154 | `"  }"` |
+|     - | 3155 | `"  return array(true, (float)$t);"` |
+|     - | 3156 | `" }"` |
+|     - | 3157 | `" if(strlen($t) >= 2 && $t[0] === chr(39) && $t[strlen($t)-1] === chr(39)){"` |
+|     - | 3158 | `"  $body = substr($t, 1, strlen($t) - 2);"` |
+|     - | 3159 | `"  return array(true, strtr($body, array(chr(92).chr(39) => chr(39), chr(92).chr(92) => chr(92))));"` |
+|     - | 3160 | `" }"` |
+|     - | 3161 | `" return array(false, null);"` |
+|     - | 3162 | `"}"` |
+|     - | 3163 | `"function __reflect_parse_sig($sig){"` |
+|     - | 3164 | `" $params = array();"` |
+|     - | 3165 | `" $pos = 0;"` |
+|     - | 3166 | `" foreach(__reflect_sig_split($sig) as $part){"` |
+|     - | 3167 | `"  $deftext = null;"` |
+|     - | 3168 | `"  $q = false;"` |
+|     - | 3169 | `"  $n = strlen($part);"` |
+|     - | 3170 | `"  for($k = 0; $k < $n; $k++){"` |
+|     - | 3171 | `"   $ch = $part[$k];"` |
+|     - | 3172 | `"   if($q){"` |
+|     - | 3173 | `"    if($ch === chr(92)){ $k++; }"` |
+|     - | 3174 | `"    else if($ch === chr(39)){ $q = false; }"` |
+|     - | 3175 | `"   }else if($ch === chr(39)){ $q = true; }"` |
+|     - | 3176 | `"   else if($ch === '=' ){"` |
+|     - | 3177 | `"    $deftext = trim(substr($part, $k + 1));"` |
+|     - | 3178 | `"    $part = trim(substr($part, 0, $k));"` |
+|     - | 3179 | `"    break;"` |
+|     - | 3180 | `"   }"` |
+|     - | 3181 | `"  }"` |
+|     - | 3182 | `"  $variadic = strpos($part, '...') !== false;"` |
+|     - | 3183 | `"  $byref = strpos($part, '&') !== false;"` |
+|     - | 3184 | `"  $d = strpos($part, '$');"` |
+|     - | 3185 | `"  $name = $d === false ? $part : substr($part, $d + 1);"` |
+|     - | 3186 | `"  $typetext = null;"` |
+|     - | 3187 | `"  $sp = strpos($part, ' ');"` |
+|     - | 3188 | `"  if($sp !== false && $d !== false && $sp < $d){ $typetext = substr($part, 0, $sp); }"` |
+|     - | 3189 | `"  $nullable = $typetext !== null && ($typetext[0] === '?' \|\| stripos($typetext, 'null') !== false);"` |
+|     - | 3190 | `"  $params[] = array('name' => $name, 'pos' => $pos, 'byref' => $byref,"` |
+|     - | 3191 | `"   'variadic' => $variadic, 'hasdef' => $deftext !== null, 'nullable' => $nullable,"` |
+|     - | 3192 | `"   'promoted' => false, 'typetext' => $typetext, 'attrs' => array(), 'deftext' => $deftext);"` |
+|     - | 3193 | `"  $pos++;"` |
+|     - | 3194 | `" }"` |
+|     - | 3195 | `" return $params;"` |
+|     - | 3196 | `"}"` |
+|     - | 3197 | `"function __reflect_sig_fixup($i){"` |
+|     - | 3198 | `" if($i === null){ return $i; }"` |
+|     - | 3199 | `" if(isset($i['ret2'])){ $i['rettext'] = $i['ret2']; }"` |
+|     - | 3200 | `" if(!isset($i['sig']) \|\| $i['sig'] === ''){ return $i; }"` |
+|     - | 3201 | `" $i['params'] = __reflect_parse_sig($i['sig']);"` |
+|     - | 3202 | `" $i['minarg'] = -1;"` |
+|     - | 3203 | `" $v = false;"` |
+|     - | 3204 | `" foreach($i['params'] as $p){ if($p['variadic']){ $v = true; } }"` |
+|     - | 3205 | `" $i['variadic'] = $v;"` |
+|     - | 3206 | `" return $i;"` |
+|     - | 3207 | `"}"` |
+|     - | 3208 | `;` |
+|     - | 3209 | `/*` |
+|     - | 3210 | ` * Chunk 9: PHP's Reflection export format (__toString on every Reflector).` |
+|     - | 3211 | ` * Built entirely from the public reflection API of the target objects.` |
+|     - | 3212 | ` */` |
+|     - | 3213 | `static const char zReflectLib9[] =` |
+|     - | 3214 | `"function __reflect_export_value($v){"` |
+|     - | 3215 | `" if($v === null){ return 'NULL'; }"` |
+|     - | 3216 | `" if($v === true){ return 'true'; }"` |
+|     - | 3217 | `" if($v === false){ return 'false'; }"` |
+|     - | 3218 | `" if(is_string($v)){ return chr(39).$v.chr(39); }"` |
+|     - | 3219 | `" if(is_array($v)){"` |
+|     - | 3220 | `"  $parts = array();"` |
+|     - | 3221 | `"  $isList = true;"` |
+|     - | 3222 | `"  $next = 0;"` |
+|     - | 3223 | `"  foreach($v as $k => $x){"` |
+|     - | 3224 | `"   if($k !== $next){ $isList = false; break; }"` |
+|     - | 3225 | `"   $next++;"` |
+|     - | 3226 | `"  }"` |
+|     - | 3227 | `"  foreach($v as $k => $x){"` |
+|     - | 3228 | `"   $parts[] = $isList ? __reflect_export_value($x)"` |
+|     - | 3229 | `"    : (__reflect_export_value($k).' => '.__reflect_export_value($x));"` |
+|     - | 3230 | `"  }"` |
+|     - | 3231 | `"  return '['.implode(', ', $parts).']';"` |
+|     - | 3232 | `" }"` |
+|     - | 3233 | `" return (string)$v;"` |
+|     - | 3234 | `"}"` |
+|     - | 3235 | `"function __reflect_export_param($p){"` |
+|     - | 3236 | `" $s = 'Parameter #'.$p->getPosition().' [ <'.($p->isOptional() ? 'optional' : 'required').'> ';"` |
+|     - | 3237 | `" $t = $p->getType();"` |
+|     - | 3238 | `" if($t !== null){ $s .= (string)$t.' '; }"` |
+|     - | 3239 | `" if($p->isPassedByReference()){ $s .= '&'; }"` |
+|     - | 3240 | `" if($p->isVariadic()){ $s .= '...'; }"` |
 |     - | 3241 | `" $s .= '$'.$p->getName();"` |
-|     - | 3242 | `" if($p->hasDefaultValue()){ $s .= ' = '.__reflect_export_value($p->getDefaultValue()); }"` |
-|     - | 3243 | `" return $s.' ]'.chr(10);"` |
-|     - | 3244 | `"}"` |
-|     - | 3245 | `"function __reflect_export_cconst($c){"` |
-|     - | 3246 | `" $v = $c->getValue();"` |
-|     - | 3247 | `" if(is_int($v)){ $t = 'int'; }"` |
-|     - | 3248 | `" else if(is_string($v)){ $t = 'string'; }"` |
-|     - | 3249 | `" else if(is_float($v)){ $t = 'float'; }"` |
-|     - | 3250 | `" else if(is_bool($v)){ $t = 'bool'; }"` |
-|     - | 3251 | `" else if(is_array($v)){ $t = 'array'; }"` |
-|     - | 3252 | `" else{ $t = 'null'; }"` |
-|     - | 3253 | `" $vs = is_array($v) ? 'Array' : (is_bool($v) ? ($v ? '1' : '') : (string)$v);"` |
-|     - | 3254 | `" $vis = $c->isPrivate() ? 'private' : ($c->isProtected() ? 'protected' : 'public');"` |
-|     - | 3255 | `" return 'Constant [ '.$vis.' '.$t.' '.$c->name.' ] { '.$vs.' }'.chr(10);"` |
-|     - | 3256 | `"}"` |
-|     - | 3257 | `"function __reflect_export_fnabs($r, $indent){"` |
-|     - | 3258 | `" $tags = $r->isInternal() ? 'internal:Core' : 'user';"` |
-|     - | 3259 | `" if($r instanceof ReflectionMethod){"` |
-|     - | 3260 | `"  if($r->isConstructor()){ $tags .= ', ctor'; }"` |
-|     - | 3261 | `"  else if($r->isDestructor()){ $tags .= ', dtor'; }"` |
-|     - | 3262 | `"  $decl = $r->getDeclaringClass()->name;"` |
-|     - | 3263 | `"  if(strtolower($decl) !== strtolower($r->class)){ $tags .= ', inherits '.$decl; }"` |
-|     - | 3264 | `"  else if($r->hasPrototype()){ $tags .= ', prototype '.$r->getPrototype()->class; }"` |
-|     - | 3265 | `"  $head = 'Method [ <'.$tags.'> ';"` |
-|     - | 3266 | `"  if($r->isAbstract()){ $head .= 'abstract '; }"` |
-|     - | 3267 | `"  if($r->isFinal()){ $head .= 'final '; }"` |
-|     - | 3268 | `"  if($r->isStatic()){ $head .= 'static '; }"` |
-|     - | 3269 | `"  $head .= $r->isPrivate() ? 'private ' : ($r->isProtected() ? 'protected ' : 'public ');"` |
-|     - | 3270 | `"  $head .= 'method '.$r->name.' ]';"` |
-|     - | 3271 | `" }else{"` |
-|     - | 3272 | `"  $kind = $r->isClosure() ? 'Closure' : 'Function';"` |
-|     - | 3273 | `"  $head = $kind.' [ <'.$tags.'> function '.$r->name.' ]';"` |
-|     - | 3274 | `" }"` |
-|     - | 3275 | `" $s = $head.' {'.chr(10);"` |
-|     - | 3276 | `" if(!$r->isInternal()){"` |
-|     - | 3277 | `"  $s .= '  @@ '.$r->getFileName().' '.$r->getStartLine().' - '.$r->getEndLine().chr(10);"` |
-|     - | 3278 | `" }"` |
-|     - | 3279 | `" $ps = $r->getParameters();"` |
-|     - | 3280 | `" $ret = $r->getReturnType();"` |
-|     - | 3281 | `" if(count($ps) > 0 \|\| $ret !== null){"` |
-|     - | 3282 | `"  $s .= chr(10).'  - Parameters ['.count($ps).'] {'.chr(10);"` |
-|     - | 3283 | `"  foreach($ps as $p){ $s .= '    '.__reflect_export_param($p).chr(10); }"` |
-|     - | 3284 | `"  $s .= '  }'.chr(10);"` |
-|     - | 3285 | `" }"` |
-|     - | 3286 | `" if($ret !== null){ $s .= '  - Return [ '.(string)$ret.' ]'.chr(10); }"` |
-|     - | 3287 | `" $s .= '}'.chr(10);"` |
-|     - | 3288 | `" if($indent === ''){ return $s; }"` |
-|     - | 3289 | `" $lines = explode(chr(10), $s);"` |
-|     - | 3290 | `" $out = '';"` |
-|     - | 3291 | `" $n = count($lines);"` |
-|     - | 3292 | `" for($k = 0; $k < $n; $k++){"` |
-|     - | 3293 | `"  if($lines[$k] === '' && $k === $n - 1){ break; }"` |
-|     - | 3294 | `"  $out .= ($lines[$k] === '' ? '' : $indent.$lines[$k]).chr(10);"` |
-|     - | 3295 | `" }"` |
-|     - | 3296 | `" return $out;"` |
-|     - | 3297 | `"}"` |
-|     - | 3298 | `"function __reflect_export_class($rc){"` |
-|     - | 3299 | `" $tags = $rc->isInternal() ? 'internal:Core' : 'user';"` |
-|     - | 3300 | `" if($rc->isInterface()){"` |
-|     - | 3301 | `"  $head = 'Interface [ <'.$tags.'> interface '.$rc->name.' ]';"` |
-|     - | 3302 | `" }else{"` |
-|     - | 3303 | `"  $mods = '';"` |
-|     - | 3304 | `"  if($rc->isAbstract()){ $mods .= 'abstract '; }"` |
-|     - | 3305 | `"  if($rc->isFinal()){ $mods .= 'final '; }"` |
-|     - | 3306 | `"  $head = 'Class [ <'.$tags.'> '.$mods.'class '.$rc->name;"` |
-|     - | 3307 | `"  $par = $rc->getParentClass();"` |
-|     - | 3308 | `"  if($par !== false){ $head .= ' extends '.$par->name; }"` |
-|     - | 3309 | `"  $ifs = $rc->getInterfaceNames();"` |
-|     - | 3310 | `"  if(count($ifs) > 0){ $head .= ' implements '.implode(', ', $ifs); }"` |
-|     - | 3311 | `"  $head .= ' ]';"` |
-|     - | 3312 | `" }"` |
-|     - | 3313 | `" $s = $head.' {'.chr(10);"` |
-|     - | 3314 | `" if(!$rc->isInternal()){"` |
-|     - | 3315 | `"  $s .= '  @@ '.$rc->getFileName().' '.$rc->getStartLine().'-'.$rc->getEndLine().chr(10);"` |
-|     - | 3316 | `" }"` |
-|     - | 3317 | `" $consts = $rc->getReflectionConstants();"` |
-|     - | 3318 | `" $s .= chr(10).'  - Constants ['.count($consts).'] {'.chr(10);"` |
-|     - | 3319 | `" foreach($consts as $c){ $s .= '    '.__reflect_export_cconst($c); }"` |
-|     - | 3320 | `" $s .= '  }'.chr(10);"` |
-|     - | 3321 | `" $sp = array();"` |
-|     - | 3322 | `" $ip = array();"` |
-|     - | 3323 | `" foreach($rc->getProperties() as $p){"` |
-|     - | 3324 | `"  if($p->isStatic()){ $sp[] = $p; }else{ $ip[] = $p; }"` |
-|     - | 3325 | `" }"` |
-|     - | 3326 | `" $sm = array();"` |
-|     - | 3327 | `" $im = array();"` |
-|     - | 3328 | `" foreach($rc->getMethods() as $m){"` |
-|     - | 3329 | `"  if($m->isStatic()){ $sm[] = $m; }else{ $im[] = $m; }"` |
+|     - | 3242 | `" if($p->isDefaultValueAvailable()){"` |
+|     - | 3243 | `"  try{ $s .= ' = '.__reflect_export_value($p->getDefaultValue()); }"` |
+|     - | 3244 | `"  catch(ReflectionException $e){ $s .= ' = <default>'; }"` |
+|     - | 3245 | `" }"` |
+|     - | 3246 | `" return $s.' ]';"` |
+|     - | 3247 | `"}"` |
+|     - | 3248 | `"function __reflect_export_prop($p){"` |
+|     - | 3249 | `" $s = 'Property [ ';"` |
+|     - | 3250 | `" $s .= $p->isPrivate() ? 'private ' : ($p->isProtected() ? 'protected ' : 'public ');"` |
+|     - | 3251 | `" if($p->isStatic()){ $s .= 'static '; }"` |
+|     - | 3252 | `" if($p->isReadOnly()){ $s .= 'readonly '; }"` |
+|     - | 3253 | `" $t = $p->getType();"` |
+|     - | 3254 | `" if($t !== null){ $s .= (string)$t.' '; }"` |
+|     - | 3255 | `" $s .= '$'.$p->getName();"` |
+|     - | 3256 | `" if($p->hasDefaultValue()){ $s .= ' = '.__reflect_export_value($p->getDefaultValue()); }"` |
+|     - | 3257 | `" return $s.' ]'.chr(10);"` |
+|     - | 3258 | `"}"` |
+|     - | 3259 | `"function __reflect_export_cconst($c){"` |
+|     - | 3260 | `" $v = $c->getValue();"` |
+|     - | 3261 | `" if(is_int($v)){ $t = 'int'; }"` |
+|     - | 3262 | `" else if(is_string($v)){ $t = 'string'; }"` |
+|     - | 3263 | `" else if(is_float($v)){ $t = 'float'; }"` |
+|     - | 3264 | `" else if(is_bool($v)){ $t = 'bool'; }"` |
+|     - | 3265 | `" else if(is_array($v)){ $t = 'array'; }"` |
+|     - | 3266 | `" else{ $t = 'null'; }"` |
+|     - | 3267 | `" $vs = is_array($v) ? 'Array' : (is_bool($v) ? ($v ? '1' : '') : (string)$v);"` |
+|     - | 3268 | `" $vis = $c->isPrivate() ? 'private' : ($c->isProtected() ? 'protected' : 'public');"` |
+|     - | 3269 | `" return 'Constant [ '.$vis.' '.$t.' '.$c->name.' ] { '.$vs.' }'.chr(10);"` |
+|     - | 3270 | `"}"` |
+|     - | 3271 | `"function __reflect_export_fnabs($r, $indent){"` |
+|     - | 3272 | `" $tags = $r->isInternal() ? 'internal:Core' : 'user';"` |
+|     - | 3273 | `" if($r instanceof ReflectionMethod){"` |
+|     - | 3274 | `"  if($r->isConstructor()){ $tags .= ', ctor'; }"` |
+|     - | 3275 | `"  else if($r->isDestructor()){ $tags .= ', dtor'; }"` |
+|     - | 3276 | `"  $decl = $r->getDeclaringClass()->name;"` |
+|     - | 3277 | `"  if(strtolower($decl) !== strtolower($r->class)){ $tags .= ', inherits '.$decl; }"` |
+|     - | 3278 | `"  else if($r->hasPrototype()){ $tags .= ', prototype '.$r->getPrototype()->class; }"` |
+|     - | 3279 | `"  $head = 'Method [ <'.$tags.'> ';"` |
+|     - | 3280 | `"  if($r->isAbstract()){ $head .= 'abstract '; }"` |
+|     - | 3281 | `"  if($r->isFinal()){ $head .= 'final '; }"` |
+|     - | 3282 | `"  if($r->isStatic()){ $head .= 'static '; }"` |
+|     - | 3283 | `"  $head .= $r->isPrivate() ? 'private ' : ($r->isProtected() ? 'protected ' : 'public ');"` |
+|     - | 3284 | `"  $head .= 'method '.$r->name.' ]';"` |
+|     - | 3285 | `" }else{"` |
+|     - | 3286 | `"  $kind = $r->isClosure() ? 'Closure' : 'Function';"` |
+|     - | 3287 | `"  $head = $kind.' [ <'.$tags.'> function '.$r->name.' ]';"` |
+|     - | 3288 | `" }"` |
+|     - | 3289 | `" $s = $head.' {'.chr(10);"` |
+|     - | 3290 | `" if(!$r->isInternal()){"` |
+|     - | 3291 | `"  $s .= '  @@ '.$r->getFileName().' '.$r->getStartLine().' - '.$r->getEndLine().chr(10);"` |
+|     - | 3292 | `" }"` |
+|     - | 3293 | `" $ps = $r->getParameters();"` |
+|     - | 3294 | `" $ret = $r->getReturnType();"` |
+|     - | 3295 | `" if(count($ps) > 0 \|\| $ret !== null){"` |
+|     - | 3296 | `"  $s .= chr(10).'  - Parameters ['.count($ps).'] {'.chr(10);"` |
+|     - | 3297 | `"  foreach($ps as $p){ $s .= '    '.__reflect_export_param($p).chr(10); }"` |
+|     - | 3298 | `"  $s .= '  }'.chr(10);"` |
+|     - | 3299 | `" }"` |
+|     - | 3300 | `" if($ret !== null){ $s .= '  - Return [ '.(string)$ret.' ]'.chr(10); }"` |
+|     - | 3301 | `" $s .= '}'.chr(10);"` |
+|     - | 3302 | `" if($indent === ''){ return $s; }"` |
+|     - | 3303 | `" $lines = explode(chr(10), $s);"` |
+|     - | 3304 | `" $out = '';"` |
+|     - | 3305 | `" $n = count($lines);"` |
+|     - | 3306 | `" for($k = 0; $k < $n; $k++){"` |
+|     - | 3307 | `"  if($lines[$k] === '' && $k === $n - 1){ break; }"` |
+|     - | 3308 | `"  $out .= ($lines[$k] === '' ? '' : $indent.$lines[$k]).chr(10);"` |
+|     - | 3309 | `" }"` |
+|     - | 3310 | `" return $out;"` |
+|     - | 3311 | `"}"` |
+|     - | 3312 | `"function __reflect_export_class($rc){"` |
+|     - | 3313 | `" $tags = $rc->isInternal() ? 'internal:Core' : 'user';"` |
+|     - | 3314 | `" if($rc->isInterface()){"` |
+|     - | 3315 | `"  $head = 'Interface [ <'.$tags.'> interface '.$rc->name.' ]';"` |
+|     - | 3316 | `" }else{"` |
+|     - | 3317 | `"  $mods = '';"` |
+|     - | 3318 | `"  if($rc->isAbstract()){ $mods .= 'abstract '; }"` |
+|     - | 3319 | `"  if($rc->isFinal()){ $mods .= 'final '; }"` |
+|     - | 3320 | `"  $head = 'Class [ <'.$tags.'> '.$mods.'class '.$rc->name;"` |
+|     - | 3321 | `"  $par = $rc->getParentClass();"` |
+|     - | 3322 | `"  if($par !== false){ $head .= ' extends '.$par->name; }"` |
+|     - | 3323 | `"  $ifs = $rc->getInterfaceNames();"` |
+|     - | 3324 | `"  if(count($ifs) > 0){ $head .= ' implements '.implode(', ', $ifs); }"` |
+|     - | 3325 | `"  $head .= ' ]';"` |
+|     - | 3326 | `" }"` |
+|     - | 3327 | `" $s = $head.' {'.chr(10);"` |
+|     - | 3328 | `" if(!$rc->isInternal()){"` |
+|     - | 3329 | `"  $s .= '  @@ '.$rc->getFileName().' '.$rc->getStartLine().'-'.$rc->getEndLine().chr(10);"` |
 |     - | 3330 | `" }"` |
-|     - | 3331 | `" $s .= chr(10).'  - Static properties ['.count($sp).'] {'.chr(10);"` |
-|     - | 3332 | `" foreach($sp as $p){ $s .= '    '.__reflect_export_prop($p); }"` |
-|     - | 3333 | `" $s .= '  }'.chr(10);"` |
-|     - | 3334 | `" $s .= chr(10).'  - Static methods ['.count($sm).'] {'.chr(10);"` |
-|     - | 3335 | `" $first = true;"` |
-|     - | 3336 | `" foreach($sm as $m){"` |
-|     - | 3337 | `"  if(!$first){ $s .= chr(10); }"` |
-|     - | 3338 | `"  $first = false;"` |
-|     - | 3339 | `"  $s .= __reflect_export_fnabs($m, '    ');"` |
-|     - | 3340 | `" }"` |
-|     - | 3341 | `" $s .= '  }'.chr(10);"` |
-|     - | 3342 | `" $s .= chr(10).'  - Properties ['.count($ip).'] {'.chr(10);"` |
-|     - | 3343 | `" foreach($ip as $p){ $s .= '    '.__reflect_export_prop($p); }"` |
-|     - | 3344 | `" $s .= '  }'.chr(10);"` |
-|     - | 3345 | `" $s .= chr(10).'  - Methods ['.count($im).'] {'.chr(10);"` |
-|     - | 3346 | `" $first = true;"` |
-|     - | 3347 | `" foreach($im as $m){"` |
-|     - | 3348 | `"  if(!$first){ $s .= chr(10); }"` |
-|     - | 3349 | `"  $first = false;"` |
-|     - | 3350 | `"  $s .= __reflect_export_fnabs($m, '    ');"` |
-|     - | 3351 | `" }"` |
-|     - | 3352 | `" $s .= '  }'.chr(10);"` |
-|     - | 3353 | `" return $s.'}'.chr(10);"` |
-|     - | 3354 | `"}"` |
-|     - | 3355 | `;` |
-|     - | 3356 | `/*` |
-|     - | 3357 | ` * Register the __reflect_* thunks and compile the Reflection library.` |
-|     - | 3358 | ` * Called from PH7_VmInit while pVm->bCompilingBuiltin is set, right after` |
-|     - | 3359 | ` * the core builtin chunks (Exception and friends must exist already).` |
-|     - | 3360 | ` */` |
-|  3814 | 3361 | `PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)` |
-|     5 | 3362 | `{` |
-|     - | 3363 | `	static const struct {` |
-|     - | 3364 | `		const char *zName;` |
-|     - | 3365 | `		ProchHostFunction xFunc;` |
-|     - | 3366 | `	} aFunc[] = {` |
-|     - | 3367 | `		{ "__reflect_class_info",     vm_builtin_reflect_class_info },` |
-|     - | 3368 | `		{ "__reflect_const_value",    vm_builtin_reflect_const_value },` |
-|     - | 3369 | `		{ "__reflect_static_value",   vm_builtin_reflect_static_value },` |
-|     - | 3370 | `		{ "__reflect_static_set",     vm_builtin_reflect_static_set },` |
-|     - | 3371 | `		{ "__reflect_prop_default",   vm_builtin_reflect_prop_default },` |
-|     - | 3372 | `		{ "__reflect_new_instance",   vm_builtin_reflect_new_instance },` |
-|     - | 3373 | `		{ "__reflect_new_no_ctor",    vm_builtin_reflect_new_no_ctor },` |
-|     - | 3374 | `		{ "__reflect_func_info",      vm_builtin_reflect_func_info },` |
-|     - | 3375 | `		{ "__reflect_param_default",  vm_builtin_reflect_param_default },` |
-|     - | 3376 | `		{ "__reflect_param_defconst", vm_builtin_reflect_param_defconst },` |
-|     - | 3377 | `		{ "__reflect_invoke",         vm_builtin_reflect_invoke },` |
-|     - | 3378 | `		{ "__reflect_closure",        vm_builtin_reflect_closure },` |
-|     - | 3379 | `		{ "__reflect_prop_read",      vm_builtin_reflect_prop_read },` |
-|     - | 3380 | `		{ "__reflect_prop_write",     vm_builtin_reflect_prop_write },` |
-|     - | 3381 | `		{ "__reflect_prop_state",     vm_builtin_reflect_prop_state },` |
-|     - | 3382 | `		{ "__reflect_dyn_props",      vm_builtin_reflect_dyn_props },` |
-|     - | 3383 | `		{ "__reflect_gen_info",       vm_builtin_reflect_gen_info },` |
-|     - | 3384 | `		{ "__reflect_gen_exec",       vm_builtin_reflect_gen_exec },` |
-|     - | 3385 | `		{ "__reflect_const_info",     vm_builtin_reflect_const_info },` |
-|     - | 3386 | `		{ "__reflect_ref_id",         vm_builtin_reflect_ref_id },` |
-|     - | 3387 | `		{ "__reflect_attr_args",      vm_builtin_reflect_attr_args },` |
-|     - | 3388 | `	};` |
-|     - | 3389 | `	sxu32 n;` |
-|     - | 3390 | `	sxi32 rc;` |
-| 83913 | 3391 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
-| 80099 | 3392 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
-| 40052 | 3393 | `	}` |
-|  3819 | 3394 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib1, sizeof(zReflectLib1)-1);` |
-|  3819 | 3395 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 3396 | `		return rc;` |
-|     - | 3397 | `	}` |
-|  3819 | 3398 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib2, sizeof(zReflectLib2)-1);` |
-|  3819 | 3399 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 3400 | `		return rc;` |
-|     - | 3401 | `	}` |
-|  3819 | 3402 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib3, sizeof(zReflectLib3)-1);` |
-|  3819 | 3403 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 3404 | `		return rc;` |
-|     - | 3405 | `	}` |
-|  3819 | 3406 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib4, sizeof(zReflectLib4)-1);` |
-|  3819 | 3407 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 3408 | `		return rc;` |
-|     - | 3409 | `	}` |
-|  3819 | 3410 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib5, sizeof(zReflectLib5)-1);` |
-|  3819 | 3411 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 3412 | `		return rc;` |
-|     - | 3413 | `	}` |
-|  3819 | 3414 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib6, sizeof(zReflectLib6)-1);` |
-|  3819 | 3415 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 3416 | `		return rc;` |
-|     - | 3417 | `	}` |
-|  3819 | 3418 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib7, sizeof(zReflectLib7)-1);` |
-|  3819 | 3419 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 3420 | `		return rc;` |
-|     - | 3421 | `	}` |
-|  3819 | 3422 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib8, sizeof(zReflectLib8)-1);` |
-|  3819 | 3423 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 3424 | `		return rc;` |
-|     - | 3425 | `	}` |
-|  3819 | 3426 | `	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib9, sizeof(zReflectLib9)-1);` |
-|  1912 | 3427 | `}` |
-|     - | 3428 |  |
+|     - | 3331 | `" $consts = $rc->getReflectionConstants();"` |
+|     - | 3332 | `" $s .= chr(10).'  - Constants ['.count($consts).'] {'.chr(10);"` |
+|     - | 3333 | `" foreach($consts as $c){ $s .= '    '.__reflect_export_cconst($c); }"` |
+|     - | 3334 | `" $s .= '  }'.chr(10);"` |
+|     - | 3335 | `" $sp = array();"` |
+|     - | 3336 | `" $ip = array();"` |
+|     - | 3337 | `" foreach($rc->getProperties() as $p){"` |
+|     - | 3338 | `"  if($p->isStatic()){ $sp[] = $p; }else{ $ip[] = $p; }"` |
+|     - | 3339 | `" }"` |
+|     - | 3340 | `" $sm = array();"` |
+|     - | 3341 | `" $im = array();"` |
+|     - | 3342 | `" foreach($rc->getMethods() as $m){"` |
+|     - | 3343 | `"  if($m->isStatic()){ $sm[] = $m; }else{ $im[] = $m; }"` |
+|     - | 3344 | `" }"` |
+|     - | 3345 | `" $s .= chr(10).'  - Static properties ['.count($sp).'] {'.chr(10);"` |
+|     - | 3346 | `" foreach($sp as $p){ $s .= '    '.__reflect_export_prop($p); }"` |
+|     - | 3347 | `" $s .= '  }'.chr(10);"` |
+|     - | 3348 | `" $s .= chr(10).'  - Static methods ['.count($sm).'] {'.chr(10);"` |
+|     - | 3349 | `" $first = true;"` |
+|     - | 3350 | `" foreach($sm as $m){"` |
+|     - | 3351 | `"  if(!$first){ $s .= chr(10); }"` |
+|     - | 3352 | `"  $first = false;"` |
+|     - | 3353 | `"  $s .= __reflect_export_fnabs($m, '    ');"` |
+|     - | 3354 | `" }"` |
+|     - | 3355 | `" $s .= '  }'.chr(10);"` |
+|     - | 3356 | `" $s .= chr(10).'  - Properties ['.count($ip).'] {'.chr(10);"` |
+|     - | 3357 | `" foreach($ip as $p){ $s .= '    '.__reflect_export_prop($p); }"` |
+|     - | 3358 | `" $s .= '  }'.chr(10);"` |
+|     - | 3359 | `" $s .= chr(10).'  - Methods ['.count($im).'] {'.chr(10);"` |
+|     - | 3360 | `" $first = true;"` |
+|     - | 3361 | `" foreach($im as $m){"` |
+|     - | 3362 | `"  if(!$first){ $s .= chr(10); }"` |
+|     - | 3363 | `"  $first = false;"` |
+|     - | 3364 | `"  $s .= __reflect_export_fnabs($m, '    ');"` |
+|     - | 3365 | `" }"` |
+|     - | 3366 | `" $s .= '  }'.chr(10);"` |
+|     - | 3367 | `" return $s.'}'.chr(10);"` |
+|     - | 3368 | `"}"` |
+|     - | 3369 | `;` |
+|     - | 3370 | `/*` |
+|     - | 3371 | ` * Register the __reflect_* thunks and compile the Reflection library.` |
+|     - | 3372 | ` * Called from PH7_VmInit while pVm->bCompilingBuiltin is set, right after` |
+|     - | 3373 | ` * the core builtin chunks (Exception and friends must exist already).` |
+|     - | 3374 | ` */` |
+|  3814 | 3375 | `PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)` |
+|     5 | 3376 | `{` |
+|     - | 3377 | `	static const struct {` |
+|     - | 3378 | `		const char *zName;` |
+|     - | 3379 | `		ProchHostFunction xFunc;` |
+|     - | 3380 | `	} aFunc[] = {` |
+|     - | 3381 | `		{ "__reflect_class_info",     vm_builtin_reflect_class_info },` |
+|     - | 3382 | `		{ "__reflect_const_value",    vm_builtin_reflect_const_value },` |
+|     - | 3383 | `		{ "__reflect_static_value",   vm_builtin_reflect_static_value },` |
+|     - | 3384 | `		{ "__reflect_static_set",     vm_builtin_reflect_static_set },` |
+|     - | 3385 | `		{ "__reflect_prop_default",   vm_builtin_reflect_prop_default },` |
+|     - | 3386 | `		{ "__reflect_new_instance",   vm_builtin_reflect_new_instance },` |
+|     - | 3387 | `		{ "__reflect_new_no_ctor",    vm_builtin_reflect_new_no_ctor },` |
+|     - | 3388 | `		{ "__reflect_func_info",      vm_builtin_reflect_func_info },` |
+|     - | 3389 | `		{ "__reflect_param_default",  vm_builtin_reflect_param_default },` |
+|     - | 3390 | `		{ "__reflect_param_defconst", vm_builtin_reflect_param_defconst },` |
+|     - | 3391 | `		{ "__reflect_invoke",         vm_builtin_reflect_invoke },` |
+|     - | 3392 | `		{ "__reflect_closure",        vm_builtin_reflect_closure },` |
+|     - | 3393 | `		{ "__reflect_prop_read",      vm_builtin_reflect_prop_read },` |
+|     - | 3394 | `		{ "__reflect_prop_write",     vm_builtin_reflect_prop_write },` |
+|     - | 3395 | `		{ "__reflect_prop_state",     vm_builtin_reflect_prop_state },` |
+|     - | 3396 | `		{ "__reflect_dyn_props",      vm_builtin_reflect_dyn_props },` |
+|     - | 3397 | `		{ "__reflect_gen_info",       vm_builtin_reflect_gen_info },` |
+|     - | 3398 | `		{ "__reflect_gen_exec",       vm_builtin_reflect_gen_exec },` |
+|     - | 3399 | `		{ "__reflect_const_info",     vm_builtin_reflect_const_info },` |
+|     - | 3400 | `		{ "__reflect_ref_id",         vm_builtin_reflect_ref_id },` |
+|     - | 3401 | `		{ "__reflect_attr_args",      vm_builtin_reflect_attr_args },` |
+|     - | 3402 | `	};` |
+|     - | 3403 | `	sxu32 n;` |
+|     - | 3404 | `	sxi32 rc;` |
+| 83913 | 3405 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
+| 80099 | 3406 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
+| 40052 | 3407 | `	}` |
+|  3819 | 3408 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib1, sizeof(zReflectLib1)-1);` |
+|  3819 | 3409 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 3410 | `		return rc;` |
+|     - | 3411 | `	}` |
+|  3819 | 3412 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib2, sizeof(zReflectLib2)-1);` |
+|  3819 | 3413 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 3414 | `		return rc;` |
+|     - | 3415 | `	}` |
+|  3819 | 3416 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib3, sizeof(zReflectLib3)-1);` |
+|  3819 | 3417 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 3418 | `		return rc;` |
+|     - | 3419 | `	}` |
+|  3819 | 3420 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib4, sizeof(zReflectLib4)-1);` |
+|  3819 | 3421 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 3422 | `		return rc;` |
+|     - | 3423 | `	}` |
+|  3819 | 3424 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib5, sizeof(zReflectLib5)-1);` |
+|  3819 | 3425 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 3426 | `		return rc;` |
+|     - | 3427 | `	}` |
+|  3819 | 3428 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib6, sizeof(zReflectLib6)-1);` |
+|  3819 | 3429 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 3430 | `		return rc;` |
+|     - | 3431 | `	}` |
+|  3819 | 3432 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib7, sizeof(zReflectLib7)-1);` |
+|  3819 | 3433 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 3434 | `		return rc;` |
+|     - | 3435 | `	}` |
+|  3819 | 3436 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib8, sizeof(zReflectLib8)-1);` |
+|  3819 | 3437 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 3438 | `		return rc;` |
+|     - | 3439 | `	}` |
+|  3819 | 3440 | `	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib9, sizeof(zReflectLib9)-1);` |
+|  1912 | 3441 | `}` |
+|     - | 3442 |  |
