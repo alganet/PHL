@@ -203,19 +203,19 @@ Coverage: 308/388 lines (79.38%)
 |      21 |  193 | `		zSrc++;` |
 |      10 |  194 | `	}` |
 |       - |  195 | `	/* Skip leading zero */` |
-| 2176510 |  196 | `	while(zSrc < zEnd && zSrc[0] == '0' ){` |
-|    1342 |  197 | `		zSrc++;` |
+| 2176507 |  196 | `	while(zSrc < zEnd && zSrc[0] == '0' ){` |
+|    1339 |  197 | `		zSrc++;` |
 |       1 |  198 | `	}` |
 | 2175169 |  199 | `	cutoff = isNeg ? ((sxu64)SXI64_HIGH + 1) : (sxu64)SXI64_HIGH;` |
 | 2175169 |  200 | `	uVal = 0;` |
-| 5185434 |  201 | `	while( zSrc < zEnd && (unsigned char)zSrc[0] < 0xc0 && SyisDigit(zSrc[0]) ){` |
-| 3010270 |  202 | `		int d = zSrc[0] - '0';` |
-| 3010270 |  203 | `		if( uVal > cutoff / 10 \|\| (uVal == cutoff / 10 && (sxu64)d > cutoff % 10) ){` |
+| 5185437 |  201 | `	while( zSrc < zEnd && (unsigned char)zSrc[0] < 0xc0 && SyisDigit(zSrc[0]) ){` |
+| 3010273 |  202 | `		int d = zSrc[0] - '0';` |
+| 3010273 |  203 | `		if( uVal > cutoff / 10 \|\| (uVal == cutoff / 10 && (sxu64)d > cutoff % 10) ){` |
 |      33 |  204 | `			bOverflow = TRUE;` |
 |      17 |  205 | `		}else{` |
-| 3010238 |  206 | `			uVal = uVal * 10 + (sxu64)d;` |
+| 3010241 |  206 | `			uVal = uVal * 10 + (sxu64)d;` |
 |       - |  207 | `		}` |
-| 3010270 |  208 | `		zSrc++;` |
+| 3010273 |  208 | `		zSrc++;` |
 |       5 |  209 | `	}` |
 | 2175169 |  210 | `	if( bOverflow ){` |
 |      25 |  211 | `		uVal = cutoff;` |
