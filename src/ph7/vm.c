@@ -3784,6 +3784,9 @@ static const struct VmBuiltinSig {
 	{ "end", "object|array &$array", "mixed" },
 	{ "error_get_last", "", "?array" },
 	{ "error_clear_last", "", "void" },
+	{ "libxml_clear_errors", "", "void" },
+	{ "libxml_use_internal_errors", "?bool $use_errors = NULL", "bool" },
+	{ "libxml_get_errors", "", "array" },
 	{ "error_log", "string $message, int $message_type = 0, ?string $destination = NULL, ?string $additional_headers = NULL", "bool" },
 	{ "error_reporting", "?int $error_level = NULL", "int" },
 	{ "exit", "string|int $status = 0", "never" },
@@ -19702,6 +19705,47 @@ PH7_PRIVATE sxi32 VmLocalExec(ph7_vm *pVm,SySet *pByteCode,ph7_value *pResult,in
 }
 /*
  * Invoke any installed shutdown callbacks.
+ * Flush every still-open output buffer to the real output consumer at the end
+ * of execution. php implicitly ends+flushes all ob_start() levels on shutdown
+ * (normal end, exit()/die(), or fatal); PHL used to DISCARD them, so a script
+ * that never called ob_end_flush() — e.g. PHPUnit, which buffers its result
+ * summary and then exit()s with a non-zero status — lost that output entirely.
+ *
+ * Buffer content is already callback-transformed (VmObConsumer applies handlers
+ * at write time), and new output always lands in the topmost buffer, so the
+ * stack holds finished text with aOB[0] the earliest/outermost. Concatenate in
+ * that order to the default consumer (sVmConsumer.xDef), then tear the stack
+ * down and restore the default consumer.
+ */
+static void VmFlushOutputBuffers(ph7_vm *pVm)
+{
+	ph7_output_consumer *pCons = &pVm->sVmConsumer;
+	sxu32 n,nUsed;
+	nUsed = SySetUsed(&pVm->aOB);
+	if( nUsed < 1 ){
+		return;
+	}
+	for( n = 0 ; n < nUsed ; ++n ){
+		VmObEntry *pOb = (VmObEntry *)SySetAt(&pVm->aOB,n);
+		if( pOb && SyBlobLength(&pOb->sOB) > 0 && pCons->xDef ){
+			pCons->xDef(SyBlobData(&pOb->sOB),SyBlobLength(&pOb->sOB),pCons->pDefData);
+			pVm->nOutputLen += SyBlobLength(&pOb->sOB);
+		}
+	}
+	/* Restore the default consumer and release the buffers. */
+	pCons->xConsumer = pCons->xDef;
+	pCons->pUserData = pCons->pDefData;
+	for( n = 0 ; n < nUsed ; ++n ){
+		VmObEntry *pOb = (VmObEntry *)SySetAt(&pVm->aOB,n);
+		if( pOb ){
+			PH7_MemObjRelease(&pOb->sCallback);
+			SyBlobRelease(&pOb->sOB);
+		}
+	}
+	SySetReset(&pVm->aOB);
+	pVm->nObDepth = 0;
+}
+/*
  * Shutdown callbacks are kept in a stack and are registered using one
  * or more calls to [register_shutdown_function()].
  * These callbacks are invoked by the virtual machine when the program
@@ -19777,6 +19821,9 @@ PH7_PRIVATE sxi32 PH7_VmByteCodeExec(ph7_vm *pVm)
 	}
 	/* Invoke any shutdown callbacks */
 	VmInvokeShutdownCallbacks(&(*pVm));
+	/* php flushes every still-open output buffer on shutdown — after the
+	 * shutdown callbacks, which may still write into them. */
+	VmFlushOutputBuffers(&(*pVm));
 	/*
 	 * TICKET 1433-100: Do not remove the PH7_VM_EXEC magic number
 	 * so that any following call to [ph7_vm_exec()] without calling
@@ -25540,6 +25587,41 @@ static int vm_builtin_error_clear_last(ph7_context *pCtx,int nArg,ph7_value **ap
 	SyBlobReset(&pVm->sLastErrFile);
 	return PH7_OK;
 }
+/*
+ * libxml no-op stubs. PHL has no libxml extension, but code that guards on the
+ * `dom`/`libxml` extension (e.g. PHPUnit's per-test cleanup calls
+ * libxml_clear_errors()) still calls these. Since PHL never accumulates a libxml
+ * error buffer, the honest behavior is: clear = nothing, use_internal_errors
+ * returns the previous state (always FALSE here), get_errors returns [].
+ */
+static int vm_builtin_libxml_clear_errors(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+static int vm_builtin_libxml_use_internal_errors(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	/* php returns the PREVIOUS state; with no libxml it is always FALSE. */
+	ph7_result_bool(pCtx,0);
+	return PH7_OK;
+}
+static int vm_builtin_libxml_get_errors(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pArray;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	pArray = ph7_context_new_array(pCtx);
+	if( pArray == 0 ){
+		ph7_result_null(pCtx);
+	}else{
+		ph7_result_value(pCtx,pArray);
+	}
+	return PH7_OK;
+}
 static int vm_builtin_debug_backtrace(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
@@ -28174,6 +28256,9 @@ static const ph7_builtin_func aVmFunc[] = {
 	{ "debug_backtrace",  vm_builtin_debug_backtrace},
 	{ "error_get_last" ,  vm_builtin_error_get_last },
 	{ "error_clear_last", vm_builtin_error_clear_last },
+	{ "libxml_clear_errors", vm_builtin_libxml_clear_errors },
+	{ "libxml_use_internal_errors", vm_builtin_libxml_use_internal_errors },
+	{ "libxml_get_errors", vm_builtin_libxml_get_errors },
 	{ "debug_print_backtrace", vm_builtin_debug_print_backtrace  },
 	{ "debug_string_backtrace",vm_builtin_debug_string_backtrace },
 	  /* Release info */
