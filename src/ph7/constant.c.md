@@ -70,22 +70,22 @@ Coverage: 1125/1197 lines (93.98%)
 |      - |   60 | ` * PHP_OS` |
 |      - |   61 | ` *  Expand the name of the host Operating System.` |
 |      - |   62 | ` */` |
-|   3834 |   63 | `static void PH7_OS_Const(ph7_value *pVal,void *pUnused)` |
+|   3832 |   63 | `static void PH7_OS_Const(ph7_value *pVal,void *pUnused)` |
 |      5 |   64 | `{` |
 |      - |   65 | `#if defined(__WINNT__)` |
 |      5 |   66 | `	ph7_value_string(pVal,"WINNT",(int)sizeof("WINNT")-1);` |
 |      - |   67 | `#elif defined(__UNIXES__)` |
 |      - |   68 | `	struct utsname sInfo;` |
-|   3834 |   69 | `	if( uname(&sInfo) != 0 ){` |
+|   3832 |   69 | `	if( uname(&sInfo) != 0 ){` |
 |    ! 0 |   70 | `		ph7_value_string(pVal,"Unix",(int)sizeof("Unix")-1);` |
 |    ! 0 |   71 | `	}else{` |
-|   3834 |   72 | `		ph7_value_string(pVal,sInfo.sysname,-1);` |
+|   3832 |   72 | `		ph7_value_string(pVal,sInfo.sysname,-1);` |
 |      - |   73 | `	}` |
 |      - |   74 | `#else` |
 |      - |   75 | `	ph7_value_string(pVal,"Host OS",(int)sizeof("Host OS")-1);` |
 |      - |   76 | `#endif` |
-|   1917 |   77 | `	SXUNUSED(pUnused);` |
-|   3839 |   78 | `}` |
+|   1916 |   77 | `	SXUNUSED(pUnused);` |
+|   3837 |   78 | `}` |
 |      - |   79 | `/*` |
 |      - |   80 | ` * PHP_OS_FAMILY (php 7.2)` |
 |      - |   81 | ` *  One of 'Windows', 'BSD', 'Darwin', 'Solaris', 'Linux' or 'Unknown', derived` |
@@ -2397,14 +2397,14 @@ Coverage: 1125/1197 lines (93.98%)
 |      - | 2387 | `/*` |
 |      - | 2388 | ` * Register the built-in constants defined above.` |
 |      - | 2389 | ` */` |
-|   3360 | 2390 | `PH7_PRIVATE void PH7_RegisterBuiltInConstant(ph7_vm *pVm)` |
+|   3358 | 2390 | `PH7_PRIVATE void PH7_RegisterBuiltInConstant(ph7_vm *pVm)` |
 |      5 | 2391 | `{` |
 |      - | 2392 | `	sxu32 n;` |
 |      - | 2393 | `	/*` |
 |      - | 2394 | `	 * Note that all built-in constants have access to the ph7 virtual machine` |
 |      - | 2395 | `	 * that trigger the constant invocation as their private data.` |
 |      - | 2396 | `	 */` |
-| 903845 | 2397 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltIn) ; ++n ){` |
-| 900485 | 2398 | `		ph7_create_constant(&(*pVm),aBuiltIn[n].zName,aBuiltIn[n].xExpand,&(*pVm));` |
-| 450245 | 2399 | `	}` |
-|   3365 | 2400 | `}` |
+| 903307 | 2397 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltIn) ; ++n ){` |
+| 899949 | 2398 | `		ph7_create_constant(&(*pVm),aBuiltIn[n].zName,aBuiltIn[n].xExpand,&(*pVm));` |
+| 449977 | 2399 | `	}` |
+|   3363 | 2400 | `}` |
