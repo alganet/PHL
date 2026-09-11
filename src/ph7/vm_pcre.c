@@ -294,81 +294,60 @@ static void PcrePopulateMatches(
 	if( iFlags & PHP_PREG_OFFSET_CAPTURE ){
 		pSub = ph7_context_new_array(pCtx);
 	}
+	/* Read the name table up front so each group's named key can be emitted
+	 * INTERLEAVED with its numbered key, in group order — php stores
+	 * `0, name, 1, value, 2` (named entry immediately before its number), not
+	 * every number followed by every name. Code that iterates $matches or
+	 * var_dumps it (PHPUnit's annotation parser) depends on this order. */
+	pcre2_pattern_info(pCode, PCRE2_INFO_NAMECOUNT, &namecount);
+	if( namecount > 0 ){
+		pcre2_pattern_info(pCode, PCRE2_INFO_NAMETABLE, &nametable);
+		pcre2_pattern_info(pCode, PCRE2_INFO_NAMEENTRYSIZE, &nameentrysize);
+	}
 	for( i = 0; i < nGroups; i++ ){
 		PCRE2_SIZE start = ovector[2 * i];
 		PCRE2_SIZE end   = ovector[2 * i + 1];
+		const char *zName = 0;
+		/* Does group i carry a (?<name>...) label? namecount is tiny in practice. */
+		if( namecount > 0 ){
+			uint32_t k;
+			for( k = 0; k < namecount; k++ ){
+				PCRE2_SPTR entry = nametable + k * nameentrysize;
+				if( (((entry[0] << 8) | entry[1])) == i ){
+					zName = (const char *)(entry + 2);
+					break;
+				}
+			}
+		}
 		if( start == PCRE2_UNSET ){
 			if( iFlags & PHP_PREG_UNMATCHED_AS_NULL ){
 				ph7_value_null(pVal);
 			}else{
 				ph7_value_string(pVal, "", 0);
 			}
-			if( iFlags & PHP_PREG_OFFSET_CAPTURE ){
-				ph7_value *pOff = ph7_context_new_scalar(pCtx);
-				ph7_array_add_intkey_elem(pSub, 0, pVal);
-				ph7_value_int(pOff, -1);
-				ph7_array_add_intkey_elem(pSub, 1, pOff);
-				ph7_array_add_intkey_elem(pArray, i, pSub);
-				/* Reset sub-array for reuse */
-				ph7_context_release_value(pCtx, pOff);
-				ph7_context_release_value(pCtx, pSub);
-				pSub = ph7_context_new_array(pCtx);
-			}else{
-				ph7_array_add_intkey_elem(pArray, i, pVal);
-			}
 		}else{
 			ph7_value_string(pVal, &zSubject[start], (int)(end - start));
-			if( iFlags & PHP_PREG_OFFSET_CAPTURE ){
-				ph7_value *pOff = ph7_context_new_scalar(pCtx);
-				ph7_array_add_intkey_elem(pSub, 0, pVal);
-				ph7_value_int(pOff, (int)start);
-				ph7_array_add_intkey_elem(pSub, 1, pOff);
-				ph7_array_add_intkey_elem(pArray, i, pSub);
-				ph7_context_release_value(pCtx, pOff);
-				ph7_context_release_value(pCtx, pSub);
-				pSub = ph7_context_new_array(pCtx);
-			}else{
-				ph7_array_add_intkey_elem(pArray, i, pVal);
-			}
 		}
-		ph7_value_reset_string_cursor(pVal);
-	}
-	/* Named groups */
-	pcre2_pattern_info(pCode, PCRE2_INFO_NAMECOUNT, &namecount);
-	if( namecount > 0 ){
-		pcre2_pattern_info(pCode, PCRE2_INFO_NAMETABLE, &nametable);
-		pcre2_pattern_info(pCode, PCRE2_INFO_NAMEENTRYSIZE, &nameentrysize);
-		for( i = 0; (uint32_t)i < namecount; i++ ){
-			PCRE2_SPTR entry = nametable + i * nameentrysize;
-			int groupNum = (entry[0] << 8) | entry[1];
-			const char *zName = (const char *)(entry + 2);
-			PCRE2_SIZE start, end;
-			if( groupNum >= nGroups ) continue;
-			start = ovector[2 * groupNum];
-			end   = ovector[2 * groupNum + 1];
-			if( start == PCRE2_UNSET ){
-				if( iFlags & PHP_PREG_UNMATCHED_AS_NULL ){
-					ph7_value_null(pVal);
-				}else{
-					ph7_value_string(pVal, "", 0);
-				}
-			}else{
-				ph7_value_string(pVal, &zSubject[start], (int)(end - start));
-			}
-			if( iFlags & PHP_PREG_OFFSET_CAPTURE ){
-				ph7_value *pOff = ph7_context_new_scalar(pCtx);
-				ph7_array_add_intkey_elem(pSub, 0, pVal);
-				ph7_value_int(pOff, start == PCRE2_UNSET ? -1 : (int)start);
-				ph7_array_add_intkey_elem(pSub, 1, pOff);
+		if( iFlags & PHP_PREG_OFFSET_CAPTURE ){
+			ph7_value *pOff = ph7_context_new_scalar(pCtx);
+			ph7_array_add_intkey_elem(pSub, 0, pVal);
+			ph7_value_int(pOff, start == PCRE2_UNSET ? -1 : (int)start);
+			ph7_array_add_intkey_elem(pSub, 1, pOff);
+			/* php: the named key comes first, then the numbered key (same value). */
+			if( zName ){
 				ph7_array_add_strkey_elem(pArray, zName, pSub);
-				ph7_context_release_value(pCtx, pOff);
-				ph7_context_release_value(pCtx, pSub);
-				pSub = ph7_context_new_array(pCtx);
-			}else{
+			}
+			ph7_array_add_intkey_elem(pArray, i, pSub);
+			ph7_context_release_value(pCtx, pOff);
+			ph7_context_release_value(pCtx, pSub);
+			pSub = ph7_context_new_array(pCtx);
+		}else{
+			if( zName ){
 				ph7_array_add_strkey_elem(pArray, zName, pVal);
 			}
-			ph7_value_reset_string_cursor(pVal);
+			ph7_array_add_intkey_elem(pArray, i, pVal);
 		}
+		ph7_value_reset_string_cursor(pVal);
 	}
 	ph7_context_release_value(pCtx, pVal);
 	if( pSub ){
@@ -607,7 +586,32 @@ static int PH7_builtin_preg_match_all(ph7_context *pCtx, int nArg, ph7_value **a
 				totalMatches++;
 			}
 			if( apGroupArrays ){
+				/* Attach the per-group match arrays. php's PREG_PATTERN_ORDER stores a
+				 * named group under BOTH its name and its number, interleaved
+				 * (`0, name, 1, value, 2`) — the same value under each key. Read the
+				 * name table so each numbered group can emit its named alias first. */
+				uint32_t namecount = 0, nameentrysize = 0;
+				PCRE2_SPTR nametable = 0;
+				pcre2_pattern_info(pCode, PCRE2_INFO_NAMECOUNT, &namecount);
+				if( namecount > 0 ){
+					pcre2_pattern_info(pCode, PCRE2_INFO_NAMETABLE, &nametable);
+					pcre2_pattern_info(pCode, PCRE2_INFO_NAMEENTRYSIZE, &nameentrysize);
+				}
 				for( g = 0; g < nGroups; g++ ){
+					const char *zName = 0;
+					if( namecount > 0 ){
+						uint32_t k;
+						for( k = 0; k < namecount; k++ ){
+							PCRE2_SPTR entry = nametable + k * nameentrysize;
+							if( (uint32_t)(((entry[0] << 8) | entry[1])) == g ){
+								zName = (const char *)(entry + 2);
+								break;
+							}
+						}
+					}
+					if( zName ){
+						ph7_array_add_strkey_elem(pOutArray, zName, apGroupArrays[g]);
+					}
 					ph7_array_add_intkey_elem(pOutArray, (int)g, apGroupArrays[g]);
 					ph7_context_release_value(pCtx, apGroupArrays[g]);
 				}
