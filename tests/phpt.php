@@ -11,7 +11,7 @@
 $phpt_valid_sections = array('test', 'description', 'credits', 'skipif', 'file', 'expect', 'expectf', 'expectregex', 'clean', 'post', 'post_raw', 'get', 'cookie', 'stdin', 'ini', 'args', 'env');
 
 // Unimplemented section types
-$phpt_not_implemented = array('post', 'post_raw', 'get', 'cookie', 'stdin', 'ini', 'args', 'expectregex');
+$phpt_not_implemented = array('post', 'post_raw', 'get', 'cookie', 'stdin', 'args', 'expectregex');
 
 // Default values
 $phpt_target_executable = "";
@@ -373,13 +373,24 @@ function build_env_prefix($phpt_env) {
 
 // Run a PHPT section file through an external target executable
 // Returns the combined stdout/stderr output as string, or false if popen() failed
-function run_file_with_target($phpt_target_executable, $phpt_file, $phpt_env = array()) {
+function run_file_with_target($phpt_target_executable, $phpt_file, $phpt_env = array(), $phpt_ini = array()) {
     // Export PHPT_TARGET_EXECUTABLE through the same per-OS, value-quoting path as
     // the --ENV-- vars (build_env_prefix) so a target path containing a space is
     // quoted too. The '+' keeps PHPT_TARGET_EXECUTABLE ahead of any --ENV-- vars.
     $phpt_full_env = array('PHPT_TARGET_EXECUTABLE' => $phpt_target_executable) + $phpt_env;
     $cmd = build_env_prefix($phpt_full_env);
-    $cmd .= '"' . $phpt_target_executable . '" "' . $phpt_file . '" 2>&1';
+    $cmd .= '"' . $phpt_target_executable . '"';
+    // --INI-- directives: pass each as a `-d name=value` CLI flag to the fresh
+    // child (mirrors php run-tests). Quote the whole token per-OS like the env.
+    foreach ($phpt_ini as $phpt_ini_key => $phpt_ini_val) {
+        $phpt_ini_tok = $phpt_ini_key . '=' . $phpt_ini_val;
+        if (PHP_OS === 'WINNT') {
+            $cmd .= ' -d "' . str_replace('"', '\\"', $phpt_ini_tok) . '"';
+        } else {
+            $cmd .= ' -d ' . "'" . str_replace("'", "'\\''", $phpt_ini_tok) . "'";
+        }
+    }
+    $cmd .= ' "' . $phpt_file . '" 2>&1';
     $fp = popen($cmd, 'r');
     if ($fp === false) {
         // piped execution failed
@@ -436,6 +447,13 @@ foreach ($phpt_files as $phpt_file) {
     $phpt_env = isset($phpt_sections['env']) ? parse_env_section($phpt_sections['env']) : array();
     $phpt_env_unsupported = (!empty($phpt_env) && empty($phpt_target_executable));
 
+    // Optional --INI-- section: php.ini directives (name=value lines) passed to the
+    // target CHILD as `-d name=value`. Like --ENV--, only meaningful with a fresh
+    // child process; the in-process (@include) runner shares the runner's own VM
+    // (started without those -d flags), so such tests are skipped there.
+    $phpt_ini = isset($phpt_sections['ini']) ? parse_env_section($phpt_sections['ini']) : array();
+    $phpt_ini_unsupported = (!empty($phpt_ini) && empty($phpt_target_executable));
+
     // Write sections to disk
     if (isset($phpt_sections['file'])) {
         $phpt_file_path = $phpt_file . '.file';
@@ -461,10 +479,14 @@ foreach ($phpt_files as $phpt_file) {
         // skip rather than run in-process with the env silently dropped.
         $phpt_skip = true;
         $phpt_skip_reason = '--ENV-- requires --target-executable';
+    } elseif ($phpt_ini_unsupported) {
+        // --INI-- is applied as -d flags to a fresh child; skip in-process runs.
+        $phpt_skip = true;
+        $phpt_skip_reason = '--INI-- requires --target-executable';
     } elseif (isset($phpt_sections['skipif'])) {
         $phpt_skipif_path = $phpt_file . '.skipif';
         if (!empty($phpt_target_executable)) {
-            $phpt_skip_output = run_file_with_target($phpt_target_executable, $phpt_skipif_path, $phpt_env);
+            $phpt_skip_output = run_file_with_target($phpt_target_executable, $phpt_skipif_path, $phpt_env, $phpt_ini);
             if ($phpt_skip_output === false) {
                 echo "# ERROR: Failed to spawn skipif for $phpt_skipif_path\n";
                 $phpt_skip_output = '';
@@ -533,7 +555,7 @@ foreach ($phpt_files as $phpt_file) {
             // Test execution
             $phpt_file_path = $phpt_file . '.file';
             if (!empty($phpt_target_executable)) {
-                $phpt_output = run_file_with_target($phpt_target_executable, $phpt_file_path, $phpt_env);
+                $phpt_output = run_file_with_target($phpt_target_executable, $phpt_file_path, $phpt_env, $phpt_ini);
                 if ($phpt_output === false) {
                     echo "# ERROR: Failed to spawn test for $phpt_file_path\n";
                     $phpt_output = "";
@@ -597,7 +619,7 @@ foreach ($phpt_files as $phpt_file) {
     if (isset($phpt_sections['clean']) && $phpt_skip === false) {
         $phpt_clean_path = $phpt_file . '.clean';
         if (!empty($phpt_target_executable)) {
-            $phpt_clean_output = run_file_with_target($phpt_target_executable, $phpt_clean_path, $phpt_env);
+            $phpt_clean_output = run_file_with_target($phpt_target_executable, $phpt_clean_path, $phpt_env, $phpt_ini);
             if ($phpt_clean_output === false) {
                 echo "# ERROR: Failed to spawn clean for $phpt_clean_path\n";
             }
