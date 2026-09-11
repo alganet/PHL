@@ -1832,6 +1832,38 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 		  }
 		 iLeft = iCur;
 	 }
+	 /* Link `instanceof` BEFORE the unary(prec 4) pass. PHP gives instanceof a
+	  * HIGHER precedence than logical NOT, so `!$x instanceof C` parses as
+	  * `!($x instanceof C)`. instanceof lives in the generic binary pass (prec
+	  * 7-16) which runs AFTER unary — leaving it there lets `!` capture $x first
+	  * and yields the wrong `(!$x) instanceof C`. Collapse each `$obj instanceof
+	  * Class` into a term here (left = object expr, right = class-name term) so a
+	  * preceding `!`/`~`/cast then operates on the whole subtree. The generic
+	  * pass below skips it (pLeft != 0). */
+	 iLeft = -1;
+	 for( iCur = 0 ; iCur < nToken ; ++iCur ){
+		 if( apNode[iCur] == 0 ){
+			 continue;
+		 }
+		 pNode = apNode[iCur];
+		 if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_INSTOF && pNode->pLeft == 0 ){
+			 iRight = iCur + 1;
+			 while( iRight < nToken && apNode[iRight] == 0 ){
+				 iRight++;
+			 }
+			 if( iRight >= nToken || iLeft < 0 || !NODE_ISTERM(iRight) || !NODE_ISTERM(iLeft) ){
+				 rc = PH7_GenSyntaxError(pGen,0,0);
+				 if( rc != SXERR_ABORT ){
+					 rc = SXERR_SYNTAX;
+				 }
+				 return rc;
+			 }
+			 pNode->pLeft = apNode[iLeft];
+			 pNode->pRight = apNode[iRight];
+			 apNode[iLeft] = apNode[iRight] = 0;
+		 }
+		 iLeft = iCur;
+	 }
 	 /* Handle right associative unary and cast operators [i.e: !,(string),~...]  with precedence 4*/
 	  iLeft = 0;
 	  for( iCur = nToken -  1 ; iCur >= 0 ; iCur-- ){
