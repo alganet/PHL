@@ -9564,6 +9564,19 @@ static int PH7_builtin_memory_get_peak_usage(ph7_context *pCtx,int nArg,ph7_valu
 	return PH7_OK;
 }
 /*
+ * void memory_reset_peak_usage()
+ *  Reset the peak memory usage (memory_get_peak_usage) back to the current
+ *  live usage — php 8.2. Frameworks call it between tests to measure per-test
+ *  peaks.
+ */
+static int PH7_builtin_memory_reset_peak_usage(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	pCtx->pVm->sAllocator.nMemPeak = pCtx->pVm->sAllocator.nMemUsed;
+	return PH7_OK;
+}
+/*
  * PHL frees values by reference count as they go out of scope, so there is no
  * mark-and-sweep cycle collector to drive. The gc_* family is provided for
  * source compatibility (real frameworks call it around test runs): the state is
@@ -9636,6 +9649,7 @@ static int PH7_builtin_gc_status(ph7_context *pCtx,int nArg,ph7_value **apArg)
 static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "memory_get_usage"     , PH7_builtin_memory_get_usage      },
 	{ "memory_get_peak_usage", PH7_builtin_memory_get_peak_usage },
+	{ "memory_reset_peak_usage", PH7_builtin_memory_reset_peak_usage },
 	{ "gc_enable"            , PH7_builtin_gc_enable             },
 	{ "gc_disable"           , PH7_builtin_gc_disable            },
 	{ "gc_enabled"           , PH7_builtin_gc_enabled            },

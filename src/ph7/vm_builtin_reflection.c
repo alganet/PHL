@@ -970,6 +970,20 @@ static ph7_vm_func * ReflectResolveCallable(ph7_context *pCtx, ph7_value *pTarge
 		pMeth = PH7_ClassExtractMethod(pClass, (const char *)SyBlobData(&pMethodArg->sBlob),
 			SyBlobLength(&pMethodArg->sBlob));
 		if( pMeth == 0 ){
+			/* getMethods()/ReflectionClass reports a base class's PRIVATE methods on
+			 * the subclass (php copies them into the child's table), but private
+			 * methods are not inherited into the child's method table, so the plain
+			 * extract misses them when a ReflectionMethod obtained from the subclass
+			 * is re-resolved by (subclass, name). Walk the base chain to find the
+			 * declaring class's own copy. */
+			ph7_class *pWalk = pClass->pBase;
+			while( pWalk && pMeth == 0 ){
+				pMeth = PH7_ClassExtractMethod(pWalk, (const char *)SyBlobData(&pMethodArg->sBlob),
+					SyBlobLength(&pMethodArg->sBlob));
+				pWalk = pWalk->pBase;
+			}
+		}
+		if( pMeth == 0 ){
 			return 0;
 		}
 		if( ppClass ){ *ppClass = pClass; }
