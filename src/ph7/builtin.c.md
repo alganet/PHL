@@ -25,7 +25,7 @@ Coverage: 4445/5194 lines (85.58%)
 |      - |   15 | ``/* Shared ZPP helper for `int` parameters — defined OUTSIDE the`` |
 |      - |   16 | ` * PH7_DISABLE_BUILTIN_FUNC guard because hashmap.c (array_slice) and` |
 |      - |   17 | ` * builtin_math.c (intdiv) call it and both compile in the tiny build. */` |
-| 487686 |   18 | `PH7_PRIVATE sxi32 PH7_IntArgResolve(` |
+| 487896 |   18 | `PH7_PRIVATE sxi32 PH7_IntArgResolve(` |
 |      - |   19 | `	ph7_context *pCtx,` |
 |      - |   20 | `	ph7_value *pArg,` |
 |      - |   21 | `	const char *zFunc,` |
@@ -34,7 +34,7 @@ Coverage: 4445/5194 lines (85.58%)
 |      - |   24 | `	const char *zTypeStr,` |
 |      - |   25 | `	sxi64 *pOut` |
 |      5 |   26 | `){` |
-| 487691 |   27 | `	if( ph7_value_is_null(pArg) ){` |
+| 487901 |   27 | `	if( ph7_value_is_null(pArg) ){` |
 |    ! 0 |   28 | `		PH7_VmThrowDeprecatedFmt(pCtx->pVm,` |
 |      - |   29 | `			"%s(): Passing null to parameter #%d (%s) of type %s is deprecated",` |
 |    ! 0 |   30 | `			zFunc,iArgNum,zParamName,zTypeStr` |
@@ -42,7 +42,7 @@ Coverage: 4445/5194 lines (85.58%)
 |    ! 0 |   32 | `		*pOut = 0;` |
 |    ! 0 |   33 | `		return PH7_OK;` |
 |      - |   34 | `	}` |
-| 487691 |   35 | `	if( ph7_value_is_float(pArg) ){` |
+| 487901 |   35 | `	if( ph7_value_is_float(pArg) ){` |
 |      7 |   36 | `		double dVal = ph7_value_to_double(pArg);` |
 |      - |   37 | `		sxi64 iVal;` |
 |      - |   38 | `		/* php: NAN/INF/out-of-int64-range floats fail ZPP outright */` |
@@ -63,7 +63,7 @@ Coverage: 4445/5194 lines (85.58%)
 |      3 |   53 | `		*pOut = iVal;` |
 |      3 |   54 | `		return PH7_OK;` |
 |      - |   55 | `	}` |
-| 487685 |   56 | `	if( ph7_value_is_string(pArg) ){` |
+| 487895 |   56 | `	if( ph7_value_is_string(pArg) ){` |
 |      - |   57 | `		const char *zNum;` |
 |      - |   58 | `		int nSlen;` |
 |     15 |   59 | `		int i,bFloat = 0;` |
@@ -105,7 +105,7 @@ Coverage: 4445/5194 lines (85.58%)
 |      5 |   95 | `		*pOut = ph7_value_to_int64(pArg);` |
 |      5 |   96 | `		return PH7_OK;` |
 |      - |   97 | `	}` |
-| 487671 |   98 | `	if( !ph7_value_is_int(pArg) && !ph7_value_is_bool(pArg) ){` |
+| 487881 |   98 | `	if( !ph7_value_is_int(pArg) && !ph7_value_is_bool(pArg) ){` |
 |      - |   99 | `		/* Arrays, resources and objects: php names the class for objects */` |
 |    ! 0 |  100 | `		const char *zType = ph7_type_name(pArg);` |
 |    ! 0 |  101 | `		if( ph7_value_is_object(pArg) ){` |
@@ -120,9 +120,9 @@ Coverage: 4445/5194 lines (85.58%)
 |    ! 0 |  110 | `			zFunc,iArgNum,zParamName,zTypeStr,zType` |
 |      - |  111 | `			);` |
 |      - |  112 | `	}` |
-| 487671 |  113 | `	*pOut = ph7_value_to_int64(pArg);` |
-| 487671 |  114 | `	return PH7_OK;` |
-| 243848 |  115 | `}` |
+| 487881 |  113 | `	*pOut = ph7_value_to_int64(pArg);` |
+| 487881 |  114 | `	return PH7_OK;` |
+| 243953 |  115 | `}` |
 |      - |  116 |  |
 |      - |  117 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
 |      - |  118 | `/* Forward decl: null-to-string ZPP deprecation notice (defined near the ZPP` |
@@ -418,14 +418,14 @@ Coverage: 4445/5194 lines (85.58%)
 |      - |  408 | ` * Return` |
 |      - |  409 | ` *  0 if var has a non-empty and non-zero value.1 otherwise.` |
 |      - |  410 | ` */` |
-|  33838 |  411 | `static int PH7_builtin_empty(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  33848 |  411 | `static int PH7_builtin_empty(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 |  412 | `{` |
-|  33843 |  413 | `	int res = 1; /* Assume empty by default */` |
-|  33843 |  414 | `	if( nArg > 0 ){` |
-|  33841 |  415 | `		res = ph7_value_is_empty(apArg[0]);` |
-|  16918 |  416 | `	}` |
-|  33843 |  417 | `	ph7_result_bool(pCtx,res);` |
-|  33843 |  418 | `	return PH7_OK;` |
+|  33853 |  413 | `	int res = 1; /* Assume empty by default */` |
+|  33853 |  414 | `	if( nArg > 0 ){` |
+|  33851 |  415 | `		res = ph7_value_is_empty(apArg[0]);` |
+|  16923 |  416 | `	}` |
+|  33853 |  417 | `	ph7_result_bool(pCtx,res);` |
+|  33853 |  418 | `	return PH7_OK;` |
 |      - |  419 |  |
 |      5 |  420 | `}` |
 |      - |  421 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
@@ -468,27 +468,27 @@ Coverage: 4445/5194 lines (85.58%)
 |      - |  458 | ` * Return` |
 |      - |  459 | ` *  Returns the extracted part of string, or FALSE on failure or an empty string.` |
 |      - |  460 | ` */` |
-| 268956 |  461 | `static int PH7_builtin_substr(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+| 269066 |  461 | `static int PH7_builtin_substr(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 |  462 | `{` |
 |      - |  463 | `	const char *zSource;` |
 |      - |  464 | `	int nSrcLen;` |
 |      - |  465 | `	sxi64 iStart,iEnd;` |
-| 268961 |  466 | `	if( nArg > 0 ){ StrNullArgNotice(pCtx,apArg[0],"substr",1,"$string"); }` |
-| 268961 |  467 | `	if( nArg < 2 ){` |
+| 269071 |  466 | `	if( nArg > 0 ){ StrNullArgNotice(pCtx,apArg[0],"substr",1,"$string"); }` |
+| 269071 |  467 | `	if( nArg < 2 ){` |
 |      - |  468 | `		/* Arity is enforced at the call boundary; nothing sensible to return here. */` |
 |    ! 0 |  469 | `		ph7_result_string(pCtx,"",0);` |
 |    ! 0 |  470 | `		return PH7_OK;` |
 |      - |  471 | `	}` |
 |      - |  472 | `	/* Extract the target string */` |
-| 268961 |  473 | `	zSource = ph7_value_to_string(apArg[0],&nSrcLen);` |
+| 269071 |  473 | `	zSource = ph7_value_to_string(apArg[0],&nSrcLen);` |
 |      - |  474 | `	/* Extract the offset */` |
 |      - |  475 | `	{` |
-| 268961 |  476 | `		sxi64 iTmp = 0;` |
-| 268961 |  477 | `		sxi32 rcArg = PH7_IntArgResolve(pCtx,apArg[1],"substr",2,"$offset","int",&iTmp);` |
-| 268961 |  478 | `		if( rcArg != PH7_OK ){` |
+| 269071 |  476 | `		sxi64 iTmp = 0;` |
+| 269071 |  477 | `		sxi32 rcArg = PH7_IntArgResolve(pCtx,apArg[1],"substr",2,"$offset","int",&iTmp);` |
+| 269071 |  478 | `		if( rcArg != PH7_OK ){` |
 |    ! 0 |  479 | `			return rcArg;` |
 |      - |  480 | `		}` |
-| 268961 |  481 | `		iStart = iTmp;` |
+| 269071 |  481 | `		iStart = iTmp;` |
 |      - |  482 | `	}` |
 |      - |  483 | `	/*` |
 |      - |  484 | `	 * php 8 never answers substr() with FALSE — every out-of-range window simply` |
@@ -500,35 +500,35 @@ Coverage: 4445/5194 lines (85.58%)
 |      - |  490 | `	 * leaves that many bytes off the end. Computed in sxi64 so an INT64 offset or` |
 |      - |  491 | `	 * length cannot overflow the window arithmetic.` |
 |      - |  492 | `	 */` |
-| 268961 |  493 | `	if( iStart < 0 ){` |
-|  33545 |  494 | `		iStart += nSrcLen;` |
-|  33545 |  495 | `		if( iStart < 0 ){` |
+| 269071 |  493 | `	if( iStart < 0 ){` |
+|  33555 |  494 | `		iStart += nSrcLen;` |
+|  33555 |  495 | `		if( iStart < 0 ){` |
 |      5 |  496 | `			iStart = 0;` |
 |      7 |  497 | `		}` |
-| 252191 |  498 | `	}else if( iStart > nSrcLen ){` |
+| 252296 |  498 | `	}else if( iStart > nSrcLen ){` |
 |      7 |  499 | `		iStart = nSrcLen;` |
 |      3 |  500 | `	}` |
-| 268961 |  501 | `	iEnd = nSrcLen;` |
-| 268961 |  502 | `	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){` |
-| 197699 |  503 | `		sxi64 iLen = 0;` |
-| 197699 |  504 | `		sxi32 rcArg = PH7_IntArgResolve(pCtx,apArg[2],"substr",3,"$length","?int",&iLen);` |
-| 197699 |  505 | `		if( rcArg != PH7_OK ){` |
+| 269071 |  501 | `	iEnd = nSrcLen;` |
+| 269071 |  502 | `	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){` |
+| 197799 |  503 | `		sxi64 iLen = 0;` |
+| 197799 |  504 | `		sxi32 rcArg = PH7_IntArgResolve(pCtx,apArg[2],"substr",3,"$length","?int",&iLen);` |
+| 197799 |  505 | `		if( rcArg != PH7_OK ){` |
 |    ! 0 |  506 | `			return rcArg;` |
 |      - |  507 | `		}` |
-| 197699 |  508 | `		if( iLen < 0 ){` |
-|  33177 |  509 | `			iEnd = (sxi64)nSrcLen + iLen;` |
-| 181113 |  510 | `		}else if( iLen > (sxi64)nSrcLen - iStart ){` |
-|  18939 |  511 | `			iEnd = nSrcLen;` |
-|   9472 |  512 | `		}else{` |
-| 145593 |  513 | `			iEnd = iStart + iLen;` |
+| 197799 |  508 | `		if( iLen < 0 ){` |
+|  33187 |  509 | `			iEnd = (sxi64)nSrcLen + iLen;` |
+| 181208 |  510 | `		}else if( iLen > (sxi64)nSrcLen - iStart ){` |
+|  18951 |  511 | `			iEnd = nSrcLen;` |
+|   9478 |  512 | `		}else{` |
+| 145671 |  513 | `			iEnd = iStart + iLen;` |
 |      - |  514 | `		}` |
-|  98847 |  515 | `	}` |
-| 268961 |  516 | `	if( iEnd < iStart ){` |
+|  98897 |  515 | `	}` |
+| 269071 |  516 | `	if( iEnd < iStart ){` |
 |      3 |  517 | `		iEnd = iStart;` |
 |      1 |  518 | `	}` |
-| 268961 |  519 | `	ph7_result_string(pCtx,&zSource[iStart],(int)(iEnd - iStart));` |
-| 268961 |  520 | `	return PH7_OK;` |
-| 134483 |  521 | `}` |
+| 269071 |  519 | `	ph7_result_string(pCtx,&zSource[iStart],(int)(iEnd - iStart));` |
+| 269071 |  520 | `	return PH7_OK;` |
+| 134538 |  521 | `}` |
 |      - |  522 | `/*` |
 |      - |  523 | ` * int substr_compare(string $main_str,string $str ,int $offset[,int $length[,bool $case_insensitivity = false ]])` |
 |      - |  524 | ` *  Binary safe comparison of two strings from an offset, up to length characters.` |
@@ -723,14 +723,14 @@ Coverage: 4445/5194 lines (85.58%)
 |      - |  713 | ``  * `f(): Passing null to parameter #N ($name) of type string is deprecated` `` |
 |      - |  714 | ` * when the arg is an actual null, leaving the resolution unchanged.` |
 |      - |  715 | ` */` |
-| 396304 |  716 | `static void StrNullArgNotice(ph7_context *pCtx,ph7_value *pArg,const char *zFunc,int iArgNum,const char *zParamName)` |
+| 396428 |  716 | `static void StrNullArgNotice(ph7_context *pCtx,ph7_value *pArg,const char *zFunc,int iArgNum,const char *zParamName)` |
 |      5 |  717 | `{` |
-| 396309 |  718 | `	if( ph7_value_is_null(pArg) ){` |
+| 396433 |  718 | `	if( ph7_value_is_null(pArg) ){` |
 |     22 |  719 | `		PH7_VmThrowDeprecatedFmt(pCtx->pVm,` |
 |      - |  720 | `			"%s(): Passing null to parameter #%d (%s) of type string is deprecated",` |
 |      7 |  721 | `			zFunc,iArgNum,zParamName);` |
 |      7 |  722 | `	}` |
-| 396309 |  723 | `}` |
+| 396433 |  723 | `}` |
 |      - |  724 | `static sxi32 StrPredicateResolveArg(ph7_context *pCtx,ph7_value *pArg,const char *zFunc,` |
 |      - |  725 | `	int iArgNum,const char *zParamName,const char *zTypeStr,const char *zNullMsg,` |
 |      - |  726 | `	ph7_value *pTmp,const char **pzOut,int *pnOut);` |
@@ -2271,13 +2271,13 @@ Coverage: 4445/5194 lines (85.58%)
 |      - | 2261 | ` * The following routine is invoked for each array entry passed` |
 |      - | 2262 | ` * to the implode() function.` |
 |      - | 2263 | ` */` |
-| 155006 | 2264 | `static int implode_callback(ph7_value *pKey,ph7_value *pValue,void *pUserData)` |
+| 155086 | 2264 | `static int implode_callback(ph7_value *pKey,ph7_value *pValue,void *pUserData)` |
 |      5 | 2265 | `{` |
-|  77503 | 2266 | `	SXUNUSED(pKey);` |
-| 155011 | 2267 | `	struct implode_data *pData = (struct implode_data *)pUserData;` |
+|  77543 | 2266 | `	SXUNUSED(pKey);` |
+| 155091 | 2267 | `	struct implode_data *pData = (struct implode_data *)pUserData;` |
 |      - | 2268 | `	const char *zData;` |
 |      - | 2269 | `	int nLen;` |
-| 155011 | 2270 | `	if( pData->bRecursive && ph7_value_is_array(pValue) && pData->nRecCount < 32 ){` |
+| 155091 | 2270 | `	if( pData->bRecursive && ph7_value_is_array(pValue) && pData->nRecCount < 32 ){` |
 |      3 | 2271 | `		if( pData->nSeplen > 0 ){` |
 |      3 | 2272 | `			if( !pData->bFirst ){` |
 |      - | 2273 | `				/* append the separator first */` |
@@ -2301,26 +2301,26 @@ Coverage: 4445/5194 lines (85.58%)
 |      3 | 2291 | `		return PH7_OK;` |
 |      - | 2292 | `	}` |
 |      - | 2293 | `	/* Extract the string representation of the entry value */` |
-| 155009 | 2294 | `	zData = ph7_value_to_string(pValue,&nLen);` |
+| 155089 | 2294 | `	zData = ph7_value_to_string(pValue,&nLen);` |
 |      - | 2295 | `	/* Manage separator insertion: always mark first seen; append separator for subsequent items */` |
-| 155009 | 2296 | `	if( pData->bFirst ){` |
-|  33747 | 2297 | `		pData->bFirst = 0;` |
-| 138138 | 2298 | `	}else if( pData->nSeplen > 0 ){` |
+| 155089 | 2296 | `	if( pData->bFirst ){` |
+|  33757 | 2297 | `		pData->bFirst = 0;` |
+| 138213 | 2298 | `	}else if( pData->nSeplen > 0 ){` |
 |      - | 2299 | `		/* append the separator first */` |
-| 121187 | 2300 | `		if( ph7_result_string(pData->pCtx,pData->zSep,pData->nSeplen) != SXRET_OK ){` |
+| 121257 | 2300 | `		if( ph7_result_string(pData->pCtx,pData->zSep,pData->nSeplen) != SXRET_OK ){` |
 |    ! 0 | 2301 | `			pData->rc = SXERR_MEM;` |
 |    ! 0 | 2302 | `			return PH7_ABORT;` |
 |      - | 2303 | `		}` |
-|  60591 | 2304 | `	}` |
+|  60626 | 2304 | `	}` |
 |      - | 2305 | `	/* Append the value if non-empty; empty values are represented by the separators */` |
-| 155009 | 2306 | `	if( nLen > 0 ){` |
-| 142269 | 2307 | `		if( ph7_result_string(pData->pCtx,zData,nLen) != SXRET_OK ){` |
+| 155089 | 2306 | `	if( nLen > 0 ){` |
+| 142345 | 2307 | `		if( ph7_result_string(pData->pCtx,zData,nLen) != SXRET_OK ){` |
 |    ! 0 | 2308 | `			pData->rc = SXERR_MEM;` |
 |    ! 0 | 2309 | `			return PH7_ABORT;` |
 |      - | 2310 | `		}` |
-|  71132 | 2311 | `	}` |
-| 155009 | 2312 | `	return PH7_OK;` |
-|  77508 | 2313 | `}` |
+|  71170 | 2311 | `	}` |
+| 155089 | 2312 | `	return PH7_OK;` |
+|  77548 | 2313 | `}` |
 |      - | 2314 | `/*` |
 |      - | 2315 | ` * string implode(string $glue,array $pieces,...)` |
 |      - | 2316 | ` * string implode(array $pieces,...)` |
@@ -2334,24 +2334,24 @@ Coverage: 4445/5194 lines (85.58%)
 |      - | 2324 | ` *  Returns a string containing a string representation of all the array elements in the same` |
 |      - | 2325 | ` *  order, with the glue string between each element.` |
 |      - | 2326 | ` */` |
-|  33770 | 2327 | `static int PH7_builtin_implode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  33780 | 2327 | `static int PH7_builtin_implode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 2328 | `{` |
 |      - | 2329 | `	struct implode_data imp_data;` |
-|  33775 | 2330 | `	int i = 1;` |
-|  33775 | 2331 | `	if( nArg < 1 ){` |
+|  33785 | 2330 | `	int i = 1;` |
+|  33785 | 2331 | `	if( nArg < 1 ){` |
 |      - | 2332 | `		/* Missing argument,return NULL */` |
 |    ! 0 | 2333 | `		ph7_result_null(pCtx);` |
 |    ! 0 | 2334 | `		return PH7_OK;` |
 |      - | 2335 | `	}` |
 |      - | 2336 | `	/* Prepare the implode context */` |
-|  33775 | 2337 | `	imp_data.pCtx = pCtx;` |
-|  33775 | 2338 | `	imp_data.bRecursive = 0;` |
-|  33775 | 2339 | `	imp_data.bFirst = 1;` |
-|  33775 | 2340 | `	imp_data.nRecCount = 0;` |
-|  33775 | 2341 | `	imp_data.rc = SXRET_OK;` |
-|  33775 | 2342 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|  33773 | 2343 | `		imp_data.zSep = ph7_value_to_string(apArg[0],&imp_data.nSeplen);` |
-|  33773 | 2344 | `		if( nArg > 1 && !ph7_value_is_array(apArg[1]) && !ph7_value_is_null(apArg[1]) ){` |
+|  33785 | 2337 | `	imp_data.pCtx = pCtx;` |
+|  33785 | 2338 | `	imp_data.bRecursive = 0;` |
+|  33785 | 2339 | `	imp_data.bFirst = 1;` |
+|  33785 | 2340 | `	imp_data.nRecCount = 0;` |
+|  33785 | 2341 | `	imp_data.rc = SXRET_OK;` |
+|  33785 | 2342 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|  33783 | 2343 | `		imp_data.zSep = ph7_value_to_string(apArg[0],&imp_data.nSeplen);` |
+|  33783 | 2344 | `		if( nArg > 1 && !ph7_value_is_array(apArg[1]) && !ph7_value_is_null(apArg[1]) ){` |
 |      - | 2345 | `			/* php: implode($glue, $pieces) requires an ARRAY. PH7 stringified whatever it` |
 |      - | 2346 | `			 * was handed, so implode(",", 5) quietly returned "5". */` |
 |      - | 2347 | `			char zBuf[64];` |
@@ -2359,24 +2359,24 @@ Coverage: 4445/5194 lines (85.58%)
 |      - | 2349 | `				"implode(): Argument #2 ($array) must be of type ?array, %s given",` |
 |      2 | 2350 | `				VmValueGivenName(apArg[1],zBuf,sizeof(zBuf)));` |
 |      - | 2351 | `		}` |
-|  16888 | 2352 | `	}else{` |
+|  16893 | 2352 | `	}else{` |
 |      3 | 2353 | `		imp_data.zSep = 0;` |
 |      3 | 2354 | `		imp_data.nSeplen = 0;` |
 |      3 | 2355 | `		i = 0;` |
 |      - | 2356 | `	}` |
-|  33773 | 2357 | `	if( ph7_result_string(pCtx,"",0) != SXRET_OK ){ /* Set an empty stirng */` |
+|  33783 | 2357 | `	if( ph7_result_string(pCtx,"",0) != SXRET_OK ){ /* Set an empty stirng */` |
 |    ! 0 | 2358 | `		return PH7_ContextMemoryError(pCtx);` |
 |      - | 2359 | `	}` |
 |      - | 2360 | `	/* Start the 'join' process */` |
-|  67541 | 2361 | `	while( i < nArg ){` |
-|  33773 | 2362 | `		if( ph7_value_is_array(apArg[i]) ){` |
+|  67561 | 2361 | `	while( i < nArg ){` |
+|  33783 | 2362 | `		if( ph7_value_is_array(apArg[i]) ){` |
 |      - | 2363 | `			/* Iterate throw array entries */` |
-|  33773 | 2364 | `			ph7_array_walk(apArg[i],implode_callback,&imp_data);` |
+|  33783 | 2364 | `			ph7_array_walk(apArg[i],implode_callback,&imp_data);` |
 |      - | 2365 | `			/* Surface a callback allocation failure as a fatal */` |
-|  33773 | 2366 | `			if( imp_data.rc != SXRET_OK ){` |
+|  33783 | 2366 | `			if( imp_data.rc != SXRET_OK ){` |
 |    ! 0 | 2367 | `				return PH7_ContextMemoryError(pCtx);` |
 |      - | 2368 | `			}` |
-|  16889 | 2369 | `		}else{` |
+|  16894 | 2369 | `		}else{` |
 |      - | 2370 | `			const char *zData;` |
 |      - | 2371 | `			int nLen;` |
 |      - | 2372 | `			/* Extract the string representation of the ph7 value */` |
@@ -2396,10 +2396,10 @@ Coverage: 4445/5194 lines (85.58%)
 |      - | 2386 | `				}` |
 |    ! 0 | 2387 | `			}` |
 |      - | 2388 | `		}` |
-|  33773 | 2389 | `		i++;` |
+|  33783 | 2389 | `		i++;` |
 |      5 | 2390 | `	}` |
-|  33773 | 2391 | `	return PH7_OK;` |
-|  16890 | 2392 | `}` |
+|  33783 | 2391 | `	return PH7_OK;` |
+|  16895 | 2392 | `}` |
 |      - | 2393 | `/*` |
 |      - | 2394 | ` * Symisc eXtension:` |
 |      - | 2395 | ` * string implode_recursive(string $glue,array $pieces,...)` |
@@ -2499,7 +2499,7 @@ Coverage: 4445/5194 lines (85.58%)
 |      - | 2489 | ` * NOTE:` |
 |      - | 2490 | ` *  Negative limit is not supported.` |
 |      - | 2491 | ` */` |
-|   6882 | 2492 | `static int PH7_builtin_explode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   6884 | 2492 | `static int PH7_builtin_explode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 2493 | `{` |
 |      - | 2494 | `	const char *zDelim,*zString,*zCur,*zEnd;` |
 |      - | 2495 | `	int nDelim,nStrlen,iLimit;` |
@@ -2507,21 +2507,21 @@ Coverage: 4445/5194 lines (85.58%)
 |      - | 2497 | `	ph7_value *pValue;` |
 |      - | 2498 | `	sxu32 nOfft;` |
 |      - | 2499 | `	sxi32 rc;` |
-|   6887 | 2500 | `	if( nArg < 2 ){` |
+|   6889 | 2500 | `	if( nArg < 2 ){` |
 |      - | 2501 | `		/* Missing arguments,return FALSE */` |
 |    ! 0 | 2502 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 2503 | `		return PH7_OK;` |
 |      - | 2504 | `	}` |
 |      - | 2505 | `	/* Extract the delimiter */` |
-|   6887 | 2506 | `	zDelim = ph7_value_to_string(apArg[0],&nDelim);` |
-|   6887 | 2507 | `	if( nDelim < 1 ){` |
+|   6889 | 2506 | `	zDelim = ph7_value_to_string(apArg[0],&nDelim);` |
+|   6889 | 2507 | `	if( nDelim < 1 ){` |
 |      - | 2508 | `		/* Empty delimiter: PHP 8 throws a catchable ValueError. */` |
 |      5 | 2509 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
 |      - | 2510 | `			"explode(): Argument #1 ($separator) must not be empty");` |
 |      - | 2511 | `	}` |
 |      - | 2512 | `	/* Extract the string */` |
-|   6883 | 2513 | `	zString = ph7_value_to_string(apArg[1],&nStrlen);` |
-|   6883 | 2514 | `	if( nStrlen < 1 ){` |
+|   6885 | 2513 | `	zString = ph7_value_to_string(apArg[1],&nStrlen);` |
+|   6885 | 2514 | `	if( nStrlen < 1 ){` |
 |      - | 2515 | `		/* Empty string: normally an array with a single empty element (PHP behavior).` |
 |      - | 2516 | `		 * A negative limit drops the last -limit components, so the sole empty` |
 |      - | 2517 | `		 * component is dropped and the result is an empty array. */` |
@@ -2547,18 +2547,18 @@ Coverage: 4445/5194 lines (85.58%)
 |     13 | 2537 | `		return PH7_OK;` |
 |      - | 2538 | `	}` |
 |      - | 2539 | `	/* Point to the end of the string */` |
-|   6871 | 2540 | `	zEnd = &zString[nStrlen];` |
+|   6873 | 2540 | `	zEnd = &zString[nStrlen];` |
 |      - | 2541 | `	/* Create the array */` |
-|   6871 | 2542 | `	pArray =  ph7_context_new_array(pCtx);` |
-|   6871 | 2543 | `	pValue = ph7_context_new_scalar(pCtx);` |
-|   6871 | 2544 | `	if( pArray == 0 \|\| pValue == 0 ){` |
+|   6873 | 2542 | `	pArray =  ph7_context_new_array(pCtx);` |
+|   6873 | 2543 | `	pValue = ph7_context_new_scalar(pCtx);` |
+|   6873 | 2544 | `	if( pArray == 0 \|\| pValue == 0 ){` |
 |      - | 2545 | `		/* Out of memory,return FALSE */` |
 |    ! 0 | 2546 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 | 2547 | `		return PH7_OK;` |
 |      - | 2548 | `	}` |
 |      - | 2549 | `	/* Set a defualt limit */` |
-|   6871 | 2550 | `	iLimit = SXI32_HIGH;` |
-|   6871 | 2551 | `	if( nArg > 2 ){` |
+|   6873 | 2550 | `	iLimit = SXI32_HIGH;` |
+|   6873 | 2551 | `	if( nArg > 2 ){` |
 |     37 | 2552 | `		iLimit = ph7_value_to_int(apArg[2]);` |
 |     37 | 2553 | `		if( iLimit < 0 ){` |
 |      - | 2554 | `			/* Negative limit: keep all components except the last -iLimit (PHP).` |
@@ -2593,35 +2593,35 @@ Coverage: 4445/5194 lines (85.58%)
 |     21 | 2583 | `		iLimit--;` |
 |      9 | 2584 | `	}` |
 |      - | 2585 | `	/* Start exploding */` |
-|  82447 | 2586 | `	for(;;){` |
-| 164899 | 2587 | `		rc = SyBlobSearch(zString,(sxu32)(zEnd-zString),zDelim,nDelim,&nOfft);` |
-| 164899 | 2588 | `		if( rc != SXRET_OK \|\| iLimit <= (int)ph7_array_count(pArray) ){` |
+|  82492 | 2586 | `	for(;;){` |
+| 164989 | 2587 | `		rc = SyBlobSearch(zString,(sxu32)(zEnd-zString),zDelim,nDelim,&nOfft);` |
+| 164989 | 2588 | `		if( rc != SXRET_OK \|\| iLimit <= (int)ph7_array_count(pArray) ){` |
 |      - | 2589 | `			/* Limit reached or no more delimiter; insert the rest (may be empty) and break */` |
-|   6855 | 2590 | `			ph7_value_string(pValue, zString, (int)(zEnd - zString));` |
-|   6855 | 2591 | `			if( ph7_array_add_elem(pArray, 0/* Automatic index assign */, pValue) != SXRET_OK ){` |
+|   6857 | 2590 | `			ph7_value_string(pValue, zString, (int)(zEnd - zString));` |
+|   6857 | 2591 | `			if( ph7_array_add_elem(pArray, 0/* Automatic index assign */, pValue) != SXRET_OK ){` |
 |    ! 0 | 2592 | `				return PH7_ContextMemoryError(pCtx);` |
 |      - | 2593 | `			}` |
-|   6855 | 2594 | `			break;` |
+|   6857 | 2594 | `			break;` |
 |      - | 2595 | `		}` |
 |      - | 2596 | `		/* Point to the desired offset */` |
-| 158049 | 2597 | `		zCur = &zString[nOfft];` |
+| 158137 | 2597 | `		zCur = &zString[nOfft];` |
 |      - | 2598 | `		/* Perform the store operation (may be empty) */` |
-| 158049 | 2599 | `		ph7_value_string(pValue, zString, (int)(zCur - zString));` |
-| 158049 | 2600 | `		if( ph7_array_add_elem(pArray, 0/* Automatic index assign */, pValue) != SXRET_OK ){` |
+| 158137 | 2599 | `		ph7_value_string(pValue, zString, (int)(zCur - zString));` |
+| 158137 | 2600 | `		if( ph7_array_add_elem(pArray, 0/* Automatic index assign */, pValue) != SXRET_OK ){` |
 |    ! 0 | 2601 | `			return PH7_ContextMemoryError(pCtx);` |
 |      - | 2602 | `		}` |
 |      - | 2603 | `		/* Point beyond the delimiter */` |
-| 158049 | 2604 | `		zString = &zCur[nDelim];` |
+| 158137 | 2604 | `		zString = &zCur[nDelim];` |
 |      - | 2605 | `		/* Reset the cursor */` |
-| 158049 | 2606 | `		ph7_value_reset_string_cursor(pValue);` |
+| 158137 | 2606 | `		ph7_value_reset_string_cursor(pValue);` |
 |      5 | 2607 | `	}` |
 |      - | 2608 | `	/* Return the freshly created array */` |
-|   6855 | 2609 | `	ph7_result_value(pCtx,pArray);` |
+|   6857 | 2609 | `	ph7_result_value(pCtx,pArray);` |
 |      - | 2610 | `	/* NOTE that every allocated ph7_value will be automatically` |
 |      - | 2611 | `	 * released as soon we return from this foregin function.` |
 |      - | 2612 | `	 */` |
-|   6855 | 2613 | `	return PH7_OK;` |
-|   3446 | 2614 | `}` |
+|   6857 | 2613 | `	return PH7_OK;` |
+|   3447 | 2614 | `}` |
 |      - | 2615 | `/*` |
 |      - | 2616 | ` * string trim(string $str[,string $charlist ])` |
 |      - | 2617 | ` *  Strip whitespace (or other characters) from the beginning and end of a string.` |
@@ -2637,31 +2637,31 @@ Coverage: 4445/5194 lines (85.58%)
 |      - | 2627 | ` * NOTE:` |
 |      - | 2628 | ` *   Character ranges [i.e: 'a..z'] are supported (see PH7_BuildCharMask).` |
 |      - | 2629 | ` */` |
-|  14518 | 2630 | `static int PH7_builtin_trim(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  14522 | 2630 | `static int PH7_builtin_trim(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 2631 | `{` |
-|  14523 | 2632 | `	if( nArg > 0 ){ StrNullArgNotice(pCtx,apArg[0],"trim",1,"$string"); }` |
+|  14527 | 2632 | `	if( nArg > 0 ){ StrNullArgNotice(pCtx,apArg[0],"trim",1,"$string"); }` |
 |      - | 2633 | `	const char *zString;` |
 |      - | 2634 | `	int nLen;` |
-|  14523 | 2635 | `	if( nArg < 1 ){` |
+|  14527 | 2635 | `	if( nArg < 1 ){` |
 |      - | 2636 | `		/* Missing arguments,return null */` |
 |    ! 0 | 2637 | `		ph7_result_null(pCtx);` |
 |    ! 0 | 2638 | `		return PH7_OK;` |
 |      - | 2639 | `	}` |
 |      - | 2640 | `	/* Extract the target string */` |
-|  14523 | 2641 | `	zString = ph7_value_to_string(apArg[0],&nLen);` |
-|  14523 | 2642 | `	if( nLen < 1 ){` |
+|  14527 | 2641 | `	zString = ph7_value_to_string(apArg[0],&nLen);` |
+|  14527 | 2642 | `	if( nLen < 1 ){` |
 |      - | 2643 | `		/* Empty string,return */` |
 |    753 | 2644 | `		ph7_result_string(pCtx,"",0);` |
 |    753 | 2645 | `		return PH7_OK;` |
 |      - | 2646 | `	}` |
 |      - | 2647 | `	/* Start the trim process */` |
-|  13775 | 2648 | `	if( nArg < 2 ){` |
+|  13779 | 2648 | `	if( nArg < 2 ){` |
 |      - | 2649 | `		SyString sStr;` |
 |      - | 2650 | `		/* Remove white spaces and NUL bytes */` |
-|  13745 | 2651 | `		SyStringInitFromBuf(&sStr,zString,nLen);` |
-|  34475 | 2652 | `		SyStringFullTrimSafe(&sStr);` |
-|  13745 | 2653 | `		ph7_result_string(pCtx,sStr.zString,(int)sStr.nByte);` |
-|   6875 | 2654 | `	}else{` |
+|  13749 | 2651 | `		SyStringInitFromBuf(&sStr,zString,nLen);` |
+|  34485 | 2652 | `		SyStringFullTrimSafe(&sStr);` |
+|  13749 | 2653 | `		ph7_result_string(pCtx,sStr.zString,(int)sStr.nByte);` |
+|   6877 | 2654 | `	}else{` |
 |      - | 2655 | `		/* Char list */` |
 |      - | 2656 | `		const char *zList;` |
 |      - | 2657 | `		int nListlen;` |
@@ -2690,8 +2690,8 @@ Coverage: 4445/5194 lines (85.58%)
 |      - | 2680 | `			}` |
 |      - | 2681 | `		}` |
 |      - | 2682 | `	}` |
-|  13775 | 2683 | `	return PH7_OK;` |
-|   7264 | 2684 | `}` |
+|  13779 | 2683 | `	return PH7_OK;` |
+|   7266 | 2684 | `}` |
 |      - | 2685 | `/*` |
 |      - | 2686 | ` * string rtrim(string $str[,string $charlist ])` |
 |      - | 2687 | ` *  Strip whitespace (or other characters) from the end of a string.` |
@@ -2833,31 +2833,31 @@ Coverage: 4445/5194 lines (85.58%)
 |      - | 2823 | ` * Returns.` |
 |      - | 2824 | ` *  The lowercased string.` |
 |      - | 2825 | ` */` |
-|  33648 | 2826 | `static int PH7_builtin_strtolower(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  33658 | 2826 | `static int PH7_builtin_strtolower(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 2827 | `{` |
-|  33653 | 2828 | `	if( nArg > 0 ){ StrNullArgNotice(pCtx,apArg[0],"strtolower",1,"$string"); }` |
+|  33663 | 2828 | `	if( nArg > 0 ){ StrNullArgNotice(pCtx,apArg[0],"strtolower",1,"$string"); }` |
 |      - | 2829 | `	const char *zString,*zCur,*zEnd;` |
 |      - | 2830 | `	int nLen;` |
-|  33653 | 2831 | `	if( nArg < 1 ){` |
+|  33663 | 2831 | `	if( nArg < 1 ){` |
 |      - | 2832 | `		/* Missing arguments,return null */` |
 |    ! 0 | 2833 | `		ph7_result_null(pCtx);` |
 |    ! 0 | 2834 | `		return PH7_OK;` |
 |      - | 2835 | `	}` |
 |      - | 2836 | `	/* Extract the target string */` |
-|  33653 | 2837 | `	zString = ph7_value_to_string(apArg[0],&nLen);` |
-|  33653 | 2838 | `	if( nLen < 1 ){` |
+|  33663 | 2837 | `	zString = ph7_value_to_string(apArg[0],&nLen);` |
+|  33663 | 2838 | `	if( nLen < 1 ){` |
 |      - | 2839 | `		/* Empty string,return */` |
 |      5 | 2840 | `		ph7_result_string(pCtx,"",0);` |
 |      5 | 2841 | `		return PH7_OK;` |
 |      - | 2842 | `	}` |
 |      - | 2843 | `	/* Perform the requested operation */` |
-|  33649 | 2844 | `	zEnd = &zString[nLen];` |
-| 106084 | 2845 | `	for(;;){` |
-| 212173 | 2846 | `		if( zString >= zEnd ){` |
+|  33659 | 2844 | `	zEnd = &zString[nLen];` |
+| 106115 | 2845 | `	for(;;){` |
+| 212235 | 2846 | `		if( zString >= zEnd ){` |
 |      - | 2847 | `			/* No more input,break immediately */` |
-|  33649 | 2848 | `			break;` |
+|  33659 | 2848 | `			break;` |
 |      - | 2849 | `		}` |
-| 178529 | 2850 | `		if( (unsigned char)zString[0] >= 0xc0 ){` |
+| 178581 | 2850 | `		if( (unsigned char)zString[0] >= 0xc0 ){` |
 |      - | 2851 | `			/* UTF-8 stream,output verbatim */` |
 |    ! 0 | 2852 | `			zCur = zString;` |
 |    ! 0 | 2853 | `			zString++;` |
@@ -2867,18 +2867,18 @@ Coverage: 4445/5194 lines (85.58%)
 |      - | 2857 | `			/* Append UTF-8 stream */` |
 |    ! 0 | 2858 | `			ph7_result_string(pCtx,zCur,(int)(zString-zCur));` |
 |    ! 0 | 2859 | `		}else{` |
-| 178529 | 2860 | `			int c = zString[0];` |
-| 178529 | 2861 | `			if( SyisUpper(c) ){` |
-| 175957 | 2862 | `				c = SyToLower(zString[0]);` |
-|  87976 | 2863 | `			}` |
+| 178581 | 2860 | `			int c = zString[0];` |
+| 178581 | 2861 | `			if( SyisUpper(c) ){` |
+| 176009 | 2862 | `				c = SyToLower(zString[0]);` |
+|  88002 | 2863 | `			}` |
 |      - | 2864 | `			/* Append character */` |
-| 178529 | 2865 | `			ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char));` |
+| 178581 | 2865 | `			ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char));` |
 |      - | 2866 | `			/* Advance the cursor */` |
-| 178529 | 2867 | `			zString++;` |
+| 178581 | 2867 | `			zString++;` |
 |      - | 2868 | `		}` |
 |      5 | 2869 | `	}` |
-|  33649 | 2870 | `	return PH7_OK;` |
-|  16829 | 2871 | `}` |
+|  33659 | 2870 | `	return PH7_OK;` |
+|  16834 | 2871 | `}` |
 |      - | 2872 | `/*` |
 |      - | 2873 | ` * string strtolower(string $str)` |
 |      - | 2874 | ` *  Make a string uppercase.` |
@@ -8290,7 +8290,7 @@ Coverage: 4445/5194 lines (85.58%)
 |      - | 8280 | ` * Return` |
 |      - | 8281 | ` * This function returns a string or an array with the replaced values.` |
 |      - | 8282 | ` */` |
-|  30174 | 8283 | `static int PH7_builtin_str_replace(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  30182 | 8283 | `static int PH7_builtin_str_replace(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 | 8284 | `{` |
 |      - | 8285 | `	SyString sTemp,*pSearch,*pReplace;` |
 |      - | 8286 | `	ProcStringMatch xMatch;` |
@@ -8302,88 +8302,88 @@ Coverage: 4445/5194 lines (85.58%)
 |      - | 8292 | `	int rep_str;` |
 |      - | 8293 | `	int nByte;` |
 |      - | 8294 | `	sxi32 rc;` |
-|  30179 | 8295 | `	if( nArg < 3 ){` |
+|  30187 | 8295 | `	if( nArg < 3 ){` |
 |      - | 8296 | `		/* Missing/Invalid arguments,return null */` |
 |    ! 0 | 8297 | `		ph7_result_null(pCtx);` |
 |    ! 0 | 8298 | `		return PH7_OK;` |
 |      - | 8299 | `	}` |
 |      - | 8300 | `	/* Initialize fields */` |
-|  30179 | 8301 | `	SySetInit(&sSearch,&pCtx->pVm->sAllocator,sizeof(SyString));` |
-|  30179 | 8302 | `	SySetInit(&sReplace,&pCtx->pVm->sAllocator,sizeof(SyString));` |
-|  30179 | 8303 | `	SyBlobInit(&sWorker,&pCtx->pVm->sAllocator);` |
-|  30179 | 8304 | `	SyZero(&sRep,sizeof(str_replace_data));` |
-|  30179 | 8305 | `	sRep.pCtx = pCtx;` |
-|  30179 | 8306 | `	sRep.pCollector = &sSearch;` |
-|  30179 | 8307 | `	rep_str = 0;` |
+|  30187 | 8301 | `	SySetInit(&sSearch,&pCtx->pVm->sAllocator,sizeof(SyString));` |
+|  30187 | 8302 | `	SySetInit(&sReplace,&pCtx->pVm->sAllocator,sizeof(SyString));` |
+|  30187 | 8303 | `	SyBlobInit(&sWorker,&pCtx->pVm->sAllocator);` |
+|  30187 | 8304 | `	SyZero(&sRep,sizeof(str_replace_data));` |
+|  30187 | 8305 | `	sRep.pCtx = pCtx;` |
+|  30187 | 8306 | `	sRep.pCollector = &sSearch;` |
+|  30187 | 8307 | `	rep_str = 0;` |
 |      - | 8308 | `	/* Extract the subject */` |
-|  30179 | 8309 | `	zIn = ph7_value_to_string(apArg[2],&nByte);` |
-|  30179 | 8310 | `	if( nByte < 1 ){` |
+|  30187 | 8309 | `	zIn = ph7_value_to_string(apArg[2],&nByte);` |
+|  30187 | 8310 | `	if( nByte < 1 ){` |
 |      - | 8311 | `		/* Nothing to replace,return the empty string */` |
 |     21 | 8312 | `		ph7_result_string(pCtx,"",0);` |
 |     21 | 8313 | `		return PH7_OK;` |
 |      - | 8314 | `	}` |
 |      - | 8315 | `	/* Copy the subject */` |
-|  30159 | 8316 | `	SyBlobAppend(&sWorker,(const void *)zIn,(sxu32)nByte);` |
+|  30167 | 8316 | `	SyBlobAppend(&sWorker,(const void *)zIn,(sxu32)nByte);` |
 |      - | 8317 | `	/* Search string */` |
-|  30159 | 8318 | `	if( ph7_value_is_array(apArg[0]) ){` |
+|  30167 | 8318 | `	if( ph7_value_is_array(apArg[0]) ){` |
 |      - | 8319 | `		/* Collect search string */` |
 |     81 | 8320 | `		ph7_array_walk(apArg[0],StrReplaceWalker,&sRep);` |
 |     43 | 8321 | `	}else{` |
 |      - | 8322 | `		/* Single pattern */` |
-|  30083 | 8323 | `		zIn = ph7_value_to_string(apArg[0],&nByte);` |
-|  30083 | 8324 | `		if( nByte < 1 ){` |
+|  30091 | 8323 | `		zIn = ph7_value_to_string(apArg[0],&nByte);` |
+|  30091 | 8324 | `		if( nByte < 1 ){` |
 |      - | 8325 | `			/* Return the subject untouched since no search string is available */` |
 |      5 | 8326 | `			ph7_result_value(pCtx,apArg[2]/* Subject as thrird argument*/);` |
 |      5 | 8327 | `			return PH7_OK;` |
 |      - | 8328 | `		}` |
-|  30079 | 8329 | `		SyStringInitFromBuf(&sTemp,zIn,nByte);` |
+|  30087 | 8329 | `		SyStringInitFromBuf(&sTemp,zIn,nByte);` |
 |      - | 8330 | `		/* Save for later processing */` |
-|  30079 | 8331 | `		SySetPut(&sSearch,(const void *)&sTemp);` |
+|  30087 | 8331 | `		SySetPut(&sSearch,(const void *)&sTemp);` |
 |      - | 8332 | `	}` |
 |      - | 8333 | `	/* Replace string */` |
-|  30155 | 8334 | `	if( ph7_value_is_array(apArg[1]) ){` |
+|  30163 | 8334 | `	if( ph7_value_is_array(apArg[1]) ){` |
 |      - | 8335 | `		/* Collect replace string */` |
 |      7 | 8336 | `		sRep.pCollector = &sReplace;` |
 |      7 | 8337 | `		ph7_array_walk(apArg[1],StrReplaceWalker,&sRep);` |
 |      4 | 8338 | `	}else{` |
 |      - | 8339 | `		/* Single needle */` |
-|  30149 | 8340 | `		zIn = ph7_value_to_string(apArg[1],&nByte);` |
-|  30149 | 8341 | `		rep_str = 1;` |
-|  30149 | 8342 | `		SyStringInitFromBuf(&sTemp,zIn,nByte);` |
+|  30157 | 8340 | `		zIn = ph7_value_to_string(apArg[1],&nByte);` |
+|  30157 | 8341 | `		rep_str = 1;` |
+|  30157 | 8342 | `		SyStringInitFromBuf(&sTemp,zIn,nByte);` |
 |      - | 8343 | `		/* Save for later processing */` |
-|  30149 | 8344 | `		SySetPut(&sReplace,(const void *)&sTemp);` |
+|  30157 | 8344 | `		SySetPut(&sReplace,(const void *)&sTemp);` |
 |      - | 8345 | `	}` |
 |      - | 8346 | `	/* Surface a collector allocation failure (StrReplaceWalker) as a fatal */` |
-|  30155 | 8347 | `	if( sRep.rc != SXRET_OK ){` |
+|  30163 | 8347 | `	if( sRep.rc != SXRET_OK ){` |
 |    ! 0 | 8348 | `		SySetRelease(&sSearch);` |
 |    ! 0 | 8349 | `		SySetRelease(&sReplace);` |
 |    ! 0 | 8350 | `		SyBlobRelease(&sWorker);` |
 |    ! 0 | 8351 | `		return PH7_ContextMemoryError(pCtx);` |
 |      - | 8352 | `	}` |
 |      - | 8353 | `	/* Reset loop cursors */` |
-|  30155 | 8354 | `	SySetResetCursor(&sSearch);` |
-|  30155 | 8355 | `	SySetResetCursor(&sReplace);` |
-|  30155 | 8356 | `	pReplace = pSearch = 0; /* cc warning */` |
-|  30155 | 8357 | `	SyStringInitFromBuf(&sTemp,"",0);` |
+|  30163 | 8354 | `	SySetResetCursor(&sSearch);` |
+|  30163 | 8355 | `	SySetResetCursor(&sReplace);` |
+|  30163 | 8356 | `	pReplace = pSearch = 0; /* cc warning */` |
+|  30163 | 8357 | `	SyStringInitFromBuf(&sTemp,"",0);` |
 |      - | 8358 | `	/* Extract function name */` |
-|  30155 | 8359 | `	zFunc = ph7_function_name(pCtx);` |
+|  30163 | 8359 | `	zFunc = ph7_function_name(pCtx);` |
 |      - | 8360 | `	/* Set the default pattern match routine */` |
-|  30155 | 8361 | `	xMatch = SyBlobSearch;` |
-|  30155 | 8362 | `	if( SyStrncmp(zFunc,"str_ireplace",sizeof("str_ireplace") - 1) ==  0 ){` |
+|  30163 | 8361 | `	xMatch = SyBlobSearch;` |
+|  30163 | 8362 | `	if( SyStrncmp(zFunc,"str_ireplace",sizeof("str_ireplace") - 1) ==  0 ){` |
 |      - | 8363 | `		/* Case insensitive pattern match */` |
 |     11 | 8364 | `		xMatch = iPatternMatch;` |
 |      5 | 8365 | `	}` |
 |      - | 8366 | `	/* Start the replace process */` |
-|  60381 | 8367 | `	while( SXRET_OK == SySetGetNextEntry(&sSearch,(void **)&pSearch) ){` |
+|  60397 | 8367 | `	while( SXRET_OK == SySetGetNextEntry(&sSearch,(void **)&pSearch) ){` |
 |      - | 8368 | `		sxu32 nCount,nOfft;` |
-|  30231 | 8369 | `		if( pSearch->nByte <  1 ){` |
+|  30239 | 8369 | `		if( pSearch->nByte <  1 ){` |
 |      - | 8370 | `			/* Empty string,ignore */` |
 |      3 | 8371 | `			continue;` |
 |      - | 8372 | `		}` |
 |      - | 8373 | `		/* Extract the replace string */` |
-|  30229 | 8374 | `		if( rep_str ){` |
-|  30219 | 8375 | `			pReplace = (SyString *)SySetPeek(&sReplace);` |
-|  15112 | 8376 | `		}else{` |
+|  30237 | 8374 | `		if( rep_str ){` |
+|  30227 | 8375 | `			pReplace = (SyString *)SySetPeek(&sReplace);` |
+|  15116 | 8376 | `		}else{` |
 |     11 | 8377 | `			if( SXRET_OK != SySetGetNextEntry(&sReplace,(void **)&pReplace) ){` |
 |      - | 8378 | `				/* Sepecial case when 'replace set' has fewer values than the search set.` |
 |      - | 8379 | `				 * An empty string is used for the rest of replacement values` |
@@ -8391,21 +8391,21 @@ Coverage: 4445/5194 lines (85.58%)
 |      3 | 8381 | `				pReplace = 0;` |
 |      1 | 8382 | `			}` |
 |      - | 8383 | `		}` |
-|  30229 | 8384 | `		if( pReplace == 0 ){` |
+|  30237 | 8384 | `		if( pReplace == 0 ){` |
 |      - | 8385 | `			/* Use an empty string instead */` |
 |      3 | 8386 | `			pReplace = &sTemp;` |
 |      1 | 8387 | `		}` |
-|  30229 | 8388 | `		nOfft = nCount = 0;` |
-|  15138 | 8389 | `		for(;;){` |
-|  30281 | 8390 | `			if( nCount >= SyBlobLength(&sWorker) ){` |
+|  30237 | 8388 | `		nOfft = nCount = 0;` |
+|  15142 | 8389 | `		for(;;){` |
+|  30289 | 8390 | `			if( nCount >= SyBlobLength(&sWorker) ){` |
 |     13 | 8391 | `				break;` |
 |      - | 8392 | `			}` |
 |      - | 8393 | `			/* Perform a pattern lookup */` |
-|  45401 | 8394 | `			rc = xMatch(SyBlobDataAt(&sWorker,nCount),SyBlobLength(&sWorker) - nCount,(const void *)pSearch->zString,` |
-|  30264 | 8395 | `				pSearch->nByte,&nOfft);` |
-|  30269 | 8396 | `			if( rc != SXRET_OK ){` |
+|  45413 | 8394 | `			rc = xMatch(SyBlobDataAt(&sWorker,nCount),SyBlobLength(&sWorker) - nCount,(const void *)pSearch->zString,` |
+|  30272 | 8395 | `				pSearch->nByte,&nOfft);` |
+|  30277 | 8396 | `			if( rc != SXRET_OK ){` |
 |      - | 8397 | `				/* Pattern not found */` |
-|  30217 | 8398 | `				break;` |
+|  30225 | 8398 | `				break;` |
 |      - | 8399 | `			}` |
 |      - | 8400 | `			/* Perform the replace operation */` |
 |     57 | 8401 | `			rc = StringReplace(&sWorker,nCount+nOfft,(int)pSearch->nByte,pReplace->zString,(int)pReplace->nByte);` |
@@ -8421,15 +8421,15 @@ Coverage: 4445/5194 lines (85.58%)
 |      5 | 8411 | `		}` |
 |      5 | 8412 | `	}` |
 |      - | 8413 | `	/* All done,clean-up the mess left behind */` |
-|  30155 | 8414 | `	rc = ph7_result_string(pCtx,(const char *)SyBlobData(&sWorker),(int)SyBlobLength(&sWorker));` |
-|  30155 | 8415 | `	SySetRelease(&sSearch);` |
-|  30155 | 8416 | `	SySetRelease(&sReplace);` |
-|  30155 | 8417 | `	SyBlobRelease(&sWorker);` |
-|  30155 | 8418 | `	if( rc != PH7_OK ){` |
+|  30163 | 8414 | `	rc = ph7_result_string(pCtx,(const char *)SyBlobData(&sWorker),(int)SyBlobLength(&sWorker));` |
+|  30163 | 8415 | `	SySetRelease(&sSearch);` |
+|  30163 | 8416 | `	SySetRelease(&sReplace);` |
+|  30163 | 8417 | `	SyBlobRelease(&sWorker);` |
+|  30163 | 8418 | `	if( rc != PH7_OK ){` |
 |    ! 0 | 8419 | `		return PH7_ContextMemoryError(pCtx);` |
 |      - | 8420 | `	}` |
-|  30155 | 8421 | `	return PH7_OK;` |
-|  15092 | 8422 | `}` |
+|  30163 | 8421 | `	return PH7_OK;` |
+|  15096 | 8422 | `}` |
 |      - | 8423 | `/*` |
 |      - | 8424 | ` * strtr() array form: a single (key,value) pair copied out of the replace_pairs` |
 |      - | 8425 | ` * array. The bytes are owned by a persistent pool (see strtr_collect) rather than` |
