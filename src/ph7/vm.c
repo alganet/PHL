@@ -17857,6 +17857,13 @@ case PH7_OP_CALL: {
 		break;
 	}
 	SyStringInitFromBuf(&sName,SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
+	/* php: a leading '\\' on a callable string name ("\\trim", "\\Foo\\bar") just
+	 * anchors it to the global namespace — strip it before resolving so a
+	 * dynamic call `$f()` / array_map('\\trim', …) finds the function. */
+	if( sName.nByte > 0 && sName.zString[0] == '\\' ){
+		sName.zString++;
+		sName.nByte--;
+	}
 	/* Check for a compiled function first.
 	 * Static names are already namespace-qualified by the compiler.
 	 * Dynamic names (from variables) use exact match only, matching PHP behavior. */
@@ -22383,6 +22390,8 @@ static int vm_builtin_func_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	pVm = pCtx->pVm;
 	/* Extract the function name */
 	zName = ph7_value_to_string(apArg[0],&nLen);
+	/* php: a leading '\' anchors the name to the global namespace; strip it. */
+	if( nLen > 0 && zName[0] == '\\' ){ zName++; nLen--; }
 	/* Assume the function is not defined */
 	res = 0;
 	/* Perform the lookup */
@@ -22444,6 +22453,9 @@ PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)
 		int nLen;
 		/* Extract the name */
 		zName = ph7_value_to_string(pValue,&nLen);
+		/* php: a leading '\' just anchors the callable to the global namespace
+		 * ("\trim", "\Foo::bar"); strip it before the lookup. */
+		if( nLen > 0 && zName[0] == '\\' ){ zName++; nLen--; }
 		/* Perform the lookup */
 		if( SyHashGet(&pVm->hFunction,(const void *)zName,(sxu32)nLen) != 0 ||
 			SyHashGet(&pVm->hHostFunction,(const void *)zName,(sxu32)nLen) != 0 ){
@@ -25491,6 +25503,9 @@ static int vm_builtin_debug_backtrace(ph7_context *pCtx,int nArg,ph7_value **apA
 	ph7_value *pValue;
 	SyString *pFile;
 	VmFrame *pFrame;
+	/* $options (php default DEBUG_BACKTRACE_PROVIDE_OBJECT): bit 1 attaches the
+	 * frame's $this as 'object', bit 2 (IGNORE_ARGS) suppresses the 'args' list. */
+	sxi32 iOptions = (nArg > 0 && apArg[0]) ? ph7_value_to_int(apArg[0]) : 1 /*PROVIDE_OBJECT*/;
 	/* php returns a LIST of frames, innermost first -- one entry per ACTIVE call, each
 	 * describing the callee (function/class) and the position of the CALL SITE. PH7
 	 * returned a single flat map of the innermost frame only, so a caller could never
@@ -25541,18 +25556,34 @@ static int vm_builtin_debug_backtrace(ph7_context *pCtx,int nArg,ph7_value **apA
 			ph7_value_string(pValue,"->",sizeof("->")-1);
 			ph7_array_add_strkey_elem(pEntry,"type",pValue);
 			ph7_value_reset_string_cursor(pValue);
-		}
-		pArg = ph7_context_new_array(pCtx);
-		if( pArg ){
-			VmSlot *aSlot = (VmSlot *)SySetBasePtr(&pFrame->sArg);
-			sxu32 n;
-			for( n = 0 ; n < SySetUsed(&pFrame->sArg) ; ++n ){
-				ph7_value *pObj = (ph7_value *)SySetAt(&pVm->aMemObj,aSlot[n].nIdx);
-				if( pObj ){
-					ph7_array_add_elem(pArg,0/* Automatic index assign*/,pObj);
+			/* DEBUG_BACKTRACE_PROVIDE_OBJECT: attach the executing $this instance as
+			 * 'object' (php uses this for e.g. finding the current object on the
+			 * call stack). ph7_array_add_strkey_elem stores a refcounted copy, so
+			 * balance our transient reference with the matching iRef++. */
+			if( iOptions & 1 /*DEBUG_BACKTRACE_PROVIDE_OBJECT*/ ){
+				ph7_value *pObjVal = ph7_context_new_scalar(pCtx);
+				if( pObjVal ){
+					pFrame->pThis->iRef++;
+					pObjVal->x.pOther = pFrame->pThis;
+					MemObjSetType(pObjVal,MEMOBJ_OBJ);
+					ph7_array_add_strkey_elem(pEntry,"object",pObjVal);
+					ph7_context_release_value(pCtx,pObjVal);
 				}
 			}
-			ph7_array_add_strkey_elem(pEntry,"args",pArg);
+		}
+		if( (iOptions & 2 /*DEBUG_BACKTRACE_IGNORE_ARGS*/) == 0 ){
+			pArg = ph7_context_new_array(pCtx);
+			if( pArg ){
+				VmSlot *aSlot = (VmSlot *)SySetBasePtr(&pFrame->sArg);
+				sxu32 n;
+				for( n = 0 ; n < SySetUsed(&pFrame->sArg) ; ++n ){
+					ph7_value *pObj = (ph7_value *)SySetAt(&pVm->aMemObj,aSlot[n].nIdx);
+					if( pObj ){
+						ph7_array_add_elem(pArg,0/* Automatic index assign*/,pObj);
+					}
+				}
+				ph7_array_add_strkey_elem(pEntry,"args",pArg);
+			}
 		}
 		ph7_array_add_elem(pList,0/* Automatic index assign*/,pEntry);
 		pFrame = pFrame->pParent ? VmSkipExceptionFrames(pFrame->pParent) : 0;
