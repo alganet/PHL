@@ -494,14 +494,10 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 					return SXERR_ABORT;
 				}
 			}
-			if( pAttr->iProtection == PH7_CLASS_PROT_PRIVATE &&
-				((ph7_class_attr *)pEntry->pUserData)->iProtection != PH7_CLASS_PROT_PUBLIC ){
-					/* Cannot redeclare private attribute */
-					PH7_GenCompileError(&(*pGen),E_WARNING,((ph7_class_attr *)pEntry->pUserData)->nLine,
-						"Private attribute '%z::%z' redeclared inside child class '%z'",
-						&pBase->sName,pName,&pSub->sName);
-
-			}
+			/* A child MAY redeclare a base's private property: php treats the two
+			 * as independent members (each private to its declaring class), with no
+			 * diagnostic. PH7 warned here, which is wrong — the child's entry simply
+			 * shadows the base's in the by-name attribute table. */
 			continue;
 		}
 		/* Install the attribute. php: a base class's private INSTANCE property
