@@ -24485,6 +24485,12 @@ static sxi32 VmHashVarWalker(SyHashEntry *pEntry,void *pUserData)
 	ph7_vm *pVm = pArray->pVm;
 	ph7_value *pObj;
 	sxu32 nIdx;
+	/* php excludes $this from get_defined_vars() (it is bound implicitly, not a
+	 * declared local). PHL keeps it in the frame's hVar, so skip it here. */
+	if( pEntry->nKeyLen == sizeof("this")-1
+	 && SyMemcmp(pEntry->pKey,"this",sizeof("this")-1) == 0 ){
+		return SXRET_OK;
+	}
 	/* Extract the memory object */
 	nIdx = SX_PTR_TO_INT(pEntry->pUserData);
 	pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
@@ -24526,8 +24532,14 @@ static int vm_builtin_get_defined_vars(ph7_context *pCtx,int nArg,ph7_value **ap
 		ph7_result_null(pCtx);
 		return SXRET_OK;
 	}
-	/* Superglobals first */
-	SyHashForEach(&pVm->hSuper,VmHashVarWalker,pArray);
+	/* Superglobals appear in get_defined_vars() ONLY at the global scope (php).
+	 * Inside a function the result is the local symbol table alone — a leak of
+	 * $argv/$_SERVER/... into every function's scope breaks callers that treat the
+	 * keys as real locals (e.g. PHPUnit's doubled-method template reflects each
+	 * get_defined_vars() name as a ReflectionParameter). */
+	if( pVm->pFrame->pParent == 0 ){
+		SyHashForEach(&pVm->hSuper,VmHashVarWalker,pArray);
+	}
 	/* Then variable defined in the current frame */
 	SyHashForEach(&pVm->pFrame->hVar,VmHashVarWalker,pArray);
 	/* Finally,return the created array */
