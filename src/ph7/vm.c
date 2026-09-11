@@ -16546,6 +16546,14 @@ case PH7_OP_MEMBER: {
 		}
 		if( pNos->iFlags & (MEMOBJ_STRING|MEMOBJ_OBJ) ){
 			ph7_class *pClass = 0;
+			/* A FORWARDING static call — self::/parent::/static:: — preserves the
+			 * caller's late-static-binding class (php); a non-forwarding C::m() resets
+			 * it to C. The receiver slot below keeps the literal keyword, which OP_CALL
+			 * can't resolve, so it would fall back to the callee's DECLARING class and
+			 * lose LSB. Remember the live LSB class here and stamp it onto the receiver
+			 * after the method name is pushed. */
+			int bForwardingCall = 0;
+			ph7_class *pForwardLsb = 0;
 			if( pNos->iFlags & MEMOBJ_OBJ ){
 				/* Class already instantiated */
 				pThis = (ph7_class_instance *)pNos->x.pOther;
@@ -16563,13 +16571,19 @@ case PH7_OP_MEMBER: {
 							/* In a trait method, self:: resolves to the using class */
 							pClass = PH7_VmPeekTopClass(&(*pVm));
 						}
+						bForwardingCall = 1;
+						pForwardLsb = PH7_VmPeekTopClass(&(*pVm));
 					}else if( nCls == 6 && SyMemcmp(zCls,"static",6) == 0 ){
 						pClass = PH7_VmPeekTopClass(&(*pVm));
+						bForwardingCall = 1;
+						pForwardLsb = pClass;
 					}else if( nCls == 6 && SyMemcmp(zCls,"parent",6) == 0 ){
 						ph7_class *pSelf = PH7_VmPeekDeclaringClass(&(*pVm));
 						if( pSelf && pSelf->pBase ){
 							pClass = pSelf->pBase;
 						}
+						bForwardingCall = 1;
+						pForwardLsb = PH7_VmPeekTopClass(&(*pVm));
 					}else{
 						pClass = PH7_VmExtractClass(&(*pVm),zCls,nCls,FALSE,0);
 					}
@@ -16670,6 +16684,16 @@ case PH7_OP_MEMBER: {
 						MemObjSetType(pTos,MEMOBJ_STRING);
 					}
 					pTos->nIdx = SXU32_HIGH;
+					/* Forwarding call (self::/parent::/static::): overwrite the receiver
+					 * slot (pNos, one below the method name) with the live LSB class name
+					 * so OP_CALL pushes THAT onto aSelf — preserving `static::` inside the
+					 * callee. Without this the literal keyword falls through to the
+					 * callee's declaring class. Only when an LSB class is actually in
+					 * scope (a static call from global scope has none). */
+					if( bForwardingCall && pForwardLsb && (pNos->iFlags & MEMOBJ_STRING) ){
+						SyBlobReset(&pNos->sBlob);
+						SyBlobAppend(&pNos->sBlob,pForwardLsb->sName.zString,pForwardLsb->sName.nByte);
+					}
 				}else{
 					/* Attribute access */
 					ph7_class_attr *pAttr = 0;
