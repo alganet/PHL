@@ -9794,42 +9794,61 @@ static sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 	pBase = 0;
 	if( pGen->pIn < pGen->pEnd  && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
 		nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
-		if( nKwrd == PH7_TKWRD_EXTENDS /* interface b extends a */ ){
-			SyBlob sResolved;
-			SyString sBaseName;
-			sxu32 nRefLine;
-			/* Extract base interface */
+		if( nKwrd == PH7_TKWRD_EXTENDS /* interface b extends a, c, … */ ){
+			/* php lets an interface extend SEVERAL parent interfaces. The first
+			 * becomes pBase (single-inheritance chain, hDerived); every extra one
+			 * is recorded via PH7_ClassImplement so it lands in aInterface — the
+			 * runtime subtype walk (VmInterfaceReaches) follows both. */
 			pGen->pIn++;
-			nRefLine = (pGen->pIn < pGen->pEnd) ? pGen->pIn->nLine : nLine;
-			SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
-			if( GenStateParseClassReference(pGen,&sResolved) != SXRET_OK ){
-				SyBlobRelease(&sResolved);
-				rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-					"Expected 'interface_name' after 'extends' keyword inside interface '%z'",
-					pName);
-				SyMemBackendPoolFree(&pGen->pVm->sAllocator,pClass);
-				if( rc == SXERR_ABORT ){
-					return SXERR_ABORT;
-				}
-				return SXRET_OK;
-			}
-			pBase = PH7_VmExtractClass(pGen->pVm,
-				(const char *)SyBlobData(&sResolved),(sxu32)SyBlobLength(&sResolved),FALSE,0);
-			SyStringInitFromBuf(&sBaseName,
-				(const char *)SyBlobData(&sResolved),SyBlobLength(&sResolved));
-			/* Only interfaces is allowed */
-			while( pBase && (pBase->iFlags & PH7_CLASS_INTERFACE) == 0 ){
-				pBase = pBase->pNextName;
-			}
-			if( pBase == 0 ){
-				rc = PH7_GenCompileError(pGen,E_ERROR,nRefLine,
-					"Nonexistent base interface '%z'",&sBaseName);
-				if( rc == SXERR_ABORT ){
+			for(;;){
+				SyBlob sResolved;
+				SyString sBaseName;
+				sxu32 nRefLine;
+				ph7_class *pParent;
+				nRefLine = (pGen->pIn < pGen->pEnd) ? pGen->pIn->nLine : nLine;
+				SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
+				if( GenStateParseClassReference(pGen,&sResolved) != SXRET_OK ){
 					SyBlobRelease(&sResolved);
-					return SXERR_ABORT;
+					rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+						"Expected 'interface_name' after 'extends' keyword inside interface '%z'",
+						pName);
+					SyMemBackendPoolFree(&pGen->pVm->sAllocator,pClass);
+					if( rc == SXERR_ABORT ){
+						return SXERR_ABORT;
+					}
+					return SXRET_OK;
 				}
+				pParent = PH7_VmExtractClass(pGen->pVm,
+					(const char *)SyBlobData(&sResolved),(sxu32)SyBlobLength(&sResolved),FALSE,0);
+				SyStringInitFromBuf(&sBaseName,
+					(const char *)SyBlobData(&sResolved),SyBlobLength(&sResolved));
+				/* Only interfaces is allowed */
+				while( pParent && (pParent->iFlags & PH7_CLASS_INTERFACE) == 0 ){
+					pParent = pParent->pNextName;
+				}
+				if( pParent == 0 ){
+					rc = PH7_GenCompileError(pGen,E_ERROR,nRefLine,
+						"Nonexistent base interface '%z'",&sBaseName);
+					if( rc == SXERR_ABORT ){
+						SyBlobRelease(&sResolved);
+						return SXERR_ABORT;
+					}
+				}else if( pBase == 0 ){
+					/* First parent → single-inheritance base */
+					pBase = pParent;
+				}else{
+					/* Additional parent → record it in aInterface (+ copy its
+					 * constants/method stubs) so instanceof reaches it too. */
+					PH7_ClassImplement(pClass,pParent);
+				}
+				SyBlobRelease(&sResolved);
+				/* Continue on a comma-separated list */
+				if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_COMMA) ){
+					pGen->pIn++;
+					continue;
+				}
+				break;
 			}
-			SyBlobRelease(&sResolved);
 		}
 	}
 	if( pGen->pIn >= pGen->pEnd  || (pGen->pIn->nType & PH7_TK_OCB /*'{'*/) == 0 ){
@@ -11034,38 +11053,46 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 				pGen->pIn++; /* Jump the 'use' keyword */
 				for(;;){
 					ph7_class *pTrait;
-					SyString *pTraitName;
-					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_ID) == 0 ){
-						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+					SyBlob sResolved;
+					SyString sTraitName;
+					sxu32 nUseLine = (pGen->pIn < pGen->pEnd) ? pGen->pIn->nLine : nLine;
+					/* A trait name is a full class reference: it may be qualified or
+					 * fully-qualified (`use Foo\Bar\T;`, `use \Foo\Bar\T;`) — the generated
+					 * PHPUnit mocks name their traits absolutely. Parse it with the shared
+					 * class-reference reader (handles the leading '\', every '\'-segment and
+					 * namespace/import resolution) instead of a single-identifier read, which
+					 * choked on the first '\'. */
+					SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
+					if( GenStateParseClassReference(pGen,&sResolved) != SXRET_OK ){
+						SyBlobRelease(&sResolved);
+						rc = PH7_GenCompileError(pGen,E_ERROR,nUseLine,
 							"Expected trait name after 'use' inside class '%z'",pName);
 						if( rc == SXERR_ABORT ){
 							return SXERR_ABORT;
 						}
 						break;
 					}
-					pTraitName = &pGen->pIn->sData;
-					/* Resolve trait name through namespace/imports */ {
-						SyBlob sResolved;
-						SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
-						GenStateResolveName(pGen,pTraitName,&sResolved);
-						pTrait = PH7_VmExtractClass(pGen->pVm,
-							(const char *)SyBlobData(&sResolved),(sxu32)SyBlobLength(&sResolved),FALSE,0);
-						SyBlobRelease(&sResolved);
-					}
+					pTrait = PH7_VmExtractClass(pGen->pVm,
+						(const char *)SyBlobData(&sResolved),(sxu32)SyBlobLength(&sResolved),FALSE,0);
+					SyStringInitFromBuf(&sTraitName,
+						(const char *)SyBlobData(&sResolved),SyBlobLength(&sResolved));
 					/* Only traits are allowed */
 					while( pTrait && (pTrait->iFlags & PH7_CLASS_TRAIT) == 0 ){
 						pTrait = pTrait->pNextName;
 					}
 					if( pTrait == 0 ){
-						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-							"'%z' is not a trait",pTraitName);
+						rc = PH7_GenCompileError(pGen,E_ERROR,nUseLine,
+							"'%z' is not a trait",&sTraitName);
 						if( rc == SXERR_ABORT ){
+							SyBlobRelease(&sResolved);
 							return SXERR_ABORT;
 						}
 					}else{
 						SySetPut(&sUse.aTraits,(const void *)&pTrait);
 					}
-					pGen->pIn++; /* Advance past trait name */
+					SyBlobRelease(&sResolved);
+					/* GenStateParseClassReference already advanced past the whole name —
+					 * continue only across a comma-separated trait list. */
 					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_COMMA) == 0 ){
 						break;
 					}
@@ -12002,6 +12029,13 @@ static sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 			if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
 				iProtection = nKwrd;
 				pGen->pIn++;
+				/* Optional `readonly` after the visibility (PHP 8.1): `private readonly T
+				 * $x` — the generated PHPUnit runtime traits (StubApi, …) declare their
+				 * readonly state this way. Mirrors the class-body attribute parser. */
+				if( pGen->pIn < pGen->pEnd && GenStateIsReadonly(pGen->pIn) ){
+					iAttrflags |= PH7_CLASS_ATTR_READONLY;
+					pGen->pIn++; /* Jump the 'readonly' modifier */
+				}
 				if( pGen->pIn >= pGen->pEnd
 					|| (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_DOLLAR|PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP|PH7_TK_LPAREN)) == 0 ){
 					rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
@@ -13622,6 +13656,20 @@ static sxi32 GenStateEmitExprCode(
 			if( pNode->pOp
 				&& (pNode->pOp->iVmOp == PH7_OP_INCR || pNode->pOp->iVmOp == PH7_OP_DECR) ){
 				iLeftFlags |= EXPR_FLAG_LOAD_IDX_STORE | EXPR_FLAG_MEMBER_WRITE;
+			}
+			/* `??` reads its LEFT operand in isset-context: an undefined or
+			 * UNINITIALIZED typed PROPERTY must yield the default rather than a
+			 * warning/Error (php). Tag a member-access LHS so its OP_MEMBER takes
+			 * the silent-lookup path (iP2 = ISSET), which still loads a present
+			 * value. A SUBSCRIPT LHS is left untagged: LOAD_IDX's ISSET mode means
+			 * offsetExists (a bool), but `$o[$k] ?? d` needs the offsetGet value —
+			 * that path is already handled correctly by OP_NULLC. */
+			if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_NULLC
+				&& pNode->pLeft && pNode->pLeft->pOp
+				&& (pNode->pLeft->pOp->iOp == EXPR_OP_ARROW
+					|| pNode->pLeft->pOp->iOp == EXPR_OP_NULLSAFE_ARROW
+					|| pNode->pLeft->pOp->iOp == EXPR_OP_DC) ){
+				iLeftFlags |= EXPR_FLAG_LOAD_IDX_ISSET;
 			}
 			if( iVmOp == PH7_OP_ERR_CTRL ){
 				/* '@' must suppress the diagnostics raised WHILE its operand runs, so

@@ -908,6 +908,34 @@ PH7_PRIVATE int vm_builtin_get_object_vars(ph7_context *pCtx,int nArg,ph7_value 
  * detection should reject them up front. */
 #define PH7_INTERFACE_WALK_MAX_DEPTH 64
 /*
+ * TRUE if pTarget is reachable from pIface as an ancestor interface: walk the
+ * `extends` chain (pBase) AND each additional parent-interface set (aInterface),
+ * so a multiple-interface `interface C extends A, B` is recognized through BOTH
+ * A and B (php allows an interface to extend several interfaces). Recursion is
+ * depth-bounded — a malformed cycle cannot run unbounded.
+ */
+static int VmInterfaceReaches(ph7_class *pIface,ph7_class *pTarget,int iDepth)
+{
+	while( pIface && iDepth <= PH7_INTERFACE_WALK_MAX_DEPTH ){
+		ph7_class **apParent;
+		sxu32 n;
+		if( pIface == pTarget ){
+			return TRUE;
+		}
+		/* Additional parent interfaces (interface X extends A, B, …) live in
+		 * aInterface; the first parent stays on the pBase chain below. */
+		apParent = (ph7_class **)SySetBasePtr(&pIface->aInterface);
+		for( n = 0 ; n < SySetUsed(&pIface->aInterface) ; n++ ){
+			if( VmInterfaceReaches(apParent[n],pTarget,iDepth+1) ){
+				return TRUE;
+			}
+		}
+		pIface = pIface->pBase;
+		iDepth++;
+	}
+	return FALSE;
+}
+/*
  * This function returns TRUE if the given class is an implemented
  * interface.Otherwise FALSE is returned.
  */
@@ -924,14 +952,8 @@ static int VmQueryInterfaceSet(ph7_class *pClass,SySet *pSet)
 	/* Perform the lookup, walking each interface's parent chain so that
 	 * Iterator extends Traversable (and similar) is recognized. */
 	for( n = 0 ; n < SySetUsed(pSet) ; n++ ){
-		ph7_class *pIface = apInterface[n];
-		int iDepth = 0;
-		while( pIface && iDepth <= PH7_INTERFACE_WALK_MAX_DEPTH ){
-			if( pIface == pClass ){
-				return TRUE;
-			}
-			pIface = pIface->pBase;
-			iDepth++;
+		if( VmInterfaceReaches(apInterface[n],pClass,0) ){
+			return TRUE;
 		}
 	}
 	return FALSE;
