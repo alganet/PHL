@@ -1426,15 +1426,15 @@ Coverage: 395/578 lines (68.34%)
 |    - | 1416 | `        \|\| (c&0xFFFFF800)==0xD800                          \` |
 |    - | 1417 | `        \|\| (c&0xFFFFFFFE)==0xFFFE ){  c = 0xFFFD; }        \` |
 |    - | 1418 | `  }` |
-|  148 | 1419 | `PH7_PRIVATE int PH7_Utf8Read(` |
+|  208 | 1419 | `PH7_PRIVATE int PH7_Utf8Read(` |
 |    - | 1420 | `  const unsigned char *z,         /* First byte of UTF-8 character */` |
 |    - | 1421 | `  const unsigned char *zTerm,     /* Pretend this byte is 0x00 */` |
 |    - | 1422 | `  const unsigned char **pzNext    /* Write first byte past UTF-8 char here */` |
 |    1 | 1423 | `){` |
 |    - | 1424 | `  int c;` |
-|  149 | 1425 | `  READ_UTF8(z, zTerm, c);` |
-|  149 | 1426 | `  *pzNext = z;` |
-|  149 | 1427 | `  return c;` |
+|  209 | 1425 | `  READ_UTF8(z, zTerm, c);` |
+|  209 | 1426 | `  *pzNext = z;` |
+|  209 | 1427 | `  return c;` |
 |    1 | 1428 | `}` |
 |    - | 1429 | `/* SPDX-SnippetEnd */` |
 |    - | 1430 | `/*` |
