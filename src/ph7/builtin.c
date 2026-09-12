@@ -314,8 +314,10 @@ static int PH7_builtin_is_object(ph7_context *pCtx,int nArg,ph7_value **apArg)
 static int PH7_builtin_is_resource(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	int res = 0; /* Assume false by default */
-	if( nArg > 0 ){
-		res = ph7_value_is_resource(apArg[0]);
+	if( nArg > 0 && ph7_value_is_resource(apArg[0]) ){
+		/* A handle closed via fclose()/closedir()/pclose() is no longer a
+		 * live resource — php's is_resource() returns false for it. */
+		res = !PH7_VfsResourceIsClosed(apArg[0]->x.pOther);
 	}
 	ph7_result_bool(pCtx,res);
 	return PH7_OK;

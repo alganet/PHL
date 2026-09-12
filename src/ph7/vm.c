@@ -24661,7 +24661,8 @@ static int vm_builtin_gettype(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}else if( pVal->iFlags & MEMOBJ_OBJ ){
 			zType = "object";
 		}else if( pVal->iFlags & MEMOBJ_RES ){
-			zType = "resource";
+			/* php reports an fclose()'d handle as "resource (closed)" */
+			zType = PH7_VfsResourceIsClosed(pVal->x.pOther) ? "resource (closed)" : "resource";
 		}
 	}
 	/* Return the variable type */
