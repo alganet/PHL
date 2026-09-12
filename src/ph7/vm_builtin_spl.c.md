@@ -1084,21 +1084,145 @@ Coverage: 56/73 lines (76.71%)
 |    - | 1074 | `" public function detach(SplObserver $observer);"` |
 |    - | 1075 | `" public function notify();"` |
 |    - | 1076 | `"}"` |
-|    - | 1077 | `;` |
-|    - | 1078 |  |
-| 3826 | 1079 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)` |
-|    5 | 1080 | `{` |
-| 3831 | 1081 | `	ph7_create_function(&(*pVm),"__spl_deprecated",vm_builtin_spl_deprecated,0);` |
-| 3831 | 1082 | `	ph7_create_function(&(*pVm),"__weak_create",vm_builtin_weak_create,0);` |
-| 3831 | 1083 | `	ph7_create_function(&(*pVm),"__weak_get",vm_builtin_weak_get,0);` |
-| 3831 | 1084 | `	ph7_create_function(&(*pVm),"__weak_drop",vm_builtin_weak_drop,0);` |
-| 3831 | 1085 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zSplLib,sizeof(zSplLib)-1);` |
-|    5 | 1086 | `}` |
-|    - | 1087 |  |
-|    - | 1088 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
-|    - | 1089 |  |
-|    - | 1090 | `#ifdef PH7_DISABLE_BUILTIN_FUNC` |
-|    - | 1091 | `/* Tiny build: no SPL (builtin layer disabled) */` |
-|    - | 1092 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm){ (void)pVm; return SXRET_OK; }` |
-|    - | 1093 | `#endif` |
-|    - | 1094 |  |
+|    - | 1077 | `"class SplFileInfo implements Stringable {"` |
+|    - | 1078 | `" protected $__pathName = '';"` |
+|    - | 1079 | `" protected $__fileName = '';"` |
+|    - | 1080 | `" public function __construct($path){"` |
+|    - | 1081 | `"  $this->__pathName = (string)$path;"` |
+|    - | 1082 | `"  $this->__fileName = basename($this->__pathName);"` |
+|    - | 1083 | `" }"` |
+|    - | 1084 | `" public function getPathname(){ return $this->__pathName; }"` |
+|    - | 1085 | `" public function getFilename(){ return $this->__fileName; }"` |
+|    - | 1086 | `" public function getPath(){ return dirname($this->__pathName); }"` |
+|    - | 1087 | `" public function getBasename($suffix = ''){"` |
+|    - | 1088 | `"  $b = basename($this->__pathName);"` |
+|    - | 1089 | `"  if( $suffix !== '' && strlen($suffix) < strlen($b) && substr($b, -strlen($suffix)) === $suffix ){"` |
+|    - | 1090 | `"   $b = substr($b, 0, -strlen($suffix));"` |
+|    - | 1091 | `"  }"` |
+|    - | 1092 | `"  return $b;"` |
+|    - | 1093 | `" }"` |
+|    - | 1094 | `" public function getExtension(){ return pathinfo($this->__pathName, PATHINFO_EXTENSION); }"` |
+|    - | 1095 | `" public function getRealPath(){ return realpath($this->__pathName); }"` |
+|    - | 1096 | `" public function isDir(){ return is_dir($this->__pathName); }"` |
+|    - | 1097 | `" public function isFile(){ return is_file($this->__pathName); }"` |
+|    - | 1098 | `" public function isLink(){ return is_link($this->__pathName); }"` |
+|    - | 1099 | `" public function isReadable(){ return is_readable($this->__pathName); }"` |
+|    - | 1100 | `" public function isWritable(){ return is_writable($this->__pathName); }"` |
+|    - | 1101 | `" public function getSize(){ return filesize($this->__pathName); }"` |
+|    - | 1102 | `" public function getMTime(){ return filemtime($this->__pathName); }"` |
+|    - | 1103 | `" public function getATime(){ return fileatime($this->__pathName); }"` |
+|    - | 1104 | `" public function getCTime(){ return filectime($this->__pathName); }"` |
+|    - | 1105 | `" public function getType(){ return filetype($this->__pathName); }"` |
+|    - | 1106 | `" public function getFileInfo(){ return new SplFileInfo($this->__pathName); }"` |
+|    - | 1107 | `" public function getPathInfo(){ return new SplFileInfo(dirname($this->__pathName)); }"` |
+|    - | 1108 | `" public function __toString(){ return $this->__pathName; }"` |
+|    - | 1109 | `"}"` |
+|    - | 1110 | `"class DirectoryIterator extends SplFileInfo implements SeekableIterator {"` |
+|    - | 1111 | `" protected $__dir = '';"` |
+|    - | 1112 | `" protected $__entries = array();"` |
+|    - | 1113 | `" protected $__pos = 0;"` |
+|    - | 1114 | `" public function __construct($path){"` |
+|    - | 1115 | `"  $this->__dir = (string)$path;"` |
+|    - | 1116 | `"  parent::__construct($this->__dir);"` |
+|    - | 1117 | `"  $this->__load();"` |
+|    - | 1118 | `" }"` |
+|    - | 1119 | `" protected function __load(){"` |
+|    - | 1120 | `"  $this->__entries = array();"` |
+|    - | 1121 | `"  $h = @opendir($this->__dir);"` |
+|    - | 1122 | `"  if( $h !== false ){"` |
+|    - | 1123 | `"   while( ($e = readdir($h)) !== false ){ $this->__entries[] = $e; }"` |
+|    - | 1124 | `"   closedir($h);"` |
+|    - | 1125 | `"  }"` |
+|    - | 1126 | `"  $this->__pos = 0;"` |
+|    - | 1127 | `"  $this->__sync();"` |
+|    - | 1128 | `" }"` |
+|    - | 1129 | `" protected function __join($name){"` |
+|    - | 1130 | `"  $d = $this->__dir;"` |
+|    - | 1131 | `"  $last = substr($d, -1);"` |
+|    - | 1132 | `"  $sep = ($last === '/' \|\| $last === '\\\\' \|\| $d === '') ? '' : '/';"` |
+|    - | 1133 | `"  return $d . $sep . $name;"` |
+|    - | 1134 | `" }"` |
+|    - | 1135 | `" protected function __sync(){"` |
+|    - | 1136 | `"  if( $this->__pos >= 0 && $this->__pos < count($this->__entries) ){"` |
+|    - | 1137 | `"   $name = $this->__entries[$this->__pos];"` |
+|    - | 1138 | `"   $this->__fileName = $name;"` |
+|    - | 1139 | `"   $this->__pathName = $this->__join($name);"` |
+|    - | 1140 | `"  }"` |
+|    - | 1141 | `" }"` |
+|    - | 1142 | `" public function isDot(){ $n = $this->__fileName; return $n === '.' \|\| $n === '..'; }"` |
+|    - | 1143 | `" public function getFilename(){ return $this->__fileName; }"` |
+|    - | 1144 | `" public function current(){ return $this; }"` |
+|    - | 1145 | `" public function key(){ return $this->__pos; }"` |
+|    - | 1146 | `" public function next(){ $this->__pos++; $this->__sync(); }"` |
+|    - | 1147 | `" public function rewind(){ $this->__pos = 0; $this->__sync(); }"` |
+|    - | 1148 | `" public function valid(){ return $this->__pos < count($this->__entries); }"` |
+|    - | 1149 | `" public function seek($position){ $this->__pos = (int)$position; $this->__sync(); }"` |
+|    - | 1150 | `" public function getFlags(){ return 0; }"` |
+|    - | 1151 | `"}"` |
+|    - | 1152 | `"class FilesystemIterator extends DirectoryIterator {"` |
+|    - | 1153 | `" const CURRENT_AS_PATHNAME = 32;"` |
+|    - | 1154 | `" const CURRENT_AS_FILEINFO = 0;"` |
+|    - | 1155 | `" const CURRENT_AS_SELF = 16;"` |
+|    - | 1156 | `" const CURRENT_MODE_MASK = 240;"` |
+|    - | 1157 | `" const KEY_AS_PATHNAME = 0;"` |
+|    - | 1158 | `" const KEY_AS_FILENAME = 256;"` |
+|    - | 1159 | `" const FOLLOW_SYMLINKS = 512;"` |
+|    - | 1160 | `" const KEY_MODE_MASK = 3840;"` |
+|    - | 1161 | `" const NEW_CURRENT_AND_KEY = 256;"` |
+|    - | 1162 | `" const OTHER_MODE_MASK = 12288;"` |
+|    - | 1163 | `" const SKIP_DOTS = 4096;"` |
+|    - | 1164 | `" const UNIX_PATHS = 8192;"` |
+|    - | 1165 | `" protected $__flags = 4096;"` |
+|    - | 1166 | `" public function __construct($path, $flags = 4096){"` |
+|    - | 1167 | `"  $this->__flags = (int)$flags;"` |
+|    - | 1168 | `"  parent::__construct($path);"` |
+|    - | 1169 | `" }"` |
+|    - | 1170 | `" protected function __skipDots(){"` |
+|    - | 1171 | `"  if( $this->__flags & self::SKIP_DOTS ){"` |
+|    - | 1172 | `"   while( ($this->__pos < count($this->__entries)) && $this->isDot() ){ $this->__pos++; $this->__sync(); }"` |
+|    - | 1173 | `"  }"` |
+|    - | 1174 | `" }"` |
+|    - | 1175 | `" public function rewind(){ $this->__pos = 0; $this->__sync(); $this->__skipDots(); }"` |
+|    - | 1176 | `" public function next(){ $this->__pos++; $this->__sync(); $this->__skipDots(); }"` |
+|    - | 1177 | `" public function current(){"` |
+|    - | 1178 | `"  $mode = $this->__flags & self::CURRENT_MODE_MASK;"` |
+|    - | 1179 | `"  if( $mode === self::CURRENT_AS_PATHNAME ){ return $this->getPathname(); }"` |
+|    - | 1180 | `"  if( $mode === self::CURRENT_AS_SELF ){ return $this; }"` |
+|    - | 1181 | `"  return new SplFileInfo($this->getPathname());"` |
+|    - | 1182 | `" }"` |
+|    - | 1183 | `" public function key(){"` |
+|    - | 1184 | `"  if( $this->__flags & self::KEY_AS_FILENAME ){ return $this->getFilename(); }"` |
+|    - | 1185 | `"  return $this->getPathname();"` |
+|    - | 1186 | `" }"` |
+|    - | 1187 | `" public function getFlags(){ return $this->__flags; }"` |
+|    - | 1188 | `" public function setFlags($flags){ $this->__flags = (int)$flags; }"` |
+|    - | 1189 | `"}"` |
+|    - | 1190 | `"class RecursiveDirectoryIterator extends FilesystemIterator implements RecursiveIterator {"` |
+|    - | 1191 | `" public function hasChildren(){"` |
+|    - | 1192 | `"  if( $this->isDot() ){ return false; }"` |
+|    - | 1193 | `"  return $this->isDir();"` |
+|    - | 1194 | `" }"` |
+|    - | 1195 | `" public function getChildren(){"` |
+|    - | 1196 | `"  return new RecursiveDirectoryIterator($this->getPathname(), $this->__flags);"` |
+|    - | 1197 | `" }"` |
+|    - | 1198 | `" public function getSubPath(){ return ''; }"` |
+|    - | 1199 | `" public function getSubPathname(){ return $this->getFilename(); }"` |
+|    - | 1200 | `"}"` |
+|    - | 1201 | `;` |
+|    - | 1202 |  |
+| 3826 | 1203 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)` |
+|    5 | 1204 | `{` |
+| 3831 | 1205 | `	ph7_create_function(&(*pVm),"__spl_deprecated",vm_builtin_spl_deprecated,0);` |
+| 3831 | 1206 | `	ph7_create_function(&(*pVm),"__weak_create",vm_builtin_weak_create,0);` |
+| 3831 | 1207 | `	ph7_create_function(&(*pVm),"__weak_get",vm_builtin_weak_get,0);` |
+| 3831 | 1208 | `	ph7_create_function(&(*pVm),"__weak_drop",vm_builtin_weak_drop,0);` |
+| 3831 | 1209 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zSplLib,sizeof(zSplLib)-1);` |
+|    5 | 1210 | `}` |
+|    - | 1211 |  |
+|    - | 1212 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
+|    - | 1213 |  |
+|    - | 1214 | `#ifdef PH7_DISABLE_BUILTIN_FUNC` |
+|    - | 1215 | `/* Tiny build: no SPL (builtin layer disabled) */` |
+|    - | 1216 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm){ (void)pVm; return SXRET_OK; }` |
+|    - | 1217 | `#endif` |
+|    - | 1218 |  |
