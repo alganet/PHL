@@ -574,6 +574,155 @@ static int PH7_builtin_mb_ord(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
+ * mb_detect_encoding(string $string, array|string|null $encodings = null,
+ *                    bool $strict = false): string|false
+ *
+ * PHL's encoding scope is ASCII and UTF-8 (NEWPLAN §10 scope cut). php's
+ * default detect order is exactly ASCII,UTF-8, so the null/default path is
+ * byte-identical. A candidate encoding php supports but PHL does not (e.g.
+ * SJIS) raises the same ValueError php uses for a truly invalid name — a
+ * recorded scope divergence, not silent.
+ *
+ * Detection scores each candidate by its count of undecodable bytes and keeps
+ * the smallest, earliest-in-order on a tie. In strict mode a non-zero best
+ * score means "no candidate fully matched" -> false. This reproduces php's
+ * ASCII/UTF-8 outcomes for every probed case, strict and non-strict alike.
+ */
+static int MbAsciiErrors(const unsigned char *z,int n)
+{
+	int i,e = 0;
+	for( i = 0 ; i < n ; i++ ){
+		if( z[i] >= 0x80 ){ e++; }
+	}
+	return e;
+}
+static int MbUtf8Errors(const unsigned char *z,int n)
+{
+	sxu32 i = 0,nLen;
+	int e = 0;
+	while( i < (sxu32)n ){
+		MbUtf8Decode(&z[i],(sxu32)n - i,&nLen);
+		if( nLen == 1 && z[i] >= 0x80 ){ e++; i++; }
+		else{ i += nLen; }
+	}
+	return e;
+}
+/* Map an encoding name to PHL's supported set: 0 = ASCII, 1 = UTF-8, -1 = out
+ * of scope. Surrounding ASCII whitespace is trimmed (php accepts "ASCII, UTF-8"). */
+static int MbDetectEncId(const char *z,int n)
+{
+	while( n > 0 && (z[0]==' '||z[0]=='\t'||z[0]=='\n'||z[0]=='\r') ){ z++; n--; }
+	while( n > 0 && (z[n-1]==' '||z[n-1]=='\t'||z[n-1]=='\n'||z[n-1]=='\r') ){ n--; }
+	if( (n == 5 && SyStrnicmp(z,"ASCII",5) == 0)
+	 || (n == 8 && SyStrnicmp(z,"US-ASCII",8) == 0) ){
+		return 0;
+	}
+	if( (n == 5 && SyStrnicmp(z,"UTF-8",5) == 0)
+	 || (n == 4 && SyStrnicmp(z,"UTF8",4) == 0) ){
+		return 1;
+	}
+	return -1;
+}
+/* Per-detection running state, shared by the array walker and the string path. */
+typedef struct mb_detect_state mb_detect_state;
+struct mb_detect_state {
+	ph7_context *pCtx;
+	int aErr[2];      /* precomputed [ASCII], [UTF-8] error counts */
+	int iBestEnc;     /* winning encoding id, -1 until the first candidate */
+	int iBestErr;     /* its error count */
+	int nSeen;        /* candidates considered (0 -> "must specify at least one") */
+	int bError;       /* an out-of-scope name threw -> abort */
+	int rc;           /* the throw's propagation code (PH7_ABORT/PH7_EXCEPTION) */
+};
+/* Fold one candidate encoding name into the running best. Returns SXERR_ABORT
+ * (and throws) when the name is outside PHL's ASCII/UTF-8 scope. */
+static int MbDetectConsider(mb_detect_state *pState,const char *zName,int nName)
+{
+	int enc = MbDetectEncId(zName,nName);
+	if( enc < 0 ){
+		pState->bError = 1;
+		pState->rc = PH7_VmThrowException(pState->pCtx,"ValueError",
+			"mb_detect_encoding(): Argument #2 ($encodings) contains invalid encoding \"%.*s\"",
+			nName,zName);
+		return SXERR_ABORT;
+	}
+	pState->nSeen++;
+	if( pState->iBestEnc < 0 || pState->aErr[enc] < pState->iBestErr ){
+		pState->iBestEnc = enc;
+		pState->iBestErr = pState->aErr[enc];
+	}
+	return PH7_OK;
+}
+/* ph7_array_walk() callback over the $encodings array. */
+static int MbDetectWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
+{
+	mb_detect_state *pState = (mb_detect_state *)pUserData;
+	const char *zName;
+	int nName;
+	SXUNUSED(pKey);
+	zName = ph7_value_to_string(pData,&nName);
+	return MbDetectConsider(pState,zName,nName);
+}
+static int PH7_builtin_mb_detect_encoding(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zIn;
+	int nByte,bStrict = 0;
+	mb_detect_state sState;
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zIn = ph7_value_to_string(apArg[0],&nByte);
+	if( nArg > 2 ){ bStrict = ph7_value_to_bool(apArg[2]); }
+	sState.pCtx = pCtx;
+	sState.aErr[0] = MbAsciiErrors((const unsigned char *)zIn,nByte);
+	sState.aErr[1] = MbUtf8Errors((const unsigned char *)zIn,nByte);
+	sState.iBestEnc = -1;
+	sState.iBestErr = 0;
+	sState.nSeen = 0;
+	sState.bError = 0;
+	sState.rc = PH7_OK;
+	if( nArg < 2 || ph7_value_is_null(apArg[1]) ){
+		/* php's default detect order is exactly ASCII, then UTF-8 */
+		MbDetectConsider(&sState,"ASCII",5);
+		MbDetectConsider(&sState,"UTF-8",5);
+	}else if( ph7_value_is_array(apArg[1]) ){
+		if( ph7_array_count(apArg[1]) == 0 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"mb_detect_encoding(): Argument #2 ($encodings) must specify at least one encoding");
+		}
+		ph7_array_walk(apArg[1],MbDetectWalker,&sState);
+		if( sState.bError ){ return sState.rc; }
+	}else{
+		/* comma-separated list, e.g. "ASCII, UTF-8" */
+		const char *z2;
+		int n2,i,iStart = 0;
+		z2 = ph7_value_to_string(apArg[1],&n2);
+		for( i = 0 ; i <= n2 ; i++ ){
+			if( i == n2 || z2[i] == ',' ){
+				const char *zTok = &z2[iStart];
+				int nTok = i - iStart,t = nTok;
+				/* ignore an empty / all-whitespace token */
+				while( t > 0 && (zTok[0]==' '||zTok[0]=='\t'||zTok[0]=='\n'||zTok[0]=='\r') ){ zTok++; t--; }
+				if( t > 0 && MbDetectConsider(&sState,&z2[iStart],nTok) == SXERR_ABORT ){
+					return sState.rc;
+				}
+				iStart = i + 1;
+			}
+		}
+	}
+	if( sState.nSeen == 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"mb_detect_encoding(): Argument #2 ($encodings) must specify at least one encoding");
+	}
+	if( bStrict && sState.iBestErr > 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_string(pCtx,sState.iBestEnc == 0 ? "ASCII" : "UTF-8",5);
+	return PH7_OK;
+}
+/*
  * Install the mb_* functions (called from PH7_RegisterBuiltInFunction's
  * table in builtin.c via these PH7_PRIVATE symbols).
  */
@@ -588,5 +737,6 @@ PH7_PRIVATE int PH7_builtin_mb_check_encoding_f(ph7_context *pCtx,int nArg,ph7_v
 PH7_PRIVATE int PH7_builtin_mb_strwidth_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strwidth(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_chr_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_chr(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_ord_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_ord(pCtx,nArg,apArg); }
+PH7_PRIVATE int PH7_builtin_mb_detect_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_detect_encoding(pCtx,nArg,apArg); }
 
 #endif /* PH7_DISABLE_BUILTIN_FUNC */

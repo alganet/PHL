@@ -419,6 +419,7 @@ static const struct VmBuiltinArity {
 	{ "mb_check_encoding",         1, 0 },
 	{ "mb_chr",                    1, 1 },
 	{ "mb_convert_case",           2, 1 },
+	{ "mb_detect_encoding",        1, 1 },
 	{ "mb_ord",                    1, 1 },
 	{ "mb_str_split",              1, 1 },
 	{ "mb_stripos",                2, 1 },
