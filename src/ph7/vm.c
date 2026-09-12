@@ -27531,9 +27531,6 @@ PH7_PRIVATE sxi32 PH7_VmPushFilePath(ph7_vm *pVm,const char *zPath,int nLen,sxu8
 {
 	SyString sPath;
 	char *zDup;
-#ifdef __WINNT__
-	char *zCur;
-#endif
 	sxi32 rc;
 	if( nLen < 0 ){
 		nLen = SyStrlen(zPath);
@@ -27543,22 +27540,47 @@ PH7_PRIVATE sxi32 PH7_VmPushFilePath(ph7_vm *pVm,const char *zPath,int nLen,sxu8
 	if( zDup == 0 ){
 		return SXERR_MEM;
 	}
-#ifdef __WINNT__
-	/* Normalize path on windows
-	 * Example:
-	 *    Path/To/File.php
-	 * becomes
-	 *   path\to\file.php
-	 */
-	zCur = zDup;
-	while( zCur[0] != 0 ){
-		if( zCur[0] == '/' ){
-			zCur[0] = '\\';
-		}else if( (unsigned char)zCur[0] < 0xc0 && SyisUpper(zCur[0]) ){
-			int c = SyToLower(zCur[0]);
-			zCur[0] = (char)c; /* MSVC stupidity */
+#ifdef __UNIXES__
+	/* php records the REALPATH'd absolute path for __FILE__/__DIR__/getFileName
+	 * and include-once dedup: realpath() resolves '.', '..' and symlinks (e.g.
+	 * macOS /tmp -> /private/tmp). It needs an existing file, so on failure keep
+	 * the raw path (eval'd code, php:///data:// wrappers, a missing include that
+	 * errors elsewhere). */
+	{
+		char *zReal = realpath(zDup,0); /* POSIX: malloc'd result */
+		if( zReal ){
+			sxu32 nReal = SyStrlen(zReal);
+			char *zRealDup = SyMemBackendStrDup(&pVm->sAllocator,zReal,nReal);
+			free(zReal);
+			if( zRealDup ){
+				SyMemBackendFree(&pVm->sAllocator,zDup);
+				zDup = zRealDup;
+				nLen = (int)nReal;
+			}
 		}
-		zCur++;
+	}
+#endif
+#ifdef __WINNT__
+	/* Windows counterpart of the realpath() above: canonicalize to an absolute
+	 * path (resolves '.'/'..' , '/' -> '\'), case-preserved to match php — NOT
+	 * lowercased as the legacy PH7 code did. Like the POSIX branch, keep the raw
+	 * path when it does not name an existing file (the "Command line code" marker,
+	 * eval'd code, stream wrappers). _fullpath() is lexical, so pair it with a VFS
+	 * existence check. */
+	{
+		char *zFull = _fullpath(0,zDup,0); /* MSVC CRT: malloc'd absolute path */
+		if( zFull ){
+			if( pVm->pEngine->pVfs && pVm->pEngine->pVfs->xFileExists && pVm->pEngine->pVfs->xFileExists(zFull) == PH7_OK ){
+				sxu32 nFull = SyStrlen(zFull);
+				char *zFullDup = SyMemBackendStrDup(&pVm->sAllocator,zFull,nFull);
+				if( zFullDup ){
+					SyMemBackendFree(&pVm->sAllocator,zDup);
+					zDup = zFullDup;
+					nLen = (int)nFull;
+				}
+			}
+			free(zFull);
+		}
 	}
 #endif
 	/* Install the file path */
