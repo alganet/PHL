@@ -1,6 +1,6 @@
 | Filename                       | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| src/ph7/api.c                  | 70.96%   | 782/1102    |
+| src/ph7/api.c                  | 70.51%   | 777/1102    |
 | src/ph7/builtin.c              | 85.73%   | 4459/5201   |
 | src/ph7/builtin_date.c         | 84.52%   | 1649/1951   |
 | src/ph7/builtin_math.c         | 85.04%   | 557/655     |
@@ -13,11 +13,11 @@
 | src/ph7/net.c                  | 57.45%   | 81/141      |
 | src/ph7/oo.c                   | 88.18%   | 701/795     |
 | src/ph7/parse.c                | 86.82%   | 1179/1358   |
-| src/ph7/vfs.c                  | 67.57%   | 2459/3639   |
+| src/ph7/vfs.c                  | 67.66%   | 2469/3649   |
 | src/ph7/vfs_unix.c             | 89.50%   | 392/438     |
 | src/ph7/vfs_win.c              | 80.28%   | 570/710     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
-| src/ph7/vm.c                   | 83.16%   | 12055/14496 |
+| src/ph7/vm.c                   | 83.17%   | 12057/14496 |
 | src/ph7/vm_builtin_class.c     | 87.74%   | 630/718     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
 | src/ph7/vm_builtin_ini.c       | 95.45%   | 21/22       |
@@ -49,5 +49,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.90%   | 47799/58366 |
-| Functions                      | 95.62%   | 2159/2258   |
+| Lines                          | 81.89%   | 47806/58376 |
+| Functions                      | 95.58%   | 2160/2260   |
