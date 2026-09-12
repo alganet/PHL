@@ -1951,6 +1951,15 @@ static void PH7_JSON_UNESCAPED_UNICODE_Const(ph7_value *pVal,void *pUserData)
 	ph7_value_int(pVal,JSON_UNESCAPED_UNICODE);
 }
 /*
+ * JSON_THROW_ON_ERROR.
+ *   Expand the value of JSON_THROW_ON_ERROR defined in ph7Int.h.
+ */
+static void PH7_JSON_THROW_ON_ERROR_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,JSON_THROW_ON_ERROR);
+}
+/*
  * JSON_ERROR_NONE.
  *   Expand the value of JSON_ERROR_NONE defined in ph7Int.h.
  */
@@ -2012,6 +2021,15 @@ static void PH7_JSON_ERROR_NON_BACKED_ENUM_Const(ph7_value *pVal,void *pUserData
 {
 	SXUNUSED(pUserData); /* cc warning */
 	ph7_value_int(pVal,JSON_ERROR_NON_BACKED_ENUM);
+}
+/*
+ * JSON_ERROR_INF_OR_NAN.
+ *   Expand the value of JSON_ERROR_INF_OR_NAN defined in ph7Int.h.
+ */
+static void PH7_JSON_ERROR_INF_OR_NAN_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,JSON_ERROR_INF_OR_NAN);
 }
 /*
  * __CLASS__
@@ -2370,6 +2388,7 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"JSON_PRETTY_PRINT",      PH7_JSON_PRETTY_PRINT_Const},
 	{"JSON_UNESCAPED_SLASHES", PH7_JSON_UNESCAPED_SLASHES_Const},
 	{"JSON_UNESCAPED_UNICODE", PH7_JSON_UNESCAPED_UNICODE_Const},
+	{"JSON_THROW_ON_ERROR",    PH7_JSON_THROW_ON_ERROR_Const},
 	{"JSON_ERROR_NONE",        PH7_JSON_ERROR_NONE_Const},
 	{"JSON_ERROR_DEPTH",       PH7_JSON_ERROR_DEPTH_Const},
 	{"JSON_ERROR_STATE_MISMATCH", PH7_JSON_ERROR_STATE_MISMATCH_Const},
@@ -2377,6 +2396,7 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"JSON_ERROR_SYNTAX",    PH7_JSON_ERROR_SYNTAX_Const},
 	{"JSON_ERROR_UTF8",      PH7_JSON_ERROR_UTF8_Const},
 	{"JSON_ERROR_NON_BACKED_ENUM", PH7_JSON_ERROR_NON_BACKED_ENUM_Const},
+	{"JSON_ERROR_INF_OR_NAN", PH7_JSON_ERROR_INF_OR_NAN_Const},
 	/* `self`, `parent` and `static` are KEYWORDS in php, not constants: using one as a bare
 	 * word is an "Undefined constant" Error (or a parse error for `static`). PH7 registered
 	 * them as constants that quietly expanded to the class name / NULL, so a typo'd bare

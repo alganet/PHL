@@ -1933,6 +1933,7 @@ enum json_err_code{
 	JSON_ERROR_CTRL_CHAR, /* Control character error, possibly incorrectly encoded.  */
 	JSON_ERROR_SYNTAX,    /* Syntax error. */
 	JSON_ERROR_UTF8,      /* Malformed UTF-8 characters */
+	JSON_ERROR_INF_OR_NAN = 7, /* Inf or NaN given to json_encode (php value) */
 	JSON_ERROR_NON_BACKED_ENUM = 11 /* Non-backed enum given to json_encode (php 8.1 value) */
 };
 /* The following constants can be combined to form options for json_encode(). */
@@ -1946,6 +1947,7 @@ enum json_err_code{
 #define JSON_PRETTY_PRINT      0x80  /* Use whitespace in returned data to format it.*/
 #define JSON_UNESCAPED_SLASHES 0x100 /* Don't escape '/' */
 #define JSON_UNESCAPED_UNICODE 0x200 /* Not used */
+#define JSON_THROW_ON_ERROR    0x400000 /* Throw JsonException on encode/decode error */
 /*
  * Each parsed URI is recorded and stored in an instance of the following structure.
  */

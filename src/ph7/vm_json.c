@@ -27,8 +27,10 @@ struct json_private_data
 	int nRecCount;     /* Recursion count */
 	int exc;           /* True if a jsonSerialize() callback threw an exception */
 	int oom;           /* True if a result append ran out of memory (raises a fatal) */
-	int fail;          /* True if the value is unencodable (php 8.1: a non-backed
-	                    * enum case) — json_encode returns FALSE */
+	int fail;          /* True if the value is unencodable — json_encode returns
+	                    * FALSE (or throws under JSON_THROW_ON_ERROR) */
+	int failRc;        /* json_rc to report for a ->fail (INF_OR_NAN vs
+	                    * NON_BACKED_ENUM) */
 };
 /*
  * Emit into the JSON result, flagging OOM on the shared data and bailing out
@@ -100,12 +102,21 @@ static sxi32 VmJsonEncode(
 			JSON_EMIT(pData,ph7_result_string(pCtx,iBool ? "true" : "false",iLen-1));
 		}else if(  ph7_value_is_numeric(pIn) && !ph7_value_is_string(pIn) ){
 			if( ph7_value_is_float(pIn) ){
+				double rVal = ph7_value_to_double(pIn);
+				/* php rejects Inf/NaN: json_encode returns FALSE with
+				 * json_last_error() == JSON_ERROR_INF_OR_NAN (they have no JSON
+				 * representation), instead of emitting the invalid bare token. */
+				if( PH7_IS_NAN(rVal) || PH7_IS_INF(rVal) ){
+					pData->fail = 1;
+					pData->failRc = JSON_ERROR_INF_OR_NAN;
+					return PH7_OK;
+				}
 				/* php's json float output follows serialize_precision
 				 * (shortest round-trip, like serialize/var_export), NOT the
 				 * echo/cast precision of 14 — with a lowercase exponent
 				 * marker: 1/3 -> 0.3333333333333333, 1e17 -> 1.0e+17,
 				 * 1.0 -> 1, -0.0 -> -0. */
-				JSON_EMIT(pData,VmJsonEmitReal(pCtx,ph7_value_to_double(pIn)));
+				JSON_EMIT(pData,VmJsonEmitReal(pCtx,rVal));
 			}else{
 				const char *zNum;
 				/* Get a string representation of the number */
@@ -233,6 +244,7 @@ static sxi32 VmJsonEncode(
 					pData->nRecCount--;
 				}else{
 					pData->fail = 1;
+					pData->failRc = JSON_ERROR_NON_BACKED_ENUM;
 				}
 				return PH7_OK;
 			}
@@ -427,6 +439,7 @@ static int VmJsonObjectEncode(const char *zAttr,ph7_value *pValue,void *pUserDat
  * Return
  *  Returns a JSON encoded string on success. FALSE otherwise
  */
+static const char * JsonErrorMsg(int rc); /* defined below, near json_last_error_msg */
 PH7_PRIVATE int vm_builtin_json_encode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	json_private_data sJson;
@@ -444,6 +457,7 @@ PH7_PRIVATE int vm_builtin_json_encode(ph7_context *pCtx,int nArg,ph7_value **ap
 	sJson.exc = 0;
 	sJson.oom = 0;
 	sJson.fail = 0;
+	sJson.failRc = JSON_ERROR_NON_BACKED_ENUM;
 	if( nArg > 1 && ph7_value_is_int(apArg[1]) ){
 		/* Extract option flags */
 		sJson.iFlags = ph7_value_to_int(apArg[1]);
@@ -461,9 +475,15 @@ PH7_PRIVATE int vm_builtin_json_encode(ph7_context *pCtx,int nArg,ph7_value **ap
 		return PH7_EXCEPTION;
 	}
 	if( sJson.fail ){
-		/* Unencodable value (php 8.1: non-backed enum case): the whole encode
-		 * fails — discard whatever was emitted and return FALSE. */
-		pCtx->pVm->json_rc = JSON_ERROR_NON_BACKED_ENUM;
+		/* Unencodable value (Inf/NaN, or a php 8.1 non-backed enum case): the
+		 * whole encode fails — discard whatever was emitted and return FALSE. */
+		pCtx->pVm->json_rc = sJson.failRc;
+		if( sJson.iFlags & JSON_THROW_ON_ERROR ){
+			/* php: raise a JsonException carrying json_last_error_msg() instead
+			 * of returning FALSE. */
+			return PH7_VmThrowException(pCtx,"JsonException","%s",
+				JsonErrorMsg(pCtx->pVm->json_rc));
+		}
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -503,37 +523,26 @@ PH7_PRIVATE int vm_builtin_json_last_error(ph7_context *pCtx,int nArg,ph7_value 
  *  Returns the human-readable message corresponding to the last json_last_error()
  *  code, or "No error" if no error has occurred.
  */
+/* Human-readable message for a json_rc code. Shared by json_last_error_msg()
+ * and the JSON_THROW_ON_ERROR path (php's JsonException message is exactly this
+ * text). */
+static const char * JsonErrorMsg(int rc)
+{
+	switch( rc ){
+	case JSON_ERROR_NONE:            return "No error";
+	case JSON_ERROR_DEPTH:           return "Maximum stack depth exceeded";
+	case JSON_ERROR_STATE_MISMATCH:  return "State mismatch (invalid or malformed JSON)";
+	case JSON_ERROR_CTRL_CHAR:       return "Control character error, possibly incorrectly encoded";
+	case JSON_ERROR_SYNTAX:          return "Syntax error";
+	case JSON_ERROR_UTF8:            return "Malformed UTF-8 characters, possibly incorrectly encoded";
+	case JSON_ERROR_INF_OR_NAN:     return "Inf and NaN cannot be JSON encoded";
+	case JSON_ERROR_NON_BACKED_ENUM: return "Non-backed enums have no default serialization";
+	default:                         return "Unknown error";
+	}
+}
 PH7_PRIVATE int vm_builtin_json_last_error_msg(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_vm *pVm = pCtx->pVm;
-	const char *zMsg;
-	switch( pVm->json_rc ){
-	case JSON_ERROR_NONE:
-		zMsg = "No error";
-		break;
-	case JSON_ERROR_DEPTH:
-		zMsg = "Maximum stack depth exceeded";
-		break;
-	case JSON_ERROR_STATE_MISMATCH:
-		zMsg = "State mismatch (invalid or malformed JSON)";
-		break;
-	case JSON_ERROR_CTRL_CHAR:
-		zMsg = "Control character error, possibly incorrectly encoded";
-		break;
-	case JSON_ERROR_SYNTAX:
-		zMsg = "Syntax error";
-		break;
-	case JSON_ERROR_UTF8:
-		zMsg = "Malformed UTF-8 characters, possibly incorrectly encoded";
-		break;
-	case JSON_ERROR_NON_BACKED_ENUM:
-		zMsg = "Non-backed enums have no default serialization";
-		break;
-	default:
-		zMsg = "Unknown error";
-		break;
-	}
-	ph7_result_string(pCtx,zMsg,-1/* Compute length automatically */);
+	ph7_result_string(pCtx,JsonErrorMsg(pCtx->pVm->json_rc),-1/* auto length */);
 	SXUNUSED(nArg); /* cc warning */
 	SXUNUSED(apArg);
 	return PH7_OK;
@@ -1066,6 +1075,7 @@ PH7_PRIVATE int vm_builtin_json_decode(ph7_context *pCtx,int nArg,ph7_value **ap
 	int nByte;
 	int iAssoc = 0;
 	int nDepth = 32;
+	int iFlags = 0;
 	/* php coerces a scalar argument to string here (weak mode); the shared ZPP
 	 * screen in vm.c has already rejected the values that cannot coerce. */
 	if( nArg < 1 ){
@@ -1073,10 +1083,21 @@ PH7_PRIVATE int vm_builtin_json_decode(ph7_context *pCtx,int nArg,ph7_value **ap
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
+	if( nArg > 3 && ph7_value_is_int(apArg[3]) ){
+		/* $flags — only JSON_THROW_ON_ERROR is honored (see NEWPLAN §5). */
+		iFlags = ph7_value_to_int(apArg[3]);
+	}
 	/* Extract the JSON string */
 	zIn = ph7_value_to_string(apArg[0],&nByte);
 	if( nByte < 1 ){
-		/* Empty string,return NULL */
+		/* Empty string: php records a syntax error. Without the throw flag it
+		 * returns NULL (leaving json_last_error untouched, as PHL always has);
+		 * with JSON_THROW_ON_ERROR it raises a JsonException. */
+		if( iFlags & JSON_THROW_ON_ERROR ){
+			pCtx->pVm->json_rc = JSON_ERROR_SYNTAX;
+			return PH7_VmThrowException(pCtx,"JsonException","%s",
+				JsonErrorMsg(JSON_ERROR_SYNTAX));
+		}
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
@@ -1102,9 +1123,14 @@ PH7_PRIVATE int vm_builtin_json_decode(ph7_context *pCtx,int nArg,ph7_value **ap
 		nDepth = (int)nWant;
 	}
 	/* Decode the raw JSON input.The default consumer sets the decoded value as the
-	 * call-context result; on failure we replace it with NULL. */
+	 * call-context result; on failure we replace it with NULL (or throw). */
 	if( VmJsonDecodeInput(pCtx,zIn,nByte,iAssoc,nDepth) != JSON_ERROR_NONE ){
-		/* Something goes wrong while decoding JSON input.Return NULL. */
+		/* Something goes wrong while decoding JSON input. */
+		if( iFlags & JSON_THROW_ON_ERROR ){
+			/* php: raise a JsonException carrying json_last_error_msg() text. */
+			return PH7_VmThrowException(pCtx,"JsonException","%s",
+				JsonErrorMsg(pCtx->pVm->json_rc));
+		}
 		ph7_result_null(pCtx);
 	}
 	/* All done */
