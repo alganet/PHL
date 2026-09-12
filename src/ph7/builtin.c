@@ -9777,6 +9777,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "mb_strwidth",  PH7_builtin_mb_strwidth_f },
 	{ "mb_chr",       PH7_builtin_mb_chr_f   },
 	{ "mb_ord",       PH7_builtin_mb_ord_f   },
+	{ "mb_detect_encoding", PH7_builtin_mb_detect_encoding_f },
 	{ "ucfirst",      PH7_builtin_ucfirst    },
 	{ "lcfirst",      PH7_builtin_lcfirst    },
 	{ "ord",          PH7_builtin_ord        },
