@@ -11,6 +11,8 @@
 #ifdef __UNIXES__
 #include <unistd.h>
 #include <sys/wait.h>
+#include <fcntl.h>
+#include <signal.h>
 #endif
 /*
  * This file implement a virtual file systems (VFS) for the PH7 engine.
@@ -7170,6 +7172,354 @@ static int PH7_builtin_pclose(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_result_int(pCtx, status);
 	return PH7_OK;
 }
+/*
+ * proc_open() / proc_close() / proc_get_status() / proc_terminate()
+ *   Run a command via fork()/exec() with fine-grained control over its
+ *   standard descriptors (php's process-control family). The returned
+ *   "process" resource wraps a small proc_private whose leading bytes mirror
+ *   io_private (a distinct magic) so is_resource()/gettype() probes stay in
+ *   bounds and report it as a live, non-stream resource.
+ */
+#ifdef __UNIXES__
+#define PROC_PRIVATE_MAGIC 0x9C0DE5
+#define PROC_MAX_DESC 16
+typedef struct proc_private proc_private;
+struct proc_private
+{
+	io_private base;   /* io_private-compatible header (base.iMagic == PROC_PRIVATE_MAGIC) */
+	int pid;           /* child process id */
+	int running;       /* TRUE until reaped by proc_close/proc_get_status */
+	int exit_code;     /* cached exit status once reaped */
+};
+/* Wrap a raw fd as an fopen-style stream resource (a php pipe end). */
+static io_private * ProcWrapFd(ph7_vm *pVm,int fd)
+{
+	io_private *pDev = (io_private *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(io_private));
+	if( pDev == 0 ){
+		return 0;
+	}
+	InitIOPrivate(pVm,&sUnixFileStream,pDev);
+	pDev->pHandle = SX_INT_TO_PTR(fd);
+	return pDev;
+}
+/* One parsed descriptor-spec entry. */
+struct proc_desc
+{
+	int child_fd;      /* the array key: which fd the child sees */
+	int kind;          /* 0=pipe, 1=file, 2=redirect */
+	/* pipe */
+	int child_end;     /* fd the child must have at child_fd */
+	int parent_end;    /* fd the parent keeps (wrapped into $pipes), -1 if none */
+	/* file */
+	int file_fd;       /* opened fd for a ['file',path,mode] spec */
+	/* redirect */
+	int redirect_to;   /* target child fd for a ['redirect',N] spec */
+};
+static int PH7_builtin_proc_open(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	struct proc_desc aDesc[PROC_MAX_DESC];
+	int nDesc = 0;
+	ph7_value *pSpec, *pPipes, *pEntry, *pType, *pParam;
+	ph7_hashmap *pSpecMap;
+	ph7_hashmap_node *pNode;
+	ph7_vm *pVm = pCtx->pVm;
+	char **azArgv = 0;      /* exec argv when the command is an array */
+	int nArgv = 0;
+	const char *zCmd = 0;   /* exec command when it is a string (via /bin/sh -c) */
+	const char *zCwd = 0;
+	char **azEnv = 0;       /* constructed envp when an env array is supplied */
+	int nEnv = 0;
+	proc_private *pProc;
+	pid_t pid;
+	int i, rc;
+	if( nArg < 3 || !ph7_value_is_array(apArg[1]) ){
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"proc_open() expects a command and a descriptor spec");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* --- Command: array (execvp) or string (/bin/sh -c) --- */
+	if( ph7_value_is_array(apArg[0]) ){
+		ph7_hashmap *pCmdMap = (ph7_hashmap *)apArg[0]->x.pOther;
+		int nCount = (int)ph7_array_count(apArg[0]);
+		azArgv = (char **)SyMemBackendAlloc(&pVm->sAllocator,sizeof(char *)*(nCount+1));
+		if( azArgv == 0 ){ ph7_result_bool(pCtx,0); return PH7_OK; }
+		pNode = pCmdMap->pFirst;
+		for( i = 0 ; i < nCount && pNode ; ++i ){
+			ph7_value *pv = (ph7_value *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(ph7_value));
+			int nLen; const char *zs;
+			PH7_MemObjInit(pVm,pv);
+			PH7_HashmapExtractNodeValue(pNode,pv,FALSE);
+			zs = ph7_value_to_string(pv,&nLen);
+			azArgv[nArgv] = (char *)SyMemBackendDup(&pVm->sAllocator,zs,(sxu32)nLen+1);
+			if( azArgv[nArgv] ){ azArgv[nArgv][nLen] = 0; nArgv++; }
+			PH7_MemObjRelease(pv);
+			SyMemBackendFree(&pVm->sAllocator,pv);
+			pNode = pNode->pPrev; /* hashmap insertion-order walk */
+		}
+		azArgv[nArgv] = 0;
+	}else{
+		int nLen;
+		zCmd = ph7_value_to_string(apArg[0],&nLen);
+	}
+	/* --- Optional cwd (arg 4) and env (arg 5) --- */
+	if( nArg > 3 && ph7_value_is_string(apArg[3]) ){
+		int nLen; zCwd = ph7_value_to_string(apArg[3],&nLen);
+		if( nLen < 1 ){ zCwd = 0; }
+	}
+	if( nArg > 4 && ph7_value_is_array(apArg[4]) ){
+		ph7_hashmap *pEnvMap = (ph7_hashmap *)apArg[4]->x.pOther;
+		int nCount = (int)ph7_array_count(apArg[4]);
+		azEnv = (char **)SyMemBackendAlloc(&pVm->sAllocator,sizeof(char *)*(nCount+1));
+		if( azEnv ){
+			pNode = pEnvMap->pFirst;
+			for( i = 0 ; i < nCount && pNode ; ++i ){
+				ph7_value sKey, sVal; int nk, nv; const char *zk, *zv; char *zPair;
+				PH7_MemObjInit(pVm,&sKey); PH7_MemObjInit(pVm,&sVal);
+				PH7_HashmapExtractNodeKey(pNode,&sKey);
+				PH7_HashmapExtractNodeValue(pNode,&sVal,FALSE);
+				zk = ph7_value_to_string(&sKey,&nk);
+				zv = ph7_value_to_string(&sVal,&nv);
+				zPair = (char *)SyMemBackendAlloc(&pVm->sAllocator,(sxu32)(nk+nv+2));
+				if( zPair ){
+					SyMemcpy(zk,zPair,(sxu32)nk); zPair[nk] = '=';
+					SyMemcpy(zv,&zPair[nk+1],(sxu32)nv); zPair[nk+1+nv] = 0;
+					azEnv[nEnv++] = zPair;
+				}
+				PH7_MemObjRelease(&sKey); PH7_MemObjRelease(&sVal);
+				pNode = pNode->pPrev;
+			}
+			azEnv[nEnv] = 0;
+		}
+	}
+	/* --- Parse the descriptor spec, creating pipes as we go --- */
+	pSpec = apArg[1];
+	pSpecMap = (ph7_hashmap *)pSpec->x.pOther;
+	pNode = pSpecMap->pFirst;
+	for( i = 0 ; i < (int)pSpecMap->nEntry && pNode && nDesc < PROC_MAX_DESC ; ++i ){
+		ph7_value sKey; struct proc_desc *pD = &aDesc[nDesc];
+		PH7_MemObjInit(pVm,&sKey);
+		PH7_HashmapExtractNodeKey(pNode,&sKey);
+		pD->child_fd = ph7_value_to_int(&sKey);
+		pD->parent_end = -1; pD->file_fd = -1; pD->redirect_to = -1;
+		PH7_MemObjRelease(&sKey);
+		pEntry = (ph7_value *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(ph7_value));
+		PH7_MemObjInit(pVm,pEntry);
+		PH7_HashmapExtractNodeValue(pNode,pEntry,FALSE);
+		if( ph7_value_is_array(pEntry) ){
+			int nLen; const char *zType;
+			pType = ph7_array_fetch(pEntry,"0",1);
+			zType = pType ? ph7_value_to_string(pType,&nLen) : "";
+			if( SyStrncmp(zType,"pipe",4) == 0 ){
+				int fds[2];
+				if( pipe(fds) == 0 ){
+					pParam = ph7_array_fetch(pEntry,"1",1);
+					{
+						int nMode; const char *zMode = pParam ? ph7_value_to_string(pParam,&nMode) : "r";
+						pD->kind = 0;
+						if( zMode[0] == 'w' || zMode[0] == 'a' ){
+							/* child writes -> parent reads: child gets write end */
+							pD->child_end = fds[1]; pD->parent_end = fds[0];
+						}else{
+							/* child reads -> parent writes: child gets read end */
+							pD->child_end = fds[0]; pD->parent_end = fds[1];
+						}
+						nDesc++;
+					}
+				}
+			}else if( SyStrncmp(zType,"file",4) == 0 ){
+				int nLen2, nLen3; const char *zPath, *zMode; int oflag = O_RDONLY;
+				ph7_value *pPath = ph7_array_fetch(pEntry,"1",1);
+				ph7_value *pMode = ph7_array_fetch(pEntry,"2",1);
+				zPath = pPath ? ph7_value_to_string(pPath,&nLen2) : "";
+				zMode = pMode ? ph7_value_to_string(pMode,&nLen3) : "r";
+				if( zMode[0] == 'w' ){ oflag = O_WRONLY|O_CREAT|O_TRUNC; }
+				else if( zMode[0] == 'a' ){ oflag = O_WRONLY|O_CREAT|O_APPEND; }
+				pD->kind = 1;
+				pD->file_fd = open(zPath,oflag,0644);
+				nDesc++;
+			}else if( SyStrncmp(zType,"redirect",8) == 0 ){
+				pParam = ph7_array_fetch(pEntry,"1",1);
+				pD->kind = 2;
+				pD->redirect_to = pParam ? ph7_value_to_int(pParam) : 1;
+				nDesc++;
+			}
+		}
+		PH7_MemObjRelease(pEntry);
+		SyMemBackendFree(&pVm->sAllocator,pEntry);
+		pNode = pNode->pPrev;
+	}
+	/* --- Fork the child --- */
+	pid = fork();
+	if( pid < 0 ){
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"proc_open(): fork() failed");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( pid == 0 ){
+		/* Child: wire up descriptors then exec */
+		for( i = 0 ; i < nDesc ; ++i ){
+			struct proc_desc *pD = &aDesc[i];
+			if( pD->kind == 0 ){
+				dup2(pD->child_end,pD->child_fd);
+				close(pD->parent_end);
+				close(pD->child_end);
+			}else if( pD->kind == 1 && pD->file_fd >= 0 ){
+				dup2(pD->file_fd,pD->child_fd);
+				close(pD->file_fd);
+			}
+		}
+		/* Redirects run after the pipes are in place (e.g. 2>&1) */
+		for( i = 0 ; i < nDesc ; ++i ){
+			if( aDesc[i].kind == 2 ){ dup2(aDesc[i].redirect_to,aDesc[i].child_fd); }
+		}
+		if( zCwd ){ if( chdir(zCwd) != 0 ){ _exit(127); } }
+		if( azEnv ){
+			if( azArgv ){ execve(azArgv[0],azArgv,azEnv); }
+			else{ char *av[4]; av[0]=(char*)"sh"; av[1]=(char*)"-c"; av[2]=(char*)zCmd; av[3]=0; execve("/bin/sh",av,azEnv); }
+		}else{
+			if( azArgv ){ execvp(azArgv[0],azArgv); }
+			else{ execl("/bin/sh","sh","-c",zCmd,(char *)0); }
+		}
+		_exit(127); /* exec failed */
+	}
+	/* Parent: close the child ends, wrap the parent ends into $pipes */
+	pPipes = ph7_context_new_array(pCtx);
+	for( i = 0 ; i < nDesc ; ++i ){
+		struct proc_desc *pD = &aDesc[i];
+		if( pD->kind == 0 ){
+			io_private *pEnd;
+			ph7_value *pRes;
+			close(pD->child_end);
+			pEnd = ProcWrapFd(pVm,pD->parent_end);
+			pRes = ph7_context_new_scalar(pCtx);
+			if( pEnd && pRes && pPipes ){
+				ph7_value_resource(pRes,pEnd);
+				ph7_array_add_intkey_elem(pPipes,pD->child_fd,pRes);
+			}
+			if( pRes ){ ph7_context_release_value(pCtx,pRes); }
+		}else if( pD->kind == 1 && pD->file_fd >= 0 ){
+			close(pD->file_fd);
+		}
+	}
+	if( pPipes ){
+		PH7_VmStoreArgByRef(pVm,apArg[2],pPipes);
+	}
+	/* Free the exec argv/env copies now that the child owns its own image */
+	if( azArgv ){
+		for( i = 0 ; i < nArgv ; ++i ){ SyMemBackendFree(&pVm->sAllocator,azArgv[i]); }
+		SyMemBackendFree(&pVm->sAllocator,azArgv);
+	}
+	if( azEnv ){
+		for( i = 0 ; i < nEnv ; ++i ){ SyMemBackendFree(&pVm->sAllocator,azEnv[i]); }
+		SyMemBackendFree(&pVm->sAllocator,azEnv);
+	}
+	/* Build the process resource */
+	pProc = (proc_private *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(proc_private));
+	if( pProc == 0 ){ ph7_result_bool(pCtx,0); return PH7_OK; }
+	SyZero(pProc,sizeof(proc_private));
+	pProc->base.iMagic = PROC_PRIVATE_MAGIC;
+	pProc->pid = (int)pid;
+	pProc->running = 1;
+	pProc->exit_code = 0;
+	ph7_result_resource(pCtx,pProc);
+	(void)rc;
+	return PH7_OK;
+}
+/* Reap the child if it has not been reaped yet, caching the exit code. */
+static void ProcReap(proc_private *pProc,int block)
+{
+	int status = 0;
+	pid_t r;
+	if( !pProc->running ){ return; }
+	r = waitpid((pid_t)pProc->pid,&status,block ? 0 : WNOHANG);
+	if( r == (pid_t)pProc->pid ){
+		pProc->running = 0;
+		if( WIFEXITED(status) ){ pProc->exit_code = WEXITSTATUS(status); }
+		else if( WIFSIGNALED(status) ){ pProc->exit_code = 128 + WTERMSIG(status); }
+	}
+}
+static int PH7_builtin_proc_close(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	proc_private *pProc;
+	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+		ph7_result_int(pCtx,-1);
+		return PH7_OK;
+	}
+	pProc = (proc_private *)ph7_value_to_resource(apArg[0]);
+	if( pProc == 0 || pProc->base.iMagic != PROC_PRIVATE_MAGIC ){
+		ph7_result_int(pCtx,-1);
+		return PH7_OK;
+	}
+	ProcReap(pProc,1/*block until it exits*/);
+	ph7_result_int(pCtx,pProc->exit_code);
+	return PH7_OK;
+}
+static int PH7_builtin_proc_terminate(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	proc_private *pProc;
+	int sig = 15; /* SIGTERM */
+	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pProc = (proc_private *)ph7_value_to_resource(apArg[0]);
+	if( pProc == 0 || pProc->base.iMagic != PROC_PRIVATE_MAGIC ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( nArg > 1 ){ sig = ph7_value_to_int(apArg[1]); }
+	if( pProc->running ){ kill((pid_t)pProc->pid,sig); }
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+static int PH7_builtin_proc_get_status(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	proc_private *pProc;
+	ph7_value *pArray, *pVal;
+	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pProc = (proc_private *)ph7_value_to_resource(apArg[0]);
+	if( pProc == 0 || pProc->base.iMagic != PROC_PRIVATE_MAGIC ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ProcReap(pProc,0/*non-blocking poll*/);
+	pArray = ph7_context_new_array(pCtx);
+	pVal = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pVal == 0 ){ ph7_result_bool(pCtx,0); return PH7_OK; }
+	ph7_value_int(pVal,pProc->pid);
+	ph7_array_add_strkey_elem(pArray,"pid",pVal);
+	ph7_value_bool(pVal,pProc->running);
+	ph7_array_add_strkey_elem(pArray,"running",pVal);
+	ph7_value_bool(pVal,0);
+	ph7_array_add_strkey_elem(pArray,"signaled",pVal);
+	ph7_array_add_strkey_elem(pArray,"stopped",pVal);
+	ph7_value_int(pVal,pProc->running ? -1 : pProc->exit_code);
+	ph7_array_add_strkey_elem(pArray,"exitcode",pVal);
+	ph7_value_int(pVal,0);
+	ph7_array_add_strkey_elem(pArray,"termsig",pVal);
+	ph7_array_add_strkey_elem(pArray,"stopsig",pVal);
+	ph7_context_release_value(pCtx,pVal);
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+#else /* !__UNIXES__ */
+static int PH7_builtin_proc_open(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"proc_open() is not available on this platform");
+	ph7_result_bool(pCtx,0);
+	return PH7_OK;
+}
+static int PH7_builtin_proc_close(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{ SXUNUSED(nArg); SXUNUSED(apArg); ph7_result_int(pCtx,-1); return PH7_OK; }
+static int PH7_builtin_proc_terminate(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{ SXUNUSED(nArg); SXUNUSED(apArg); ph7_result_bool(pCtx,0); return PH7_OK; }
+static int PH7_builtin_proc_get_status(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{ SXUNUSED(nArg); SXUNUSED(apArg); ph7_result_bool(pCtx,0); return PH7_OK; }
+#endif /* __UNIXES__ */
 /* Export the php:// stream */
 static const ph7_io_stream sPHP_Stream = {
 	"php",
@@ -7360,6 +7710,10 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"stream_socket_client", PH7_builtin_fsockopen },
 #endif
 		{"popen",     PH7_builtin_popen  },
+		{"proc_open",      PH7_builtin_proc_open      },
+		{"proc_close",     PH7_builtin_proc_close     },
+		{"proc_terminate", PH7_builtin_proc_terminate },
+		{"proc_get_status",PH7_builtin_proc_get_status},
 		{"shell_exec", PH7_builtin_shell_exec },
 		{"pclose",    PH7_builtin_pclose },
 		{"fpassthru", PH7_builtin_fpassthru },
