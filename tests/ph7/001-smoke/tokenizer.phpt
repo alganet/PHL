@@ -1,5 +1,5 @@
 --TEST--
-Tokenizer: token_get_all/token_name/T_* constants/PhpToken php-parity
+Tokenizer: token_get_all/token_name/T_* constants/PhpToken/TOKEN_PARSE php-parity
 --SKIPIF--
 skip: flaky
 --FILE--
@@ -35,6 +35,11 @@ foreach(PhpToken::tokenize('<?php $x=1;') as $tkP){
 }
 $tkV = PhpToken::tokenize('<?php $x;')[1];
 echo ($tkV->is(T_VARIABLE)?"1":"0"),($tkV->is("T_VARIABLE")?"1":"0"),"\n";
+echo "== token_parse ==\n";
+$tkPsrc = '<?php class C { public function list(){} const IF=1; } Foo::class; Foo::empty; enum E { case array; } switch($x){ case array($y): break; }';
+foreach(token_get_all($tkPsrc, TOKEN_PARSE) as $tkT){
+  echo is_array($tkT) ? token_name($tkT[0])."|".$tkT[1]."|".$tkT[2]."\n" : "S:$tkT\n";
+}
 echo TOKEN_PARSE,"\n";
 --EXPECT--
 == basic ==
@@ -300,4 +305,72 @@ T_VARIABLE,T_VARIABLE,T_DOUBLE_COLON,UNKNOWN,UNKNOWN
 260|1|1|9|-|T_LNUMBER
 59|;|1|10|-|;
 10
+== token_parse ==
+T_OPEN_TAG|<?php |1
+T_CLASS|class|1
+T_WHITESPACE| |1
+T_STRING|C|1
+T_WHITESPACE| |1
+S:{
+T_WHITESPACE| |1
+T_PUBLIC|public|1
+T_WHITESPACE| |1
+T_FUNCTION|function|1
+T_WHITESPACE| |1
+T_STRING|list|1
+S:(
+S:)
+S:{
+S:}
+T_WHITESPACE| |1
+T_CONST|const|1
+T_WHITESPACE| |1
+T_STRING|IF|1
+S:=
+T_LNUMBER|1|1
+S:;
+T_WHITESPACE| |1
+S:}
+T_WHITESPACE| |1
+T_STRING|Foo|1
+T_DOUBLE_COLON|::|1
+T_STRING|class|1
+S:;
+T_WHITESPACE| |1
+T_STRING|Foo|1
+T_DOUBLE_COLON|::|1
+T_STRING|empty|1
+S:;
+T_WHITESPACE| |1
+T_ENUM|enum|1
+T_WHITESPACE| |1
+T_STRING|E|1
+T_WHITESPACE| |1
+S:{
+T_WHITESPACE| |1
+T_CASE|case|1
+T_WHITESPACE| |1
+T_STRING|array|1
+S:;
+T_WHITESPACE| |1
+S:}
+T_WHITESPACE| |1
+T_SWITCH|switch|1
+S:(
+T_VARIABLE|$x|1
+S:)
+S:{
+T_WHITESPACE| |1
+T_CASE|case|1
+T_WHITESPACE| |1
+T_ARRAY|array|1
+S:(
+T_VARIABLE|$y|1
+S:)
+S::
+T_WHITESPACE| |1
+T_BREAK|break|1
+S:;
+T_WHITESPACE| |1
+S:}
 1

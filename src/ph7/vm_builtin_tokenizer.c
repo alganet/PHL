@@ -323,7 +323,9 @@ struct tok_state {
 	const unsigned char *z;      /* cursor */
 	const unsigned char *zEnd;   /* one past end */
 	int          iLine;    /* current 1-based line at the cursor */
-	int          bProp;    /* one-shot: next identifier is a property -> T_STRING */
+	int          bProp;    /* one-shot: next identifier is a member name -> T_STRING */
+	int          bCaseName;/* one-shot: next identifier may be an enum case name (after 'case') */
+	int          bParse;   /* TOKEN_PARSE flag: apply php's semi-reserved re-tagging */
 	int          bStop;    /* __halt_compiler seen: stop scanning entirely */
 	int          bOOM;     /* memory failure flag */
 };
@@ -778,6 +780,7 @@ static int tok_lex_one(tok_state *ts){
 	const unsigned char *z = ts->z;
 	int c;
 	int bWasProp;
+	int bWasCase;
 	if( z >= ts->zEnd ){ return -1; }
 	c = *z;
 	/* Whitespace run (preserves property state). */
@@ -829,9 +832,11 @@ static int tok_lex_one(tok_state *ts){
 		tok_tok(ts,bDoc ? T_DOC_COMMENT : T_COMMENT,(const char *)z0,(int)(ts->z-z0),iLine);
 		return 0;
 	}
-	/* From here the token consumes property state. */
+	/* From here the token consumes property/case state. */
 	bWasProp = ts->bProp;
+	bWasCase = ts->bCaseName;
 	ts->bProp = 0;
+	ts->bCaseName = 0;
 	/* Close tag. */
 	if( c=='?' && z+1 < ts->zEnd && z[1]=='>' ){
 		const unsigned char *z0 = z;
@@ -921,6 +926,19 @@ static int tok_lex_one(tok_state *ts){
 					}
 				}
 			}
+			/* Under TOKEN_PARSE, a reserved word right after 'case' that names an
+			 * enum case (followed by ';' or '=') is T_STRING; a switch 'case
+			 * array(...)'/'case expr:' keeps the keyword. */
+			if( bWasCase && id != T_STRING ){
+				const unsigned char *q = firstLabelEnd;
+				while( q < ts->zEnd && tok_is_ws(*q) ){ q++; }
+				/* ';' ends a pure case, a lone '=' (not '=='/'=>') starts a backed
+				 * case value; both mark an enum case name. */
+				if( q < ts->zEnd && (*q==';' ||
+					(*q=='=' && (q+1>=ts->zEnd || (q[1]!='=' && q[1]!='>')))) ){
+					id = T_STRING;
+				}
+			}
 			if( id == T_STRING ){
 				tok_tok(ts,T_STRING,(const char *)z,n,ts->iLine);
 			}else{
@@ -930,6 +948,16 @@ static int tok_lex_one(tok_state *ts){
 			if( id == T_HALT_COMPILER ){
 				tok_halt_tail(ts);
 				return -1;
+			}
+			/* Under TOKEN_PARSE, a reserved word naming a function/method or a
+			 * class constant becomes T_STRING (semi-reserved words); force the
+			 * next identifier to T_STRING like a member name. 'case' arms a
+			 * conditional retag (enum case names only — see the identifier path). */
+			if( ts->bParse && (id == T_FUNCTION || id == T_CONST) ){
+				ts->bProp = 1;
+			}
+			if( ts->bParse && id == T_CASE ){
+				ts->bCaseName = 1;
 			}
 			return 0;
 		}
@@ -1043,6 +1071,14 @@ static int tok_lex_one(tok_state *ts){
 		ts->bProp = 1;
 		return 0;
 	}
+	/* Under TOKEN_PARSE, php re-tags a reserved word used as a member name after
+	 * "::" as T_STRING (e.g. Foo::class, Foo::empty). Mirror that with bProp. */
+	if( c==':' && z+1 < ts->zEnd && z[1]==':' ){
+		tok_tok(ts,T_DOUBLE_COLON,"::",2,ts->iLine);
+		ts->z += 2;
+		if( ts->bParse ){ ts->bProp = 1; }
+		return 0;
+	}
 	/* Multi-char and single-char operators (longest match first). */
 	{
 		const unsigned char *e = ts->zEnd;
@@ -1070,7 +1106,6 @@ static int tok_lex_one(tok_state *ts){
 		TK2('+','+',T_INC)
 		TK2('-','-',T_DEC)
 		TK2('=','>',T_DOUBLE_ARROW)
-		TK2(':',':',T_DOUBLE_COLON)
 		TK2('<','<',T_SL)
 		TK2('>','>',T_SR)
 		TK2('*','*',T_POW)
@@ -1211,6 +1246,9 @@ static int PH7_builtin_token_get_all(ph7_context *pCtx,int nArg,ph7_value **apAr
 	ts.z    = (const unsigned char *)zSrc;
 	ts.zEnd = ts.z + (nSrc > 0 ? (sxu32)nSrc : 0);
 	ts.iLine = 1;
+	if( nArg > 1 && (ph7_value_to_int(apArg[1]) & TOK_TOKEN_PARSE) ){
+		ts.bParse = 1;
+	}
 	tok_run(&ts);
 	if( ts.bOOM ){
 		return PH7_ContextMemoryError(pCtx);
