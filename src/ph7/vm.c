@@ -16486,17 +16486,37 @@ case PH7_OP_MEMBER: {
 							PH7_ClassInstanceUnref(pThis);
 							break; /* pTos is already the null temp */
 						}
-						/* Throw Error exception (PHP-compatible).
-						 * Build message before unref — pObjAttr belongs to pThis->hAttr. */
+						/* A subclass reading a PARENT's PRIVATE property: php treats it as
+						 * an UNDEFINED property (the base-private is invisible to the
+						 * subclass scope) — a Warning + null, NOT an access Error. Only
+						 * this exact shape warns; every other denied read is the catchable
+						 * "Cannot access" Error below. */
 						{
-						char zMsg[256];
+						ph7_class *pSelf = VmCurrentSelf(&(*pVm));
+						ph7_class *pDecl = pObjAttr->pAttr->pDeclClass;
+						if( pObjAttr->pAttr->iProtection == PH7_CLASS_PROT_PRIVATE
+						 && pSelf && pDecl && pSelf != pDecl && PH7_VmInstanceOf(pSelf,pDecl) ){
+							if( !VmMemberCtxIsLookup(pInstr->iP2) ){
+								VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Undefined property: %z::$%z",
+									&pClass->sName,&sName);
+							}
+							PH7_ClassInstanceUnref(pThis);
+							break; /* pTos is already the null temp */
+						}
+						}
+						/* Genuinely inaccessible: php's CATCHABLE Error (parked on the
+						 * boundary rail; the fetch-point router lands it — it was an
+						 * uncatchable VmReportUncaughtException+Abort before). */
+						{
+						SyBlob sErrMsg;
 						const char *zVis = pObjAttr->pAttr->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected";
-						SyBufferFormat(zMsg,sizeof(zMsg),"Cannot access %s property %.*s::$%.*s",
-							zVis,(int)pClass->sName.nByte,pClass->sName.zString,
-							(int)pObjAttr->pAttr->sName.nByte,pObjAttr->pAttr->sName.zString);
+						SyBlobInit(&sErrMsg,&pVm->sAllocator);
+						SyBlobFormat(&sErrMsg,"Cannot access %s property %z::$%z",
+							zVis,&pClass->sName,&sName);
 						PH7_ClassInstanceUnref(pThis);
-						VmReportUncaughtException(&(*pVm),"Error",5,zMsg,(sxu32)SyStrlen(zMsg),0,0);
-						goto Abort;
+						VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
+						SyBlobRelease(&sErrMsg);
+						break;
 						}
 					}
 				}
