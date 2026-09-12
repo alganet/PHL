@@ -2357,6 +2357,9 @@ PH7_PRIVATE int PH7_builtin_mb_ord_f(ph7_context *pCtx,int nArg,ph7_value **apAr
 PH7_PRIVATE int PH7_builtin_mb_detect_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg);
 /* vm_builtin_spl.c */
 PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm);
+/* vm_builtin_tokenizer.c */
+PH7_PRIVATE sxi32 PH7_VmInstallTokenizer(ph7_vm *pVm);
+PH7_PRIVATE void PH7_RegisterTokenizerConstants(ph7_vm *pVm);
 /* vm_builtin_session.c */
 PH7_PRIVATE sxi32 PH7_VmInstallSession(ph7_vm *pVm);
 /* vm_builtin_ini.c */
