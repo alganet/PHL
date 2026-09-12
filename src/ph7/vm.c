@@ -27636,6 +27636,60 @@ static int vm_builtin_get_include_path(ph7_context *pCtx,int nArg,ph7_value **ap
 	return PH7_OK;
 }
 /*
+ * string|false set_include_path(string $include_path)
+ *  Sets the include_path configuration option for the duration of the script,
+ *  returning the OLD value (php contract).
+ */
+static int vm_builtin_set_include_path(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	SyString *aEntry;
+	const char *zNew, *z, *zEnd;
+	int dir_sep, nLen;
+	sxu32 n;
+#ifdef __WINNT__
+	dir_sep = ';';
+#else
+	dir_sep = ':';
+#endif
+	/* Build the OLD include_path first: it is this call's return value */
+	aEntry = (SyString *)SySetBasePtr(&pVm->aPaths);
+	for( n = 0 ; n < SySetUsed(&pVm->aPaths) ; n++ ){
+		if( n > 0 ){ ph7_result_string(pCtx,(const char *)&dir_sep,sizeof(char)); }
+		ph7_result_string(pCtx,aEntry[n].zString,(int)aEntry[n].nByte);
+	}
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	/* Replace the path set with the separated segments of the new value.
+	 * Segments are duped into the VM allocator (reclaimed at VM teardown) so
+	 * the SyString entries stay valid, mirroring the config-time literals. */
+	zNew = ph7_value_to_string(apArg[0],&nLen);
+	SySetReset(&pVm->aPaths);
+	z = zNew; zEnd = &zNew[nLen];
+	while( z < zEnd ){
+		const char *zStart = z;
+		SyString sPath;
+		while( z < zEnd && (int)z[0] != dir_sep ){ z++; }
+		if( z > zStart ){
+			char *zDup = (char *)SyMemBackendDup(&pVm->sAllocator,zStart,(sxu32)(z-zStart));
+			if( zDup ){
+				SyStringInitFromBuf(&sPath,zDup,(sxu32)(z-zStart));
+#ifdef __WINNT__
+				SyStringTrimTrailingChar(&sPath,'\\');
+#endif
+				SyStringTrimTrailingChar(&sPath,'/');
+				SyStringFullTrim(&sPath);
+				if( sPath.nByte > 0 ){
+					SySetPut(&pVm->aPaths,(const void *)&sPath);
+				}
+			}
+		}
+		if( z < zEnd ){ z++; } /* skip the separator */
+	}
+	return PH7_OK;
+}
+/*
  * string get_get_included_files(void)
  *  Gets the current include_path configuration option.
  * Parameter
@@ -28366,6 +28420,7 @@ static const ph7_builtin_func aVmFunc[] = {
 	{"unserialize",    vm_builtin_unserialize },
 	   /* Files/URI inclusion facility */
 	{ "get_include_path",  vm_builtin_get_include_path },
+	{ "set_include_path",  vm_builtin_set_include_path },
 	{ "get_included_files",vm_builtin_get_included_files},
 	{ "include",      vm_builtin_include          },
 	{ "include_once", vm_builtin_include_once     },
