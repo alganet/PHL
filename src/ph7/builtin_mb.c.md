@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 384/422 lines (91.00%)
+Coverage: 479/521 lines (91.94%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -27,29 +27,29 @@ Coverage: 384/422 lines (91.00%)
 |    - |   17 | `/* Decode the codepoint at z (n bytes available); *pLen = sequence length.` |
 |    - |   18 | ` * Invalid lead bytes decode as themselves with length 1 (byte-transparent,` |
 |    - |   19 | ` * so malformed input degrades instead of exploding). */` |
-| 1258 |   20 | `static sxu32 MbUtf8Decode(const unsigned char *z,sxu32 n,sxu32 *pLen)` |
+| 1368 |   20 | `static sxu32 MbUtf8Decode(const unsigned char *z,sxu32 n,sxu32 *pLen)` |
 |    1 |   21 | `{` |
-| 1259 |   22 | `	sxu32 c = z[0];` |
-| 1259 |   23 | `	if( c < 0x80 ){` |
-|  823 |   24 | `		*pLen = 1;` |
-|  823 |   25 | `		return c;` |
+| 1369 |   22 | `	sxu32 c = z[0];` |
+| 1369 |   23 | `	if( c < 0x80 ){` |
+|  909 |   24 | `		*pLen = 1;` |
+|  909 |   25 | `		return c;` |
 |    - |   26 | `	}` |
-|  437 |   27 | `	if( (c & 0xE0) == 0xC0 && n >= 2 && (z[1] & 0xC0) == 0x80 ){` |
-|  337 |   28 | `		*pLen = 2;` |
-|  337 |   29 | `		return ((c & 0x1F) << 6) \| (z[1] & 0x3F);` |
+|  461 |   27 | `	if( (c & 0xE0) == 0xC0 && n >= 2 && (z[1] & 0xC0) == 0x80 ){` |
+|  349 |   28 | `		*pLen = 2;` |
+|  349 |   29 | `		return ((c & 0x1F) << 6) \| (z[1] & 0x3F);` |
 |    - |   30 | `	}` |
-|  101 |   31 | `	if( (c & 0xF0) == 0xE0 && n >= 3 && (z[1] & 0xC0) == 0x80 && (z[2] & 0xC0) == 0x80 ){` |
+|  113 |   31 | `	if( (c & 0xF0) == 0xE0 && n >= 3 && (z[1] & 0xC0) == 0x80 && (z[2] & 0xC0) == 0x80 ){` |
 |   73 |   32 | `		*pLen = 3;` |
 |   73 |   33 | `		return ((c & 0x0F) << 12) \| ((z[1] & 0x3F) << 6) \| (z[2] & 0x3F);` |
 |    - |   34 | `	}` |
-|   28 |   35 | `	if( (c & 0xF8) == 0xF0 && n >= 4 && (z[1] & 0xC0) == 0x80 && (z[2] & 0xC0) == 0x80` |
+|   40 |   35 | `	if( (c & 0xF8) == 0xF0 && n >= 4 && (z[1] & 0xC0) == 0x80 && (z[2] & 0xC0) == 0x80` |
 |   21 |   36 | `	 && (z[3] & 0xC0) == 0x80 ){` |
 |   21 |   37 | `		*pLen = 4;` |
 |   21 |   38 | `		return ((c & 0x07) << 18) \| ((z[1] & 0x3F) << 12) \| ((z[2] & 0x3F) << 6) \| (z[3] & 0x3F);` |
 |    - |   39 | `	}` |
-|    9 |   40 | `	*pLen = 1;` |
-|    9 |   41 | `	return c;` |
-|  630 |   42 | `}` |
+|   21 |   40 | `	*pLen = 1;` |
+|   21 |   41 | `	return c;` |
+|  685 |   42 | `}` |
 |    - |   43 | `/* Encode cp into z (up to 4 bytes); returns the byte count */` |
 |  276 |   44 | `static sxu32 MbUtf8Encode(sxu32 cp,unsigned char *z)` |
 |    1 |   45 | `{` |
@@ -584,20 +584,170 @@ Coverage: 384/422 lines (91.00%)
 |   13 |  574 | `	return PH7_OK;` |
 |   11 |  575 | `}` |
 |    - |  576 | `/*` |
-|    - |  577 | ` * Install the mb_* functions (called from PH7_RegisterBuiltInFunction's` |
-|    - |  578 | ` * table in builtin.c via these PH7_PRIVATE symbols).` |
-|    - |  579 | ` */` |
-|    5 |  580 | `PH7_PRIVATE int PH7_builtin_mb_strlen_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strlen(pCtx,nArg,apArg); }` |
-|   61 |  581 | `PH7_PRIVATE int PH7_builtin_mb_substr_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_substr(pCtx,nArg,apArg); }` |
-|   39 |  582 | `PH7_PRIVATE int PH7_builtin_mb_case_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strtolower(pCtx,nArg,apArg); }` |
-|    7 |  583 | `PH7_PRIVATE int PH7_builtin_mb_convert_case_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_convert_case(pCtx,nArg,apArg); }` |
-|   13 |  584 | `PH7_PRIVATE int PH7_builtin_mb_strpos_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strpos(pCtx,nArg,apArg); }` |
-|   39 |  585 | `PH7_PRIVATE int PH7_builtin_mb_str_split_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_str_split(pCtx,nArg,apArg); }` |
-|    7 |  586 | `PH7_PRIVATE int PH7_builtin_mb_internal_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_internal_encoding(pCtx,nArg,apArg); }` |
-|    5 |  587 | `PH7_PRIVATE int PH7_builtin_mb_check_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_check_encoding(pCtx,nArg,apArg); }` |
-|    3 |  588 | `PH7_PRIVATE int PH7_builtin_mb_strwidth_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strwidth(pCtx,nArg,apArg); }` |
-|   73 |  589 | `PH7_PRIVATE int PH7_builtin_mb_chr_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_chr(pCtx,nArg,apArg); }` |
-|   21 |  590 | `PH7_PRIVATE int PH7_builtin_mb_ord_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_ord(pCtx,nArg,apArg); }` |
-|    - |  591 |  |
-|    - |  592 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
-|    - |  593 |  |
+|    - |  577 | ` * mb_detect_encoding(string $string, array\|string\|null $encodings = null,` |
+|    - |  578 | ` *                    bool $strict = false): string\|false` |
+|    - |  579 | ` *` |
+|    - |  580 | ` * PHL's encoding scope is ASCII and UTF-8 (NEWPLAN §10 scope cut). php's` |
+|    - |  581 | ` * default detect order is exactly ASCII,UTF-8, so the null/default path is` |
+|    - |  582 | ` * byte-identical. A candidate encoding php supports but PHL does not (e.g.` |
+|    - |  583 | ` * SJIS) raises the same ValueError php uses for a truly invalid name — a` |
+|    - |  584 | ` * recorded scope divergence, not silent.` |
+|    - |  585 | ` *` |
+|    - |  586 | ` * Detection scores each candidate by its count of undecodable bytes and keeps` |
+|    - |  587 | ` * the smallest, earliest-in-order on a tie. In strict mode a non-zero best` |
+|    - |  588 | ` * score means "no candidate fully matched" -> false. This reproduces php's` |
+|    - |  589 | ` * ASCII/UTF-8 outcomes for every probed case, strict and non-strict alike.` |
+|    - |  590 | ` */` |
+|   28 |  591 | `static int MbAsciiErrors(const unsigned char *z,int n)` |
+|    1 |  592 | `{` |
+|   29 |  593 | `	int i,e = 0;` |
+|  151 |  594 | `	for( i = 0 ; i < n ; i++ ){` |
+|  123 |  595 | `		if( z[i] >= 0x80 ){ e++; }` |
+|   62 |  596 | `	}` |
+|   29 |  597 | `	return e;` |
+|    1 |  598 | `}` |
+|   28 |  599 | `static int MbUtf8Errors(const unsigned char *z,int n)` |
+|    1 |  600 | `{` |
+|   29 |  601 | `	sxu32 i = 0,nLen;` |
+|   29 |  602 | `	int e = 0;` |
+|  139 |  603 | `	while( i < (sxu32)n ){` |
+|  111 |  604 | `		MbUtf8Decode(&z[i],(sxu32)n - i,&nLen);` |
+|  111 |  605 | `		if( nLen == 1 && z[i] >= 0x80 ){ e++; i++; }` |
+|   99 |  606 | `		else{ i += nLen; }` |
+|    1 |  607 | `	}` |
+|   29 |  608 | `	return e;` |
+|    1 |  609 | `}` |
+|    - |  610 | `/* Map an encoding name to PHL's supported set: 0 = ASCII, 1 = UTF-8, -1 = out` |
+|    - |  611 | ` * of scope. Surrounding ASCII whitespace is trimmed (php accepts "ASCII, UTF-8"). */` |
+|   48 |  612 | `static int MbDetectEncId(const char *z,int n)` |
+|    1 |  613 | `{` |
+|   75 |  614 | `	while( n > 0 && (z[0]==' '\|\|z[0]=='\t'\|\|z[0]=='\n'\|\|z[0]=='\r') ){ z++; n--; }` |
+|   73 |  615 | `	while( n > 0 && (z[n-1]==' '\|\|z[n-1]=='\t'\|\|z[n-1]=='\n'\|\|z[n-1]=='\r') ){ n--; }` |
+|   48 |  616 | `	if( (n == 5 && SyStrnicmp(z,"ASCII",5) == 0)` |
+|   37 |  617 | `	 \|\| (n == 8 && SyStrnicmp(z,"US-ASCII",8) == 0) ){` |
+|   25 |  618 | `		return 0;` |
+|    - |  619 | `	}` |
+|   24 |  620 | `	if( (n == 5 && SyStrnicmp(z,"UTF-8",5) == 0)` |
+|   15 |  621 | `	 \|\| (n == 4 && SyStrnicmp(z,"UTF8",4) == 0) ){` |
+|   23 |  622 | `		return 1;` |
+|    - |  623 | `	}` |
+|    3 |  624 | `	return -1;` |
+|   25 |  625 | `}` |
+|    - |  626 | `/* Per-detection running state, shared by the array walker and the string path. */` |
+|    - |  627 | `typedef struct mb_detect_state mb_detect_state;` |
+|    - |  628 | `struct mb_detect_state {` |
+|    - |  629 | `	ph7_context *pCtx;` |
+|    - |  630 | `	int aErr[2];      /* precomputed [ASCII], [UTF-8] error counts */` |
+|    - |  631 | `	int iBestEnc;     /* winning encoding id, -1 until the first candidate */` |
+|    - |  632 | `	int iBestErr;     /* its error count */` |
+|    - |  633 | `	int nSeen;        /* candidates considered (0 -> "must specify at least one") */` |
+|    - |  634 | `	int bError;       /* an out-of-scope name threw -> abort */` |
+|    - |  635 | `	int rc;           /* the throw's propagation code (PH7_ABORT/PH7_EXCEPTION) */` |
+|    - |  636 | `};` |
+|    - |  637 | `/* Fold one candidate encoding name into the running best. Returns SXERR_ABORT` |
+|    - |  638 | ` * (and throws) when the name is outside PHL's ASCII/UTF-8 scope. */` |
+|   48 |  639 | `static int MbDetectConsider(mb_detect_state *pState,const char *zName,int nName)` |
+|    1 |  640 | `{` |
+|   49 |  641 | `	int enc = MbDetectEncId(zName,nName);` |
+|   49 |  642 | `	if( enc < 0 ){` |
+|    3 |  643 | `		pState->bError = 1;` |
+|    4 |  644 | `		pState->rc = PH7_VmThrowException(pState->pCtx,"ValueError",` |
+|    - |  645 | `			"mb_detect_encoding(): Argument #2 ($encodings) contains invalid encoding \"%.*s\"",` |
+|    1 |  646 | `			nName,zName);` |
+|    3 |  647 | `		return SXERR_ABORT;` |
+|    - |  648 | `	}` |
+|   47 |  649 | `	pState->nSeen++;` |
+|   47 |  650 | `	if( pState->iBestEnc < 0 \|\| pState->aErr[enc] < pState->iBestErr ){` |
+|   37 |  651 | `		pState->iBestEnc = enc;` |
+|   37 |  652 | `		pState->iBestErr = pState->aErr[enc];` |
+|   18 |  653 | `	}` |
+|   47 |  654 | `	return PH7_OK;` |
+|   25 |  655 | `}` |
+|    - |  656 | `/* ph7_array_walk() callback over the $encodings array. */` |
+|   12 |  657 | `static int MbDetectWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)` |
+|    1 |  658 | `{` |
+|   13 |  659 | `	mb_detect_state *pState = (mb_detect_state *)pUserData;` |
+|    - |  660 | `	const char *zName;` |
+|    - |  661 | `	int nName;` |
+|    6 |  662 | `	SXUNUSED(pKey);` |
+|   13 |  663 | `	zName = ph7_value_to_string(pData,&nName);` |
+|   13 |  664 | `	return MbDetectConsider(pState,zName,nName);` |
+|    1 |  665 | `}` |
+|   28 |  666 | `static int PH7_builtin_mb_detect_encoding(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1 |  667 | `{` |
+|    - |  668 | `	const char *zIn;` |
+|   29 |  669 | `	int nByte,bStrict = 0;` |
+|    - |  670 | `	mb_detect_state sState;` |
+|   29 |  671 | `	if( nArg < 1 ){` |
+|  ! 0 |  672 | `		ph7_result_bool(pCtx,0);` |
+|  ! 0 |  673 | `		return PH7_OK;` |
+|    - |  674 | `	}` |
+|   29 |  675 | `	zIn = ph7_value_to_string(apArg[0],&nByte);` |
+|   29 |  676 | `	if( nArg > 2 ){ bStrict = ph7_value_to_bool(apArg[2]); }` |
+|   29 |  677 | `	sState.pCtx = pCtx;` |
+|   29 |  678 | `	sState.aErr[0] = MbAsciiErrors((const unsigned char *)zIn,nByte);` |
+|   29 |  679 | `	sState.aErr[1] = MbUtf8Errors((const unsigned char *)zIn,nByte);` |
+|   29 |  680 | `	sState.iBestEnc = -1;` |
+|   29 |  681 | `	sState.iBestErr = 0;` |
+|   29 |  682 | `	sState.nSeen = 0;` |
+|   29 |  683 | `	sState.bError = 0;` |
+|   29 |  684 | `	sState.rc = PH7_OK;` |
+|   29 |  685 | `	if( nArg < 2 \|\| ph7_value_is_null(apArg[1]) ){` |
+|    - |  686 | `		/* php's default detect order is exactly ASCII, then UTF-8 */` |
+|   15 |  687 | `		MbDetectConsider(&sState,"ASCII",5);` |
+|   15 |  688 | `		MbDetectConsider(&sState,"UTF-8",5);` |
+|   22 |  689 | `	}else if( ph7_value_is_array(apArg[1]) ){` |
+|    9 |  690 | `		if( ph7_array_count(apArg[1]) == 0 ){` |
+|    3 |  691 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
+|    - |  692 | `				"mb_detect_encoding(): Argument #2 ($encodings) must specify at least one encoding");` |
+|    - |  693 | `		}` |
+|    7 |  694 | `		ph7_array_walk(apArg[1],MbDetectWalker,&sState);` |
+|    7 |  695 | `		if( sState.bError ){ return sState.rc; }` |
+|    3 |  696 | `	}else{` |
+|    - |  697 | `		/* comma-separated list, e.g. "ASCII, UTF-8" */` |
+|    - |  698 | `		const char *z2;` |
+|    7 |  699 | `		int n2,i,iStart = 0;` |
+|    7 |  700 | `		z2 = ph7_value_to_string(apArg[1],&n2);` |
+|   55 |  701 | `		for( i = 0 ; i <= n2 ; i++ ){` |
+|   49 |  702 | `			if( i == n2 \|\| z2[i] == ',' ){` |
+|    9 |  703 | `				const char *zTok = &z2[iStart];` |
+|    9 |  704 | `				int nTok = i - iStart,t = nTok;` |
+|    - |  705 | `				/* ignore an empty / all-whitespace token */` |
+|   15 |  706 | `				while( t > 0 && (zTok[0]==' '\|\|zTok[0]=='\t'\|\|zTok[0]=='\n'\|\|zTok[0]=='\r') ){ zTok++; t--; }` |
+|    9 |  707 | `				if( t > 0 && MbDetectConsider(&sState,&z2[iStart],nTok) == SXERR_ABORT ){` |
+|  ! 0 |  708 | `					return sState.rc;` |
+|    - |  709 | `				}` |
+|    9 |  710 | `				iStart = i + 1;` |
+|    4 |  711 | `			}` |
+|   25 |  712 | `		}` |
+|    - |  713 | `	}` |
+|   25 |  714 | `	if( sState.nSeen == 0 ){` |
+|  ! 0 |  715 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
+|    - |  716 | `			"mb_detect_encoding(): Argument #2 ($encodings) must specify at least one encoding");` |
+|    - |  717 | `	}` |
+|   25 |  718 | `	if( bStrict && sState.iBestErr > 0 ){` |
+|    5 |  719 | `		ph7_result_bool(pCtx,0);` |
+|    5 |  720 | `		return PH7_OK;` |
+|    - |  721 | `	}` |
+|   21 |  722 | `	ph7_result_string(pCtx,sState.iBestEnc == 0 ? "ASCII" : "UTF-8",5);` |
+|   21 |  723 | `	return PH7_OK;` |
+|   15 |  724 | `}` |
+|    - |  725 | `/*` |
+|    - |  726 | ` * Install the mb_* functions (called from PH7_RegisterBuiltInFunction's` |
+|    - |  727 | ` * table in builtin.c via these PH7_PRIVATE symbols).` |
+|    - |  728 | ` */` |
+|    5 |  729 | `PH7_PRIVATE int PH7_builtin_mb_strlen_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strlen(pCtx,nArg,apArg); }` |
+|   61 |  730 | `PH7_PRIVATE int PH7_builtin_mb_substr_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_substr(pCtx,nArg,apArg); }` |
+|   39 |  731 | `PH7_PRIVATE int PH7_builtin_mb_case_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strtolower(pCtx,nArg,apArg); }` |
+|    7 |  732 | `PH7_PRIVATE int PH7_builtin_mb_convert_case_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_convert_case(pCtx,nArg,apArg); }` |
+|   13 |  733 | `PH7_PRIVATE int PH7_builtin_mb_strpos_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strpos(pCtx,nArg,apArg); }` |
+|   39 |  734 | `PH7_PRIVATE int PH7_builtin_mb_str_split_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_str_split(pCtx,nArg,apArg); }` |
+|    7 |  735 | `PH7_PRIVATE int PH7_builtin_mb_internal_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_internal_encoding(pCtx,nArg,apArg); }` |
+|    5 |  736 | `PH7_PRIVATE int PH7_builtin_mb_check_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_check_encoding(pCtx,nArg,apArg); }` |
+|    3 |  737 | `PH7_PRIVATE int PH7_builtin_mb_strwidth_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strwidth(pCtx,nArg,apArg); }` |
+|   73 |  738 | `PH7_PRIVATE int PH7_builtin_mb_chr_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_chr(pCtx,nArg,apArg); }` |
+|   21 |  739 | `PH7_PRIVATE int PH7_builtin_mb_ord_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_ord(pCtx,nArg,apArg); }` |
+|   29 |  740 | `PH7_PRIVATE int PH7_builtin_mb_detect_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_detect_encoding(pCtx,nArg,apArg); }` |
+|    - |  741 |  |
+|    - |  742 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
+|    - |  743 |  |

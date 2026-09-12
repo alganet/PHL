@@ -239,9 +239,9 @@ Coverage: 308/388 lines (79.38%)
 | 1087629 |  229 | `	}` |
 | 2175263 |  230 | `	return (zSrc >= zEnd) ? SXRET_OK : SXERR_SYNTAX;` |
 |       5 |  231 | `}` |
-|  319416 |  232 | `PH7_PRIVATE sxi32 SyHexToint(sxi32 c)` |
+|  319440 |  232 | `PH7_PRIVATE sxi32 SyHexToint(sxi32 c)` |
 |       5 |  233 | `{` |
-|  319421 |  234 | `	switch(c){` |
+|  319445 |  234 | `	switch(c){` |
 |  130653 |  235 | `	case '0': return 0;` |
 |   11577 |  236 | `	case '1': return 1;` |
 |   76549 |  237 | `	case '2': return 2;` |
@@ -256,11 +256,11 @@ Coverage: 308/388 lines (79.38%)
 |    3871 |  246 | `	case 'B': case 'b': return 11;` |
 |    3963 |  247 | `	case 'C': case 'c': return 12;` |
 |    3855 |  248 | `	case 'D': case 'd': return 13;` |
-|    3921 |  249 | `	case 'E': case 'e': return 14;` |
-|    8063 |  250 | `	case 'F': case 'f': return 15;` |
+|    3925 |  249 | `	case 'E': case 'e': return 14;` |
+|    8083 |  250 | `	case 'F': case 'f': return 15;` |
 |       - |  251 | `	}` |
 |       3 |  252 | `	return -1;` |
-|  159713 |  253 | `}` |
+|  159725 |  253 | `}` |
 |  103332 |  254 | `PH7_PRIVATE sxi32 SyHexStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,const char **zRest)` |
 |       5 |  255 | `{` |
 |       - |  256 | `	const char *zIn,*zEnd;` |
