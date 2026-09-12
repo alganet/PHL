@@ -2250,6 +2250,7 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
 	"class RangeException extends RuntimeException { }"\
 	"class UnderflowException extends RuntimeException { }"\
 	"class UnexpectedValueException extends RuntimeException { }"\
+	"class JsonException extends Exception { }"\
 	"interface Iterator extends Traversable {"\
 	"public function current();"\
 	"public function key();"\
