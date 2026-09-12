@@ -1623,8 +1623,8 @@ Coverage: 2620/3905 lines (67.09%)
 |      5 | 1613 | `		return PH7_OK;` |
 |      - | 1614 | `	}` |
 |     41 | 1615 | `	iLen = (int)(&zEnd[1]-zPath);` |
-|    973 | 1616 | `	while( zEnd > zPath && ( (int)zEnd[0] != c && (int)zEnd[0] != d ) ){` |
-|    915 | 1617 | `		zEnd--;` |
+|    974 | 1616 | `	while( zEnd > zPath && ( (int)zEnd[0] != c && (int)zEnd[0] != d ) ){` |
+|    916 | 1617 | `		zEnd--;` |
 |      1 | 1618 | `	}` |
 |     41 | 1619 | `	zBase = (zEnd > zPath) ? &zEnd[1] : zPath;` |
 |     41 | 1620 | `	zEnd = &zPath[iLen];` |
@@ -2956,15 +2956,15 @@ Coverage: 2620/3905 lines (67.09%)
 |   6785 | 2946 | `	zIn = (const char *)SyBlobDataAt(&pDev->sBuffer,pDev->nOfft);` |
 |   6785 | 2947 | `	zEnd = &zIn[SyBlobLength(&pDev->sBuffer)-pDev->nOfft];` |
 |   6785 | 2948 | `	zPtr = zIn;` |
-| 457829 | 2949 | `	while( zIn < zEnd ){` |
-| 457725 | 2950 | `		if( zIn[0] == '\n' ){` |
+| 457835 | 2949 | `	while( zIn < zEnd ){` |
+| 457731 | 2950 | `		if( zIn[0] == '\n' ){` |
 |      - | 2951 | `			/* Line found */` |
 |   6681 | 2952 | `			zIn++; /* Include the line ending as requested by the PHP specification */` |
 |   6681 | 2953 | `			*pLen = (ph7_int64)(zIn-zPtr);` |
 |   6681 | 2954 | `			*pzLine = zPtr;` |
 |   6681 | 2955 | `			return SXRET_OK;` |
 |      - | 2956 | `		}` |
-| 451049 | 2957 | `		zIn++;` |
+| 451055 | 2957 | `		zIn++;` |
 |      5 | 2958 | `	}` |
 |      - | 2959 | `	/* No line were found */` |
 |    109 | 2960 | `	return SXERR_NOTFOUND;` |

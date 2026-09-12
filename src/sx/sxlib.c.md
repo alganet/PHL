@@ -24,19 +24,19 @@ Coverage: 238/261 lines (91.19%)
 |         - |   14 | `#include "sxtime.h"` |
 |         - |   15 | `#include "sxstr.h"` |
 |         - |   16 |  |
-|  91264934 |   17 | `PH7_PRIVATE sxu32 SyBinHash(const void *pSrc,sxu32 nLen)` |
+|  91266710 |   17 | `PH7_PRIVATE sxu32 SyBinHash(const void *pSrc,sxu32 nLen)` |
 |         5 |   18 | `{` |
-|  91264939 |   19 | `	register unsigned char *zIn = (unsigned char *)pSrc;` |
+|  91266715 |   19 | `	register unsigned char *zIn = (unsigned char *)pSrc;` |
 |         - |   20 | `	unsigned char *zEnd;` |
-|  91264939 |   21 | `	sxu32 nH = 5381;` |
-|  91264939 |   22 | `	zEnd = &zIn[nLen];` |
-| 153859794 |   23 | `	for(;;){` |
-| 307678241 |   24 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
-| 283263791 |   25 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
-| 258054207 |   26 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
-| 237159849 |   27 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+|  91266715 |   21 | `	sxu32 nH = 5381;` |
+|  91266715 |   22 | `	zEnd = &zIn[nLen];` |
+| 153863070 |   23 | `	for(;;){` |
+| 307684729 |   24 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+| 283269987 |   25 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+| 258059527 |   26 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+| 237164573 |   27 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
 |         5 |   28 | `	}` |
-|  91264939 |   29 | `	return nH;` |
+|  91266715 |   29 | `	return nH;` |
 |         5 |   30 | `}` |
 |   1633166 |   31 | `PH7_PRIVATE sxu32 SyStrHash(const void *pSrc,sxu32 nLen)` |
 |         5 |   32 | `{` |
