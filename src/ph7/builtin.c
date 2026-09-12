@@ -236,7 +236,11 @@ static int PH7_builtin_is_numeric(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	int res = 0; /* Assume false by default */
 	if( nArg > 0 ){
-		res = ph7_value_is_numeric(apArg[0]);
+		/* Strict PHP semantics: only int/float and numeric strings are numeric.
+		 * PHL's lenient helper also reports booleans as numeric (they coerce for
+		 * arithmetic), but php's is_numeric() rejects true/false, so exclude
+		 * MEMOBJ_BOOL here. */
+		res = ph7_value_is_numeric(apArg[0]) && !ph7_value_is_bool(apArg[0]);
 	}
 	/* Query result */
 	ph7_result_bool(pCtx,res);
@@ -254,7 +258,10 @@ static int PH7_builtin_is_scalar(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	int res = 0; /* Assume false by default */
 	if( nArg > 0 ){
-		res = ph7_value_is_scalar(apArg[0]);
+		/* Strict PHP semantics: scalars are int/float/string/bool. PHL's
+		 * MEMOBJ_SCALAR bucket also includes NULL, but php's is_scalar(null) is
+		 * false, so exclude the NULL case. */
+		res = ph7_value_is_scalar(apArg[0]) && !ph7_value_is_null(apArg[0]);
 	}
 	/* Query result */
 	ph7_result_bool(pCtx,res);
