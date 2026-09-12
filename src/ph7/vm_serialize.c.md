@@ -59,58 +59,58 @@ Coverage: 458/477 lines (96.02%)
 |    - |   49 | ` * number (no "d:"/";") so var_export can reuse it (see PH7_AppendShortestReal` |
 |    - |   50 | ` * decl in ph7int.h).` |
 |    - |   51 | ` */` |
-|  416 |   52 | `PH7_PRIVATE void PH7_AppendShortestReal(SyBlob *pOut, double d)` |
+|  424 |   52 | `PH7_PRIVATE void PH7_AppendShortestReal(SyBlob *pOut, double d)` |
 |    4 |   53 | `{` |
 |    - |   54 | `	char zExp[64];` |
 |    - |   55 | `	char zDig[24];   /* significant digits, no sign/point */` |
 |    - |   56 | `	const char *p;` |
 |    - |   57 | `	int sig, nDig, e, decpt, neg;` |
-|  428 |   58 | `	if( PH7_IS_NAN(d) ){ SyBlobAppend(pOut,"NAN",3); return; }` |
-|  416 |   59 | `	if( PH7_IS_INF(d) ){ SyBlobAppend(pOut, d<0.0?"-INF":"INF", d<0.0?4:3); return; }` |
+|  436 |   58 | `	if( PH7_IS_NAN(d) ){ SyBlobAppend(pOut,"NAN",3); return; }` |
+|  424 |   59 | `	if( PH7_IS_INF(d) ){ SyBlobAppend(pOut, d<0.0?"-INF":"INF", d<0.0?4:3); return; }` |
 |    - |   60 | `	/* Find the fewest significant digits that re-parse bit-exactly. */` |
-| 1150 |   61 | `	for( sig = 1; sig <= 17; sig++ ){` |
-| 1150 |   62 | `		snprintf(zExp,sizeof(zExp),"%.*e",sig-1,d);` |
-| 1150 |   63 | `		if( strtod(zExp,0) == d ){ break; }` |
-|  378 |   64 | `	}` |
-|  400 |   65 | `	if( sig > 17 ){ sig = 17; snprintf(zExp,sizeof(zExp),"%.*e",sig-1,d); }` |
+| 1162 |   61 | `	for( sig = 1; sig <= 17; sig++ ){` |
+| 1162 |   62 | `		snprintf(zExp,sizeof(zExp),"%.*e",sig-1,d);` |
+| 1162 |   63 | `		if( strtod(zExp,0) == d ){ break; }` |
+|  380 |   64 | `	}` |
+|  408 |   65 | `	if( sig > 17 ){ sig = 17; snprintf(zExp,sizeof(zExp),"%.*e",sig-1,d); }` |
 |    - |   66 | `	/* Parse "[-]D[.DDD]e[+-]XX": collect digits and the leading-digit exponent. */` |
-|  400 |   67 | `	p = zExp;` |
-|  400 |   68 | `	neg = 0;` |
-|  400 |   69 | `	if( *p == '-' ){ neg = 1; p++; }` |
-|  400 |   70 | `	nDig = 0;` |
-| 1748 |   71 | `	while( *p && *p != 'e' && *p != 'E' ){` |
-| 1352 |   72 | `		if( *p >= '0' && *p <= '9' && nDig < (int)sizeof(zDig) ){ zDig[nDig++] = *p; }` |
-| 1352 |   73 | `		p++;` |
+|  408 |   67 | `	p = zExp;` |
+|  408 |   68 | `	neg = 0;` |
+|  408 |   69 | `	if( *p == '-' ){ neg = 1; p++; }` |
+|  408 |   70 | `	nDig = 0;` |
+| 1772 |   71 | `	while( *p && *p != 'e' && *p != 'E' ){` |
+| 1368 |   72 | `		if( *p >= '0' && *p <= '9' && nDig < (int)sizeof(zDig) ){ zDig[nDig++] = *p; }` |
+| 1368 |   73 | `		p++;` |
 |    4 |   74 | `	}` |
-|  400 |   75 | `	e = (*p) ? atoi(p+1) : 0;` |
-|  400 |   76 | `	while( nDig > 1 && zDig[nDig-1] == '0' ){ nDig--; } /* trim trailing zeros */` |
-|  400 |   77 | `	decpt = e + 1; /* digits to the left of the decimal point */` |
-|  400 |   78 | `	if( neg ){ SyBlobAppend(pOut,"-",1); }` |
-|  400 |   79 | `	if( decpt > 17 \|\| decpt < -3 ){` |
+|  408 |   75 | `	e = (*p) ? atoi(p+1) : 0;` |
+|  408 |   76 | `	while( nDig > 1 && zDig[nDig-1] == '0' ){ nDig--; } /* trim trailing zeros */` |
+|  408 |   77 | `	decpt = e + 1; /* digits to the left of the decimal point */` |
+|  408 |   78 | `	if( neg ){ SyBlobAppend(pOut,"-",1); }` |
+|  408 |   79 | `	if( decpt > 17 \|\| decpt < -3 ){` |
 |    - |   80 | `		/* Exponential: <lead>.<rest>E<sign><exp> (mantissa always has a dot). */` |
 |   38 |   81 | `		SyBlobAppend(pOut,&zDig[0],1);` |
 |   38 |   82 | `		SyBlobAppend(pOut,".",1);` |
 |   38 |   83 | `		if( nDig > 1 ){ SyBlobAppend(pOut,&zDig[1],nDig-1); }` |
 |   21 |   84 | `		else { SyBlobAppend(pOut,"0",1); }` |
 |   38 |   85 | `		SyBlobFormat(pOut,"E%c%d", e<0?'-':'+', e<0?-e:e);` |
-|  382 |   86 | `	}else if( decpt <= 0 ){` |
+|  390 |   86 | `	}else if( decpt <= 0 ){` |
 |    - |   87 | `		/* 0.<zeros><digits> */` |
 |    - |   88 | `		int i;` |
 |   57 |   89 | `		SyBlobAppend(pOut,"0.",2);` |
 |   71 |   90 | `		for( i = 0; i < -decpt; i++ ){ SyBlobAppend(pOut,"0",1); }` |
 |   57 |   91 | `		SyBlobAppend(pOut,zDig,nDig);` |
-|  336 |   92 | `	}else if( decpt >= nDig ){` |
+|  344 |   92 | `	}else if( decpt >= nDig ){` |
 |    - |   93 | `		/* <digits><zeros> (integer) */` |
 |    - |   94 | `		int i;` |
-|  179 |   95 | `		SyBlobAppend(pOut,zDig,nDig);` |
-|  333 |   96 | `		for( i = 0; i < decpt-nDig; i++ ){ SyBlobAppend(pOut,"0",1); }` |
-|   91 |   97 | `	}else{` |
+|  183 |   95 | `		SyBlobAppend(pOut,zDig,nDig);` |
+|  337 |   96 | `		for( i = 0; i < decpt-nDig; i++ ){ SyBlobAppend(pOut,"0",1); }` |
+|   93 |   97 | `	}else{` |
 |    - |   98 | `		/* <int>.<frac> */` |
-|  131 |   99 | `		SyBlobAppend(pOut,zDig,decpt);` |
-|  131 |  100 | `		SyBlobAppend(pOut,".",1);` |
-|  131 |  101 | `		SyBlobAppend(pOut,&zDig[decpt],nDig-decpt);` |
+|  135 |   99 | `		SyBlobAppend(pOut,zDig,decpt);` |
+|  135 |  100 | `		SyBlobAppend(pOut,".",1);` |
+|  135 |  101 | `		SyBlobAppend(pOut,&zDig[decpt],nDig-decpt);` |
 |    - |  102 | `	}` |
-|  212 |  103 | `}` |
+|  216 |  103 | `}` |
 |    - |  104 | `/* Serialize a double as d:<shortest>; */` |
 |   52 |  105 | `static void VmSerializeReal(SyBlob *pOut, double d)` |
 |    1 |  106 | `{` |

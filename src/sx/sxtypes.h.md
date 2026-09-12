@@ -97,18 +97,18 @@ Coverage: 16/16 lines (100.00%)
 |    - |   87 | ` * do not depend on the math library.  Values are treated as double because` |
 |    - |   88 | ` * all engine code currently uses 64‑bit reals.` |
 |    - |   89 | ` */` |
-| 2439 |   90 | `SX_STATIC_INLINE int PH7_IS_NAN_DOUBLE(double v){` |
+| 2477 |   90 | `SX_STATIC_INLINE int PH7_IS_NAN_DOUBLE(double v){` |
 |    - |   91 | `    union { double d; sxu64 u; } u;` |
-| 2439 |   92 | `    u.d = v;` |
-| 2589 |   93 | `    return ((u.u & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL)` |
-| 2434 |   94 | `           && ((u.u & 0x000fffffffffffffULL) != 0);` |
+| 2477 |   92 | `    u.d = v;` |
+| 2630 |   93 | `    return ((u.u & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL)` |
+| 2472 |   94 | `           && ((u.u & 0x000fffffffffffffULL) != 0);` |
 |    5 |   95 | `}` |
-| 1047 |   96 | `SX_STATIC_INLINE int PH7_IS_INF_DOUBLE(double v){` |
+| 1083 |   96 | `SX_STATIC_INLINE int PH7_IS_INF_DOUBLE(double v){` |
 |    - |   97 | `    union { double d; sxu64 u; } u;` |
 |    - |   98 | `    sxu64 abs;` |
-| 1047 |   99 | `    u.d = v;` |
-| 1047 |  100 | `    abs = u.u & 0x7fffffffffffffffULL;` |
-| 1047 |  101 | `    return abs == 0x7ff0000000000000ULL;` |
+| 1083 |   99 | `    u.d = v;` |
+| 1083 |  100 | `    abs = u.u & 0x7fffffffffffffffULL;` |
+| 1083 |  101 | `    return abs == 0x7ff0000000000000ULL;` |
 |    5 |  102 | `}` |
 |    - |  103 |  |
 |    - |  104 | `/* convenience macros cast to double */` |
@@ -125,7 +125,7 @@ Coverage: 16/16 lines (100.00%)
 |    - |  115 | ` * divide by 0”) for those expressions.  Instead construct the value from a` |
 |    - |  116 | ` * known IEEE‑754 bit pattern which is safe on all platforms.` |
 |    - |  117 | ` */` |
-|   96 |  118 | `SX_STATIC_INLINE double PH7_NAN_VALUE(void){` |
+|   98 |  118 | `SX_STATIC_INLINE double PH7_NAN_VALUE(void){` |
 |    - |  119 | `    /* Use a static constant union to avoid undefined behaviour from` |
 |    - |  120 | `     * reading a different member than was last written.  Some compilers` |
 |    - |  121 | `     * (clang on macOS in particular) may optimize away the write when the` |
@@ -134,11 +134,11 @@ Coverage: 16/16 lines (100.00%)
 |    - |  124 | `     * pattern is stored in memory and the double is read back correctly.` |
 |    - |  125 | `     */` |
 |    - |  126 | `    static const union { sxu64 u; double d; } u = { 0x7ff8000000000000ULL };` |
-|   96 |  127 | `    return u.d;` |
+|   98 |  127 | `    return u.d;` |
 |    2 |  128 | `}` |
-|   90 |  129 | `SX_STATIC_INLINE double PH7_INF_VALUE(void){` |
+|   94 |  129 | `SX_STATIC_INLINE double PH7_INF_VALUE(void){` |
 |    - |  130 | `    static const union { sxu64 u; double d; } u = { 0x7ff0000000000000ULL };` |
-|   90 |  131 | `    return u.d;` |
+|   94 |  131 | `    return u.d;` |
 |    2 |  132 | `}` |
 |    - |  133 | `/* Time constants */` |
 |    - |  134 | `#define SX_MSEC_PER_SEC  (1000)          /* Millisec per seconds */` |
