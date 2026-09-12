@@ -318,6 +318,57 @@ PH7_PRIVATE int vm_builtin_interface_exists(ph7_context *pCtx,int nArg,ph7_value
 	return PH7_OK;
 }
 /*
+ * bool trait_exists(string $trait [, bool $autoload = true ] )
+ *   Checks if the trait has been defined.
+ * Parameters
+ *  trait
+ *   The trait name (case-sensitive here, unlike the standard PHP engine).
+ *  autoload
+ *   Whether to invoke autoloading if the trait is not yet defined.
+ * Return
+ *   TRUE if trait is a defined trait, FALSE otherwise.
+ */
+PH7_PRIVATE int vm_builtin_trait_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	int res = 0; /* Assume trait does not exist */
+	if( nArg > 0 ){
+		SyHashEntry *pEntry = 0;
+		const char *zName;
+		int nLen;
+		int iAutoload = 1; /* Default: autoload enabled */
+		/* Extract given name */
+		zName = ph7_value_to_string(apArg[0],&nLen);
+		if( nArg >= 2 ){
+			iAutoload = ph7_value_to_bool(apArg[1]);
+		}
+		/* Perform a hash lookup */
+		if( nLen > 0 ){
+			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);
+		}
+		if( pEntry == 0 && nLen > 0 && iAutoload ){
+			/* Try autoload — pass iLoadable=FALSE so we get traits too */
+			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,(sxu32)nLen,FALSE);
+			if( pClass ){
+				pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);
+			}
+		}
+		if( pEntry ){
+			ph7_class *pClass = (ph7_class *)pEntry->pUserData;
+			while( pClass ){
+				if( pClass->iFlags & PH7_CLASS_TRAIT ){
+					/* trait is available */
+					res = 1;
+					break;
+				}
+				/* Next with the same name */
+				pClass = pClass->pNextName;
+			}
+		}
+	}
+	ph7_result_bool(pCtx,res);
+	return PH7_OK;
+}
+/*
  * bool class_alias([string $original[,string $alias ]])
  *   Creates an alias for a class.
  * Parameters
