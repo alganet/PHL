@@ -1152,6 +1152,42 @@ PH7_PRIVATE sxi32 PH7_HashmapCmp(
 		/* Must have the same number of entries */
 		return pLeft->nEntry > pRight->nEntry ? 1 : -1;
 	}
+	if( bStrict ){
+		/* PHP's '===' on arrays is ORDER-SENSITIVE: the two maps must hold the
+		 * same key/value pairs, with identical key types, in the same insertion
+		 * order. Walk both in insertion order (pFirst, then the pPrev chain, per
+		 * this file's forward-iteration convention) in lockstep and compare each
+		 * position's key then value. (Loose '==' below stays order-insensitive,
+		 * matching each left key by lookup into the right map.) */
+		ph7_hashmap_node *pLs = pLeft->pFirst;
+		ph7_hashmap_node *pRs = pRight->pFirst;
+		for( n = pLeft->nEntry ; n > 0 ; n-- ){
+			/* Keys must match in type and value at this position */
+			if( pLs->iType != pRs->iType ){
+				return 1;
+			}
+			if( pLs->iType == HASHMAP_INT_NODE ){
+				if( pLs->xKey.iKey != pRs->xKey.iKey ){
+					return 1;
+				}
+			}else{
+				SyBlob *pLk = &pLs->xKey.sKey;
+				SyBlob *pRk = &pRs->xKey.sKey;
+				if( SyBlobLength(pLk) != SyBlobLength(pRk)
+				 || (SyBlobLength(pLk) > 0
+				  && SyMemcmp(SyBlobData(pLk),SyBlobData(pRk),SyBlobLength(pLk)) != 0) ){
+					return 1;
+				}
+			}
+			/* Values must be strictly identical */
+			if( HashmapNodeCmp(pLs,pRs,TRUE) != 0 ){
+				return 1;
+			}
+			pLs = pLs->pPrev; /* Reverse link = insertion order */
+			pRs = pRs->pPrev;
+		}
+		return 0; /* Same pairs, same order */
+	}
 	/* Point to the first inserted entry of the left hashmap */
 	pLe = pLeft->pFirst;
 	pRe = 0; /* cc warning */
