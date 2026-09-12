@@ -180,10 +180,10 @@ Coverage: 21/22 lines (95.45%)
 |    - |  170 | `"}"` |
 |    - |  171 | `;` |
 |    - |  172 |  |
-| 3834 |  173 | `PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm)` |
+| 3850 |  173 | `PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm)` |
 |    5 |  174 | `{` |
-| 3839 |  175 | `	ph7_create_function(&(*pVm),"__ini_cli",vm_builtin_ini_cli,0);` |
-| 3839 |  176 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zIniLib,sizeof(zIniLib)-1);` |
+| 3855 |  175 | `	ph7_create_function(&(*pVm),"__ini_cli",vm_builtin_ini_cli,0);` |
+| 3855 |  176 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zIniLib,sizeof(zIniLib)-1);` |
 |    5 |  177 | `}` |
 |    - |  178 |  |
 |    - |  179 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |

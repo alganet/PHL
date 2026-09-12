@@ -254,8 +254,8 @@ Coverage: 630/718 lines (87.74%)
 |    41 |  244 | `		}` |
 |    87 |  245 | `		if( pEntry == 0 && nLen > 0 && iAutoload ){` |
 |     - |  246 | `			/* Try autoload, then re-check */` |
-|    25 |  247 | `			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,(sxu32)nLen,FALSE);` |
-|    25 |  248 | `			if( pClass ){` |
+|    24 |  247 | `			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,(sxu32)nLen,FALSE);` |
+|    24 |  248 | `			if( pClass ){` |
 |     9 |  249 | `				pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);` |
 |     3 |  250 | `			}` |
 |    10 |  251 | `		}` |
@@ -700,16 +700,16 @@ Coverage: 630/718 lines (87.74%)
 |  5577 |  690 | `				 \|\| (pOwn->pDeclClass->iFlags & PH7_CLASS_TRAIT) != 0 ){` |
 |  9263 |  691 | `					bGranted = 1;` |
 |  4634 |  692 | `				}` |
-|  6471 |  693 | `			}else if( pOwn == 0 && pCaller == pClass ){` |
+|  6472 |  693 | `			}else if( pOwn == 0 && pCaller == pClass ){` |
 |   959 |  694 | `				bGranted = 1;` |
 |   479 |  695 | `			}` |
 | 11105 |  696 | `			if( !bGranted ){` |
 |     - |  697 | `				/* Check if the caller is a trait used by pClass */` |
 |     - |  698 | `				ph7_class **apTrait;` |
 |     - |  699 | `				sxu32 nTrait,k;` |
-|   886 |  700 | `				apTrait = (ph7_class **)SySetBasePtr(&pClass->aTrait);` |
-|   886 |  701 | `				nTrait = SySetUsed(&pClass->aTrait);` |
-|   886 |  702 | `				for(k = 0; k < nTrait; k++){` |
+|   887 |  700 | `				apTrait = (ph7_class **)SySetBasePtr(&pClass->aTrait);` |
+|   887 |  701 | `				nTrait = SySetUsed(&pClass->aTrait);` |
+|   887 |  702 | `				for(k = 0; k < nTrait; k++){` |
 |   ! 0 |  703 | `					if( apTrait[k] == pCaller ){` |
 |   ! 0 |  704 | `						bGranted = 1;` |
 |   ! 0 |  705 | `						break;` |
@@ -758,7 +758,7 @@ Coverage: 630/718 lines (87.74%)
 | 23341 |  748 | `				ph7_class_attr *pAncAttr = pAncAttrE ? (ph7_class_attr *)pAncAttrE->pUserData : 0;` |
 | 23341 |  749 | `				int bHere = 0;` |
 | 23341 |  750 | `				if( pAncMeth && (ph7_class *)pAncMeth->sFunc.pUserData == pAnc ){` |
-|  3505 |  751 | `					bHere = 1;` |
+|  3506 |  751 | `					bHere = 1;` |
 |  1751 |  752 | `				}` |
 | 23341 |  753 | `				if( pAncAttr && (pAncAttr->pDeclClass == pAnc \|\| pAncAttr->pDeclClass == 0) ){` |
 | 10385 |  754 | `					bHere = 1;` |
