@@ -12048,7 +12048,13 @@ case PH7_OP_LOAD_CLOSURE:{
 	 * copy for a real closure (built below), or the shared lambda function itself for a
 	 * plain anonymous function with no captured environment. */
 	ph7_vm_func *pTarget = pFunc;
-	if( pFunc->iFlags & VM_FUNC_CLOSURE ){
+	/* A no-capture lambda declared inside a class method is not VM_FUNC_CLOSURE
+	 * (its env is empty), yet php still binds the creation-site class as its scope
+	 * so `self::`/private access inside the body works. Detect the enclosing class
+	 * here and route such a lambda through the per-instance closure path (a global
+	 * no-capture lambda peeks NULL and stays a shared function). */
+	ph7_class *pLoadScope = (pFunc->iFlags & VM_FUNC_CLOSURE) ? 0 : PH7_VmPeekDeclaringClass(pVm);
+	if( (pFunc->iFlags & VM_FUNC_CLOSURE) || pLoadScope ){
 		ph7_vm_func_closure_env *aEnv,*pEnv,sEnv;
 		ph7_vm_func *pClosure;
 		char *zName;
@@ -12073,6 +12079,9 @@ case PH7_OP_LOAD_CLOSURE:{
 		pClosure->aByteCode = pFunc->aByteCode;
 		pClosure->aStatic = pFunc->aStatic;
 		pClosure->iFlags = pFunc->iFlags;
+		/* An in-class no-capture lambda routed here (pLoadScope set) must be a
+		 * real closure so PH7_VmClassMemberAccess honors its pUserData scope. */
+		pClosure->iFlags |= VM_FUNC_CLOSURE;
 		pClosure->pUserData = pFunc->pUserData;
 		pClosure->sSignature = pFunc->sSignature;
 		pClosure->nReturnType = pFunc->nReturnType;
