@@ -126,21 +126,21 @@ Coverage: 630/718 lines (87.74%)
 |  1759 |  116 | `	if( ph7_value_is_object(pArg) ){` |
 |     - |  117 | `		/* Class instance already loaded,no need to perform a lookup */` |
 |   915 |  118 | `		pClass = ((ph7_class_instance *)pArg->x.pOther)->pClass;` |
-|  1303 |  119 | `	}else if( ph7_value_is_string(pArg) ){` |
+|  1304 |  119 | `	}else if( ph7_value_is_string(pArg) ){` |
 |     - |  120 | `		const char *zClass;` |
 |     - |  121 | `		int nLen;` |
 |     - |  122 | `		/* Extract class name */` |
-|   846 |  123 | `		zClass = ph7_value_to_string(pArg,&nLen);` |
+|   847 |  123 | `		zClass = ph7_value_to_string(pArg,&nLen);` |
 |     - |  124 | `		/* php: a leading '\' anchors the name to the global namespace. */` |
-|   846 |  125 | `		if( nLen > 0 && zClass[0] == '\\' ){ zClass++; nLen--; }` |
-|   846 |  126 | `		if( nLen > 0 ){` |
+|   847 |  125 | `		if( nLen > 0 && zClass[0] == '\\' ){ zClass++; nLen--; }` |
+|   847 |  126 | `		if( nLen > 0 ){` |
 |     - |  127 | `			/* Resolve through PH7_VmExtractClass so a class named by STRING is` |
 |     - |  128 | `			 * autoloaded on a miss — php autoloads the class of a [class,method]` |
 |     - |  129 | `			 * callable (is_callable/array_map/call_user_func), and of the class` |
 |     - |  130 | `			 * argument to method_exists()/property_exists(). iLoadable=FALSE keeps` |
 |     - |  131 | `			 * abstract classes and interfaces (a static method on an abstract class` |
 |     - |  132 | `			 * is a valid callable). */` |
-|   846 |  133 | `			pClass = PH7_VmExtractClass(pVm,zClass,(sxu32)nLen,FALSE,0);` |
+|   847 |  133 | `			pClass = PH7_VmExtractClass(pVm,zClass,(sxu32)nLen,FALSE,0);` |
 |   421 |  134 | `		}` |
 |   421 |  135 | `	}` |
 |  1759 |  136 | `	return pClass;` |
@@ -758,7 +758,7 @@ Coverage: 630/718 lines (87.74%)
 | 23345 |  748 | `				ph7_class_attr *pAncAttr = pAncAttrE ? (ph7_class_attr *)pAncAttrE->pUserData : 0;` |
 | 23345 |  749 | `				int bHere = 0;` |
 | 23345 |  750 | `				if( pAncMeth && (ph7_class *)pAncMeth->sFunc.pUserData == pAnc ){` |
-|  3505 |  751 | `					bHere = 1;` |
+|  3506 |  751 | `					bHere = 1;` |
 |  1751 |  752 | `				}` |
 | 23345 |  753 | `				if( pAncAttr && (pAncAttr->pDeclClass == pAnc \|\| pAncAttr->pDeclClass == 0) ){` |
 | 10389 |  754 | `					bHere = 1;` |

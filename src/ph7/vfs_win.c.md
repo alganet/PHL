@@ -282,20 +282,20 @@ Coverage: 570/710 lines (80.28%)
 |    5 |  272 | `}` |
 |    - |  273 | `/* int (*xChmod)(const char *,int) */` |
 |    - |  274 | `static int WinVfs_chmod(const char *zPath,int mode)` |
-|    2 |  275 | `{` |
+|    3 |  275 | `{` |
 |    - |  276 | `	void * pConverted;` |
 |    - |  277 | `	int rc;` |
-|    2 |  278 | `	pConverted = convertUtf8Filename(zPath);` |
-|    2 |  279 | `	if( pConverted == 0 ){` |
+|    3 |  278 | `	pConverted = convertUtf8Filename(zPath);` |
+|    3 |  279 | `	if( pConverted == 0 ){` |
 |  ! 0 |  280 | `		return -1;` |
 |    - |  281 | `	}` |
 |    - |  282 | `	/* Windows honors only the read-only attribute: a set owner-write bit (0200)` |
 |    - |  283 | `	 * clears it, otherwise the file is made read-only. This mirrors php, whose` |
 |    - |  284 | `	 * chmod() on Windows likewise maps through _wchmod and returns success. */` |
-|    2 |  285 | `	rc = _wchmod((const wchar_t *)pConverted,(mode & 0200) ? (_S_IREAD\|_S_IWRITE) : _S_IREAD);` |
-|    2 |  286 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    2 |  287 | `	return rc == 0 ? PH7_OK : - 1;` |
-|    2 |  288 | `}` |
+|    3 |  285 | `	rc = _wchmod((const wchar_t *)pConverted,(mode & 0200) ? (_S_IREAD\|_S_IWRITE) : _S_IREAD);` |
+|    3 |  286 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    3 |  287 | `	return rc == 0 ? PH7_OK : - 1;` |
+|    3 |  288 | `}` |
 |    - |  289 | `/* ph7_int64 (*xFreeSpace)(const char *) */` |
 |    - |  290 | `static ph7_int64 WinVfs_DiskFreeSpace(const char *zPath)` |
 |    1 |  291 | `{` |
@@ -981,7 +981,7 @@ Coverage: 570/710 lines (80.28%)
 |    - |  971 | `		/* Creates a new file, only if it does not already exist.` |
 |    - |  972 | `		* If the file exists, it fails.` |
 |    - |  973 | `		*/` |
-|    2 |  974 | `		dwCreate = CREATE_NEW;` |
+|    3 |  974 | `		dwCreate = CREATE_NEW;` |
 |    5 |  975 | `	}else if( iOpenMode & PH7_IO_OPEN_TRUNC ){` |
 |    - |  976 | `		/* Opens a file and truncates it so that its size is zero bytes` |
 |    - |  977 | `		 * The file must exist.` |
@@ -996,7 +996,7 @@ Coverage: 570/710 lines (80.28%)
 |    5 |  986 | `		dwAccess \|= GENERIC_WRITE;` |
 |    5 |  987 | `	}else if( iOpenMode & PH7_IO_OPEN_WRONLY ){` |
 |    - |  988 | `		/* Write only access */` |
-|    2 |  989 | `		dwAccess = GENERIC_WRITE;` |
+|    3 |  989 | `		dwAccess = GENERIC_WRITE;` |
 |    - |  990 | `	}` |
 |    5 |  991 | `	if( iOpenMode & PH7_IO_OPEN_APPEND ){` |
 |    - |  992 | `		/* Append mode */` |

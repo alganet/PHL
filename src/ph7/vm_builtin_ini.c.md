@@ -60,7 +60,7 @@ Coverage: 21/22 lines (95.45%)
 |    - |   50 | `"  'default_charset' => ['UTF-8', 7],"` |
 |    - |   51 | `"  'default_mimetype' => ['text/html', 7],"` |
 |    - |   52 | `"  'display_errors' => ['1', 7],"` |
-|    - |   53 | `"  'error_reporting' => ['32767', 7],"` |
+|    - |   53 | `"  'error_reporting' => ['30719', 7],"` |
 |    - |   54 | `"  'include_path' => ['.', 7],"` |
 |    - |   55 | `"  'max_execution_time' => ['0', 7],"` |
 |    - |   56 | `"  'memory_limit' => ['-1', 7],"` |
@@ -180,10 +180,10 @@ Coverage: 21/22 lines (95.45%)
 |    - |  170 | `"}"` |
 |    - |  171 | `;` |
 |    - |  172 |  |
-| 3854 |  173 | `PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm)` |
+| 3858 |  173 | `PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm)` |
 |    5 |  174 | `{` |
-| 3859 |  175 | `	ph7_create_function(&(*pVm),"__ini_cli",vm_builtin_ini_cli,0);` |
-| 3859 |  176 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zIniLib,sizeof(zIniLib)-1);` |
+| 3863 |  175 | `	ph7_create_function(&(*pVm),"__ini_cli",vm_builtin_ini_cli,0);` |
+| 3863 |  176 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zIniLib,sizeof(zIniLib)-1);` |
 |    5 |  177 | `}` |
 |    - |  178 |  |
 |    - |  179 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
