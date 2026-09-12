@@ -729,7 +729,7 @@ Coverage: 570/710 lines (80.28%)
 |    1 |  719 | `}` |
 |    - |  720 | `/* int (*xGetenv)(const char *,ph7_context *) */` |
 |    - |  721 | `static int WinVfs_Getenv(const char *zVar,ph7_context *pCtx)` |
-|    5 |  722 | `{` |
+|    4 |  722 | `{` |
 |    - |  723 | `	char zValue[1024];` |
 |    - |  724 | `	DWORD n;` |
 |    - |  725 | `	/*` |
@@ -739,17 +739,17 @@ Coverage: 570/710 lines (80.28%)
 |    - |  729 | `	 * string and its terminating null character and the contents` |
 |    - |  730 | `	 * of lpBuffer are undefined.` |
 |    - |  731 | `	 */` |
-|    5 |  732 | `	n = sizeof(zValue);` |
-|    5 |  733 | `	SyMemcpy("Undefined",zValue,sizeof("Undefined")-1);` |
+|    4 |  732 | `	n = sizeof(zValue);` |
+|    4 |  733 | `	SyMemcpy("Undefined",zValue,sizeof("Undefined")-1);` |
 |    - |  734 | `	/* Extract the environment value */` |
-|    5 |  735 | `	n = GetEnvironmentVariableA(zVar,zValue,sizeof(zValue));` |
-|    5 |  736 | `	if( !n ){` |
+|    4 |  735 | `	n = GetEnvironmentVariableA(zVar,zValue,sizeof(zValue));` |
+|    4 |  736 | `	if( !n ){` |
 |    - |  737 | `		/* No such variable*/` |
 |  ! 0 |  738 | `		return -1;` |
 |    - |  739 | `	}` |
-|    5 |  740 | `	ph7_result_string(pCtx,zValue,(int)n);` |
-|    5 |  741 | `	return PH7_OK;` |
-|    5 |  742 | `}` |
+|    4 |  740 | `	ph7_result_string(pCtx,zValue,(int)n);` |
+|    4 |  741 | `	return PH7_OK;` |
+|    4 |  742 | `}` |
 |    - |  743 | `/* int (*xSetenv)(const char *,const char *) */` |
 |    - |  744 | `static int WinVfs_Setenv(const char *zName,const char *zValue)` |
 |    1 |  745 | `{` |
