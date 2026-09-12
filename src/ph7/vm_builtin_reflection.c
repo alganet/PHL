@@ -1000,6 +1000,33 @@ static ph7_vm_func * ReflectResolveCallable(ph7_context *pCtx, ph7_value *pTarge
 			if( pFn == 0 || (pFn->iFlags & MEMOBJ_STRING) == 0 || SyBlobLength(&pFn->sBlob) < 1 ){
 				return 0;
 			}
+			/* A closure over an object method or __invoke object
+			 * (Closure::fromCallable([$obj,'m']) / fromCallable($invokeObj)) stores the
+			 * bare method name in $__fn and the class in $__scope. Resolve it as a METHOD
+			 * of $__scope FIRST — before the global function table — so a same-named
+			 * global function does not shadow the method (the bug: $__fn "add" hitting a
+			 * global add()). A plain anonymous closure's $__fn is its unique lambda name,
+			 * which is not a method, so this falls through cleanly. */
+			{
+				SyString sScope;
+				ph7_value *pScope;
+				SyStringInitFromBuf(&sScope, "__scope", 7);
+				pScope = PH7_ClassInstanceFetchAttr(pClo, &sScope);
+				if( pScope && (pScope->iFlags & MEMOBJ_STRING) && SyBlobLength(&pScope->sBlob) > 0 ){
+					ph7_class *pScopeCls = PH7_VmExtractClass(pVm,
+						(const char *)SyBlobData(&pScope->sBlob), SyBlobLength(&pScope->sBlob), FALSE, 0);
+					if( pScopeCls ){
+						ph7_class_method *pScopeMeth = PH7_ClassExtractMethod(pScopeCls,
+							(const char *)SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));
+						if( pScopeMeth ){
+							if( ppClass ){ *ppClass = pScopeCls; }
+							if( ppMeth ){ *ppMeth = pScopeMeth; }
+							if( ppClosure ){ *ppClosure = pClo; }
+							return &pScopeMeth->sFunc;
+						}
+					}
+				}
+			}
 			pEntry = SyHashGet(&pVm->hFunction, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));
 			if( pEntry == 0 ){
 				/* A Closure over a host function (Closure::fromCallable('strlen')) */
