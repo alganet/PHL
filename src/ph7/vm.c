@@ -2383,32 +2383,37 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
 	"  return $aDir;"\
 	"}"\
 	"function glob(string $pattern,int $iFlags = 0){"\
-	"/* Open the target directory */"\
-	"$zDir = dirname($pattern);"\
-	"if(!is_string($zDir) ){ $zDir = './'; }"\
+	"/* php keeps the literal directory portion of the pattern in every result;"\
+	"   split off everything up to and including the last '/' as the prefix. */"\
+	"$slash = strrpos($pattern,'/');"\
+	"if( $slash === false ){ $zDir = '.'; $prefix = ''; $pat = $pattern; }"\
+	"else { $zDir = substr($pattern,0,$slash); if( $zDir === '' ){ $zDir = '/'; } $prefix = substr($pattern,0,$slash+1); $pat = substr($pattern,$slash+1); }"\
 	"$pHandle = opendir($zDir);"\
 	"if( $pHandle == FALSE ){"\
-	"   /* IO error while opening the current directory,return FALSE */"\
+	"   /* IO error while opening the target directory,return FALSE */"\
 	"	return FALSE;"\
 	"}"\
-	"$pattern = basename($pattern);"\
 	"$pArray = array(); /* Empty array */"\
 	"/* Loop throw available entries */"\
 	"while( FALSE !== ($pEntry = readdir($pHandle)) ){"\
+	" /* php's glob() never matches a leading-dot entry (incl. '.' and '..') unless"\
+	"    the pattern itself starts with a dot */"\
+	"	if( strlen($pEntry) > 0 && $pEntry[0] === '.' && (strlen($pat) < 1 || $pat[0] !== '.') ){ continue; }"\
 	" /* Use the built-in strglob function which is a Symisc eXtension for wildcard comparison*/"\
-	"	$rc = strglob($pattern,$pEntry);"\
+	"	$rc = strglob($pat,$pEntry);"\
 	"	if( $rc ){"\
-	"	   if( is_dir($pEntry) ){"\
+	"	   $zFull = $prefix . $pEntry;"\
+	"	   if( is_dir($zDir . '/' . $pEntry) ){"\
 	"	      if( $iFlags & GLOB_MARK ){"\
 	"		     /* Adds a slash to each directory returned */"\
-	"			 $pEntry .= DIRECTORY_SEPARATOR;"\
+	"			 $zFull .= DIRECTORY_SEPARATOR;"\
 	"		  }"\
 	"	   }else if( $iFlags & GLOB_ONLYDIR ){"\
 	"	     /* Not a directory,ignore */"\
 	"		 continue;"\
 	"	   }"\
-	"	   /* Add the entry */"\
-	"	   $pArray[] = $pEntry;"\
+	"	   /* Add the entry (with its literal directory prefix, php-style) */"\
+	"	   $pArray[] = $zFull;"\
 	"	}"\
 	" }"\
 	"/* Close the handle */"\

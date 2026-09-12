@@ -686,22 +686,16 @@ static int UnixDir_Read(void *pUserData,ph7_context *pCtx)
 {
 	DIR *pDir = (DIR *)pUserData;
 	struct dirent *pEntry;
-	char *zName = 0; /* cc warning */
-	sxu32 n = 0;
-	for(;;){
-		pEntry = readdir(pDir);
-		if( pEntry == 0 ){
-			/* No more entries to process */
-			return -1;
-		}
-		zName = pEntry->d_name;
-		n = SyStrlen(zName);
-		/* Ignore '.' && '..' */
-		if( n > sizeof("..")-1 || zName[0] != '.' || ( n == sizeof("..")-1 && zName[1] != '.') ){
-			break;
-		}
-		/* Next entry */
+	char *zName;
+	sxu32 n;
+	/* php's readdir() yields every entry including '.' and '..' */
+	pEntry = readdir(pDir);
+	if( pEntry == 0 ){
+		/* No more entries to process */
+		return -1;
 	}
+	zName = pEntry->d_name;
+	n = SyStrlen(zName);
 	/* Return the current file name */
 	ph7_result_string(pCtx,zName,(int)n);
 	return PH7_OK;
