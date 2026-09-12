@@ -1648,6 +1648,7 @@ static int vm_builtin_reflect_attr_args(ph7_context *pCtx, int nArg, ph7_value *
 {
 	ph7_vm *pVm = pCtx->pVm;
 	SySet *pAttrs = 0;
+	ph7_class *pDeclCls = 0; /* class an attribute is declared on: scope for self:: in its args */
 	ph7_attribute *pAttrRec;
 	ph7_value *pOut;
 	const char *zKind;
@@ -1661,14 +1662,14 @@ static int vm_builtin_reflect_attr_args(ph7_context *pCtx, int nArg, ph7_value *
 	nAttrIdx = (sxu32)ph7_value_to_int(apArg[4]);
 	if( nKind == 5 && SyMemcmp(zKind, "class", 5) == 0 ){
 		ph7_class *pClass = ReflectResolveClass(pVm, apArg[1]);
-		if( pClass ){ pAttrs = &pClass->aAttrs; }
+		if( pClass ){ pAttrs = &pClass->aAttrs; pDeclCls = pClass; }
 	}else if( nKind == 4 && SyMemcmp(zKind, "attr", 4) == 0 ){
 		ph7_class *pClass = ReflectResolveClass(pVm, apArg[1]);
 		ph7_class_attr *pMember = pClass ? ReflectFetchAttr(pClass, apArg[2]) : 0;
-		if( pMember ){ pAttrs = &pMember->aAttrs; }
+		if( pMember ){ pAttrs = &pMember->aAttrs; pDeclCls = pClass; }
 	}else if( nKind == 6 && SyMemcmp(zKind, "method", 6) == 0 ){
 		ph7_vm_func *pFunc = ReflectResolveCallable(pCtx, apArg[1], apArg[2], 0, 0, 0, 0);
-		if( pFunc ){ pAttrs = &pFunc->aAttrs; }
+		if( pFunc ){ pAttrs = &pFunc->aAttrs; pDeclCls = (ph7_class *)pFunc->pUserData; }
 	}else if( nKind == 2 && SyMemcmp(zKind, "fn", 2) == 0 ){
 		ph7_vm_func *pFunc = ReflectResolveCallable(pCtx, apArg[1], 0, 0, 0, 0, 0);
 		if( pFunc ){ pAttrs = &pFunc->aAttrs; }
@@ -1676,7 +1677,7 @@ static int vm_builtin_reflect_attr_args(ph7_context *pCtx, int nArg, ph7_value *
 		ph7_vm_func *pFunc = ReflectResolveCallable(pCtx, apArg[1], apArg[2], 0, 0, 0, 0);
 		ph7_vm_func_arg *pParam = pFunc
 			? (ph7_vm_func_arg *)SySetAt(&pFunc->aArgs, (sxu32)ph7_value_to_int(apArg[3])) : 0;
-		if( pParam ){ pAttrs = &pParam->aAttrs; }
+		if( pParam ){ pAttrs = &pParam->aAttrs; pDeclCls = (ph7_class *)pFunc->pUserData; }
 	}else if( nKind == 5 && SyMemcmp(zKind, "const", 5) == 0 ){
 		/* Global constant (php 8.5 attributes on `const` statements) */
 		const char *zCName;
@@ -1696,7 +1697,10 @@ static int vm_builtin_reflect_attr_args(ph7_context *pCtx, int nArg, ph7_value *
 		ph7_value sValue;
 		PH7_MemObjInit(pVm, &sValue);
 		if( SySetUsed(&pArgRec->aByteCode) > 0 ){
-			VmLocalExec(pVm, &pArgRec->aByteCode, &sValue, FALSE);
+			/* Evaluate under the attribute's declaring-class scope so `self::class`
+			 * / `self::CONST` / `parent::` resolve like php (else self:: would bind
+			 * to the reflection machinery's own class). */
+			PH7_VmExecAttrArg(pVm, &pArgRec->aByteCode, pDeclCls, &sValue);
 		}
 		if( SyStringLength(&pArgRec->sName) > 0 ){
 			ReflectMapAddDyn(pCtx, pOut, &pArgRec->sName, &sValue);
