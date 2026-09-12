@@ -19791,6 +19791,27 @@ PH7_PRIVATE sxi32 VmLocalExec(ph7_vm *pVm,SySet *pByteCode,ph7_value *pResult,in
 	return rc;
 }
 /*
+ * Evaluate an attribute-argument bytecode with the attribute's DECLARING class
+ * installed as the const-eval scope, so `self::`/`parent::`/`self::CONST` inside
+ * the argument resolve against that class (like php) rather than the reflection
+ * machinery's scope. pDeclCls == 0 (a free function or global constant) leaves
+ * the ambient scope untouched. Mirrors the property/const-initializer path.
+ */
+PH7_PRIVATE sxi32 PH7_VmExecAttrArg(ph7_vm *pVm,SySet *pByteCode,ph7_class *pDeclCls,ph7_value *pResult)
+{
+	ph7_class *pSaveCtx = pVm->pConstEvalClass;
+	void *pSaveFrame = pVm->pConstEvalFrame;
+	sxi32 rc;
+	if( pDeclCls ){
+		pVm->pConstEvalClass = pDeclCls;
+		pVm->pConstEvalFrame = (void *)VmSkipExceptionFrames(pVm->pFrame);
+	}
+	rc = VmLocalExec(&(*pVm),pByteCode,pResult,FALSE);
+	pVm->pConstEvalClass = pSaveCtx;
+	pVm->pConstEvalFrame = pSaveFrame;
+	return rc;
+}
+/*
  * Invoke any installed shutdown callbacks.
  * Flush every still-open output buffer to the real output consumer at the end
  * of execution. php implicitly ends+flushes all ob_start() levels on shutdown
