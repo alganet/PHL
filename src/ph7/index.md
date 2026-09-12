@@ -1,6 +1,6 @@
 # src/ph7/
 
-Coverage: 44374/54041 lines (82.11%)
+Coverage: 44388/54763 lines (81.05%)
 
 [Up](../index.md)
 
@@ -23,7 +23,7 @@ Coverage: 44374/54041 lines (82.11%)
 |[vfs_unix.c](vfs_unix.c.md)|89.38%|387/433|
 |[vfs_win.c](vfs_win.c.md)|80.28%|570/710|
 |[vfs_zip.c](vfs_zip.c.md)|58.24%|152/261|
-|[vm.c](vm.c.md)|83.34%|12147/14576|
+|[vm.c](vm.c.md)|83.34%|12149/14578|
 |[vm_builtin_class.c](vm_builtin_class.c.md)|87.74%|630/718|
 |[vm_builtin_getopt.c](vm_builtin_getopt.c.md)|24.71%|42/170|
 |[vm_builtin_ini.c](vm_builtin_ini.c.md)|95.45%|21/22|
@@ -31,6 +31,7 @@ Coverage: 44374/54041 lines (82.11%)
 |[vm_builtin_reflection.c](vm_builtin_reflection.c.md)|85.75%|1059/1235|
 |[vm_builtin_session.c](vm_builtin_session.c.md)|100.00%|4/4|
 |[vm_builtin_spl.c](vm_builtin_spl.c.md)|76.71%|56/73|
+|[vm_builtin_tokenizer.c](vm_builtin_tokenizer.c.md)|1.67%|12/720|
 |[vm_http.c](vm_http.c.md)|69.82%|310/444|
 |[vm_http_response.c](vm_http_response.c.md)|49.41%|126/255|
 |[vm_json.c](vm_json.c.md)|79.60%|511/642|
