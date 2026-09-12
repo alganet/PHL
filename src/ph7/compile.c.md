@@ -170,7 +170,7 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |   160 | `/*` |
 |         - |   161 | ` * Initialize a freshly allocated block instance.` |
 |         - |   162 | ` */` |
-|  11543242 |   163 | `static void GenStateInitBlock(` |
+|  11543252 |   163 | `static void GenStateInitBlock(` |
 |         - |   164 | `	ph7_gen_state *pGen, /* Code generator state */` |
 |         - |   165 | `	GenBlock *pBlock,    /* Target block */` |
 |         - |   166 | `	sxi32 iType,         /* Block type [i.e: loop, conditional, function body, etc.]*/` |
@@ -179,21 +179,21 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |   169 | `	)` |
 |         5 |   170 | `{` |
 |         - |   171 | `	/* Initialize block fields */` |
-|  11543247 |   172 | `	pBlock->nFirstInstr = nFirstInstr;` |
-|  11543247 |   173 | `	pBlock->pUserData   = pUserData;` |
-|  11543247 |   174 | `	pBlock->pGen        = pGen;` |
-|  11543247 |   175 | `	pBlock->iFlags      = iType;` |
-|  11543247 |   176 | `	pBlock->pParent     = 0;` |
-|  11543247 |   177 | `	SySetInit(&pBlock->aJumpFix,&pGen->pVm->sAllocator,sizeof(JumpFixup));` |
-|  11543247 |   178 | `	SySetInit(&pBlock->aPostContFix,&pGen->pVm->sAllocator,sizeof(JumpFixup));` |
-|  11543247 |   179 | `}` |
+|  11543257 |   172 | `	pBlock->nFirstInstr = nFirstInstr;` |
+|  11543257 |   173 | `	pBlock->pUserData   = pUserData;` |
+|  11543257 |   174 | `	pBlock->pGen        = pGen;` |
+|  11543257 |   175 | `	pBlock->iFlags      = iType;` |
+|  11543257 |   176 | `	pBlock->pParent     = 0;` |
+|  11543257 |   177 | `	SySetInit(&pBlock->aJumpFix,&pGen->pVm->sAllocator,sizeof(JumpFixup));` |
+|  11543257 |   178 | `	SySetInit(&pBlock->aPostContFix,&pGen->pVm->sAllocator,sizeof(JumpFixup));` |
+|  11543257 |   179 | `}` |
 |         - |   180 | `/*` |
 |         - |   181 | ` * Allocate a new block instance.` |
 |         - |   182 | ` * Return SXRET_OK and write a pointer to the new instantiated block` |
 |         - |   183 | ` * on success.Otherwise generate a compile-time error and abort` |
 |         - |   184 | ` * processing on failure.` |
 |         - |   185 | ` */` |
-|  11539414 |   186 | `static sxi32 GenStateEnterBlock(` |
+|  11539424 |   186 | `static sxi32 GenStateEnterBlock(` |
 |         - |   187 | `	ph7_gen_state *pGen,  /* Code generator state */` |
 |         - |   188 | `	sxi32 iType,          /* Block type [i.e: loop, conditional, function body, etc.]*/` |
 |         - |   189 | `	sxu32 nFirstInstr,    /* First instruction to compile */` |
@@ -203,8 +203,8 @@ Coverage: 7368/9094 lines (81.02%)
 |         5 |   193 | `{` |
 |         - |   194 | `	GenBlock *pBlock;` |
 |         - |   195 | `	/* Allocate a new block instance */` |
-|  11539419 |   196 | `	pBlock = (GenBlock *)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(GenBlock));` |
-|  11539419 |   197 | `	if( pBlock == 0 ){` |
+|  11539429 |   196 | `	pBlock = (GenBlock *)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(GenBlock));` |
+|  11539429 |   197 | `	if( pBlock == 0 ){` |
 |         - |   198 | `		/* If the supplied memory subsystem is so sick that we are unable to allocate` |
 |         - |   199 | `		 * a tiny chunk of memory, there is no much we can do here.` |
 |         - |   200 | `		 */` |
@@ -213,13 +213,13 @@ Coverage: 7368/9094 lines (81.02%)
 |       ! 0 |   203 | `		return SXERR_ABORT;` |
 |         - |   204 | `	}` |
 |         - |   205 | `	/* Zero the structure */` |
-|  11539419 |   206 | `	SyZero(pBlock,sizeof(GenBlock));` |
-|  11539419 |   207 | `	GenStateInitBlock(&(*pGen),pBlock,iType,nFirstInstr,pUserData);` |
+|  11539429 |   206 | `	SyZero(pBlock,sizeof(GenBlock));` |
+|  11539429 |   207 | `	GenStateInitBlock(&(*pGen),pBlock,iType,nFirstInstr,pUserData);` |
 |         - |   208 | `	/* Link to the parent block */` |
-|  11539419 |   209 | `	pBlock->pParent = pGen->pCurrent;` |
+|  11539429 |   209 | `	pBlock->pParent = pGen->pCurrent;` |
 |         - |   210 | `	/* A loop or switch gets an id, and remembers the loop it nests inside, so a goto's` |
 |         - |   211 | `	 * and a label's positions can be compared after compilation (see aLoopParent). */` |
-|  11539419 |   212 | `	if( iType & (GEN_BLOCK_LOOP\|GEN_BLOCK_SWITCH) ){` |
+|  11539429 |   212 | `	if( iType & (GEN_BLOCK_LOOP\|GEN_BLOCK_SWITCH) ){` |
 |    502041 |   213 | `		sxu32 nParent = pGen->nCurLoopId;` |
 |    502041 |   214 | `		pGen->nLoopId++;` |
 |    502041 |   215 | `		SySetPut(&pGen->aLoopParent,(const void *)&nParent);` |
@@ -228,55 +228,55 @@ Coverage: 7368/9094 lines (81.02%)
 |    502041 |   218 | `		pGen->nCurLoopId = pGen->nLoopId;` |
 |    251018 |   219 | `	}` |
 |         - |   220 | `	/* Mark as the current block */` |
-|  11539419 |   221 | `	pGen->pCurrent = pBlock;` |
-|  11539419 |   222 | `	if( ppBlock ){` |
+|  11539429 |   221 | `	pGen->pCurrent = pBlock;` |
+|  11539429 |   222 | `	if( ppBlock ){` |
 |         - |   223 | `		/* Write a pointer to the new instance */` |
-|   5525535 |   224 | `		*ppBlock = pBlock;` |
-|   2762765 |   225 | `	}` |
-|  11539419 |   226 | `	return SXRET_OK;` |
-|   5769712 |   227 | `}` |
+|   5525545 |   224 | `		*ppBlock = pBlock;` |
+|   2762770 |   225 | `	}` |
+|  11539429 |   226 | `	return SXRET_OK;` |
+|   5769717 |   227 | `}` |
 |         - |   228 | `/*` |
 |         - |   229 | ` * Release block fields without freeing the whole instance.` |
 |         - |   230 | ` */` |
-|  11539402 |   231 | `static void GenStateReleaseBlock(GenBlock *pBlock)` |
+|  11539412 |   231 | `static void GenStateReleaseBlock(GenBlock *pBlock)` |
 |         5 |   232 | `{` |
-|  11539407 |   233 | `	SySetRelease(&pBlock->aPostContFix);` |
-|  11539407 |   234 | `	SySetRelease(&pBlock->aJumpFix);` |
-|  11539407 |   235 | `}` |
+|  11539417 |   233 | `	SySetRelease(&pBlock->aPostContFix);` |
+|  11539417 |   234 | `	SySetRelease(&pBlock->aJumpFix);` |
+|  11539417 |   235 | `}` |
 |         - |   236 | `/*` |
 |         - |   237 | ` * Release a block.` |
 |         - |   238 | ` */` |
-|  11539398 |   239 | `static void GenStateFreeBlock(GenBlock *pBlock)` |
+|  11539408 |   239 | `static void GenStateFreeBlock(GenBlock *pBlock)` |
 |         5 |   240 | `{` |
-|  11539403 |   241 | `	ph7_gen_state *pGen = pBlock->pGen;` |
-|  11539403 |   242 | `	GenStateReleaseBlock(&(*pBlock));` |
+|  11539413 |   241 | `	ph7_gen_state *pGen = pBlock->pGen;` |
+|  11539413 |   242 | `	GenStateReleaseBlock(&(*pBlock));` |
 |         - |   243 | `	/* Free the instance */` |
-|  11539403 |   244 | `	SyMemBackendPoolFree(&pGen->pVm->sAllocator,pBlock);` |
-|  11539403 |   245 | `}` |
+|  11539413 |   244 | `	SyMemBackendPoolFree(&pGen->pVm->sAllocator,pBlock);` |
+|  11539413 |   245 | `}` |
 |         - |   246 | `/*` |
 |         - |   247 | ` * POP and release a block from the stack of compiled blocks.` |
 |         - |   248 | ` */` |
-|  11539398 |   249 | `static sxi32 GenStateLeaveBlock(ph7_gen_state *pGen,GenBlock **ppBlock)` |
+|  11539408 |   249 | `static sxi32 GenStateLeaveBlock(ph7_gen_state *pGen,GenBlock **ppBlock)` |
 |         5 |   250 | `{` |
-|  11539403 |   251 | `	GenBlock *pBlock = pGen->pCurrent;` |
-|  11539403 |   252 | `	if( pBlock == 0 ){` |
+|  11539413 |   251 | `	GenBlock *pBlock = pGen->pCurrent;` |
+|  11539413 |   252 | `	if( pBlock == 0 ){` |
 |         - |   253 | `		/* No more block to pop */` |
 |       ! 0 |   254 | `		return SXERR_EMPTY;` |
 |         - |   255 | `	}` |
-|  11539403 |   256 | `	if( pBlock->iFlags & (GEN_BLOCK_LOOP\|GEN_BLOCK_SWITCH) ){` |
+|  11539413 |   256 | `	if( pBlock->iFlags & (GEN_BLOCK_LOOP\|GEN_BLOCK_SWITCH) ){` |
 |    502033 |   257 | `		pGen->nCurLoopId = pBlock->nOuterLoopId;` |
 |    251014 |   258 | `	}` |
 |         - |   259 | `	/* Point to the upper block */` |
-|  11539403 |   260 | `	pGen->pCurrent = pBlock->pParent;` |
-|  11539403 |   261 | `	if( ppBlock ){` |
+|  11539413 |   260 | `	pGen->pCurrent = pBlock->pParent;` |
+|  11539413 |   261 | `	if( ppBlock ){` |
 |         - |   262 | `		/* Write a pointer to the popped block */` |
 |       ! 0 |   263 | `		*ppBlock = pBlock;` |
 |       ! 0 |   264 | `	}else{` |
 |         - |   265 | `		/* Safely release the block */` |
-|  11539403 |   266 | `		GenStateFreeBlock(&(*pBlock));` |
+|  11539413 |   266 | `		GenStateFreeBlock(&(*pBlock));` |
 |         - |   267 | `	}` |
-|  11539403 |   268 | `	return SXRET_OK;` |
-|   5769704 |   269 | `}` |
+|  11539413 |   268 | `	return SXRET_OK;` |
+|   5769709 |   269 | `}` |
 |         - |   270 | `/*` |
 |         - |   271 | ` * Emit a forward jump.` |
 |         - |   272 | ` * Notes on forward jumps` |
@@ -309,16 +309,16 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |   299 | ` *  are emitted, we record each forward jump in an instance of the following` |
 |         - |   300 | ` *  structure.Those jumps are fixed later when the jump destination is resolved.` |
 |         - |   301 | ` */` |
-|   8092390 |   302 | `static sxu32 GenStateFixJumps(GenBlock *pBlock,sxi32 nJumpType,sxu32 nJumpDest)` |
+|   8092402 |   302 | `static sxu32 GenStateFixJumps(GenBlock *pBlock,sxi32 nJumpType,sxu32 nJumpDest)` |
 |         5 |   303 | `{` |
 |         - |   304 | `	JumpFixup *aFix;` |
 |         - |   305 | `	VmInstr *pInstr;` |
 |         - |   306 | `	sxu32 nFixed;` |
 |         - |   307 | `	sxu32 n;` |
 |         - |   308 | `	/* Point to the jump fixup table */` |
-|   8092395 |   309 | `	aFix = (JumpFixup *)SySetBasePtr(&pBlock->aJumpFix);` |
+|   8092407 |   309 | `	aFix = (JumpFixup *)SySetBasePtr(&pBlock->aJumpFix);` |
 |         - |   310 | `	/* Fix the desired jumps */` |
-|  17430433 |   311 | `	for( nFixed = n = 0 ; n < SySetUsed(&pBlock->aJumpFix) ; ++n ){` |
+|  17430445 |   311 | `	for( nFixed = n = 0 ; n < SySetUsed(&pBlock->aJumpFix) ; ++n ){` |
 |   9338043 |   312 | `		if( aFix[n].nJumpType < 0 ){` |
 |         - |   313 | `			/* Already fixed */` |
 |   3483657 |   314 | `			continue;` |
@@ -337,7 +337,7 @@ Coverage: 7368/9094 lines (81.02%)
 |   2192561 |   327 | `		}` |
 |   2192566 |   328 | `	}` |
 |         - |   329 | `	/* Total number of fixed jumps */` |
-|   8092395 |   330 | `	return nFixed;` |
+|   8092407 |   330 | `	return nFixed;` |
 |         5 |   331 | `}` |
 |         - |   332 | `/*` |
 |         - |   333 | ` * Fix a 'goto' now the jump destination is resolved.` |
@@ -346,7 +346,7 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |   336 | ` * Refer to the routine responsible of compiling the goto` |
 |         - |   337 | ` * statement for more information.` |
 |         - |   338 | ` */` |
-|   2821040 |   339 | `static sxi32 GenStateFixGoto(ph7_gen_state *pGen,sxu32 nOfft)` |
+|   2821042 |   339 | `static sxi32 GenStateFixGoto(ph7_gen_state *pGen,sxu32 nOfft)` |
 |         5 |   340 | `{` |
 |         - |   341 | `	JumpFixup *pJump,*aJumps;` |
 |         - |   342 | `	Label *pLabel;` |
@@ -354,9 +354,9 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |   344 | `	sxi32 rc;` |
 |         - |   345 | `	sxu32 n;` |
 |         - |   346 | `	/* Point to the goto table */` |
-|   2821045 |   347 | `	aJumps = (JumpFixup *)SySetBasePtr(&pGen->aGoto);` |
+|   2821047 |   347 | `	aJumps = (JumpFixup *)SySetBasePtr(&pGen->aGoto);` |
 |         - |   348 | `	/* Fix */` |
-|   2821191 |   349 | `	for( n = nOfft ; n < SySetUsed(&pGen->aGoto) ; ++n ){` |
+|   2821193 |   349 | `	for( n = nOfft ; n < SySetUsed(&pGen->aGoto) ; ++n ){` |
 |       153 |   350 | `		pJump = &aJumps[n];` |
 |         - |   351 | `		/* Extract the target label */` |
 |       153 |   352 | `		rc = GenStateGetLabel(&(*pGen),&pJump->sLabel,&pLabel);` |
@@ -407,21 +407,21 @@ Coverage: 7368/9094 lines (81.02%)
 |        51 |   397 | `	}` |
 |         - |   398 | `	/* php says nothing about a label nobody jumps to — the old "defined but not` |
 |         - |   399 | `	 * referenced" warning was a PH7-ism with no counterpart in the oracle. */` |
-|   2821043 |   400 | `	return SXRET_OK;` |
-|   1410525 |   401 | `}` |
+|   2821045 |   400 | `	return SXRET_OK;` |
+|   1410526 |   401 | `}` |
 |         - |   402 | `/*` |
 |         - |   403 | ` * Check if a given token value is installed in the literal table.` |
 |         - |   404 | ` */` |
-|  14641522 |   405 | `static sxi32 GenStateFindLiteral(ph7_gen_state *pGen,const SyString *pValue,sxu32 *pIdx)` |
+|  14641600 |   405 | `static sxi32 GenStateFindLiteral(ph7_gen_state *pGen,const SyString *pValue,sxu32 *pIdx)` |
 |         5 |   406 | `{` |
 |         - |   407 | `	SyHashEntry *pEntry;` |
-|  14641527 |   408 | `	pEntry = SyHashGet(&pGen->hLiteral,(const void *)pValue->zString,pValue->nByte);` |
-|  14641527 |   409 | `	if( pEntry == 0 ){` |
+|  14641605 |   408 | `	pEntry = SyHashGet(&pGen->hLiteral,(const void *)pValue->zString,pValue->nByte);` |
+|  14641605 |   409 | `	if( pEntry == 0 ){` |
 |   3773727 |   410 | `		return SXERR_NOTFOUND;` |
 |         - |   411 | `	}` |
-|  10867805 |   412 | `	*pIdx = (sxu32)SX_PTR_TO_INT(pEntry->pUserData);` |
-|  10867805 |   413 | `	return SXRET_OK;` |
-|   7320766 |   414 | `}` |
+|  10867883 |   412 | `	*pIdx = (sxu32)SX_PTR_TO_INT(pEntry->pUserData);` |
+|  10867883 |   413 | `	return SXRET_OK;` |
+|   7320805 |   414 | `}` |
 |         - |   415 | `/*` |
 |         - |   416 | ` * Install a given constant index in the literal table.` |
 |         - |   417 | ` * In order to be installed, the ph7_value must be of type string.` |
@@ -443,22 +443,22 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |   433 | ` * Reserve a room for a numeric constant [i.e: 64-bit integer or real number]` |
 |         - |   434 | ` * in the constant table.` |
 |         - |   435 | ` */` |
-|   3554972 |   436 | `static ph7_value * GenStateInstallNumLiteral(ph7_gen_state *pGen,sxu32 *pIdx)` |
+|   3555032 |   436 | `static ph7_value * GenStateInstallNumLiteral(ph7_gen_state *pGen,sxu32 *pIdx)` |
 |         5 |   437 | `{` |
 |         - |   438 | `	ph7_value *pObj;` |
-|   3554977 |   439 | `	sxu32 nIdx = 0; /* cc warning */` |
+|   3555037 |   439 | `	sxu32 nIdx = 0; /* cc warning */` |
 |         - |   440 | `	/* Reserve a new constant */` |
-|   3554977 |   441 | `	pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);` |
-|   3554977 |   442 | `	if( pObj == 0 ){` |
+|   3555037 |   441 | `	pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);` |
+|   3555037 |   442 | `	if( pObj == 0 ){` |
 |       ! 0 |   443 | `		PH7_GenCompileError(&(*pGen),E_ERROR,1,"PH7 engine is running out of memory");` |
 |       ! 0 |   444 | `		return 0;` |
 |         - |   445 | `	}` |
-|   3554977 |   446 | `	*pIdx = nIdx;` |
+|   3555037 |   446 | `	*pIdx = nIdx;` |
 |         - |   447 | `	/* TODO(chems): Create a numeric table (64bit int keys) same as` |
 |         - |   448 | `	 * the constant string iterals table [optimization purposes].` |
 |         - |   449 | `	 */` |
-|   3554977 |   450 | `	return pObj;` |
-|   1777491 |   451 | `}` |
+|   3555037 |   450 | `	return pObj;` |
+|   1777521 |   451 | `}` |
 |         - |   452 | `/*` |
 |         - |   453 | ` * Implementation of the PHP language constructs.` |
 |         - |   454 | ` */` |
@@ -473,10 +473,10 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |   463 | ` * vanishingly unlikely and silently dropping to weak mode matches the` |
 |         - |   464 | ` * surrounding callsites' zero-check fallback pattern.` |
 |         - |   465 | ` */` |
-|   6955402 |   466 | `static void *GenStateAttachStrictFlag(ph7_gen_state *pGen, void *p3)` |
+|   6955424 |   466 | `static void *GenStateAttachStrictFlag(ph7_gen_state *pGen, void *p3)` |
 |         5 |   467 | `{` |
 |         - |   468 | `	VmCallArgMap *pMap;` |
-|   6955407 |   469 | `	if( !pGen->bStrictTypes ) return p3;` |
+|   6955429 |   469 | `	if( !pGen->bStrictTypes ) return p3;` |
 |        39 |   470 | `	if( p3 == 0 ){` |
 |        35 |   471 | `		pMap = (VmCallArgMap *)SyMemBackendAlloc(&pGen->pVm->sAllocator,sizeof(VmCallArgMap));` |
 |        35 |   472 | `		if( pMap == 0 ) return 0;` |
@@ -485,7 +485,7 @@ Coverage: 7368/9094 lines (81.02%)
 |        16 |   475 | `	}` |
 |        39 |   476 | `	((VmCallArgMap *)p3)->bStrict = 1;` |
 |        39 |   477 | `	return p3;` |
-|   3477706 |   478 | `}` |
+|   3477717 |   478 | `}` |
 |         - |   479 | `/* Forward declaration */` |
 |         - |   480 | `static sxi32 GenStateCompileChunk(ph7_gen_state *pGen,sxi32 iFlags);` |
 |         - |   481 | `static void GenStateSetPendingDoc(ph7_gen_state *pGen);` |
@@ -549,14 +549,14 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |   539 | ` * Returns 1 and fills pBadStart / pBadLen when the literal is malformed;` |
 |         - |   540 | ` * returns 0 when it is well-formed.` |
 |         - |   541 | ` */` |
-|   3563646 |   542 | `static int GenStateFindBadNumericSeparator(` |
+|   3563706 |   542 | `static int GenStateFindBadNumericSeparator(` |
 |         - |   543 | `	const SyString *pRaw, const char **pBadStart, sxu32 *pBadLen)` |
 |         5 |   544 | `{` |
-|   3563651 |   545 | `	const char *z = pRaw->zString;` |
-|   3563651 |   546 | `	sxu32 n = pRaw->nByte;` |
-|   3563651 |   547 | `	int base = 10;` |
+|   3563711 |   545 | `	const char *z = pRaw->zString;` |
+|   3563711 |   546 | `	sxu32 n = pRaw->nByte;` |
+|   3563711 |   547 | `	int base = 10;` |
 |         - |   548 | `	sxu32 i, start;` |
-|   3563651 |   549 | `	if( n < 2 ) return 0;` |
+|   3563711 |   549 | `	if( n < 2 ) return 0;` |
 |    744617 |   550 | `	if( z[0] == '0' && (z[1] == 'x' \|\| z[1] == 'X') ){` |
 |    103345 |   551 | `		base = 16;` |
 |    692947 |   552 | `	}else if( z[0] == '0' && (z[1] == 'b' \|\| z[1] == 'B') ){` |
@@ -581,7 +581,7 @@ Coverage: 7368/9094 lines (81.02%)
 |        18 |   571 | `		return 1;` |
 |       ! 0 |   572 | `	}` |
 |    744603 |   573 | `	return 0;` |
-|   1781828 |   574 | `}` |
+|   1781858 |   574 | `}` |
 |         - |   575 | `/*` |
 |         - |   576 | ` * Emit the shared "syntax error, unexpected identifier" parse error when a` |
 |         - |   577 | ` * numeric-literal token contains a misplaced PHP 7.4 separator. Returns` |
@@ -590,14 +590,14 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |   580 | ` * exhausted, otherwise the error is reported and SXERR_SYNTAX is returned` |
 |         - |   581 | ` * so callers can bail from the current construct).` |
 |         - |   582 | ` */` |
-|   3563646 |   583 | `static sxi32 GenStateValidateNumericSeparator(ph7_gen_state *pGen, SyToken *pToken)` |
+|   3563706 |   583 | `static sxi32 GenStateValidateNumericSeparator(ph7_gen_state *pGen, SyToken *pToken)` |
 |         5 |   584 | `{` |
-|   3563651 |   585 | `	const char *zBad = 0;` |
-|   3563651 |   586 | `	sxu32 nBad = 0;` |
+|   3563711 |   585 | `	const char *zBad = 0;` |
+|   3563711 |   586 | `	sxu32 nBad = 0;` |
 |         - |   587 | `	SyString sBad;` |
 |         - |   588 | `	sxi32 rc;` |
-|   3563651 |   589 | `	if( !GenStateFindBadNumericSeparator(&pToken->sData, &zBad, &nBad) ){` |
-|   3563637 |   590 | `		return SXRET_OK;` |
+|   3563711 |   589 | `	if( !GenStateFindBadNumericSeparator(&pToken->sData, &zBad, &nBad) ){` |
+|   3563697 |   590 | `		return SXRET_OK;` |
 |         - |   591 | `	}` |
 |        18 |   592 | `	SyStringInitFromBuf(&sBad, zBad, nBad);` |
 |        18 |   593 | `	rc = PH7_GenCompileError(pGen, E_PARSE, pToken->nLine,` |
@@ -606,7 +606,7 @@ Coverage: 7368/9094 lines (81.02%)
 |       ! 0 |   596 | `		return SXERR_ABORT;` |
 |         - |   597 | `	}` |
 |        18 |   598 | `	return SXERR_SYNTAX;` |
-|   1781828 |   599 | `}` |
+|   1781858 |   599 | `}` |
 |         - |   600 | `/*` |
 |         - |   601 | ` * Strip PHP 7.4 numeric literal separators (underscores between digits) from` |
 |         - |   602 | ` * a numeric token's text and yield a SyString suitable for the low-level` |
@@ -623,22 +623,22 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |   613 | ` * Returns SXRET_OK on success, SXERR_ABORT on allocator failure (in which` |
 |         - |   614 | ` * case *pOut is left untouched and the caller must not read it).` |
 |         - |   615 | ` */` |
-|   3563632 |   616 | `static sxi32 GenStateStripNumericSeparators(` |
+|   3563692 |   616 | `static sxi32 GenStateStripNumericSeparators(` |
 |         - |   617 | `	SyMemBackend *pAlloc,` |
 |         - |   618 | `	const SyString *pToken,` |
 |         - |   619 | `	char *zScratch, sxu32 nScratch,` |
 |         - |   620 | `	SyString *pOut, char **pzAlloc)` |
 |         5 |   621 | `{` |
 |         - |   622 | `	sxu32 i, j;` |
-|   3563637 |   623 | `	int hasUnderscore = 0;` |
+|   3563697 |   623 | `	int hasUnderscore = 0;` |
 |         - |   624 | `	char *zBuf;` |
-|   3563637 |   625 | `	*pzAlloc = 0;` |
-|   8442905 |   626 | `	for( i = 0; i < pToken->nByte; ++i ){` |
-|   4879527 |   627 | `		if( pToken->zString[i] == '_' ){ hasUnderscore = 1; break; }` |
-|   2439639 |   628 | `	}` |
-|   3563637 |   629 | `	if( !hasUnderscore ){` |
-|   3563383 |   630 | `		SyStringDupPtr(pOut, pToken);` |
-|   3563383 |   631 | `		return SXRET_OK;` |
+|   3563697 |   625 | `	*pzAlloc = 0;` |
+|   8443025 |   626 | `	for( i = 0; i < pToken->nByte; ++i ){` |
+|   4879587 |   627 | `		if( pToken->zString[i] == '_' ){ hasUnderscore = 1; break; }` |
+|   2439669 |   628 | `	}` |
+|   3563697 |   629 | `	if( !hasUnderscore ){` |
+|   3563443 |   630 | `		SyStringDupPtr(pOut, pToken);` |
+|   3563443 |   631 | `		return SXRET_OK;` |
 |         - |   632 | `	}` |
 |       255 |   633 | `	if( pToken->nByte <= nScratch ){` |
 |       253 |   634 | `		zBuf = zScratch;` |
@@ -655,7 +655,7 @@ Coverage: 7368/9094 lines (81.02%)
 |      1330 |   645 | `	}` |
 |       255 |   646 | `	SyStringInitFromBuf(pOut, zBuf, j);` |
 |       255 |   647 | `	return SXRET_OK;` |
-|   1781821 |   648 | `}` |
+|   1781851 |   648 | `}` |
 |         - |   649 | `/*` |
 |         - |   650 | ` * Compile a numeric [i.e: integer or real] literal.` |
 |         - |   651 | ` * Notes on the integer type.` |
@@ -691,17 +691,17 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |   681 | ` * binary 2**63 is 2**63-1024 whereas this returns the exact 2**63. Recorded as a` |
 |         - |   682 | ` * residual; matching php exactly would need a port of those functions.` |
 |         - |   683 | ` */` |
-|   3555006 |   684 | `static int GenStateIntLiteralOverflows(const SyString *pNum, ph7_real *pReal, int *pbDecimal)` |
+|   3555066 |   684 | `static int GenStateIntLiteralOverflows(const SyString *pNum, ph7_real *pReal, int *pbDecimal)` |
 |         5 |   685 | `{` |
-|   3555011 |   686 | `	const char *z = pNum->zString;` |
-|   3555011 |   687 | `	const char *zEnd = z + pNum->nByte;` |
+|   3555071 |   686 | `	const char *z = pNum->zString;` |
+|   3555071 |   687 | `	const char *zEnd = z + pNum->nByte;` |
 |         - |   688 | `	const char *p, *q;` |
 |         - |   689 | `	int n;` |
-|   3555011 |   690 | `	*pbDecimal = FALSE;` |
-|   3555011 |   691 | `	if( z >= zEnd ){` |
+|   3555071 |   690 | `	*pbDecimal = FALSE;` |
+|   3555071 |   691 | `	if( z >= zEnd ){` |
 |       ! 0 |   692 | `		return FALSE;` |
 |         - |   693 | `	}` |
-|   3555011 |   694 | `	if( z[0] == '0' && (z + 1) < zEnd && (z[1] == 'x' \|\| z[1] == 'X') ){` |
+|   3555071 |   694 | `	if( z[0] == '0' && (z + 1) < zEnd && (z[1] == 'x' \|\| z[1] == 'X') ){` |
 |         - |   695 | `		/* Hexadecimal: INT64_MAX == 0x7FFF...F (16 digits, leading nibble 7). */` |
 |    103343 |   696 | `		p = z + 2;` |
 |    130119 |   697 | `		while( p < zEnd && p[0] == '0' ){ p++; }` |
@@ -716,7 +716,7 @@ Coverage: 7368/9094 lines (81.02%)
 |         7 |   706 | `		  *pReal = dv;` |
 |         - |   707 | `		}` |
 |         7 |   708 | `		return TRUE;` |
-|   3451673 |   709 | `	}else if( z[0] == '0' && (z + 1) < zEnd && (z[1] == 'b' \|\| z[1] == 'B') ){` |
+|   3451733 |   709 | `	}else if( z[0] == '0' && (z + 1) < zEnd && (z[1] == 'b' \|\| z[1] == 'B') ){` |
 |         - |   710 | `		/* Binary: INT64_MAX needs 63 significant bits. */` |
 |       283 |   711 | `		p = z + 2;` |
 |       331 |   712 | `		while( p < zEnd && p[0] == '0' ){ p++; }` |
@@ -731,7 +731,7 @@ Coverage: 7368/9094 lines (81.02%)
 |         3 |   721 | `		  *pReal = dv;` |
 |         - |   722 | `		}` |
 |         3 |   723 | `		return TRUE;` |
-|   3451391 |   724 | `	}else if( z[0] == '0' && (z + 1) < zEnd && (z[1] == 'o' \|\| z[1] == 'O') ){` |
+|   3451451 |   724 | `	}else if( z[0] == '0' && (z + 1) < zEnd && (z[1] == 'o' \|\| z[1] == 'O') ){` |
 |         - |   725 | `		/* PHP 8.1 explicit octal 0o/0O: 21 significant octal digits fit in int64. */` |
 |        17 |   726 | `		p = z + 2;` |
 |        21 |   727 | `		while( p < zEnd && p[0] == '0' ){ p++; }` |
@@ -746,15 +746,15 @@ Coverage: 7368/9094 lines (81.02%)
 |       ! 0 |   736 | `		  *pReal = dv;` |
 |         - |   737 | `		}` |
 |       ! 0 |   738 | `		return TRUE;` |
-|   3451375 |   739 | `	}else if( z[0] == '0' ){` |
+|   3451435 |   739 | `	}else if( z[0] == '0' ){` |
 |         - |   740 | `		/* Octal: INT64_MAX == 0o777...7 (21 significant octal digits). Skip the` |
 |         - |   741 | `		 * leading zeros (incl. the base '0'); a non-octal char such as the 8.1` |
 |         - |   742 | `		 * "0o" marker ends the run and leaves it to the int path (as today). */` |
-|   1279611 |   743 | `		p = z;` |
-|   2559219 |   744 | `		while( p < zEnd && p[0] == '0' ){ p++; }` |
-|   1291339 |   745 | `		for( q = p, n = 0; q < zEnd && q[0] >= '0' && q[0] <= '7'; q++ ){ n++; }` |
-|   1279611 |   746 | `		if( n <= 21 ){` |
-|   1279609 |   747 | `			return FALSE;` |
+|   1279615 |   743 | `		p = z;` |
+|   2559227 |   744 | `		while( p < zEnd && p[0] == '0' ){ p++; }` |
+|   1291343 |   745 | `		for( q = p, n = 0; q < zEnd && q[0] >= '0' && q[0] <= '7'; q++ ){ n++; }` |
+|   1279615 |   746 | `		if( n <= 21 ){` |
+|   1279613 |   747 | `			return FALSE;` |
 |         - |   748 | `		}` |
 |         3 |   749 | `		{ ph7_real dv = 0;` |
 |        47 |   750 | `		  for( q = p; q < zEnd && q[0] >= '0' && q[0] <= '7'; q++ ){` |
@@ -767,39 +767,39 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |   757 | `	/* Decimal: overflow iff more than 19 significant digits, or exactly 19 that` |
 |         - |   758 | `	 * compare greater than INT64_MAX. Defer the value to strtod (via the caller)` |
 |         - |   759 | `	 * for php-exact rounding. */` |
-|   2171769 |   760 | `	p = z;` |
-|   2171769 |   761 | `	while( p < zEnd && p[0] == '0' ){ p++; }` |
-|   5179503 |   762 | `	for( q = p, n = 0; q < zEnd && (unsigned char)q[0] < 0xc0 && SyisDigit(q[0]); q++ ){ n++; }` |
-|   2171769 |   763 | `	if( n > 19 \|\| (n == 19 && SyMemcmp(p, "9223372036854775807", 19) > 0) ){` |
+|   2171825 |   760 | `	p = z;` |
+|   2171825 |   761 | `	while( p < zEnd && p[0] == '0' ){ p++; }` |
+|   5179615 |   762 | `	for( q = p, n = 0; q < zEnd && (unsigned char)q[0] < 0xc0 && SyisDigit(q[0]); q++ ){ n++; }` |
+|   2171825 |   763 | `	if( n > 19 \|\| (n == 19 && SyMemcmp(p, "9223372036854775807", 19) > 0) ){` |
 |        25 |   764 | `		*pbDecimal = TRUE;` |
 |        25 |   765 | `		return TRUE;` |
 |         - |   766 | `	}` |
-|   2171745 |   767 | `	return FALSE;` |
-|   1777508 |   768 | `}` |
-|   3563618 |   769 | `static sxi32 PH7_CompileNumLiteral(ph7_gen_state *pGen,sxi32 iCompileFlag)` |
+|   2171801 |   767 | `	return FALSE;` |
+|   1777538 |   768 | `}` |
+|   3563678 |   769 | `static sxi32 PH7_CompileNumLiteral(ph7_gen_state *pGen,sxi32 iCompileFlag)` |
 |         5 |   770 | `{` |
-|   3563623 |   771 | `	SyToken *pToken = pGen->pIn; /* Raw token */` |
-|   3563623 |   772 | `	sxu32 nIdx = 0;` |
+|   3563683 |   771 | `	SyToken *pToken = pGen->pIn; /* Raw token */` |
+|   3563683 |   772 | `	sxu32 nIdx = 0;` |
 |         - |   773 | `	char zScratch[GEN_NUM_SCRATCH];` |
-|   3563623 |   774 | `	char *zAlloc = 0;` |
+|   3563683 |   774 | `	char *zAlloc = 0;` |
 |         - |   775 | `	SyString sNum;` |
 |         - |   776 | `	sxi32 rc;` |
-|   1781809 |   777 | `	SXUNUSED(iCompileFlag); /* cc warning */` |
-|   3563623 |   778 | `	rc = GenStateValidateNumericSeparator(pGen, pToken);` |
-|   3563623 |   779 | `	if( rc != SXRET_OK ){` |
+|   1781839 |   777 | `	SXUNUSED(iCompileFlag); /* cc warning */` |
+|   3563683 |   778 | `	rc = GenStateValidateNumericSeparator(pGen, pToken);` |
+|   3563683 |   779 | `	if( rc != SXRET_OK ){` |
 |        14 |   780 | `		return rc;` |
 |         - |   781 | `	}` |
-|   5345417 |   782 | `	rc = GenStateStripNumericSeparators(&pGen->pVm->sAllocator, &pToken->sData,` |
-|   1781804 |   783 | `		zScratch, sizeof(zScratch), &sNum, &zAlloc);` |
-|   3563613 |   784 | `	if( rc != SXRET_OK ){` |
+|   5345507 |   782 | `	rc = GenStateStripNumericSeparators(&pGen->pVm->sAllocator, &pToken->sData,` |
+|   1781834 |   783 | `		zScratch, sizeof(zScratch), &sNum, &zAlloc);` |
+|   3563673 |   784 | `	if( rc != SXRET_OK ){` |
 |       ! 0 |   785 | `		return SXERR_ABORT;` |
 |         - |   786 | `	}` |
-|   3563613 |   787 | `	if( pToken->nType & PH7_TK_INTEGER ){` |
+|   3563673 |   787 | `	if( pToken->nType & PH7_TK_INTEGER ){` |
 |         - |   788 | `		ph7_value *pObj;` |
 |         - |   789 | `		sxi64 iValue;` |
-|   3555011 |   790 | `		ph7_real rOverflow = 0;` |
-|   3555011 |   791 | `		int bDecimalOverflow = 0;` |
-|   3555011 |   792 | `		if( GenStateIntLiteralOverflows(&sNum,&rOverflow,&bDecimalOverflow) ){` |
+|   3555071 |   790 | `		ph7_real rOverflow = 0;` |
+|   3555071 |   791 | `		int bDecimalOverflow = 0;` |
+|   3555071 |   792 | `		if( GenStateIntLiteralOverflows(&sNum,&rOverflow,&bDecimalOverflow) ){` |
 |         - |   793 | `			/* Literal exceeds the signed 64-bit range: PHP represents it as a` |
 |         - |   794 | `			 * float instead of wrapping/dropping digits. */` |
 |        35 |   795 | `			pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);` |
@@ -816,15 +816,15 @@ Coverage: 7368/9094 lines (81.02%)
 |        11 |   806 | `				PH7_MemObjInitFromReal(pGen->pVm,pObj,rOverflow);` |
 |         - |   807 | `			}` |
 |        18 |   808 | `		}else{` |
-|   3554977 |   809 | `			iValue = PH7_TokenValueToInt64(&sNum);` |
-|   3554977 |   810 | `			pObj = GenStateInstallNumLiteral(&(*pGen),&nIdx);` |
-|   3554977 |   811 | `			if( pObj == 0 ){` |
+|   3555037 |   809 | `			iValue = PH7_TokenValueToInt64(&sNum);` |
+|   3555037 |   810 | `			pObj = GenStateInstallNumLiteral(&(*pGen),&nIdx);` |
+|   3555037 |   811 | `			if( pObj == 0 ){` |
 |       ! 0 |   812 | `				if( zAlloc ){ SyMemBackendFree(&pGen->pVm->sAllocator, zAlloc); }` |
 |       ! 0 |   813 | `				return SXERR_ABORT;` |
 |         - |   814 | `			}` |
-|   3554977 |   815 | `			PH7_MemObjInitFromInt(pGen->pVm,pObj,iValue);` |
+|   3555037 |   815 | `			PH7_MemObjInitFromInt(pGen->pVm,pObj,iValue);` |
 |         - |   816 | `		}` |
-|   1777508 |   817 | `	}else{` |
+|   1777538 |   817 | `	}else{` |
 |         - |   818 | `		/* Real number */` |
 |         - |   819 | `		ph7_value *pObj;` |
 |         - |   820 | `		/* Reserve a new constant */` |
@@ -837,12 +837,12 @@ Coverage: 7368/9094 lines (81.02%)
 |      8607 |   827 | `		PH7_MemObjInitFromString(pGen->pVm,pObj,&sNum);` |
 |      8607 |   828 | `		PH7_MemObjToReal(pObj);` |
 |         - |   829 | `	}` |
-|   3563613 |   830 | `	if( zAlloc ){ SyMemBackendFree(&pGen->pVm->sAllocator, zAlloc); }` |
+|   3563673 |   830 | `	if( zAlloc ){ SyMemBackendFree(&pGen->pVm->sAllocator, zAlloc); }` |
 |         - |   831 | `	/* Emit the load constant instruction */` |
-|   3563613 |   832 | `	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);` |
+|   3563673 |   832 | `	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);` |
 |         - |   833 | `	/* Node successfully compiled */` |
-|   3563613 |   834 | `	return SXRET_OK;` |
-|   1781814 |   835 | `}` |
+|   3563673 |   834 | `	return SXRET_OK;` |
+|   1781844 |   835 | `}` |
 |         - |   836 | `/*` |
 |         - |   837 | ` * Compile a single quoted string.` |
 |         - |   838 | ` * According to the PHP language reference manual:` |
@@ -854,18 +854,18 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |   844 | ` *   or \n, will be output literally as specified rather than having any special meaning.` |
 |         - |   845 | ` *` |
 |         - |   846 | ` */` |
-|   5102798 |   847 | `PH7_PRIVATE sxi32 PH7_CompileSimpleString(ph7_gen_state *pGen,sxi32 iCompileFlag)` |
+|   5102854 |   847 | `PH7_PRIVATE sxi32 PH7_CompileSimpleString(ph7_gen_state *pGen,sxi32 iCompileFlag)` |
 |         5 |   848 | `{` |
-|   5102803 |   849 | `	SyString *pStr = &pGen->pIn->sData; /* Constant string literal */` |
+|   5102859 |   849 | `	SyString *pStr = &pGen->pIn->sData; /* Constant string literal */` |
 |         - |   850 | `	const char *zIn,*zCur,*zEnd;` |
 |         - |   851 | `	ph7_value *pObj;` |
 |         - |   852 | `	sxu32 nIdx;` |
 |         - |   853 | `	sxi32 bHasEsc;` |
-|   5102803 |   854 | `	nIdx = 0; /* Prevent compiler warning */` |
+|   5102859 |   854 | `	nIdx = 0; /* Prevent compiler warning */` |
 |         - |   855 | `	/* Delimit the string */` |
-|   5102803 |   856 | `	zIn  = pStr->zString;` |
-|   5102803 |   857 | `	zEnd = &zIn[pStr->nByte];` |
-|   5102803 |   858 | `	if( zIn >= zEnd ){` |
+|   5102859 |   856 | `	zIn  = pStr->zString;` |
+|   5102859 |   857 | `	zEnd = &zIn[pStr->nByte];` |
+|   5102859 |   858 | `	if( zIn >= zEnd ){` |
 |         - |   859 | `		/* Empty string constant: just use the pre‑allocated index from the VM` |
 |         - |   860 | `		 * rather than reserving a new object each time. */` |
 |    332907 |   861 | `		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,pGen->pVm->nEmptyStringIdx,0,0);` |
@@ -878,19 +878,19 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |   868 | `	 * (raw \\, value \) would find the entry installed for '\\\\' (raw \\\\,` |
 |         - |   869 | `	 * value \\) and load two backslashes. Only cache literals whose value equals` |
 |         - |   870 | `	 * their source, i.e. those with no backslash to unescape. */` |
-|   4769901 |   871 | `	bHasEsc = 0;` |
+|   4769957 |   871 | `	bHasEsc = 0;` |
 |         - |   872 | `	{` |
 |         - |   873 | `		const char *zScan;` |
-|  57514309 |   874 | `		for( zScan = zIn ; zScan < zEnd ; zScan++ ){` |
-|  52821077 |   875 | `			if( zScan[0] == '\\' ){ bHasEsc = 1; break; }` |
-|  26372209 |   876 | `		}` |
+|  57514421 |   874 | `		for( zScan = zIn ; zScan < zEnd ; zScan++ ){` |
+|  52821133 |   875 | `			if( zScan[0] == '\\' ){ bHasEsc = 1; break; }` |
+|  26372237 |   876 | `		}` |
 |         - |   877 | `	}` |
-|   4769901 |   878 | `	if( !bHasEsc && SXRET_OK == GenStateFindLiteral(&(*pGen),pStr,&nIdx) ){` |
+|   4769957 |   878 | `	if( !bHasEsc && SXRET_OK == GenStateFindLiteral(&(*pGen),pStr,&nIdx) ){` |
 |         - |   879 | `		/* Already processed,emit the load constant instruction` |
 |         - |   880 | `		 * and return.` |
 |         - |   881 | `		 */` |
-|   2819113 |   882 | `		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);` |
-|   2819113 |   883 | `		return SXRET_OK;` |
+|   2819169 |   882 | `		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);` |
+|   2819169 |   883 | `		return SXRET_OK;` |
 |         - |   884 | `	}` |
 |         - |   885 | `	/* Reserve a new constant */` |
 |   1950793 |   886 | `	pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);` |
@@ -940,7 +940,7 @@ Coverage: 7368/9094 lines (81.02%)
 |    937062 |   930 | `	}` |
 |         - |   931 | `	/* Node successfully compiled */` |
 |   1950793 |   932 | `	return SXRET_OK;` |
-|   2551404 |   933 | `}` |
+|   2551432 |   933 | `}` |
 |         - |   934 | `/*` |
 |         - |   935 | ` * PHP 7.3 flexible heredoc/nowdoc closing-marker indent stripping.` |
 |         - |   936 | ` *` |
@@ -1141,22 +1141,22 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  1131 | `/*` |
 |         - |  1132 | ` * Reserve a new constant for a double quoted/heredoc string.` |
 |         - |  1133 | ` */` |
-|    122118 |  1134 | `static ph7_value * GenStateNewStrObj(ph7_gen_state *pGen,sxi32 *pCount)` |
+|    122144 |  1134 | `static ph7_value * GenStateNewStrObj(ph7_gen_state *pGen,sxi32 *pCount)` |
 |         5 |  1135 | `{` |
 |         - |  1136 | `	ph7_value *pConstObj;` |
-|    122123 |  1137 | `	sxu32 nIdx = 0;` |
+|    122149 |  1137 | `	sxu32 nIdx = 0;` |
 |         - |  1138 | `	/* Reserve a new constant */` |
-|    122123 |  1139 | `	pConstObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);` |
-|    122123 |  1140 | `	if( pConstObj == 0 ){` |
+|    122149 |  1139 | `	pConstObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);` |
+|    122149 |  1140 | `	if( pConstObj == 0 ){` |
 |       ! 0 |  1141 | `		PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"PH7 engine is running out of memory");` |
 |       ! 0 |  1142 | `		return 0;` |
 |         - |  1143 | `	}` |
-|    122123 |  1144 | `	(*pCount)++;` |
-|    122123 |  1145 | `	PH7_MemObjInitFromString(pGen->pVm,pConstObj,0);` |
+|    122149 |  1144 | `	(*pCount)++;` |
+|    122149 |  1145 | `	PH7_MemObjInitFromString(pGen->pVm,pConstObj,0);` |
 |         - |  1146 | `	/* Emit the load constant instruction */` |
-|    122123 |  1147 | `	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);` |
-|    122123 |  1148 | `	return pConstObj;` |
-|     61064 |  1149 | `}` |
+|    122149 |  1147 | `	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);` |
+|    122149 |  1148 | `	return pConstObj;` |
+|     61077 |  1149 | `}` |
 |         - |  1150 | `/*` |
 |         - |  1151 | ` * Compile a double quoted/heredoc string.` |
 |         - |  1152 | ` * According to the PHP language reference manual` |
@@ -1219,17 +1219,17 @@ Coverage: 7368/9094 lines (81.02%)
 |         3 |  1209 | `}` |
 |         - |  1210 | `/* bHeredoc: php strips the backslash from '\"' only when '"' is the active` |
 |         - |  1211 | ` * quote character; a heredoc has none, so '\"' stays verbatim there. */` |
-|    120552 |  1212 | `static sxi32 GenStateCompileString(ph7_gen_state *pGen,int bHeredoc)` |
+|    120578 |  1212 | `static sxi32 GenStateCompileString(ph7_gen_state *pGen,int bHeredoc)` |
 |         5 |  1213 | `{` |
-|    120557 |  1214 | `	SyString *pStr = &pGen->pIn->sData; /* Raw token value */` |
+|    120583 |  1214 | `	SyString *pStr = &pGen->pIn->sData; /* Raw token value */` |
 |         - |  1215 | `	const char *zIn,*zCur,*zEnd;` |
-|    120557 |  1216 | `	ph7_value *pObj = 0;` |
+|    120583 |  1216 | `	ph7_value *pObj = 0;` |
 |         - |  1217 | `	sxi32 iCons;` |
 |         - |  1218 | `	sxi32 rc;` |
 |         - |  1219 | `	/* Delimit the string */` |
-|    120557 |  1220 | `	zIn  = pStr->zString;` |
-|    120557 |  1221 | `	zEnd = &zIn[pStr->nByte];` |
-|    120557 |  1222 | `	if( zIn >= zEnd ){` |
+|    120583 |  1220 | `	zIn  = pStr->zString;` |
+|    120583 |  1221 | `	zEnd = &zIn[pStr->nByte];` |
+|    120583 |  1222 | `	if( zIn >= zEnd ){` |
 |         - |  1223 | `		/* Empty string: use the shared constant reserved at VM initialization.` |
 |         - |  1224 | `		 * This avoids creating a new literal for every occurrence and keeps the` |
 |         - |  1225 | `		 * literal table from growing when many "" literals appear in the source.` |
@@ -1237,49 +1237,49 @@ Coverage: 7368/9094 lines (81.02%)
 |       413 |  1227 | `		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,pGen->pVm->nEmptyStringIdx,0,0);` |
 |       413 |  1228 | `		return SXRET_OK;` |
 |         - |  1229 | `	}` |
-|    120149 |  1230 | `	zCur = 0;` |
+|    120175 |  1230 | `	zCur = 0;` |
 |         - |  1231 | `	/* Compile the node */` |
-|    120149 |  1232 | `	iCons = 0;` |
-|     61389 |  1233 | `	for(;;){` |
-|    163421 |  1234 | `		zCur = zIn;` |
-|   1661659 |  1235 | `		while( zIn < zEnd && zIn[0] != '\\'  ){` |
-|   1500881 |  1236 | `			if( zIn[0] == '{' && &zIn[1] < zEnd && zIn[1] == '$' ){` |
+|    120175 |  1232 | `	iCons = 0;` |
+|     61402 |  1233 | `	for(;;){` |
+|    163463 |  1234 | `		zCur = zIn;` |
+|   1661735 |  1235 | `		while( zIn < zEnd && zIn[0] != '\\'  ){` |
+|   1500915 |  1236 | `			if( zIn[0] == '{' && &zIn[1] < zEnd && zIn[1] == '$' ){` |
 |        69 |  1237 | `				break;` |
-|   1500754 |  1238 | `			}else if(zIn[0] == '$' && &zIn[1] < zEnd &&` |
+|   1500788 |  1238 | `			}else if(zIn[0] == '$' && &zIn[1] < zEnd &&` |
 |      2516 |  1239 | `				(((unsigned char)zIn[1] >= 0xc0 \|\| SyisAlpha(zIn[1]) \|\| zIn[1] == '{' \|\| zIn[1] == '_')) ){` |
 |      1258 |  1240 | `					break;` |
 |         - |  1241 | `			}` |
-|   1498243 |  1242 | `			zIn++;` |
+|   1498277 |  1242 | `			zIn++;` |
 |         5 |  1243 | `		}` |
-|    163421 |  1244 | `		if( zIn > zCur ){` |
-|     95283 |  1245 | `			if( pObj == 0 ){` |
-|     94657 |  1246 | `				pObj = GenStateNewStrObj(&(*pGen),&iCons);` |
-|     94657 |  1247 | `				if( pObj == 0 ){` |
+|    163463 |  1244 | `		if( zIn > zCur ){` |
+|     95293 |  1245 | `			if( pObj == 0 ){` |
+|     94667 |  1246 | `				pObj = GenStateNewStrObj(&(*pGen),&iCons);` |
+|     94667 |  1247 | `				if( pObj == 0 ){` |
 |       ! 0 |  1248 | `					return SXERR_ABORT;` |
 |         - |  1249 | `				}` |
-|     47326 |  1250 | `			}` |
-|     95283 |  1251 | `			PH7_MemObjStringAppend(pObj,zCur,(sxu32)(zIn-zCur));` |
-|     47639 |  1252 | `		}` |
-|    163421 |  1253 | `		if( zIn >= zEnd ){` |
-|    120147 |  1254 | `			break;` |
+|     47331 |  1250 | `			}` |
+|     95293 |  1251 | `			PH7_MemObjStringAppend(pObj,zCur,(sxu32)(zIn-zCur));` |
+|     47644 |  1252 | `		}` |
+|    163463 |  1253 | `		if( zIn >= zEnd ){` |
+|    120173 |  1254 | `			break;` |
 |         - |  1255 | `		}` |
-|     43279 |  1256 | `		if( zIn[0] == '\\' ){` |
-|     40641 |  1257 | `			const char *zPtr = 0;` |
+|     43295 |  1256 | `		if( zIn[0] == '\\' ){` |
+|     40657 |  1257 | `			const char *zPtr = 0;` |
 |         - |  1258 | `			sxu32 n;` |
-|     40641 |  1259 | `			zIn++;` |
-|     40641 |  1260 | `			if( pObj == 0 ){` |
-|     27471 |  1261 | `				pObj = GenStateNewStrObj(&(*pGen),&iCons);` |
-|     27471 |  1262 | `				if( pObj == 0 ){` |
+|     40657 |  1259 | `			zIn++;` |
+|     40657 |  1260 | `			if( pObj == 0 ){` |
+|     27487 |  1261 | `				pObj = GenStateNewStrObj(&(*pGen),&iCons);` |
+|     27487 |  1262 | `				if( pObj == 0 ){` |
 |       ! 0 |  1263 | `					return SXERR_ABORT;` |
 |         - |  1264 | `				}` |
-|     13733 |  1265 | `			}` |
-|     40641 |  1266 | `			if( zIn >= zEnd ){` |
+|     13741 |  1265 | `			}` |
+|     40657 |  1266 | `			if( zIn >= zEnd ){` |
 |         - |  1267 | `				/* Lone backslash at the very end of the body: php keeps it */` |
 |         3 |  1268 | `				PH7_MemObjStringAppend(pObj,"\\",sizeof(char));` |
 |         3 |  1269 | `				break;` |
 |         - |  1270 | `			}` |
-|     40639 |  1271 | `			n = sizeof(char); /* size of conversion */` |
-|     40639 |  1272 | `			switch( zIn[0] ){` |
+|     40655 |  1271 | `			n = sizeof(char); /* size of conversion */` |
+|     40655 |  1272 | `			switch( zIn[0] ){` |
 |        15 |  1273 | `			case '$':` |
 |         - |  1274 | `				/* Dollar sign */` |
 |        33 |  1275 | `				PH7_MemObjStringAppend(pObj,"$",sizeof(char));` |
@@ -1296,10 +1296,10 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  1286 | `				/* Form-feed (FF)[ctrl+l] ASCII code 12 */` |
 |         9 |  1287 | `				PH7_MemObjStringAppend(pObj,"\f",sizeof(char));` |
 |         9 |  1288 | `				break;` |
-|     17728 |  1289 | `			case 'n':` |
+|     17736 |  1289 | `			case 'n':` |
 |         - |  1290 | `				/* Line feed(new line) (LF)[ctrl+j] ASCII code 10 */` |
-|     35461 |  1291 | `				PH7_MemObjStringAppend(pObj,"\n",sizeof(char));` |
-|     35461 |  1292 | `				break;` |
+|     35477 |  1291 | `				PH7_MemObjStringAppend(pObj,"\n",sizeof(char));` |
+|     35477 |  1292 | `				break;` |
 |        27 |  1293 | `			case 'r':` |
 |         - |  1294 | `				/* Carriage return (CR)[ctrl+m] ASCII code 13 */` |
 |        59 |  1295 | `				PH7_MemObjStringAppend(pObj,"\r",sizeof(char));` |
@@ -1422,8 +1422,8 @@ Coverage: 7368/9094 lines (81.02%)
 |        32 |  1412 | `				break;` |
 |         - |  1413 | `			}` |
 |         - |  1414 | `			/* Advance the stream cursor */` |
-|     40639 |  1415 | `			zIn += n;` |
-|     40639 |  1416 | `			continue;` |
+|     40655 |  1415 | `			zIn += n;` |
+|     40655 |  1416 | `			continue;` |
 |         - |  1417 | `		}` |
 |      2643 |  1418 | `		if( zIn[0] == '{' ){` |
 |         - |  1419 | `			/* Curly syntax */` |
@@ -1630,24 +1630,24 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  1620 | `		/* Invalidate the previously used constant */` |
 |      2639 |  1621 | `		pObj = 0;` |
 |         5 |  1622 | `	}/*for(;;)*/` |
-|    120149 |  1623 | `	if( iCons > 1 ){` |
+|    120175 |  1623 | `	if( iCons > 1 ){` |
 |         - |  1624 | `		/* Concatenate all compiled constants */` |
 |      1911 |  1625 | `		PH7_VmEmitInstr(pGen->pVm,PH7_OP_CAT,iCons,0,0,0);` |
 |       953 |  1626 | `	}` |
 |         - |  1627 | `	/* Node successfully compiled */` |
-|    120149 |  1628 | `	return SXRET_OK;` |
-|     60281 |  1629 | `}` |
+|    120175 |  1628 | `	return SXRET_OK;` |
+|     60294 |  1629 | `}` |
 |         - |  1630 | `/*` |
 |         - |  1631 | ` * Compile a double quoted string.` |
 |         - |  1632 | ` *  See the block-comment above for more information.` |
 |         - |  1633 | ` */` |
-|    120490 |  1634 | `PH7_PRIVATE sxi32 PH7_CompileString(ph7_gen_state *pGen,sxi32 iCompileFlag)` |
+|    120516 |  1634 | `PH7_PRIVATE sxi32 PH7_CompileString(ph7_gen_state *pGen,sxi32 iCompileFlag)` |
 |         5 |  1635 | `{` |
 |         - |  1636 | `	sxi32 rc;` |
-|    120495 |  1637 | `	rc = GenStateCompileString(&(*pGen),0/*bHeredoc*/);` |
-|     60245 |  1638 | `	SXUNUSED(iCompileFlag); /* cc warning */` |
+|    120521 |  1637 | `	rc = GenStateCompileString(&(*pGen),0/*bHeredoc*/);` |
+|     60258 |  1638 | `	SXUNUSED(iCompileFlag); /* cc warning */` |
 |         - |  1639 | `	/* Compilation result */` |
-|    120495 |  1640 | `	return rc;` |
+|    120521 |  1640 | `	return rc;` |
 |         5 |  1641 | `}` |
 |         - |  1642 | `/*` |
 |         - |  1643 | ` * Compile a Heredoc string.` |
@@ -1691,7 +1691,7 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  1681 | ` *  and the new key will be that value plus 1. If a key that already has an assigned value` |
 |         - |  1682 | ` *  is specified, that value will be overwritten.` |
 |         - |  1683 | ` */` |
-|   1439464 |  1684 | `static sxi32 GenStateCompileArrayEntry(` |
+|   1439582 |  1684 | `static sxi32 GenStateCompileArrayEntry(` |
 |         - |  1685 | `	ph7_gen_state *pGen, /* Code generator state */` |
 |         - |  1686 | `	SyToken *pIn,        /* Token stream */` |
 |         - |  1687 | `	SyToken *pEnd,       /* End of the token stream */` |
@@ -1702,12 +1702,12 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  1692 | `	SyToken *pTmpIn,*pTmpEnd;` |
 |         - |  1693 | `	sxi32 rc;` |
 |         - |  1694 | `	/* Swap token stream */` |
-|   1439469 |  1695 | `	SWAP_DELIMITER(pGen,pIn,pEnd);` |
+|   1439587 |  1695 | `	SWAP_DELIMITER(pGen,pIn,pEnd);` |
 |         - |  1696 | `	/* Compile the expression*/` |
-|   1439469 |  1697 | `	rc = PH7_CompileExpr(&(*pGen),iFlags,xValidator);` |
+|   1439587 |  1697 | `	rc = PH7_CompileExpr(&(*pGen),iFlags,xValidator);` |
 |         - |  1698 | `	/* Restore token stream */` |
-|   1439469 |  1699 | `	RE_SWAP_DELIMITER(pGen);` |
-|   1439469 |  1700 | `	return rc;` |
+|   1439587 |  1699 | `	RE_SWAP_DELIMITER(pGen);` |
+|   1439587 |  1700 | `	return rc;` |
 |         5 |  1701 | `}` |
 |         - |  1702 | `/*` |
 |         - |  1703 | ` * Expression tree validator callback for the 'array' language construct.` |
@@ -1746,19 +1746,19 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  1736 | ` * inside a match() {...} arm — none of which are key/value separators. Returns a` |
 |         - |  1737 | ` * pointer to the '=>' token, or pEnd if the entry has no top-level separator.` |
 |         - |  1738 | ` */` |
-|   1380834 |  1739 | `static SyToken * GenStateFindTopLevelArrow(SyToken *pStart,SyToken *pEnd)` |
+|   1380896 |  1739 | `static SyToken * GenStateFindTopLevelArrow(SyToken *pStart,SyToken *pEnd)` |
 |         5 |  1740 | `{` |
-|   1380839 |  1741 | `	SyToken *pCur = pStart;` |
-|   1380839 |  1742 | `	sxi32 iNest = 0;` |
-|   3564759 |  1743 | `	while( pCur < pEnd ){` |
-|   2687279 |  1744 | `		if( (pCur->nType & PH7_TK_ARRAY_OP) && iNest <= 0 ){` |
-|    503355 |  1745 | `			return pCur;` |
+|   1380901 |  1741 | `	SyToken *pCur = pStart;` |
+|   1380901 |  1742 | `	sxi32 iNest = 0;` |
+|   3564883 |  1743 | `	while( pCur < pEnd ){` |
+|   2687397 |  1744 | `		if( (pCur->nType & PH7_TK_ARRAY_OP) && iNest <= 0 ){` |
+|    503411 |  1745 | `			return pCur;` |
 |         - |  1746 | `		}` |
 |         - |  1747 | `		/* Arrow function (PHP 7.4): 'fn(...) =>' or 'static fn(...) =>'.` |
 |         - |  1748 | `		 * The '=>' inside an arrow function introduces the expression body,` |
 |         - |  1749 | `		 * not an entry separator. Skip past the signature.` |
 |         - |  1750 | `		 */` |
-|   2183929 |  1751 | `		if( iNest == 0 && (pCur->nType & PH7_TK_KEYWORD) ){` |
+|   2183991 |  1751 | `		if( iNest == 0 && (pCur->nType & PH7_TK_KEYWORD) ){` |
 |     23055 |  1752 | `			sxu32 nKw = (sxu32)SX_PTR_TO_INT(pCur->pUserData);` |
 |     23055 |  1753 | `			SyToken *pFn = pCur;` |
 |     23050 |  1754 | `			if( nKw == PH7_TKWRD_STATIC && &pCur[1] < pEnd` |
@@ -1819,43 +1819,43 @@ Coverage: 7368/9094 lines (81.02%)
 |         3 |  1809 | `				continue;` |
 |         - |  1810 | `			}` |
 |     11522 |  1811 | `		}` |
-|   2183923 |  1812 | `		if( pCur->nType & (PH7_TK_LPAREN/*'('*/\|PH7_TK_OSB/*'['*/\|PH7_TK_OCB/*'{'*/) ){` |
+|   2183985 |  1812 | `		if( pCur->nType & (PH7_TK_LPAREN/*'('*/\|PH7_TK_OSB/*'['*/\|PH7_TK_OCB/*'{'*/) ){` |
 |     54107 |  1813 | `			iNest++;` |
-|   2156872 |  1814 | `		}else if( pCur->nType & (PH7_TK_RPAREN/*')'*/\|PH7_TK_CSB/*']'*/\|PH7_TK_CCB/*'}'*/) ){` |
+|   2156934 |  1814 | `		}else if( pCur->nType & (PH7_TK_RPAREN/*')'*/\|PH7_TK_CSB/*']'*/\|PH7_TK_CCB/*'}'*/) ){` |
 |         - |  1815 | `			/* Don't worry about mismatched brackets here, the expression` |
 |         - |  1816 | `			 * parser will shortly detect any syntax error. */` |
 |     54107 |  1817 | `			iNest--;` |
 |     27051 |  1818 | `		}` |
-|   2183923 |  1819 | `		pCur++;` |
+|   2183985 |  1819 | `		pCur++;` |
 |         5 |  1820 | `	}` |
-|    877485 |  1821 | `	return pEnd;` |
-|    690422 |  1822 | `}` |
+|    877491 |  1821 | `	return pEnd;` |
+|    690453 |  1822 | `}` |
 |         - |  1823 | `/*` |
 |         - |  1824 | ` * Compile the body of an array literal (shared by array() and short syntax []).` |
 |         - |  1825 | ` * Assumes pGen->pIn points to the first content token and pGen->pEnd points` |
 |         - |  1826 | ` * one past the last content token (i.e. the delimiters have been excluded).` |
 |         - |  1827 | ` */` |
-|    615956 |  1828 | `static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)` |
+|    615992 |  1828 | `static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)` |
 |         5 |  1829 | `{` |
 |         - |  1830 | `	sxi32 (*xValidator)(ph7_gen_state *,ph7_expr_node *); /* Expression tree validator callback */` |
 |         - |  1831 | `	SyToken *pKey,*pCur;` |
-|    615961 |  1832 | `	sxi32 iEmitRef = 0;` |
-|    615961 |  1833 | `	sxi32 iSpread = 0;` |
-|    615961 |  1834 | `	sxi32 nPair = 0;` |
+|    615997 |  1832 | `	sxi32 iEmitRef = 0;` |
+|    615997 |  1833 | `	sxi32 iSpread = 0;` |
+|    615997 |  1834 | `	sxi32 nPair = 0;` |
 |         - |  1835 | `	sxi32 rc;` |
-|    615961 |  1836 | `	xValidator = 0;` |
-|    842998 |  1837 | `	for(;;){` |
+|    615997 |  1836 | `	xValidator = 0;` |
+|    843047 |  1837 | `	for(;;){` |
 |         - |  1838 | `		/* Jump leading commas. Exactly ONE separates two entries; a second one (or a comma` |
 |         - |  1839 | `		 * at the very start) means an EMPTY element, which php rejects outright — PH7 just` |
 |         - |  1840 | ``		 * skipped them, so `array(,)` and `array(1,,2)` compiled silently. A TRAILING comma`` |
 |         - |  1841 | `		 * is legal and is handled by the loop exiting on the next pass. */` |
-|    535020 |  1842 | `		{` |
-|   1686001 |  1843 | `			int nSkip = 0;` |
-|   2507907 |  1844 | `			while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_COMMA) ){` |
-|    821911 |  1845 | `				nSkip++;` |
-|    821911 |  1846 | `				pGen->pIn++;` |
+|    535051 |  1842 | `		{` |
+|   1686099 |  1843 | `			int nSkip = 0;` |
+|   2508031 |  1844 | `			while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_COMMA) ){` |
+|    821937 |  1845 | `				nSkip++;` |
+|    821937 |  1846 | `				pGen->pIn++;` |
 |         5 |  1847 | `			}` |
-|   1686001 |  1848 | `			if( nSkip > 1 \|\| (nSkip > 0 && nPair < 1) ){` |
+|   1686099 |  1848 | `			if( nSkip > 1 \|\| (nSkip > 0 && nPair < 1) ){` |
 |       ! 0 |  1849 | `				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn[-1].nLine,` |
 |         - |  1850 | `					"Cannot use empty array elements in arrays");` |
 |       ! 0 |  1851 | `				if( rc == SXERR_ABORT ){` |
@@ -1864,20 +1864,20 @@ Coverage: 7368/9094 lines (81.02%)
 |       ! 0 |  1854 | `				return SXRET_OK;` |
 |         - |  1855 | `			}` |
 |         - |  1856 | `		}` |
-|   1686001 |  1857 | `		pCur = pGen->pIn;` |
-|   1686001 |  1858 | `		if( SXRET_OK != PH7_GetNextExpr(pGen->pIn,pGen->pEnd,&pGen->pIn) ){` |
+|   1686099 |  1857 | `		pCur = pGen->pIn;` |
+|   1686099 |  1858 | `		if( SXRET_OK != PH7_GetNextExpr(pGen->pIn,pGen->pEnd,&pGen->pIn) ){` |
 |         - |  1859 | `			/* No more entry to process */` |
-|    615943 |  1860 | `			break;` |
+|    615979 |  1860 | `			break;` |
 |         - |  1861 | `		}` |
-|   1070063 |  1862 | `		if( pCur >= pGen->pIn ){` |
+|   1070125 |  1862 | `		if( pCur >= pGen->pIn ){` |
 |       ! 0 |  1863 | `			continue;` |
 |         - |  1864 | `		}` |
 |         - |  1865 | `		/* Compile the key if available */` |
-|   1070063 |  1866 | `		pKey = pCur;` |
-|   1070063 |  1867 | `		pCur = GenStateFindTopLevelArrow(pCur,pGen->pIn);` |
-|   1070063 |  1868 | `		rc = SXERR_EMPTY;` |
-|   1070063 |  1869 | `		if( pCur < pGen->pIn ){` |
-|    369153 |  1870 | `			if( pKey == pCur ){` |
+|   1070125 |  1866 | `		pKey = pCur;` |
+|   1070125 |  1867 | `		pCur = GenStateFindTopLevelArrow(pCur,pGen->pIn);` |
+|   1070125 |  1868 | `		rc = SXERR_EMPTY;` |
+|   1070125 |  1869 | `		if( pCur < pGen->pIn ){` |
+|    369209 |  1870 | `			if( pKey == pCur ){` |
 |         - |  1871 | ``				/* `array( => 2)`: the entry STARTS with '=>', so it has no key. php rejects`` |
 |         - |  1872 | `				 * it; PH7 warned about a "Missing entry key" and compiled on, accepting` |
 |         - |  1873 | ``				 * source php refuses. (The `else if` below could never see this: the arrow`` |
@@ -1891,7 +1891,7 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  1881 | `				}` |
 |         3 |  1882 | `				return SXRET_OK;` |
 |         - |  1883 | `			}` |
-|    369151 |  1884 | `			if( &pCur[1] >= pGen->pIn ){` |
+|    369207 |  1884 | `			if( &pCur[1] >= pGen->pIn ){` |
 |         - |  1885 | ``				/* `array(1 => )`: php names the token that SHOULD have started the value —`` |
 |         - |  1886 | `				 * the ')' or ']' closing the literal — not the '=>' it just read. Passing 0` |
 |         - |  1887 | `				 * makes the helper reach for the token past this entry's slice. */` |
@@ -1902,22 +1902,22 @@ Coverage: 7368/9094 lines (81.02%)
 |        12 |  1892 | `				return SXRET_OK;` |
 |         - |  1893 | `			}` |
 |         - |  1894 | `			/* Compile the expression holding the key */` |
-|    369141 |  1895 | `			rc = GenStateCompileArrayEntry(&(*pGen),pKey,pCur,` |
+|    369197 |  1895 | `			rc = GenStateCompileArrayEntry(&(*pGen),pKey,pCur,` |
 |         - |  1896 | `				EXPR_FLAG_RDONLY_LOAD/*Do not create the variable if inexistant*/,0);` |
-|    369141 |  1897 | `			if( rc == SXERR_ABORT ){` |
+|    369197 |  1897 | `			if( rc == SXERR_ABORT ){` |
 |       ! 0 |  1898 | `				return SXERR_ABORT;` |
 |         - |  1899 | `			}` |
-|    369141 |  1900 | `			pCur++; /* Jump the '=>' operator */` |
-|    184573 |  1901 | `		}else{` |
+|    369197 |  1900 | `			pCur++; /* Jump the '=>' operator */` |
+|    184601 |  1901 | `		}else{` |
 |         - |  1902 | `			/* Reset back the cursor and point to the entry value */` |
-|    700915 |  1903 | `			pCur = pKey;` |
+|    700921 |  1903 | `			pCur = pKey;` |
 |         - |  1904 | `		}` |
-|   1070051 |  1905 | `		if( rc == SXERR_EMPTY ){` |
+|   1070113 |  1905 | `		if( rc == SXERR_EMPTY ){` |
 |         - |  1906 | `			/* No key given: load the nil, TAGGED so LOAD_MAP knows this is an absent key` |
 |         - |  1907 | ``			 * (auto-index) rather than an explicit `null =>` one, which php deprecates. */`` |
-|    700915 |  1908 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,PH7_LOADC_NOKEY,0 /* nil index */,0,0);` |
-|    350455 |  1909 | `		}` |
-|   1070051 |  1910 | `		if( pCur->nType & PH7_TK_AMPER /*'&'*/){` |
+|    700921 |  1908 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,PH7_LOADC_NOKEY,0 /* nil index */,0,0);` |
+|    350458 |  1909 | `		}` |
+|   1070113 |  1910 | `		if( pCur->nType & PH7_TK_AMPER /*'&'*/){` |
 |         - |  1911 | `			/* Insertion by reference, [i.e: $a = array(&$x);] */` |
 |        45 |  1912 | `			xValidator = GenStateArrayNodeValidator; /* Only variable are allowed */` |
 |        45 |  1913 | `			iEmitRef = 1;` |
@@ -1936,8 +1936,8 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  1926 | `		 * ExprExtractNode; we only need to know it's there so we can emit` |
 |         - |  1927 | `		 * PH7_OP_FLAG_SPREAD after the value, instructing LOAD_MAP to merge the` |
 |         - |  1928 | `		 * resulting hashmap rather than insert it as a scalar entry. */` |
-|   1070049 |  1929 | `		iSpread = (pCur < pGen->pIn && (pCur->nType & PH7_TK_ELLIPSIS)) ? 1 : 0;` |
-|   1070049 |  1930 | `		if( iSpread && (rc != SXERR_EMPTY \|\| iEmitRef) ){` |
+|   1070111 |  1929 | `		iSpread = (pCur < pGen->pIn && (pCur->nType & PH7_TK_ELLIPSIS)) ? 1 : 0;` |
+|   1070111 |  1930 | `		if( iSpread && (rc != SXERR_EMPTY \|\| iEmitRef) ){` |
 |         - |  1931 | `			/* '[k => ...$a]' and '[&...$a]' are syntax errors in PHP — the` |
 |         - |  1932 | `			 * '...' token cannot follow either '=>' or '&' inside an array` |
 |         - |  1933 | `			 * literal. Emit the same Parse-error wording PHP uses so the` |
@@ -1954,30 +1954,30 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  1944 | `		 * so compile it in write context (LOAD_IDX iP2=1, create-if-missing)` |
 |         - |  1945 | `		 * instead of a read-only load — which also keeps the undefined-key` |
 |         - |  1946 | `		 * warning (a read-only diagnostic) from false-firing here. */` |
-|   1605065 |  1947 | `		rc = GenStateCompileArrayEntry(&(*pGen),pCur,pGen->pIn,` |
-|    535020 |  1948 | `			iEmitRef ? EXPR_FLAG_LOAD_IDX_STORE` |
+|   1605158 |  1947 | `		rc = GenStateCompileArrayEntry(&(*pGen),pCur,pGen->pIn,` |
+|    535051 |  1948 | `			iEmitRef ? EXPR_FLAG_LOAD_IDX_STORE` |
 |         - |  1949 | `			         : EXPR_FLAG_RDONLY_LOAD/*Do not create the variable if inexistant*/,` |
-|    535020 |  1950 | `			xValidator);` |
-|   1070045 |  1951 | `		if( rc == SXERR_ABORT ){` |
+|    535051 |  1950 | `			xValidator);` |
+|   1070107 |  1951 | `		if( rc == SXERR_ABORT ){` |
 |       ! 0 |  1952 | `			return SXERR_ABORT;` |
 |         - |  1953 | `		}` |
-|   1070045 |  1954 | `		if( iSpread ){` |
+|   1070107 |  1954 | `		if( iSpread ){` |
 |         - |  1955 | `			/* Mark the value on TOS as a spread source; LOAD_MAP merges it. */` |
 |        72 |  1956 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_FLAG_SPREAD,0,0,0,0);` |
-|   1070010 |  1957 | `		}else if( iEmitRef ){` |
+|   1070072 |  1957 | `		}else if( iEmitRef ){` |
 |         - |  1958 | `			/* Emit the load reference instruction */` |
 |        41 |  1959 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_REF,0,0,0,0);` |
 |        18 |  1960 | `		}` |
-|   1070045 |  1961 | `		xValidator = 0;` |
-|   1070045 |  1962 | `		iEmitRef = 0;` |
-|   1070045 |  1963 | `		iSpread = 0;` |
-|   1070045 |  1964 | `		nPair++;` |
+|   1070107 |  1961 | `		xValidator = 0;` |
+|   1070107 |  1962 | `		iEmitRef = 0;` |
+|   1070107 |  1963 | `		iSpread = 0;` |
+|   1070107 |  1964 | `		nPair++;` |
 |         5 |  1965 | `	}` |
 |         - |  1966 | `	/* Emit the load map instruction */` |
-|    615943 |  1967 | `	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_MAP,nPair * 2,0,0,0);` |
+|    615979 |  1967 | `	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_MAP,nPair * 2,0,0,0);` |
 |         - |  1968 | `	/* Node successfully compiled */` |
-|    615943 |  1969 | `	return SXRET_OK;` |
-|    307983 |  1970 | `}` |
+|    615979 |  1969 | `	return SXRET_OK;` |
+|    308001 |  1970 | `}` |
 |         - |  1971 | `/*` |
 |         - |  1972 | ` * Compile the 'array' language construct.` |
 |         - |  1973 | ` *	 According to the PHP language reference manual` |
@@ -2092,13 +2092,13 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  2082 | ` * [1, 2, 3] is equivalent to array(1, 2, 3).` |
 |         - |  2083 | ` * ['key' => 'value'] is equivalent to array('key' => 'value').` |
 |         - |  2084 | ` */` |
-|    216404 |  2085 | `PH7_PRIVATE sxi32 PH7_CompileShortArray(ph7_gen_state *pGen,sxi32 iCompileFlag)` |
+|    216440 |  2085 | `PH7_PRIVATE sxi32 PH7_CompileShortArray(ph7_gen_state *pGen,sxi32 iCompileFlag)` |
 |         5 |  2086 | `{` |
 |         - |  2087 | `	/* Jump the leading '[', exclude trailing ']'. */` |
-|    216409 |  2088 | `	pGen->pIn++;` |
-|    216409 |  2089 | `	pGen->pEnd--;` |
-|    108202 |  2090 | `	SXUNUSED(iCompileFlag);` |
-|    216409 |  2091 | `	return GenStateCompileArrayBody(pGen);` |
+|    216445 |  2088 | `	pGen->pIn++;` |
+|    216445 |  2089 | `	pGen->pEnd--;` |
+|    108220 |  2090 | `	SXUNUSED(iCompileFlag);` |
+|    216445 |  2091 | `	return GenStateCompileArrayBody(pGen);` |
 |         5 |  2092 | `}` |
 |         - |  2093 | `/*` |
 |         - |  2094 | ` * Expression tree validator callback for the 'list' language construct.` |
@@ -3030,48 +3030,48 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  3020 | ` * The sub-bytecode is terminated with OP_DONE so VmLocalExec returns the` |
 |         - |  3021 | ` * expression's value.` |
 |         - |  3022 | ` */` |
-|       354 |  3023 | `static sxi32 GenStateCompileMatchSubExpr(ph7_gen_state *pGen,` |
+|       364 |  3023 | `static sxi32 GenStateCompileMatchSubExpr(ph7_gen_state *pGen,` |
 |         - |  3024 | `	SyToken *pStart,SyToken *pStop,SySet *pOut)` |
 |         3 |  3025 | `{` |
 |         - |  3026 | `	SySet *pInstrContainer;` |
 |         - |  3027 | `	SyToken *pTmpIn,*pTmpEnd;` |
 |         - |  3028 | `	GenBlock *pArmBlock;` |
 |         - |  3029 | `	sxi32 rc;` |
-|       357 |  3030 | `	pTmpIn  = pGen->pIn;` |
-|       357 |  3031 | `	pTmpEnd = pGen->pEnd;` |
-|       357 |  3032 | `	pGen->pIn  = pStart;` |
-|       357 |  3033 | `	pGen->pEnd = pStop;` |
-|       357 |  3034 | `	pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);` |
-|       357 |  3035 | `	PH7_VmSetByteCodeContainer(pGen->pVm,pOut);` |
+|       367 |  3030 | `	pTmpIn  = pGen->pIn;` |
+|       367 |  3031 | `	pTmpEnd = pGen->pEnd;` |
+|       367 |  3032 | `	pGen->pIn  = pStart;` |
+|       367 |  3033 | `	pGen->pEnd = pStop;` |
+|       367 |  3034 | `	pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);` |
+|       367 |  3035 | `	PH7_VmSetByteCodeContainer(pGen->pVm,pOut);` |
 |         - |  3036 | `	/* Enter a local FUNC block so any throw-expression fixups register on it` |
 |         - |  3037 | `	 * (and not on an outer try/catch whose instruction indices live in a` |
 |         - |  3038 | `	 * different bytecode container). We resolve those fixups to a trailing` |
 |         - |  3039 | `	 * OP_DONE p1=0 below so a throw inside a match arm cleanly terminates` |
 |         - |  3040 | `	 * the sub-bytecode while leaving VM_FRAME_THROW set for propagation. */` |
-|       534 |  3041 | `	rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_PROTECTED\|GEN_BLOCK_FUNC,` |
-|       177 |  3042 | `		PH7_VmInstrLength(pGen->pVm),0,&pArmBlock);` |
-|       357 |  3043 | `	if( rc != SXRET_OK ){` |
+|       549 |  3041 | `	rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_PROTECTED\|GEN_BLOCK_FUNC,` |
+|       182 |  3042 | `		PH7_VmInstrLength(pGen->pVm),0,&pArmBlock);` |
+|       367 |  3043 | `	if( rc != SXRET_OK ){` |
 |       ! 0 |  3044 | `		PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);` |
 |       ! 0 |  3045 | `		pGen->pIn  = pTmpIn;` |
 |       ! 0 |  3046 | `		pGen->pEnd = pTmpEnd;` |
 |       ! 0 |  3047 | `		return SXERR_ABORT;` |
 |         - |  3048 | `	}` |
-|       357 |  3049 | `	rc = PH7_CompileExpr(&(*pGen),0,0);` |
-|       357 |  3050 | `	PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,(rc != SXERR_EMPTY ? 1 : 0),0,0,0);` |
-|       357 |  3051 | `	GenStateFixJumps(pArmBlock,PH7_OP_THROW,PH7_VmInstrLength(pGen->pVm));` |
-|       357 |  3052 | `	PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,0,0,0,0);` |
-|       357 |  3053 | `	GenStateLeaveBlock(&(*pGen),0);` |
-|       357 |  3054 | `	PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);` |
-|       357 |  3055 | `	pGen->pIn  = pTmpIn;` |
-|       357 |  3056 | `	pGen->pEnd = pTmpEnd;` |
-|       357 |  3057 | `	if( rc == SXERR_ABORT ){` |
+|       367 |  3049 | `	rc = PH7_CompileExpr(&(*pGen),0,0);` |
+|       367 |  3050 | `	PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,(rc != SXERR_EMPTY ? 1 : 0),0,0,0);` |
+|       367 |  3051 | `	GenStateFixJumps(pArmBlock,PH7_OP_THROW,PH7_VmInstrLength(pGen->pVm));` |
+|       367 |  3052 | `	PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,0,0,0,0);` |
+|       367 |  3053 | `	GenStateLeaveBlock(&(*pGen),0);` |
+|       367 |  3054 | `	PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);` |
+|       367 |  3055 | `	pGen->pIn  = pTmpIn;` |
+|       367 |  3056 | `	pGen->pEnd = pTmpEnd;` |
+|       367 |  3057 | `	if( rc == SXERR_ABORT ){` |
 |       ! 0 |  3058 | `		return SXERR_ABORT;` |
 |         - |  3059 | `	}` |
-|       357 |  3060 | `	if( rc == SXERR_EMPTY ){` |
+|       367 |  3060 | `	if( rc == SXERR_EMPTY ){` |
 |       ! 0 |  3061 | `		return SXERR_EMPTY;` |
 |         - |  3062 | `	}` |
-|       357 |  3063 | `	return SXRET_OK;` |
-|       180 |  3064 | `}` |
+|       367 |  3063 | `	return SXRET_OK;` |
+|       185 |  3064 | `}` |
 |         - |  3065 | `/*` |
 |         - |  3066 | ` * Compile a PHP 8.0 match expression:` |
 |         - |  3067 | ` *     match(subject){ cond_list => result, ..., default => result }` |
@@ -3107,108 +3107,108 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  3097 | ` * token whose type is in stopMask (not counting nested parens/brackets/braces).` |
 |         - |  3098 | ` * Returns the stop token pointer (or pEnd if none found).` |
 |         - |  3099 | ` */` |
-|       356 |  3100 | `static SyToken * GenStateMatchScanTopLevel(SyToken *pStart,SyToken *pEnd,sxu32 stopMask)` |
+|       366 |  3100 | `static SyToken * GenStateMatchScanTopLevel(SyToken *pStart,SyToken *pEnd,sxu32 stopMask)` |
 |         4 |  3101 | `{` |
-|       360 |  3102 | `	SyToken *pCur = pStart;` |
-|       360 |  3103 | `	int iNest = 0;` |
-|       838 |  3104 | `	while( pCur < pEnd ){` |
-|       802 |  3105 | `		if( pCur->nType & (PH7_TK_LPAREN\|PH7_TK_OSB\|PH7_TK_OCB) ){` |
-|        13 |  3106 | `			iNest++;` |
-|       796 |  3107 | `		}else if( pCur->nType & (PH7_TK_RPAREN\|PH7_TK_CSB\|PH7_TK_CCB) ){` |
-|        13 |  3108 | `			iNest--;` |
-|       784 |  3109 | `		}else if( iNest == 0 && (pCur->nType & stopMask) ){` |
-|       323 |  3110 | `			return pCur;` |
+|       370 |  3102 | `	SyToken *pCur = pStart;` |
+|       370 |  3103 | `	int iNest = 0;` |
+|       890 |  3104 | `	while( pCur < pEnd ){` |
+|       854 |  3105 | `		if( pCur->nType & (PH7_TK_LPAREN\|PH7_TK_OSB\|PH7_TK_OCB) ){` |
+|        17 |  3106 | `			iNest++;` |
+|       846 |  3107 | `		}else if( pCur->nType & (PH7_TK_RPAREN\|PH7_TK_CSB\|PH7_TK_CCB) ){` |
+|        17 |  3108 | `			iNest--;` |
+|       830 |  3109 | `		}else if( iNest == 0 && (pCur->nType & stopMask) ){` |
+|       333 |  3110 | `			return pCur;` |
 |         - |  3111 | `		}` |
-|       482 |  3112 | `		pCur++;` |
+|       524 |  3112 | `		pCur++;` |
 |         4 |  3113 | `	}` |
 |        39 |  3114 | `	return pEnd;` |
-|       182 |  3115 | `}` |
-|        72 |  3116 | `PH7_PRIVATE sxi32 PH7_CompileMatch(ph7_gen_state *pGen,sxi32 iCompileFlag)` |
+|       187 |  3115 | `}` |
+|        74 |  3116 | `PH7_PRIVATE sxi32 PH7_CompileMatch(ph7_gen_state *pGen,sxi32 iCompileFlag)` |
 |         5 |  3117 | `{` |
 |         - |  3118 | `	ph7_match *pMatch;` |
 |         - |  3119 | `	SyToken *pSubjEnd,*pBodyEnd,*pSavedEnd;` |
-|        77 |  3120 | `	int bHasDefault = 0;` |
+|        79 |  3120 | `	int bHasDefault = 0;` |
 |         - |  3121 | `	sxu32 nLine;` |
 |         - |  3122 | `	sxi32 rc;` |
-|        36 |  3123 | `	SXUNUSED(iCompileFlag);` |
-|        77 |  3124 | `	nLine = pGen->pIn->nLine;` |
-|        77 |  3125 | `	pGen->pIn++; /* Jump 'match' (dispatch in ExprExtractNode guarantees this token) */` |
+|        37 |  3123 | `	SXUNUSED(iCompileFlag);` |
+|        79 |  3124 | `	nLine = pGen->pIn->nLine;` |
+|        79 |  3125 | `	pGen->pIn++; /* Jump 'match' (dispatch in ExprExtractNode guarantees this token) */` |
 |         - |  3126 | `	/* Expect '(' */` |
-|        77 |  3127 | `	if( pGen->pIn >= pGen->pEnd \|\| (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){` |
+|        79 |  3127 | `	if( pGen->pIn >= pGen->pEnd \|\| (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){` |
 |       ! 0 |  3128 | `		return GenStateMatchError(pGen,nLine,` |
 |         - |  3129 | `			"syntax error, unexpected %s, expecting \"(\"",` |
 |       ! 0 |  3130 | `			pGen->pIn < pGen->pEnd ? "token" : "end of file");` |
 |         - |  3131 | `	}` |
-|        77 |  3132 | `	pGen->pIn++; /* Jump '(' */` |
-|        77 |  3133 | `	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pSubjEnd);` |
-|        77 |  3134 | `	if( pSubjEnd >= pGen->pEnd ){` |
+|        79 |  3132 | `	pGen->pIn++; /* Jump '(' */` |
+|        79 |  3133 | `	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pSubjEnd);` |
+|        79 |  3134 | `	if( pSubjEnd >= pGen->pEnd ){` |
 |       ! 0 |  3135 | `		return GenStateMatchError(pGen,nLine,` |
 |         - |  3136 | `			"syntax error, unexpected end of file, expecting \")\"");` |
 |         - |  3137 | `	}` |
-|        77 |  3138 | `	if( pGen->pIn >= pSubjEnd ){` |
+|        79 |  3138 | `	if( pGen->pIn >= pSubjEnd ){` |
 |       ! 0 |  3139 | `		return GenStateMatchError(pGen,nLine,` |
 |         - |  3140 | `			"syntax error, unexpected \")\", expecting match subject");` |
 |         - |  3141 | `	}` |
 |         - |  3142 | `	/* Compile subject inline — result stays on the caller's operand stack */` |
-|        77 |  3143 | `	pSavedEnd = pGen->pEnd;` |
-|        77 |  3144 | `	pGen->pEnd = pSubjEnd;` |
-|        77 |  3145 | `	rc = PH7_CompileExpr(&(*pGen),0,0);` |
-|        77 |  3146 | `	if( rc == SXERR_ABORT ){` |
+|        79 |  3143 | `	pSavedEnd = pGen->pEnd;` |
+|        79 |  3144 | `	pGen->pEnd = pSubjEnd;` |
+|        79 |  3145 | `	rc = PH7_CompileExpr(&(*pGen),0,0);` |
+|        79 |  3146 | `	if( rc == SXERR_ABORT ){` |
 |       ! 0 |  3147 | `		return SXERR_ABORT;` |
 |         - |  3148 | `	}` |
-|        77 |  3149 | `	pGen->pEnd = pSavedEnd;` |
-|        77 |  3150 | `	pGen->pIn = &pSubjEnd[1]; /* Jump ')' */` |
+|        79 |  3149 | `	pGen->pEnd = pSavedEnd;` |
+|        79 |  3150 | `	pGen->pIn = &pSubjEnd[1]; /* Jump ')' */` |
 |         - |  3151 | `	/* Expect '{' */` |
-|        77 |  3152 | `	if( pGen->pIn >= pGen->pEnd \|\| (pGen->pIn->nType & PH7_TK_OCB) == 0 ){` |
+|        79 |  3152 | `	if( pGen->pIn >= pGen->pEnd \|\| (pGen->pIn->nType & PH7_TK_OCB) == 0 ){` |
 |       ! 0 |  3153 | `		return GenStateMatchError(pGen,` |
 |       ! 0 |  3154 | `			pGen->pIn < pGen->pEnd ? pGen->pIn->nLine : nLine,` |
 |         - |  3155 | `			"syntax error, expecting \"{\" after match subject");` |
 |         - |  3156 | `	}` |
-|        77 |  3157 | `	pGen->pIn++; /* Jump '{' */` |
-|        77 |  3158 | `	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_OCB,PH7_TK_CCB,&pBodyEnd);` |
-|        77 |  3159 | `	if( pBodyEnd >= pGen->pEnd ){` |
+|        79 |  3157 | `	pGen->pIn++; /* Jump '{' */` |
+|        79 |  3158 | `	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_OCB,PH7_TK_CCB,&pBodyEnd);` |
+|        79 |  3159 | `	if( pBodyEnd >= pGen->pEnd ){` |
 |       ! 0 |  3160 | `		return GenStateMatchError(pGen,nLine,` |
 |         - |  3161 | `			"syntax error, unexpected end of file, expecting \"}\"");` |
 |         - |  3162 | `	}` |
 |         - |  3163 | `	/* Allocate ph7_match container */` |
-|        77 |  3164 | `	pMatch = (ph7_match *)SyMemBackendAlloc(&pGen->pVm->sAllocator,sizeof(ph7_match));` |
-|        77 |  3165 | `	if( pMatch == 0 ){` |
+|        79 |  3164 | `	pMatch = (ph7_match *)SyMemBackendAlloc(&pGen->pVm->sAllocator,sizeof(ph7_match));` |
+|        79 |  3165 | `	if( pMatch == 0 ){` |
 |       ! 0 |  3166 | `		PH7_GenCompileError(&(*pGen),E_ERROR,nLine,` |
 |         - |  3167 | `			"Fatal, PH7 engine is running out of memory");` |
 |       ! 0 |  3168 | `		return SXERR_ABORT;` |
 |         - |  3169 | `	}` |
-|        77 |  3170 | `	SyZero(pMatch,sizeof(ph7_match));` |
-|        77 |  3171 | `	SySetInit(&pMatch->aArms,&pGen->pVm->sAllocator,sizeof(ph7_match_arm));` |
+|        79 |  3170 | `	SyZero(pMatch,sizeof(ph7_match));` |
+|        79 |  3171 | `	SySetInit(&pMatch->aArms,&pGen->pVm->sAllocator,sizeof(ph7_match_arm));` |
 |         - |  3172 | `	/* Iterate arms */` |
-|       259 |  3173 | `	while( pGen->pIn < pBodyEnd ){` |
+|       267 |  3173 | `	while( pGen->pIn < pBodyEnd ){` |
 |         - |  3174 | `		ph7_match_arm sArm;` |
 |         - |  3175 | `		SyToken *pArrow,*pCondStart,*pResStart,*pResEnd;` |
-|       190 |  3176 | `		sxu32 nArmLine = pGen->pIn->nLine;` |
-|       190 |  3177 | `		SyZero(&sArm,sizeof(ph7_match_arm));` |
-|       190 |  3178 | `		SySetInit(&sArm.aConds,&pGen->pVm->sAllocator,sizeof(SySet));` |
-|       190 |  3179 | `		SySetInit(&sArm.aResult,&pGen->pVm->sAllocator,sizeof(VmInstr));` |
+|       196 |  3176 | `		sxu32 nArmLine = pGen->pIn->nLine;` |
+|       196 |  3177 | `		SyZero(&sArm,sizeof(ph7_match_arm));` |
+|       196 |  3178 | `		SySetInit(&sArm.aConds,&pGen->pVm->sAllocator,sizeof(SySet));` |
+|       196 |  3179 | `		SySetInit(&sArm.aResult,&pGen->pVm->sAllocator,sizeof(VmInstr));` |
 |         - |  3180 | `		/* 'default' arm? */` |
-|       186 |  3181 | `		if( (pGen->pIn->nType & PH7_TK_KEYWORD)` |
-|       107 |  3182 | `			&& SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_DEFAULT ){` |
-|        22 |  3183 | `			if( bHasDefault ){` |
+|       192 |  3181 | `		if( (pGen->pIn->nType & PH7_TK_KEYWORD)` |
+|       111 |  3182 | `			&& SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_DEFAULT ){` |
+|        24 |  3183 | `			if( bHasDefault ){` |
 |         3 |  3184 | `				rc = PH7_GenCompileError(pGen,E_ERROR,nArmLine,` |
 |         - |  3185 | `					"Match expressions may only contain one default arm");` |
 |         4 |  3186 | `				return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;` |
 |         - |  3187 | `			}` |
-|        20 |  3188 | `			sArm.bDefault = 1;` |
-|        20 |  3189 | `			bHasDefault = 1;` |
-|        20 |  3190 | `			pGen->pIn++;` |
-|        20 |  3191 | `			if( pGen->pIn >= pBodyEnd \|\| (pGen->pIn->nType & PH7_TK_ARRAY_OP) == 0 ){` |
+|        22 |  3188 | `			sArm.bDefault = 1;` |
+|        22 |  3189 | `			bHasDefault = 1;` |
+|        22 |  3190 | `			pGen->pIn++;` |
+|        22 |  3191 | `			if( pGen->pIn >= pBodyEnd \|\| (pGen->pIn->nType & PH7_TK_ARRAY_OP) == 0 ){` |
 |       ! 0 |  3192 | `				return GenStateMatchError(pGen,nArmLine,` |
 |         - |  3193 | `					"syntax error, expecting \"=>\" after 'default'");` |
 |         - |  3194 | `			}` |
-|        20 |  3195 | `			pGen->pIn++; /* Jump '=>' */` |
-|        11 |  3196 | `		}else{` |
+|        22 |  3195 | `			pGen->pIn++; /* Jump '=>' */` |
+|        12 |  3196 | `		}else{` |
 |         - |  3197 | `			/* Condition list: cond (',' cond)* '=>' */` |
-|       170 |  3198 | `			pCondStart = pGen->pIn;` |
-|       170 |  3199 | `			pArrow = GenStateMatchScanTopLevel(pGen->pIn,pBodyEnd,` |
+|       174 |  3198 | `			pCondStart = pGen->pIn;` |
+|       174 |  3199 | `			pArrow = GenStateMatchScanTopLevel(pGen->pIn,pBodyEnd,` |
 |         - |  3200 | `				PH7_TK_ARRAY_OP\|PH7_TK_COMMA);` |
-|       178 |  3201 | `			while( pArrow < pBodyEnd && (pArrow->nType & PH7_TK_COMMA) ){` |
+|       182 |  3201 | `			while( pArrow < pBodyEnd && (pArrow->nType & PH7_TK_COMMA) ){` |
 |         - |  3202 | `				SySet sCondBc;` |
 |         9 |  3203 | `				if( pCondStart >= pArrow ){` |
 |       ! 0 |  3204 | `					return GenStateMatchError(pGen,nArmLine,` |
@@ -3224,46 +3224,46 @@ Coverage: 7368/9094 lines (81.02%)
 |         9 |  3214 | `				pArrow = GenStateMatchScanTopLevel(pCondStart,pBodyEnd,` |
 |         - |  3215 | `					PH7_TK_ARRAY_OP\|PH7_TK_COMMA);` |
 |         1 |  3216 | `			}` |
-|       170 |  3217 | `			if( pArrow >= pBodyEnd \|\| (pArrow->nType & PH7_TK_ARRAY_OP) == 0 ){` |
+|       174 |  3217 | `			if( pArrow >= pBodyEnd \|\| (pArrow->nType & PH7_TK_ARRAY_OP) == 0 ){` |
 |         3 |  3218 | `				return GenStateMatchError(pGen,nArmLine,` |
 |         - |  3219 | `					"syntax error, expecting \"=>\" in match arm");` |
 |         - |  3220 | `			}` |
-|       167 |  3221 | `			if( pCondStart >= pArrow ){` |
+|       171 |  3221 | `			if( pCondStart >= pArrow ){` |
 |       ! 0 |  3222 | `				return GenStateMatchError(pGen,nArmLine,` |
 |         - |  3223 | `					"syntax error, empty match condition expression");` |
 |         - |  3224 | `			}` |
 |         - |  3225 | `			{` |
 |         - |  3226 | `				SySet sCondBc;` |
-|       167 |  3227 | `				SySetInit(&sCondBc,&pGen->pVm->sAllocator,sizeof(VmInstr));` |
-|       167 |  3228 | `				rc = GenStateCompileMatchSubExpr(pGen,pCondStart,pArrow,&sCondBc);` |
-|       167 |  3229 | `				if( rc == SXERR_ABORT ){` |
+|       171 |  3227 | `				SySetInit(&sCondBc,&pGen->pVm->sAllocator,sizeof(VmInstr));` |
+|       171 |  3228 | `				rc = GenStateCompileMatchSubExpr(pGen,pCondStart,pArrow,&sCondBc);` |
+|       171 |  3229 | `				if( rc == SXERR_ABORT ){` |
 |       ! 0 |  3230 | `					return SXERR_ABORT;` |
 |         - |  3231 | `				}` |
-|       167 |  3232 | `				SySetPut(&sArm.aConds,(const void *)&sCondBc);` |
+|       171 |  3232 | `				SySetPut(&sArm.aConds,(const void *)&sCondBc);` |
 |         - |  3233 | `			}` |
-|       167 |  3234 | `			pGen->pIn = &pArrow[1]; /* Jump '=>' */` |
+|       171 |  3234 | `			pGen->pIn = &pArrow[1]; /* Jump '=>' */` |
 |         - |  3235 | `		}` |
 |         - |  3236 | `		/* Compile result expression: up to top-level ',' or body end */` |
-|       185 |  3237 | `		pResStart = pGen->pIn;` |
-|       185 |  3238 | `		pResEnd = GenStateMatchScanTopLevel(pGen->pIn,pBodyEnd,PH7_TK_COMMA);` |
-|       185 |  3239 | `		if( pResStart >= pResEnd ){` |
+|       191 |  3237 | `		pResStart = pGen->pIn;` |
+|       191 |  3238 | `		pResEnd = GenStateMatchScanTopLevel(pGen->pIn,pBodyEnd,PH7_TK_COMMA);` |
+|       191 |  3239 | `		if( pResStart >= pResEnd ){` |
 |       ! 0 |  3240 | `			return GenStateMatchError(pGen,nArmLine,` |
 |         - |  3241 | `				"syntax error, expected expression after \"=>\"");` |
 |         - |  3242 | `		}` |
-|       185 |  3243 | `		rc = GenStateCompileMatchSubExpr(pGen,pResStart,pResEnd,&sArm.aResult);` |
-|       185 |  3244 | `		if( rc == SXERR_ABORT ){` |
+|       191 |  3243 | `		rc = GenStateCompileMatchSubExpr(pGen,pResStart,pResEnd,&sArm.aResult);` |
+|       191 |  3244 | `		if( rc == SXERR_ABORT ){` |
 |       ! 0 |  3245 | `			return SXERR_ABORT;` |
 |         - |  3246 | `		}` |
-|       185 |  3247 | `		pGen->pIn = pResEnd;` |
-|       185 |  3248 | `		if( pGen->pIn < pBodyEnd && (pGen->pIn->nType & PH7_TK_COMMA) ){` |
-|       151 |  3249 | `			pGen->pIn++; /* Skip trailing ',' */` |
-|        74 |  3250 | `		}` |
-|       185 |  3251 | `		SySetPut(&pMatch->aArms,(const void *)&sArm);` |
+|       191 |  3247 | `		pGen->pIn = pResEnd;` |
+|       191 |  3248 | `		if( pGen->pIn < pBodyEnd && (pGen->pIn->nType & PH7_TK_COMMA) ){` |
+|       157 |  3249 | `			pGen->pIn++; /* Skip trailing ',' */` |
+|        77 |  3250 | `		}` |
+|       191 |  3251 | `		SySetPut(&pMatch->aArms,(const void *)&sArm);` |
 |         3 |  3252 | `	}` |
-|        71 |  3253 | `	pGen->pIn = &pBodyEnd[1]; /* Jump '}' */` |
-|        71 |  3254 | `	PH7_VmEmitInstr(pGen->pVm,PH7_OP_MATCH,0,0,pMatch,0);` |
-|        71 |  3255 | `	return SXRET_OK;` |
-|        41 |  3256 | `}` |
+|        73 |  3253 | `	pGen->pIn = &pBodyEnd[1]; /* Jump '}' */` |
+|        73 |  3254 | `	PH7_VmEmitInstr(pGen->pVm,PH7_OP_MATCH,0,0,pMatch,0);` |
+|        73 |  3255 | `	return SXRET_OK;` |
+|        42 |  3256 | `}` |
 |         - |  3257 | `/*` |
 |         - |  3258 | ` * Compile a backtick quoted string.` |
 |         - |  3259 | ` */` |
@@ -3398,19 +3398,19 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  3388 | ` *  To assign by reference, simply prepend an ampersand (&) to the beginning of the variable which` |
 |         - |  3389 | ` *  is being assigned (the source variable).` |
 |         - |  3390 | ` */` |
-|  19334824 |  3391 | `PH7_PRIVATE sxi32 PH7_CompileVariable(ph7_gen_state *pGen,sxi32 iCompileFlag)` |
+|  19334846 |  3391 | `PH7_PRIVATE sxi32 PH7_CompileVariable(ph7_gen_state *pGen,sxi32 iCompileFlag)` |
 |         5 |  3392 | `{` |
-|  19334829 |  3393 | `	sxu32 nLineLocal = pGen->pIn->nLine;` |
+|  19334851 |  3393 | `	sxu32 nLineLocal = pGen->pIn->nLine;` |
 |         - |  3394 | `	sxi32 iVv;` |
 |         - |  3395 | `	sxi32 iP1;` |
 |         - |  3396 | `	void *p3;` |
 |         - |  3397 | `	sxi32 rc;` |
-|  19334829 |  3398 | `	iVv = -1; /* Variable variable counter */` |
-|  38669665 |  3399 | `	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_DOLLAR) ){` |
-|  19334841 |  3400 | `		pGen->pIn++;` |
-|  19334841 |  3401 | `		iVv++;` |
+|  19334851 |  3398 | `	iVv = -1; /* Variable variable counter */` |
+|  38669709 |  3399 | `	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_DOLLAR) ){` |
+|  19334863 |  3400 | `		pGen->pIn++;` |
+|  19334863 |  3401 | `		iVv++;` |
 |         5 |  3402 | `	}` |
-|  19334829 |  3403 | `	if( pGen->pIn >= pGen->pEnd \|\| (pGen->pIn->nType & (PH7_TK_ID\|PH7_TK_KEYWORD\|PH7_TK_OCB/*'{'*/)) == 0 ){` |
+|  19334851 |  3403 | `	if( pGen->pIn >= pGen->pEnd \|\| (pGen->pIn->nType & (PH7_TK_ID\|PH7_TK_KEYWORD\|PH7_TK_OCB/*'{'*/)) == 0 ){` |
 |         - |  3404 | `		/* Invalid variable name */` |
 |       ! 0 |  3405 | `		rc = PH7_GenSyntaxError(pGen,pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"variable or \"{\" or \"$\"");` |
 |       ! 0 |  3406 | `		if( rc == SXERR_ABORT ){` |
@@ -3419,8 +3419,8 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  3409 | `		}` |
 |       ! 0 |  3410 | `		return SXRET_OK;` |
 |         - |  3411 | `	}` |
-|  19334829 |  3412 | `	p3  = 0;` |
-|  19334829 |  3413 | `	if( pGen->pIn->nType & PH7_TK_OCB/*'{'*/ ){` |
+|  19334851 |  3412 | `	p3  = 0;` |
+|  19334851 |  3413 | `	if( pGen->pIn->nType & PH7_TK_OCB/*'{'*/ ){` |
 |         - |  3414 | `		/* Dynamic variable creation */` |
 |        19 |  3415 | `		pGen->pIn++;  /* Jump the open curly */` |
 |        19 |  3416 | `		pGen->pEnd--; /* Ignore the trailing curly */` |
@@ -3446,77 +3446,77 @@ Coverage: 7368/9094 lines (81.02%)
 |         7 |  3436 | `	}else{` |
 |         - |  3437 | `		SyHashEntry *pEntry;` |
 |         - |  3438 | `		SyString *pName;` |
-|  19334813 |  3439 | `		char *zName = 0;` |
+|  19334835 |  3439 | `		char *zName = 0;` |
 |         - |  3440 | `		/* Extract variable name */` |
-|  19334813 |  3441 | `		pName = &pGen->pIn->sData;` |
+|  19334835 |  3441 | `		pName = &pGen->pIn->sData;` |
 |         - |  3442 | `		/* Advance the stream cursor */` |
-|  19334813 |  3443 | `		pGen->pIn++;` |
-|  19334813 |  3444 | `		pEntry = SyHashGet(&pGen->hVar,(const void *)pName->zString,pName->nByte);` |
-|  19334813 |  3445 | `		if( pEntry == 0 ){` |
+|  19334835 |  3443 | `		pGen->pIn++;` |
+|  19334835 |  3444 | `		pEntry = SyHashGet(&pGen->hVar,(const void *)pName->zString,pName->nByte);` |
+|  19334835 |  3445 | `		if( pEntry == 0 ){` |
 |         - |  3446 | `			/* Duplicate name */` |
-|   1161521 |  3447 | `			zName = SyMemBackendStrDup(&pGen->pVm->sAllocator,pName->zString,pName->nByte);` |
-|   1161521 |  3448 | `			if( zName == 0 ){` |
+|   1161529 |  3447 | `			zName = SyMemBackendStrDup(&pGen->pVm->sAllocator,pName->zString,pName->nByte);` |
+|   1161529 |  3448 | `			if( zName == 0 ){` |
 |       ! 0 |  3449 | `				PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"Fatal, PH7 engine is running out of memory");` |
 |       ! 0 |  3450 | `				return SXERR_ABORT;` |
 |         - |  3451 | `			}` |
 |         - |  3452 | `			/* Install in the hashtable */` |
-|   1161521 |  3453 | `			SyHashInsert(&pGen->hVar,zName,pName->nByte,zName);` |
-|    580763 |  3454 | `		}else{` |
+|   1161529 |  3453 | `			SyHashInsert(&pGen->hVar,zName,pName->nByte,zName);` |
+|    580767 |  3454 | `		}else{` |
 |         - |  3455 | `			/* Name already available */` |
-|  18173297 |  3456 | `			zName = (char *)pEntry->pUserData;` |
+|  18173311 |  3456 | `			zName = (char *)pEntry->pUserData;` |
 |         - |  3457 | `		}` |
-|  19334813 |  3458 | `		p3 = (void *)zName;` |
+|  19334835 |  3458 | `		p3 = (void *)zName;` |
 |         - |  3459 | `	}` |
-|  19334825 |  3460 | `	iP1 = 0;` |
-|  19334825 |  3461 | `	if( iCompileFlag & EXPR_FLAG_RDONLY_LOAD ){` |
-|   5714899 |  3462 | `		if( (iCompileFlag & EXPR_FLAG_LOAD_IDX_STORE) == 0 ){` |
+|  19334847 |  3460 | `	iP1 = 0;` |
+|  19334847 |  3461 | `	if( iCompileFlag & EXPR_FLAG_RDONLY_LOAD ){` |
+|   5714911 |  3462 | `		if( (iCompileFlag & EXPR_FLAG_LOAD_IDX_STORE) == 0 ){` |
 |         - |  3463 | `			/* Read-only load.In other words do not create the variable if inexistant */` |
-|   5711051 |  3464 | `			iP1 = 1;` |
-|   2855523 |  3465 | `		}` |
-|   2857447 |  3466 | `	}` |
+|   5711063 |  3464 | `			iP1 = 1;` |
+|   2855529 |  3465 | `		}` |
+|   2857453 |  3466 | `	}` |
 |         - |  3467 | `	/* Emit the load instruction */` |
-|  19334825 |  3468 | `	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD,iP1,0,p3,0);` |
-|  19334837 |  3469 | `	while( iVv > 0 ){` |
+|  19334847 |  3468 | `	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD,iP1,0,p3,0);` |
+|  19334859 |  3469 | `	while( iVv > 0 ){` |
 |        13 |  3470 | `		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD,iP1,0,0,0);` |
 |        13 |  3471 | `		iVv--;` |
 |         1 |  3472 | `	}` |
 |         - |  3473 | `	/* Node successfully compiled */` |
-|  19334825 |  3474 | `	return SXRET_OK;` |
-|   9667417 |  3475 | `}` |
+|  19334847 |  3474 | `	return SXRET_OK;` |
+|   9667428 |  3475 | `}` |
 |         - |  3476 | `/*` |
 |         - |  3477 | ` * Load a literal.` |
 |         - |  3478 | ` */` |
-|  11951730 |  3479 | `static sxi32 GenStateLoadLiteral(ph7_gen_state *pGen)` |
+|  11951776 |  3479 | `static sxi32 GenStateLoadLiteral(ph7_gen_state *pGen)` |
 |         5 |  3480 | `{` |
-|  11951735 |  3481 | `	SyToken *pToken = pGen->pIn;` |
+|  11951781 |  3481 | `	SyToken *pToken = pGen->pIn;` |
 |         - |  3482 | `	ph7_value *pObj;` |
 |         - |  3483 | `	SyString *pStr;` |
 |         - |  3484 | `	sxu32 nIdx;` |
 |         - |  3485 | `	/* Extract token value */` |
-|  11951735 |  3486 | `	pStr = &pToken->sData;` |
+|  11951781 |  3486 | `	pStr = &pToken->sData;` |
 |         - |  3487 | `	/* Deal with the reserved literals [i.e: null,false,true,...] first. A reserved` |
 |         - |  3488 | `	 * word used as a member NAME (Enum::Null, C::Array, $o->list()) is a plain` |
 |         - |  3489 | `	 * identifier — the parser flagged its token so the whole value-folding chain is` |
 |         - |  3490 | `	 * skipped and it falls through to the ordinary string-literal emit below. */` |
-|  11951735 |  3491 | `	if( pToken->nType & PH7_TK_MEMBER_NAME ){` |
+|  11951781 |  3491 | `	if( pToken->nType & PH7_TK_MEMBER_NAME ){` |
 |         - |  3492 | `		/* fall through to the plain-string literal path */` |
-|   9592539 |  3493 | `	}else if( pStr->nByte == sizeof("NULL") - 1 ){` |
-|   1460443 |  3494 | `		if( SyStrnicmp(pStr->zString,"null",sizeof("NULL")-1) == 0 ){` |
+|   9592585 |  3493 | `	}else if( pStr->nByte == sizeof("NULL") - 1 ){` |
+|   1460467 |  3494 | `		if( SyStrnicmp(pStr->zString,"null",sizeof("NULL")-1) == 0 ){` |
 |         - |  3495 | `			/* NULL constant are always indexed at 0 */` |
 |    983741 |  3496 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,0,0,0);` |
 |    983741 |  3497 | `			return SXRET_OK;` |
-|    476707 |  3498 | `		}else if( SyStrnicmp(pStr->zString,"true",sizeof("TRUE")-1) == 0 ){` |
+|    476731 |  3498 | `		}else if( SyStrnicmp(pStr->zString,"true",sizeof("TRUE")-1) == 0 ){` |
 |         - |  3499 | `			/* TRUE constant are always indexed at 1 */` |
-|    326255 |  3500 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,1,0,0);` |
-|    326255 |  3501 | `			return SXRET_OK;` |
+|    326279 |  3500 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,1,0,0);` |
+|    326279 |  3501 | `			return SXRET_OK;` |
 |         5 |  3502 | `		}` |
-|   6584173 |  3503 | `	}else if (pStr->nByte == sizeof("FALSE") - 1 &&` |
+|   6584195 |  3503 | `	}else if (pStr->nByte == sizeof("FALSE") - 1 &&` |
 |   1472084 |  3504 | `		SyStrnicmp(pStr->zString,"false",sizeof("FALSE")-1) == 0 ){` |
 |         - |  3505 | `			/* FALSE constant are always indexed at 2 */` |
 |    715751 |  3506 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,2,0,0);` |
 |    715751 |  3507 | `			return SXRET_OK;` |
-|   5186176 |  3508 | `	}else if(pStr->nByte == sizeof("__LINE__") - 1 &&` |
-|    258034 |  3509 | `		SyMemcmp(pStr->zString,"__LINE__",sizeof("__LINE__")-1) == 0 ){` |
+|   5186199 |  3508 | `	}else if(pStr->nByte == sizeof("__LINE__") - 1 &&` |
+|    258036 |  3509 | `		SyMemcmp(pStr->zString,"__LINE__",sizeof("__LINE__")-1) == 0 ){` |
 |         - |  3510 | `			/* TICKET 1433-004: __LINE__ constant must be resolved at compile time,not run time */` |
 |      3837 |  3511 | `			pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);` |
 |      3837 |  3512 | `			if( pObj == 0 ){` |
@@ -3527,9 +3527,9 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  3517 | `			/* Emit the load constant instruction */` |
 |      3837 |  3518 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);` |
 |      3837 |  3519 | `			return SXRET_OK;` |
-|   5180423 |  3520 | `	}else if( (pStr->nByte == sizeof("__FILE__") - 1 &&` |
-|    458485 |  3521 | `		SyMemcmp(pStr->zString,"__FILE__",sizeof("__FILE__")-1) == 0) \|\|` |
-|   5253708 |  3522 | `		(pStr->nByte == sizeof("__DIR__") - 1 &&` |
+|   5180446 |  3520 | `	}else if( (pStr->nByte == sizeof("__FILE__") - 1 &&` |
+|    458487 |  3521 | `		SyMemcmp(pStr->zString,"__FILE__",sizeof("__FILE__")-1) == 0) \|\|` |
+|   5253730 |  3522 | `		(pStr->nByte == sizeof("__DIR__") - 1 &&` |
 |    408556 |  3523 | `		SyMemcmp(pStr->zString,"__DIR__",sizeof("__DIR__")-1) == 0) ){` |
 |         - |  3524 | `			/* __FILE__ / __DIR__ are magic constants resolved at COMPILE time to the` |
 |         - |  3525 | `			 * file being compiled (where the token is written), NOT the runtime` |
@@ -3562,7 +3562,7 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  3552 | `			}` |
 |      3919 |  3553 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);` |
 |      3919 |  3554 | `			return SXRET_OK;` |
-|   5151094 |  3555 | `	}else if( pStr->nByte == sizeof("__NAMESPACE__") - 1 &&` |
+|   5151116 |  3555 | `	}else if( pStr->nByte == sizeof("__NAMESPACE__") - 1 &&` |
 |    203362 |  3556 | `		SyMemcmp(pStr->zString,"__NAMESPACE__",sizeof("__NAMESPACE__")-1) == 0 ){` |
 |         - |  3557 | `			/* __NAMESPACE__ magic constant: resolved at compile time */` |
 |         7 |  3558 | `			pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);` |
@@ -3579,10 +3579,10 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  3569 | `			}` |
 |         7 |  3570 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);` |
 |         7 |  3571 | `			return SXRET_OK;` |
-|   5162775 |  3572 | `	}else if( (pStr->nByte == sizeof("__FUNCTION__") - 1 &&` |
-|    376860 |  3573 | `		SyMemcmp(pStr->zString,"__FUNCTION__",sizeof("__FUNCTION__")-1) == 0) \|\|` |
-|   5199504 |  3574 | `		(pStr->nByte == sizeof("__METHOD__") - 1 &&` |
-|    300218 |  3575 | `		SyMemcmp(pStr->zString,"__METHOD__",sizeof("__METHOD__")-1) == 0) ){` |
+|   5162798 |  3572 | `	}else if( (pStr->nByte == sizeof("__FUNCTION__") - 1 &&` |
+|    376871 |  3573 | `		SyMemcmp(pStr->zString,"__FUNCTION__",sizeof("__FUNCTION__")-1) == 0) \|\|` |
+|   5199535 |  3574 | `		(pStr->nByte == sizeof("__METHOD__") - 1 &&` |
+|    300236 |  3575 | `		SyMemcmp(pStr->zString,"__METHOD__",sizeof("__METHOD__")-1) == 0) ){` |
 |        11 |  3576 | `			GenBlock *pBlock = pGen->pCurrent;` |
 |         - |  3577 | `			/* TICKET 1433-004: __FUNCTION__/__METHOD__ constants must be resolved at compile time,not run time */` |
 |        21 |  3578 | `			while( pBlock && (pBlock->iFlags & GEN_BLOCK_FUNC) == 0 ){` |
@@ -3625,7 +3625,7 @@ Coverage: 7368/9094 lines (81.02%)
 |        11 |  3615 | `			return SXRET_OK;` |
 |         - |  3616 | `	}` |
 |         - |  3617 | `	/* Query literal table */` |
-|   9918241 |  3618 | `	if( SXRET_OK != GenStateFindLiteral(&(*pGen),&pToken->sData,&nIdx) ){` |
+|   9918263 |  3618 | `	if( SXRET_OK != GenStateFindLiteral(&(*pGen),&pToken->sData,&nIdx) ){` |
 |         - |  3619 | `		ph7_value *pLitObj;` |
 |         - |  3620 | `		/* Unknown literal,install it in the literal table */` |
 |   1891801 |  3621 | `		pLitObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);` |
@@ -3637,23 +3637,23 @@ Coverage: 7368/9094 lines (81.02%)
 |   1891801 |  3627 | `		GenStateInstallLiteral(&(*pGen),pLitObj,nIdx);` |
 |    945898 |  3628 | `	}` |
 |         - |  3629 | `	/* Emit the load constant instruction */` |
-|   9918241 |  3630 | `	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,1,nIdx,0,0);` |
-|   9918241 |  3631 | `	return SXRET_OK;` |
-|   5975870 |  3632 | `}` |
+|   9918263 |  3630 | `	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,1,nIdx,0,0);` |
+|   9918263 |  3631 | `	return SXRET_OK;` |
+|   5975893 |  3632 | `}` |
 |         - |  3633 | `/*` |
 |         - |  3634 | ` * Resolve a namespace path or simply load a literal.` |
 |         - |  3635 | ` * If the token stream contains namespace separators (backslashes),` |
 |         - |  3636 | ` * assemble them into a single literal string (e.g. "Foo\Bar\Baz").` |
 |         - |  3637 | ` * Otherwise, load the simple literal directly.` |
 |         - |  3638 | ` */` |
-|  11955638 |  3639 | `static sxi32 GenStateResolveNamespaceLiteral(ph7_gen_state *pGen)` |
+|  11955684 |  3639 | `static sxi32 GenStateResolveNamespaceLiteral(ph7_gen_state *pGen)` |
 |         5 |  3640 | `{` |
 |         - |  3641 | `	sxi32 rc;` |
-|  11955643 |  3642 | `	if( pGen->pIn >= pGen->pEnd ){` |
+|  11955689 |  3642 | `	if( pGen->pIn >= pGen->pEnd ){` |
 |       ! 0 |  3643 | `		return SXRET_OK;` |
 |         - |  3644 | `	}` |
 |         - |  3645 | `	/* Check if this is a multi-token namespace path */` |
-|  11955643 |  3646 | `	if( pGen->pIn < &pGen->pEnd[-1] ){` |
+|  11955689 |  3646 | `	if( pGen->pIn < &pGen->pEnd[-1] ){` |
 |         - |  3647 | `		/* Multiple tokens: assemble the full path into sWorker */` |
 |      3913 |  3648 | `		SyBlob *pWorker = &pGen->sWorker;` |
 |      3913 |  3649 | `		int isAbsolute = 0;` |
@@ -3732,9 +3732,9 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  3722 | `		}` |
 |       ! 0 |  3723 | `	}` |
 |         - |  3724 | `	/* Single-token literal: load directly */` |
-|  11951735 |  3725 | `	rc = GenStateLoadLiteral(&(*pGen));` |
-|  11951735 |  3726 | `	return rc;` |
-|   5977824 |  3727 | `}` |
+|  11951781 |  3725 | `	rc = GenStateLoadLiteral(&(*pGen));` |
+|  11951781 |  3726 | `	return rc;` |
+|   5977847 |  3727 | `}` |
 |         - |  3728 | `/*` |
 |         - |  3729 | ` * Compile a literal which is an identifier(name) for a simple value.` |
 |         - |  3730 | ` */` |
@@ -3751,17 +3751,17 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  3741 | `		"Cannot use the first-class callable syntax '...' here");` |
 |       ! 0 |  3742 | `	return SXERR_SYNTAX;` |
 |       ! 0 |  3743 | `}` |
-|  11955638 |  3744 | `PH7_PRIVATE sxi32 PH7_CompileLiteral(ph7_gen_state *pGen,sxi32 iCompileFlag)` |
+|  11955684 |  3744 | `PH7_PRIVATE sxi32 PH7_CompileLiteral(ph7_gen_state *pGen,sxi32 iCompileFlag)` |
 |         5 |  3745 | `{` |
 |         - |  3746 | `	sxi32 rc;` |
-|  11955643 |  3747 | `	rc = GenStateResolveNamespaceLiteral(&(*pGen));` |
-|  11955643 |  3748 | `	if( rc != SXRET_OK ){` |
+|  11955689 |  3747 | `	rc = GenStateResolveNamespaceLiteral(&(*pGen));` |
+|  11955689 |  3748 | `	if( rc != SXRET_OK ){` |
 |       ! 0 |  3749 | `		SXUNUSED(iCompileFlag); /* cc warning */` |
 |       ! 0 |  3750 | `		return rc;` |
 |         - |  3751 | `	}` |
 |         - |  3752 | `	/* Node successfully compiled */` |
-|  11955643 |  3753 | `	return SXRET_OK;` |
-|   5977824 |  3754 | `}` |
+|  11955689 |  3753 | `	return SXRET_OK;` |
+|   5977847 |  3754 | `}` |
 |         - |  3755 | `/*` |
 |         - |  3756 | ` * Recover from a compile-time error. In other words synchronize` |
 |         - |  3757 | ` * the token stream cursor with the first semi-colon seen.` |
@@ -5561,54 +5561,54 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  5551 | `/*` |
 |         - |  5552 | ` * Compile the 'echo' language construct.` |
 |         - |  5553 | ` */` |
-|     17980 |  5554 | `static sxi32 PH7_CompileEcho(ph7_gen_state *pGen)` |
+|     17996 |  5554 | `static sxi32 PH7_CompileEcho(ph7_gen_state *pGen)` |
 |         5 |  5555 | `{` |
-|     17985 |  5556 | `	SyToken *pTmp,*pNext = 0;` |
-|     17985 |  5557 | `	sxu32 nLine = pGen->pIn->nLine;` |
-|     17985 |  5558 | `	int nExpr = 0;      /* expressions actually compiled */` |
-|     17985 |  5559 | `	int bExpectMore = 1;/* after 'echo' or a comma an expression is REQUIRED */` |
+|     18001 |  5556 | `	SyToken *pTmp,*pNext = 0;` |
+|     18001 |  5557 | `	sxu32 nLine = pGen->pIn->nLine;` |
+|     18001 |  5558 | `	int nExpr = 0;      /* expressions actually compiled */` |
+|     18001 |  5559 | `	int bExpectMore = 1;/* after 'echo' or a comma an expression is REQUIRED */` |
 |         - |  5560 | `	sxi32 rc;` |
 |         - |  5561 | `	/* Jump the 'echo' keyword */` |
-|     17985 |  5562 | `	pGen->pIn++;` |
+|     18001 |  5562 | `	pGen->pIn++;` |
 |         - |  5563 | `	/* Compile arguments one after one */` |
-|     17985 |  5564 | `	pTmp = pGen->pEnd;` |
-|     45533 |  5565 | `	while( SXRET_OK == PH7_GetNextExpr(pGen->pIn,pTmp,&pNext) ){` |
-|     27555 |  5566 | `		if( pGen->pIn < pNext ){` |
-|     27555 |  5567 | `			pGen->pEnd = pNext;` |
-|     27555 |  5568 | `			rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_RDONLY_LOAD/* Do not create variable if inexistant */,0);` |
-|     27555 |  5569 | `			if( rc == SXERR_ABORT ){` |
+|     18001 |  5564 | `	pTmp = pGen->pEnd;` |
+|     45589 |  5565 | `	while( SXRET_OK == PH7_GetNextExpr(pGen->pIn,pTmp,&pNext) ){` |
+|     27595 |  5566 | `		if( pGen->pIn < pNext ){` |
+|     27595 |  5567 | `			pGen->pEnd = pNext;` |
+|     27595 |  5568 | `			rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_RDONLY_LOAD/* Do not create variable if inexistant */,0);` |
+|     27595 |  5569 | `			if( rc == SXERR_ABORT ){` |
 |       ! 0 |  5570 | `				return SXERR_ABORT;` |
-|     27555 |  5571 | `			}else if( rc != SXERR_EMPTY ){` |
+|     27595 |  5571 | `			}else if( rc != SXERR_EMPTY ){` |
 |         - |  5572 | `				/* Emit the consume instruction */` |
-|     27529 |  5573 | `				PH7_VmEmitInstr(pGen->pVm,PH7_OP_CONSUME,1,0,0,0);` |
-|     27529 |  5574 | `				nExpr++;` |
-|     27529 |  5575 | `				bExpectMore = 0;` |
-|     13762 |  5576 | `			}` |
-|     13775 |  5577 | `		}` |
+|     27569 |  5573 | `				PH7_VmEmitInstr(pGen->pVm,PH7_OP_CONSUME,1,0,0,0);` |
+|     27569 |  5574 | `				nExpr++;` |
+|     27569 |  5575 | `				bExpectMore = 0;` |
+|     13782 |  5576 | `			}` |
+|     13795 |  5577 | `		}` |
 |         - |  5578 | `		/* Jump trailing commas (php: exactly one between expressions; a` |
 |         - |  5579 | `		 * dangling or doubled comma is a parse error, enforced below) */` |
-|     37131 |  5580 | `		while( pNext < pTmp && (pNext->nType & PH7_TK_COMMA) ){` |
-|      9583 |  5581 | `			if( bExpectMore ){` |
+|     37195 |  5580 | `		while( pNext < pTmp && (pNext->nType & PH7_TK_COMMA) ){` |
+|      9607 |  5581 | `			if( bExpectMore ){` |
 |         - |  5582 | `				/* two commas in a row */` |
 |         3 |  5583 | `				rc = PH7_GenCompileError(&(*pGen),E_PARSE,pNext->nLine,` |
 |         - |  5584 | `					"syntax error, unexpected token \",\"");` |
 |         3 |  5585 | `				return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;` |
 |         - |  5586 | `			}` |
-|      9581 |  5587 | `			bExpectMore = 1;` |
-|      9581 |  5588 | `			pNext++;` |
+|      9605 |  5587 | `			bExpectMore = 1;` |
+|      9605 |  5588 | `			pNext++;` |
 |         5 |  5589 | `		}` |
-|     27553 |  5590 | `		pGen->pIn = pNext;` |
+|     27593 |  5590 | `		pGen->pIn = pNext;` |
 |         5 |  5591 | `	}` |
 |         - |  5592 | `	/* Restore token stream */` |
-|     17983 |  5593 | `	pGen->pEnd = pTmp;` |
-|     17983 |  5594 | `	if( nExpr == 0 \|\| bExpectMore ){` |
+|     17999 |  5593 | `	pGen->pEnd = pTmp;` |
+|     17999 |  5594 | `	if( nExpr == 0 \|\| bExpectMore ){` |
 |         - |  5595 | ``		/* `echo ;` or `echo expr, ;` — php rejects both */`` |
 |        34 |  5596 | `		rc = PH7_GenCompileError(&(*pGen),E_PARSE,nLine,` |
 |         - |  5597 | `			"syntax error, unexpected token \";\"");` |
 |        34 |  5598 | `		return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;` |
 |         - |  5599 | `	}` |
-|     17953 |  5600 | `	return SXRET_OK;` |
-|      8995 |  5601 | `}` |
+|     17969 |  5600 | `	return SXRET_OK;` |
+|      9003 |  5601 | `}` |
 |         - |  5602 | `/*` |
 |         - |  5603 | ` * Compile the static statement.` |
 |         - |  5604 | ` * According to the PHP language reference` |
@@ -5789,7 +5789,7 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  5779 | ` * came from an import (step 1) and 0 otherwise.` |
 |         - |  5780 | ` * Returns the (possibly new) literal index.` |
 |         - |  5781 | ` */` |
-|   5624258 |  5782 | `static sxu32 GenStateNsQualifyName(ph7_gen_state *pGen,sxu32 nOrigIdx,SyHash *pImports,int *pFromImport)` |
+|   5624280 |  5782 | `static sxu32 GenStateNsQualifyName(ph7_gen_state *pGen,sxu32 nOrigIdx,SyHash *pImports,int *pFromImport)` |
 |         5 |  5783 | `{` |
 |         - |  5784 | `	ph7_value *pLit;` |
 |         - |  5785 | `	const char *zLit;` |
@@ -5800,35 +5800,35 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  5790 | `	int hasNsSep;` |
 |         - |  5791 | `	SyHashEntry *pImport;` |
 |         - |  5792 | `	ph7_value *pNew;` |
-|   5624263 |  5793 | `	if( pFromImport ){` |
-|   4549515 |  5794 | `		*pFromImport = 0;` |
-|   2274755 |  5795 | `	}` |
-|   5624263 |  5796 | `	pLit = (ph7_value *)SySetAt(&pGen->pVm->aLitObj,nOrigIdx);` |
-|   5624263 |  5797 | `	if( !pLit \|\| !(pLit->iFlags & MEMOBJ_STRING) \|\| SyBlobLength(&pLit->sBlob) == 0 ){` |
+|   5624285 |  5793 | `	if( pFromImport ){` |
+|   4549537 |  5794 | `		*pFromImport = 0;` |
+|   2274766 |  5795 | `	}` |
+|   5624285 |  5796 | `	pLit = (ph7_value *)SySetAt(&pGen->pVm->aLitObj,nOrigIdx);` |
+|   5624285 |  5797 | `	if( !pLit \|\| !(pLit->iFlags & MEMOBJ_STRING) \|\| SyBlobLength(&pLit->sBlob) == 0 ){` |
 |       ! 0 |  5798 | `		return nOrigIdx;` |
 |         - |  5799 | `	}` |
-|   5624263 |  5800 | `	zLit = (const char *)SyBlobData(&pLit->sBlob);` |
-|   5624263 |  5801 | `	nLit = (sxu32)SyBlobLength(&pLit->sBlob);` |
+|   5624285 |  5800 | `	zLit = (const char *)SyBlobData(&pLit->sBlob);` |
+|   5624285 |  5801 | `	nLit = (sxu32)SyBlobLength(&pLit->sBlob);` |
 |         - |  5802 | `	/* Skip if already qualified (contains backslash) */` |
-|   5624263 |  5803 | `	hasNsSep = 0;` |
-|  66538401 |  5804 | `	for( k = 0; k < nLit; k++ ){` |
-|  60914161 |  5805 | `		if( zLit[k] == '\\' ){ hasNsSep = 1; break; }` |
-|  30457074 |  5806 | `	}` |
-|   5624263 |  5807 | `	if( hasNsSep ){` |
+|   5624285 |  5803 | `	hasNsSep = 0;` |
+|  66538643 |  5804 | `	for( k = 0; k < nLit; k++ ){` |
+|  60914381 |  5805 | `		if( zLit[k] == '\\' ){ hasNsSep = 1; break; }` |
+|  30457184 |  5806 | `	}` |
+|   5624285 |  5807 | `	if( hasNsSep ){` |
 |        20 |  5808 | `		return nOrigIdx;` |
 |         - |  5809 | `	}` |
 |         - |  5810 | `	/* Check use imports first (works even outside namespaces) */` |
-|   5624245 |  5811 | `	SyBlobReset(&pGen->sWorker);` |
-|   5624245 |  5812 | `	pImport = SyHashGet(pImports,(const void *)zLit,nLit);` |
-|   5624245 |  5813 | `	if( pImport ){` |
+|   5624267 |  5811 | `	SyBlobReset(&pGen->sWorker);` |
+|   5624267 |  5812 | `	pImport = SyHashGet(pImports,(const void *)zLit,nLit);` |
+|   5624267 |  5813 | `	if( pImport ){` |
 |        41 |  5814 | `		const char *zFQN = (const char *)pImport->pUserData;` |
 |        41 |  5815 | `		SyBlobAppend(&pGen->sWorker,zFQN,SyStrlen(zFQN));` |
 |        41 |  5816 | `		if( pFromImport ){` |
 |        18 |  5817 | `			*pFromImport = 1;` |
 |         8 |  5818 | `		}` |
 |        23 |  5819 | `	}else{` |
-|   5624209 |  5820 | `		if( SyBlobLength(&pGen->sNamespace) == 0 ){` |
-|   5624079 |  5821 | `			return nOrigIdx; /* Not in a namespace and no import match */` |
+|   5624231 |  5820 | `		if( SyBlobLength(&pGen->sNamespace) == 0 ){` |
+|   5624101 |  5821 | `			return nOrigIdx; /* Not in a namespace and no import match */` |
 |         - |  5822 | `		}` |
 |         - |  5823 | `		/* Prepend current namespace */` |
 |       135 |  5824 | `		SyBlobAppend(&pGen->sWorker,SyBlobData(&pGen->sNamespace),SyBlobLength(&pGen->sNamespace));` |
@@ -5847,7 +5847,7 @@ Coverage: 7368/9094 lines (81.02%)
 |        99 |  5837 | `	PH7_MemObjInitFromString(pGen->pVm,pNew,&sQualified);` |
 |        99 |  5838 | `	GenStateInstallLiteral(&(*pGen),pNew,nNewIdx);` |
 |        99 |  5839 | `	return nNewIdx;` |
-|   2812134 |  5840 | `}` |
+|   2812145 |  5840 | `}` |
 |         - |  5841 | `/*` |
 |         - |  5842 | ` * Resolve a class/function name at compile time through use imports and current namespace.` |
 |         - |  5843 | ` * Writes the resolved FQN into pOut. Caller must release pOut.` |
@@ -8753,11 +8753,11 @@ Coverage: 7368/9094 lines (81.02%)
 |         - |  8743 | ` * matched as a plain identifier in the class-member modifier position rather` |
 |         - |  8744 | ` * than promoted to a lexer keyword.` |
 |         - |  8745 | ` */` |
-|  20511492 |  8746 | `static int GenStateIsReadonly(SyToken *pTok)` |
+|  20511516 |  8746 | `static int GenStateIsReadonly(SyToken *pTok)` |
 |         5 |  8747 | `{` |
-|  20730255 |  8748 | `	return (pTok->nType & PH7_TK_ID)` |
-|  10474504 |  8749 | `		&& pTok->sData.nByte == sizeof("readonly")-1` |
-|  20730250 |  8750 | `		&& SyStrnicmp(pTok->sData.zString,"readonly",sizeof("readonly")-1) == 0;` |
+|  20730279 |  8748 | `	return (pTok->nType & PH7_TK_ID)` |
+|  10474516 |  8749 | `		&& pTok->sData.nByte == sizeof("readonly")-1` |
+|  20730274 |  8750 | `		&& SyStrnicmp(pTok->sData.zString,"readonly",sizeof("readonly")-1) == 0;` |
 |         5 |  8751 | `}` |
 |         - |  8752 | `/*` |
 |         - |  8753 | ``  * Detect an asymmetric set-visibility modifier `public(set)` / `protected(set)` `` |
@@ -11842,36 +11842,36 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 11832 | `` * or the context-sensitive `readonly` identifier (PHP 8.2). On a match, *piFlag`` |
 |         - | 11833 | ` * receives the corresponding PH7_CLASS_* bit.` |
 |         - | 11834 | ` */` |
-|  12874180 | 11835 | `static int GenStateTokenIsClassModifier(SyToken *pTok,sxi32 *piFlag)` |
+|  12874204 | 11835 | `static int GenStateTokenIsClassModifier(SyToken *pTok,sxi32 *piFlag)` |
 |         5 | 11836 | `{` |
-|  12874185 | 11837 | `	if( pTok->nType & PH7_TK_KEYWORD ){` |
-|   7544011 | 11838 | `		sxu32 nKw = (sxu32)SX_PTR_TO_INT(pTok->pUserData);` |
-|   7544011 | 11839 | `		if( nKw == PH7_TKWRD_FINAL ){ *piFlag = PH7_CLASS_FINAL; return TRUE; }` |
-|   7498085 | 11840 | `		if( nKw == PH7_TKWRD_ABSTRACT ){ *piFlag = PH7_CLASS_ABSTRACT; return TRUE; }` |
-|   3733691 | 11841 | `	}` |
-|  12797561 | 11842 | `	if( GenStateIsReadonly(pTok) ){ *piFlag = PH7_CLASS_READONLY; return TRUE; }` |
-|  12797501 | 11843 | `	return FALSE;` |
-|   6437095 | 11844 | `}` |
+|  12874209 | 11837 | `	if( pTok->nType & PH7_TK_KEYWORD ){` |
+|   7544027 | 11838 | `		sxu32 nKw = (sxu32)SX_PTR_TO_INT(pTok->pUserData);` |
+|   7544027 | 11839 | `		if( nKw == PH7_TKWRD_FINAL ){ *piFlag = PH7_CLASS_FINAL; return TRUE; }` |
+|   7498101 | 11840 | `		if( nKw == PH7_TKWRD_ABSTRACT ){ *piFlag = PH7_CLASS_ABSTRACT; return TRUE; }` |
+|   3733699 | 11841 | `	}` |
+|  12797585 | 11842 | `	if( GenStateIsReadonly(pTok) ){ *piFlag = PH7_CLASS_READONLY; return TRUE; }` |
+|  12797525 | 11843 | `	return FALSE;` |
+|   6437107 | 11844 | `}` |
 |         - | 11845 | `/*` |
 |         - | 11846 | ` * Advance *ppIn over a leading run of class modifiers, returning the combined` |
 |         - | 11847 | ` * PH7_CLASS_* flags (0 if none). If a modifier is repeated, the first repeated` |
 |         - | 11848 | ` * token is reported via *ppDup (NULL when none); pass 0 for ppDup to ignore it.` |
 |         - | 11849 | ` * This stays side-effect-free so it can be used for speculative look-ahead.` |
 |         - | 11850 | ` */` |
-|  12797496 | 11851 | `static sxi32 GenStateScanClassModifiers(SyToken **ppIn,SyToken *pEnd,SyToken **ppDup)` |
+|  12797520 | 11851 | `static sxi32 GenStateScanClassModifiers(SyToken **ppIn,SyToken *pEnd,SyToken **ppDup)` |
 |         5 | 11852 | `{` |
-|  12797501 | 11853 | `	SyToken *pIn = *ppIn,*pDup = 0;` |
-|  12797501 | 11854 | `	sxi32 iFlags = 0,iFlag;` |
-|  12874185 | 11855 | `	while( pIn < pEnd && GenStateTokenIsClassModifier(pIn,&iFlag) ){` |
+|  12797525 | 11853 | `	SyToken *pIn = *ppIn,*pDup = 0;` |
+|  12797525 | 11854 | `	sxi32 iFlags = 0,iFlag;` |
+|  12874209 | 11855 | `	while( pIn < pEnd && GenStateTokenIsClassModifier(pIn,&iFlag) ){` |
 |     76689 | 11856 | `		if( (iFlags & iFlag) && pDup == 0 ){` |
 |         5 | 11857 | `			pDup = pIn;` |
 |         2 | 11858 | `		}` |
 |     76689 | 11859 | `		iFlags \|= iFlag;` |
 |     76689 | 11860 | `		pIn++;` |
 |         5 | 11861 | `	}` |
-|  12797501 | 11862 | `	*ppIn = pIn;` |
-|  12797501 | 11863 | `	if( ppDup ){ *ppDup = pDup; }` |
-|  12797501 | 11864 | `	return iFlags;` |
+|  12797525 | 11862 | `	*ppIn = pIn;` |
+|  12797525 | 11863 | `	if( ppDup ){ *ppDup = pDup; }` |
+|  12797525 | 11864 | `	return iFlags;` |
 |         5 | 11865 | `}` |
 |         - | 11866 | `/*` |
 |         - | 11867 | ` * Test whether the token stream starts a *modified* class declaration: a run of` |
@@ -11880,11 +11880,11 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 11870 | `` * `class`/`interface`/`trait` (and any expression that merely starts with`` |
 |         - | 11871 | `` * `readonly`) to their existing handlers.`` |
 |         - | 11872 | ` */` |
-|  12762988 | 11873 | `static int GenStateStartsModifiedClass(SyToken *pIn,SyToken *pEnd)` |
+|  12763012 | 11873 | `static int GenStateStartsModifiedClass(SyToken *pIn,SyToken *pEnd)` |
 |         5 | 11874 | `{` |
-|  12762993 | 11875 | `	sxi32 iFlags = GenStateScanClassModifiers(&pIn,pEnd,0);` |
-|   6423657 | 11876 | `	return iFlags != 0 && pIn < pEnd && (pIn->nType & PH7_TK_KEYWORD)` |
-|  12784068 | 11877 | `		&& (sxu32)SX_PTR_TO_INT(pIn->pUserData) == PH7_TKWRD_CLASS;` |
+|  12763017 | 11875 | `	sxi32 iFlags = GenStateScanClassModifiers(&pIn,pEnd,0);` |
+|   6423669 | 11876 | `	return iFlags != 0 && pIn < pEnd && (pIn->nType & PH7_TK_KEYWORD)` |
+|  12784092 | 11877 | `		&& (sxu32)SX_PTR_TO_INT(pIn->pUserData) == PH7_TKWRD_CLASS;` |
 |         5 | 11878 | `}` |
 |         - | 11879 | `/*` |
 |         - | 11880 | ` * Compile a class declaration carrying one or more leading modifiers` |
@@ -12243,12 +12243,12 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 12233 | `` * an identifier. `enum(...)`/`enum;`/`$enum` all keep their expression`` |
 |         - | 12234 | `` * meaning; `enum Name` can never start a valid expression.`` |
 |         - | 12235 | ` */` |
-|  12720832 | 12236 | `static int GenStateStartsEnumDecl(SyToken *pIn,SyToken *pEnd)` |
+|  12720856 | 12236 | `static int GenStateStartsEnumDecl(SyToken *pIn,SyToken *pEnd)` |
 |         5 | 12237 | `{` |
-|  12926098 | 12238 | `	return (pIn->nType & PH7_TK_ID)` |
-|   6565677 | 12239 | `		&& pIn->sData.nByte == sizeof("enum")-1` |
+|  12926122 | 12238 | `	return (pIn->nType & PH7_TK_ID)` |
+|   6565689 | 12239 | `		&& pIn->sData.nByte == sizeof("enum")-1` |
 |    214957 | 12240 | `		&& SyStrnicmp(pIn->sData.zString,"enum",sizeof("enum")-1) == 0` |
-|  12926093 | 12241 | `		&& &pIn[1] < pEnd && (pIn[1].nType & PH7_TK_ID);` |
+|  12926117 | 12241 | `		&& &pIn[1] < pEnd && (pIn[1].nType & PH7_TK_ID);` |
 |         5 | 12242 | `}` |
 |         - | 12243 | `/*` |
 |         - | 12244 | ` * Compile an enum declaration (PHP 8.1). An enum is a final class carrying` |
@@ -13215,14 +13215,14 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 13205 | ` * that it jumps to the current end-of-emission instruction. Then drop the` |
 |         - | 13206 | ` * patched entries from the pending set.` |
 |         - | 13207 | ` */` |
-|  48501258 | 13208 | `static void GenStatePatchNullsafeJumps(ph7_gen_state *pGen, sxu32 nBaseline)` |
+|  48501528 | 13208 | `static void GenStatePatchNullsafeJumps(ph7_gen_state *pGen, sxu32 nBaseline)` |
 |         5 | 13209 | `{` |
-|  48501263 | 13210 | `	sxu32 nCur = SySetUsed(&pGen->aNullsafeJmp);` |
+|  48501533 | 13210 | `	sxu32 nCur = SySetUsed(&pGen->aNullsafeJmp);` |
 |         - | 13211 | `	sxu32 nTarget;` |
 |         - | 13212 | `	sxu32 *aIdx;` |
 |         - | 13213 | `	sxu32 i;` |
-|  48501263 | 13214 | `	if( nCur <= nBaseline ){` |
-|  48501167 | 13215 | `		return;` |
+|  48501533 | 13214 | `	if( nCur <= nBaseline ){` |
+|  48501437 | 13215 | `		return;` |
 |         - | 13216 | `	}` |
 |       100 | 13217 | `	aIdx = (sxu32 *)SySetBasePtr(&pGen->aNullsafeJmp);` |
 |       100 | 13218 | `	nTarget = PH7_VmInstrLength(pGen->pVm);` |
@@ -13233,7 +13233,7 @@ Coverage: 7368/9094 lines (81.02%)
 |        52 | 13223 | `		}` |
 |        56 | 13224 | `	}` |
 |       100 | 13225 | `	SySetTruncate(&pGen->aNullsafeJmp, nBaseline);` |
-|  24250634 | 13226 | `}` |
+|  24250769 | 13226 | `}` |
 |         - | 13227 |  |
 |         - | 13228 | `/*` |
 |         - | 13229 | ` * By-reference out-parameters of builtin functions.` |
@@ -13252,7 +13252,7 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 13242 | ` * Bit N (1u<<N) set => the argument at position N is by reference. Out-params` |
 |         - | 13243 | ` * live at low indices, so a 32-bit mask is sufficient.` |
 |         - | 13244 | ` */` |
-|   6175612 | 13245 | `static sxu32 GenStateByRefBuiltinMask(SyString *pName)` |
+|   6175634 | 13245 | `static sxu32 GenStateByRefBuiltinMask(SyString *pName)` |
 |         5 | 13246 | `{` |
 |         - | 13247 | `	static const struct {` |
 |         - | 13248 | `		const char *zName;` |
@@ -13270,17 +13270,17 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 13260 | `		{ "stream_socket_client",  20, (1u<<1)\|(1u<<2) },  /* &$error_code, &$error_message */` |
 |         - | 13261 | `	};` |
 |         - | 13262 | `	sxu32 i;` |
-|   6175617 | 13263 | `	if( pName == 0 \|\| pName->zString == 0 \|\| pName->nByte == 0 ){` |
+|   6175639 | 13263 | `	if( pName == 0 \|\| pName->zString == 0 \|\| pName->nByte == 0 ){` |
 |   1622537 | 13264 | `		return 0;` |
 |         - | 13265 | `	}` |
-|  45113019 | 13266 | `	for( i = 0 ; i < SX_ARRAYSIZE(aByRef) ; ++i ){` |
-|  40617446 | 13267 | `		if( pName->nByte == aByRef[i].nByte` |
-|  21428196 | 13268 | `		 && SyStrnicmp(pName->zString, aByRef[i].zName, pName->nByte) == 0 ){` |
+|  45113239 | 13266 | `	for( i = 0 ; i < SX_ARRAYSIZE(aByRef) ; ++i ){` |
+|  40617644 | 13267 | `		if( pName->nByte == aByRef[i].nByte` |
+|  21428315 | 13268 | `		 && SyStrnicmp(pName->zString, aByRef[i].zName, pName->nByte) == 0 ){` |
 |     57517 | 13269 | `			return aByRef[i].mask;` |
 |         - | 13270 | `		}` |
-|  20279972 | 13271 | `	}` |
-|   4495573 | 13272 | `	return 0;` |
-|   3087811 | 13273 | `}` |
+|  20280071 | 13271 | `	}` |
+|   4495595 | 13272 | `	return 0;` |
+|   3087822 | 13273 | `}` |
 |         - | 13274 | `/*` |
 |         - | 13275 | ` * Recover the bare global-builtin name from a call's callee node.` |
 |         - | 13276 | ` *` |
@@ -13291,29 +13291,29 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 13281 | ` * returned for it. pEnd is exclusive (one past the last name token). Returns` |
 |         - | 13282 | ` * {NULL,0} in *pOut when the callee is not a plain global function name.` |
 |         - | 13283 | ` */` |
-|   6175612 | 13284 | `static void GenStateCallBuiltinName(ph7_expr_node *pLeft, SyString *pOut)` |
+|   6175634 | 13284 | `static void GenStateCallBuiltinName(ph7_expr_node *pLeft, SyString *pOut)` |
 |         5 | 13285 | `{` |
 |         - | 13286 | `	SyToken *p, *pEnd;` |
-|   6175617 | 13287 | `	pOut->zString = 0;` |
-|   6175617 | 13288 | `	pOut->nByte = 0;` |
-|   6175617 | 13289 | `	if( pLeft == 0 \|\| pLeft->pStart == 0 \|\| pLeft->pEnd == 0 ){` |
+|   6175639 | 13287 | `	pOut->zString = 0;` |
+|   6175639 | 13288 | `	pOut->nByte = 0;` |
+|   6175639 | 13289 | `	if( pLeft == 0 \|\| pLeft->pStart == 0 \|\| pLeft->pEnd == 0 ){` |
 |       ! 0 | 13290 | `		return;` |
 |         - | 13291 | `	}` |
-|   6175617 | 13292 | `	p = pLeft->pStart;` |
-|   6175617 | 13293 | `	pEnd = pLeft->pEnd;` |
+|   6175639 | 13292 | `	p = pLeft->pStart;` |
+|   6175639 | 13293 | `	pEnd = pLeft->pEnd;` |
 |         - | 13294 | `	/* Optional single leading namespace separator (absolute path). */` |
-|   6175617 | 13295 | `	if( p < pEnd && (p->nType & PH7_TK_NSSEP) ){` |
+|   6175639 | 13295 | `	if( p < pEnd && (p->nType & PH7_TK_NSSEP) ){` |
 |      3867 | 13296 | `		p++;` |
 |      1931 | 13297 | `	}` |
-|   6175617 | 13298 | `	if( p >= pEnd \|\| (p->nType & (PH7_TK_ID\|PH7_TK_KEYWORD)) == 0 ){` |
+|   6175639 | 13298 | `	if( p >= pEnd \|\| (p->nType & (PH7_TK_ID\|PH7_TK_KEYWORD)) == 0 ){` |
 |   1622495 | 13299 | `		return;` |
 |         - | 13300 | `	}` |
 |         - | 13301 | `	/* Must be a single component: nothing follows the name token. */` |
-|   4553127 | 13302 | `	if( p + 1 != pEnd ){` |
+|   4553149 | 13302 | `	if( p + 1 != pEnd ){` |
 |        47 | 13303 | `		return;` |
 |         - | 13304 | `	}` |
-|   4553085 | 13305 | `	*pOut = p->sData;` |
-|   3087811 | 13306 | `}` |
+|   4553107 | 13305 | `	*pOut = p->sData;` |
+|   3087822 | 13306 | `}` |
 |         - | 13307 | `/*` |
 |         - | 13308 | ` * Generate bytecode for a given expression tree.` |
 |         - | 13309 | ` * If something goes wrong while generating bytecode` |
@@ -13321,7 +13321,7 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 13311 | ` * this function takes care of generating the appropriate` |
 |         - | 13312 | ` * error message.` |
 |         - | 13313 | ` */` |
-|  67482846 | 13314 | `static sxi32 GenStateEmitExprCode(` |
+|  67483138 | 13314 | `static sxi32 GenStateEmitExprCode(` |
 |         - | 13315 | `	ph7_gen_state *pGen,  /* Code generator state */` |
 |         - | 13316 | `	ph7_expr_node *pNode, /* Root of the expression tree */` |
 |         - | 13317 | `	sxi32 iFlags /* Control flags */` |
@@ -13329,29 +13329,29 @@ Coverage: 7368/9094 lines (81.02%)
 |         5 | 13319 | `{` |
 |         - | 13320 | `	VmInstr *pInstr;` |
 |         - | 13321 | `	sxu32 nJmpIdx;` |
-|  67482851 | 13322 | `	sxi32 iP1 = 0;` |
-|  67482851 | 13323 | `	sxu32 iP2 = 0;` |
-|  67482851 | 13324 | `	void *p3  = 0;` |
+|  67483143 | 13322 | `	sxi32 iP1 = 0;` |
+|  67483143 | 13323 | `	sxu32 iP2 = 0;` |
+|  67483143 | 13324 | `	void *p3  = 0;` |
 |         - | 13325 | `	sxi32 iVmOp;` |
 |         - | 13326 | `	sxi32 rc;` |
-|  67482851 | 13327 | `	int bIsChainOp = 0; /* Set below once we know pNode->pOp */` |
-|  67482851 | 13328 | ``	int bFcc = 0;       /* First-class callable `f(...)`: emit OP_LOAD_FCC, not OP_CALL */`` |
-|  67482851 | 13329 | `	sxu32 nRhsNsBase = 0;` |
-|  67482851 | 13330 | `	if( pNode->xCode ){` |
+|  67483143 | 13327 | `	int bIsChainOp = 0; /* Set below once we know pNode->pOp */` |
+|  67483143 | 13328 | ``	int bFcc = 0;       /* First-class callable `f(...)`: emit OP_LOAD_FCC, not OP_CALL */`` |
+|  67483143 | 13329 | `	sxu32 nRhsNsBase = 0;` |
+|  67483143 | 13330 | `	if( pNode->xCode ){` |
 |         - | 13331 | `		SyToken *pTmpIn,*pTmpEnd;` |
 |         - | 13332 | `		/* Compile node */` |
-|  40710501 | 13333 | `		SWAP_DELIMITER(pGen,pNode->pStart,pNode->pEnd);` |
-|  40710501 | 13334 | `		rc = pNode->xCode(&(*pGen),iFlags);` |
-|  40710501 | 13335 | `		RE_SWAP_DELIMITER(pGen);` |
-|  40710501 | 13336 | `		return rc;` |
+|  40710749 | 13333 | `		SWAP_DELIMITER(pGen,pNode->pStart,pNode->pEnd);` |
+|  40710749 | 13334 | `		rc = pNode->xCode(&(*pGen),iFlags);` |
+|  40710749 | 13335 | `		RE_SWAP_DELIMITER(pGen);` |
+|  40710749 | 13336 | `		return rc;` |
 |         - | 13337 | `	}` |
-|  26772355 | 13338 | `	if( pNode->pOp == 0 ){` |
+|  26772399 | 13338 | `	if( pNode->pOp == 0 ){` |
 |       ! 0 | 13339 | `		PH7_GenCompileError(&(*pGen),E_ERROR,pNode->pStart->nLine,` |
 |         - | 13340 | `			"Invalid expression node,PH7 is aborting compilation");` |
 |       ! 0 | 13341 | `		return SXERR_ABORT;` |
 |         - | 13342 | `	}` |
-|  26772355 | 13343 | `	iVmOp = pNode->pOp->iVmOp;` |
-|  26772355 | 13344 | `	if( iVmOp == PH7_OP_CVT_NULL ){` |
+|  26772399 | 13343 | `	iVmOp = pNode->pOp->iVmOp;` |
+|  26772399 | 13344 | `	if( iVmOp == PH7_OP_CVT_NULL ){` |
 |         - | 13345 | `		/* php 8 removed the (unset) cast. Error recorded (nErr>0 fails the` |
 |         - | 13346 | `		 * whole compile); keep emitting so expression codegen stays aligned` |
 |         - | 13347 | `		 * and later errors are still reported. */` |
@@ -13361,7 +13361,7 @@ Coverage: 7368/9094 lines (81.02%)
 |       ! 0 | 13351 | `			return SXERR_ABORT;` |
 |         - | 13352 | `		}` |
 |         1 | 13353 | `	}` |
-|  26772355 | 13354 | `	if( pNode->pOp->iOp == EXPR_OP_NULLC_ASSIGN ){` |
+|  26772399 | 13354 | `	if( pNode->pOp->iOp == EXPR_OP_NULLC_ASSIGN ){` |
 |        93 | 13355 | `		sxu32 nJmp = 0;` |
 |         - | 13356 | `		sxu32 nNcNsBase;` |
 |         - | 13357 | `		VmInstr *pInstrFix;` |
@@ -13411,7 +13411,7 @@ Coverage: 7368/9094 lines (81.02%)
 |        45 | 13401 | `		}` |
 |        93 | 13402 | `		return SXRET_OK;` |
 |         - | 13403 | `	}` |
-|  26772265 | 13404 | `	if( pNode->pOp->iOp == EXPR_OP_QUESTY ){` |
+|  26772309 | 13404 | `	if( pNode->pOp->iOp == EXPR_OP_QUESTY ){` |
 |         - | 13405 | `		sxu32 nJz,nJmp;` |
 |         - | 13406 | `		sxu32 nTernaryNsBase;` |
 |         - | 13407 | `		/* Ternary operator require special handling */` |
@@ -13474,7 +13474,7 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 13464 | `		/* All done */` |
 |    458433 | 13465 | `		return SXRET_OK;` |
 |         - | 13466 | `	}` |
-|  26313837 | 13467 | `	if( pNode->pOp->iOp == EXPR_OP_PIPE ){` |
+|  26313881 | 13467 | `	if( pNode->pOp->iOp == EXPR_OP_PIPE ){` |
 |         - | 13468 | ``		/* PHP 8.5 pipe: `$lhs \|> $rhs` invokes the RHS callable with the LHS`` |
 |         - | 13469 | ``		 * value as its sole argument [i.e. `$rhs($lhs)`]. Evaluate the LHS (the`` |
 |         - | 13470 | `		 * argument) first, then the RHS callable, then emit a one-argument` |
@@ -13507,35 +13507,35 @@ Coverage: 7368/9094 lines (81.02%)
 |        27 | 13497 | `		PH7_VmEmitInstr(pGen->pVm,PH7_OP_CALL,1,0,GenStateAttachStrictFlag(pGen,0),0);` |
 |        27 | 13498 | `		return SXRET_OK;` |
 |         - | 13499 | `	}` |
-|  26313811 | 13500 | `	bIsChainOp = GEN_IS_CHAIN_OP(pNode->pOp->iOp);` |
+|  26313855 | 13500 | `	bIsChainOp = GEN_IS_CHAIN_OP(pNode->pOp->iOp);` |
 |         - | 13501 | `	/* Generate code for the left tree */` |
-|  26313811 | 13502 | `	if( pNode->pLeft ){` |
-|  26290879 | 13503 | `		sxu32 nLhsNsBase = SySetUsed(&pGen->aNullsafeJmp);` |
-|  26290879 | 13504 | `		if( iVmOp == PH7_OP_CALL ){` |
+|  26313855 | 13502 | `	if( pNode->pLeft ){` |
+|  26290923 | 13503 | `		sxu32 nLhsNsBase = SySetUsed(&pGen->aNullsafeJmp);` |
+|  26290923 | 13504 | `		if( iVmOp == PH7_OP_CALL ){` |
 |         - | 13505 | `			ph7_expr_node **apNode;` |
-|   6179767 | 13506 | `			int hasSpread = 0;` |
-|   6179767 | 13507 | `			int hasNamed = 0;` |
-|   6179767 | 13508 | `			int bAnySpread = 0;` |
-|   6179767 | 13509 | `			sxu32 byRefMask = 0;` |
+|   6179789 | 13506 | `			int hasSpread = 0;` |
+|   6179789 | 13507 | `			int hasNamed = 0;` |
+|   6179789 | 13508 | `			int bAnySpread = 0;` |
+|   6179789 | 13509 | `			sxu32 byRefMask = 0;` |
 |         - | 13510 | `			sxi32 nArgs;` |
 |         - | 13511 | `			sxi32 n;` |
 |         - | 13512 | `			/* Recurse and generate bytecodes for function arguments */` |
-|   6179767 | 13513 | `			apNode = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);` |
-|   6179767 | 13514 | `			nArgs = (sxi32)SySetUsed(&pNode->aNodeArgs);` |
+|   6179789 | 13513 | `			apNode = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);` |
+|   6179789 | 13514 | `			nArgs = (sxi32)SySetUsed(&pNode->aNodeArgs);` |
 |         - | 13515 | ``			/* First-class callable `f(...)`: the sole argument is the lone-ellipsis marker.`` |
 |         - | 13516 | `			 * Emit no arguments; the callee (pNode->pLeft) is still compiled below, then we` |
 |         - | 13517 | `			 * emit OP_LOAD_FCC instead of OP_CALL to wrap it in a Closure. */` |
-|   6179767 | 13518 | `			if( nArgs == 1 && apNode[0] && (apNode[0]->iFlags & EXPR_NODE_FCC) ){` |
+|   6179789 | 13518 | `			if( nArgs == 1 && apNode[0] && (apNode[0]->iFlags & EXPR_NODE_FCC) ){` |
 |        81 | 13519 | `				bFcc = 1;` |
 |        81 | 13520 | `				nArgs = 0;` |
 |        40 | 13521 | `			}` |
 |         - | 13522 | `			/* Validate argument order like php: no positional argument after a` |
 |         - | 13523 | ``			 * named one OR after unpacking, and `name: ...$x` is a parse error. */`` |
 |         - | 13524 | `			{` |
-|   6179767 | 13525 | `				int seenNamed = 0;` |
-|   6179767 | 13526 | `				int seenSpread = 0;` |
-|  12993073 | 13527 | `				for( n = 0; n < nArgs; ++n ){` |
-|   6813313 | 13528 | `					if( apNode[n]->iFlags & EXPR_NODE_SPREAD ){` |
+|   6179789 | 13525 | `				int seenNamed = 0;` |
+|   6179789 | 13526 | `				int seenSpread = 0;` |
+|  12993143 | 13527 | `				for( n = 0; n < nArgs; ++n ){` |
+|   6813361 | 13528 | `					if( apNode[n]->iFlags & EXPR_NODE_SPREAD ){` |
 |      4023 | 13529 | `						bAnySpread = 1;` |
 |      4023 | 13530 | `						seenSpread = 1;` |
 |      4023 | 13531 | `						if( apNode[n]->iFlags & EXPR_NODE_NAMED_ARG ){` |
@@ -13543,33 +13543,33 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 13533 | `								"syntax error, unexpected token \"...\"");` |
 |       ! 0 | 13534 | `							return SXERR_SYNTAX;` |
 |         5 | 13535 | `						}` |
-|   6811304 | 13536 | `					}else if( apNode[n]->iFlags & EXPR_NODE_NAMED_ARG ){` |
+|   6811352 | 13536 | `					}else if( apNode[n]->iFlags & EXPR_NODE_NAMED_ARG ){` |
 |       289 | 13537 | `						seenNamed = 1;` |
 |       289 | 13538 | `						hasNamed = 1;` |
-|   6809153 | 13539 | `					}else if( seenNamed ){` |
+|   6809201 | 13539 | `					}else if( seenNamed ){` |
 |         3 | 13540 | `						rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[n]->pStart->nLine,` |
 |         - | 13541 | `							"Cannot use positional argument after named argument");` |
 |         3 | 13542 | `						return SXERR_SYNTAX;` |
-|   6809009 | 13543 | `					}else if( seenSpread ){` |
+|   6809057 | 13543 | `					}else if( seenSpread ){` |
 |       ! 0 | 13544 | `						rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[n]->pStart->nLine,` |
 |         - | 13545 | `							"Cannot use positional argument after argument unpacking");` |
 |       ! 0 | 13546 | `						return SXERR_SYNTAX;` |
 |         - | 13547 | `					}` |
-|   3406658 | 13548 | `				}` |
+|   3406682 | 13548 | `				}` |
 |         - | 13549 | `			}` |
 |         - | 13550 | `			/* Read-only load */` |
-|   6179765 | 13551 | `			iFlags \|= EXPR_FLAG_RDONLY_LOAD;` |
+|   6179787 | 13551 | `			iFlags \|= EXPR_FLAG_RDONLY_LOAD;` |
 |         - | 13552 | `			/* Route subscript-argument LOAD_IDX through a special iP2 code` |
 |         - | 13553 | ``			 * for the language constructs `isset` and `empty` so ArrayAccess`` |
 |         - | 13554 | `			 * objects dispatch to the right method (offsetExists for both;` |
 |         - | 13555 | `			 * empty also needs offsetGet to evaluate emptiness on hits). */` |
-|   6179765 | 13556 | `			if( pNode->pLeft && pNode->pLeft->pStart ){` |
-|   6179765 | 13557 | `				SyString *pCallName = &pNode->pLeft->pStart->sData;` |
-|   6179760 | 13558 | `				if( pCallName->nByte == 5` |
-|   3466070 | 13559 | `				 && SyStrnicmp(pCallName->zString,"isset",5) == 0 ){` |
+|   6179787 | 13556 | `			if( pNode->pLeft && pNode->pLeft->pStart ){` |
+|   6179787 | 13557 | `				SyString *pCallName = &pNode->pLeft->pStart->sData;` |
+|   6179782 | 13558 | `				if( pCallName->nByte == 5` |
+|   3466081 | 13559 | `				 && SyStrnicmp(pCallName->zString,"isset",5) == 0 ){` |
 |    313959 | 13560 | `					iFlags \|= EXPR_FLAG_LOAD_IDX_ISSET;` |
-|   6022788 | 13561 | `				}else if( pCallName->nByte == 5` |
-|   3152116 | 13562 | `				 && SyStrnicmp(pCallName->zString,"empty",5) == 0 ){` |
+|   6022810 | 13561 | `				}else if( pCallName->nByte == 5` |
+|   3152127 | 13562 | `				 && SyStrnicmp(pCallName->zString,"empty",5) == 0 ){` |
 |       117 | 13563 | `					iFlags \|= EXPR_FLAG_LOAD_IDX_EMPTY;` |
 |        56 | 13564 | `				}` |
 |         - | 13565 | `				/* Auto-vivify by-reference out-params of known builtins so an` |
@@ -13578,43 +13578,43 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 13568 | `				 * write back through. Skipped when spread/named args are present:` |
 |         - | 13569 | `				 * the compile-time positional index no longer maps to the` |
 |         - | 13570 | `				 * runtime apArg[] slot (and spread elements can't be by-ref). */` |
-|   6179765 | 13571 | `				if( !bAnySpread && !hasNamed ){` |
+|   6179787 | 13571 | `				if( !bAnySpread && !hasNamed ){` |
 |         - | 13572 | `					SyString sBuiltin;` |
-|   6175617 | 13573 | `					GenStateCallBuiltinName(pNode->pLeft, &sBuiltin);` |
-|   6175617 | 13574 | `					byRefMask = GenStateByRefBuiltinMask(&sBuiltin);` |
-|   3087806 | 13575 | `				}` |
-|   3089880 | 13576 | `			}` |
-|  12993069 | 13577 | `			for( n = 0 ; n < nArgs ; ++n ){` |
-|   6813309 | 13578 | `				sxu32 nArgNsBase = SySetUsed(&pGen->aNullsafeJmp);` |
-|   6813309 | 13579 | `				sxi32 iArgFlags = iFlags & ~(EXPR_FLAG_LOAD_IDX_STORE\|EXPR_FLAG_MEMBER_WRITE);` |
+|   6175639 | 13573 | `					GenStateCallBuiltinName(pNode->pLeft, &sBuiltin);` |
+|   6175639 | 13574 | `					byRefMask = GenStateByRefBuiltinMask(&sBuiltin);` |
+|   3087817 | 13575 | `				}` |
+|   3089891 | 13576 | `			}` |
+|  12993139 | 13577 | `			for( n = 0 ; n < nArgs ; ++n ){` |
+|   6813357 | 13578 | `				sxu32 nArgNsBase = SySetUsed(&pGen->aNullsafeJmp);` |
+|   6813357 | 13579 | `				sxi32 iArgFlags = iFlags & ~(EXPR_FLAG_LOAD_IDX_STORE\|EXPR_FLAG_MEMBER_WRITE);` |
 |         - | 13580 | `				/* For a by-ref argument position, drop the read-only flag so the` |
 |         - | 13581 | `				 * variable is created if absent (PH7_OP_LOAD iP1=0 => bCreate), and` |
 |         - | 13582 | `				 * set write-context so a subscript target (preg_match($p,$s,$a['k']))` |
 |         - | 13583 | `				 * auto-vivifies its element and exposes a writable memobj slot for the` |
 |         - | 13584 | `				 * builtin to write back through. A plain $var target is unaffected` |
 |         - | 13585 | `				 * (iP1=0 either way). */` |
-|   6813309 | 13586 | `				if( n < 31 && (byRefMask & (1u<<n)) ){` |
+|   6813357 | 13586 | `				if( n < 31 && (byRefMask & (1u<<n)) ){` |
 |     38329 | 13587 | `					iArgFlags &= ~EXPR_FLAG_RDONLY_LOAD;` |
 |     38329 | 13588 | `					iArgFlags \|= EXPR_FLAG_LOAD_IDX_STORE;` |
 |     19162 | 13589 | `				}` |
-|   6813309 | 13590 | `				rc = GenStateEmitExprCode(&(*pGen),apNode[n],iArgFlags);` |
-|   6813309 | 13591 | `				if( rc != SXRET_OK ){` |
+|   6813357 | 13590 | `				rc = GenStateEmitExprCode(&(*pGen),apNode[n],iArgFlags);` |
+|   6813357 | 13591 | `				if( rc != SXRET_OK ){` |
 |       ! 0 | 13592 | `					return rc;` |
 |         - | 13593 | `				}` |
 |         - | 13594 | `				/* Each argument is an independent nullsafe scope. */` |
-|   6813309 | 13595 | `				GenStatePatchNullsafeJumps(pGen, nArgNsBase);` |
-|   6813309 | 13596 | `				if( apNode[n]->iFlags & EXPR_NODE_SPREAD ){` |
+|   6813357 | 13595 | `				GenStatePatchNullsafeJumps(pGen, nArgNsBase);` |
+|   6813357 | 13596 | `				if( apNode[n]->iFlags & EXPR_NODE_SPREAD ){` |
 |         - | 13597 | `					/* Emit spread opcode to unpack this array argument */` |
 |      4023 | 13598 | `					PH7_VmEmitInstr(pGen->pVm, PH7_OP_SPREAD, 0, 0, 0, 0);` |
 |      4023 | 13599 | `					hasSpread = 1;` |
 |      2009 | 13600 | `				}` |
-|   3406657 | 13601 | `			}` |
+|   3406681 | 13601 | `			}` |
 |         - | 13602 | `			/* Total number of given arguments */` |
-|   6179765 | 13603 | `			iP1 = nArgs;` |
-|   6179765 | 13604 | `			iP2 = hasSpread;` |
+|   6179787 | 13603 | `			iP1 = nArgs;` |
+|   6179787 | 13604 | `			iP2 = hasSpread;` |
 |         - | 13605 | `			/* Build VmCallArgMap if named arguments are present.` |
 |         - | 13606 | `			 * Deep-copy name strings so they survive token stream cleanup. */` |
-|   6179765 | 13607 | `			if( hasNamed ){` |
+|   6179787 | 13607 | `			if( hasNamed ){` |
 |       178 | 13608 | `				sxu32 nStrBytes = 0;` |
 |         - | 13609 | `				char *zBuf;` |
 |       534 | 13610 | `				for( n = 0; n < nArgs; ++n ){` |
@@ -13646,8 +13646,8 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 13636 | `				}` |
 |        87 | 13637 | `			}` |
 |         - | 13638 | `			/* Remove stale flags now */` |
-|   6179765 | 13639 | `			iFlags &= ~EXPR_FLAG_RDONLY_LOAD;` |
-|   3089880 | 13640 | `		}` |
+|   6179787 | 13639 | `			iFlags &= ~EXPR_FLAG_RDONLY_LOAD;` |
+|   3089891 | 13640 | `		}` |
 |         - | 13641 | `		{` |
 |         - | 13642 | `			/* The unset() target is the OUTERMOST access. When the intermediate container — the left` |
 |         - | 13643 | ``			 * operand of `->`/`::`/`[]` — is itself a MEMBER access (`unset($o->a->b)` /`` |
@@ -13657,9 +13657,9 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 13647 | ``			 * COW-separate the parent array (e.g. `$c['k'][1]` on a copy must not mutate the`` |
 |         - | 13648 | `			 * original). isset/empty are never stripped: PHP stays silent on a missing intermediate` |
 |         - | 13649 | ``			 * in `isset($o->a->b)`, which the suppression modes mirror. */`` |
-|  26290877 | 13650 | `			sxi32 iLeftFlags = iFlags;` |
-|  26290872 | 13651 | `			if( pNode->pLeft && pNode->pLeft->pOp` |
-|  21606159 | 13652 | `				&& (pNode->pLeft->pOp->iOp == EXPR_OP_ARROW` |
+|  26290921 | 13650 | `			sxi32 iLeftFlags = iFlags;` |
+|  26290916 | 13651 | `			if( pNode->pLeft && pNode->pLeft->pOp` |
+|  21606181 | 13652 | `				&& (pNode->pLeft->pOp->iOp == EXPR_OP_ARROW` |
 |   8460749 | 13653 | `					\|\| pNode->pLeft->pOp->iOp == EXPR_OP_NULLSAFE_ARROW` |
 |   7338097 | 13654 | `					\|\| pNode->pLeft->pOp->iOp == EXPR_OP_DC) ){` |
 |   2425615 | 13655 | `				iLeftFlags &= ~EXPR_FLAG_LOAD_IDX_UNSET;` |
@@ -13671,10 +13671,10 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 13661 | `			 * a; $o->arr[]=v reads $o), so strip MEMBER_WRITE there — PHP auto-vivifies arrays, never` |
 |         - | 13662 | `` 			 * objects. (The flag is ADDED to the lvalue at the precedence-18 site below / the `??=` `` |
 |         - | 13663 | ``			 * site, since `=` is right-associative and its lvalue is pNode->pRight.) */`` |
-|  26290872 | 13664 | `			if( pNode->pOp` |
-|  37144441 | 13665 | `				&& (pNode->pOp->iOp == EXPR_OP_ARROW` |
-|  23999052 | 13666 | `					\|\| pNode->pOp->iOp == EXPR_OP_NULLSAFE_ARROW` |
-|  21707180 | 13667 | `					\|\| pNode->pOp->iOp == EXPR_OP_DC) ){` |
+|  26290916 | 13664 | `			if( pNode->pOp` |
+|  37144507 | 13665 | `				&& (pNode->pOp->iOp == EXPR_OP_ARROW` |
+|  23999096 | 13666 | `					\|\| pNode->pOp->iOp == EXPR_OP_NULLSAFE_ARROW` |
+|  21707224 | 13667 | `					\|\| pNode->pOp->iOp == EXPR_OP_DC) ){` |
 |   4951847 | 13668 | `				iLeftFlags &= ~EXPR_FLAG_MEMBER_WRITE;` |
 |   2475921 | 13669 | `			}` |
 |         - | 13670 | ``			/* `++`/`--` mutate their operand in place — the operand is a write`` |
@@ -13683,8 +13683,8 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 13673 | `			 * properties throw php's Indirect-modification Error, missing ones` |
 |         - | 13674 | `			 * auto-vivify). The prec-18 site below handles the assign family;` |
 |         - | 13675 | ``			 * `++`/`--` are unary, their operand is pLeft. */`` |
-|  26290872 | 13676 | `			if( pNode->pOp` |
-|  26290877 | 13677 | `				&& (pNode->pOp->iVmOp == PH7_OP_INCR \|\| pNode->pOp->iVmOp == PH7_OP_DECR) ){` |
+|  26290916 | 13676 | `			if( pNode->pOp` |
+|  26290921 | 13677 | `				&& (pNode->pOp->iVmOp == PH7_OP_INCR \|\| pNode->pOp->iVmOp == PH7_OP_DECR) ){` |
 |    195529 | 13678 | `				iLeftFlags \|= EXPR_FLAG_LOAD_IDX_STORE \| EXPR_FLAG_MEMBER_WRITE;` |
 |     97762 | 13679 | `			}` |
 |         - | 13680 | ``			/* `??` reads its LEFT operand in isset-context: an undefined or`` |
@@ -13694,38 +13694,38 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 13684 | `			 * value. A SUBSCRIPT LHS is left untagged: LOAD_IDX's ISSET mode means` |
 |         - | 13685 | ``			 * offsetExists (a bool), but `$o[$k] ?? d` needs the offsetGet value —`` |
 |         - | 13686 | `			 * that path is already handled correctly by OP_NULLC. */` |
-|  26290872 | 13687 | `			if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_NULLC` |
-|  13174198 | 13688 | `				&& pNode->pLeft && pNode->pLeft->pOp` |
+|  26290916 | 13687 | `			if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_NULLC` |
+|  13174220 | 13688 | `				&& pNode->pLeft && pNode->pLeft->pOp` |
 |     86223 | 13689 | `				&& (pNode->pLeft->pOp->iOp == EXPR_OP_ARROW` |
 |     57467 | 13690 | `					\|\| pNode->pLeft->pOp->iOp == EXPR_OP_NULLSAFE_ARROW` |
 |     57449 | 13691 | `					\|\| pNode->pLeft->pOp->iOp == EXPR_OP_DC) ){` |
 |        39 | 13692 | `				iLeftFlags \|= EXPR_FLAG_LOAD_IDX_ISSET;` |
 |        19 | 13693 | `			}` |
-|  26290877 | 13694 | `			if( iVmOp == PH7_OP_ERR_CTRL ){` |
+|  26290921 | 13694 | `			if( iVmOp == PH7_OP_ERR_CTRL ){` |
 |         - | 13695 | `				/* '@' must suppress the diagnostics raised WHILE its operand runs, so` |
 |         - | 13696 | `				 * open the window here; the trailing emit below closes it (iP1 = 0). */` |
 |     11695 | 13697 | `				PH7_VmEmitInstr(pGen->pVm,PH7_OP_ERR_CTRL,1,0,0,0);` |
 |      5845 | 13698 | `			}` |
-|  26290877 | 13699 | `			rc = GenStateEmitExprCode(&(*pGen),pNode->pLeft,iLeftFlags);` |
+|  26290921 | 13699 | `			rc = GenStateEmitExprCode(&(*pGen),pNode->pLeft,iLeftFlags);` |
 |         - | 13700 | `		}` |
-|  26290877 | 13701 | `		if( rc != SXRET_OK ){` |
+|  26290921 | 13701 | `		if( rc != SXRET_OK ){` |
 |        34 | 13702 | `			return rc;` |
 |         - | 13703 | `		}` |
-|  26290847 | 13704 | `		if( !bIsChainOp ){` |
+|  26290891 | 13704 | `		if( !bIsChainOp ){` |
 |         - | 13705 | `			/* Non-chain parent: any nullsafe jumps produced by the LHS sub-tree` |
 |         - | 13706 | `			 * target the end of that LHS chain, which is right here. */` |
-|  12283997 | 13707 | `			GenStatePatchNullsafeJumps(pGen, nLhsNsBase);` |
-|   6141996 | 13708 | `		}` |
-|  26290847 | 13709 | `		if( iVmOp == PH7_OP_CALL ){` |
-|   6179765 | 13710 | `			pInstr = PH7_VmPeekInstr(pGen->pVm);` |
-|   6179765 | 13711 | `			if( pInstr ){` |
-|   6179765 | 13712 | `				if ( pInstr->iOp == PH7_OP_LOADC ){` |
-|   4553377 | 13713 | `					sxu32 nOrig = (sxu32)pInstr->iP2;` |
+|  12284019 | 13707 | `			GenStatePatchNullsafeJumps(pGen, nLhsNsBase);` |
+|   6142007 | 13708 | `		}` |
+|  26290891 | 13709 | `		if( iVmOp == PH7_OP_CALL ){` |
+|   6179787 | 13710 | `			pInstr = PH7_VmPeekInstr(pGen->pVm);` |
+|   6179787 | 13711 | `			if( pInstr ){` |
+|   6179787 | 13712 | `				if ( pInstr->iOp == PH7_OP_LOADC ){` |
+|   4553399 | 13713 | `					sxu32 nOrig = (sxu32)pInstr->iP2;` |
 |         - | 13714 | `					sxu32 nQual;` |
-|   4553377 | 13715 | `					int bAbsolute = (pInstr->iP1 & PH7_LOADC_ABSOLUTE) != 0;` |
+|   4553399 | 13715 | `					int bAbsolute = (pInstr->iP1 & PH7_LOADC_ABSOLUTE) != 0;` |
 |         - | 13716 | `					/* Prevent constant expansion but preserve the absolute flag` |
 |         - | 13717 | `					 * so the later NEW handler (if any) can see it. */` |
-|   4553377 | 13718 | `					pInstr->iP1 &= ~PH7_LOADC_EXPAND;` |
+|   4553399 | 13718 | `					pInstr->iP1 &= ~PH7_LOADC_EXPAND;` |
 |         - | 13719 | `					/* Namespace-qualify the function name for CALL, unless the` |
 |         - | 13720 | ``					 * literal is absolute (`\Foo(...)`). Only check function`` |
 |         - | 13721 | `					 * imports — class imports must NOT affect function` |
@@ -13733,13 +13733,13 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 13723 | `					 * before NEW; we store the original literal index in the` |
 |         - | 13724 | `					 * CALL instruction's iP2 so the NEW handler can recover` |
 |         - | 13725 | `					 * the unqualified name and re-qualify with class imports. */` |
-|   4553377 | 13726 | `					if( bAbsolute ){` |
+|   4553399 | 13726 | `					if( bAbsolute ){` |
 |      3867 | 13727 | `						pInstr->iP2 = (sxi32)nOrig;` |
 |      1936 | 13728 | `					}else{` |
-|   4549515 | 13729 | `						int fromImport = 0;` |
-|   4549515 | 13730 | `						nQual = GenStateNsQualifyName(pGen,nOrig,&pGen->hUseFuncImports,&fromImport);` |
-|   4549515 | 13731 | `						pInstr->iP2 = (sxi32)nQual;` |
-|   4549515 | 13732 | `						if( nQual != nOrig ){` |
+|   4549537 | 13729 | `						int fromImport = 0;` |
+|   4549537 | 13730 | `						nQual = GenStateNsQualifyName(pGen,nOrig,&pGen->hUseFuncImports,&fromImport);` |
+|   4549537 | 13731 | `						pInstr->iP2 = (sxi32)nQual;` |
+|   4549537 | 13732 | `						if( nQual != nOrig ){` |
 |         - | 13733 | `							/* Record the original literal index in the arg map` |
 |         - | 13734 | `							 * (NOT in the CALL's iP2 — that is the hasSpread` |
 |         - | 13735 | `							 * flag) so the NEW handler can recover the` |
@@ -13762,7 +13762,7 @@ Coverage: 7368/9094 lines (81.02%)
 |        46 | 13752 | `							}` |
 |        46 | 13753 | `						}` |
 |         - | 13754 | `					}` |
-|   3903079 | 13755 | `				}else if( (pInstr->iOp == PH7_OP_MEMBER /* $a->b(1,2,3) */` |
+|   3903090 | 13755 | `				}else if( (pInstr->iOp == PH7_OP_MEMBER /* $a->b(1,2,3) */` |
 |   1616488 | 13756 | `						&& !(pNode->pLeft && (pNode->pLeft->iFlags & EXPR_NODE_PARENS)))` |
 |    823101 | 13757 | `					\|\| pInstr->iOp == PH7_OP_NEW ){` |
 |         - | 13758 | `					/* Method call,flag that. But NOT when the callee was an explicitly` |
@@ -13787,8 +13787,8 @@ Coverage: 7368/9094 lines (81.02%)
 |        11 | 13777 | `						PH7_VmEmitInstr(pGen->pVm,PH7_OP_MEMBER,1,PH7_MEMBER_METHOD,0,0);` |
 |         5 | 13778 | `					}` |
 |    803295 | 13779 | `				}` |
-|   3089885 | 13780 | `			}` |
-|  23200967 | 13781 | `		}else if( iVmOp == PH7_OP_LOAD_IDX ){` |
+|   3089896 | 13780 | `			}` |
+|  23201000 | 13781 | `		}else if( iVmOp == PH7_OP_LOAD_IDX ){` |
 |         - | 13782 | `			ph7_expr_node **apNode;` |
 |         - | 13783 | `			sxi32 n;` |
 |   2875253 | 13784 | `			sxi32 iChildMask = ~(EXPR_FLAG_LOAD_IDX_STORE` |
@@ -13824,17 +13824,17 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 13814 | `				/* Create an empty entry when the desired index is not found */` |
 |    532479 | 13815 | `				iP2 = 1;` |
 |    266242 | 13816 | `			}` |
-|  18673463 | 13817 | `		}else if( pNode->pOp->iOp == EXPR_OP_COMMA ){` |
+|  18673485 | 13817 | `		}else if( pNode->pOp->iOp == EXPR_OP_COMMA ){` |
 |         - | 13818 | `			/* POP the left node */` |
 |         5 | 13819 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);` |
 |         2 | 13820 | `		}` |
-|  13145421 | 13821 | `	}` |
-|  26313779 | 13822 | `	rc = SXRET_OK;` |
-|  26313779 | 13823 | `	nJmpIdx = 0;` |
+|  13145443 | 13821 | `	}` |
+|  26313823 | 13822 | `	rc = SXRET_OK;` |
+|  26313823 | 13823 | `	nJmpIdx = 0;` |
 |         - | 13824 | `	/* For :: (static member access), namespace-qualify the class name (left operand).` |
 |         - | 13825 | `	 * The left child was just compiled; its LOADC is the last instruction.` |
 |         - | 13826 | `	 * Skip self/static/parent — these are keywords, not class names. */` |
-|  26313779 | 13827 | `	if( iVmOp == PH7_OP_MEMBER && pNode->pOp->iOp == EXPR_OP_DC ){` |
+|  26313823 | 13827 | `	if( iVmOp == PH7_OP_MEMBER && pNode->pOp->iOp == EXPR_OP_DC ){` |
 |    391035 | 13828 | `		pInstr = PH7_VmPeekInstr(pGen->pVm);` |
 |    391035 | 13829 | `		if( pInstr && pInstr->iOp == PH7_OP_LOADC ){` |
 |    391035 | 13830 | `			ph7_value *pLitCheck = (ph7_value *)SySetAt(&pGen->pVm->aLitObj,(sxu32)pInstr->iP2);` |
@@ -13873,18 +13873,18 @@ Coverage: 7368/9094 lines (81.02%)
 |    184007 | 13863 | `		}` |
 |    229880 | 13864 | `	}` |
 |         - | 13865 | `	/* Generate code for the right tree */` |
-|  26290781 | 13866 | `	if( pNode->pRight ){` |
-|  15092621 | 13867 | `		if( iVmOp == PH7_OP_LAND ){` |
+|  26290825 | 13866 | `	if( pNode->pRight ){` |
+|  15092643 | 13867 | `		if( iVmOp == PH7_OP_LAND ){` |
 |         - | 13868 | `			/* Emit the false jump so we can short-circuit the logical and */` |
 |    413525 | 13869 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_JZ,1/* Keep the value on the stack */,0,0,&nJmpIdx);` |
-|  14885861 | 13870 | `		}else if (iVmOp == PH7_OP_LOR ){` |
+|  14885883 | 13870 | `		}else if (iVmOp == PH7_OP_LOR ){` |
 |         - | 13871 | `			/* Emit the true jump so we can short-circuit the logical or*/` |
 |    286971 | 13872 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_JNZ,1/* Keep the value on the stack */,0,0,&nJmpIdx);` |
-|  14535618 | 13873 | `		}else if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_NULLC ){` |
+|  14535640 | 13873 | `		}else if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_NULLC ){` |
 |         - | 13874 | `			/* Null coalescing: if LHS is not null, jump past RHS */` |
 |     57529 | 13875 | `			iVmOp = 0; /* No binary operator to emit */` |
 |     57529 | 13876 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_NULLC,0,0,0,&nJmpIdx);` |
-|  14363425 | 13877 | `		}else if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_NULLSAFE_ARROW ){` |
+|  14363447 | 13877 | `		}else if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_NULLSAFE_ARROW ){` |
 |         - | 13878 | ``			/* Nullsafe operator `?->` (PHP 8.0): if LHS is null, short-circuit`` |
 |         - | 13879 | `			 * the entire containing postfix chain to null. The jump target is` |
 |         - | 13880 | `			 * patched later by the innermost non-chain ancestor (or by` |
@@ -13894,22 +13894,22 @@ Coverage: 7368/9094 lines (81.02%)
 |       108 | 13884 | `			sxu32 nNsJmp = 0;` |
 |       108 | 13885 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_NULLSAFE_JMP,0,0,0,&nNsJmp);` |
 |       108 | 13886 | `			SySetPut(&pGen->aNullsafeJmp,(const void *)&nNsJmp);` |
-|  14334559 | 13887 | `		}else if( pNode->pOp->iPrec == 18 /* Combined binary operators [i.e: =,'.=','+=',*=' ...] precedence */ ){` |
+|  14334581 | 13887 | `		}else if( pNode->pOp->iPrec == 18 /* Combined binary operators [i.e: =,'.=','+=',*=' ...] precedence */ ){` |
 |         - | 13888 | `			/* The lvalue is the RIGHT operand (these ops are right-associative). Mark it a write` |
 |         - | 13889 | ``			 * target so a missing member (the base of a subscript-write, or a bare `$o->p`) is`` |
 |         - | 13890 | `			 * auto-created — PHP auto-vivifies on write. */` |
-|   4815211 | 13891 | `			iFlags \|= EXPR_FLAG_LOAD_IDX_STORE \| EXPR_FLAG_MEMBER_WRITE;` |
-|   2407603 | 13892 | `		}` |
-|  15092621 | 13893 | `		nRhsNsBase = SySetUsed(&pGen->aNullsafeJmp);` |
-|  15092621 | 13894 | `		rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iFlags);` |
-|  15092621 | 13895 | `		if( !bIsChainOp ){` |
+|   4815219 | 13891 | `			iFlags \|= EXPR_FLAG_LOAD_IDX_STORE \| EXPR_FLAG_MEMBER_WRITE;` |
+|   2407607 | 13892 | `		}` |
+|  15092643 | 13893 | `		nRhsNsBase = SySetUsed(&pGen->aNullsafeJmp);` |
+|  15092643 | 13894 | `		rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iFlags);` |
+|  15092643 | 13895 | `		if( !bIsChainOp ){` |
 |         - | 13896 | `			/* Non-chain parent: RHS nullsafe chain ends here, before the` |
 |         - | 13897 | `			 * operator instruction is emitted. */` |
-|  10140845 | 13898 | `			GenStatePatchNullsafeJumps(pGen, nRhsNsBase);` |
-|   5070420 | 13899 | `		}` |
-|  15092621 | 13900 | `		if( iVmOp == PH7_OP_STORE ){` |
-|   4378933 | 13901 | `			if( pNode->pRight && (pNode->pRight->xCode == PH7_CompileList \|\|` |
-|   4378896 | 13902 | `				pNode->pRight->xCode == PH7_CompileShortList) ){` |
+|  10140867 | 13898 | `			GenStatePatchNullsafeJumps(pGen, nRhsNsBase);` |
+|   5070431 | 13899 | `		}` |
+|  15092643 | 13900 | `		if( iVmOp == PH7_OP_STORE ){` |
+|   4378941 | 13901 | `			if( pNode->pRight && (pNode->pRight->xCode == PH7_CompileList \|\|` |
+|   4378904 | 13902 | `				pNode->pRight->xCode == PH7_CompileShortList) ){` |
 |         - | 13903 | `				/* list()/[] destructuring handles assignment internally via LOAD_LIST;` |
 |         - | 13904 | `				 * suppress the STORE instruction entirely.  This check uses the node's` |
 |         - | 13905 | `				 * compile handler rather than peeking at the last opcode, because nested` |
@@ -13917,23 +13917,23 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 13907 | `				 * outer LOAD_LIST, which would fool an opcode-based check.` |
 |         - | 13908 | `				 */` |
 |        91 | 13909 | `				iVmOp = 0;` |
-|   4378890 | 13910 | `			}else if( (pInstr = PH7_VmPeekInstr(pGen->pVm)) != 0 ){` |
-|   4378847 | 13911 | `				if(pInstr->iOp == PH7_OP_MEMBER ){` |
+|   4378898 | 13910 | `			}else if( (pInstr = PH7_VmPeekInstr(pGen->pVm)) != 0 ){` |
+|   4378855 | 13911 | `				if(pInstr->iOp == PH7_OP_MEMBER ){` |
 |         - | 13912 | `					/* Perform a member store operation [i.e: $this->x = 50] */` |
 |    780821 | 13913 | `					iP2 = 1;` |
 |    390413 | 13914 | `				}else{` |
-|   3598031 | 13915 | `					if( pInstr->iOp == PH7_OP_LOAD_IDX ){` |
+|   3598039 | 13915 | `					if( pInstr->iOp == PH7_OP_LOAD_IDX ){` |
 |         - | 13916 | `						/* Transform the STORE instruction to STORE_IDX instruction */` |
 |    513261 | 13917 | `						iVmOp = PH7_OP_STORE_IDX;` |
 |    513261 | 13918 | `						iP1 = pInstr->iP1;` |
 |    256633 | 13919 | `					}else{` |
-|   3084775 | 13920 | `						p3 = pInstr->p3;` |
+|   3084783 | 13920 | `						p3 = pInstr->p3;` |
 |         - | 13921 | `					}` |
 |         - | 13922 | `					/* POP the last dynamic load instruction */` |
-|   3598031 | 13923 | `					(void)PH7_VmPopInstr(pGen->pVm);` |
+|   3598039 | 13923 | `					(void)PH7_VmPopInstr(pGen->pVm);` |
 |         - | 13924 | `				}` |
-|   2189426 | 13925 | `			}` |
-|  12903157 | 13926 | `		}else if( iVmOp == PH7_OP_STORE_REF ){` |
+|   2189430 | 13925 | `			}` |
+|  12903175 | 13926 | `		}else if( iVmOp == PH7_OP_STORE_REF ){` |
 |        63 | 13927 | `			pInstr = PH7_VmPopInstr(pGen->pVm);` |
 |        63 | 13928 | `			if( pInstr ){` |
 |        63 | 13929 | `				if( pInstr->iOp == PH7_OP_LOAD_IDX ){` |
@@ -13949,20 +13949,20 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 13939 | `				}` |
 |        30 | 13940 | `			}` |
 |        30 | 13941 | `		}` |
-|   7546308 | 13942 | `	}` |
-|  26290776 | 13943 | `	if( iVmOp == PH7_OP_NEW && pNode->pLeft && pNode->pLeft->pOp == 0` |
+|   7546319 | 13942 | `	}` |
+|  26290820 | 13943 | `	if( iVmOp == PH7_OP_NEW && pNode->pLeft && pNode->pLeft->pOp == 0` |
 |    376462 | 13944 | `		&& pNode->pLeft->xCode == PH7_CompileAnnonClass ){` |
 |         - | 13945 | ``		/* `new class {…}`: PH7_CompileAnnonClass already emitted the args, the`` |
 |         - | 13946 | `		 * class-name constant, and OP_NEW. Suppress this redundant OP_NEW. */` |
 |        32 | 13947 | `		iVmOp = 0;` |
 |        14 | 13948 | `	}` |
-|  26290781 | 13949 | `	if( iVmOp > 0 ){` |
-|  26233139 | 13950 | `		if( iVmOp == PH7_OP_INCR \|\| iVmOp == PH7_OP_DECR ){` |
+|  26290825 | 13949 | `	if( iVmOp > 0 ){` |
+|  26233183 | 13950 | `		if( iVmOp == PH7_OP_INCR \|\| iVmOp == PH7_OP_DECR ){` |
 |    195529 | 13951 | `			if( pNode->iFlags & EXPR_NODE_PRE_INCR ){` |
 |         - | 13952 | `				/* Pre-increment/decrement operator [i.e: ++$i,--$j ] */` |
 |     15333 | 13953 | `				iP1 = 1;` |
 |      7669 | 13954 | `			}` |
-|  26135377 | 13955 | `		}else if( iVmOp == PH7_OP_NEW ){` |
+|  26135421 | 13955 | `		}else if( iVmOp == PH7_OP_NEW ){` |
 |         - | 13956 | `			/* Namespace-qualify the class name for NEW */ {` |
 |    752547 | 13957 | `				VmInstr *pPeek = PH7_VmPeekInstr(pGen->pVm);` |
 |    752547 | 13958 | `				VmInstr *pCallInstr = 0;` |
@@ -14028,7 +14028,7 @@ Coverage: 7368/9094 lines (81.02%)
 |    752231 | 14018 | `					(void)PH7_VmPopInstr(pGen->pVm);` |
 |    376113 | 14019 | `				}` |
 |    376118 | 14020 | `			}` |
-|  25661344 | 14021 | `		}else if( iVmOp == PH7_OP_IS_A ){` |
+|  25661388 | 14021 | `		}else if( iVmOp == PH7_OP_IS_A ){` |
 |         - | 14022 | `			/* instanceof: right operand is a class name, not a constant.` |
 |         - | 14023 | `			 * Namespace-qualify it, but skip self/static/parent and absolute refs. */` |
 |     76769 | 14024 | `			pInstr = PH7_VmPeekInstr(pGen->pVm);` |
@@ -14050,7 +14050,7 @@ Coverage: 7368/9094 lines (81.02%)
 |     76749 | 14040 | `					pInstr->iP2 = (sxi32)GenStateNsQualifyName(pGen,(sxu32)pInstr->iP2,&pGen->hUseImports,0);` |
 |     38372 | 14041 | `				}` |
 |     38387 | 14042 | `			}` |
-|  25246691 | 14043 | `		}else if( iVmOp == PH7_OP_MEMBER){` |
+|  25246735 | 14043 | `		}else if( iVmOp == PH7_OP_MEMBER){` |
 |         - | 14044 | `			/* Prevent constant expansion for member/property names.` |
 |         - | 14045 | `			 * The right child (member name) was just compiled — its LOADC` |
 |         - | 14046 | `			 * should not trigger constant lookup. */` |
@@ -14089,7 +14089,7 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 14079 | `		 * (iP1=1). For a method/static callee the callee compiled to ... OP_MEMBER, which we` |
 |         - | 14080 | `		 * DROP — the OP_MEMBER would dispatch and mangle the method name; popping it leaves` |
 |         - | 14081 | `		 * [target, real-method-name] on the stack for OP_LOAD_FCC to bind (iP1=2). */` |
-|  26233139 | 14082 | `		if( bFcc ){` |
+|  26233183 | 14082 | `		if( bFcc ){` |
 |        81 | 14083 | `			iVmOp = PH7_OP_LOAD_FCC;` |
 |        81 | 14084 | `			iP2 = 0;` |
 |        81 | 14085 | `			p3 = 0;` |
@@ -14111,21 +14111,21 @@ Coverage: 7368/9094 lines (81.02%)
 |        40 | 14101 | `		}` |
 |         - | 14102 | `		/* Tag CALL/NEW sites with the caller file's strict_types flag.` |
 |         - | 14103 | `		 * This is the primary emit path for user-visible calls. */` |
-|  26233139 | 14104 | `		if( iVmOp == PH7_OP_CALL \|\| iVmOp == PH7_OP_NEW ){` |
-|   6932227 | 14105 | `			p3 = GenStateAttachStrictFlag(pGen,p3);` |
-|   3466111 | 14106 | `		}` |
+|  26233183 | 14104 | `		if( iVmOp == PH7_OP_CALL \|\| iVmOp == PH7_OP_NEW ){` |
+|   6932249 | 14105 | `			p3 = GenStateAttachStrictFlag(pGen,p3);` |
+|   3466122 | 14106 | `		}` |
 |         - | 14107 | `		/* Finally,emit the VM instruction associated with this operator */` |
-|  26233139 | 14108 | `		PH7_VmEmitInstr(pGen->pVm,iVmOp,iP1,iP2,p3,0);` |
-|  13116567 | 14109 | `	}` |
-|  26290781 | 14110 | `	if( nJmpIdx > 0 ){` |
+|  26233183 | 14108 | `		PH7_VmEmitInstr(pGen->pVm,iVmOp,iP1,iP2,p3,0);` |
+|  13116589 | 14109 | `	}` |
+|  26290825 | 14110 | `	if( nJmpIdx > 0 ){` |
 |         - | 14111 | `		/* Fix short-circuited jumps now the destination is resolved */` |
 |    758015 | 14112 | `		pInstr = PH7_VmGetInstr(pGen->pVm,nJmpIdx);` |
 |    758015 | 14113 | `		if( pInstr ){` |
 |    758015 | 14114 | `			pInstr->iP2 = PH7_VmInstrLength(pGen->pVm);` |
 |    379005 | 14115 | `		}` |
 |    379005 | 14116 | `	}` |
-|  26290781 | 14117 | `	return rc;` |
-|  33729962 | 14118 | `}` |
+|  26290825 | 14117 | `	return rc;` |
+|  33730108 | 14118 | `}` |
 |         - | 14119 | `/*` |
 |         - | 14120 | ` * Compile a PHP expression.` |
 |         - | 14121 | ` * According to the PHP language reference manual:` |
@@ -14148,29 +14148,29 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 14138 | ` * meaning of source php rejects, which §10 classes as a bug — so every context` |
 |         - | 14139 | ` * except for() now reports php's parse error.` |
 |         - | 14140 | ` */` |
-| 223628040 | 14141 | `static int GenStateTreeHasComma(ph7_expr_node *pNode)` |
+| 223629142 | 14141 | `static int GenStateTreeHasComma(ph7_expr_node *pNode)` |
 |         5 | 14142 | `{` |
 |         - | 14143 | `	ph7_expr_node **apArg;` |
 |         - | 14144 | `	sxu32 n;` |
-| 223628045 | 14145 | `	if( pNode == 0 ){` |
-| 157201631 | 14146 | `		return 0;` |
+| 223629147 | 14145 | `	if( pNode == 0 ){` |
+| 157202441 | 14146 | `		return 0;` |
 |         - | 14147 | `	}` |
-|  66426419 | 14148 | `	if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_COMMA ){` |
+|  66426711 | 14148 | `	if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_COMMA ){` |
 |         6 | 14149 | `		return 1;` |
 |         - | 14150 | `	}` |
-|  66426410 | 14151 | `	if( GenStateTreeHasComma(pNode->pLeft) \|\| GenStateTreeHasComma(pNode->pRight)` |
-|  66426411 | 14152 | `	 \|\| GenStateTreeHasComma(pNode->pCond) ){` |
+|  66426702 | 14151 | `	if( GenStateTreeHasComma(pNode->pLeft) \|\| GenStateTreeHasComma(pNode->pRight)` |
+|  66426703 | 14152 | `	 \|\| GenStateTreeHasComma(pNode->pCond) ){` |
 |         6 | 14153 | `		return 1;` |
 |         - | 14154 | `	}` |
-|  66426411 | 14155 | `	apArg = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);` |
-|  75869911 | 14156 | `	for( n = 0 ; n < SySetUsed(&pNode->aNodeArgs) ; n++ ){` |
-|   9443505 | 14157 | `		if( GenStateTreeHasComma(apArg[n]) ){` |
+|  66426703 | 14155 | `	apArg = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);` |
+|  75870251 | 14156 | `	for( n = 0 ; n < SySetUsed(&pNode->aNodeArgs) ; n++ ){` |
+|   9443553 | 14157 | `		if( GenStateTreeHasComma(apArg[n]) ){` |
 |       ! 0 | 14158 | `			return 1;` |
 |         - | 14159 | `		}` |
-|   4721755 | 14160 | `	}` |
-|  66426411 | 14161 | `	return 0;` |
-| 111814025 | 14162 | `}` |
-|  15261578 | 14163 | `static sxi32 PH7_CompileExpr(` |
+|   4721779 | 14160 | `	}` |
+|  66426703 | 14161 | `	return 0;` |
+| 111814576 | 14162 | `}` |
+|  15261756 | 14163 | `static sxi32 PH7_CompileExpr(` |
 |         - | 14164 | `	ph7_gen_state *pGen, /* Code generator state */` |
 |         - | 14165 | `	sxi32 iFlags,        /* Control flags */` |
 |         - | 14166 | `	sxi32 (*xTreeValidator)(ph7_gen_state *,ph7_expr_node *) /* Node validator callback.NULL otherwise */` |
@@ -14184,31 +14184,31 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 14174 | `	sxi32 rc;` |
 |         - | 14175 | `	sxu32 nNullsafeBase;` |
 |         - | 14176 | `	/* Initialize worker variables */` |
-|  15261583 | 14177 | `	nExpr = 0;` |
-|  15261583 | 14178 | `	pRoot = 0;` |
+|  15261761 | 14177 | `	nExpr = 0;` |
+|  15261761 | 14178 | `	pRoot = 0;` |
 |         - | 14179 | `	/* Any nullsafe jumps still pending belong to an outer scope; isolate` |
 |         - | 14180 | ``	 * this expression so its `?->` short-circuits don't leak out. */`` |
-|  15261583 | 14181 | `	nNullsafeBase = SySetUsed(&pGen->aNullsafeJmp);` |
-|  15261583 | 14182 | `	SySetInit(&sExprNode,&pGen->pVm->sAllocator,sizeof(ph7_expr_node *));` |
-|  15261583 | 14183 | `	SySetAlloc(&sExprNode,0x10);` |
-|  15261583 | 14184 | `	rc = SXRET_OK;` |
+|  15261761 | 14181 | `	nNullsafeBase = SySetUsed(&pGen->aNullsafeJmp);` |
+|  15261761 | 14182 | `	SySetInit(&sExprNode,&pGen->pVm->sAllocator,sizeof(ph7_expr_node *));` |
+|  15261761 | 14183 | `	SySetAlloc(&sExprNode,0x10);` |
+|  15261761 | 14184 | `	rc = SXRET_OK;` |
 |         - | 14185 | `	/* Delimit the expression */` |
-|  15261583 | 14186 | `	pEnd = pGen->pIn;` |
-|  15261583 | 14187 | `	iNest = 0;` |
-| 119312097 | 14188 | `	while( pEnd < pGen->pEnd ){` |
-| 113388161 | 14189 | `		if( pEnd->nType & PH7_TK_OCB /* '{' */ ){` |
+|  15261761 | 14186 | `	pEnd = pGen->pIn;` |
+|  15261761 | 14187 | `	iNest = 0;` |
+| 119312973 | 14188 | `	while( pEnd < pGen->pEnd ){` |
+| 113388867 | 14189 | `		if( pEnd->nType & PH7_TK_OCB /* '{' */ ){` |
 |         - | 14190 | `			/* Ticket 1433-30: Annonymous/Closure functions body */` |
-|      4657 | 14191 | `			iNest++;` |
-| 113385835 | 14192 | `		}else if(pEnd->nType & PH7_TK_CCB /* '}' */ ){` |
-|      4665 | 14193 | `			iNest--;` |
-| 113381179 | 14194 | `		}else if( pEnd->nType & PH7_TK_SEMI /* ';' */ ){` |
-|   9338511 | 14195 | `			if( iNest <= 0 ){` |
-|   9337647 | 14196 | `				break;` |
+|      4659 | 14191 | `			iNest++;` |
+| 113386540 | 14192 | `		}else if(pEnd->nType & PH7_TK_CCB /* '}' */ ){` |
+|      4667 | 14193 | `			iNest--;` |
+| 113381882 | 14194 | `		}else if( pEnd->nType & PH7_TK_SEMI /* ';' */ ){` |
+|   9338519 | 14195 | `			if( iNest <= 0 ){` |
+|   9337655 | 14196 | `				break;` |
 |         - | 14197 | `			}` |
 |       432 | 14198 | `		}` |
-| 104050519 | 14199 | `		pEnd++;` |
+| 104051217 | 14199 | `		pEnd++;` |
 |         5 | 14200 | `	}` |
-|  15261583 | 14201 | `	if( iFlags & EXPR_FLAG_COMMA_STATEMENT ){` |
+|  15261761 | 14201 | `	if( iFlags & EXPR_FLAG_COMMA_STATEMENT ){` |
 |    643499 | 14202 | `		SyToken *pEnd2 = pGen->pIn;` |
 |    643499 | 14203 | `		iNest = 0;` |
 |         - | 14204 | `		/* Stop at the first comma */` |
@@ -14228,14 +14228,14 @@ Coverage: 7368/9094 lines (81.02%)
 |         3 | 14218 | `			pEnd = pEnd2;` |
 |         1 | 14219 | `		}` |
 |    321747 | 14220 | `	}` |
-|  15261583 | 14221 | `	if( pEnd > pGen->pIn ){` |
-|  15238631 | 14222 | `		SyToken *pTmp = pGen->pEnd;` |
+|  15261761 | 14221 | `	if( pEnd > pGen->pIn ){` |
+|  15238809 | 14222 | `		SyToken *pTmp = pGen->pEnd;` |
 |         - | 14223 | `		/* Swap delimiter */` |
-|  15238631 | 14224 | `		pGen->pEnd = pEnd;` |
+|  15238809 | 14224 | `		pGen->pEnd = pEnd;` |
 |         - | 14225 | `		/* Try to get an expression tree */` |
-|  15238631 | 14226 | `		rc = PH7_ExprMakeTree(&(*pGen),&sExprNode,&pRoot);` |
-|  15238626 | 14227 | `		if( rc == SXRET_OK && pRoot && pGen->nCommaExprOk < 1` |
-|  15071885 | 14228 | `		 && GenStateTreeHasComma(pRoot) ){` |
+|  15238809 | 14226 | `		rc = PH7_ExprMakeTree(&(*pGen),&sExprNode,&pRoot);` |
+|  15238804 | 14227 | `		if( rc == SXRET_OK && pRoot && pGen->nCommaExprOk < 1` |
+|  15072063 | 14228 | `		 && GenStateTreeHasComma(pRoot) ){` |
 |         - | 14229 | `			/* php has no comma operator outside a for() clause */` |
 |         6 | 14230 | `			rc = PH7_GenCompileError(&(*pGen),E_PARSE,pRoot->pStart->nLine,` |
 |         - | 14231 | `				"syntax error, unexpected token \",\"");` |
@@ -14249,49 +14249,49 @@ Coverage: 7368/9094 lines (81.02%)
 |         6 | 14239 | `			SySetTruncate(&pGen->aNullsafeJmp,nNullsafeBase);` |
 |         6 | 14240 | `			return SXRET_OK;` |
 |         - | 14241 | `		}` |
-|  15238627 | 14242 | `		if( rc == SXRET_OK && pRoot ){` |
-|  15238443 | 14243 | `			rc = SXRET_OK;` |
-|  15238443 | 14244 | `			if( xTreeValidator ){` |
+|  15238805 | 14242 | `		if( rc == SXRET_OK && pRoot ){` |
+|  15238621 | 14243 | `			rc = SXRET_OK;` |
+|  15238621 | 14244 | `			if( xTreeValidator ){` |
 |         - | 14245 | `				/* Call the upper layer validator callback */` |
 |    976967 | 14246 | `				rc = xTreeValidator(&(*pGen),pRoot);` |
 |    488481 | 14247 | `			}` |
-|  15238443 | 14248 | `			if( rc != SXERR_ABORT ){` |
+|  15238621 | 14248 | `			if( rc != SXERR_ABORT ){` |
 |         - | 14249 | `				/* Generate code for the given tree */` |
-|  15238443 | 14250 | `				rc = GenStateEmitExprCode(&(*pGen),pRoot,iFlags);` |
+|  15238621 | 14250 | `				rc = GenStateEmitExprCode(&(*pGen),pRoot,iFlags);` |
 |         - | 14251 | `				/* Patch any unresolved nullsafe jumps emitted by this` |
 |         - | 14252 | `				 * expression so they short-circuit to its end. */` |
-|  15238443 | 14253 | `				GenStatePatchNullsafeJumps(pGen, nNullsafeBase);` |
-|   7619219 | 14254 | `			}` |
-|  15238443 | 14255 | `			nExpr = 1;` |
-|   7619219 | 14256 | `		}` |
+|  15238621 | 14253 | `				GenStatePatchNullsafeJumps(pGen, nNullsafeBase);` |
+|   7619308 | 14254 | `			}` |
+|  15238621 | 14255 | `			nExpr = 1;` |
+|   7619308 | 14256 | `		}` |
 |         - | 14257 | `		/* Release the whole tree */` |
-|  15238627 | 14258 | `		PH7_ExprFreeTree(&(*pGen),&sExprNode);` |
+|  15238805 | 14258 | `		PH7_ExprFreeTree(&(*pGen),&sExprNode);` |
 |         - | 14259 | `		/* Synchronize token stream */` |
-|  15238627 | 14260 | `		pGen->pEnd = pTmp;` |
-|  15238627 | 14261 | `		pGen->pIn  = pEnd;` |
-|  15238627 | 14262 | `		if( rc == SXERR_ABORT ){` |
+|  15238805 | 14260 | `		pGen->pEnd = pTmp;` |
+|  15238805 | 14261 | `		pGen->pIn  = pEnd;` |
+|  15238805 | 14262 | `		if( rc == SXERR_ABORT ){` |
 |        12 | 14263 | `			SySetRelease(&sExprNode);` |
 |        12 | 14264 | `			return SXERR_ABORT;` |
 |         - | 14265 | `		}` |
-|   7619306 | 14266 | `	}` |
-|  15261569 | 14267 | `	SySetRelease(&sExprNode);` |
-|  15261569 | 14268 | `	return nExpr > 0 ? SXRET_OK : SXERR_EMPTY;` |
-|   7630794 | 14269 | `}` |
+|   7619395 | 14266 | `	}` |
+|  15261747 | 14267 | `	SySetRelease(&sExprNode);` |
+|  15261747 | 14268 | `	return nExpr > 0 ? SXRET_OK : SXERR_EMPTY;` |
+|   7630883 | 14269 | `}` |
 |         - | 14270 | `/*` |
 |         - | 14271 | ` * Return a pointer to the node construct handler associated` |
 |         - | 14272 | ` * with a given node type [i.e: string,integer,float,...].` |
 |         - | 14273 | ` */` |
-|   8787124 | 14274 | `PH7_PRIVATE ProcNodeConstruct PH7_GetNodeHandler(sxu32 nNodeType)` |
+|   8787266 | 14274 | `PH7_PRIVATE ProcNodeConstruct PH7_GetNodeHandler(sxu32 nNodeType)` |
 |         5 | 14275 | `{` |
-|   8787129 | 14276 | `	if( nNodeType & PH7_TK_NUM ){` |
+|   8787271 | 14276 | `	if( nNodeType & PH7_TK_NUM ){` |
 |         - | 14277 | `		/* Numeric literal: Either real or integer */` |
-|   3563719 | 14278 | `		return PH7_CompileNumLiteral;` |
-|   5223415 | 14279 | `	}else if( nNodeType & PH7_TK_DSTR ){` |
+|   3563779 | 14278 | `		return PH7_CompileNumLiteral;` |
+|   5223497 | 14279 | `	}else if( nNodeType & PH7_TK_DSTR ){` |
 |         - | 14280 | `		/* Double quoted string */` |
-|    120497 | 14281 | `		return PH7_CompileString;` |
-|   5102923 | 14282 | `	}else if( nNodeType & PH7_TK_SSTR ){` |
+|    120523 | 14281 | `		return PH7_CompileString;` |
+|   5102979 | 14282 | `	}else if( nNodeType & PH7_TK_SSTR ){` |
 |         - | 14283 | `		/* Single quoted string */` |
-|   5102803 | 14284 | `		return PH7_CompileSimpleString;` |
+|   5102859 | 14284 | `		return PH7_CompileSimpleString;` |
 |       124 | 14285 | `	}else if( nNodeType & PH7_TK_HEREDOC ){` |
 |         - | 14286 | `		/* Heredoc */` |
 |        70 | 14287 | `		return PH7_CompileHereDoc;` |
@@ -14303,7 +14303,7 @@ Coverage: 7368/9094 lines (81.02%)
 |         6 | 14293 | `		return PH7_CompileBacktic;` |
 |         - | 14294 | `	}` |
 |         3 | 14295 | `	return 0;` |
-|   4393567 | 14296 | `}` |
+|   4393638 | 14296 | `}` |
 |         - | 14297 | `/*` |
 |         - | 14298 | `` * Tree validator for unset() arguments — rejects any `?->` node in`` |
 |         - | 14299 | ` * the argument expression with PHP's "Can't use nullsafe operator` |
@@ -14448,25 +14448,25 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 14438 | ` * Return a pointer to the statement handler routine associated` |
 |         - | 14439 | ` * with a given PHP keyword [i.e: if,for,while,...].` |
 |         - | 14440 | ` */` |
-|   7390664 | 14441 | `static ProcLangConstruct GenStateGetStatementHandler(` |
+|   7390680 | 14441 | `static ProcLangConstruct GenStateGetStatementHandler(` |
 |         - | 14442 | `	sxu32 nKeywordID,   /* Keyword  ID*/` |
 |         - | 14443 | `	SyToken *pLookahed  /* Look-ahead token */` |
 |         - | 14444 | `	)` |
 |         5 | 14445 | `{` |
-|   7390669 | 14446 | `	sxu32 n = 0;` |
-|  29224640 | 14447 | `	for(;;){` |
-|  58449285 | 14448 | `		if( n >= SX_ARRAYSIZE(aLangConstruct) ){` |
+|   7390685 | 14446 | `	sxu32 n = 0;` |
+|  29224648 | 14447 | `	for(;;){` |
+|  58449301 | 14448 | `		if( n >= SX_ARRAYSIZE(aLangConstruct) ){` |
 |    430717 | 14449 | `			break;` |
 |         - | 14450 | `		}` |
-|  58018573 | 14451 | `		if( aLangConstruct[n].nID == nKeywordID ){` |
-|   6959957 | 14452 | `			if( nKeywordID == PH7_TKWRD_STATIC && pLookahed && (pLookahed->nType & PH7_TK_OP)){` |
+|  58018589 | 14451 | `		if( aLangConstruct[n].nID == nKeywordID ){` |
+|   6959973 | 14452 | `			if( nKeywordID == PH7_TKWRD_STATIC && pLookahed && (pLookahed->nType & PH7_TK_OP)){` |
 |       ! 0 | 14453 | `				const ph7_expr_op *pOp = (const ph7_expr_op *)pLookahed->pUserData;` |
 |       ! 0 | 14454 | `				if( pOp && pOp->iOp == EXPR_OP_DC /*::*/){` |
 |         - | 14455 | `					/* 'static' (class context),return null */` |
 |       ! 0 | 14456 | `					return 0;` |
 |         - | 14457 | `				}` |
 |       ! 0 | 14458 | `			}` |
-|   6959952 | 14459 | `			if( nKeywordID == PH7_TKWRD_STATIC && pLookahed` |
+|   6959968 | 14459 | `			if( nKeywordID == PH7_TKWRD_STATIC && pLookahed` |
 |     11486 | 14460 | `				&& (pLookahed->nType & PH7_TK_KEYWORD)` |
 |      5750 | 14461 | `				&& SX_PTR_TO_INT(pLookahed->pUserData) == PH7_TKWRD_FN ){` |
 |         - | 14462 | `				/* 'static fn(...)' arrow function — compile as expression */` |
@@ -14474,7 +14474,7 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 14464 | `			}` |
 |         - | 14465 | `			/* Return a pointer to the handler.` |
 |         - | 14466 | `			*/` |
-|   6959955 | 14467 | `			return aLangConstruct[n].xConstruct;` |
+|   6959971 | 14467 | `			return aLangConstruct[n].xConstruct;` |
 |         - | 14468 | `		}` |
 |  51058621 | 14469 | `		n++;` |
 |         5 | 14470 | `	}` |
@@ -14493,7 +14493,7 @@ Coverage: 7368/9094 lines (81.02%)
 |     19362 | 14483 | `	}` |
 |         - | 14484 | `	/* Not a language construct */` |
 |     38729 | 14485 | `	return 0;` |
-|   3695337 | 14486 | `}` |
+|   3695345 | 14486 | `}` |
 |         - | 14487 | `/*` |
 |         - | 14488 | ` * Check if the given keyword is in fact a PHP language construct.` |
 |         - | 14489 | ` * Return TRUE on success. FALSE otheriwse.` |
@@ -14529,17 +14529,17 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 14519 | ` * doc comment until a declaration consumes it, so a docblock survives` |
 |         - | 14520 | ` * intervening non-declaration statements.` |
 |         - | 14521 | ` */` |
-|  15920866 | 14522 | `static void GenStateSetPendingDoc(ph7_gen_state *pGen)` |
+|  15920890 | 14522 | `static void GenStateSetPendingDoc(ph7_gen_state *pGen)` |
 |         5 | 14523 | `{` |
-|  15920871 | 14524 | `	SyToken *pBase = (SyToken *)SySetBasePtr(pGen->pTokenSet);` |
-|  15920871 | 14525 | `	ph7_trivia *aT = (ph7_trivia *)SySetBasePtr(&pGen->aTrivia);` |
-|  15920871 | 14526 | `	sxu32 nT = SySetUsed(&pGen->aTrivia);` |
+|  15920895 | 14524 | `	SyToken *pBase = (SyToken *)SySetBasePtr(pGen->pTokenSet);` |
+|  15920895 | 14525 | `	ph7_trivia *aT = (ph7_trivia *)SySetBasePtr(&pGen->aTrivia);` |
+|  15920895 | 14526 | `	sxu32 nT = SySetUsed(&pGen->aTrivia);` |
 |         - | 14527 | `	sxu32 nIdx, n;` |
-|  15920866 | 14528 | `	if( nT < 1 \|\| pGen->pTokenSet == 0` |
+|  15920890 | 14528 | `	if( nT < 1 \|\| pGen->pTokenSet == 0` |
 |   3348949 | 14529 | `	 \|\| pGen->pIn < pBase \|\| pGen->pIn >= &pBase[SySetUsed(pGen->pTokenSet)] ){` |
 |         - | 14530 | `		/* Re-tokenized substream (string interpolation, synthesized code):` |
 |         - | 14531 | `		 * indexes do not map to the sidecar */` |
-|  12571929 | 14532 | `		return;` |
+|  12571953 | 14532 | `		return;` |
 |         - | 14533 | `	}` |
 |   3348947 | 14534 | `	nIdx = (sxu32)(pGen->pIn - pBase);` |
 |         - | 14535 | `	/* Attributes must be adjacent to their declaration (unlike docblocks):` |
@@ -14555,7 +14555,7 @@ Coverage: 7368/9094 lines (81.02%)
 |      7793 | 14545 | `			SySetPut(&pGen->aPendingAttrs,(const void *)&aT[n]);` |
 |      3894 | 14546 | `		}` |
 |      3911 | 14547 | `	}` |
-|   7960438 | 14548 | `}` |
+|   7960450 | 14548 | `}` |
 |         - | 14549 | `/*` |
 |         - | 14550 | ` * Hand the pending docblock (if any) to a declaration: duplicate it into` |
 |         - | 14551 | ` * the VM allocator (the raw script buffer dies after compilation) and` |
@@ -14782,23 +14782,23 @@ Coverage: 7368/9094 lines (81.02%)
 |    547170 | 14772 | `	}` |
 |    547171 | 14773 | `	return SXRET_OK;` |
 |   1028806 | 14774 | `}` |
-|  11867126 | 14775 | `static sxi32 GenStateCompileChunk(` |
+|  11867128 | 14775 | `static sxi32 GenStateCompileChunk(` |
 |         - | 14776 | `	ph7_gen_state *pGen, /* Code generator state */` |
 |         - | 14777 | `	sxi32 iFlags         /* Compile flags */` |
 |         - | 14778 | `	)` |
 |         5 | 14779 | `{` |
 |         - | 14780 | `	ProcLangConstruct xCons;` |
 |         - | 14781 | `	sxi32 rc;` |
-|  11867131 | 14782 | `	rc = SXRET_OK; /* Prevent compiler warning */` |
-|   6893265 | 14783 | `	for(;;){` |
-|  12826833 | 14784 | `		int bStmtIsDeclare = 0;` |
-|  12826833 | 14785 | `		if( pGen->pIn >= pGen->pEnd ){` |
+|  11867133 | 14782 | `	rc = SXRET_OK; /* Prevent compiler warning */` |
+|   6893290 | 14783 | `	for(;;){` |
+|  12826859 | 14784 | `		int bStmtIsDeclare = 0;` |
+|  12826859 | 14785 | `		if( pGen->pIn >= pGen->pEnd ){` |
 |         - | 14786 | `			/* No more input to process */` |
-|     67691 | 14787 | `			break;` |
+|     67693 | 14787 | `			break;` |
 |         - | 14788 | `		}` |
 |         - | 14789 | `		/* Bind a directly-preceding docblock to this statement */` |
-|  12759147 | 14790 | `		GenStateSetPendingDoc(&(*pGen));` |
-|  12759147 | 14791 | `		if( SySetUsed(&pGen->aPendingAttrs) > 0 ){` |
+|  12759171 | 14790 | `		GenStateSetPendingDoc(&(*pGen));` |
+|  12759171 | 14791 | `		if( SySetUsed(&pGen->aPendingAttrs) > 0 ){` |
 |         - | 14792 | `			/* php: a statement-position attribute group must be followed by a` |
 |         - | 14793 | ``			 * declaration (function/class-like/const) — `#[A] $x = 1;` is a`` |
 |         - | 14794 | `` 			 * parse error, never a silent discard. `static`/`fn`/`function` `` |
@@ -14830,39 +14830,39 @@ Coverage: 7368/9094 lines (81.02%)
 |      3853 | 14820 | `		}` |
 |         - | 14821 | ``		/* Peek to detect a top-level `declare` so the strict_types lock`` |
 |         - | 14822 | `		 * below doesn't fire before the directive has a chance to run. */` |
-|  12759147 | 14823 | `		if( pGen->pIn->nType & PH7_TK_KEYWORD ){` |
-|   7425151 | 14824 | `			sxu32 nPeek = (sxu32)SX_PTR_TO_INT(pGen->pIn->pUserData);` |
-|   7425151 | 14825 | `			if( nPeek == PH7_TKWRD_DECLARE ){` |
+|  12759171 | 14823 | `		if( pGen->pIn->nType & PH7_TK_KEYWORD ){` |
+|   7425167 | 14824 | `			sxu32 nPeek = (sxu32)SX_PTR_TO_INT(pGen->pIn->pUserData);` |
+|   7425167 | 14825 | `			if( nPeek == PH7_TKWRD_DECLARE ){` |
 |        47 | 14826 | `				bStmtIsDeclare = 1;` |
 |        21 | 14827 | `			}` |
-|   3712573 | 14828 | `		}` |
-|  12759147 | 14829 | `		if( !bStmtIsDeclare && pGen->pCurrent == &pGen->sGlobal ){` |
+|   3712581 | 14828 | `		}` |
+|  12759171 | 14829 | `		if( !bStmtIsDeclare && pGen->pCurrent == &pGen->sGlobal ){` |
 |         - | 14830 | `			/* Any non-declare top-level statement locks the strict_types` |
 |         - | 14831 | `			 * directive: it's now too late for declare(strict_types=1). */` |
-|    959675 | 14832 | `			pGen->bStrictTypesLocked = 1;` |
-|    479835 | 14833 | `		}` |
-|  12759147 | 14834 | `		if( pGen->pIn->nType & PH7_TK_OCB /* '{' */ ){` |
+|    959699 | 14832 | `			pGen->bStrictTypesLocked = 1;` |
+|    479847 | 14833 | `		}` |
+|  12759171 | 14834 | `		if( pGen->pIn->nType & PH7_TK_OCB /* '{' */ ){` |
 |         - | 14835 | `			/* Compile block */` |
 |      3865 | 14836 | `			rc = PH7_CompileBlock(&(*pGen),0);` |
 |      3865 | 14837 | `			if( rc == SXERR_ABORT ){` |
 |       ! 0 | 14838 | `				break;` |
 |         - | 14839 | `			}` |
 |      1935 | 14840 | `		}else{` |
-|  12755287 | 14841 | `			xCons = 0;` |
-|  12755287 | 14842 | `			if( GenStateStartsModifiedClass(pGen->pIn,pGen->pEnd) ){` |
+|  12755311 | 14841 | `			xCons = 0;` |
+|  12755311 | 14842 | `			if( GenStateStartsModifiedClass(pGen->pIn,pGen->pEnd) ){` |
 |         - | 14843 | ``				/* `final`/`abstract`/`readonly` (any order) before `class`. Handled`` |
 |         - | 14844 | `` 				 * here rather than the keyword-only dispatcher because `readonly` `` |
 |         - | 14845 | `				 * is a context-sensitive ID and combos need a full-run scan. */` |
 |     34513 | 14846 | `				xCons = PH7_CompileClassModifiers;` |
-|  12738033 | 14847 | `			}else if( GenStateStartsEnumDecl(pGen->pIn,pGen->pEnd) ){` |
+|  12738057 | 14847 | `			}else if( GenStateStartsEnumDecl(pGen->pIn,pGen->pEnd) ){` |
 |         - | 14848 | ``				/* `enum Name …` (PHP 8.1) — `enum` is a context-sensitive ID,`` |
 |         - | 14849 | `				 * so it is detected here rather than the keyword dispatcher. */` |
 |      3859 | 14850 | `				xCons = PH7_CompileEnum;` |
-|  12718852 | 14851 | `			}else if( pGen->pIn->nType & PH7_TK_KEYWORD ){` |
-|   7390669 | 14852 | `				sxu32 nKeyword = (sxu32)SX_PTR_TO_INT(pGen->pIn->pUserData);` |
+|  12718876 | 14851 | `			}else if( pGen->pIn->nType & PH7_TK_KEYWORD ){` |
+|   7390685 | 14852 | `				sxu32 nKeyword = (sxu32)SX_PTR_TO_INT(pGen->pIn->pUserData);` |
 |         - | 14853 | `				/* Try to extract a language construct handler */` |
-|   7390669 | 14854 | `				xCons = GenStateGetStatementHandler(nKeyword,(&pGen->pIn[1] < pGen->pEnd) ? &pGen->pIn[1] : 0);` |
-|   7390669 | 14855 | `				if( xCons == 0 && GenStateisLangConstruct(nKeyword) == FALSE ){` |
+|   7390685 | 14854 | `				xCons = GenStateGetStatementHandler(nKeyword,(&pGen->pIn[1] < pGen->pEnd) ? &pGen->pIn[1] : 0);` |
+|   7390685 | 14855 | `				if( xCons == 0 && GenStateisLangConstruct(nKeyword) == FALSE ){` |
 |        13 | 14856 | `					rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,` |
 |         - | 14857 | `						"Syntax error: Unexpected keyword '%z'",` |
 |         8 | 14858 | `						&pGen->pIn->sData);` |
@@ -14874,32 +14874,32 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 14864 | `					 */` |
 |         9 | 14865 | `					xCons = PH7_ErrorRecover;` |
 |         4 | 14866 | `				}` |
-|   9021593 | 14867 | `			}else if( (pGen->pIn->nType & PH7_TK_ID) && (&pGen->pIn[1] < pGen->pEnd)` |
+|   9021609 | 14867 | `			}else if( (pGen->pIn->nType & PH7_TK_ID) && (&pGen->pIn[1] < pGen->pEnd)` |
 |    406673 | 14868 | `				&& (pGen->pIn[1].nType & PH7_TK_COLON /*':'*/) ){` |
 |         - | 14869 | `				/* Label found [i.e: Out: ],point to the routine responsible of compiling it */` |
 |       117 | 14870 | `				xCons = PH7_CompileLabel;` |
 |        56 | 14871 | `			}` |
-|  12755287 | 14872 | `			if( xCons == 0 ){` |
+|  12755311 | 14872 | `			if( xCons == 0 ){` |
 |         - | 14873 | `				/* Assume an expression an try to compile it */` |
-|   5364867 | 14874 | `				rc = PH7_CompileExpr(&(*pGen),0,0);` |
-|   5364867 | 14875 | `				if(  rc != SXERR_EMPTY ){` |
+|   5364875 | 14874 | `				rc = PH7_CompileExpr(&(*pGen),0,0);` |
+|   5364875 | 14875 | `				if(  rc != SXERR_EMPTY ){` |
 |         - | 14876 | `					/* Pop l-value */` |
-|   5364717 | 14877 | `					PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);` |
-|   2682356 | 14878 | `				}` |
-|   2682436 | 14879 | `			}else{` |
+|   5364725 | 14877 | `					PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);` |
+|   2682360 | 14878 | `				}` |
+|   2682440 | 14879 | `			}else{` |
 |         - | 14880 | `				/* Go compile the sucker */` |
-|   7390425 | 14881 | `				rc = xCons(&(*pGen));` |
+|   7390441 | 14881 | `				rc = xCons(&(*pGen));` |
 |         - | 14882 | `			}` |
-|  12755287 | 14883 | `			if( rc == SXERR_ABORT ){` |
+|  12755311 | 14883 | `			if( rc == SXERR_ABORT ){` |
 |         - | 14884 | `				/* Request to abort compilation */` |
 |        12 | 14885 | `				break;` |
 |         - | 14886 | `			}` |
 |         - | 14887 | `		}` |
 |         - | 14888 | `		/* Ignore trailing semi-colons ';' */` |
-|  21842463 | 14889 | `		while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) ){` |
-|   9083331 | 14890 | `			pGen->pIn++;` |
+|  21842511 | 14889 | `		while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) ){` |
+|   9083355 | 14890 | `			pGen->pIn++;` |
 |         5 | 14891 | `		}` |
-|  12759137 | 14892 | `		if( iFlags & PH7_COMPILE_SINGLE_STMT ){` |
+|  12759161 | 14892 | `		if( iFlags & PH7_COMPILE_SINGLE_STMT ){` |
 |         - | 14893 | `			/* Compile a single statement and return */` |
 |  11799435 | 14894 | `			break;` |
 |         - | 14895 | `		}` |
@@ -14909,34 +14909,34 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 14899 | `		/* LOOP FOUR */` |
 |         5 | 14900 | `	}` |
 |         - | 14901 | `	/* Return compilation status */` |
-|  11867131 | 14902 | `	return rc;` |
+|  11867133 | 14902 | `	return rc;` |
 |         5 | 14903 | `}` |
 |         - | 14904 | `/*` |
 |         - | 14905 | ` * Compile a Raw PHP chunk.` |
 |         - | 14906 | ` * If something goes wrong while compiling the PHP chunk,this function` |
 |         - | 14907 | ` * takes care of generating the appropriate error message.` |
 |         - | 14908 | ` */` |
-|     67698 | 14909 | `static sxi32 PH7_CompilePHP(` |
+|     67700 | 14909 | `static sxi32 PH7_CompilePHP(` |
 |         - | 14910 | `	ph7_gen_state *pGen,  /* Code generator state */` |
 |         - | 14911 | `	SySet *pTokenSet,     /* Token set */` |
 |         - | 14912 | `	int is_expr           /* TRUE if we are dealing with a simple expression */` |
 |         - | 14913 | `	)` |
 |         5 | 14914 | `{` |
-|     67703 | 14915 | `	SyToken *pScript = pGen->pRawIn; /* Script to compile */` |
+|     67705 | 14915 | `	SyToken *pScript = pGen->pRawIn; /* Script to compile */` |
 |         - | 14916 | `	sxi32 rc;` |
 |         - | 14917 | `	/* Reset the token set (and its trivia sidecar) */` |
-|     67703 | 14918 | `	SySetReset(&(*pTokenSet));` |
-|     67703 | 14919 | `	SySetReset(&pGen->aTrivia);` |
+|     67705 | 14918 | `	SySetReset(&(*pTokenSet));` |
+|     67705 | 14919 | `	SySetReset(&pGen->aTrivia);` |
 |         - | 14920 | `	/* Mark as the default token set */` |
-|     67703 | 14921 | `	pGen->pTokenSet = &(*pTokenSet);` |
+|     67705 | 14921 | `	pGen->pTokenSet = &(*pTokenSet);` |
 |         - | 14922 | `	/* Advance the stream cursor */` |
-|     67703 | 14923 | `	pGen->pRawIn++;` |
+|     67705 | 14923 | `	pGen->pRawIn++;` |
 |         - | 14924 | `	/* Tokenize the PHP chunk first */` |
-|     67703 | 14925 | `	PH7_TokenizePHP(SyStringData(&pScript->sData),SyStringLength(&pScript->sData),pScript->nLine,&(*pTokenSet),&pGen->aTrivia);` |
+|     67705 | 14925 | `	PH7_TokenizePHP(SyStringData(&pScript->sData),SyStringLength(&pScript->sData),pScript->nLine,&(*pTokenSet),&pGen->aTrivia);` |
 |         - | 14926 | `	/* Point to the head and tail of the token stream. */` |
-|     67703 | 14927 | `	pGen->pIn  = (SyToken *)SySetBasePtr(pTokenSet);` |
-|     67703 | 14928 | `	pGen->pEnd = &pGen->pIn[SySetUsed(pTokenSet)];` |
-|     67703 | 14929 | `	if( is_expr ){` |
+|     67705 | 14927 | `	pGen->pIn  = (SyToken *)SySetBasePtr(pTokenSet);` |
+|     67705 | 14928 | `	pGen->pEnd = &pGen->pIn[SySetUsed(pTokenSet)];` |
+|     67705 | 14929 | `	if( is_expr ){` |
 |       ! 0 | 14930 | `		rc = SXERR_EMPTY;` |
 |       ! 0 | 14931 | `		if( pGen->pIn < pGen->pEnd ){` |
 |         - | 14932 | `			/* A simple expression,compile it */` |
@@ -14946,7 +14946,7 @@ Coverage: 7368/9094 lines (81.02%)
 |       ! 0 | 14936 | `		PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,(rc != SXERR_EMPTY ? 1 : 0),0,0,0);` |
 |       ! 0 | 14937 | `		return SXRET_OK;` |
 |         - | 14938 | `	}` |
-|     67703 | 14939 | `	if( pGen->pIn < pGen->pEnd && ( pGen->pIn->nType & PH7_TK_EQUAL ) ){` |
+|     67705 | 14939 | `	if( pGen->pIn < pGen->pEnd && ( pGen->pIn->nType & PH7_TK_EQUAL ) ){` |
 |         - | 14940 | `		static const sxu32 nKeyID = PH7_TKWRD_ECHO;` |
 |         - | 14941 | `		/*` |
 |         - | 14942 | `		 * Shortcut syntax for the 'echo' language construct.` |
@@ -14971,26 +14971,26 @@ Coverage: 7368/9094 lines (81.02%)
 |         3 | 14961 | `		return SXRET_OK;` |
 |         - | 14962 | `	}` |
 |         - | 14963 | `	/* Compile the PHP chunk */` |
-|     67701 | 14964 | `	rc = GenStateCompileChunk(pGen,0);` |
+|     67703 | 14964 | `	rc = GenStateCompileChunk(pGen,0);` |
 |         - | 14965 | `	/* Fix exceptions jumps */` |
-|     67701 | 14966 | `	GenStateFixJumps(pGen->pCurrent,PH7_OP_THROW,PH7_VmInstrLength(pGen->pVm));` |
+|     67703 | 14966 | `	GenStateFixJumps(pGen->pCurrent,PH7_OP_THROW,PH7_VmInstrLength(pGen->pVm));` |
 |         - | 14967 | `	/* Fix gotos now, the jump destination is resolved */` |
-|     67701 | 14968 | `	if( SXERR_ABORT == GenStateFixGoto(&(*pGen),0) ){` |
+|     67703 | 14968 | `	if( SXERR_ABORT == GenStateFixGoto(&(*pGen),0) ){` |
 |         3 | 14969 | `		rc = SXERR_ABORT;` |
 |         1 | 14970 | `	}` |
 |         - | 14971 | `	/* Reset container */` |
-|     67701 | 14972 | `	SySetReset(&pGen->aGoto);` |
-|     67701 | 14973 | `	SySetReset(&pGen->aLabel);` |
-|     67701 | 14974 | `	SySetReset(&pGen->aNullsafeJmp);` |
+|     67703 | 14972 | `	SySetReset(&pGen->aGoto);` |
+|     67703 | 14973 | `	SySetReset(&pGen->aLabel);` |
+|     67703 | 14974 | `	SySetReset(&pGen->aNullsafeJmp);` |
 |         - | 14975 | `	/* Compilation result */` |
-|     67701 | 14976 | `	return rc;` |
-|     33854 | 14977 | `}` |
+|     67703 | 14976 | `	return rc;` |
+|     33855 | 14977 | `}` |
 |         - | 14978 | `/*` |
 |         - | 14979 | ` * Compile a raw chunk. The raw chunk can contain PHP code embedded` |
 |         - | 14980 | ` * in HTML, XML and so on. This function handle all the stuff.` |
 |         - | 14981 | ` * This is the only compile interface exported from this file.` |
 |         - | 14982 | ` */` |
-|     70922 | 14983 | `PH7_PRIVATE sxi32 PH7_CompileScript(` |
+|     70924 | 14983 | `PH7_PRIVATE sxi32 PH7_CompileScript(` |
 |         - | 14984 | `	ph7_vm *pVm,        /* Generate PH7 byte-codes for this Virtual Machine */` |
 |         - | 14985 | `	SyString *pScript,  /* Script to compile */` |
 |         - | 14986 | `	sxi32 iFlags        /* Compile flags */` |
@@ -15006,15 +15006,15 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 14996 | `	sxi8 bSavedStrictLocked;` |
 |         - | 14997 | `	SyToken *pSavedIn,*pSavedEnd;` |
 |         - | 14998 | `	sxi32 rc;` |
-|     70927 | 14999 | `	sxu32 nBaseLine = 1;` |
-|     70927 | 15000 | `	if( pScript->nByte < 1 ){` |
+|     70929 | 14999 | `	sxu32 nBaseLine = 1;` |
+|     70929 | 15000 | `	if( pScript->nByte < 1 ){` |
 |         - | 15001 | `		/* Nothing to compile */` |
 |       ! 0 | 15002 | `		return PH7_OK;` |
 |         - | 15003 | `	}` |
 |         - | 15004 | `	/* php skips a "#!" shebang on the first line of a CLI script: consume it` |
 |         - | 15005 | `	 * (including its newline) so it is not echoed as inline text, and bump the` |
 |         - | 15006 | `	 * base line to 2 so the code below still reports php-matching line numbers. */` |
-|     70927 | 15007 | `	if( pScript->nByte >= 2 && pScript->zString[0]=='#' && pScript->zString[1]=='!' ){` |
+|     70929 | 15007 | `	if( pScript->nByte >= 2 && pScript->zString[0]=='#' && pScript->zString[1]=='!' ){` |
 |         3 | 15008 | `		const char *z = pScript->zString;` |
 |         3 | 15009 | `		const char *zEnd = &z[pScript->nByte];` |
 |        39 | 15010 | `		while( z < zEnd && z[0] != '\n' ){ z++; }` |
@@ -15028,25 +15028,25 @@ Coverage: 7368/9094 lines (81.02%)
 |         1 | 15018 | `	}` |
 |         - | 15019 | `	/* Each compiled file has its own strict_types scope. Save the outer` |
 |         - | 15020 | `	 * file's flags so include/require restore them on return. */` |
-|     70927 | 15021 | `	pCodeGen = &pVm->sCodeGen;` |
+|     70929 | 15021 | `	pCodeGen = &pVm->sCodeGen;` |
 |         - | 15022 | ``	/* aPhpToken below is a LOCAL token set: once it is released at `cleanup`, any`` |
 |         - | 15023 | `	 * pGen->pIn/pEnd still pointing into it DANGLE. PH7_VmEmitInstr reads pIn to stamp` |
 |         - | 15024 | `	 * each instruction's source line, and instructions are still emitted after this` |
 |         - | 15025 | `	 * function returns (VmEvalChunk's trailing OP_DONE) -- a use-after-free ASan caught` |
 |         - | 15026 | `	 * immediately. Save the caller's cursor and restore it on the way out, so an` |
 |         - | 15027 | `	 * enclosing compile keeps its (live) tokens and the top level goes back to NULL. */` |
-|     70927 | 15028 | `	pSavedIn = pCodeGen->pIn;` |
-|     70927 | 15029 | `	pSavedEnd = pCodeGen->pEnd;` |
-|     70927 | 15030 | `	bSavedStrict = pCodeGen->bStrictTypes;` |
-|     70927 | 15031 | `	bSavedStrictLocked = pCodeGen->bStrictTypesLocked;` |
-|     70927 | 15032 | `	pCodeGen->bStrictTypes = 0;` |
-|     70927 | 15033 | `	pCodeGen->bStrictTypesLocked = 0;` |
+|     70929 | 15028 | `	pSavedIn = pCodeGen->pIn;` |
+|     70929 | 15029 | `	pSavedEnd = pCodeGen->pEnd;` |
+|     70929 | 15030 | `	bSavedStrict = pCodeGen->bStrictTypes;` |
+|     70929 | 15031 | `	bSavedStrictLocked = pCodeGen->bStrictTypesLocked;` |
+|     70929 | 15032 | `	pCodeGen->bStrictTypes = 0;` |
+|     70929 | 15033 | `	pCodeGen->bStrictTypesLocked = 0;` |
 |         - | 15034 | `	/* Initialize the tokens containers */` |
-|     70927 | 15035 | `	SySetInit(&aRawToken,&pVm->sAllocator,sizeof(SyToken));` |
-|     70927 | 15036 | `	SySetInit(&aPhpToken,&pVm->sAllocator,sizeof(SyToken));` |
-|     70927 | 15037 | `	SySetAlloc(&aPhpToken,0xc0);` |
-|     70927 | 15038 | `	is_expr = 0;` |
-|     70927 | 15039 | `	if( iFlags & PH7_PHP_ONLY ){` |
+|     70929 | 15035 | `	SySetInit(&aRawToken,&pVm->sAllocator,sizeof(SyToken));` |
+|     70929 | 15036 | `	SySetInit(&aPhpToken,&pVm->sAllocator,sizeof(SyToken));` |
+|     70929 | 15037 | `	SySetAlloc(&aPhpToken,0xc0);` |
+|     70929 | 15038 | `	is_expr = 0;` |
+|     70929 | 15039 | `	if( iFlags & PH7_PHP_ONLY ){` |
 |         - | 15040 | `		SyToken sTmp;` |
 |         - | 15041 | `		/* PHP only: -*/` |
 |     57485 | 15042 | `		sTmp.nLine = 1;` |
@@ -15060,67 +15060,67 @@ Coverage: 7368/9094 lines (81.02%)
 |       ! 0 | 15050 | `		}` |
 |     28745 | 15051 | `	}else{` |
 |         - | 15052 | `		/* Tokenize raw text */` |
-|     13447 | 15053 | `		SySetAlloc(&aRawToken,32);` |
-|     13447 | 15054 | `		PH7_TokenizeRawText(pScript->zString,pScript->nByte,&aRawToken,nBaseLine);` |
+|     13449 | 15053 | `		SySetAlloc(&aRawToken,32);` |
+|     13449 | 15054 | `		PH7_TokenizeRawText(pScript->zString,pScript->nByte,&aRawToken,nBaseLine);` |
 |         - | 15055 | `	}` |
 |         - | 15056 | `	/* Process high-level tokens */` |
-|     70927 | 15057 | `	pCodeGen->pRawIn = (SyToken *)SySetBasePtr(&aRawToken);` |
-|     70927 | 15058 | `	pCodeGen->pRawEnd = &pCodeGen->pRawIn[SySetUsed(&aRawToken)];` |
-|     70927 | 15059 | `	rc = PH7_OK;` |
-|     70927 | 15060 | `	if( is_expr ){` |
+|     70929 | 15057 | `	pCodeGen->pRawIn = (SyToken *)SySetBasePtr(&aRawToken);` |
+|     70929 | 15058 | `	pCodeGen->pRawEnd = &pCodeGen->pRawIn[SySetUsed(&aRawToken)];` |
+|     70929 | 15059 | `	rc = PH7_OK;` |
+|     70929 | 15060 | `	if( is_expr ){` |
 |         - | 15061 | `		/* Compile the expression */` |
 |       ! 0 | 15062 | `		rc = PH7_CompilePHP(pCodeGen,&aPhpToken,TRUE);` |
 |       ! 0 | 15063 | `		goto cleanup;` |
 |         - | 15064 | `	}` |
-|     70927 | 15065 | `	nObjIdx = 0;` |
+|     70929 | 15065 | `	nObjIdx = 0;` |
 |         - | 15066 | `	/* Each compilation unit starts in the global namespace.` |
 |         - | 15067 | `	 * Emit NSSWITCH(NULL) so the VM resets namespace state at runtime,` |
 |         - | 15068 | `	 * preventing namespace bleeding across include()d files. */` |
-|     70927 | 15069 | `	PH7_VmEmitInstr(pVm,PH7_OP_NSSWITCH,0,0,0,0);` |
+|     70929 | 15069 | `	PH7_VmEmitInstr(pVm,PH7_OP_NSSWITCH,0,0,0,0);` |
 |         - | 15070 | `	/* Start the compilation process */` |
-|     42187 | 15071 | `	for(;;){` |
-|    152065 | 15072 | `		if( pCodeGen->pRawIn >= pCodeGen->pRawEnd ){` |
-|     70915 | 15073 | `			break; /* No more tokens to process */` |
+|     42189 | 15071 | `	for(;;){` |
+|    152071 | 15072 | `		if( pCodeGen->pRawIn >= pCodeGen->pRawEnd ){` |
+|     70917 | 15073 | `			break; /* No more tokens to process */` |
 |         - | 15074 | `		}` |
-|     81155 | 15075 | `		if( pCodeGen->pRawIn->nType & PH7_TOKEN_PHP ){` |
+|     81159 | 15075 | `		if( pCodeGen->pRawIn->nType & PH7_TOKEN_PHP ){` |
 |         - | 15076 | `			/* Compile the PHP chunk */` |
-|     67703 | 15077 | `			rc = PH7_CompilePHP(pCodeGen,&aPhpToken,FALSE);` |
-|     67703 | 15078 | `			if( rc == SXERR_ABORT ){` |
+|     67705 | 15077 | `			rc = PH7_CompilePHP(pCodeGen,&aPhpToken,FALSE);` |
+|     67705 | 15078 | `			if( rc == SXERR_ABORT ){` |
 |        15 | 15079 | `				break;` |
 |         - | 15080 | `			}` |
-|     67691 | 15081 | `			continue;` |
+|     67693 | 15081 | `			continue;` |
 |         - | 15082 | `		}` |
 |         - | 15083 | `		/* Raw chunk: [i.e: HTML, XML, etc.] */` |
-|     13457 | 15084 | `		nRawObj = 0;` |
-|     26909 | 15085 | `		while( (pCodeGen->pRawIn < pCodeGen->pRawEnd) && (pCodeGen->pRawIn->nType != PH7_TOKEN_PHP) ){` |
+|     13459 | 15084 | `		nRawObj = 0;` |
+|     26913 | 15085 | `		while( (pCodeGen->pRawIn < pCodeGen->pRawEnd) && (pCodeGen->pRawIn->nType != PH7_TOKEN_PHP) ){` |
 |         - | 15086 | `			/* Consume the raw chunk without any processing */` |
-|     13457 | 15087 | `			pRawObj = PH7_ReserveConstObj(&(*pVm),&nObjIdx);` |
-|     13457 | 15088 | `			if( pRawObj == 0 ){` |
+|     13459 | 15087 | `			pRawObj = PH7_ReserveConstObj(&(*pVm),&nObjIdx);` |
+|     13459 | 15088 | `			if( pRawObj == 0 ){` |
 |       ! 0 | 15089 | `				rc = SXERR_MEM;` |
 |       ! 0 | 15090 | `				break;` |
 |         - | 15091 | `			}` |
 |         - | 15092 | `			/* Mark as constant and emit the load constant instruction */` |
-|     13457 | 15093 | `			PH7_MemObjInitFromString(pVm,pRawObj,&pCodeGen->pRawIn->sData);` |
-|     13457 | 15094 | `			PH7_VmEmitInstr(&(*pVm),PH7_OP_LOADC,0,nObjIdx,0,0);` |
-|     13457 | 15095 | `			++nRawObj;` |
-|     13457 | 15096 | `			pCodeGen->pRawIn++; /* Next chunk */` |
+|     13459 | 15093 | `			PH7_MemObjInitFromString(pVm,pRawObj,&pCodeGen->pRawIn->sData);` |
+|     13459 | 15094 | `			PH7_VmEmitInstr(&(*pVm),PH7_OP_LOADC,0,nObjIdx,0,0);` |
+|     13459 | 15095 | `			++nRawObj;` |
+|     13459 | 15096 | `			pCodeGen->pRawIn++; /* Next chunk */` |
 |         5 | 15097 | `		}` |
-|     13457 | 15098 | `		if( nRawObj > 0 ){` |
+|     13459 | 15098 | `		if( nRawObj > 0 ){` |
 |         - | 15099 | `			/* Emit the consume instruction */` |
-|     13457 | 15100 | `			PH7_VmEmitInstr(&(*pVm),PH7_OP_CONSUME,nRawObj,0,0,0);` |
-|      6726 | 15101 | `		}` |
-|     35466 | 15102 | `	}` |
-|     35461 | 15103 | `cleanup:` |
+|     13459 | 15100 | `			PH7_VmEmitInstr(&(*pVm),PH7_OP_CONSUME,nRawObj,0,0,0);` |
+|      6727 | 15101 | `		}` |
+|     35467 | 15102 | `	}` |
+|     35462 | 15103 | `cleanup:` |
 |         - | 15104 | `	/* Drop the cursor into the token set BEFORE the set is freed (see above). */` |
-|     70927 | 15105 | `	pCodeGen->pIn = pSavedIn;` |
-|     70927 | 15106 | `	pCodeGen->pEnd = pSavedEnd;` |
-|     70927 | 15107 | `	SySetRelease(&aRawToken);` |
-|     70927 | 15108 | `	SySetRelease(&aPhpToken);` |
+|     70929 | 15105 | `	pCodeGen->pIn = pSavedIn;` |
+|     70929 | 15106 | `	pCodeGen->pEnd = pSavedEnd;` |
+|     70929 | 15107 | `	SySetRelease(&aRawToken);` |
+|     70929 | 15108 | `	SySetRelease(&aPhpToken);` |
 |         - | 15109 | `	/* Restore outer file's strict_types scope */` |
-|     70927 | 15110 | `	pCodeGen->bStrictTypes = bSavedStrict;` |
-|     70927 | 15111 | `	pCodeGen->bStrictTypesLocked = bSavedStrictLocked;` |
-|     70927 | 15112 | `	return rc;` |
-|     35466 | 15113 | `}` |
+|     70929 | 15110 | `	pCodeGen->bStrictTypes = bSavedStrict;` |
+|     70929 | 15111 | `	pCodeGen->bStrictTypesLocked = bSavedStrictLocked;` |
+|     70929 | 15112 | `	return rc;` |
+|     35467 | 15113 | `}` |
 |         - | 15114 | `/*` |
 |         - | 15115 | ` * Utility routines.Initialize the code generator.` |
 |         - | 15116 | ` */` |
@@ -15164,31 +15164,31 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 15154 | `/*` |
 |         - | 15155 | ` * Utility routines. Reset the code generator to it's initial state.` |
 |         - | 15156 | ` */` |
-|     74286 | 15157 | `PH7_PRIVATE sxi32 PH7_ResetCodeGenerator(` |
+|     74288 | 15157 | `PH7_PRIVATE sxi32 PH7_ResetCodeGenerator(` |
 |         - | 15158 | `	ph7_vm *pVm,       /* Target VM */` |
 |         - | 15159 | `	ProcConsumer xErr, /* Error log consumer callabck  */` |
 |         - | 15160 | `	void *pErrData     /* Last argument to xErr() */` |
 |         - | 15161 | `	)` |
 |         5 | 15162 | `{` |
-|     74291 | 15163 | `	ph7_gen_state *pGen = &pVm->sCodeGen;` |
+|     74293 | 15163 | `	ph7_gen_state *pGen = &pVm->sCodeGen;` |
 |         - | 15164 | `	GenBlock *pBlock,*pParent;` |
 |         - | 15165 | `	/* Reset state */` |
-|     74291 | 15166 | `	SySetReset(&pGen->aLabel);` |
-|     74291 | 15167 | `	SySetReset(&pGen->aGoto);` |
-|     74291 | 15168 | `	SySetReset(&pGen->aNullsafeJmp);` |
-|     74291 | 15169 | `	SySetReset(&pGen->aTrivia);` |
-|     74291 | 15170 | `	SySetReset(&pGen->aPendingAttrs);` |
-|     74291 | 15171 | `	SyStringInitFromBuf(&pGen->sPendingDoc,0,0);` |
-|     74291 | 15172 | `	SyBlobRelease(&pGen->sErrBuf);` |
-|     74291 | 15173 | `	SyBlobRelease(&pGen->sWorker);` |
-|     74291 | 15174 | `	SyBlobRelease(&pGen->sNamespace);` |
-|     74291 | 15175 | `	SyBlobInit(&pGen->sNamespace,&pVm->sAllocator);` |
-|     74291 | 15176 | `	SyHashRelease(&pGen->hUseImports);` |
-|     74291 | 15177 | `	SyHashInit(&pGen->hUseImports,&pVm->sAllocator,0,0);` |
-|     74291 | 15178 | `	SyHashRelease(&pGen->hUseFuncImports);` |
-|     74291 | 15179 | `	SyHashInit(&pGen->hUseFuncImports,&pVm->sAllocator,0,0);` |
-|     74291 | 15180 | `	SyHashRelease(&pGen->hUseConstImports);` |
-|     74291 | 15181 | `	SyHashInit(&pGen->hUseConstImports,&pVm->sAllocator,0,0);` |
+|     74293 | 15166 | `	SySetReset(&pGen->aLabel);` |
+|     74293 | 15167 | `	SySetReset(&pGen->aGoto);` |
+|     74293 | 15168 | `	SySetReset(&pGen->aNullsafeJmp);` |
+|     74293 | 15169 | `	SySetReset(&pGen->aTrivia);` |
+|     74293 | 15170 | `	SySetReset(&pGen->aPendingAttrs);` |
+|     74293 | 15171 | `	SyStringInitFromBuf(&pGen->sPendingDoc,0,0);` |
+|     74293 | 15172 | `	SyBlobRelease(&pGen->sErrBuf);` |
+|     74293 | 15173 | `	SyBlobRelease(&pGen->sWorker);` |
+|     74293 | 15174 | `	SyBlobRelease(&pGen->sNamespace);` |
+|     74293 | 15175 | `	SyBlobInit(&pGen->sNamespace,&pVm->sAllocator);` |
+|     74293 | 15176 | `	SyHashRelease(&pGen->hUseImports);` |
+|     74293 | 15177 | `	SyHashInit(&pGen->hUseImports,&pVm->sAllocator,0,0);` |
+|     74293 | 15178 | `	SyHashRelease(&pGen->hUseFuncImports);` |
+|     74293 | 15179 | `	SyHashInit(&pGen->hUseFuncImports,&pVm->sAllocator,0,0);` |
+|     74293 | 15180 | `	SyHashRelease(&pGen->hUseConstImports);` |
+|     74293 | 15181 | `	SyHashInit(&pGen->hUseConstImports,&pVm->sAllocator,0,0);` |
 |         - | 15182 | `	/* Note: pGen->hVar and pGen->hLiteral are intentionally NOT reset here.` |
 |         - | 15183 | `	 * They intern variable names and literal strings that are referenced by` |
 |         - | 15184 | `	 * compiled bytecode (pInstr->p3) and runtime frame hash tables (pFrame->hVar).` |
@@ -15196,19 +15196,19 @@ Coverage: 7368/9094 lines (81.02%)
 |         - | 15186 | `	 * memory still in use.  The entries use pool memory but are bounded by the` |
 |         - | 15187 | `	 * number of unique names, which is acceptable. */` |
 |         - | 15188 | `	/* Point to the global scope */` |
-|     74291 | 15189 | `	pBlock = pGen->pCurrent;` |
-|     74291 | 15190 | `	while( pBlock->pParent != 0 ){` |
+|     74293 | 15189 | `	pBlock = pGen->pCurrent;` |
+|     74293 | 15190 | `	while( pBlock->pParent != 0 ){` |
 |       ! 0 | 15191 | `		pParent = pBlock->pParent;` |
 |       ! 0 | 15192 | `		GenStateFreeBlock(pBlock);` |
 |       ! 0 | 15193 | `		pBlock = pParent;` |
 |       ! 0 | 15194 | `	}` |
-|     74291 | 15195 | `	pGen->xErr = xErr;` |
-|     74291 | 15196 | `	pGen->pErrData = pErrData;` |
-|     74291 | 15197 | `	pGen->pCurrent = &pGen->sGlobal;` |
-|     74291 | 15198 | `	pGen->pRawIn = pGen->pRawEnd = 0;` |
-|     74291 | 15199 | `	pGen->pIn = pGen->pEnd = 0;` |
-|     74291 | 15200 | `	pGen->nErr = 0;` |
-|     74291 | 15201 | `	return SXRET_OK;` |
+|     74293 | 15195 | `	pGen->xErr = xErr;` |
+|     74293 | 15196 | `	pGen->pErrData = pErrData;` |
+|     74293 | 15197 | `	pGen->pCurrent = &pGen->sGlobal;` |
+|     74293 | 15198 | `	pGen->pRawIn = pGen->pRawEnd = 0;` |
+|     74293 | 15199 | `	pGen->pIn = pGen->pEnd = 0;` |
+|     74293 | 15200 | `	pGen->nErr = 0;` |
+|     74293 | 15201 | `	return SXRET_OK;` |
 |         5 | 15202 | `}` |
 |         - | 15203 | `/*` |
 |         - | 15204 | ` * Save the code generator's compile-position state and hand the live generator a` |
