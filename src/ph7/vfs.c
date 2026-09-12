@@ -2534,6 +2534,11 @@ struct io_private
 	sxu32 iMagic;   /* Sanity check to avoid misuse */
 };
 #define IO_PRIVATE_MAGIC 0xFEAC14
+/* A user-facing handle (fopen/opendir/popen) that has been fclose()'d/closedir()'d/
+ * pclose()'d keeps its io_private alive but stamped with this magic, so every
+ * ph7_value that still references it observes a closed resource
+ * (gettype()=='resource (closed)', is_resource()==false), matching php. */
+#define IO_PRIVATE_CLOSED_MAGIC 0xC105ED
 /* Stream-device predicates (devices defined later in this file) */
 static int is_php_stream(const ph7_io_stream *pStream);
 static int is_data_stream(const ph7_io_stream *pStream);
@@ -2555,6 +2560,19 @@ PH7_PRIVATE const char * PH7_VfsResourceType(void *pResource)
 		return "stream";
 	}
 	return "Unknown";
+}
+/*
+ * Return TRUE if the given resource handle is an io_private that has been closed
+ * (fclose/closedir/pclose) yet kept alive so shared copies still observe it. php
+ * reports such a value as gettype()=='resource (closed)' and is_resource()==false.
+ * The magic probe mirrors IO_PRIVATE_INVALID and is safe on any resource handle:
+ * every resource this engine hands out is a struct larger than an io_private, so
+ * the iMagic slot is always in bounds and never equals the closed magic by chance.
+ */
+PH7_PRIVATE int PH7_VfsResourceIsClosed(void *pResource)
+{
+	io_private *pDev = (io_private *)pResource;
+	return pDev != 0 && pDev->iMagic == IO_PRIVATE_CLOSED_MAGIC;
 }
 /*
  * bool ftruncate(resource $handle,int64 $size)
@@ -3601,6 +3619,7 @@ static int PH7_builtin_rewinddir(ph7_context *pCtx,int nArg,ph7_value **apArg)
 /* Forward declaration */
 static void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_private *pOut);
 static void ReleaseIOPrivate(ph7_context *pCtx,io_private *pDev);
+static void MarkIOPrivateClosed(io_private *pDev);
 /*
  * void closedir(resource $dir_handle)
  *   Close directory handle.
@@ -3641,9 +3660,8 @@ static int PH7_builtin_closedir(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Perform the requested operation */
 	pStream->xCloseDir(pDev->pHandle);
-	/* Release the private stucture */
-	ReleaseIOPrivate(pCtx,pDev);
-	PH7_MemObjRelease(apArg[0]);
+	/* Keep the handle alive but flag it closed (php: gettype()=='resource (closed)') */
+	MarkIOPrivateClosed(pDev);
 	return PH7_OK;
  }
 /*
@@ -4960,6 +4978,21 @@ static void ReleaseIOPrivate(ph7_context *pCtx,io_private *pDev)
 	ph7_context_free_chunk(pCtx,pDev);
 }
 /*
+ * Mark a user-facing IO handle as closed while keeping the io_private alive.
+ * The caller has already closed the underlying OS handle; we drop the work
+ * buffer and stamp the closed magic so every ph7_value that still references
+ * this handle sees a "resource (closed)" (php semantics). The struct is
+ * reclaimed in bulk when the VM allocator is torn down. Freeing it here — as
+ * fclose/closedir/pclose used to — would dangle the caller's copy (a latent,
+ * pool-masked UAF) and keep reporting the handle open.
+ */
+static void MarkIOPrivateClosed(io_private *pDev)
+{
+	SyBlobRelease(&pDev->sBuffer);
+	pDev->pHandle = 0;
+	pDev->iMagic = IO_PRIVATE_CLOSED_MAGIC;
+}
+/*
  * Reset the IO private structure.
  */
 static void ResetIOPrivate(io_private *pDev)
@@ -5811,6 +5844,11 @@ static int PH7_builtin_fclose(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Extract our private data */
 	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
+	/* php: fclose() on an already-closed stream raises a catchable TypeError */
+	if( pDev != 0 && pDev->iMagic == IO_PRIVATE_CLOSED_MAGIC ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"fclose(): Argument #1 ($stream) must be an open stream resource");
+	}
 	/* Make sure we are dealing with a valid io_private instance */
 	if( IO_PRIVATE_INVALID(pDev) ){
 		/*Expecting an IO handle */
@@ -5834,10 +5872,8 @@ static int PH7_builtin_fclose(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	if( pDev != pVm->pStdin && pDev != pVm->pStdout && pDev != pVm->pStderr ){
 		/* Perform the requested operation */
 		PH7_StreamCloseHandle(pStream,pDev->pHandle);
-		/* Release the IO private structure */
-		ReleaseIOPrivate(pCtx,pDev);
-		/* Invalidate the resource handle */
-		ph7_value_release(apArg[0]);
+		/* Keep the handle alive but flag it closed so shared copies see it */
+		MarkIOPrivateClosed(pDev);
 	}
 	/* Return TRUE */
 	ph7_result_bool(pCtx,1);
@@ -6073,6 +6109,12 @@ PH7_PRIVATE const char * PH7_VfsResourceType(void *pResource)
 {
 	SXUNUSED(pResource);
 	return "Unknown";
+}
+/* No disk I/O means no closeable handles: nothing is ever a closed resource. */
+PH7_PRIVATE int PH7_VfsResourceIsClosed(void *pResource)
+{
+	SXUNUSED(pResource);
+	return 0;
 }
 #endif /* PH7_DISABLE_BUILTIN_FUNC || PH7_DISABLE_DISK_IO */
 /* NULL VFS [i.e: a no-op VFS]*/
@@ -7122,10 +7164,8 @@ static int PH7_builtin_pclose(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	pPipe = (pipe_private *)pDev->pHandle;
 	/* Close the pipe and get exit status */
 	status = PipeClose(pPipe);
-	/* Release the IO private structure */
-	ReleaseIOPrivate(pCtx, pDev);
-	/* Invalidate the resource handle */
-	ph7_value_release(apArg[0]);
+	/* Keep the handle alive but flag it closed so shared copies see it */
+	MarkIOPrivateClosed(pDev);
 	/* Return the exit status */
 	ph7_result_int(pCtx, status);
 	return PH7_OK;
