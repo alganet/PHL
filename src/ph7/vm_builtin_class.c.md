@@ -758,7 +758,7 @@ Coverage: 630/718 lines (87.74%)
 | 23345 |  748 | `				ph7_class_attr *pAncAttr = pAncAttrE ? (ph7_class_attr *)pAncAttrE->pUserData : 0;` |
 | 23345 |  749 | `				int bHere = 0;` |
 | 23345 |  750 | `				if( pAncMeth && (ph7_class *)pAncMeth->sFunc.pUserData == pAnc ){` |
-|  3506 |  751 | `					bHere = 1;` |
+|  3505 |  751 | `					bHere = 1;` |
 |  1751 |  752 | `				}` |
 | 23345 |  753 | `				if( pAncAttr && (pAncAttr->pDeclClass == pAnc \|\| pAncAttr->pDeclClass == 0) ){` |
 | 10389 |  754 | `					bHere = 1;` |
