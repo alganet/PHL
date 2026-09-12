@@ -25277,6 +25277,14 @@ static int vm_builtin_error_reporting(ph7_context *pCtx,int nArg,ph7_value **apA
 	int nOld;
 	/* Extract the old reporting level */
 	nOld = pVm->bErrReport ? (int)pVm->iErrMask : 0;
+	if( pVm->nErrSuppress > 0 ){
+		/* Inside the '@' silence operator php reports the level masked down to
+		 * the errors '@' cannot suppress: E_ERROR|E_PARSE|E_CORE_ERROR|
+		 * E_COMPILE_ERROR|E_USER_ERROR|E_RECOVERABLE_ERROR (== 4437). A custom
+		 * error handler (e.g. PHPUnit's) consults error_reporting() to honor
+		 * '@', so a suppressed warning must fall outside the returned mask. */
+		nOld &= 4437;
+	}
 	if( nArg > 0 ){
 		int nNew;
 		/* Keep the LEVEL, not just an on/off bit: php masks per-severity. */
