@@ -845,6 +845,9 @@ struct ph7_vm_func
 	sxu32 nLine;         /* Line of the 'function'/'fn' keyword (Reflection getStartLine) */
 	sxu32 nEndLine;      /* Line of the closing brace of the body (Reflection getEndLine) */
 	void *pUserData;     /* Upper layer private data associated with this instance */
+	void *pLsbClass;     /* For a closure: the late-static-binding class captured at its
+	                      * creation site (ph7_class*), so `static::` inside the body
+	                      * resolves like php. NULL for a plain function/method. */
 	ph7_vm_func *pNextName; /* Next VM function with the same name as this one */
 };
 /* Forward reference */

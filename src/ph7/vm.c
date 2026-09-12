@@ -12096,6 +12096,11 @@ case PH7_OP_LOAD_CLOSURE:{
 			 * the peek reads — resolves self::/parent:: against it like php. */
 			pClosure->pUserData = (void *)PH7_VmPeekDeclaringClass(pVm);
 		}
+		/* Capture the creation-site late-static-binding class so `static::` inside
+		 * the closure body resolves like php (the "called class", which may differ
+		 * from the declaring scope stamped above — e.g. a closure made in an
+		 * inherited method). A closure made outside any class captures NULL. */
+		pClosure->pLsbClass = (void *)PH7_VmPeekTopClass(pVm);
 		/* Reflection descriptor fields (getDocComment/getAttributes/getStartLine/
 		 * getEndLine/getFileName read the INSTANTIATED copy via $__fn) */
 		pClosure->aAttrs = pFunc->aAttrs;
@@ -18160,6 +18165,19 @@ case PH7_OP_CALL: {
 			ph7_class *pDecl = (ph7_class *)pVmFunc->pUserData;
 			if( pDecl && (pDecl->iFlags & PH7_CLASS_TRAIT) == 0 ){
 				pSelfHint = pDecl;
+			}
+		}
+		if( pSelf == 0 && (pVmFunc->iFlags & VM_FUNC_CLOSURE) ){
+			/* Push the closure's called-class as this frame's LSB class so
+			 * `static::` inside the body resolves like php. An explicit
+			 * Closure::bind/bindTo scope rebinds the called-class; otherwise use
+			 * the class captured at the closure's creation site. self::/parent::
+			 * still use the declaring-class scope (PH7_VmPeekDeclaringClass); done
+			 * after pSelfHint so a `self`-typed param is unaffected. */
+			if( pClosureScope ){
+				pSelf = pClosureScope;
+			}else if( pVmFunc->pLsbClass ){
+				pSelf = (ph7_class *)pVmFunc->pLsbClass;
 			}
 		}
 		if( SySetUsed(&pVmFunc->aAttrs) > 0 ){
