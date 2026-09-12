@@ -31,6 +31,9 @@
 #include <string.h>
 #include <time.h>
 #include <errno.h>
+#ifdef __UNIXES__
+#include <unistd.h>
+#endif
 /* Make sure this header file is available.*/
 #include "ph7.h"
 #ifdef PHL_ENABLE_SERVER
@@ -312,6 +315,46 @@ static void PHL_LoadIniFile(ph7_vm *pVm,const char *zPath)
 	fclose(pFile);
 }
 /*
+ * Return TRUE when standard input is a pipe/redirect rather than an interactive
+ * terminal. php reads the script from stdin in exactly that case; a terminal
+ * would block waiting for input, so there we keep the usage error instead.
+ */
+static int PHL_StdinIsPipe(void)
+{
+#ifdef __UNIXES__
+	return !isatty(0);
+#else
+	return 0;
+#endif
+}
+/*
+ * Slurp all of standard input into a heap buffer (NUL-terminated). Returns the
+ * buffer (caller owns it, though the process exits shortly after) and writes the
+ * byte length to *pnLen, or NULL on allocation failure.
+ */
+static char * PHL_SlurpStdin(int *pnLen)
+{
+	size_t nCap = 8192, nUsed = 0;
+	char *zBuf = (char *)malloc(nCap);
+	if( zBuf == 0 ){ return 0; }
+	for(;;){
+		size_t nRd;
+		if( nUsed + 4096 + 1 > nCap ){
+			char *zNew;
+			nCap *= 2;
+			zNew = (char *)realloc(zBuf, nCap);
+			if( zNew == 0 ){ free(zBuf); return 0; }
+			zBuf = zNew;
+		}
+		nRd = fread(zBuf + nUsed, 1, 4096, stdin);
+		nUsed += nRd;
+		if( nRd < 4096 ){ break; }
+	}
+	zBuf[nUsed] = 0;
+	*pnLen = (int)nUsed;
+	return zBuf;
+}
+/*
  * Main program: Compile and execute the PHP file.
  */
 int main(int argc,char **argv)
@@ -322,6 +365,10 @@ int main(int argc,char **argv)
 	int run_code = 0;    /* Run inline code if TRUE */
 	int lint_mode = 0;   /* Syntax-check only (-l) if TRUE */
 	const char *zRunCode = 0; /* Inline code string */
+	int stdin_code = 0;       /* Execute a script read from stdin if TRUE */
+	char *zStdinCode = 0;     /* Script slurped from stdin */
+	int nStdinCode = 0;       /* Length of the stdin script */
+	int dash_dash = 0;        /* Saw `--`: read from stdin, rest are script args */
 #ifdef PHL_ENABLE_SERVER
 	int server_mode = 0;        /* Start built-in server if TRUE */
 	const char *zServerAddr = 0; /* host:port string */
@@ -341,6 +388,14 @@ int main(int argc,char **argv)
 		}
 		/* Check for long options */
 		if( argv[n][1] == '-' ){
+			if( argv[n][2] == 0 ){
+				/* php CLI parity: a bare `--` ends interpreter options; the
+				 * script is read from stdin and everything after `--` becomes
+				 * the script's own arguments ($argv[1..]). */
+				dash_dash = 1;
+				n++;
+				break;
+			}
 			if( strcmp(argv[n], "--version") == 0 ){
 				Version();
 			}else if( strcmp(argv[n], "--help") == 0 ){
@@ -406,6 +461,11 @@ int main(int argc,char **argv)
 		}else if( c == 'i' ){
 			/* Display interpreter information and exit */
 			Info();
+		}else if( c == 'f' ){
+			/* php CLI parity: `-f <file>` explicitly names the script to run.
+			 * The path follows as the next argument, which the positional
+			 * file handling below already consumes, so treat -f as a no-op. */
+			continue;
 		}else if( c == 'r' ){
 			/* Run inline PHP code from next argument (php -r style) */
 			if( n + 1 >= argc ){
@@ -489,9 +549,20 @@ int main(int argc,char **argv)
 		return phl_serve(zHost, iPort, zDocRoot, zRouter, PHL_ResolveBinaryPath(argv[0]));
 	}
 #endif
-	if( n >= argc && !run_code ){
-		puts("Missing PHP file to compile");
-		Help();
+	if( (n >= argc || dash_dash) && !run_code ){
+		/* No file and no -r: php reads the script from stdin. `--` forces this
+		 * (rest are script args); otherwise only when stdin is a pipe/redirect
+		 * (an interactive terminal would just block). */
+		if( dash_dash || PHL_StdinIsPipe() ){
+			zStdinCode = PHL_SlurpStdin(&nStdinCode);
+			if( zStdinCode == 0 ){
+				FatalCode("IO error while reading standard input",1);
+			}
+			stdin_code = 1;
+		}else{
+			puts("Missing PHP file to compile");
+			Help();
+		}
 	}
 
 #if defined(__WINNT__) && defined(PH7_DEBUG)
@@ -577,6 +648,22 @@ int main(int argc,char **argv)
 				FatalSilent();
 			}
 		}
+	}else if( stdin_code ){
+		/* Script read from stdin: compile it like a file (PHP tags expected). */
+		rc = ph7_compile_v2(
+			pEngine,     /* PH7 Engine */
+			zStdinCode,  /* Source code slurped from stdin */
+			nStdinCode,  /* Its byte length */
+			&pVm,        /* OUT: Compiled PHP program */
+			0            /* IN: tag mode, like a file */
+			);
+		if( rc != PH7_OK ){ /* Compile error */
+			if( rc == PH7_VM_ERR ){
+				Fatal("VM initialization error");
+			}else{
+				FatalSilent();
+			}
+		}
 	}else{
 		rc = ph7_compile_file(
 			pEngine, /* PH7 Engine */
@@ -635,7 +722,7 @@ int main(int argc,char **argv)
 	 * script's own arguments.
 	 */
 	{
-		const char *zScriptName = run_code ? "Standard input code" : argv[n];
+		const char *zScriptName = (run_code || stdin_code) ? "Standard input code" : argv[n];
 		int argv_count = 0;
 		ph7_value *pArgc;
 		/* Count only the entries actually inserted: PH7_VM_CONFIG_ARGV_ENTRY skips
@@ -646,7 +733,7 @@ int main(int argc,char **argv)
 		}
 		/* The script's own arguments follow: in file mode argv[n] is the script
 		 * (registered above), so they start at n+1; in -r mode they start at n. */
-		for( n = run_code ? n : n + 1; n < argc ; ++n ){
+		for( n = (run_code || stdin_code) ? n : n + 1; n < argc ; ++n ){
 			if( ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,argv[n]) == PH7_OK ){
 				argv_count++;
 			}
