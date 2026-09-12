@@ -3302,6 +3302,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	PH7_VmInstallReflection(&(*pVm));
 	PH7_VmInstallDateTime(&(*pVm));
 	PH7_VmInstallSpl(&(*pVm));
+	PH7_VmInstallTokenizer(&(*pVm));
 	PH7_VmInstallSession(&(*pVm));
 	PH7_VmInstallIni(&(*pVm));
 	pVm->bCompilingBuiltin = 0;
@@ -4850,6 +4851,8 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	}
 	/* Register built-in constants [i.e: PHP_EOL, PHP_OS...] */
 	PH7_RegisterBuiltInConstant(&(*pVm));
+	/* Register the tokenizer T_* / TOKEN_PARSE constants */
+	PH7_RegisterTokenizerConstants(&(*pVm));
 	/* Register built-in functions [i.e: is_null(), array_diff(), strlen(), etc.] */
 	PH7_RegisterBuiltInFunction(&(*pVm));
 	/* Register HTTP response functions [i.e: header(), http_response_code(), etc.] */
