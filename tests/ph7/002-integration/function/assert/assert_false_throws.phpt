@@ -3,8 +3,8 @@ SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 assert(false) throws AssertionError
---SKIPIF--
-<?php if (function_exists('zend_version')) { echo 'skip'; } ?>
+--INI--
+zend.assertions=1
 --FILE--
 <?php
 assert(false);
