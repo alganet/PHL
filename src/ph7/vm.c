@@ -2135,7 +2135,8 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
 	"          else { $a[] = (string)$v; }"\
 	"        }"\
 	"      }"\
-	"      $s .= '#' . $i . ' ' . $f['file'] . '(' . $f['line'] . '): ' . $f['function']"\
+	"      $s .= '#' . $i . ' ' . $f['file'] . '(' . $f['line'] . '): '"\
+	"         . (isset($f['class']) ? $f['class'] . $f['type'] : '') . $f['function']"\
 	"         . '(' . implode(', ', $a) . \")\\n\";"\
 	"      $i++;"\
 	"    }"\
@@ -2196,7 +2197,8 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
 	"          else { $a[] = (string)$v; }"\
 	"        }"\
 	"      }"\
-	"      $s .= '#' . $i . ' ' . $f['file'] . '(' . $f['line'] . '): ' . $f['function']"\
+	"      $s .= '#' . $i . ' ' . $f['file'] . '(' . $f['line'] . '): '"\
+	"         . (isset($f['class']) ? $f['class'] . $f['type'] : '') . $f['function']"\
 	"         . '(' . implode(', ', $a) . \")\\n\";"\
 	"      $i++;"\
 	"    }"\
@@ -8797,6 +8799,109 @@ static sxi32 VmThrowFromVm(
  * Returns SXRET_OK to proceed, or the status of the thrown TypeError.
  */
 /*
+ * Build php's backtrace (innermost active call first) into pList: one map per
+ * ACTIVE call frame, describing the callee (function/class) and the CALL SITE
+ * position -- so a frame can see who called it. Shared by debug_backtrace() and
+ * the Throwable trace stamp so BOTH walk the full frame chain identically (the
+ * stamp used to emit only the innermost frame, truncating every exception trace
+ * to depth 1).
+ *   iOptions bit1 = DEBUG_BACKTRACE_PROVIDE_OBJECT (attach the frame's $this as
+ *   'object'); bit2 = DEBUG_BACKTRACE_IGNORE_ARGS (omit the 'args' list).
+ * php's exception trace passes IGNORE_ARGS and no PROVIDE_OBJECT -- its default
+ * frame shape is file/line/function[/class/type], matching the default
+ * zend.exception_ignore_args=On.
+ */
+static void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,ph7_value *pList)
+{
+	SyString *pFile;
+	VmFrame *pFrame;
+	ph7_value *pValue;
+	pValue = ph7_new_scalar(&(*pVm));
+	if( pValue == 0 ){
+		return;
+	}
+	pFile = (SyString *)SySetPeek(&pVm->aFiles);
+	pFrame = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;
+	while( pFrame ){
+		ph7_vm_func *pFunc = (ph7_vm_func *)pFrame->pUserData;
+		ph7_value *pEntry;
+		if( pFrame->pParent == 0 || pFunc == 0 ){
+			/* The global frame is not a call: php stops before it (no "{main}"). */
+			break;
+		}
+		pEntry = ph7_new_array(&(*pVm));
+		if( pEntry == 0 ){
+			break;
+		}
+		/* php's key order: file, line, function[, class, type][, object][, args].
+		 * The frame's file/line is the CALL SITE -- i.e. the caller's body, which
+		 * lives in the CALLER function's defining file. Use that (not the include-
+		 * stack top, which is wrong once a call chain spans files); fall back to the
+		 * include-stack top for a call made at global scope. */
+		{
+			SyString *pFrameFile = pFile;
+			if( pFrame->pParent->pUserData ){
+				ph7_vm_func *pCaller = (ph7_vm_func *)pFrame->pParent->pUserData;
+				if( pCaller->sFile.nByte > 0 ){
+					pFrameFile = &pCaller->sFile;
+				}
+			}
+			if( pFrameFile ){
+				ph7_value_string(pValue,pFrameFile->zString,(int)pFrameFile->nByte);
+				ph7_array_add_strkey_elem(pEntry,"file",pValue);
+				ph7_value_reset_string_cursor(pValue);
+			}
+		}
+		ph7_value_int(pValue,(int)(pFrame->nCallLine ? pFrame->nCallLine : 1));
+		ph7_array_add_strkey_elem(pEntry,"line",pValue);
+		{
+			const char *zDisp = 0;
+			int nDisp = VmFuncDisplayName(&(*pVm),pFunc,&zDisp);
+			ph7_value_string(pValue,zDisp,nDisp);
+		}
+		ph7_array_add_strkey_elem(pEntry,"function",pValue);
+		ph7_value_reset_string_cursor(pValue);
+		if( pFrame->pThis && pFrame->pThis->pClass ){
+			ph7_value_string(pValue,pFrame->pThis->pClass->sName.zString,
+				(int)pFrame->pThis->pClass->sName.nByte);
+			ph7_array_add_strkey_elem(pEntry,"class",pValue);
+			ph7_value_reset_string_cursor(pValue);
+			ph7_value_string(pValue,"->",sizeof("->")-1);
+			ph7_array_add_strkey_elem(pEntry,"type",pValue);
+			ph7_value_reset_string_cursor(pValue);
+			if( iOptions & 1 /*DEBUG_BACKTRACE_PROVIDE_OBJECT*/ ){
+				ph7_value *pObjVal = ph7_new_scalar(&(*pVm));
+				if( pObjVal ){
+					pFrame->pThis->iRef++;
+					pObjVal->x.pOther = pFrame->pThis;
+					MemObjSetType(pObjVal,MEMOBJ_OBJ);
+					ph7_array_add_strkey_elem(pEntry,"object",pObjVal);
+					ph7_release_value(&(*pVm),pObjVal);
+				}
+			}
+		}
+		if( (iOptions & 2 /*DEBUG_BACKTRACE_IGNORE_ARGS*/) == 0 ){
+			ph7_value *pArg = ph7_new_array(&(*pVm));
+			if( pArg ){
+				VmSlot *aSlot = (VmSlot *)SySetBasePtr(&pFrame->sArg);
+				sxu32 n;
+				for( n = 0 ; n < SySetUsed(&pFrame->sArg) ; ++n ){
+					ph7_value *pObj = (ph7_value *)SySetAt(&pVm->aMemObj,aSlot[n].nIdx);
+					if( pObj ){
+						ph7_array_add_elem(pArg,0/* Automatic index assign*/,pObj);
+					}
+				}
+				ph7_array_add_strkey_elem(pEntry,"args",pArg);
+				ph7_release_value(&(*pVm),pArg);
+			}
+		}
+		ph7_array_add_elem(pList,0/* Automatic index assign*/,pEntry);
+		ph7_release_value(&(*pVm),pEntry);
+		pFrame = pFrame->pParent ? VmSkipExceptionFrames(pFrame->pParent) : 0;
+	}
+	ph7_release_value(&(*pVm),pValue);
+}
+/*
  * Stamp a freshly created Throwable with the site it was created at.
  *
  * php records `file`/`line` on the OBJECT at creation time -- not inside
@@ -8812,6 +8917,7 @@ PH7_PRIVATE void PH7_VmStampThrowableSite(ph7_vm *pVm,ph7_class_instance *pThis)
 	static const char *azField[] = { "file", "line", "trace" };
 	ph7_class *pThrowable;
 	SyString *pFile;
+	SyString *pSiteFile;
 	sxu32 n;
 	if( pThis == 0 || pThis->pClass == 0 ){
 		return;
@@ -8821,6 +8927,20 @@ PH7_PRIVATE void PH7_VmStampThrowableSite(ph7_vm *pVm,ph7_class_instance *pThis)
 		return;
 	}
 	pFile = (SyString *)SySetPeek(&pVm->aFiles);
+	pSiteFile = pFile;
+	/* getFile() is the file where `new` executed = the DEFINING file of the
+	 * innermost active function (aFiles tracks include nesting, not the running
+	 * function's source, so it is wrong once a call chain spans files). Fall back
+	 * to the include-stack top at global scope / for engine-created throwables. */
+	{
+		VmFrame *pInner = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;
+		if( pInner && pInner->pUserData ){
+			ph7_vm_func *pInnerFunc = (ph7_vm_func *)pInner->pUserData;
+			if( pInnerFunc->sFile.nByte > 0 ){
+				pSiteFile = &pInnerFunc->sFile;
+			}
+		}
+	}
 	for( n = 0 ; n < SX_ARRAYSIZE(azField) ; ++n ){
 		SyHashEntry *pEntry;
 		VmClassAttr *pVmAttr;
@@ -8835,65 +8955,32 @@ PH7_PRIVATE void PH7_VmStampThrowableSite(ph7_vm *pVm,ph7_class_instance *pThis)
 			continue;
 		}
 		if( n == 0 ){
-			if( pFile ){
+			if( pSiteFile ){
 				PH7_MemObjRelease(pAttrValue);
-				PH7_MemObjInitFromString(&(*pVm),pAttrValue,pFile);
+				PH7_MemObjInitFromString(&(*pVm),pAttrValue,pSiteFile);
 			}
 		}else if( n == 1 ){
 			PH7_MemObjRelease(pAttrValue);
 			PH7_MemObjInitFromInt(&(*pVm),pAttrValue,(sxi64)(pVm->nCurLine ? pVm->nCurLine : 1));
 		}else{
-			/* trace: php captures it at the CREATION site, so the innermost entry is the
-			 * function that ran `new` -- reported at ITS call site. Building it here (the
-			 * ctors used to call debug_backtrace(), which described the __construct frame
-			 * instead) also gives php's shape: a LIST of frame maps. */
-			ph7_value *pList;
-			const char *zFunc = 0;
-			int nFunc = 0;
-			VmFrame *pFrame = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;
-			pList = ph7_new_array(&(*pVm));
+			/* trace: php captures the FULL backtrace at the CREATION site (innermost
+			 * = the function that ran `new`, reported at its call site). Reuse the
+			 * shared walk with IGNORE_ARGS + no PROVIDE_OBJECT to match php's default
+			 * exception-trace shape (file/line/function[/class/type]). */
+			ph7_value *pList = ph7_new_array(&(*pVm));
 			if( pList == 0 ){
 				continue;
 			}
-			VmGetFrameContext(&(*pVm),&zFunc,&nFunc);
-			if( zFunc && nFunc > 0 ){
-				ph7_value *pEntry = ph7_new_array(&(*pVm));
-				ph7_value *pSlot = ph7_new_scalar(&(*pVm));
-				if( pEntry && pSlot ){
-					sxu32 nCall = (pFrame && pFrame->nCallLine) ? pFrame->nCallLine
-						: (pVm->nCurLine ? pVm->nCurLine : 1);
-					if( pFile ){
-						ph7_value_string(pSlot,pFile->zString,(int)pFile->nByte);
-						ph7_array_add_strkey_elem(pEntry,"file",pSlot);
-						ph7_value_reset_string_cursor(pSlot);
-					}
-					ph7_value_int(pSlot,(int)nCall);
-					ph7_array_add_strkey_elem(pEntry,"line",pSlot);
-					ph7_value_string(pSlot,zFunc,nFunc);
-					ph7_array_add_strkey_elem(pEntry,"function",pSlot);
-					if( pFrame ){
-						/* php renders the call's ARGUMENTS in the trace line. */
-						ph7_value *pArgs = ph7_new_array(&(*pVm));
-						if( pArgs ){
-							VmSlot *aSlot = (VmSlot *)SySetBasePtr(&pFrame->sArg);
-							sxu32 nA;
-							for( nA = 0 ; nA < SySetUsed(&pFrame->sArg) ; ++nA ){
-								ph7_value *pObj = (ph7_value *)SySetAt(&pVm->aMemObj,aSlot[nA].nIdx);
-								if( pObj ){
-									ph7_array_add_elem(pArgs,0,pObj);
-								}
-							}
-							ph7_array_add_strkey_elem(pEntry,"args",pArgs);
-							ph7_release_value(&(*pVm),pArgs);
-						}
-					}
-					ph7_array_add_elem(pList,0,pEntry);
-				}
-				if( pEntry ){ ph7_release_value(&(*pVm),pEntry); }
-				if( pSlot ){ ph7_release_value(&(*pVm),pSlot); }
+			VmBuildBacktrace(&(*pVm),2 /*DEBUG_BACKTRACE_IGNORE_ARGS*/,pList);
+			/* Building the trace reserves new memobjs, which may realloc
+			 * pVm->aMemObj and INVALIDATE pAttrValue (a pointer INTO that set,
+			 * from PH7_ClassInstanceExtractAttrValue above). Re-fetch the slot
+			 * AFTER the walk before releasing/storing into it. */
+			pAttrValue = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
+			if( pAttrValue ){
+				PH7_MemObjRelease(pAttrValue);
+				PH7_MemObjStore(pList,pAttrValue);
 			}
-			PH7_MemObjRelease(pAttrValue);
-			PH7_MemObjStore(pList,pAttrValue);
 			ph7_release_value(&(*pVm),pList);
 		}
 	}
@@ -25746,94 +25833,22 @@ static int vm_builtin_debug_backtrace(ph7_context *pCtx,int nArg,ph7_value **apA
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_value *pList;
-	ph7_value *pValue;
-	SyString *pFile;
-	VmFrame *pFrame;
 	/* $options (php default DEBUG_BACKTRACE_PROVIDE_OBJECT): bit 1 attaches the
 	 * frame's $this as 'object', bit 2 (IGNORE_ARGS) suppresses the 'args' list. */
 	sxi32 iOptions = (nArg > 0 && apArg[0]) ? ph7_value_to_int(apArg[0]) : 1 /*PROVIDE_OBJECT*/;
 	/* php returns a LIST of frames, innermost first -- one entry per ACTIVE call, each
-	 * describing the callee (function/class) and the position of the CALL SITE. PH7
-	 * returned a single flat map of the innermost frame only, so a caller could never
-	 * see who called it. */
+	 * describing the callee (function/class) and the position of the CALL SITE.
+	 * VmBuildBacktrace walks the full frame chain (shared with the Throwable trace
+	 * stamp); PH7 originally returned only the innermost frame here. */
 	pList = ph7_context_new_array(pCtx);
-	pValue = ph7_context_new_scalar(pCtx);
-	if( pList == 0 || pValue == 0 ){
+	if( pList == 0 ){
 		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");
 		ph7_result_null(pCtx);
 		SXUNUSED(nArg); /* cc warning */
 		SXUNUSED(apArg);
 		return PH7_OK;
 	}
-	pFile = (SyString *)SySetPeek(&pVm->aFiles);
-	pFrame = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;
-	while( pFrame ){
-		ph7_vm_func *pFunc = (ph7_vm_func *)pFrame->pUserData;
-		ph7_value *pEntry;
-		ph7_value *pArg;
-		if( pFrame->pParent == 0 || pFunc == 0 ){
-			/* The global frame is not a call: php stops before it (no "{main}" entry). */
-			break;
-		}
-		pEntry = ph7_context_new_array(pCtx);
-		if( pEntry == 0 ){
-			break;
-		}
-		/* php's key order: file, line, function[, class, type], args */
-		if( pFile ){
-			ph7_value_string(pValue,pFile->zString,(int)pFile->nByte);
-			ph7_array_add_strkey_elem(pEntry,"file",pValue);
-			ph7_value_reset_string_cursor(pValue);
-		}
-		ph7_value_int(pValue,(int)(pFrame->nCallLine ? pFrame->nCallLine : 1));
-		ph7_array_add_strkey_elem(pEntry,"line",pValue);
-		{
-			const char *zDisp = 0;
-			int nDisp = VmFuncDisplayName(&(*pVm),pFunc,&zDisp);
-			ph7_value_string(pValue,zDisp,nDisp);
-		}
-		ph7_array_add_strkey_elem(pEntry,"function",pValue);
-		ph7_value_reset_string_cursor(pValue);
-		if( pFrame->pThis && pFrame->pThis->pClass ){
-			ph7_value_string(pValue,pFrame->pThis->pClass->sName.zString,
-				(int)pFrame->pThis->pClass->sName.nByte);
-			ph7_array_add_strkey_elem(pEntry,"class",pValue);
-			ph7_value_reset_string_cursor(pValue);
-			ph7_value_string(pValue,"->",sizeof("->")-1);
-			ph7_array_add_strkey_elem(pEntry,"type",pValue);
-			ph7_value_reset_string_cursor(pValue);
-			/* DEBUG_BACKTRACE_PROVIDE_OBJECT: attach the executing $this instance as
-			 * 'object' (php uses this for e.g. finding the current object on the
-			 * call stack). ph7_array_add_strkey_elem stores a refcounted copy, so
-			 * balance our transient reference with the matching iRef++. */
-			if( iOptions & 1 /*DEBUG_BACKTRACE_PROVIDE_OBJECT*/ ){
-				ph7_value *pObjVal = ph7_context_new_scalar(pCtx);
-				if( pObjVal ){
-					pFrame->pThis->iRef++;
-					pObjVal->x.pOther = pFrame->pThis;
-					MemObjSetType(pObjVal,MEMOBJ_OBJ);
-					ph7_array_add_strkey_elem(pEntry,"object",pObjVal);
-					ph7_context_release_value(pCtx,pObjVal);
-				}
-			}
-		}
-		if( (iOptions & 2 /*DEBUG_BACKTRACE_IGNORE_ARGS*/) == 0 ){
-			pArg = ph7_context_new_array(pCtx);
-			if( pArg ){
-				VmSlot *aSlot = (VmSlot *)SySetBasePtr(&pFrame->sArg);
-				sxu32 n;
-				for( n = 0 ; n < SySetUsed(&pFrame->sArg) ; ++n ){
-					ph7_value *pObj = (ph7_value *)SySetAt(&pVm->aMemObj,aSlot[n].nIdx);
-					if( pObj ){
-						ph7_array_add_elem(pArg,0/* Automatic index assign*/,pObj);
-					}
-				}
-				ph7_array_add_strkey_elem(pEntry,"args",pArg);
-			}
-		}
-		ph7_array_add_elem(pList,0/* Automatic index assign*/,pEntry);
-		pFrame = pFrame->pParent ? VmSkipExceptionFrames(pFrame->pParent) : 0;
-	}
+	VmBuildBacktrace(&(*pVm),iOptions,pList);
 	/* Return the freshly created list */
 	ph7_result_value(pCtx,pList);
 	/*

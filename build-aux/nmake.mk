@@ -27,7 +27,7 @@ PCRE2_LIBS = "$(VCPKG_INSTALLED)\lib\pcre2-8.lib"
 # macros with constant args; branches an aggressive optimizer proves dead). Newer
 # MSVC toolsets flag them under /WX where older ones did not; disable them the way
 # SQLite itself does, rather than distort the extracted VM code.
-BASE_CFLAGS = /nologo /I src /I src/sx /I src/ph7 /W4 /WX /wd4127 /wd4702 /wd4456
+BASE_CFLAGS = /nologo /I src /I src/sx /I src/ph7 /W4 /WX /wd4127 /wd4702
 
 # Per-mode CFLAGS (used by patterns.mk generated rules)
 full_CFLAGS = $(BASE_CFLAGS) /Ox $(full_DEFINES:-=/) $(full_EXTRA_CFLAGS) /Fd$(BUILD_DIR:/=\)\ph7.pdb
