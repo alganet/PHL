@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 570/710 lines (80.28%)
+Coverage: 586/710 lines (82.54%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -101,7 +101,7 @@ Coverage: 570/710 lines (80.28%)
 |    5 |   91 | `		case ERROR_INVALID_NAME:      errno = ENOENT; break;` |
 |    - |   92 | `		case ERROR_ACCESS_DENIED:` |
 |    - |   93 | `		case ERROR_SHARING_VIOLATION:` |
-|  ! 0 |   94 | `		case ERROR_LOCK_VIOLATION:    errno = EACCES; break;` |
+|    1 |   94 | `		case ERROR_LOCK_VIOLATION:    errno = EACCES; break;` |
 |    - |   95 | `		case ERROR_FILE_EXISTS:` |
 |  ! 0 |   96 | `		case ERROR_ALREADY_EXISTS:    errno = EEXIST; break;` |
 |  ! 0 |   97 | `		case ERROR_DIR_NOT_EMPTY:     errno = ENOTEMPTY; break;` |
@@ -165,34 +165,34 @@ Coverage: 570/710 lines (80.28%)
 |    5 |  155 | `}` |
 |    - |  156 | `/* int (*xMkdir)(const char *,int,int) */` |
 |    - |  157 | `static int WinVfs_mkdir(const char *zPath,int mode,int recursive)` |
-|    2 |  158 | `{` |
+|    4 |  158 | `{` |
 |    - |  159 | `	void * pConverted;` |
 |    - |  160 | `	BOOL rc;` |
-|    2 |  161 | `	pConverted = convertUtf8Filename(zPath);` |
-|    2 |  162 | `	if( pConverted == 0 ){` |
+|    4 |  161 | `	pConverted = convertUtf8Filename(zPath);` |
+|    4 |  162 | `	if( pConverted == 0 ){` |
 |  ! 0 |  163 | `		return -1;` |
 |    - |  164 | `	}` |
-|    2 |  165 | `	mode= 0; /* MSVC warning */` |
-|    2 |  166 | `	recursive = 0;` |
-|    2 |  167 | `	rc = CreateDirectoryW((LPCWSTR)pConverted,0);` |
-|    2 |  168 | `	if( !rc ){ WinVfsMapErrno(); }` |
-|    2 |  169 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    2 |  170 | `	return rc ? PH7_OK : -1;` |
-|    2 |  171 | `}` |
+|    4 |  165 | `	mode= 0; /* MSVC warning */` |
+|    4 |  166 | `	recursive = 0;` |
+|    4 |  167 | `	rc = CreateDirectoryW((LPCWSTR)pConverted,0);` |
+|    4 |  168 | `	if( !rc ){ WinVfsMapErrno(); }` |
+|    4 |  169 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    4 |  170 | `	return rc ? PH7_OK : -1;` |
+|    4 |  171 | `}` |
 |    - |  172 | `/* int (*xRmdir)(const char *) */` |
 |    - |  173 | `static int WinVfs_rmdir(const char *zPath)` |
-|    2 |  174 | `{` |
+|    3 |  174 | `{` |
 |    - |  175 | `	void * pConverted;` |
 |    - |  176 | `	BOOL rc;` |
-|    2 |  177 | `	pConverted = convertUtf8Filename(zPath);` |
-|    2 |  178 | `	if( pConverted == 0 ){` |
+|    3 |  177 | `	pConverted = convertUtf8Filename(zPath);` |
+|    3 |  178 | `	if( pConverted == 0 ){` |
 |  ! 0 |  179 | `		return -1;` |
 |    - |  180 | `	}` |
-|    2 |  181 | `	rc = RemoveDirectoryW((LPCWSTR)pConverted);` |
-|    2 |  182 | `	if( !rc ){ WinVfsMapErrno(); }` |
-|    2 |  183 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    2 |  184 | `	return rc ? PH7_OK : -1;` |
-|    2 |  185 | `}` |
+|    3 |  181 | `	rc = RemoveDirectoryW((LPCWSTR)pConverted);` |
+|    3 |  182 | `	if( !rc ){ WinVfsMapErrno(); }` |
+|    3 |  183 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    3 |  184 | `	return rc ? PH7_OK : -1;` |
+|    3 |  185 | `}` |
 |    - |  186 | `/* int (*xIsdir)(const char *) */` |
 |    - |  187 | `static int WinVfs_isdir(const char *zPath)` |
 |    5 |  188 | `{` |
@@ -282,20 +282,20 @@ Coverage: 570/710 lines (80.28%)
 |    5 |  272 | `}` |
 |    - |  273 | `/* int (*xChmod)(const char *,int) */` |
 |    - |  274 | `static int WinVfs_chmod(const char *zPath,int mode)` |
-|    4 |  275 | `{` |
+|    3 |  275 | `{` |
 |    - |  276 | `	void * pConverted;` |
 |    - |  277 | `	int rc;` |
-|    4 |  278 | `	pConverted = convertUtf8Filename(zPath);` |
-|    4 |  279 | `	if( pConverted == 0 ){` |
+|    3 |  278 | `	pConverted = convertUtf8Filename(zPath);` |
+|    3 |  279 | `	if( pConverted == 0 ){` |
 |  ! 0 |  280 | `		return -1;` |
 |    - |  281 | `	}` |
 |    - |  282 | `	/* Windows honors only the read-only attribute: a set owner-write bit (0200)` |
 |    - |  283 | `	 * clears it, otherwise the file is made read-only. This mirrors php, whose` |
 |    - |  284 | `	 * chmod() on Windows likewise maps through _wchmod and returns success. */` |
-|    4 |  285 | `	rc = _wchmod((const wchar_t *)pConverted,(mode & 0200) ? (_S_IREAD\|_S_IWRITE) : _S_IREAD);` |
-|    4 |  286 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    4 |  287 | `	return rc == 0 ? PH7_OK : - 1;` |
-|    4 |  288 | `}` |
+|    3 |  285 | `	rc = _wchmod((const wchar_t *)pConverted,(mode & 0200) ? (_S_IREAD\|_S_IWRITE) : _S_IREAD);` |
+|    3 |  286 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    3 |  287 | `	return rc == 0 ? PH7_OK : - 1;` |
+|    3 |  288 | `}` |
 |    - |  289 | `/* ph7_int64 (*xFreeSpace)(const char *) */` |
 |    - |  290 | `static ph7_int64 WinVfs_DiskFreeSpace(const char *zPath)` |
 |    1 |  291 | `{` |
@@ -369,7 +369,7 @@ Coverage: 570/710 lines (80.28%)
 |    5 |  359 | `	dwAttr = GetFileAttributesW((LPCWSTR)pConverted);` |
 |    5 |  360 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
 |    5 |  361 | `	if( dwAttr == INVALID_FILE_ATTRIBUTES ){` |
-|    5 |  362 | `		return -1;` |
+|    4 |  362 | `		return -1;` |
 |    - |  363 | `	}` |
 |    5 |  364 | `	return PH7_OK;` |
 |    5 |  365 | `}` |
@@ -803,26 +803,26 @@ Coverage: 570/710 lines (80.28%)
 |    5 |  793 | `}` |
 |    - |  794 | `/* void (*xTempDir)(ph7_context *) */` |
 |    - |  795 | `static void WinVfs_TempDir(ph7_context *pCtx)` |
-|    4 |  796 | `{` |
+|    5 |  796 | `{` |
 |    - |  797 | `	CHAR zTemp[1024];` |
 |    - |  798 | `	DWORD n;` |
-|    4 |  799 | `	n = GetTempPathA(sizeof(zTemp),zTemp);` |
-|    4 |  800 | `	if( n < 1 ){` |
+|    5 |  799 | `	n = GetTempPathA(sizeof(zTemp),zTemp);` |
+|    5 |  800 | `	if( n < 1 ){` |
 |    - |  801 | `		/* Assume the default windows temp directory */` |
 |  ! 0 |  802 | `		ph7_result_string(pCtx,"C:\\Windows\\Temp",-1/*Compute length automatically*/);` |
 |  ! 0 |  803 | `	}else{` |
-|    4 |  804 | `		ph7_result_string(pCtx,zTemp,(int)n);` |
+|    5 |  804 | `		ph7_result_string(pCtx,zTemp,(int)n);` |
 |    - |  805 | `	}` |
-|    4 |  806 | `}` |
+|    5 |  806 | `}` |
 |    - |  807 | `/* unsigned int (*xProcessId)(void) */` |
 |    - |  808 | `static unsigned int WinVfs_ProcessId(void)` |
-|    2 |  809 | `{` |
-|    2 |  810 | `	DWORD nID = 0;` |
+|    3 |  809 | `{` |
+|    3 |  810 | `	DWORD nID = 0;` |
 |    - |  811 | `#ifndef __MINGW32__` |
-|    2 |  812 | `	nID = GetProcessId(GetCurrentProcess());` |
+|    3 |  812 | `	nID = GetProcessId(GetCurrentProcess());` |
 |    - |  813 | `#endif /* __MINGW32__ */` |
-|    2 |  814 | `	return (unsigned int)nID;` |
-|    2 |  815 | `}` |
+|    3 |  814 | `	return (unsigned int)nID;` |
+|    3 |  815 | `}` |
 |    - |  816 | `/* void (*xUsername)(ph7_context *) */` |
 |    - |  817 | `static void WinVfs_Username(ph7_context *pCtx)` |
 |    1 |  818 | `{` |
@@ -981,7 +981,7 @@ Coverage: 570/710 lines (80.28%)
 |    - |  971 | `		/* Creates a new file, only if it does not already exist.` |
 |    - |  972 | `		* If the file exists, it fails.` |
 |    - |  973 | `		*/` |
-|    4 |  974 | `		dwCreate = CREATE_NEW;` |
+|    3 |  974 | `		dwCreate = CREATE_NEW;` |
 |    5 |  975 | `	}else if( iOpenMode & PH7_IO_OPEN_TRUNC ){` |
 |    - |  976 | `		/* Opens a file and truncates it so that its size is zero bytes` |
 |    - |  977 | `		 * The file must exist.` |
@@ -996,7 +996,7 @@ Coverage: 570/710 lines (80.28%)
 |    5 |  986 | `		dwAccess \|= GENERIC_WRITE;` |
 |    5 |  987 | `	}else if( iOpenMode & PH7_IO_OPEN_WRONLY ){` |
 |    - |  988 | `		/* Write only access */` |
-|    4 |  989 | `		dwAccess = GENERIC_WRITE;` |
+|    3 |  989 | `		dwAccess = GENERIC_WRITE;` |
 |    - |  990 | `	}` |
 |    5 |  991 | `	if( iOpenMode & PH7_IO_OPEN_APPEND ){` |
 |    - |  992 | `		/* Append mode */` |
@@ -1011,7 +1011,7 @@ Coverage: 570/710 lines (80.28%)
 |    5 | 1001 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
 |    5 | 1002 | `	if( pHandle == INVALID_HANDLE_VALUE){` |
 |    - | 1003 | `		SXUNUSED(pResource); /* MSVC warning */` |
-|    5 | 1004 | `		return -1;` |
+|    4 | 1004 | `		return -1;` |
 |    - | 1005 | `	}` |
 |    - | 1006 | `	/* Make the handle accessible to the upper layer */` |
 |    5 | 1007 | `	*ppHandle = (void *)pHandle;` |
@@ -1158,15 +1158,15 @@ Coverage: 570/710 lines (80.28%)
 |    5 | 1148 | `		if( !rc ){` |
 |    - | 1149 | `			/* IO error — surface a POSIX errno for the caller's diagnostic` |
 |    - | 1150 | `			 * (e.g. a byte-range lock violation reports EACCES like php). */` |
-|  ! 0 | 1151 | `			WinVfsMapErrno();` |
-|  ! 0 | 1152 | `			break;` |
+|    1 | 1151 | `			WinVfsMapErrno();` |
+|    1 | 1152 | `			break;` |
 |    - | 1153 | `		}` |
 |    5 | 1154 | `		nWrite -= nWr;` |
 |    5 | 1155 | `		nCount += nWr;` |
 |    5 | 1156 | `		zData += nWr;` |
 |    5 | 1157 | `	}` |
 |    5 | 1158 | `	if( nWrite > 0 ){` |
-|  ! 0 | 1159 | `		return -1;` |
+|    1 | 1159 | `		return -1;` |
 |    - | 1160 | `	}` |
 |    5 | 1161 | `	return nCount;` |
 |    5 | 1162 | `}` |
@@ -1197,27 +1197,27 @@ Coverage: 570/710 lines (80.28%)
 |    1 | 1187 | `}` |
 |    - | 1188 | `/* int (*xLock)(void *,int) */` |
 |    - | 1189 | `static int WinFile_Lock(void *pUserData,int lock_type)` |
-|  ! 0 | 1190 | `{` |
-|  ! 0 | 1191 | `	HANDLE pHandle = (HANDLE)pUserData;` |
+|    1 | 1190 | `{` |
+|    1 | 1191 | `	HANDLE pHandle = (HANDLE)pUserData;` |
 |    - | 1192 | `	OVERLAPPED sDummy;` |
 |    - | 1193 | `	BOOL rc;` |
-|  ! 0 | 1194 | `	SyZero(&sDummy,sizeof(sDummy));` |
+|    1 | 1194 | `	SyZero(&sDummy,sizeof(sDummy));` |
 |    - | 1195 | `	/* Lock/unlock the whole file. php locks the maximal byte range, so the lock` |
 |    - | 1196 | `	 * is effective even for an empty or freshly-truncated file — the previous` |
 |    - | 1197 | `	 * code locked only GetFileSize() bytes (i.e. nothing for a 0-byte file). */` |
-|  ! 0 | 1198 | `	if( lock_type < 1 ){` |
+|    1 | 1198 | `	if( lock_type < 1 ){` |
 |    - | 1199 | `		/* Unlock the file */` |
-|  ! 0 | 1200 | `		rc = UnlockFileEx(pHandle,0,0xFFFFFFFF,0xFFFFFFFF,&sDummy);` |
-|  ! 0 | 1201 | `	}else{` |
-|  ! 0 | 1202 | `		DWORD dwFlags = LOCKFILE_FAIL_IMMEDIATELY; /* Shared non-blocking lock by default*/` |
+|    1 | 1200 | `		rc = UnlockFileEx(pHandle,0,0xFFFFFFFF,0xFFFFFFFF,&sDummy);` |
+|    1 | 1201 | `	}else{` |
+|    1 | 1202 | `		DWORD dwFlags = LOCKFILE_FAIL_IMMEDIATELY; /* Shared non-blocking lock by default*/` |
 |    - | 1203 | `		/* Lock the file */` |
-|  ! 0 | 1204 | `		if( lock_type == 1 /* LOCK_EXCL */ ){` |
-|  ! 0 | 1205 | `			dwFlags \|= LOCKFILE_EXCLUSIVE_LOCK;` |
+|    1 | 1204 | `		if( lock_type == 1 /* LOCK_EXCL */ ){` |
+|    1 | 1205 | `			dwFlags \|= LOCKFILE_EXCLUSIVE_LOCK;` |
 |    - | 1206 | `		}` |
-|  ! 0 | 1207 | `		rc = LockFileEx(pHandle,dwFlags,0,0xFFFFFFFF,0xFFFFFFFF,&sDummy);` |
+|    1 | 1207 | `		rc = LockFileEx(pHandle,dwFlags,0,0xFFFFFFFF,0xFFFFFFFF,&sDummy);` |
 |    - | 1208 | `	}` |
-|  ! 0 | 1209 | `	return rc ? PH7_OK : -1 /* Lock error */;` |
-|  ! 0 | 1210 | `}` |
+|    1 | 1209 | `	return rc ? PH7_OK : -1 /* Lock error */;` |
+|    1 | 1210 | `}` |
 |    - | 1211 | `/* ph7_int64 (*xTell)(void *) */` |
 |    - | 1212 | `static ph7_int64 WinFile_Tell(void *pUserData)` |
 |    1 | 1213 | `{` |

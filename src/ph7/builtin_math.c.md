@@ -551,10 +551,10 @@ Coverage: 557/655 lines (85.04%)
 |    - |  541 | ` *  The absolute value of number.` |
 |    - |  542 | ` */` |
 |  130 |  543 | `PH7_PRIVATE int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    4 |  544 | `{` |
+|    3 |  544 | `{` |
 |    - |  545 | `	int is_float;` |
 |    - |  546 | `	/* PHP requires exactly one argument. */` |
-|  134 |  547 | `	if( nArg != 1 ){` |
+|  133 |  547 | `	if( nArg != 1 ){` |
 |    4 |  548 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  549 | `			"ArgumentCountError",` |
 |    - |  550 | `			"abs() expects exactly 1 argument, %d given",` |
@@ -562,14 +562,14 @@ Coverage: 557/655 lines (85.04%)
 |    - |  552 | `			);` |
 |    - |  553 | `	}` |
 |    - |  554 |  |
-|  131 |  555 | `	if( ph7_value_is_null(apArg[0]) ){` |
+|  130 |  555 | `	if( ph7_value_is_null(apArg[0]) ){` |
 |    - |  556 | `		/* php's 8.1 null-to-scalar-parameter deprecation; abs(null) is still 0 */` |
 |    3 |  557 | `		PH7_VmThrowDeprecatedFmt(pCtx->pVm,` |
 |    - |  558 | `			"abs(): Passing null to parameter #1 ($num) of type int\|float is deprecated");` |
 |    1 |  559 | `	}` |
 |    - |  560 | `	/* Numeric strings with decimal/exponent are treated as real values. */` |
-|  131 |  561 | `	is_float = ph7_value_is_float(apArg[0]);` |
-|  131 |  562 | `	if( !is_float && ph7_value_is_string(apArg[0]) ){` |
+|  130 |  561 | `	is_float = ph7_value_is_float(apArg[0]);` |
+|  130 |  562 | `	if( !is_float && ph7_value_is_string(apArg[0]) ){` |
 |    - |  563 | `		int len;` |
 |   10 |  564 | `		sxu8 bReal = FALSE;` |
 |   10 |  565 | `		const char *zStr = ph7_value_to_string(apArg[0], &len);` |
@@ -603,7 +603,7 @@ Coverage: 557/655 lines (85.04%)
 |    - |  593 | `		}` |
 |    - |  594 | `	}` |
 |  128 |  595 | `	return PH7_OK;` |
-|   69 |  596 | `}` |
+|   68 |  596 | `}` |
 |    - |  597 | `/*` |
 |    - |  598 | ` * float log(float $arg,[int/float $base])` |
 |    - |  599 | ` *  Natural logarithm.` |
