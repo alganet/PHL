@@ -126,21 +126,21 @@ Coverage: 630/718 lines (87.74%)
 |  1807 |  116 | `	if( ph7_value_is_object(pArg) ){` |
 |     - |  117 | `		/* Class instance already loaded,no need to perform a lookup */` |
 |   919 |  118 | `		pClass = ((ph7_class_instance *)pArg->x.pOther)->pClass;` |
-|  1349 |  119 | `	}else if( ph7_value_is_string(pArg) ){` |
+|  1350 |  119 | `	}else if( ph7_value_is_string(pArg) ){` |
 |     - |  120 | `		const char *zClass;` |
 |     - |  121 | `		int nLen;` |
 |     - |  122 | `		/* Extract class name */` |
-|   890 |  123 | `		zClass = ph7_value_to_string(pArg,&nLen);` |
+|   891 |  123 | `		zClass = ph7_value_to_string(pArg,&nLen);` |
 |     - |  124 | `		/* php: a leading '\' anchors the name to the global namespace. */` |
-|   890 |  125 | `		if( nLen > 0 && zClass[0] == '\\' ){ zClass++; nLen--; }` |
-|   890 |  126 | `		if( nLen > 0 ){` |
+|   891 |  125 | `		if( nLen > 0 && zClass[0] == '\\' ){ zClass++; nLen--; }` |
+|   891 |  126 | `		if( nLen > 0 ){` |
 |     - |  127 | `			/* Resolve through PH7_VmExtractClass so a class named by STRING is` |
 |     - |  128 | `			 * autoloaded on a miss — php autoloads the class of a [class,method]` |
 |     - |  129 | `			 * callable (is_callable/array_map/call_user_func), and of the class` |
 |     - |  130 | `			 * argument to method_exists()/property_exists(). iLoadable=FALSE keeps` |
 |     - |  131 | `			 * abstract classes and interfaces (a static method on an abstract class` |
 |     - |  132 | `			 * is a valid callable). */` |
-|   890 |  133 | `			pClass = PH7_VmExtractClass(pVm,zClass,(sxu32)nLen,FALSE,0);` |
+|   891 |  133 | `			pClass = PH7_VmExtractClass(pVm,zClass,(sxu32)nLen,FALSE,0);` |
 |   443 |  134 | `		}` |
 |   443 |  135 | `	}` |
 |  1807 |  136 | `	return pClass;` |
@@ -236,45 +236,45 @@ Coverage: 630/718 lines (87.74%)
 |     - |  226 | ` *   TRUE if class_name is a defined class, FALSE otherwise.` |
 |     - |  227 | ` */` |
 |    82 |  228 | `PH7_PRIVATE int vm_builtin_class_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     5 |  229 | `{` |
-|    87 |  230 | `	int res = 0; /* Assume class does not exist */` |
-|    87 |  231 | `	if( nArg > 0 ){` |
-|    87 |  232 | `		SyHashEntry *pEntry = 0;` |
+|     4 |  229 | `{` |
+|    86 |  230 | `	int res = 0; /* Assume class does not exist */` |
+|    86 |  231 | `	if( nArg > 0 ){` |
+|    86 |  232 | `		SyHashEntry *pEntry = 0;` |
 |     - |  233 | `		const char *zName;` |
 |     - |  234 | `		int nLen;` |
-|    87 |  235 | `		int iAutoload = 1; /* Default: autoload enabled */` |
+|    86 |  235 | `		int iAutoload = 1; /* Default: autoload enabled */` |
 |     - |  236 | `		/* Extract given name */` |
-|    87 |  237 | `		zName = ph7_value_to_string(apArg[0],&nLen);` |
-|    87 |  238 | `		if( nArg >= 2 ){` |
+|    86 |  237 | `		zName = ph7_value_to_string(apArg[0],&nLen);` |
+|    86 |  238 | `		if( nArg >= 2 ){` |
 |     6 |  239 | `			iAutoload = ph7_value_to_bool(apArg[1]);` |
 |     2 |  240 | `		}` |
-|    87 |  241 | `		if( nLen > 0 ){` |
+|    86 |  241 | `		if( nLen > 0 ){` |
 |     - |  242 | `			/* Perform a hash lookup first */` |
-|    87 |  243 | `			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);` |
+|    86 |  243 | `			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);` |
 |    41 |  244 | `		}` |
-|    87 |  245 | `		if( pEntry == 0 && nLen > 0 && iAutoload ){` |
+|    86 |  245 | `		if( pEntry == 0 && nLen > 0 && iAutoload ){` |
 |     - |  246 | `			/* Try autoload, then re-check */` |
-|    25 |  247 | `			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,(sxu32)nLen,FALSE);` |
-|    25 |  248 | `			if( pClass ){` |
+|    24 |  247 | `			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,(sxu32)nLen,FALSE);` |
+|    24 |  248 | `			if( pClass ){` |
 |     9 |  249 | `				pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);` |
 |     3 |  250 | `			}` |
 |    10 |  251 | `		}` |
-|    87 |  252 | `		if( pEntry ){` |
+|    86 |  252 | `		if( pEntry ){` |
 |     - |  253 | `			/* Walk the collision chain: return TRUE only for concrete or abstract classes,` |
 |     - |  254 | `			 * not for interfaces or traits (matching PHP behavior). */` |
-|    71 |  255 | `			ph7_class *pClass = (ph7_class *)pEntry->pUserData;` |
-|    73 |  256 | `			while( pClass ){` |
-|    71 |  257 | `				if( (pClass->iFlags & (PH7_CLASS_INTERFACE\|PH7_CLASS_TRAIT)) == 0 ){` |
-|    69 |  258 | `					res = 1;` |
-|    69 |  259 | `					break;` |
+|    70 |  255 | `			ph7_class *pClass = (ph7_class *)pEntry->pUserData;` |
+|    72 |  256 | `			while( pClass ){` |
+|    70 |  257 | `				if( (pClass->iFlags & (PH7_CLASS_INTERFACE\|PH7_CLASS_TRAIT)) == 0 ){` |
+|    68 |  258 | `					res = 1;` |
+|    68 |  259 | `					break;` |
 |     - |  260 | `				}` |
 |     3 |  261 | `				pClass = pClass->pNextName;` |
 |     1 |  262 | `			}` |
 |    33 |  263 | `		}` |
 |    41 |  264 | `	}` |
-|    87 |  265 | `	ph7_result_bool(pCtx,res);` |
-|    87 |  266 | `	return PH7_OK;` |
-|     5 |  267 | `}` |
+|    86 |  265 | `	ph7_result_bool(pCtx,res);` |
+|    86 |  266 | `	return PH7_OK;` |
+|     4 |  267 | `}` |
 |     - |  268 | `/*` |
 |     - |  269 | ` * bool interface_exists(string $class_name [, bool $autoload = true ] )` |
 |     - |  270 | ` *   Checks if the interface has been defined.` |
@@ -758,7 +758,7 @@ Coverage: 630/718 lines (87.74%)
 | 23629 |  748 | `				ph7_class_attr *pAncAttr = pAncAttrE ? (ph7_class_attr *)pAncAttrE->pUserData : 0;` |
 | 23629 |  749 | `				int bHere = 0;` |
 | 23629 |  750 | `				if( pAncMeth && (ph7_class *)pAncMeth->sFunc.pUserData == pAnc ){` |
-|  3578 |  751 | `					bHere = 1;` |
+|  3579 |  751 | `					bHere = 1;` |
 |  1787 |  752 | `				}` |
 | 23629 |  753 | `				if( pAncAttr && (pAncAttr->pDeclClass == pAnc \|\| pAncAttr->pDeclClass == 0) ){` |
 | 10559 |  754 | `					bHere = 1;` |
