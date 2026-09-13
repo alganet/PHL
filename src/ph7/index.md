@@ -1,6 +1,6 @@
 # src/ph7/
 
-Coverage: 44410/54790 lines (81.05%)
+Coverage: 44460/54821 lines (81.10%)
 
 [Up](../index.md)
 
@@ -34,7 +34,7 @@ Coverage: 44410/54790 lines (81.05%)
 |[vm_builtin_tokenizer.c](vm_builtin_tokenizer.c.md)|1.62%|12/743|
 |[vm_http.c](vm_http.c.md)|69.82%|310/444|
 |[vm_http_response.c](vm_http_response.c.md)|49.41%|126/255|
-|[vm_json.c](vm_json.c.md)|79.60%|511/642|
+|[vm_json.c](vm_json.c.md)|83.36%|561/673|
 |[vm_pcre.c](vm_pcre.c.md)|68.42%|626/915|
 |[vm_serialize.c](vm_serialize.c.md)|96.07%|464/483|
 |[vm_xml.c](vm_xml.c.md)|68.34%|395/578|

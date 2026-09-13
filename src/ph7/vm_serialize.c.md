@@ -102,9 +102,9 @@ Coverage: 464/483 lines (96.07%)
 |  345 |   92 | `	}else if( decpt >= nDig ){` |
 |    - |   93 | `		/* <digits><zeros> (integer) */` |
 |    - |   94 | `		int i;` |
-|  182 |   95 | `		SyBlobAppend(pOut,zDig,nDig);` |
-|  336 |   96 | `		for( i = 0; i < decpt-nDig; i++ ){ SyBlobAppend(pOut,"0",1); }` |
-|   92 |   97 | `	}else{` |
+|  183 |   95 | `		SyBlobAppend(pOut,zDig,nDig);` |
+|  337 |   96 | `		for( i = 0; i < decpt-nDig; i++ ){ SyBlobAppend(pOut,"0",1); }` |
+|   93 |   97 | `	}else{` |
 |    - |   98 | `		/* <int>.<frac> */` |
 |  137 |   99 | `		SyBlobAppend(pOut,zDig,decpt);` |
 |  137 |  100 | `		SyBlobAppend(pOut,".",1);` |

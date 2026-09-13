@@ -3603,7 +3603,7 @@ Coverage: 1649/1951 lines (84.52%)
 |     - | 3593 | ` * PH7_VmInit inside the bCompilingBuiltin window, after the Reflection` |
 |     - | 3594 | ` * install (Exception must exist).` |
 |     - | 3595 | ` */` |
-|  3882 | 3596 | `PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)` |
+|  3884 | 3596 | `PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)` |
 |     5 | 3597 | `{` |
 |     - | 3598 | `	static const struct {` |
 |     - | 3599 | `		const char *zName;` |
@@ -3621,12 +3621,12 @@ Coverage: 1649/1951 lines (84.52%)
 |     - | 3611 | `	};` |
 |     - | 3612 | `	sxu32 n;` |
 |     - | 3613 | `	/* php's date.timezone default */` |
-|  3887 | 3614 | `	SyMemcpy("UTC",pVm->zDefTz,sizeof("UTC"));` |
-|  3887 | 3615 | `	pVm->nDefTz = sizeof("UTC") - 1;` |
-| 38825 | 3616 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
-| 34943 | 3617 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
-| 17474 | 3618 | `	}` |
-|  3887 | 3619 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zDateTimeLib,sizeof(zDateTimeLib)-1);` |
+|  3889 | 3614 | `	SyMemcpy("UTC",pVm->zDefTz,sizeof("UTC"));` |
+|  3889 | 3615 | `	pVm->nDefTz = sizeof("UTC") - 1;` |
+| 38845 | 3616 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
+| 34961 | 3617 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
+| 17483 | 3618 | `	}` |
+|  3889 | 3619 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zDateTimeLib,sizeof(zDateTimeLib)-1);` |
 |     5 | 3620 | `}` |
 |     - | 3621 |  |
 |     - | 3622 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
