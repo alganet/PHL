@@ -2016,7 +2016,13 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 						 }
 						 return rc;
 					 }
-					 if( ExprIsModifiableValue(apNode[iLeft],FALSE) == FALSE || (apNode[iLeft]->pOp && apNode[iLeft]->pOp->iVmOp == PH7_OP_MEMBER /*->,::*/) ){
+					 /* A member LHS (`$o->p =& $x`, `self::$s =& $x`) is a valid
+					  * reference target — ExprIsModifiableValue already accepts
+					  * EXPR_OP_ARROW (`->`) and EXPR_OP_DC (`::`) and rejects the
+					  * nullsafe `?->` form (not in its l-value list), so no extra
+					  * PH7_OP_MEMBER guard is needed here. The runtime member
+					  * ref-store is emitted by the STORE_REF codegen below. */
+					 if( ExprIsModifiableValue(apNode[iLeft],FALSE) == FALSE ){
 						 /* Left operand must be a modifiable l-value */
 						 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"'&': Left operand must be a modifiable l-value");
 						 if( rc != SXERR_ABORT ){

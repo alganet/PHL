@@ -1068,6 +1068,10 @@ struct VmClassAttr
 #define VM_CLASS_ATTR_UNINIT  0x01 /* Typed property never written (PHP 7.4+); also the
                                     * write-once latch for readonly properties (cleared on
                                     * the first successful write — see VmEnforcePropertyTypeOnStore) */
+#define VM_CLASS_ATTR_REFBOUND 0x02 /* Property is bound to a reference (`$o->p =& $x`): its nIdx
+                                    * slot is SHARED with (and pinned by) the source variable, so
+                                    * PH7_VmReleaseInstanceAttr must NOT release/recycle it — the
+                                    * surviving alias would dangle. Mirrors the use(&$x) pin. */
  /* Forward reference */
 typedef struct VmRefObj VmRefObj;
 /*
@@ -1374,6 +1378,14 @@ struct ph7_vm
 	                             * reference while armed. */
 	ph7_class_attr *pHookSetAttr; /* Pending hook-set property (declared attr; name + flags) */
 	sxu32 nHookSetIdx;          /* Pending hook-set BACKING slot index (for `set => expr`) */
+	VmClassAttr *pRefTargetAttr; /* Pending reference-store target (`$o->p =& $x`): OP_MEMBER tagged
+	                             * PH7_MEMBER_REF_TARGET resolved the instance property slot and
+	                             * stashed it here; the immediately-following member-marked
+	                             * OP_STORE_REF rebinds it to alias the source variable's slot.
+	                             * One-instruction lifetime by construction. */
+	ph7_class_attr *pRefTargetStaticAttr; /* Same, for a static-property target (`self::$s =& $x`). */
+	ph7_class_instance *pRefTargetThis;   /* Instance owning pRefTargetAttr; retained (iRef++) by
+	                             * OP_MEMBER, released by the consuming OP_STORE_REF. */
 	SySet aHookRmw;             /* Pending property-hook read-modify-write write-backs (LIFO;
 	                             * VmHookRmw entries — see the struct above ph7_vm). */
 	ph7_class_instance *pMagicCallThis; /* Pending __call receiver (band A #3b): OP_MEMBER hit a
@@ -1726,6 +1738,9 @@ enum ph7_vm_op {
 #define PH7_MEMBER_ISSET  3 /* isset($o->p): silent on a read-miss */
 #define PH7_MEMBER_EMPTY  4 /* empty($o->p): silent on a read-miss */
 #define PH7_MEMBER_WRITE  5 /* write-lvalue base ($o->arr[..]=, $o->p??=): auto-create a missing prop */
+#define PH7_MEMBER_REF_TARGET 6 /* reference-store target ($o->p =& $x, C::$s =& $x): resolve the
+                                 * property slot and stash it for the following OP_STORE_REF; skip
+                                 * the read/hook/magic machinery (a ref bind neither reads nor coerces) */
 /* -- END-OF INSTRUCTIONS -- */
 /*
  * Expression Operators ID.
