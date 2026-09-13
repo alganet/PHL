@@ -3897,10 +3897,11 @@ static int PH7_builtin_file_get_contents(ph7_context *pCtx,int nArg,ph7_value **
 	}
 	/* Close the stream */
 	PH7_StreamCloseHandle(pStream,pHandle);
-	/* Check if we have read something */
+	/* A successfully opened but empty file yields "" in php (FALSE is only for an
+	 * open failure, handled above); the read loop never set a string result, so
+	 * force an empty string rather than leaving a null/FALSE result. */
 	if( ph7_context_result_buf_length(pCtx) < 1 ){
-		/* Nothing read,return FALSE */
-		ph7_result_bool(pCtx,0);
+		ph7_result_string(pCtx,"",0);
 	}
 	return PH7_OK;
 }
