@@ -1295,32 +1295,61 @@ PH7_PRIVATE sxi32 PH7_TokenizeRawText(const char *zInput,sxu32 nLen,SySet *pOut,
 			if( SyMemcmp(zIn,sCtag.zString,sCtag.nByte) == 0 && iNest < 1 ){
 				break;
 			}
-			for(;;){
-				if( zIn[0] != '/' || (zIn[1] != '*' && zIn[1] != '/') /* && sCtag.nByte >= 2 */ ){
-					break;
+			/* Line comment ('#' or '//', but not the '#[' attribute opener): php
+			 * ends it at a newline OR at the closing tag, so a '?>' inside a line
+			 * comment DOES close the PHP block. Skipping the comment here also
+			 * stops the string skip below from treating a quote inside the
+			 * comment as a string. Only outside a heredoc body (iNest < 1). */
+			if( iNest < 1 &&
+				( (zIn[0] == '#' && !(zIn+1 < zEnd && zIn[1] == '[')) ||
+				  (zIn[0] == '/' && zIn+1 < zEnd && zIn[1] == '/') ) ){
+				zIn += (zIn[0] == '#') ? 1 : 2;
+				while( zIn < zEnd && zIn[0] != '\n' ){
+					if( (sxu32)(zEnd - zIn) >= sCtag.nByte
+						&& SyMemcmp(zIn,sCtag.zString,sCtag.nByte) == 0 ){
+						break; /* the closing tag terminates the line comment */
+					}
+					zIn++;
 				}
+				continue;
+			}
+			/* Block comment: spans everything, including '?>', up to its close. */
+			if( iNest < 1 && zIn[0] == '/' && zIn+1 < zEnd && zIn[1] == '*' ){
 				zIn += 2;
-				if( zIn[-1] == '/' ){
-					/* Inline comment */
-					while( zIn < zEnd && zIn[0] != '\n' ){
-						zIn++;
+				while( (sxu32)(zEnd-zIn) >= sizeof("*/") - 1 ){
+					if( zIn[0] == '*' && zIn[1] == '/' ){
+						zIn += 2;
+						break;
 					}
-					if( zIn >= zEnd ){
-						zIn--;
+					if( zIn[0] == '\n' ){
+						nLine++;
 					}
-				}else{
-					/* Block comment */
-					while( (sxu32)(zEnd-zIn) >= sizeof("*/") - 1 ){
-						if( zIn[0] == '*' && zIn[1] == '/' ){
-							zIn += 2;
-							break;
-						}
-						if( zIn[0] == '\n' ){
-							nLine++;
-						}
-						zIn++;
-					}
+					zIn++;
 				}
+				continue;
+			}
+			/* Skip over a single/double-quoted or backtick string literal so a
+			 * '?>' sequence inside it is not mistaken for the closing tag. Only
+			 * outside a heredoc body (iNest < 1); heredocs are delimited by the
+			 * label-matching logic above. Escapes (\" \' \\ and a line-continuing
+			 * backslash-newline) are honoured. Same-quote nesting inside "{$...}"
+			 * interpolation is not tracked, but that can only end the skip early
+			 * on a string that has no '?>' anyway, which stays a PHP chunk either
+			 * way — it never mis-splits code that works today. */
+			if( iNest < 1 && (zIn[0] == '\'' || zIn[0] == '"' || zIn[0] == '`') ){
+				int qch = zIn[0];
+				zIn++;
+				while( zIn < zEnd ){
+					if( zIn[0] == '\\' && zIn + 1 < zEnd ){
+						if( zIn[1] == '\n' ){ nLine++; }
+						zIn += 2;
+						continue;
+					}
+					if( zIn[0] == qch ){ zIn++; break; }
+					if( zIn[0] == '\n' ){ nLine++; }
+					zIn++;
+				}
+				continue;
 			}
 			if( zIn[0] == '\n' ){
 				nLine++;
