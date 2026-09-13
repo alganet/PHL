@@ -5845,11 +5845,22 @@ static sxu32 GenStateNsQualifyName(ph7_gen_state *pGen,sxu32 nOrigIdx,SyHash *pI
 static void GenStateResolveName(ph7_gen_state *pGen,const SyString *pName,SyBlob *pOut)
 {
 	SyHashEntry *pImport;
-	/* Check use imports first */
-	pImport = SyHashGet(&pGen->hUseImports,(const void *)pName->zString,pName->nByte);
+	const char *zName = pName->zString;
+	sxu32 nName = pName->nByte;
+	sxu32 nFirst = 0;
+	/* php resolves a name through use-imports on its LEADING segment: an
+	 * unqualified `C` maps the whole name (`use X\C;` -> X\C), while a QUALIFIED
+	 * `A\B\C` maps just `A` (`use X\A;` -> X\A\B\C) and keeps the `\B\C` tail.
+	 * The old code looked up the whole qualified string (which never matches a
+	 * single-segment import alias) and then blindly prefixed the current
+	 * namespace, so `use PHPUnit\Framework; extends Framework\TestCase` resolved
+	 * to Ns\Framework\TestCase. Mirror GenStateResolveNamespaceLiteral here. */
+	while( nFirst < nName && zName[nFirst] != '\\' ){ nFirst++; }
+	pImport = SyHashGet(&pGen->hUseImports,(const void *)zName,nFirst);
 	if( pImport ){
 		const char *zFQN = (const char *)pImport->pUserData;
 		SyBlobAppend(pOut,zFQN,SyStrlen(zFQN));
+		SyBlobAppend(pOut,zName + nFirst,nName - nFirst); /* the \B\C tail, if any */
 		return;
 	}
 	/* Prepend current namespace if active */
@@ -5857,7 +5868,7 @@ static void GenStateResolveName(ph7_gen_state *pGen,const SyString *pName,SyBlob
 		SyBlobAppend(pOut,SyBlobData(&pGen->sNamespace),SyBlobLength(&pGen->sNamespace));
 		SyBlobAppend(pOut,"\\",1);
 	}
-	SyBlobAppend(pOut,pName->zString,pName->nByte);
+	SyBlobAppend(pOut,zName,nName);
 }
 /*
  * Build a fully-qualified name by prepending the current namespace to a short name.
@@ -6627,8 +6638,12 @@ static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyTo
 					/* php 8.4: the implicit form is deprecated at COMPILE time —
 					 * `f(): Implicitly marking parameter $x as nullable …`
 					 * (methods carry the Class:: prefix when the class link is
-					 * already up at this point). */
-					{
+					 * already up at this point). But NOT when the declared type
+					 * already accepts null: `mixed $x = null` is fine because mixed
+					 * includes null (explicit ?T / T|null are already excluded via
+					 * VM_FUNC_ARG_NULLABLE above). */
+					if( !(sArg.sClass.nByte == sizeof("mixed")-1
+						&& SyStrnicmp(SyStringData(&sArg.sClass),"mixed",sizeof("mixed")-1) == 0) ){
 						const char *zSep = "";
 						SyString sCls = { "", 0 };
 						if( (pFunc->iFlags & VM_FUNC_CLASS_METHOD) && pFunc->pUserData ){
