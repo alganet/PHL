@@ -39,10 +39,10 @@ Coverage: 1059/1235 lines (85.75%)
 |     - |   29 | ` * class does not exist (the PHP layer turns that into ReflectionException).` |
 |     - |   30 | ` */` |
 |   678 |   31 | `static ph7_class * ReflectResolveClass(ph7_vm *pVm, ph7_value *pArg)` |
-|     4 |   32 | `{` |
+|     3 |   32 | `{` |
 |     - |   33 | `	ph7_class *pClass;` |
-|   682 |   34 | `	pClass = PH7_VmExtractClassFromValue(pVm, pArg);` |
-|   682 |   35 | `	if( pClass == 0 && ph7_value_is_string(pArg) ){` |
+|   681 |   34 | `	pClass = PH7_VmExtractClassFromValue(pVm, pArg);` |
+|   681 |   35 | `	if( pClass == 0 && ph7_value_is_string(pArg) ){` |
 |     - |   36 | `		const char *zName;` |
 |     - |   37 | `		int nLen;` |
 |    16 |   38 | `		zName = ph7_value_to_string(pArg, &nLen);` |
@@ -50,8 +50,8 @@ Coverage: 1059/1235 lines (85.75%)
 |    16 |   40 | `			pClass = PH7_VmTriggerAutoload(pVm, zName, (sxu32)nLen, FALSE);` |
 |     7 |   41 | `		}` |
 |     7 |   42 | `	}` |
-|   682 |   43 | `	return pClass;` |
-|     4 |   44 | `}` |
+|   681 |   43 | `	return pClass;` |
+|     3 |   44 | `}` |
 |     - |   45 | `/*` |
 |     - |   46 | ` * Hand a freshly created class instance to the caller. The return slot` |
 |     - |   47 | ` * takes over the initial reference from PH7_NewClassInstance (iRef=1):` |
@@ -71,27 +71,27 @@ Coverage: 1059/1235 lines (85.75%)
 |    53 |   61 | `}` |
 |     - |   62 | `/* --- Marshaling helpers: build the descriptor arrays handed to the PHP layer --- */` |
 | 17534 |   63 | `static void ReflectMapAddBool(ph7_context *pCtx, ph7_value *pMap, const char *zKey, int b)` |
-|     4 |   64 | `{` |
-| 17538 |   65 | `	ph7_value *p = ph7_context_new_scalar(pCtx);` |
-| 17538 |   66 | `	if( p == 0 ){ return; }` |
-| 17538 |   67 | `	ph7_value_bool(p, b);` |
-| 17538 |   68 | `	ph7_array_add_strkey_elem(pMap, zKey, p);` |
-|  8771 |   69 | `}` |
+|     3 |   64 | `{` |
+| 17537 |   65 | `	ph7_value *p = ph7_context_new_scalar(pCtx);` |
+| 17537 |   66 | `	if( p == 0 ){ return; }` |
+| 17537 |   67 | `	ph7_value_bool(p, b);` |
+| 17537 |   68 | `	ph7_array_add_strkey_elem(pMap, zKey, p);` |
+|  8770 |   69 | `}` |
 |  5252 |   70 | `static void ReflectMapAddInt(ph7_context *pCtx, ph7_value *pMap, const char *zKey, sxi64 iVal)` |
-|     4 |   71 | `{` |
-|  5256 |   72 | `	ph7_value *p = ph7_context_new_scalar(pCtx);` |
-|  5256 |   73 | `	if( p == 0 ){ return; }` |
-|  5256 |   74 | `	ph7_value_int64(p, iVal);` |
-|  5256 |   75 | `	ph7_array_add_strkey_elem(pMap, zKey, p);` |
-|  2630 |   76 | `}` |
+|     3 |   71 | `{` |
+|  5255 |   72 | `	ph7_value *p = ph7_context_new_scalar(pCtx);` |
+|  5255 |   73 | `	if( p == 0 ){ return; }` |
+|  5255 |   74 | `	ph7_value_int64(p, iVal);` |
+|  5255 |   75 | `	ph7_array_add_strkey_elem(pMap, zKey, p);` |
+|  2629 |   76 | `}` |
 |  5164 |   77 | `static void ReflectMapAddStr(ph7_context *pCtx, ph7_value *pMap, const char *zKey,` |
 |     - |   78 | `	const char *zVal, int nVal)` |
-|     4 |   79 | `{` |
-|  5168 |   80 | `	ph7_value *p = ph7_context_new_scalar(pCtx);` |
-|  5168 |   81 | `	if( p == 0 ){ return; }` |
-|  5168 |   82 | `	ph7_value_string(p, zVal, nVal);` |
-|  5168 |   83 | `	ph7_array_add_strkey_elem(pMap, zKey, p);` |
-|  2586 |   84 | `}` |
+|     3 |   79 | `{` |
+|  5167 |   80 | `	ph7_value *p = ph7_context_new_scalar(pCtx);` |
+|  5167 |   81 | `	if( p == 0 ){ return; }` |
+|  5167 |   82 | `	ph7_value_string(p, zVal, nVal);` |
+|  5167 |   83 | `	ph7_array_add_strkey_elem(pMap, zKey, p);` |
+|  2585 |   84 | `}` |
 |  1620 |   85 | `static void ReflectMapAddNull(ph7_context *pCtx, ph7_value *pMap, const char *zKey)` |
 |     3 |   86 | `{` |
 |  1623 |   87 | `	ph7_value *p = ph7_context_new_scalar(pCtx);` |
@@ -241,21 +241,21 @@ Coverage: 1059/1235 lines (85.75%)
 |     - |  231 | ` *   methods {name: {vis, static, abstract, final, decl, line}}` |
 |     - |  232 | ` */` |
 |   146 |  233 | `static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     4 |  234 | `{` |
-|   150 |  235 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     3 |  234 | `{` |
+|   149 |  235 | `	ph7_vm *pVm = pCtx->pVm;` |
 |     - |  236 | `	ph7_class *pClass;` |
 |     - |  237 | `	ph7_value *pInfo, *pConsts, *pProps, *pMethods, *pList;` |
 |     - |  238 | `	SyHashEntry *pEntry;` |
 |     - |  239 | `	SySet aIfaceSet;` |
-|   150 |  240 | `	sxi32 iCtorVis = 0, iCloneVis = 0;` |
-|   150 |  241 | `	int bIterable = 0;` |
+|   149 |  240 | `	sxi32 iCtorVis = 0, iCloneVis = 0;` |
+|   149 |  241 | `	int bIterable = 0;` |
 |     - |  242 | `	sxu32 n;` |
-|   150 |  243 | `	if( nArg < 1 ){` |
+|   149 |  243 | `	if( nArg < 1 ){` |
 |   ! 0 |  244 | `		ph7_result_null(pCtx);` |
 |   ! 0 |  245 | `		return PH7_OK;` |
 |     - |  246 | `	}` |
-|   150 |  247 | `	pClass = ReflectResolveClass(pVm, apArg[0]);` |
-|   150 |  248 | `	if( pClass == 0 ){` |
+|   149 |  247 | `	pClass = ReflectResolveClass(pVm, apArg[0]);` |
+|   149 |  248 | `	if( pClass == 0 ){` |
 |    16 |  249 | `		ph7_result_null(pCtx);` |
 |    16 |  250 | `		return PH7_OK;` |
 |     - |  251 | `	}` |
@@ -509,7 +509,7 @@ Coverage: 1059/1235 lines (85.75%)
 |   135 |  499 | `	ph7_array_add_strkey_elem(pInfo, "methods", pMethods);` |
 |   135 |  500 | `	ph7_result_value(pCtx, pInfo);` |
 |   135 |  501 | `	return PH7_OK;` |
-|    77 |  502 | `}` |
+|    76 |  502 | `}` |
 |     - |  503 | `/*` |
 |     - |  504 | ` * mixed __reflect_const_value(string $class, string $name)` |
 |     - |  505 | ` * Value of a class constant. The PHP layer guarantees existence.` |
@@ -3413,7 +3413,7 @@ Coverage: 1059/1235 lines (85.75%)
 |     - | 3403 | ` * Called from PH7_VmInit while pVm->bCompilingBuiltin is set, right after` |
 |     - | 3404 | ` * the core builtin chunks (Exception and friends must exist already).` |
 |     - | 3405 | ` */` |
-|  3880 | 3406 | `PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)` |
+|  3882 | 3406 | `PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)` |
 |     5 | 3407 | `{` |
 |     - | 3408 | `	static const struct {` |
 |     - | 3409 | `		const char *zName;` |
@@ -3443,41 +3443,41 @@ Coverage: 1059/1235 lines (85.75%)
 |     - | 3433 | `	};` |
 |     - | 3434 | `	sxu32 n;` |
 |     - | 3435 | `	sxi32 rc;` |
-| 85365 | 3436 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
-| 81485 | 3437 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
-| 40745 | 3438 | `	}` |
-|  3885 | 3439 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib1, sizeof(zReflectLib1)-1);` |
-|  3885 | 3440 | `	if( rc != SXRET_OK ){` |
+| 85409 | 3436 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
+| 81527 | 3437 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
+| 40766 | 3438 | `	}` |
+|  3887 | 3439 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib1, sizeof(zReflectLib1)-1);` |
+|  3887 | 3440 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3441 | `		return rc;` |
 |     - | 3442 | `	}` |
-|  3885 | 3443 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib2, sizeof(zReflectLib2)-1);` |
-|  3885 | 3444 | `	if( rc != SXRET_OK ){` |
+|  3887 | 3443 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib2, sizeof(zReflectLib2)-1);` |
+|  3887 | 3444 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3445 | `		return rc;` |
 |     - | 3446 | `	}` |
-|  3885 | 3447 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib3, sizeof(zReflectLib3)-1);` |
-|  3885 | 3448 | `	if( rc != SXRET_OK ){` |
+|  3887 | 3447 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib3, sizeof(zReflectLib3)-1);` |
+|  3887 | 3448 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3449 | `		return rc;` |
 |     - | 3450 | `	}` |
-|  3885 | 3451 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib4, sizeof(zReflectLib4)-1);` |
-|  3885 | 3452 | `	if( rc != SXRET_OK ){` |
+|  3887 | 3451 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib4, sizeof(zReflectLib4)-1);` |
+|  3887 | 3452 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3453 | `		return rc;` |
 |     - | 3454 | `	}` |
-|  3885 | 3455 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib5, sizeof(zReflectLib5)-1);` |
-|  3885 | 3456 | `	if( rc != SXRET_OK ){` |
+|  3887 | 3455 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib5, sizeof(zReflectLib5)-1);` |
+|  3887 | 3456 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3457 | `		return rc;` |
 |     - | 3458 | `	}` |
-|  3885 | 3459 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib6, sizeof(zReflectLib6)-1);` |
-|  3885 | 3460 | `	if( rc != SXRET_OK ){` |
+|  3887 | 3459 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib6, sizeof(zReflectLib6)-1);` |
+|  3887 | 3460 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3461 | `		return rc;` |
 |     - | 3462 | `	}` |
-|  3885 | 3463 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib7, sizeof(zReflectLib7)-1);` |
-|  3885 | 3464 | `	if( rc != SXRET_OK ){` |
+|  3887 | 3463 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib7, sizeof(zReflectLib7)-1);` |
+|  3887 | 3464 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3465 | `		return rc;` |
 |     - | 3466 | `	}` |
-|  3885 | 3467 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib8, sizeof(zReflectLib8)-1);` |
-|  3885 | 3468 | `	if( rc != SXRET_OK ){` |
+|  3887 | 3467 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib8, sizeof(zReflectLib8)-1);` |
+|  3887 | 3468 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3469 | `		return rc;` |
 |     - | 3470 | `	}` |
-|  3885 | 3471 | `	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib9, sizeof(zReflectLib9)-1);` |
-|  1945 | 3472 | `}` |
+|  3887 | 3471 | `	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib9, sizeof(zReflectLib9)-1);` |
+|  1946 | 3472 | `}` |
 |     - | 3473 |  |
