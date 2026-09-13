@@ -7549,10 +7549,15 @@ static sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pVal
 		if( !bCloneInit && (pVmAttr->iState & VM_CLASS_ATTR_UNINIT) == 0 ){
 			/* Already initialized: any further write is forbidden, any scope —
 			 * checked BEFORE the set-visibility scope, matching php's order.
-			 * (PHP 8.5 clone($o,[...]) is the sole exception — bCloneInit — which
-			 * re-initializes a readonly property from an allowed scope, so it
-			 * falls through to the set-scope check below.) */
-			return VmThrowReadonlyError(pVm,pVmAttr->pOwner,pAttr,1);
+			 * Exceptions that fall through to the set-scope check below:
+			 *   - PHP 8.5 clone($o,[...]) with-updates (bCloneInit), and
+			 *   - PHP 8.3 __clone(): the object under clone (the executing $this,
+			 *     flagged VM_INSTANCE_CLONING) may re-initialize its readonly props. */
+			VmFrame *pCloneFr = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;
+			if( !(pCloneFr && pCloneFr->pThis
+				&& (pCloneFr->pThis->iFlags & VM_INSTANCE_CLONING)) ){
+				return VmThrowReadonlyError(pVm,pVmAttr->pOwner,pAttr,1);
+			}
 		}
 	}
 	if( pAttr->iFlags & (PH7_CLASS_ATTR_PRIVATE_SET|PH7_CLASS_ATTR_PROTECTED_SET) ){
@@ -7567,6 +7572,12 @@ static sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pVal
 		 * class scope (readonly's set-scope is protected — a subclass may set). */
 		ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pVmAttr->pOwner;
 		ph7_class *pActive = VmCurrentSelf(pVm);
+		/* A readonly property imported from a TRAIT is, per php, declared in the
+		 * USING class (traits are flattened in). The trait is not in any instanceof
+		 * hierarchy, so use the composing class (pVmAttr->pOwner) as the set-scope. */
+		if( pDecl && (pDecl->iFlags & PH7_CLASS_TRAIT) && pVmAttr->pOwner ){
+			pDecl = pVmAttr->pOwner;
+		}
 		if( pActive == 0 || pDecl == 0 || !PH7_VmInstanceOf(pActive,pDecl) ){
 			return VmThrowReadonlyError(pVm,pVmAttr->pOwner,pAttr,0);
 		}
@@ -8861,22 +8872,38 @@ static void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,ph7_value *pList)
 		}
 		ph7_array_add_strkey_elem(pEntry,"function",pValue);
 		ph7_value_reset_string_cursor(pValue);
-		if( pFrame->pThis && pFrame->pThis->pClass ){
-			ph7_value_string(pValue,pFrame->pThis->pClass->sName.zString,
-				(int)pFrame->pThis->pClass->sName.nByte);
-			ph7_array_add_strkey_elem(pEntry,"class",pValue);
-			ph7_value_reset_string_cursor(pValue);
-			ph7_value_string(pValue,"->",sizeof("->")-1);
-			ph7_array_add_strkey_elem(pEntry,"type",pValue);
-			ph7_value_reset_string_cursor(pValue);
-			if( iOptions & 1 /*DEBUG_BACKTRACE_PROVIDE_OBJECT*/ ){
-				ph7_value *pObjVal = ph7_new_scalar(&(*pVm));
-				if( pObjVal ){
-					pFrame->pThis->iRef++;
-					pObjVal->x.pOther = pFrame->pThis;
-					MemObjSetType(pObjVal,MEMOBJ_OBJ);
-					ph7_array_add_strkey_elem(pEntry,"object",pObjVal);
-					ph7_release_value(&(*pVm),pObjVal);
+		{
+			/* php's 'class' is the DECLARING class of the executing method (where it
+			 * is defined), NOT the runtime $this class — an inherited method called
+			 * on a subclass reports the base. pFunc->pUserData is that declaring
+			 * class (oo.c installs methods with it). 'type' is '->' for an instance
+			 * call and '::' for a static one (so static frames get class/type too,
+			 * which the old $this-only path dropped). Fall back to the $this class
+			 * for a bound closure (has $this but is not VM_FUNC_CLASS_METHOD). */
+			SyString *pClsName = 0;
+			const char *zType = "->";
+			if( (pFunc->iFlags & VM_FUNC_CLASS_METHOD) && pFunc->pUserData ){
+				pClsName = &((ph7_class *)pFunc->pUserData)->sName;
+				zType = pFrame->pThis ? "->" : "::";
+			}else if( pFrame->pThis && pFrame->pThis->pClass ){
+				pClsName = &pFrame->pThis->pClass->sName;
+			}
+			if( pClsName ){
+				ph7_value_string(pValue,pClsName->zString,(int)pClsName->nByte);
+				ph7_array_add_strkey_elem(pEntry,"class",pValue);
+				ph7_value_reset_string_cursor(pValue);
+				ph7_value_string(pValue,zType,(int)SyStrlen(zType));
+				ph7_array_add_strkey_elem(pEntry,"type",pValue);
+				ph7_value_reset_string_cursor(pValue);
+				if( (iOptions & 1 /*DEBUG_BACKTRACE_PROVIDE_OBJECT*/) && pFrame->pThis ){
+					ph7_value *pObjVal = ph7_new_scalar(&(*pVm));
+					if( pObjVal ){
+						pFrame->pThis->iRef++;
+						pObjVal->x.pOther = pFrame->pThis;
+						MemObjSetType(pObjVal,MEMOBJ_OBJ);
+						ph7_array_add_strkey_elem(pEntry,"object",pObjVal);
+						ph7_release_value(&(*pVm),pObjVal);
+					}
 				}
 			}
 		}

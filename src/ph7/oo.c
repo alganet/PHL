@@ -1116,7 +1116,12 @@ PH7_PRIVATE ph7_class_instance * PH7_CloneClassInstance(ph7_class_instance *pSrc
 	if( pMethod ){
 		if( pMethod->iCloneDepth < 16 ){
 			pMethod->iCloneDepth++;
+			/* PHP 8.3: __clone() may re-initialize the clone's readonly
+			 * properties. Flag the instance so the readonly store guard allows
+			 * it for the duration of the call. */
+			pClone->iFlags |= VM_INSTANCE_CLONING;
 			PH7_VmCallClassMethod(pVm,pClone,pMethod,0,0,0);
+			pClone->iFlags &= ~VM_INSTANCE_CLONING;
 		}else{
 			/* Nesting limit reached */
 			PH7_VmThrowError(pVm,0,PH7_CTX_ERR,"Object clone limit reached,no more call to __clone()");

@@ -1013,6 +1013,14 @@ struct ph7_class_instance
 	                     * never reused). Drives spl_object_id/hash + var_dump #N. */
 };
 /*
+ * ph7_class_instance::iFlags bit set while the object's __clone() magic method
+ * runs. PHP 8.3 lets __clone() re-initialize the cloned object's readonly
+ * properties, so the readonly store guard consults this flag on the executing
+ * $this. (Other iFlags bits are declared privately in their owning .c file:
+ * 0x001 destroyed, 0x002 dumping, 0x004 fcc-bound.)
+ */
+#define VM_INSTANCE_CLONING 0x008
+/*
  * A single instruction of the virtual machine has an opcode
  * and as many as three operands.
  * Each VM instruction resulting from compiling a PHP script
