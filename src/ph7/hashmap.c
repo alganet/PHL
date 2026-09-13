@@ -2169,7 +2169,13 @@ static sxi32 HashmapMergeSort(ph7_hashmap *pMap,ProcNodeCmp xCmp,void *pCmpData)
 	}
 	p = a[0];
 	for(i=1; i<N_SORT_BUCKET; i++){
-		p = HashmapNodeMerge(p,a[i],xCmp,pCmpData);
+		/* Higher-index buckets hold EARLIER-inserted (and larger) runs, so the
+		 * bucket must be the LEFT operand: HashmapNodeMerge favors its left arg on
+		 * a tie (cmp <= 0), and php's sorts are stable (PHP 8.0+) — equal elements
+		 * keep their original order. Passing p (the later elements) on the left
+		 * reversed equal runs (e.g. usort of five tie-keyed items moved the last to
+		 * the front). */
+		p = HashmapNodeMerge(a[i],p,xCmp,pCmpData);
 	}
 	p->pNext = 0;
 	/* Reflect the change */
