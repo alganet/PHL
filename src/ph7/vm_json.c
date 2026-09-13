@@ -69,6 +69,26 @@ static sxi32 VmJsonEmitReal(ph7_context *pCtx,double rVal)
 	return rc;
 }
 /*
+ * JSON_PRETTY_PRINT helper: emit a newline followed by (depth * 4) spaces, so a
+ * container's members are laid out one-per-line and indented like php. A no-op
+ * unless JSON_PRETTY_PRINT is set. Returns SXRET_OK or an OOM status; callers
+ * wrap it in JSON_EMIT so an allocation failure trips the ->oom rail.
+ */
+static sxi32 VmJsonPretty(json_private_data *pJson,int depth)
+{
+	ph7_context *pCtx = pJson->pCtx;
+	sxi32 rc;
+	int i;
+	if( (pJson->iFlags & JSON_PRETTY_PRINT) == 0 ){
+		return SXRET_OK;
+	}
+	rc = ph7_result_string(pCtx,"\n",(int)sizeof(char));
+	for( i = 0 ; i < depth && rc == SXRET_OK ; ++i ){
+		rc = ph7_result_string(pCtx,"    ",(int)sizeof("    ")-1);
+	}
+	return rc;
+}
+/*
  * Returns the JSON representation of a value.In other word perform a JSON encoding operation.
  * According to wikipedia
  * JSON's basic types are:
@@ -219,6 +239,12 @@ static sxi32 VmJsonEncode(
 			if( pData->oom ){
 				return PH7_OK;
 			}
+			/* Pretty-print: a non-empty container closes on its own line,
+			 * indented one level less than its members (isFirst is still 1
+			 * only when no entry was emitted -> keep "[]"/"{}" tight). */
+			if( !pData->isFirst ){
+				JSON_EMIT(pData,VmJsonPretty(pData,pData->nRecCount));
+			}
 			/* Append the closing square bracket or curly braces */
 			JSON_EMIT(pData,ph7_result_string(pCtx,(const char *)&d,(int)sizeof(char)));
 			pData->isObject = savedObject;
@@ -346,6 +372,10 @@ static sxi32 VmJsonEncode(
 					}
 				}
 				SySetRelease(&sNames);
+				/* Pretty-print: non-empty object closes on its own indented line. */
+				if( !pData->isFirst ){
+					JSON_EMIT(pData,VmJsonPretty(pData,pData->nRecCount));
+				}
 				/* Append the closing curly braces  */
 				JSON_EMIT(pData,ph7_result_string(pCtx,"}",(int)sizeof(char)));
 			}
@@ -368,9 +398,12 @@ static int VmJsonArrayEncode(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 		return PH7_OK;
 	}
 	if( !pJson->isFirst ){
-		/* Append the colon first */
+		/* Append the comma separating this entry from the previous one */
 		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,",",(int)sizeof(char)));
 	}
+	/* Pretty-print: every member starts on its own indented line (one level
+	 * deeper than the enclosing container). */
+	JSON_EMIT(pJson,VmJsonPretty(pJson,pJson->nRecCount + 1));
 	if( pJson->isObject ){
 		/* Outputs an object rather than an array */
 		const char *zKey;
@@ -383,6 +416,10 @@ static int VmJsonArrayEncode(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,"\"",(int)sizeof(char)));
 		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,zKey,nByte));
 		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,"\":",(int)sizeof("\":")-1));
+		/* php puts a space after the colon in pretty mode */
+		if( pJson->iFlags & JSON_PRETTY_PRINT ){
+			JSON_EMIT(pJson,ph7_result_string(pJson->pCtx," ",(int)sizeof(char)));
+		}
 	}
 	/* Encode the value */
 	pJson->nRecCount++;
@@ -403,14 +440,20 @@ static int VmJsonObjectEncode(const char *zAttr,ph7_value *pValue,void *pUserDat
 		return PH7_OK;
 	}
 	if( !pJson->isFirst ){
-		/* Append the colon first */
+		/* Append the comma separating this entry from the previous one */
 		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,",",(int)sizeof(char)));
 	}
+	/* Pretty-print: member on its own indented line, one level deeper. */
+	JSON_EMIT(pJson,VmJsonPretty(pJson,pJson->nRecCount + 1));
 	/* Append the quoted attribute name and the colon (checked; matches the prior
 	 * "%s" emit byte for byte — attribute names are not JSON-escaped). */
 	JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,"\"",(int)sizeof(char)));
 	JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,zAttr,-1));
 	JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,"\":",(int)sizeof("\":")-1));
+	/* php puts a space after the colon in pretty mode */
+	if( pJson->iFlags & JSON_PRETTY_PRINT ){
+		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx," ",(int)sizeof(char)));
+	}
 	/* Encode the value */
 	pJson->nRecCount++;
 	VmJsonEncode(pValue,pJson);
@@ -630,8 +673,12 @@ static sxi32 VmJsonTokenize(SyStream *pStream,SyToken *pToken,void *pUserData,vo
 			pToken->nType = JSON_TK_STR;
 			pStream->zText++; /* Jump the closing double quotes */
 		}
-	}else if( pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){
-		/* Number */
+	}else if( (pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]))
+		|| (pStream->zText[0] == '-' && &pStream->zText[1] < pStream->zEnd
+			&& pStream->zText[1] < 0xc0 && SyisDigit(pStream->zText[1])) ){
+		/* Number (JSON allows an optional leading minus). Consuming the first
+		 * character here covers both the '-' and a leading digit; the digit run
+		 * below then eats the integer part. */
 		pStream->zText++;
 		pToken->nType = JSON_TK_NUM;
 		while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){
@@ -864,10 +911,14 @@ static sxi32 VmJsonDecode(
 			while( (pDecoder->pIn < pDecoder->pEnd) && (pDecoder->pIn->nType & JSON_TK_COMMA) ){
 				pDecoder->pIn++;
 			}
-			if( pDecoder->pIn >= pDecoder->pEnd || (pDecoder->pIn->nType & JSON_TK_CSB) /*']'*/ ){
-				if( pDecoder->pIn < pDecoder->pEnd ){
-					pDecoder->pIn++; /* Jump the trailing ']' */
-				}
+			if( pDecoder->pIn >= pDecoder->pEnd ){
+				/* Ran out of tokens before the closing ']': php rejects an
+				 * unterminated array as a syntax error. */
+				*pDecoder->pErr = JSON_ERROR_SYNTAX;
+				return SXERR_ABORT;
+			}
+			if( pDecoder->pIn->nType & JSON_TK_CSB /*']'*/ ){
+				pDecoder->pIn++; /* Jump the trailing ']' */
 				break;
 			}
 			/* Recurse and decode the entry */
@@ -897,13 +948,9 @@ static sxi32 VmJsonDecode(
 		void *pOld;
 		/* Object representation*/
 		pDecoder->pIn++;
-		/* Return the object as an associative array */
-		if( (pDecoder->iFlags & JSON_DECODE_ASSOC) == 0 ){
-			ph7_context_throw_error(pDecoder->pCtx,PH7_CTX_WARNING,
-				"JSON Objects are always returned as an associative array"
-				);
-		}
-		/* Create a working array */
+		/* Decode into a working array first; unless the caller asked for
+		 * associative arrays (assoc=true / JSON_OBJECT_AS_ARRAY), it is converted
+		 * to a stdClass below so json_decode('{...}') returns an object like php. */
 		pWorker = ph7_context_new_array(pDecoder->pCtx);
 		pKey = ph7_context_new_scalar(pDecoder->pCtx);
 		if( pWorker == 0 || pKey == 0){
@@ -925,10 +972,14 @@ static sxi32 VmJsonDecode(
 			while( (pDecoder->pIn < pDecoder->pEnd) && (pDecoder->pIn->nType & JSON_TK_COMMA) ){
 				pDecoder->pIn++;
 			}
-			if( pDecoder->pIn >= pDecoder->pEnd || (pDecoder->pIn->nType & JSON_TK_CCB) /*'}'*/ ){
-				if( pDecoder->pIn < pDecoder->pEnd ){
-					pDecoder->pIn++; /* Jump the trailing ']' */
-				}
+			if( pDecoder->pIn >= pDecoder->pEnd ){
+				/* Ran out of tokens before the closing '}': php rejects an
+				 * unterminated object as a syntax error. */
+				*pDecoder->pErr = JSON_ERROR_SYNTAX;
+				return SXERR_ABORT;
+			}
+			if( pDecoder->pIn->nType & JSON_TK_CCB /*'}'*/ ){
+				pDecoder->pIn++; /* Jump the trailing '}' */
 				break;
 			}
 			if( (pDecoder->pIn->nType & JSON_TK_STR) == 0 || &pDecoder->pIn[1] >= pDecoder->pEnd
@@ -956,6 +1007,11 @@ static sxi32 VmJsonDecode(
 		/* Restore the old consumer */
 		pDecoder->xConsumer = xOld;
 		pDecoder->pUserData = pOld;
+		/* php returns a stdClass for a JSON object (one dynamic property per member,
+		 * nested objects already converted by the recursion) unless assoc was asked. */
+		if( (pDecoder->iFlags & JSON_DECODE_ASSOC) == 0 ){
+			PH7_MemObjToObject(pWorker);
+		}
 		/* Invoke the old consumer on the decoded object*/
 		xOld(pDecoder->pCtx,pArrayKey,pWorker,pOld);
 		/* Release the key */
@@ -1064,6 +1120,11 @@ static int VmJsonDecodeInput(ph7_context *pCtx,const char *zIn,int nByte,int iAs
 		/* Generic abort with no specific code: treat as a syntax error */
 		pVm->json_rc = JSON_ERROR_SYNTAX;
 	}
+	if( pVm->json_rc == JSON_ERROR_NONE && sDecoder.pIn < sDecoder.pEnd ){
+		/* php requires the whole input to be ONE JSON value; tokens left after a
+		 * complete value (e.g. '"a":1', '{}x', '1 2') are a syntax error. */
+		pVm->json_rc = JSON_ERROR_SYNTAX;
+	}
 	/* Clean-up the mess left behind */
 	SyLexRelease(&sLex);
 	SySetRelease(&sToken);
@@ -1090,11 +1151,10 @@ PH7_PRIVATE int vm_builtin_json_decode(ph7_context *pCtx,int nArg,ph7_value **ap
 	/* Extract the JSON string */
 	zIn = ph7_value_to_string(apArg[0],&nByte);
 	if( nByte < 1 ){
-		/* Empty string: php records a syntax error. Without the throw flag it
-		 * returns NULL (leaving json_last_error untouched, as PHL always has);
-		 * with JSON_THROW_ON_ERROR it raises a JsonException. */
+		/* Empty string: php records a syntax error (json_last_error() == 4) and
+		 * returns NULL, or raises a JsonException with JSON_THROW_ON_ERROR. */
+		pCtx->pVm->json_rc = JSON_ERROR_SYNTAX;
 		if( iFlags & JSON_THROW_ON_ERROR ){
-			pCtx->pVm->json_rc = JSON_ERROR_SYNTAX;
 			return PH7_VmThrowException(pCtx,"JsonException","%s",
 				JsonErrorMsg(JSON_ERROR_SYNTAX));
 		}
