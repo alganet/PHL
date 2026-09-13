@@ -13603,6 +13603,21 @@ static sxi32 GenStateEmitExprCode(
 					iArgFlags &= ~EXPR_FLAG_RDONLY_LOAD;
 					iArgFlags |= EXPR_FLAG_LOAD_IDX_STORE;
 				}
+				/* Slice 21: a plain `$var` argument may bind to a USER-function by-ref
+				 * parameter whose signature is unknown at compile time (forward
+				 * reference, dynamic call, or method dispatch — e.g. PHPUnit's
+				 * `willReturnReference($undef)`). Reserve a real memobj slot for it so an
+				 * UNDEFINED variable vivifies and the by-ref write-back reaches the caller
+				 * (php). A by-value parameter still receives a copy; the only divergence
+				 * is that an undefined variable passed BY VALUE is created as NULL in the
+				 * caller (recorded in NEWPLAN §2). Excludes isset()/empty()/unset(), which
+				 * compile through this same call loop but must NEVER create their operand,
+				 * and named/spread args (positional-index and by-ref semantics don't apply). */
+				if( (iFlags & (EXPR_FLAG_LOAD_IDX_ISSET|EXPR_FLAG_LOAD_IDX_EMPTY|EXPR_FLAG_LOAD_IDX_UNSET)) == 0
+				 && apNode[n]->pOp == 0 && apNode[n]->xCode == PH7_CompileVariable
+				 && (apNode[n]->iFlags & (EXPR_NODE_NAMED_ARG|EXPR_NODE_SPREAD)) == 0 ){
+					iArgFlags &= ~EXPR_FLAG_RDONLY_LOAD;
+				}
 				rc = GenStateEmitExprCode(&(*pGen),apNode[n],iArgFlags);
 				if( rc != SXRET_OK ){
 					return rc;
