@@ -261,14 +261,14 @@ Coverage: 12/743 lines (1.62%)
 |    ! 0 |  251 | `	ph7_value_int(pVal,SX_PTR_TO_INT(pUserData));` |
 |    ! 0 |  252 | `}` |
 |      - |  253 |  |
-|   3428 |  254 | `PH7_PRIVATE void PH7_RegisterTokenizerConstants(ph7_vm *pVm)` |
+|   3432 |  254 | `PH7_PRIVATE void PH7_RegisterTokenizerConstants(ph7_vm *pVm)` |
 |      5 |  255 | `{` |
 |      - |  256 | `	sxu32 n;` |
-| 531345 |  257 | `	for( n = 0 ; n < SX_ARRAYSIZE(aTokConst) ; ++n ){` |
-| 791873 |  258 | `		ph7_create_constant(&(*pVm),aTokConst[n].zName,TokConstExpand,` |
-| 527912 |  259 | `			SX_INT_TO_PTR(aTokConst[n].iId));` |
-| 263961 |  260 | `	}` |
-|   3433 |  261 | `}` |
+| 531965 |  257 | `	for( n = 0 ; n < SX_ARRAYSIZE(aTokConst) ; ++n ){` |
+| 792797 |  258 | `		ph7_create_constant(&(*pVm),aTokConst[n].zName,TokConstExpand,` |
+| 528528 |  259 | `			SX_INT_TO_PTR(aTokConst[n].iId));` |
+| 264269 |  260 | `	}` |
+|   3437 |  261 | `}` |
 |      - |  262 |  |
 |      - |  263 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
 |      - |  264 |  |
@@ -1337,10 +1337,10 @@ Coverage: 12/743 lines (1.62%)
 |      - | 1327 | `	"}"` |
 |      - | 1328 | `};` |
 |      - | 1329 |  |
-|   3889 | 1330 | `PH7_PRIVATE sxi32 PH7_VmInstallTokenizer(ph7_vm *pVm){` |
-|   3889 | 1331 | `	ph7_create_function(&(*pVm),"token_get_all",PH7_builtin_token_get_all,0);` |
-|   3889 | 1332 | `	ph7_create_function(&(*pVm),"token_name",PH7_builtin_token_name,0);` |
-|   3889 | 1333 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zPhpTokenClass,sizeof(zPhpTokenClass)-1);` |
+|   3893 | 1330 | `PH7_PRIVATE sxi32 PH7_VmInstallTokenizer(ph7_vm *pVm){` |
+|   3893 | 1331 | `	ph7_create_function(&(*pVm),"token_get_all",PH7_builtin_token_get_all,0);` |
+|   3893 | 1332 | `	ph7_create_function(&(*pVm),"token_name",PH7_builtin_token_name,0);` |
+|   3893 | 1333 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zPhpTokenClass,sizeof(zPhpTokenClass)-1);` |
 |      5 | 1334 | `}` |
 |      - | 1335 |  |
 |      - | 1336 | `#else /* PH7_DISABLE_BUILTIN_FUNC */` |

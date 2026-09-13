@@ -3413,7 +3413,7 @@ Coverage: 1059/1235 lines (85.75%)
 |     - | 3403 | ` * Called from PH7_VmInit while pVm->bCompilingBuiltin is set, right after` |
 |     - | 3404 | ` * the core builtin chunks (Exception and friends must exist already).` |
 |     - | 3405 | ` */` |
-|  3884 | 3406 | `PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)` |
+|  3888 | 3406 | `PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)` |
 |     5 | 3407 | `{` |
 |     - | 3408 | `	static const struct {` |
 |     - | 3409 | `		const char *zName;` |
@@ -3443,41 +3443,41 @@ Coverage: 1059/1235 lines (85.75%)
 |     - | 3433 | `	};` |
 |     - | 3434 | `	sxu32 n;` |
 |     - | 3435 | `	sxi32 rc;` |
-| 85453 | 3436 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
-| 81569 | 3437 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
-| 40787 | 3438 | `	}` |
-|  3889 | 3439 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib1, sizeof(zReflectLib1)-1);` |
-|  3889 | 3440 | `	if( rc != SXRET_OK ){` |
+| 85541 | 3436 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
+| 81653 | 3437 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
+| 40829 | 3438 | `	}` |
+|  3893 | 3439 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib1, sizeof(zReflectLib1)-1);` |
+|  3893 | 3440 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3441 | `		return rc;` |
 |     - | 3442 | `	}` |
-|  3889 | 3443 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib2, sizeof(zReflectLib2)-1);` |
-|  3889 | 3444 | `	if( rc != SXRET_OK ){` |
+|  3893 | 3443 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib2, sizeof(zReflectLib2)-1);` |
+|  3893 | 3444 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3445 | `		return rc;` |
 |     - | 3446 | `	}` |
-|  3889 | 3447 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib3, sizeof(zReflectLib3)-1);` |
-|  3889 | 3448 | `	if( rc != SXRET_OK ){` |
+|  3893 | 3447 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib3, sizeof(zReflectLib3)-1);` |
+|  3893 | 3448 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3449 | `		return rc;` |
 |     - | 3450 | `	}` |
-|  3889 | 3451 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib4, sizeof(zReflectLib4)-1);` |
-|  3889 | 3452 | `	if( rc != SXRET_OK ){` |
+|  3893 | 3451 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib4, sizeof(zReflectLib4)-1);` |
+|  3893 | 3452 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3453 | `		return rc;` |
 |     - | 3454 | `	}` |
-|  3889 | 3455 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib5, sizeof(zReflectLib5)-1);` |
-|  3889 | 3456 | `	if( rc != SXRET_OK ){` |
+|  3893 | 3455 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib5, sizeof(zReflectLib5)-1);` |
+|  3893 | 3456 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3457 | `		return rc;` |
 |     - | 3458 | `	}` |
-|  3889 | 3459 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib6, sizeof(zReflectLib6)-1);` |
-|  3889 | 3460 | `	if( rc != SXRET_OK ){` |
+|  3893 | 3459 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib6, sizeof(zReflectLib6)-1);` |
+|  3893 | 3460 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3461 | `		return rc;` |
 |     - | 3462 | `	}` |
-|  3889 | 3463 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib7, sizeof(zReflectLib7)-1);` |
-|  3889 | 3464 | `	if( rc != SXRET_OK ){` |
+|  3893 | 3463 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib7, sizeof(zReflectLib7)-1);` |
+|  3893 | 3464 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3465 | `		return rc;` |
 |     - | 3466 | `	}` |
-|  3889 | 3467 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib8, sizeof(zReflectLib8)-1);` |
-|  3889 | 3468 | `	if( rc != SXRET_OK ){` |
+|  3893 | 3467 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib8, sizeof(zReflectLib8)-1);` |
+|  3893 | 3468 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 3469 | `		return rc;` |
 |     - | 3470 | `	}` |
-|  3889 | 3471 | `	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib9, sizeof(zReflectLib9)-1);` |
-|  1947 | 3472 | `}` |
+|  3893 | 3471 | `	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib9, sizeof(zReflectLib9)-1);` |
+|  1949 | 3472 | `}` |
 |     - | 3473 |  |

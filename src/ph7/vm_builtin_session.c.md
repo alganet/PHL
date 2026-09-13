@@ -233,9 +233,9 @@ Coverage: 4/4 lines (100.00%)
 |    - |  223 | `"}"` |
 |    - |  224 | `;` |
 |    - |  225 |  |
-| 3884 |  226 | `PH7_PRIVATE sxi32 PH7_VmInstallSession(ph7_vm *pVm)` |
+| 3888 |  226 | `PH7_PRIVATE sxi32 PH7_VmInstallSession(ph7_vm *pVm)` |
 |    5 |  227 | `{` |
-| 3889 |  228 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zSessionLib,sizeof(zSessionLib)-1);` |
+| 3893 |  228 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zSessionLib,sizeof(zSessionLib)-1);` |
 |    5 |  229 | `}` |
 |    - |  230 |  |
 |    - |  231 | `#endif /* PH7_DISABLE_DISK_IO */` |
