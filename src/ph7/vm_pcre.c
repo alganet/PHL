@@ -901,8 +901,14 @@ static void PcreDoReplace(
 		nReplacements++;
 		/* Advance */
 		if( ovector[1] == ovector[0] ){
-			if( startOffset < (PCRE2_SIZE)nSubLen ){
-				SyBlobAppend(pOut, &zSubject[startOffset], 1);
+			/* Zero-width match: to make progress, emit the character AT THE MATCH
+			 * POSITION (ovector[0]) and step past it. The match can sit AHEAD of the
+			 * search start (a lookbehind/lookahead assertion, e.g. the camelCase
+			 * split /(?<=[[:lower:]])(?=[[:upper:]])/), so copying zSubject[startOffset]
+			 * grabbed the wrong byte ("fooBar" -> "foo far"). The text between
+			 * startOffset and ovector[0] was already copied above. */
+			if( ovector[0] < (PCRE2_SIZE)nSubLen ){
+				SyBlobAppend(pOut, &zSubject[ovector[0]], 1);
 			}
 			startOffset = ovector[0] + 1;
 		}else{
