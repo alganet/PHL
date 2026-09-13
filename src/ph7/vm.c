@@ -3186,8 +3186,10 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->nMaxDepth = 512;
 	pVm->nMaxNativeDepth = 16;
 #endif
-	/* Default assertion flags */
-	pVm->iAssertFlags = 0; /* PHP 8: no warning flag by default, AssertionError is thrown */
+	/* Default assertion flags: zend.assertions defaults to -1 on the php CLI, so
+	 * assert() is compiled out (a no-op) unless -d zend.assertions=1 turns it on.
+	 * ASSERT_ACTIVE (PH7_ASSERT_DISABLE) stays independently enabled, matching php. */
+	pVm->iAssertFlags = PH7_ASSERT_ZEND_OFF;
 	/* JSON return status */
 	pVm->json_rc = JSON_ERROR_NONE;
 	/* PRNG context */
@@ -5998,6 +6000,18 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 				SyMemcpy(zValue,pVm->zDefTz,3);
 				pVm->zDefTz[3] = 0;
 				pVm->nDefTz = 3;
+			}else if( nName == sizeof("zend.assertions")-1
+			 && SyMemcmp(zName,"zend.assertions",nName) == 0 ){
+				/* zend.assertions is a compile-time switch: 1 makes assert()
+				 * active, 0 or -1 makes it a no-op. Applied here so it takes
+				 * effect even before the INI chunk is seeded. */
+				sxi64 iZend = 0;
+				SyStrToInt64(zValue,nValue,(void *)&iZend,0);
+				if( iZend >= 1 ){
+					pVm->iAssertFlags &= ~PH7_ASSERT_ZEND_OFF;
+				}else{
+					pVm->iAssertFlags |= PH7_ASSERT_ZEND_OFF;
+				}
 			}
 		}
 		break;
@@ -25480,18 +25494,20 @@ static int vm_builtin_assert(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_vm *pVm = pCtx->pVm;
 	int iFlags,iResult;
 	const char *zDesc;
+	iFlags = pVm->iAssertFlags;
+	if( iFlags & (PH7_ASSERT_DISABLE|PH7_ASSERT_ZEND_OFF) ){
+		/* Assertion is disabled (assert.active=0) or compiled out
+		 * (zend.assertions<1); the call is elided entirely -- even a missing
+		 * argument is not diagnosed -- and it evaluates to TRUE (PHP 8). */
+		ph7_result_bool(pCtx,1);
+		return PH7_OK;
+	}
 	/* PHP 8: ArgumentCountError if no arguments */
 	if( nArg < 1 ){
 		return PH7_VmThrowException(pCtx,
 			"ArgumentCountError",
 			"assert() expects at least 1 argument, 0 given"
 			);
-	}
-	iFlags = pVm->iAssertFlags;
-	if( iFlags & PH7_ASSERT_DISABLE ){
-		/* Assertion is disabled,return TRUE (PHP 8 behavior) */
-		ph7_result_bool(pCtx,1);
-		return PH7_OK;
 	}
 	/* PHP 8: No string evaluation.  All values are cast to boolean. */
 	iResult = ph7_value_to_bool(apArg[0]);

@@ -1199,6 +1199,7 @@ struct ph7_match
 #define PH7_ASSERT_BAIL       0x04  /* Terminate execution on failed assertions */
 #define PH7_ASSERT_QUIET_EVAL 0x08  /* Not used */
 #define PH7_ASSERT_CALLBACK   0x10  /* Callback to call on failed assertions */
+#define PH7_ASSERT_ZEND_OFF   0x20  /* zend.assertions < 1: assert() compiled out (php CLI default -1) */
 /*
  * error_log() consumer function signature.
  * Refer to the [PH7_VM_CONFIG_ERR_LOG_HANDLER] configuration directive

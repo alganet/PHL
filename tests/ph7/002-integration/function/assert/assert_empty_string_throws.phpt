@@ -5,6 +5,8 @@ SPDX-License-Identifier: BSD-3-Clause
 assert("") throws AssertionError (empty string is falsy)
 --SKIPIF--
 <?php if (function_exists('zend_version')) { echo 'skip'; } ?>
+--INI--
+zend.assertions=1
 --FILE--
 <?php
 assert("");
