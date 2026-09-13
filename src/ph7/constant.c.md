@@ -727,11 +727,11 @@ Coverage: 1135/1207 lines (94.03%)
 |      - |  717 | ` * NOTE:` |
 |      - |  718 | ` *  The expanded value must be a power of two.` |
 |      - |  719 | ` */` |
-|      4 |  720 | `static void PH7_DBIA_Const(ph7_value *pVal,void *pUserData)` |
+|      8 |  720 | `static void PH7_DBIA_Const(ph7_value *pVal,void *pUserData)` |
 |      1 |  721 | `{` |
-|      5 |  722 | `	ph7_value_int(pVal,0x02); /* MUST BE A POWER OF TWO */` |
-|      2 |  723 | `	SXUNUSED(pUserData);` |
-|      5 |  724 | `}` |
+|      9 |  722 | `	ph7_value_int(pVal,0x02); /* MUST BE A POWER OF TWO */` |
+|      4 |  723 | `	SXUNUSED(pUserData);` |
+|      9 |  724 | `}` |
 |      - |  725 | `#ifdef PH7_ENABLE_MATH_FUNC` |
 |      - |  726 | `/*` |
 |      - |  727 | ` * M_PI` |
@@ -1262,20 +1262,20 @@ Coverage: 1135/1207 lines (94.03%)
 |      - | 1252 | ` * PATHINFO_EXTENSION` |
 |      - | 1253 | ` *  Expand 3.` |
 |      - | 1254 | ` */` |
-|   6718 | 1255 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
+|   6722 | 1255 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1256 | `{` |
-|   3359 | 1257 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6723 | 1258 | `	ph7_value_int(pVal,3);` |
-|   6723 | 1259 | `}` |
+|   3361 | 1257 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6727 | 1258 | `	ph7_value_int(pVal,3);` |
+|   6727 | 1259 | `}` |
 |      - | 1260 | `/*` |
 |      - | 1261 | ` * PATHINFO_FILENAME` |
 |      - | 1262 | ` *  Expand 4.` |
 |      - | 1263 | ` */` |
-|   6710 | 1264 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
+|   6714 | 1264 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1265 | `{` |
-|   3355 | 1266 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6715 | 1267 | `	ph7_value_int(pVal,4);` |
-|   6715 | 1268 | `}` |
+|   3357 | 1266 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6719 | 1267 | `	ph7_value_int(pVal,4);` |
+|   6719 | 1268 | `}` |
 |      - | 1269 | `/*` |
 |      - | 1270 | ` * ASSERT_ACTIVE.` |
 |      - | 1271 | ` *  PHP ASSERT_ACTIVE = 1` |
