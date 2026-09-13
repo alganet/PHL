@@ -8,7 +8,7 @@ SPDX-License-Identifier: BSD-3-Clause
 // test is about the platform, not the engine. My guard-lift sweep wrongly
 // unskipped it because both engines AGREE here; agreement is not the same as
 // passing the expectation.
-if (PHP_OS !== 'WINNT' || !function_exists('zend_version')) { echo 'skip Windows-only: POSIX locks are advisory'; }
+if (PHP_OS !== 'WINNT') { echo 'skip Windows-only: POSIX locks are advisory'; }
 ?>
 --TEST--
 Test file_put_contents()

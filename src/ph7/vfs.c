@@ -3072,6 +3072,10 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 			(sFile.nByte > 2 && sFile.zString[0] == '.' && sFile.zString[1] == '.' && sFile.zString[2] == '/') ){
 				/*  Open the file directly */
 				rc = pStream->xOpen(zFile,iFlags,pResource,&pHandle);
+				if( rc == PH7_OK && bPushInclude ){
+					/* Mark as included */
+					PH7_VmPushFilePath(pVm,sFile.zString,sFile.nByte,FALSE,pNew);
+				}
 		}else{
 			SyString *pPath;
 			SyBlob sWorker;
@@ -3106,12 +3110,6 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 				/* Check the next path */
 			}
 			SyBlobRelease(&sWorker);
-		}
-		if( rc == PH7_OK ){
-			if( bPushInclude ){
-				/* Mark as included */
-				PH7_VmPushFilePath(pVm,sFile.zString,sFile.nByte,FALSE,pNew);
-			}
 		}
 	}else{
 		/* Open the URI direcly */
@@ -3992,7 +3990,10 @@ static int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_value **
 		/* Perform the write operation */
 		n = pStream->xWrite(pHandle,(const void *)zData,nLen);
 		if( n < 0 ){
-			/* IO error,return FALSE */
+			/* IO error,return FALSE — with php's write-failure diagnostic. */
+			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+				"%s(): Write of %d bytes failed with errno=%d %s",
+				ph7_function_name(pCtx),(int)nLen,errno,VfsStrerror(errno));
 			ph7_result_bool(pCtx,0);
 		}else{
 			/* Total number of bytes written */
