@@ -1081,6 +1081,7 @@ static void VmLeaveFrame(ph7_vm *pVm)
  */
 static VmRefObj * VmRefObjExtract(ph7_vm *pVm,sxu32 nObjIdx);
 static sxi32 VmUnsetVarByName(ph7_vm *pVm,VmFrame *pFrame,const char *zName,sxu32 nByte);
+static ph7_class * PH7_VmResolveParentClass(ph7_vm *pVm);
 /*
  * Remove a memobj slot from whichever active frame's local-teardown set (sLocal)
  * records it — walking the parent chain covers by-reference aliases whose slot is
@@ -7240,6 +7241,11 @@ static ph7_class *VmResolveTypeClass(ph7_vm *pVm, const SyString *pCN, ph7_class
 		return pSelf;
 	}
 	if( pCN->nByte == 6 && SyMemcmp(pCN->zString,"parent",6) == 0 ){
+		/* A trait method's declaring class is the trait (shared by pointer); parent::
+		 * resolves against the runtime using class, matching the self:: trait rule. */
+		if( pSelf && (pSelf->iFlags & PH7_CLASS_TRAIT) ){
+			pSelf = PH7_VmPeekTopClass(pVm);
+		}
 		return pSelf ? pSelf->pBase : 0;
 	}
 	return PH7_VmExtractClass(pVm,pCN->zString,pCN->nByte,FALSE,0);
@@ -11372,10 +11378,7 @@ case PH7_OP_IS_A:{
 			}else if( nCls == 6 && SyMemcmp(zCls,"static",6) == 0 ){
 				pClass = PH7_VmPeekTopClass(&(*pVm));
 			}else if( nCls == 6 && SyMemcmp(zCls,"parent",6) == 0 ){
-				ph7_class *pSelf = PH7_VmPeekDeclaringClass(&(*pVm));
-				if( pSelf && pSelf->pBase ){
-					pClass = pSelf->pBase;
-				}
+				pClass = PH7_VmResolveParentClass(&(*pVm));
 			}else{
 				pClass = PH7_VmExtractClass(&(*pVm),zCls,nCls,FALSE,0);
 			}
@@ -16811,10 +16814,7 @@ case PH7_OP_MEMBER: {
 						bForwardingCall = 1;
 						pForwardLsb = pClass;
 					}else if( nCls == 6 && SyMemcmp(zCls,"parent",6) == 0 ){
-						ph7_class *pSelf = PH7_VmPeekDeclaringClass(&(*pVm));
-						if( pSelf && pSelf->pBase ){
-							pClass = pSelf->pBase;
-						}
+						pClass = PH7_VmResolveParentClass(&(*pVm));
 						bForwardingCall = 1;
 						pForwardLsb = PH7_VmPeekTopClass(&(*pVm));
 					}else{
@@ -20883,8 +20883,7 @@ static ph7_class * VmFccResolveScope(ph7_vm *pVm, ph7_value *pTarget)
 	}else if( nCls == 6 && SyMemcmp(zCls,"static",6) == 0 ){
 		pClass = PH7_VmPeekTopClass(&(*pVm));     /* late static binding */
 	}else if( nCls == 6 && SyMemcmp(zCls,"parent",6) == 0 ){
-		ph7_class *pSelf = PH7_VmPeekDeclaringClass(&(*pVm));
-		pClass = (pSelf && pSelf->pBase) ? pSelf->pBase : 0;
+		pClass = PH7_VmResolveParentClass(&(*pVm));
 	}else{
 		pClass = PH7_VmExtractClass(&(*pVm),zCls,nCls,FALSE,0);
 	}
@@ -23093,6 +23092,23 @@ PH7_PRIVATE ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm)
 	/* No method frame: a constant/property initializer evaluated via
 	 * VmLocalExec resolves self:: against the class being initialized. */
 	return pVm->pConstEvalClass;
+}
+/*
+ * Resolve the `parent` keyword to the base class of the current method's scope.
+ * A trait method is shared by pointer into every using class (its declaring class
+ * stays the TRAIT), so `parent::` — like `self::` — must resolve against the
+ * runtime USING class, not the trait (which has no base). Mirrors the trait check
+ * already applied to self:: at each static-resolution site. Returns 0 when there
+ * is no base class (php then raises "Cannot access parent:: / Class 'parent' not
+ * found" at the call site).
+ */
+static ph7_class * PH7_VmResolveParentClass(ph7_vm *pVm)
+{
+	ph7_class *pSelf = PH7_VmPeekDeclaringClass(pVm);
+	if( pSelf && (pSelf->iFlags & PH7_CLASS_TRAIT) ){
+		pSelf = PH7_VmPeekTopClass(pVm);
+	}
+	return (pSelf && pSelf->pBase) ? pSelf->pBase : 0;
 }
 
 /* Class/OOP builtin functions moved to vm_builtin_class.c */
