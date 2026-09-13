@@ -2,40 +2,43 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-json_decode with malformed JSON inputs
---SKIPIF--
-<?php if (!function_exists('json_decode') || !function_exists('json_last_error')) { die('skip'); } ?>
-<?php if (function_exists('zend_version')) { die('skip PHL and PHP json_decode differ'); } ?>
+json_decode: php-parity for objects, negatives, and malformed/strict input
+--DESCRIPTION--
+Regression cluster (was PH7-legacy divergent, now php-identical):
+  * a JSON object decodes to a stdClass (no "always an associative array" warning);
+    assoc=true still yields an array.
+  * negative numbers tokenize (bare, in arrays, as object values, floats).
+  * malformed input sets json_last_error() and returns null: empty string,
+    garbage, a trailing value, and UNTERMINATED containers ('{', '[1,2').
 --FILE--
 <?php
-// Test malformed JSON that should return NULL and set error
-$malformed = array(
-    'invalid json',    // completely invalid
-    '',                // empty string
-);
+// Object vs. associative array.
+$obj = json_decode('{"n":-1,"f":-2.5,"child":{"x":1}}');
+echo 'is_object=', is_object($obj) ? '1' : '0', "\n";
+echo 'n=', $obj->n, ' f=', $obj->f, ' child.x=', $obj->child->x, "\n";
+$arr = json_decode('{"a":[-1,-2,-3]}', true);
+echo 'assoc=', json_encode($arr), "\n";
 
-foreach ($malformed as $json) {
-    $result = json_decode($json);
-    $error = json_last_error();
-    echo ($result === null && $error != 0) ? "malformed_ok\n" : "malformed_fail\n";
+// Malformed / strict cases: null result AND json_last_error() set.
+foreach (['', 'garbage', '"a":1', '{', '[1,2', '{"a":'] as $bad) {
+    $r = json_decode($bad);
+    echo ($r === null && json_last_error() !== 0) ? "err_ok\n" : "err_fail\n";
 }
 
-// Test that some malformed JSON still sets error
-$result = json_decode('{');
-$error = json_last_error();
-echo ($error != 0) ? "error_ok\n" : "error_fail\n";
-
-// Test that valid JSON still works
-$valid = '{"test": "value"}';
-$result = json_decode($valid, true);
-echo ($result !== null && isset($result['test']) && $result['test'] == 'value') ? "valid_ok\n" : "valid_fail\n";
+// A valid decode clears the error again.
+json_decode('{"ok":true}');
+echo 'cleared=', json_last_error() === 0 ? '1' : '0', "\n";
 ?>
---EXPECTF--
-malformed_ok
-malformed_ok
-Warning: json_decode(): JSON Objects are always returned as an associative array in %s on line %d
-error_fail
-valid_ok
+--EXPECT--
+is_object=1
+n=-1 f=-2.5 child.x=1
+assoc={"a":[-1,-2,-3]}
+err_ok
+err_ok
+err_ok
+err_ok
+err_ok
+err_ok
+cleared=1
 --CLEAN--
 <?php
-unset($malformed, $result, $error, $valid);
