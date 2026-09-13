@@ -9737,6 +9737,8 @@ static int VmMemberNextIsWrite(const VmInstr *pNext)
 	switch( pNext->iOp ){
 		case PH7_OP_STORE:
 			return pNext->iP2 != 0;                          /* member store ($o->p = v) */
+		case PH7_OP_STORE_REF:
+			return pNext->iP2 != 0;                          /* member ref store ($o->p =& $x) */
 		case PH7_OP_INCR: case PH7_OP_DECR:
 		case PH7_OP_ADD_STORE: case PH7_OP_SUB_STORE: case PH7_OP_MUL_STORE:
 		case PH7_OP_DIV_STORE: case PH7_OP_MOD_STORE: case PH7_OP_POW_STORE:
@@ -14864,6 +14866,55 @@ case PH7_OP_LOAD_REF: {
 		goto Abort;
 	}
 #endif
+	if( pInstr->iP2 == 1 ){
+		/* Member reference target: `$o->p =& $x` / `self::$s =& $x`. The
+		 * preceding OP_MEMBER (PH7_MEMBER_REF_TARGET) resolved the property slot
+		 * and stashed it. Stack: [ ... , source, member-result(top) ]. Rebind the
+		 * property's nIdx to alias the source variable's slot and pin that slot
+		 * past its owning frame (like a use(&$x) capture) so neither frame
+		 * teardown nor a later unset recycles it while the property aliases it. */
+		ph7_value *pSrc = &pTos[-1];
+		sxu32 nSrcIdx = pSrc->nIdx;
+		VmClassAttr *pVmAttr = pVm->pRefTargetAttr;
+		ph7_class_attr *pStAttr = pVm->pRefTargetStaticAttr;
+		if( nSrcIdx == SXU32_HIGH ){
+			/* php: the RHS of `=&` must be a variable, not a constant expression.
+			 * (The compiler already rejects the obvious literal forms.) */
+			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
+				"Reference operator require a variable not a constant as it's right operand");
+		}else if( pVmAttr ){
+			sxu32 nOldIdx = pVmAttr->nIdx;
+			if( nOldIdx != nSrcIdx ){
+				if( (pVmAttr->iState & VM_CLASS_ATTR_REFBOUND) == 0 ){
+					/* Release this property's own (unshared) slot before repointing.
+					 * A reference-bound property bypasses typed coercion in php, so
+					 * drop any typed-slot enforcement entry too. */
+					if( pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
+						SyHashDeleteEntry(&pVm->hTypedSlot,(const void *)&nOldIdx,sizeof(sxu32),0);
+					}
+					PH7_VmUnsetMemObj(&(*pVm),nOldIdx,TRUE);
+				}
+				pVmAttr->nIdx = nSrcIdx;
+				pVmAttr->iState |= VM_CLASS_ATTR_REFBOUND;
+				pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
+				VmPinMemObjSlot(&(*pVm),nSrcIdx);
+			}
+		}else if( pStAttr ){
+			if( pStAttr->nIdx != nSrcIdx ){
+				pStAttr->nIdx = nSrcIdx;
+				VmPinMemObjSlot(&(*pVm),nSrcIdx);
+			}
+		}
+		if( pVm->pRefTargetThis ){
+			PH7_ClassInstanceUnref(pVm->pRefTargetThis);
+		}
+		pVm->pRefTargetAttr = 0;
+		pVm->pRefTargetStaticAttr = 0;
+		pVm->pRefTargetThis = 0;
+		/* Pop the member-result; leave the source as the expression value. */
+		VmPopOperand(&pTos,1);
+		break;
+	}
 	if( pInstr->p3 == 0 ){
 		char *zName;
 		/* Take the variable name from the Next on the stack */
@@ -16290,6 +16341,28 @@ case PH7_OP_MEMBER: {
 				pThis->iRef++;
 				PH7_MemObjRelease(pTos);
 				pTos->nIdx = SXU32_HIGH; /* Assume we are loading a constant */
+				if( pInstr->iP2 == PH7_MEMBER_REF_TARGET ){
+					/* `$o->p =& $x`: stash the resolved instance property slot for the
+					 * following member-marked OP_STORE_REF, which rebinds it to alias the
+					 * source variable. Do NOT run the read/hook/magic/uninit machinery
+					 * below — a reference bind neither reads the value nor triggers
+					 * get/set hooks or an uninitialized-typed Error. pThis stays retained
+					 * (the iRef++ above); OP_STORE_REF releases it. */
+					if( pObjAttr ){
+						pVm->pRefTargetAttr = pObjAttr;
+						pVm->pRefTargetThis = pThis;
+						pVm->pRefTargetStaticAttr = 0;
+						pTos->nIdx = pObjAttr->nIdx;
+					}else{
+						/* Missing/inaccessible target: leave nothing stashed; OP_STORE_REF
+						 * no-ops. Balance the retain. */
+						pVm->pRefTargetAttr = 0;
+						pVm->pRefTargetThis = 0;
+						pVm->pRefTargetStaticAttr = 0;
+						PH7_ClassInstanceUnref(pThis);
+					}
+					break;
+				}
 				if( pObjAttr ){
 					ph7_value *pValue = 0; /* cc warning */
 					/* Check attribute access */
@@ -16906,6 +16979,26 @@ case PH7_OP_MEMBER: {
 						}
 						PH7_MemObjRelease(pTos);
 						pTos->nIdx = SXU32_HIGH;
+						if( pInstr->iP2 == PH7_MEMBER_REF_TARGET ){
+							/* `self::$s =& $x` / `C::$s =& $x`: stash the static property slot
+							 * for the following member-marked OP_STORE_REF (class-level, shared
+							 * across instances — matches php). Skip the read machinery below. */
+							if( pAttr && (pAttr->iFlags & PH7_CLASS_ATTR_STATIC)
+							 && PH7_VmClassMemberAccess(&(*pVm),pClass,&pAttr->sName,pAttr->iProtection,FALSE) ){
+								pVm->pRefTargetStaticAttr = pAttr;
+								pVm->pRefTargetAttr = 0;
+								pVm->pRefTargetThis = 0;
+								pTos->nIdx = pAttr->nIdx;
+							}else{
+								pVm->pRefTargetStaticAttr = 0;
+								pVm->pRefTargetAttr = 0;
+								pVm->pRefTargetThis = 0;
+							}
+							if( pThis ){
+								PH7_ClassInstanceUnref(pThis);
+							}
+							break;
+						}
 						if( pAttr ){
 							if( (pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
 								/* Access to a non static attribute */

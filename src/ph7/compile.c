@@ -13940,18 +13940,30 @@ static sxi32 GenStateEmitExprCode(
 				}
 			}
 		}else if( iVmOp == PH7_OP_STORE_REF ){
-			pInstr = PH7_VmPopInstr(pGen->pVm);
-			if( pInstr ){
-				if( pInstr->iOp == PH7_OP_LOAD_IDX ){
-					/* Array insertion by reference [i.e: $pArray[] =& $some_var; ]
-					 * We have to convert the STORE_REF instruction into STORE_IDX_REF
-					 */
-					iVmOp = PH7_OP_STORE_IDX_REF;
-					iP1 = pInstr->iP1;
-					iP2 = pInstr->iP2;
-					p3  = pInstr->p3;
-				}else{
-					p3 = pInstr->p3;
+			/* Peek first: a member LHS ($o->p =& $x, C::$s =& $x) keeps its
+			 * OP_MEMBER in place (it resolves + stashes the target slot at
+			 * runtime), unlike the variable/array shapes which fold their load
+			 * away. Mirrors the normal member-store fold above (iP2 kept-MEMBER). */
+			pInstr = PH7_VmPeekInstr(pGen->pVm);
+			if( pInstr && pInstr->iOp == PH7_OP_MEMBER ){
+				/* Tag the member as a reference target and flag STORE_REF (iP2=1)
+				 * to take the member-rebind path in the VM. */
+				pInstr->iP2 = PH7_MEMBER_REF_TARGET;
+				iP2 = 1;
+			}else{
+				pInstr = PH7_VmPopInstr(pGen->pVm);
+				if( pInstr ){
+					if( pInstr->iOp == PH7_OP_LOAD_IDX ){
+						/* Array insertion by reference [i.e: $pArray[] =& $some_var; ]
+						 * We have to convert the STORE_REF instruction into STORE_IDX_REF
+						 */
+						iVmOp = PH7_OP_STORE_IDX_REF;
+						iP1 = pInstr->iP1;
+						iP2 = pInstr->iP2;
+						p3  = pInstr->p3;
+					}else{
+						p3 = pInstr->p3;
+					}
 				}
 			}
 		}

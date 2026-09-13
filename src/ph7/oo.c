@@ -1069,7 +1069,21 @@ PH7_PRIVATE ph7_class_instance * PH7_CloneClassInstance(ph7_class_instance *pSrc
 		 * ph7_value* obtained before it. pvDest from the synth path already points
 		 * into the post-realloc aMemObj; resolve pvSrc now so both are current. */
 		pvSrc = ExtractClassAttrValue(pVm,pSrcAttr);
-		if( pvSrc && pvDest ){
+		if( (pSrcAttr->iState & VM_CLASS_ATTR_REFBOUND) && pDestAttr ){
+			/* php preserves references across clone: the clone shares the SAME slot
+			 * as the source property (both alias the referenced variable), rather
+			 * than getting an independent value copy. Drop the clone's fresh private
+			 * slot and repoint at the (already-pinned) shared slot. The REFBOUND flag
+			 * is carried over by the iState copy below, so the clone's release also
+			 * leaves the shared slot alone. */
+			if( pDestAttr->nIdx != pSrcAttr->nIdx ){
+				if( pDestAttr->pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
+					SyHashDeleteEntry(&pVm->hTypedSlot,(const void *)&pDestAttr->nIdx,sizeof(sxu32),0);
+				}
+				PH7_VmUnsetMemObj(pVm,pDestAttr->nIdx,TRUE);
+				pDestAttr->nIdx = pSrcAttr->nIdx;
+			}
+		}else if( pvSrc && pvDest ){
 			PH7_MemObjStore(pvSrc,pvDest);
 		}
 		/* Carry over the per-instance state so the clone matches the source:
@@ -1142,7 +1156,12 @@ PH7_PRIVATE ph7_class_instance * PH7_CloneClassInstance(ph7_class_instance *pSrc
  */
 PH7_PRIVATE void PH7_VmReleaseInstanceAttr(ph7_vm *pVm, VmClassAttr *pVmAttr)
 {
-	if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
+	if( pVmAttr->iState & VM_CLASS_ATTR_REFBOUND ){
+		/* Reference-bound property (`$o->p =& $x`): its value slot is SHARED with
+		 * (and pinned by) the source variable — releasing/recycling it here would
+		 * dangle the surviving alias. Leave the slot alone (script-lifetime pin,
+		 * matching the use(&$x) capture tradeoff); just free the bookkeeping below. */
+	}else if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
 		/* Drop any typed-property enforcement slot registered for this memobj, before the memobj
 		 * is returned to the free list, so a future recycled slot does not inherit the stale entry. */
 		if( pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
