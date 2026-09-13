@@ -1,6 +1,6 @@
 # src/ph7/
 
-Coverage: 44388/54786 lines (81.02%)
+Coverage: 44401/54800 lines (81.02%)
 
 [Up](../index.md)
 
@@ -14,7 +14,7 @@ Coverage: 44388/54786 lines (81.02%)
 |[compile.c](compile.c.md)|81.03%|7369/9094|
 |[constant.c](constant.c.md)|94.03%|1135/1207|
 |[hashmap.c](hashmap.c.md)|89.28%|4022/4505|
-|[lex.c](lex.c.md)|93.35%|800/857|
+|[lex.c](lex.c.md)|93.34%|813/871|
 |[memobj.c](memobj.c.md)|87.07%|889/1021|
 |[net.c](net.c.md)|57.45%|81/141|
 |[oo.c](oo.c.md)|88.18%|701/795|
