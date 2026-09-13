@@ -22533,6 +22533,50 @@ PH7_PRIVATE void PH7_VmExpandConstantValue(ph7_value *pVal,void *pUserData)
  *  Total number of arguments passed into the current user-defined function
  *  or -1 if called from the globe scope.
  */
+/*
+ * Count NAMED arguments (string-keyed) absorbed into the enclosing function's
+ * variadic parameter. php excludes these from func_num_args()/func_get_args()
+ * (only positional args are reported); the variadic's packed array keeps their
+ * string key, so they are exactly its HASHMAP_BLOB_NODE elements. Returns 0 when
+ * the function has no variadic formal or no named args reached it.
+ */
+static sxu32 VmCountNamedVariadicArgs(ph7_vm *pVm, VmFrame *pFrame)
+{
+	ph7_vm_func *pVmFunc = (ph7_vm_func *)pFrame->pUserData;
+	ph7_vm_func_arg *aFormal;
+	sxu32 nFormal;
+	VmSlot *aSlot;
+	ph7_value *pObj;
+	sxu32 nNamed = 0;
+	if( pVmFunc == 0 ){
+		return 0;
+	}
+	nFormal = SySetUsed(&pVmFunc->aArgs);
+	if( nFormal == 0 ){
+		return 0;
+	}
+	aFormal = (ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs);
+	if( (aFormal[nFormal-1].iFlags & VM_FUNC_ARG_VARIADIC) == 0 ){
+		return 0;
+	}
+	if( nFormal - 1 >= SySetUsed(&pFrame->sArg) ){
+		return 0;
+	}
+	aSlot = (VmSlot *)SySetBasePtr(&pFrame->sArg);
+	pObj = (ph7_value *)SySetAt(&pVm->aMemObj,aSlot[nFormal-1].nIdx);
+	if( pObj && (pObj->iFlags & MEMOBJ_HASHMAP) ){
+		ph7_hashmap *pMap = (ph7_hashmap *)pObj->x.pOther;
+		ph7_hashmap_node *pNode = pMap->pFirst;
+		sxu32 i;
+		for( i = 0; i < pMap->nEntry && pNode; ++i ){
+			if( pNode->iType == HASHMAP_BLOB_NODE ){
+				nNamed++;
+			}
+			pNode = pNode->pPrev;
+		}
+	}
+	return nNamed;
+}
 static int vm_builtin_func_num_args(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	VmFrame *pFrame;
@@ -22552,9 +22596,11 @@ static int vm_builtin_func_num_args(ph7_context *pCtx,int nArg,ph7_value **apArg
 	/* Total number of arguments passed to the enclosing function. The stamped
 	 * actual arity (band A #4) is php's answer — sArg over-counts (defaulted
 	 * params are installed too, and it once returned the FORMAL count for
-	 * `function f($a,$b=2){}; f(1)` — 2 where php says 1). */
+	 * `function f($a,$b=2){}; f(1)` — 2 where php says 1). NAMED arguments
+	 * absorbed into a variadic are NOT counted by php (they are not positional),
+	 * so discount them. */
 	if( pFrame->nActualArgs >= 0 ){
-		ph7_result_int(pCtx,pFrame->nActualArgs);
+		ph7_result_int(pCtx,pFrame->nActualArgs - (int)VmCountNamedVariadicArgs(pVm,pFrame));
 		return SXRET_OK;
 	}
 	nArg = (int)SySetUsed(&pFrame->sArg);
@@ -22719,6 +22765,13 @@ static int vm_builtin_func_get_args(ph7_context *pCtx,int nArg,ph7_value **apArg
 						ph7_hashmap_node *pNode = pMap->pFirst;
 						sxu32 i;
 						for( i = 0; i < pMap->nEntry && pNode; ++i ){
+							/* php excludes NAMED arguments absorbed into the variadic
+							 * (string-keyed elements) from func_get_args() — only the
+							 * POSITIONAL (int-keyed) elements are reported. */
+							if( pNode->iType == HASHMAP_BLOB_NODE ){
+								pNode = pNode->pPrev;
+								continue;
+							}
 							ph7_value *pElem = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pNode->nValIdx);
 							if( pElem ){
 								ph7_array_add_elem(pArray,0,pElem);
