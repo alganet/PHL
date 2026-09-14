@@ -2038,6 +2038,18 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
  * Built-in classes/interfaces and some functions that cannot be implemented
  * directly as foreign functions.
  */
+/* The libxml-backed extensions (libxml/dom/xmlwriter) are reported by
+ * extension_loaded()/get_loaded_extensions() only when compiled in. These
+ * string fragments splice into the prelude arrays via adjacent-literal
+ * concatenation; they are leading-comma so they append cleanly and vanish
+ * to "" in tiny/non-libxml builds. */
+#ifdef PH7_ENABLE_LIBXML
+#define PHL_EXT_LOADED_LIBXML ", 'libxml' => 1, 'dom' => 1, 'xmlwriter' => 1"
+#define PHL_EXT_LIST_LIBXML   ",'libxml','dom','xmlwriter'"
+#else
+#define PHL_EXT_LOADED_LIBXML ""
+#define PHL_EXT_LIST_LIBXML   ""
+#endif
 #define PH7_BUILTIN_LIB \
 	"interface Throwable {"\
 	"public function getMessage();"\
@@ -2517,7 +2529,7 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
    "function extension_loaded($name){"\
    "  static $ext = array('core' => 1, 'standard' => 1, 'pcre' => 1, 'json' => 1,"\
    "   'ctype' => 1, 'date' => 1, 'spl' => 1, 'reflection' => 1, 'mbstring' => 1,"\
-   "   'hash' => 1, 'filter' => 1, 'session' => 1, 'libxml' => 1);"\
+   "   'hash' => 1, 'filter' => 1, 'session' => 1" PHL_EXT_LOADED_LIBXML ");"\
    "  $n = strtolower((string)$name);"\
    "  if( isset($ext[$n]) ){ return true; }"\
    "  $stub = __phl_stub_exts();"\
@@ -2525,8 +2537,8 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
    "}"\
    "function get_loaded_extensions($zend_extensions = false){"\
    "  if( $zend_extensions ){ return array(); }"\
-   "  $base = array('Core','date','libxml','pcre','SPL','json','standard',"\
-   "   'ctype','filter','hash','Reflection','session','mbstring','xml');"\
+   "  $base = array('Core','date','pcre','SPL','json','standard',"\
+   "   'ctype','filter','hash','Reflection','session','mbstring'" PHL_EXT_LIST_LIBXML ");"\
    "  foreach( __phl_stub_exts() as $e ){ $base[] = $e; }"\
    "  return $base;"\
    "}"\
