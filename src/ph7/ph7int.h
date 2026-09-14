@@ -30,7 +30,6 @@ PH7_PRIVATE const char *ph7_type_name(ph7_value *pVal);
 #include "sxtime.h"       /* Time utilities */
 #include "sxdigest.h"     /* MD5Context, SHA1Context, digest functions */
 #include "sxblowfish.h"   /* bcrypt (Blowfish) password hashing */
-#include "sxzip.h"        /* SyArchive, SyArchiveEntry */
 
 #ifndef PH7_PI
 /* Value of PI */
@@ -232,9 +231,6 @@ struct ph7_user_func
 	sxi16 nMinArg;            /* Minimum required arguments for the PHP-8 ArgumentCountError
 	                           * check at the OP_CALL choke point; 0 = no central enforcement
 	                           * (the builtin self-validates, or genuinely accepts zero args). */
-	const char *zDeprecated;  /* php's E_DEPRECATED text for a deprecated BUILTIN (the
-	                           * deprecation is a property of the function itself, so the
-	                           * OP_CALL choke point emits it); 0 = not deprecated. */
 	sxu8 bAtLeast;            /* 0 -> "expects exactly N", 1 -> "expects at least N" (the
 	                           * wording depends on whether the builtin has optional params). */
 	const char *zSig;         /* PHP-style parameter list ("string $s, int $o = 0") from the
@@ -2359,7 +2355,6 @@ PH7_PRIVATE int PH7_builtin_hrtime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 PH7_PRIVATE int PH7_builtin_getdate(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_gettimeofday(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_date(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int PH7_builtin_strftime(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_gmdate(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_localtime(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg);
@@ -2394,18 +2389,6 @@ PH7_PRIVATE void PH7_RegisterTokenizerConstants(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmInstallSession(ph7_vm *pVm);
 /* vm_builtin_ini.c */
 PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm);
-/* vfs_zip.c function prototypes */
-PH7_PRIVATE int PH7_builtin_zip_open(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int PH7_builtin_zip_close(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int PH7_builtin_zip_read(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int PH7_builtin_zip_entry_open(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int PH7_builtin_zip_entry_close(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int PH7_builtin_zip_entry_name(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int PH7_builtin_zip_entry_filesize(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int PH7_builtin_zip_entry_compressedsize(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int PH7_builtin_zip_entry_read(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int PH7_builtin_zip_entry_reset_read_cursor(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int PH7_builtin_zip_entry_compressionmethod(ph7_context *pCtx,int nArg,ph7_value **apArg);
 /* vfs_win.c / vfs_unix.c exported structs */
 #ifdef __WINNT__
 extern const ph7_vfs sWinVfs;
@@ -2563,13 +2546,6 @@ PH7_PRIVATE void * PH7_ExportStdin(ph7_vm *pVm);
 PH7_PRIVATE void * PH7_ExportStdout(ph7_vm *pVm);
 PH7_PRIVATE void * PH7_ExportStderr(ph7_vm *pVm);
 /* lib.c function prototypes */
-#ifndef PH7_DISABLE_BUILTIN_FUNC
-PH7_PRIVATE sxi32 SyArchiveInit(SyArchive *pArch,SyMemBackend *pAllocator,ProcHash xHash,ProcRawStrCmp xCmp);
-PH7_PRIVATE sxi32 SyArchiveRelease(SyArchive *pArch);
-PH7_PRIVATE sxi32 SyArchiveResetLoopCursor(SyArchive *pArch);
-PH7_PRIVATE sxi32 SyArchiveGetNextEntry(SyArchive *pArch,SyArchiveEntry **ppEntry);
-PH7_PRIVATE sxi32 SyZipExtractFromBuf(SyArchive *pArch,const char *zBuf,sxu32 nLen);
-#endif /* PH7_DISABLE_BUILTIN_FUNC */
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 PH7_PRIVATE sxi32 SyBinToHexConsumer(const void *pIn,sxu32 nLen,ProcConsumer xConsumer,void *pConsumerData);
 #endif /* PH7_DISABLE_BUILTIN_FUNC */

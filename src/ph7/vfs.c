@@ -7752,19 +7752,7 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"basename",    PH7_builtin_basename },
 		{"pathinfo",    PH7_builtin_pathinfo },
 		{"strglob",     PH7_builtin_strglob  },
-		{"fnmatch",     PH7_builtin_fnmatch  },
-		/* ZIP processing */
-		{"zip_open",    PH7_builtin_zip_open },
-		{"zip_close",   PH7_builtin_zip_close},
-		{"zip_read",    PH7_builtin_zip_read },
-		{"zip_entry_open", PH7_builtin_zip_entry_open },
-		{"zip_entry_close",PH7_builtin_zip_entry_close},
-		{"zip_entry_name", PH7_builtin_zip_entry_name },
-		{"zip_entry_filesize",      PH7_builtin_zip_entry_filesize       },
-		{"zip_entry_compressedsize",PH7_builtin_zip_entry_compressedsize },
-		{"zip_entry_read", PH7_builtin_zip_entry_read },
-		{"zip_entry_reset_read_cursor",PH7_builtin_zip_entry_reset_read_cursor},
-		{"zip_entry_compressionmethod",PH7_builtin_zip_entry_compressionmethod}
+		{"fnmatch",     PH7_builtin_fnmatch  }
 	};
 	for( n = 0 ; n < SX_ARRAYSIZE(aVfsHelperFunc) ; ++n ){
 		ph7_create_function(&(*pVm),aVfsHelperFunc[n].zName,aVfsHelperFunc[n].xFunc,pVm);

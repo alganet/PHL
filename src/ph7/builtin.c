@@ -25,12 +25,14 @@ PH7_PRIVATE sxi32 PH7_IntArgResolve(
 	sxi64 *pOut
 ){
 	if( ph7_value_is_null(pArg) ){
-		PH7_VmThrowDeprecatedFmt(pCtx->pVm,
-			"%s(): Passing null to parameter #%d (%s) of type %s is deprecated",
+		/* php only DEPRECATES passing null to a non-nullable internal param; PHL
+		 * targets php's non-deprecated surface and rejects it with the TypeError
+		 * php will eventually raise. */
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"%s(): Argument #%d (%s) must be of type %s, null given",
 			zFunc,iArgNum,zParamName,zTypeStr
 			);
-		*pOut = 0;
-		return PH7_OK;
 	}
 	if( ph7_value_is_float(pArg) ){
 		double dVal = ph7_value_to_double(pArg);
@@ -45,9 +47,12 @@ PH7_PRIVATE sxi32 PH7_IntArgResolve(
 		}
 		iVal = (sxi64)dVal;
 		if( (double)iVal != dVal ){
-			PH7_VmThrowDeprecatedFmt(pCtx->pVm,
-				"Implicit conversion from float %s to int loses precision",
-				ph7_value_to_string(pArg,0)
+			/* php DEPRECATES a lossy float->int; PHL rejects it (the value is not
+			 * representable as int). */
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"%s(): Argument #%d (%s) must be of type %s, float given",
+				zFunc,iArgNum,zParamName,zTypeStr
 				);
 		}
 		*pOut = iVal;
@@ -84,9 +89,11 @@ PH7_PRIVATE sxi32 PH7_IntArgResolve(
 			}
 			iVal = (sxi64)dVal;
 			if( (double)iVal != dVal ){
-				PH7_VmThrowDeprecatedFmt(pCtx->pVm,
-					"Implicit conversion from float-string \"%s\" to int loses precision",
-					zNum
+				/* php DEPRECATES a lossy float-string->int; PHL rejects it. */
+				return PH7_VmThrowException(pCtx,
+					"TypeError",
+					"%s(): Argument #%d (%s) must be of type %s, string given",
+					zFunc,iArgNum,zParamName,zTypeStr
 					);
 			}
 			*pOut = iVal;
@@ -722,11 +729,15 @@ static void PH7_BuildCharMask(ph7_context *pCtx,const char *zList,int nLen,char 
  * `f(): Passing null to parameter #N ($name) of type string is deprecated`
  * when the arg is an actual null, leaving the resolution unchanged.
  */
+/* php only DEPRECATES passing null to a non-nullable string param; PHL targets php's
+ * non-deprecated surface and rejects it with a TypeError. The throw parks a pending
+ * exception that supersedes the builtin's result when it returns, so the callers can
+ * keep calling this without threading a status back. */
 static void StrNullArgNotice(ph7_context *pCtx,ph7_value *pArg,const char *zFunc,int iArgNum,const char *zParamName)
 {
 	if( ph7_value_is_null(pArg) ){
-		PH7_VmThrowDeprecatedFmt(pCtx->pVm,
-			"%s(): Passing null to parameter #%d (%s) of type string is deprecated",
+		PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): Argument #%d (%s) must be of type string, null given",
 			zFunc,iArgNum,zParamName);
 	}
 }
@@ -9877,7 +9888,6 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "getdate" ,    PH7_builtin_getdate      },
 	{ "gettimeofday",PH7_builtin_gettimeofday },
 	{ "date",        PH7_builtin_date         },
-	{ "strftime",    PH7_builtin_strftime     },
 	{ "idate",       PH7_builtin_idate        },
 	{ "gmdate",      PH7_builtin_gmdate       },
 	{ "localtime",   PH7_builtin_localtime    },
