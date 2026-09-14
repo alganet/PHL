@@ -1075,7 +1075,26 @@ struct VmClassAttr
                                     * PH7_VmReleaseInstanceAttr must NOT release/recycle it — the
                                     * surviving alias would dangle. Mirrors the use(&$x) pin. */
  /* Forward reference */
+typedef struct VmSlot VmSlot;
+struct VmSlot
+{
+	sxu32 nIdx;      /* Index in pVm->aMemObj[] */
+	void *pUserData; /* Upper-layer private data */
+};
 typedef struct VmRefObj VmRefObj;
+/* Reference-object body (vm.c reference machinery; shared with vm_builtin_var.c's unset) */
+struct VmRefObj
+{
+	SySet aReference;  /* Table of references to this memory object */
+	SySet aArrEntries; /* Foreign hashmap entries [i.e: array(&$a) ] */
+	sxu32 nIdx;        /* Referenced object index */
+	sxi32 iFlags;      /* Configuration flags */
+	VmRefObj *pNextCollide,*pPrevCollide; /* Collision link */
+	VmRefObj *pNext,*pPrev;               /* List of all referenced objects */
+};
+#define VM_REF_IDX_KEEP  0x001 /* Do not restore the memory object to the free list */
+/* VmObEntry struct moved to ph7int.h */
+
 /*
  * Each catch [i.e catch(Exception $e){ } ] block is parsed out and stored
  * in an instance of the following structure.
@@ -2475,6 +2494,20 @@ PH7_PRIVATE sxi32 PH7_GenSyntaxError(ph7_gen_state *pGen,SyToken *pTok,const cha
 PH7_PRIVATE sxi32 PH7_CompileScript(ph7_vm *pVm,SyString *pScript,sxi32 iFlags);
 /* constant.c function prototypes */
 PH7_PRIVATE void PH7_RegisterBuiltInConstant(ph7_vm *pVm);
+/* vm.c reference/frame internals shared with vm_builtin_var.c */
+PH7_PRIVATE VmRefObj * VmRefObjExtract(ph7_vm *pVm,sxu32 nObjIdx);
+PH7_PRIVATE sxi32 VmRefObjUnlink(ph7_vm *pVm,VmRefObj *pRef);
+PH7_PRIVATE int VmDropFrameLocalSlot(ph7_vm *pVm,sxu32 nIdx);
+/* vm_builtin_var.c function prototypes (rows stay in vm.c's aVmFunc[]) */
+PH7_PRIVATE sxi32 VmUnsetVarByName(ph7_vm *pVm,VmFrame *pFrame,const char *zName,sxu32 nByte);
+PH7_PRIVATE int vm_builtin_isset(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_unset(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_get_defined_vars(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_gettype(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_get_resource_type(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_var_dump(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_print_r(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_var_export(ph7_context *pCtx,int nArg,ph7_value **apArg);
 /* builtin.c function prototypes */
 PH7_PRIVATE void PH7_RegisterBuiltInFunction(ph7_vm *pVm);
 /* builtin_hash.c function prototypes */
@@ -2739,6 +2772,20 @@ PH7_PRIVATE const char *VmValueGivenName(ph7_value *pVal,char *zBuf,sxu32 nBuf);
 PH7_PRIVATE sxu8 RangeStrToNumber(const char *zIn,sxu32 nLen,sxi64 *pLong,double *pDouble);
 #ifndef PH7_DISABLE_DISK_IO
 PH7_PRIVATE int PH7_HashmapValuesToSet(ph7_hashmap *pMap,SySet *pOut);
+/* vm.c reference/frame internals shared with vm_builtin_var.c */
+PH7_PRIVATE VmRefObj * VmRefObjExtract(ph7_vm *pVm,sxu32 nObjIdx);
+PH7_PRIVATE sxi32 VmRefObjUnlink(ph7_vm *pVm,VmRefObj *pRef);
+PH7_PRIVATE int VmDropFrameLocalSlot(ph7_vm *pVm,sxu32 nIdx);
+/* vm_builtin_var.c function prototypes (rows stay in vm.c's aVmFunc[]) */
+PH7_PRIVATE sxi32 VmUnsetVarByName(ph7_vm *pVm,VmFrame *pFrame,const char *zName,sxu32 nByte);
+PH7_PRIVATE int vm_builtin_isset(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_unset(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_get_defined_vars(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_gettype(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_get_resource_type(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_var_dump(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_print_r(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_var_export(ph7_context *pCtx,int nArg,ph7_value **apArg);
 /* builtin.c function prototypes */
 PH7_PRIVATE sxi32 PH7_InputFormat(int (*xConsumer)(ph7_context *,const char *,int,void *),
 	ph7_context *pCtx,const char *zIn,int nByte,int nArg,ph7_value **apArg,void *pUserData,int vf);
