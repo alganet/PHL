@@ -2396,6 +2396,42 @@ extern const ph7_io_stream sWinFileStream;
 extern const ph7_vfs sUnixVfs;
 extern const ph7_io_stream sUnixFileStream;
 #endif
+/* Built-in IO stream drivers: tcp:// lives in vfs_stream.c; php://, data://
+ * and the pipe (popen) stream live in vfs_io_driver.c. Registration (vfs.c)
+ * and the standard-stream exporters reference them across those files. */
+extern const ph7_io_stream sTCP_Stream;
+extern const ph7_io_stream sDATA_Stream;
+extern const ph7_io_stream sPHP_Stream;
+/* IO private state carried by every open stream handle (fopen/opendir/popen
+ * resources and the exported std streams). Shared between vfs.c,
+ * vfs_stream.c and vfs_io_driver.c. */
+typedef struct io_private io_private;
+struct io_private
+{
+	const ph7_io_stream *pStream; /* Underlying IO device */
+	void *pHandle; /* IO handle */
+	/* Unbuffered IO */
+	SyBlob sBuffer; /* Working buffer */
+	sxu32 nOfft;    /* Current read offset */
+	sxu32 iMagic;   /* Sanity check to avoid misuse */
+};
+#define IO_PRIVATE_MAGIC 0xFEAC14
+/* A user-facing handle (fopen/opendir/popen) that has been fclose()'d/closedir()'d/
+ * pclose()'d keeps its io_private alive but stamped with this magic, so every
+ * ph7_value that still references it observes a closed resource
+ * (gettype()=='resource (closed)', is_resource()==false), matching php. */
+#define IO_PRIVATE_CLOSED_MAGIC 0xC105ED
+/* Make sure we are dealing with a valid io_private instance */
+#define IO_PRIVATE_INVALID(IO) ( IO == 0 || IO->iMagic != IO_PRIVATE_MAGIC )
+PH7_PRIVATE void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_private *pOut);
+PH7_PRIVATE void MarkIOPrivateClosed(io_private *pDev);
+/* "Failed to open stream" warning helper (vfs.c, errno-based); used by the
+ * fopen/opendir/file_* family in vfs_stream.c. */
+PH7_PRIVATE void VfsThrowOpenWarning(ph7_context *pCtx,const char *zFile);
+PH7_PRIVATE const char * VfsStrerror(int iErr);
+/* Stream-device predicates (vfs_io_driver.c) */
+PH7_PRIVATE int is_php_stream(const ph7_io_stream *pStream);
+PH7_PRIVATE int is_data_stream(const ph7_io_stream *pStream);
 PH7_PRIVATE int PH7_Utf8Read(
   const unsigned char *z,         /* First byte of UTF-8 character */
   const unsigned char *zTerm,     /* Pretend this byte is 0x00 */
@@ -2757,6 +2793,57 @@ PH7_PRIVATE void PH7_StreamCloseHandle(const ph7_io_stream *pStream,void *pHandl
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
 PH7_PRIVATE const char * PH7_ExtractDirName(const char *zPath,int nByte,int *pLen);
 PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm);
+/* vfs_stream.c / vfs_io_driver.c function prototypes (referenced from the
+ * registration tables in vfs.c's PH7_RegisterIORoutine) */
+#ifndef PH7_DISABLE_DISK_IO
+PH7_PRIVATE int PH7_builtin_closedir(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_fclose(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_feof(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_fflush(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_fgetc(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_fgetcsv(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_fgets(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_fgetss(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_file(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_file_get_contents(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_flock(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_fopen(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_fpassthru(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_fprintf(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_fputcsv(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_fseek(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_fstat(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_ftell(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_ftruncate(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_fwrite(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_md5_file(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_parse_ini_file(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_pclose(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_popen(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_proc_close(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_proc_get_status(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_proc_open(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_proc_terminate(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_readdir(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_readfile(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_rewinddir(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_sha1_file(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_shell_exec(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_context_create(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_get_contents(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_get_meta_data(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_get_wrappers(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_isatty(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_wrapper_register(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_wrapper_unregister(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_vfprintf(ph7_context *pCtx,int nArg,ph7_value **apArg);
+#endif /* PH7_DISABLE_DISK_IO */
 PH7_PRIVATE const ph7_vfs * PH7_ExportBuiltinVfs(void);
 PH7_PRIVATE const char * PH7_VfsResourceType(void *pResource);
 PH7_PRIVATE int PH7_VfsResourceIsClosed(void *pResource);
