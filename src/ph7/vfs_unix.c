@@ -27,6 +27,32 @@
 #include <utime.h>
 #include <stdio.h>
 #include <stdlib.h>
+/*
+ * php's file:// wrapper is the default local-file scheme: a filesystem builtin
+ * given "file://[authority]/path" acts on the plain "/path". The authority is
+ * empty (file:///abs) or "localhost"; the scheme match is case-insensitive.
+ * The native syscalls below do not understand the scheme, so strip it here.
+ * Anything else (a non-local authority, or no path component) is left intact so
+ * the syscall fails exactly as php does. chdir()/chroot()/realpath() are NOT
+ * routed through here -- php rejects file:// for those.
+ */
+static const char * UnixVfsLocalPath(const char *zPath)
+{
+	const char *zRest;
+	if( zPath == 0 || SyStrnicmp(zPath,"file://",sizeof("file://")-1) != 0 ){
+		return zPath;
+	}
+	zRest = &zPath[sizeof("file://")-1];
+	if( zRest[0] == '/' ){
+		/* file:///abs -> /abs (empty authority) */
+		return zRest;
+	}
+	if( SyStrnicmp(zRest,"localhost/",sizeof("localhost/")-1) == 0 ){
+		/* file://localhost/abs -> /abs (keep the leading slash) */
+		return &zRest[sizeof("localhost")-1];
+	}
+	return zPath;
+}
 /* int (*xchdir)(const char *) */
 static int UnixVfs_chdir(const char *zPath)
 {
@@ -50,6 +76,7 @@ static int UnixVfs_getcwd(ph7_context *pCtx)
 /* int (*xMkdir)(const char *,int,int) */
 static int UnixVfs_mkdir(const char *zPath,int mode,int recursive)
 {
+	zPath = UnixVfsLocalPath(zPath);
 	int rc;
         rc = mkdir(zPath,mode);
 	SXUNUSED(recursive); /* cc warning */
@@ -58,6 +85,7 @@ static int UnixVfs_mkdir(const char *zPath,int mode,int recursive)
 /* int (*xRmdir)(const char *) */
 static int UnixVfs_rmdir(const char *zPath)
 {
+	zPath = UnixVfsLocalPath(zPath);
 	int rc;
 	rc = rmdir(zPath);
 	return rc == 0 ? PH7_OK : -1;
@@ -65,6 +93,7 @@ static int UnixVfs_rmdir(const char *zPath)
 /* int (*xIsdir)(const char *) */
 static int UnixVfs_isdir(const char *zPath)
 {
+	zPath = UnixVfsLocalPath(zPath);
 	struct stat st;
 	int rc;
 	rc = stat(zPath,&st);
@@ -77,6 +106,8 @@ static int UnixVfs_isdir(const char *zPath)
 /* int (*xRename)(const char *,const char *) */
 static int UnixVfs_Rename(const char *zOld,const char *zNew)
 {
+	zOld = UnixVfsLocalPath(zOld);
+	zNew = UnixVfsLocalPath(zNew);
 	int rc;
 	rc = rename(zOld,zNew);
 	return rc == 0 ? PH7_OK : -1;
@@ -109,6 +140,7 @@ static int UnixVfs_Sleep(unsigned int uSec)
 /* int (*xUnlink)(const char *) */
 static int UnixVfs_unlink(const char *zPath)
 {
+	zPath = UnixVfsLocalPath(zPath);
 	int rc;
 	rc = unlink(zPath);
 	return rc == 0 ? PH7_OK : -1 ;
@@ -116,6 +148,7 @@ static int UnixVfs_unlink(const char *zPath)
 /* int (*xFileExists)(const char *) */
 static int UnixVfs_FileExists(const char *zPath)
 {
+	zPath = UnixVfsLocalPath(zPath);
 	int rc;
 	rc = access(zPath,F_OK);
 	return rc == 0 ? PH7_OK : -1;
@@ -124,6 +157,7 @@ static int UnixVfs_FileExists(const char *zPath)
 /* ph7_int64 (*xFreeSpace)(const char *) */
 static ph7_int64 UnixVfs_FreeSpace(const char *zPath)
 {
+	zPath = UnixVfsLocalPath(zPath);
 	struct statvfs sInfo;
 	if( statvfs(zPath,&sInfo) != 0 ){
 		return -1;
@@ -134,6 +168,7 @@ static ph7_int64 UnixVfs_FreeSpace(const char *zPath)
 /* ph7_int64 (*xTotalSpace)(const char *) */
 static ph7_int64 UnixVfs_TotalSpace(const char *zPath)
 {
+	zPath = UnixVfsLocalPath(zPath);
 	struct statvfs sInfo;
 	if( statvfs(zPath,&sInfo) != 0 ){
 		return -1;
@@ -142,6 +177,7 @@ static ph7_int64 UnixVfs_TotalSpace(const char *zPath)
 }
 static ph7_int64 UnixVfs_FileSize(const char *zPath)
 {
+	zPath = UnixVfsLocalPath(zPath);
 	struct stat st;
 	int rc;
 	rc = stat(zPath,&st);
@@ -153,6 +189,7 @@ static ph7_int64 UnixVfs_FileSize(const char *zPath)
 /* int (*xTouch)(const char *,ph7_int64,ph7_int64) */
 static int UnixVfs_Touch(const char *zPath,ph7_int64 touch_time,ph7_int64 access_time)
 {
+	zPath = UnixVfsLocalPath(zPath);
 	struct utimbuf ut;
 	int rc;
 	ut.actime  = (time_t)access_time;
@@ -166,6 +203,7 @@ static int UnixVfs_Touch(const char *zPath,ph7_int64 touch_time,ph7_int64 access
 /* ph7_int64 (*xFileAtime)(const char *) */
 static ph7_int64 UnixVfs_FileAtime(const char *zPath)
 {
+	zPath = UnixVfsLocalPath(zPath);
 	struct stat st;
 	int rc;
 	rc = stat(zPath,&st);
@@ -177,6 +215,7 @@ static ph7_int64 UnixVfs_FileAtime(const char *zPath)
 /* ph7_int64 (*xFileMtime)(const char *) */
 static ph7_int64 UnixVfs_FileMtime(const char *zPath)
 {
+	zPath = UnixVfsLocalPath(zPath);
 	struct stat st;
 	int rc;
 	rc = stat(zPath,&st);
@@ -188,6 +227,7 @@ static ph7_int64 UnixVfs_FileMtime(const char *zPath)
 /* ph7_int64 (*xFileCtime)(const char *) */
 static ph7_int64 UnixVfs_FileCtime(const char *zPath)
 {
+	zPath = UnixVfsLocalPath(zPath);
 	struct stat st;
 	int rc;
 	rc = stat(zPath,&st);
@@ -199,6 +239,7 @@ static ph7_int64 UnixVfs_FileCtime(const char *zPath)
 /* int (*xStat)(const char *,ph7_value *,ph7_value *) */
 static int UnixVfs_Stat(const char *zPath,ph7_value *pArray,ph7_value *pWorker)
 {
+	zPath = UnixVfsLocalPath(zPath);
 	struct stat st;
 	int rc;
 	rc = stat(zPath,&st);
@@ -246,6 +287,7 @@ static int UnixVfs_Stat(const char *zPath,ph7_value *pArray,ph7_value *pWorker)
 /* int (*xlStat)(const char *,ph7_value *,ph7_value *) */
 static int UnixVfs_lStat(const char *zPath,ph7_value *pArray,ph7_value *pWorker)
 {
+	zPath = UnixVfsLocalPath(zPath);
 	struct stat st;
 	int rc;
 	rc = lstat(zPath,&st);
@@ -293,6 +335,7 @@ static int UnixVfs_lStat(const char *zPath,ph7_value *pArray,ph7_value *pWorker)
 /* int (*xChmod)(const char *,int) */
 static int UnixVfs_Chmod(const char *zPath,int mode)
 {
+	zPath = UnixVfsLocalPath(zPath);
     int rc;
     rc = chmod(zPath,(mode_t)mode);
     return rc == 0 ? PH7_OK : - 1;
@@ -300,6 +343,7 @@ static int UnixVfs_Chmod(const char *zPath,int mode)
 /* int (*xChown)(const char *,const char *) */
 static int UnixVfs_Chown(const char *zPath,const char *zUser)
 {
+	zPath = UnixVfsLocalPath(zPath);
 #ifndef PH7_UNIX_STATIC_BUILD
   struct passwd *pwd;
   uid_t uid;
@@ -329,6 +373,7 @@ static int UnixVfs_Chown(const char *zPath,const char *zUser)
 /* int (*xChgrp)(const char *,const char *) */
 static int UnixVfs_Chgrp(const char *zPath,const char *zGroup)
 {
+	zPath = UnixVfsLocalPath(zPath);
 #ifndef PH7_UNIX_STATIC_BUILD
   struct group *group;
   gid_t gid;
@@ -354,6 +399,7 @@ static int UnixVfs_Chgrp(const char *zPath,const char *zGroup)
 /* int (*xIsfile)(const char *) */
 static int UnixVfs_isfile(const char *zPath)
 {
+	zPath = UnixVfsLocalPath(zPath);
 	struct stat st;
 	int rc;
 	rc = stat(zPath,&st);
@@ -366,6 +412,7 @@ static int UnixVfs_isfile(const char *zPath)
 /* int (*xIslink)(const char *) */
 static int UnixVfs_islink(const char *zPath)
 {
+	zPath = UnixVfsLocalPath(zPath);
 	struct stat st;
 	int rc;
 	rc = stat(zPath,&st);
@@ -378,6 +425,7 @@ static int UnixVfs_islink(const char *zPath)
 /* int (*xReadable)(const char *) */
 static int UnixVfs_isreadable(const char *zPath)
 {
+	zPath = UnixVfsLocalPath(zPath);
 	int rc;
 	rc = access(zPath,R_OK);
 	return rc == 0 ? PH7_OK : -1;
@@ -385,6 +433,7 @@ static int UnixVfs_isreadable(const char *zPath)
 /* int (*xWritable)(const char *) */
 static int UnixVfs_iswritable(const char *zPath)
 {
+	zPath = UnixVfsLocalPath(zPath);
 	int rc;
 	rc = access(zPath,W_OK);
 	return rc == 0 ? PH7_OK : -1;
@@ -392,6 +441,7 @@ static int UnixVfs_iswritable(const char *zPath)
 /* int (*xExecutable)(const char *) */
 static int UnixVfs_isexecutable(const char *zPath)
 {
+	zPath = UnixVfsLocalPath(zPath);
 	int rc;
 	rc = access(zPath,X_OK);
 	return rc == 0 ? PH7_OK : -1;
@@ -399,6 +449,7 @@ static int UnixVfs_isexecutable(const char *zPath)
 /* int (*xFiletype)(const char *,ph7_context *) */
 static int UnixVfs_Filetype(const char *zPath,ph7_context *pCtx)
 {
+	zPath = UnixVfsLocalPath(zPath);
 	struct stat st;
 	int rc;
     rc = stat(zPath,&st);
@@ -445,6 +496,7 @@ static int UnixVfs_Setenv(const char *zName,const char *zValue)
 /* int (*xMmap)(const char *,void **,ph7_int64 *) */
 static int UnixVfs_Mmap(const char *zPath,void **ppMap,ph7_int64 *pSize)
 {
+	zPath = UnixVfsLocalPath(zPath);
 	struct stat st;
 	void *pMap;
 	int fd;
@@ -538,6 +590,8 @@ static void UnixVfs_Username(ph7_context *pCtx)
 /* int (*xLink)(const char *,const char *,int) */
 static int UnixVfs_link(const char *zSrc,const char *zTarget,int is_sym)
 {
+	zSrc = UnixVfsLocalPath(zSrc);
+	zTarget = UnixVfsLocalPath(zTarget);
 	int rc;
 	if( is_sym ){
 		/* Symbolic link */
