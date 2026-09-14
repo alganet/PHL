@@ -3199,21 +3199,15 @@ static int ph7_hashmap_key_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			ph7_type_name(apArg[1])
 			);
 	}
-	/* Emit deprecation warnings matching PHP behaviour */
+	/* php only DEPRECATES a null / lossy-float key here; PHL rejects it. */
 	if( apArg[0]->iFlags & MEMOBJ_NULL ){
-		/* PH7_VmThrowDeprecatedFmt, not ph7_context_throw_error_format: the latter PREPENDS
-		 * "array_key_exists(): " and php's message carries no such prefix. */
-		PH7_VmThrowDeprecatedFmt(pCtx->pVm,
-			"Using null as the key parameter for array_key_exists() is deprecated, "
-			"use an empty string instead"
-			);
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"array_key_exists(): Argument #1 ($key) must be of type string|int, null given");
 	}else if( apArg[0]->iFlags & MEMOBJ_REAL ){
 		ph7_real rVal = apArg[0]->rVal;
 		if( rVal != (ph7_real)(sxi64)rVal ){
-			ph7_context_throw_error_format(pCtx,8192,
-				"Implicit conversion from float %g to int loses precision"
-				,rVal
-				);
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"array_key_exists(): Argument #1 ($key) must be of type string|int, float given");
 		}
 	}
 	/* Perform the lookup */
@@ -7488,10 +7482,8 @@ static int ph7_hashmap_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			}
 			iLen = (sxi64)dReal;
 			if( (double)iLen != dReal ){
-				PH7_VmThrowDeprecatedFmt(pCtx->pVm,
-					"Implicit conversion from float-string \"%s\" to int loses precision",
-					zStr
-					);
+				return PH7_VmThrowException(pCtx,"TypeError",
+					"array_pad(): Argument #2 ($length) must be of type int, string given");
 			}
 		}else{
 			iLen = iLong;

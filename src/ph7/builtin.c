@@ -1527,14 +1527,11 @@ static int PH7_builtin_addslashes(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			nArg
 			);
 	}
-	/* NULL is deprecated and treated as an empty string; other invalid
-	 * types still produce a TypeError. */
+	/* php only DEPRECATES null here; PHL rejects it. */
 	if( ph7_value_is_null(apArg[0]) ){
-		PH7_VmThrowError(pCtx->pVm,0,
-			E_DEPRECATED,
-			"addslashes(): Passing null to parameter #1 ($string) of type string is deprecated"
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"addslashes(): Argument #1 ($string) must be of type string, null given"
 			);
-		/* fall through so conversion below yields empty string */
 	}
 	/* Arrays, objects and resources should raise a TypeError like PHP */
 	if( ph7_value_is_array(apArg[0]) ||
@@ -1665,15 +1662,12 @@ static int PH7_builtin_addcslashes(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			nArg
 			);
 	}
-	/* First argument must be a string-ish value.  NULL is deprecated and
-	 * treated as the empty string (PHP 8.1). */
+	/* php only DEPRECATES null here; PHL rejects it. */
 	if( ph7_value_is_null(apArg[0]) ){
-		/* Emit deprecation only once, similar to PHP behaviour. */
-		PH7_VmThrowError(pCtx->pVm,0,/* iErr will be patched to 8192 below */
-			E_DEPRECATED,
-			"addcslashes(): Passing null to parameter #1 ($string) of type string is deprecated"
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"addcslashes(): Argument #1 ($string) must be of type string, null given"
 			);
-		/* treat as empty string; fall through to conversion logic */
 	} else if( ph7_value_is_array(apArg[0]) ||
 	          ph7_value_is_object(apArg[0]) ||
 	          ph7_value_is_resource(apArg[0]) ){
@@ -1683,15 +1677,12 @@ static int PH7_builtin_addcslashes(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			ph7_type_name(apArg[0])
 			);
 	}
-	/* Second argument must be a string.  NULL is deprecated and treated as
-	 * an empty mask per PHP semantics.  Arrays/objects/resources still
-	 * trigger a TypeError. */
+	/* php only DEPRECATES null here; PHL rejects it. */
 	if( ph7_value_is_null(apArg[1]) ){
-		PH7_VmThrowError(pCtx->pVm,0,
-			E_DEPRECATED,
-			"addcslashes(): Passing null to parameter #2 ($characters) of type string is deprecated"
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"addcslashes(): Argument #2 ($characters) must be of type string, null given"
 			);
-		/* allow through so it becomes empty string below */
 	} else if( ph7_value_is_array(apArg[1]) ||
 	          ph7_value_is_object(apArg[1]) ||
 	          ph7_value_is_resource(apArg[1]) ){
@@ -3048,29 +3039,24 @@ static int PH7_builtin_ord(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			nArg
 			);
 	}
-	/* Passing null is deprecated (E_DEPRECATED).  PHP emits this before
-	 * the empty-string deprecation, so we check null first. */
+	/* php only DEPRECATES null here; PHL rejects it. */
 	if( ph7_value_is_null(apArg[0]) ){
-		PH7_VmThrowError(pCtx->pVm,0,E_DEPRECATED,
-			"ord(): Passing null to parameter #1 ($character) "
-			"of type string is deprecated"
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"ord(): Argument #1 ($character) must be of type string, null given"
 			);
 	}
 	/* Extract the target string */
 	zString = ph7_value_to_string(apArg[0],&nLen);
 	if( nLen < 1 ){
-		/* Empty string is deprecated (E_DEPRECATED). */
-		PH7_VmThrowError(pCtx->pVm,0,E_DEPRECATED,
-			"ord(): Providing an empty string is deprecated"
+		/* php only DEPRECATES an empty string here; PHL rejects it. */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"ord(): Argument #1 ($character) must not be empty"
 			);
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
 	}
-	/* A string longer than one byte is deprecated (E_DEPRECATED). */
+	/* A string longer than one byte: php DEPRECATES it; PHL rejects it. */
 	if( nLen > 1 ){
-		PH7_VmThrowError(pCtx->pVm,0,E_DEPRECATED,
-			"ord(): Providing a string that is not one byte long "
-			"is deprecated. Use ord($str[0]) instead"
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"ord(): Argument #1 ($character) must be a single byte, use ord($str[0]) instead"
 			);
 	}
 	/* Extract the ASCII value of the first character */
@@ -3108,12 +3094,12 @@ static int PH7_builtin_chr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	 * PH7_VmThrowError() with a NULL function name to avoid the
 	 * automatic prefix that ph7_context_throw_error*() would add. */
 	if( ph7_value_is_float(apArg[0]) ){
-		char zBuf[120];
-		SyBufferFormat(zBuf,sizeof(zBuf),
-			"Implicit conversion from float %g to int loses precision",
-			ph7_value_to_double(apArg[0])
-			);
-		PH7_VmThrowError(pCtx->pVm,0,E_DEPRECATED,zBuf);
+		double d = ph7_value_to_double(apArg[0]);
+		if( d != (double)(sxi64)d ){
+			/* php only DEPRECATES a lossy float->int here; PHL rejects it. */
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"chr(): Argument #1 ($codepoint) must be of type int, float given");
+		}
 	}
 	/* Extract the codepoint. */
 	c = ph7_value_to_int(apArg[0]);
@@ -3450,11 +3436,13 @@ static sxi32 StrPredicateResolveArg(
 	const char **pzOut,
 	int *pnOut
 ){
+	SXUNUSED(zNullMsg); /* php's deprecation text — PHL rejects null instead of coercing */
 	if( ph7_value_is_null(pArg) ){
-		PH7_VmThrowError(pCtx->pVm,0,E_DEPRECATED,zNullMsg);
-		*pzOut = "";
-		*pnOut = 0;
-		return PH7_OK;
+		/* php only DEPRECATES null here; PHL rejects it with the TypeError php will
+		 * eventually raise. */
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): Argument #%d (%s) must be of type %s, null given",
+			zFunc,iArgNum,zParamName,zTypeStr);
 	}
 	if( ph7_value_is_array(pArg) || ph7_value_is_resource(pArg) ||
 	    ( ph7_value_is_object(pArg) &&

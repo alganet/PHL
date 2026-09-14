@@ -6365,18 +6365,23 @@ PH7_PRIVATE sxi32 PH7_ContextMemoryError(ph7_context *pCtx)
  * (Builtin int PARAMETERS need the same treatment — they coerce through each
  * function's own ph7_value_to_int call, so they ride the recorded ZPP sweep.)
  */
-static void VmDeprecateFloatOperand(ph7_vm *pVm,ph7_value *pVal)
+static sxi32 VmThrowFixedError(ph7_vm *pVm, const char *zClass, const char *zMsg);
+/* php only DEPRECATES a lossy float->int operand (`5 % 2.7`, `3 | 1.5`); PHL targets
+ * php's non-deprecated surface and rejects it with a TypeError. An INTEGRAL float
+ * (`4.0 % 3`) loses nothing and is accepted. Returns SXRET_OK to continue, or the
+ * throw status for the caller to route via PH7_DISPATCH_ENFORCE_RC. */
+static sxi32 VmRejectFloatOperand(ph7_vm *pVm,ph7_value *pVal)
 {
 	double r;
 	if( pVal == 0 || (pVal->iFlags & MEMOBJ_REAL) == 0 ){
-		return;
+		return SXRET_OK;
 	}
 	r = (double)pVal->rVal;
 	if( r == (double)(sxi64)r ){
-		return;
+		return SXRET_OK;
 	}
-	VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,
-		"Implicit conversion from float %g to int loses precision",r);
+	return VmThrowFixedError(pVm,"TypeError",
+		"Implicit conversion from float to int loses precision");
 }
 /*
  * php 8.1: a FLOAT array subscript truncates to int, and deprecates when that
@@ -13073,7 +13078,8 @@ case PH7_OP_BITNOT:
 	}
 #endif
 	/* Force an integer cast (php deprecates a lossy float here too) */
-	VmDeprecateFloatOperand(&(*pVm),pTos);
+	rc = VmRejectFloatOperand(&(*pVm),pTos);
+	PH7_DISPATCH_ENFORCE_RC(rc)
 	if( (pTos->iFlags & MEMOBJ_INT) == 0 ){
 		PH7_MemObjToInteger(pTos);
 	}
@@ -13610,8 +13616,10 @@ case PH7_OP_MOD:{
 	}
 #endif
 	/* Force the operands to be integer (php deprecates a lossy float here) */
-	VmDeprecateFloatOperand(&(*pVm),pNos);
-	VmDeprecateFloatOperand(&(*pVm),pTos);
+	rc = VmRejectFloatOperand(&(*pVm),pNos);
+	PH7_DISPATCH_ENFORCE_RC(rc)
+	rc = VmRejectFloatOperand(&(*pVm),pTos);
+	PH7_DISPATCH_ENFORCE_RC(rc)
 	if( (pTos->iFlags & MEMOBJ_INT) == 0 ){
 		PH7_MemObjToInteger(pTos);
 	}
@@ -13681,8 +13689,10 @@ case PH7_OP_MOD_STORE: {
 		SyBlobRelease(&sArMsg);
 	}
 	/* Force the operands to be integer (php deprecates a lossy float here) */
-	VmDeprecateFloatOperand(&(*pVm),pNos);
-	VmDeprecateFloatOperand(&(*pVm),pTos);
+	rc = VmRejectFloatOperand(&(*pVm),pNos);
+	PH7_DISPATCH_ENFORCE_RC(rc)
+	rc = VmRejectFloatOperand(&(*pVm),pTos);
+	PH7_DISPATCH_ENFORCE_RC(rc)
 	if( (pTos->iFlags & MEMOBJ_INT) == 0 ){
 		PH7_MemObjToInteger(pTos);
 	}
@@ -13898,8 +13908,10 @@ case PH7_OP_BXOR:{
 	}
 #endif
 	/* Force the operands to be integer (php deprecates a lossy float here) */
-	VmDeprecateFloatOperand(&(*pVm),pNos);
-	VmDeprecateFloatOperand(&(*pVm),pTos);
+	rc = VmRejectFloatOperand(&(*pVm),pNos);
+	PH7_DISPATCH_ENFORCE_RC(rc)
+	rc = VmRejectFloatOperand(&(*pVm),pTos);
+	PH7_DISPATCH_ENFORCE_RC(rc)
 	if( (pTos->iFlags & MEMOBJ_INT) == 0 ){
 		PH7_MemObjToInteger(pTos);
 	}
@@ -13954,8 +13966,10 @@ case PH7_OP_BXOR_STORE:{
 	}
 #endif
 	/* Force the operands to be integer (php deprecates a lossy float here) */
-	VmDeprecateFloatOperand(&(*pVm),pNos);
-	VmDeprecateFloatOperand(&(*pVm),pTos);
+	rc = VmRejectFloatOperand(&(*pVm),pNos);
+	PH7_DISPATCH_ENFORCE_RC(rc)
+	rc = VmRejectFloatOperand(&(*pVm),pTos);
+	PH7_DISPATCH_ENFORCE_RC(rc)
 	if( (pTos->iFlags & MEMOBJ_INT) == 0 ){
 		PH7_MemObjToInteger(pTos);
 	}
@@ -14012,8 +14026,10 @@ case PH7_OP_SHR: {
 	}
 #endif
 	/* Force the operands to be integer (php deprecates a lossy float here) */
-	VmDeprecateFloatOperand(&(*pVm),pNos);
-	VmDeprecateFloatOperand(&(*pVm),pTos);
+	rc = VmRejectFloatOperand(&(*pVm),pNos);
+	PH7_DISPATCH_ENFORCE_RC(rc)
+	rc = VmRejectFloatOperand(&(*pVm),pTos);
+	PH7_DISPATCH_ENFORCE_RC(rc)
 	if( (pTos->iFlags & MEMOBJ_INT) == 0 ){
 		PH7_MemObjToInteger(pTos);
 	}
@@ -14060,8 +14076,10 @@ case PH7_OP_SHR_STORE: {
 	}
 #endif
 	/* Force the operands to be integer (php deprecates a lossy float here) */
-	VmDeprecateFloatOperand(&(*pVm),pNos);
-	VmDeprecateFloatOperand(&(*pVm),pTos);
+	rc = VmRejectFloatOperand(&(*pVm),pNos);
+	PH7_DISPATCH_ENFORCE_RC(rc)
+	rc = VmRejectFloatOperand(&(*pVm),pTos);
+	PH7_DISPATCH_ENFORCE_RC(rc)
 	if( (pTos->iFlags & MEMOBJ_INT) == 0 ){
 		PH7_MemObjToInteger(pTos);
 	}
@@ -25466,9 +25484,9 @@ static int vm_builtin_trigger_error(ph7_context *pCtx,int nArg,ph7_value **apArg
 					"trigger_error(): Argument #2 ($error_level) must be one of E_USER_ERROR, E_USER_WARNING, E_USER_NOTICE, or E_USER_DEPRECATED");
 			}
 			if( nErr == 256 /* E_USER_ERROR */ ){
-				/* php 8.4 deprecates the user-fatal level */
-				PH7_VmThrowDeprecatedFmt(pCtx->pVm,
-					"Passing E_USER_ERROR to trigger_error() is deprecated since 8.4, throw an exception or call exit with a string message instead");
+				/* php only DEPRECATES the user-fatal level; PHL rejects it. */
+				return PH7_VmThrowException(pCtx,"ValueError",
+					"trigger_error(): Passing E_USER_ERROR is no longer supported, throw an exception or call exit() with a string message instead");
 			}
 		}
 		/* Report error (consults an installed error handler, then displays) */

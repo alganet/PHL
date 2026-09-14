@@ -553,9 +553,9 @@ PH7_PRIVATE int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 
 	if( ph7_value_is_null(apArg[0]) ){
-		/* php's 8.1 null-to-scalar-parameter deprecation; abs(null) is still 0 */
-		PH7_VmThrowDeprecatedFmt(pCtx->pVm,
-			"abs(): Passing null to parameter #1 ($num) of type int|float is deprecated");
+		/* php only DEPRECATES null here; PHL rejects it. */
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"abs(): Argument #1 ($num) must be of type int|float, null given");
 	}
 	/* Numeric strings with decimal/exponent are treated as real values. */
 	is_float = ph7_value_is_float(apArg[0]);
@@ -1227,8 +1227,8 @@ static void MathBaseToNumber(ph7_context *pCtx,const char *zStr,int nLen,int bas
 	if( bIgnored ){
 		/* php 8: characters that are not valid digits for this base are skipped,
 		 * and the skipping itself is deprecated (the VALUE is unaffected). */
-		PH7_VmThrowDeprecatedFmt(pCtx->pVm,
-			"Invalid characters passed for attempted conversion, these have been ignored");
+		PH7_VmThrowException(pCtx,"ValueError",
+			"Invalid characters passed for attempted conversion");
 	}
 	if( mode == 1 ){
 		ph7_result_double(pCtx,fnum);
@@ -1399,8 +1399,8 @@ PH7_PRIVATE int PH7_builtin_base_convert(ph7_context *pCtx,int nArg,ph7_value **
 	 * digits 0-9 then a-z/A-Z map to 0-35; a character that is not a valid digit for
 	 * from_base is ignored, and php raises an E_DEPRECATED saying so. */
 	if( ph7_value_is_null(apArg[0]) ){
-		PH7_VmThrowDeprecatedFmt(pCtx->pVm,
-			"base_convert(): Passing null to parameter #1 ($num) of type string is deprecated");
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"base_convert(): Argument #1 ($num) must be of type string, null given");
 	}
 	zNum = ph7_value_to_string(apArg[0],&nLen);
 	bIgnored = 0;
@@ -1424,8 +1424,8 @@ PH7_PRIVATE int PH7_builtin_base_convert(ph7_context *pCtx,int nArg,ph7_value **
 		uNum = uNum * (sxu64)iFbase + (sxu64)d;
 	}
 	if( bIgnored ){
-		PH7_VmThrowDeprecatedFmt(pCtx->pVm,
-			"Invalid characters passed for attempted conversion, these have been ignored");
+		PH7_VmThrowException(pCtx,"ValueError",
+			"Invalid characters passed for attempted conversion");
 	}
 	/* Format the result in to_base using lowercase digits. */
 	if( uNum == 0 ){
