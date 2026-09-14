@@ -132,46 +132,42 @@ PH7_PRIVATE void PH7_LibxmlClearErrors(ph7_vm *pVm)
 	}
 }
 /*
- * Structured-error callback installed while a libxml2 entry point runs
- * between PH7_LibxmlCaptureBegin/End.  Every reported error is queued on
- * the per-VM list (the capture-end decides whether it stays there or is
- * drained as a PHP warning) and copied into the last-error slot.
+ * Push one error onto the per-VM queue and last-error slot, copying the
+ * message/file strings.  The typed structured-error callback below and the
+ * DOM schema hooks (vm_dom.c) both funnel through this, keeping the
+ * queue-building logic in one place and ph7int.h free of libxml types.
  */
-#if LIBXML_VERSION >= 21200
-static void LibxmlStructuredErrHandler(void *pUserData,const xmlError *pErr)
-#else
-static void LibxmlStructuredErrHandler(void *pUserData,xmlErrorPtr pErr)
-#endif
+PH7_PRIVATE void PH7_LibxmlQueueError(ph7_vm *pVm,int iLevel,int iCode,int iLine,int iColumn,
+	const char *zMsg,const char *zFile)
 {
-	ph7_vm *pVm = (ph7_vm *)pUserData;
 	phl_libxml_err sEntry;
 	phl_libxml_err *pLast;
-	if( pErr == 0 || pVm == 0 ){
+	if( pVm == 0 ){
 		return;
 	}
 	SyZero(&sEntry,sizeof(sEntry));
-	sEntry.iLevel = (int)pErr->level;
-	sEntry.iCode = pErr->code;
-	sEntry.iLine = pErr->line;
-	sEntry.iColumn = pErr->int2; /* libxml keeps the column in int2 */
-	if( pErr->message ){
-		sxu32 nMsg = SyStrlen(pErr->message);
-		char *zMsg = SyMemBackendStrDup(&pVm->sAllocator,pErr->message,nMsg);
-		if( zMsg ){
+	sEntry.iLevel = iLevel;
+	sEntry.iCode = iCode;
+	sEntry.iLine = iLine;
+	sEntry.iColumn = iColumn;
+	if( zMsg ){
+		sxu32 nMsg = SyStrlen(zMsg);
+		char *zDup = SyMemBackendStrDup(&pVm->sAllocator,zMsg,nMsg);
+		if( zDup ){
 			/* Trailing newline kept: php's LibXMLError->message preserves it */
-			SyStringInitFromBuf(&sEntry.sMsg,zMsg,nMsg);
+			SyStringInitFromBuf(&sEntry.sMsg,zDup,nMsg);
 		}
 	}
-	if( pErr->file ){
-		sxu32 nFile = SyStrlen(pErr->file);
-		char *zFile = SyMemBackendStrDup(&pVm->sAllocator,pErr->file,nFile);
-		if( zFile ){
-			SyStringInitFromBuf(&sEntry.sFile,zFile,nFile);
+	if( zFile ){
+		sxu32 nFile = SyStrlen(zFile);
+		char *zDup = SyMemBackendStrDup(&pVm->sAllocator,zFile,nFile);
+		if( zDup ){
+			SyStringInitFromBuf(&sEntry.sFile,zDup,nFile);
 		}
 	}
 	SySetPut(&pVm->aLibxmlErr,(const void *)&sEntry);
-	/* Mirror into the last-error slot (its strings are independent copies
-	 * so queue draining cannot invalidate it). */
+	/* Mirror into the last-error slot (independent string copies so queue
+	 * draining cannot invalidate it). */
 	pLast = (phl_libxml_err *)pVm->pLibxmlLastErr;
 	if( pLast == 0 ){
 		pLast = (phl_libxml_err *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_libxml_err));
@@ -183,10 +179,10 @@ static void LibxmlStructuredErrHandler(void *pUserData,xmlErrorPtr pErr)
 	}else{
 		LibxmlFreeErr(pVm,pLast);
 	}
-	pLast->iLevel = sEntry.iLevel;
-	pLast->iCode = sEntry.iCode;
-	pLast->iLine = sEntry.iLine;
-	pLast->iColumn = sEntry.iColumn;
+	pLast->iLevel = iLevel;
+	pLast->iCode = iCode;
+	pLast->iLine = iLine;
+	pLast->iColumn = iColumn;
 	if( sEntry.sMsg.zString ){
 		char *zDup = SyMemBackendStrDup(&pVm->sAllocator,sEntry.sMsg.zString,sEntry.sMsg.nByte);
 		if( zDup ){
@@ -201,6 +197,25 @@ static void LibxmlStructuredErrHandler(void *pUserData,xmlErrorPtr pErr)
 	}
 }
 /*
+ * Structured-error callback installed while a libxml2 entry point runs
+ * between PH7_LibxmlCaptureBegin/End.  Forwards to PH7_LibxmlQueueError;
+ * the capture-end decides whether entries stay queued or drain as
+ * php-style warnings.
+ */
+#if LIBXML_VERSION >= 21200
+static void LibxmlStructuredErr(void *pUserData,const xmlError *pErr)
+#else
+static void LibxmlStructuredErr(void *pUserData,xmlErrorPtr pErr)
+#endif
+{
+	if( pErr == 0 ){
+		return;
+	}
+	/* libxml keeps the column in int2 */
+	PH7_LibxmlQueueError((ph7_vm *)pUserData,(int)pErr->level,pErr->code,pErr->line,
+		pErr->int2,pErr->message,pErr->file);
+}
+/*
  * Bracket a libxml2 entry point.  Begin installs the structured handler
  * routed at this VM and returns the current queue depth; End restores the
  * default handler and, when libxml_use_internal_errors() is OFF, drains
@@ -210,7 +225,7 @@ static void LibxmlStructuredErrHandler(void *pUserData,xmlErrorPtr pErr)
  */
 PH7_PRIVATE sxu32 PH7_LibxmlCaptureBegin(ph7_vm *pVm)
 {
-	xmlSetStructuredErrorFunc(pVm,LibxmlStructuredErrHandler);
+	xmlSetStructuredErrorFunc(pVm,LibxmlStructuredErr);
 	return SySetUsed(&pVm->aLibxmlErr);
 }
 PH7_PRIVATE void PH7_LibxmlCaptureEnd(ph7_vm *pVm,sxu32 nMark,const char *zFnName)
