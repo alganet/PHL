@@ -1570,3 +1570,90 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 	VM_EXIT_BREAK;
 	VM_EXIT_BREAK;
 }
+
+/*
+ * OP_CLONE: body moved verbatim from the OP_CLONE arm of
+ * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
+ */
+PH7_PRIVATE VmOpRc VmExecOpClone(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
+{
+	ph7_value *pTos = pState->pTos;
+	ph7_value *pStack = pState->pStack;
+	VmInstr *aInstr = pState->aInstr;
+	sxi32 pc = pState->pc;
+	sxi32 rc;
+	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	ph7_class_instance *pSrc,*pClone;
+#ifdef UNTRUST
+	if( pTos < pStack ){
+		VM_EXIT_ABORT;
+	}
+#endif
+	/* Make sure we are dealing with a class instance. PHP 8 throws a catchable
+	 * TypeError for a non-object operand — for both `clone $x` and clone($x). */
+	if( (pTos->iFlags & MEMOBJ_OBJ) == 0 ){
+		SyBlob sMsg;
+		SyBlobInit(&sMsg,&pVm->sAllocator);
+		SyBlobFormat(&sMsg,"clone(): Argument #1 ($object) must be of type object, %s given",
+			ph7_type_name(pTos));
+		rc = VmThrowBuiltinError(pVm,"TypeError",sizeof("TypeError")-1,&sMsg);
+		PH7_MemObjRelease(pTos);
+		pTos->nIdx = SXU32_HIGH;
+		if( rc == PH7_ABORT ){
+			VM_EXIT_ABORT;
+		}
+		{
+			sxi32 iRp;
+			if( VmRecordedResume(pVm,&iRp,pState->pEntryFrame,aInstr) ){
+				pc = iRp;
+				VM_EXIT_BREAK;
+			}
+		}
+		VM_EXIT_EXCEPTION;
+	}
+	/* Point to the source */
+	pSrc = (ph7_class_instance *)pTos->x.pOther;
+	/* Enum cases are not cloneable — php's catchable Error (the singleton
+	 * identity would break). */
+	if( pSrc->pClass->iFlags & PH7_CLASS_ENUM ){
+		SyBlob sMsg;
+		SyBlobInit(&sMsg,&pVm->sAllocator);
+		SyBlobFormat(&sMsg,"Trying to clone an uncloneable object of class %z",
+			&pSrc->pClass->sName);
+		rc = VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
+		PH7_MemObjRelease(pTos);
+		pTos->nIdx = SXU32_HIGH;
+		if( rc == PH7_ABORT ){
+			VM_EXIT_ABORT;
+		}
+		{
+			sxi32 iRp;
+			if( VmRecordedResume(pVm,&iRp,pState->pEntryFrame,aInstr) ){
+				pc = iRp;
+				VM_EXIT_BREAK;
+			}
+		}
+		VM_EXIT_EXCEPTION;
+	}
+	/* Generator and Fiber objects are not cloneable (matches PHP) */
+	if( pSrc->pClass == pVm->pGeneratorClass || pSrc->pClass == pVm->pFiberClass ){
+		VmErrorFormat(&(*pVm),PH7_CTX_ERR,
+			"Trying to clone an uncloneable object of class '%z'",
+			&pSrc->pClass->sName);
+		PH7_MemObjRelease(pTos);
+		VM_EXIT_BREAK;
+	}
+	/* Perform the clone operation */
+	pClone = PH7_CloneClassInstance(pSrc);
+	PH7_MemObjRelease(pTos);
+	if( pClone == 0 ){
+		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
+			"Clone: cannot make an object clone due to a memory failure,PH7 is loading NULL");
+	}else{
+		/* Load the cloned object */
+		pTos->x.pOther = pClone;
+		MemObjSetType(pTos,MEMOBJ_OBJ);
+	}
+	VM_EXIT_BREAK;
+	VM_EXIT_BREAK;
+}

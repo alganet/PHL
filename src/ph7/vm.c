@@ -5244,7 +5244,7 @@ PH7_PRIVATE int VmHookGuardHeld(ph7_vm *pVm,void *pThis,const SyString *pName)
  * caller's reference on pHThis. Returns PH7_ABORT only for the enforcement's
  * abort path; SXRET_OK otherwise.
  */
-static sxi32 VmHookSetDispatch(ph7_vm *pVm,ph7_class_instance *pHThis,ph7_class_attr *pHAttr,sxu32 nBackIdx,ph7_value *pValue)
+PH7_PRIVATE sxi32 VmHookSetDispatch(ph7_vm *pVm,ph7_class_instance *pHThis,ph7_class_attr *pHAttr,sxu32 nBackIdx,ph7_value *pValue)
 {
 	char zHName[384];
 	sxu32 nHName;
@@ -5380,7 +5380,7 @@ static void VmHookRmwDropTop(ph7_vm *pVm)
 	PH7_ClassInstanceUnref(pEnt->pThis);
 	(void)SySetPop(&pVm->aHookRmw);
 }
-static sxi32 VmHookRmwConsume(ph7_vm *pVm,sxu32 nIdx)
+PH7_PRIVATE sxi32 VmHookRmwConsume(ph7_vm *pVm,sxu32 nIdx)
 {
 	VmHookRmw sEnt;
 	VmHookRmw *pEnt;
@@ -5416,7 +5416,7 @@ static sxi32 VmHookRmwConsume(ph7_vm *pVm,sxu32 nIdx)
  * entry both funnel here. The guard makes a same-name write inside __set fall
  * through to creation, like php. Does NOT release the caller's reference.
  */
-static void VmMagicSetDispatch(ph7_vm *pVm,ph7_class_instance *pSetThis,const SyString *pName,ph7_value *pValue)
+PH7_PRIVATE void VmMagicSetDispatch(ph7_vm *pVm,ph7_class_instance *pSetThis,const SyString *pName,ph7_value *pValue)
 {
 	ph7_class_method *pSetMeth = PH7_ClassExtractMethod(pSetThis->pClass,"__set",sizeof("__set")-1);
 	if( pSetMeth ){
@@ -7635,140 +7635,19 @@ case PH7_OP_MUL_STORE: {
  */
 case PH7_OP_POW:
 case PH7_OP_POW_STORE: {
-	ph7_value *pNos = &pTos[-1];
-	{
-		/* php's operand contract (VmArithOperandCheck): a non-numeric string, array,
-		 * object or resource operand is a TypeError, not a silent 0. Settle the stack
-		 * BEFORE throwing, so the catch does not run over the abandoned operands. */
-		SyBlob sArMsg;
-		SyBlobInit(&sArMsg,&pVm->sAllocator);
-		if( VmArithOperandCheck(&(*pVm),pNos,pTos,"**",&sArMsg) != SXRET_OK ){
-			sxi32 rcAr;
-			VmPopOperand(&pTos,1);
-			PH7_MemObjRelease(pTos);
-			MemObjSetType(pTos,MEMOBJ_NULL);
-			pTos->nIdx = SXU32_HIGH;
-			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
-				SyBlobLength(&sArMsg));
-			SyBlobRelease(&sArMsg);
-			if( rcAr == SXERR_ABORT ){ goto Abort; }
-			rc = rcAr;
-			PH7_THROW_ROUTE_MIDEXPR(rc)
-		}
-		SyBlobRelease(&sArMsg);
-	}
-	int bStore = (pInstr->iOp == PH7_OP_POW_STORE);
-	/* Operand order convention (matches DIV/SUB_STORE):
-	 *   POW:       base = pNos (evaluated first),   exp = pTos
-	 *   POW_STORE: base = pTos (lvalue, last),       exp = pNos
-	 */
-	ph7_value *pBase = bStore ? pTos : pNos;
-	ph7_value *pExp  = bStore ? pNos : pTos;
-#ifndef PH7_OMIT_FLOATING_POINT
-	int bBothInt;
-	int usedInt = 0;
-	ph7_real a, b, r;
-#endif
-	sxi64 base_i = 0, exp_i = 0;
-#ifdef UNTRUST
-	if( pNos < pStack ){
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpPowStore(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
-#endif
-	PH7_MemObjToNumeric(pTos);
-	PH7_MemObjToNumeric(pNos);
-#ifndef PH7_OMIT_FLOATING_POINT
-	bBothInt = ((pTos->iFlags & MEMOBJ_REAL) == 0) &&
-	           ((pNos->iFlags & MEMOBJ_REAL) == 0);
-	if( bBothInt ){
-		base_i = pBase->x.iVal;
-		exp_i  = pExp->x.iVal;
-	}
-	if( (pBase->iFlags & MEMOBJ_REAL) == 0 ){
-		PH7_MemObjToReal(pBase);
-	}
-	if( (pExp->iFlags & MEMOBJ_REAL) == 0 ){
-		PH7_MemObjToReal(pExp);
-	}
-	a = pBase->rVal;
-	b = pExp->rVal;
-	r = pow(a, b);
-	/* Match PHP: int**non-negative-int stays int when the exact result
-	 * fits in sxi64. Use exponentiation by squaring with overflow checks
-	 * rather than casting the double back, because the boundary 2^63 is
-	 * representable as double but not as signed int64. */
-	if( bBothInt && exp_i >= 0 ){
-		sxi64 result_i = 1;
-		sxi64 cur_base = base_i;
-		sxi64 cur_exp  = exp_i;
-		int overflow = 0;
-		while( cur_exp > 0 ){
-			if( cur_exp & 1 ){
-				if( PH7_MUL_OVERFLOW64(result_i, cur_base, &result_i) ){
-					overflow = 1;
-					break;
-				}
-			}
-			cur_exp >>= 1;
-			if( cur_exp > 0 ){
-				if( PH7_MUL_OVERFLOW64(cur_base, cur_base, &cur_base) ){
-					overflow = 1;
-					break;
-				}
-			}
-		}
-		if( !overflow ){
-			pNos->x.iVal = result_i;
-			MemObjSetType(pNos, MEMOBJ_INT);
-			usedInt = 1;
-		}
-	}
-	if( !usedInt ){
-		pNos->rVal = r;
-		MemObjSetType(pNos, MEMOBJ_REAL);
-	}
-#else
-	/* PH7_OMIT_FLOATING_POINT: integer-only build. No libm / no pow().
-	 * Exponentiation by squaring with silent wrap on overflow, matching
-	 * the integer-wrap semantics of PH7_OP_MUL in the same build mode.
-	 * Negative exponents yield 0 since fractional results cannot be
-	 * represented. */
-	base_i = pBase->x.iVal;
-	exp_i  = pExp->x.iVal;
-	{
-		sxi64 result_i = 1;
-		sxi64 cur_base = base_i;
-		sxi64 cur_exp  = exp_i;
-		if( cur_exp < 0 ){
-			result_i = 0;
-		}else{
-			while( cur_exp > 0 ){
-				if( cur_exp & 1 ){
-					result_i *= cur_base;
-				}
-				cur_exp >>= 1;
-				if( cur_exp > 0 ){
-					cur_base *= cur_base;
-				}
-			}
-		}
-		pNos->x.iVal = result_i;
-		MemObjSetType(pNos, MEMOBJ_INT);
-	}
-#endif /* PH7_OMIT_FLOATING_POINT */
-	if( bStore ){
-		ph7_value *pObj;
-		if( pTos->nIdx == SXU32_HIGH ){
-			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
-		}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
-			PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
-			PH7_MemObjStore(pNos,pObj);
-		}
-	}
-	PH7_HOOK_RMW_WRITEBACK(pTos->nIdx,0);
-	VmPopOperand(&pTos,1);
 	break;
-				 }
+					  }
 /* OP_ADD * * *
  *
  * Pop the top two elements from the stack, add them together,
@@ -7874,77 +7753,19 @@ case PH7_OP_ADD_STORE:{
  * top of the stack) and push the result back onto the stack.
  */
 case PH7_OP_SUB: {
-	ph7_value *pNos = &pTos[-1];
-#ifdef UNTRUST
-	if( pNos < pStack ){
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpSub(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
-#endif
-	{
-		/* php's operand contract (VmArithOperandCheck): a non-numeric string, array,
-		 * object or resource operand is a TypeError, not a silent 0. Settle the stack
-		 * BEFORE throwing, so the catch does not run over the abandoned operands. */
-		SyBlob sArMsg;
-		SyBlobInit(&sArMsg,&pVm->sAllocator);
-		if( VmArithOperandCheck(&(*pVm),pNos,pTos,"-",&sArMsg) != SXRET_OK ){
-			sxi32 rcAr;
-			VmPopOperand(&pTos,1);
-			PH7_MemObjRelease(pTos);
-			MemObjSetType(pTos,MEMOBJ_NULL);
-			pTos->nIdx = SXU32_HIGH;
-			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
-				SyBlobLength(&sArMsg));
-			SyBlobRelease(&sArMsg);
-			if( rcAr == SXERR_ABORT ){ goto Abort; }
-			rc = rcAr;
-			PH7_THROW_ROUTE_MIDEXPR(rc)
-		}
-		SyBlobRelease(&sArMsg);
-	}
-	/* Force the operands to be numeric. Without this a string operand fell through
-	 * to the integer branch below, which read the raw x.iVal union member: "10" - "4"
-	 * quietly evaluated to 0. */
-	PH7_MemObjToNumeric(pTos);
-	PH7_MemObjToNumeric(pNos);
-	if( MEMOBJ_REAL & (pTos->iFlags|pNos->iFlags) ){
-		/* Floating point arithemic */
-		ph7_real a,b,r;
-		if( (pTos->iFlags & MEMOBJ_REAL) == 0 ){
-			PH7_MemObjToReal(pTos);
-		}
-		if( (pNos->iFlags & MEMOBJ_REAL) == 0 ){
-			PH7_MemObjToReal(pNos);
-		}
-		a = pNos->rVal;
-		b = pTos->rVal;
-		r = a - b;
-		/* Push the result */
-		pNos->rVal = r;
-		MemObjSetType(pNos,MEMOBJ_REAL);
-		/* Try to get an integer representation */
-		PH7_MemObjTryInteger(pNos);
-	}else{
-		/* Integer arithmetic; PHP promotes an overflowing difference to float.
-		 * The integer-only build wraps like OP_POW's OMIT path. */
-		sxi64 a,b,r;
-		a = pNos->x.iVal;
-		b = pTos->x.iVal;
-		if( PH7_SUB_OVERFLOW64(a,b,&r) ){
-#ifndef PH7_OMIT_FLOATING_POINT
-			pNos->rVal = (ph7_real)a - (ph7_real)b;
-			MemObjSetType(pNos,MEMOBJ_REAL);
-#else
-			pNos->x.iVal = r;
-			MemObjSetType(pNos,MEMOBJ_INT);
-#endif
-		}else{
-			pNos->x.iVal = r;
-			MemObjSetType(pNos,MEMOBJ_INT);
-		}
-	}
-	VmPopOperand(&pTos,1);
 	break;
-				 }
+					  }
 /* OP_SUB_STORE * * *
  *
  * Pop the top two elements from the stack, subtract the
@@ -7952,82 +7773,19 @@ case PH7_OP_SUB: {
  * top of the stack) and push the result back onto the stack.
  */
 case PH7_OP_SUB_STORE: {
-	ph7_value *pNos = &pTos[-1];
-	ph7_value *pObj;
-#ifdef UNTRUST
-	if( pNos < pStack ){
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpSubStore(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
-#endif
-	{
-		/* php's operand contract: a compound-assign with a non-numeric string,
-		 * array, object or resource operand is a TypeError too. */
-		SyBlob sArMsg;
-		SyBlobInit(&sArMsg,&pVm->sAllocator);
-		if( VmArithOperandCheck(&(*pVm),pTos,pNos,"-",&sArMsg) != SXRET_OK ){
-			sxi32 rcAr;
-			VmPopOperand(&pTos,1);
-			PH7_MemObjRelease(pTos);
-			MemObjSetType(pTos,MEMOBJ_NULL);
-			pTos->nIdx = SXU32_HIGH;
-			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
-				SyBlobLength(&sArMsg));
-			SyBlobRelease(&sArMsg);
-			if( rcAr == SXERR_ABORT ){ goto Abort; }
-			rc = rcAr;
-			PH7_THROW_ROUTE_MIDEXPR(rc)
-		}
-		SyBlobRelease(&sArMsg);
-	}
-	/* Force the operands to be numeric (see OP_SUB) */
-	PH7_MemObjToNumeric(pTos);
-	PH7_MemObjToNumeric(pNos);
-	if( MEMOBJ_REAL & (pTos->iFlags|pNos->iFlags) ){
-		/* Floating point arithemic */
-		ph7_real a,b,r;
-		if( (pTos->iFlags & MEMOBJ_REAL) == 0 ){
-			PH7_MemObjToReal(pTos);
-		}
-		if( (pNos->iFlags & MEMOBJ_REAL) == 0 ){
-			PH7_MemObjToReal(pNos);
-		}
-		a = pTos->rVal;
-		b = pNos->rVal;
-		r = a - b;
-		/* Push the result */
-		pNos->rVal = r;
-		MemObjSetType(pNos,MEMOBJ_REAL);
-		/* Try to get an integer representation */
-		PH7_MemObjTryInteger(pNos);
-	}else{
-		/* Integer arithmetic; PHP promotes an overflowing difference to float.
-		 * The integer-only build wraps like OP_POW's OMIT path. */
-		sxi64 a,b,r;
-		a = pTos->x.iVal;
-		b = pNos->x.iVal;
-		if( PH7_SUB_OVERFLOW64(a,b,&r) ){
-#ifndef PH7_OMIT_FLOATING_POINT
-			pNos->rVal = (ph7_real)a - (ph7_real)b;
-			MemObjSetType(pNos,MEMOBJ_REAL);
-#else
-			pNos->x.iVal = r;
-			MemObjSetType(pNos,MEMOBJ_INT);
-#endif
-		}else{
-			pNos->x.iVal = r;
-			MemObjSetType(pNos,MEMOBJ_INT);
-		}
-	}
-	if( pTos->nIdx == SXU32_HIGH ){
-		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
-	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
-		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
-		PH7_MemObjStore(pNos,pObj);
-	}
-	PH7_HOOK_RMW_WRITEBACK(pTos->nIdx,0);
-	VmPopOperand(&pTos,1);
 	break;
-				 }
+					  }
 
 /*
  * OP_MOD * * *
@@ -8038,70 +7796,20 @@ case PH7_OP_SUB_STORE: {
  * onto the stack.
  * Note: Only integer arithemtic is allowed.
  */
-case PH7_OP_MOD:{
-	ph7_value *pNos = &pTos[-1];
-	{
-		/* php's operand contract (VmArithOperandCheck): a non-numeric string, array,
-		 * object or resource operand is a TypeError, not a silent 0. Settle the stack
-		 * BEFORE throwing, so the catch does not run over the abandoned operands. */
-		SyBlob sArMsg;
-		SyBlobInit(&sArMsg,&pVm->sAllocator);
-		if( VmArithOperandCheck(&(*pVm),pNos,pTos,"%",&sArMsg) != SXRET_OK ){
-			sxi32 rcAr;
-			VmPopOperand(&pTos,1);
-			PH7_MemObjRelease(pTos);
-			MemObjSetType(pTos,MEMOBJ_NULL);
-			pTos->nIdx = SXU32_HIGH;
-			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
-				SyBlobLength(&sArMsg));
-			SyBlobRelease(&sArMsg);
-			if( rcAr == SXERR_ABORT ){ goto Abort; }
-			rc = rcAr;
-			PH7_THROW_ROUTE_MIDEXPR(rc)
-		}
-		SyBlobRelease(&sArMsg);
-	}
-	sxi64 a,b,r;
-#ifdef UNTRUST
-	if( pNos < pStack ){
+case PH7_OP_MOD: {
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpMod(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
-#endif
-	/* Force the operands to be integer (php deprecates a lossy float here) */
-	rc = VmRejectFloatOperand(&(*pVm),pNos);
-	PH7_DISPATCH_ENFORCE_RC(rc)
-	rc = VmRejectFloatOperand(&(*pVm),pTos);
-	PH7_DISPATCH_ENFORCE_RC(rc)
-	if( (pTos->iFlags & MEMOBJ_INT) == 0 ){
-		PH7_MemObjToInteger(pTos);
-	}
-	if( (pNos->iFlags & MEMOBJ_INT) == 0 ){
-		PH7_MemObjToInteger(pNos);
-	}
-	/* Perform the requested operation */
-	a = pNos->x.iVal;
-	b = pTos->x.iVal;
-	if( b == 0 ){
-		/* Modulo by zero: php throws a catchable DivisionByZeroError (8.0),
-		 * not the old non-catchable warning that continued with a 0 result. */
-		rc = VmThrowFixedError(&(*pVm),"DivisionByZeroError","Modulo by zero");
-		PH7_DISPATCH_ENFORCE_RC(rc)
-		r = 0; /* unreachable — ENFORCE_RC jumps/breaks for a throw */
-	}else if( b == -1 ){
-		/* `a % -1` is 0 for every a. Computing it as `a%b` would be a signed
-		 * -overflow trap (SIGFPE on x86) when a == PHP_INT_MIN, since the CPU
-		 * evaluates the overflowing quotient PHP_INT_MIN/-1 alongside the
-		 * remainder. php's result here is 0. */
-		r = 0;
-	}else{
-		r = a%b;
-	}
-	/* Push the result */
-	pNos->x.iVal = r;
-	MemObjSetType(pNos,MEMOBJ_INT);
-	VmPopOperand(&pTos,1);
 	break;
-				}
+					  }
 /*
  * OP_MOD_STORE * * *
  *
@@ -8112,74 +7820,19 @@ case PH7_OP_MOD:{
  * Note: Only integer arithemtic is allowed.
  */
 case PH7_OP_MOD_STORE: {
-	ph7_value *pNos = &pTos[-1];
-	ph7_value *pObj;
-	sxi64 a,b,r;
-#ifdef UNTRUST
-	if( pNos < pStack ){
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpModStore(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
-#endif
-	{
-		/* php's operand contract: a compound-assign with a non-numeric string,
-		 * array, object or resource operand is a TypeError too. */
-		SyBlob sArMsg;
-		SyBlobInit(&sArMsg,&pVm->sAllocator);
-		if( VmArithOperandCheck(&(*pVm),pTos,pNos,"%",&sArMsg) != SXRET_OK ){
-			sxi32 rcAr;
-			VmPopOperand(&pTos,1);
-			PH7_MemObjRelease(pTos);
-			MemObjSetType(pTos,MEMOBJ_NULL);
-			pTos->nIdx = SXU32_HIGH;
-			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
-				SyBlobLength(&sArMsg));
-			SyBlobRelease(&sArMsg);
-			if( rcAr == SXERR_ABORT ){ goto Abort; }
-			rc = rcAr;
-			PH7_THROW_ROUTE_MIDEXPR(rc)
-		}
-		SyBlobRelease(&sArMsg);
-	}
-	/* Force the operands to be integer (php deprecates a lossy float here) */
-	rc = VmRejectFloatOperand(&(*pVm),pNos);
-	PH7_DISPATCH_ENFORCE_RC(rc)
-	rc = VmRejectFloatOperand(&(*pVm),pTos);
-	PH7_DISPATCH_ENFORCE_RC(rc)
-	if( (pTos->iFlags & MEMOBJ_INT) == 0 ){
-		PH7_MemObjToInteger(pTos);
-	}
-	if( (pNos->iFlags & MEMOBJ_INT) == 0 ){
-		PH7_MemObjToInteger(pNos);
-	}
-	/* Perform the requested operation */
-	a = pTos->x.iVal;
-	b = pNos->x.iVal;
-	if( b == 0 ){
-		/* Modulo by zero: php throws a catchable DivisionByZeroError (8.0),
-		 * not the old non-catchable warning that continued with a 0 result. */
-		rc = VmThrowFixedError(&(*pVm),"DivisionByZeroError","Modulo by zero");
-		PH7_DISPATCH_ENFORCE_RC(rc)
-		r = 0; /* unreachable — ENFORCE_RC jumps/breaks for a throw */
-	}else if( b == -1 ){
-		/* `a % -1` is 0 for every a; see OP_MOD — computing `a%b` would trap
-		 * (SIGFPE on x86) for a == PHP_INT_MIN. php's result here is 0. */
-		r = 0;
-	}else{
-		r = a%b;
-	}
-	/* Push the result */
-	pNos->x.iVal = r;
-	MemObjSetType(pNos,MEMOBJ_INT);
-	if( pTos->nIdx == SXU32_HIGH ){
-		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
-	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
-		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
-		PH7_MemObjStore(pNos,pObj);
-	}
-	PH7_HOOK_RMW_WRITEBACK(pTos->nIdx,0);
-	VmPopOperand(&pTos,1);
 	break;
-				}
+					  }
 /*
  * OP_DIV * * *
  *
@@ -8188,79 +7841,20 @@ case PH7_OP_MOD_STORE: {
  * top of the stack) and push the result onto the stack.
  * Note: Only floating point arithemtic is allowed.
  */
-case PH7_OP_DIV:{
-	ph7_value *pNos = &pTos[-1];
-	{
-		/* php's operand contract (VmArithOperandCheck): a non-numeric string, array,
-		 * object or resource operand is a TypeError, not a silent 0. Settle the stack
-		 * BEFORE throwing, so the catch does not run over the abandoned operands. */
-		SyBlob sArMsg;
-		SyBlobInit(&sArMsg,&pVm->sAllocator);
-		if( VmArithOperandCheck(&(*pVm),pNos,pTos,"/",&sArMsg) != SXRET_OK ){
-			sxi32 rcAr;
-			VmPopOperand(&pTos,1);
-			PH7_MemObjRelease(pTos);
-			MemObjSetType(pTos,MEMOBJ_NULL);
-			pTos->nIdx = SXU32_HIGH;
-			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
-				SyBlobLength(&sArMsg));
-			SyBlobRelease(&sArMsg);
-			if( rcAr == SXERR_ABORT ){ goto Abort; }
-			rc = rcAr;
-			PH7_THROW_ROUTE_MIDEXPR(rc)
-		}
-		SyBlobRelease(&sArMsg);
-	}
-	ph7_real a,b,r;
-#ifdef UNTRUST
-	if( pNos < pStack ){
+case PH7_OP_DIV: {
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpDiv(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
-#endif
-	/* php's `/`: an int/int division whose remainder is 0 yields an *int*
-	 * (6/3 === 2, not 2.0); anything else -- a float operand, an inexact
-	 * quotient, or PHP_INT_MIN/-1 which does not fit -- yields a float.
-	 * PH7 always produced a float and then called PH7_MemObjTryInteger, which
-	 * ORs MEMOBJ_INT onto a value that keeps rendering as a float. */
-	PH7_MemObjToNumeric(pTos);
-	PH7_MemObjToNumeric(pNos);
-	if( ((pTos->iFlags|pNos->iFlags) & MEMOBJ_REAL) == 0 ){
-		sxi64 ia = pNos->x.iVal;
-		sxi64 ib = pTos->x.iVal;
-		if( ib == 0 ){
-			rc = VmThrowFixedError(&(*pVm),"DivisionByZeroError","Division by zero");
-			PH7_DISPATCH_ENFORCE_RC(rc)
-		}else if( ia % ib == 0 && !(ib == -1 && ia == SMALLEST_INT64) ){
-			pNos->x.iVal = ia / ib;
-			MemObjSetType(pNos,MEMOBJ_INT);
-			VmPopOperand(&pTos,1);
-			break;
-		}
-	}
-	/* Force the operands to be real */
-	if( (pTos->iFlags & MEMOBJ_REAL) == 0 ){
-		PH7_MemObjToReal(pTos);
-	}
-	if( (pNos->iFlags & MEMOBJ_REAL) == 0 ){
-		PH7_MemObjToReal(pNos);
-	}
-	/* Perform the requested operation */
-	a = pNos->rVal;
-	b = pTos->rVal;
-	if( b == 0 ){
-		/* Division by zero: php throws a catchable DivisionByZeroError (8.0),
-		 * not the old non-catchable warning that continued with a 0 result. */
-		rc = VmThrowFixedError(&(*pVm),"DivisionByZeroError","Division by zero");
-		PH7_DISPATCH_ENFORCE_RC(rc)
-	}else{
-		r = a/b;
-		/* Push the result */
-		pNos->rVal = r;
-		MemObjSetType(pNos,MEMOBJ_REAL);
-	}
-	VmPopOperand(&pTos,1);
 	break;
-				}
+					  }
 /*
  * OP_DIV_STORE * * *
  *
@@ -8816,80 +8410,19 @@ case PH7_OP_NULLSAFE_JMP: {
 	break;
 }
 case PH7_OP_NULLC_STORE: {
-	ph7_value *pNos = &pTos[-1];
-	ph7_value *pObj;
-	sxu32 nIdx;
-#ifdef UNTRUST
-	if( pNos < pStack ){
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpNullcStore(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
-#endif
-	if( SySetUsed(&pVm->aHookRmw) > 0 ){
-		/* `$o->p ??= v` whose test value was null: the OP_MEMBER pushed a
-		 * COAL entry targeting exactly THIS store (owner + pc identity — a
-		 * stale entry from an abandoned statement can never match, and nested
-		 * arms in the RHS were consumed/dropped above this one). Dispatch the
-		 * set hook (COAL_HOOK) or __set (COAL_MAGIC — the band A #3b ??=
-		 * residual: pre-fix the assign bypassed __set through the normal slot
-		 * path). The RHS stays as the expression result. */
-		VmHookRmw *pTop = (VmHookRmw *)SySetPeek(&pVm->aHookRmw);
-		if( pTop->pOwnerStack == (void *)pStack && pTop->pInstrs == (void *)aInstr
-		 && pTop->nPc == (sxu32)pc
-		 && (pTop->iKind == VM_HOOK_PEND_COAL_HOOK || pTop->iKind == VM_HOOK_PEND_COAL_MAGIC) ){
-			VmHookRmw sPend = *pTop;
-			(void)SySetPop(&pVm->aHookRmw);
-			if( sPend.iKind == VM_HOOK_PEND_COAL_HOOK ){
-				sxi32 rcHs = VmHookSetDispatch(&(*pVm),sPend.pThis,sPend.pAttr,sPend.nBackIdx,pTos);
-				if( rcHs == PH7_ABORT ){
-					SyBlobRelease(&sPend.sName);
-					PH7_ClassInstanceUnref(sPend.pThis);
-					goto Abort;
-				}
-			}else{
-				SyString sSetName;
-				SyStringInitFromBuf(&sSetName,SyBlobData(&sPend.sName),SyBlobLength(&sPend.sName));
-				VmMagicSetDispatch(&(*pVm),sPend.pThis,&sSetName,pTos);
-			}
-			SyBlobRelease(&sPend.sName);
-			PH7_ClassInstanceUnref(sPend.pThis);
-			PH7_MemObjStore(pTos,pNos);
-			pNos->nIdx = SXU32_HIGH;
-			VmPopOperand(&pTos,1);
-			break;
-		}
-	}
-	/* ArrayAccess null-coalesce-assign target: the preceding LOAD_IDX iP2=3
-	 * armed pVm with the (object, key) on a missing key. Dispatch to
-	 * offsetSet instead of writing through the synthetic pNos->nIdx. */
-	if( pVm->bCoalesceArmed && pVm->pCoalesceObj ){
-		ph7_class_instance *pInst = pVm->pCoalesceObj;
-		ph7_class_method *pSet = PH7_ClassExtractMethod(pInst->pClass,
-			"offsetSet",sizeof("offsetSet")-1);
-		ph7_value *apArg[2];
-		apArg[0] = &pVm->sCoalesceKey;
-		apArg[1] = pTos;
-		if( pSet ){
-			PH7_VmCallClassMethod(&(*pVm),pInst,pSet,0,2,apArg);
-		}
-		/* Leave RHS as the expression result (replace pNos with pTos). */
-		PH7_MemObjStore(pTos,pNos);
-		VmPopOperand(&pTos,1);
-		/* Disarm and release the cached instance ref + key. */
-		VmCoalesceDisarm(pVm);
-		break;
-	}
-	nIdx = pNos->nIdx;
-	if( nIdx == SXU32_HIGH ){
-		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
-			"Cannot perform assignment on a constant class attribute");
-	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx)) != 0 ){
-		PH7_ENFORCE_TYPED_STORE(nIdx,pTos);
-		PH7_MemObjStore(pTos,pObj);
-	}
-	PH7_MemObjStore(pTos,pNos);
-	VmPopOperand(&pTos,1);
 	break;
-}
+					  }
 /*
  * OP_SPREAD: * * *
  * Argument unpacking.  TOS must be an array (hashmap).
@@ -9634,106 +9167,19 @@ case PH7_OP_SET_FINALLY_JMP: {
  * Throw an user exception.
  */
 case PH7_OP_THROW: {
-	VmFrame *pFrameLocal = pVm->pFrame;
-	sxu32 nJump = pInstr->iP2;
-#ifdef UNTRUST
-	if( pTos < pStack ){
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpThrow(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
-	}
-#endif
-	pFrameLocal = VmSkipExceptionFrames(pFrameLocal);
-	/* Tell the upper layer that an exception was thrown */
-	pFrameLocal->iFlags |= VM_FRAME_THROW;
-	if( pTos->iFlags & MEMOBJ_OBJ ){
-		ph7_class_instance *pThis = (ph7_class_instance *)pTos->x.pOther;
-		ph7_class *pThrowable;
-		/* Thrown object must implement the Throwable interface (PHP 7+). */
-		pThrowable = PH7_VmExtractClass(&(*pVm),"Throwable",sizeof("Throwable")-1,FALSE,0);
-		if( pThrowable == 0 || !PH7_VmInstanceOf(pThis->pClass,pThrowable) ){
-			/* Not a Throwable: replace with Error(msg) matching PHP behavior.
-			 * Error::__construct is defined in the built-in library and
-			 * cannot realistically fail, so we do not check its return. */
-			ph7_class *pErrorClass = PH7_VmExtractClass(&(*pVm),"Error",sizeof("Error")-1,TRUE,0);
-			ph7_class_instance *pErrInst = 0;
-			if( pErrorClass ){
-				pErrInst = PH7_NewClassInstance(&(*pVm),pErrorClass);
-			}
-			if( pErrInst ){
-				ph7_class_method *pCons;
-				pCons = PH7_ClassExtractMethod(pErrorClass,"__construct",sizeof("__construct")-1);
-				if( pCons ){
-					ph7_value sArg;
-					ph7_value *apArg[1];
-					SyString sMsgStr;
-					static const char zErrMsg[] =
-						"Cannot throw objects that do not implement Throwable";
-					SyStringInitFromBuf(&sMsgStr,zErrMsg,sizeof(zErrMsg)-1);
-					PH7_MemObjInit(pVm,&sArg);
-					PH7_MemObjInitFromString(pVm,&sArg,&sMsgStr);
-					apArg[0] = &sArg;
-					PH7_VmCallClassMethod(&(*pVm),pErrInst,pCons,0,1,apArg);
-					PH7_MemObjRelease(&sArg);
-				}
-				rc = VmThrowException(&(*pVm),pErrInst);
-				PH7_ClassInstanceUnref(pErrInst);
-				if( rc == SXERR_ABORT ){
-					goto Abort;
-				}
-			}else{
-				/* Bootstrap failure — fall back to uncaught reporting */
-				rc = VmUncaughtException(&(*pVm),pThis);
-				if( rc == SXERR_ABORT ){
-					goto Abort;
-				}
-			}
-		}else{
-			/* Throw the exception */
-			rc = VmThrowException(&(*pVm),pThis);
-			if( rc == SXERR_ABORT ){
-				/* Abort processing immediately */
-				goto Abort;
-			}
-		}
-	}else{
-		/* Expecting a class instance */
-		VmUncaughtException(&(*pVm),0);
-		if( rc == SXERR_ABORT ){
-			/* Abort processing immediately */
-			goto Abort;
-		}
-	}
-	/* Pop the top entry */
-	VmPopOperand(&pTos,1);
-	/* ROOT C: throw caught by an inline try in THIS exec -> jump to its catch/finally
-	 * (draining any mid-expression operands back to the try's base). */
-	PH7_INLINE_RESUME_BREAK()
-	/* pInlineInstr still set here means an inline try in an OUTER exec caught it (e.g. a
-	 * throwing sub-generator delegated via `yield from`): propagate so the owning exec lands. */
-	if( rc == PH7_EXCEPTION || pVm->pResumeFrame || pVm->pInlineInstr ){
-		/* The throw was handled by a `catch` that ran IN PLACE — either this try's own
-		 * finally threw past itself superseding it (rc == PH7_EXCEPTION), or the catch
-		 * sits several frames above this one (pVm->pResumeFrame recorded). Resume at the
-		 * catching body's landing pad if that body is THIS exec (VmRecordedResume), else
-		 * unwind so the owning exec lands. Without this a throw caught at an enclosing
-		 * frame would blindly jump to nJump (this throw's lexically-nearest try) and run
-		 * dead code after it (ROOT B, face a) or continue a callee as if it never threw
-		 * (face c). */
-		sxi32 iResumePc;
-		if( VmRecordedResume(pVm,&iResumePc,sState.pEntryFrame,aInstr) ){
-			pc = iResumePc;
-			break;
-		}
+	}else if( rcOp == VM_OP_EXCEPTION ){
 		goto Exception;
 	}
-	/* No in-place catch recorded: this throw's own enclosing try caught it (the
-	 * common case; its landing pad is exactly nJump). Perform an unconditional jump
-	 * to the try's OP_POP_EXCEPTION landing pad, which tears down the try frame, runs
-	 * finally, and (when a catch/finally issued a `return`) materializes the body
-	 * frame's pending return. Routing the return through OP_POP_EXCEPTION keeps the
-	 * frame stack balanced. */
-	pc = nJump - 1;
 	break;
-				   }
+					  }
 /*
  * OP_FOREACH_INIT * P2 P3
  * Prepare a foreach step.
@@ -9811,79 +9257,19 @@ case PH7_OP_NEW: {
  * Perfome a clone operation.
  */
 case PH7_OP_CLONE: {
-	ph7_class_instance *pSrc,*pClone;
-#ifdef UNTRUST
-	if( pTos < pStack ){
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpClone(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
-	}
-#endif
-	/* Make sure we are dealing with a class instance. PHP 8 throws a catchable
-	 * TypeError for a non-object operand — for both `clone $x` and clone($x). */
-	if( (pTos->iFlags & MEMOBJ_OBJ) == 0 ){
-		SyBlob sMsg;
-		SyBlobInit(&sMsg,&pVm->sAllocator);
-		SyBlobFormat(&sMsg,"clone(): Argument #1 ($object) must be of type object, %s given",
-			ph7_type_name(pTos));
-		rc = VmThrowBuiltinError(pVm,"TypeError",sizeof("TypeError")-1,&sMsg);
-		PH7_MemObjRelease(pTos);
-		pTos->nIdx = SXU32_HIGH;
-		if( rc == PH7_ABORT ){
-			goto Abort;
-		}
-		{
-			sxi32 iRp;
-			if( VmRecordedResume(pVm,&iRp,sState.pEntryFrame,aInstr) ){
-				pc = iRp;
-				break;
-			}
-		}
+	}else if( rcOp == VM_OP_EXCEPTION ){
 		goto Exception;
-	}
-	/* Point to the source */
-	pSrc = (ph7_class_instance *)pTos->x.pOther;
-	/* Enum cases are not cloneable — php's catchable Error (the singleton
-	 * identity would break). */
-	if( pSrc->pClass->iFlags & PH7_CLASS_ENUM ){
-		SyBlob sMsg;
-		SyBlobInit(&sMsg,&pVm->sAllocator);
-		SyBlobFormat(&sMsg,"Trying to clone an uncloneable object of class %z",
-			&pSrc->pClass->sName);
-		rc = VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
-		PH7_MemObjRelease(pTos);
-		pTos->nIdx = SXU32_HIGH;
-		if( rc == PH7_ABORT ){
-			goto Abort;
-		}
-		{
-			sxi32 iRp;
-			if( VmRecordedResume(pVm,&iRp,sState.pEntryFrame,aInstr) ){
-				pc = iRp;
-				break;
-			}
-		}
-		goto Exception;
-	}
-	/* Generator and Fiber objects are not cloneable (matches PHP) */
-	if( pSrc->pClass == pVm->pGeneratorClass || pSrc->pClass == pVm->pFiberClass ){
-		VmErrorFormat(&(*pVm),PH7_CTX_ERR,
-			"Trying to clone an uncloneable object of class '%z'",
-			&pSrc->pClass->sName);
-		PH7_MemObjRelease(pTos);
-		break;
-	}
-	/* Perform the clone operation */
-	pClone = PH7_CloneClassInstance(pSrc);
-	PH7_MemObjRelease(pTos);
-	if( pClone == 0 ){
-		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
-			"Clone: cannot make an object clone due to a memory failure,PH7 is loading NULL");
-	}else{
-		/* Load the cloned object */
-		pTos->x.pOther = pClone;
-		MemObjSetType(pTos,MEMOBJ_OBJ);
 	}
 	break;
-				   }
+					  }
 /*
  * OP_CLONE_APPLY * * *
  *  Apply the PHP 8.5 clone($obj, $withProperties) property updates. The updates
@@ -9962,77 +9348,19 @@ case PH7_OP_SWITCH: {
  *  no default is present, a fatal UnhandledMatchError is raised.
  */
 case PH7_OP_MATCH: {
-	ph7_match *pMatch = (ph7_match *)pInstr->p3;
-	ph7_match_arm *aArm,*pArm,*pDefault = 0;
-	ph7_value sSubject,sCond,sResult;
-	sxu32 i,j,nArm,nCond;
-	int matched = 0;
-#ifdef UNTRUST
-	if( pMatch == 0 || pTos < pStack ){
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpMatch(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
-#endif
-	aArm = (ph7_match_arm *)SySetBasePtr(&pMatch->aArms);
-	nArm = SySetUsed(&pMatch->aArms);
-	PH7_MemObjInit(pVm,&sSubject);
-	PH7_MemObjInit(pVm,&sCond);
-	PH7_MemObjInit(pVm,&sResult);
-	PH7_MemObjLoad(pTos,&sSubject);
-	for( i = 0; i < nArm && !matched; ++i ){
-		pArm = &aArm[i];
-		if( pArm->bDefault ){
-			pDefault = pArm;
-			continue;
-		}
-		nCond = SySetUsed(&pArm->aConds);
-		for( j = 0; j < nCond; ++j ){
-			SySet *pCondBc = (SySet *)SySetAt(&pArm->aConds,j);
-			if( pCondBc == 0 ){
-				continue;
-			}
-			VmLocalExec(pVm,pCondBc,&sCond,FALSE);
-			rc = PH7_MemObjCmp(&sSubject,&sCond,TRUE /* strict */,0);
-			PH7_MemObjRelease(&sCond);
-			if( rc == 0 ){
-				VmLocalExec(pVm,&pArm->aResult,&sResult,FALSE);
-				matched = 1;
-				break;
-			}
-		}
-	}
-	if( !matched && pDefault ){
-		VmLocalExec(pVm,&pDefault->aResult,&sResult,FALSE);
-		matched = 1;
-	}
-	if( !matched ){
-		const char *zType = "unknown";
-		char zMsg[128];
-		sxu32 nMsg;
-		switch(sSubject.iFlags & MEMOBJ_ALL){
-		case MEMOBJ_NULL:   zType = "null";   break;
-		case MEMOBJ_BOOL:   zType = "bool";   break;
-		case MEMOBJ_INT:    zType = "int";    break;
-		case MEMOBJ_REAL:   zType = "float";  break;
-		case MEMOBJ_STRING: zType = "string"; break;
-		case MEMOBJ_HASHMAP:zType = "array";  break;
-		case MEMOBJ_OBJ:    zType = "object"; break;
-		case MEMOBJ_RES:    zType = "resource"; break;
-		default: break;
-		}
-		nMsg = SyBufferFormat(zMsg,sizeof(zMsg),
-			"Unhandled match case of type %s",zType);
-		VmReportUncaughtException(&(*pVm),"UnhandledMatchError",
-			sizeof("UnhandledMatchError")-1,zMsg,nMsg,0,0);
-		PH7_MemObjRelease(&sSubject);
-		PH7_MemObjRelease(&sResult);
-		goto Abort;
-	}
-	PH7_MemObjRelease(&sSubject);
-	/* Replace subject on TOS with the arm result */
-	PH7_MemObjStore(&sResult,pTos);
-	PH7_MemObjRelease(&sResult);
 	break;
-					}
+					  }
 /*
  * OP_YIELD P1 P2 *
  *  Yield a value from a generator function.
@@ -12222,33 +11550,19 @@ SkipFuncBody:
  * Consume (Invoke the installed VM output consumer callback) and POP P1 elements from the stack.
  */
 case PH7_OP_CONSUME: {
-	ph7_output_consumer *pCons = &pVm->sVmConsumer;
-	ph7_value *pCur,*pOut = pTos;
-
-	pOut = &pTos[-pInstr->iP1 + 1];
-	pCur = pOut;
-	/* Start the consume process  */
-	while( pOut <= pTos ){
-		/* Force a string cast */
-		if( (pOut->iFlags & MEMOBJ_STRING) == 0 ){
-			PH7_MemObjToString(pOut);
-		}
-		if( SyBlobLength(&pOut->sBlob) > 0 ){
-			/*SyBlobNullAppend(&pOut->sBlob);*/
-			/* Invoke the output consumer callback */
-			rc = pCons->xConsumer(SyBlobData(&pOut->sBlob),SyBlobLength(&pOut->sBlob),pCons->pUserData);
-			VmTrackOutput(pVm, SyBlobLength(&pOut->sBlob));
-			SyBlobRelease(&pOut->sBlob);
-			if( rc == SXERR_ABORT ){
-				/* Output consumer callback request an operation abort. */
-				goto Abort;
-			}
-		}
-		pOut++;
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpConsume(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
+		goto Abort;
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
-	pTos = &pCur[-1];
 	break;
-					 }
+					  }
 
 		} /* Switch() */
 		pc++; /* Next instruction in the stream */
