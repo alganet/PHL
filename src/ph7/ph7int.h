@@ -2441,6 +2441,25 @@ PH7_PRIVATE sxi32 PH7_CompileScript(ph7_vm *pVm,SyString *pScript,sxi32 iFlags);
 PH7_PRIVATE void PH7_RegisterBuiltInConstant(ph7_vm *pVm);
 /* builtin.c function prototypes */
 PH7_PRIVATE void PH7_RegisterBuiltInFunction(ph7_vm *pVm);
+/* builtin_hash.c function prototypes */
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+/* Binary-to-hex consumer shared by bin2hex() (builtin.c) and the hash
+ * builtins (builtin_hash.c). */
+PH7_PRIVATE int HashConsumer(const void *pData,unsigned int nLen,void *pUserData);
+#ifndef PH7_DISABLE_HASH_FUNC
+PH7_PRIVATE int PH7_builtin_md5(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_sha1(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_crc32(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_hash(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_hash_hmac(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_hash_equals(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_hash_algos(ph7_context *pCtx,int nArg,ph7_value **apArg);
+#endif /* PH7_DISABLE_HASH_FUNC */
+PH7_PRIVATE int PH7_builtin_password_hash(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_password_verify(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_password_get_info(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_password_needs_rehash(ph7_context *pCtx,int nArg,ph7_value **apArg);
+#endif /* PH7_DISABLE_BUILTIN_FUNC */
 /* hashmap.c function prototypes */
 PH7_PRIVATE ph7_hashmap * PH7_NewHashmap(ph7_vm *pVm,sxu32 (*xIntHash)(sxi64),sxu32 (*xBlobHash)(const void *,sxu32));
 PH7_PRIVATE sxi32 PH7_HashmapCreateSuper(ph7_vm *pVm);
