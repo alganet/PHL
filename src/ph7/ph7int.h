@@ -2460,6 +2460,14 @@ PH7_PRIVATE int PH7_builtin_password_verify(ph7_context *pCtx,int nArg,ph7_value
 PH7_PRIVATE int PH7_builtin_password_get_info(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_password_needs_rehash(ph7_context *pCtx,int nArg,ph7_value **apArg);
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
+/* builtin_fmt.c function prototypes (PH7_NEED_FMT_AND_INI: compiled whenever
+ * disk I/O is enabled, independently of PH7_DISABLE_BUILTIN_FUNC) */
+#ifndef PH7_DISABLE_DISK_IO
+PH7_PRIVATE int PH7_builtin_sprintf(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_printf(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_vprintf(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_vsprintf(ph7_context *pCtx,int nArg,ph7_value **apArg);
+#endif /* PH7_DISABLE_DISK_IO */
 /* hashmap.c function prototypes */
 PH7_PRIVATE ph7_hashmap * PH7_NewHashmap(ph7_vm *pVm,sxu32 (*xIntHash)(sxi64),sxu32 (*xBlobHash)(const void *,sxu32));
 PH7_PRIVATE sxi32 PH7_HashmapCreateSuper(ph7_vm *pVm);
