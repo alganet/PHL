@@ -1325,6 +1325,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				if( (apNode[iCur]->pStart->nType & PH7_TK_COMMA) && apNode[iCur]->pLeft == 0 && iNest <= 0 ){
 					break;
 				}else if( (apNode[iCur]->pStart->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB))
+					&& apNode[iCur]->pLeft == 0
 					&& apNode[iCur]->xCode != PH7_CompileShortArray
 					&& apNode[iCur]->xCode != PH7_CompileShortList ){
 					/* A short-array/short-list literal ([...]) is extracted as a single
@@ -1332,9 +1333,14 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 					 * opening '[' has no separate closing node to balance iNest. Treat it
 					 * as a term, not an opening bracket, otherwise iNest stays >0 and the
 					 * following comma is never seen as an argument separator (collapsing
-					 * e.g. array_merge([1],[2]) to just [2]). */
+					 * e.g. array_merge([1],[2]) to just [2]). The same holds for any
+					 * already-folded subtree (pLeft != 0): a nested call collapsed inside
+					 * a parenthesised group -- (f())->m() -- keeps the LPAREN bit on its
+					 * root while its ')' was nulled, so counting it would strand iNest > 0
+					 * and swallow the following argument separator. */
 					iNest++;
-				}else if( apNode[iCur]->pStart->nType & (PH7_TK_RPAREN|PH7_TK_CCB|PH7_TK_CSB) ){
+				}else if( (apNode[iCur]->pStart->nType & (PH7_TK_RPAREN|PH7_TK_CCB|PH7_TK_CSB))
+					&& apNode[iCur]->pLeft == 0 ){
 					iNest--;
 				}
 			}
@@ -1562,10 +1568,17 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				 sxi32 iPtr = 0;
 				 sxi32 nFuncTok = 0;
 				 while( nFuncTok + iCur < nToken ){
-					 if( apNode[nFuncTok+iCur] ){
-						 if( apNode[nFuncTok+iCur]->pStart->nType & PH7_TK_LPAREN /*'('*/ ){
+					 ph7_expr_node *pTok = apNode[nFuncTok+iCur];
+					 /* Count only raw, unlinked paren tokens. A '(' that has already
+					  * been folded into a subtree (a nested call collapsed inside a
+					  * parenthesised group, e.g. `(f())->m()`) still carries the
+					  * LPAREN bit on its pStart while its matching ')' has been
+					  * nulled, so counting it here would over-count and never find
+					  * this call's own ')'. A processed node has pLeft set. */
+					 if( pTok && pTok->pLeft == 0 ){
+						 if( pTok->pStart->nType & PH7_TK_LPAREN /*'('*/ ){
 							 iPtr++;
-						 }else if ( apNode[nFuncTok+iCur]->pStart->nType & PH7_TK_RPAREN /*')'*/){
+						 }else if ( pTok->pStart->nType & PH7_TK_RPAREN /*')'*/){
 							 iPtr--;
 							 if( iPtr <= 0 ){
 								 break;
