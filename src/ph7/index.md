@@ -13,13 +13,13 @@ Coverage: 45204/55680 lines (81.19%)
 |[builtin_mb.c](builtin_mb.c.md)|91.94%|479/521|
 |[compile.c](compile.c.md)|81.07%|7387/9112|
 |[constant.c](constant.c.md)|93.28%|1000/1072|
-|[hashmap.c](hashmap.c.md)|89.27%|4028/4512|
+|[hashmap.c](hashmap.c.md)|89.30%|4029/4512|
 |[lex.c](lex.c.md)|93.34%|813/871|
 |[memobj.c](memobj.c.md)|87.07%|889/1021|
 |[net.c](net.c.md)|57.45%|81/141|
 |[oo.c](oo.c.md)|88.09%|710/806|
 |[parse.c](parse.c.md)|86.85%|1182/1361|
-|[vfs.c](vfs.c.md)|67.22%|2625/3905|
+|[vfs.c](vfs.c.md)|67.20%|2624/3905|
 |[vfs_unix.c](vfs_unix.c.md)|89.60%|422/471|
 |[vfs_win.c](vfs_win.c.md)|83.10%|590/710|
 |[vfs_zip.c](vfs_zip.c.md)|58.24%|152/261|

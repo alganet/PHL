@@ -7,13 +7,13 @@
 | src/ph7/builtin_mb.c           | 91.94%   | 479/521     |
 | src/ph7/compile.c              | 81.07%   | 7387/9112   |
 | src/ph7/constant.c             | 93.28%   | 1000/1072   |
-| src/ph7/hashmap.c              | 89.27%   | 4028/4512   |
+| src/ph7/hashmap.c              | 89.30%   | 4029/4512   |
 | src/ph7/lex.c                  | 93.34%   | 813/871     |
 | src/ph7/memobj.c               | 87.07%   | 889/1021    |
 | src/ph7/net.c                  | 57.45%   | 81/141      |
 | src/ph7/oo.c                   | 88.09%   | 710/806     |
 | src/ph7/parse.c                | 86.85%   | 1182/1361   |
-| src/ph7/vfs.c                  | 67.22%   | 2625/3905   |
+| src/ph7/vfs.c                  | 67.20%   | 2624/3905   |
 | src/ph7/vfs_unix.c             | 89.60%   | 422/471     |
 | src/ph7/vfs_win.c              | 83.10%   | 590/710     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
