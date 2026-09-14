@@ -1127,3 +1127,112 @@ PH7_PRIVATE VmOpRc VmExecOpLoadMap(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 	VM_EXIT_BREAK;
 	VM_EXIT_BREAK;
 }
+
+/*
+ * OP_LOAD_LIST: body moved verbatim from the OP_LOAD_LIST arm of
+ * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
+ */
+PH7_PRIVATE VmOpRc VmExecOpLoadList(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
+{
+	ph7_value *pTos = pState->pTos;
+	ph7_value *pStack = pState->pStack;
+	VmInstr *aInstr = pState->aInstr;
+	sxi32 pc = pState->pc;
+	sxi32 rc;
+	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	ph7_value *pEntry;
+	if( pInstr->iP1 <= 0 ){
+		/* Empty list,break immediately */
+		VM_EXIT_BREAK;
+	}
+	pEntry = &pTos[-pInstr->iP1+1];
+#ifdef UNTRUST
+	if( &pEntry[-1] < pStack ){
+		VM_EXIT_ABORT;
+	}
+#endif
+	if( pEntry[-1].iFlags & MEMOBJ_HASHMAP ){
+		ph7_hashmap *pMap = (ph7_hashmap *)pEntry[-1].x.pOther;
+		ph7_hashmap_node *pNode;
+		ph7_value sKey,*pObj;
+		/* Start Copying */
+		PH7_MemObjInitFromInt(&(*pVm),&sKey,0);
+		while( pEntry <= pTos ){
+			if( pEntry->nIdx != SXU32_HIGH /* Variable not constant */  ){
+				rc = PH7_HashmapLookup(pMap,&sKey,&pNode);
+				if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nIdx)) != 0 ){
+					if( rc == SXRET_OK ){
+						/* Store node value */
+						PH7_HashmapExtractNodeValue(pNode,pObj,TRUE);
+					}else{
+						/* Undefined array key */
+						char zMsg[128];
+						SyBufferFormat(zMsg,sizeof(zMsg),"Undefined array key %d",(int)sKey.x.iVal);
+						PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,zMsg);
+						PH7_MemObjRelease(pObj);
+					}
+				}
+			}
+			sKey.x.iVal++; /* Next numeric index */
+			pEntry++;
+		}
+	}else{
+		/* Source is not an array */
+		ph7_value *pObj;
+		while( pEntry <= pTos ){
+			if( pEntry->nIdx != SXU32_HIGH ){
+				if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nIdx)) != 0 ){
+					PH7_MemObjRelease(pObj);
+				}
+			}
+			pEntry++;
+		}
+		if( (pTos[-pInstr->iP1].iFlags & (MEMOBJ_NULL|MEMOBJ_BOOL)) == 0 ){
+			/* Positional list destructuring silences null+bool; warn for the rest. */
+			VmWarnCannotUseAsArray(&(*pVm),pTos[-pInstr->iP1].iFlags);
+		}
+	}
+	VmPopOperand(&pTos,pInstr->iP1);
+	VM_EXIT_BREAK;
+	VM_EXIT_BREAK;
+}
+
+/*
+ * OP_UNSET_VAR: body moved verbatim from the OP_UNSET_VAR arm of
+ * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
+ */
+PH7_PRIVATE VmOpRc VmExecOpUnsetVar(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
+{
+	ph7_value *pTos = pState->pTos;
+	ph7_value *pStack = pState->pStack;
+	VmInstr *aInstr = pState->aInstr;
+	sxi32 pc = pState->pc;
+	sxi32 rc;
+	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	/* unset($name): p3 is the variable name. Drops the NAME only — see VmUnsetVarByName */
+	SyString *pName = (SyString *)pInstr->p3;
+	if( pName && pVm->pFrame ){
+		/* Inside a try{} the VM pushes an EXCEPTION frame; variables live in the body
+		 * frame below it, so skip past it exactly as every other variable path does.
+		 * Without this, unset($x) inside a try silently found nothing and did nothing. */
+		VmFrame *pVarFrame = VmSkipExceptionFrames(pVm->pFrame);
+		sxi32 rcU = VmUnsetVarByName(&(*pVm),pVarFrame,pName->zString,pName->nByte);
+		if( rcU == PH7_ABORT ){
+			VM_EXIT_ABORT;
+		}
+		/* Releasing the last holder can run a __destruct(), and that destructor may
+		 * throw. Such a throw is PARKED in nBoundaryRc by the boundary rail; consume it
+		 * here and route it, or the catch runs and execution resumes inside the try
+		 * ("resumed-dtor" instead of php's "caught-dtor"). */
+		if( pVm->nBoundaryRc != 0 ){
+			rc = pVm->nBoundaryRc;
+			pVm->nBoundaryRc = 0;
+			if( rc == PH7_ABORT ){
+				VM_EXIT_ABORT;
+			}
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}
+	}
+	VM_EXIT_BREAK;
+	VM_EXIT_BREAK;
+}
