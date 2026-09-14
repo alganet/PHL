@@ -2214,6 +2214,7 @@ PH7_PRIVATE void PH7_LibxmlQueueError(ph7_vm *pVm,int iLevel,int iCode,int iLine
 PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm);
 /* vm_xmlwriter.c */
 PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm);
+PH7_PRIVATE void PH7_XmlWriterVmSweep(ph7_vm *pVm);
 #endif /* PH7_ENABLE_LIBXML */
 /* net.c types and function prototypes */
 #ifdef PH7_ENABLE_NET

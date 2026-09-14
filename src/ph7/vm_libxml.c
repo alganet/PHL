@@ -81,6 +81,8 @@ PH7_PRIVATE void PH7_LibxmlVmReset(ph7_vm *pVm)
 		pDoc = pNext;
 	}
 	pVm->pXmlDocs = 0;
+	/* XMLWriter buffers live outside SyMemBackend too (see vm_xmlwriter.c) */
+	PH7_XmlWriterVmSweep(pVm);
 }
 /*
  * Final teardown on VM release.  Must run before SyMemBackendRelease()
