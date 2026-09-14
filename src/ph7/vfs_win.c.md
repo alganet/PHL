@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 586/710 lines (82.54%)
+Coverage: 590/710 lines (83.10%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -120,15 +120,15 @@ Coverage: 586/710 lines (82.54%)
 |    5 |  110 | `	if( zPath == 0 \|\| SyStrnicmp(zPath,"file://",sizeof("file://")-1) != 0 ){` |
 |    5 |  111 | `		return zPath;` |
 |    - |  112 | `	}` |
-|  ! 0 |  113 | `	zRest = &zPath[sizeof("file://")-1];` |
-|  ! 0 |  114 | `	if( SyStrnicmp(zRest,"localhost/",sizeof("localhost/")-1) == 0 ){` |
+|    1 |  113 | `	zRest = &zPath[sizeof("file://")-1];` |
+|    1 |  114 | `	if( SyStrnicmp(zRest,"localhost/",sizeof("localhost/")-1) == 0 ){` |
 |  ! 0 |  115 | `		zRest = &zRest[sizeof("localhost")-1]; /* keep the leading slash */` |
 |    - |  116 | `	}` |
-|  ! 0 |  117 | `	if( zRest[0] == '/' && zRest[1] != 0 && zRest[2] == ':' ){` |
+|    1 |  117 | `	if( zRest[0] == '/' && zRest[1] != 0 && zRest[2] == ':' ){` |
 |    - |  118 | `		/* file:///C:/path or file://localhost/C:/path -> C:/path */` |
 |  ! 0 |  119 | `		return &zRest[1];` |
 |    - |  120 | `	}` |
-|  ! 0 |  121 | `	return zRest;` |
+|    1 |  121 | `	return zRest;` |
 |    5 |  122 | `}` |
 |    - |  123 | `/* int (*xchdir)(const char *) */` |
 |    - |  124 | `static int WinVfs_chdir(const char *zPath)` |

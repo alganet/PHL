@@ -212,15 +212,15 @@ Coverage: 1135/1207 lines (94.03%)
 |      - |  202 | ` * DIRECTORY_SEPARATOR.` |
 |      - |  203 | ` * Expand the directory separator character.` |
 |      - |  204 | ` */` |
-|    316 |  205 | `static void PH7_DIRSEP_Const(ph7_value *pVal,void *pUnused)` |
+|    320 |  205 | `static void PH7_DIRSEP_Const(ph7_value *pVal,void *pUnused)` |
 |      4 |  206 | `{` |
-|    158 |  207 | `	SXUNUSED(pUnused);` |
+|    160 |  207 | `	SXUNUSED(pUnused);` |
 |      - |  208 | `#ifdef __WINNT__` |
 |      4 |  209 | `	ph7_value_string(pVal,"\\",(int)sizeof(char));` |
 |      - |  210 | `#else` |
-|    316 |  211 | `	ph7_value_string(pVal,"/",(int)sizeof(char));` |
+|    320 |  211 | `	ph7_value_string(pVal,"/",(int)sizeof(char));` |
 |      - |  212 | `#endif` |
-|    320 |  213 | `}` |
+|    324 |  213 | `}` |
 |      - |  214 | `/*` |
 |      - |  215 | ` * PATH_SEPARATOR.` |
 |      - |  216 | ` * Expand the path separator character.` |
@@ -1262,20 +1262,20 @@ Coverage: 1135/1207 lines (94.03%)
 |      - | 1252 | ` * PATHINFO_EXTENSION` |
 |      - | 1253 | ` *  Expand 3.` |
 |      - | 1254 | ` */` |
-|   6738 | 1255 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
+|   6740 | 1255 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1256 | `{` |
-|   3369 | 1257 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6743 | 1258 | `	ph7_value_int(pVal,3);` |
-|   6743 | 1259 | `}` |
+|   3370 | 1257 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6745 | 1258 | `	ph7_value_int(pVal,3);` |
+|   6745 | 1259 | `}` |
 |      - | 1260 | `/*` |
 |      - | 1261 | ` * PATHINFO_FILENAME` |
 |      - | 1262 | ` *  Expand 4.` |
 |      - | 1263 | ` */` |
-|   6730 | 1264 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
+|   6732 | 1264 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1265 | `{` |
-|   3365 | 1266 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6735 | 1267 | `	ph7_value_int(pVal,4);` |
-|   6735 | 1268 | `}` |
+|   3366 | 1266 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6737 | 1267 | `	ph7_value_int(pVal,4);` |
+|   6737 | 1268 | `}` |
 |      - | 1269 | `/*` |
 |      - | 1270 | ` * ASSERT_ACTIVE.` |
 |      - | 1271 | ` *  PHP ASSERT_ACTIVE = 1` |
