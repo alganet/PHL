@@ -7,11 +7,11 @@ SPDX-License-Identifier: BSD-3-Clause
 Duplicate method in class triggers overloading path
 --FILE--
 <?php
-class Test {
+class DuplicateMethodTest {
     function foo() { return 'first'; }
     function foo() { return 'second'; }
 }
-$o = new Test;
+$o = new DuplicateMethodTest;
 echo $o->foo();
 ?>
 --EXPECT--

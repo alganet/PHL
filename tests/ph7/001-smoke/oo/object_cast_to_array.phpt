@@ -7,13 +7,13 @@ SPDX-License-Identifier: BSD-3-Clause
 Object cast to array
 --FILE--
 <?php
-class TestClass {
+class ObjectCastToArrayTestClass {
     public $publicVar = 'public';
     private $privateVar = 'private';
     protected $protectedVar = 'protected';
 }
 
-$obj = new TestClass();
+$obj = new ObjectCastToArrayTestClass();
 $array = (array) $obj;
 var_dump($array);
 ?>

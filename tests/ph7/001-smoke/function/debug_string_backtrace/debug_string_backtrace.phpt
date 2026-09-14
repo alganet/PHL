@@ -12,7 +12,7 @@ if (function_exists('zend_version')) { echo 'skip PHL extension: debug_string_ba
 ?>
 --FILE--
 <?php
-function foo() {
+function debugstringbacktrace_foo() {
     $s = debug_string_backtrace();
     if (strpos($s, "Called function") !== false) {
         echo "contains_called\n";
@@ -20,7 +20,7 @@ function foo() {
         echo "missing_called\n";
     }
 }
-foo();
+debugstringbacktrace_foo();
 ?>
 --EXPECT--
 contains_called

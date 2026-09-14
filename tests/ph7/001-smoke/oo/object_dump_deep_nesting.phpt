@@ -7,14 +7,14 @@ Object dump deep nesting limit
 <?php if (function_exists('zend_version')) echo 'skip'; ?>
 --FILE--
 <?php
-class Test {
+class ObjectDumpDeepNestingTest {
     public $prop;
 }
 
-$root = new Test();
+$root = new ObjectDumpDeepNestingTest();
 $current = $root;
 for ($i = 0; $i < 35; $i++) {
-    $next = new Test();
+    $next = new ObjectDumpDeepNestingTest();
     $current->prop = $next;
     $current = $next;
 }

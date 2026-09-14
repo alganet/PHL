@@ -804,7 +804,10 @@ struct ph7_vm_func_closure_env
 #define VM_FUNC_ARG_PROT_SET 0x10000 /* Promoted property is protected(set) (PHP 8.4) */
 #define VM_FUNC_HOOK_SET_EXPR 0x20000 /* `set => expr` property hook (PHP 8.4): the dispatcher
                                        * stores the implicit return value into the backing slot */
-/* next free bit: 0x40000 */
+#define VM_FUNC_BOUND        0x40000 /* Bound by an UNCONDITIONAL top-level declaration; a second such
+                                      * binding of the same name fatals ("Cannot redeclare function ..."),
+                                      * matching PHP. Conditional declarations are not marked. */
+/* next free bit: 0x80000 */
 /*
  * Each user defined function is parsed out and stored in an instance
  * of the following structure.
@@ -917,6 +920,10 @@ struct ph7_class
                                      * library). Reflection reports it as internal: isInternal() true,
                                      * getFileName() false. */
 #define PH7_CLASS_ENUM        0x080 /* Class is an enum (PHP 8.1). Also carries PH7_CLASS_FINAL. */
+#define PH7_CLASS_BOUND       0x100 /* Bound by an UNCONDITIONAL top-level declaration. PHP fatals on a
+                                     * second such binding of the same name ("Cannot redeclare ..."); a
+                                     * conditional (if/loop/func-nested) declaration is NOT marked, so the
+                                     * `if(false){class C{}}` / `if(!class_exists){..}` guard idioms hoist. */
 /* Class attribute/methods/constants protection levels */
 #define PH7_CLASS_PROT_PUBLIC     1 /* public */
 #define PH7_CLASS_PROT_PROTECTED  2 /* protected */

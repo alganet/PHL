@@ -8,7 +8,7 @@ Invalid class syntax
 --FILE--
 <?php
 // Test class with invalid method signature - abstract method in non-abstract class
-class TestClass {
+class InvalidClassSyntaxTestClass {
     abstract function abstractMethod();
 }
 

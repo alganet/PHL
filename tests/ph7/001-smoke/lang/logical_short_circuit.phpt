@@ -5,8 +5,8 @@ SPDX-License-Identifier: BSD-3-Clause
 logical AND and OR short-circuit evaluation
 --FILE--
 <?php
-function foo() {
-    echo "foo called\n";
+function logicalshortcircuit_foo() {
+    echo "logicalshortcircuit_foo called\n";
     return true;
 }
 
@@ -16,7 +16,7 @@ function bar() {
 }
 
 // Test AND short-circuit: false && anything -> anything not evaluated
-$result1 = false && foo();
+$result1 = false && logicalshortcircuit_foo();
 echo "AND result: " . ($result1 ? "true" : "false") . "\n";
 
 // Test OR short-circuit: true || anything -> anything not evaluated
@@ -24,7 +24,7 @@ $result2 = true || bar();
 echo "OR result: " . ($result2 ? "true" : "false") . "\n";
 
 // Test non-short-circuit cases
-$result3 = true && foo();
+$result3 = true && logicalshortcircuit_foo();
 echo "AND true result: " . ($result3 ? "true" : "false") . "\n";
 
 $result4 = false || bar();
@@ -33,7 +33,7 @@ echo "OR false result: " . ($result4 ? "true" : "false") . "\n";
 --EXPECT--
 AND result: false
 OR result: true
-foo called
+logicalshortcircuit_foo called
 AND true result: true
 bar called
 OR false result: false
