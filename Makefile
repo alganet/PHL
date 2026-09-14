@@ -70,6 +70,7 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/vm_builtin_getopt$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_builtin_ini$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_builtin_lang$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/vm_builtin_lib$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_builtin_ob$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_builtin_reflection$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_builtin_reflection_lib$(OBJ_SUFFIX) \
