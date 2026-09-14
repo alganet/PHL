@@ -125,6 +125,23 @@ PH7_PRIVATE sxi32 GenStateParseReturnType(ph7_gen_state *pGen,ph7_vm_func *pFunc
 PH7_PRIVATE sxi32 GenStateParseUnionTypeDecl(ph7_gen_state *pGen,sxu32 *pnType,SyString *pClass,SySet *pAlts,
 	sxi32 *piTypeFlags,SyString *pTypeText,int iNullableFlag,int iUnionFlag,int bAllowVoid,sxu32 nLine);
 PH7_PRIVATE int SyMemcmpNoCase(const char *zA,const char *zB,sxu32 n);
+/*
+ * Stack-scratch size for stripping PHP 7.4 numeric separators. A typical
+ * literal (INT64_MAX decimal is 19 digits, binary 64-bit with per-nibble
+ * separators is ~80 chars) fits comfortably, so the fast path never touches
+ * the heap. The language itself imposes no upper bound on the length of a
+ * well-formed literal — the stripper falls back to a VM-allocator buffer
+ * for anything larger, so correctness is preserved even for pathological
+ * inputs like a thousand-digit number.
+ */
+#define GEN_NUM_SCRATCH 128
+PH7_PRIVATE sxi32 GenStateFindLiteral(ph7_gen_state *pGen,const SyString *pValue,sxu32 *pIdx);
+PH7_PRIVATE sxi32 GenStateInstallLiteral(ph7_gen_state *pGen,ph7_value *pObj,sxu32 nIdx);
+PH7_PRIVATE sxi32 GenStateValidateNumericSeparator(ph7_gen_state *pGen,SyToken *pToken);
+PH7_PRIVATE sxi32 GenStateStripNumericSeparators(SyMemBackend *pAlloc,const SyString *pToken,
+	char *zScratch,sxu32 nScratch,SyString *pOut,char **pzAlloc);
+PH7_PRIVATE SyToken * GenStateFindTopLevelArrow(SyToken *pStart,SyToken *pEnd);
+PH7_PRIVATE sxi32 GenStateCompileChunk(ph7_gen_state *pGen,sxi32 iFlags);
 /* compile_class.c — cross-unit prototypes */
 PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen);
 PH7_PRIVATE sxi32 PH7_CompileClass(ph7_gen_state *pGen);
@@ -146,4 +163,31 @@ PH7_PRIVATE sxi32 PH7_CompileBlock(ph7_gen_state *pGen,sxi32 nKeywordEnd);
 PH7_PRIVATE sxi32 GenStateCompileFunc(ph7_gen_state *pGen,SyString *pName,sxi32 iFlags,int bHandleClosure,ph7_vm_func **ppFunc);
 PH7_PRIVATE sxi32 PH7_CompileFunction(ph7_gen_state *pGen);
 PH7_PRIVATE sxi32 GenStateGuardFuncRedeclaration(ph7_gen_state *pGen,ph7_vm_func *pFunc);
+/* compile_stmt.c — cross-unit prototypes */
+PH7_PRIVATE GenBlock * GenStateFetchBlock(GenBlock *pCurrent,sxi32 iBlockType,sxi32 iCount);
+PH7_PRIVATE sxi32 GenStateNewJumpFixup(GenBlock *pBlock,sxi32 nJumpType,sxu32 nInstrIdx);
+PH7_PRIVATE const char * TokenTypeName(sxu32 nType);
+PH7_PRIVATE sxu32 GenStateNsQualifyName(ph7_gen_state *pGen,sxu32 nOrigIdx,SyHash *pImports,int *pFromImport);
+PH7_PRIVATE sxi32 PH7_CompileConstant(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileContinue(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileBreak(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileLabel(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileGoto(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileWhile(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileDoWhile(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileFor(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileForeach(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileIf(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileGlobal(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileReturn(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileHalt(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileEcho(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileStatic(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileVar(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileNamespace(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileUse(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileDeclare(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileThrow(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileTry(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileSwitch(ph7_gen_state *pGen);
 #endif /* __COMPILE_INT_H__ */
