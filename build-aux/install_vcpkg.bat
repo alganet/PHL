@@ -54,6 +54,17 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+:: libxml2 backs the DOM / XMLWriter / libxml surface. The [core] feature set
+:: drops the optional iconv/lzma/zlib transitive deps so the static link line
+:: stays to just libxml2.lib (mirrors the POSIX pkg-config link).
+echo Installing libxml2[core]:x64-windows-static...
+"%VCPKG_DIR%\vcpkg.exe" install "libxml2[core]:x64-windows-static"
+
+if %errorlevel% neq 0 (
+    echo Failed to install libxml2.
+    exit /b 1
+)
+
 echo.
-echo vcpkg and PCRE2 installed successfully.
+echo vcpkg, PCRE2 and libxml2 installed successfully.
 echo vcpkg root: %VCPKG_DIR%

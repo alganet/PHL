@@ -10,8 +10,8 @@ runs:
     - if: runner.os == 'Linux'
       uses: awalsh128/cache-apt-pkgs-action@latest
       with:
-        packages: lcov libpcre2-dev
-        version: 1.1
+        packages: lcov libpcre2-dev libxml2-dev
+        version: 1.2
     # The Ubuntu runner ships an older php (8.3) whose ValueError / arity
     # wording predates 8.4/8.5; the cross-engine oracle must be the version PHL
     # targets, matching the Homebrew php used on macOS below.
@@ -22,14 +22,18 @@ runs:
     - if: runner.os == 'macOS'
       uses: tecolicom/actions-use-homebrew-tools@v1
       with:
-        tools: lcov php pcre2
+        tools: lcov php pcre2 libxml2
         cache: yes
-        key: brewcache-2.1
+        key: brewcache-2.2
+    # Homebrew's libxml2 is keg-only; expose its .pc so pkg-config finds it.
+    - if: runner.os == 'macOS'
+      shell: bash
+      run: echo "PKG_CONFIG_PATH=$(brew --prefix libxml2)/lib/pkgconfig:$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
     - if: runner.os == 'Windows'
       uses: microsoft/setup-msbuild@v2
     - if: runner.os == 'Windows'
       shell: cmd
-      run: vcpkg install pcre2:x64-windows-static
+      run: vcpkg install pcre2:x64-windows-static "libxml2[core]:x64-windows-static"
     - if: runner.os == 'Windows'
       uses: actions/cache@v4
       id: cache-opencppcoverage
