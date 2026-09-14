@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 4021/4505 lines (89.26%)
+Coverage: 4028/4512 lines (89.27%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -30,27 +30,27 @@ Coverage: 4021/4505 lines (89.26%)
 |         - |   20 | `/*` |
 |         - |   21 | ` * Default hash function for int [i.e; 64-bit integer] keys.` |
 |         - |   22 | ` */` |
-|   7961338 |   23 | `static sxu32 IntHash(sxi64 iKey)` |
+|   7961668 |   23 | `static sxu32 IntHash(sxi64 iKey)` |
 |         5 |   24 | `{` |
-|   7961343 |   25 | `	sxu64 uKey = (sxu64)iKey; /* unsigned mixing: shifting a negative key is UB */` |
-|   7961343 |   26 | `	return (sxu32)(uKey ^ (uKey << 8) ^ (uKey >> 8));` |
+|   7961673 |   25 | `	sxu64 uKey = (sxu64)iKey; /* unsigned mixing: shifting a negative key is UB */` |
+|   7961673 |   26 | `	return (sxu32)(uKey ^ (uKey << 8) ^ (uKey >> 8));` |
 |         5 |   27 | `}` |
 |         - |   28 | `/*` |
 |         - |   29 | ` * Default hash function for string/BLOB keys.` |
 |         - |   30 | ` */` |
-|    520905 |   31 | `static sxu32 BinHash(const void *pSrc,sxu32 nLen)` |
+|    520969 |   31 | `static sxu32 BinHash(const void *pSrc,sxu32 nLen)` |
 |         5 |   32 | `{` |
-|    520910 |   33 | `	register unsigned char *zIn = (unsigned char *)pSrc;` |
+|    520974 |   33 | `	register unsigned char *zIn = (unsigned char *)pSrc;` |
 |         - |   34 | `	unsigned char *zEnd;` |
-|    520910 |   35 | `	sxu32 nH = 5381;` |
-|    520910 |   36 | `	zEnd = &zIn[nLen];` |
-|    597717 |   37 | `	for(;;){` |
-|   1195440 |   38 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
-|   1021106 |   39 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
-|    919497 |   40 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
-|    795189 |   41 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+|    520974 |   35 | `	sxu32 nH = 5381;` |
+|    520974 |   36 | `	zEnd = &zIn[nLen];` |
+|    597776 |   37 | `	for(;;){` |
+|   1195558 |   38 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+|   1021206 |   39 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+|    919581 |   40 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
+|    795259 |   41 | `		if( zIn >= zEnd ){ break; } nH = nH * 33 + zIn[0] ; zIn++;` |
 |         5 |   42 | `	}` |
-|    520910 |   43 | `	return nH;` |
+|    520974 |   43 | `	return nH;` |
 |         5 |   44 | `}` |
 |         - |   45 | `/*` |
 |         - |   46 | ` * Return the total number of entries in a given hashmap.` |
@@ -106,68 +106,68 @@ Coverage: 4021/4505 lines (89.26%)
 |         - |   96 | ` * If something goes wrong [i.e: out of memory],this function return NULL.` |
 |         - |   97 | ` * Otherwise a fresh [ph7_hashmap_node] instance is returned.` |
 |         - |   98 | ` */` |
-|   3652704 |   99 | `static ph7_hashmap_node * HashmapNewIntNode(ph7_hashmap *pMap,sxi64 iKey,sxu32 nHash,sxu32 nValIdx)` |
+|   3653022 |   99 | `static ph7_hashmap_node * HashmapNewIntNode(ph7_hashmap *pMap,sxi64 iKey,sxu32 nHash,sxu32 nValIdx)` |
 |         5 |  100 | `{` |
 |         - |  101 | `	ph7_hashmap_node *pNode;` |
 |         - |  102 | `	/* Allocate a new node */` |
-|   3652709 |  103 | `	pNode = (ph7_hashmap_node *)SyMemBackendPoolAlloc(&pMap->pVm->sAllocator,sizeof(ph7_hashmap_node));` |
-|   3652709 |  104 | `	if( pNode == 0 ){` |
+|   3653027 |  103 | `	pNode = (ph7_hashmap_node *)SyMemBackendPoolAlloc(&pMap->pVm->sAllocator,sizeof(ph7_hashmap_node));` |
+|   3653027 |  104 | `	if( pNode == 0 ){` |
 |       ! 0 |  105 | `		return 0;` |
 |         - |  106 | `	}` |
 |         - |  107 | `	/* Zero the stucture */` |
-|   3652709 |  108 | `	SyZero(pNode,sizeof(ph7_hashmap_node));` |
+|   3653027 |  108 | `	SyZero(pNode,sizeof(ph7_hashmap_node));` |
 |         - |  109 | `	/* Fill in the structure */` |
-|   3652709 |  110 | `	pNode->pMap  = &(*pMap);` |
-|   3652709 |  111 | `	pNode->iType = HASHMAP_INT_NODE;` |
-|   3652709 |  112 | `	pNode->nHash = nHash;` |
-|   3652709 |  113 | `	pNode->xKey.iKey = iKey;` |
-|   3652709 |  114 | `	pNode->nValIdx  = nValIdx;` |
-|   3652709 |  115 | `	return pNode;` |
-|   1826357 |  116 | `}` |
+|   3653027 |  110 | `	pNode->pMap  = &(*pMap);` |
+|   3653027 |  111 | `	pNode->iType = HASHMAP_INT_NODE;` |
+|   3653027 |  112 | `	pNode->nHash = nHash;` |
+|   3653027 |  113 | `	pNode->xKey.iKey = iKey;` |
+|   3653027 |  114 | `	pNode->nValIdx  = nValIdx;` |
+|   3653027 |  115 | `	return pNode;` |
+|   1826516 |  116 | `}` |
 |         - |  117 | `/*` |
 |         - |  118 | ` * Allocate a new hashmap node with a BLOB key.` |
 |         - |  119 | ` * If something goes wrong [i.e: out of memory],this function return NULL.` |
 |         - |  120 | ` * Otherwise a fresh [ph7_hashmap_node] instance is returned.` |
 |         - |  121 | ` */` |
-|    200157 |  122 | `static ph7_hashmap_node * HashmapNewBlobNode(ph7_hashmap *pMap,const void *pKey,sxu32 nKeyLen,sxu32 nHash,sxu32 nValIdx)` |
+|    200175 |  122 | `static ph7_hashmap_node * HashmapNewBlobNode(ph7_hashmap *pMap,const void *pKey,sxu32 nKeyLen,sxu32 nHash,sxu32 nValIdx)` |
 |         5 |  123 | `{` |
 |         - |  124 | `	ph7_hashmap_node *pNode;` |
 |         - |  125 | `	/* Allocate a new node */` |
-|    200162 |  126 | `	pNode = (ph7_hashmap_node *)SyMemBackendPoolAlloc(&pMap->pVm->sAllocator,sizeof(ph7_hashmap_node));` |
-|    200162 |  127 | `	if( pNode == 0 ){` |
+|    200180 |  126 | `	pNode = (ph7_hashmap_node *)SyMemBackendPoolAlloc(&pMap->pVm->sAllocator,sizeof(ph7_hashmap_node));` |
+|    200180 |  127 | `	if( pNode == 0 ){` |
 |       ! 0 |  128 | `		return 0;` |
 |         - |  129 | `	}` |
 |         - |  130 | `	/* Zero the stucture */` |
-|    200162 |  131 | `	SyZero(pNode,sizeof(ph7_hashmap_node));` |
+|    200180 |  131 | `	SyZero(pNode,sizeof(ph7_hashmap_node));` |
 |         - |  132 | `	/* Fill in the structure */` |
-|    200162 |  133 | `	pNode->pMap  = &(*pMap);` |
-|    200162 |  134 | `	pNode->iType = HASHMAP_BLOB_NODE;` |
-|    200162 |  135 | `	pNode->nHash = nHash;` |
-|    200162 |  136 | `	SyBlobInit(&pNode->xKey.sKey,&pMap->pVm->sAllocator);` |
-|    200162 |  137 | `	SyBlobAppend(&pNode->xKey.sKey,pKey,nKeyLen);` |
-|    200162 |  138 | `	pNode->nValIdx = nValIdx;` |
-|    200162 |  139 | `	return pNode;` |
-|    100083 |  140 | `}` |
+|    200180 |  133 | `	pNode->pMap  = &(*pMap);` |
+|    200180 |  134 | `	pNode->iType = HASHMAP_BLOB_NODE;` |
+|    200180 |  135 | `	pNode->nHash = nHash;` |
+|    200180 |  136 | `	SyBlobInit(&pNode->xKey.sKey,&pMap->pVm->sAllocator);` |
+|    200180 |  137 | `	SyBlobAppend(&pNode->xKey.sKey,pKey,nKeyLen);` |
+|    200180 |  138 | `	pNode->nValIdx = nValIdx;` |
+|    200180 |  139 | `	return pNode;` |
+|    100092 |  140 | `}` |
 |         - |  141 | `/*` |
 |         - |  142 | ` * link a hashmap node to the given bucket index (last argument to this function).` |
 |         - |  143 | ` */` |
-|   3852861 |  144 | `static void HashmapNodeLink(ph7_hashmap *pMap,ph7_hashmap_node *pNode,sxu32 nBucketIdx)` |
+|   3853197 |  144 | `static void HashmapNodeLink(ph7_hashmap *pMap,ph7_hashmap_node *pNode,sxu32 nBucketIdx)` |
 |         5 |  145 | `{` |
 |         - |  146 | `	/* Link */` |
-|   3852866 |  147 | `	if( pMap->apBucket[nBucketIdx] != 0 ){` |
-|   3392513 |  148 | `		pNode->pNextCollide = pMap->apBucket[nBucketIdx];` |
-|   3392513 |  149 | `		pMap->apBucket[nBucketIdx]->pPrevCollide = pNode;` |
-|   1696254 |  150 | `	}` |
-|   3852866 |  151 | `	pMap->apBucket[nBucketIdx] = pNode;` |
+|   3853202 |  147 | `	if( pMap->apBucket[nBucketIdx] != 0 ){` |
+|   3392743 |  148 | `		pNode->pNextCollide = pMap->apBucket[nBucketIdx];` |
+|   3392743 |  149 | `		pMap->apBucket[nBucketIdx]->pPrevCollide = pNode;` |
+|   1696369 |  150 | `	}` |
+|   3853202 |  151 | `	pMap->apBucket[nBucketIdx] = pNode;` |
 |         - |  152 | `	/* Link to the map list */` |
-|   3852866 |  153 | `	if( pMap->pFirst == 0 ){` |
-|     88866 |  154 | `		pMap->pFirst = pMap->pLast = pNode;` |
+|   3853202 |  153 | `	if( pMap->pFirst == 0 ){` |
+|     88888 |  154 | `		pMap->pFirst = pMap->pLast = pNode;` |
 |         - |  155 | `		/* Point to the first inserted node */` |
-|     88866 |  156 | `		pMap->pCur = pNode;` |
-|     44435 |  157 | `	}else{` |
-|   3764005 |  158 | `		MACRO_LD_PUSH(pMap->pLast,pNode);` |
+|     88888 |  156 | `		pMap->pCur = pNode;` |
+|     44446 |  157 | `	}else{` |
+|   3764319 |  158 | `		MACRO_LD_PUSH(pMap->pLast,pNode);` |
 |         - |  159 | `	}` |
-|   3852866 |  160 | `	if( pMap->pActiveSteps ){` |
+|   3853202 |  160 | `	if( pMap->pActiveSteps ){` |
 |         - |  161 | `		/* Re-arm any live foreach cursor parked past the end: php's by-ref` |
 |         - |  162 | `		 * foreach iterates the LIVE array, so an element appended while the` |
 |         - |  163 | `		 * loop stands on the last node (worklist idiom), or after the body` |
@@ -181,8 +181,8 @@ Coverage: 4021/4505 lines (89.26%)
 |         7 |  171 | `			}` |
 |        11 |  172 | `		}` |
 |         9 |  173 | `	}` |
-|   3852866 |  174 | `	++pMap->nEntry;` |
-|   3852866 |  175 | `}` |
+|   3853202 |  174 | `	++pMap->nEntry;` |
+|   3853202 |  175 | `}` |
 |         - |  176 | `/*` |
 |         - |  177 | ` * Unlink a node from the hashmap.` |
 |         - |  178 | ` * If the node count reaches zero then release the whole hash-bucket.` |
@@ -244,20 +244,20 @@ Coverage: 4021/4505 lines (89.26%)
 |         - |  234 | `/*` |
 |         - |  235 | ` * Grow the hash-table and rehash all entries.` |
 |         - |  236 | ` */` |
-|   3852861 |  237 | `static sxi32 HashmapGrowBucket(ph7_hashmap *pMap)` |
+|   3853197 |  237 | `static sxi32 HashmapGrowBucket(ph7_hashmap *pMap)` |
 |         5 |  238 | `{` |
-|   3852866 |  239 | `	if( pMap->nEntry >= pMap->nSize * HASHMAP_FILL_FACTOR ){` |
-|     94366 |  240 | `		ph7_hashmap_node **apOld = pMap->apBucket;` |
+|   3853202 |  239 | `	if( pMap->nEntry >= pMap->nSize * HASHMAP_FILL_FACTOR ){` |
+|     94388 |  240 | `		ph7_hashmap_node **apOld = pMap->apBucket;` |
 |         - |  241 | `		ph7_hashmap_node *pEntry,**apNew;` |
-|     94366 |  242 | `		sxu32 nNew = pMap->nSize << 1;` |
+|     94388 |  242 | `		sxu32 nNew = pMap->nSize << 1;` |
 |         - |  243 | `		sxu32 nBucket;` |
 |         - |  244 | `		sxu32 n;` |
-|     94366 |  245 | `		if( nNew < 1 ){` |
-|     88866 |  246 | `			nNew = 16;` |
-|     44430 |  247 | `		}` |
+|     94388 |  245 | `		if( nNew < 1 ){` |
+|     88888 |  246 | `			nNew = 16;` |
+|     44441 |  247 | `		}` |
 |         - |  248 | `		/* Allocate a new bucket */` |
-|     94366 |  249 | `		apNew = (ph7_hashmap_node **)SyMemBackendAlloc(&pMap->pVm->sAllocator,nNew * sizeof(ph7_hashmap_node *));` |
-|     94366 |  250 | `		if( apNew == 0 ){` |
+|     94388 |  249 | `		apNew = (ph7_hashmap_node **)SyMemBackendAlloc(&pMap->pVm->sAllocator,nNew * sizeof(ph7_hashmap_node *));` |
+|     94388 |  250 | `		if( apNew == 0 ){` |
 |       ! 0 |  251 | `			if( pMap->nSize < 1 ){` |
 |       ! 0 |  252 | `				return SXERR_MEM; /* Fatal */` |
 |         - |  253 | `			}` |
@@ -265,13 +265,13 @@ Coverage: 4021/4505 lines (89.26%)
 |       ! 0 |  255 | `			return SXRET_OK;` |
 |         - |  256 | `		}` |
 |         - |  257 | `		/* Zero the table */` |
-|     94366 |  258 | `		SyZero((void *)apNew,nNew * sizeof(ph7_hashmap_node *));` |
+|     94388 |  258 | `		SyZero((void *)apNew,nNew * sizeof(ph7_hashmap_node *));` |
 |         - |  259 | `		/* Reflect the change */` |
-|     94366 |  260 | `		pMap->apBucket = apNew;` |
-|     94366 |  261 | `		pMap->nSize = nNew;` |
-|     94366 |  262 | `		if( apOld == 0 ){` |
+|     94388 |  260 | `		pMap->apBucket = apNew;` |
+|     94388 |  261 | `		pMap->nSize = nNew;` |
+|     94388 |  262 | `		if( apOld == 0 ){` |
 |         - |  263 | `			/* First allocated table [i.e: no entry],return immediately */` |
-|     88866 |  264 | `			return SXRET_OK;` |
+|     88888 |  264 | `			return SXRET_OK;` |
 |         - |  265 | `		}` |
 |         - |  266 | `		/* Rehash old entries */` |
 |      5505 |  267 | `		pEntry = pMap->pFirst;` |
@@ -296,19 +296,19 @@ Coverage: 4021/4505 lines (89.26%)
 |         - |  286 | `		/* Free the old table */` |
 |      5505 |  287 | `		SyMemBackendFree(&pMap->pVm->sAllocator,(void *)apOld);` |
 |      2750 |  288 | `	}` |
-|   3764005 |  289 | `	return SXRET_OK;` |
-|   1926435 |  290 | `}` |
+|   3764319 |  289 | `	return SXRET_OK;` |
+|   1926603 |  290 | `}` |
 |         - |  291 | `/*` |
 |         - |  292 | ` * Insert a 64-bit integer key and it's associated value (if any) in the given` |
 |         - |  293 | ` * hashmap.` |
 |         - |  294 | ` */` |
-|   3652704 |  295 | `static sxi32 HashmapInsertIntKey(ph7_hashmap *pMap,sxi64 iKey,ph7_value *pValue,sxu32 nRefIdx,int isForeign)` |
+|   3653022 |  295 | `static sxi32 HashmapInsertIntKey(ph7_hashmap *pMap,sxi64 iKey,ph7_value *pValue,sxu32 nRefIdx,int isForeign)` |
 |         5 |  296 | `{` |
 |         - |  297 | `	ph7_hashmap_node *pNode;` |
 |         - |  298 | `	sxu32 nIdx;` |
 |         - |  299 | `	sxu32 nHash;` |
 |         - |  300 | `	sxi32 rc;` |
-|   3652709 |  301 | `	if( !isForeign ){` |
+|   3653027 |  301 | `	if( !isForeign ){` |
 |         - |  302 | `		ph7_value *pObj;` |
 |         - |  303 | `		ph7_value sSafeVal;` |
 |         - |  304 | `		/* Snapshot the source BEFORE reserving: PH7_ReserveMemObj can grow (move)` |
@@ -317,58 +317,58 @@ Coverage: 4021/4505 lines (89.26%)
 |         - |  307 | `		 * a pool slot). A shallow copy is a safe PH7_MemObjStore source — the` |
 |         - |  308 | `		 * referent and the heap-resident blob data survive the move; only the` |
 |         - |  309 | `		 * ph7_value struct relocates (same sSafeVal idiom used by PH7_HashmapDup). */` |
-|   3652667 |  310 | `		if( pValue ){` |
-|   3652661 |  311 | `			sSafeVal = *pValue;` |
-|   3652661 |  312 | `			pValue = &sSafeVal;` |
-|   1826328 |  313 | `		}` |
+|   3652985 |  310 | `		if( pValue ){` |
+|   3652979 |  311 | `			sSafeVal = *pValue;` |
+|   3652979 |  312 | `			pValue = &sSafeVal;` |
+|   1826487 |  313 | `		}` |
 |         - |  314 | `		/* Reserve a ph7_value for the value */` |
-|   3652667 |  315 | `		pObj = PH7_ReserveMemObj(pMap->pVm);` |
-|   3652667 |  316 | `		if( pObj == 0 ){` |
+|   3652985 |  315 | `		pObj = PH7_ReserveMemObj(pMap->pVm);` |
+|   3652985 |  316 | `		if( pObj == 0 ){` |
 |       ! 0 |  317 | `			return SXERR_MEM;` |
 |         - |  318 | `		}` |
-|   3652667 |  319 | `		if( pValue ){` |
+|   3652985 |  319 | `		if( pValue ){` |
 |         - |  320 | `			/* Duplicate the value */` |
-|   3652661 |  321 | `			PH7_MemObjStore(pValue,pObj);` |
-|   1826328 |  322 | `		}` |
-|   3652667 |  323 | `		nIdx = pObj->nIdx;` |
-|   1826336 |  324 | `	}else{` |
+|   3652979 |  321 | `			PH7_MemObjStore(pValue,pObj);` |
+|   1826487 |  322 | `		}` |
+|   3652985 |  323 | `		nIdx = pObj->nIdx;` |
+|   1826495 |  324 | `	}else{` |
 |        43 |  325 | `		nIdx = nRefIdx;` |
 |         - |  326 | `	}` |
 |         - |  327 | `	/* Hash the key */` |
-|   3652709 |  328 | `	nHash = pMap->xIntHash(iKey);` |
+|   3653027 |  328 | `	nHash = pMap->xIntHash(iKey);` |
 |         - |  329 | `	/* Allocate a new int node */` |
-|   3652709 |  330 | `	pNode = HashmapNewIntNode(&(*pMap),iKey,nHash,nIdx);` |
-|   3652709 |  331 | `	if( pNode == 0 ){` |
+|   3653027 |  330 | `	pNode = HashmapNewIntNode(&(*pMap),iKey,nHash,nIdx);` |
+|   3653027 |  331 | `	if( pNode == 0 ){` |
 |       ! 0 |  332 | `		return SXERR_MEM;` |
 |         - |  333 | `	}` |
-|   3652709 |  334 | `	if( isForeign ){` |
+|   3653027 |  334 | `	if( isForeign ){` |
 |         - |  335 | `		/* Mark as a foregin entry */` |
 |        43 |  336 | `		pNode->iFlags \|= HASHMAP_NODE_FOREIGN_OBJ;` |
 |        21 |  337 | `	}` |
 |         - |  338 | `	/* Make sure the bucket is big enough to hold the new entry */` |
-|   3652709 |  339 | `	rc = HashmapGrowBucket(&(*pMap));` |
-|   3652709 |  340 | `	if( rc != SXRET_OK ){` |
+|   3653027 |  339 | `	rc = HashmapGrowBucket(&(*pMap));` |
+|   3653027 |  340 | `	if( rc != SXRET_OK ){` |
 |       ! 0 |  341 | `		SyMemBackendPoolFree(&pMap->pVm->sAllocator,pNode);` |
 |       ! 0 |  342 | `		return rc;` |
 |         - |  343 | `	}` |
 |         - |  344 | `	/* Perform the insertion */` |
-|   3652709 |  345 | `	HashmapNodeLink(&(*pMap),pNode,nHash & (pMap->nSize - 1));` |
+|   3653027 |  345 | `	HashmapNodeLink(&(*pMap),pNode,nHash & (pMap->nSize - 1));` |
 |         - |  346 | `	/* Install in the reference table */` |
-|   3652709 |  347 | `	PH7_VmRefObjInstall(pMap->pVm,nIdx,0,pNode,0);` |
+|   3653027 |  347 | `	PH7_VmRefObjInstall(pMap->pVm,nIdx,0,pNode,0);` |
 |         - |  348 | `	/* All done */` |
-|   3652709 |  349 | `	return SXRET_OK;` |
-|   1826357 |  350 | `}` |
+|   3653027 |  349 | `	return SXRET_OK;` |
+|   1826516 |  350 | `}` |
 |         - |  351 | `/*` |
 |         - |  352 | ` * Insert a BLOB key and it's associated value (if any) in the given` |
 |         - |  353 | ` * hashmap.` |
 |         - |  354 | ` */` |
-|    200157 |  355 | `static sxi32 HashmapInsertBlobKey(ph7_hashmap *pMap,const void *pKey,sxu32 nKeyLen,ph7_value *pValue,sxu32 nRefIdx,int isForeign)` |
+|    200175 |  355 | `static sxi32 HashmapInsertBlobKey(ph7_hashmap *pMap,const void *pKey,sxu32 nKeyLen,ph7_value *pValue,sxu32 nRefIdx,int isForeign)` |
 |         5 |  356 | `{` |
 |         - |  357 | `	ph7_hashmap_node *pNode;` |
 |         - |  358 | `	sxu32 nHash;` |
 |         - |  359 | `	sxu32 nIdx;` |
 |         - |  360 | `	sxi32 rc;` |
-|    200162 |  361 | `	if( !isForeign ){` |
+|    200180 |  361 | `	if( !isForeign ){` |
 |         - |  362 | `		ph7_value *pObj;` |
 |         - |  363 | `		ph7_value sSafeVal;` |
 |         - |  364 | `		/* Snapshot the source BEFORE reserving: PH7_ReserveMemObj can grow (move)` |
@@ -377,47 +377,47 @@ Coverage: 4021/4505 lines (89.26%)
 |         - |  367 | `		 * a pool slot). A shallow copy is a safe PH7_MemObjStore source — the` |
 |         - |  368 | `		 * referent and the heap-resident blob data survive the move; only the` |
 |         - |  369 | `		 * ph7_value struct relocates (same sSafeVal idiom used by PH7_HashmapDup). */` |
-|    153184 |  370 | `		if( pValue ){` |
-|    152874 |  371 | `			sSafeVal = *pValue;` |
-|    152874 |  372 | `			pValue = &sSafeVal;` |
-|     76434 |  373 | `		}` |
+|    153202 |  370 | `		if( pValue ){` |
+|    152892 |  371 | `			sSafeVal = *pValue;` |
+|    152892 |  372 | `			pValue = &sSafeVal;` |
+|     76443 |  373 | `		}` |
 |         - |  374 | `		/* Reserve a ph7_value for the value */` |
-|    153184 |  375 | `		pObj = PH7_ReserveMemObj(pMap->pVm);` |
-|    153184 |  376 | `		if( pObj == 0 ){` |
+|    153202 |  375 | `		pObj = PH7_ReserveMemObj(pMap->pVm);` |
+|    153202 |  376 | `		if( pObj == 0 ){` |
 |       ! 0 |  377 | `			return SXERR_MEM;` |
 |         - |  378 | `		}` |
-|    153184 |  379 | `		if( pValue ){` |
+|    153202 |  379 | `		if( pValue ){` |
 |         - |  380 | `			/* Duplicate the value */` |
-|    152874 |  381 | `			PH7_MemObjStore(pValue,pObj);` |
-|     76434 |  382 | `		}` |
-|    153184 |  383 | `		nIdx = pObj->nIdx;` |
-|     76594 |  384 | `	}else{` |
+|    152892 |  381 | `			PH7_MemObjStore(pValue,pObj);` |
+|     76443 |  382 | `		}` |
+|    153202 |  383 | `		nIdx = pObj->nIdx;` |
+|     76603 |  384 | `	}else{` |
 |     46983 |  385 | `		nIdx = nRefIdx;` |
 |         - |  386 | `	}` |
 |         - |  387 | `	/* Hash the key */` |
-|    200162 |  388 | `	nHash = pMap->xBlobHash(pKey,nKeyLen);` |
+|    200180 |  388 | `	nHash = pMap->xBlobHash(pKey,nKeyLen);` |
 |         - |  389 | `	/* Allocate a new blob node */` |
-|    200162 |  390 | `	pNode = HashmapNewBlobNode(&(*pMap),pKey,nKeyLen,nHash,nIdx);` |
-|    200162 |  391 | `	if( pNode == 0 ){` |
+|    200180 |  390 | `	pNode = HashmapNewBlobNode(&(*pMap),pKey,nKeyLen,nHash,nIdx);` |
+|    200180 |  391 | `	if( pNode == 0 ){` |
 |       ! 0 |  392 | `		return SXERR_MEM;` |
 |         - |  393 | `	}` |
-|    200162 |  394 | `	if( isForeign ){` |
+|    200180 |  394 | `	if( isForeign ){` |
 |         - |  395 | `		/* Mark as a foregin entry */` |
 |     46983 |  396 | `		pNode->iFlags \|= HASHMAP_NODE_FOREIGN_OBJ;` |
 |     23489 |  397 | `	}` |
 |         - |  398 | `	/* Make sure the bucket is big enough to hold the new entry */` |
-|    200162 |  399 | `	rc = HashmapGrowBucket(&(*pMap));` |
-|    200162 |  400 | `	if( rc != SXRET_OK ){` |
+|    200180 |  399 | `	rc = HashmapGrowBucket(&(*pMap));` |
+|    200180 |  400 | `	if( rc != SXRET_OK ){` |
 |       ! 0 |  401 | `		SyMemBackendPoolFree(&pMap->pVm->sAllocator,pNode);` |
 |       ! 0 |  402 | `		return rc;` |
 |         - |  403 | `	}` |
 |         - |  404 | `	/* Perform the insertion */` |
-|    200162 |  405 | `	HashmapNodeLink(&(*pMap),pNode,nHash & (pMap->nSize - 1));` |
+|    200180 |  405 | `	HashmapNodeLink(&(*pMap),pNode,nHash & (pMap->nSize - 1));` |
 |         - |  406 | `	/* Install in the reference table */` |
-|    200162 |  407 | `	PH7_VmRefObjInstall(pMap->pVm,nIdx,0,pNode,0);` |
+|    200180 |  407 | `	PH7_VmRefObjInstall(pMap->pVm,nIdx,0,pNode,0);` |
 |         - |  408 | `	/* All done */` |
-|    200162 |  409 | `	return SXRET_OK;` |
-|    100083 |  410 | `}` |
+|    200180 |  409 | `	return SXRET_OK;` |
+|    100092 |  410 | `}` |
 |         - |  411 | `/*` |
 |         - |  412 | ` * Check if a given 64-bit integer key exists in the given hashmap.` |
 |         - |  413 | ` * Write a pointer to the target node on success. Otherwise` |
@@ -464,7 +464,7 @@ Coverage: 4021/4505 lines (89.26%)
 |         - |  454 | ` * Write a pointer to the target node on success. Otherwise` |
 |         - |  455 | ` * SXERR_NOTFOUND is returned on failure.` |
 |         - |  456 | ` */` |
-|    349235 |  457 | `static sxi32 HashmapLookupBlobKey(` |
+|    349291 |  457 | `static sxi32 HashmapLookupBlobKey(` |
 |         - |  458 | `	ph7_hashmap *pMap,          /* Target hashmap */` |
 |         - |  459 | `	const void *pKey,           /* Lookup key */` |
 |         - |  460 | `	sxu32 nKeyLen,              /* Key length in bytes */` |
@@ -473,64 +473,64 @@ Coverage: 4021/4505 lines (89.26%)
 |         5 |  463 | `{` |
 |         - |  464 | `	ph7_hashmap_node *pNode;` |
 |         - |  465 | `	sxu32 nHash;` |
-|    349240 |  466 | `	if( pMap->nEntry < 1 ){` |
+|    349296 |  466 | `	if( pMap->nEntry < 1 ){` |
 |         - |  467 | `		/* Don't bother hashing,there is no entry anyway */` |
-|     28492 |  468 | `		return SXERR_NOTFOUND;` |
+|     28502 |  468 | `		return SXERR_NOTFOUND;` |
 |         - |  469 | `	}` |
 |         - |  470 | `	/* Hash the key first */` |
-|    320753 |  471 | `	nHash = pMap->xBlobHash(pKey,nKeyLen);` |
+|    320799 |  471 | `	nHash = pMap->xBlobHash(pKey,nKeyLen);` |
 |         - |  472 | `	/* Point to the appropriate bucket */` |
-|    320753 |  473 | `	pNode = pMap->apBucket[nHash & (pMap->nSize - 1)];` |
+|    320799 |  473 | `	pNode = pMap->apBucket[nHash & (pMap->nSize - 1)];` |
 |         - |  474 | `	/* Perform the lookup */` |
-|    259893 |  475 | `	for(;;){` |
-|    519791 |  476 | `		if( pNode == 0 ){` |
-|    252661 |  477 | `			break;` |
+|    259922 |  475 | `	for(;;){` |
+|    519849 |  476 | `		if( pNode == 0 ){` |
+|    252693 |  477 | `			break;` |
 |         - |  478 | `		}` |
-|    267130 |  479 | `		if( pNode->iType == HASHMAP_BLOB_NODE` |
-|    265616 |  480 | `			&& pNode->nHash == nHash` |
-|    166148 |  481 | `			&& SyBlobLength(&pNode->xKey.sKey) == nKeyLen` |
-|     68199 |  482 | `			&& SyMemcmp(SyBlobData(&pNode->xKey.sKey),pKey,nKeyLen) == 0 ){` |
+|    267156 |  479 | `		if( pNode->iType == HASHMAP_BLOB_NODE` |
+|    265642 |  480 | `			&& pNode->nHash == nHash` |
+|    166168 |  481 | `			&& SyBlobLength(&pNode->xKey.sKey) == nKeyLen` |
+|     68213 |  482 | `			&& SyMemcmp(SyBlobData(&pNode->xKey.sKey),pKey,nKeyLen) == 0 ){` |
 |         - |  483 | `				/* Node found */` |
-|     68097 |  484 | `				if( ppNode ){` |
-|     68069 |  485 | `					*ppNode = pNode;` |
-|     34032 |  486 | `				}` |
-|     68097 |  487 | `				return SXRET_OK;` |
+|     68111 |  484 | `				if( ppNode ){` |
+|     68083 |  485 | `					*ppNode = pNode;` |
+|     34039 |  486 | `				}` |
+|     68111 |  487 | `				return SXRET_OK;` |
 |         - |  488 | `		}` |
 |         - |  489 | `		/* Follow the collision link */` |
-|    199043 |  490 | `		pNode = pNode->pNextCollide;` |
+|    199055 |  490 | `		pNode = pNode->pNextCollide;` |
 |         5 |  491 | `	}` |
 |         - |  492 | `	/* No such entry */` |
-|    252661 |  493 | `	return SXERR_NOTFOUND;` |
-|    174622 |  494 | `}` |
+|    252693 |  493 | `	return SXERR_NOTFOUND;` |
+|    174650 |  494 | `}` |
 |         - |  495 | `/*` |
 |         - |  496 | ` * Check if the given BLOB key looks like a decimal number.` |
 |         - |  497 | ` * Retrurn TRUE on success.FALSE otherwise.` |
 |         - |  498 | ` */` |
-|    349431 |  499 | `static int HashmapIsIntKey(SyBlob *pKey)` |
+|    349487 |  499 | `static int HashmapIsIntKey(SyBlob *pKey)` |
 |         5 |  500 | `{` |
-|    349436 |  501 | `	const char *zIn  = (const char *)SyBlobData(pKey);` |
-|    349436 |  502 | `	const char *zEnd = &zIn[SyBlobLength(pKey)];` |
+|    349492 |  501 | `	const char *zIn  = (const char *)SyBlobData(pKey);` |
+|    349492 |  502 | `	const char *zEnd = &zIn[SyBlobLength(pKey)];` |
 |         - |  503 | `	const char *zDigit;` |
-|    349436 |  504 | `	int isNeg = FALSE, nDigit;` |
-|    349436 |  505 | `	if( zIn >= zEnd ){` |
+|    349492 |  504 | `	int isNeg = FALSE, nDigit;` |
+|    349492 |  505 | `	if( zIn >= zEnd ){` |
 |        23 |  506 | `		return FALSE;` |
 |         - |  507 | `	}` |
-|    349414 |  508 | `	if( (int)(zEnd-zIn) > 1 && zIn[0] == '0' ){` |
+|    349470 |  508 | `	if( (int)(zEnd-zIn) > 1 && zIn[0] == '0' ){` |
 |         - |  509 | `		/* Octal not decimal number */` |
 |         5 |  510 | `		return FALSE;` |
 |         - |  511 | `	}` |
-|    349410 |  512 | `	if( (zIn[0] == '-' \|\| zIn[0] == '+') && &zIn[1] < zEnd ){` |
+|    349466 |  512 | `	if( (zIn[0] == '-' \|\| zIn[0] == '+') && &zIn[1] < zEnd ){` |
 |         5 |  513 | `		isNeg = (zIn[0] == '-');` |
 |         5 |  514 | `		zIn++;` |
 |         2 |  515 | `	}` |
-|    349410 |  516 | `	zDigit = zIn;` |
-|    175169 |  517 | `	for(;;){` |
-|    350344 |  518 | `		if( zIn >= zEnd ){` |
+|    349466 |  516 | `	zDigit = zIn;` |
+|    175197 |  517 | `	for(;;){` |
+|    350400 |  518 | `		if( zIn >= zEnd ){` |
 |       315 |  519 | `			break;` |
 |         - |  520 | `		}` |
-|    350030 |  521 | `		if( (unsigned char)zIn[0] >= 0xc0 /* UTF-8 stream */  \|\| !SyisDigit(zIn[0]) ){` |
+|    350086 |  521 | `		if( (unsigned char)zIn[0] >= 0xc0 /* UTF-8 stream */  \|\| !SyisDigit(zIn[0]) ){` |
 |         - |  522 | `			/* Key does not look like a decimal number */` |
-|    349096 |  523 | `			return FALSE;` |
+|    349152 |  523 | `			return FALSE;` |
 |         - |  524 | `		}` |
 |       935 |  525 | `		zIn++;` |
 |         1 |  526 | `	}` |
@@ -548,31 +548,31 @@ Coverage: 4021/4505 lines (89.26%)
 |         7 |  538 | `		return FALSE;` |
 |         - |  539 | `	}` |
 |       309 |  540 | `	return TRUE;` |
-|    174720 |  541 | `}` |
+|    174748 |  541 | `}` |
 |         - |  542 | `/*` |
 |         - |  543 | ` * Check if a given key exists in the given hashmap.` |
 |         - |  544 | ` * Write a pointer to the target node on success.` |
 |         - |  545 | ` * Otherwise SXERR_NOTFOUND is returned on failure.` |
 |         - |  546 | ` */` |
-|    155982 |  547 | `static sxi32 HashmapLookup(` |
+|    156020 |  547 | `static sxi32 HashmapLookup(` |
 |         - |  548 | `	ph7_hashmap *pMap,          /* Target hashmap */` |
 |         - |  549 | `	ph7_value *pKey,            /* Lookup key */` |
 |         - |  550 | `	ph7_hashmap_node **ppNode   /* OUT: target node on success */` |
 |         - |  551 | `	)` |
 |         5 |  552 | `{` |
-|    155987 |  553 | `	ph7_hashmap_node *pNode = 0; /* cc -O6 warning */` |
+|    156025 |  553 | `	ph7_hashmap_node *pNode = 0; /* cc -O6 warning */` |
 |         - |  554 | `	sxi32 rc;` |
-|    155987 |  555 | `	if( pKey->iFlags & (MEMOBJ_STRING\|MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_RES\|MEMOBJ_NULL) ){` |
-|    149279 |  556 | `		if( (pKey->iFlags & MEMOBJ_STRING) == 0 ){` |
+|    156025 |  555 | `	if( pKey->iFlags & (MEMOBJ_STRING\|MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_RES\|MEMOBJ_NULL) ){` |
+|    149317 |  556 | `		if( (pKey->iFlags & MEMOBJ_STRING) == 0 ){` |
 |         - |  557 | `			/* Force a string cast (NULL becomes "", php's empty-string key) */` |
 |         3 |  558 | `			PH7_MemObjToString(&(*pKey));` |
 |         1 |  559 | `		}` |
-|    149279 |  560 | `		if( !HashmapIsIntKey(&pKey->sBlob) ){` |
+|    149317 |  560 | `		if( !HashmapIsIntKey(&pKey->sBlob) ){` |
 |         - |  561 | `			/* Blob lookup. The EMPTY string is a real key here, symmetric with the insert` |
 |         - |  562 | `			 * path: reading $a[""] must find what writing $a[""] stored, not fall through` |
 |         - |  563 | `			 * to an integer lookup for key 0. */` |
-|    149203 |  564 | `			rc = HashmapLookupBlobKey(&(*pMap),SyBlobData(&pKey->sBlob),SyBlobLength(&pKey->sBlob),&pNode);` |
-|    149203 |  565 | `			goto result;` |
+|    149241 |  564 | `			rc = HashmapLookupBlobKey(&(*pMap),SyBlobData(&pKey->sBlob),SyBlobLength(&pKey->sBlob),&pNode);` |
+|    149241 |  565 | `			goto result;` |
 |         - |  566 | `		}` |
 |        38 |  567 | `	}` |
 |         - |  568 | `	/* Perform an int lookup */` |
@@ -582,17 +582,17 @@ Coverage: 4021/4505 lines (89.26%)
 |        44 |  572 | `	}` |
 |         - |  573 | `	/* Perform an int lookup */` |
 |      6789 |  574 | `	rc = HashmapLookupIntKey(&(*pMap),pKey->x.iVal,&pNode);` |
-|     77991 |  575 | `result:` |
-|    155987 |  576 | `	if( rc == SXRET_OK ){` |
+|     78010 |  575 | `result:` |
+|    156025 |  576 | `	if( rc == SXRET_OK ){` |
 |         - |  577 | `		/* Node found */` |
-|     74093 |  578 | `		if( ppNode ){` |
-|     74041 |  579 | `			*ppNode = pNode;` |
-|     37018 |  580 | `		}` |
-|     74093 |  581 | `		return SXRET_OK;` |
+|     74107 |  578 | `		if( ppNode ){` |
+|     74055 |  579 | `			*ppNode = pNode;` |
+|     37025 |  580 | `		}` |
+|     74107 |  581 | `		return SXRET_OK;` |
 |         - |  582 | `	}` |
 |         - |  583 | `	/* No such entry */` |
-|     81899 |  584 | `	return SXERR_NOTFOUND;` |
-|     77996 |  585 | `}` |
+|     81923 |  584 | `	return SXERR_NOTFOUND;` |
+|     78015 |  585 | `}` |
 |         - |  586 | `/*` |
 |         - |  587 | ` * Advance the auto-index after a successful insertion of int key iKey.` |
 |         - |  588 | ` * Mirrors Zend's nNextFreeElement: saturates at PHP_INT_MAX (incrementing` |
@@ -624,43 +624,43 @@ Coverage: 4021/4505 lines (89.26%)
 |         - |  614 | ` * Error and stores the rc the insert function must return (PH7_EXCEPTION,` |
 |         - |  615 | ` * or PH7_ABORT when the Error class itself cannot be built).` |
 |         - |  616 | ` */` |
-|   1506112 |  617 | `static sxi32 HashmapAppendIndexBusy(ph7_hashmap *pMap,sxi32 *pRc)` |
+|   1506430 |  617 | `static sxi32 HashmapAppendIndexBusy(ph7_hashmap *pMap,sxi32 *pRc)` |
 |         5 |  618 | `{` |
-|   1506117 |  619 | `	if( pMap->iNextIdx == SXI64_HIGH && SXRET_OK == HashmapLookupIntKey(&(*pMap),pMap->iNextIdx,0) ){` |
+|   1506435 |  619 | `	if( pMap->iNextIdx == SXI64_HIGH && SXRET_OK == HashmapLookupIntKey(&(*pMap),pMap->iNextIdx,0) ){` |
 |         7 |  620 | `		*pRc = PH7_VmThrowArrayNextIndexError(pMap->pVm);` |
 |         7 |  621 | `		return TRUE;` |
 |         - |  622 | `	}` |
-|   1506111 |  623 | `	return FALSE;` |
-|    753061 |  624 | `}` |
+|   1506429 |  623 | `	return FALSE;` |
+|    753220 |  624 | `}` |
 |         - |  625 | `/*` |
 |         - |  626 | ` * Insert a given key and it's associated value (if any) in the given` |
 |         - |  627 | ` * hashmap.` |
 |         - |  628 | ` * If a node with the given key already exists in the database` |
 |         - |  629 | ` * then this function overwrite the old value.` |
 |         - |  630 | ` */` |
-|   3801961 |  631 | `static sxi32 HashmapInsert(` |
+|   3802297 |  631 | `static sxi32 HashmapInsert(` |
 |         - |  632 | `	ph7_hashmap *pMap, /* Target hashmap */` |
 |         - |  633 | `	ph7_value *pKey,   /* Lookup key  */` |
 |         - |  634 | `	ph7_value *pVal    /* Node value */` |
 |         - |  635 | `	)` |
 |         5 |  636 | `{` |
-|   3801966 |  637 | `	ph7_hashmap_node *pNode = 0;` |
-|   3801966 |  638 | `	sxi32 rc = SXRET_OK;` |
-|   3801966 |  639 | `	if( pKey && pKey->iFlags & (MEMOBJ_STRING\|MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_RES\|MEMOBJ_NULL) ){` |
-|    153172 |  640 | `		if( (pKey->iFlags & MEMOBJ_STRING) == 0 ){` |
+|   3802302 |  637 | `	ph7_hashmap_node *pNode = 0;` |
+|   3802302 |  638 | `	sxi32 rc = SXRET_OK;` |
+|   3802302 |  639 | `	if( pKey && pKey->iFlags & (MEMOBJ_STRING\|MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_RES\|MEMOBJ_NULL) ){` |
+|    153190 |  640 | `		if( (pKey->iFlags & MEMOBJ_STRING) == 0 ){` |
 |         - |  641 | `			/* Force a string cast. NULL casts to "": php stores $a[null] under the EMPTY` |
 |         - |  642 | `			 * STRING key, it does not treat it as an integer (PH7 fell through to the int` |
 |         - |  643 | `			 * path and filed it under 0). */` |
 |         8 |  644 | `			PH7_MemObjToString(&(*pKey));` |
 |         3 |  645 | `		}` |
-|    153172 |  646 | `		if( HashmapIsIntKey(&pKey->sBlob) ){` |
+|    153190 |  646 | `		if( HashmapIsIntKey(&pKey->sBlob) ){` |
 |       231 |  647 | `			goto IntKey;` |
 |         - |  648 | `		}` |
 |         - |  649 | `		/* An empty key is a real key: $a[""] = v stores under "", it does NOT` |
 |         - |  650 | `		 * auto-index (PH7 turned it into the next integer slot, silently` |
 |         - |  651 | `		 * overwriting nothing and bumping the auto-index). */` |
-|    229410 |  652 | `		if( SXRET_OK == HashmapLookupBlobKey(&(*pMap),SyBlobData(&pKey->sBlob),` |
-|     76468 |  653 | `			SyBlobLength(&pKey->sBlob),&pNode) ){` |
+|    229437 |  652 | `		if( SXRET_OK == HashmapLookupBlobKey(&(*pMap),SyBlobData(&pKey->sBlob),` |
+|     76477 |  653 | `			SyBlobLength(&pKey->sBlob),&pNode) ){` |
 |         - |  654 | `				/* Overwrite the old value */` |
 |         - |  655 | `				ph7_value *pElem;` |
 |       493 |  656 | `				pElem = (ph7_value *)SySetAt(&pMap->pVm->aMemObj,pNode->nValIdx);` |
@@ -674,7 +674,7 @@ Coverage: 4021/4505 lines (89.26%)
 |       244 |  664 | `				}` |
 |       493 |  665 | `				return SXRET_OK;` |
 |         - |  666 | `		}` |
-|    152454 |  667 | `		if( pMap == pMap->pVm->pGlobal ){` |
+|    152472 |  667 | `		if( pMap == pMap->pVm->pGlobal ){` |
 |         - |  668 | `			/* php 8.1: writing a new key into $GLOBALS creates a real global` |
 |         - |  669 | `			 * variable ($GLOBALS stays a live view of the symbol table). */` |
 |       138 |  670 | `			if( SyBlobLength(&pKey->sBlob) < 1 ){` |
@@ -687,11 +687,11 @@ Coverage: 4021/4505 lines (89.26%)
 |        68 |  677 | `				pVal,SXU32_HIGH);` |
 |         - |  678 | `		}` |
 |         - |  679 | `		/* Perform a blob-key insertion */` |
-|    152318 |  680 | `		rc = HashmapInsertBlobKey(&(*pMap),SyBlobData(&pKey->sBlob),SyBlobLength(&pKey->sBlob),&(*pVal),0,FALSE);` |
-|    152318 |  681 | `		return rc;` |
+|    152336 |  680 | `		rc = HashmapInsertBlobKey(&(*pMap),SyBlobData(&pKey->sBlob),SyBlobLength(&pKey->sBlob),&(*pVal),0,FALSE);` |
+|    152336 |  681 | `		return rc;` |
 |         - |  682 | `	}` |
-|   1824397 |  683 | `IntKey:` |
-|   3649029 |  684 | `	if( pKey ){` |
+|   1824556 |  683 | `IntKey:` |
+|   3649347 |  684 | `	if( pKey ){` |
 |   2142951 |  685 | `		if((pKey->iFlags & MEMOBJ_INT) == 0 ){` |
 |         - |  686 | `			/* Force an integer cast */` |
 |       261 |  687 | `			PH7_MemObjToInteger(pKey);` |
@@ -723,22 +723,22 @@ Coverage: 4021/4505 lines (89.26%)
 |   2142753 |  713 | `			HashmapAdvanceAutoIndex(&(*pMap),pKey->x.iVal);` |
 |   1071374 |  714 | `		}` |
 |   1071379 |  715 | `	}else{` |
-|   1506083 |  716 | `		if( pMap == pMap->pVm->pGlobal ){` |
+|   1506401 |  716 | `		if( pMap == pMap->pVm->pGlobal ){` |
 |         - |  717 | `			/* php's catchable Error: Cannot append to $GLOBALS */` |
 |         3 |  718 | `			return PH7_VmThrowGlobalsAppendError(pMap->pVm);` |
 |         - |  719 | `		}` |
-|   1506081 |  720 | `		if( HashmapAppendIndexBusy(&(*pMap),&rc) ){` |
+|   1506399 |  720 | `		if( HashmapAppendIndexBusy(&(*pMap),&rc) ){` |
 |         7 |  721 | `			return rc; /* PH7_EXCEPTION/PH7_ABORT: php's catchable Error was thrown */` |
 |         - |  722 | `		}` |
 |         - |  723 | `		/* Assign an automatic index */` |
-|   1506075 |  724 | `		rc = HashmapInsertIntKey(&(*pMap),pMap->iNextIdx,&(*pVal),0,FALSE);` |
-|   1506075 |  725 | `		if( rc == SXRET_OK && pMap->iNextIdx < SXI64_HIGH ){` |
-|   1506073 |  726 | `			++pMap->iNextIdx;` |
-|    753034 |  727 | `		}` |
+|   1506393 |  724 | `		rc = HashmapInsertIntKey(&(*pMap),pMap->iNextIdx,&(*pVal),0,FALSE);` |
+|   1506393 |  725 | `		if( rc == SXRET_OK && pMap->iNextIdx < SXI64_HIGH ){` |
+|   1506391 |  726 | `			++pMap->iNextIdx;` |
+|    753193 |  727 | `		}` |
 |         - |  728 | `	}` |
 |         - |  729 | `	/* Insertion result */` |
-|   3648823 |  730 | `	return rc;` |
-|   1900985 |  731 | `}` |
+|   3649141 |  730 | `	return rc;` |
+|   1901153 |  731 | `}` |
 |         - |  732 | `/*` |
 |         - |  733 | ` * Insert a given key and it's associated value (foreign index) in the given` |
 |         - |  734 | ` * hashmap.` |
@@ -834,12 +834,12 @@ Coverage: 4021/4505 lines (89.26%)
 |         - |  824 | `/*` |
 |         - |  825 | ` * Extract node value.` |
 |         - |  826 | ` */` |
-|   1561955 |  827 | `static ph7_value * HashmapExtractNodeValue(ph7_hashmap_node *pNode)` |
+|   1562367 |  827 | `static ph7_value * HashmapExtractNodeValue(ph7_hashmap_node *pNode)` |
 |         5 |  828 | `{` |
 |         - |  829 | `	/* Point to the desired object */` |
 |         - |  830 | `	ph7_value *pObj;` |
-|   1561960 |  831 | `	pObj = (ph7_value *)SySetAt(&pNode->pMap->pVm->aMemObj,pNode->nValIdx);` |
-|   1561960 |  832 | `	return pObj;` |
+|   1562372 |  831 | `	pObj = (ph7_value *)SySetAt(&pNode->pMap->pVm->aMemObj,pNode->nValIdx);` |
+|   1562372 |  832 | `	return pObj;` |
 |         5 |  833 | `}` |
 |         - |  834 | `/*` |
 |         - |  835 | ` * Insert a node in the given hashmap.` |
@@ -909,11 +909,11 @@ Coverage: 4021/4505 lines (89.26%)
 |         - |  899 | ` * of the [PH7_MemObjCmp()] function defined in memobj.c or the official` |
 |         - |  900 | ` * documenation.` |
 |         - |  901 | ` */` |
-|     79638 |  902 | `static sxi32 HashmapNodeCmp(ph7_hashmap_node *pLeft,ph7_hashmap_node *pRight,int bStrict)` |
+|     79643 |  902 | `static sxi32 HashmapNodeCmp(ph7_hashmap_node *pLeft,ph7_hashmap_node *pRight,int bStrict)` |
 |         5 |  903 | `{` |
 |         - |  904 | `	ph7_value sObj1,sObj2;` |
 |         - |  905 | `	sxi32 rc;` |
-|     79643 |  906 | `	if( pLeft == pRight ){` |
+|     79648 |  906 | `	if( pLeft == pRight ){` |
 |         - |  907 | `		/*` |
 |         - |  908 | `		 * Same node.Refer to the sort() implementation defined` |
 |         - |  909 | `		 * below for more information on this sceanario.` |
@@ -921,51 +921,51 @@ Coverage: 4021/4505 lines (89.26%)
 |       ! 0 |  911 | `		return 0;` |
 |         - |  912 | `	}` |
 |         - |  913 | `	/* Do the comparison */` |
-|     79643 |  914 | `	PH7_MemObjInit(pLeft->pMap->pVm,&sObj1);` |
-|     79643 |  915 | `	PH7_MemObjInit(pLeft->pMap->pVm,&sObj2);` |
-|     79643 |  916 | `	PH7_HashmapExtractNodeValue(pLeft,&sObj1,FALSE);` |
-|     79643 |  917 | `	PH7_HashmapExtractNodeValue(pRight,&sObj2,FALSE);` |
-|     79643 |  918 | `	rc = PH7_MemObjCmp(&sObj1,&sObj2,bStrict,0);` |
-|     79643 |  919 | `	PH7_MemObjRelease(&sObj1);` |
-|     79643 |  920 | `	PH7_MemObjRelease(&sObj2);` |
-|     79643 |  921 | `	return rc;` |
-|     39694 |  922 | `}` |
+|     79648 |  914 | `	PH7_MemObjInit(pLeft->pMap->pVm,&sObj1);` |
+|     79648 |  915 | `	PH7_MemObjInit(pLeft->pMap->pVm,&sObj2);` |
+|     79648 |  916 | `	PH7_HashmapExtractNodeValue(pLeft,&sObj1,FALSE);` |
+|     79648 |  917 | `	PH7_HashmapExtractNodeValue(pRight,&sObj2,FALSE);` |
+|     79648 |  918 | `	rc = PH7_MemObjCmp(&sObj1,&sObj2,bStrict,0);` |
+|     79648 |  919 | `	PH7_MemObjRelease(&sObj1);` |
+|     79648 |  920 | `	PH7_MemObjRelease(&sObj2);` |
+|     79648 |  921 | `	return rc;` |
+|     39698 |  922 | `}` |
 |         - |  923 | `/*` |
 |         - |  924 | ` * Rehash a node with a 64-bit integer key.` |
 |         - |  925 | ` * Refer to [merge_sort(),array_shift()] implementations for more information.` |
 |         - |  926 | ` */` |
-|     17146 |  927 | `static void HashmapRehashIntNode(ph7_hashmap_node *pEntry)` |
+|     17158 |  927 | `static void HashmapRehashIntNode(ph7_hashmap_node *pEntry)` |
 |         5 |  928 | `{` |
-|     17151 |  929 | `	ph7_hashmap *pMap = pEntry->pMap;` |
+|     17163 |  929 | `	ph7_hashmap *pMap = pEntry->pMap;` |
 |         - |  930 | `	sxu32 nBucket;` |
 |         - |  931 | `	/* Remove old collision links */` |
-|     17151 |  932 | `	if( pEntry->pPrevCollide ){` |
-|     12133 |  933 | `		pEntry->pPrevCollide->pNextCollide = pEntry->pNextCollide;` |
-|      5967 |  934 | `	}else{` |
-|      5023 |  935 | `		pMap->apBucket[pEntry->nHash & (pMap->nSize - 1)] = pEntry->pNextCollide;` |
+|     17163 |  932 | `	if( pEntry->pPrevCollide ){` |
+|     12137 |  933 | `		pEntry->pPrevCollide->pNextCollide = pEntry->pNextCollide;` |
+|      5969 |  934 | `	}else{` |
+|      5031 |  935 | `		pMap->apBucket[pEntry->nHash & (pMap->nSize - 1)] = pEntry->pNextCollide;` |
 |         - |  936 | `	}` |
-|     17151 |  937 | `	if( pEntry->pNextCollide ){` |
+|     17163 |  937 | `	if( pEntry->pNextCollide ){` |
 |      1076 |  938 | `		pEntry->pNextCollide->pPrevCollide = pEntry->pPrevCollide;` |
 |       552 |  939 | `	}` |
-|     17151 |  940 | `	pEntry->pNextCollide = pEntry->pPrevCollide = 0;` |
+|     17163 |  940 | `	pEntry->pNextCollide = pEntry->pPrevCollide = 0;` |
 |         - |  941 | `	/* Compute the new hash */` |
-|     17151 |  942 | `	pEntry->nHash = pMap->xIntHash(pMap->iNextIdx);` |
-|     17151 |  943 | `	pEntry->xKey.iKey = pMap->iNextIdx;` |
-|     17151 |  944 | `	nBucket = pEntry->nHash & (pMap->nSize - 1);` |
+|     17163 |  942 | `	pEntry->nHash = pMap->xIntHash(pMap->iNextIdx);` |
+|     17163 |  943 | `	pEntry->xKey.iKey = pMap->iNextIdx;` |
+|     17163 |  944 | `	nBucket = pEntry->nHash & (pMap->nSize - 1);` |
 |         - |  945 | `	/* Link to the new bucket */` |
-|     17151 |  946 | `	pEntry->pNextCollide = pMap->apBucket[nBucket];` |
-|     17151 |  947 | `	if( pMap->apBucket[nBucket] ){` |
-|     12456 |  948 | `		pMap->apBucket[nBucket]->pPrevCollide = pEntry;` |
-|      6131 |  949 | `	}` |
-|     17151 |  950 | `	pEntry->pNextCollide = pMap->apBucket[nBucket];` |
-|     17151 |  951 | `	pMap->apBucket[nBucket] = pEntry;` |
+|     17163 |  946 | `	pEntry->pNextCollide = pMap->apBucket[nBucket];` |
+|     17163 |  947 | `	if( pMap->apBucket[nBucket] ){` |
+|     12460 |  948 | `		pMap->apBucket[nBucket]->pPrevCollide = pEntry;` |
+|      6133 |  949 | `	}` |
+|     17163 |  950 | `	pEntry->pNextCollide = pMap->apBucket[nBucket];` |
+|     17163 |  951 | `	pMap->apBucket[nBucket] = pEntry;` |
 |         - |  952 | `	/* Increment the automatic index (saturating, like every other advance —` |
 |         - |  953 | `	 * unreachable in practice since renumbering assigns 0..nEntry-1, but keep` |
 |         - |  954 | `	 * the no-overflow invariant uniform). */` |
-|     17151 |  955 | `	if( pMap->iNextIdx < SXI64_HIGH ){` |
-|     17151 |  956 | `		pMap->iNextIdx++;` |
-|      8573 |  957 | `	}` |
-|     17151 |  958 | `}` |
+|     17163 |  955 | `	if( pMap->iNextIdx < SXI64_HIGH ){` |
+|     17163 |  956 | `		pMap->iNextIdx++;` |
+|      8579 |  957 | `	}` |
+|     17163 |  958 | `}` |
 |         - |  959 | `/*` |
 |         - |  960 | ` * Perform a linear search on a given hashmap.` |
 |         - |  961 | ` * Write a pointer to the target node on success.` |
@@ -973,7 +973,7 @@ Coverage: 4021/4505 lines (89.26%)
 |         - |  963 | ` * Refer to [array_intersect(),array_diff(),in_array(),...] implementations` |
 |         - |  964 | ` * for more information.` |
 |         - |  965 | ` */` |
-|     34046 |  966 | `static int HashmapFindValue(` |
+|     34056 |  966 | `static int HashmapFindValue(` |
 |         - |  967 | `	ph7_hashmap *pMap,   /* Target hashmap */` |
 |         - |  968 | `	ph7_value *pNeedle,  /* Lookup key */` |
 |         - |  969 | `	ph7_hashmap_node **ppNode, /* OUT: target node on success  */` |
@@ -986,43 +986,43 @@ Coverage: 4021/4505 lines (89.26%)
 |         - |  976 | `	sxi32 rc;` |
 |         - |  977 | `	sxu32 n;` |
 |         - |  978 | `	/* Perform a linear search since we cannot sort the hashmap based on values */` |
-|     34051 |  979 | `	pEntry = pMap->pFirst;` |
-|     34051 |  980 | `	n = pMap->nEntry;` |
-|     34051 |  981 | `	PH7_MemObjInit(pMap->pVm,&sVal);` |
-|     34051 |  982 | `	PH7_MemObjInit(pMap->pVm,&sNeedle);` |
-|     81250 |  983 | `	for(;;){` |
-|    162506 |  984 | `		if( n < 1 ){` |
+|     34061 |  979 | `	pEntry = pMap->pFirst;` |
+|     34061 |  980 | `	n = pMap->nEntry;` |
+|     34061 |  981 | `	PH7_MemObjInit(pMap->pVm,&sVal);` |
+|     34061 |  982 | `	PH7_MemObjInit(pMap->pVm,&sNeedle);` |
+|     81275 |  983 | `	for(;;){` |
+|    162554 |  984 | `		if( n < 1 ){` |
 |        83 |  985 | `			break;` |
 |         - |  986 | `		}` |
 |         - |  987 | `		/* Extract node value */` |
-|    162424 |  988 | `		pVal = HashmapExtractNodeValue(pEntry);` |
-|    162424 |  989 | `		if( pVal ){` |
+|    162472 |  988 | `		pVal = HashmapExtractNodeValue(pEntry);` |
+|    162472 |  989 | `		if( pVal ){` |
 |         - |  990 | `			/* Compare on duplicates (PH7_MemObjCmp converts its operands in` |
 |         - |  991 | `			 * place). PH7_MemObjCmp implements php's full comparison table for` |
 |         - |  992 | `			 * null too — loose null == ""/0/false, strict null === null only —` |
 |         - |  993 | `			 * so null needles/values take the same path as everything else` |
 |         - |  994 | `			 * (the historical null-to-null shortcut here made` |
 |         - |  995 | `			 * in_array(null, [""]) false where php says true). */` |
-|    162424 |  996 | `			PH7_MemObjLoad(pVal,&sVal);` |
-|    162424 |  997 | `			PH7_MemObjLoad(pNeedle,&sNeedle);` |
-|    162424 |  998 | `			rc = PH7_MemObjCmp(&sNeedle,&sVal,bStrict,0);` |
-|    162424 |  999 | `			PH7_MemObjRelease(&sVal);` |
-|    162424 | 1000 | `			PH7_MemObjRelease(&sNeedle);` |
-|    162424 | 1001 | `			if( rc == 0 ){` |
-|     33969 | 1002 | `				if( ppNode ){` |
+|    162472 |  996 | `			PH7_MemObjLoad(pVal,&sVal);` |
+|    162472 |  997 | `			PH7_MemObjLoad(pNeedle,&sNeedle);` |
+|    162472 |  998 | `			rc = PH7_MemObjCmp(&sNeedle,&sVal,bStrict,0);` |
+|    162472 |  999 | `			PH7_MemObjRelease(&sVal);` |
+|    162472 | 1000 | `			PH7_MemObjRelease(&sNeedle);` |
+|    162472 | 1001 | `			if( rc == 0 ){` |
+|     33979 | 1002 | `				if( ppNode ){` |
 |        23 | 1003 | `					*ppNode = pEntry;` |
 |        11 | 1004 | `				}` |
 |         - | 1005 | `				/* Match found*/` |
-|     33969 | 1006 | `				return SXRET_OK;` |
+|     33979 | 1006 | `				return SXRET_OK;` |
 |         - | 1007 | `			}` |
-|     64227 | 1008 | `		}` |
+|     64247 | 1008 | `		}` |
 |         - | 1009 | `		/* Point to the next entry */` |
-|    128460 | 1010 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|    128460 | 1011 | `		n--;` |
+|    128498 | 1010 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|    128498 | 1011 | `		n--;` |
 |         5 | 1012 | `	}` |
 |         - | 1013 | `	/* No such entry */` |
 |        83 | 1014 | `	return SXERR_NOTFOUND;` |
-|     17028 | 1015 | `}` |
+|     17033 | 1015 | `}` |
 |         - | 1016 | `/*` |
 |         - | 1017 | ` * Perform a linear search on a given hashmap but use an user-defined callback` |
 |         - | 1018 | ` * for values comparison.` |
@@ -1244,7 +1244,7 @@ Coverage: 4021/4505 lines (89.26%)
 |         - | 1234 | ` * Duplicate a hashmap node.` |
 |         - | 1235 | ` * This function is used by HashmapMerge, HashmapOverwrite and PH7_HashmapDup.` |
 |         - | 1236 | ` */` |
-|    728670 | 1237 | `static sxi32 HashmapDuplicateNode(` |
+|    728866 | 1237 | `static sxi32 HashmapDuplicateNode(` |
 |         - | 1238 | `	ph7_hashmap *pDest,` |
 |         - | 1239 | `	ph7_hashmap_node *pEntry,` |
 |         - | 1240 | `	ph7_value *pVal,` |
@@ -1255,8 +1255,8 @@ Coverage: 4021/4505 lines (89.26%)
 |         - | 1245 | `	ph7_value sKey;` |
 |         - | 1246 | `	sxi32 rc;` |
 |         - | 1247 |  |
-|    728670 | 1248 | `	if( (pEntry->iFlags & HASHMAP_NODE_FOREIGN_OBJ)` |
-|    728672 | 1249 | `	 \|\| PH7_VmSlotIsReferenced(pDest->pVm,pEntry->nValIdx) ){` |
+|    728866 | 1248 | `	if( (pEntry->iFlags & HASHMAP_NODE_FOREIGN_OBJ)` |
+|    728868 | 1249 | `	 \|\| PH7_VmSlotIsReferenced(pDest->pVm,pEntry->nValIdx) ){` |
 |         - | 1250 | ``		/* The source node is a reference — either a FOREIGN one (`[&$x]`, the node points`` |
 |         - | 1251 | `		 * at an outside slot) or, the case PH7 missed, an element somebody took a` |
 |         - | 1252 | ``		 * reference TO (`$r = &$a[1]`). php carries an element's reference bit through`` |
@@ -1281,9 +1281,9 @@ Coverage: 4021/4505 lines (89.26%)
 |         - | 1271 | `		}` |
 |         9 | 1272 | `		return rc;` |
 |         - | 1273 | `	}` |
-|    728667 | 1274 | `	sSafeVal = *pVal;` |
+|    728863 | 1274 | `	sSafeVal = *pVal;` |
 |         - | 1275 |  |
-|    728667 | 1276 | `	if( pEntry->iType == HASHMAP_BLOB_NODE ){` |
+|    728863 | 1276 | `	if( pEntry->iType == HASHMAP_BLOB_NODE ){` |
 |         - | 1277 | `		/* Blob key insertion */` |
 |      4049 | 1278 | `		PH7_MemObjInitFromString(pDest->pVm,&sKey,0);` |
 |      4049 | 1279 | `		PH7_MemObjStringAppend(&sKey,(const char *)SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey));` |
@@ -1291,9 +1291,9 @@ Coverage: 4021/4505 lines (89.26%)
 |      4049 | 1281 | `		PH7_MemObjRelease(&sKey);` |
 |      2027 | 1282 | `	}else{` |
 |         - | 1283 | `		/* Int key */` |
-|    724623 | 1284 | `		if( iAction == 0 ){ /* Merge */` |
-|    720937 | 1285 | `			rc = HashmapInsert(pDest,0/* Automatic index assign */,&sSafeVal);` |
-|    364157 | 1286 | `		}else if( iAction == 1 ){ /* Overwrite */` |
+|    724819 | 1284 | `		if( iAction == 0 ){ /* Merge */` |
+|    721133 | 1285 | `			rc = HashmapInsert(pDest,0/* Automatic index assign */,&sSafeVal);` |
+|    364255 | 1286 | `		}else if( iAction == 1 ){ /* Overwrite */` |
 |        32 | 1287 | `			PH7_MemObjInitFromInt(pDest->pVm,&sKey,pEntry->xKey.iKey);` |
 |        32 | 1288 | `			rc = PH7_HashmapInsert(pDest,&sKey,&sSafeVal);` |
 |        32 | 1289 | `			PH7_MemObjRelease(&sKey);` |
@@ -1301,8 +1301,8 @@ Coverage: 4021/4505 lines (89.26%)
 |      3661 | 1291 | `			rc = HashmapInsertIntKey(pDest,pEntry->xKey.iKey,&sSafeVal,0,FALSE);` |
 |         - | 1292 | `		}` |
 |         - | 1293 | `	}` |
-|    728667 | 1294 | `	return rc;` |
-|    364340 | 1295 | `}` |
+|    728863 | 1294 | `	return rc;` |
+|    364438 | 1295 | `}` |
 |         - | 1296 | `/*` |
 |         - | 1297 | ` * Merge two hashmaps.` |
 |         - | 1298 | ` * Note on the merge process` |
@@ -1330,25 +1330,25 @@ Coverage: 4021/4505 lines (89.26%)
 |         - | 1320 | `	/* Point to the first inserted entry in the source */` |
 |      2915 | 1321 | `	pEntry = pSrc->pFirst;` |
 |         - | 1322 | `	/* Perform the merge */` |
-|    723907 | 1323 | `	for( n = 0 ; n < pSrc->nEntry ; ++n ){` |
+|    724103 | 1323 | `	for( n = 0 ; n < pSrc->nEntry ; ++n ){` |
 |         - | 1324 | `		/* Extract the node value */` |
-|    720997 | 1325 | `		pVal = HashmapExtractNodeValue(pEntry);` |
-|    720997 | 1326 | `		if( pVal ){` |
+|    721193 | 1325 | `		pVal = HashmapExtractNodeValue(pEntry);` |
+|    721193 | 1326 | `		if( pVal ){` |
 |         - | 1327 | `			/* Make a local copy of the value.` |
 |         - | 1328 | `			 * The insertion call below may trigger a memory pool reallocation` |
 |         - | 1329 | `			 * which will invalidate the 'pVal' pointer since it points` |
 |         - | 1330 | `			 * to the old pool.` |
 |         - | 1331 | `			 */` |
-|    720997 | 1332 | `			rc = HashmapDuplicateNode(pDest,pEntry,pVal,0);` |
-|    360501 | 1333 | `		}else{` |
+|    721193 | 1332 | `			rc = HashmapDuplicateNode(pDest,pEntry,pVal,0);` |
+|    360599 | 1333 | `		}else{` |
 |       ! 0 | 1334 | `			rc = SXRET_OK;` |
 |         - | 1335 | `		}` |
-|    720997 | 1336 | `		if( rc != SXRET_OK ){` |
+|    721193 | 1336 | `		if( rc != SXRET_OK ){` |
 |       ! 0 | 1337 | `			return rc;` |
 |         - | 1338 | `		}` |
 |         - | 1339 | `		/* Point to the next entry */` |
-|    720997 | 1340 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|    360501 | 1341 | `	}` |
+|    721193 | 1340 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|    360599 | 1341 | `	}` |
 |      2915 | 1342 | `	return SXRET_OK;` |
 |      1460 | 1343 | `}` |
 |         - | 1344 | `/*` |
@@ -1506,19 +1506,19 @@ Coverage: 4021/4505 lines (89.26%)
 |         - | 1496 | `` * (see HashmapByRefStepRefs): writes during `foreach ($a as &$v)` must land`` |
 |         - | 1497 | ` * on the live map the loop is walking, like php.` |
 |         - | 1498 | ` */` |
-|    249496 | 1499 | `PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue)` |
+|    249574 | 1499 | `PH7_PRIVATE ph7_hashmap * PH7_HashmapCowSeparate(ph7_vm *pVm,ph7_value *pValue)` |
 |         5 | 1500 | `{` |
-|    249501 | 1501 | `	ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;` |
+|    249579 | 1501 | `	ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;` |
 |         - | 1502 | `	ph7_hashmap *pNew;` |
 |         - | 1503 | `	ph7_value *pBacking;` |
 |         - | 1504 | `	sxu32 nValIdx;` |
 |         - | 1505 | `	int bValueInPool;` |
-|    249501 | 1506 | `	sxi32 nByRefSteps = pMap->pActiveSteps ? HashmapByRefStepRefs(pMap) : 0;` |
-|    249501 | 1507 | `	if( pMap->iRef - nByRefSteps < 2 ){` |
+|    249579 | 1506 | `	sxi32 nByRefSteps = pMap->pActiveSteps ? HashmapByRefStepRefs(pMap) : 0;` |
+|    249579 | 1507 | `	if( pMap->iRef - nByRefSteps < 2 ){` |
 |         - | 1508 | `		/* Sole owner, no separation needed */` |
-|    246681 | 1509 | `		return pMap;` |
+|    246749 | 1509 | `		return pMap;` |
 |         - | 1510 | `	}` |
-|      2825 | 1511 | `	if( pMap == pVm->pGlobal ){` |
+|      2835 | 1511 | `	if( pMap == pVm->pGlobal ){` |
 |         - | 1512 | `		/* Never separate $GLOBALS — it is a live view of the symbol table.` |
 |         - | 1513 | `		 * (A COPY of $GLOBALS never shares this map: PH7_MemObjStore` |
 |         - | 1514 | `		 * materializes a by-value snapshot at assignment, php 8.1.) */` |
@@ -1527,17 +1527,17 @@ Coverage: 4021/4505 lines (89.26%)
 |         - | 1517 | `	/* If this value is a stack copy of a named variable, separate the` |
 |         - | 1518 | `	 * backing variable instead so the change persists after the stack` |
 |         - | 1519 | `	 * frame is popped. */` |
-|      2695 | 1520 | `	if( pValue->nIdx != SXU32_HIGH ){` |
-|      2695 | 1521 | `		pBacking = (ph7_value *)SySetAt(&pVm->aMemObj,pValue->nIdx);` |
-|      2690 | 1522 | `		if( pBacking && pBacking != pValue` |
-|      2665 | 1523 | `			&& (pBacking->iFlags & MEMOBJ_HASHMAP)` |
-|      2645 | 1524 | `			&& (ph7_hashmap *)pBacking->x.pOther == pMap ){` |
+|      2705 | 1520 | `	if( pValue->nIdx != SXU32_HIGH ){` |
+|      2705 | 1521 | `		pBacking = (ph7_value *)SySetAt(&pVm->aMemObj,pValue->nIdx);` |
+|      2700 | 1522 | `		if( pBacking && pBacking != pValue` |
+|      2675 | 1523 | `			&& (pBacking->iFlags & MEMOBJ_HASHMAP)` |
+|      2655 | 1524 | `			&& (ph7_hashmap *)pBacking->x.pOther == pMap ){` |
 |         - | 1525 | `			/* Undo the stack ref to reveal true sharing count */` |
-|      2645 | 1526 | `			pMap->iRef--;` |
-|      2645 | 1527 | `			if( pMap->iRef - nByRefSteps < 2 ){` |
+|      2655 | 1526 | `			pMap->iRef--;` |
+|      2655 | 1527 | `			if( pMap->iRef - nByRefSteps < 2 ){` |
 |         - | 1528 | `				/* After undoing stack ref, sole owner — no separation */` |
-|      2595 | 1529 | `				pMap->iRef++;` |
-|      2595 | 1530 | `				return pMap;` |
+|      2605 | 1529 | `				pMap->iRef++;` |
+|      2605 | 1530 | `				return pMap;` |
 |         - | 1531 | `			}` |
 |        52 | 1532 | `			pNew = PH7_NewHashmap(pVm,0,0);` |
 |        52 | 1533 | `			if( pNew == 0 ){` |
@@ -1600,7 +1600,7 @@ Coverage: 4021/4505 lines (89.26%)
 |        25 | 1590 | `	}` |
 |        53 | 1591 | `	pValue->x.pOther = pNew;` |
 |        53 | 1592 | `	return pNew;` |
-|    124753 | 1593 | `}` |
+|    124792 | 1593 | `}` |
 |         - | 1594 | `/*` |
 |         - | 1595 | ` * Perform the union of two hashmaps.` |
 |         - | 1596 | ` * This operation is performed only if the user uses the '+' operator` |
@@ -1692,7 +1692,7 @@ Coverage: 4021/4505 lines (89.26%)
 |         - | 1682 | ` * Allocate a new hashmap.` |
 |         - | 1683 | ` * Return a pointer to the freshly allocated hashmap on success.NULL otherwise.` |
 |         - | 1684 | ` */` |
-|    143610 | 1685 | `PH7_PRIVATE ph7_hashmap * PH7_NewHashmap(` |
+|    143640 | 1685 | `PH7_PRIVATE ph7_hashmap * PH7_NewHashmap(` |
 |         - | 1686 | `	ph7_vm *pVm,              /* VM that trigger the hashmap creation */` |
 |         - | 1687 | `	sxu32 (*xIntHash)(sxi64), /* Hash function for int keys.NULL otherwise*/` |
 |         - | 1688 | `	sxu32 (*xBlobHash)(const void *,sxu32) /* Hash function for BLOB keys.NULL otherwise */` |
@@ -1700,20 +1700,20 @@ Coverage: 4021/4505 lines (89.26%)
 |         5 | 1690 | `{` |
 |         - | 1691 | `	ph7_hashmap *pMap;` |
 |         - | 1692 | `	/* Allocate a new instance */` |
-|    143615 | 1693 | `	pMap = (ph7_hashmap *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_hashmap));` |
-|    143615 | 1694 | `	if( pMap == 0 ){` |
+|    143645 | 1693 | `	pMap = (ph7_hashmap *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_hashmap));` |
+|    143645 | 1694 | `	if( pMap == 0 ){` |
 |       ! 0 | 1695 | `		return 0;` |
 |         - | 1696 | `	}` |
 |         - | 1697 | `	/* Zero the structure */` |
-|    143615 | 1698 | `	SyZero(pMap,sizeof(ph7_hashmap));` |
+|    143645 | 1698 | `	SyZero(pMap,sizeof(ph7_hashmap));` |
 |         - | 1699 | `	/* Fill in the structure */` |
-|    143615 | 1700 | `	pMap->pVm = &(*pVm);` |
-|    143615 | 1701 | `	pMap->iRef = 1;` |
+|    143645 | 1700 | `	pMap->pVm = &(*pVm);` |
+|    143645 | 1701 | `	pMap->iRef = 1;` |
 |         - | 1702 | `	/* Default hash functions */` |
-|    143615 | 1703 | `	pMap->xIntHash  = xIntHash ? xIntHash : IntHash;` |
-|    143615 | 1704 | `	pMap->xBlobHash = xBlobHash ? xBlobHash : BinHash;` |
-|    143615 | 1705 | `	return pMap;` |
-|     71810 | 1706 | `}` |
+|    143645 | 1703 | `	pMap->xIntHash  = xIntHash ? xIntHash : IntHash;` |
+|    143645 | 1704 | `	pMap->xBlobHash = xBlobHash ? xBlobHash : BinHash;` |
+|    143645 | 1705 | `	return pMap;` |
+|     71825 | 1706 | `}` |
 |         - | 1707 | `/*` |
 |         - | 1708 | ` * Install superglobals in the given virtual machine.` |
 |         - | 1709 | ` * Note on superglobals.` |
@@ -1805,17 +1805,17 @@ Coverage: 4021/4505 lines (89.26%)
 |         - | 1795 | `/*` |
 |         - | 1796 | ` * Release a hashmap.` |
 |         - | 1797 | ` */` |
-|     95594 | 1798 | `PH7_PRIVATE sxi32 PH7_HashmapRelease(ph7_hashmap *pMap,int FreeDS)` |
+|     95624 | 1798 | `PH7_PRIVATE sxi32 PH7_HashmapRelease(ph7_hashmap *pMap,int FreeDS)` |
 |         5 | 1799 | `{` |
 |         - | 1800 | `	ph7_hashmap_node *pEntry,*pNext;` |
-|     95599 | 1801 | `	ph7_vm *pVm = pMap->pVm;` |
+|     95629 | 1801 | `	ph7_vm *pVm = pMap->pVm;` |
 |         - | 1802 | `	sxu32 n;` |
-|     95599 | 1803 | `	if( pMap == pVm->pGlobal ){` |
+|     95629 | 1803 | `	if( pMap == pVm->pGlobal ){` |
 |         - | 1804 | `		/* Cannot delete the $GLOBALS array */` |
 |       ! 0 | 1805 | `		PH7_VmThrowError(pMap->pVm,0,PH7_CTX_NOTICE,"$GLOBALS is a read-only array,deletion is forbidden");` |
 |       ! 0 | 1806 | `		return SXRET_OK;` |
 |         - | 1807 | `	}` |
-|     95599 | 1808 | `	if( pMap->pActiveSteps ){` |
+|     95629 | 1808 | `	if( pMap->pActiveSteps ){` |
 |         - | 1809 | `		/* Every node is about to be freed WITHOUT going through` |
 |         - | 1810 | `		 * PH7_HashmapUnlinkNode, so its cursor fixup never runs. Park any` |
 |         - | 1811 | `		 * live foreach cursor on this map (reachable: array_erase() on the` |
@@ -1828,36 +1828,36 @@ Coverage: 4021/4505 lines (89.26%)
 |         5 | 1818 | `		}` |
 |         4 | 1819 | `	}` |
 |         - | 1820 | `	/* Start the release process */` |
-|     95599 | 1821 | `	n = 0;` |
-|     95599 | 1822 | `	pEntry = pMap->pFirst;` |
-|   1919397 | 1823 | `	for(;;){` |
-|   3838800 | 1824 | `		if( n >= pMap->nEntry ){` |
-|     95599 | 1825 | `			break;` |
+|     95629 | 1821 | `	n = 0;` |
+|     95629 | 1822 | `	pEntry = pMap->pFirst;` |
+|   1919579 | 1823 | `	for(;;){` |
+|   3839164 | 1824 | `		if( n >= pMap->nEntry ){` |
+|     95629 | 1825 | `			break;` |
 |         - | 1826 | `		}` |
-|   3743206 | 1827 | `		pNext = pEntry->pPrev; /* Reverse link */` |
+|   3743540 | 1827 | `		pNext = pEntry->pPrev; /* Reverse link */` |
 |         - | 1828 | `		/* Remove the reference from the foreign table */` |
-|   3743206 | 1829 | `		PH7_VmRefObjRemove(pVm,pEntry->nValIdx,0,pEntry);` |
-|   3743206 | 1830 | `		if( (pEntry->iFlags & HASHMAP_NODE_FOREIGN_OBJ) == 0 ){` |
+|   3743540 | 1829 | `		PH7_VmRefObjRemove(pVm,pEntry->nValIdx,0,pEntry);` |
+|   3743540 | 1830 | `		if( (pEntry->iFlags & HASHMAP_NODE_FOREIGN_OBJ) == 0 ){` |
 |         - | 1831 | `			/* Restore the ph7_value to the free list */` |
-|   3743146 | 1832 | `			PH7_VmUnsetMemObj(pVm,pEntry->nValIdx,FALSE);` |
-|   1871570 | 1833 | `		}` |
+|   3743480 | 1832 | `			PH7_VmUnsetMemObj(pVm,pEntry->nValIdx,FALSE);` |
+|   1871737 | 1833 | `		}` |
 |         - | 1834 | `		/* Release the node */` |
-|   3743206 | 1835 | `		if( pEntry->iType == HASHMAP_BLOB_NODE ){` |
-|    109960 | 1836 | `			SyBlobRelease(&pEntry->xKey.sKey);` |
-|     54977 | 1837 | `		}` |
-|   3743206 | 1838 | `		SyMemBackendPoolFree(&pVm->sAllocator,pEntry);` |
+|   3743540 | 1835 | `		if( pEntry->iType == HASHMAP_BLOB_NODE ){` |
+|    109972 | 1836 | `			SyBlobRelease(&pEntry->xKey.sKey);` |
+|     54983 | 1837 | `		}` |
+|   3743540 | 1838 | `		SyMemBackendPoolFree(&pVm->sAllocator,pEntry);` |
 |         - | 1839 | `		/* Point to the next entry */` |
-|   3743206 | 1840 | `		pEntry = pNext;` |
-|   3743206 | 1841 | `		n++;` |
+|   3743540 | 1840 | `		pEntry = pNext;` |
+|   3743540 | 1841 | `		n++;` |
 |         5 | 1842 | `	}` |
-|     95599 | 1843 | `	if( pMap->nEntry > 0 ){` |
+|     95629 | 1843 | `	if( pMap->nEntry > 0 ){` |
 |         - | 1844 | `		/* Release the hash bucket */` |
-|     69272 | 1845 | `		SyMemBackendFree(&pVm->sAllocator,pMap->apBucket);` |
-|     34633 | 1846 | `	}` |
-|     95599 | 1847 | `	if( FreeDS ){` |
+|     69294 | 1845 | `		SyMemBackendFree(&pVm->sAllocator,pMap->apBucket);` |
+|     34644 | 1846 | `	}` |
+|     95629 | 1847 | `	if( FreeDS ){` |
 |         - | 1848 | `		/* Free the whole instance */` |
-|     95573 | 1849 | `		SyMemBackendPoolFree(&pVm->sAllocator,pMap);` |
-|     47789 | 1850 | `	}else{` |
+|     95603 | 1849 | `		SyMemBackendPoolFree(&pVm->sAllocator,pMap);` |
+|     47804 | 1850 | `	}else{` |
 |         - | 1851 | `		/* Keep the instance but reset it's fields */` |
 |        28 | 1852 | `		pMap->apBucket = 0;` |
 |        28 | 1853 | `		pMap->iNextIdx = 0;` |
@@ -1865,49 +1865,49 @@ Coverage: 4021/4505 lines (89.26%)
 |        28 | 1855 | `		pMap->nEntry = pMap->nSize = 0;` |
 |        28 | 1856 | `		pMap->pFirst = pMap->pLast = pMap->pCur = 0;` |
 |         - | 1857 | `	}` |
-|     95599 | 1858 | `	return SXRET_OK;` |
-|     47802 | 1859 | `}` |
+|     95629 | 1858 | `	return SXRET_OK;` |
+|     47817 | 1859 | `}` |
 |         - | 1860 | `/*` |
 |         - | 1861 | ` * Decrement the reference count of a given hashmap.` |
 |         - | 1862 | ` * If the count reaches zero which mean no more variables` |
 |         - | 1863 | ` * are pointing to this hashmap,then release the whole instance.` |
 |         - | 1864 | ` */` |
-|    888486 | 1865 | `PH7_PRIVATE void  PH7_HashmapUnref(ph7_hashmap *pMap)` |
+|    888718 | 1865 | `PH7_PRIVATE void  PH7_HashmapUnref(ph7_hashmap *pMap)` |
 |         5 | 1866 | `{` |
-|    888491 | 1867 | `	ph7_vm *pVm = pMap->pVm;` |
+|    888723 | 1867 | `	ph7_vm *pVm = pMap->pVm;` |
 |         - | 1868 | `	/* TICKET 1432-49: $GLOBALS is not subject to garbage collection */` |
-|    888491 | 1869 | `	pMap->iRef--;` |
-|    888491 | 1870 | `	if( pMap->iRef < 1 && pMap != pVm->pGlobal){` |
-|     95553 | 1871 | `		PH7_HashmapRelease(pMap,TRUE);` |
-|     47774 | 1872 | `	}` |
-|    888491 | 1873 | `}` |
+|    888723 | 1869 | `	pMap->iRef--;` |
+|    888723 | 1870 | `	if( pMap->iRef < 1 && pMap != pVm->pGlobal){` |
+|     95583 | 1871 | `		PH7_HashmapRelease(pMap,TRUE);` |
+|     47789 | 1872 | `	}` |
+|    888723 | 1873 | `}` |
 |         - | 1874 | `/*` |
 |         - | 1875 | ` * Check if a given key exists in the given hashmap.` |
 |         - | 1876 | ` * Write a pointer to the target node on success.` |
 |         - | 1877 | ` * Otherwise SXERR_NOTFOUND is returned on failure.` |
 |         - | 1878 | ` */` |
-|    156202 | 1879 | `PH7_PRIVATE sxi32 PH7_HashmapLookup(` |
+|    156240 | 1879 | `PH7_PRIVATE sxi32 PH7_HashmapLookup(` |
 |         - | 1880 | `	ph7_hashmap *pMap,        /* Target hashmap */` |
 |         - | 1881 | `	ph7_value *pKey,          /* Lookup key */` |
 |         - | 1882 | `	ph7_hashmap_node **ppNode /* OUT: Target node on success */` |
 |         - | 1883 | `	)` |
 |         5 | 1884 | `{` |
 |         - | 1885 | `	sxi32 rc;` |
-|    156207 | 1886 | `	if( pMap->nEntry < 1 ){` |
+|    156245 | 1886 | `	if( pMap->nEntry < 1 ){` |
 |         - | 1887 | `		/* TICKET 1433-25: Don't bother hashing,the hashmap is empty anyway.` |
 |         - | 1888 | `		 */` |
 |       225 | 1889 | `		return SXERR_NOTFOUND;` |
 |         - | 1890 | `	}` |
-|    155987 | 1891 | `	rc = HashmapLookup(&(*pMap),&(*pKey),ppNode);` |
-|    155987 | 1892 | `	return rc;` |
-|     78106 | 1893 | `}` |
+|    156025 | 1891 | `	rc = HashmapLookup(&(*pMap),&(*pKey),ppNode);` |
+|    156025 | 1892 | `	return rc;` |
+|     78125 | 1893 | `}` |
 |         - | 1894 | `/*` |
 |         - | 1895 | ` * Insert a given key and it's associated value (if any) in the given` |
 |         - | 1896 | ` * hashmap.` |
 |         - | 1897 | ` * If a node with the given key already exists in the database` |
 |         - | 1898 | ` * then this function overwrite the old value.` |
 |         - | 1899 | ` */` |
-|   3080695 | 1900 | `PH7_PRIVATE sxi32 PH7_HashmapInsert(` |
+|   3080835 | 1900 | `PH7_PRIVATE sxi32 PH7_HashmapInsert(` |
 |         - | 1901 | `	ph7_hashmap *pMap, /* Target hashmap */` |
 |         - | 1902 | `	ph7_value *pKey,   /* Lookup key */` |
 |         - | 1903 | `	ph7_value *pVal    /* Node value.NULL otherwise */` |
@@ -1918,8 +1918,8 @@ Coverage: 4021/4505 lines (89.26%)
 |         - | 1908 | `	 * $GLOBALS copies the symbol table); the old TICKET 1433-35 guard that` |
 |         - | 1909 | `	 * forbade it was a PH7-ism. Writes INTO $GLOBALS are handled inside` |
 |         - | 1910 | `	 * HashmapInsert (they create real global variables, php 8.1). */` |
-|   3080700 | 1911 | `	rc = HashmapInsert(&(*pMap),&(*pKey),&(*pVal));` |
-|   3080700 | 1912 | `	return rc;` |
+|   3080840 | 1911 | `	rc = HashmapInsert(&(*pMap),&(*pKey),&(*pVal));` |
+|   3080840 | 1912 | `	return rc;` |
 |         5 | 1913 | `}` |
 |         - | 1914 | `/*` |
 |         - | 1915 | ` * Merge entries of pSrc into pDest using PHP merge semantics:` |
@@ -1983,30 +1983,30 @@ Coverage: 4021/4505 lines (89.26%)
 |         - | 1973 | ` * parked on a node being deleted (live-map iteration: by-ref foreach,` |
 |         - | 1974 | ` * $GLOBALS, OOM snapshot fallbacks).` |
 |         - | 1975 | ` */` |
-|     23568 | 1976 | `PH7_PRIVATE void PH7_HashmapRegisterForeachStep(ph7_hashmap *pMap,ph7_foreach_step *pStep)` |
+|     23572 | 1976 | `PH7_PRIVATE void PH7_HashmapRegisterForeachStep(ph7_hashmap *pMap,ph7_foreach_step *pStep)` |
 |         5 | 1977 | `{` |
-|     23573 | 1978 | `	pStep->pCursor = pMap->pFirst;` |
-|     23573 | 1979 | `	pStep->pNextActive = pMap->pActiveSteps;` |
-|     23573 | 1980 | `	pMap->pActiveSteps = pStep;` |
-|     23573 | 1981 | `}` |
+|     23577 | 1978 | `	pStep->pCursor = pMap->pFirst;` |
+|     23577 | 1979 | `	pStep->pNextActive = pMap->pActiveSteps;` |
+|     23577 | 1980 | `	pMap->pActiveSteps = pStep;` |
+|     23577 | 1981 | `}` |
 |         - | 1982 | `/*` |
 |         - | 1983 | ` * Unregister a foreach step from the map's active-iterator list. Must run` |
 |         - | 1984 | ` * before the step is freed AND before the step's map reference is dropped —` |
 |         - | 1985 | ` * a step left on the list after its pool slot is recycled is a use-after-free` |
 |         - | 1986 | ` * on the next unlink fixup (the SyHash-layout incident class).` |
 |         - | 1987 | ` */` |
-|     23392 | 1988 | `PH7_PRIVATE void PH7_HashmapUnregisterForeachStep(ph7_hashmap *pMap,ph7_foreach_step *pStep)` |
+|     23396 | 1988 | `PH7_PRIVATE void PH7_HashmapUnregisterForeachStep(ph7_hashmap *pMap,ph7_foreach_step *pStep)` |
 |         5 | 1989 | `{` |
-|     23397 | 1990 | `	ph7_foreach_step **ppLink = &pMap->pActiveSteps;` |
-|     23397 | 1991 | `	while( *ppLink ){` |
-|     23397 | 1992 | `		if( *ppLink == pStep ){` |
-|     23397 | 1993 | `			*ppLink = pStep->pNextActive;` |
-|     23397 | 1994 | `			pStep->pNextActive = 0;` |
-|     23397 | 1995 | `			return;` |
+|     23401 | 1990 | `	ph7_foreach_step **ppLink = &pMap->pActiveSteps;` |
+|     23401 | 1991 | `	while( *ppLink ){` |
+|     23401 | 1992 | `		if( *ppLink == pStep ){` |
+|     23401 | 1993 | `			*ppLink = pStep->pNextActive;` |
+|     23401 | 1994 | `			pStep->pNextActive = 0;` |
+|     23401 | 1995 | `			return;` |
 |         - | 1996 | `		}` |
 |       ! 0 | 1997 | `		ppLink = &(*ppLink)->pNextActive;` |
 |       ! 0 | 1998 | `	}` |
-|     11701 | 1999 | `}` |
+|     11703 | 1999 | `}` |
 |         - | 2000 | `/*` |
 |         - | 2001 | ` * Return a pointer to the node currently pointed by the node cursor.` |
 |         - | 2002 | ` * If the cursor reaches the end of the list,then this function` |
@@ -2027,37 +2027,37 @@ Coverage: 4021/4505 lines (89.26%)
 |         - | 2017 | `/*` |
 |         - | 2018 | ` * Extract a node value.` |
 |         - | 2019 | ` */` |
-|    631944 | 2020 | `PH7_PRIVATE void PH7_HashmapExtractNodeValue(ph7_hashmap_node *pNode,ph7_value *pValue,int bStore)` |
+|    632112 | 2020 | `PH7_PRIVATE void PH7_HashmapExtractNodeValue(ph7_hashmap_node *pNode,ph7_value *pValue,int bStore)` |
 |         5 | 2021 | `{` |
-|    631949 | 2022 | `	ph7_value *pEntry = HashmapExtractNodeValue(pNode);` |
-|    631949 | 2023 | `	if( pEntry ){` |
-|    631949 | 2024 | `		if( bStore ){` |
-|    243571 | 2025 | `			PH7_MemObjStore(pEntry,pValue);` |
-|    121788 | 2026 | `		}else{` |
-|    388383 | 2027 | `			PH7_MemObjLoad(pEntry,pValue);` |
+|    632117 | 2022 | `	ph7_value *pEntry = HashmapExtractNodeValue(pNode);` |
+|    632117 | 2023 | `	if( pEntry ){` |
+|    632117 | 2024 | `		if( bStore ){` |
+|    243653 | 2025 | `			PH7_MemObjStore(pEntry,pValue);` |
+|    121829 | 2026 | `		}else{` |
+|    388469 | 2027 | `			PH7_MemObjLoad(pEntry,pValue);` |
 |         - | 2028 | `		}` |
-|    315717 | 2029 | `	}else{` |
+|    315804 | 2029 | `	}else{` |
 |       ! 0 | 2030 | `		PH7_MemObjRelease(pValue);` |
 |         - | 2031 | `	}` |
-|    631949 | 2032 | `}` |
+|    632117 | 2032 | `}` |
 |         - | 2033 | `/*` |
 |         - | 2034 | ` * Extract a node key.` |
 |         - | 2035 | ` */` |
-|    168706 | 2036 | `PH7_PRIVATE void PH7_HashmapExtractNodeKey(ph7_hashmap_node *pNode,ph7_value *pKey)` |
+|    168768 | 2036 | `PH7_PRIVATE void PH7_HashmapExtractNodeKey(ph7_hashmap_node *pNode,ph7_value *pKey)` |
 |         5 | 2037 | `{` |
 |         - | 2038 | `	/* Fill with the current key */` |
-|    168711 | 2039 | `	if( pNode->iType == HASHMAP_INT_NODE ){` |
-|    162881 | 2040 | `		if( SyBlobLength(&pKey->sBlob) > 0 ){` |
+|    168773 | 2039 | `	if( pNode->iType == HASHMAP_INT_NODE ){` |
+|    162941 | 2040 | `		if( SyBlobLength(&pKey->sBlob) > 0 ){` |
 |        33 | 2041 | `			SyBlobRelease(&pKey->sBlob);` |
 |        16 | 2042 | `		}` |
-|    162881 | 2043 | `		pKey->x.iVal = pNode->xKey.iKey;` |
-|    162881 | 2044 | `		MemObjSetType(pKey,MEMOBJ_INT);` |
-|     81443 | 2045 | `	}else{` |
-|      5835 | 2046 | `		SyBlobReset(&pKey->sBlob);` |
-|      5835 | 2047 | `		SyBlobAppend(&pKey->sBlob,SyBlobData(&pNode->xKey.sKey),SyBlobLength(&pNode->xKey.sKey));` |
-|      5835 | 2048 | `		MemObjSetType(pKey,MEMOBJ_STRING);` |
+|    162941 | 2043 | `		pKey->x.iVal = pNode->xKey.iKey;` |
+|    162941 | 2044 | `		MemObjSetType(pKey,MEMOBJ_INT);` |
+|     81473 | 2045 | `	}else{` |
+|      5837 | 2046 | `		SyBlobReset(&pKey->sBlob);` |
+|      5837 | 2047 | `		SyBlobAppend(&pKey->sBlob,SyBlobData(&pNode->xKey.sKey),SyBlobLength(&pNode->xKey.sKey));` |
+|      5837 | 2048 | `		MemObjSetType(pKey,MEMOBJ_STRING);` |
 |         - | 2049 | `	}` |
-|    168711 | 2050 | `}` |
+|    168773 | 2050 | `}` |
 |         - | 2051 | `#ifndef PH7_DISABLE_DISK_IO` |
 |         - | 2052 | `/*` |
 |         - | 2053 | ` * Store the address of nodes value in the given container.` |
@@ -2108,35 +2108,35 @@ Coverage: 4021/4505 lines (89.26%)
 |         - | 2098 | `**   The "next","prev" pointers for elements in the lists a and b are` |
 |         - | 2099 | `**   changed.` |
 |         - | 2100 | `*/` |
-|     52698 | 2101 | `static ph7_hashmap_node * HashmapNodeMerge(ph7_hashmap_node *pA,ph7_hashmap_node *pB,ProcNodeCmp xCmp,void *pCmpData)` |
+|     52702 | 2101 | `static ph7_hashmap_node * HashmapNodeMerge(ph7_hashmap_node *pA,ph7_hashmap_node *pB,ProcNodeCmp xCmp,void *pCmpData)` |
 |         5 | 2102 | `{` |
 |         - | 2103 | `	ph7_hashmap_node result,*pTail;` |
 |         - | 2104 | `    /* Prevent compiler warning */` |
-|     52703 | 2105 | `	result.pNext = result.pPrev = 0;` |
-|     52703 | 2106 | `	pTail = &result;` |
-|    132631 | 2107 | `	while( pA && pB ){` |
-|     79933 | 2108 | `		if( xCmp(pA,pB,pCmpData) <= 0 ){` |
-|     62633 | 2109 | `			pTail->pPrev = pA;` |
-|     62633 | 2110 | `			pA->pNext = pTail;` |
-|     62633 | 2111 | `			pTail = pA;` |
-|     62633 | 2112 | `			pA = pA->pPrev;` |
+|     52707 | 2105 | `	result.pNext = result.pPrev = 0;` |
+|     52707 | 2106 | `	pTail = &result;` |
+|    132642 | 2107 | `	while( pA && pB ){` |
+|     79940 | 2108 | `		if( xCmp(pA,pB,pCmpData) <= 0 ){` |
+|     62636 | 2109 | `			pTail->pPrev = pA;` |
+|     62636 | 2110 | `			pA->pNext = pTail;` |
+|     62636 | 2111 | `			pTail = pA;` |
+|     62636 | 2112 | `			pA = pA->pPrev;` |
 |     31514 | 2113 | `		}else{` |
-|     17305 | 2114 | `			pTail->pPrev = pB;` |
-|     17305 | 2115 | `			pB->pNext = pTail;` |
-|     17305 | 2116 | `			pTail = pB;` |
-|     17305 | 2117 | `			pB = pB->pPrev;` |
+|     17309 | 2114 | `			pTail->pPrev = pB;` |
+|     17309 | 2115 | `			pB->pNext = pTail;` |
+|     17309 | 2116 | `			pTail = pB;` |
+|     17309 | 2117 | `			pB = pB->pPrev;` |
 |         - | 2118 | `		}` |
 |         5 | 2119 | `	}` |
-|     52703 | 2120 | `	if( pA ){` |
-|      4434 | 2121 | `		pTail->pPrev = pA;` |
-|      4434 | 2122 | `		pA->pNext = pTail;` |
-|     50317 | 2123 | `	}else if( pB ){` |
-|     47970 | 2124 | `		pTail->pPrev = pB;` |
-|     47970 | 2125 | `		pB->pNext = pTail;` |
-|     24159 | 2126 | `	}else{` |
+|     52707 | 2120 | `	if( pA ){` |
+|      4439 | 2121 | `		pTail->pPrev = pA;` |
+|      4439 | 2122 | `		pA->pNext = pTail;` |
+|     50320 | 2123 | `	}else if( pB ){` |
+|     47969 | 2124 | `		pTail->pPrev = pB;` |
+|     47969 | 2125 | `		pB->pNext = pTail;` |
+|     24157 | 2126 | `	}else{` |
 |       309 | 2127 | `		pTail->pPrev = pTail->pNext = 0;` |
 |         - | 2128 | `	}` |
-|     52703 | 2129 | `	return result.pPrev;` |
+|     52707 | 2129 | `	return result.pPrev;` |
 |         5 | 2130 | `}` |
 |         - | 2131 | `/*` |
 |         - | 2132 | `** Inputs:` |
@@ -2157,20 +2157,20 @@ Coverage: 4021/4505 lines (89.26%)
 |      1227 | 2147 | `	SyZero(a,sizeof(a));` |
 |         - | 2148 | `	/* Point to the first inserted entry */` |
 |      1227 | 2149 | `	pIn = pMap->pFirst;` |
-|     18433 | 2150 | `	while( pIn ){` |
-|     17211 | 2151 | `		p = pIn;` |
-|     17211 | 2152 | `		pIn = p->pPrev;` |
-|     17211 | 2153 | `		p->pPrev = 0;` |
-|     32027 | 2154 | `		for(i=0; i<N_SORT_BUCKET-1; i++){` |
-|     32027 | 2155 | `			if( a[i]==0 ){` |
-|     17211 | 2156 | `				a[i] = p;` |
-|     17211 | 2157 | `				break;` |
+|     18437 | 2150 | `	while( pIn ){` |
+|     17215 | 2151 | `		p = pIn;` |
+|     17215 | 2152 | `		pIn = p->pPrev;` |
+|     17215 | 2153 | `		p->pPrev = 0;` |
+|     32035 | 2154 | `		for(i=0; i<N_SORT_BUCKET-1; i++){` |
+|     32035 | 2155 | `			if( a[i]==0 ){` |
+|     17215 | 2156 | `				a[i] = p;` |
+|     17215 | 2157 | `				break;` |
 |       ! 0 | 2158 | `			}else{` |
-|     14821 | 2159 | `				p = HashmapNodeMerge(a[i],p,xCmp,pCmpData);` |
-|     14821 | 2160 | `				a[i] = 0;` |
+|     14825 | 2159 | `				p = HashmapNodeMerge(a[i],p,xCmp,pCmpData);` |
+|     14825 | 2160 | `				a[i] = 0;` |
 |         - | 2161 | `			}` |
-|      7413 | 2162 | `		}` |
-|     17211 | 2163 | `		if( i==N_SORT_BUCKET-1 ){` |
+|      7415 | 2162 | `		}` |
+|     17215 | 2163 | `		if( i==N_SORT_BUCKET-1 ){` |
 |         - | 2164 | `			/* To get here, there need to be 2^(N_SORT_BUCKET) elements in he input list.` |
 |         - | 2165 | `			 * But that is impossible.` |
 |         - | 2166 | `			 */` |
@@ -2290,14 +2290,14 @@ Coverage: 4021/4505 lines (89.26%)
 |       127 | 2280 | `	PH7_MemObjRelease(&sB);` |
 |       127 | 2281 | `	return rc;` |
 |        64 | 2282 | `}` |
-|     79554 | 2283 | `static sxi32 HashmapCmpCallback1(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
+|     79559 | 2283 | `static sxi32 HashmapCmpCallback1(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
 |         5 | 2284 | `{` |
-|     79559 | 2285 | `	if( pCmpData == 0 ){` |
+|     79564 | 2285 | `	if( pCmpData == 0 ){` |
 |         - | 2286 | `		/* SORT_REGULAR fast path */` |
-|     79471 | 2287 | `		return HashmapNodeCmp(pA,pB,FALSE);` |
+|     79476 | 2287 | `		return HashmapNodeCmp(pA,pB,FALSE);` |
 |         - | 2288 | `	}` |
 |        89 | 2289 | `	return HashmapFlagValueCmp(pA,pB,SX_PTR_TO_INT(pCmpData));` |
-|     39652 | 2290 | `}` |
+|     39656 | 2290 | `}` |
 |         - | 2291 | `/*` |
 |         - | 2292 | ` * Shared key comparison for ksort()/krsort(): php 8 semantics. Two string` |
 |         - | 2293 | ` * keys compare bytewise. Mixed int/string keys: a NUMERIC string compares` |
@@ -2543,49 +2543,49 @@ Coverage: 4021/4505 lines (89.26%)
 |         - | 2533 | ` * Node comparison callback: Random node comparison.` |
 |         - | 2534 | ` * used-by: [shuffle()]` |
 |         - | 2535 | ` */` |
-|        18 | 2536 | `static sxi32 HashmapCmpCallback7(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
+|        20 | 2536 | `static sxi32 HashmapCmpCallback7(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
 |         1 | 2537 | `{` |
 |         - | 2538 | `	sxu32 n;` |
-|        10 | 2539 | `	SXUNUSED(pB); /* cc warning */` |
-|        10 | 2540 | `	SXUNUSED(pCmpData);` |
+|         9 | 2539 | `	SXUNUSED(pB); /* cc warning */` |
+|         9 | 2540 | `	SXUNUSED(pCmpData);` |
 |         - | 2541 | `	/* Grab a random number */` |
-|        19 | 2542 | `	n = PH7_VmRandomNum(pA->pMap->pVm);` |
+|        21 | 2542 | `	n = PH7_VmRandomNum(pA->pMap->pVm);` |
 |         - | 2543 | `	/* if the random number is odd then the first node 'pA' is greater then` |
 |         - | 2544 | `	 * the second node 'pB'. Otherwise the reverse is assumed.` |
 |         - | 2545 | `	 */` |
-|        19 | 2546 | `	return n&1 ? 1 : -1;` |
+|        21 | 2546 | `	return n&1 ? 1 : -1;` |
 |         1 | 2547 | `}` |
 |         - | 2548 | `/*` |
 |         - | 2549 | ` * Rehash all nodes keys after a merge-sort have been applied.` |
 |         - | 2550 | ` * Used by [sort(),usort() and rsort()].` |
 |         - | 2551 | ` */` |
-|      1138 | 2552 | `static void HashmapSortRehash(ph7_hashmap *pMap)` |
+|      1146 | 2552 | `static void HashmapSortRehash(ph7_hashmap *pMap)` |
 |         5 | 2553 | `{` |
 |         - | 2554 | `	ph7_hashmap_node *p,*pLast;` |
 |         - | 2555 | `	sxu32 i;` |
 |         - | 2556 | `	/* Rehash all entries */` |
-|      1143 | 2557 | `	pLast = p = pMap->pFirst;` |
-|      1143 | 2558 | `	pMap->iNextIdx = 0;` |
-|      1143 | 2559 | `	pMap->bIntKeySeen = 0; /* Reset the automatic index */` |
-|      1143 | 2560 | `	i = 0;` |
-|      9030 | 2561 | `	for( ;; ){` |
-|     18065 | 2562 | `		if( i >= pMap->nEntry ){` |
-|      1143 | 2563 | `			pMap->pLast = pLast; /* Fix the last link broken by the merge-sort */` |
-|      1143 | 2564 | `			break;` |
+|      1151 | 2557 | `	pLast = p = pMap->pFirst;` |
+|      1151 | 2558 | `	pMap->iNextIdx = 0;` |
+|      1151 | 2559 | `	pMap->bIntKeySeen = 0; /* Reset the automatic index */` |
+|      1151 | 2560 | `	i = 0;` |
+|      9040 | 2561 | `	for( ;; ){` |
+|     18085 | 2562 | `		if( i >= pMap->nEntry ){` |
+|      1151 | 2563 | `			pMap->pLast = pLast; /* Fix the last link broken by the merge-sort */` |
+|      1151 | 2564 | `			break;` |
 |         - | 2565 | `		}` |
-|     16927 | 2566 | `		if( p->iType == HASHMAP_BLOB_NODE ){` |
+|     16939 | 2566 | `		if( p->iType == HASHMAP_BLOB_NODE ){` |
 |         - | 2567 | `			/* Do not maintain index association as requested by the PHP specification */` |
-|         5 | 2568 | `			SyBlobRelease(&p->xKey.sKey);` |
+|        11 | 2568 | `			SyBlobRelease(&p->xKey.sKey);` |
 |         - | 2569 | `			/* Change key type */` |
-|         5 | 2570 | `			p->iType = HASHMAP_INT_NODE;` |
-|         2 | 2571 | `		}` |
-|     16927 | 2572 | `		HashmapRehashIntNode(p);` |
+|        11 | 2570 | `			p->iType = HASHMAP_INT_NODE;` |
+|         5 | 2571 | `		}` |
+|     16939 | 2572 | `		HashmapRehashIntNode(p);` |
 |         - | 2573 | `		/* Point to the next entry */` |
-|     16927 | 2574 | `		i++;` |
-|     16927 | 2575 | `		pLast = p;` |
-|     16927 | 2576 | `		p = p->pPrev; /* Reverse link */` |
+|     16939 | 2574 | `		i++;` |
+|     16939 | 2575 | `		pLast = p;` |
+|     16939 | 2576 | `		p = p->pPrev; /* Reverse link */` |
 |         5 | 2577 | `	}` |
-|      1143 | 2578 | `}` |
+|      1151 | 2578 | `}` |
 |         - | 2579 | `/*` |
 |         - | 2580 | ` * Array functions implementation.` |
 |         - | 2581 | ` * Status:` |
@@ -2607,19 +2607,19 @@ Coverage: 4021/4505 lines (89.26%)
 |         - | 2597 | ` *  TRUE on success or FALSE on failure.` |
 |         - | 2598 | ` *` |
 |         - | 2599 | ` */` |
-|      1106 | 2600 | `static int ph7_hashmap_sort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      1110 | 2600 | `static int ph7_hashmap_sort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |         5 | 2601 | `{` |
 |         - | 2602 | `	ph7_hashmap *pMap;` |
 |         - | 2603 | `	/* Make sure we are dealing with a valid hashmap */` |
-|      1111 | 2604 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
+|      1115 | 2604 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
 |         - | 2605 | `		/* Missing/Invalid arguments,return FALSE */` |
 |       ! 0 | 2606 | `		ph7_result_bool(pCtx,0);` |
 |       ! 0 | 2607 | `		return PH7_OK;` |
 |         - | 2608 | `	}` |
 |         - | 2609 | `	/* Point to the internal representation of the input hashmap */` |
-|      1111 | 2610 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|      1111 | 2611 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|      1111 | 2612 | `	if( pMap->nEntry > 1 ){` |
+|      1115 | 2610 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|      1115 | 2611 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|      1115 | 2612 | `	if( pMap->nEntry > 1 ){` |
 |      1109 | 2613 | `		sxi32 iCmpFlags = 0;` |
 |      1109 | 2614 | `		if( nArg > 1 ){` |
 |         - | 2615 | `			/* Extract comparison flags */` |
@@ -2629,6399 +2629,6408 @@ Coverage: 4021/4505 lines (89.26%)
 |      1109 | 2619 | `		HashmapMergeSort(pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));` |
 |         - | 2620 | `		/* Rehash [Do not maintain index association as requested by the PHP specification] */` |
 |      1109 | 2621 | `		HashmapSortRehash(pMap);` |
-|       552 | 2622 | `	}` |
-|         - | 2623 | `	/* All done,return TRUE */` |
-|      1111 | 2624 | `	ph7_result_bool(pCtx,1);` |
-|      1111 | 2625 | `	return PH7_OK;` |
-|       558 | 2626 | `}` |
-|         - | 2627 | `/*` |
-|         - | 2628 | ` * bool asort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
-|         - | 2629 | ` *  Sort an array and maintain index association.` |
-|         - | 2630 | ` * Parameters` |
-|         - | 2631 | ` *  $array` |
-|         - | 2632 | ` *   The input array.` |
-|         - | 2633 | ` * $sort_flags` |
-|         - | 2634 | ` *  The optional second parameter sort_flags may be used to modify the sorting behavior using these values:` |
-|         - | 2635 | ` *  Sorting type flags:` |
-|         - | 2636 | ` *   SORT_REGULAR - compare items normally (don't change types)` |
-|         - | 2637 | ` *   SORT_NUMERIC - compare items numerically` |
-|         - | 2638 | ` *   SORT_STRING - compare items as strings` |
-|         - | 2639 | ` * Return` |
-|         - | 2640 | ` *  TRUE on success or FALSE on failure.` |
-|         - | 2641 | ` */` |
-|        34 | 2642 | `static int ph7_hashmap_asort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         5 | 2643 | `{` |
-|         - | 2644 | `	ph7_hashmap *pMap;` |
-|         - | 2645 | `	/* PHP 8: ArgumentCountError if no arguments */` |
-|        39 | 2646 | `	if( nArg < 1 ){` |
-|       ! 0 | 2647 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 2648 | `			"ArgumentCountError",` |
-|         - | 2649 | `			"asort() expects at least 1 argument, 0 given"` |
-|         - | 2650 | `			);` |
-|         - | 2651 | `	}` |
-|         - | 2652 | `	/* PHP 8: TypeError if first argument is not an array */` |
-|        39 | 2653 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|        16 | 2654 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 2655 | `			"TypeError",` |
-|         - | 2656 | `			"asort(): Argument #1 ($array) must be of type array, %s given",` |
-|         4 | 2657 | `			ph7_type_name(apArg[0])` |
-|         - | 2658 | `			);` |
-|         - | 2659 | `	}` |
-|         - | 2660 | `	/* Point to the internal representation of the input hashmap */` |
-|        27 | 2661 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|        27 | 2662 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|        27 | 2663 | `	if( pMap->nEntry > 1 ){` |
-|        23 | 2664 | `		sxi32 iCmpFlags = 0;` |
-|        23 | 2665 | `		if( nArg > 1 ){` |
-|         - | 2666 | `			/* Extract comparison flags */` |
-|         7 | 2667 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
-|         3 | 2668 | `		}` |
-|         - | 2669 | `		/* Do the merge sort */` |
-|        23 | 2670 | `		HashmapMergeSort(pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));` |
-|         - | 2671 | `		/* Fix the last link broken by the merge */` |
-|        55 | 2672 | `		while(pMap->pLast->pPrev){` |
-|        33 | 2673 | `			pMap->pLast = pMap->pLast->pPrev;` |
-|         1 | 2674 | `		}` |
-|        11 | 2675 | `	}` |
-|         - | 2676 | `	/* All done,return TRUE */` |
-|        27 | 2677 | `	ph7_result_bool(pCtx,1);` |
-|        27 | 2678 | `	return PH7_OK;` |
-|        22 | 2679 | `}` |
-|         - | 2680 | `/*` |
-|         - | 2681 | ` * bool arsort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
-|         - | 2682 | ` *  Sort an array in reverse order and maintain index association.` |
-|         - | 2683 | ` * Parameters` |
-|         - | 2684 | ` *  $array` |
-|         - | 2685 | ` *   The input array.` |
-|         - | 2686 | ` * $sort_flags` |
-|         - | 2687 | ` *  The optional second parameter sort_flags may be used to modify the sorting behavior using these values:` |
-|         - | 2688 | ` *  Sorting type flags:` |
-|         - | 2689 | ` *   SORT_REGULAR - compare items normally (don't change types)` |
-|         - | 2690 | ` *   SORT_NUMERIC - compare items numerically` |
-|         - | 2691 | ` *   SORT_STRING - compare items as strings` |
-|         - | 2692 | ` * Return` |
-|         - | 2693 | ` *  TRUE on success or FALSE on failure.` |
-|         - | 2694 | ` */` |
-|        32 | 2695 | `static int ph7_hashmap_arsort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         5 | 2696 | `{` |
-|         - | 2697 | `	ph7_hashmap *pMap;` |
-|         - | 2698 | `	/* PHP 8: ArgumentCountError if no arguments */` |
-|        37 | 2699 | `	if( nArg < 1 ){` |
-|       ! 0 | 2700 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 2701 | `			"ArgumentCountError",` |
-|         - | 2702 | `			"arsort() expects at least 1 argument, 0 given"` |
-|         - | 2703 | `			);` |
-|         - | 2704 | `	}` |
-|         - | 2705 | `	/* PHP 8: TypeError if first argument is not an array */` |
-|        37 | 2706 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|        16 | 2707 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 2708 | `			"TypeError",` |
-|         - | 2709 | `			"arsort(): Argument #1 ($array) must be of type array, %s given",` |
-|         4 | 2710 | `			ph7_type_name(apArg[0])` |
-|         - | 2711 | `			);` |
-|         - | 2712 | `	}` |
-|         - | 2713 | `	/* Point to the internal representation of the input hashmap */` |
-|        25 | 2714 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|        25 | 2715 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|        25 | 2716 | `	if( pMap->nEntry > 1 ){` |
-|        21 | 2717 | `		sxi32 iCmpFlags = 0;` |
-|        21 | 2718 | `		if( nArg > 1 ){` |
-|         - | 2719 | `			/* Extract comparison flags */` |
-|         7 | 2720 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
-|         3 | 2721 | `		}` |
-|         - | 2722 | `		/* Do the merge sort */` |
-|        21 | 2723 | `		HashmapMergeSort(pMap,HashmapCmpCallback3,SX_INT_TO_PTR(iCmpFlags));` |
-|         - | 2724 | `		/* Fix the last link broken by the merge */` |
-|        37 | 2725 | `		while(pMap->pLast->pPrev){` |
-|        17 | 2726 | `			pMap->pLast = pMap->pLast->pPrev;` |
-|         1 | 2727 | `		}` |
-|        10 | 2728 | `	}` |
-|         - | 2729 | `	/* All done,return TRUE */` |
-|        25 | 2730 | `	ph7_result_bool(pCtx,1);` |
-|        25 | 2731 | `	return PH7_OK;` |
-|        21 | 2732 | `}` |
-|         - | 2733 | `/*` |
-|         - | 2734 | ` * bool ksort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
-|         - | 2735 | ` *  Sort an array by key.` |
-|         - | 2736 | ` * Parameters` |
-|         - | 2737 | ` *  $array` |
-|         - | 2738 | ` *   The input array.` |
-|         - | 2739 | ` * $sort_flags` |
-|         - | 2740 | ` *  The optional second parameter sort_flags may be used to modify the sorting behavior using these values:` |
-|         - | 2741 | ` *  Sorting type flags:` |
-|         - | 2742 | ` *   SORT_REGULAR - compare items normally (don't change types)` |
-|         - | 2743 | ` *   SORT_NUMERIC - compare items numerically` |
-|         - | 2744 | ` *   SORT_STRING - compare items as strings` |
-|         - | 2745 | ` * Return` |
-|         - | 2746 | ` *  TRUE on success or FALSE on failure.` |
-|         - | 2747 | ` */` |
-|        20 | 2748 | `static int ph7_hashmap_ksort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         2 | 2749 | `{` |
-|         - | 2750 | `	ph7_hashmap *pMap;` |
-|         - | 2751 | `	/* Make sure we are dealing with a valid hashmap */` |
-|        22 | 2752 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
-|         - | 2753 | `		/* Missing/Invalid arguments,return FALSE */` |
-|       ! 0 | 2754 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 2755 | `		return PH7_OK;` |
-|         - | 2756 | `	}` |
-|         - | 2757 | `	/* Point to the internal representation of the input hashmap */` |
-|        22 | 2758 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|        22 | 2759 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|        22 | 2760 | `	if( pMap->nEntry > 1 ){` |
-|        22 | 2761 | `		sxi32 iCmpFlags = 0;` |
-|        22 | 2762 | `		if( nArg > 1 ){` |
-|         - | 2763 | `			/* Extract comparison flags */` |
-|         5 | 2764 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
-|         2 | 2765 | `		}` |
-|         - | 2766 | `		/* Do the merge sort */` |
-|        22 | 2767 | `		HashmapMergeSort(pMap,HashmapCmpCallback2,SX_INT_TO_PTR(iCmpFlags));` |
-|         - | 2768 | `		/* Fix the last link broken by the merge */` |
-|        56 | 2769 | `		while(pMap->pLast->pPrev){` |
-|        35 | 2770 | `			pMap->pLast = pMap->pLast->pPrev;` |
-|         1 | 2771 | `		}` |
-|        10 | 2772 | `	}` |
-|         - | 2773 | `	/* All done,return TRUE */` |
-|        22 | 2774 | `	ph7_result_bool(pCtx,1);` |
-|        22 | 2775 | `	return PH7_OK;` |
-|        12 | 2776 | `}` |
-|         - | 2777 | `/*` |
-|         - | 2778 | ` * bool krsort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
-|         - | 2779 | ` *  Sort an array by key in reverse order.` |
-|         - | 2780 | ` * Parameters` |
-|         - | 2781 | ` *  $array` |
-|         - | 2782 | ` *   The input array.` |
-|         - | 2783 | ` * $sort_flags` |
-|         - | 2784 | ` *  The optional second parameter sort_flags may be used to modify the sorting behavior using these values:` |
-|         - | 2785 | ` *  Sorting type flags:` |
-|         - | 2786 | ` *   SORT_REGULAR - compare items normally (don't change types)` |
-|         - | 2787 | ` *   SORT_NUMERIC - compare items numerically` |
-|         - | 2788 | ` *   SORT_STRING - compare items as strings` |
-|         - | 2789 | ` * Return` |
-|         - | 2790 | ` *  TRUE on success or FALSE on failure.` |
-|         - | 2791 | ` */` |
-|         6 | 2792 | `static int ph7_hashmap_krsort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 2793 | `{` |
-|         - | 2794 | `	ph7_hashmap *pMap;` |
-|         - | 2795 | `	/* Make sure we are dealing with a valid hashmap */` |
-|         7 | 2796 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
-|         - | 2797 | `		/* Missing/Invalid arguments,return FALSE */` |
-|       ! 0 | 2798 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 2799 | `		return PH7_OK;` |
-|         - | 2800 | `	}` |
-|         - | 2801 | `	/* Point to the internal representation of the input hashmap */` |
-|         7 | 2802 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|         7 | 2803 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         7 | 2804 | `	if( pMap->nEntry > 1 ){` |
-|         7 | 2805 | `		sxi32 iCmpFlags = 0;` |
-|         7 | 2806 | `		if( nArg > 1 ){` |
-|         - | 2807 | `			/* Extract comparison flags */` |
-|         3 | 2808 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
-|         1 | 2809 | `		}` |
-|         - | 2810 | `		/* Do the merge sort */` |
-|         7 | 2811 | `		HashmapMergeSort(pMap,HashmapCmpCallback5,SX_INT_TO_PTR(iCmpFlags));` |
-|         - | 2812 | `		/* Fix the last link broken by the merge */` |
-|        23 | 2813 | `		while(pMap->pLast->pPrev){` |
-|        17 | 2814 | `			pMap->pLast = pMap->pLast->pPrev;` |
-|         1 | 2815 | `		}` |
-|         3 | 2816 | `	}` |
-|         - | 2817 | `	/* All done,return TRUE */` |
-|         7 | 2818 | `	ph7_result_bool(pCtx,1);` |
-|         7 | 2819 | `	return PH7_OK;` |
-|         4 | 2820 | `}` |
-|         - | 2821 | `/*` |
-|         - | 2822 | ` * bool rsort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
-|         - | 2823 | ` * Sort an array in reverse order.` |
-|         - | 2824 | ` * Parameters` |
-|         - | 2825 | ` *  $array` |
-|         - | 2826 | ` *   The input array.` |
-|         - | 2827 | ` * $sort_flags` |
-|         - | 2828 | ` *  The optional second parameter sort_flags may be used to modify the sorting behavior using these values:` |
-|         - | 2829 | ` *  Sorting type flags:` |
-|         - | 2830 | ` *   SORT_REGULAR - compare items normally (don't change types)` |
-|         - | 2831 | ` *   SORT_NUMERIC - compare items numerically` |
-|         - | 2832 | ` *   SORT_STRING - compare items as strings` |
-|         - | 2833 | ` * Return` |
-|         - | 2834 | ` *  TRUE on success or FALSE on failure.` |
-|         - | 2835 | ` */` |
-|         6 | 2836 | `static int ph7_hashmap_rsort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 2837 | `{` |
-|         - | 2838 | `	ph7_hashmap *pMap;` |
-|         - | 2839 | `	/* Make sure we are dealing with a valid hashmap */` |
-|         7 | 2840 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
-|         - | 2841 | `		/* Missing/Invalid arguments,return FALSE */` |
-|       ! 0 | 2842 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 2843 | `		return PH7_OK;` |
-|         - | 2844 | `	}` |
-|         - | 2845 | `	/* Point to the internal representation of the input hashmap */` |
-|         7 | 2846 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|         7 | 2847 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         7 | 2848 | `	if( pMap->nEntry > 1 ){` |
-|         7 | 2849 | `		sxi32 iCmpFlags = 0;` |
-|         7 | 2850 | `		if( nArg > 1 ){` |
-|         - | 2851 | `			/* Extract comparison flags */` |
-|         5 | 2852 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
-|         2 | 2853 | `		}` |
-|         - | 2854 | `		/* Do the merge sort */` |
-|         7 | 2855 | `		HashmapMergeSort(pMap,HashmapCmpCallback3,SX_INT_TO_PTR(iCmpFlags));` |
-|         - | 2856 | `		/* Rehash [Do not maintain index association as requested by the PHP specification] */` |
-|         7 | 2857 | `		HashmapSortRehash(pMap);` |
-|         3 | 2858 | `	}` |
-|         - | 2859 | `	/* All done,return TRUE */` |
-|         7 | 2860 | `	ph7_result_bool(pCtx,1);` |
-|         7 | 2861 | `	return PH7_OK;` |
-|         4 | 2862 | `}` |
-|         - | 2863 | `/*` |
-|         - | 2864 | ` * bool usort(array &$array,callable $cmp_function)` |
-|         - | 2865 | ` *  Sort an array by values using a user-defined comparison function.` |
-|         - | 2866 | ` * Parameters` |
-|         - | 2867 | ` *  $array` |
-|         - | 2868 | ` *   The input array.` |
-|         - | 2869 | ` * $cmp_function` |
-|         - | 2870 | ` *  The comparison function must return an integer less than, equal to, or greater` |
-|         - | 2871 | ` *  than zero if the first argument is considered to be respectively less than, equal` |
-|         - | 2872 | ` *  to, or greater than the second.` |
-|         - | 2873 | ` *    int callback ( mixed $a, mixed $b )` |
-|         - | 2874 | ` * Return` |
-|         - | 2875 | ` *  TRUE on success or FALSE on failure.` |
-|         - | 2876 | ` */` |
-|        26 | 2877 | `static int ph7_hashmap_usort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         3 | 2878 | `{` |
-|         - | 2879 | `	ph7_hashmap *pMap;` |
-|         - | 2880 | `	/* Make sure we are dealing with a valid hashmap */` |
-|        29 | 2881 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
-|         - | 2882 | `		/* Missing/Invalid arguments,return FALSE */` |
-|       ! 0 | 2883 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 2884 | `		return PH7_OK;` |
-|         - | 2885 | `	}` |
-|        29 | 2886 | `	if( nArg > 1 ){` |
-|         - | 2887 | `		/* php rejects an uncallable comparator with a TypeError, BEFORE touching the` |
-|         - | 2888 | `		 * array. PH7 handed it to the dispatcher, which answers NULL in silence -- so` |
-|         - | 2889 | `		 * usort() with a bogus comparator reordered the array anyway, by nothing. */` |
-|        29 | 2890 | `		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",0);` |
-|        29 | 2891 | `		if( rcCb != PH7_OK ){` |
-|         3 | 2892 | `			return rcCb;` |
-|         - | 2893 | `		}` |
-|        12 | 2894 | `	}` |
-|         - | 2895 | `	/* Point to the internal representation of the input hashmap */` |
-|        27 | 2896 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|        27 | 2897 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|        27 | 2898 | `	if( pMap->nEntry > 1 ){` |
-|        27 | 2899 | `		ph7_value *pCallback = 0;` |
-|         - | 2900 | `		ProcNodeCmp xCmp;` |
-|        27 | 2901 | `		xCmp = HashmapCmpCallback4; /* User-defined function as the comparison callback */` |
-|        27 | 2902 | `		if( nArg > 1 && ph7_value_is_callable(apArg[1]) ){` |
-|         - | 2903 | `			/* Point to the desired callback */` |
-|        27 | 2904 | `			pCallback = apArg[1];` |
-|        15 | 2905 | `		}else{` |
-|         - | 2906 | `			/* Use the default comparison function */` |
-|       ! 0 | 2907 | `			xCmp = HashmapCmpCallback1;` |
-|         - | 2908 | `		}` |
-|         - | 2909 | `		/* Do the merge sort */` |
-|        27 | 2910 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
-|        27 | 2911 | `		HashmapMergeSort(pMap,xCmp,pCallback);` |
-|         - | 2912 | `		/* Rehash [Do not maintain index association as requested by the PHP specification] */` |
-|        27 | 2913 | `		HashmapSortRehash(pMap);` |
-|        27 | 2914 | `		if( pCtx->pVm->iCmpCallbackExc ){` |
-|         - | 2915 | `			/* The comparison callback raised: propagate so the dispatcher unwinds. */` |
-|        10 | 2916 | `			pCtx->pVm->iCmpCallbackExc = 0;` |
-|        10 | 2917 | `			return PH7_EXCEPTION;` |
-|         - | 2918 | `		}` |
-|         8 | 2919 | `	}` |
-|         - | 2920 | `	/* All done,return TRUE */` |
-|        18 | 2921 | `	ph7_result_bool(pCtx,1);` |
-|        18 | 2922 | `	return PH7_OK;` |
-|        16 | 2923 | `}` |
-|         - | 2924 | `/*` |
-|         - | 2925 | ` * bool uasort(array &$array,callable $cmp_function)` |
-|         - | 2926 | ` *  Sort an array by values using a user-defined comparison function` |
-|         - | 2927 | ` *  and maintain index association.` |
-|         - | 2928 | ` * Parameters` |
-|         - | 2929 | ` *  $array` |
-|         - | 2930 | ` *   The input array.` |
-|         - | 2931 | ` * $cmp_function` |
-|         - | 2932 | ` *  The comparison function must return an integer less than, equal to, or greater` |
-|         - | 2933 | ` *  than zero if the first argument is considered to be respectively less than, equal` |
-|         - | 2934 | ` *  to, or greater than the second.` |
-|         - | 2935 | ` *    int callback ( mixed $a, mixed $b )` |
-|         - | 2936 | ` * Return` |
-|         - | 2937 | ` *  TRUE on success or FALSE on failure.` |
-|         - | 2938 | ` */` |
-|        14 | 2939 | `static int ph7_hashmap_uasort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 2940 | `{` |
-|         - | 2941 | `	ph7_hashmap *pMap;` |
-|         - | 2942 | `	/* Make sure we are dealing with a valid hashmap */` |
-|        15 | 2943 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
-|         - | 2944 | `		/* Missing/Invalid arguments,return FALSE */` |
-|       ! 0 | 2945 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 2946 | `		return PH7_OK;` |
-|         - | 2947 | `	}` |
-|        15 | 2948 | `	if( nArg > 1 ){` |
-|         - | 2949 | `		/* php rejects an uncallable comparator with a TypeError, BEFORE touching the` |
-|         - | 2950 | `		 * array. PH7 handed it to the dispatcher, which answers NULL in silence -- so` |
-|         - | 2951 | `		 * usort() with a bogus comparator reordered the array anyway, by nothing. */` |
-|        15 | 2952 | `		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",0);` |
-|        15 | 2953 | `		if( rcCb != PH7_OK ){` |
-|         3 | 2954 | `			return rcCb;` |
-|         - | 2955 | `		}` |
-|         6 | 2956 | `	}` |
-|         - | 2957 | `	/* Point to the internal representation of the input hashmap */` |
-|        13 | 2958 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|        13 | 2959 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|        13 | 2960 | `	if( pMap->nEntry > 1 ){` |
-|        13 | 2961 | `		ph7_value *pCallback = 0;` |
-|         - | 2962 | `		ProcNodeCmp xCmp;` |
-|        13 | 2963 | `		xCmp = HashmapCmpCallback4; /* User-defined function as the comparison callback */` |
-|        13 | 2964 | `		if( nArg > 1 && ph7_value_is_callable(apArg[1]) ){` |
-|         - | 2965 | `			/* Point to the desired callback */` |
-|        13 | 2966 | `			pCallback = apArg[1];` |
-|         7 | 2967 | `		}else{` |
-|         - | 2968 | `			/* Use the default comparison function */` |
-|       ! 0 | 2969 | `			xCmp = HashmapCmpCallback1;` |
-|         - | 2970 | `		}` |
-|         - | 2971 | `		/* Do the merge sort */` |
-|        13 | 2972 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
-|        13 | 2973 | `		HashmapMergeSort(pMap,xCmp,pCallback);` |
-|         - | 2974 | `		/* Fix the last link broken by the merge */` |
-|        31 | 2975 | `		while(pMap->pLast->pPrev){` |
-|        19 | 2976 | `			pMap->pLast = pMap->pLast->pPrev;` |
-|         1 | 2977 | `		}` |
-|        13 | 2978 | `		if( pCtx->pVm->iCmpCallbackExc ){` |
-|         - | 2979 | `			/* The comparison callback raised: propagate so the dispatcher unwinds. */` |
-|       ! 0 | 2980 | `			pCtx->pVm->iCmpCallbackExc = 0;` |
-|       ! 0 | 2981 | `			return PH7_EXCEPTION;` |
-|         - | 2982 | `		}` |
-|         6 | 2983 | `	}` |
-|         - | 2984 | `	/* All done,return TRUE */` |
-|        13 | 2985 | `	ph7_result_bool(pCtx,1);` |
-|        13 | 2986 | `	return PH7_OK;` |
-|         8 | 2987 | `}` |
-|         - | 2988 | `/*` |
-|         - | 2989 | ` * bool uksort(array &$array,callable $cmp_function)` |
-|         - | 2990 | ` *  Sort an array by keys using a user-defined comparison` |
-|         - | 2991 | ` *  function and maintain index association.` |
-|         - | 2992 | ` * Parameters` |
-|         - | 2993 | ` *  $array` |
-|         - | 2994 | ` *   The input array.` |
-|         - | 2995 | ` * $cmp_function` |
-|         - | 2996 | ` *  The comparison function must return an integer less than, equal to, or greater` |
-|         - | 2997 | ` *  than zero if the first argument is considered to be respectively less than, equal` |
-|         - | 2998 | ` *  to, or greater than the second.` |
-|         - | 2999 | ` *    int callback ( mixed $a, mixed $b )` |
-|         - | 3000 | ` * Return` |
-|         - | 3001 | ` *  TRUE on success or FALSE on failure.` |
-|         - | 3002 | ` */` |
-|         4 | 3003 | `static int ph7_hashmap_uksort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 3004 | `{` |
-|         - | 3005 | `	ph7_hashmap *pMap;` |
-|         - | 3006 | `	/* Make sure we are dealing with a valid hashmap */` |
-|         5 | 3007 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
-|         - | 3008 | `		/* Missing/Invalid arguments,return FALSE */` |
-|       ! 0 | 3009 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 3010 | `		return PH7_OK;` |
-|         - | 3011 | `	}` |
-|         5 | 3012 | `	if( nArg > 1 ){` |
-|         - | 3013 | `		/* php rejects an uncallable comparator with a TypeError, BEFORE touching the` |
-|         - | 3014 | `		 * array. PH7 handed it to the dispatcher, which answers NULL in silence -- so` |
-|         - | 3015 | `		 * usort() with a bogus comparator reordered the array anyway, by nothing. */` |
-|         5 | 3016 | `		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",0);` |
-|         5 | 3017 | `		if( rcCb != PH7_OK ){` |
-|         3 | 3018 | `			return rcCb;` |
-|         - | 3019 | `		}` |
-|         1 | 3020 | `	}` |
-|         - | 3021 | `	/* Point to the internal representation of the input hashmap */` |
-|         3 | 3022 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|         3 | 3023 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         3 | 3024 | `	if( pMap->nEntry > 1 ){` |
-|         3 | 3025 | `		ph7_value *pCallback = 0;` |
-|         - | 3026 | `		ProcNodeCmp xCmp;` |
-|         3 | 3027 | `		xCmp = HashmapCmpCallback6; /* User-defined function as the comparison callback */` |
-|         3 | 3028 | `		if( nArg > 1 && ph7_value_is_callable(apArg[1]) ){` |
-|         - | 3029 | `			/* Point to the desired callback */` |
-|         3 | 3030 | `			pCallback = apArg[1];` |
-|         2 | 3031 | `		}else{` |
-|         - | 3032 | `			/* Use the default comparison function */` |
-|       ! 0 | 3033 | `			xCmp = HashmapCmpCallback2;` |
-|         - | 3034 | `		}` |
-|         - | 3035 | `		/* Do the merge sort */` |
-|         3 | 3036 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
-|         3 | 3037 | `		HashmapMergeSort(pMap,xCmp,pCallback);` |
-|         - | 3038 | `		/* Fix the last link broken by the merge */` |
-|         3 | 3039 | `		while(pMap->pLast->pPrev){` |
-|       ! 0 | 3040 | `			pMap->pLast = pMap->pLast->pPrev;` |
-|       ! 0 | 3041 | `		}` |
-|         3 | 3042 | `		if( pCtx->pVm->iCmpCallbackExc ){` |
-|         - | 3043 | `			/* The comparison callback raised: propagate so the dispatcher unwinds. */` |
-|       ! 0 | 3044 | `			pCtx->pVm->iCmpCallbackExc = 0;` |
-|       ! 0 | 3045 | `			return PH7_EXCEPTION;` |
-|         - | 3046 | `		}` |
-|         1 | 3047 | `	}` |
-|         - | 3048 | `	/* All done,return TRUE */` |
-|         3 | 3049 | `	ph7_result_bool(pCtx,1);` |
-|         3 | 3050 | `	return PH7_OK;` |
-|         3 | 3051 | `}` |
-|         - | 3052 | `/*` |
-|         - | 3053 | ` * bool shuffle(array &$array)` |
-|         - | 3054 | ` *  shuffles (randomizes the order of the elements in) an array.` |
-|         - | 3055 | ` * Parameters` |
-|         - | 3056 | ` *  $array` |
-|         - | 3057 | ` *   The input array.` |
-|         - | 3058 | ` * Return` |
-|         - | 3059 | ` *  TRUE on success or FALSE on failure.` |
-|         - | 3060 | ` *` |
-|         - | 3061 | ` */` |
-|         2 | 3062 | `static int ph7_hashmap_shuffle(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 3063 | `{` |
-|         - | 3064 | `	ph7_hashmap *pMap;` |
-|         - | 3065 | `	/* Make sure we are dealing with a valid hashmap */` |
-|         3 | 3066 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
-|         - | 3067 | `		/* Missing/Invalid arguments,return FALSE */` |
-|       ! 0 | 3068 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 3069 | `		return PH7_OK;` |
-|         - | 3070 | `	}` |
-|         - | 3071 | `	/* Point to the internal representation of the input hashmap */` |
-|         3 | 3072 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|         3 | 3073 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         3 | 3074 | `	if( pMap->nEntry > 1 ){` |
-|         - | 3075 | `		/* Do the merge sort */` |
-|         3 | 3076 | `		HashmapMergeSort(pMap,HashmapCmpCallback7,0);` |
-|         - | 3077 | `		/* Fix the last link broken by the merge */` |
-|        10 | 3078 | `		while(pMap->pLast->pPrev){` |
-|         8 | 3079 | `			pMap->pLast = pMap->pLast->pPrev;` |
-|         1 | 3080 | `		}` |
-|         1 | 3081 | `	}` |
-|         - | 3082 | `	/* All done,return TRUE */` |
-|         3 | 3083 | `	ph7_result_bool(pCtx,1);` |
-|         3 | 3084 | `	return PH7_OK;` |
-|         2 | 3085 | `}` |
-|         - | 3086 | `/*` |
-|         - | 3087 | ` * int count(array $var [, int $mode = COUNT_NORMAL ])` |
-|         - | 3088 | ` *   Count all elements in an array, or something in an object.` |
-|         - | 3089 | ` * Parameters` |
-|         - | 3090 | ` *  $var` |
-|         - | 3091 | ` *   The array or the object.` |
-|         - | 3092 | ` * $mode` |
-|         - | 3093 | ` *  If the optional mode parameter is set to COUNT_RECURSIVE (or 1), count()` |
-|         - | 3094 | ` *  will recursively count the array. This is particularly useful for counting` |
-|         - | 3095 | ` *  all the elements of a multidimensional array.` |
-|         - | 3096 | ` * Return` |
-|         - | 3097 | ` *  Returns the number of elements in the array.` |
-|         - | 3098 | ` */` |
-|      2218 | 3099 | `static int ph7_hashmap_count(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         5 | 3100 | `{` |
-|      2223 | 3101 | `	int bRecursive = FALSE;` |
-|      2223 | 3102 | `	int bCycleDetected = FALSE;` |
-|         - | 3103 | `	sxi64 iCount;` |
-|      2223 | 3104 | `	if( nArg < 1 ){` |
-|       ! 0 | 3105 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 3106 | `			"ArgumentCountError",` |
-|         - | 3107 | `			"count() expects at least 1 argument, 0 given"` |
-|         - | 3108 | `			);` |
-|         - | 3109 | `	}` |
-|      2223 | 3110 | `	if( nArg > 2 ){` |
-|         4 | 3111 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 3112 | `			"ArgumentCountError",` |
-|         - | 3113 | `			"count() expects at most 2 arguments, %d given",` |
-|         1 | 3114 | `			nArg` |
-|         - | 3115 | `			);` |
-|         - | 3116 | `	}` |
-|         - | 3117 | `	/* PHP validates $mode right after parsing, before the type dispatch, so` |
-|         - | 3118 | `	 * an invalid mode raises ValueError whether $value is an array or a` |
-|         - | 3119 | `	 * Countable object (the mode is then ignored for the Countable path). */` |
-|      2221 | 3120 | `	if( nArg > 1 ){` |
-|        44 | 3121 | `		sxi32 iMode = ph7_value_to_int(apArg[1]);` |
-|        44 | 3122 | `		if( iMode != 0 /* COUNT_NORMAL */ && iMode != 1 /* COUNT_RECURSIVE */ ){` |
-|        11 | 3123 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 3124 | `				"ValueError",` |
-|         - | 3125 | `				"count(): Argument #2 ($mode) must be either COUNT_NORMAL or COUNT_RECURSIVE"` |
-|         - | 3126 | `				);` |
-|         - | 3127 | `		}` |
-|        34 | 3128 | `		bRecursive = iMode == 1;` |
-|        16 | 3129 | `	}` |
-|      2213 | 3130 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         - | 3131 | `		/* Countable object: dispatch to ->count() */` |
-|        75 | 3132 | `		if( apArg[0]->iFlags & MEMOBJ_OBJ ){` |
-|        63 | 3133 | `			ph7_class_instance *pInst = (ph7_class_instance *)apArg[0]->x.pOther;` |
-|        63 | 3134 | `			ph7_class *pCountable = pCtx->pVm->pCountableClass;` |
-|        63 | 3135 | `			if( pCountable && PH7_VmInstanceOf(pInst->pClass,pCountable) ){` |
-|        61 | 3136 | `				ph7_class_method *pMeth = PH7_ClassExtractMethod(pInst->pClass,` |
-|         - | 3137 | `					"count",sizeof("count")-1);` |
-|        61 | 3138 | `				if( pMeth ){` |
-|         - | 3139 | `					ph7_value sResult;` |
-|        61 | 3140 | `					PH7_MemObjInit(pCtx->pVm,&sResult);` |
-|        61 | 3141 | `					PH7_VmCallClassMethod(pCtx->pVm,pInst,pMeth,&sResult,0,0);` |
-|        61 | 3142 | `					ph7_result_int64(pCtx,ph7_value_to_int64(&sResult));` |
-|        61 | 3143 | `					PH7_MemObjRelease(&sResult);` |
-|        61 | 3144 | `					return PH7_OK;` |
-|         - | 3145 | `				}` |
-|       ! 0 | 3146 | `			}` |
-|         1 | 3147 | `		}` |
-|        22 | 3148 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 3149 | `			"TypeError",` |
-|         - | 3150 | `			"count(): Argument #1 ($value) must be of type Countable\|array, %s given",` |
-|         6 | 3151 | `			ph7_type_name(apArg[0])` |
-|         - | 3152 | `			);` |
-|         - | 3153 | `	}` |
-|         - | 3154 | `	/* Count */` |
-|      2143 | 3155 | `	iCount = HashmapCount((ph7_hashmap *)apArg[0]->x.pOther,bRecursive,&bCycleDetected);` |
-|      2143 | 3156 | `	if( bCycleDetected ){` |
-|         3 | 3157 | `		PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,"count(): Recursion detected");` |
-|         1 | 3158 | `	}` |
-|      2143 | 3159 | `	ph7_result_int64(pCtx,iCount);` |
-|      2143 | 3160 | `	return PH7_OK;` |
-|      1114 | 3161 | `}` |
-|         - | 3162 | `/*` |
-|         - | 3163 | ` * bool array_key_exists(value $key,array $search)` |
-|         - | 3164 | ` *  Checks if the given key or index exists in the array.` |
-|         - | 3165 | ` * Parameters` |
-|         - | 3166 | ` * $key` |
-|         - | 3167 | ` *   Value to check.` |
-|         - | 3168 | ` * $search` |
-|         - | 3169 | ` *  An array with keys to check.` |
-|         - | 3170 | ` * Return` |
-|         - | 3171 | ` *  TRUE on success or FALSE on failure.` |
-|         - | 3172 | ` */` |
-|        94 | 3173 | `static int ph7_hashmap_key_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         5 | 3174 | `{` |
-|         - | 3175 | `	sxi32 rc;` |
-|        99 | 3176 | `	if( nArg != 2 ){` |
-|         - | 3177 | `		/* PHP requires exactly two arguments */` |
-|         4 | 3178 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 3179 | `			"ArgumentCountError",` |
-|         - | 3180 | `			"array_key_exists() expects exactly 2 arguments, %d given",` |
-|         1 | 3181 | `			nArg` |
-|         - | 3182 | `			);` |
-|         - | 3183 | `	}` |
-|         - | 3184 | `	/* Make sure we are dealing with a valid hashmap */` |
-|        97 | 3185 | `	if( !ph7_value_is_array(apArg[1]) ){` |
-|         - | 3186 | `		/* Type mismatch -> TypeError */` |
-|         8 | 3187 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 3188 | `			"TypeError",` |
-|         - | 3189 | `			"array_key_exists(): Argument #2 ($array) must be of type array, %s given",` |
-|         4 | 3190 | `			ph7_type_name(apArg[1])` |
+|       559 | 2622 | `	}else if( pMap->nEntry == 1 ){` |
+|         - | 2623 | `		/* php reindexes even a single-element array: a string key becomes 0 */` |
+|         5 | 2624 | `		HashmapSortRehash(pMap);` |
+|         2 | 2625 | `	}` |
+|         - | 2626 | `	/* All done,return TRUE */` |
+|      1115 | 2627 | `	ph7_result_bool(pCtx,1);` |
+|      1115 | 2628 | `	return PH7_OK;` |
+|       560 | 2629 | `}` |
+|         - | 2630 | `/*` |
+|         - | 2631 | ` * bool asort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
+|         - | 2632 | ` *  Sort an array and maintain index association.` |
+|         - | 2633 | ` * Parameters` |
+|         - | 2634 | ` *  $array` |
+|         - | 2635 | ` *   The input array.` |
+|         - | 2636 | ` * $sort_flags` |
+|         - | 2637 | ` *  The optional second parameter sort_flags may be used to modify the sorting behavior using these values:` |
+|         - | 2638 | ` *  Sorting type flags:` |
+|         - | 2639 | ` *   SORT_REGULAR - compare items normally (don't change types)` |
+|         - | 2640 | ` *   SORT_NUMERIC - compare items numerically` |
+|         - | 2641 | ` *   SORT_STRING - compare items as strings` |
+|         - | 2642 | ` * Return` |
+|         - | 2643 | ` *  TRUE on success or FALSE on failure.` |
+|         - | 2644 | ` */` |
+|        36 | 2645 | `static int ph7_hashmap_asort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         5 | 2646 | `{` |
+|         - | 2647 | `	ph7_hashmap *pMap;` |
+|         - | 2648 | `	/* PHP 8: ArgumentCountError if no arguments */` |
+|        41 | 2649 | `	if( nArg < 1 ){` |
+|       ! 0 | 2650 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 2651 | `			"ArgumentCountError",` |
+|         - | 2652 | `			"asort() expects at least 1 argument, 0 given"` |
+|         - | 2653 | `			);` |
+|         - | 2654 | `	}` |
+|         - | 2655 | `	/* PHP 8: TypeError if first argument is not an array */` |
+|        41 | 2656 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|        16 | 2657 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 2658 | `			"TypeError",` |
+|         - | 2659 | `			"asort(): Argument #1 ($array) must be of type array, %s given",` |
+|         4 | 2660 | `			ph7_type_name(apArg[0])` |
+|         - | 2661 | `			);` |
+|         - | 2662 | `	}` |
+|         - | 2663 | `	/* Point to the internal representation of the input hashmap */` |
+|        29 | 2664 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|        29 | 2665 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|        29 | 2666 | `	if( pMap->nEntry > 1 ){` |
+|        23 | 2667 | `		sxi32 iCmpFlags = 0;` |
+|        23 | 2668 | `		if( nArg > 1 ){` |
+|         - | 2669 | `			/* Extract comparison flags */` |
+|         7 | 2670 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
+|         3 | 2671 | `		}` |
+|         - | 2672 | `		/* Do the merge sort */` |
+|        23 | 2673 | `		HashmapMergeSort(pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));` |
+|         - | 2674 | `		/* Fix the last link broken by the merge */` |
+|        55 | 2675 | `		while(pMap->pLast->pPrev){` |
+|        33 | 2676 | `			pMap->pLast = pMap->pLast->pPrev;` |
+|         1 | 2677 | `		}` |
+|        11 | 2678 | `	}` |
+|         - | 2679 | `	/* All done,return TRUE */` |
+|        29 | 2680 | `	ph7_result_bool(pCtx,1);` |
+|        29 | 2681 | `	return PH7_OK;` |
+|        23 | 2682 | `}` |
+|         - | 2683 | `/*` |
+|         - | 2684 | ` * bool arsort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
+|         - | 2685 | ` *  Sort an array in reverse order and maintain index association.` |
+|         - | 2686 | ` * Parameters` |
+|         - | 2687 | ` *  $array` |
+|         - | 2688 | ` *   The input array.` |
+|         - | 2689 | ` * $sort_flags` |
+|         - | 2690 | ` *  The optional second parameter sort_flags may be used to modify the sorting behavior using these values:` |
+|         - | 2691 | ` *  Sorting type flags:` |
+|         - | 2692 | ` *   SORT_REGULAR - compare items normally (don't change types)` |
+|         - | 2693 | ` *   SORT_NUMERIC - compare items numerically` |
+|         - | 2694 | ` *   SORT_STRING - compare items as strings` |
+|         - | 2695 | ` * Return` |
+|         - | 2696 | ` *  TRUE on success or FALSE on failure.` |
+|         - | 2697 | ` */` |
+|        32 | 2698 | `static int ph7_hashmap_arsort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         5 | 2699 | `{` |
+|         - | 2700 | `	ph7_hashmap *pMap;` |
+|         - | 2701 | `	/* PHP 8: ArgumentCountError if no arguments */` |
+|        37 | 2702 | `	if( nArg < 1 ){` |
+|       ! 0 | 2703 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 2704 | `			"ArgumentCountError",` |
+|         - | 2705 | `			"arsort() expects at least 1 argument, 0 given"` |
+|         - | 2706 | `			);` |
+|         - | 2707 | `	}` |
+|         - | 2708 | `	/* PHP 8: TypeError if first argument is not an array */` |
+|        37 | 2709 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|        16 | 2710 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 2711 | `			"TypeError",` |
+|         - | 2712 | `			"arsort(): Argument #1 ($array) must be of type array, %s given",` |
+|         4 | 2713 | `			ph7_type_name(apArg[0])` |
+|         - | 2714 | `			);` |
+|         - | 2715 | `	}` |
+|         - | 2716 | `	/* Point to the internal representation of the input hashmap */` |
+|        25 | 2717 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|        25 | 2718 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|        25 | 2719 | `	if( pMap->nEntry > 1 ){` |
+|        21 | 2720 | `		sxi32 iCmpFlags = 0;` |
+|        21 | 2721 | `		if( nArg > 1 ){` |
+|         - | 2722 | `			/* Extract comparison flags */` |
+|         7 | 2723 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
+|         3 | 2724 | `		}` |
+|         - | 2725 | `		/* Do the merge sort */` |
+|        21 | 2726 | `		HashmapMergeSort(pMap,HashmapCmpCallback3,SX_INT_TO_PTR(iCmpFlags));` |
+|         - | 2727 | `		/* Fix the last link broken by the merge */` |
+|        37 | 2728 | `		while(pMap->pLast->pPrev){` |
+|        17 | 2729 | `			pMap->pLast = pMap->pLast->pPrev;` |
+|         1 | 2730 | `		}` |
+|        10 | 2731 | `	}` |
+|         - | 2732 | `	/* All done,return TRUE */` |
+|        25 | 2733 | `	ph7_result_bool(pCtx,1);` |
+|        25 | 2734 | `	return PH7_OK;` |
+|        21 | 2735 | `}` |
+|         - | 2736 | `/*` |
+|         - | 2737 | ` * bool ksort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
+|         - | 2738 | ` *  Sort an array by key.` |
+|         - | 2739 | ` * Parameters` |
+|         - | 2740 | ` *  $array` |
+|         - | 2741 | ` *   The input array.` |
+|         - | 2742 | ` * $sort_flags` |
+|         - | 2743 | ` *  The optional second parameter sort_flags may be used to modify the sorting behavior using these values:` |
+|         - | 2744 | ` *  Sorting type flags:` |
+|         - | 2745 | ` *   SORT_REGULAR - compare items normally (don't change types)` |
+|         - | 2746 | ` *   SORT_NUMERIC - compare items numerically` |
+|         - | 2747 | ` *   SORT_STRING - compare items as strings` |
+|         - | 2748 | ` * Return` |
+|         - | 2749 | ` *  TRUE on success or FALSE on failure.` |
+|         - | 2750 | ` */` |
+|        20 | 2751 | `static int ph7_hashmap_ksort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         2 | 2752 | `{` |
+|         - | 2753 | `	ph7_hashmap *pMap;` |
+|         - | 2754 | `	/* Make sure we are dealing with a valid hashmap */` |
+|        22 | 2755 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
+|         - | 2756 | `		/* Missing/Invalid arguments,return FALSE */` |
+|       ! 0 | 2757 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 2758 | `		return PH7_OK;` |
+|         - | 2759 | `	}` |
+|         - | 2760 | `	/* Point to the internal representation of the input hashmap */` |
+|        22 | 2761 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|        22 | 2762 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|        22 | 2763 | `	if( pMap->nEntry > 1 ){` |
+|        22 | 2764 | `		sxi32 iCmpFlags = 0;` |
+|        22 | 2765 | `		if( nArg > 1 ){` |
+|         - | 2766 | `			/* Extract comparison flags */` |
+|         5 | 2767 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
+|         2 | 2768 | `		}` |
+|         - | 2769 | `		/* Do the merge sort */` |
+|        22 | 2770 | `		HashmapMergeSort(pMap,HashmapCmpCallback2,SX_INT_TO_PTR(iCmpFlags));` |
+|         - | 2771 | `		/* Fix the last link broken by the merge */` |
+|        56 | 2772 | `		while(pMap->pLast->pPrev){` |
+|        35 | 2773 | `			pMap->pLast = pMap->pLast->pPrev;` |
+|         1 | 2774 | `		}` |
+|        10 | 2775 | `	}` |
+|         - | 2776 | `	/* All done,return TRUE */` |
+|        22 | 2777 | `	ph7_result_bool(pCtx,1);` |
+|        22 | 2778 | `	return PH7_OK;` |
+|        12 | 2779 | `}` |
+|         - | 2780 | `/*` |
+|         - | 2781 | ` * bool krsort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
+|         - | 2782 | ` *  Sort an array by key in reverse order.` |
+|         - | 2783 | ` * Parameters` |
+|         - | 2784 | ` *  $array` |
+|         - | 2785 | ` *   The input array.` |
+|         - | 2786 | ` * $sort_flags` |
+|         - | 2787 | ` *  The optional second parameter sort_flags may be used to modify the sorting behavior using these values:` |
+|         - | 2788 | ` *  Sorting type flags:` |
+|         - | 2789 | ` *   SORT_REGULAR - compare items normally (don't change types)` |
+|         - | 2790 | ` *   SORT_NUMERIC - compare items numerically` |
+|         - | 2791 | ` *   SORT_STRING - compare items as strings` |
+|         - | 2792 | ` * Return` |
+|         - | 2793 | ` *  TRUE on success or FALSE on failure.` |
+|         - | 2794 | ` */` |
+|         6 | 2795 | `static int ph7_hashmap_krsort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 2796 | `{` |
+|         - | 2797 | `	ph7_hashmap *pMap;` |
+|         - | 2798 | `	/* Make sure we are dealing with a valid hashmap */` |
+|         7 | 2799 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
+|         - | 2800 | `		/* Missing/Invalid arguments,return FALSE */` |
+|       ! 0 | 2801 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 2802 | `		return PH7_OK;` |
+|         - | 2803 | `	}` |
+|         - | 2804 | `	/* Point to the internal representation of the input hashmap */` |
+|         7 | 2805 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|         7 | 2806 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         7 | 2807 | `	if( pMap->nEntry > 1 ){` |
+|         7 | 2808 | `		sxi32 iCmpFlags = 0;` |
+|         7 | 2809 | `		if( nArg > 1 ){` |
+|         - | 2810 | `			/* Extract comparison flags */` |
+|         3 | 2811 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
+|         1 | 2812 | `		}` |
+|         - | 2813 | `		/* Do the merge sort */` |
+|         7 | 2814 | `		HashmapMergeSort(pMap,HashmapCmpCallback5,SX_INT_TO_PTR(iCmpFlags));` |
+|         - | 2815 | `		/* Fix the last link broken by the merge */` |
+|        23 | 2816 | `		while(pMap->pLast->pPrev){` |
+|        17 | 2817 | `			pMap->pLast = pMap->pLast->pPrev;` |
+|         1 | 2818 | `		}` |
+|         3 | 2819 | `	}` |
+|         - | 2820 | `	/* All done,return TRUE */` |
+|         7 | 2821 | `	ph7_result_bool(pCtx,1);` |
+|         7 | 2822 | `	return PH7_OK;` |
+|         4 | 2823 | `}` |
+|         - | 2824 | `/*` |
+|         - | 2825 | ` * bool rsort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
+|         - | 2826 | ` * Sort an array in reverse order.` |
+|         - | 2827 | ` * Parameters` |
+|         - | 2828 | ` *  $array` |
+|         - | 2829 | ` *   The input array.` |
+|         - | 2830 | ` * $sort_flags` |
+|         - | 2831 | ` *  The optional second parameter sort_flags may be used to modify the sorting behavior using these values:` |
+|         - | 2832 | ` *  Sorting type flags:` |
+|         - | 2833 | ` *   SORT_REGULAR - compare items normally (don't change types)` |
+|         - | 2834 | ` *   SORT_NUMERIC - compare items numerically` |
+|         - | 2835 | ` *   SORT_STRING - compare items as strings` |
+|         - | 2836 | ` * Return` |
+|         - | 2837 | ` *  TRUE on success or FALSE on failure.` |
+|         - | 2838 | ` */` |
+|         8 | 2839 | `static int ph7_hashmap_rsort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 2840 | `{` |
+|         - | 2841 | `	ph7_hashmap *pMap;` |
+|         - | 2842 | `	/* Make sure we are dealing with a valid hashmap */` |
+|         9 | 2843 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
+|         - | 2844 | `		/* Missing/Invalid arguments,return FALSE */` |
+|       ! 0 | 2845 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 2846 | `		return PH7_OK;` |
+|         - | 2847 | `	}` |
+|         - | 2848 | `	/* Point to the internal representation of the input hashmap */` |
+|         9 | 2849 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|         9 | 2850 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         9 | 2851 | `	if( pMap->nEntry > 1 ){` |
+|         7 | 2852 | `		sxi32 iCmpFlags = 0;` |
+|         7 | 2853 | `		if( nArg > 1 ){` |
+|         - | 2854 | `			/* Extract comparison flags */` |
+|         5 | 2855 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
+|         2 | 2856 | `		}` |
+|         - | 2857 | `		/* Do the merge sort */` |
+|         7 | 2858 | `		HashmapMergeSort(pMap,HashmapCmpCallback3,SX_INT_TO_PTR(iCmpFlags));` |
+|         - | 2859 | `		/* Rehash [Do not maintain index association as requested by the PHP specification] */` |
+|         7 | 2860 | `		HashmapSortRehash(pMap);` |
+|         6 | 2861 | `	}else if( pMap->nEntry == 1 ){` |
+|         - | 2862 | `		/* php reindexes even a single-element array: a string key becomes 0 */` |
+|         3 | 2863 | `		HashmapSortRehash(pMap);` |
+|         1 | 2864 | `	}` |
+|         - | 2865 | `	/* All done,return TRUE */` |
+|         9 | 2866 | `	ph7_result_bool(pCtx,1);` |
+|         9 | 2867 | `	return PH7_OK;` |
+|         5 | 2868 | `}` |
+|         - | 2869 | `/*` |
+|         - | 2870 | ` * bool usort(array &$array,callable $cmp_function)` |
+|         - | 2871 | ` *  Sort an array by values using a user-defined comparison function.` |
+|         - | 2872 | ` * Parameters` |
+|         - | 2873 | ` *  $array` |
+|         - | 2874 | ` *   The input array.` |
+|         - | 2875 | ` * $cmp_function` |
+|         - | 2876 | ` *  The comparison function must return an integer less than, equal to, or greater` |
+|         - | 2877 | ` *  than zero if the first argument is considered to be respectively less than, equal` |
+|         - | 2878 | ` *  to, or greater than the second.` |
+|         - | 2879 | ` *    int callback ( mixed $a, mixed $b )` |
+|         - | 2880 | ` * Return` |
+|         - | 2881 | ` *  TRUE on success or FALSE on failure.` |
+|         - | 2882 | ` */` |
+|        28 | 2883 | `static int ph7_hashmap_usort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         3 | 2884 | `{` |
+|         - | 2885 | `	ph7_hashmap *pMap;` |
+|         - | 2886 | `	/* Make sure we are dealing with a valid hashmap */` |
+|        31 | 2887 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
+|         - | 2888 | `		/* Missing/Invalid arguments,return FALSE */` |
+|       ! 0 | 2889 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 2890 | `		return PH7_OK;` |
+|         - | 2891 | `	}` |
+|        31 | 2892 | `	if( nArg > 1 ){` |
+|         - | 2893 | `		/* php rejects an uncallable comparator with a TypeError, BEFORE touching the` |
+|         - | 2894 | `		 * array. PH7 handed it to the dispatcher, which answers NULL in silence -- so` |
+|         - | 2895 | `		 * usort() with a bogus comparator reordered the array anyway, by nothing. */` |
+|        31 | 2896 | `		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",0);` |
+|        31 | 2897 | `		if( rcCb != PH7_OK ){` |
+|         3 | 2898 | `			return rcCb;` |
+|         - | 2899 | `		}` |
+|        13 | 2900 | `	}` |
+|         - | 2901 | `	/* Point to the internal representation of the input hashmap */` |
+|        29 | 2902 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|        29 | 2903 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|        29 | 2904 | `	if( pMap->nEntry > 1 ){` |
+|        27 | 2905 | `		ph7_value *pCallback = 0;` |
+|         - | 2906 | `		ProcNodeCmp xCmp;` |
+|        27 | 2907 | `		xCmp = HashmapCmpCallback4; /* User-defined function as the comparison callback */` |
+|        27 | 2908 | `		if( nArg > 1 && ph7_value_is_callable(apArg[1]) ){` |
+|         - | 2909 | `			/* Point to the desired callback */` |
+|        27 | 2910 | `			pCallback = apArg[1];` |
+|        15 | 2911 | `		}else{` |
+|         - | 2912 | `			/* Use the default comparison function */` |
+|       ! 0 | 2913 | `			xCmp = HashmapCmpCallback1;` |
+|         - | 2914 | `		}` |
+|         - | 2915 | `		/* Do the merge sort */` |
+|        27 | 2916 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
+|        27 | 2917 | `		HashmapMergeSort(pMap,xCmp,pCallback);` |
+|         - | 2918 | `		/* Rehash [Do not maintain index association as requested by the PHP specification] */` |
+|        27 | 2919 | `		HashmapSortRehash(pMap);` |
+|        27 | 2920 | `		if( pCtx->pVm->iCmpCallbackExc ){` |
+|         - | 2921 | `			/* The comparison callback raised: propagate so the dispatcher unwinds. */` |
+|        10 | 2922 | `			pCtx->pVm->iCmpCallbackExc = 0;` |
+|        10 | 2923 | `			return PH7_EXCEPTION;` |
+|         2 | 2924 | `		}` |
+|        11 | 2925 | `	}else if( pMap->nEntry == 1 ){` |
+|         - | 2926 | `		/* php reindexes even a single-element array: a string key becomes 0 */` |
+|         3 | 2927 | `		HashmapSortRehash(pMap);` |
+|         1 | 2928 | `	}` |
+|         - | 2929 | `	/* All done,return TRUE */` |
+|        20 | 2930 | `	ph7_result_bool(pCtx,1);` |
+|        20 | 2931 | `	return PH7_OK;` |
+|        17 | 2932 | `}` |
+|         - | 2933 | `/*` |
+|         - | 2934 | ` * bool uasort(array &$array,callable $cmp_function)` |
+|         - | 2935 | ` *  Sort an array by values using a user-defined comparison function` |
+|         - | 2936 | ` *  and maintain index association.` |
+|         - | 2937 | ` * Parameters` |
+|         - | 2938 | ` *  $array` |
+|         - | 2939 | ` *   The input array.` |
+|         - | 2940 | ` * $cmp_function` |
+|         - | 2941 | ` *  The comparison function must return an integer less than, equal to, or greater` |
+|         - | 2942 | ` *  than zero if the first argument is considered to be respectively less than, equal` |
+|         - | 2943 | ` *  to, or greater than the second.` |
+|         - | 2944 | ` *    int callback ( mixed $a, mixed $b )` |
+|         - | 2945 | ` * Return` |
+|         - | 2946 | ` *  TRUE on success or FALSE on failure.` |
+|         - | 2947 | ` */` |
+|        14 | 2948 | `static int ph7_hashmap_uasort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 2949 | `{` |
+|         - | 2950 | `	ph7_hashmap *pMap;` |
+|         - | 2951 | `	/* Make sure we are dealing with a valid hashmap */` |
+|        15 | 2952 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
+|         - | 2953 | `		/* Missing/Invalid arguments,return FALSE */` |
+|       ! 0 | 2954 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 2955 | `		return PH7_OK;` |
+|         - | 2956 | `	}` |
+|        15 | 2957 | `	if( nArg > 1 ){` |
+|         - | 2958 | `		/* php rejects an uncallable comparator with a TypeError, BEFORE touching the` |
+|         - | 2959 | `		 * array. PH7 handed it to the dispatcher, which answers NULL in silence -- so` |
+|         - | 2960 | `		 * usort() with a bogus comparator reordered the array anyway, by nothing. */` |
+|        15 | 2961 | `		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",0);` |
+|        15 | 2962 | `		if( rcCb != PH7_OK ){` |
+|         3 | 2963 | `			return rcCb;` |
+|         - | 2964 | `		}` |
+|         6 | 2965 | `	}` |
+|         - | 2966 | `	/* Point to the internal representation of the input hashmap */` |
+|        13 | 2967 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|        13 | 2968 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|        13 | 2969 | `	if( pMap->nEntry > 1 ){` |
+|        13 | 2970 | `		ph7_value *pCallback = 0;` |
+|         - | 2971 | `		ProcNodeCmp xCmp;` |
+|        13 | 2972 | `		xCmp = HashmapCmpCallback4; /* User-defined function as the comparison callback */` |
+|        13 | 2973 | `		if( nArg > 1 && ph7_value_is_callable(apArg[1]) ){` |
+|         - | 2974 | `			/* Point to the desired callback */` |
+|        13 | 2975 | `			pCallback = apArg[1];` |
+|         7 | 2976 | `		}else{` |
+|         - | 2977 | `			/* Use the default comparison function */` |
+|       ! 0 | 2978 | `			xCmp = HashmapCmpCallback1;` |
+|         - | 2979 | `		}` |
+|         - | 2980 | `		/* Do the merge sort */` |
+|        13 | 2981 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
+|        13 | 2982 | `		HashmapMergeSort(pMap,xCmp,pCallback);` |
+|         - | 2983 | `		/* Fix the last link broken by the merge */` |
+|        31 | 2984 | `		while(pMap->pLast->pPrev){` |
+|        19 | 2985 | `			pMap->pLast = pMap->pLast->pPrev;` |
+|         1 | 2986 | `		}` |
+|        13 | 2987 | `		if( pCtx->pVm->iCmpCallbackExc ){` |
+|         - | 2988 | `			/* The comparison callback raised: propagate so the dispatcher unwinds. */` |
+|       ! 0 | 2989 | `			pCtx->pVm->iCmpCallbackExc = 0;` |
+|       ! 0 | 2990 | `			return PH7_EXCEPTION;` |
+|         - | 2991 | `		}` |
+|         6 | 2992 | `	}` |
+|         - | 2993 | `	/* All done,return TRUE */` |
+|        13 | 2994 | `	ph7_result_bool(pCtx,1);` |
+|        13 | 2995 | `	return PH7_OK;` |
+|         8 | 2996 | `}` |
+|         - | 2997 | `/*` |
+|         - | 2998 | ` * bool uksort(array &$array,callable $cmp_function)` |
+|         - | 2999 | ` *  Sort an array by keys using a user-defined comparison` |
+|         - | 3000 | ` *  function and maintain index association.` |
+|         - | 3001 | ` * Parameters` |
+|         - | 3002 | ` *  $array` |
+|         - | 3003 | ` *   The input array.` |
+|         - | 3004 | ` * $cmp_function` |
+|         - | 3005 | ` *  The comparison function must return an integer less than, equal to, or greater` |
+|         - | 3006 | ` *  than zero if the first argument is considered to be respectively less than, equal` |
+|         - | 3007 | ` *  to, or greater than the second.` |
+|         - | 3008 | ` *    int callback ( mixed $a, mixed $b )` |
+|         - | 3009 | ` * Return` |
+|         - | 3010 | ` *  TRUE on success or FALSE on failure.` |
+|         - | 3011 | ` */` |
+|         4 | 3012 | `static int ph7_hashmap_uksort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 3013 | `{` |
+|         - | 3014 | `	ph7_hashmap *pMap;` |
+|         - | 3015 | `	/* Make sure we are dealing with a valid hashmap */` |
+|         5 | 3016 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
+|         - | 3017 | `		/* Missing/Invalid arguments,return FALSE */` |
+|       ! 0 | 3018 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 3019 | `		return PH7_OK;` |
+|         - | 3020 | `	}` |
+|         5 | 3021 | `	if( nArg > 1 ){` |
+|         - | 3022 | `		/* php rejects an uncallable comparator with a TypeError, BEFORE touching the` |
+|         - | 3023 | `		 * array. PH7 handed it to the dispatcher, which answers NULL in silence -- so` |
+|         - | 3024 | `		 * usort() with a bogus comparator reordered the array anyway, by nothing. */` |
+|         5 | 3025 | `		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",0);` |
+|         5 | 3026 | `		if( rcCb != PH7_OK ){` |
+|         3 | 3027 | `			return rcCb;` |
+|         - | 3028 | `		}` |
+|         1 | 3029 | `	}` |
+|         - | 3030 | `	/* Point to the internal representation of the input hashmap */` |
+|         3 | 3031 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|         3 | 3032 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         3 | 3033 | `	if( pMap->nEntry > 1 ){` |
+|         3 | 3034 | `		ph7_value *pCallback = 0;` |
+|         - | 3035 | `		ProcNodeCmp xCmp;` |
+|         3 | 3036 | `		xCmp = HashmapCmpCallback6; /* User-defined function as the comparison callback */` |
+|         3 | 3037 | `		if( nArg > 1 && ph7_value_is_callable(apArg[1]) ){` |
+|         - | 3038 | `			/* Point to the desired callback */` |
+|         3 | 3039 | `			pCallback = apArg[1];` |
+|         2 | 3040 | `		}else{` |
+|         - | 3041 | `			/* Use the default comparison function */` |
+|       ! 0 | 3042 | `			xCmp = HashmapCmpCallback2;` |
+|         - | 3043 | `		}` |
+|         - | 3044 | `		/* Do the merge sort */` |
+|         3 | 3045 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
+|         3 | 3046 | `		HashmapMergeSort(pMap,xCmp,pCallback);` |
+|         - | 3047 | `		/* Fix the last link broken by the merge */` |
+|         3 | 3048 | `		while(pMap->pLast->pPrev){` |
+|       ! 0 | 3049 | `			pMap->pLast = pMap->pLast->pPrev;` |
+|       ! 0 | 3050 | `		}` |
+|         3 | 3051 | `		if( pCtx->pVm->iCmpCallbackExc ){` |
+|         - | 3052 | `			/* The comparison callback raised: propagate so the dispatcher unwinds. */` |
+|       ! 0 | 3053 | `			pCtx->pVm->iCmpCallbackExc = 0;` |
+|       ! 0 | 3054 | `			return PH7_EXCEPTION;` |
+|         - | 3055 | `		}` |
+|         1 | 3056 | `	}` |
+|         - | 3057 | `	/* All done,return TRUE */` |
+|         3 | 3058 | `	ph7_result_bool(pCtx,1);` |
+|         3 | 3059 | `	return PH7_OK;` |
+|         3 | 3060 | `}` |
+|         - | 3061 | `/*` |
+|         - | 3062 | ` * bool shuffle(array &$array)` |
+|         - | 3063 | ` *  shuffles (randomizes the order of the elements in) an array.` |
+|         - | 3064 | ` * Parameters` |
+|         - | 3065 | ` *  $array` |
+|         - | 3066 | ` *   The input array.` |
+|         - | 3067 | ` * Return` |
+|         - | 3068 | ` *  TRUE on success or FALSE on failure.` |
+|         - | 3069 | ` *` |
+|         - | 3070 | ` */` |
+|         2 | 3071 | `static int ph7_hashmap_shuffle(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 3072 | `{` |
+|         - | 3073 | `	ph7_hashmap *pMap;` |
+|         - | 3074 | `	/* Make sure we are dealing with a valid hashmap */` |
+|         3 | 3075 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
+|         - | 3076 | `		/* Missing/Invalid arguments,return FALSE */` |
+|       ! 0 | 3077 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 3078 | `		return PH7_OK;` |
+|         - | 3079 | `	}` |
+|         - | 3080 | `	/* Point to the internal representation of the input hashmap */` |
+|         3 | 3081 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|         3 | 3082 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         3 | 3083 | `	if( pMap->nEntry > 1 ){` |
+|         - | 3084 | `		/* Do the merge sort */` |
+|         3 | 3085 | `		HashmapMergeSort(pMap,HashmapCmpCallback7,0);` |
+|         - | 3086 | `		/* Fix the last link broken by the merge */` |
+|         8 | 3087 | `		while(pMap->pLast->pPrev){` |
+|         6 | 3088 | `			pMap->pLast = pMap->pLast->pPrev;` |
+|         1 | 3089 | `		}` |
+|         1 | 3090 | `	}` |
+|         - | 3091 | `	/* All done,return TRUE */` |
+|         3 | 3092 | `	ph7_result_bool(pCtx,1);` |
+|         3 | 3093 | `	return PH7_OK;` |
+|         2 | 3094 | `}` |
+|         - | 3095 | `/*` |
+|         - | 3096 | ` * int count(array $var [, int $mode = COUNT_NORMAL ])` |
+|         - | 3097 | ` *   Count all elements in an array, or something in an object.` |
+|         - | 3098 | ` * Parameters` |
+|         - | 3099 | ` *  $var` |
+|         - | 3100 | ` *   The array or the object.` |
+|         - | 3101 | ` * $mode` |
+|         - | 3102 | ` *  If the optional mode parameter is set to COUNT_RECURSIVE (or 1), count()` |
+|         - | 3103 | ` *  will recursively count the array. This is particularly useful for counting` |
+|         - | 3104 | ` *  all the elements of a multidimensional array.` |
+|         - | 3105 | ` * Return` |
+|         - | 3106 | ` *  Returns the number of elements in the array.` |
+|         - | 3107 | ` */` |
+|      2218 | 3108 | `static int ph7_hashmap_count(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         5 | 3109 | `{` |
+|      2223 | 3110 | `	int bRecursive = FALSE;` |
+|      2223 | 3111 | `	int bCycleDetected = FALSE;` |
+|         - | 3112 | `	sxi64 iCount;` |
+|      2223 | 3113 | `	if( nArg < 1 ){` |
+|       ! 0 | 3114 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 3115 | `			"ArgumentCountError",` |
+|         - | 3116 | `			"count() expects at least 1 argument, 0 given"` |
+|         - | 3117 | `			);` |
+|         - | 3118 | `	}` |
+|      2223 | 3119 | `	if( nArg > 2 ){` |
+|         4 | 3120 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 3121 | `			"ArgumentCountError",` |
+|         - | 3122 | `			"count() expects at most 2 arguments, %d given",` |
+|         1 | 3123 | `			nArg` |
+|         - | 3124 | `			);` |
+|         - | 3125 | `	}` |
+|         - | 3126 | `	/* PHP validates $mode right after parsing, before the type dispatch, so` |
+|         - | 3127 | `	 * an invalid mode raises ValueError whether $value is an array or a` |
+|         - | 3128 | `	 * Countable object (the mode is then ignored for the Countable path). */` |
+|      2221 | 3129 | `	if( nArg > 1 ){` |
+|        44 | 3130 | `		sxi32 iMode = ph7_value_to_int(apArg[1]);` |
+|        44 | 3131 | `		if( iMode != 0 /* COUNT_NORMAL */ && iMode != 1 /* COUNT_RECURSIVE */ ){` |
+|        11 | 3132 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 3133 | `				"ValueError",` |
+|         - | 3134 | `				"count(): Argument #2 ($mode) must be either COUNT_NORMAL or COUNT_RECURSIVE"` |
+|         - | 3135 | `				);` |
+|         - | 3136 | `		}` |
+|        34 | 3137 | `		bRecursive = iMode == 1;` |
+|        16 | 3138 | `	}` |
+|      2213 | 3139 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         - | 3140 | `		/* Countable object: dispatch to ->count() */` |
+|        75 | 3141 | `		if( apArg[0]->iFlags & MEMOBJ_OBJ ){` |
+|        63 | 3142 | `			ph7_class_instance *pInst = (ph7_class_instance *)apArg[0]->x.pOther;` |
+|        63 | 3143 | `			ph7_class *pCountable = pCtx->pVm->pCountableClass;` |
+|        63 | 3144 | `			if( pCountable && PH7_VmInstanceOf(pInst->pClass,pCountable) ){` |
+|        61 | 3145 | `				ph7_class_method *pMeth = PH7_ClassExtractMethod(pInst->pClass,` |
+|         - | 3146 | `					"count",sizeof("count")-1);` |
+|        61 | 3147 | `				if( pMeth ){` |
+|         - | 3148 | `					ph7_value sResult;` |
+|        61 | 3149 | `					PH7_MemObjInit(pCtx->pVm,&sResult);` |
+|        61 | 3150 | `					PH7_VmCallClassMethod(pCtx->pVm,pInst,pMeth,&sResult,0,0);` |
+|        61 | 3151 | `					ph7_result_int64(pCtx,ph7_value_to_int64(&sResult));` |
+|        61 | 3152 | `					PH7_MemObjRelease(&sResult);` |
+|        61 | 3153 | `					return PH7_OK;` |
+|         - | 3154 | `				}` |
+|       ! 0 | 3155 | `			}` |
+|         1 | 3156 | `		}` |
+|        22 | 3157 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 3158 | `			"TypeError",` |
+|         - | 3159 | `			"count(): Argument #1 ($value) must be of type Countable\|array, %s given",` |
+|         6 | 3160 | `			ph7_type_name(apArg[0])` |
+|         - | 3161 | `			);` |
+|         - | 3162 | `	}` |
+|         - | 3163 | `	/* Count */` |
+|      2143 | 3164 | `	iCount = HashmapCount((ph7_hashmap *)apArg[0]->x.pOther,bRecursive,&bCycleDetected);` |
+|      2143 | 3165 | `	if( bCycleDetected ){` |
+|         3 | 3166 | `		PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,"count(): Recursion detected");` |
+|         1 | 3167 | `	}` |
+|      2143 | 3168 | `	ph7_result_int64(pCtx,iCount);` |
+|      2143 | 3169 | `	return PH7_OK;` |
+|      1114 | 3170 | `}` |
+|         - | 3171 | `/*` |
+|         - | 3172 | ` * bool array_key_exists(value $key,array $search)` |
+|         - | 3173 | ` *  Checks if the given key or index exists in the array.` |
+|         - | 3174 | ` * Parameters` |
+|         - | 3175 | ` * $key` |
+|         - | 3176 | ` *   Value to check.` |
+|         - | 3177 | ` * $search` |
+|         - | 3178 | ` *  An array with keys to check.` |
+|         - | 3179 | ` * Return` |
+|         - | 3180 | ` *  TRUE on success or FALSE on failure.` |
+|         - | 3181 | ` */` |
+|        94 | 3182 | `static int ph7_hashmap_key_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         5 | 3183 | `{` |
+|         - | 3184 | `	sxi32 rc;` |
+|        99 | 3185 | `	if( nArg != 2 ){` |
+|         - | 3186 | `		/* PHP requires exactly two arguments */` |
+|         4 | 3187 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 3188 | `			"ArgumentCountError",` |
+|         - | 3189 | `			"array_key_exists() expects exactly 2 arguments, %d given",` |
+|         1 | 3190 | `			nArg` |
 |         - | 3191 | `			);` |
 |         - | 3192 | `	}` |
-|         - | 3193 | `	/* Emit deprecation warnings matching PHP behaviour */` |
-|        92 | 3194 | `	if( apArg[0]->iFlags & MEMOBJ_NULL ){` |
-|         - | 3195 | `		/* PH7_VmThrowDeprecatedFmt, not ph7_context_throw_error_format: the latter PREPENDS` |
-|         - | 3196 | `		 * "array_key_exists(): " and php's message carries no such prefix. */` |
-|         3 | 3197 | `		PH7_VmThrowDeprecatedFmt(pCtx->pVm,` |
-|         - | 3198 | `			"Using null as the key parameter for array_key_exists() is deprecated, "` |
-|         - | 3199 | `			"use an empty string instead"` |
+|         - | 3193 | `	/* Make sure we are dealing with a valid hashmap */` |
+|        97 | 3194 | `	if( !ph7_value_is_array(apArg[1]) ){` |
+|         - | 3195 | `		/* Type mismatch -> TypeError */` |
+|         8 | 3196 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 3197 | `			"TypeError",` |
+|         - | 3198 | `			"array_key_exists(): Argument #2 ($array) must be of type array, %s given",` |
+|         4 | 3199 | `			ph7_type_name(apArg[1])` |
 |         - | 3200 | `			);` |
-|        91 | 3201 | `	}else if( apArg[0]->iFlags & MEMOBJ_REAL ){` |
-|         3 | 3202 | `		ph7_real rVal = apArg[0]->rVal;` |
-|         3 | 3203 | `		if( rVal != (ph7_real)(sxi64)rVal ){` |
-|         4 | 3204 | `			ph7_context_throw_error_format(pCtx,8192,` |
-|         - | 3205 | `				"Implicit conversion from float %g to int loses precision"` |
-|         1 | 3206 | `				,rVal` |
-|         - | 3207 | `				);` |
-|         1 | 3208 | `		}` |
-|         1 | 3209 | `	}` |
-|         - | 3210 | `	/* Perform the lookup */` |
-|        92 | 3211 | `	rc = PH7_HashmapLookup((ph7_hashmap *)apArg[1]->x.pOther,apArg[0],0);` |
-|         - | 3212 | `	/* lookup result */` |
-|        92 | 3213 | `	ph7_result_bool(pCtx,rc == SXRET_OK ? 1 : 0);` |
-|        92 | 3214 | `	return PH7_OK;` |
-|        52 | 3215 | `}` |
-|         - | 3216 | `/*` |
-|         - | 3217 | ` * value array_pop(array $array)` |
-|         - | 3218 | ` *   POP the last inserted element from the array.` |
-|         - | 3219 | ` * Parameter` |
-|         - | 3220 | ` *  The array to get the value from.` |
-|         - | 3221 | ` * Return` |
-|         - | 3222 | ` *  Poped value or NULL on failure.` |
-|         - | 3223 | ` */` |
-|       108 | 3224 | `static int ph7_hashmap_pop(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         4 | 3225 | `{` |
-|         - | 3226 | `	ph7_hashmap *pMap;` |
-|         - | 3227 | `	/* PHP requires exactly one argument and it must be passed by reference */` |
-|       112 | 3228 | `	if( nArg != 1 ){` |
-|         4 | 3229 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 3230 | `			"ArgumentCountError",` |
-|         - | 3231 | `			"array_pop() expects exactly 1 argument, %d given",` |
-|         1 | 3232 | `			nArg` |
-|         - | 3233 | `			);` |
-|         - | 3234 | `	}` |
-|         - | 3235 | `	/* Passing a constant (including literals) or non-variable triggers the same` |
-|         - | 3236 | `	 * error message as official PHP. Check the index to detect constants. */` |
-|       110 | 3237 | `	if( apArg[0]->nIdx == SXU32_HIGH ){` |
-|         6 | 3238 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 3239 | `			"Error",` |
-|         - | 3240 | `			"array_pop(): Argument #1 ($array) could not be passed by reference"` |
-|         - | 3241 | `			);` |
-|         - | 3242 | `	}` |
-|         - | 3243 | `	/* Make sure we are dealing with a valid hashmap */` |
-|       104 | 3244 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 3245 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 3246 | `			"TypeError",` |
-|         - | 3247 | `			"array_pop(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 3248 | `			ph7_type_name(apArg[0])` |
-|         - | 3249 | `			);` |
-|         - | 3250 | `	}` |
-|       101 | 3251 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|       101 | 3252 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|       101 | 3253 | `	if( pMap->nEntry < 1 ){` |
-|         - | 3254 | `		/* Nothing to pop,return NULL */` |
-|         3 | 3255 | `		ph7_result_null(pCtx);` |
-|         2 | 3256 | `	}else{` |
-|        99 | 3257 | `		ph7_hashmap_node *pLast = pMap->pLast;` |
-|         - | 3258 | `		ph7_value *pObj;` |
-|        99 | 3259 | `		pObj = HashmapExtractNodeValue(pLast);` |
-|        99 | 3260 | `		if( pObj ){` |
-|         - | 3261 | `			/* Node value */` |
-|        99 | 3262 | `			ph7_result_value(pCtx,pObj);` |
-|         - | 3263 | `			/* Unlink the node */` |
-|        99 | 3264 | `			PH7_HashmapUnlinkNode(pLast,TRUE);` |
-|        50 | 3265 | `		}else{` |
-|       ! 0 | 3266 | `			ph7_result_null(pCtx);` |
-|         - | 3267 | `		}` |
-|         - | 3268 | `		/* Reset the cursor */` |
-|        99 | 3269 | `		pMap->pCur = pMap->pFirst;` |
-|         - | 3270 | `	}` |
-|       101 | 3271 | `	return PH7_OK;` |
-|        58 | 3272 | `}` |
-|         - | 3273 | `/*` |
-|         - | 3274 | ` * int array_push($array,$var,...)` |
-|         - | 3275 | ` *   Push one or more elements onto the end of array. (Stack insertion)` |
-|         - | 3276 | ` * Parameters` |
-|         - | 3277 | ` *  array` |
-|         - | 3278 | ` *    The input array.` |
-|         - | 3279 | ` *  var` |
-|         - | 3280 | ` *   On or more value to push.` |
-|         - | 3281 | ` * Return` |
-|         - | 3282 | ` *  New array count (including old items).` |
-|         - | 3283 | ` */` |
-|        22 | 3284 | `static int ph7_hashmap_push(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         4 | 3285 | `{` |
-|         - | 3286 | `	ph7_hashmap *pMap;` |
-|         - | 3287 | `	sxi32 rc;` |
-|         - | 3288 | `	int i;` |
-|        26 | 3289 | `	if( nArg < 1 ){` |
-|       ! 0 | 3290 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 3291 | `			"ArgumentCountError",` |
-|         - | 3292 | `			"array_push() expects at least 1 argument, %d given",` |
-|       ! 0 | 3293 | `			nArg` |
-|         - | 3294 | `			);` |
-|         - | 3295 | `	}` |
-|         - | 3296 | `	/* Passing a constant (including literals) or non-variable triggers the same` |
-|         - | 3297 | `	 * error message as official PHP. Check the index to detect constants. */` |
-|        26 | 3298 | `	if( apArg[0]->nIdx == SXU32_HIGH ){` |
-|         6 | 3299 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 3300 | `			"Error",` |
-|         - | 3301 | `			"array_push(): Argument #1 ($array) could not be passed by reference"` |
-|         - | 3302 | `			);` |
-|         - | 3303 | `	}` |
-|         - | 3304 | `	/* Make sure we are dealing with a valid hashmap */` |
-|        21 | 3305 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 3306 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 3307 | `			"TypeError",` |
-|         - | 3308 | `			"array_push(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 3309 | `			ph7_type_name(apArg[0])` |
-|         - | 3310 | `			);` |
-|         - | 3311 | `	}` |
-|         - | 3312 | `	/* Point to the internal representation of the input hashmap */` |
-|        18 | 3313 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|        18 | 3314 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 3315 | `	/* Start pushing given values */` |
-|        34 | 3316 | `	for( i = 1 ; i < nArg ; ++i ){` |
-|        20 | 3317 | `		rc = PH7_HashmapInsert(pMap,0,apArg[i]);` |
-|        20 | 3318 | `		if( rc != SXRET_OK ){` |
-|         3 | 3319 | `			if( rc == PH7_EXCEPTION \|\| rc == PH7_ABORT ){` |
-|         - | 3320 | `				/* Saturated-append Error (php: array_push throws, no result) */` |
-|         3 | 3321 | `				return rc;` |
-|         - | 3322 | `			}` |
-|       ! 0 | 3323 | `			break;` |
-|         - | 3324 | `		}` |
-|         9 | 3325 | `	}` |
-|         - | 3326 | `	/* Return the new count */` |
-|        15 | 3327 | `	ph7_result_int64(pCtx,(sxi64)pMap->nEntry);` |
-|        15 | 3328 | `	return PH7_OK;` |
-|        15 | 3329 | `}` |
-|         - | 3330 | `/*` |
-|         - | 3331 | ` * value array_shift(array $array)` |
-|         - | 3332 | ` *   Shift an element off the beginning of array.` |
-|         - | 3333 | ` * Parameter` |
-|         - | 3334 | ` *  The array to get the value from.` |
-|         - | 3335 | ` * Return` |
-|         - | 3336 | ` *  Shifted value or NULL on failure.` |
-|         - | 3337 | ` */` |
-|        44 | 3338 | `static int ph7_hashmap_shift(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         5 | 3339 | `{` |
-|         - | 3340 | `	ph7_hashmap *pMap;` |
-|         - | 3341 | `	/* PHP requires exactly one argument and it must be passed by reference */` |
-|        49 | 3342 | `	if( nArg != 1 ){` |
-|         4 | 3343 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 3344 | `			"ArgumentCountError",` |
-|         - | 3345 | `			"array_shift() expects exactly 1 argument, %d given",` |
-|         1 | 3346 | `			nArg` |
-|         - | 3347 | `			);` |
-|         - | 3348 | `	}` |
-|         - | 3349 | `	/* Detect constants or literals, which cannot be passed by reference. */` |
-|        47 | 3350 | `	if( apArg[0]->nIdx == SXU32_HIGH ){` |
-|         6 | 3351 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 3352 | `			"Error",` |
-|         - | 3353 | `			"array_shift(): Argument #1 ($array) could not be passed by reference"` |
-|         - | 3354 | `			);` |
-|         - | 3355 | `	}` |
-|         - | 3356 | `	/* Make sure we are dealing with a valid hashmap */` |
-|        43 | 3357 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 3358 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 3359 | `			"TypeError",` |
-|         - | 3360 | `			"array_shift(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 3361 | `			ph7_type_name(apArg[0])` |
-|         - | 3362 | `			);` |
-|         - | 3363 | `	}` |
-|         - | 3364 | `	/* Point to the internal representation of the hashmap */` |
-|        41 | 3365 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|        41 | 3366 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|        41 | 3367 | `	if( pMap->nEntry < 1 ){` |
-|         - | 3368 | `		/* Empty hashmap,return NULL */` |
-|         3 | 3369 | `		ph7_result_null(pCtx);` |
-|         2 | 3370 | `	}else{` |
-|        39 | 3371 | `		ph7_hashmap_node *pEntry = pMap->pFirst;` |
-|         - | 3372 | `		ph7_value *pObj;` |
-|         - | 3373 | `		sxu32 n;` |
-|        39 | 3374 | `		pObj = HashmapExtractNodeValue(pEntry);` |
-|        39 | 3375 | `		if( pObj ){` |
-|         - | 3376 | `			/* Node value */` |
-|        39 | 3377 | `			ph7_result_value(pCtx,pObj);` |
-|         - | 3378 | `			/* Unlink the first node */` |
-|        39 | 3379 | `			PH7_HashmapUnlinkNode(pEntry,TRUE);` |
-|        22 | 3380 | `		}else{` |
-|       ! 0 | 3381 | `			ph7_result_null(pCtx);` |
-|         - | 3382 | `		}` |
-|         - | 3383 | `		/* Rehash all int keys */` |
-|        39 | 3384 | `		n = pMap->nEntry;` |
-|        39 | 3385 | `		pEntry = pMap->pFirst;` |
-|        39 | 3386 | `		pMap->iNextIdx = 0;` |
-|        39 | 3387 | `	pMap->bIntKeySeen = 0; /* Reset the automatic index */` |
-|        47 | 3388 | `		for(;;){` |
-|        99 | 3389 | `			if( n < 1 ){` |
-|        39 | 3390 | `				break;` |
-|         - | 3391 | `			}` |
-|        65 | 3392 | `			if( pEntry->iType == HASHMAP_INT_NODE ){` |
-|        65 | 3393 | `				HashmapRehashIntNode(pEntry);` |
-|        30 | 3394 | `			}` |
-|         - | 3395 | `			/* Point to the next entry */` |
-|        65 | 3396 | `			pEntry = pEntry->pPrev; /* Reverse link */` |
-|        65 | 3397 | `			n--;` |
-|         5 | 3398 | `		}` |
-|         - | 3399 | `		/* Reset the cursor */` |
-|        39 | 3400 | `		pMap->pCur = pMap->pFirst;` |
-|         - | 3401 | `	}` |
-|        41 | 3402 | `	return PH7_OK;` |
-|        27 | 3403 | `}` |
-|         - | 3404 | `/*` |
-|         - | 3405 | ` * Extract the node cursor value.` |
-|         - | 3406 | ` */` |
-|      1232 | 3407 | `static sxi32 HashmapCurrentValue(ph7_context *pCtx,ph7_hashmap *pMap,int iDirection)` |
-|         1 | 3408 | `{` |
-|      1233 | 3409 | `	ph7_hashmap_node *pCur = pMap->pCur;` |
-|         - | 3410 | `	ph7_value *pVal;` |
-|      1233 | 3411 | `	if( pCur == 0 ){` |
-|         - | 3412 | `		/* Cursor does not point to anything,return FALSE */` |
-|        39 | 3413 | `		ph7_result_bool(pCtx,0);` |
-|        39 | 3414 | `		return PH7_OK;` |
-|         - | 3415 | `	}` |
-|      1195 | 3416 | `	if( iDirection != 0 ){` |
-|       227 | 3417 | `		if( iDirection > 0 ){` |
-|         - | 3418 | `			/* Point to the next entry */` |
-|       225 | 3419 | `			pMap->pCur = pCur->pPrev; /* Reverse link */` |
-|       225 | 3420 | `			pCur = pMap->pCur;` |
-|       113 | 3421 | `		}else{` |
-|         - | 3422 | `			/* Point to the previous entry */` |
-|         3 | 3423 | `			pMap->pCur = pCur->pNext; /* Reverse link */` |
-|         3 | 3424 | `			pCur = pMap->pCur;` |
-|         - | 3425 | `		}` |
-|       227 | 3426 | `		if( pCur == 0 ){` |
-|         - | 3427 | `			/* End of input reached,return FALSE */` |
-|        91 | 3428 | `			ph7_result_bool(pCtx,0);` |
-|        91 | 3429 | `			return PH7_OK;` |
-|         - | 3430 | `		}` |
-|        68 | 3431 | `	}` |
-|         - | 3432 | `	/* Point to the desired element */` |
-|      1105 | 3433 | `	pVal = HashmapExtractNodeValue(pCur);` |
-|      1105 | 3434 | `	if( pVal ){` |
-|      1105 | 3435 | `		ph7_result_value(pCtx,pVal);` |
-|       553 | 3436 | `	}else{` |
-|       ! 0 | 3437 | `		ph7_result_bool(pCtx,0);` |
-|         - | 3438 | `	}` |
-|      1105 | 3439 | `	return PH7_OK;` |
-|       617 | 3440 | `}` |
-|         - | 3441 | `/*` |
-|         - | 3442 | ` * value current(array $array)` |
-|         - | 3443 | ` *  Return the current element in an array.` |
-|         - | 3444 | ` * Parameter` |
-|         - | 3445 | ` *  $input: The input array.` |
-|         - | 3446 | ` * Return` |
-|         - | 3447 | ` *  The current() function simply returns the value of the array element that's currently` |
-|         - | 3448 | ` *  being pointed to by the internal pointer. It does not move the pointer in any way.` |
-|         - | 3449 | ` *  If the internal pointer points beyond the end of the elements list or the array` |
-|         - | 3450 | ` *  is empty, current() returns FALSE.` |
-|         - | 3451 | ` */` |
-|       356 | 3452 | `static int ph7_hashmap_current(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 3453 | `{` |
-|       357 | 3454 | `	if( nArg < 1 ){` |
-|         - | 3455 | `		/* Missing arguments,return FALSE */` |
-|       ! 0 | 3456 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 3457 | `		return PH7_OK;` |
-|         - | 3458 | `	}` |
-|         - | 3459 | `	/* Make sure we are dealing with a valid hashmap */` |
-|       357 | 3460 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         - | 3461 | `		/* Invalid argument,return FALSE */` |
-|       ! 0 | 3462 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 3463 | `		return PH7_OK;` |
-|         - | 3464 | `	}` |
-|       357 | 3465 | `	HashmapCurrentValue(&(*pCtx),(ph7_hashmap *)apArg[0]->x.pOther,0);` |
-|       357 | 3466 | `	return PH7_OK;` |
-|       179 | 3467 | `}` |
-|         - | 3468 | `/*` |
-|         - | 3469 | ` * value next(array $input)` |
-|         - | 3470 | ` *  Advance the internal array pointer of an array.` |
-|         - | 3471 | ` * Parameter` |
-|         - | 3472 | ` *  $input: The input array.` |
-|         - | 3473 | ` * Return` |
-|         - | 3474 | ` *  next() behaves like current(), with one difference. It advances the internal array` |
-|         - | 3475 | ` *  pointer one place forward before returning the element value. That means it returns` |
-|         - | 3476 | ` *  the next array value and advances the internal array pointer by one.` |
-|         - | 3477 | ` */` |
-|       224 | 3478 | `static int ph7_hashmap_next(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 3479 | `{` |
-|       225 | 3480 | `	if( nArg < 1 ){` |
-|         - | 3481 | `		/* Missing arguments,return FALSE */` |
-|       ! 0 | 3482 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 3483 | `		return PH7_OK;` |
-|         - | 3484 | `	}` |
-|         - | 3485 | `	/* Make sure we are dealing with a valid hashmap */` |
-|       225 | 3486 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         - | 3487 | `		/* Invalid argument,return FALSE */` |
-|       ! 0 | 3488 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 3489 | `		return PH7_OK;` |
-|         - | 3490 | `	}` |
-|       225 | 3491 | `	HashmapCurrentValue(&(*pCtx),(ph7_hashmap *)apArg[0]->x.pOther,1);` |
-|       225 | 3492 | `	return PH7_OK;` |
-|       113 | 3493 | `}` |
-|         - | 3494 | `/*` |
-|         - | 3495 | ` * value prev(array $input)` |
-|         - | 3496 | ` *  Rewind the internal array pointer.` |
-|         - | 3497 | ` * Parameter` |
-|         - | 3498 | ` *  $input: The input array.` |
-|         - | 3499 | ` * Return` |
-|         - | 3500 | ` *  Returns the array value in the previous place that's pointed` |
-|         - | 3501 | ` *  to by the internal array pointer, or FALSE if there are no more` |
-|         - | 3502 | ` *  elements.` |
-|         - | 3503 | ` */` |
-|         2 | 3504 | `static int ph7_hashmap_prev(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 3505 | `{` |
-|         3 | 3506 | `	if( nArg < 1 ){` |
-|         - | 3507 | `		/* Missing arguments,return FALSE */` |
-|       ! 0 | 3508 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 3509 | `		return PH7_OK;` |
-|         - | 3510 | `	}` |
-|         - | 3511 | `	/* Make sure we are dealing with a valid hashmap */` |
-|         3 | 3512 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         - | 3513 | `		/* Invalid argument,return FALSE */` |
-|       ! 0 | 3514 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 3515 | `		return PH7_OK;` |
-|         - | 3516 | `	}` |
-|         3 | 3517 | `	HashmapCurrentValue(&(*pCtx),(ph7_hashmap *)apArg[0]->x.pOther,-1);` |
-|         3 | 3518 | `	return PH7_OK;` |
-|         2 | 3519 | `}` |
-|         - | 3520 | `/*` |
-|         - | 3521 | ` * value end(array $input)` |
-|         - | 3522 | ` *  Set the internal pointer of an array to its last element.` |
-|         - | 3523 | ` * Parameter` |
-|         - | 3524 | ` *  $input: The input array.` |
-|         - | 3525 | ` * Return` |
-|         - | 3526 | ` *  Returns the value of the last element or FALSE for empty array.` |
-|         - | 3527 | ` */` |
-|       390 | 3528 | `static int ph7_hashmap_end(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 3529 | `{` |
-|         - | 3530 | `	ph7_hashmap *pMap;` |
-|       391 | 3531 | `	if( nArg < 1 ){` |
-|         - | 3532 | `		/* Missing arguments,return FALSE */` |
-|       ! 0 | 3533 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 3534 | `		return PH7_OK;` |
-|         - | 3535 | `	}` |
-|         - | 3536 | `	/* Make sure we are dealing with a valid hashmap */` |
-|       391 | 3537 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         - | 3538 | `		/* Invalid argument,return FALSE */` |
-|       ! 0 | 3539 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 3540 | `		return PH7_OK;` |
-|         - | 3541 | `	}` |
-|         - | 3542 | `	/* Point to the internal representation of the input hashmap */` |
-|       391 | 3543 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 3544 | `	/* Point to the last node */` |
-|       391 | 3545 | `	pMap->pCur = pMap->pLast;` |
-|         - | 3546 | `	/* Return the last node value */` |
-|       391 | 3547 | `	HashmapCurrentValue(&(*pCtx),pMap,0);` |
-|       391 | 3548 | `	return PH7_OK;` |
-|       196 | 3549 | `}` |
-|         - | 3550 | `/*` |
-|         - | 3551 | ` * value reset(array $array )` |
-|         - | 3552 | ` *  Set the internal pointer of an array to its first element.` |
-|         - | 3553 | ` * Parameter` |
-|         - | 3554 | ` *  $input: The input array.` |
-|         - | 3555 | ` * Return` |
-|         - | 3556 | ` *  Returns the value of the first array element,or FALSE if the array is empty.` |
-|         - | 3557 | ` */` |
-|       260 | 3558 | `static int ph7_hashmap_reset(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 3559 | `{` |
-|         - | 3560 | `	ph7_hashmap *pMap;` |
-|       261 | 3561 | `	if( nArg < 1 ){` |
-|         - | 3562 | `		/* Missing arguments,return FALSE */` |
-|       ! 0 | 3563 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 3564 | `		return PH7_OK;` |
-|         - | 3565 | `	}` |
-|         - | 3566 | `	/* Make sure we are dealing with a valid hashmap */` |
-|       261 | 3567 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         - | 3568 | `		/* Invalid argument,return FALSE */` |
-|       ! 0 | 3569 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 3570 | `		return PH7_OK;` |
-|         - | 3571 | `	}` |
-|         - | 3572 | `	/* Point to the internal representation of the input hashmap */` |
-|       261 | 3573 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 3574 | `	/* Point to the first node */` |
-|       261 | 3575 | `	pMap->pCur = pMap->pFirst;` |
-|         - | 3576 | `	/* Return the last node value if available */` |
-|       261 | 3577 | `	HashmapCurrentValue(&(*pCtx),pMap,0);` |
-|       261 | 3578 | `	return PH7_OK;` |
-|       131 | 3579 | `}` |
-|         - | 3580 | `/*` |
-|         - | 3581 | ` * Emit a node's key (integer or blob) as the call result — shared by key(),` |
-|         - | 3582 | ` * array_key_first() and array_key_last().` |
-|         - | 3583 | ` */` |
-|       772 | 3584 | `static void HashmapResultNodeKey(ph7_context *pCtx,ph7_hashmap_node *pNode)` |
-|         1 | 3585 | `{` |
-|       773 | 3586 | `	if( pNode->iType == HASHMAP_INT_NODE ){` |
-|         - | 3587 | `		/* Key is integer */` |
-|       383 | 3588 | `		ph7_result_int64(pCtx,pNode->xKey.iKey);` |
-|       192 | 3589 | `	}else{` |
-|         - | 3590 | `		/* Key is blob */` |
-|       586 | 3591 | `		ph7_result_string(pCtx,` |
-|       390 | 3592 | `			(const char *)SyBlobData(&pNode->xKey.sKey),(int)SyBlobLength(&pNode->xKey.sKey));` |
-|         - | 3593 | `	}` |
-|       773 | 3594 | `}` |
-|         - | 3595 | `/*` |
-|         - | 3596 | ` * value key(array $array)` |
-|         - | 3597 | ` *   Fetch a key from an array` |
-|         - | 3598 | ` * Parameter` |
-|         - | 3599 | ` *  $input` |
-|         - | 3600 | ` *   The input array.` |
-|         - | 3601 | ` * Return` |
-|         - | 3602 | ` *  The key() function simply returns the key of the array element that's currently` |
-|         - | 3603 | ` *  being pointed to by the internal pointer. It does not move the pointer in any way.` |
-|         - | 3604 | ` *  If the internal pointer points beyond the end of the elements list or the array` |
-|         - | 3605 | ` *  is empty, key() returns NULL.` |
-|         - | 3606 | ` */` |
-|       892 | 3607 | `static int ph7_hashmap_simple_key(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 3608 | `{` |
-|         - | 3609 | `	ph7_hashmap_node *pCur;` |
-|         - | 3610 | `	ph7_hashmap *pMap;` |
-|       893 | 3611 | `	if( nArg < 1 ){` |
-|         - | 3612 | `		/* Missing arguments,return NULL */` |
-|       ! 0 | 3613 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 3614 | `		return PH7_OK;` |
-|         - | 3615 | `	}` |
-|         - | 3616 | `	/* Make sure we are dealing with a valid hashmap */` |
-|       893 | 3617 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         - | 3618 | `		/* Invalid argument,return NULL */` |
-|       ! 0 | 3619 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 3620 | `		return PH7_OK;` |
-|         - | 3621 | `	}` |
-|       893 | 3622 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|       893 | 3623 | `	pCur = pMap->pCur;` |
-|       893 | 3624 | `	if( pCur == 0 ){` |
-|         - | 3625 | `		/* Cursor does not point to anything,return NULL */` |
-|       137 | 3626 | `		ph7_result_null(pCtx);` |
-|       137 | 3627 | `		return PH7_OK;` |
-|         - | 3628 | `	}` |
-|       757 | 3629 | `	HashmapResultNodeKey(pCtx,pCur);` |
-|       757 | 3630 | `	return PH7_OK;` |
-|       447 | 3631 | `}` |
-|         - | 3632 | `/*` |
-|         - | 3633 | ` * array each(array $input)` |
-|         - | 3634 | ` *  Return the current key and value pair from an array and advance the array cursor.` |
-|         - | 3635 | ` * Parameter` |
-|         - | 3636 | ` *  $input` |
-|         - | 3637 | ` *    The input array.` |
-|         - | 3638 | ` * Return` |
-|         - | 3639 | ` *  Returns the current key and value pair from the array array. This pair is returned` |
-|         - | 3640 | ` *  in a four-element array, with the keys 0, 1, key, and value. Elements 0 and key` |
-|         - | 3641 | ` *  contain the key name of the array element, and 1 and value contain the data.` |
-|         - | 3642 | ` *  If the internal pointer for the array points past the end of the array contents` |
-|         - | 3643 | ` *  each() returns FALSE.` |
-|         - | 3644 | ` */` |
-|        22 | 3645 | `static int ph7_hashmap_each(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 3646 | `{` |
-|         - | 3647 | `	ph7_hashmap_node *pCur;` |
-|         - | 3648 | `	ph7_hashmap *pMap;` |
-|         - | 3649 | `	ph7_value *pArray;` |
-|         - | 3650 | `	ph7_value *pVal;` |
-|         - | 3651 | `	ph7_value sKey;` |
-|        23 | 3652 | `	if( nArg < 1 ){` |
-|         - | 3653 | `		/* Missing arguments,return FALSE */` |
-|       ! 0 | 3654 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 3655 | `		return PH7_OK;` |
-|         - | 3656 | `	}` |
-|         - | 3657 | `	/* Make sure we are dealing with a valid hashmap */` |
-|        23 | 3658 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         - | 3659 | `		/* Invalid argument,return FALSE */` |
-|       ! 0 | 3660 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 3661 | `		return PH7_OK;` |
-|         - | 3662 | `	}` |
-|         - | 3663 | `	/* Point to the internal representation that describe the input hashmap */` |
-|        23 | 3664 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|        23 | 3665 | `	if( pMap->pCur == 0 ){` |
-|         - | 3666 | `		/* Cursor does not point to anything,return FALSE */` |
-|         9 | 3667 | `		ph7_result_bool(pCtx,0);` |
-|         9 | 3668 | `		return PH7_OK;` |
-|         - | 3669 | `	}` |
-|        15 | 3670 | `	pCur = pMap->pCur;` |
-|         - | 3671 | `	/* Create a new array */` |
-|        15 | 3672 | `	pArray = ph7_context_new_array(pCtx);` |
-|        15 | 3673 | `	if( pArray == 0 ){` |
-|       ! 0 | 3674 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 3675 | `		return PH7_OK;` |
-|         - | 3676 | `	}` |
-|        15 | 3677 | `	pVal = HashmapExtractNodeValue(pCur);` |
-|         - | 3678 | `	/* Insert the current value */` |
-|        15 | 3679 | `	ph7_array_add_intkey_elem(pArray,1,pVal);` |
-|        15 | 3680 | `	ph7_array_add_strkey_elem(pArray,"value",pVal);` |
-|         - | 3681 | `	/* Make the key */` |
-|        15 | 3682 | `	if( pCur->iType == HASHMAP_INT_NODE ){` |
-|         7 | 3683 | `		PH7_MemObjInitFromInt(pMap->pVm,&sKey,pCur->xKey.iKey);` |
-|         4 | 3684 | `	}else{` |
-|         9 | 3685 | `		PH7_MemObjInitFromString(pMap->pVm,&sKey,0);` |
-|         9 | 3686 | `		PH7_MemObjStringAppend(&sKey,(const char *)SyBlobData(&pCur->xKey.sKey),SyBlobLength(&pCur->xKey.sKey));` |
-|         - | 3687 | `	}` |
-|         - | 3688 | `	/* Insert the current key */` |
-|        15 | 3689 | `	ph7_array_add_intkey_elem(pArray,0,&sKey);` |
-|        15 | 3690 | `	ph7_array_add_strkey_elem(pArray,"key",&sKey);` |
-|        15 | 3691 | `	PH7_MemObjRelease(&sKey);` |
-|         - | 3692 | `	/* Advance the cursor */` |
-|        15 | 3693 | `	pMap->pCur = pCur->pPrev; /* Reverse link */` |
-|         - | 3694 | `	/* Return the current entry */` |
-|        15 | 3695 | `	ph7_result_value(pCtx,pArray);` |
-|        15 | 3696 | `	return PH7_OK;` |
-|        12 | 3697 | `}` |
-|         - | 3698 | `/*` |
-|         - | 3699 | ` * range() — a faithful port of php 8.5's ext/standard/array.c implementation` |
-|         - | 3700 | ` * (php_range_process_input + PHP_FUNCTION(range)), so the value semantics,` |
-|         - | 3701 | ` * diagnostics, and their ordering are byte-exact: decreasing ranges, float` |
-|         - | 3702 | ` * ranges, character ranges, the step/endpoint ValueErrors, the ZPP TypeErrors` |
-|         - | 3703 | ` * and null deprecations, and the string-endpoint warnings.` |
-|         - | 3704 | ` */` |
-|         - | 3705 | `#define PH7_RANGE_HT_MAX_SIZE 1073741824 /* php's HT_MAX_SIZE (2^30 entries) */` |
-|         - | 3706 | `/*` |
-|         - | 3707 | ` * Endpoint classification, mirroring php_range_process_input's return` |
-|         - | 3708 | ` * contract. php returns zval type tags whose ORDER encodes the logic` |
-|         - | 3709 | ` * (IS_LONG < IS_DOUBLE < IS_STRING < IS_ARRAY); the >=/< comparisons in` |
-|         - | 3710 | ` * ph7_hashmap_range depend on the same ordering here.` |
-|         - | 3711 | ` *   RANGE_IN_LONG/DOUBLE : only interpretable as int / float` |
-|         - | 3712 | ` *   RANGE_IN_STRING      : only interpretable as a (char-range) string` |
-|         - | 3713 | ` *   RANGE_IN_DIGIT       : single-byte numeric string — valid as both a char` |
-|         - | 3714 | ` *                          and a number (php returns IS_ARRAY for this)` |
-|         - | 3715 | ` * The RANGE_IN_* codes and RangeStrToNumber are declared in ph7int.h so the` |
-|         - | 3716 | ` * stage-2 ZPP domain-error sweep can reuse the classifier (PLAN §3.9(a)).` |
-|         - | 3717 | ` */` |
-|         - | 3718 | `/* IEEE special-value tests: the engine-wide bit-pattern macros from` |
-|         - | 3719 | ` * sxtypes.h (via ph7int.h) — same ones the printf/serialize paths use. */` |
-|         - | 3720 | `/*` |
-|         - | 3721 | ` * The type name php's ZPP prints after "must be of type ..., X given":` |
-|         - | 3722 | ` * the concrete class name for objects, the usual type name otherwise.` |
-|         - | 3723 | ` */` |
-|       ! 0 | 3724 | `static const char * RangeArgTypeName(ph7_value *pVal,char *zBuf,sxu32 nBufLen)` |
-|       ! 0 | 3725 | `{` |
-|       ! 0 | 3726 | `	if( pVal->iFlags & MEMOBJ_OBJ ){` |
-|       ! 0 | 3727 | `		ph7_class_instance *pThis = (ph7_class_instance *)pVal->x.pOther;` |
-|       ! 0 | 3728 | `		sxu32 n = SXMIN(pThis->pClass->sName.nByte,nBufLen - 1);` |
-|       ! 0 | 3729 | `		SyMemcpy((const void *)pThis->pClass->sName.zString,zBuf,n);` |
-|       ! 0 | 3730 | `		zBuf[n] = 0;` |
-|       ! 0 | 3731 | `		return zBuf;` |
-|         - | 3732 | `	}` |
-|       ! 0 | 3733 | `	return ph7_type_name(pVal);` |
-|       ! 0 | 3734 | `}` |
-|         - | 3735 | `/*` |
-|         - | 3736 | ` * Classify a string with php's is_numeric_string() grammar:` |
-|         - | 3737 | ` *   [ws] [sign] ( D+ [ . D* ] \| . D+ ) [ (e\|E) [sign] D+ ] [ws]` |
-|         - | 3738 | ` * — the whole string must be consumed; hex/binary/"INF"/"NAN" are NOT` |
-|         - | 3739 | ` * numeric. Returns RANGE_IN_LONG with *pLong set, RANGE_IN_DOUBLE with` |
-|         - | 3740 | ` * *pDouble set (a fractional/exponent form, or an integer too wide for an` |
-|         - | 3741 | ` * sxi64 — php reclassifies those as float), or RANGE_IN_ERROR when the` |
-|         - | 3742 | ` * string is not numeric. The float value comes from libc strtod, like` |
-|         - | 3743 | ` * php's zend_strtod (byte-exact-floats rule). zIn must be NUL-terminated` |
-|         - | 3744 | ` * at zIn[nLen] — ph7_value_to_string guarantees this (SyBlobNullAppend) —` |
-|         - | 3745 | ` * so strtod can parse it in place once the grammar has validated it.` |
-|         - | 3746 | ` */` |
-|       156 | 3747 | `PH7_PRIVATE sxu8 RangeStrToNumber(const char *zIn,sxu32 nLen,sxi64 *pLong,double *pDouble)` |
-|         1 | 3748 | `{` |
-|       157 | 3749 | `	const char *z = zIn,*zEnd = &zIn[nLen];` |
-|       157 | 3750 | `	sxu64 uVal = 0;` |
-|       157 | 3751 | `	int bNeg = 0,bDigit = 0,bReal = 0,bOverflow = 0;` |
-|       167 | 3752 | `	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisSpace(z[0]) ){ z++; }` |
-|       157 | 3753 | `	if( z < zEnd && (z[0] == '+' \|\| z[0] == '-') ){` |
-|         3 | 3754 | `		bNeg = (z[0] == '-');` |
-|         3 | 3755 | `		z++;` |
-|         1 | 3756 | `	}` |
-|       237 | 3757 | `	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){` |
-|        81 | 3758 | `		int d = z[0] - '0';` |
-|         - | 3759 | `		/* Track overflow past 2^63, the widest magnitude an sxi64 can carry` |
-|         - | 3760 | `		 * (as LONG_MIN); overflowing integers become floats like in php. */` |
-|        81 | 3761 | `		if( uVal > 922337203685477580ULL \|\| (uVal == 922337203685477580ULL && d > 8) ){` |
-|       ! 0 | 3762 | `			bOverflow = 1;` |
-|       ! 0 | 3763 | `		}else{` |
-|        81 | 3764 | `			uVal = uVal * 10 + (sxu64)d;` |
-|         - | 3765 | `		}` |
-|        81 | 3766 | `		bDigit = 1;` |
-|        81 | 3767 | `		z++;` |
-|         1 | 3768 | `	}` |
-|       157 | 3769 | `	if( z < zEnd && z[0] == '.' ){` |
-|         3 | 3770 | `		bReal = 1;` |
-|         3 | 3771 | `		z++;` |
-|         5 | 3772 | `		while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){` |
-|         3 | 3773 | `			bDigit = 1;` |
-|         3 | 3774 | `			z++;` |
-|         1 | 3775 | `		}` |
-|         1 | 3776 | `	}` |
-|         - | 3777 | `	/* At least one mantissa digit required (rejects "", ".", "+", "e5"). */` |
-|       157 | 3778 | `	if( !bDigit ){` |
-|        61 | 3779 | `		return RANGE_IN_ERROR;` |
-|         - | 3780 | `	}` |
-|         - | 3781 | `	/* Optional exponent — needs at least one digit (rejects "1e", "1e+"). */` |
-|        97 | 3782 | `	if( z < zEnd && (z[0] == 'e' \|\| z[0] == 'E') ){` |
-|         9 | 3783 | `		z++;` |
-|         9 | 3784 | `		if( z < zEnd && (z[0] == '+' \|\| z[0] == '-') ){ z++; }` |
-|         9 | 3785 | `		if( z >= zEnd \|\| (unsigned char)z[0] >= 0xc0 \|\| !SyisDigit(z[0]) ){` |
-|       ! 0 | 3786 | `			return RANGE_IN_ERROR;` |
-|         - | 3787 | `		}` |
-|         9 | 3788 | `		bReal = 1;` |
-|        17 | 3789 | `		while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){ z++; }` |
-|         4 | 3790 | `	}` |
-|         - | 3791 | `	/* Trailing whitespace allowed; anything else means not numeric. */` |
-|       101 | 3792 | `	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisSpace(z[0]) ){ z++; }` |
-|        97 | 3793 | `	if( z != zEnd ){` |
-|        13 | 3794 | `		return RANGE_IN_ERROR;` |
-|         - | 3795 | `	}` |
-|        84 | 3796 | `	if( bOverflow \|\| (!bNeg && uVal > (sxu64)LARGEST_INT64)` |
-|        43 | 3797 | `	 \|\| (bNeg && uVal > (sxu64)LARGEST_INT64 + 1) ){` |
-|        84 | 3798 | `		bReal = 1;` |
-|        84 | 3799 | `	}` |
-|        43 | 3800 | `	if( bReal ){` |
-|        11 | 3801 | `		*pDouble = strtod(zIn,0);` |
-|        11 | 3802 | `		return RANGE_IN_DOUBLE;` |
-|         - | 3803 | `	}` |
-|         - | 3804 | `	/* Negate in unsigned space so 2^63 lands on LONG_MIN without overflow. */` |
-|        33 | 3805 | `	*pLong = bNeg ? (sxi64)((sxu64)0 - uVal) : (sxi64)uVal;` |
-|        33 | 3806 | `	return RANGE_IN_LONG;` |
-|        58 | 3807 | `}` |
-|         - | 3808 | `/*` |
-|         - | 3809 | ` * ZPP emulation for $start/$end (php's Z_PARAM_NUMBER_OR_STR, weak mode):` |
-|         - | 3810 | ` * reject array/object/resource with php's TypeError, deprecate null (the` |
-|         - | 3811 | ` * value then reads as int 0 — *pbNullCoerced). php runs this for all` |
-|         - | 3812 | ` * arguments BEFORE any value/domain check, hence the split from` |
-|         - | 3813 | ` * RangeProcessInput below. Returns FALSE after throwing (*pRc set).` |
-|         - | 3814 | ` */` |
-|       332 | 3815 | `static int RangeEndpointZpp(ph7_context *pCtx,ph7_value *pIn,int iArg,const char *zName,int *pbNullCoerced,sxi32 *pRc)` |
-|         1 | 3816 | `{` |
-|         - | 3817 | `	char zMsg[160];` |
-|       333 | 3818 | `	*pRc = PH7_OK;` |
-|       333 | 3819 | `	if( pIn->iFlags & (MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_RES) ){` |
-|         - | 3820 | `		char zType[80];` |
-|       ! 0 | 3821 | `		*pRc = PH7_VmThrowException(pCtx,"TypeError",` |
-|         - | 3822 | `			"range(): Argument #%d ($%s) must be of type string\|int\|float, %s given",` |
-|       ! 0 | 3823 | `			iArg,zName,RangeArgTypeName(pIn,zType,sizeof(zType)));` |
-|       ! 0 | 3824 | `		return FALSE;` |
-|         - | 3825 | `	}` |
-|       333 | 3826 | `	if( pIn->iFlags & MEMOBJ_NULL ){` |
-|         7 | 3827 | `		SyBufferFormat(zMsg,sizeof(zMsg),` |
-|         - | 3828 | `			"range(): Passing null to parameter #%d ($%s) of type string\|int\|float is deprecated",` |
-|         2 | 3829 | `			iArg,zName);` |
-|         5 | 3830 | `		PH7_VmThrowError(pCtx->pVm,0,E_DEPRECATED,zMsg);` |
-|         5 | 3831 | `		*pbNullCoerced = TRUE;` |
-|         2 | 3832 | `	}` |
-|       333 | 3833 | `	return TRUE;` |
-|       167 | 3834 | `}` |
-|         - | 3835 | `/*` |
-|         - | 3836 | ` * ZPP emulation for $step (php's Z_PARAM_NUMBER, weak mode): int/float pass` |
-|         - | 3837 | ` * through, bool coerces to int, null deprecates to int 0 (which then trips` |
-|         - | 3838 | ` * the "cannot be 0" ValueError like php), a numeric string coerces to its` |
-|         - | 3839 | ` * number, anything else is a TypeError. Returns RANGE_IN_LONG/DOUBLE, or` |
-|         - | 3840 | ` * RANGE_IN_ERROR after throwing (*pRc set).` |
-|         - | 3841 | ` */` |
-|        60 | 3842 | `static sxu8 RangeStepInput(ph7_context *pCtx,ph7_value *pIn,sxi64 *pLong,double *pDouble,sxi32 *pRc)` |
-|         1 | 3843 | `{` |
-|        61 | 3844 | `	*pRc = PH7_OK;` |
-|        61 | 3845 | `	if( pIn->iFlags & (MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_RES) ){` |
-|         - | 3846 | `		char zType[80];` |
-|       ! 0 | 3847 | `		*pRc = PH7_VmThrowException(pCtx,"TypeError",` |
-|         - | 3848 | `			"range(): Argument #3 ($step) must be of type int\|float, %s given",` |
-|       ! 0 | 3849 | `			RangeArgTypeName(pIn,zType,sizeof(zType)));` |
-|       ! 0 | 3850 | `		return RANGE_IN_ERROR;` |
-|         - | 3851 | `	}` |
-|        61 | 3852 | `	if( pIn->iFlags & MEMOBJ_NULL ){` |
-|         3 | 3853 | `		PH7_VmThrowError(pCtx->pVm,0,E_DEPRECATED,` |
-|         - | 3854 | `			"range(): Passing null to parameter #3 ($step) of type int\|float is deprecated");` |
-|         3 | 3855 | `		*pLong = 0;` |
-|         3 | 3856 | `		return RANGE_IN_LONG;` |
-|         - | 3857 | `	}` |
-|        59 | 3858 | `	if( pIn->iFlags & MEMOBJ_REAL ){` |
-|        25 | 3859 | `		*pDouble = ph7_value_to_double(pIn);` |
-|        25 | 3860 | `		return RANGE_IN_DOUBLE;` |
-|         - | 3861 | `	}` |
-|        35 | 3862 | `	if( pIn->iFlags & MEMOBJ_STRING ){` |
-|         - | 3863 | `		const char *zStr;` |
-|         - | 3864 | `		int nLen;` |
-|         - | 3865 | `		sxu8 iKind;` |
-|         3 | 3866 | `		zStr = ph7_value_to_string(pIn,&nLen);` |
-|         3 | 3867 | `		iKind = RangeStrToNumber(zStr,(sxu32)nLen,pLong,pDouble);` |
-|         3 | 3868 | `		if( iKind == RANGE_IN_ERROR ){` |
-|         3 | 3869 | `			*pRc = PH7_VmThrowException(pCtx,"TypeError",` |
-|         - | 3870 | `				"range(): Argument #3 ($step) must be of type int\|float, string given");` |
-|         1 | 3871 | `		}` |
-|         3 | 3872 | `		return iKind;` |
-|         - | 3873 | `	}` |
-|         - | 3874 | `	/* int / bool */` |
-|        33 | 3875 | `	*pLong = ph7_value_to_int64(pIn);` |
-|        33 | 3876 | `	return RANGE_IN_LONG;` |
-|        31 | 3877 | `}` |
-|         - | 3878 | `/*` |
-|         - | 3879 | ` * php_range_process_input port: resolve $start/$end into a number and/or a` |
-|         - | 3880 | ` * char-range byte, emitting php's exact warnings (empty string, multi-byte` |
-|         - | 3881 | ` * string) and ValueErrors (INF/NAN). Returns a RANGE_IN_* code, or` |
-|         - | 3882 | ` * RANGE_IN_ERROR after throwing (*pRc set).` |
-|         - | 3883 | ` */` |
-|       300 | 3884 | `static sxu8 RangeProcessInput(ph7_context *pCtx,ph7_value *pIn,int iArg,const char *zName,` |
-|         - | 3885 | `	int bNullCoerced,sxi64 *pLong,double *pDouble,unsigned char *pChar,sxi32 *pRc)` |
-|         1 | 3886 | `{` |
-|         - | 3887 | `	char zMsg[160];` |
-|         - | 3888 | `	double r;` |
-|       301 | 3889 | `	*pRc = PH7_OK;` |
-|       301 | 3890 | `	if( bNullCoerced ){` |
-|         - | 3891 | `		/* ZPP already deprecated the null; it reads as int 0. */` |
-|         5 | 3892 | `		*pLong = 0;` |
-|         5 | 3893 | `		*pDouble = 0.0;` |
-|         5 | 3894 | `		return RANGE_IN_LONG;` |
-|         - | 3895 | `	}` |
-|       297 | 3896 | `	if( pIn->iFlags & MEMOBJ_REAL ){` |
-|        21 | 3897 | `		r = ph7_value_to_double(pIn);` |
-|        12 | 3898 | `check_dval:` |
-|        25 | 3899 | `		if( PH7_IS_INF(r) ){` |
-|         7 | 3900 | `			*pRc = PH7_VmThrowException(pCtx,"ValueError",` |
-|         2 | 3901 | `				"range(): Argument #%d ($%s) must be a finite number, INF provided",iArg,zName);` |
-|         5 | 3902 | `			return RANGE_IN_ERROR;` |
-|         - | 3903 | `		}` |
-|        21 | 3904 | `		if( PH7_IS_NAN(r) ){` |
-|         7 | 3905 | `			*pRc = PH7_VmThrowException(pCtx,"ValueError",` |
-|         2 | 3906 | `				"range(): Argument #%d ($%s) must be a finite number, NAN provided",iArg,zName);` |
-|         5 | 3907 | `			return RANGE_IN_ERROR;` |
-|         - | 3908 | `		}` |
-|        17 | 3909 | `		*pDouble = r;` |
-|        17 | 3910 | `		return RANGE_IN_DOUBLE;` |
-|         - | 3911 | `	}` |
-|       277 | 3912 | `	if( pIn->iFlags & MEMOBJ_STRING ){` |
-|         - | 3913 | `		const char *zStr;` |
-|         - | 3914 | `		int nLen;` |
-|         - | 3915 | `		sxu8 iKind;` |
-|        81 | 3916 | `		zStr = ph7_value_to_string(pIn,&nLen);` |
-|        81 | 3917 | `		if( nLen == 0 ){` |
-|         7 | 3918 | `			SyBufferFormat(zMsg,sizeof(zMsg),` |
-|         2 | 3919 | `				"range(): Argument #%d ($%s) must not be empty, casted to 0",iArg,zName);` |
-|         5 | 3920 | `			PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,zMsg);` |
-|         5 | 3921 | `			*pLong = 0;` |
-|         5 | 3922 | `			*pDouble = 0.0;` |
-|        41 | 3923 | `			return RANGE_IN_LONG;` |
-|         - | 3924 | `		}` |
-|        77 | 3925 | `		iKind = RangeStrToNumber(zStr,(sxu32)nLen,pLong,pDouble);` |
-|        77 | 3926 | `		if( iKind == RANGE_IN_DOUBLE ){` |
-|         5 | 3927 | `			r = *pDouble;` |
-|         5 | 3928 | `			goto check_dval;` |
-|         - | 3929 | `		}` |
-|        73 | 3930 | `		if( iKind == RANGE_IN_LONG ){` |
-|        23 | 3931 | `			*pDouble = (double)*pLong;` |
-|        23 | 3932 | `			if( nLen == 1 ){` |
-|         - | 3933 | `				/* A single numeric digit works as both a char and a number. */` |
-|         9 | 3934 | `				*pChar = (unsigned char)zStr[0];` |
-|         9 | 3935 | `				return RANGE_IN_DIGIT;` |
-|         - | 3936 | `			}` |
-|        15 | 3937 | `			return RANGE_IN_LONG;` |
+|         - | 3201 | `	}` |
+|         - | 3202 | `	/* Emit deprecation warnings matching PHP behaviour */` |
+|        92 | 3203 | `	if( apArg[0]->iFlags & MEMOBJ_NULL ){` |
+|         - | 3204 | `		/* PH7_VmThrowDeprecatedFmt, not ph7_context_throw_error_format: the latter PREPENDS` |
+|         - | 3205 | `		 * "array_key_exists(): " and php's message carries no such prefix. */` |
+|         3 | 3206 | `		PH7_VmThrowDeprecatedFmt(pCtx->pVm,` |
+|         - | 3207 | `			"Using null as the key parameter for array_key_exists() is deprecated, "` |
+|         - | 3208 | `			"use an empty string instead"` |
+|         - | 3209 | `			);` |
+|        91 | 3210 | `	}else if( apArg[0]->iFlags & MEMOBJ_REAL ){` |
+|         3 | 3211 | `		ph7_real rVal = apArg[0]->rVal;` |
+|         3 | 3212 | `		if( rVal != (ph7_real)(sxi64)rVal ){` |
+|         4 | 3213 | `			ph7_context_throw_error_format(pCtx,8192,` |
+|         - | 3214 | `				"Implicit conversion from float %g to int loses precision"` |
+|         1 | 3215 | `				,rVal` |
+|         - | 3216 | `				);` |
+|         1 | 3217 | `		}` |
+|         1 | 3218 | `	}` |
+|         - | 3219 | `	/* Perform the lookup */` |
+|        92 | 3220 | `	rc = PH7_HashmapLookup((ph7_hashmap *)apArg[1]->x.pOther,apArg[0],0);` |
+|         - | 3221 | `	/* lookup result */` |
+|        92 | 3222 | `	ph7_result_bool(pCtx,rc == SXRET_OK ? 1 : 0);` |
+|        92 | 3223 | `	return PH7_OK;` |
+|        52 | 3224 | `}` |
+|         - | 3225 | `/*` |
+|         - | 3226 | ` * value array_pop(array $array)` |
+|         - | 3227 | ` *   POP the last inserted element from the array.` |
+|         - | 3228 | ` * Parameter` |
+|         - | 3229 | ` *  The array to get the value from.` |
+|         - | 3230 | ` * Return` |
+|         - | 3231 | ` *  Poped value or NULL on failure.` |
+|         - | 3232 | ` */` |
+|       108 | 3233 | `static int ph7_hashmap_pop(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         4 | 3234 | `{` |
+|         - | 3235 | `	ph7_hashmap *pMap;` |
+|         - | 3236 | `	/* PHP requires exactly one argument and it must be passed by reference */` |
+|       112 | 3237 | `	if( nArg != 1 ){` |
+|         4 | 3238 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 3239 | `			"ArgumentCountError",` |
+|         - | 3240 | `			"array_pop() expects exactly 1 argument, %d given",` |
+|         1 | 3241 | `			nArg` |
+|         - | 3242 | `			);` |
+|         - | 3243 | `	}` |
+|         - | 3244 | `	/* Passing a constant (including literals) or non-variable triggers the same` |
+|         - | 3245 | `	 * error message as official PHP. Check the index to detect constants. */` |
+|       110 | 3246 | `	if( apArg[0]->nIdx == SXU32_HIGH ){` |
+|         6 | 3247 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 3248 | `			"Error",` |
+|         - | 3249 | `			"array_pop(): Argument #1 ($array) could not be passed by reference"` |
+|         - | 3250 | `			);` |
+|         - | 3251 | `	}` |
+|         - | 3252 | `	/* Make sure we are dealing with a valid hashmap */` |
+|       104 | 3253 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         4 | 3254 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 3255 | `			"TypeError",` |
+|         - | 3256 | `			"array_pop(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 3257 | `			ph7_type_name(apArg[0])` |
+|         - | 3258 | `			);` |
+|         - | 3259 | `	}` |
+|       101 | 3260 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|       101 | 3261 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|       101 | 3262 | `	if( pMap->nEntry < 1 ){` |
+|         - | 3263 | `		/* Nothing to pop,return NULL */` |
+|         3 | 3264 | `		ph7_result_null(pCtx);` |
+|         2 | 3265 | `	}else{` |
+|        99 | 3266 | `		ph7_hashmap_node *pLast = pMap->pLast;` |
+|         - | 3267 | `		ph7_value *pObj;` |
+|        99 | 3268 | `		pObj = HashmapExtractNodeValue(pLast);` |
+|        99 | 3269 | `		if( pObj ){` |
+|         - | 3270 | `			/* Node value */` |
+|        99 | 3271 | `			ph7_result_value(pCtx,pObj);` |
+|         - | 3272 | `			/* Unlink the node */` |
+|        99 | 3273 | `			PH7_HashmapUnlinkNode(pLast,TRUE);` |
+|        50 | 3274 | `		}else{` |
+|       ! 0 | 3275 | `			ph7_result_null(pCtx);` |
+|         - | 3276 | `		}` |
+|         - | 3277 | `		/* Reset the cursor */` |
+|        99 | 3278 | `		pMap->pCur = pMap->pFirst;` |
+|         - | 3279 | `	}` |
+|       101 | 3280 | `	return PH7_OK;` |
+|        58 | 3281 | `}` |
+|         - | 3282 | `/*` |
+|         - | 3283 | ` * int array_push($array,$var,...)` |
+|         - | 3284 | ` *   Push one or more elements onto the end of array. (Stack insertion)` |
+|         - | 3285 | ` * Parameters` |
+|         - | 3286 | ` *  array` |
+|         - | 3287 | ` *    The input array.` |
+|         - | 3288 | ` *  var` |
+|         - | 3289 | ` *   On or more value to push.` |
+|         - | 3290 | ` * Return` |
+|         - | 3291 | ` *  New array count (including old items).` |
+|         - | 3292 | ` */` |
+|        22 | 3293 | `static int ph7_hashmap_push(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         4 | 3294 | `{` |
+|         - | 3295 | `	ph7_hashmap *pMap;` |
+|         - | 3296 | `	sxi32 rc;` |
+|         - | 3297 | `	int i;` |
+|        26 | 3298 | `	if( nArg < 1 ){` |
+|       ! 0 | 3299 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 3300 | `			"ArgumentCountError",` |
+|         - | 3301 | `			"array_push() expects at least 1 argument, %d given",` |
+|       ! 0 | 3302 | `			nArg` |
+|         - | 3303 | `			);` |
+|         - | 3304 | `	}` |
+|         - | 3305 | `	/* Passing a constant (including literals) or non-variable triggers the same` |
+|         - | 3306 | `	 * error message as official PHP. Check the index to detect constants. */` |
+|        26 | 3307 | `	if( apArg[0]->nIdx == SXU32_HIGH ){` |
+|         6 | 3308 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 3309 | `			"Error",` |
+|         - | 3310 | `			"array_push(): Argument #1 ($array) could not be passed by reference"` |
+|         - | 3311 | `			);` |
+|         - | 3312 | `	}` |
+|         - | 3313 | `	/* Make sure we are dealing with a valid hashmap */` |
+|        21 | 3314 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         4 | 3315 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 3316 | `			"TypeError",` |
+|         - | 3317 | `			"array_push(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 3318 | `			ph7_type_name(apArg[0])` |
+|         - | 3319 | `			);` |
+|         - | 3320 | `	}` |
+|         - | 3321 | `	/* Point to the internal representation of the input hashmap */` |
+|        18 | 3322 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|        18 | 3323 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 3324 | `	/* Start pushing given values */` |
+|        34 | 3325 | `	for( i = 1 ; i < nArg ; ++i ){` |
+|        20 | 3326 | `		rc = PH7_HashmapInsert(pMap,0,apArg[i]);` |
+|        20 | 3327 | `		if( rc != SXRET_OK ){` |
+|         3 | 3328 | `			if( rc == PH7_EXCEPTION \|\| rc == PH7_ABORT ){` |
+|         - | 3329 | `				/* Saturated-append Error (php: array_push throws, no result) */` |
+|         3 | 3330 | `				return rc;` |
+|         - | 3331 | `			}` |
+|       ! 0 | 3332 | `			break;` |
+|         - | 3333 | `		}` |
+|         9 | 3334 | `	}` |
+|         - | 3335 | `	/* Return the new count */` |
+|        15 | 3336 | `	ph7_result_int64(pCtx,(sxi64)pMap->nEntry);` |
+|        15 | 3337 | `	return PH7_OK;` |
+|        15 | 3338 | `}` |
+|         - | 3339 | `/*` |
+|         - | 3340 | ` * value array_shift(array $array)` |
+|         - | 3341 | ` *   Shift an element off the beginning of array.` |
+|         - | 3342 | ` * Parameter` |
+|         - | 3343 | ` *  The array to get the value from.` |
+|         - | 3344 | ` * Return` |
+|         - | 3345 | ` *  Shifted value or NULL on failure.` |
+|         - | 3346 | ` */` |
+|        44 | 3347 | `static int ph7_hashmap_shift(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         5 | 3348 | `{` |
+|         - | 3349 | `	ph7_hashmap *pMap;` |
+|         - | 3350 | `	/* PHP requires exactly one argument and it must be passed by reference */` |
+|        49 | 3351 | `	if( nArg != 1 ){` |
+|         4 | 3352 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 3353 | `			"ArgumentCountError",` |
+|         - | 3354 | `			"array_shift() expects exactly 1 argument, %d given",` |
+|         1 | 3355 | `			nArg` |
+|         - | 3356 | `			);` |
+|         - | 3357 | `	}` |
+|         - | 3358 | `	/* Detect constants or literals, which cannot be passed by reference. */` |
+|        47 | 3359 | `	if( apArg[0]->nIdx == SXU32_HIGH ){` |
+|         6 | 3360 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 3361 | `			"Error",` |
+|         - | 3362 | `			"array_shift(): Argument #1 ($array) could not be passed by reference"` |
+|         - | 3363 | `			);` |
+|         - | 3364 | `	}` |
+|         - | 3365 | `	/* Make sure we are dealing with a valid hashmap */` |
+|        43 | 3366 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         4 | 3367 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 3368 | `			"TypeError",` |
+|         - | 3369 | `			"array_shift(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 3370 | `			ph7_type_name(apArg[0])` |
+|         - | 3371 | `			);` |
+|         - | 3372 | `	}` |
+|         - | 3373 | `	/* Point to the internal representation of the hashmap */` |
+|        41 | 3374 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|        41 | 3375 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|        41 | 3376 | `	if( pMap->nEntry < 1 ){` |
+|         - | 3377 | `		/* Empty hashmap,return NULL */` |
+|         3 | 3378 | `		ph7_result_null(pCtx);` |
+|         2 | 3379 | `	}else{` |
+|        39 | 3380 | `		ph7_hashmap_node *pEntry = pMap->pFirst;` |
+|         - | 3381 | `		ph7_value *pObj;` |
+|         - | 3382 | `		sxu32 n;` |
+|        39 | 3383 | `		pObj = HashmapExtractNodeValue(pEntry);` |
+|        39 | 3384 | `		if( pObj ){` |
+|         - | 3385 | `			/* Node value */` |
+|        39 | 3386 | `			ph7_result_value(pCtx,pObj);` |
+|         - | 3387 | `			/* Unlink the first node */` |
+|        39 | 3388 | `			PH7_HashmapUnlinkNode(pEntry,TRUE);` |
+|        22 | 3389 | `		}else{` |
+|       ! 0 | 3390 | `			ph7_result_null(pCtx);` |
+|         - | 3391 | `		}` |
+|         - | 3392 | `		/* Rehash all int keys */` |
+|        39 | 3393 | `		n = pMap->nEntry;` |
+|        39 | 3394 | `		pEntry = pMap->pFirst;` |
+|        39 | 3395 | `		pMap->iNextIdx = 0;` |
+|        39 | 3396 | `	pMap->bIntKeySeen = 0; /* Reset the automatic index */` |
+|        47 | 3397 | `		for(;;){` |
+|        99 | 3398 | `			if( n < 1 ){` |
+|        39 | 3399 | `				break;` |
+|         - | 3400 | `			}` |
+|        65 | 3401 | `			if( pEntry->iType == HASHMAP_INT_NODE ){` |
+|        65 | 3402 | `				HashmapRehashIntNode(pEntry);` |
+|        30 | 3403 | `			}` |
+|         - | 3404 | `			/* Point to the next entry */` |
+|        65 | 3405 | `			pEntry = pEntry->pPrev; /* Reverse link */` |
+|        65 | 3406 | `			n--;` |
+|         5 | 3407 | `		}` |
+|         - | 3408 | `		/* Reset the cursor */` |
+|        39 | 3409 | `		pMap->pCur = pMap->pFirst;` |
+|         - | 3410 | `	}` |
+|        41 | 3411 | `	return PH7_OK;` |
+|        27 | 3412 | `}` |
+|         - | 3413 | `/*` |
+|         - | 3414 | ` * Extract the node cursor value.` |
+|         - | 3415 | ` */` |
+|      1232 | 3416 | `static sxi32 HashmapCurrentValue(ph7_context *pCtx,ph7_hashmap *pMap,int iDirection)` |
+|         1 | 3417 | `{` |
+|      1233 | 3418 | `	ph7_hashmap_node *pCur = pMap->pCur;` |
+|         - | 3419 | `	ph7_value *pVal;` |
+|      1233 | 3420 | `	if( pCur == 0 ){` |
+|         - | 3421 | `		/* Cursor does not point to anything,return FALSE */` |
+|        39 | 3422 | `		ph7_result_bool(pCtx,0);` |
+|        39 | 3423 | `		return PH7_OK;` |
+|         - | 3424 | `	}` |
+|      1195 | 3425 | `	if( iDirection != 0 ){` |
+|       227 | 3426 | `		if( iDirection > 0 ){` |
+|         - | 3427 | `			/* Point to the next entry */` |
+|       225 | 3428 | `			pMap->pCur = pCur->pPrev; /* Reverse link */` |
+|       225 | 3429 | `			pCur = pMap->pCur;` |
+|       113 | 3430 | `		}else{` |
+|         - | 3431 | `			/* Point to the previous entry */` |
+|         3 | 3432 | `			pMap->pCur = pCur->pNext; /* Reverse link */` |
+|         3 | 3433 | `			pCur = pMap->pCur;` |
+|         - | 3434 | `		}` |
+|       227 | 3435 | `		if( pCur == 0 ){` |
+|         - | 3436 | `			/* End of input reached,return FALSE */` |
+|        91 | 3437 | `			ph7_result_bool(pCtx,0);` |
+|        91 | 3438 | `			return PH7_OK;` |
+|         - | 3439 | `		}` |
+|        68 | 3440 | `	}` |
+|         - | 3441 | `	/* Point to the desired element */` |
+|      1105 | 3442 | `	pVal = HashmapExtractNodeValue(pCur);` |
+|      1105 | 3443 | `	if( pVal ){` |
+|      1105 | 3444 | `		ph7_result_value(pCtx,pVal);` |
+|       553 | 3445 | `	}else{` |
+|       ! 0 | 3446 | `		ph7_result_bool(pCtx,0);` |
+|         - | 3447 | `	}` |
+|      1105 | 3448 | `	return PH7_OK;` |
+|       617 | 3449 | `}` |
+|         - | 3450 | `/*` |
+|         - | 3451 | ` * value current(array $array)` |
+|         - | 3452 | ` *  Return the current element in an array.` |
+|         - | 3453 | ` * Parameter` |
+|         - | 3454 | ` *  $input: The input array.` |
+|         - | 3455 | ` * Return` |
+|         - | 3456 | ` *  The current() function simply returns the value of the array element that's currently` |
+|         - | 3457 | ` *  being pointed to by the internal pointer. It does not move the pointer in any way.` |
+|         - | 3458 | ` *  If the internal pointer points beyond the end of the elements list or the array` |
+|         - | 3459 | ` *  is empty, current() returns FALSE.` |
+|         - | 3460 | ` */` |
+|       356 | 3461 | `static int ph7_hashmap_current(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 3462 | `{` |
+|       357 | 3463 | `	if( nArg < 1 ){` |
+|         - | 3464 | `		/* Missing arguments,return FALSE */` |
+|       ! 0 | 3465 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 3466 | `		return PH7_OK;` |
+|         - | 3467 | `	}` |
+|         - | 3468 | `	/* Make sure we are dealing with a valid hashmap */` |
+|       357 | 3469 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         - | 3470 | `		/* Invalid argument,return FALSE */` |
+|       ! 0 | 3471 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 3472 | `		return PH7_OK;` |
+|         - | 3473 | `	}` |
+|       357 | 3474 | `	HashmapCurrentValue(&(*pCtx),(ph7_hashmap *)apArg[0]->x.pOther,0);` |
+|       357 | 3475 | `	return PH7_OK;` |
+|       179 | 3476 | `}` |
+|         - | 3477 | `/*` |
+|         - | 3478 | ` * value next(array $input)` |
+|         - | 3479 | ` *  Advance the internal array pointer of an array.` |
+|         - | 3480 | ` * Parameter` |
+|         - | 3481 | ` *  $input: The input array.` |
+|         - | 3482 | ` * Return` |
+|         - | 3483 | ` *  next() behaves like current(), with one difference. It advances the internal array` |
+|         - | 3484 | ` *  pointer one place forward before returning the element value. That means it returns` |
+|         - | 3485 | ` *  the next array value and advances the internal array pointer by one.` |
+|         - | 3486 | ` */` |
+|       224 | 3487 | `static int ph7_hashmap_next(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 3488 | `{` |
+|       225 | 3489 | `	if( nArg < 1 ){` |
+|         - | 3490 | `		/* Missing arguments,return FALSE */` |
+|       ! 0 | 3491 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 3492 | `		return PH7_OK;` |
+|         - | 3493 | `	}` |
+|         - | 3494 | `	/* Make sure we are dealing with a valid hashmap */` |
+|       225 | 3495 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         - | 3496 | `		/* Invalid argument,return FALSE */` |
+|       ! 0 | 3497 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 3498 | `		return PH7_OK;` |
+|         - | 3499 | `	}` |
+|       225 | 3500 | `	HashmapCurrentValue(&(*pCtx),(ph7_hashmap *)apArg[0]->x.pOther,1);` |
+|       225 | 3501 | `	return PH7_OK;` |
+|       113 | 3502 | `}` |
+|         - | 3503 | `/*` |
+|         - | 3504 | ` * value prev(array $input)` |
+|         - | 3505 | ` *  Rewind the internal array pointer.` |
+|         - | 3506 | ` * Parameter` |
+|         - | 3507 | ` *  $input: The input array.` |
+|         - | 3508 | ` * Return` |
+|         - | 3509 | ` *  Returns the array value in the previous place that's pointed` |
+|         - | 3510 | ` *  to by the internal array pointer, or FALSE if there are no more` |
+|         - | 3511 | ` *  elements.` |
+|         - | 3512 | ` */` |
+|         2 | 3513 | `static int ph7_hashmap_prev(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 3514 | `{` |
+|         3 | 3515 | `	if( nArg < 1 ){` |
+|         - | 3516 | `		/* Missing arguments,return FALSE */` |
+|       ! 0 | 3517 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 3518 | `		return PH7_OK;` |
+|         - | 3519 | `	}` |
+|         - | 3520 | `	/* Make sure we are dealing with a valid hashmap */` |
+|         3 | 3521 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         - | 3522 | `		/* Invalid argument,return FALSE */` |
+|       ! 0 | 3523 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 3524 | `		return PH7_OK;` |
+|         - | 3525 | `	}` |
+|         3 | 3526 | `	HashmapCurrentValue(&(*pCtx),(ph7_hashmap *)apArg[0]->x.pOther,-1);` |
+|         3 | 3527 | `	return PH7_OK;` |
+|         2 | 3528 | `}` |
+|         - | 3529 | `/*` |
+|         - | 3530 | ` * value end(array $input)` |
+|         - | 3531 | ` *  Set the internal pointer of an array to its last element.` |
+|         - | 3532 | ` * Parameter` |
+|         - | 3533 | ` *  $input: The input array.` |
+|         - | 3534 | ` * Return` |
+|         - | 3535 | ` *  Returns the value of the last element or FALSE for empty array.` |
+|         - | 3536 | ` */` |
+|       390 | 3537 | `static int ph7_hashmap_end(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 3538 | `{` |
+|         - | 3539 | `	ph7_hashmap *pMap;` |
+|       391 | 3540 | `	if( nArg < 1 ){` |
+|         - | 3541 | `		/* Missing arguments,return FALSE */` |
+|       ! 0 | 3542 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 3543 | `		return PH7_OK;` |
+|         - | 3544 | `	}` |
+|         - | 3545 | `	/* Make sure we are dealing with a valid hashmap */` |
+|       391 | 3546 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         - | 3547 | `		/* Invalid argument,return FALSE */` |
+|       ! 0 | 3548 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 3549 | `		return PH7_OK;` |
+|         - | 3550 | `	}` |
+|         - | 3551 | `	/* Point to the internal representation of the input hashmap */` |
+|       391 | 3552 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 3553 | `	/* Point to the last node */` |
+|       391 | 3554 | `	pMap->pCur = pMap->pLast;` |
+|         - | 3555 | `	/* Return the last node value */` |
+|       391 | 3556 | `	HashmapCurrentValue(&(*pCtx),pMap,0);` |
+|       391 | 3557 | `	return PH7_OK;` |
+|       196 | 3558 | `}` |
+|         - | 3559 | `/*` |
+|         - | 3560 | ` * value reset(array $array )` |
+|         - | 3561 | ` *  Set the internal pointer of an array to its first element.` |
+|         - | 3562 | ` * Parameter` |
+|         - | 3563 | ` *  $input: The input array.` |
+|         - | 3564 | ` * Return` |
+|         - | 3565 | ` *  Returns the value of the first array element,or FALSE if the array is empty.` |
+|         - | 3566 | ` */` |
+|       260 | 3567 | `static int ph7_hashmap_reset(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 3568 | `{` |
+|         - | 3569 | `	ph7_hashmap *pMap;` |
+|       261 | 3570 | `	if( nArg < 1 ){` |
+|         - | 3571 | `		/* Missing arguments,return FALSE */` |
+|       ! 0 | 3572 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 3573 | `		return PH7_OK;` |
+|         - | 3574 | `	}` |
+|         - | 3575 | `	/* Make sure we are dealing with a valid hashmap */` |
+|       261 | 3576 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         - | 3577 | `		/* Invalid argument,return FALSE */` |
+|       ! 0 | 3578 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 3579 | `		return PH7_OK;` |
+|         - | 3580 | `	}` |
+|         - | 3581 | `	/* Point to the internal representation of the input hashmap */` |
+|       261 | 3582 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 3583 | `	/* Point to the first node */` |
+|       261 | 3584 | `	pMap->pCur = pMap->pFirst;` |
+|         - | 3585 | `	/* Return the last node value if available */` |
+|       261 | 3586 | `	HashmapCurrentValue(&(*pCtx),pMap,0);` |
+|       261 | 3587 | `	return PH7_OK;` |
+|       131 | 3588 | `}` |
+|         - | 3589 | `/*` |
+|         - | 3590 | ` * Emit a node's key (integer or blob) as the call result — shared by key(),` |
+|         - | 3591 | ` * array_key_first() and array_key_last().` |
+|         - | 3592 | ` */` |
+|       772 | 3593 | `static void HashmapResultNodeKey(ph7_context *pCtx,ph7_hashmap_node *pNode)` |
+|         1 | 3594 | `{` |
+|       773 | 3595 | `	if( pNode->iType == HASHMAP_INT_NODE ){` |
+|         - | 3596 | `		/* Key is integer */` |
+|       383 | 3597 | `		ph7_result_int64(pCtx,pNode->xKey.iKey);` |
+|       192 | 3598 | `	}else{` |
+|         - | 3599 | `		/* Key is blob */` |
+|       586 | 3600 | `		ph7_result_string(pCtx,` |
+|       390 | 3601 | `			(const char *)SyBlobData(&pNode->xKey.sKey),(int)SyBlobLength(&pNode->xKey.sKey));` |
+|         - | 3602 | `	}` |
+|       773 | 3603 | `}` |
+|         - | 3604 | `/*` |
+|         - | 3605 | ` * value key(array $array)` |
+|         - | 3606 | ` *   Fetch a key from an array` |
+|         - | 3607 | ` * Parameter` |
+|         - | 3608 | ` *  $input` |
+|         - | 3609 | ` *   The input array.` |
+|         - | 3610 | ` * Return` |
+|         - | 3611 | ` *  The key() function simply returns the key of the array element that's currently` |
+|         - | 3612 | ` *  being pointed to by the internal pointer. It does not move the pointer in any way.` |
+|         - | 3613 | ` *  If the internal pointer points beyond the end of the elements list or the array` |
+|         - | 3614 | ` *  is empty, key() returns NULL.` |
+|         - | 3615 | ` */` |
+|       892 | 3616 | `static int ph7_hashmap_simple_key(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 3617 | `{` |
+|         - | 3618 | `	ph7_hashmap_node *pCur;` |
+|         - | 3619 | `	ph7_hashmap *pMap;` |
+|       893 | 3620 | `	if( nArg < 1 ){` |
+|         - | 3621 | `		/* Missing arguments,return NULL */` |
+|       ! 0 | 3622 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 3623 | `		return PH7_OK;` |
+|         - | 3624 | `	}` |
+|         - | 3625 | `	/* Make sure we are dealing with a valid hashmap */` |
+|       893 | 3626 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         - | 3627 | `		/* Invalid argument,return NULL */` |
+|       ! 0 | 3628 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 3629 | `		return PH7_OK;` |
+|         - | 3630 | `	}` |
+|       893 | 3631 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|       893 | 3632 | `	pCur = pMap->pCur;` |
+|       893 | 3633 | `	if( pCur == 0 ){` |
+|         - | 3634 | `		/* Cursor does not point to anything,return NULL */` |
+|       137 | 3635 | `		ph7_result_null(pCtx);` |
+|       137 | 3636 | `		return PH7_OK;` |
+|         - | 3637 | `	}` |
+|       757 | 3638 | `	HashmapResultNodeKey(pCtx,pCur);` |
+|       757 | 3639 | `	return PH7_OK;` |
+|       447 | 3640 | `}` |
+|         - | 3641 | `/*` |
+|         - | 3642 | ` * array each(array $input)` |
+|         - | 3643 | ` *  Return the current key and value pair from an array and advance the array cursor.` |
+|         - | 3644 | ` * Parameter` |
+|         - | 3645 | ` *  $input` |
+|         - | 3646 | ` *    The input array.` |
+|         - | 3647 | ` * Return` |
+|         - | 3648 | ` *  Returns the current key and value pair from the array array. This pair is returned` |
+|         - | 3649 | ` *  in a four-element array, with the keys 0, 1, key, and value. Elements 0 and key` |
+|         - | 3650 | ` *  contain the key name of the array element, and 1 and value contain the data.` |
+|         - | 3651 | ` *  If the internal pointer for the array points past the end of the array contents` |
+|         - | 3652 | ` *  each() returns FALSE.` |
+|         - | 3653 | ` */` |
+|        22 | 3654 | `static int ph7_hashmap_each(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 3655 | `{` |
+|         - | 3656 | `	ph7_hashmap_node *pCur;` |
+|         - | 3657 | `	ph7_hashmap *pMap;` |
+|         - | 3658 | `	ph7_value *pArray;` |
+|         - | 3659 | `	ph7_value *pVal;` |
+|         - | 3660 | `	ph7_value sKey;` |
+|        23 | 3661 | `	if( nArg < 1 ){` |
+|         - | 3662 | `		/* Missing arguments,return FALSE */` |
+|       ! 0 | 3663 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 3664 | `		return PH7_OK;` |
+|         - | 3665 | `	}` |
+|         - | 3666 | `	/* Make sure we are dealing with a valid hashmap */` |
+|        23 | 3667 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         - | 3668 | `		/* Invalid argument,return FALSE */` |
+|       ! 0 | 3669 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 3670 | `		return PH7_OK;` |
+|         - | 3671 | `	}` |
+|         - | 3672 | `	/* Point to the internal representation that describe the input hashmap */` |
+|        23 | 3673 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|        23 | 3674 | `	if( pMap->pCur == 0 ){` |
+|         - | 3675 | `		/* Cursor does not point to anything,return FALSE */` |
+|         9 | 3676 | `		ph7_result_bool(pCtx,0);` |
+|         9 | 3677 | `		return PH7_OK;` |
+|         - | 3678 | `	}` |
+|        15 | 3679 | `	pCur = pMap->pCur;` |
+|         - | 3680 | `	/* Create a new array */` |
+|        15 | 3681 | `	pArray = ph7_context_new_array(pCtx);` |
+|        15 | 3682 | `	if( pArray == 0 ){` |
+|       ! 0 | 3683 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 3684 | `		return PH7_OK;` |
+|         - | 3685 | `	}` |
+|        15 | 3686 | `	pVal = HashmapExtractNodeValue(pCur);` |
+|         - | 3687 | `	/* Insert the current value */` |
+|        15 | 3688 | `	ph7_array_add_intkey_elem(pArray,1,pVal);` |
+|        15 | 3689 | `	ph7_array_add_strkey_elem(pArray,"value",pVal);` |
+|         - | 3690 | `	/* Make the key */` |
+|        15 | 3691 | `	if( pCur->iType == HASHMAP_INT_NODE ){` |
+|         7 | 3692 | `		PH7_MemObjInitFromInt(pMap->pVm,&sKey,pCur->xKey.iKey);` |
+|         4 | 3693 | `	}else{` |
+|         9 | 3694 | `		PH7_MemObjInitFromString(pMap->pVm,&sKey,0);` |
+|         9 | 3695 | `		PH7_MemObjStringAppend(&sKey,(const char *)SyBlobData(&pCur->xKey.sKey),SyBlobLength(&pCur->xKey.sKey));` |
+|         - | 3696 | `	}` |
+|         - | 3697 | `	/* Insert the current key */` |
+|        15 | 3698 | `	ph7_array_add_intkey_elem(pArray,0,&sKey);` |
+|        15 | 3699 | `	ph7_array_add_strkey_elem(pArray,"key",&sKey);` |
+|        15 | 3700 | `	PH7_MemObjRelease(&sKey);` |
+|         - | 3701 | `	/* Advance the cursor */` |
+|        15 | 3702 | `	pMap->pCur = pCur->pPrev; /* Reverse link */` |
+|         - | 3703 | `	/* Return the current entry */` |
+|        15 | 3704 | `	ph7_result_value(pCtx,pArray);` |
+|        15 | 3705 | `	return PH7_OK;` |
+|        12 | 3706 | `}` |
+|         - | 3707 | `/*` |
+|         - | 3708 | ` * range() — a faithful port of php 8.5's ext/standard/array.c implementation` |
+|         - | 3709 | ` * (php_range_process_input + PHP_FUNCTION(range)), so the value semantics,` |
+|         - | 3710 | ` * diagnostics, and their ordering are byte-exact: decreasing ranges, float` |
+|         - | 3711 | ` * ranges, character ranges, the step/endpoint ValueErrors, the ZPP TypeErrors` |
+|         - | 3712 | ` * and null deprecations, and the string-endpoint warnings.` |
+|         - | 3713 | ` */` |
+|         - | 3714 | `#define PH7_RANGE_HT_MAX_SIZE 1073741824 /* php's HT_MAX_SIZE (2^30 entries) */` |
+|         - | 3715 | `/*` |
+|         - | 3716 | ` * Endpoint classification, mirroring php_range_process_input's return` |
+|         - | 3717 | ` * contract. php returns zval type tags whose ORDER encodes the logic` |
+|         - | 3718 | ` * (IS_LONG < IS_DOUBLE < IS_STRING < IS_ARRAY); the >=/< comparisons in` |
+|         - | 3719 | ` * ph7_hashmap_range depend on the same ordering here.` |
+|         - | 3720 | ` *   RANGE_IN_LONG/DOUBLE : only interpretable as int / float` |
+|         - | 3721 | ` *   RANGE_IN_STRING      : only interpretable as a (char-range) string` |
+|         - | 3722 | ` *   RANGE_IN_DIGIT       : single-byte numeric string — valid as both a char` |
+|         - | 3723 | ` *                          and a number (php returns IS_ARRAY for this)` |
+|         - | 3724 | ` * The RANGE_IN_* codes and RangeStrToNumber are declared in ph7int.h so the` |
+|         - | 3725 | ` * stage-2 ZPP domain-error sweep can reuse the classifier (PLAN §3.9(a)).` |
+|         - | 3726 | ` */` |
+|         - | 3727 | `/* IEEE special-value tests: the engine-wide bit-pattern macros from` |
+|         - | 3728 | ` * sxtypes.h (via ph7int.h) — same ones the printf/serialize paths use. */` |
+|         - | 3729 | `/*` |
+|         - | 3730 | ` * The type name php's ZPP prints after "must be of type ..., X given":` |
+|         - | 3731 | ` * the concrete class name for objects, the usual type name otherwise.` |
+|         - | 3732 | ` */` |
+|       ! 0 | 3733 | `static const char * RangeArgTypeName(ph7_value *pVal,char *zBuf,sxu32 nBufLen)` |
+|       ! 0 | 3734 | `{` |
+|       ! 0 | 3735 | `	if( pVal->iFlags & MEMOBJ_OBJ ){` |
+|       ! 0 | 3736 | `		ph7_class_instance *pThis = (ph7_class_instance *)pVal->x.pOther;` |
+|       ! 0 | 3737 | `		sxu32 n = SXMIN(pThis->pClass->sName.nByte,nBufLen - 1);` |
+|       ! 0 | 3738 | `		SyMemcpy((const void *)pThis->pClass->sName.zString,zBuf,n);` |
+|       ! 0 | 3739 | `		zBuf[n] = 0;` |
+|       ! 0 | 3740 | `		return zBuf;` |
+|         - | 3741 | `	}` |
+|       ! 0 | 3742 | `	return ph7_type_name(pVal);` |
+|       ! 0 | 3743 | `}` |
+|         - | 3744 | `/*` |
+|         - | 3745 | ` * Classify a string with php's is_numeric_string() grammar:` |
+|         - | 3746 | ` *   [ws] [sign] ( D+ [ . D* ] \| . D+ ) [ (e\|E) [sign] D+ ] [ws]` |
+|         - | 3747 | ` * — the whole string must be consumed; hex/binary/"INF"/"NAN" are NOT` |
+|         - | 3748 | ` * numeric. Returns RANGE_IN_LONG with *pLong set, RANGE_IN_DOUBLE with` |
+|         - | 3749 | ` * *pDouble set (a fractional/exponent form, or an integer too wide for an` |
+|         - | 3750 | ` * sxi64 — php reclassifies those as float), or RANGE_IN_ERROR when the` |
+|         - | 3751 | ` * string is not numeric. The float value comes from libc strtod, like` |
+|         - | 3752 | ` * php's zend_strtod (byte-exact-floats rule). zIn must be NUL-terminated` |
+|         - | 3753 | ` * at zIn[nLen] — ph7_value_to_string guarantees this (SyBlobNullAppend) —` |
+|         - | 3754 | ` * so strtod can parse it in place once the grammar has validated it.` |
+|         - | 3755 | ` */` |
+|       156 | 3756 | `PH7_PRIVATE sxu8 RangeStrToNumber(const char *zIn,sxu32 nLen,sxi64 *pLong,double *pDouble)` |
+|         1 | 3757 | `{` |
+|       157 | 3758 | `	const char *z = zIn,*zEnd = &zIn[nLen];` |
+|       157 | 3759 | `	sxu64 uVal = 0;` |
+|       157 | 3760 | `	int bNeg = 0,bDigit = 0,bReal = 0,bOverflow = 0;` |
+|       167 | 3761 | `	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisSpace(z[0]) ){ z++; }` |
+|       157 | 3762 | `	if( z < zEnd && (z[0] == '+' \|\| z[0] == '-') ){` |
+|         3 | 3763 | `		bNeg = (z[0] == '-');` |
+|         3 | 3764 | `		z++;` |
+|         1 | 3765 | `	}` |
+|       237 | 3766 | `	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){` |
+|        81 | 3767 | `		int d = z[0] - '0';` |
+|         - | 3768 | `		/* Track overflow past 2^63, the widest magnitude an sxi64 can carry` |
+|         - | 3769 | `		 * (as LONG_MIN); overflowing integers become floats like in php. */` |
+|        81 | 3770 | `		if( uVal > 922337203685477580ULL \|\| (uVal == 922337203685477580ULL && d > 8) ){` |
+|       ! 0 | 3771 | `			bOverflow = 1;` |
+|       ! 0 | 3772 | `		}else{` |
+|        81 | 3773 | `			uVal = uVal * 10 + (sxu64)d;` |
+|         - | 3774 | `		}` |
+|        81 | 3775 | `		bDigit = 1;` |
+|        81 | 3776 | `		z++;` |
+|         1 | 3777 | `	}` |
+|       157 | 3778 | `	if( z < zEnd && z[0] == '.' ){` |
+|         3 | 3779 | `		bReal = 1;` |
+|         3 | 3780 | `		z++;` |
+|         5 | 3781 | `		while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){` |
+|         3 | 3782 | `			bDigit = 1;` |
+|         3 | 3783 | `			z++;` |
+|         1 | 3784 | `		}` |
+|         1 | 3785 | `	}` |
+|         - | 3786 | `	/* At least one mantissa digit required (rejects "", ".", "+", "e5"). */` |
+|       157 | 3787 | `	if( !bDigit ){` |
+|        61 | 3788 | `		return RANGE_IN_ERROR;` |
+|         - | 3789 | `	}` |
+|         - | 3790 | `	/* Optional exponent — needs at least one digit (rejects "1e", "1e+"). */` |
+|        97 | 3791 | `	if( z < zEnd && (z[0] == 'e' \|\| z[0] == 'E') ){` |
+|         9 | 3792 | `		z++;` |
+|         9 | 3793 | `		if( z < zEnd && (z[0] == '+' \|\| z[0] == '-') ){ z++; }` |
+|         9 | 3794 | `		if( z >= zEnd \|\| (unsigned char)z[0] >= 0xc0 \|\| !SyisDigit(z[0]) ){` |
+|       ! 0 | 3795 | `			return RANGE_IN_ERROR;` |
+|         - | 3796 | `		}` |
+|         9 | 3797 | `		bReal = 1;` |
+|        17 | 3798 | `		while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){ z++; }` |
+|         4 | 3799 | `	}` |
+|         - | 3800 | `	/* Trailing whitespace allowed; anything else means not numeric. */` |
+|       101 | 3801 | `	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisSpace(z[0]) ){ z++; }` |
+|        97 | 3802 | `	if( z != zEnd ){` |
+|        13 | 3803 | `		return RANGE_IN_ERROR;` |
+|         - | 3804 | `	}` |
+|        84 | 3805 | `	if( bOverflow \|\| (!bNeg && uVal > (sxu64)LARGEST_INT64)` |
+|        43 | 3806 | `	 \|\| (bNeg && uVal > (sxu64)LARGEST_INT64 + 1) ){` |
+|        84 | 3807 | `		bReal = 1;` |
+|        84 | 3808 | `	}` |
+|        43 | 3809 | `	if( bReal ){` |
+|        11 | 3810 | `		*pDouble = strtod(zIn,0);` |
+|        11 | 3811 | `		return RANGE_IN_DOUBLE;` |
+|         - | 3812 | `	}` |
+|         - | 3813 | `	/* Negate in unsigned space so 2^63 lands on LONG_MIN without overflow. */` |
+|        33 | 3814 | `	*pLong = bNeg ? (sxi64)((sxu64)0 - uVal) : (sxi64)uVal;` |
+|        33 | 3815 | `	return RANGE_IN_LONG;` |
+|        58 | 3816 | `}` |
+|         - | 3817 | `/*` |
+|         - | 3818 | ` * ZPP emulation for $start/$end (php's Z_PARAM_NUMBER_OR_STR, weak mode):` |
+|         - | 3819 | ` * reject array/object/resource with php's TypeError, deprecate null (the` |
+|         - | 3820 | ` * value then reads as int 0 — *pbNullCoerced). php runs this for all` |
+|         - | 3821 | ` * arguments BEFORE any value/domain check, hence the split from` |
+|         - | 3822 | ` * RangeProcessInput below. Returns FALSE after throwing (*pRc set).` |
+|         - | 3823 | ` */` |
+|       332 | 3824 | `static int RangeEndpointZpp(ph7_context *pCtx,ph7_value *pIn,int iArg,const char *zName,int *pbNullCoerced,sxi32 *pRc)` |
+|         1 | 3825 | `{` |
+|         - | 3826 | `	char zMsg[160];` |
+|       333 | 3827 | `	*pRc = PH7_OK;` |
+|       333 | 3828 | `	if( pIn->iFlags & (MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_RES) ){` |
+|         - | 3829 | `		char zType[80];` |
+|       ! 0 | 3830 | `		*pRc = PH7_VmThrowException(pCtx,"TypeError",` |
+|         - | 3831 | `			"range(): Argument #%d ($%s) must be of type string\|int\|float, %s given",` |
+|       ! 0 | 3832 | `			iArg,zName,RangeArgTypeName(pIn,zType,sizeof(zType)));` |
+|       ! 0 | 3833 | `		return FALSE;` |
+|         - | 3834 | `	}` |
+|       333 | 3835 | `	if( pIn->iFlags & MEMOBJ_NULL ){` |
+|         7 | 3836 | `		SyBufferFormat(zMsg,sizeof(zMsg),` |
+|         - | 3837 | `			"range(): Passing null to parameter #%d ($%s) of type string\|int\|float is deprecated",` |
+|         2 | 3838 | `			iArg,zName);` |
+|         5 | 3839 | `		PH7_VmThrowError(pCtx->pVm,0,E_DEPRECATED,zMsg);` |
+|         5 | 3840 | `		*pbNullCoerced = TRUE;` |
+|         2 | 3841 | `	}` |
+|       333 | 3842 | `	return TRUE;` |
+|       167 | 3843 | `}` |
+|         - | 3844 | `/*` |
+|         - | 3845 | ` * ZPP emulation for $step (php's Z_PARAM_NUMBER, weak mode): int/float pass` |
+|         - | 3846 | ` * through, bool coerces to int, null deprecates to int 0 (which then trips` |
+|         - | 3847 | ` * the "cannot be 0" ValueError like php), a numeric string coerces to its` |
+|         - | 3848 | ` * number, anything else is a TypeError. Returns RANGE_IN_LONG/DOUBLE, or` |
+|         - | 3849 | ` * RANGE_IN_ERROR after throwing (*pRc set).` |
+|         - | 3850 | ` */` |
+|        60 | 3851 | `static sxu8 RangeStepInput(ph7_context *pCtx,ph7_value *pIn,sxi64 *pLong,double *pDouble,sxi32 *pRc)` |
+|         1 | 3852 | `{` |
+|        61 | 3853 | `	*pRc = PH7_OK;` |
+|        61 | 3854 | `	if( pIn->iFlags & (MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_RES) ){` |
+|         - | 3855 | `		char zType[80];` |
+|       ! 0 | 3856 | `		*pRc = PH7_VmThrowException(pCtx,"TypeError",` |
+|         - | 3857 | `			"range(): Argument #3 ($step) must be of type int\|float, %s given",` |
+|       ! 0 | 3858 | `			RangeArgTypeName(pIn,zType,sizeof(zType)));` |
+|       ! 0 | 3859 | `		return RANGE_IN_ERROR;` |
+|         - | 3860 | `	}` |
+|        61 | 3861 | `	if( pIn->iFlags & MEMOBJ_NULL ){` |
+|         3 | 3862 | `		PH7_VmThrowError(pCtx->pVm,0,E_DEPRECATED,` |
+|         - | 3863 | `			"range(): Passing null to parameter #3 ($step) of type int\|float is deprecated");` |
+|         3 | 3864 | `		*pLong = 0;` |
+|         3 | 3865 | `		return RANGE_IN_LONG;` |
+|         - | 3866 | `	}` |
+|        59 | 3867 | `	if( pIn->iFlags & MEMOBJ_REAL ){` |
+|        25 | 3868 | `		*pDouble = ph7_value_to_double(pIn);` |
+|        25 | 3869 | `		return RANGE_IN_DOUBLE;` |
+|         - | 3870 | `	}` |
+|        35 | 3871 | `	if( pIn->iFlags & MEMOBJ_STRING ){` |
+|         - | 3872 | `		const char *zStr;` |
+|         - | 3873 | `		int nLen;` |
+|         - | 3874 | `		sxu8 iKind;` |
+|         3 | 3875 | `		zStr = ph7_value_to_string(pIn,&nLen);` |
+|         3 | 3876 | `		iKind = RangeStrToNumber(zStr,(sxu32)nLen,pLong,pDouble);` |
+|         3 | 3877 | `		if( iKind == RANGE_IN_ERROR ){` |
+|         3 | 3878 | `			*pRc = PH7_VmThrowException(pCtx,"TypeError",` |
+|         - | 3879 | `				"range(): Argument #3 ($step) must be of type int\|float, string given");` |
+|         1 | 3880 | `		}` |
+|         3 | 3881 | `		return iKind;` |
+|         - | 3882 | `	}` |
+|         - | 3883 | `	/* int / bool */` |
+|        33 | 3884 | `	*pLong = ph7_value_to_int64(pIn);` |
+|        33 | 3885 | `	return RANGE_IN_LONG;` |
+|        31 | 3886 | `}` |
+|         - | 3887 | `/*` |
+|         - | 3888 | ` * php_range_process_input port: resolve $start/$end into a number and/or a` |
+|         - | 3889 | ` * char-range byte, emitting php's exact warnings (empty string, multi-byte` |
+|         - | 3890 | ` * string) and ValueErrors (INF/NAN). Returns a RANGE_IN_* code, or` |
+|         - | 3891 | ` * RANGE_IN_ERROR after throwing (*pRc set).` |
+|         - | 3892 | ` */` |
+|       300 | 3893 | `static sxu8 RangeProcessInput(ph7_context *pCtx,ph7_value *pIn,int iArg,const char *zName,` |
+|         - | 3894 | `	int bNullCoerced,sxi64 *pLong,double *pDouble,unsigned char *pChar,sxi32 *pRc)` |
+|         1 | 3895 | `{` |
+|         - | 3896 | `	char zMsg[160];` |
+|         - | 3897 | `	double r;` |
+|       301 | 3898 | `	*pRc = PH7_OK;` |
+|       301 | 3899 | `	if( bNullCoerced ){` |
+|         - | 3900 | `		/* ZPP already deprecated the null; it reads as int 0. */` |
+|         5 | 3901 | `		*pLong = 0;` |
+|         5 | 3902 | `		*pDouble = 0.0;` |
+|         5 | 3903 | `		return RANGE_IN_LONG;` |
+|         - | 3904 | `	}` |
+|       297 | 3905 | `	if( pIn->iFlags & MEMOBJ_REAL ){` |
+|        21 | 3906 | `		r = ph7_value_to_double(pIn);` |
+|        12 | 3907 | `check_dval:` |
+|        25 | 3908 | `		if( PH7_IS_INF(r) ){` |
+|         7 | 3909 | `			*pRc = PH7_VmThrowException(pCtx,"ValueError",` |
+|         2 | 3910 | `				"range(): Argument #%d ($%s) must be a finite number, INF provided",iArg,zName);` |
+|         5 | 3911 | `			return RANGE_IN_ERROR;` |
+|         - | 3912 | `		}` |
+|        21 | 3913 | `		if( PH7_IS_NAN(r) ){` |
+|         7 | 3914 | `			*pRc = PH7_VmThrowException(pCtx,"ValueError",` |
+|         2 | 3915 | `				"range(): Argument #%d ($%s) must be a finite number, NAN provided",iArg,zName);` |
+|         5 | 3916 | `			return RANGE_IN_ERROR;` |
+|         - | 3917 | `		}` |
+|        17 | 3918 | `		*pDouble = r;` |
+|        17 | 3919 | `		return RANGE_IN_DOUBLE;` |
+|         - | 3920 | `	}` |
+|       277 | 3921 | `	if( pIn->iFlags & MEMOBJ_STRING ){` |
+|         - | 3922 | `		const char *zStr;` |
+|         - | 3923 | `		int nLen;` |
+|         - | 3924 | `		sxu8 iKind;` |
+|        81 | 3925 | `		zStr = ph7_value_to_string(pIn,&nLen);` |
+|        81 | 3926 | `		if( nLen == 0 ){` |
+|         7 | 3927 | `			SyBufferFormat(zMsg,sizeof(zMsg),` |
+|         2 | 3928 | `				"range(): Argument #%d ($%s) must not be empty, casted to 0",iArg,zName);` |
+|         5 | 3929 | `			PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,zMsg);` |
+|         5 | 3930 | `			*pLong = 0;` |
+|         5 | 3931 | `			*pDouble = 0.0;` |
+|        41 | 3932 | `			return RANGE_IN_LONG;` |
+|         - | 3933 | `		}` |
+|        77 | 3934 | `		iKind = RangeStrToNumber(zStr,(sxu32)nLen,pLong,pDouble);` |
+|        77 | 3935 | `		if( iKind == RANGE_IN_DOUBLE ){` |
+|         5 | 3936 | `			r = *pDouble;` |
+|         5 | 3937 | `			goto check_dval;` |
 |         - | 3938 | `		}` |
-|        51 | 3939 | `		if( nLen != 1 ){` |
-|        10 | 3940 | `			SyBufferFormat(zMsg,sizeof(zMsg),` |
-|         3 | 3941 | `				"range(): Argument #%d ($%s) must be a single byte, subsequent bytes are ignored",iArg,zName);` |
-|         7 | 3942 | `			PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,zMsg);` |
-|         3 | 3943 | `		}` |
-|        51 | 3944 | `		*pChar = (unsigned char)zStr[0];` |
-|         - | 3945 | `		/* Fall-back numeric value in case the other argument is not a string. */` |
-|        51 | 3946 | `		*pLong = 0;` |
-|        51 | 3947 | `		*pDouble = 0.0;` |
-|        51 | 3948 | `		return RANGE_IN_STRING;` |
-|         - | 3949 | `	}` |
-|         - | 3950 | `	/* int / bool */` |
-|       197 | 3951 | `	*pLong = ph7_value_to_int64(pIn);` |
-|       197 | 3952 | `	*pDouble = (double)*pLong;` |
-|       197 | 3953 | `	return RANGE_IN_LONG;` |
-|       151 | 3954 | `}` |
-|         - | 3955 | `/*` |
-|         - | 3956 | ` * The two "supplied range exceeds the maximum array size" ValueErrors.` |
-|         - | 3957 | ` * Both php messages print the macro's (start,end) parameters, which its` |
-|         - | 3958 | ` * callers pass SWAPPED for a decreasing range — a php quirk kept for` |
-|         - | 3959 | ` * byte-parity (callers below pass the values to *print*). The int and` |
-|         - | 3960 | ` * float variants differ in wording ("Maximum size: N." vs "Max size: N")` |
-|         - | 3961 | ` * exactly like php's two macros.` |
-|         - | 3962 | ` */` |
-|         6 | 3963 | `static sxi32 RangeLongSizeError(ph7_context *pCtx,sxu64 nCalc,sxi64 iStart,sxi64 iEnd,sxi64 iStep)` |
-|         1 | 3964 | `{` |
-|        10 | 3965 | `	return PH7_VmThrowException(pCtx,"ValueError",` |
-|         - | 3966 | `		"The supplied range exceeds the maximum array size by %qu elements: "` |
-|         - | 3967 | `		"start=%qd, end=%qd, step=%qd. Calculated size: %qu. Maximum size: %qu.",` |
-|         3 | 3968 | `		nCalc - (sxu64)(PH7_RANGE_HT_MAX_SIZE - 1),iStart,iEnd,iStep,` |
-|         3 | 3969 | `		nCalc,(sxu64)PH7_RANGE_HT_MAX_SIZE);` |
-|         1 | 3970 | `}` |
-|         6 | 3971 | `static sxi32 RangeDoubleSizeError(ph7_context *pCtx,double rCalc,double rStart,double rEnd,double rStep)` |
-|         1 | 3972 | `{` |
-|         - | 3973 | `	/* Four %.1f doubles can reach ~313 bytes each near DBL_MAX, so format on` |
-|         - | 3974 | `	 * the VM heap (auto-released with the call context) rather than parking` |
-|         - | 3975 | `	 * ~1.5 KB on the native stack of a small-stack embedded port. */` |
-|         7 | 3976 | `	const unsigned int nBuf = 1500;` |
-|         7 | 3977 | `	char *zMsg = (char *)ph7_context_alloc_chunk(pCtx,nBuf,FALSE,TRUE/* Auto-release */);` |
-|         7 | 3978 | `	if( zMsg == 0 ){` |
-|       ! 0 | 3979 | `		return PH7_ContextMemoryError(pCtx);` |
-|         - | 3980 | `	}` |
-|         7 | 3981 | `	snprintf(zMsg,nBuf,` |
-|         - | 3982 | `		"The supplied range exceeds the maximum array size by %.1f elements: "` |
-|         - | 3983 | `		"start=%.1f, end=%.1f, step=%.1f. Max size: 1073741824",` |
-|         - | 3984 | `		rCalc - (double)PH7_RANGE_HT_MAX_SIZE,rStart,rEnd,rStep);` |
-|         7 | 3985 | `	return PH7_VmThrowException(pCtx,"ValueError","%s",zMsg);` |
-|         4 | 3986 | `}` |
-|         - | 3987 | `/*` |
-|         - | 3988 | ` * Set the element container to the next range element and append it to the` |
-|         - | 3989 | ` * result array, surfacing allocation failure as the OOM fatal (never a` |
-|         - | 3990 | ` * silently-truncated array). One helper per element type so the fill loops` |
-|         - | 3991 | ` * below stay one line per iteration.` |
-|         - | 3992 | ` */` |
-|    401680 | 3993 | `static sxi32 RangeAppendInt(ph7_context *pCtx,ph7_value *pArray,ph7_value *pValue,sxi64 iVal)` |
-|         1 | 3994 | `{` |
-|    401681 | 3995 | `	ph7_value_int64(pValue,iVal);` |
-|    401681 | 3996 | `	if( ph7_array_add_elem(pArray,0/* Automatic index assign*/,pValue) != SXRET_OK ){` |
-|       ! 0 | 3997 | `		return PH7_ContextMemoryError(pCtx);` |
-|         - | 3998 | `	}` |
-|    401681 | 3999 | `	return PH7_OK;` |
-|    200841 | 4000 | `}` |
-|        70 | 4001 | `static sxi32 RangeAppendDouble(ph7_context *pCtx,ph7_value *pArray,ph7_value *pValue,double rVal)` |
-|         1 | 4002 | `{` |
-|        71 | 4003 | `	ph7_value_double(pValue,rVal);` |
-|        71 | 4004 | `	if( ph7_array_add_elem(pArray,0,pValue) != SXRET_OK ){` |
-|       ! 0 | 4005 | `		return PH7_ContextMemoryError(pCtx);` |
-|         - | 4006 | `	}` |
-|        71 | 4007 | `	return PH7_OK;` |
-|        36 | 4008 | `}` |
-|       168 | 4009 | `static sxi32 RangeAppendChar(ph7_context *pCtx,ph7_value *pArray,ph7_value *pValue,char c)` |
-|         1 | 4010 | `{` |
-|       169 | 4011 | `	ph7_value_string(pValue,&c,1);` |
-|       169 | 4012 | `	if( ph7_array_add_elem(pArray,0,pValue) != SXRET_OK ){` |
-|       ! 0 | 4013 | `		return PH7_ContextMemoryError(pCtx);` |
-|         - | 4014 | `	}` |
-|       169 | 4015 | `	ph7_value_reset_string_cursor(pValue);` |
-|       169 | 4016 | `	return PH7_OK;` |
-|        85 | 4017 | `}` |
-|         - | 4018 | `/*` |
-|         - | 4019 | ` * array range(string\|int\|float $start,string\|int\|float $end,int\|float $step = 1)` |
-|         - | 4020 | ` *  Create an array containing a range of elements.` |
-|         - | 4021 | ` * Return` |
-|         - | 4022 | ` *  An array of elements from start to end, inclusive; int, float, or` |
-|         - | 4023 | ` *  single-character string elements depending on the inputs, like php 8.` |
-|         - | 4024 | ` */` |
-|       168 | 4025 | `static int ph7_hashmap_range(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 4026 | `{` |
-|         - | 4027 | `	ph7_value *pValue,*pArray;` |
-|       169 | 4028 | `	sxi32 rc = PH7_OK;` |
-|       169 | 4029 | `	int is_step_double = 0,is_step_negative = 0;` |
-|       169 | 4030 | `	double step_double = 1.0;` |
-|       169 | 4031 | `	sxi64 step = 1;` |
-|         - | 4032 | `	sxu8 start_type,end_type;` |
-|       169 | 4033 | `	sxi64 start_long = 0,end_long = 0;` |
-|       169 | 4034 | `	double start_double = 0.0,end_double = 0.0;` |
-|       169 | 4035 | `	unsigned char cStart = 0,cEnd = 0;` |
-|       169 | 4036 | `	int bStartNull = FALSE,bEndNull = FALSE;` |
-|         - | 4037 | `	sxu32 i,size;` |
-|         - | 4038 |  |
-|         - | 4039 | `	/* php ZPP arity: at least 2 (enforced centrally, aBuiltinArity), at most 3. */` |
-|       169 | 4040 | `	if( nArg > 3 ){` |
-|         4 | 4041 | `		return PH7_VmThrowException(pCtx,"ArgumentCountError",` |
-|         1 | 4042 | `			"range() expects at most 3 arguments, %d given",nArg);` |
-|         - | 4043 | `	}` |
-|       167 | 4044 | `	if( nArg < 2 ){` |
-|         - | 4045 | `		/* Defensive only: the central arity table throws before we run. */` |
-|       ! 0 | 4046 | `		return PH7_VmThrowException(pCtx,"ArgumentCountError",` |
-|       ! 0 | 4047 | `			"range() expects at least 2 arguments, %d given",nArg);` |
-|         - | 4048 | `	}` |
-|         - | 4049 | `	/* ZPP pass in argument order: type errors and null deprecations fire` |
-|         - | 4050 | `	 * before any value/domain check, like php's zend_parse_parameters. */` |
-|       167 | 4051 | `	if( !RangeEndpointZpp(pCtx,apArg[0],1,"start",&bStartNull,&rc) ){` |
-|       ! 0 | 4052 | `		return rc;` |
-|         - | 4053 | `	}` |
-|       167 | 4054 | `	if( !RangeEndpointZpp(pCtx,apArg[1],2,"end",&bEndNull,&rc) ){` |
-|       ! 0 | 4055 | `		return rc;` |
-|         - | 4056 | `	}` |
-|       167 | 4057 | `	if( nArg > 2 ){` |
-|        61 | 4058 | `		sxu8 iStepKind = RangeStepInput(pCtx,apArg[2],&step,&step_double,&rc);` |
-|        61 | 4059 | `		if( iStepKind == RANGE_IN_ERROR ){` |
-|         3 | 4060 | `			return rc;` |
-|         - | 4061 | `		}` |
-|        59 | 4062 | `		if( iStepKind == RANGE_IN_DOUBLE ){` |
-|        25 | 4063 | `			if( PH7_IS_INF(step_double) ){` |
-|         3 | 4064 | `				return PH7_VmThrowException(pCtx,"ValueError",` |
-|         - | 4065 | `					"range(): Argument #3 ($step) must be a finite number, INF provided");` |
-|         - | 4066 | `			}` |
-|        23 | 4067 | `			if( PH7_IS_NAN(step_double) ){` |
-|         3 | 4068 | `				return PH7_VmThrowException(pCtx,"ValueError",` |
-|         - | 4069 | `					"range(): Argument #3 ($step) must be a finite number, NAN provided");` |
-|         - | 4070 | `			}` |
-|         - | 4071 | `			/* We only want positive step values. */` |
-|        21 | 4072 | `			if( step_double < 0.0 ){` |
-|       ! 0 | 4073 | `				is_step_negative = 1;` |
-|       ! 0 | 4074 | `				step_double *= -1;` |
-|       ! 0 | 4075 | `			}` |
-|         - | 4076 | `			/* zend_dval_to_lval_silent + zend_is_long_compatible: an integral` |
-|         - | 4077 | `			 * in-sxi64-range float step behaves as an int (char ranges accept` |
-|         - | 4078 | `			 * it, int endpoints stay int); anything else is a float step. */` |
-|        21 | 4079 | `			if( step_double < 9223372036854775808.0 ){` |
-|        19 | 4080 | `				step = (sxi64)step_double;` |
-|        19 | 4081 | `				if( (double)step != step_double ){` |
-|        17 | 4082 | `					is_step_double = 1;` |
-|         8 | 4083 | `				}` |
-|        10 | 4084 | `			}else{` |
-|         - | 4085 | ``				/* Casting out-of-range would be UB; `step` stays unread —`` |
-|         - | 4086 | `				 * every reader is gated behind !is_step_double. */` |
-|         3 | 4087 | `				is_step_double = 1;` |
-|         - | 4088 | `			}` |
-|        11 | 4089 | `		}else{` |
-|         - | 4090 | `			/* We only want positive step values. */` |
-|        35 | 4091 | `			if( step < 0 ){` |
-|        11 | 4092 | `				if( step == SMALLEST_INT64 ){` |
-|         - | 4093 | `					/* -step would overflow */` |
-|         4 | 4094 | `					return PH7_VmThrowException(pCtx,"ValueError",` |
-|         1 | 4095 | `						"range(): Argument #3 ($step) must be greater than %qd",step);` |
-|         - | 4096 | `				}` |
-|         9 | 4097 | `				is_step_negative = 1;` |
-|         9 | 4098 | `				step = -step;` |
-|         4 | 4099 | `			}` |
-|        33 | 4100 | `			step_double = (double)step;` |
-|         - | 4101 | `		}` |
-|        53 | 4102 | `		if( step_double == 0.0 ){` |
-|         7 | 4103 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
-|         - | 4104 | `				"range(): Argument #3 ($step) cannot be 0");` |
-|         - | 4105 | `		}` |
-|        23 | 4106 | `	}` |
-|       153 | 4107 | `	start_type = RangeProcessInput(pCtx,apArg[0],1,"start",bStartNull,&start_long,&start_double,&cStart,&rc);` |
-|       153 | 4108 | `	if( start_type == RANGE_IN_ERROR ){` |
-|         5 | 4109 | `		return rc;` |
-|         - | 4110 | `	}` |
-|       149 | 4111 | `	end_type = RangeProcessInput(pCtx,apArg[1],2,"end",bEndNull,&end_long,&end_double,&cEnd,&rc);` |
-|       149 | 4112 | `	if( end_type == RANGE_IN_ERROR ){` |
-|         5 | 4113 | `		return rc;` |
-|         - | 4114 | `	}` |
-|         - | 4115 | `	/* Element container + result array */` |
-|       145 | 4116 | `	pValue = ph7_context_new_scalar(pCtx);` |
-|       145 | 4117 | `	pArray = ph7_context_new_array(pCtx);` |
-|       145 | 4118 | `	if( pValue == 0 \|\| pArray == 0 ){` |
-|       ! 0 | 4119 | `		return PH7_ContextMemoryError(pCtx);` |
-|         - | 4120 | `	}` |
-|         - | 4121 | `	/* If the range is given as strings, generate an array of characters. */` |
-|       145 | 4122 | `	if( start_type >= RANGE_IN_STRING \|\| end_type >= RANGE_IN_STRING ){` |
-|        37 | 4123 | `		if( start_type < RANGE_IN_STRING \|\| end_type < RANGE_IN_STRING ){` |
-|         - | 4124 | `			/* Only one side is a string: the char side converts to 0 (with a` |
-|         - | 4125 | `			 * warning unless the numeric side is an ambiguous single digit)` |
-|         - | 4126 | `			 * and the range is numeric. */` |
-|        15 | 4127 | `			if( start_type < RANGE_IN_STRING ){` |
-|         7 | 4128 | `				if( end_type != RANGE_IN_DIGIT ){` |
-|         7 | 4129 | `					PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,` |
-|         - | 4130 | `						"range(): Argument #1 ($start) must be a single byte string if"` |
-|         - | 4131 | `						" argument #2 ($end) is a single byte string, argument #2 ($end) converted to 0");` |
-|         3 | 4132 | `				}` |
-|         7 | 4133 | `				end_type = RANGE_IN_LONG;` |
-|         4 | 4134 | `			}else{` |
-|         9 | 4135 | `				if( start_type != RANGE_IN_DIGIT ){` |
-|         9 | 4136 | `					PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,` |
-|         - | 4137 | `						"range(): Argument #2 ($end) must be a single byte string if"` |
-|         - | 4138 | `						" argument #1 ($start) is a single byte string, argument #1 ($start) converted to 0");` |
-|         4 | 4139 | `				}` |
-|         9 | 4140 | `				start_type = RANGE_IN_LONG;` |
-|         - | 4141 | `			}` |
-|        15 | 4142 | `			goto handle_numeric_inputs;` |
-|         - | 4143 | `		}` |
-|        23 | 4144 | `		if( is_step_double ){` |
-|         - | 4145 | `			/* Only emit the warning if one of the inputs is not a numeric digit. */` |
-|         5 | 4146 | `			if( start_type == RANGE_IN_STRING \|\| end_type == RANGE_IN_STRING ){` |
-|         3 | 4147 | `				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,` |
-|         - | 4148 | `					"range(): Argument #3 ($step) must be of type int when generating an array"` |
-|         - | 4149 | `					" of characters, inputs converted to 0");` |
-|         1 | 4150 | `			}` |
-|         5 | 4151 | `			start_type = RANGE_IN_LONG;` |
-|         5 | 4152 | `			end_type = RANGE_IN_LONG;` |
-|         5 | 4153 | `			goto handle_numeric_inputs;` |
-|         - | 4154 | `		}` |
-|         - | 4155 | `		/* Generate an array of characters */` |
-|        19 | 4156 | `		if( cStart > cEnd ){` |
-|         - | 4157 | `			/* Decreasing char range */` |
-|         - | 4158 | `			int iCur;` |
-|         3 | 4159 | `			if( (sxi64)(cStart - cEnd) < step ){` |
-|       ! 0 | 4160 | `				goto boundary_error;` |
-|         - | 4161 | `			}` |
-|        17 | 4162 | `			for( iCur = (int)cStart ; iCur >= (int)cEnd ; iCur -= (int)step ){` |
-|        15 | 4163 | `				if( (rc = RangeAppendChar(pCtx,pArray,pValue,(char)iCur)) != PH7_OK ){` |
-|       ! 0 | 4164 | `					return rc;` |
-|         - | 4165 | `				}` |
-|         8 | 4166 | `			}` |
-|        18 | 4167 | `		}else if( cEnd > cStart ){` |
-|         - | 4168 | `			/* Increasing char range */` |
-|         - | 4169 | `			int iCur;` |
-|        15 | 4170 | `			if( is_step_negative ){` |
-|         3 | 4171 | `				goto negative_step_error;` |
-|         - | 4172 | `			}` |
-|        13 | 4173 | `			if( (sxi64)(cEnd - cStart) < step ){` |
-|         3 | 4174 | `				goto boundary_error;` |
-|         - | 4175 | `			}` |
-|       163 | 4176 | `			for( iCur = (int)cStart ; iCur <= (int)cEnd ; iCur += (int)step ){` |
-|       153 | 4177 | `				if( (rc = RangeAppendChar(pCtx,pArray,pValue,(char)iCur)) != PH7_OK ){` |
-|       ! 0 | 4178 | `					return rc;` |
-|         - | 4179 | `				}` |
-|        77 | 4180 | `			}` |
-|         6 | 4181 | `		}else{` |
-|         3 | 4182 | `			if( (rc = RangeAppendChar(pCtx,pArray,pValue,(char)cStart)) != PH7_OK ){` |
-|       ! 0 | 4183 | `				return rc;` |
+|        73 | 3939 | `		if( iKind == RANGE_IN_LONG ){` |
+|        23 | 3940 | `			*pDouble = (double)*pLong;` |
+|        23 | 3941 | `			if( nLen == 1 ){` |
+|         - | 3942 | `				/* A single numeric digit works as both a char and a number. */` |
+|         9 | 3943 | `				*pChar = (unsigned char)zStr[0];` |
+|         9 | 3944 | `				return RANGE_IN_DIGIT;` |
+|         - | 3945 | `			}` |
+|        15 | 3946 | `			return RANGE_IN_LONG;` |
+|         - | 3947 | `		}` |
+|        51 | 3948 | `		if( nLen != 1 ){` |
+|        10 | 3949 | `			SyBufferFormat(zMsg,sizeof(zMsg),` |
+|         3 | 3950 | `				"range(): Argument #%d ($%s) must be a single byte, subsequent bytes are ignored",iArg,zName);` |
+|         7 | 3951 | `			PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,zMsg);` |
+|         3 | 3952 | `		}` |
+|        51 | 3953 | `		*pChar = (unsigned char)zStr[0];` |
+|         - | 3954 | `		/* Fall-back numeric value in case the other argument is not a string. */` |
+|        51 | 3955 | `		*pLong = 0;` |
+|        51 | 3956 | `		*pDouble = 0.0;` |
+|        51 | 3957 | `		return RANGE_IN_STRING;` |
+|         - | 3958 | `	}` |
+|         - | 3959 | `	/* int / bool */` |
+|       197 | 3960 | `	*pLong = ph7_value_to_int64(pIn);` |
+|       197 | 3961 | `	*pDouble = (double)*pLong;` |
+|       197 | 3962 | `	return RANGE_IN_LONG;` |
+|       151 | 3963 | `}` |
+|         - | 3964 | `/*` |
+|         - | 3965 | ` * The two "supplied range exceeds the maximum array size" ValueErrors.` |
+|         - | 3966 | ` * Both php messages print the macro's (start,end) parameters, which its` |
+|         - | 3967 | ` * callers pass SWAPPED for a decreasing range — a php quirk kept for` |
+|         - | 3968 | ` * byte-parity (callers below pass the values to *print*). The int and` |
+|         - | 3969 | ` * float variants differ in wording ("Maximum size: N." vs "Max size: N")` |
+|         - | 3970 | ` * exactly like php's two macros.` |
+|         - | 3971 | ` */` |
+|         6 | 3972 | `static sxi32 RangeLongSizeError(ph7_context *pCtx,sxu64 nCalc,sxi64 iStart,sxi64 iEnd,sxi64 iStep)` |
+|         1 | 3973 | `{` |
+|        10 | 3974 | `	return PH7_VmThrowException(pCtx,"ValueError",` |
+|         - | 3975 | `		"The supplied range exceeds the maximum array size by %qu elements: "` |
+|         - | 3976 | `		"start=%qd, end=%qd, step=%qd. Calculated size: %qu. Maximum size: %qu.",` |
+|         3 | 3977 | `		nCalc - (sxu64)(PH7_RANGE_HT_MAX_SIZE - 1),iStart,iEnd,iStep,` |
+|         3 | 3978 | `		nCalc,(sxu64)PH7_RANGE_HT_MAX_SIZE);` |
+|         1 | 3979 | `}` |
+|         6 | 3980 | `static sxi32 RangeDoubleSizeError(ph7_context *pCtx,double rCalc,double rStart,double rEnd,double rStep)` |
+|         1 | 3981 | `{` |
+|         - | 3982 | `	/* Four %.1f doubles can reach ~313 bytes each near DBL_MAX, so format on` |
+|         - | 3983 | `	 * the VM heap (auto-released with the call context) rather than parking` |
+|         - | 3984 | `	 * ~1.5 KB on the native stack of a small-stack embedded port. */` |
+|         7 | 3985 | `	const unsigned int nBuf = 1500;` |
+|         7 | 3986 | `	char *zMsg = (char *)ph7_context_alloc_chunk(pCtx,nBuf,FALSE,TRUE/* Auto-release */);` |
+|         7 | 3987 | `	if( zMsg == 0 ){` |
+|       ! 0 | 3988 | `		return PH7_ContextMemoryError(pCtx);` |
+|         - | 3989 | `	}` |
+|         7 | 3990 | `	snprintf(zMsg,nBuf,` |
+|         - | 3991 | `		"The supplied range exceeds the maximum array size by %.1f elements: "` |
+|         - | 3992 | `		"start=%.1f, end=%.1f, step=%.1f. Max size: 1073741824",` |
+|         - | 3993 | `		rCalc - (double)PH7_RANGE_HT_MAX_SIZE,rStart,rEnd,rStep);` |
+|         7 | 3994 | `	return PH7_VmThrowException(pCtx,"ValueError","%s",zMsg);` |
+|         4 | 3995 | `}` |
+|         - | 3996 | `/*` |
+|         - | 3997 | ` * Set the element container to the next range element and append it to the` |
+|         - | 3998 | ` * result array, surfacing allocation failure as the OOM fatal (never a` |
+|         - | 3999 | ` * silently-truncated array). One helper per element type so the fill loops` |
+|         - | 4000 | ` * below stay one line per iteration.` |
+|         - | 4001 | ` */` |
+|    401680 | 4002 | `static sxi32 RangeAppendInt(ph7_context *pCtx,ph7_value *pArray,ph7_value *pValue,sxi64 iVal)` |
+|         1 | 4003 | `{` |
+|    401681 | 4004 | `	ph7_value_int64(pValue,iVal);` |
+|    401681 | 4005 | `	if( ph7_array_add_elem(pArray,0/* Automatic index assign*/,pValue) != SXRET_OK ){` |
+|       ! 0 | 4006 | `		return PH7_ContextMemoryError(pCtx);` |
+|         - | 4007 | `	}` |
+|    401681 | 4008 | `	return PH7_OK;` |
+|    200841 | 4009 | `}` |
+|        70 | 4010 | `static sxi32 RangeAppendDouble(ph7_context *pCtx,ph7_value *pArray,ph7_value *pValue,double rVal)` |
+|         1 | 4011 | `{` |
+|        71 | 4012 | `	ph7_value_double(pValue,rVal);` |
+|        71 | 4013 | `	if( ph7_array_add_elem(pArray,0,pValue) != SXRET_OK ){` |
+|       ! 0 | 4014 | `		return PH7_ContextMemoryError(pCtx);` |
+|         - | 4015 | `	}` |
+|        71 | 4016 | `	return PH7_OK;` |
+|        36 | 4017 | `}` |
+|       168 | 4018 | `static sxi32 RangeAppendChar(ph7_context *pCtx,ph7_value *pArray,ph7_value *pValue,char c)` |
+|         1 | 4019 | `{` |
+|       169 | 4020 | `	ph7_value_string(pValue,&c,1);` |
+|       169 | 4021 | `	if( ph7_array_add_elem(pArray,0,pValue) != SXRET_OK ){` |
+|       ! 0 | 4022 | `		return PH7_ContextMemoryError(pCtx);` |
+|         - | 4023 | `	}` |
+|       169 | 4024 | `	ph7_value_reset_string_cursor(pValue);` |
+|       169 | 4025 | `	return PH7_OK;` |
+|        85 | 4026 | `}` |
+|         - | 4027 | `/*` |
+|         - | 4028 | ` * array range(string\|int\|float $start,string\|int\|float $end,int\|float $step = 1)` |
+|         - | 4029 | ` *  Create an array containing a range of elements.` |
+|         - | 4030 | ` * Return` |
+|         - | 4031 | ` *  An array of elements from start to end, inclusive; int, float, or` |
+|         - | 4032 | ` *  single-character string elements depending on the inputs, like php 8.` |
+|         - | 4033 | ` */` |
+|       168 | 4034 | `static int ph7_hashmap_range(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 4035 | `{` |
+|         - | 4036 | `	ph7_value *pValue,*pArray;` |
+|       169 | 4037 | `	sxi32 rc = PH7_OK;` |
+|       169 | 4038 | `	int is_step_double = 0,is_step_negative = 0;` |
+|       169 | 4039 | `	double step_double = 1.0;` |
+|       169 | 4040 | `	sxi64 step = 1;` |
+|         - | 4041 | `	sxu8 start_type,end_type;` |
+|       169 | 4042 | `	sxi64 start_long = 0,end_long = 0;` |
+|       169 | 4043 | `	double start_double = 0.0,end_double = 0.0;` |
+|       169 | 4044 | `	unsigned char cStart = 0,cEnd = 0;` |
+|       169 | 4045 | `	int bStartNull = FALSE,bEndNull = FALSE;` |
+|         - | 4046 | `	sxu32 i,size;` |
+|         - | 4047 |  |
+|         - | 4048 | `	/* php ZPP arity: at least 2 (enforced centrally, aBuiltinArity), at most 3. */` |
+|       169 | 4049 | `	if( nArg > 3 ){` |
+|         4 | 4050 | `		return PH7_VmThrowException(pCtx,"ArgumentCountError",` |
+|         1 | 4051 | `			"range() expects at most 3 arguments, %d given",nArg);` |
+|         - | 4052 | `	}` |
+|       167 | 4053 | `	if( nArg < 2 ){` |
+|         - | 4054 | `		/* Defensive only: the central arity table throws before we run. */` |
+|       ! 0 | 4055 | `		return PH7_VmThrowException(pCtx,"ArgumentCountError",` |
+|       ! 0 | 4056 | `			"range() expects at least 2 arguments, %d given",nArg);` |
+|         - | 4057 | `	}` |
+|         - | 4058 | `	/* ZPP pass in argument order: type errors and null deprecations fire` |
+|         - | 4059 | `	 * before any value/domain check, like php's zend_parse_parameters. */` |
+|       167 | 4060 | `	if( !RangeEndpointZpp(pCtx,apArg[0],1,"start",&bStartNull,&rc) ){` |
+|       ! 0 | 4061 | `		return rc;` |
+|         - | 4062 | `	}` |
+|       167 | 4063 | `	if( !RangeEndpointZpp(pCtx,apArg[1],2,"end",&bEndNull,&rc) ){` |
+|       ! 0 | 4064 | `		return rc;` |
+|         - | 4065 | `	}` |
+|       167 | 4066 | `	if( nArg > 2 ){` |
+|        61 | 4067 | `		sxu8 iStepKind = RangeStepInput(pCtx,apArg[2],&step,&step_double,&rc);` |
+|        61 | 4068 | `		if( iStepKind == RANGE_IN_ERROR ){` |
+|         3 | 4069 | `			return rc;` |
+|         - | 4070 | `		}` |
+|        59 | 4071 | `		if( iStepKind == RANGE_IN_DOUBLE ){` |
+|        25 | 4072 | `			if( PH7_IS_INF(step_double) ){` |
+|         3 | 4073 | `				return PH7_VmThrowException(pCtx,"ValueError",` |
+|         - | 4074 | `					"range(): Argument #3 ($step) must be a finite number, INF provided");` |
+|         - | 4075 | `			}` |
+|        23 | 4076 | `			if( PH7_IS_NAN(step_double) ){` |
+|         3 | 4077 | `				return PH7_VmThrowException(pCtx,"ValueError",` |
+|         - | 4078 | `					"range(): Argument #3 ($step) must be a finite number, NAN provided");` |
+|         - | 4079 | `			}` |
+|         - | 4080 | `			/* We only want positive step values. */` |
+|        21 | 4081 | `			if( step_double < 0.0 ){` |
+|       ! 0 | 4082 | `				is_step_negative = 1;` |
+|       ! 0 | 4083 | `				step_double *= -1;` |
+|       ! 0 | 4084 | `			}` |
+|         - | 4085 | `			/* zend_dval_to_lval_silent + zend_is_long_compatible: an integral` |
+|         - | 4086 | `			 * in-sxi64-range float step behaves as an int (char ranges accept` |
+|         - | 4087 | `			 * it, int endpoints stay int); anything else is a float step. */` |
+|        21 | 4088 | `			if( step_double < 9223372036854775808.0 ){` |
+|        19 | 4089 | `				step = (sxi64)step_double;` |
+|        19 | 4090 | `				if( (double)step != step_double ){` |
+|        17 | 4091 | `					is_step_double = 1;` |
+|         8 | 4092 | `				}` |
+|        10 | 4093 | `			}else{` |
+|         - | 4094 | ``				/* Casting out-of-range would be UB; `step` stays unread —`` |
+|         - | 4095 | `				 * every reader is gated behind !is_step_double. */` |
+|         3 | 4096 | `				is_step_double = 1;` |
+|         - | 4097 | `			}` |
+|        11 | 4098 | `		}else{` |
+|         - | 4099 | `			/* We only want positive step values. */` |
+|        35 | 4100 | `			if( step < 0 ){` |
+|        11 | 4101 | `				if( step == SMALLEST_INT64 ){` |
+|         - | 4102 | `					/* -step would overflow */` |
+|         4 | 4103 | `					return PH7_VmThrowException(pCtx,"ValueError",` |
+|         1 | 4104 | `						"range(): Argument #3 ($step) must be greater than %qd",step);` |
+|         - | 4105 | `				}` |
+|         9 | 4106 | `				is_step_negative = 1;` |
+|         9 | 4107 | `				step = -step;` |
+|         4 | 4108 | `			}` |
+|        33 | 4109 | `			step_double = (double)step;` |
+|         - | 4110 | `		}` |
+|        53 | 4111 | `		if( step_double == 0.0 ){` |
+|         7 | 4112 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
+|         - | 4113 | `				"range(): Argument #3 ($step) cannot be 0");` |
+|         - | 4114 | `		}` |
+|        23 | 4115 | `	}` |
+|       153 | 4116 | `	start_type = RangeProcessInput(pCtx,apArg[0],1,"start",bStartNull,&start_long,&start_double,&cStart,&rc);` |
+|       153 | 4117 | `	if( start_type == RANGE_IN_ERROR ){` |
+|         5 | 4118 | `		return rc;` |
+|         - | 4119 | `	}` |
+|       149 | 4120 | `	end_type = RangeProcessInput(pCtx,apArg[1],2,"end",bEndNull,&end_long,&end_double,&cEnd,&rc);` |
+|       149 | 4121 | `	if( end_type == RANGE_IN_ERROR ){` |
+|         5 | 4122 | `		return rc;` |
+|         - | 4123 | `	}` |
+|         - | 4124 | `	/* Element container + result array */` |
+|       145 | 4125 | `	pValue = ph7_context_new_scalar(pCtx);` |
+|       145 | 4126 | `	pArray = ph7_context_new_array(pCtx);` |
+|       145 | 4127 | `	if( pValue == 0 \|\| pArray == 0 ){` |
+|       ! 0 | 4128 | `		return PH7_ContextMemoryError(pCtx);` |
+|         - | 4129 | `	}` |
+|         - | 4130 | `	/* If the range is given as strings, generate an array of characters. */` |
+|       145 | 4131 | `	if( start_type >= RANGE_IN_STRING \|\| end_type >= RANGE_IN_STRING ){` |
+|        37 | 4132 | `		if( start_type < RANGE_IN_STRING \|\| end_type < RANGE_IN_STRING ){` |
+|         - | 4133 | `			/* Only one side is a string: the char side converts to 0 (with a` |
+|         - | 4134 | `			 * warning unless the numeric side is an ambiguous single digit)` |
+|         - | 4135 | `			 * and the range is numeric. */` |
+|        15 | 4136 | `			if( start_type < RANGE_IN_STRING ){` |
+|         7 | 4137 | `				if( end_type != RANGE_IN_DIGIT ){` |
+|         7 | 4138 | `					PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,` |
+|         - | 4139 | `						"range(): Argument #1 ($start) must be a single byte string if"` |
+|         - | 4140 | `						" argument #2 ($end) is a single byte string, argument #2 ($end) converted to 0");` |
+|         3 | 4141 | `				}` |
+|         7 | 4142 | `				end_type = RANGE_IN_LONG;` |
+|         4 | 4143 | `			}else{` |
+|         9 | 4144 | `				if( start_type != RANGE_IN_DIGIT ){` |
+|         9 | 4145 | `					PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,` |
+|         - | 4146 | `						"range(): Argument #2 ($end) must be a single byte string if"` |
+|         - | 4147 | `						" argument #1 ($start) is a single byte string, argument #1 ($start) converted to 0");` |
+|         4 | 4148 | `				}` |
+|         9 | 4149 | `				start_type = RANGE_IN_LONG;` |
+|         - | 4150 | `			}` |
+|        15 | 4151 | `			goto handle_numeric_inputs;` |
+|         - | 4152 | `		}` |
+|        23 | 4153 | `		if( is_step_double ){` |
+|         - | 4154 | `			/* Only emit the warning if one of the inputs is not a numeric digit. */` |
+|         5 | 4155 | `			if( start_type == RANGE_IN_STRING \|\| end_type == RANGE_IN_STRING ){` |
+|         3 | 4156 | `				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,` |
+|         - | 4157 | `					"range(): Argument #3 ($step) must be of type int when generating an array"` |
+|         - | 4158 | `					" of characters, inputs converted to 0");` |
+|         1 | 4159 | `			}` |
+|         5 | 4160 | `			start_type = RANGE_IN_LONG;` |
+|         5 | 4161 | `			end_type = RANGE_IN_LONG;` |
+|         5 | 4162 | `			goto handle_numeric_inputs;` |
+|         - | 4163 | `		}` |
+|         - | 4164 | `		/* Generate an array of characters */` |
+|        19 | 4165 | `		if( cStart > cEnd ){` |
+|         - | 4166 | `			/* Decreasing char range */` |
+|         - | 4167 | `			int iCur;` |
+|         3 | 4168 | `			if( (sxi64)(cStart - cEnd) < step ){` |
+|       ! 0 | 4169 | `				goto boundary_error;` |
+|         - | 4170 | `			}` |
+|        17 | 4171 | `			for( iCur = (int)cStart ; iCur >= (int)cEnd ; iCur -= (int)step ){` |
+|        15 | 4172 | `				if( (rc = RangeAppendChar(pCtx,pArray,pValue,(char)iCur)) != PH7_OK ){` |
+|       ! 0 | 4173 | `					return rc;` |
+|         - | 4174 | `				}` |
+|         8 | 4175 | `			}` |
+|        18 | 4176 | `		}else if( cEnd > cStart ){` |
+|         - | 4177 | `			/* Increasing char range */` |
+|         - | 4178 | `			int iCur;` |
+|        15 | 4179 | `			if( is_step_negative ){` |
+|         3 | 4180 | `				goto negative_step_error;` |
+|         - | 4181 | `			}` |
+|        13 | 4182 | `			if( (sxi64)(cEnd - cStart) < step ){` |
+|         3 | 4183 | `				goto boundary_error;` |
 |         - | 4184 | `			}` |
-|         - | 4185 | `		}` |
-|        15 | 4186 | `		ph7_result_value(pCtx,pArray);` |
-|        15 | 4187 | `		return PH7_OK;` |
-|         - | 4188 | `	}` |
-|        54 | 4189 | `handle_numeric_inputs:` |
-|       135 | 4190 | `	if( start_type == RANGE_IN_DOUBLE \|\| end_type == RANGE_IN_DOUBLE \|\| is_step_double ){` |
-|         - | 4191 | `		/* Float range */` |
-|         - | 4192 | `		double elem,calc;` |
-|        25 | 4193 | `		if( start_double > end_double ){` |
-|         - | 4194 | `			/* Decreasing float range */` |
-|         7 | 4195 | `			if( start_double - end_double < step_double ){` |
-|       ! 0 | 4196 | `				goto boundary_error;` |
-|         - | 4197 | `			}` |
-|         7 | 4198 | `			calc = ((start_double - end_double) / step_double) + 1;` |
-|         7 | 4199 | `			if( calc >= (double)PH7_RANGE_HT_MAX_SIZE ){` |
-|         - | 4200 | `				/* php prints start/end swapped here (see RangeDoubleSizeError). */` |
-|         3 | 4201 | `				return RangeDoubleSizeError(pCtx,calc,end_double,start_double,step_double);` |
-|         - | 4202 | `			}` |
-|         5 | 4203 | `			size = (sxu32)(calc + 0.5); /* _php_math_round(...,0,HALF_UP) */` |
-|        19 | 4204 | `			for( i = 0,elem = start_double ; i < size && elem >= end_double ; ++i,elem = start_double - ((double)i * step_double) ){` |
-|        15 | 4205 | `				if( (rc = RangeAppendDouble(pCtx,pArray,pValue,elem)) != PH7_OK ){` |
-|       ! 0 | 4206 | `					return rc;` |
-|         - | 4207 | `				}` |
-|         8 | 4208 | `			}` |
-|        21 | 4209 | `		}else if( end_double > start_double ){` |
-|         - | 4210 | `			/* Increasing float range */` |
-|        17 | 4211 | `			if( is_step_negative ){` |
-|       ! 0 | 4212 | `				goto negative_step_error;` |
-|         - | 4213 | `			}` |
-|        17 | 4214 | `			if( end_double - start_double < step_double ){` |
-|         3 | 4215 | `				goto boundary_error;` |
-|         - | 4216 | `			}` |
-|        15 | 4217 | `			calc = ((end_double - start_double) / step_double) + 1;` |
-|        15 | 4218 | `			if( calc >= (double)PH7_RANGE_HT_MAX_SIZE ){` |
-|         5 | 4219 | `				return RangeDoubleSizeError(pCtx,calc,start_double,end_double,step_double);` |
-|         - | 4220 | `			}` |
-|        11 | 4221 | `			size = (sxu32)(calc + 0.5);` |
-|        65 | 4222 | `			for( i = 0,elem = start_double ; i < size && elem <= end_double ; ++i,elem = start_double + ((double)i * step_double) ){` |
-|        55 | 4223 | `				if( (rc = RangeAppendDouble(pCtx,pArray,pValue,elem)) != PH7_OK ){` |
-|       ! 0 | 4224 | `					return rc;` |
-|         - | 4225 | `				}` |
-|        28 | 4226 | `			}` |
-|         6 | 4227 | `		}else{` |
-|         3 | 4228 | `			if( (rc = RangeAppendDouble(pCtx,pArray,pValue,start_double)) != PH7_OK ){` |
-|       ! 0 | 4229 | `				return rc;` |
-|         - | 4230 | `			}` |
-|         - | 4231 | `		}` |
-|         9 | 4232 | `	}else{` |
-|         - | 4233 | `		/* Int range. All arithmetic in unsigned space so a span wider than` |
-|         - | 4234 | `		 * LARGEST_INT64 (e.g. -PHP_INT_MAX..PHP_INT_MAX) wraps correctly` |
-|         - | 4235 | `		 * instead of overflowing, exactly like php's zend_ulong math. */` |
-|       103 | 4236 | `		sxu64 ustep = (sxu64)step;` |
-|         - | 4237 | `		sxu64 calc;` |
-|       103 | 4238 | `		if( start_long > end_long ){` |
-|         - | 4239 | `			/* Decreasing int range */` |
-|        19 | 4240 | `			if( (sxu64)start_long - (sxu64)end_long < ustep ){` |
-|         3 | 4241 | `				goto boundary_error;` |
-|         - | 4242 | `			}` |
-|        17 | 4243 | `			calc = ((sxu64)start_long - (sxu64)end_long) / ustep;` |
-|        17 | 4244 | `			if( calc >= (sxu64)(PH7_RANGE_HT_MAX_SIZE - 1) ){` |
-|         - | 4245 | `				/* php prints start/end swapped here (see RangeLongSizeError). */` |
-|         3 | 4246 | `				return RangeLongSizeError(pCtx,calc,end_long,start_long,step);` |
-|         - | 4247 | `			}` |
-|        15 | 4248 | `			size = (sxu32)(calc + 1);` |
-|       101 | 4249 | `			for( i = 0 ; i < size ; ++i ){` |
-|        87 | 4250 | `				if( (rc = RangeAppendInt(pCtx,pArray,pValue,(sxi64)((sxu64)start_long - (sxu64)i * ustep))) != PH7_OK ){` |
-|       ! 0 | 4251 | `					return rc;` |
-|         - | 4252 | `				}` |
-|        44 | 4253 | `			}` |
-|        92 | 4254 | `		}else if( end_long > start_long ){` |
-|         - | 4255 | `			/* Increasing int range */` |
-|        79 | 4256 | `			if( is_step_negative ){` |
-|         3 | 4257 | `				goto negative_step_error;` |
-|         - | 4258 | `			}` |
-|        77 | 4259 | `			if( (sxu64)end_long - (sxu64)start_long < ustep ){` |
-|         3 | 4260 | `				goto boundary_error;` |
-|         - | 4261 | `			}` |
-|        75 | 4262 | `			calc = ((sxu64)end_long - (sxu64)start_long) / ustep;` |
-|        75 | 4263 | `			if( calc >= (sxu64)(PH7_RANGE_HT_MAX_SIZE - 1) ){` |
-|         5 | 4264 | `				return RangeLongSizeError(pCtx,calc,start_long,end_long,step);` |
-|         - | 4265 | `			}` |
-|        71 | 4266 | `			size = (sxu32)(calc + 1);` |
-|    401659 | 4267 | `			for( i = 0 ; i < size ; ++i ){` |
-|    401589 | 4268 | `				if( (rc = RangeAppendInt(pCtx,pArray,pValue,(sxi64)((sxu64)start_long + (sxu64)i * ustep))) != PH7_OK ){` |
-|       ! 0 | 4269 | `					return rc;` |
-|         - | 4270 | `				}` |
-|    200795 | 4271 | `			}` |
-|        36 | 4272 | `		}else{` |
-|         7 | 4273 | `			if( (rc = RangeAppendInt(pCtx,pArray,pValue,start_long)) != PH7_OK ){` |
-|       ! 0 | 4274 | `				return rc;` |
-|         - | 4275 | `			}` |
-|         - | 4276 | `		}` |
-|         - | 4277 | `	}` |
-|         - | 4278 | `	/* Return the new array. 'pValue' is released automatically by the` |
-|         - | 4279 | `	 * virtual machine as soon as we return from this foreign function. */` |
-|       107 | 4280 | `	ph7_result_value(pCtx,pArray);` |
-|       107 | 4281 | `	return PH7_OK;` |
-|         2 | 4282 | `negative_step_error:` |
-|         5 | 4283 | `	return PH7_VmThrowException(pCtx,"ValueError",` |
-|         - | 4284 | `		"range(): Argument #3 ($step) must be greater than 0 for increasing ranges");` |
-|         4 | 4285 | `boundary_error:` |
-|         9 | 4286 | `	return PH7_VmThrowException(pCtx,"ValueError",` |
-|         - | 4287 | `		"range(): Argument #3 ($step) must be less than the range spanned by argument #1 ($start) and argument #2 ($end)");` |
-|        85 | 4288 | `}` |
-|         - | 4289 | `/*` |
-|         - | 4290 | ` * array array_values(array $array)` |
-|         - | 4291 | ` *  Return all the values of an array, indexed numerically.` |
-|         - | 4292 | ` * Parameters` |
-|         - | 4293 | ` *  $array` |
-|         - | 4294 | ` *   The input array.` |
-|         - | 4295 | ` * Return` |
-|         - | 4296 | ` *  An indexed array of values or NULL on allocation failure.` |
-|         - | 4297 | ` */` |
-|        48 | 4298 | `static int ph7_hashmap_values(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         3 | 4299 | `{` |
-|         - | 4300 | `	ph7_hashmap_node *pNode;` |
-|         - | 4301 | `	ph7_hashmap *pMap;` |
-|         - | 4302 | `	ph7_value *pArray;` |
-|         - | 4303 | `	ph7_value *pObj;` |
-|         - | 4304 | `	sxu32 n;` |
-|        51 | 4305 | `	if( nArg != 1 ){` |
-|         - | 4306 | `		/* Wrong argument count, throw ArgumentCountError */` |
-|         4 | 4307 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 4308 | `			"ArgumentCountError",` |
-|         - | 4309 | `			"array_values() expects exactly 1 argument, %d given",` |
-|         1 | 4310 | `			nArg` |
-|         - | 4311 | `			);` |
-|         - | 4312 | `	}` |
-|         - | 4313 | `	/* Make sure we are dealing with a valid hashmap */` |
-|        49 | 4314 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         - | 4315 | `		/* Type mismatch, throw TypeError */` |
+|       163 | 4185 | `			for( iCur = (int)cStart ; iCur <= (int)cEnd ; iCur += (int)step ){` |
+|       153 | 4186 | `				if( (rc = RangeAppendChar(pCtx,pArray,pValue,(char)iCur)) != PH7_OK ){` |
+|       ! 0 | 4187 | `					return rc;` |
+|         - | 4188 | `				}` |
+|        77 | 4189 | `			}` |
+|         6 | 4190 | `		}else{` |
+|         3 | 4191 | `			if( (rc = RangeAppendChar(pCtx,pArray,pValue,(char)cStart)) != PH7_OK ){` |
+|       ! 0 | 4192 | `				return rc;` |
+|         - | 4193 | `			}` |
+|         - | 4194 | `		}` |
+|        15 | 4195 | `		ph7_result_value(pCtx,pArray);` |
+|        15 | 4196 | `		return PH7_OK;` |
+|         - | 4197 | `	}` |
+|        54 | 4198 | `handle_numeric_inputs:` |
+|       135 | 4199 | `	if( start_type == RANGE_IN_DOUBLE \|\| end_type == RANGE_IN_DOUBLE \|\| is_step_double ){` |
+|         - | 4200 | `		/* Float range */` |
+|         - | 4201 | `		double elem,calc;` |
+|        25 | 4202 | `		if( start_double > end_double ){` |
+|         - | 4203 | `			/* Decreasing float range */` |
+|         7 | 4204 | `			if( start_double - end_double < step_double ){` |
+|       ! 0 | 4205 | `				goto boundary_error;` |
+|         - | 4206 | `			}` |
+|         7 | 4207 | `			calc = ((start_double - end_double) / step_double) + 1;` |
+|         7 | 4208 | `			if( calc >= (double)PH7_RANGE_HT_MAX_SIZE ){` |
+|         - | 4209 | `				/* php prints start/end swapped here (see RangeDoubleSizeError). */` |
+|         3 | 4210 | `				return RangeDoubleSizeError(pCtx,calc,end_double,start_double,step_double);` |
+|         - | 4211 | `			}` |
+|         5 | 4212 | `			size = (sxu32)(calc + 0.5); /* _php_math_round(...,0,HALF_UP) */` |
+|        19 | 4213 | `			for( i = 0,elem = start_double ; i < size && elem >= end_double ; ++i,elem = start_double - ((double)i * step_double) ){` |
+|        15 | 4214 | `				if( (rc = RangeAppendDouble(pCtx,pArray,pValue,elem)) != PH7_OK ){` |
+|       ! 0 | 4215 | `					return rc;` |
+|         - | 4216 | `				}` |
+|         8 | 4217 | `			}` |
+|        21 | 4218 | `		}else if( end_double > start_double ){` |
+|         - | 4219 | `			/* Increasing float range */` |
+|        17 | 4220 | `			if( is_step_negative ){` |
+|       ! 0 | 4221 | `				goto negative_step_error;` |
+|         - | 4222 | `			}` |
+|        17 | 4223 | `			if( end_double - start_double < step_double ){` |
+|         3 | 4224 | `				goto boundary_error;` |
+|         - | 4225 | `			}` |
+|        15 | 4226 | `			calc = ((end_double - start_double) / step_double) + 1;` |
+|        15 | 4227 | `			if( calc >= (double)PH7_RANGE_HT_MAX_SIZE ){` |
+|         5 | 4228 | `				return RangeDoubleSizeError(pCtx,calc,start_double,end_double,step_double);` |
+|         - | 4229 | `			}` |
+|        11 | 4230 | `			size = (sxu32)(calc + 0.5);` |
+|        65 | 4231 | `			for( i = 0,elem = start_double ; i < size && elem <= end_double ; ++i,elem = start_double + ((double)i * step_double) ){` |
+|        55 | 4232 | `				if( (rc = RangeAppendDouble(pCtx,pArray,pValue,elem)) != PH7_OK ){` |
+|       ! 0 | 4233 | `					return rc;` |
+|         - | 4234 | `				}` |
+|        28 | 4235 | `			}` |
+|         6 | 4236 | `		}else{` |
+|         3 | 4237 | `			if( (rc = RangeAppendDouble(pCtx,pArray,pValue,start_double)) != PH7_OK ){` |
+|       ! 0 | 4238 | `				return rc;` |
+|         - | 4239 | `			}` |
+|         - | 4240 | `		}` |
+|         9 | 4241 | `	}else{` |
+|         - | 4242 | `		/* Int range. All arithmetic in unsigned space so a span wider than` |
+|         - | 4243 | `		 * LARGEST_INT64 (e.g. -PHP_INT_MAX..PHP_INT_MAX) wraps correctly` |
+|         - | 4244 | `		 * instead of overflowing, exactly like php's zend_ulong math. */` |
+|       103 | 4245 | `		sxu64 ustep = (sxu64)step;` |
+|         - | 4246 | `		sxu64 calc;` |
+|       103 | 4247 | `		if( start_long > end_long ){` |
+|         - | 4248 | `			/* Decreasing int range */` |
+|        19 | 4249 | `			if( (sxu64)start_long - (sxu64)end_long < ustep ){` |
+|         3 | 4250 | `				goto boundary_error;` |
+|         - | 4251 | `			}` |
+|        17 | 4252 | `			calc = ((sxu64)start_long - (sxu64)end_long) / ustep;` |
+|        17 | 4253 | `			if( calc >= (sxu64)(PH7_RANGE_HT_MAX_SIZE - 1) ){` |
+|         - | 4254 | `				/* php prints start/end swapped here (see RangeLongSizeError). */` |
+|         3 | 4255 | `				return RangeLongSizeError(pCtx,calc,end_long,start_long,step);` |
+|         - | 4256 | `			}` |
+|        15 | 4257 | `			size = (sxu32)(calc + 1);` |
+|       101 | 4258 | `			for( i = 0 ; i < size ; ++i ){` |
+|        87 | 4259 | `				if( (rc = RangeAppendInt(pCtx,pArray,pValue,(sxi64)((sxu64)start_long - (sxu64)i * ustep))) != PH7_OK ){` |
+|       ! 0 | 4260 | `					return rc;` |
+|         - | 4261 | `				}` |
+|        44 | 4262 | `			}` |
+|        92 | 4263 | `		}else if( end_long > start_long ){` |
+|         - | 4264 | `			/* Increasing int range */` |
+|        79 | 4265 | `			if( is_step_negative ){` |
+|         3 | 4266 | `				goto negative_step_error;` |
+|         - | 4267 | `			}` |
+|        77 | 4268 | `			if( (sxu64)end_long - (sxu64)start_long < ustep ){` |
+|         3 | 4269 | `				goto boundary_error;` |
+|         - | 4270 | `			}` |
+|        75 | 4271 | `			calc = ((sxu64)end_long - (sxu64)start_long) / ustep;` |
+|        75 | 4272 | `			if( calc >= (sxu64)(PH7_RANGE_HT_MAX_SIZE - 1) ){` |
+|         5 | 4273 | `				return RangeLongSizeError(pCtx,calc,start_long,end_long,step);` |
+|         - | 4274 | `			}` |
+|        71 | 4275 | `			size = (sxu32)(calc + 1);` |
+|    401659 | 4276 | `			for( i = 0 ; i < size ; ++i ){` |
+|    401589 | 4277 | `				if( (rc = RangeAppendInt(pCtx,pArray,pValue,(sxi64)((sxu64)start_long + (sxu64)i * ustep))) != PH7_OK ){` |
+|       ! 0 | 4278 | `					return rc;` |
+|         - | 4279 | `				}` |
+|    200795 | 4280 | `			}` |
+|        36 | 4281 | `		}else{` |
+|         7 | 4282 | `			if( (rc = RangeAppendInt(pCtx,pArray,pValue,start_long)) != PH7_OK ){` |
+|       ! 0 | 4283 | `				return rc;` |
+|         - | 4284 | `			}` |
+|         - | 4285 | `		}` |
+|         - | 4286 | `	}` |
+|         - | 4287 | `	/* Return the new array. 'pValue' is released automatically by the` |
+|         - | 4288 | `	 * virtual machine as soon as we return from this foreign function. */` |
+|       107 | 4289 | `	ph7_result_value(pCtx,pArray);` |
+|       107 | 4290 | `	return PH7_OK;` |
+|         2 | 4291 | `negative_step_error:` |
+|         5 | 4292 | `	return PH7_VmThrowException(pCtx,"ValueError",` |
+|         - | 4293 | `		"range(): Argument #3 ($step) must be greater than 0 for increasing ranges");` |
+|         4 | 4294 | `boundary_error:` |
+|         9 | 4295 | `	return PH7_VmThrowException(pCtx,"ValueError",` |
+|         - | 4296 | `		"range(): Argument #3 ($step) must be less than the range spanned by argument #1 ($start) and argument #2 ($end)");` |
+|        85 | 4297 | `}` |
+|         - | 4298 | `/*` |
+|         - | 4299 | ` * array array_values(array $array)` |
+|         - | 4300 | ` *  Return all the values of an array, indexed numerically.` |
+|         - | 4301 | ` * Parameters` |
+|         - | 4302 | ` *  $array` |
+|         - | 4303 | ` *   The input array.` |
+|         - | 4304 | ` * Return` |
+|         - | 4305 | ` *  An indexed array of values or NULL on allocation failure.` |
+|         - | 4306 | ` */` |
+|        48 | 4307 | `static int ph7_hashmap_values(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         3 | 4308 | `{` |
+|         - | 4309 | `	ph7_hashmap_node *pNode;` |
+|         - | 4310 | `	ph7_hashmap *pMap;` |
+|         - | 4311 | `	ph7_value *pArray;` |
+|         - | 4312 | `	ph7_value *pObj;` |
+|         - | 4313 | `	sxu32 n;` |
+|        51 | 4314 | `	if( nArg != 1 ){` |
+|         - | 4315 | `		/* Wrong argument count, throw ArgumentCountError */` |
 |         4 | 4316 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 4317 | `			"TypeError",` |
-|         - | 4318 | `			"array_values(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 4319 | `			ph7_type_name(apArg[0])` |
+|         - | 4317 | `			"ArgumentCountError",` |
+|         - | 4318 | `			"array_values() expects exactly 1 argument, %d given",` |
+|         1 | 4319 | `			nArg` |
 |         - | 4320 | `			);` |
 |         - | 4321 | `	}` |
-|         - | 4322 | `	/* Point to the internal representation that describe the input hashmap */` |
-|        46 | 4323 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 4324 | `	/* Create a new array */` |
-|        46 | 4325 | `	pArray = ph7_context_new_array(pCtx);` |
-|        46 | 4326 | `	if( pArray == 0 ){` |
-|       ! 0 | 4327 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 4328 | `		return PH7_OK;` |
-|         - | 4329 | `	}` |
-|         - | 4330 | `	/* Perform the requested operation */` |
-|        46 | 4331 | `	pNode = pMap->pFirst;` |
-|       144 | 4332 | `	for( n = 0 ; n < pMap->nEntry ; ++n ){` |
-|       100 | 4333 | `		pObj = HashmapExtractNodeValue(pNode);` |
-|       100 | 4334 | `		if( pObj ){` |
-|         - | 4335 | `			/* perform the insertion */` |
-|       100 | 4336 | `			ph7_array_add_elem(pArray,0/* Automatic index assign */,pObj);` |
-|        49 | 4337 | `		}` |
-|         - | 4338 | `		/* Point to the next entry */` |
-|       100 | 4339 | `		pNode = pNode->pPrev; /* Reverse link */` |
-|        51 | 4340 | `	}` |
-|         - | 4341 | `	/* return the new array */` |
-|        46 | 4342 | `	ph7_result_value(pCtx,pArray);` |
-|        46 | 4343 | `	return PH7_OK;` |
-|        27 | 4344 | `}` |
-|         - | 4345 | `/*` |
-|         - | 4346 | ` * array array_keys(array $input [, val $search_value [, bool $strict = false ]] )` |
-|         - | 4347 | ` *  Return all the keys or a subset of the keys of an array.` |
-|         - | 4348 | ` * Parameters` |
-|         - | 4349 | ` *  $input` |
-|         - | 4350 | ` *   An array containing keys to return.` |
-|         - | 4351 | ` * $search_value` |
-|         - | 4352 | ` *   If specified, then only keys containing these values are returned.` |
-|         - | 4353 | ` * $strict` |
-|         - | 4354 | ` *   Determines if strict comparison (===) should be used during the search.` |
-|         - | 4355 | ` * Return` |
-|         - | 4356 | ` *  An array of all the keys in input or NULL on failure.` |
-|         - | 4357 | ` */` |
-|       180 | 4358 | `static int ph7_hashmap_keys(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         4 | 4359 | `{` |
-|         - | 4360 | `	ph7_hashmap_node *pNode;` |
-|         - | 4361 | `	ph7_hashmap *pMap;` |
-|         - | 4362 | `	ph7_value *pArray;` |
-|         - | 4363 | `	ph7_value sObj;` |
-|         - | 4364 | `	ph7_value sVal;` |
-|         - | 4365 | `	SyString sKey;` |
-|         - | 4366 | `	int bStrict;` |
-|         - | 4367 | `	sxi32 rc;` |
-|         - | 4368 | `	sxu32 n;` |
-|       184 | 4369 | `	if( nArg < 1 ){` |
-|         - | 4370 | `		/* Missing argument,throw ArgumentCountError */` |
-|       ! 0 | 4371 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 4372 | `			"ArgumentCountError",` |
-|         - | 4373 | `			"array_keys() expects at least 1 argument, 0 given"` |
-|         - | 4374 | `			);` |
-|         - | 4375 | `	}` |
-|         - | 4376 | `	/* Make sure we are dealing with a valid hashmap */` |
-|       184 | 4377 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         - | 4378 | `		/* haystack must be an array,throw TypeError */` |
-|         4 | 4379 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 4380 | `			"TypeError",` |
-|         - | 4381 | `			"array_keys(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 4382 | `			ph7_type_name(apArg[0])` |
+|         - | 4322 | `	/* Make sure we are dealing with a valid hashmap */` |
+|        49 | 4323 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         - | 4324 | `		/* Type mismatch, throw TypeError */` |
+|         4 | 4325 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 4326 | `			"TypeError",` |
+|         - | 4327 | `			"array_values(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 4328 | `			ph7_type_name(apArg[0])` |
+|         - | 4329 | `			);` |
+|         - | 4330 | `	}` |
+|         - | 4331 | `	/* Point to the internal representation that describe the input hashmap */` |
+|        46 | 4332 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 4333 | `	/* Create a new array */` |
+|        46 | 4334 | `	pArray = ph7_context_new_array(pCtx);` |
+|        46 | 4335 | `	if( pArray == 0 ){` |
+|       ! 0 | 4336 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 4337 | `		return PH7_OK;` |
+|         - | 4338 | `	}` |
+|         - | 4339 | `	/* Perform the requested operation */` |
+|        46 | 4340 | `	pNode = pMap->pFirst;` |
+|       144 | 4341 | `	for( n = 0 ; n < pMap->nEntry ; ++n ){` |
+|       100 | 4342 | `		pObj = HashmapExtractNodeValue(pNode);` |
+|       100 | 4343 | `		if( pObj ){` |
+|         - | 4344 | `			/* perform the insertion */` |
+|       100 | 4345 | `			ph7_array_add_elem(pArray,0/* Automatic index assign */,pObj);` |
+|        49 | 4346 | `		}` |
+|         - | 4347 | `		/* Point to the next entry */` |
+|       100 | 4348 | `		pNode = pNode->pPrev; /* Reverse link */` |
+|        51 | 4349 | `	}` |
+|         - | 4350 | `	/* return the new array */` |
+|        46 | 4351 | `	ph7_result_value(pCtx,pArray);` |
+|        46 | 4352 | `	return PH7_OK;` |
+|        27 | 4353 | `}` |
+|         - | 4354 | `/*` |
+|         - | 4355 | ` * array array_keys(array $input [, val $search_value [, bool $strict = false ]] )` |
+|         - | 4356 | ` *  Return all the keys or a subset of the keys of an array.` |
+|         - | 4357 | ` * Parameters` |
+|         - | 4358 | ` *  $input` |
+|         - | 4359 | ` *   An array containing keys to return.` |
+|         - | 4360 | ` * $search_value` |
+|         - | 4361 | ` *   If specified, then only keys containing these values are returned.` |
+|         - | 4362 | ` * $strict` |
+|         - | 4363 | ` *   Determines if strict comparison (===) should be used during the search.` |
+|         - | 4364 | ` * Return` |
+|         - | 4365 | ` *  An array of all the keys in input or NULL on failure.` |
+|         - | 4366 | ` */` |
+|       180 | 4367 | `static int ph7_hashmap_keys(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         4 | 4368 | `{` |
+|         - | 4369 | `	ph7_hashmap_node *pNode;` |
+|         - | 4370 | `	ph7_hashmap *pMap;` |
+|         - | 4371 | `	ph7_value *pArray;` |
+|         - | 4372 | `	ph7_value sObj;` |
+|         - | 4373 | `	ph7_value sVal;` |
+|         - | 4374 | `	SyString sKey;` |
+|         - | 4375 | `	int bStrict;` |
+|         - | 4376 | `	sxi32 rc;` |
+|         - | 4377 | `	sxu32 n;` |
+|       184 | 4378 | `	if( nArg < 1 ){` |
+|         - | 4379 | `		/* Missing argument,throw ArgumentCountError */` |
+|       ! 0 | 4380 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 4381 | `			"ArgumentCountError",` |
+|         - | 4382 | `			"array_keys() expects at least 1 argument, 0 given"` |
 |         - | 4383 | `			);` |
 |         - | 4384 | `	}` |
-|         - | 4385 | `	/* Point to the internal representation of the input hashmap */` |
-|       181 | 4386 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 4387 | `	/* Create a new array */` |
-|       181 | 4388 | `	pArray = ph7_context_new_array(pCtx);` |
-|       181 | 4389 | `	if( pArray == 0 ){` |
-|       ! 0 | 4390 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 4391 | `		return PH7_OK;` |
-|         - | 4392 | `	}` |
-|       181 | 4393 | `	bStrict = FALSE;` |
-|       181 | 4394 | `	if( nArg > 2 ){` |
-|         - | 4395 | `		/* In PHP, non-scalar values for a bool-hinted parameter raise TypeError */` |
-|         9 | 4396 | `		if( ph7_value_is_array(apArg[2]) \|\| ph7_value_is_object(apArg[2]) \|\| ph7_value_is_resource(apArg[2]) ){` |
-|       ! 0 | 4397 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 4398 | `				"TypeError",` |
-|         - | 4399 | `				"array_keys(): Argument #3 ($strict) must be of type bool, %s given",` |
-|       ! 0 | 4400 | `				ph7_type_name(apArg[2])` |
-|         - | 4401 | `				);` |
-|         - | 4402 | `		}` |
-|         9 | 4403 | `		bStrict = ph7_value_to_bool(apArg[2]);` |
-|         4 | 4404 | `	}` |
-|         - | 4405 | `	/* Perform the requested operation */` |
-|       181 | 4406 | `	pNode = pMap->pFirst;` |
-|       181 | 4407 | `	PH7_MemObjInit(pMap->pVm,&sVal);` |
-|      1569 | 4408 | `	for( n = 0 ; n < pMap->nEntry ; ++n ){` |
-|      1391 | 4409 | `		if( pNode->iType == HASHMAP_INT_NODE ){` |
-|       199 | 4410 | `			PH7_MemObjInitFromInt(pMap->pVm,&sObj,pNode->xKey.iKey);` |
-|       101 | 4411 | `		}else{` |
-|      1194 | 4412 | `			SyStringInitFromBuf(&sKey,SyBlobData(&pNode->xKey.sKey),SyBlobLength(&pNode->xKey.sKey));` |
-|      1194 | 4413 | `			PH7_MemObjInitFromString(pMap->pVm,&sObj,&sKey);` |
-|         - | 4414 | `		}` |
-|      1391 | 4415 | `		rc = 0;` |
-|      1391 | 4416 | `		if( nArg > 1 ){` |
-|        65 | 4417 | `			ph7_value *pValue = HashmapExtractNodeValue(pNode);` |
-|        65 | 4418 | `			if( pValue ){` |
-|         - | 4419 | `				ph7_value sNeedle;` |
-|        65 | 4420 | `				PH7_MemObjInit(pMap->pVm,&sNeedle);` |
-|        65 | 4421 | `				PH7_MemObjLoad(pValue,&sVal);` |
-|         - | 4422 | `				/* Filter key — compare on duplicates of BOTH sides:` |
-|         - | 4423 | `				 * PH7_MemObjCmp converts its operands in place, and a needle` |
-|         - | 4424 | `				 * mutated on the first element (e.g. null coerced) would` |
-|         - | 4425 | `				 * corrupt every later comparison. */` |
-|        65 | 4426 | `				PH7_MemObjLoad(apArg[1],&sNeedle);` |
-|        65 | 4427 | `				rc = ph7_value_compare(&sVal,&sNeedle,bStrict);` |
-|        65 | 4428 | `				PH7_MemObjRelease(&sNeedle);` |
-|        65 | 4429 | `				PH7_MemObjRelease(&sVal);` |
-|        32 | 4430 | `			}` |
-|        32 | 4431 | `		}` |
-|      1391 | 4432 | `		if( rc == 0 ){` |
-|         - | 4433 | `			/* Perform the insertion */` |
-|      1359 | 4434 | `			ph7_array_add_elem(pArray,0,&sObj);` |
-|       678 | 4435 | `		}` |
-|      1391 | 4436 | `		PH7_MemObjRelease(&sObj);` |
-|         - | 4437 | `		/* Point to the next entry */` |
-|      1391 | 4438 | `		pNode = pNode->pPrev; /* Reverse link */` |
-|       697 | 4439 | `	}` |
-|         - | 4440 | `	/* return the new array */` |
-|       181 | 4441 | `	ph7_result_value(pCtx,pArray);` |
-|       181 | 4442 | `	return PH7_OK;` |
-|        94 | 4443 | `}` |
-|         - | 4444 | `/*` |
-|         - | 4445 | ` * bool array_same(array $arr1,array $arr2)` |
-|         - | 4446 | ` *  Return TRUE if the given arrays are the same instance.` |
-|         - | 4447 | ` *  This function is useful under PH7 since arrays are passed` |
-|         - | 4448 | ` *  by reference unlike the zend engine which use pass by values.` |
-|         - | 4449 | ` * Parameters` |
-|         - | 4450 | ` *  $arr1` |
-|         - | 4451 | ` *   First array` |
-|         - | 4452 | ` *  $arr2` |
-|         - | 4453 | ` *   Second array` |
-|         - | 4454 | ` * Return` |
-|         - | 4455 | ` *  TRUE if the arrays are the same instance.FALSE otherwise.` |
-|         - | 4456 | ` * Note` |
-|         - | 4457 | ` *  This function is a symisc eXtension.` |
-|         - | 4458 | ` */` |
-|         4 | 4459 | `static int ph7_hashmap_same(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 4460 | `{` |
-|         - | 4461 | `	ph7_hashmap *p1,*p2;` |
-|         - | 4462 | `	int rc;` |
-|         5 | 4463 | `	if( nArg < 2 \|\| !ph7_value_is_array(apArg[0]) \|\| !ph7_value_is_array(apArg[1]) ){` |
-|         - | 4464 | `		/* Missing or invalid arguments,return FALSE*/` |
-|       ! 0 | 4465 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 4466 | `		return PH7_OK;` |
-|         - | 4467 | `	}` |
-|         - | 4468 | `	/* Point to the hashmaps */` |
-|         5 | 4469 | `	p1 = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         5 | 4470 | `	p2 = (ph7_hashmap *)apArg[1]->x.pOther;` |
-|         5 | 4471 | `	rc = (p1 == p2);` |
-|         - | 4472 | `	/* Same instance? */` |
-|         5 | 4473 | `	ph7_result_bool(pCtx,rc);` |
-|         5 | 4474 | `	return PH7_OK;` |
-|         3 | 4475 | `}` |
-|         - | 4476 | `/*` |
-|         - | 4477 | ` * array array_merge(array ...$arrays)` |
-|         - | 4478 | ` *  Merge one or more arrays.` |
-|         - | 4479 | ` * Parameters` |
-|         - | 4480 | ` *  ...$arrays` |
-|         - | 4481 | ` *   Variable list of arrays to merge. Each argument must be an array;` |
-|         - | 4482 | ` *   passing a non-array argument throws a TypeError.` |
-|         - | 4483 | ` * Return` |
-|         - | 4484 | ` *  The resulting merged array. Returns an empty array when called` |
-|         - | 4485 | ` *  with no arguments.` |
-|         - | 4486 | ` */` |
-|      1126 | 4487 | `static int ph7_hashmap_merge(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         5 | 4488 | `{` |
-|         - | 4489 | `	ph7_hashmap *pMap,*pSrc;` |
-|         - | 4490 | `	ph7_value *pArray;` |
-|         - | 4491 | `	int i;` |
-|         - | 4492 | `	/* Create a new array */` |
-|      1131 | 4493 | `	pArray = ph7_context_new_array(pCtx);` |
-|      1131 | 4494 | `	if( pArray == 0 ){` |
-|       ! 0 | 4495 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 4496 | `		return PH7_OK;` |
-|         - | 4497 | `	}` |
-|         - | 4498 | `	/* Point to the internal representation of the hashmap */` |
-|      1131 | 4499 | `	pMap = (ph7_hashmap *)pArray->x.pOther;` |
-|         - | 4500 | `	/* Start merging */` |
-|      3359 | 4501 | `	for( i = 0 ; i < nArg ; i++ ){` |
-|         - | 4502 | `		/* Make sure we are dealing with a valid hashmap */` |
-|      2237 | 4503 | `		if( !ph7_value_is_array(apArg[i]) ){` |
-|         - | 4504 | `			/* Type mismatch -> TypeError */` |
-|         8 | 4505 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 4506 | `				"TypeError",` |
-|         - | 4507 | `				"array_merge(): Argument #%d must be of type array, %s given",` |
-|         2 | 4508 | `				i + 1,` |
-|         4 | 4509 | `				ph7_type_name(apArg[i])` |
-|         - | 4510 | `				);` |
-|       ! 0 | 4511 | `		}else{` |
-|      2233 | 4512 | `			pSrc = (ph7_hashmap *)apArg[i]->x.pOther;` |
-|         - | 4513 | `			/* Merge the two hashmaps */` |
-|      2233 | 4514 | `			HashmapMerge(pSrc,pMap);` |
-|         - | 4515 | `		}` |
-|      1119 | 4516 | `	}` |
-|         - | 4517 | `	/* Return the freshly created array */` |
-|      1127 | 4518 | `	ph7_result_value(pCtx,pArray);` |
-|      1127 | 4519 | `	return PH7_OK;` |
-|       568 | 4520 | `}` |
-|         - | 4521 | `/*` |
-|         - | 4522 | ` * array array_copy(array $source)` |
-|         - | 4523 | ` *  Make a blind copy of the target array.` |
-|         - | 4524 | ` * Parameters` |
-|         - | 4525 | ` *  $source` |
-|         - | 4526 | ` *   Target array` |
-|         - | 4527 | ` * Return` |
-|         - | 4528 | ` *  Copy of the target array on success.NULL otherwise.` |
-|         - | 4529 | ` * Note` |
-|         - | 4530 | ` *  This function is a symisc eXtension.` |
-|         - | 4531 | ` */` |
-|        18 | 4532 | `static int ph7_hashmap_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 4533 | `{` |
-|         - | 4534 | `	ph7_hashmap *pMap;` |
-|         - | 4535 | `	ph7_value *pArray;` |
-|        19 | 4536 | `	if( nArg < 1 ){` |
-|         - | 4537 | `		/* Missing arguments,return NULL */` |
-|       ! 0 | 4538 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 4539 | `		return PH7_OK;` |
-|         - | 4540 | `	}` |
-|         - | 4541 | `	/* Create a new array */` |
-|        19 | 4542 | `	pArray = ph7_context_new_array(pCtx);` |
-|        19 | 4543 | `	if( pArray == 0 ){` |
-|       ! 0 | 4544 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 4545 | `		return PH7_OK;` |
-|         - | 4546 | `	}` |
-|         - | 4547 | `	/* Point to the internal representation of the hashmap */` |
-|        19 | 4548 | `	pMap = (ph7_hashmap *)pArray->x.pOther;` |
-|        19 | 4549 | `	if( ph7_value_is_array(apArg[0])){` |
-|         - | 4550 | `		/* Point to the internal representation of the source */` |
-|        19 | 4551 | `		ph7_hashmap *pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 4552 | `		/* Perform the copy */` |
-|        19 | 4553 | `		PH7_HashmapDup(pSrc,pMap);` |
-|        10 | 4554 | `	}else{` |
-|         - | 4555 | `		/* Simple insertion */` |
-|       ! 0 | 4556 | `		PH7_HashmapInsert(pMap,0/* Automatic index assign*/,apArg[0]);` |
-|         - | 4557 | `	}` |
-|         - | 4558 | `	/* Return the duplicated array */` |
-|        19 | 4559 | `	ph7_result_value(pCtx,pArray);` |
-|        19 | 4560 | `	return PH7_OK;` |
-|        10 | 4561 | `}` |
-|         - | 4562 | `/*` |
-|         - | 4563 | ` * bool array_erase(array $source)` |
-|         - | 4564 | ` *  Remove all elements from a given array.` |
-|         - | 4565 | ` * Parameters` |
-|         - | 4566 | ` *  $source` |
-|         - | 4567 | ` *   Target array` |
-|         - | 4568 | ` * Return` |
-|         - | 4569 | ` *  TRUE on success.FALSE otherwise.` |
-|         - | 4570 | ` * Note` |
-|         - | 4571 | ` *  This function is a symisc eXtension.` |
-|         - | 4572 | ` */` |
-|        26 | 4573 | `static int ph7_hashmap_erase(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         2 | 4574 | `{` |
-|         - | 4575 | `	ph7_hashmap *pMap;` |
-|        28 | 4576 | `	if( nArg < 1 ){` |
-|         - | 4577 | `		/* Missing arguments */` |
-|       ! 0 | 4578 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 4579 | `		return PH7_OK;` |
-|         - | 4580 | `	}` |
-|         - | 4581 | `	/* Point to the target hashmap */` |
-|        28 | 4582 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|        28 | 4583 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 4584 | `	/* Erase */` |
-|        28 | 4585 | `	PH7_HashmapRelease(pMap,FALSE);` |
-|        28 | 4586 | `	return PH7_OK;` |
-|        15 | 4587 | `}` |
-|         - | 4588 | `/*` |
-|         - | 4589 | ` * array array_slice(array $array, int $offset [, ?int $length = null [, bool $preserve_keys = false ]])` |
-|         - | 4590 | ` *  Extract a slice of the array.` |
-|         - | 4591 | ` * Parameters` |
-|         - | 4592 | ` *  $array` |
-|         - | 4593 | ` *    The input array.` |
-|         - | 4594 | ` * $offset` |
-|         - | 4595 | ` *    If offset is non-negative, the sequence will start at that offset in the array.` |
-|         - | 4596 | ` *    If offset is negative, the sequence will start that far from the end of the array.` |
-|         - | 4597 | ` * $length (optional, nullable)` |
-|         - | 4598 | ` *    If length is given and is positive, then the sequence will have that many elements` |
-|         - | 4599 | ` *    in it. If length is given and is negative then the sequence will stop that many` |
-|         - | 4600 | ` *    elements from the end of the array. If it is omitted or NULL, then the sequence` |
-|         - | 4601 | ` *    will have everything from offset up until the end of the array.` |
-|         - | 4602 | ` * $preserve_keys (optional)` |
-|         - | 4603 | ` *    Note that array_slice() will reorder and reset the array indices by default.` |
-|         - | 4604 | ` *    You can change this behaviour by setting preserve_keys to TRUE.` |
-|         - | 4605 | ` * Return` |
-|         - | 4606 | ` *   The new slice.` |
-|         - | 4607 | ` */` |
-|        66 | 4608 | `static int ph7_hashmap_slice(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         5 | 4609 | `{` |
-|         - | 4610 | `	ph7_hashmap *pMap,*pSrc;` |
-|         - | 4611 | `	ph7_hashmap_node *pCur;` |
-|         - | 4612 | `	ph7_value *pArray;` |
-|         - | 4613 | `	int iLength,iOfft;` |
-|         - | 4614 | `	int bPreserve;` |
-|         - | 4615 | `	sxi32 rc;` |
-|        71 | 4616 | `	if( nArg < 2 ){` |
-|       ! 0 | 4617 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 4618 | `			"ArgumentCountError",` |
-|         - | 4619 | `			"array_slice() expects at least 2 arguments, %d given",` |
-|       ! 0 | 4620 | `			nArg` |
-|         - | 4621 | `			);` |
-|         - | 4622 | `	}` |
-|        71 | 4623 | `	if( nArg > 4 ){` |
-|         4 | 4624 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 4625 | `			"ArgumentCountError",` |
-|         - | 4626 | `			"array_slice() expects at most 4 arguments, %d given",` |
-|         1 | 4627 | `			nArg` |
-|         - | 4628 | `			);` |
-|         - | 4629 | `	}` |
-|        69 | 4630 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 4631 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 4632 | `			"TypeError",` |
-|         - | 4633 | `			"array_slice(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 4634 | `			ph7_type_name(apArg[0])` |
-|         - | 4635 | `			);` |
-|         - | 4636 | `	}` |
-|         - | 4637 | `	/* Validate $offset type: reject string, array, object, resource */` |
-|        92 | 4638 | `	if( ph7_value_is_string(apArg[1]) \|\| ph7_value_is_array(apArg[1]) \|\|` |
-|        95 | 4639 | `		ph7_value_is_object(apArg[1]) \|\| ph7_value_is_resource(apArg[1]) ){` |
+|         - | 4385 | `	/* Make sure we are dealing with a valid hashmap */` |
+|       184 | 4386 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         - | 4387 | `		/* haystack must be an array,throw TypeError */` |
+|         4 | 4388 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 4389 | `			"TypeError",` |
+|         - | 4390 | `			"array_keys(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 4391 | `			ph7_type_name(apArg[0])` |
+|         - | 4392 | `			);` |
+|         - | 4393 | `	}` |
+|         - | 4394 | `	/* Point to the internal representation of the input hashmap */` |
+|       181 | 4395 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 4396 | `	/* Create a new array */` |
+|       181 | 4397 | `	pArray = ph7_context_new_array(pCtx);` |
+|       181 | 4398 | `	if( pArray == 0 ){` |
+|       ! 0 | 4399 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 4400 | `		return PH7_OK;` |
+|         - | 4401 | `	}` |
+|       181 | 4402 | `	bStrict = FALSE;` |
+|       181 | 4403 | `	if( nArg > 2 ){` |
+|         - | 4404 | `		/* In PHP, non-scalar values for a bool-hinted parameter raise TypeError */` |
+|         9 | 4405 | `		if( ph7_value_is_array(apArg[2]) \|\| ph7_value_is_object(apArg[2]) \|\| ph7_value_is_resource(apArg[2]) ){` |
+|       ! 0 | 4406 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 4407 | `				"TypeError",` |
+|         - | 4408 | `				"array_keys(): Argument #3 ($strict) must be of type bool, %s given",` |
+|       ! 0 | 4409 | `				ph7_type_name(apArg[2])` |
+|         - | 4410 | `				);` |
+|         - | 4411 | `		}` |
+|         9 | 4412 | `		bStrict = ph7_value_to_bool(apArg[2]);` |
+|         4 | 4413 | `	}` |
+|         - | 4414 | `	/* Perform the requested operation */` |
+|       181 | 4415 | `	pNode = pMap->pFirst;` |
+|       181 | 4416 | `	PH7_MemObjInit(pMap->pVm,&sVal);` |
+|      1569 | 4417 | `	for( n = 0 ; n < pMap->nEntry ; ++n ){` |
+|      1391 | 4418 | `		if( pNode->iType == HASHMAP_INT_NODE ){` |
+|       199 | 4419 | `			PH7_MemObjInitFromInt(pMap->pVm,&sObj,pNode->xKey.iKey);` |
+|       101 | 4420 | `		}else{` |
+|      1194 | 4421 | `			SyStringInitFromBuf(&sKey,SyBlobData(&pNode->xKey.sKey),SyBlobLength(&pNode->xKey.sKey));` |
+|      1194 | 4422 | `			PH7_MemObjInitFromString(pMap->pVm,&sObj,&sKey);` |
+|         - | 4423 | `		}` |
+|      1391 | 4424 | `		rc = 0;` |
+|      1391 | 4425 | `		if( nArg > 1 ){` |
+|        65 | 4426 | `			ph7_value *pValue = HashmapExtractNodeValue(pNode);` |
+|        65 | 4427 | `			if( pValue ){` |
+|         - | 4428 | `				ph7_value sNeedle;` |
+|        65 | 4429 | `				PH7_MemObjInit(pMap->pVm,&sNeedle);` |
+|        65 | 4430 | `				PH7_MemObjLoad(pValue,&sVal);` |
+|         - | 4431 | `				/* Filter key — compare on duplicates of BOTH sides:` |
+|         - | 4432 | `				 * PH7_MemObjCmp converts its operands in place, and a needle` |
+|         - | 4433 | `				 * mutated on the first element (e.g. null coerced) would` |
+|         - | 4434 | `				 * corrupt every later comparison. */` |
+|        65 | 4435 | `				PH7_MemObjLoad(apArg[1],&sNeedle);` |
+|        65 | 4436 | `				rc = ph7_value_compare(&sVal,&sNeedle,bStrict);` |
+|        65 | 4437 | `				PH7_MemObjRelease(&sNeedle);` |
+|        65 | 4438 | `				PH7_MemObjRelease(&sVal);` |
+|        32 | 4439 | `			}` |
+|        32 | 4440 | `		}` |
+|      1391 | 4441 | `		if( rc == 0 ){` |
+|         - | 4442 | `			/* Perform the insertion */` |
+|      1359 | 4443 | `			ph7_array_add_elem(pArray,0,&sObj);` |
+|       678 | 4444 | `		}` |
+|      1391 | 4445 | `		PH7_MemObjRelease(&sObj);` |
+|         - | 4446 | `		/* Point to the next entry */` |
+|      1391 | 4447 | `		pNode = pNode->pPrev; /* Reverse link */` |
+|       697 | 4448 | `	}` |
+|         - | 4449 | `	/* return the new array */` |
+|       181 | 4450 | `	ph7_result_value(pCtx,pArray);` |
+|       181 | 4451 | `	return PH7_OK;` |
+|        94 | 4452 | `}` |
+|         - | 4453 | `/*` |
+|         - | 4454 | ` * bool array_same(array $arr1,array $arr2)` |
+|         - | 4455 | ` *  Return TRUE if the given arrays are the same instance.` |
+|         - | 4456 | ` *  This function is useful under PH7 since arrays are passed` |
+|         - | 4457 | ` *  by reference unlike the zend engine which use pass by values.` |
+|         - | 4458 | ` * Parameters` |
+|         - | 4459 | ` *  $arr1` |
+|         - | 4460 | ` *   First array` |
+|         - | 4461 | ` *  $arr2` |
+|         - | 4462 | ` *   Second array` |
+|         - | 4463 | ` * Return` |
+|         - | 4464 | ` *  TRUE if the arrays are the same instance.FALSE otherwise.` |
+|         - | 4465 | ` * Note` |
+|         - | 4466 | ` *  This function is a symisc eXtension.` |
+|         - | 4467 | ` */` |
+|         4 | 4468 | `static int ph7_hashmap_same(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 4469 | `{` |
+|         - | 4470 | `	ph7_hashmap *p1,*p2;` |
+|         - | 4471 | `	int rc;` |
+|         5 | 4472 | `	if( nArg < 2 \|\| !ph7_value_is_array(apArg[0]) \|\| !ph7_value_is_array(apArg[1]) ){` |
+|         - | 4473 | `		/* Missing or invalid arguments,return FALSE*/` |
+|       ! 0 | 4474 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 4475 | `		return PH7_OK;` |
+|         - | 4476 | `	}` |
+|         - | 4477 | `	/* Point to the hashmaps */` |
+|         5 | 4478 | `	p1 = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         5 | 4479 | `	p2 = (ph7_hashmap *)apArg[1]->x.pOther;` |
+|         5 | 4480 | `	rc = (p1 == p2);` |
+|         - | 4481 | `	/* Same instance? */` |
+|         5 | 4482 | `	ph7_result_bool(pCtx,rc);` |
+|         5 | 4483 | `	return PH7_OK;` |
+|         3 | 4484 | `}` |
+|         - | 4485 | `/*` |
+|         - | 4486 | ` * array array_merge(array ...$arrays)` |
+|         - | 4487 | ` *  Merge one or more arrays.` |
+|         - | 4488 | ` * Parameters` |
+|         - | 4489 | ` *  ...$arrays` |
+|         - | 4490 | ` *   Variable list of arrays to merge. Each argument must be an array;` |
+|         - | 4491 | ` *   passing a non-array argument throws a TypeError.` |
+|         - | 4492 | ` * Return` |
+|         - | 4493 | ` *  The resulting merged array. Returns an empty array when called` |
+|         - | 4494 | ` *  with no arguments.` |
+|         - | 4495 | ` */` |
+|      1126 | 4496 | `static int ph7_hashmap_merge(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         5 | 4497 | `{` |
+|         - | 4498 | `	ph7_hashmap *pMap,*pSrc;` |
+|         - | 4499 | `	ph7_value *pArray;` |
+|         - | 4500 | `	int i;` |
+|         - | 4501 | `	/* Create a new array */` |
+|      1131 | 4502 | `	pArray = ph7_context_new_array(pCtx);` |
+|      1131 | 4503 | `	if( pArray == 0 ){` |
+|       ! 0 | 4504 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 4505 | `		return PH7_OK;` |
+|         - | 4506 | `	}` |
+|         - | 4507 | `	/* Point to the internal representation of the hashmap */` |
+|      1131 | 4508 | `	pMap = (ph7_hashmap *)pArray->x.pOther;` |
+|         - | 4509 | `	/* Start merging */` |
+|      3359 | 4510 | `	for( i = 0 ; i < nArg ; i++ ){` |
+|         - | 4511 | `		/* Make sure we are dealing with a valid hashmap */` |
+|      2237 | 4512 | `		if( !ph7_value_is_array(apArg[i]) ){` |
+|         - | 4513 | `			/* Type mismatch -> TypeError */` |
+|         8 | 4514 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 4515 | `				"TypeError",` |
+|         - | 4516 | `				"array_merge(): Argument #%d must be of type array, %s given",` |
+|         2 | 4517 | `				i + 1,` |
+|         4 | 4518 | `				ph7_type_name(apArg[i])` |
+|         - | 4519 | `				);` |
+|       ! 0 | 4520 | `		}else{` |
+|      2233 | 4521 | `			pSrc = (ph7_hashmap *)apArg[i]->x.pOther;` |
+|         - | 4522 | `			/* Merge the two hashmaps */` |
+|      2233 | 4523 | `			HashmapMerge(pSrc,pMap);` |
+|         - | 4524 | `		}` |
+|      1119 | 4525 | `	}` |
+|         - | 4526 | `	/* Return the freshly created array */` |
+|      1127 | 4527 | `	ph7_result_value(pCtx,pArray);` |
+|      1127 | 4528 | `	return PH7_OK;` |
+|       568 | 4529 | `}` |
+|         - | 4530 | `/*` |
+|         - | 4531 | ` * array array_copy(array $source)` |
+|         - | 4532 | ` *  Make a blind copy of the target array.` |
+|         - | 4533 | ` * Parameters` |
+|         - | 4534 | ` *  $source` |
+|         - | 4535 | ` *   Target array` |
+|         - | 4536 | ` * Return` |
+|         - | 4537 | ` *  Copy of the target array on success.NULL otherwise.` |
+|         - | 4538 | ` * Note` |
+|         - | 4539 | ` *  This function is a symisc eXtension.` |
+|         - | 4540 | ` */` |
+|        18 | 4541 | `static int ph7_hashmap_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 4542 | `{` |
+|         - | 4543 | `	ph7_hashmap *pMap;` |
+|         - | 4544 | `	ph7_value *pArray;` |
+|        19 | 4545 | `	if( nArg < 1 ){` |
+|         - | 4546 | `		/* Missing arguments,return NULL */` |
+|       ! 0 | 4547 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 4548 | `		return PH7_OK;` |
+|         - | 4549 | `	}` |
+|         - | 4550 | `	/* Create a new array */` |
+|        19 | 4551 | `	pArray = ph7_context_new_array(pCtx);` |
+|        19 | 4552 | `	if( pArray == 0 ){` |
+|       ! 0 | 4553 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 4554 | `		return PH7_OK;` |
+|         - | 4555 | `	}` |
+|         - | 4556 | `	/* Point to the internal representation of the hashmap */` |
+|        19 | 4557 | `	pMap = (ph7_hashmap *)pArray->x.pOther;` |
+|        19 | 4558 | `	if( ph7_value_is_array(apArg[0])){` |
+|         - | 4559 | `		/* Point to the internal representation of the source */` |
+|        19 | 4560 | `		ph7_hashmap *pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 4561 | `		/* Perform the copy */` |
+|        19 | 4562 | `		PH7_HashmapDup(pSrc,pMap);` |
+|        10 | 4563 | `	}else{` |
+|         - | 4564 | `		/* Simple insertion */` |
+|       ! 0 | 4565 | `		PH7_HashmapInsert(pMap,0/* Automatic index assign*/,apArg[0]);` |
+|         - | 4566 | `	}` |
+|         - | 4567 | `	/* Return the duplicated array */` |
+|        19 | 4568 | `	ph7_result_value(pCtx,pArray);` |
+|        19 | 4569 | `	return PH7_OK;` |
+|        10 | 4570 | `}` |
+|         - | 4571 | `/*` |
+|         - | 4572 | ` * bool array_erase(array $source)` |
+|         - | 4573 | ` *  Remove all elements from a given array.` |
+|         - | 4574 | ` * Parameters` |
+|         - | 4575 | ` *  $source` |
+|         - | 4576 | ` *   Target array` |
+|         - | 4577 | ` * Return` |
+|         - | 4578 | ` *  TRUE on success.FALSE otherwise.` |
+|         - | 4579 | ` * Note` |
+|         - | 4580 | ` *  This function is a symisc eXtension.` |
+|         - | 4581 | ` */` |
+|        26 | 4582 | `static int ph7_hashmap_erase(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         2 | 4583 | `{` |
+|         - | 4584 | `	ph7_hashmap *pMap;` |
+|        28 | 4585 | `	if( nArg < 1 ){` |
+|         - | 4586 | `		/* Missing arguments */` |
+|       ! 0 | 4587 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 4588 | `		return PH7_OK;` |
+|         - | 4589 | `	}` |
+|         - | 4590 | `	/* Point to the target hashmap */` |
+|        28 | 4591 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|        28 | 4592 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 4593 | `	/* Erase */` |
+|        28 | 4594 | `	PH7_HashmapRelease(pMap,FALSE);` |
+|        28 | 4595 | `	return PH7_OK;` |
+|        15 | 4596 | `}` |
+|         - | 4597 | `/*` |
+|         - | 4598 | ` * array array_slice(array $array, int $offset [, ?int $length = null [, bool $preserve_keys = false ]])` |
+|         - | 4599 | ` *  Extract a slice of the array.` |
+|         - | 4600 | ` * Parameters` |
+|         - | 4601 | ` *  $array` |
+|         - | 4602 | ` *    The input array.` |
+|         - | 4603 | ` * $offset` |
+|         - | 4604 | ` *    If offset is non-negative, the sequence will start at that offset in the array.` |
+|         - | 4605 | ` *    If offset is negative, the sequence will start that far from the end of the array.` |
+|         - | 4606 | ` * $length (optional, nullable)` |
+|         - | 4607 | ` *    If length is given and is positive, then the sequence will have that many elements` |
+|         - | 4608 | ` *    in it. If length is given and is negative then the sequence will stop that many` |
+|         - | 4609 | ` *    elements from the end of the array. If it is omitted or NULL, then the sequence` |
+|         - | 4610 | ` *    will have everything from offset up until the end of the array.` |
+|         - | 4611 | ` * $preserve_keys (optional)` |
+|         - | 4612 | ` *    Note that array_slice() will reorder and reset the array indices by default.` |
+|         - | 4613 | ` *    You can change this behaviour by setting preserve_keys to TRUE.` |
+|         - | 4614 | ` * Return` |
+|         - | 4615 | ` *   The new slice.` |
+|         - | 4616 | ` */` |
+|        66 | 4617 | `static int ph7_hashmap_slice(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         5 | 4618 | `{` |
+|         - | 4619 | `	ph7_hashmap *pMap,*pSrc;` |
+|         - | 4620 | `	ph7_hashmap_node *pCur;` |
+|         - | 4621 | `	ph7_value *pArray;` |
+|         - | 4622 | `	int iLength,iOfft;` |
+|         - | 4623 | `	int bPreserve;` |
+|         - | 4624 | `	sxi32 rc;` |
+|        71 | 4625 | `	if( nArg < 2 ){` |
+|       ! 0 | 4626 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 4627 | `			"ArgumentCountError",` |
+|         - | 4628 | `			"array_slice() expects at least 2 arguments, %d given",` |
+|       ! 0 | 4629 | `			nArg` |
+|         - | 4630 | `			);` |
+|         - | 4631 | `	}` |
+|        71 | 4632 | `	if( nArg > 4 ){` |
+|         4 | 4633 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 4634 | `			"ArgumentCountError",` |
+|         - | 4635 | `			"array_slice() expects at most 4 arguments, %d given",` |
+|         1 | 4636 | `			nArg` |
+|         - | 4637 | `			);` |
+|         - | 4638 | `	}` |
+|        69 | 4639 | `	if( !ph7_value_is_array(apArg[0]) ){` |
 |         4 | 4640 | `		return PH7_VmThrowException(pCtx,` |
 |         - | 4641 | `			"TypeError",` |
-|         - | 4642 | `			"array_slice(): Argument #2 ($offset) must be of type int, %s given",` |
-|         2 | 4643 | `			ph7_type_name(apArg[1])` |
+|         - | 4642 | `			"array_slice(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 4643 | `			ph7_type_name(apArg[0])` |
 |         - | 4644 | `			);` |
 |         - | 4645 | `	}` |
-|         - | 4646 | `	/* Validate $length type if provided: nullable int */` |
-|        65 | 4647 | `	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){` |
-|        56 | 4648 | `		if( ph7_value_is_string(apArg[2]) \|\| ph7_value_is_array(apArg[2]) \|\|` |
-|        56 | 4649 | `			ph7_value_is_object(apArg[2]) \|\| ph7_value_is_resource(apArg[2]) ){` |
-|         4 | 4650 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 4651 | `				"TypeError",` |
-|         - | 4652 | `				"array_slice(): Argument #3 ($length) must be of type ?int, %s given",` |
-|         2 | 4653 | `				ph7_type_name(apArg[2])` |
-|         - | 4654 | `				);` |
-|         - | 4655 | `		}` |
-|        18 | 4656 | `	}` |
-|         - | 4657 | `	/* Validate $preserve_keys type if provided: reject array, object, resource */` |
-|        63 | 4658 | `	if( nArg > 3 ){` |
-|         7 | 4659 | `		if( ph7_value_is_array(apArg[3]) \|\| ph7_value_is_object(apArg[3]) \|\|` |
-|         4 | 4660 | `			ph7_value_is_resource(apArg[3]) ){` |
-|       ! 0 | 4661 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 4662 | `				"TypeError",` |
-|         - | 4663 | `				"array_slice(): Argument #4 ($preserve_keys) must be of type bool, %s given",` |
-|       ! 0 | 4664 | `				ph7_type_name(apArg[3])` |
-|         - | 4665 | `				);` |
-|         - | 4666 | `		}` |
-|         2 | 4667 | `	}` |
-|         - | 4668 | `	/* Point the internal representation of the target array */` |
-|        63 | 4669 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|        63 | 4670 | `	bPreserve = FALSE;` |
-|         - | 4671 | `	/* Get the offset */` |
-|         - | 4672 | `	{` |
-|        63 | 4673 | `		sxi64 iTmp = 0;` |
-|        63 | 4674 | `		sxi32 rcArg = PH7_IntArgResolve(pCtx,apArg[1],"array_slice",2,"$offset","int",&iTmp);` |
-|        63 | 4675 | `		if( rcArg != PH7_OK ){` |
-|       ! 0 | 4676 | `			return rcArg;` |
-|         - | 4677 | `		}` |
-|        63 | 4678 | `		iOfft = (int)iTmp;` |
-|         - | 4679 | `	}` |
-|        63 | 4680 | `	if( iOfft < 0 ){` |
-|         5 | 4681 | `		iOfft = (int)pSrc->nEntry + iOfft;` |
-|         5 | 4682 | `		if( iOfft < 0 ){` |
-|         3 | 4683 | `			iOfft = 0;` |
-|         1 | 4684 | `		}` |
-|         2 | 4685 | `	}` |
-|        63 | 4686 | `	if( iOfft >= (int)pSrc->nEntry ){` |
-|         - | 4687 | `		/* Offset past end of array, return empty array */` |
-|         5 | 4688 | `		pArray = ph7_context_new_array(pCtx);` |
-|         5 | 4689 | `		if( pArray == 0 ){` |
-|       ! 0 | 4690 | `			ph7_result_null(pCtx);` |
-|       ! 0 | 4691 | `			return PH7_OK;` |
-|         - | 4692 | `		}` |
-|         5 | 4693 | `		ph7_result_value(pCtx,pArray);` |
-|         5 | 4694 | `		return PH7_OK;` |
-|         - | 4695 | `	}` |
-|         - | 4696 | `	/* Get the length: NULL means "all remaining" (same as omitting) */` |
-|        59 | 4697 | `	iLength = (int)pSrc->nEntry - iOfft;` |
-|        59 | 4698 | `	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){` |
-|        37 | 4699 | `		iLength = ph7_value_to_int(apArg[2]);` |
-|        37 | 4700 | `		if( iLength < 0 ){` |
-|         5 | 4701 | `			iLength = ((int)pSrc->nEntry + iLength) - iOfft;` |
-|         2 | 4702 | `		}` |
-|        37 | 4703 | `		if( iLength < 0 ){` |
-|         3 | 4704 | `			iLength = 0;` |
-|         1 | 4705 | `		}` |
-|        37 | 4706 | `		if( iOfft + iLength > (int)pSrc->nEntry ){` |
-|         3 | 4707 | `			iLength = (int)pSrc->nEntry - iOfft;` |
-|         1 | 4708 | `		}` |
-|        18 | 4709 | `	}` |
-|        59 | 4710 | `	if( nArg > 3 ){` |
-|         5 | 4711 | `		bPreserve = ph7_value_to_bool(apArg[3]);` |
-|         2 | 4712 | `	}` |
-|         - | 4713 | `	/* Create a new array */` |
-|        59 | 4714 | `	pArray = ph7_context_new_array(pCtx);` |
-|        59 | 4715 | `	if( pArray == 0 ){` |
-|       ! 0 | 4716 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 4717 | `		return PH7_OK;` |
-|         - | 4718 | `	}` |
-|        59 | 4719 | `	if( iLength < 1 ){` |
-|         - | 4720 | `		/* Don't bother processing,return the empty array */` |
-|         5 | 4721 | `		ph7_result_value(pCtx,pArray);` |
-|         5 | 4722 | `		return PH7_OK;` |
-|         - | 4723 | `	}` |
-|         - | 4724 | `	/* Point to the desired entry */` |
-|        55 | 4725 | `	pCur = pSrc->pFirst;` |
-|        54 | 4726 | `	for(;;){` |
-|       113 | 4727 | `		if( iOfft < 1 ){` |
-|        55 | 4728 | `			break;` |
-|         - | 4729 | `		}` |
-|         - | 4730 | `		/* Point to the next entry */` |
-|        63 | 4731 | `		pCur = pCur->pPrev; /* Reverse link */` |
-|        63 | 4732 | `		iOfft--;` |
-|         5 | 4733 | `	}` |
-|         - | 4734 | `	/* Point to the internal representation of the hashmap */` |
-|        55 | 4735 | `	pMap = (ph7_hashmap *)pArray->x.pOther;` |
-|       106 | 4736 | `	for(;;){` |
-|       217 | 4737 | `		if( iLength < 1 ){` |
-|        55 | 4738 | `			break;` |
-|         - | 4739 | `		}` |
-|         - | 4740 | `		/* String keys are always preserved; preserve_keys only affects int keys */` |
-|         - | 4741 | `		{` |
-|       167 | 4742 | `			int bKeep = (pCur->iType == HASHMAP_INT_NODE) ? bPreserve : TRUE;` |
-|       167 | 4743 | `			rc = HashmapInsertNode(pMap,pCur,bKeep);` |
-|         - | 4744 | `		}` |
-|       167 | 4745 | `		if( rc != SXRET_OK ){` |
-|       ! 0 | 4746 | `			break;` |
-|         - | 4747 | `		}` |
-|         - | 4748 | `		/* Point to the next entry */` |
-|       167 | 4749 | `		pCur = pCur->pPrev; /* Reverse link */` |
-|       167 | 4750 | `		iLength--;` |
-|         5 | 4751 | `	}` |
-|         - | 4752 | `	/* Return the freshly created array */` |
-|        55 | 4753 | `	ph7_result_value(pCtx,pArray);` |
-|        55 | 4754 | `	return PH7_OK;` |
-|        38 | 4755 | `}` |
-|         - | 4756 | `/*` |
-|         - | 4757 | ` * Move the last node in the hashmap linked list to immediately after pAfter` |
-|         - | 4758 | ` * in iteration order.  If pAfter is NULL the node is moved to the very` |
-|         - | 4759 | ` * beginning (becomes the new pFirst).` |
-|         - | 4760 | ` */` |
-|        38 | 4761 | `static void HashmapMoveLastAfter(ph7_hashmap *pMap,ph7_hashmap_node *pAfter)` |
-|         1 | 4762 | `{` |
-|         - | 4763 | `	ph7_hashmap_node *pNode;` |
-|         - | 4764 | `	ph7_hashmap_node *pOldNext;` |
-|        39 | 4765 | `	pNode = pMap->pLast;` |
-|        39 | 4766 | `	if( pNode == 0 ){` |
-|       ! 0 | 4767 | `		return;` |
-|         - | 4768 | `	}` |
-|        39 | 4769 | `	if( pNode->pNext == 0 ){` |
-|         - | 4770 | `		/* Only node in the list, nothing to move */` |
-|         5 | 4771 | `		return;` |
-|         - | 4772 | `	}` |
-|        35 | 4773 | `	if( pAfter != 0 && pAfter->pPrev == pNode ){` |
-|         - | 4774 | `		/* Already in the correct position */` |
-|         9 | 4775 | `		return;` |
-|         - | 4776 | `	}` |
-|         - | 4777 | `	/* Unlink pNode from the end of the list */` |
-|        27 | 4778 | `	pMap->pLast = pNode->pNext;` |
-|        27 | 4779 | `	pMap->pLast->pPrev = 0;` |
-|         - | 4780 | `	/* Insert pNode after pAfter in iteration order */` |
-|        27 | 4781 | `	if( pAfter == 0 ){` |
-|         - | 4782 | `		/* Insert at the very beginning, before pFirst */` |
-|         3 | 4783 | `		pNode->pNext = 0;` |
-|         3 | 4784 | `		pNode->pPrev = pMap->pFirst;` |
-|         3 | 4785 | `		if( pMap->pFirst ){` |
-|         3 | 4786 | `			pMap->pFirst->pNext = pNode;` |
-|         1 | 4787 | `		}` |
-|         3 | 4788 | `		pMap->pFirst = pNode;` |
-|         2 | 4789 | `	}else{` |
-|        25 | 4790 | `		pOldNext = pAfter->pPrev;` |
-|        25 | 4791 | `		pNode->pPrev = pOldNext;` |
-|        25 | 4792 | `		pNode->pNext = pAfter;` |
-|        25 | 4793 | `		pAfter->pPrev = pNode;` |
-|        25 | 4794 | `		if( pOldNext ){` |
-|        25 | 4795 | `			pOldNext->pNext = pNode;` |
-|        13 | 4796 | `		}else{` |
-|       ! 0 | 4797 | `			pMap->pLast = pNode;` |
-|         - | 4798 | `		}` |
-|         - | 4799 | `	}` |
-|        20 | 4800 | `}` |
-|         - | 4801 | `/*` |
-|         - | 4802 | ` * array array_splice(array $array, int $offset [, int $length [, value $replacement]])` |
-|         - | 4803 | ` *  Remove a portion of the array and replace it with something else.` |
-|         - | 4804 | ` * Parameters` |
-|         - | 4805 | ` *  $array` |
-|         - | 4806 | ` *    The input array.` |
-|         - | 4807 | ` *  $offset` |
-|         - | 4808 | ` *    If offset is positive then the start of removed portion is at that offset` |
-|         - | 4809 | ` *    from the beginning of the input array.  If offset is negative then it` |
-|         - | 4810 | ` *    starts that far from the end of the input array.  If the absolute value of` |
-|         - | 4811 | ` *    a negative offset exceeds the array length, offset is clamped to 0.  If a` |
-|         - | 4812 | ` *    positive offset exceeds the array length, offset is clamped to the array` |
-|         - | 4813 | ` *    length (i.e. nothing is removed, but replacement is appended).` |
-|         - | 4814 | ` *  $length (optional)` |
-|         - | 4815 | ` *    If length is omitted, removes everything from offset to the end of the` |
-|         - | 4816 | ` *    array.  If length is specified and is positive, then that many elements` |
-|         - | 4817 | ` *    will be removed.  If length is specified and is negative then the end of` |
-|         - | 4818 | ` *    the removed portion will be that many elements from the end of the array.` |
-|         - | 4819 | ` *    If the resulting length is negative it is clamped to 0.` |
-|         - | 4820 | ` *  $replacement (optional)` |
-|         - | 4821 | ` *    If replacement array is specified, then the removed elements are replaced` |
-|         - | 4822 | ` *    with elements from this array.` |
-|         - | 4823 | ` *    If offset and length are such that nothing is removed, then the elements` |
-|         - | 4824 | ` *    from the replacement array are inserted in the place specified by the` |
-|         - | 4825 | ` *    offset.` |
-|         - | 4826 | ` *    Note that keys in replacement array are not preserved.` |
-|         - | 4827 | ` *    If replacement is just one element it is not necessary to put array()` |
-|         - | 4828 | ` *    around it, unless the element is an array itself, an object or NULL.` |
-|         - | 4829 | ` * Return` |
-|         - | 4830 | ` *   A new array consisting of the extracted elements.` |
-|         - | 4831 | ` */` |
-|        64 | 4832 | `static int ph7_hashmap_splice(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         2 | 4833 | `{` |
-|         - | 4834 | `	ph7_hashmap_node *pCur,*pPrev,*pRnode,*pInsertAfter,*pNewNode;` |
-|         - | 4835 | `	ph7_value *pArray,*pRvalue;` |
-|         - | 4836 | `	ph7_hashmap *pMap,*pSrc,*pRep;` |
-|         - | 4837 | `	int iLength,iOfft,i;` |
-|         - | 4838 | `	sxi32 rc;` |
-|        66 | 4839 | `	if( nArg < 2 ){` |
-|       ! 0 | 4840 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 4841 | `			"ArgumentCountError",` |
-|         - | 4842 | `			"array_splice() expects at least 2 arguments, %d given",` |
-|       ! 0 | 4843 | `			nArg` |
-|         - | 4844 | `			);` |
-|         - | 4845 | `	}` |
-|        66 | 4846 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 4847 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 4848 | `			"TypeError",` |
-|         - | 4849 | `			"array_splice(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 4850 | `			ph7_type_name(apArg[0])` |
-|         - | 4851 | `			);` |
-|         - | 4852 | `	}` |
-|         - | 4853 | `	/* Point to the internal representation of the target array */` |
-|        63 | 4854 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|        63 | 4855 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 4856 | `	/* Get the offset and clamp to valid range */` |
-|        63 | 4857 | `	iOfft = ph7_value_to_int(apArg[1]);` |
-|        63 | 4858 | `	if( iOfft < 0 ){` |
-|         9 | 4859 | `		iOfft = (int)pSrc->nEntry + iOfft;` |
-|         9 | 4860 | `		if( iOfft < 0 ){` |
-|         3 | 4861 | `			iOfft = 0;` |
-|         2 | 4862 | `		}` |
-|        59 | 4863 | `	}else if( iOfft > (int)pSrc->nEntry ){` |
-|         3 | 4864 | `		iOfft = (int)pSrc->nEntry;` |
-|         1 | 4865 | `	}` |
-|         - | 4866 | `	/* Get the length and clamp to valid range.` |
-|         - | 4867 | `	 * NULL means "all remaining" (same as omitting the argument). */` |
-|        63 | 4868 | `	iLength = (int)pSrc->nEntry - iOfft;` |
-|        63 | 4869 | `	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){` |
-|        45 | 4870 | `		iLength = ph7_value_to_int(apArg[2]);` |
-|        45 | 4871 | `		if( iLength < 0 ){` |
-|         7 | 4872 | `			iLength = ((int)pSrc->nEntry + iLength) - iOfft;` |
-|         7 | 4873 | `			if( iLength < 0 ){` |
-|         3 | 4874 | `				iLength = 0;` |
-|         1 | 4875 | `			}` |
-|         3 | 4876 | `		}` |
-|        45 | 4877 | `		if( iOfft + iLength > (int)pSrc->nEntry ){` |
-|         3 | 4878 | `			iLength = (int)pSrc->nEntry - iOfft;` |
-|         1 | 4879 | `		}` |
-|        22 | 4880 | `	}` |
-|         - | 4881 | `	/* Create the result array for removed elements */` |
-|        63 | 4882 | `	pArray = ph7_context_new_array(pCtx);` |
-|        63 | 4883 | `	if( pArray == 0 ){` |
-|       ! 0 | 4884 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 4885 | `		return PH7_OK;` |
-|         - | 4886 | `	}` |
-|         - | 4887 | `	/* Get replacement array if provided */` |
-|        63 | 4888 | `	pRep = 0;` |
-|        63 | 4889 | `	if( nArg > 3 ){` |
-|        27 | 4890 | `		if( !ph7_value_is_array(apArg[3]) ){` |
-|         - | 4891 | `			/* Perform an array cast */` |
-|         3 | 4892 | `			PH7_MemObjToHashmap(apArg[3]);` |
-|         3 | 4893 | `			if( ph7_value_is_array(apArg[3]) ){` |
-|         3 | 4894 | `				pRep = (ph7_hashmap *)apArg[3]->x.pOther;` |
-|         1 | 4895 | `			}` |
-|         2 | 4896 | `		}else{` |
-|        25 | 4897 | `			pRep = (ph7_hashmap *)apArg[3]->x.pOther;` |
-|         - | 4898 | `		}` |
-|        27 | 4899 | `		if( pRep ){` |
-|         - | 4900 | `			/* Reset the loop cursor */` |
-|        27 | 4901 | `			pRep->pCur = pRep->pFirst;` |
-|        13 | 4902 | `		}` |
-|        13 | 4903 | `	}` |
-|         - | 4904 | `	/* No early return for the nothing-to-do case: php reindexes the input` |
-|         - | 4905 | `	 * array's integer keys on EVERY splice, even a no-op one. */` |
-|         - | 4906 | `	/* Navigate to the offset position */` |
-|        63 | 4907 | `	pCur = pSrc->pFirst;` |
-|       131 | 4908 | `	for( i = 0 ; i < iOfft && pCur ; i++ ){` |
-|        69 | 4909 | `		pCur = pCur->pPrev; /* Reverse link */` |
-|        35 | 4910 | `	}` |
-|         - | 4911 | `	/* Save the node just before the splice range as the insertion anchor.` |
-|         - | 4912 | `	 * pCur->pNext is the backward link (previous node in iteration order).` |
-|         - | 4913 | `	 * If pCur is NULL (offset == nEntry), the anchor is the last node. */` |
-|        63 | 4914 | `	pInsertAfter = (pCur != 0) ? pCur->pNext : pSrc->pLast;` |
-|         - | 4915 | `	/* Remove nodes in the splice range and copy them to the result array */` |
-|        63 | 4916 | `	pMap = (ph7_hashmap *)pArray->x.pOther;` |
-|       141 | 4917 | `	for( i = 0 ; i < iLength && pCur ; i++ ){` |
-|        79 | 4918 | `		pPrev = pCur->pPrev;` |
-|        79 | 4919 | `		rc = HashmapInsertNode(pMap,pCur,FALSE);` |
-|        79 | 4920 | `		PH7_HashmapUnlinkNode(pCur,TRUE);` |
-|        79 | 4921 | `		if( rc != SXRET_OK ){` |
-|       ! 0 | 4922 | `			break;` |
-|         - | 4923 | `		}` |
-|        79 | 4924 | `		pCur = pPrev; /* Reverse link */` |
-|        40 | 4925 | `	}` |
-|         - | 4926 | `	/* Insert replacement elements at the correct position */` |
-|        63 | 4927 | `	if( pRep ){` |
-|         - | 4928 | `		ph7_value sSafeVal;` |
-|        78 | 4929 | `		while( (pRnode = PH7_HashmapGetNextEntry(pRep)) != 0 ){` |
-|        39 | 4930 | `			pRvalue = HashmapExtractNodeValue(pRnode);` |
-|        39 | 4931 | `			if( pRvalue ){` |
-|         - | 4932 | `				/* Make a stack copy before inserting.  HashmapInsert() may` |
-|         - | 4933 | `				 * grow the VM memobj pool, which would invalidate pRvalue` |
-|         - | 4934 | `				 * since it points into that same pool. */` |
-|        39 | 4935 | `				sSafeVal = *pRvalue;` |
-|        39 | 4936 | `				rc = HashmapInsert(pSrc,0,&sSafeVal);` |
-|        39 | 4937 | `				if( rc == SXRET_OK && pSrc->pLast != 0 ){` |
-|        39 | 4938 | `					pNewNode = pSrc->pLast;` |
-|        39 | 4939 | `					HashmapMoveLastAfter(pSrc,pInsertAfter);` |
-|        39 | 4940 | `					pInsertAfter = pNewNode;` |
-|        19 | 4941 | `				}` |
-|        19 | 4942 | `			}` |
-|         1 | 4943 | `		}` |
-|        13 | 4944 | `	}` |
-|         - | 4945 | `	/* php renumbers ALL integer keys of the input array in iteration order` |
-|         - | 4946 | `	 * (string keys preserved) — same pass as array_shift. Pre-fix the spliced` |
-|         - | 4947 | `	 * array kept its old keys, so inserts landed with out-of-sequence keys` |
-|         - | 4948 | `	 * and removals left gaps. */` |
-|         - | 4949 | `	{` |
-|        63 | 4950 | `		ph7_hashmap_node *pEntry = pSrc->pFirst;` |
-|        63 | 4951 | `		sxu32 n = pSrc->nEntry;` |
-|        63 | 4952 | `		pSrc->iNextIdx = 0;` |
-|       233 | 4953 | `		while( n > 0 ){` |
-|       171 | 4954 | `			if( pEntry->iType == HASHMAP_INT_NODE ){` |
-|       165 | 4955 | `				HashmapRehashIntNode(pEntry);` |
-|        82 | 4956 | `			}` |
-|       171 | 4957 | `			pEntry = pEntry->pPrev; /* Reverse link */` |
-|       171 | 4958 | `			n--;` |
-|         1 | 4959 | `		}` |
-|        63 | 4960 | `		pSrc->pCur = pSrc->pFirst;` |
-|         - | 4961 | `	}` |
-|         - | 4962 | `	/* Return the freshly created array */` |
-|        63 | 4963 | `	ph7_result_value(pCtx,pArray);` |
-|        63 | 4964 | `	return PH7_OK;` |
-|        34 | 4965 | `}` |
-|         - | 4966 | `/*` |
-|         - | 4967 | ` * bool in_array(value $needle,array $haystack[,bool $strict = FALSE ])` |
-|         - | 4968 | ` *  Checks if a value exists in an array.` |
-|         - | 4969 | ` * Parameters` |
-|         - | 4970 | ` *  $needle` |
-|         - | 4971 | ` *   The searched value.` |
-|         - | 4972 | ` *   Note:` |
-|         - | 4973 | ` *    If needle is a string, the comparison is done in a case-sensitive manner.` |
-|         - | 4974 | ` * $haystack` |
-|         - | 4975 | ` *  The target array.` |
-|         - | 4976 | ` * $strict` |
-|         - | 4977 | ` *  If the third parameter strict is set to TRUE then the in_array() function` |
-|         - | 4978 | ` *  will also check the types of the needle in the haystack.` |
-|         - | 4979 | ` */` |
-|     33918 | 4980 | `static int ph7_hashmap_in_array(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         5 | 4981 | `{` |
-|         - | 4982 | `	ph7_value *pNeedle;` |
-|         - | 4983 | `	int bStrict;` |
-|         - | 4984 | `	int rc;` |
-|     33923 | 4985 | `	if( nArg < 2 ){` |
-|         - | 4986 | `		/* Missing argument,return FALSE */` |
-|       ! 0 | 4987 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 4988 | `		return PH7_OK;` |
-|         - | 4989 | `	}` |
-|     33923 | 4990 | `	pNeedle = apArg[0];` |
-|     33923 | 4991 | `	bStrict = 0;` |
-|     33923 | 4992 | `	if( nArg > 2 ){` |
-|        62 | 4993 | `		bStrict = ph7_value_to_bool(apArg[2]);` |
-|        30 | 4994 | `	}` |
-|     33923 | 4995 | `	if( !ph7_value_is_array(apArg[1]) ){` |
-|         - | 4996 | `		/* haystack must be an array,perform a standard comparison */` |
-|       ! 0 | 4997 | `		rc = ph7_value_compare(pNeedle,apArg[1],bStrict);` |
-|         - | 4998 | `		/* Set the comparison result */` |
-|       ! 0 | 4999 | `		ph7_result_bool(pCtx,rc == 0);` |
-|       ! 0 | 5000 | `		return PH7_OK;` |
-|         - | 5001 | `	}` |
-|         - | 5002 | `	/* Perform the lookup */` |
-|     33923 | 5003 | `	rc = HashmapFindValue((ph7_hashmap *)apArg[1]->x.pOther,pNeedle,0,bStrict);` |
-|         - | 5004 | `	/* Lookup result */` |
-|     33923 | 5005 | `	ph7_result_bool(pCtx,rc == SXRET_OK);` |
-|     33923 | 5006 | `	return PH7_OK;` |
-|     16964 | 5007 | `}` |
-|         - | 5008 | `/*` |
-|         - | 5009 | ` * value array_search(value $needle,array $haystack[,bool $strict = false ])` |
-|         - | 5010 | ` *  Searches the array for a given value and returns the corresponding key if successful.` |
-|         - | 5011 | ` * Parameters` |
-|         - | 5012 | ` * $needle` |
-|         - | 5013 | ` *   The searched value.` |
-|         - | 5014 | ` * $haystack` |
-|         - | 5015 | ` *   The array.` |
-|         - | 5016 | ` * $strict` |
-|         - | 5017 | ` *  If the third parameter strict is set to TRUE then the array_search() function` |
-|         - | 5018 | ` *  will search for identical elements in the haystack. This means it will also check` |
-|         - | 5019 | ` *  the types of the needle in the haystack, and objects must be the same instance.` |
-|         - | 5020 | ` * Return` |
-|         - | 5021 | ` *  Returns the key for needle if it is found in the array, FALSE otherwise.` |
-|         - | 5022 | ` */` |
-|        28 | 5023 | `static int ph7_hashmap_search(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         2 | 5024 | `{` |
-|         - | 5025 | `	ph7_hashmap_node *pEntry;` |
-|         - | 5026 | `	ph7_value *pVal,sNeedle;` |
-|         - | 5027 | `	ph7_hashmap *pMap;` |
-|         - | 5028 | `	ph7_value sVal;` |
-|         - | 5029 | `	int bStrict;` |
-|         - | 5030 | `	sxu32 n;` |
-|         - | 5031 | `	int rc;` |
-|        30 | 5032 | `	if( nArg < 2 ){` |
-|         - | 5033 | `		/* Missing argument,throw ArgumentCountError */` |
-|       ! 0 | 5034 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 5035 | `			"ArgumentCountError",` |
-|         - | 5036 | `			"array_search() expects at least 2 arguments, %d given",` |
-|       ! 0 | 5037 | `			nArg` |
-|         - | 5038 | `			);` |
-|         - | 5039 | `	}` |
-|        30 | 5040 | `	bStrict = FALSE;` |
-|        30 | 5041 | `	if( !ph7_value_is_array(apArg[1]) ){` |
-|         - | 5042 | `		/* haystack must be an array,throw TypeError */` |
-|         4 | 5043 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 5044 | `			"TypeError",` |
-|         - | 5045 | `			"array_search(): Argument #2 ($haystack) must be of type array, %s given",` |
-|         2 | 5046 | `			ph7_type_name(apArg[1])` |
+|         - | 4646 | `	/* Validate $offset type: reject string, array, object, resource */` |
+|        92 | 4647 | `	if( ph7_value_is_string(apArg[1]) \|\| ph7_value_is_array(apArg[1]) \|\|` |
+|        95 | 4648 | `		ph7_value_is_object(apArg[1]) \|\| ph7_value_is_resource(apArg[1]) ){` |
+|         4 | 4649 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 4650 | `			"TypeError",` |
+|         - | 4651 | `			"array_slice(): Argument #2 ($offset) must be of type int, %s given",` |
+|         2 | 4652 | `			ph7_type_name(apArg[1])` |
+|         - | 4653 | `			);` |
+|         - | 4654 | `	}` |
+|         - | 4655 | `	/* Validate $length type if provided: nullable int */` |
+|        65 | 4656 | `	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){` |
+|        56 | 4657 | `		if( ph7_value_is_string(apArg[2]) \|\| ph7_value_is_array(apArg[2]) \|\|` |
+|        56 | 4658 | `			ph7_value_is_object(apArg[2]) \|\| ph7_value_is_resource(apArg[2]) ){` |
+|         4 | 4659 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 4660 | `				"TypeError",` |
+|         - | 4661 | `				"array_slice(): Argument #3 ($length) must be of type ?int, %s given",` |
+|         2 | 4662 | `				ph7_type_name(apArg[2])` |
+|         - | 4663 | `				);` |
+|         - | 4664 | `		}` |
+|        18 | 4665 | `	}` |
+|         - | 4666 | `	/* Validate $preserve_keys type if provided: reject array, object, resource */` |
+|        63 | 4667 | `	if( nArg > 3 ){` |
+|         7 | 4668 | `		if( ph7_value_is_array(apArg[3]) \|\| ph7_value_is_object(apArg[3]) \|\|` |
+|         4 | 4669 | `			ph7_value_is_resource(apArg[3]) ){` |
+|       ! 0 | 4670 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 4671 | `				"TypeError",` |
+|         - | 4672 | `				"array_slice(): Argument #4 ($preserve_keys) must be of type bool, %s given",` |
+|       ! 0 | 4673 | `				ph7_type_name(apArg[3])` |
+|         - | 4674 | `				);` |
+|         - | 4675 | `		}` |
+|         2 | 4676 | `	}` |
+|         - | 4677 | `	/* Point the internal representation of the target array */` |
+|        63 | 4678 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|        63 | 4679 | `	bPreserve = FALSE;` |
+|         - | 4680 | `	/* Get the offset */` |
+|         - | 4681 | `	{` |
+|        63 | 4682 | `		sxi64 iTmp = 0;` |
+|        63 | 4683 | `		sxi32 rcArg = PH7_IntArgResolve(pCtx,apArg[1],"array_slice",2,"$offset","int",&iTmp);` |
+|        63 | 4684 | `		if( rcArg != PH7_OK ){` |
+|       ! 0 | 4685 | `			return rcArg;` |
+|         - | 4686 | `		}` |
+|        63 | 4687 | `		iOfft = (int)iTmp;` |
+|         - | 4688 | `	}` |
+|        63 | 4689 | `	if( iOfft < 0 ){` |
+|         5 | 4690 | `		iOfft = (int)pSrc->nEntry + iOfft;` |
+|         5 | 4691 | `		if( iOfft < 0 ){` |
+|         3 | 4692 | `			iOfft = 0;` |
+|         1 | 4693 | `		}` |
+|         2 | 4694 | `	}` |
+|        63 | 4695 | `	if( iOfft >= (int)pSrc->nEntry ){` |
+|         - | 4696 | `		/* Offset past end of array, return empty array */` |
+|         5 | 4697 | `		pArray = ph7_context_new_array(pCtx);` |
+|         5 | 4698 | `		if( pArray == 0 ){` |
+|       ! 0 | 4699 | `			ph7_result_null(pCtx);` |
+|       ! 0 | 4700 | `			return PH7_OK;` |
+|         - | 4701 | `		}` |
+|         5 | 4702 | `		ph7_result_value(pCtx,pArray);` |
+|         5 | 4703 | `		return PH7_OK;` |
+|         - | 4704 | `	}` |
+|         - | 4705 | `	/* Get the length: NULL means "all remaining" (same as omitting) */` |
+|        59 | 4706 | `	iLength = (int)pSrc->nEntry - iOfft;` |
+|        59 | 4707 | `	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){` |
+|        37 | 4708 | `		iLength = ph7_value_to_int(apArg[2]);` |
+|        37 | 4709 | `		if( iLength < 0 ){` |
+|         5 | 4710 | `			iLength = ((int)pSrc->nEntry + iLength) - iOfft;` |
+|         2 | 4711 | `		}` |
+|        37 | 4712 | `		if( iLength < 0 ){` |
+|         3 | 4713 | `			iLength = 0;` |
+|         1 | 4714 | `		}` |
+|        37 | 4715 | `		if( iOfft + iLength > (int)pSrc->nEntry ){` |
+|         3 | 4716 | `			iLength = (int)pSrc->nEntry - iOfft;` |
+|         1 | 4717 | `		}` |
+|        18 | 4718 | `	}` |
+|        59 | 4719 | `	if( nArg > 3 ){` |
+|         5 | 4720 | `		bPreserve = ph7_value_to_bool(apArg[3]);` |
+|         2 | 4721 | `	}` |
+|         - | 4722 | `	/* Create a new array */` |
+|        59 | 4723 | `	pArray = ph7_context_new_array(pCtx);` |
+|        59 | 4724 | `	if( pArray == 0 ){` |
+|       ! 0 | 4725 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 4726 | `		return PH7_OK;` |
+|         - | 4727 | `	}` |
+|        59 | 4728 | `	if( iLength < 1 ){` |
+|         - | 4729 | `		/* Don't bother processing,return the empty array */` |
+|         5 | 4730 | `		ph7_result_value(pCtx,pArray);` |
+|         5 | 4731 | `		return PH7_OK;` |
+|         - | 4732 | `	}` |
+|         - | 4733 | `	/* Point to the desired entry */` |
+|        55 | 4734 | `	pCur = pSrc->pFirst;` |
+|        54 | 4735 | `	for(;;){` |
+|       113 | 4736 | `		if( iOfft < 1 ){` |
+|        55 | 4737 | `			break;` |
+|         - | 4738 | `		}` |
+|         - | 4739 | `		/* Point to the next entry */` |
+|        63 | 4740 | `		pCur = pCur->pPrev; /* Reverse link */` |
+|        63 | 4741 | `		iOfft--;` |
+|         5 | 4742 | `	}` |
+|         - | 4743 | `	/* Point to the internal representation of the hashmap */` |
+|        55 | 4744 | `	pMap = (ph7_hashmap *)pArray->x.pOther;` |
+|       106 | 4745 | `	for(;;){` |
+|       217 | 4746 | `		if( iLength < 1 ){` |
+|        55 | 4747 | `			break;` |
+|         - | 4748 | `		}` |
+|         - | 4749 | `		/* String keys are always preserved; preserve_keys only affects int keys */` |
+|         - | 4750 | `		{` |
+|       167 | 4751 | `			int bKeep = (pCur->iType == HASHMAP_INT_NODE) ? bPreserve : TRUE;` |
+|       167 | 4752 | `			rc = HashmapInsertNode(pMap,pCur,bKeep);` |
+|         - | 4753 | `		}` |
+|       167 | 4754 | `		if( rc != SXRET_OK ){` |
+|       ! 0 | 4755 | `			break;` |
+|         - | 4756 | `		}` |
+|         - | 4757 | `		/* Point to the next entry */` |
+|       167 | 4758 | `		pCur = pCur->pPrev; /* Reverse link */` |
+|       167 | 4759 | `		iLength--;` |
+|         5 | 4760 | `	}` |
+|         - | 4761 | `	/* Return the freshly created array */` |
+|        55 | 4762 | `	ph7_result_value(pCtx,pArray);` |
+|        55 | 4763 | `	return PH7_OK;` |
+|        38 | 4764 | `}` |
+|         - | 4765 | `/*` |
+|         - | 4766 | ` * Move the last node in the hashmap linked list to immediately after pAfter` |
+|         - | 4767 | ` * in iteration order.  If pAfter is NULL the node is moved to the very` |
+|         - | 4768 | ` * beginning (becomes the new pFirst).` |
+|         - | 4769 | ` */` |
+|        38 | 4770 | `static void HashmapMoveLastAfter(ph7_hashmap *pMap,ph7_hashmap_node *pAfter)` |
+|         1 | 4771 | `{` |
+|         - | 4772 | `	ph7_hashmap_node *pNode;` |
+|         - | 4773 | `	ph7_hashmap_node *pOldNext;` |
+|        39 | 4774 | `	pNode = pMap->pLast;` |
+|        39 | 4775 | `	if( pNode == 0 ){` |
+|       ! 0 | 4776 | `		return;` |
+|         - | 4777 | `	}` |
+|        39 | 4778 | `	if( pNode->pNext == 0 ){` |
+|         - | 4779 | `		/* Only node in the list, nothing to move */` |
+|         5 | 4780 | `		return;` |
+|         - | 4781 | `	}` |
+|        35 | 4782 | `	if( pAfter != 0 && pAfter->pPrev == pNode ){` |
+|         - | 4783 | `		/* Already in the correct position */` |
+|         9 | 4784 | `		return;` |
+|         - | 4785 | `	}` |
+|         - | 4786 | `	/* Unlink pNode from the end of the list */` |
+|        27 | 4787 | `	pMap->pLast = pNode->pNext;` |
+|        27 | 4788 | `	pMap->pLast->pPrev = 0;` |
+|         - | 4789 | `	/* Insert pNode after pAfter in iteration order */` |
+|        27 | 4790 | `	if( pAfter == 0 ){` |
+|         - | 4791 | `		/* Insert at the very beginning, before pFirst */` |
+|         3 | 4792 | `		pNode->pNext = 0;` |
+|         3 | 4793 | `		pNode->pPrev = pMap->pFirst;` |
+|         3 | 4794 | `		if( pMap->pFirst ){` |
+|         3 | 4795 | `			pMap->pFirst->pNext = pNode;` |
+|         1 | 4796 | `		}` |
+|         3 | 4797 | `		pMap->pFirst = pNode;` |
+|         2 | 4798 | `	}else{` |
+|        25 | 4799 | `		pOldNext = pAfter->pPrev;` |
+|        25 | 4800 | `		pNode->pPrev = pOldNext;` |
+|        25 | 4801 | `		pNode->pNext = pAfter;` |
+|        25 | 4802 | `		pAfter->pPrev = pNode;` |
+|        25 | 4803 | `		if( pOldNext ){` |
+|        25 | 4804 | `			pOldNext->pNext = pNode;` |
+|        13 | 4805 | `		}else{` |
+|       ! 0 | 4806 | `			pMap->pLast = pNode;` |
+|         - | 4807 | `		}` |
+|         - | 4808 | `	}` |
+|        20 | 4809 | `}` |
+|         - | 4810 | `/*` |
+|         - | 4811 | ` * array array_splice(array $array, int $offset [, int $length [, value $replacement]])` |
+|         - | 4812 | ` *  Remove a portion of the array and replace it with something else.` |
+|         - | 4813 | ` * Parameters` |
+|         - | 4814 | ` *  $array` |
+|         - | 4815 | ` *    The input array.` |
+|         - | 4816 | ` *  $offset` |
+|         - | 4817 | ` *    If offset is positive then the start of removed portion is at that offset` |
+|         - | 4818 | ` *    from the beginning of the input array.  If offset is negative then it` |
+|         - | 4819 | ` *    starts that far from the end of the input array.  If the absolute value of` |
+|         - | 4820 | ` *    a negative offset exceeds the array length, offset is clamped to 0.  If a` |
+|         - | 4821 | ` *    positive offset exceeds the array length, offset is clamped to the array` |
+|         - | 4822 | ` *    length (i.e. nothing is removed, but replacement is appended).` |
+|         - | 4823 | ` *  $length (optional)` |
+|         - | 4824 | ` *    If length is omitted, removes everything from offset to the end of the` |
+|         - | 4825 | ` *    array.  If length is specified and is positive, then that many elements` |
+|         - | 4826 | ` *    will be removed.  If length is specified and is negative then the end of` |
+|         - | 4827 | ` *    the removed portion will be that many elements from the end of the array.` |
+|         - | 4828 | ` *    If the resulting length is negative it is clamped to 0.` |
+|         - | 4829 | ` *  $replacement (optional)` |
+|         - | 4830 | ` *    If replacement array is specified, then the removed elements are replaced` |
+|         - | 4831 | ` *    with elements from this array.` |
+|         - | 4832 | ` *    If offset and length are such that nothing is removed, then the elements` |
+|         - | 4833 | ` *    from the replacement array are inserted in the place specified by the` |
+|         - | 4834 | ` *    offset.` |
+|         - | 4835 | ` *    Note that keys in replacement array are not preserved.` |
+|         - | 4836 | ` *    If replacement is just one element it is not necessary to put array()` |
+|         - | 4837 | ` *    around it, unless the element is an array itself, an object or NULL.` |
+|         - | 4838 | ` * Return` |
+|         - | 4839 | ` *   A new array consisting of the extracted elements.` |
+|         - | 4840 | ` */` |
+|        64 | 4841 | `static int ph7_hashmap_splice(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         2 | 4842 | `{` |
+|         - | 4843 | `	ph7_hashmap_node *pCur,*pPrev,*pRnode,*pInsertAfter,*pNewNode;` |
+|         - | 4844 | `	ph7_value *pArray,*pRvalue;` |
+|         - | 4845 | `	ph7_hashmap *pMap,*pSrc,*pRep;` |
+|         - | 4846 | `	int iLength,iOfft,i;` |
+|         - | 4847 | `	sxi32 rc;` |
+|        66 | 4848 | `	if( nArg < 2 ){` |
+|       ! 0 | 4849 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 4850 | `			"ArgumentCountError",` |
+|         - | 4851 | `			"array_splice() expects at least 2 arguments, %d given",` |
+|       ! 0 | 4852 | `			nArg` |
+|         - | 4853 | `			);` |
+|         - | 4854 | `	}` |
+|        66 | 4855 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         4 | 4856 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 4857 | `			"TypeError",` |
+|         - | 4858 | `			"array_splice(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 4859 | `			ph7_type_name(apArg[0])` |
+|         - | 4860 | `			);` |
+|         - | 4861 | `	}` |
+|         - | 4862 | `	/* Point to the internal representation of the target array */` |
+|        63 | 4863 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|        63 | 4864 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 4865 | `	/* Get the offset and clamp to valid range */` |
+|        63 | 4866 | `	iOfft = ph7_value_to_int(apArg[1]);` |
+|        63 | 4867 | `	if( iOfft < 0 ){` |
+|         9 | 4868 | `		iOfft = (int)pSrc->nEntry + iOfft;` |
+|         9 | 4869 | `		if( iOfft < 0 ){` |
+|         3 | 4870 | `			iOfft = 0;` |
+|         2 | 4871 | `		}` |
+|        59 | 4872 | `	}else if( iOfft > (int)pSrc->nEntry ){` |
+|         3 | 4873 | `		iOfft = (int)pSrc->nEntry;` |
+|         1 | 4874 | `	}` |
+|         - | 4875 | `	/* Get the length and clamp to valid range.` |
+|         - | 4876 | `	 * NULL means "all remaining" (same as omitting the argument). */` |
+|        63 | 4877 | `	iLength = (int)pSrc->nEntry - iOfft;` |
+|        63 | 4878 | `	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){` |
+|        45 | 4879 | `		iLength = ph7_value_to_int(apArg[2]);` |
+|        45 | 4880 | `		if( iLength < 0 ){` |
+|         7 | 4881 | `			iLength = ((int)pSrc->nEntry + iLength) - iOfft;` |
+|         7 | 4882 | `			if( iLength < 0 ){` |
+|         3 | 4883 | `				iLength = 0;` |
+|         1 | 4884 | `			}` |
+|         3 | 4885 | `		}` |
+|        45 | 4886 | `		if( iOfft + iLength > (int)pSrc->nEntry ){` |
+|         3 | 4887 | `			iLength = (int)pSrc->nEntry - iOfft;` |
+|         1 | 4888 | `		}` |
+|        22 | 4889 | `	}` |
+|         - | 4890 | `	/* Create the result array for removed elements */` |
+|        63 | 4891 | `	pArray = ph7_context_new_array(pCtx);` |
+|        63 | 4892 | `	if( pArray == 0 ){` |
+|       ! 0 | 4893 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 4894 | `		return PH7_OK;` |
+|         - | 4895 | `	}` |
+|         - | 4896 | `	/* Get replacement array if provided */` |
+|        63 | 4897 | `	pRep = 0;` |
+|        63 | 4898 | `	if( nArg > 3 ){` |
+|        27 | 4899 | `		if( !ph7_value_is_array(apArg[3]) ){` |
+|         - | 4900 | `			/* Perform an array cast */` |
+|         3 | 4901 | `			PH7_MemObjToHashmap(apArg[3]);` |
+|         3 | 4902 | `			if( ph7_value_is_array(apArg[3]) ){` |
+|         3 | 4903 | `				pRep = (ph7_hashmap *)apArg[3]->x.pOther;` |
+|         1 | 4904 | `			}` |
+|         2 | 4905 | `		}else{` |
+|        25 | 4906 | `			pRep = (ph7_hashmap *)apArg[3]->x.pOther;` |
+|         - | 4907 | `		}` |
+|        27 | 4908 | `		if( pRep ){` |
+|         - | 4909 | `			/* Reset the loop cursor */` |
+|        27 | 4910 | `			pRep->pCur = pRep->pFirst;` |
+|        13 | 4911 | `		}` |
+|        13 | 4912 | `	}` |
+|         - | 4913 | `	/* No early return for the nothing-to-do case: php reindexes the input` |
+|         - | 4914 | `	 * array's integer keys on EVERY splice, even a no-op one. */` |
+|         - | 4915 | `	/* Navigate to the offset position */` |
+|        63 | 4916 | `	pCur = pSrc->pFirst;` |
+|       131 | 4917 | `	for( i = 0 ; i < iOfft && pCur ; i++ ){` |
+|        69 | 4918 | `		pCur = pCur->pPrev; /* Reverse link */` |
+|        35 | 4919 | `	}` |
+|         - | 4920 | `	/* Save the node just before the splice range as the insertion anchor.` |
+|         - | 4921 | `	 * pCur->pNext is the backward link (previous node in iteration order).` |
+|         - | 4922 | `	 * If pCur is NULL (offset == nEntry), the anchor is the last node. */` |
+|        63 | 4923 | `	pInsertAfter = (pCur != 0) ? pCur->pNext : pSrc->pLast;` |
+|         - | 4924 | `	/* Remove nodes in the splice range and copy them to the result array */` |
+|        63 | 4925 | `	pMap = (ph7_hashmap *)pArray->x.pOther;` |
+|       141 | 4926 | `	for( i = 0 ; i < iLength && pCur ; i++ ){` |
+|        79 | 4927 | `		pPrev = pCur->pPrev;` |
+|        79 | 4928 | `		rc = HashmapInsertNode(pMap,pCur,FALSE);` |
+|        79 | 4929 | `		PH7_HashmapUnlinkNode(pCur,TRUE);` |
+|        79 | 4930 | `		if( rc != SXRET_OK ){` |
+|       ! 0 | 4931 | `			break;` |
+|         - | 4932 | `		}` |
+|        79 | 4933 | `		pCur = pPrev; /* Reverse link */` |
+|        40 | 4934 | `	}` |
+|         - | 4935 | `	/* Insert replacement elements at the correct position */` |
+|        63 | 4936 | `	if( pRep ){` |
+|         - | 4937 | `		ph7_value sSafeVal;` |
+|        78 | 4938 | `		while( (pRnode = PH7_HashmapGetNextEntry(pRep)) != 0 ){` |
+|        39 | 4939 | `			pRvalue = HashmapExtractNodeValue(pRnode);` |
+|        39 | 4940 | `			if( pRvalue ){` |
+|         - | 4941 | `				/* Make a stack copy before inserting.  HashmapInsert() may` |
+|         - | 4942 | `				 * grow the VM memobj pool, which would invalidate pRvalue` |
+|         - | 4943 | `				 * since it points into that same pool. */` |
+|        39 | 4944 | `				sSafeVal = *pRvalue;` |
+|        39 | 4945 | `				rc = HashmapInsert(pSrc,0,&sSafeVal);` |
+|        39 | 4946 | `				if( rc == SXRET_OK && pSrc->pLast != 0 ){` |
+|        39 | 4947 | `					pNewNode = pSrc->pLast;` |
+|        39 | 4948 | `					HashmapMoveLastAfter(pSrc,pInsertAfter);` |
+|        39 | 4949 | `					pInsertAfter = pNewNode;` |
+|        19 | 4950 | `				}` |
+|        19 | 4951 | `			}` |
+|         1 | 4952 | `		}` |
+|        13 | 4953 | `	}` |
+|         - | 4954 | `	/* php renumbers ALL integer keys of the input array in iteration order` |
+|         - | 4955 | `	 * (string keys preserved) — same pass as array_shift. Pre-fix the spliced` |
+|         - | 4956 | `	 * array kept its old keys, so inserts landed with out-of-sequence keys` |
+|         - | 4957 | `	 * and removals left gaps. */` |
+|         - | 4958 | `	{` |
+|        63 | 4959 | `		ph7_hashmap_node *pEntry = pSrc->pFirst;` |
+|        63 | 4960 | `		sxu32 n = pSrc->nEntry;` |
+|        63 | 4961 | `		pSrc->iNextIdx = 0;` |
+|       233 | 4962 | `		while( n > 0 ){` |
+|       171 | 4963 | `			if( pEntry->iType == HASHMAP_INT_NODE ){` |
+|       165 | 4964 | `				HashmapRehashIntNode(pEntry);` |
+|        82 | 4965 | `			}` |
+|       171 | 4966 | `			pEntry = pEntry->pPrev; /* Reverse link */` |
+|       171 | 4967 | `			n--;` |
+|         1 | 4968 | `		}` |
+|        63 | 4969 | `		pSrc->pCur = pSrc->pFirst;` |
+|         - | 4970 | `	}` |
+|         - | 4971 | `	/* Return the freshly created array */` |
+|        63 | 4972 | `	ph7_result_value(pCtx,pArray);` |
+|        63 | 4973 | `	return PH7_OK;` |
+|        34 | 4974 | `}` |
+|         - | 4975 | `/*` |
+|         - | 4976 | ` * bool in_array(value $needle,array $haystack[,bool $strict = FALSE ])` |
+|         - | 4977 | ` *  Checks if a value exists in an array.` |
+|         - | 4978 | ` * Parameters` |
+|         - | 4979 | ` *  $needle` |
+|         - | 4980 | ` *   The searched value.` |
+|         - | 4981 | ` *   Note:` |
+|         - | 4982 | ` *    If needle is a string, the comparison is done in a case-sensitive manner.` |
+|         - | 4983 | ` * $haystack` |
+|         - | 4984 | ` *  The target array.` |
+|         - | 4985 | ` * $strict` |
+|         - | 4986 | ` *  If the third parameter strict is set to TRUE then the in_array() function` |
+|         - | 4987 | ` *  will also check the types of the needle in the haystack.` |
+|         - | 4988 | ` */` |
+|     33928 | 4989 | `static int ph7_hashmap_in_array(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         5 | 4990 | `{` |
+|         - | 4991 | `	ph7_value *pNeedle;` |
+|         - | 4992 | `	int bStrict;` |
+|         - | 4993 | `	int rc;` |
+|     33933 | 4994 | `	if( nArg < 2 ){` |
+|         - | 4995 | `		/* Missing argument,return FALSE */` |
+|       ! 0 | 4996 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 4997 | `		return PH7_OK;` |
+|         - | 4998 | `	}` |
+|     33933 | 4999 | `	pNeedle = apArg[0];` |
+|     33933 | 5000 | `	bStrict = 0;` |
+|     33933 | 5001 | `	if( nArg > 2 ){` |
+|        62 | 5002 | `		bStrict = ph7_value_to_bool(apArg[2]);` |
+|        30 | 5003 | `	}` |
+|     33933 | 5004 | `	if( !ph7_value_is_array(apArg[1]) ){` |
+|         - | 5005 | `		/* haystack must be an array,perform a standard comparison */` |
+|       ! 0 | 5006 | `		rc = ph7_value_compare(pNeedle,apArg[1],bStrict);` |
+|         - | 5007 | `		/* Set the comparison result */` |
+|       ! 0 | 5008 | `		ph7_result_bool(pCtx,rc == 0);` |
+|       ! 0 | 5009 | `		return PH7_OK;` |
+|         - | 5010 | `	}` |
+|         - | 5011 | `	/* Perform the lookup */` |
+|     33933 | 5012 | `	rc = HashmapFindValue((ph7_hashmap *)apArg[1]->x.pOther,pNeedle,0,bStrict);` |
+|         - | 5013 | `	/* Lookup result */` |
+|     33933 | 5014 | `	ph7_result_bool(pCtx,rc == SXRET_OK);` |
+|     33933 | 5015 | `	return PH7_OK;` |
+|     16969 | 5016 | `}` |
+|         - | 5017 | `/*` |
+|         - | 5018 | ` * value array_search(value $needle,array $haystack[,bool $strict = false ])` |
+|         - | 5019 | ` *  Searches the array for a given value and returns the corresponding key if successful.` |
+|         - | 5020 | ` * Parameters` |
+|         - | 5021 | ` * $needle` |
+|         - | 5022 | ` *   The searched value.` |
+|         - | 5023 | ` * $haystack` |
+|         - | 5024 | ` *   The array.` |
+|         - | 5025 | ` * $strict` |
+|         - | 5026 | ` *  If the third parameter strict is set to TRUE then the array_search() function` |
+|         - | 5027 | ` *  will search for identical elements in the haystack. This means it will also check` |
+|         - | 5028 | ` *  the types of the needle in the haystack, and objects must be the same instance.` |
+|         - | 5029 | ` * Return` |
+|         - | 5030 | ` *  Returns the key for needle if it is found in the array, FALSE otherwise.` |
+|         - | 5031 | ` */` |
+|        28 | 5032 | `static int ph7_hashmap_search(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         2 | 5033 | `{` |
+|         - | 5034 | `	ph7_hashmap_node *pEntry;` |
+|         - | 5035 | `	ph7_value *pVal,sNeedle;` |
+|         - | 5036 | `	ph7_hashmap *pMap;` |
+|         - | 5037 | `	ph7_value sVal;` |
+|         - | 5038 | `	int bStrict;` |
+|         - | 5039 | `	sxu32 n;` |
+|         - | 5040 | `	int rc;` |
+|        30 | 5041 | `	if( nArg < 2 ){` |
+|         - | 5042 | `		/* Missing argument,throw ArgumentCountError */` |
+|       ! 0 | 5043 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 5044 | `			"ArgumentCountError",` |
+|         - | 5045 | `			"array_search() expects at least 2 arguments, %d given",` |
+|       ! 0 | 5046 | `			nArg` |
 |         - | 5047 | `			);` |
 |         - | 5048 | `	}` |
-|        27 | 5049 | `	if( nArg > 2 ){` |
-|         - | 5050 | `		/* In PHP, non-scalar values for a bool-hinted parameter raise TypeError */` |
-|        13 | 5051 | `		if( ph7_value_is_array(apArg[2]) \|\| ph7_value_is_object(apArg[2]) \|\| ph7_value_is_resource(apArg[2]) ){` |
-|       ! 0 | 5052 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 5053 | `				"TypeError",` |
-|         - | 5054 | `				"array_search(): Argument #3 ($strict) must be of type bool, %s given",` |
-|       ! 0 | 5055 | `				ph7_type_name(apArg[2])` |
-|         - | 5056 | `				);` |
-|         - | 5057 | `		}` |
-|        13 | 5058 | `		bStrict = ph7_value_to_bool(apArg[2]);` |
-|         6 | 5059 | `	}` |
-|         - | 5060 | `	/* Point to the internal representation of the internal hashmap */` |
-|        27 | 5061 | `	pMap = (ph7_hashmap *)apArg[1]->x.pOther;` |
-|         - | 5062 | `	/* Perform a linear search since we cannot sort the hashmap based on values */` |
-|        27 | 5063 | `	PH7_MemObjInit(pMap->pVm,&sVal);` |
-|        27 | 5064 | `	PH7_MemObjInit(pMap->pVm,&sNeedle);` |
-|        27 | 5065 | `	pEntry = pMap->pFirst;` |
-|        27 | 5066 | `	n = pMap->nEntry;` |
-|        29 | 5067 | `	for(;;){` |
-|        59 | 5068 | `		if( !n ){` |
-|         9 | 5069 | `			break;` |
-|         - | 5070 | `		}` |
-|         - | 5071 | `		/* Extract node value */` |
-|        51 | 5072 | `		pVal = HashmapExtractNodeValue(pEntry);` |
-|        51 | 5073 | `		if( pVal ){` |
-|         - | 5074 | `			/* Make a copy of the vuurent values since the comparison routine` |
-|         - | 5075 | `			 * can change their type.` |
-|         - | 5076 | `			 */` |
-|        51 | 5077 | `			PH7_MemObjLoad(pVal,&sVal);` |
-|        51 | 5078 | `			PH7_MemObjLoad(apArg[0],&sNeedle);` |
-|        51 | 5079 | `			rc = PH7_MemObjCmp(&sNeedle,&sVal,bStrict,0);` |
-|        51 | 5080 | `			PH7_MemObjRelease(&sVal);` |
-|        51 | 5081 | `			PH7_MemObjRelease(&sNeedle);` |
-|        51 | 5082 | `			if( rc == 0 ){` |
-|         - | 5083 | `				/* Match found,return key */` |
-|        19 | 5084 | `				if( pEntry->iType == HASHMAP_INT_NODE){` |
-|         - | 5085 | `					/* INT key */` |
-|        13 | 5086 | `					ph7_result_int64(pCtx,pEntry->xKey.iKey);` |
-|         7 | 5087 | `				}else{` |
-|         7 | 5088 | `					SyBlob *pKey = &pEntry->xKey.sKey;` |
-|         - | 5089 | `					/* Blob key */` |
-|         7 | 5090 | `					ph7_result_string(pCtx,(const char *)SyBlobData(pKey),(int)SyBlobLength(pKey));` |
-|         - | 5091 | `				}` |
-|        19 | 5092 | `				return PH7_OK;` |
-|         - | 5093 | `			}` |
-|        16 | 5094 | `		}` |
-|         - | 5095 | `		/* Point to the next entry */` |
-|        33 | 5096 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|        33 | 5097 | `		n--;` |
-|         1 | 5098 | `	}` |
-|         - | 5099 | `	/* No such value,return FALSE */` |
-|         9 | 5100 | `	ph7_result_bool(pCtx,0);` |
-|         9 | 5101 | `	return PH7_OK;` |
-|        16 | 5102 | `}` |
-|         - | 5103 | `/*` |
-|         - | 5104 | ` * array array_diff(array $array1,array $array2,...)` |
-|         - | 5105 | ` *  Computes the difference of arrays.` |
-|         - | 5106 | ` * Parameters` |
-|         - | 5107 | ` *  $array1` |
-|         - | 5108 | ` *    The array to compare from` |
-|         - | 5109 | ` *  $array2` |
-|         - | 5110 | ` *    An array to compare against` |
-|         - | 5111 | ` *  $...` |
-|         - | 5112 | ` *   More arrays to compare against` |
-|         - | 5113 | ` * Return` |
-|         - | 5114 | ` *  Returns an array containing all the entries from array1 that` |
-|         - | 5115 | ` *  are not present in any of the other arrays.` |
-|         - | 5116 | ` */` |
-|        20 | 5117 | `static int ph7_hashmap_diff(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         3 | 5118 | `{` |
-|         - | 5119 | `	ph7_hashmap_node *pEntry;` |
-|         - | 5120 | `	ph7_hashmap *pSrc,*pMap;` |
-|         - | 5121 | `	ph7_value *pArray;` |
-|         - | 5122 | `	ph7_value *pVal;` |
-|         - | 5123 | `	sxi32 rc;` |
-|         - | 5124 | `	sxu32 n;` |
-|         - | 5125 | `	int i;` |
-|         - | 5126 | `	/* Validate arguments to mimic PHP behaviour. Earlier versions simply` |
-|         - | 5127 | `	 * returned NULL when the caller passed invalid parameters which made` |
-|         - | 5128 | `	 * debugging difficult. */` |
-|        23 | 5129 | `	if( nArg < 1 ){` |
-|       ! 0 | 5130 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 5131 | `			"ArgumentCountError",` |
-|         - | 5132 | `			"array_diff() expects at least 1 argument, %d given",` |
-|       ! 0 | 5133 | `			nArg` |
-|         - | 5134 | `			);` |
-|         - | 5135 | `	}` |
-|        23 | 5136 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 5137 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 5138 | `			"TypeError",` |
-|         - | 5139 | `			"array_diff(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 5140 | `			ph7_type_name(apArg[0])` |
-|         - | 5141 | `			);` |
-|         - | 5142 | `	}` |
-|        36 | 5143 | `	for(i = 1 ; i < nArg ; i++){` |
-|        20 | 5144 | `		if( !ph7_value_is_array(apArg[i]) ){` |
-|         4 | 5145 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 5146 | `				"TypeError",` |
-|         - | 5147 | `				"array_diff(): Argument #%d must be of type array, %s given",` |
-|         1 | 5148 | `				i + 1,` |
-|         2 | 5149 | `				ph7_type_name(apArg[i])` |
-|         - | 5150 | `				);` |
-|         - | 5151 | `		}` |
-|         9 | 5152 | `	}` |
-|        17 | 5153 | `	if( nArg == 1 ){` |
-|         - | 5154 | `		/* Return the first array since we cannot perform a diff */` |
-|         3 | 5155 | `		ph7_result_value(pCtx,apArg[0]);` |
-|         3 | 5156 | `		return PH7_OK;` |
-|         - | 5157 | `	}` |
-|         - | 5158 | `	/* Create a new array */` |
-|        15 | 5159 | `	pArray = ph7_context_new_array(pCtx);` |
-|        15 | 5160 | `	if( pArray == 0 ){` |
-|       ! 0 | 5161 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 5162 | `		return PH7_OK;` |
-|         - | 5163 | `	}` |
-|         - | 5164 | `	/* Point to the internal representation of the source hashmap */` |
-|        15 | 5165 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 5166 | `	/* Perform the diff */` |
-|        15 | 5167 | `	pEntry = pSrc->pFirst;` |
-|        15 | 5168 | `	n = pSrc->nEntry;` |
-|        27 | 5169 | `	for(;;){` |
-|        55 | 5170 | `		if( n < 1 ){` |
-|        15 | 5171 | `			break;` |
-|         - | 5172 | `		}` |
-|         - | 5173 | `		/* Extract the node value */` |
-|        41 | 5174 | `		pVal = HashmapExtractNodeValue(pEntry);` |
-|        41 | 5175 | `		if( pVal ){` |
-|        69 | 5176 | `			for( i = 1 ; i < nArg ; i++ ){` |
-|         - | 5177 | `				/* Point to the internal representation of the hashmap */` |
-|        45 | 5178 | `				pMap = (ph7_hashmap *)apArg[i]->x.pOther;` |
-|         - | 5179 | `				/* Perform the lookup */` |
-|        45 | 5180 | `				rc = HashmapFindValue(pMap,pVal,0,TRUE);` |
-|        45 | 5181 | `				if( rc == SXRET_OK ){` |
-|         - | 5182 | `					/* Value exist */` |
-|        17 | 5183 | `					break;` |
-|         - | 5184 | `				}` |
-|        15 | 5185 | `			}` |
-|        41 | 5186 | `			if( i >= nArg ){` |
-|         - | 5187 | `				/* Perform the insertion */` |
-|        25 | 5188 | `				HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);` |
-|        12 | 5189 | `			}` |
-|        20 | 5190 | `		}` |
-|         - | 5191 | `		/* Point to the next entry */` |
-|        41 | 5192 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|        41 | 5193 | `		n--;` |
-|         1 | 5194 | `	}` |
-|         - | 5195 | `	/* Return the freshly created array */` |
-|        15 | 5196 | `	ph7_result_value(pCtx,pArray);` |
-|        15 | 5197 | `	return PH7_OK;` |
-|        13 | 5198 | `}` |
-|         - | 5199 | `/*` |
-|         - | 5200 | ` * array array_udiff(array $array1,array $array2,...,$callback)` |
-|         - | 5201 | ` *  Computes the difference of arrays by using a callback function for data comparison.` |
-|         - | 5202 | ` * Parameters` |
-|         - | 5203 | ` *  $array1` |
-|         - | 5204 | ` *    The array to compare from` |
-|         - | 5205 | ` *  $array2` |
-|         - | 5206 | ` *    An array to compare against` |
-|         - | 5207 | ` *  $...` |
-|         - | 5208 | ` *   More arrays to compare against.` |
-|         - | 5209 | ` * $callback` |
-|         - | 5210 | ` *  The callback comparison function.` |
-|         - | 5211 | ` *  The comparison function must return an integer less than, equal to, or greater than zero` |
-|         - | 5212 | ` *  if the first argument is considered to be respectively less than, equal to, or greater` |
-|         - | 5213 | ` *  than the second.` |
-|         - | 5214 | ` *     int callback ( mixed $a, mixed $b )` |
-|         - | 5215 | ` * Return` |
-|         - | 5216 | ` *  Returns an array containing all the entries from array1 that` |
-|         - | 5217 | ` *  are not present in any of the other arrays.` |
-|         - | 5218 | ` */` |
-|        20 | 5219 | `static int ph7_hashmap_udiff(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         5 | 5220 | `{` |
-|         - | 5221 | `	ph7_hashmap_node *pEntry;` |
-|         - | 5222 | `	ph7_hashmap *pSrc,*pMap;` |
-|         - | 5223 | `	ph7_value *pCallback;` |
-|         - | 5224 | `	ph7_value *pArray;` |
-|         - | 5225 | `	ph7_value *pVal;` |
-|         - | 5226 | `	sxi32 rc;` |
-|         - | 5227 | `	sxu32 n;` |
-|         - | 5228 | `	int i;` |
-|         - | 5229 |  |
-|         - | 5230 | `	/* Ensure the argument count matches PHP behaviour. */` |
-|        25 | 5231 | `	if( nArg < 2 ){` |
-|       ! 0 | 5232 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 5233 | `			"ArgumentCountError",` |
-|         - | 5234 | `			"array_udiff() expects at least 2 arguments, %d given",` |
-|       ! 0 | 5235 | `			nArg` |
-|         - | 5236 | `			);` |
-|         - | 5237 | `	}` |
-|        25 | 5238 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 5239 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 5240 | `			"TypeError",` |
-|         - | 5241 | `			"array_udiff(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 5242 | `			ph7_type_name(apArg[0])` |
-|         - | 5243 | `			);` |
-|         - | 5244 | `	}` |
-|         - | 5245 |  |
-|        23 | 5246 | `	if( nArg == 2 ){` |
-|         - | 5247 | `		/* Only the original array and the callback were provided. */` |
-|         - | 5248 | `		/* Nevertheless, we still validate the callback after verifying any` |
-|         - | 5249 | `		 * intermediate array arguments to match PHP's left-to-right parameter` |
-|         - | 5250 | `		 * validation order.` |
-|         - | 5251 | `		 */` |
-|         4 | 5252 | `	} else {` |
-|         - | 5253 | `		/* Ensure intermediary arguments are arrays (matches PHP strict typing). */` |
-|        27 | 5254 | `		for( i = 1 ; i < nArg - 1; i++ ){` |
-|        19 | 5255 | `			if( !ph7_value_is_array(apArg[i]) ){` |
-|        11 | 5256 | `				return PH7_VmThrowException(pCtx,` |
-|         - | 5257 | `					"TypeError",` |
-|         - | 5258 | `					"array_udiff(): Argument #%d must be of type array, %s given",` |
-|         3 | 5259 | `					i + 1,` |
-|         6 | 5260 | `					ph7_type_name(apArg[i])` |
-|         - | 5261 | `					);` |
-|         - | 5262 | `			}` |
-|         7 | 5263 | `		}` |
-|         - | 5264 | `	}` |
-|         - | 5265 |  |
-|         - | 5266 | `	/* Identify the callback (always expected as the last argument). */` |
-|        16 | 5267 | `	pCallback = apArg[nArg - 1];` |
-|         - | 5268 | `	/* Validate the callback to match PHP's error messages. */` |
-|        16 | 5269 | `	if( !ph7_value_is_callable(pCallback) ){` |
-|         9 | 5270 | `		if( ph7_value_is_array(pCallback) ){` |
-|         4 | 5271 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 5272 | `				"TypeError",` |
-|         - | 5273 | `				"array_udiff(): Argument #%d must be a valid callback, array callback must have exactly two members",` |
-|         1 | 5274 | `				nArg` |
-|         - | 5275 | `				);` |
-|         - | 5276 | `		}` |
-|         6 | 5277 | `		if( ph7_value_is_string(pCallback) ){` |
-|         - | 5278 | `			int len;` |
-|         3 | 5279 | `			const char *zName = ph7_value_to_string(pCallback, &len);` |
+|        30 | 5049 | `	bStrict = FALSE;` |
+|        30 | 5050 | `	if( !ph7_value_is_array(apArg[1]) ){` |
+|         - | 5051 | `		/* haystack must be an array,throw TypeError */` |
+|         4 | 5052 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 5053 | `			"TypeError",` |
+|         - | 5054 | `			"array_search(): Argument #2 ($haystack) must be of type array, %s given",` |
+|         2 | 5055 | `			ph7_type_name(apArg[1])` |
+|         - | 5056 | `			);` |
+|         - | 5057 | `	}` |
+|        27 | 5058 | `	if( nArg > 2 ){` |
+|         - | 5059 | `		/* In PHP, non-scalar values for a bool-hinted parameter raise TypeError */` |
+|        13 | 5060 | `		if( ph7_value_is_array(apArg[2]) \|\| ph7_value_is_object(apArg[2]) \|\| ph7_value_is_resource(apArg[2]) ){` |
+|       ! 0 | 5061 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 5062 | `				"TypeError",` |
+|         - | 5063 | `				"array_search(): Argument #3 ($strict) must be of type bool, %s given",` |
+|       ! 0 | 5064 | `				ph7_type_name(apArg[2])` |
+|         - | 5065 | `				);` |
+|         - | 5066 | `		}` |
+|        13 | 5067 | `		bStrict = ph7_value_to_bool(apArg[2]);` |
+|         6 | 5068 | `	}` |
+|         - | 5069 | `	/* Point to the internal representation of the internal hashmap */` |
+|        27 | 5070 | `	pMap = (ph7_hashmap *)apArg[1]->x.pOther;` |
+|         - | 5071 | `	/* Perform a linear search since we cannot sort the hashmap based on values */` |
+|        27 | 5072 | `	PH7_MemObjInit(pMap->pVm,&sVal);` |
+|        27 | 5073 | `	PH7_MemObjInit(pMap->pVm,&sNeedle);` |
+|        27 | 5074 | `	pEntry = pMap->pFirst;` |
+|        27 | 5075 | `	n = pMap->nEntry;` |
+|        29 | 5076 | `	for(;;){` |
+|        59 | 5077 | `		if( !n ){` |
+|         9 | 5078 | `			break;` |
+|         - | 5079 | `		}` |
+|         - | 5080 | `		/* Extract node value */` |
+|        51 | 5081 | `		pVal = HashmapExtractNodeValue(pEntry);` |
+|        51 | 5082 | `		if( pVal ){` |
+|         - | 5083 | `			/* Make a copy of the vuurent values since the comparison routine` |
+|         - | 5084 | `			 * can change their type.` |
+|         - | 5085 | `			 */` |
+|        51 | 5086 | `			PH7_MemObjLoad(pVal,&sVal);` |
+|        51 | 5087 | `			PH7_MemObjLoad(apArg[0],&sNeedle);` |
+|        51 | 5088 | `			rc = PH7_MemObjCmp(&sNeedle,&sVal,bStrict,0);` |
+|        51 | 5089 | `			PH7_MemObjRelease(&sVal);` |
+|        51 | 5090 | `			PH7_MemObjRelease(&sNeedle);` |
+|        51 | 5091 | `			if( rc == 0 ){` |
+|         - | 5092 | `				/* Match found,return key */` |
+|        19 | 5093 | `				if( pEntry->iType == HASHMAP_INT_NODE){` |
+|         - | 5094 | `					/* INT key */` |
+|        13 | 5095 | `					ph7_result_int64(pCtx,pEntry->xKey.iKey);` |
+|         7 | 5096 | `				}else{` |
+|         7 | 5097 | `					SyBlob *pKey = &pEntry->xKey.sKey;` |
+|         - | 5098 | `					/* Blob key */` |
+|         7 | 5099 | `					ph7_result_string(pCtx,(const char *)SyBlobData(pKey),(int)SyBlobLength(pKey));` |
+|         - | 5100 | `				}` |
+|        19 | 5101 | `				return PH7_OK;` |
+|         - | 5102 | `			}` |
+|        16 | 5103 | `		}` |
+|         - | 5104 | `		/* Point to the next entry */` |
+|        33 | 5105 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|        33 | 5106 | `		n--;` |
+|         1 | 5107 | `	}` |
+|         - | 5108 | `	/* No such value,return FALSE */` |
+|         9 | 5109 | `	ph7_result_bool(pCtx,0);` |
+|         9 | 5110 | `	return PH7_OK;` |
+|        16 | 5111 | `}` |
+|         - | 5112 | `/*` |
+|         - | 5113 | ` * array array_diff(array $array1,array $array2,...)` |
+|         - | 5114 | ` *  Computes the difference of arrays.` |
+|         - | 5115 | ` * Parameters` |
+|         - | 5116 | ` *  $array1` |
+|         - | 5117 | ` *    The array to compare from` |
+|         - | 5118 | ` *  $array2` |
+|         - | 5119 | ` *    An array to compare against` |
+|         - | 5120 | ` *  $...` |
+|         - | 5121 | ` *   More arrays to compare against` |
+|         - | 5122 | ` * Return` |
+|         - | 5123 | ` *  Returns an array containing all the entries from array1 that` |
+|         - | 5124 | ` *  are not present in any of the other arrays.` |
+|         - | 5125 | ` */` |
+|        20 | 5126 | `static int ph7_hashmap_diff(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         3 | 5127 | `{` |
+|         - | 5128 | `	ph7_hashmap_node *pEntry;` |
+|         - | 5129 | `	ph7_hashmap *pSrc,*pMap;` |
+|         - | 5130 | `	ph7_value *pArray;` |
+|         - | 5131 | `	ph7_value *pVal;` |
+|         - | 5132 | `	sxi32 rc;` |
+|         - | 5133 | `	sxu32 n;` |
+|         - | 5134 | `	int i;` |
+|         - | 5135 | `	/* Validate arguments to mimic PHP behaviour. Earlier versions simply` |
+|         - | 5136 | `	 * returned NULL when the caller passed invalid parameters which made` |
+|         - | 5137 | `	 * debugging difficult. */` |
+|        23 | 5138 | `	if( nArg < 1 ){` |
+|       ! 0 | 5139 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 5140 | `			"ArgumentCountError",` |
+|         - | 5141 | `			"array_diff() expects at least 1 argument, %d given",` |
+|       ! 0 | 5142 | `			nArg` |
+|         - | 5143 | `			);` |
+|         - | 5144 | `	}` |
+|        23 | 5145 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         4 | 5146 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 5147 | `			"TypeError",` |
+|         - | 5148 | `			"array_diff(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 5149 | `			ph7_type_name(apArg[0])` |
+|         - | 5150 | `			);` |
+|         - | 5151 | `	}` |
+|        36 | 5152 | `	for(i = 1 ; i < nArg ; i++){` |
+|        20 | 5153 | `		if( !ph7_value_is_array(apArg[i]) ){` |
+|         4 | 5154 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 5155 | `				"TypeError",` |
+|         - | 5156 | `				"array_diff(): Argument #%d must be of type array, %s given",` |
+|         1 | 5157 | `				i + 1,` |
+|         2 | 5158 | `				ph7_type_name(apArg[i])` |
+|         - | 5159 | `				);` |
+|         - | 5160 | `		}` |
+|         9 | 5161 | `	}` |
+|        17 | 5162 | `	if( nArg == 1 ){` |
+|         - | 5163 | `		/* Return the first array since we cannot perform a diff */` |
+|         3 | 5164 | `		ph7_result_value(pCtx,apArg[0]);` |
+|         3 | 5165 | `		return PH7_OK;` |
+|         - | 5166 | `	}` |
+|         - | 5167 | `	/* Create a new array */` |
+|        15 | 5168 | `	pArray = ph7_context_new_array(pCtx);` |
+|        15 | 5169 | `	if( pArray == 0 ){` |
+|       ! 0 | 5170 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 5171 | `		return PH7_OK;` |
+|         - | 5172 | `	}` |
+|         - | 5173 | `	/* Point to the internal representation of the source hashmap */` |
+|        15 | 5174 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 5175 | `	/* Perform the diff */` |
+|        15 | 5176 | `	pEntry = pSrc->pFirst;` |
+|        15 | 5177 | `	n = pSrc->nEntry;` |
+|        27 | 5178 | `	for(;;){` |
+|        55 | 5179 | `		if( n < 1 ){` |
+|        15 | 5180 | `			break;` |
+|         - | 5181 | `		}` |
+|         - | 5182 | `		/* Extract the node value */` |
+|        41 | 5183 | `		pVal = HashmapExtractNodeValue(pEntry);` |
+|        41 | 5184 | `		if( pVal ){` |
+|        69 | 5185 | `			for( i = 1 ; i < nArg ; i++ ){` |
+|         - | 5186 | `				/* Point to the internal representation of the hashmap */` |
+|        45 | 5187 | `				pMap = (ph7_hashmap *)apArg[i]->x.pOther;` |
+|         - | 5188 | `				/* Perform the lookup */` |
+|        45 | 5189 | `				rc = HashmapFindValue(pMap,pVal,0,TRUE);` |
+|        45 | 5190 | `				if( rc == SXRET_OK ){` |
+|         - | 5191 | `					/* Value exist */` |
+|        17 | 5192 | `					break;` |
+|         - | 5193 | `				}` |
+|        15 | 5194 | `			}` |
+|        41 | 5195 | `			if( i >= nArg ){` |
+|         - | 5196 | `				/* Perform the insertion */` |
+|        25 | 5197 | `				HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);` |
+|        12 | 5198 | `			}` |
+|        20 | 5199 | `		}` |
+|         - | 5200 | `		/* Point to the next entry */` |
+|        41 | 5201 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|        41 | 5202 | `		n--;` |
+|         1 | 5203 | `	}` |
+|         - | 5204 | `	/* Return the freshly created array */` |
+|        15 | 5205 | `	ph7_result_value(pCtx,pArray);` |
+|        15 | 5206 | `	return PH7_OK;` |
+|        13 | 5207 | `}` |
+|         - | 5208 | `/*` |
+|         - | 5209 | ` * array array_udiff(array $array1,array $array2,...,$callback)` |
+|         - | 5210 | ` *  Computes the difference of arrays by using a callback function for data comparison.` |
+|         - | 5211 | ` * Parameters` |
+|         - | 5212 | ` *  $array1` |
+|         - | 5213 | ` *    The array to compare from` |
+|         - | 5214 | ` *  $array2` |
+|         - | 5215 | ` *    An array to compare against` |
+|         - | 5216 | ` *  $...` |
+|         - | 5217 | ` *   More arrays to compare against.` |
+|         - | 5218 | ` * $callback` |
+|         - | 5219 | ` *  The callback comparison function.` |
+|         - | 5220 | ` *  The comparison function must return an integer less than, equal to, or greater than zero` |
+|         - | 5221 | ` *  if the first argument is considered to be respectively less than, equal to, or greater` |
+|         - | 5222 | ` *  than the second.` |
+|         - | 5223 | ` *     int callback ( mixed $a, mixed $b )` |
+|         - | 5224 | ` * Return` |
+|         - | 5225 | ` *  Returns an array containing all the entries from array1 that` |
+|         - | 5226 | ` *  are not present in any of the other arrays.` |
+|         - | 5227 | ` */` |
+|        20 | 5228 | `static int ph7_hashmap_udiff(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         5 | 5229 | `{` |
+|         - | 5230 | `	ph7_hashmap_node *pEntry;` |
+|         - | 5231 | `	ph7_hashmap *pSrc,*pMap;` |
+|         - | 5232 | `	ph7_value *pCallback;` |
+|         - | 5233 | `	ph7_value *pArray;` |
+|         - | 5234 | `	ph7_value *pVal;` |
+|         - | 5235 | `	sxi32 rc;` |
+|         - | 5236 | `	sxu32 n;` |
+|         - | 5237 | `	int i;` |
+|         - | 5238 |  |
+|         - | 5239 | `	/* Ensure the argument count matches PHP behaviour. */` |
+|        25 | 5240 | `	if( nArg < 2 ){` |
+|       ! 0 | 5241 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 5242 | `			"ArgumentCountError",` |
+|         - | 5243 | `			"array_udiff() expects at least 2 arguments, %d given",` |
+|       ! 0 | 5244 | `			nArg` |
+|         - | 5245 | `			);` |
+|         - | 5246 | `	}` |
+|        25 | 5247 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         4 | 5248 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 5249 | `			"TypeError",` |
+|         - | 5250 | `			"array_udiff(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 5251 | `			ph7_type_name(apArg[0])` |
+|         - | 5252 | `			);` |
+|         - | 5253 | `	}` |
+|         - | 5254 |  |
+|        23 | 5255 | `	if( nArg == 2 ){` |
+|         - | 5256 | `		/* Only the original array and the callback were provided. */` |
+|         - | 5257 | `		/* Nevertheless, we still validate the callback after verifying any` |
+|         - | 5258 | `		 * intermediate array arguments to match PHP's left-to-right parameter` |
+|         - | 5259 | `		 * validation order.` |
+|         - | 5260 | `		 */` |
+|         4 | 5261 | `	} else {` |
+|         - | 5262 | `		/* Ensure intermediary arguments are arrays (matches PHP strict typing). */` |
+|        27 | 5263 | `		for( i = 1 ; i < nArg - 1; i++ ){` |
+|        19 | 5264 | `			if( !ph7_value_is_array(apArg[i]) ){` |
+|        11 | 5265 | `				return PH7_VmThrowException(pCtx,` |
+|         - | 5266 | `					"TypeError",` |
+|         - | 5267 | `					"array_udiff(): Argument #%d must be of type array, %s given",` |
+|         3 | 5268 | `					i + 1,` |
+|         6 | 5269 | `					ph7_type_name(apArg[i])` |
+|         - | 5270 | `					);` |
+|         - | 5271 | `			}` |
+|         7 | 5272 | `		}` |
+|         - | 5273 | `	}` |
+|         - | 5274 |  |
+|         - | 5275 | `	/* Identify the callback (always expected as the last argument). */` |
+|        16 | 5276 | `	pCallback = apArg[nArg - 1];` |
+|         - | 5277 | `	/* Validate the callback to match PHP's error messages. */` |
+|        16 | 5278 | `	if( !ph7_value_is_callable(pCallback) ){` |
+|         9 | 5279 | `		if( ph7_value_is_array(pCallback) ){` |
 |         4 | 5280 | `			return PH7_VmThrowException(pCtx,` |
 |         - | 5281 | `				"TypeError",` |
-|         - | 5282 | `				"array_udiff(): Argument #%d must be a valid callback, function \"%s\" not found or invalid function name",` |
-|         1 | 5283 | `				nArg,` |
-|         1 | 5284 | `				zName` |
-|         - | 5285 | `				);` |
-|         - | 5286 | `		}` |
-|         4 | 5287 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 5288 | `			"TypeError",` |
-|         - | 5289 | `			"array_udiff(): Argument #%d must be a valid callback, no array or string given",` |
-|         1 | 5290 | `			nArg` |
-|         - | 5291 | `			);` |
-|         - | 5292 | `	}` |
-|         - | 5293 |  |
-|         7 | 5294 | `	if( nArg == 2 ){` |
-|         - | 5295 | `		/* Only the original array and the callback were provided. */` |
-|         3 | 5296 | `		ph7_result_value(pCtx,apArg[0]);` |
-|         3 | 5297 | `		return PH7_OK;` |
-|         - | 5298 | `	}` |
-|         - | 5299 |  |
-|         - | 5300 | `	/* Create a new array */` |
-|         5 | 5301 | `	pArray = ph7_context_new_array(pCtx);` |
-|         5 | 5302 | `	if( pArray == 0 ){` |
-|       ! 0 | 5303 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 5304 | `		return PH7_OK;` |
-|         - | 5305 | `	}` |
-|         - | 5306 | `	/* Point to the internal representation of the source hashmap */` |
-|         5 | 5307 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 5308 | `	/* Perform the diff */` |
-|         5 | 5309 | `	pEntry = pSrc->pFirst;` |
-|         5 | 5310 | `	n = pSrc->nEntry;` |
-|         5 | 5311 | `	pCtx->pVm->iCmpCallbackExc = 0;` |
-|         5 | 5312 | `	for(;;){` |
-|        11 | 5313 | `		if( n < 1 ){` |
-|         3 | 5314 | `			break;` |
-|         - | 5315 | `		}` |
-|         - | 5316 | `		/* Extract the node value */` |
-|         9 | 5317 | `		pVal = HashmapExtractNodeValue(pEntry);` |
-|         9 | 5318 | `		if( pVal ){` |
-|        15 | 5319 | `			for( i = 1 ; i < nArg - 1; i++ ){` |
-|         - | 5320 | `				/* Point to the internal representation of the hashmap */` |
-|         9 | 5321 | `				pMap = (ph7_hashmap *)apArg[i]->x.pOther;` |
-|         - | 5322 | `				/* Perform the lookup */` |
-|         9 | 5323 | `				rc = HashmapFindValueByCallback(pMap,pVal,pCallback,0);` |
-|         9 | 5324 | `				if( rc == SXRET_OK ){` |
-|         - | 5325 | `					/* Value exist */` |
-|         3 | 5326 | `					break;` |
-|         - | 5327 | `				}` |
-|         4 | 5328 | `			}` |
-|         9 | 5329 | `			if( pCtx->pVm->iCmpCallbackExc ){` |
-|         - | 5330 | `				/* The comparison callback raised: propagate so the dispatcher` |
-|         - | 5331 | `				 * unwinds, before any spurious insertion into the result. */` |
-|         3 | 5332 | `				pCtx->pVm->iCmpCallbackExc = 0;` |
-|         3 | 5333 | `				return PH7_EXCEPTION;` |
-|         - | 5334 | `			}` |
-|         7 | 5335 | `			if( i >= (nArg - 1)){` |
-|         - | 5336 | `				/* Perform the insertion */` |
-|         5 | 5337 | `				HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);` |
-|         2 | 5338 | `			}` |
-|         3 | 5339 | `		}` |
-|         - | 5340 | `		/* Point to the next entry */` |
-|         7 | 5341 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|         7 | 5342 | `		n--;` |
-|         1 | 5343 | `	}` |
-|         - | 5344 | `	/* Return the freshly created array */` |
-|         3 | 5345 | `	ph7_result_value(pCtx,pArray);` |
-|         3 | 5346 | `	return PH7_OK;` |
-|        15 | 5347 | `}` |
-|         - | 5348 | `/*` |
-|         - | 5349 | ` * array array_diff_assoc(array $array1,array $array2,...)` |
-|         - | 5350 | ` *  Computes the difference of arrays with additional index check.` |
-|         - | 5351 | ` * Parameters` |
-|         - | 5352 | ` *  $array1` |
-|         - | 5353 | ` *    The array to compare from` |
-|         - | 5354 | ` *  $array2` |
-|         - | 5355 | ` *    An array to compare against` |
-|         - | 5356 | ` *  $...` |
-|         - | 5357 | ` *   More arrays to compare against` |
-|         - | 5358 | ` * Return` |
-|         - | 5359 | ` *  Returns an array containing all the entries from array1 that` |
-|         - | 5360 | ` *  are not present in any of the other arrays.` |
-|         - | 5361 | ` */` |
-|        20 | 5362 | `static int ph7_hashmap_diff_assoc(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         4 | 5363 | `{` |
-|         - | 5364 | `	ph7_hashmap_node *pN1,*pN2,*pEntry;` |
-|         - | 5365 | `	ph7_hashmap *pSrc,*pMap;` |
-|         - | 5366 | `	ph7_value *pArray;` |
-|         - | 5367 | `	ph7_value *pVal;` |
-|         - | 5368 | `	sxi32 rc;` |
-|         - | 5369 | `	sxu32 n;` |
-|         - | 5370 | `	int i;` |
-|         - | 5371 | `	/* Ensure the argument list is valid, emitting the same errors PHP` |
-|         - | 5372 | `	 * would produce. This makes behaviour predictable and allows the` |
-|         - | 5373 | `	 * accompanying integration tests to pass. */` |
-|        24 | 5374 | `	if( nArg < 1 ){` |
-|       ! 0 | 5375 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 5376 | `			"ArgumentCountError",` |
-|         - | 5377 | `			"array_diff_assoc() expects at least 1 argument, %d given",` |
-|       ! 0 | 5378 | `			nArg` |
-|         - | 5379 | `			);` |
-|         - | 5380 | `	}` |
-|        24 | 5381 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 5382 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 5383 | `			"TypeError",` |
-|         - | 5384 | `			"array_diff_assoc(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 5385 | `			ph7_type_name(apArg[0])` |
-|         - | 5386 | `			);` |
-|         - | 5387 | `	}` |
-|        37 | 5388 | `	for(i = 1 ; i < nArg ; i++){` |
-|        23 | 5389 | `		if( !ph7_value_is_array(apArg[i]) ){` |
-|         8 | 5390 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 5391 | `				"TypeError",` |
-|         - | 5392 | `				"array_diff_assoc(): Argument #%d must be of type array, %s given",` |
-|         2 | 5393 | `				i + 1,` |
-|         4 | 5394 | `				ph7_type_name(apArg[i])` |
-|         - | 5395 | `				);` |
-|         - | 5396 | `		}` |
-|        10 | 5397 | `	}` |
-|        15 | 5398 | `	if( nArg == 1 ){` |
-|         - | 5399 | `		/* Return the first array since we cannot perform a diff */` |
-|         3 | 5400 | `		ph7_result_value(pCtx,apArg[0]);` |
-|         3 | 5401 | `		return PH7_OK;` |
-|         - | 5402 | `	}` |
-|         - | 5403 | `	/* Create a new array */` |
-|        13 | 5404 | `	pArray = ph7_context_new_array(pCtx);` |
-|        13 | 5405 | `	if( pArray == 0 ){` |
-|       ! 0 | 5406 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 5407 | `		return PH7_OK;` |
-|         - | 5408 | `	}` |
-|         - | 5409 | `	/* Point to the internal representation of the source hashmap */` |
-|        13 | 5410 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 5411 | `	/* Perform the diff */` |
-|        13 | 5412 | `	pEntry = pSrc->pFirst;` |
-|        13 | 5413 | `	n = pSrc->nEntry;` |
-|        13 | 5414 | `	pN1 = pN2 = 0;` |
-|        34 | 5415 | `	for(;;){` |
-|         - | 5416 | `		int keep;` |
-|        41 | 5417 | `		if( n < 1 ){` |
-|        13 | 5418 | `			break;` |
-|         - | 5419 | `		}` |
-|         - | 5420 | `		/* assume the element should be kept until we find a match */` |
-|        29 | 5421 | `		keep = 1;` |
-|        47 | 5422 | `		for( i = 1 ; i < nArg ; i++ ){` |
-|         - | 5423 | `			/* all arguments have been validated already, so cast directly */` |
-|        33 | 5424 | `			pMap = (ph7_hashmap *)apArg[i]->x.pOther;` |
-|         - | 5425 | `			/* Perform a key lookup first */` |
-|        33 | 5426 | `			if( pEntry->iType == HASHMAP_INT_NODE ){` |
-|        13 | 5427 | `				rc = HashmapLookupIntKey(pMap,pEntry->xKey.iKey,&pN1);` |
-|         7 | 5428 | `			}else{` |
-|        21 | 5429 | `				rc = HashmapLookupBlobKey(pMap,SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey),&pN1);` |
-|         - | 5430 | `			}` |
-|        33 | 5431 | `			if( rc != SXRET_OK ){` |
-|         - | 5432 | `				/* this array does not contain the key, continue checking others */` |
-|        17 | 5433 | `				continue;` |
-|         - | 5434 | `			}` |
-|         - | 5435 | `			/* key exists; check that value stored in the matching node is equal */` |
-|        17 | 5436 | `			pVal = HashmapExtractNodeValue(pEntry);` |
-|        17 | 5437 | `			if( pVal ){` |
-|         - | 5438 | `				/* directly compare with value at pN1 rather than searching again */` |
-|        17 | 5439 | `				ph7_value *pVal2 = HashmapExtractNodeValue(pN1);` |
-|        17 | 5440 | `				if( pVal2 ){` |
-|         - | 5441 | `					ph7_value sV1,sV2;` |
-|         - | 5442 | `					sxi32 cmp;` |
-|         - | 5443 | `					/* Compare on duplicates: PH7_MemObjCmp converts its` |
-|         - | 5444 | `					 * operands in place and these are LIVE array elements (a` |
-|         - | 5445 | `					 * null element used to come back bool(false) in the` |
-|         - | 5446 | `					 * caller's array). */` |
-|        17 | 5447 | `					PH7_MemObjInit(pEntry->pMap->pVm,&sV1);` |
-|        17 | 5448 | `					PH7_MemObjInit(pEntry->pMap->pVm,&sV2);` |
-|        17 | 5449 | `					PH7_MemObjLoad(pVal,&sV1);` |
-|        17 | 5450 | `					PH7_MemObjLoad(pVal2,&sV2);` |
-|        17 | 5451 | `					cmp = PH7_MemObjCmp(&sV1,&sV2,TRUE,0);` |
-|        17 | 5452 | `					PH7_MemObjRelease(&sV1);` |
-|        17 | 5453 | `					PH7_MemObjRelease(&sV2);` |
-|        17 | 5454 | `					if( cmp == 0 ){` |
-|         - | 5455 | `						/* identical key+value found in one of the arrays => drop it */` |
-|        15 | 5456 | `						keep = 0;` |
-|        15 | 5457 | `						break;` |
-|         - | 5458 | `					}` |
-|         1 | 5459 | `				}` |
-|         1 | 5460 | `			}` |
-|         2 | 5461 | `		}` |
-|        29 | 5462 | `		if( keep ){` |
-|         - | 5463 | `			/* Perform the insertion */` |
-|        15 | 5464 | `			HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);` |
-|         7 | 5465 | `		}` |
-|         - | 5466 | `		/* Point to the next entry */` |
-|        29 | 5467 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|        29 | 5468 | `		n--;` |
-|         1 | 5469 | `	}` |
-|         - | 5470 | `	/* Return the freshly created array */` |
-|        13 | 5471 | `	ph7_result_value(pCtx,pArray);` |
-|        13 | 5472 | `	return PH7_OK;` |
-|        14 | 5473 | `}` |
-|         - | 5474 | `/*` |
-|         - | 5475 | ` * array array_diff_uassoc(array $array1,array $array2,...,callback $key_compare_func)` |
-|         - | 5476 | ` *  Computes the difference of arrays with additional index check which is performed` |
-|         - | 5477 | ` *  by a user supplied callback function.` |
-|         - | 5478 | ` * Parameters` |
-|         - | 5479 | ` *  $array1` |
-|         - | 5480 | ` *    The array to compare from` |
-|         - | 5481 | ` *  $array2` |
-|         - | 5482 | ` *    An array to compare against` |
-|         - | 5483 | ` *  $...` |
-|         - | 5484 | ` *   More arrays to compare against.` |
-|         - | 5485 | ` *  $key_compare_func` |
-|         - | 5486 | ` *   Callback function to use. The callback function must return an integer` |
-|         - | 5487 | ` *   less than, equal to, or greater than zero if the first argument is considered` |
-|         - | 5488 | ` *   to be respectively less than, equal to, or greater than the second.` |
-|         - | 5489 | ` * Return` |
-|         - | 5490 | ` *  Returns an array containing all the entries from array1 that` |
-|         - | 5491 | ` *  are not present in any of the other arrays.` |
-|         - | 5492 | ` */` |
-|        22 | 5493 | `static int ph7_hashmap_diff_uassoc(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         4 | 5494 | `{` |
-|         - | 5495 | `	ph7_hashmap_node *pEntry;` |
-|         - | 5496 | `	ph7_hashmap *pSrc,*pMap;` |
-|         - | 5497 | `	ph7_value *pCallback;` |
-|         - | 5498 | `	ph7_value *pArray;` |
-|         - | 5499 | `	sxi32 rc;` |
-|         - | 5500 | `	sxu32 n;` |
-|         - | 5501 | `	int i;` |
-|         - | 5502 |  |
-|         - | 5503 | `	/* Argument validation mimicking PHP errors. */` |
-|        26 | 5504 | `	if( nArg < 2 ){` |
-|       ! 0 | 5505 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 5506 | `			"ArgumentCountError",` |
-|         - | 5507 | `			"array_diff_uassoc() expects at least 2 arguments, %d given",` |
-|       ! 0 | 5508 | `			nArg` |
-|         - | 5509 | `			);` |
-|         - | 5510 | `	}` |
-|        26 | 5511 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 5512 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 5513 | `			"TypeError",` |
-|         - | 5514 | `			"array_diff_uassoc(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 5515 | `			ph7_type_name(apArg[0])` |
-|         - | 5516 | `			);` |
-|         - | 5517 | `	}` |
-|         - | 5518 | `	/* Intermediate arguments (except last) must be arrays. Last argument is` |
-|         - | 5519 | `	 * expected to be a callback. */` |
-|        38 | 5520 | `	for(i = 1 ; i < nArg - 1; i++){` |
-|        19 | 5521 | `		if( !ph7_value_is_array(apArg[i]) ){` |
-|         4 | 5522 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 5523 | `				"TypeError",` |
-|         - | 5524 | `				"array_diff_uassoc(): Argument #%d must be of type array, %s given",` |
-|         1 | 5525 | `				i + 1,` |
-|         2 | 5526 | `				ph7_type_name(apArg[i])` |
-|         - | 5527 | `				);` |
-|         - | 5528 | `		}` |
-|         9 | 5529 | `	}` |
-|         - | 5530 | `	/* Point to the callback value */` |
-|        22 | 5531 | `	pCallback = apArg[nArg - 1];` |
-|        22 | 5532 | `	if( !ph7_value_is_callable(pCallback) ){` |
-|         - | 5533 | `		/* Compose an error message that closely matches PHP output. When the` |
-|         - | 5534 | `		 * argument is an array of the wrong shape we include an extra clause.` |
-|         - | 5535 | `		 * If the value is neither array nor string, PHP says "no array or` |
-|         - | 5536 | `		 * string given" which we also reproduce. */` |
-|         9 | 5537 | `		if( ph7_value_is_array(pCallback) ){` |
-|         - | 5538 | `			/* ARRAY CALLBACK must have exactly two members */` |
-|         4 | 5539 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 5540 | `				"TypeError",` |
-|         - | 5541 | `				"array_diff_uassoc(): Argument #%d must be a valid callback, array callback must have exactly two members",` |
-|         1 | 5542 | `				nArg` |
-|         - | 5543 | `				);` |
-|         - | 5544 | `		}` |
-|         6 | 5545 | `		if( !ph7_value_is_string(pCallback) ){` |
-|         - | 5546 | `			/* neither array nor string */` |
-|         8 | 5547 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 5548 | `				"TypeError",` |
-|         - | 5549 | `				"array_diff_uassoc(): Argument #%d must be a valid callback, no array or string given",` |
-|         2 | 5550 | `				nArg` |
-|         - | 5551 | `				);` |
-|         - | 5552 | `		}` |
-|         - | 5553 | `		/* Fallback for string (non-callable) or other leftover cases */` |
-|       ! 0 | 5554 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 5555 | `			"TypeError",` |
-|         - | 5556 | `			"array_diff_uassoc(): Argument #%d must be a valid callback, %s given",` |
-|       ! 0 | 5557 | `			nArg,` |
-|       ! 0 | 5558 | `			ph7_type_name(pCallback)` |
-|         - | 5559 | `			);` |
-|         - | 5560 | `	}` |
-|        13 | 5561 | `	if( nArg == 2 ){` |
-|         - | 5562 | `		/* If we only have the first array and the callback, just return the` |
-|         - | 5563 | `		 * input array. */` |
-|         3 | 5564 | `		ph7_result_value(pCtx,apArg[0]);` |
-|         3 | 5565 | `		return PH7_OK;` |
-|         - | 5566 | `	}` |
-|         - | 5567 | `	/* Create a new array */` |
-|        11 | 5568 | `	pArray = ph7_context_new_array(pCtx);` |
-|        11 | 5569 | `	if( pArray == 0 ){` |
-|       ! 0 | 5570 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 5571 | `		return PH7_OK;` |
-|         - | 5572 | `	}` |
-|         - | 5573 | `	/* Point to the internal representation of the source hashmap */` |
-|        11 | 5574 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 5575 | `	/* Perform the diff */` |
-|        11 | 5576 | `	pEntry = pSrc->pFirst;` |
-|        11 | 5577 | `	n = pSrc->nEntry;` |
-|        21 | 5578 | `	for(;;){` |
-|         - | 5579 | `		int keep;` |
-|        27 | 5580 | `		if( n < 1 ){` |
-|         9 | 5581 | `			break;` |
-|         - | 5582 | `		}` |
-|        19 | 5583 | `		keep = 1;` |
-|        31 | 5584 | `		for( i = 1 ; i < nArg - 1; i++ ){` |
-|         - | 5585 | `			/* each of these must already be arrays thanks to earlier validation */` |
-|        23 | 5586 | `			pMap = (ph7_hashmap *)apArg[i]->x.pOther;` |
-|         - | 5587 | `			/* we must compare keys via callback, not by direct lookup */` |
-|        23 | 5588 | `			ph7_hashmap_node *pIt = pMap->pFirst;` |
-|        45 | 5589 | `			while( pIt ){` |
-|         - | 5590 | `				/* build temporary key values for callback */` |
-|         - | 5591 | `				ph7_value key1, key2, result;` |
-|         - | 5592 | `				/* initialise only once using the appropriate helper */` |
-|        33 | 5593 | `				if( pEntry->iType == HASHMAP_INT_NODE ){` |
-|       ! 0 | 5594 | `					PH7_MemObjInitFromInt(pMap->pVm,&key1,pEntry->xKey.iKey);` |
-|       ! 0 | 5595 | `				}else{` |
-|         - | 5596 | `					SyString sStr;` |
-|        33 | 5597 | `					SyStringInitFromBuf(&sStr,` |
-|         - | 5598 | `						SyBlobData(&pEntry->xKey.sKey),` |
-|         - | 5599 | `						SyBlobLength(&pEntry->xKey.sKey));` |
-|        33 | 5600 | `					PH7_MemObjInitFromString(pMap->pVm,&key1,&sStr);` |
-|         - | 5601 | `				}` |
-|        33 | 5602 | `				if( pIt->iType == HASHMAP_INT_NODE ){` |
-|       ! 0 | 5603 | `					PH7_MemObjInitFromInt(pMap->pVm,&key2,pIt->xKey.iKey);` |
+|         - | 5282 | `				"array_udiff(): Argument #%d must be a valid callback, array callback must have exactly two members",` |
+|         1 | 5283 | `				nArg` |
+|         - | 5284 | `				);` |
+|         - | 5285 | `		}` |
+|         6 | 5286 | `		if( ph7_value_is_string(pCallback) ){` |
+|         - | 5287 | `			int len;` |
+|         3 | 5288 | `			const char *zName = ph7_value_to_string(pCallback, &len);` |
+|         4 | 5289 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 5290 | `				"TypeError",` |
+|         - | 5291 | `				"array_udiff(): Argument #%d must be a valid callback, function \"%s\" not found or invalid function name",` |
+|         1 | 5292 | `				nArg,` |
+|         1 | 5293 | `				zName` |
+|         - | 5294 | `				);` |
+|         - | 5295 | `		}` |
+|         4 | 5296 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 5297 | `			"TypeError",` |
+|         - | 5298 | `			"array_udiff(): Argument #%d must be a valid callback, no array or string given",` |
+|         1 | 5299 | `			nArg` |
+|         - | 5300 | `			);` |
+|         - | 5301 | `	}` |
+|         - | 5302 |  |
+|         7 | 5303 | `	if( nArg == 2 ){` |
+|         - | 5304 | `		/* Only the original array and the callback were provided. */` |
+|         3 | 5305 | `		ph7_result_value(pCtx,apArg[0]);` |
+|         3 | 5306 | `		return PH7_OK;` |
+|         - | 5307 | `	}` |
+|         - | 5308 |  |
+|         - | 5309 | `	/* Create a new array */` |
+|         5 | 5310 | `	pArray = ph7_context_new_array(pCtx);` |
+|         5 | 5311 | `	if( pArray == 0 ){` |
+|       ! 0 | 5312 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 5313 | `		return PH7_OK;` |
+|         - | 5314 | `	}` |
+|         - | 5315 | `	/* Point to the internal representation of the source hashmap */` |
+|         5 | 5316 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 5317 | `	/* Perform the diff */` |
+|         5 | 5318 | `	pEntry = pSrc->pFirst;` |
+|         5 | 5319 | `	n = pSrc->nEntry;` |
+|         5 | 5320 | `	pCtx->pVm->iCmpCallbackExc = 0;` |
+|         5 | 5321 | `	for(;;){` |
+|        11 | 5322 | `		if( n < 1 ){` |
+|         3 | 5323 | `			break;` |
+|         - | 5324 | `		}` |
+|         - | 5325 | `		/* Extract the node value */` |
+|         9 | 5326 | `		pVal = HashmapExtractNodeValue(pEntry);` |
+|         9 | 5327 | `		if( pVal ){` |
+|        15 | 5328 | `			for( i = 1 ; i < nArg - 1; i++ ){` |
+|         - | 5329 | `				/* Point to the internal representation of the hashmap */` |
+|         9 | 5330 | `				pMap = (ph7_hashmap *)apArg[i]->x.pOther;` |
+|         - | 5331 | `				/* Perform the lookup */` |
+|         9 | 5332 | `				rc = HashmapFindValueByCallback(pMap,pVal,pCallback,0);` |
+|         9 | 5333 | `				if( rc == SXRET_OK ){` |
+|         - | 5334 | `					/* Value exist */` |
+|         3 | 5335 | `					break;` |
+|         - | 5336 | `				}` |
+|         4 | 5337 | `			}` |
+|         9 | 5338 | `			if( pCtx->pVm->iCmpCallbackExc ){` |
+|         - | 5339 | `				/* The comparison callback raised: propagate so the dispatcher` |
+|         - | 5340 | `				 * unwinds, before any spurious insertion into the result. */` |
+|         3 | 5341 | `				pCtx->pVm->iCmpCallbackExc = 0;` |
+|         3 | 5342 | `				return PH7_EXCEPTION;` |
+|         - | 5343 | `			}` |
+|         7 | 5344 | `			if( i >= (nArg - 1)){` |
+|         - | 5345 | `				/* Perform the insertion */` |
+|         5 | 5346 | `				HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);` |
+|         2 | 5347 | `			}` |
+|         3 | 5348 | `		}` |
+|         - | 5349 | `		/* Point to the next entry */` |
+|         7 | 5350 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|         7 | 5351 | `		n--;` |
+|         1 | 5352 | `	}` |
+|         - | 5353 | `	/* Return the freshly created array */` |
+|         3 | 5354 | `	ph7_result_value(pCtx,pArray);` |
+|         3 | 5355 | `	return PH7_OK;` |
+|        15 | 5356 | `}` |
+|         - | 5357 | `/*` |
+|         - | 5358 | ` * array array_diff_assoc(array $array1,array $array2,...)` |
+|         - | 5359 | ` *  Computes the difference of arrays with additional index check.` |
+|         - | 5360 | ` * Parameters` |
+|         - | 5361 | ` *  $array1` |
+|         - | 5362 | ` *    The array to compare from` |
+|         - | 5363 | ` *  $array2` |
+|         - | 5364 | ` *    An array to compare against` |
+|         - | 5365 | ` *  $...` |
+|         - | 5366 | ` *   More arrays to compare against` |
+|         - | 5367 | ` * Return` |
+|         - | 5368 | ` *  Returns an array containing all the entries from array1 that` |
+|         - | 5369 | ` *  are not present in any of the other arrays.` |
+|         - | 5370 | ` */` |
+|        20 | 5371 | `static int ph7_hashmap_diff_assoc(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         4 | 5372 | `{` |
+|         - | 5373 | `	ph7_hashmap_node *pN1,*pN2,*pEntry;` |
+|         - | 5374 | `	ph7_hashmap *pSrc,*pMap;` |
+|         - | 5375 | `	ph7_value *pArray;` |
+|         - | 5376 | `	ph7_value *pVal;` |
+|         - | 5377 | `	sxi32 rc;` |
+|         - | 5378 | `	sxu32 n;` |
+|         - | 5379 | `	int i;` |
+|         - | 5380 | `	/* Ensure the argument list is valid, emitting the same errors PHP` |
+|         - | 5381 | `	 * would produce. This makes behaviour predictable and allows the` |
+|         - | 5382 | `	 * accompanying integration tests to pass. */` |
+|        24 | 5383 | `	if( nArg < 1 ){` |
+|       ! 0 | 5384 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 5385 | `			"ArgumentCountError",` |
+|         - | 5386 | `			"array_diff_assoc() expects at least 1 argument, %d given",` |
+|       ! 0 | 5387 | `			nArg` |
+|         - | 5388 | `			);` |
+|         - | 5389 | `	}` |
+|        24 | 5390 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         4 | 5391 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 5392 | `			"TypeError",` |
+|         - | 5393 | `			"array_diff_assoc(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 5394 | `			ph7_type_name(apArg[0])` |
+|         - | 5395 | `			);` |
+|         - | 5396 | `	}` |
+|        37 | 5397 | `	for(i = 1 ; i < nArg ; i++){` |
+|        23 | 5398 | `		if( !ph7_value_is_array(apArg[i]) ){` |
+|         8 | 5399 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 5400 | `				"TypeError",` |
+|         - | 5401 | `				"array_diff_assoc(): Argument #%d must be of type array, %s given",` |
+|         2 | 5402 | `				i + 1,` |
+|         4 | 5403 | `				ph7_type_name(apArg[i])` |
+|         - | 5404 | `				);` |
+|         - | 5405 | `		}` |
+|        10 | 5406 | `	}` |
+|        15 | 5407 | `	if( nArg == 1 ){` |
+|         - | 5408 | `		/* Return the first array since we cannot perform a diff */` |
+|         3 | 5409 | `		ph7_result_value(pCtx,apArg[0]);` |
+|         3 | 5410 | `		return PH7_OK;` |
+|         - | 5411 | `	}` |
+|         - | 5412 | `	/* Create a new array */` |
+|        13 | 5413 | `	pArray = ph7_context_new_array(pCtx);` |
+|        13 | 5414 | `	if( pArray == 0 ){` |
+|       ! 0 | 5415 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 5416 | `		return PH7_OK;` |
+|         - | 5417 | `	}` |
+|         - | 5418 | `	/* Point to the internal representation of the source hashmap */` |
+|        13 | 5419 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 5420 | `	/* Perform the diff */` |
+|        13 | 5421 | `	pEntry = pSrc->pFirst;` |
+|        13 | 5422 | `	n = pSrc->nEntry;` |
+|        13 | 5423 | `	pN1 = pN2 = 0;` |
+|        34 | 5424 | `	for(;;){` |
+|         - | 5425 | `		int keep;` |
+|        41 | 5426 | `		if( n < 1 ){` |
+|        13 | 5427 | `			break;` |
+|         - | 5428 | `		}` |
+|         - | 5429 | `		/* assume the element should be kept until we find a match */` |
+|        29 | 5430 | `		keep = 1;` |
+|        47 | 5431 | `		for( i = 1 ; i < nArg ; i++ ){` |
+|         - | 5432 | `			/* all arguments have been validated already, so cast directly */` |
+|        33 | 5433 | `			pMap = (ph7_hashmap *)apArg[i]->x.pOther;` |
+|         - | 5434 | `			/* Perform a key lookup first */` |
+|        33 | 5435 | `			if( pEntry->iType == HASHMAP_INT_NODE ){` |
+|        13 | 5436 | `				rc = HashmapLookupIntKey(pMap,pEntry->xKey.iKey,&pN1);` |
+|         7 | 5437 | `			}else{` |
+|        21 | 5438 | `				rc = HashmapLookupBlobKey(pMap,SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey),&pN1);` |
+|         - | 5439 | `			}` |
+|        33 | 5440 | `			if( rc != SXRET_OK ){` |
+|         - | 5441 | `				/* this array does not contain the key, continue checking others */` |
+|        17 | 5442 | `				continue;` |
+|         - | 5443 | `			}` |
+|         - | 5444 | `			/* key exists; check that value stored in the matching node is equal */` |
+|        17 | 5445 | `			pVal = HashmapExtractNodeValue(pEntry);` |
+|        17 | 5446 | `			if( pVal ){` |
+|         - | 5447 | `				/* directly compare with value at pN1 rather than searching again */` |
+|        17 | 5448 | `				ph7_value *pVal2 = HashmapExtractNodeValue(pN1);` |
+|        17 | 5449 | `				if( pVal2 ){` |
+|         - | 5450 | `					ph7_value sV1,sV2;` |
+|         - | 5451 | `					sxi32 cmp;` |
+|         - | 5452 | `					/* Compare on duplicates: PH7_MemObjCmp converts its` |
+|         - | 5453 | `					 * operands in place and these are LIVE array elements (a` |
+|         - | 5454 | `					 * null element used to come back bool(false) in the` |
+|         - | 5455 | `					 * caller's array). */` |
+|        17 | 5456 | `					PH7_MemObjInit(pEntry->pMap->pVm,&sV1);` |
+|        17 | 5457 | `					PH7_MemObjInit(pEntry->pMap->pVm,&sV2);` |
+|        17 | 5458 | `					PH7_MemObjLoad(pVal,&sV1);` |
+|        17 | 5459 | `					PH7_MemObjLoad(pVal2,&sV2);` |
+|        17 | 5460 | `					cmp = PH7_MemObjCmp(&sV1,&sV2,TRUE,0);` |
+|        17 | 5461 | `					PH7_MemObjRelease(&sV1);` |
+|        17 | 5462 | `					PH7_MemObjRelease(&sV2);` |
+|        17 | 5463 | `					if( cmp == 0 ){` |
+|         - | 5464 | `						/* identical key+value found in one of the arrays => drop it */` |
+|        15 | 5465 | `						keep = 0;` |
+|        15 | 5466 | `						break;` |
+|         - | 5467 | `					}` |
+|         1 | 5468 | `				}` |
+|         1 | 5469 | `			}` |
+|         2 | 5470 | `		}` |
+|        29 | 5471 | `		if( keep ){` |
+|         - | 5472 | `			/* Perform the insertion */` |
+|        15 | 5473 | `			HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);` |
+|         7 | 5474 | `		}` |
+|         - | 5475 | `		/* Point to the next entry */` |
+|        29 | 5476 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|        29 | 5477 | `		n--;` |
+|         1 | 5478 | `	}` |
+|         - | 5479 | `	/* Return the freshly created array */` |
+|        13 | 5480 | `	ph7_result_value(pCtx,pArray);` |
+|        13 | 5481 | `	return PH7_OK;` |
+|        14 | 5482 | `}` |
+|         - | 5483 | `/*` |
+|         - | 5484 | ` * array array_diff_uassoc(array $array1,array $array2,...,callback $key_compare_func)` |
+|         - | 5485 | ` *  Computes the difference of arrays with additional index check which is performed` |
+|         - | 5486 | ` *  by a user supplied callback function.` |
+|         - | 5487 | ` * Parameters` |
+|         - | 5488 | ` *  $array1` |
+|         - | 5489 | ` *    The array to compare from` |
+|         - | 5490 | ` *  $array2` |
+|         - | 5491 | ` *    An array to compare against` |
+|         - | 5492 | ` *  $...` |
+|         - | 5493 | ` *   More arrays to compare against.` |
+|         - | 5494 | ` *  $key_compare_func` |
+|         - | 5495 | ` *   Callback function to use. The callback function must return an integer` |
+|         - | 5496 | ` *   less than, equal to, or greater than zero if the first argument is considered` |
+|         - | 5497 | ` *   to be respectively less than, equal to, or greater than the second.` |
+|         - | 5498 | ` * Return` |
+|         - | 5499 | ` *  Returns an array containing all the entries from array1 that` |
+|         - | 5500 | ` *  are not present in any of the other arrays.` |
+|         - | 5501 | ` */` |
+|        22 | 5502 | `static int ph7_hashmap_diff_uassoc(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         4 | 5503 | `{` |
+|         - | 5504 | `	ph7_hashmap_node *pEntry;` |
+|         - | 5505 | `	ph7_hashmap *pSrc,*pMap;` |
+|         - | 5506 | `	ph7_value *pCallback;` |
+|         - | 5507 | `	ph7_value *pArray;` |
+|         - | 5508 | `	sxi32 rc;` |
+|         - | 5509 | `	sxu32 n;` |
+|         - | 5510 | `	int i;` |
+|         - | 5511 |  |
+|         - | 5512 | `	/* Argument validation mimicking PHP errors. */` |
+|        26 | 5513 | `	if( nArg < 2 ){` |
+|       ! 0 | 5514 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 5515 | `			"ArgumentCountError",` |
+|         - | 5516 | `			"array_diff_uassoc() expects at least 2 arguments, %d given",` |
+|       ! 0 | 5517 | `			nArg` |
+|         - | 5518 | `			);` |
+|         - | 5519 | `	}` |
+|        26 | 5520 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         4 | 5521 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 5522 | `			"TypeError",` |
+|         - | 5523 | `			"array_diff_uassoc(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 5524 | `			ph7_type_name(apArg[0])` |
+|         - | 5525 | `			);` |
+|         - | 5526 | `	}` |
+|         - | 5527 | `	/* Intermediate arguments (except last) must be arrays. Last argument is` |
+|         - | 5528 | `	 * expected to be a callback. */` |
+|        38 | 5529 | `	for(i = 1 ; i < nArg - 1; i++){` |
+|        19 | 5530 | `		if( !ph7_value_is_array(apArg[i]) ){` |
+|         4 | 5531 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 5532 | `				"TypeError",` |
+|         - | 5533 | `				"array_diff_uassoc(): Argument #%d must be of type array, %s given",` |
+|         1 | 5534 | `				i + 1,` |
+|         2 | 5535 | `				ph7_type_name(apArg[i])` |
+|         - | 5536 | `				);` |
+|         - | 5537 | `		}` |
+|         9 | 5538 | `	}` |
+|         - | 5539 | `	/* Point to the callback value */` |
+|        22 | 5540 | `	pCallback = apArg[nArg - 1];` |
+|        22 | 5541 | `	if( !ph7_value_is_callable(pCallback) ){` |
+|         - | 5542 | `		/* Compose an error message that closely matches PHP output. When the` |
+|         - | 5543 | `		 * argument is an array of the wrong shape we include an extra clause.` |
+|         - | 5544 | `		 * If the value is neither array nor string, PHP says "no array or` |
+|         - | 5545 | `		 * string given" which we also reproduce. */` |
+|         9 | 5546 | `		if( ph7_value_is_array(pCallback) ){` |
+|         - | 5547 | `			/* ARRAY CALLBACK must have exactly two members */` |
+|         4 | 5548 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 5549 | `				"TypeError",` |
+|         - | 5550 | `				"array_diff_uassoc(): Argument #%d must be a valid callback, array callback must have exactly two members",` |
+|         1 | 5551 | `				nArg` |
+|         - | 5552 | `				);` |
+|         - | 5553 | `		}` |
+|         6 | 5554 | `		if( !ph7_value_is_string(pCallback) ){` |
+|         - | 5555 | `			/* neither array nor string */` |
+|         8 | 5556 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 5557 | `				"TypeError",` |
+|         - | 5558 | `				"array_diff_uassoc(): Argument #%d must be a valid callback, no array or string given",` |
+|         2 | 5559 | `				nArg` |
+|         - | 5560 | `				);` |
+|         - | 5561 | `		}` |
+|         - | 5562 | `		/* Fallback for string (non-callable) or other leftover cases */` |
+|       ! 0 | 5563 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 5564 | `			"TypeError",` |
+|         - | 5565 | `			"array_diff_uassoc(): Argument #%d must be a valid callback, %s given",` |
+|       ! 0 | 5566 | `			nArg,` |
+|       ! 0 | 5567 | `			ph7_type_name(pCallback)` |
+|         - | 5568 | `			);` |
+|         - | 5569 | `	}` |
+|        13 | 5570 | `	if( nArg == 2 ){` |
+|         - | 5571 | `		/* If we only have the first array and the callback, just return the` |
+|         - | 5572 | `		 * input array. */` |
+|         3 | 5573 | `		ph7_result_value(pCtx,apArg[0]);` |
+|         3 | 5574 | `		return PH7_OK;` |
+|         - | 5575 | `	}` |
+|         - | 5576 | `	/* Create a new array */` |
+|        11 | 5577 | `	pArray = ph7_context_new_array(pCtx);` |
+|        11 | 5578 | `	if( pArray == 0 ){` |
+|       ! 0 | 5579 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 5580 | `		return PH7_OK;` |
+|         - | 5581 | `	}` |
+|         - | 5582 | `	/* Point to the internal representation of the source hashmap */` |
+|        11 | 5583 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 5584 | `	/* Perform the diff */` |
+|        11 | 5585 | `	pEntry = pSrc->pFirst;` |
+|        11 | 5586 | `	n = pSrc->nEntry;` |
+|        21 | 5587 | `	for(;;){` |
+|         - | 5588 | `		int keep;` |
+|        27 | 5589 | `		if( n < 1 ){` |
+|         9 | 5590 | `			break;` |
+|         - | 5591 | `		}` |
+|        19 | 5592 | `		keep = 1;` |
+|        31 | 5593 | `		for( i = 1 ; i < nArg - 1; i++ ){` |
+|         - | 5594 | `			/* each of these must already be arrays thanks to earlier validation */` |
+|        23 | 5595 | `			pMap = (ph7_hashmap *)apArg[i]->x.pOther;` |
+|         - | 5596 | `			/* we must compare keys via callback, not by direct lookup */` |
+|        23 | 5597 | `			ph7_hashmap_node *pIt = pMap->pFirst;` |
+|        45 | 5598 | `			while( pIt ){` |
+|         - | 5599 | `				/* build temporary key values for callback */` |
+|         - | 5600 | `				ph7_value key1, key2, result;` |
+|         - | 5601 | `				/* initialise only once using the appropriate helper */` |
+|        33 | 5602 | `				if( pEntry->iType == HASHMAP_INT_NODE ){` |
+|       ! 0 | 5603 | `					PH7_MemObjInitFromInt(pMap->pVm,&key1,pEntry->xKey.iKey);` |
 |       ! 0 | 5604 | `				}else{` |
 |         - | 5605 | `					SyString sStr;` |
 |        33 | 5606 | `					SyStringInitFromBuf(&sStr,` |
-|         - | 5607 | `						SyBlobData(&pIt->xKey.sKey),` |
-|         - | 5608 | `						SyBlobLength(&pIt->xKey.sKey));` |
-|        33 | 5609 | `					PH7_MemObjInitFromString(pMap->pVm,&key2,&sStr);` |
+|         - | 5607 | `						SyBlobData(&pEntry->xKey.sKey),` |
+|         - | 5608 | `						SyBlobLength(&pEntry->xKey.sKey));` |
+|        33 | 5609 | `					PH7_MemObjInitFromString(pMap->pVm,&key1,&sStr);` |
 |         - | 5610 | `				}` |
-|        33 | 5611 | `				PH7_MemObjInit(pMap->pVm,&result);` |
-|         - | 5612 | `				/* call user callback with (key1, key2) */` |
-|         - | 5613 | `				{` |
-|         - | 5614 | `					ph7_value *apK[2];` |
-|        33 | 5615 | `					apK[0] = &key1;` |
-|        33 | 5616 | `					apK[1] = &key2;` |
-|        33 | 5617 | `					rc = PH7_VmCallUserFunction(pMap->pVm,pCallback,2,apK,&result);` |
-|         - | 5618 | `				}` |
-|        33 | 5619 | `				if( rc == PH7_EXCEPTION ){` |
-|         - | 5620 | `					/* The key comparison callback raised. Unlike array_udiff/` |
-|         - | 5621 | `					 * array_uintersect (which signal back from` |
-|         - | 5622 | `					 * HashmapFindValueByCallback via pVm->iCmpCallbackExc), this` |
-|         - | 5623 | `					 * function invokes the callback inline, so it cleans up its own` |
-|         - | 5624 | `					 * temporaries and propagates the exception directly. */` |
-|         3 | 5625 | `					PH7_MemObjRelease(&result);` |
-|         3 | 5626 | `					PH7_MemObjRelease(&key1);` |
-|         3 | 5627 | `					PH7_MemObjRelease(&key2);` |
-|         3 | 5628 | `					return PH7_EXCEPTION;` |
-|         - | 5629 | `				}` |
-|        31 | 5630 | `				if( rc == SXRET_OK ){` |
-|        31 | 5631 | `					if( (result.iFlags & MEMOBJ_INT) == 0 ){` |
-|       ! 0 | 5632 | `						PH7_MemObjToInteger(&result);` |
-|       ! 0 | 5633 | `					}` |
-|        31 | 5634 | `					if( result.x.iVal == 0 ){` |
-|         - | 5635 | `						/* keys considered equal by callback; now compare values */` |
-|        13 | 5636 | `						ph7_value *pVal1 = HashmapExtractNodeValue(pEntry);` |
-|        13 | 5637 | `						ph7_value *pVal2 = HashmapExtractNodeValue(pIt);` |
-|        13 | 5638 | `						if( pVal1 && pVal2 ){` |
-|         - | 5639 | `							ph7_value sV1,sV2;` |
-|         - | 5640 | `							sxi32 cmp;` |
-|         - | 5641 | `							/* Compare on duplicates: PH7_MemObjCmp converts in` |
-|         - | 5642 | `							 * place and these are LIVE array elements. */` |
-|        13 | 5643 | `							PH7_MemObjInit(pEntry->pMap->pVm,&sV1);` |
-|        13 | 5644 | `							PH7_MemObjInit(pEntry->pMap->pVm,&sV2);` |
-|        13 | 5645 | `							PH7_MemObjLoad(pVal1,&sV1);` |
-|        13 | 5646 | `							PH7_MemObjLoad(pVal2,&sV2);` |
-|        13 | 5647 | `							cmp = PH7_MemObjCmp(&sV1,&sV2,TRUE,0);` |
-|        13 | 5648 | `							PH7_MemObjRelease(&sV1);` |
-|        13 | 5649 | `							PH7_MemObjRelease(&sV2);` |
-|        13 | 5650 | `							if( cmp == 0 ){` |
-|         9 | 5651 | `								keep = 0;` |
-|         9 | 5652 | `								PH7_MemObjRelease(&result);` |
-|         - | 5653 | `								/* release keys too before breaking */` |
-|         9 | 5654 | `								PH7_MemObjRelease(&key1);` |
-|         9 | 5655 | `								PH7_MemObjRelease(&key2);` |
-|         9 | 5656 | `								break;` |
-|         - | 5657 | `							}` |
-|         2 | 5658 | `						}` |
-|         2 | 5659 | `					}` |
-|        11 | 5660 | `				}` |
-|        23 | 5661 | `				PH7_MemObjRelease(&result);` |
-|        23 | 5662 | `				PH7_MemObjRelease(&key1);` |
-|        23 | 5663 | `				PH7_MemObjRelease(&key2);` |
-|         - | 5664 | `				/* move to next node */` |
-|        23 | 5665 | `				pIt = pIt->pPrev;` |
-|        23 | 5666 | `				if( keep == 0 ) break;` |
-|         1 | 5667 | `			}` |
-|        21 | 5668 | `			if( keep == 0 ) break;` |
-|         7 | 5669 | `		}` |
-|        17 | 5670 | `		if( keep ){` |
-|         - | 5671 | `			/* Perform the insertion */` |
-|         9 | 5672 | `			HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);` |
-|         4 | 5673 | `		}` |
-|         - | 5674 | `		/* Point to the next entry */` |
-|        17 | 5675 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|        17 | 5676 | `		n--;` |
-|         1 | 5677 | `	}` |
-|         - | 5678 | `	/* Return the freshly created array */` |
-|         9 | 5679 | `	ph7_result_value(pCtx,pArray);` |
-|         9 | 5680 | `	return PH7_OK;` |
-|        15 | 5681 | `}` |
-|         - | 5682 | `/*` |
-|         - | 5683 | ` * array array_diff_key(array $array1 ,array $array2,...)` |
-|         - | 5684 | ` *  Computes the difference of arrays using keys for comparison.` |
-|         - | 5685 | ` * Parameters` |
-|         - | 5686 | ` *  $array1` |
-|         - | 5687 | ` *    The array to compare from` |
-|         - | 5688 | ` *  $array2` |
-|         - | 5689 | ` *    An array to compare against` |
-|         - | 5690 | ` *  $...` |
-|         - | 5691 | ` *   More arrays to compare against` |
-|         - | 5692 | ` * Return` |
-|         - | 5693 | ` *  Returns an array containing all the entries from array1 whose keys are not present` |
-|         - | 5694 | ` *  in any of the other arrays.` |
-|         - | 5695 | ` * Note that NULL is returned on failure.` |
-|         - | 5696 | ` */` |
-|        12 | 5697 | `static int ph7_hashmap_diff_key(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         3 | 5698 | `{` |
-|         - | 5699 | `	ph7_hashmap_node *pEntry;` |
-|         - | 5700 | `	ph7_hashmap *pSrc,*pMap;` |
-|         - | 5701 | `	ph7_value *pArray;` |
-|         - | 5702 | `	sxi32 rc;` |
-|         - | 5703 | `	sxu32 n;` |
-|         - | 5704 | `	int i;` |
-|         - | 5705 | `	/* Validate arguments to mirror PHP behaviour. Previously invalid inputs` |
-|         - | 5706 | `	 * would quietly return NULL which is inconsistent with other hashmap` |
-|         - | 5707 | `	 * helpers. */` |
-|        15 | 5708 | `	if( nArg < 1 ){` |
-|       ! 0 | 5709 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 5710 | `			"ArgumentCountError",` |
-|         - | 5711 | `			"array_diff_key() expects at least 1 argument, %d given",` |
-|       ! 0 | 5712 | `			nArg` |
-|         - | 5713 | `			);` |
-|         - | 5714 | `	}` |
-|        15 | 5715 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 5716 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 5717 | `			"TypeError",` |
-|         - | 5718 | `			"array_diff_key(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 5719 | `			ph7_type_name(apArg[0])` |
-|         - | 5720 | `			);` |
-|         - | 5721 | `	}` |
-|        20 | 5722 | `	for(i = 1 ; i < nArg ; i++){` |
-|        12 | 5723 | `		if( !ph7_value_is_array(apArg[i]) ){` |
-|         4 | 5724 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 5725 | `				"TypeError",` |
-|         - | 5726 | `				"array_diff_key(): Argument #%d must be of type array, %s given",` |
-|         1 | 5727 | `				i + 1,` |
-|         2 | 5728 | `				ph7_type_name(apArg[i])` |
-|         - | 5729 | `				);` |
-|         - | 5730 | `		}` |
-|         5 | 5731 | `	}` |
-|         9 | 5732 | `	if( nArg == 1 ){` |
-|         - | 5733 | `		/* Return the first array since we cannot perform a diff */` |
-|         3 | 5734 | `		ph7_result_value(pCtx,apArg[0]);` |
-|         3 | 5735 | `		return PH7_OK;` |
-|         - | 5736 | `	}` |
-|         - | 5737 | `	/* Create a new array */` |
-|         7 | 5738 | `	pArray = ph7_context_new_array(pCtx);` |
-|         7 | 5739 | `	if( pArray == 0 ){` |
-|       ! 0 | 5740 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 5741 | `		return PH7_OK;` |
-|         - | 5742 | `	}` |
-|         - | 5743 | `	/* Point to the internal representation of the main hashmap */` |
-|         7 | 5744 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 5745 | `	/* Perfrom the diff */` |
-|         7 | 5746 | `	pEntry = pSrc->pFirst;` |
-|         7 | 5747 | `	n = pSrc->nEntry;` |
-|        12 | 5748 | `	for(;;){` |
-|        25 | 5749 | `		if( n < 1 ){` |
-|         7 | 5750 | `			break;` |
-|         - | 5751 | `		}` |
-|        31 | 5752 | `		for( i = 1 ; i < nArg ; i++ ){` |
-|        23 | 5753 | `			if( !ph7_value_is_array(apArg[i])) {` |
-|         - | 5754 | `				/* ignore */` |
-|       ! 0 | 5755 | `				continue;` |
-|         - | 5756 | `			}` |
-|        23 | 5757 | `			pMap = (ph7_hashmap *)apArg[i]->x.pOther;` |
-|        23 | 5758 | `			if( pEntry->iType == HASHMAP_BLOB_NODE ){` |
-|        17 | 5759 | `				SyBlob *pKey = &pEntry->xKey.sKey;` |
-|         - | 5760 | `				/* Blob lookup */` |
-|        17 | 5761 | `				rc = HashmapLookupBlobKey(pMap,SyBlobData(pKey),SyBlobLength(pKey),0);` |
-|         9 | 5762 | `			}else{` |
-|         - | 5763 | `				/* Int lookup */` |
-|         7 | 5764 | `				rc = HashmapLookupIntKey(pMap,pEntry->xKey.iKey,0);` |
+|        33 | 5611 | `				if( pIt->iType == HASHMAP_INT_NODE ){` |
+|       ! 0 | 5612 | `					PH7_MemObjInitFromInt(pMap->pVm,&key2,pIt->xKey.iKey);` |
+|       ! 0 | 5613 | `				}else{` |
+|         - | 5614 | `					SyString sStr;` |
+|        33 | 5615 | `					SyStringInitFromBuf(&sStr,` |
+|         - | 5616 | `						SyBlobData(&pIt->xKey.sKey),` |
+|         - | 5617 | `						SyBlobLength(&pIt->xKey.sKey));` |
+|        33 | 5618 | `					PH7_MemObjInitFromString(pMap->pVm,&key2,&sStr);` |
+|         - | 5619 | `				}` |
+|        33 | 5620 | `				PH7_MemObjInit(pMap->pVm,&result);` |
+|         - | 5621 | `				/* call user callback with (key1, key2) */` |
+|         - | 5622 | `				{` |
+|         - | 5623 | `					ph7_value *apK[2];` |
+|        33 | 5624 | `					apK[0] = &key1;` |
+|        33 | 5625 | `					apK[1] = &key2;` |
+|        33 | 5626 | `					rc = PH7_VmCallUserFunction(pMap->pVm,pCallback,2,apK,&result);` |
+|         - | 5627 | `				}` |
+|        33 | 5628 | `				if( rc == PH7_EXCEPTION ){` |
+|         - | 5629 | `					/* The key comparison callback raised. Unlike array_udiff/` |
+|         - | 5630 | `					 * array_uintersect (which signal back from` |
+|         - | 5631 | `					 * HashmapFindValueByCallback via pVm->iCmpCallbackExc), this` |
+|         - | 5632 | `					 * function invokes the callback inline, so it cleans up its own` |
+|         - | 5633 | `					 * temporaries and propagates the exception directly. */` |
+|         3 | 5634 | `					PH7_MemObjRelease(&result);` |
+|         3 | 5635 | `					PH7_MemObjRelease(&key1);` |
+|         3 | 5636 | `					PH7_MemObjRelease(&key2);` |
+|         3 | 5637 | `					return PH7_EXCEPTION;` |
+|         - | 5638 | `				}` |
+|        31 | 5639 | `				if( rc == SXRET_OK ){` |
+|        31 | 5640 | `					if( (result.iFlags & MEMOBJ_INT) == 0 ){` |
+|       ! 0 | 5641 | `						PH7_MemObjToInteger(&result);` |
+|       ! 0 | 5642 | `					}` |
+|        31 | 5643 | `					if( result.x.iVal == 0 ){` |
+|         - | 5644 | `						/* keys considered equal by callback; now compare values */` |
+|        13 | 5645 | `						ph7_value *pVal1 = HashmapExtractNodeValue(pEntry);` |
+|        13 | 5646 | `						ph7_value *pVal2 = HashmapExtractNodeValue(pIt);` |
+|        13 | 5647 | `						if( pVal1 && pVal2 ){` |
+|         - | 5648 | `							ph7_value sV1,sV2;` |
+|         - | 5649 | `							sxi32 cmp;` |
+|         - | 5650 | `							/* Compare on duplicates: PH7_MemObjCmp converts in` |
+|         - | 5651 | `							 * place and these are LIVE array elements. */` |
+|        13 | 5652 | `							PH7_MemObjInit(pEntry->pMap->pVm,&sV1);` |
+|        13 | 5653 | `							PH7_MemObjInit(pEntry->pMap->pVm,&sV2);` |
+|        13 | 5654 | `							PH7_MemObjLoad(pVal1,&sV1);` |
+|        13 | 5655 | `							PH7_MemObjLoad(pVal2,&sV2);` |
+|        13 | 5656 | `							cmp = PH7_MemObjCmp(&sV1,&sV2,TRUE,0);` |
+|        13 | 5657 | `							PH7_MemObjRelease(&sV1);` |
+|        13 | 5658 | `							PH7_MemObjRelease(&sV2);` |
+|        13 | 5659 | `							if( cmp == 0 ){` |
+|         9 | 5660 | `								keep = 0;` |
+|         9 | 5661 | `								PH7_MemObjRelease(&result);` |
+|         - | 5662 | `								/* release keys too before breaking */` |
+|         9 | 5663 | `								PH7_MemObjRelease(&key1);` |
+|         9 | 5664 | `								PH7_MemObjRelease(&key2);` |
+|         9 | 5665 | `								break;` |
+|         - | 5666 | `							}` |
+|         2 | 5667 | `						}` |
+|         2 | 5668 | `					}` |
+|        11 | 5669 | `				}` |
+|        23 | 5670 | `				PH7_MemObjRelease(&result);` |
+|        23 | 5671 | `				PH7_MemObjRelease(&key1);` |
+|        23 | 5672 | `				PH7_MemObjRelease(&key2);` |
+|         - | 5673 | `				/* move to next node */` |
+|        23 | 5674 | `				pIt = pIt->pPrev;` |
+|        23 | 5675 | `				if( keep == 0 ) break;` |
+|         1 | 5676 | `			}` |
+|        21 | 5677 | `			if( keep == 0 ) break;` |
+|         7 | 5678 | `		}` |
+|        17 | 5679 | `		if( keep ){` |
+|         - | 5680 | `			/* Perform the insertion */` |
+|         9 | 5681 | `			HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);` |
+|         4 | 5682 | `		}` |
+|         - | 5683 | `		/* Point to the next entry */` |
+|        17 | 5684 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|        17 | 5685 | `		n--;` |
+|         1 | 5686 | `	}` |
+|         - | 5687 | `	/* Return the freshly created array */` |
+|         9 | 5688 | `	ph7_result_value(pCtx,pArray);` |
+|         9 | 5689 | `	return PH7_OK;` |
+|        15 | 5690 | `}` |
+|         - | 5691 | `/*` |
+|         - | 5692 | ` * array array_diff_key(array $array1 ,array $array2,...)` |
+|         - | 5693 | ` *  Computes the difference of arrays using keys for comparison.` |
+|         - | 5694 | ` * Parameters` |
+|         - | 5695 | ` *  $array1` |
+|         - | 5696 | ` *    The array to compare from` |
+|         - | 5697 | ` *  $array2` |
+|         - | 5698 | ` *    An array to compare against` |
+|         - | 5699 | ` *  $...` |
+|         - | 5700 | ` *   More arrays to compare against` |
+|         - | 5701 | ` * Return` |
+|         - | 5702 | ` *  Returns an array containing all the entries from array1 whose keys are not present` |
+|         - | 5703 | ` *  in any of the other arrays.` |
+|         - | 5704 | ` * Note that NULL is returned on failure.` |
+|         - | 5705 | ` */` |
+|        12 | 5706 | `static int ph7_hashmap_diff_key(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         3 | 5707 | `{` |
+|         - | 5708 | `	ph7_hashmap_node *pEntry;` |
+|         - | 5709 | `	ph7_hashmap *pSrc,*pMap;` |
+|         - | 5710 | `	ph7_value *pArray;` |
+|         - | 5711 | `	sxi32 rc;` |
+|         - | 5712 | `	sxu32 n;` |
+|         - | 5713 | `	int i;` |
+|         - | 5714 | `	/* Validate arguments to mirror PHP behaviour. Previously invalid inputs` |
+|         - | 5715 | `	 * would quietly return NULL which is inconsistent with other hashmap` |
+|         - | 5716 | `	 * helpers. */` |
+|        15 | 5717 | `	if( nArg < 1 ){` |
+|       ! 0 | 5718 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 5719 | `			"ArgumentCountError",` |
+|         - | 5720 | `			"array_diff_key() expects at least 1 argument, %d given",` |
+|       ! 0 | 5721 | `			nArg` |
+|         - | 5722 | `			);` |
+|         - | 5723 | `	}` |
+|        15 | 5724 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         4 | 5725 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 5726 | `			"TypeError",` |
+|         - | 5727 | `			"array_diff_key(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 5728 | `			ph7_type_name(apArg[0])` |
+|         - | 5729 | `			);` |
+|         - | 5730 | `	}` |
+|        20 | 5731 | `	for(i = 1 ; i < nArg ; i++){` |
+|        12 | 5732 | `		if( !ph7_value_is_array(apArg[i]) ){` |
+|         4 | 5733 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 5734 | `				"TypeError",` |
+|         - | 5735 | `				"array_diff_key(): Argument #%d must be of type array, %s given",` |
+|         1 | 5736 | `				i + 1,` |
+|         2 | 5737 | `				ph7_type_name(apArg[i])` |
+|         - | 5738 | `				);` |
+|         - | 5739 | `		}` |
+|         5 | 5740 | `	}` |
+|         9 | 5741 | `	if( nArg == 1 ){` |
+|         - | 5742 | `		/* Return the first array since we cannot perform a diff */` |
+|         3 | 5743 | `		ph7_result_value(pCtx,apArg[0]);` |
+|         3 | 5744 | `		return PH7_OK;` |
+|         - | 5745 | `	}` |
+|         - | 5746 | `	/* Create a new array */` |
+|         7 | 5747 | `	pArray = ph7_context_new_array(pCtx);` |
+|         7 | 5748 | `	if( pArray == 0 ){` |
+|       ! 0 | 5749 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 5750 | `		return PH7_OK;` |
+|         - | 5751 | `	}` |
+|         - | 5752 | `	/* Point to the internal representation of the main hashmap */` |
+|         7 | 5753 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 5754 | `	/* Perfrom the diff */` |
+|         7 | 5755 | `	pEntry = pSrc->pFirst;` |
+|         7 | 5756 | `	n = pSrc->nEntry;` |
+|        12 | 5757 | `	for(;;){` |
+|        25 | 5758 | `		if( n < 1 ){` |
+|         7 | 5759 | `			break;` |
+|         - | 5760 | `		}` |
+|        31 | 5761 | `		for( i = 1 ; i < nArg ; i++ ){` |
+|        23 | 5762 | `			if( !ph7_value_is_array(apArg[i])) {` |
+|         - | 5763 | `				/* ignore */` |
+|       ! 0 | 5764 | `				continue;` |
 |         - | 5765 | `			}` |
-|        23 | 5766 | `			if( rc == SXRET_OK ){` |
-|         - | 5767 | `				/* Key exists,break immediately */` |
-|        11 | 5768 | `				break;` |
-|         - | 5769 | `			}` |
-|         7 | 5770 | `		}` |
-|        19 | 5771 | `		if( i >= nArg ){` |
-|         - | 5772 | `			/* Perform the insertion */` |
-|         9 | 5773 | `			HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);` |
-|         4 | 5774 | `		}` |
-|         - | 5775 | `		/* Point to the next entry */` |
-|        19 | 5776 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|        19 | 5777 | `		n--;` |
-|         1 | 5778 | `	}` |
-|         - | 5779 | `	/* Return the freshly created array */` |
-|         7 | 5780 | `	ph7_result_value(pCtx,pArray);` |
-|         7 | 5781 | `	return PH7_OK;` |
-|         9 | 5782 | `}` |
-|         - | 5783 | `/*` |
-|         - | 5784 | ` * array array_intersect(array $array1 ,array $array2,...)` |
-|         - | 5785 | ` *  Computes the intersection of arrays.` |
-|         - | 5786 | ` * Parameters` |
-|         - | 5787 | ` *  $array1` |
-|         - | 5788 | ` *    The array to compare from` |
-|         - | 5789 | ` *  $array2` |
-|         - | 5790 | ` *    An array to compare against` |
-|         - | 5791 | ` *  $...` |
-|         - | 5792 | ` *   More arrays to compare against` |
-|         - | 5793 | ` * Return` |
-|         - | 5794 | ` *  Returns an array containing all of the values in array1 whose values exist` |
-|         - | 5795 | ` *  in all of the parameters.` |
-|         - | 5796 | ` * Throws ArgumentCountError if no arguments are given.` |
-|         - | 5797 | ` * Throws TypeError if any argument is not an array.` |
-|         - | 5798 | ` */` |
-|        20 | 5799 | `static int ph7_hashmap_intersect(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         3 | 5800 | `{` |
-|         - | 5801 | `	ph7_hashmap_node *pEntry;` |
-|         - | 5802 | `	ph7_hashmap *pSrc,*pMap;` |
-|         - | 5803 | `	ph7_value *pArray;` |
-|         - | 5804 | `	ph7_value *pVal;` |
-|         - | 5805 | `	sxi32 rc;` |
-|         - | 5806 | `	sxu32 n;` |
-|         - | 5807 | `	int i;` |
-|        23 | 5808 | `	if( nArg < 1 ){` |
-|       ! 0 | 5809 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 5810 | `			"ArgumentCountError",` |
-|         - | 5811 | `			"array_intersect() expects at least 1 argument, %d given",` |
-|       ! 0 | 5812 | `			nArg` |
-|         - | 5813 | `			);` |
-|         - | 5814 | `	}` |
-|        23 | 5815 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 5816 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 5817 | `			"TypeError",` |
-|         - | 5818 | `			"array_intersect(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 5819 | `			ph7_type_name(apArg[0])` |
-|         - | 5820 | `			);` |
-|         - | 5821 | `	}` |
-|        36 | 5822 | `	for( i = 1 ; i < nArg ; i++ ){` |
-|        20 | 5823 | `		if( !ph7_value_is_array(apArg[i]) ){` |
-|         4 | 5824 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 5825 | `				"TypeError",` |
-|         - | 5826 | `				"array_intersect(): Argument #%d must be of type array, %s given",` |
-|         1 | 5827 | `				i + 1,` |
-|         2 | 5828 | `				ph7_type_name(apArg[i])` |
-|         - | 5829 | `				);` |
-|         - | 5830 | `		}` |
-|         9 | 5831 | `	}` |
-|        17 | 5832 | `	if( nArg == 1 ){` |
-|         - | 5833 | `		/* Return the first array since we cannot perform a diff */` |
-|         3 | 5834 | `		ph7_result_value(pCtx,apArg[0]);` |
-|         3 | 5835 | `		return PH7_OK;` |
-|         - | 5836 | `	}` |
-|         - | 5837 | `	/* Create a new array */` |
-|        15 | 5838 | `	pArray = ph7_context_new_array(pCtx);` |
-|        15 | 5839 | `	if( pArray == 0 ){` |
-|       ! 0 | 5840 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 5841 | `		return PH7_OK;` |
-|         - | 5842 | `	}` |
-|         - | 5843 | `	/* Point to the internal representation of the source hashmap */` |
-|        15 | 5844 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 5845 | `	/* Perform the intersection */` |
-|        15 | 5846 | `	pEntry = pSrc->pFirst;` |
-|        15 | 5847 | `	n = pSrc->nEntry;` |
-|        31 | 5848 | `	for(;;){` |
-|        63 | 5849 | `		if( n < 1 ){` |
-|        15 | 5850 | `			break;` |
-|         - | 5851 | `		}` |
-|         - | 5852 | `		/* Extract the node value */` |
-|        49 | 5853 | `		pVal = HashmapExtractNodeValue(pEntry);` |
-|        49 | 5854 | `		if( pVal ){` |
-|        79 | 5855 | `			for( i = 1 ; i < nArg ; i++ ){` |
-|         - | 5856 | `				/* Point to the internal representation of the hashmap */` |
-|        55 | 5857 | `				pMap = (ph7_hashmap *)apArg[i]->x.pOther;` |
-|         - | 5858 | `				/* Perform the lookup */` |
-|        55 | 5859 | `				rc = HashmapFindValue(pMap,pVal,0,TRUE);` |
-|        55 | 5860 | `				if( rc != SXRET_OK ){` |
-|         - | 5861 | `					/* Value does not exist */` |
-|        25 | 5862 | `					break;` |
-|         - | 5863 | `				}` |
-|        16 | 5864 | `			}` |
-|        49 | 5865 | `			if( i >= nArg ){` |
-|         - | 5866 | `				/* Perform the insertion */` |
-|        25 | 5867 | `				HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);` |
-|        12 | 5868 | `			}` |
-|        24 | 5869 | `		}` |
-|         - | 5870 | `		/* Point to the next entry */` |
-|        49 | 5871 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|        49 | 5872 | `		n--;` |
-|         1 | 5873 | `	}` |
-|         - | 5874 | `	/* Return the freshly created array */` |
-|        15 | 5875 | `	ph7_result_value(pCtx,pArray);` |
-|        15 | 5876 | `	return PH7_OK;` |
-|        13 | 5877 | `}` |
-|         - | 5878 | `/*` |
-|         - | 5879 | ` * array array_intersect_assoc(array $array1 ,array $array2,...)` |
-|         - | 5880 | ` *  Computes the intersection of arrays with additional index check.` |
-|         - | 5881 | ` * Parameters` |
-|         - | 5882 | ` *  $array1` |
-|         - | 5883 | ` *    The array to compare from` |
-|         - | 5884 | ` *  $array2` |
-|         - | 5885 | ` *    An array to compare against` |
-|         - | 5886 | ` *  $...` |
-|         - | 5887 | ` *   More arrays to compare against` |
-|         - | 5888 | ` * Return` |
-|         - | 5889 | ` *  Returns an array containing all the values of array1 that are present` |
-|         - | 5890 | ` *  in all the arguments, with matching keys.` |
-|         - | 5891 | ` */` |
-|        20 | 5892 | `static int ph7_hashmap_intersect_assoc(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         3 | 5893 | `{` |
-|         - | 5894 | `	ph7_hashmap_node *pEntry,*pN1,*pN2;` |
-|         - | 5895 | `	ph7_hashmap *pSrc,*pMap;` |
-|         - | 5896 | `	ph7_value *pArray;` |
-|         - | 5897 | `	ph7_value *pVal;` |
-|         - | 5898 | `	sxi32 rc;` |
-|         - | 5899 | `	sxu32 n;` |
-|         - | 5900 | `	int i;` |
-|        23 | 5901 | `	if( nArg < 1 ){` |
-|       ! 0 | 5902 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 5903 | `			"ArgumentCountError",` |
-|         - | 5904 | `			"array_intersect_assoc() expects at least 1 argument, %d given",` |
-|       ! 0 | 5905 | `			nArg` |
-|         - | 5906 | `			);` |
-|         - | 5907 | `	}` |
-|        23 | 5908 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 5909 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 5910 | `			"TypeError",` |
-|         - | 5911 | `			"array_intersect_assoc(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 5912 | `			ph7_type_name(apArg[0])` |
-|         - | 5913 | `			);` |
-|         - | 5914 | `	}` |
-|        36 | 5915 | `	for( i = 1 ; i < nArg ; i++ ){` |
-|        20 | 5916 | `		if( !ph7_value_is_array(apArg[i]) ){` |
-|         4 | 5917 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 5918 | `				"TypeError",` |
-|         - | 5919 | `				"array_intersect_assoc(): Argument #%d must be of type array, %s given",` |
-|         1 | 5920 | `				i + 1,` |
-|         2 | 5921 | `				ph7_type_name(apArg[i])` |
-|         - | 5922 | `				);` |
-|         - | 5923 | `		}` |
-|         9 | 5924 | `	}` |
-|        17 | 5925 | `	if( nArg == 1 ){` |
-|         - | 5926 | `		/* Return the first array since we cannot perform an intersection */` |
-|         3 | 5927 | `		ph7_result_value(pCtx,apArg[0]);` |
-|         3 | 5928 | `		return PH7_OK;` |
-|         - | 5929 | `	}` |
-|         - | 5930 | `	/* Create a new array */` |
-|        15 | 5931 | `	pArray = ph7_context_new_array(pCtx);` |
-|        15 | 5932 | `	if( pArray == 0 ){` |
-|       ! 0 | 5933 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 5934 | `		return PH7_OK;` |
-|         - | 5935 | `	}` |
-|         - | 5936 | `	/* Point to the internal representation of the source hashmap */` |
-|        15 | 5937 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 5938 | `	/* Perform the intersection */` |
-|        15 | 5939 | `	pEntry = pSrc->pFirst;` |
-|        15 | 5940 | `	n = pSrc->nEntry;` |
-|        15 | 5941 | `	pN1 = pN2 = 0; /* cc warning */` |
-|        23 | 5942 | `	for(;;){` |
-|        47 | 5943 | `		if( n < 1 ){` |
-|        15 | 5944 | `			break;` |
-|         - | 5945 | `		}` |
-|         - | 5946 | `		/* Extract the node value */` |
-|        33 | 5947 | `		pVal = HashmapExtractNodeValue(pEntry);` |
-|        33 | 5948 | `		if( pVal ){` |
-|        53 | 5949 | `			for( i = 1 ; i < nArg ; i++ ){` |
-|         - | 5950 | `				/* Point to the internal representation of the hashmap */` |
-|        37 | 5951 | `				pMap = (ph7_hashmap *)apArg[i]->x.pOther;` |
-|         - | 5952 | `				/* Perform a key lookup first */` |
-|        37 | 5953 | `				if( pEntry->iType == HASHMAP_INT_NODE ){` |
-|        15 | 5954 | `					rc = HashmapLookupIntKey(pMap,pEntry->xKey.iKey,&pN1);` |
-|         8 | 5955 | `				}else{` |
-|        23 | 5956 | `					rc = HashmapLookupBlobKey(pMap,SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey),&pN1);` |
-|         - | 5957 | `				}` |
-|        37 | 5958 | `				if( rc != SXRET_OK ){` |
-|         - | 5959 | `					/* No such key,break immediately */` |
-|         7 | 5960 | `					break;` |
-|         - | 5961 | `				}` |
-|         - | 5962 | `				/* Perform the lookup */` |
-|        31 | 5963 | `				rc = HashmapFindValue(pMap,pVal,&pN2,TRUE);` |
-|        31 | 5964 | `				if( rc != SXRET_OK \|\| pN1 != pN2 ){` |
-|         - | 5965 | `					/* Value does not exist */` |
-|         6 | 5966 | `					break;` |
-|         - | 5967 | `				}` |
-|        11 | 5968 | `			}` |
-|        33 | 5969 | `			if( i >= nArg ){` |
-|         - | 5970 | `				/* Perform the insertion */` |
-|        17 | 5971 | `				HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);` |
-|         8 | 5972 | `			}` |
-|        16 | 5973 | `		}` |
-|         - | 5974 | `		/* Point to the next entry */` |
-|        33 | 5975 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|        33 | 5976 | `		n--;` |
-|         1 | 5977 | `	}` |
-|         - | 5978 | `	/* Return the freshly created array */` |
-|        15 | 5979 | `	ph7_result_value(pCtx,pArray);` |
-|        15 | 5980 | `	return PH7_OK;` |
-|        13 | 5981 | `}` |
-|         - | 5982 | `/*` |
-|         - | 5983 | ` * array array_intersect_key(array $array1 ,...)` |
-|         - | 5984 | ` *  Computes the intersection of arrays using keys for comparison.` |
-|         - | 5985 | ` * Parameters` |
-|         - | 5986 | ` *  $array1` |
-|         - | 5987 | ` *    The array to compare from` |
-|         - | 5988 | ` *  $...` |
-|         - | 5989 | ` *   More arrays to compare against` |
-|         - | 5990 | ` * Return` |
-|         - | 5991 | ` *  Returns an associative array containing all the entries of array1 which` |
-|         - | 5992 | ` *  have keys that are present in all arguments.` |
-|         - | 5993 | ` * Note that NULL is returned on failure.` |
-|         - | 5994 | ` */` |
-|        20 | 5995 | `static int ph7_hashmap_intersect_key(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         3 | 5996 | `{` |
-|         - | 5997 | `	ph7_hashmap_node *pEntry;` |
-|         - | 5998 | `	ph7_hashmap *pSrc,*pMap;` |
-|         - | 5999 | `	ph7_value *pArray;` |
-|         - | 6000 | `	sxi32 rc;` |
-|         - | 6001 | `	sxu32 n;` |
-|         - | 6002 | `	int i;` |
-|        23 | 6003 | `	if( nArg < 1 ){` |
-|       ! 0 | 6004 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6005 | `			"ArgumentCountError",` |
-|         - | 6006 | `			"array_intersect_key() expects at least 1 argument, %d given",` |
-|       ! 0 | 6007 | `			nArg` |
-|         - | 6008 | `			);` |
-|         - | 6009 | `	}` |
-|        23 | 6010 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 6011 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6012 | `			"TypeError",` |
-|         - | 6013 | `			"array_intersect_key(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 6014 | `			ph7_type_name(apArg[0])` |
-|         - | 6015 | `			);` |
-|         - | 6016 | `	}` |
-|        36 | 6017 | `	for( i = 1 ; i < nArg ; i++ ){` |
-|        20 | 6018 | `		if( !ph7_value_is_array(apArg[i]) ){` |
-|         4 | 6019 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 6020 | `				"TypeError",` |
-|         - | 6021 | `				"array_intersect_key(): Argument #%d must be of type array, %s given",` |
-|         1 | 6022 | `				i + 1,` |
-|         2 | 6023 | `				ph7_type_name(apArg[i])` |
-|         - | 6024 | `				);` |
-|         - | 6025 | `		}` |
-|         9 | 6026 | `	}` |
-|        17 | 6027 | `	if( nArg == 1 ){` |
-|         - | 6028 | `		/* Return the first array since we cannot perform an intersection */` |
-|         3 | 6029 | `		ph7_result_value(pCtx,apArg[0]);` |
-|         3 | 6030 | `		return PH7_OK;` |
-|         - | 6031 | `	}` |
-|         - | 6032 | `	/* Create a new array */` |
-|        15 | 6033 | `	pArray = ph7_context_new_array(pCtx);` |
-|        15 | 6034 | `	if( pArray == 0 ){` |
-|       ! 0 | 6035 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 6036 | `		return PH7_OK;` |
-|         - | 6037 | `	}` |
-|         - | 6038 | `	/* Point to the internal representation of the main hashmap */` |
-|        15 | 6039 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 6040 | `	/* Perform the intersection */` |
-|        15 | 6041 | `	pEntry = pSrc->pFirst;` |
-|        15 | 6042 | `	n = pSrc->nEntry;` |
-|        24 | 6043 | `	for(;;){` |
-|        49 | 6044 | `		if( n < 1 ){` |
-|        15 | 6045 | `			break;` |
-|         - | 6046 | `		}` |
-|        57 | 6047 | `		for( i = 1 ; i < nArg ; i++ ){` |
-|        39 | 6048 | `			pMap = (ph7_hashmap *)apArg[i]->x.pOther;` |
-|        39 | 6049 | `			if( pEntry->iType == HASHMAP_BLOB_NODE ){` |
-|        27 | 6050 | `				SyBlob *pKey = &pEntry->xKey.sKey;` |
-|         - | 6051 | `				/* Blob lookup */` |
-|        27 | 6052 | `				rc = HashmapLookupBlobKey(pMap,SyBlobData(pKey),SyBlobLength(pKey),0);` |
-|        14 | 6053 | `			}else{` |
-|         - | 6054 | `				/* Int key */` |
-|        13 | 6055 | `				rc = HashmapLookupIntKey(pMap,pEntry->xKey.iKey,0);` |
-|         - | 6056 | `			}` |
-|        39 | 6057 | `			if( rc != SXRET_OK ){` |
-|         - | 6058 | `				/* Key does not exist, break immediately */` |
-|        17 | 6059 | `				break;` |
-|         - | 6060 | `			}` |
-|        12 | 6061 | `		}` |
-|        35 | 6062 | `		if( i >= nArg ){` |
-|         - | 6063 | `			/* Perform the insertion */` |
-|        19 | 6064 | `			HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);` |
-|         9 | 6065 | `		}` |
-|         - | 6066 | `		/* Point to the next entry */` |
-|        35 | 6067 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|        35 | 6068 | `		n--;` |
-|         1 | 6069 | `	}` |
-|         - | 6070 | `	/* Return the freshly created array */` |
-|        15 | 6071 | `	ph7_result_value(pCtx,pArray);` |
-|        15 | 6072 | `	return PH7_OK;` |
-|        13 | 6073 | `}` |
-|         - | 6074 | `/*` |
-|         - | 6075 | ` * array array_uintersect(array $array1 ,array $array2,...,$callback)` |
-|         - | 6076 | ` *  Computes the intersection of arrays.` |
-|         - | 6077 | ` * Parameters` |
-|         - | 6078 | ` *  $array1` |
-|         - | 6079 | ` *    The array to compare from` |
-|         - | 6080 | ` *  $array2` |
-|         - | 6081 | ` *    An array to compare against` |
-|         - | 6082 | ` *  $...` |
-|         - | 6083 | ` *   More arrays to compare against` |
-|         - | 6084 | ` * $callback` |
-|         - | 6085 | ` *  The callback comparison function.` |
-|         - | 6086 | ` *  The comparison function must return an integer less than, equal to, or greater than zero` |
-|         - | 6087 | ` *  if the first argument is considered to be respectively less than, equal to, or greater` |
-|         - | 6088 | ` *  than the second.` |
-|         - | 6089 | ` *     int callback ( mixed $a, mixed $b )` |
-|         - | 6090 | ` * Return` |
-|         - | 6091 | ` *  Returns an array containing all of the values in array1 whose values exist` |
-|         - | 6092 | ` *  in all of the parameters. .` |
-|         - | 6093 | ` * Note that NULL is returned on failure.` |
-|         - | 6094 | ` */` |
-|        24 | 6095 | `static int ph7_hashmap_uintersect(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         5 | 6096 | `{` |
-|         - | 6097 | `	ph7_hashmap_node *pEntry;` |
-|         - | 6098 | `	ph7_hashmap *pSrc,*pMap;` |
-|         - | 6099 | `	ph7_value *pCallback;` |
-|         - | 6100 | `	ph7_value *pArray;` |
-|         - | 6101 | `	ph7_value *pVal;` |
-|         - | 6102 | `	sxi32 rc;` |
-|         - | 6103 | `	sxu32 n;` |
-|         - | 6104 | `	int i;` |
-|         - | 6105 |  |
-|         - | 6106 | `	/* Ensure the argument count matches PHP behaviour. */` |
-|        29 | 6107 | `	if( nArg < 2 ){` |
-|       ! 0 | 6108 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6109 | `			"ArgumentCountError",` |
-|         - | 6110 | `			"array_uintersect() expects at least 2 arguments, %d given",` |
-|       ! 0 | 6111 | `			nArg` |
-|         - | 6112 | `			);` |
-|         - | 6113 | `	}` |
-|        29 | 6114 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 6115 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6116 | `			"TypeError",` |
-|         - | 6117 | `			"array_uintersect(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 6118 | `			ph7_type_name(apArg[0])` |
-|         - | 6119 | `			);` |
-|         - | 6120 | `	}` |
-|         - | 6121 |  |
-|        27 | 6122 | `	if( nArg == 2 ){` |
-|         - | 6123 | `		/* Only the original array and the callback were provided. */` |
-|         - | 6124 | `		/* Validate the callback below in order to match PHP's parameter` |
-|         - | 6125 | `		 * validation ordering. */` |
-|         3 | 6126 | `	} else {` |
-|         - | 6127 | `		/* Ensure intermediary arguments are arrays (matches PHP strict typing). */` |
-|        39 | 6128 | `		for( i = 1 ; i < nArg - 1; i++ ){` |
-|        23 | 6129 | `			if( !ph7_value_is_array(apArg[i]) ){` |
-|         4 | 6130 | `				return PH7_VmThrowException(pCtx,` |
-|         - | 6131 | `					"TypeError",` |
-|         - | 6132 | `					"array_uintersect(): Argument #%d must be of type array, %s given",` |
-|         1 | 6133 | `					i + 1,` |
-|         2 | 6134 | `					ph7_type_name(apArg[i])` |
-|         - | 6135 | `					);` |
-|         - | 6136 | `			}` |
-|        13 | 6137 | `		}` |
-|         - | 6138 | `	}` |
-|         - | 6139 |  |
-|         - | 6140 | `	/* Identify the callback (always expected as the last argument). */` |
-|        25 | 6141 | `	pCallback = apArg[nArg - 1];` |
-|         - | 6142 | `	/* Validate the callback to match PHP's error messages. */` |
-|        25 | 6143 | `	if( !ph7_value_is_callable(pCallback) ){` |
-|        14 | 6144 | `		if( ph7_value_is_array(pCallback) ){` |
-|         - | 6145 | `			/* PHP emits a special message when the array length is wrong.` |
-|         - | 6146 | `			 * If the array has two elements but is still not callable (e.g. missing` |
-|         - | 6147 | `			 * method / missing class), we must emit a more general error instead.` |
-|         - | 6148 | `			 */` |
-|         9 | 6149 | `			ph7_hashmap *pCb = (ph7_hashmap *)pCallback->x.pOther;` |
-|         9 | 6150 | `			if( pCb->nEntry != 2 ){` |
-|         4 | 6151 | `				return PH7_VmThrowException(pCtx,` |
-|         - | 6152 | `					"TypeError",` |
-|         - | 6153 | `					"array_uintersect(): Argument #%d must be a valid callback, array callback must have exactly two members",` |
-|         1 | 6154 | `					nArg` |
-|         - | 6155 | `					);` |
-|         - | 6156 | `			}` |
-|         - | 6157 | `			/* Try to provide a more precise error like PHP does for missing classes/methods. */` |
-|         - | 6158 | `			{` |
-|         6 | 6159 | `				ph7_value *pKey = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pCb->pFirst->nValIdx);` |
-|         6 | 6160 | `				ph7_value *pMethod = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pCb->pFirst->pPrev->nValIdx);` |
-|         6 | 6161 | `				if( pKey && pMethod && (pMethod->iFlags & MEMOBJ_STRING) ){` |
-|         - | 6162 | `					int nMethodLen;` |
-|         6 | 6163 | `					const char *zMethod = ph7_value_to_string(pMethod,&nMethodLen);` |
-|         6 | 6164 | `					ph7_class *pClass = PH7_VmExtractClassFromValue(pCtx->pVm,pKey);` |
-|         6 | 6165 | `					if( pClass ){` |
-|         - | 6166 | `						/* Class exists but method is missing. */` |
-|         4 | 6167 | `						return PH7_VmThrowException(pCtx,` |
-|         - | 6168 | `							"TypeError",` |
-|         - | 6169 | `							"array_uintersect(): Argument #%d must be a valid callback, class %s does not have a method \"%s\"",` |
-|         1 | 6170 | `							nArg,` |
-|         1 | 6171 | `							(const char *)SyStringData(&pClass->sName),` |
-|         1 | 6172 | `							zMethod` |
-|         - | 6173 | `							);` |
-|         - | 6174 | `					}` |
-|         - | 6175 | `					/* Class not found */` |
-|         - | 6176 | `					{` |
-|         - | 6177 | `						int nName;` |
-|         3 | 6178 | `						const char *zName = ph7_value_to_string(pKey,&nName);` |
-|         4 | 6179 | `						return PH7_VmThrowException(pCtx,` |
-|         - | 6180 | `							"TypeError",` |
-|         - | 6181 | `							"array_uintersect(): Argument #%d must be a valid callback, class \"%s\" not found",` |
-|         1 | 6182 | `							nArg,` |
-|         1 | 6183 | `							zName` |
-|         - | 6184 | `							);` |
-|         - | 6185 | `					}` |
-|         - | 6186 | `				}` |
-|         - | 6187 | `			}` |
-|         - | 6188 | `			/* Fallback message */` |
-|       ! 0 | 6189 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 6190 | `				"TypeError",` |
-|         - | 6191 | `				"array_uintersect(): Argument #%d must be a valid callback, no array or string given",` |
-|       ! 0 | 6192 | `				nArg` |
-|         - | 6193 | `				);` |
-|         - | 6194 | `		}` |
-|         6 | 6195 | `		if( ph7_value_is_string(pCallback) ){` |
-|         - | 6196 | `			int len;` |
-|         3 | 6197 | `			const char *zName = ph7_value_to_string(pCallback, &len);` |
-|         4 | 6198 | `			return PH7_VmThrowException(pCtx,` |
+|        23 | 5766 | `			pMap = (ph7_hashmap *)apArg[i]->x.pOther;` |
+|        23 | 5767 | `			if( pEntry->iType == HASHMAP_BLOB_NODE ){` |
+|        17 | 5768 | `				SyBlob *pKey = &pEntry->xKey.sKey;` |
+|         - | 5769 | `				/* Blob lookup */` |
+|        17 | 5770 | `				rc = HashmapLookupBlobKey(pMap,SyBlobData(pKey),SyBlobLength(pKey),0);` |
+|         9 | 5771 | `			}else{` |
+|         - | 5772 | `				/* Int lookup */` |
+|         7 | 5773 | `				rc = HashmapLookupIntKey(pMap,pEntry->xKey.iKey,0);` |
+|         - | 5774 | `			}` |
+|        23 | 5775 | `			if( rc == SXRET_OK ){` |
+|         - | 5776 | `				/* Key exists,break immediately */` |
+|        11 | 5777 | `				break;` |
+|         - | 5778 | `			}` |
+|         7 | 5779 | `		}` |
+|        19 | 5780 | `		if( i >= nArg ){` |
+|         - | 5781 | `			/* Perform the insertion */` |
+|         9 | 5782 | `			HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);` |
+|         4 | 5783 | `		}` |
+|         - | 5784 | `		/* Point to the next entry */` |
+|        19 | 5785 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|        19 | 5786 | `		n--;` |
+|         1 | 5787 | `	}` |
+|         - | 5788 | `	/* Return the freshly created array */` |
+|         7 | 5789 | `	ph7_result_value(pCtx,pArray);` |
+|         7 | 5790 | `	return PH7_OK;` |
+|         9 | 5791 | `}` |
+|         - | 5792 | `/*` |
+|         - | 5793 | ` * array array_intersect(array $array1 ,array $array2,...)` |
+|         - | 5794 | ` *  Computes the intersection of arrays.` |
+|         - | 5795 | ` * Parameters` |
+|         - | 5796 | ` *  $array1` |
+|         - | 5797 | ` *    The array to compare from` |
+|         - | 5798 | ` *  $array2` |
+|         - | 5799 | ` *    An array to compare against` |
+|         - | 5800 | ` *  $...` |
+|         - | 5801 | ` *   More arrays to compare against` |
+|         - | 5802 | ` * Return` |
+|         - | 5803 | ` *  Returns an array containing all of the values in array1 whose values exist` |
+|         - | 5804 | ` *  in all of the parameters.` |
+|         - | 5805 | ` * Throws ArgumentCountError if no arguments are given.` |
+|         - | 5806 | ` * Throws TypeError if any argument is not an array.` |
+|         - | 5807 | ` */` |
+|        20 | 5808 | `static int ph7_hashmap_intersect(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         3 | 5809 | `{` |
+|         - | 5810 | `	ph7_hashmap_node *pEntry;` |
+|         - | 5811 | `	ph7_hashmap *pSrc,*pMap;` |
+|         - | 5812 | `	ph7_value *pArray;` |
+|         - | 5813 | `	ph7_value *pVal;` |
+|         - | 5814 | `	sxi32 rc;` |
+|         - | 5815 | `	sxu32 n;` |
+|         - | 5816 | `	int i;` |
+|        23 | 5817 | `	if( nArg < 1 ){` |
+|       ! 0 | 5818 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 5819 | `			"ArgumentCountError",` |
+|         - | 5820 | `			"array_intersect() expects at least 1 argument, %d given",` |
+|       ! 0 | 5821 | `			nArg` |
+|         - | 5822 | `			);` |
+|         - | 5823 | `	}` |
+|        23 | 5824 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         4 | 5825 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 5826 | `			"TypeError",` |
+|         - | 5827 | `			"array_intersect(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 5828 | `			ph7_type_name(apArg[0])` |
+|         - | 5829 | `			);` |
+|         - | 5830 | `	}` |
+|        36 | 5831 | `	for( i = 1 ; i < nArg ; i++ ){` |
+|        20 | 5832 | `		if( !ph7_value_is_array(apArg[i]) ){` |
+|         4 | 5833 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 5834 | `				"TypeError",` |
+|         - | 5835 | `				"array_intersect(): Argument #%d must be of type array, %s given",` |
+|         1 | 5836 | `				i + 1,` |
+|         2 | 5837 | `				ph7_type_name(apArg[i])` |
+|         - | 5838 | `				);` |
+|         - | 5839 | `		}` |
+|         9 | 5840 | `	}` |
+|        17 | 5841 | `	if( nArg == 1 ){` |
+|         - | 5842 | `		/* Return the first array since we cannot perform a diff */` |
+|         3 | 5843 | `		ph7_result_value(pCtx,apArg[0]);` |
+|         3 | 5844 | `		return PH7_OK;` |
+|         - | 5845 | `	}` |
+|         - | 5846 | `	/* Create a new array */` |
+|        15 | 5847 | `	pArray = ph7_context_new_array(pCtx);` |
+|        15 | 5848 | `	if( pArray == 0 ){` |
+|       ! 0 | 5849 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 5850 | `		return PH7_OK;` |
+|         - | 5851 | `	}` |
+|         - | 5852 | `	/* Point to the internal representation of the source hashmap */` |
+|        15 | 5853 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 5854 | `	/* Perform the intersection */` |
+|        15 | 5855 | `	pEntry = pSrc->pFirst;` |
+|        15 | 5856 | `	n = pSrc->nEntry;` |
+|        31 | 5857 | `	for(;;){` |
+|        63 | 5858 | `		if( n < 1 ){` |
+|        15 | 5859 | `			break;` |
+|         - | 5860 | `		}` |
+|         - | 5861 | `		/* Extract the node value */` |
+|        49 | 5862 | `		pVal = HashmapExtractNodeValue(pEntry);` |
+|        49 | 5863 | `		if( pVal ){` |
+|        79 | 5864 | `			for( i = 1 ; i < nArg ; i++ ){` |
+|         - | 5865 | `				/* Point to the internal representation of the hashmap */` |
+|        55 | 5866 | `				pMap = (ph7_hashmap *)apArg[i]->x.pOther;` |
+|         - | 5867 | `				/* Perform the lookup */` |
+|        55 | 5868 | `				rc = HashmapFindValue(pMap,pVal,0,TRUE);` |
+|        55 | 5869 | `				if( rc != SXRET_OK ){` |
+|         - | 5870 | `					/* Value does not exist */` |
+|        25 | 5871 | `					break;` |
+|         - | 5872 | `				}` |
+|        16 | 5873 | `			}` |
+|        49 | 5874 | `			if( i >= nArg ){` |
+|         - | 5875 | `				/* Perform the insertion */` |
+|        25 | 5876 | `				HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);` |
+|        12 | 5877 | `			}` |
+|        24 | 5878 | `		}` |
+|         - | 5879 | `		/* Point to the next entry */` |
+|        49 | 5880 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|        49 | 5881 | `		n--;` |
+|         1 | 5882 | `	}` |
+|         - | 5883 | `	/* Return the freshly created array */` |
+|        15 | 5884 | `	ph7_result_value(pCtx,pArray);` |
+|        15 | 5885 | `	return PH7_OK;` |
+|        13 | 5886 | `}` |
+|         - | 5887 | `/*` |
+|         - | 5888 | ` * array array_intersect_assoc(array $array1 ,array $array2,...)` |
+|         - | 5889 | ` *  Computes the intersection of arrays with additional index check.` |
+|         - | 5890 | ` * Parameters` |
+|         - | 5891 | ` *  $array1` |
+|         - | 5892 | ` *    The array to compare from` |
+|         - | 5893 | ` *  $array2` |
+|         - | 5894 | ` *    An array to compare against` |
+|         - | 5895 | ` *  $...` |
+|         - | 5896 | ` *   More arrays to compare against` |
+|         - | 5897 | ` * Return` |
+|         - | 5898 | ` *  Returns an array containing all the values of array1 that are present` |
+|         - | 5899 | ` *  in all the arguments, with matching keys.` |
+|         - | 5900 | ` */` |
+|        20 | 5901 | `static int ph7_hashmap_intersect_assoc(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         3 | 5902 | `{` |
+|         - | 5903 | `	ph7_hashmap_node *pEntry,*pN1,*pN2;` |
+|         - | 5904 | `	ph7_hashmap *pSrc,*pMap;` |
+|         - | 5905 | `	ph7_value *pArray;` |
+|         - | 5906 | `	ph7_value *pVal;` |
+|         - | 5907 | `	sxi32 rc;` |
+|         - | 5908 | `	sxu32 n;` |
+|         - | 5909 | `	int i;` |
+|        23 | 5910 | `	if( nArg < 1 ){` |
+|       ! 0 | 5911 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 5912 | `			"ArgumentCountError",` |
+|         - | 5913 | `			"array_intersect_assoc() expects at least 1 argument, %d given",` |
+|       ! 0 | 5914 | `			nArg` |
+|         - | 5915 | `			);` |
+|         - | 5916 | `	}` |
+|        23 | 5917 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         4 | 5918 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 5919 | `			"TypeError",` |
+|         - | 5920 | `			"array_intersect_assoc(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 5921 | `			ph7_type_name(apArg[0])` |
+|         - | 5922 | `			);` |
+|         - | 5923 | `	}` |
+|        36 | 5924 | `	for( i = 1 ; i < nArg ; i++ ){` |
+|        20 | 5925 | `		if( !ph7_value_is_array(apArg[i]) ){` |
+|         4 | 5926 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 5927 | `				"TypeError",` |
+|         - | 5928 | `				"array_intersect_assoc(): Argument #%d must be of type array, %s given",` |
+|         1 | 5929 | `				i + 1,` |
+|         2 | 5930 | `				ph7_type_name(apArg[i])` |
+|         - | 5931 | `				);` |
+|         - | 5932 | `		}` |
+|         9 | 5933 | `	}` |
+|        17 | 5934 | `	if( nArg == 1 ){` |
+|         - | 5935 | `		/* Return the first array since we cannot perform an intersection */` |
+|         3 | 5936 | `		ph7_result_value(pCtx,apArg[0]);` |
+|         3 | 5937 | `		return PH7_OK;` |
+|         - | 5938 | `	}` |
+|         - | 5939 | `	/* Create a new array */` |
+|        15 | 5940 | `	pArray = ph7_context_new_array(pCtx);` |
+|        15 | 5941 | `	if( pArray == 0 ){` |
+|       ! 0 | 5942 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 5943 | `		return PH7_OK;` |
+|         - | 5944 | `	}` |
+|         - | 5945 | `	/* Point to the internal representation of the source hashmap */` |
+|        15 | 5946 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 5947 | `	/* Perform the intersection */` |
+|        15 | 5948 | `	pEntry = pSrc->pFirst;` |
+|        15 | 5949 | `	n = pSrc->nEntry;` |
+|        15 | 5950 | `	pN1 = pN2 = 0; /* cc warning */` |
+|        23 | 5951 | `	for(;;){` |
+|        47 | 5952 | `		if( n < 1 ){` |
+|        15 | 5953 | `			break;` |
+|         - | 5954 | `		}` |
+|         - | 5955 | `		/* Extract the node value */` |
+|        33 | 5956 | `		pVal = HashmapExtractNodeValue(pEntry);` |
+|        33 | 5957 | `		if( pVal ){` |
+|        53 | 5958 | `			for( i = 1 ; i < nArg ; i++ ){` |
+|         - | 5959 | `				/* Point to the internal representation of the hashmap */` |
+|        37 | 5960 | `				pMap = (ph7_hashmap *)apArg[i]->x.pOther;` |
+|         - | 5961 | `				/* Perform a key lookup first */` |
+|        37 | 5962 | `				if( pEntry->iType == HASHMAP_INT_NODE ){` |
+|        15 | 5963 | `					rc = HashmapLookupIntKey(pMap,pEntry->xKey.iKey,&pN1);` |
+|         8 | 5964 | `				}else{` |
+|        23 | 5965 | `					rc = HashmapLookupBlobKey(pMap,SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey),&pN1);` |
+|         - | 5966 | `				}` |
+|        37 | 5967 | `				if( rc != SXRET_OK ){` |
+|         - | 5968 | `					/* No such key,break immediately */` |
+|         7 | 5969 | `					break;` |
+|         - | 5970 | `				}` |
+|         - | 5971 | `				/* Perform the lookup */` |
+|        31 | 5972 | `				rc = HashmapFindValue(pMap,pVal,&pN2,TRUE);` |
+|        31 | 5973 | `				if( rc != SXRET_OK \|\| pN1 != pN2 ){` |
+|         - | 5974 | `					/* Value does not exist */` |
+|         6 | 5975 | `					break;` |
+|         - | 5976 | `				}` |
+|        11 | 5977 | `			}` |
+|        33 | 5978 | `			if( i >= nArg ){` |
+|         - | 5979 | `				/* Perform the insertion */` |
+|        17 | 5980 | `				HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);` |
+|         8 | 5981 | `			}` |
+|        16 | 5982 | `		}` |
+|         - | 5983 | `		/* Point to the next entry */` |
+|        33 | 5984 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|        33 | 5985 | `		n--;` |
+|         1 | 5986 | `	}` |
+|         - | 5987 | `	/* Return the freshly created array */` |
+|        15 | 5988 | `	ph7_result_value(pCtx,pArray);` |
+|        15 | 5989 | `	return PH7_OK;` |
+|        13 | 5990 | `}` |
+|         - | 5991 | `/*` |
+|         - | 5992 | ` * array array_intersect_key(array $array1 ,...)` |
+|         - | 5993 | ` *  Computes the intersection of arrays using keys for comparison.` |
+|         - | 5994 | ` * Parameters` |
+|         - | 5995 | ` *  $array1` |
+|         - | 5996 | ` *    The array to compare from` |
+|         - | 5997 | ` *  $...` |
+|         - | 5998 | ` *   More arrays to compare against` |
+|         - | 5999 | ` * Return` |
+|         - | 6000 | ` *  Returns an associative array containing all the entries of array1 which` |
+|         - | 6001 | ` *  have keys that are present in all arguments.` |
+|         - | 6002 | ` * Note that NULL is returned on failure.` |
+|         - | 6003 | ` */` |
+|        20 | 6004 | `static int ph7_hashmap_intersect_key(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         3 | 6005 | `{` |
+|         - | 6006 | `	ph7_hashmap_node *pEntry;` |
+|         - | 6007 | `	ph7_hashmap *pSrc,*pMap;` |
+|         - | 6008 | `	ph7_value *pArray;` |
+|         - | 6009 | `	sxi32 rc;` |
+|         - | 6010 | `	sxu32 n;` |
+|         - | 6011 | `	int i;` |
+|        23 | 6012 | `	if( nArg < 1 ){` |
+|       ! 0 | 6013 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 6014 | `			"ArgumentCountError",` |
+|         - | 6015 | `			"array_intersect_key() expects at least 1 argument, %d given",` |
+|       ! 0 | 6016 | `			nArg` |
+|         - | 6017 | `			);` |
+|         - | 6018 | `	}` |
+|        23 | 6019 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         4 | 6020 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 6021 | `			"TypeError",` |
+|         - | 6022 | `			"array_intersect_key(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 6023 | `			ph7_type_name(apArg[0])` |
+|         - | 6024 | `			);` |
+|         - | 6025 | `	}` |
+|        36 | 6026 | `	for( i = 1 ; i < nArg ; i++ ){` |
+|        20 | 6027 | `		if( !ph7_value_is_array(apArg[i]) ){` |
+|         4 | 6028 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 6029 | `				"TypeError",` |
+|         - | 6030 | `				"array_intersect_key(): Argument #%d must be of type array, %s given",` |
+|         1 | 6031 | `				i + 1,` |
+|         2 | 6032 | `				ph7_type_name(apArg[i])` |
+|         - | 6033 | `				);` |
+|         - | 6034 | `		}` |
+|         9 | 6035 | `	}` |
+|        17 | 6036 | `	if( nArg == 1 ){` |
+|         - | 6037 | `		/* Return the first array since we cannot perform an intersection */` |
+|         3 | 6038 | `		ph7_result_value(pCtx,apArg[0]);` |
+|         3 | 6039 | `		return PH7_OK;` |
+|         - | 6040 | `	}` |
+|         - | 6041 | `	/* Create a new array */` |
+|        15 | 6042 | `	pArray = ph7_context_new_array(pCtx);` |
+|        15 | 6043 | `	if( pArray == 0 ){` |
+|       ! 0 | 6044 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 6045 | `		return PH7_OK;` |
+|         - | 6046 | `	}` |
+|         - | 6047 | `	/* Point to the internal representation of the main hashmap */` |
+|        15 | 6048 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 6049 | `	/* Perform the intersection */` |
+|        15 | 6050 | `	pEntry = pSrc->pFirst;` |
+|        15 | 6051 | `	n = pSrc->nEntry;` |
+|        24 | 6052 | `	for(;;){` |
+|        49 | 6053 | `		if( n < 1 ){` |
+|        15 | 6054 | `			break;` |
+|         - | 6055 | `		}` |
+|        57 | 6056 | `		for( i = 1 ; i < nArg ; i++ ){` |
+|        39 | 6057 | `			pMap = (ph7_hashmap *)apArg[i]->x.pOther;` |
+|        39 | 6058 | `			if( pEntry->iType == HASHMAP_BLOB_NODE ){` |
+|        27 | 6059 | `				SyBlob *pKey = &pEntry->xKey.sKey;` |
+|         - | 6060 | `				/* Blob lookup */` |
+|        27 | 6061 | `				rc = HashmapLookupBlobKey(pMap,SyBlobData(pKey),SyBlobLength(pKey),0);` |
+|        14 | 6062 | `			}else{` |
+|         - | 6063 | `				/* Int key */` |
+|        13 | 6064 | `				rc = HashmapLookupIntKey(pMap,pEntry->xKey.iKey,0);` |
+|         - | 6065 | `			}` |
+|        39 | 6066 | `			if( rc != SXRET_OK ){` |
+|         - | 6067 | `				/* Key does not exist, break immediately */` |
+|        17 | 6068 | `				break;` |
+|         - | 6069 | `			}` |
+|        12 | 6070 | `		}` |
+|        35 | 6071 | `		if( i >= nArg ){` |
+|         - | 6072 | `			/* Perform the insertion */` |
+|        19 | 6073 | `			HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);` |
+|         9 | 6074 | `		}` |
+|         - | 6075 | `		/* Point to the next entry */` |
+|        35 | 6076 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|        35 | 6077 | `		n--;` |
+|         1 | 6078 | `	}` |
+|         - | 6079 | `	/* Return the freshly created array */` |
+|        15 | 6080 | `	ph7_result_value(pCtx,pArray);` |
+|        15 | 6081 | `	return PH7_OK;` |
+|        13 | 6082 | `}` |
+|         - | 6083 | `/*` |
+|         - | 6084 | ` * array array_uintersect(array $array1 ,array $array2,...,$callback)` |
+|         - | 6085 | ` *  Computes the intersection of arrays.` |
+|         - | 6086 | ` * Parameters` |
+|         - | 6087 | ` *  $array1` |
+|         - | 6088 | ` *    The array to compare from` |
+|         - | 6089 | ` *  $array2` |
+|         - | 6090 | ` *    An array to compare against` |
+|         - | 6091 | ` *  $...` |
+|         - | 6092 | ` *   More arrays to compare against` |
+|         - | 6093 | ` * $callback` |
+|         - | 6094 | ` *  The callback comparison function.` |
+|         - | 6095 | ` *  The comparison function must return an integer less than, equal to, or greater than zero` |
+|         - | 6096 | ` *  if the first argument is considered to be respectively less than, equal to, or greater` |
+|         - | 6097 | ` *  than the second.` |
+|         - | 6098 | ` *     int callback ( mixed $a, mixed $b )` |
+|         - | 6099 | ` * Return` |
+|         - | 6100 | ` *  Returns an array containing all of the values in array1 whose values exist` |
+|         - | 6101 | ` *  in all of the parameters. .` |
+|         - | 6102 | ` * Note that NULL is returned on failure.` |
+|         - | 6103 | ` */` |
+|        24 | 6104 | `static int ph7_hashmap_uintersect(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         5 | 6105 | `{` |
+|         - | 6106 | `	ph7_hashmap_node *pEntry;` |
+|         - | 6107 | `	ph7_hashmap *pSrc,*pMap;` |
+|         - | 6108 | `	ph7_value *pCallback;` |
+|         - | 6109 | `	ph7_value *pArray;` |
+|         - | 6110 | `	ph7_value *pVal;` |
+|         - | 6111 | `	sxi32 rc;` |
+|         - | 6112 | `	sxu32 n;` |
+|         - | 6113 | `	int i;` |
+|         - | 6114 |  |
+|         - | 6115 | `	/* Ensure the argument count matches PHP behaviour. */` |
+|        29 | 6116 | `	if( nArg < 2 ){` |
+|       ! 0 | 6117 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 6118 | `			"ArgumentCountError",` |
+|         - | 6119 | `			"array_uintersect() expects at least 2 arguments, %d given",` |
+|       ! 0 | 6120 | `			nArg` |
+|         - | 6121 | `			);` |
+|         - | 6122 | `	}` |
+|        29 | 6123 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         4 | 6124 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 6125 | `			"TypeError",` |
+|         - | 6126 | `			"array_uintersect(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 6127 | `			ph7_type_name(apArg[0])` |
+|         - | 6128 | `			);` |
+|         - | 6129 | `	}` |
+|         - | 6130 |  |
+|        27 | 6131 | `	if( nArg == 2 ){` |
+|         - | 6132 | `		/* Only the original array and the callback were provided. */` |
+|         - | 6133 | `		/* Validate the callback below in order to match PHP's parameter` |
+|         - | 6134 | `		 * validation ordering. */` |
+|         3 | 6135 | `	} else {` |
+|         - | 6136 | `		/* Ensure intermediary arguments are arrays (matches PHP strict typing). */` |
+|        39 | 6137 | `		for( i = 1 ; i < nArg - 1; i++ ){` |
+|        23 | 6138 | `			if( !ph7_value_is_array(apArg[i]) ){` |
+|         4 | 6139 | `				return PH7_VmThrowException(pCtx,` |
+|         - | 6140 | `					"TypeError",` |
+|         - | 6141 | `					"array_uintersect(): Argument #%d must be of type array, %s given",` |
+|         1 | 6142 | `					i + 1,` |
+|         2 | 6143 | `					ph7_type_name(apArg[i])` |
+|         - | 6144 | `					);` |
+|         - | 6145 | `			}` |
+|        13 | 6146 | `		}` |
+|         - | 6147 | `	}` |
+|         - | 6148 |  |
+|         - | 6149 | `	/* Identify the callback (always expected as the last argument). */` |
+|        25 | 6150 | `	pCallback = apArg[nArg - 1];` |
+|         - | 6151 | `	/* Validate the callback to match PHP's error messages. */` |
+|        25 | 6152 | `	if( !ph7_value_is_callable(pCallback) ){` |
+|        14 | 6153 | `		if( ph7_value_is_array(pCallback) ){` |
+|         - | 6154 | `			/* PHP emits a special message when the array length is wrong.` |
+|         - | 6155 | `			 * If the array has two elements but is still not callable (e.g. missing` |
+|         - | 6156 | `			 * method / missing class), we must emit a more general error instead.` |
+|         - | 6157 | `			 */` |
+|         9 | 6158 | `			ph7_hashmap *pCb = (ph7_hashmap *)pCallback->x.pOther;` |
+|         9 | 6159 | `			if( pCb->nEntry != 2 ){` |
+|         4 | 6160 | `				return PH7_VmThrowException(pCtx,` |
+|         - | 6161 | `					"TypeError",` |
+|         - | 6162 | `					"array_uintersect(): Argument #%d must be a valid callback, array callback must have exactly two members",` |
+|         1 | 6163 | `					nArg` |
+|         - | 6164 | `					);` |
+|         - | 6165 | `			}` |
+|         - | 6166 | `			/* Try to provide a more precise error like PHP does for missing classes/methods. */` |
+|         - | 6167 | `			{` |
+|         6 | 6168 | `				ph7_value *pKey = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pCb->pFirst->nValIdx);` |
+|         6 | 6169 | `				ph7_value *pMethod = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pCb->pFirst->pPrev->nValIdx);` |
+|         6 | 6170 | `				if( pKey && pMethod && (pMethod->iFlags & MEMOBJ_STRING) ){` |
+|         - | 6171 | `					int nMethodLen;` |
+|         6 | 6172 | `					const char *zMethod = ph7_value_to_string(pMethod,&nMethodLen);` |
+|         6 | 6173 | `					ph7_class *pClass = PH7_VmExtractClassFromValue(pCtx->pVm,pKey);` |
+|         6 | 6174 | `					if( pClass ){` |
+|         - | 6175 | `						/* Class exists but method is missing. */` |
+|         4 | 6176 | `						return PH7_VmThrowException(pCtx,` |
+|         - | 6177 | `							"TypeError",` |
+|         - | 6178 | `							"array_uintersect(): Argument #%d must be a valid callback, class %s does not have a method \"%s\"",` |
+|         1 | 6179 | `							nArg,` |
+|         1 | 6180 | `							(const char *)SyStringData(&pClass->sName),` |
+|         1 | 6181 | `							zMethod` |
+|         - | 6182 | `							);` |
+|         - | 6183 | `					}` |
+|         - | 6184 | `					/* Class not found */` |
+|         - | 6185 | `					{` |
+|         - | 6186 | `						int nName;` |
+|         3 | 6187 | `						const char *zName = ph7_value_to_string(pKey,&nName);` |
+|         4 | 6188 | `						return PH7_VmThrowException(pCtx,` |
+|         - | 6189 | `							"TypeError",` |
+|         - | 6190 | `							"array_uintersect(): Argument #%d must be a valid callback, class \"%s\" not found",` |
+|         1 | 6191 | `							nArg,` |
+|         1 | 6192 | `							zName` |
+|         - | 6193 | `							);` |
+|         - | 6194 | `					}` |
+|         - | 6195 | `				}` |
+|         - | 6196 | `			}` |
+|         - | 6197 | `			/* Fallback message */` |
+|       ! 0 | 6198 | `			return PH7_VmThrowException(pCtx,` |
 |         - | 6199 | `				"TypeError",` |
-|         - | 6200 | `				"array_uintersect(): Argument #%d must be a valid callback, function \"%s\" not found or invalid function name",` |
-|         1 | 6201 | `				nArg,` |
-|         1 | 6202 | `				zName` |
-|         - | 6203 | `				);` |
-|         - | 6204 | `		}` |
-|         4 | 6205 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6206 | `			"TypeError",` |
-|         - | 6207 | `			"array_uintersect(): Argument #%d must be a valid callback, no array or string given",` |
-|         1 | 6208 | `			nArg` |
-|         - | 6209 | `			);` |
-|         - | 6210 | `	}` |
-|         - | 6211 |  |
-|        11 | 6212 | `	if( nArg == 2 ){` |
-|         - | 6213 | `		/* Only the original array and the callback were provided. */` |
-|         5 | 6214 | `		ph7_result_value(pCtx,apArg[0]);` |
-|         5 | 6215 | `		return PH7_OK;` |
-|         - | 6216 | `	}` |
-|         - | 6217 |  |
-|         - | 6218 | `	/* Create a new array */` |
-|         7 | 6219 | `	pArray = ph7_context_new_array(pCtx);` |
-|         7 | 6220 | `	if( pArray == 0 ){` |
-|       ! 0 | 6221 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 6222 | `		return PH7_OK;` |
-|         - | 6223 | `	}` |
-|         - | 6224 | `	/* Point to the internal representation of the source hashmap */` |
-|         7 | 6225 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 6226 | `	/* Perform the intersection */` |
-|         7 | 6227 | `	pEntry = pSrc->pFirst;` |
-|         7 | 6228 | `	n = pSrc->nEntry;` |
-|         7 | 6229 | `	pCtx->pVm->iCmpCallbackExc = 0;` |
-|         9 | 6230 | `	for(;;){` |
-|        19 | 6231 | `		if( n < 1 ){` |
-|         5 | 6232 | `			break;` |
-|         - | 6233 | `		}` |
-|         - | 6234 | `		/* Extract the node value */` |
-|        15 | 6235 | `		pVal = HashmapExtractNodeValue(pEntry);` |
-|        15 | 6236 | `		if( pVal ){` |
-|        23 | 6237 | `			for( i = 1 ; i < nArg - 1; i++ ){` |
-|        15 | 6238 | `				if( !ph7_value_is_array(apArg[i])) {` |
-|         - | 6239 | `					/* ignore */` |
-|       ! 0 | 6240 | `					continue;` |
-|         - | 6241 | `				}` |
-|         - | 6242 | `				/* Point to the internal representation of the hashmap */` |
-|        15 | 6243 | `				pMap = (ph7_hashmap *)apArg[i]->x.pOther;` |
-|         - | 6244 | `				/* Perform the lookup */` |
-|        15 | 6245 | `				rc = HashmapFindValueByCallback(pMap,pVal,pCallback,0);` |
-|        15 | 6246 | `				if( rc != SXRET_OK ){` |
-|         - | 6247 | `					/* Value does not exist */` |
-|         7 | 6248 | `					break;` |
-|         - | 6249 | `				}` |
-|         5 | 6250 | `			}` |
-|        15 | 6251 | `			if( i >= (nArg-1) ){` |
-|         - | 6252 | `				/* Perform the insertion */` |
-|         9 | 6253 | `				HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);` |
-|         4 | 6254 | `			}` |
-|         7 | 6255 | `		}` |
-|        15 | 6256 | `		if( pCtx->pVm->iCmpCallbackExc ){` |
-|         - | 6257 | `			/* The comparison callback raised: propagate so the dispatcher unwinds. */` |
-|         3 | 6258 | `			pCtx->pVm->iCmpCallbackExc = 0;` |
-|         3 | 6259 | `			return PH7_EXCEPTION;` |
-|         - | 6260 | `		}` |
-|         - | 6261 | `		/* Point to the next entry */` |
-|        13 | 6262 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|        13 | 6263 | `		n--;` |
-|         1 | 6264 | `	}` |
-|         - | 6265 | `	/* Return the freshly created array */` |
-|         5 | 6266 | `	ph7_result_value(pCtx,pArray);` |
-|         5 | 6267 | `	return PH7_OK;` |
-|        17 | 6268 | `}` |
-|         - | 6269 | `/*` |
-|         - | 6270 | ` * array array_fill(int $start_index,int $num,var $value)` |
-|         - | 6271 | ` *  Fill an array with values.` |
-|         - | 6272 | ` * Parameters` |
-|         - | 6273 | ` *  $start_index` |
-|         - | 6274 | ` *    The first index of the returned array.` |
-|         - | 6275 | ` *  $num` |
-|         - | 6276 | ` *   Number of elements to insert.` |
-|         - | 6277 | ` *  $value` |
-|         - | 6278 | ` *    Value to use for filling.` |
-|         - | 6279 | ` * Return` |
-|         - | 6280 | ` *  The filled array or null on failure.` |
-|         - | 6281 | ` */` |
-|       240 | 6282 | `static int ph7_hashmap_fill(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         4 | 6283 | `{` |
-|         - | 6284 | `	ph7_value *pArray;` |
-|         - | 6285 | `	int i,nEntry;` |
-|         - | 6286 |  |
-|         - | 6287 | `	/* PHP enforces argument count and type checks. */` |
-|       244 | 6288 | `	if( nArg != 3 ){` |
-|         - | 6289 | `		/* wrong number of arguments -> ArgumentCountError */` |
-|         4 | 6290 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6291 | `			"ArgumentCountError",` |
-|         - | 6292 | `			"array_fill() expects exactly 3 arguments, %d given",` |
-|         1 | 6293 | `			nArg` |
-|         - | 6294 | `			);` |
-|         - | 6295 | `	}` |
-|         - | 6296 |  |
-|         - | 6297 | `	/* Argument #1: start index must be convertible to int.  Accept booleans,` |
-|         - | 6298 | `	 * floats, and numeric strings (including those with decimal point) by` |
-|         - | 6299 | `	 * allowing them through the conversion.  Only arrays, objects, resources` |
-|         - | 6300 | `	 * and NULLs are rejected outright. */` |
-|       357 | 6301 | `	if( ph7_value_is_array(apArg[0]) \|\| ph7_value_is_object(apArg[0]) \|\|` |
-|       361 | 6302 | `		ph7_value_is_resource(apArg[0]) \|\| ph7_value_is_null(apArg[0]) ){` |
-|       ! 0 | 6303 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6304 | `			"TypeError",` |
-|         - | 6305 | `			"array_fill(): Argument #1 ($start_index) must be of type int, %s given",` |
-|       ! 0 | 6306 | `			ph7_type_name(apArg[0])` |
-|         - | 6307 | `			);` |
-|         - | 6308 | `	}` |
-|       242 | 6309 | `	if( ph7_value_is_string(apArg[0]) ){` |
-|         - | 6310 | `		int len;` |
-|         8 | 6311 | `		sxu8 bReal = FALSE;` |
-|         8 | 6312 | `		const char *zStr = ph7_value_to_string(apArg[0], &len);` |
-|         8 | 6313 | `		if( SyStrIsNumeric(zStr, len, &bReal, 0) != SXRET_OK ){` |
-|         - | 6314 | `			/* Non‑numeric string is an error. */` |
-|         3 | 6315 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 6316 | `				"TypeError",` |
-|         - | 6317 | `				"array_fill(): Argument #1 ($start_index) must be of type int, string given"` |
-|         - | 6318 | `				);` |
-|         - | 6319 | `		}` |
-|         5 | 6320 | `		if( bReal ){` |
-|         - | 6321 | `			/* float-string -> deprecation warning */` |
-|         4 | 6322 | `			ph7_context_throw_error_format(pCtx, E_DEPRECATED,` |
-|         - | 6323 | `				"Implicit conversion from float-string \"%s\" to int loses precision",` |
-|         1 | 6324 | `				zStr` |
-|         - | 6325 | `				);` |
-|         1 | 6326 | `		}` |
-|         2 | 6327 | `	}` |
-|         - | 6328 |  |
-|         - | 6329 | `	/* Argument #2: count must be convertible to non-negative int.  Allow booleans,` |
-|         - | 6330 | `	 * floats and numeric strings; reject arrays, objects, resources and NULL. */` |
-|       354 | 6331 | `	if( ph7_value_is_array(apArg[1]) \|\| ph7_value_is_object(apArg[1]) \|\|` |
-|       357 | 6332 | `		ph7_value_is_resource(apArg[1]) \|\| ph7_value_is_null(apArg[1]) ){` |
-|       ! 0 | 6333 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6334 | `			"TypeError",` |
-|         - | 6335 | `			"array_fill(): Argument #2 ($count) must be of type int, %s given",` |
-|       ! 0 | 6336 | `			ph7_type_name(apArg[1])` |
-|         - | 6337 | `			);` |
-|         - | 6338 | `	}` |
-|       239 | 6339 | `	if( ph7_value_is_string(apArg[1]) ){` |
-|         - | 6340 | `		int len;` |
-|         3 | 6341 | `		sxu8 bReal = FALSE;` |
-|         3 | 6342 | `		const char *zStr = ph7_value_to_string(apArg[1], &len);` |
-|         3 | 6343 | `		if( SyStrIsNumeric(zStr, len, &bReal, 0) != SXRET_OK ){` |
-|         3 | 6344 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 6345 | `				"TypeError",` |
-|         - | 6346 | `				"array_fill(): Argument #2 ($count) must be of type int, string given"` |
-|         - | 6347 | `				);` |
-|         - | 6348 | `		}` |
-|       ! 0 | 6349 | `	}` |
-|         - | 6350 | `	/* Note: booleans and floats (including fractional) are now accepted; they` |
-|         - | 6351 | `	 * will be converted by ph7_value_to_int below. */` |
-|       236 | 6352 | `	if( ph7_value_is_float(apArg[1]) ){` |
-|         5 | 6353 | `		double d = ph7_value_to_double(apArg[1]);` |
-|         - | 6354 | `		/* avoid hiding outer 'i' (loop index) */` |
-|         5 | 6355 | `		sxi64 i64 = (sxi64)d;` |
-|         5 | 6356 | `		if( d != (double)i64 ){` |
-|         7 | 6357 | `			ph7_context_throw_error_format(pCtx, E_DEPRECATED,` |
-|         - | 6358 | `				"Implicit conversion from float %g to int loses precision",` |
-|         2 | 6359 | `				d` |
-|         - | 6360 | `				);` |
-|         2 | 6361 | `		}` |
-|         2 | 6362 | `	}` |
-|         - | 6363 |  |
-|         - | 6364 | `	/* Total number of entries to insert */` |
-|       236 | 6365 | `	nEntry = ph7_value_to_int(apArg[1]);` |
-|         - | 6366 | `	/* Reject negative counts with a ValueError like PHP. */` |
-|       236 | 6367 | `	if( nEntry < 0 ){` |
-|         3 | 6368 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6369 | `			"ValueError",` |
-|         - | 6370 | `			"array_fill(): Argument #2 ($count) must be greater than or equal to 0"` |
-|         - | 6371 | `			);` |
-|         - | 6372 | `	}` |
-|         - | 6373 |  |
-|         - | 6374 | `	/* If zero elements were requested, return an empty array without allocating */` |
-|       233 | 6375 | `	if( nEntry == 0 ){` |
-|         7 | 6376 | `		ph7_result_value(pCtx, ph7_context_new_array(pCtx));` |
-|         7 | 6377 | `		return PH7_OK;` |
-|         - | 6378 | `	}` |
-|         - | 6379 |  |
-|         - | 6380 | `	/* Create a new array */` |
-|       227 | 6381 | `	pArray = ph7_context_new_array(pCtx);` |
-|       227 | 6382 | `	if( pArray == 0 ){` |
-|       ! 0 | 6383 | `		return PH7_ContextMemoryError(pCtx);` |
-|         - | 6384 | `	}` |
-|         - | 6385 |  |
-|         - | 6386 | `	/* PHP 8 fills consecutive integer keys start_index, start_index+1, … even` |
-|         - | 6387 | `	 * when start_index is negative (PHP 7 restarted the remaining keys from 0,` |
-|         - | 6388 | `	 * so array_fill(-5,3) gave -5,0,1 instead of -5,-4,-3). Assign each key` |
-|         - | 6389 | `	 * explicitly rather than relying on automatic (append) indexing. */` |
-|       227 | 6390 | `	int iStart = ph7_value_to_int(apArg[0]);` |
-|   2117831 | 6391 | `	for( i = 0 ; i < nEntry ; i++ ){` |
-|   2117605 | 6392 | `		if( ph7_array_add_intkey_elem(pArray, iStart + i, apArg[2]) != SXRET_OK ){` |
-|         - | 6393 | `			/* Allocation failure: surface a fatal instead of a partial array */` |
-|       ! 0 | 6394 | `			return PH7_ContextMemoryError(pCtx);` |
-|         - | 6395 | `		}` |
-|   1058803 | 6396 | `	}` |
-|         - | 6397 | `	/* Return the filled array */` |
-|       227 | 6398 | `	ph7_result_value(pCtx, pArray);` |
-|       227 | 6399 | `	return PH7_OK;` |
-|       124 | 6400 | `}` |
-|         - | 6401 | `/*` |
-|         - | 6402 | ` * array array_fill_keys(array $input,mixed $value)` |
-|         - | 6403 | ` *  Fill an array with values, specifying keys.` |
-|         - | 6404 | ` * Parameters` |
-|         - | 6405 | ` *  $input` |
-|         - | 6406 | ` *   Array of values that will be used as key.` |
-|         - | 6407 | ` *  $value` |
-|         - | 6408 | ` *    Value to use for filling.` |
-|         - | 6409 | ` * Return` |
-|         - | 6410 | ` *  The filled array.` |
-|         - | 6411 | ` * Throws` |
-|         - | 6412 | ` *  ValueError if $input is not an array.` |
-|         - | 6413 | ` */` |
-|        22 | 6414 | `static int ph7_hashmap_fill_keys(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         3 | 6415 | `{` |
-|         - | 6416 | `	ph7_hashmap_node *pEntry;` |
-|         - | 6417 | `	ph7_hashmap *pSrc;` |
-|         - | 6418 | `	ph7_value *pArray;` |
-|         - | 6419 | `	sxu32 n;` |
-|         - | 6420 | `	/* PHP enforces exactly 2 arguments. */` |
-|        25 | 6421 | `	if( nArg != 2 ){` |
-|         4 | 6422 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6423 | `			"ArgumentCountError",` |
-|         - | 6424 | `			"array_fill_keys() expects exactly 2 arguments, %d given",` |
-|         1 | 6425 | `			nArg` |
-|         - | 6426 | `			);` |
-|         - | 6427 | `	}` |
-|         - | 6428 | `	/* Make sure we are dealing with a valid hashmap */` |
-|        23 | 6429 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         8 | 6430 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6431 | `			"TypeError",` |
-|         - | 6432 | `			"array_fill_keys(): Argument #1 ($keys) must be of type array, %s given",` |
-|         2 | 6433 | `			ph7_type_name(apArg[0])` |
-|         - | 6434 | `			);` |
-|         - | 6435 | `	}` |
-|         - | 6436 | `	/* Point to the internal representation of the input hashmap */` |
-|        17 | 6437 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 6438 | `	/* Create a new array */` |
-|        17 | 6439 | `	pArray = ph7_context_new_array(pCtx);` |
-|        17 | 6440 | `	if( pArray == 0 ){` |
-|       ! 0 | 6441 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 6442 | `		return PH7_OK;` |
-|         - | 6443 | `	}` |
-|         - | 6444 | `	/* Perform the requested operation */` |
-|        17 | 6445 | `	pEntry = pSrc->pFirst;` |
-|        45 | 6446 | `	for( n = 0 ; n < pSrc->nEntry ; n++ ){` |
-|        29 | 6447 | `		ph7_array_add_elem(pArray,HashmapExtractNodeValue(pEntry),apArg[1]);` |
-|         - | 6448 | `		/* Point to the next entry */` |
-|        29 | 6449 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|        15 | 6450 | `	}` |
-|         - | 6451 | `	/* Return the filled array */` |
-|        17 | 6452 | `	ph7_result_value(pCtx,pArray);` |
-|        17 | 6453 | `	return PH7_OK;` |
-|        14 | 6454 | `}` |
-|         - | 6455 | `/*` |
-|         - | 6456 | ` * array array_combine(array $keys,array $values)` |
-|         - | 6457 | ` *  Creates an array by using one array for keys and another for its values.` |
-|         - | 6458 | ` * Parameters` |
-|         - | 6459 | ` *  $keys` |
-|         - | 6460 | ` *    Array of keys to be used.` |
-|         - | 6461 | ` * $values` |
-|         - | 6462 | ` *   Array of values to be used.` |
-|         - | 6463 | ` * Return` |
-|         - | 6464 | ` *  Returns the combined array. Otherwise FALSE if the number of elements` |
-|         - | 6465 | ` *  for each array isn't equal or if one of the given arguments is` |
-|         - | 6466 | ` *  not an array.` |
-|         - | 6467 | ` */` |
-|        16 | 6468 | `static int ph7_hashmap_combine(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         4 | 6469 | `{` |
-|         - | 6470 | `	ph7_hashmap_node *pKe,*pVe;` |
-|         - | 6471 | `	ph7_hashmap *pKey,*pValue;` |
-|         - | 6472 | `	ph7_value *pArray;` |
-|         - | 6473 | `	sxu32 n;` |
-|         - | 6474 | `	/* PHP enforces argument count and type checks. */` |
-|        20 | 6475 | `	if( nArg != 2 ){` |
-|         - | 6476 | `		/* wrong number of arguments -> ArgumentCountError */` |
-|       ! 0 | 6477 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6478 | `			"ArgumentCountError",` |
-|         - | 6479 | `			"array_combine() expects exactly 2 arguments, %d given",` |
-|       ! 0 | 6480 | `			nArg` |
-|         - | 6481 | `			);` |
-|         - | 6482 | `	}` |
-|         - | 6483 | `	/* Validate argument types individually so we can report the correct` |
-|         - | 6484 | `	 * argument index in the error message. */` |
-|        20 | 6485 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 6486 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6487 | `			"TypeError",` |
-|         - | 6488 | `			"array_combine(): Argument #1 ($keys) must be of type array, %s given",` |
-|         1 | 6489 | `			ph7_type_name(apArg[0])` |
+|         - | 6200 | `				"array_uintersect(): Argument #%d must be a valid callback, no array or string given",` |
+|       ! 0 | 6201 | `				nArg` |
+|         - | 6202 | `				);` |
+|         - | 6203 | `		}` |
+|         6 | 6204 | `		if( ph7_value_is_string(pCallback) ){` |
+|         - | 6205 | `			int len;` |
+|         3 | 6206 | `			const char *zName = ph7_value_to_string(pCallback, &len);` |
+|         4 | 6207 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 6208 | `				"TypeError",` |
+|         - | 6209 | `				"array_uintersect(): Argument #%d must be a valid callback, function \"%s\" not found or invalid function name",` |
+|         1 | 6210 | `				nArg,` |
+|         1 | 6211 | `				zName` |
+|         - | 6212 | `				);` |
+|         - | 6213 | `		}` |
+|         4 | 6214 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 6215 | `			"TypeError",` |
+|         - | 6216 | `			"array_uintersect(): Argument #%d must be a valid callback, no array or string given",` |
+|         1 | 6217 | `			nArg` |
+|         - | 6218 | `			);` |
+|         - | 6219 | `	}` |
+|         - | 6220 |  |
+|        11 | 6221 | `	if( nArg == 2 ){` |
+|         - | 6222 | `		/* Only the original array and the callback were provided. */` |
+|         5 | 6223 | `		ph7_result_value(pCtx,apArg[0]);` |
+|         5 | 6224 | `		return PH7_OK;` |
+|         - | 6225 | `	}` |
+|         - | 6226 |  |
+|         - | 6227 | `	/* Create a new array */` |
+|         7 | 6228 | `	pArray = ph7_context_new_array(pCtx);` |
+|         7 | 6229 | `	if( pArray == 0 ){` |
+|       ! 0 | 6230 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 6231 | `		return PH7_OK;` |
+|         - | 6232 | `	}` |
+|         - | 6233 | `	/* Point to the internal representation of the source hashmap */` |
+|         7 | 6234 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 6235 | `	/* Perform the intersection */` |
+|         7 | 6236 | `	pEntry = pSrc->pFirst;` |
+|         7 | 6237 | `	n = pSrc->nEntry;` |
+|         7 | 6238 | `	pCtx->pVm->iCmpCallbackExc = 0;` |
+|         9 | 6239 | `	for(;;){` |
+|        19 | 6240 | `		if( n < 1 ){` |
+|         5 | 6241 | `			break;` |
+|         - | 6242 | `		}` |
+|         - | 6243 | `		/* Extract the node value */` |
+|        15 | 6244 | `		pVal = HashmapExtractNodeValue(pEntry);` |
+|        15 | 6245 | `		if( pVal ){` |
+|        23 | 6246 | `			for( i = 1 ; i < nArg - 1; i++ ){` |
+|        15 | 6247 | `				if( !ph7_value_is_array(apArg[i])) {` |
+|         - | 6248 | `					/* ignore */` |
+|       ! 0 | 6249 | `					continue;` |
+|         - | 6250 | `				}` |
+|         - | 6251 | `				/* Point to the internal representation of the hashmap */` |
+|        15 | 6252 | `				pMap = (ph7_hashmap *)apArg[i]->x.pOther;` |
+|         - | 6253 | `				/* Perform the lookup */` |
+|        15 | 6254 | `				rc = HashmapFindValueByCallback(pMap,pVal,pCallback,0);` |
+|        15 | 6255 | `				if( rc != SXRET_OK ){` |
+|         - | 6256 | `					/* Value does not exist */` |
+|         7 | 6257 | `					break;` |
+|         - | 6258 | `				}` |
+|         5 | 6259 | `			}` |
+|        15 | 6260 | `			if( i >= (nArg-1) ){` |
+|         - | 6261 | `				/* Perform the insertion */` |
+|         9 | 6262 | `				HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);` |
+|         4 | 6263 | `			}` |
+|         7 | 6264 | `		}` |
+|        15 | 6265 | `		if( pCtx->pVm->iCmpCallbackExc ){` |
+|         - | 6266 | `			/* The comparison callback raised: propagate so the dispatcher unwinds. */` |
+|         3 | 6267 | `			pCtx->pVm->iCmpCallbackExc = 0;` |
+|         3 | 6268 | `			return PH7_EXCEPTION;` |
+|         - | 6269 | `		}` |
+|         - | 6270 | `		/* Point to the next entry */` |
+|        13 | 6271 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|        13 | 6272 | `		n--;` |
+|         1 | 6273 | `	}` |
+|         - | 6274 | `	/* Return the freshly created array */` |
+|         5 | 6275 | `	ph7_result_value(pCtx,pArray);` |
+|         5 | 6276 | `	return PH7_OK;` |
+|        17 | 6277 | `}` |
+|         - | 6278 | `/*` |
+|         - | 6279 | ` * array array_fill(int $start_index,int $num,var $value)` |
+|         - | 6280 | ` *  Fill an array with values.` |
+|         - | 6281 | ` * Parameters` |
+|         - | 6282 | ` *  $start_index` |
+|         - | 6283 | ` *    The first index of the returned array.` |
+|         - | 6284 | ` *  $num` |
+|         - | 6285 | ` *   Number of elements to insert.` |
+|         - | 6286 | ` *  $value` |
+|         - | 6287 | ` *    Value to use for filling.` |
+|         - | 6288 | ` * Return` |
+|         - | 6289 | ` *  The filled array or null on failure.` |
+|         - | 6290 | ` */` |
+|       240 | 6291 | `static int ph7_hashmap_fill(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         4 | 6292 | `{` |
+|         - | 6293 | `	ph7_value *pArray;` |
+|         - | 6294 | `	int i,nEntry;` |
+|         - | 6295 |  |
+|         - | 6296 | `	/* PHP enforces argument count and type checks. */` |
+|       244 | 6297 | `	if( nArg != 3 ){` |
+|         - | 6298 | `		/* wrong number of arguments -> ArgumentCountError */` |
+|         4 | 6299 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 6300 | `			"ArgumentCountError",` |
+|         - | 6301 | `			"array_fill() expects exactly 3 arguments, %d given",` |
+|         1 | 6302 | `			nArg` |
+|         - | 6303 | `			);` |
+|         - | 6304 | `	}` |
+|         - | 6305 |  |
+|         - | 6306 | `	/* Argument #1: start index must be convertible to int.  Accept booleans,` |
+|         - | 6307 | `	 * floats, and numeric strings (including those with decimal point) by` |
+|         - | 6308 | `	 * allowing them through the conversion.  Only arrays, objects, resources` |
+|         - | 6309 | `	 * and NULLs are rejected outright. */` |
+|       357 | 6310 | `	if( ph7_value_is_array(apArg[0]) \|\| ph7_value_is_object(apArg[0]) \|\|` |
+|       361 | 6311 | `		ph7_value_is_resource(apArg[0]) \|\| ph7_value_is_null(apArg[0]) ){` |
+|       ! 0 | 6312 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 6313 | `			"TypeError",` |
+|         - | 6314 | `			"array_fill(): Argument #1 ($start_index) must be of type int, %s given",` |
+|       ! 0 | 6315 | `			ph7_type_name(apArg[0])` |
+|         - | 6316 | `			);` |
+|         - | 6317 | `	}` |
+|       242 | 6318 | `	if( ph7_value_is_string(apArg[0]) ){` |
+|         - | 6319 | `		int len;` |
+|         8 | 6320 | `		sxu8 bReal = FALSE;` |
+|         8 | 6321 | `		const char *zStr = ph7_value_to_string(apArg[0], &len);` |
+|         8 | 6322 | `		if( SyStrIsNumeric(zStr, len, &bReal, 0) != SXRET_OK ){` |
+|         - | 6323 | `			/* Non‑numeric string is an error. */` |
+|         3 | 6324 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 6325 | `				"TypeError",` |
+|         - | 6326 | `				"array_fill(): Argument #1 ($start_index) must be of type int, string given"` |
+|         - | 6327 | `				);` |
+|         - | 6328 | `		}` |
+|         5 | 6329 | `		if( bReal ){` |
+|         - | 6330 | `			/* float-string -> deprecation warning */` |
+|         4 | 6331 | `			ph7_context_throw_error_format(pCtx, E_DEPRECATED,` |
+|         - | 6332 | `				"Implicit conversion from float-string \"%s\" to int loses precision",` |
+|         1 | 6333 | `				zStr` |
+|         - | 6334 | `				);` |
+|         1 | 6335 | `		}` |
+|         2 | 6336 | `	}` |
+|         - | 6337 |  |
+|         - | 6338 | `	/* Argument #2: count must be convertible to non-negative int.  Allow booleans,` |
+|         - | 6339 | `	 * floats and numeric strings; reject arrays, objects, resources and NULL. */` |
+|       354 | 6340 | `	if( ph7_value_is_array(apArg[1]) \|\| ph7_value_is_object(apArg[1]) \|\|` |
+|       357 | 6341 | `		ph7_value_is_resource(apArg[1]) \|\| ph7_value_is_null(apArg[1]) ){` |
+|       ! 0 | 6342 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 6343 | `			"TypeError",` |
+|         - | 6344 | `			"array_fill(): Argument #2 ($count) must be of type int, %s given",` |
+|       ! 0 | 6345 | `			ph7_type_name(apArg[1])` |
+|         - | 6346 | `			);` |
+|         - | 6347 | `	}` |
+|       239 | 6348 | `	if( ph7_value_is_string(apArg[1]) ){` |
+|         - | 6349 | `		int len;` |
+|         3 | 6350 | `		sxu8 bReal = FALSE;` |
+|         3 | 6351 | `		const char *zStr = ph7_value_to_string(apArg[1], &len);` |
+|         3 | 6352 | `		if( SyStrIsNumeric(zStr, len, &bReal, 0) != SXRET_OK ){` |
+|         3 | 6353 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 6354 | `				"TypeError",` |
+|         - | 6355 | `				"array_fill(): Argument #2 ($count) must be of type int, string given"` |
+|         - | 6356 | `				);` |
+|         - | 6357 | `		}` |
+|       ! 0 | 6358 | `	}` |
+|         - | 6359 | `	/* Note: booleans and floats (including fractional) are now accepted; they` |
+|         - | 6360 | `	 * will be converted by ph7_value_to_int below. */` |
+|       236 | 6361 | `	if( ph7_value_is_float(apArg[1]) ){` |
+|         5 | 6362 | `		double d = ph7_value_to_double(apArg[1]);` |
+|         - | 6363 | `		/* avoid hiding outer 'i' (loop index) */` |
+|         5 | 6364 | `		sxi64 i64 = (sxi64)d;` |
+|         5 | 6365 | `		if( d != (double)i64 ){` |
+|         7 | 6366 | `			ph7_context_throw_error_format(pCtx, E_DEPRECATED,` |
+|         - | 6367 | `				"Implicit conversion from float %g to int loses precision",` |
+|         2 | 6368 | `				d` |
+|         - | 6369 | `				);` |
+|         2 | 6370 | `		}` |
+|         2 | 6371 | `	}` |
+|         - | 6372 |  |
+|         - | 6373 | `	/* Total number of entries to insert */` |
+|       236 | 6374 | `	nEntry = ph7_value_to_int(apArg[1]);` |
+|         - | 6375 | `	/* Reject negative counts with a ValueError like PHP. */` |
+|       236 | 6376 | `	if( nEntry < 0 ){` |
+|         3 | 6377 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 6378 | `			"ValueError",` |
+|         - | 6379 | `			"array_fill(): Argument #2 ($count) must be greater than or equal to 0"` |
+|         - | 6380 | `			);` |
+|         - | 6381 | `	}` |
+|         - | 6382 |  |
+|         - | 6383 | `	/* If zero elements were requested, return an empty array without allocating */` |
+|       233 | 6384 | `	if( nEntry == 0 ){` |
+|         7 | 6385 | `		ph7_result_value(pCtx, ph7_context_new_array(pCtx));` |
+|         7 | 6386 | `		return PH7_OK;` |
+|         - | 6387 | `	}` |
+|         - | 6388 |  |
+|         - | 6389 | `	/* Create a new array */` |
+|       227 | 6390 | `	pArray = ph7_context_new_array(pCtx);` |
+|       227 | 6391 | `	if( pArray == 0 ){` |
+|       ! 0 | 6392 | `		return PH7_ContextMemoryError(pCtx);` |
+|         - | 6393 | `	}` |
+|         - | 6394 |  |
+|         - | 6395 | `	/* PHP 8 fills consecutive integer keys start_index, start_index+1, … even` |
+|         - | 6396 | `	 * when start_index is negative (PHP 7 restarted the remaining keys from 0,` |
+|         - | 6397 | `	 * so array_fill(-5,3) gave -5,0,1 instead of -5,-4,-3). Assign each key` |
+|         - | 6398 | `	 * explicitly rather than relying on automatic (append) indexing. */` |
+|       227 | 6399 | `	int iStart = ph7_value_to_int(apArg[0]);` |
+|   2117831 | 6400 | `	for( i = 0 ; i < nEntry ; i++ ){` |
+|   2117605 | 6401 | `		if( ph7_array_add_intkey_elem(pArray, iStart + i, apArg[2]) != SXRET_OK ){` |
+|         - | 6402 | `			/* Allocation failure: surface a fatal instead of a partial array */` |
+|       ! 0 | 6403 | `			return PH7_ContextMemoryError(pCtx);` |
+|         - | 6404 | `		}` |
+|   1058803 | 6405 | `	}` |
+|         - | 6406 | `	/* Return the filled array */` |
+|       227 | 6407 | `	ph7_result_value(pCtx, pArray);` |
+|       227 | 6408 | `	return PH7_OK;` |
+|       124 | 6409 | `}` |
+|         - | 6410 | `/*` |
+|         - | 6411 | ` * array array_fill_keys(array $input,mixed $value)` |
+|         - | 6412 | ` *  Fill an array with values, specifying keys.` |
+|         - | 6413 | ` * Parameters` |
+|         - | 6414 | ` *  $input` |
+|         - | 6415 | ` *   Array of values that will be used as key.` |
+|         - | 6416 | ` *  $value` |
+|         - | 6417 | ` *    Value to use for filling.` |
+|         - | 6418 | ` * Return` |
+|         - | 6419 | ` *  The filled array.` |
+|         - | 6420 | ` * Throws` |
+|         - | 6421 | ` *  ValueError if $input is not an array.` |
+|         - | 6422 | ` */` |
+|        22 | 6423 | `static int ph7_hashmap_fill_keys(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         3 | 6424 | `{` |
+|         - | 6425 | `	ph7_hashmap_node *pEntry;` |
+|         - | 6426 | `	ph7_hashmap *pSrc;` |
+|         - | 6427 | `	ph7_value *pArray;` |
+|         - | 6428 | `	sxu32 n;` |
+|         - | 6429 | `	/* PHP enforces exactly 2 arguments. */` |
+|        25 | 6430 | `	if( nArg != 2 ){` |
+|         4 | 6431 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 6432 | `			"ArgumentCountError",` |
+|         - | 6433 | `			"array_fill_keys() expects exactly 2 arguments, %d given",` |
+|         1 | 6434 | `			nArg` |
+|         - | 6435 | `			);` |
+|         - | 6436 | `	}` |
+|         - | 6437 | `	/* Make sure we are dealing with a valid hashmap */` |
+|        23 | 6438 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         8 | 6439 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 6440 | `			"TypeError",` |
+|         - | 6441 | `			"array_fill_keys(): Argument #1 ($keys) must be of type array, %s given",` |
+|         2 | 6442 | `			ph7_type_name(apArg[0])` |
+|         - | 6443 | `			);` |
+|         - | 6444 | `	}` |
+|         - | 6445 | `	/* Point to the internal representation of the input hashmap */` |
+|        17 | 6446 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 6447 | `	/* Create a new array */` |
+|        17 | 6448 | `	pArray = ph7_context_new_array(pCtx);` |
+|        17 | 6449 | `	if( pArray == 0 ){` |
+|       ! 0 | 6450 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 6451 | `		return PH7_OK;` |
+|         - | 6452 | `	}` |
+|         - | 6453 | `	/* Perform the requested operation */` |
+|        17 | 6454 | `	pEntry = pSrc->pFirst;` |
+|        45 | 6455 | `	for( n = 0 ; n < pSrc->nEntry ; n++ ){` |
+|        29 | 6456 | `		ph7_array_add_elem(pArray,HashmapExtractNodeValue(pEntry),apArg[1]);` |
+|         - | 6457 | `		/* Point to the next entry */` |
+|        29 | 6458 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|        15 | 6459 | `	}` |
+|         - | 6460 | `	/* Return the filled array */` |
+|        17 | 6461 | `	ph7_result_value(pCtx,pArray);` |
+|        17 | 6462 | `	return PH7_OK;` |
+|        14 | 6463 | `}` |
+|         - | 6464 | `/*` |
+|         - | 6465 | ` * array array_combine(array $keys,array $values)` |
+|         - | 6466 | ` *  Creates an array by using one array for keys and another for its values.` |
+|         - | 6467 | ` * Parameters` |
+|         - | 6468 | ` *  $keys` |
+|         - | 6469 | ` *    Array of keys to be used.` |
+|         - | 6470 | ` * $values` |
+|         - | 6471 | ` *   Array of values to be used.` |
+|         - | 6472 | ` * Return` |
+|         - | 6473 | ` *  Returns the combined array. Otherwise FALSE if the number of elements` |
+|         - | 6474 | ` *  for each array isn't equal or if one of the given arguments is` |
+|         - | 6475 | ` *  not an array.` |
+|         - | 6476 | ` */` |
+|        16 | 6477 | `static int ph7_hashmap_combine(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         4 | 6478 | `{` |
+|         - | 6479 | `	ph7_hashmap_node *pKe,*pVe;` |
+|         - | 6480 | `	ph7_hashmap *pKey,*pValue;` |
+|         - | 6481 | `	ph7_value *pArray;` |
+|         - | 6482 | `	sxu32 n;` |
+|         - | 6483 | `	/* PHP enforces argument count and type checks. */` |
+|        20 | 6484 | `	if( nArg != 2 ){` |
+|         - | 6485 | `		/* wrong number of arguments -> ArgumentCountError */` |
+|       ! 0 | 6486 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 6487 | `			"ArgumentCountError",` |
+|         - | 6488 | `			"array_combine() expects exactly 2 arguments, %d given",` |
+|       ! 0 | 6489 | `			nArg` |
 |         - | 6490 | `			);` |
 |         - | 6491 | `	}` |
-|        17 | 6492 | `	if( !ph7_value_is_array(apArg[1]) ){` |
-|         4 | 6493 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6494 | `			"TypeError",` |
-|         - | 6495 | `			"array_combine(): Argument #2 ($values) must be of type array, %s given",` |
-|         2 | 6496 | `			ph7_type_name(apArg[1])` |
-|         - | 6497 | `			);` |
-|         - | 6498 | `	}` |
-|         - | 6499 | `	/* Point to the internal representation of the input hashmaps */` |
-|        14 | 6500 | `	pKey   = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|        14 | 6501 | `	pValue = (ph7_hashmap *)apArg[1]->x.pOther;` |
-|        14 | 6502 | `	if( pKey->nEntry != pValue->nEntry ){` |
-|         - | 6503 | `		/* Length mismatch -> ValueError */` |
-|         3 | 6504 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6505 | `			"ValueError",` |
-|         - | 6506 | `			"array_combine(): Argument #1 ($keys) and argument #2 ($values) must have the same number of elements"` |
-|         - | 6507 | `			);` |
-|         - | 6508 | `	}` |
-|         - | 6509 | `	/* Create a new array */` |
-|        11 | 6510 | `	pArray = ph7_context_new_array(pCtx);` |
-|        11 | 6511 | `	if( pArray == 0 ){` |
-|       ! 0 | 6512 | `		ph7_result_bool(pCtx,0);` |
-|       ! 0 | 6513 | `		return PH7_OK;` |
-|         - | 6514 | `	}` |
-|         - | 6515 | `	/* Perform the requested operation */` |
-|        11 | 6516 | `	pKe = pKey->pFirst;` |
-|        11 | 6517 | `	pVe = pValue->pFirst;` |
-|        33 | 6518 | `	for( n = 0 ; n < pKey->nEntry ; n++ ){` |
-|        23 | 6519 | `		ph7_value *pKeyVal = HashmapExtractNodeValue(pKe);` |
-|        23 | 6520 | `		ph7_value *pValVal = HashmapExtractNodeValue(pVe);` |
-|         - | 6521 | `		/* PHP treats floats used as keys in array_combine differently than` |
-|         - | 6522 | `		 * ordinary offset access: the float is stringified rather than` |
-|         - | 6523 | `		 * truncated.  To emulate this behavior we create a temporary copy of` |
-|         - | 6524 | `		 * the value when it is a float and convert the copy to string.  The` |
-|         - | 6525 | `		 * original array must not be mutated. */` |
-|        23 | 6526 | `		ph7_value *pKeyCopy = pKeyVal;` |
-|        23 | 6527 | `		if( ph7_value_is_float(pKeyVal) ){` |
-|         5 | 6528 | `			ph7_value *pTmpKey = ph7_context_new_scalar(pCtx);` |
-|         5 | 6529 | `			if( pTmpKey ){` |
-|         5 | 6530 | `				PH7_MemObjStore(pKeyVal,pTmpKey);` |
-|         - | 6531 | `				/* Convert copy to string so it becomes "1.5" or "2" etc. */` |
-|         5 | 6532 | `				PH7_MemObjToString(pTmpKey);` |
-|         5 | 6533 | `				pKeyCopy = pTmpKey;` |
-|         2 | 6534 | `			}` |
-|         2 | 6535 | `		}` |
-|        23 | 6536 | `		ph7_array_add_elem(pArray,pKeyCopy,pValVal);` |
-|         - | 6537 | `		/* Point to the next entry */` |
-|        23 | 6538 | `		pKe = pKe->pPrev; /* Reverse link */` |
-|        23 | 6539 | `		pVe = pVe->pPrev;` |
-|        12 | 6540 | `	}` |
-|         - | 6541 | `	/* Return the filled array */` |
-|        11 | 6542 | `	ph7_result_value(pCtx,pArray);` |
-|        11 | 6543 | `	return PH7_OK;` |
-|        12 | 6544 | `}` |
-|         - | 6545 | `/*` |
-|         - | 6546 | ` * array array_reverse(array $array [,bool $preserve_keys = false ])` |
-|         - | 6547 | ` *  Return an array with elements in reverse order.` |
-|         - | 6548 | ` * Parameters` |
-|         - | 6549 | ` *  $array` |
-|         - | 6550 | ` *   The input array.` |
-|         - | 6551 | ` *  $preserve_keys (optional)` |
-|         - | 6552 | ` *   If set to TRUE keys are preserved.` |
-|         - | 6553 | ` * Return` |
-|         - | 6554 | ` *  The reversed array.` |
-|         - | 6555 | ` */` |
-|        18 | 6556 | `static int ph7_hashmap_reverse(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         2 | 6557 | `{` |
-|         - | 6558 | `	ph7_hashmap_node *pEntry;` |
-|         - | 6559 | `	ph7_hashmap *pSrc;` |
-|         - | 6560 | `	ph7_value *pArray;` |
-|         - | 6561 | `	int bPreserve;` |
-|         - | 6562 | `	sxu32 n;` |
-|        20 | 6563 | `	if( nArg < 1 ){` |
-|       ! 0 | 6564 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6565 | `			"ArgumentCountError",` |
-|         - | 6566 | `			"array_reverse() expects at least 1 argument, %d given",` |
-|       ! 0 | 6567 | `			nArg` |
-|         - | 6568 | `			);` |
-|         - | 6569 | `	}` |
-|         - | 6570 | `	/* Make sure we are dealing with a valid hashmap */` |
-|        20 | 6571 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 6572 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6573 | `			"TypeError",` |
-|         - | 6574 | `			"array_reverse(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 6575 | `			ph7_type_name(apArg[0])` |
-|         - | 6576 | `			);` |
-|         - | 6577 | `	}` |
-|        17 | 6578 | `	bPreserve = FALSE;` |
-|        17 | 6579 | `	if( nArg > 1 ){` |
-|         7 | 6580 | `		bPreserve = ph7_value_to_bool(apArg[1]);` |
-|         3 | 6581 | `	}` |
-|         - | 6582 | `	/* Point to the internal representation of the input hashmap */` |
-|        17 | 6583 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 6584 | `	/* Create a new array */` |
-|        17 | 6585 | `	pArray = ph7_context_new_array(pCtx);` |
-|        17 | 6586 | `	if( pArray == 0 ){` |
-|       ! 0 | 6587 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 6588 | `		return PH7_OK;` |
-|         - | 6589 | `	}` |
-|         - | 6590 | `	/* Perform the requested operation */` |
-|        17 | 6591 | `	pEntry = pSrc->pLast;` |
-|        55 | 6592 | `	for( n = 0 ; n < pSrc->nEntry ; n++ ){` |
-|         - | 6593 | `		/* String keys are always preserved; preserve_keys only affects int keys */` |
-|        39 | 6594 | `		int bKeep = (pEntry->iType == HASHMAP_INT_NODE) ? bPreserve : TRUE;` |
-|        39 | 6595 | `		HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,bKeep);` |
-|         - | 6596 | `		/* Point to the previous entry */` |
-|        39 | 6597 | `		pEntry = pEntry->pNext; /* Reverse link */` |
-|        20 | 6598 | `	}` |
-|        17 | 6599 | `	ph7_result_value(pCtx,pArray);` |
-|        17 | 6600 | `	return PH7_OK;` |
-|        11 | 6601 | `}` |
-|         - | 6602 | `/*` |
-|         - | 6603 | ` * array array_unique(array $array, int $flags = SORT_STRING)` |
-|         - | 6604 | ` *  Removes duplicate values from an array.` |
-|         - | 6605 | ` * Parameters` |
-|         - | 6606 | ` *  $array` |
-|         - | 6607 | ` *   The input array.` |
-|         - | 6608 | ` *  $flags` |
-|         - | 6609 | ` *   The optional second parameter may be used to modify the comparison` |
-|         - | 6610 | ` *   behavior using these values:` |
-|         - | 6611 | ` *     SORT_REGULAR - compare items normally (don't change types)` |
-|         - | 6612 | ` *     SORT_NUMERIC - compare items numerically` |
-|         - | 6613 | ` *     SORT_STRING  - compare items as strings` |
-|         - | 6614 | ` * Return` |
-|         - | 6615 | ` *  The filtered array.` |
-|         - | 6616 | ` */` |
-|        36 | 6617 | `static int ph7_hashmap_unique(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         3 | 6618 | `{` |
-|         - | 6619 | `	ph7_hashmap_node *pEntry;` |
-|         - | 6620 | `	ph7_value *pNeedle;` |
-|         - | 6621 | `	ph7_hashmap *pSrc;` |
-|         - | 6622 | `	ph7_value *pArray;` |
-|         - | 6623 | `	int iFlags,base,bFold;` |
-|         - | 6624 | `	sxu32 n;` |
-|        39 | 6625 | `	if( nArg < 1 ){` |
-|         - | 6626 | `		/* Missing arguments, throw ArgumentCountError */` |
-|       ! 0 | 6627 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6628 | `			"ArgumentCountError",` |
-|         - | 6629 | `			"array_unique() expects at least 1 argument, 0 given"` |
-|         - | 6630 | `			);` |
-|         - | 6631 | `	}` |
-|        39 | 6632 | `	if( nArg > 2 ){` |
-|         - | 6633 | `		/* Too many arguments, throw ArgumentCountError */` |
-|         4 | 6634 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6635 | `			"ArgumentCountError",` |
-|         - | 6636 | `			"array_unique() expects at most 2 arguments, %d given",` |
-|         1 | 6637 | `			nArg` |
-|         - | 6638 | `			);` |
-|         - | 6639 | `	}` |
-|         - | 6640 | `	/* Make sure we are dealing with a valid hashmap */` |
-|        36 | 6641 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         - | 6642 | `		/* Type mismatch, throw TypeError */` |
+|         - | 6492 | `	/* Validate argument types individually so we can report the correct` |
+|         - | 6493 | `	 * argument index in the error message. */` |
+|        20 | 6494 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         4 | 6495 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 6496 | `			"TypeError",` |
+|         - | 6497 | `			"array_combine(): Argument #1 ($keys) must be of type array, %s given",` |
+|         1 | 6498 | `			ph7_type_name(apArg[0])` |
+|         - | 6499 | `			);` |
+|         - | 6500 | `	}` |
+|        17 | 6501 | `	if( !ph7_value_is_array(apArg[1]) ){` |
+|         4 | 6502 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 6503 | `			"TypeError",` |
+|         - | 6504 | `			"array_combine(): Argument #2 ($values) must be of type array, %s given",` |
+|         2 | 6505 | `			ph7_type_name(apArg[1])` |
+|         - | 6506 | `			);` |
+|         - | 6507 | `	}` |
+|         - | 6508 | `	/* Point to the internal representation of the input hashmaps */` |
+|        14 | 6509 | `	pKey   = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|        14 | 6510 | `	pValue = (ph7_hashmap *)apArg[1]->x.pOther;` |
+|        14 | 6511 | `	if( pKey->nEntry != pValue->nEntry ){` |
+|         - | 6512 | `		/* Length mismatch -> ValueError */` |
+|         3 | 6513 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 6514 | `			"ValueError",` |
+|         - | 6515 | `			"array_combine(): Argument #1 ($keys) and argument #2 ($values) must have the same number of elements"` |
+|         - | 6516 | `			);` |
+|         - | 6517 | `	}` |
+|         - | 6518 | `	/* Create a new array */` |
+|        11 | 6519 | `	pArray = ph7_context_new_array(pCtx);` |
+|        11 | 6520 | `	if( pArray == 0 ){` |
+|       ! 0 | 6521 | `		ph7_result_bool(pCtx,0);` |
+|       ! 0 | 6522 | `		return PH7_OK;` |
+|         - | 6523 | `	}` |
+|         - | 6524 | `	/* Perform the requested operation */` |
+|        11 | 6525 | `	pKe = pKey->pFirst;` |
+|        11 | 6526 | `	pVe = pValue->pFirst;` |
+|        33 | 6527 | `	for( n = 0 ; n < pKey->nEntry ; n++ ){` |
+|        23 | 6528 | `		ph7_value *pKeyVal = HashmapExtractNodeValue(pKe);` |
+|        23 | 6529 | `		ph7_value *pValVal = HashmapExtractNodeValue(pVe);` |
+|         - | 6530 | `		/* PHP treats floats used as keys in array_combine differently than` |
+|         - | 6531 | `		 * ordinary offset access: the float is stringified rather than` |
+|         - | 6532 | `		 * truncated.  To emulate this behavior we create a temporary copy of` |
+|         - | 6533 | `		 * the value when it is a float and convert the copy to string.  The` |
+|         - | 6534 | `		 * original array must not be mutated. */` |
+|        23 | 6535 | `		ph7_value *pKeyCopy = pKeyVal;` |
+|        23 | 6536 | `		if( ph7_value_is_float(pKeyVal) ){` |
+|         5 | 6537 | `			ph7_value *pTmpKey = ph7_context_new_scalar(pCtx);` |
+|         5 | 6538 | `			if( pTmpKey ){` |
+|         5 | 6539 | `				PH7_MemObjStore(pKeyVal,pTmpKey);` |
+|         - | 6540 | `				/* Convert copy to string so it becomes "1.5" or "2" etc. */` |
+|         5 | 6541 | `				PH7_MemObjToString(pTmpKey);` |
+|         5 | 6542 | `				pKeyCopy = pTmpKey;` |
+|         2 | 6543 | `			}` |
+|         2 | 6544 | `		}` |
+|        23 | 6545 | `		ph7_array_add_elem(pArray,pKeyCopy,pValVal);` |
+|         - | 6546 | `		/* Point to the next entry */` |
+|        23 | 6547 | `		pKe = pKe->pPrev; /* Reverse link */` |
+|        23 | 6548 | `		pVe = pVe->pPrev;` |
+|        12 | 6549 | `	}` |
+|         - | 6550 | `	/* Return the filled array */` |
+|        11 | 6551 | `	ph7_result_value(pCtx,pArray);` |
+|        11 | 6552 | `	return PH7_OK;` |
+|        12 | 6553 | `}` |
+|         - | 6554 | `/*` |
+|         - | 6555 | ` * array array_reverse(array $array [,bool $preserve_keys = false ])` |
+|         - | 6556 | ` *  Return an array with elements in reverse order.` |
+|         - | 6557 | ` * Parameters` |
+|         - | 6558 | ` *  $array` |
+|         - | 6559 | ` *   The input array.` |
+|         - | 6560 | ` *  $preserve_keys (optional)` |
+|         - | 6561 | ` *   If set to TRUE keys are preserved.` |
+|         - | 6562 | ` * Return` |
+|         - | 6563 | ` *  The reversed array.` |
+|         - | 6564 | ` */` |
+|        18 | 6565 | `static int ph7_hashmap_reverse(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         2 | 6566 | `{` |
+|         - | 6567 | `	ph7_hashmap_node *pEntry;` |
+|         - | 6568 | `	ph7_hashmap *pSrc;` |
+|         - | 6569 | `	ph7_value *pArray;` |
+|         - | 6570 | `	int bPreserve;` |
+|         - | 6571 | `	sxu32 n;` |
+|        20 | 6572 | `	if( nArg < 1 ){` |
+|       ! 0 | 6573 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 6574 | `			"ArgumentCountError",` |
+|         - | 6575 | `			"array_reverse() expects at least 1 argument, %d given",` |
+|       ! 0 | 6576 | `			nArg` |
+|         - | 6577 | `			);` |
+|         - | 6578 | `	}` |
+|         - | 6579 | `	/* Make sure we are dealing with a valid hashmap */` |
+|        20 | 6580 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         4 | 6581 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 6582 | `			"TypeError",` |
+|         - | 6583 | `			"array_reverse(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 6584 | `			ph7_type_name(apArg[0])` |
+|         - | 6585 | `			);` |
+|         - | 6586 | `	}` |
+|        17 | 6587 | `	bPreserve = FALSE;` |
+|        17 | 6588 | `	if( nArg > 1 ){` |
+|         7 | 6589 | `		bPreserve = ph7_value_to_bool(apArg[1]);` |
+|         3 | 6590 | `	}` |
+|         - | 6591 | `	/* Point to the internal representation of the input hashmap */` |
+|        17 | 6592 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 6593 | `	/* Create a new array */` |
+|        17 | 6594 | `	pArray = ph7_context_new_array(pCtx);` |
+|        17 | 6595 | `	if( pArray == 0 ){` |
+|       ! 0 | 6596 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 6597 | `		return PH7_OK;` |
+|         - | 6598 | `	}` |
+|         - | 6599 | `	/* Perform the requested operation */` |
+|        17 | 6600 | `	pEntry = pSrc->pLast;` |
+|        55 | 6601 | `	for( n = 0 ; n < pSrc->nEntry ; n++ ){` |
+|         - | 6602 | `		/* String keys are always preserved; preserve_keys only affects int keys */` |
+|        39 | 6603 | `		int bKeep = (pEntry->iType == HASHMAP_INT_NODE) ? bPreserve : TRUE;` |
+|        39 | 6604 | `		HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,bKeep);` |
+|         - | 6605 | `		/* Point to the previous entry */` |
+|        39 | 6606 | `		pEntry = pEntry->pNext; /* Reverse link */` |
+|        20 | 6607 | `	}` |
+|        17 | 6608 | `	ph7_result_value(pCtx,pArray);` |
+|        17 | 6609 | `	return PH7_OK;` |
+|        11 | 6610 | `}` |
+|         - | 6611 | `/*` |
+|         - | 6612 | ` * array array_unique(array $array, int $flags = SORT_STRING)` |
+|         - | 6613 | ` *  Removes duplicate values from an array.` |
+|         - | 6614 | ` * Parameters` |
+|         - | 6615 | ` *  $array` |
+|         - | 6616 | ` *   The input array.` |
+|         - | 6617 | ` *  $flags` |
+|         - | 6618 | ` *   The optional second parameter may be used to modify the comparison` |
+|         - | 6619 | ` *   behavior using these values:` |
+|         - | 6620 | ` *     SORT_REGULAR - compare items normally (don't change types)` |
+|         - | 6621 | ` *     SORT_NUMERIC - compare items numerically` |
+|         - | 6622 | ` *     SORT_STRING  - compare items as strings` |
+|         - | 6623 | ` * Return` |
+|         - | 6624 | ` *  The filtered array.` |
+|         - | 6625 | ` */` |
+|        36 | 6626 | `static int ph7_hashmap_unique(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         3 | 6627 | `{` |
+|         - | 6628 | `	ph7_hashmap_node *pEntry;` |
+|         - | 6629 | `	ph7_value *pNeedle;` |
+|         - | 6630 | `	ph7_hashmap *pSrc;` |
+|         - | 6631 | `	ph7_value *pArray;` |
+|         - | 6632 | `	int iFlags,base,bFold;` |
+|         - | 6633 | `	sxu32 n;` |
+|        39 | 6634 | `	if( nArg < 1 ){` |
+|         - | 6635 | `		/* Missing arguments, throw ArgumentCountError */` |
+|       ! 0 | 6636 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 6637 | `			"ArgumentCountError",` |
+|         - | 6638 | `			"array_unique() expects at least 1 argument, 0 given"` |
+|         - | 6639 | `			);` |
+|         - | 6640 | `	}` |
+|        39 | 6641 | `	if( nArg > 2 ){` |
+|         - | 6642 | `		/* Too many arguments, throw ArgumentCountError */` |
 |         4 | 6643 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6644 | `			"TypeError",` |
-|         - | 6645 | `			"array_unique(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 6646 | `			ph7_type_name(apArg[0])` |
+|         - | 6644 | `			"ArgumentCountError",` |
+|         - | 6645 | `			"array_unique() expects at most 2 arguments, %d given",` |
+|         1 | 6646 | `			nArg` |
 |         - | 6647 | `			);` |
 |         - | 6648 | `	}` |
-|         - | 6649 | `	/* php's default is SORT_STRING (2): elements compare as strings. Explicit` |
-|         - | 6650 | `	 * flags select numeric / natural / case-insensitive comparison. */` |
-|        33 | 6651 | `	iFlags = nArg > 1 ? ph7_value_to_int(apArg[1]) : 2 /* SORT_STRING */;` |
-|        33 | 6652 | `	base = iFlags & ~8;` |
-|        33 | 6653 | `	bFold = (iFlags & 8) != 0;` |
-|         - | 6654 | `	/* Point to the internal representation of the input hashmap */` |
-|        33 | 6655 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 6656 | `	/* Create a new array */` |
-|        33 | 6657 | `	pArray = ph7_context_new_array(pCtx);` |
-|        33 | 6658 | `	if( pArray == 0 ){` |
-|       ! 0 | 6659 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 6660 | `		return PH7_OK;` |
-|         - | 6661 | `	}` |
-|         - | 6662 | `	/* Perform the requested operation */` |
-|        33 | 6663 | `	pEntry = pSrc->pFirst;` |
-|       145 | 6664 | `	for( n = 0 ; n < pSrc->nEntry ; n++ ){` |
-|       113 | 6665 | `		pNeedle = HashmapExtractNodeValue(pEntry);` |
-|       113 | 6666 | `		if( pNeedle ){` |
-|         - | 6667 | `			/* Keep this element unless a flag-equal one is already present. */` |
-|       113 | 6668 | `			ph7_hashmap *pKept = (ph7_hashmap *)pArray->x.pOther;` |
-|       113 | 6669 | `			ph7_hashmap_node *pK = pKept->pFirst;` |
-|       113 | 6670 | `			int bDup = 0;` |
-|         - | 6671 | `			sxu32 i;` |
-|         - | 6672 | `			/* Forward iteration in this map uses the pPrev link (see the outer` |
-|         - | 6673 | `			 * loop over pSrc). */` |
-|       177 | 6674 | `			for( i = 0 ; i < pKept->nEntry && pK ; ++i ){` |
-|       117 | 6675 | `				ph7_value *pV = HashmapExtractNodeValue(pK);` |
-|       117 | 6676 | `				if( pV && HashmapValueFlagEqual(pCtx->pVm,pNeedle,pV,base,bFold) ){` |
-|        53 | 6677 | `					bDup = 1;` |
-|        53 | 6678 | `					break;` |
-|         - | 6679 | `				}` |
-|        65 | 6680 | `				pK = pK->pPrev;` |
-|        33 | 6681 | `			}` |
-|       113 | 6682 | `			if( !bDup ){` |
-|        61 | 6683 | `				HashmapInsertNode(pKept,pEntry,TRUE);` |
-|        30 | 6684 | `			}` |
-|        56 | 6685 | `		}` |
-|         - | 6686 | `		/* Point to the next entry */` |
-|       113 | 6687 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|        57 | 6688 | `	}` |
-|         - | 6689 | `	/* Return the freshly created array */` |
-|        33 | 6690 | `	ph7_result_value(pCtx,pArray);` |
-|        33 | 6691 | `	return PH7_OK;` |
-|        21 | 6692 | `}` |
-|         - | 6693 | `/*` |
-|         - | 6694 | ` * array array_flip(array $input)` |
-|         - | 6695 | ` *  Exchanges all keys with their associated values in an array.` |
-|         - | 6696 | ` * Parameter` |
-|         - | 6697 | ` *  $input` |
-|         - | 6698 | ` *   Input array.` |
-|         - | 6699 | ` * Return` |
-|         - | 6700 | ` *   The flipped array on success or NULL on failure.` |
-|         - | 6701 | ` */` |
-|        30 | 6702 | `static int ph7_hashmap_flip(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         3 | 6703 | `{` |
-|         - | 6704 | `	ph7_hashmap_node *pEntry;` |
-|         - | 6705 | `	ph7_hashmap *pSrc;` |
-|         - | 6706 | `	ph7_value *pArray;` |
-|         - | 6707 | `	ph7_value *pKey;` |
-|         - | 6708 | `	ph7_value sVal;` |
-|         - | 6709 | `	sxu32 n;` |
-|         - | 6710 |  |
-|         - | 6711 | `	/* PHP requires exactly one argument */` |
-|        33 | 6712 | `	if( nArg != 1 ){` |
-|         - | 6713 | `		/* Use ArgumentCountError like other array helpers */` |
-|         4 | 6714 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6715 | `			"ArgumentCountError",` |
-|         - | 6716 | `			"array_flip() expects exactly 1 argument, %d given",` |
-|         1 | 6717 | `			nArg` |
-|         - | 6718 | `			);` |
-|         - | 6719 | `	}` |
-|         - | 6720 | `	/* Make sure we are dealing with a valid hashmap */` |
-|        30 | 6721 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         - | 6722 | `		/* Type mismatch -> TypeError */` |
+|         - | 6649 | `	/* Make sure we are dealing with a valid hashmap */` |
+|        36 | 6650 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         - | 6651 | `		/* Type mismatch, throw TypeError */` |
+|         4 | 6652 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 6653 | `			"TypeError",` |
+|         - | 6654 | `			"array_unique(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 6655 | `			ph7_type_name(apArg[0])` |
+|         - | 6656 | `			);` |
+|         - | 6657 | `	}` |
+|         - | 6658 | `	/* php's default is SORT_STRING (2): elements compare as strings. Explicit` |
+|         - | 6659 | `	 * flags select numeric / natural / case-insensitive comparison. */` |
+|        33 | 6660 | `	iFlags = nArg > 1 ? ph7_value_to_int(apArg[1]) : 2 /* SORT_STRING */;` |
+|        33 | 6661 | `	base = iFlags & ~8;` |
+|        33 | 6662 | `	bFold = (iFlags & 8) != 0;` |
+|         - | 6663 | `	/* Point to the internal representation of the input hashmap */` |
+|        33 | 6664 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 6665 | `	/* Create a new array */` |
+|        33 | 6666 | `	pArray = ph7_context_new_array(pCtx);` |
+|        33 | 6667 | `	if( pArray == 0 ){` |
+|       ! 0 | 6668 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 6669 | `		return PH7_OK;` |
+|         - | 6670 | `	}` |
+|         - | 6671 | `	/* Perform the requested operation */` |
+|        33 | 6672 | `	pEntry = pSrc->pFirst;` |
+|       145 | 6673 | `	for( n = 0 ; n < pSrc->nEntry ; n++ ){` |
+|       113 | 6674 | `		pNeedle = HashmapExtractNodeValue(pEntry);` |
+|       113 | 6675 | `		if( pNeedle ){` |
+|         - | 6676 | `			/* Keep this element unless a flag-equal one is already present. */` |
+|       113 | 6677 | `			ph7_hashmap *pKept = (ph7_hashmap *)pArray->x.pOther;` |
+|       113 | 6678 | `			ph7_hashmap_node *pK = pKept->pFirst;` |
+|       113 | 6679 | `			int bDup = 0;` |
+|         - | 6680 | `			sxu32 i;` |
+|         - | 6681 | `			/* Forward iteration in this map uses the pPrev link (see the outer` |
+|         - | 6682 | `			 * loop over pSrc). */` |
+|       177 | 6683 | `			for( i = 0 ; i < pKept->nEntry && pK ; ++i ){` |
+|       117 | 6684 | `				ph7_value *pV = HashmapExtractNodeValue(pK);` |
+|       117 | 6685 | `				if( pV && HashmapValueFlagEqual(pCtx->pVm,pNeedle,pV,base,bFold) ){` |
+|        53 | 6686 | `					bDup = 1;` |
+|        53 | 6687 | `					break;` |
+|         - | 6688 | `				}` |
+|        65 | 6689 | `				pK = pK->pPrev;` |
+|        33 | 6690 | `			}` |
+|       113 | 6691 | `			if( !bDup ){` |
+|        61 | 6692 | `				HashmapInsertNode(pKept,pEntry,TRUE);` |
+|        30 | 6693 | `			}` |
+|        56 | 6694 | `		}` |
+|         - | 6695 | `		/* Point to the next entry */` |
+|       113 | 6696 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|        57 | 6697 | `	}` |
+|         - | 6698 | `	/* Return the freshly created array */` |
+|        33 | 6699 | `	ph7_result_value(pCtx,pArray);` |
+|        33 | 6700 | `	return PH7_OK;` |
+|        21 | 6701 | `}` |
+|         - | 6702 | `/*` |
+|         - | 6703 | ` * array array_flip(array $input)` |
+|         - | 6704 | ` *  Exchanges all keys with their associated values in an array.` |
+|         - | 6705 | ` * Parameter` |
+|         - | 6706 | ` *  $input` |
+|         - | 6707 | ` *   Input array.` |
+|         - | 6708 | ` * Return` |
+|         - | 6709 | ` *   The flipped array on success or NULL on failure.` |
+|         - | 6710 | ` */` |
+|        30 | 6711 | `static int ph7_hashmap_flip(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         3 | 6712 | `{` |
+|         - | 6713 | `	ph7_hashmap_node *pEntry;` |
+|         - | 6714 | `	ph7_hashmap *pSrc;` |
+|         - | 6715 | `	ph7_value *pArray;` |
+|         - | 6716 | `	ph7_value *pKey;` |
+|         - | 6717 | `	ph7_value sVal;` |
+|         - | 6718 | `	sxu32 n;` |
+|         - | 6719 |  |
+|         - | 6720 | `	/* PHP requires exactly one argument */` |
+|        33 | 6721 | `	if( nArg != 1 ){` |
+|         - | 6722 | `		/* Use ArgumentCountError like other array helpers */` |
 |         4 | 6723 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6724 | `			"TypeError",` |
-|         - | 6725 | `			"array_flip(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 6726 | `			ph7_type_name(apArg[0])` |
+|         - | 6724 | `			"ArgumentCountError",` |
+|         - | 6725 | `			"array_flip() expects exactly 1 argument, %d given",` |
+|         1 | 6726 | `			nArg` |
 |         - | 6727 | `			);` |
 |         - | 6728 | `	}` |
-|         - | 6729 | `	/* Point to the internal representation of the input hashmap */` |
-|        27 | 6730 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 6731 | `	/* Create a new array */` |
-|        27 | 6732 | `	pArray = ph7_context_new_array(pCtx);` |
-|        27 | 6733 | `	if( pArray == 0 ){` |
-|       ! 0 | 6734 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 6735 | `		return PH7_OK;` |
-|         - | 6736 | `	}` |
-|         - | 6737 | `	/* Start processing */` |
-|        27 | 6738 | `	pEntry = pSrc->pFirst;` |
-|     22263 | 6739 | `	for( n = 0 ; n < pSrc->nEntry ; n++ ){` |
-|         - | 6740 | `		/* Extract the node value (will become a key in the result) */` |
-|     22237 | 6741 | `		pKey = HashmapExtractNodeValue(pEntry);` |
-|     22237 | 6742 | `		if( pKey ){` |
-|         - | 6743 | `			/* NULL values are not valid keys either, PHP emits a warning */` |
-|     22237 | 6744 | `			if( pKey->iFlags & MEMOBJ_NULL ){` |
-|         3 | 6745 | `				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,` |
-|         - | 6746 | `					"array_flip(): Can only flip string and integer values, entry skipped"` |
-|         - | 6747 | `					);` |
-|     22236 | 6748 | `			}else if( (pKey->iFlags & MEMOBJ_INT) \|\| (pKey->iFlags & MEMOBJ_STRING) ){` |
-|         - | 6749 | `				/* Prepare the value for insertion (original key) */` |
-|     22227 | 6750 | `				if( pEntry->iType == HASHMAP_INT_NODE ){` |
-|     20001 | 6751 | `					PH7_MemObjInitFromInt(pSrc->pVm,&sVal,pEntry->xKey.iKey);` |
-|     10001 | 6752 | `				}else{` |
-|         - | 6753 | `					SyString sStr;` |
-|      2227 | 6754 | `					SyStringInitFromBuf(&sStr,SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey));` |
-|      2227 | 6755 | `					PH7_MemObjInitFromString(pSrc->pVm,&sVal,&sStr);` |
-|         - | 6756 | `				}` |
-|         - | 6757 | `				/* Perform the insertion */` |
-|     22227 | 6758 | `				ph7_array_add_elem(pArray,pKey,&sVal);` |
-|         - | 6759 | `				/* Safely release the value because each inserted entry` |
-|         - | 6760 | `				 * has its own private copy of the value.` |
-|         - | 6761 | `				 */` |
-|     22227 | 6762 | `				PH7_MemObjRelease(&sVal);` |
-|     11114 | 6763 | `			}else{` |
-|         - | 6764 | `				/* Unsupported value type -> emit warning and skip the entry */` |
-|         9 | 6765 | `				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,` |
-|         - | 6766 | `					"array_flip(): Can only flip string and integer values, entry skipped"` |
-|         - | 6767 | `					);` |
-|         - | 6768 | `			}` |
-|     11118 | 6769 | `		}` |
-|         - | 6770 | `		/* Point to the next entry */` |
-|     22237 | 6771 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|     11119 | 6772 | `	}` |
-|         - | 6773 | `	/* Return the freshly created array */` |
-|        27 | 6774 | `	ph7_result_value(pCtx,pArray);` |
-|        27 | 6775 | `	return PH7_OK;` |
-|        18 | 6776 | `}` |
-|         - | 6777 | `/*` |
-|         - | 6778 | ` * number array_sum(array $array )` |
-|         - | 6779 | ` *  Calculate the sum of values in an array.` |
-|         - | 6780 | ` * Parameters` |
-|         - | 6781 | ` *  $array: The input array.` |
-|         - | 6782 | ` * Return` |
-|         - | 6783 | ` *  Returns the sum of values as an integer or float.` |
-|         - | 6784 | ` */` |
-|        24 | 6785 | `static void DoubleSum(ph7_context *pCtx,ph7_hashmap *pMap)` |
-|         2 | 6786 | `{` |
-|         - | 6787 | `	ph7_hashmap_node *pEntry;` |
-|         - | 6788 | `	ph7_value *pObj;` |
-|        26 | 6789 | `	double dSum = 0;` |
-|         - | 6790 | `	sxu32 n;` |
-|        26 | 6791 | `	pEntry = pMap->pFirst;` |
-|        92 | 6792 | `	for( n = 0 ; n < pMap->nEntry ; n++ ){` |
-|        68 | 6793 | `		pObj = HashmapExtractNodeValue(pEntry);` |
-|        68 | 6794 | `		if( pObj ){` |
-|        68 | 6795 | `			if( pObj->iFlags & MEMOBJ_REAL ){` |
-|        30 | 6796 | `				dSum += pObj->rVal;` |
-|        54 | 6797 | `			}else if( pObj->iFlags & (MEMOBJ_INT\|MEMOBJ_BOOL) ){` |
-|        21 | 6798 | `				dSum += (double)pObj->x.iVal;` |
-|        30 | 6799 | `			}else if( pObj->iFlags & MEMOBJ_STRING ){` |
-|        16 | 6800 | `				if( !PH7_MemObjStringIsNumeric(pObj) ){` |
-|         - | 6801 | `					/* php warns and SKIPS a non-numeric string (the array/object/` |
-|         - | 6802 | `					 * resource cases below already did; only this one was silent) */` |
-|         3 | 6803 | `					ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
-|         - | 6804 | `						"Addition is not supported on type string");` |
-|        14 | 6805 | `				}else if( SyBlobLength(&pObj->sBlob) > 0 ){` |
-|        13 | 6806 | `					double dv = 0;` |
-|        13 | 6807 | `					SyStrToReal((const char *)SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),(void *)&dv,0);` |
-|        13 | 6808 | `					dSum += dv;` |
-|         8 | 6809 | `				}` |
-|        12 | 6810 | `			}else if( pObj->iFlags & MEMOBJ_HASHMAP ){` |
-|         3 | 6811 | `				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,` |
-|         - | 6812 | `					"array_sum(): Addition is not supported on type array");` |
-|         4 | 6813 | `			}else if( pObj->iFlags & MEMOBJ_OBJ ){` |
-|         - | 6814 | `				/* php names the CLASS here, not the literal word "object" */` |
-|       ! 0 | 6815 | `				ph7_class_instance *pInst = (ph7_class_instance *)pObj->x.pOther;` |
-|       ! 0 | 6816 | `				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
-|         - | 6817 | `					"Addition is not supported on type %s",` |
-|       ! 0 | 6818 | `					pInst && pInst->pClass ? pInst->pClass->sName.zString : "object");` |
-|         3 | 6819 | `			}else if( pObj->iFlags & MEMOBJ_RES ){` |
-|       ! 0 | 6820 | `				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,` |
-|         - | 6821 | `					"array_sum(): Addition is not supported on type resource");` |
-|       ! 0 | 6822 | `			}` |
-|         - | 6823 | `			/* NULL is silently treated as 0 (matches PHP) */` |
-|        33 | 6824 | `		}` |
-|         - | 6825 | `		/* Point to the next entry */` |
-|        68 | 6826 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|        35 | 6827 | `	}` |
-|         - | 6828 | `	/* Return sum */` |
-|        26 | 6829 | `	ph7_result_double(pCtx,dSum);` |
-|        26 | 6830 | `}` |
-|       690 | 6831 | `static void Int64Sum(ph7_context *pCtx,ph7_hashmap *pMap)` |
-|         3 | 6832 | `{` |
-|         - | 6833 | `	ph7_hashmap_node *pEntry;` |
-|         - | 6834 | `	ph7_value *pObj;` |
-|       693 | 6835 | `	sxi64 nSum = 0;` |
-|         - | 6836 | `	sxu32 n;` |
-|       693 | 6837 | `	pEntry = pMap->pFirst;` |
-|      6705 | 6838 | `	for( n = 0 ; n < pMap->nEntry ; n++ ){` |
-|      6015 | 6839 | `		pObj = HashmapExtractNodeValue(pEntry);` |
-|      6015 | 6840 | `		if( pObj ){` |
-|      6015 | 6841 | `			if( pObj->iFlags & (MEMOBJ_INT\|MEMOBJ_BOOL) ){` |
-|      5995 | 6842 | `				nSum += pObj->x.iVal;` |
-|      3018 | 6843 | `			}else if( pObj->iFlags & MEMOBJ_STRING ){` |
-|        12 | 6844 | `				if( !PH7_MemObjStringIsNumeric(pObj) ){` |
-|         - | 6845 | `					/* php warns and SKIPS a non-numeric string */` |
-|         5 | 6846 | `					ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
-|         - | 6847 | `						"Addition is not supported on type string");` |
-|        10 | 6848 | `				}else if( SyBlobLength(&pObj->sBlob) > 0 ){` |
-|         8 | 6849 | `					sxi64 nv = 0;` |
-|         8 | 6850 | `					SyStrToInt64((const char *)SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),(void *)&nv,0);` |
-|         8 | 6851 | `					nSum += nv;` |
-|         5 | 6852 | `				}` |
-|        17 | 6853 | `			}else if( pObj->iFlags & MEMOBJ_HASHMAP ){` |
-|         6 | 6854 | `				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,` |
-|         - | 6855 | `					"array_sum(): Addition is not supported on type array");` |
-|        10 | 6856 | `			}else if( pObj->iFlags & MEMOBJ_OBJ ){` |
-|         - | 6857 | `				/* php names the CLASS here, not the literal word "object" */` |
-|         3 | 6858 | `				ph7_class_instance *pInst = (ph7_class_instance *)pObj->x.pOther;` |
-|         5 | 6859 | `				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
-|         - | 6860 | `					"Addition is not supported on type %s",` |
-|         2 | 6861 | `					pInst && pInst->pClass ? pInst->pClass->sName.zString : "object");` |
-|         7 | 6862 | `			}else if( pObj->iFlags & MEMOBJ_RES ){` |
-|       ! 0 | 6863 | `				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,` |
-|         - | 6864 | `					"array_sum(): Addition is not supported on type resource");` |
-|       ! 0 | 6865 | `			}` |
-|         - | 6866 | `			/* NULL is silently treated as 0 (matches PHP) */` |
-|      3006 | 6867 | `		}` |
-|         - | 6868 | `		/* Point to the next entry */` |
-|      6015 | 6869 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|      3009 | 6870 | `	}` |
-|         - | 6871 | `	/* Return sum */` |
-|       693 | 6872 | `	ph7_result_int64(pCtx,nSum);` |
-|       693 | 6873 | `}` |
-|         - | 6874 | `/* number array_sum(array $array )` |
-|         - | 6875 | ` * (See block-coment above)` |
-|         - | 6876 | ` */` |
-|       726 | 6877 | `static int ph7_hashmap_sum(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         4 | 6878 | `{` |
-|         - | 6879 | `	ph7_hashmap_node *pEntry;` |
-|         - | 6880 | `	ph7_hashmap *pMap;` |
-|         - | 6881 | `	ph7_value *pObj;` |
-|       730 | 6882 | `	int useDouble = 0;` |
-|         - | 6883 | `	sxu32 n;` |
-|         - | 6884 | `	/* PHP requires exactly one argument */` |
-|       730 | 6885 | `	if( nArg != 1 ){` |
-|         4 | 6886 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6887 | `			"ArgumentCountError",` |
-|         - | 6888 | `			"array_sum() expects exactly 1 argument, %d given",` |
-|         1 | 6889 | `			nArg` |
-|         - | 6890 | `			);` |
-|         - | 6891 | `	}` |
-|         - | 6892 | `	/* Make sure we are dealing with a valid hashmap */` |
-|       728 | 6893 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         - | 6894 | `		/* Type mismatch -> TypeError (php's true/false/class-name convention). */` |
-|         - | 6895 | `		char zBuf[64];` |
-|         8 | 6896 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 6897 | `			"TypeError",` |
-|         - | 6898 | `			"array_sum(): Argument #1 ($array) must be of type array, %s given",` |
-|         2 | 6899 | `			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf))` |
-|         - | 6900 | `			);` |
-|         - | 6901 | `	}` |
-|       723 | 6902 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|       723 | 6903 | `	if( pMap->nEntry < 1 ){` |
-|         - | 6904 | `		/* Nothing to compute,return 0 */` |
-|         7 | 6905 | `		ph7_result_int(pCtx,0);` |
-|         7 | 6906 | `		return PH7_OK;` |
-|         - | 6907 | `	}` |
-|         - | 6908 | `	/* Scan all elements: if any value is a float, use floating-point` |
-|         - | 6909 | `	 * arithmetic for the entire sum (matches PHP behaviour).` |
-|         - | 6910 | `	 */` |
-|       717 | 6911 | `	pEntry = pMap->pFirst;` |
-|      6737 | 6912 | `	for( n = 0 ; n < pMap->nEntry ; n++ ){` |
-|      6047 | 6913 | `		pObj = HashmapExtractNodeValue(pEntry);` |
-|      6047 | 6914 | `		if( pObj ){` |
-|      6047 | 6915 | `			if( pObj->iFlags & MEMOBJ_REAL ){` |
-|        20 | 6916 | `				useDouble = 1;` |
-|        20 | 6917 | `				break;` |
-|         - | 6918 | `			}` |
-|      6029 | 6919 | `			if( pObj->iFlags & MEMOBJ_STRING ){` |
-|        18 | 6920 | `				const char *zStr = (const char *)SyBlobData(&pObj->sBlob);` |
-|        18 | 6921 | `				sxu32 nLen = SyBlobLength(&pObj->sBlob);` |
-|         - | 6922 | `				sxu32 i;` |
-|        32 | 6923 | `				for( i = 0 ; i < nLen ; i++ ){` |
-|        22 | 6924 | `					if( zStr[i] == '.' \|\| zStr[i] == 'e' \|\| zStr[i] == 'E' ){` |
-|         7 | 6925 | `						useDouble = 1;` |
-|         7 | 6926 | `						break;` |
-|         - | 6927 | `					}` |
-|         9 | 6928 | `				}` |
-|        18 | 6929 | `				if( useDouble ){` |
-|         7 | 6930 | `					break;` |
-|         - | 6931 | `				}` |
-|         5 | 6932 | `			}` |
-|      3010 | 6933 | `		}` |
-|      6023 | 6934 | `		pEntry = pEntry->pPrev;` |
-|      3013 | 6935 | `	}` |
-|       717 | 6936 | `	if( useDouble ){` |
-|        26 | 6937 | `		DoubleSum(pCtx,pMap);` |
-|        14 | 6938 | `	}else{` |
-|       693 | 6939 | `		Int64Sum(pCtx,pMap);` |
-|         - | 6940 | `	}` |
-|       717 | 6941 | `	return PH7_OK;` |
-|       367 | 6942 | `}` |
-|         - | 6943 | `/*` |
-|         - | 6944 | ` * number array_product(array $array )` |
-|         - | 6945 | ` *  Calculate the product of values in an array.` |
-|         - | 6946 | ` * Parameters` |
-|         - | 6947 | ` *  $array: The input array.` |
-|         - | 6948 | ` * Return` |
-|         - | 6949 | ` *  Returns the product of values as an integer or float.` |
-|         - | 6950 | ` */` |
-|         2 | 6951 | `static void DoubleProd(ph7_context *pCtx,ph7_hashmap *pMap)` |
-|         1 | 6952 | `{` |
-|         - | 6953 | `	ph7_hashmap_node *pEntry;` |
-|         - | 6954 | `	ph7_value *pObj;` |
-|         - | 6955 | `	double dProd;` |
-|         - | 6956 | `	sxu32 n;` |
-|         3 | 6957 | `	pEntry = pMap->pFirst;` |
-|         3 | 6958 | `	dProd = 1;` |
-|         7 | 6959 | `	for( n = 0 ; n < pMap->nEntry ; n++ ){` |
-|         5 | 6960 | `		pObj = HashmapExtractNodeValue(pEntry);` |
-|         5 | 6961 | `		if( pObj && (pObj->iFlags & (MEMOBJ_NULL\|MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_RES)) == 0){` |
-|         5 | 6962 | `			if( pObj->iFlags & MEMOBJ_REAL ){` |
-|         3 | 6963 | `				dProd *= pObj->rVal;` |
-|         4 | 6964 | `			}else if( pObj->iFlags & (MEMOBJ_INT\|MEMOBJ_BOOL) ){` |
-|         3 | 6965 | `				dProd *= (double)pObj->x.iVal;` |
-|         1 | 6966 | `			}else if( pObj->iFlags & MEMOBJ_STRING ){` |
-|       ! 0 | 6967 | `				if( SyBlobLength(&pObj->sBlob) > 0 ){` |
-|       ! 0 | 6968 | `					double dv = 0;` |
-|       ! 0 | 6969 | `					SyStrToReal((const char *)SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),(void *)&dv,0);` |
-|       ! 0 | 6970 | `					dProd *= dv;` |
-|       ! 0 | 6971 | `				}` |
-|       ! 0 | 6972 | `			}` |
-|         2 | 6973 | `		}` |
-|         - | 6974 | `		/* Point to the next entry */` |
-|         5 | 6975 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|         3 | 6976 | `	}` |
-|         - | 6977 | `	/* Return product */` |
-|         3 | 6978 | `	ph7_result_double(pCtx,dProd);` |
-|         3 | 6979 | `}` |
-|         2 | 6980 | `static void Int64Prod(ph7_context *pCtx,ph7_hashmap *pMap)` |
-|         1 | 6981 | `{` |
-|         - | 6982 | `	ph7_hashmap_node *pEntry;` |
-|         - | 6983 | `	ph7_value *pObj;` |
-|         - | 6984 | `	sxi64 nProd;` |
-|         - | 6985 | `	sxu32 n;` |
-|         3 | 6986 | `	pEntry = pMap->pFirst;` |
-|         3 | 6987 | `	nProd = 1;` |
-|         9 | 6988 | `	for( n = 0 ; n < pMap->nEntry ; n++ ){` |
-|         7 | 6989 | `		pObj = HashmapExtractNodeValue(pEntry);` |
-|         7 | 6990 | `		if( pObj && (pObj->iFlags & (MEMOBJ_NULL\|MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_RES)) == 0){` |
-|         7 | 6991 | `			if( pObj->iFlags & MEMOBJ_REAL ){` |
-|       ! 0 | 6992 | `				nProd *= (sxi64)pObj->rVal;` |
-|         7 | 6993 | `			}else if( pObj->iFlags & (MEMOBJ_INT\|MEMOBJ_BOOL) ){` |
-|         7 | 6994 | `				nProd *= pObj->x.iVal;` |
-|         3 | 6995 | `			}else if( pObj->iFlags & MEMOBJ_STRING ){` |
-|       ! 0 | 6996 | `				if( SyBlobLength(&pObj->sBlob) > 0 ){` |
-|       ! 0 | 6997 | `					sxi64 nv = 0;` |
-|       ! 0 | 6998 | `					SyStrToInt64((const char *)SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),(void *)&nv,0);` |
-|       ! 0 | 6999 | `					nProd *= nv;` |
-|       ! 0 | 7000 | `				}` |
-|       ! 0 | 7001 | `			}` |
-|         3 | 7002 | `		}` |
-|         - | 7003 | `		/* Point to the next entry */` |
-|         7 | 7004 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|         4 | 7005 | `	}` |
-|         - | 7006 | `	/* Return product */` |
-|         3 | 7007 | `	ph7_result_int64(pCtx,nProd);` |
-|         3 | 7008 | `}` |
-|         - | 7009 | `/* number array_product(array $array )` |
-|         - | 7010 | ` * (See block-block comment above)` |
-|         - | 7011 | ` */` |
-|        16 | 7012 | `static int ph7_hashmap_product(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 7013 | `{` |
-|         - | 7014 | `	ph7_hashmap *pMap;` |
-|         - | 7015 | `	ph7_value *pObj;` |
-|        17 | 7016 | `	if( nArg < 1 ){` |
-|         - | 7017 | `		/* Missing arguments (arity is enforced upstream; defensive). */` |
-|       ! 0 | 7018 | `		ph7_result_int(pCtx,1);` |
-|       ! 0 | 7019 | `		return PH7_OK;` |
-|         - | 7020 | `	}` |
-|         - | 7021 | `	/* PHP 8: a non-array $array is a catchable TypeError, not a silent 0. */` |
-|        17 | 7022 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         - | 7023 | `		char zBuf[64];` |
-|        16 | 7024 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 7025 | `			"TypeError",` |
-|         - | 7026 | `			"array_product(): Argument #1 ($array) must be of type array, %s given",` |
-|         5 | 7027 | `			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf))` |
-|         - | 7028 | `			);` |
+|         - | 6729 | `	/* Make sure we are dealing with a valid hashmap */` |
+|        30 | 6730 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         - | 6731 | `		/* Type mismatch -> TypeError */` |
+|         4 | 6732 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 6733 | `			"TypeError",` |
+|         - | 6734 | `			"array_flip(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 6735 | `			ph7_type_name(apArg[0])` |
+|         - | 6736 | `			);` |
+|         - | 6737 | `	}` |
+|         - | 6738 | `	/* Point to the internal representation of the input hashmap */` |
+|        27 | 6739 | `	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 6740 | `	/* Create a new array */` |
+|        27 | 6741 | `	pArray = ph7_context_new_array(pCtx);` |
+|        27 | 6742 | `	if( pArray == 0 ){` |
+|       ! 0 | 6743 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 6744 | `		return PH7_OK;` |
+|         - | 6745 | `	}` |
+|         - | 6746 | `	/* Start processing */` |
+|        27 | 6747 | `	pEntry = pSrc->pFirst;` |
+|     22263 | 6748 | `	for( n = 0 ; n < pSrc->nEntry ; n++ ){` |
+|         - | 6749 | `		/* Extract the node value (will become a key in the result) */` |
+|     22237 | 6750 | `		pKey = HashmapExtractNodeValue(pEntry);` |
+|     22237 | 6751 | `		if( pKey ){` |
+|         - | 6752 | `			/* NULL values are not valid keys either, PHP emits a warning */` |
+|     22237 | 6753 | `			if( pKey->iFlags & MEMOBJ_NULL ){` |
+|         3 | 6754 | `				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,` |
+|         - | 6755 | `					"array_flip(): Can only flip string and integer values, entry skipped"` |
+|         - | 6756 | `					);` |
+|     22236 | 6757 | `			}else if( (pKey->iFlags & MEMOBJ_INT) \|\| (pKey->iFlags & MEMOBJ_STRING) ){` |
+|         - | 6758 | `				/* Prepare the value for insertion (original key) */` |
+|     22227 | 6759 | `				if( pEntry->iType == HASHMAP_INT_NODE ){` |
+|     20001 | 6760 | `					PH7_MemObjInitFromInt(pSrc->pVm,&sVal,pEntry->xKey.iKey);` |
+|     10001 | 6761 | `				}else{` |
+|         - | 6762 | `					SyString sStr;` |
+|      2227 | 6763 | `					SyStringInitFromBuf(&sStr,SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey));` |
+|      2227 | 6764 | `					PH7_MemObjInitFromString(pSrc->pVm,&sVal,&sStr);` |
+|         - | 6765 | `				}` |
+|         - | 6766 | `				/* Perform the insertion */` |
+|     22227 | 6767 | `				ph7_array_add_elem(pArray,pKey,&sVal);` |
+|         - | 6768 | `				/* Safely release the value because each inserted entry` |
+|         - | 6769 | `				 * has its own private copy of the value.` |
+|         - | 6770 | `				 */` |
+|     22227 | 6771 | `				PH7_MemObjRelease(&sVal);` |
+|     11114 | 6772 | `			}else{` |
+|         - | 6773 | `				/* Unsupported value type -> emit warning and skip the entry */` |
+|         9 | 6774 | `				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,` |
+|         - | 6775 | `					"array_flip(): Can only flip string and integer values, entry skipped"` |
+|         - | 6776 | `					);` |
+|         - | 6777 | `			}` |
+|     11118 | 6778 | `		}` |
+|         - | 6779 | `		/* Point to the next entry */` |
+|     22237 | 6780 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|     11119 | 6781 | `	}` |
+|         - | 6782 | `	/* Return the freshly created array */` |
+|        27 | 6783 | `	ph7_result_value(pCtx,pArray);` |
+|        27 | 6784 | `	return PH7_OK;` |
+|        18 | 6785 | `}` |
+|         - | 6786 | `/*` |
+|         - | 6787 | ` * number array_sum(array $array )` |
+|         - | 6788 | ` *  Calculate the sum of values in an array.` |
+|         - | 6789 | ` * Parameters` |
+|         - | 6790 | ` *  $array: The input array.` |
+|         - | 6791 | ` * Return` |
+|         - | 6792 | ` *  Returns the sum of values as an integer or float.` |
+|         - | 6793 | ` */` |
+|        24 | 6794 | `static void DoubleSum(ph7_context *pCtx,ph7_hashmap *pMap)` |
+|         2 | 6795 | `{` |
+|         - | 6796 | `	ph7_hashmap_node *pEntry;` |
+|         - | 6797 | `	ph7_value *pObj;` |
+|        26 | 6798 | `	double dSum = 0;` |
+|         - | 6799 | `	sxu32 n;` |
+|        26 | 6800 | `	pEntry = pMap->pFirst;` |
+|        92 | 6801 | `	for( n = 0 ; n < pMap->nEntry ; n++ ){` |
+|        68 | 6802 | `		pObj = HashmapExtractNodeValue(pEntry);` |
+|        68 | 6803 | `		if( pObj ){` |
+|        68 | 6804 | `			if( pObj->iFlags & MEMOBJ_REAL ){` |
+|        30 | 6805 | `				dSum += pObj->rVal;` |
+|        54 | 6806 | `			}else if( pObj->iFlags & (MEMOBJ_INT\|MEMOBJ_BOOL) ){` |
+|        21 | 6807 | `				dSum += (double)pObj->x.iVal;` |
+|        30 | 6808 | `			}else if( pObj->iFlags & MEMOBJ_STRING ){` |
+|        16 | 6809 | `				if( !PH7_MemObjStringIsNumeric(pObj) ){` |
+|         - | 6810 | `					/* php warns and SKIPS a non-numeric string (the array/object/` |
+|         - | 6811 | `					 * resource cases below already did; only this one was silent) */` |
+|         3 | 6812 | `					ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
+|         - | 6813 | `						"Addition is not supported on type string");` |
+|        14 | 6814 | `				}else if( SyBlobLength(&pObj->sBlob) > 0 ){` |
+|        13 | 6815 | `					double dv = 0;` |
+|        13 | 6816 | `					SyStrToReal((const char *)SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),(void *)&dv,0);` |
+|        13 | 6817 | `					dSum += dv;` |
+|         8 | 6818 | `				}` |
+|        12 | 6819 | `			}else if( pObj->iFlags & MEMOBJ_HASHMAP ){` |
+|         3 | 6820 | `				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,` |
+|         - | 6821 | `					"array_sum(): Addition is not supported on type array");` |
+|         4 | 6822 | `			}else if( pObj->iFlags & MEMOBJ_OBJ ){` |
+|         - | 6823 | `				/* php names the CLASS here, not the literal word "object" */` |
+|       ! 0 | 6824 | `				ph7_class_instance *pInst = (ph7_class_instance *)pObj->x.pOther;` |
+|       ! 0 | 6825 | `				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
+|         - | 6826 | `					"Addition is not supported on type %s",` |
+|       ! 0 | 6827 | `					pInst && pInst->pClass ? pInst->pClass->sName.zString : "object");` |
+|         3 | 6828 | `			}else if( pObj->iFlags & MEMOBJ_RES ){` |
+|       ! 0 | 6829 | `				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,` |
+|         - | 6830 | `					"array_sum(): Addition is not supported on type resource");` |
+|       ! 0 | 6831 | `			}` |
+|         - | 6832 | `			/* NULL is silently treated as 0 (matches PHP) */` |
+|        33 | 6833 | `		}` |
+|         - | 6834 | `		/* Point to the next entry */` |
+|        68 | 6835 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|        35 | 6836 | `	}` |
+|         - | 6837 | `	/* Return sum */` |
+|        26 | 6838 | `	ph7_result_double(pCtx,dSum);` |
+|        26 | 6839 | `}` |
+|       690 | 6840 | `static void Int64Sum(ph7_context *pCtx,ph7_hashmap *pMap)` |
+|         3 | 6841 | `{` |
+|         - | 6842 | `	ph7_hashmap_node *pEntry;` |
+|         - | 6843 | `	ph7_value *pObj;` |
+|       693 | 6844 | `	sxi64 nSum = 0;` |
+|         - | 6845 | `	sxu32 n;` |
+|       693 | 6846 | `	pEntry = pMap->pFirst;` |
+|      6705 | 6847 | `	for( n = 0 ; n < pMap->nEntry ; n++ ){` |
+|      6015 | 6848 | `		pObj = HashmapExtractNodeValue(pEntry);` |
+|      6015 | 6849 | `		if( pObj ){` |
+|      6015 | 6850 | `			if( pObj->iFlags & (MEMOBJ_INT\|MEMOBJ_BOOL) ){` |
+|      5995 | 6851 | `				nSum += pObj->x.iVal;` |
+|      3018 | 6852 | `			}else if( pObj->iFlags & MEMOBJ_STRING ){` |
+|        12 | 6853 | `				if( !PH7_MemObjStringIsNumeric(pObj) ){` |
+|         - | 6854 | `					/* php warns and SKIPS a non-numeric string */` |
+|         5 | 6855 | `					ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
+|         - | 6856 | `						"Addition is not supported on type string");` |
+|        10 | 6857 | `				}else if( SyBlobLength(&pObj->sBlob) > 0 ){` |
+|         8 | 6858 | `					sxi64 nv = 0;` |
+|         8 | 6859 | `					SyStrToInt64((const char *)SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),(void *)&nv,0);` |
+|         8 | 6860 | `					nSum += nv;` |
+|         5 | 6861 | `				}` |
+|        17 | 6862 | `			}else if( pObj->iFlags & MEMOBJ_HASHMAP ){` |
+|         6 | 6863 | `				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,` |
+|         - | 6864 | `					"array_sum(): Addition is not supported on type array");` |
+|        10 | 6865 | `			}else if( pObj->iFlags & MEMOBJ_OBJ ){` |
+|         - | 6866 | `				/* php names the CLASS here, not the literal word "object" */` |
+|         3 | 6867 | `				ph7_class_instance *pInst = (ph7_class_instance *)pObj->x.pOther;` |
+|         5 | 6868 | `				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
+|         - | 6869 | `					"Addition is not supported on type %s",` |
+|         2 | 6870 | `					pInst && pInst->pClass ? pInst->pClass->sName.zString : "object");` |
+|         7 | 6871 | `			}else if( pObj->iFlags & MEMOBJ_RES ){` |
+|       ! 0 | 6872 | `				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,` |
+|         - | 6873 | `					"array_sum(): Addition is not supported on type resource");` |
+|       ! 0 | 6874 | `			}` |
+|         - | 6875 | `			/* NULL is silently treated as 0 (matches PHP) */` |
+|      3006 | 6876 | `		}` |
+|         - | 6877 | `		/* Point to the next entry */` |
+|      6015 | 6878 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|      3009 | 6879 | `	}` |
+|         - | 6880 | `	/* Return sum */` |
+|       693 | 6881 | `	ph7_result_int64(pCtx,nSum);` |
+|       693 | 6882 | `}` |
+|         - | 6883 | `/* number array_sum(array $array )` |
+|         - | 6884 | ` * (See block-coment above)` |
+|         - | 6885 | ` */` |
+|       726 | 6886 | `static int ph7_hashmap_sum(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         4 | 6887 | `{` |
+|         - | 6888 | `	ph7_hashmap_node *pEntry;` |
+|         - | 6889 | `	ph7_hashmap *pMap;` |
+|         - | 6890 | `	ph7_value *pObj;` |
+|       730 | 6891 | `	int useDouble = 0;` |
+|         - | 6892 | `	sxu32 n;` |
+|         - | 6893 | `	/* PHP requires exactly one argument */` |
+|       730 | 6894 | `	if( nArg != 1 ){` |
+|         4 | 6895 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 6896 | `			"ArgumentCountError",` |
+|         - | 6897 | `			"array_sum() expects exactly 1 argument, %d given",` |
+|         1 | 6898 | `			nArg` |
+|         - | 6899 | `			);` |
+|         - | 6900 | `	}` |
+|         - | 6901 | `	/* Make sure we are dealing with a valid hashmap */` |
+|       728 | 6902 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         - | 6903 | `		/* Type mismatch -> TypeError (php's true/false/class-name convention). */` |
+|         - | 6904 | `		char zBuf[64];` |
+|         8 | 6905 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 6906 | `			"TypeError",` |
+|         - | 6907 | `			"array_sum(): Argument #1 ($array) must be of type array, %s given",` |
+|         2 | 6908 | `			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf))` |
+|         - | 6909 | `			);` |
+|         - | 6910 | `	}` |
+|       723 | 6911 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|       723 | 6912 | `	if( pMap->nEntry < 1 ){` |
+|         - | 6913 | `		/* Nothing to compute,return 0 */` |
+|         7 | 6914 | `		ph7_result_int(pCtx,0);` |
+|         7 | 6915 | `		return PH7_OK;` |
+|         - | 6916 | `	}` |
+|         - | 6917 | `	/* Scan all elements: if any value is a float, use floating-point` |
+|         - | 6918 | `	 * arithmetic for the entire sum (matches PHP behaviour).` |
+|         - | 6919 | `	 */` |
+|       717 | 6920 | `	pEntry = pMap->pFirst;` |
+|      6737 | 6921 | `	for( n = 0 ; n < pMap->nEntry ; n++ ){` |
+|      6047 | 6922 | `		pObj = HashmapExtractNodeValue(pEntry);` |
+|      6047 | 6923 | `		if( pObj ){` |
+|      6047 | 6924 | `			if( pObj->iFlags & MEMOBJ_REAL ){` |
+|        20 | 6925 | `				useDouble = 1;` |
+|        20 | 6926 | `				break;` |
+|         - | 6927 | `			}` |
+|      6029 | 6928 | `			if( pObj->iFlags & MEMOBJ_STRING ){` |
+|        18 | 6929 | `				const char *zStr = (const char *)SyBlobData(&pObj->sBlob);` |
+|        18 | 6930 | `				sxu32 nLen = SyBlobLength(&pObj->sBlob);` |
+|         - | 6931 | `				sxu32 i;` |
+|        32 | 6932 | `				for( i = 0 ; i < nLen ; i++ ){` |
+|        22 | 6933 | `					if( zStr[i] == '.' \|\| zStr[i] == 'e' \|\| zStr[i] == 'E' ){` |
+|         7 | 6934 | `						useDouble = 1;` |
+|         7 | 6935 | `						break;` |
+|         - | 6936 | `					}` |
+|         9 | 6937 | `				}` |
+|        18 | 6938 | `				if( useDouble ){` |
+|         7 | 6939 | `					break;` |
+|         - | 6940 | `				}` |
+|         5 | 6941 | `			}` |
+|      3010 | 6942 | `		}` |
+|      6023 | 6943 | `		pEntry = pEntry->pPrev;` |
+|      3013 | 6944 | `	}` |
+|       717 | 6945 | `	if( useDouble ){` |
+|        26 | 6946 | `		DoubleSum(pCtx,pMap);` |
+|        14 | 6947 | `	}else{` |
+|       693 | 6948 | `		Int64Sum(pCtx,pMap);` |
+|         - | 6949 | `	}` |
+|       717 | 6950 | `	return PH7_OK;` |
+|       367 | 6951 | `}` |
+|         - | 6952 | `/*` |
+|         - | 6953 | ` * number array_product(array $array )` |
+|         - | 6954 | ` *  Calculate the product of values in an array.` |
+|         - | 6955 | ` * Parameters` |
+|         - | 6956 | ` *  $array: The input array.` |
+|         - | 6957 | ` * Return` |
+|         - | 6958 | ` *  Returns the product of values as an integer or float.` |
+|         - | 6959 | ` */` |
+|         2 | 6960 | `static void DoubleProd(ph7_context *pCtx,ph7_hashmap *pMap)` |
+|         1 | 6961 | `{` |
+|         - | 6962 | `	ph7_hashmap_node *pEntry;` |
+|         - | 6963 | `	ph7_value *pObj;` |
+|         - | 6964 | `	double dProd;` |
+|         - | 6965 | `	sxu32 n;` |
+|         3 | 6966 | `	pEntry = pMap->pFirst;` |
+|         3 | 6967 | `	dProd = 1;` |
+|         7 | 6968 | `	for( n = 0 ; n < pMap->nEntry ; n++ ){` |
+|         5 | 6969 | `		pObj = HashmapExtractNodeValue(pEntry);` |
+|         5 | 6970 | `		if( pObj && (pObj->iFlags & (MEMOBJ_NULL\|MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_RES)) == 0){` |
+|         5 | 6971 | `			if( pObj->iFlags & MEMOBJ_REAL ){` |
+|         3 | 6972 | `				dProd *= pObj->rVal;` |
+|         4 | 6973 | `			}else if( pObj->iFlags & (MEMOBJ_INT\|MEMOBJ_BOOL) ){` |
+|         3 | 6974 | `				dProd *= (double)pObj->x.iVal;` |
+|         1 | 6975 | `			}else if( pObj->iFlags & MEMOBJ_STRING ){` |
+|       ! 0 | 6976 | `				if( SyBlobLength(&pObj->sBlob) > 0 ){` |
+|       ! 0 | 6977 | `					double dv = 0;` |
+|       ! 0 | 6978 | `					SyStrToReal((const char *)SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),(void *)&dv,0);` |
+|       ! 0 | 6979 | `					dProd *= dv;` |
+|       ! 0 | 6980 | `				}` |
+|       ! 0 | 6981 | `			}` |
+|         2 | 6982 | `		}` |
+|         - | 6983 | `		/* Point to the next entry */` |
+|         5 | 6984 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|         3 | 6985 | `	}` |
+|         - | 6986 | `	/* Return product */` |
+|         3 | 6987 | `	ph7_result_double(pCtx,dProd);` |
+|         3 | 6988 | `}` |
+|         2 | 6989 | `static void Int64Prod(ph7_context *pCtx,ph7_hashmap *pMap)` |
+|         1 | 6990 | `{` |
+|         - | 6991 | `	ph7_hashmap_node *pEntry;` |
+|         - | 6992 | `	ph7_value *pObj;` |
+|         - | 6993 | `	sxi64 nProd;` |
+|         - | 6994 | `	sxu32 n;` |
+|         3 | 6995 | `	pEntry = pMap->pFirst;` |
+|         3 | 6996 | `	nProd = 1;` |
+|         9 | 6997 | `	for( n = 0 ; n < pMap->nEntry ; n++ ){` |
+|         7 | 6998 | `		pObj = HashmapExtractNodeValue(pEntry);` |
+|         7 | 6999 | `		if( pObj && (pObj->iFlags & (MEMOBJ_NULL\|MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_RES)) == 0){` |
+|         7 | 7000 | `			if( pObj->iFlags & MEMOBJ_REAL ){` |
+|       ! 0 | 7001 | `				nProd *= (sxi64)pObj->rVal;` |
+|         7 | 7002 | `			}else if( pObj->iFlags & (MEMOBJ_INT\|MEMOBJ_BOOL) ){` |
+|         7 | 7003 | `				nProd *= pObj->x.iVal;` |
+|         3 | 7004 | `			}else if( pObj->iFlags & MEMOBJ_STRING ){` |
+|       ! 0 | 7005 | `				if( SyBlobLength(&pObj->sBlob) > 0 ){` |
+|       ! 0 | 7006 | `					sxi64 nv = 0;` |
+|       ! 0 | 7007 | `					SyStrToInt64((const char *)SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),(void *)&nv,0);` |
+|       ! 0 | 7008 | `					nProd *= nv;` |
+|       ! 0 | 7009 | `				}` |
+|       ! 0 | 7010 | `			}` |
+|         3 | 7011 | `		}` |
+|         - | 7012 | `		/* Point to the next entry */` |
+|         7 | 7013 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|         4 | 7014 | `	}` |
+|         - | 7015 | `	/* Return product */` |
+|         3 | 7016 | `	ph7_result_int64(pCtx,nProd);` |
+|         3 | 7017 | `}` |
+|         - | 7018 | `/* number array_product(array $array )` |
+|         - | 7019 | ` * (See block-block comment above)` |
+|         - | 7020 | ` */` |
+|        16 | 7021 | `static int ph7_hashmap_product(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 7022 | `{` |
+|         - | 7023 | `	ph7_hashmap *pMap;` |
+|         - | 7024 | `	ph7_value *pObj;` |
+|        17 | 7025 | `	if( nArg < 1 ){` |
+|         - | 7026 | `		/* Missing arguments (arity is enforced upstream; defensive). */` |
+|       ! 0 | 7027 | `		ph7_result_int(pCtx,1);` |
+|       ! 0 | 7028 | `		return PH7_OK;` |
 |         - | 7029 | `	}` |
-|         7 | 7030 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         7 | 7031 | `	if( pMap->nEntry < 1 ){` |
-|         - | 7032 | `		/* The product of an empty array is the multiplicative identity 1 (PHP). */` |
-|         3 | 7033 | `		ph7_result_int(pCtx,1);` |
-|         3 | 7034 | `		return PH7_OK;` |
-|         - | 7035 | `	}` |
-|         - | 7036 | `	/* If the first element is of type float,then perform floating` |
-|         - | 7037 | `	 * point computaion.Otherwise switch to int64 computaion.` |
-|         - | 7038 | `	 */` |
-|         5 | 7039 | `	pObj = HashmapExtractNodeValue(pMap->pFirst);` |
-|         5 | 7040 | `	if( pObj == 0 ){` |
-|       ! 0 | 7041 | `		ph7_result_int(pCtx,0);` |
-|       ! 0 | 7042 | `		return PH7_OK;` |
-|         - | 7043 | `	}` |
-|         5 | 7044 | `	if( pObj->iFlags & MEMOBJ_REAL ){` |
-|         3 | 7045 | `		DoubleProd(pCtx,pMap);` |
-|         2 | 7046 | `	}else{` |
-|         3 | 7047 | `		Int64Prod(pCtx,pMap);` |
-|         - | 7048 | `	}` |
-|         5 | 7049 | `	return PH7_OK;` |
-|         9 | 7050 | `}` |
-|         - | 7051 | `/*` |
-|         - | 7052 | ` * value array_rand(array $input[,int $num_req = 1 ])` |
-|         - | 7053 | ` *  Pick one or more random entries out of an array.` |
-|         - | 7054 | ` * Parameters` |
-|         - | 7055 | ` * $input` |
-|         - | 7056 | ` *  The input array.` |
-|         - | 7057 | ` * $num_req` |
-|         - | 7058 | ` *  Specifies how many entries you want to pick.` |
-|         - | 7059 | ` * Return` |
-|         - | 7060 | ` *  If you are picking only one entry, array_rand() returns the key for a random entry.` |
-|         - | 7061 | ` *  Otherwise, it returns an array of keys for the random entries.` |
-|         - | 7062 | ` *  NULL is returned on failure.` |
-|         - | 7063 | ` */` |
-|        36 | 7064 | `static int ph7_hashmap_rand(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 7065 | `{` |
-|         - | 7066 | `	ph7_hashmap_node *pNode;` |
-|         - | 7067 | `	ph7_hashmap *pMap;` |
-|        37 | 7068 | `	int nItem = 1;` |
-|        37 | 7069 | `	if( nArg < 1 ){` |
-|         - | 7070 | `		/* Missing argument (arity is enforced upstream; defensive) */` |
-|       ! 0 | 7071 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 7072 | `		return PH7_OK;` |
-|         - | 7073 | `	}` |
-|         - | 7074 | `	/* php 8: $array must be an array (TypeError, not a silent NULL return) */` |
-|        37 | 7075 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         - | 7076 | `		char zBuf[64];` |
-|        10 | 7077 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 7078 | `			"TypeError",` |
-|         - | 7079 | `			"array_rand(): Argument #1 ($array) must be of type array, %s given",` |
-|         3 | 7080 | `			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf))` |
-|         - | 7081 | `			);` |
+|         - | 7030 | `	/* PHP 8: a non-array $array is a catchable TypeError, not a silent 0. */` |
+|        17 | 7031 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         - | 7032 | `		char zBuf[64];` |
+|        16 | 7033 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 7034 | `			"TypeError",` |
+|         - | 7035 | `			"array_product(): Argument #1 ($array) must be of type array, %s given",` |
+|         5 | 7036 | `			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf))` |
+|         - | 7037 | `			);` |
+|         - | 7038 | `	}` |
+|         7 | 7039 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         7 | 7040 | `	if( pMap->nEntry < 1 ){` |
+|         - | 7041 | `		/* The product of an empty array is the multiplicative identity 1 (PHP). */` |
+|         3 | 7042 | `		ph7_result_int(pCtx,1);` |
+|         3 | 7043 | `		return PH7_OK;` |
+|         - | 7044 | `	}` |
+|         - | 7045 | `	/* If the first element is of type float,then perform floating` |
+|         - | 7046 | `	 * point computaion.Otherwise switch to int64 computaion.` |
+|         - | 7047 | `	 */` |
+|         5 | 7048 | `	pObj = HashmapExtractNodeValue(pMap->pFirst);` |
+|         5 | 7049 | `	if( pObj == 0 ){` |
+|       ! 0 | 7050 | `		ph7_result_int(pCtx,0);` |
+|       ! 0 | 7051 | `		return PH7_OK;` |
+|         - | 7052 | `	}` |
+|         5 | 7053 | `	if( pObj->iFlags & MEMOBJ_REAL ){` |
+|         3 | 7054 | `		DoubleProd(pCtx,pMap);` |
+|         2 | 7055 | `	}else{` |
+|         3 | 7056 | `		Int64Prod(pCtx,pMap);` |
+|         - | 7057 | `	}` |
+|         5 | 7058 | `	return PH7_OK;` |
+|         9 | 7059 | `}` |
+|         - | 7060 | `/*` |
+|         - | 7061 | ` * value array_rand(array $input[,int $num_req = 1 ])` |
+|         - | 7062 | ` *  Pick one or more random entries out of an array.` |
+|         - | 7063 | ` * Parameters` |
+|         - | 7064 | ` * $input` |
+|         - | 7065 | ` *  The input array.` |
+|         - | 7066 | ` * $num_req` |
+|         - | 7067 | ` *  Specifies how many entries you want to pick.` |
+|         - | 7068 | ` * Return` |
+|         - | 7069 | ` *  If you are picking only one entry, array_rand() returns the key for a random entry.` |
+|         - | 7070 | ` *  Otherwise, it returns an array of keys for the random entries.` |
+|         - | 7071 | ` *  NULL is returned on failure.` |
+|         - | 7072 | ` */` |
+|        36 | 7073 | `static int ph7_hashmap_rand(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 7074 | `{` |
+|         - | 7075 | `	ph7_hashmap_node *pNode;` |
+|         - | 7076 | `	ph7_hashmap *pMap;` |
+|        37 | 7077 | `	int nItem = 1;` |
+|        37 | 7078 | `	if( nArg < 1 ){` |
+|         - | 7079 | `		/* Missing argument (arity is enforced upstream; defensive) */` |
+|       ! 0 | 7080 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 7081 | `		return PH7_OK;` |
 |         - | 7082 | `	}` |
-|         - | 7083 | `	/* php validates $num (and weak-coerces it) BEFORE the empty-array body` |
-|         - | 7084 | `	 * check, matching its ZPP-before-body ordering. */` |
-|        31 | 7085 | `	if( nArg > 1 ){` |
-|        23 | 7086 | `		ph7_value *pNum = apArg[1];` |
-|        22 | 7087 | `		if( ph7_value_is_array(pNum) \|\| ph7_value_is_object(pNum)` |
-|        23 | 7088 | `			\|\| ph7_value_is_resource(pNum) ){` |
-|         - | 7089 | `			char zBuf[64];` |
-|       ! 0 | 7090 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 7091 | `				"TypeError",` |
-|         - | 7092 | `				"array_rand(): Argument #2 ($num) must be of type int, %s given",` |
-|       ! 0 | 7093 | `				VmValueGivenName(pNum,zBuf,sizeof(zBuf))` |
-|         - | 7094 | `				);` |
-|         - | 7095 | `		}` |
-|        23 | 7096 | `		if( ph7_value_is_string(pNum) ){` |
-|         - | 7097 | `			/* Weak int coercion of a string $num follows php's numeric-string` |
-|         - | 7098 | `			 * grammar (whole string, int or float): a non-numeric string` |
-|         - | 7099 | `			 * (incl. leading-numeric junk like "2abc" or "0x1A") is a TypeError,` |
-|         - | 7100 | `			 * a well-formed float-string ("1e3") coerces like a float value.` |
-|         - | 7101 | `			 * Reuses the range() ZPP number parser (§3.9 shared-helper note). */` |
-|         - | 7102 | `			int len;` |
-|         9 | 7103 | `			const char *zStr = ph7_value_to_string(pNum, &len);` |
-|         - | 7104 | `			sxi64 iLong; double dReal;` |
-|         9 | 7105 | `			sxu8 iKind = RangeStrToNumber(zStr, (sxu32)len, &iLong, &dReal);` |
-|         9 | 7106 | `			if( iKind == RANGE_IN_ERROR ){` |
-|         7 | 7107 | `				return PH7_VmThrowException(pCtx,` |
-|         - | 7108 | `					"TypeError",` |
-|         - | 7109 | `					"array_rand(): Argument #2 ($num) must be of type int, string given"` |
-|         - | 7110 | `					);` |
-|         - | 7111 | `			}` |
-|         - | 7112 | `			/* Clamp into a signed-int band so an absurd magnitude still yields` |
-|         - | 7113 | `			 * the out-of-range ValueError below without an out-of-int cast. */` |
-|         3 | 7114 | `			if( iKind == RANGE_IN_DOUBLE ){` |
-|         3 | 7115 | `				iLong = dReal <= 0.0 ? 0 : (dReal >= 2147483647.0 ? 2147483647 : (sxi64)dReal);` |
-|         1 | 7116 | `			}` |
-|         3 | 7117 | `			if( iLong > 2147483647 ){ iLong = 2147483647; }` |
-|         3 | 7118 | `			else if( iLong < -2147483647 ){ iLong = -2147483647; }` |
-|         3 | 7119 | `			nItem = (int)iLong;` |
-|         2 | 7120 | `		}else{` |
-|        15 | 7121 | `			nItem = ph7_value_to_int(pNum);` |
-|         - | 7122 | `		}` |
-|         8 | 7123 | `	}` |
-|         - | 7124 | `	/* Point to the internal representation of the input hashmap */` |
-|        25 | 7125 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 7126 | `	/* php 8: an empty array is a ValueError, not a NULL return */` |
-|        25 | 7127 | `	if( pMap->nEntry < 1 ){` |
-|         5 | 7128 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 7129 | `			"ValueError",` |
-|         - | 7130 | `			"array_rand(): Argument #1 ($array) must not be empty"` |
-|         - | 7131 | `			);` |
-|         - | 7132 | `	}` |
-|         - | 7133 | `	/* php 8: $num outside [1, count] is a ValueError, not a clamp/wrong value */` |
-|        21 | 7134 | `	if( nItem < 1 \|\| nItem > (int)pMap->nEntry ){` |
-|         9 | 7135 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 7136 | `			"ValueError",` |
-|         - | 7137 | `			"array_rand(): Argument #2 ($num) must be between 1 and the number of elements in argument #1 ($array)"` |
-|         - | 7138 | `			);` |
-|         - | 7139 | `	}` |
-|        13 | 7140 | `	if( nItem < 2 ){` |
-|         - | 7141 | `		sxu32 nEntry;` |
-|         - | 7142 | `		/* Select a random number */` |
-|         9 | 7143 | `		nEntry = PH7_VmRandomNum(pMap->pVm) % pMap->nEntry;` |
-|         - | 7144 | `		/* Extract the desired entry.` |
-|         - | 7145 | `		 * Note that we perform a linear lookup here (later version must change this)` |
-|         - | 7146 | `		 */` |
-|         9 | 7147 | `		if( nEntry > pMap->nEntry / 2 ){` |
-|         5 | 7148 | `			pNode = pMap->pLast;` |
-|         5 | 7149 | `			nEntry = pMap->nEntry - nEntry;` |
-|         5 | 7150 | `			if( nEntry > 1 ){` |
-|       ! 0 | 7151 | `				for(;;){` |
-|       ! 0 | 7152 | `					if( nEntry == 0 ){` |
-|       ! 0 | 7153 | `						break;` |
-|         - | 7154 | `					}` |
-|         - | 7155 | `					/* Point to the previous entry */` |
-|       ! 0 | 7156 | `					pNode = pNode->pNext; /* Reverse link */` |
-|       ! 0 | 7157 | `					nEntry--;` |
-|       ! 0 | 7158 | `				}` |
-|       ! 0 | 7159 | `			}` |
-|         3 | 7160 | `		}else{` |
-|         5 | 7161 | `			pNode = pMap->pFirst;` |
-|         3 | 7162 | `			for(;;){` |
-|         8 | 7163 | `				if( nEntry == 0 ){` |
-|         5 | 7164 | `					break;` |
-|         - | 7165 | `				}` |
-|         - | 7166 | `				/* Point to the next entry */` |
-|         3 | 7167 | `				pNode = pNode->pPrev; /* Reverse link */` |
-|         3 | 7168 | `				nEntry--;` |
-|       ! 0 | 7169 | `			}` |
-|         - | 7170 | `		}` |
-|         9 | 7171 | `		if( pNode->iType == HASHMAP_INT_NODE ){` |
-|         - | 7172 | `			/* Int key */` |
-|         7 | 7173 | `			ph7_result_int64(pCtx,pNode->xKey.iKey);` |
-|         4 | 7174 | `		}else{` |
-|         - | 7175 | `			/* Blob key */` |
-|         3 | 7176 | `			ph7_result_string(pCtx,(const char *)SyBlobData(&pNode->xKey.sKey),(int)SyBlobLength(&pNode->xKey.sKey));` |
-|         - | 7177 | `		}` |
-|         5 | 7178 | `	}else{` |
-|         - | 7179 | `		ph7_value sKey,*pArray;` |
-|         - | 7180 | `		ph7_hashmap *pDest;` |
-|         - | 7181 | `		/* Create a new array */` |
-|         5 | 7182 | `		pArray = ph7_context_new_array(pCtx);` |
-|         5 | 7183 | `		if( pArray == 0 ){` |
-|       ! 0 | 7184 | `			ph7_result_null(pCtx);` |
-|       ! 0 | 7185 | `			return PH7_OK;` |
+|         - | 7083 | `	/* php 8: $array must be an array (TypeError, not a silent NULL return) */` |
+|        37 | 7084 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         - | 7085 | `		char zBuf[64];` |
+|        10 | 7086 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 7087 | `			"TypeError",` |
+|         - | 7088 | `			"array_rand(): Argument #1 ($array) must be of type array, %s given",` |
+|         3 | 7089 | `			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf))` |
+|         - | 7090 | `			);` |
+|         - | 7091 | `	}` |
+|         - | 7092 | `	/* php validates $num (and weak-coerces it) BEFORE the empty-array body` |
+|         - | 7093 | `	 * check, matching its ZPP-before-body ordering. */` |
+|        31 | 7094 | `	if( nArg > 1 ){` |
+|        23 | 7095 | `		ph7_value *pNum = apArg[1];` |
+|        22 | 7096 | `		if( ph7_value_is_array(pNum) \|\| ph7_value_is_object(pNum)` |
+|        23 | 7097 | `			\|\| ph7_value_is_resource(pNum) ){` |
+|         - | 7098 | `			char zBuf[64];` |
+|       ! 0 | 7099 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 7100 | `				"TypeError",` |
+|         - | 7101 | `				"array_rand(): Argument #2 ($num) must be of type int, %s given",` |
+|       ! 0 | 7102 | `				VmValueGivenName(pNum,zBuf,sizeof(zBuf))` |
+|         - | 7103 | `				);` |
+|         - | 7104 | `		}` |
+|        23 | 7105 | `		if( ph7_value_is_string(pNum) ){` |
+|         - | 7106 | `			/* Weak int coercion of a string $num follows php's numeric-string` |
+|         - | 7107 | `			 * grammar (whole string, int or float): a non-numeric string` |
+|         - | 7108 | `			 * (incl. leading-numeric junk like "2abc" or "0x1A") is a TypeError,` |
+|         - | 7109 | `			 * a well-formed float-string ("1e3") coerces like a float value.` |
+|         - | 7110 | `			 * Reuses the range() ZPP number parser (§3.9 shared-helper note). */` |
+|         - | 7111 | `			int len;` |
+|         9 | 7112 | `			const char *zStr = ph7_value_to_string(pNum, &len);` |
+|         - | 7113 | `			sxi64 iLong; double dReal;` |
+|         9 | 7114 | `			sxu8 iKind = RangeStrToNumber(zStr, (sxu32)len, &iLong, &dReal);` |
+|         9 | 7115 | `			if( iKind == RANGE_IN_ERROR ){` |
+|         7 | 7116 | `				return PH7_VmThrowException(pCtx,` |
+|         - | 7117 | `					"TypeError",` |
+|         - | 7118 | `					"array_rand(): Argument #2 ($num) must be of type int, string given"` |
+|         - | 7119 | `					);` |
+|         - | 7120 | `			}` |
+|         - | 7121 | `			/* Clamp into a signed-int band so an absurd magnitude still yields` |
+|         - | 7122 | `			 * the out-of-range ValueError below without an out-of-int cast. */` |
+|         3 | 7123 | `			if( iKind == RANGE_IN_DOUBLE ){` |
+|         3 | 7124 | `				iLong = dReal <= 0.0 ? 0 : (dReal >= 2147483647.0 ? 2147483647 : (sxi64)dReal);` |
+|         1 | 7125 | `			}` |
+|         3 | 7126 | `			if( iLong > 2147483647 ){ iLong = 2147483647; }` |
+|         3 | 7127 | `			else if( iLong < -2147483647 ){ iLong = -2147483647; }` |
+|         3 | 7128 | `			nItem = (int)iLong;` |
+|         2 | 7129 | `		}else{` |
+|        15 | 7130 | `			nItem = ph7_value_to_int(pNum);` |
+|         - | 7131 | `		}` |
+|         8 | 7132 | `	}` |
+|         - | 7133 | `	/* Point to the internal representation of the input hashmap */` |
+|        25 | 7134 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 7135 | `	/* php 8: an empty array is a ValueError, not a NULL return */` |
+|        25 | 7136 | `	if( pMap->nEntry < 1 ){` |
+|         5 | 7137 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 7138 | `			"ValueError",` |
+|         - | 7139 | `			"array_rand(): Argument #1 ($array) must not be empty"` |
+|         - | 7140 | `			);` |
+|         - | 7141 | `	}` |
+|         - | 7142 | `	/* php 8: $num outside [1, count] is a ValueError, not a clamp/wrong value */` |
+|        21 | 7143 | `	if( nItem < 1 \|\| nItem > (int)pMap->nEntry ){` |
+|         9 | 7144 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 7145 | `			"ValueError",` |
+|         - | 7146 | `			"array_rand(): Argument #2 ($num) must be between 1 and the number of elements in argument #1 ($array)"` |
+|         - | 7147 | `			);` |
+|         - | 7148 | `	}` |
+|        13 | 7149 | `	if( nItem < 2 ){` |
+|         - | 7150 | `		sxu32 nEntry;` |
+|         - | 7151 | `		/* Select a random number */` |
+|         9 | 7152 | `		nEntry = PH7_VmRandomNum(pMap->pVm) % pMap->nEntry;` |
+|         - | 7153 | `		/* Extract the desired entry.` |
+|         - | 7154 | `		 * Note that we perform a linear lookup here (later version must change this)` |
+|         - | 7155 | `		 */` |
+|         9 | 7156 | `		if( nEntry > pMap->nEntry / 2 ){` |
+|         2 | 7157 | `			pNode = pMap->pLast;` |
+|         2 | 7158 | `			nEntry = pMap->nEntry - nEntry;` |
+|         2 | 7159 | `			if( nEntry > 1 ){` |
+|       ! 0 | 7160 | `				for(;;){` |
+|       ! 0 | 7161 | `					if( nEntry == 0 ){` |
+|       ! 0 | 7162 | `						break;` |
+|         - | 7163 | `					}` |
+|         - | 7164 | `					/* Point to the previous entry */` |
+|       ! 0 | 7165 | `					pNode = pNode->pNext; /* Reverse link */` |
+|       ! 0 | 7166 | `					nEntry--;` |
+|       ! 0 | 7167 | `				}` |
+|       ! 0 | 7168 | `			}` |
+|         2 | 7169 | `		}else{` |
+|         8 | 7170 | `			pNode = pMap->pFirst;` |
+|         4 | 7171 | `			for(;;){` |
+|        12 | 7172 | `				if( nEntry == 0 ){` |
+|         8 | 7173 | `					break;` |
+|         - | 7174 | `				}` |
+|         - | 7175 | `				/* Point to the next entry */` |
+|         4 | 7176 | `				pNode = pNode->pPrev; /* Reverse link */` |
+|         4 | 7177 | `				nEntry--;` |
+|       ! 0 | 7178 | `			}` |
+|         - | 7179 | `		}` |
+|         9 | 7180 | `		if( pNode->iType == HASHMAP_INT_NODE ){` |
+|         - | 7181 | `			/* Int key */` |
+|         7 | 7182 | `			ph7_result_int64(pCtx,pNode->xKey.iKey);` |
+|         4 | 7183 | `		}else{` |
+|         - | 7184 | `			/* Blob key */` |
+|         3 | 7185 | `			ph7_result_string(pCtx,(const char *)SyBlobData(&pNode->xKey.sKey),(int)SyBlobLength(&pNode->xKey.sKey));` |
 |         - | 7186 | `		}` |
-|         - | 7187 | `		/* Point to the internal representation of the hashmap */` |
-|         5 | 7188 | `		pDest = (ph7_hashmap *)pArray->x.pOther;` |
-|         5 | 7189 | `		PH7_MemObjInit(pDest->pVm,&sKey);` |
-|         - | 7190 | `		/* Copy the first n items */` |
-|         5 | 7191 | `		pNode = pMap->pFirst;` |
-|         5 | 7192 | `		if( nItem > (int)pMap->nEntry ){` |
-|       ! 0 | 7193 | `			nItem = (int)pMap->nEntry;` |
-|       ! 0 | 7194 | `		}` |
-|        15 | 7195 | `		while( nItem > 0){` |
-|        11 | 7196 | `			PH7_HashmapExtractNodeKey(pNode,&sKey);` |
-|        11 | 7197 | `			PH7_HashmapInsert(pDest,0/* Automatic index assign*/,&sKey);` |
-|        11 | 7198 | `			PH7_MemObjRelease(&sKey);` |
-|         - | 7199 | `			/* Point to the next entry */` |
-|        11 | 7200 | `			pNode = pNode->pPrev; /* Reverse link */` |
-|        11 | 7201 | `			nItem--;` |
-|         1 | 7202 | `		}` |
-|         - | 7203 | `		/* Shuffle the array */` |
-|         5 | 7204 | `		HashmapMergeSort(pDest,HashmapCmpCallback7,0);` |
-|         - | 7205 | `		/* Rehash node */` |
-|         5 | 7206 | `		HashmapSortRehash(pDest);` |
-|         - | 7207 | `		/* Return the random array */` |
-|         5 | 7208 | `		ph7_result_value(pCtx,pArray);` |
-|         - | 7209 | `	}` |
-|        13 | 7210 | `	return PH7_OK;` |
-|        19 | 7211 | `}` |
-|         - | 7212 | `/*` |
-|         - | 7213 | ` * array array_chunk (array $input,int $size [,bool $preserve_keys = false ])` |
-|         - | 7214 | ` *  Split an array into chunks.` |
-|         - | 7215 | ` * Parameters` |
-|         - | 7216 | ` * $input` |
-|         - | 7217 | ` *   The array to work on` |
-|         - | 7218 | ` * $size` |
-|         - | 7219 | ` *   The size of each chunk` |
-|         - | 7220 | ` * $preserve_keys` |
-|         - | 7221 | ` *   When set to TRUE keys will be preserved. Default is FALSE which will reindex` |
-|         - | 7222 | ` *   the chunk numerically.` |
-|         - | 7223 | ` * Return` |
-|         - | 7224 | ` *  Returns a multidimensional numerically indexed array, starting with` |
-|         - | 7225 | ` *  zero, with each dimension containing size elements.` |
-|         - | 7226 | ` */` |
-|        36 | 7227 | `static int ph7_hashmap_chunk(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         5 | 7228 | `{` |
-|         - | 7229 | `	ph7_value *pArray,*pChunk;` |
-|         - | 7230 | `	ph7_hashmap_node *pEntry;` |
-|         - | 7231 | `	ph7_hashmap *pMap;` |
-|         - | 7232 | `	int bPreserve;` |
-|         - | 7233 | `	sxu32 nChunk;` |
-|         - | 7234 | `	sxu32 nSize;` |
-|         - | 7235 | `	sxu32 n;` |
-|         - | 7236 | `	/* Argument count and types follow PHP semantics. */` |
-|        41 | 7237 | `	if( nArg < 2 ){` |
-|         - | 7238 | `		/* fewer than required arguments -> ArgumentCountError */` |
-|       ! 0 | 7239 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 7240 | `			"ArgumentCountError",` |
-|         - | 7241 | `			"array_chunk() expects at least 2 arguments, %d given",` |
-|       ! 0 | 7242 | `			nArg` |
-|         - | 7243 | `			);` |
-|         - | 7244 | `	}` |
-|        41 | 7245 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 7246 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 7247 | `			"TypeError",` |
-|         - | 7248 | `			"array_chunk(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 7249 | `			ph7_type_name(apArg[0])` |
-|         - | 7250 | `			);` |
-|         - | 7251 | `	}` |
-|         - | 7252 | `	/* Create a new array */` |
-|        38 | 7253 | `	pArray = ph7_context_new_array(pCtx);` |
-|        38 | 7254 | `	if( pArray == 0 ){` |
-|       ! 0 | 7255 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 7256 | `		return PH7_OK;` |
-|         - | 7257 | `	}` |
-|         - | 7258 | `	/* Point to the internal representation of the input hashmap */` |
-|        38 | 7259 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 7260 | `	/* Extract and validate the chunk size argument. */` |
-|         - | 7261 | `	/* Reject types that cannot be sensibly converted to an integer. */` |
-|        51 | 7262 | `	if( ph7_value_is_array(apArg[1]) \|\| ph7_value_is_object(apArg[1]) \|\|` |
-|        72 | 7263 | `		ph7_value_is_resource(apArg[1]) \|\| ph7_value_is_null(apArg[1]) \|\|` |
-|        34 | 7264 | `		ph7_value_is_bool(apArg[1]) ){` |
-|       ! 0 | 7265 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 7266 | `			"TypeError",` |
-|         - | 7267 | `			"array_chunk(): Argument #2 ($length) must be of type int, %s given",` |
-|       ! 0 | 7268 | `			ph7_type_name(apArg[1])` |
-|         - | 7269 | `			);` |
-|         - | 7270 | `	}` |
-|         - | 7271 | `	/* Strings that are non-numeric produce a TypeError.  Numeric` |
-|         - | 7272 | `	 * strings are permitted; however those representing floats lose` |
-|         - | 7273 | `	 * precision and PHP emits a deprecation warning. */` |
-|        38 | 7274 | `	if( ph7_value_is_string(apArg[1]) ){` |
-|         - | 7275 | `		int len;` |
-|         3 | 7276 | `		sxu8 bReal = FALSE;` |
-|         3 | 7277 | `		const char *zStr = ph7_value_to_string(apArg[1], &len);` |
-|         3 | 7278 | `		if( SyStrIsNumeric(zStr, len, &bReal, 0) != SXRET_OK ){` |
-|         3 | 7279 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 7280 | `				"TypeError",` |
-|         - | 7281 | `				"array_chunk(): Argument #2 ($length) must be of type int, string given"` |
-|         - | 7282 | `				);` |
-|         - | 7283 | `		}` |
-|       ! 0 | 7284 | `		if( bReal ){` |
-|         - | 7285 | `			/* float-string -> warn but allow */` |
-|       ! 0 | 7286 | `			ph7_context_throw_error_format(pCtx, E_DEPRECATED,` |
-|         - | 7287 | `				"Implicit conversion from float-string \"%s\" to int loses precision",` |
-|       ! 0 | 7288 | `				zStr` |
-|         - | 7289 | `				);` |
-|       ! 0 | 7290 | `		}` |
-|       ! 0 | 7291 | `	}` |
-|         - | 7292 | `	/* If the value is a float with a fractional component, emit a` |
-|         - | 7293 | `	 * deprecation warning but continue.  The following conversion occurs` |
-|         - | 7294 | `	 * later via ph7_value_to_int. */` |
-|        35 | 7295 | `	if( ph7_value_is_float(apArg[1]) ){` |
-|         3 | 7296 | `		double d = ph7_value_to_double(apArg[1]);` |
-|         3 | 7297 | `		sxi64 i = (sxi64)d;` |
-|         3 | 7298 | `		if( d != (double)i ){` |
-|         4 | 7299 | `			ph7_context_throw_error_format(pCtx, E_DEPRECATED,` |
-|         - | 7300 | `				"Implicit conversion from float %g to int loses precision",` |
-|         1 | 7301 | `				d` |
-|         - | 7302 | `				);` |
-|         1 | 7303 | `		}` |
-|         1 | 7304 | `	}` |
-|         - | 7305 | `	/* Convert using ph7_value_to_int; now that float fractions are` |
-|         - | 7306 | `	 * eliminated, this will not produce a warning. */` |
-|         - | 7307 | `	{` |
-|        35 | 7308 | `		sxi64 nSizeSigned = ph7_value_to_int(apArg[1]);` |
-|        35 | 7309 | `		if( nSizeSigned < 1 ){` |
-|         - | 7310 | `			/* size <= 0 -> ValueError */` |
-|         6 | 7311 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 7312 | `				"ValueError",` |
-|         - | 7313 | `				"array_chunk(): Argument #2 ($length) must be greater than 0"` |
-|         - | 7314 | `				);` |
-|         - | 7315 | `		}` |
-|        29 | 7316 | `		nSize = (sxu32)nSizeSigned;` |
-|         - | 7317 | `	}` |
-|        29 | 7318 | `	if( nSize >= pMap->nEntry ){` |
-|         - | 7319 | `		/* Return the whole array */` |
-|         3 | 7320 | `		ph7_array_add_elem(pArray,0,apArg[0]);` |
-|         3 | 7321 | `		ph7_result_value(pCtx,pArray);` |
-|         3 | 7322 | `		return PH7_OK;` |
-|         - | 7323 | `	}` |
-|        27 | 7324 | `	bPreserve = 0;` |
-|        27 | 7325 | `	if( nArg > 2 ){` |
-|         - | 7326 | `		/* The third argument has a bool type hint in PHP.  Values that` |
-|         - | 7327 | `		 * cannot be sensibly converted (arrays, objects, resources) are` |
-|         - | 7328 | `		 * rejected with a TypeError.  Scalars and null coerce to bool` |
-|         - | 7329 | `		 * normally, matching PHP behaviour. */` |
-|        30 | 7330 | `		if( ph7_value_is_array(apArg[2]) \|\|` |
-|        31 | 7331 | `			ph7_value_is_object(apArg[2]) \|\|` |
-|        20 | 7332 | `			ph7_value_is_resource(apArg[2]) ){` |
-|       ! 0 | 7333 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 7334 | `				"TypeError",` |
-|         - | 7335 | `				"array_chunk(): Argument #3 ($preserve_keys) must be of type bool, %s given",` |
-|       ! 0 | 7336 | `				ph7_type_name(apArg[2])` |
-|         - | 7337 | `				);` |
-|         - | 7338 | `		}` |
-|        21 | 7339 | `		bPreserve = ph7_value_to_bool(apArg[2]);` |
-|        10 | 7340 | `	}` |
-|         - | 7341 | `	/* Start processing */` |
-|        27 | 7342 | `	pEntry = pMap->pFirst;` |
-|        27 | 7343 | `	nChunk = 0;` |
-|        27 | 7344 | `	pChunk = 0;` |
-|        27 | 7345 | `	n = pMap->nEntry;` |
-|        56 | 7346 | `	for( ;; ){` |
-|       113 | 7347 | `		if( n < 1 ){` |
-|         - | 7348 | `			/* When the loop terminates we may still have a current chunk` |
-|         - | 7349 | `			 * that hasn't been added to the result array.  The previous` |
-|         - | 7350 | `			 * implementation only pushed it if nChunk>0 which dropped the` |
-|         - | 7351 | `			 * final chunk when the input size was an exact multiple of` |
-|         - | 7352 | `			 * the chunk length.  Always append the pending chunk if it` |
-|         - | 7353 | `			 * exists. */` |
-|        27 | 7354 | `			if( pChunk ){` |
-|        27 | 7355 | `				ph7_array_add_elem(pArray,0,pChunk); /* Will have its own copy */` |
-|        13 | 7356 | `			}` |
-|        27 | 7357 | `			break;` |
-|         - | 7358 | `		}` |
-|        87 | 7359 | `		if( nChunk < 1 ){` |
-|        71 | 7360 | `			if( pChunk ){` |
-|         - | 7361 | `				/* Put the first chunk */` |
-|        45 | 7362 | `				ph7_array_add_elem(pArray,0,pChunk); /* Will have it's own copy */` |
-|        22 | 7363 | `			}` |
-|         - | 7364 | `			/* Create a new dimension */` |
-|        71 | 7365 | `			pChunk = ph7_context_new_array(pCtx); /* Don't worry about freeing memory here,everything` |
-|         - | 7366 | `												   * will be automatically released as soon we return` |
-|         - | 7367 | `												   * from this function */` |
-|        71 | 7368 | `			if( pChunk == 0 ){` |
-|       ! 0 | 7369 | `				break;` |
-|         - | 7370 | `			}` |
-|        71 | 7371 | `			nChunk = nSize;` |
-|        35 | 7372 | `		}` |
-|         - | 7373 | `		/* Insert the entry */` |
-|        87 | 7374 | `		HashmapInsertNode((ph7_hashmap *)pChunk->x.pOther,pEntry,bPreserve);` |
-|         - | 7375 | `		/* Point to the next entry */` |
-|        87 | 7376 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|        87 | 7377 | `		nChunk--;` |
-|        87 | 7378 | `		n--;` |
-|         1 | 7379 | `	}` |
-|         - | 7380 | `	/* Return the multidimensional array */` |
-|        27 | 7381 | `	ph7_result_value(pCtx,pArray);` |
-|        27 | 7382 | `	return PH7_OK;` |
-|        23 | 7383 | `}` |
-|         - | 7384 | `/*` |
-|         - | 7385 | ` * array array_pad(array $input,int $pad_size,value $pad_value)` |
-|         - | 7386 | ` *  Pad array to the specified length with a value.` |
-|         - | 7387 | ` * $input` |
-|         - | 7388 | ` *   Initial array of values to pad.` |
-|         - | 7389 | ` * $pad_size` |
-|         - | 7390 | ` *   New size of the array.` |
-|         - | 7391 | ` * $pad_value` |
-|         - | 7392 | ` *   Value to pad if input is less than pad_size.` |
-|         - | 7393 | ` */` |
-|         - | 7394 | `/*` |
-|         - | 7395 | ` * Shared "requested array size too large" guard (band A #8). php throws a` |
-|         - | 7396 | ` * catchable ValueError when a builtin's caller-controlled target length` |
-|         - | 7397 | ` * exceeds its hashtable capacity HT_MAX_SIZE (2^30 elements; probed against` |
-|         - | 7398 | ` * php 8.5.7 — the boundary sits exactly between 1073741824 and 1073741825,` |
-|         - | 7399 | ` * independent of the input array's size and symmetric for negative lengths).` |
-|         - | 7400 | ` * Without this, a call like array_pad([1,2], 2000000000, 0) sits in the fill` |
-|         - | 7401 | ` * loop for minutes and then OOMs. nRequested is the ABSOLUTE requested` |
-|         - | 7402 | ` * length; pass a still-negative value (e.g. the unnegatable INT64_MIN,` |
-|         - | 7403 | ` * mirroring php's ZEND_ABS overflow) to fail the guard unconditionally.` |
-|         - | 7404 | ` * Returns SXRET_OK when the size is acceptable, else the throw status to` |
-|         - | 7405 | ` * propagate. The cap constant is shared with range()'s guards` |
-|         - | 7406 | ` * (PH7_RANGE_HT_MAX_SIZE above).` |
-|         - | 7407 | ` */` |
-|        50 | 7408 | `static sxi32 HashmapGuardArraySize(` |
-|         - | 7409 | `	ph7_context *pCtx,` |
-|         - | 7410 | `	const char *zFunc,     /* Function name for the message */` |
-|         - | 7411 | `	int iArg,              /* 1-based argument position */` |
-|         - | 7412 | `	const char *zParam     /* "$length"-style parameter name */,` |
-|         - | 7413 | `	sxi64 nRequested       /* Absolute requested element count */` |
-|         - | 7414 | `	)` |
-|         1 | 7415 | `{` |
-|        51 | 7416 | `	if( nRequested < 0 \|\| nRequested > PH7_RANGE_HT_MAX_SIZE ){` |
-|        22 | 7417 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 7418 | `			"ValueError",` |
-|         - | 7419 | `			"%s(): Argument #%d (%s) must not exceed the maximum allowed array size",` |
-|         7 | 7420 | `			zFunc,iArg,zParam` |
-|         - | 7421 | `			);` |
-|         - | 7422 | `	}` |
-|        37 | 7423 | `	return SXRET_OK;` |
-|        26 | 7424 | `}` |
-|        62 | 7425 | `static int ph7_hashmap_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         3 | 7426 | `{` |
-|         - | 7427 | `	ph7_hashmap *pMap;` |
-|         - | 7428 | `	ph7_value *pArray;` |
-|         - | 7429 | `	sxi64 iLen,iAbs;` |
-|         - | 7430 | `	int nEntry;` |
-|         - | 7431 | `	sxi32 rc;` |
-|        65 | 7432 | `	if( nArg != 3 ){` |
-|         4 | 7433 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 7434 | `			"ArgumentCountError",` |
-|         - | 7435 | `			"array_pad() expects exactly 3 arguments, %d given",` |
-|         1 | 7436 | `			nArg` |
-|         - | 7437 | `			);` |
-|         - | 7438 | `	}` |
-|        62 | 7439 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         - | 7440 | `		char zBuf[64];` |
-|        11 | 7441 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 7442 | `			"TypeError",` |
-|         - | 7443 | `			"array_pad(): Argument #1 ($array) must be of type array, %s given",` |
-|         3 | 7444 | `			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf))` |
-|         - | 7445 | `			);` |
-|         - | 7446 | `	}` |
-|         - | 7447 | `	/* php 8: $length must be int-coercible. An array/object/resource or a` |
-|         - | 7448 | `	 * non-numeric string throws a TypeError instead of silently padding to 0;` |
-|         - | 7449 | `	 * a numeric string is weak-coerced via php's is_numeric_string grammar` |
-|         - | 7450 | `	 * (reusing the shared RangeStrToNumber, like array_rand's $num). */` |
-|        54 | 7451 | `	if( ph7_value_is_array(apArg[1]) \|\| ph7_value_is_object(apArg[1])` |
-|        55 | 7452 | `		\|\| ph7_value_is_resource(apArg[1]) ){` |
-|         - | 7453 | `		char zBuf[64];` |
-|       ! 0 | 7454 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 7455 | `			"TypeError",` |
-|         - | 7456 | `			"array_pad(): Argument #2 ($length) must be of type int, %s given",` |
-|       ! 0 | 7457 | `			VmValueGivenName(apArg[1],zBuf,sizeof(zBuf))` |
-|         - | 7458 | `			);` |
-|         - | 7459 | `	}` |
-|        55 | 7460 | `	if( ph7_value_is_string(apArg[1]) ){` |
-|         - | 7461 | `		int nStr;` |
-|        11 | 7462 | `		const char *zStr = ph7_value_to_string(apArg[1],&nStr);` |
-|         - | 7463 | `		sxi64 iLong; double dReal;` |
-|        11 | 7464 | `		sxu8 iKind = RangeStrToNumber(zStr,(sxu32)nStr,&iLong,&dReal);` |
-|        11 | 7465 | `		if( iKind == RANGE_IN_ERROR ){` |
-|         5 | 7466 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 7467 | `				"TypeError",` |
-|         - | 7468 | `				"array_pad(): Argument #2 ($length) must be of type int, string given"` |
-|         - | 7469 | `				);` |
-|         - | 7470 | `		}` |
-|         7 | 7471 | `		if( iKind == RANGE_IN_DOUBLE ){` |
-|         - | 7472 | `			/* php ZPP: a float-string outside the int64 range (or NaN) fails` |
-|         - | 7473 | `			 * outright — also keeps the (sxi64) cast below UB-free. */` |
-|         3 | 7474 | `			if( dReal != dReal \|\| dReal >= 9223372036854775808.0 \|\| dReal < -9223372036854775808.0 ){` |
-|       ! 0 | 7475 | `				return PH7_VmThrowException(pCtx,` |
-|         - | 7476 | `					"TypeError",` |
-|         - | 7477 | `					"array_pad(): Argument #2 ($length) must be of type int, string given"` |
-|         - | 7478 | `					);` |
-|         - | 7479 | `			}` |
-|         3 | 7480 | `			iLen = (sxi64)dReal;` |
-|         3 | 7481 | `			if( (double)iLen != dReal ){` |
-|       ! 0 | 7482 | `				PH7_VmThrowDeprecatedFmt(pCtx->pVm,` |
-|         - | 7483 | `					"Implicit conversion from float-string \"%s\" to int loses precision",` |
-|       ! 0 | 7484 | `					zStr` |
-|         - | 7485 | `					);` |
-|       ! 0 | 7486 | `			}` |
-|         2 | 7487 | `		}else{` |
-|         5 | 7488 | `			iLen = iLong;` |
-|         - | 7489 | `		}` |
-|         4 | 7490 | `	}else{` |
-|        45 | 7491 | `		iLen = ph7_value_to_int64(apArg[1]);` |
-|         - | 7492 | `	}` |
-|         - | 7493 | `	/* Point to the internal representation of the input hashmap */` |
-|        51 | 7494 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 7495 | `	/* php caps abs($length) at HT_MAX_SIZE either direction (INT64_MIN stays` |
-|         - | 7496 | `	 * negative through the ABS, failing the guard like php's own ZEND_ABS` |
-|         - | 7497 | `	 * overflow). */` |
-|        51 | 7498 | `	iAbs = iLen;` |
-|        51 | 7499 | `	if( iAbs < 0 && iAbs != (sxi64)-9223372036854775807LL - 1 ){` |
-|        15 | 7500 | `		iAbs = -iAbs;` |
-|         7 | 7501 | `	}` |
-|        51 | 7502 | `	rc = HashmapGuardArraySize(pCtx,"array_pad",2,"$length",iAbs);` |
-|        51 | 7503 | `	if( rc != SXRET_OK ){` |
-|        15 | 7504 | `		return rc;` |
-|         - | 7505 | `	}` |
-|        37 | 7506 | `	nEntry = (int)iLen;` |
-|         - | 7507 | `	/* Create a new array */` |
-|        37 | 7508 | `	pArray = ph7_context_new_array(pCtx);` |
-|        37 | 7509 | `	if( pArray == 0 ){` |
-|       ! 0 | 7510 | `		return PH7_ContextMemoryError(pCtx);` |
-|         - | 7511 | `	}` |
-|        37 | 7512 | `	if( nEntry < 0 ){` |
-|        11 | 7513 | `		nEntry = -nEntry;` |
-|        11 | 7514 | `		if( nEntry > (int)pMap->nEntry ){` |
-|         7 | 7515 | `			nEntry -= (int)pMap->nEntry;` |
-|         - | 7516 | `			/* Insert given items first */` |
-|        25 | 7517 | `			while( nEntry > 0 ){` |
-|        19 | 7518 | `				if( ph7_array_add_elem(pArray,0,apArg[2]) != SXRET_OK ){` |
-|       ! 0 | 7519 | `					return PH7_ContextMemoryError(pCtx);` |
-|         - | 7520 | `				}` |
-|        19 | 7521 | `				nEntry--;` |
-|         1 | 7522 | `			}` |
-|         - | 7523 | `			/* Merge the two arrays */` |
-|         7 | 7524 | `			HashmapMerge(pMap,(ph7_hashmap *)pArray->x.pOther);` |
-|         4 | 7525 | `		}else{` |
-|         5 | 7526 | `			PH7_HashmapDup(pMap,(ph7_hashmap *)pArray->x.pOther);` |
-|         1 | 7527 | `		}` |
-|        32 | 7528 | `	}else if( nEntry > 0 ){` |
-|        25 | 7529 | `		if( nEntry > (int)pMap->nEntry ){` |
-|        19 | 7530 | `			nEntry -= (int)pMap->nEntry;` |
-|         - | 7531 | `			/* Merge the two arrays first */` |
-|        19 | 7532 | `			HashmapMerge(pMap,(ph7_hashmap *)pArray->x.pOther);` |
-|         - | 7533 | `			/* Insert given items */` |
-|       275 | 7534 | `			while( nEntry > 0 ){` |
-|       257 | 7535 | `				if( ph7_array_add_elem(pArray,0,apArg[2]) != SXRET_OK ){` |
-|       ! 0 | 7536 | `					return PH7_ContextMemoryError(pCtx);` |
-|         - | 7537 | `				}` |
-|       257 | 7538 | `				nEntry--;` |
-|         1 | 7539 | `			}` |
-|        10 | 7540 | `		}else{` |
-|         7 | 7541 | `			PH7_HashmapDup(pMap,(ph7_hashmap *)pArray->x.pOther);` |
-|         - | 7542 | `		}` |
-|        13 | 7543 | `	}else{` |
-|         - | 7544 | `		/* nEntry == 0: return a copy of the input array */` |
-|         3 | 7545 | `		PH7_HashmapDup(pMap,(ph7_hashmap *)pArray->x.pOther);` |
-|         - | 7546 | `	}` |
-|         - | 7547 | `	/* Return the new array */` |
-|        37 | 7548 | `	ph7_result_value(pCtx,pArray);` |
-|        37 | 7549 | `	return PH7_OK;` |
-|        34 | 7550 | `}` |
-|         - | 7551 | `/*` |
-|         - | 7552 | ` * array array_replace(array &$array,array &$array1,...)` |
-|         - | 7553 | ` *  Replaces elements from passed arrays into the first array.` |
-|         - | 7554 | ` * Parameters` |
-|         - | 7555 | ` * $array` |
-|         - | 7556 | ` *   The array in which elements are replaced.` |
-|         - | 7557 | ` * $array1` |
-|         - | 7558 | ` *   The array from which elements will be extracted.` |
-|         - | 7559 | ` * ....` |
-|         - | 7560 | ` *  More arrays from which elements will be extracted.` |
-|         - | 7561 | ` *  Values from later arrays overwrite the previous values.` |
-|         - | 7562 | ` * Return` |
-|         - | 7563 | ` *  Returns an array.` |
-|         - | 7564 | ` *  Throws ArgumentCountError if no arguments are given.` |
-|         - | 7565 | ` *  Throws TypeError if any argument is not an array.` |
-|         - | 7566 | ` */` |
-|        20 | 7567 | `static int ph7_hashmap_replace(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         3 | 7568 | `{` |
-|         - | 7569 | `	ph7_hashmap *pMap;` |
-|         - | 7570 | `	ph7_value *pArray;` |
-|         - | 7571 | `	int i;` |
-|        23 | 7572 | `	if( nArg < 1 ){` |
-|       ! 0 | 7573 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 7574 | `			"ArgumentCountError",` |
-|         - | 7575 | `			"array_replace() expects at least 1 argument, 0 given"` |
-|         - | 7576 | `			);` |
-|         - | 7577 | `	}` |
-|        23 | 7578 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 7579 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 7580 | `			"TypeError",` |
-|         - | 7581 | `			"array_replace(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 7582 | `			ph7_type_name(apArg[0])` |
-|         - | 7583 | `			);` |
-|         - | 7584 | `	}` |
-|         - | 7585 | `	/* Create a new array */` |
-|        20 | 7586 | `	pArray = ph7_context_new_array(pCtx);` |
-|        20 | 7587 | `	if( pArray == 0 ){` |
-|       ! 0 | 7588 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 7589 | `		return PH7_OK;` |
-|         - | 7590 | `	}` |
-|         - | 7591 | `	/* Overwrite from the first array */` |
-|        20 | 7592 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|        20 | 7593 | `	HashmapOverwrite(pMap,(ph7_hashmap *)pArray->x.pOther);` |
-|         - | 7594 | `	/* Perform the requested operation for remaining arrays */` |
-|        36 | 7595 | `	for( i = 1 ; i < nArg ; i++ ){` |
-|        20 | 7596 | `		if( !ph7_value_is_array(apArg[i]) ){` |
-|         - | 7597 | `			/* Type mismatch -> TypeError */` |
-|         4 | 7598 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 7599 | `				"TypeError",` |
-|         - | 7600 | `				"array_replace(): Argument #%d must be of type array, %s given",` |
-|         1 | 7601 | `				i + 1,` |
-|         2 | 7602 | `				ph7_type_name(apArg[i])` |
-|         - | 7603 | `				);` |
-|         - | 7604 | `		}` |
-|         - | 7605 | `		/* Point to the internal representation of the input hashmap */` |
-|        17 | 7606 | `		pMap = (ph7_hashmap *)apArg[i]->x.pOther;` |
-|        17 | 7607 | `		HashmapOverwrite(pMap,(ph7_hashmap *)pArray->x.pOther);` |
-|         9 | 7608 | `	}` |
-|         - | 7609 | `	/* Return the new array */` |
-|        17 | 7610 | `	ph7_result_value(pCtx,pArray);` |
-|        17 | 7611 | `	return PH7_OK;` |
-|        13 | 7612 | `}` |
-|         - | 7613 | `/*` |
-|         - | 7614 | ` * array array_filter(array $input [,callback $callback ])` |
-|         - | 7615 | ` *  Filters elements of an array using a callback function.` |
-|         - | 7616 | ` * Parameters` |
-|         - | 7617 | ` *  $input` |
-|         - | 7618 | ` *    The array to iterate over` |
-|         - | 7619 | ` * $callback` |
-|         - | 7620 | ` *    The callback function to use` |
-|         - | 7621 | ` *    If no callback is supplied, all entries of input equal to FALSE (see converting to boolean)` |
-|         - | 7622 | ` *    will be removed.` |
-|         - | 7623 | ` * Return` |
-|         - | 7624 | ` *  The filtered array.` |
-|         - | 7625 | ` */` |
-|        30 | 7626 | `static int ph7_hashmap_filter(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         2 | 7627 | `{` |
-|         - | 7628 | `	ph7_hashmap_node *pEntry;` |
-|         - | 7629 | `	ph7_hashmap *pMap;` |
-|         - | 7630 | `	ph7_value *pArray;` |
-|         - | 7631 | `	ph7_value sResult;   /* Callback result */` |
-|         - | 7632 | `	ph7_value *pValue;` |
-|         - | 7633 | `	sxi32 rc;` |
-|         - | 7634 | `	int keep;` |
-|         - | 7635 | `	sxu32 n;` |
-|        32 | 7636 | `	if( nArg < 1 ){` |
-|         - | 7637 | `		/* Missing argument (arity is enforced upstream; defensive) */` |
-|       ! 0 | 7638 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 7639 | `		return PH7_OK;` |
-|         - | 7640 | `	}` |
-|         - | 7641 | `	/* php 8: $array must be an array (TypeError, not a silent NULL return) */` |
-|        32 | 7642 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         - | 7643 | `		char zBuf[64];` |
-|        19 | 7644 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 7645 | `			"TypeError",` |
-|         - | 7646 | `			"array_filter(): Argument #1 ($array) must be of type array, %s given",` |
-|         6 | 7647 | `			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf))` |
-|         - | 7648 | `			);` |
+|         5 | 7187 | `	}else{` |
+|         - | 7188 | `		ph7_value sKey,*pArray;` |
+|         - | 7189 | `		ph7_hashmap *pDest;` |
+|         - | 7190 | `		/* Create a new array */` |
+|         5 | 7191 | `		pArray = ph7_context_new_array(pCtx);` |
+|         5 | 7192 | `		if( pArray == 0 ){` |
+|       ! 0 | 7193 | `			ph7_result_null(pCtx);` |
+|       ! 0 | 7194 | `			return PH7_OK;` |
+|         - | 7195 | `		}` |
+|         - | 7196 | `		/* Point to the internal representation of the hashmap */` |
+|         5 | 7197 | `		pDest = (ph7_hashmap *)pArray->x.pOther;` |
+|         5 | 7198 | `		PH7_MemObjInit(pDest->pVm,&sKey);` |
+|         - | 7199 | `		/* Copy the first n items */` |
+|         5 | 7200 | `		pNode = pMap->pFirst;` |
+|         5 | 7201 | `		if( nItem > (int)pMap->nEntry ){` |
+|       ! 0 | 7202 | `			nItem = (int)pMap->nEntry;` |
+|       ! 0 | 7203 | `		}` |
+|        15 | 7204 | `		while( nItem > 0){` |
+|        11 | 7205 | `			PH7_HashmapExtractNodeKey(pNode,&sKey);` |
+|        11 | 7206 | `			PH7_HashmapInsert(pDest,0/* Automatic index assign*/,&sKey);` |
+|        11 | 7207 | `			PH7_MemObjRelease(&sKey);` |
+|         - | 7208 | `			/* Point to the next entry */` |
+|        11 | 7209 | `			pNode = pNode->pPrev; /* Reverse link */` |
+|        11 | 7210 | `			nItem--;` |
+|         1 | 7211 | `		}` |
+|         - | 7212 | `		/* Shuffle the array */` |
+|         5 | 7213 | `		HashmapMergeSort(pDest,HashmapCmpCallback7,0);` |
+|         - | 7214 | `		/* Rehash node */` |
+|         5 | 7215 | `		HashmapSortRehash(pDest);` |
+|         - | 7216 | `		/* Return the random array */` |
+|         5 | 7217 | `		ph7_result_value(pCtx,pArray);` |
+|         - | 7218 | `	}` |
+|        13 | 7219 | `	return PH7_OK;` |
+|        19 | 7220 | `}` |
+|         - | 7221 | `/*` |
+|         - | 7222 | ` * array array_chunk (array $input,int $size [,bool $preserve_keys = false ])` |
+|         - | 7223 | ` *  Split an array into chunks.` |
+|         - | 7224 | ` * Parameters` |
+|         - | 7225 | ` * $input` |
+|         - | 7226 | ` *   The array to work on` |
+|         - | 7227 | ` * $size` |
+|         - | 7228 | ` *   The size of each chunk` |
+|         - | 7229 | ` * $preserve_keys` |
+|         - | 7230 | ` *   When set to TRUE keys will be preserved. Default is FALSE which will reindex` |
+|         - | 7231 | ` *   the chunk numerically.` |
+|         - | 7232 | ` * Return` |
+|         - | 7233 | ` *  Returns a multidimensional numerically indexed array, starting with` |
+|         - | 7234 | ` *  zero, with each dimension containing size elements.` |
+|         - | 7235 | ` */` |
+|        36 | 7236 | `static int ph7_hashmap_chunk(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         5 | 7237 | `{` |
+|         - | 7238 | `	ph7_value *pArray,*pChunk;` |
+|         - | 7239 | `	ph7_hashmap_node *pEntry;` |
+|         - | 7240 | `	ph7_hashmap *pMap;` |
+|         - | 7241 | `	int bPreserve;` |
+|         - | 7242 | `	sxu32 nChunk;` |
+|         - | 7243 | `	sxu32 nSize;` |
+|         - | 7244 | `	sxu32 n;` |
+|         - | 7245 | `	/* Argument count and types follow PHP semantics. */` |
+|        41 | 7246 | `	if( nArg < 2 ){` |
+|         - | 7247 | `		/* fewer than required arguments -> ArgumentCountError */` |
+|       ! 0 | 7248 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 7249 | `			"ArgumentCountError",` |
+|         - | 7250 | `			"array_chunk() expects at least 2 arguments, %d given",` |
+|       ! 0 | 7251 | `			nArg` |
+|         - | 7252 | `			);` |
+|         - | 7253 | `	}` |
+|        41 | 7254 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         4 | 7255 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 7256 | `			"TypeError",` |
+|         - | 7257 | `			"array_chunk(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 7258 | `			ph7_type_name(apArg[0])` |
+|         - | 7259 | `			);` |
+|         - | 7260 | `	}` |
+|         - | 7261 | `	/* Create a new array */` |
+|        38 | 7262 | `	pArray = ph7_context_new_array(pCtx);` |
+|        38 | 7263 | `	if( pArray == 0 ){` |
+|       ! 0 | 7264 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 7265 | `		return PH7_OK;` |
+|         - | 7266 | `	}` |
+|         - | 7267 | `	/* Point to the internal representation of the input hashmap */` |
+|        38 | 7268 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 7269 | `	/* Extract and validate the chunk size argument. */` |
+|         - | 7270 | `	/* Reject types that cannot be sensibly converted to an integer. */` |
+|        51 | 7271 | `	if( ph7_value_is_array(apArg[1]) \|\| ph7_value_is_object(apArg[1]) \|\|` |
+|        72 | 7272 | `		ph7_value_is_resource(apArg[1]) \|\| ph7_value_is_null(apArg[1]) \|\|` |
+|        34 | 7273 | `		ph7_value_is_bool(apArg[1]) ){` |
+|       ! 0 | 7274 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 7275 | `			"TypeError",` |
+|         - | 7276 | `			"array_chunk(): Argument #2 ($length) must be of type int, %s given",` |
+|       ! 0 | 7277 | `			ph7_type_name(apArg[1])` |
+|         - | 7278 | `			);` |
+|         - | 7279 | `	}` |
+|         - | 7280 | `	/* Strings that are non-numeric produce a TypeError.  Numeric` |
+|         - | 7281 | `	 * strings are permitted; however those representing floats lose` |
+|         - | 7282 | `	 * precision and PHP emits a deprecation warning. */` |
+|        38 | 7283 | `	if( ph7_value_is_string(apArg[1]) ){` |
+|         - | 7284 | `		int len;` |
+|         3 | 7285 | `		sxu8 bReal = FALSE;` |
+|         3 | 7286 | `		const char *zStr = ph7_value_to_string(apArg[1], &len);` |
+|         3 | 7287 | `		if( SyStrIsNumeric(zStr, len, &bReal, 0) != SXRET_OK ){` |
+|         3 | 7288 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 7289 | `				"TypeError",` |
+|         - | 7290 | `				"array_chunk(): Argument #2 ($length) must be of type int, string given"` |
+|         - | 7291 | `				);` |
+|         - | 7292 | `		}` |
+|       ! 0 | 7293 | `		if( bReal ){` |
+|         - | 7294 | `			/* float-string -> warn but allow */` |
+|       ! 0 | 7295 | `			ph7_context_throw_error_format(pCtx, E_DEPRECATED,` |
+|         - | 7296 | `				"Implicit conversion from float-string \"%s\" to int loses precision",` |
+|       ! 0 | 7297 | `				zStr` |
+|         - | 7298 | `				);` |
+|       ! 0 | 7299 | `		}` |
+|       ! 0 | 7300 | `	}` |
+|         - | 7301 | `	/* If the value is a float with a fractional component, emit a` |
+|         - | 7302 | `	 * deprecation warning but continue.  The following conversion occurs` |
+|         - | 7303 | `	 * later via ph7_value_to_int. */` |
+|        35 | 7304 | `	if( ph7_value_is_float(apArg[1]) ){` |
+|         3 | 7305 | `		double d = ph7_value_to_double(apArg[1]);` |
+|         3 | 7306 | `		sxi64 i = (sxi64)d;` |
+|         3 | 7307 | `		if( d != (double)i ){` |
+|         4 | 7308 | `			ph7_context_throw_error_format(pCtx, E_DEPRECATED,` |
+|         - | 7309 | `				"Implicit conversion from float %g to int loses precision",` |
+|         1 | 7310 | `				d` |
+|         - | 7311 | `				);` |
+|         1 | 7312 | `		}` |
+|         1 | 7313 | `	}` |
+|         - | 7314 | `	/* Convert using ph7_value_to_int; now that float fractions are` |
+|         - | 7315 | `	 * eliminated, this will not produce a warning. */` |
+|         - | 7316 | `	{` |
+|        35 | 7317 | `		sxi64 nSizeSigned = ph7_value_to_int(apArg[1]);` |
+|        35 | 7318 | `		if( nSizeSigned < 1 ){` |
+|         - | 7319 | `			/* size <= 0 -> ValueError */` |
+|         6 | 7320 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 7321 | `				"ValueError",` |
+|         - | 7322 | `				"array_chunk(): Argument #2 ($length) must be greater than 0"` |
+|         - | 7323 | `				);` |
+|         - | 7324 | `		}` |
+|        29 | 7325 | `		nSize = (sxu32)nSizeSigned;` |
+|         - | 7326 | `	}` |
+|        29 | 7327 | `	if( nSize >= pMap->nEntry ){` |
+|         - | 7328 | `		/* Return the whole array */` |
+|         3 | 7329 | `		ph7_array_add_elem(pArray,0,apArg[0]);` |
+|         3 | 7330 | `		ph7_result_value(pCtx,pArray);` |
+|         3 | 7331 | `		return PH7_OK;` |
+|         - | 7332 | `	}` |
+|        27 | 7333 | `	bPreserve = 0;` |
+|        27 | 7334 | `	if( nArg > 2 ){` |
+|         - | 7335 | `		/* The third argument has a bool type hint in PHP.  Values that` |
+|         - | 7336 | `		 * cannot be sensibly converted (arrays, objects, resources) are` |
+|         - | 7337 | `		 * rejected with a TypeError.  Scalars and null coerce to bool` |
+|         - | 7338 | `		 * normally, matching PHP behaviour. */` |
+|        30 | 7339 | `		if( ph7_value_is_array(apArg[2]) \|\|` |
+|        31 | 7340 | `			ph7_value_is_object(apArg[2]) \|\|` |
+|        20 | 7341 | `			ph7_value_is_resource(apArg[2]) ){` |
+|       ! 0 | 7342 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 7343 | `				"TypeError",` |
+|         - | 7344 | `				"array_chunk(): Argument #3 ($preserve_keys) must be of type bool, %s given",` |
+|       ! 0 | 7345 | `				ph7_type_name(apArg[2])` |
+|         - | 7346 | `				);` |
+|         - | 7347 | `		}` |
+|        21 | 7348 | `		bPreserve = ph7_value_to_bool(apArg[2]);` |
+|        10 | 7349 | `	}` |
+|         - | 7350 | `	/* Start processing */` |
+|        27 | 7351 | `	pEntry = pMap->pFirst;` |
+|        27 | 7352 | `	nChunk = 0;` |
+|        27 | 7353 | `	pChunk = 0;` |
+|        27 | 7354 | `	n = pMap->nEntry;` |
+|        56 | 7355 | `	for( ;; ){` |
+|       113 | 7356 | `		if( n < 1 ){` |
+|         - | 7357 | `			/* When the loop terminates we may still have a current chunk` |
+|         - | 7358 | `			 * that hasn't been added to the result array.  The previous` |
+|         - | 7359 | `			 * implementation only pushed it if nChunk>0 which dropped the` |
+|         - | 7360 | `			 * final chunk when the input size was an exact multiple of` |
+|         - | 7361 | `			 * the chunk length.  Always append the pending chunk if it` |
+|         - | 7362 | `			 * exists. */` |
+|        27 | 7363 | `			if( pChunk ){` |
+|        27 | 7364 | `				ph7_array_add_elem(pArray,0,pChunk); /* Will have its own copy */` |
+|        13 | 7365 | `			}` |
+|        27 | 7366 | `			break;` |
+|         - | 7367 | `		}` |
+|        87 | 7368 | `		if( nChunk < 1 ){` |
+|        71 | 7369 | `			if( pChunk ){` |
+|         - | 7370 | `				/* Put the first chunk */` |
+|        45 | 7371 | `				ph7_array_add_elem(pArray,0,pChunk); /* Will have it's own copy */` |
+|        22 | 7372 | `			}` |
+|         - | 7373 | `			/* Create a new dimension */` |
+|        71 | 7374 | `			pChunk = ph7_context_new_array(pCtx); /* Don't worry about freeing memory here,everything` |
+|         - | 7375 | `												   * will be automatically released as soon we return` |
+|         - | 7376 | `												   * from this function */` |
+|        71 | 7377 | `			if( pChunk == 0 ){` |
+|       ! 0 | 7378 | `				break;` |
+|         - | 7379 | `			}` |
+|        71 | 7380 | `			nChunk = nSize;` |
+|        35 | 7381 | `		}` |
+|         - | 7382 | `		/* Insert the entry */` |
+|        87 | 7383 | `		HashmapInsertNode((ph7_hashmap *)pChunk->x.pOther,pEntry,bPreserve);` |
+|         - | 7384 | `		/* Point to the next entry */` |
+|        87 | 7385 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|        87 | 7386 | `		nChunk--;` |
+|        87 | 7387 | `		n--;` |
+|         1 | 7388 | `	}` |
+|         - | 7389 | `	/* Return the multidimensional array */` |
+|        27 | 7390 | `	ph7_result_value(pCtx,pArray);` |
+|        27 | 7391 | `	return PH7_OK;` |
+|        23 | 7392 | `}` |
+|         - | 7393 | `/*` |
+|         - | 7394 | ` * array array_pad(array $input,int $pad_size,value $pad_value)` |
+|         - | 7395 | ` *  Pad array to the specified length with a value.` |
+|         - | 7396 | ` * $input` |
+|         - | 7397 | ` *   Initial array of values to pad.` |
+|         - | 7398 | ` * $pad_size` |
+|         - | 7399 | ` *   New size of the array.` |
+|         - | 7400 | ` * $pad_value` |
+|         - | 7401 | ` *   Value to pad if input is less than pad_size.` |
+|         - | 7402 | ` */` |
+|         - | 7403 | `/*` |
+|         - | 7404 | ` * Shared "requested array size too large" guard (band A #8). php throws a` |
+|         - | 7405 | ` * catchable ValueError when a builtin's caller-controlled target length` |
+|         - | 7406 | ` * exceeds its hashtable capacity HT_MAX_SIZE (2^30 elements; probed against` |
+|         - | 7407 | ` * php 8.5.7 — the boundary sits exactly between 1073741824 and 1073741825,` |
+|         - | 7408 | ` * independent of the input array's size and symmetric for negative lengths).` |
+|         - | 7409 | ` * Without this, a call like array_pad([1,2], 2000000000, 0) sits in the fill` |
+|         - | 7410 | ` * loop for minutes and then OOMs. nRequested is the ABSOLUTE requested` |
+|         - | 7411 | ` * length; pass a still-negative value (e.g. the unnegatable INT64_MIN,` |
+|         - | 7412 | ` * mirroring php's ZEND_ABS overflow) to fail the guard unconditionally.` |
+|         - | 7413 | ` * Returns SXRET_OK when the size is acceptable, else the throw status to` |
+|         - | 7414 | ` * propagate. The cap constant is shared with range()'s guards` |
+|         - | 7415 | ` * (PH7_RANGE_HT_MAX_SIZE above).` |
+|         - | 7416 | ` */` |
+|        50 | 7417 | `static sxi32 HashmapGuardArraySize(` |
+|         - | 7418 | `	ph7_context *pCtx,` |
+|         - | 7419 | `	const char *zFunc,     /* Function name for the message */` |
+|         - | 7420 | `	int iArg,              /* 1-based argument position */` |
+|         - | 7421 | `	const char *zParam     /* "$length"-style parameter name */,` |
+|         - | 7422 | `	sxi64 nRequested       /* Absolute requested element count */` |
+|         - | 7423 | `	)` |
+|         1 | 7424 | `{` |
+|        51 | 7425 | `	if( nRequested < 0 \|\| nRequested > PH7_RANGE_HT_MAX_SIZE ){` |
+|        22 | 7426 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 7427 | `			"ValueError",` |
+|         - | 7428 | `			"%s(): Argument #%d (%s) must not exceed the maximum allowed array size",` |
+|         7 | 7429 | `			zFunc,iArg,zParam` |
+|         - | 7430 | `			);` |
+|         - | 7431 | `	}` |
+|        37 | 7432 | `	return SXRET_OK;` |
+|        26 | 7433 | `}` |
+|        62 | 7434 | `static int ph7_hashmap_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         3 | 7435 | `{` |
+|         - | 7436 | `	ph7_hashmap *pMap;` |
+|         - | 7437 | `	ph7_value *pArray;` |
+|         - | 7438 | `	sxi64 iLen,iAbs;` |
+|         - | 7439 | `	int nEntry;` |
+|         - | 7440 | `	sxi32 rc;` |
+|        65 | 7441 | `	if( nArg != 3 ){` |
+|         4 | 7442 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 7443 | `			"ArgumentCountError",` |
+|         - | 7444 | `			"array_pad() expects exactly 3 arguments, %d given",` |
+|         1 | 7445 | `			nArg` |
+|         - | 7446 | `			);` |
+|         - | 7447 | `	}` |
+|        62 | 7448 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         - | 7449 | `		char zBuf[64];` |
+|        11 | 7450 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 7451 | `			"TypeError",` |
+|         - | 7452 | `			"array_pad(): Argument #1 ($array) must be of type array, %s given",` |
+|         3 | 7453 | `			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf))` |
+|         - | 7454 | `			);` |
+|         - | 7455 | `	}` |
+|         - | 7456 | `	/* php 8: $length must be int-coercible. An array/object/resource or a` |
+|         - | 7457 | `	 * non-numeric string throws a TypeError instead of silently padding to 0;` |
+|         - | 7458 | `	 * a numeric string is weak-coerced via php's is_numeric_string grammar` |
+|         - | 7459 | `	 * (reusing the shared RangeStrToNumber, like array_rand's $num). */` |
+|        54 | 7460 | `	if( ph7_value_is_array(apArg[1]) \|\| ph7_value_is_object(apArg[1])` |
+|        55 | 7461 | `		\|\| ph7_value_is_resource(apArg[1]) ){` |
+|         - | 7462 | `		char zBuf[64];` |
+|       ! 0 | 7463 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 7464 | `			"TypeError",` |
+|         - | 7465 | `			"array_pad(): Argument #2 ($length) must be of type int, %s given",` |
+|       ! 0 | 7466 | `			VmValueGivenName(apArg[1],zBuf,sizeof(zBuf))` |
+|         - | 7467 | `			);` |
+|         - | 7468 | `	}` |
+|        55 | 7469 | `	if( ph7_value_is_string(apArg[1]) ){` |
+|         - | 7470 | `		int nStr;` |
+|        11 | 7471 | `		const char *zStr = ph7_value_to_string(apArg[1],&nStr);` |
+|         - | 7472 | `		sxi64 iLong; double dReal;` |
+|        11 | 7473 | `		sxu8 iKind = RangeStrToNumber(zStr,(sxu32)nStr,&iLong,&dReal);` |
+|        11 | 7474 | `		if( iKind == RANGE_IN_ERROR ){` |
+|         5 | 7475 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 7476 | `				"TypeError",` |
+|         - | 7477 | `				"array_pad(): Argument #2 ($length) must be of type int, string given"` |
+|         - | 7478 | `				);` |
+|         - | 7479 | `		}` |
+|         7 | 7480 | `		if( iKind == RANGE_IN_DOUBLE ){` |
+|         - | 7481 | `			/* php ZPP: a float-string outside the int64 range (or NaN) fails` |
+|         - | 7482 | `			 * outright — also keeps the (sxi64) cast below UB-free. */` |
+|         3 | 7483 | `			if( dReal != dReal \|\| dReal >= 9223372036854775808.0 \|\| dReal < -9223372036854775808.0 ){` |
+|       ! 0 | 7484 | `				return PH7_VmThrowException(pCtx,` |
+|         - | 7485 | `					"TypeError",` |
+|         - | 7486 | `					"array_pad(): Argument #2 ($length) must be of type int, string given"` |
+|         - | 7487 | `					);` |
+|         - | 7488 | `			}` |
+|         3 | 7489 | `			iLen = (sxi64)dReal;` |
+|         3 | 7490 | `			if( (double)iLen != dReal ){` |
+|       ! 0 | 7491 | `				PH7_VmThrowDeprecatedFmt(pCtx->pVm,` |
+|         - | 7492 | `					"Implicit conversion from float-string \"%s\" to int loses precision",` |
+|       ! 0 | 7493 | `					zStr` |
+|         - | 7494 | `					);` |
+|       ! 0 | 7495 | `			}` |
+|         2 | 7496 | `		}else{` |
+|         5 | 7497 | `			iLen = iLong;` |
+|         - | 7498 | `		}` |
+|         4 | 7499 | `	}else{` |
+|        45 | 7500 | `		iLen = ph7_value_to_int64(apArg[1]);` |
+|         - | 7501 | `	}` |
+|         - | 7502 | `	/* Point to the internal representation of the input hashmap */` |
+|        51 | 7503 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 7504 | `	/* php caps abs($length) at HT_MAX_SIZE either direction (INT64_MIN stays` |
+|         - | 7505 | `	 * negative through the ABS, failing the guard like php's own ZEND_ABS` |
+|         - | 7506 | `	 * overflow). */` |
+|        51 | 7507 | `	iAbs = iLen;` |
+|        51 | 7508 | `	if( iAbs < 0 && iAbs != (sxi64)-9223372036854775807LL - 1 ){` |
+|        15 | 7509 | `		iAbs = -iAbs;` |
+|         7 | 7510 | `	}` |
+|        51 | 7511 | `	rc = HashmapGuardArraySize(pCtx,"array_pad",2,"$length",iAbs);` |
+|        51 | 7512 | `	if( rc != SXRET_OK ){` |
+|        15 | 7513 | `		return rc;` |
+|         - | 7514 | `	}` |
+|        37 | 7515 | `	nEntry = (int)iLen;` |
+|         - | 7516 | `	/* Create a new array */` |
+|        37 | 7517 | `	pArray = ph7_context_new_array(pCtx);` |
+|        37 | 7518 | `	if( pArray == 0 ){` |
+|       ! 0 | 7519 | `		return PH7_ContextMemoryError(pCtx);` |
+|         - | 7520 | `	}` |
+|        37 | 7521 | `	if( nEntry < 0 ){` |
+|        11 | 7522 | `		nEntry = -nEntry;` |
+|        11 | 7523 | `		if( nEntry > (int)pMap->nEntry ){` |
+|         7 | 7524 | `			nEntry -= (int)pMap->nEntry;` |
+|         - | 7525 | `			/* Insert given items first */` |
+|        25 | 7526 | `			while( nEntry > 0 ){` |
+|        19 | 7527 | `				if( ph7_array_add_elem(pArray,0,apArg[2]) != SXRET_OK ){` |
+|       ! 0 | 7528 | `					return PH7_ContextMemoryError(pCtx);` |
+|         - | 7529 | `				}` |
+|        19 | 7530 | `				nEntry--;` |
+|         1 | 7531 | `			}` |
+|         - | 7532 | `			/* Merge the two arrays */` |
+|         7 | 7533 | `			HashmapMerge(pMap,(ph7_hashmap *)pArray->x.pOther);` |
+|         4 | 7534 | `		}else{` |
+|         5 | 7535 | `			PH7_HashmapDup(pMap,(ph7_hashmap *)pArray->x.pOther);` |
+|         1 | 7536 | `		}` |
+|        32 | 7537 | `	}else if( nEntry > 0 ){` |
+|        25 | 7538 | `		if( nEntry > (int)pMap->nEntry ){` |
+|        19 | 7539 | `			nEntry -= (int)pMap->nEntry;` |
+|         - | 7540 | `			/* Merge the two arrays first */` |
+|        19 | 7541 | `			HashmapMerge(pMap,(ph7_hashmap *)pArray->x.pOther);` |
+|         - | 7542 | `			/* Insert given items */` |
+|       275 | 7543 | `			while( nEntry > 0 ){` |
+|       257 | 7544 | `				if( ph7_array_add_elem(pArray,0,apArg[2]) != SXRET_OK ){` |
+|       ! 0 | 7545 | `					return PH7_ContextMemoryError(pCtx);` |
+|         - | 7546 | `				}` |
+|       257 | 7547 | `				nEntry--;` |
+|         1 | 7548 | `			}` |
+|        10 | 7549 | `		}else{` |
+|         7 | 7550 | `			PH7_HashmapDup(pMap,(ph7_hashmap *)pArray->x.pOther);` |
+|         - | 7551 | `		}` |
+|        13 | 7552 | `	}else{` |
+|         - | 7553 | `		/* nEntry == 0: return a copy of the input array */` |
+|         3 | 7554 | `		PH7_HashmapDup(pMap,(ph7_hashmap *)pArray->x.pOther);` |
+|         - | 7555 | `	}` |
+|         - | 7556 | `	/* Return the new array */` |
+|        37 | 7557 | `	ph7_result_value(pCtx,pArray);` |
+|        37 | 7558 | `	return PH7_OK;` |
+|        34 | 7559 | `}` |
+|         - | 7560 | `/*` |
+|         - | 7561 | ` * array array_replace(array &$array,array &$array1,...)` |
+|         - | 7562 | ` *  Replaces elements from passed arrays into the first array.` |
+|         - | 7563 | ` * Parameters` |
+|         - | 7564 | ` * $array` |
+|         - | 7565 | ` *   The array in which elements are replaced.` |
+|         - | 7566 | ` * $array1` |
+|         - | 7567 | ` *   The array from which elements will be extracted.` |
+|         - | 7568 | ` * ....` |
+|         - | 7569 | ` *  More arrays from which elements will be extracted.` |
+|         - | 7570 | ` *  Values from later arrays overwrite the previous values.` |
+|         - | 7571 | ` * Return` |
+|         - | 7572 | ` *  Returns an array.` |
+|         - | 7573 | ` *  Throws ArgumentCountError if no arguments are given.` |
+|         - | 7574 | ` *  Throws TypeError if any argument is not an array.` |
+|         - | 7575 | ` */` |
+|        20 | 7576 | `static int ph7_hashmap_replace(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         3 | 7577 | `{` |
+|         - | 7578 | `	ph7_hashmap *pMap;` |
+|         - | 7579 | `	ph7_value *pArray;` |
+|         - | 7580 | `	int i;` |
+|        23 | 7581 | `	if( nArg < 1 ){` |
+|       ! 0 | 7582 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 7583 | `			"ArgumentCountError",` |
+|         - | 7584 | `			"array_replace() expects at least 1 argument, 0 given"` |
+|         - | 7585 | `			);` |
+|         - | 7586 | `	}` |
+|        23 | 7587 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         4 | 7588 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 7589 | `			"TypeError",` |
+|         - | 7590 | `			"array_replace(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 7591 | `			ph7_type_name(apArg[0])` |
+|         - | 7592 | `			);` |
+|         - | 7593 | `	}` |
+|         - | 7594 | `	/* Create a new array */` |
+|        20 | 7595 | `	pArray = ph7_context_new_array(pCtx);` |
+|        20 | 7596 | `	if( pArray == 0 ){` |
+|       ! 0 | 7597 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 7598 | `		return PH7_OK;` |
+|         - | 7599 | `	}` |
+|         - | 7600 | `	/* Overwrite from the first array */` |
+|        20 | 7601 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|        20 | 7602 | `	HashmapOverwrite(pMap,(ph7_hashmap *)pArray->x.pOther);` |
+|         - | 7603 | `	/* Perform the requested operation for remaining arrays */` |
+|        36 | 7604 | `	for( i = 1 ; i < nArg ; i++ ){` |
+|        20 | 7605 | `		if( !ph7_value_is_array(apArg[i]) ){` |
+|         - | 7606 | `			/* Type mismatch -> TypeError */` |
+|         4 | 7607 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 7608 | `				"TypeError",` |
+|         - | 7609 | `				"array_replace(): Argument #%d must be of type array, %s given",` |
+|         1 | 7610 | `				i + 1,` |
+|         2 | 7611 | `				ph7_type_name(apArg[i])` |
+|         - | 7612 | `				);` |
+|         - | 7613 | `		}` |
+|         - | 7614 | `		/* Point to the internal representation of the input hashmap */` |
+|        17 | 7615 | `		pMap = (ph7_hashmap *)apArg[i]->x.pOther;` |
+|        17 | 7616 | `		HashmapOverwrite(pMap,(ph7_hashmap *)pArray->x.pOther);` |
+|         9 | 7617 | `	}` |
+|         - | 7618 | `	/* Return the new array */` |
+|        17 | 7619 | `	ph7_result_value(pCtx,pArray);` |
+|        17 | 7620 | `	return PH7_OK;` |
+|        13 | 7621 | `}` |
+|         - | 7622 | `/*` |
+|         - | 7623 | ` * array array_filter(array $input [,callback $callback ])` |
+|         - | 7624 | ` *  Filters elements of an array using a callback function.` |
+|         - | 7625 | ` * Parameters` |
+|         - | 7626 | ` *  $input` |
+|         - | 7627 | ` *    The array to iterate over` |
+|         - | 7628 | ` * $callback` |
+|         - | 7629 | ` *    The callback function to use` |
+|         - | 7630 | ` *    If no callback is supplied, all entries of input equal to FALSE (see converting to boolean)` |
+|         - | 7631 | ` *    will be removed.` |
+|         - | 7632 | ` * Return` |
+|         - | 7633 | ` *  The filtered array.` |
+|         - | 7634 | ` */` |
+|        30 | 7635 | `static int ph7_hashmap_filter(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         2 | 7636 | `{` |
+|         - | 7637 | `	ph7_hashmap_node *pEntry;` |
+|         - | 7638 | `	ph7_hashmap *pMap;` |
+|         - | 7639 | `	ph7_value *pArray;` |
+|         - | 7640 | `	ph7_value sResult;   /* Callback result */` |
+|         - | 7641 | `	ph7_value *pValue;` |
+|         - | 7642 | `	sxi32 rc;` |
+|         - | 7643 | `	int keep;` |
+|         - | 7644 | `	sxu32 n;` |
+|        32 | 7645 | `	if( nArg < 1 ){` |
+|         - | 7646 | `		/* Missing argument (arity is enforced upstream; defensive) */` |
+|       ! 0 | 7647 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 7648 | `		return PH7_OK;` |
 |         - | 7649 | `	}` |
-|         - | 7650 | `	/* Create a new array */` |
-|        20 | 7651 | `	pArray = ph7_context_new_array(pCtx);` |
-|        20 | 7652 | `	if( pArray == 0 ){` |
-|       ! 0 | 7653 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 7654 | `		return PH7_OK;` |
-|         - | 7655 | `	}` |
-|         - | 7656 | `	/* Point to the internal representation of the input hashmap */` |
-|        20 | 7657 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|        20 | 7658 | `	pEntry = pMap->pFirst;` |
-|        20 | 7659 | `	PH7_MemObjInit(pMap->pVm,&sResult);` |
-|        20 | 7660 | `	sResult.nIdx = SXU32_HIGH; /* Mark as constant */` |
-|         - | 7661 | `	/* Perform the requested operation */` |
-|        78 | 7662 | `	for( n = 0 ; n < pMap->nEntry ; n++ ){` |
-|         - | 7663 | `		/* Extract node value (may be NULL if allocation failed) */` |
-|        64 | 7664 | `		pValue = HashmapExtractNodeValue(pEntry);` |
-|        64 | 7665 | `		if( pValue == 0 ){` |
-|         - | 7666 | `			/* Can happen if SySetAt() failed earlier; drop the entry. */` |
-|       ! 0 | 7667 | `			keep = FALSE;` |
-|        64 | 7668 | `		}else if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){` |
-|         - | 7669 | `			/* Callback was supplied (not NULL).  PHP 8 throws a` |
-|         - | 7670 | `				* TypeError when the value is not callable or null; prior PH7` |
-|         - | 7671 | `				* silently dropped the element.  Emit similar message. */` |
-|        36 | 7672 | `			if( !ph7_value_is_callable(apArg[1]) ){` |
-|         3 | 7673 | `				if( ph7_value_is_string(apArg[1]) ){` |
-|         - | 7674 | `					int len;` |
-|         3 | 7675 | `					const char *zName = ph7_value_to_string(apArg[1], &len);` |
-|         4 | 7676 | `					return PH7_VmThrowException(pCtx,` |
-|         - | 7677 | `						"TypeError",` |
-|         - | 7678 | `						"array_filter(): Argument #2 ($callback) must be a valid callback or null, function \"%s\" not found or invalid function name",` |
-|         1 | 7679 | `						zName` |
-|         - | 7680 | `						);` |
-|       ! 0 | 7681 | `				}else{` |
-|       ! 0 | 7682 | `					return PH7_VmThrowException(pCtx,` |
-|         - | 7683 | `						"TypeError",` |
-|         - | 7684 | `						"array_filter(): Argument #2 ($callback) must be a valid callback or null, %s given",` |
-|       ! 0 | 7685 | `						ph7_type_name(apArg[1])` |
-|         - | 7686 | `						);` |
-|         - | 7687 | `				}` |
-|         - | 7688 | `			}` |
-|        33 | 7689 | `			keep = FALSE;` |
-|        33 | 7690 | `			rc = PH7_VmCallUserFunction(pMap->pVm,apArg[1],1,&pValue,&sResult);` |
-|        33 | 7691 | `			if( rc == PH7_EXCEPTION ){` |
-|         - | 7692 | `				/* The callback raised: propagate so the dispatcher unwinds. */` |
-|         3 | 7693 | `				PH7_MemObjRelease(&sResult);` |
-|         3 | 7694 | `				return PH7_EXCEPTION;` |
-|         - | 7695 | `			}` |
-|        31 | 7696 | `			if( rc == SXRET_OK ){` |
-|         - | 7697 | `				/* Perform a boolean cast */` |
-|        31 | 7698 | `				keep = ph7_value_to_bool(&sResult);` |
-|        15 | 7699 | `			}` |
-|        31 | 7700 | `			PH7_MemObjRelease(&sResult);` |
-|        16 | 7701 | `		}else{` |
-|         - | 7702 | `			/* No callback provided or callback explicitly NULL: use default` |
-|         - | 7703 | `			 * behaviour where "empty" values are removed. This also covers` |
-|         - | 7704 | `			 * the case where the callback argument is missing entirely.` |
-|         - | 7705 | `			 */` |
-|        29 | 7706 | `			keep = !PH7_MemObjIsEmpty(pValue);` |
-|         - | 7707 | `		}` |
-|        59 | 7708 | `		if( keep ){` |
-|         - | 7709 | `			/* Perform the insertion,now the callback returned true */` |
-|        21 | 7710 | `			HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);` |
-|        10 | 7711 | `		}` |
-|         - | 7712 | `		/* Point to the next entry */` |
-|        59 | 7713 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|        30 | 7714 | `	}` |
-|        15 | 7715 | `	ph7_result_value(pCtx,pArray);` |
-|        15 | 7716 | `	return PH7_OK;` |
-|        17 | 7717 | `}` |
-|         - | 7718 | `/*` |
-|         - | 7719 | ` * array array_map(?callable $callback, array $array, array ...$arrays)` |
-|         - | 7720 | ` *  Applies the callback to the elements of the given arrays.` |
-|         - | 7721 | ` * Parameters` |
-|         - | 7722 | ` *  $callback` |
-|         - | 7723 | ` *   A callable to run for each element in each array, or NULL. With a single` |
-|         - | 7724 | ` *   array and a NULL callback this is the identity function (the array is` |
-|         - | 7725 | ` *   returned unchanged); with several arrays and a NULL callback the arrays` |
-|         - | 7726 | ` *   are zipped together.` |
-|         - | 7727 | ` *  $array` |
-|         - | 7728 | ` *   The first array to run through the callback function.` |
-|         - | 7729 | ` *  $arrays` |
-|         - | 7730 | ` *   Zero or more additional arrays to process in parallel.` |
-|         - | 7731 | ` * Return` |
-|         - | 7732 | ` *  Returns an array containing the results of applying the callback function.` |
-|         - | 7733 | ` *  With a single array the keys are preserved; with several arrays the result` |
-|         - | 7734 | ` *  is re-indexed and the iteration runs to the length of the longest array,` |
-|         - | 7735 | ` *  padding shorter arrays with NULL.` |
-|         - | 7736 | ` */` |
-|        84 | 7737 | `static int ph7_hashmap_map(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         5 | 7738 | `{` |
-|         - | 7739 | `	ph7_value *pArray,*pValue,sKey,sResult;` |
-|         - | 7740 | `	ph7_hashmap_node *pEntry;` |
-|         - | 7741 | `	ph7_hashmap *pMap;` |
-|         - | 7742 | `	ph7_vm *pVm;` |
-|         - | 7743 | `	int bNullCallback;` |
-|         - | 7744 | `	sxi32 rc;` |
-|         - | 7745 | `	int i;` |
-|         - | 7746 | `	sxu32 n;` |
-|        89 | 7747 | `	if( nArg < 2 ){` |
-|       ! 0 | 7748 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 7749 | `			"ArgumentCountError",` |
-|         - | 7750 | `			"array_map() expects at least 2 arguments, %d given",` |
-|       ! 0 | 7751 | `			nArg` |
-|         - | 7752 | `			);` |
-|         - | 7753 | `	}` |
-|        89 | 7754 | `	bNullCallback = ph7_value_is_null(apArg[0]);` |
-|        89 | 7755 | `	if( !bNullCallback && !ph7_value_is_callable(apArg[0]) ){` |
-|         8 | 7756 | `		if( ph7_value_is_string(apArg[0]) ){` |
-|         6 | 7757 | `			const char *zFunc = ph7_value_to_string(apArg[0],0);` |
-|         8 | 7758 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 7759 | `				"TypeError",` |
-|         - | 7760 | `				"array_map(): Argument #1 ($callback) must be a valid callback or null, "` |
-|         - | 7761 | `				"function \"%s\" not found or invalid function name",` |
-|         2 | 7762 | `				zFunc` |
-|         - | 7763 | `				);` |
-|         - | 7764 | `		}` |
-|         3 | 7765 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 7766 | `			"TypeError",` |
-|         - | 7767 | `			"array_map(): Argument #1 ($callback) must be a valid callback or null, "` |
-|         - | 7768 | `			"no array or string given"` |
-|         - | 7769 | `			);` |
-|         - | 7770 | `	}` |
-|         - | 7771 | `	/* Every remaining argument must be an array */` |
-|       170 | 7772 | `	for( i = 1 ; i < nArg ; i++ ){` |
-|        94 | 7773 | `		if( !ph7_value_is_array(apArg[i]) ){` |
-|         3 | 7774 | `			if( i == 1 ){` |
-|         4 | 7775 | `				return PH7_VmThrowException(pCtx,` |
-|         - | 7776 | `					"TypeError",` |
-|         - | 7777 | `					"array_map(): Argument #2 ($array) must be of type array, %s given",` |
-|         2 | 7778 | `					ph7_type_name(apArg[1])` |
-|         - | 7779 | `					);` |
-|         - | 7780 | `			}` |
-|       ! 0 | 7781 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 7782 | `				"TypeError",` |
-|         - | 7783 | `				"array_map(): Argument #%d must be of type array, %s given",` |
-|       ! 0 | 7784 | `				i+1,ph7_type_name(apArg[i])` |
-|         - | 7785 | `				);` |
-|         - | 7786 | `		}` |
-|        48 | 7787 | `	}` |
-|        80 | 7788 | `	pVm = pCtx->pVm;` |
-|         - | 7789 | `	/* Create a new array */` |
-|        80 | 7790 | `	pArray = ph7_context_new_array(pCtx);` |
-|        80 | 7791 | `	if( pArray == 0 ){` |
-|       ! 0 | 7792 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 7793 | `		return PH7_OK;` |
-|         - | 7794 | `	}` |
-|        80 | 7795 | `	PH7_MemObjInit(pVm,&sResult);` |
-|        80 | 7796 | `	PH7_MemObjInit(pVm,&sKey);` |
-|        80 | 7797 | `	sResult.nIdx = SXU32_HIGH; /* Mark as constant */` |
-|        80 | 7798 | `	sKey.nIdx    = SXU32_HIGH; /* Mark as constant */` |
-|        80 | 7799 | `	if( nArg == 2 ){` |
-|         - | 7800 | `		/* Single-array mode: keys are preserved (PHP semantics). */` |
-|        70 | 7801 | `		pMap = (ph7_hashmap *)apArg[1]->x.pOther;` |
-|        70 | 7802 | `		pEntry = pMap->pFirst;` |
-|       240 | 7803 | `		for( n = 0 ; n < pMap->nEntry ; n++ ){` |
-|         - | 7804 | `			/* Extract the node value */` |
-|       178 | 7805 | `			pValue = HashmapExtractNodeValue(pEntry);` |
-|       178 | 7806 | `			if( pValue ){` |
-|         - | 7807 | `				/* Extract the node key */` |
-|       178 | 7808 | `				PH7_HashmapExtractNodeKey(pEntry,&sKey);` |
-|       178 | 7809 | `				if( bNullCallback ){` |
-|         - | 7810 | `					/* NULL callback: identity function, keep original value */` |
-|        11 | 7811 | `					ph7_array_add_elem(pArray,&sKey,pValue);` |
-|         6 | 7812 | `				}else{` |
-|         - | 7813 | `					/* Invoke the supplied callback */` |
-|       168 | 7814 | `					rc = PH7_VmCallUserFunction(pVm,apArg[0],1,&pValue,&sResult);` |
-|       168 | 7815 | `					if( rc == PH7_EXCEPTION ){` |
-|         - | 7816 | `						/* Callback raised: abort and let the foreign-function` |
-|         - | 7817 | `						 * dispatcher unwind through the nearest try/catch. */` |
-|         5 | 7818 | `						PH7_MemObjRelease(&sKey);` |
-|         5 | 7819 | `						PH7_MemObjRelease(&sResult);` |
-|         5 | 7820 | `						return PH7_EXCEPTION;` |
-|         - | 7821 | `					}` |
-|         - | 7822 | `					/* Insert the callback return value */` |
-|       164 | 7823 | `					ph7_array_add_elem(pArray,&sKey,&sResult);` |
-|         - | 7824 | `				}` |
-|       174 | 7825 | `				PH7_MemObjRelease(&sKey);` |
-|       174 | 7826 | `				PH7_MemObjRelease(&sResult);` |
-|        85 | 7827 | `			}` |
-|         - | 7828 | `			/* Point to the next entry */` |
-|       174 | 7829 | `			pEntry = pEntry->pPrev; /* Reverse link */` |
-|        89 | 7830 | `		}` |
-|        35 | 7831 | `	}else{` |
-|         - | 7832 | `		/* Multi-array mode: walk every array in parallel to the length of the` |
-|         - | 7833 | `		 * longest one, pad shorter arrays with NULL, and re-index the result. */` |
-|        11 | 7834 | `		int nArrays = nArg - 1;` |
-|         - | 7835 | `		ph7_hashmap_node **apCur;` |
-|         - | 7836 | `		ph7_value **apCallArg;` |
-|         - | 7837 | `		ph7_value sNull;` |
-|        11 | 7838 | `		sxu32 nMax = 0;` |
-|        11 | 7839 | `		apCur     = (ph7_hashmap_node **)SyMemBackendAlloc(&pVm->sAllocator,(sxu32)(nArrays*sizeof(ph7_hashmap_node *)));` |
-|        11 | 7840 | `		apCallArg = (ph7_value **)SyMemBackendAlloc(&pVm->sAllocator,(sxu32)(nArrays*sizeof(ph7_value *)));` |
-|        11 | 7841 | `		if( apCur == 0 \|\| apCallArg == 0 ){` |
-|       ! 0 | 7842 | `			if( apCur ){ SyMemBackendFree(&pVm->sAllocator,apCur); }` |
-|       ! 0 | 7843 | `			if( apCallArg ){ SyMemBackendFree(&pVm->sAllocator,apCallArg); }` |
-|       ! 0 | 7844 | `			PH7_MemObjRelease(&sKey);` |
-|       ! 0 | 7845 | `			PH7_MemObjRelease(&sResult);` |
-|       ! 0 | 7846 | `			ph7_result_value(pCtx,pArray);` |
-|       ! 0 | 7847 | `			return PH7_OK;` |
-|         - | 7848 | `		}` |
-|        11 | 7849 | `		PH7_MemObjInit(pVm,&sNull); /* shared NULL pad for short arrays */` |
-|        11 | 7850 | `		sNull.nIdx = SXU32_HIGH;` |
-|        33 | 7851 | `		for( i = 0 ; i < nArrays ; i++ ){` |
-|        23 | 7852 | `			pMap = (ph7_hashmap *)apArg[i+1]->x.pOther;` |
-|        23 | 7853 | `			apCur[i] = pMap->pFirst;` |
-|        23 | 7854 | `			if( pMap->nEntry > nMax ){` |
-|        13 | 7855 | `				nMax = pMap->nEntry;` |
-|         6 | 7856 | `			}` |
-|        12 | 7857 | `		}` |
-|        35 | 7858 | `		for( n = 0 ; n < nMax ; n++ ){` |
-|        25 | 7859 | `			ph7_value *pZip = 0;` |
-|        25 | 7860 | `			if( bNullCallback ){` |
-|         - | 7861 | `				/* zip: each result element is an array of the i-th values */` |
-|         5 | 7862 | `				pZip = ph7_context_new_array(pCtx);` |
-|         2 | 7863 | `			}` |
-|        79 | 7864 | `			for( i = 0 ; i < nArrays ; i++ ){` |
-|        55 | 7865 | `				ph7_value *pv = &sNull;` |
-|        55 | 7866 | `				if( apCur[i] ){` |
-|        53 | 7867 | `					ph7_value *pNodeVal = HashmapExtractNodeValue(apCur[i]);` |
-|        53 | 7868 | `					if( pNodeVal ){` |
-|        53 | 7869 | `						pv = pNodeVal;` |
-|        26 | 7870 | `					}` |
-|        53 | 7871 | `					apCur[i] = apCur[i]->pPrev; /* Reverse link */` |
-|        26 | 7872 | `				}` |
-|        55 | 7873 | `				if( bNullCallback ){` |
-|         9 | 7874 | `					if( pZip ){` |
-|         9 | 7875 | `						ph7_array_add_elem(pZip,0,pv);` |
-|         4 | 7876 | `					}` |
-|         5 | 7877 | `				}else{` |
-|        47 | 7878 | `					apCallArg[i] = pv;` |
-|         - | 7879 | `				}` |
-|        28 | 7880 | `			}` |
-|        25 | 7881 | `			if( bNullCallback ){` |
-|         5 | 7882 | `				if( pZip ){` |
-|         5 | 7883 | `					ph7_array_add_elem(pArray,0,pZip);` |
-|         2 | 7884 | `				}` |
-|         3 | 7885 | `			}else{` |
-|        21 | 7886 | `				rc = PH7_VmCallUserFunction(pVm,apArg[0],nArrays,apCallArg,&sResult);` |
-|        21 | 7887 | `				if( rc == PH7_EXCEPTION ){` |
-|       ! 0 | 7888 | `					SyMemBackendFree(&pVm->sAllocator,apCur);` |
-|       ! 0 | 7889 | `					SyMemBackendFree(&pVm->sAllocator,apCallArg);` |
-|       ! 0 | 7890 | `					PH7_MemObjRelease(&sNull);` |
-|       ! 0 | 7891 | `					PH7_MemObjRelease(&sKey);` |
-|       ! 0 | 7892 | `					PH7_MemObjRelease(&sResult);` |
-|       ! 0 | 7893 | `					return PH7_EXCEPTION;` |
-|         - | 7894 | `				}` |
-|        21 | 7895 | `				ph7_array_add_elem(pArray,0,&sResult);` |
-|        21 | 7896 | `				PH7_MemObjRelease(&sResult);` |
-|         - | 7897 | `			}` |
-|        13 | 7898 | `		}` |
-|        11 | 7899 | `		SyMemBackendFree(&pVm->sAllocator,apCur);` |
-|        11 | 7900 | `		SyMemBackendFree(&pVm->sAllocator,apCallArg);` |
-|        11 | 7901 | `		PH7_MemObjRelease(&sNull);` |
-|         - | 7902 | `	}` |
-|        76 | 7903 | `	PH7_MemObjRelease(&sKey);` |
-|        76 | 7904 | `	PH7_MemObjRelease(&sResult);` |
-|        76 | 7905 | `	ph7_result_value(pCtx,pArray);` |
-|        76 | 7906 | `	return PH7_OK;` |
-|        47 | 7907 | `}` |
-|         - | 7908 | `/*` |
-|         - | 7909 | ` * value array_reduce(array $array, callable $callback[, value $initial = NULL])` |
-|         - | 7910 | ` *  Iteratively reduce the array to a single value using a callback function.` |
-|         - | 7911 | ` * Parameters` |
-|         - | 7912 | ` *  $array` |
-|         - | 7913 | ` *   The input array.` |
-|         - | 7914 | ` *  $callback` |
-|         - | 7915 | ` *   The callback function. Signature: callback(mixed $carry, mixed $item): mixed` |
-|         - | 7916 | ` *  $initial` |
-|         - | 7917 | ` *   If the optional initial is available, it will be used at the beginning` |
-|         - | 7918 | ` *   of the process, or as a final result in case the array is empty.` |
-|         - | 7919 | ` * Return` |
-|         - | 7920 | ` *  Returns the resulting value.` |
-|         - | 7921 | ` *  If the array is empty and initial is not passed, array_reduce() returns NULL.` |
-|         - | 7922 | ` */` |
-|        30 | 7923 | `static int ph7_hashmap_reduce(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         5 | 7924 | `{` |
-|         - | 7925 | `	ph7_hashmap_node *pEntry;` |
-|         - | 7926 | `	ph7_hashmap *pMap;` |
-|         - | 7927 | `	ph7_value *pValue;` |
-|         - | 7928 | `	ph7_value sResult;` |
-|         - | 7929 | `	sxi32 rc;` |
-|         - | 7930 | `	sxu32 n;` |
-|        35 | 7931 | `	if( nArg < 2 ){` |
-|       ! 0 | 7932 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 7933 | `			"ArgumentCountError",` |
-|         - | 7934 | `			"array_reduce() expects at least 2 arguments, %d given",` |
-|       ! 0 | 7935 | `			nArg` |
-|         - | 7936 | `			);` |
-|         - | 7937 | `	}` |
-|        35 | 7938 | `	if( nArg > 3 ){` |
-|         4 | 7939 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 7940 | `			"ArgumentCountError",` |
-|         - | 7941 | `			"array_reduce() expects at most 3 arguments, %d given",` |
-|         1 | 7942 | `			nArg` |
-|         - | 7943 | `			);` |
-|         - | 7944 | `	}` |
-|        33 | 7945 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 7946 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 7947 | `			"TypeError",` |
-|         - | 7948 | `			"array_reduce(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 7949 | `			ph7_type_name(apArg[0])` |
-|         - | 7950 | `			);` |
-|         - | 7951 | `	}` |
-|        31 | 7952 | `	if( !ph7_value_is_callable(apArg[1]) ){` |
-|        12 | 7953 | `		if( ph7_value_is_string(apArg[1]) ){` |
-|         3 | 7954 | `			const char *zFunc = ph7_value_to_string(apArg[1],0);` |
-|         4 | 7955 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 7956 | `				"TypeError",` |
-|         - | 7957 | `				"array_reduce(): Argument #2 ($callback) must be a valid callback, "` |
-|         - | 7958 | `				"function \"%s\" not found or invalid function name",` |
-|         1 | 7959 | `				zFunc` |
-|         - | 7960 | `				);` |
-|         - | 7961 | `		}` |
-|         9 | 7962 | `		if( ph7_value_is_array(apArg[1]) ){` |
-|         3 | 7963 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 7964 | `				"TypeError",` |
-|         - | 7965 | `				"array_reduce(): Argument #2 ($callback) must be a valid callback, "` |
-|         - | 7966 | `				"array callback must have exactly two members"` |
-|         - | 7967 | `				);` |
-|         - | 7968 | `		}` |
-|         6 | 7969 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 7970 | `			"TypeError",` |
-|         - | 7971 | `			"array_reduce(): Argument #2 ($callback) must be a valid callback, "` |
-|         - | 7972 | `			"no array or string given"` |
-|         - | 7973 | `			);` |
-|         - | 7974 | `	}` |
-|         - | 7975 | `	/* Point to the internal representation of the input hashmap */` |
-|        19 | 7976 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 7977 | `	/* Assume a NULL initial value */` |
-|        19 | 7978 | `	PH7_MemObjInit(pMap->pVm,&sResult);` |
-|        19 | 7979 | `	sResult.nIdx = SXU32_HIGH; /* Mark as constant */` |
-|        19 | 7980 | `	if( nArg > 2 ){` |
-|         - | 7981 | `		/* Set the initial value */` |
-|        13 | 7982 | `		PH7_MemObjLoad(apArg[2],&sResult);` |
-|         6 | 7983 | `	}` |
-|         - | 7984 | `	/* Perform the requested operation */` |
-|        19 | 7985 | `	pEntry = pMap->pFirst;` |
-|        55 | 7986 | `	for( n = 0 ; n < pMap->nEntry ; n++ ){` |
-|         - | 7987 | `		/* Extract the node value */` |
-|        39 | 7988 | `		pValue = HashmapExtractNodeValue(pEntry);` |
-|         - | 7989 | `		/* Invoke the supplied callback */` |
-|        39 | 7990 | `		rc = PH7_VmCallUserFunctionAp(pMap->pVm,apArg[1],&sResult,&sResult,pValue,0);` |
-|        39 | 7991 | `		if( rc == PH7_EXCEPTION ){` |
-|         - | 7992 | `			/* The callback raised: propagate so the dispatcher unwinds. */` |
-|         3 | 7993 | `			PH7_MemObjRelease(&sResult);` |
-|         3 | 7994 | `			return PH7_EXCEPTION;` |
-|         - | 7995 | `		}` |
-|         - | 7996 | `		/* Point to the next entry */` |
-|        37 | 7997 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|        19 | 7998 | `	}` |
-|        17 | 7999 | `	ph7_result_value(pCtx,&sResult); /* Will make it's own copy */` |
-|        17 | 8000 | `	PH7_MemObjRelease(&sResult);` |
-|        17 | 8001 | `	return PH7_OK;` |
-|        20 | 8002 | `}` |
-|         - | 8003 | `/*` |
-|         - | 8004 | ` * bool array_walk(array &$array, callback $funcname [, mixed $userdata])` |
-|         - | 8005 | ` *  Apply a user function to every member of an array.` |
-|         - | 8006 | ` * Parameters` |
-|         - | 8007 | ` *  $array` |
-|         - | 8008 | ` *   The input array.` |
-|         - | 8009 | ` *  $funcname` |
-|         - | 8010 | ` *   Typically, funcname takes on two parameters. The array parameter's value being` |
-|         - | 8011 | ` *   the first, and the key/index second.` |
-|         - | 8012 | ` * Note:` |
-|         - | 8013 | ` *  If funcname needs to be working with the actual values of the array, specify the first` |
-|         - | 8014 | ` *  parameter of funcname as a reference. Then, any changes made to those elements will` |
-|         - | 8015 | ` *  be made in the original array itself.` |
-|         - | 8016 | ` *  $userdata` |
-|         - | 8017 | ` *   If the optional userdata parameter is supplied, it will be passed as the third parameter` |
-|         - | 8018 | ` *   to the callback funcname.` |
-|         - | 8019 | ` * Return` |
-|         - | 8020 | ` *  Returns TRUE on success or FALSE on failure.` |
-|         - | 8021 | ` */` |
-|        36 | 8022 | `static int ph7_hashmap_walk(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         5 | 8023 | `{` |
-|         - | 8024 | `	ph7_value *pValue,*pUserData,sKey;` |
-|         - | 8025 | `	ph7_hashmap_node *pEntry;` |
-|         - | 8026 | `	ph7_hashmap *pMap;` |
-|         - | 8027 | `	sxu32 n;` |
-|        41 | 8028 | `	if( nArg < 2 ){` |
-|       ! 0 | 8029 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 8030 | `			"ArgumentCountError",` |
-|         - | 8031 | `			"array_walk() expects at least 2 arguments, %d given",` |
-|       ! 0 | 8032 | `			nArg` |
-|         - | 8033 | `			);` |
-|         - | 8034 | `	}` |
-|        41 | 8035 | `	if( nArg > 3 ){` |
-|         4 | 8036 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 8037 | `			"ArgumentCountError",` |
-|         - | 8038 | `			"array_walk() expects at most 3 arguments, %d given",` |
-|         1 | 8039 | `			nArg` |
-|         - | 8040 | `			);` |
-|         - | 8041 | `	}` |
-|        39 | 8042 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 8043 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 8044 | `			"TypeError",` |
-|         - | 8045 | `			"array_walk(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 8046 | `			ph7_type_name(apArg[0])` |
-|         - | 8047 | `			);` |
-|         - | 8048 | `	}` |
-|        37 | 8049 | `	if( !ph7_value_is_callable(apArg[1]) ){` |
-|        17 | 8050 | `		if( ph7_value_is_string(apArg[1]) ){` |
-|         6 | 8051 | `			const char *zFunc = ph7_value_to_string(apArg[1],0);` |
-|         8 | 8052 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 8053 | `				"TypeError",` |
-|         - | 8054 | `				"array_walk(): Argument #2 ($callback) must be a valid callback, "` |
-|         - | 8055 | `				"function \"%s\" not found or invalid function name",` |
-|         2 | 8056 | `				zFunc` |
-|         - | 8057 | `				);` |
-|         - | 8058 | `		}` |
-|        12 | 8059 | `		if( ph7_value_is_array(apArg[1]) ){` |
-|         6 | 8060 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 8061 | `				"TypeError",` |
-|         - | 8062 | `				"array_walk(): Argument #2 ($callback) must be a valid callback, "` |
-|         - | 8063 | `				"array callback must have exactly two members"` |
-|         - | 8064 | `				);` |
-|         - | 8065 | `		}` |
-|         6 | 8066 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 8067 | `			"TypeError",` |
-|         - | 8068 | `			"array_walk(): Argument #2 ($callback) must be a valid callback, "` |
-|         - | 8069 | `			"no array or string given"` |
-|         - | 8070 | `			);` |
-|         - | 8071 | `	}` |
-|        21 | 8072 | `	pUserData = nArg > 2 ? apArg[2] : 0;` |
-|         - | 8073 | `	/* Point to the internal representation of the input hashmap */` |
-|        21 | 8074 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|        21 | 8075 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|        21 | 8076 | `	PH7_MemObjInit(pMap->pVm,&sKey);` |
-|        21 | 8077 | `	sKey.nIdx = SXU32_HIGH; /* Mark as constant */` |
-|         - | 8078 | `	/* Perform the desired operation */` |
-|        21 | 8079 | `	pEntry = pMap->pFirst;` |
-|        61 | 8080 | `	for( n = 0 ; n < pMap->nEntry ; n++ ){` |
-|         - | 8081 | `		/* Extract the node value */` |
-|        43 | 8082 | `		pValue = HashmapExtractNodeValue(pEntry);` |
-|        43 | 8083 | `		if( pValue ){` |
-|         - | 8084 | `			sxi32 rcW;` |
-|         - | 8085 | `			/* Extract the entry key */` |
-|        43 | 8086 | `			PH7_HashmapExtractNodeKey(pEntry,&sKey);` |
-|         - | 8087 | `			/* Invoke the supplied callback */` |
-|        43 | 8088 | `			rcW = PH7_VmCallUserFunctionAp(pMap->pVm,apArg[1],0,pValue,&sKey,pUserData,0);` |
-|        43 | 8089 | `			PH7_MemObjRelease(&sKey);` |
-|        43 | 8090 | `			if( rcW == PH7_EXCEPTION ){` |
-|         - | 8091 | `				/* The callback raised: propagate so the dispatcher unwinds. */` |
-|         3 | 8092 | `				return PH7_EXCEPTION;` |
-|         - | 8093 | `			}` |
-|        20 | 8094 | `		}` |
-|         - | 8095 | `		/* Point to the next entry */` |
-|        41 | 8096 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|        21 | 8097 | `	}` |
-|         - | 8098 | `	/* All done, return TRUE */` |
-|        19 | 8099 | `	ph7_result_bool(pCtx,1);` |
-|        19 | 8100 | `	return PH7_OK;` |
-|        23 | 8101 | `}` |
-|         - | 8102 | `/*` |
-|         - | 8103 | ` * Apply a user function to every member of an array.(Recurse on array's).` |
-|         - | 8104 | ` * Refer to the [array_walk_recursive()] implementation for more information.` |
-|         - | 8105 | ` */` |
-|        22 | 8106 | `static sxi32 HashmapWalkRecursive(` |
-|         - | 8107 | `	ph7_hashmap *pMap,    /* Target hashmap */` |
-|         - | 8108 | `	ph7_value *pCallback, /* User callback */` |
-|         - | 8109 | `	ph7_value *pUserData, /* Callback private data */` |
-|         - | 8110 | `	int iNest             /* Nesting level */` |
-|         - | 8111 | `	)` |
-|         1 | 8112 | `{` |
-|         - | 8113 | `	ph7_hashmap_node *pEntry;` |
-|         - | 8114 | `	ph7_value *pValue,sKey;` |
-|         - | 8115 | `	sxi32 rc;` |
-|         - | 8116 | `	sxu32 n;` |
-|         - | 8117 | `	/* Iterate through hashmap entries */` |
-|        23 | 8118 | `	PH7_MemObjInit(pMap->pVm,&sKey);` |
-|        23 | 8119 | `	sKey.nIdx = SXU32_HIGH; /* Mark as constant */` |
-|        23 | 8120 | `	pEntry = pMap->pFirst;` |
-|        59 | 8121 | `	for( n = 0 ; n < pMap->nEntry ; n++ ){` |
-|         - | 8122 | `		/* Extract the node value */` |
-|        37 | 8123 | `		pValue = HashmapExtractNodeValue(pEntry);` |
-|        37 | 8124 | `		if( pValue ){` |
-|        37 | 8125 | `			if( pValue->iFlags & MEMOBJ_HASHMAP ){` |
-|        11 | 8126 | `				if( iNest < 32 ){` |
-|         - | 8127 | `					/* Recurse */` |
-|        11 | 8128 | `					iNest++;` |
-|        11 | 8129 | `					rc = HashmapWalkRecursive((ph7_hashmap *)pValue->x.pOther,pCallback,pUserData,iNest);` |
-|        11 | 8130 | `					iNest--;` |
-|        11 | 8131 | `					if( rc == PH7_EXCEPTION ){` |
-|       ! 0 | 8132 | `						return PH7_EXCEPTION;` |
-|         - | 8133 | `					}` |
-|         5 | 8134 | `				}` |
-|         6 | 8135 | `			}else{` |
-|         - | 8136 | `				/* Extract the node key */` |
-|        27 | 8137 | `				PH7_HashmapExtractNodeKey(pEntry,&sKey);` |
-|         - | 8138 | `				/* Invoke the supplied callback */` |
-|        27 | 8139 | `				rc = PH7_VmCallUserFunctionAp(pMap->pVm,pCallback,0,pValue,&sKey,pUserData,0);` |
-|        27 | 8140 | `				PH7_MemObjRelease(&sKey);` |
-|        27 | 8141 | `				if( rc == PH7_EXCEPTION ){` |
-|         - | 8142 | `					/* The callback raised: propagate so the dispatcher unwinds. */` |
-|       ! 0 | 8143 | `					return PH7_EXCEPTION;` |
-|         - | 8144 | `				}` |
-|         - | 8145 | `			}` |
-|        18 | 8146 | `		}` |
-|         - | 8147 | `		/* Point to the next entry */` |
-|        37 | 8148 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|        19 | 8149 | `	}` |
-|        23 | 8150 | `	return PH7_OK;` |
-|        12 | 8151 | `}` |
-|         - | 8152 | `/*` |
-|         - | 8153 | ` * bool array_walk_recursive(array &$array, callback $funcname [, mixed $userdata])` |
-|         - | 8154 | ` *  Apply a user function recursively to every member of an array.` |
-|         - | 8155 | ` * Parameters` |
-|         - | 8156 | ` *  $array` |
-|         - | 8157 | ` *   The input array.` |
-|         - | 8158 | ` *  $funcname` |
-|         - | 8159 | ` *   Typically, funcname takes on two parameters. The array parameter's value being` |
-|         - | 8160 | ` *   the first, and the key/index second.` |
-|         - | 8161 | ` * Note:` |
-|         - | 8162 | ` *  If funcname needs to be working with the actual values of the array, specify the first` |
-|         - | 8163 | ` *  parameter of funcname as a reference. Then, any changes made to those elements will` |
-|         - | 8164 | ` *  be made in the original array itself.` |
-|         - | 8165 | ` *  $userdata` |
-|         - | 8166 | ` *   If the optional userdata parameter is supplied, it will be passed as the third parameter` |
-|         - | 8167 | ` *   to the callback funcname.` |
-|         - | 8168 | ` * Return` |
-|         - | 8169 | ` *  Returns TRUE on success or FALSE on failure.` |
-|         - | 8170 | ` */` |
-|        26 | 8171 | `static int ph7_hashmap_walk_recursive(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         5 | 8172 | `{` |
-|         - | 8173 | `	ph7_hashmap *pMap;` |
-|        31 | 8174 | `	if( nArg < 2 ){` |
-|       ! 0 | 8175 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 8176 | `			"ArgumentCountError",` |
-|         - | 8177 | `			"array_walk_recursive() expects at least 2 arguments, %d given",` |
-|       ! 0 | 8178 | `			nArg` |
-|         - | 8179 | `			);` |
-|         - | 8180 | `	}` |
-|        31 | 8181 | `	if( nArg > 3 ){` |
-|         4 | 8182 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 8183 | `			"ArgumentCountError",` |
-|         - | 8184 | `			"array_walk_recursive() expects at most 3 arguments, %d given",` |
-|         1 | 8185 | `			nArg` |
-|         - | 8186 | `			);` |
-|         - | 8187 | `	}` |
-|        29 | 8188 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 8189 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 8190 | `			"TypeError",` |
-|         - | 8191 | `			"array_walk_recursive(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 8192 | `			ph7_type_name(apArg[0])` |
-|         - | 8193 | `			);` |
-|         - | 8194 | `	}` |
-|        27 | 8195 | `	if( !ph7_value_is_callable(apArg[1]) ){` |
-|        14 | 8196 | `		if( ph7_value_is_string(apArg[1]) ){` |
-|         3 | 8197 | `			const char *zFunc = ph7_value_to_string(apArg[1],0);` |
-|         4 | 8198 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 8199 | `				"TypeError",` |
-|         - | 8200 | `				"array_walk_recursive(): Argument #2 ($callback) must be a valid callback, "` |
-|         - | 8201 | `				"function \"%s\" not found or invalid function name",` |
-|         1 | 8202 | `				zFunc` |
-|         - | 8203 | `				);` |
-|         - | 8204 | `		}` |
-|        12 | 8205 | `		if( ph7_value_is_array(apArg[1]) ){` |
-|         6 | 8206 | `			return PH7_VmThrowException(pCtx,` |
-|         - | 8207 | `				"TypeError",` |
-|         - | 8208 | `				"array_walk_recursive(): Argument #2 ($callback) must be a valid callback, "` |
-|         - | 8209 | `				"array callback must have exactly two members"` |
-|         - | 8210 | `				);` |
-|         - | 8211 | `		}` |
-|         6 | 8212 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 8213 | `			"TypeError",` |
-|         - | 8214 | `			"array_walk_recursive(): Argument #2 ($callback) must be a valid callback, "` |
-|         - | 8215 | `			"no array or string given"` |
-|         - | 8216 | `			);` |
-|         - | 8217 | `	}` |
-|         - | 8218 | `	/* Point to the internal representation of the input hashmap */` |
-|        13 | 8219 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|        13 | 8220 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         - | 8221 | `	/* Perform the desired operation */` |
-|        13 | 8222 | `	if( HashmapWalkRecursive(pMap,apArg[1],nArg > 2 ? apArg[2] : 0,0) == PH7_EXCEPTION ){` |
-|         - | 8223 | `		/* A callback raised: propagate so the dispatcher unwinds. */` |
-|       ! 0 | 8224 | `		return PH7_EXCEPTION;` |
-|         - | 8225 | `	}` |
-|         - | 8226 | `	/* All done, return TRUE */` |
-|        13 | 8227 | `	ph7_result_bool(pCtx,1);` |
-|        13 | 8228 | `	return PH7_OK;` |
-|        18 | 8229 | `}` |
-|         - | 8230 | `/*` |
-|         - | 8231 | ` * bool array_is_list(array $array)` |
-|         - | 8232 | ` *  Checks whether a given array is a list: its keys consist of consecutive` |
-|         - | 8233 | ` *  integers starting at 0. An empty array is a list.` |
-|         - | 8234 | ` * Return` |
-|         - | 8235 | ` *  TRUE if the array is a list, FALSE otherwise.` |
-|         - | 8236 | ` */` |
-|         - | 8237 | `/*` |
-|         - | 8238 | ` * Return TRUE if the given hashmap is a "list" [i.e: its keys are the` |
-|         - | 8239 | ` * consecutive integers 0,1,2,... with no gaps]. An empty map is a list.` |
-|         - | 8240 | ` * Shared by array_is_list() and the JSON encoder (vm_json.c).` |
-|         - | 8241 | ` */` |
-|       336 | 8242 | `PH7_PRIVATE int PH7_HashmapIsList(ph7_hashmap *pMap)` |
-|         3 | 8243 | `{` |
-|       339 | 8244 | `	ph7_hashmap_node *pNode = pMap->pFirst;` |
-|       339 | 8245 | `	sxi64 iExpect = 0;` |
-|         - | 8246 | `	sxu32 n;` |
-|       777 | 8247 | `	for( n = 0 ; n < pMap->nEntry ; ++n ){` |
-|       583 | 8248 | `		if( pNode->iType != HASHMAP_INT_NODE \|\| pNode->xKey.iKey != iExpect ){` |
-|         - | 8249 | `			/* A non-integer key or a gap in the sequence: not a list */` |
-|       145 | 8250 | `			return 0;` |
-|         - | 8251 | `		}` |
-|       441 | 8252 | `		++iExpect;` |
-|       441 | 8253 | `		pNode = pNode->pPrev; /* Reverse link */` |
-|       222 | 8254 | `	}` |
-|       197 | 8255 | `	return 1;` |
-|       171 | 8256 | `}` |
-|        12 | 8257 | `static int ph7_hashmap_is_list(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 8258 | `{` |
-|        13 | 8259 | `	if( nArg < 1 ){` |
-|       ! 0 | 8260 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 8261 | `			"ArgumentCountError",` |
-|         - | 8262 | `			"array_is_list() expects exactly 1 argument, 0 given"` |
-|         - | 8263 | `			);` |
-|         - | 8264 | `	}` |
-|        13 | 8265 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|       ! 0 | 8266 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 8267 | `			"TypeError",` |
-|         - | 8268 | `			"array_is_list(): Argument #1 ($array) must be of type array, %s given",` |
-|       ! 0 | 8269 | `			ph7_type_name(apArg[0])` |
-|         - | 8270 | `			);` |
-|         - | 8271 | `	}` |
-|        13 | 8272 | `	ph7_result_bool(pCtx,PH7_HashmapIsList((ph7_hashmap *)apArg[0]->x.pOther));` |
-|        13 | 8273 | `	return PH7_OK;` |
-|         7 | 8274 | `}` |
-|         - | 8275 | `/*` |
-|         - | 8276 | ` * mixed array_first(array $array)` |
-|         - | 8277 | ` * mixed array_last(array $array)` |
-|         - | 8278 | ` *  Return the value of the first (respectively last) element of the array,` |
-|         - | 8279 | ` *  or NULL when the array is empty. The internal array pointer is left` |
-|         - | 8280 | ` *  untouched (unlike reset()/end()).` |
-|         - | 8281 | ` */` |
-|        18 | 8282 | `static int HashmapFirstLast(ph7_context *pCtx,int nArg,ph7_value **apArg,int bLast)` |
-|         1 | 8283 | `{` |
-|         - | 8284 | `	ph7_hashmap *pMap;` |
-|         - | 8285 | `	ph7_hashmap_node *pNode;` |
-|         - | 8286 | `	ph7_value *pVal;` |
-|        19 | 8287 | `	const char *zName = bLast ? "array_last" : "array_first";` |
-|        19 | 8288 | `	if( nArg < 1 ){` |
-|       ! 0 | 8289 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 8290 | `			"ArgumentCountError",` |
-|         - | 8291 | `			"%s() expects exactly 1 argument, 0 given",` |
-|       ! 0 | 8292 | `			zName` |
-|         - | 8293 | `			);` |
-|         - | 8294 | `	}` |
-|        19 | 8295 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 8296 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 8297 | `			"TypeError",` |
-|         - | 8298 | `			"%s(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 8299 | `			zName,` |
-|         1 | 8300 | `			ph7_type_name(apArg[0])` |
-|         - | 8301 | `			);` |
-|         - | 8302 | `	}` |
-|        17 | 8303 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|        17 | 8304 | `	pNode = bLast ? pMap->pLast : pMap->pFirst;` |
-|        17 | 8305 | `	if( pNode == 0 ){` |
-|         - | 8306 | `		/* Empty array: PHP returns NULL */` |
-|         5 | 8307 | `		ph7_result_null(pCtx);` |
-|         5 | 8308 | `		return PH7_OK;` |
-|         - | 8309 | `	}` |
-|        13 | 8310 | `	pVal = HashmapExtractNodeValue(pNode);` |
-|        13 | 8311 | `	if( pVal ){` |
-|        13 | 8312 | `		ph7_result_value(pCtx,pVal);` |
-|         7 | 8313 | `	}else{` |
-|       ! 0 | 8314 | `		ph7_result_null(pCtx);` |
-|         - | 8315 | `	}` |
-|        13 | 8316 | `	return PH7_OK;` |
-|        10 | 8317 | `}` |
-|         8 | 8318 | `static int ph7_hashmap_first(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 8319 | `{` |
-|         9 | 8320 | `	return HashmapFirstLast(pCtx,nArg,apArg,0);` |
-|         1 | 8321 | `}` |
-|        10 | 8322 | `static int ph7_hashmap_last(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 8323 | `{` |
-|        11 | 8324 | `	return HashmapFirstLast(pCtx,nArg,apArg,1);` |
-|         1 | 8325 | `}` |
-|         - | 8326 | `/*` |
-|         - | 8327 | ` * int\|string\|null array_key_first(array $array)` |
-|         - | 8328 | ` * int\|string\|null array_key_last(array $array)` |
-|         - | 8329 | ` *  Return the key of the first (respectively last) element of the array,` |
-|         - | 8330 | ` *  or NULL when the array is empty. The internal array pointer is left` |
-|         - | 8331 | ` *  untouched.` |
-|         - | 8332 | ` */` |
-|        22 | 8333 | `static int HashmapKeyFirstLast(ph7_context *pCtx,int nArg,ph7_value **apArg,int bLast)` |
-|         1 | 8334 | `{` |
-|         - | 8335 | `	ph7_hashmap *pMap;` |
-|         - | 8336 | `	ph7_hashmap_node *pNode;` |
-|        23 | 8337 | `	const char *zName = bLast ? "array_key_last" : "array_key_first";` |
-|        23 | 8338 | `	if( nArg < 1 ){` |
-|       ! 0 | 8339 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 8340 | `			"ArgumentCountError",` |
-|         - | 8341 | `			"%s() expects exactly 1 argument, 0 given",` |
-|       ! 0 | 8342 | `			zName` |
-|         - | 8343 | `			);` |
-|         - | 8344 | `	}` |
-|        23 | 8345 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|         4 | 8346 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 8347 | `			"TypeError",` |
-|         - | 8348 | `			"%s(): Argument #1 ($array) must be of type array, %s given",` |
-|         1 | 8349 | `			zName,` |
-|         1 | 8350 | `			ph7_type_name(apArg[0])` |
-|         - | 8351 | `			);` |
-|         - | 8352 | `	}` |
-|        21 | 8353 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|        21 | 8354 | `	pNode = bLast ? pMap->pLast : pMap->pFirst;` |
-|        21 | 8355 | `	if( pNode == 0 ){` |
-|         - | 8356 | `		/* Empty array: PHP returns NULL */` |
-|         5 | 8357 | `		ph7_result_null(pCtx);` |
-|         5 | 8358 | `		return PH7_OK;` |
-|         - | 8359 | `	}` |
-|        17 | 8360 | `	HashmapResultNodeKey(pCtx,pNode);` |
-|        17 | 8361 | `	return PH7_OK;` |
-|        12 | 8362 | `}` |
-|        10 | 8363 | `static int ph7_hashmap_key_first(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 8364 | `{` |
-|        11 | 8365 | `	return HashmapKeyFirstLast(pCtx,nArg,apArg,0);` |
-|         1 | 8366 | `}` |
-|        12 | 8367 | `static int ph7_hashmap_key_last(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 8368 | `{` |
-|        13 | 8369 | `	return HashmapKeyFirstLast(pCtx,nArg,apArg,1);` |
-|         1 | 8370 | `}` |
-|         - | 8371 | `/*` |
-|         - | 8372 | ` * Fetch the element identified by 'pKey' from 'pRow' which may be either an` |
-|         - | 8373 | ` * array (hashmap lookup) or an object (public attribute lookup). Used by` |
-|         - | 8374 | ` * array_column() for both the column value and the index key.` |
-|         - | 8375 | ` * Returns a borrowed pointer to the value, or NULL when the row is not a` |
-|         - | 8376 | ` * container or the key is absent.` |
-|         - | 8377 | ` */` |
-|        32 | 8378 | `static ph7_value * HashmapColumnFetch(ph7_vm *pVm,ph7_value *pRow,ph7_value *pKey)` |
-|         1 | 8379 | `{` |
-|        33 | 8380 | `	if( ph7_value_is_array(pRow) ){` |
-|         - | 8381 | `		ph7_hashmap_node *pNode;` |
-|        25 | 8382 | `		if( PH7_HashmapLookup((ph7_hashmap *)pRow->x.pOther,pKey,&pNode) == SXRET_OK ){` |
-|        21 | 8383 | `			return HashmapExtractNodeValue(pNode);` |
-|         1 | 8384 | `		}` |
-|        11 | 8385 | `	}else if( ph7_value_is_object(pRow) ){` |
-|         - | 8386 | `		ph7_value sName;` |
-|         - | 8387 | `		const char *zName;` |
-|         - | 8388 | `		ph7_value *pAttr;` |
-|         - | 8389 | `		/* Stringify a *copy* of the key (objects address attributes by name);` |
-|         - | 8390 | `		 * never mutate pKey itself or the array-lookup path would break. */` |
-|         9 | 8391 | `		PH7_MemObjInit(pVm,&sName);` |
-|         9 | 8392 | `		PH7_MemObjStore(pKey,&sName);` |
-|         9 | 8393 | `		zName = ph7_value_to_string(&sName,0); /* NUL-terminated */` |
-|         9 | 8394 | `		pAttr = ph7_object_fetch_attr(pRow,zName);` |
-|         9 | 8395 | `		PH7_MemObjRelease(&sName);` |
-|         9 | 8396 | `		return pAttr;` |
-|         - | 8397 | `	}` |
-|         5 | 8398 | `	return 0;` |
-|        17 | 8399 | `}` |
-|         - | 8400 | `/*` |
-|         - | 8401 | ` * array array_column(array $array, int\|string\|null $column_key, int\|string\|null $index_key = null)` |
-|         - | 8402 | ` *  Returns the values from a single column of the input, identified by` |
-|         - | 8403 | ` *  $column_key. Optionally indexes the result by the $index_key column.` |
-|         - | 8404 | ` *  A NULL $column_key collects the whole row. Rows missing the column are` |
-|         - | 8405 | ` *  skipped; rows missing the index key are appended with a numeric key.` |
-|         - | 8406 | ` *  Each row may be an array or an object.` |
-|         - | 8407 | ` */` |
-|        12 | 8408 | `static int ph7_hashmap_column(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 8409 | `{` |
-|         - | 8410 | `	ph7_hashmap_node *pNode;` |
-|         - | 8411 | `	ph7_hashmap *pMap;` |
-|         - | 8412 | `	ph7_value *pArray;` |
-|         - | 8413 | `	ph7_value *pRow;` |
-|         - | 8414 | `	ph7_value *pCol;` |
-|         - | 8415 | `	ph7_value *pIdx;` |
-|         - | 8416 | `	int bWantCol;` |
-|         - | 8417 | `	int bWantIdx;` |
-|         - | 8418 | `	sxu32 n;` |
-|        13 | 8419 | `	if( nArg < 2 ){` |
-|       ! 0 | 8420 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 8421 | `			"ArgumentCountError",` |
-|         - | 8422 | `			"array_column() expects at least 2 arguments, %d given",` |
-|       ! 0 | 8423 | `			nArg` |
-|         - | 8424 | `			);` |
-|         - | 8425 | `	}` |
-|        13 | 8426 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|       ! 0 | 8427 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 8428 | `			"TypeError",` |
-|         - | 8429 | `			"array_column(): Argument #1 ($array) must be of type array, %s given",` |
-|       ! 0 | 8430 | `			ph7_type_name(apArg[0])` |
-|         - | 8431 | `			);` |
-|         - | 8432 | `	}` |
-|        13 | 8433 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|        13 | 8434 | `	pArray = ph7_context_new_array(pCtx);` |
-|        13 | 8435 | `	if( pArray == 0 ){` |
-|       ! 0 | 8436 | `		ph7_result_null(pCtx);` |
-|       ! 0 | 8437 | `		return PH7_OK;` |
-|         - | 8438 | `	}` |
-|         - | 8439 | `	/* A NULL column_key means "collect the entire row". */` |
-|        13 | 8440 | `	bWantCol = !ph7_value_is_null(apArg[1]);` |
-|        13 | 8441 | `	bWantIdx = (nArg > 2 && !ph7_value_is_null(apArg[2]));` |
-|        13 | 8442 | `	pNode = pMap->pFirst;` |
-|        33 | 8443 | `	for( n = 0 ; n < pMap->nEntry ; ++n ){` |
-|        21 | 8444 | `		pRow = HashmapExtractNodeValue(pNode);` |
-|        21 | 8445 | `		pNode = pNode->pPrev; /* Advance now so 'continue' is safe */` |
-|        21 | 8446 | `		if( pRow == 0 ){` |
-|       ! 0 | 8447 | `			continue;` |
-|         - | 8448 | `		}` |
-|        21 | 8449 | `		if( bWantCol ){` |
-|        19 | 8450 | `			pCol = HashmapColumnFetch(pMap->pVm,pRow,apArg[1]);` |
-|        19 | 8451 | `			if( pCol == 0 ){` |
-|         - | 8452 | `				/* Row lacks the requested column: skip it (PHP semantics). */` |
-|         3 | 8453 | `				continue;` |
-|         - | 8454 | `			}` |
-|         9 | 8455 | `		}else{` |
-|         3 | 8456 | `			pCol = pRow;` |
+|         - | 7650 | `	/* php 8: $array must be an array (TypeError, not a silent NULL return) */` |
+|        32 | 7651 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         - | 7652 | `		char zBuf[64];` |
+|        19 | 7653 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 7654 | `			"TypeError",` |
+|         - | 7655 | `			"array_filter(): Argument #1 ($array) must be of type array, %s given",` |
+|         6 | 7656 | `			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf))` |
+|         - | 7657 | `			);` |
+|         - | 7658 | `	}` |
+|         - | 7659 | `	/* Create a new array */` |
+|        20 | 7660 | `	pArray = ph7_context_new_array(pCtx);` |
+|        20 | 7661 | `	if( pArray == 0 ){` |
+|       ! 0 | 7662 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 7663 | `		return PH7_OK;` |
+|         - | 7664 | `	}` |
+|         - | 7665 | `	/* Point to the internal representation of the input hashmap */` |
+|        20 | 7666 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|        20 | 7667 | `	pEntry = pMap->pFirst;` |
+|        20 | 7668 | `	PH7_MemObjInit(pMap->pVm,&sResult);` |
+|        20 | 7669 | `	sResult.nIdx = SXU32_HIGH; /* Mark as constant */` |
+|         - | 7670 | `	/* Perform the requested operation */` |
+|        78 | 7671 | `	for( n = 0 ; n < pMap->nEntry ; n++ ){` |
+|         - | 7672 | `		/* Extract node value (may be NULL if allocation failed) */` |
+|        64 | 7673 | `		pValue = HashmapExtractNodeValue(pEntry);` |
+|        64 | 7674 | `		if( pValue == 0 ){` |
+|         - | 7675 | `			/* Can happen if SySetAt() failed earlier; drop the entry. */` |
+|       ! 0 | 7676 | `			keep = FALSE;` |
+|        64 | 7677 | `		}else if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){` |
+|         - | 7678 | `			/* Callback was supplied (not NULL).  PHP 8 throws a` |
+|         - | 7679 | `				* TypeError when the value is not callable or null; prior PH7` |
+|         - | 7680 | `				* silently dropped the element.  Emit similar message. */` |
+|        36 | 7681 | `			if( !ph7_value_is_callable(apArg[1]) ){` |
+|         3 | 7682 | `				if( ph7_value_is_string(apArg[1]) ){` |
+|         - | 7683 | `					int len;` |
+|         3 | 7684 | `					const char *zName = ph7_value_to_string(apArg[1], &len);` |
+|         4 | 7685 | `					return PH7_VmThrowException(pCtx,` |
+|         - | 7686 | `						"TypeError",` |
+|         - | 7687 | `						"array_filter(): Argument #2 ($callback) must be a valid callback or null, function \"%s\" not found or invalid function name",` |
+|         1 | 7688 | `						zName` |
+|         - | 7689 | `						);` |
+|       ! 0 | 7690 | `				}else{` |
+|       ! 0 | 7691 | `					return PH7_VmThrowException(pCtx,` |
+|         - | 7692 | `						"TypeError",` |
+|         - | 7693 | `						"array_filter(): Argument #2 ($callback) must be a valid callback or null, %s given",` |
+|       ! 0 | 7694 | `						ph7_type_name(apArg[1])` |
+|         - | 7695 | `						);` |
+|         - | 7696 | `				}` |
+|         - | 7697 | `			}` |
+|        33 | 7698 | `			keep = FALSE;` |
+|        33 | 7699 | `			rc = PH7_VmCallUserFunction(pMap->pVm,apArg[1],1,&pValue,&sResult);` |
+|        33 | 7700 | `			if( rc == PH7_EXCEPTION ){` |
+|         - | 7701 | `				/* The callback raised: propagate so the dispatcher unwinds. */` |
+|         3 | 7702 | `				PH7_MemObjRelease(&sResult);` |
+|         3 | 7703 | `				return PH7_EXCEPTION;` |
+|         - | 7704 | `			}` |
+|        31 | 7705 | `			if( rc == SXRET_OK ){` |
+|         - | 7706 | `				/* Perform a boolean cast */` |
+|        31 | 7707 | `				keep = ph7_value_to_bool(&sResult);` |
+|        15 | 7708 | `			}` |
+|        31 | 7709 | `			PH7_MemObjRelease(&sResult);` |
+|        16 | 7710 | `		}else{` |
+|         - | 7711 | `			/* No callback provided or callback explicitly NULL: use default` |
+|         - | 7712 | `			 * behaviour where "empty" values are removed. This also covers` |
+|         - | 7713 | `			 * the case where the callback argument is missing entirely.` |
+|         - | 7714 | `			 */` |
+|        29 | 7715 | `			keep = !PH7_MemObjIsEmpty(pValue);` |
+|         - | 7716 | `		}` |
+|        59 | 7717 | `		if( keep ){` |
+|         - | 7718 | `			/* Perform the insertion,now the callback returned true */` |
+|        21 | 7719 | `			HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);` |
+|        10 | 7720 | `		}` |
+|         - | 7721 | `		/* Point to the next entry */` |
+|        59 | 7722 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|        30 | 7723 | `	}` |
+|        15 | 7724 | `	ph7_result_value(pCtx,pArray);` |
+|        15 | 7725 | `	return PH7_OK;` |
+|        17 | 7726 | `}` |
+|         - | 7727 | `/*` |
+|         - | 7728 | ` * array array_map(?callable $callback, array $array, array ...$arrays)` |
+|         - | 7729 | ` *  Applies the callback to the elements of the given arrays.` |
+|         - | 7730 | ` * Parameters` |
+|         - | 7731 | ` *  $callback` |
+|         - | 7732 | ` *   A callable to run for each element in each array, or NULL. With a single` |
+|         - | 7733 | ` *   array and a NULL callback this is the identity function (the array is` |
+|         - | 7734 | ` *   returned unchanged); with several arrays and a NULL callback the arrays` |
+|         - | 7735 | ` *   are zipped together.` |
+|         - | 7736 | ` *  $array` |
+|         - | 7737 | ` *   The first array to run through the callback function.` |
+|         - | 7738 | ` *  $arrays` |
+|         - | 7739 | ` *   Zero or more additional arrays to process in parallel.` |
+|         - | 7740 | ` * Return` |
+|         - | 7741 | ` *  Returns an array containing the results of applying the callback function.` |
+|         - | 7742 | ` *  With a single array the keys are preserved; with several arrays the result` |
+|         - | 7743 | ` *  is re-indexed and the iteration runs to the length of the longest array,` |
+|         - | 7744 | ` *  padding shorter arrays with NULL.` |
+|         - | 7745 | ` */` |
+|        84 | 7746 | `static int ph7_hashmap_map(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         5 | 7747 | `{` |
+|         - | 7748 | `	ph7_value *pArray,*pValue,sKey,sResult;` |
+|         - | 7749 | `	ph7_hashmap_node *pEntry;` |
+|         - | 7750 | `	ph7_hashmap *pMap;` |
+|         - | 7751 | `	ph7_vm *pVm;` |
+|         - | 7752 | `	int bNullCallback;` |
+|         - | 7753 | `	sxi32 rc;` |
+|         - | 7754 | `	int i;` |
+|         - | 7755 | `	sxu32 n;` |
+|        89 | 7756 | `	if( nArg < 2 ){` |
+|       ! 0 | 7757 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 7758 | `			"ArgumentCountError",` |
+|         - | 7759 | `			"array_map() expects at least 2 arguments, %d given",` |
+|       ! 0 | 7760 | `			nArg` |
+|         - | 7761 | `			);` |
+|         - | 7762 | `	}` |
+|        89 | 7763 | `	bNullCallback = ph7_value_is_null(apArg[0]);` |
+|        89 | 7764 | `	if( !bNullCallback && !ph7_value_is_callable(apArg[0]) ){` |
+|         8 | 7765 | `		if( ph7_value_is_string(apArg[0]) ){` |
+|         6 | 7766 | `			const char *zFunc = ph7_value_to_string(apArg[0],0);` |
+|         8 | 7767 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 7768 | `				"TypeError",` |
+|         - | 7769 | `				"array_map(): Argument #1 ($callback) must be a valid callback or null, "` |
+|         - | 7770 | `				"function \"%s\" not found or invalid function name",` |
+|         2 | 7771 | `				zFunc` |
+|         - | 7772 | `				);` |
+|         - | 7773 | `		}` |
+|         3 | 7774 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 7775 | `			"TypeError",` |
+|         - | 7776 | `			"array_map(): Argument #1 ($callback) must be a valid callback or null, "` |
+|         - | 7777 | `			"no array or string given"` |
+|         - | 7778 | `			);` |
+|         - | 7779 | `	}` |
+|         - | 7780 | `	/* Every remaining argument must be an array */` |
+|       170 | 7781 | `	for( i = 1 ; i < nArg ; i++ ){` |
+|        94 | 7782 | `		if( !ph7_value_is_array(apArg[i]) ){` |
+|         3 | 7783 | `			if( i == 1 ){` |
+|         4 | 7784 | `				return PH7_VmThrowException(pCtx,` |
+|         - | 7785 | `					"TypeError",` |
+|         - | 7786 | `					"array_map(): Argument #2 ($array) must be of type array, %s given",` |
+|         2 | 7787 | `					ph7_type_name(apArg[1])` |
+|         - | 7788 | `					);` |
+|         - | 7789 | `			}` |
+|       ! 0 | 7790 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 7791 | `				"TypeError",` |
+|         - | 7792 | `				"array_map(): Argument #%d must be of type array, %s given",` |
+|       ! 0 | 7793 | `				i+1,ph7_type_name(apArg[i])` |
+|         - | 7794 | `				);` |
+|         - | 7795 | `		}` |
+|        48 | 7796 | `	}` |
+|        80 | 7797 | `	pVm = pCtx->pVm;` |
+|         - | 7798 | `	/* Create a new array */` |
+|        80 | 7799 | `	pArray = ph7_context_new_array(pCtx);` |
+|        80 | 7800 | `	if( pArray == 0 ){` |
+|       ! 0 | 7801 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 7802 | `		return PH7_OK;` |
+|         - | 7803 | `	}` |
+|        80 | 7804 | `	PH7_MemObjInit(pVm,&sResult);` |
+|        80 | 7805 | `	PH7_MemObjInit(pVm,&sKey);` |
+|        80 | 7806 | `	sResult.nIdx = SXU32_HIGH; /* Mark as constant */` |
+|        80 | 7807 | `	sKey.nIdx    = SXU32_HIGH; /* Mark as constant */` |
+|        80 | 7808 | `	if( nArg == 2 ){` |
+|         - | 7809 | `		/* Single-array mode: keys are preserved (PHP semantics). */` |
+|        70 | 7810 | `		pMap = (ph7_hashmap *)apArg[1]->x.pOther;` |
+|        70 | 7811 | `		pEntry = pMap->pFirst;` |
+|       240 | 7812 | `		for( n = 0 ; n < pMap->nEntry ; n++ ){` |
+|         - | 7813 | `			/* Extract the node value */` |
+|       178 | 7814 | `			pValue = HashmapExtractNodeValue(pEntry);` |
+|       178 | 7815 | `			if( pValue ){` |
+|         - | 7816 | `				/* Extract the node key */` |
+|       178 | 7817 | `				PH7_HashmapExtractNodeKey(pEntry,&sKey);` |
+|       178 | 7818 | `				if( bNullCallback ){` |
+|         - | 7819 | `					/* NULL callback: identity function, keep original value */` |
+|        11 | 7820 | `					ph7_array_add_elem(pArray,&sKey,pValue);` |
+|         6 | 7821 | `				}else{` |
+|         - | 7822 | `					/* Invoke the supplied callback */` |
+|       168 | 7823 | `					rc = PH7_VmCallUserFunction(pVm,apArg[0],1,&pValue,&sResult);` |
+|       168 | 7824 | `					if( rc == PH7_EXCEPTION ){` |
+|         - | 7825 | `						/* Callback raised: abort and let the foreign-function` |
+|         - | 7826 | `						 * dispatcher unwind through the nearest try/catch. */` |
+|         5 | 7827 | `						PH7_MemObjRelease(&sKey);` |
+|         5 | 7828 | `						PH7_MemObjRelease(&sResult);` |
+|         5 | 7829 | `						return PH7_EXCEPTION;` |
+|         - | 7830 | `					}` |
+|         - | 7831 | `					/* Insert the callback return value */` |
+|       164 | 7832 | `					ph7_array_add_elem(pArray,&sKey,&sResult);` |
+|         - | 7833 | `				}` |
+|       174 | 7834 | `				PH7_MemObjRelease(&sKey);` |
+|       174 | 7835 | `				PH7_MemObjRelease(&sResult);` |
+|        85 | 7836 | `			}` |
+|         - | 7837 | `			/* Point to the next entry */` |
+|       174 | 7838 | `			pEntry = pEntry->pPrev; /* Reverse link */` |
+|        89 | 7839 | `		}` |
+|        35 | 7840 | `	}else{` |
+|         - | 7841 | `		/* Multi-array mode: walk every array in parallel to the length of the` |
+|         - | 7842 | `		 * longest one, pad shorter arrays with NULL, and re-index the result. */` |
+|        11 | 7843 | `		int nArrays = nArg - 1;` |
+|         - | 7844 | `		ph7_hashmap_node **apCur;` |
+|         - | 7845 | `		ph7_value **apCallArg;` |
+|         - | 7846 | `		ph7_value sNull;` |
+|        11 | 7847 | `		sxu32 nMax = 0;` |
+|        11 | 7848 | `		apCur     = (ph7_hashmap_node **)SyMemBackendAlloc(&pVm->sAllocator,(sxu32)(nArrays*sizeof(ph7_hashmap_node *)));` |
+|        11 | 7849 | `		apCallArg = (ph7_value **)SyMemBackendAlloc(&pVm->sAllocator,(sxu32)(nArrays*sizeof(ph7_value *)));` |
+|        11 | 7850 | `		if( apCur == 0 \|\| apCallArg == 0 ){` |
+|       ! 0 | 7851 | `			if( apCur ){ SyMemBackendFree(&pVm->sAllocator,apCur); }` |
+|       ! 0 | 7852 | `			if( apCallArg ){ SyMemBackendFree(&pVm->sAllocator,apCallArg); }` |
+|       ! 0 | 7853 | `			PH7_MemObjRelease(&sKey);` |
+|       ! 0 | 7854 | `			PH7_MemObjRelease(&sResult);` |
+|       ! 0 | 7855 | `			ph7_result_value(pCtx,pArray);` |
+|       ! 0 | 7856 | `			return PH7_OK;` |
+|         - | 7857 | `		}` |
+|        11 | 7858 | `		PH7_MemObjInit(pVm,&sNull); /* shared NULL pad for short arrays */` |
+|        11 | 7859 | `		sNull.nIdx = SXU32_HIGH;` |
+|        33 | 7860 | `		for( i = 0 ; i < nArrays ; i++ ){` |
+|        23 | 7861 | `			pMap = (ph7_hashmap *)apArg[i+1]->x.pOther;` |
+|        23 | 7862 | `			apCur[i] = pMap->pFirst;` |
+|        23 | 7863 | `			if( pMap->nEntry > nMax ){` |
+|        13 | 7864 | `				nMax = pMap->nEntry;` |
+|         6 | 7865 | `			}` |
+|        12 | 7866 | `		}` |
+|        35 | 7867 | `		for( n = 0 ; n < nMax ; n++ ){` |
+|        25 | 7868 | `			ph7_value *pZip = 0;` |
+|        25 | 7869 | `			if( bNullCallback ){` |
+|         - | 7870 | `				/* zip: each result element is an array of the i-th values */` |
+|         5 | 7871 | `				pZip = ph7_context_new_array(pCtx);` |
+|         2 | 7872 | `			}` |
+|        79 | 7873 | `			for( i = 0 ; i < nArrays ; i++ ){` |
+|        55 | 7874 | `				ph7_value *pv = &sNull;` |
+|        55 | 7875 | `				if( apCur[i] ){` |
+|        53 | 7876 | `					ph7_value *pNodeVal = HashmapExtractNodeValue(apCur[i]);` |
+|        53 | 7877 | `					if( pNodeVal ){` |
+|        53 | 7878 | `						pv = pNodeVal;` |
+|        26 | 7879 | `					}` |
+|        53 | 7880 | `					apCur[i] = apCur[i]->pPrev; /* Reverse link */` |
+|        26 | 7881 | `				}` |
+|        55 | 7882 | `				if( bNullCallback ){` |
+|         9 | 7883 | `					if( pZip ){` |
+|         9 | 7884 | `						ph7_array_add_elem(pZip,0,pv);` |
+|         4 | 7885 | `					}` |
+|         5 | 7886 | `				}else{` |
+|        47 | 7887 | `					apCallArg[i] = pv;` |
+|         - | 7888 | `				}` |
+|        28 | 7889 | `			}` |
+|        25 | 7890 | `			if( bNullCallback ){` |
+|         5 | 7891 | `				if( pZip ){` |
+|         5 | 7892 | `					ph7_array_add_elem(pArray,0,pZip);` |
+|         2 | 7893 | `				}` |
+|         3 | 7894 | `			}else{` |
+|        21 | 7895 | `				rc = PH7_VmCallUserFunction(pVm,apArg[0],nArrays,apCallArg,&sResult);` |
+|        21 | 7896 | `				if( rc == PH7_EXCEPTION ){` |
+|       ! 0 | 7897 | `					SyMemBackendFree(&pVm->sAllocator,apCur);` |
+|       ! 0 | 7898 | `					SyMemBackendFree(&pVm->sAllocator,apCallArg);` |
+|       ! 0 | 7899 | `					PH7_MemObjRelease(&sNull);` |
+|       ! 0 | 7900 | `					PH7_MemObjRelease(&sKey);` |
+|       ! 0 | 7901 | `					PH7_MemObjRelease(&sResult);` |
+|       ! 0 | 7902 | `					return PH7_EXCEPTION;` |
+|         - | 7903 | `				}` |
+|        21 | 7904 | `				ph7_array_add_elem(pArray,0,&sResult);` |
+|        21 | 7905 | `				PH7_MemObjRelease(&sResult);` |
+|         - | 7906 | `			}` |
+|        13 | 7907 | `		}` |
+|        11 | 7908 | `		SyMemBackendFree(&pVm->sAllocator,apCur);` |
+|        11 | 7909 | `		SyMemBackendFree(&pVm->sAllocator,apCallArg);` |
+|        11 | 7910 | `		PH7_MemObjRelease(&sNull);` |
+|         - | 7911 | `	}` |
+|        76 | 7912 | `	PH7_MemObjRelease(&sKey);` |
+|        76 | 7913 | `	PH7_MemObjRelease(&sResult);` |
+|        76 | 7914 | `	ph7_result_value(pCtx,pArray);` |
+|        76 | 7915 | `	return PH7_OK;` |
+|        47 | 7916 | `}` |
+|         - | 7917 | `/*` |
+|         - | 7918 | ` * value array_reduce(array $array, callable $callback[, value $initial = NULL])` |
+|         - | 7919 | ` *  Iteratively reduce the array to a single value using a callback function.` |
+|         - | 7920 | ` * Parameters` |
+|         - | 7921 | ` *  $array` |
+|         - | 7922 | ` *   The input array.` |
+|         - | 7923 | ` *  $callback` |
+|         - | 7924 | ` *   The callback function. Signature: callback(mixed $carry, mixed $item): mixed` |
+|         - | 7925 | ` *  $initial` |
+|         - | 7926 | ` *   If the optional initial is available, it will be used at the beginning` |
+|         - | 7927 | ` *   of the process, or as a final result in case the array is empty.` |
+|         - | 7928 | ` * Return` |
+|         - | 7929 | ` *  Returns the resulting value.` |
+|         - | 7930 | ` *  If the array is empty and initial is not passed, array_reduce() returns NULL.` |
+|         - | 7931 | ` */` |
+|        30 | 7932 | `static int ph7_hashmap_reduce(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         5 | 7933 | `{` |
+|         - | 7934 | `	ph7_hashmap_node *pEntry;` |
+|         - | 7935 | `	ph7_hashmap *pMap;` |
+|         - | 7936 | `	ph7_value *pValue;` |
+|         - | 7937 | `	ph7_value sResult;` |
+|         - | 7938 | `	sxi32 rc;` |
+|         - | 7939 | `	sxu32 n;` |
+|        35 | 7940 | `	if( nArg < 2 ){` |
+|       ! 0 | 7941 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 7942 | `			"ArgumentCountError",` |
+|         - | 7943 | `			"array_reduce() expects at least 2 arguments, %d given",` |
+|       ! 0 | 7944 | `			nArg` |
+|         - | 7945 | `			);` |
+|         - | 7946 | `	}` |
+|        35 | 7947 | `	if( nArg > 3 ){` |
+|         4 | 7948 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 7949 | `			"ArgumentCountError",` |
+|         - | 7950 | `			"array_reduce() expects at most 3 arguments, %d given",` |
+|         1 | 7951 | `			nArg` |
+|         - | 7952 | `			);` |
+|         - | 7953 | `	}` |
+|        33 | 7954 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         4 | 7955 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 7956 | `			"TypeError",` |
+|         - | 7957 | `			"array_reduce(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 7958 | `			ph7_type_name(apArg[0])` |
+|         - | 7959 | `			);` |
+|         - | 7960 | `	}` |
+|        31 | 7961 | `	if( !ph7_value_is_callable(apArg[1]) ){` |
+|        12 | 7962 | `		if( ph7_value_is_string(apArg[1]) ){` |
+|         3 | 7963 | `			const char *zFunc = ph7_value_to_string(apArg[1],0);` |
+|         4 | 7964 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 7965 | `				"TypeError",` |
+|         - | 7966 | `				"array_reduce(): Argument #2 ($callback) must be a valid callback, "` |
+|         - | 7967 | `				"function \"%s\" not found or invalid function name",` |
+|         1 | 7968 | `				zFunc` |
+|         - | 7969 | `				);` |
+|         - | 7970 | `		}` |
+|         9 | 7971 | `		if( ph7_value_is_array(apArg[1]) ){` |
+|         3 | 7972 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 7973 | `				"TypeError",` |
+|         - | 7974 | `				"array_reduce(): Argument #2 ($callback) must be a valid callback, "` |
+|         - | 7975 | `				"array callback must have exactly two members"` |
+|         - | 7976 | `				);` |
+|         - | 7977 | `		}` |
+|         6 | 7978 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 7979 | `			"TypeError",` |
+|         - | 7980 | `			"array_reduce(): Argument #2 ($callback) must be a valid callback, "` |
+|         - | 7981 | `			"no array or string given"` |
+|         - | 7982 | `			);` |
+|         - | 7983 | `	}` |
+|         - | 7984 | `	/* Point to the internal representation of the input hashmap */` |
+|        19 | 7985 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 7986 | `	/* Assume a NULL initial value */` |
+|        19 | 7987 | `	PH7_MemObjInit(pMap->pVm,&sResult);` |
+|        19 | 7988 | `	sResult.nIdx = SXU32_HIGH; /* Mark as constant */` |
+|        19 | 7989 | `	if( nArg > 2 ){` |
+|         - | 7990 | `		/* Set the initial value */` |
+|        13 | 7991 | `		PH7_MemObjLoad(apArg[2],&sResult);` |
+|         6 | 7992 | `	}` |
+|         - | 7993 | `	/* Perform the requested operation */` |
+|        19 | 7994 | `	pEntry = pMap->pFirst;` |
+|        55 | 7995 | `	for( n = 0 ; n < pMap->nEntry ; n++ ){` |
+|         - | 7996 | `		/* Extract the node value */` |
+|        39 | 7997 | `		pValue = HashmapExtractNodeValue(pEntry);` |
+|         - | 7998 | `		/* Invoke the supplied callback */` |
+|        39 | 7999 | `		rc = PH7_VmCallUserFunctionAp(pMap->pVm,apArg[1],&sResult,&sResult,pValue,0);` |
+|        39 | 8000 | `		if( rc == PH7_EXCEPTION ){` |
+|         - | 8001 | `			/* The callback raised: propagate so the dispatcher unwinds. */` |
+|         3 | 8002 | `			PH7_MemObjRelease(&sResult);` |
+|         3 | 8003 | `			return PH7_EXCEPTION;` |
+|         - | 8004 | `		}` |
+|         - | 8005 | `		/* Point to the next entry */` |
+|        37 | 8006 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|        19 | 8007 | `	}` |
+|        17 | 8008 | `	ph7_result_value(pCtx,&sResult); /* Will make it's own copy */` |
+|        17 | 8009 | `	PH7_MemObjRelease(&sResult);` |
+|        17 | 8010 | `	return PH7_OK;` |
+|        20 | 8011 | `}` |
+|         - | 8012 | `/*` |
+|         - | 8013 | ` * bool array_walk(array &$array, callback $funcname [, mixed $userdata])` |
+|         - | 8014 | ` *  Apply a user function to every member of an array.` |
+|         - | 8015 | ` * Parameters` |
+|         - | 8016 | ` *  $array` |
+|         - | 8017 | ` *   The input array.` |
+|         - | 8018 | ` *  $funcname` |
+|         - | 8019 | ` *   Typically, funcname takes on two parameters. The array parameter's value being` |
+|         - | 8020 | ` *   the first, and the key/index second.` |
+|         - | 8021 | ` * Note:` |
+|         - | 8022 | ` *  If funcname needs to be working with the actual values of the array, specify the first` |
+|         - | 8023 | ` *  parameter of funcname as a reference. Then, any changes made to those elements will` |
+|         - | 8024 | ` *  be made in the original array itself.` |
+|         - | 8025 | ` *  $userdata` |
+|         - | 8026 | ` *   If the optional userdata parameter is supplied, it will be passed as the third parameter` |
+|         - | 8027 | ` *   to the callback funcname.` |
+|         - | 8028 | ` * Return` |
+|         - | 8029 | ` *  Returns TRUE on success or FALSE on failure.` |
+|         - | 8030 | ` */` |
+|        36 | 8031 | `static int ph7_hashmap_walk(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         5 | 8032 | `{` |
+|         - | 8033 | `	ph7_value *pValue,*pUserData,sKey;` |
+|         - | 8034 | `	ph7_hashmap_node *pEntry;` |
+|         - | 8035 | `	ph7_hashmap *pMap;` |
+|         - | 8036 | `	sxu32 n;` |
+|        41 | 8037 | `	if( nArg < 2 ){` |
+|       ! 0 | 8038 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 8039 | `			"ArgumentCountError",` |
+|         - | 8040 | `			"array_walk() expects at least 2 arguments, %d given",` |
+|       ! 0 | 8041 | `			nArg` |
+|         - | 8042 | `			);` |
+|         - | 8043 | `	}` |
+|        41 | 8044 | `	if( nArg > 3 ){` |
+|         4 | 8045 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 8046 | `			"ArgumentCountError",` |
+|         - | 8047 | `			"array_walk() expects at most 3 arguments, %d given",` |
+|         1 | 8048 | `			nArg` |
+|         - | 8049 | `			);` |
+|         - | 8050 | `	}` |
+|        39 | 8051 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         4 | 8052 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 8053 | `			"TypeError",` |
+|         - | 8054 | `			"array_walk(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 8055 | `			ph7_type_name(apArg[0])` |
+|         - | 8056 | `			);` |
+|         - | 8057 | `	}` |
+|        37 | 8058 | `	if( !ph7_value_is_callable(apArg[1]) ){` |
+|        17 | 8059 | `		if( ph7_value_is_string(apArg[1]) ){` |
+|         6 | 8060 | `			const char *zFunc = ph7_value_to_string(apArg[1],0);` |
+|         8 | 8061 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 8062 | `				"TypeError",` |
+|         - | 8063 | `				"array_walk(): Argument #2 ($callback) must be a valid callback, "` |
+|         - | 8064 | `				"function \"%s\" not found or invalid function name",` |
+|         2 | 8065 | `				zFunc` |
+|         - | 8066 | `				);` |
+|         - | 8067 | `		}` |
+|        12 | 8068 | `		if( ph7_value_is_array(apArg[1]) ){` |
+|         6 | 8069 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 8070 | `				"TypeError",` |
+|         - | 8071 | `				"array_walk(): Argument #2 ($callback) must be a valid callback, "` |
+|         - | 8072 | `				"array callback must have exactly two members"` |
+|         - | 8073 | `				);` |
+|         - | 8074 | `		}` |
+|         6 | 8075 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 8076 | `			"TypeError",` |
+|         - | 8077 | `			"array_walk(): Argument #2 ($callback) must be a valid callback, "` |
+|         - | 8078 | `			"no array or string given"` |
+|         - | 8079 | `			);` |
+|         - | 8080 | `	}` |
+|        21 | 8081 | `	pUserData = nArg > 2 ? apArg[2] : 0;` |
+|         - | 8082 | `	/* Point to the internal representation of the input hashmap */` |
+|        21 | 8083 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|        21 | 8084 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|        21 | 8085 | `	PH7_MemObjInit(pMap->pVm,&sKey);` |
+|        21 | 8086 | `	sKey.nIdx = SXU32_HIGH; /* Mark as constant */` |
+|         - | 8087 | `	/* Perform the desired operation */` |
+|        21 | 8088 | `	pEntry = pMap->pFirst;` |
+|        61 | 8089 | `	for( n = 0 ; n < pMap->nEntry ; n++ ){` |
+|         - | 8090 | `		/* Extract the node value */` |
+|        43 | 8091 | `		pValue = HashmapExtractNodeValue(pEntry);` |
+|        43 | 8092 | `		if( pValue ){` |
+|         - | 8093 | `			sxi32 rcW;` |
+|         - | 8094 | `			/* Extract the entry key */` |
+|        43 | 8095 | `			PH7_HashmapExtractNodeKey(pEntry,&sKey);` |
+|         - | 8096 | `			/* Invoke the supplied callback */` |
+|        43 | 8097 | `			rcW = PH7_VmCallUserFunctionAp(pMap->pVm,apArg[1],0,pValue,&sKey,pUserData,0);` |
+|        43 | 8098 | `			PH7_MemObjRelease(&sKey);` |
+|        43 | 8099 | `			if( rcW == PH7_EXCEPTION ){` |
+|         - | 8100 | `				/* The callback raised: propagate so the dispatcher unwinds. */` |
+|         3 | 8101 | `				return PH7_EXCEPTION;` |
+|         - | 8102 | `			}` |
+|        20 | 8103 | `		}` |
+|         - | 8104 | `		/* Point to the next entry */` |
+|        41 | 8105 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|        21 | 8106 | `	}` |
+|         - | 8107 | `	/* All done, return TRUE */` |
+|        19 | 8108 | `	ph7_result_bool(pCtx,1);` |
+|        19 | 8109 | `	return PH7_OK;` |
+|        23 | 8110 | `}` |
+|         - | 8111 | `/*` |
+|         - | 8112 | ` * Apply a user function to every member of an array.(Recurse on array's).` |
+|         - | 8113 | ` * Refer to the [array_walk_recursive()] implementation for more information.` |
+|         - | 8114 | ` */` |
+|        22 | 8115 | `static sxi32 HashmapWalkRecursive(` |
+|         - | 8116 | `	ph7_hashmap *pMap,    /* Target hashmap */` |
+|         - | 8117 | `	ph7_value *pCallback, /* User callback */` |
+|         - | 8118 | `	ph7_value *pUserData, /* Callback private data */` |
+|         - | 8119 | `	int iNest             /* Nesting level */` |
+|         - | 8120 | `	)` |
+|         1 | 8121 | `{` |
+|         - | 8122 | `	ph7_hashmap_node *pEntry;` |
+|         - | 8123 | `	ph7_value *pValue,sKey;` |
+|         - | 8124 | `	sxi32 rc;` |
+|         - | 8125 | `	sxu32 n;` |
+|         - | 8126 | `	/* Iterate through hashmap entries */` |
+|        23 | 8127 | `	PH7_MemObjInit(pMap->pVm,&sKey);` |
+|        23 | 8128 | `	sKey.nIdx = SXU32_HIGH; /* Mark as constant */` |
+|        23 | 8129 | `	pEntry = pMap->pFirst;` |
+|        59 | 8130 | `	for( n = 0 ; n < pMap->nEntry ; n++ ){` |
+|         - | 8131 | `		/* Extract the node value */` |
+|        37 | 8132 | `		pValue = HashmapExtractNodeValue(pEntry);` |
+|        37 | 8133 | `		if( pValue ){` |
+|        37 | 8134 | `			if( pValue->iFlags & MEMOBJ_HASHMAP ){` |
+|        11 | 8135 | `				if( iNest < 32 ){` |
+|         - | 8136 | `					/* Recurse */` |
+|        11 | 8137 | `					iNest++;` |
+|        11 | 8138 | `					rc = HashmapWalkRecursive((ph7_hashmap *)pValue->x.pOther,pCallback,pUserData,iNest);` |
+|        11 | 8139 | `					iNest--;` |
+|        11 | 8140 | `					if( rc == PH7_EXCEPTION ){` |
+|       ! 0 | 8141 | `						return PH7_EXCEPTION;` |
+|         - | 8142 | `					}` |
+|         5 | 8143 | `				}` |
+|         6 | 8144 | `			}else{` |
+|         - | 8145 | `				/* Extract the node key */` |
+|        27 | 8146 | `				PH7_HashmapExtractNodeKey(pEntry,&sKey);` |
+|         - | 8147 | `				/* Invoke the supplied callback */` |
+|        27 | 8148 | `				rc = PH7_VmCallUserFunctionAp(pMap->pVm,pCallback,0,pValue,&sKey,pUserData,0);` |
+|        27 | 8149 | `				PH7_MemObjRelease(&sKey);` |
+|        27 | 8150 | `				if( rc == PH7_EXCEPTION ){` |
+|         - | 8151 | `					/* The callback raised: propagate so the dispatcher unwinds. */` |
+|       ! 0 | 8152 | `					return PH7_EXCEPTION;` |
+|         - | 8153 | `				}` |
+|         - | 8154 | `			}` |
+|        18 | 8155 | `		}` |
+|         - | 8156 | `		/* Point to the next entry */` |
+|        37 | 8157 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|        19 | 8158 | `	}` |
+|        23 | 8159 | `	return PH7_OK;` |
+|        12 | 8160 | `}` |
+|         - | 8161 | `/*` |
+|         - | 8162 | ` * bool array_walk_recursive(array &$array, callback $funcname [, mixed $userdata])` |
+|         - | 8163 | ` *  Apply a user function recursively to every member of an array.` |
+|         - | 8164 | ` * Parameters` |
+|         - | 8165 | ` *  $array` |
+|         - | 8166 | ` *   The input array.` |
+|         - | 8167 | ` *  $funcname` |
+|         - | 8168 | ` *   Typically, funcname takes on two parameters. The array parameter's value being` |
+|         - | 8169 | ` *   the first, and the key/index second.` |
+|         - | 8170 | ` * Note:` |
+|         - | 8171 | ` *  If funcname needs to be working with the actual values of the array, specify the first` |
+|         - | 8172 | ` *  parameter of funcname as a reference. Then, any changes made to those elements will` |
+|         - | 8173 | ` *  be made in the original array itself.` |
+|         - | 8174 | ` *  $userdata` |
+|         - | 8175 | ` *   If the optional userdata parameter is supplied, it will be passed as the third parameter` |
+|         - | 8176 | ` *   to the callback funcname.` |
+|         - | 8177 | ` * Return` |
+|         - | 8178 | ` *  Returns TRUE on success or FALSE on failure.` |
+|         - | 8179 | ` */` |
+|        26 | 8180 | `static int ph7_hashmap_walk_recursive(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         5 | 8181 | `{` |
+|         - | 8182 | `	ph7_hashmap *pMap;` |
+|        31 | 8183 | `	if( nArg < 2 ){` |
+|       ! 0 | 8184 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 8185 | `			"ArgumentCountError",` |
+|         - | 8186 | `			"array_walk_recursive() expects at least 2 arguments, %d given",` |
+|       ! 0 | 8187 | `			nArg` |
+|         - | 8188 | `			);` |
+|         - | 8189 | `	}` |
+|        31 | 8190 | `	if( nArg > 3 ){` |
+|         4 | 8191 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 8192 | `			"ArgumentCountError",` |
+|         - | 8193 | `			"array_walk_recursive() expects at most 3 arguments, %d given",` |
+|         1 | 8194 | `			nArg` |
+|         - | 8195 | `			);` |
+|         - | 8196 | `	}` |
+|        29 | 8197 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         4 | 8198 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 8199 | `			"TypeError",` |
+|         - | 8200 | `			"array_walk_recursive(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 8201 | `			ph7_type_name(apArg[0])` |
+|         - | 8202 | `			);` |
+|         - | 8203 | `	}` |
+|        27 | 8204 | `	if( !ph7_value_is_callable(apArg[1]) ){` |
+|        14 | 8205 | `		if( ph7_value_is_string(apArg[1]) ){` |
+|         3 | 8206 | `			const char *zFunc = ph7_value_to_string(apArg[1],0);` |
+|         4 | 8207 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 8208 | `				"TypeError",` |
+|         - | 8209 | `				"array_walk_recursive(): Argument #2 ($callback) must be a valid callback, "` |
+|         - | 8210 | `				"function \"%s\" not found or invalid function name",` |
+|         1 | 8211 | `				zFunc` |
+|         - | 8212 | `				);` |
+|         - | 8213 | `		}` |
+|        12 | 8214 | `		if( ph7_value_is_array(apArg[1]) ){` |
+|         6 | 8215 | `			return PH7_VmThrowException(pCtx,` |
+|         - | 8216 | `				"TypeError",` |
+|         - | 8217 | `				"array_walk_recursive(): Argument #2 ($callback) must be a valid callback, "` |
+|         - | 8218 | `				"array callback must have exactly two members"` |
+|         - | 8219 | `				);` |
+|         - | 8220 | `		}` |
+|         6 | 8221 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 8222 | `			"TypeError",` |
+|         - | 8223 | `			"array_walk_recursive(): Argument #2 ($callback) must be a valid callback, "` |
+|         - | 8224 | `			"no array or string given"` |
+|         - | 8225 | `			);` |
+|         - | 8226 | `	}` |
+|         - | 8227 | `	/* Point to the internal representation of the input hashmap */` |
+|        13 | 8228 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|        13 | 8229 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         - | 8230 | `	/* Perform the desired operation */` |
+|        13 | 8231 | `	if( HashmapWalkRecursive(pMap,apArg[1],nArg > 2 ? apArg[2] : 0,0) == PH7_EXCEPTION ){` |
+|         - | 8232 | `		/* A callback raised: propagate so the dispatcher unwinds. */` |
+|       ! 0 | 8233 | `		return PH7_EXCEPTION;` |
+|         - | 8234 | `	}` |
+|         - | 8235 | `	/* All done, return TRUE */` |
+|        13 | 8236 | `	ph7_result_bool(pCtx,1);` |
+|        13 | 8237 | `	return PH7_OK;` |
+|        18 | 8238 | `}` |
+|         - | 8239 | `/*` |
+|         - | 8240 | ` * bool array_is_list(array $array)` |
+|         - | 8241 | ` *  Checks whether a given array is a list: its keys consist of consecutive` |
+|         - | 8242 | ` *  integers starting at 0. An empty array is a list.` |
+|         - | 8243 | ` * Return` |
+|         - | 8244 | ` *  TRUE if the array is a list, FALSE otherwise.` |
+|         - | 8245 | ` */` |
+|         - | 8246 | `/*` |
+|         - | 8247 | ` * Return TRUE if the given hashmap is a "list" [i.e: its keys are the` |
+|         - | 8248 | ` * consecutive integers 0,1,2,... with no gaps]. An empty map is a list.` |
+|         - | 8249 | ` * Shared by array_is_list() and the JSON encoder (vm_json.c).` |
+|         - | 8250 | ` */` |
+|       336 | 8251 | `PH7_PRIVATE int PH7_HashmapIsList(ph7_hashmap *pMap)` |
+|         3 | 8252 | `{` |
+|       339 | 8253 | `	ph7_hashmap_node *pNode = pMap->pFirst;` |
+|       339 | 8254 | `	sxi64 iExpect = 0;` |
+|         - | 8255 | `	sxu32 n;` |
+|       777 | 8256 | `	for( n = 0 ; n < pMap->nEntry ; ++n ){` |
+|       583 | 8257 | `		if( pNode->iType != HASHMAP_INT_NODE \|\| pNode->xKey.iKey != iExpect ){` |
+|         - | 8258 | `			/* A non-integer key or a gap in the sequence: not a list */` |
+|       145 | 8259 | `			return 0;` |
+|         - | 8260 | `		}` |
+|       441 | 8261 | `		++iExpect;` |
+|       441 | 8262 | `		pNode = pNode->pPrev; /* Reverse link */` |
+|       222 | 8263 | `	}` |
+|       197 | 8264 | `	return 1;` |
+|       171 | 8265 | `}` |
+|        12 | 8266 | `static int ph7_hashmap_is_list(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 8267 | `{` |
+|        13 | 8268 | `	if( nArg < 1 ){` |
+|       ! 0 | 8269 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 8270 | `			"ArgumentCountError",` |
+|         - | 8271 | `			"array_is_list() expects exactly 1 argument, 0 given"` |
+|         - | 8272 | `			);` |
+|         - | 8273 | `	}` |
+|        13 | 8274 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|       ! 0 | 8275 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 8276 | `			"TypeError",` |
+|         - | 8277 | `			"array_is_list(): Argument #1 ($array) must be of type array, %s given",` |
+|       ! 0 | 8278 | `			ph7_type_name(apArg[0])` |
+|         - | 8279 | `			);` |
+|         - | 8280 | `	}` |
+|        13 | 8281 | `	ph7_result_bool(pCtx,PH7_HashmapIsList((ph7_hashmap *)apArg[0]->x.pOther));` |
+|        13 | 8282 | `	return PH7_OK;` |
+|         7 | 8283 | `}` |
+|         - | 8284 | `/*` |
+|         - | 8285 | ` * mixed array_first(array $array)` |
+|         - | 8286 | ` * mixed array_last(array $array)` |
+|         - | 8287 | ` *  Return the value of the first (respectively last) element of the array,` |
+|         - | 8288 | ` *  or NULL when the array is empty. The internal array pointer is left` |
+|         - | 8289 | ` *  untouched (unlike reset()/end()).` |
+|         - | 8290 | ` */` |
+|        18 | 8291 | `static int HashmapFirstLast(ph7_context *pCtx,int nArg,ph7_value **apArg,int bLast)` |
+|         1 | 8292 | `{` |
+|         - | 8293 | `	ph7_hashmap *pMap;` |
+|         - | 8294 | `	ph7_hashmap_node *pNode;` |
+|         - | 8295 | `	ph7_value *pVal;` |
+|        19 | 8296 | `	const char *zName = bLast ? "array_last" : "array_first";` |
+|        19 | 8297 | `	if( nArg < 1 ){` |
+|       ! 0 | 8298 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 8299 | `			"ArgumentCountError",` |
+|         - | 8300 | `			"%s() expects exactly 1 argument, 0 given",` |
+|       ! 0 | 8301 | `			zName` |
+|         - | 8302 | `			);` |
+|         - | 8303 | `	}` |
+|        19 | 8304 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         4 | 8305 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 8306 | `			"TypeError",` |
+|         - | 8307 | `			"%s(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 8308 | `			zName,` |
+|         1 | 8309 | `			ph7_type_name(apArg[0])` |
+|         - | 8310 | `			);` |
+|         - | 8311 | `	}` |
+|        17 | 8312 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|        17 | 8313 | `	pNode = bLast ? pMap->pLast : pMap->pFirst;` |
+|        17 | 8314 | `	if( pNode == 0 ){` |
+|         - | 8315 | `		/* Empty array: PHP returns NULL */` |
+|         5 | 8316 | `		ph7_result_null(pCtx);` |
+|         5 | 8317 | `		return PH7_OK;` |
+|         - | 8318 | `	}` |
+|        13 | 8319 | `	pVal = HashmapExtractNodeValue(pNode);` |
+|        13 | 8320 | `	if( pVal ){` |
+|        13 | 8321 | `		ph7_result_value(pCtx,pVal);` |
+|         7 | 8322 | `	}else{` |
+|       ! 0 | 8323 | `		ph7_result_null(pCtx);` |
+|         - | 8324 | `	}` |
+|        13 | 8325 | `	return PH7_OK;` |
+|        10 | 8326 | `}` |
+|         8 | 8327 | `static int ph7_hashmap_first(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 8328 | `{` |
+|         9 | 8329 | `	return HashmapFirstLast(pCtx,nArg,apArg,0);` |
+|         1 | 8330 | `}` |
+|        10 | 8331 | `static int ph7_hashmap_last(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 8332 | `{` |
+|        11 | 8333 | `	return HashmapFirstLast(pCtx,nArg,apArg,1);` |
+|         1 | 8334 | `}` |
+|         - | 8335 | `/*` |
+|         - | 8336 | ` * int\|string\|null array_key_first(array $array)` |
+|         - | 8337 | ` * int\|string\|null array_key_last(array $array)` |
+|         - | 8338 | ` *  Return the key of the first (respectively last) element of the array,` |
+|         - | 8339 | ` *  or NULL when the array is empty. The internal array pointer is left` |
+|         - | 8340 | ` *  untouched.` |
+|         - | 8341 | ` */` |
+|        22 | 8342 | `static int HashmapKeyFirstLast(ph7_context *pCtx,int nArg,ph7_value **apArg,int bLast)` |
+|         1 | 8343 | `{` |
+|         - | 8344 | `	ph7_hashmap *pMap;` |
+|         - | 8345 | `	ph7_hashmap_node *pNode;` |
+|        23 | 8346 | `	const char *zName = bLast ? "array_key_last" : "array_key_first";` |
+|        23 | 8347 | `	if( nArg < 1 ){` |
+|       ! 0 | 8348 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 8349 | `			"ArgumentCountError",` |
+|         - | 8350 | `			"%s() expects exactly 1 argument, 0 given",` |
+|       ! 0 | 8351 | `			zName` |
+|         - | 8352 | `			);` |
+|         - | 8353 | `	}` |
+|        23 | 8354 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|         4 | 8355 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 8356 | `			"TypeError",` |
+|         - | 8357 | `			"%s(): Argument #1 ($array) must be of type array, %s given",` |
+|         1 | 8358 | `			zName,` |
+|         1 | 8359 | `			ph7_type_name(apArg[0])` |
+|         - | 8360 | `			);` |
+|         - | 8361 | `	}` |
+|        21 | 8362 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|        21 | 8363 | `	pNode = bLast ? pMap->pLast : pMap->pFirst;` |
+|        21 | 8364 | `	if( pNode == 0 ){` |
+|         - | 8365 | `		/* Empty array: PHP returns NULL */` |
+|         5 | 8366 | `		ph7_result_null(pCtx);` |
+|         5 | 8367 | `		return PH7_OK;` |
+|         - | 8368 | `	}` |
+|        17 | 8369 | `	HashmapResultNodeKey(pCtx,pNode);` |
+|        17 | 8370 | `	return PH7_OK;` |
+|        12 | 8371 | `}` |
+|        10 | 8372 | `static int ph7_hashmap_key_first(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 8373 | `{` |
+|        11 | 8374 | `	return HashmapKeyFirstLast(pCtx,nArg,apArg,0);` |
+|         1 | 8375 | `}` |
+|        12 | 8376 | `static int ph7_hashmap_key_last(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 8377 | `{` |
+|        13 | 8378 | `	return HashmapKeyFirstLast(pCtx,nArg,apArg,1);` |
+|         1 | 8379 | `}` |
+|         - | 8380 | `/*` |
+|         - | 8381 | ` * Fetch the element identified by 'pKey' from 'pRow' which may be either an` |
+|         - | 8382 | ` * array (hashmap lookup) or an object (public attribute lookup). Used by` |
+|         - | 8383 | ` * array_column() for both the column value and the index key.` |
+|         - | 8384 | ` * Returns a borrowed pointer to the value, or NULL when the row is not a` |
+|         - | 8385 | ` * container or the key is absent.` |
+|         - | 8386 | ` */` |
+|        32 | 8387 | `static ph7_value * HashmapColumnFetch(ph7_vm *pVm,ph7_value *pRow,ph7_value *pKey)` |
+|         1 | 8388 | `{` |
+|        33 | 8389 | `	if( ph7_value_is_array(pRow) ){` |
+|         - | 8390 | `		ph7_hashmap_node *pNode;` |
+|        25 | 8391 | `		if( PH7_HashmapLookup((ph7_hashmap *)pRow->x.pOther,pKey,&pNode) == SXRET_OK ){` |
+|        21 | 8392 | `			return HashmapExtractNodeValue(pNode);` |
+|         1 | 8393 | `		}` |
+|        11 | 8394 | `	}else if( ph7_value_is_object(pRow) ){` |
+|         - | 8395 | `		ph7_value sName;` |
+|         - | 8396 | `		const char *zName;` |
+|         - | 8397 | `		ph7_value *pAttr;` |
+|         - | 8398 | `		/* Stringify a *copy* of the key (objects address attributes by name);` |
+|         - | 8399 | `		 * never mutate pKey itself or the array-lookup path would break. */` |
+|         9 | 8400 | `		PH7_MemObjInit(pVm,&sName);` |
+|         9 | 8401 | `		PH7_MemObjStore(pKey,&sName);` |
+|         9 | 8402 | `		zName = ph7_value_to_string(&sName,0); /* NUL-terminated */` |
+|         9 | 8403 | `		pAttr = ph7_object_fetch_attr(pRow,zName);` |
+|         9 | 8404 | `		PH7_MemObjRelease(&sName);` |
+|         9 | 8405 | `		return pAttr;` |
+|         - | 8406 | `	}` |
+|         5 | 8407 | `	return 0;` |
+|        17 | 8408 | `}` |
+|         - | 8409 | `/*` |
+|         - | 8410 | ` * array array_column(array $array, int\|string\|null $column_key, int\|string\|null $index_key = null)` |
+|         - | 8411 | ` *  Returns the values from a single column of the input, identified by` |
+|         - | 8412 | ` *  $column_key. Optionally indexes the result by the $index_key column.` |
+|         - | 8413 | ` *  A NULL $column_key collects the whole row. Rows missing the column are` |
+|         - | 8414 | ` *  skipped; rows missing the index key are appended with a numeric key.` |
+|         - | 8415 | ` *  Each row may be an array or an object.` |
+|         - | 8416 | ` */` |
+|        12 | 8417 | `static int ph7_hashmap_column(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 8418 | `{` |
+|         - | 8419 | `	ph7_hashmap_node *pNode;` |
+|         - | 8420 | `	ph7_hashmap *pMap;` |
+|         - | 8421 | `	ph7_value *pArray;` |
+|         - | 8422 | `	ph7_value *pRow;` |
+|         - | 8423 | `	ph7_value *pCol;` |
+|         - | 8424 | `	ph7_value *pIdx;` |
+|         - | 8425 | `	int bWantCol;` |
+|         - | 8426 | `	int bWantIdx;` |
+|         - | 8427 | `	sxu32 n;` |
+|        13 | 8428 | `	if( nArg < 2 ){` |
+|       ! 0 | 8429 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 8430 | `			"ArgumentCountError",` |
+|         - | 8431 | `			"array_column() expects at least 2 arguments, %d given",` |
+|       ! 0 | 8432 | `			nArg` |
+|         - | 8433 | `			);` |
+|         - | 8434 | `	}` |
+|        13 | 8435 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|       ! 0 | 8436 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 8437 | `			"TypeError",` |
+|         - | 8438 | `			"array_column(): Argument #1 ($array) must be of type array, %s given",` |
+|       ! 0 | 8439 | `			ph7_type_name(apArg[0])` |
+|         - | 8440 | `			);` |
+|         - | 8441 | `	}` |
+|        13 | 8442 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|        13 | 8443 | `	pArray = ph7_context_new_array(pCtx);` |
+|        13 | 8444 | `	if( pArray == 0 ){` |
+|       ! 0 | 8445 | `		ph7_result_null(pCtx);` |
+|       ! 0 | 8446 | `		return PH7_OK;` |
+|         - | 8447 | `	}` |
+|         - | 8448 | `	/* A NULL column_key means "collect the entire row". */` |
+|        13 | 8449 | `	bWantCol = !ph7_value_is_null(apArg[1]);` |
+|        13 | 8450 | `	bWantIdx = (nArg > 2 && !ph7_value_is_null(apArg[2]));` |
+|        13 | 8451 | `	pNode = pMap->pFirst;` |
+|        33 | 8452 | `	for( n = 0 ; n < pMap->nEntry ; ++n ){` |
+|        21 | 8453 | `		pRow = HashmapExtractNodeValue(pNode);` |
+|        21 | 8454 | `		pNode = pNode->pPrev; /* Advance now so 'continue' is safe */` |
+|        21 | 8455 | `		if( pRow == 0 ){` |
+|       ! 0 | 8456 | `			continue;` |
 |         - | 8457 | `		}` |
-|        19 | 8458 | `		pIdx = bWantIdx ? HashmapColumnFetch(pMap->pVm,pRow,apArg[2]) : 0;` |
-|        19 | 8459 | `		if( pIdx ){` |
-|        13 | 8460 | `			ph7_array_add_elem(pArray,pIdx,pCol);` |
-|         7 | 8461 | `		}else{` |
-|         7 | 8462 | `			ph7_array_add_elem(pArray,0,pCol); /* Auto-index */` |
-|         - | 8463 | `		}` |
-|        10 | 8464 | `	}` |
-|        13 | 8465 | `	ph7_result_value(pCtx,pArray);` |
-|        13 | 8466 | `	return PH7_OK;` |
-|         7 | 8467 | `}` |
-|         - | 8468 | `/*` |
-|         - | 8469 | ` * Shared core for array_find/array_find_key/array_any/array_all (PHP 8.4).` |
-|         - | 8470 | ` * Invokes $callback($value, $key) over each entry and reports the first node` |
-|         - | 8471 | ` * whose truthiness equals 'bWant'. Propagates a callback exception as` |
-|         - | 8472 | ` * PH7_EXCEPTION; sets *ppMatch to the matching node (or NULL if none).` |
-|         - | 8473 | ` */` |
-|        28 | 8474 | `static sxi32 HashmapCallbackSearch(` |
-|         - | 8475 | `	ph7_context *pCtx,int nArg,ph7_value **apArg,` |
-|         - | 8476 | `	const char *zName,            /* Function name for diagnostics */` |
-|         - | 8477 | `	int bWant,                    /* Truthiness being hunted for */` |
-|         - | 8478 | `	ph7_hashmap_node **ppMatch    /* OUT: first matching node or NULL */` |
-|         - | 8479 | `	)` |
-|         1 | 8480 | `{` |
-|         - | 8481 | `	ph7_hashmap_node *pEntry;` |
-|         - | 8482 | `	ph7_hashmap *pMap;` |
-|         - | 8483 | `	ph7_value *pValue;` |
-|         - | 8484 | `	ph7_value *apCbArg[2];` |
-|         - | 8485 | `	ph7_value sKey;` |
-|         - | 8486 | `	ph7_value sResult;` |
-|         - | 8487 | `	sxi32 rc;` |
-|         - | 8488 | `	sxu32 n;` |
-|        29 | 8489 | `	*ppMatch = 0;` |
-|        29 | 8490 | `	if( nArg < 2 ){` |
-|       ! 0 | 8491 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 8492 | `			"ArgumentCountError",` |
-|         - | 8493 | `			"%s() expects exactly 2 arguments, %d given",` |
-|       ! 0 | 8494 | `			zName,nArg` |
-|         - | 8495 | `			);` |
-|         - | 8496 | `	}` |
-|        29 | 8497 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|       ! 0 | 8498 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 8499 | `			"TypeError",` |
-|         - | 8500 | `			"%s(): Argument #1 ($array) must be of type array, %s given",` |
-|       ! 0 | 8501 | `			zName,ph7_type_name(apArg[0])` |
-|         - | 8502 | `			);` |
-|         - | 8503 | `	}` |
-|        29 | 8504 | `	if( !ph7_value_is_callable(apArg[1]) ){` |
-|       ! 0 | 8505 | `		return PH7_VmThrowException(pCtx,` |
-|         - | 8506 | `			"TypeError",` |
-|         - | 8507 | `			"%s(): Argument #2 ($callback) must be a valid callback, %s given",` |
-|       ! 0 | 8508 | `			zName,ph7_type_name(apArg[1])` |
-|         - | 8509 | `			);` |
-|         - | 8510 | `	}` |
-|        29 | 8511 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|        29 | 8512 | `	pEntry = pMap->pFirst;` |
-|        29 | 8513 | `	PH7_MemObjInit(pMap->pVm,&sKey);` |
-|        29 | 8514 | `	sKey.nIdx = SXU32_HIGH;    /* Mark as constant */` |
-|        29 | 8515 | `	PH7_MemObjInit(pMap->pVm,&sResult);` |
-|        29 | 8516 | `	sResult.nIdx = SXU32_HIGH; /* Mark as constant */` |
-|        73 | 8517 | `	for( n = 0 ; n < pMap->nEntry ; ++n ){` |
-|        59 | 8518 | `		pValue = HashmapExtractNodeValue(pEntry);` |
-|        59 | 8519 | `		if( pValue ){` |
-|         - | 8520 | `			/* The callback receives ($value, $key). */` |
-|        59 | 8521 | `			PH7_HashmapExtractNodeKey(pEntry,&sKey);` |
-|        59 | 8522 | `			apCbArg[0] = pValue;` |
-|        59 | 8523 | `			apCbArg[1] = &sKey;` |
-|        59 | 8524 | `			rc = PH7_VmCallUserFunction(pMap->pVm,apArg[1],2,apCbArg,&sResult);` |
-|        59 | 8525 | `			if( rc == PH7_EXCEPTION ){` |
-|         - | 8526 | `				/* The callback raised: propagate so the dispatcher unwinds. */` |
-|       ! 0 | 8527 | `				PH7_MemObjRelease(&sKey);` |
-|       ! 0 | 8528 | `				PH7_MemObjRelease(&sResult);` |
-|       ! 0 | 8529 | `				return PH7_EXCEPTION;` |
-|         - | 8530 | `			}` |
-|        59 | 8531 | `			if( rc == SXRET_OK && (ph7_value_to_bool(&sResult) ? 1 : 0) == bWant ){` |
-|        15 | 8532 | `				*ppMatch = pEntry;` |
-|        15 | 8533 | `				break;` |
-|         - | 8534 | `			}` |
-|        22 | 8535 | `		}` |
-|        45 | 8536 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|        23 | 8537 | `	}` |
-|        29 | 8538 | `	PH7_MemObjRelease(&sKey);` |
-|        29 | 8539 | `	PH7_MemObjRelease(&sResult);` |
-|        29 | 8540 | `	return PH7_OK;` |
-|        15 | 8541 | `}` |
-|         - | 8542 | `/*` |
-|         - | 8543 | ` * mixed array_find(array $array, callable $callback)` |
-|         - | 8544 | ` *  Returns the value of the first element for which $callback($value,$key)` |
-|         - | 8545 | ` *  is truthy, or NULL if none match.` |
-|         - | 8546 | ` */` |
-|         6 | 8547 | `static int ph7_hashmap_find(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 8548 | `{` |
-|         - | 8549 | `	ph7_hashmap_node *pMatch;` |
-|         - | 8550 | `	ph7_value *pVal;` |
-|         - | 8551 | `	sxi32 rc;` |
-|         7 | 8552 | `	rc = HashmapCallbackSearch(pCtx,nArg,apArg,"array_find",1,&pMatch);` |
-|         7 | 8553 | `	if( rc != PH7_OK ){` |
-|       ! 0 | 8554 | `		return rc;` |
-|         - | 8555 | `	}` |
-|         7 | 8556 | `	if( pMatch && (pVal = HashmapExtractNodeValue(pMatch)) != 0 ){` |
-|         5 | 8557 | `		ph7_result_value(pCtx,pVal);` |
-|         3 | 8558 | `	}else{` |
-|         3 | 8559 | `		ph7_result_null(pCtx);` |
-|         - | 8560 | `	}` |
-|         7 | 8561 | `	return PH7_OK;` |
-|         4 | 8562 | `}` |
-|         - | 8563 | `/*` |
-|         - | 8564 | ` * mixed array_find_key(array $array, callable $callback)` |
-|         - | 8565 | ` *  Returns the key of the first element for which $callback($value,$key)` |
-|         - | 8566 | ` *  is truthy, or NULL if none match.` |
-|         - | 8567 | ` */` |
-|         6 | 8568 | `static int ph7_hashmap_find_key(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 8569 | `{` |
-|         - | 8570 | `	ph7_hashmap_node *pMatch;` |
-|         - | 8571 | `	sxi32 rc;` |
-|         7 | 8572 | `	rc = HashmapCallbackSearch(pCtx,nArg,apArg,"array_find_key",1,&pMatch);` |
-|         7 | 8573 | `	if( rc != PH7_OK ){` |
-|       ! 0 | 8574 | `		return rc;` |
-|         - | 8575 | `	}` |
-|         7 | 8576 | `	if( pMatch == 0 ){` |
-|         3 | 8577 | `		ph7_result_null(pCtx);` |
-|         6 | 8578 | `	}else if( pMatch->iType == HASHMAP_INT_NODE ){` |
-|         3 | 8579 | `		ph7_result_int64(pCtx,pMatch->xKey.iKey);` |
-|         2 | 8580 | `	}else{` |
-|         4 | 8581 | `		ph7_result_string(pCtx,` |
-|         2 | 8582 | `			(const char *)SyBlobData(&pMatch->xKey.sKey),` |
-|         2 | 8583 | `			(int)SyBlobLength(&pMatch->xKey.sKey));` |
+|        21 | 8458 | `		if( bWantCol ){` |
+|        19 | 8459 | `			pCol = HashmapColumnFetch(pMap->pVm,pRow,apArg[1]);` |
+|        19 | 8460 | `			if( pCol == 0 ){` |
+|         - | 8461 | `				/* Row lacks the requested column: skip it (PHP semantics). */` |
+|         3 | 8462 | `				continue;` |
+|         - | 8463 | `			}` |
+|         9 | 8464 | `		}else{` |
+|         3 | 8465 | `			pCol = pRow;` |
+|         - | 8466 | `		}` |
+|        19 | 8467 | `		pIdx = bWantIdx ? HashmapColumnFetch(pMap->pVm,pRow,apArg[2]) : 0;` |
+|        19 | 8468 | `		if( pIdx ){` |
+|        13 | 8469 | `			ph7_array_add_elem(pArray,pIdx,pCol);` |
+|         7 | 8470 | `		}else{` |
+|         7 | 8471 | `			ph7_array_add_elem(pArray,0,pCol); /* Auto-index */` |
+|         - | 8472 | `		}` |
+|        10 | 8473 | `	}` |
+|        13 | 8474 | `	ph7_result_value(pCtx,pArray);` |
+|        13 | 8475 | `	return PH7_OK;` |
+|         7 | 8476 | `}` |
+|         - | 8477 | `/*` |
+|         - | 8478 | ` * Shared core for array_find/array_find_key/array_any/array_all (PHP 8.4).` |
+|         - | 8479 | ` * Invokes $callback($value, $key) over each entry and reports the first node` |
+|         - | 8480 | ` * whose truthiness equals 'bWant'. Propagates a callback exception as` |
+|         - | 8481 | ` * PH7_EXCEPTION; sets *ppMatch to the matching node (or NULL if none).` |
+|         - | 8482 | ` */` |
+|        28 | 8483 | `static sxi32 HashmapCallbackSearch(` |
+|         - | 8484 | `	ph7_context *pCtx,int nArg,ph7_value **apArg,` |
+|         - | 8485 | `	const char *zName,            /* Function name for diagnostics */` |
+|         - | 8486 | `	int bWant,                    /* Truthiness being hunted for */` |
+|         - | 8487 | `	ph7_hashmap_node **ppMatch    /* OUT: first matching node or NULL */` |
+|         - | 8488 | `	)` |
+|         1 | 8489 | `{` |
+|         - | 8490 | `	ph7_hashmap_node *pEntry;` |
+|         - | 8491 | `	ph7_hashmap *pMap;` |
+|         - | 8492 | `	ph7_value *pValue;` |
+|         - | 8493 | `	ph7_value *apCbArg[2];` |
+|         - | 8494 | `	ph7_value sKey;` |
+|         - | 8495 | `	ph7_value sResult;` |
+|         - | 8496 | `	sxi32 rc;` |
+|         - | 8497 | `	sxu32 n;` |
+|        29 | 8498 | `	*ppMatch = 0;` |
+|        29 | 8499 | `	if( nArg < 2 ){` |
+|       ! 0 | 8500 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 8501 | `			"ArgumentCountError",` |
+|         - | 8502 | `			"%s() expects exactly 2 arguments, %d given",` |
+|       ! 0 | 8503 | `			zName,nArg` |
+|         - | 8504 | `			);` |
+|         - | 8505 | `	}` |
+|        29 | 8506 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|       ! 0 | 8507 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 8508 | `			"TypeError",` |
+|         - | 8509 | `			"%s(): Argument #1 ($array) must be of type array, %s given",` |
+|       ! 0 | 8510 | `			zName,ph7_type_name(apArg[0])` |
+|         - | 8511 | `			);` |
+|         - | 8512 | `	}` |
+|        29 | 8513 | `	if( !ph7_value_is_callable(apArg[1]) ){` |
+|       ! 0 | 8514 | `		return PH7_VmThrowException(pCtx,` |
+|         - | 8515 | `			"TypeError",` |
+|         - | 8516 | `			"%s(): Argument #2 ($callback) must be a valid callback, %s given",` |
+|       ! 0 | 8517 | `			zName,ph7_type_name(apArg[1])` |
+|         - | 8518 | `			);` |
+|         - | 8519 | `	}` |
+|        29 | 8520 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|        29 | 8521 | `	pEntry = pMap->pFirst;` |
+|        29 | 8522 | `	PH7_MemObjInit(pMap->pVm,&sKey);` |
+|        29 | 8523 | `	sKey.nIdx = SXU32_HIGH;    /* Mark as constant */` |
+|        29 | 8524 | `	PH7_MemObjInit(pMap->pVm,&sResult);` |
+|        29 | 8525 | `	sResult.nIdx = SXU32_HIGH; /* Mark as constant */` |
+|        73 | 8526 | `	for( n = 0 ; n < pMap->nEntry ; ++n ){` |
+|        59 | 8527 | `		pValue = HashmapExtractNodeValue(pEntry);` |
+|        59 | 8528 | `		if( pValue ){` |
+|         - | 8529 | `			/* The callback receives ($value, $key). */` |
+|        59 | 8530 | `			PH7_HashmapExtractNodeKey(pEntry,&sKey);` |
+|        59 | 8531 | `			apCbArg[0] = pValue;` |
+|        59 | 8532 | `			apCbArg[1] = &sKey;` |
+|        59 | 8533 | `			rc = PH7_VmCallUserFunction(pMap->pVm,apArg[1],2,apCbArg,&sResult);` |
+|        59 | 8534 | `			if( rc == PH7_EXCEPTION ){` |
+|         - | 8535 | `				/* The callback raised: propagate so the dispatcher unwinds. */` |
+|       ! 0 | 8536 | `				PH7_MemObjRelease(&sKey);` |
+|       ! 0 | 8537 | `				PH7_MemObjRelease(&sResult);` |
+|       ! 0 | 8538 | `				return PH7_EXCEPTION;` |
+|         - | 8539 | `			}` |
+|        59 | 8540 | `			if( rc == SXRET_OK && (ph7_value_to_bool(&sResult) ? 1 : 0) == bWant ){` |
+|        15 | 8541 | `				*ppMatch = pEntry;` |
+|        15 | 8542 | `				break;` |
+|         - | 8543 | `			}` |
+|        22 | 8544 | `		}` |
+|        45 | 8545 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|        23 | 8546 | `	}` |
+|        29 | 8547 | `	PH7_MemObjRelease(&sKey);` |
+|        29 | 8548 | `	PH7_MemObjRelease(&sResult);` |
+|        29 | 8549 | `	return PH7_OK;` |
+|        15 | 8550 | `}` |
+|         - | 8551 | `/*` |
+|         - | 8552 | ` * mixed array_find(array $array, callable $callback)` |
+|         - | 8553 | ` *  Returns the value of the first element for which $callback($value,$key)` |
+|         - | 8554 | ` *  is truthy, or NULL if none match.` |
+|         - | 8555 | ` */` |
+|         6 | 8556 | `static int ph7_hashmap_find(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 8557 | `{` |
+|         - | 8558 | `	ph7_hashmap_node *pMatch;` |
+|         - | 8559 | `	ph7_value *pVal;` |
+|         - | 8560 | `	sxi32 rc;` |
+|         7 | 8561 | `	rc = HashmapCallbackSearch(pCtx,nArg,apArg,"array_find",1,&pMatch);` |
+|         7 | 8562 | `	if( rc != PH7_OK ){` |
+|       ! 0 | 8563 | `		return rc;` |
+|         - | 8564 | `	}` |
+|         7 | 8565 | `	if( pMatch && (pVal = HashmapExtractNodeValue(pMatch)) != 0 ){` |
+|         5 | 8566 | `		ph7_result_value(pCtx,pVal);` |
+|         3 | 8567 | `	}else{` |
+|         3 | 8568 | `		ph7_result_null(pCtx);` |
+|         - | 8569 | `	}` |
+|         7 | 8570 | `	return PH7_OK;` |
+|         4 | 8571 | `}` |
+|         - | 8572 | `/*` |
+|         - | 8573 | ` * mixed array_find_key(array $array, callable $callback)` |
+|         - | 8574 | ` *  Returns the key of the first element for which $callback($value,$key)` |
+|         - | 8575 | ` *  is truthy, or NULL if none match.` |
+|         - | 8576 | ` */` |
+|         6 | 8577 | `static int ph7_hashmap_find_key(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 8578 | `{` |
+|         - | 8579 | `	ph7_hashmap_node *pMatch;` |
+|         - | 8580 | `	sxi32 rc;` |
+|         7 | 8581 | `	rc = HashmapCallbackSearch(pCtx,nArg,apArg,"array_find_key",1,&pMatch);` |
+|         7 | 8582 | `	if( rc != PH7_OK ){` |
+|       ! 0 | 8583 | `		return rc;` |
 |         - | 8584 | `	}` |
-|         7 | 8585 | `	return PH7_OK;` |
-|         4 | 8586 | `}` |
-|         - | 8587 | `/*` |
-|         - | 8588 | ` * bool array_any(array $array, callable $callback)` |
-|         - | 8589 | ` *  Returns TRUE if $callback($value,$key) is truthy for at least one element.` |
-|         - | 8590 | ` *  FALSE for an empty array.` |
-|         - | 8591 | ` */` |
-|         8 | 8592 | `static int ph7_hashmap_any(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 8593 | `{` |
-|         - | 8594 | `	ph7_hashmap_node *pMatch;` |
-|         - | 8595 | `	sxi32 rc;` |
-|         9 | 8596 | `	rc = HashmapCallbackSearch(pCtx,nArg,apArg,"array_any",1,&pMatch);` |
-|         9 | 8597 | `	if( rc != PH7_OK ){` |
-|       ! 0 | 8598 | `		return rc;` |
-|         - | 8599 | `	}` |
-|         9 | 8600 | `	ph7_result_bool(pCtx,pMatch != 0);` |
-|         9 | 8601 | `	return PH7_OK;` |
-|         5 | 8602 | `}` |
-|         - | 8603 | `/*` |
-|         - | 8604 | ` * bool array_all(array $array, callable $callback)` |
-|         - | 8605 | ` *  Returns TRUE if $callback($value,$key) is truthy for every element (and for` |
-|         - | 8606 | ` *  an empty array). Hunts for the first falsy element: its absence means "all".` |
-|         - | 8607 | ` */` |
-|         8 | 8608 | `static int ph7_hashmap_all(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|         1 | 8609 | `{` |
-|         - | 8610 | `	ph7_hashmap_node *pMatch;` |
-|         - | 8611 | `	sxi32 rc;` |
-|         9 | 8612 | `	rc = HashmapCallbackSearch(pCtx,nArg,apArg,"array_all",0,&pMatch);` |
-|         9 | 8613 | `	if( rc != PH7_OK ){` |
-|       ! 0 | 8614 | `		return rc;` |
-|         - | 8615 | `	}` |
-|         9 | 8616 | `	ph7_result_bool(pCtx,pMatch == 0);` |
-|         9 | 8617 | `	return PH7_OK;` |
-|         5 | 8618 | `}` |
-|         - | 8619 | `/*` |
-|         - | 8620 | ` * The iterator_*() family — walk a Traversable via the shared PH7_VmIteratorWalk` |
-|         - | 8621 | ` * helper (the reusable form of the foreach Iterator protocol).` |
-|         - | 8622 | ` */` |
-|         - | 8623 | `/* Step shared by iterator_to_array (pArray set) and iterator_count (pArray NULL). */` |
-|         - | 8624 | `struct IterCollect { ph7_value *pArray; int bPreserve; sxi64 nCount; };` |
-|        80 | 8625 | `static sxi32 IterCollectStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue, void *pUserData)` |
-|         4 | 8626 | `{` |
-|        84 | 8627 | `	struct IterCollect *p = (struct IterCollect *)pUserData;` |
-|        40 | 8628 | `	(void)pVm;` |
-|        84 | 8629 | `	p->nCount++;` |
-|        84 | 8630 | `	if( p->pArray ){` |
-|         - | 8631 | `		/* preserve_keys: insert with the iterator key (later wins on collision);` |
-|         - | 8632 | `		 * otherwise append with an auto-assigned int index. */` |
-|        70 | 8633 | `		ph7_array_add_elem(p->pArray, p->bPreserve ? pKey : 0, pValue);` |
-|        33 | 8634 | `	}` |
-|        84 | 8635 | `	return SXRET_OK;` |
-|         4 | 8636 | `}` |
-|         - | 8637 | `/*` |
-|         - | 8638 | ` * array iterator_to_array(Traversable\|array $iterator, bool $preserve_keys = true)` |
-|         - | 8639 | ` */` |
-|        30 | 8640 | `static int ph7_iterator_to_array(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|         4 | 8641 | `{` |
-|         - | 8642 | `	struct IterCollect sCol;` |
-|         - | 8643 | `	ph7_value *pArray;` |
-|         - | 8644 | `	sxi32 rc;` |
-|        34 | 8645 | `	if( nArg < 1 ){ ph7_result_null(pCtx); return PH7_OK; }` |
-|        34 | 8646 | `	pArray = ph7_context_new_array(pCtx);` |
-|        34 | 8647 | `	if( pArray == 0 ){ ph7_result_null(pCtx); return PH7_OK; }` |
-|        34 | 8648 | `	sCol.pArray = pArray;` |
-|        34 | 8649 | `	sCol.bPreserve = (nArg > 1) ? ph7_value_to_bool(apArg[1]) : 1;` |
-|        34 | 8650 | `	sCol.nCount = 0;` |
-|        34 | 8651 | `	if( ph7_value_is_array(apArg[0]) ){` |
-|         - | 8652 | `		/* PHP 8.2 accepts a plain array: copy it (preserving or renumbering keys). */` |
-|         3 | 8653 | `		ph7_hashmap *pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|         3 | 8654 | `		ph7_hashmap_node *pEntry = pMap->pFirst;` |
-|         - | 8655 | `		sxu32 n;` |
-|         9 | 8656 | `		for( n = 0 ; n < pMap->nEntry ; n++ ){` |
-|         - | 8657 | `			ph7_value sKey, *pVal;` |
-|         7 | 8658 | `			PH7_MemObjInit(pCtx->pVm,&sKey);` |
-|         7 | 8659 | `			PH7_HashmapExtractNodeKey(pEntry,&sKey);` |
-|         7 | 8660 | `			pVal = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pEntry->nValIdx);` |
-|         7 | 8661 | `			if( pVal ){ ph7_array_add_elem(pArray, sCol.bPreserve ? &sKey : 0, pVal); }` |
-|         7 | 8662 | `			PH7_MemObjRelease(&sKey);` |
-|         7 | 8663 | `			pEntry = pEntry->pPrev;` |
-|         4 | 8664 | `		}` |
-|         3 | 8665 | `		ph7_result_value(pCtx,pArray);` |
-|         3 | 8666 | `		return PH7_OK;` |
-|         - | 8667 | `	}` |
-|        32 | 8668 | `	rc = PH7_VmIteratorWalk(pCtx->pVm, apArg[0], IterCollectStep, &sCol);` |
-|        32 | 8669 | `	if( rc == PH7_EXCEPTION \|\| rc == PH7_ABORT ){ return rc; }` |
-|        30 | 8670 | `	if( rc == SXERR_NOTIMPLEMENTED ){` |
-|       ! 0 | 8671 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
-|         - | 8672 | `			"iterator_to_array(): Argument #1 ($iterator) must be of type Traversable\|array, %s given",` |
-|       ! 0 | 8673 | `			ph7_type_name(apArg[0]));` |
-|         - | 8674 | `	}` |
-|        30 | 8675 | `	ph7_result_value(pCtx,pArray);` |
-|        30 | 8676 | `	return PH7_OK;` |
-|        19 | 8677 | `}` |
-|         - | 8678 | `/*` |
-|         - | 8679 | ` * int iterator_count(Traversable\|array $iterator)` |
-|         - | 8680 | ` */` |
-|         8 | 8681 | `static int ph7_iterator_count(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|         1 | 8682 | `{` |
-|         - | 8683 | `	struct IterCollect sCol;` |
-|         - | 8684 | `	sxi32 rc;` |
-|         9 | 8685 | `	if( nArg < 1 ){ ph7_result_int(pCtx,0); return PH7_OK; }` |
-|         9 | 8686 | `	if( ph7_value_is_array(apArg[0]) ){` |
-|         3 | 8687 | `		ph7_result_int64(pCtx, (ph7_int64)((ph7_hashmap *)apArg[0]->x.pOther)->nEntry);` |
-|         3 | 8688 | `		return PH7_OK;` |
-|         - | 8689 | `	}` |
-|         7 | 8690 | `	sCol.pArray = 0; sCol.bPreserve = 0; sCol.nCount = 0;` |
-|         7 | 8691 | `	rc = PH7_VmIteratorWalk(pCtx->pVm, apArg[0], IterCollectStep, &sCol);` |
-|         7 | 8692 | `	if( rc == PH7_EXCEPTION \|\| rc == PH7_ABORT ){ return rc; }` |
-|         7 | 8693 | `	if( rc == SXERR_NOTIMPLEMENTED ){` |
-|       ! 0 | 8694 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
-|         - | 8695 | `			"iterator_count(): Argument #1 ($iterator) must be of type Traversable\|array, %s given",` |
-|       ! 0 | 8696 | `			ph7_type_name(apArg[0]));` |
-|         - | 8697 | `	}` |
-|         7 | 8698 | `	ph7_result_int64(pCtx, sCol.nCount);` |
-|         7 | 8699 | `	return PH7_OK;` |
-|         5 | 8700 | `}` |
-|         - | 8701 | `/* iterator_apply step: call the fixed callback with $args each iteration. The` |
-|         - | 8702 | ` * arg pointers are resolved fresh per step because the iterator's own methods` |
-|         - | 8703 | ` * run user code between iterations and may reallocate the aMemObj pool. */` |
-|         - | 8704 | `struct IterApply { ph7_value *pCallback; ph7_value *pArgsArray; sxi64 nCount; };` |
-|        32 | 8705 | `static sxi32 IterApplyStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue, void *pUserData)` |
-|         1 | 8706 | `{` |
-|        33 | 8707 | `	struct IterApply *p = (struct IterApply *)pUserData;` |
-|         - | 8708 | `	ph7_value sResult;` |
-|         - | 8709 | `	SySet aArg;` |
-|         - | 8710 | `	sxi32 rc;` |
-|         - | 8711 | `	int bContinue;` |
-|        16 | 8712 | `	(void)pKey; (void)pValue; /* iterator_apply does NOT pass the element to the callback */` |
-|        33 | 8713 | `	SySetInit(&aArg,&pVm->sAllocator,sizeof(ph7_value *));` |
-|        33 | 8714 | `	if( p->pArgsArray && (p->pArgsArray->iFlags & MEMOBJ_HASHMAP) ){` |
-|         9 | 8715 | `		ph7_hashmap *pMap = (ph7_hashmap *)p->pArgsArray->x.pOther;` |
-|         9 | 8716 | `		ph7_hashmap_node *pEntry = pMap->pFirst;` |
-|         - | 8717 | `		sxu32 n;` |
-|        17 | 8718 | `		for( n = 0 ; n < pMap->nEntry ; n++ ){` |
-|         9 | 8719 | `			ph7_value *pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nValIdx);` |
-|         9 | 8720 | `			if( pVal ){ SySetPut(&aArg,(const void *)&pVal); }` |
-|         9 | 8721 | `			pEntry = pEntry->pPrev;` |
-|         5 | 8722 | `		}` |
-|         4 | 8723 | `	}` |
-|        33 | 8724 | `	PH7_MemObjInit(pVm,&sResult);` |
-|        49 | 8725 | `	rc = PH7_VmCallUserFunction(pVm, p->pCallback, (int)SySetUsed(&aArg),` |
-|        32 | 8726 | `		(ph7_value **)SySetBasePtr(&aArg), &sResult);` |
-|        33 | 8727 | `	SySetRelease(&aArg);` |
-|        33 | 8728 | `	if( rc == PH7_EXCEPTION \|\| rc == PH7_ABORT ){ PH7_MemObjRelease(&sResult); return rc; }` |
-|        31 | 8729 | `	p->nCount++;` |
-|        31 | 8730 | `	PH7_MemObjToBool(&sResult);` |
-|        31 | 8731 | `	bContinue = (sResult.x.iVal != 0);` |
-|        31 | 8732 | `	PH7_MemObjRelease(&sResult);` |
-|        31 | 8733 | `	return bContinue ? SXRET_OK : SXERR_EOF; /* falsy return stops iteration */` |
-|        17 | 8734 | `}` |
-|         - | 8735 | `/*` |
-|         - | 8736 | ` * int iterator_apply(Traversable $iterator, callable $callback, array $args = [])` |
-|         - | 8737 | ` */` |
-|        12 | 8738 | `static int ph7_iterator_apply(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|         1 | 8739 | `{` |
-|         - | 8740 | `	struct IterApply sApp;` |
-|         - | 8741 | `	sxi32 rc;` |
-|        13 | 8742 | `	if( nArg < 2 ){ ph7_result_int(pCtx,0); return PH7_OK; }` |
-|        13 | 8743 | `	if( !ph7_value_is_callable(apArg[1]) ){` |
-|       ! 0 | 8744 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
-|         - | 8745 | `			"iterator_apply(): Argument #2 ($callback) must be a valid callback");` |
-|         - | 8746 | `	}` |
-|        13 | 8747 | `	sApp.pCallback = apArg[1];` |
-|        13 | 8748 | `	sApp.pArgsArray = (nArg > 2 && ph7_value_is_array(apArg[2])) ? apArg[2] : 0;` |
-|        13 | 8749 | `	sApp.nCount = 0;` |
-|        13 | 8750 | `	rc = PH7_VmIteratorWalk(pCtx->pVm, apArg[0], IterApplyStep, &sApp);` |
-|        13 | 8751 | `	if( rc == PH7_EXCEPTION \|\| rc == PH7_ABORT ){ return rc; }` |
-|        11 | 8752 | `	if( rc == SXERR_NOTIMPLEMENTED ){` |
+|         7 | 8585 | `	if( pMatch == 0 ){` |
+|         3 | 8586 | `		ph7_result_null(pCtx);` |
+|         6 | 8587 | `	}else if( pMatch->iType == HASHMAP_INT_NODE ){` |
+|         3 | 8588 | `		ph7_result_int64(pCtx,pMatch->xKey.iKey);` |
+|         2 | 8589 | `	}else{` |
+|         4 | 8590 | `		ph7_result_string(pCtx,` |
+|         2 | 8591 | `			(const char *)SyBlobData(&pMatch->xKey.sKey),` |
+|         2 | 8592 | `			(int)SyBlobLength(&pMatch->xKey.sKey));` |
+|         - | 8593 | `	}` |
+|         7 | 8594 | `	return PH7_OK;` |
+|         4 | 8595 | `}` |
+|         - | 8596 | `/*` |
+|         - | 8597 | ` * bool array_any(array $array, callable $callback)` |
+|         - | 8598 | ` *  Returns TRUE if $callback($value,$key) is truthy for at least one element.` |
+|         - | 8599 | ` *  FALSE for an empty array.` |
+|         - | 8600 | ` */` |
+|         8 | 8601 | `static int ph7_hashmap_any(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 8602 | `{` |
+|         - | 8603 | `	ph7_hashmap_node *pMatch;` |
+|         - | 8604 | `	sxi32 rc;` |
+|         9 | 8605 | `	rc = HashmapCallbackSearch(pCtx,nArg,apArg,"array_any",1,&pMatch);` |
+|         9 | 8606 | `	if( rc != PH7_OK ){` |
+|       ! 0 | 8607 | `		return rc;` |
+|         - | 8608 | `	}` |
+|         9 | 8609 | `	ph7_result_bool(pCtx,pMatch != 0);` |
+|         9 | 8610 | `	return PH7_OK;` |
+|         5 | 8611 | `}` |
+|         - | 8612 | `/*` |
+|         - | 8613 | ` * bool array_all(array $array, callable $callback)` |
+|         - | 8614 | ` *  Returns TRUE if $callback($value,$key) is truthy for every element (and for` |
+|         - | 8615 | ` *  an empty array). Hunts for the first falsy element: its absence means "all".` |
+|         - | 8616 | ` */` |
+|         8 | 8617 | `static int ph7_hashmap_all(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|         1 | 8618 | `{` |
+|         - | 8619 | `	ph7_hashmap_node *pMatch;` |
+|         - | 8620 | `	sxi32 rc;` |
+|         9 | 8621 | `	rc = HashmapCallbackSearch(pCtx,nArg,apArg,"array_all",0,&pMatch);` |
+|         9 | 8622 | `	if( rc != PH7_OK ){` |
+|       ! 0 | 8623 | `		return rc;` |
+|         - | 8624 | `	}` |
+|         9 | 8625 | `	ph7_result_bool(pCtx,pMatch == 0);` |
+|         9 | 8626 | `	return PH7_OK;` |
+|         5 | 8627 | `}` |
+|         - | 8628 | `/*` |
+|         - | 8629 | ` * The iterator_*() family — walk a Traversable via the shared PH7_VmIteratorWalk` |
+|         - | 8630 | ` * helper (the reusable form of the foreach Iterator protocol).` |
+|         - | 8631 | ` */` |
+|         - | 8632 | `/* Step shared by iterator_to_array (pArray set) and iterator_count (pArray NULL). */` |
+|         - | 8633 | `struct IterCollect { ph7_value *pArray; int bPreserve; sxi64 nCount; };` |
+|        80 | 8634 | `static sxi32 IterCollectStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue, void *pUserData)` |
+|         4 | 8635 | `{` |
+|        84 | 8636 | `	struct IterCollect *p = (struct IterCollect *)pUserData;` |
+|        40 | 8637 | `	(void)pVm;` |
+|        84 | 8638 | `	p->nCount++;` |
+|        84 | 8639 | `	if( p->pArray ){` |
+|         - | 8640 | `		/* preserve_keys: insert with the iterator key (later wins on collision);` |
+|         - | 8641 | `		 * otherwise append with an auto-assigned int index. */` |
+|        70 | 8642 | `		ph7_array_add_elem(p->pArray, p->bPreserve ? pKey : 0, pValue);` |
+|        33 | 8643 | `	}` |
+|        84 | 8644 | `	return SXRET_OK;` |
+|         4 | 8645 | `}` |
+|         - | 8646 | `/*` |
+|         - | 8647 | ` * array iterator_to_array(Traversable\|array $iterator, bool $preserve_keys = true)` |
+|         - | 8648 | ` */` |
+|        30 | 8649 | `static int ph7_iterator_to_array(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|         4 | 8650 | `{` |
+|         - | 8651 | `	struct IterCollect sCol;` |
+|         - | 8652 | `	ph7_value *pArray;` |
+|         - | 8653 | `	sxi32 rc;` |
+|        34 | 8654 | `	if( nArg < 1 ){ ph7_result_null(pCtx); return PH7_OK; }` |
+|        34 | 8655 | `	pArray = ph7_context_new_array(pCtx);` |
+|        34 | 8656 | `	if( pArray == 0 ){ ph7_result_null(pCtx); return PH7_OK; }` |
+|        34 | 8657 | `	sCol.pArray = pArray;` |
+|        34 | 8658 | `	sCol.bPreserve = (nArg > 1) ? ph7_value_to_bool(apArg[1]) : 1;` |
+|        34 | 8659 | `	sCol.nCount = 0;` |
+|        34 | 8660 | `	if( ph7_value_is_array(apArg[0]) ){` |
+|         - | 8661 | `		/* PHP 8.2 accepts a plain array: copy it (preserving or renumbering keys). */` |
+|         3 | 8662 | `		ph7_hashmap *pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|         3 | 8663 | `		ph7_hashmap_node *pEntry = pMap->pFirst;` |
+|         - | 8664 | `		sxu32 n;` |
+|         9 | 8665 | `		for( n = 0 ; n < pMap->nEntry ; n++ ){` |
+|         - | 8666 | `			ph7_value sKey, *pVal;` |
+|         7 | 8667 | `			PH7_MemObjInit(pCtx->pVm,&sKey);` |
+|         7 | 8668 | `			PH7_HashmapExtractNodeKey(pEntry,&sKey);` |
+|         7 | 8669 | `			pVal = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pEntry->nValIdx);` |
+|         7 | 8670 | `			if( pVal ){ ph7_array_add_elem(pArray, sCol.bPreserve ? &sKey : 0, pVal); }` |
+|         7 | 8671 | `			PH7_MemObjRelease(&sKey);` |
+|         7 | 8672 | `			pEntry = pEntry->pPrev;` |
+|         4 | 8673 | `		}` |
+|         3 | 8674 | `		ph7_result_value(pCtx,pArray);` |
+|         3 | 8675 | `		return PH7_OK;` |
+|         - | 8676 | `	}` |
+|        32 | 8677 | `	rc = PH7_VmIteratorWalk(pCtx->pVm, apArg[0], IterCollectStep, &sCol);` |
+|        32 | 8678 | `	if( rc == PH7_EXCEPTION \|\| rc == PH7_ABORT ){ return rc; }` |
+|        30 | 8679 | `	if( rc == SXERR_NOTIMPLEMENTED ){` |
+|       ! 0 | 8680 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
+|         - | 8681 | `			"iterator_to_array(): Argument #1 ($iterator) must be of type Traversable\|array, %s given",` |
+|       ! 0 | 8682 | `			ph7_type_name(apArg[0]));` |
+|         - | 8683 | `	}` |
+|        30 | 8684 | `	ph7_result_value(pCtx,pArray);` |
+|        30 | 8685 | `	return PH7_OK;` |
+|        19 | 8686 | `}` |
+|         - | 8687 | `/*` |
+|         - | 8688 | ` * int iterator_count(Traversable\|array $iterator)` |
+|         - | 8689 | ` */` |
+|         8 | 8690 | `static int ph7_iterator_count(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|         1 | 8691 | `{` |
+|         - | 8692 | `	struct IterCollect sCol;` |
+|         - | 8693 | `	sxi32 rc;` |
+|         9 | 8694 | `	if( nArg < 1 ){ ph7_result_int(pCtx,0); return PH7_OK; }` |
+|         9 | 8695 | `	if( ph7_value_is_array(apArg[0]) ){` |
+|         3 | 8696 | `		ph7_result_int64(pCtx, (ph7_int64)((ph7_hashmap *)apArg[0]->x.pOther)->nEntry);` |
+|         3 | 8697 | `		return PH7_OK;` |
+|         - | 8698 | `	}` |
+|         7 | 8699 | `	sCol.pArray = 0; sCol.bPreserve = 0; sCol.nCount = 0;` |
+|         7 | 8700 | `	rc = PH7_VmIteratorWalk(pCtx->pVm, apArg[0], IterCollectStep, &sCol);` |
+|         7 | 8701 | `	if( rc == PH7_EXCEPTION \|\| rc == PH7_ABORT ){ return rc; }` |
+|         7 | 8702 | `	if( rc == SXERR_NOTIMPLEMENTED ){` |
+|       ! 0 | 8703 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
+|         - | 8704 | `			"iterator_count(): Argument #1 ($iterator) must be of type Traversable\|array, %s given",` |
+|       ! 0 | 8705 | `			ph7_type_name(apArg[0]));` |
+|         - | 8706 | `	}` |
+|         7 | 8707 | `	ph7_result_int64(pCtx, sCol.nCount);` |
+|         7 | 8708 | `	return PH7_OK;` |
+|         5 | 8709 | `}` |
+|         - | 8710 | `/* iterator_apply step: call the fixed callback with $args each iteration. The` |
+|         - | 8711 | ` * arg pointers are resolved fresh per step because the iterator's own methods` |
+|         - | 8712 | ` * run user code between iterations and may reallocate the aMemObj pool. */` |
+|         - | 8713 | `struct IterApply { ph7_value *pCallback; ph7_value *pArgsArray; sxi64 nCount; };` |
+|        32 | 8714 | `static sxi32 IterApplyStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue, void *pUserData)` |
+|         1 | 8715 | `{` |
+|        33 | 8716 | `	struct IterApply *p = (struct IterApply *)pUserData;` |
+|         - | 8717 | `	ph7_value sResult;` |
+|         - | 8718 | `	SySet aArg;` |
+|         - | 8719 | `	sxi32 rc;` |
+|         - | 8720 | `	int bContinue;` |
+|        16 | 8721 | `	(void)pKey; (void)pValue; /* iterator_apply does NOT pass the element to the callback */` |
+|        33 | 8722 | `	SySetInit(&aArg,&pVm->sAllocator,sizeof(ph7_value *));` |
+|        33 | 8723 | `	if( p->pArgsArray && (p->pArgsArray->iFlags & MEMOBJ_HASHMAP) ){` |
+|         9 | 8724 | `		ph7_hashmap *pMap = (ph7_hashmap *)p->pArgsArray->x.pOther;` |
+|         9 | 8725 | `		ph7_hashmap_node *pEntry = pMap->pFirst;` |
+|         - | 8726 | `		sxu32 n;` |
+|        17 | 8727 | `		for( n = 0 ; n < pMap->nEntry ; n++ ){` |
+|         9 | 8728 | `			ph7_value *pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nValIdx);` |
+|         9 | 8729 | `			if( pVal ){ SySetPut(&aArg,(const void *)&pVal); }` |
+|         9 | 8730 | `			pEntry = pEntry->pPrev;` |
+|         5 | 8731 | `		}` |
+|         4 | 8732 | `	}` |
+|        33 | 8733 | `	PH7_MemObjInit(pVm,&sResult);` |
+|        49 | 8734 | `	rc = PH7_VmCallUserFunction(pVm, p->pCallback, (int)SySetUsed(&aArg),` |
+|        32 | 8735 | `		(ph7_value **)SySetBasePtr(&aArg), &sResult);` |
+|        33 | 8736 | `	SySetRelease(&aArg);` |
+|        33 | 8737 | `	if( rc == PH7_EXCEPTION \|\| rc == PH7_ABORT ){ PH7_MemObjRelease(&sResult); return rc; }` |
+|        31 | 8738 | `	p->nCount++;` |
+|        31 | 8739 | `	PH7_MemObjToBool(&sResult);` |
+|        31 | 8740 | `	bContinue = (sResult.x.iVal != 0);` |
+|        31 | 8741 | `	PH7_MemObjRelease(&sResult);` |
+|        31 | 8742 | `	return bContinue ? SXRET_OK : SXERR_EOF; /* falsy return stops iteration */` |
+|        17 | 8743 | `}` |
+|         - | 8744 | `/*` |
+|         - | 8745 | ` * int iterator_apply(Traversable $iterator, callable $callback, array $args = [])` |
+|         - | 8746 | ` */` |
+|        12 | 8747 | `static int ph7_iterator_apply(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|         1 | 8748 | `{` |
+|         - | 8749 | `	struct IterApply sApp;` |
+|         - | 8750 | `	sxi32 rc;` |
+|        13 | 8751 | `	if( nArg < 2 ){ ph7_result_int(pCtx,0); return PH7_OK; }` |
+|        13 | 8752 | `	if( !ph7_value_is_callable(apArg[1]) ){` |
 |       ! 0 | 8753 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
-|         - | 8754 | `			"iterator_apply(): Argument #1 ($iterator) must be of type Traversable, %s given",` |
-|       ! 0 | 8755 | `			ph7_type_name(apArg[0]));` |
-|         - | 8756 | `	}` |
-|        11 | 8757 | `	ph7_result_int64(pCtx, sApp.nCount);` |
-|        11 | 8758 | `	return PH7_OK;` |
-|         7 | 8759 | `}` |
-|         - | 8760 | `/*` |
-|         - | 8761 | ` * Table of hashmap functions.` |
-|         - | 8762 | ` */` |
-|         - | 8763 | `static const ph7_builtin_func aHashmapFunc[] = {` |
-|         - | 8764 | `	{"iterator_to_array",  ph7_iterator_to_array },` |
-|         - | 8765 | `	{"iterator_count",     ph7_iterator_count },` |
-|         - | 8766 | `	{"iterator_apply",     ph7_iterator_apply },` |
-|         - | 8767 | `	{"count",             ph7_hashmap_count },` |
-|         - | 8768 | `	{"sizeof",            ph7_hashmap_count },` |
-|         - | 8769 | `	{"array_key_exists",  ph7_hashmap_key_exists },` |
-|         - | 8770 | `	{"array_pop",         ph7_hashmap_pop     },` |
-|         - | 8771 | `	{"array_push",        ph7_hashmap_push    },` |
-|         - | 8772 | `	{"array_shift",       ph7_hashmap_shift   },` |
-|         - | 8773 | `	{"array_product",     ph7_hashmap_product },` |
-|         - | 8774 | `	{"array_sum",         ph7_hashmap_sum     },` |
-|         - | 8775 | `	{"array_keys",        ph7_hashmap_keys    },` |
-|         - | 8776 | `	{"array_values",      ph7_hashmap_values  },` |
-|         - | 8777 | `	{"array_same",        ph7_hashmap_same    },  /* Symisc eXtension */` |
-|         - | 8778 | `	{"array_merge",       ph7_hashmap_merge   },` |
-|         - | 8779 | `	{"array_slice",       ph7_hashmap_slice   },` |
-|         - | 8780 | `	{"array_splice",      ph7_hashmap_splice  },` |
-|         - | 8781 | `	{"array_search",      ph7_hashmap_search  },` |
-|         - | 8782 | `	{"array_diff",        ph7_hashmap_diff    },` |
-|         - | 8783 | `	{"array_udiff",       ph7_hashmap_udiff   },` |
-|         - | 8784 | `	{"array_diff_assoc",  ph7_hashmap_diff_assoc },` |
-|         - | 8785 | `	{"array_diff_uassoc", ph7_hashmap_diff_uassoc },` |
-|         - | 8786 | `	{"array_diff_key",    ph7_hashmap_diff_key },` |
-|         - | 8787 | `	{"array_intersect",   ph7_hashmap_intersect},` |
-|         - | 8788 | `	{"array_intersect_assoc", ph7_hashmap_intersect_assoc},` |
-|         - | 8789 | `	{"array_uintersect",  ph7_hashmap_uintersect},` |
-|         - | 8790 | `	{"array_intersect_key",   ph7_hashmap_intersect_key},` |
-|         - | 8791 | `	{"array_copy",        ph7_hashmap_copy    },` |
-|         - | 8792 | `	{"array_erase",       ph7_hashmap_erase   },` |
-|         - | 8793 | `	{"array_fill",        ph7_hashmap_fill    },` |
-|         - | 8794 | `	{"array_fill_keys",   ph7_hashmap_fill_keys},` |
-|         - | 8795 | `	{"array_combine",     ph7_hashmap_combine },` |
-|         - | 8796 | `	{"array_reverse",     ph7_hashmap_reverse },` |
-|         - | 8797 | `	{"array_unique",      ph7_hashmap_unique  },` |
-|         - | 8798 | `	{"array_flip",        ph7_hashmap_flip    },` |
-|         - | 8799 | `	{"array_rand",        ph7_hashmap_rand    },` |
-|         - | 8800 | `	{"array_chunk",       ph7_hashmap_chunk   },` |
-|         - | 8801 | `	{"array_pad",         ph7_hashmap_pad     },` |
-|         - | 8802 | `	{"array_replace",     ph7_hashmap_replace },` |
-|         - | 8803 | `	{"array_filter",      ph7_hashmap_filter  },` |
-|         - | 8804 | `	{"array_map",         ph7_hashmap_map     },` |
-|         - | 8805 | `	{"array_column",      ph7_hashmap_column  },` |
-|         - | 8806 | `	{"array_is_list",     ph7_hashmap_is_list },` |
-|         - | 8807 | `	{"array_first",       ph7_hashmap_first   },` |
-|         - | 8808 | `	{"array_last",        ph7_hashmap_last    },` |
-|         - | 8809 | `	{"array_key_first",   ph7_hashmap_key_first },` |
-|         - | 8810 | `	{"array_key_last",    ph7_hashmap_key_last  },` |
-|         - | 8811 | `	{"array_find",        ph7_hashmap_find    },` |
-|         - | 8812 | `	{"array_find_key",    ph7_hashmap_find_key},` |
-|         - | 8813 | `	{"array_any",         ph7_hashmap_any     },` |
-|         - | 8814 | `	{"array_all",         ph7_hashmap_all     },` |
-|         - | 8815 | `	{"array_reduce",      ph7_hashmap_reduce  },` |
-|         - | 8816 | `	{"array_walk",        ph7_hashmap_walk    },` |
-|         - | 8817 | `	{"array_walk_recursive", ph7_hashmap_walk_recursive },` |
-|         - | 8818 | `	{"in_array",          ph7_hashmap_in_array},` |
-|         - | 8819 | `	{"sort",              ph7_hashmap_sort    },` |
-|         - | 8820 | `	{"asort",             ph7_hashmap_asort   },` |
-|         - | 8821 | `	{"arsort",            ph7_hashmap_arsort  },` |
-|         - | 8822 | `	{"ksort",             ph7_hashmap_ksort   },` |
-|         - | 8823 | `	{"krsort",            ph7_hashmap_krsort  },` |
-|         - | 8824 | `	{"rsort",             ph7_hashmap_rsort   },` |
-|         - | 8825 | `	{"usort",             ph7_hashmap_usort   },` |
-|         - | 8826 | `	{"uasort",            ph7_hashmap_uasort  },` |
-|         - | 8827 | `	{"uksort",            ph7_hashmap_uksort  },` |
-|         - | 8828 | `	{"shuffle",           ph7_hashmap_shuffle },` |
-|         - | 8829 | `	{"range",             ph7_hashmap_range   },` |
-|         - | 8830 | `	{"current",           ph7_hashmap_current },` |
-|         - | 8831 | `	{"each",              ph7_hashmap_each    },` |
-|         - | 8832 | `	{"pos",               ph7_hashmap_current },` |
-|         - | 8833 | `	{"next",              ph7_hashmap_next    },` |
-|         - | 8834 | `	{"prev",              ph7_hashmap_prev    },` |
-|         - | 8835 | `	{"end",               ph7_hashmap_end     },` |
-|         - | 8836 | `	{"reset",             ph7_hashmap_reset   },` |
-|         - | 8837 | `	{"key",               ph7_hashmap_simple_key }` |
-|         - | 8838 | `};` |
-|         - | 8839 | `/*` |
-|         - | 8840 | ` * Register the built-in hashmap functions defined above.` |
-|         - | 8841 | ` */` |
-|      3428 | 8842 | `PH7_PRIVATE void PH7_RegisterHashmapFunctions(ph7_vm *pVm)` |
-|         5 | 8843 | `{` |
-|         - | 8844 | `	sxu32 n;` |
-|    257105 | 8845 | `	for( n = 0 ; n < SX_ARRAYSIZE(aHashmapFunc) ; n++ ){` |
-|    253677 | 8846 | `		ph7_create_function(&(*pVm),aHashmapFunc[n].zName,aHashmapFunc[n].xFunc,0);` |
-|    126841 | 8847 | `	}` |
-|      3433 | 8848 | `}` |
-|         - | 8849 | `/*` |
-|         - | 8850 | ` * Dump a hashmap instance and it's entries and the store the dump in` |
-|         - | 8851 | ` * the BLOB given as the first argument.` |
-|         - | 8852 | ` * This function is typically invoked when the user issue a call to` |
-|         - | 8853 | ` * [var_dump(),var_export(),print_r(),...]` |
-|         - | 8854 | ` * This function SXRET_OK on success. Any other return value including` |
-|         - | 8855 | ` * SXERR_LIMIT(infinite recursion) indicates failure.` |
-|         - | 8856 | ` */` |
-|         - | 8857 | `/*` |
-|         - | 8858 | ` * Dump the entries of a hashmap [i.e: the key/value lines between the opening` |
-|         - | 8859 | ` * '{' and the closing '}'] in the var_dump/print_r style. Factored out of` |
-|         - | 8860 | ` * PH7_HashmapDump so the var_dump object renderer can reuse it for a` |
-|         - | 8861 | ` * __debugInfo() array body (which carries an object header, not "array(N)").` |
-|         - | 8862 | ` * Returns SXERR_LIMIT if a nested value hit the depth cap.` |
-|         - | 8863 | ` */` |
-|       132 | 8864 | `PH7_PRIVATE sxi32 PH7_HashmapDumpEntries(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,int nTab,int nDepth)` |
-|         2 | 8865 | `{` |
-|       134 | 8866 | `	ph7_hashmap_node *pEntry = pMap->pFirst;` |
-|         - | 8867 | `	ph7_value *pObj;` |
-|       134 | 8868 | `	sxu32 n = 0;` |
-|         - | 8869 | `	int isRef;` |
-|       134 | 8870 | `	sxi32 rc = SXRET_OK;` |
-|         - | 8871 | `	int i;` |
-|       213 | 8872 | `	for(;;){` |
-|       428 | 8873 | `		if( n >= pMap->nEntry ){` |
-|       134 | 8874 | `			break;` |
-|         - | 8875 | `		}` |
-|       296 | 8876 | `		pObj = HashmapExtractNodeValue(pEntry);` |
-|         - | 8877 | `		/* '&' marks an element ANY other holder refers to: a foreign node (array(&$x))` |
-|         - | 8878 | `		 * or, the case PH7 missed, an element someone took a reference to ($r = &$a[1]). */` |
-|       588 | 8879 | `		isRef = ((pEntry->iFlags & HASHMAP_NODE_FOREIGN_OBJ) != 0)` |
-|       294 | 8880 | `			\|\| PH7_VmSlotIsReferenced(pMap->pVm,pEntry->nValIdx);` |
-|       296 | 8881 | `		if( ShowType ){` |
-|         - | 8882 | ``			/* var_dump entry: `[key]=>` on its own line at nTab+2, the value`` |
-|         - | 8883 | `			 * on the next line at the same indent (php). */` |
-|       176 | 8884 | `			for( i = 0 ; i < nTab + 2 ; i++ ){` |
-|       118 | 8885 | `				SyBlobAppend(&(*pOut)," ",sizeof(char));` |
-|        60 | 8886 | `			}` |
-|        60 | 8887 | `			if( pEntry->iType == HASHMAP_INT_NODE){` |
-|        47 | 8888 | `				SyBlobFormat(&(*pOut),"[%qd]=>",pEntry->xKey.iKey);` |
-|        24 | 8889 | `			}else{` |
-|        20 | 8890 | `				SyBlobFormat(&(*pOut),"[\"%.*s\"]=>",` |
-|         6 | 8891 | `					SyBlobLength(&pEntry->xKey.sKey),SyBlobData(&pEntry->xKey.sKey));` |
-|         - | 8892 | `			}` |
-|        60 | 8893 | `			SyBlobAppend(&(*pOut),"\n",sizeof(char));` |
-|        60 | 8894 | `			if( pObj ){` |
-|        60 | 8895 | `				rc = PH7_MemObjDump(&(*pOut),pObj,TRUE,nTab+2,nDepth,isRef);` |
-|        60 | 8896 | `				if( rc == SXERR_LIMIT ){` |
-|       ! 0 | 8897 | `					break;` |
-|         - | 8898 | `				}` |
-|        29 | 8899 | `			}` |
-|        31 | 8900 | `		}else{` |
-|         - | 8901 | ``			/* print_r entry: `[key] => value` at nTab+4; a container value`` |
-|         - | 8902 | `			 * renders its block inline (its parens at nTab+8) followed by` |
-|         - | 8903 | `			 * php's extra blank line. References carry no marker. */` |
-|      1294 | 8904 | `			for( i = 0 ; i < nTab + 4 ; i++ ){` |
-|      1058 | 8905 | `				SyBlobAppend(&(*pOut)," ",sizeof(char));` |
-|       530 | 8906 | `			}` |
-|       238 | 8907 | `			if( pEntry->iType == HASHMAP_INT_NODE){` |
-|       125 | 8908 | `				SyBlobFormat(&(*pOut),"[%qd] => ",pEntry->xKey.iKey);` |
-|        63 | 8909 | `			}else{` |
-|       170 | 8910 | `				SyBlobFormat(&(*pOut),"[%.*s] => ",` |
-|        56 | 8911 | `					SyBlobLength(&pEntry->xKey.sKey),SyBlobData(&pEntry->xKey.sKey));` |
-|         - | 8912 | `			}` |
-|       236 | 8913 | `			if( pObj && (pObj->iFlags & (MEMOBJ_HASHMAP\|MEMOBJ_OBJ))` |
-|       132 | 8914 | `			 && (pObj->iFlags & MEMOBJ_NULL) == 0 ){` |
-|        25 | 8915 | `				rc = PH7_MemObjDump(&(*pOut),pObj,FALSE,nTab+8,nDepth,0);` |
-|        25 | 8916 | `				SyBlobAppend(&(*pOut),"\n",sizeof(char));` |
-|        25 | 8917 | `				if( rc == SXERR_LIMIT ){` |
-|       ! 0 | 8918 | `					break;` |
-|         - | 8919 | `				}` |
-|        13 | 8920 | `			}else{` |
-|       214 | 8921 | `				if( pObj ){` |
-|       214 | 8922 | `					PH7_MemObjPrintRInline(&(*pOut),pObj);` |
-|       106 | 8923 | `				}` |
-|       214 | 8924 | `				SyBlobAppend(&(*pOut),"\n",sizeof(char));` |
-|         - | 8925 | `			}` |
-|         - | 8926 | `		}` |
-|         - | 8927 | `		/* Point to the next entry */` |
-|       296 | 8928 | `		n++;` |
-|       296 | 8929 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|         2 | 8930 | `	}` |
-|       134 | 8931 | `	return rc;` |
-|         2 | 8932 | `}` |
-|       128 | 8933 | `PH7_PRIVATE sxi32 PH7_HashmapDump(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,int nTab,int nDepth)` |
-|         2 | 8934 | `{` |
-|         - | 8935 | `	sxi32 rc;` |
-|         - | 8936 | `	int i;` |
-|       130 | 8937 | `	if( nDepth > 31 ){` |
-|         - | 8938 | `		static const char zInfinite[] = "Nesting limit reached: Infinite recursion?";` |
-|         - | 8939 | `		/* Nesting limit reached */` |
-|       ! 0 | 8940 | `		SyBlobAppend(&(*pOut),zInfinite,sizeof(zInfinite)-1);` |
-|       ! 0 | 8941 | `		return SXERR_LIMIT;` |
-|         - | 8942 | `	}` |
-|       130 | 8943 | `	if( ShowType ){` |
-|         - | 8944 | ``		/* var_dump: `array(N) {\n … \n<nTab>}` — the caller adds the final`` |
-|         - | 8945 | `		 * newline (a nested array is itself an entry value line). */` |
-|        26 | 8946 | `		SyBlobFormat(&(*pOut),"array(%u) {",pMap->nEntry);` |
-|        26 | 8947 | `		SyBlobAppend(&(*pOut),"\n",sizeof(char));` |
-|        26 | 8948 | `		rc = PH7_HashmapDumpEntries(&(*pOut),pMap,TRUE,nTab,nDepth);` |
-|        26 | 8949 | `		for( i = 0 ; i < nTab ; i++ ){` |
-|       ! 0 | 8950 | `			SyBlobAppend(&(*pOut)," ",sizeof(char));` |
-|       ! 0 | 8951 | `		}` |
-|        26 | 8952 | `		SyBlobAppend(&(*pOut),"}",sizeof(char));` |
-|        26 | 8953 | `		return rc;` |
-|         - | 8954 | `	}` |
-|         - | 8955 | ``	/* print_r: `Array\n<nTab>(\n … <nTab>)\n` */`` |
-|       105 | 8956 | `	SyBlobAppend(&(*pOut),"Array\n",sizeof("Array\n")-1);` |
-|       297 | 8957 | `	for( i = 0 ; i < nTab ; i++ ){` |
-|       193 | 8958 | `		SyBlobAppend(&(*pOut)," ",sizeof(char));` |
-|        97 | 8959 | `	}` |
-|       105 | 8960 | `	SyBlobAppend(&(*pOut),"(\n",sizeof("(\n")-1);` |
-|       105 | 8961 | `	rc = PH7_HashmapDumpEntries(&(*pOut),pMap,FALSE,nTab,nDepth);` |
-|       297 | 8962 | `	for( i = 0 ; i < nTab ; i++ ){` |
-|       193 | 8963 | `		SyBlobAppend(&(*pOut)," ",sizeof(char));` |
-|        97 | 8964 | `	}` |
-|       105 | 8965 | `	SyBlobAppend(&(*pOut),")\n",sizeof(")\n")-1);` |
-|       105 | 8966 | `	return rc;` |
-|        66 | 8967 | `}` |
-|         - | 8968 | `/*` |
-|         - | 8969 | ` * Iterate throw hashmap entries and invoke the given callback [i.e: xWalk()] for each` |
-|         - | 8970 | ` * retrieved entry.` |
-|         - | 8971 | ` * Note that argument are passed to the callback by copy. That is,any modification to` |
-|         - | 8972 | ` * the entry value in the callback body will not alter the real value.` |
-|         - | 8973 | ` * If the callback wishes to abort processing [i.e: it's invocation] it must return` |
-|         - | 8974 | ` * a value different from PH7_OK.` |
-|         - | 8975 | ` * Refer to [ph7_array_walk()] for more information.` |
-|         - | 8976 | ` */` |
-|     35186 | 8977 | `PH7_PRIVATE sxi32 PH7_HashmapWalk(` |
-|         - | 8978 | `	ph7_hashmap *pMap, /* Target hashmap */` |
-|         - | 8979 | `	int (*xWalk)(ph7_value *,ph7_value *,void *), /* Walker callback */` |
-|         - | 8980 | `	void *pUserData /* Last argument to xWalk() */` |
-|         - | 8981 | `	)` |
-|         5 | 8982 | `{` |
-|         - | 8983 | `	ph7_hashmap_node *pEntry;` |
-|         - | 8984 | `	ph7_value sKey,sValue;` |
-|         - | 8985 | `	sxi32 rc;` |
-|         - | 8986 | `	sxu32 n;` |
-|         - | 8987 | `	/* Initialize walker parameter */` |
-|     35191 | 8988 | `	rc = SXRET_OK;` |
-|     35191 | 8989 | `	PH7_MemObjInit(pMap->pVm,&sKey);` |
-|     35191 | 8990 | `	PH7_MemObjInit(pMap->pVm,&sValue);` |
-|     35191 | 8991 | `	n = pMap->nEntry;` |
-|     35191 | 8992 | `	pEntry = pMap->pFirst;` |
-|         - | 8993 | `	/* Start the iteration process */` |
-|     98368 | 8994 | `	for(;;){` |
-|    196741 | 8995 | `		if( n < 1 ){` |
-|     35189 | 8996 | `			break;` |
-|         - | 8997 | `		}` |
-|         - | 8998 | `		/* Extract a copy of the key and a copy the current value */` |
-|    161557 | 8999 | `		PH7_HashmapExtractNodeKey(pEntry,&sKey);` |
-|    161557 | 9000 | `		PH7_HashmapExtractNodeValue(pEntry,&sValue,FALSE);` |
-|         - | 9001 | `		/* Invoke the user callback */` |
-|    161557 | 9002 | `		rc = xWalk(&sKey,&sValue,pUserData);` |
-|         - | 9003 | `		/* Release the copy of the key and the value */` |
-|    161557 | 9004 | `		PH7_MemObjRelease(&sKey);` |
-|    161557 | 9005 | `		PH7_MemObjRelease(&sValue);` |
-|    161557 | 9006 | `		if( rc != PH7_OK ){` |
-|         - | 9007 | `			/* Callback request an operation abort */` |
-|         3 | 9008 | `			return SXERR_ABORT;` |
-|         - | 9009 | `		}` |
-|         - | 9010 | `		/* Point to the next entry */` |
-|    161555 | 9011 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
-|    161555 | 9012 | `		n--;` |
-|         5 | 9013 | `	}` |
-|         - | 9014 | `	/* All done */` |
-|     35189 | 9015 | `	return SXRET_OK;` |
-|     17598 | 9016 | `}` |
-|         - | 9017 |  |
+|         - | 8754 | `			"iterator_apply(): Argument #2 ($callback) must be a valid callback");` |
+|         - | 8755 | `	}` |
+|        13 | 8756 | `	sApp.pCallback = apArg[1];` |
+|        13 | 8757 | `	sApp.pArgsArray = (nArg > 2 && ph7_value_is_array(apArg[2])) ? apArg[2] : 0;` |
+|        13 | 8758 | `	sApp.nCount = 0;` |
+|        13 | 8759 | `	rc = PH7_VmIteratorWalk(pCtx->pVm, apArg[0], IterApplyStep, &sApp);` |
+|        13 | 8760 | `	if( rc == PH7_EXCEPTION \|\| rc == PH7_ABORT ){ return rc; }` |
+|        11 | 8761 | `	if( rc == SXERR_NOTIMPLEMENTED ){` |
+|       ! 0 | 8762 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
+|         - | 8763 | `			"iterator_apply(): Argument #1 ($iterator) must be of type Traversable, %s given",` |
+|       ! 0 | 8764 | `			ph7_type_name(apArg[0]));` |
+|         - | 8765 | `	}` |
+|        11 | 8766 | `	ph7_result_int64(pCtx, sApp.nCount);` |
+|        11 | 8767 | `	return PH7_OK;` |
+|         7 | 8768 | `}` |
+|         - | 8769 | `/*` |
+|         - | 8770 | ` * Table of hashmap functions.` |
+|         - | 8771 | ` */` |
+|         - | 8772 | `static const ph7_builtin_func aHashmapFunc[] = {` |
+|         - | 8773 | `	{"iterator_to_array",  ph7_iterator_to_array },` |
+|         - | 8774 | `	{"iterator_count",     ph7_iterator_count },` |
+|         - | 8775 | `	{"iterator_apply",     ph7_iterator_apply },` |
+|         - | 8776 | `	{"count",             ph7_hashmap_count },` |
+|         - | 8777 | `	{"sizeof",            ph7_hashmap_count },` |
+|         - | 8778 | `	{"array_key_exists",  ph7_hashmap_key_exists },` |
+|         - | 8779 | `	{"array_pop",         ph7_hashmap_pop     },` |
+|         - | 8780 | `	{"array_push",        ph7_hashmap_push    },` |
+|         - | 8781 | `	{"array_shift",       ph7_hashmap_shift   },` |
+|         - | 8782 | `	{"array_product",     ph7_hashmap_product },` |
+|         - | 8783 | `	{"array_sum",         ph7_hashmap_sum     },` |
+|         - | 8784 | `	{"array_keys",        ph7_hashmap_keys    },` |
+|         - | 8785 | `	{"array_values",      ph7_hashmap_values  },` |
+|         - | 8786 | `	{"array_same",        ph7_hashmap_same    },  /* Symisc eXtension */` |
+|         - | 8787 | `	{"array_merge",       ph7_hashmap_merge   },` |
+|         - | 8788 | `	{"array_slice",       ph7_hashmap_slice   },` |
+|         - | 8789 | `	{"array_splice",      ph7_hashmap_splice  },` |
+|         - | 8790 | `	{"array_search",      ph7_hashmap_search  },` |
+|         - | 8791 | `	{"array_diff",        ph7_hashmap_diff    },` |
+|         - | 8792 | `	{"array_udiff",       ph7_hashmap_udiff   },` |
+|         - | 8793 | `	{"array_diff_assoc",  ph7_hashmap_diff_assoc },` |
+|         - | 8794 | `	{"array_diff_uassoc", ph7_hashmap_diff_uassoc },` |
+|         - | 8795 | `	{"array_diff_key",    ph7_hashmap_diff_key },` |
+|         - | 8796 | `	{"array_intersect",   ph7_hashmap_intersect},` |
+|         - | 8797 | `	{"array_intersect_assoc", ph7_hashmap_intersect_assoc},` |
+|         - | 8798 | `	{"array_uintersect",  ph7_hashmap_uintersect},` |
+|         - | 8799 | `	{"array_intersect_key",   ph7_hashmap_intersect_key},` |
+|         - | 8800 | `	{"array_copy",        ph7_hashmap_copy    },` |
+|         - | 8801 | `	{"array_erase",       ph7_hashmap_erase   },` |
+|         - | 8802 | `	{"array_fill",        ph7_hashmap_fill    },` |
+|         - | 8803 | `	{"array_fill_keys",   ph7_hashmap_fill_keys},` |
+|         - | 8804 | `	{"array_combine",     ph7_hashmap_combine },` |
+|         - | 8805 | `	{"array_reverse",     ph7_hashmap_reverse },` |
+|         - | 8806 | `	{"array_unique",      ph7_hashmap_unique  },` |
+|         - | 8807 | `	{"array_flip",        ph7_hashmap_flip    },` |
+|         - | 8808 | `	{"array_rand",        ph7_hashmap_rand    },` |
+|         - | 8809 | `	{"array_chunk",       ph7_hashmap_chunk   },` |
+|         - | 8810 | `	{"array_pad",         ph7_hashmap_pad     },` |
+|         - | 8811 | `	{"array_replace",     ph7_hashmap_replace },` |
+|         - | 8812 | `	{"array_filter",      ph7_hashmap_filter  },` |
+|         - | 8813 | `	{"array_map",         ph7_hashmap_map     },` |
+|         - | 8814 | `	{"array_column",      ph7_hashmap_column  },` |
+|         - | 8815 | `	{"array_is_list",     ph7_hashmap_is_list },` |
+|         - | 8816 | `	{"array_first",       ph7_hashmap_first   },` |
+|         - | 8817 | `	{"array_last",        ph7_hashmap_last    },` |
+|         - | 8818 | `	{"array_key_first",   ph7_hashmap_key_first },` |
+|         - | 8819 | `	{"array_key_last",    ph7_hashmap_key_last  },` |
+|         - | 8820 | `	{"array_find",        ph7_hashmap_find    },` |
+|         - | 8821 | `	{"array_find_key",    ph7_hashmap_find_key},` |
+|         - | 8822 | `	{"array_any",         ph7_hashmap_any     },` |
+|         - | 8823 | `	{"array_all",         ph7_hashmap_all     },` |
+|         - | 8824 | `	{"array_reduce",      ph7_hashmap_reduce  },` |
+|         - | 8825 | `	{"array_walk",        ph7_hashmap_walk    },` |
+|         - | 8826 | `	{"array_walk_recursive", ph7_hashmap_walk_recursive },` |
+|         - | 8827 | `	{"in_array",          ph7_hashmap_in_array},` |
+|         - | 8828 | `	{"sort",              ph7_hashmap_sort    },` |
+|         - | 8829 | `	{"asort",             ph7_hashmap_asort   },` |
+|         - | 8830 | `	{"arsort",            ph7_hashmap_arsort  },` |
+|         - | 8831 | `	{"ksort",             ph7_hashmap_ksort   },` |
+|         - | 8832 | `	{"krsort",            ph7_hashmap_krsort  },` |
+|         - | 8833 | `	{"rsort",             ph7_hashmap_rsort   },` |
+|         - | 8834 | `	{"usort",             ph7_hashmap_usort   },` |
+|         - | 8835 | `	{"uasort",            ph7_hashmap_uasort  },` |
+|         - | 8836 | `	{"uksort",            ph7_hashmap_uksort  },` |
+|         - | 8837 | `	{"shuffle",           ph7_hashmap_shuffle },` |
+|         - | 8838 | `	{"range",             ph7_hashmap_range   },` |
+|         - | 8839 | `	{"current",           ph7_hashmap_current },` |
+|         - | 8840 | `	{"each",              ph7_hashmap_each    },` |
+|         - | 8841 | `	{"pos",               ph7_hashmap_current },` |
+|         - | 8842 | `	{"next",              ph7_hashmap_next    },` |
+|         - | 8843 | `	{"prev",              ph7_hashmap_prev    },` |
+|         - | 8844 | `	{"end",               ph7_hashmap_end     },` |
+|         - | 8845 | `	{"reset",             ph7_hashmap_reset   },` |
+|         - | 8846 | `	{"key",               ph7_hashmap_simple_key }` |
+|         - | 8847 | `};` |
+|         - | 8848 | `/*` |
+|         - | 8849 | ` * Register the built-in hashmap functions defined above.` |
+|         - | 8850 | ` */` |
+|      3428 | 8851 | `PH7_PRIVATE void PH7_RegisterHashmapFunctions(ph7_vm *pVm)` |
+|         5 | 8852 | `{` |
+|         - | 8853 | `	sxu32 n;` |
+|    257105 | 8854 | `	for( n = 0 ; n < SX_ARRAYSIZE(aHashmapFunc) ; n++ ){` |
+|    253677 | 8855 | `		ph7_create_function(&(*pVm),aHashmapFunc[n].zName,aHashmapFunc[n].xFunc,0);` |
+|    126841 | 8856 | `	}` |
+|      3433 | 8857 | `}` |
+|         - | 8858 | `/*` |
+|         - | 8859 | ` * Dump a hashmap instance and it's entries and the store the dump in` |
+|         - | 8860 | ` * the BLOB given as the first argument.` |
+|         - | 8861 | ` * This function is typically invoked when the user issue a call to` |
+|         - | 8862 | ` * [var_dump(),var_export(),print_r(),...]` |
+|         - | 8863 | ` * This function SXRET_OK on success. Any other return value including` |
+|         - | 8864 | ` * SXERR_LIMIT(infinite recursion) indicates failure.` |
+|         - | 8865 | ` */` |
+|         - | 8866 | `/*` |
+|         - | 8867 | ` * Dump the entries of a hashmap [i.e: the key/value lines between the opening` |
+|         - | 8868 | ` * '{' and the closing '}'] in the var_dump/print_r style. Factored out of` |
+|         - | 8869 | ` * PH7_HashmapDump so the var_dump object renderer can reuse it for a` |
+|         - | 8870 | ` * __debugInfo() array body (which carries an object header, not "array(N)").` |
+|         - | 8871 | ` * Returns SXERR_LIMIT if a nested value hit the depth cap.` |
+|         - | 8872 | ` */` |
+|       132 | 8873 | `PH7_PRIVATE sxi32 PH7_HashmapDumpEntries(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,int nTab,int nDepth)` |
+|         2 | 8874 | `{` |
+|       134 | 8875 | `	ph7_hashmap_node *pEntry = pMap->pFirst;` |
+|         - | 8876 | `	ph7_value *pObj;` |
+|       134 | 8877 | `	sxu32 n = 0;` |
+|         - | 8878 | `	int isRef;` |
+|       134 | 8879 | `	sxi32 rc = SXRET_OK;` |
+|         - | 8880 | `	int i;` |
+|       213 | 8881 | `	for(;;){` |
+|       428 | 8882 | `		if( n >= pMap->nEntry ){` |
+|       134 | 8883 | `			break;` |
+|         - | 8884 | `		}` |
+|       296 | 8885 | `		pObj = HashmapExtractNodeValue(pEntry);` |
+|         - | 8886 | `		/* '&' marks an element ANY other holder refers to: a foreign node (array(&$x))` |
+|         - | 8887 | `		 * or, the case PH7 missed, an element someone took a reference to ($r = &$a[1]). */` |
+|       588 | 8888 | `		isRef = ((pEntry->iFlags & HASHMAP_NODE_FOREIGN_OBJ) != 0)` |
+|       294 | 8889 | `			\|\| PH7_VmSlotIsReferenced(pMap->pVm,pEntry->nValIdx);` |
+|       296 | 8890 | `		if( ShowType ){` |
+|         - | 8891 | ``			/* var_dump entry: `[key]=>` on its own line at nTab+2, the value`` |
+|         - | 8892 | `			 * on the next line at the same indent (php). */` |
+|       176 | 8893 | `			for( i = 0 ; i < nTab + 2 ; i++ ){` |
+|       118 | 8894 | `				SyBlobAppend(&(*pOut)," ",sizeof(char));` |
+|        60 | 8895 | `			}` |
+|        60 | 8896 | `			if( pEntry->iType == HASHMAP_INT_NODE){` |
+|        47 | 8897 | `				SyBlobFormat(&(*pOut),"[%qd]=>",pEntry->xKey.iKey);` |
+|        24 | 8898 | `			}else{` |
+|        20 | 8899 | `				SyBlobFormat(&(*pOut),"[\"%.*s\"]=>",` |
+|         6 | 8900 | `					SyBlobLength(&pEntry->xKey.sKey),SyBlobData(&pEntry->xKey.sKey));` |
+|         - | 8901 | `			}` |
+|        60 | 8902 | `			SyBlobAppend(&(*pOut),"\n",sizeof(char));` |
+|        60 | 8903 | `			if( pObj ){` |
+|        60 | 8904 | `				rc = PH7_MemObjDump(&(*pOut),pObj,TRUE,nTab+2,nDepth,isRef);` |
+|        60 | 8905 | `				if( rc == SXERR_LIMIT ){` |
+|       ! 0 | 8906 | `					break;` |
+|         - | 8907 | `				}` |
+|        29 | 8908 | `			}` |
+|        31 | 8909 | `		}else{` |
+|         - | 8910 | ``			/* print_r entry: `[key] => value` at nTab+4; a container value`` |
+|         - | 8911 | `			 * renders its block inline (its parens at nTab+8) followed by` |
+|         - | 8912 | `			 * php's extra blank line. References carry no marker. */` |
+|      1294 | 8913 | `			for( i = 0 ; i < nTab + 4 ; i++ ){` |
+|      1058 | 8914 | `				SyBlobAppend(&(*pOut)," ",sizeof(char));` |
+|       530 | 8915 | `			}` |
+|       238 | 8916 | `			if( pEntry->iType == HASHMAP_INT_NODE){` |
+|       125 | 8917 | `				SyBlobFormat(&(*pOut),"[%qd] => ",pEntry->xKey.iKey);` |
+|        63 | 8918 | `			}else{` |
+|       170 | 8919 | `				SyBlobFormat(&(*pOut),"[%.*s] => ",` |
+|        56 | 8920 | `					SyBlobLength(&pEntry->xKey.sKey),SyBlobData(&pEntry->xKey.sKey));` |
+|         - | 8921 | `			}` |
+|       236 | 8922 | `			if( pObj && (pObj->iFlags & (MEMOBJ_HASHMAP\|MEMOBJ_OBJ))` |
+|       132 | 8923 | `			 && (pObj->iFlags & MEMOBJ_NULL) == 0 ){` |
+|        25 | 8924 | `				rc = PH7_MemObjDump(&(*pOut),pObj,FALSE,nTab+8,nDepth,0);` |
+|        25 | 8925 | `				SyBlobAppend(&(*pOut),"\n",sizeof(char));` |
+|        25 | 8926 | `				if( rc == SXERR_LIMIT ){` |
+|       ! 0 | 8927 | `					break;` |
+|         - | 8928 | `				}` |
+|        13 | 8929 | `			}else{` |
+|       214 | 8930 | `				if( pObj ){` |
+|       214 | 8931 | `					PH7_MemObjPrintRInline(&(*pOut),pObj);` |
+|       106 | 8932 | `				}` |
+|       214 | 8933 | `				SyBlobAppend(&(*pOut),"\n",sizeof(char));` |
+|         - | 8934 | `			}` |
+|         - | 8935 | `		}` |
+|         - | 8936 | `		/* Point to the next entry */` |
+|       296 | 8937 | `		n++;` |
+|       296 | 8938 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|         2 | 8939 | `	}` |
+|       134 | 8940 | `	return rc;` |
+|         2 | 8941 | `}` |
+|       128 | 8942 | `PH7_PRIVATE sxi32 PH7_HashmapDump(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,int nTab,int nDepth)` |
+|         2 | 8943 | `{` |
+|         - | 8944 | `	sxi32 rc;` |
+|         - | 8945 | `	int i;` |
+|       130 | 8946 | `	if( nDepth > 31 ){` |
+|         - | 8947 | `		static const char zInfinite[] = "Nesting limit reached: Infinite recursion?";` |
+|         - | 8948 | `		/* Nesting limit reached */` |
+|       ! 0 | 8949 | `		SyBlobAppend(&(*pOut),zInfinite,sizeof(zInfinite)-1);` |
+|       ! 0 | 8950 | `		return SXERR_LIMIT;` |
+|         - | 8951 | `	}` |
+|       130 | 8952 | `	if( ShowType ){` |
+|         - | 8953 | ``		/* var_dump: `array(N) {\n … \n<nTab>}` — the caller adds the final`` |
+|         - | 8954 | `		 * newline (a nested array is itself an entry value line). */` |
+|        26 | 8955 | `		SyBlobFormat(&(*pOut),"array(%u) {",pMap->nEntry);` |
+|        26 | 8956 | `		SyBlobAppend(&(*pOut),"\n",sizeof(char));` |
+|        26 | 8957 | `		rc = PH7_HashmapDumpEntries(&(*pOut),pMap,TRUE,nTab,nDepth);` |
+|        26 | 8958 | `		for( i = 0 ; i < nTab ; i++ ){` |
+|       ! 0 | 8959 | `			SyBlobAppend(&(*pOut)," ",sizeof(char));` |
+|       ! 0 | 8960 | `		}` |
+|        26 | 8961 | `		SyBlobAppend(&(*pOut),"}",sizeof(char));` |
+|        26 | 8962 | `		return rc;` |
+|         - | 8963 | `	}` |
+|         - | 8964 | ``	/* print_r: `Array\n<nTab>(\n … <nTab>)\n` */`` |
+|       105 | 8965 | `	SyBlobAppend(&(*pOut),"Array\n",sizeof("Array\n")-1);` |
+|       297 | 8966 | `	for( i = 0 ; i < nTab ; i++ ){` |
+|       193 | 8967 | `		SyBlobAppend(&(*pOut)," ",sizeof(char));` |
+|        97 | 8968 | `	}` |
+|       105 | 8969 | `	SyBlobAppend(&(*pOut),"(\n",sizeof("(\n")-1);` |
+|       105 | 8970 | `	rc = PH7_HashmapDumpEntries(&(*pOut),pMap,FALSE,nTab,nDepth);` |
+|       297 | 8971 | `	for( i = 0 ; i < nTab ; i++ ){` |
+|       193 | 8972 | `		SyBlobAppend(&(*pOut)," ",sizeof(char));` |
+|        97 | 8973 | `	}` |
+|       105 | 8974 | `	SyBlobAppend(&(*pOut),")\n",sizeof(")\n")-1);` |
+|       105 | 8975 | `	return rc;` |
+|        66 | 8976 | `}` |
+|         - | 8977 | `/*` |
+|         - | 8978 | ` * Iterate throw hashmap entries and invoke the given callback [i.e: xWalk()] for each` |
+|         - | 8979 | ` * retrieved entry.` |
+|         - | 8980 | ` * Note that argument are passed to the callback by copy. That is,any modification to` |
+|         - | 8981 | ` * the entry value in the callback body will not alter the real value.` |
+|         - | 8982 | ` * If the callback wishes to abort processing [i.e: it's invocation] it must return` |
+|         - | 8983 | ` * a value different from PH7_OK.` |
+|         - | 8984 | ` * Refer to [ph7_array_walk()] for more information.` |
+|         - | 8985 | ` */` |
+|     35206 | 8986 | `PH7_PRIVATE sxi32 PH7_HashmapWalk(` |
+|         - | 8987 | `	ph7_hashmap *pMap, /* Target hashmap */` |
+|         - | 8988 | `	int (*xWalk)(ph7_value *,ph7_value *,void *), /* Walker callback */` |
+|         - | 8989 | `	void *pUserData /* Last argument to xWalk() */` |
+|         - | 8990 | `	)` |
+|         5 | 8991 | `{` |
+|         - | 8992 | `	ph7_hashmap_node *pEntry;` |
+|         - | 8993 | `	ph7_value sKey,sValue;` |
+|         - | 8994 | `	sxi32 rc;` |
+|         - | 8995 | `	sxu32 n;` |
+|         - | 8996 | `	/* Initialize walker parameter */` |
+|     35211 | 8997 | `	rc = SXRET_OK;` |
+|     35211 | 8998 | `	PH7_MemObjInit(pMap->pVm,&sKey);` |
+|     35211 | 8999 | `	PH7_MemObjInit(pMap->pVm,&sValue);` |
+|     35211 | 9000 | `	n = pMap->nEntry;` |
+|     35211 | 9001 | `	pEntry = pMap->pFirst;` |
+|         - | 9002 | `	/* Start the iteration process */` |
+|     98409 | 9003 | `	for(;;){` |
+|    196823 | 9004 | `		if( n < 1 ){` |
+|     35209 | 9005 | `			break;` |
+|         - | 9006 | `		}` |
+|         - | 9007 | `		/* Extract a copy of the key and a copy the current value */` |
+|    161619 | 9008 | `		PH7_HashmapExtractNodeKey(pEntry,&sKey);` |
+|    161619 | 9009 | `		PH7_HashmapExtractNodeValue(pEntry,&sValue,FALSE);` |
+|         - | 9010 | `		/* Invoke the user callback */` |
+|    161619 | 9011 | `		rc = xWalk(&sKey,&sValue,pUserData);` |
+|         - | 9012 | `		/* Release the copy of the key and the value */` |
+|    161619 | 9013 | `		PH7_MemObjRelease(&sKey);` |
+|    161619 | 9014 | `		PH7_MemObjRelease(&sValue);` |
+|    161619 | 9015 | `		if( rc != PH7_OK ){` |
+|         - | 9016 | `			/* Callback request an operation abort */` |
+|         3 | 9017 | `			return SXERR_ABORT;` |
+|         - | 9018 | `		}` |
+|         - | 9019 | `		/* Point to the next entry */` |
+|    161617 | 9020 | `		pEntry = pEntry->pPrev; /* Reverse link */` |
+|    161617 | 9021 | `		n--;` |
+|         5 | 9022 | `	}` |
+|         - | 9023 | `	/* All done */` |
+|     35209 | 9024 | `	return SXRET_OK;` |
+|     17608 | 9025 | `}` |
+|         - | 9026 |  |

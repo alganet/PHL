@@ -1038,13 +1038,13 @@ Coverage: 630/718 lines (87.74%)
 |     - | 1028 | ` * This function returns TRUE if the given class is an implemented` |
 |     - | 1029 | ` * interface.Otherwise FALSE is returned.` |
 |     - | 1030 | ` */` |
-| 16490 | 1031 | `static int VmQueryInterfaceSet(ph7_class *pClass,SySet *pSet)` |
+| 16492 | 1031 | `static int VmQueryInterfaceSet(ph7_class *pClass,SySet *pSet)` |
 |     5 | 1032 | `{` |
 |     - | 1033 | `	ph7_class **apInterface;` |
 |     - | 1034 | `	sxu32 n;` |
-| 16495 | 1035 | `	if( SySetUsed(pSet) < 1 ){` |
+| 16497 | 1035 | `	if( SySetUsed(pSet) < 1 ){` |
 |     - | 1036 | `		/* Empty interface container */` |
-|  4281 | 1037 | `		return FALSE;` |
+|  4283 | 1037 | `		return FALSE;` |
 |     - | 1038 | `	}` |
 |     - | 1039 | `	/* Point to the set of implemented interfaces */` |
 | 12219 | 1040 | `	apInterface = (ph7_class **)SySetBasePtr(pSet);` |
@@ -1056,28 +1056,28 @@ Coverage: 630/718 lines (87.74%)
 |     - | 1046 | `		}` |
 |  4703 | 1047 | `	}` |
 |  7439 | 1048 | `	return FALSE;` |
-|  8250 | 1049 | `}` |
+|  8251 | 1049 | `}` |
 |     - | 1050 | `/*` |
 |     - | 1051 | ` * This function returns TRUE if the given class (first argument)` |
 |     - | 1052 | ` * is an instance of the main class (second argument).` |
 |     - | 1053 | ` * Otherwise FALSE is returned.` |
 |     - | 1054 | ` */` |
-| 27028 | 1055 | `PH7_PRIVATE int PH7_VmInstanceOf(ph7_class *pThis,ph7_class *pClass)` |
+| 27030 | 1055 | `PH7_PRIVATE int PH7_VmInstanceOf(ph7_class *pThis,ph7_class *pClass)` |
 |     5 | 1056 | `{` |
 |     - | 1057 | `	ph7_class *pParent;` |
 |     - | 1058 | `	sxi32 rc;` |
-| 27033 | 1059 | `	if( pThis == pClass ){` |
+| 27035 | 1059 | `	if( pThis == pClass ){` |
 |     - | 1060 | `		/* Instance of the same class */` |
 | 15007 | 1061 | `		return TRUE;` |
 |     - | 1062 | `	}` |
 |     - | 1063 | `	/* Check implemented interfaces */` |
-| 12031 | 1064 | `	rc = VmQueryInterfaceSet(pClass,&pThis->aInterface);` |
-| 12031 | 1065 | `	if( rc ){` |
+| 12033 | 1064 | `	rc = VmQueryInterfaceSet(pClass,&pThis->aInterface);` |
+| 12033 | 1065 | `	if( rc ){` |
 |  2035 | 1066 | `		return TRUE;` |
 |     - | 1067 | `	}` |
 |     - | 1068 | `	/* Check parent classes */` |
-| 10001 | 1069 | `	pParent = pThis->pBase;` |
-| 11705 | 1070 | `	while( pParent ){` |
+| 10003 | 1069 | `	pParent = pThis->pBase;` |
+| 11707 | 1070 | `	while( pParent ){` |
 |  5237 | 1071 | `		if( pParent == pClass ){` |
 |     - | 1072 | `			/* Same instance */` |
 |   783 | 1073 | `			return TRUE;` |
@@ -1091,8 +1091,8 @@ Coverage: 630/718 lines (87.74%)
 |  1709 | 1081 | `		pParent = pParent->pBase;` |
 |     5 | 1082 | `	}` |
 |     - | 1083 | `	/* Not an instance of the the given class */` |
-|  6473 | 1084 | `	return FALSE;` |
-| 13519 | 1085 | `}` |
+|  6475 | 1084 | `	return FALSE;` |
+| 13520 | 1085 | `}` |
 |     - | 1086 | `/*` |
 |     - | 1087 | ` * This function returns TRUE if the given class (first argument)` |
 |     - | 1088 | ` * is a subclass of the main class (second argument).` |
