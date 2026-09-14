@@ -1682,47 +1682,16 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen,int bHeredoc)
 				}
 			}
 			/*
-			 * "${name}" is php's DEPRECATED (8.2) spelling of the variable $name — NOT an
-			 * expression. PH7 handed the whole "${name}" to the expression compiler, whose
-			 * `${expr}` (variable-variable) rule evaluated the bare word `name`; that only
-			 * appeared to work while an unknown bare word fell back to its own name as a
-			 * string. Now that an undefined constant is a real Error, rewrite the simple
-			 * form to the variable it means. "${$x}" keeps the variable-variable meaning.
+			 * "${...}" string interpolation (every form: ${name}, ${expr}, ${$x}) was
+			 * DEPRECATED by php 8.2 in favor of the canonical "{$...}". PHL targets php's
+			 * *non-deprecated* surface, so it is a hard parse error here — never silently
+			 * rewritten. The canonical "{$var}" reaches this compiler by a different path
+			 * and is unaffected.
 			 */
-			if( &zExpr[1] < zIn && zExpr[0] == '$' && zExpr[1] == '{' && zIn[-1] == '}'
-				&& zExpr[2] != '$' ){
-				const char *zName = &zExpr[2];
-				const char *zStop = &zIn[-1];
-				const char *zScan = zName;
-				while( zScan < zStop && (SyisAlphaNum(zScan[0]) || zScan[0] == '_') ){
-					zScan++;
-				}
-				if( zScan == zStop && zName < zStop ){
-					SyBlob sVar;
-					PH7_GenCompileError(&(*pGen),8192 /* E_DEPRECATED */,pGen->pIn->nLine,
-						"Using ${var} in strings is deprecated, use {$var} instead");
-					SyBlobInit(&sVar,&pGen->pVm->sAllocator);
-					SyBlobAppend(&sVar,"$",1);
-					SyBlobAppend(&sVar,zName,(sxu32)(zStop - zName));
-					/* The scanner reads one byte PAST the length it is given, so the rewritten
-					 * source has to be NUL-terminated: in the ordinary path the byte after the
-					 * expression is the string's own closing quote, which stops an identifier,
-					 * but here it is whatever the allocator left after the blob -- and an
-					 * identifier byte there silently EXTENDS the variable name. */
-					SyBlobNullAppend(&sVar);
-					rc = GenStateProcessStringExpression(&(*pGen),pGen->pIn->nLine,
-						(const char *)SyBlobData(&sVar),
-						(const char *)SyBlobData(&sVar) + SyBlobLength(&sVar));
-					SyBlobRelease(&sVar);
-					if( rc == SXERR_ABORT ){
-						return SXERR_ABORT;
-					}
-					if( rc != SXERR_EMPTY ){
-						++iCons;
-					}
-					pObj = 0;
-					continue;
-				}
+			if( &zExpr[1] < zIn && zExpr[0] == '$' && zExpr[1] == '{' ){
+				PH7_GenCompileError(&(*pGen),E_PARSE,pGen->pIn->nLine,
+					"syntax error, \"${\" string interpolation was removed in php 8.2, use \"{$...}\" instead");
+				return SXERR_ABORT;
 			}
 			/* Process the expression */
 			rc = GenStateProcessStringExpression(&(*pGen),pGen->pIn->nLine,zExpr,zIn);
@@ -3375,37 +3344,15 @@ PH7_PRIVATE sxi32 PH7_CompileMatch(ph7_gen_state *pGen,sxi32 iCompileFlag)
  */
 static sxi32 PH7_CompileBacktic(ph7_gen_state *pGen,sxi32 iCompileFlag)
 {
-	static const SyString sName = { "shell_exec", sizeof("shell_exec")-1 };
-	sxu32 nIdx = 0;
-	sxi32 rc;
+	SXUNUSED(iCompileFlag);
 	/*
-	 * `cmd` IS shell_exec("cmd") in php — it interpolates like a double-quoted string,
-	 * runs the command and yields its output. PH7 refused to run it at all (TICKET
-	 * 1433-40) and quietly evaluated to NULL. php 8.5 deprecates the syntax but still
-	 * executes it, so compile it to the real call and say what php says.
+	 * The backtick (`) operator was DEPRECATED by php (shell_exec() is the replacement).
+	 * PHL targets php's *non-deprecated* surface, so it is a hard parse error — never
+	 * compiled to a shell_exec() call.
 	 */
-	PH7_GenCompileError(&(*pGen),8192 /* E_DEPRECATED */,pGen->pIn->nLine,
-		"The backtick (`) operator is deprecated, use shell_exec() instead");
-	/* The body interpolates exactly like a double-quoted string */
-	pGen->pIn->nType &= ~PH7_TK_BSTR;
-	pGen->pIn->nType |= PH7_TK_DSTR;
-	rc = PH7_CompileString(&(*pGen),iCompileFlag);
-	if( rc != SXRET_OK ){
-		return rc;
-	}
-	/* ... and the command string is then handed to shell_exec() */
-	if( SXRET_OK != GenStateFindLiteral(&(*pGen),&sName,&nIdx) ){
-		ph7_value *pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);
-		if( pObj == 0 ){
-			PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"PH7 engine is running out of memory");
-			return SXERR_ABORT;
-		}
-		PH7_MemObjInitFromString(pGen->pVm,pObj,&sName);
-		GenStateInstallLiteral(&(*pGen),pObj,nIdx);
-	}
-	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);
-	PH7_VmEmitInstr(pGen->pVm,PH7_OP_CALL,1,0,GenStateAttachStrictFlag(pGen,0),0);
-	return SXRET_OK;
+	PH7_GenCompileError(&(*pGen),E_PARSE,pGen->pIn->nLine,
+		"syntax error, the backtick (`) operator was removed, use shell_exec() instead");
+	return SXERR_ABORT;
 }
 /*
  * Compile a function [i.e: die(),exit(),include(),...] which is a langauge
@@ -6750,25 +6697,25 @@ static sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyTo
 					&& pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)
 					&& pIn->sData.nByte == sizeof("null")-1
 					&& SyStrnicmp(SyStringData(&pIn->sData),"null",sizeof("null")-1) == 0 ){
-					sArg.iFlags |= VM_FUNC_ARG_NULLABLE;
-					/* php 8.4: the implicit form is deprecated at COMPILE time —
-					 * `f(): Implicitly marking parameter $x as nullable …`
-					 * (methods carry the Class:: prefix when the class link is
-					 * already up at this point). But NOT when the declared type
-					 * already accepts null: `mixed $x = null` is fine because mixed
-					 * includes null (explicit ?T / T|null are already excluded via
-					 * VM_FUNC_ARG_NULLABLE above). */
-					if( !(sArg.sClass.nByte == sizeof("mixed")-1
-						&& SyStrnicmp(SyStringData(&sArg.sClass),"mixed",sizeof("mixed")-1) == 0) ){
+					/* php 8.4 DEPRECATED the implicit-nullable form (`int $x = null`
+					 * without the `?`). PHL targets php's *non-deprecated* surface and
+					 * rejects it outright — the explicit `?int` must be written.
+					 * `mixed $x = null` is fine: mixed already includes null (explicit
+					 * ?T / T|null are already excluded via VM_FUNC_ARG_NULLABLE above). */
+					if( sArg.sClass.nByte == sizeof("mixed")-1
+						&& SyStrnicmp(SyStringData(&sArg.sClass),"mixed",sizeof("mixed")-1) == 0 ){
+						sArg.iFlags |= VM_FUNC_ARG_NULLABLE;
+					}else{
 						const char *zSep = "";
 						SyString sCls = { "", 0 };
 						if( (pFunc->iFlags & VM_FUNC_CLASS_METHOD) && pFunc->pUserData ){
 							sCls = ((ph7_class *)pFunc->pUserData)->sName;
 							zSep = "::";
 						}
-						PH7_GenCompileError(&(*pGen),8192 /* E_DEPRECATED */,pIn->nLine,
-							"%z%s%z(): Implicitly marking parameter $%z as nullable is deprecated, the explicit nullable type must be used instead",
+						PH7_GenCompileError(&(*pGen),E_ERROR,pIn->nLine,
+							"%z%s%z(): Cannot use null as the default for non-nullable parameter $%z; write the explicit ?T type instead",
 							&sCls,zSep,&pFunc->sName,&sArg.sName);
+						return SXERR_ABORT;
 					}
 				}
 				/* Point beyond the default value */

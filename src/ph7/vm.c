@@ -335,7 +335,6 @@ PH7_PRIVATE sxi32 PH7_VmInstallForeignFunction(
 		 * — otherwise an embedder overriding a listed builtin (e.g. a 1-arg
 		 * custom "substr") would inherit the old ArgumentCountError threshold. */
 		pFunc->nMinArg  = 0;
-		pFunc->zDeprecated = 0;
 		pFunc->bAtLeast = 0;
 		return SXRET_OK;
 	}
@@ -2091,7 +2090,7 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
     "protected $line;"\
     "private $trace;"\
     "private $previous;"\
-	"public function __construct($message = null, $code = 0, Throwable $previous = null){"\
+	"public function __construct($message = null, $code = 0, ?Throwable $previous = null){"\
 	"   if( isset($message) ){"\
 	"	  $this->message = $message;"\
 	"   }"\
@@ -2153,7 +2152,7 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
     "protected $line;"\
     "private $trace;"\
     "private $previous;"\
-	"public function __construct($message = null, $code = 0, Throwable $previous = null){"\
+	"public function __construct($message = null, $code = 0, ?Throwable $previous = null){"\
 	"   if( isset($message) ){"\
 	"	  $this->message = $message;"\
 	"   }"\
@@ -2217,8 +2216,8 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
 	"class DivisionByZeroError extends ArithmeticError { }"\
 	"class ErrorException extends Exception { "\
 	"protected $severity;"\
-	"public function __construct(string $message = null,"\
-	"int $code = 0,int $severity = 1,string $filename = __FILE__ ,int $lineno = __LINE__ ,Throwable $previous = null){"\
+	"public function __construct(?string $message = null,"\
+	"int $code = 0,int $severity = 1,string $filename = __FILE__ ,int $lineno = __LINE__ ,?Throwable $previous = null){"\
 	"   /* message/code/previous belong to Exception (trace/previous are private"\
 	"    * to it); delegate, then set our own severity plus the caller-supplied"\
 	"    * file/line, which are protected and stay writable here. */"\
@@ -3740,7 +3739,6 @@ static const struct VmBuiltinSig {
 	{ "asin", "float $num", "float" },
 	{ "asort", "array &$array, int $flags = 0", "true" },
 	{ "assert", "mixed $assertion, Throwable|string|null $description = NULL", "bool" },
-	{ "assert_options", "int $option, mixed $value = ?", "mixed" },
 	{ "atan", "float $num", "float" },
 	{ "atan2", "float $y, float $x", "float" },
 	{ "base64_decode", "string $string, bool $strict = false", "string|false" },
@@ -4081,7 +4079,6 @@ static const struct VmBuiltinSig {
 	{ "strnatcmp", "string $string1, string $string2", "int" },
 	{ "strcoll", "string $string1, string $string2", "int" },
 	{ "strcspn", "string $string, string $characters, int $offset = 0, ?int $length = NULL", "int" },
-	{ "strftime", "string $format, ?int $timestamp = NULL", "string|false" },
 	{ "strip_tags", "string $string, array|string|null $allowed_tags = NULL", "string" },
 	{ "stripos", "string $haystack, string $needle, int $offset = 0", "int|false" },
 	{ "stripslashes", "string $string", "string" },
@@ -4150,28 +4147,6 @@ static const struct VmBuiltinSig {
  * Stamp the signature strings onto the registered host functions.
  * Runs once at PH7_VmMakeReady, after the builtins are registered.
  */
-/*
- * Builtins php has DEPRECATED (the whole function, not an argument shape). The
- * notice is a property of the function name, so it is emitted once at the
- * OP_CALL choke point rather than smeared across each C implementation.
- * Texts are php 8.5's, byte-for-byte.
- */
-static const struct {
-	const char *zName;
-	const char *zMsg;
-} aBuiltinDeprecated[] = {
-	{ "strftime", "Function strftime() is deprecated since 8.1, use IntlDateFormatter::format() instead" },
-	{ "zip_open",  "Function zip_open() is deprecated since 8.0, use ZipArchive::open() instead" },
-	{ "zip_close", "Function zip_close() is deprecated since 8.0, use ZipArchive::close() instead" },
-	{ "zip_read",  "Function zip_read() is deprecated since 8.0, use ZipArchive::statIndex() instead" },
-	{ "zip_entry_open",  "Function zip_entry_open() is deprecated since 8.0" },
-	{ "zip_entry_close", "Function zip_entry_close() is deprecated since 8.0" },
-	{ "zip_entry_name",  "Function zip_entry_name() is deprecated since 8.0, use ZipArchive::statIndex() instead" },
-	{ "zip_entry_read",  "Function zip_entry_read() is deprecated since 8.0, use ZipArchive::getFromIndex() instead" },
-	{ "zip_entry_filesize", "Function zip_entry_filesize() is deprecated since 8.0, use ZipArchive::statIndex() instead" },
-	{ "zip_entry_compressedsize", "Function zip_entry_compressedsize() is deprecated since 8.0, use ZipArchive::statIndex() instead" },
-	{ "zip_entry_compressionmethod", "Function zip_entry_compressionmethod() is deprecated since 8.0, use ZipArchive::statIndex() instead" },
-};
 /*
  * Derive the minimum arity from a builtin's declared signature: a parameter is
  * optional when it carries a default ("int $length = 76") or is variadic
@@ -4418,14 +4393,6 @@ static sxi32 VmEnforceBuiltinArgTypes(
 static void VmSetBuiltinSignatures(ph7_vm *pVm)
 {
 	sxu32 n;
-	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltinDeprecated) ; n++ ){
-		SyHashEntry *pE = SyHashGet(&pVm->hHostFunction,
-			(const void *)aBuiltinDeprecated[n].zName,
-			(sxu32)SyStrlen(aBuiltinDeprecated[n].zName));
-		if( pE ){
-			((ph7_user_func *)pE->pUserData)->zDeprecated = aBuiltinDeprecated[n].zMsg;
-		}
-	}
 	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltinSig) ; n++ ){
 		SyHashEntry *pEntry = SyHashGet(&pVm->hHostFunction,
 			(const void *)aBuiltinSig[n].zName,(sxu32)SyStrlen(aBuiltinSig[n].zName));
@@ -4609,34 +4576,16 @@ static void VmThrowUserDeprecatedFmt(ph7_vm *pVm,const char *zFmt,...)
 static void VmDeprecatedAttrNoticeSubject(ph7_vm *pVm,SySet *pAttrs,
 	const char *zKind,const SyString *pQual,const SyString *pName);
 /*
- * Builtin constants php deprecates outright. A userland constant carries its notice in
- * an attribute set (#[\Deprecated]); an ENGINE constant has no attributes to hang one
- * on, so the deprecated ones are declared here and emitted at the single point every
- * constant expansion passes through.
+ * Expand a constant, emitting the php 8.5 #[\Deprecated] E_USER_DEPRECATED notice
+ * first when a USERLAND constant carries the attribute (`Constant GD is deprecated
+ * since 1.2` — every access re-warns). Engine constants php merely deprecates are
+ * not mimicked: PHL removes them outright (see the scope policy), so there is no
+ * engine-side E_DEPRECATED list here.
  */
-static const struct VmConstDeprecated {
-	const char *zName;
-	const char *zMsg;
-} aConstDeprecated[] = {
-	{ "E_STRICT",         "Constant E_STRICT is deprecated since 8.4, the error level was removed" },
-	{ "ASSERT_ACTIVE",    "Constant ASSERT_ACTIVE is deprecated since 8.3, as assert_options() is deprecated" },
-	{ "ASSERT_CALLBACK",  "Constant ASSERT_CALLBACK is deprecated since 8.3, as assert_options() is deprecated" },
-	{ "ASSERT_BAIL",      "Constant ASSERT_BAIL is deprecated since 8.3, as assert_options() is deprecated" },
-	{ "ASSERT_WARNING",   "Constant ASSERT_WARNING is deprecated since 8.3, as assert_options() is deprecated" },
-	{ "ASSERT_EXCEPTION", "Constant ASSERT_EXCEPTION is deprecated since 8.3, as assert_options() is deprecated" },
-};
 static void VmExpandConstantWithNotice(ph7_vm *pVm,ph7_constant *pCons,ph7_value *pOut)
 {
-	sxu32 n;
 	if( SySetUsed(&pCons->aAttrs) > 0 ){
 		VmDeprecatedAttrNoticeSubject(pVm,&pCons->aAttrs,"Constant",0,&pCons->sName);
-	}
-	for( n = 0 ; n < SX_ARRAYSIZE(aConstDeprecated) ; ++n ){
-		if( pCons->sName.nByte == SyStrlen(aConstDeprecated[n].zName)
-		 && SyMemcmp(pCons->sName.zString,aConstDeprecated[n].zName,pCons->sName.nByte) == 0 ){
-			VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,"%s",aConstDeprecated[n].zMsg);
-			break;
-		}
 	}
 	pCons->xExpand(pOut,pCons->pUserData);
 }
@@ -19733,12 +19682,6 @@ SkipFuncBody:
 		sCtx.pArgMap = pEffCallMap;
 		{
 		int nGiven = (int)SySetUsed(&aArg);
-		/* A whole-function deprecation fires BEFORE the ZPP checks — php notices that
-		 * you called a deprecated function even when the call is then rejected for its
-		 * arguments (`strftime()` prints the deprecation, then the ArgumentCountError). */
-		if( pFunc->zDeprecated ){
-			VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,"%s",pFunc->zDeprecated);
-		}
 		/* PHP-8 arity enforcement (band A #5): a builtin declaring a minimum
 		 * argument count (aBuiltinArity[]) throws a catchable ArgumentCountError
 		 * before the C routine runs when called with too few arguments — instead
@@ -25405,103 +25348,6 @@ static int vm_builtin_var_export(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return SXRET_OK;
 }
 /*
- * int/bool assert_options(int $what [, mixed $value ])
- *  Set/get the various assert flags.
- * Parameter
- * $what
- *   ASSERT_ACTIVE          Enable assert() evaluation
- *   ASSERT_WARNING         Deprecated, accepted as no-op
- *   ASSERT_BAIL            Terminate execution on failed assertions
- *   ASSERT_QUIET_EVAL      Deprecated, accepted as no-op (removed in PHP 8.0)
- *   ASSERT_CALLBACK        Callback to call on failed assertions
- *   ASSERT_EXCEPTION       Always enabled in PHP 8
- * $value
- *   An optional new value for the option.
- * Return
- *  Old setting on success or FALSE on failure.
- */
-static int vm_builtin_assert_options(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	ph7_vm *pVm = pCtx->pVm;
-	int iOption;
-	/* PHP 8: ArgumentCountError if no arguments */
-	if( nArg < 1 ){
-		return PH7_VmThrowException(pCtx,
-			"ArgumentCountError",
-			"assert_options() expects at least 1 argument, 0 given"
-			);
-	}
-	/* PHP 8: TypeError for non-scalar option types */
-	if( ph7_value_is_array(apArg[0]) || ph7_value_is_object(apArg[0])
-		|| ph7_value_is_resource(apArg[0]) ){
-		return PH7_VmThrowException(pCtx,
-			"TypeError",
-			"assert_options(): Argument #1 ($option) must be of type int, %s given",
-			ph7_value_is_array(apArg[0]) ? "array" :
-			ph7_value_is_object(apArg[0]) ? "object" : "resource"
-			);
-	}
-	iOption = ph7_value_to_int(apArg[0]);
-	/* PHP constant values: ASSERT_ACTIVE=1, ASSERT_CALLBACK=2,
-	 * ASSERT_BAIL=3, ASSERT_WARNING=4, ASSERT_EXCEPTION=5,
-	 * ASSERT_QUIET_EVAL=6 (deprecated) */
-	switch( iOption ){
-	case 1: /* ASSERT_ACTIVE */
-		/* Return old value: 1 if active (not disabled), 0 if disabled */
-		ph7_result_int(pCtx, (pVm->iAssertFlags & PH7_ASSERT_DISABLE) ? 0 : 1);
-		if( nArg > 1 ){
-			if( ph7_value_to_bool(apArg[1]) ){
-				pVm->iAssertFlags &= ~PH7_ASSERT_DISABLE;
-			}else{
-				pVm->iAssertFlags |= PH7_ASSERT_DISABLE;
-			}
-		}
-		break;
-	case 2: /* ASSERT_CALLBACK */
-		/* Return old callback or null */
-		if( pVm->iAssertFlags & PH7_ASSERT_CALLBACK ){
-			ph7_result_value(pCtx, &pVm->sAssertCallback);
-		}else{
-			ph7_result_null(pCtx);
-		}
-		if( nArg > 1 ){
-			if( ph7_value_is_callable(apArg[1]) ){
-				PH7_MemObjStore(apArg[1],&pVm->sAssertCallback);
-				pVm->iAssertFlags |= PH7_ASSERT_CALLBACK;
-			}else{
-				pVm->iAssertFlags &= ~PH7_ASSERT_CALLBACK;
-			}
-		}
-		break;
-	case 3: /* ASSERT_BAIL */
-		ph7_result_int(pCtx, (pVm->iAssertFlags & PH7_ASSERT_BAIL) ? 1 : 0);
-		if( nArg > 1 ){
-			if( ph7_value_to_bool(apArg[1]) ){
-				pVm->iAssertFlags |= PH7_ASSERT_BAIL;
-			}else{
-				pVm->iAssertFlags &= ~PH7_ASSERT_BAIL;
-			}
-		}
-		break;
-	case 4: /* ASSERT_WARNING — deprecated, accept but no-op */
-		ph7_result_int(pCtx, 0);
-		break;
-	case 5: /* ASSERT_EXCEPTION — always enabled in PHP 8 */
-		ph7_result_int(pCtx, 1);
-		break;
-	case 6: /* ASSERT_QUIET_EVAL — removed in PHP 8.0, accept as no-op */
-		ph7_result_int(pCtx, 0);
-		break;
-	default:
-		/* PHP 8: ValueError for invalid option */
-		return PH7_VmThrowException(pCtx,
-			"ValueError",
-			"assert_options(): Argument #1 ($option) must be an ASSERT_* constant"
-			);
-	}
-	return PH7_OK;
-}
-/*
  * bool assert(mixed $assertion)
  *  Checks if assertion is FALSE.
  * Parameter
@@ -28643,7 +28489,6 @@ static const ph7_builtin_func aVmFunc[] = {
 	{ "ob_list_handlers",  vm_builtin_ob_list_handlers },
 	{ "ob_start",          vm_builtin_ob_start     },
 	  /* Assertion functions */
-	{ "assert_options",  vm_builtin_assert_options },
 	{ "assert",          vm_builtin_assert         },
 	  /* Error reporting functions */
 	{ "trigger_error",vm_builtin_trigger_error     },

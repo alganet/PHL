@@ -30,7 +30,6 @@ OBJECTS = \
 	$(BUILD_DIR)/src/sx/sxutils$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/sx/sxlib$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/sx/sxfmt$(OBJ_SUFFIX) \
-	$(BUILD_DIR)/src/sx/sxzip$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/sx/sxrand$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/sx/sxhash$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/sx/sxblowfish$(OBJ_SUFFIX) \
@@ -49,7 +48,6 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/vfs$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vfs_unix$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vfs_win$(OBJ_SUFFIX) \
-	$(BUILD_DIR)/src/ph7/vfs_zip$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_builtin_class$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_builtin_getopt$(OBJ_SUFFIX) \
