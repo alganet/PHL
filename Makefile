@@ -30,7 +30,6 @@ OBJECTS = \
 	$(BUILD_DIR)/src/sx/sxutils$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/sx/sxlib$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/sx/sxfmt$(OBJ_SUFFIX) \
-	$(BUILD_DIR)/src/sx/sxxml$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/sx/sxzip$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/sx/sxrand$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/sx/sxhash$(OBJ_SUFFIX) \
@@ -65,7 +64,6 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/vm_json$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_pcre$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_serialize$(OBJ_SUFFIX) \
-	$(BUILD_DIR)/src/ph7/vm_xml$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_libxml$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_dom$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_xmlwriter$(OBJ_SUFFIX) \

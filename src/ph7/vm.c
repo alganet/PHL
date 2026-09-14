@@ -631,23 +631,6 @@ static const struct VmBuiltinArity {
 	{ "preg_replace_callback",     3, 1 },
 	{ "preg_split",                2, 1 },
 	/* XML family */
-	{ "xml_error_string",          1, 0 },
-	{ "xml_get_current_byte_index", 1, 0 },
-	{ "xml_get_current_column_number", 1, 0 },
-	{ "xml_get_current_line_number", 1, 0 },
-	{ "xml_get_error_code",        1, 0 },
-	{ "xml_parse",                 2, 1 },
-	{ "xml_parser_get_option",     2, 0 },
-	{ "xml_parser_set_option",     3, 0 },
-	{ "xml_set_character_data_handler", 2, 0 },
-	{ "xml_set_default_handler",   2, 0 },
-	{ "xml_set_element_handler",   3, 0 },
-	{ "xml_set_end_namespace_decl_handler", 2, 0 },
-	{ "xml_set_external_entity_ref_handler", 2, 0 },
-	{ "xml_set_notation_decl_handler", 2, 0 },
-	{ "xml_set_processing_instruction_handler", 2, 0 },
-	{ "xml_set_start_namespace_decl_handler", 2, 0 },
-	{ "xml_set_unparsed_entity_decl_handler", 2, 0 },
 	/* Constants/misc family */
 	{ "call_user_func",            1, 1 },
 	{ "call_user_func_array",      2, 0 },
@@ -2534,7 +2517,7 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
    "function extension_loaded($name){"\
    "  static $ext = array('core' => 1, 'standard' => 1, 'pcre' => 1, 'json' => 1,"\
    "   'ctype' => 1, 'date' => 1, 'spl' => 1, 'reflection' => 1, 'mbstring' => 1,"\
-   "   'hash' => 1, 'filter' => 1, 'session' => 1, 'libxml' => 1, 'xml' => 1);"\
+   "   'hash' => 1, 'filter' => 1, 'session' => 1, 'libxml' => 1);"\
    "  $n = strtolower((string)$name);"\
    "  if( isset($ext[$n]) ){ return true; }"\
    "  $stub = __phl_stub_exts();"\
@@ -4140,27 +4123,6 @@ static const struct VmBuiltinSig {
 	{ "vprintf", "string $format, array $values", "int" },
 	{ "vsprintf", "string $format, array $values", "string" },
 	{ "wordwrap", "string $string, int $width = 75, string $break = ?, bool $cut_long_words = false", "string" },
-	{ "xml_error_string", "int $error_code", "?string" },
-	{ "xml_get_current_byte_index", "XMLParser $parser", "int" },
-	{ "xml_get_current_column_number", "XMLParser $parser", "int" },
-	{ "xml_get_current_line_number", "XMLParser $parser", "int" },
-	{ "xml_get_error_code", "XMLParser $parser", "int" },
-	{ "xml_parse", "XMLParser $parser, string $data, bool $is_final = false", "int" },
-	{ "xml_parser_create", "?string $encoding = NULL", "XMLParser" },
-	{ "xml_parser_create_ns", "?string $encoding = NULL, string $separator = ':'", "XMLParser" },
-	{ "xml_parser_free", "XMLParser $parser", "bool" },
-	{ "xml_parser_get_option", "XMLParser $parser, int $option", "string|int|bool" },
-	{ "xml_parser_set_option", "XMLParser $parser, int $option, $value", "bool" },
-	{ "xml_set_character_data_handler", "XMLParser $parser, callable|string|null $handler", "true" },
-	{ "xml_set_default_handler", "XMLParser $parser, callable|string|null $handler", "true" },
-	{ "xml_set_element_handler", "XMLParser $parser, callable|string|null $start_handler, callable|string|null $end_handler", "true" },
-	{ "xml_set_end_namespace_decl_handler", "XMLParser $parser, callable|string|null $handler", "true" },
-	{ "xml_set_external_entity_ref_handler", "XMLParser $parser, callable|string|null $handler", "true" },
-	{ "xml_set_notation_decl_handler", "XMLParser $parser, callable|string|null $handler", "true" },
-	{ "xml_set_object", "XMLParser $parser, object $object", "true" },
-	{ "xml_set_processing_instruction_handler", "XMLParser $parser, callable|string|null $handler", "true" },
-	{ "xml_set_start_namespace_decl_handler", "XMLParser $parser, callable|string|null $handler", "true" },
-	{ "xml_set_unparsed_entity_decl_handler", "XMLParser $parser, callable|string|null $handler", "true" },
 	{ "zip_close", "$zip", "void" },
 	{ "zip_entry_close", "$zip_entry", "bool" },
 	{ "zip_entry_compressedsize", "$zip_entry", "int|false" },
@@ -4197,7 +4159,6 @@ static const struct {
 	{ "zip_entry_filesize", "Function zip_entry_filesize() is deprecated since 8.0, use ZipArchive::statIndex() instead" },
 	{ "zip_entry_compressedsize", "Function zip_entry_compressedsize() is deprecated since 8.0, use ZipArchive::statIndex() instead" },
 	{ "zip_entry_compressionmethod", "Function zip_entry_compressionmethod() is deprecated since 8.0, use ZipArchive::statIndex() instead" },
-	{ "xml_parser_free", "Function xml_parser_free() is deprecated since 8.5, as it has no effect since PHP 8.0" },
 };
 /*
  * Derive the minimum arity from a builtin's declared signature: a parameter is
@@ -28704,30 +28665,6 @@ static const ph7_builtin_func aVmFunc[] = {
 	  /* URL related function */
 	{"parse_url",        vm_builtin_parse_url     },
 	 /* Refer to 'builtin.c' for others string processing functions. */
-#ifndef PH7_DISABLE_BUILTIN_FUNC
-	   /* XML processing functions */
-	{"xml_parser_create",        vm_builtin_xml_parser_create   },
-	{"xml_parser_create_ns",     vm_builtin_xml_parser_create_ns},
-	{"xml_parser_free",          vm_builtin_xml_parser_free     },
-	{"xml_set_element_handler",  vm_builtin_xml_set_element_handler},
-	{"xml_set_character_data_handler", vm_builtin_xml_set_character_data_handler},
-	{"xml_set_default_handler",  vm_builtin_xml_set_default_handler },
-	{"xml_set_end_namespace_decl_handler", vm_builtin_xml_set_end_namespace_decl_handler},
-	{"xml_set_start_namespace_decl_handler",vm_builtin_xml_set_start_namespace_decl_handler},
-	{"xml_set_processing_instruction_handler",vm_builtin_xml_set_processing_instruction_handler},
-	{"xml_set_unparsed_entity_decl_handler",vm_builtin_xml_set_unparsed_entity_decl_handler},
-	{"xml_set_notation_decl_handler",vm_builtin_xml_set_notation_decl_handler},
-	{"xml_set_external_entity_ref_handler",vm_builtin_xml_set_external_entity_ref_handler},
-	{"xml_get_current_line_number",  vm_builtin_xml_get_current_line_number},
-	{"xml_get_current_byte_index",   vm_builtin_xml_get_current_byte_index },
-	{"xml_set_object",               vm_builtin_xml_set_object},
-	{"xml_get_current_column_number",vm_builtin_xml_get_current_column_number},
-	{"xml_get_error_code",           vm_builtin_xml_get_error_code },
-	{"xml_parse",                    vm_builtin_xml_parse },
-	{"xml_parser_set_option",        vm_builtin_xml_parser_set_option},
-	{"xml_parser_get_option",        vm_builtin_xml_parser_get_option},
-	{"xml_error_string",             vm_builtin_xml_error_string     },
-#endif /* PH7_DISABLE_BUILTIN_FUNC */
 	   /* UTF-8 encoding/decoding */
 	{"utf8_encode",    vm_builtin_utf8_encode},
 	{"utf8_decode",    vm_builtin_utf8_decode},

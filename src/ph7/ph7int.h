@@ -30,7 +30,6 @@ PH7_PRIVATE const char *ph7_type_name(ph7_value *pVal);
 #include "sxtime.h"       /* Time utilities */
 #include "sxdigest.h"     /* MD5Context, SHA1Context, digest functions */
 #include "sxblowfish.h"   /* bcrypt (Blowfish) password hashing */
-#include "sxxml.h"        /* SyXMLParser, XML callbacks */
 #include "sxzip.h"        /* SyArchive, SyArchiveEntry */
 
 #ifndef PH7_PI
@@ -2021,43 +2020,6 @@ struct SyhttpHeader
  */
 #define HTTP_PROTO_10 1 /* HTTP/1.0 */
 #define HTTP_PROTO_11 2 /* HTTP/1.1 */
-/*
- * XML engine handler IDs and structure.
- */
-#ifndef PH7_DISABLE_BUILTIN_FUNC
-enum ph7_xml_handler_id{
-	PH7_XML_START_TAG = 0, /* Start element handlers ID */
-	PH7_XML_END_TAG,       /* End element handler ID*/
-	PH7_XML_CDATA,         /* Character data handler ID*/
-	PH7_XML_PI,            /* Processing instruction (PI) handler ID*/
-	PH7_XML_DEF,           /* Default handler ID */
-	PH7_XML_UNPED,         /* Unparsed entity declaration handler */
-	PH7_XML_ND,            /* Notation declaration handler ID*/
-	PH7_XML_EER,           /* External entity reference handler */
-	PH7_XML_NS_START,      /* Start namespace declaration handler */
-	PH7_XML_NS_END         /* End namespace declaration handler */
-};
-#define XML_TOTAL_HANDLER (PH7_XML_NS_END + 1)
-typedef struct ph7_xml_engine ph7_xml_engine;
-struct ph7_xml_engine
-{
-	ph7_vm *pVm;         /* VM that own this instance */
-	ph7_context *pCtx;   /* Call context */
-	SyXMLParser sParser; /* Underlying XML parser */
-	ph7_value aCB[XML_TOTAL_HANDLER]; /* User-defined callbacks */
-	ph7_value sParserValue; /* ph7_value holding this instance which is forwarded
-							  * as the first argument to the user callbacks.
-							  */
-	int ns_sep;      /* Namespace separator */
-	SyBlob sErr;     /* Error message consumer */
-	sxi32 iErrCode;  /* Last error code */
-	sxi32 iNest;     /* Nesting level */
-	sxu32 nLine;     /* Last processed line */
-	sxu32 nMagic;    /* Magic number so that we avoid misuse  */
-};
-#define XML_ENGINE_MAGIC 0x851EFC52
-#define IS_INVALID_XML_ENGINE(XML) (XML == 0 || (XML)->nMagic != XML_ENGINE_MAGIC)
-#endif /* PH7_DISABLE_BUILTIN_FUNC */
 /* memobj.c function prototypes */
 PH7_PRIVATE sxi32 PH7_MemObjDump(SyBlob *pOut,ph7_value *pObj,int ShowType,int nTab,int nDepth,int isRef);
 PH7_PRIVATE const char * PH7_MemObjTypeDump(ph7_value *pVal);
@@ -2289,30 +2251,7 @@ PH7_PRIVATE void PH7_AppendShortestReal(SyBlob *pOut,double d);
 #ifndef PH7_OMIT_FLOATING_POINT
 PH7_PRIVATE sxi32 PH7_PhpFloatShape(char *zBuf,sxi32 nLen,int bGeneric);
 #endif
-/* vm_xml.c function prototypes */
-#ifndef PH7_DISABLE_BUILTIN_FUNC
-PH7_PRIVATE int vm_builtin_xml_parser_create(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int vm_builtin_xml_parser_create_ns(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int vm_builtin_xml_parser_free(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int vm_builtin_xml_set_element_handler(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int vm_builtin_xml_set_character_data_handler(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int vm_builtin_xml_set_default_handler(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int vm_builtin_xml_set_end_namespace_decl_handler(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int vm_builtin_xml_set_start_namespace_decl_handler(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int vm_builtin_xml_set_processing_instruction_handler(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int vm_builtin_xml_set_unparsed_entity_decl_handler(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int vm_builtin_xml_set_notation_decl_handler(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int vm_builtin_xml_set_external_entity_ref_handler(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int vm_builtin_xml_get_current_line_number(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int vm_builtin_xml_get_current_byte_index(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int vm_builtin_xml_set_object(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int vm_builtin_xml_get_current_column_number(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int vm_builtin_xml_get_error_code(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int vm_builtin_xml_parse(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int vm_builtin_xml_parser_set_option(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int vm_builtin_xml_parser_get_option(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int vm_builtin_xml_error_string(ph7_context *pCtx,int nArg,ph7_value **apArg);
-#endif /* PH7_DISABLE_BUILTIN_FUNC */
+/* builtin.c utf8 function prototypes */
 PH7_PRIVATE int vm_builtin_utf8_encode(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_utf8_decode(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE sxi32 VmLocalExec(ph7_vm *pVm,SySet *pByteCode,ph7_value *pResult,int bReturnPropagates);
@@ -2612,22 +2551,6 @@ PH7_PRIVATE void * PH7_ExportStdout(ph7_vm *pVm);
 PH7_PRIVATE void * PH7_ExportStderr(ph7_vm *pVm);
 /* lib.c function prototypes */
 #ifndef PH7_DISABLE_BUILTIN_FUNC
-PH7_PRIVATE sxi32 SyXMLParserInit(SyXMLParser *pParser,SyMemBackend *pAllocator,sxi32 iFlags);
-PH7_PRIVATE sxi32 SyXMLParserSetEventHandler(SyXMLParser *pParser,
-	void *pUserData,
-	ProcXMLStartTagHandler xStartTag,
-	ProcXMLTextHandler xRaw,
-	ProcXMLSyntaxErrorHandler xErr,
-	ProcXMLStartDocument xStartDoc,
-	ProcXMLEndTagHandler xEndTag,
-	ProcXMLPIHandler xPi,
-	ProcXMLEndDocument xEndDoc,
-	ProcXMLDoctypeHandler xDoctype,
-	ProcXMLNameSpaceStart xNameSpace,
-	ProcXMLNameSpaceEnd xNameSpaceEnd
-	);
-PH7_PRIVATE sxi32 SyXMLProcess(SyXMLParser *pParser,const char *zInput,sxu32 nByte);
-PH7_PRIVATE sxi32 SyXMLParserRelease(SyXMLParser *pParser);
 PH7_PRIVATE sxi32 SyArchiveInit(SyArchive *pArch,SyMemBackend *pAllocator,ProcHash xHash,ProcRawStrCmp xCmp);
 PH7_PRIVATE sxi32 SyArchiveRelease(SyArchive *pArch);
 PH7_PRIVATE sxi32 SyArchiveResetLoopCursor(SyArchive *pArch);
