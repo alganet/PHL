@@ -1,0 +1,1129 @@
+/**
+ * SPDX-FileCopyrightText: 2011, 2012, 2013, 2014 Symisc Systems <licensing@symisc.net>
+ * SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+#include "ph7int.h"
+/*
+ * Section:
+ *    Opcode handlers extracted from vm.c's dispatch loop. Each handler runs
+ *    one opcode arm against the caller's VmExecState: the loop syncs pTos/pc
+ *    in, calls the handler, reloads them and routes the returned VmOpRc onto
+ *    its labels (same idiom as VmCallFinish).
+ * Status:
+ *    Stable.
+ */
+/* Bind the dispatch-routing exits to handler semantics (see vm_dispatch.h),
+ * and map the macros' sState references onto our state parameter. */
+#define VM_EXIT_BREAK      { pState->pTos = pTos; pState->pc = pc; return VM_OP_NEXT; }
+#define VM_EXIT_ABORT      { pState->pTos = pTos; pState->pc = pc; return VM_OP_ABORT; }
+#define VM_EXIT_EXCEPTION  { pState->pTos = pTos; pState->pc = pc; return VM_OP_EXCEPTION; }
+#include "vm_dispatch.h"
+#define sState (*pState)
+
+/*
+ * OP_STORE_REF: body moved verbatim from the OP_STORE_REF arm of
+ * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
+ */
+PH7_PRIVATE VmOpRc VmExecOpStoreRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
+{
+	ph7_value *pTos = pState->pTos;
+	ph7_value *pStack = pState->pStack;
+	VmInstr *aInstr = pState->aInstr;
+	sxi32 pc = pState->pc;
+	sxi32 rc;
+	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	 SyString sName = { 0 , 0 };
+	 VmFrame *pFrameLocal;
+	SyHashEntry *pEntry;
+	sxu32 nIdx;
+#ifdef UNTRUST
+	if( pTos < pStack ){
+		VM_EXIT_ABORT;
+	}
+#endif
+	if( pInstr->iP2 == 1 ){
+		/* Member reference target: `$o->p =& $x` / `self::$s =& $x`. The
+		 * preceding OP_MEMBER (PH7_MEMBER_REF_TARGET) resolved the property slot
+		 * and stashed it. Stack: [ ... , source, member-result(top) ]. Rebind the
+		 * property's nIdx to alias the source variable's slot and pin that slot
+		 * past its owning frame (like a use(&$x) capture) so neither frame
+		 * teardown nor a later unset recycles it while the property aliases it. */
+		ph7_value *pSrc = &pTos[-1];
+		sxu32 nSrcIdx = pSrc->nIdx;
+		VmClassAttr *pVmAttr = pVm->pRefTargetAttr;
+		ph7_class_attr *pStAttr = pVm->pRefTargetStaticAttr;
+		if( nSrcIdx == SXU32_HIGH ){
+			/* php: the RHS of `=&` must be a variable, not a constant expression.
+			 * (The compiler already rejects the obvious literal forms.) */
+			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
+				"Reference operator require a variable not a constant as it's right operand");
+		}else if( pVmAttr ){
+			sxu32 nOldIdx = pVmAttr->nIdx;
+			if( nOldIdx != nSrcIdx ){
+				if( (pVmAttr->iState & VM_CLASS_ATTR_REFBOUND) == 0 ){
+					/* Release this property's own (unshared) slot before repointing.
+					 * A reference-bound property bypasses typed coercion in php, so
+					 * drop any typed-slot enforcement entry too. */
+					if( pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
+						SyHashDeleteEntry(&pVm->hTypedSlot,(const void *)&nOldIdx,sizeof(sxu32),0);
+					}
+					PH7_VmUnsetMemObj(&(*pVm),nOldIdx,TRUE);
+				}
+				pVmAttr->nIdx = nSrcIdx;
+				pVmAttr->iState |= VM_CLASS_ATTR_REFBOUND;
+				pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
+				VmPinMemObjSlot(&(*pVm),nSrcIdx);
+			}
+		}else if( pStAttr ){
+			if( pStAttr->nIdx != nSrcIdx ){
+				pStAttr->nIdx = nSrcIdx;
+				VmPinMemObjSlot(&(*pVm),nSrcIdx);
+			}
+		}
+		if( pVm->pRefTargetThis ){
+			PH7_ClassInstanceUnref(pVm->pRefTargetThis);
+		}
+		pVm->pRefTargetAttr = 0;
+		pVm->pRefTargetStaticAttr = 0;
+		pVm->pRefTargetThis = 0;
+		/* Pop the member-result; leave the source as the expression value. */
+		VmPopOperand(&pTos,1);
+		VM_EXIT_BREAK;
+	}
+	if( pInstr->p3 == 0 ){
+		char *zName;
+		/* Take the variable name from the Next on the stack */
+		if( (pTos->iFlags & MEMOBJ_STRING) == 0 ){
+			/* Force a string cast */
+			PH7_MemObjToString(pTos);
+		}
+		if( SyBlobLength(&pTos->sBlob) > 0 ){
+			zName = SyMemBackendStrDup(&pVm->sAllocator,
+				(const char *)SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
+			if( zName ){
+				SyStringInitFromBuf(&sName,zName,SyBlobLength(&pTos->sBlob));
+			}
+		}
+		PH7_MemObjRelease(pTos);
+		pTos--;
+	}else{
+		SyStringInitFromBuf(&sName,pInstr->p3,SyStrlen((const char *)pInstr->p3));
+	}
+	nIdx = pTos->nIdx;
+	if(nIdx == SXU32_HIGH ){
+		if( (pTos->iFlags & (MEMOBJ_OBJ|MEMOBJ_HASHMAP|MEMOBJ_RES)) == 0 ){
+			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
+				"Reference operator require a variable not a constant as it's right operand");
+		}else{
+			ph7_value *pObj;
+			/* Extract the desired variable and if not available dynamically create it */
+			pObj = VmExtractMemObj(&(*pVm),&sName,FALSE,TRUE);
+			if( pObj == 0 ){
+				VmErrorFormat(&(*pVm),PH7_CTX_ERR,
+					"Fatal, PH7 engine is running out of memory while loading variable '%z'",&sName);
+				VM_EXIT_ABORT;
+			}
+			/* Perform the store operation */
+			PH7_MemObjStore(pTos,pObj);
+			pTos->nIdx = pObj->nIdx;
+		}
+	}else if( sName.nByte > 0){
+		if( (pTos->iFlags & MEMOBJ_HASHMAP) && (pVm->pGlobal == (ph7_hashmap *)pTos->x.pOther) ){
+			/* php 8.1's non-catchable fatal (compile-time there) */
+			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot acquire reference to $GLOBALS");
+			pVm->iExitStatus = 255;
+			pVm->bHaltRequested = 1;
+			VM_EXIT_ABORT;
+		}else{
+			pFrameLocal = pVm->pFrame;
+			pFrameLocal = VmSkipExceptionFrames(pFrameLocal);
+			/* Query the local frame */
+			pEntry = SyHashGet(&pFrameLocal->hVar,(const void *)sName.zString,sName.nByte);
+			if( pEntry ){
+				VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Referenced variable name '%z' already exists",&sName);
+			}else{
+				rc = SyHashInsert(&pFrameLocal->hVar,(const void *)sName.zString,sName.nByte,SX_INT_TO_PTR(nIdx));
+				if( pFrameLocal->pParent == 0 ){
+					/* Insert in the $GLOBALS array */
+					VmHashmapRefInsert(pVm->pGlobal,sName.zString,sName.nByte,nIdx);
+				}
+				if( rc == SXRET_OK ){
+					PH7_VmRefObjInstall(&(*pVm),nIdx,SyHashLastEntry(&pFrameLocal->hVar),0,0);
+				}
+			}
+		}
+	}
+	VM_EXIT_BREAK;
+	VM_EXIT_BREAK;
+}
+
+/*
+ * OP_STORE_IDX_REF: body moved verbatim from the OP_STORE_IDX_REF arm of
+ * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
+ */
+PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
+{
+	ph7_value *pTos = pState->pTos;
+	ph7_value *pStack = pState->pStack;
+	VmInstr *aInstr = pState->aInstr;
+	sxi32 pc = pState->pc;
+	sxi32 rc;
+	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	ph7_hashmap *pMap = 0; /* cc  warning */
+	ph7_value *pKey;
+	sxu32 nIdx;
+	if( pInstr->iP1 ){
+		/* Key is next on stack */
+		pKey = pTos;
+		pTos--;
+	}else{
+		pKey = 0;
+	}
+		/* php only DEPRECATES a lossy-float / null write subscript (then truncates /
+		 * normalizes to ""); PHL rejects it. */
+		if( pKey && (pTos->iFlags & MEMOBJ_HASHMAP) ){
+			int bNull = (pKey->iFlags & MEMOBJ_NULL) != 0;
+			int bLossyFloat = (pKey->iFlags & MEMOBJ_REAL) != 0
+				&& pKey->rVal != (ph7_real)(sxi64)pKey->rVal;
+			if( bNull || bLossyFloat ){
+				sxi32 rcSc;
+				const char *zErr = bNull ? "Cannot access offset of type null on array"
+				                         : "Cannot access offset of type float on array";
+				PH7_MemObjRelease(pKey);
+				VmPopOperand(&pTos,1);
+				rcSc = VmThrowFromVm(&(*pVm),"TypeError",zErr,(sxu32)SyStrlen(zErr));
+				if( rcSc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+				rc = rcSc;
+				PH7_THROW_ROUTE_MIDEXPR(rc)
+			}
+		}
+	nIdx = pTos->nIdx;
+	{
+		/* ArrayAccess::offsetSet dispatch.
+		 * Container may be on the stack as MEMOBJ_OBJ, or referenced via
+		 * the backing variable slot at nIdx. */
+		ph7_class_instance *pInst = 0;
+		if( pTos->iFlags & MEMOBJ_OBJ ){
+			pInst = (ph7_class_instance *)pTos->x.pOther;
+		}else if( nIdx != SXU32_HIGH ){
+			ph7_value *pBacking = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
+			if( pBacking && (pBacking->iFlags & MEMOBJ_OBJ) ){
+				pInst = (ph7_class_instance *)pBacking->x.pOther;
+			}
+		}
+		if( pInst ){
+			ph7_class *pArrayAccess = pVm->pArrayAccessClass;
+			if( pArrayAccess && PH7_VmInstanceOf(pInst->pClass,pArrayAccess) ){
+				ph7_class_method *pMeth;
+				ph7_value sNullKey;
+				ph7_value *apArg[2];
+				if( pInstr->iOp == PH7_OP_STORE_IDX_REF ){
+					PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
+						"Cannot assign by reference to overloaded object");
+					if( pKey ){ PH7_MemObjRelease(pKey); }
+					VmPopOperand(&pTos,2); /* container + value */
+					VM_EXIT_BREAK;
+				}
+				pMeth = PH7_ClassExtractMethod(pInst->pClass,
+					"offsetSet",sizeof("offsetSet")-1);
+				/* Pop container; pTos now points to the value */
+				VmPopOperand(&pTos,1);
+				if( pKey == 0 ){
+					PH7_MemObjInit(&(*pVm),&sNullKey);
+					apArg[0] = &sNullKey;
+				}else{
+					apArg[0] = pKey;
+				}
+				apArg[1] = pTos;
+				if( pMeth ){
+					PH7_VmCallClassMethod(&(*pVm),pInst,pMeth,0,2,apArg);
+				}
+				if( pKey ){
+					PH7_MemObjRelease(pKey);
+				}else{
+					PH7_MemObjRelease(&sNullKey);
+				}
+				/* Pop the value */
+				VmPopOperand(&pTos,1);
+				VM_EXIT_BREAK;
+			}
+			/* Object without ArrayAccess: PHP throws a fatal Error rather
+			 * than silently coercing the object into a hashmap (which is
+			 * what the legacy PH7 fall-through would do via MemObjToHashmap
+			 * a few lines below). Match PHP. */
+			{
+				char zMsg[256];
+				SyString *pName = &pInst->pClass->sName;
+				sxu32 nMsg = SyBufferFormat(zMsg,sizeof(zMsg),
+					"Cannot use object of type %.*s as array",
+					(int)pName->nByte,pName->zString);
+				rc = VmThrowFromVm(pVm,"Error",zMsg,nMsg);
+				if( pKey ){ PH7_MemObjRelease(pKey); }
+				VmPopOperand(&pTos,2); /* container + value */
+				if( rc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+				PH7_THROW_ROUTE_MIDEXPR(rc)
+			}
+		}
+	}
+	if( pTos->iFlags & MEMOBJ_HASHMAP ){
+		/* Hashmap already loaded on stack — COW separate the backing variable.
+		 * The stack holds a temporary ref (from LOAD), so undo it before
+		 * checking true sharing count, then re-add after separation. */
+		if( nIdx != SXU32_HIGH ){
+			ph7_value *pBacking = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
+			if( pBacking && (pBacking->iFlags & MEMOBJ_HASHMAP) ){
+				ph7_hashmap *pCur = (ph7_hashmap *)pTos->x.pOther;
+				/* Only adjust refcount / perform COW if the backing variable
+				 * is still sharing the same hashmap instance. This mirrors
+				 * the guard used by PH7_OP_LOAD_IDX and avoids corrupting
+				 * refcounts if the backing array was already separated. */
+				if( pBacking->x.pOther == (void *)pCur ){
+					pCur->iRef--;  /* Undo stack ref to reveal true sharing count */
+					pMap = PH7_HashmapCowSeparate(&(*pVm),pBacking);
+					pMap->iRef++;  /* Re-add stack ref */
+					pTos->x.pOther = pMap;
+				}else{
+					/* Backing variable no longer points at pCur: skip COW here
+					 * and operate on the hashmap currently on the stack. */
+					pMap = pCur;
+				}
+			}else{
+				pMap = (ph7_hashmap *)pTos->x.pOther;
+			}
+		}else{
+			pMap = (ph7_hashmap *)pTos->x.pOther;
+		}
+		if( pMap->iRef < 2 ){
+			/* TICKET 1433-48: Prevent garbage collection during insertion.
+			 * This inflation is safe with COW: VmPopOperand below will call
+			 * PH7_HashmapUnref, bringing iRef back down. Between here and there,
+			 * no code checks iRef for COW decisions. */
+			pMap->iRef = 2;
+		}
+	}else{
+		ph7_value *pObj;
+		pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
+		if( pObj == 0 ){
+			if( pKey ){
+			  PH7_MemObjRelease(pKey);
+			}
+			VmPopOperand(&pTos,1);
+			VM_EXIT_BREAK;
+		}
+		/* Phase#1: Load the array */
+		if( (pObj->iFlags & MEMOBJ_STRING) && (pInstr->iOp != PH7_OP_STORE_IDX_REF) ){
+			VmPopOperand(&pTos,1);
+			if( (pTos->iFlags&MEMOBJ_STRING) == 0 ){
+				/* Force a string cast */
+				PH7_MemObjToString(pTos);
+			}
+			if( pKey == 0 ){
+				/* Append string */
+				if( SyBlobLength(&pTos->sBlob) > 0 ){
+					SyBlobAppend(&pObj->sBlob,SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
+				}
+			}else{
+				sxi64 iOfft;
+				sxi64 nLen;
+				if((pKey->iFlags & MEMOBJ_INT) == 0 ){
+					/* Force an int cast */
+					PH7_MemObjToInteger(pKey);
+				}
+				iOfft = pKey->x.iVal;
+				nLen = (sxi64)SyBlobLength(&pObj->sBlob);
+				if( iOfft < 0 ){
+					/* php 7.1: a negative offset writes back from the end. */
+					iOfft += nLen;
+					if( iOfft < 0 ){
+						VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Illegal string offset %qd",
+							pKey->x.iVal);
+						PH7_MemObjRelease(pKey);
+						VM_EXIT_BREAK;
+					}
+				}
+				if( SyBlobLength(&pTos->sBlob) > 0 ){
+					const char *zBlob = (const char *)SyBlobData(&pTos->sBlob);
+					if( SyBlobLength(&pTos->sBlob) > 1 ){
+						VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
+							"Only the first byte will be assigned to the string offset");
+					}
+					if( iOfft >= nLen ){
+						/* php PADS WITH SPACES up to the offset. PH7 simply appended the
+						 * byte, so "abc" with [6]="Z" became "abcZ" rather than "abc   Z"
+						 * -- a silently wrong string. */
+						sxi64 nPad;
+						for( nPad = nLen ; nPad < iOfft ; ++nPad ){
+							SyBlobAppend(&pObj->sBlob," ",sizeof(char));
+						}
+						SyBlobAppend(&pObj->sBlob,(const void *)zBlob,sizeof(char));
+					}else{
+						char *zData = (char *)SyBlobData(&pObj->sBlob);
+						zData[iOfft] = zBlob[0];
+					}
+				}
+			}
+			if( pKey ){
+			  PH7_MemObjRelease(pKey);
+			}
+			VM_EXIT_BREAK;
+		}else if( (pObj->iFlags & MEMOBJ_HASHMAP) == 0 ){
+			/* php: only NULL and FALSE auto-vivify into an array. Writing an index into an
+			 * int/float/resource/TRUE is a catchable Error -- PH7 quietly REPLACED the value
+			 * with an array, destroying it ($x = 5; $x[0] = 1; left $x === [1]). */
+			/* php auto-vivifies false into an array with an 8.1 DEPRECATION; PHL
+			 * rejects any scalar base, false included (null still auto-vivifies). */
+			int bScalar = (pObj->iFlags & (MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_RES|MEMOBJ_BOOL)) != 0;
+			if( bScalar ){
+				sxi32 rcSc;
+				if( pKey ){
+					PH7_MemObjRelease(pKey);
+				}
+				VmPopOperand(&pTos,1);
+				rcSc = VmThrowFromVm(&(*pVm),"Error","Cannot use a scalar value as an array",
+					sizeof("Cannot use a scalar value as an array")-1);
+				if( rcSc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+				rc = rcSc;
+				PH7_THROW_ROUTE_MIDEXPR(rc)
+			}
+			/* Force a hashmap cast  */
+			rc = PH7_MemObjToHashmap(pObj);
+			if( rc != SXRET_OK ){
+				VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Fatal, PH7 engine is running out of memory while creating a new array");
+				VM_EXIT_ABORT;
+			}
+		}
+		/* COW separate the backing variable before mutation */
+		pMap = PH7_HashmapCowSeparate(&(*pVm),pObj);
+	}
+	VmPopOperand(&pTos,1);
+	/* Phase#2: Perform the insertion */
+	if( pInstr->iOp == PH7_OP_STORE_IDX_REF && pTos->nIdx != SXU32_HIGH ){
+		if( pMap == pVm->pGlobal ){
+			/* php 8.1: $GLOBALS['y'] =& $x binds the global $y to $x's
+			 * slot; an append has no name to bind (catchable Error). */
+			if( pKey == 0 ){
+				rc = PH7_VmThrowGlobalsAppendError(&(*pVm));
+			}else{
+				if( (pKey->iFlags & MEMOBJ_STRING) == 0 ){
+					PH7_MemObjToString(pKey);
+				}
+				if( SyBlobLength(&pKey->sBlob) < 1 ){
+					/* Pathological empty name: keep the legacy diagnostic */
+					PH7_VmThrowError(&(*pVm),0,PH7_CTX_NOTICE,
+						"$GLOBALS is a read-only array,insertion is forbidden");
+					rc = SXRET_OK;
+				}else{
+					rc = PH7_VmInstallGlobalVar(&(*pVm),
+						(const char *)SyBlobData(&pKey->sBlob),SyBlobLength(&pKey->sBlob),
+						0,pTos->nIdx);
+				}
+			}
+		}else{
+			/* Insertion by reference */
+			rc = PH7_HashmapInsertByRef(pMap,pKey,pTos->nIdx);
+		}
+	}else{
+		rc = PH7_HashmapInsert(pMap,pKey,pTos);
+	}
+	if( pKey ){
+		PH7_MemObjRelease(pKey);
+	}
+	/* An append onto the occupied saturated auto-index threw php's catchable
+	 * Error (PH7_VmThrowArrayNextIndexError) — dispatch it like any other
+	 * store-path throw. Plain failures (OOM) keep their existing routes. */
+	PH7_DISPATCH_ENFORCE_RC(rc)
+	VM_EXIT_BREAK;
+	VM_EXIT_BREAK;
+}
+
+/*
+ * OP_LOAD_CLOSURE: body moved verbatim from the OP_LOAD_CLOSURE arm of
+ * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
+ */
+PH7_PRIVATE VmOpRc VmExecOpLoadClosure(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
+{
+	ph7_value *pTos = pState->pTos;
+	ph7_value *pStack = pState->pStack;
+	VmInstr *aInstr = pState->aInstr;
+	sxi32 pc = pState->pc;
+	sxi32 rc;
+	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	ph7_vm_func *pFunc = (ph7_vm_func *)pInstr->p3;
+	/* The function whose name the Closure object will wrap: a fresh per-instantiation
+	 * copy for a real closure (built below), or the shared lambda function itself for a
+	 * plain anonymous function with no captured environment. */
+	ph7_vm_func *pTarget = pFunc;
+	/* A no-capture lambda declared inside a class method is not VM_FUNC_CLOSURE
+	 * (its env is empty), yet php still binds the creation-site class as its scope
+	 * so `self::`/private access inside the body works. Detect the enclosing class
+	 * here and route such a lambda through the per-instance closure path (a global
+	 * no-capture lambda peeks NULL and stays a shared function). */
+	ph7_class *pLoadScope = (pFunc->iFlags & VM_FUNC_CLOSURE) ? 0 : PH7_VmPeekDeclaringClass(pVm);
+	if( (pFunc->iFlags & VM_FUNC_CLOSURE) || pLoadScope ){
+		ph7_vm_func_closure_env *aEnv,*pEnv,sEnv;
+		ph7_vm_func *pClosure;
+		char *zName;
+		sxu32 mLen;
+		sxu32 n;
+		/* Create a new VM function */
+		pClosure = (ph7_vm_func *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_vm_func));
+		/* Generate an unique closure name */
+		zName = (char *)SyMemBackendAlloc(&pVm->sAllocator,sizeof("[closure_]")+64);
+		if( pClosure == 0 || zName == 0){
+			PH7_VmThrowError(pVm,0,E_ERROR,"Fatal: PH7 is running out of memory while creating closure environment");
+			VM_EXIT_ABORT;
+		}
+		mLen = SyBufferFormat(zName,sizeof("[closure_]")+64,"[closure_%d]",pVm->closure_cnt++);
+		while( SyHashGet(&pVm->hFunction,zName,mLen) != 0 && mLen < (sizeof("[closure_]")+60/* not 64 */) ){
+			mLen = SyBufferFormat(zName,sizeof("[closure_]")+64,"[closure_%d]",pVm->closure_cnt++);
+		}
+		/* Zero the stucture */
+		SyZero(pClosure,sizeof(ph7_vm_func));
+		/* Perform a structure assignment on read-only items */
+		pClosure->aArgs = pFunc->aArgs;
+		pClosure->aByteCode = pFunc->aByteCode;
+		pClosure->aStatic = pFunc->aStatic;
+		pClosure->iFlags = pFunc->iFlags;
+		/* An in-class no-capture lambda routed here (pLoadScope set) must be a
+		 * real closure so PH7_VmClassMemberAccess honors its pUserData scope. */
+		pClosure->iFlags |= VM_FUNC_CLOSURE;
+		pClosure->pUserData = pFunc->pUserData;
+		pClosure->sSignature = pFunc->sSignature;
+		pClosure->nReturnType = pFunc->nReturnType;
+		pClosure->sReturnClass = pFunc->sReturnClass;
+		pClosure->aReturnUnion = pFunc->aReturnUnion;
+		pClosure->sReturnTypeName = pFunc->sReturnTypeName;
+		pClosure->bStrictTypes = pFunc->bStrictTypes;
+		pClosure->nMaxStack = pFunc->nMaxStack;
+		if( pClosure->pUserData == 0 ){
+			/* Stamp the creation-site class scope (see PH7_VmPeekDeclaringClass):
+			 * a closure made in a method — or in another closure, whose own stamp
+			 * the peek reads — resolves self::/parent:: against it like php. */
+			pClosure->pUserData = (void *)PH7_VmPeekDeclaringClass(pVm);
+		}
+		/* Capture the creation-site late-static-binding class so `static::` inside
+		 * the closure body resolves like php (the "called class", which may differ
+		 * from the declaring scope stamped above — e.g. a closure made in an
+		 * inherited method). A closure made outside any class captures NULL. */
+		pClosure->pLsbClass = (void *)PH7_VmPeekTopClass(pVm);
+		/* Reflection descriptor fields (getDocComment/getAttributes/getStartLine/
+		 * getEndLine/getFileName read the INSTANTIATED copy via $__fn) */
+		pClosure->aAttrs = pFunc->aAttrs;
+		pClosure->sDoc = pFunc->sDoc;
+		pClosure->sFile = pFunc->sFile;
+		pClosure->nLine = pFunc->nLine;
+		pClosure->nEndLine = pFunc->nEndLine;
+		SyStringInitFromBuf(&pClosure->sName,zName,mLen);
+		/* Register the closure */
+		PH7_VmInstallUserFunction(pVm,pClosure,0);
+		/* Set up closure environment */
+		SySetInit(&pClosure->aClosureEnv,&pVm->sAllocator,sizeof(ph7_vm_func_closure_env));
+		aEnv = (ph7_vm_func_closure_env *)SySetBasePtr(&pFunc->aClosureEnv);
+		for( n = 0 ; n < SySetUsed(&pFunc->aClosureEnv) ; ++n ){
+			ph7_value *pValue;
+			pEnv = &aEnv[n];
+			sEnv.sName  = pEnv->sName;
+			sEnv.iFlags = pEnv->iFlags;
+			sEnv.nIdx = SXU32_HIGH;
+			PH7_MemObjInit(pVm,&sEnv.sValue);
+			if( (sEnv.iFlags & (VM_FUNC_ARG_BY_REF|VM_FUNC_ARG_IGNORE)) == VM_FUNC_ARG_BY_REF
+			 && !(SyStringLength(&sEnv.sName) == sizeof("this")-1
+				&& SyMemcmp(SyStringData(&sEnv.sName),"this",sizeof("this")-1) == 0) ){
+				/* Capture by reference: bind the env entry to the variable's
+				 * memory slot — creating a fresh null variable when missing,
+				 * as php does (`use (&$f)` before $f is assigned) — and pin
+				 * the slot past the creating frame's teardown so the closure
+				 * can outlive its birth scope. The call-time env install
+				 * aliases the name to this slot instead of copying a value. */
+				pValue = VmExtractMemObj(pVm,&sEnv.sName,FALSE,TRUE);
+				if( pValue ){
+					sEnv.nIdx = pValue->nIdx;
+					VmPinMemObjSlot(pVm,pValue->nIdx);
+				}
+			}else{
+				/* Standard pass by value */
+				pValue = VmExtractMemObj(pVm,&sEnv.sName,FALSE,FALSE);
+				if( pValue ){
+					/* Copy imported value */
+					PH7_MemObjStore(pValue,&sEnv.sValue);
+				}
+			}
+			/* Insert the imported variable */
+			SySetPut(&pClosure->aClosureEnv,(const void *)&sEnv);
+		}
+		pTarget = pClosure;
+	}
+	/* Wrap the target function in a Closure object and push it. Its captured environment
+	 * (incl. any `$this`) stays in pTarget->aClosureEnv and is delivered by the normal call
+	 * path when the closure is dispatched by name. */
+	pTos++;
+	{
+		ph7_class_instance *pCloObj = VmCreateClosure(pVm, &pTarget->sName, 0, 0);
+		if( pCloObj ){
+			pCloObj->iRef++;
+			pTos->x.pOther = pCloObj;
+			MemObjSetType(pTos, MEMOBJ_OBJ);
+		}else{
+			/* OOM fallback: the name string is still a usable callable. */
+			PH7_MemObjStringAppend(pTos, pTarget->sName.zString, pTarget->sName.nByte);
+		}
+	}
+	VM_EXIT_BREAK;
+	VM_EXIT_BREAK;
+}
+
+/*
+ * OP_LOAD_IDX: body moved verbatim from the OP_LOAD_IDX arm of
+ * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
+ */
+PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
+{
+	ph7_value *pTos = pState->pTos;
+	ph7_value *pStack = pState->pStack;
+	VmInstr *aInstr = pState->aInstr;
+	sxi32 pc = pState->pc;
+	sxi32 rc;
+	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	ph7_hashmap_node *pNode = 0; /* cc warning */
+	ph7_hashmap *pMap = 0;
+	ph7_value *pIdx;
+	pIdx = 0;
+	if( pInstr->iP1 == 0 ){
+		if( !pInstr->iP2){
+			/* No available index,load NULL */
+			if( pTos >= pStack ){
+				PH7_MemObjRelease(pTos);
+			}else{
+				/* TICKET 1433-020: Empty stack */
+				pTos++;
+				MemObjSetType(pTos,MEMOBJ_NULL);
+				pTos->nIdx = SXU32_HIGH;
+			}
+			/* Emit a notice */
+			PH7_VmThrowError(&(*pVm),0,PH7_CTX_NOTICE,
+				"Array: Attempt to access an undefined index,PH7 is loading NULL");
+			VM_EXIT_BREAK;
+		}
+	}else{
+		pIdx = pTos;
+		pTos--;
+	}
+	if( pInstr->iP2 == 7 && (pTos->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		/* Keyed list destructuring `["k"=>$v] = $src` from a NON-array source: yield NULL
+		 * (never char-index a string), warning once per key — matching PHP, which warns per
+		 * key here. A NULL source is silent; unlike the positional OP_LOAD_LIST path, a bool
+		 * source DOES warn (PHP warns for bool in keyed destructuring). */
+		if( (pTos->iFlags & MEMOBJ_NULL) == 0 ){
+			VmWarnCannotUseAsArray(&(*pVm),pTos->iFlags);
+		}
+		if( pIdx ){
+			/* Release the key (a string literal for keyed destructuring), like the
+			 * normal hashmap-read exit below — otherwise its blob is orphaned. */
+			PH7_MemObjRelease(pIdx);
+		}
+		PH7_MemObjRelease(pTos);
+		MemObjSetType(pTos,MEMOBJ_NULL);
+		VM_EXIT_BREAK;
+	}
+	if( pTos->iFlags & MEMOBJ_STRING ){
+		/* String access */
+		if( pIdx ){
+			sxi64 iOfft;
+			sxi64 nLen = (sxi64)SyBlobLength(&pTos->sBlob);
+			if( (pIdx->iFlags & MEMOBJ_INT) == 0 ){
+				/* Force an int cast */
+				PH7_MemObjToInteger(pIdx);
+			}
+			iOfft = pIdx->x.iVal;
+			/* php 7.1: a NEGATIVE offset counts back from the end ($s[-1] is the last
+			 * character). The offset used to be cast to UNSIGNED, so -1 became a huge
+			 * number, ran past the end and quietly produced NULL. */
+			if( iOfft < 0 ){
+				iOfft += nLen;
+			}
+			if( iOfft < 0 || iOfft >= nLen ){
+				/* Out of range. In an isset()/empty() lookup php answers FALSE, so load
+				 * NULL there; everywhere else it WARNS and yields the empty string (PH7
+				 * silently produced NULL in both cases). */
+				/* LOAD_IDX carries its OWN iP2 codes, which do NOT line up with the
+				 * PH7_MEMBER_* ones: 4 = isset, 5 = unset, 6 = empty. All three are
+				 * lookups and must stay silent. */
+				int bQuiet = pInstr->iP2 == 4 || pInstr->iP2 == 5 || pInstr->iP2 == 6;
+				PH7_MemObjRelease(pTos);
+				if( bQuiet ){
+					MemObjSetType(pTos,MEMOBJ_NULL);
+				}else{
+					MemObjSetType(pTos,MEMOBJ_STRING);
+					VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Uninitialized string offset %qd",
+						pIdx->x.iVal);
+				}
+			}else{
+				const char *zData = (const char *)SyBlobData(&pTos->sBlob);
+				int c = zData[iOfft];
+				PH7_MemObjRelease(pTos);
+				MemObjSetType(pTos,MEMOBJ_STRING);
+				SyBlobAppend(&pTos->sBlob,(const void *)&c,sizeof(char));
+			}
+		}else{
+			/* No available index,load NULL */
+			MemObjSetType(pTos,MEMOBJ_NULL);
+		}
+		VM_EXIT_BREAK;
+	}
+	if( pTos->iFlags & MEMOBJ_OBJ ){
+		/* Object subscript: ArrayAccess dispatch.
+		 * iP2 codes:
+		 *   0 = read       → offsetGet
+		 *   3 = ?? peek    → offsetExists; offsetGet on hit; arm coalesce
+		 *                    target on miss for the upcoming NULLC_STORE
+		 *   4 = isset()    → offsetExists
+		 *   5 = unset()    → offsetUnset
+		 *   6 = empty()    → offsetExists, then offsetGet on hit */
+		ph7_class_instance *pInst = (ph7_class_instance *)pTos->x.pOther;
+		ph7_class *pArrayAccess = pVm->pArrayAccessClass;
+		if( pArrayAccess && pInst && PH7_VmInstanceOf(pInst->pClass,pArrayAccess) ){
+			ph7_class_method *pMeth;
+			ph7_value sResult;
+			ph7_value *apArg[1];
+			if( (pInstr->iP2 == 0 || pInstr->iP2 == 3) && pIdx == 0 ){
+				/* `$obj[]` read — PHP rejects this. */
+				PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,
+					"Cannot use [] for reading");
+				PH7_MemObjRelease(pTos);
+				pTos->nIdx = SXU32_HIGH;
+				VM_EXIT_BREAK;
+			}
+			PH7_MemObjInit(&(*pVm),&sResult);
+			if( pInstr->iP2 == 4 || pInstr->iP2 == 6 || pInstr->iP2 == 3 ){
+				/* isset, empty, and ??= all start with offsetExists. */
+				pMeth = PH7_ClassExtractMethod(pInst->pClass,
+					"offsetExists",sizeof("offsetExists")-1);
+				apArg[0] = pIdx;
+				if( pMeth ){
+					PH7_VmCallClassMethod(&(*pVm),pInst,pMeth,&sResult,pIdx ? 1 : 0,apArg);
+				}
+			}else if( pInstr->iP2 == 5 ){
+				pMeth = PH7_ClassExtractMethod(pInst->pClass,
+					"offsetUnset",sizeof("offsetUnset")-1);
+				apArg[0] = pIdx;
+				if( pMeth ){
+					PH7_VmCallClassMethod(&(*pVm),pInst,pMeth,&sResult,pIdx ? 1 : 0,apArg);
+				}
+			}else{
+				pMeth = PH7_ClassExtractMethod(pInst->pClass,
+					"offsetGet",sizeof("offsetGet")-1);
+				apArg[0] = pIdx;
+				if( pMeth ){
+					PH7_VmCallClassMethod(&(*pVm),pInst,pMeth,&sResult,pIdx ? 1 : 0,apArg);
+				}
+			}
+			if( pInstr->iP2 == 4 ){
+				/* isset: push MEMOBJ_BOOL so vm_builtin_isset reports the
+				 * right truth value AND skips its "Expecting a variable not
+				 * a constant" warning (keyed on MEMOBJ_BOOL). */
+				int bExists = ph7_value_to_bool(&sResult);
+				PH7_MemObjRelease(pTos);
+				pTos->nIdx = SXU32_HIGH;
+				if( bExists ){
+					MemObjSetType(pTos,MEMOBJ_BOOL);
+					pTos->x.iVal = 1;
+				}else{
+					MemObjSetType(pTos,MEMOBJ_NULL);
+				}
+			}else if( pInstr->iP2 == 5 ){
+				/* offsetUnset return is discarded; push NULL so the trailing
+				 * vm_builtin_unset is a harmless no-op. */
+				PH7_MemObjRelease(pTos);
+				pTos->nIdx = SXU32_HIGH;
+				MemObjSetType(pTos,MEMOBJ_NULL);
+			}else if( pInstr->iP2 == 6 ){
+				/* empty: if offsetExists is false, push NULL so empty=true
+				 * without calling offsetGet. If true, call offsetGet and
+				 * push the value so PH7_builtin_empty evaluates emptiness. */
+				int bExists = ph7_value_to_bool(&sResult);
+				PH7_MemObjRelease(&sResult);
+				PH7_MemObjRelease(pTos);
+				pTos->nIdx = SXU32_HIGH;
+				if( !bExists ){
+					MemObjSetType(pTos,MEMOBJ_NULL);
+				}else{
+					ph7_class_method *pGet = PH7_ClassExtractMethod(pInst->pClass,
+						"offsetGet",sizeof("offsetGet")-1);
+					ph7_value sValue;
+					PH7_MemObjInit(&(*pVm),&sValue);
+					apArg[0] = pIdx;
+					if( pGet ){
+						PH7_VmCallClassMethod(&(*pVm),pInst,pGet,&sValue,pIdx ? 1 : 0,apArg);
+					}
+					PH7_MemObjStore(&sValue,pTos);
+					PH7_MemObjRelease(&sValue);
+				}
+				if( pIdx ){ PH7_MemObjRelease(pIdx); }
+				VM_EXIT_BREAK; /* skip the duplicate sResult release below */
+			}else if( pInstr->iP2 == 3 ){
+				/* ?? null-coalesce peek: emulate PHP semantics —
+				 *   if !offsetExists OR offsetGet() === null → arm
+				 *     coalesce slot (NULLC_STORE will call offsetSet)
+				 *     and push NULL.
+				 *   else → push offsetGet's value (NULLC_JMP skips). */
+				int bExists = ph7_value_to_bool(&sResult);
+				int bShouldArm = !bExists;
+				ph7_value sValue;
+				PH7_MemObjRelease(&sResult);
+				/* Reset any prior arming defensively */
+				VmCoalesceDisarm(pVm);
+				PH7_MemObjInit(&(*pVm),&sValue);
+				if( bExists ){
+					ph7_class_method *pGet = PH7_ClassExtractMethod(pInst->pClass,
+						"offsetGet",sizeof("offsetGet")-1);
+					apArg[0] = pIdx;
+					if( pGet ){
+						PH7_VmCallClassMethod(&(*pVm),pInst,pGet,&sValue,pIdx ? 1 : 0,apArg);
+					}
+					if( sValue.iFlags & MEMOBJ_NULL ){
+						bShouldArm = 1;
+					}
+				}
+				PH7_MemObjRelease(pTos);
+				pTos->nIdx = SXU32_HIGH;
+				if( bShouldArm ){
+					/* Arm: remember (object, key) so NULLC_STORE dispatches
+					 * to offsetSet. Hold a ref on the instance to survive
+					 * intervening expression evaluation. */
+					MemObjSetType(pTos,MEMOBJ_NULL);
+					if( pIdx ){
+						PH7_MemObjStore(pIdx,&pVm->sCoalesceKey);
+					}
+					pVm->pCoalesceObj = pInst;
+					pInst->iRef++;
+					pVm->bCoalesceArmed = 1;
+				}else{
+					PH7_MemObjStore(&sValue,pTos);
+				}
+				PH7_MemObjRelease(&sValue);
+				if( pIdx ){ PH7_MemObjRelease(pIdx); }
+				VM_EXIT_BREAK;
+			}else{
+				/* offsetGet: replace pTos with the returned value. */
+				PH7_MemObjRelease(pTos);
+				PH7_MemObjStore(&sResult,pTos);
+				pTos->nIdx = SXU32_HIGH;
+			}
+			PH7_MemObjRelease(&sResult);
+			if( pIdx ){
+				PH7_MemObjRelease(pIdx);
+			}
+			VM_EXIT_BREAK;
+		}
+		/* Object without ArrayAccess: PHP throws fatal Error in all subscript
+		 * contexts (read, isset, unset, empty). Match it. */
+		if( pInst ){
+			char zMsg[256];
+			SyString *pName = &pInst->pClass->sName;
+			sxu32 nMsg = SyBufferFormat(zMsg,sizeof(zMsg),
+				"Cannot use object of type %.*s as array",
+				(int)pName->nByte,pName->zString);
+			rc = VmThrowFromVm(pVm,"Error",zMsg,nMsg);
+			if( pIdx ){ PH7_MemObjRelease(pIdx); }
+			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			if( rc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+			/* `break` used to resume at the NEXT instruction: the catch ran and then
+			 * execution carried on inside the try block. */
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}
+	}
+	if( (pInstr->iP2 == 1 || pInstr->iP2 == 3 || pInstr->iP2 == 5) && (pTos->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		if( pTos->nIdx != SXU32_HIGH ){
+			ph7_value *pObj;
+			if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+				/* php 8 write-context auto-vivify rules: NULL converts to array
+				 * silently; FALSE converts with the 8.1 deprecation; any other
+				 * scalar base — int/float/true/resource — is php's catchable
+				 * "Cannot use a scalar value as an array" Error and the variable
+				 * stays untouched (pre-fix the base was silently CONVERTED,
+				 * corrupting e.g. `$i = 5; $i[0]++` into array(0 => 6); string
+				 * bases were intercepted by the string-offset paths above). */
+				/* php auto-converts false to an array with an 8.1 DEPRECATION; PHL
+				 * rejects it like any other scalar base (null still auto-vivifies —
+				 * it is not a bool). */
+				if( (pObj->iFlags & (MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_RES|MEMOBJ_BOOL)) != 0 ){
+					SyBlob sErrMsg;
+					SyBlobInit(&sErrMsg,&pVm->sAllocator);
+					SyBlobAppend(&sErrMsg,"Cannot use a scalar value as an array",
+						sizeof("Cannot use a scalar value as an array")-1);
+					VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
+					if( pIdx ){
+						PH7_MemObjRelease(pIdx);
+					}
+					PH7_MemObjRelease(pTos);
+					pTos->nIdx = SXU32_HIGH;
+					VM_EXIT_BREAK;
+				}
+				PH7_MemObjToHashmap(pObj);
+				PH7_MemObjLoad(pObj,pTos);
+			}
+		}
+	}
+	rc = SXERR_NOTFOUND; /* Assume the index is invalid */
+	/* php only DEPRECATES a lossy-float subscript / null offset (then truncates /
+	 * normalizes to ""); PHL rejects them on a READ or WRITE (iP2 0/1) and stays
+	 * lenient in isset()/empty()/`??`/unset(), where a throw would be wrong. */
+	if( (pTos->iFlags & MEMOBJ_HASHMAP) && pIdx
+	 && (pInstr->iP2 == 0 || pInstr->iP2 == 1) ){
+		int bNull = (pIdx->iFlags & MEMOBJ_NULL) != 0;
+		int bLossyFloat = (pIdx->iFlags & MEMOBJ_REAL) != 0
+			&& pIdx->rVal != (ph7_real)(sxi64)pIdx->rVal;
+		if( bNull || bLossyFloat ){
+			SyBlob sErrMsg;
+			SyBlobInit(&sErrMsg,&pVm->sAllocator);
+			SyBlobAppend(&sErrMsg,
+				bNull ? "Cannot access offset of type null on array"
+				      : "Cannot access offset of type float on array",
+				(sxu32)SyStrlen(bNull ? "Cannot access offset of type null on array"
+				                      : "Cannot access offset of type float on array"));
+			VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sErrMsg));
+			PH7_MemObjRelease(pIdx);
+			PH7_MemObjRelease(pTos);
+			pTos->nIdx = SXU32_HIGH;
+			VM_EXIT_BREAK;
+		}
+	}
+	if( pTos->iFlags & MEMOBJ_HASHMAP ){
+		if( pInstr->iP2 == 1 || pInstr->iP2 == 5 ){
+			/* Write-context access (iP2 = create-if-missing).  COW-separate
+			 * the parent so nested writes like $b[0][0] = 99 don't leak
+			 * through shared outer arrays.  Read-only loads (iP2 == 0) must
+			 * NOT separate — that would defeat COW on every element read.
+			 * iP2=5 is unset-context, treated like iP2=1 for arrays so the
+			 * trailing unset() builtin can drop the slot via pTos->nIdx. */
+			PH7_HashmapCowSeparate(&(*pVm),pTos);
+		}
+		/* Point to the hashmap */
+		pMap = (ph7_hashmap *)pTos->x.pOther;
+		if( pIdx ){
+			/* Load the desired entry */
+			rc = PH7_HashmapLookup(pMap,pIdx,&pNode);
+		}
+		if( pInstr->iP2 == 3 ){
+			/* Null coalescing assign peek mode: separate only when we will
+			 * actually write back. If the looked-up value is non-null, the
+			 * caller's NULLC_JMP will short-circuit and no store happens, so
+			 * the parent can stay shared. If the value is null or the key is
+			 * missing, separate and re-lookup so the upcoming NULLC_STORE
+			 * writes into our own copy. Inner levels of a nested LHS still
+			 * use iP2 == 1 (eager separation), which keeps the cascade
+			 * correct for the outermost write. */
+			int needWrite = (rc != SXRET_OK);
+			if( !needWrite && pNode ){
+				ph7_value *pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx);
+				if( pVal == 0 || (pVal->iFlags & MEMOBJ_NULL) ){
+					needWrite = 1;
+				}
+			}
+			if( needWrite ){
+				PH7_HashmapCowSeparate(&(*pVm),pTos);
+				if( pMap != (ph7_hashmap *)pTos->x.pOther ){
+					/* The map was actually copied — re-lookup so pNode points
+					 * into the new map's storage. */
+					pMap = (ph7_hashmap *)pTos->x.pOther;
+					if( pIdx ){
+						rc = PH7_HashmapLookup(pMap,pIdx,&pNode);
+					}
+				}
+			}
+		}
+		if( rc != SXRET_OK && (pInstr->iP2 == 1 || pInstr->iP2 == 3 || pInstr->iP2 == 5) ){
+			/* Create a new empty entry */
+			rc = PH7_HashmapInsert(pMap,pIdx,0);
+			if( rc == SXRET_OK ){
+				/* Point to the last inserted entry */
+				pNode = pMap->pLast;
+			}else{
+				/* An append lvalue (`$a[][...] = v`) whose saturated auto-index
+				 * is occupied threw php's catchable Error. Dispatch it here —
+				 * falling through with a stale pMap->pLast is what silently
+				 * overwrote $a[PHP_INT_MAX]. */
+				PH7_DISPATCH_ENFORCE_RC(rc)
+			}
+		}
+	}
+	if( rc != SXRET_OK && pIdx && (pInstr->iP2 == 2 || pInstr->iP2 == 0)
+	 && (pTos->iFlags & MEMOBJ_HASHMAP)
+	 && !((pInstr+1)->iOp == PH7_OP_NULLC || (pInstr+1)->iOp == PH7_OP_NULLC_JMP) ){
+		/* `$a['k'] ?? $d` compiles its LHS as a plain read (iP2 == 0) followed
+		 * by NULLC/NULLC_JMP — php does NOT warn there, so peek ahead and stay
+		 * silent (same guard the magic-accessor read path uses). */
+		/* php warns when a missing key is READ (iP2 == 0) or destructured
+		 * (iP2 == 2). isset/empty/??/unset (iP2 3-6) and write-context
+		 * vivification (iP2 == 1) stay silent, as does a read on a non-array
+		 * base (already diagnosed above). php prints an INT key bare and a
+		 * STRING key quoted. */
+		SyBlob sMsg;
+		SyBlobInit(&sMsg,&pVm->sAllocator);
+		if( pIdx->iFlags & (MEMOBJ_STRING|MEMOBJ_BOOL|MEMOBJ_NULL) ){
+			SyString sKey;
+			if( (pIdx->iFlags & MEMOBJ_STRING) == 0 ){
+				PH7_MemObjToString(pIdx);
+			}
+			SyStringInitFromBuf(&sKey,SyBlobData(&pIdx->sBlob),SyBlobLength(&pIdx->sBlob));
+			SyBlobFormat(&sMsg,"Undefined array key \"%z\"",&sKey);
+		}else{
+			if( (pIdx->iFlags & MEMOBJ_INT) == 0 ){
+				PH7_MemObjToInteger(pIdx);
+			}
+			SyBlobFormat(&sMsg,"Undefined array key %qd",pIdx->x.iVal);
+		}
+		SyBlobNullAppend(&sMsg);
+		PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,(const char *)SyBlobData(&sMsg));
+		SyBlobRelease(&sMsg);
+	}
+	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_STRING|MEMOBJ_OBJ)) == 0
+	 && (pInstr->iP2 == 0 || pInstr->iP2 == 2) ){
+		/* Subscripting a scalar base is a WARNING in php ("Trying to access array offset
+		 * on int") that yields NULL. PH7 yielded NULL in silence. */
+		VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Trying to access array offset on %s",
+			VmArithTypeName(pTos));
+	}
+	if( pIdx ){
+		PH7_MemObjRelease(pIdx);
+	}
+	if( rc == SXRET_OK ){
+		/* Load entry contents */
+		if( pMap->iRef < 2 ){
+			/* TICKET 1433-42: Array will be deleted shortly,so we will make a copy
+			 * of the entry value,rather than pointing to it.
+			 */
+			pTos->nIdx = SXU32_HIGH;
+			PH7_HashmapExtractNodeValue(pNode,pTos,TRUE);
+		}else{
+			pTos->nIdx = pNode->nValIdx;
+			PH7_HashmapExtractNodeValue(pNode,pTos,FALSE);
+			PH7_HashmapUnref(pMap);
+		}
+	}else{
+		/* No such entry,load NULL */
+		PH7_MemObjRelease(pTos);
+		pTos->nIdx = SXU32_HIGH;
+	}
+	VM_EXIT_BREAK;
+	VM_EXIT_BREAK;
+}
+
+/*
+ * OP_LOAD_MAP: body moved verbatim from the OP_LOAD_MAP arm of
+ * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
+ */
+PH7_PRIVATE VmOpRc VmExecOpLoadMap(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
+{
+	ph7_value *pTos = pState->pTos;
+	ph7_value *pStack = pState->pStack;
+	VmInstr *aInstr = pState->aInstr;
+	sxi32 pc = pState->pc;
+	sxi32 rc;
+	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	ph7_hashmap *pMap;
+	/* Allocate a new hashmap instance */
+	pMap = PH7_NewHashmap(&(*pVm),0,0);
+	if( pMap == 0 ){
+		VmErrorFormat(&(*pVm),PH7_CTX_ERR,
+			"Fatal, PH7 engine is running out of memory while loading array at instruction #:%d",pc);
+		VM_EXIT_ABORT;
+	}
+	if( pInstr->iP1 > 0 ){
+		ph7_value *pEntry = &pTos[-pInstr->iP1+1]; /* Point to the first entry */
+		sxi32 rcSpread = SXRET_OK;
+		/* Perform the insertion */
+		while( pEntry < pTos ){
+			if( pEntry[1].iFlags & MEMOBJ_AUX_SPREAD ){
+				/* Array unpacking: '...$expr'. Merge entries with PHP 8.1
+				 * semantics — string keys preserved (later wins), int keys
+				 * renumbered. Same routine that backs array_merge. */
+				if( pEntry[1].iFlags & MEMOBJ_HASHMAP ){
+					sxi32 rcMerge = PH7_HashmapMerge((ph7_hashmap *)pEntry[1].x.pOther,pMap);
+					if( rcMerge != SXRET_OK ){
+						/* Merge failure (OOM): match the PH7_NewHashmap OOM
+						 * path — emit fatal and abort, leaving no partial
+						 * map dangling. */
+						VmErrorFormat(&(*pVm),PH7_CTX_ERR,
+							"Fatal, PH7 engine is running out of memory while spreading array at instruction #:%d",pc);
+						rcSpread = PH7_ABORT;
+						break;
+					}
+				}else if( VmValueIsTraversable(pVm,&pEntry[1]) ){
+					/* Traversable unpacking (PHP 8.1): walk it into the map using the
+					 * same key rules as array spread (string keys kept, int renumbered). */
+					sxi32 rcW = PH7_VmIteratorWalk(&(*pVm),&pEntry[1],VmSpreadMergeStep,pMap);
+					if( rcW == PH7_EXCEPTION || rcW == PH7_ABORT ){
+						rcSpread = rcW;
+						break;
+					}
+				}else{
+					/* Throw a catchable Error matching PHP semantics. */
+					rcSpread = VmThrowSpreadError(&(*pVm),&pEntry[1]);
+					break;
+				}
+			}else if( pEntry[1].iFlags & MEMOBJ_REFERENCE ){
+				/* Insertion by reference */
+				PH7_HashmapInsertByRef(pMap,
+					(pEntry->iFlags & MEMOBJ_NULL) ? 0 /* Automatic index assign */ : pEntry,
+					(sxu32)pEntry[1].x.iVal
+					);
+			}else{
+				/* An explicit key in an array LITERAL gets the same php diagnostics a
+				 * subscript does — a float key that truncates deprecates, and so does an
+				 * explicit null key. Only the subscript sites (LOAD_IDX/STORE_IDX) used to
+				 * emit these, so `[1.5 => "v"]` and `[null => "v"]` were silent. A key that
+				 * is ABSENT (auto-index) is a NULL slot here, not a null key, so the
+				 * MEMOBJ_NULL check below is what tells the two apart. */
+					if( (pEntry->iFlags & MEMOBJ_AUX_NOKEY) == 0 ){
+						/* php only DEPRECATES a lossy-float / null literal key; PHL rejects it. */
+						int bNull = (pEntry->iFlags & MEMOBJ_NULL) != 0;
+						int bLossyFloat = (pEntry->iFlags & MEMOBJ_REAL) != 0
+							&& pEntry->rVal != (ph7_real)(sxi64)pEntry->rVal;
+						if( bNull || bLossyFloat ){
+							const char *zErr = bNull ? "Cannot access offset of type null on array"
+							                         : "Cannot access offset of type float on array";
+							SyBlob sErrMsg;
+							SyBlobInit(&sErrMsg,&pVm->sAllocator);
+							SyBlobAppend(&sErrMsg,zErr,(sxu32)SyStrlen(zErr));
+							VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sErrMsg));
+						}
+					}
+				/* Standard insertion */
+				PH7_HashmapInsert(pMap,
+					(pEntry->iFlags & MEMOBJ_AUX_NOKEY) ? 0 /* Automatic index assign */ : pEntry,
+					&pEntry[1]
+				);
+			}
+			/* Next pair on the stack */
+			pEntry += 2;
+		}
+		/* Pop P1 elements */
+		VmPopOperand(&pTos,pInstr->iP1);
+		if( rcSpread != SXRET_OK ){
+			/* Discard the partially-built map and propagate the exception. */
+			PH7_HashmapRelease(pMap,TRUE);
+			if( rcSpread == PH7_ABORT ){
+				VM_EXIT_ABORT;
+			}
+			{
+				sxi32 iRp;
+				if( VmRecordedResume(pVm,&iRp,pState->pEntryFrame,aInstr) ){
+					pc = iRp;
+					VM_EXIT_BREAK;
+				}
+			}
+			VM_EXIT_EXCEPTION;
+		}
+	}
+	/* Push the hashmap */
+	pTos++;
+	pTos->nIdx = SXU32_HIGH;
+	pTos->x.pOther = pMap;
+	MemObjSetType(pTos,MEMOBJ_HASHMAP);
+	VM_EXIT_BREAK;
+	VM_EXIT_BREAK;
+}
