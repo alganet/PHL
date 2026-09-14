@@ -5,6 +5,9 @@ SPDX-License-Identifier: BSD-3-Clause
 libxml_use_internal_errors previous-state return, empty queue, clear
 --FILE--
 <?php
+// Reset shared state (the in-process smoke runner shares one interpreter)
+libxml_use_internal_errors(false);
+libxml_clear_errors();
 // No-arg (and null) calls report without changing state
 var_dump(libxml_use_internal_errors());
 // Flipping returns the PREVIOUS state
