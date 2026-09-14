@@ -2619,6 +2619,9 @@ static int ph7_hashmap_sort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		HashmapMergeSort(pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));
 		/* Rehash [Do not maintain index association as requested by the PHP specification] */
 		HashmapSortRehash(pMap);
+	}else if( pMap->nEntry == 1 ){
+		/* php reindexes even a single-element array: a string key becomes 0 */
+		HashmapSortRehash(pMap);
 	}
 	/* All done,return TRUE */
 	ph7_result_bool(pCtx,1);
@@ -2855,6 +2858,9 @@ static int ph7_hashmap_rsort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		HashmapMergeSort(pMap,HashmapCmpCallback3,SX_INT_TO_PTR(iCmpFlags));
 		/* Rehash [Do not maintain index association as requested by the PHP specification] */
 		HashmapSortRehash(pMap);
+	}else if( pMap->nEntry == 1 ){
+		/* php reindexes even a single-element array: a string key becomes 0 */
+		HashmapSortRehash(pMap);
 	}
 	/* All done,return TRUE */
 	ph7_result_bool(pCtx,1);
@@ -2916,6 +2922,9 @@ static int ph7_hashmap_usort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			pCtx->pVm->iCmpCallbackExc = 0;
 			return PH7_EXCEPTION;
 		}
+	}else if( pMap->nEntry == 1 ){
+		/* php reindexes even a single-element array: a string key becomes 0 */
+		HashmapSortRehash(pMap);
 	}
 	/* All done,return TRUE */
 	ph7_result_bool(pCtx,1);
