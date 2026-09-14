@@ -2710,6 +2710,30 @@ PH7_PRIVATE sxi32 VmThrowBuiltinTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,Sy
 PH7_PRIVATE sxi32 VmThrowTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName, sxu32 nPassed,sxu32 nRequired,sxu32 nNonVariadic,int bCallSite);
 PH7_PRIVATE sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName,sxu32 nArg,SyString *pArgName,const char *zExpected,const char *zGiven);
 PH7_PRIVATE ph7_value * VmReserveMemObj(ph7_vm *pVm,sxu32 *pIndex);
+/* Argument-unpacking key capture (PHP 8.1 named-parameter semantics for spreads).
+ * `pMap->aNames` is COMPILE-TIME metadata indexed by compile-time argument
+ * position, but a runtime spread expands its slot to a variable element count,
+ * so any spread that expands to !=1 element shifts the following actual stack
+ * positions out of alignment with aNames — and the element keys (which PHP 8.1
+ * treats as named arguments) are otherwise discarded. OP_SPREAD records one
+ * VmSpreadRun per expansion plus one VmSpreadKey per element (in order) on the
+ * VM; CALL/NEW replay them (VmBuildEffectiveArgMap) into an effective map with
+ * one name entry per ACTUAL slot, then let the existing named-argument resolver
+ * run unchanged. The same runs give each call its own argument-count growth
+ * (VmSpreadOwnExtra). This call's runs are consumed (truncated) at the CALL. */
+typedef struct VmSpreadRun VmSpreadRun;
+struct VmSpreadRun {
+	ph7_value *pStart;   /* First stack slot the expansion wrote (the source slot) */
+	sxu32 nCount;        /* Elements produced (0 for an empty array) */
+	sxu32 nKeyStart;     /* aSpreadKey index of this run's first element key */
+	sxu32 nBlobStart;    /* sSpreadKeyBlob length before this run's keys were appended */
+};
+typedef struct VmSpreadKey VmSpreadKey;
+struct VmSpreadKey {
+	sxu32 nOff;          /* Byte offset into pVm->sSpreadKeyBlob (valid iff nLen>0) */
+	sxu32 nLen;          /* Key length; 0 == integer key == positional element */
+};
+#define VM_STACK_UNMODELED SXU32_HIGH /* shared by vm.c (stack modeling) and vm_exec.c */
 /* vm_ops_*.c — opcode handlers extracted from VmByteCodeExecBody. The loop
  * syncs pTos/pc into its VmExecState, calls the handler, reloads them and
  * maps the returned code onto its labels. */
@@ -2745,6 +2769,23 @@ PH7_PRIVATE void VmMagicSetDispatch(ph7_vm *pVm,ph7_class_instance *pSetThis,con
 PH7_PRIVATE ph7_exception * VmExcActivate(ph7_vm *pVm,ph7_exception *pCompiled);
 PH7_PRIVATE ph7_exception * VmExcLive(ph7_vm *pVm,ph7_exception *pCompiled);
 PH7_PRIVATE sxi32 VmIsUnorderedCmp(ph7_value *pLeft,ph7_value *pRight);
+PH7_PRIVATE sxu32 VmComputeMaxStack(ph7_vm *pVm, VmInstr *aInstr, sxu32 nInstr);
+PH7_PRIVATE sxi32 VmDrainFinally(ph7_vm *pVm, sxu32 nExceptionBase);
+PH7_PRIVATE sxi32 VmFrameLink(ph7_vm *pVm,SyString *pName);
+PH7_PRIVATE void VmHookRmwDropTop(ph7_vm *pVm);
+PH7_PRIVATE sxi32 VmInitCallContext(ph7_context *pOut, ph7_vm *pVm, ph7_user_func *pFunc, ph7_value *pRet, sxi32 iFlags);
+PH7_PRIVATE void VmMaterializeCatchReturn(ph7_vm *pVm, ph7_value *pResult, VmFrame *pEntryFrame);
+PH7_PRIVATE ph7_value * VmOperandStackAlloc(ph7_vm *pVm, sxu32 nSlots);
+PH7_PRIVATE void VmOperandStackRecycle(ph7_vm *pVm, ph7_value *pStack, sxu32 nCap);
+PH7_PRIVATE ph7_vm_func * VmOverload(ph7_vm *pVm, ph7_vm_func *pList, ph7_value *aArg, int nArg);
+PH7_PRIVATE void VmReleaseCallContext(ph7_context *pCtx);
+PH7_PRIVATE sxi32 VmResolveNamedArgs(ph7_vm *pVm, VmCallArgMap *pMap, ph7_vm_func_arg *aFormalArg, sxu32 nNonVariadic, sxi32 iVariadicIdx, sxu32 nActual, sxi32 *aSlot, sxu8 *aUsed);
+PH7_PRIVATE void VmSpreadExpandMap(ph7_vm *pVm, ph7_value **ppTos, ph7_hashmap *pMap);
+PH7_PRIVATE sxi32 VmSpreadValuesStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue, void *pUserData);
+PH7_PRIVATE int VmStringWantsPerlIncr(ph7_value *pVal);
+PH7_PRIVATE sxi32 VmSuspendCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, sxi32 pc, sxi32 nTos);
+PH7_PRIVATE int VmExcMatches(ph7_exception *pExc,ph7_exception *pCompiled);
+PH7_PRIVATE void VmSpreadConsume(ph7_vm *pVm);
 PH7_PRIVATE VmOpRc VmExecOpSwitch(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr);
 PH7_PRIVATE VmOpRc VmExecOpCatch(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr);
 PH7_PRIVATE VmOpRc VmExecOpLoadException(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr);
