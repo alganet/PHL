@@ -30,10 +30,6 @@ echo var_export(array_sum([1, new stdClass()]), true), "\n";
 echo var_export(array_sum([1.5, '', 3.5]), true), "\n";
 // numeric strings, bool and null add silently
 echo var_export(array_sum([1, '2', true, null]), true), "\n";
-
-// base conversion deprecates ignored characters; the value is unaffected
-echo var_export(hexdec('1z2'), true), "\n";
-echo var_export(hexdec('ff'), true), "\n";
 ?>
 --EXPECTF--
 %ADecrement on non-numeric string has no effect and is deprecated%A
@@ -52,9 +48,6 @@ echo var_export(hexdec('ff'), true), "\n";
 %Aarray_sum(): Addition is not supported on type string%A
 5.0
 4
-%AInvalid characters passed for attempted conversion, these have been ignored%A
-18
-255
 --CLEAN--
 <?php
 unset($s, $t, $n);

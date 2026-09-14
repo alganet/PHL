@@ -17,13 +17,10 @@
  * (no auto-prepended function name, unlike ph7_context_throw_error) */
 static int vm_builtin_spl_deprecated(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const char *zMsg;
-	int nMsg;
-	if( nArg < 1 ){
-		return PH7_OK;
-	}
-	zMsg = ph7_value_to_string(apArg[0],&nMsg);
-	PH7_VmThrowDeprecatedFmt(pCtx->pVm,"%.*s",nMsg,zMsg);
+	/* php DEPRECATES a handful of SPL methods (SplObjectStorage attach/detach/…);
+	 * PHL keeps them (they ADD surface, they don't change valid-php meaning) but does
+	 * not mimic php's E_DEPRECATED notice. So this helper is now a no-op. */
+	SXUNUSED(pCtx); SXUNUSED(nArg); SXUNUSED(apArg);
 	return PH7_OK;
 }
 
