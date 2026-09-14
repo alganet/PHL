@@ -23,8 +23,9 @@ PCRE2_LIBS = "$(VCPKG_INSTALLED)\lib\pcre2-8.lib"
 
 # libxml2 via vcpkg (static; /DLIBXML_STATIC is mandatory or the compiler emits
 # __imp_-prefixed dllimport references that fail to link against the static lib).
-# vcpkg puts the headers at include\libxml\*.h (no libxml2 subdirectory), so the
-# base include path shared with pcre2 is the right one.
+# vcpkg installs the headers under include\libxml2\libxml\*.h (the same libxml2
+# subdirectory pkg-config points at on POSIX), so the include path must reach
+# include\libxml2 for #include <libxml/...> to resolve.
 LIBXML2_CFLAGS = /I "$(VCPKG_INSTALLED)\include\libxml2" /DLIBXML_STATIC
 LIBXML2_LIBS = "$(VCPKG_INSTALLED)\lib\libxml2.lib"
 
