@@ -17,7 +17,7 @@
 | src/ph7/vfs_unix.c             | 89.60%   | 422/471     |
 | src/ph7/vfs_win.c              | 83.10%   | 590/710     |
 | src/ph7/vfs_zip.c              | 58.24%   | 152/261     |
-| src/ph7/vm.c                   | 83.36%   | 12262/14710 |
+| src/ph7/vm.c                   | 83.51%   | 12268/14691 |
 | src/ph7/vm_builtin_class.c     | 87.74%   | 630/718     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
 | src/ph7/vm_builtin_ini.c       | 95.45%   | 21/22       |
@@ -26,12 +26,15 @@
 | src/ph7/vm_builtin_session.c   | 100.00%  | 4/4         |
 | src/ph7/vm_builtin_spl.c       | 76.71%   | 56/73       |
 | src/ph7/vm_builtin_tokenizer.c | 1.62%    | 12/743      |
+| src/ph7/vm_dom.c               | 100.00%  | 5/5         |
 | src/ph7/vm_http.c              | 69.82%   | 310/444     |
 | src/ph7/vm_http_response.c     | 49.41%   | 126/255     |
 | src/ph7/vm_json.c              | 83.36%   | 561/673     |
+| src/ph7/vm_libxml.c            | 28.57%   | 88/308      |
 | src/ph7/vm_pcre.c              | 69.07%   | 632/915     |
 | src/ph7/vm_serialize.c         | 96.07%   | 464/483     |
 | src/ph7/vm_xml.c               | 68.34%   | 395/578     |
+| src/ph7/vm_xmlwriter.c         | 100.00%  | 5/5         |
 | src/phl/phl.c                  | 75.97%   | 313/412     |
 | src/phl/server.c               | 62.82%   | 299/476     |
 | src/sx/sxblowfish.c            | 98.82%   | 168/170     |
@@ -50,5 +53,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 80.97%   | 48402/59781 |
-| Functions                      | 94.44%   | 2176/2304   |
+| Lines                          | 80.74%   | 48506/60080 |
+| Functions                      | 92.79%   | 2189/2359   |
