@@ -3306,6 +3306,13 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	PH7_VmInstallTokenizer(&(*pVm));
 	PH7_VmInstallSession(&(*pVm));
 	PH7_VmInstallIni(&(*pVm));
+#ifdef PH7_ENABLE_LIBXML
+	/* libxml2-backed surfaces: shared plumbing first, then the DOM and
+	 * XMLWriter class libraries that build on it. */
+	PH7_VmInstallLibxml(&(*pVm));
+	PH7_VmInstallDom(&(*pVm));
+	PH7_VmInstallXmlWriter(&(*pVm));
+#endif
 	pVm->bCompilingBuiltin = 0;
 	/* Reset the code generator */
 	PH7_ResetCodeGenerator(&(*pVm),pEngine->xConf.xErr,pEngine->xConf.pErrData);
@@ -4863,6 +4870,10 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	PH7_RegisterPcreFunctions(&(*pVm));
 	PH7_RegisterPcreConstants(&(*pVm));
 #endif
+#ifdef PH7_ENABLE_LIBXML
+	/* Register the LIBXML_* / XML_*_NODE constants */
+	PH7_RegisterLibxmlConstants(&(*pVm));
+#endif
 	/* Stamp PHP-8 minimum-arity metadata onto the registered builtins so the
 	 * OP_CALL choke point can raise ArgumentCountError on too few arguments. */
 	VmSetBuiltinArity(&(*pVm));
@@ -5217,6 +5228,10 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 #ifdef PH7_ENABLE_PCRE
 	pVm->iPcreLastError = 0;
 #endif
+#ifdef PH7_ENABLE_LIBXML
+	/* Drop the libxml error queue and the previous request's documents */
+	PH7_LibxmlVmReset(&(*pVm));
+#endif
 	pVm->iCmpCallbackExc = 0;
 	pVm->bHaltRequested = 0;
 	pVm->iExitStatus = 0;
@@ -5244,6 +5259,11 @@ PH7_PRIVATE sxi32 PH7_VmRelease(ph7_vm *pVm)
 {
 	/* Set the stale magic number */
 	pVm->nMagic = PH7_VM_STALE;
+#ifdef PH7_ENABLE_LIBXML
+	/* Free the libxml document registry (libxml2 allocations live outside
+	 * SyMemBackend, so the wholesale release below would leak them). */
+	PH7_LibxmlVmRelease(pVm);
+#endif
 	/* Release the private memory subsystem */
 	SyMemBackendRelease(&pVm->sAllocator);
 	return SXRET_OK;

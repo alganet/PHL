@@ -1566,6 +1566,12 @@ struct ph7_vm
 #ifdef PH7_ENABLE_PCRE
 	int iPcreLastError;        /* preg_last_error() return value */
 #endif
+#ifdef PH7_ENABLE_LIBXML
+	SySet aLibxmlErr;          /* Queued phl_libxml_err entries (libxml_get_errors) */
+	int bLibxmlInternalErr;    /* libxml_use_internal_errors(true) is active */
+	void *pXmlDocs;            /* phl_xmldoc registry chain; freed on reset/release */
+	void *pXmlWriters;         /* XMLWriter registry chain; freed on reset/release */
+#endif
 	ph7_vm *pNext,*pPrev;      /* List of active VM's */
 	sxu32 nMagic;              /* Sanity check against misuse */
 };
@@ -2194,6 +2200,43 @@ PH7_PRIVATE void PH7_RegisterPcreConstants(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_PcreMatchQuiet(ph7_context *pCtx,const char *zPat,int nPat,
 	const char *zSub,int nSub,int *pMatched);
 #endif /* PH7_ENABLE_PCRE */
+#ifdef PH7_ENABLE_LIBXML
+/* One entry in the per-VM libxml error queue (mirrors php's LibXMLError:
+ * level/code/column/message/file/line).  Strings are SyMemBackend copies
+ * owned by the queue and released by PH7_LibxmlClearErrors(). */
+typedef struct phl_libxml_err phl_libxml_err;
+struct phl_libxml_err {
+	int iLevel;      /* LIBXML_ERR_WARNING/ERROR/FATAL */
+	int iCode;       /* raw libxml2 error code */
+	int iLine;
+	int iColumn;
+	SyString sMsg;   /* message text, trailing newline preserved (php parity) */
+	SyString sFile;  /* source file/URI, empty for in-memory strings */
+};
+/* Per-VM owner of one libxml document tree.  See the lifetime notes at the
+ * top of vm_libxml.c: docs are only freed at VM reset/release, never while
+ * PHP code could still hold a wrapper into them. */
+typedef struct phl_xmldoc phl_xmldoc;
+struct phl_xmldoc {
+	void *pDoc;         /* xmlDocPtr (void* keeps libxml headers out of ph7int.h) */
+	SySet aOrphans;     /* xmlNodePtr's unlinked from the tree but still owned */
+	ph7_vm *pVm;        /* Owning VM (error routing from libxml callbacks) */
+	int bPreserveWS;    /* DOMDocument->preserveWhiteSpace */
+	int bFormatOutput;  /* DOMDocument->formatOutput */
+	phl_xmldoc *pNext;  /* Registry chain (pVm->pXmlDocs) */
+};
+/* vm_libxml.c */
+PH7_PRIVATE void PH7_RegisterLibxmlConstants(ph7_vm *pVm);
+PH7_PRIVATE sxi32 PH7_VmInstallLibxml(ph7_vm *pVm);
+PH7_PRIVATE void PH7_LibxmlVmReset(ph7_vm *pVm);
+PH7_PRIVATE void PH7_LibxmlVmRelease(ph7_vm *pVm);
+PH7_PRIVATE void PH7_LibxmlClearErrors(ph7_vm *pVm);
+PH7_PRIVATE phl_xmldoc * PH7_LibxmlNewDoc(ph7_vm *pVm,void *pXmlDocPtr);
+/* vm_dom.c */
+PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm);
+/* vm_xmlwriter.c */
+PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm);
+#endif /* PH7_ENABLE_LIBXML */
 /* net.c types and function prototypes */
 #ifdef PH7_ENABLE_NET
 #ifdef __WINNT__
