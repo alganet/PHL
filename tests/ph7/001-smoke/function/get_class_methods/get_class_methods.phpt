@@ -10,17 +10,17 @@ if (!function_exists('get_class_methods')) { echo "skip: function not available\
 ?>
 --FILE--
 <?php
-class A {
+class GetClassMethodsA {
     public function f1(){}
     protected function f2(){}
     private function f3(){}
 }
 // public methods only by default
-$methods = get_class_methods('A');
+$methods = get_class_methods('GetClassMethodsA');
 echo in_array('f1', $methods) ? "ok\n" : "fail\n";
 // f2 is protected, should not be returned when called with class name
 // But when called with object, returns public methods only as well
-$methods_obj = get_class_methods(new A);
+$methods_obj = get_class_methods(new GetClassMethodsA);
 echo in_array('f2', $methods_obj) ? "ok\n" : "fail\n";
 // non-existent class should return null
 $none = get_class_methods('NonExistent');

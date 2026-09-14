@@ -7,15 +7,15 @@ SPDX-License-Identifier: BSD-3-Clause
 object dump recursion limit
 --FILE--
 <?php
-class Test {
+class ObjectDumpRecursionTest {
     public $prop;
 }
 
-$root = new Test();
+$root = new ObjectDumpRecursionTest();
 $current = $root;
 
 for ($i = 0; $i < 35; $i++) {
-    $next = new Test();
+    $next = new ObjectDumpRecursionTest();
     $current->prop = $next;
     $current = $next;
 }

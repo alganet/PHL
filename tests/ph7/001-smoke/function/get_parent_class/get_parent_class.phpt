@@ -11,9 +11,9 @@ if (!function_exists('get_parent_class')) { echo "skip: function not available\n
 --FILE--
 <?php
 class P {}
-class C extends P {}
-echo get_parent_class('C') === 'P' ? "ok\n" : "fail\n";
-echo get_parent_class(new C) === 'P' ? "ok\n" : "fail\n";
+class GetParentClassC extends P {}
+echo get_parent_class('GetParentClassC') === 'P' ? "ok\n" : "fail\n";
+echo get_parent_class(new GetParentClassC) === 'P' ? "ok\n" : "fail\n";
 echo get_parent_class('P') === false ? "ok\n" : "fail\n";
 function check_in_context(){
     class InnerP{}

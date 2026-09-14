@@ -268,6 +268,122 @@ static sxi32 GenStateLeaveBlock(ph7_gen_state *pGen,GenBlock **ppBlock)
 	return SXRET_OK;
 }
 /*
+ * PHP-parity redeclaration guard.
+ *
+ * PHP raises a fatal "Cannot redeclare ..." when a class/interface/trait/enum
+ * or a function is declared a second time. PHL hoists every declaration into
+ * the VM at compile time (so `if(false){class C{}}` already makes C exist), and
+ * historically it silently *overwrote* duplicates. We reproduce PHP for the
+ * case that matters and that real code hits: a declaration that is
+ * UNCONDITIONAL and at file top level, whose name is already bound by another
+ * unconditional top-level declaration (or by a builtin). Conditional
+ * declarations (inside if/loops/switch/try or nested in a function) are left
+ * hoisting as before, so the `if(!class_exists('C')){class C{}}` and
+ * `if(false){class C{}} class C{}` guard idioms keep working.
+ *
+ * Included files compile at include time (i.e. at run time relative to the main
+ * script), so this compile-time check surfaces the fatal at the same moment PHP
+ * does for the cross-include case too.
+ */
+static int GenStateUnconditionalTopLevel(ph7_gen_state *pGen)
+{
+	GenBlock *pBlock = pGen->pCurrent;
+	while( pBlock ){
+		if( pBlock->iFlags & (GEN_BLOCK_COND|GEN_BLOCK_LOOP|GEN_BLOCK_FUNC|GEN_BLOCK_SWITCH|GEN_BLOCK_EXCEPTION) ){
+			return 0; /* conditional / nested */
+		}
+		if( pBlock->iFlags & GEN_BLOCK_GLOBAL ){
+			return 1; /* reached the global block with no conditional ancestor */
+		}
+		pBlock = pBlock->pParent;
+	}
+	return 1;
+}
+static const char * GenStateClassKind(const ph7_class *pClass)
+{
+	if( pClass->iFlags & PH7_CLASS_INTERFACE ){ return "interface"; }
+	if( pClass->iFlags & PH7_CLASS_TRAIT ){ return "trait"; }
+	if( pClass->iFlags & PH7_CLASS_ENUM ){ return "enum"; }
+	return "class";
+}
+/*
+ * Guard a class/interface/trait/enum about to be installed. Returns SXERR_ABORT
+ * (after emitting the fatal) if it redeclares an already-bound type; otherwise
+ * marks it bound (when unconditional & top-level) and returns SXRET_OK.
+ */
+static sxi32 GenStateGuardClassRedeclaration(ph7_gen_state *pGen,ph7_class *pClass)
+{
+	SyHashEntry *pEntry;
+	if( !GenStateUnconditionalTopLevel(pGen) ){
+		return SXRET_OK; /* conditional/nested: keep hoisting */
+	}
+	pClass->iFlags |= PH7_CLASS_BOUND;
+	if( pGen->pVm->bCompilingBuiltin ){
+		return SXRET_OK; /* the prelude installs each builtin exactly once */
+	}
+	pEntry = SyHashGet(&pGen->pVm->hClass,(const void *)pClass->sName.zString,pClass->sName.nByte);
+	if( pEntry ){
+		ph7_class *pPrev = (ph7_class *)pEntry->pUserData;
+		while( pPrev ){
+			if( pPrev->iFlags & PH7_CLASS_BOUND ){
+				/* php names the entity by the PREVIOUS declaration's kind and omits
+				 * the "(previously declared in ...)" clause for internal symbols. */
+				if( pPrev->sFile.nByte > 0 ){
+					PH7_GenCompileError(pGen,E_ERROR,pClass->nLine,
+						"Cannot redeclare %s %z (previously declared in %.*s:%u)",
+						GenStateClassKind(pPrev),&pClass->sName,
+						pPrev->sFile.nByte,pPrev->sFile.zString,pPrev->nLine);
+				}else{
+					PH7_GenCompileError(pGen,E_ERROR,pClass->nLine,
+						"Cannot redeclare %s %z",GenStateClassKind(pPrev),&pClass->sName);
+				}
+				return SXERR_ABORT;
+			}
+			pPrev = pPrev->pNextName;
+		}
+	}
+	return SXRET_OK;
+}
+/*
+ * Guard a top-level function about to be installed. Same contract as the class
+ * guard above.
+ */
+static sxi32 GenStateGuardFuncRedeclaration(ph7_gen_state *pGen,ph7_vm_func *pFunc)
+{
+	SyHashEntry *pEntry;
+	if( !GenStateUnconditionalTopLevel(pGen) ){
+		return SXRET_OK;
+	}
+	pFunc->iFlags |= VM_FUNC_BOUND;
+	if( pGen->pVm->bCompilingBuiltin ){
+		return SXRET_OK;
+	}
+	/* NOTE: a userland function shadowing a C builtin (e.g. `function strlen(){}`)
+	 * is NOT caught here — the C builtins register in PH7_VmMakeReady, after user
+	 * code has compiled, so hHostFunction is still empty at this point. Prelude
+	 * functions (ini_get, ...) and every builtin CLASS compile earlier and ARE
+	 * guarded. Redeclaring a C builtin function stays a known divergence. */
+	pEntry = SyHashGet(&pGen->pVm->hFunction,(const void *)pFunc->sName.zString,pFunc->sName.nByte);
+	if( pEntry ){
+		ph7_vm_func *pPrev = (ph7_vm_func *)pEntry->pUserData;
+		while( pPrev ){
+			if( pPrev->iFlags & VM_FUNC_BOUND ){
+				if( pPrev->sFile.nByte > 0 ){
+					PH7_GenCompileError(pGen,E_ERROR,pFunc->nLine,
+						"Cannot redeclare function %z() (previously declared in %.*s:%u)",
+						&pFunc->sName,pPrev->sFile.nByte,pPrev->sFile.zString,pPrev->nLine);
+				}else{
+					PH7_GenCompileError(pGen,E_ERROR,pFunc->nLine,
+						"Cannot redeclare function %z()",&pFunc->sName);
+				}
+				return SXERR_ABORT;
+			}
+			pPrev = pPrev->pNextName;
+		}
+	}
+	return SXRET_OK;
+}
+/*
  * Emit a forward jump.
  * Notes on forward jumps
  *  Compilation of some PHP constructs such as if,for,while and the logical or
@@ -7999,6 +8115,10 @@ static sxi32 GenStateCompileFunc(
 	}
 	rc = SXRET_OK;
 	if( (pFunc->iFlags & VM_FUNC_CLOSURE) == 0 ){
+		/* Reject a php-fatal redeclaration before hoisting the function */
+		if( GenStateGuardFuncRedeclaration(pGen,pFunc) == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
 		/* Finally register the function */
 		rc = PH7_VmInstallUserFunction(pGen->pVm,pFunc,0);
 	}
@@ -10090,6 +10210,10 @@ static sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 			}
 		}
 	}
+	/* Reject a php-fatal redeclaration before hoisting the interface */
+	if( GenStateGuardClassRedeclaration(pGen,pClass) == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
 	/* Install the interface */
 	rc = PH7_VmInstallClass(pGen->pVm,pClass);
 	if( rc == SXRET_OK && pBase ){
@@ -11651,6 +11775,10 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 			return SXERR_ABORT;
 		}
 	}
+	/* Reject a php-fatal redeclaration before hoisting the class */
+	if( GenStateGuardClassRedeclaration(pGen,pClass) == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
 	/* Install the class */
 	rc = PH7_VmInstallClass(pGen->pVm,pClass);
 	if( rc == SXRET_OK ){
@@ -12213,6 +12341,10 @@ static sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 				goto done;
 			}
 		}
+	}
+	/* Reject a php-fatal redeclaration before hoisting the trait */
+	if( GenStateGuardClassRedeclaration(pGen,pClass) == SXERR_ABORT ){
+		return SXERR_ABORT;
 	}
 	/* Install the trait */
 	rc = PH7_VmInstallClass(pGen->pVm,pClass);
