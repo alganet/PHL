@@ -2205,6 +2205,11 @@ PH7_PRIVATE void PH7_LibxmlClearErrors(ph7_vm *pVm);
 PH7_PRIVATE phl_xmldoc * PH7_LibxmlNewDoc(ph7_vm *pVm,void *pXmlDocPtr);
 PH7_PRIVATE sxu32 PH7_LibxmlCaptureBegin(ph7_vm *pVm);
 PH7_PRIVATE void PH7_LibxmlCaptureEnd(ph7_vm *pVm,sxu32 nMark,const char *zFnName);
+/* Push one error onto the per-VM queue + last-error slot (strings copied).
+ * The shared structured-error callback and the DOM schema error hooks both
+ * funnel through this so ph7int.h needs no libxml types. */
+PH7_PRIVATE void PH7_LibxmlQueueError(ph7_vm *pVm,int iLevel,int iCode,int iLine,int iColumn,
+	const char *zMsg,const char *zFile);
 /* vm_dom.c */
 PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm);
 /* vm_xmlwriter.c */

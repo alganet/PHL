@@ -8,6 +8,8 @@
 #include <libxml/tree.h>
 #include <libxml/c14n.h>
 #include <libxml/xmlsave.h>
+#include <libxml/xpath.h>
+#include <libxml/xmlschemas.h>
 
 /*
  * ext/dom on libxml2: __dom_* native thunks + the DOM class prelude.
@@ -823,6 +825,141 @@ DOM_THUNK(vm_builtin_dom_node_c14n)
 	return PH7_OK;
 }
 
+/* ===== DOMXPath ===== */
+
+/* array|false __dom_xpath_query(docres,expr,?ctxnoderes) -- snapshot array
+ * of node resources in document order, or false on an invalid expression
+ * or a non-nodeset result (php's DOMXPath::query contract). */
+DOM_THUNK(vm_builtin_dom_xpath_query)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	phl_domnode *pDocNd = nArg > 1 ? DomNodeArg(apArg[0]) : 0;
+	const char *zExpr = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
+	phl_domnode *pCtxNd = (nArg > 2 && !ph7_value_is_null(apArg[2])) ? DomNodeArg(apArg[2]) : 0;
+	xmlXPathContextPtr pXCtx;
+	xmlXPathObjectPtr pObj;
+	ph7_value *pList;
+	sxu32 nMark;
+	if( pDocNd == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pXCtx = xmlXPathNewContext((xmlDocPtr)pDocNd->pNode);
+	if( pXCtx == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pXCtx->node = pCtxNd ? (xmlNodePtr)pCtxNd->pNode : 0;
+	nMark = PH7_LibxmlCaptureBegin(pVm);
+	pObj = xmlXPathEvalExpression((const xmlChar *)zExpr,pXCtx);
+	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMXPath::query");
+	if( pObj == 0 || pObj->type != XPATH_NODESET ){
+		if( pObj ){
+			xmlXPathFreeObject(pObj);
+		}
+		xmlXPathFreeContext(pXCtx);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pList = ph7_context_new_array(pCtx);
+	if( pList == 0 ){
+		xmlXPathFreeObject(pObj);
+		xmlXPathFreeContext(pXCtx);
+		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( pObj->nodesetval ){
+		int i;
+		for( i = 0 ; i < pObj->nodesetval->nodeNr ; i++ ){
+			xmlNodePtr pNode = pObj->nodesetval->nodeTab[i];
+			phl_domnode *pWrap;
+			ph7_value *pRes;
+			if( pNode == 0 || pNode->type == XML_NAMESPACE_DECL ){
+				continue; /* namespace pseudo-nodes are not exposed */
+			}
+			pWrap = (phl_domnode *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_domnode));
+			pRes = ph7_context_new_scalar(pCtx);
+			if( pWrap == 0 || pRes == 0 ){
+				break;
+			}
+			pWrap->pShell = pDocNd->pShell;
+			pWrap->pNode = pNode;
+			ph7_value_resource(pRes,pWrap);
+			ph7_array_add_elem(pList,0,pRes);
+		}
+	}
+	xmlXPathFreeObject(pObj);
+	xmlXPathFreeContext(pXCtx);
+	ph7_result_value(pCtx,pList);
+	return PH7_OK;
+}
+
+/* ===== Schema validation ===== */
+
+/* Schema parser/validator diagnostics: forward onto the shared per-VM queue
+ * via PH7_LibxmlQueueError, exactly like the global structured handler. */
+#if LIBXML_VERSION >= 21200
+static void DomSchemaErr(void *pUserData,const xmlError *pErr)
+#else
+static void DomSchemaErr(void *pUserData,xmlErrorPtr pErr)
+#endif
+{
+	if( pErr == 0 ){
+		return;
+	}
+	PH7_LibxmlQueueError((ph7_vm *)pUserData,(int)pErr->level,pErr->code,pErr->line,
+		pErr->int2,pErr->message,pErr->file);
+}
+/* bool __dom_doc_schema_validate_source(docres,xsdSource) */
+DOM_THUNK(vm_builtin_dom_doc_schema_validate_source)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	phl_domnode *pDocNd = nArg > 1 ? DomNodeArg(apArg[0]) : 0;
+	int nXsd = 0;
+	const char *zXsd = nArg > 1 ? ph7_value_to_string(apArg[1],&nXsd) : "";
+	xmlSchemaParserCtxtPtr pParser;
+	xmlSchemaPtr pSchema;
+	xmlSchemaValidCtxtPtr pValid;
+	int rc;
+	sxu32 nMark;
+	if( pDocNd == 0 || nXsd < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	nMark = PH7_LibxmlCaptureBegin(pVm);
+	pParser = xmlSchemaNewMemParserCtxt(zXsd,nXsd);
+	if( pParser == 0 ){
+		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::schemaValidateSource");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	xmlSchemaSetParserStructuredErrors(pParser,DomSchemaErr,pVm);
+	pSchema = xmlSchemaParse(pParser);
+	xmlSchemaFreeParserCtxt(pParser);
+	if( pSchema == 0 ){
+		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::schemaValidateSource");
+		/* php raises "Invalid Schema" and returns false */
+		PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,"DOMDocument::schemaValidateSource(): Invalid Schema");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pValid = xmlSchemaNewValidCtxt(pSchema);
+	if( pValid == 0 ){
+		xmlSchemaFree(pSchema);
+		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::schemaValidateSource");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	xmlSchemaSetValidStructuredErrors(pValid,DomSchemaErr,pVm);
+	rc = xmlSchemaValidateDoc(pValid,(xmlDocPtr)pDocNd->pNode);
+	xmlSchemaFreeValidCtxt(pValid);
+	xmlSchemaFree(pSchema);
+	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::schemaValidateSource");
+	ph7_result_bool(pCtx,rc == 0);
+	return PH7_OK;
+}
+
 /* ===== The DOM class prelude ===== */
 
 static const char zDomLib1[] =
@@ -963,6 +1100,10 @@ static const char zDomLib2[] =
 	"    return __phl_dom_wrap($this,__dom_doc_create($this->__res,XML_CDATA_SECTION_NODE,'',(string)$data));"
 	"  }"
 	"  function normalizeDocument(){ __dom_doc_normalize($this->__res); }"
+	"  function schemaValidateSource($source,$flags = 0)"
+	"  {"
+	"    return __dom_doc_schema_validate_source($this->__res,(string)$source);"
+	"  }"
 	"  function __get($name)"
 	"  {"
 	"    if( $name === 'documentElement' ){"
@@ -1072,6 +1213,23 @@ static const char zDomLib3[] =
 	"    return null;"
 	"  }"
 	"}"
+	"class DOMXPath"
+	"{"
+	"  public $__doc;"
+	"  public $document;"
+	"  function __construct($document)"
+	"  {"
+	"    $this->__doc = $document;"
+	"    $this->document = $document;"
+	"  }"
+	"  function query($expression,$contextNode = null,$registerNodeNS = true)"
+	"  {"
+	"    $ctx = ($contextNode === null) ? null : $contextNode->__res;"
+	"    $r = __dom_xpath_query($this->__doc->__res,(string)$expression,$ctx);"
+	"    if( $r === false ){ return false; }"
+	"    return new DOMNodeList('snap',$this->__doc,null,null,$r);"
+	"  }"
+	"}"
 	"class DOMNamedNodeMap implements Countable"
 	"{"
 	"  public $__doc;"
@@ -1145,6 +1303,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "__dom_doc_savexml",        vm_builtin_dom_doc_savexml        },
 		{ "__dom_doc_create",         vm_builtin_dom_doc_create         },
 		{ "__dom_doc_normalize",      vm_builtin_dom_doc_normalize      },
+		{ "__dom_xpath_query",        vm_builtin_dom_xpath_query        },
+		{ "__dom_doc_schema_validate_source", vm_builtin_dom_doc_schema_validate_source },
 	};
 	sxu32 n;
 	sxi32 rc;
