@@ -22940,6 +22940,37 @@ PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)
  * Return
  *  TRUE if name is callable, FALSE otherwise.
  */
+/*
+ * php's is_callable($v, $syntax_only=true) validates only the SHAPE of the
+ * value, never that the target actually exists:
+ *   - any string is a potential function/method name -> true;
+ *   - a [target, method] pair is true iff target is an object or a string and
+ *     method is a string (existence is not checked);
+ *   - an object is callable iff it is a Closure or declares __invoke;
+ *   - anything else -> false.
+ */
+static int VmIsCallableSyntaxOnly(ph7_vm *pVm,ph7_value *pValue)
+{
+	if( pValue->iFlags & MEMOBJ_STRING ){
+		return 1;
+	}
+	if( pValue->iFlags & MEMOBJ_OBJ ){
+		/* __invoke/Closure is part of the class shape, not a runtime lookup */
+		return PH7_VmIsCallable(pVm,pValue,TRUE);
+	}
+	if( pValue->iFlags & MEMOBJ_HASHMAP ){
+		ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;
+		if( pMap->nEntry == 2 ){
+			ph7_value *pTarget = (ph7_value *)SySetAt(&pVm->aMemObj,pMap->pFirst->nValIdx);
+			ph7_value *pMethod = (ph7_value *)SySetAt(&pVm->aMemObj,pMap->pFirst->pPrev->nValIdx);
+			if( pTarget && pMethod && (pMethod->iFlags & MEMOBJ_STRING)
+			 && (pTarget->iFlags & (MEMOBJ_OBJ|MEMOBJ_STRING)) ){
+				return 1;
+			}
+		}
+	}
+	return 0;
+}
 static int vm_builtin_is_callable(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm;
@@ -22952,7 +22983,11 @@ static int vm_builtin_is_callable(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Point to the target VM */
 	pVm = pCtx->pVm;
 	/* Perform the requested operation */
-	res = PH7_VmIsCallable(pVm,apArg[0],TRUE);
+	if( nArg > 1 && ph7_value_to_bool(apArg[1]) ){
+		res = VmIsCallableSyntaxOnly(pVm,apArg[0]);
+	}else{
+		res = PH7_VmIsCallable(pVm,apArg[0],TRUE);
+	}
 	ph7_result_bool(pCtx,res);
 	return SXRET_OK;
 }
