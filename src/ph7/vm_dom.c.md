@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 653/759 lines (86.03%)
+Coverage: 656/762 lines (86.09%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -47,32 +47,32 @@ Coverage: 653/759 lines (86.03%)
 |      - |   37 | `#define DOM_THUNK(NAME) static int NAME(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      - |   38 |  |
 |      - |   39 | `/* Extract a phl_domnode from a thunk argument (NULL if not a resource) */` |
-|    698 |   40 | `static phl_domnode * DomNodeArg(ph7_value *pVal)` |
+|    738 |   40 | `static phl_domnode * DomNodeArg(ph7_value *pVal)` |
 |      1 |   41 | `{` |
-|    699 |   42 | `	if( pVal == 0 \|\| !ph7_value_is_resource(pVal) ){` |
+|    739 |   42 | `	if( pVal == 0 \|\| !ph7_value_is_resource(pVal) ){` |
 |    ! 0 |   43 | `		return 0;` |
 |      - |   44 | `	}` |
-|    699 |   45 | `	return (phl_domnode *)ph7_value_to_resource(pVal);` |
-|    350 |   46 | `}` |
+|    739 |   45 | `	return (phl_domnode *)ph7_value_to_resource(pVal);` |
+|    370 |   46 | `}` |
 |      - |   47 | `/* Return a (possibly NULL) xmlNode as a fresh phl_domnode resource */` |
-|    234 |   48 | `static int DomResultNode(ph7_context *pCtx,phl_xmldoc *pShell,void *pNode)` |
+|    238 |   48 | `static int DomResultNode(ph7_context *pCtx,phl_xmldoc *pShell,void *pNode)` |
 |      1 |   49 | `{` |
 |      - |   50 | `	phl_domnode *pWrap;` |
-|    235 |   51 | `	if( pNode == 0 ){` |
+|    239 |   51 | `	if( pNode == 0 ){` |
 |      5 |   52 | `		ph7_result_null(pCtx);` |
 |      5 |   53 | `		return PH7_OK;` |
 |      - |   54 | `	}` |
-|    231 |   55 | `	pWrap = (phl_domnode *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,sizeof(phl_domnode));` |
-|    231 |   56 | `	if( pWrap == 0 ){` |
+|    235 |   55 | `	pWrap = (phl_domnode *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,sizeof(phl_domnode));` |
+|    235 |   56 | `	if( pWrap == 0 ){` |
 |    ! 0 |   57 | `		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");` |
 |    ! 0 |   58 | `		ph7_result_null(pCtx);` |
 |    ! 0 |   59 | `		return PH7_OK;` |
 |      - |   60 | `	}` |
-|    231 |   61 | `	pWrap->pShell = pShell;` |
-|    231 |   62 | `	pWrap->pNode = pNode;` |
-|    231 |   63 | `	ph7_result_resource(pCtx,pWrap);` |
-|    231 |   64 | `	return PH7_OK;` |
-|    118 |   65 | `}` |
+|    235 |   61 | `	pWrap->pShell = pShell;` |
+|    235 |   62 | `	pWrap->pNode = pNode;` |
+|    235 |   63 | `	ph7_result_resource(pCtx,pWrap);` |
+|    235 |   64 | `	return PH7_OK;` |
+|    120 |   65 | `}` |
 |      - |   66 | `/* Orphan bookkeeping: nodes not linked into their tree but still owned */` |
 |     20 |   67 | `static void DomOrphanAdd(phl_xmldoc *pShell,xmlNodePtr pNode)` |
 |      1 |   68 | `{` |
@@ -136,23 +136,23 @@ Coverage: 653/759 lines (86.03%)
 |      - |  126 | `/* ===== Node introspection thunks ===== */` |
 |      - |  127 |  |
 |      - |  128 | `/* int __dom_node_id(res) -- identity-map key (the node pointer) */` |
-|    164 |  129 | `DOM_THUNK(vm_builtin_dom_node_id)` |
+|    172 |  129 | `DOM_THUNK(vm_builtin_dom_node_id)` |
 |      1 |  130 | `{` |
-|    165 |  131 | `	phl_domnode *pNd = nArg > 0 ? DomNodeArg(apArg[0]) : 0;` |
-|    165 |  132 | `	if( pNd == 0 ){` |
+|    173 |  131 | `	phl_domnode *pNd = nArg > 0 ? DomNodeArg(apArg[0]) : 0;` |
+|    173 |  132 | `	if( pNd == 0 ){` |
 |    ! 0 |  133 | `		ph7_result_int64(pCtx,0);` |
 |    ! 0 |  134 | `		return PH7_OK;` |
 |      - |  135 | `	}` |
-|    165 |  136 | `	ph7_result_int64(pCtx,(ph7_int64)(sxuptr)pNd->pNode);` |
-|    165 |  137 | `	return PH7_OK;` |
-|     83 |  138 | `}` |
+|    173 |  136 | `	ph7_result_int64(pCtx,(ph7_int64)(sxuptr)pNd->pNode);` |
+|    173 |  137 | `	return PH7_OK;` |
+|     87 |  138 | `}` |
 |      - |  139 | `/* int __dom_node_kind(res) -- the XML_*_NODE type */` |
-|    112 |  140 | `DOM_THUNK(vm_builtin_dom_node_kind)` |
+|    116 |  140 | `DOM_THUNK(vm_builtin_dom_node_kind)` |
 |      1 |  141 | `{` |
-|    113 |  142 | `	phl_domnode *pNd = nArg > 0 ? DomNodeArg(apArg[0]) : 0;` |
-|    113 |  143 | `	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
-|    113 |  144 | `	ph7_result_int(pCtx,pNode ? (int)pNode->type : 0);` |
-|    113 |  145 | `	return PH7_OK;` |
+|    117 |  142 | `	phl_domnode *pNd = nArg > 0 ? DomNodeArg(apArg[0]) : 0;` |
+|    117 |  143 | `	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;` |
+|    117 |  144 | `	ph7_result_int(pCtx,pNode ? (int)pNode->type : 0);` |
+|    117 |  145 | `	return PH7_OK;` |
 |      1 |  146 | `}` |
 |      - |  147 | `/* string __dom_node_name(res) -- php nodeName rules */` |
 |     28 |  148 | `DOM_THUNK(vm_builtin_dom_node_name)` |
@@ -380,16 +380,16 @@ Coverage: 653/759 lines (86.03%)
 |      - |  370 | `/* ===== Element attribute thunks ===== */` |
 |      - |  371 |  |
 |      - |  372 | `/* string __dom_elem_get_attr(res,name) -- "" when absent (php) */` |
-|     16 |  373 | `DOM_THUNK(vm_builtin_dom_elem_get_attr)` |
+|     20 |  373 | `DOM_THUNK(vm_builtin_dom_elem_get_attr)` |
 |      1 |  374 | `{` |
-|     17 |  375 | `	phl_domnode *pNd = nArg > 1 ? DomNodeArg(apArg[0]) : 0;` |
-|     17 |  376 | `	const char *zName = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";` |
-|     17 |  377 | `	xmlChar *zVal = pNd ? xmlGetProp((xmlNodePtr)pNd->pNode,(const xmlChar *)zName) : 0;` |
-|     17 |  378 | `	ph7_result_string(pCtx,zVal ? (const char *)zVal : "",-1);` |
-|     17 |  379 | `	if( zVal ){` |
-|     15 |  380 | `		xmlFree(zVal);` |
-|      7 |  381 | `	}` |
-|     17 |  382 | `	return PH7_OK;` |
+|     21 |  375 | `	phl_domnode *pNd = nArg > 1 ? DomNodeArg(apArg[0]) : 0;` |
+|     21 |  376 | `	const char *zName = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";` |
+|     21 |  377 | `	xmlChar *zVal = pNd ? xmlGetProp((xmlNodePtr)pNd->pNode,(const xmlChar *)zName) : 0;` |
+|     21 |  378 | `	ph7_result_string(pCtx,zVal ? (const char *)zVal : "",-1);` |
+|     21 |  379 | `	if( zVal ){` |
+|     19 |  380 | `		xmlFree(zVal);` |
+|      9 |  381 | `	}` |
+|     21 |  382 | `	return PH7_OK;` |
 |      1 |  383 | `}` |
 |      - |  384 | `/* bool __dom_elem_has_attr(res,name) */` |
 |      4 |  385 | `DOM_THUNK(vm_builtin_dom_elem_has_attr)` |
@@ -584,58 +584,58 @@ Coverage: 653/759 lines (86.03%)
 |      - |  574 | `/* ===== Document thunks ===== */` |
 |      - |  575 |  |
 |      - |  576 | `/* res __dom_doc_new(version,encoding) */` |
-|     48 |  577 | `DOM_THUNK(vm_builtin_dom_doc_new)` |
+|     50 |  577 | `DOM_THUNK(vm_builtin_dom_doc_new)` |
 |      1 |  578 | `{` |
-|     49 |  579 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     49 |  580 | `	const char *zVersion = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "1.0";` |
-|     49 |  581 | `	const char *zEncoding = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";` |
+|     51 |  579 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     51 |  580 | `	const char *zVersion = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "1.0";` |
+|     51 |  581 | `	const char *zEncoding = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";` |
 |      - |  582 | `	xmlDocPtr pDoc;` |
 |      - |  583 | `	phl_xmldoc *pShell;` |
-|     49 |  584 | `	pDoc = xmlNewDoc((const xmlChar *)(zVersion[0] ? zVersion : "1.0"));` |
-|     49 |  585 | `	if( pDoc == 0 ){` |
+|     51 |  584 | `	pDoc = xmlNewDoc((const xmlChar *)(zVersion[0] ? zVersion : "1.0"));` |
+|     51 |  585 | `	if( pDoc == 0 ){` |
 |    ! 0 |  586 | `		ph7_result_null(pCtx);` |
 |    ! 0 |  587 | `		return PH7_OK;` |
 |      - |  588 | `	}` |
-|     49 |  589 | `	if( zEncoding[0] ){` |
+|     51 |  589 | `	if( zEncoding[0] ){` |
 |    ! 0 |  590 | `		pDoc->encoding = xmlStrdup((const xmlChar *)zEncoding);` |
 |    ! 0 |  591 | `	}` |
-|     49 |  592 | `	pShell = PH7_LibxmlNewDoc(pVm,pDoc);` |
-|     49 |  593 | `	if( pShell == 0 ){` |
+|     51 |  592 | `	pShell = PH7_LibxmlNewDoc(pVm,pDoc);` |
+|     51 |  593 | `	if( pShell == 0 ){` |
 |    ! 0 |  594 | `		xmlFreeDoc(pDoc);` |
 |    ! 0 |  595 | `		ph7_result_null(pCtx);` |
 |    ! 0 |  596 | `		return PH7_OK;` |
 |      - |  597 | `	}` |
-|     49 |  598 | `	return DomResultNode(pCtx,pShell,(xmlNodePtr)pDoc);` |
-|     25 |  599 | `}` |
+|     51 |  598 | `	return DomResultNode(pCtx,pShell,(xmlNodePtr)pDoc);` |
+|     26 |  599 | `}` |
 |      - |  600 | `/* res\|false __dom_doc_loadxml(source,preserveWS,options) -- a NEW doc resource */` |
-|     48 |  601 | `DOM_THUNK(vm_builtin_dom_doc_loadxml)` |
+|     50 |  601 | `DOM_THUNK(vm_builtin_dom_doc_loadxml)` |
 |      1 |  602 | `{` |
-|     49 |  603 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     49 |  604 | `	int nLen = 0;` |
-|     49 |  605 | `	const char *zSrc = nArg > 0 ? ph7_value_to_string(apArg[0],&nLen) : "";` |
-|     49 |  606 | `	int bPreserve = nArg > 1 ? ph7_value_to_bool(apArg[1]) : 1;` |
-|     49 |  607 | `	int iOpts = nArg > 2 ? ph7_value_to_int(apArg[2]) : 0;` |
+|     51 |  603 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     51 |  604 | `	int nLen = 0;` |
+|     51 |  605 | `	const char *zSrc = nArg > 0 ? ph7_value_to_string(apArg[0],&nLen) : "";` |
+|     51 |  606 | `	int bPreserve = nArg > 1 ? ph7_value_to_bool(apArg[1]) : 1;` |
+|     51 |  607 | `	int iOpts = nArg > 2 ? ph7_value_to_int(apArg[2]) : 0;` |
 |      - |  608 | `	xmlDocPtr pDoc;` |
 |      - |  609 | `	phl_xmldoc *pShell;` |
 |      - |  610 | `	sxu32 nMark;` |
-|     49 |  611 | `	if( !bPreserve ){` |
+|     51 |  611 | `	if( !bPreserve ){` |
 |     15 |  612 | `		iOpts \|= XML_PARSE_NOBLANKS;` |
 |      7 |  613 | `	}` |
-|     49 |  614 | `	nMark = PH7_LibxmlCaptureBegin(pVm);` |
-|     49 |  615 | `	pDoc = xmlReadMemory(zSrc,nLen,0,0,iOpts);` |
-|     49 |  616 | `	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::loadXML");` |
-|     49 |  617 | `	if( pDoc == 0 ){` |
+|     51 |  614 | `	nMark = PH7_LibxmlCaptureBegin(pVm);` |
+|     51 |  615 | `	pDoc = xmlReadMemory(zSrc,nLen,0,0,iOpts);` |
+|     51 |  616 | `	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::loadXML");` |
+|     51 |  617 | `	if( pDoc == 0 ){` |
 |      9 |  618 | `		ph7_result_bool(pCtx,0);` |
 |      9 |  619 | `		return PH7_OK;` |
 |      - |  620 | `	}` |
-|     41 |  621 | `	pShell = PH7_LibxmlNewDoc(pVm,pDoc);` |
-|     41 |  622 | `	if( pShell == 0 ){` |
+|     43 |  621 | `	pShell = PH7_LibxmlNewDoc(pVm,pDoc);` |
+|     43 |  622 | `	if( pShell == 0 ){` |
 |    ! 0 |  623 | `		xmlFreeDoc(pDoc);` |
 |    ! 0 |  624 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 |  625 | `		return PH7_OK;` |
 |      - |  626 | `	}` |
-|     41 |  627 | `	return DomResultNode(pCtx,pShell,(xmlNodePtr)pDoc);` |
-|     25 |  628 | `}` |
+|     43 |  627 | `	return DomResultNode(pCtx,pShell,(xmlNodePtr)pDoc);` |
+|     26 |  628 | `}` |
 |      - |  629 | `/* ?res __dom_doc_root(docres) -- documentElement */` |
 |     44 |  630 | `DOM_THUNK(vm_builtin_dom_doc_root)` |
 |      1 |  631 | `{` |
@@ -840,499 +840,506 @@ Coverage: 653/759 lines (86.03%)
 |      - |  830 | `/* array\|false __dom_xpath_query(docres,expr,?ctxnoderes) -- snapshot array` |
 |      - |  831 | ` * of node resources in document order, or false on an invalid expression` |
 |      - |  832 | ` * or a non-nodeset result (php's DOMXPath::query contract). */` |
-|     22 |  833 | `DOM_THUNK(vm_builtin_dom_xpath_query)` |
+|     42 |  833 | `DOM_THUNK(vm_builtin_dom_xpath_query)` |
 |      1 |  834 | `{` |
-|     23 |  835 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     23 |  836 | `	phl_domnode *pDocNd = nArg > 1 ? DomNodeArg(apArg[0]) : 0;` |
-|     23 |  837 | `	const char *zExpr = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";` |
-|     23 |  838 | `	phl_domnode *pCtxNd = (nArg > 2 && !ph7_value_is_null(apArg[2])) ? DomNodeArg(apArg[2]) : 0;` |
+|     43 |  835 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     43 |  836 | `	phl_domnode *pDocNd = nArg > 1 ? DomNodeArg(apArg[0]) : 0;` |
+|     43 |  837 | `	const char *zExpr = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";` |
+|     43 |  838 | `	phl_domnode *pCtxNd = (nArg > 2 && !ph7_value_is_null(apArg[2])) ? DomNodeArg(apArg[2]) : 0;` |
 |      - |  839 | `	xmlXPathContextPtr pXCtx;` |
 |      - |  840 | `	xmlXPathObjectPtr pObj;` |
 |      - |  841 | `	ph7_value *pList;` |
 |      - |  842 | `	sxu32 nMark;` |
-|     23 |  843 | `	if( pDocNd == 0 ){` |
+|     43 |  843 | `	if( pDocNd == 0 ){` |
 |    ! 0 |  844 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 |  845 | `		return PH7_OK;` |
 |      - |  846 | `	}` |
-|     23 |  847 | `	pXCtx = xmlXPathNewContext((xmlDocPtr)pDocNd->pNode);` |
-|     23 |  848 | `	if( pXCtx == 0 ){` |
+|     43 |  847 | `	pXCtx = xmlXPathNewContext((xmlDocPtr)pDocNd->pNode);` |
+|     43 |  848 | `	if( pXCtx == 0 ){` |
 |    ! 0 |  849 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 |  850 | `		return PH7_OK;` |
 |      - |  851 | `	}` |
-|     23 |  852 | `	pXCtx->node = pCtxNd ? (xmlNodePtr)pCtxNd->pNode : 0;` |
-|     23 |  853 | `	nMark = PH7_LibxmlCaptureBegin(pVm);` |
-|     23 |  854 | `	pObj = xmlXPathEvalExpression((const xmlChar *)zExpr,pXCtx);` |
-|     23 |  855 | `	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMXPath::query");` |
-|     23 |  856 | `	if( pObj == 0 \|\| pObj->type != XPATH_NODESET ){` |
-|      3 |  857 | `		if( pObj ){` |
-|    ! 0 |  858 | `			xmlXPathFreeObject(pObj);` |
-|    ! 0 |  859 | `		}` |
-|      3 |  860 | `		xmlXPathFreeContext(pXCtx);` |
-|      3 |  861 | `		ph7_result_bool(pCtx,0);` |
-|      3 |  862 | `		return PH7_OK;` |
-|      - |  863 | `	}` |
-|     21 |  864 | `	pList = ph7_context_new_array(pCtx);` |
-|     21 |  865 | `	if( pList == 0 ){` |
-|    ! 0 |  866 | `		xmlXPathFreeObject(pObj);` |
-|    ! 0 |  867 | `		xmlXPathFreeContext(pXCtx);` |
-|    ! 0 |  868 | `		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");` |
-|    ! 0 |  869 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 |  870 | `		return PH7_OK;` |
-|      - |  871 | `	}` |
-|     21 |  872 | `	if( pObj->nodesetval ){` |
-|      - |  873 | `		int i;` |
-|     49 |  874 | `		for( i = 0 ; i < pObj->nodesetval->nodeNr ; i++ ){` |
-|     29 |  875 | `			xmlNodePtr pNode = pObj->nodesetval->nodeTab[i];` |
-|      - |  876 | `			phl_domnode *pWrap;` |
-|      - |  877 | `			ph7_value *pRes;` |
-|     29 |  878 | `			if( pNode == 0 \|\| pNode->type == XML_NAMESPACE_DECL ){` |
-|    ! 0 |  879 | `				continue; /* namespace pseudo-nodes are not exposed */` |
-|      - |  880 | `			}` |
-|     29 |  881 | `			pWrap = (phl_domnode *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_domnode));` |
-|     29 |  882 | `			pRes = ph7_context_new_scalar(pCtx);` |
-|     29 |  883 | `			if( pWrap == 0 \|\| pRes == 0 ){` |
-|    ! 0 |  884 | `				break;` |
-|      - |  885 | `			}` |
-|     29 |  886 | `			pWrap->pShell = pDocNd->pShell;` |
-|     29 |  887 | `			pWrap->pNode = pNode;` |
-|     29 |  888 | `			ph7_value_resource(pRes,pWrap);` |
-|     29 |  889 | `			ph7_array_add_elem(pList,0,pRes);` |
-|     15 |  890 | `		}` |
-|     10 |  891 | `	}` |
-|     21 |  892 | `	xmlXPathFreeObject(pObj);` |
-|     21 |  893 | `	xmlXPathFreeContext(pXCtx);` |
-|     21 |  894 | `	ph7_result_value(pCtx,pList);` |
-|     21 |  895 | `	return PH7_OK;` |
-|     12 |  896 | `}` |
-|      - |  897 |  |
-|      - |  898 | `/* ===== Schema validation ===== */` |
-|      - |  899 |  |
-|      - |  900 | `/* Schema parser/validator diagnostics: forward onto the shared per-VM queue` |
-|      - |  901 | ` * via PH7_LibxmlQueueError, exactly like the global structured handler. */` |
-|      - |  902 | `#if LIBXML_VERSION >= 21200` |
-|      2 |  903 | `static void DomSchemaErr(void *pUserData,const xmlError *pErr)` |
-|      - |  904 | `#else` |
-|      2 |  905 | `static void DomSchemaErr(void *pUserData,xmlErrorPtr pErr)` |
-|      - |  906 | `#endif` |
-|      1 |  907 | `{` |
-|      5 |  908 | `	if( pErr == 0 ){` |
-|    ! 0 |  909 | `		return;` |
-|      - |  910 | `	}` |
-|      7 |  911 | `	PH7_LibxmlQueueError((ph7_vm *)pUserData,(int)pErr->level,pErr->code,pErr->line,` |
-|      4 |  912 | `		pErr->int2,pErr->message,pErr->file);` |
-|      3 |  913 | `}` |
-|      - |  914 | `/* bool __dom_doc_schema_validate_source(docres,xsdSource) */` |
-|      4 |  915 | `DOM_THUNK(vm_builtin_dom_doc_schema_validate_source)` |
-|      1 |  916 | `{` |
-|      5 |  917 | `	ph7_vm *pVm = pCtx->pVm;` |
-|      5 |  918 | `	phl_domnode *pDocNd = nArg > 1 ? DomNodeArg(apArg[0]) : 0;` |
-|      5 |  919 | `	int nXsd = 0;` |
-|      5 |  920 | `	const char *zXsd = nArg > 1 ? ph7_value_to_string(apArg[1],&nXsd) : "";` |
-|      - |  921 | `	xmlSchemaParserCtxtPtr pParser;` |
-|      - |  922 | `	xmlSchemaPtr pSchema;` |
-|      - |  923 | `	xmlSchemaValidCtxtPtr pValid;` |
-|      - |  924 | `	int rc;` |
-|      - |  925 | `	sxu32 nMark;` |
-|      5 |  926 | `	if( pDocNd == 0 \|\| nXsd < 1 ){` |
-|    ! 0 |  927 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 |  928 | `		return PH7_OK;` |
-|      - |  929 | `	}` |
-|      5 |  930 | `	nMark = PH7_LibxmlCaptureBegin(pVm);` |
-|      5 |  931 | `	pParser = xmlSchemaNewMemParserCtxt(zXsd,nXsd);` |
-|      5 |  932 | `	if( pParser == 0 ){` |
-|    ! 0 |  933 | `		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::schemaValidateSource");` |
+|      - |  852 | `	/* With no explicit context node php evaluates relative expressions` |
+|      - |  853 | `	 * against the document ELEMENT (so query('file') matches a child of` |
+|      - |  854 | `	 * the root), not the document node -- match that. */` |
+|     43 |  855 | `	if( pCtxNd ){` |
+|     11 |  856 | `		pXCtx->node = (xmlNodePtr)pCtxNd->pNode;` |
+|      6 |  857 | `	}else{` |
+|     33 |  858 | `		pXCtx->node = xmlDocGetRootElement((xmlDocPtr)pDocNd->pNode);` |
+|      - |  859 | `	}` |
+|     43 |  860 | `	nMark = PH7_LibxmlCaptureBegin(pVm);` |
+|     43 |  861 | `	pObj = xmlXPathEvalExpression((const xmlChar *)zExpr,pXCtx);` |
+|     43 |  862 | `	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMXPath::query");` |
+|     43 |  863 | `	if( pObj == 0 \|\| pObj->type != XPATH_NODESET ){` |
+|      3 |  864 | `		if( pObj ){` |
+|    ! 0 |  865 | `			xmlXPathFreeObject(pObj);` |
+|    ! 0 |  866 | `		}` |
+|      3 |  867 | `		xmlXPathFreeContext(pXCtx);` |
+|      3 |  868 | `		ph7_result_bool(pCtx,0);` |
+|      3 |  869 | `		return PH7_OK;` |
+|      - |  870 | `	}` |
+|     41 |  871 | `	pList = ph7_context_new_array(pCtx);` |
+|     41 |  872 | `	if( pList == 0 ){` |
+|    ! 0 |  873 | `		xmlXPathFreeObject(pObj);` |
+|    ! 0 |  874 | `		xmlXPathFreeContext(pXCtx);` |
+|    ! 0 |  875 | `		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");` |
+|    ! 0 |  876 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 |  877 | `		return PH7_OK;` |
+|      - |  878 | `	}` |
+|     41 |  879 | `	if( pObj->nodesetval ){` |
+|      - |  880 | `		int i;` |
+|     95 |  881 | `		for( i = 0 ; i < pObj->nodesetval->nodeNr ; i++ ){` |
+|     55 |  882 | `			xmlNodePtr pNode = pObj->nodesetval->nodeTab[i];` |
+|      - |  883 | `			phl_domnode *pWrap;` |
+|      - |  884 | `			ph7_value *pRes;` |
+|     55 |  885 | `			if( pNode == 0 \|\| pNode->type == XML_NAMESPACE_DECL ){` |
+|    ! 0 |  886 | `				continue; /* namespace pseudo-nodes are not exposed */` |
+|      - |  887 | `			}` |
+|     55 |  888 | `			pWrap = (phl_domnode *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_domnode));` |
+|     55 |  889 | `			pRes = ph7_context_new_scalar(pCtx);` |
+|     55 |  890 | `			if( pWrap == 0 \|\| pRes == 0 ){` |
+|    ! 0 |  891 | `				break;` |
+|      - |  892 | `			}` |
+|     55 |  893 | `			pWrap->pShell = pDocNd->pShell;` |
+|     55 |  894 | `			pWrap->pNode = pNode;` |
+|     55 |  895 | `			ph7_value_resource(pRes,pWrap);` |
+|     55 |  896 | `			ph7_array_add_elem(pList,0,pRes);` |
+|     28 |  897 | `		}` |
+|     20 |  898 | `	}` |
+|     41 |  899 | `	xmlXPathFreeObject(pObj);` |
+|     41 |  900 | `	xmlXPathFreeContext(pXCtx);` |
+|     41 |  901 | `	ph7_result_value(pCtx,pList);` |
+|     41 |  902 | `	return PH7_OK;` |
+|     22 |  903 | `}` |
+|      - |  904 |  |
+|      - |  905 | `/* ===== Schema validation ===== */` |
+|      - |  906 |  |
+|      - |  907 | `/* Schema parser/validator diagnostics: forward onto the shared per-VM queue` |
+|      - |  908 | ` * via PH7_LibxmlQueueError, exactly like the global structured handler. */` |
+|      - |  909 | `#if LIBXML_VERSION >= 21200` |
+|      2 |  910 | `static void DomSchemaErr(void *pUserData,const xmlError *pErr)` |
+|      - |  911 | `#else` |
+|      2 |  912 | `static void DomSchemaErr(void *pUserData,xmlErrorPtr pErr)` |
+|      - |  913 | `#endif` |
+|      1 |  914 | `{` |
+|      5 |  915 | `	if( pErr == 0 ){` |
+|    ! 0 |  916 | `		return;` |
+|      - |  917 | `	}` |
+|      7 |  918 | `	PH7_LibxmlQueueError((ph7_vm *)pUserData,(int)pErr->level,pErr->code,pErr->line,` |
+|      4 |  919 | `		pErr->int2,pErr->message,pErr->file);` |
+|      3 |  920 | `}` |
+|      - |  921 | `/* bool __dom_doc_schema_validate_source(docres,xsdSource) */` |
+|      4 |  922 | `DOM_THUNK(vm_builtin_dom_doc_schema_validate_source)` |
+|      1 |  923 | `{` |
+|      5 |  924 | `	ph7_vm *pVm = pCtx->pVm;` |
+|      5 |  925 | `	phl_domnode *pDocNd = nArg > 1 ? DomNodeArg(apArg[0]) : 0;` |
+|      5 |  926 | `	int nXsd = 0;` |
+|      5 |  927 | `	const char *zXsd = nArg > 1 ? ph7_value_to_string(apArg[1],&nXsd) : "";` |
+|      - |  928 | `	xmlSchemaParserCtxtPtr pParser;` |
+|      - |  929 | `	xmlSchemaPtr pSchema;` |
+|      - |  930 | `	xmlSchemaValidCtxtPtr pValid;` |
+|      - |  931 | `	int rc;` |
+|      - |  932 | `	sxu32 nMark;` |
+|      5 |  933 | `	if( pDocNd == 0 \|\| nXsd < 1 ){` |
 |    ! 0 |  934 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 |  935 | `		return PH7_OK;` |
 |      - |  936 | `	}` |
-|      5 |  937 | `	xmlSchemaSetParserStructuredErrors(pParser,DomSchemaErr,pVm);` |
-|      5 |  938 | `	pSchema = xmlSchemaParse(pParser);` |
-|      5 |  939 | `	xmlSchemaFreeParserCtxt(pParser);` |
-|      5 |  940 | `	if( pSchema == 0 ){` |
-|    ! 0 |  941 | `		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::schemaValidateSource");` |
-|      - |  942 | `		/* php raises "Invalid Schema" and returns false */` |
-|    ! 0 |  943 | `		PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,"DOMDocument::schemaValidateSource(): Invalid Schema");` |
-|    ! 0 |  944 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 |  945 | `		return PH7_OK;` |
-|      - |  946 | `	}` |
-|      5 |  947 | `	pValid = xmlSchemaNewValidCtxt(pSchema);` |
-|      5 |  948 | `	if( pValid == 0 ){` |
-|    ! 0 |  949 | `		xmlSchemaFree(pSchema);` |
-|    ! 0 |  950 | `		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::schemaValidateSource");` |
+|      5 |  937 | `	nMark = PH7_LibxmlCaptureBegin(pVm);` |
+|      5 |  938 | `	pParser = xmlSchemaNewMemParserCtxt(zXsd,nXsd);` |
+|      5 |  939 | `	if( pParser == 0 ){` |
+|    ! 0 |  940 | `		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::schemaValidateSource");` |
+|    ! 0 |  941 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 |  942 | `		return PH7_OK;` |
+|      - |  943 | `	}` |
+|      5 |  944 | `	xmlSchemaSetParserStructuredErrors(pParser,DomSchemaErr,pVm);` |
+|      5 |  945 | `	pSchema = xmlSchemaParse(pParser);` |
+|      5 |  946 | `	xmlSchemaFreeParserCtxt(pParser);` |
+|      5 |  947 | `	if( pSchema == 0 ){` |
+|    ! 0 |  948 | `		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::schemaValidateSource");` |
+|      - |  949 | `		/* php raises "Invalid Schema" and returns false */` |
+|    ! 0 |  950 | `		PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,"DOMDocument::schemaValidateSource(): Invalid Schema");` |
 |    ! 0 |  951 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 |  952 | `		return PH7_OK;` |
 |      - |  953 | `	}` |
-|      5 |  954 | `	xmlSchemaSetValidStructuredErrors(pValid,DomSchemaErr,pVm);` |
-|      5 |  955 | `	rc = xmlSchemaValidateDoc(pValid,(xmlDocPtr)pDocNd->pNode);` |
-|      5 |  956 | `	xmlSchemaFreeValidCtxt(pValid);` |
-|      5 |  957 | `	xmlSchemaFree(pSchema);` |
-|      5 |  958 | `	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::schemaValidateSource");` |
-|      5 |  959 | `	ph7_result_bool(pCtx,rc == 0);` |
-|      5 |  960 | `	return PH7_OK;` |
-|      3 |  961 | `}` |
-|      - |  962 |  |
-|      - |  963 | `/* ===== The DOM class prelude ===== */` |
-|      - |  964 |  |
-|      - |  965 | `static const char zDomLib1[] =` |
-|      - |  966 | `	"class DOMException extends Exception {}"` |
-|      - |  967 | `	"function __phl_dom_wrap($doc,$res)"` |
-|      - |  968 | `	"{"` |
-|      - |  969 | `	"  if( $res === null \|\| $res === false ){ return null; }"` |
-|      - |  970 | `	"  $id = __dom_node_id($res);"` |
-|      - |  971 | `	"  if( isset($doc->__nodes[$id]) ){ return $doc->__nodes[$id]; }"` |
-|      - |  972 | `	"  switch( __dom_node_kind($res) ){"` |
-|      - |  973 | `	"    case XML_ELEMENT_NODE:       $o = new DOMElement($res,$doc); break;"` |
-|      - |  974 | `	"    case XML_ATTRIBUTE_NODE:     $o = new DOMAttr($res,$doc); break;"` |
-|      - |  975 | `	"    case XML_TEXT_NODE:          $o = new DOMText($res,$doc); break;"` |
-|      - |  976 | `	"    case XML_CDATA_SECTION_NODE: $o = new DOMCdataSection($res,$doc); break;"` |
-|      - |  977 | `	"    case XML_COMMENT_NODE:       $o = new DOMComment($res,$doc); break;"` |
-|      - |  978 | `	"    case XML_DOCUMENT_NODE:"` |
-|      - |  979 | `	"    case XML_HTML_DOCUMENT_NODE: return $doc;"` |
-|      - |  980 | `	"    default:                     $o = new DOMNode($res,$doc); break;"` |
-|      - |  981 | `	"  }"` |
-|      - |  982 | `	"  $doc->__nodes[$id] = $o;"` |
-|      - |  983 | `	"  return $o;"` |
-|      - |  984 | `	"}"` |
-|      - |  985 | `	"class DOMNode"` |
-|      - |  986 | `	"{"` |
-|      - |  987 | `	"  public $__res;"` |
-|      - |  988 | `	"  public $__doc;"` |
-|      - |  989 | `	"  function __construct($res = null,$doc = null)"` |
-|      - |  990 | `	"  {"` |
-|      - |  991 | `	"    $this->__res = $res;"` |
-|      - |  992 | `	"    $this->__doc = ($doc === null) ? $this : $doc;"` |
-|      - |  993 | `	"  }"` |
-|      - |  994 | `	"  function appendChild($node)"` |
-|      - |  995 | `	"  {"` |
-|      - |  996 | `	"    if( !__dom_node_append($this->__res,$node->__res) ){"` |
-|      - |  997 | `	"      throw new DOMException('Wrong Document Error');"` |
-|      - |  998 | `	"    }"` |
-|      - |  999 | `	"    return $node;"` |
+|      5 |  954 | `	pValid = xmlSchemaNewValidCtxt(pSchema);` |
+|      5 |  955 | `	if( pValid == 0 ){` |
+|    ! 0 |  956 | `		xmlSchemaFree(pSchema);` |
+|    ! 0 |  957 | `		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::schemaValidateSource");` |
+|    ! 0 |  958 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 |  959 | `		return PH7_OK;` |
+|      - |  960 | `	}` |
+|      5 |  961 | `	xmlSchemaSetValidStructuredErrors(pValid,DomSchemaErr,pVm);` |
+|      5 |  962 | `	rc = xmlSchemaValidateDoc(pValid,(xmlDocPtr)pDocNd->pNode);` |
+|      5 |  963 | `	xmlSchemaFreeValidCtxt(pValid);` |
+|      5 |  964 | `	xmlSchemaFree(pSchema);` |
+|      5 |  965 | `	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::schemaValidateSource");` |
+|      5 |  966 | `	ph7_result_bool(pCtx,rc == 0);` |
+|      5 |  967 | `	return PH7_OK;` |
+|      3 |  968 | `}` |
+|      - |  969 |  |
+|      - |  970 | `/* ===== The DOM class prelude ===== */` |
+|      - |  971 |  |
+|      - |  972 | `static const char zDomLib1[] =` |
+|      - |  973 | `	"class DOMException extends Exception {}"` |
+|      - |  974 | `	"function __phl_dom_wrap($doc,$res)"` |
+|      - |  975 | `	"{"` |
+|      - |  976 | `	"  if( $res === null \|\| $res === false ){ return null; }"` |
+|      - |  977 | `	"  $id = __dom_node_id($res);"` |
+|      - |  978 | `	"  if( isset($doc->__nodes[$id]) ){ return $doc->__nodes[$id]; }"` |
+|      - |  979 | `	"  switch( __dom_node_kind($res) ){"` |
+|      - |  980 | `	"    case XML_ELEMENT_NODE:       $o = new DOMElement($res,$doc); break;"` |
+|      - |  981 | `	"    case XML_ATTRIBUTE_NODE:     $o = new DOMAttr($res,$doc); break;"` |
+|      - |  982 | `	"    case XML_TEXT_NODE:          $o = new DOMText($res,$doc); break;"` |
+|      - |  983 | `	"    case XML_CDATA_SECTION_NODE: $o = new DOMCdataSection($res,$doc); break;"` |
+|      - |  984 | `	"    case XML_COMMENT_NODE:       $o = new DOMComment($res,$doc); break;"` |
+|      - |  985 | `	"    case XML_DOCUMENT_NODE:"` |
+|      - |  986 | `	"    case XML_HTML_DOCUMENT_NODE: return $doc;"` |
+|      - |  987 | `	"    default:                     $o = new DOMNode($res,$doc); break;"` |
+|      - |  988 | `	"  }"` |
+|      - |  989 | `	"  $doc->__nodes[$id] = $o;"` |
+|      - |  990 | `	"  return $o;"` |
+|      - |  991 | `	"}"` |
+|      - |  992 | `	"class DOMNode"` |
+|      - |  993 | `	"{"` |
+|      - |  994 | `	"  public $__res;"` |
+|      - |  995 | `	"  public $__doc;"` |
+|      - |  996 | `	"  function __construct($res = null,$doc = null)"` |
+|      - |  997 | `	"  {"` |
+|      - |  998 | `	"    $this->__res = $res;"` |
+|      - |  999 | `	"    $this->__doc = ($doc === null) ? $this : $doc;"` |
 |      - | 1000 | `	"  }"` |
-|      - | 1001 | `	"  function insertBefore($node,$child = null)"` |
+|      - | 1001 | `	"  function appendChild($node)"` |
 |      - | 1002 | `	"  {"` |
-|      - | 1003 | `	"    if( !__dom_node_insert_before($this->__res,$node->__res,$child === null ? null : $child->__res) ){"` |
-|      - | 1004 | `	"      throw new DOMException('Not Found Error');"` |
+|      - | 1003 | `	"    if( !__dom_node_append($this->__res,$node->__res) ){"` |
+|      - | 1004 | `	"      throw new DOMException('Wrong Document Error');"` |
 |      - | 1005 | `	"    }"` |
 |      - | 1006 | `	"    return $node;"` |
 |      - | 1007 | `	"  }"` |
-|      - | 1008 | `	"  function removeChild($child)"` |
+|      - | 1008 | `	"  function insertBefore($node,$child = null)"` |
 |      - | 1009 | `	"  {"` |
-|      - | 1010 | `	"    if( !__dom_node_remove($this->__res,$child->__res) ){"` |
+|      - | 1010 | `	"    if( !__dom_node_insert_before($this->__res,$node->__res,$child === null ? null : $child->__res) ){"` |
 |      - | 1011 | `	"      throw new DOMException('Not Found Error');"` |
 |      - | 1012 | `	"    }"` |
-|      - | 1013 | `	"    return $child;"` |
+|      - | 1013 | `	"    return $node;"` |
 |      - | 1014 | `	"  }"` |
-|      - | 1015 | `	"  function replaceChild($node,$child)"` |
+|      - | 1015 | `	"  function removeChild($child)"` |
 |      - | 1016 | `	"  {"` |
-|      - | 1017 | `	"    if( !__dom_node_replace($this->__res,$node->__res,$child->__res) ){"` |
+|      - | 1017 | `	"    if( !__dom_node_remove($this->__res,$child->__res) ){"` |
 |      - | 1018 | `	"      throw new DOMException('Not Found Error');"` |
 |      - | 1019 | `	"    }"` |
 |      - | 1020 | `	"    return $child;"` |
 |      - | 1021 | `	"  }"` |
-|      - | 1022 | `	"  function hasChildNodes(){ return __dom_node_child_count($this->__res) > 0; }"` |
-|      - | 1023 | `	"  function hasAttributes(){ return __dom_elem_attr_count($this->__res) > 0; }"` |
-|      - | 1024 | `	"  function isSameNode($otherNode){ return __dom_node_id($this->__res) === __dom_node_id($otherNode->__res); }"` |
-|      - | 1025 | `	"  function getLineNo(){ return __dom_node_line_no($this->__res); }"` |
-|      - | 1026 | `	"  function C14N($exclusive = false,$withComments = false,$xpath = null,$nsPrefixes = null)"` |
-|      - | 1027 | `	"  {"` |
-|      - | 1028 | `	"    return __dom_node_c14n($this->__res);"` |
-|      - | 1029 | `	"  }"` |
-|      - | 1030 | `	"  function getElementsByTagName($qualifiedName)"` |
-|      - | 1031 | `	"  {"` |
-|      - | 1032 | `	"    return new DOMNodeList('gebtn',$this->__doc,$this->__res,(string)$qualifiedName);"` |
-|      - | 1033 | `	"  }"` |
-|      - | 1034 | `	"  protected function __nodeProp($name)"` |
-|      - | 1035 | `	"  {"` |
-|      - | 1036 | `	"    switch( $name ){"` |
-|      - | 1037 | `	"      case 'nodeName':     return __dom_node_name($this->__res);"` |
-|      - | 1038 | `	"      case 'nodeValue':    return __dom_node_value($this->__res);"` |
-|      - | 1039 | `	"      case 'nodeType':     return __dom_node_kind($this->__res);"` |
-|      - | 1040 | `	"      case 'parentNode':   return __phl_dom_wrap($this->__doc,__dom_node_parent($this->__res));"` |
-|      - | 1041 | `	"      case 'firstChild':   return __phl_dom_wrap($this->__doc,__dom_node_first($this->__res));"` |
-|      - | 1042 | `	"      case 'lastChild':    return __phl_dom_wrap($this->__doc,__dom_node_last($this->__res));"` |
-|      - | 1043 | `	"      case 'nextSibling':  return __phl_dom_wrap($this->__doc,__dom_node_next($this->__res));"` |
-|      - | 1044 | `	"      case 'previousSibling': return __phl_dom_wrap($this->__doc,__dom_node_prev($this->__res));"` |
-|      - | 1045 | `	"      case 'ownerDocument': return ($this instanceof DOMDocument) ? null : $this->__doc;"` |
-|      - | 1046 | `	"      case 'childNodes':   return new DOMNodeList('child',$this->__doc,$this->__res);"` |
-|      - | 1047 | `	"      case 'textContent':  return __dom_node_text_content($this->__res);"` |
-|      - | 1048 | `	"      case 'attributes':"` |
-|      - | 1049 | `	"        return (__dom_node_kind($this->__res) === XML_ELEMENT_NODE)"` |
-|      - | 1050 | `	"          ? new DOMNamedNodeMap($this->__doc,$this->__res) : null;"` |
-|      - | 1051 | `	"      case 'childElementCount': return __dom_node_elem_child_count($this->__res);"` |
-|      - | 1052 | `	"    }"` |
-|      - | 1053 | `	"    return null;"` |
-|      - | 1054 | `	"  }"` |
-|      - | 1055 | `	"  function __get($name){ return $this->__nodeProp($name); }"` |
-|      - | 1056 | `	"}";` |
-|      - | 1057 |  |
-|      - | 1058 | `static const char zDomLib2[] =` |
-|      - | 1059 | `	"class DOMDocument extends DOMNode"` |
-|      - | 1060 | `	"{"` |
-|      - | 1061 | `	"  public $preserveWhiteSpace = true;"` |
-|      - | 1062 | `	"  public $formatOutput = false;"` |
-|      - | 1063 | `	"  public $__nodes = array();"` |
-|      - | 1064 | `	"  function __construct($version = '1.0',$encoding = '')"` |
-|      - | 1065 | `	"  {"` |
-|      - | 1066 | `	"    parent::__construct(__dom_doc_new((string)$version,(string)$encoding),null);"` |
-|      - | 1067 | `	"  }"` |
-|      - | 1068 | `	"  function loadXML($source,$options = 0)"` |
-|      - | 1069 | `	"  {"` |
-|      - | 1070 | `	"    $source = (string)$source;"` |
-|      - | 1071 | `	"    if( $source === '' ){"` |
-|      - | 1072 | `	"      throw new ValueError('DOMDocument::loadXML(): Argument #1 ($source) must not be empty');"` |
-|      - | 1073 | `	"    }"` |
-|      - | 1074 | `	"    $r = __dom_doc_loadxml($source,(bool)$this->preserveWhiteSpace,(int)$options);"` |
-|      - | 1075 | `	"    if( $r === false ){ return false; }"` |
-|      - | 1076 | `	"    $this->__res = $r;"` |
-|      - | 1077 | `	"    $this->__nodes = array();"` |
-|      - | 1078 | `	"    return true;"` |
-|      - | 1079 | `	"  }"` |
-|      - | 1080 | `	"  function saveXML($node = null)"` |
-|      - | 1081 | `	"  {"` |
-|      - | 1082 | `	"    return __dom_doc_savexml($this->__res,$node === null ? null : $node->__res,(bool)$this->formatOutput);"` |
-|      - | 1083 | `	"  }"` |
-|      - | 1084 | `	"  function createElement($localName,$value = '')"` |
-|      - | 1085 | `	"  {"` |
-|      - | 1086 | `	"    $r = __dom_doc_create($this->__res,XML_ELEMENT_NODE,(string)$localName,(string)$value);"` |
-|      - | 1087 | `	"    if( $r === false ){ throw new DOMException('Invalid Character Error'); }"` |
-|      - | 1088 | `	"    return __phl_dom_wrap($this,$r);"` |
-|      - | 1089 | `	"  }"` |
-|      - | 1090 | `	"  function createTextNode($data)"` |
-|      - | 1091 | `	"  {"` |
-|      - | 1092 | `	"    return __phl_dom_wrap($this,__dom_doc_create($this->__res,XML_TEXT_NODE,'',(string)$data));"` |
-|      - | 1093 | `	"  }"` |
-|      - | 1094 | `	"  function createComment($data)"` |
-|      - | 1095 | `	"  {"` |
-|      - | 1096 | `	"    return __phl_dom_wrap($this,__dom_doc_create($this->__res,XML_COMMENT_NODE,'',(string)$data));"` |
-|      - | 1097 | `	"  }"` |
-|      - | 1098 | `	"  function createCDATASection($data)"` |
-|      - | 1099 | `	"  {"` |
-|      - | 1100 | `	"    return __phl_dom_wrap($this,__dom_doc_create($this->__res,XML_CDATA_SECTION_NODE,'',(string)$data));"` |
-|      - | 1101 | `	"  }"` |
-|      - | 1102 | `	"  function normalizeDocument(){ __dom_doc_normalize($this->__res); }"` |
-|      - | 1103 | `	"  function schemaValidateSource($source,$flags = 0)"` |
-|      - | 1104 | `	"  {"` |
-|      - | 1105 | `	"    return __dom_doc_schema_validate_source($this->__res,(string)$source);"` |
-|      - | 1106 | `	"  }"` |
-|      - | 1107 | `	"  function __get($name)"` |
-|      - | 1108 | `	"  {"` |
-|      - | 1109 | `	"    if( $name === 'documentElement' ){"` |
-|      - | 1110 | `	"      return __phl_dom_wrap($this,__dom_doc_root($this->__res));"` |
-|      - | 1111 | `	"    }"` |
-|      - | 1112 | `	"    return $this->__nodeProp($name);"` |
+|      - | 1022 | `	"  function replaceChild($node,$child)"` |
+|      - | 1023 | `	"  {"` |
+|      - | 1024 | `	"    if( !__dom_node_replace($this->__res,$node->__res,$child->__res) ){"` |
+|      - | 1025 | `	"      throw new DOMException('Not Found Error');"` |
+|      - | 1026 | `	"    }"` |
+|      - | 1027 | `	"    return $child;"` |
+|      - | 1028 | `	"  }"` |
+|      - | 1029 | `	"  function hasChildNodes(){ return __dom_node_child_count($this->__res) > 0; }"` |
+|      - | 1030 | `	"  function hasAttributes(){ return __dom_elem_attr_count($this->__res) > 0; }"` |
+|      - | 1031 | `	"  function isSameNode($otherNode){ return __dom_node_id($this->__res) === __dom_node_id($otherNode->__res); }"` |
+|      - | 1032 | `	"  function getLineNo(){ return __dom_node_line_no($this->__res); }"` |
+|      - | 1033 | `	"  function C14N($exclusive = false,$withComments = false,$xpath = null,$nsPrefixes = null)"` |
+|      - | 1034 | `	"  {"` |
+|      - | 1035 | `	"    return __dom_node_c14n($this->__res);"` |
+|      - | 1036 | `	"  }"` |
+|      - | 1037 | `	"  function getElementsByTagName($qualifiedName)"` |
+|      - | 1038 | `	"  {"` |
+|      - | 1039 | `	"    return new DOMNodeList('gebtn',$this->__doc,$this->__res,(string)$qualifiedName);"` |
+|      - | 1040 | `	"  }"` |
+|      - | 1041 | `	"  protected function __nodeProp($name)"` |
+|      - | 1042 | `	"  {"` |
+|      - | 1043 | `	"    switch( $name ){"` |
+|      - | 1044 | `	"      case 'nodeName':     return __dom_node_name($this->__res);"` |
+|      - | 1045 | `	"      case 'nodeValue':    return __dom_node_value($this->__res);"` |
+|      - | 1046 | `	"      case 'nodeType':     return __dom_node_kind($this->__res);"` |
+|      - | 1047 | `	"      case 'parentNode':   return __phl_dom_wrap($this->__doc,__dom_node_parent($this->__res));"` |
+|      - | 1048 | `	"      case 'firstChild':   return __phl_dom_wrap($this->__doc,__dom_node_first($this->__res));"` |
+|      - | 1049 | `	"      case 'lastChild':    return __phl_dom_wrap($this->__doc,__dom_node_last($this->__res));"` |
+|      - | 1050 | `	"      case 'nextSibling':  return __phl_dom_wrap($this->__doc,__dom_node_next($this->__res));"` |
+|      - | 1051 | `	"      case 'previousSibling': return __phl_dom_wrap($this->__doc,__dom_node_prev($this->__res));"` |
+|      - | 1052 | `	"      case 'ownerDocument': return ($this instanceof DOMDocument) ? null : $this->__doc;"` |
+|      - | 1053 | `	"      case 'childNodes':   return new DOMNodeList('child',$this->__doc,$this->__res);"` |
+|      - | 1054 | `	"      case 'textContent':  return __dom_node_text_content($this->__res);"` |
+|      - | 1055 | `	"      case 'attributes':"` |
+|      - | 1056 | `	"        return (__dom_node_kind($this->__res) === XML_ELEMENT_NODE)"` |
+|      - | 1057 | `	"          ? new DOMNamedNodeMap($this->__doc,$this->__res) : null;"` |
+|      - | 1058 | `	"      case 'childElementCount': return __dom_node_elem_child_count($this->__res);"` |
+|      - | 1059 | `	"    }"` |
+|      - | 1060 | `	"    return null;"` |
+|      - | 1061 | `	"  }"` |
+|      - | 1062 | `	"  function __get($name){ return $this->__nodeProp($name); }"` |
+|      - | 1063 | `	"}";` |
+|      - | 1064 |  |
+|      - | 1065 | `static const char zDomLib2[] =` |
+|      - | 1066 | `	"class DOMDocument extends DOMNode"` |
+|      - | 1067 | `	"{"` |
+|      - | 1068 | `	"  public $preserveWhiteSpace = true;"` |
+|      - | 1069 | `	"  public $formatOutput = false;"` |
+|      - | 1070 | `	"  public $__nodes = array();"` |
+|      - | 1071 | `	"  function __construct($version = '1.0',$encoding = '')"` |
+|      - | 1072 | `	"  {"` |
+|      - | 1073 | `	"    parent::__construct(__dom_doc_new((string)$version,(string)$encoding),null);"` |
+|      - | 1074 | `	"  }"` |
+|      - | 1075 | `	"  function loadXML($source,$options = 0)"` |
+|      - | 1076 | `	"  {"` |
+|      - | 1077 | `	"    $source = (string)$source;"` |
+|      - | 1078 | `	"    if( $source === '' ){"` |
+|      - | 1079 | `	"      throw new ValueError('DOMDocument::loadXML(): Argument #1 ($source) must not be empty');"` |
+|      - | 1080 | `	"    }"` |
+|      - | 1081 | `	"    $r = __dom_doc_loadxml($source,(bool)$this->preserveWhiteSpace,(int)$options);"` |
+|      - | 1082 | `	"    if( $r === false ){ return false; }"` |
+|      - | 1083 | `	"    $this->__res = $r;"` |
+|      - | 1084 | `	"    $this->__nodes = array();"` |
+|      - | 1085 | `	"    return true;"` |
+|      - | 1086 | `	"  }"` |
+|      - | 1087 | `	"  function saveXML($node = null)"` |
+|      - | 1088 | `	"  {"` |
+|      - | 1089 | `	"    return __dom_doc_savexml($this->__res,$node === null ? null : $node->__res,(bool)$this->formatOutput);"` |
+|      - | 1090 | `	"  }"` |
+|      - | 1091 | `	"  function createElement($localName,$value = '')"` |
+|      - | 1092 | `	"  {"` |
+|      - | 1093 | `	"    $r = __dom_doc_create($this->__res,XML_ELEMENT_NODE,(string)$localName,(string)$value);"` |
+|      - | 1094 | `	"    if( $r === false ){ throw new DOMException('Invalid Character Error'); }"` |
+|      - | 1095 | `	"    return __phl_dom_wrap($this,$r);"` |
+|      - | 1096 | `	"  }"` |
+|      - | 1097 | `	"  function createTextNode($data)"` |
+|      - | 1098 | `	"  {"` |
+|      - | 1099 | `	"    return __phl_dom_wrap($this,__dom_doc_create($this->__res,XML_TEXT_NODE,'',(string)$data));"` |
+|      - | 1100 | `	"  }"` |
+|      - | 1101 | `	"  function createComment($data)"` |
+|      - | 1102 | `	"  {"` |
+|      - | 1103 | `	"    return __phl_dom_wrap($this,__dom_doc_create($this->__res,XML_COMMENT_NODE,'',(string)$data));"` |
+|      - | 1104 | `	"  }"` |
+|      - | 1105 | `	"  function createCDATASection($data)"` |
+|      - | 1106 | `	"  {"` |
+|      - | 1107 | `	"    return __phl_dom_wrap($this,__dom_doc_create($this->__res,XML_CDATA_SECTION_NODE,'',(string)$data));"` |
+|      - | 1108 | `	"  }"` |
+|      - | 1109 | `	"  function normalizeDocument(){ __dom_doc_normalize($this->__res); }"` |
+|      - | 1110 | `	"  function schemaValidateSource($source,$flags = 0)"` |
+|      - | 1111 | `	"  {"` |
+|      - | 1112 | `	"    return __dom_doc_schema_validate_source($this->__res,(string)$source);"` |
 |      - | 1113 | `	"  }"` |
-|      - | 1114 | `	"}"` |
-|      - | 1115 | `	"class DOMElement extends DOMNode"` |
-|      - | 1116 | `	"{"` |
-|      - | 1117 | `	"  function getAttribute($qualifiedName){ return __dom_elem_get_attr($this->__res,(string)$qualifiedName); }"` |
-|      - | 1118 | `	"  function hasAttribute($qualifiedName){ return __dom_elem_has_attr($this->__res,(string)$qualifiedName); }"` |
-|      - | 1119 | `	"  function setAttribute($qualifiedName,$value)"` |
-|      - | 1120 | `	"  {"` |
-|      - | 1121 | `	"    if( !__dom_elem_set_attr($this->__res,(string)$qualifiedName,(string)$value) ){"` |
-|      - | 1122 | `	"      throw new DOMException('Invalid Character Error');"` |
-|      - | 1123 | `	"    }"` |
-|      - | 1124 | `	"    return __phl_dom_wrap($this->__doc,__dom_elem_attr_node($this->__res,(string)$qualifiedName));"` |
-|      - | 1125 | `	"  }"` |
-|      - | 1126 | `	"  function removeAttribute($qualifiedName){ return __dom_elem_remove_attr($this->__res,(string)$qualifiedName); }"` |
-|      - | 1127 | `	"  function getAttributeNS($namespace,$localName)"` |
-|      - | 1128 | `	"  {"` |
-|      - | 1129 | `	"    return __dom_elem_get_attr_ns($this->__res,(string)$namespace,(string)$localName);"` |
-|      - | 1130 | `	"  }"` |
-|      - | 1131 | `	"  function setAttributeNS($namespace,$qualifiedName,$value)"` |
-|      - | 1132 | `	"  {"` |
-|      - | 1133 | `	"    if( !__dom_elem_set_attr_ns($this->__res,(string)$namespace,(string)$qualifiedName,(string)$value) ){"` |
-|      - | 1134 | `	"      throw new DOMException('Namespace Error');"` |
-|      - | 1135 | `	"    }"` |
-|      - | 1136 | `	"  }"` |
-|      - | 1137 | `	"  function __get($name)"` |
-|      - | 1138 | `	"  {"` |
-|      - | 1139 | `	"    if( $name === 'tagName' ){ return __dom_node_name($this->__res); }"` |
-|      - | 1140 | `	"    return $this->__nodeProp($name);"` |
-|      - | 1141 | `	"  }"` |
-|      - | 1142 | `	"}"` |
-|      - | 1143 | `	"class DOMAttr extends DOMNode"` |
-|      - | 1144 | `	"{"` |
-|      - | 1145 | `	"  function __get($name)"` |
-|      - | 1146 | `	"  {"` |
-|      - | 1147 | `	"    if( $name === 'name' ){ return __dom_node_name($this->__res); }"` |
-|      - | 1148 | `	"    if( $name === 'value' ){ return __dom_node_value($this->__res); }"` |
-|      - | 1149 | `	"    if( $name === 'ownerElement' ){ return __phl_dom_wrap($this->__doc,__dom_node_parent($this->__res)); }"` |
-|      - | 1150 | `	"    return $this->__nodeProp($name);"` |
-|      - | 1151 | `	"  }"` |
-|      - | 1152 | `	"}"` |
-|      - | 1153 | `	"class DOMCharacterData extends DOMNode"` |
-|      - | 1154 | `	"{"` |
-|      - | 1155 | `	"  function __get($name)"` |
-|      - | 1156 | `	"  {"` |
-|      - | 1157 | `	"    if( $name === 'data' ){ return __dom_node_value($this->__res); }"` |
-|      - | 1158 | `	"    if( $name === 'length' ){ return strlen(__dom_node_value($this->__res)); }"` |
-|      - | 1159 | `	"    return $this->__nodeProp($name);"` |
-|      - | 1160 | `	"  }"` |
-|      - | 1161 | `	"}"` |
-|      - | 1162 | `	"class DOMText extends DOMCharacterData"` |
-|      - | 1163 | `	"{"` |
-|      - | 1164 | `	"  function __get($name)"` |
-|      - | 1165 | `	"  {"` |
-|      - | 1166 | `	"    if( $name === 'wholeText' ){ return __dom_node_value($this->__res); }"` |
-|      - | 1167 | `	"    return parent::__get($name);"` |
-|      - | 1168 | `	"  }"` |
-|      - | 1169 | `	"}"` |
-|      - | 1170 | `	"class DOMComment extends DOMCharacterData {}"` |
-|      - | 1171 | `	"class DOMCdataSection extends DOMText {}";` |
-|      - | 1172 |  |
-|      - | 1173 | `static const char zDomLib3[] =` |
-|      - | 1174 | `	"class DOMNodeList implements Iterator, Countable"` |
-|      - | 1175 | `	"{"` |
-|      - | 1176 | `	"  public $__kind;"` |
-|      - | 1177 | `	"  public $__doc;"` |
-|      - | 1178 | `	"  public $__owner;"` |
-|      - | 1179 | `	"  public $__name;"` |
-|      - | 1180 | `	"  public $__snap;"` |
-|      - | 1181 | `	"  private $__pos = 0;"` |
-|      - | 1182 | `	"  function __construct($kind = null,$doc = null,$owner = null,$name = null,$snap = null)"` |
-|      - | 1183 | `	"  {"` |
-|      - | 1184 | `	"    $this->__kind = $kind; $this->__doc = $doc; $this->__owner = $owner;"` |
-|      - | 1185 | `	"    $this->__name = $name; $this->__snap = $snap;"` |
-|      - | 1186 | `	"  }"` |
-|      - | 1187 | `	"  function count()"` |
-|      - | 1188 | `	"  {"` |
-|      - | 1189 | `	"    if( $this->__kind === 'snap' ){ return count($this->__snap); }"` |
-|      - | 1190 | `	"    if( $this->__kind === 'child' ){ return __dom_node_child_count($this->__owner); }"` |
-|      - | 1191 | `	"    return __dom_gebtn_count($this->__owner,$this->__name);"` |
-|      - | 1192 | `	"  }"` |
-|      - | 1193 | `	"  function item($index)"` |
-|      - | 1194 | `	"  {"` |
-|      - | 1195 | `	"    $index = (int)$index;"` |
-|      - | 1196 | `	"    if( $index < 0 ){ return null; }"` |
-|      - | 1197 | `	"    if( $this->__kind === 'snap' ){"` |
-|      - | 1198 | `	"      return isset($this->__snap[$index]) ? __phl_dom_wrap($this->__doc,$this->__snap[$index]) : null;"` |
-|      - | 1199 | `	"    }"` |
-|      - | 1200 | `	"    if( $this->__kind === 'child' ){"` |
-|      - | 1201 | `	"      return __phl_dom_wrap($this->__doc,__dom_node_child_at($this->__owner,$index));"` |
-|      - | 1202 | `	"    }"` |
-|      - | 1203 | `	"    return __phl_dom_wrap($this->__doc,__dom_gebtn_at($this->__owner,$this->__name,$index));"` |
-|      - | 1204 | `	"  }"` |
-|      - | 1205 | `	"  function rewind(){ $this->__pos = 0; }"` |
-|      - | 1206 | `	"  function valid(){ return $this->__pos < $this->count(); }"` |
-|      - | 1207 | `	"  function current(){ return $this->item($this->__pos); }"` |
-|      - | 1208 | `	"  function key(){ return $this->__pos; }"` |
-|      - | 1209 | `	"  function next(){ $this->__pos++; }"` |
-|      - | 1210 | `	"  function __get($name)"` |
-|      - | 1211 | `	"  {"` |
-|      - | 1212 | `	"    if( $name === 'length' ){ return $this->count(); }"` |
-|      - | 1213 | `	"    return null;"` |
-|      - | 1214 | `	"  }"` |
-|      - | 1215 | `	"}"` |
-|      - | 1216 | `	"class DOMXPath"` |
-|      - | 1217 | `	"{"` |
-|      - | 1218 | `	"  public $__doc;"` |
-|      - | 1219 | `	"  public $document;"` |
-|      - | 1220 | `	"  function __construct($document)"` |
-|      - | 1221 | `	"  {"` |
-|      - | 1222 | `	"    $this->__doc = $document;"` |
-|      - | 1223 | `	"    $this->document = $document;"` |
-|      - | 1224 | `	"  }"` |
-|      - | 1225 | `	"  function query($expression,$contextNode = null,$registerNodeNS = true)"` |
-|      - | 1226 | `	"  {"` |
-|      - | 1227 | `	"    $ctx = ($contextNode === null) ? null : $contextNode->__res;"` |
-|      - | 1228 | `	"    $r = __dom_xpath_query($this->__doc->__res,(string)$expression,$ctx);"` |
-|      - | 1229 | `	"    if( $r === false ){ return false; }"` |
-|      - | 1230 | `	"    return new DOMNodeList('snap',$this->__doc,null,null,$r);"` |
+|      - | 1114 | `	"  function __get($name)"` |
+|      - | 1115 | `	"  {"` |
+|      - | 1116 | `	"    if( $name === 'documentElement' ){"` |
+|      - | 1117 | `	"      return __phl_dom_wrap($this,__dom_doc_root($this->__res));"` |
+|      - | 1118 | `	"    }"` |
+|      - | 1119 | `	"    return $this->__nodeProp($name);"` |
+|      - | 1120 | `	"  }"` |
+|      - | 1121 | `	"}"` |
+|      - | 1122 | `	"class DOMElement extends DOMNode"` |
+|      - | 1123 | `	"{"` |
+|      - | 1124 | `	"  function getAttribute($qualifiedName){ return __dom_elem_get_attr($this->__res,(string)$qualifiedName); }"` |
+|      - | 1125 | `	"  function hasAttribute($qualifiedName){ return __dom_elem_has_attr($this->__res,(string)$qualifiedName); }"` |
+|      - | 1126 | `	"  function setAttribute($qualifiedName,$value)"` |
+|      - | 1127 | `	"  {"` |
+|      - | 1128 | `	"    if( !__dom_elem_set_attr($this->__res,(string)$qualifiedName,(string)$value) ){"` |
+|      - | 1129 | `	"      throw new DOMException('Invalid Character Error');"` |
+|      - | 1130 | `	"    }"` |
+|      - | 1131 | `	"    return __phl_dom_wrap($this->__doc,__dom_elem_attr_node($this->__res,(string)$qualifiedName));"` |
+|      - | 1132 | `	"  }"` |
+|      - | 1133 | `	"  function removeAttribute($qualifiedName){ return __dom_elem_remove_attr($this->__res,(string)$qualifiedName); }"` |
+|      - | 1134 | `	"  function getAttributeNS($namespace,$localName)"` |
+|      - | 1135 | `	"  {"` |
+|      - | 1136 | `	"    return __dom_elem_get_attr_ns($this->__res,(string)$namespace,(string)$localName);"` |
+|      - | 1137 | `	"  }"` |
+|      - | 1138 | `	"  function setAttributeNS($namespace,$qualifiedName,$value)"` |
+|      - | 1139 | `	"  {"` |
+|      - | 1140 | `	"    if( !__dom_elem_set_attr_ns($this->__res,(string)$namespace,(string)$qualifiedName,(string)$value) ){"` |
+|      - | 1141 | `	"      throw new DOMException('Namespace Error');"` |
+|      - | 1142 | `	"    }"` |
+|      - | 1143 | `	"  }"` |
+|      - | 1144 | `	"  function __get($name)"` |
+|      - | 1145 | `	"  {"` |
+|      - | 1146 | `	"    if( $name === 'tagName' ){ return __dom_node_name($this->__res); }"` |
+|      - | 1147 | `	"    return $this->__nodeProp($name);"` |
+|      - | 1148 | `	"  }"` |
+|      - | 1149 | `	"}"` |
+|      - | 1150 | `	"class DOMAttr extends DOMNode"` |
+|      - | 1151 | `	"{"` |
+|      - | 1152 | `	"  function __get($name)"` |
+|      - | 1153 | `	"  {"` |
+|      - | 1154 | `	"    if( $name === 'name' ){ return __dom_node_name($this->__res); }"` |
+|      - | 1155 | `	"    if( $name === 'value' ){ return __dom_node_value($this->__res); }"` |
+|      - | 1156 | `	"    if( $name === 'ownerElement' ){ return __phl_dom_wrap($this->__doc,__dom_node_parent($this->__res)); }"` |
+|      - | 1157 | `	"    return $this->__nodeProp($name);"` |
+|      - | 1158 | `	"  }"` |
+|      - | 1159 | `	"}"` |
+|      - | 1160 | `	"class DOMCharacterData extends DOMNode"` |
+|      - | 1161 | `	"{"` |
+|      - | 1162 | `	"  function __get($name)"` |
+|      - | 1163 | `	"  {"` |
+|      - | 1164 | `	"    if( $name === 'data' ){ return __dom_node_value($this->__res); }"` |
+|      - | 1165 | `	"    if( $name === 'length' ){ return strlen(__dom_node_value($this->__res)); }"` |
+|      - | 1166 | `	"    return $this->__nodeProp($name);"` |
+|      - | 1167 | `	"  }"` |
+|      - | 1168 | `	"}"` |
+|      - | 1169 | `	"class DOMText extends DOMCharacterData"` |
+|      - | 1170 | `	"{"` |
+|      - | 1171 | `	"  function __get($name)"` |
+|      - | 1172 | `	"  {"` |
+|      - | 1173 | `	"    if( $name === 'wholeText' ){ return __dom_node_value($this->__res); }"` |
+|      - | 1174 | `	"    return parent::__get($name);"` |
+|      - | 1175 | `	"  }"` |
+|      - | 1176 | `	"}"` |
+|      - | 1177 | `	"class DOMComment extends DOMCharacterData {}"` |
+|      - | 1178 | `	"class DOMCdataSection extends DOMText {}";` |
+|      - | 1179 |  |
+|      - | 1180 | `static const char zDomLib3[] =` |
+|      - | 1181 | `	"class DOMNodeList implements Iterator, Countable"` |
+|      - | 1182 | `	"{"` |
+|      - | 1183 | `	"  public $__kind;"` |
+|      - | 1184 | `	"  public $__doc;"` |
+|      - | 1185 | `	"  public $__owner;"` |
+|      - | 1186 | `	"  public $__name;"` |
+|      - | 1187 | `	"  public $__snap;"` |
+|      - | 1188 | `	"  private $__pos = 0;"` |
+|      - | 1189 | `	"  function __construct($kind = null,$doc = null,$owner = null,$name = null,$snap = null)"` |
+|      - | 1190 | `	"  {"` |
+|      - | 1191 | `	"    $this->__kind = $kind; $this->__doc = $doc; $this->__owner = $owner;"` |
+|      - | 1192 | `	"    $this->__name = $name; $this->__snap = $snap;"` |
+|      - | 1193 | `	"  }"` |
+|      - | 1194 | `	"  function count()"` |
+|      - | 1195 | `	"  {"` |
+|      - | 1196 | `	"    if( $this->__kind === 'snap' ){ return count($this->__snap); }"` |
+|      - | 1197 | `	"    if( $this->__kind === 'child' ){ return __dom_node_child_count($this->__owner); }"` |
+|      - | 1198 | `	"    return __dom_gebtn_count($this->__owner,$this->__name);"` |
+|      - | 1199 | `	"  }"` |
+|      - | 1200 | `	"  function item($index)"` |
+|      - | 1201 | `	"  {"` |
+|      - | 1202 | `	"    $index = (int)$index;"` |
+|      - | 1203 | `	"    if( $index < 0 ){ return null; }"` |
+|      - | 1204 | `	"    if( $this->__kind === 'snap' ){"` |
+|      - | 1205 | `	"      return isset($this->__snap[$index]) ? __phl_dom_wrap($this->__doc,$this->__snap[$index]) : null;"` |
+|      - | 1206 | `	"    }"` |
+|      - | 1207 | `	"    if( $this->__kind === 'child' ){"` |
+|      - | 1208 | `	"      return __phl_dom_wrap($this->__doc,__dom_node_child_at($this->__owner,$index));"` |
+|      - | 1209 | `	"    }"` |
+|      - | 1210 | `	"    return __phl_dom_wrap($this->__doc,__dom_gebtn_at($this->__owner,$this->__name,$index));"` |
+|      - | 1211 | `	"  }"` |
+|      - | 1212 | `	"  function rewind(){ $this->__pos = 0; }"` |
+|      - | 1213 | `	"  function valid(){ return $this->__pos < $this->count(); }"` |
+|      - | 1214 | `	"  function current(){ return $this->item($this->__pos); }"` |
+|      - | 1215 | `	"  function key(){ return $this->__pos; }"` |
+|      - | 1216 | `	"  function next(){ $this->__pos++; }"` |
+|      - | 1217 | `	"  function __get($name)"` |
+|      - | 1218 | `	"  {"` |
+|      - | 1219 | `	"    if( $name === 'length' ){ return $this->count(); }"` |
+|      - | 1220 | `	"    return null;"` |
+|      - | 1221 | `	"  }"` |
+|      - | 1222 | `	"}"` |
+|      - | 1223 | `	"class DOMXPath"` |
+|      - | 1224 | `	"{"` |
+|      - | 1225 | `	"  public $__doc;"` |
+|      - | 1226 | `	"  public $document;"` |
+|      - | 1227 | `	"  function __construct($document)"` |
+|      - | 1228 | `	"  {"` |
+|      - | 1229 | `	"    $this->__doc = $document;"` |
+|      - | 1230 | `	"    $this->document = $document;"` |
 |      - | 1231 | `	"  }"` |
-|      - | 1232 | `	"}"` |
-|      - | 1233 | `	"class DOMNamedNodeMap implements Countable"` |
-|      - | 1234 | `	"{"` |
-|      - | 1235 | `	"  public $__doc;"` |
-|      - | 1236 | `	"  public $__owner;"` |
-|      - | 1237 | `	"  function __construct($doc = null,$owner = null){ $this->__doc = $doc; $this->__owner = $owner; }"` |
-|      - | 1238 | `	"  function count(){ return __dom_elem_attr_count($this->__owner); }"` |
-|      - | 1239 | `	"  function item($index)"` |
-|      - | 1240 | `	"  {"` |
-|      - | 1241 | `	"    return __phl_dom_wrap($this->__doc,__dom_elem_attr_at($this->__owner,(int)$index));"` |
-|      - | 1242 | `	"  }"` |
-|      - | 1243 | `	"  function getNamedItem($qualifiedName)"` |
-|      - | 1244 | `	"  {"` |
-|      - | 1245 | `	"    $n = $this->count();"` |
-|      - | 1246 | `	"    for( $i = 0; $i < $n; $i++ ){"` |
-|      - | 1247 | `	"      $a = $this->item($i);"` |
-|      - | 1248 | `	"      if( $a !== null && $a->name === $qualifiedName ){ return $a; }"` |
-|      - | 1249 | `	"    }"` |
-|      - | 1250 | `	"    return null;"` |
-|      - | 1251 | `	"  }"` |
-|      - | 1252 | `	"  function __get($name)"` |
-|      - | 1253 | `	"  {"` |
-|      - | 1254 | `	"    if( $name === 'length' ){ return $this->count(); }"` |
-|      - | 1255 | `	"    return null;"` |
-|      - | 1256 | `	"  }"` |
-|      - | 1257 | `	"}";` |
-|      - | 1258 |  |
-|      - | 1259 | `/*` |
-|      - | 1260 | ` * Install the DOM library: __dom_* thunks first, then the class chunks.` |
-|      - | 1261 | ` * Called from PH7_VmInit inside the bCompilingBuiltin window, after` |
-|      - | 1262 | ` * PH7_VmInstallLibxml (the capture plumbing must exist).` |
-|      - | 1263 | ` */` |
-|   3884 | 1264 | `PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)` |
-|      5 | 1265 | `{` |
-|      - | 1266 | `	static const struct {` |
-|      - | 1267 | `		const char *zName;` |
-|      - | 1268 | `		ProchHostFunction xFunc;` |
-|      - | 1269 | `	} aFunc[] = {` |
-|      - | 1270 | `		{ "__dom_node_id",            vm_builtin_dom_node_id            },` |
-|      - | 1271 | `		{ "__dom_node_kind",          vm_builtin_dom_node_kind          },` |
-|      - | 1272 | `		{ "__dom_node_name",          vm_builtin_dom_node_name          },` |
-|      - | 1273 | `		{ "__dom_node_value",         vm_builtin_dom_node_value         },` |
-|      - | 1274 | `		{ "__dom_node_text_content",  vm_builtin_dom_node_text_content  },` |
-|      - | 1275 | `		{ "__dom_node_line_no",       vm_builtin_dom_node_line_no       },` |
-|      - | 1276 | `		{ "__dom_node_parent",        vm_builtin_dom_node_parent        },` |
-|      - | 1277 | `		{ "__dom_node_first",         vm_builtin_dom_node_first         },` |
-|      - | 1278 | `		{ "__dom_node_last",          vm_builtin_dom_node_last          },` |
-|      - | 1279 | `		{ "__dom_node_next",          vm_builtin_dom_node_next          },` |
-|      - | 1280 | `		{ "__dom_node_prev",          vm_builtin_dom_node_prev          },` |
-|      - | 1281 | `		{ "__dom_node_child_count",   vm_builtin_dom_node_child_count   },` |
-|      - | 1282 | `		{ "__dom_node_child_at",      vm_builtin_dom_node_child_at      },` |
-|      - | 1283 | `		{ "__dom_node_elem_child_count", vm_builtin_dom_node_elem_child_count },` |
-|      - | 1284 | `		{ "__dom_node_append",        vm_builtin_dom_node_append        },` |
-|      - | 1285 | `		{ "__dom_node_insert_before", vm_builtin_dom_node_insert_before },` |
-|      - | 1286 | `		{ "__dom_node_remove",        vm_builtin_dom_node_remove        },` |
-|      - | 1287 | `		{ "__dom_node_replace",       vm_builtin_dom_node_replace       },` |
-|      - | 1288 | `		{ "__dom_node_c14n",          vm_builtin_dom_node_c14n          },` |
-|      - | 1289 | `		{ "__dom_elem_get_attr",      vm_builtin_dom_elem_get_attr      },` |
-|      - | 1290 | `		{ "__dom_elem_has_attr",      vm_builtin_dom_elem_has_attr      },` |
-|      - | 1291 | `		{ "__dom_elem_set_attr",      vm_builtin_dom_elem_set_attr      },` |
-|      - | 1292 | `		{ "__dom_elem_remove_attr",   vm_builtin_dom_elem_remove_attr   },` |
-|      - | 1293 | `		{ "__dom_elem_get_attr_ns",   vm_builtin_dom_elem_get_attr_ns   },` |
-|      - | 1294 | `		{ "__dom_elem_set_attr_ns",   vm_builtin_dom_elem_set_attr_ns   },` |
-|      - | 1295 | `		{ "__dom_elem_attr_node",     vm_builtin_dom_elem_attr_node     },` |
-|      - | 1296 | `		{ "__dom_elem_attr_count",    vm_builtin_dom_elem_attr_count    },` |
-|      - | 1297 | `		{ "__dom_elem_attr_at",       vm_builtin_dom_elem_attr_at       },` |
-|      - | 1298 | `		{ "__dom_gebtn_count",        vm_builtin_dom_gebtn_count        },` |
-|      - | 1299 | `		{ "__dom_gebtn_at",           vm_builtin_dom_gebtn_at           },` |
-|      - | 1300 | `		{ "__dom_doc_new",            vm_builtin_dom_doc_new            },` |
-|      - | 1301 | `		{ "__dom_doc_loadxml",        vm_builtin_dom_doc_loadxml        },` |
-|      - | 1302 | `		{ "__dom_doc_root",           vm_builtin_dom_doc_root           },` |
-|      - | 1303 | `		{ "__dom_doc_savexml",        vm_builtin_dom_doc_savexml        },` |
-|      - | 1304 | `		{ "__dom_doc_create",         vm_builtin_dom_doc_create         },` |
-|      - | 1305 | `		{ "__dom_doc_normalize",      vm_builtin_dom_doc_normalize      },` |
-|      - | 1306 | `		{ "__dom_xpath_query",        vm_builtin_dom_xpath_query        },` |
-|      - | 1307 | `		{ "__dom_doc_schema_validate_source", vm_builtin_dom_doc_schema_validate_source },` |
-|      - | 1308 | `	};` |
-|      - | 1309 | `	sxu32 n;` |
-|      - | 1310 | `	sxi32 rc;` |
-| 151481 | 1311 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
-| 147597 | 1312 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
-|  73801 | 1313 | `	}` |
-|   3889 | 1314 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm),zDomLib1,sizeof(zDomLib1)-1);` |
-|   3889 | 1315 | `	if( rc == SXRET_OK ){` |
-|   3889 | 1316 | `		rc = PH7_VmEvalBuiltinChunk(&(*pVm),zDomLib2,sizeof(zDomLib2)-1);` |
-|   1942 | 1317 | `	}` |
-|   3889 | 1318 | `	if( rc == SXRET_OK ){` |
-|   3889 | 1319 | `		rc = PH7_VmEvalBuiltinChunk(&(*pVm),zDomLib3,sizeof(zDomLib3)-1);` |
-|   1942 | 1320 | `	}` |
-|   3889 | 1321 | `	return rc;` |
-|      5 | 1322 | `}` |
-|      - | 1323 |  |
-|      - | 1324 | `#else` |
-|      - | 1325 | `/* Ensure non-empty translation unit when libxml is disabled (MSVC C4206) */` |
-|      - | 1326 | `typedef int vm_dom_unused;` |
-|      - | 1327 | `#endif /* PH7_ENABLE_LIBXML */` |
-|      - | 1328 |  |
+|      - | 1232 | `	"  function query($expression,$contextNode = null,$registerNodeNS = true)"` |
+|      - | 1233 | `	"  {"` |
+|      - | 1234 | `	"    $ctx = ($contextNode === null) ? null : $contextNode->__res;"` |
+|      - | 1235 | `	"    $r = __dom_xpath_query($this->__doc->__res,(string)$expression,$ctx);"` |
+|      - | 1236 | `	"    if( $r === false ){ return false; }"` |
+|      - | 1237 | `	"    return new DOMNodeList('snap',$this->__doc,null,null,$r);"` |
+|      - | 1238 | `	"  }"` |
+|      - | 1239 | `	"}"` |
+|      - | 1240 | `	"class DOMNamedNodeMap implements Countable"` |
+|      - | 1241 | `	"{"` |
+|      - | 1242 | `	"  public $__doc;"` |
+|      - | 1243 | `	"  public $__owner;"` |
+|      - | 1244 | `	"  function __construct($doc = null,$owner = null){ $this->__doc = $doc; $this->__owner = $owner; }"` |
+|      - | 1245 | `	"  function count(){ return __dom_elem_attr_count($this->__owner); }"` |
+|      - | 1246 | `	"  function item($index)"` |
+|      - | 1247 | `	"  {"` |
+|      - | 1248 | `	"    return __phl_dom_wrap($this->__doc,__dom_elem_attr_at($this->__owner,(int)$index));"` |
+|      - | 1249 | `	"  }"` |
+|      - | 1250 | `	"  function getNamedItem($qualifiedName)"` |
+|      - | 1251 | `	"  {"` |
+|      - | 1252 | `	"    $n = $this->count();"` |
+|      - | 1253 | `	"    for( $i = 0; $i < $n; $i++ ){"` |
+|      - | 1254 | `	"      $a = $this->item($i);"` |
+|      - | 1255 | `	"      if( $a !== null && $a->name === $qualifiedName ){ return $a; }"` |
+|      - | 1256 | `	"    }"` |
+|      - | 1257 | `	"    return null;"` |
+|      - | 1258 | `	"  }"` |
+|      - | 1259 | `	"  function __get($name)"` |
+|      - | 1260 | `	"  {"` |
+|      - | 1261 | `	"    if( $name === 'length' ){ return $this->count(); }"` |
+|      - | 1262 | `	"    return null;"` |
+|      - | 1263 | `	"  }"` |
+|      - | 1264 | `	"}";` |
+|      - | 1265 |  |
+|      - | 1266 | `/*` |
+|      - | 1267 | ` * Install the DOM library: __dom_* thunks first, then the class chunks.` |
+|      - | 1268 | ` * Called from PH7_VmInit inside the bCompilingBuiltin window, after` |
+|      - | 1269 | ` * PH7_VmInstallLibxml (the capture plumbing must exist).` |
+|      - | 1270 | ` */` |
+|   3884 | 1271 | `PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)` |
+|      5 | 1272 | `{` |
+|      - | 1273 | `	static const struct {` |
+|      - | 1274 | `		const char *zName;` |
+|      - | 1275 | `		ProchHostFunction xFunc;` |
+|      - | 1276 | `	} aFunc[] = {` |
+|      - | 1277 | `		{ "__dom_node_id",            vm_builtin_dom_node_id            },` |
+|      - | 1278 | `		{ "__dom_node_kind",          vm_builtin_dom_node_kind          },` |
+|      - | 1279 | `		{ "__dom_node_name",          vm_builtin_dom_node_name          },` |
+|      - | 1280 | `		{ "__dom_node_value",         vm_builtin_dom_node_value         },` |
+|      - | 1281 | `		{ "__dom_node_text_content",  vm_builtin_dom_node_text_content  },` |
+|      - | 1282 | `		{ "__dom_node_line_no",       vm_builtin_dom_node_line_no       },` |
+|      - | 1283 | `		{ "__dom_node_parent",        vm_builtin_dom_node_parent        },` |
+|      - | 1284 | `		{ "__dom_node_first",         vm_builtin_dom_node_first         },` |
+|      - | 1285 | `		{ "__dom_node_last",          vm_builtin_dom_node_last          },` |
+|      - | 1286 | `		{ "__dom_node_next",          vm_builtin_dom_node_next          },` |
+|      - | 1287 | `		{ "__dom_node_prev",          vm_builtin_dom_node_prev          },` |
+|      - | 1288 | `		{ "__dom_node_child_count",   vm_builtin_dom_node_child_count   },` |
+|      - | 1289 | `		{ "__dom_node_child_at",      vm_builtin_dom_node_child_at      },` |
+|      - | 1290 | `		{ "__dom_node_elem_child_count", vm_builtin_dom_node_elem_child_count },` |
+|      - | 1291 | `		{ "__dom_node_append",        vm_builtin_dom_node_append        },` |
+|      - | 1292 | `		{ "__dom_node_insert_before", vm_builtin_dom_node_insert_before },` |
+|      - | 1293 | `		{ "__dom_node_remove",        vm_builtin_dom_node_remove        },` |
+|      - | 1294 | `		{ "__dom_node_replace",       vm_builtin_dom_node_replace       },` |
+|      - | 1295 | `		{ "__dom_node_c14n",          vm_builtin_dom_node_c14n          },` |
+|      - | 1296 | `		{ "__dom_elem_get_attr",      vm_builtin_dom_elem_get_attr      },` |
+|      - | 1297 | `		{ "__dom_elem_has_attr",      vm_builtin_dom_elem_has_attr      },` |
+|      - | 1298 | `		{ "__dom_elem_set_attr",      vm_builtin_dom_elem_set_attr      },` |
+|      - | 1299 | `		{ "__dom_elem_remove_attr",   vm_builtin_dom_elem_remove_attr   },` |
+|      - | 1300 | `		{ "__dom_elem_get_attr_ns",   vm_builtin_dom_elem_get_attr_ns   },` |
+|      - | 1301 | `		{ "__dom_elem_set_attr_ns",   vm_builtin_dom_elem_set_attr_ns   },` |
+|      - | 1302 | `		{ "__dom_elem_attr_node",     vm_builtin_dom_elem_attr_node     },` |
+|      - | 1303 | `		{ "__dom_elem_attr_count",    vm_builtin_dom_elem_attr_count    },` |
+|      - | 1304 | `		{ "__dom_elem_attr_at",       vm_builtin_dom_elem_attr_at       },` |
+|      - | 1305 | `		{ "__dom_gebtn_count",        vm_builtin_dom_gebtn_count        },` |
+|      - | 1306 | `		{ "__dom_gebtn_at",           vm_builtin_dom_gebtn_at           },` |
+|      - | 1307 | `		{ "__dom_doc_new",            vm_builtin_dom_doc_new            },` |
+|      - | 1308 | `		{ "__dom_doc_loadxml",        vm_builtin_dom_doc_loadxml        },` |
+|      - | 1309 | `		{ "__dom_doc_root",           vm_builtin_dom_doc_root           },` |
+|      - | 1310 | `		{ "__dom_doc_savexml",        vm_builtin_dom_doc_savexml        },` |
+|      - | 1311 | `		{ "__dom_doc_create",         vm_builtin_dom_doc_create         },` |
+|      - | 1312 | `		{ "__dom_doc_normalize",      vm_builtin_dom_doc_normalize      },` |
+|      - | 1313 | `		{ "__dom_xpath_query",        vm_builtin_dom_xpath_query        },` |
+|      - | 1314 | `		{ "__dom_doc_schema_validate_source", vm_builtin_dom_doc_schema_validate_source },` |
+|      - | 1315 | `	};` |
+|      - | 1316 | `	sxu32 n;` |
+|      - | 1317 | `	sxi32 rc;` |
+| 151481 | 1318 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
+| 147597 | 1319 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
+|  73801 | 1320 | `	}` |
+|   3889 | 1321 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm),zDomLib1,sizeof(zDomLib1)-1);` |
+|   3889 | 1322 | `	if( rc == SXRET_OK ){` |
+|   3889 | 1323 | `		rc = PH7_VmEvalBuiltinChunk(&(*pVm),zDomLib2,sizeof(zDomLib2)-1);` |
+|   1942 | 1324 | `	}` |
+|   3889 | 1325 | `	if( rc == SXRET_OK ){` |
+|   3889 | 1326 | `		rc = PH7_VmEvalBuiltinChunk(&(*pVm),zDomLib3,sizeof(zDomLib3)-1);` |
+|   1942 | 1327 | `	}` |
+|   3889 | 1328 | `	return rc;` |
+|      5 | 1329 | `}` |
+|      - | 1330 |  |
+|      - | 1331 | `#else` |
+|      - | 1332 | `/* Ensure non-empty translation unit when libxml is disabled (MSVC C4206) */` |
+|      - | 1333 | `typedef int vm_dom_unused;` |
+|      - | 1334 | `#endif /* PH7_ENABLE_LIBXML */` |
+|      - | 1335 |  |

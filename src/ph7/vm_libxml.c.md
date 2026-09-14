@@ -58,20 +58,20 @@ Coverage: 238/324 lines (73.46%)
 |      - |   48 | ` * itself.  Registry links and the phl_xmldoc shell live in SyMemBackend and` |
 |      - |   49 | ` * are reclaimed with the VM allocator.` |
 |      - |   50 | ` */` |
-|     88 |   51 | `static void LibxmlFreeDoc(phl_xmldoc *pDoc)` |
+|     92 |   51 | `static void LibxmlFreeDoc(phl_xmldoc *pDoc)` |
 |      1 |   52 | `{` |
-|     89 |   53 | `	xmlNodePtr *apOrphan = (xmlNodePtr *)SySetBasePtr(&pDoc->aOrphans);` |
+|     93 |   53 | `	xmlNodePtr *apOrphan = (xmlNodePtr *)SySetBasePtr(&pDoc->aOrphans);` |
 |      - |   54 | `	sxu32 n;` |
-|     99 |   55 | `	for( n = 0 ; n < SySetUsed(&pDoc->aOrphans) ; ++n ){` |
+|    103 |   55 | `	for( n = 0 ; n < SySetUsed(&pDoc->aOrphans) ; ++n ){` |
 |     11 |   56 | `		xmlUnlinkNode(apOrphan[n]);` |
 |     11 |   57 | `		xmlFreeNode(apOrphan[n]);` |
 |      6 |   58 | `	}` |
-|     89 |   59 | `	SySetRelease(&pDoc->aOrphans);` |
-|     89 |   60 | `	if( pDoc->pDoc ){` |
-|     89 |   61 | `		xmlFreeDoc((xmlDocPtr)pDoc->pDoc);` |
-|     89 |   62 | `		pDoc->pDoc = 0;` |
-|     44 |   63 | `	}` |
-|     89 |   64 | `}` |
+|     93 |   59 | `	SySetRelease(&pDoc->aOrphans);` |
+|     93 |   60 | `	if( pDoc->pDoc ){` |
+|     93 |   61 | `		xmlFreeDoc((xmlDocPtr)pDoc->pDoc);` |
+|     93 |   62 | `		pDoc->pDoc = 0;` |
+|     46 |   63 | `	}` |
+|     93 |   64 | `}` |
 |      - |   65 | `/*` |
 |      - |   66 | ` * Reset the per-VM libxml state between executions: drop the accumulated` |
 |      - |   67 | ` * error queue and free every document from the previous request.  Called` |
@@ -84,11 +84,11 @@ Coverage: 238/324 lines (73.46%)
 |   3439 |   74 | `	PH7_LibxmlClearErrors(pVm);` |
 |   3439 |   75 | `	pVm->bLibxmlInternalErr = 0;` |
 |   3439 |   76 | `	pDoc = (phl_xmldoc *)pVm->pXmlDocs;` |
-|   3527 |   77 | `	while( pDoc ){` |
-|     89 |   78 | `		pNext = pDoc->pNext;` |
-|     89 |   79 | `		LibxmlFreeDoc(pDoc);` |
-|     89 |   80 | `		SyMemBackendFree(&pVm->sAllocator,pDoc);` |
-|     89 |   81 | `		pDoc = pNext;` |
+|   3531 |   77 | `	while( pDoc ){` |
+|     93 |   78 | `		pNext = pDoc->pNext;` |
+|     93 |   79 | `		LibxmlFreeDoc(pDoc);` |
+|     93 |   80 | `		SyMemBackendFree(&pVm->sAllocator,pDoc);` |
+|     93 |   81 | `		pDoc = pNext;` |
 |      1 |   82 | `	}` |
 |   3439 |   83 | `	pVm->pXmlDocs = 0;` |
 |      - |   84 | `	/* XMLWriter buffers live outside SyMemBackend too (see vm_xmlwriter.c) */` |
@@ -235,19 +235,19 @@ Coverage: 238/324 lines (73.46%)
 |      - |  225 | ` *   funcname(): <message> in <Entity\|file>, line: <n>` |
 |      - |  226 | ` * (php's exact wording for the memory-parser case).` |
 |      - |  227 | ` */` |
-|    116 |  228 | `PH7_PRIVATE sxu32 PH7_LibxmlCaptureBegin(ph7_vm *pVm)` |
+|    138 |  228 | `PH7_PRIVATE sxu32 PH7_LibxmlCaptureBegin(ph7_vm *pVm)` |
 |      1 |  229 | `{` |
-|    117 |  230 | `	xmlSetStructuredErrorFunc(pVm,LibxmlStructuredErr);` |
-|    117 |  231 | `	return SySetUsed(&pVm->aLibxmlErr);` |
+|    139 |  230 | `	xmlSetStructuredErrorFunc(pVm,LibxmlStructuredErr);` |
+|    139 |  231 | `	return SySetUsed(&pVm->aLibxmlErr);` |
 |      1 |  232 | `}` |
-|    116 |  233 | `PH7_PRIVATE void PH7_LibxmlCaptureEnd(ph7_vm *pVm,sxu32 nMark,const char *zFnName)` |
+|    138 |  233 | `PH7_PRIVATE void PH7_LibxmlCaptureEnd(ph7_vm *pVm,sxu32 nMark,const char *zFnName)` |
 |      1 |  234 | `{` |
-|    117 |  235 | `	xmlSetStructuredErrorFunc(0,0);` |
-|    117 |  236 | `	if( pVm->bLibxmlInternalErr ){` |
+|    139 |  235 | `	xmlSetStructuredErrorFunc(0,0);` |
+|    139 |  236 | `	if( pVm->bLibxmlInternalErr ){` |
 |      - |  237 | `		/* Internal capture on: entries stay queued for libxml_get_errors() */` |
 |     13 |  238 | `		return;` |
 |      - |  239 | `	}` |
-|    105 |  240 | `	if( SySetUsed(&pVm->aLibxmlErr) > nMark ){` |
+|    127 |  240 | `	if( SySetUsed(&pVm->aLibxmlErr) > nMark ){` |
 |    ! 0 |  241 | `		phl_libxml_err *aErr = (phl_libxml_err *)SySetBasePtr(&pVm->aLibxmlErr);` |
 |      - |  242 | `		sxu32 n;` |
 |    ! 0 |  243 | `		for( n = nMark ; n < SySetUsed(&pVm->aLibxmlErr) ; ++n ){` |
@@ -277,28 +277,28 @@ Coverage: 238/324 lines (73.46%)
 |    ! 0 |  267 | `		}` |
 |    ! 0 |  268 | `		SySetTruncate(&pVm->aLibxmlErr,nMark);` |
 |    ! 0 |  269 | `	}` |
-|     59 |  270 | `}` |
+|     70 |  270 | `}` |
 |      - |  271 | `/*` |
 |      - |  272 | ` * Allocate and register a new document shell on the per-VM registry.` |
 |      - |  273 | ` * Returns NULL on allocation failure (the caller reports OOM).` |
 |      - |  274 | ` */` |
-|     88 |  275 | `PH7_PRIVATE phl_xmldoc * PH7_LibxmlNewDoc(ph7_vm *pVm,void *pXmlDocPtr)` |
+|     92 |  275 | `PH7_PRIVATE phl_xmldoc * PH7_LibxmlNewDoc(ph7_vm *pVm,void *pXmlDocPtr)` |
 |      1 |  276 | `{` |
 |      - |  277 | `	phl_xmldoc *pDoc;` |
-|     89 |  278 | `	pDoc = (phl_xmldoc *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_xmldoc));` |
-|     89 |  279 | `	if( pDoc == 0 ){` |
+|     93 |  278 | `	pDoc = (phl_xmldoc *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_xmldoc));` |
+|     93 |  279 | `	if( pDoc == 0 ){` |
 |    ! 0 |  280 | `		return 0;` |
 |      - |  281 | `	}` |
-|     89 |  282 | `	SyZero(pDoc,sizeof(phl_xmldoc));` |
-|     89 |  283 | `	SySetInit(&pDoc->aOrphans,&pVm->sAllocator,sizeof(void *));` |
-|     89 |  284 | `	pDoc->pDoc = pXmlDocPtr;` |
-|     89 |  285 | `	pDoc->pVm = &(*pVm);` |
-|     89 |  286 | `	pDoc->bPreserveWS = 1;  /* DOMDocument->preserveWhiteSpace default */` |
-|     89 |  287 | `	pDoc->bFormatOutput = 0;` |
-|     89 |  288 | `	pDoc->pNext = (phl_xmldoc *)pVm->pXmlDocs;` |
-|     89 |  289 | `	pVm->pXmlDocs = (void *)pDoc;` |
-|     89 |  290 | `	return pDoc;` |
-|     45 |  291 | `}` |
+|     93 |  282 | `	SyZero(pDoc,sizeof(phl_xmldoc));` |
+|     93 |  283 | `	SySetInit(&pDoc->aOrphans,&pVm->sAllocator,sizeof(void *));` |
+|     93 |  284 | `	pDoc->pDoc = pXmlDocPtr;` |
+|     93 |  285 | `	pDoc->pVm = &(*pVm);` |
+|     93 |  286 | `	pDoc->bPreserveWS = 1;  /* DOMDocument->preserveWhiteSpace default */` |
+|     93 |  287 | `	pDoc->bFormatOutput = 0;` |
+|     93 |  288 | `	pDoc->pNext = (phl_xmldoc *)pVm->pXmlDocs;` |
+|     93 |  289 | `	pVm->pXmlDocs = (void *)pDoc;` |
+|     93 |  290 | `	return pDoc;` |
+|     47 |  291 | `}` |
 |      - |  292 |  |
 |      - |  293 | `/* ===== Constants (php ext/libxml + ext/dom node types) ===== */` |
 |      - |  294 |  |
@@ -331,7 +331,7 @@ Coverage: 238/324 lines (73.46%)
 |    ! 0 |  321 | `LIBXML_INT_CONST(LibxmlConst_ERR_ERROR,      XML_ERR_ERROR)` |
 |      3 |  322 | `LIBXML_INT_CONST(LibxmlConst_ERR_FATAL,      XML_ERR_FATAL)` |
 |      - |  323 | `/* ext/dom node-type constants (values fixed by the DOM spec / libxml enums) */` |
-|    103 |  324 | `LIBXML_INT_CONST(LibxmlConst_ELEMENT_NODE,        XML_ELEMENT_NODE)` |
+|    107 |  324 | `LIBXML_INT_CONST(LibxmlConst_ELEMENT_NODE,        XML_ELEMENT_NODE)` |
 |     27 |  325 | `LIBXML_INT_CONST(LibxmlConst_ATTRIBUTE_NODE,      XML_ATTRIBUTE_NODE)` |
 |     19 |  326 | `LIBXML_INT_CONST(LibxmlConst_TEXT_NODE,           XML_TEXT_NODE)` |
 |     13 |  327 | `LIBXML_INT_CONST(LibxmlConst_CDATA_SECTION_NODE,  XML_CDATA_SECTION_NODE)` |
