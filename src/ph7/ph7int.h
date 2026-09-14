@@ -2586,12 +2586,152 @@ PH7_PRIVATE sxi32 VmClosureUnwrap(ph7_vm *pVm,ph7_value *pVal,ph7_value *pOut);
 PH7_PRIVATE sxi32 VmThrowException(ph7_vm *pVm,ph7_class_instance *pThis);
 PH7_PRIVATE sxi32 VmReportUncaughtException(ph7_vm *pVm,const char *zClass,sxu32 nClass,const char *zMsg,sxu32 nMsg,const char *zFuncName,int nFuncLen);
 PH7_PRIVATE ph7_value * VmNewOperandStack(ph7_vm *pVm,sxu32 nInstr);
-typedef struct VmParkedSegment VmParkedSegment; /* Opaque here; body in vm.c (fiber trampoline) */
+/* Fiber/generator trampoline state (BYTECODE stages 2-4); shared between
+ * vm.c's interpreter and vm_exec_ctx.c's park/resume machinery. */
+/*
+ * Boundary state of one VmByteCodeExec activation (BYTECODE.md stage 1):
+ * everything the executor must restore to continue an activation after a
+ * nested call returns. pc/pTos are authoritative here only at activation
+ * boundaries — the dispatch loop keeps them in locals for the hot path and
+ * syncs around the call epilogue and the terminal labels. Stage 2 stacks
+ * these records to replace the native recursion.
+ */
+typedef struct VmExecState VmExecState;
+struct VmExecState
+{
+	VmInstr *aInstr;        /* Bytecode of this activation */
+	ph7_value *pStack;      /* Operand-stack base (owned by this activation) */
+	ph7_value *pTos;        /* Top-of-stack (synced at boundaries) */
+	sxu32 nStackCap;        /* pStack's allocated slot count; grows when an OP_SPREAD in
+	                         * this activation reallocs the operand stack (see
+	                         * VmGrowOperandStack). Saved/restored with the activation. */
+	sxu32 nStackOrig;       /* The activation's ORIGINAL (ungrown) capacity — nMaxStack+guard,
+	                         * fixed at entry. VmGrowOperandStack sizes headroom relative to
+	                         * THIS (not the grown nStackCap) so capacity can't ratchet up
+	                         * across statements that share one operand stack. */
+	sxi32 pc;               /* Program counter (synced at boundaries) */
+	sxu32 nExceptionBase;   /* Exception-stack depth at entry (finally-drain floor) */
+	VmFrame *pEntryFrame;   /* Active frame at entry (exec identity for VmRecordedResume) */
+	ph7_value *pResult;     /* Where the terminal OP_DONE stores the result (or NULL) */
+	sxu32 *pLastRef;        /* By-ref return out-param (or NULL) */
+	ph7_vm_func *pEnforceRetFunc; /* Return-type enforcement target (user-fn bodies only) */
+	sxu8 is_callback;       /* TRUE only for a C->PHP callback trampoline activation */
+	sxu8 bReturnPropagates; /* TRUE only for a catch/finally mini-program */
+};
+/*
+ * One in-flight user-function call: what the caller's OP_CALL set up and the
+ * pop boundary (VmCallFinish) must tear down.
+ */
+typedef struct VmCallRecord VmCallRecord;
+struct VmCallRecord
+{
+	ph7_vm_func *pVmFunc;   /* Callee */
+	VmFrame *pFrame;        /* Callee's VM frame (entered by the OP_CALL setup) */
+	ph7_value *pFrameStack; /* Callee's operand stack (owned; freed here). NULL when the body was skipped */
+	sxu32 nStackCap;        /* pFrameStack's allocated slot count — nMaxStack+VM_STACK_GUARD
+	                         * at setup, updated if an OP_SPREAD in the callee grew it; the
+	                         * pop-time recycle releases exactly this many slots */
+	sxu32 nLastRef;         /* Callee body's last-referenced slot (by-ref return) */
+	sxu8 bSelfPushed;       /* TRUE when the setup pushed onto pVm->aSelf */
+};
+/*
+ * One node of the in-loop call-record stack (BYTECODE stage 2): the caller's
+ * activation to restore plus the in-flight call to finish, linked to the
+ * next-outer record. Nodes are pool-allocated individually so pointers into
+ * them (sState.pLastRef aims at sCall.nLastRef while the callee runs) stay
+ * stable — a growable array would invalidate them on realloc. The stack is a
+ * LOCAL of each native VmByteCodeExec invocation: an inner native entry
+ * (mini-program, C->PHP callback, ctx resume) can never unwind records that
+ * belong to an outer invocation, preserving the old nesting isolation by
+ * construction.
+ */
+typedef struct VmCallFrame VmCallFrame;
+struct VmCallFrame
+{
+	VmExecState sCaller;   /* Caller activation, restored on pop */
+	VmCallRecord sCall;    /* The in-flight call, finished (VmCallFinish) on pop */
+	VmCallFrame *pPrev;    /* Next-outer record, or NULL at this invocation's base */
+};
+typedef struct VmParkedSegment VmParkedSegment;
+/*
+ * BYTECODE stage 4: a Fiber::suspend() from inside a nested PHP call parks the
+ * whole trampoline record segment here instead of unwinding it. The records,
+ * their VmFrames and operand stacks all stay alive on the heap (that IS what a
+ * suspended fiber is); only the dispatch loop's pointers move into the ctx.
+ * Resume re-pushes the chain and continues INSIDE the innermost callee.
+ */
+struct VmParkedSegment
+{
+	VmExecState sState;    /* Innermost activation — resume re-enters here (pTos synced) */
+	VmCallFrame *pCallTop; /* Parked record chain (caller activations toward the body) */
+	VmFrame *pTopFrame;    /* pVm->pFrame at suspend (innermost callee / open-try frame) */
+	sxu32 nOldExcBase;     /* pCtx->nExceptionBase at park — resume rebases the segment's
+	                        * absolute nExceptionBase floors by (newBase - nOldExcBase) */
+	int nRecords;          /* Chain length: each record contributed one nRecursionDepth++
+	                        * (and, if bSelfPushed, one aSelf push) that VmCallFinish never
+	                        * ran. Deactivate that accounting while parked, reactivate on
+	                        * resume; an abandoned segment stays deactivated. */
+};
+
 PH7_PRIVATE sxi32 VmByteCodeExec(ph7_vm *pVm,VmInstr *aInstr,ph7_value *pStack,int nTos,
 	ph7_value *pResult,sxu32 *pLastRef,int is_callback,sxi32 nPc,
 	ph7_vm_func *pEnforceRetFunc,int bReturnPropagates,
 	VmParkedSegment *pAdoptSegment,ph7_value **ppBaseOwner,
 	sxu32 *pnBaseCap,sxu32 nStackOrig);
+/* vm.c frame/type-enforcement internals shared with vm_exec_ctx.c (and the
+ * upcoming vm_error.c) */
+PH7_PRIVATE int VmCheckPseudoType(ph7_vm *pVm, ph7_value *pValue, const SyString *pClass);
+PH7_PRIVATE sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, int bNullable, int bStrict);
+PH7_PRIVATE void VmDropResumeTarget(ph7_vm *pVm, VmFrame *pFrame);
+PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValue,int bCloneInit);
+PH7_PRIVATE sxi32 VmEnforceScalarType(ph7_value *pVal, sxu32 nType, int bStrict);
+PH7_PRIVATE void VmExcReleaseAll(ph7_vm *pVm,SySet *pSet);
+PH7_PRIVATE const char *VmFormatValueClassName(ph7_value *pValue,char *zBuf,sxu32 nBuf);
+PH7_PRIVATE int VmFuncHasReturnType(ph7_vm_func *pFunc);
+PH7_PRIVATE sxu32 VmFuncRequiredArgCount(ph7_vm_func *pFunc,sxu32 *pnNonVariadic);
+PH7_PRIVATE void VmLeaveFrame(ph7_vm *pVm);
+PH7_PRIVATE int VmNativeNestingExceeded(ph7_vm *pVm);
+PH7_PRIVATE sxi32 VmNativeNestingFatal(ph7_vm *pVm);
+PH7_PRIVATE VmFrame * VmNewFrame(ph7_vm *pVm, void *pUserData, ph7_class_instance *pThis);
+PH7_PRIVATE ph7_class *VmResolveTypeClass(ph7_vm *pVm, const SyString *pCN, ph7_class *pSelf);
+PH7_PRIVATE const char *VmScalarTypeName(sxu32 nType, SyString *pDeclared, char *zBuf, sxu32 nBuf);
+PH7_PRIVATE const char *VmSyStringToCStr(const SyString *pStr, char *zBuf, sxu32 nBuf);
+PH7_PRIVATE sxi32 VmThrowBuiltinTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName, sxu32 nPassed,sxu32 nRequired,sxu32 nNonVariadic);
+PH7_PRIVATE sxi32 VmThrowTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName, sxu32 nPassed,sxu32 nRequired,sxu32 nNonVariadic,int bCallSite);
+PH7_PRIVATE sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName,sxu32 nArg,SyString *pArgName,const char *zExpected,const char *zGiven);
+PH7_PRIVATE ph7_value * VmReserveMemObj(ph7_vm *pVm,sxu32 *pIndex);
+/* vm_exec_ctx.c — Fiber/Generator/Closure engine shared with vm.c */
+PH7_PRIVATE int vm_builtin_Closure_bindTo(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Fiber_construct(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Fiber_destruct(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Fiber_getReturn(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Fiber_isRunning(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Fiber_isStarted(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Fiber_isSuspended(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Fiber_isTerminated(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Fiber_resume(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Fiber_suspend(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Generator_current(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Generator_getReturn(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Generator_key(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Generator_next(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Generator_rewind(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Generator_send(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Generator_throw(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Generator_valid(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE ph7_class_instance * VmCreateClosure(ph7_vm *pVm, const SyString *pName, ph7_class_instance *pBoundThis, const SyString *pScope);
+PH7_PRIVATE ph7_class * VmFccResolveScope(ph7_vm *pVm, ph7_value *pTarget);
+PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue);
+PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx, ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg, int bStrict, ph7_class *pSelfHint, int bCallSiteInMsg);
+PH7_PRIVATE ph7_generator * VmGeneratorExtractCtx(ph7_vm *pVm, ph7_value *pGenObj);
+PH7_PRIVATE ph7_exec_ctx * VmNewExecCtx(ph7_vm *pVm, ph7_vm_func *pFunc);
+PH7_PRIVATE ph7_generator * VmNewGenerator(ph7_vm *pVm, ph7_exec_ctx *pCtx);
+PH7_PRIVATE void VmReleaseExecCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx);
+PH7_PRIVATE void VmReleaseGenerator(ph7_vm *pVm, ph7_generator *pGen);
+PH7_PRIVATE sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValue, ph7_value *pResult);
 /* vm_include.c function prototypes (rows stay in vm.c's aVmFunc[]) */
 PH7_PRIVATE sxi32 VmMountUserClass(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE sxi32 VmEvalChunk(ph7_vm *pVm,ph7_context *pCtx,SyString *pChunk,int iFlags,int bTrueReturn);
