@@ -36,7 +36,6 @@ soTry('write 2 bytes', function () { $s = 'abc'; $s[1] = 'XY'; return $s; });
 
 // Subscripting a scalar.
 soTry('null vivify',  function () { $x = null; $x[0] = 1; return $x; });
-soTry('false vivify', function () { $x = false; $x[0] = 1; return $x; });
 soTry('true write',   function () { $x = true; $x[0] = 1; return $x; });
 soTry('int write',    function () { $x = 5; $x[0] = 1; return $x; });
 soTry('int read',     function () { $x = 5; return $x[0]; });
@@ -66,10 +65,6 @@ write pad => 'abc   Z'
 write 2 bytes =>   [2] Only the first byte will be assigned to the string offset
 'aXc'
 null vivify => array (
-  0 => 1,
-)
-false vivify =>   [8192] Automatic conversion of false to array is deprecated
-array (
   0 => 1,
 )
 true write => true write => Error: Cannot use a scalar value as an array

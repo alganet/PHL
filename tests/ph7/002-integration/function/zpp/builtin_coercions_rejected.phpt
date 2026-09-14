@@ -24,6 +24,10 @@ tc(fn() => ord(""));
 tc(fn() => ord("abc"));
 tc(fn() => base_convert("1g", 16, 10));
 tc(fn() => hexdec("xyz"));
+tc(fn() => array_fill(0, 2.7, "x"));
+tc(fn() => array_chunk([1, 2], 1.5));
+tc(fn() => range(null, 5));
+tc(fn() => range(1, 5, null));
 
 // valid uses still work
 echo abs(-3), " ", chr(65), " ", ord("A"), " ", base_convert("ff", 16, 10), "\n";
@@ -42,4 +46,8 @@ ValueError: ord(): Argument #1 ($character) must not be empty
 ValueError: ord(): Argument #1 ($character) must be a single byte, use ord($str[0]) instead
 ValueError: Invalid characters passed for attempted conversion
 ValueError: Invalid characters passed for attempted conversion
+TypeError: Implicit conversion from float to int loses precision
+TypeError: Implicit conversion from float to int loses precision
+TypeError: range(): Argument #1 ($start) must be of type string|int|float, null given
+TypeError: range(): Argument #3 ($step) must be of type int|float, null given
 3 A 65 255

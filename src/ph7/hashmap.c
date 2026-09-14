@@ -3817,7 +3817,7 @@ PH7_PRIVATE sxu8 RangeStrToNumber(const char *zIn,sxu32 nLen,sxi64 *pLong,double
  */
 static int RangeEndpointZpp(ph7_context *pCtx,ph7_value *pIn,int iArg,const char *zName,int *pbNullCoerced,sxi32 *pRc)
 {
-	char zMsg[160];
+	SXUNUSED(pbNullCoerced); /* php coerces null to 0 with a deprecation; PHL rejects it */
 	*pRc = PH7_OK;
 	if( pIn->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES) ){
 		char zType[80];
@@ -3827,11 +3827,11 @@ static int RangeEndpointZpp(ph7_context *pCtx,ph7_value *pIn,int iArg,const char
 		return FALSE;
 	}
 	if( pIn->iFlags & MEMOBJ_NULL ){
-		SyBufferFormat(zMsg,sizeof(zMsg),
-			"range(): Passing null to parameter #%d ($%s) of type string|int|float is deprecated",
+		/* php only DEPRECATES null here; PHL rejects it. */
+		*pRc = PH7_VmThrowException(pCtx,"TypeError",
+			"range(): Argument #%d ($%s) must be of type string|int|float, null given",
 			iArg,zName);
-		PH7_VmThrowError(pCtx->pVm,0,E_DEPRECATED,zMsg);
-		*pbNullCoerced = TRUE;
+		return FALSE;
 	}
 	return TRUE;
 }
@@ -3853,10 +3853,10 @@ static sxu8 RangeStepInput(ph7_context *pCtx,ph7_value *pIn,sxi64 *pLong,double 
 		return RANGE_IN_ERROR;
 	}
 	if( pIn->iFlags & MEMOBJ_NULL ){
-		PH7_VmThrowError(pCtx->pVm,0,E_DEPRECATED,
-			"range(): Passing null to parameter #3 ($step) of type int|float is deprecated");
-		*pLong = 0;
-		return RANGE_IN_LONG;
+		/* php only DEPRECATES null here; PHL rejects it. */
+		*pRc = PH7_VmThrowException(pCtx,"TypeError",
+			"range(): Argument #3 ($step) must be of type int|float, null given");
+		return RANGE_IN_ERROR;
 	}
 	if( pIn->iFlags & MEMOBJ_REAL ){
 		*pDouble = ph7_value_to_double(pIn);
@@ -6322,10 +6322,8 @@ static int ph7_hashmap_fill(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 		if( bReal ){
 			/* float-string -> deprecation warning */
-			ph7_context_throw_error_format(pCtx, E_DEPRECATED,
-				"Implicit conversion from float-string \"%s\" to int loses precision",
-				zStr
-				);
+			PH7_VmThrowException(pCtx,"TypeError",
+				"Implicit conversion from float-string to int loses precision");
 		}
 	}
 
@@ -6357,10 +6355,8 @@ static int ph7_hashmap_fill(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* avoid hiding outer 'i' (loop index) */
 		sxi64 i64 = (sxi64)d;
 		if( d != (double)i64 ){
-			ph7_context_throw_error_format(pCtx, E_DEPRECATED,
-				"Implicit conversion from float %g to int loses precision",
-				d
-				);
+			PH7_VmThrowException(pCtx,"TypeError",
+				"Implicit conversion from float to int loses precision");
 		}
 	}
 
@@ -7286,10 +7282,8 @@ static int ph7_hashmap_chunk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 		if( bReal ){
 			/* float-string -> warn but allow */
-			ph7_context_throw_error_format(pCtx, E_DEPRECATED,
-				"Implicit conversion from float-string \"%s\" to int loses precision",
-				zStr
-				);
+			PH7_VmThrowException(pCtx,"TypeError",
+				"Implicit conversion from float-string to int loses precision");
 		}
 	}
 	/* If the value is a float with a fractional component, emit a
@@ -7299,10 +7293,8 @@ static int ph7_hashmap_chunk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		double d = ph7_value_to_double(apArg[1]);
 		sxi64 i = (sxi64)d;
 		if( d != (double)i ){
-			ph7_context_throw_error_format(pCtx, E_DEPRECATED,
-				"Implicit conversion from float %g to int loses precision",
-				d
-				);
+			PH7_VmThrowException(pCtx,"TypeError",
+				"Implicit conversion from float to int loses precision");
 		}
 	}
 	/* Convert using ph7_value_to_int; now that float fractions are

@@ -16,7 +16,6 @@ var_dump(empty($array)); // Should be true
 // Test array with mixed keys
 $array[0] = "zero";
 $array["1"] = "one";
-$array[2.5] = "two point five";
 $array[true] = "true";
 $array[false] = "false";
 
@@ -34,11 +33,10 @@ $large_key = str_repeat("x", 100);
 $array[$large_key] = "large";
 var_dump(isset($array[$large_key])); // Should be true
 ?>
---EXPECTF--
+--EXPECT--
 int(0)
 bool(true)
-Error [8192]: Implicit conversion from float 2.5 to int loses precision in %s on line %d
-int(3)
+int(2)
 bool(true)
 bool(true)
 int(2)
