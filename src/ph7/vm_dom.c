@@ -849,7 +849,14 @@ DOM_THUNK(vm_builtin_dom_xpath_query)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	pXCtx->node = pCtxNd ? (xmlNodePtr)pCtxNd->pNode : 0;
+	/* With no explicit context node php evaluates relative expressions
+	 * against the document ELEMENT (so query('file') matches a child of
+	 * the root), not the document node -- match that. */
+	if( pCtxNd ){
+		pXCtx->node = (xmlNodePtr)pCtxNd->pNode;
+	}else{
+		pXCtx->node = xmlDocGetRootElement((xmlDocPtr)pDocNd->pNode);
+	}
 	nMark = PH7_LibxmlCaptureBegin(pVm);
 	pObj = xmlXPathEvalExpression((const xmlChar *)zExpr,pXCtx);
 	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMXPath::query");
