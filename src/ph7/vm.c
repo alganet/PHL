@@ -3808,9 +3808,6 @@ static const struct VmBuiltinSig {
 	{ "end", "object|array &$array", "mixed" },
 	{ "error_get_last", "", "?array" },
 	{ "error_clear_last", "", "void" },
-	{ "libxml_clear_errors", "", "void" },
-	{ "libxml_use_internal_errors", "?bool $use_errors = NULL", "bool" },
-	{ "libxml_get_errors", "", "array" },
 	{ "error_log", "string $message, int $message_type = 0, ?string $destination = NULL, ?string $additional_headers = NULL", "bool" },
 	{ "error_reporting", "?int $error_level = NULL", "int" },
 	{ "exit", "string|int $status = 0", "never" },
@@ -26050,41 +26047,6 @@ static int vm_builtin_error_clear_last(ph7_context *pCtx,int nArg,ph7_value **ap
 	SyBlobReset(&pVm->sLastErrFile);
 	return PH7_OK;
 }
-/*
- * libxml no-op stubs. PHL has no libxml extension, but code that guards on the
- * `dom`/`libxml` extension (e.g. PHPUnit's per-test cleanup calls
- * libxml_clear_errors()) still calls these. Since PHL never accumulates a libxml
- * error buffer, the honest behavior is: clear = nothing, use_internal_errors
- * returns the previous state (always FALSE here), get_errors returns [].
- */
-static int vm_builtin_libxml_clear_errors(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	ph7_result_null(pCtx);
-	return PH7_OK;
-}
-static int vm_builtin_libxml_use_internal_errors(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	/* php returns the PREVIOUS state; with no libxml it is always FALSE. */
-	ph7_result_bool(pCtx,0);
-	return PH7_OK;
-}
-static int vm_builtin_libxml_get_errors(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	ph7_value *pArray;
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	pArray = ph7_context_new_array(pCtx);
-	if( pArray == 0 ){
-		ph7_result_null(pCtx);
-	}else{
-		ph7_result_value(pCtx,pArray);
-	}
-	return PH7_OK;
-}
 static int vm_builtin_debug_backtrace(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
@@ -28724,9 +28686,6 @@ static const ph7_builtin_func aVmFunc[] = {
 	{ "debug_backtrace",  vm_builtin_debug_backtrace},
 	{ "error_get_last" ,  vm_builtin_error_get_last },
 	{ "error_clear_last", vm_builtin_error_clear_last },
-	{ "libxml_clear_errors", vm_builtin_libxml_clear_errors },
-	{ "libxml_use_internal_errors", vm_builtin_libxml_use_internal_errors },
-	{ "libxml_get_errors", vm_builtin_libxml_get_errors },
 	{ "debug_print_backtrace", vm_builtin_debug_print_backtrace  },
 	{ "debug_string_backtrace",vm_builtin_debug_string_backtrace },
 	  /* Release info */
