@@ -17,14 +17,18 @@ BASE_CFLAGS = -W -Wunused -Wall -Werror -Isrc/sx -Isrc/ph7 -D__UNIXES__
 PCRE2_CFLAGS := $(shell pkg-config --cflags libpcre2-8 2>/dev/null)
 PCRE2_LIBS   := $(shell pkg-config --libs   libpcre2-8 2>/dev/null)
 
+# libxml2 detection via pkg-config (empty when absent or for tiny mode)
+LIBXML2_CFLAGS := $(shell pkg-config --cflags libxml-2.0 2>/dev/null)
+LIBXML2_LIBS   := $(shell pkg-config --libs   libxml-2.0 2>/dev/null)
+
 # Per-mode optimization and instrumentation
 full_OPT_CFLAGS     = -O3
 tiny_OPT_CFLAGS     = -Oz
 coverage_OPT_CFLAGS = -O0 -fprofile-arcs -ftest-coverage
 
-full_LDFLAGS = -lm -lpthread $(PCRE2_LIBS)
+full_LDFLAGS = -lm -lpthread $(PCRE2_LIBS) $(LIBXML2_LIBS)
 tiny_LDFLAGS =
-coverage_LDFLAGS = -lm -lpthread $(PCRE2_LIBS) -fprofile-arcs -ftest-coverage
+coverage_LDFLAGS = -lm -lpthread $(PCRE2_LIBS) $(LIBXML2_LIBS) -fprofile-arcs -ftest-coverage
 
 PH7_DEFINES = $($(MODE)_DEFINES)
 MODE_EXTRA_CFLAGS = $($(MODE)_EXTRA_CFLAGS)

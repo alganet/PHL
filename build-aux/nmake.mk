@@ -21,6 +21,13 @@ VCPKG_INSTALLED = C:\vcpkg\installed\x64-windows-static
 PCRE2_CFLAGS = /I "$(VCPKG_INSTALLED)\include"
 PCRE2_LIBS = "$(VCPKG_INSTALLED)\lib\pcre2-8.lib"
 
+# libxml2 via vcpkg (static; /DLIBXML_STATIC is mandatory or the compiler emits
+# __imp_-prefixed dllimport references that fail to link against the static lib).
+# vcpkg puts the headers at include\libxml\*.h (no libxml2 subdirectory), so the
+# base include path shared with pcre2 is the right one.
+LIBXML2_CFLAGS = /I "$(VCPKG_INSTALLED)\include\libxml2" /DLIBXML_STATIC
+LIBXML2_LIBS = "$(VCPKG_INSTALLED)\lib\libxml2.lib"
+
 # Base flags shared by all modes.
 # /wd4127 (constant conditional) and /wd4702 (unreachable code) are noisy MSVC
 # warnings that this SQLite/PH7-lineage code triggers legitimately (parameterized
@@ -36,9 +43,9 @@ coverage_CFLAGS = $(BASE_CFLAGS) /Od /Zi $(coverage_DEFINES:-=/) $(coverage_EXTR
 
 # Per-mode LDFLAGS (used by patterns.mk generated link rules)
 # bcrypt.lib provides BCryptGenRandom, used by SyOSCSPRNG in src/sx/sxrand.c.
-full_LDFLAGS = /nologo /link advapi32.lib bcrypt.lib ws2_32.lib $(PCRE2_LIBS) /subsystem:console /entry:mainCRTStartup
+full_LDFLAGS = /nologo /link advapi32.lib bcrypt.lib ws2_32.lib $(PCRE2_LIBS) $(LIBXML2_LIBS) /subsystem:console /entry:mainCRTStartup
 tiny_LDFLAGS = /nologo /link advapi32.lib bcrypt.lib /subsystem:console /entry:mainCRTStartup
-coverage_LDFLAGS = /nologo /link advapi32.lib bcrypt.lib dbghelp.lib ws2_32.lib $(PCRE2_LIBS) /subsystem:console /entry:mainCRTStartup
+coverage_LDFLAGS = /nologo /link advapi32.lib bcrypt.lib dbghelp.lib ws2_32.lib $(PCRE2_LIBS) $(LIBXML2_LIBS) /subsystem:console /entry:mainCRTStartup
 
 LDFLAGS = $(full_LDFLAGS)
 
