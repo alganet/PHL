@@ -2116,6 +2116,14 @@ PH7_PRIVATE void  PH7_VmExpandConstantValue(ph7_value *pVal,void *pUserData);
 PH7_PRIVATE sxi32 PH7_VmDump(ph7_vm *pVm,ProcConsumer xConsumer,void *pUserData);
 PH7_PRIVATE sxi32 PH7_VmEvalBuiltinChunk(ph7_vm *pVm,const char *zSrc,sxu32 nLen);
 PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm);
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+/* Shared between builtin_date.c (procedural date functions) and
+ * builtin_date_parse.c (the DateTime family) */
+PH7_PRIVATE sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pTm,int uSec);
+PH7_PRIVATE sxi64 DtDaysFromCivil(sxi64 y,int m,int d);
+PH7_PRIVATE void DtCivilFromDays(sxi64 z,sxi64 *py,int *pm,int *pd);
+PH7_PRIVATE sxi64 DtFloorDiv(sxi64 a,sxi64 b);
+#endif /* PH7_DISABLE_BUILTIN_FUNC */
 PH7_PRIVATE const char * PH7_VmBuiltinSigLookup(const char *zName,sxu32 nLen,const char **pzRet);
 PH7_PRIVATE void PH7_VmStoreArgByRef(ph7_vm *pVm,ph7_value *pArg,ph7_value *pNewVal);
 PH7_PRIVATE void PH7_VmThrowWarningFmt(ph7_vm *pVm,const char *zFmt,...);
