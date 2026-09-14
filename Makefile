@@ -45,6 +45,7 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/compile$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/constant$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/hashmap$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/hashmap_sort$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/lex$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/memobj$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/oo$(OBJ_SUFFIX) \
