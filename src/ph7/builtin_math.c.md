@@ -551,10 +551,10 @@ Coverage: 557/655 lines (85.04%)
 |    - |  541 | ` *  The absolute value of number.` |
 |    - |  542 | ` */` |
 |  130 |  543 | `PH7_PRIVATE int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    3 |  544 | `{` |
+|    4 |  544 | `{` |
 |    - |  545 | `	int is_float;` |
 |    - |  546 | `	/* PHP requires exactly one argument. */` |
-|  133 |  547 | `	if( nArg != 1 ){` |
+|  134 |  547 | `	if( nArg != 1 ){` |
 |    4 |  548 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  549 | `			"ArgumentCountError",` |
 |    - |  550 | `			"abs() expects exactly 1 argument, %d given",` |
@@ -603,7 +603,7 @@ Coverage: 557/655 lines (85.04%)
 |    - |  593 | `		}` |
 |    - |  594 | `	}` |
 |  128 |  595 | `	return PH7_OK;` |
-|   68 |  596 | `}` |
+|   69 |  596 | `}` |
 |    - |  597 | `/*` |
 |    - |  598 | ` * float log(float $arg,[int/float $base])` |
 |    - |  599 | ` *  Natural logarithm.` |
@@ -1198,34 +1198,34 @@ Coverage: 557/655 lines (85.04%)
 |    - | 1188 | ` * is not emitted here (a §3.7 deprecation-fidelity residual, value is correct).` |
 |    - | 1189 | ` */` |
 |   88 | 1190 | `static void MathBaseToNumber(ph7_context *pCtx,const char *zStr,int nLen,int base)` |
-|    2 | 1191 | `{` |
-|   90 | 1192 | `	sxi64 num = 0;      /* Integer accumulator */` |
-|   90 | 1193 | `	double fnum = 0;    /* Float accumulator (used once num would overflow) */` |
-|   90 | 1194 | `	int mode = 0;       /* 0 -> integer accumulation, 1 -> switched to float */` |
-|   90 | 1195 | `	sxi64 cutoff = SXI64_HIGH / base;      /* PHP_INT_MAX / base */` |
-|   90 | 1196 | `	int cutlim = (int)(SXI64_HIGH % base); /* PHP_INT_MAX % base */` |
-|   90 | 1197 | `	int bIgnored = 0;   /* any character skipped below? php deprecates that */` |
+|    3 | 1191 | `{` |
+|   91 | 1192 | `	sxi64 num = 0;      /* Integer accumulator */` |
+|   91 | 1193 | `	double fnum = 0;    /* Float accumulator (used once num would overflow) */` |
+|   91 | 1194 | `	int mode = 0;       /* 0 -> integer accumulation, 1 -> switched to float */` |
+|   91 | 1195 | `	sxi64 cutoff = SXI64_HIGH / base;      /* PHP_INT_MAX / base */` |
+|   91 | 1196 | `	int cutlim = (int)(SXI64_HIGH % base); /* PHP_INT_MAX % base */` |
+|   91 | 1197 | `	int bIgnored = 0;   /* any character skipped below? php deprecates that */` |
 |    - | 1198 | `	int i;` |
-|  734 | 1199 | `	for( i = 0 ; i < nLen ; ++i ){` |
-|  646 | 1200 | `		int c = (unsigned char)zStr[i];` |
-|  646 | 1201 | `		if( c >= '0' && c <= '9' ){` |
-|  504 | 1202 | `			c -= '0';` |
-|  395 | 1203 | `		}else if( c >= 'A' && c <= 'Z' ){` |
+|  735 | 1199 | `	for( i = 0 ; i < nLen ; ++i ){` |
+|  647 | 1200 | `		int c = (unsigned char)zStr[i];` |
+|  647 | 1201 | `		if( c >= '0' && c <= '9' ){` |
+|  505 | 1202 | `			c -= '0';` |
+|  396 | 1203 | `		}else if( c >= 'A' && c <= 'Z' ){` |
 |   31 | 1204 | `			c -= 'A' - 10;` |
-|  129 | 1205 | `		}else if( c >= 'a' && c <= 'z' ){` |
-|  106 | 1206 | `			c -= 'a' - 10;` |
-|   54 | 1207 | `		}else{` |
+|  130 | 1205 | `		}else if( c >= 'a' && c <= 'z' ){` |
+|  107 | 1206 | `			c -= 'a' - 10;` |
+|   55 | 1207 | `		}else{` |
 |    9 | 1208 | `			bIgnored = 1;` |
 |    9 | 1209 | `			continue; /* Not a digit character: skip */` |
 |    - | 1210 | `		}` |
-|  638 | 1211 | `		if( c >= base ){` |
+|  639 | 1211 | `		if( c >= base ){` |
 |   10 | 1212 | `			bIgnored = 1;` |
 |   10 | 1213 | `			continue; /* Digit out of range for this base: skip */` |
 |    - | 1214 | `		}` |
-|  630 | 1215 | `		if( mode == 0 ){` |
-|  630 | 1216 | `			if( num < cutoff \|\| (num == cutoff && c <= cutlim) ){` |
-|  624 | 1217 | `				num = num * base + c;` |
-|  624 | 1218 | `				continue;` |
+|  631 | 1215 | `		if( mode == 0 ){` |
+|  631 | 1216 | `			if( num < cutoff \|\| (num == cutoff && c <= cutlim) ){` |
+|  625 | 1217 | `				num = num * base + c;` |
+|  625 | 1218 | `				continue;` |
 |    - | 1219 | `			}` |
 |    - | 1220 | `			/* Adding this digit would overflow the 64-bit integer: fall back to` |
 |    - | 1221 | `			 * float accumulation, seeding it with the value gathered so far. */` |
@@ -1234,18 +1234,18 @@ Coverage: 557/655 lines (85.04%)
 |    3 | 1224 | `		}` |
 |    7 | 1225 | `		fnum = fnum * base + c;` |
 |    4 | 1226 | `	}` |
-|   90 | 1227 | `	if( bIgnored ){` |
+|   91 | 1227 | `	if( bIgnored ){` |
 |    - | 1228 | `		/* php 8: characters that are not valid digits for this base are skipped,` |
 |    - | 1229 | `		 * and the skipping itself is deprecated (the VALUE is unaffected). */` |
 |   14 | 1230 | `		PH7_VmThrowDeprecatedFmt(pCtx->pVm,` |
 |    - | 1231 | `			"Invalid characters passed for attempted conversion, these have been ignored");` |
 |    6 | 1232 | `	}` |
-|   90 | 1233 | `	if( mode == 1 ){` |
+|   91 | 1233 | `	if( mode == 1 ){` |
 |    7 | 1234 | `		ph7_result_double(pCtx,fnum);` |
 |    4 | 1235 | `	}else{` |
-|   84 | 1236 | `		ph7_result_int64(pCtx,num);` |
+|   85 | 1236 | `		ph7_result_int64(pCtx,num);` |
 |    - | 1237 | `	}` |
-|   90 | 1238 | `}` |
+|   91 | 1238 | `}` |
 |    - | 1239 | `/*` |
 |    - | 1240 | ` * int64 hexdec(string $hex_string)` |
 |    - | 1241 | ` *  Hexadecimal to decimal.` |
@@ -1256,15 +1256,15 @@ Coverage: 557/655 lines (85.04%)
 |    - | 1246 | ` *  The decimal representation of hex_string (int, or float on overflow)` |
 |    - | 1247 | ` */` |
 |   52 | 1248 | `PH7_PRIVATE int PH7_builtin_hexdec(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    2 | 1249 | `{` |
+|    3 | 1249 | `{` |
 |    - | 1250 | `	const char *zString;` |
 |    - | 1251 | `	int nLen;` |
-|   54 | 1252 | `	if( nArg < 1 ){` |
+|   55 | 1252 | `	if( nArg < 1 ){` |
 |    - | 1253 | `		/* Missing arguments,return -1 */` |
 |  ! 0 | 1254 | `		ph7_result_int(pCtx,-1);` |
 |  ! 0 | 1255 | `		return PH7_OK;` |
 |    - | 1256 | `	}` |
-|   54 | 1257 | `	if( ph7_value_is_array(apArg[0]) \|\| ph7_value_is_object(apArg[0]) \|\| ph7_value_is_resource(apArg[0]) ){` |
+|   55 | 1257 | `	if( ph7_value_is_array(apArg[0]) \|\| ph7_value_is_object(apArg[0]) \|\| ph7_value_is_resource(apArg[0]) ){` |
 |    - | 1258 | `		/* PHP 8 throws a catchable TypeError for a non-string-coercible argument. */` |
 |    - | 1259 | `		char zBuf[64];` |
 |  ! 0 | 1260 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
@@ -1275,10 +1275,10 @@ Coverage: 557/655 lines (85.04%)
 |    - | 1265 | `	 * hex-parses that (hexdec(255) == hexdec("255") == 0x255), so route every` |
 |    - | 1266 | `	 * non-throwing value through ph7_value_to_string rather than reading it as` |
 |    - | 1267 | `	 * a decimal integer. */` |
-|   54 | 1268 | `	zString = ph7_value_to_string(apArg[0],&nLen);` |
-|   54 | 1269 | `	MathBaseToNumber(pCtx,zString,nLen,16);` |
-|   54 | 1270 | `	return PH7_OK;` |
-|   28 | 1271 | `}` |
+|   55 | 1268 | `	zString = ph7_value_to_string(apArg[0],&nLen);` |
+|   55 | 1269 | `	MathBaseToNumber(pCtx,zString,nLen,16);` |
+|   55 | 1270 | `	return PH7_OK;` |
+|   29 | 1271 | `}` |
 |    - | 1272 | `/*` |
 |    - | 1273 | ` * int64 bindec(string $bin_string)` |
 |    - | 1274 | ` *  Binary to decimal.` |

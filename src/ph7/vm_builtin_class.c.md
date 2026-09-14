@@ -130,17 +130,17 @@ Coverage: 630/718 lines (87.74%)
 |     - |  120 | `		const char *zClass;` |
 |     - |  121 | `		int nLen;` |
 |     - |  122 | `		/* Extract class name */` |
-|   889 |  123 | `		zClass = ph7_value_to_string(pArg,&nLen);` |
+|   890 |  123 | `		zClass = ph7_value_to_string(pArg,&nLen);` |
 |     - |  124 | `		/* php: a leading '\' anchors the name to the global namespace. */` |
-|   889 |  125 | `		if( nLen > 0 && zClass[0] == '\\' ){ zClass++; nLen--; }` |
-|   889 |  126 | `		if( nLen > 0 ){` |
+|   890 |  125 | `		if( nLen > 0 && zClass[0] == '\\' ){ zClass++; nLen--; }` |
+|   890 |  126 | `		if( nLen > 0 ){` |
 |     - |  127 | `			/* Resolve through PH7_VmExtractClass so a class named by STRING is` |
 |     - |  128 | `			 * autoloaded on a miss — php autoloads the class of a [class,method]` |
 |     - |  129 | `			 * callable (is_callable/array_map/call_user_func), and of the class` |
 |     - |  130 | `			 * argument to method_exists()/property_exists(). iLoadable=FALSE keeps` |
 |     - |  131 | `			 * abstract classes and interfaces (a static method on an abstract class` |
 |     - |  132 | `			 * is a valid callable). */` |
-|   889 |  133 | `			pClass = PH7_VmExtractClass(pVm,zClass,(sxu32)nLen,FALSE,0);` |
+|   890 |  133 | `			pClass = PH7_VmExtractClass(pVm,zClass,(sxu32)nLen,FALSE,0);` |
 |   443 |  134 | `		}` |
 |   443 |  135 | `	}` |
 |  1811 |  136 | `	return pClass;` |
@@ -254,8 +254,8 @@ Coverage: 630/718 lines (87.74%)
 |    41 |  244 | `		}` |
 |    87 |  245 | `		if( pEntry == 0 && nLen > 0 && iAutoload ){` |
 |     - |  246 | `			/* Try autoload, then re-check */` |
-|    25 |  247 | `			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,(sxu32)nLen,FALSE);` |
-|    25 |  248 | `			if( pClass ){` |
+|    24 |  247 | `			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,(sxu32)nLen,FALSE);` |
+|    24 |  248 | `			if( pClass ){` |
 |     9 |  249 | `				pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);` |
 |     3 |  250 | `			}` |
 |    10 |  251 | `		}` |

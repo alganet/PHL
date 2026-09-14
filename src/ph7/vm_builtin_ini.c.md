@@ -71,125 +71,133 @@ Coverage: 21/22 lines (95.45%)
 |    - |   61 | `"  'session.save_path' => ['', 7],"` |
 |    - |   62 | `"  'short_open_tag' => ['', 6],"` |
 |    - |   63 | `"  'upload_max_filesize' => ['2M', 6],"` |
-|    - |   64 | `" ];"` |
-|    - |   65 | `" foreach( __ini_cli() as $k => $v ){"` |
-|    - |   66 | `"  if( isset($t[$k]) ){"` |
-|    - |   67 | `"   $t[$k][0] = (string)$v;"` |
-|    - |   68 | `"  }else{"` |
-|    - |   69 | `"   $t[$k] = [(string)$v, 7];"` |
-|    - |   70 | `"  }"` |
-|    - |   71 | `" }"` |
-|    - |   72 | `" $seeded = [];"` |
-|    - |   73 | `" foreach( $t as $k => $pair ){"` |
-|    - |   74 | `"  $seeded[$k] = ['g' => $pair[0], 'l' => $pair[0], 'a' => $pair[1]];"` |
-|    - |   75 | `" }"` |
-|    - |   76 | `" __IniS::$t = $seeded;"` |
-|    - |   77 | `" /* boot-apply the CLI values for the live-wired knobs (the engine knobs"` |
-|    - |   78 | `"  * error_reporting/date.timezone were already applied C-side) */"` |
-|    - |   79 | `" if( $seeded['session.name']['g'] !== 'PHPSESSID' ){"` |
-|    - |   80 | `"  __SessS::$name = $seeded['session.name']['g'];"` |
-|    - |   81 | `" }"` |
-|    - |   82 | `" if( $seeded['session.save_path']['g'] !== '' ){"` |
-|    - |   83 | `"  __SessS::$path = rtrim($seeded['session.save_path']['g'], '/');"` |
-|    - |   84 | `" }"` |
-|    - |   85 | `"}"` |
-|    - |   86 | `"function __ini_rt_get($name){"` |
-|    - |   87 | `" /* live-wired reads: the runtime knob is the truth */"` |
-|    - |   88 | `" if( $name === 'error_reporting' ){ return (string)error_reporting(); }"` |
-|    - |   89 | `" if( $name === 'session.name' ){ return __SessS::$name; }"` |
-|    - |   90 | `" if( $name === 'session.save_path' ){"` |
-|    - |   91 | `"  return __SessS::$path === '' ? __IniS::$t[$name]['l'] : __SessS::$path;"` |
-|    - |   92 | `" }"` |
-|    - |   93 | `" return __IniS::$t[$name]['l'];"` |
-|    - |   94 | `"}"` |
-|    - |   95 | `"function __ini_rt_set($name, $value){"` |
-|    - |   96 | `" if( $name === 'error_reporting' ){ error_reporting((int)$value); return; }"` |
-|    - |   97 | `" if( $name === 'session.name' ){ __SessS::$name = $value; return; }"` |
-|    - |   98 | `" if( $name === 'session.save_path' ){ __SessS::$path = rtrim($value, '/'); return; }"` |
-|    - |   99 | `" if( $name === 'date.timezone' && preg_match('/^(UTC\|GMT)$/i', $value) ){"` |
-|    - |  100 | `"  date_default_timezone_set($value);"` |
-|    - |  101 | `" }"` |
-|    - |  102 | `"}"` |
-|    - |  103 | `"function ini_get($option){"` |
-|    - |  104 | `" __ini_seed();"` |
-|    - |  105 | `" $option = (string)$option;"` |
-|    - |  106 | `" if( !isset(__IniS::$t[$option]) ){ return false; }"` |
-|    - |  107 | `" return __ini_rt_get($option);"` |
-|    - |  108 | `"}"` |
-|    - |  109 | `"function ini_set($option, $value){"` |
-|    - |  110 | `" __ini_seed();"` |
-|    - |  111 | `" $option = (string)$option;"` |
-|    - |  112 | `" if( !isset(__IniS::$t[$option]) ){ return false; }"` |
-|    - |  113 | `" if( (__IniS::$t[$option]['a'] & INI_USER) === 0 ){ return false; }"` |
-|    - |  114 | `" if( strncmp($option, 'session.', 8) === 0 && headers_sent() ){"` |
-|    - |  115 | `"  trigger_error('ini_set(): Session ini settings cannot be changed after"` |
-|    - |  116 | `" headers have already been sent', E_USER_WARNING);"` |
-|    - |  117 | `"  return false;"` |
-|    - |  118 | `" }"` |
-|    - |  119 | `" $old = __ini_rt_get($option);"` |
-|    - |  120 | `" $value = is_bool($value) ? ($value ? '1' : '') : (string)$value;"` |
-|    - |  121 | `" __IniS::$t[$option]['l'] = $value;"` |
-|    - |  122 | `" __ini_rt_set($option, $value);"` |
-|    - |  123 | `" return $old;"` |
-|    - |  124 | `"}"` |
-|    - |  125 | `"function ini_restore($option){"` |
-|    - |  126 | `" __ini_seed();"` |
-|    - |  127 | `" $option = (string)$option;"` |
-|    - |  128 | `" if( !isset(__IniS::$t[$option]) ){ return null; }"` |
-|    - |  129 | `" if( strncmp($option, 'session.', 8) === 0 && headers_sent() ){"` |
-|    - |  130 | `"  trigger_error('ini_restore(): Session ini settings cannot be changed after"` |
-|    - |  131 | `" headers have already been sent', E_USER_WARNING);"` |
-|    - |  132 | `"  return null;"` |
-|    - |  133 | `" }"` |
-|    - |  134 | `" $g = __IniS::$t[$option]['g'];"` |
-|    - |  135 | `" __IniS::$t[$option]['l'] = $g;"` |
-|    - |  136 | `" __ini_rt_set($option, $g);"` |
-|    - |  137 | `" return null;"` |
-|    - |  138 | `"}"` |
-|    - |  139 | `"function ini_get_all($extension = null, $details = true){"` |
-|    - |  140 | `" __ini_seed();"` |
-|    - |  141 | `" $known = ['Core' => true, 'session' => true, 'date' => true, 'standard' => true];"` |
-|    - |  142 | `" if( $extension !== null && !isset($known[(string)$extension]) ){"` |
-|    - |  143 | `"  trigger_error('ini_get_all(): Extension \"' . $extension . '\" cannot be"` |
-|    - |  144 | `" found', E_USER_WARNING);"` |
-|    - |  145 | `"  return false;"` |
-|    - |  146 | `" }"` |
-|    - |  147 | `" $out = [];"` |
-|    - |  148 | `" foreach( __IniS::$t as $name => $e ){"` |
-|    - |  149 | `"  if( $extension !== null && $extension !== 'Core' && $extension !== 'standard' ){"` |
-|    - |  150 | `"   if( strncmp($name, $extension . '.', strlen($extension) + 1) !== 0 ){ continue; }"` |
-|    - |  151 | `"  }elseif( $extension !== null ){"` |
-|    - |  152 | `"   if( strpos($name, 'session.') === 0 \|\| strpos($name, 'date.') === 0 ){ continue; }"` |
-|    - |  153 | `"  }"` |
-|    - |  154 | `"  $cur = __ini_rt_get($name);"` |
-|    - |  155 | `"  if( $details ){"` |
-|    - |  156 | `"   $out[$name] = ['global_value' => $e['g'], 'local_value' => $cur,"` |
-|    - |  157 | `"    'access' => $e['a']];"` |
-|    - |  158 | `"  }else{"` |
-|    - |  159 | `"   $out[$name] = $cur;"` |
-|    - |  160 | `"  }"` |
-|    - |  161 | `" }"` |
-|    - |  162 | `" ksort($out);"` |
-|    - |  163 | `" return $out;"` |
-|    - |  164 | `"}"` |
-|    - |  165 | `"function get_cfg_var($option){"` |
-|    - |  166 | `" __ini_seed();"` |
-|    - |  167 | `" $option = (string)$option;"` |
-|    - |  168 | `" if( !isset(__IniS::$t[$option]) ){ return false; }"` |
-|    - |  169 | `" return __IniS::$t[$option]['g'];"` |
-|    - |  170 | `"}"` |
-|    - |  171 | `;` |
-|    - |  172 |  |
-| 3888 |  173 | `PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm)` |
-|    5 |  174 | `{` |
-| 3893 |  175 | `	ph7_create_function(&(*pVm),"__ini_cli",vm_builtin_ini_cli,0);` |
-| 3893 |  176 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zIniLib,sizeof(zIniLib)-1);` |
-|    5 |  177 | `}` |
-|    - |  178 |  |
-|    - |  179 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
+|    - |   64 | `"  'zend.assertions' => ['-1', 7],"` |
+|    - |   65 | `" ];"` |
+|    - |   66 | `" foreach( __ini_cli() as $k => $v ){"` |
+|    - |   67 | `"  if( isset($t[$k]) ){"` |
+|    - |   68 | `"   $t[$k][0] = (string)$v;"` |
+|    - |   69 | `"  }else{"` |
+|    - |   70 | `"   $t[$k] = [(string)$v, 7];"` |
+|    - |   71 | `"  }"` |
+|    - |   72 | `" }"` |
+|    - |   73 | `" $seeded = [];"` |
+|    - |   74 | `" foreach( $t as $k => $pair ){"` |
+|    - |   75 | `"  $seeded[$k] = ['g' => $pair[0], 'l' => $pair[0], 'a' => $pair[1]];"` |
+|    - |   76 | `" }"` |
+|    - |   77 | `" __IniS::$t = $seeded;"` |
+|    - |   78 | `" /* boot-apply the CLI values for the live-wired knobs (the engine knobs"` |
+|    - |   79 | `"  * error_reporting/date.timezone were already applied C-side) */"` |
+|    - |   80 | `" if( $seeded['session.name']['g'] !== 'PHPSESSID' ){"` |
+|    - |   81 | `"  __SessS::$name = $seeded['session.name']['g'];"` |
+|    - |   82 | `" }"` |
+|    - |   83 | `" if( $seeded['session.save_path']['g'] !== '' ){"` |
+|    - |   84 | `"  __SessS::$path = rtrim($seeded['session.save_path']['g'], '/');"` |
+|    - |   85 | `" }"` |
+|    - |   86 | `"}"` |
+|    - |   87 | `"function __ini_rt_get($name){"` |
+|    - |   88 | `" /* live-wired reads: the runtime knob is the truth */"` |
+|    - |   89 | `" if( $name === 'error_reporting' ){ return (string)error_reporting(); }"` |
+|    - |   90 | `" if( $name === 'session.name' ){ return __SessS::$name; }"` |
+|    - |   91 | `" if( $name === 'session.save_path' ){"` |
+|    - |   92 | `"  return __SessS::$path === '' ? __IniS::$t[$name]['l'] : __SessS::$path;"` |
+|    - |   93 | `" }"` |
+|    - |   94 | `" return __IniS::$t[$name]['l'];"` |
+|    - |   95 | `"}"` |
+|    - |   96 | `"function __ini_rt_set($name, $value){"` |
+|    - |   97 | `" if( $name === 'error_reporting' ){ error_reporting((int)$value); return; }"` |
+|    - |   98 | `" if( $name === 'session.name' ){ __SessS::$name = $value; return; }"` |
+|    - |   99 | `" if( $name === 'session.save_path' ){ __SessS::$path = rtrim($value, '/'); return; }"` |
+|    - |  100 | `" if( $name === 'date.timezone' && preg_match('/^(UTC\|GMT)$/i', $value) ){"` |
+|    - |  101 | `"  date_default_timezone_set($value);"` |
+|    - |  102 | `" }"` |
+|    - |  103 | `"}"` |
+|    - |  104 | `"function ini_get($option){"` |
+|    - |  105 | `" __ini_seed();"` |
+|    - |  106 | `" $option = (string)$option;"` |
+|    - |  107 | `" if( !isset(__IniS::$t[$option]) ){ return false; }"` |
+|    - |  108 | `" return __ini_rt_get($option);"` |
+|    - |  109 | `"}"` |
+|    - |  110 | `"function ini_set($option, $value){"` |
+|    - |  111 | `" __ini_seed();"` |
+|    - |  112 | `" $option = (string)$option;"` |
+|    - |  113 | `" if( !isset(__IniS::$t[$option]) ){ return false; }"` |
+|    - |  114 | `" if( (__IniS::$t[$option]['a'] & INI_USER) === 0 ){ return false; }"` |
+|    - |  115 | `" if( strncmp($option, 'session.', 8) === 0 && headers_sent() ){"` |
+|    - |  116 | `"  trigger_error('ini_set(): Session ini settings cannot be changed after"` |
+|    - |  117 | `" headers have already been sent', E_USER_WARNING);"` |
+|    - |  118 | `"  return false;"` |
+|    - |  119 | `" }"` |
+|    - |  120 | `" if( $option === 'zend.assertions' &&"` |
+|    - |  121 | `"     (__IniS::$t[$option]['g'] === '-1' \|\| (string)$value === '-1') ){"` |
+|    - |  122 | `"  /* php: the -1 (compiled-out) state is a php.ini-only switch */"` |
+|    - |  123 | `"  trigger_error('zend.assertions may be completely enabled or disabled only"` |
+|    - |  124 | `" in php.ini', E_USER_WARNING);"` |
+|    - |  125 | `"  return false;"` |
+|    - |  126 | `" }"` |
+|    - |  127 | `" $old = __ini_rt_get($option);"` |
+|    - |  128 | `" $value = is_bool($value) ? ($value ? '1' : '') : (string)$value;"` |
+|    - |  129 | `" __IniS::$t[$option]['l'] = $value;"` |
+|    - |  130 | `" __ini_rt_set($option, $value);"` |
+|    - |  131 | `" return $old;"` |
+|    - |  132 | `"}"` |
+|    - |  133 | `"function ini_restore($option){"` |
+|    - |  134 | `" __ini_seed();"` |
+|    - |  135 | `" $option = (string)$option;"` |
+|    - |  136 | `" if( !isset(__IniS::$t[$option]) ){ return null; }"` |
+|    - |  137 | `" if( strncmp($option, 'session.', 8) === 0 && headers_sent() ){"` |
+|    - |  138 | `"  trigger_error('ini_restore(): Session ini settings cannot be changed after"` |
+|    - |  139 | `" headers have already been sent', E_USER_WARNING);"` |
+|    - |  140 | `"  return null;"` |
+|    - |  141 | `" }"` |
+|    - |  142 | `" $g = __IniS::$t[$option]['g'];"` |
+|    - |  143 | `" __IniS::$t[$option]['l'] = $g;"` |
+|    - |  144 | `" __ini_rt_set($option, $g);"` |
+|    - |  145 | `" return null;"` |
+|    - |  146 | `"}"` |
+|    - |  147 | `"function ini_get_all($extension = null, $details = true){"` |
+|    - |  148 | `" __ini_seed();"` |
+|    - |  149 | `" $known = ['Core' => true, 'session' => true, 'date' => true, 'standard' => true];"` |
+|    - |  150 | `" if( $extension !== null && !isset($known[(string)$extension]) ){"` |
+|    - |  151 | `"  trigger_error('ini_get_all(): Extension \"' . $extension . '\" cannot be"` |
+|    - |  152 | `" found', E_USER_WARNING);"` |
+|    - |  153 | `"  return false;"` |
+|    - |  154 | `" }"` |
+|    - |  155 | `" $out = [];"` |
+|    - |  156 | `" foreach( __IniS::$t as $name => $e ){"` |
+|    - |  157 | `"  if( $extension !== null && $extension !== 'Core' && $extension !== 'standard' ){"` |
+|    - |  158 | `"   if( strncmp($name, $extension . '.', strlen($extension) + 1) !== 0 ){ continue; }"` |
+|    - |  159 | `"  }elseif( $extension !== null ){"` |
+|    - |  160 | `"   if( strpos($name, 'session.') === 0 \|\| strpos($name, 'date.') === 0 ){ continue; }"` |
+|    - |  161 | `"  }"` |
+|    - |  162 | `"  $cur = __ini_rt_get($name);"` |
+|    - |  163 | `"  if( $details ){"` |
+|    - |  164 | `"   $out[$name] = ['global_value' => $e['g'], 'local_value' => $cur,"` |
+|    - |  165 | `"    'access' => $e['a']];"` |
+|    - |  166 | `"  }else{"` |
+|    - |  167 | `"   $out[$name] = $cur;"` |
+|    - |  168 | `"  }"` |
+|    - |  169 | `" }"` |
+|    - |  170 | `" ksort($out);"` |
+|    - |  171 | `" return $out;"` |
+|    - |  172 | `"}"` |
+|    - |  173 | `"function get_cfg_var($option){"` |
+|    - |  174 | `" __ini_seed();"` |
+|    - |  175 | `" $option = (string)$option;"` |
+|    - |  176 | `" if( !isset(__IniS::$t[$option]) ){ return false; }"` |
+|    - |  177 | `" return __IniS::$t[$option]['g'];"` |
+|    - |  178 | `"}"` |
+|    - |  179 | `;` |
 |    - |  180 |  |
-|    - |  181 | `#ifdef PH7_DISABLE_BUILTIN_FUNC` |
-|    - |  182 | `/* Tiny build: no INI API (builtin layer disabled) */` |
-|    - |  183 | `PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm){ (void)pVm; return SXRET_OK; }` |
-|    - |  184 | `#endif` |
-|    - |  185 |  |
+| 3884 |  181 | `PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm)` |
+|    5 |  182 | `{` |
+| 3889 |  183 | `	ph7_create_function(&(*pVm),"__ini_cli",vm_builtin_ini_cli,0);` |
+| 3889 |  184 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zIniLib,sizeof(zIniLib)-1);` |
+|    5 |  185 | `}` |
+|    - |  186 |  |
+|    - |  187 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
+|    - |  188 |  |
+|    - |  189 | `#ifdef PH7_DISABLE_BUILTIN_FUNC` |
+|    - |  190 | `/* Tiny build: no INI API (builtin layer disabled) */` |
+|    - |  191 | `PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm){ (void)pVm; return SXRET_OK; }` |
+|    - |  192 | `#endif` |
+|    - |  193 |  |
