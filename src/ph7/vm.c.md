@@ -10898,8 +10898,8 @@ Coverage: 12267/14691 lines (83.50%)
 |        - | 10888 | `			/* Publish the source position for diagnostics, debug_backtrace() and` |
 |        - | 10889 | `			 * Throwable. Instructions the compiler could not attribute (nLine 0)` |
 |        - | 10890 | `			 * leave the last known line standing rather than reporting line 0. */` |
-| 18245156 | 10891 | `			pVm->nCurLine = pInstr->nLine;` |
-|  9129767 | 10892 | `		}` |
+| 18245157 | 10891 | `			pVm->nCurLine = pInstr->nLine;` |
+|  9129768 | 10892 | `		}` |
 | 18460445 | 10893 | `		rc = SXRET_OK;` |
 |        - | 10894 | `/*` |
 |        - | 10895 | ` * What follows here is a massive switch statement where each case implements a` |
@@ -24184,11 +24184,11 @@ Coverage: 12267/14691 lines (83.50%)
 |        - | 24174 | ` * PH7 uses its own private PRNG (the SQLite3-derived RC4 generator` |
 |        - | 24175 | ` * implemented in src/sx/sxrand.c).` |
 |        - | 24176 | ` */` |
-|     5131 | 24177 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
+|     5129 | 24177 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
 |        5 | 24178 | `{` |
 |        - | 24179 | `	sxu32 iNum;` |
-|     5136 | 24180 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
-|     5136 | 24181 | `	return iNum;` |
+|     5134 | 24180 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
+|     5134 | 24181 | `	return iNum;` |
 |        5 | 24182 | `}` |
 |        - | 24183 | `/*` |
 |        - | 24184 | ` * Generate a random string (English Alphabet) of length nLen.` |
@@ -24404,23 +24404,23 @@ Coverage: 12267/14691 lines (83.50%)
 |      225 | 24394 | `	uMask \|= uMask >> 16;` |
 |      225 | 24395 | `	uMask \|= uMask >> 32;` |
 |      225 | 24396 | `	uResult = 0;` |
-|      326 | 24397 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
+|      362 | 24397 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
 |        - | 24398 | `		/* Always draw a full 8 bytes so endianness of the cast doesn't matter` |
 |        - | 24399 | `		 * (a 4-byte fill into a sxu64 would land in the high half on big-endian` |
 |        - | 24400 | `		 * and the low-half mask would always read 0). */` |
 |        - | 24401 | `		sxu64 uDraw;` |
-|      326 | 24402 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
+|      362 | 24402 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
 |      ! 0 | 24403 | `			return PH7_VmThrowException(pCtx,` |
 |        - | 24404 | `				"Random\\RandomException",` |
 |        - | 24405 | `				"Cannot gather sufficient random data"` |
 |        - | 24406 | `				);` |
 |        - | 24407 | `		}` |
-|      326 | 24408 | `		uDraw &= uMask;` |
-|      326 | 24409 | `		if( uDraw <= uRange ){` |
+|      362 | 24408 | `		uDraw &= uMask;` |
+|      362 | 24409 | `		if( uDraw <= uRange ){` |
 |      225 | 24410 | `			uResult = uDraw;` |
 |      225 | 24411 | `			break;` |
 |        - | 24412 | `		}` |
-|       67 | 24413 | `	}` |
+|       78 | 24413 | `	}` |
 |      225 | 24414 | `	if( nAttempt >= 50 ){` |
 |      ! 0 | 24415 | `		return PH7_VmThrowException(pCtx,` |
 |        - | 24416 | `			"Random\\RandomException",` |
@@ -29144,14 +29144,14 @@ Coverage: 12267/14691 lines (83.50%)
 |        - | 29134 | `	/* Check if a scheme [i.e: file://,http://,zip://...] is available */` |
 |    30977 | 29135 | `	zNext = zCur = zIn = *pzDevice;` |
 |    30977 | 29136 | `	zEnd = &zIn[nByte];` |
-|  1962688 | 29137 | `	while( zIn < zEnd ){` |
-|  1931746 | 29138 | `		if( zIn < &zEnd[-3]/*://*/ && zIn[0] == ':' && zIn[1] == '/' && zIn[2] == '/' ){` |
+|  1962673 | 29137 | `	while( zIn < zEnd ){` |
+|  1931731 | 29138 | `		if( zIn < &zEnd[-3]/*://*/ && zIn[0] == ':' && zIn[1] == '/' && zIn[2] == '/' ){` |
 |        - | 29139 | `			/* Got one */` |
 |       32 | 29140 | `			zNext = &zIn[sizeof("://")-1];` |
 |       32 | 29141 | `			break;` |
 |        - | 29142 | `		}` |
 |        - | 29143 | `		/* Advance the cursor */` |
-|  1931716 | 29144 | `		zIn++;` |
+|  1931701 | 29144 | `		zIn++;` |
 |        5 | 29145 | `	}` |
 |    30977 | 29146 | `	if( zIn >= zEnd ){` |
 |        - | 29147 | `		/* No such scheme,return the default stream */` |

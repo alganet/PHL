@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 2624/3905 lines (67.20%)
+Coverage: 2625/3905 lines (67.22%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -2940,8 +2940,8 @@ Coverage: 2624/3905 lines (67.20%)
 |      - | 2930 | `	/* Read without buffering */` |
 |     39 | 2931 | `	nRead = pStream->xRead(pDev->pHandle,zBuf,nLen);` |
 |     39 | 2932 | `	if( nRead > 0 ){` |
-|     37 | 2933 | `		n += nRead;` |
-|     20 | 2934 | `	}else if( n < 1 ){` |
+|     36 | 2933 | `		n += nRead;` |
+|     21 | 2934 | `	}else if( n < 1 ){` |
 |      - | 2935 | `		/* EOF or IO error */` |
 |      3 | 2936 | `		return nRead;` |
 |      - | 2937 | `	}` |
@@ -2956,15 +2956,15 @@ Coverage: 2624/3905 lines (67.20%)
 |   6887 | 2946 | `	zIn = (const char *)SyBlobDataAt(&pDev->sBuffer,pDev->nOfft);` |
 |   6887 | 2947 | `	zEnd = &zIn[SyBlobLength(&pDev->sBuffer)-pDev->nOfft];` |
 |   6887 | 2948 | `	zPtr = zIn;` |
-| 458651 | 2949 | `	while( zIn < zEnd ){` |
-| 458543 | 2950 | `		if( zIn[0] == '\n' ){` |
+| 458638 | 2949 | `	while( zIn < zEnd ){` |
+| 458530 | 2950 | `		if( zIn[0] == '\n' ){` |
 |      - | 2951 | `			/* Line found */` |
 |   6779 | 2952 | `			zIn++; /* Include the line ending as requested by the PHP specification */` |
 |   6779 | 2953 | `			*pLen = (ph7_int64)(zIn-zPtr);` |
 |   6779 | 2954 | `			*pzLine = zPtr;` |
 |   6779 | 2955 | `			return SXRET_OK;` |
 |      - | 2956 | `		}` |
-| 451769 | 2957 | `		zIn++;` |
+| 451756 | 2957 | `		zIn++;` |
 |      5 | 2958 | `	}` |
 |      - | 2959 | `	/* No line were found */` |
 |    113 | 2960 | `	return SXERR_NOTFOUND;` |
@@ -5198,14 +5198,14 @@ Coverage: 2624/3905 lines (67.20%)
 |     13 | 5188 | `	sock_private *pSock = (sock_private *)pHandle;` |
 |      - | 5189 | `	int n;` |
 |     13 | 5190 | `	if( pSock == 0 \|\| pSock->bEof ){` |
-|    ! 0 | 5191 | `		return 0;` |
+|      1 | 5191 | `		return 0;` |
 |      - | 5192 | `	}` |
-|     13 | 5193 | `	n = PH7_NetRecv(pSock->sock,pBuffer,(int)nRead,0);` |
-|     13 | 5194 | `	if( n <= 0 ){` |
+|     12 | 5193 | `	n = PH7_NetRecv(pSock->sock,pBuffer,(int)nRead,0);` |
+|     12 | 5194 | `	if( n <= 0 ){` |
 |      4 | 5195 | `		pSock->bEof = 1;` |
 |      4 | 5196 | `		return 0;` |
 |      - | 5197 | `	}` |
-|      9 | 5198 | `	return (ph7_int64)n;` |
+|      8 | 5198 | `	return (ph7_int64)n;` |
 |      5 | 5199 | `}` |
 |      4 | 5200 | `static ph7_int64 SockStreamData_Write(void *pHandle,const void *pBuf,ph7_int64 nWrite)` |
 |    ! 0 | 5201 | `{` |
