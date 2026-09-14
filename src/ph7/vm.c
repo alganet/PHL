@@ -96,7 +96,7 @@ struct VmSpreadKey {
 /*
  * Return TRUE if either operand is a NaN real value.
  */
-static sxi32 VmIsUnorderedCmp(ph7_value *pLeft,ph7_value *pRight)
+PH7_PRIVATE sxi32 VmIsUnorderedCmp(ph7_value *pLeft,ph7_value *pRight)
 {
 	if( (pLeft->iFlags & MEMOBJ_REAL) && PH7_IS_NAN(pLeft->rVal) ){
 		return TRUE;
@@ -866,7 +866,7 @@ PH7_PRIVATE int VmRecordedResume(ph7_vm *pVm,sxi32 *pResumePc,VmFrame *pEntryFra
  * "never free" constraint: a `goto` re-entering the try simply mints a fresh
  * activation.
  */
-static ph7_exception * VmExcActivate(ph7_vm *pVm,ph7_exception *pCompiled)
+PH7_PRIVATE ph7_exception * VmExcActivate(ph7_vm *pVm,ph7_exception *pCompiled)
 {
 	ph7_exception *pClone = (ph7_exception *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_exception));
 	if( pClone == 0 ){
@@ -923,7 +923,7 @@ PH7_PRIVATE void VmExcReleaseAll(ph7_vm *pVm,SySet *pSet)
  * from pCompiled. Used by the inline opcodes (OP_CATCH) whose instruction
  * only carries the compiled pointer.
  */
-static ph7_exception * VmExcLive(ph7_vm *pVm,ph7_exception *pCompiled)
+PH7_PRIVATE ph7_exception * VmExcLive(ph7_vm *pVm,ph7_exception *pCompiled)
 {
 	ph7_exception **ap = (ph7_exception **)SySetBasePtr(&pVm->aException);
 	sxu32 n = SySetUsed(&pVm->aException);
@@ -5537,32 +5537,19 @@ case PH7_OP_CVT_OBJ:
  * Error control operator.
  */
 case PH7_OP_UNSET_VAR: {
-	/* unset($name): p3 is the variable name. Drops the NAME only — see VmUnsetVarByName */
-	SyString *pName = (SyString *)pInstr->p3;
-	if( pName && pVm->pFrame ){
-		/* Inside a try{} the VM pushes an EXCEPTION frame; variables live in the body
-		 * frame below it, so skip past it exactly as every other variable path does.
-		 * Without this, unset($x) inside a try silently found nothing and did nothing. */
-		VmFrame *pVarFrame = VmSkipExceptionFrames(pVm->pFrame);
-		sxi32 rcU = VmUnsetVarByName(&(*pVm),pVarFrame,pName->zString,pName->nByte);
-		if( rcU == PH7_ABORT ){
-			goto Abort;
-		}
-		/* Releasing the last holder can run a __destruct(), and that destructor may
-		 * throw. Such a throw is PARKED in nBoundaryRc by the boundary rail; consume it
-		 * here and route it, or the catch runs and execution resumes inside the try
-		 * ("resumed-dtor" instead of php's "caught-dtor"). */
-		if( pVm->nBoundaryRc != 0 ){
-			rc = pVm->nBoundaryRc;
-			pVm->nBoundaryRc = 0;
-			if( rc == PH7_ABORT ){
-				goto Abort;
-			}
-			PH7_THROW_ROUTE_MIDEXPR(rc)
-		}
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpUnsetVar(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
+		goto Abort;
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
 	break;
-					   }
+					  }
 case PH7_OP_ERR_CTRL:
 	/*
 	 * Error-control operator '@'. Emitted as a PAIR around the suppressed
@@ -5829,61 +5816,19 @@ case PH7_OP_LOAD_MAP: {
  *  This implementation support only a single nesting level.
  */
 case PH7_OP_LOAD_LIST: {
-	ph7_value *pEntry;
-	if( pInstr->iP1 <= 0 ){
-		/* Empty list,break immediately */
-		break;
-	}
-	pEntry = &pTos[-pInstr->iP1+1];
-#ifdef UNTRUST
-	if( &pEntry[-1] < pStack ){
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpLoadList(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
-#endif
-	if( pEntry[-1].iFlags & MEMOBJ_HASHMAP ){
-		ph7_hashmap *pMap = (ph7_hashmap *)pEntry[-1].x.pOther;
-		ph7_hashmap_node *pNode;
-		ph7_value sKey,*pObj;
-		/* Start Copying */
-		PH7_MemObjInitFromInt(&(*pVm),&sKey,0);
-		while( pEntry <= pTos ){
-			if( pEntry->nIdx != SXU32_HIGH /* Variable not constant */  ){
-				rc = PH7_HashmapLookup(pMap,&sKey,&pNode);
-				if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nIdx)) != 0 ){
-					if( rc == SXRET_OK ){
-						/* Store node value */
-						PH7_HashmapExtractNodeValue(pNode,pObj,TRUE);
-					}else{
-						/* Undefined array key */
-						char zMsg[128];
-						SyBufferFormat(zMsg,sizeof(zMsg),"Undefined array key %d",(int)sKey.x.iVal);
-						PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,zMsg);
-						PH7_MemObjRelease(pObj);
-					}
-				}
-			}
-			sKey.x.iVal++; /* Next numeric index */
-			pEntry++;
-		}
-	}else{
-		/* Source is not an array */
-		ph7_value *pObj;
-		while( pEntry <= pTos ){
-			if( pEntry->nIdx != SXU32_HIGH ){
-				if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nIdx)) != 0 ){
-					PH7_MemObjRelease(pObj);
-				}
-			}
-			pEntry++;
-		}
-		if( (pTos[-pInstr->iP1].iFlags & (MEMOBJ_NULL|MEMOBJ_BOOL)) == 0 ){
-			/* Positional list destructuring silences null+bool; warn for the rest. */
-			VmWarnCannotUseAsArray(&(*pVm),pTos[-pInstr->iP1].iFlags);
-		}
-	}
-	VmPopOperand(&pTos,pInstr->iP1);
 	break;
-					   }
+					  }
 /*
  * LOAD_IDX: P1 P2 *
  *
@@ -6526,86 +6471,19 @@ case PH7_OP_BITNOT:
  */
 case PH7_OP_MUL:
 case PH7_OP_MUL_STORE: {
-	ph7_value *pNos = &pTos[-1];
-	{
-		/* php's operand contract (VmArithOperandCheck): a non-numeric string, array,
-		 * object or resource operand is a TypeError, not a silent 0. Settle the stack
-		 * BEFORE throwing, so the catch does not run over the abandoned operands. */
-		SyBlob sArMsg;
-		SyBlobInit(&sArMsg,&pVm->sAllocator);
-		if( VmArithOperandCheck(&(*pVm),pNos,pTos,"*",&sArMsg) != SXRET_OK ){
-			sxi32 rcAr;
-			VmPopOperand(&pTos,1);
-			PH7_MemObjRelease(pTos);
-			MemObjSetType(pTos,MEMOBJ_NULL);
-			pTos->nIdx = SXU32_HIGH;
-			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
-				SyBlobLength(&sArMsg));
-			SyBlobRelease(&sArMsg);
-			if( rcAr == SXERR_ABORT ){ goto Abort; }
-			rc = rcAr;
-			PH7_THROW_ROUTE_MIDEXPR(rc)
-		}
-		SyBlobRelease(&sArMsg);
-	}
-	/* Force the operand to be numeric */
-#ifdef UNTRUST
-	if( pNos < pStack ){
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpMulStore(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
-#endif
-	PH7_MemObjToNumeric(pTos);
-	PH7_MemObjToNumeric(pNos);
-	/* Perform the requested operation */
-	if( MEMOBJ_REAL & (pTos->iFlags|pNos->iFlags) ){
-		/* Floating point arithemic */
-		ph7_real a,b,r;
-		if( (pTos->iFlags & MEMOBJ_REAL) == 0 ){
-			PH7_MemObjToReal(pTos);
-		}
-		if( (pNos->iFlags & MEMOBJ_REAL) == 0 ){
-			PH7_MemObjToReal(pNos);
-		}
-		a = pNos->rVal;
-		b = pTos->rVal;
-		r = a * b;
-		/* Push the result */
-		pNos->rVal = r;
-		MemObjSetType(pNos,MEMOBJ_REAL);
-		/* Try to get an integer representation */
-		PH7_MemObjTryInteger(pNos);
-	}else{
-		/* Integer arithmetic; PHP promotes an overflowing product to float.
-		 * The integer-only build wraps like OP_POW's OMIT path. */
-		sxi64 a,b,r;
-		a = pNos->x.iVal;
-		b = pTos->x.iVal;
-		if( PH7_MUL_OVERFLOW64(a,b,&r) ){
-#ifndef PH7_OMIT_FLOATING_POINT
-			pNos->rVal = (ph7_real)a * (ph7_real)b;
-			MemObjSetType(pNos,MEMOBJ_REAL);
-#else
-			pNos->x.iVal = r;
-			MemObjSetType(pNos,MEMOBJ_INT);
-#endif
-		}else{
-			pNos->x.iVal = r;
-			MemObjSetType(pNos,MEMOBJ_INT);
-		}
-	}
-	if( pInstr->iOp == PH7_OP_MUL_STORE ){
-		ph7_value *pObj;
-		if( pTos->nIdx == SXU32_HIGH ){
-			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
-		}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
-			PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
-			PH7_MemObjStore(pNos,pObj);
-		}
-	}
-	PH7_HOOK_RMW_WRITEBACK(pTos->nIdx,0);
-	VmPopOperand(&pTos,1);
 	break;
-				 }
+					  }
 /* OP_POW * * *
  * OP_POW_STORE * * *
  *
@@ -7044,39 +6922,19 @@ case PH7_OP_BXOR_STORE:{
  */
 case PH7_OP_SHL:
 case PH7_OP_SHR: {
-	ph7_value *pNos = &pTos[-1];
-	sxi64 a,r;
-	sxi32 b;
-#ifdef UNTRUST
-	if( pNos < pStack ){
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpShr(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
-#endif
-	/* Force the operands to be integer (php deprecates a lossy float here) */
-	rc = VmRejectFloatOperand(&(*pVm),pNos);
-	PH7_DISPATCH_ENFORCE_RC(rc)
-	rc = VmRejectFloatOperand(&(*pVm),pTos);
-	PH7_DISPATCH_ENFORCE_RC(rc)
-	if( (pTos->iFlags & MEMOBJ_INT) == 0 ){
-		PH7_MemObjToInteger(pTos);
-	}
-	if( (pNos->iFlags & MEMOBJ_INT) == 0 ){
-		PH7_MemObjToInteger(pNos);
-	}
-	/* Perform the requested operation */
-	a = pNos->x.iVal;
-	b = (sxi32)pTos->x.iVal;
-	if( pInstr->iOp == PH7_OP_SHL ){
-		r = a << b;
-	}else{
-		r = a >> b;
-	}
-	/* Push the result */
-	pNos->x.iVal = r;
-	MemObjSetType(pNos,MEMOBJ_INT);
-	VmPopOperand(&pTos,1);
 	break;
-				 }
+					  }
 /*  OP_SHL_STORE * * *
  *
  * Pop the top two elements from the stack.  Convert both elements
@@ -7093,47 +6951,19 @@ case PH7_OP_SHR: {
  */
 case PH7_OP_SHL_STORE:
 case PH7_OP_SHR_STORE: {
-	ph7_value *pNos = &pTos[-1];
-	ph7_value *pObj;
-	sxi64 a,r;
-	sxi32 b;
-#ifdef UNTRUST
-	if( pNos < pStack ){
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpShrStore(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
-#endif
-	/* Force the operands to be integer (php deprecates a lossy float here) */
-	rc = VmRejectFloatOperand(&(*pVm),pNos);
-	PH7_DISPATCH_ENFORCE_RC(rc)
-	rc = VmRejectFloatOperand(&(*pVm),pTos);
-	PH7_DISPATCH_ENFORCE_RC(rc)
-	if( (pTos->iFlags & MEMOBJ_INT) == 0 ){
-		PH7_MemObjToInteger(pTos);
-	}
-	if( (pNos->iFlags & MEMOBJ_INT) == 0 ){
-		PH7_MemObjToInteger(pNos);
-	}
-	/* Perform the requested operation */
-	a = pTos->x.iVal;
-	b = (sxi32)pNos->x.iVal;
-	if( pInstr->iOp == PH7_OP_SHL_STORE ){
-		r = a << b;
-	}else{
-		r = a >> b;
-	}
-	/* Push the result */
-	pNos->x.iVal = r;
-	MemObjSetType(pNos,MEMOBJ_INT);
-	if( pTos->nIdx == SXU32_HIGH ){
-		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
-	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
-		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
-		PH7_MemObjStore(pNos,pObj);
-	}
-	PH7_HOOK_RMW_WRITEBACK(pTos->nIdx,0);
-	VmPopOperand(&pTos,1);
 	break;
-				 }
+					  }
 /* CAT:  P1 * *
  *
  * Pop P1 elements from the stack. Concatenate them togeher and push the result
@@ -7283,37 +7113,19 @@ case PH7_OP_CAT_STORE:{
  */
 case PH7_OP_LAND:
 case PH7_OP_LOR: {
-	ph7_value *pNos = &pTos[-1];
-	sxi32 v1, v2;    /* 0==TRUE, 1==FALSE, 2==UNKNOWN or NULL */
-#ifdef UNTRUST
-	if( pNos < pStack ){
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpLor(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
-#endif
-	/* Force a boolean cast */
-	if((pTos->iFlags & MEMOBJ_BOOL) == 0 ){
-		PH7_MemObjToBool(pTos);
-	}
-	if((pNos->iFlags & MEMOBJ_BOOL) == 0 ){
-		PH7_MemObjToBool(pNos);
-	}
-	v1 = pNos->x.iVal == 0 ? 1 : 0;
-	v2 = pTos->x.iVal == 0 ? 1 : 0;
-	if( pInstr->iOp == PH7_OP_LAND ){
-		static const unsigned char and_logic[] = { 0, 1, 2, 1, 1, 1, 2, 1, 2 };
-		v1 = and_logic[v1*3+v2];
-	}else{
-		static const unsigned char or_logic[] = { 0, 0, 0, 0, 1, 2, 0, 2, 2 };
-		v1 = or_logic[v1*3+v2];
-	}
-	if( v1 == 2 ){
-		v1 = 1;
-	}
-	VmPopOperand(&pTos,1);
-	pTos->x.iVal = v1 == 0 ? 1 : 0;
-	MemObjSetType(pTos,MEMOBJ_BOOL);
 	break;
-				 }
+					  }
 /*
  * OP_NULLC: * * *
  * Null coalescing operator '??'.
@@ -7527,37 +7339,19 @@ case PH7_OP_LXOR:{
  */
 case PH7_OP_EQ:
 case PH7_OP_NEQ: {
-	ph7_value *pNos = &pTos[-1];
-	/* Perform the comparison and act accordingly */
-#ifdef UNTRUST
-	if( pNos < pStack ){
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpNeq(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
-	}
-#endif
-	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);
-	if( VmIsUnorderedCmp(pNos,pTos) ){
-		rc = pInstr->iOp == PH7_OP_EQ ? 0 : 1;
-	}else if( pInstr->iOp == PH7_OP_EQ ){
-		rc = rc == 0;
-	}else{
-		rc = rc != 0;
-	}
-	VmPopOperand(&pTos,1);
-	if( !pInstr->iP2 ){
-		/* Push comparison result without taking the jump */
-		PH7_MemObjRelease(pTos);
-		pTos->x.iVal = rc;
-		/* Invalidate any prior representation */
-		MemObjSetType(pTos,MEMOBJ_BOOL);
-	}else{
-		if( rc ){
-			/* Jump to the desired location */
-			pc = pInstr->iP2 - 1;
-			VmPopOperand(&pTos,1);
-		}
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
 	break;
-				 }
+					  }
 /* OP_TEQ P1 P2 *
  *
  * Pop the top two elements from the stack. If they have the same type and are equal
@@ -7566,35 +7360,19 @@ case PH7_OP_NEQ: {
  * stack if the jump would have been taken, or a 0 (FALSE) if not.
  */
 case PH7_OP_TEQ: {
-	ph7_value *pNos = &pTos[-1];
-	/* Perform the comparison and act accordingly */
-#ifdef UNTRUST
-	if( pNos < pStack ){
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpTeq(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
-	}
-#endif
-	rc = PH7_MemObjCmp(pNos,pTos,TRUE,0);
-	if( VmIsUnorderedCmp(pNos,pTos) ){
-		rc = 0;
-	}else{
-		rc = rc == 0;
-	}
-	VmPopOperand(&pTos,1);
-	if( !pInstr->iP2 ){
-		/* Push comparison result without taking the jump */
-		PH7_MemObjRelease(pTos);
-		pTos->x.iVal = rc;
-		/* Invalidate any prior representation */
-		MemObjSetType(pTos,MEMOBJ_BOOL);
-	}else{
-		if( rc ){
-			/* Jump to the desired location */
-			pc = pInstr->iP2 - 1;
-			VmPopOperand(&pTos,1);
-		}
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
 	break;
-				 }
+					  }
 /* OP_TNE P1 P2 *
  *
  * Pop the top two elements from the stack.If they are not equal an they are not
@@ -7605,35 +7383,19 @@ case PH7_OP_TEQ: {
  *
  */
 case PH7_OP_TNE: {
-	ph7_value *pNos = &pTos[-1];
-	/* Perform the comparison and act accordingly */
-#ifdef UNTRUST
-	if( pNos < pStack ){
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpTne(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
-	}
-#endif
-	rc = PH7_MemObjCmp(pNos,pTos,TRUE,0);
-	if( VmIsUnorderedCmp(pNos,pTos) ){
-		rc = 1;
-	}else{
-		rc = rc != 0;
-	}
-	VmPopOperand(&pTos,1);
-	if( !pInstr->iP2 ){
-		/* Push comparison result without taking the jump */
-		PH7_MemObjRelease(pTos);
-		pTos->x.iVal = rc;
-		/* Invalidate any prior representation */
-		MemObjSetType(pTos,MEMOBJ_BOOL);
-	}else{
-		if( rc ){
-			/* Jump to the desired location */
-			pc = pInstr->iP2 - 1;
-			VmPopOperand(&pTos,1);
-		}
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
 	break;
-				 }
+					  }
 /* OP_LT P1 P2 P3
  *
  * Pop the top two elements from the stack. If the second element (the top of stack)
@@ -7654,37 +7416,19 @@ case PH7_OP_TNE: {
  */
 case PH7_OP_LT:
 case PH7_OP_LE: {
-	ph7_value *pNos = &pTos[-1];
-	/* Perform the comparison and act accordingly */
-#ifdef UNTRUST
-	if( pNos < pStack ){
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpLe(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
-	}
-#endif
-	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);
-	if( VmIsUnorderedCmp(pNos,pTos) ){
-		rc = 0;
-	}else if( pInstr->iOp == PH7_OP_LE ){
-		rc = rc < 1;
-	}else{
-		rc = rc < 0;
-	}
-	VmPopOperand(&pTos,1);
-	if( !pInstr->iP2 ){
-		/* Push comparison result without taking the jump */
-		PH7_MemObjRelease(pTos);
-		pTos->x.iVal = rc;
-		/* Invalidate any prior representation */
-		MemObjSetType(pTos,MEMOBJ_BOOL);
-	}else{
-		if( rc ){
-			/* Jump to the desired location */
-			pc = pInstr->iP2 - 1;
-			VmPopOperand(&pTos,1);
-		}
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
 	break;
-				}
+					  }
 /* OP_GT P1 P2 P3
  *
  * Pop the top two elements from the stack. If the second element (the top of stack)
@@ -7705,37 +7449,19 @@ case PH7_OP_LE: {
  */
 case PH7_OP_GT:
 case PH7_OP_GE: {
-	ph7_value *pNos = &pTos[-1];
-	/* Perform the comparison and act accordingly */
-#ifdef UNTRUST
-	if( pNos < pStack ){
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpGe(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
-	}
-#endif
-	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);
-	if( VmIsUnorderedCmp(pNos,pTos) ){
-		rc = 0;
-	}else if( pInstr->iOp == PH7_OP_GE ){
-		rc = rc >= 0;
-	}else{
-		rc = rc > 0;
-	}
-	VmPopOperand(&pTos,1);
-	if( !pInstr->iP2 ){
-		/* Push comparison result without taking the jump */
-		PH7_MemObjRelease(pTos);
-		pTos->x.iVal = rc;
-		/* Invalidate any prior representation */
-		MemObjSetType(pTos,MEMOBJ_BOOL);
-	}else{
-		if( rc ){
-			/* Jump to the desired location */
-			pc = pInstr->iP2 - 1;
-			VmPopOperand(&pTos,1);
-		}
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
 	break;
-				}
+					  }
 /* OP_SPACESHIP * * *
  *
  * Pop the top two elements from the stack. Push an integer result:
@@ -7745,26 +7471,19 @@ case PH7_OP_GE: {
  * Uses loose comparison (type juggling), same as <, >, ==.
  */
 case PH7_OP_SPACESHIP: {
-	ph7_value *pNos = &pTos[-1];
-#ifdef UNTRUST
-	if( pNos < pStack ){
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpSpaceship(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
-#endif
-	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);
-	if( VmIsUnorderedCmp(pNos,pTos) ){
-		/* NaN involved: PHP returns 1 for all NaN spaceship comparisons */
-		rc = 1;
-	}else{
-		/* Normalize to exactly -1, 0, or 1 */
-		rc = (rc > 0) - (rc < 0);
-	}
-	VmPopOperand(&pTos,1);
-	PH7_MemObjRelease(pTos);
-	pTos->x.iVal = rc;
-	MemObjSetType(pTos,MEMOBJ_INT);
 	break;
-				}
+					  }
 /*
  * OP_LOAD_REF * * *
  * Push the index of a referenced object on the stack.
@@ -7837,53 +7556,19 @@ case PH7_OP_UPLINK: {
  * it can be thrown later by the OP_THROW instruction.
  */
 case PH7_OP_LOAD_EXCEPTION: {
-	/* BYTECODE stage 2b: push a fresh ACTIVATION of this lexical try (own
-	 * mutable state per entry — see VmExcActivate), never the shared
-	 * compiled object. */
-	ph7_exception *pException = VmExcActivate(&(*pVm),(ph7_exception *)pInstr->p3);
-	VmFrame *pFrameLocal;
-	if( pException == 0 ){
-		VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Fatal PH7 engine is runnig out of memory");
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpLoadException(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
-	/* Create the exception frame BEFORE publishing the activation, so an OOM
-	 * abort cannot orphan a pushed entry with no frame behind it. */
-	rc = VmEnterFrame(&(*pVm),0,0,&pFrameLocal);
-	if( rc != SXRET_OK ){
-		VmExcRelease(&(*pVm),pException);
-		VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Fatal PH7 engine is runnig out of memory");
-		goto Abort;
-	}
-	if( SXRET_OK != SySetPut(&pVm->aException,(const void *)&pException) ){
-		VmExcRelease(&(*pVm),pException);
-		VmLeaveFrame(&(*pVm));
-		VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Fatal PH7 engine is runnig out of memory");
-		goto Abort;
-	}
-	/* Mark the special frame */
-	pFrameLocal->iFlags |= VM_FRAME_EXCEPTION;
-	pFrameLocal->iExceptionJump = pInstr->iP2;
-	/* Record the landing pad on the exception too, so an in-place catch can resume
-	 * the throwing site at THIS try (survives the exception frame's teardown), plus
-	 * the bytecode array it indexes — the resume only fires in the exec running that
-	 * array, so a mini-program (inline try in a catch/finally) and the body that
-	 * shares its frame don't mis-apply each other's landing pad. iLandingPc mirrors the
-	 * frame's iExceptionJump just set above — reuse it so the two can't drift. */
-	pException->iLandingPc = pFrameLocal->iExceptionJump;
-	pException->pOwnerInstr = (void *)aInstr;
-	/* Operand-stack base at try entry (0-based TOS index; -1 when empty). The post-try
-	 * landing pad is reached with the stack back at this depth; Generator::throw()
-	 * inject-at-yield drains to it before landing (a mid-expression yield leaves the
-	 * abandoned expression's operands above this base). Normal throws are already here. */
-	pException->iStackDepth = (sxi32)(pTos - pStack);
-	/* '@' depth at try entry — see ph7_exception.iErrSuppress */
-	pException->iErrSuppress = pVm->nErrSuppress;
-	/* Point to the frame that trigger the exception */
-	pFrameLocal = pFrameLocal->pParent;
-	pFrameLocal = VmSkipExceptionFrames(pFrameLocal);
-	pException->pFrame = pFrameLocal;
 	break;
-							}
+					  }
 /*
  * OP_POP_EXCEPTION * * P3
  * Pop a previously pushed exception from the corresponding container.
@@ -7992,37 +7677,19 @@ case PH7_OP_POP_EXCEPTION: {
  * enclosing body's scope (PHP: a catch shares the surrounding variable scope).
  */
 case PH7_OP_CATCH: {
-	/* BYTECODE stage 2b: mutable state (pInflight) lives on the LIVE activation
-	 * of this try, not the compiled p3 (which VmThrowInline kept on aException
-	 * marked iInCatch). Compiled fields (sEntry) are shared either way. */
-	ph7_exception *pExcC = (ph7_exception *)pInstr->p3;
-	ph7_exception *pExc = VmExcLive(&(*pVm),pExcC);
-	ph7_exception_block *pCatch = (ph7_exception_block *)SySetAt(&pExcC->sEntry,(sxu32)pInstr->iP1);
-	ph7_class_instance *pBind = pExc ? pExc->pInflight : 0;
-	VmFrame *pBody = VmSkipExceptionFrames(pVm->pFrame);
-	pBody->iFlags &= ~VM_FRAME_THROW;
-	if( pCatch && pBind && pCatch->sThis.nByte > 0 ){
-		/* sThis empty => PHP 8.0 non-capturing catch (catch (Type) {}): the
-		 * exception is caught but not bound to any variable. */
-		ph7_value *pObj = VmExtractMemObj(&(*pVm),&pCatch->sThis,FALSE,TRUE);
-		if( pObj ){
-			/* Overwrite-then-release (mirrors PH7_MemObjStore): pin the new instance,
-			 * free the slot's prior contents, then rebind. */
-			pBind->iRef++;
-			PH7_MemObjRelease(pObj);
-			pObj->x.pOther = pBind;
-			MemObjSetType(pObj,MEMOBJ_OBJ);
-		}
-	}
-	if( pBind ){
-		/* Drop the hold VmThrowInline took across the redirect. */
-		PH7_ClassInstanceUnref(pBind);
-	}
-	if( pExc ){
-		pExc->pInflight = 0;
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpCatch(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
+		goto Abort;
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
 	break;
-						 }
+					  }
 /*
  * OP_END_FINALLY * P3(ph7_exception)
  * ROOT C: terminate an inline finally. Leave the try's transparent frame and dispatch
@@ -8278,48 +7945,19 @@ case PH7_OP_CLONE_APPLY: {
  *  This is the bytecode implementation of the complex switch() PHP construct.
  */
 case PH7_OP_SWITCH: {
-	ph7_switch *pSwitch = (ph7_switch *)pInstr->p3;
-	ph7_case_expr *aCase,*pCase;
-	ph7_value sValue,sCaseValue;
-	sxu32 n,nEntry;
-#ifdef UNTRUST
-	if( pSwitch == 0 || pTos < pStack ){
+	VmOpRc rcOp;
+	sState.pTos = pTos;
+	sState.pc = pc;
+	rcOp = VmExecOpSwitch(&(*pVm),&sState,pInstr);
+	pTos = sState.pTos;
+	pc = sState.pc;
+	if( rcOp == VM_OP_ABORT ){
 		goto Abort;
-	}
-#endif
-	/* Point to the case table  */
-	aCase = (ph7_case_expr *)SySetBasePtr(&pSwitch->aCaseExpr);
-	nEntry = SySetUsed(&pSwitch->aCaseExpr);
-	/* Select the appropriate case block to execute */
-	PH7_MemObjInit(pVm,&sValue);
-	PH7_MemObjInit(pVm,&sCaseValue);
-	for( n = 0 ; n < nEntry ; ++n ){
-		pCase = &aCase[n];
-		PH7_MemObjLoad(pTos,&sValue);
-		/* Execute the case expression first */
-		VmLocalExec(pVm,&pCase->aByteCode,&sCaseValue,FALSE);
-		/* Compare the two expression */
-		rc = PH7_MemObjCmp(&sValue,&sCaseValue,FALSE,0);
-		PH7_MemObjRelease(&sValue);
-		PH7_MemObjRelease(&sCaseValue);
-		if( rc == 0 ){
-			/* Value match,jump to this block */
-			pc = pCase->nStart - 1;
-			break;
-		}
-	}
-	VmPopOperand(&pTos,1);
-	if( n >= nEntry ){
-		/* No approprite case to execute,jump to the default case */
-		if( pSwitch->nDefault > 0 ){
-			pc = pSwitch->nDefault - 1;
-		}else{
-			/* No default case,jump out of this switch */
-			pc = pSwitch->nOut - 1;
-		}
+	}else if( rcOp == VM_OP_EXCEPTION ){
+		goto Exception;
 	}
 	break;
-					}
+					  }
 /*
  * OP_MATCH * * P3
  *  PHP 8.0 match expression. P3 points to a ph7_match struct holding

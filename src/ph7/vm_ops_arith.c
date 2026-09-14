@@ -33,7 +33,7 @@ PH7_PRIVATE VmOpRc VmExecOpNullcStore(ph7_vm *pVm,VmExecState *pState,VmInstr *p
 	VmInstr *aInstr = pState->aInstr;
 	sxi32 pc = pState->pc;
 	sxi32 rc;
-	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
 	ph7_value *pNos = &pTos[-1];
 	ph7_value *pObj;
 	sxu32 nIdx;
@@ -121,7 +121,7 @@ PH7_PRIVATE VmOpRc VmExecOpDiv(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 	VmInstr *aInstr = pState->aInstr;
 	sxi32 pc = pState->pc;
 	sxi32 rc;
-	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
 	ph7_value *pNos = &pTos[-1];
 	{
 		/* php's operand contract (VmArithOperandCheck): a non-numeric string, array,
@@ -207,7 +207,7 @@ PH7_PRIVATE VmOpRc VmExecOpModStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 	VmInstr *aInstr = pState->aInstr;
 	sxi32 pc = pState->pc;
 	sxi32 rc;
-	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
 	ph7_value *pNos = &pTos[-1];
 	ph7_value *pObj;
 	sxi64 a,b,r;
@@ -289,7 +289,7 @@ PH7_PRIVATE VmOpRc VmExecOpMod(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 	VmInstr *aInstr = pState->aInstr;
 	sxi32 pc = pState->pc;
 	sxi32 rc;
-	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
 	ph7_value *pNos = &pTos[-1];
 	{
 		/* php's operand contract (VmArithOperandCheck): a non-numeric string, array,
@@ -366,7 +366,7 @@ PH7_PRIVATE VmOpRc VmExecOpSubStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 	VmInstr *aInstr = pState->aInstr;
 	sxi32 pc = pState->pc;
 	sxi32 rc;
-	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
 	ph7_value *pNos = &pTos[-1];
 	ph7_value *pObj;
 #ifdef UNTRUST
@@ -456,7 +456,7 @@ PH7_PRIVATE VmOpRc VmExecOpSub(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 	VmInstr *aInstr = pState->aInstr;
 	sxi32 pc = pState->pc;
 	sxi32 rc;
-	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
 	ph7_value *pNos = &pTos[-1];
 #ifdef UNTRUST
 	if( pNos < pStack ){
@@ -541,7 +541,7 @@ PH7_PRIVATE VmOpRc VmExecOpPowStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 	VmInstr *aInstr = pState->aInstr;
 	sxi32 pc = pState->pc;
 	sxi32 rc;
-	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
 	ph7_value *pNos = &pTos[-1];
 	{
 		/* php's operand contract (VmArithOperandCheck): a non-numeric string, array,
@@ -664,6 +664,502 @@ PH7_PRIVATE VmOpRc VmExecOpPowStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 	}
 #endif /* PH7_OMIT_FLOATING_POINT */
 	if( bStore ){
+		ph7_value *pObj;
+		if( pTos->nIdx == SXU32_HIGH ){
+			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
+		}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+			PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
+			PH7_MemObjStore(pNos,pObj);
+		}
+	}
+	PH7_HOOK_RMW_WRITEBACK(pTos->nIdx,0);
+	VmPopOperand(&pTos,1);
+	VM_EXIT_BREAK;
+	VM_EXIT_BREAK;
+}
+
+/*
+ * OP_SPACESHIP: body moved verbatim from the OP_SPACESHIP arm of
+ * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
+ */
+PH7_PRIVATE VmOpRc VmExecOpSpaceship(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
+{
+	ph7_value *pTos = pState->pTos;
+	ph7_value *pStack = pState->pStack;
+	VmInstr *aInstr = pState->aInstr;
+	sxi32 pc = pState->pc;
+	sxi32 rc;
+	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	ph7_value *pNos = &pTos[-1];
+#ifdef UNTRUST
+	if( pNos < pStack ){
+		VM_EXIT_ABORT;
+	}
+#endif
+	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);
+	if( VmIsUnorderedCmp(pNos,pTos) ){
+		/* NaN involved: PHP returns 1 for all NaN spaceship comparisons */
+		rc = 1;
+	}else{
+		/* Normalize to exactly -1, 0, or 1 */
+		rc = (rc > 0) - (rc < 0);
+	}
+	VmPopOperand(&pTos,1);
+	PH7_MemObjRelease(pTos);
+	pTos->x.iVal = rc;
+	MemObjSetType(pTos,MEMOBJ_INT);
+	VM_EXIT_BREAK;
+	VM_EXIT_BREAK;
+}
+
+/*
+ * OP_GE: body moved verbatim from the OP_GE arm of
+ * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
+ */
+PH7_PRIVATE VmOpRc VmExecOpGe(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
+{
+	ph7_value *pTos = pState->pTos;
+	ph7_value *pStack = pState->pStack;
+	VmInstr *aInstr = pState->aInstr;
+	sxi32 pc = pState->pc;
+	sxi32 rc;
+	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	ph7_value *pNos = &pTos[-1];
+	/* Perform the comparison and act accordingly */
+#ifdef UNTRUST
+	if( pNos < pStack ){
+		VM_EXIT_ABORT;
+	}
+#endif
+	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);
+	if( VmIsUnorderedCmp(pNos,pTos) ){
+		rc = 0;
+	}else if( pInstr->iOp == PH7_OP_GE ){
+		rc = rc >= 0;
+	}else{
+		rc = rc > 0;
+	}
+	VmPopOperand(&pTos,1);
+	if( !pInstr->iP2 ){
+		/* Push comparison result without taking the jump */
+		PH7_MemObjRelease(pTos);
+		pTos->x.iVal = rc;
+		/* Invalidate any prior representation */
+		MemObjSetType(pTos,MEMOBJ_BOOL);
+	}else{
+		if( rc ){
+			/* Jump to the desired location */
+			pc = pInstr->iP2 - 1;
+			VmPopOperand(&pTos,1);
+		}
+	}
+	VM_EXIT_BREAK;
+	VM_EXIT_BREAK;
+}
+
+/*
+ * OP_LE: body moved verbatim from the OP_LE arm of
+ * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
+ */
+PH7_PRIVATE VmOpRc VmExecOpLe(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
+{
+	ph7_value *pTos = pState->pTos;
+	ph7_value *pStack = pState->pStack;
+	VmInstr *aInstr = pState->aInstr;
+	sxi32 pc = pState->pc;
+	sxi32 rc;
+	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	ph7_value *pNos = &pTos[-1];
+	/* Perform the comparison and act accordingly */
+#ifdef UNTRUST
+	if( pNos < pStack ){
+		VM_EXIT_ABORT;
+	}
+#endif
+	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);
+	if( VmIsUnorderedCmp(pNos,pTos) ){
+		rc = 0;
+	}else if( pInstr->iOp == PH7_OP_LE ){
+		rc = rc < 1;
+	}else{
+		rc = rc < 0;
+	}
+	VmPopOperand(&pTos,1);
+	if( !pInstr->iP2 ){
+		/* Push comparison result without taking the jump */
+		PH7_MemObjRelease(pTos);
+		pTos->x.iVal = rc;
+		/* Invalidate any prior representation */
+		MemObjSetType(pTos,MEMOBJ_BOOL);
+	}else{
+		if( rc ){
+			/* Jump to the desired location */
+			pc = pInstr->iP2 - 1;
+			VmPopOperand(&pTos,1);
+		}
+	}
+	VM_EXIT_BREAK;
+	VM_EXIT_BREAK;
+}
+
+/*
+ * OP_TNE: body moved verbatim from the OP_TNE arm of
+ * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
+ */
+PH7_PRIVATE VmOpRc VmExecOpTne(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
+{
+	ph7_value *pTos = pState->pTos;
+	ph7_value *pStack = pState->pStack;
+	VmInstr *aInstr = pState->aInstr;
+	sxi32 pc = pState->pc;
+	sxi32 rc;
+	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	ph7_value *pNos = &pTos[-1];
+	/* Perform the comparison and act accordingly */
+#ifdef UNTRUST
+	if( pNos < pStack ){
+		VM_EXIT_ABORT;
+	}
+#endif
+	rc = PH7_MemObjCmp(pNos,pTos,TRUE,0);
+	if( VmIsUnorderedCmp(pNos,pTos) ){
+		rc = 1;
+	}else{
+		rc = rc != 0;
+	}
+	VmPopOperand(&pTos,1);
+	if( !pInstr->iP2 ){
+		/* Push comparison result without taking the jump */
+		PH7_MemObjRelease(pTos);
+		pTos->x.iVal = rc;
+		/* Invalidate any prior representation */
+		MemObjSetType(pTos,MEMOBJ_BOOL);
+	}else{
+		if( rc ){
+			/* Jump to the desired location */
+			pc = pInstr->iP2 - 1;
+			VmPopOperand(&pTos,1);
+		}
+	}
+	VM_EXIT_BREAK;
+	VM_EXIT_BREAK;
+}
+
+/*
+ * OP_TEQ: body moved verbatim from the OP_TEQ arm of
+ * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
+ */
+PH7_PRIVATE VmOpRc VmExecOpTeq(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
+{
+	ph7_value *pTos = pState->pTos;
+	ph7_value *pStack = pState->pStack;
+	VmInstr *aInstr = pState->aInstr;
+	sxi32 pc = pState->pc;
+	sxi32 rc;
+	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	ph7_value *pNos = &pTos[-1];
+	/* Perform the comparison and act accordingly */
+#ifdef UNTRUST
+	if( pNos < pStack ){
+		VM_EXIT_ABORT;
+	}
+#endif
+	rc = PH7_MemObjCmp(pNos,pTos,TRUE,0);
+	if( VmIsUnorderedCmp(pNos,pTos) ){
+		rc = 0;
+	}else{
+		rc = rc == 0;
+	}
+	VmPopOperand(&pTos,1);
+	if( !pInstr->iP2 ){
+		/* Push comparison result without taking the jump */
+		PH7_MemObjRelease(pTos);
+		pTos->x.iVal = rc;
+		/* Invalidate any prior representation */
+		MemObjSetType(pTos,MEMOBJ_BOOL);
+	}else{
+		if( rc ){
+			/* Jump to the desired location */
+			pc = pInstr->iP2 - 1;
+			VmPopOperand(&pTos,1);
+		}
+	}
+	VM_EXIT_BREAK;
+	VM_EXIT_BREAK;
+}
+
+/*
+ * OP_NEQ: body moved verbatim from the OP_NEQ arm of
+ * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
+ */
+PH7_PRIVATE VmOpRc VmExecOpNeq(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
+{
+	ph7_value *pTos = pState->pTos;
+	ph7_value *pStack = pState->pStack;
+	VmInstr *aInstr = pState->aInstr;
+	sxi32 pc = pState->pc;
+	sxi32 rc;
+	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	ph7_value *pNos = &pTos[-1];
+	/* Perform the comparison and act accordingly */
+#ifdef UNTRUST
+	if( pNos < pStack ){
+		VM_EXIT_ABORT;
+	}
+#endif
+	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);
+	if( VmIsUnorderedCmp(pNos,pTos) ){
+		rc = pInstr->iOp == PH7_OP_EQ ? 0 : 1;
+	}else if( pInstr->iOp == PH7_OP_EQ ){
+		rc = rc == 0;
+	}else{
+		rc = rc != 0;
+	}
+	VmPopOperand(&pTos,1);
+	if( !pInstr->iP2 ){
+		/* Push comparison result without taking the jump */
+		PH7_MemObjRelease(pTos);
+		pTos->x.iVal = rc;
+		/* Invalidate any prior representation */
+		MemObjSetType(pTos,MEMOBJ_BOOL);
+	}else{
+		if( rc ){
+			/* Jump to the desired location */
+			pc = pInstr->iP2 - 1;
+			VmPopOperand(&pTos,1);
+		}
+	}
+	VM_EXIT_BREAK;
+	VM_EXIT_BREAK;
+}
+
+/*
+ * OP_LOR: body moved verbatim from the OP_LOR arm of
+ * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
+ */
+PH7_PRIVATE VmOpRc VmExecOpLor(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
+{
+	ph7_value *pTos = pState->pTos;
+	ph7_value *pStack = pState->pStack;
+	VmInstr *aInstr = pState->aInstr;
+	sxi32 pc = pState->pc;
+	sxi32 rc;
+	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	ph7_value *pNos = &pTos[-1];
+	sxi32 v1, v2;    /* 0==TRUE, 1==FALSE, 2==UNKNOWN or NULL */
+#ifdef UNTRUST
+	if( pNos < pStack ){
+		VM_EXIT_ABORT;
+	}
+#endif
+	/* Force a boolean cast */
+	if((pTos->iFlags & MEMOBJ_BOOL) == 0 ){
+		PH7_MemObjToBool(pTos);
+	}
+	if((pNos->iFlags & MEMOBJ_BOOL) == 0 ){
+		PH7_MemObjToBool(pNos);
+	}
+	v1 = pNos->x.iVal == 0 ? 1 : 0;
+	v2 = pTos->x.iVal == 0 ? 1 : 0;
+	if( pInstr->iOp == PH7_OP_LAND ){
+		static const unsigned char and_logic[] = { 0, 1, 2, 1, 1, 1, 2, 1, 2 };
+		v1 = and_logic[v1*3+v2];
+	}else{
+		static const unsigned char or_logic[] = { 0, 0, 0, 0, 1, 2, 0, 2, 2 };
+		v1 = or_logic[v1*3+v2];
+	}
+	if( v1 == 2 ){
+		v1 = 1;
+	}
+	VmPopOperand(&pTos,1);
+	pTos->x.iVal = v1 == 0 ? 1 : 0;
+	MemObjSetType(pTos,MEMOBJ_BOOL);
+	VM_EXIT_BREAK;
+	VM_EXIT_BREAK;
+}
+
+/*
+ * OP_SHR_STORE: body moved verbatim from the OP_SHR_STORE arm of
+ * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
+ */
+PH7_PRIVATE VmOpRc VmExecOpShrStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
+{
+	ph7_value *pTos = pState->pTos;
+	ph7_value *pStack = pState->pStack;
+	VmInstr *aInstr = pState->aInstr;
+	sxi32 pc = pState->pc;
+	sxi32 rc;
+	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	ph7_value *pNos = &pTos[-1];
+	ph7_value *pObj;
+	sxi64 a,r;
+	sxi32 b;
+#ifdef UNTRUST
+	if( pNos < pStack ){
+		VM_EXIT_ABORT;
+	}
+#endif
+	/* Force the operands to be integer (php deprecates a lossy float here) */
+	rc = VmRejectFloatOperand(&(*pVm),pNos);
+	PH7_DISPATCH_ENFORCE_RC(rc)
+	rc = VmRejectFloatOperand(&(*pVm),pTos);
+	PH7_DISPATCH_ENFORCE_RC(rc)
+	if( (pTos->iFlags & MEMOBJ_INT) == 0 ){
+		PH7_MemObjToInteger(pTos);
+	}
+	if( (pNos->iFlags & MEMOBJ_INT) == 0 ){
+		PH7_MemObjToInteger(pNos);
+	}
+	/* Perform the requested operation */
+	a = pTos->x.iVal;
+	b = (sxi32)pNos->x.iVal;
+	if( pInstr->iOp == PH7_OP_SHL_STORE ){
+		r = a << b;
+	}else{
+		r = a >> b;
+	}
+	/* Push the result */
+	pNos->x.iVal = r;
+	MemObjSetType(pNos,MEMOBJ_INT);
+	if( pTos->nIdx == SXU32_HIGH ){
+		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
+	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
+		PH7_MemObjStore(pNos,pObj);
+	}
+	PH7_HOOK_RMW_WRITEBACK(pTos->nIdx,0);
+	VmPopOperand(&pTos,1);
+	VM_EXIT_BREAK;
+	VM_EXIT_BREAK;
+}
+
+/*
+ * OP_SHR: body moved verbatim from the OP_SHR arm of
+ * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
+ */
+PH7_PRIVATE VmOpRc VmExecOpShr(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
+{
+	ph7_value *pTos = pState->pTos;
+	ph7_value *pStack = pState->pStack;
+	VmInstr *aInstr = pState->aInstr;
+	sxi32 pc = pState->pc;
+	sxi32 rc;
+	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	ph7_value *pNos = &pTos[-1];
+	sxi64 a,r;
+	sxi32 b;
+#ifdef UNTRUST
+	if( pNos < pStack ){
+		VM_EXIT_ABORT;
+	}
+#endif
+	/* Force the operands to be integer (php deprecates a lossy float here) */
+	rc = VmRejectFloatOperand(&(*pVm),pNos);
+	PH7_DISPATCH_ENFORCE_RC(rc)
+	rc = VmRejectFloatOperand(&(*pVm),pTos);
+	PH7_DISPATCH_ENFORCE_RC(rc)
+	if( (pTos->iFlags & MEMOBJ_INT) == 0 ){
+		PH7_MemObjToInteger(pTos);
+	}
+	if( (pNos->iFlags & MEMOBJ_INT) == 0 ){
+		PH7_MemObjToInteger(pNos);
+	}
+	/* Perform the requested operation */
+	a = pNos->x.iVal;
+	b = (sxi32)pTos->x.iVal;
+	if( pInstr->iOp == PH7_OP_SHL ){
+		r = a << b;
+	}else{
+		r = a >> b;
+	}
+	/* Push the result */
+	pNos->x.iVal = r;
+	MemObjSetType(pNos,MEMOBJ_INT);
+	VmPopOperand(&pTos,1);
+	VM_EXIT_BREAK;
+	VM_EXIT_BREAK;
+}
+
+/*
+ * OP_MUL_STORE: body moved verbatim from the OP_MUL_STORE arm of
+ * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
+ */
+PH7_PRIVATE VmOpRc VmExecOpMulStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
+{
+	ph7_value *pTos = pState->pTos;
+	ph7_value *pStack = pState->pStack;
+	VmInstr *aInstr = pState->aInstr;
+	sxi32 pc = pState->pc;
+	sxi32 rc;
+	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	ph7_value *pNos = &pTos[-1];
+	{
+		/* php's operand contract (VmArithOperandCheck): a non-numeric string, array,
+		 * object or resource operand is a TypeError, not a silent 0. Settle the stack
+		 * BEFORE throwing, so the catch does not run over the abandoned operands. */
+		SyBlob sArMsg;
+		SyBlobInit(&sArMsg,&pVm->sAllocator);
+		if( VmArithOperandCheck(&(*pVm),pNos,pTos,"*",&sArMsg) != SXRET_OK ){
+			sxi32 rcAr;
+			VmPopOperand(&pTos,1);
+			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
+				SyBlobLength(&sArMsg));
+			SyBlobRelease(&sArMsg);
+			if( rcAr == SXERR_ABORT ){ VM_EXIT_ABORT; }
+			rc = rcAr;
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}
+		SyBlobRelease(&sArMsg);
+	}
+	/* Force the operand to be numeric */
+#ifdef UNTRUST
+	if( pNos < pStack ){
+		VM_EXIT_ABORT;
+	}
+#endif
+	PH7_MemObjToNumeric(pTos);
+	PH7_MemObjToNumeric(pNos);
+	/* Perform the requested operation */
+	if( MEMOBJ_REAL & (pTos->iFlags|pNos->iFlags) ){
+		/* Floating point arithemic */
+		ph7_real a,b,r;
+		if( (pTos->iFlags & MEMOBJ_REAL) == 0 ){
+			PH7_MemObjToReal(pTos);
+		}
+		if( (pNos->iFlags & MEMOBJ_REAL) == 0 ){
+			PH7_MemObjToReal(pNos);
+		}
+		a = pNos->rVal;
+		b = pTos->rVal;
+		r = a * b;
+		/* Push the result */
+		pNos->rVal = r;
+		MemObjSetType(pNos,MEMOBJ_REAL);
+		/* Try to get an integer representation */
+		PH7_MemObjTryInteger(pNos);
+	}else{
+		/* Integer arithmetic; PHP promotes an overflowing product to float.
+		 * The integer-only build wraps like OP_POW's OMIT path. */
+		sxi64 a,b,r;
+		a = pNos->x.iVal;
+		b = pTos->x.iVal;
+		if( PH7_MUL_OVERFLOW64(a,b,&r) ){
+#ifndef PH7_OMIT_FLOATING_POINT
+			pNos->rVal = (ph7_real)a * (ph7_real)b;
+			MemObjSetType(pNos,MEMOBJ_REAL);
+#else
+			pNos->x.iVal = r;
+			MemObjSetType(pNos,MEMOBJ_INT);
+#endif
+		}else{
+			pNos->x.iVal = r;
+			MemObjSetType(pNos,MEMOBJ_INT);
+		}
+	}
+	if( pInstr->iOp == PH7_OP_MUL_STORE ){
 		ph7_value *pObj;
 		if( pTos->nIdx == SXU32_HIGH ){
 			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");

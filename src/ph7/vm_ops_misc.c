@@ -267,3 +267,165 @@ PH7_PRIVATE VmOpRc VmExecOpThrow(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr
 	VM_EXIT_BREAK;
 	VM_EXIT_BREAK;
 }
+
+/*
+ * OP_SWITCH: body moved verbatim from the OP_SWITCH arm of
+ * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
+ */
+PH7_PRIVATE VmOpRc VmExecOpSwitch(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
+{
+	ph7_value *pTos = pState->pTos;
+	ph7_value *pStack = pState->pStack;
+	VmInstr *aInstr = pState->aInstr;
+	sxi32 pc = pState->pc;
+	sxi32 rc;
+	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	ph7_switch *pSwitch = (ph7_switch *)pInstr->p3;
+	ph7_case_expr *aCase,*pCase;
+	ph7_value sValue,sCaseValue;
+	sxu32 n,nEntry;
+#ifdef UNTRUST
+	if( pSwitch == 0 || pTos < pStack ){
+		VM_EXIT_ABORT;
+	}
+#endif
+	/* Point to the case table  */
+	aCase = (ph7_case_expr *)SySetBasePtr(&pSwitch->aCaseExpr);
+	nEntry = SySetUsed(&pSwitch->aCaseExpr);
+	/* Select the appropriate case block to execute */
+	PH7_MemObjInit(pVm,&sValue);
+	PH7_MemObjInit(pVm,&sCaseValue);
+	for( n = 0 ; n < nEntry ; ++n ){
+		pCase = &aCase[n];
+		PH7_MemObjLoad(pTos,&sValue);
+		/* Execute the case expression first */
+		VmLocalExec(pVm,&pCase->aByteCode,&sCaseValue,FALSE);
+		/* Compare the two expression */
+		rc = PH7_MemObjCmp(&sValue,&sCaseValue,FALSE,0);
+		PH7_MemObjRelease(&sValue);
+		PH7_MemObjRelease(&sCaseValue);
+		if( rc == 0 ){
+			/* Value match,jump to this block */
+			pc = pCase->nStart - 1;
+			break;
+		}
+	}
+	VmPopOperand(&pTos,1);
+	if( n >= nEntry ){
+		/* No approprite case to execute,jump to the default case */
+		if( pSwitch->nDefault > 0 ){
+			pc = pSwitch->nDefault - 1;
+		}else{
+			/* No default case,jump out of this switch */
+			pc = pSwitch->nOut - 1;
+		}
+	}
+	VM_EXIT_BREAK;
+	VM_EXIT_BREAK;
+}
+
+/*
+ * OP_CATCH: body moved verbatim from the OP_CATCH arm of
+ * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
+ */
+PH7_PRIVATE VmOpRc VmExecOpCatch(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
+{
+	ph7_value *pTos = pState->pTos;
+	ph7_value *pStack = pState->pStack;
+	VmInstr *aInstr = pState->aInstr;
+	sxi32 pc = pState->pc;
+	sxi32 rc;
+	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	/* BYTECODE stage 2b: mutable state (pInflight) lives on the LIVE activation
+	 * of this try, not the compiled p3 (which VmThrowInline kept on aException
+	 * marked iInCatch). Compiled fields (sEntry) are shared either way. */
+	ph7_exception *pExcC = (ph7_exception *)pInstr->p3;
+	ph7_exception *pExc = VmExcLive(&(*pVm),pExcC);
+	ph7_exception_block *pCatch = (ph7_exception_block *)SySetAt(&pExcC->sEntry,(sxu32)pInstr->iP1);
+	ph7_class_instance *pBind = pExc ? pExc->pInflight : 0;
+	VmFrame *pBody = VmSkipExceptionFrames(pVm->pFrame);
+	pBody->iFlags &= ~VM_FRAME_THROW;
+	if( pCatch && pBind && pCatch->sThis.nByte > 0 ){
+		/* sThis empty => PHP 8.0 non-capturing catch (catch (Type) {}): the
+		 * exception is caught but not bound to any variable. */
+		ph7_value *pObj = VmExtractMemObj(&(*pVm),&pCatch->sThis,FALSE,TRUE);
+		if( pObj ){
+			/* Overwrite-then-release (mirrors PH7_MemObjStore): pin the new instance,
+			 * free the slot's prior contents, then rebind. */
+			pBind->iRef++;
+			PH7_MemObjRelease(pObj);
+			pObj->x.pOther = pBind;
+			MemObjSetType(pObj,MEMOBJ_OBJ);
+		}
+	}
+	if( pBind ){
+		/* Drop the hold VmThrowInline took across the redirect. */
+		PH7_ClassInstanceUnref(pBind);
+	}
+	if( pExc ){
+		pExc->pInflight = 0;
+	}
+	VM_EXIT_BREAK;
+	VM_EXIT_BREAK;
+}
+
+/*
+ * OP_LOAD_EXCEPTION: body moved verbatim from the OP_LOAD_EXCEPTION arm of
+ * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
+ */
+PH7_PRIVATE VmOpRc VmExecOpLoadException(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
+{
+	ph7_value *pTos = pState->pTos;
+	ph7_value *pStack = pState->pStack;
+	VmInstr *aInstr = pState->aInstr;
+	sxi32 pc = pState->pc;
+	sxi32 rc;
+	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
+	/* BYTECODE stage 2b: push a fresh ACTIVATION of this lexical try (own
+	 * mutable state per entry — see VmExcActivate), never the shared
+	 * compiled object. */
+	ph7_exception *pException = VmExcActivate(&(*pVm),(ph7_exception *)pInstr->p3);
+	VmFrame *pFrameLocal;
+	if( pException == 0 ){
+		VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Fatal PH7 engine is runnig out of memory");
+		VM_EXIT_ABORT;
+	}
+	/* Create the exception frame BEFORE publishing the activation, so an OOM
+	 * abort cannot orphan a pushed entry with no frame behind it. */
+	rc = VmEnterFrame(&(*pVm),0,0,&pFrameLocal);
+	if( rc != SXRET_OK ){
+		VmExcRelease(&(*pVm),pException);
+		VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Fatal PH7 engine is runnig out of memory");
+		VM_EXIT_ABORT;
+	}
+	if( SXRET_OK != SySetPut(&pVm->aException,(const void *)&pException) ){
+		VmExcRelease(&(*pVm),pException);
+		VmLeaveFrame(&(*pVm));
+		VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Fatal PH7 engine is runnig out of memory");
+		VM_EXIT_ABORT;
+	}
+	/* Mark the special frame */
+	pFrameLocal->iFlags |= VM_FRAME_EXCEPTION;
+	pFrameLocal->iExceptionJump = pInstr->iP2;
+	/* Record the landing pad on the exception too, so an in-place catch can resume
+	 * the throwing site at THIS try (survives the exception frame's teardown), plus
+	 * the bytecode array it indexes — the resume only fires in the exec running that
+	 * array, so a mini-program (inline try in a catch/finally) and the body that
+	 * shares its frame don't mis-apply each other's landing pad. iLandingPc mirrors the
+	 * frame's iExceptionJump just set above — reuse it so the two can't drift. */
+	pException->iLandingPc = pFrameLocal->iExceptionJump;
+	pException->pOwnerInstr = (void *)aInstr;
+	/* Operand-stack base at try entry (0-based TOS index; -1 when empty). The post-try
+	 * landing pad is reached with the stack back at this depth; Generator::throw()
+	 * inject-at-yield drains to it before landing (a mid-expression yield leaves the
+	 * abandoned expression's operands above this base). Normal throws are already here. */
+	pException->iStackDepth = (sxi32)(pTos - pStack);
+	/* '@' depth at try entry — see ph7_exception.iErrSuppress */
+	pException->iErrSuppress = pVm->nErrSuppress;
+	/* Point to the frame that trigger the exception */
+	pFrameLocal = pFrameLocal->pParent;
+	pFrameLocal = VmSkipExceptionFrames(pFrameLocal);
+	pException->pFrame = pFrameLocal;
+	VM_EXIT_BREAK;
+	VM_EXIT_BREAK;
+}
