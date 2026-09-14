@@ -70,6 +70,7 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/vm_builtin_session$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_builtin_spl$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_builtin_tokenizer$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/vm_builtin_var$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_http$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_http_response$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_json$(OBJ_SUFFIX) \
