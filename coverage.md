@@ -26,11 +26,11 @@
 | src/ph7/vm_builtin_session.c   | 100.00%  | 4/4         |
 | src/ph7/vm_builtin_spl.c       | 76.71%   | 56/73       |
 | src/ph7/vm_builtin_tokenizer.c | 1.62%    | 12/743      |
-| src/ph7/vm_dom.c               | 100.00%  | 5/5         |
+| src/ph7/vm_dom.c               | 87.03%   | 577/663     |
 | src/ph7/vm_http.c              | 69.82%   | 310/444     |
 | src/ph7/vm_http_response.c     | 49.41%   | 126/255     |
 | src/ph7/vm_json.c              | 83.36%   | 561/673     |
-| src/ph7/vm_libxml.c            | 28.57%   | 88/308      |
+| src/ph7/vm_libxml.c            | 73.19%   | 232/317     |
 | src/ph7/vm_pcre.c              | 69.07%   | 632/915     |
 | src/ph7/vm_serialize.c         | 96.07%   | 464/483     |
 | src/ph7/vm_xml.c               | 68.34%   | 395/578     |
@@ -53,5 +53,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 80.74%   | 48506/60080 |
-| Functions                      | 92.79%   | 2189/2359   |
+| Lines                          | 81.03%   | 49222/60747 |
+| Functions                      | 93.44%   | 2250/2408   |
