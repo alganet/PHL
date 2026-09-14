@@ -4463,19 +4463,6 @@ PH7_PRIVATE void PH7_VmStoreArgByRef(ph7_vm *pVm,ph7_value *pArg,ph7_value *pNew
 	PH7_MemObjStore(pNewVal,pArg);
 }
 /*
- * Emit a formatted E_DEPRECATED diagnostic WITHOUT the active-function-name
- * prefix that ph7_context_throw_error_format() prepends — php's implicit-
- * conversion notices carry no prefix, and the ZPP null notices embed the
- * function name mid-message themselves.
- */
-PH7_PRIVATE void PH7_VmThrowDeprecatedFmt(ph7_vm *pVm,const char *zFmt,...)
-{
-	va_list ap;
-	va_start(ap,zFmt);
-	PH7_VmThrowErrorAp(pVm,0,E_DEPRECATED,zFmt,ap);
-	va_end(ap);
-}
-/*
  * Raise an E_WARNING whose text is used VERBATIM.
  * ph7_context_throw_error_format() prepends "func(): " to whatever it is given, but php's
  * IO warnings put the offending path inside those parens -- "file_get_contents(/nope):
@@ -6384,25 +6371,6 @@ static sxi32 VmRejectFloatOperand(ph7_vm *pVm,ph7_value *pVal)
 		"Implicit conversion from float to int loses precision");
 }
 /*
- * php 8.1: a FLOAT array subscript truncates to int, and deprecates when that
- * loses precision (an integral float like 2.0 is silent). Fires in every
- * subscript context — read, write, isset/empty, ?? and even unset (probed).
- */
-static void VmDeprecateFloatKey(ph7_vm *pVm,ph7_value *pKey)
-{
-	double r;
-	if( pKey == 0 || (pKey->iFlags & MEMOBJ_REAL) == 0 ){
-		return;
-	}
-	r = (double)pKey->rVal;
-	if( r == (double)(sxi64)r ){
-		/* integral value: no precision is lost */
-		return;
-	}
-	VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,
-		"Implicit conversion from float %g to int loses precision",r);
-}
-/*
  * Single source of truth for the PHP call-depth cap policy (BYTECODE.md stage
  * 5). Only OP_CALL tests this — a PHP->PHP call is the sole thing that grows
  * nRecursionDepth. Native re-entries (eval/include, coroutine start/resume,
@@ -7411,27 +7379,28 @@ static sxi32 VmEnforceScalarType(ph7_value *pVal, sxu32 nType, int bStrict)
 		return SXERR_INVALID;
 	}
 	if( nType == MEMOBJ_INT && pVal->pVm ){
-		/* php 8.1: a lossy float(-string) -> int weak coercion emits
-		 * E_DEPRECATED before truncating (typed params, returns, typed
-		 * property stores all funnel through here). */
+		/* php 8.1 only DEPRECATES a lossy float(-string) -> int weak coercion
+		 * (typed params, returns, typed property stores all funnel through here);
+		 * PHL rejects it. SXERR_INVALID routes to the caller's TypeError, exactly
+		 * like the null / non-numeric-string cases above. An INTEGRAL float loses
+		 * nothing and coerces normally. */
 		if( pVal->iFlags & MEMOBJ_REAL ){
 			ph7_real r = pVal->rVal;
 			if( r != (ph7_real)(sxi64)r ){
-				PH7_VmThrowDeprecatedFmt(pVal->pVm,
-					"Implicit conversion from float %g to int loses precision",r);
+				return SXERR_INVALID;
 			}
 		}else if( pVal->iFlags & MEMOBJ_STRING ){
 			SyString sStr;
 			ph7_value sProbe;
+			int bLossy;
 			SyStringInitFromBuf(&sStr,SyBlobData(&pVal->sBlob),SyBlobLength(&pVal->sBlob));
 			PH7_MemObjInitFromString(pVal->pVm,&sProbe,&sStr);
 			PH7_MemObjToNumeric(&sProbe);
-			if( (sProbe.iFlags & MEMOBJ_REAL) && sProbe.rVal != (ph7_real)(sxi64)sProbe.rVal ){
-				PH7_VmThrowDeprecatedFmt(pVal->pVm,
-					"Implicit conversion from float-string \"%.*s\" to int loses precision",
-					(int)sStr.nByte,sStr.zString);
-			}
+			bLossy = (sProbe.iFlags & MEMOBJ_REAL) && sProbe.rVal != (ph7_real)(sxi64)sProbe.rVal;
 			PH7_MemObjRelease(&sProbe);
+			if( bLossy ){
+				return SXERR_INVALID;
+			}
 		}
 	}
 	{
@@ -11581,14 +11550,20 @@ case PH7_OP_LOAD_MAP: {
 				 * emit these, so `[1.5 => "v"]` and `[null => "v"]` were silent. A key that
 				 * is ABSENT (auto-index) is a NULL slot here, not a null key, so the
 				 * MEMOBJ_NULL check below is what tells the two apart. */
-				if( (pEntry->iFlags & MEMOBJ_AUX_NOKEY) == 0 ){
-					if( pEntry->iFlags & MEMOBJ_NULL ){
-						VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,
-							"Using null as an array offset is deprecated, use an empty string instead");
-					}else{
-						VmDeprecateFloatKey(&(*pVm),pEntry);
+					if( (pEntry->iFlags & MEMOBJ_AUX_NOKEY) == 0 ){
+						/* php only DEPRECATES a lossy-float / null literal key; PHL rejects it. */
+						int bNull = (pEntry->iFlags & MEMOBJ_NULL) != 0;
+						int bLossyFloat = (pEntry->iFlags & MEMOBJ_REAL) != 0
+							&& pEntry->rVal != (ph7_real)(sxi64)pEntry->rVal;
+						if( bNull || bLossyFloat ){
+							const char *zErr = bNull ? "Cannot access offset of type null on array"
+							                         : "Cannot access offset of type float on array";
+							SyBlob sErrMsg;
+							SyBlobInit(&sErrMsg,&pVm->sAllocator);
+							SyBlobAppend(&sErrMsg,zErr,(sxu32)SyStrlen(zErr));
+							VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sErrMsg));
+						}
 					}
-				}
 				/* Standard insertion */
 				PH7_HashmapInsert(pMap,
 					(pEntry->iFlags & MEMOBJ_AUX_NOKEY) ? 0 /* Automatic index assign */ : pEntry,
@@ -11957,8 +11932,10 @@ case PH7_OP_LOAD_IDX: {
 				 * stays untouched (pre-fix the base was silently CONVERTED,
 				 * corrupting e.g. `$i = 5; $i[0]++` into array(0 => 6); string
 				 * bases were intercepted by the string-offset paths above). */
-				if( (pObj->iFlags & (MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_RES)) != 0
-				 || ((pObj->iFlags & MEMOBJ_BOOL) != 0 && pObj->x.iVal != 0) ){
+				/* php auto-converts false to an array with an 8.1 DEPRECATION; PHL
+				 * rejects it like any other scalar base (null still auto-vivifies —
+				 * it is not a bool). */
+				if( (pObj->iFlags & (MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_RES|MEMOBJ_BOOL)) != 0 ){
 					SyBlob sErrMsg;
 					SyBlobInit(&sErrMsg,&pVm->sAllocator);
 					SyBlobAppend(&sErrMsg,"Cannot use a scalar value as an array",
@@ -11971,27 +11948,34 @@ case PH7_OP_LOAD_IDX: {
 					pTos->nIdx = SXU32_HIGH;
 					break;
 				}
-				if( (pObj->iFlags & MEMOBJ_BOOL) != 0 ){
-					VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,
-						"Automatic conversion of false to array is deprecated");
-				}
 				PH7_MemObjToHashmap(pObj);
 				PH7_MemObjLoad(pObj,pTos);
 			}
 		}
 	}
 	rc = SXERR_NOTFOUND; /* Assume the index is invalid */
-	if( (pTos->iFlags & MEMOBJ_HASHMAP) && pIdx ){
-		/* float subscript → int truncation deprecation (all contexts) */
-		VmDeprecateFloatKey(&(*pVm),pIdx);
-	}
-	if( (pTos->iFlags & MEMOBJ_HASHMAP) && pIdx && (pIdx->iFlags & MEMOBJ_NULL)
-	 && pInstr->iP2 != 5 /* unset() is the ONLY silent context (probed) */ ){
-		/* php 8.1: a NULL subscript normalizes to the empty-string key, with a
-		 * deprecation — on reads, writes, isset()/empty() and `??` alike; only
-		 * unset() stays quiet. PHL already normalized it, it just never said so. */
-		VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,
-			"Using null as an array offset is deprecated, use an empty string instead");
+	/* php only DEPRECATES a lossy-float subscript / null offset (then truncates /
+	 * normalizes to ""); PHL rejects them on a READ or WRITE (iP2 0/1) and stays
+	 * lenient in isset()/empty()/`??`/unset(), where a throw would be wrong. */
+	if( (pTos->iFlags & MEMOBJ_HASHMAP) && pIdx
+	 && (pInstr->iP2 == 0 || pInstr->iP2 == 1) ){
+		int bNull = (pIdx->iFlags & MEMOBJ_NULL) != 0;
+		int bLossyFloat = (pIdx->iFlags & MEMOBJ_REAL) != 0
+			&& pIdx->rVal != (ph7_real)(sxi64)pIdx->rVal;
+		if( bNull || bLossyFloat ){
+			SyBlob sErrMsg;
+			SyBlobInit(&sErrMsg,&pVm->sAllocator);
+			SyBlobAppend(&sErrMsg,
+				bNull ? "Cannot access offset of type null on array"
+				      : "Cannot access offset of type float on array",
+				(sxu32)SyStrlen(bNull ? "Cannot access offset of type null on array"
+				                      : "Cannot access offset of type float on array"));
+			VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sErrMsg));
+			PH7_MemObjRelease(pIdx);
+			PH7_MemObjRelease(pTos);
+			pTos->nIdx = SXU32_HIGH;
+			break;
+		}
 	}
 	if( pTos->iFlags & MEMOBJ_HASHMAP ){
 		if( pInstr->iP2 == 1 || pInstr->iP2 == 5 ){
@@ -12463,16 +12447,24 @@ case PH7_OP_STORE_IDX_REF: {
 	}else{
 		pKey = 0;
 	}
-	if( pKey && (pTos->iFlags & MEMOBJ_HASHMAP) ){
-		VmDeprecateFloatKey(&(*pVm),pKey);
-	}
-	if( pKey && (pKey->iFlags & MEMOBJ_NULL) && (pTos->iFlags & MEMOBJ_HASHMAP) ){
-		/* php 8.1: writing through a NULL subscript normalizes to the
-		 * empty-string key, with a deprecation (the matching READ path lives
-		 * in OP_LOAD_IDX — array writes never pass through it). */
-		VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,
-			"Using null as an array offset is deprecated, use an empty string instead");
-	}
+		/* php only DEPRECATES a lossy-float / null write subscript (then truncates /
+		 * normalizes to ""); PHL rejects it. */
+		if( pKey && (pTos->iFlags & MEMOBJ_HASHMAP) ){
+			int bNull = (pKey->iFlags & MEMOBJ_NULL) != 0;
+			int bLossyFloat = (pKey->iFlags & MEMOBJ_REAL) != 0
+				&& pKey->rVal != (ph7_real)(sxi64)pKey->rVal;
+			if( bNull || bLossyFloat ){
+				sxi32 rcSc;
+				const char *zErr = bNull ? "Cannot access offset of type null on array"
+				                         : "Cannot access offset of type float on array";
+				PH7_MemObjRelease(pKey);
+				VmPopOperand(&pTos,1);
+				rcSc = VmThrowFromVm(&(*pVm),"TypeError",zErr,(sxu32)SyStrlen(zErr));
+				if( rcSc == SXERR_ABORT ){ goto Abort; }
+				rc = rcSc;
+				PH7_THROW_ROUTE_MIDEXPR(rc)
+			}
+		}
 	nIdx = pTos->nIdx;
 	{
 		/* ArrayAccess::offsetSet dispatch.
@@ -12646,8 +12638,9 @@ case PH7_OP_STORE_IDX_REF: {
 			/* php: only NULL and FALSE auto-vivify into an array. Writing an index into an
 			 * int/float/resource/TRUE is a catchable Error -- PH7 quietly REPLACED the value
 			 * with an array, destroying it ($x = 5; $x[0] = 1; left $x === [1]). */
-			int bScalar = (pObj->iFlags & (MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_RES)) != 0
-				|| ((pObj->iFlags & MEMOBJ_BOOL) != 0 && pObj->x.iVal != 0);
+			/* php auto-vivifies false into an array with an 8.1 DEPRECATION; PHL
+			 * rejects any scalar base, false included (null still auto-vivifies). */
+			int bScalar = (pObj->iFlags & (MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_RES|MEMOBJ_BOOL)) != 0;
 			if( bScalar ){
 				sxi32 rcSc;
 				if( pKey ){
@@ -12659,11 +12652,6 @@ case PH7_OP_STORE_IDX_REF: {
 				if( rcSc == SXERR_ABORT ){ goto Abort; }
 				rc = rcSc;
 				PH7_THROW_ROUTE_MIDEXPR(rc)
-			}
-			if( (pObj->iFlags & MEMOBJ_BOOL) != 0 ){
-				/* php 8.1 deprecates auto-vivifying FALSE. */
-				VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,
-					"Automatic conversion of false to array is deprecated");
 			}
 			/* Force a hashmap cast  */
 			rc = PH7_MemObjToHashmap(pObj);
@@ -12760,21 +12748,17 @@ case PH7_OP_INCR:
 			ph7_value *pObj;
 			if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
 				if( VmStringWantsPerlIncr(pObj) ){
-					/* Perl-style string increment. php 8.3 deprecates it (it points
-					 * at str_increment() instead) — the BEHAVIOUR is unchanged.
-					 * Post-increment: pTos may alias pObj's buffer via SXBLOB_RDONLY
-					 * (set by PH7_MemObjLoad).  Force ownership so the upcoming
-					 * mutation of pObj doesn't bleed into pTos's old-value view. */
-					VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,
-						"Increment on non-numeric string is deprecated, use str_increment() instead");
-					if( pInstr->iP1 == 0 ){
-						SyBlobNullAppend(&pTos->sBlob);
-					}
-					PH7_MemObjStringIncrement(pObj);
-					if( pInstr->iP1 ){
-						/* Pre-increment: deep-copy pObj into pTos. */
-						PH7_MemObjStore(pObj,pTos);
-					}
+					/* php 8.3 only DEPRECATES the Perl-style increment of a non-numeric
+					 * string (it points at str_increment() instead); PHL rejects it. */
+					SyBlob sErrMsg;
+					SyBlobInit(&sErrMsg,&pVm->sAllocator);
+					SyBlobAppend(&sErrMsg,
+						"Increment on a non-numeric string is not supported, use str_increment() instead",
+						sizeof("Increment on a non-numeric string is not supported, use str_increment() instead")-1);
+					VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sErrMsg));
+					VmHookRmwDropTop(&(*pVm));
+					pTos->nIdx = SXU32_HIGH;
+					break;
 				}else{
 					/* Numeric coercion. Post-increment must preserve pTos's
 					 * original value: pTos may alias pObj's blob via
@@ -12905,17 +12889,17 @@ case PH7_OP_DECR:
 			ph7_value *pObj;
 			if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
 				if( VmStringWantsPerlIncr(pObj) ){
-					/* PHP has no string decrement: `--` on a non-numeric string
-					 * is a no-op (unlike `++`, which is Perl-style). Leave pObj
-					 * unchanged; the result is simply that unchanged value.
-					 * php 8.3 deprecates the no-op itself. */
-					VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,
-						"Decrement on non-numeric string has no effect and is deprecated");
-					if( pInstr->iP1 ){
-						/* Pre-decrement: result is the (unchanged) value. */
-						PH7_MemObjStore(pObj,pTos);
-					}
-					/* Post-decrement: pTos already holds the old value. */
+					/* php 8.3 only DEPRECATES the no-op `--` of a non-numeric string
+					 * (php has no string decrement); PHL rejects it. */
+					SyBlob sErrMsg;
+					SyBlobInit(&sErrMsg,&pVm->sAllocator);
+					SyBlobAppend(&sErrMsg,
+						"Decrement on a non-numeric string is not supported",
+						sizeof("Decrement on a non-numeric string is not supported")-1);
+					VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sErrMsg));
+					VmHookRmwDropTop(&(*pVm));
+					pTos->nIdx = SXU32_HIGH;
+					break;
 				}else{
 					/* Numeric coercion. Mirror INCR's aliasing care: a
 					 * post-decrement must preserve pTos's original value, which
@@ -16198,13 +16182,17 @@ case PH7_OP_MEMBER: {
 								SyBlobFormat(&sErrMsg,"Cannot create dynamic property %z::$%z",
 									&pThis->pClass->sName,&sName);
 								VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
+							}else if( !VmClassAllowsDynamicProps(pVm,pThis->pClass)
+							       && !VmClassHasAttributeNamed(pThis->pClass,"AllowDynamicProperties",sizeof("AllowDynamicProperties")-1) ){
+								/* php 8.2 only DEPRECATES creating a dynamic property on a
+								 * class without #[AllowDynamicProperties]; PHL rejects it.
+								 * stdClass / __set / declared props are unaffected. */
+								SyBlob sErrMsg;
+								SyBlobInit(&sErrMsg,&pVm->sAllocator);
+								SyBlobFormat(&sErrMsg,"Cannot create dynamic property %z::$%z",
+									&pThis->pClass->sName,&sName);
+								VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 							}else{
-								if( !VmClassAllowsDynamicProps(pVm,pThis->pClass)
-								 && !VmClassHasAttributeNamed(pThis->pClass,"AllowDynamicProperties",sizeof("AllowDynamicProperties")-1) ){
-									VmErrorFormat(&(*pVm),8192 /* E_DEPRECATED */,
-										"Creation of dynamic property %z::$%z is deprecated",
-										&pThis->pClass->sName,&sName);
-								}
 								PH7_VmCreateDynamicAttr(&(*pVm),pThis,sName.zString,sName.nByte,&pObjAttr);
 							}
 						}

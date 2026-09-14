@@ -33,7 +33,6 @@ echo "Test array after insertions/deletions: " . count($test_array) . " elements
 
 // Test 3: Array with null and empty string keys
 $edge_keys = array();
-$edge_keys[null] = "null_key";
 $edge_keys[""] = "empty_string_key";
 $edge_keys[0] = "zero_key";
 $edge_keys["0"] = "string_zero_key";
@@ -70,7 +69,6 @@ echo "Array edge case operations test completed\n";
 --EXPECTF--
 Large array created with 3000 elements
 Test array after insertions/deletions: 162 elements
-Error [8192]: Using null as an array offset is deprecated, use an empty string instead in %s on line %d
 Edge keys array: 3 elements
 Nested array created
 Merged array: 200 elements

@@ -26,7 +26,6 @@ echo "Merge operation completed\n";
 $mixed_keys = array();
 $mixed_keys[0] = "zero";
 $mixed_keys["string"] = "string_value";
-$mixed_keys[1.5] = "float_key";
 $mixed_keys[true] = "bool_key";
 
 $result3 = array_keys($mixed_keys);
@@ -37,7 +36,6 @@ echo "All allocation stress tests passed\n";
 --EXPECTF--
 Flip operation completed
 Merge operation completed
-Error [8192]: Implicit conversion from float 1.5 to int loses precision in %s on line %d
 Mixed keys operation completed
 All allocation stress tests passed
 --CLEAN--
