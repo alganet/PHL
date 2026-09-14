@@ -140,4 +140,10 @@ PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pC
 PH7_PRIVATE sxi32 GenStateValidateMemberType(ph7_gen_state *pGen,ph7_class *pClass,const SyString *pMemberName,
 	sxu32 nType,const SyString *pTypeClass,const SyString *pTypeText,SySet *pUnionAlts,const char *zErrFmt,sxu32 nLine);
 PH7_PRIVATE sxi32 GenStateParseClassReference(ph7_gen_state *pGen,SyBlob *pFqn);
+PH7_PRIVATE sxi32 GenStateFixGoto(ph7_gen_state *pGen,sxu32 nOfft);
+PH7_PRIVATE sxi32 PH7_CompileBlock(ph7_gen_state *pGen,sxi32 nKeywordEnd);
+/* compile_func.c — cross-unit prototypes */
+PH7_PRIVATE sxi32 GenStateCompileFunc(ph7_gen_state *pGen,SyString *pName,sxi32 iFlags,int bHandleClosure,ph7_vm_func **ppFunc);
+PH7_PRIVATE sxi32 PH7_CompileFunction(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 GenStateGuardFuncRedeclaration(ph7_gen_state *pGen,ph7_vm_func *pFunc);
 #endif /* __COMPILE_INT_H__ */
