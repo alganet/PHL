@@ -1262,20 +1262,20 @@ Coverage: 1000/1072 lines (93.28%)
 |      - | 1252 | ` * PATHINFO_EXTENSION` |
 |      - | 1253 | ` *  Expand 3.` |
 |      - | 1254 | ` */` |
-|   6630 | 1255 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
+|   6636 | 1255 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1256 | `{` |
-|   3315 | 1257 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6635 | 1258 | `	ph7_value_int(pVal,3);` |
-|   6635 | 1259 | `}` |
+|   3318 | 1257 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6641 | 1258 | `	ph7_value_int(pVal,3);` |
+|   6641 | 1259 | `}` |
 |      - | 1260 | `/*` |
 |      - | 1261 | ` * PATHINFO_FILENAME` |
 |      - | 1262 | ` *  Expand 4.` |
 |      - | 1263 | ` */` |
-|   6622 | 1264 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
+|   6628 | 1264 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1265 | `{` |
-|   3311 | 1266 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6627 | 1267 | `	ph7_value_int(pVal,4);` |
-|   6627 | 1268 | `}` |
+|   3314 | 1266 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6633 | 1267 | `	ph7_value_int(pVal,4);` |
+|   6633 | 1268 | `}` |
 |      - | 1269 | `/*` |
 |      - | 1270 | ` * ASSERT_ACTIVE.` |
 |      - | 1271 | ` *  PHP ASSERT_ACTIVE = 1` |
@@ -1425,20 +1425,20 @@ Coverage: 1000/1072 lines (93.28%)
 |      - | 1415 | ` * SCANDIR_SORT_ASCENDING` |
 |      - | 1416 | ` *  Expand 0` |
 |      - | 1417 | ` */` |
-|   2118 | 1418 | `static void PH7_SCANDIR_SORT_ASCENDING_Const(ph7_value *pVal,void *pUserData)` |
+|   2122 | 1418 | `static void PH7_SCANDIR_SORT_ASCENDING_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1419 | `{` |
-|   1059 | 1420 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   2123 | 1421 | `	ph7_value_int(pVal,0);` |
-|   2123 | 1422 | `}` |
+|   1061 | 1420 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   2127 | 1421 | `	ph7_value_int(pVal,0);` |
+|   2127 | 1422 | `}` |
 |      - | 1423 | `/*` |
 |      - | 1424 | ` * SCANDIR_SORT_DESCENDING` |
 |      - | 1425 | ` *  Expand 1` |
 |      - | 1426 | ` */` |
-|   1060 | 1427 | `static void PH7_SCANDIR_SORT_DESCENDING_Const(ph7_value *pVal,void *pUserData)` |
+|   1062 | 1427 | `static void PH7_SCANDIR_SORT_DESCENDING_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1428 | `{` |
-|    530 | 1429 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   1065 | 1430 | `	ph7_value_int(pVal,1);` |
-|   1065 | 1431 | `}` |
+|    531 | 1429 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   1067 | 1430 | `	ph7_value_int(pVal,1);` |
+|   1067 | 1431 | `}` |
 |      - | 1432 | `/*` |
 |      - | 1433 | ` * SCANDIR_SORT_NONE` |
 |      - | 1434 | ` *  Expand 2` |

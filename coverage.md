@@ -7,7 +7,7 @@
 | src/ph7/builtin_mb.c           | 91.94%   | 479/521     |
 | src/ph7/compile.c              | 81.07%   | 7387/9112   |
 | src/ph7/constant.c             | 93.28%   | 1000/1072   |
-| src/ph7/hashmap.c              | 89.27%   | 4028/4512   |
+| src/ph7/hashmap.c              | 89.30%   | 4029/4512   |
 | src/ph7/lex.c                  | 93.34%   | 813/871     |
 | src/ph7/memobj.c               | 87.07%   | 889/1021    |
 | src/ph7/net.c                  | 57.45%   | 81/141      |
@@ -26,14 +26,14 @@
 | src/ph7/vm_builtin_session.c   | 100.00%  | 4/4         |
 | src/ph7/vm_builtin_spl.c       | 76.71%   | 56/73       |
 | src/ph7/vm_builtin_tokenizer.c | 1.62%    | 12/743      |
-| src/ph7/vm_dom.c               | 87.03%   | 577/663     |
+| src/ph7/vm_dom.c               | 86.03%   | 653/759     |
 | src/ph7/vm_http.c              | 69.82%   | 310/444     |
 | src/ph7/vm_http_response.c     | 49.41%   | 126/255     |
 | src/ph7/vm_json.c              | 83.36%   | 561/673     |
-| src/ph7/vm_libxml.c            | 73.19%   | 232/317     |
+| src/ph7/vm_libxml.c            | 73.46%   | 238/324     |
 | src/ph7/vm_pcre.c              | 69.07%   | 632/915     |
 | src/ph7/vm_serialize.c         | 96.07%   | 464/483     |
-| src/ph7/vm_xmlwriter.c         | 100.00%  | 5/5         |
+| src/ph7/vm_xmlwriter.c         | 74.09%   | 163/220     |
 | src/phl/phl.c                  | 75.97%   | 313/412     |
 | src/phl/server.c               | 62.82%   | 299/476     |
 | src/sx/sxblowfish.c            | 98.82%   | 168/170     |
@@ -51,5 +51,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.17%   | 48156/59326 |
-| Functions                      | 93.19%   | 2176/2335   |
+| Lines                          | 81.14%   | 48397/59644 |
+| Functions                      | 93.13%   | 2196/2358   |
