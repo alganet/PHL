@@ -104,4 +104,40 @@ struct LangConstruct
                                            * from the precedence-18 lvalue through SUBSCRIPT to the base
                                            * member; stripped when descending into an intermediate `->`
                                            * container (the container is read, not the write target). */
+/* compile.c GenState substrate — shared with the other compile*.c units */
+PH7_PRIVATE sxi32 GenStateEnterBlock(ph7_gen_state *pGen,sxi32 iType,sxu32 nFirstInstr,void *pUserData,GenBlock **ppBlock);
+PH7_PRIVATE sxi32 GenStateLeaveBlock(ph7_gen_state *pGen,GenBlock **ppBlock);
+PH7_PRIVATE sxu32 GenStateFixJumps(GenBlock *pBlock,sxi32 nJumpType,sxu32 nJumpDest);
+PH7_PRIVATE sxi32 PH7_CompileExpr(ph7_gen_state *pGen,sxi32 iFlags,sxi32 (*xTreeValidator)(ph7_gen_state *,ph7_expr_node *));
+PH7_PRIVATE sxi32 GenStateCompileArrayEntry(ph7_gen_state *pGen,SyToken *pIn,SyToken *pEnd,sxi32 iFlags,sxi32 (*xValidator)(ph7_gen_state *,ph7_expr_node *));
+PH7_PRIVATE sxi32 GenStateCompileFuncBody(ph7_gen_state *pGen,ph7_vm_func *pFunc);
+PH7_PRIVATE sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen,SyToken *pEnd,int bCtorCtx,int bAbstractCtx);
+PH7_PRIVATE sxi32 GenStateCollectParamAttrs(ph7_gen_state *pGen,SyToken *pTok,SySet *pOut);
+PH7_PRIVATE sxi32 GenStateConsumeAttrs(ph7_gen_state *pGen,SySet *pOut);
+PH7_PRIVATE void GenStateConsumeDoc(ph7_gen_state *pGen,SyString *pOut);
+PH7_PRIVATE void GenStateSetPendingDoc(ph7_gen_state *pGen);
+PH7_PRIVATE void GenStateBuildFQN(ph7_gen_state *pGen,const SyString *pName,SyBlob *pOut);
+PH7_PRIVATE void GenStateResolveName(ph7_gen_state *pGen,const SyString *pName,SyBlob *pOut);
+PH7_PRIVATE int GenStateUnconditionalTopLevel(ph7_gen_state *pGen);
+PH7_PRIVATE int GenStateIsReservedConstant(SyString *pName);
+PH7_PRIVATE void *GenStateAttachStrictFlag(ph7_gen_state *pGen,void *p3);
+PH7_PRIVATE sxi32 GenStateParseReturnType(ph7_gen_state *pGen,ph7_vm_func *pFunc);
+PH7_PRIVATE sxi32 GenStateParseUnionTypeDecl(ph7_gen_state *pGen,sxu32 *pnType,SyString *pClass,SySet *pAlts,
+	sxi32 *piTypeFlags,SyString *pTypeText,int iNullableFlag,int iUnionFlag,int bAllowVoid,sxu32 nLine);
+PH7_PRIVATE int SyMemcmpNoCase(const char *zA,const char *zB,sxu32 n);
+/* compile_class.c — cross-unit prototypes */
+PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileClass(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileClassModifiers(ph7_gen_state *pGen);
+PH7_PRIVATE sxi32 PH7_CompileEnum(ph7_gen_state *pGen);
+PH7_PRIVATE int GenStateStartsModifiedClass(SyToken *pIn,SyToken *pEnd);
+PH7_PRIVATE int GenStateStartsEnumDecl(SyToken *pIn,SyToken *pEnd);
+PH7_PRIVATE int GenStateIsReadonly(SyToken *pTok);
+PH7_PRIVATE sxi32 GenStatePeekSetVisibility(SyToken *pTok,SyToken *pEnd,int *pnTok);
+PH7_PRIVATE sxi32 GenStateSetVisFlag(sxi32 nKw);
+PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pClass,ph7_class_attr *pAttr);
+PH7_PRIVATE sxi32 GenStateValidateMemberType(ph7_gen_state *pGen,ph7_class *pClass,const SyString *pMemberName,
+	sxu32 nType,const SyString *pTypeClass,const SyString *pTypeText,SySet *pUnionAlts,const char *zErrFmt,sxu32 nLine);
+PH7_PRIVATE sxi32 GenStateParseClassReference(ph7_gen_state *pGen,SyBlob *pFqn);
 #endif /* __COMPILE_INT_H__ */
