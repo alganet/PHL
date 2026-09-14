@@ -1569,6 +1569,7 @@ struct ph7_vm
 #ifdef PH7_ENABLE_LIBXML
 	SySet aLibxmlErr;          /* Queued phl_libxml_err entries (libxml_get_errors) */
 	int bLibxmlInternalErr;    /* libxml_use_internal_errors(true) is active */
+	void *pLibxmlLastErr;      /* phl_libxml_err* slot backing libxml_get_last_error */
 	void *pXmlDocs;            /* phl_xmldoc registry chain; freed on reset/release */
 	void *pXmlWriters;         /* XMLWriter registry chain; freed on reset/release */
 #endif
@@ -2232,6 +2233,8 @@ PH7_PRIVATE void PH7_LibxmlVmReset(ph7_vm *pVm);
 PH7_PRIVATE void PH7_LibxmlVmRelease(ph7_vm *pVm);
 PH7_PRIVATE void PH7_LibxmlClearErrors(ph7_vm *pVm);
 PH7_PRIVATE phl_xmldoc * PH7_LibxmlNewDoc(ph7_vm *pVm,void *pXmlDocPtr);
+PH7_PRIVATE sxu32 PH7_LibxmlCaptureBegin(ph7_vm *pVm);
+PH7_PRIVATE void PH7_LibxmlCaptureEnd(ph7_vm *pVm,sxu32 nMark,const char *zFnName);
 /* vm_dom.c */
 PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm);
 /* vm_xmlwriter.c */
