@@ -2094,8 +2094,8 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
     "protected $code = 0;"\
     "protected $file;"\
     "protected $line;"\
-    "protected $trace;"\
-    "protected $previous;"\
+    "private $trace;"\
+    "private $previous;"\
 	"public function __construct($message = null, $code = 0, Throwable $previous = null){"\
 	"   if( isset($message) ){"\
 	"	  $this->message = $message;"\
@@ -2156,8 +2156,8 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
     "protected $code = 0;"\
     "protected $file;"\
     "protected $line;"\
-    "protected $trace;"\
-    "protected $previous;"\
+    "private $trace;"\
+    "private $previous;"\
 	"public function __construct($message = null, $code = 0, Throwable $previous = null){"\
 	"   if( isset($message) ){"\
 	"	  $this->message = $message;"\
@@ -2224,17 +2224,13 @@ static int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_valu
 	"protected $severity;"\
 	"public function __construct(string $message = null,"\
 	"int $code = 0,int $severity = 1,string $filename = __FILE__ ,int $lineno = __LINE__ ,Throwable $previous = null){"\
-	"   if( isset($message) ){"\
-	"	  $this->message = $message;"\
-	"   }"\
+	"   /* message/code/previous belong to Exception (trace/previous are private"\
+	"    * to it); delegate, then set our own severity plus the caller-supplied"\
+	"    * file/line, which are protected and stay writable here. */"\
+	"   parent::__construct($message, $code, $previous);"\
 	"   $this->severity = $severity;"\
-	"   $this->code = $code;"\
 	"   $this->file = $filename;"\
 	"   $this->line = $lineno;"\
-	"   $this->trace = debug_backtrace();"\
-	"   if( isset($previous) ){"\
-	"     $this->previous = $previous;"\
-	"   }"\
 	"}"\
 	"public function getSeverity(){"\
 	"   return $this->severity;"\
