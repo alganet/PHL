@@ -142,6 +142,8 @@ PH7_PRIVATE sxi32 GenStateStripNumericSeparators(SyMemBackend *pAlloc,const SySt
 	char *zScratch,sxu32 nScratch,SyString *pOut,char **pzAlloc);
 PH7_PRIVATE SyToken * GenStateFindTopLevelArrow(SyToken *pStart,SyToken *pEnd);
 PH7_PRIVATE sxi32 GenStateCompileChunk(ph7_gen_state *pGen,sxi32 iFlags);
+PH7_PRIVATE ph7_value * GenStateInstallNumLiteral(ph7_gen_state *pGen,sxu32 *pIdx);
+PH7_PRIVATE sxi32 PH7_CompileNumLiteral(ph7_gen_state *pGen,sxi32 iCompileFlag);
 /* compile_class.c — cross-unit prototypes */
 PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen);
 PH7_PRIVATE sxi32 PH7_CompileClass(ph7_gen_state *pGen);
