@@ -2709,6 +2709,21 @@ PH7_PRIVATE sxi32 VmThrowBuiltinTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,Sy
 PH7_PRIVATE sxi32 VmThrowTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName, sxu32 nPassed,sxu32 nRequired,sxu32 nNonVariadic,int bCallSite);
 PH7_PRIVATE sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName,sxu32 nArg,SyString *pArgName,const char *zExpected,const char *zGiven);
 PH7_PRIVATE ph7_value * VmReserveMemObj(ph7_vm *pVm,sxu32 *pIndex);
+/* vm_ops_*.c — opcode handlers extracted from VmByteCodeExecBody. The loop
+ * syncs pTos/pc into its VmExecState, calls the handler, reloads them and
+ * maps the returned code onto its labels. */
+typedef enum VmOpRc {
+	VM_OP_NEXT = 0,   /* arm done: fall to the loop's trailing pc++ */
+	VM_OP_ABORT,      /* -> the loop's Abort label */
+	VM_OP_EXCEPTION   /* -> the loop's Exception label */
+} VmOpRc;
+PH7_PRIVATE int VmRecordedResume(ph7_vm *pVm,sxi32 *pResumePc,VmFrame *pEntryFrame,VmInstr *aInstr);
+PH7_PRIVATE void VmPopOperand(ph7_value **ppTos, sxi32 nPop);
+PH7_PRIVATE void VmForeachStepUnlink(ph7_foreach_info *pInfo,ph7_foreach_step *pStep);
+PH7_PRIVATE int VmHookGuardHeld(ph7_vm *pVm,void *pThis,const SyString *pName);
+PH7_PRIVATE void VmForeachHashmapStepRelease(ph7_vm *pVm,ph7_foreach_info *pInfo,ph7_foreach_step *pStep,int bPop);
+PH7_PRIVATE void VmForeachStepAbandon(ph7_vm *pVm,ph7_foreach_info *pInfo,ph7_foreach_step *pStep,ph7_class_instance *pThis);
+PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr);
 /* vm_error.c — error/diagnostics/type-enforcement machinery shared with vm.c */
 PH7_PRIVATE void VmGetFrameContext(ph7_vm *pVm,const char **pzFuncName,int *pnFuncLen);
 PH7_PRIVATE sxi32 VmEnterFrame(ph7_vm *pVm,void *pUserData,ph7_class_instance *pThis,VmFrame **ppFrame);
