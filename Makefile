@@ -84,7 +84,9 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/vm_include$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_json$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_ops_iter$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/vm_ops_arith$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_ops_load$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/vm_ops_misc$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_ops_oo$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_pcre$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_serialize$(OBJ_SUFFIX) \
