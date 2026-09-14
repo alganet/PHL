@@ -2226,6 +2226,14 @@ struct phl_xmldoc {
 	int bFormatOutput;  /* DOMDocument->formatOutput */
 	phl_xmldoc *pNext;  /* Registry chain (pVm->pXmlDocs) */
 };
+/* One PHP-visible DOM node handle: the MEMOBJ_RES payload behind every DOM
+ * wrapper object.  pNode points into pShell's tree (or IS the xmlDoc); the
+ * shell outlives every handle (docs are only freed at VM reset/release). */
+typedef struct phl_domnode phl_domnode;
+struct phl_domnode {
+	phl_xmldoc *pShell; /* Owning document registry entry */
+	void *pNode;        /* xmlNodePtr / xmlDocPtr / xmlAttrPtr */
+};
 /* vm_libxml.c */
 PH7_PRIVATE void PH7_RegisterLibxmlConstants(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmInstallLibxml(ph7_vm *pVm);

@@ -106,10 +106,11 @@ static void LibxmlFreeErr(ph7_vm *pVm,phl_libxml_err *pErr)
 	SyStringInitFromBuf(&pErr->sFile,0,0);
 }
 /*
- * Empty the libxml error queue (and the last-error slot), releasing the
- * copied message/file strings.
+ * Empty the libxml error queue, releasing the copied strings.  The
+ * last-error slot is kept (php parity: use_internal_errors(false) drops
+ * the buffer but libxml_get_last_error still reports).
  */
-PH7_PRIVATE void PH7_LibxmlClearErrors(ph7_vm *pVm)
+static void LibxmlClearQueue(ph7_vm *pVm)
 {
 	phl_libxml_err *aErr = (phl_libxml_err *)SySetBasePtr(&pVm->aLibxmlErr);
 	sxu32 n;
@@ -117,6 +118,13 @@ PH7_PRIVATE void PH7_LibxmlClearErrors(ph7_vm *pVm)
 		LibxmlFreeErr(pVm,&aErr[n]);
 	}
 	SySetReset(&pVm->aLibxmlErr);
+}
+/*
+ * libxml_clear_errors(): drop the queue AND the last-error slot.
+ */
+PH7_PRIVATE void PH7_LibxmlClearErrors(ph7_vm *pVm)
+{
+	LibxmlClearQueue(pVm);
 	if( pVm->pLibxmlLastErr ){
 		LibxmlFreeErr(pVm,(phl_libxml_err *)pVm->pLibxmlLastErr);
 		SyMemBackendFree(&pVm->sAllocator,pVm->pLibxmlLastErr);
@@ -225,10 +233,14 @@ PH7_PRIVATE void PH7_LibxmlCaptureEnd(ph7_vm *pVm,sxu32 nMark,const char *zFnNam
 			}
 			SyBlobInit(&sMsg,&pVm->sAllocator);
 			SyBlobAppend(&sMsg,aErr[n].sMsg.zString,nTrim);
-			if( aErr[n].sFile.nByte > 0 ){
-				SyBlobFormat(&sMsg," in %z, line: %d",&aErr[n].sFile,aErr[n].iLine);
-			}else{
-				SyBlobFormat(&sMsg," in Entity, line: %d",aErr[n].iLine);
+			/* php appends the source location only for parser errors that
+			 * carry a real line; generic libxml errors print bare. */
+			if( aErr[n].iLine > 0 ){
+				if( aErr[n].sFile.nByte > 0 ){
+					SyBlobFormat(&sMsg," in %z, line: %d",&aErr[n].sFile,aErr[n].iLine);
+				}else{
+					SyBlobFormat(&sMsg," in Entity, line: %d",aErr[n].iLine);
+				}
 			}
 			SyBlobAppend(&sMsg,"\0",1);
 			SyStringInitFromBuf(&sFunc,zFnName,SyStrlen(zFnName));
@@ -409,6 +421,10 @@ static int vm_builtin_libxml_use_internal_errors(ph7_context *pCtx,int nArg,ph7_
 	int bPrev = pVm->bLibxmlInternalErr;
 	if( nArg > 0 && !ph7_value_is_null(apArg[0]) ){
 		pVm->bLibxmlInternalErr = ph7_value_to_bool(apArg[0]) ? 1 : 0;
+		if( !pVm->bLibxmlInternalErr ){
+			/* php frees the accumulated buffer when capture turns OFF */
+			LibxmlClearQueue(pVm);
+		}
 	}
 	ph7_result_bool(pCtx,bPrev);
 	return PH7_OK;
