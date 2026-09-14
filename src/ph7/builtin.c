@@ -9911,3 +9911,191 @@ PH7_PRIVATE void PH7_RegisterBuiltInFunction(ph7_vm *pVm)
 	/* Register IO functions [i.e: fread(),fwrite(),chdir(),mkdir(),file(),...] */
 	PH7_RegisterIORoutine(&(*pVm));
 }
+
+/*
+ * UTF-8 encode/decode builtins (registered from vm.c).  Relocated here
+ * from the removed vm_xml.c when the legacy xml_* API was dropped.
+ */
+/*
+ * int utf8_encode(string $input)
+ *  UTF-8 encoding.
+ *  This function encodes the string data to UTF-8, and returns the encoded version.
+ *  UTF-8 is a standard mechanism used by Unicode for encoding wide character values
+ * into a byte stream. UTF-8 is transparent to plain ASCII characters, is self-synchronized
+ * (meaning it is possible for a program to figure out where in the bytestream characters start)
+ * and can be used with normal string comparison functions for sorting and such.
+ *  Notes on UTF-8 (According to SQLite3 authors):
+ *  Byte-0    Byte-1    Byte-2    Byte-3    Value
+ *  0xxxxxxx                                 00000000 00000000 0xxxxxxx
+ *  110yyyyy  10xxxxxx                       00000000 00000yyy yyxxxxxx
+ *  1110zzzz  10yyyyyy  10xxxxxx             00000000 zzzzyyyy yyxxxxxx
+ *  11110uuu  10uuzzzz  10yyyyyy  10xxxxxx   000uuuuu zzzzyyyy yyxxxxxx
+ * Parameters
+ * $input
+ *   String to encode or NULL on failure.
+ * Return
+ *  An UTF-8 encoded string.
+ */
+PH7_PRIVATE int vm_builtin_utf8_encode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const unsigned char *zIn,*zEnd;
+	int nByte,c,e;
+	if( nArg < 1 ){
+		/* Missing arguments,return null */
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	/* Extract the target string */
+	zIn = (const unsigned char *)ph7_value_to_string(apArg[0],&nByte);
+	if( nByte < 1 ){
+		/* Empty string,return null */
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	zEnd = &zIn[nByte];
+	/* Start the encoding process */
+	for(;;){
+		if( zIn >= zEnd ){
+			/* End of input */
+			break;
+		}
+		c = zIn[0];
+		/* Advance the stream cursor */
+		zIn++;
+		/* Encode */
+		if( c<0x00080 ){
+			e = (c&0xFF);
+			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));
+		}else if( c<0x00800 ){
+			e = 0xC0 + ((c>>6)&0x1F);
+			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));
+			e = 0x80 + (c & 0x3F);
+			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));
+		}else if( c<0x10000 ){
+			e = 0xE0 + ((c>>12)&0x0F);
+			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));
+			e = 0x80 + ((c>>6) & 0x3F);
+			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));
+			e = 0x80 + (c & 0x3F);
+			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));
+		}else{
+			e = 0xF0 + ((c>>18) & 0x07);
+			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));
+			e = 0x80 + ((c>>12) & 0x3F);
+			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));
+			e = 0x80 + ((c>>6) & 0x3F);
+			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));
+			e = 0x80 + (c & 0x3F);
+			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));
+		}
+	}
+	/* All done */
+	return PH7_OK;
+}
+/* SPDX-SnippetBegin */
+/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */
+/* SPDX-License-Identifier: blessing */
+/*
+ * UTF-8 decoding routine extracted from the sqlite3 source tree.
+ * Original author: D. Richard Hipp (http://www.sqlite.org)
+ * Status: Public Domain
+ */
+/*
+** This lookup table is used to help decode the first byte of
+** a multi-byte UTF8 character.
+*/
+static const unsigned char UtfTrans1[] = {
+  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+  0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+  0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+  0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+  0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+  0x00, 0x01, 0x02, 0x03, 0x00, 0x01, 0x00, 0x00,
+};
+/*
+** Translate a single UTF-8 character.  Return the unicode value.
+**
+** During translation, assume that the byte that zTerm points
+** is a 0x00.
+**
+** Write a pointer to the next unread byte back into *pzNext.
+**
+** Notes On Invalid UTF-8:
+**
+**  *  This routine never allows a 7-bit character (0x00 through 0x7f) to
+**     be encoded as a multi-byte character.  Any multi-byte character that
+**     attempts to encode a value between 0x00 and 0x7f is rendered as 0xfffd.
+**
+**  *  This routine never allows a UTF16 surrogate value to be encoded.
+**     If a multi-byte character attempts to encode a value between
+**     0xd800 and 0xe000 then it is rendered as 0xfffd.
+**
+**  *  Bytes in the range of 0x80 through 0xbf which occur as the first
+**     byte of a character are interpreted as single-byte characters
+**     and rendered as themselves even though they are technically
+**     invalid characters.
+**
+**  *  This routine accepts an infinite number of different UTF8 encodings
+**     for unicode values 0x80 and greater.  It do not change over-length
+**     encodings to 0xfffd as some systems recommend.
+*/
+#define READ_UTF8(zIn, zTerm, c)                           \
+  c = *(zIn++);                                            \
+  if( c>=0xc0 ){                                           \
+    c = UtfTrans1[c-0xc0];                                 \
+    while( zIn!=zTerm && (*zIn & 0xc0)==0x80 ){            \
+      c = (c<<6) + (0x3f & *(zIn++));                      \
+    }                                                      \
+    if( c<0x80                                             \
+        || (c&0xFFFFF800)==0xD800                          \
+        || (c&0xFFFFFFFE)==0xFFFE ){  c = 0xFFFD; }        \
+  }
+PH7_PRIVATE int PH7_Utf8Read(
+  const unsigned char *z,         /* First byte of UTF-8 character */
+  const unsigned char *zTerm,     /* Pretend this byte is 0x00 */
+  const unsigned char **pzNext    /* Write first byte past UTF-8 char here */
+){
+  int c;
+  READ_UTF8(z, zTerm, c);
+  *pzNext = z;
+  return c;
+}
+/* SPDX-SnippetEnd */
+/*
+ * string utf8_decode(string $data)
+ *  This function decodes data, assumed to be UTF-8 encoded, to unicode.
+ * Parameters
+ * data
+ *  An UTF-8 encoded string.
+ * Return
+ *  Unicode decoded string or NULL on failure.
+ */
+PH7_PRIVATE int vm_builtin_utf8_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const unsigned char *zIn,*zEnd;
+	int nByte,c;
+	if( nArg < 1 ){
+		/* Missing arguments,return null */
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	/* Extract the target string */
+	zIn = (const unsigned char *)ph7_value_to_string(apArg[0],&nByte);
+	if( nByte < 1 ){
+		/* Empty string,return null */
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	zEnd = &zIn[nByte];
+	/* Start the decoding process */
+	while( zIn < zEnd ){
+		c = PH7_Utf8Read(zIn,zEnd,&zIn);
+		if( c == 0x0 ){
+			break;
+		}
+		ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char));
+	}
+	return PH7_OK;
+}

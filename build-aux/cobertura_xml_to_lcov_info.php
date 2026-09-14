@@ -69,31 +69,6 @@ function compare_functions($a, $b) {
     return ($a['line'] < $b['line']) ? -1 : 1;
 }
 
-function startElement($parser, $name, $attrs) {
-    global $current_filename, $current_data;
-    if ($name == 'class') {
-        $current_filename = isset($attrs['filename']) ? normalize_filename($attrs['filename']) : '';
-        $current_data = array('lines' => array(), 'functions' => array());
-    } elseif ($name == 'line' && $current_data !== null) {
-        if (isset($attrs['number']) && isset($attrs['hits'])) {
-            $current_data['lines'][] = array('number' => (int)$attrs['number'], 'hits' => (int)$attrs['hits']);
-        }
-    } elseif ($name == 'method' && $current_data !== null) {
-        if (isset($attrs['name']) && isset($attrs['line']) && isset($attrs['hits'])) {
-            $current_data['functions'][] = array('name' => $attrs['name'], 'line' => (int)$attrs['line'], 'hits' => (int)$attrs['hits']);
-        }
-    }
-}
-
-function endElement($parser, $name) {
-    global $current_filename, $current_data, $coverage_data;
-    if ($name == 'class' && $current_filename && $current_data) {
-        merge_coverage_data($coverage_data, $current_filename, $current_data);
-        $current_data = null;
-        $current_filename = null;
-    }
-}
-
 // Collect input XML files.
 $input_files = array();
 if (isset($argc) && $argc >= 2) {
@@ -133,19 +108,37 @@ foreach ($input_files as $xml_file) {
         exit(1);
     }
 
-    $parser = xml_parser_create();
-    xml_parser_set_option($parser, XML_OPTION_CASE_FOLDING, 0);
-    xml_parser_set_option($parser, XML_OPTION_SKIP_WHITE, 1);
-    xml_set_element_handler($parser, 'startElement', 'endElement');
-
-    if (!xml_parse($parser, $xml, true)) {
-        $message = "XML error in $xml_file: " . xml_error_string(xml_get_error_code($parser)) . " at line " . xml_get_current_line_number($parser) . "\n";
-        xml_parser_free($parser);
-        echo $message;
+    $doc = new DOMDocument;
+    $prev_use_errors = libxml_use_internal_errors(true);
+    $loaded = $doc->loadXML($xml);
+    $error = libxml_get_last_error();
+    libxml_use_internal_errors($prev_use_errors);
+    if (!$loaded) {
+        $detail = ($error !== false) ? trim($error->message) . " at line " . $error->line : "parse failure";
+        echo "XML error in $xml_file: $detail\n";
         exit(1);
     }
 
-    xml_parser_free($parser);
+    // A <class> carries one source file's data; its descendant <line> elements
+    // (both the per-method ones and the class-level summary list) and <method>
+    // elements aggregate exactly like the previous SAX pass did.
+    foreach ($doc->getElementsByTagName('class') as $class) {
+        $current_filename = normalize_filename($class->getAttribute('filename'));
+        $current_data = array('lines' => array(), 'functions' => array());
+        foreach ($class->getElementsByTagName('line') as $line) {
+            if ($line->hasAttribute('number') && $line->hasAttribute('hits')) {
+                $current_data['lines'][] = array('number' => (int)$line->getAttribute('number'), 'hits' => (int)$line->getAttribute('hits'));
+            }
+        }
+        foreach ($class->getElementsByTagName('method') as $method) {
+            if ($method->hasAttribute('name') && $method->hasAttribute('line') && $method->hasAttribute('hits')) {
+                $current_data['functions'][] = array('name' => $method->getAttribute('name'), 'line' => (int)$method->getAttribute('line'), 'hits' => (int)$method->getAttribute('hits'));
+            }
+        }
+        if ($current_filename && $current_data) {
+            merge_coverage_data($coverage_data, $current_filename, $current_data);
+        }
+    }
 }
 
 // Now output lcov
