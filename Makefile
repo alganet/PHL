@@ -45,6 +45,7 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/compile$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/compile_class$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/compile_func$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/compile_stmt$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/constant$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/hashmap$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/hashmap_builtin$(OBJ_SUFFIX) \
