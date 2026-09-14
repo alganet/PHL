@@ -2562,6 +2562,13 @@ PH7_PRIVATE int vm_builtin_restore_exception_handler(ph7_context *pCtx,int nArg,
 PH7_PRIVATE int vm_builtin_set_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_set_exception_handler(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_trigger_error(ph7_context *pCtx,int nArg,ph7_value **apArg);
+/* Autoload-callback record (spl_autoload_register in vm_include.c; walked by
+ * VmTriggerAutoload in vm.c) */
+typedef struct VmAutoloadCB VmAutoloadCB;
+struct VmAutoloadCB
+{
+	ph7_value sCallback; /* Autoload callback (string or [obj,method] array) */
+};
 /* Shutdown-callback record (register_shutdown_function in vm_builtin_call.c;
  * invoked by VmInvokeShutdownCallbacks in vm.c) */
 typedef struct VmShutdownCB VmShutdownCB;
@@ -2585,6 +2592,22 @@ PH7_PRIVATE sxi32 VmByteCodeExec(ph7_vm *pVm,VmInstr *aInstr,ph7_value *pStack,i
 	ph7_vm_func *pEnforceRetFunc,int bReturnPropagates,
 	VmParkedSegment *pAdoptSegment,ph7_value **ppBaseOwner,
 	sxu32 *pnBaseCap,sxu32 nStackOrig);
+/* vm_include.c function prototypes (rows stay in vm.c's aVmFunc[]) */
+PH7_PRIVATE sxi32 VmMountUserClass(ph7_vm *pVm,ph7_class *pClass);
+PH7_PRIVATE sxi32 VmEvalChunk(ph7_vm *pVm,ph7_context *pCtx,SyString *pChunk,int iFlags,int bTrueReturn);
+PH7_PRIVATE int vm_builtin_eval(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_get_included_files(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_get_include_path(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_include(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_include_once(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_magic_call(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_require(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_require_once(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_set_include_path(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_spl_autoload(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_spl_autoload_functions(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_spl_autoload_register(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_spl_autoload_unregister(ph7_context *pCtx,int nArg,ph7_value **apArg);
 /* vm_builtin_call.c — callable machinery shared with vm.c's interpreter */
 PH7_PRIVATE ph7_class * PH7_VmResolveParentClass(ph7_vm *pVm);
 PH7_PRIVATE void VmBoundaryPark(ph7_vm *pVm,sxi32 rc);
