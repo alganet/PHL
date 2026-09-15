@@ -2525,14 +2525,18 @@ PH7_PRIVATE sxi32 PH7_CompileDeclare(ph7_gen_state *pGen)
 				return SXRET_OK;
 			}
 			pGen->bStrictTypes = (sxi8)iStrictValue;
+		}else if( DeclareNameIs(pDirName, "encoding", sizeof("encoding")-1) ){
+			/* php always ignores declare(encoding=...) unless it was built with
+			 * Zend multibyte, and says so in these exact words. */
+			PH7_GenCompileError(&(*pGen),E_WARNING,nLine,
+				"declare(encoding=...) ignored because Zend multibyte feature is turned off by settings");
 		}else{
-			/* Other directives (ticks, encoding, or unknown) remain no-ops —
-			 * preserve the legacy notice so callers relying on the old
-			 * behavior don't regress. */
-			PH7_GenCompileError(&(*pGen),E_NOTICE,nLine,
-				"the declare construct is a no-op in the current release of the PH7(%s) engine",
-				ph7_lib_version()
-				);
+			/* Other directives (ticks and friends) are accepted as no-ops.
+			 * This used to emit a NOTICE naming the upstream engine and its
+			 * version ("the declare construct is a no-op in the current release
+			 * of the PH7(2.1.4) engine") — php prints nothing at all for
+			 * `declare(ticks=1)`, and leaking the old engine's branding into
+			 * user-visible diagnostics was wrong on its own. */
 		}
 		pCursor = pValTok + 1;
 		/* Consume separating comma (or end). */

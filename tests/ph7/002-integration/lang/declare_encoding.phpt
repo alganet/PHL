@@ -2,16 +2,11 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-declare with encoding directive
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+declare(encoding=...) warns exactly as php does
 --FILE--
 <?php
 declare(encoding='UTF-8');
 echo "OK";
 ?>
 --EXPECTF--
-%s Notice:  the declare construct is a no-op in the current release of the PH7(2.1.4) engine %s
---CLEAN--
-<?php
-
+%Adeclare(encoding=...) ignored because Zend multibyte feature is turned off by settings in %s on line 2%AOK
