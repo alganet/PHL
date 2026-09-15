@@ -313,43 +313,43 @@ Coverage: 539/625 lines (86.24%)
 |     - |  303 | ` * Return` |
 |     - |  304 | ` *  Return TRUE if the given function has been defined.False otherwise` |
 |     - |  305 | ` */` |
-|   624 |  306 | `PH7_PRIVATE int vm_builtin_func_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   622 |  306 | `PH7_PRIVATE int vm_builtin_func_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     5 |  307 | `{` |
 |     - |  308 | `	const char *zName;` |
 |     - |  309 | `	ph7_vm *pVm;` |
 |     - |  310 | `	int nLen;` |
 |     - |  311 | `	int res;` |
-|   629 |  312 | `	if( nArg < 1 ){` |
+|   627 |  312 | `	if( nArg < 1 ){` |
 |     - |  313 | `		/* Missing argument,return FALSE */` |
 |   ! 0 |  314 | `		ph7_result_bool(pCtx,0);` |
 |   ! 0 |  315 | `		return SXRET_OK;` |
 |     - |  316 | `	}` |
 |     - |  317 | `	/* Point to the target VM */` |
-|   629 |  318 | `	pVm = pCtx->pVm;` |
+|   627 |  318 | `	pVm = pCtx->pVm;` |
 |     - |  319 | `	/* Extract the function name */` |
-|   629 |  320 | `	zName = ph7_value_to_string(apArg[0],&nLen);` |
+|   627 |  320 | `	zName = ph7_value_to_string(apArg[0],&nLen);` |
 |     - |  321 | `	/* php: a leading '\' anchors the name to the global namespace; strip it. */` |
-|   629 |  322 | `	if( nLen > 0 && zName[0] == '\\' ){ zName++; nLen--; }` |
+|   627 |  322 | `	if( nLen > 0 && zName[0] == '\\' ){ zName++; nLen--; }` |
 |     - |  323 | `	/* Assume the function is not defined */` |
-|   629 |  324 | `	res = 0;` |
+|   627 |  324 | `	res = 0;` |
 |     - |  325 | `	/* Perform the lookup */` |
-|   923 |  326 | `	if( SyHashGet(&pVm->hFunction,(const void *)zName,(sxu32)nLen) != 0 \|\|` |
-|   588 |  327 | `		SyHashGet(&pVm->hHostFunction,(const void *)zName,(sxu32)nLen) != 0 ){` |
+|   920 |  326 | `	if( SyHashGet(&pVm->hFunction,(const void *)zName,(sxu32)nLen) != 0 \|\|` |
+|   586 |  327 | `		SyHashGet(&pVm->hHostFunction,(const void *)zName,(sxu32)nLen) != 0 ){` |
 |     - |  328 | `			/* Function is defined */` |
 |   231 |  329 | `			res = 1;` |
 |   113 |  330 | `	}` |
-|   629 |  331 | `	ph7_result_bool(pCtx,res);` |
-|   629 |  332 | `	return SXRET_OK;` |
-|   317 |  333 | `}` |
+|   627 |  331 | `	ph7_result_bool(pCtx,res);` |
+|   627 |  332 | `	return SXRET_OK;` |
+|   316 |  333 | `}` |
 |     - |  334 | `/*` |
 |     - |  335 | ` * Verify that the contents of a variable can be called as a function.` |
 |     - |  336 | ` * [i.e: Whether it is callable or not].` |
 |     - |  337 | ` * Return TRUE if callable.FALSE otherwise.` |
 |     - |  338 | ` */` |
-| 59380 |  339 | `PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)` |
+| 59386 |  339 | `PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)` |
 |     5 |  340 | `{` |
-| 59385 |  341 | `	int res = 0;` |
-| 59385 |  342 | `	if( pValue->iFlags & MEMOBJ_OBJ ){` |
+| 59391 |  341 | `	int res = 0;` |
+| 59391 |  342 | `	if( pValue->iFlags & MEMOBJ_OBJ ){` |
 |     - |  343 | `		/* PHP semantics: an object is callable iff its class declares __invoke` |
 |     - |  344 | `		 * (inherited methods count). The CallInvoke flag is unused — it` |
 |     - |  345 | `		 * formerly invoked __invoke as a runtime predicate, which is not` |
@@ -362,7 +362,7 @@ Coverage: 539/625 lines (86.24%)
 |    41 |  352 | `			res = 1;` |
 |    24 |  353 | `		}` |
 |   268 |  354 | `		(void)CallInvoke;` |
-| 59117 |  355 | `	}else if( pValue->iFlags & MEMOBJ_HASHMAP ){` |
+| 59123 |  355 | `	}else if( pValue->iFlags & MEMOBJ_HASHMAP ){` |
 |    74 |  356 | `		ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;` |
 |    74 |  357 | `		if( pMap->nEntry == 2 ){` |
 |     - |  358 | `			ph7_class *pClass;` |
@@ -386,20 +386,20 @@ Coverage: 539/625 lines (86.24%)
 |    24 |  376 | `				}` |
 |    26 |  377 | `			}` |
 |    30 |  378 | `		}` |
-| 58814 |  379 | `	}else if( pValue->iFlags & MEMOBJ_STRING ){` |
+| 58820 |  379 | `	}else if( pValue->iFlags & MEMOBJ_STRING ){` |
 |     - |  380 | `		const char *zName;` |
 |     - |  381 | `		int nLen;` |
 |     - |  382 | `		/* Extract the name */` |
-|  5207 |  383 | `		zName = ph7_value_to_string(pValue,&nLen);` |
+|  5205 |  383 | `		zName = ph7_value_to_string(pValue,&nLen);` |
 |     - |  384 | `		/* php: a leading '\' just anchors the callable to the global namespace` |
 |     - |  385 | `		 * ("\trim", "\Foo::bar"); strip it before the lookup. */` |
-|  5207 |  386 | `		if( nLen > 0 && zName[0] == '\\' ){ zName++; nLen--; }` |
+|  5205 |  386 | `		if( nLen > 0 && zName[0] == '\\' ){ zName++; nLen--; }` |
 |     - |  387 | `		/* Perform the lookup */` |
-|  5261 |  388 | `		if( SyHashGet(&pVm->hFunction,(const void *)zName,(sxu32)nLen) != 0 \|\|` |
+|  5259 |  388 | `		if( SyHashGet(&pVm->hFunction,(const void *)zName,(sxu32)nLen) != 0 \|\|` |
 |   108 |  389 | `			SyHashGet(&pVm->hHostFunction,(const void *)zName,(sxu32)nLen) != 0 ){` |
 |     - |  390 | `				/* Function is callable */` |
-|  5157 |  391 | `				res = 1;` |
-|  2630 |  392 | `		}else if( nLen > 3 ){` |
+|  5155 |  391 | `				res = 1;` |
+|  2629 |  392 | `		}else if( nLen > 3 ){` |
 |     - |  393 | `			/* php's "Class::method" static-callable string */` |
 |     - |  394 | `			int i;` |
 |   461 |  395 | `			for( i = 1 ; i + 2 < nLen ; ++i ){` |
@@ -412,8 +412,8 @@ Coverage: 539/625 lines (86.24%)
 |     - |  402 | `				}` |
 |   209 |  403 | `			}` |
 |    24 |  404 | `		}` |
-|  2601 |  405 | `	}` |
-| 59385 |  406 | `	return res;` |
+|  2600 |  405 | `	}` |
+| 59391 |  406 | `	return res;` |
 |     5 |  407 | `}` |
 |     - |  408 | `/*` |
 |     - |  409 | ` * bool is_callable(callable $name[,bool $syntax_only = false])` |
@@ -723,19 +723,19 @@ Coverage: 539/625 lines (86.24%)
 |     - |  713 | ` * copy when the throw is landed. PH7_ABORT dominates a parked EXCEPTION;` |
 |     - |  714 | ` * a generalization of the older iCmpCallbackExc comparator flag.` |
 |     - |  715 | ` */` |
-| 14390 |  716 | `PH7_PRIVATE void VmBoundaryPark(ph7_vm *pVm,sxi32 rc)` |
+| 14394 |  716 | `PH7_PRIVATE void VmBoundaryPark(ph7_vm *pVm,sxi32 rc)` |
 |     5 |  717 | `{` |
-| 14395 |  718 | `	if( (rc == PH7_EXCEPTION \|\| rc == PH7_ABORT) && pVm->nBoundaryRc != PH7_ABORT ){` |
-|   361 |  719 | `		pVm->nBoundaryRc = rc;` |
-|   178 |  720 | `	}` |
-| 14395 |  721 | `}` |
+| 14399 |  718 | `	if( (rc == PH7_EXCEPTION \|\| rc == PH7_ABORT) && pVm->nBoundaryRc != PH7_ABORT ){` |
+|   363 |  719 | `		pVm->nBoundaryRc = rc;` |
+|   179 |  720 | `	}` |
+| 14399 |  721 | `}` |
 |     - |  722 | `/*` |
 |     - |  723 | ` * Internal variant of PH7_VmCallClassMethod that threads a VmCallArgMap` |
 |     - |  724 | ` * through to the synthetic CALL instruction.  Used by the NEW handler so` |
 |     - |  725 | ` * that constructor calls with named arguments reach the named-arg path` |
 |     - |  726 | ` * (with variadic string-key packing) rather than the positional path.` |
 |     - |  727 | ` */` |
-| 13404 |  728 | `PH7_PRIVATE sxi32 VmCallClassMethodWithMap(` |
+| 13406 |  728 | `PH7_PRIVATE sxi32 VmCallClassMethodWithMap(` |
 |     - |  729 | `	ph7_vm *pVm,` |
 |     - |  730 | `	ph7_class_instance *pThis,` |
 |     - |  731 | `	ph7_class_method *pMethod,` |
@@ -750,49 +750,49 @@ Coverage: 539/625 lines (86.24%)
 |     - |  740 | `	int iCursor;` |
 |     - |  741 | `	int i;` |
 |     - |  742 | `	sxi32 rc;` |
-| 13409 |  743 | `	aStack = VmNewOperandStack(&(*pVm),2+nArg);` |
-| 13409 |  744 | `	if( aStack == 0 ){` |
+| 13411 |  743 | `	aStack = VmNewOperandStack(&(*pVm),2+nArg);` |
+| 13411 |  744 | `	if( aStack == 0 ){` |
 |   ! 0 |  745 | `		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,` |
 |     - |  746 | `			"PH7 is running out of memory while invoking class method");` |
 |   ! 0 |  747 | `		return SXERR_MEM;` |
 |     - |  748 | `	}` |
-| 20329 |  749 | `	for( i = 0 ; i < nArg ; i++ ){` |
-|  6925 |  750 | `		PH7_MemObjLoad(apArg[i],&aStack[i]);` |
-|  6925 |  751 | `		aStack[i].nIdx = apArg[i]->nIdx;` |
-|  3465 |  752 | `	}` |
-| 13409 |  753 | `	iCursor = nArg + 1;` |
-| 13409 |  754 | `	if( pThis ){` |
-| 13351 |  755 | `		pThis->iRef++;` |
-| 13351 |  756 | `		aStack[i].x.pOther = pThis;` |
-| 13351 |  757 | `		aStack[i].iFlags = MEMOBJ_OBJ;` |
-|  6673 |  758 | `	}` |
-| 13409 |  759 | `	aStack[i].nIdx = SXU32_HIGH;` |
-| 13409 |  760 | `	i++;` |
-| 13409 |  761 | `	SyBlobReset(&aStack[i].sBlob);` |
-| 13409 |  762 | `	SyBlobAppend(&aStack[i].sBlob,(const void *)SyStringData(&pMethod->sVmName),SyStringLength(&pMethod->sVmName));` |
-| 13409 |  763 | `	aStack[i].iFlags = MEMOBJ_STRING;` |
-| 13409 |  764 | `	aStack[i].nIdx = SXU32_HIGH;` |
-| 13409 |  765 | `	aInstr[0].iOp = PH7_OP_CALL;` |
-| 13409 |  766 | `	aInstr[0].iP1 = nArg;` |
-| 13409 |  767 | `	aInstr[0].iP2 = 0;` |
-| 13409 |  768 | `	aInstr[0].p3  = (void *)pMap; /* forward named-arg metadata */` |
-| 13409 |  769 | `	aInstr[1].iOp = PH7_OP_DONE;` |
-| 13409 |  770 | `	aInstr[1].iP1 = 1;` |
-| 13409 |  771 | `	aInstr[1].iP2 = 0;` |
-| 13409 |  772 | `	aInstr[1].p3  = 0;` |
+| 20333 |  749 | `	for( i = 0 ; i < nArg ; i++ ){` |
+|  6927 |  750 | `		PH7_MemObjLoad(apArg[i],&aStack[i]);` |
+|  6927 |  751 | `		aStack[i].nIdx = apArg[i]->nIdx;` |
+|  3466 |  752 | `	}` |
+| 13411 |  753 | `	iCursor = nArg + 1;` |
+| 13411 |  754 | `	if( pThis ){` |
+| 13353 |  755 | `		pThis->iRef++;` |
+| 13353 |  756 | `		aStack[i].x.pOther = pThis;` |
+| 13353 |  757 | `		aStack[i].iFlags = MEMOBJ_OBJ;` |
+|  6674 |  758 | `	}` |
+| 13411 |  759 | `	aStack[i].nIdx = SXU32_HIGH;` |
+| 13411 |  760 | `	i++;` |
+| 13411 |  761 | `	SyBlobReset(&aStack[i].sBlob);` |
+| 13411 |  762 | `	SyBlobAppend(&aStack[i].sBlob,(const void *)SyStringData(&pMethod->sVmName),SyStringLength(&pMethod->sVmName));` |
+| 13411 |  763 | `	aStack[i].iFlags = MEMOBJ_STRING;` |
+| 13411 |  764 | `	aStack[i].nIdx = SXU32_HIGH;` |
+| 13411 |  765 | `	aInstr[0].iOp = PH7_OP_CALL;` |
+| 13411 |  766 | `	aInstr[0].iP1 = nArg;` |
+| 13411 |  767 | `	aInstr[0].iP2 = 0;` |
+| 13411 |  768 | `	aInstr[0].p3  = (void *)pMap; /* forward named-arg metadata */` |
+| 13411 |  769 | `	aInstr[1].iOp = PH7_OP_DONE;` |
+| 13411 |  770 | `	aInstr[1].iP1 = 1;` |
+| 13411 |  771 | `	aInstr[1].iP2 = 0;` |
+| 13411 |  772 | `	aInstr[1].p3  = 0;` |
 |     - |  773 | `	{` |
-| 13409 |  774 | `		sxu32 nStkCap = (sxu32)(2+nArg) + VM_STACK_GUARD; /* what VmNewOperandStack handed out */` |
-| 13409 |  775 | `		rc = VmByteCodeExec(&(*pVm),aInstr,aStack,iCursor,pResult,0,TRUE,0,0,FALSE,0,&aStack,&nStkCap,nStkCap);` |
+| 13411 |  774 | `		sxu32 nStkCap = (sxu32)(2+nArg) + VM_STACK_GUARD; /* what VmNewOperandStack handed out */` |
+| 13411 |  775 | `		rc = VmByteCodeExec(&(*pVm),aInstr,aStack,iCursor,pResult,0,TRUE,0,0,FALSE,0,&aStack,&nStkCap,nStkCap);` |
 |     - |  776 | `	}` |
-| 13409 |  777 | `	SyMemBackendFree(&pVm->sAllocator,aStack);` |
+| 13411 |  777 | `	SyMemBackendFree(&pVm->sAllocator,aStack);` |
 |     - |  778 | `	/* Propagate the real exec status (PH7_EXCEPTION / PH7_ABORT) so callers` |
 |     - |  779 | `	 * can unwind instead of continuing past a method that raised — and park` |
 |     - |  780 | `	 * it on the VM for the callers that CAN'T (the fetch-point router lands` |
 |     - |  781 | `	 * it; see VmBoundaryPark). */` |
-| 13409 |  782 | `	VmBoundaryPark(&(*pVm),rc);` |
-| 13409 |  783 | `	return rc;` |
-|  6707 |  784 | `}` |
-| 10198 |  785 | `PH7_PRIVATE sxi32 PH7_VmCallClassMethod(` |
+| 13411 |  782 | `	VmBoundaryPark(&(*pVm),rc);` |
+| 13411 |  783 | `	return rc;` |
+|  6708 |  784 | `}` |
+| 10200 |  785 | `PH7_PRIVATE sxi32 PH7_VmCallClassMethod(` |
 |     - |  786 | `	ph7_vm *pVm,               /* Target VM */` |
 |     - |  787 | `	ph7_class_instance *pThis, /* Target class instance [i.e: Object in the PHP jargon]*/` |
 |     - |  788 | `	ph7_class_method *pMethod, /* Method name */` |
@@ -801,7 +801,7 @@ Coverage: 539/625 lines (86.24%)
 |     - |  791 | `	ph7_value **apArg          /* Method arguments */` |
 |     - |  792 | `	)` |
 |     5 |  793 | `{` |
-| 10203 |  794 | `	return VmCallClassMethodWithMap(pVm,pThis,pMethod,pResult,nArg,apArg,0);` |
+| 10205 |  794 | `	return VmCallClassMethodWithMap(pVm,pThis,pMethod,pResult,nArg,apArg,0);` |
 |     5 |  795 | `}` |
 |     - |  796 | `/*` |
 |     - |  797 | ` * Like PH7_VmCallClassMethod but forwarding named-argument metadata` |

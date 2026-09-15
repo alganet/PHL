@@ -2402,39 +2402,39 @@ Coverage: 2018/2696 lines (74.85%)
 |        - | 2392 | ` * the stream has no valid name at the current position (pGen->pIn is left` |
 |        - | 2393 | ` * untouched in that case so the caller can produce its own diagnostic).` |
 |        - | 2394 | ` */` |
-|   506708 | 2395 | `PH7_PRIVATE sxi32 GenStateParseClassReference(ph7_gen_state *pGen,SyBlob *pFqn)` |
+|   506710 | 2395 | `PH7_PRIVATE sxi32 GenStateParseClassReference(ph7_gen_state *pGen,SyBlob *pFqn)` |
 |        5 | 2396 | `{` |
-|   506713 | 2397 | `	int isAbsolute = 0;` |
-|   506713 | 2398 | `	SyToken *pStart = pGen->pIn;` |
+|   506715 | 2397 | `	int isAbsolute = 0;` |
+|   506715 | 2398 | `	SyToken *pStart = pGen->pIn;` |
 |        - | 2399 | `	SyBlob sName;` |
-|   506713 | 2400 | `	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_NSSEP) ){` |
-|     4517 | 2401 | `		isAbsolute = 1;` |
-|     4517 | 2402 | `		pGen->pIn++;` |
-|     2256 | 2403 | `	}` |
-|   506713 | 2404 | `	if( pGen->pIn >= pGen->pEnd \|\| (pGen->pIn->nType & (PH7_TK_ID\|PH7_TK_KEYWORD)) == 0 ){` |
+|   506715 | 2400 | `	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_NSSEP) ){` |
+|     4519 | 2401 | `		isAbsolute = 1;` |
+|     4519 | 2402 | `		pGen->pIn++;` |
+|     2257 | 2403 | `	}` |
+|   506715 | 2404 | `	if( pGen->pIn >= pGen->pEnd \|\| (pGen->pIn->nType & (PH7_TK_ID\|PH7_TK_KEYWORD)) == 0 ){` |
 |        8 | 2405 | `		pGen->pIn = pStart;` |
 |        8 | 2406 | `		return SXERR_INVALID;` |
 |        - | 2407 | `	}` |
-|   506707 | 2408 | `	SyBlobInit(&sName,&pGen->pVm->sAllocator);` |
-|   506707 | 2409 | `	SyBlobAppend(&sName,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);` |
-|   506707 | 2410 | `	pGen->pIn++;` |
-|   760092 | 2411 | `	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_NSSEP) &&` |
-|   253395 | 2412 | `		&pGen->pIn[1] < pGen->pEnd && (pGen->pIn[1].nType & (PH7_TK_ID\|PH7_TK_KEYWORD)) ){` |
+|   506709 | 2408 | `	SyBlobInit(&sName,&pGen->pVm->sAllocator);` |
+|   506709 | 2409 | `	SyBlobAppend(&sName,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);` |
+|   506709 | 2410 | `	pGen->pIn++;` |
+|   760095 | 2411 | `	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_NSSEP) &&` |
+|   253396 | 2412 | `		&pGen->pIn[1] < pGen->pEnd && (pGen->pIn[1].nType & (PH7_TK_ID\|PH7_TK_KEYWORD)) ){` |
 |       28 | 2413 | `		SyBlobAppend(&sName,"\\",1);` |
 |       28 | 2414 | `		pGen->pIn++;` |
 |       28 | 2415 | `		SyBlobAppend(&sName,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);` |
 |       28 | 2416 | `		pGen->pIn++;` |
 |        2 | 2417 | `	}` |
-|   506707 | 2418 | `	if( isAbsolute ){` |
-|     4515 | 2419 | `		SyBlobAppend(pFqn,(const char *)SyBlobData(&sName),SyBlobLength(&sName));` |
-|     2260 | 2420 | `	}else{` |
+|   506709 | 2418 | `	if( isAbsolute ){` |
+|     4517 | 2419 | `		SyBlobAppend(pFqn,(const char *)SyBlobData(&sName),SyBlobLength(&sName));` |
+|     2261 | 2420 | `	}else{` |
 |        - | 2421 | `		SyString sRaw;` |
 |   502197 | 2422 | `		SyStringInitFromBuf(&sRaw,(const char *)SyBlobData(&sName),SyBlobLength(&sName));` |
 |   502197 | 2423 | `		GenStateResolveName(pGen,&sRaw,pFqn);` |
 |        - | 2424 | `	}` |
-|   506707 | 2425 | `	SyBlobRelease(&sName);` |
-|   506707 | 2426 | `	return SXRET_OK;` |
-|   253359 | 2427 | `}` |
+|   506709 | 2425 | `	SyBlobRelease(&sName);` |
+|   506709 | 2426 | `	return SXRET_OK;` |
+|   253360 | 2427 | `}` |
 |        - | 2428 | `/*` |
 |        - | 2429 | ` * Return TRUE if pInterface is Throwable or transitively extends Throwable.` |
 |        - | 2430 | `` * Walks both the interface `extends` chain (pBase) and any parent-interface`` |

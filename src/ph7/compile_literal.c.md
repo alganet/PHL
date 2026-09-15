@@ -384,9 +384,9 @@ Coverage: 945/1060 lines (89.15%)
 |  5153887 |  374 | `	bHasEsc = 0;` |
 |        - |  375 | `	{` |
 |        - |  376 | `		const char *zScan;` |
-| 61586091 |  377 | `		for( zScan = zIn ; zScan < zEnd ; zScan++ ){` |
-| 56513871 |  378 | `			if( zScan[0] == '\\' ){ bHasEsc = 1; break; }` |
-| 28216107 |  379 | `		}` |
+| 61586071 |  377 | `		for( zScan = zIn ; zScan < zEnd ; zScan++ ){` |
+| 56513851 |  378 | `			if( zScan[0] == '\\' ){ bHasEsc = 1; break; }` |
+| 28216097 |  379 | `		}` |
 |        - |  380 | `	}` |
 |  5153887 |  381 | `	if( !bHasEsc && SXRET_OK == GenStateFindLiteral(&(*pGen),pStr,&nIdx) ){` |
 |        - |  382 | `		/* Already processed,emit the load constant instruction` |
@@ -746,45 +746,45 @@ Coverage: 945/1060 lines (89.15%)
 |        - |  736 | `	/* Compile the node */` |
 |   124655 |  737 | `	iCons = 0;` |
 |    63506 |  738 | `	for(;;){` |
-|   171423 |  739 | `		zCur = zIn;` |
-|  1679293 |  740 | `		while( zIn < zEnd && zIn[0] != '\\'  ){` |
-|  1510241 |  741 | `			if( zIn[0] == '{' && &zIn[1] < zEnd && zIn[1] == '$' ){` |
+|   171425 |  739 | `		zCur = zIn;` |
+|  1679287 |  740 | `		while( zIn < zEnd && zIn[0] != '\\'  ){` |
+|  1510233 |  741 | `			if( zIn[0] == '{' && &zIn[1] < zEnd && zIn[1] == '$' ){` |
 |       84 |  742 | `				break;` |
-|  1510084 |  743 | `			}else if(zIn[0] == '$' && &zIn[1] < zEnd &&` |
+|  1510076 |  743 | `			}else if(zIn[0] == '$' && &zIn[1] < zEnd &&` |
 |     2214 |  744 | `				(((unsigned char)zIn[1] >= 0xc0 \|\| SyisAlpha(zIn[1]) \|\| zIn[1] == '{' \|\| zIn[1] == '_')) ){` |
 |     1107 |  745 | `					break;` |
 |        - |  746 | `			}` |
-|  1507875 |  747 | `			zIn++;` |
+|  1507867 |  747 | `			zIn++;` |
 |        5 |  748 | `		}` |
-|   171423 |  749 | `		if( zIn > zCur ){` |
-|    95721 |  750 | `			if( pObj == 0 ){` |
-|    95069 |  751 | `				pObj = GenStateNewStrObj(&(*pGen),&iCons);` |
-|    95069 |  752 | `				if( pObj == 0 ){` |
+|   171425 |  749 | `		if( zIn > zCur ){` |
+|    95719 |  750 | `			if( pObj == 0 ){` |
+|    95067 |  751 | `				pObj = GenStateNewStrObj(&(*pGen),&iCons);` |
+|    95067 |  752 | `				if( pObj == 0 ){` |
 |      ! 0 |  753 | `					return SXERR_ABORT;` |
 |        - |  754 | `				}` |
-|    47532 |  755 | `			}` |
-|    95721 |  756 | `			PH7_MemObjStringAppend(pObj,zCur,(sxu32)(zIn-zCur));` |
-|    47858 |  757 | `		}` |
-|   171423 |  758 | `		if( zIn >= zEnd ){` |
+|    47531 |  755 | `			}` |
+|    95719 |  756 | `			PH7_MemObjStringAppend(pObj,zCur,(sxu32)(zIn-zCur));` |
+|    47857 |  757 | `		}` |
+|   171425 |  758 | `		if( zIn >= zEnd ){` |
 |   124651 |  759 | `			break;` |
 |        - |  760 | `		}` |
-|    46777 |  761 | `		if( zIn[0] == '\\' ){` |
-|    44411 |  762 | `			const char *zPtr = 0;` |
+|    46779 |  761 | `		if( zIn[0] == '\\' ){` |
+|    44413 |  762 | `			const char *zPtr = 0;` |
 |        - |  763 | `			sxu32 n;` |
-|    44411 |  764 | `			zIn++;` |
-|    44411 |  765 | `			if( pObj == 0 ){` |
-|    31285 |  766 | `				pObj = GenStateNewStrObj(&(*pGen),&iCons);` |
-|    31285 |  767 | `				if( pObj == 0 ){` |
+|    44413 |  764 | `			zIn++;` |
+|    44413 |  765 | `			if( pObj == 0 ){` |
+|    31287 |  766 | `				pObj = GenStateNewStrObj(&(*pGen),&iCons);` |
+|    31287 |  767 | `				if( pObj == 0 ){` |
 |      ! 0 |  768 | `					return SXERR_ABORT;` |
 |        - |  769 | `				}` |
-|    15640 |  770 | `			}` |
-|    44411 |  771 | `			if( zIn >= zEnd ){` |
+|    15641 |  770 | `			}` |
+|    44413 |  771 | `			if( zIn >= zEnd ){` |
 |        - |  772 | `				/* Lone backslash at the very end of the body: php keeps it */` |
 |        3 |  773 | `				PH7_MemObjStringAppend(pObj,"\\",sizeof(char));` |
 |        3 |  774 | `				break;` |
 |        - |  775 | `			}` |
-|    44409 |  776 | `			n = sizeof(char); /* size of conversion */` |
-|    44409 |  777 | `			switch( zIn[0] ){` |
+|    44411 |  776 | `			n = sizeof(char); /* size of conversion */` |
+|    44411 |  777 | `			switch( zIn[0] ){` |
 |       17 |  778 | `			case '$':` |
 |        - |  779 | `				/* Dollar sign */` |
 |       37 |  780 | `				PH7_MemObjStringAppend(pObj,"$",sizeof(char));` |
@@ -801,10 +801,10 @@ Coverage: 945/1060 lines (89.15%)
 |        - |  791 | `				/* Form-feed (FF)[ctrl+l] ASCII code 12 */` |
 |        9 |  792 | `				PH7_MemObjStringAppend(pObj,"\f",sizeof(char));` |
 |        9 |  793 | `				break;` |
-|    19692 |  794 | `			case 'n':` |
+|    19693 |  794 | `			case 'n':` |
 |        - |  795 | `				/* Line feed(new line) (LF)[ctrl+j] ASCII code 10 */` |
-|    39389 |  796 | `				PH7_MemObjStringAppend(pObj,"\n",sizeof(char));` |
-|    39389 |  797 | `				break;` |
+|    39391 |  796 | `				PH7_MemObjStringAppend(pObj,"\n",sizeof(char));` |
+|    39391 |  797 | `				break;` |
 |       27 |  798 | `			case 'r':` |
 |        - |  799 | `				/* Carriage return (CR)[ctrl+m] ASCII code 13 */` |
 |       59 |  800 | `				PH7_MemObjStringAppend(pObj,"\r",sizeof(char));` |
@@ -927,8 +927,8 @@ Coverage: 945/1060 lines (89.15%)
 |       30 |  917 | `				break;` |
 |        - |  918 | `			}` |
 |        - |  919 | `			/* Advance the stream cursor */` |
-|    44409 |  920 | `			zIn += n;` |
-|    44409 |  921 | `			continue;` |
+|    44411 |  920 | `			zIn += n;` |
+|    44411 |  921 | `			continue;` |
 |        - |  922 | `		}` |
 |     2371 |  923 | `		if( zIn[0] == '{' ){` |
 |        - |  924 | `			/* Curly syntax */` |
