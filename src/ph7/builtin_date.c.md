@@ -28,12 +28,12 @@ Coverage: 647/722 lines (89.61%)
 |    - |   18 | ` * broken-down civil fields and the timestamp they came from: for localtime()` |
 |    - |   19 | ` * fills this yields the local UTC offset, for gmtime() fills it yields 0.` |
 |    - |   20 | ` */` |
-|  420 |   21 | `static void DtSytmFillOffset(Sytm *pSTm,time_t t)` |
+|  422 |   21 | `static void DtSytmFillOffset(Sytm *pSTm,time_t t)` |
 |    1 |   22 | `{` |
-|  631 |   23 | `	sxi64 iCivil = DtDaysFromCivil((sxi64)pSTm->tm_year,pSTm->tm_mon+1,pSTm->tm_mday) * 86400` |
-|  420 |   24 | `		+ (sxi64)pSTm->tm_hour*3600 + (sxi64)pSTm->tm_min*60 + (sxi64)pSTm->tm_sec;` |
-|  421 |   25 | `	pSTm->tm_gmtoff = (long)(iCivil - (sxi64)t);` |
-|  421 |   26 | `}` |
+|  634 |   23 | `	sxi64 iCivil = DtDaysFromCivil((sxi64)pSTm->tm_year,pSTm->tm_mon+1,pSTm->tm_mday) * 86400` |
+|  422 |   24 | `		+ (sxi64)pSTm->tm_hour*3600 + (sxi64)pSTm->tm_min*60 + (sxi64)pSTm->tm_sec;` |
+|  423 |   25 | `	pSTm->tm_gmtoff = (long)(iCivil - (sxi64)t);` |
+|  423 |   26 | `}` |
 |    - |   27 | `#ifdef __WINNT__` |
 |    - |   28 | `#ifdef _MSC_VER` |
 |    - |   29 | `#if _MSC_VER >= 1400 /* Visual Studio 2005 and up */` |
@@ -1081,24 +1081,24 @@ Coverage: 647/722 lines (89.61%)
 |    - | 1071 | ` * Return` |
 |    - | 1072 | ` *  An integer.` |
 |    - | 1073 | ` */` |
-|  176 | 1074 | `PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  178 | 1074 | `PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    2 | 1075 | `{` |
 |    - | 1076 | `	const char *zFormat;` |
-|  178 | 1077 | `	ph7_int64 iVal = 0;` |
+|  180 | 1077 | `	ph7_int64 iVal = 0;` |
 |    - | 1078 | `	int nLen;` |
 |    - | 1079 | `	Sytm sTm;` |
-|  178 | 1080 | `	time_t t = 0; /* The resolved timestamp; 'U' must report THIS, not time(0) */` |
-|  178 | 1081 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|  180 | 1080 | `	time_t t = 0; /* The resolved timestamp; 'U' must report THIS, not time(0) */` |
+|  180 | 1081 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
 |    - | 1082 | `		/* Missing/Invalid argument,return -1 */` |
 |  ! 0 | 1083 | `		ph7_result_int(pCtx,-1);` |
 |  ! 0 | 1084 | `		return PH7_OK;` |
 |    - | 1085 | `	}` |
-|  178 | 1086 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
-|  178 | 1087 | `	if( nLen < 1 ){` |
+|  180 | 1086 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
+|  180 | 1087 | `	if( nLen < 1 ){` |
 |    - | 1088 | `		/* Don't bother processing return -1*/` |
 |  ! 0 | 1089 | `		ph7_result_int(pCtx,-1);` |
 |  ! 0 | 1090 | `	}` |
-|  178 | 1091 | `	if( nArg < 2 ){` |
+|  180 | 1091 | `	if( nArg < 2 ){` |
 |    - | 1092 | `#ifdef __WINNT__` |
 |    - | 1093 | `		SYSTEMTIME sOS;` |
 |    2 | 1094 | `		GetSystemTime(&sOS);` |
@@ -1114,21 +1114,21 @@ Coverage: 647/722 lines (89.61%)
 |    9 | 1104 | `	}else{` |
 |    - | 1105 | `		/* Use the given timestamp */` |
 |    - | 1106 | `		struct tm *pTm;` |
-|  163 | 1107 | `		if( ph7_value_is_int(apArg[1]) ){` |
-|  163 | 1108 | `			t = (time_t)ph7_value_to_int64(apArg[1]);` |
-|  163 | 1109 | `			pTm = gmtime(&t);` |
-|  163 | 1110 | `			if( pTm == 0 ){` |
+|  165 | 1107 | `		if( ph7_value_is_int(apArg[1]) ){` |
+|  165 | 1108 | `			t = (time_t)ph7_value_to_int64(apArg[1]);` |
+|  165 | 1109 | `			pTm = gmtime(&t);` |
+|  165 | 1110 | `			if( pTm == 0 ){` |
 |  ! 0 | 1111 | `				time(&t);` |
 |  ! 0 | 1112 | `			}` |
-|   82 | 1113 | `		}else{` |
+|   83 | 1113 | `		}else{` |
 |  ! 0 | 1114 | `			time(&t);` |
 |    - | 1115 | `		}` |
-|  163 | 1116 | `		pTm = gmtime(&t);` |
-|  163 | 1117 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
-|  163 | 1118 | `		DtSytmFillOffset(&sTm,t);` |
+|  165 | 1116 | `		pTm = gmtime(&t);` |
+|  165 | 1117 | `		STRUCT_TM_TO_SYTM(pTm,&sTm);` |
+|  165 | 1118 | `		DtSytmFillOffset(&sTm,t);` |
 |    - | 1119 | `	}` |
 |    - | 1120 | `	/* Perform the requested operation */` |
-|  178 | 1121 | `	switch(zFormat[0]){` |
+|  180 | 1121 | `	switch(zFormat[0]){` |
 |    9 | 1122 | `	case 'd':` |
 |    - | 1123 | `	case 'j':` |
 |    - | 1124 | `		/* Day of the month ('j' differs from 'd' only in zero padding, which an` |
@@ -1243,19 +1243,19 @@ Coverage: 647/722 lines (89.61%)
 |    - | 1233 | `		/*Timezone offset in seconds*/` |
 |  ! 0 | 1234 | `		iVal = sTm.tm_gmtoff;` |
 |  ! 0 | 1235 | `		break;` |
-|    1 | 1236 | `	default:` |
+|    2 | 1236 | `	default:` |
 |    - | 1237 | `		/* unknown format,throw a warning */` |
-|    3 | 1238 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Unrecognized date format token");` |
+|    6 | 1238 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Unrecognized date format token");` |
 |    - | 1239 | `		/* php returns FALSE for an unrecognized token, not 0 — the two are` |
 |    - | 1240 | ``		 * distinguishable (`idate($t) === false` is the documented check) and`` |
 |    - | 1241 | `		 * 0 is a legitimate result for several real tokens. */` |
-|    3 | 1242 | `		ph7_result_bool(pCtx,0);` |
-|    3 | 1243 | `		return PH7_OK;` |
+|    6 | 1242 | `		ph7_result_bool(pCtx,0);` |
+|    6 | 1243 | `		return PH7_OK;` |
 |    - | 1244 | `	}` |
 |    - | 1245 | `	/* Return the time value */` |
 |  175 | 1246 | `	ph7_result_int64(pCtx,iVal);` |
 |  175 | 1247 | `	return PH7_OK;` |
-|   90 | 1248 | `}` |
+|   91 | 1248 | `}` |
 |    - | 1249 | `/*` |
 |    - | 1250 | ` * int mktime/gmmktime([ int $hour = date("H") [, int $minute = date("i") [, int $second = date("s")` |
 |    - | 1251 | ` *  [, int $month = date("n") [, int $day = date("j") [, int $year = date("Y") [, int $is_dst = -1 ]]]]]]] )` |

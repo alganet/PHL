@@ -37,49 +37,49 @@ Coverage: 272/340 lines (80.00%)
 |      - |   27 | ` * OP_FOREACH_STEP arm of VmByteCodeExecBody; arm-terminal breaks became` |
 |      - |   28 | ` * VM_EXIT_BREAK.` |
 |      - |   29 | ` */` |
-| 260512 |   30 | `PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
+| 260526 |   30 | `PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
 |      5 |   31 | `{` |
-| 260517 |   32 | `	ph7_value *pTos = pState->pTos;` |
-| 260517 |   33 | `	ph7_value *pStack = pState->pStack;` |
-| 260517 |   34 | `	VmInstr *aInstr = pState->aInstr;` |
-| 260517 |   35 | `	sxi32 pc = pState->pc;` |
+| 260531 |   32 | `	ph7_value *pTos = pState->pTos;` |
+| 260531 |   33 | `	ph7_value *pStack = pState->pStack;` |
+| 260531 |   34 | `	VmInstr *aInstr = pState->aInstr;` |
+| 260531 |   35 | `	sxi32 pc = pState->pc;` |
 |      - |   36 | `	sxi32 rc;` |
-| 260517 |   37 | `	ph7_foreach_info *pInfo = (ph7_foreach_info *)pInstr->p3;` |
+| 260531 |   37 | `	ph7_foreach_info *pInfo = (ph7_foreach_info *)pInstr->p3;` |
 |      - |   38 | `	ph7_foreach_step **apStep,*pStep;` |
 |      - |   39 | `	ph7_value *pValue;` |
 |      - |   40 | `	VmFrame *pFrameLocal;` |
 |      - |   41 | `	sxu32 nStep;` |
-| 260517 |   42 | `	pFrameLocal = pVm->pFrame;` |
-| 260517 |   43 | `	pFrameLocal = VmSkipExceptionFrames(pFrameLocal);` |
+| 260531 |   42 | `	pFrameLocal = pVm->pFrame;` |
+| 260531 |   43 | `	pFrameLocal = VmSkipExceptionFrames(pFrameLocal);` |
 |      - |   44 | `	/* Select THIS activation's step. aStep is per-STATEMENT and shared by every` |
 |      - |   45 | `	 * activation, so peeking the last entry resumes onto a sibling's cursor when` |
 |      - |   46 | `	 * two instances of one generator/fiber are suspended in the same textual` |
 |      - |   47 | `	 * foreach. Scan from the top (most-recent push) for the step whose owning` |
 |      - |   48 | `	 * frame matches the running activation; top-down makes the current push win` |
 |      - |   49 | `	 * over any leaked older step that happens to share a recycled frame address. */` |
-| 260517 |   50 | `	apStep = (ph7_foreach_step **)SySetBasePtr(&pInfo->aStep);` |
-| 260517 |   51 | `	nStep = SySetUsed(&pInfo->aStep);` |
-| 260517 |   52 | `	if( nStep < 1 ){` |
+| 260531 |   50 | `	apStep = (ph7_foreach_step **)SySetBasePtr(&pInfo->aStep);` |
+| 260531 |   51 | `	nStep = SySetUsed(&pInfo->aStep);` |
+| 260531 |   52 | `	if( nStep < 1 ){` |
 |      - |   53 | `		/* Defensive: OP_FOREACH_INIT always pushes this activation's step before` |
 |      - |   54 | `		 * STEP runs (and jumps past the loop when the push fails), so an empty` |
 |      - |   55 | `		 * set is unreachable — guard the apStep[-1] read anyway. Jump out. */` |
 |    ! 0 |   56 | `		pc = pInstr->iP2 - 1;` |
 |    ! 0 |   57 | `		VM_EXIT_BREAK;` |
 |      - |   58 | `	}` |
-| 260517 |   59 | `	pStep = apStep[nStep - 1];` |
-| 260543 |   60 | `	while( nStep > 0 ){` |
-| 260543 |   61 | `		if( apStep[nStep - 1]->pFrame == pFrameLocal ){` |
-| 260517 |   62 | `			pStep = apStep[nStep - 1];` |
-| 260517 |   63 | `			break;` |
+| 260531 |   59 | `	pStep = apStep[nStep - 1];` |
+| 260557 |   60 | `	while( nStep > 0 ){` |
+| 260557 |   61 | `		if( apStep[nStep - 1]->pFrame == pFrameLocal ){` |
+| 260531 |   62 | `			pStep = apStep[nStep - 1];` |
+| 260531 |   63 | `			break;` |
 |      - |   64 | `		}` |
 |     27 |   65 | `		nStep--;` |
 |      1 |   66 | `	}` |
-| 260517 |   67 | `	if( pStep->iFlags & PH7_4EACH_STEP_HASHMAP ){` |
+| 260531 |   67 | `	if( pStep->iFlags & PH7_4EACH_STEP_HASHMAP ){` |
 |      - |   68 | `		ph7_hashmap_node *pNode;` |
 |      - |   69 | `		/* Extract the current node via this loop's PRIVATE cursor (php:` |
 |      - |   70 | `		 * nested foreach over the same array are independent iterations) */` |
-| 259131 |   71 | `		pNode = pStep->pCursor;` |
-| 259131 |   72 | `		if( pNode == 0 ){` |
+| 259145 |   71 | `		pNode = pStep->pCursor;` |
+| 259145 |   72 | `		if( pNode == 0 ){` |
 |      - |   73 | `			/* No more entry to process */` |
 |  23573 |   74 | `			pc = pInstr->iP2 - 1; /* Jump to this destination */` |
 |  23573 |   75 | `			if( pStep->iFlags & PH7_4EACH_STEP_REF ){` |
@@ -90,14 +90,14 @@ Coverage: 272/340 lines (80.00%)
 |  23573 |   80 | `			VmForeachHashmapStepRelease(&(*pVm),pInfo,pStep,TRUE);` |
 |  11789 |   81 | `		}else{` |
 |      - |   82 | `			/* Advance the private cursor */` |
-| 235563 |   83 | `			pStep->pCursor = pNode->pPrev; /* Reverse link */` |
-| 235563 |   84 | `			if( (pStep->iFlags & PH7_4EACH_STEP_KEY) && SyStringLength(&pInfo->sKey) > 0 ){` |
+| 235577 |   83 | `			pStep->pCursor = pNode->pPrev; /* Reverse link */` |
+| 235577 |   84 | `			if( (pStep->iFlags & PH7_4EACH_STEP_KEY) && SyStringLength(&pInfo->sKey) > 0 ){` |
 |   6863 |   85 | `				ph7_value *pKey = VmExtractMemObj(&(*pVm),&pInfo->sKey,FALSE,TRUE);` |
 |   6863 |   86 | `				if( pKey ){` |
 |   6863 |   87 | `					PH7_HashmapExtractNodeKey(pNode,pKey);` |
 |   3429 |   88 | `				}` |
 |   3429 |   89 | `			}` |
-| 235563 |   90 | `			if( pStep->iFlags & PH7_4EACH_STEP_REF ){` |
+| 235577 |   90 | `			if( pStep->iFlags & PH7_4EACH_STEP_REF ){` |
 |      - |   91 | `				SyHashEntry *pEntry;` |
 |      - |   92 | `				/* Pass by reference */` |
 |     73 |   93 | `				pEntry = SyHashGet(&pFrameLocal->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue));` |
@@ -109,13 +109,13 @@ Coverage: 272/340 lines (80.00%)
 |      - |   99 | `				}` |
 |     38 |  100 | `			}else{` |
 |      - |  101 | `				/* Make a copy of the entry value */` |
-| 235493 |  102 | `				pValue = VmExtractMemObj(&(*pVm),&pInfo->sValue,FALSE,TRUE);` |
-| 235493 |  103 | `				if( pValue ){` |
-| 235493 |  104 | `					PH7_HashmapExtractNodeValue(pNode,pValue,TRUE);` |
-| 117744 |  105 | `				}` |
+| 235507 |  102 | `				pValue = VmExtractMemObj(&(*pVm),&pInfo->sValue,FALSE,TRUE);` |
+| 235507 |  103 | `				if( pValue ){` |
+| 235507 |  104 | `					PH7_HashmapExtractNodeValue(pNode,pValue,TRUE);` |
+| 117751 |  105 | `				}` |
 |      - |  106 | `			}` |
 |      5 |  107 | `		}` |
-| 130954 |  108 | `	}else if( pStep->iFlags & PH7_4EACH_STEP_ITERATOR ){` |
+| 130961 |  108 | `	}else if( pStep->iFlags & PH7_4EACH_STEP_ITERATOR ){` |
 |      - |  109 | `		/* Iterator-based iteration.` |
 |      - |  110 | `		 * Sequence: on first call just check valid/current/key.` |
 |      - |  111 | `		 * On subsequent calls, advance with next() first, then check.` |
@@ -312,8 +312,8 @@ Coverage: 272/340 lines (80.00%)
 |     21 |  302 | `			}` |
 |      - |  303 | `		}` |
 |      - |  304 | `	}` |
-| 260493 |  305 | `	VM_EXIT_BREAK;` |
-| 130261 |  306 | `}` |
+| 260507 |  305 | `	VM_EXIT_BREAK;` |
+| 130268 |  306 | `}` |
 |      - |  307 |  |
 |      - |  308 | `/*` |
 |      - |  309 | ` * OP_FOREACH_INIT: body moved verbatim from the OP_FOREACH_INIT arm of` |

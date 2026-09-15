@@ -41,27 +41,27 @@ Coverage: 382/420 lines (90.95%)
 |     ! 0 |   31 | `		return SXRET_OK;` |
 |       - |   32 | `	}` |
 |       - |   33 | `	/* Iterate over available arguments */` |
-|  148027 |   34 | `	for( i = 0 ; i < nArg ; ++i ){` |
+|  148035 |   34 | `	for( i = 0 ; i < nArg ; ++i ){` |
 |  115259 |   35 | `		pObj = apArg[i];` |
 |  115259 |   36 | `		if( pObj->nIdx == SXU32_HIGH ){` |
 |       - |   37 | `			/* Skip the "expecting a variable" warning for MEMOBJ_BOOL —` |
 |       - |   38 | `			 * synthesized by LOAD_IDX iP2=4 (ArrayAccess::offsetExists) and` |
 |       - |   39 | `			 * by anyone passing a bool literal (rare, harmless). */` |
-|   79659 |   40 | `			if( (pObj->iFlags & (MEMOBJ_NULL\|MEMOBJ_BOOL)) == 0 ){` |
+|   79651 |   40 | `			if( (pObj->iFlags & (MEMOBJ_NULL\|MEMOBJ_BOOL)) == 0 ){` |
 |       - |   41 | `				/* Not so fatal,Throw a warning */` |
 |     ! 0 |   42 | `				ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting a variable not a constant");` |
 |     ! 0 |   43 | `			}` |
-|   39827 |   44 | `		}` |
+|   39823 |   44 | `		}` |
 |  115259 |   45 | `		res = (pObj->iFlags & MEMOBJ_NULL) ? 0 : 1;` |
 |  115259 |   46 | `		if( !res ){` |
 |       - |   47 | `			/* Variable not set,return FALSE */` |
-|   82479 |   48 | `			ph7_result_bool(pCtx,0);` |
-|   82479 |   49 | `			return SXRET_OK;` |
+|   82471 |   48 | `			ph7_result_bool(pCtx,0);` |
+|   82471 |   49 | `			return SXRET_OK;` |
 |       - |   50 | `		}` |
-|   16395 |   51 | `	}` |
+|   16399 |   51 | `	}` |
 |       - |   52 | `	/* All given variable are set,return TRUE */` |
-|   32773 |   53 | `	ph7_result_bool(pCtx,1);` |
-|   32773 |   54 | `	return SXRET_OK;` |
+|   32781 |   53 | `	ph7_result_bool(pCtx,1);` |
+|   32781 |   54 | `	return SXRET_OK;` |
 |   57626 |   55 | `}` |
 |       - |   56 | `/*` |
 |       - |   57 | ` * Unset a memory object [i.e: a ph7_value],remove it from the current` |
@@ -219,30 +219,30 @@ Coverage: 382/420 lines (90.95%)
 |       3 |  209 | `	}` |
 |  709843 |  210 | `	return nLive > 0;` |
 |  354924 |  211 | `}` |
-| 4231869 |  212 | `PH7_PRIVATE sxi32 PH7_VmUnsetMemObj(ph7_vm *pVm,sxu32 nObjIdx,int bForce)` |
+| 4231899 |  212 | `PH7_PRIVATE sxi32 PH7_VmUnsetMemObj(ph7_vm *pVm,sxu32 nObjIdx,int bForce)` |
 |       5 |  213 | `{` |
 |       - |  214 | `	ph7_value *pObj;` |
 |       - |  215 | `	VmRefObj *pRef;` |
-| 4231874 |  216 | `	pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nObjIdx);` |
-| 4231874 |  217 | `	if( pObj ){` |
+| 4231904 |  216 | `	pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nObjIdx);` |
+| 4231904 |  217 | `	if( pObj ){` |
 |       - |  218 | `		/* Release the object */` |
-| 4231874 |  219 | `		PH7_MemObjRelease(pObj);` |
-| 2116549 |  220 | `	}` |
+| 4231904 |  219 | `		PH7_MemObjRelease(pObj);` |
+| 2116567 |  220 | `	}` |
 |       - |  221 | `	/* Remove old reference links */` |
-| 4231874 |  222 | `	pRef = VmRefObjExtract(&(*pVm),nObjIdx);` |
-| 4231874 |  223 | `	if( pRef ){` |
-| 4231874 |  224 | `		sxi32 iFlags = pRef->iFlags;` |
+| 4231904 |  222 | `	pRef = VmRefObjExtract(&(*pVm),nObjIdx);` |
+| 4231904 |  223 | `	if( pRef ){` |
+| 4231904 |  224 | `		sxi32 iFlags = pRef->iFlags;` |
 |       - |  225 | `		/* Unlink from the reference table */` |
-| 4231874 |  226 | `		VmRefObjUnlink(&(*pVm),pRef);` |
-| 4231874 |  227 | `		if( (bForce == TRUE) \|\| (iFlags & VM_REF_IDX_KEEP) == 0 ){` |
+| 4231904 |  226 | `		VmRefObjUnlink(&(*pVm),pRef);` |
+| 4231904 |  227 | `		if( (bForce == TRUE) \|\| (iFlags & VM_REF_IDX_KEEP) == 0 ){` |
 |       - |  228 | `			VmSlot sFree;` |
 |       - |  229 | `			/* Restore to the free list */` |
-| 4231862 |  230 | `			sFree.nIdx = nObjIdx;` |
-| 4231862 |  231 | `			sFree.pUserData = 0;` |
-| 4231862 |  232 | `			SySetPut(&pVm->aFreeObj,(const void *)&sFree);` |
-| 2116543 |  233 | `		}` |
-| 2116549 |  234 | `	}` |
-| 4231874 |  235 | `	return SXRET_OK;` |
+| 4231892 |  230 | `			sFree.nIdx = nObjIdx;` |
+| 4231892 |  231 | `			sFree.pUserData = 0;` |
+| 4231892 |  232 | `			SySetPut(&pVm->aFreeObj,(const void *)&sFree);` |
+| 2116561 |  233 | `		}` |
+| 2116567 |  234 | `	}` |
+| 4231904 |  235 | `	return SXRET_OK;` |
 |       5 |  236 | `}` |
 |       - |  237 | `/*` |
 |       - |  238 | ` * void unset($var,...)` |
@@ -431,26 +431,26 @@ Coverage: 382/420 lines (90.95%)
 |       - |  421 | ` * Returns` |
 |       - |  422 | ` *  Nothing.` |
 |       - |  423 | ` */` |
-|     578 |  424 | `PH7_PRIVATE int vm_builtin_var_dump(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     580 |  424 | `PH7_PRIVATE int vm_builtin_var_dump(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |       4 |  425 | `{` |
 |       - |  426 | `	SyBlob sDump; /* Generated dump is stored here */` |
 |       - |  427 | `	int i;` |
-|     582 |  428 | `	SyBlobInit(&sDump,&pCtx->pVm->sAllocator);` |
+|     584 |  428 | `	SyBlobInit(&sDump,&pCtx->pVm->sAllocator);` |
 |       - |  429 | `	/* Dump one or more expressions */` |
-|    1242 |  430 | `	for( i = 0 ; i < nArg ; i++ ){` |
-|     664 |  431 | `		ph7_value *pObj = apArg[i];` |
+|    1246 |  430 | `	for( i = 0 ; i < nArg ; i++ ){` |
+|     666 |  431 | `		ph7_value *pObj = apArg[i];` |
 |       - |  432 | `		/* Reset the working buffer */` |
-|     664 |  433 | `		SyBlobReset(&sDump);` |
+|     666 |  433 | `		SyBlobReset(&sDump);` |
 |       - |  434 | `		/* Dump the given expression */` |
-|     664 |  435 | `		PH7_MemObjDump(&sDump,pObj,TRUE,0,0,0);` |
+|     666 |  435 | `		PH7_MemObjDump(&sDump,pObj,TRUE,0,0,0);` |
 |       - |  436 | `		/* Output */` |
-|     664 |  437 | `		if( SyBlobLength(&sDump) > 0 ){` |
-|     664 |  438 | `			ph7_context_output(pCtx,(const char *)SyBlobData(&sDump),(int)SyBlobLength(&sDump));` |
-|     330 |  439 | `		}` |
-|     334 |  440 | `	}` |
+|     666 |  437 | `		if( SyBlobLength(&sDump) > 0 ){` |
+|     666 |  438 | `			ph7_context_output(pCtx,(const char *)SyBlobData(&sDump),(int)SyBlobLength(&sDump));` |
+|     331 |  439 | `		}` |
+|     335 |  440 | `	}` |
 |       - |  441 | `	/* Release the working buffer */` |
-|     582 |  442 | `	SyBlobRelease(&sDump);` |
-|     582 |  443 | `	return SXRET_OK;` |
+|     584 |  442 | `	SyBlobRelease(&sDump);` |
+|     584 |  443 | `	return SXRET_OK;` |
 |       4 |  444 | `}` |
 |       - |  445 | `/*` |
 |       - |  446 | ` * string/bool print_r(expression,[bool $return = FALSE])` |

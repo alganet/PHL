@@ -36,16 +36,16 @@ Coverage: 948/1079 lines (87.86%)
 |     - |   26 | ` * algorithms): no time_t / libc dependence, correct far past 2038 and` |
 |     - |   27 | ` * before 1970 on every platform. Day 0 == 1970-01-01.` |
 |     - |   28 | ` */` |
-|  1112 |   29 | `PH7_PRIVATE sxi64 DtDaysFromCivil(sxi64 y,int m,int d)` |
+|  1114 |   29 | `PH7_PRIVATE sxi64 DtDaysFromCivil(sxi64 y,int m,int d)` |
 |     1 |   30 | `{` |
 |     - |   31 | `	sxi64 era;` |
 |     - |   32 | `	unsigned yoe,doy,doe;` |
-|  1113 |   33 | `	y -= (m <= 2);` |
-|  1113 |   34 | `	era = (y >= 0 ? y : y - 399) / 400;` |
-|  1113 |   35 | `	yoe = (unsigned)(y - era * 400);` |
-|  1113 |   36 | `	doy = (unsigned)((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1);` |
-|  1113 |   37 | `	doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;` |
-|  1113 |   38 | `	return era * 146097 + (sxi64)doe - 719468;` |
+|  1115 |   33 | `	y -= (m <= 2);` |
+|  1115 |   34 | `	era = (y >= 0 ? y : y - 399) / 400;` |
+|  1115 |   35 | `	yoe = (unsigned)(y - era * 400);` |
+|  1115 |   36 | `	doy = (unsigned)((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1);` |
+|  1115 |   37 | `	doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;` |
+|  1115 |   38 | `	return era * 146097 + (sxi64)doe - 719468;` |
 |     1 |   39 | `}` |
 |   446 |   40 | `PH7_PRIVATE void DtCivilFromDays(sxi64 z,sxi64 *py,int *pm,int *pd)` |
 |     1 |   41 | `{` |

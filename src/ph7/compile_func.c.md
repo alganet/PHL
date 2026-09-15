@@ -589,17 +589,17 @@ Coverage: 870/1013 lines (85.88%)
 |   3275183 |  579 | `	SyToken *pEnd = pGen->pEnd;` |
 |   3275183 |  580 | `	sxi32 iDepth = 0;` |
 |   3275183 |  581 | `	int bStarted = 0;` |
-| 150028091 |  582 | `	while( pIn < pEnd ){` |
-| 150028091 |  583 | `		sxu32 t = pIn->nType;` |
-| 150028091 |  584 | `		if( t & PH7_TK_OCB ){ iDepth++; bStarted = 1; pIn++; continue; }` |
-| 143271247 |  585 | `		if( t & PH7_TK_CCB ){ iDepth--; pIn++; if( bStarted && iDepth <= 0 ){ break; } continue; }` |
-| 136549671 |  586 | `		if( t & PH7_TK_KEYWORD ){` |
-|  10199647 |  587 | `			int kw = SX_PTR_TO_INT(pIn->pUserData);` |
-|  10199647 |  588 | `			if( kw == PH7_TKWRD_YIELD ){ return TRUE; }` |
-|  10187751 |  589 | `			if( kw == PH7_TKWRD_FUNCTION ){ pIn = GenStateSkipNestedFunc(pIn,pEnd); continue; }` |
+| 150028159 |  582 | `	while( pIn < pEnd ){` |
+| 150028159 |  583 | `		sxu32 t = pIn->nType;` |
+| 150028159 |  584 | `		if( t & PH7_TK_OCB ){ iDepth++; bStarted = 1; pIn++; continue; }` |
+| 143271311 |  585 | `		if( t & PH7_TK_CCB ){ iDepth--; pIn++; if( bStarted && iDepth <= 0 ){ break; } continue; }` |
+| 136549731 |  586 | `		if( t & PH7_TK_KEYWORD ){` |
+|  10199655 |  587 | `			int kw = SX_PTR_TO_INT(pIn->pUserData);` |
+|  10199655 |  588 | `			if( kw == PH7_TKWRD_YIELD ){ return TRUE; }` |
+|  10187759 |  589 | `			if( kw == PH7_TKWRD_FUNCTION ){ pIn = GenStateSkipNestedFunc(pIn,pEnd); continue; }` |
 |         - |  590 | ``			/* `fn` arrow bodies are single expressions and cannot contain a valid yield. */`` |
-|   5076402 |  591 | `		}` |
-| 136502833 |  592 | `		pIn++;` |
+|   5076406 |  591 | `		}` |
+| 136502893 |  592 | `		pIn++;` |
 |         5 |  593 | `	}` |
 |   3263287 |  594 | `	return FALSE;` |
 |   1637594 |  595 | `}` |
@@ -722,12 +722,12 @@ Coverage: 870/1013 lines (85.88%)
 |         - |  712 | `	{` |
 |   3275183 |  713 | `		VmInstr *aInstr = (VmInstr *)SySetBasePtr(&pFunc->aByteCode);` |
 |         - |  714 | `		sxu32 i;` |
-|  91893453 |  715 | `		for( i = 0; i < SySetUsed(&pFunc->aByteCode); i++ ){` |
-|  88630171 |  716 | `			if( aInstr[i].iOp == PH7_OP_YIELD \|\| aInstr[i].iOp == PH7_OP_YIELD_FROM ){` |
+|  91893485 |  715 | `		for( i = 0; i < SySetUsed(&pFunc->aByteCode); i++ ){` |
+|  88630203 |  716 | `			if( aInstr[i].iOp == PH7_OP_YIELD \|\| aInstr[i].iOp == PH7_OP_YIELD_FROM ){` |
 |     11901 |  717 | `				pFunc->iFlags \|= VM_FUNC_GENERATOR;` |
 |     11901 |  718 | `				break;` |
 |         - |  719 | `			}` |
-|  44309140 |  720 | `		}` |
+|  44309156 |  720 | `		}` |
 |         - |  721 | `	}` |
 |   3275183 |  722 | `	if( pFunc->iFlags & VM_FUNC_GENERATOR ){` |
 |         - |  723 | `		/* php-exact definition-time check; see the helper's block comment. */` |
