@@ -56,7 +56,7 @@ Coverage: 463/508 lines (91.14%)
 |  61045 |   46 | `			pA->pNext = pTail;` |
 |  61045 |   47 | `			pTail = pA;` |
 |  61045 |   48 | `			pA = pA->pPrev;` |
-|  30671 |   49 | `		}else{` |
+|  30673 |   49 | `		}else{` |
 |  16756 |   50 | `			pTail->pPrev = pB;` |
 |  16756 |   51 | `			pB->pNext = pTail;` |
 |  16756 |   52 | `			pTail = pB;` |
@@ -66,10 +66,10 @@ Coverage: 463/508 lines (91.14%)
 |  52181 |   56 | `	if( pA ){` |
 |   4327 |   57 | `		pTail->pPrev = pA;` |
 |   4327 |   58 | `		pA->pNext = pTail;` |
-|  49884 |   59 | `	}else if( pB ){` |
+|  49883 |   59 | `	}else if( pB ){` |
 |  47547 |   60 | `		pTail->pPrev = pB;` |
 |  47547 |   61 | `		pB->pNext = pTail;` |
-|  23912 |   62 | `	}else{` |
+|  23913 |   62 | `	}else{` |
 |    317 |   63 | `		pTail->pPrev = pTail->pNext = 0;` |
 |      - |   64 | `	}` |
 |  52181 |   65 | `	return result.pPrev;` |
@@ -226,14 +226,14 @@ Coverage: 463/508 lines (91.14%)
 |    127 |  216 | `	PH7_MemObjRelease(&sB);` |
 |    127 |  217 | `	return rc;` |
 |     64 |  218 | `}` |
-|  77415 |  219 | `static sxi32 HashmapCmpCallback1(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
+|  77414 |  219 | `static sxi32 HashmapCmpCallback1(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
 |      5 |  220 | `{` |
-|  77420 |  221 | `	if( pCmpData == 0 ){` |
+|  77419 |  221 | `	if( pCmpData == 0 ){` |
 |      - |  222 | `		/* SORT_REGULAR fast path */` |
-|  77332 |  223 | `		return HashmapNodeCmp(pA,pB,FALSE);` |
+|  77331 |  223 | `		return HashmapNodeCmp(pA,pB,FALSE);` |
 |      - |  224 | `	}` |
 |     89 |  225 | `	return HashmapFlagValueCmp(pA,pB,SX_PTR_TO_INT(pCmpData));` |
-|  38599 |  226 | `}` |
+|  38600 |  226 | `}` |
 |      - |  227 | `/*` |
 |      - |  228 | ` * Shared key comparison for ksort()/krsort(): php 8 semantics. Two string` |
 |      - |  229 | ` * keys compare bytewise. Mixed int/string keys: a NUMERIC string compares` |
@@ -479,17 +479,17 @@ Coverage: 463/508 lines (91.14%)
 |      - |  469 | ` * Node comparison callback: Random node comparison.` |
 |      - |  470 | ` * used-by: [shuffle()]` |
 |      - |  471 | ` */` |
-|     20 |  472 | `PH7_PRIVATE sxi32 HashmapCmpCallback7(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
+|     21 |  472 | `PH7_PRIVATE sxi32 HashmapCmpCallback7(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
 |      1 |  473 | `{` |
 |      - |  474 | `	sxu32 n;` |
 |     11 |  475 | `	SXUNUSED(pB); /* cc warning */` |
 |     11 |  476 | `	SXUNUSED(pCmpData);` |
 |      - |  477 | `	/* Grab a random number */` |
-|     21 |  478 | `	n = PH7_VmRandomNum(pA->pMap->pVm);` |
+|     22 |  478 | `	n = PH7_VmRandomNum(pA->pMap->pVm);` |
 |      - |  479 | `	/* if the random number is odd then the first node 'pA' is greater then` |
 |      - |  480 | `	 * the second node 'pB'. Otherwise the reverse is assumed.` |
 |      - |  481 | `	 */` |
-|     21 |  482 | `	return n&1 ? 1 : -1;` |
+|     22 |  482 | `	return n&1 ? 1 : -1;` |
 |      1 |  483 | `}` |
 |      - |  484 | `/*` |
 |      - |  485 | ` * Rehash all nodes keys after a merge-sort have been applied.` |

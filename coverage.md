@@ -9,7 +9,7 @@
 | src/ph7/builtin_math.c         | 82.54%   | 539/653     |
 | src/ph7/builtin_mb.c           | 91.94%   | 479/521     |
 | src/ph7/builtin_parse.c        | 89.62%   | 1234/1377   |
-| src/ph7/builtin_string.c       | 85.22%   | 2294/2692   |
+| src/ph7/builtin_string.c       | 85.48%   | 2302/2693   |
 | src/ph7/compile.c              | 92.06%   | 1495/1624   |
 | src/ph7/compile_class.c        | 74.85%   | 2018/2696   |
 | src/ph7/compile_func.c         | 85.88%   | 870/1013    |
@@ -18,7 +18,7 @@
 | src/ph7/compile_stmt.c         | 73.92%   | 1448/1959   |
 | src/ph7/constant.c             | 93.09%   | 970/1042    |
 | src/ph7/hashmap.c              | 90.77%   | 1042/1148   |
-| src/ph7/hashmap_builtin.c      | 86.09%   | 2450/2846   |
+| src/ph7/hashmap_builtin.c      | 86.05%   | 2449/2846   |
 | src/ph7/hashmap_sort.c         | 91.14%   | 463/508     |
 | src/ph7/lex.c                  | 93.46%   | 814/871     |
 | src/ph7/memobj.c               | 81.88%   | 836/1021    |
@@ -79,5 +79,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.11%   | 48408/59679 |
-| Functions                      | 93.10%   | 2201/2364   |
+| Lines                          | 81.12%   | 48415/59680 |
+| Functions                      | 93.11%   | 2203/2366   |
