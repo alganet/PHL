@@ -603,18 +603,18 @@ Coverage: 1023/1279 lines (79.98%)
 |       - |  593 | ` *` |
 |       - |  594 | ` * Returns non-zero iff pVal is a Closure instance.` |
 |       - |  595 | ` */` |
-| 1035086 |  596 | `PH7_PRIVATE int VmValueIsClosure(ph7_vm *pVm, ph7_value *pVal)` |
+| 1035104 |  596 | `PH7_PRIVATE int VmValueIsClosure(ph7_vm *pVm, ph7_value *pVal)` |
 |       5 |  597 | `{` |
 |       - |  598 | `	ph7_class_instance *pThis;` |
 |       - |  599 | `	/* Flag test first: a non-object call target (the hot common case) bails before any` |
 |       - |  600 | `	 * pVm dereference; pClosureClass==0 is a one-time pre-init concern, so it goes last. */` |
-| 1035091 |  601 | `	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 \|\| pVal->x.pOther == 0 \|\| pVm->pClosureClass == 0 ){` |
-| 1030573 |  602 | `		return 0;` |
+| 1035109 |  601 | `	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 \|\| pVal->x.pOther == 0 \|\| pVm->pClosureClass == 0 ){` |
+| 1030591 |  602 | `		return 0;` |
 |       - |  603 | `	}` |
 |    4523 |  604 | `	pThis = (ph7_class_instance *)pVal->x.pOther;` |
 |       - |  605 | `	/* Closure is final, so an exact class match is correct (no subclasses possible). */` |
 |    4523 |  606 | `	return pThis->pClass == pVm->pClosureClass;` |
-|  517919 |  607 | `}` |
+|  517929 |  607 | `}` |
 |       - |  608 | `/*` |
 |       - |  609 | ` * Unwrap a Closure value into the simple callable the existing dispatch machinery` |
 |       - |  610 | ` * already understands, written into pOut (which the caller must have initialised):` |
@@ -1290,7 +1290,7 @@ Coverage: 1023/1279 lines (79.98%)
 |     ! 0 | 1280 | `			if( SyStringLength(&pFormal->sTypeName) > 0 ){` |
 |     ! 0 | 1281 | `				zExpected = VmSyStringToCStr(&pFormal->sTypeName,zTypeBuf,sizeof(zTypeBuf));` |
 |     ! 0 | 1282 | `			}` |
-|     ! 0 | 1283 | `			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pFunc->sName,(int)nArgPos,` |
+|     ! 0 | 1283 | `			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pFunc,(int)nArgPos,` |
 |     ! 0 | 1284 | `				&pFormal->sName,zExpected,zGiven));` |
 |       - | 1285 | `		}` |
 |     ! 0 | 1286 | `		return SXRET_OK;` |
@@ -1306,7 +1306,7 @@ Coverage: 1023/1279 lines (79.98%)
 |       3 | 1296 | `		int rcPseudo = VmCheckPseudoType(&(*pVm),pVal,pName);` |
 |       3 | 1297 | `		if( rcPseudo == 0 ){` |
 |       - | 1298 | `			char zTypeBuf[128],zGivenBuf[128];` |
-|     ! 0 | 1299 | `			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pFunc->sName,(int)nArgPos,` |
+|     ! 0 | 1299 | `			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pFunc,(int)nArgPos,` |
 |     ! 0 | 1300 | `				&pFormal->sName,` |
 |     ! 0 | 1301 | `				VmSyStringToCStr(pName,zTypeBuf,sizeof(zTypeBuf)),` |
 |     ! 0 | 1302 | `				VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf))));` |
@@ -1317,7 +1317,7 @@ Coverage: 1023/1279 lines (79.98%)
 |       2 | 1307 | `				&& PH7_VmInstanceOf(((ph7_class_instance *)pVal->x.pOther)->pClass,pClass));` |
 |       3 | 1308 | `			if( bBad ){` |
 |       - | 1309 | `				char zTypeBuf[128],zGivenBuf[128];` |
-|       5 | 1310 | `				return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pFunc->sName,(int)nArgPos,` |
+|       5 | 1310 | `				return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pFunc,(int)nArgPos,` |
 |       1 | 1311 | `					&pFormal->sName,` |
 |       2 | 1312 | `					VmSyStringToCStr(&pClass->sName,zTypeBuf,sizeof(zTypeBuf)),` |
 |       1 | 1313 | `					VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf))));` |
@@ -1327,12 +1327,12 @@ Coverage: 1023/1279 lines (79.98%)
 |       - | 1317 | `	}` |
 |      36 | 1318 | `	if( (pVal->iFlags & pFormal->nType) == 0 ){` |
 |      19 | 1319 | `		if( pFormal->nType == MEMOBJ_OBJ ){` |
-|     ! 0 | 1320 | `			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pFunc->sName,(int)nArgPos,` |
+|     ! 0 | 1320 | `			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pFunc,(int)nArgPos,` |
 |     ! 0 | 1321 | `				&pFormal->sName,"object",ph7_type_name(pVal)));` |
 |       - | 1322 | `		}` |
 |      19 | 1323 | `		if( VmEnforceScalarType(pVal,pFormal->nType,bStrict) != SXRET_OK ){` |
 |       - | 1324 | `			char zTypeBuf[128];` |
-|      19 | 1325 | `			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pFunc->sName,(int)nArgPos,` |
+|      19 | 1325 | `			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pFunc,(int)nArgPos,` |
 |       6 | 1326 | `				&pFormal->sName,` |
 |       6 | 1327 | `				VmScalarTypeName(pFormal->nType,&pFormal->sTypeName,zTypeBuf,sizeof(zTypeBuf)),` |
 |       6 | 1328 | `				ph7_type_name(pVal)));` |

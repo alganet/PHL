@@ -50,8 +50,8 @@ Coverage: 2482/2846 lines (87.21%)
 |       - |   40 | `		/* Do the merge sort */` |
 |       3 |   41 | `		HashmapMergeSort(pMap,HashmapCmpCallback7,0);` |
 |       - |   42 | `		/* Fix the last link broken by the merge */` |
-|       7 |   43 | `		while(pMap->pLast->pPrev){` |
-|       5 |   44 | `			pMap->pLast = pMap->pLast->pPrev;` |
+|      10 |   43 | `		while(pMap->pLast->pPrev){` |
+|       8 |   44 | `			pMap->pLast = pMap->pLast->pPrev;` |
 |       1 |   45 | `		}` |
 |       1 |   46 | `	}` |
 |       - |   47 | `	/* All done,return TRUE */` |
@@ -4124,7 +4124,7 @@ Coverage: 2482/2846 lines (87.21%)
 |     ! 0 | 4114 | `			}` |
 |       3 | 4115 | `		}else{` |
 |       6 | 4116 | `			pNode = pMap->pFirst;` |
-|       3 | 4117 | `			for(;;){` |
+|       2 | 4117 | `			for(;;){` |
 |       8 | 4118 | `				if( nEntry == 0 ){` |
 |       6 | 4119 | `					break;` |
 |       - | 4120 | `				}` |

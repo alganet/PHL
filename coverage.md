@@ -47,7 +47,7 @@
 | src/ph7/vm_builtin_tokenizer.c | 1.62%    | 12/743      |
 | src/ph7/vm_builtin_var.c       | 90.95%   | 382/420     |
 | src/ph7/vm_dom.c               | 86.09%   | 656/762     |
-| src/ph7/vm_error.c             | 86.47%   | 1726/1996   |
+| src/ph7/vm_error.c             | 86.53%   | 1735/2005   |
 | src/ph7/vm_exec.c              | 83.58%   | 2622/3137   |
 | src/ph7/vm_exec_ctx.c          | 79.98%   | 1023/1279   |
 | src/ph7/vm_http.c              | 69.82%   | 310/444     |
@@ -79,5 +79,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.17%   | 48325/59539 |
+| Lines                          | 81.17%   | 48334/59548 |
 | Functions                      | 93.09%   | 2197/2360   |
