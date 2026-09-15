@@ -56,17 +56,17 @@ Coverage: 163/220 lines (74.09%)
 |     - |   46 | ` * PH7_LibxmlVmRelease before the allocator that holds the shells is torn` |
 |     - |   47 | ` * down.` |
 |     - |   48 | ` */` |
-|  3430 |   49 | `PH7_PRIVATE void PH7_XmlWriterVmSweep(ph7_vm *pVm)` |
+|  3432 |   49 | `PH7_PRIVATE void PH7_XmlWriterVmSweep(ph7_vm *pVm)` |
 |     5 |   50 | `{` |
-|  3435 |   51 | `	phl_xmlwriter *pXw = (phl_xmlwriter *)pVm->pXmlWriters;` |
-|  3441 |   52 | `	while( pXw ){` |
+|  3437 |   51 | `	phl_xmlwriter *pXw = (phl_xmlwriter *)pVm->pXmlWriters;` |
+|  3443 |   52 | `	while( pXw ){` |
 |     7 |   53 | `		phl_xmlwriter *pNext = pXw->pNext;` |
 |     7 |   54 | `		XmlWriterFree(pXw);` |
 |     7 |   55 | `		SyMemBackendFree(&pVm->sAllocator,pXw);` |
 |     7 |   56 | `		pXw = pNext;` |
 |     1 |   57 | `	}` |
-|  3435 |   58 | `	pVm->pXmlWriters = 0;` |
-|  3435 |   59 | `}` |
+|  3437 |   58 | `	pVm->pXmlWriters = 0;` |
+|  3437 |   59 | `}` |
 |     - |   60 |  |
 |    56 |   61 | `static phl_xmlwriter * XmlWriterArg(ph7_value *pVal)` |
 |     1 |   62 | `{` |
@@ -331,7 +331,7 @@ Coverage: 163/220 lines (74.09%)
 |     - |  321 | ` * Install the XMLWriter library.  Called from PH7_VmInit inside the` |
 |     - |  322 | ` * bCompilingBuiltin window, after PH7_VmInstallLibxml.` |
 |     - |  323 | ` */` |
-|  3892 |  324 | `PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)` |
+|  3894 |  324 | `PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)` |
 |     5 |  325 | `{` |
 |     - |  326 | `	static const struct {` |
 |     - |  327 | `		const char *zName;` |
@@ -355,10 +355,10 @@ Coverage: 163/220 lines (74.09%)
 |     - |  345 | `		{ "__xw_flush",             vm_builtin_xw_flush             },` |
 |     - |  346 | `	};` |
 |     - |  347 | `	sxu32 n;` |
-| 66169 |  348 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
-| 62277 |  349 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
-| 31141 |  350 | `	}` |
-|  3897 |  351 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zXmlWriterLib,sizeof(zXmlWriterLib)-1);` |
+| 66203 |  348 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
+| 62309 |  349 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
+| 31157 |  350 | `	}` |
+|  3899 |  351 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zXmlWriterLib,sizeof(zXmlWriterLib)-1);` |
 |     5 |  352 | `}` |
 |     - |  353 |  |
 |     - |  354 | `#else` |

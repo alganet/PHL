@@ -144,12 +144,12 @@ Coverage: 868/1015 lines (85.52%)
 |     - |  134 | ` * OP_NEW: body moved verbatim from the OP_NEW arm of` |
 |     - |  135 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
 |     - |  136 | ` */` |
-|  4770 |  137 | `PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
+|  4780 |  137 | `PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
 |     5 |  138 | `{` |
-|  4775 |  139 | `	ph7_value *pTos = pState->pTos;` |
-|  4775 |  140 | `	ph7_value *pStack = pState->pStack;` |
-|  4775 |  141 | `	VmInstr *aInstr = pState->aInstr;` |
-|  4775 |  142 | `	sxi32 pc = pState->pc;` |
+|  4785 |  139 | `	ph7_value *pTos = pState->pTos;` |
+|  4785 |  140 | `	ph7_value *pStack = pState->pStack;` |
+|  4785 |  141 | `	VmInstr *aInstr = pState->aInstr;` |
+|  4785 |  142 | `	sxi32 pc = pState->pc;` |
 |     - |  143 | `	sxi32 rc;` |
 |     - |  144 | `	/* Constructor arg count: compile-time args plus THIS new's own unpack` |
 |     - |  145 | `	 * expansion (iP2 = hasSpread, transferred from the popped OP_CALL —` |
@@ -157,24 +157,24 @@ Coverage: 868/1015 lines (85.52%)
 |     - |  147 | `	 * elements ABOVE the class-name slot and fataling "Class ' ' is not` |
 |     - |  148 | `	 * defined"). VmSpreadOwnExtra counts only this new's own runs, so a nested` |
 |     - |  149 | `	 * spread call in the ctor arg list stays scoped to itself. */` |
-|  4775 |  150 | `	sxi32 nCtorArgs = pInstr->iP1 + (pInstr->iP2 ? VmSpreadOwnExtra(pVm,pInstr->iP1,pTos) : 0);` |
+|  4785 |  150 | `	sxi32 nCtorArgs = pInstr->iP1 + (pInstr->iP2 ? VmSpreadOwnExtra(pVm,pInstr->iP1,pTos) : 0);` |
 |     - |  151 | `	ph7_value *pArg;` |
-|  4775 |  152 | `	ph7_class *pClass = 0;` |
+|  4785 |  152 | `	ph7_class *pClass = 0;` |
 |     - |  153 | `	ph7_class_instance *pNew;` |
-|  4775 |  154 | `	pArg = &pTos[-nCtorArgs]; /* Constructor arguments (if available) */` |
+|  4785 |  154 | `	pArg = &pTos[-nCtorArgs]; /* Constructor arguments (if available) */` |
 |     - |  155 | `	/* Same PHP 8.1 spread-key realignment as OP_CALL: build a per-actual-slot name` |
 |     - |  156 | `	 * map when the ctor arg list unpacked string-keyed elements. NEW keeps the` |
 |     - |  157 | `	 * class-name slot at pTos (above the args), so pArg is already the correct base;` |
 |     - |  158 | `	 * the build also truncates this call's captured runs. */` |
 |     - |  159 | `	VmCallArgMap sEffNewMap;` |
-|  7160 |  160 | `	VmCallArgMap *pEffNewMap = VmEffCallArgMap(pVm,pInstr,pArg,` |
-|  4770 |  161 | `		nCtorArgs > 0 ? (sxu32)nCtorArgs : 0,&sEffNewMap);` |
-|  7160 |  162 | `	if( (pTos->iFlags & MEMOBJ_STRING) && SyBlobLength(&pTos->sBlob) > 0 ){` |
-|  4775 |  163 | `		const char *zCls = (const char *)SyBlobData(&pTos->sBlob);` |
-|  4775 |  164 | `		sxu32 nCls = SyBlobLength(&pTos->sBlob);` |
-|  4770 |  165 | `		if( (nCls == sizeof("self")-1 && SyMemcmp(zCls,"self",sizeof("self")-1) == 0)` |
-|  4763 |  166 | `		 \|\| (nCls == sizeof("static")-1 && SyMemcmp(zCls,"static",sizeof("static")-1) == 0)` |
-|  4733 |  167 | `		 \|\| (nCls == sizeof("parent")-1 && SyMemcmp(zCls,"parent",sizeof("parent")-1) == 0) ){` |
+|  7175 |  160 | `	VmCallArgMap *pEffNewMap = VmEffCallArgMap(pVm,pInstr,pArg,` |
+|  4780 |  161 | `		nCtorArgs > 0 ? (sxu32)nCtorArgs : 0,&sEffNewMap);` |
+|  7175 |  162 | `	if( (pTos->iFlags & MEMOBJ_STRING) && SyBlobLength(&pTos->sBlob) > 0 ){` |
+|  4785 |  163 | `		const char *zCls = (const char *)SyBlobData(&pTos->sBlob);` |
+|  4785 |  164 | `		sxu32 nCls = SyBlobLength(&pTos->sBlob);` |
+|  4780 |  165 | `		if( (nCls == sizeof("self")-1 && SyMemcmp(zCls,"self",sizeof("self")-1) == 0)` |
+|  4773 |  166 | `		 \|\| (nCls == sizeof("static")-1 && SyMemcmp(zCls,"static",sizeof("static")-1) == 0)` |
+|  4743 |  167 | `		 \|\| (nCls == sizeof("parent")-1 && SyMemcmp(zCls,"parent",sizeof("parent")-1) == 0) ){` |
 |     - |  168 | `			/* new self() / new static() / new parent(): resolve against the live` |
 |     - |  169 | `			 * class context (LSB for static), sharing the FCC resolver. */` |
 |    45 |  170 | `			pClass = VmFccResolveScope(&(*pVm),pTos);` |
@@ -192,14 +192,14 @@ Coverage: 868/1015 lines (85.52%)
 |     - |  182 | `			}` |
 |    23 |  183 | `		}else{` |
 |     - |  184 | `			/* Try to extract the desired class */` |
-|  4731 |  185 | `			pClass = PH7_VmExtractClass(&(*pVm),zCls,nCls,` |
+|  4741 |  185 | `			pClass = PH7_VmExtractClass(&(*pVm),zCls,nCls,` |
 |     - |  186 | `				TRUE /* Only loadable class but not 'interface' or 'abstract' class*/,0);` |
 |     5 |  187 | `		}` |
-|  2385 |  188 | `	}else if( pTos->iFlags & MEMOBJ_OBJ ){` |
+|  2390 |  188 | `	}else if( pTos->iFlags & MEMOBJ_OBJ ){` |
 |     - |  189 | `		/* Take the base class from the loaded instance */` |
 |   ! 0 |  190 | `		pClass = ((ph7_class_instance *)pTos->x.pOther)->pClass;` |
 |   ! 0 |  191 | `	}` |
-|  4775 |  192 | `	if( pClass == 0 ){` |
+|  4785 |  192 | `	if( pClass == 0 ){` |
 |     - |  193 | ``		/* php: `new NoSuch()` is a CATCHABLE Error ('Class "NoSuch" not found'), not a`` |
 |     - |  194 | `		 * hard stop. Aborting here killed the script outright -- and with exit status 0,` |
 |     - |  195 | `		 * so a caller could not even tell it had failed. */` |
@@ -236,7 +236,7 @@ Coverage: 868/1015 lines (85.52%)
 |     7 |  226 | `		if( rcErr == SXERR_ABORT ){ VM_EXIT_ABORT; }` |
 |     7 |  227 | `		rc = rcErr;` |
 |     7 |  228 | `		PH7_THROW_ROUTE_MIDEXPR(rc)` |
-|  4769 |  229 | `	}else if( pClass->iFlags & PH7_CLASS_ENUM ){` |
+|  4779 |  229 | `	}else if( pClass->iFlags & PH7_CLASS_ENUM ){` |
 |     - |  230 | `		/* php 8.1: enums cannot be instantiated — a catchable Error, raised` |
 |     - |  231 | `		 * BEFORE any construction (no instance, no __destruct). */` |
 |     - |  232 | `		SyBlob sErrMsg;` |
@@ -254,18 +254,18 @@ Coverage: 868/1015 lines (85.52%)
 |     - |  244 | `		/* Check if a constructor is available — BEFORE instantiation: a` |
 |     - |  245 | ``		 * visibility-denied `new` must not construct (nor later destruct)`` |
 |     - |  246 | `		 * the object (band A #4). */` |
-|  4767 |  247 | `		pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);` |
-|  4767 |  248 | `		if( pCons == 0 ){` |
-|  1835 |  249 | `			SyString *pName = &pClass->sName;` |
+|  4777 |  247 | `		pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);` |
+|  4777 |  248 | `		if( pCons == 0 ){` |
+|  1845 |  249 | `			SyString *pName = &pClass->sName;` |
 |     - |  250 | `			/* Check for a constructor with the same base class name */` |
-|  1835 |  251 | `			pCons = PH7_ClassExtractMethod(pClass,pName->zString,pName->nByte);` |
-|   915 |  252 | `		}` |
+|  1845 |  251 | `			pCons = PH7_ClassExtractMethod(pClass,pName->zString,pName->nByte);` |
+|   920 |  252 | `		}` |
 |     - |  253 | `		/* Constructor visibility (band A #4): __construct now KEEPS its` |
 |     - |  254 | `		 * declared protection (PH7_NewClassMethod no longer forces it` |
 |     - |  255 | ``		 * public), so `new C()` on a private/protected constructor from`` |
 |     - |  256 | `		 * the wrong scope is php's catchable Error. Reflection's` |
 |     - |  257 | `		 * newInstance path sets bReflectBypass like method invoke. */` |
-|  4767 |  258 | `		if( pCons && pCons->iProtection != PH7_CLASS_PROT_PUBLIC ){` |
+|  4777 |  258 | `		if( pCons && pCons->iProtection != PH7_CLASS_PROT_PUBLIC ){` |
 |     - |  259 | `			/* php binds non-public access by the member's DECLARING class, not the` |
 |     - |  260 | `			 * instantiated class: a private constructor declared in a base is` |
 |     - |  261 | `			 * reachable from that base's own methods even when instantiating a` |
@@ -295,8 +295,8 @@ Coverage: 868/1015 lines (85.52%)
 |     - |  285 | `			}` |
 |     8 |  286 | `		}` |
 |     - |  287 | `		/* Create a new class instance */` |
-|  4761 |  288 | `		pNew = PH7_NewClassInstance(&(*pVm),pClass);` |
-|  4761 |  289 | `		if( pNew == 0 ){` |
+|  4771 |  288 | `		pNew = PH7_NewClassInstance(&(*pVm),pClass);` |
+|  4771 |  289 | `		if( pNew == 0 ){` |
 |   ! 0 |  290 | `			VmErrorFormat(&(*pVm),PH7_CTX_ERR,` |
 |     - |  291 | `				"Cannot create new class '%z' instance due to a memory failure,PH7 is loading NULL",` |
 |   ! 0 |  292 | `				&pClass->sName` |
@@ -308,7 +308,7 @@ Coverage: 868/1015 lines (85.52%)
 |   ! 0 |  298 | `			}` |
 |   ! 0 |  299 | `			VM_EXIT_BREAK;` |
 |     - |  300 | `		}` |
-|  4761 |  301 | `		if( pCons ){` |
+|  4771 |  301 | `		if( pCons ){` |
 |     - |  302 | `			/* Call the class constructor.  Collect args in stack order and` |
 |     - |  303 | `			 * forward any VmCallArgMap from the NEW instruction so the` |
 |     - |  304 | `			 * receiving OP_CALL path runs its named-argument matching` |
@@ -353,17 +353,17 @@ Coverage: 868/1015 lines (85.52%)
 |     3 |  343 | `				VM_EXIT_EXCEPTION;` |
 |     - |  344 | `			}` |
 |  1411 |  345 | `		}` |
-|  4657 |  346 | `		if( nCtorArgs > 0 ){` |
+|  4667 |  346 | `		if( nCtorArgs > 0 ){` |
 |     - |  347 | `			/* Pop given arguments */` |
 |  2617 |  348 | `			VmPopOperand(&pTos,nCtorArgs);` |
 |  1306 |  349 | `		}` |
-|  4657 |  350 | `		PH7_MemObjRelease(pTos);` |
-|  4657 |  351 | `		pTos->x.pOther = pNew;` |
-|  4657 |  352 | `		MemObjSetType(pTos,MEMOBJ_OBJ);` |
+|  4667 |  350 | `		PH7_MemObjRelease(pTos);` |
+|  4667 |  351 | `		pTos->x.pOther = pNew;` |
+|  4667 |  352 | `		MemObjSetType(pTos,MEMOBJ_OBJ);` |
 |     - |  353 | `	}` |
-|  4657 |  354 | `	VM_EXIT_BREAK;` |
+|  4667 |  354 | `	VM_EXIT_BREAK;` |
 |   ! 0 |  355 | `	VM_EXIT_BREAK;` |
-|  2390 |  356 | `}` |
+|  2395 |  356 | `}` |
 |     - |  357 |  |
 |     - |  358 | `/*` |
 |     - |  359 | ` * OP_MEMBER: body moved verbatim from the OP_MEMBER arm of` |

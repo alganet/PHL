@@ -313,56 +313,56 @@ Coverage: 539/625 lines (86.24%)
 |     - |  303 | ` * Return` |
 |     - |  304 | ` *  Return TRUE if the given function has been defined.False otherwise` |
 |     - |  305 | ` */` |
-|   638 |  306 | `PH7_PRIVATE int vm_builtin_func_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   636 |  306 | `PH7_PRIVATE int vm_builtin_func_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     5 |  307 | `{` |
 |     - |  308 | `	const char *zName;` |
 |     - |  309 | `	ph7_vm *pVm;` |
 |     - |  310 | `	int nLen;` |
 |     - |  311 | `	int res;` |
-|   643 |  312 | `	if( nArg < 1 ){` |
+|   641 |  312 | `	if( nArg < 1 ){` |
 |     - |  313 | `		/* Missing argument,return FALSE */` |
 |   ! 0 |  314 | `		ph7_result_bool(pCtx,0);` |
 |   ! 0 |  315 | `		return SXRET_OK;` |
 |     - |  316 | `	}` |
 |     - |  317 | `	/* Point to the target VM */` |
-|   643 |  318 | `	pVm = pCtx->pVm;` |
+|   641 |  318 | `	pVm = pCtx->pVm;` |
 |     - |  319 | `	/* Extract the function name */` |
-|   643 |  320 | `	zName = ph7_value_to_string(apArg[0],&nLen);` |
+|   641 |  320 | `	zName = ph7_value_to_string(apArg[0],&nLen);` |
 |     - |  321 | `	/* php: a leading '\' anchors the name to the global namespace; strip it. */` |
-|   643 |  322 | `	if( nLen > 0 && zName[0] == '\\' ){ zName++; nLen--; }` |
+|   641 |  322 | `	if( nLen > 0 && zName[0] == '\\' ){ zName++; nLen--; }` |
 |     - |  323 | `	/* Assume the function is not defined */` |
-|   643 |  324 | `	res = 0;` |
+|   641 |  324 | `	res = 0;` |
 |     - |  325 | `	/* Perform the lookup */` |
-|   944 |  326 | `	if( SyHashGet(&pVm->hFunction,(const void *)zName,(sxu32)nLen) != 0 \|\|` |
-|   602 |  327 | `		SyHashGet(&pVm->hHostFunction,(const void *)zName,(sxu32)nLen) != 0 ){` |
+|   941 |  326 | `	if( SyHashGet(&pVm->hFunction,(const void *)zName,(sxu32)nLen) != 0 \|\|` |
+|   600 |  327 | `		SyHashGet(&pVm->hHostFunction,(const void *)zName,(sxu32)nLen) != 0 ){` |
 |     - |  328 | `			/* Function is defined */` |
 |   231 |  329 | `			res = 1;` |
 |   113 |  330 | `	}` |
-|   643 |  331 | `	ph7_result_bool(pCtx,res);` |
-|   643 |  332 | `	return SXRET_OK;` |
-|   324 |  333 | `}` |
+|   641 |  331 | `	ph7_result_bool(pCtx,res);` |
+|   641 |  332 | `	return SXRET_OK;` |
+|   323 |  333 | `}` |
 |     - |  334 | `/*` |
 |     - |  335 | ` * Verify that the contents of a variable can be called as a function.` |
 |     - |  336 | ` * [i.e: Whether it is callable or not].` |
 |     - |  337 | ` * Return TRUE if callable.FALSE otherwise.` |
 |     - |  338 | ` */` |
-| 59332 |  339 | `PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)` |
+| 59368 |  339 | `PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)` |
 |     5 |  340 | `{` |
-| 59337 |  341 | `	int res = 0;` |
-| 59337 |  342 | `	if( pValue->iFlags & MEMOBJ_OBJ ){` |
+| 59373 |  341 | `	int res = 0;` |
+| 59373 |  342 | `	if( pValue->iFlags & MEMOBJ_OBJ ){` |
 |     - |  343 | `		/* PHP semantics: an object is callable iff its class declares __invoke` |
 |     - |  344 | `		 * (inherited methods count). The CallInvoke flag is unused — it` |
 |     - |  345 | `		 * formerly invoked __invoke as a runtime predicate, which is not` |
 |     - |  346 | `		 * standard PHP behavior. */` |
-|   537 |  347 | `		ph7_class_instance *pThis = (ph7_class_instance *)pValue->x.pOther;` |
-|   537 |  348 | `		if( VmValueIsClosure(pVm,pValue) ){` |
+|   541 |  347 | `		ph7_class_instance *pThis = (ph7_class_instance *)pValue->x.pOther;` |
+|   541 |  348 | `		if( VmValueIsClosure(pVm,pValue) ){` |
 |     - |  349 | `			/* A Closure (incl. a first-class callable) is always callable. */` |
-|   495 |  350 | `			res = 1;` |
-|   290 |  351 | `		}else if( PH7_ClassExtractMethod(pThis->pClass,"__invoke",sizeof("__invoke")-1) ){` |
+|   499 |  350 | `			res = 1;` |
+|   292 |  351 | `		}else if( PH7_ClassExtractMethod(pThis->pClass,"__invoke",sizeof("__invoke")-1) ){` |
 |    41 |  352 | `			res = 1;` |
 |    24 |  353 | `		}` |
-|   266 |  354 | `		(void)CallInvoke;` |
-| 59071 |  355 | `	}else if( pValue->iFlags & MEMOBJ_HASHMAP ){` |
+|   268 |  354 | `		(void)CallInvoke;` |
+| 59105 |  355 | `	}else if( pValue->iFlags & MEMOBJ_HASHMAP ){` |
 |    74 |  356 | `		ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;` |
 |    74 |  357 | `		if( pMap->nEntry == 2 ){` |
 |     - |  358 | `			ph7_class *pClass;` |
@@ -386,20 +386,20 @@ Coverage: 539/625 lines (86.24%)
 |    24 |  376 | `				}` |
 |    26 |  377 | `			}` |
 |    30 |  378 | `		}` |
-| 58770 |  379 | `	}else if( pValue->iFlags & MEMOBJ_STRING ){` |
+| 58802 |  379 | `	}else if( pValue->iFlags & MEMOBJ_STRING ){` |
 |     - |  380 | `		const char *zName;` |
 |     - |  381 | `		int nLen;` |
 |     - |  382 | `		/* Extract the name */` |
-|  5211 |  383 | `		zName = ph7_value_to_string(pValue,&nLen);` |
+|  5209 |  383 | `		zName = ph7_value_to_string(pValue,&nLen);` |
 |     - |  384 | `		/* php: a leading '\' just anchors the callable to the global namespace` |
 |     - |  385 | `		 * ("\trim", "\Foo::bar"); strip it before the lookup. */` |
-|  5211 |  386 | `		if( nLen > 0 && zName[0] == '\\' ){ zName++; nLen--; }` |
+|  5209 |  386 | `		if( nLen > 0 && zName[0] == '\\' ){ zName++; nLen--; }` |
 |     - |  387 | `		/* Perform the lookup */` |
-|  5265 |  388 | `		if( SyHashGet(&pVm->hFunction,(const void *)zName,(sxu32)nLen) != 0 \|\|` |
+|  5263 |  388 | `		if( SyHashGet(&pVm->hFunction,(const void *)zName,(sxu32)nLen) != 0 \|\|` |
 |   108 |  389 | `			SyHashGet(&pVm->hHostFunction,(const void *)zName,(sxu32)nLen) != 0 ){` |
 |     - |  390 | `				/* Function is callable */` |
-|  5161 |  391 | `				res = 1;` |
-|  2632 |  392 | `		}else if( nLen > 3 ){` |
+|  5159 |  391 | `				res = 1;` |
+|  2631 |  392 | `		}else if( nLen > 3 ){` |
 |     - |  393 | `			/* php's "Class::method" static-callable string */` |
 |     - |  394 | `			int i;` |
 |   461 |  395 | `			for( i = 1 ; i + 2 < nLen ; ++i ){` |
@@ -412,8 +412,8 @@ Coverage: 539/625 lines (86.24%)
 |     - |  402 | `				}` |
 |   209 |  403 | `			}` |
 |    24 |  404 | `		}` |
-|  2603 |  405 | `	}` |
-| 59337 |  406 | `	return res;` |
+|  2602 |  405 | `	}` |
+| 59373 |  406 | `	return res;` |
 |     5 |  407 | `}` |
 |     - |  408 | `/*` |
 |     - |  409 | ` * bool is_callable(callable $name[,bool $syntax_only = false])` |
@@ -606,19 +606,19 @@ Coverage: 539/625 lines (86.24%)
 |     - |  596 | ` * Extract the top active class. NULL is returned` |
 |     - |  597 | ` * if the class stack is empty.` |
 |     - |  598 | ` */` |
-|  2136 |  599 | `PH7_PRIVATE ph7_class * PH7_VmPeekTopClass(ph7_vm *pVm)` |
+|  2138 |  599 | `PH7_PRIVATE ph7_class * PH7_VmPeekTopClass(ph7_vm *pVm)` |
 |     5 |  600 | `{` |
-|  2141 |  601 | `	SySet *pSet = &pVm->aSelf;` |
+|  2143 |  601 | `	SySet *pSet = &pVm->aSelf;` |
 |     - |  602 | `	ph7_class **apClass;` |
-|  2141 |  603 | `	if( SySetUsed(pSet) <= 0 ){` |
+|  2143 |  603 | `	if( SySetUsed(pSet) <= 0 ){` |
 |     - |  604 | `		/* Empty stack: fall back to the initializer-eval class (see` |
 |     - |  605 | `		 * pConstEvalClass) so static:: degrades to self:: there. */` |
-|  1107 |  606 | `		return pVm->pConstEvalClass;` |
+|  1109 |  606 | `		return pVm->pConstEvalClass;` |
 |     - |  607 | `	}` |
 |     - |  608 | `	/* Peek the last entry */` |
 |  1039 |  609 | `	apClass = (ph7_class **)SySetBasePtr(pSet);` |
 |  1039 |  610 | `	return apClass[pSet->nUsed - 1];` |
-|  1073 |  611 | `}` |
+|  1074 |  611 | `}` |
 |     - |  612 | `/*` |
 |     - |  613 | ` * ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm)` |
 |     - |  614 | ` *   Get the class that declared the currently executing method.` |
@@ -638,13 +638,13 @@ Coverage: 539/625 lines (86.24%)
 |     - |  628 | ` *   This is found by walking the call frames to locate the method's` |
 |     - |  629 | ` *   declaring class.` |
 |     - |  630 | ` */` |
-|  2072 |  631 | `PH7_PRIVATE ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm)` |
+|  2074 |  631 | `PH7_PRIVATE ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm)` |
 |     5 |  632 | `{` |
-|  2077 |  633 | `	VmFrame *pFrame = pVm->pFrame;` |
+|  2079 |  633 | `	VmFrame *pFrame = pVm->pFrame;` |
 |     - |  634 | `	ph7_vm_func *pVmFunc;` |
 |     - |  635 |  |
 |     - |  636 | `	/* Skip exception frames to find the actual method frame */` |
-|  2077 |  637 | `	pFrame = VmSkipExceptionFrames(pFrame);` |
+|  2079 |  637 | `	pFrame = VmSkipExceptionFrames(pFrame);` |
 |     - |  638 |  |
 |     - |  639 | `	/* An on-demand constant/property initializer is evaluated via VmLocalExec,` |
 |     - |  640 | `	 * which pushes no frame — so the enclosing method's frame is still current.` |
@@ -653,12 +653,12 @@ Coverage: 539/625 lines (86.24%)
 |     - |  643 | `	 * (pConstEvalClass), NOT the enclosing method's class. Once the initializer` |
 |     - |  644 | `	 * calls a method (a new frame), the marker no longer matches and the normal` |
 |     - |  645 | `	 * frame walk below picks that method's declaring class. */` |
-|  2077 |  646 | `	if( pVm->pConstEvalClass && pVm->pConstEvalFrame == (void *)pFrame ){` |
+|  2079 |  646 | `	if( pVm->pConstEvalClass && pVm->pConstEvalFrame == (void *)pFrame ){` |
 |    21 |  647 | `		return pVm->pConstEvalClass;` |
 |     - |  648 | `	}` |
 |     - |  649 |  |
 |     - |  650 | `	/* Check if we're in a method context */` |
-|  2057 |  651 | `	if( pFrame->pParent ){` |
+|  2059 |  651 | `	if( pFrame->pParent ){` |
 |  1035 |  652 | `		if( pFrame->pBoundScope ){` |
 |     - |  653 | `			/* Closure::bind/bindTo/call scope override: it REPLACES the closure's` |
 |     - |  654 | `			 * class scope (php), so self::/parent:: resolve against it. */` |
@@ -679,8 +679,8 @@ Coverage: 539/625 lines (86.24%)
 |    39 |  669 | `	}` |
 |     - |  670 | `	/* No method frame: a constant/property initializer evaluated via` |
 |     - |  671 | `	 * VmLocalExec resolves self:: against the class being initialized. */` |
-|  1105 |  672 | `	return pVm->pConstEvalClass;` |
-|  1041 |  673 | `}` |
+|  1107 |  672 | `	return pVm->pConstEvalClass;` |
+|  1042 |  673 | `}` |
 |     - |  674 | `/*` |
 |     - |  675 | `` * Resolve the `parent` keyword to the base class of the current method's scope.`` |
 |     - |  676 | ` * A trait method is shared by pointer into every using class (its declaring class` |
@@ -723,12 +723,12 @@ Coverage: 539/625 lines (86.24%)
 |     - |  713 | ` * copy when the throw is landed. PH7_ABORT dominates a parked EXCEPTION;` |
 |     - |  714 | ` * a generalization of the older iCmpCallbackExc comparator flag.` |
 |     - |  715 | ` */` |
-| 14376 |  716 | `PH7_PRIVATE void VmBoundaryPark(ph7_vm *pVm,sxi32 rc)` |
+| 14390 |  716 | `PH7_PRIVATE void VmBoundaryPark(ph7_vm *pVm,sxi32 rc)` |
 |     5 |  717 | `{` |
-| 14381 |  718 | `	if( (rc == PH7_EXCEPTION \|\| rc == PH7_ABORT) && pVm->nBoundaryRc != PH7_ABORT ){` |
+| 14395 |  718 | `	if( (rc == PH7_EXCEPTION \|\| rc == PH7_ABORT) && pVm->nBoundaryRc != PH7_ABORT ){` |
 |   361 |  719 | `		pVm->nBoundaryRc = rc;` |
 |   178 |  720 | `	}` |
-| 14381 |  721 | `}` |
+| 14395 |  721 | `}` |
 |     - |  722 | `/*` |
 |     - |  723 | ` * Internal variant of PH7_VmCallClassMethod that threads a VmCallArgMap` |
 |     - |  724 | ` * through to the synthetic CALL instruction.  Used by the NEW handler so` |
@@ -1068,7 +1068,7 @@ Coverage: 539/625 lines (86.24%)
 |     1 | 1058 | `		}` |
 |     2 | 1059 | `	}` |
 |    36 | 1060 | `}` |
-|  2422 | 1061 | `PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(` |
+|  2450 | 1061 | `PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(` |
 |     - | 1062 | `	ph7_vm *pVm,       /* Target VM */` |
 |     - | 1063 | `	ph7_value *pFunc,  /* Callback name */` |
 |     - | 1064 | `	int nArg,          /* Total number of given arguments */` |
@@ -1080,32 +1080,32 @@ Coverage: 539/625 lines (86.24%)
 |     - | 1070 | `	ph7_value *aStack;` |
 |     - | 1071 | `	VmInstr aInstr[2];` |
 |     - | 1072 | `	int i;` |
-|  2427 | 1073 | `	if( VmValueIsClosure(pVm,pFunc) ){` |
+|  2455 | 1073 | `	if( VmValueIsClosure(pVm,pFunc) ){` |
 |     - | 1074 | `		/* A Closure object: unwrap to its underlying string/array callable and dispatch` |
 |     - | 1075 | `		 * that (call_user_func / array_map / usort / the C API all funnel here). Forward the` |
 |     - | 1076 | ``		 * named-arg map so a first-class-callable invoked as `$c(name: …)` binds by name. */`` |
 |     - | 1077 | `		ph7_value sCallable;` |
 |     - | 1078 | `		sxi32 rcClo;` |
-|   753 | 1079 | `		PH7_MemObjInit(pVm,&sCallable);` |
-|   753 | 1080 | `		if( VmClosureUnwrap(pVm,pFunc,&sCallable) == SXRET_OK ){` |
-|   753 | 1081 | `			rcClo = PH7_VmCallUserFunctionWithMap(pVm,&sCallable,nArg,apArg,pResult,pArgMap);` |
+|   767 | 1079 | `		PH7_MemObjInit(pVm,&sCallable);` |
+|   767 | 1080 | `		if( VmClosureUnwrap(pVm,pFunc,&sCallable) == SXRET_OK ){` |
+|   767 | 1081 | `			rcClo = PH7_VmCallUserFunctionWithMap(pVm,&sCallable,nArg,apArg,pResult,pArgMap);` |
 |     - | 1082 | `			/* A bound PLAIN closure parks its $this in pVm->pClosureThis for the (synthetic) OP_CALL` |
 |     - | 1083 | `			 * frame setup to consume. If that dispatch failed before the consume (e.g. operand-stack` |
 |     - | 1084 | `			 * OOM), the transient is still set — release its owned ref and clear it so it neither` |
 |     - | 1085 | `			 * leaks nor poisons the next call's frame with a stale $this. */` |
-|   753 | 1086 | `			if( pVm->pClosureThis ){` |
+|   767 | 1086 | `			if( pVm->pClosureThis ){` |
 |   ! 0 | 1087 | `				PH7_ClassInstanceUnref(pVm->pClosureThis);` |
 |   ! 0 | 1088 | `				pVm->pClosureThis = 0;` |
 |   ! 0 | 1089 | `			}` |
 |     - | 1090 | `			/* The scope transient can stand alone (scope-only rebind); it holds no` |
 |     - | 1091 | `			 * owned reference — just clear it if the dispatch didn't consume it. */` |
-|   753 | 1092 | `			pVm->pClosureScope = 0;` |
-|   753 | 1093 | `			PH7_MemObjRelease(&sCallable);` |
-|   753 | 1094 | `			return rcClo;` |
+|   767 | 1092 | `			pVm->pClosureScope = 0;` |
+|   767 | 1093 | `			PH7_MemObjRelease(&sCallable);` |
+|   767 | 1094 | `			return rcClo;` |
 |     - | 1095 | `		}` |
 |   ! 0 | 1096 | `		PH7_MemObjRelease(&sCallable);` |
 |   ! 0 | 1097 | `	}` |
-|  1679 | 1098 | `	if( pFunc->iFlags & MEMOBJ_OBJ ){` |
+|  1693 | 1098 | `	if( pFunc->iFlags & MEMOBJ_OBJ ){` |
 |     - | 1099 | `		/* Object callable: dispatch through __invoke when available (Closures were already` |
 |     - | 1100 | `		 * unwrapped above, so only non-Closure __invoke objects reach here). pArgMap is 0 for the` |
 |     - | 1101 | `		 * positional callers (call_user_func / array_map / usort / C API) and carries the` |
@@ -1114,7 +1114,7 @@ Coverage: 539/625 lines (86.24%)
 |    94 | 1104 | `			(ph7_class_instance *)pFunc->x.pOther,` |
 |    47 | 1105 | `			nArg,apArg,pResult,pArgMap);` |
 |     - | 1106 | `	}` |
-|  1585 | 1107 | `	if((pFunc->iFlags & (MEMOBJ_STRING\|MEMOBJ_HASHMAP)) == 0 ){` |
+|  1599 | 1107 | `	if((pFunc->iFlags & (MEMOBJ_STRING\|MEMOBJ_HASHMAP)) == 0 ){` |
 |     - | 1108 | `		/* Don't bother processing,it's invalid anyway */` |
 |   569 | 1109 | `		if( pResult ){` |
 |     - | 1110 | `			/* Assume a null return value */` |
@@ -1122,7 +1122,7 @@ Coverage: 539/625 lines (86.24%)
 |     2 | 1112 | `		}` |
 |   569 | 1113 | `		return SXERR_INVALID;` |
 |     - | 1114 | `	}` |
-|  1021 | 1115 | `	if( pFunc->iFlags & MEMOBJ_HASHMAP ){` |
+|  1035 | 1115 | `	if( pFunc->iFlags & MEMOBJ_HASHMAP ){` |
 |     - | 1116 | `		/* Class method */` |
 |   114 | 1117 | `		ph7_hashmap *pMap = (ph7_hashmap *)pFunc->x.pOther;` |
 |   114 | 1118 | `		ph7_class_method *pMethod = 0;` |
@@ -1175,8 +1175,8 @@ Coverage: 539/625 lines (86.24%)
 |   114 | 1165 | `		return rc;` |
 |     - | 1166 | `	}` |
 |     - | 1167 | `	/* Create a new operand stack */` |
-|   909 | 1168 | `	aStack = VmNewOperandStack(&(*pVm),1+nArg);` |
-|   909 | 1169 | `	if( aStack == 0 ){` |
+|   923 | 1168 | `	aStack = VmNewOperandStack(&(*pVm),1+nArg);` |
+|   923 | 1169 | `	if( aStack == 0 ){` |
 |   ! 0 | 1170 | `		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,` |
 |     - | 1171 | `			"PH7 is running out of memory while invoking user callback");` |
 |   ! 0 | 1172 | `		if( pResult ){` |
@@ -1186,47 +1186,47 @@ Coverage: 539/625 lines (86.24%)
 |   ! 0 | 1176 | `		return SXERR_MEM;` |
 |     - | 1177 | `	}` |
 |     - | 1178 | `	/* Fill the operand stack with the given arguments */` |
-|  2731 | 1179 | `	for( i = 0 ; i < nArg ; i++ ){` |
-|  1827 | 1180 | `		PH7_MemObjLoad(apArg[i],&aStack[i]);` |
+|  2759 | 1179 | `	for( i = 0 ; i < nArg ; i++ ){` |
+|  1841 | 1180 | `		PH7_MemObjLoad(apArg[i],&aStack[i]);` |
 |     - | 1181 | `		/*` |
 |     - | 1182 | `		 * Symisc eXtension:` |
 |     - | 1183 | `		 *  Parameters to [call_user_func()] can be passed by reference.` |
 |     - | 1184 | `		 */` |
-|  1827 | 1185 | `		aStack[i].nIdx = apArg[i]->nIdx;` |
-|   916 | 1186 | `	}` |
+|  1841 | 1185 | `		aStack[i].nIdx = apArg[i]->nIdx;` |
+|   923 | 1186 | `	}` |
 |     - | 1187 | `	/* Push the function name */` |
-|   909 | 1188 | `	PH7_MemObjLoad(pFunc,&aStack[i]);` |
-|   909 | 1189 | `	aStack[i].nIdx = SXU32_HIGH; /* Mark as constant */` |
+|   923 | 1188 | `	PH7_MemObjLoad(pFunc,&aStack[i]);` |
+|   923 | 1189 | `	aStack[i].nIdx = SXU32_HIGH; /* Mark as constant */` |
 |     - | 1190 | `	/* Emit the CALL istruction */` |
-|   909 | 1191 | `	aInstr[0].iOp = PH7_OP_CALL;` |
-|   909 | 1192 | `	aInstr[0].iP1 = nArg; /* Total number of given arguments */` |
-|   909 | 1193 | `	aInstr[0].iP2 = 0;` |
-|   909 | 1194 | `	aInstr[0].p3  = (void *)pArgMap; /* Named-arg map (0 for positional callers) */` |
+|   923 | 1191 | `	aInstr[0].iOp = PH7_OP_CALL;` |
+|   923 | 1192 | `	aInstr[0].iP1 = nArg; /* Total number of given arguments */` |
+|   923 | 1193 | `	aInstr[0].iP2 = 0;` |
+|   923 | 1194 | `	aInstr[0].p3  = (void *)pArgMap; /* Named-arg map (0 for positional callers) */` |
 |     - | 1195 | `	/* Emit the DONE instruction */` |
-|   909 | 1196 | `	aInstr[1].iOp = PH7_OP_DONE;` |
-|   909 | 1197 | `	aInstr[1].iP1 = 1;   /* Extract function return value if available */` |
-|   909 | 1198 | `	aInstr[1].iP2 = 0;` |
-|   909 | 1199 | `	aInstr[1].p3  = 0;` |
+|   923 | 1196 | `	aInstr[1].iOp = PH7_OP_DONE;` |
+|   923 | 1197 | `	aInstr[1].iP1 = 1;   /* Extract function return value if available */` |
+|   923 | 1198 | `	aInstr[1].iP2 = 0;` |
+|   923 | 1199 | `	aInstr[1].p3  = 0;` |
 |     - | 1200 | `	/* Execute the function body (if available) */` |
 |     - | 1201 | `	{` |
 |     - | 1202 | `		sxi32 rcExec;` |
-|   909 | 1203 | `		sxu32 nStkCap = (sxu32)(1+nArg) + VM_STACK_GUARD; /* what VmNewOperandStack handed out */` |
-|   909 | 1204 | `		rcExec = VmByteCodeExec(&(*pVm),aInstr,aStack,nArg,pResult,0,TRUE,0,0,FALSE,0,&aStack,&nStkCap,nStkCap);` |
+|   923 | 1203 | `		sxu32 nStkCap = (sxu32)(1+nArg) + VM_STACK_GUARD; /* what VmNewOperandStack handed out */` |
+|   923 | 1204 | `		rcExec = VmByteCodeExec(&(*pVm),aInstr,aStack,nArg,pResult,0,TRUE,0,0,FALSE,0,&aStack,&nStkCap,nStkCap);` |
 |     - | 1205 | `		/* Clean up the mess left behind */` |
-|   909 | 1206 | `		SyMemBackendFree(&pVm->sAllocator,aStack);` |
+|   923 | 1206 | `		SyMemBackendFree(&pVm->sAllocator,aStack);` |
 |     - | 1207 | `		/* Propagate PH7_EXCEPTION/PH7_ABORT so a callback that raised unwinds —` |
 |     - | 1208 | `		 * and park it for the callers with no status channel (VmBoundaryPark). */` |
-|   909 | 1209 | `		VmBoundaryPark(&(*pVm),rcExec);` |
-|   909 | 1210 | `		return rcExec;` |
+|   923 | 1209 | `		VmBoundaryPark(&(*pVm),rcExec);` |
+|   923 | 1210 | `		return rcExec;` |
 |     - | 1211 | `	}` |
-|  1216 | 1212 | `}` |
+|  1230 | 1212 | `}` |
 |     - | 1213 | `/*` |
 |     - | 1214 | ` * Positional-call wrapper around PH7_VmCallUserFunctionWithMap (mirrors the` |
 |     - | 1215 | ` * PH7_VmCallClassMethod -> VmCallClassMethodWithMap pattern). call_user_func,` |
 |     - | 1216 | ` * array_map, usort and the whole C API funnel here and pass arguments by` |
 |     - | 1217 | ` * position, so they need no named-argument map.` |
 |     - | 1218 | ` */` |
-|  1558 | 1219 | `PH7_PRIVATE sxi32 PH7_VmCallUserFunction(` |
+|  1572 | 1219 | `PH7_PRIVATE sxi32 PH7_VmCallUserFunction(` |
 |     - | 1220 | `	ph7_vm *pVm,       /* Target VM */` |
 |     - | 1221 | `	ph7_value *pFunc,  /* Callback name */` |
 |     - | 1222 | `	int nArg,          /* Total number of given arguments */` |
@@ -1234,7 +1234,7 @@ Coverage: 539/625 lines (86.24%)
 |     - | 1224 | `	ph7_value *pResult /* Store callback return value here. NULL otherwise */` |
 |     - | 1225 | `	)` |
 |     5 | 1226 | `{` |
-|  1563 | 1227 | `	return PH7_VmCallUserFunctionWithMap(&(*pVm),pFunc,nArg,apArg,pResult,0);` |
+|  1577 | 1227 | `	return PH7_VmCallUserFunctionWithMap(&(*pVm),pFunc,nArg,apArg,pResult,0);` |
 |     5 | 1228 | `}` |
 |     - | 1229 | `/*` |
 |     - | 1230 | ` * Call a user defined or foreign function whith a varibale number` |
