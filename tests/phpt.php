@@ -267,13 +267,26 @@ function match_expectf_pattern($phpt_pattern, $phpt_output) {
                     $phpt_o++;
                 }
             } elseif ($phpt_pattern[$phpt_p] === 's') {
-                // Match one or more non-whitespace characters
-                if ($phpt_o >= $phpt_output_len || ctype_space($phpt_output[$phpt_o])) {
-                    return false;
+                // Match one or more non-whitespace characters, LAZILY: try the
+                // shortest run for which the rest of the pattern also matches.
+                // Consuming greedily (what this did before) made a literal that
+                // follows %s unmatchable whenever the literal itself is
+                // non-whitespace -- '%s:2' could never match 'some/path:2'
+                // because %s swallowed ':2' as well and never gave it back.
+                // That is why so many expectations had to fall back to %A and
+                // assert almost nothing; keep the character class as-is and
+                // only add backtracking.
+                $phpt_p++; // move past 's'
+                $phpt_rest_pattern = substr($phpt_pattern, $phpt_p);
+                for ($phpt_i = $phpt_o + 1; $phpt_i <= $phpt_output_len; $phpt_i++) {
+                    if (ctype_space($phpt_output[$phpt_i - 1])) {
+                        break; // the run may not cross whitespace
+                    }
+                    if (match_expectf_pattern($phpt_rest_pattern, substr($phpt_output, $phpt_i))) {
+                        return true;
+                    }
                 }
-                while ($phpt_o < $phpt_output_len && !ctype_space($phpt_output[$phpt_o])) {
-                    $phpt_o++;
-                }
+                return false;
             } elseif ($phpt_pattern[$phpt_p] === 'f') {
                 // Match a float: optional sign, digits, optional decimal, optional exponent
                 if ($phpt_o >= $phpt_output_len) {

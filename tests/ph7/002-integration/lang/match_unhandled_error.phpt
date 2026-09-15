@@ -9,6 +9,6 @@ $r = match (99) { 1 => 'one', 2 => 'two' };
 echo "never\n";
 ?>
 --EXPECTF--
-%AUncaught UnhandledMatchError: Unhandled match case%A
+%APHP Fatal error:  Uncaught UnhandledMatchError: Unhandled match case of type int in %s:2%A
 --CLEAN--
 <?php
