@@ -190,6 +190,8 @@
 	"class ArithmeticError extends Error { }"\
 	"class DivisionByZeroError extends ArithmeticError { }"\
 	"class UnhandledMatchError extends Error { }"\
+	"class CompileError extends Error { }"\
+	"class ParseError extends CompileError { }"\
 	"class ErrorException extends Exception { "\
 	"protected $severity;"\
 	"public function __construct(?string $message = null,"\

@@ -2769,7 +2769,13 @@ PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 n
 		}
 	}
 	if( pGen->xErr == 0 ){
-		/* No available error consumer,return immediately */
+		/* No consumer — but keep the BARE message in the error buffer so a caller
+		 * that needs the text can read it back. eval() compiles with logging off
+		 * (a parse error there is php's catchable ParseError, not a printed
+		 * diagnostic) and needs exactly this string for the exception message. */
+		va_start(ap,zFormat);
+		SyBlobFormatAp(pWorker,zFormat,ap);
+		va_end(ap);
 		return SXRET_OK;
 	}
 	switch(nErrType){
