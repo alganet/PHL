@@ -5672,6 +5672,20 @@ SkipFuncBody:
 				(int)pFunc->nMinArg,
 				pFunc->nMinArg == 1 ? "" : "s",
 				nGiven);
+		}else if( pFunc->bHasMaxArg && nGiven > (int)pFunc->nMaxArg ){
+			/* php enforces the MAXIMUM as well, and PHL only did so where a
+			 * builtin happened to hand-roll the check (51 of ~650), so
+			 * `microtime(1,2)`, `strlen("a","b")` and friends silently ignored
+			 * the extras. The count comes from the same signature table as the
+			 * minimum; a variadic tail leaves nMaxArg at -1 and is exempt.
+			 * php says "exactly" when the bounds coincide, "at most" otherwise. */
+			rc = PH7_VmThrowException(&sCtx,"ArgumentCountError",
+				"%z() expects %s %d argument%s, %d given",
+				&pFunc->sName,
+				((int)pFunc->nMinArg == (int)pFunc->nMaxArg && !pFunc->bAtLeast) ? "exactly" : "at most",
+				(int)pFunc->nMaxArg,
+				pFunc->nMaxArg == 1 ? "" : "s",
+				nGiven);
 		}else if( SXRET_OK != (rc = VmEnforceBuiltinArgTypes(&sCtx,pFunc,nGiven,
 			(ph7_value **)SySetBasePtr(&aArg))) ){
 			/* TypeError thrown: rc carries the caught/uncaught status */
