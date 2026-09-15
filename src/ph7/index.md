@@ -1,6 +1,6 @@
 # src/ph7/
 
-Coverage: 45408/55859 lines (81.29%)
+Coverage: 45424/55873 lines (81.30%)
 
 [Up](../index.md)
 
@@ -24,7 +24,7 @@ Coverage: 45408/55859 lines (81.29%)
 |[compile_stmt.c](compile_stmt.c.md)|73.56%|1452/1974|
 |[constant.c](constant.c.md)|93.09%|970/1042|
 |[hashmap.c](hashmap.c.md)|90.77%|1042/1148|
-|[hashmap_builtin.c](hashmap_builtin.c.md)|87.17%|2481/2846|
+|[hashmap_builtin.c](hashmap_builtin.c.md)|87.21%|2482/2846|
 |[hashmap_sort.c](hashmap_sort.c.md)|91.14%|463/508|
 |[lex.c](lex.c.md)|93.34%|813/871|
 |[memobj.c](memobj.c.md)|81.68%|834/1021|
@@ -36,7 +36,7 @@ Coverage: 45408/55859 lines (81.29%)
 |[vfs_stream.c](vfs_stream.c.md)|66.90%|1267/1894|
 |[vfs_unix.c](vfs_unix.c.md)|89.38%|421/471|
 |[vfs_win.c](vfs_win.c.md)|82.82%|588/710|
-|[vm.c](vm.c.md)|83.42%|2334/2798|
+|[vm.c](vm.c.md)|83.46%|2332/2794|
 |[vm_arg_check.c](vm_arg_check.c.md)|97.47%|347/356|
 |[vm_builtin_call.c](vm_builtin_call.c.md)|86.24%|539/625|
 |[vm_builtin_class.c](vm_builtin_class.c.md)|87.74%|630/718|
@@ -53,8 +53,8 @@ Coverage: 45408/55859 lines (81.29%)
 |[vm_builtin_tokenizer.c](vm_builtin_tokenizer.c.md)|1.62%|12/743|
 |[vm_builtin_var.c](vm_builtin_var.c.md)|90.95%|382/420|
 |[vm_dom.c](vm_dom.c.md)|86.09%|656/762|
-|[vm_error.c](vm_error.c.md)|86.48%|1727/1997|
-|[vm_exec.c](vm_exec.c.md)|83.52%|2605/3119|
+|[vm_error.c](vm_error.c.md)|86.47%|1726/1996|
+|[vm_exec.c](vm_exec.c.md)|83.58%|2622/3137|
 |[vm_exec_ctx.c](vm_exec_ctx.c.md)|79.98%|1023/1279|
 |[vm_http.c](vm_http.c.md)|69.82%|310/444|
 |[vm_http_response.c](vm_http_response.c.md)|49.41%|126/255|
@@ -64,7 +64,7 @@ Coverage: 45408/55859 lines (81.29%)
 |[vm_ops_arith.c](vm_ops_arith.c.md)|82.93%|588/709|
 |[vm_ops_iter.c](vm_ops_iter.c.md)|80.00%|272/340|
 |[vm_ops_load.c](vm_ops_load.c.md)|85.26%|665/780|
-|[vm_ops_misc.c](vm_ops_misc.c.md)|86.23%|213/247|
+|[vm_ops_misc.c](vm_ops_misc.c.md)|86.29%|214/248|
 |[vm_ops_oo.c](vm_ops_oo.c.md)|85.52%|868/1015|
 |[vm_pcre.c](vm_pcre.c.md)|69.07%|632/915|
 |[vm_serialize.c](vm_serialize.c.md)|96.07%|464/483|

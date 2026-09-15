@@ -18,7 +18,7 @@
 | src/ph7/compile_stmt.c         | 73.56%   | 1452/1974   |
 | src/ph7/constant.c             | 93.09%   | 970/1042    |
 | src/ph7/hashmap.c              | 90.77%   | 1042/1148   |
-| src/ph7/hashmap_builtin.c      | 87.17%   | 2481/2846   |
+| src/ph7/hashmap_builtin.c      | 87.21%   | 2482/2846   |
 | src/ph7/hashmap_sort.c         | 91.14%   | 463/508     |
 | src/ph7/lex.c                  | 93.34%   | 813/871     |
 | src/ph7/memobj.c               | 81.68%   | 834/1021    |
@@ -30,7 +30,7 @@
 | src/ph7/vfs_stream.c           | 66.90%   | 1267/1894   |
 | src/ph7/vfs_unix.c             | 89.38%   | 421/471     |
 | src/ph7/vfs_win.c              | 82.82%   | 588/710     |
-| src/ph7/vm.c                   | 83.42%   | 2334/2798   |
+| src/ph7/vm.c                   | 83.46%   | 2332/2794   |
 | src/ph7/vm_arg_check.c         | 97.47%   | 347/356     |
 | src/ph7/vm_builtin_call.c      | 86.24%   | 539/625     |
 | src/ph7/vm_builtin_class.c     | 87.74%   | 630/718     |
@@ -47,8 +47,8 @@
 | src/ph7/vm_builtin_tokenizer.c | 1.62%    | 12/743      |
 | src/ph7/vm_builtin_var.c       | 90.95%   | 382/420     |
 | src/ph7/vm_dom.c               | 86.09%   | 656/762     |
-| src/ph7/vm_error.c             | 86.48%   | 1727/1997   |
-| src/ph7/vm_exec.c              | 83.52%   | 2605/3119   |
+| src/ph7/vm_error.c             | 86.47%   | 1726/1996   |
+| src/ph7/vm_exec.c              | 83.58%   | 2622/3137   |
 | src/ph7/vm_exec_ctx.c          | 79.98%   | 1023/1279   |
 | src/ph7/vm_http.c              | 69.82%   | 310/444     |
 | src/ph7/vm_http_response.c     | 49.41%   | 126/255     |
@@ -58,7 +58,7 @@
 | src/ph7/vm_ops_arith.c         | 82.93%   | 588/709     |
 | src/ph7/vm_ops_iter.c          | 80.00%   | 272/340     |
 | src/ph7/vm_ops_load.c          | 85.26%   | 665/780     |
-| src/ph7/vm_ops_misc.c          | 86.23%   | 213/247     |
+| src/ph7/vm_ops_misc.c          | 86.29%   | 214/248     |
 | src/ph7/vm_ops_oo.c            | 85.52%   | 868/1015    |
 | src/ph7/vm_pcre.c              | 69.07%   | 632/915     |
 | src/ph7/vm_serialize.c         | 96.07%   | 464/483     |
@@ -79,5 +79,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.16%   | 48309/59525 |
+| Lines                          | 81.17%   | 48325/59539 |
 | Functions                      | 93.09%   | 2197/2360   |

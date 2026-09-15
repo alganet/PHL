@@ -27,56 +27,56 @@ Coverage: 1023/1279 lines (79.98%)
 |       - |   17 | ` * Allocate and initialize a new execution context for a fiber.` |
 |       - |   18 | ` * The context is in CREATED state and ready to be started.` |
 |       - |   19 | ` */` |
-|     594 |   20 | `PH7_PRIVATE ph7_exec_ctx * VmNewExecCtx(ph7_vm *pVm, ph7_vm_func *pFunc)` |
+|     596 |   20 | `PH7_PRIVATE ph7_exec_ctx * VmNewExecCtx(ph7_vm *pVm, ph7_vm_func *pFunc)` |
 |       5 |   21 | `{` |
 |       - |   22 | `	ph7_exec_ctx *pCtx;` |
 |       - |   23 | `	ph7_value *pStack;` |
 |       - |   24 | `	VmFrame *pFrame;` |
-|     599 |   25 | `	pCtx = (ph7_exec_ctx *)SyMemBackendPoolAlloc(&pVm->sAllocator, sizeof(ph7_exec_ctx));` |
-|     599 |   26 | `	if( pCtx == 0 ){` |
+|     601 |   25 | `	pCtx = (ph7_exec_ctx *)SyMemBackendPoolAlloc(&pVm->sAllocator, sizeof(ph7_exec_ctx));` |
+|     601 |   26 | `	if( pCtx == 0 ){` |
 |     ! 0 |   27 | `		return 0;` |
 |       - |   28 | `	}` |
-|     599 |   29 | `	SyZero(pCtx, sizeof(ph7_exec_ctx));` |
-|     599 |   30 | `	pCtx->pVm = pVm;` |
-|     599 |   31 | `	pCtx->pFunc = pFunc;` |
-|     599 |   32 | `	pCtx->iState = PH7_CTX_STATE_CREATED;` |
-|     599 |   33 | `	pCtx->nTos = -1; /* Empty stack — matches VmByteCodeExec convention */` |
-|     599 |   34 | `	pCtx->pc = 0;` |
-|     599 |   35 | `	PH7_MemObjInit(pVm, &pCtx->sSuspendValue);` |
-|     599 |   36 | `	PH7_MemObjInit(pVm, &pCtx->sRetValue);` |
-|     599 |   37 | `	PH7_MemObjInit(pVm, &pCtx->sDelegate);` |
+|     601 |   29 | `	SyZero(pCtx, sizeof(ph7_exec_ctx));` |
+|     601 |   30 | `	pCtx->pVm = pVm;` |
+|     601 |   31 | `	pCtx->pFunc = pFunc;` |
+|     601 |   32 | `	pCtx->iState = PH7_CTX_STATE_CREATED;` |
+|     601 |   33 | `	pCtx->nTos = -1; /* Empty stack — matches VmByteCodeExec convention */` |
+|     601 |   34 | `	pCtx->pc = 0;` |
+|     601 |   35 | `	PH7_MemObjInit(pVm, &pCtx->sSuspendValue);` |
+|     601 |   36 | `	PH7_MemObjInit(pVm, &pCtx->sRetValue);` |
+|     601 |   37 | `	PH7_MemObjInit(pVm, &pCtx->sDelegate);` |
 |       - |   38 | `	/* Container for this body's own exception handlers while suspended (borrowed` |
 |       - |   39 | `	 * ph7_exception* pointers — never freed here, owned by the compiled func). */` |
-|     599 |   40 | `	SySetInit(&pCtx->aSavedException, &pVm->sAllocator, sizeof(ph7_exception *));` |
+|     601 |   40 | `	SySetInit(&pCtx->aSavedException, &pVm->sAllocator, sizeof(ph7_exception *));` |
 |       - |   41 | `	/* ROOT C: this body's own pending finally actions while suspended. */` |
-|     599 |   42 | `	SySetInit(&pCtx->aSavedFinally, &pVm->sAllocator, sizeof(VmFinallyAction));` |
-|     599 |   43 | `	pCtx->nFinallyBase = 0;` |
+|     601 |   42 | `	SySetInit(&pCtx->aSavedFinally, &pVm->sAllocator, sizeof(VmFinallyAction));` |
+|     601 |   43 | `	pCtx->nFinallyBase = 0;` |
 |       - |   44 | `	/* Stage 4: this coroutine's own aSelf entries (self::/static:: class context` |
 |       - |   45 | `	 * pushed by nested method calls still open at suspend) parked while suspended,` |
 |       - |   46 | `	 * so they don't pollute the resumer's aSelf. Borrowed ph7_class* pointers. */` |
-|     599 |   47 | `	SySetInit(&pCtx->aSavedSelf, &pVm->sAllocator, sizeof(ph7_class *));` |
-|     599 |   48 | `	pCtx->nSelfBase = 0;` |
-|     599 |   49 | `	pCtx->pParkedSegment = 0;` |
-|     599 |   50 | `	pCtx->nBodyExecDepth = 0;` |
+|     601 |   47 | `	SySetInit(&pCtx->aSavedSelf, &pVm->sAllocator, sizeof(ph7_class *));` |
+|     601 |   48 | `	pCtx->nSelfBase = 0;` |
+|     601 |   49 | `	pCtx->pParkedSegment = 0;` |
+|     601 |   50 | `	pCtx->nBodyExecDepth = 0;` |
 |       - |   51 | `	/* Allocate a private operand stack */` |
-|     599 |   52 | `	pStack = VmNewOperandStack(pVm, SySetUsed(&pFunc->aByteCode));` |
-|     599 |   53 | `	if( pStack == 0 ){` |
+|     601 |   52 | `	pStack = VmNewOperandStack(pVm, SySetUsed(&pFunc->aByteCode));` |
+|     601 |   53 | `	if( pStack == 0 ){` |
 |     ! 0 |   54 | `		SyMemBackendPoolFree(&pVm->sAllocator, pCtx);` |
 |     ! 0 |   55 | `		return 0;` |
 |       - |   56 | `	}` |
-|     599 |   57 | `	pCtx->pStack = pStack;` |
-|     599 |   58 | `	pCtx->nStackCap = SySetUsed(&pFunc->aByteCode) + VM_STACK_GUARD; /* grows with pStack on OP_SPREAD */` |
-|     599 |   59 | `	pCtx->nStackOrig = pCtx->nStackCap; /* fixed original — headroom reference across resumes */` |
+|     601 |   57 | `	pCtx->pStack = pStack;` |
+|     601 |   58 | `	pCtx->nStackCap = SySetUsed(&pFunc->aByteCode) + VM_STACK_GUARD; /* grows with pStack on OP_SPREAD */` |
+|     601 |   59 | `	pCtx->nStackOrig = pCtx->nStackCap; /* fixed original — headroom reference across resumes */` |
 |       - |   60 | `	/* Create a detached frame for the fiber */` |
-|     599 |   61 | `	pFrame = VmNewFrame(pVm, pFunc, 0);` |
-|     599 |   62 | `	if( pFrame == 0 ){` |
+|     601 |   61 | `	pFrame = VmNewFrame(pVm, pFunc, 0);` |
+|     601 |   62 | `	if( pFrame == 0 ){` |
 |     ! 0 |   63 | `		SyMemBackendFree(&pVm->sAllocator, pStack);` |
 |     ! 0 |   64 | `		SyMemBackendPoolFree(&pVm->sAllocator, pCtx);` |
 |     ! 0 |   65 | `		return 0;` |
 |       - |   66 | `	}` |
-|     599 |   67 | `	pCtx->pFrame = pFrame;` |
-|     599 |   68 | `	return pCtx;` |
-|     302 |   69 | `}` |
+|     601 |   67 | `	pCtx->pFrame = pFrame;` |
+|     601 |   68 | `	return pCtx;` |
+|     303 |   69 | `}` |
 |       - |   70 | `/*` |
 |       - |   71 | ` * A suspended coroutine must not leave its own slices of the VM's shared stacks` |
 |       - |   72 | ` * sitting above the caller's depth. Three stacks are affected, identically:` |
@@ -100,10 +100,10 @@ Coverage: 1023/1279 lines (79.98%)
 |       - |   90 | ` * body-level suspend only ever has body-owned handlers here, and its finally/self` |
 |       - |   91 | ` * slices are empty (all nested calls already returned) — so those are no-ops.` |
 |       - |   92 | ` */` |
-|    4932 |   93 | `static void VmParkStackSlice(SySet *pFrom, SySet *pSaved, sxu32 nBase)` |
+|    4938 |   93 | `static void VmParkStackSlice(SySet *pFrom, SySet *pSaved, sxu32 nBase)` |
 |       5 |   94 | `{` |
-|    4937 |   95 | `	sxu32 nUsed = SySetUsed(pFrom);` |
-|    4937 |   96 | `	if( nUsed > nBase ){` |
+|    4943 |   95 | `	sxu32 nUsed = SySetUsed(pFrom);` |
+|    4943 |   96 | `	if( nUsed > nBase ){` |
 |     575 |   97 | `		const char *aBase = (const char *)SySetBasePtr(pFrom);` |
 |       - |   98 | `		sxu32 i;` |
 |    1153 |   99 | `		for( i = nBase; i < nUsed; i++ ){` |
@@ -111,30 +111,30 @@ Coverage: 1023/1279 lines (79.98%)
 |     294 |  101 | `		}` |
 |     575 |  102 | `		SySetTruncate(pFrom, nBase);` |
 |     285 |  103 | `	}` |
-|    4937 |  104 | `}` |
-|    4110 |  105 | `static void VmRestoreStackSlice(SySet *pTo, SySet *pSaved)` |
+|    4943 |  104 | `}` |
+|    4116 |  105 | `static void VmRestoreStackSlice(SySet *pTo, SySet *pSaved)` |
 |       5 |  106 | `{` |
-|    4115 |  107 | `	sxu32 i, n = SySetUsed(pSaved);` |
-|    4115 |  108 | `	if( n > 0 ){` |
+|    4121 |  107 | `	sxu32 i, n = SySetUsed(pSaved);` |
+|    4121 |  108 | `	if( n > 0 ){` |
 |     353 |  109 | `		const char *aSaved = (const char *)SySetBasePtr(pSaved);` |
 |     709 |  110 | `		for( i = 0; i < n; i++ ){` |
 |     361 |  111 | `			SySetPut(pTo, (const void *)(aSaved + i * pSaved->eSize));` |
 |     183 |  112 | `		}` |
 |     353 |  113 | `		SySetReset(pSaved);` |
 |     174 |  114 | `	}` |
-|    4115 |  115 | `}` |
-|    1644 |  116 | `static void VmParkCtxState(ph7_vm *pVm, ph7_exec_ctx *pCtx)` |
+|    4121 |  115 | `}` |
+|    1646 |  116 | `static void VmParkCtxState(ph7_vm *pVm, ph7_exec_ctx *pCtx)` |
 |       5 |  117 | `{` |
-|    1649 |  118 | `	VmParkStackSlice(&pVm->aException, &pCtx->aSavedException, pCtx->nExceptionBase);` |
-|    1649 |  119 | `	VmParkStackSlice(&pVm->aFinallyAction, &pCtx->aSavedFinally, pCtx->nFinallyBase);` |
-|    1649 |  120 | `	VmParkStackSlice(&pVm->aSelf, &pCtx->aSavedSelf, pCtx->nSelfBase);` |
-|    1649 |  121 | `}` |
-|    1370 |  122 | `static void VmRestoreCtxState(ph7_vm *pVm, ph7_exec_ctx *pCtx)` |
+|    1651 |  118 | `	VmParkStackSlice(&pVm->aException, &pCtx->aSavedException, pCtx->nExceptionBase);` |
+|    1651 |  119 | `	VmParkStackSlice(&pVm->aFinallyAction, &pCtx->aSavedFinally, pCtx->nFinallyBase);` |
+|    1651 |  120 | `	VmParkStackSlice(&pVm->aSelf, &pCtx->aSavedSelf, pCtx->nSelfBase);` |
+|    1651 |  121 | `}` |
+|    1372 |  122 | `static void VmRestoreCtxState(ph7_vm *pVm, ph7_exec_ctx *pCtx)` |
 |       5 |  123 | `{` |
-|    1375 |  124 | `	VmRestoreStackSlice(&pVm->aException, &pCtx->aSavedException);` |
-|    1375 |  125 | `	VmRestoreStackSlice(&pVm->aFinallyAction, &pCtx->aSavedFinally);` |
-|    1375 |  126 | `	VmRestoreStackSlice(&pVm->aSelf, &pCtx->aSavedSelf);` |
-|    1375 |  127 | `}` |
+|    1377 |  124 | `	VmRestoreStackSlice(&pVm->aException, &pCtx->aSavedException);` |
+|    1377 |  125 | `	VmRestoreStackSlice(&pVm->aFinallyAction, &pCtx->aSavedFinally);` |
+|    1377 |  126 | `	VmRestoreStackSlice(&pVm->aSelf, &pCtx->aSavedSelf);` |
+|    1377 |  127 | `}` |
 |       - |  128 | `/*` |
 |       - |  129 | ` * On suspend, free the exception (try) frames the yield was nested in. They were` |
 |       - |  130 | ` * pushed by OP_LOAD_EXCEPTION between the coroutine body frame (pCtx->pFrame) and` |
@@ -148,12 +148,12 @@ Coverage: 1023/1279 lines (79.98%)
 |       - |  138 | ` * OP_LOAD_EXCEPTION re-creates a fresh wrapper when the try is next entered. Must` |
 |       - |  139 | ` * run while pVm->pFrame still points at the suspend-time top (before the detach).` |
 |       - |  140 | ` */` |
-|    1290 |  141 | `static void VmFreeSuspendedExceptionFrames(ph7_vm *pVm, ph7_exec_ctx *pCtx)` |
+|    1292 |  141 | `static void VmFreeSuspendedExceptionFrames(ph7_vm *pVm, ph7_exec_ctx *pCtx)` |
 |       5 |  142 | `{` |
-|    1491 |  143 | `	while( pVm->pFrame != pCtx->pFrame && (pVm->pFrame->iFlags & VM_FRAME_EXCEPTION) ){` |
+|    1493 |  143 | `	while( pVm->pFrame != pCtx->pFrame && (pVm->pFrame->iFlags & VM_FRAME_EXCEPTION) ){` |
 |     201 |  144 | `		VmLeaveFrame(&(*pVm));` |
 |       5 |  145 | `	}` |
-|    1295 |  146 | `}` |
+|    1297 |  146 | `}` |
 |       - |  147 | `/*` |
 |       - |  148 | ` * Common suspend epilogue for VmStartCtx / VmResumeCtx: detach the suspended` |
 |       - |  149 | ` * coroutine from the live VM chain and park its exception handlers. Two forms:` |
@@ -166,24 +166,24 @@ Coverage: 1023/1279 lines (79.98%)
 |       - |  156 | ` *     as a unit; nothing is freed, so resume can continue inside the innermost` |
 |       - |  157 | ` *     callee. Its handlers are parked the same way and rebased on resume.` |
 |       - |  158 | ` */` |
-|    1644 |  159 | `static void VmSuspendCtxDetach(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)` |
+|    1646 |  159 | `static void VmSuspendCtxDetach(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)` |
 |       5 |  160 | `{` |
-|    1649 |  161 | `	if( pCtx->pParkedSegment == 0 ){` |
-|    1295 |  162 | `		VmFreeSuspendedExceptionFrames(pVm, pCtx);` |
-|     650 |  163 | `	}else{` |
+|    1651 |  161 | `	if( pCtx->pParkedSegment == 0 ){` |
+|    1297 |  162 | `		VmFreeSuspendedExceptionFrames(pVm, pCtx);` |
+|     651 |  163 | `	}else{` |
 |       - |  164 | `		/* The parked records' push-time accounting (one nRecursionDepth++ each,` |
 |       - |  165 | `		 * plus VmCallFinish's aSelf pop, which never ran) leaves the segment` |
 |       - |  166 | `		 * counted as active while the fiber is suspended — deactivate it. aSelf` |
 |       - |  167 | `		 * is parked wholesale below (base-relative), so drop only the depth. */` |
 |     359 |  168 | `		pVm->nRecursionDepth -= ((VmParkedSegment *)pCtx->pParkedSegment)->nRecords;` |
 |       - |  169 | `	}` |
-|    1649 |  170 | `	pVm->pFrame = pCtx->pFrame->pParent;` |
-|    1649 |  171 | `	pCtx->pFrame->pParent = 0;` |
-|    1649 |  172 | `	VmParkCtxState(pVm, pCtx);` |
-|    1649 |  173 | `	if( pResult ){` |
+|    1651 |  170 | `	pVm->pFrame = pCtx->pFrame->pParent;` |
+|    1651 |  171 | `	pCtx->pFrame->pParent = 0;` |
+|    1651 |  172 | `	VmParkCtxState(pVm, pCtx);` |
+|    1651 |  173 | `	if( pResult ){` |
 |     359 |  174 | `		PH7_MemObjStore(&pCtx->sSuspendValue, pResult);` |
 |     177 |  175 | `	}` |
-|    1649 |  176 | `}` |
+|    1651 |  176 | `}` |
 |       - |  177 | `/*` |
 |       - |  178 | ` * The return-type enforcement target for a coroutine body run. A GENERATOR` |
 |       - |  179 | ` * function's declared return type belongs to the call site (always a Generator` |
@@ -194,10 +194,10 @@ Coverage: 1023/1279 lines (79.98%)
 |       - |  184 | ` * must not enforce either. Ordinary fiber callables keep their declared` |
 |       - |  185 | ` * return-type enforcement (php enforces it).` |
 |       - |  186 | ` */` |
-|    1940 |  187 | `static ph7_vm_func * VmCtxEnforceRetFunc(ph7_exec_ctx *pCtx)` |
+|    1944 |  187 | `static ph7_vm_func * VmCtxEnforceRetFunc(ph7_exec_ctx *pCtx)` |
 |       5 |  188 | `{` |
-|    1173 |  189 | `	return ((pCtx->pFunc->iFlags & VM_FUNC_GENERATOR) == 0 && VmFuncHasReturnType(pCtx->pFunc))` |
-|    1168 |  190 | `		? pCtx->pFunc : 0;` |
+|    1175 |  189 | `	return ((pCtx->pFunc->iFlags & VM_FUNC_GENERATOR) == 0 && VmFuncHasReturnType(pCtx->pFunc))` |
+|    1170 |  190 | `		? pCtx->pFunc : 0;` |
 |       5 |  191 | `}` |
 |       - |  192 | `/*` |
 |       - |  193 | ` * Common epilogue for VmStartCtx / VmResumeCtx once the body run returns rc:` |
@@ -207,43 +207,43 @@ Coverage: 1023/1279 lines (79.98%)
 |       - |  197 | ` * which is null at completion (php parity), so pResult is left at its` |
 |       - |  198 | ` * caller-initialized null.` |
 |       - |  199 | ` */` |
-|    1940 |  200 | `static sxi32 VmFinishCtxRun(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_exec_ctx *pOldCtx,` |
+|    1944 |  200 | `static sxi32 VmFinishCtxRun(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_exec_ctx *pOldCtx,` |
 |       - |  201 | `	sxi32 rc, ph7_value *pResult)` |
 |       5 |  202 | `{` |
-|    1945 |  203 | `	pVm->pActiveCtx = pOldCtx;` |
-|    1945 |  204 | `	if( rc == PH7_SUSPEND ){` |
+|    1949 |  203 | `	pVm->pActiveCtx = pOldCtx;` |
+|    1949 |  204 | `	if( rc == PH7_SUSPEND ){` |
 |       - |  205 | `		/* Handles a deep RE-suspend too (a resumed segment parking a fresh one):` |
 |       - |  206 | `		 * VmSuspendCtxDetach deactivates the new segment's recursion accounting,` |
 |       - |  207 | `		 * parks its aSelf, and skips VmFreeSuspendedExceptionFrames for a segment` |
 |       - |  208 | `		 * so it can't free the still-live parked try wrappers. */` |
-|    1649 |  209 | `		VmSuspendCtxDetach(pVm, pCtx, pResult);` |
-|    1649 |  210 | `		return SXRET_OK;` |
+|    1651 |  209 | `		VmSuspendCtxDetach(pVm, pCtx, pResult);` |
+|    1651 |  210 | `		return SXRET_OK;` |
 |       - |  211 | `	}` |
 |       - |  212 | `	/* Detach the coroutine frame from the live chain, unless a deeper unwind` |
 |       - |  213 | `	 * already moved pVm->pFrame off it. */` |
-|     301 |  214 | `	if( pVm->pFrame == pCtx->pFrame ){` |
-|     301 |  215 | `		pVm->pFrame = pCtx->pFrame->pParent;` |
-|     301 |  216 | `		pCtx->pFrame->pParent = 0;` |
-|     148 |  217 | `	}` |
-|     301 |  218 | `	if( rc == PH7_ABORT ){` |
+|     303 |  214 | `	if( pVm->pFrame == pCtx->pFrame ){` |
+|     303 |  215 | `		pVm->pFrame = pCtx->pFrame->pParent;` |
+|     303 |  216 | `		pCtx->pFrame->pParent = 0;` |
+|     149 |  217 | `	}` |
+|     303 |  218 | `	if( rc == PH7_ABORT ){` |
 |       3 |  219 | `		pCtx->iState = PH7_CTX_STATE_CLOSED;` |
 |       3 |  220 | `		return PH7_ABORT;` |
 |       - |  221 | `	}` |
-|     299 |  222 | `	if( rc == PH7_EXCEPTION ){` |
+|     301 |  222 | `	if( rc == PH7_EXCEPTION ){` |
 |      47 |  223 | `		pCtx->iState = PH7_CTX_STATE_CLOSED;` |
 |      47 |  224 | `		return PH7_EXCEPTION;` |
 |       - |  225 | `	}` |
-|     257 |  226 | `	pCtx->iState = PH7_CTX_STATE_COMPLETED;` |
-|     257 |  227 | `	return SXRET_OK;` |
-|     975 |  228 | `}` |
+|     259 |  226 | `	pCtx->iState = PH7_CTX_STATE_COMPLETED;` |
+|     259 |  227 | `	return SXRET_OK;` |
+|     977 |  228 | `}` |
 |       - |  229 | `/*` |
 |       - |  230 | ` * Start executing a fiber context for the first time.` |
 |       - |  231 | ` */` |
-|     570 |  232 | `static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)` |
+|     572 |  232 | `static sxi32 VmStartCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResult)` |
 |       5 |  233 | `{` |
 |       - |  234 | `	ph7_exec_ctx *pOldCtx;` |
 |       - |  235 | `	sxi32 rc;` |
-|     575 |  236 | `	if( pCtx->iState != PH7_CTX_STATE_CREATED ){` |
+|     577 |  236 | `	if( pCtx->iState != PH7_CTX_STATE_CREATED ){` |
 |     ! 0 |  237 | `		return SXERR_INVALID;` |
 |       - |  238 | `	}` |
 |       - |  239 | `	/* A fiber/generator start is a native VmByteCodeExec re-entry, bounded by` |
@@ -252,40 +252,40 @@ Coverage: 1023/1279 lines (79.98%)
 |       - |  242 | `	 * this function has spliced the coroutine into the frame chain, which its` |
 |       - |  243 | `	 * post-exec detach cannot fully unwind. The PHP call-depth cap belongs to` |
 |       - |  244 | `	 * OP_CALL only (BYTECODE.md stage 5). */` |
-|     575 |  245 | `	if( VmNativeNestingExceeded(pVm) ){` |
+|     577 |  245 | `	if( VmNativeNestingExceeded(pVm) ){` |
 |     ! 0 |  246 | `		return VmNativeNestingFatal(pVm);` |
 |       - |  247 | `	}` |
 |       - |  248 | `	/* Attach the fiber's frame to the VM frame chain */` |
-|     575 |  249 | `	pCtx->pFrame->pParent = pVm->pFrame;` |
-|     575 |  250 | `	pVm->pFrame = pCtx->pFrame;` |
+|     577 |  249 | `	pCtx->pFrame->pParent = pVm->pFrame;` |
+|     577 |  250 | `	pVm->pFrame = pCtx->pFrame;` |
 |       - |  251 | `	/* Save and set the active context */` |
-|     575 |  252 | `	pOldCtx = pVm->pActiveCtx;` |
-|     575 |  253 | `	pVm->pActiveCtx = pCtx;` |
-|     575 |  254 | `	pCtx->iState = PH7_CTX_STATE_RUNNING;` |
-|     575 |  255 | `	pCtx->nExceptionBase = SySetUsed(&pVm->aException);` |
-|     575 |  256 | `	pCtx->nFinallyBase = SySetUsed(&pVm->aFinallyAction);` |
-|     575 |  257 | `	pCtx->nSelfBase = SySetUsed(&pVm->aSelf);` |
+|     577 |  252 | `	pOldCtx = pVm->pActiveCtx;` |
+|     577 |  253 | `	pVm->pActiveCtx = pCtx;` |
+|     577 |  254 | `	pCtx->iState = PH7_CTX_STATE_RUNNING;` |
+|     577 |  255 | `	pCtx->nExceptionBase = SySetUsed(&pVm->aException);` |
+|     577 |  256 | `	pCtx->nFinallyBase = SySetUsed(&pVm->aFinallyAction);` |
+|     577 |  257 | `	pCtx->nSelfBase = SySetUsed(&pVm->aSelf);` |
 |       - |  258 | `	/* Native depth the body runs at (the VmByteCodeExec wrapper bumps +1): a` |
 |       - |  259 | `	 * Fiber::suspend() at a deeper depth is inside a C->PHP callback and gets a` |
 |       - |  260 | `	 * FiberError instead of parking across the native frame (stage 4). */` |
-|     575 |  261 | `	pCtx->nBodyExecDepth = pVm->nVmExecDepth + 1;` |
+|     577 |  261 | `	pCtx->nBodyExecDepth = pVm->nVmExecDepth + 1;` |
 |       - |  262 | `	/* Execute from the beginning (no parked segment). An OP_SPREAD in the body may` |
 |       - |  263 | `	 * realloc pCtx->pStack — pass &pCtx->pStack / &pCtx->nStackCap so the grown` |
 |       - |  264 | `	 * buffer + capacity persist for the next resume and for ctx teardown. */` |
-|     860 |  265 | `	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),` |
-|     285 |  266 | `		pCtx->pStack, -1, &pCtx->sRetValue, 0, FALSE, 0,` |
-|     285 |  267 | `		VmCtxEnforceRetFunc(pCtx), FALSE, 0, &pCtx->pStack, &pCtx->nStackCap, pCtx->nStackOrig);` |
-|     575 |  268 | `	return VmFinishCtxRun(pVm, pCtx, pOldCtx, rc, pResult);` |
-|     290 |  269 | `}` |
+|     863 |  265 | `	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),` |
+|     286 |  266 | `		pCtx->pStack, -1, &pCtx->sRetValue, 0, FALSE, 0,` |
+|     286 |  267 | `		VmCtxEnforceRetFunc(pCtx), FALSE, 0, &pCtx->pStack, &pCtx->nStackCap, pCtx->nStackOrig);` |
+|     577 |  268 | `	return VmFinishCtxRun(pVm, pCtx, pOldCtx, rc, pResult);` |
+|     291 |  269 | `}` |
 |       - |  270 | `/*` |
 |       - |  271 | ` * Resume a suspended fiber context.` |
 |       - |  272 | ` */` |
-|    1370 |  273 | `PH7_PRIVATE sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValue, ph7_value *pResult)` |
+|    1372 |  273 | `PH7_PRIVATE sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResumeValue, ph7_value *pResult)` |
 |       5 |  274 | `{` |
 |       - |  275 | `	ph7_exec_ctx *pOldCtx;` |
 |       - |  276 | `	VmParkedSegment *pSeg;` |
 |       - |  277 | `	sxi32 rc;` |
-|    1375 |  278 | `	if( pCtx->iState != PH7_CTX_STATE_SUSPENDED ){` |
+|    1377 |  278 | `	if( pCtx->iState != PH7_CTX_STATE_SUSPENDED ){` |
 |     ! 0 |  279 | `		return SXERR_INVALID;` |
 |       - |  280 | `	}` |
 |       - |  281 | `	/* A resume is a native VmByteCodeExec re-entry, bounded by nMaxNativeDepth.` |
@@ -294,7 +294,7 @@ Coverage: 1023/1279 lines (79.98%)
 |       - |  284 | `	 * abort past those mutations would leave pVm->pFrame pointing into the parked` |
 |       - |  285 | `	 * callee and the depth accounting un-reverted. The PHP call-depth cap is` |
 |       - |  286 | `	 * OP_CALL-only (BYTECODE.md stage 5). */` |
-|    1375 |  287 | `	if( VmNativeNestingExceeded(pVm) ){` |
+|    1377 |  287 | `	if( VmNativeNestingExceeded(pVm) ){` |
 |     ! 0 |  288 | `		return VmNativeNestingFatal(pVm);` |
 |       - |  289 | `	}` |
 |       - |  290 | `	/* Push the resume value onto the SUSPENDED activation's operand stack so it` |
@@ -303,23 +303,23 @@ Coverage: 1023/1279 lines (79.98%)
 |       - |  293 | `	 * body's. nTos was saved one below the return-value slot. */` |
 |       - |  294 | `	{` |
 |       - |  295 | `		ph7_value *pResumeStack;` |
-|    1375 |  296 | `		pSeg = (VmParkedSegment *)pCtx->pParkedSegment;` |
-|    1375 |  297 | `		pResumeStack = pSeg ? pSeg->sState.pStack : pCtx->pStack;` |
-|    1375 |  298 | `		if( pResumeValue ){` |
+|    1377 |  296 | `		pSeg = (VmParkedSegment *)pCtx->pParkedSegment;` |
+|    1377 |  297 | `		pResumeStack = pSeg ? pSeg->sState.pStack : pCtx->pStack;` |
+|    1377 |  298 | `		if( pResumeValue ){` |
 |     309 |  299 | `			PH7_MemObjStore(pResumeValue, &pResumeStack[pCtx->nTos + 1]);` |
 |     157 |  300 | `		}else{` |
-|    1071 |  301 | `			PH7_MemObjRelease(&pResumeStack[pCtx->nTos + 1]);` |
+|    1073 |  301 | `			PH7_MemObjRelease(&pResumeStack[pCtx->nTos + 1]);` |
 |       - |  302 | `		}` |
-|    1375 |  303 | `		pCtx->nTos++;` |
+|    1377 |  303 | `		pCtx->nTos++;` |
 |       - |  304 | `		/* Refresh the caller-depth base and re-publish this body's own exception` |
 |       - |  305 | `		 * handlers on top of pVm->aException at that depth, so the resumed body's` |
 |       - |  306 | `		 * try/catch and finally-drain bound line up (see VmByteCodeExec's base` |
 |       - |  307 | `		 * override). Must run before VmByteCodeExec recaptures its local base. */` |
-|    1375 |  308 | `		pCtx->nExceptionBase = SySetUsed(&pVm->aException);` |
-|    1375 |  309 | `		pCtx->nFinallyBase = SySetUsed(&pVm->aFinallyAction);` |
-|    1375 |  310 | `		pCtx->nSelfBase = SySetUsed(&pVm->aSelf);` |
-|    1375 |  311 | `		VmRestoreCtxState(pVm, pCtx);` |
-|    1375 |  312 | `		if( pSeg ){` |
+|    1377 |  308 | `		pCtx->nExceptionBase = SySetUsed(&pVm->aException);` |
+|    1377 |  309 | `		pCtx->nFinallyBase = SySetUsed(&pVm->aFinallyAction);` |
+|    1377 |  310 | `		pCtx->nSelfBase = SySetUsed(&pVm->aSelf);` |
+|    1377 |  311 | `		VmRestoreCtxState(pVm, pCtx);` |
+|    1377 |  312 | `		if( pSeg ){` |
 |       - |  313 | `			/* Reactivate the parked records' recursion accounting (mirror of the` |
 |       - |  314 | `			 * deactivate at suspend); aSelf was just restored above. */` |
 |     149 |  315 | `			pVm->nRecursionDepth += pSeg->nRecords;` |
@@ -343,24 +343,24 @@ Coverage: 1023/1279 lines (79.98%)
 |       - |  333 | `		 * suspend-time top frame (the innermost callee / open-try wrapper) then` |
 |       - |  334 | `		 * becomes current so the adopt at VmByteCodeExec entry resumes inside the` |
 |       - |  335 | `		 * callee; body-level resumes make the body frame current. */` |
-|    1375 |  336 | `		pCtx->pFrame->pParent = pVm->pFrame;` |
-|    1375 |  337 | `		pVm->pFrame = pSeg ? pSeg->pTopFrame : pCtx->pFrame;` |
+|    1377 |  336 | `		pCtx->pFrame->pParent = pVm->pFrame;` |
+|    1377 |  337 | `		pVm->pFrame = pSeg ? pSeg->pTopFrame : pCtx->pFrame;` |
 |       - |  338 | `	}` |
 |       - |  339 | `	/* The segment (if any) is handed to the body invocation explicitly below; it` |
 |       - |  340 | `	 * is no longer part of the suspended ctx state once resume owns it. */` |
-|    1375 |  341 | `	pCtx->pParkedSegment = 0;` |
+|    1377 |  341 | `	pCtx->pParkedSegment = 0;` |
 |       - |  342 | `	/* Save and set the active context */` |
-|    1375 |  343 | `	pOldCtx = pVm->pActiveCtx;` |
-|    1375 |  344 | `	pVm->pActiveCtx = pCtx;` |
-|    1375 |  345 | `	pCtx->iState = PH7_CTX_STATE_RUNNING;` |
-|    1375 |  346 | `	pCtx->nBodyExecDepth = pVm->nVmExecDepth + 1; /* see VmStartCtx */` |
+|    1377 |  343 | `	pOldCtx = pVm->pActiveCtx;` |
+|    1377 |  344 | `	pVm->pActiveCtx = pCtx;` |
+|    1377 |  345 | `	pCtx->iState = PH7_CTX_STATE_RUNNING;` |
+|    1377 |  346 | `	pCtx->nBodyExecDepth = pVm->nVmExecDepth + 1; /* see VmStartCtx */` |
 |       - |  347 | `	/* Resume execution from saved PC. pSeg, when non-NULL, makes this body` |
 |       - |  348 | `	 * re-enter inside the innermost parked callee (deep fiber resume, stage 4). */` |
-|    2060 |  349 | `	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),` |
-|     685 |  350 | `		pCtx->pStack, pCtx->nTos, &pCtx->sRetValue, 0, FALSE, pCtx->pc,` |
-|     685 |  351 | `		VmCtxEnforceRetFunc(pCtx), FALSE, pSeg, &pCtx->pStack, &pCtx->nStackCap, pCtx->nStackOrig);` |
-|    1375 |  352 | `	return VmFinishCtxRun(pVm, pCtx, pOldCtx, rc, pResult);` |
-|     690 |  353 | `}` |
+|    2063 |  349 | `	rc = VmByteCodeExec(pVm, (VmInstr *)SySetBasePtr(&pCtx->pFunc->aByteCode),` |
+|     686 |  350 | `		pCtx->pStack, pCtx->nTos, &pCtx->sRetValue, 0, FALSE, pCtx->pc,` |
+|     686 |  351 | `		VmCtxEnforceRetFunc(pCtx), FALSE, pSeg, &pCtx->pStack, &pCtx->nStackCap, pCtx->nStackOrig);` |
+|    1377 |  352 | `	return VmFinishCtxRun(pVm, pCtx, pOldCtx, rc, pResult);` |
+|     691 |  353 | `}` |
 |       - |  354 | `/*` |
 |       - |  355 | ` * Force-close a suspended generator context at destruction time, running its` |
 |       - |  356 | `` * pending `finally` blocks (PHP runs finally when a generator is unset / goes out`` |
@@ -389,12 +389,12 @@ Coverage: 1023/1279 lines (79.98%)
 |       - |  379 | ` * finally aborts, or PH7_EXCEPTION if a finally threw past itself (surfaced to the` |
 |       - |  380 | ` * destruct caller).` |
 |       - |  381 | ` */` |
-|     218 |  382 | `static sxi32 VmCloseCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx)` |
+|     220 |  382 | `static sxi32 VmCloseCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx)` |
 |       5 |  383 | `{` |
 |       - |  384 | `	sxi32 rc;` |
-|     223 |  385 | `	if( pCtx->iState != PH7_CTX_STATE_SUSPENDED ){` |
+|     225 |  385 | `	if( pCtx->iState != PH7_CTX_STATE_SUSPENDED ){` |
 |       - |  386 | `		/* CREATED never ran, so has no open try; COMPLETED/CLOSED already ran theirs. */` |
-|     185 |  387 | `		return SXRET_OK;` |
+|     187 |  387 | `		return SXRET_OK;` |
 |       - |  388 | `	}` |
 |      42 |  389 | `	if( pCtx->pParkedSegment != 0 ){` |
 |       - |  390 | `		/* Deep fiber segment (never a generator) — leave to plain release. */` |
@@ -421,39 +421,39 @@ Coverage: 1023/1279 lines (79.98%)
 |      42 |  411 | `	rc = VmResumeCtx(pVm, pCtx, 0, 0);` |
 |      42 |  412 | `	pCtx->bClosing = 0;` |
 |      42 |  413 | `	return rc;` |
-|     114 |  414 | `}` |
+|     115 |  414 | `}` |
 |       - |  415 | `/*` |
 |       - |  416 | ` * Free one DETACHED frame (not in the live pVm->pFrame chain): the frame of a` |
 |       - |  417 | ` * suspended coroutine's body, or of a segment activation abandoned mid-call.` |
 |       - |  418 | ` * Mirrors VmLeaveFrame's teardown minus the chain pop (there is no chain to pop` |
 |       - |  419 | ` * from). Factored so the body-frame free and the stage-4 segment free share it.` |
 |       - |  420 | ` */` |
-|     850 |  421 | `static void VmFreeDetachedFrame(ph7_vm *pVm, VmFrame *pFrame)` |
+|     852 |  421 | `static void VmFreeDetachedFrame(ph7_vm *pVm, VmFrame *pFrame)` |
 |       5 |  422 | `{` |
 |       - |  423 | `	VmSlot *aSlot;` |
 |       - |  424 | `	sxu32 n;` |
-|     855 |  425 | `	if( pFrame == 0 ){` |
+|     857 |  425 | `	if( pFrame == 0 ){` |
 |     ! 0 |  426 | `		return;` |
 |       - |  427 | `	}` |
 |       - |  428 | `	/* Free local variables */` |
-|     855 |  429 | `	aSlot = (VmSlot *)SySetBasePtr(&pFrame->sLocal);` |
-|    1705 |  430 | `	for( n = 0; n < SySetUsed(&pFrame->sLocal); ++n ){` |
-|     855 |  431 | `		PH7_VmUnsetMemObj(pVm, aSlot[n].nIdx, FALSE);` |
-|     430 |  432 | `	}` |
+|     857 |  429 | `	aSlot = (VmSlot *)SySetBasePtr(&pFrame->sLocal);` |
+|    1709 |  430 | `	for( n = 0; n < SySetUsed(&pFrame->sLocal); ++n ){` |
+|     857 |  431 | `		PH7_VmUnsetMemObj(pVm, aSlot[n].nIdx, FALSE);` |
+|     431 |  432 | `	}` |
 |       - |  433 | `	/* Remove local references */` |
-|     855 |  434 | `	aSlot = (VmSlot *)SySetBasePtr(&pFrame->sRef);` |
-|    1705 |  435 | `	for( n = 0; n < SySetUsed(&pFrame->sRef); ++n ){` |
-|     855 |  436 | `		PH7_VmRefObjRemove(pVm, aSlot[n].nIdx, (SyHashEntry *)aSlot[n].pUserData, 0);` |
-|     430 |  437 | `	}` |
-|     855 |  438 | `	SyHashRelease(&pFrame->hVar);` |
-|     855 |  439 | `	SySetRelease(&pFrame->sArg);` |
-|     855 |  440 | `	SySetRelease(&pFrame->sLocal);` |
-|     855 |  441 | `	SySetRelease(&pFrame->sRef);` |
-|     855 |  442 | `	PH7_MemObjRelease(&pFrame->sRet);` |
+|     857 |  434 | `	aSlot = (VmSlot *)SySetBasePtr(&pFrame->sRef);` |
+|    1709 |  435 | `	for( n = 0; n < SySetUsed(&pFrame->sRef); ++n ){` |
+|     857 |  436 | `		PH7_VmRefObjRemove(pVm, aSlot[n].nIdx, (SyHashEntry *)aSlot[n].pUserData, 0);` |
+|     431 |  437 | `	}` |
+|     857 |  438 | `	SyHashRelease(&pFrame->hVar);` |
+|     857 |  439 | `	SySetRelease(&pFrame->sArg);` |
+|     857 |  440 | `	SySetRelease(&pFrame->sLocal);` |
+|     857 |  441 | `	SySetRelease(&pFrame->sRef);` |
+|     857 |  442 | `	PH7_MemObjRelease(&pFrame->sRet);` |
 |       - |  443 | `	/* Drop a resume target pointing at this detached frame before we free it (ROOT B). */` |
-|     855 |  444 | `	VmDropResumeTarget(pVm,pFrame);` |
-|     855 |  445 | `	SyMemBackendPoolFree(&pVm->sAllocator, pFrame);` |
-|     430 |  446 | `}` |
+|     857 |  444 | `	VmDropResumeTarget(pVm,pFrame);` |
+|     857 |  445 | `	SyMemBackendPoolFree(&pVm->sAllocator, pFrame);` |
+|     431 |  446 | `}` |
 |       - |  447 | `/*` |
 |       - |  448 | ` * Free a parked deep-suspend segment (stage 4) whose fiber was abandoned while` |
 |       - |  449 | ` * suspended. Every record holds a callee's operand stack and VmFrame (the` |
@@ -496,30 +496,30 @@ Coverage: 1023/1279 lines (79.98%)
 |       - |  486 | `/*` |
 |       - |  487 | ` * Release an execution context and all its resources.` |
 |       - |  488 | ` */` |
-|     444 |  489 | `PH7_PRIVATE void VmReleaseExecCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx)` |
+|     446 |  489 | `PH7_PRIVATE void VmReleaseExecCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx)` |
 |       5 |  490 | `{` |
-|     449 |  491 | `	if( pCtx == 0 ){` |
+|     451 |  491 | `	if( pCtx == 0 ){` |
 |     ! 0 |  492 | `		return;` |
 |       - |  493 | `	}` |
-|     449 |  494 | `	if( pCtx->iState == PH7_CTX_STATE_RUNNING ){` |
+|     451 |  494 | `	if( pCtx->iState == PH7_CTX_STATE_RUNNING ){` |
 |       - |  495 | `		/* Cannot destroy a fiber that is currently executing */` |
 |     ! 0 |  496 | `		return;` |
 |       - |  497 | `	}` |
-|     449 |  498 | `	pCtx->iState = PH7_CTX_STATE_CLOSED;` |
+|     451 |  498 | `	pCtx->iState = PH7_CTX_STATE_CLOSED;` |
 |       - |  499 | `	/* Release values */` |
-|     449 |  500 | `	PH7_MemObjRelease(&pCtx->sSuspendValue);` |
-|     449 |  501 | `	PH7_MemObjRelease(&pCtx->sRetValue);` |
-|     449 |  502 | `	PH7_MemObjRelease(&pCtx->sDelegate);` |
+|     451 |  500 | `	PH7_MemObjRelease(&pCtx->sSuspendValue);` |
+|     451 |  501 | `	PH7_MemObjRelease(&pCtx->sRetValue);` |
+|     451 |  502 | `	PH7_MemObjRelease(&pCtx->sDelegate);` |
 |       - |  503 | `	/* Stage 2b: the parked entries are per-activation clones now — free them` |
 |       - |  504 | `	 * (an abandoned suspended coroutine is their last holder). */` |
-|     449 |  505 | `	VmExcReleaseAll(pVm,&pCtx->aSavedException);` |
-|     449 |  506 | `	SySetRelease(&pCtx->aSavedException);` |
+|     451 |  505 | `	VmExcReleaseAll(pVm,&pCtx->aSavedException);` |
+|     451 |  506 | `	SySetRelease(&pCtx->aSavedException);` |
 |       - |  507 | `	/* ROOT C: a generator abandoned while suspended inside a finally may carry parked` |
 |       - |  508 | `	 * finally actions holding owned values/refs (a RETURN's sRet, a RETHROW's pExc).` |
 |       - |  509 | `	 * Release them so the abandon path leaks nothing. */` |
 |       - |  510 | `	{` |
-|     449 |  511 | `		sxu32 n = SySetUsed(&pCtx->aSavedFinally);` |
-|     449 |  512 | `		if( n > 0 ){` |
+|     451 |  511 | `		sxu32 n = SySetUsed(&pCtx->aSavedFinally);` |
+|     451 |  512 | `		if( n > 0 ){` |
 |     ! 0 |  513 | `			VmFinallyAction *aA = (VmFinallyAction *)SySetBasePtr(&pCtx->aSavedFinally);` |
 |       - |  514 | `			sxu32 i;` |
 |     ! 0 |  515 | `			for( i = 0; i < n; i++ ){` |
@@ -530,40 +530,40 @@ Coverage: 1023/1279 lines (79.98%)
 |     ! 0 |  520 | `				}` |
 |     ! 0 |  521 | `			}` |
 |     ! 0 |  522 | `		}` |
-|     449 |  523 | `		SySetRelease(&pCtx->aSavedFinally);` |
+|     451 |  523 | `		SySetRelease(&pCtx->aSavedFinally);` |
 |       - |  524 | `	}` |
 |       - |  525 | `	/* Stage 4: parked aSelf entries are borrowed class pointers — just free the set. */` |
-|     449 |  526 | `	SySetRelease(&pCtx->aSavedSelf);` |
+|     451 |  526 | `	SySetRelease(&pCtx->aSavedSelf);` |
 |       - |  527 | `	/* Free a parked deep-suspend segment (stage 4): the fiber was abandoned while` |
 |       - |  528 | `	 * suspended inside a nested call, so its record chain / frames / operand` |
 |       - |  529 | `	 * stacks are still alive and only this holder references them. Must run` |
 |       - |  530 | `	 * before the body frame/stack below (they are the segment's floor). */` |
-|     449 |  531 | `	if( pCtx->pParkedSegment ){` |
+|     451 |  531 | `	if( pCtx->pParkedSegment ){` |
 |     208 |  532 | `		VmFreeParkedSegment(pVm, pCtx, (VmParkedSegment *)pCtx->pParkedSegment);` |
 |     208 |  533 | `		pCtx->pParkedSegment = 0;` |
 |     103 |  534 | `	}` |
 |       - |  535 | `	/* Release the frame if it's detached (not in the VM chain) */` |
-|     449 |  536 | `	if( pCtx->pFrame ){` |
-|     449 |  537 | `		VmFreeDetachedFrame(pVm, pCtx->pFrame);` |
-|     449 |  538 | `		pCtx->pFrame = 0;` |
-|     222 |  539 | `	}` |
+|     451 |  536 | `	if( pCtx->pFrame ){` |
+|     451 |  537 | `		VmFreeDetachedFrame(pVm, pCtx->pFrame);` |
+|     451 |  538 | `		pCtx->pFrame = 0;` |
+|     223 |  539 | `	}` |
 |       - |  540 | `	/* Release individual operand stack entries (decrement refcounts,` |
 |       - |  541 | `	 * free string buffers, etc.) before bulk-freeing the stack memory.` |
 |       - |  542 | `	 * Matches the cleanup pattern at the Abort: label in VmByteCodeExec. */` |
-|     449 |  543 | `	if( pCtx->pStack ){` |
-|     449 |  544 | `		if( pCtx->nTos >= 0 ){` |
-|     415 |  545 | `			ph7_value *pTos = &pCtx->pStack[pCtx->nTos];` |
-|     825 |  546 | `			while( pTos >= pCtx->pStack ){` |
-|     415 |  547 | `				PH7_MemObjRelease(pTos);` |
-|     415 |  548 | `				pTos--;` |
+|     451 |  543 | `	if( pCtx->pStack ){` |
+|     451 |  544 | `		if( pCtx->nTos >= 0 ){` |
+|     417 |  545 | `			ph7_value *pTos = &pCtx->pStack[pCtx->nTos];` |
+|     829 |  546 | `			while( pTos >= pCtx->pStack ){` |
+|     417 |  547 | `				PH7_MemObjRelease(pTos);` |
+|     417 |  548 | `				pTos--;` |
 |       5 |  549 | `			}` |
-|     205 |  550 | `		}` |
-|     449 |  551 | `		SyMemBackendFree(&pVm->sAllocator, pCtx->pStack);` |
-|     449 |  552 | `		pCtx->pStack = 0;` |
-|     222 |  553 | `	}` |
+|     206 |  550 | `		}` |
+|     451 |  551 | `		SyMemBackendFree(&pVm->sAllocator, pCtx->pStack);` |
+|     451 |  552 | `		pCtx->pStack = 0;` |
+|     223 |  553 | `	}` |
 |       - |  554 | `	/* Free the context itself */` |
-|     449 |  555 | `	SyMemBackendPoolFree(&pVm->sAllocator, pCtx);` |
-|     227 |  556 | `}` |
+|     451 |  555 | `	SyMemBackendPoolFree(&pVm->sAllocator, pCtx);` |
+|     228 |  556 | `}` |
 |       - |  557 | `/*` |
 |       - |  558 | ` * Helper: extract the ph7_exec_ctx from a Fiber class instance.` |
 |       - |  559 | ` * Returns NULL if the object is not a Fiber or has no context.` |
@@ -603,18 +603,18 @@ Coverage: 1023/1279 lines (79.98%)
 |       - |  593 | ` *` |
 |       - |  594 | ` * Returns non-zero iff pVal is a Closure instance.` |
 |       - |  595 | ` */` |
-| 1034554 |  596 | `PH7_PRIVATE int VmValueIsClosure(ph7_vm *pVm, ph7_value *pVal)` |
+| 1035086 |  596 | `PH7_PRIVATE int VmValueIsClosure(ph7_vm *pVm, ph7_value *pVal)` |
 |       5 |  597 | `{` |
 |       - |  598 | `	ph7_class_instance *pThis;` |
 |       - |  599 | `	/* Flag test first: a non-object call target (the hot common case) bails before any` |
 |       - |  600 | `	 * pVm dereference; pClosureClass==0 is a one-time pre-init concern, so it goes last. */` |
-| 1034559 |  601 | `	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 \|\| pVal->x.pOther == 0 \|\| pVm->pClosureClass == 0 ){` |
-| 1030041 |  602 | `		return 0;` |
+| 1035091 |  601 | `	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 \|\| pVal->x.pOther == 0 \|\| pVm->pClosureClass == 0 ){` |
+| 1030573 |  602 | `		return 0;` |
 |       - |  603 | `	}` |
 |    4523 |  604 | `	pThis = (ph7_class_instance *)pVal->x.pOther;` |
 |       - |  605 | `	/* Closure is final, so an exact class match is correct (no subclasses possible). */` |
 |    4523 |  606 | `	return pThis->pClass == pVm->pClosureClass;` |
-|  517653 |  607 | `}` |
+|  517919 |  607 | `}` |
 |       - |  608 | `/*` |
 |       - |  609 | ` * Unwrap a Closure value into the simple callable the existing dispatch machinery` |
 |       - |  610 | ` * already understands, written into pOut (which the caller must have initialised):` |
@@ -1270,10 +1270,10 @@ Coverage: 1023/1279 lines (79.98%)
 |       - | 1260 | `	}` |
 |      19 | 1261 | `	return rcThrow;` |
 |      10 | 1262 | `}` |
-|      84 | 1263 | `static sxi32 VmEnforceGenArgType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_vm_func_arg *pFormal,` |
+|      86 | 1263 | `static sxi32 VmEnforceGenArgType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_vm_func_arg *pFormal,` |
 |       - | 1264 | `	sxu32 nArgPos, ph7_value *pVal, int bStrict, ph7_class *pSelfHint)` |
 |       4 | 1265 | `{` |
-|      88 | 1266 | `	if( pFormal->iFlags & VM_FUNC_ARG_UNION ){` |
+|      90 | 1266 | `	if( pFormal->iFlags & VM_FUNC_ARG_UNION ){` |
 |     ! 0 | 1267 | `		if( VmCoerceToUnion(pVm,pVal,&pFormal->aUnionAlts,` |
 |     ! 0 | 1268 | `			(pFormal->iFlags & VM_FUNC_ARG_NULLABLE) ? 1 : 0,bStrict) != SXRET_OK ){` |
 |       - | 1269 | `			const char *zGiven;` |
@@ -1295,9 +1295,9 @@ Coverage: 1023/1279 lines (79.98%)
 |       - | 1285 | `		}` |
 |     ! 0 | 1286 | `		return SXRET_OK;` |
 |       - | 1287 | `	}` |
-|      84 | 1288 | `	if( pFormal->nType == 0` |
-|      65 | 1289 | `	 \|\| ((pFormal->iFlags & VM_FUNC_ARG_NULLABLE) && (pVal->iFlags & MEMOBJ_NULL)) ){` |
-|      52 | 1290 | `		return SXRET_OK;` |
+|      86 | 1288 | `	if( pFormal->nType == 0` |
+|      66 | 1289 | `	 \|\| ((pFormal->iFlags & VM_FUNC_ARG_NULLABLE) && (pVal->iFlags & MEMOBJ_NULL)) ){` |
+|      54 | 1290 | `		return SXRET_OK;` |
 |       - | 1291 | `	}` |
 |      38 | 1292 | `	if( pFormal->nType == SXU32_HIGH ){` |
 |       - | 1293 | `		/* Class or pseudo type */` |
@@ -1339,19 +1339,19 @@ Coverage: 1023/1279 lines (79.98%)
 |       - | 1329 | `		}` |
 |       3 | 1330 | `	}` |
 |      24 | 1331 | `	return SXRET_OK;` |
-|      46 | 1332 | `}` |
-|     594 | 1333 | `PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,` |
+|      47 | 1332 | `}` |
+|     596 | 1333 | `PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,` |
 |       - | 1334 | `	ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg,` |
 |       - | 1335 | `	int bStrict, ph7_class *pSelfHint, int bCallSiteInMsg)` |
 |       5 | 1336 | `{` |
-|     599 | 1337 | `	ph7_vm_func *pFunc = pExecCtx->pFunc;` |
+|     601 | 1337 | `	ph7_vm_func *pFunc = pExecCtx->pFunc;` |
 |       - | 1338 | `	ph7_vm_func_arg *aFormalArg;` |
 |       - | 1339 | `	sxu32 nFormal, n;` |
-|     599 | 1340 | `	sxu32 nReqGF = 0, nNonVarGF = 0; /* too-few-args watermark (0 = exempt) */` |
+|     601 | 1340 | `	sxu32 nReqGF = 0, nNonVarGF = 0; /* too-few-args watermark (0 = exempt) */` |
 |       - | 1341 | `	VmSlot sSlot;` |
 |       - | 1342 | `	sxi32 rc;` |
 |       - | 1343 | `	/* Install $this for closure/method callables */` |
-|     599 | 1344 | `	if( pClosureThis ){` |
+|     601 | 1344 | `	if( pClosureThis ){` |
 |       - | 1345 | `		static const SyString sThis = { "this", sizeof("this") - 1 };` |
 |      31 | 1346 | `		ph7_value *pObj = VmExtractMemObj(pVm, &sThis, FALSE, TRUE);` |
 |      31 | 1347 | `		if( pObj ){` |
@@ -1361,7 +1361,7 @@ Coverage: 1023/1279 lines (79.98%)
 |      14 | 1351 | `		}` |
 |      14 | 1352 | `	}` |
 |       - | 1353 | `	/* Install static variables */` |
-|     599 | 1354 | `	if( SySetUsed(&pFunc->aStatic) > 0 ){` |
+|     601 | 1354 | `	if( SySetUsed(&pFunc->aStatic) > 0 ){` |
 |       - | 1355 | `		ph7_vm_func_static_var *aStatic;` |
 |       - | 1356 | `		ph7_value *pVal;` |
 |     ! 0 | 1357 | `		aStatic = (ph7_vm_func_static_var *)SySetBasePtr(&pFunc->aStatic);` |
@@ -1379,10 +1379,10 @@ Coverage: 1023/1279 lines (79.98%)
 |     ! 0 | 1369 | `		}` |
 |     ! 0 | 1370 | `	}` |
 |       - | 1371 | `	/* Install arguments with type casting and default values (matching OP_CALL) */` |
-|     599 | 1372 | `	aFormalArg = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);` |
-|     599 | 1373 | `	nFormal = SySetUsed(&pFunc->aArgs);` |
+|     601 | 1372 | `	aFormalArg = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);` |
+|     601 | 1373 | `	nFormal = SySetUsed(&pFunc->aArgs);` |
 |       - | 1374 | `	/* Actual call arity for func_num_args()/func_get_args() (band A #4) */` |
-|     599 | 1375 | `	pExecCtx->pFrame->nActualArgs = nArg;` |
+|     601 | 1375 | `	pExecCtx->pFrame->nActualArgs = nArg;` |
 |       - | 1376 | `	{` |
 |       - | 1377 | `		/* Too-few-arguments watermark — checked per formal INSIDE the install` |
 |       - | 1378 | `		 * loop below, after the passed args' type checks, matching php's` |
@@ -1391,13 +1391,13 @@ Coverage: 1023/1279 lines (79.98%)
 |       - | 1381 | `		 * it); fibers at Fiber::start() (php omits the call-site segment).` |
 |       - | 1382 | `		 * Hosted builtin FUNCTIONS self-check; hosted-class methods get` |
 |       - | 1383 | `		 * php's ZPP wording. */` |
-|     599 | 1384 | `	if( (pFunc->iFlags & (VM_FUNC_INTERNAL\|VM_FUNC_CLASS_METHOD)) != VM_FUNC_INTERNAL ){` |
-|     599 | 1385 | `		nReqGF = VmFuncRequiredArgCount(pFunc,&nNonVarGF);` |
-|     297 | 1386 | `	}` |
+|     601 | 1384 | `	if( (pFunc->iFlags & (VM_FUNC_INTERNAL\|VM_FUNC_CLASS_METHOD)) != VM_FUNC_INTERNAL ){` |
+|     601 | 1385 | `		nReqGF = VmFuncRequiredArgCount(pFunc,&nNonVarGF);` |
+|     298 | 1386 | `	}` |
 |       - | 1387 | `	}` |
-|     665 | 1388 | `	for( n = 0; n < nFormal; n++ ){` |
+|     669 | 1388 | `	for( n = 0; n < nFormal; n++ ){` |
 |       - | 1389 | `		ph7_value *pObj;` |
-|      92 | 1390 | `		if( aFormalArg[n].iFlags & VM_FUNC_ARG_VARIADIC ){` |
+|      94 | 1390 | `		if( aFormalArg[n].iFlags & VM_FUNC_ARG_VARIADIC ){` |
 |       - | 1391 | `			/* Variadic formal: collect this and every remaining actual into a` |
 |       - | 1392 | `			 * fresh array (php semantics — pre-fix nothing collected here, so a` |
 |       - | 1393 | ``			 * `function g(int ...$xs)` generator saw a bare scalar in $xs).`` |
@@ -1430,7 +1430,7 @@ Coverage: 1023/1279 lines (79.98%)
 |       2 | 1420 | `			}` |
 |       5 | 1421 | `			break; /* All remaining actuals consumed */` |
 |       - | 1422 | `		}` |
-|      88 | 1423 | `		if( n < (sxu32)nArg ){` |
+|      90 | 1423 | `		if( n < (sxu32)nArg ){` |
 |       - | 1424 | `			/* Argument provided — install with declared-type enforcement.` |
 |       - | 1425 | `			 * php binds and type-checks generator arguments EAGERLY at the` |
 |       - | 1426 | `			 * g(...) call site (and fiber arguments at Fiber::start()), so the` |
@@ -1438,20 +1438,20 @@ Coverage: 1023/1279 lines (79.98%)
 |       - | 1428 | `			 * VmEnforceGenArgType (TypeError on mismatch, weak coercion in` |
 |       - | 1429 | `			 * place otherwise) instead of the old silent xCast. A variadic` |
 |       - | 1430 | `			 * formal collects as-is (no per-element declared-type model). */` |
-|      82 | 1431 | `			pObj = VmExtractMemObj(pVm, &aFormalArg[n].sName, FALSE, TRUE);` |
-|      82 | 1432 | `			if( pObj ){` |
-|      82 | 1433 | `				PH7_MemObjStore(apArg[n], pObj);` |
-|      82 | 1434 | `				if( (aFormalArg[n].iFlags & VM_FUNC_ARG_VARIADIC) == 0 ){` |
-|      82 | 1435 | `					rc = VmEnforceGenArgType(pVm,pFunc,&aFormalArg[n],n+1,pObj,bStrict,pSelfHint);` |
-|      82 | 1436 | `					if( rc != SXRET_OK ){` |
+|      84 | 1431 | `			pObj = VmExtractMemObj(pVm, &aFormalArg[n].sName, FALSE, TRUE);` |
+|      84 | 1432 | `			if( pObj ){` |
+|      84 | 1433 | `				PH7_MemObjStore(apArg[n], pObj);` |
+|      84 | 1434 | `				if( (aFormalArg[n].iFlags & VM_FUNC_ARG_VARIADIC) == 0 ){` |
+|      84 | 1435 | `					rc = VmEnforceGenArgType(pVm,pFunc,&aFormalArg[n],n+1,pObj,bStrict,pSelfHint);` |
+|      84 | 1436 | `					if( rc != SXRET_OK ){` |
 |      15 | 1437 | `						return rc;` |
 |       - | 1438 | `					}` |
-|      32 | 1439 | `				}` |
-|      68 | 1440 | `				sSlot.nIdx = pObj->nIdx;` |
-|      68 | 1441 | `				sSlot.pUserData = 0;` |
-|      68 | 1442 | `				SySetPut(&pExecCtx->pFrame->sArg, &sSlot);` |
-|      36 | 1443 | `			}` |
-|      39 | 1444 | `		}else if( n < nReqGF ){` |
+|      33 | 1439 | `				}` |
+|      70 | 1440 | `				sSlot.nIdx = pObj->nIdx;` |
+|      70 | 1441 | `				sSlot.pUserData = 0;` |
+|      70 | 1442 | `				SySetPut(&pExecCtx->pFrame->sArg, &sSlot);` |
+|      37 | 1443 | `			}` |
+|      40 | 1444 | `		}else if( n < nReqGF ){` |
 |       - | 1445 | `			/* Required formal with no actual: php's ArgumentCountError, at` |
 |       - | 1446 | `			 * this point in the install order (see the watermark comment). */` |
 |       7 | 1447 | `			return VmGenArgThrowStatus(pVm,` |
@@ -1485,9 +1485,9 @@ Coverage: 1023/1279 lines (79.98%)
 |       3 | 1475 | `				SySetPut(&pExecCtx->pFrame->sArg, &sSlot);` |
 |       1 | 1476 | `			}` |
 |       1 | 1477 | `		}` |
-|      37 | 1478 | `	}` |
+|      38 | 1478 | `	}` |
 |       - | 1479 | `	/* Install closure environment (captured variables) */` |
-|     581 | 1480 | `	if( pFunc->iFlags & VM_FUNC_CLOSURE ){` |
+|     583 | 1480 | `	if( pFunc->iFlags & VM_FUNC_CLOSURE ){` |
 |       - | 1481 | `		ph7_vm_func_closure_env *aEnv, *pEnv;` |
 |       - | 1482 | `		ph7_value *pValue;` |
 |       - | 1483 | `		sxu32 iEnv;` |
@@ -1520,8 +1520,8 @@ Coverage: 1023/1279 lines (79.98%)
 |      16 | 1510 | `			PH7_MemObjStore(&pEnv->sValue, pValue);` |
 |       9 | 1511 | `		}` |
 |      21 | 1512 | `	}` |
-|     581 | 1513 | `	return SXRET_OK;` |
-|     302 | 1514 | `}` |
+|     583 | 1513 | `	return SXRET_OK;` |
+|     303 | 1514 | `}` |
 |       - | 1515 | `/*` |
 |       - | 1516 | ` * Fiber->start(...$args) — resolve callable, create exec context, install` |
 |       - | 1517 | ` * arguments/closure-env/$this (matching OP_CALL semantics), and start.` |
@@ -1874,112 +1874,112 @@ Coverage: 1023/1279 lines (79.98%)
 |       - | 1864 | `/*` |
 |       - | 1865 | ` * Allocate a new generator wrapper around an execution context.` |
 |       - | 1866 | ` */` |
-|     336 | 1867 | `PH7_PRIVATE ph7_generator * VmNewGenerator(ph7_vm *pVm, ph7_exec_ctx *pCtx)` |
+|     338 | 1867 | `PH7_PRIVATE ph7_generator * VmNewGenerator(ph7_vm *pVm, ph7_exec_ctx *pCtx)` |
 |       5 | 1868 | `{` |
 |       - | 1869 | `	ph7_generator *pGen;` |
-|     341 | 1870 | `	pGen = (ph7_generator *)SyMemBackendPoolAlloc(&pVm->sAllocator, sizeof(ph7_generator));` |
-|     341 | 1871 | `	if( pGen == 0 ){` |
+|     343 | 1870 | `	pGen = (ph7_generator *)SyMemBackendPoolAlloc(&pVm->sAllocator, sizeof(ph7_generator));` |
+|     343 | 1871 | `	if( pGen == 0 ){` |
 |     ! 0 | 1872 | `		return 0;` |
 |       - | 1873 | `	}` |
-|     341 | 1874 | `	SyZero(pGen, sizeof(ph7_generator));` |
-|     341 | 1875 | `	pGen->pCtx = pCtx;` |
-|     341 | 1876 | `	pGen->iImplicitKey = 0;` |
-|     341 | 1877 | `	PH7_MemObjInit(pVm, &pGen->sYieldValue);` |
-|     341 | 1878 | `	PH7_MemObjInit(pVm, &pGen->sYieldKey);` |
+|     343 | 1874 | `	SyZero(pGen, sizeof(ph7_generator));` |
+|     343 | 1875 | `	pGen->pCtx = pCtx;` |
+|     343 | 1876 | `	pGen->iImplicitKey = 0;` |
+|     343 | 1877 | `	PH7_MemObjInit(pVm, &pGen->sYieldValue);` |
+|     343 | 1878 | `	PH7_MemObjInit(pVm, &pGen->sYieldKey);` |
 |       - | 1879 | `	/* Link the generator back to the exec context */` |
-|     341 | 1880 | `	pCtx->pPrivate = pGen;` |
-|     341 | 1881 | `	return pGen;` |
-|     173 | 1882 | `}` |
+|     343 | 1880 | `	pCtx->pPrivate = pGen;` |
+|     343 | 1881 | `	return pGen;` |
+|     174 | 1882 | `}` |
 |       - | 1883 | `/*` |
 |       - | 1884 | ` * Release a generator and its execution context.` |
 |       - | 1885 | ` */` |
-|     228 | 1886 | `PH7_PRIVATE void VmReleaseGenerator(ph7_vm *pVm, ph7_generator *pGen)` |
+|     230 | 1886 | `PH7_PRIVATE void VmReleaseGenerator(ph7_vm *pVm, ph7_generator *pGen)` |
 |       5 | 1887 | `{` |
-|     233 | 1888 | `	if( pGen == 0 ){` |
+|     235 | 1888 | `	if( pGen == 0 ){` |
 |     ! 0 | 1889 | `		return;` |
 |       - | 1890 | `	}` |
-|     233 | 1891 | `	PH7_MemObjRelease(&pGen->sYieldValue);` |
-|     233 | 1892 | `	PH7_MemObjRelease(&pGen->sYieldKey);` |
-|     233 | 1893 | `	if( pGen->pCtx ){` |
-|     233 | 1894 | `		pGen->pCtx->pPrivate = 0;` |
-|     233 | 1895 | `		VmReleaseExecCtx(pVm, pGen->pCtx);` |
-|     233 | 1896 | `		pGen->pCtx = 0;` |
-|     114 | 1897 | `	}` |
-|     233 | 1898 | `	SyMemBackendPoolFree(&pVm->sAllocator, pGen);` |
-|     119 | 1899 | `}` |
+|     235 | 1891 | `	PH7_MemObjRelease(&pGen->sYieldValue);` |
+|     235 | 1892 | `	PH7_MemObjRelease(&pGen->sYieldKey);` |
+|     235 | 1893 | `	if( pGen->pCtx ){` |
+|     235 | 1894 | `		pGen->pCtx->pPrivate = 0;` |
+|     235 | 1895 | `		VmReleaseExecCtx(pVm, pGen->pCtx);` |
+|     235 | 1896 | `		pGen->pCtx = 0;` |
+|     115 | 1897 | `	}` |
+|     235 | 1898 | `	SyMemBackendPoolFree(&pVm->sAllocator, pGen);` |
+|     120 | 1899 | `}` |
 |       - | 1900 | `/*` |
 |       - | 1901 | ` * Extract ph7_generator from a Generator class instance.` |
 |       - | 1902 | ` */` |
-|    4220 | 1903 | `PH7_PRIVATE ph7_generator * VmGeneratorExtractCtx(ph7_vm *pVm, ph7_value *pGenObj)` |
+|    4232 | 1903 | `PH7_PRIVATE ph7_generator * VmGeneratorExtractCtx(ph7_vm *pVm, ph7_value *pGenObj)` |
 |       5 | 1904 | `{` |
 |       - | 1905 | `	ph7_class_instance *pThis;` |
 |       - | 1906 | `	SyString sAttr;` |
 |       - | 1907 | `	ph7_value *pAttr;` |
-|    4225 | 1908 | `	if( (pGenObj->iFlags & MEMOBJ_OBJ) == 0 ){` |
+|    4237 | 1908 | `	if( (pGenObj->iFlags & MEMOBJ_OBJ) == 0 ){` |
 |     ! 0 | 1909 | `		return 0;` |
 |       - | 1910 | `	}` |
-|    4225 | 1911 | `	pThis = (ph7_class_instance *)pGenObj->x.pOther;` |
-|    4225 | 1912 | `	if( pThis->pClass != pVm->pGeneratorClass ){` |
+|    4237 | 1911 | `	pThis = (ph7_class_instance *)pGenObj->x.pOther;` |
+|    4237 | 1912 | `	if( pThis->pClass != pVm->pGeneratorClass ){` |
 |     ! 0 | 1913 | `		return 0;` |
 |       - | 1914 | `	}` |
-|    4225 | 1915 | `	SyStringInitFromBuf(&sAttr, "__ctx", 5);` |
-|    4225 | 1916 | `	pAttr = PH7_ClassInstanceFetchAttr(pThis, &sAttr);` |
-|    4225 | 1917 | `	if( pAttr == 0 \|\| (pAttr->iFlags & MEMOBJ_RES) == 0 ){` |
+|    4237 | 1915 | `	SyStringInitFromBuf(&sAttr, "__ctx", 5);` |
+|    4237 | 1916 | `	pAttr = PH7_ClassInstanceFetchAttr(pThis, &sAttr);` |
+|    4237 | 1917 | `	if( pAttr == 0 \|\| (pAttr->iFlags & MEMOBJ_RES) == 0 ){` |
 |     ! 0 | 1918 | `		return 0;` |
 |       - | 1919 | `	}` |
-|    4225 | 1920 | `	return (ph7_generator *)pAttr->x.pOther;` |
-|    2115 | 1921 | `}` |
+|    4237 | 1920 | `	return (ph7_generator *)pAttr->x.pOther;` |
+|    2121 | 1921 | `}` |
 |       - | 1922 | `/*` |
 |       - | 1923 | ` * Generator::rewind() — start if CREATED, no-op otherwise.` |
 |       - | 1924 | ` */` |
-|     202 | 1925 | `PH7_PRIVATE int vm_builtin_Generator_rewind(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     204 | 1925 | `PH7_PRIVATE int vm_builtin_Generator_rewind(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
 |       5 | 1926 | `{` |
 |       - | 1927 | `	ph7_generator *pGen;` |
 |       - | 1928 | `	sxi32 rc;` |
-|     207 | 1929 | `	if( nArg < 1 ) return PH7_OK;` |
-|     207 | 1930 | `	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);` |
-|     207 | 1931 | `	if( pGen == 0 ) return PH7_OK;` |
-|     207 | 1932 | `	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){` |
-|     207 | 1933 | `		rc = VmStartCtx(pCtx->pVm, pGen->pCtx, 0);` |
-|     207 | 1934 | `		if( rc == PH7_ABORT ) return PH7_ABORT;` |
-|     207 | 1935 | `		if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;` |
-|      98 | 1936 | `	}` |
-|     201 | 1937 | `	return PH7_OK;` |
-|     106 | 1938 | `}` |
+|     209 | 1929 | `	if( nArg < 1 ) return PH7_OK;` |
+|     209 | 1930 | `	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);` |
+|     209 | 1931 | `	if( pGen == 0 ) return PH7_OK;` |
+|     209 | 1932 | `	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){` |
+|     209 | 1933 | `		rc = VmStartCtx(pCtx->pVm, pGen->pCtx, 0);` |
+|     209 | 1934 | `		if( rc == PH7_ABORT ) return PH7_ABORT;` |
+|     209 | 1935 | `		if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;` |
+|      99 | 1936 | `	}` |
+|     203 | 1937 | `	return PH7_OK;` |
+|     107 | 1938 | `}` |
 |       - | 1939 | `/*` |
 |       - | 1940 | ` * Generator::valid() — true if suspended at a yield point.` |
 |       - | 1941 | ` */` |
-|    1176 | 1942 | `PH7_PRIVATE int vm_builtin_Generator_valid(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|    1180 | 1942 | `PH7_PRIVATE int vm_builtin_Generator_valid(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
 |       5 | 1943 | `{` |
 |       - | 1944 | `	ph7_generator *pGen;` |
-|    1181 | 1945 | `	if( nArg < 1 ){ ph7_result_bool(pCtx, 0); return PH7_OK; }` |
-|    1181 | 1946 | `	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);` |
-|    1181 | 1947 | `	ph7_result_bool(pCtx, pGen && pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED);` |
-|    1181 | 1948 | `	return PH7_OK;` |
-|     593 | 1949 | `}` |
+|    1185 | 1945 | `	if( nArg < 1 ){ ph7_result_bool(pCtx, 0); return PH7_OK; }` |
+|    1185 | 1946 | `	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);` |
+|    1185 | 1947 | `	ph7_result_bool(pCtx, pGen && pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED);` |
+|    1185 | 1948 | `	return PH7_OK;` |
+|     595 | 1949 | `}` |
 |       - | 1950 | `/*` |
 |       - | 1951 | ` * Generator::current() — return the last yielded value.` |
 |       - | 1952 | ` * Auto-starts the generator on first access (like PHP).` |
 |       - | 1953 | ` */` |
-|    1168 | 1954 | `PH7_PRIVATE int vm_builtin_Generator_current(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|    1170 | 1954 | `PH7_PRIVATE int vm_builtin_Generator_current(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
 |       5 | 1955 | `{` |
 |       - | 1956 | `	ph7_generator *pGen;` |
 |       - | 1957 | `	sxi32 rc;` |
-|    1173 | 1958 | `	if( nArg < 1 ){ ph7_result_null(pCtx); return PH7_OK; }` |
-|    1173 | 1959 | `	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);` |
-|    1173 | 1960 | `	if( pGen == 0 ){ ph7_result_null(pCtx); return PH7_OK; }` |
-|    1173 | 1961 | `	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){` |
+|    1175 | 1958 | `	if( nArg < 1 ){ ph7_result_null(pCtx); return PH7_OK; }` |
+|    1175 | 1959 | `	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);` |
+|    1175 | 1960 | `	if( pGen == 0 ){ ph7_result_null(pCtx); return PH7_OK; }` |
+|    1175 | 1961 | `	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){` |
 |     115 | 1962 | `		rc = VmStartCtx(pCtx->pVm, pGen->pCtx, 0);` |
 |     115 | 1963 | `		if( rc == PH7_ABORT ) return PH7_ABORT;` |
 |     115 | 1964 | `		if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;` |
 |      55 | 1965 | `	}` |
-|    1173 | 1966 | `	if( pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){` |
-|    1171 | 1967 | `		ph7_result_value(pCtx, &pGen->sYieldValue);` |
-|     588 | 1968 | `	}else{` |
+|    1175 | 1966 | `	if( pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){` |
+|    1173 | 1967 | `		ph7_result_value(pCtx, &pGen->sYieldValue);` |
+|     589 | 1968 | `	}else{` |
 |       3 | 1969 | `		ph7_result_null(pCtx);` |
 |       - | 1970 | `	}` |
-|    1173 | 1971 | `	return PH7_OK;` |
-|     589 | 1972 | `}` |
+|    1175 | 1971 | `	return PH7_OK;` |
+|     590 | 1972 | `}` |
 |       - | 1973 | `/*` |
 |       - | 1974 | ` * Generator::key() — return the last yielded key.` |
 |       - | 1975 | ` * Auto-starts the generator on first access (like PHP).` |
@@ -2006,24 +2006,24 @@ Coverage: 1023/1279 lines (79.98%)
 |       - | 1996 | `/*` |
 |       - | 1997 | ` * Generator::next() — advance to the next yield point.` |
 |       - | 1998 | ` */` |
-|     970 | 1999 | `PH7_PRIVATE int vm_builtin_Generator_next(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     972 | 1999 | `PH7_PRIVATE int vm_builtin_Generator_next(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
 |       5 | 2000 | `{` |
 |       - | 2001 | `	ph7_generator *pGen;` |
 |       - | 2002 | `	sxi32 rc;` |
-|     975 | 2003 | `	if( nArg < 1 ) return PH7_OK;` |
-|     975 | 2004 | `	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);` |
-|     975 | 2005 | `	if( pGen == 0 ) return PH7_OK;` |
-|     975 | 2006 | `	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){` |
+|     977 | 2003 | `	if( nArg < 1 ) return PH7_OK;` |
+|     977 | 2004 | `	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);` |
+|     977 | 2005 | `	if( pGen == 0 ) return PH7_OK;` |
+|     977 | 2006 | `	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){` |
 |     ! 0 | 2007 | `		rc = VmStartCtx(pCtx->pVm, pGen->pCtx, 0);` |
-|     975 | 2008 | `	}else if( pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){` |
-|     975 | 2009 | `		rc = VmResumeCtx(pCtx->pVm, pGen->pCtx, 0, 0);` |
-|     490 | 2010 | `	}else{` |
+|     977 | 2008 | `	}else if( pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){` |
+|     977 | 2009 | `		rc = VmResumeCtx(pCtx->pVm, pGen->pCtx, 0, 0);` |
+|     491 | 2010 | `	}else{` |
 |     ! 0 | 2011 | `		return PH7_OK;` |
 |       - | 2012 | `	}` |
-|     975 | 2013 | `	if( rc == PH7_ABORT ) return PH7_ABORT;` |
-|     973 | 2014 | `	if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;` |
-|     963 | 2015 | `	return PH7_OK;` |
-|     490 | 2016 | `}` |
+|     977 | 2013 | `	if( rc == PH7_ABORT ) return PH7_ABORT;` |
+|     975 | 2014 | `	if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;` |
+|     965 | 2015 | `	return PH7_OK;` |
+|     491 | 2016 | `}` |
 |       - | 2017 | `/*` |
 |       - | 2018 | ` * Generator::send($value) — resume and send a value into the generator.` |
 |       - | 2019 | ` */` |
@@ -2047,12 +2047,12 @@ Coverage: 1023/1279 lines (79.98%)
 |       - | 2037 | `	}` |
 |     104 | 2038 | `	if( rc == PH7_ABORT ) return PH7_ABORT;` |
 |     104 | 2039 | `	if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;` |
-|     102 | 2040 | `	if( pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){` |
+|     101 | 2040 | `	if( pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){` |
 |      95 | 2041 | `		ph7_result_value(pCtx, &pGen->sYieldValue);` |
 |      49 | 2042 | `	}else{` |
-|       8 | 2043 | `		ph7_result_null(pCtx);` |
+|       7 | 2043 | `		ph7_result_null(pCtx);` |
 |       - | 2044 | `	}` |
-|     102 | 2045 | `	return PH7_OK;` |
+|     101 | 2045 | `	return PH7_OK;` |
 |      54 | 2046 | `}` |
 |       - | 2047 | `/*` |
 |       - | 2048 | ` * Generator::throw($exception) — throw an exception into the generator.` |
@@ -2127,8 +2127,8 @@ Coverage: 1023/1279 lines (79.98%)
 |       - | 2117 | `		/* Caught inside the generator and it resumed: return the next yielded value (or` |
 |       - | 2118 | `		 * null if it then completed) — symmetric with Generator::send(). */` |
 |      46 | 2119 | `		if( pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){` |
-|      43 | 2120 | `			ph7_result_value(pCtx, &pGen->sYieldValue);` |
-|      23 | 2121 | `		}else{` |
+|      44 | 2120 | `			ph7_result_value(pCtx, &pGen->sYieldValue);` |
+|      24 | 2121 | `		}else{` |
 |       3 | 2122 | `			ph7_result_null(pCtx);` |
 |       - | 2123 | `		}` |
 |      46 | 2124 | `		return PH7_OK;` |
@@ -2153,50 +2153,50 @@ Coverage: 1023/1279 lines (79.98%)
 |       - | 2143 | ` * Generator::getReturn() — get the return value after the generator has finished.` |
 |       - | 2144 | ` */` |
 |      18 | 2145 | `PH7_PRIVATE int vm_builtin_Generator_getReturn(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|       3 | 2146 | `{` |
+|       4 | 2146 | `{` |
 |       - | 2147 | `	ph7_generator *pGen;` |
-|      21 | 2148 | `	if( nArg < 1 ){ ph7_result_null(pCtx); return PH7_OK; }` |
-|      21 | 2149 | `	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);` |
-|      21 | 2150 | `	if( pGen == 0 ){ ph7_result_null(pCtx); return PH7_OK; }` |
-|      21 | 2151 | `	if( pGen->pCtx->iState != PH7_CTX_STATE_COMPLETED ){` |
+|      22 | 2148 | `	if( nArg < 1 ){ ph7_result_null(pCtx); return PH7_OK; }` |
+|      22 | 2149 | `	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);` |
+|      22 | 2150 | `	if( pGen == 0 ){ ph7_result_null(pCtx); return PH7_OK; }` |
+|      22 | 2151 | `	if( pGen->pCtx->iState != PH7_CTX_STATE_COMPLETED ){` |
 |     ! 0 | 2152 | `		return PH7_VmThrowException(pCtx, "Error",` |
 |       - | 2153 | `			"Cannot get return value of a generator that hasn't returned");` |
 |       - | 2154 | `	}` |
-|      21 | 2155 | `	ph7_result_value(pCtx, &pGen->pCtx->sRetValue);` |
-|      21 | 2156 | `	return PH7_OK;` |
-|      12 | 2157 | `}` |
+|      22 | 2155 | `	ph7_result_value(pCtx, &pGen->pCtx->sRetValue);` |
+|      22 | 2156 | `	return PH7_OK;` |
+|      13 | 2157 | `}` |
 |       - | 2158 | `/*` |
 |       - | 2159 | ` * Generator::__destruct() — clean up.` |
 |       - | 2160 | ` */` |
-|     214 | 2161 | `PH7_PRIVATE int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     216 | 2161 | `PH7_PRIVATE int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
 |       5 | 2162 | `{` |
 |       - | 2163 | `	ph7_generator *pGen;` |
-|     219 | 2164 | `	sxi32 rcClose = SXRET_OK;` |
-|     219 | 2165 | `	if( nArg < 1 ) return PH7_OK;` |
-|     219 | 2166 | `	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);` |
-|     219 | 2167 | `	if( pGen ){` |
+|     221 | 2164 | `	sxi32 rcClose = SXRET_OK;` |
+|     221 | 2165 | `	if( nArg < 1 ) return PH7_OK;` |
+|     221 | 2166 | `	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);` |
+|     221 | 2167 | `	if( pGen ){` |
 |       - | 2168 | `` 		/* A generator abandoned before it completes still runs its pending `finally` `` |
 |       - | 2169 | `		 * blocks (PHP runs them at generator close/GC). Drive them before teardown. */` |
-|     219 | 2170 | `		if( pGen->pCtx ){` |
-|     219 | 2171 | `			rcClose = VmCloseCtx(pCtx->pVm, pGen->pCtx);` |
-|     107 | 2172 | `		}` |
-|     219 | 2173 | `		VmReleaseGenerator(pCtx->pVm, pGen);` |
-|     219 | 2174 | `		if( apArg[0]->iFlags & MEMOBJ_OBJ ){` |
-|     219 | 2175 | `			ph7_class_instance *pThis = (ph7_class_instance *)apArg[0]->x.pOther;` |
+|     221 | 2170 | `		if( pGen->pCtx ){` |
+|     221 | 2171 | `			rcClose = VmCloseCtx(pCtx->pVm, pGen->pCtx);` |
+|     108 | 2172 | `		}` |
+|     221 | 2173 | `		VmReleaseGenerator(pCtx->pVm, pGen);` |
+|     221 | 2174 | `		if( apArg[0]->iFlags & MEMOBJ_OBJ ){` |
+|     221 | 2175 | `			ph7_class_instance *pThis = (ph7_class_instance *)apArg[0]->x.pOther;` |
 |       - | 2176 | `			SyString sAttrName;` |
 |       - | 2177 | `			ph7_value *pAttr;` |
-|     219 | 2178 | `			SyStringInitFromBuf(&sAttrName, "__ctx", 5);` |
-|     219 | 2179 | `			pAttr = PH7_ClassInstanceFetchAttr(pThis, &sAttrName);` |
-|     219 | 2180 | `			if( pAttr ){` |
-|     219 | 2181 | `				PH7_MemObjRelease(pAttr);` |
-|     107 | 2182 | `			}` |
-|     107 | 2183 | `		}` |
-|     107 | 2184 | `	}` |
+|     221 | 2178 | `			SyStringInitFromBuf(&sAttrName, "__ctx", 5);` |
+|     221 | 2179 | `			pAttr = PH7_ClassInstanceFetchAttr(pThis, &sAttrName);` |
+|     221 | 2180 | `			if( pAttr ){` |
+|     221 | 2181 | `				PH7_MemObjRelease(pAttr);` |
+|     108 | 2182 | `			}` |
+|     108 | 2183 | `		}` |
+|     108 | 2184 | `	}` |
 |       - | 2185 | `	/* Surface an abort/exception raised by a finally that ran during close. */` |
-|     219 | 2186 | `	if( rcClose == PH7_ABORT ) return PH7_ABORT;` |
-|     219 | 2187 | `	if( rcClose == PH7_EXCEPTION ) return PH7_EXCEPTION;` |
-|     219 | 2188 | `	return PH7_OK;` |
-|     112 | 2189 | `}` |
+|     221 | 2186 | `	if( rcClose == PH7_ABORT ) return PH7_ABORT;` |
+|     221 | 2187 | `	if( rcClose == PH7_EXCEPTION ) return PH7_EXCEPTION;` |
+|     221 | 2188 | `	return PH7_OK;` |
+|     113 | 2189 | `}` |
 |       - | 2190 | `/* ======================== End Generator Infrastructure ======================== */` |
 |       - | 2191 | `/* ======================== End Fiber Infrastructure ======================== */` |
 |       - | 2192 |  |
