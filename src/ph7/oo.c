@@ -194,7 +194,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstallAttr(ph7_class *pClass,ph7_class_attr *pAttr)
 	if( pAttr->pDeclClass == 0 ){
 		pAttr->pDeclClass = pClass;
 	}
-	rc = SyHashInsert(&pClass->hAttr,(const void *)pName->zString,pName->nByte,pAttr);
+	rc = SyHashInsertTail(&pClass->hAttr,(const void *)pName->zString,pName->nByte,pAttr);
 	return rc;
 }
 /*
@@ -452,10 +452,13 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 	ph7_class_attr *pAttr;
 	SyHashEntry *pEntry;
 	SyString *pName;
+	SySet aInherited; /* base attributes to prepend (see the copy loop below) */
 	sxi32 rc;
+	SySetInit(&aInherited,&pGen->pVm->sAllocator,sizeof(ph7_class_attr *));
 	/* Install in the derived hashtable */
 	rc = SyHashInsert(&pBase->hDerived,(const void *)SyStringData(&pSub->sName),SyStringLength(&pSub->sName),pSub);
 	if( rc != SXRET_OK ){
+		SySetRelease(&aInherited);
 		return rc;
 	}
 	/* readonly class inheritance (PHP 8.2): a readonly class may only extend a
@@ -471,6 +474,7 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 				&pSub->sName,&pBase->sName);
 		}
 		if( rc == SXERR_ABORT ){
+			SySetRelease(&aInherited);
 			return SXERR_ABORT;
 		}
 	}
@@ -491,29 +495,71 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 					"%z::%z cannot override final constant %z::%z",
 					&pSub->sName,pName,&pOwner->sName,pName);
 				if( rc == SXERR_ABORT ){
+					SySetRelease(&aInherited);
 					return SXERR_ABORT;
 				}
 			}
 			/* A child MAY redeclare a base's private property: php treats the two
 			 * as independent members (each private to its declaring class), with no
 			 * diagnostic. PH7 warned here, which is wrong — the child's entry simply
-			 * shadows the base's in the by-name attribute table. */
+			 * shadows the base's in the by-name attribute table.
+			 *
+			 * Ordering: php keeps an overridden INSTANCE property at the position
+			 * the BASE declared it (`class G{$g1;$g2;} class H extends G{$h;$g1;}`
+			 * iterates g1,g2,h — not g2,h,g1). Re-collect the CHILD's definition,
+			 * whose default value wins, and drop its current entry so the prepend
+			 * below re-inserts it in base order. Statics/constants are not part of
+			 * instance iteration, so they keep their existing slot. */
+			if( (pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
+				ph7_class_attr *pOwn = (ph7_class_attr *)pEntry->pUserData;
+				SyHashDeleteEntry(&pSub->hAttr,(const void *)pName->zString,pName->nByte,0);
+				rc = SySetPut(&aInherited,(const void *)&pOwn);
+				if( rc != SXRET_OK ){
+					SySetRelease(&aInherited);
+					return rc;
+				}
+			}
 			continue;
 		}
-		/* Install the attribute. php: a base class's private INSTANCE property
+		/* Collect the attribute. php: a base class's private INSTANCE property
 		 * lives on every child instance too (its own methods read/write it
 		 * through $this on the child; the access check grants private access by
 		 * DECLARING class, so child methods and outsiders still can't touch it).
 		 * Private STATICS/CONSTANTS stay uncopied — base methods reach those
-		 * through self:: against the declaring class directly. */
+		 * through self:: against the declaring class directly.
+		 *
+		 * These are gathered rather than installed here because php orders an
+		 * instance's properties BASE-DECLARED FIRST, then the subclass's own,
+		 * then trait members — while inheritance runs AFTER the subclass body
+		 * has already filled hAttr. They are prepended below. */
 		if( pAttr->iProtection != PH7_CLASS_PROT_PRIVATE
 		 || (pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
-			rc = SyHashInsert(&pSub->hAttr,(const void *)pName->zString,pName->nByte,pAttr);
+			rc = SySetPut(&aInherited,(const void *)&pAttr);
 			if( rc != SXRET_OK ){
+				SySetRelease(&aInherited);
 				return rc;
 			}
 		}
 	}
+	/* Prepend the collected base attributes so hAttr reads base-first. The
+	 * table's iteration list is what every object-iteration consumer walks
+	 * (var_dump/print_r, get_object_vars, foreach, (array) casts, json_encode),
+	 * so this ordering is user-visible — json_encode emits its keys in exactly
+	 * this order. SyHashInsert is a HEAD insert, so walking the collected set
+	 * backwards leaves the base's own declaration order at the front. */
+	if( SySetUsed(&aInherited) > 0 ){
+		ph7_class_attr **apInherited = (ph7_class_attr **)SySetBasePtr(&aInherited);
+		sxu32 n = SySetUsed(&aInherited);
+		while( n > 0 ){
+			ph7_class_attr *pIn = apInherited[--n];
+			rc = SyHashInsert(&pSub->hAttr,(const void *)pIn->sName.zString,pIn->sName.nByte,pIn);
+			if( rc != SXRET_OK ){
+				SySetRelease(&aInherited);
+				return rc;
+			}
+		}
+	}
+	SySetRelease(&aInherited);
 	SyHashResetLoopCursor(&pBase->hMethod);
 	while((pEntry = SyHashGetNextEntry(&pBase->hMethod)) != 0 ){
 		/* Make sure the private/final methods are not redeclared in the subclass */
@@ -621,7 +667,7 @@ PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_cl
 			}
 			continue;
 		}
-		rc = SyHashInsert(&pClass->hAttr,(const void *)pName->zString,pName->nByte,pAttr);
+		rc = SyHashInsertTail(&pClass->hAttr,(const void *)pName->zString,pName->nByte,pAttr);
 		if( rc != SXRET_OK ){
 			goto cleanup;
 		}
@@ -720,7 +766,7 @@ PH7_PRIVATE sxi32 PH7_ClassInterfaceInherit(ph7_class *pSub,ph7_class *pBase)
 		pName = &pAttr->sName;
 		if( SyHashGet(&pSub->hAttr,(const void *)pName->zString,pName->nByte) == 0 ){
 			/* Install the constant in the subclass */
-			rc = SyHashInsert(&pSub->hAttr,(const void *)pName->zString,pName->nByte,pAttr);
+			rc = SyHashInsertTail(&pSub->hAttr,(const void *)pName->zString,pName->nByte,pAttr);
 			if( rc != SXRET_OK ){
 				return rc;
 			}
@@ -773,7 +819,7 @@ PH7_PRIVATE sxi32 PH7_ClassImplement(ph7_class *pMain,ph7_class *pInterface)
 		/* Make sure the attribute is not redeclared in the main class */
 		if( SyHashGet(&pMain->hAttr,pName->zString,pName->nByte) == 0 ){
 			/* Install the attribute */
-			rc = SyHashInsert(&pMain->hAttr,pName->zString,pName->nByte,pAttr);
+			rc = SyHashInsertTail(&pMain->hAttr,pName->zString,pName->nByte,pAttr);
 			if( rc != SXRET_OK ){
 				return rc;
 			}

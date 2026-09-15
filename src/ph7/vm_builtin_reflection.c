@@ -382,8 +382,14 @@ static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value 
 				}
 				SySetPut(&aTmp, (const void *)&pEntry);
 			}
-			for( nT = SySetUsed(&aTmp) ; nT > 0 ; nT-- ){
-				SyHashEntry *pE = *(SyHashEntry **)SySetAt(&aTmp, nT - 1);
+			/* Forward: hAttr now iterates in DECLARATION order (its inserts are
+			 * tail inserts), so members come out in the order php reports them.
+			 * This walked aTmp backwards to undo the table's old head-insert
+			 * (LIFO) storage; with that reversal gone from the table, reversing
+			 * here would emit members back to front. The METHOD loop below keeps
+			 * its reverse walk — hMethod is still a head-insert table. */
+			for( nT = 0 ; nT < SySetUsed(&aTmp) ; nT++ ){
+				SyHashEntry *pE = *(SyHashEntry **)SySetAt(&aTmp, nT);
 				ph7_class_attr *pAttr = (ph7_class_attr *)pE->pUserData;
 				ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pLevel;
 				ph7_value *pMeta = ph7_context_new_array(pCtx);
