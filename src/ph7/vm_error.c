@@ -1744,11 +1744,12 @@ PH7_PRIVATE sxi32 VmErrorFormat(ph7_vm *pVm,sxi32 iErr,const char *zFormat,...)
 	va_end(ap);
 	return rc;
 }
+static int VmFuncDisplayName(ph7_vm *pVm,ph7_vm_func *pFunc,const char **pzOut);
 /*
  * Throw a TypeError exception from within the VM execution loop.
  * Used for user-defined function type hint violations (e.g. object type hint).
  */
-PH7_PRIVATE sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName,sxu32 nArg,SyString *pArgName,const char *zExpected,const char *zGiven)
+PH7_PRIVATE sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,ph7_class *pOwnerClass,ph7_vm_func *pCallee,sxu32 nArg,SyString *pArgName,const char *zExpected,const char *zGiven)
 {
 	ph7_class *pClass;
 	ph7_class_instance *pThis;
@@ -1757,6 +1758,7 @@ PH7_PRIVATE sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,ph7_class *pOwnerClass,SySt
 	ph7_value *apArg[1];
 	SyBlob sMsg;
 	SyString sMsgStr;
+	SyString *pFuncName = &pCallee->sName;
 	VmFrame *pFrame;
 	sxi32 rc;
 	pClass = PH7_VmExtractClass(&(*pVm),"TypeError",sizeof("TypeError")-1,TRUE,0);
@@ -1774,8 +1776,20 @@ PH7_PRIVATE sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,ph7_class *pOwnerClass,SySt
 		SyBlobFormat(&sMsg,"%z::%z(): Argument #%u ($%z) must be of type %s, %s given",
 			&pOwnerClass->sName,pFuncName,nArg,pArgName,zExpected,zGiven);
 	}else{
-		SyBlobFormat(&sMsg,"%z(): Argument #%u ($%z) must be of type %s, %s given",
-			pFuncName,nArg,pArgName,zExpected,zGiven);
+		/* A closure's internal lookup key ("[closure_3]") is not what php shows. */
+		const char *zShow = 0;
+		int nShow = VmFuncDisplayName(pVm,pCallee,&zShow);
+		SyBlobFormat(&sMsg,"%.*s(): Argument #%u ($%z) must be of type %s, %s given",
+			nShow,zShow,nArg,pArgName,zExpected,zGiven);
+	}
+	/* php appends the CALL SITE to a userland callee's type error — internal
+	 * (hosted C) functions get the bare message. nCurLine is the line of the
+	 * call instruction being bound, which is exactly php's "called in". */
+	if( (pCallee->iFlags & VM_FUNC_INTERNAL) == 0 ){
+		SyString *pCallFile = (SyString *)SySetPeek(&pVm->aFiles);
+		if( pCallFile && pCallFile->nByte > 0 ){
+			SyBlobFormat(&sMsg,", called in %z on line %u",pCallFile,pVm->nCurLine);
+		}
 	}
 	pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);
 	if( pCons ){
