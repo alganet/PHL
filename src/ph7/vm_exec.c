@@ -1301,10 +1301,28 @@ case PH7_OP_LOAD:{
 		/* Reserve a room for the target object */
 		pTos++;
 	}
+	if( pInstr->iP2 == 2 ){
+		/* Read-modify-write target (`$x++`, `$x .= 'a'`): php reads the variable
+		 * before writing, so it warns when it does not exist and THEN seeds it.
+		 * Peek first (no create) purely to raise that warning; the load below
+		 * still creates the slot the operator needs. A plain `=` never gets here
+		 * — it writes without reading, and stays silent, as php does. */
+		if( VmExtractMemObj(&(*pVm),&sName,FALSE,FALSE) == 0 ){
+			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Undefined variable $%z",&sName);
+		}
+	}
 	/* Extract the requested memory object */
 	pObj = VmExtractMemObj(&(*pVm),&sName,pInstr->p3 ? FALSE : TRUE,pInstr->iP1 != 1);
 	if( pObj == 0 ){
 		if( pInstr->iP1 ){
+			/* Reading a variable that does not exist. php raises E_WARNING
+			 * "Undefined variable $x" and evaluates it as NULL; PHL used to
+			 * yield NULL silently, which hid typo'd names. iP2 marks the reads
+			 * that must stay quiet (isset/empty — see PH7_CompileVariable);
+			 * vivifying contexts never get here because they pass iP1 = 0. */
+			if( pInstr->iP2 == 0 ){
+				VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Undefined variable $%z",&sName);
+			}
 			/* Variable not found,load NULL */
 			if( !pInstr->p3 ){
 				PH7_MemObjRelease(pTos);

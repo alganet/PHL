@@ -621,8 +621,10 @@ static sxi32 GenStateProcessStringExpression(
 	pTmpEnd = pGen->pEnd;
 	pGen->pIn = (SyToken *)SySetBasePtr(&sToken);
 	pGen->pEnd = &pGen->pIn[SySetUsed(&sToken)];
-	/* Compile the expression */
-	rc = PH7_CompileExpr(&(*pGen),0,0);
+	/* Compile the expression. An interpolated `"...$x..."` READS $x — php warns
+	 * "Undefined variable $x" and substitutes the empty string — so ask for a
+	 * read-only load rather than letting the default vivify it silently. */
+	rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_RDONLY_LOAD,0);
 	/* Restore token stream */
 	pGen->pIn  = pTmpIn;
 	pGen->pEnd = pTmpEnd;

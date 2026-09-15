@@ -975,6 +975,7 @@ PH7_PRIVATE sxi32 PH7_CompileVariable(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	sxu32 nLineLocal = pGen->pIn->nLine;
 	sxi32 iVv;
 	sxi32 iP1;
+	sxi32 iP2 = 0; /* 1 = quiet read (isset/empty): a missing variable must not warn */
 	void *p3;
 	sxi32 rc;
 	iVv = -1; /* Variable variable counter */
@@ -1046,10 +1047,24 @@ PH7_PRIVATE sxi32 PH7_CompileVariable(ph7_gen_state *pGen,sxi32 iCompileFlag)
 			iP1 = 1;
 		}
 	}
+	/* iP2 marks a QUIET read: `isset($x)` / `empty($x)` inspect a variable
+	 * without reading it, so an undefined one must not warn (php stays silent
+	 * for both). Every other read of a missing variable warns — see OP_LOAD.
+	 * The two flags are cleared before recursing into a subscript's index
+	 * expression, so `isset($a[$i])` still warns for an undefined $i, as php
+	 * does. Contexts that VIVIFY (assignment targets, `??`, appends) already
+	 * emit iP1 = 0 and never reach the warning. */
+	if( iCompileFlag & (EXPR_FLAG_LOAD_IDX_ISSET|EXPR_FLAG_LOAD_IDX_EMPTY|EXPR_FLAG_QUIET_VAR) ){
+		iP2 = 1;
+	}else if( iCompileFlag & EXPR_FLAG_RMW_LOAD ){
+		/* Warn-then-create: the read half of `$x++` / `$x .= ...` still needs a
+		 * writable slot, so it cannot use the read-only load above. */
+		iP2 = 2;
+	}
 	/* Emit the load instruction */
-	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD,iP1,0,p3,0);
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD,iP1,iP2,p3,0);
 	while( iVv > 0 ){
-		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD,iP1,0,0,0);
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD,iP1,iP2,0,0);
 		iVv--;
 	}
 	/* Node successfully compiled */
