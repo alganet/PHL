@@ -10,7 +10,7 @@
 | src/ph7/builtin_mb.c           | 91.94%   | 479/521     |
 | src/ph7/builtin_parse.c        | 89.62%   | 1234/1377   |
 | src/ph7/builtin_string.c       | 85.81%   | 2310/2692   |
-| src/ph7/compile.c              | 92.04%   | 1481/1609   |
+| src/ph7/compile.c              | 92.10%   | 1493/1621   |
 | src/ph7/compile_class.c        | 74.85%   | 2018/2696   |
 | src/ph7/compile_func.c         | 85.88%   | 870/1013    |
 | src/ph7/compile_literal.c      | 89.15%   | 945/1060    |
@@ -57,7 +57,7 @@
 | src/ph7/vm_libxml.c            | 73.46%   | 238/324     |
 | src/ph7/vm_ops_arith.c         | 82.93%   | 588/709     |
 | src/ph7/vm_ops_iter.c          | 80.00%   | 272/340     |
-| src/ph7/vm_ops_load.c          | 85.26%   | 665/780     |
+| src/ph7/vm_ops_load.c          | 85.37%   | 671/786     |
 | src/ph7/vm_ops_misc.c          | 86.77%   | 223/257     |
 | src/ph7/vm_ops_oo.c            | 85.52%   | 868/1015    |
 | src/ph7/vm_pcre.c              | 69.07%   | 632/915     |
@@ -79,5 +79,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.20%   | 48397/59605 |
-| Functions                      | 93.10%   | 2199/2362   |
+| Lines                          | 81.20%   | 48415/59623 |
+| Functions                      | 93.10%   | 2200/2363   |

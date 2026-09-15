@@ -1,6 +1,6 @@
 # src/ph7/
 
-Coverage: 45496/55939 lines (81.33%)
+Coverage: 45514/55957 lines (81.34%)
 
 [Up](../index.md)
 
@@ -16,7 +16,7 @@ Coverage: 45496/55939 lines (81.33%)
 |[builtin_mb.c](builtin_mb.c.md)|91.94%|479/521|
 |[builtin_parse.c](builtin_parse.c.md)|89.62%|1234/1377|
 |[builtin_string.c](builtin_string.c.md)|85.81%|2310/2692|
-|[compile.c](compile.c.md)|92.04%|1481/1609|
+|[compile.c](compile.c.md)|92.10%|1493/1621|
 |[compile_class.c](compile_class.c.md)|74.85%|2018/2696|
 |[compile_func.c](compile_func.c.md)|85.88%|870/1013|
 |[compile_literal.c](compile_literal.c.md)|89.15%|945/1060|
@@ -63,7 +63,7 @@ Coverage: 45496/55939 lines (81.33%)
 |[vm_libxml.c](vm_libxml.c.md)|73.46%|238/324|
 |[vm_ops_arith.c](vm_ops_arith.c.md)|82.93%|588/709|
 |[vm_ops_iter.c](vm_ops_iter.c.md)|80.00%|272/340|
-|[vm_ops_load.c](vm_ops_load.c.md)|85.26%|665/780|
+|[vm_ops_load.c](vm_ops_load.c.md)|85.37%|671/786|
 |[vm_ops_misc.c](vm_ops_misc.c.md)|86.77%|223/257|
 |[vm_ops_oo.c](vm_ops_oo.c.md)|85.52%|868/1015|
 |[vm_pcre.c](vm_pcre.c.md)|69.07%|632/915|

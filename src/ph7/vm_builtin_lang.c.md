@@ -438,17 +438,17 @@ Coverage: 555/808 lines (68.69%)
 |        - |  428 | ` * PH7 uses its own private PRNG (the SQLite3-derived RC4 generator` |
 |        - |  429 | ` * implemented in src/sx/sxrand.c).` |
 |        - |  430 | ` */` |
-|  2904116 |  431 | `PH7_PRIVATE void PH7_VmRandomString(ph7_vm *pVm,char *zBuf,int nLen)` |
+|  2905608 |  431 | `PH7_PRIVATE void PH7_VmRandomString(ph7_vm *pVm,char *zBuf,int nLen)` |
 |        5 |  432 | `{` |
 |        - |  433 | `	static const char zBase[] = {"abcdefghijklmnopqrstuvwxyz"}; /* English Alphabet */` |
 |        - |  434 | `	int i;` |
 |        - |  435 | `	/* Generate a binary string first */` |
-|  2904121 |  436 | `	SyRandomness(&pVm->sPrng,zBuf,(sxu32)nLen);` |
+|  2905613 |  436 | `	SyRandomness(&pVm->sPrng,zBuf,(sxu32)nLen);` |
 |        - |  437 | `	/* Turn the binary string into english based alphabet */` |
-| 31945469 |  438 | `	for( i = 0 ; i < nLen ; ++i ){` |
-| 29041353 |  439 | `		 zBuf[i] = zBase[zBuf[i] % (sizeof(zBase)-1)];` |
-| 14520679 |  440 | `	 }` |
-|  2904121 |  441 | `}` |
+| 31961881 |  438 | `	for( i = 0 ; i < nLen ; ++i ){` |
+| 29056273 |  439 | `		 zBuf[i] = zBase[zBuf[i] % (sizeof(zBase)-1)];` |
+| 14528139 |  440 | `	 }` |
+|  2905613 |  441 | `}` |
 |        - |  442 | `/*` |
 |        - |  443 | ` * int rand()` |
 |        - |  444 | ` * int mt_rand()` |
@@ -555,23 +555,23 @@ Coverage: 555/808 lines (68.69%)
 |        - |  545 | ` *  This function is a symisc extension.` |
 |        - |  546 | ` */` |
 |      130 |  547 | `PH7_PRIVATE int vm_builtin_rand_str(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|        3 |  548 | `{` |
+|        2 |  548 | `{` |
 |        - |  549 | `	char zString[1024];` |
-|      133 |  550 | `	int iLen = 0x10;` |
-|      133 |  551 | `	if( nArg > 0 ){` |
+|      132 |  550 | `	int iLen = 0x10;` |
+|      132 |  551 | `	if( nArg > 0 ){` |
 |        - |  552 | `		/* Get the desired length */` |
-|      133 |  553 | `		iLen = ph7_value_to_int(apArg[0]);` |
-|      133 |  554 | `		if( iLen < 1 \|\| iLen > 1024 ){` |
+|      132 |  553 | `		iLen = ph7_value_to_int(apArg[0]);` |
+|      132 |  554 | `		if( iLen < 1 \|\| iLen > 1024 ){` |
 |        - |  555 | `			/* Default length */` |
 |        3 |  556 | `			iLen = 0x10;` |
 |        1 |  557 | `		}` |
 |       65 |  558 | `	}` |
 |        - |  559 | `	/* Generate the random string */` |
-|      133 |  560 | `	PH7_VmRandomString(pCtx->pVm,zString,iLen);` |
+|      132 |  560 | `	PH7_VmRandomString(pCtx->pVm,zString,iLen);` |
 |        - |  561 | `	/* Return the generated string */` |
-|      133 |  562 | `	ph7_result_string(pCtx,zString,iLen); /* Will make it's own copy */` |
-|      133 |  563 | `	return SXRET_OK;` |
-|        3 |  564 | `}` |
+|      132 |  562 | `	ph7_result_string(pCtx,zString,iLen); /* Will make it's own copy */` |
+|      132 |  563 | `	return SXRET_OK;` |
+|        2 |  564 | `}` |
 |        - |  565 | `/*` |
 |        - |  566 | ` * Reject non-numeric values (array/object/resource and non-numeric strings)` |
 |        - |  567 | ` * the same way intdiv() does. Returns SXRET_OK if the value is acceptable as` |
@@ -646,19 +646,19 @@ Coverage: 555/808 lines (68.69%)
 |      225 |  636 | `	uMask \|= uMask >> 16;` |
 |      225 |  637 | `	uMask \|= uMask >> 32;` |
 |      225 |  638 | `	uResult = 0;` |
-|      335 |  639 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
+|      338 |  639 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
 |        - |  640 | `		/* Always draw a full 8 bytes so endianness of the cast doesn't matter` |
 |        - |  641 | `		 * (a 4-byte fill into a sxu64 would land in the high half on big-endian` |
 |        - |  642 | `		 * and the low-half mask would always read 0). */` |
 |        - |  643 | `		sxu64 uDraw;` |
-|      335 |  644 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
+|      338 |  644 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
 |      ! 0 |  645 | `			return PH7_VmThrowException(pCtx,` |
 |        - |  646 | `				"Random\\RandomException",` |
 |        - |  647 | `				"Cannot gather sufficient random data"` |
 |        - |  648 | `				);` |
 |        - |  649 | `		}` |
-|      335 |  650 | `		uDraw &= uMask;` |
-|      335 |  651 | `		if( uDraw <= uRange ){` |
+|      338 |  650 | `		uDraw &= uMask;` |
+|      338 |  651 | `		if( uDraw <= uRange ){` |
 |      225 |  652 | `			uResult = uDraw;` |
 |      225 |  653 | `			break;` |
 |        - |  654 | `		}` |
