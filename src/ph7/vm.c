@@ -1341,7 +1341,7 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 				 * it before the first write is an Error in PHP 7.4+. */
 				pVmAttr->iState |= VM_CLASS_ATTR_UNINIT;
 			}
-			rc = SyHashInsert(&pObj->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),pVmAttr);
+			rc = SyHashInsertTail(&pObj->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),pVmAttr);
 			if( rc != SXRET_OK ){
 				VmSlot sSlot;
 				/* Restore memory object */
@@ -1373,7 +1373,7 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 			pVmAttr->nIdx = pAttr->nIdx;
 			pVmAttr->iState = 0;
 			pVmAttr->pOwner = pClass;
-			rc = SyHashInsert(&pObj->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),pVmAttr);
+			rc = SyHashInsertTail(&pObj->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),pVmAttr);
 			if( rc != SXRET_OK ){
 				SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
 				return SXERR_MEM;

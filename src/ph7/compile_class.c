@@ -3428,7 +3428,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 						pAR = (ph7_class_attr *)pER->pUserData;
 						pNR = &pAR->sName;
 						if( SyHashGet(&pClass->hAttr,(const void *)pNR->zString,pNR->nByte) == 0 ){
-							SyHashInsert(&pClass->hAttr,(const void *)pNR->zString,pNR->nByte,pAR);
+							SyHashInsertTail(&pClass->hAttr,(const void *)pNR->zString,pNR->nByte,pAR);
 						}
 					}
 					SySetPut(&pClass->aTrait,(const void *)&pTR);
