@@ -964,6 +964,8 @@ static sxi32 GenStateEmitExprCode(
 			 * original). isset/empty are never stripped: PHP stays silent on a missing intermediate
 			 * in `isset($o->a->b)`, which the suppression modes mirror. */
 			sxi32 iLeftFlags = iFlags;
+			sxu32 nNullcLhsFirst = PH7_VmInstrLength(pGen->pVm);
+			int bNullcLhs = 0;
 			if( pNode->pLeft && pNode->pLeft->pOp
 				&& (pNode->pLeft->pOp->iOp == EXPR_OP_ARROW
 					|| pNode->pLeft->pOp->iOp == EXPR_OP_NULLSAFE_ARROW
@@ -1007,6 +1009,7 @@ static sxi32 GenStateEmitExprCode(
 				 * `$x['k'] ?? d`. QUIET_VAR silences the variable read wherever it
 				 * sits in the chain. */
 				iLeftFlags |= EXPR_FLAG_QUIET_VAR;
+				bNullcLhs = 1;
 				if( pNode->pLeft->pOp
 					&& (pNode->pLeft->pOp->iOp == EXPR_OP_ARROW
 						|| pNode->pLeft->pOp->iOp == EXPR_OP_NULLSAFE_ARROW
@@ -1026,6 +1029,24 @@ static sxi32 GenStateEmitExprCode(
 				PH7_VmEmitInstr(pGen->pVm,PH7_OP_ERR_CTRL,1,0,0,0);
 			}
 			rc = GenStateEmitExprCode(&(*pGen),pNode->pLeft,iLeftFlags|EXPR_FLAG_RDONLY_LOAD);
+			if( rc == SXRET_OK && bNullcLhs ){
+				/* Mark EVERY subscript read in the `??` left chain quiet (iP2=8).
+				 * Peeking at the next instruction only catches the OUTERMOST
+				 * access, so `$d['x']['y'] ?? $v` still warned for the inner one;
+				 * and a forward scan would be unsound, since an unrelated sibling
+				 * access can sit immediately before a coalesce (`f($a['k'],
+				 * $b['j'] ?? 1)`). The compiler knows the real extent, so it marks
+				 * the range it just emitted. Write-context codes (1/3/5) belong to
+				 * `??=` and keep their meaning. */
+				sxu32 nEnd = PH7_VmInstrLength(pGen->pVm);
+				sxu32 nAt;
+				for( nAt = nNullcLhsFirst ; nAt < nEnd ; ++nAt ){
+					VmInstr *pFix = PH7_VmGetInstr(pGen->pVm,nAt);
+					if( pFix && pFix->iOp == PH7_OP_LOAD_IDX && pFix->iP2 == 0 ){
+						pFix->iP2 = 8;
+					}
+				}
+			}
 		}
 		if( rc != SXRET_OK ){
 			return rc;

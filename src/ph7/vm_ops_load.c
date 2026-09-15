@@ -573,6 +573,18 @@ PH7_PRIVATE VmOpRc VmExecOpLoadClosure(ph7_vm *pVm,VmExecState *pState,VmInstr *
 	VM_EXIT_BREAK;
 }
 
+
+/*
+ * TRUE when this LOAD_IDX feeds a `??`: the coalesce test is the very next
+ * instruction. php evaluates the whole left operand of `??` in isset-context,
+ * so the access must stay SILENT and, when it misses, must yield NULL — an
+ * out-of-range string offset that yielded "" instead made `$s[99] ?? $d`
+ * evaluate to "" rather than $d, a wrong answer rather than a stray notice.
+ */
+static int VmIdxFeedsCoalesce(const VmInstr *pInstr)
+{
+	return (pInstr+1)->iOp == PH7_OP_NULLC || (pInstr+1)->iOp == PH7_OP_NULLC_JMP;
+}
 /*
  * OP_LOAD_IDX: body moved verbatim from the OP_LOAD_IDX arm of
  * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
@@ -649,7 +661,8 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				/* LOAD_IDX carries its OWN iP2 codes, which do NOT line up with the
 				 * PH7_MEMBER_* ones: 4 = isset, 5 = unset, 6 = empty. All three are
 				 * lookups and must stay silent. */
-				int bQuiet = pInstr->iP2 == 4 || pInstr->iP2 == 5 || pInstr->iP2 == 6;
+				int bQuiet = pInstr->iP2 == 4 || pInstr->iP2 == 5 || pInstr->iP2 == 6
+					|| pInstr->iP2 == 8 || VmIdxFeedsCoalesce(pInstr);
 				PH7_MemObjRelease(pTos);
 				if( bQuiet ){
 					MemObjSetType(pTos,MEMOBJ_NULL);
@@ -675,18 +688,24 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		/* Object subscript: ArrayAccess dispatch.
 		 * iP2 codes:
 		 *   0 = read       → offsetGet
-		 *   3 = ?? peek    → offsetExists; offsetGet on hit; arm coalesce
+		 *   3 = ??= peek   → offsetExists; offsetGet on hit; arm coalesce
 		 *                    target on miss for the upcoming NULLC_STORE
 		 *   4 = isset()    → offsetExists
 		 *   5 = unset()    → offsetUnset
-		 *   6 = empty()    → offsetExists, then offsetGet on hit */
+		 *   6 = empty()    → offsetExists, then offsetGet on hit
+		 *   8 = `??` read  → same probe as 6 (offsetExists, then offsetGet on a
+		 *                    hit) and no diagnostics anywhere in this op: php
+		 *                    evaluates the whole left operand of `??` in
+		 *                    isset-context, and calling offsetGet blindly also
+		 *                    surfaced warnings raised INSIDE a userland
+		 *                    offsetGet (e.g. ArrayObject's own array read). */
 		ph7_class_instance *pInst = (ph7_class_instance *)pTos->x.pOther;
 		ph7_class *pArrayAccess = pVm->pArrayAccessClass;
 		if( pArrayAccess && pInst && PH7_VmInstanceOf(pInst->pClass,pArrayAccess) ){
 			ph7_class_method *pMeth;
 			ph7_value sResult;
 			ph7_value *apArg[1];
-			if( (pInstr->iP2 == 0 || pInstr->iP2 == 3) && pIdx == 0 ){
+			if( (pInstr->iP2 == 0 || pInstr->iP2 == 3 || pInstr->iP2 == 8) && pIdx == 0 ){
 				/* `$obj[]` read — PHP rejects this. */
 				PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,
 					"Cannot use [] for reading");
@@ -695,8 +714,8 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				VM_EXIT_BREAK;
 			}
 			PH7_MemObjInit(&(*pVm),&sResult);
-			if( pInstr->iP2 == 4 || pInstr->iP2 == 6 || pInstr->iP2 == 3 ){
-				/* isset, empty, and ??= all start with offsetExists. */
+			if( pInstr->iP2 == 4 || pInstr->iP2 == 6 || pInstr->iP2 == 3 || pInstr->iP2 == 8 ){
+				/* isset, empty, ??= and `??` all start with offsetExists. */
 				pMeth = PH7_ClassExtractMethod(pInst->pClass,
 					"offsetExists",sizeof("offsetExists")-1);
 				apArg[0] = pIdx;
@@ -737,10 +756,12 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				PH7_MemObjRelease(pTos);
 				pTos->nIdx = SXU32_HIGH;
 				MemObjSetType(pTos,MEMOBJ_NULL);
-			}else if( pInstr->iP2 == 6 ){
+			}else if( pInstr->iP2 == 6 || pInstr->iP2 == 8 ){
 				/* empty: if offsetExists is false, push NULL so empty=true
 				 * without calling offsetGet. If true, call offsetGet and
-				 * push the value so PH7_builtin_empty evaluates emptiness. */
+				 * push the value so PH7_builtin_empty evaluates emptiness.
+				 * `??` (8) needs the identical shape: NULL on a miss so the
+				 * coalesce takes the default, the real value on a hit. */
 				int bExists = ph7_value_to_bool(&sResult);
 				PH7_MemObjRelease(&sResult);
 				PH7_MemObjRelease(pTos);
@@ -952,7 +973,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 	}
 	if( rc != SXRET_OK && pIdx && (pInstr->iP2 == 2 || pInstr->iP2 == 0)
 	 && (pTos->iFlags & MEMOBJ_HASHMAP)
-	 && !((pInstr+1)->iOp == PH7_OP_NULLC || (pInstr+1)->iOp == PH7_OP_NULLC_JMP) ){
+	 && !VmIdxFeedsCoalesce(pInstr) ){
 		/* `$a['k'] ?? $d` compiles its LHS as a plain read (iP2 == 0) followed
 		 * by NULLC/NULLC_JMP — php does NOT warn there, so peek ahead and stay
 		 * silent (same guard the magic-accessor read path uses). */
@@ -981,7 +1002,8 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		SyBlobRelease(&sMsg);
 	}
 	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_STRING|MEMOBJ_OBJ)) == 0
-	 && (pInstr->iP2 == 0 || pInstr->iP2 == 2) ){
+	 && (pInstr->iP2 == 0 || pInstr->iP2 == 2)
+	 && !VmIdxFeedsCoalesce(pInstr) ){
 		/* Subscripting a scalar base is a WARNING in php ("Trying to access array offset
 		 * on int") that yields NULL. PH7 yielded NULL in silence. */
 		VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Trying to access array offset on %s",
