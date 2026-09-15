@@ -10,7 +10,7 @@
 | src/ph7/builtin_mb.c           | 91.94%   | 479/521     |
 | src/ph7/builtin_parse.c        | 89.62%   | 1234/1377   |
 | src/ph7/builtin_string.c       | 85.22%   | 2294/2692   |
-| src/ph7/compile.c              | 92.04%   | 1492/1621   |
+| src/ph7/compile.c              | 92.06%   | 1495/1624   |
 | src/ph7/compile_class.c        | 74.85%   | 2018/2696   |
 | src/ph7/compile_func.c         | 85.88%   | 870/1013    |
 | src/ph7/compile_literal.c      | 89.15%   | 945/1060    |
@@ -18,9 +18,9 @@
 | src/ph7/compile_stmt.c         | 73.92%   | 1448/1959   |
 | src/ph7/constant.c             | 93.09%   | 970/1042    |
 | src/ph7/hashmap.c              | 90.77%   | 1042/1148   |
-| src/ph7/hashmap_builtin.c      | 86.05%   | 2449/2846   |
+| src/ph7/hashmap_builtin.c      | 86.09%   | 2450/2846   |
 | src/ph7/hashmap_sort.c         | 91.14%   | 463/508     |
-| src/ph7/lex.c                  | 93.34%   | 813/871     |
+| src/ph7/lex.c                  | 93.46%   | 814/871     |
 | src/ph7/memobj.c               | 81.88%   | 836/1021    |
 | src/ph7/net.c                  | 57.45%   | 81/141      |
 | src/ph7/oo.c                   | 87.62%   | 736/840     |
@@ -52,7 +52,7 @@
 | src/ph7/vm_exec_ctx.c          | 79.98%   | 1023/1279   |
 | src/ph7/vm_http.c              | 69.82%   | 310/444     |
 | src/ph7/vm_http_response.c     | 49.41%   | 126/255     |
-| src/ph7/vm_include.c           | 84.14%   | 435/517     |
+| src/ph7/vm_include.c           | 83.87%   | 442/527     |
 | src/ph7/vm_json.c              | 83.36%   | 561/673     |
 | src/ph7/vm_libxml.c            | 73.46%   | 238/324     |
 | src/ph7/vm_ops_arith.c         | 82.93%   | 588/709     |
@@ -69,7 +69,7 @@
 | src/sx/sxds.c                  | 94.08%   | 286/304     |
 | src/sx/sxfmt.c                 | 53.32%   | 217/407     |
 | src/sx/sxhash.c                | 91.06%   | 377/414     |
-| src/sx/sxlib.c                 | 88.51%   | 231/261     |
+| src/sx/sxlib.c                 | 88.89%   | 232/261     |
 | src/sx/sxmem.c                 | 84.35%   | 442/524     |
 | src/sx/sxmutex.c               | 83.70%   | 77/92       |
 | src/sx/sxrand.c                | 71.15%   | 74/104      |
@@ -79,5 +79,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.11%   | 48395/59666 |
+| Lines                          | 81.11%   | 48408/59679 |
 | Functions                      | 93.10%   | 2201/2364   |

@@ -1491,7 +1491,7 @@ Coverage: 870/1013 lines (85.88%)
 |     31835 | 1481 | `	return SXRET_OK;` |
 |   1707648 | 1482 | `}` |
 |         - | 1483 |  |
-|    521372 | 1484 | `PH7_PRIVATE sxi32 GenStateCompileFunc(` |
+|    521374 | 1484 | `PH7_PRIVATE sxi32 GenStateCompileFunc(` |
 |         - | 1485 | `	ph7_gen_state *pGen, /* Code generator state */` |
 |         - | 1486 | `	SyString *pName,     /* Function name. NULL otherwise */` |
 |         - | 1487 | `	sxi32 iFlags,        /* Control flags */` |
@@ -1505,21 +1505,21 @@ Coverage: 870/1013 lines (85.88%)
 |         - | 1495 | `	char *zName;` |
 |         - | 1496 | `	sxi32 rc;` |
 |         - | 1497 | `	/* Extract line number */` |
-|    521377 | 1498 | `	nLine = pGen->pIn->nLine;` |
+|    521379 | 1498 | `	nLine = pGen->pIn->nLine;` |
 |         - | 1499 | `	/* Jump the left parenthesis '(' */` |
-|    521377 | 1500 | `	pGen->pIn++;` |
+|    521379 | 1500 | `	pGen->pIn++;` |
 |         - | 1501 | `	/* Delimit the function signature */` |
-|    521377 | 1502 | `	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN /* '(' */,PH7_TK_RPAREN /* ')' */,&pEnd);` |
-|    521377 | 1503 | `	if( pEnd >= pGen->pEnd ){` |
+|    521379 | 1502 | `	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN /* '(' */,PH7_TK_RPAREN /* ')' */,&pEnd);` |
+|    521379 | 1503 | `	if( pEnd >= pGen->pEnd ){` |
 |         - | 1504 | `		/* Syntax error */` |
-|         9 | 1505 | `		rc = PH7_GenSyntaxError(pGen,pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"variable");` |
-|         3 | 1506 | `		(void)pName;` |
-|         9 | 1507 | `		if( rc == SXERR_ABORT ){` |
+|        12 | 1505 | `		rc = PH7_GenSyntaxError(pGen,pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"variable");` |
+|         4 | 1506 | `		(void)pName;` |
+|        12 | 1507 | `		if( rc == SXERR_ABORT ){` |
 |         - | 1508 | `			/* Error count limit reached,abort immediately */` |
 |       ! 0 | 1509 | `			return SXERR_ABORT;` |
 |         - | 1510 | `		}` |
-|         9 | 1511 | `		pGen->pIn = pGen->pEnd;` |
-|         9 | 1512 | `		return SXRET_OK;` |
+|        12 | 1511 | `		pGen->pIn = pGen->pEnd;` |
+|        12 | 1512 | `		return SXRET_OK;` |
 |         - | 1513 | `	}` |
 |         - | 1514 | `	/* Create the function state */` |
 |    521371 | 1515 | `	pFunc = (ph7_vm_func *)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(ph7_vm_func));` |
@@ -1711,12 +1711,12 @@ Coverage: 870/1013 lines (85.88%)
 |         - | 1701 | `	 */` |
 |       ! 0 | 1702 | `	PH7_GenCompileError(&(*pGen),E_ERROR,1,"Fatal, PH7 engine is running out-of-memory");` |
 |       ! 0 | 1703 | `	return SXERR_ABORT;` |
-|    260691 | 1704 | `}` |
+|    260692 | 1704 | `}` |
 |         - | 1705 | `/*` |
 |         - | 1706 | ` * Compile a standard PHP function.` |
 |         - | 1707 | ` *  Refer to the block-comment above for more information.` |
 |         - | 1708 | ` */` |
-|    520796 | 1709 | `PH7_PRIVATE sxi32 PH7_CompileFunction(ph7_gen_state *pGen)` |
+|    520798 | 1709 | `PH7_PRIVATE sxi32 PH7_CompileFunction(ph7_gen_state *pGen)` |
 |         5 | 1710 | `{` |
 |         - | 1711 | `	SyString *pName;` |
 |         - | 1712 | `	sxi32 iFlags;` |
@@ -1724,17 +1724,17 @@ Coverage: 870/1013 lines (85.88%)
 |         - | 1714 | `	sxu32 nLine;` |
 |         - | 1715 | `	sxi32 rc;` |
 |         - | 1716 |  |
-|    520801 | 1717 | `	nLine = pGen->pIn->nLine;` |
-|    520801 | 1718 | `	nKwLine = nLine; /* Line of the 'function' keyword (Reflection getStartLine) */` |
-|    520801 | 1719 | `	pGen->pIn++; /* Jump the 'function' keyword */` |
-|    520801 | 1720 | `	iFlags = 0;` |
-|    520801 | 1721 | `	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_AMPER) ){` |
+|    520803 | 1717 | `	nLine = pGen->pIn->nLine;` |
+|    520803 | 1718 | `	nKwLine = nLine; /* Line of the 'function' keyword (Reflection getStartLine) */` |
+|    520803 | 1719 | `	pGen->pIn++; /* Jump the 'function' keyword */` |
+|    520803 | 1720 | `	iFlags = 0;` |
+|    520803 | 1721 | `	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_AMPER) ){` |
 |         - | 1722 | `		/* Return by reference,remember that */` |
 |        12 | 1723 | `		iFlags \|= VM_FUNC_REF_RETURN;` |
 |         - | 1724 | `		/* Jump the '&' token */` |
 |        12 | 1725 | `		pGen->pIn++;` |
 |         5 | 1726 | `	}` |
-|    520801 | 1727 | `	if( pGen->pIn >= pGen->pEnd \|\| (pGen->pIn->nType & (PH7_TK_ID\|PH7_TK_KEYWORD)) == 0 ){` |
+|    520803 | 1727 | `	if( pGen->pIn >= pGen->pEnd \|\| (pGen->pIn->nType & (PH7_TK_ID\|PH7_TK_KEYWORD)) == 0 ){` |
 |         - | 1728 | `		/* Invalid function name */` |
 |         7 | 1729 | `		rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\"(\"");` |
 |         7 | 1730 | `		if( rc == SXERR_ABORT ){` |
@@ -1746,11 +1746,11 @@ Coverage: 870/1013 lines (85.88%)
 |         1 | 1736 | `		}` |
 |         7 | 1737 | `		return SXRET_OK;` |
 |         - | 1738 | `	}` |
-|    520795 | 1739 | `	pName = &pGen->pIn->sData;` |
-|    520795 | 1740 | `	nLine = pGen->pIn->nLine;` |
+|    520797 | 1739 | `	pName = &pGen->pIn->sData;` |
+|    520797 | 1740 | `	nLine = pGen->pIn->nLine;` |
 |         - | 1741 | `	/* Jump the function name */` |
-|    520795 | 1742 | `	pGen->pIn++;` |
-|    520795 | 1743 | `	if( pGen->pIn >= pGen->pEnd \|\| (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){` |
+|    520797 | 1742 | `	pGen->pIn++;` |
+|    520797 | 1743 | `	if( pGen->pIn >= pGen->pEnd \|\| (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){` |
 |         - | 1744 | `		/* Syntax error */` |
 |         3 | 1745 | `		rc = PH7_GenSyntaxError(pGen,pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\"(\"");` |
 |         3 | 1746 | `		if( rc == SXERR_ABORT ){` |
@@ -1765,13 +1765,13 @@ Coverage: 870/1013 lines (85.88%)
 |         - | 1755 | `	}` |
 |         - | 1756 | `	/* Compile function body */` |
 |         - | 1757 | `	{` |
-|    520793 | 1758 | `		ph7_vm_func *pFuncState = 0;` |
-|    520793 | 1759 | `		rc = GenStateCompileFunc(&(*pGen),pName,iFlags,FALSE,&pFuncState);` |
-|    520793 | 1760 | `		if( pFuncState ){` |
+|    520795 | 1758 | `		ph7_vm_func *pFuncState = 0;` |
+|    520795 | 1759 | `		rc = GenStateCompileFunc(&(*pGen),pName,iFlags,FALSE,&pFuncState);` |
+|    520795 | 1760 | `		if( pFuncState ){` |
 |         - | 1761 | `			/* Reflection getStartLine(): line of the 'function' keyword */` |
 |    520779 | 1762 | `			pFuncState->nLine = nKwLine;` |
 |    260387 | 1763 | `		}` |
 |         - | 1764 | `	}` |
-|    520793 | 1765 | `	return rc;` |
-|    260403 | 1766 | `}` |
+|    520795 | 1765 | `	return rc;` |
+|    260404 | 1766 | `}` |
 |         - | 1767 |  |

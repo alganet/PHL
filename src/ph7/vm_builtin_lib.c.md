@@ -200,853 +200,855 @@ Coverage: 8/8 lines (100.00%)
 |    - |  190 | `	"class ArithmeticError extends Error { }"\` |
 |    - |  191 | `	"class DivisionByZeroError extends ArithmeticError { }"\` |
 |    - |  192 | `	"class UnhandledMatchError extends Error { }"\` |
-|    - |  193 | `	"class ErrorException extends Exception { "\` |
-|    - |  194 | `	"protected $severity;"\` |
-|    - |  195 | `	"public function __construct(?string $message = null,"\` |
-|    - |  196 | `	"int $code = 0,int $severity = 1,string $filename = __FILE__ ,int $lineno = __LINE__ ,?Throwable $previous = null){"\` |
-|    - |  197 | `	"   /* message/code/previous belong to Exception (trace/previous are private"\` |
-|    - |  198 | `	"    * to it); delegate, then set our own severity plus the caller-supplied"\` |
-|    - |  199 | `	"    * file/line, which are protected and stay writable here. */"\` |
-|    - |  200 | `	"   parent::__construct($message, $code, $previous);"\` |
-|    - |  201 | `	"   $this->severity = $severity;"\` |
-|    - |  202 | `	"   $this->file = $filename;"\` |
-|    - |  203 | `	"   $this->line = $lineno;"\` |
-|    - |  204 | `	"}"\` |
-|    - |  205 | `	"public function getSeverity(){"\` |
-|    - |  206 | `	"   return $this->severity;"\` |
-|    - |  207 | `    "}"\` |
-|    - |  208 | `	"}"\` |
-|    - |  209 | `	"/* SPL exceptions: thin tree, inherit Exception's ctor+getters. Roots first. */"\` |
-|    - |  210 | `	"class LogicException extends Exception { }"\` |
-|    - |  211 | `	"class RuntimeException extends Exception { }"\` |
-|    - |  212 | `	"class BadFunctionCallException extends LogicException { }"\` |
-|    - |  213 | `	"class BadMethodCallException extends BadFunctionCallException { }"\` |
-|    - |  214 | `	"class DomainException extends LogicException { }"\` |
-|    - |  215 | `	"class InvalidArgumentException extends LogicException { }"\` |
-|    - |  216 | `	"class LengthException extends LogicException { }"\` |
-|    - |  217 | `	"class OutOfRangeException extends LogicException { }"\` |
-|    - |  218 | `	"class OutOfBoundsException extends RuntimeException { }"\` |
-|    - |  219 | `	"class OverflowException extends RuntimeException { }"\` |
-|    - |  220 | `	"class RangeException extends RuntimeException { }"\` |
-|    - |  221 | `	"class UnderflowException extends RuntimeException { }"\` |
-|    - |  222 | `	"class UnexpectedValueException extends RuntimeException { }"\` |
-|    - |  223 | `	"class JsonException extends Exception { }"\` |
-|    - |  224 | `	"interface Iterator extends Traversable {"\` |
-|    - |  225 | `	"public function current();"\` |
-|    - |  226 | `	"public function key();"\` |
-|    - |  227 | `	"public function next();"\` |
-|    - |  228 | `	"public function rewind();"\` |
-|    - |  229 | `	"public function valid();"\` |
-|    - |  230 | `	"}"\` |
-|    - |  231 | `	"interface IteratorAggregate extends Traversable {"\` |
-|    - |  232 | `	"public function getIterator();"\` |
-|    - |  233 | `	"}"\` |
-|    - |  234 | `	"interface Serializable {"\` |
-|    - |  235 | `	"public function serialize();"\` |
-|    - |  236 | `	"public function unserialize(string $serialized);"\` |
-|    - |  237 | `	"}"\` |
-|    - |  238 | `	"/* Directory releated IO */"\` |
-|    - |  239 | `	"class Directory {"\` |
-|    - |  240 | `	"public $handle = null;"\` |
-|    - |  241 | `	"public $path  = null;"\` |
-|    - |  242 | `	"public function __construct(string $path)"\` |
-|    - |  243 | `	"{"\` |
-|    - |  244 | `	"   $this->handle = opendir($path);"\` |
-|    - |  245 | `	"   if( $this->handle !== FALSE ){"\` |
-|    - |  246 | `	"      $this->path = $path;"\` |
-|    - |  247 | `	"   }"\` |
-|    - |  248 | `	"}"\` |
-|    - |  249 | `	"public function __destruct()"\` |
-|    - |  250 | `	"{"\` |
-|    - |  251 | `	"  if( $this->handle != null ){"\` |
-|    - |  252 | `	"       closedir($this->handle);"\` |
-|    - |  253 | `	"  }"\` |
-|    - |  254 | `	"}"\` |
-|    - |  255 | `	"public function read()"\` |
-|    - |  256 | `	"{"\` |
-|    - |  257 | `	"    return readdir($this->handle);"\` |
-|    - |  258 | `	"}"\` |
-|    - |  259 | `	"public function rewind()"\` |
-|    - |  260 | `	"{"\` |
-|    - |  261 | `	"    rewinddir($this->handle);"\` |
-|    - |  262 | `	"}"\` |
-|    - |  263 | `	"public function close()"\` |
-|    - |  264 | `	"{"\` |
-|    - |  265 | `	"    closedir($this->handle);"\` |
-|    - |  266 | `	"    $this->handle = null;"\` |
-|    - |  267 | `	"}"\` |
-|    - |  268 | `	"}"\` |
-|    - |  269 | `	"class Fiber {"\` |
-|    - |  270 | `	"  private $__ctx;"\` |
-|    - |  271 | `	"  private $__callable;"\` |
-|    - |  272 | `	"  public function __construct($callable){ __fiber_construct($this,$callable); }"\` |
-|    - |  273 | `	"  public function start(){ return __fiber_start($this, func_get_args()); }"\` |
-|    - |  274 | `	"  public function resume($value = null){ return __fiber_resume($this,$value); }"\` |
-|    - |  275 | `	"  public function getReturn(){ return __fiber_getReturn($this); }"\` |
-|    - |  276 | `	"  public function isStarted(){ return __fiber_isStarted($this); }"\` |
-|    - |  277 | `	"  public function isRunning(){ return __fiber_isRunning($this); }"\` |
-|    - |  278 | `	"  public function isSuspended(){ return __fiber_isSuspended($this); }"\` |
-|    - |  279 | `	"  public function isTerminated(){ return __fiber_isTerminated($this); }"\` |
-|    - |  280 | `	"  public static function suspend($value = null){ return __fiber_suspend($value); }"\` |
-|    - |  281 | `	"  public function __destruct(){ __fiber_destruct($this); }"\` |
-|    - |  282 | `	"}"\` |
-|    - |  283 | `	"class Generator implements Iterator {"\` |
-|    - |  284 | `	"  private $__ctx;"\` |
-|    - |  285 | `	"  public function current(){ return __gen_current($this); }"\` |
-|    - |  286 | `	"  public function key(){ return __gen_key($this); }"\` |
-|    - |  287 | `	"  public function next(){ return __gen_next($this); }"\` |
-|    - |  288 | `	"  public function rewind(){ return __gen_rewind($this); }"\` |
-|    - |  289 | `	"  public function valid(){ return __gen_valid($this); }"\` |
-|    - |  290 | `	"  public function send($value = null){ return __gen_send($this,$value); }"\` |
-|    - |  291 | `	"  public function throw(Throwable $exception){ return __gen_throw($this,$exception); }"\` |
-|    - |  292 | `	"  public function getReturn(){ return __gen_getReturn($this); }"\` |
-|    - |  293 | `	"  public function __destruct(){ __gen_destruct($this); }"\` |
-|    - |  294 | `	"}"\` |
-|    - |  295 | `	"final class Closure {"\` |
-|    - |  296 | `	"  private $__fn;"\` |
-|    - |  297 | `	"  private $__this;"\` |
-|    - |  298 | `	"  private $__scope;"\` |
-|    - |  299 | `	"  public function __construct(){ throw new \\Error('Instantiation of class Closure is not allowed'); }"\` |
-|    - |  300 | `	"  public function bindTo($newThis, $scope = 'static'){ return __closure_bindTo($this, $newThis, $scope); }"\` |
-|    - |  301 | `	"  public function call($newThis, ...$args){ $bound = __closure_bindTo($this, $newThis, get_class($newThis)); return $bound(...$args); }"\` |
-|    - |  302 | `	"  public static function bind($closure, $newThis, $scope = 'static'){ return __closure_bindTo($closure, $newThis, $scope); }"\` |
-|    - |  303 | `	"  public static function fromCallable($callable){ return __closure_fromCallable($callable); }"\` |
-|    - |  304 | `	"}"\` |
-|    - |  305 | `	/* stdClass is empty (PHP-exact): holds only dynamic (runtime-added) properties. */\` |
-|    - |  306 | `	"#[Attribute(Attribute::TARGET_CLASS)]"\` |
-|    - |  307 | `	"final class Attribute {"\` |
-|    - |  308 | `	"  const TARGET_CLASS = 1;"\` |
-|    - |  309 | `	"  const TARGET_FUNCTION = 2;"\` |
-|    - |  310 | `	"  const TARGET_METHOD = 4;"\` |
-|    - |  311 | `	"  const TARGET_PROPERTY = 8;"\` |
-|    - |  312 | `	"  const TARGET_CLASS_CONSTANT = 16;"\` |
-|    - |  313 | `	"  const TARGET_PARAMETER = 32;"\` |
-|    - |  314 | `	"  const TARGET_CONSTANT = 64;"\` |
-|    - |  315 | `	"  const TARGET_ALL = 127;"\` |
-|    - |  316 | `	"  const IS_REPEATABLE = 128;"\` |
-|    - |  317 | `	"  public $flags;"\` |
-|    - |  318 | `	"  public function __construct($flags = 127){ $this->flags = $flags; }"\` |
-|    - |  319 | `	"}"\` |
-|    - |  320 | `	"#[Attribute(Attribute::TARGET_METHOD \| Attribute::TARGET_FUNCTION \| Attribute::TARGET_CLASS_CONSTANT \| Attribute::TARGET_CONSTANT)]"\` |
-|    - |  321 | `	"final class Deprecated {"\` |
-|    - |  322 | `	"  public $message;"\` |
-|    - |  323 | `	"  public $since;"\` |
-|    - |  324 | `	"  public function __construct($message = null, $since = null){"\` |
-|    - |  325 | `	"    $this->message = $message;"\` |
-|    - |  326 | `	"    $this->since = $since;"\` |
-|    - |  327 | `	"  }"\` |
-|    - |  328 | `	"}"\` |
-|    - |  329 | `	"class stdClass{"\` |
+|    - |  193 | `	"class CompileError extends Error { }"\` |
+|    - |  194 | `	"class ParseError extends CompileError { }"\` |
+|    - |  195 | `	"class ErrorException extends Exception { "\` |
+|    - |  196 | `	"protected $severity;"\` |
+|    - |  197 | `	"public function __construct(?string $message = null,"\` |
+|    - |  198 | `	"int $code = 0,int $severity = 1,string $filename = __FILE__ ,int $lineno = __LINE__ ,?Throwable $previous = null){"\` |
+|    - |  199 | `	"   /* message/code/previous belong to Exception (trace/previous are private"\` |
+|    - |  200 | `	"    * to it); delegate, then set our own severity plus the caller-supplied"\` |
+|    - |  201 | `	"    * file/line, which are protected and stay writable here. */"\` |
+|    - |  202 | `	"   parent::__construct($message, $code, $previous);"\` |
+|    - |  203 | `	"   $this->severity = $severity;"\` |
+|    - |  204 | `	"   $this->file = $filename;"\` |
+|    - |  205 | `	"   $this->line = $lineno;"\` |
+|    - |  206 | `	"}"\` |
+|    - |  207 | `	"public function getSeverity(){"\` |
+|    - |  208 | `	"   return $this->severity;"\` |
+|    - |  209 | `    "}"\` |
+|    - |  210 | `	"}"\` |
+|    - |  211 | `	"/* SPL exceptions: thin tree, inherit Exception's ctor+getters. Roots first. */"\` |
+|    - |  212 | `	"class LogicException extends Exception { }"\` |
+|    - |  213 | `	"class RuntimeException extends Exception { }"\` |
+|    - |  214 | `	"class BadFunctionCallException extends LogicException { }"\` |
+|    - |  215 | `	"class BadMethodCallException extends BadFunctionCallException { }"\` |
+|    - |  216 | `	"class DomainException extends LogicException { }"\` |
+|    - |  217 | `	"class InvalidArgumentException extends LogicException { }"\` |
+|    - |  218 | `	"class LengthException extends LogicException { }"\` |
+|    - |  219 | `	"class OutOfRangeException extends LogicException { }"\` |
+|    - |  220 | `	"class OutOfBoundsException extends RuntimeException { }"\` |
+|    - |  221 | `	"class OverflowException extends RuntimeException { }"\` |
+|    - |  222 | `	"class RangeException extends RuntimeException { }"\` |
+|    - |  223 | `	"class UnderflowException extends RuntimeException { }"\` |
+|    - |  224 | `	"class UnexpectedValueException extends RuntimeException { }"\` |
+|    - |  225 | `	"class JsonException extends Exception { }"\` |
+|    - |  226 | `	"interface Iterator extends Traversable {"\` |
+|    - |  227 | `	"public function current();"\` |
+|    - |  228 | `	"public function key();"\` |
+|    - |  229 | `	"public function next();"\` |
+|    - |  230 | `	"public function rewind();"\` |
+|    - |  231 | `	"public function valid();"\` |
+|    - |  232 | `	"}"\` |
+|    - |  233 | `	"interface IteratorAggregate extends Traversable {"\` |
+|    - |  234 | `	"public function getIterator();"\` |
+|    - |  235 | `	"}"\` |
+|    - |  236 | `	"interface Serializable {"\` |
+|    - |  237 | `	"public function serialize();"\` |
+|    - |  238 | `	"public function unserialize(string $serialized);"\` |
+|    - |  239 | `	"}"\` |
+|    - |  240 | `	"/* Directory releated IO */"\` |
+|    - |  241 | `	"class Directory {"\` |
+|    - |  242 | `	"public $handle = null;"\` |
+|    - |  243 | `	"public $path  = null;"\` |
+|    - |  244 | `	"public function __construct(string $path)"\` |
+|    - |  245 | `	"{"\` |
+|    - |  246 | `	"   $this->handle = opendir($path);"\` |
+|    - |  247 | `	"   if( $this->handle !== FALSE ){"\` |
+|    - |  248 | `	"      $this->path = $path;"\` |
+|    - |  249 | `	"   }"\` |
+|    - |  250 | `	"}"\` |
+|    - |  251 | `	"public function __destruct()"\` |
+|    - |  252 | `	"{"\` |
+|    - |  253 | `	"  if( $this->handle != null ){"\` |
+|    - |  254 | `	"       closedir($this->handle);"\` |
+|    - |  255 | `	"  }"\` |
+|    - |  256 | `	"}"\` |
+|    - |  257 | `	"public function read()"\` |
+|    - |  258 | `	"{"\` |
+|    - |  259 | `	"    return readdir($this->handle);"\` |
+|    - |  260 | `	"}"\` |
+|    - |  261 | `	"public function rewind()"\` |
+|    - |  262 | `	"{"\` |
+|    - |  263 | `	"    rewinddir($this->handle);"\` |
+|    - |  264 | `	"}"\` |
+|    - |  265 | `	"public function close()"\` |
+|    - |  266 | `	"{"\` |
+|    - |  267 | `	"    closedir($this->handle);"\` |
+|    - |  268 | `	"    $this->handle = null;"\` |
+|    - |  269 | `	"}"\` |
+|    - |  270 | `	"}"\` |
+|    - |  271 | `	"class Fiber {"\` |
+|    - |  272 | `	"  private $__ctx;"\` |
+|    - |  273 | `	"  private $__callable;"\` |
+|    - |  274 | `	"  public function __construct($callable){ __fiber_construct($this,$callable); }"\` |
+|    - |  275 | `	"  public function start(){ return __fiber_start($this, func_get_args()); }"\` |
+|    - |  276 | `	"  public function resume($value = null){ return __fiber_resume($this,$value); }"\` |
+|    - |  277 | `	"  public function getReturn(){ return __fiber_getReturn($this); }"\` |
+|    - |  278 | `	"  public function isStarted(){ return __fiber_isStarted($this); }"\` |
+|    - |  279 | `	"  public function isRunning(){ return __fiber_isRunning($this); }"\` |
+|    - |  280 | `	"  public function isSuspended(){ return __fiber_isSuspended($this); }"\` |
+|    - |  281 | `	"  public function isTerminated(){ return __fiber_isTerminated($this); }"\` |
+|    - |  282 | `	"  public static function suspend($value = null){ return __fiber_suspend($value); }"\` |
+|    - |  283 | `	"  public function __destruct(){ __fiber_destruct($this); }"\` |
+|    - |  284 | `	"}"\` |
+|    - |  285 | `	"class Generator implements Iterator {"\` |
+|    - |  286 | `	"  private $__ctx;"\` |
+|    - |  287 | `	"  public function current(){ return __gen_current($this); }"\` |
+|    - |  288 | `	"  public function key(){ return __gen_key($this); }"\` |
+|    - |  289 | `	"  public function next(){ return __gen_next($this); }"\` |
+|    - |  290 | `	"  public function rewind(){ return __gen_rewind($this); }"\` |
+|    - |  291 | `	"  public function valid(){ return __gen_valid($this); }"\` |
+|    - |  292 | `	"  public function send($value = null){ return __gen_send($this,$value); }"\` |
+|    - |  293 | `	"  public function throw(Throwable $exception){ return __gen_throw($this,$exception); }"\` |
+|    - |  294 | `	"  public function getReturn(){ return __gen_getReturn($this); }"\` |
+|    - |  295 | `	"  public function __destruct(){ __gen_destruct($this); }"\` |
+|    - |  296 | `	"}"\` |
+|    - |  297 | `	"final class Closure {"\` |
+|    - |  298 | `	"  private $__fn;"\` |
+|    - |  299 | `	"  private $__this;"\` |
+|    - |  300 | `	"  private $__scope;"\` |
+|    - |  301 | `	"  public function __construct(){ throw new \\Error('Instantiation of class Closure is not allowed'); }"\` |
+|    - |  302 | `	"  public function bindTo($newThis, $scope = 'static'){ return __closure_bindTo($this, $newThis, $scope); }"\` |
+|    - |  303 | `	"  public function call($newThis, ...$args){ $bound = __closure_bindTo($this, $newThis, get_class($newThis)); return $bound(...$args); }"\` |
+|    - |  304 | `	"  public static function bind($closure, $newThis, $scope = 'static'){ return __closure_bindTo($closure, $newThis, $scope); }"\` |
+|    - |  305 | `	"  public static function fromCallable($callable){ return __closure_fromCallable($callable); }"\` |
+|    - |  306 | `	"}"\` |
+|    - |  307 | `	/* stdClass is empty (PHP-exact): holds only dynamic (runtime-added) properties. */\` |
+|    - |  308 | `	"#[Attribute(Attribute::TARGET_CLASS)]"\` |
+|    - |  309 | `	"final class Attribute {"\` |
+|    - |  310 | `	"  const TARGET_CLASS = 1;"\` |
+|    - |  311 | `	"  const TARGET_FUNCTION = 2;"\` |
+|    - |  312 | `	"  const TARGET_METHOD = 4;"\` |
+|    - |  313 | `	"  const TARGET_PROPERTY = 8;"\` |
+|    - |  314 | `	"  const TARGET_CLASS_CONSTANT = 16;"\` |
+|    - |  315 | `	"  const TARGET_PARAMETER = 32;"\` |
+|    - |  316 | `	"  const TARGET_CONSTANT = 64;"\` |
+|    - |  317 | `	"  const TARGET_ALL = 127;"\` |
+|    - |  318 | `	"  const IS_REPEATABLE = 128;"\` |
+|    - |  319 | `	"  public $flags;"\` |
+|    - |  320 | `	"  public function __construct($flags = 127){ $this->flags = $flags; }"\` |
+|    - |  321 | `	"}"\` |
+|    - |  322 | `	"#[Attribute(Attribute::TARGET_METHOD \| Attribute::TARGET_FUNCTION \| Attribute::TARGET_CLASS_CONSTANT \| Attribute::TARGET_CONSTANT)]"\` |
+|    - |  323 | `	"final class Deprecated {"\` |
+|    - |  324 | `	"  public $message;"\` |
+|    - |  325 | `	"  public $since;"\` |
+|    - |  326 | `	"  public function __construct($message = null, $since = null){"\` |
+|    - |  327 | `	"    $this->message = $message;"\` |
+|    - |  328 | `	"    $this->since = $since;"\` |
+|    - |  329 | `	"  }"\` |
 |    - |  330 | `	"}"\` |
-|    - |  331 | `	"function dir(string $path){"\` |
-|    - |  332 | `	"   return new Directory($path);"\` |
-|    - |  333 | `	"}"\` |
-|    - |  334 | `	"function Dir(string $path){"\` |
-|    - |  335 | `	"   return new Directory($path);"\` |
-|    - |  336 | `	"}"\` |
-|    - |  337 | `	"function scandir(string $directory,int $sort_order = SCANDIR_SORT_ASCENDING)"\` |
-|    - |  338 | `    "{"\` |
-|    - |  339 | `	"  if( func_num_args() < 1 ){ return FALSE; }"\` |
-|    - |  340 | `	"  $aDir = array();"\` |
-|    - |  341 | `	"  $pHandle = opendir($directory);"\` |
-|    - |  342 | `	"  if( $pHandle == FALSE ){ return FALSE; }"\` |
-|    - |  343 | `	"  while(FALSE !== ($pEntry = readdir($pHandle)) ){"\` |
-|    - |  344 | `	"      $aDir[] = $pEntry;"\` |
-|    - |  345 | `	"   }"\` |
-|    - |  346 | `	"  closedir($pHandle);"\` |
-|    - |  347 | `	"  if( $sort_order == SCANDIR_SORT_DESCENDING ){"\` |
-|    - |  348 | `	"      rsort($aDir);"\` |
-|    - |  349 | `	"  }else if( $sort_order == SCANDIR_SORT_ASCENDING ){"\` |
-|    - |  350 | `	"      sort($aDir);"\` |
-|    - |  351 | `	"  }"\` |
-|    - |  352 | `	"  return $aDir;"\` |
-|    - |  353 | `	"}"\` |
-|    - |  354 | `	"function glob(string $pattern,int $iFlags = 0){"\` |
-|    - |  355 | `	"/* php keeps the literal directory portion of the pattern in every result;"\` |
-|    - |  356 | `	"   split off everything up to and including the last '/' as the prefix. */"\` |
-|    - |  357 | `	"$slash = strrpos($pattern,'/');"\` |
-|    - |  358 | `	"if( $slash === false ){ $zDir = '.'; $prefix = ''; $pat = $pattern; }"\` |
-|    - |  359 | `	"else { $zDir = substr($pattern,0,$slash); if( $zDir === '' ){ $zDir = '/'; } $prefix = substr($pattern,0,$slash+1); $pat = substr($pattern,$slash+1); }"\` |
-|    - |  360 | `	"$pHandle = opendir($zDir);"\` |
-|    - |  361 | `	"if( $pHandle == FALSE ){"\` |
-|    - |  362 | `	"   /* IO error while opening the target directory,return FALSE */"\` |
-|    - |  363 | `	"	return FALSE;"\` |
-|    - |  364 | `	"}"\` |
-|    - |  365 | `	"$pArray = array(); /* Empty array */"\` |
-|    - |  366 | `	"/* Loop throw available entries */"\` |
-|    - |  367 | `	"while( FALSE !== ($pEntry = readdir($pHandle)) ){"\` |
-|    - |  368 | `	" /* php's glob() never matches a leading-dot entry (incl. '.' and '..') unless"\` |
-|    - |  369 | `	"    the pattern itself starts with a dot */"\` |
-|    - |  370 | `	"	if( strlen($pEntry) > 0 && $pEntry[0] === '.' && (strlen($pat) < 1 \|\| $pat[0] !== '.') ){ continue; }"\` |
-|    - |  371 | `	" /* Use the built-in strglob function which is a Symisc eXtension for wildcard comparison*/"\` |
-|    - |  372 | `	"	$rc = strglob($pat,$pEntry);"\` |
-|    - |  373 | `	"	if( $rc ){"\` |
-|    - |  374 | `	"	   $zFull = $prefix . $pEntry;"\` |
-|    - |  375 | `	"	   if( is_dir($zDir . '/' . $pEntry) ){"\` |
-|    - |  376 | `	"	      if( $iFlags & GLOB_MARK ){"\` |
-|    - |  377 | `	"		     /* Adds a slash to each directory returned */"\` |
-|    - |  378 | `	"			 $zFull .= DIRECTORY_SEPARATOR;"\` |
-|    - |  379 | `	"		  }"\` |
-|    - |  380 | `	"	   }else if( $iFlags & GLOB_ONLYDIR ){"\` |
-|    - |  381 | `	"	     /* Not a directory,ignore */"\` |
-|    - |  382 | `	"		 continue;"\` |
-|    - |  383 | `	"	   }"\` |
-|    - |  384 | `	"	   /* Add the entry (with its literal directory prefix, php-style) */"\` |
-|    - |  385 | `	"	   $pArray[] = $zFull;"\` |
-|    - |  386 | `	"	}"\` |
-|    - |  387 | `	" }"\` |
-|    - |  388 | `	"/* Close the handle */"\` |
-|    - |  389 | `	"closedir($pHandle);"\` |
-|    - |  390 | `	"if( ($iFlags & GLOB_NOSORT) == 0 ){"\` |
-|    - |  391 | `	"  /* Sort the array */"\` |
-|    - |  392 | `	"  sort($pArray);"\` |
-|    - |  393 | `	"}"\` |
-|    - |  394 | `	"if( ($iFlags & GLOB_NOCHECK) && sizeof($pArray) < 1 ){"\` |
-|    - |  395 | `	"  /* Return the search pattern if no files matching were found */"\` |
-|    - |  396 | `	"  $pArray[] = $pattern;"\` |
-|    - |  397 | `	"}"\` |
-|    - |  398 | `	"/* Return the created array */"\` |
-|    - |  399 | `	"return $pArray;"\` |
-|    - |  400 | `   "}"\` |
-|    - |  401 | `   "/* Creates a temporary file */"\` |
-|    - |  402 | `   "function tmpfile(){"\` |
-|    - |  403 | `   "  /* Extract the temp directory */"\` |
-|    - |  404 | `   "  $zTempDir = sys_get_temp_dir();"\` |
-|    - |  405 | `   "  if( strlen($zTempDir) < 1 ){"\` |
-|    - |  406 | `   "    /* Use the current dir */"\` |
-|    - |  407 | `   "    $zTempDir = '.';"\` |
-|    - |  408 | `   "  }"\` |
-|    - |  409 | `   "  /* Create the file */"\` |
-|    - |  410 | `   "  $pHandle = fopen($zTempDir.DIRECTORY_SEPARATOR.'PH7'.rand_str(12),'w+');"\` |
-|    - |  411 | `   "  return $pHandle;"\` |
-|    - |  412 | `   "}"\` |
-|    - |  413 | `   "/* php's number_format(): missing entirely from PH7. */"\` |
-|    - |  414 | `   "function number_format($num, $decimals = 0, $dec_point = '.', $thousands_sep = ','){"\` |
-|    - |  415 | `   "  $num = (float)$num;"\` |
-|    - |  416 | `   "  $decimals = (int)$decimals;"\` |
-|    - |  417 | `   "  if( $decimals < 0 ){ $decimals = 0; }"\` |
-|    - |  418 | `   "  if( $dec_point === null ){ $dec_point = '.'; }"\` |
-|    - |  419 | `   "  if( $thousands_sep === null ){ $thousands_sep = ','; }"\` |
-|    - |  420 | `   "  /* round() first: sprintf uses banker's rounding, php's number_format rounds"\` |
-|    - |  421 | `   "   * half AWAY FROM ZERO (number_format(0.5) is '1', not '0'). */"\` |
-|    - |  422 | `   "  $num = round($num, $decimals);"\` |
-|    - |  423 | `   "  $s = sprintf('%.' . $decimals . 'f', $num);"\` |
-|    - |  424 | `   "  $neg = false;"\` |
-|    - |  425 | `   "  if( substr($s, 0, 1) === '-' ){ $neg = true; $s = substr($s, 1); }"\` |
-|    - |  426 | `   "  $parts = explode('.', $s);"\` |
-|    - |  427 | `   "  $int = $parts[0];"\` |
-|    - |  428 | `   "  $frac = count($parts) > 1 ? $parts[1] : '';"\` |
-|    - |  429 | `   "  $out = '';"\` |
-|    - |  430 | `   "  $len = strlen($int);"\` |
-|    - |  431 | `   "  $c = 0;"\` |
-|    - |  432 | `   "  for( $i = $len - 1 ; $i >= 0 ; $i-- ){"\` |
-|    - |  433 | `   "    $out = $int[$i] . $out;"\` |
-|    - |  434 | `   "    $c++;"\` |
-|    - |  435 | `   "    if( $c % 3 === 0 && $i > 0 ){ $out = $thousands_sep . $out; }"\` |
-|    - |  436 | `   "  }"\` |
-|    - |  437 | `   "  if( $decimals > 0 ){ $out = $out . $dec_point . $frac; }"\` |
-|    - |  438 | `   "  if( $neg ){ $out = '-' . $out; }"\` |
-|    - |  439 | `   "  return $out;"\` |
-|    - |  440 | `   "}"\` |
-|    - |  441 | `   "function is_nan($v){ $v = (float)$v; return $v != $v; }"\` |
-|    - |  442 | `   "function is_infinite($v){ $v = (float)$v; return $v == INF \|\| $v == -INF; }"\` |
-|    - |  443 | `   "function is_finite($v){ $v = (float)$v; return !is_nan($v) && !is_infinite($v); }"\` |
-|    - |  444 | `   "/* php's version_compare: canonicalise (separators + digit/alpha boundaries all"\` |
-|    - |  445 | `   " * become '.'), then compare parts with the special dev<alpha<beta<RC<#<pl ordering. */"\` |
-|    - |  446 | `   "function __phl_vcanon($v){"\` |
-|    - |  447 | `   "  $v = (string)$v; $len = strlen($v); $out = '';"\` |
-|    - |  448 | `   "  for( $i = 0; $i < $len; $i++ ){"\` |
-|    - |  449 | `   "   $c = $v[$i]; $rp = $i + 1 < $len ? $v[$i + 1] : '';"\` |
-|    - |  450 | `   "   $cd = ($c >= '0' && $c <= '9');"\` |
-|    - |  451 | `   "   $ca = $cd \|\| ($c >= 'a' && $c <= 'z') \|\| ($c >= 'A' && $c <= 'Z');"\` |
-|    - |  452 | `   "   if( !$ca ){"\` |
-|    - |  453 | `   "    /* any non-alphanumeric (., -, _, +, ...) is a separator: emit one '.' */"\` |
-|    - |  454 | `   "    if( $out !== '' && substr($out, -1) !== '.' ){ $out .= '.'; }"\` |
-|    - |  455 | `   "   }else{"\` |
-|    - |  456 | `   "    $out .= $c;"\` |
-|    - |  457 | `   "    $rd = ($rp >= '0' && $rp <= '9');"\` |
-|    - |  458 | `   "    $ra = $rd \|\| ($rp >= 'a' && $rp <= 'z') \|\| ($rp >= 'A' && $rp <= 'Z');"\` |
-|    - |  459 | `   "    if( $rp !== '' && $ra && ($cd !== $rd) ){ $out .= '.'; }"\` |
-|    - |  460 | `   "   }"\` |
-|    - |  461 | `   "  }"\` |
-|    - |  462 | `   "  return explode('.', $out);"\` |
-|    - |  463 | `   "}"\` |
-|    - |  464 | `   "function __phl_vform($s){"\` |
-|    - |  465 | `   "  if( $s === '' ){ return -1; }"\` |
-|    - |  466 | `   "  if( ctype_digit($s) ){ return 4; }"\` |
-|    - |  467 | `   "  $f = array('dev' => 0, 'alpha' => 1, 'a' => 1, 'beta' => 2, 'b' => 2, 'RC' => 3, 'rc' => 3, 'pl' => 5, 'p' => 5);"\` |
-|    - |  468 | `   "  foreach( $f as $name => $ord ){ if( strncmp($s, $name, strlen($name)) === 0 ){ return $ord; } }"\` |
-|    - |  469 | `   "  return -1;"\` |
-|    - |  470 | `   "}"\` |
-|    - |  471 | `   "function version_compare($version1, $version2, $operator = null){"\` |
-|    - |  472 | `   "  $v1 = __phl_vcanon($version1); $v2 = __phl_vcanon($version2);"\` |
-|    - |  473 | `   "  $n1 = count($v1); $n2 = count($v2); $n = $n1 > $n2 ? $n1 : $n2; $cmp = 0;"\` |
-|    - |  474 | `   "  for( $i = 0; $i < $n; $i++ ){"\` |
-|    - |  475 | `   "   $a = $i < $n1 ? $v1[$i] : null; $b = $i < $n2 ? $v2[$i] : null;"\` |
-|    - |  476 | `   "   if( $a === null ){ $cmp = ctype_digit($b) ? -1 : (4 <=> __phl_vform($b)); }"\` |
-|    - |  477 | `   "   elseif( $b === null ){ $cmp = ctype_digit($a) ? 1 : (__phl_vform($a) <=> 4); }"\` |
-|    - |  478 | `   "   elseif( ctype_digit($a) && ctype_digit($b) ){ $cmp = (int)$a <=> (int)$b; }"\` |
-|    - |  479 | `   "   else{ $cmp = __phl_vform($a) <=> __phl_vform($b); }"\` |
-|    - |  480 | `   "   if( $cmp !== 0 ){ break; }"\` |
-|    - |  481 | `   "  }"\` |
-|    - |  482 | `   "  if( $operator === null ){ return $cmp; }"\` |
-|    - |  483 | `   "  switch( (string)$operator ){"\` |
-|    - |  484 | `   "   case '<': case 'lt': return $cmp < 0;"\` |
-|    - |  485 | `   "   case '<=': case 'le': return $cmp <= 0;"\` |
-|    - |  486 | `   "   case '>': case 'gt': return $cmp > 0;"\` |
-|    - |  487 | `   "   case '>=': case 'ge': return $cmp >= 0;"\` |
-|    - |  488 | `   "   case '==': case '=': case 'eq': return $cmp === 0;"\` |
-|    - |  489 | `   "   case '!=': case '<>': case 'ne': return $cmp !== 0;"\` |
-|    - |  490 | `   "  }"\` |
-|    - |  491 | `   "  return null;"\` |
-|    - |  492 | `   "}"\` |
-|    - |  493 | `   "/* phl.stub_extensions (a -d/php.ini list, comma-separated) declares extensions"\` |
-|    - |  494 | `   " * PHL does not implement as LOADED, backed by no-op behaviour, so software that"\` |
-|    - |  495 | `   " * only GATES on extension_loaded() (e.g. PHPUnit's dom/xmlwriter check) runs"\` |
-|    - |  496 | `   " * unmodified. It does NOT synthesize the extension's classes/functions. */"\` |
-|    - |  497 | `   "function __phl_stub_exts(){"\` |
-|    - |  498 | `   "  $s = ini_get('phl.stub_extensions');"\` |
-|    - |  499 | `   "  if( $s === false \|\| $s === '' ){ return array(); }"\` |
-|    - |  500 | `   "  $out = array();"\` |
-|    - |  501 | `   "  foreach( explode(',', (string)$s) as $e ){ $e = trim($e); if( $e !== '' ){ $out[strtolower($e)] = $e; } }"\` |
-|    - |  502 | `   "  return $out;"\` |
-|    - |  503 | `   "}"\` |
-|    - |  504 | `   "function extension_loaded($name){"\` |
-|    - |  505 | `   "  static $ext = array('core' => 1, 'standard' => 1, 'pcre' => 1, 'json' => 1,"\` |
-|    - |  506 | `   "   'ctype' => 1, 'date' => 1, 'spl' => 1, 'reflection' => 1, 'mbstring' => 1,"\` |
-|    - |  507 | `   "   'hash' => 1, 'filter' => 1, 'session' => 1" PHL_EXT_LOADED_LIBXML ");"\` |
-|    - |  508 | `   "  $n = strtolower((string)$name);"\` |
-|    - |  509 | `   "  if( isset($ext[$n]) ){ return true; }"\` |
-|    - |  510 | `   "  $stub = __phl_stub_exts();"\` |
-|    - |  511 | `   "  return isset($stub[$n]);"\` |
-|    - |  512 | `   "}"\` |
-|    - |  513 | `   "function get_loaded_extensions($zend_extensions = false){"\` |
-|    - |  514 | `   "  if( $zend_extensions ){ return array(); }"\` |
-|    - |  515 | `   "  $base = array('Core','date','pcre','SPL','json','standard',"\` |
-|    - |  516 | `   "   'ctype','filter','hash','Reflection','session','mbstring'" PHL_EXT_LIST_LIBXML ");"\` |
-|    - |  517 | `   "  foreach( __phl_stub_exts() as $e ){ $base[] = $e; }"\` |
-|    - |  518 | `   "  return $base;"\` |
-|    - |  519 | `   "}"\` |
-|    - |  520 | `   "/* Inverse of bin2hex() */"\` |
-|    - |  521 | `   "function hex2bin($str){"\` |
-|    - |  522 | `   "  $str = (string)$str;"\` |
-|    - |  523 | `   "  $len = strlen($str);"\` |
-|    - |  524 | `   "  if( $len % 2 !== 0 ){"\` |
-|    - |  525 | `   "    trigger_error('hex2bin(): Hexadecimal input string must have an even length', E_USER_WARNING);"\` |
-|    - |  526 | `   "    return false;"\` |
-|    - |  527 | `   "  }"\` |
-|    - |  528 | `   "  $out = '';"\` |
-|    - |  529 | `   "  for( $i = 0 ; $i < $len ; $i += 2 ){"\` |
-|    - |  530 | `   "    $pair = substr($str, $i, 2);"\` |
-|    - |  531 | `   "    if( !ctype_xdigit($pair) ){"\` |
-|    - |  532 | `   "      trigger_error('hex2bin(): Input string must be hexadecimal string', E_USER_WARNING);"\` |
-|    - |  533 | `   "      return false;"\` |
-|    - |  534 | `   "    }"\` |
-|    - |  535 | `   "    $out = $out . chr(hexdec($pair));"\` |
-|    - |  536 | `   "  }"\` |
-|    - |  537 | `   "  return $out;"\` |
-|    - |  538 | `   "}"\` |
-|    - |  539 | `   "/* Division that never throws: INF/-INF/NAN like php */"\` |
-|    - |  540 | `   "function fdiv($a, $b){"\` |
-|    - |  541 | `   "  $a = (float)$a;"\` |
-|    - |  542 | `   "  $b = (float)$b;"\` |
-|    - |  543 | `   "  if( $b == 0.0 ){"\` |
-|    - |  544 | `   "    if( $a == 0.0 \|\| is_nan($a) ){ return NAN; }"\` |
-|    - |  545 | `   "    return $a > 0 ? INF : -INF;"\` |
-|    - |  546 | `   "  }"\` |
-|    - |  547 | `   "  return $a / $b;"\` |
-|    - |  548 | `   "}"\` |
-|    - |  549 | `   "function checkdate($month, $day, $year){"\` |
-|    - |  550 | `   "  $month = (int)$month; $day = (int)$day; $year = (int)$year;"\` |
-|    - |  551 | `   "  if( $month < 1 \|\| $month > 12 \|\| $year < 1 \|\| $year > 32767 \|\| $day < 1 ){ return false; }"\` |
-|    - |  552 | `   "  $days = array(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31);"\` |
-|    - |  553 | `   "  $max = $days[$month - 1];"\` |
-|    - |  554 | `   "  if( $month === 2 && ((($year % 4 === 0) && ($year % 100 !== 0)) \|\| ($year % 400 === 0)) ){"\` |
-|    - |  555 | `   "    $max = 29;"\` |
-|    - |  556 | `   "  }"\` |
-|    - |  557 | `   "  return $day <= $max;"\` |
-|    - |  558 | `   "}"\` |
-|    - |  559 | `   "function is_iterable($v){ return is_array($v) \|\| ($v instanceof Traversable); }"\` |
-|    - |  560 | `   "function is_countable($v){ return is_array($v) \|\| ($v instanceof Countable); }"\` |
-|    - |  561 | `   "function key_exists($key, $array){ return array_key_exists($key, $array); }"\` |
-|    - |  562 | `   "function doubleval($v){ return (float)$v; }"\` |
-|    - |  563 | `   "function array_count_values($array){"\` |
-|    - |  564 | `   "  $out = array();"\` |
-|    - |  565 | `   "  foreach( $array as $v ){"\` |
-|    - |  566 | `   "    if( !is_int($v) && !is_string($v) ){"\` |
-|    - |  567 | `   "      trigger_error('array_count_values(): Can only count string and integer values, entry skipped', E_USER_WARNING);"\` |
-|    - |  568 | `   "      continue;"\` |
-|    - |  569 | `   "    }"\` |
-|    - |  570 | `   "    if( isset($out[$v]) ){ $out[$v] = $out[$v] + 1; } else { $out[$v] = 1; }"\` |
-|    - |  571 | `   "  }"\` |
-|    - |  572 | `   "  return $out;"\` |
-|    - |  573 | `   "}"\` |
-|    - |  574 | `   "function array_change_key_case($array, $case = CASE_LOWER){"\` |
-|    - |  575 | `   "  $out = array();"\` |
-|    - |  576 | `   "  foreach( $array as $k => $v ){"\` |
-|    - |  577 | `   "    if( is_string($k) ){ $k = ($case == CASE_UPPER) ? strtoupper($k) : strtolower($k); }"\` |
-|    - |  578 | `   "    $out[$k] = $v;"\` |
-|    - |  579 | `   "  }"\` |
-|    - |  580 | `   "  return $out;"\` |
-|    - |  581 | `   "}"\` |
-|    - |  582 | `   "function array_replace_recursive($array, ...$others){"\` |
-|    - |  583 | `   "  foreach( $others as $o ){"\` |
-|    - |  584 | `   "    foreach( $o as $k => $v ){"\` |
-|    - |  585 | `   "      if( is_array($v) && isset($array[$k]) && is_array($array[$k]) ){"\` |
-|    - |  586 | `   "        $array[$k] = array_replace_recursive($array[$k], $v);"\` |
-|    - |  587 | `   "      }else{"\` |
-|    - |  588 | `   "        $array[$k] = $v;"\` |
-|    - |  589 | `   "      }"\` |
-|    - |  590 | `   "    }"\` |
-|    - |  591 | `   "  }"\` |
-|    - |  592 | `   "  return $array;"\` |
-|    - |  593 | `   "}"\` |
-|    - |  594 | `   "function class_uses($what, $autoload = true){"\` |
-|    - |  595 | `   "  $c = is_object($what) ? get_class($what) : (string)$what;"\` |
-|    - |  596 | `   "  if( !class_exists($c) ){ return false; }"\` |
-|    - |  597 | `   "  return array();  /* PHL has no traits yet -- always the empty set */"\` |
-|    - |  598 | `   "}"\` |
-|    - |  599 | `   "function count_chars($str, $mode = 0){"\` |
-|    - |  600 | `   "  $str = (string)$str;"\` |
-|    - |  601 | `   "  $counts = array();"\` |
-|    - |  602 | `   "  for( $i = 0 ; $i < 256 ; $i++ ){ $counts[$i] = 0; }"\` |
-|    - |  603 | `   "  $len = strlen($str);"\` |
-|    - |  604 | `   "  for( $i = 0 ; $i < $len ; $i++ ){ $b = ord($str[$i]); $counts[$b] = $counts[$b] + 1; }"\` |
-|    - |  605 | `   "  if( $mode == 1 ){"\` |
-|    - |  606 | `   "    $out = array();"\` |
-|    - |  607 | `   "    foreach( $counts as $b => $n ){ if( $n > 0 ){ $out[$b] = $n; } }"\` |
-|    - |  608 | `   "    return $out;"\` |
-|    - |  609 | `   "  }"\` |
-|    - |  610 | `   "  if( $mode == 3 ){"\` |
-|    - |  611 | `   "    $out = '';"\` |
-|    - |  612 | `   "    foreach( $counts as $b => $n ){ if( $n > 0 ){ $out = $out . chr($b); } }"\` |
-|    - |  613 | `   "    return $out;"\` |
-|    - |  614 | `   "  }"\` |
-|    - |  615 | `   "  return $counts;"\` |
-|    - |  616 | `   "}"\` |
-|    - |  617 | `   "function ip2long($ip){"\` |
-|    - |  618 | `   "  $p = explode('.', (string)$ip);"\` |
-|    - |  619 | `   "  if( count($p) !== 4 ){ return false; }"\` |
-|    - |  620 | `   "  $n = 0;"\` |
-|    - |  621 | `   "  foreach( $p as $o ){"\` |
-|    - |  622 | `   "    if( !ctype_digit($o) \|\| (int)$o < 0 \|\| (int)$o > 255 ){ return false; }"\` |
-|    - |  623 | `   "    $n = $n * 256 + (int)$o;"\` |
-|    - |  624 | `   "  }"\` |
-|    - |  625 | `   "  return $n;"\` |
-|    - |  626 | `   "}"\` |
-|    - |  627 | `   "function long2ip($n){"\` |
-|    - |  628 | `   "  $n = (int)$n;"\` |
-|    - |  629 | `   "  return (($n >> 24) & 255) . '.' . (($n >> 16) & 255) . '.' . (($n >> 8) & 255) . '.' . ($n & 255);"\` |
-|    - |  630 | `   "}"\` |
-|    - |  631 | `   "function preg_filter($pattern, $replacement, $subject, $limit = -1){"\` |
-|    - |  632 | `   "  if( is_array($subject) ){"\` |
-|    - |  633 | `   "    $out = array();"\` |
-|    - |  634 | `   "    foreach( $subject as $k => $v ){"\` |
-|    - |  635 | `   "      $r = preg_replace($pattern, $replacement, (string)$v, $limit, $cnt);"\` |
-|    - |  636 | `   "      if( $cnt > 0 ){ $out[$k] = $r; }"\` |
-|    - |  637 | `   "    }"\` |
-|    - |  638 | `   "    return $out;"\` |
-|    - |  639 | `   "  }"\` |
-|    - |  640 | `   "  $r = preg_replace($pattern, $replacement, (string)$subject, $limit, $cnt);"\` |
-|    - |  641 | `   "  return $cnt > 0 ? $r : null;"\` |
-|    - |  642 | `   "}"\` |
-|    - |  643 | `   "function preg_replace_callback_array($patterns, $subject, $limit = -1){"\` |
-|    - |  644 | `   "  foreach( $patterns as $pat => $cb ){"\` |
-|    - |  645 | `   "    $subject = preg_replace_callback($pat, $cb, $subject, $limit);"\` |
-|    - |  646 | `   "  }"\` |
-|    - |  647 | `   "  return $subject;"\` |
-|    - |  648 | `   "}"\` |
-|    - |  649 | `   "function cal_days_in_month($calendar, $month, $year){"\` |
-|    - |  650 | `   "  $month = (int)$month; $year = (int)$year;"\` |
-|    - |  651 | `   "  $days = array(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31);"\` |
-|    - |  652 | `   "  if( $month < 1 \|\| $month > 12 ){"\` |
-|    - |  653 | `   "    throw new ValueError('cal_days_in_month(): Argument #2 ($month) must be a valid month');"\` |
-|    - |  654 | `   "  }"\` |
-|    - |  655 | `   "  if( $month === 2 && ((($year % 4 === 0) && ($year % 100 !== 0)) \|\| ($year % 400 === 0)) ){"\` |
-|    - |  656 | `   "    return 29;"\` |
-|    - |  657 | `   "  }"\` |
-|    - |  658 | `   "  return $days[$month - 1];"\` |
-|    - |  659 | `   "}"\` |
-|    - |  660 | `   "function preg_grep($pattern, $array, $flags = 0){"\` |
-|    - |  661 | `   "  $out = array();"\` |
-|    - |  662 | `   "  foreach( $array as $k => $v ){"\` |
-|    - |  663 | `   "    $m = preg_match($pattern, (string)$v);"\` |
-|    - |  664 | `   "    if( $flags & PREG_GREP_INVERT ){ $m = !$m; }"\` |
-|    - |  665 | `   "    if( $m ){ $out[$k] = $v; }"\` |
-|    - |  666 | `   "  }"\` |
-|    - |  667 | `   "  return $out;"\` |
-|    - |  668 | `   "}"\` |
-|    - |  669 | `   "function class_implements($what, $autoload = true){"\` |
-|    - |  670 | `   "  $c = is_object($what) ? get_class($what) : (string)$what;"\` |
-|    - |  671 | `   "  if( !class_exists($c) && !interface_exists($c) ){ return false; }"\` |
-|    - |  672 | `   "  $out = array();"\` |
-|    - |  673 | `   "  $r = new ReflectionClass($c);"\` |
-|    - |  674 | `   "  foreach( $r->getInterfaceNames() as $i ){ $out[$i] = $i; }"\` |
-|    - |  675 | `   "  return $out;"\` |
-|    - |  676 | `   "}"\` |
-|    - |  677 | `   "function class_parents($what, $autoload = true){"\` |
-|    - |  678 | `   "  $c = is_object($what) ? get_class($what) : (string)$what;"\` |
-|    - |  679 | `   "  if( !class_exists($c) ){ return false; }"\` |
-|    - |  680 | `   "  $out = array();"\` |
-|    - |  681 | `   "  $r = new ReflectionClass($c);"\` |
-|    - |  682 | `   "  while( ($p = $r->getParentClass()) ){"\` |
-|    - |  683 | `   "    $n = $p->getName();"\` |
-|    - |  684 | `   "    $out[$n] = $n;"\` |
-|    - |  685 | `   "    $r = $p;"\` |
-|    - |  686 | `   "  }"\` |
-|    - |  687 | `   "  return $out;"\` |
-|    - |  688 | `   "}"\` |
-|    - |  689 | `   "/* php's http_build_query() -- missing from PH7. Skips null values, casts"\` |
-|    - |  690 | `   " * bool to 1/0, prefixes numeric top-level keys, urlencodes per RFC. */"\` |
-|    - |  691 | `   "function __phl_hbq_enc($s, $enc){"\` |
-|    - |  692 | `   "  return $enc == PHP_QUERY_RFC3986 ? rawurlencode((string)$s) : urlencode((string)$s);"\` |
-|    - |  693 | `   "}"\` |
-|    - |  694 | `   "function __phl_hbq(&$pairs, $data, $key_prefix, $numeric_prefix, $sep, $enc){"\` |
-|    - |  695 | `   "  foreach( $data as $k => $v ){"\` |
-|    - |  696 | `   "    if( $v === null ){ continue; }"\` |
-|    - |  697 | `   "    if( $key_prefix === '' ){"\` |
-|    - |  698 | `   "      $ek = is_int($k) ? __phl_hbq_enc($numeric_prefix . $k, $enc) : __phl_hbq_enc($k, $enc);"\` |
-|    - |  699 | `   "    } else {"\` |
-|    - |  700 | `   "      $ek = $key_prefix . '%5B' . __phl_hbq_enc($k, $enc) . '%5D';"\` |
-|    - |  701 | `   "    }"\` |
-|    - |  702 | `   "    if( is_array($v) ){"\` |
-|    - |  703 | `   "      __phl_hbq($pairs, $v, $ek, $numeric_prefix, $sep, $enc);"\` |
-|    - |  704 | `   "    } elseif( is_object($v) ){"\` |
-|    - |  705 | `   "      __phl_hbq($pairs, get_object_vars($v), $ek, $numeric_prefix, $sep, $enc);"\` |
-|    - |  706 | `   "    } else {"\` |
-|    - |  707 | `   "      if( $v === true ){ $v = '1'; } elseif( $v === false ){ $v = '0'; }"\` |
-|    - |  708 | `   "      $pairs[] = $ek . '=' . __phl_hbq_enc($v, $enc);"\` |
-|    - |  709 | `   "    }"\` |
-|    - |  710 | `   "  }"\` |
-|    - |  711 | `   "}"\` |
-|    - |  712 | `   "function http_build_query($data, $numeric_prefix = '', $arg_separator = null, $encoding_type = PHP_QUERY_RFC1738){"\` |
-|    - |  713 | `   "  if( !is_array($data) && !is_object($data) ){"\` |
-|    - |  714 | `   "    throw new TypeError('http_build_query(): Argument #1 ($data) must be of type array\|object, ' . gettype($data) . ' given');"\` |
-|    - |  715 | `   "  }"\` |
-|    - |  716 | `   "  if( $arg_separator === null ){ $arg_separator = '&'; }"\` |
-|    - |  717 | `   "  $pairs = array();"\` |
-|    - |  718 | `   "  __phl_hbq($pairs, is_object($data) ? get_object_vars($data) : $data, '', (string)$numeric_prefix, $arg_separator, $encoding_type);"\` |
-|    - |  719 | `   "  return implode($arg_separator, $pairs);"\` |
-|    - |  720 | `   "}"\` |
-|    - |  721 | `   "/* php's parse_str() -- missing from PH7. Mangles the base name ('.'/' ' -> '_'),"\` |
-|    - |  722 | `   " * parses [key] nesting and [] appends, urldecodes keys and values. */"\` |
-|    - |  723 | `   "function __phl_parsestr_assign(&$arr, $segments, $i, $val){"\` |
-|    - |  724 | `   "  $seg = $segments[$i];"\` |
-|    - |  725 | `   "  $last = ($i === count($segments) - 1);"\` |
-|    - |  726 | `   "  if( $seg === '' ){"\` |
-|    - |  727 | `   "    if( $last ){ $arr[] = $val; return; }"\` |
-|    - |  728 | `   "    $arr[] = array();"\` |
-|    - |  729 | `   "    $k = array_key_last($arr);"\` |
-|    - |  730 | `   "    __phl_parsestr_assign($arr[$k], $segments, $i + 1, $val);"\` |
-|    - |  731 | `   "  } else {"\` |
-|    - |  732 | `   "    if( $last ){ $arr[$seg] = $val; return; }"\` |
-|    - |  733 | `   "    if( !isset($arr[$seg]) \|\| !is_array($arr[$seg]) ){ $arr[$seg] = array(); }"\` |
-|    - |  734 | `   "    __phl_parsestr_assign($arr[$seg], $segments, $i + 1, $val);"\` |
-|    - |  735 | `   "  }"\` |
-|    - |  736 | `   "}"\` |
-|    - |  737 | `   "function parse_str($string, &$result){"\` |
-|    - |  738 | `   "  $result = array();"\` |
-|    - |  739 | `   "  $string = (string)$string;"\` |
-|    - |  740 | `   "  if( $string === '' ){ return; }"\` |
-|    - |  741 | `   "  foreach( explode('&', $string) as $pair ){"\` |
-|    - |  742 | `   "    if( $pair === '' ){ continue; }"\` |
-|    - |  743 | `   "    $eq = strpos($pair, '=');"\` |
-|    - |  744 | `   "    if( $eq === false ){ $rawkey = $pair; $val = ''; }"\` |
-|    - |  745 | `   "    else { $rawkey = substr($pair, 0, $eq); $val = urldecode(substr($pair, $eq + 1)); }"\` |
-|    - |  746 | `   "    if( $rawkey === '' ){ continue; }"\` |
-|    - |  747 | `   "    $bpos = strpos($rawkey, '[');"\` |
-|    - |  748 | `   "    if( $bpos === false ){ $base = $rawkey; $subs = array(); }"\` |
-|    - |  749 | `   "    else {"\` |
-|    - |  750 | `   "      $base = substr($rawkey, 0, $bpos);"\` |
-|    - |  751 | `   "      preg_match_all('/\\[([^\\]]*)\\]/', substr($rawkey, $bpos), $m);"\` |
-|    - |  752 | `   "      $subs = $m[1];"\` |
-|    - |  753 | `   "    }"\` |
-|    - |  754 | `   "    $base = str_replace(array(' ', '.'), '_', urldecode($base));"\` |
-|    - |  755 | `   "    if( $base === '' ){ continue; }"\` |
-|    - |  756 | `   "    $segs = array($base);"\` |
-|    - |  757 | `   "    foreach( $subs as $s ){ $segs[] = urldecode($s); }"\` |
-|    - |  758 | `   "    __phl_parsestr_assign($result, $segs, 0, $val);"\` |
-|    - |  759 | `   "  }"\` |
-|    - |  760 | `   "}"\` |
-|    - |  761 | `   "/* php 8.3 str_increment(): Perl-style alphanumeric increment. */"\` |
-|    - |  762 | `   "function str_increment($string){"\` |
-|    - |  763 | `   "  $string = (string)$string;"\` |
-|    - |  764 | `   "  if( $string === '' ){ throw new ValueError('str_increment(): Argument #1 ($string) must not be empty'); }"\` |
-|    - |  765 | `   "  if( !ctype_alnum($string) ){ throw new ValueError('str_increment(): Argument #1 ($string) must be composed only of alphanumeric ASCII characters'); }"\` |
-|    - |  766 | `   "  for( $i = strlen($string) - 1 ; $i >= 0 ; $i-- ){"\` |
-|    - |  767 | `   "    $c = $string[$i];"\` |
-|    - |  768 | `   "    if( $c === 'z' ){ $string[$i] = 'a'; }"\` |
-|    - |  769 | `   "    elseif( $c === 'Z' ){ $string[$i] = 'A'; }"\` |
-|    - |  770 | `   "    elseif( $c === '9' ){ $string[$i] = '0'; }"\` |
-|    - |  771 | `   "    else { $string[$i] = chr(ord($c) + 1); return $string; }"\` |
-|    - |  772 | `   "  }"\` |
-|    - |  773 | `   "  $first = $string[0];"\` |
-|    - |  774 | `   "  if( $first === '0' ){ return '1' . $string; }"\` |
-|    - |  775 | `   "  if( $first === 'a' ){ return 'a' . $string; }"\` |
-|    - |  776 | `   "  return 'A' . $string;"\` |
-|    - |  777 | `   "}"\` |
-|    - |  778 | `   "/* php 8.3 str_decrement(): inverse of str_increment(); throws out of range"\` |
-|    - |  779 | `   " * at the bottom of the counting sequence. */"\` |
-|    - |  780 | `   "function str_decrement($string){"\` |
-|    - |  781 | `   "  $string = (string)$string;"\` |
-|    - |  782 | `   "  if( $string === '' ){ throw new ValueError('str_decrement(): Argument #1 ($string) must not be empty'); }"\` |
-|    - |  783 | `   "  if( !ctype_alnum($string) ){ throw new ValueError('str_decrement(): Argument #1 ($string) must be composed only of alphanumeric ASCII characters'); }"\` |
-|    - |  784 | `   "  $orig = $string;"\` |
-|    - |  785 | `   "  $borrowed = false;"\` |
-|    - |  786 | `   "  for( $i = strlen($string) - 1 ; $i >= 0 ; $i-- ){"\` |
-|    - |  787 | `   "    $c = $string[$i];"\` |
-|    - |  788 | `   "    if( $c === 'a' ){ $string[$i] = 'z'; }"\` |
-|    - |  789 | `   "    elseif( $c === 'A' ){ $string[$i] = 'Z'; }"\` |
-|    - |  790 | `   "    elseif( $c === '0' ){ $string[$i] = '9'; }"\` |
-|    - |  791 | `   "    else { $string[$i] = chr(ord($c) - 1); $borrowed = false; break; }"\` |
-|    - |  792 | `   "    if( $i === 0 ){ $borrowed = true; }"\` |
-|    - |  793 | `   "  }"\` |
-|    - |  794 | `   "  if( $borrowed ){"\` |
-|    - |  795 | `   "    if( $string[0] === '9' ){ throw new ValueError('str_decrement(): Argument #1 ($string) \"' . $orig . '\" is out of decrement range'); }"\` |
-|    - |  796 | `   "    $string = substr($string, 1);"\` |
-|    - |  797 | `   "    if( $string === '' ){ throw new ValueError('str_decrement(): Argument #1 ($string) \"' . $orig . '\" is out of decrement range'); }"\` |
-|    - |  798 | `   "  } elseif( strlen($string) > 1 && $string[0] === '0' ){"\` |
-|    - |  799 | `   "    $string = substr($string, 1);"\` |
-|    - |  800 | `   "  }"\` |
-|    - |  801 | `   "  return $string;"\` |
-|    - |  802 | `   "}"\` |
-|    - |  803 | `   "/* Permission bits via stat(); false + warning when stat fails, like php. */"\` |
-|    - |  804 | `   "function fileperms($filename){"\` |
-|    - |  805 | `   "  $s = @stat($filename);"\` |
-|    - |  806 | `   "  if( $s === false ){"\` |
-|    - |  807 | `   "    trigger_error('fileperms(): stat failed for ' . $filename, E_USER_WARNING);"\` |
-|    - |  808 | `   "    return false;"\` |
-|    - |  809 | `   "  }"\` |
-|    - |  810 | `   "  return $s['mode'];"\` |
-|    - |  811 | `   "}"\` |
-|    - |  812 | `   "/* PH7 keeps no stat cache, so this is a no-op like php on a clean cache. */"\` |
-|    - |  813 | `   "function clearstatcache($clear_realpath_cache = false, $filename = ''){}"\` |
-|    - |  814 | `   "/* php 8.4 mb_ucfirst/mb_lcfirst: case-map only the first multibyte char. */"\` |
-|    - |  815 | `   "function mb_ucfirst($string, $encoding = null){"\` |
-|    - |  816 | `   "  $string = (string)$string;"\` |
-|    - |  817 | `   "  if( $string === '' ){ return ''; }"\` |
-|    - |  818 | `   "  return mb_strtoupper(mb_substr($string, 0, 1)) . mb_substr($string, 1);"\` |
-|    - |  819 | `   "}"\` |
-|    - |  820 | `   "function mb_lcfirst($string, $encoding = null){"\` |
-|    - |  821 | `   "  $string = (string)$string;"\` |
-|    - |  822 | `   "  if( $string === '' ){ return ''; }"\` |
-|    - |  823 | `   "  return mb_strtolower(mb_substr($string, 0, 1)) . mb_substr($string, 1);"\` |
-|    - |  824 | `   "}"\` |
-|    - |  825 | `   "/* php 8.4 mb_trim family: strip leading/trailing characters (whole"\` |
-|    - |  826 | `   " * multibyte chars, NO range syntax), defaulting to php's Unicode"\` |
-|    - |  827 | `   " * whitespace set. */"\` |
-|    - |  828 | `   "function __phl_mb_ws(){"\` |
-|    - |  829 | `   "  static $set = null;"\` |
-|    - |  830 | `   "  if( $set === null ){"\` |
-|    - |  831 | `   "    $set = array();"\` |
-|    - |  832 | `   "    foreach( array(0x00,0x09,0x0A,0x0B,0x0C,0x0D,0x20,0x85,0xA0,0x1680,"\` |
-|    - |  833 | `   "      0x180E,0x2000,0x2001,0x2002,0x2003,0x2004,0x2005,0x2006,0x2007,0x2008,"\` |
-|    - |  834 | `   "      0x2009,0x200A,0x2028,0x2029,0x202F,0x205F,0x3000) as $cp ){"\` |
-|    - |  835 | `   "      $set[mb_chr($cp)] = true;"\` |
-|    - |  836 | `   "    }"\` |
-|    - |  837 | `   "  }"\` |
-|    - |  838 | `   "  return $set;"\` |
-|    - |  839 | `   "}"\` |
-|    - |  840 | `   "function __phl_mb_trim($string, $characters, $left, $right){"\` |
-|    - |  841 | `   "  $string = (string)$string;"\` |
-|    - |  842 | `   "  if( $string === '' ){ return ''; }"\` |
-|    - |  843 | `   "  if( $characters === null ){"\` |
-|    - |  844 | `   "    $set = __phl_mb_ws();"\` |
-|    - |  845 | `   "  } else {"\` |
-|    - |  846 | `   "    $set = array();"\` |
-|    - |  847 | `   "    foreach( mb_str_split((string)$characters) as $c ){ $set[$c] = true; }"\` |
-|    - |  848 | `   "  }"\` |
-|    - |  849 | `   "  $chars = mb_str_split($string);"\` |
-|    - |  850 | `   "  $n = count($chars);"\` |
-|    - |  851 | `   "  $i = 0; $j = $n;"\` |
-|    - |  852 | `   "  if( $left ){ while( $i < $j && isset($set[$chars[$i]]) ){ $i++; } }"\` |
-|    - |  853 | `   "  if( $right ){ while( $j > $i && isset($set[$chars[$j - 1]]) ){ $j--; } }"\` |
-|    - |  854 | `   "  return implode('', array_slice($chars, $i, $j - $i));"\` |
-|    - |  855 | `   "}"\` |
-|    - |  856 | `   "function mb_trim($string, $characters = null, $encoding = null){ return __phl_mb_trim($string, $characters, true, true); }"\` |
-|    - |  857 | `   "function mb_ltrim($string, $characters = null, $encoding = null){ return __phl_mb_trim($string, $characters, true, false); }"\` |
-|    - |  858 | `   "function mb_rtrim($string, $characters = null, $encoding = null){ return __phl_mb_trim($string, $characters, false, true); }"\` |
-|    - |  859 | `   "/* Creates a temporary file and returns its name */"\` |
-|    - |  860 | `   "function tempnam(string $zDir = sys_get_temp_dir() /* Symisc eXtension */,string $zPrefix = 'PH7')"\` |
-|    - |  861 | `   "{"\` |
-|    - |  862 | `   "   /* php CREATES the file (empty, mode 0600) and guarantees the name is unique --"\` |
-|    - |  863 | `   "    * returning a bare name left the caller with a path that does not exist, so"\` |
-|    - |  864 | `   "    * file_exists() was false and unlink() failed on it. */"\` |
-|    - |  865 | `   "   $zDir = rtrim($zDir, DIRECTORY_SEPARATOR);"\` |
-|    - |  866 | `   "   for( $i = 0 ; $i < 64 ; ++$i ){"\` |
-|    - |  867 | `   "     $zPath = $zDir.DIRECTORY_SEPARATOR.$zPrefix.rand_str(12);"\` |
-|    - |  868 | `   "     if( file_exists($zPath) ){ continue; }"\` |
-|    - |  869 | `   "     $pHandle = @fopen($zPath,'x');"\` |
-|    - |  870 | `   "     if( $pHandle === false ){ continue; }"\` |
-|    - |  871 | `   "     fclose($pHandle);"\` |
-|    - |  872 | `   "     @chmod($zPath, 0600);"\` |
-|    - |  873 | `   "     return $zPath;"\` |
-|    - |  874 | `   "   }"\` |
-|    - |  875 | `   "   return false;"\` |
-|    - |  876 | `   "}"\` |
-|    - |  877 | `   "function array_unshift(&$pArray ){"\` |
-|    - |  878 | `   " if( func_num_args() < 1 ){ throw new ArgumentCountError('array_unshift() expects at least 1 argument, 0 given'); }"\` |
-|    - |  879 | `   " if( !is_array($pArray) ){ throw new TypeError('array_unshift(): Argument #1 ($array) must be of type array, ' . gettype($pArray) . ' given'); }"\` |
-|    - |  880 | `   "/* Copy arguments */"\` |
-|    - |  881 | `   "$nArgs = func_num_args();"\` |
-|    - |  882 | `   "$pNew = array();"\` |
-|    - |  883 | `   "for( $i = 1 ; $i < $nArgs ; ++$i ){"\` |
-|    - |  884 | `    " $pNew[] = func_get_arg($i);"\` |
-|    - |  885 | `    "}"\` |
-|    - |  886 | `   	"/* Make a copy of the old entries */"\` |
-|    - |  887 | `	"$pOld = array_copy($pArray);"\` |
-|    - |  888 | `	"/* Erase */"\` |
-|    - |  889 | `	"array_erase($pArray);"\` |
-|    - |  890 | `	"/* Unshift */"\` |
-|    - |  891 | `	"$pArray = array_merge($pNew,$pOld);"\` |
-|    - |  892 | `	"return sizeof($pArray);"\` |
-|    - |  893 | `    "}"\` |
-|    - |  894 | `	"function array_merge_recursive(){"\` |
-|    - |  895 | `	" if( func_num_args() < 1 ){ return array(); }"\` |
-|    - |  896 | `    "$arrays = func_get_args();"\` |
-|    - |  897 | `    "$narrays = count($arrays);"\` |
-|    - |  898 | `    "$ret = array();"\` |
-|    - |  899 | `    "for( $i = 0; $i < $narrays; $i++ ){"\` |
-|    - |  900 | `	 " if( !is_array($arrays[$i]) ){"\` |
-|    - |  901 | `	 "  throw new TypeError('array_merge_recursive(): Argument #'.($i + 1).' must be of type array, '.gettype($arrays[$i]).' given');"\` |
-|    - |  902 | `	 " }"\` |
-|    - |  903 | `     " foreach ($arrays[$i] as $key => $value) {"\` |
-|    - |  904 | `     "  $keyIsInt = is_int($key) \|\| (is_string($key) && (string)intval($key) === $key);"\` |
-|    - |  905 | `     "  if( $keyIsInt ) {"\` |
-|    - |  906 | `     "   $ret[] = $value;"\` |
-|    - |  907 | `     "  } else {"\` |
-|    - |  908 | `     "   if (array_key_exists($key, $ret)) {"\` |
-|    - |  909 | `     "    $cur = $ret[$key];"\` |
-|    - |  910 | `     "    if (is_array($cur) && is_array($value)) {"\` |
-|    - |  911 | `     "     $ret[$key] = array_merge_recursive($cur, $value);"\` |
-|    - |  912 | `     "    } elseif (is_array($cur)) {"\` |
-|    - |  913 | `     "     $ret[$key] = array_merge_recursive($cur, array($value));"\` |
-|    - |  914 | `     "    } elseif (is_array($value)) {"\` |
-|    - |  915 | `     "     $ret[$key] = array_merge_recursive(array($cur), $value);"\` |
-|    - |  916 | `     "    } else {"\` |
-|    - |  917 | `     "     $ret[$key] = array($cur, $value);"\` |
-|    - |  918 | `     "    }"\` |
-|    - |  919 | `     "   } else {"\` |
-|    - |  920 | `     "    $ret[$key] = $value;"\` |
-|    - |  921 | `     "   }"\` |
-|    - |  922 | `     "  }"\` |
-|    - |  923 | `     " }"\` |
-|    - |  924 | `	 " }"\` |
-|    - |  925 | `	 " return $ret;"\` |
-|    - |  926 | `    "}"\` |
-|    - |  927 | `	/* __php_zpp_type: php's ZPP value-name for TypeError messages */\` |
-|    - |  928 | `	"function __php_zpp_type($v){"\` |
-|    - |  929 | `	" if( is_object($v) ){ return get_class($v); }"\` |
-|    - |  930 | `	" if( is_int($v) ){ return 'int'; }"\` |
-|    - |  931 | `	" if( is_float($v) ){ return 'float'; }"\` |
-|    - |  932 | `	" if( is_string($v) ){ return 'string'; }"\` |
-|    - |  933 | `	" if( is_bool($v) ){ return $v ? 'true' : 'false'; }"\` |
-|    - |  934 | `	" if( is_null($v) ){ return 'null'; }"\` |
-|    - |  935 | `	" if( is_array($v) ){ return 'array'; }"\` |
-|    - |  936 | `	" if( is_resource($v) ){ return 'resource'; }"\` |
-|    - |  937 | `	" return 'mixed';"\` |
-|    - |  938 | `	"}"\` |
-|    - |  939 | `	"function max(){"\` |
-|    - |  940 | `    "  $pArgs = func_get_args();"\` |
-|    - |  941 | `    " if( sizeof($pArgs) < 1 ){"\` |
-|    - |  942 | `	"  throw new ArgumentCountError('max() expects at least 1 argument, 0 given');"\` |
-|    - |  943 | `    " }"\` |
-|    - |  944 | `    " if( sizeof($pArgs) < 2 ){"\` |
-|    - |  945 | `    " $pArg = $pArgs[0];"\` |
-|    - |  946 | `	" if( !is_array($pArg) ){"\` |
-|    - |  947 | `	"   throw new TypeError('max(): Argument #1 ($value) must be of type array, ' . __php_zpp_type($pArg) . ' given');"\` |
-|    - |  948 | `	" }"\` |
-|    - |  949 | `	" if( sizeof($pArg) < 1 ){"\` |
-|    - |  950 | `	"   throw new ValueError('max(): Argument #1 ($value) must contain at least one element');"\` |
-|    - |  951 | `	" }"\` |
-|    - |  952 | `	" $max = null; $first = true;"\` |
-|    - |  953 | `	" foreach( $pArgs[0] as $val ){"\` |
-|    - |  954 | `	"   if( $first ){ $max = $val; $first = false; }"\` |
-|    - |  955 | `	"   else if( $val > $max ){ $max = $val; }"\` |
-|    - |  956 | `	" }"\` |
-|    - |  957 | `	" return $max;"\` |
-|    - |  958 | `    " }"\` |
-|    - |  959 | `    " $max = $pArgs[0];"\` |
-|    - |  960 | `    " for( $i = 1; $i < sizeof($pArgs) ; ++$i ){"\` |
-|    - |  961 | `    " $val = $pArgs[$i];"\` |
-|    - |  962 | `	"if( $val > $max ){"\` |
-|    - |  963 | `	" $max = $val;"\` |
-|    - |  964 | `	"}"\` |
-|    - |  965 | `    " }"\` |
-|    - |  966 | `	" return $max;"\` |
-|    - |  967 | `    "}"\` |
-|    - |  968 | `	"function min(){"\` |
-|    - |  969 | `    "  $pArgs = func_get_args();"\` |
-|    - |  970 | `    " if( sizeof($pArgs) < 1 ){"\` |
-|    - |  971 | `	"  throw new ArgumentCountError('min() expects at least 1 argument, 0 given');"\` |
-|    - |  972 | `    " }"\` |
-|    - |  973 | `    " if( sizeof($pArgs) < 2 ){"\` |
-|    - |  974 | `    " $pArg = $pArgs[0];"\` |
-|    - |  975 | `	" if( !is_array($pArg) ){"\` |
-|    - |  976 | `	"   throw new TypeError('min(): Argument #1 ($value) must be of type array, ' . __php_zpp_type($pArg) . ' given');"\` |
-|    - |  977 | `	" }"\` |
-|    - |  978 | `	" if( sizeof($pArg) < 1 ){"\` |
-|    - |  979 | `	"   throw new ValueError('min(): Argument #1 ($value) must contain at least one element');"\` |
-|    - |  980 | `	" }"\` |
-|    - |  981 | `	" $min = null; $first = true;"\` |
-|    - |  982 | `	" foreach( $pArgs[0] as $val ){"\` |
-|    - |  983 | `	"   if( $first ){ $min = $val; $first = false; }"\` |
-|    - |  984 | `	"   else if( $val < $min ){ $min = $val; }"\` |
-|    - |  985 | `	" }"\` |
-|    - |  986 | `	" return $min;"\` |
-|    - |  987 | `    " }"\` |
-|    - |  988 | `    " $min = $pArgs[0];"\` |
-|    - |  989 | `    " for( $i = 1; $i < sizeof($pArgs) ; ++$i ){"\` |
-|    - |  990 | `    " $val = $pArgs[$i];"\` |
-|    - |  991 | `	"if( $val < $min ){"\` |
-|    - |  992 | `	" $min = $val;"\` |
-|    - |  993 | `	" }"\` |
-|    - |  994 | `    " }"\` |
-|    - |  995 | `	" return $min;"\` |
-|    - |  996 | `	"}"\` |
-|    - |  997 | `	"function fileowner(string $file){"\` |
-|    - |  998 | `    " $a = stat($file);"\` |
-|    - |  999 | `	" if( !is_array($a) ){"\` |
-|    - | 1000 | `	"	return false;"\` |
-|    - | 1001 | `	" }"\` |
-|    - | 1002 | `	" return $a['uid'];"\` |
-|    - | 1003 | `    "}"\` |
-|    - | 1004 | `    "function filegroup(string $file){"\` |
-|    - | 1005 | `	" $a = stat($file);"\` |
-|    - | 1006 | `	" if( !is_array($a) ){"\` |
-|    - | 1007 | `	"	return false;"\` |
-|    - | 1008 | `	" }"\` |
-|    - | 1009 | `	" return $a['gid'];"\` |
-|    - | 1010 | `    "}"\` |
-|    - | 1011 | `	 "function fileinode(string $file){"\` |
-|    - | 1012 | `	" $a = stat($file);"\` |
-|    - | 1013 | `	" if( !is_array($a) ){"\` |
-|    - | 1014 | `	"	return false;"\` |
-|    - | 1015 | `	" }"\` |
-|    - | 1016 | `	" return $a['ino'];"\` |
-|    - | 1017 | `    "}"` |
-|    - | 1018 |  |
-| 3876 | 1019 | `PH7_PRIVATE sxi32 PH7_VmInstallBuiltinLib(ph7_vm *pVm)` |
-|    5 | 1020 | `{` |
-|    - | 1021 | `	SyString sBuiltin;` |
-|    - | 1022 | `	SyString sRandom;` |
-| 3881 | 1023 | `	SyStringInitFromBuf(&sBuiltin,PH7_BUILTIN_LIB,sizeof(PH7_BUILTIN_LIB)-1);` |
-|    - | 1024 | `	/* Compile the built-in library */` |
-| 3881 | 1025 | `	VmEvalChunk(&(*pVm),0,&sBuiltin,PH7_PHP_ONLY,FALSE);` |
-|    - | 1026 | `	/* Register the Random\RandomException namespaced class (PHP 8.2+).` |
-|    - | 1027 | `	 * Kept in its own VmEvalChunk (not appended to PH7_BUILTIN_LIB): a namespace` |
-|    - | 1028 | `	 * declaration is NOT reset at the block's closing brace in this engine, so` |
-|    - | 1029 | `	 * anything following it in the same chunk would leak into the Random` |
-|    - | 1030 | `	 * namespace. Isolation instead comes from VmEvalChunk saving/restoring` |
-|    - | 1031 | `	 * pVm->sNamespace (and PH7_ResetCodeGenerator clearing the compiler` |
-|    - | 1032 | `	 * namespace) per chunk, so this lands as Random\RandomException while later` |
-|    - | 1033 | `	 * user code still compiles in the global namespace. */` |
-|    - | 1034 | `	{` |
-|    - | 1035 | `		static const char zRandomLib[] =` |
-|    - | 1036 | `			"namespace Random { class RandomException extends \\Exception { } }";` |
-| 3881 | 1037 | `		SyStringInitFromBuf(&sRandom,zRandomLib,sizeof(zRandomLib)-1);` |
-| 3881 | 1038 | `		VmEvalChunk(&(*pVm),0,&sRandom,PH7_PHP_ONLY,FALSE);` |
-|    - | 1039 | `	}` |
-| 3881 | 1040 | `	return SXRET_OK;` |
-|    5 | 1041 | `}` |
-|    - | 1042 |  |
+|    - |  331 | `	"class stdClass{"\` |
+|    - |  332 | `	"}"\` |
+|    - |  333 | `	"function dir(string $path){"\` |
+|    - |  334 | `	"   return new Directory($path);"\` |
+|    - |  335 | `	"}"\` |
+|    - |  336 | `	"function Dir(string $path){"\` |
+|    - |  337 | `	"   return new Directory($path);"\` |
+|    - |  338 | `	"}"\` |
+|    - |  339 | `	"function scandir(string $directory,int $sort_order = SCANDIR_SORT_ASCENDING)"\` |
+|    - |  340 | `    "{"\` |
+|    - |  341 | `	"  if( func_num_args() < 1 ){ return FALSE; }"\` |
+|    - |  342 | `	"  $aDir = array();"\` |
+|    - |  343 | `	"  $pHandle = opendir($directory);"\` |
+|    - |  344 | `	"  if( $pHandle == FALSE ){ return FALSE; }"\` |
+|    - |  345 | `	"  while(FALSE !== ($pEntry = readdir($pHandle)) ){"\` |
+|    - |  346 | `	"      $aDir[] = $pEntry;"\` |
+|    - |  347 | `	"   }"\` |
+|    - |  348 | `	"  closedir($pHandle);"\` |
+|    - |  349 | `	"  if( $sort_order == SCANDIR_SORT_DESCENDING ){"\` |
+|    - |  350 | `	"      rsort($aDir);"\` |
+|    - |  351 | `	"  }else if( $sort_order == SCANDIR_SORT_ASCENDING ){"\` |
+|    - |  352 | `	"      sort($aDir);"\` |
+|    - |  353 | `	"  }"\` |
+|    - |  354 | `	"  return $aDir;"\` |
+|    - |  355 | `	"}"\` |
+|    - |  356 | `	"function glob(string $pattern,int $iFlags = 0){"\` |
+|    - |  357 | `	"/* php keeps the literal directory portion of the pattern in every result;"\` |
+|    - |  358 | `	"   split off everything up to and including the last '/' as the prefix. */"\` |
+|    - |  359 | `	"$slash = strrpos($pattern,'/');"\` |
+|    - |  360 | `	"if( $slash === false ){ $zDir = '.'; $prefix = ''; $pat = $pattern; }"\` |
+|    - |  361 | `	"else { $zDir = substr($pattern,0,$slash); if( $zDir === '' ){ $zDir = '/'; } $prefix = substr($pattern,0,$slash+1); $pat = substr($pattern,$slash+1); }"\` |
+|    - |  362 | `	"$pHandle = opendir($zDir);"\` |
+|    - |  363 | `	"if( $pHandle == FALSE ){"\` |
+|    - |  364 | `	"   /* IO error while opening the target directory,return FALSE */"\` |
+|    - |  365 | `	"	return FALSE;"\` |
+|    - |  366 | `	"}"\` |
+|    - |  367 | `	"$pArray = array(); /* Empty array */"\` |
+|    - |  368 | `	"/* Loop throw available entries */"\` |
+|    - |  369 | `	"while( FALSE !== ($pEntry = readdir($pHandle)) ){"\` |
+|    - |  370 | `	" /* php's glob() never matches a leading-dot entry (incl. '.' and '..') unless"\` |
+|    - |  371 | `	"    the pattern itself starts with a dot */"\` |
+|    - |  372 | `	"	if( strlen($pEntry) > 0 && $pEntry[0] === '.' && (strlen($pat) < 1 \|\| $pat[0] !== '.') ){ continue; }"\` |
+|    - |  373 | `	" /* Use the built-in strglob function which is a Symisc eXtension for wildcard comparison*/"\` |
+|    - |  374 | `	"	$rc = strglob($pat,$pEntry);"\` |
+|    - |  375 | `	"	if( $rc ){"\` |
+|    - |  376 | `	"	   $zFull = $prefix . $pEntry;"\` |
+|    - |  377 | `	"	   if( is_dir($zDir . '/' . $pEntry) ){"\` |
+|    - |  378 | `	"	      if( $iFlags & GLOB_MARK ){"\` |
+|    - |  379 | `	"		     /* Adds a slash to each directory returned */"\` |
+|    - |  380 | `	"			 $zFull .= DIRECTORY_SEPARATOR;"\` |
+|    - |  381 | `	"		  }"\` |
+|    - |  382 | `	"	   }else if( $iFlags & GLOB_ONLYDIR ){"\` |
+|    - |  383 | `	"	     /* Not a directory,ignore */"\` |
+|    - |  384 | `	"		 continue;"\` |
+|    - |  385 | `	"	   }"\` |
+|    - |  386 | `	"	   /* Add the entry (with its literal directory prefix, php-style) */"\` |
+|    - |  387 | `	"	   $pArray[] = $zFull;"\` |
+|    - |  388 | `	"	}"\` |
+|    - |  389 | `	" }"\` |
+|    - |  390 | `	"/* Close the handle */"\` |
+|    - |  391 | `	"closedir($pHandle);"\` |
+|    - |  392 | `	"if( ($iFlags & GLOB_NOSORT) == 0 ){"\` |
+|    - |  393 | `	"  /* Sort the array */"\` |
+|    - |  394 | `	"  sort($pArray);"\` |
+|    - |  395 | `	"}"\` |
+|    - |  396 | `	"if( ($iFlags & GLOB_NOCHECK) && sizeof($pArray) < 1 ){"\` |
+|    - |  397 | `	"  /* Return the search pattern if no files matching were found */"\` |
+|    - |  398 | `	"  $pArray[] = $pattern;"\` |
+|    - |  399 | `	"}"\` |
+|    - |  400 | `	"/* Return the created array */"\` |
+|    - |  401 | `	"return $pArray;"\` |
+|    - |  402 | `   "}"\` |
+|    - |  403 | `   "/* Creates a temporary file */"\` |
+|    - |  404 | `   "function tmpfile(){"\` |
+|    - |  405 | `   "  /* Extract the temp directory */"\` |
+|    - |  406 | `   "  $zTempDir = sys_get_temp_dir();"\` |
+|    - |  407 | `   "  if( strlen($zTempDir) < 1 ){"\` |
+|    - |  408 | `   "    /* Use the current dir */"\` |
+|    - |  409 | `   "    $zTempDir = '.';"\` |
+|    - |  410 | `   "  }"\` |
+|    - |  411 | `   "  /* Create the file */"\` |
+|    - |  412 | `   "  $pHandle = fopen($zTempDir.DIRECTORY_SEPARATOR.'PH7'.rand_str(12),'w+');"\` |
+|    - |  413 | `   "  return $pHandle;"\` |
+|    - |  414 | `   "}"\` |
+|    - |  415 | `   "/* php's number_format(): missing entirely from PH7. */"\` |
+|    - |  416 | `   "function number_format($num, $decimals = 0, $dec_point = '.', $thousands_sep = ','){"\` |
+|    - |  417 | `   "  $num = (float)$num;"\` |
+|    - |  418 | `   "  $decimals = (int)$decimals;"\` |
+|    - |  419 | `   "  if( $decimals < 0 ){ $decimals = 0; }"\` |
+|    - |  420 | `   "  if( $dec_point === null ){ $dec_point = '.'; }"\` |
+|    - |  421 | `   "  if( $thousands_sep === null ){ $thousands_sep = ','; }"\` |
+|    - |  422 | `   "  /* round() first: sprintf uses banker's rounding, php's number_format rounds"\` |
+|    - |  423 | `   "   * half AWAY FROM ZERO (number_format(0.5) is '1', not '0'). */"\` |
+|    - |  424 | `   "  $num = round($num, $decimals);"\` |
+|    - |  425 | `   "  $s = sprintf('%.' . $decimals . 'f', $num);"\` |
+|    - |  426 | `   "  $neg = false;"\` |
+|    - |  427 | `   "  if( substr($s, 0, 1) === '-' ){ $neg = true; $s = substr($s, 1); }"\` |
+|    - |  428 | `   "  $parts = explode('.', $s);"\` |
+|    - |  429 | `   "  $int = $parts[0];"\` |
+|    - |  430 | `   "  $frac = count($parts) > 1 ? $parts[1] : '';"\` |
+|    - |  431 | `   "  $out = '';"\` |
+|    - |  432 | `   "  $len = strlen($int);"\` |
+|    - |  433 | `   "  $c = 0;"\` |
+|    - |  434 | `   "  for( $i = $len - 1 ; $i >= 0 ; $i-- ){"\` |
+|    - |  435 | `   "    $out = $int[$i] . $out;"\` |
+|    - |  436 | `   "    $c++;"\` |
+|    - |  437 | `   "    if( $c % 3 === 0 && $i > 0 ){ $out = $thousands_sep . $out; }"\` |
+|    - |  438 | `   "  }"\` |
+|    - |  439 | `   "  if( $decimals > 0 ){ $out = $out . $dec_point . $frac; }"\` |
+|    - |  440 | `   "  if( $neg ){ $out = '-' . $out; }"\` |
+|    - |  441 | `   "  return $out;"\` |
+|    - |  442 | `   "}"\` |
+|    - |  443 | `   "function is_nan($v){ $v = (float)$v; return $v != $v; }"\` |
+|    - |  444 | `   "function is_infinite($v){ $v = (float)$v; return $v == INF \|\| $v == -INF; }"\` |
+|    - |  445 | `   "function is_finite($v){ $v = (float)$v; return !is_nan($v) && !is_infinite($v); }"\` |
+|    - |  446 | `   "/* php's version_compare: canonicalise (separators + digit/alpha boundaries all"\` |
+|    - |  447 | `   " * become '.'), then compare parts with the special dev<alpha<beta<RC<#<pl ordering. */"\` |
+|    - |  448 | `   "function __phl_vcanon($v){"\` |
+|    - |  449 | `   "  $v = (string)$v; $len = strlen($v); $out = '';"\` |
+|    - |  450 | `   "  for( $i = 0; $i < $len; $i++ ){"\` |
+|    - |  451 | `   "   $c = $v[$i]; $rp = $i + 1 < $len ? $v[$i + 1] : '';"\` |
+|    - |  452 | `   "   $cd = ($c >= '0' && $c <= '9');"\` |
+|    - |  453 | `   "   $ca = $cd \|\| ($c >= 'a' && $c <= 'z') \|\| ($c >= 'A' && $c <= 'Z');"\` |
+|    - |  454 | `   "   if( !$ca ){"\` |
+|    - |  455 | `   "    /* any non-alphanumeric (., -, _, +, ...) is a separator: emit one '.' */"\` |
+|    - |  456 | `   "    if( $out !== '' && substr($out, -1) !== '.' ){ $out .= '.'; }"\` |
+|    - |  457 | `   "   }else{"\` |
+|    - |  458 | `   "    $out .= $c;"\` |
+|    - |  459 | `   "    $rd = ($rp >= '0' && $rp <= '9');"\` |
+|    - |  460 | `   "    $ra = $rd \|\| ($rp >= 'a' && $rp <= 'z') \|\| ($rp >= 'A' && $rp <= 'Z');"\` |
+|    - |  461 | `   "    if( $rp !== '' && $ra && ($cd !== $rd) ){ $out .= '.'; }"\` |
+|    - |  462 | `   "   }"\` |
+|    - |  463 | `   "  }"\` |
+|    - |  464 | `   "  return explode('.', $out);"\` |
+|    - |  465 | `   "}"\` |
+|    - |  466 | `   "function __phl_vform($s){"\` |
+|    - |  467 | `   "  if( $s === '' ){ return -1; }"\` |
+|    - |  468 | `   "  if( ctype_digit($s) ){ return 4; }"\` |
+|    - |  469 | `   "  $f = array('dev' => 0, 'alpha' => 1, 'a' => 1, 'beta' => 2, 'b' => 2, 'RC' => 3, 'rc' => 3, 'pl' => 5, 'p' => 5);"\` |
+|    - |  470 | `   "  foreach( $f as $name => $ord ){ if( strncmp($s, $name, strlen($name)) === 0 ){ return $ord; } }"\` |
+|    - |  471 | `   "  return -1;"\` |
+|    - |  472 | `   "}"\` |
+|    - |  473 | `   "function version_compare($version1, $version2, $operator = null){"\` |
+|    - |  474 | `   "  $v1 = __phl_vcanon($version1); $v2 = __phl_vcanon($version2);"\` |
+|    - |  475 | `   "  $n1 = count($v1); $n2 = count($v2); $n = $n1 > $n2 ? $n1 : $n2; $cmp = 0;"\` |
+|    - |  476 | `   "  for( $i = 0; $i < $n; $i++ ){"\` |
+|    - |  477 | `   "   $a = $i < $n1 ? $v1[$i] : null; $b = $i < $n2 ? $v2[$i] : null;"\` |
+|    - |  478 | `   "   if( $a === null ){ $cmp = ctype_digit($b) ? -1 : (4 <=> __phl_vform($b)); }"\` |
+|    - |  479 | `   "   elseif( $b === null ){ $cmp = ctype_digit($a) ? 1 : (__phl_vform($a) <=> 4); }"\` |
+|    - |  480 | `   "   elseif( ctype_digit($a) && ctype_digit($b) ){ $cmp = (int)$a <=> (int)$b; }"\` |
+|    - |  481 | `   "   else{ $cmp = __phl_vform($a) <=> __phl_vform($b); }"\` |
+|    - |  482 | `   "   if( $cmp !== 0 ){ break; }"\` |
+|    - |  483 | `   "  }"\` |
+|    - |  484 | `   "  if( $operator === null ){ return $cmp; }"\` |
+|    - |  485 | `   "  switch( (string)$operator ){"\` |
+|    - |  486 | `   "   case '<': case 'lt': return $cmp < 0;"\` |
+|    - |  487 | `   "   case '<=': case 'le': return $cmp <= 0;"\` |
+|    - |  488 | `   "   case '>': case 'gt': return $cmp > 0;"\` |
+|    - |  489 | `   "   case '>=': case 'ge': return $cmp >= 0;"\` |
+|    - |  490 | `   "   case '==': case '=': case 'eq': return $cmp === 0;"\` |
+|    - |  491 | `   "   case '!=': case '<>': case 'ne': return $cmp !== 0;"\` |
+|    - |  492 | `   "  }"\` |
+|    - |  493 | `   "  return null;"\` |
+|    - |  494 | `   "}"\` |
+|    - |  495 | `   "/* phl.stub_extensions (a -d/php.ini list, comma-separated) declares extensions"\` |
+|    - |  496 | `   " * PHL does not implement as LOADED, backed by no-op behaviour, so software that"\` |
+|    - |  497 | `   " * only GATES on extension_loaded() (e.g. PHPUnit's dom/xmlwriter check) runs"\` |
+|    - |  498 | `   " * unmodified. It does NOT synthesize the extension's classes/functions. */"\` |
+|    - |  499 | `   "function __phl_stub_exts(){"\` |
+|    - |  500 | `   "  $s = ini_get('phl.stub_extensions');"\` |
+|    - |  501 | `   "  if( $s === false \|\| $s === '' ){ return array(); }"\` |
+|    - |  502 | `   "  $out = array();"\` |
+|    - |  503 | `   "  foreach( explode(',', (string)$s) as $e ){ $e = trim($e); if( $e !== '' ){ $out[strtolower($e)] = $e; } }"\` |
+|    - |  504 | `   "  return $out;"\` |
+|    - |  505 | `   "}"\` |
+|    - |  506 | `   "function extension_loaded($name){"\` |
+|    - |  507 | `   "  static $ext = array('core' => 1, 'standard' => 1, 'pcre' => 1, 'json' => 1,"\` |
+|    - |  508 | `   "   'ctype' => 1, 'date' => 1, 'spl' => 1, 'reflection' => 1, 'mbstring' => 1,"\` |
+|    - |  509 | `   "   'hash' => 1, 'filter' => 1, 'session' => 1" PHL_EXT_LOADED_LIBXML ");"\` |
+|    - |  510 | `   "  $n = strtolower((string)$name);"\` |
+|    - |  511 | `   "  if( isset($ext[$n]) ){ return true; }"\` |
+|    - |  512 | `   "  $stub = __phl_stub_exts();"\` |
+|    - |  513 | `   "  return isset($stub[$n]);"\` |
+|    - |  514 | `   "}"\` |
+|    - |  515 | `   "function get_loaded_extensions($zend_extensions = false){"\` |
+|    - |  516 | `   "  if( $zend_extensions ){ return array(); }"\` |
+|    - |  517 | `   "  $base = array('Core','date','pcre','SPL','json','standard',"\` |
+|    - |  518 | `   "   'ctype','filter','hash','Reflection','session','mbstring'" PHL_EXT_LIST_LIBXML ");"\` |
+|    - |  519 | `   "  foreach( __phl_stub_exts() as $e ){ $base[] = $e; }"\` |
+|    - |  520 | `   "  return $base;"\` |
+|    - |  521 | `   "}"\` |
+|    - |  522 | `   "/* Inverse of bin2hex() */"\` |
+|    - |  523 | `   "function hex2bin($str){"\` |
+|    - |  524 | `   "  $str = (string)$str;"\` |
+|    - |  525 | `   "  $len = strlen($str);"\` |
+|    - |  526 | `   "  if( $len % 2 !== 0 ){"\` |
+|    - |  527 | `   "    trigger_error('hex2bin(): Hexadecimal input string must have an even length', E_USER_WARNING);"\` |
+|    - |  528 | `   "    return false;"\` |
+|    - |  529 | `   "  }"\` |
+|    - |  530 | `   "  $out = '';"\` |
+|    - |  531 | `   "  for( $i = 0 ; $i < $len ; $i += 2 ){"\` |
+|    - |  532 | `   "    $pair = substr($str, $i, 2);"\` |
+|    - |  533 | `   "    if( !ctype_xdigit($pair) ){"\` |
+|    - |  534 | `   "      trigger_error('hex2bin(): Input string must be hexadecimal string', E_USER_WARNING);"\` |
+|    - |  535 | `   "      return false;"\` |
+|    - |  536 | `   "    }"\` |
+|    - |  537 | `   "    $out = $out . chr(hexdec($pair));"\` |
+|    - |  538 | `   "  }"\` |
+|    - |  539 | `   "  return $out;"\` |
+|    - |  540 | `   "}"\` |
+|    - |  541 | `   "/* Division that never throws: INF/-INF/NAN like php */"\` |
+|    - |  542 | `   "function fdiv($a, $b){"\` |
+|    - |  543 | `   "  $a = (float)$a;"\` |
+|    - |  544 | `   "  $b = (float)$b;"\` |
+|    - |  545 | `   "  if( $b == 0.0 ){"\` |
+|    - |  546 | `   "    if( $a == 0.0 \|\| is_nan($a) ){ return NAN; }"\` |
+|    - |  547 | `   "    return $a > 0 ? INF : -INF;"\` |
+|    - |  548 | `   "  }"\` |
+|    - |  549 | `   "  return $a / $b;"\` |
+|    - |  550 | `   "}"\` |
+|    - |  551 | `   "function checkdate($month, $day, $year){"\` |
+|    - |  552 | `   "  $month = (int)$month; $day = (int)$day; $year = (int)$year;"\` |
+|    - |  553 | `   "  if( $month < 1 \|\| $month > 12 \|\| $year < 1 \|\| $year > 32767 \|\| $day < 1 ){ return false; }"\` |
+|    - |  554 | `   "  $days = array(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31);"\` |
+|    - |  555 | `   "  $max = $days[$month - 1];"\` |
+|    - |  556 | `   "  if( $month === 2 && ((($year % 4 === 0) && ($year % 100 !== 0)) \|\| ($year % 400 === 0)) ){"\` |
+|    - |  557 | `   "    $max = 29;"\` |
+|    - |  558 | `   "  }"\` |
+|    - |  559 | `   "  return $day <= $max;"\` |
+|    - |  560 | `   "}"\` |
+|    - |  561 | `   "function is_iterable($v){ return is_array($v) \|\| ($v instanceof Traversable); }"\` |
+|    - |  562 | `   "function is_countable($v){ return is_array($v) \|\| ($v instanceof Countable); }"\` |
+|    - |  563 | `   "function key_exists($key, $array){ return array_key_exists($key, $array); }"\` |
+|    - |  564 | `   "function doubleval($v){ return (float)$v; }"\` |
+|    - |  565 | `   "function array_count_values($array){"\` |
+|    - |  566 | `   "  $out = array();"\` |
+|    - |  567 | `   "  foreach( $array as $v ){"\` |
+|    - |  568 | `   "    if( !is_int($v) && !is_string($v) ){"\` |
+|    - |  569 | `   "      trigger_error('array_count_values(): Can only count string and integer values, entry skipped', E_USER_WARNING);"\` |
+|    - |  570 | `   "      continue;"\` |
+|    - |  571 | `   "    }"\` |
+|    - |  572 | `   "    if( isset($out[$v]) ){ $out[$v] = $out[$v] + 1; } else { $out[$v] = 1; }"\` |
+|    - |  573 | `   "  }"\` |
+|    - |  574 | `   "  return $out;"\` |
+|    - |  575 | `   "}"\` |
+|    - |  576 | `   "function array_change_key_case($array, $case = CASE_LOWER){"\` |
+|    - |  577 | `   "  $out = array();"\` |
+|    - |  578 | `   "  foreach( $array as $k => $v ){"\` |
+|    - |  579 | `   "    if( is_string($k) ){ $k = ($case == CASE_UPPER) ? strtoupper($k) : strtolower($k); }"\` |
+|    - |  580 | `   "    $out[$k] = $v;"\` |
+|    - |  581 | `   "  }"\` |
+|    - |  582 | `   "  return $out;"\` |
+|    - |  583 | `   "}"\` |
+|    - |  584 | `   "function array_replace_recursive($array, ...$others){"\` |
+|    - |  585 | `   "  foreach( $others as $o ){"\` |
+|    - |  586 | `   "    foreach( $o as $k => $v ){"\` |
+|    - |  587 | `   "      if( is_array($v) && isset($array[$k]) && is_array($array[$k]) ){"\` |
+|    - |  588 | `   "        $array[$k] = array_replace_recursive($array[$k], $v);"\` |
+|    - |  589 | `   "      }else{"\` |
+|    - |  590 | `   "        $array[$k] = $v;"\` |
+|    - |  591 | `   "      }"\` |
+|    - |  592 | `   "    }"\` |
+|    - |  593 | `   "  }"\` |
+|    - |  594 | `   "  return $array;"\` |
+|    - |  595 | `   "}"\` |
+|    - |  596 | `   "function class_uses($what, $autoload = true){"\` |
+|    - |  597 | `   "  $c = is_object($what) ? get_class($what) : (string)$what;"\` |
+|    - |  598 | `   "  if( !class_exists($c) ){ return false; }"\` |
+|    - |  599 | `   "  return array();  /* PHL has no traits yet -- always the empty set */"\` |
+|    - |  600 | `   "}"\` |
+|    - |  601 | `   "function count_chars($str, $mode = 0){"\` |
+|    - |  602 | `   "  $str = (string)$str;"\` |
+|    - |  603 | `   "  $counts = array();"\` |
+|    - |  604 | `   "  for( $i = 0 ; $i < 256 ; $i++ ){ $counts[$i] = 0; }"\` |
+|    - |  605 | `   "  $len = strlen($str);"\` |
+|    - |  606 | `   "  for( $i = 0 ; $i < $len ; $i++ ){ $b = ord($str[$i]); $counts[$b] = $counts[$b] + 1; }"\` |
+|    - |  607 | `   "  if( $mode == 1 ){"\` |
+|    - |  608 | `   "    $out = array();"\` |
+|    - |  609 | `   "    foreach( $counts as $b => $n ){ if( $n > 0 ){ $out[$b] = $n; } }"\` |
+|    - |  610 | `   "    return $out;"\` |
+|    - |  611 | `   "  }"\` |
+|    - |  612 | `   "  if( $mode == 3 ){"\` |
+|    - |  613 | `   "    $out = '';"\` |
+|    - |  614 | `   "    foreach( $counts as $b => $n ){ if( $n > 0 ){ $out = $out . chr($b); } }"\` |
+|    - |  615 | `   "    return $out;"\` |
+|    - |  616 | `   "  }"\` |
+|    - |  617 | `   "  return $counts;"\` |
+|    - |  618 | `   "}"\` |
+|    - |  619 | `   "function ip2long($ip){"\` |
+|    - |  620 | `   "  $p = explode('.', (string)$ip);"\` |
+|    - |  621 | `   "  if( count($p) !== 4 ){ return false; }"\` |
+|    - |  622 | `   "  $n = 0;"\` |
+|    - |  623 | `   "  foreach( $p as $o ){"\` |
+|    - |  624 | `   "    if( !ctype_digit($o) \|\| (int)$o < 0 \|\| (int)$o > 255 ){ return false; }"\` |
+|    - |  625 | `   "    $n = $n * 256 + (int)$o;"\` |
+|    - |  626 | `   "  }"\` |
+|    - |  627 | `   "  return $n;"\` |
+|    - |  628 | `   "}"\` |
+|    - |  629 | `   "function long2ip($n){"\` |
+|    - |  630 | `   "  $n = (int)$n;"\` |
+|    - |  631 | `   "  return (($n >> 24) & 255) . '.' . (($n >> 16) & 255) . '.' . (($n >> 8) & 255) . '.' . ($n & 255);"\` |
+|    - |  632 | `   "}"\` |
+|    - |  633 | `   "function preg_filter($pattern, $replacement, $subject, $limit = -1){"\` |
+|    - |  634 | `   "  if( is_array($subject) ){"\` |
+|    - |  635 | `   "    $out = array();"\` |
+|    - |  636 | `   "    foreach( $subject as $k => $v ){"\` |
+|    - |  637 | `   "      $r = preg_replace($pattern, $replacement, (string)$v, $limit, $cnt);"\` |
+|    - |  638 | `   "      if( $cnt > 0 ){ $out[$k] = $r; }"\` |
+|    - |  639 | `   "    }"\` |
+|    - |  640 | `   "    return $out;"\` |
+|    - |  641 | `   "  }"\` |
+|    - |  642 | `   "  $r = preg_replace($pattern, $replacement, (string)$subject, $limit, $cnt);"\` |
+|    - |  643 | `   "  return $cnt > 0 ? $r : null;"\` |
+|    - |  644 | `   "}"\` |
+|    - |  645 | `   "function preg_replace_callback_array($patterns, $subject, $limit = -1){"\` |
+|    - |  646 | `   "  foreach( $patterns as $pat => $cb ){"\` |
+|    - |  647 | `   "    $subject = preg_replace_callback($pat, $cb, $subject, $limit);"\` |
+|    - |  648 | `   "  }"\` |
+|    - |  649 | `   "  return $subject;"\` |
+|    - |  650 | `   "}"\` |
+|    - |  651 | `   "function cal_days_in_month($calendar, $month, $year){"\` |
+|    - |  652 | `   "  $month = (int)$month; $year = (int)$year;"\` |
+|    - |  653 | `   "  $days = array(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31);"\` |
+|    - |  654 | `   "  if( $month < 1 \|\| $month > 12 ){"\` |
+|    - |  655 | `   "    throw new ValueError('cal_days_in_month(): Argument #2 ($month) must be a valid month');"\` |
+|    - |  656 | `   "  }"\` |
+|    - |  657 | `   "  if( $month === 2 && ((($year % 4 === 0) && ($year % 100 !== 0)) \|\| ($year % 400 === 0)) ){"\` |
+|    - |  658 | `   "    return 29;"\` |
+|    - |  659 | `   "  }"\` |
+|    - |  660 | `   "  return $days[$month - 1];"\` |
+|    - |  661 | `   "}"\` |
+|    - |  662 | `   "function preg_grep($pattern, $array, $flags = 0){"\` |
+|    - |  663 | `   "  $out = array();"\` |
+|    - |  664 | `   "  foreach( $array as $k => $v ){"\` |
+|    - |  665 | `   "    $m = preg_match($pattern, (string)$v);"\` |
+|    - |  666 | `   "    if( $flags & PREG_GREP_INVERT ){ $m = !$m; }"\` |
+|    - |  667 | `   "    if( $m ){ $out[$k] = $v; }"\` |
+|    - |  668 | `   "  }"\` |
+|    - |  669 | `   "  return $out;"\` |
+|    - |  670 | `   "}"\` |
+|    - |  671 | `   "function class_implements($what, $autoload = true){"\` |
+|    - |  672 | `   "  $c = is_object($what) ? get_class($what) : (string)$what;"\` |
+|    - |  673 | `   "  if( !class_exists($c) && !interface_exists($c) ){ return false; }"\` |
+|    - |  674 | `   "  $out = array();"\` |
+|    - |  675 | `   "  $r = new ReflectionClass($c);"\` |
+|    - |  676 | `   "  foreach( $r->getInterfaceNames() as $i ){ $out[$i] = $i; }"\` |
+|    - |  677 | `   "  return $out;"\` |
+|    - |  678 | `   "}"\` |
+|    - |  679 | `   "function class_parents($what, $autoload = true){"\` |
+|    - |  680 | `   "  $c = is_object($what) ? get_class($what) : (string)$what;"\` |
+|    - |  681 | `   "  if( !class_exists($c) ){ return false; }"\` |
+|    - |  682 | `   "  $out = array();"\` |
+|    - |  683 | `   "  $r = new ReflectionClass($c);"\` |
+|    - |  684 | `   "  while( ($p = $r->getParentClass()) ){"\` |
+|    - |  685 | `   "    $n = $p->getName();"\` |
+|    - |  686 | `   "    $out[$n] = $n;"\` |
+|    - |  687 | `   "    $r = $p;"\` |
+|    - |  688 | `   "  }"\` |
+|    - |  689 | `   "  return $out;"\` |
+|    - |  690 | `   "}"\` |
+|    - |  691 | `   "/* php's http_build_query() -- missing from PH7. Skips null values, casts"\` |
+|    - |  692 | `   " * bool to 1/0, prefixes numeric top-level keys, urlencodes per RFC. */"\` |
+|    - |  693 | `   "function __phl_hbq_enc($s, $enc){"\` |
+|    - |  694 | `   "  return $enc == PHP_QUERY_RFC3986 ? rawurlencode((string)$s) : urlencode((string)$s);"\` |
+|    - |  695 | `   "}"\` |
+|    - |  696 | `   "function __phl_hbq(&$pairs, $data, $key_prefix, $numeric_prefix, $sep, $enc){"\` |
+|    - |  697 | `   "  foreach( $data as $k => $v ){"\` |
+|    - |  698 | `   "    if( $v === null ){ continue; }"\` |
+|    - |  699 | `   "    if( $key_prefix === '' ){"\` |
+|    - |  700 | `   "      $ek = is_int($k) ? __phl_hbq_enc($numeric_prefix . $k, $enc) : __phl_hbq_enc($k, $enc);"\` |
+|    - |  701 | `   "    } else {"\` |
+|    - |  702 | `   "      $ek = $key_prefix . '%5B' . __phl_hbq_enc($k, $enc) . '%5D';"\` |
+|    - |  703 | `   "    }"\` |
+|    - |  704 | `   "    if( is_array($v) ){"\` |
+|    - |  705 | `   "      __phl_hbq($pairs, $v, $ek, $numeric_prefix, $sep, $enc);"\` |
+|    - |  706 | `   "    } elseif( is_object($v) ){"\` |
+|    - |  707 | `   "      __phl_hbq($pairs, get_object_vars($v), $ek, $numeric_prefix, $sep, $enc);"\` |
+|    - |  708 | `   "    } else {"\` |
+|    - |  709 | `   "      if( $v === true ){ $v = '1'; } elseif( $v === false ){ $v = '0'; }"\` |
+|    - |  710 | `   "      $pairs[] = $ek . '=' . __phl_hbq_enc($v, $enc);"\` |
+|    - |  711 | `   "    }"\` |
+|    - |  712 | `   "  }"\` |
+|    - |  713 | `   "}"\` |
+|    - |  714 | `   "function http_build_query($data, $numeric_prefix = '', $arg_separator = null, $encoding_type = PHP_QUERY_RFC1738){"\` |
+|    - |  715 | `   "  if( !is_array($data) && !is_object($data) ){"\` |
+|    - |  716 | `   "    throw new TypeError('http_build_query(): Argument #1 ($data) must be of type array\|object, ' . gettype($data) . ' given');"\` |
+|    - |  717 | `   "  }"\` |
+|    - |  718 | `   "  if( $arg_separator === null ){ $arg_separator = '&'; }"\` |
+|    - |  719 | `   "  $pairs = array();"\` |
+|    - |  720 | `   "  __phl_hbq($pairs, is_object($data) ? get_object_vars($data) : $data, '', (string)$numeric_prefix, $arg_separator, $encoding_type);"\` |
+|    - |  721 | `   "  return implode($arg_separator, $pairs);"\` |
+|    - |  722 | `   "}"\` |
+|    - |  723 | `   "/* php's parse_str() -- missing from PH7. Mangles the base name ('.'/' ' -> '_'),"\` |
+|    - |  724 | `   " * parses [key] nesting and [] appends, urldecodes keys and values. */"\` |
+|    - |  725 | `   "function __phl_parsestr_assign(&$arr, $segments, $i, $val){"\` |
+|    - |  726 | `   "  $seg = $segments[$i];"\` |
+|    - |  727 | `   "  $last = ($i === count($segments) - 1);"\` |
+|    - |  728 | `   "  if( $seg === '' ){"\` |
+|    - |  729 | `   "    if( $last ){ $arr[] = $val; return; }"\` |
+|    - |  730 | `   "    $arr[] = array();"\` |
+|    - |  731 | `   "    $k = array_key_last($arr);"\` |
+|    - |  732 | `   "    __phl_parsestr_assign($arr[$k], $segments, $i + 1, $val);"\` |
+|    - |  733 | `   "  } else {"\` |
+|    - |  734 | `   "    if( $last ){ $arr[$seg] = $val; return; }"\` |
+|    - |  735 | `   "    if( !isset($arr[$seg]) \|\| !is_array($arr[$seg]) ){ $arr[$seg] = array(); }"\` |
+|    - |  736 | `   "    __phl_parsestr_assign($arr[$seg], $segments, $i + 1, $val);"\` |
+|    - |  737 | `   "  }"\` |
+|    - |  738 | `   "}"\` |
+|    - |  739 | `   "function parse_str($string, &$result){"\` |
+|    - |  740 | `   "  $result = array();"\` |
+|    - |  741 | `   "  $string = (string)$string;"\` |
+|    - |  742 | `   "  if( $string === '' ){ return; }"\` |
+|    - |  743 | `   "  foreach( explode('&', $string) as $pair ){"\` |
+|    - |  744 | `   "    if( $pair === '' ){ continue; }"\` |
+|    - |  745 | `   "    $eq = strpos($pair, '=');"\` |
+|    - |  746 | `   "    if( $eq === false ){ $rawkey = $pair; $val = ''; }"\` |
+|    - |  747 | `   "    else { $rawkey = substr($pair, 0, $eq); $val = urldecode(substr($pair, $eq + 1)); }"\` |
+|    - |  748 | `   "    if( $rawkey === '' ){ continue; }"\` |
+|    - |  749 | `   "    $bpos = strpos($rawkey, '[');"\` |
+|    - |  750 | `   "    if( $bpos === false ){ $base = $rawkey; $subs = array(); }"\` |
+|    - |  751 | `   "    else {"\` |
+|    - |  752 | `   "      $base = substr($rawkey, 0, $bpos);"\` |
+|    - |  753 | `   "      preg_match_all('/\\[([^\\]]*)\\]/', substr($rawkey, $bpos), $m);"\` |
+|    - |  754 | `   "      $subs = $m[1];"\` |
+|    - |  755 | `   "    }"\` |
+|    - |  756 | `   "    $base = str_replace(array(' ', '.'), '_', urldecode($base));"\` |
+|    - |  757 | `   "    if( $base === '' ){ continue; }"\` |
+|    - |  758 | `   "    $segs = array($base);"\` |
+|    - |  759 | `   "    foreach( $subs as $s ){ $segs[] = urldecode($s); }"\` |
+|    - |  760 | `   "    __phl_parsestr_assign($result, $segs, 0, $val);"\` |
+|    - |  761 | `   "  }"\` |
+|    - |  762 | `   "}"\` |
+|    - |  763 | `   "/* php 8.3 str_increment(): Perl-style alphanumeric increment. */"\` |
+|    - |  764 | `   "function str_increment($string){"\` |
+|    - |  765 | `   "  $string = (string)$string;"\` |
+|    - |  766 | `   "  if( $string === '' ){ throw new ValueError('str_increment(): Argument #1 ($string) must not be empty'); }"\` |
+|    - |  767 | `   "  if( !ctype_alnum($string) ){ throw new ValueError('str_increment(): Argument #1 ($string) must be composed only of alphanumeric ASCII characters'); }"\` |
+|    - |  768 | `   "  for( $i = strlen($string) - 1 ; $i >= 0 ; $i-- ){"\` |
+|    - |  769 | `   "    $c = $string[$i];"\` |
+|    - |  770 | `   "    if( $c === 'z' ){ $string[$i] = 'a'; }"\` |
+|    - |  771 | `   "    elseif( $c === 'Z' ){ $string[$i] = 'A'; }"\` |
+|    - |  772 | `   "    elseif( $c === '9' ){ $string[$i] = '0'; }"\` |
+|    - |  773 | `   "    else { $string[$i] = chr(ord($c) + 1); return $string; }"\` |
+|    - |  774 | `   "  }"\` |
+|    - |  775 | `   "  $first = $string[0];"\` |
+|    - |  776 | `   "  if( $first === '0' ){ return '1' . $string; }"\` |
+|    - |  777 | `   "  if( $first === 'a' ){ return 'a' . $string; }"\` |
+|    - |  778 | `   "  return 'A' . $string;"\` |
+|    - |  779 | `   "}"\` |
+|    - |  780 | `   "/* php 8.3 str_decrement(): inverse of str_increment(); throws out of range"\` |
+|    - |  781 | `   " * at the bottom of the counting sequence. */"\` |
+|    - |  782 | `   "function str_decrement($string){"\` |
+|    - |  783 | `   "  $string = (string)$string;"\` |
+|    - |  784 | `   "  if( $string === '' ){ throw new ValueError('str_decrement(): Argument #1 ($string) must not be empty'); }"\` |
+|    - |  785 | `   "  if( !ctype_alnum($string) ){ throw new ValueError('str_decrement(): Argument #1 ($string) must be composed only of alphanumeric ASCII characters'); }"\` |
+|    - |  786 | `   "  $orig = $string;"\` |
+|    - |  787 | `   "  $borrowed = false;"\` |
+|    - |  788 | `   "  for( $i = strlen($string) - 1 ; $i >= 0 ; $i-- ){"\` |
+|    - |  789 | `   "    $c = $string[$i];"\` |
+|    - |  790 | `   "    if( $c === 'a' ){ $string[$i] = 'z'; }"\` |
+|    - |  791 | `   "    elseif( $c === 'A' ){ $string[$i] = 'Z'; }"\` |
+|    - |  792 | `   "    elseif( $c === '0' ){ $string[$i] = '9'; }"\` |
+|    - |  793 | `   "    else { $string[$i] = chr(ord($c) - 1); $borrowed = false; break; }"\` |
+|    - |  794 | `   "    if( $i === 0 ){ $borrowed = true; }"\` |
+|    - |  795 | `   "  }"\` |
+|    - |  796 | `   "  if( $borrowed ){"\` |
+|    - |  797 | `   "    if( $string[0] === '9' ){ throw new ValueError('str_decrement(): Argument #1 ($string) \"' . $orig . '\" is out of decrement range'); }"\` |
+|    - |  798 | `   "    $string = substr($string, 1);"\` |
+|    - |  799 | `   "    if( $string === '' ){ throw new ValueError('str_decrement(): Argument #1 ($string) \"' . $orig . '\" is out of decrement range'); }"\` |
+|    - |  800 | `   "  } elseif( strlen($string) > 1 && $string[0] === '0' ){"\` |
+|    - |  801 | `   "    $string = substr($string, 1);"\` |
+|    - |  802 | `   "  }"\` |
+|    - |  803 | `   "  return $string;"\` |
+|    - |  804 | `   "}"\` |
+|    - |  805 | `   "/* Permission bits via stat(); false + warning when stat fails, like php. */"\` |
+|    - |  806 | `   "function fileperms($filename){"\` |
+|    - |  807 | `   "  $s = @stat($filename);"\` |
+|    - |  808 | `   "  if( $s === false ){"\` |
+|    - |  809 | `   "    trigger_error('fileperms(): stat failed for ' . $filename, E_USER_WARNING);"\` |
+|    - |  810 | `   "    return false;"\` |
+|    - |  811 | `   "  }"\` |
+|    - |  812 | `   "  return $s['mode'];"\` |
+|    - |  813 | `   "}"\` |
+|    - |  814 | `   "/* PH7 keeps no stat cache, so this is a no-op like php on a clean cache. */"\` |
+|    - |  815 | `   "function clearstatcache($clear_realpath_cache = false, $filename = ''){}"\` |
+|    - |  816 | `   "/* php 8.4 mb_ucfirst/mb_lcfirst: case-map only the first multibyte char. */"\` |
+|    - |  817 | `   "function mb_ucfirst($string, $encoding = null){"\` |
+|    - |  818 | `   "  $string = (string)$string;"\` |
+|    - |  819 | `   "  if( $string === '' ){ return ''; }"\` |
+|    - |  820 | `   "  return mb_strtoupper(mb_substr($string, 0, 1)) . mb_substr($string, 1);"\` |
+|    - |  821 | `   "}"\` |
+|    - |  822 | `   "function mb_lcfirst($string, $encoding = null){"\` |
+|    - |  823 | `   "  $string = (string)$string;"\` |
+|    - |  824 | `   "  if( $string === '' ){ return ''; }"\` |
+|    - |  825 | `   "  return mb_strtolower(mb_substr($string, 0, 1)) . mb_substr($string, 1);"\` |
+|    - |  826 | `   "}"\` |
+|    - |  827 | `   "/* php 8.4 mb_trim family: strip leading/trailing characters (whole"\` |
+|    - |  828 | `   " * multibyte chars, NO range syntax), defaulting to php's Unicode"\` |
+|    - |  829 | `   " * whitespace set. */"\` |
+|    - |  830 | `   "function __phl_mb_ws(){"\` |
+|    - |  831 | `   "  static $set = null;"\` |
+|    - |  832 | `   "  if( $set === null ){"\` |
+|    - |  833 | `   "    $set = array();"\` |
+|    - |  834 | `   "    foreach( array(0x00,0x09,0x0A,0x0B,0x0C,0x0D,0x20,0x85,0xA0,0x1680,"\` |
+|    - |  835 | `   "      0x180E,0x2000,0x2001,0x2002,0x2003,0x2004,0x2005,0x2006,0x2007,0x2008,"\` |
+|    - |  836 | `   "      0x2009,0x200A,0x2028,0x2029,0x202F,0x205F,0x3000) as $cp ){"\` |
+|    - |  837 | `   "      $set[mb_chr($cp)] = true;"\` |
+|    - |  838 | `   "    }"\` |
+|    - |  839 | `   "  }"\` |
+|    - |  840 | `   "  return $set;"\` |
+|    - |  841 | `   "}"\` |
+|    - |  842 | `   "function __phl_mb_trim($string, $characters, $left, $right){"\` |
+|    - |  843 | `   "  $string = (string)$string;"\` |
+|    - |  844 | `   "  if( $string === '' ){ return ''; }"\` |
+|    - |  845 | `   "  if( $characters === null ){"\` |
+|    - |  846 | `   "    $set = __phl_mb_ws();"\` |
+|    - |  847 | `   "  } else {"\` |
+|    - |  848 | `   "    $set = array();"\` |
+|    - |  849 | `   "    foreach( mb_str_split((string)$characters) as $c ){ $set[$c] = true; }"\` |
+|    - |  850 | `   "  }"\` |
+|    - |  851 | `   "  $chars = mb_str_split($string);"\` |
+|    - |  852 | `   "  $n = count($chars);"\` |
+|    - |  853 | `   "  $i = 0; $j = $n;"\` |
+|    - |  854 | `   "  if( $left ){ while( $i < $j && isset($set[$chars[$i]]) ){ $i++; } }"\` |
+|    - |  855 | `   "  if( $right ){ while( $j > $i && isset($set[$chars[$j - 1]]) ){ $j--; } }"\` |
+|    - |  856 | `   "  return implode('', array_slice($chars, $i, $j - $i));"\` |
+|    - |  857 | `   "}"\` |
+|    - |  858 | `   "function mb_trim($string, $characters = null, $encoding = null){ return __phl_mb_trim($string, $characters, true, true); }"\` |
+|    - |  859 | `   "function mb_ltrim($string, $characters = null, $encoding = null){ return __phl_mb_trim($string, $characters, true, false); }"\` |
+|    - |  860 | `   "function mb_rtrim($string, $characters = null, $encoding = null){ return __phl_mb_trim($string, $characters, false, true); }"\` |
+|    - |  861 | `   "/* Creates a temporary file and returns its name */"\` |
+|    - |  862 | `   "function tempnam(string $zDir = sys_get_temp_dir() /* Symisc eXtension */,string $zPrefix = 'PH7')"\` |
+|    - |  863 | `   "{"\` |
+|    - |  864 | `   "   /* php CREATES the file (empty, mode 0600) and guarantees the name is unique --"\` |
+|    - |  865 | `   "    * returning a bare name left the caller with a path that does not exist, so"\` |
+|    - |  866 | `   "    * file_exists() was false and unlink() failed on it. */"\` |
+|    - |  867 | `   "   $zDir = rtrim($zDir, DIRECTORY_SEPARATOR);"\` |
+|    - |  868 | `   "   for( $i = 0 ; $i < 64 ; ++$i ){"\` |
+|    - |  869 | `   "     $zPath = $zDir.DIRECTORY_SEPARATOR.$zPrefix.rand_str(12);"\` |
+|    - |  870 | `   "     if( file_exists($zPath) ){ continue; }"\` |
+|    - |  871 | `   "     $pHandle = @fopen($zPath,'x');"\` |
+|    - |  872 | `   "     if( $pHandle === false ){ continue; }"\` |
+|    - |  873 | `   "     fclose($pHandle);"\` |
+|    - |  874 | `   "     @chmod($zPath, 0600);"\` |
+|    - |  875 | `   "     return $zPath;"\` |
+|    - |  876 | `   "   }"\` |
+|    - |  877 | `   "   return false;"\` |
+|    - |  878 | `   "}"\` |
+|    - |  879 | `   "function array_unshift(&$pArray ){"\` |
+|    - |  880 | `   " if( func_num_args() < 1 ){ throw new ArgumentCountError('array_unshift() expects at least 1 argument, 0 given'); }"\` |
+|    - |  881 | `   " if( !is_array($pArray) ){ throw new TypeError('array_unshift(): Argument #1 ($array) must be of type array, ' . gettype($pArray) . ' given'); }"\` |
+|    - |  882 | `   "/* Copy arguments */"\` |
+|    - |  883 | `   "$nArgs = func_num_args();"\` |
+|    - |  884 | `   "$pNew = array();"\` |
+|    - |  885 | `   "for( $i = 1 ; $i < $nArgs ; ++$i ){"\` |
+|    - |  886 | `    " $pNew[] = func_get_arg($i);"\` |
+|    - |  887 | `    "}"\` |
+|    - |  888 | `   	"/* Make a copy of the old entries */"\` |
+|    - |  889 | `	"$pOld = array_copy($pArray);"\` |
+|    - |  890 | `	"/* Erase */"\` |
+|    - |  891 | `	"array_erase($pArray);"\` |
+|    - |  892 | `	"/* Unshift */"\` |
+|    - |  893 | `	"$pArray = array_merge($pNew,$pOld);"\` |
+|    - |  894 | `	"return sizeof($pArray);"\` |
+|    - |  895 | `    "}"\` |
+|    - |  896 | `	"function array_merge_recursive(){"\` |
+|    - |  897 | `	" if( func_num_args() < 1 ){ return array(); }"\` |
+|    - |  898 | `    "$arrays = func_get_args();"\` |
+|    - |  899 | `    "$narrays = count($arrays);"\` |
+|    - |  900 | `    "$ret = array();"\` |
+|    - |  901 | `    "for( $i = 0; $i < $narrays; $i++ ){"\` |
+|    - |  902 | `	 " if( !is_array($arrays[$i]) ){"\` |
+|    - |  903 | `	 "  throw new TypeError('array_merge_recursive(): Argument #'.($i + 1).' must be of type array, '.gettype($arrays[$i]).' given');"\` |
+|    - |  904 | `	 " }"\` |
+|    - |  905 | `     " foreach ($arrays[$i] as $key => $value) {"\` |
+|    - |  906 | `     "  $keyIsInt = is_int($key) \|\| (is_string($key) && (string)intval($key) === $key);"\` |
+|    - |  907 | `     "  if( $keyIsInt ) {"\` |
+|    - |  908 | `     "   $ret[] = $value;"\` |
+|    - |  909 | `     "  } else {"\` |
+|    - |  910 | `     "   if (array_key_exists($key, $ret)) {"\` |
+|    - |  911 | `     "    $cur = $ret[$key];"\` |
+|    - |  912 | `     "    if (is_array($cur) && is_array($value)) {"\` |
+|    - |  913 | `     "     $ret[$key] = array_merge_recursive($cur, $value);"\` |
+|    - |  914 | `     "    } elseif (is_array($cur)) {"\` |
+|    - |  915 | `     "     $ret[$key] = array_merge_recursive($cur, array($value));"\` |
+|    - |  916 | `     "    } elseif (is_array($value)) {"\` |
+|    - |  917 | `     "     $ret[$key] = array_merge_recursive(array($cur), $value);"\` |
+|    - |  918 | `     "    } else {"\` |
+|    - |  919 | `     "     $ret[$key] = array($cur, $value);"\` |
+|    - |  920 | `     "    }"\` |
+|    - |  921 | `     "   } else {"\` |
+|    - |  922 | `     "    $ret[$key] = $value;"\` |
+|    - |  923 | `     "   }"\` |
+|    - |  924 | `     "  }"\` |
+|    - |  925 | `     " }"\` |
+|    - |  926 | `	 " }"\` |
+|    - |  927 | `	 " return $ret;"\` |
+|    - |  928 | `    "}"\` |
+|    - |  929 | `	/* __php_zpp_type: php's ZPP value-name for TypeError messages */\` |
+|    - |  930 | `	"function __php_zpp_type($v){"\` |
+|    - |  931 | `	" if( is_object($v) ){ return get_class($v); }"\` |
+|    - |  932 | `	" if( is_int($v) ){ return 'int'; }"\` |
+|    - |  933 | `	" if( is_float($v) ){ return 'float'; }"\` |
+|    - |  934 | `	" if( is_string($v) ){ return 'string'; }"\` |
+|    - |  935 | `	" if( is_bool($v) ){ return $v ? 'true' : 'false'; }"\` |
+|    - |  936 | `	" if( is_null($v) ){ return 'null'; }"\` |
+|    - |  937 | `	" if( is_array($v) ){ return 'array'; }"\` |
+|    - |  938 | `	" if( is_resource($v) ){ return 'resource'; }"\` |
+|    - |  939 | `	" return 'mixed';"\` |
+|    - |  940 | `	"}"\` |
+|    - |  941 | `	"function max(){"\` |
+|    - |  942 | `    "  $pArgs = func_get_args();"\` |
+|    - |  943 | `    " if( sizeof($pArgs) < 1 ){"\` |
+|    - |  944 | `	"  throw new ArgumentCountError('max() expects at least 1 argument, 0 given');"\` |
+|    - |  945 | `    " }"\` |
+|    - |  946 | `    " if( sizeof($pArgs) < 2 ){"\` |
+|    - |  947 | `    " $pArg = $pArgs[0];"\` |
+|    - |  948 | `	" if( !is_array($pArg) ){"\` |
+|    - |  949 | `	"   throw new TypeError('max(): Argument #1 ($value) must be of type array, ' . __php_zpp_type($pArg) . ' given');"\` |
+|    - |  950 | `	" }"\` |
+|    - |  951 | `	" if( sizeof($pArg) < 1 ){"\` |
+|    - |  952 | `	"   throw new ValueError('max(): Argument #1 ($value) must contain at least one element');"\` |
+|    - |  953 | `	" }"\` |
+|    - |  954 | `	" $max = null; $first = true;"\` |
+|    - |  955 | `	" foreach( $pArgs[0] as $val ){"\` |
+|    - |  956 | `	"   if( $first ){ $max = $val; $first = false; }"\` |
+|    - |  957 | `	"   else if( $val > $max ){ $max = $val; }"\` |
+|    - |  958 | `	" }"\` |
+|    - |  959 | `	" return $max;"\` |
+|    - |  960 | `    " }"\` |
+|    - |  961 | `    " $max = $pArgs[0];"\` |
+|    - |  962 | `    " for( $i = 1; $i < sizeof($pArgs) ; ++$i ){"\` |
+|    - |  963 | `    " $val = $pArgs[$i];"\` |
+|    - |  964 | `	"if( $val > $max ){"\` |
+|    - |  965 | `	" $max = $val;"\` |
+|    - |  966 | `	"}"\` |
+|    - |  967 | `    " }"\` |
+|    - |  968 | `	" return $max;"\` |
+|    - |  969 | `    "}"\` |
+|    - |  970 | `	"function min(){"\` |
+|    - |  971 | `    "  $pArgs = func_get_args();"\` |
+|    - |  972 | `    " if( sizeof($pArgs) < 1 ){"\` |
+|    - |  973 | `	"  throw new ArgumentCountError('min() expects at least 1 argument, 0 given');"\` |
+|    - |  974 | `    " }"\` |
+|    - |  975 | `    " if( sizeof($pArgs) < 2 ){"\` |
+|    - |  976 | `    " $pArg = $pArgs[0];"\` |
+|    - |  977 | `	" if( !is_array($pArg) ){"\` |
+|    - |  978 | `	"   throw new TypeError('min(): Argument #1 ($value) must be of type array, ' . __php_zpp_type($pArg) . ' given');"\` |
+|    - |  979 | `	" }"\` |
+|    - |  980 | `	" if( sizeof($pArg) < 1 ){"\` |
+|    - |  981 | `	"   throw new ValueError('min(): Argument #1 ($value) must contain at least one element');"\` |
+|    - |  982 | `	" }"\` |
+|    - |  983 | `	" $min = null; $first = true;"\` |
+|    - |  984 | `	" foreach( $pArgs[0] as $val ){"\` |
+|    - |  985 | `	"   if( $first ){ $min = $val; $first = false; }"\` |
+|    - |  986 | `	"   else if( $val < $min ){ $min = $val; }"\` |
+|    - |  987 | `	" }"\` |
+|    - |  988 | `	" return $min;"\` |
+|    - |  989 | `    " }"\` |
+|    - |  990 | `    " $min = $pArgs[0];"\` |
+|    - |  991 | `    " for( $i = 1; $i < sizeof($pArgs) ; ++$i ){"\` |
+|    - |  992 | `    " $val = $pArgs[$i];"\` |
+|    - |  993 | `	"if( $val < $min ){"\` |
+|    - |  994 | `	" $min = $val;"\` |
+|    - |  995 | `	" }"\` |
+|    - |  996 | `    " }"\` |
+|    - |  997 | `	" return $min;"\` |
+|    - |  998 | `	"}"\` |
+|    - |  999 | `	"function fileowner(string $file){"\` |
+|    - | 1000 | `    " $a = stat($file);"\` |
+|    - | 1001 | `	" if( !is_array($a) ){"\` |
+|    - | 1002 | `	"	return false;"\` |
+|    - | 1003 | `	" }"\` |
+|    - | 1004 | `	" return $a['uid'];"\` |
+|    - | 1005 | `    "}"\` |
+|    - | 1006 | `    "function filegroup(string $file){"\` |
+|    - | 1007 | `	" $a = stat($file);"\` |
+|    - | 1008 | `	" if( !is_array($a) ){"\` |
+|    - | 1009 | `	"	return false;"\` |
+|    - | 1010 | `	" }"\` |
+|    - | 1011 | `	" return $a['gid'];"\` |
+|    - | 1012 | `    "}"\` |
+|    - | 1013 | `	 "function fileinode(string $file){"\` |
+|    - | 1014 | `	" $a = stat($file);"\` |
+|    - | 1015 | `	" if( !is_array($a) ){"\` |
+|    - | 1016 | `	"	return false;"\` |
+|    - | 1017 | `	" }"\` |
+|    - | 1018 | `	" return $a['ino'];"\` |
+|    - | 1019 | `    "}"` |
+|    - | 1020 |  |
+| 3876 | 1021 | `PH7_PRIVATE sxi32 PH7_VmInstallBuiltinLib(ph7_vm *pVm)` |
+|    5 | 1022 | `{` |
+|    - | 1023 | `	SyString sBuiltin;` |
+|    - | 1024 | `	SyString sRandom;` |
+| 3881 | 1025 | `	SyStringInitFromBuf(&sBuiltin,PH7_BUILTIN_LIB,sizeof(PH7_BUILTIN_LIB)-1);` |
+|    - | 1026 | `	/* Compile the built-in library */` |
+| 3881 | 1027 | `	VmEvalChunk(&(*pVm),0,&sBuiltin,PH7_PHP_ONLY,FALSE);` |
+|    - | 1028 | `	/* Register the Random\RandomException namespaced class (PHP 8.2+).` |
+|    - | 1029 | `	 * Kept in its own VmEvalChunk (not appended to PH7_BUILTIN_LIB): a namespace` |
+|    - | 1030 | `	 * declaration is NOT reset at the block's closing brace in this engine, so` |
+|    - | 1031 | `	 * anything following it in the same chunk would leak into the Random` |
+|    - | 1032 | `	 * namespace. Isolation instead comes from VmEvalChunk saving/restoring` |
+|    - | 1033 | `	 * pVm->sNamespace (and PH7_ResetCodeGenerator clearing the compiler` |
+|    - | 1034 | `	 * namespace) per chunk, so this lands as Random\RandomException while later` |
+|    - | 1035 | `	 * user code still compiles in the global namespace. */` |
+|    - | 1036 | `	{` |
+|    - | 1037 | `		static const char zRandomLib[] =` |
+|    - | 1038 | `			"namespace Random { class RandomException extends \\Exception { } }";` |
+| 3881 | 1039 | `		SyStringInitFromBuf(&sRandom,zRandomLib,sizeof(zRandomLib)-1);` |
+| 3881 | 1040 | `		VmEvalChunk(&(*pVm),0,&sRandom,PH7_PHP_ONLY,FALSE);` |
+|    - | 1041 | `	}` |
+| 3881 | 1042 | `	return SXRET_OK;` |
+|    5 | 1043 | `}` |
+|    - | 1044 |  |
