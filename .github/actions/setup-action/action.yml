@@ -25,6 +25,18 @@ runs:
         tools: lcov php pcre2 libxml2
         cache: yes
         key: brewcache-2.2
+    # Homebrew installs php.ini-DEVELOPMENT as php.ini, while setup-php gives the
+    # Linux and Windows oracles the production file. The two disagree on what a
+    # program prints -- zend.exception_ignore_args decides whether an unhandled
+    # match names its value or its type, zend.assertions whether assert() runs --
+    # so every such row was red on macOS alone. Use the production file Homebrew
+    # installs beside it, so all three oracles answer under the same defaults.
+    - if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        ini="$(php -r 'echo php_ini_loaded_file();')"
+        cp "$(dirname "$ini")/php.ini-production" "$ini"
+        php -i | grep -E '^zend\.(assertions|exception_ignore_args) '
     # Homebrew's libxml2 is keg-only; expose its .pc so pkg-config finds it.
     - if: runner.os == 'macOS'
       shell: bash
