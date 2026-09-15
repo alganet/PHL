@@ -23,36 +23,58 @@
  */
 PH7_PRIVATE const char * PH7_ExtractDirName(const char *zPath,int nByte,int *pLen)
 {
-	const char *zEnd = &zPath[nByte - 1];
-	int c,d;
+	/* php_dirname: strip any trailing separators, cut at the last remaining one,
+	 * then strip trailing separators off the parent too. The previous version
+	 * scanned back to the first separator and stopped, so it never coped with a
+	 * trailing separator or a run of them: dirname("/a/") answered "/a" instead
+	 * of "/", dirname("a//b") answered "a/", and dirname("///") answered "//".
+	 * It also answered "." for the empty string, where php answers "". */
+	int c,d,iEnd,i;
+#ifdef __WINNT__
+	const char *zRoot = "\\";
+#else
+	const char *zRoot = "/";
+#endif
 	c = d = '/';
 #ifdef __WINNT__
 	d = '\\';
 #endif
-	while( zEnd > zPath && ( (int)zEnd[0] != c && (int)zEnd[0] != d ) ){
-		zEnd--;
+#define DIR_IS_SEP(x) ( (int)(x) == c || (int)(x) == d )
+	if( nByte < 1 ){
+		/* php returns the empty string for the empty path */
+		*pLen = 0;
+		return "";
 	}
-	*pLen = (int)(zEnd-zPath);
-#ifdef __WINNT__
-	if( (*pLen) == (int)sizeof(char) && zPath[0] == '/' ){
-		/* Normalize path on windows */
-		return "\\";
+	iEnd = nByte;
+	while( iEnd > 0 && DIR_IS_SEP(zPath[iEnd - 1]) ){
+		iEnd--;
 	}
-#endif
-	if( zEnd == zPath && ( (int)zEnd[0] != c && (int)zEnd[0] != d) ){
-		/* No separator,return "." as the current directory */
-		*pLen = sizeof(char);
+	if( iEnd == 0 ){
+		/* The path is nothing but separators: the root is its own parent */
+		*pLen = (int)sizeof(char);
+		return zRoot;
+	}
+	/* Walk back to the separator that ends the parent directory */
+	i = iEnd;
+	while( i > 0 && !DIR_IS_SEP(zPath[i - 1]) ){
+		i--;
+	}
+	if( i == 0 ){
+		/* No separator at all,return "." as the current directory */
+		*pLen = (int)sizeof(char);
 		return ".";
 	}
-	if( (*pLen) == 0 ){
-		*pLen = sizeof(char);
-#ifdef __WINNT__
-		return "\\";
-#else
-		return "/";
-#endif
+	/* Drop the separator, plus any that repeat before it */
+	while( i > 1 && DIR_IS_SEP(zPath[i - 1]) ){
+		i--;
 	}
+	if( i == 1 && DIR_IS_SEP(zPath[0]) ){
+		*pLen = (int)sizeof(char);
+		return zRoot;
+	}
+	*pLen = i;
 	return zPath;
+#undef DIR_IS_SEP
 }
 /*
  * Compile the VFS implementations when builtins are enabled OR when disk I/O
@@ -1557,8 +1579,8 @@ static int PH7_builtin_dirname(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Point to the target path */
 	zPath = ph7_value_to_string(apArg[0],&iLen);
 	if( iLen < 1 ){
-		/* Reuturn "." */
-		ph7_result_string(pCtx,".",sizeof(char));
+		/* php answers "" for the empty path, not "." */
+		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
 	/* Perform the requested operation */

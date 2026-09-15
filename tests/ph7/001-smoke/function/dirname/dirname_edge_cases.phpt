@@ -2,24 +2,31 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-dirname edge cases covering uncovered lines
---SKIPIF--
-<?php 
-if (PHP_OS == 'WINNT') echo 'skip';
-if (function_exists('zend_version')) echo 'skip';
+dirname edge cases: empty path, roots and trailing separators
 --FILE--
 <?php
-// Test cases that cover uncovered lines in PH7_ExtractDirName
-echo "empty_string: '" . dirname("") . "'" . PHP_EOL;
-echo "no_separators: '" . dirname("file") . "'" . PHP_EOL;
-echo "root_unix: '" . dirname("/") . "'" . PHP_EOL;
-echo "multiple_separators: '" . dirname("///") . "'" . PHP_EOL;
+// php strips trailing separators, cuts at the last remaining one, then strips
+// trailing separators off the parent as well.
+// The root prints as <root> because it carries the PLATFORM separator: php and
+// PHL both answer "\\" on Windows and "/" elsewhere.
+foreach (["", "/", "//", "///", "a", "a/b", "a//b", "/a", "/a/", "./b", "..", "/.."] as $p) {
+    $d = dirname($p);
+    echo var_export($p, true), " => ",
+        ($d === DIRECTORY_SEPARATOR ? '<root>' : var_export($d, true)), "\n";
+}
 ?>
 --EXPECT--
-empty_string: '.'
-no_separators: '.'
-root_unix: '/'
-multiple_separators: '//'
+'' => ''
+'/' => <root>
+'//' => <root>
+'///' => <root>
+'a' => '.'
+'a/b' => 'a'
+'a//b' => 'a'
+'/a' => <root>
+'/a/' => <root>
+'./b' => '.'
+'..' => '.'
+'/..' => <root>
 --CLEAN--
 <?php
-
