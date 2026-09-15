@@ -225,6 +225,16 @@ function find_files($phpt_dir, $phpt_extension, $phpt_filter = '') {
 }
 
 function handle_error($errno, $errstr, $errfile, $errline) {
+    // Both engines call a user handler for EVERY diagnostic, including ones the
+    // '@' operator or error_reporting() masks out -- the mask gates only the
+    // engine's own printed copy, and a handler is expected to consult
+    // error_reporting() itself. Without this the in-process runner printed
+    // warnings that the very same test suppressed correctly when run through
+    // --target-executable, so '@' appeared to work or not depending purely on
+    // how the test was executed.
+    if (!(error_reporting() & $errno)) {
+        return true;
+    }
     echo "Error [$errno]: $errstr in $errfile on line $errline\n";
     return true;
 }
@@ -576,7 +586,14 @@ foreach ($phpt_files as $phpt_file) {
             } else {
                 ob_start();
                 set_error_handler('handle_error');
-                @include($phpt_file_path);
+                // NOT @include: the '@' applied to the whole body put every
+                // in-process test inside the silence operator, so
+                // error_reporting() read 4437 throughout and a test could not
+                // observe '@' at all -- handle_error printed suppressed
+                // diagnostics, while the same test under --target-executable
+                // suppressed them correctly. Any diagnostic the include itself
+                // raises is part of what the test asserts.
+                include($phpt_file_path);
                 set_error_handler(null);
                 $phpt_output = ob_get_clean();
             }

@@ -4,6 +4,8 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 chr(-1) wraps to chr(255) with deprecation
 
+--SKIPIF--
+<?php if (function_exists('zend_version')) echo 'skip php only deprecates an out-of-range chr(), and the stock php.ini masks it'; ?>
 --FILE--
 <?php
 echo ord(chr(-1)) . "\n";
