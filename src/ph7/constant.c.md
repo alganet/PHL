@@ -70,22 +70,22 @@ Coverage: 970/1042 lines (93.09%)
 |      - |   60 | ` * PHP_OS` |
 |      - |   61 | ` *  Expand the name of the host Operating System.` |
 |      - |   62 | ` */` |
-|   3926 |   63 | `static void PH7_OS_Const(ph7_value *pVal,void *pUnused)` |
+|   3924 |   63 | `static void PH7_OS_Const(ph7_value *pVal,void *pUnused)` |
 |      5 |   64 | `{` |
 |      - |   65 | `#if defined(__WINNT__)` |
 |      5 |   66 | `	ph7_value_string(pVal,"WINNT",(int)sizeof("WINNT")-1);` |
 |      - |   67 | `#elif defined(__UNIXES__)` |
 |      - |   68 | `	struct utsname sInfo;` |
-|   3926 |   69 | `	if( uname(&sInfo) != 0 ){` |
+|   3924 |   69 | `	if( uname(&sInfo) != 0 ){` |
 |    ! 0 |   70 | `		ph7_value_string(pVal,"Unix",(int)sizeof("Unix")-1);` |
 |    ! 0 |   71 | `	}else{` |
-|   3926 |   72 | `		ph7_value_string(pVal,sInfo.sysname,-1);` |
+|   3924 |   72 | `		ph7_value_string(pVal,sInfo.sysname,-1);` |
 |      - |   73 | `	}` |
 |      - |   74 | `#else` |
 |      - |   75 | `	ph7_value_string(pVal,"Host OS",(int)sizeof("Host OS")-1);` |
 |      - |   76 | `#endif` |
-|   1963 |   77 | `	SXUNUSED(pUnused);` |
-|   3931 |   78 | `}` |
+|   1962 |   77 | `	SXUNUSED(pUnused);` |
+|   3929 |   78 | `}` |
 |      - |   79 | `/*` |
 |      - |   80 | ` * PHP_OS_FAMILY (php 7.2)` |
 |      - |   81 | ` *  One of 'Windows', 'BSD', 'Darwin', 'Solaris', 'Linux' or 'Unknown', derived` |
@@ -140,15 +140,15 @@ Coverage: 970/1042 lines (93.09%)
 |      - |  130 | ` * PHP_EOL` |
 |      - |  131 | ` *  Expand the correct 'End Of Line' symbol for this platform.` |
 |      - |  132 | ` */` |
-|    834 |  133 | `static void PH7_EOL_Const(ph7_value *pVal,void *pUnused)` |
+|    826 |  133 | `static void PH7_EOL_Const(ph7_value *pVal,void *pUnused)` |
 |      4 |  134 | `{` |
-|    417 |  135 | `	SXUNUSED(pUnused);` |
+|    413 |  135 | `	SXUNUSED(pUnused);` |
 |      - |  136 | `#ifdef __WINNT__` |
 |      4 |  137 | `	ph7_value_string(pVal,"\r\n",(int)sizeof("\r\n")-1);` |
 |      - |  138 | `#else` |
-|    834 |  139 | `	ph7_value_string(pVal,"\n",(int)sizeof(char));` |
+|    826 |  139 | `	ph7_value_string(pVal,"\n",(int)sizeof(char));` |
 |      - |  140 | `#endif` |
-|    838 |  141 | `}` |
+|    830 |  141 | `}` |
 |      - |  142 | `/*` |
 |      - |  143 | ` * PHP_INT_MAX` |
 |      - |  144 | ` * Expand the largest integer supported.` |
@@ -212,15 +212,15 @@ Coverage: 970/1042 lines (93.09%)
 |      - |  202 | ` * DIRECTORY_SEPARATOR.` |
 |      - |  203 | ` * Expand the directory separator character.` |
 |      - |  204 | ` */` |
-|    282 |  205 | `static void PH7_DIRSEP_Const(ph7_value *pVal,void *pUnused)` |
+|    306 |  205 | `static void PH7_DIRSEP_Const(ph7_value *pVal,void *pUnused)` |
 |      3 |  206 | `{` |
-|    141 |  207 | `	SXUNUSED(pUnused);` |
+|    153 |  207 | `	SXUNUSED(pUnused);` |
 |      - |  208 | `#ifdef __WINNT__` |
 |      3 |  209 | `	ph7_value_string(pVal,"\\",(int)sizeof(char));` |
 |      - |  210 | `#else` |
-|    282 |  211 | `	ph7_value_string(pVal,"/",(int)sizeof(char));` |
+|    306 |  211 | `	ph7_value_string(pVal,"/",(int)sizeof(char));` |
 |      - |  212 | `#endif` |
-|    285 |  213 | `}` |
+|    309 |  213 | `}` |
 |      - |  214 | `/*` |
 |      - |  215 | ` * PATH_SEPARATOR.` |
 |      - |  216 | ` * Expand the path separator character.` |

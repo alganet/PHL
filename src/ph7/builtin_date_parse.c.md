@@ -36,34 +36,34 @@ Coverage: 948/1079 lines (87.86%)
 |     - |   26 | ` * algorithms): no time_t / libc dependence, correct far past 2038 and` |
 |     - |   27 | ` * before 1970 on every platform. Day 0 == 1970-01-01.` |
 |     - |   28 | ` */` |
-|   950 |   29 | `PH7_PRIVATE sxi64 DtDaysFromCivil(sxi64 y,int m,int d)` |
+|  1112 |   29 | `PH7_PRIVATE sxi64 DtDaysFromCivil(sxi64 y,int m,int d)` |
 |     1 |   30 | `{` |
 |     - |   31 | `	sxi64 era;` |
 |     - |   32 | `	unsigned yoe,doy,doe;` |
-|   951 |   33 | `	y -= (m <= 2);` |
-|   951 |   34 | `	era = (y >= 0 ? y : y - 399) / 400;` |
-|   951 |   35 | `	yoe = (unsigned)(y - era * 400);` |
-|   951 |   36 | `	doy = (unsigned)((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1);` |
-|   951 |   37 | `	doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;` |
-|   951 |   38 | `	return era * 146097 + (sxi64)doe - 719468;` |
+|  1113 |   33 | `	y -= (m <= 2);` |
+|  1113 |   34 | `	era = (y >= 0 ? y : y - 399) / 400;` |
+|  1113 |   35 | `	yoe = (unsigned)(y - era * 400);` |
+|  1113 |   36 | `	doy = (unsigned)((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1);` |
+|  1113 |   37 | `	doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;` |
+|  1113 |   38 | `	return era * 146097 + (sxi64)doe - 719468;` |
 |     1 |   39 | `}` |
-|   430 |   40 | `PH7_PRIVATE void DtCivilFromDays(sxi64 z,sxi64 *py,int *pm,int *pd)` |
+|   446 |   40 | `PH7_PRIVATE void DtCivilFromDays(sxi64 z,sxi64 *py,int *pm,int *pd)` |
 |     1 |   41 | `{` |
 |     - |   42 | `	sxi64 era;` |
 |     - |   43 | `	unsigned doe,yoe,doy,mp;` |
-|   431 |   44 | `	z += 719468;` |
-|   431 |   45 | `	era = (z >= 0 ? z : z - 146096) / 146097;` |
-|   431 |   46 | `	doe = (unsigned)(z - era * 146097);` |
-|   431 |   47 | `	yoe = (doe - doe/1460 + doe/36524 - doe/146096) / 365;` |
-|   431 |   48 | `	*py = (sxi64)yoe + era * 400;` |
-|   431 |   49 | `	doy = doe - (365 * yoe + yoe/4 - yoe/100);` |
-|   431 |   50 | `	mp = (5 * doy + 2) / 153;` |
-|   431 |   51 | `	*pd = (int)(doy - (153 * mp + 2) / 5 + 1);` |
-|   431 |   52 | `	*pm = (int)(mp < 10 ? mp + 3 : mp - 9);` |
-|   431 |   53 | `	if( *pm <= 2 ){` |
-|   195 |   54 | `		*py += 1;` |
-|    97 |   55 | `	}` |
-|   431 |   56 | `}` |
+|   447 |   44 | `	z += 719468;` |
+|   447 |   45 | `	era = (z >= 0 ? z : z - 146096) / 146097;` |
+|   447 |   46 | `	doe = (unsigned)(z - era * 146097);` |
+|   447 |   47 | `	yoe = (doe - doe/1460 + doe/36524 - doe/146096) / 365;` |
+|   447 |   48 | `	*py = (sxi64)yoe + era * 400;` |
+|   447 |   49 | `	doy = doe - (365 * yoe + yoe/4 - yoe/100);` |
+|   447 |   50 | `	mp = (5 * doy + 2) / 153;` |
+|   447 |   51 | `	*pd = (int)(doy - (153 * mp + 2) / 5 + 1);` |
+|   447 |   52 | `	*pm = (int)(mp < 10 ? mp + 3 : mp - 9);` |
+|   447 |   53 | `	if( *pm <= 2 ){` |
+|   203 |   54 | `		*py += 1;` |
+|   101 |   55 | `	}` |
+|   447 |   56 | `}` |
 |   722 |   57 | `PH7_PRIVATE sxi64 DtFloorDiv(sxi64 a,sxi64 b)` |
 |     1 |   58 | `{` |
 |   723 |   59 | `	sxi64 q = a / b;` |
