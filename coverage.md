@@ -18,7 +18,7 @@
 | src/ph7/compile_stmt.c         | 73.92%   | 1448/1959   |
 | src/ph7/constant.c             | 93.09%   | 970/1042    |
 | src/ph7/hashmap.c              | 90.77%   | 1042/1148   |
-| src/ph7/hashmap_builtin.c      | 87.17%   | 2481/2846   |
+| src/ph7/hashmap_builtin.c      | 87.21%   | 2482/2846   |
 | src/ph7/hashmap_sort.c         | 91.14%   | 463/508     |
 | src/ph7/lex.c                  | 93.34%   | 813/871     |
 | src/ph7/memobj.c               | 81.88%   | 836/1021    |
@@ -79,5 +79,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.20%   | 48423/59632 |
+| Lines                          | 81.20%   | 48424/59632 |
 | Functions                      | 93.10%   | 2200/2363   |

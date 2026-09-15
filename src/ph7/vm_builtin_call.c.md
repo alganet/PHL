@@ -313,43 +313,43 @@ Coverage: 539/625 lines (86.24%)
 |     - |  303 | ` * Return` |
 |     - |  304 | ` *  Return TRUE if the given function has been defined.False otherwise` |
 |     - |  305 | ` */` |
-|   636 |  306 | `PH7_PRIVATE int vm_builtin_func_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   630 |  306 | `PH7_PRIVATE int vm_builtin_func_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     5 |  307 | `{` |
 |     - |  308 | `	const char *zName;` |
 |     - |  309 | `	ph7_vm *pVm;` |
 |     - |  310 | `	int nLen;` |
 |     - |  311 | `	int res;` |
-|   641 |  312 | `	if( nArg < 1 ){` |
+|   635 |  312 | `	if( nArg < 1 ){` |
 |     - |  313 | `		/* Missing argument,return FALSE */` |
 |   ! 0 |  314 | `		ph7_result_bool(pCtx,0);` |
 |   ! 0 |  315 | `		return SXRET_OK;` |
 |     - |  316 | `	}` |
 |     - |  317 | `	/* Point to the target VM */` |
-|   641 |  318 | `	pVm = pCtx->pVm;` |
+|   635 |  318 | `	pVm = pCtx->pVm;` |
 |     - |  319 | `	/* Extract the function name */` |
-|   641 |  320 | `	zName = ph7_value_to_string(apArg[0],&nLen);` |
+|   635 |  320 | `	zName = ph7_value_to_string(apArg[0],&nLen);` |
 |     - |  321 | `	/* php: a leading '\' anchors the name to the global namespace; strip it. */` |
-|   641 |  322 | `	if( nLen > 0 && zName[0] == '\\' ){ zName++; nLen--; }` |
+|   635 |  322 | `	if( nLen > 0 && zName[0] == '\\' ){ zName++; nLen--; }` |
 |     - |  323 | `	/* Assume the function is not defined */` |
-|   641 |  324 | `	res = 0;` |
+|   635 |  324 | `	res = 0;` |
 |     - |  325 | `	/* Perform the lookup */` |
-|   941 |  326 | `	if( SyHashGet(&pVm->hFunction,(const void *)zName,(sxu32)nLen) != 0 \|\|` |
-|   600 |  327 | `		SyHashGet(&pVm->hHostFunction,(const void *)zName,(sxu32)nLen) != 0 ){` |
+|   932 |  326 | `	if( SyHashGet(&pVm->hFunction,(const void *)zName,(sxu32)nLen) != 0 \|\|` |
+|   594 |  327 | `		SyHashGet(&pVm->hHostFunction,(const void *)zName,(sxu32)nLen) != 0 ){` |
 |     - |  328 | `			/* Function is defined */` |
 |   231 |  329 | `			res = 1;` |
 |   113 |  330 | `	}` |
-|   641 |  331 | `	ph7_result_bool(pCtx,res);` |
-|   641 |  332 | `	return SXRET_OK;` |
-|   323 |  333 | `}` |
+|   635 |  331 | `	ph7_result_bool(pCtx,res);` |
+|   635 |  332 | `	return SXRET_OK;` |
+|   320 |  333 | `}` |
 |     - |  334 | `/*` |
 |     - |  335 | ` * Verify that the contents of a variable can be called as a function.` |
 |     - |  336 | ` * [i.e: Whether it is callable or not].` |
 |     - |  337 | ` * Return TRUE if callable.FALSE otherwise.` |
 |     - |  338 | ` */` |
-| 59368 |  339 | `PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)` |
+| 59370 |  339 | `PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)` |
 |     5 |  340 | `{` |
-| 59373 |  341 | `	int res = 0;` |
-| 59373 |  342 | `	if( pValue->iFlags & MEMOBJ_OBJ ){` |
+| 59375 |  341 | `	int res = 0;` |
+| 59375 |  342 | `	if( pValue->iFlags & MEMOBJ_OBJ ){` |
 |     - |  343 | `		/* PHP semantics: an object is callable iff its class declares __invoke` |
 |     - |  344 | `		 * (inherited methods count). The CallInvoke flag is unused — it` |
 |     - |  345 | `		 * formerly invoked __invoke as a runtime predicate, which is not` |
@@ -362,7 +362,7 @@ Coverage: 539/625 lines (86.24%)
 |    41 |  352 | `			res = 1;` |
 |    24 |  353 | `		}` |
 |   268 |  354 | `		(void)CallInvoke;` |
-| 59105 |  355 | `	}else if( pValue->iFlags & MEMOBJ_HASHMAP ){` |
+| 59107 |  355 | `	}else if( pValue->iFlags & MEMOBJ_HASHMAP ){` |
 |    74 |  356 | `		ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;` |
 |    74 |  357 | `		if( pMap->nEntry == 2 ){` |
 |     - |  358 | `			ph7_class *pClass;` |
@@ -386,20 +386,20 @@ Coverage: 539/625 lines (86.24%)
 |    24 |  376 | `				}` |
 |    26 |  377 | `			}` |
 |    30 |  378 | `		}` |
-| 58802 |  379 | `	}else if( pValue->iFlags & MEMOBJ_STRING ){` |
+| 58804 |  379 | `	}else if( pValue->iFlags & MEMOBJ_STRING ){` |
 |     - |  380 | `		const char *zName;` |
 |     - |  381 | `		int nLen;` |
 |     - |  382 | `		/* Extract the name */` |
-|  5209 |  383 | `		zName = ph7_value_to_string(pValue,&nLen);` |
+|  5207 |  383 | `		zName = ph7_value_to_string(pValue,&nLen);` |
 |     - |  384 | `		/* php: a leading '\' just anchors the callable to the global namespace` |
 |     - |  385 | `		 * ("\trim", "\Foo::bar"); strip it before the lookup. */` |
-|  5209 |  386 | `		if( nLen > 0 && zName[0] == '\\' ){ zName++; nLen--; }` |
+|  5207 |  386 | `		if( nLen > 0 && zName[0] == '\\' ){ zName++; nLen--; }` |
 |     - |  387 | `		/* Perform the lookup */` |
-|  5263 |  388 | `		if( SyHashGet(&pVm->hFunction,(const void *)zName,(sxu32)nLen) != 0 \|\|` |
+|  5261 |  388 | `		if( SyHashGet(&pVm->hFunction,(const void *)zName,(sxu32)nLen) != 0 \|\|` |
 |   108 |  389 | `			SyHashGet(&pVm->hHostFunction,(const void *)zName,(sxu32)nLen) != 0 ){` |
 |     - |  390 | `				/* Function is callable */` |
-|  5159 |  391 | `				res = 1;` |
-|  2631 |  392 | `		}else if( nLen > 3 ){` |
+|  5157 |  391 | `				res = 1;` |
+|  2630 |  392 | `		}else if( nLen > 3 ){` |
 |     - |  393 | `			/* php's "Class::method" static-callable string */` |
 |     - |  394 | `			int i;` |
 |   461 |  395 | `			for( i = 1 ; i + 2 < nLen ; ++i ){` |
@@ -412,8 +412,8 @@ Coverage: 539/625 lines (86.24%)
 |     - |  402 | `				}` |
 |   209 |  403 | `			}` |
 |    24 |  404 | `		}` |
-|  2602 |  405 | `	}` |
-| 59373 |  406 | `	return res;` |
+|  2601 |  405 | `	}` |
+| 59375 |  406 | `	return res;` |
 |     5 |  407 | `}` |
 |     - |  408 | `/*` |
 |     - |  409 | ` * bool is_callable(callable $name[,bool $syntax_only = false])` |
