@@ -8,7 +8,7 @@ mismatched parenthesis
 echo (1 + 2;
 ?>
 --EXPECTF--
-%AParse error:%Asyntax error, unexpected token ";"%A
+%APHP Parse error:  syntax error, unexpected token ";" in %s on line 2%A
 --CLEAN--
 <?php
 

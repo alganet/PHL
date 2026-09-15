@@ -9,6 +9,6 @@ function naeupf($a) { echo "a=$a\n"; }
 naeupf(b: 1);
 ?>
 --EXPECTF--
-%s Fatal error:  Uncaught Error: Unknown named parameter $b%A
+%APHP Fatal error:  Uncaught Error: Unknown named parameter $b in %s:3%A
 --CLEAN--
 <?php
