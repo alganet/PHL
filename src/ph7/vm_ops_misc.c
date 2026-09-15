@@ -131,13 +131,22 @@ PH7_PRIVATE VmOpRc VmExecOpMatch(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr
 		case MEMOBJ_RES:    zType = "resource"; break;
 		default: break;
 		}
+		SyBlob sErrMsg;
 		nMsg = SyBufferFormat(zMsg,sizeof(zMsg),
 			"Unhandled match case of type %s",zType);
-		VmReportUncaughtException(&(*pVm),"UnhandledMatchError",
-			sizeof("UnhandledMatchError")-1,zMsg,nMsg,0,0);
 		PH7_MemObjRelease(&sSubject);
 		PH7_MemObjRelease(&sResult);
-		VM_EXIT_ABORT;
+		/* php raises a CATCHABLE \UnhandledMatchError here, so build a real
+		 * exception object and route it like any mid-expression throw (an
+		 * enclosing try in this body resumes at its landing pad; otherwise it
+		 * propagates and renders as uncaught, as before). Reporting it straight
+		 * to the uncaught renderer — what this site used to do — made the error
+		 * unconditionally fatal even inside try/catch. */
+		SyBlobInit(&sErrMsg,&pVm->sAllocator);
+		SyBlobAppend(&sErrMsg,zMsg,nMsg);
+		rc = VmThrowBuiltinError(&(*pVm),"UnhandledMatchError",
+			sizeof("UnhandledMatchError")-1,&sErrMsg);
+		PH7_THROW_ROUTE_MIDEXPR(rc)
 	}
 	PH7_MemObjRelease(&sSubject);
 	/* Replace subject on TOS with the arm result */
