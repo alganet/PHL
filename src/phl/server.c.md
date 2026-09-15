@@ -869,11 +869,11 @@ Coverage: 299/476 lines (62.82%)
 |    - |  859 | `	}` |
 |    - |  860 | `	/* Accept loop */` |
 |   70 |  861 | `	while( !g_shutdown ){` |
-|   69 |  862 | `		addrLen = sizeof(clientAddr);` |
-|   69 |  863 | `		clientSock = PH7_NetAccept(listenSock, (struct sockaddr *)&clientAddr, &addrLen);` |
-|   69 |  864 | `		if( clientSock == PH7_NET_INVALID_SOCKET ){` |
-|   31 |  865 | `			if( g_shutdown ){` |
-|   31 |  866 | `				break;` |
+|   70 |  862 | `		addrLen = sizeof(clientAddr);` |
+|   70 |  863 | `		clientSock = PH7_NetAccept(listenSock, (struct sockaddr *)&clientAddr, &addrLen);` |
+|   70 |  864 | `		if( clientSock == PH7_NET_INVALID_SOCKET ){` |
+|   32 |  865 | `			if( g_shutdown ){` |
+|   32 |  866 | `				break;` |
 |    - |  867 | `			}` |
 |  ! 0 |  868 | `			continue;` |
 |    - |  869 | `		}` |

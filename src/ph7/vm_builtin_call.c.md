@@ -346,10 +346,10 @@ Coverage: 539/625 lines (86.24%)
 |     - |  336 | ` * [i.e: Whether it is callable or not].` |
 |     - |  337 | ` * Return TRUE if callable.FALSE otherwise.` |
 |     - |  338 | ` */` |
-| 59286 |  339 | `PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)` |
+| 59294 |  339 | `PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)` |
 |     5 |  340 | `{` |
-| 59291 |  341 | `	int res = 0;` |
-| 59291 |  342 | `	if( pValue->iFlags & MEMOBJ_OBJ ){` |
+| 59299 |  341 | `	int res = 0;` |
+| 59299 |  342 | `	if( pValue->iFlags & MEMOBJ_OBJ ){` |
 |     - |  343 | `		/* PHP semantics: an object is callable iff its class declares __invoke` |
 |     - |  344 | `		 * (inherited methods count). The CallInvoke flag is unused — it` |
 |     - |  345 | `		 * formerly invoked __invoke as a runtime predicate, which is not` |
@@ -362,7 +362,7 @@ Coverage: 539/625 lines (86.24%)
 |    41 |  352 | `			res = 1;` |
 |    24 |  353 | `		}` |
 |   255 |  354 | `		(void)CallInvoke;` |
-| 59036 |  355 | `	}else if( pValue->iFlags & MEMOBJ_HASHMAP ){` |
+| 59044 |  355 | `	}else if( pValue->iFlags & MEMOBJ_HASHMAP ){` |
 |    74 |  356 | `		ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;` |
 |    74 |  357 | `		if( pMap->nEntry == 2 ){` |
 |     - |  358 | `			ph7_class *pClass;` |
@@ -386,7 +386,7 @@ Coverage: 539/625 lines (86.24%)
 |    24 |  376 | `				}` |
 |    26 |  377 | `			}` |
 |    30 |  378 | `		}` |
-| 58746 |  379 | `	}else if( pValue->iFlags & MEMOBJ_STRING ){` |
+| 58754 |  379 | `	}else if( pValue->iFlags & MEMOBJ_STRING ){` |
 |     - |  380 | `		const char *zName;` |
 |     - |  381 | `		int nLen;` |
 |     - |  382 | `		/* Extract the name */` |
@@ -413,7 +413,7 @@ Coverage: 539/625 lines (86.24%)
 |   209 |  403 | `			}` |
 |    24 |  404 | `		}` |
 |  2603 |  405 | `	}` |
-| 59291 |  406 | `	return res;` |
+| 59299 |  406 | `	return res;` |
 |     5 |  407 | `}` |
 |     - |  408 | `/*` |
 |     - |  409 | ` * bool is_callable(callable $name[,bool $syntax_only = false])` |

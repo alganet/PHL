@@ -426,11 +426,11 @@ Coverage: 555/808 lines (68.69%)
 |        - |  416 | ` * PH7 uses its own private PRNG (the SQLite3-derived RC4 generator` |
 |        - |  417 | ` * implemented in src/sx/sxrand.c).` |
 |        - |  418 | ` */` |
-|     5119 |  419 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
+|     5120 |  419 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
 |        5 |  420 | `{` |
 |        - |  421 | `	sxu32 iNum;` |
-|     5124 |  422 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
-|     5124 |  423 | `	return iNum;` |
+|     5125 |  422 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
+|     5125 |  423 | `	return iNum;` |
 |        5 |  424 | `}` |
 |        - |  425 | `/*` |
 |        - |  426 | ` * Generate a random string (English Alphabet) of length nLen.` |
@@ -438,17 +438,17 @@ Coverage: 555/808 lines (68.69%)
 |        - |  428 | ` * PH7 uses its own private PRNG (the SQLite3-derived RC4 generator` |
 |        - |  429 | ` * implemented in src/sx/sxrand.c).` |
 |        - |  430 | ` */` |
-|  2901132 |  431 | `PH7_PRIVATE void PH7_VmRandomString(ph7_vm *pVm,char *zBuf,int nLen)` |
+|  2902624 |  431 | `PH7_PRIVATE void PH7_VmRandomString(ph7_vm *pVm,char *zBuf,int nLen)` |
 |        5 |  432 | `{` |
 |        - |  433 | `	static const char zBase[] = {"abcdefghijklmnopqrstuvwxyz"}; /* English Alphabet */` |
 |        - |  434 | `	int i;` |
 |        - |  435 | `	/* Generate a binary string first */` |
-|  2901137 |  436 | `	SyRandomness(&pVm->sPrng,zBuf,(sxu32)nLen);` |
+|  2902629 |  436 | `	SyRandomness(&pVm->sPrng,zBuf,(sxu32)nLen);` |
 |        - |  437 | `	/* Turn the binary string into english based alphabet */` |
-| 31912645 |  438 | `	for( i = 0 ; i < nLen ; ++i ){` |
-| 29011513 |  439 | `		 zBuf[i] = zBase[zBuf[i] % (sizeof(zBase)-1)];` |
-| 14505759 |  440 | `	 }` |
-|  2901137 |  441 | `}` |
+| 31929057 |  438 | `	for( i = 0 ; i < nLen ; ++i ){` |
+| 29026433 |  439 | `		 zBuf[i] = zBase[zBuf[i] % (sizeof(zBase)-1)];` |
+| 14513219 |  440 | `	 }` |
+|  2902629 |  441 | `}` |
 |        - |  442 | `/*` |
 |        - |  443 | ` * int rand()` |
 |        - |  444 | ` * int mt_rand()` |
@@ -646,23 +646,23 @@ Coverage: 555/808 lines (68.69%)
 |      225 |  636 | `	uMask \|= uMask >> 16;` |
 |      225 |  637 | `	uMask \|= uMask >> 32;` |
 |      225 |  638 | `	uResult = 0;` |
-|      338 |  639 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
+|      336 |  639 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
 |        - |  640 | `		/* Always draw a full 8 bytes so endianness of the cast doesn't matter` |
 |        - |  641 | `		 * (a 4-byte fill into a sxu64 would land in the high half on big-endian` |
 |        - |  642 | `		 * and the low-half mask would always read 0). */` |
 |        - |  643 | `		sxu64 uDraw;` |
-|      338 |  644 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
+|      336 |  644 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
 |      ! 0 |  645 | `			return PH7_VmThrowException(pCtx,` |
 |        - |  646 | `				"Random\\RandomException",` |
 |        - |  647 | `				"Cannot gather sufficient random data"` |
 |        - |  648 | `				);` |
 |        - |  649 | `		}` |
-|      338 |  650 | `		uDraw &= uMask;` |
-|      338 |  651 | `		if( uDraw <= uRange ){` |
+|      336 |  650 | `		uDraw &= uMask;` |
+|      336 |  651 | `		if( uDraw <= uRange ){` |
 |      225 |  652 | `			uResult = uDraw;` |
 |      225 |  653 | `			break;` |
 |        - |  654 | `		}` |
-|       56 |  655 | `	}` |
+|       47 |  655 | `	}` |
 |      225 |  656 | `	if( nAttempt >= 50 ){` |
 |      ! 0 |  657 | `		return PH7_VmThrowException(pCtx,` |
 |        - |  658 | `			"Random\\RandomException",` |
