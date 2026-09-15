@@ -2334,6 +2334,41 @@ PH7_PRIVATE void VmGetFrameContext(ph7_vm *pVm,const char **pzFuncName,int *pnFu
 	*pnFuncLen = VmFuncDisplayName(&(*pVm),pFunc,pzFuncName);
 }
 /*
+ * Append the exception's own rendered stack trace (php's "#N file(line):
+ * func()" lines plus the "#N {main}" terminator) to pOut. Returns 1 when it
+ * emitted a trace. The instance's trace walks the FULL frame chain, so this is
+ * what the uncaught report should print; getTraceAsString() lives in the
+ * built-in library and already produces php's exact byte format, which keeps
+ * one renderer for both the caught (userland) and uncaught (engine) paths.
+ * Returns 0 when there is no instance or no such method, leaving the caller to
+ * synthesize what it can.
+ */
+static int VmAppendExceptionTrace(ph7_vm *pVm,ph7_class_instance *pThis,SyBlob *pOut)
+{
+	ph7_class_method *pGetTrace;
+	ph7_value sTrace;
+	const char *zTmp;
+	int nTmp;
+	int bDone = 0;
+	if( pThis == 0 ){
+		return 0;
+	}
+	pGetTrace = PH7_ClassExtractMethod(pThis->pClass,"getTraceAsString",sizeof("getTraceAsString")-1);
+	if( pGetTrace == 0 ){
+		return 0;
+	}
+	PH7_MemObjInit(pVm,&sTrace);
+	if( PH7_VmCallClassMethod(&(*pVm),pThis,pGetTrace,&sTrace,0,0) == SXRET_OK ){
+		zTmp = ph7_value_to_string(&sTrace,&nTmp);
+		if( zTmp && nTmp > 0 ){
+			SyBlobAppend(pOut,zTmp,(sxu32)nTmp);
+			bDone = 1;
+		}
+	}
+	PH7_MemObjRelease(&sTrace);
+	return bDone;
+}
+/*
  * Render one exception entry of an uncaught-exception report into pOut.
  *
  * The output is the single-exception PHP format, factored so a `$previous`
@@ -2348,6 +2383,7 @@ PH7_PRIVATE void VmGetFrameContext(ph7_vm *pVm,const char **pzFuncName,int *pnFu
  */
 static void VmRenderUncaughtEntry(
 	ph7_vm *pVm,SyBlob *pOut,
+	ph7_class_instance *pExc, /* the exception being reported (0 when the caller has no instance) */
 	const char *zClass,sxu32 nClass,const char *zMsg,sxu32 nMsg,
 	const char *zFuncName,int nFuncLen,int bFirst,int bLast,
 	sxu32 nThrowLine,  /* line the exception was raised at (0 -> the line running now) */
@@ -2383,22 +2419,30 @@ static void VmRenderUncaughtEntry(
 		SyBlobFormat(pOut," in %.*s:%u",(int)pFile->nByte,pFile->zString,nThrowLine);
 	}
 	SyBlobAppend(pOut,"\nStack trace:\n",sizeof("\nStack trace:\n")-1);
-	if( pFile ){
-		SyBlobAppend(pOut,"#0 ",sizeof("#0 ")-1);
-		SyBlobAppend(pOut,pFile->zString,pFile->nByte);
+	/* Prefer the exception's OWN trace: it walks the full frame chain (shared
+	 * with debug_backtrace) and getTraceAsString() already renders php's exact
+	 * "#N file(line): func()" body plus the "#N {main}" terminator. The
+	 * synthesized fallback below can only ever describe ONE frame, so it
+	 * silently dropped every intermediate frame of a nested call chain and, at
+	 * file scope, invented a "#0 file(line): {main}" entry that php does not
+	 * print ({main} is the bottom marker, not a called frame). */
+	if( !VmAppendExceptionTrace(pVm,pExc,pOut) ){
+		int bFrame = 0;
 		if( zFuncName && nFuncLen > 0 ){
-			/* php reports a trace frame at its CALL SITE, not at the line running
-			 * inside it. */
-			SyBlobFormat(pOut,"(%u): %.*s()\n",nCallLine,nFuncLen,zFuncName);
-		}else{
-			SyBlobFormat(pOut,"(%u): {main}\n",nCallLine);
+			if( pFile ){
+				/* php reports a trace frame at its CALL SITE, not at the line
+				 * running inside it. */
+				SyBlobFormat(pOut,"#0 %.*s(%u): %.*s()\n",
+					(int)pFile->nByte,pFile->zString,nCallLine,nFuncLen,zFuncName);
+			}else{
+				SyBlobFormat(pOut,"#0 [internal function]: %.*s()\n",nFuncLen,zFuncName);
+			}
+			bFrame = 1;
 		}
-	}else if( zFuncName && nFuncLen > 0 ){
-		SyBlobFormat(pOut,"#0 [internal function]: %.*s()\n",nFuncLen,zFuncName);
-	}else{
-		SyBlobAppend(pOut,"#0 {main}\n",sizeof("#0 {main}\n")-1);
+		/* {main} closes the trace, numbered after whatever frames precede it. */
+		SyBlobAppend(pOut,bFrame ? "#1 {main}" : "#0 {main}",
+			bFrame ? sizeof("#1 {main}")-1 : sizeof("#0 {main}")-1);
 	}
-	SyBlobAppend(pOut,"#1 {main}",sizeof("#1 {main}")-1);
 	if( bLast && pFile ){
 		SyBlobAppend(pOut,"\n",sizeof("\n")-1);
 		SyBlobFormat(pOut,"  thrown in %.*s on line %u",(int)pFile->nByte,pFile->zString,nThrowLine);
@@ -2419,7 +2463,7 @@ PH7_PRIVATE sxi32 VmReportUncaughtException(ph7_vm *pVm,const char *zClass,sxu32
 		return PH7_OK;
 	}
 	SyBlobInit(&sOut,&pVm->sAllocator);
-	VmRenderUncaughtEntry(pVm,&sOut,zClass,nClass,zMsg,nMsg,zFuncName,nFuncLen,TRUE,TRUE,0,0);
+	VmRenderUncaughtEntry(pVm,&sOut,0,zClass,nClass,zMsg,nMsg,zFuncName,nFuncLen,TRUE,TRUE,0,0);
 	VmCallErrorHandler(pVm,&sOut);
 	SyBlobRelease(&sOut);
 	return PH7_ABORT;
@@ -2571,7 +2615,7 @@ static sxi32 VmReportUncaughtChain(ph7_vm *pVm,ph7_class_instance *pThis,const c
 		SyBlob sMsg;
 		SyBlobInit(&sMsg,&pVm->sAllocator);
 		VmExtractExceptionMessage(pVm,pEnt,&sMsg);
-		VmRenderUncaughtEntry(pVm,&sOut,
+		VmRenderUncaughtEntry(pVm,&sOut,pEnt,
 			pEnt->pClass->sName.zString,pEnt->pClass->sName.nByte,
 			(const char *)SyBlobData(&sMsg),(sxu32)SyBlobLength(&sMsg),
 			zFuncName,nFuncLen,
