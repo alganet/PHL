@@ -1410,6 +1410,10 @@ PH7_PRIVATE int PH7_builtin_stripslashes(ph7_context *pCtx,int nArg,ph7_value **
 	}
 	zEnd = &zIn[nLen];
 	zCur = 0; /* cc warning */
+	/* Seed an empty string result: the loop below only ever APPENDS, so without
+	 * this an empty input would leave the return value untouched and answer
+	 * NULL where php answers "". */
+	ph7_result_string(pCtx,"",0);
 	/* Encode the string */
 	for(;;){
 		if( zIn >= zEnd ){
@@ -2851,7 +2855,17 @@ PH7_PRIVATE int PH7_builtin_strstr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	zBlob = ph7_value_to_string(apArg[0],&nLen);
 	zPattern = ph7_value_to_string(apArg[1],&nPatLen);
 	nOfft = 0; /* cc warning */
-	if( nLen > 0 && nPatLen > 0 ){
+	if( nPatLen < 1 ){
+		/* php 8: the empty needle matches at position 0, so the whole haystack
+		 * is returned (and nothing at all when $before_needle is set). */
+		if( nArg > 2 && ph7_value_to_bool(apArg[2]) ){
+			ph7_result_string(pCtx,"",0);
+		}else{
+			ph7_result_string(pCtx,zBlob,nLen);
+		}
+		return PH7_OK;
+	}
+	if( nLen > 0 ){
 		int before = 0;
 		/* Perform the lookup */
 		rc = xPatternMatch(zBlob,(sxu32)nLen,zPattern,(sxu32)nPatLen,&nOfft);
@@ -2904,7 +2918,17 @@ PH7_PRIVATE int PH7_builtin_stristr(ph7_context *pCtx,int nArg,ph7_value **apArg
 	zBlob = ph7_value_to_string(apArg[0],&nLen);
 	zPattern = ph7_value_to_string(apArg[1],&nPatLen);
 	nOfft = 0; /* cc warning */
-	if( nLen > 0 && nPatLen > 0 ){
+	if( nPatLen < 1 ){
+		/* php 8: the empty needle matches at position 0, so the whole haystack
+		 * is returned (and nothing at all when $before_needle is set). */
+		if( nArg > 2 && ph7_value_to_bool(apArg[2]) ){
+			ph7_result_string(pCtx,"",0);
+		}else{
+			ph7_result_string(pCtx,zBlob,nLen);
+		}
+		return PH7_OK;
+	}
+	if( nLen > 0 ){
 		int before = 0;
 		/* Perform the lookup */
 		rc = xPatternMatch(zBlob,(sxu32)nLen,zPattern,(sxu32)nPatLen,&nOfft);
@@ -2925,6 +2949,77 @@ PH7_PRIVATE int PH7_builtin_stristr(ph7_context *pCtx,int nArg,ph7_value **apArg
 	}else{
 		ph7_result_bool(pCtx,0);
 	}
+	return PH7_OK;
+}
+/*
+ * Resolve the $offset argument shared by strpos()/stripos().
+ *
+ * php requires -strlen($haystack) <= $offset <= strlen($haystack) and throws
+ * ValueError otherwise; a negative offset counts back from the end. PHL used to
+ * negate a negative offset and silently clamp an out-of-range one to zero, so
+ * strpos("Hello","l",100) answered 2 where php raises — an argument error
+ * turned into a wrong answer.
+ *
+ * On success *pnStart receives the resolved non-negative offset.
+ */
+static sxi32 StrSearchOffset(
+	ph7_context *pCtx,
+	ph7_value *pArg,
+	int nLen,
+	const char *zFunc,
+	int *pnStart
+	)
+{
+	ph7_int64 iOfft = ph7_value_to_int64(pArg);
+	/* Compare without negating iOfft: -INT64_MIN would overflow. */
+	if( iOfft < 0 ? (iOfft < -(ph7_int64)nLen) : (iOfft > (ph7_int64)nLen) ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #3 ($offset) must be contained in argument #1 ($haystack)",zFunc);
+	}
+	*pnStart = (int)(iOfft < 0 ? (ph7_int64)nLen + iOfft : iOfft);
+	return PH7_OK;
+}
+/*
+ * Resolve the window of match START positions for strrpos()/strripos().
+ *
+ * php's rule is asymmetric in the sign of $offset: a non-negative offset is a
+ * LOWER bound on where the match may start, while a negative one is an UPPER
+ * bound counted back from the end of the haystack (zend_memnrstr). The range
+ * check is the same as StrSearchOffset()'s.
+ *
+ * On success the closed interval [*pnMin,*pnMax] holds every position at which
+ * a match is allowed to begin; it is empty (max < min) when the needle cannot
+ * fit, which the caller reports as FALSE.
+ */
+static sxi32 StrRSearchWindow(
+	ph7_context *pCtx,
+	ph7_value *pArg, /* The $offset argument, or NULL when it was omitted */
+	int nLen,
+	int nPatLen,
+	const char *zFunc,
+	int *pnMin,
+	int *pnMax
+	)
+{
+	int nMin = 0;
+	int nMax = nLen - nPatLen;
+	if( pArg ){
+		ph7_int64 iOfft = ph7_value_to_int64(pArg);
+		if( iOfft < 0 ? (iOfft < -(ph7_int64)nLen) : (iOfft > (ph7_int64)nLen) ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"%s(): Argument #3 ($offset) must be contained in argument #1 ($haystack)",zFunc);
+		}
+		if( iOfft < 0 ){
+			int nLimit = nLen + (int)iOfft;
+			if( nMax > nLimit ){
+				nMax = nLimit;
+			}
+		}else{
+			nMin = (int)iOfft;
+		}
+	}
+	*pnMin = nMin;
+	*pnMax = nMax;
 	return PH7_OK;
 }
 /*
@@ -2963,19 +3058,19 @@ PH7_PRIVATE int PH7_builtin_strpos(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	nStart = 0;
 	/* Peek the starting offset if available */
 	if( nArg > 2 ){
-		nStart = ph7_value_to_int(apArg[2]);
-		if( nStart < 0 ){
-			nStart = -nStart;
-		}
-		if( nStart >= nLen ){
-			/* Invalid offset */
-			nStart = 0;
-		}else{
-			zBlob += nStart;
-			nLen -= nStart;
+		rc = StrSearchOffset(pCtx,apArg[2],nLen,"strpos",&nStart);
+		if( rc != PH7_OK ){
+			return rc;
 		}
 	}
-	if( nLen > 0 && nPatLen > 0 ){
+	if( nPatLen < 1 ){
+		/* php 8 treats the empty needle as matching at the search offset. */
+		ph7_result_int64(pCtx,(ph7_int64)nStart);
+		return PH7_OK;
+	}
+	zBlob += nStart;
+	nLen -= nStart;
+	if( nLen > 0 ){
 		/* Perform the lookup */
 		rc = xPatternMatch(zBlob,(sxu32)nLen,zPattern,(sxu32)nPatLen,&nOfft);
 		if( rc != SXRET_OK ){
@@ -3227,19 +3322,19 @@ PH7_PRIVATE int PH7_builtin_stripos(ph7_context *pCtx,int nArg,ph7_value **apArg
 	nStart = 0;
 	/* Peek the starting offset if available */
 	if( nArg > 2 ){
-		nStart = ph7_value_to_int(apArg[2]);
-		if( nStart < 0 ){
-			nStart = -nStart;
-		}
-		if( nStart >= nLen ){
-			/* Invalid offset */
-			nStart = 0;
-		}else{
-			zBlob += nStart;
-			nLen -= nStart;
+		rc = StrSearchOffset(pCtx,apArg[2],nLen,"stripos",&nStart);
+		if( rc != PH7_OK ){
+			return rc;
 		}
 	}
-	if( nLen > 0 && nPatLen > 0 ){
+	if( nPatLen < 1 ){
+		/* php 8 treats the empty needle as matching at the search offset. */
+		ph7_result_int64(pCtx,(ph7_int64)nStart);
+		return PH7_OK;
+	}
+	zBlob += nStart;
+	nLen -= nStart;
+	if( nLen > 0 ){
 		/* Perform the lookup */
 		rc = xPatternMatch(zBlob,(sxu32)nLen,zPattern,(sxu32)nPatLen,&nOfft);
 		if( rc != SXRET_OK ){
@@ -3271,9 +3366,10 @@ PH7_PRIVATE int PH7_builtin_stripos(ph7_context *pCtx,int nArg,ph7_value **apArg
  */
 PH7_PRIVATE int PH7_builtin_strrpos(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const char *zStart,*zBlob,*zPattern,*zPtr,*zEnd;
+	const char *zBlob,*zPattern;
 	ProcStringMatch xPatternMatch = SyBlobSearch; /* Case-sensitive pattern match */
-	int nLen,nPatLen;
+	int nLen,nPatLen,i;
+	int nMin = 0,nMax = 0;
 	sxu32 nOfft;
 	sxi32 rc;
 	if( nArg < 2 ){
@@ -3284,57 +3380,31 @@ PH7_PRIVATE int PH7_builtin_strrpos(ph7_context *pCtx,int nArg,ph7_value **apArg
 	/* Extract the needle and the haystack */
 	zBlob = ph7_value_to_string(apArg[0],&nLen);
 	zPattern = ph7_value_to_string(apArg[1],&nPatLen);
-	/* Point to the end of the pattern */
-	zPtr = &zBlob[nLen - 1];
-	zEnd = &zBlob[nLen];
-	/* Save the starting posistion */
-	zStart = zBlob;
 	nOfft = 0; /* cc warning */
-	/* Peek the starting offset if available */
-	if( nArg > 2 ){
-		int nStart;
-		nStart = ph7_value_to_int(apArg[2]);
-		if( nStart < 0 ){
-			nStart = -nStart;
-			if( nStart >= nLen ){
-				/* Invalid offset */
-				ph7_result_bool(pCtx,0);
-				return PH7_OK;
-			}else{
-				nLen -= nStart;
-				zPtr = &zBlob[nLen - 1];
-				zEnd = &zBlob[nLen];
-			}
-		}else{
-			if( nStart >= nLen ){
-				/* Invalid offset */
-				ph7_result_bool(pCtx,0);
-				return PH7_OK;
-			}else{
-				zBlob += nStart;
-				nLen -= nStart;
-			}
+	/* Resolve the range of positions the match may start at */
+	rc = StrRSearchWindow(pCtx,nArg > 2 ? apArg[2] : 0,nLen,nPatLen,"strrpos",&nMin,&nMax);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	if( nPatLen < 1 ){
+		/* php 8: the empty needle matches everywhere, so the LAST match is the
+		 * highest position the window allows. */
+		ph7_result_int64(pCtx,(ph7_int64)nMax);
+		return PH7_OK;
+	}
+	/* Walk backwards, comparing at each candidate position. Searching a window
+	 * exactly as long as the needle makes the match test an equality test while
+	 * still going through xPatternMatch, which carries the case folding. */
+	for( i = nMax ; i >= nMin ; --i ){
+		rc = xPatternMatch((const void *)&zBlob[i],(sxu32)nPatLen,(const void *)zPattern,(sxu32)nPatLen,&nOfft);
+		if( rc == SXRET_OK ){
+			/* Pattern found,return it's position */
+			ph7_result_int64(pCtx,(ph7_int64)i);
+			return PH7_OK;
 		}
 	}
-	if( nLen > 0 && nPatLen > 0 ){
-		/* Perform the lookup */
-		for(;;){
-			if( zBlob >= zPtr ){
-				break;
-			}
-			rc = xPatternMatch((const void *)zPtr,(sxu32)(zEnd-zPtr),(const void *)zPattern,(sxu32)nPatLen,&nOfft);
-			if( rc == SXRET_OK ){
-				/* Pattern found,return it's position */
-				ph7_result_int64(pCtx,(ph7_int64)(&zPtr[nOfft] - zStart));
-				return PH7_OK;
-			}
-			zPtr--;
-		}
-		/* Pattern not found,return FALSE */
-		ph7_result_bool(pCtx,0);
-	}else{
-		ph7_result_bool(pCtx,0);
-	}
+	/* Pattern not found,return FALSE */
+	ph7_result_bool(pCtx,0);
 	return PH7_OK;
 }
 /*
@@ -3354,9 +3424,10 @@ PH7_PRIVATE int PH7_builtin_strrpos(ph7_context *pCtx,int nArg,ph7_value **apArg
  */
 PH7_PRIVATE int PH7_builtin_strripos(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const char *zStart,*zBlob,*zPattern,*zPtr,*zEnd;
+	const char *zBlob,*zPattern;
 	ProcStringMatch xPatternMatch = iPatternMatch; /* Case-insensitive pattern match */
-	int nLen,nPatLen;
+	int nLen,nPatLen,i;
+	int nMin = 0,nMax = 0;
 	sxu32 nOfft;
 	sxi32 rc;
 	if( nArg < 2 ){
@@ -3367,57 +3438,29 @@ PH7_PRIVATE int PH7_builtin_strripos(ph7_context *pCtx,int nArg,ph7_value **apAr
 	/* Extract the needle and the haystack */
 	zBlob = ph7_value_to_string(apArg[0],&nLen);
 	zPattern = ph7_value_to_string(apArg[1],&nPatLen);
-	/* Point to the end of the pattern */
-	zPtr = &zBlob[nLen - 1];
-	zEnd = &zBlob[nLen];
-	/* Save the starting posistion */
-	zStart = zBlob;
 	nOfft = 0; /* cc warning */
-	/* Peek the starting offset if available */
-	if( nArg > 2 ){
-		int nStart;
-		nStart = ph7_value_to_int(apArg[2]);
-		if( nStart < 0 ){
-			nStart = -nStart;
-			if( nStart >= nLen ){
-				/* Invalid offset */
-				ph7_result_bool(pCtx,0);
-				return PH7_OK;
-			}else{
-				nLen -= nStart;
-				zPtr = &zBlob[nLen - 1];
-				zEnd = &zBlob[nLen];
-			}
-		}else{
-			if( nStart >= nLen ){
-				/* Invalid offset */
-				ph7_result_bool(pCtx,0);
-				return PH7_OK;
-			}else{
-				zBlob += nStart;
-				nLen -= nStart;
-			}
+	/* Resolve the range of positions the match may start at */
+	rc = StrRSearchWindow(pCtx,nArg > 2 ? apArg[2] : 0,nLen,nPatLen,"strripos",&nMin,&nMax);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	if( nPatLen < 1 ){
+		/* php 8: the empty needle matches everywhere, so the LAST match is the
+		 * highest position the window allows. */
+		ph7_result_int64(pCtx,(ph7_int64)nMax);
+		return PH7_OK;
+	}
+	/* Walk backwards, comparing at each candidate position (see strrpos). */
+	for( i = nMax ; i >= nMin ; --i ){
+		rc = xPatternMatch((const void *)&zBlob[i],(sxu32)nPatLen,(const void *)zPattern,(sxu32)nPatLen,&nOfft);
+		if( rc == SXRET_OK ){
+			/* Pattern found,return it's position */
+			ph7_result_int64(pCtx,(ph7_int64)i);
+			return PH7_OK;
 		}
 	}
-	if( nLen > 0 && nPatLen > 0 ){
-		/* Perform the lookup */
-		for(;;){
-			if( zBlob >= zPtr ){
-				break;
-			}
-			rc = xPatternMatch((const void *)zPtr,(sxu32)(zEnd-zPtr),(const void *)zPattern,(sxu32)nPatLen,&nOfft);
-			if( rc == SXRET_OK ){
-				/* Pattern found,return it's position */
-				ph7_result_int64(pCtx,(ph7_int64)(&zPtr[nOfft] - zStart));
-				return PH7_OK;
-			}
-			zPtr--;
-		}
-		/* Pattern not found,return FALSE */
-		ph7_result_bool(pCtx,0);
-	}else{
-		ph7_result_bool(pCtx,0);
-	}
+	/* Pattern not found,return FALSE */
+	ph7_result_bool(pCtx,0);
 	return PH7_OK;
 }
 /*
@@ -3447,18 +3490,20 @@ PH7_PRIVATE int PH7_builtin_strrchr(ph7_context *pCtx,int nArg,ph7_value **apArg
 	zBlob = ph7_value_to_string(apArg[0],&nLen);
 	c = 0; /* cc warning */
 	if( nLen > 0 ){
+		const char *zPattern;
+		int nPatLen;
 		sxu32 nOfft;
 		sxi32 rc;
-		if( ph7_value_is_string(apArg[1]) ){
-			const char *zPattern;
-			zPattern = ph7_value_to_string(apArg[1],0); /* Never fail,so there is no need to check
-														 * for NULL pointer.
-														 */
-			c = zPattern[0];
-		}else{
-			/* Int cast */
-			c = ph7_value_to_int(apArg[1]);
+		/* php 8 casts the needle to string and uses only its first character.
+		 * The old "if not a string, take it as an ordinal" reading was php 7
+		 * behaviour, removed in php 8: strrchr("hello world",111) now looks for
+		 * "1", not "o". An empty needle matches nothing. */
+		zPattern = ph7_value_to_string(apArg[1],&nPatLen);
+		if( nPatLen < 1 ){
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
 		}
+		c = zPattern[0];
 		/* Perform the lookup */
 		rc = SyByteFind2(zBlob,(sxu32)nLen,c,&nOfft);
 		if( rc != SXRET_OK ){
@@ -4967,10 +5012,6 @@ PH7_PRIVATE int PH7_builtin_str_replace(ph7_context *pCtx,int nArg,ph7_value **a
 	/* Start the replace process */
 	while( SXRET_OK == SySetGetNextEntry(&sSearch,(void **)&pSearch) ){
 		sxu32 nCount,nOfft;
-		if( pSearch->nByte <  1 ){
-			/* Empty string,ignore */
-			continue;
-		}
 		/* Extract the replace string */
 		if( rep_str ){
 			pReplace = (SyString *)SySetPeek(&sReplace);
@@ -4985,6 +5026,13 @@ PH7_PRIVATE int PH7_builtin_str_replace(ph7_context *pCtx,int nArg,ph7_value **a
 		if( pReplace == 0 ){
 			/* Use an empty string instead */
 			pReplace = &sTemp;
+		}
+		if( pSearch->nByte <  1 ){
+			/* php ignores an empty search string, but its replacement still
+			 * CONSUMES a slot so the remaining pairs stay aligned. Skipping
+			 * before the fetch above shifted every later replacement by one:
+			 * str_replace(['','l'],['x','L'],'hello') answered "hexxo". */
+			continue;
 		}
 		nOfft = nCount = 0;
 		for(;;){
@@ -5041,6 +5089,7 @@ struct strtr_collect
 	SyBlob *pPool;  /* Byte pool holding copied key + value bytes */
 	SySet  *pTable; /* Set of strtr_entry (parallel offsets into pPool) */
 	sxi32   rc;     /* Carries an allocation failure (SXERR_MEM) out of the walker */
+	ph7_context *pCtx; /* Needed to warn about an empty key */
 };
 /*
  * Collect one replace_pairs entry into the persistent pool/offset table.
@@ -5055,7 +5104,9 @@ static int StrtrCollectWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
 	int nKey,nVal;
 	zKey = ph7_value_to_string(pKey,&nKey);
 	if( nKey < 1 ){
-		/* PHP ignores an empty-string key (it also emits a warning we do not replicate). */
+		/* PHP ignores an empty-string key, and warns that it did so. */
+		ph7_context_throw_error_format(pCol->pCtx,PH7_CTX_WARNING,
+			"Ignoring replacement of empty string");
 		return PH7_OK;
 	}
 	zVal = ph7_value_to_string(pData,&nVal);
@@ -5131,6 +5182,7 @@ PH7_PRIVATE int PH7_builtin_strtr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		sCol.pPool  = &sPool;
 		sCol.pTable = &sTable;
 		sCol.rc     = SXRET_OK;
+		sCol.pCtx   = pCtx;
 		ph7_array_walk(apArg[1],StrtrCollectWalker,&sCol);
 		if( sCol.rc != SXRET_OK ){
 			/* Allocation failure while collecting the pairs: surface a fatal */

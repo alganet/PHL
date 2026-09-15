@@ -2,57 +2,45 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: strrpos with offset edge cases
---SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+strrpos offset handling: range errors, negative offsets and the empty needle
 --FILE--
 <?php
-// Test strrpos when search string not found with offset
-$result1 = strrpos("Hello World World", "XYZ", 5);
-echo $result1 === false ? "NOT_FOUND_OFFSET_OK\n" : "NOT_FOUND_OFFSET_FAIL: $result1\n";
+// The last occurrence is found even when it sits at position 0.
+var_dump(strrpos("abc", "a"));
+var_dump(strrpos("abcabc", "a"));
 
-// Test strrpos with large offset
-$result2 = strrpos("Hello World", "World", 100);
-echo $result2 === false ? "LARGE_OFFSET_OK\n" : "LARGE_OFFSET_FAIL: $result2\n";
+// A non-negative offset is a LOWER bound on the match position.
+var_dump(strrpos("aXbXc", "X", 2));
+// A negative offset is an UPPER bound counted back from the end.
+var_dump(strrpos("aXbXc", "X", -2));
 
-// Test strrpos with offset pointing past end
-$result3 = strrpos("abc", "b", 10);
-echo $result3 === false ? "OFFSET_PAST_END_OK\n" : "OFFSET_PAST_END_FAIL: $result3\n";
+// The empty needle matches at the highest position the offset allows.
+var_dump(strrpos("hello", ""));
+var_dump(strrpos("hello", "", 2));
+var_dump(strrpos("hello", "", -2));
 
-// Test strrpos with zero offset (should find last)
-$result4 = strrpos("aaa", "a", 0);
-echo $result4 === 2 ? "ZERO_OFFSET_OK\n" : "ZERO_OFFSET_FAIL: $result4\n";
+// |offset| may equal the haystack length ...
+var_dump(strrpos("Hello World", "", 11));
+var_dump(strrpos("Hello World", "", -11));
+// ... but anything beyond it is a ValueError, not a false return.
+try { strrpos("Hello World", "World", 100); } catch (ValueError $e) { echo $e->getMessage(), "\n"; }
+try { strrpos("Hello World", "World", -100); } catch (ValueError $e) { echo $e->getMessage(), "\n"; }
 
-// Test strrpos with negative offset that makes search impossible
-$result5 = strrpos("abc", "a", -1);
-echo $result5 === false ? "NEG_OFFSET_IMPOSSIBLE_OK\n" : "NEG_OFFSET_IMPOSSIBLE_FAIL: $result5\n";
-
-// Test strrpos with negative offset - PHL behavior differs
-$result6 = strrpos("abca", "a", -2);
-echo $result6 === false || $result6 === 3 ? "NEG_OFFSET_NEAR_END_OK\n" : "NEG_OFFSET_NEAR_END_FAIL: $result6\n";
-
-// Test strrpos with negative offset pointing to middle - PHL behavior differs
-$result7 = strrpos("abcabc", "a", -4);
-echo $result7 === false || $result7 === 3 ? "NEG_OFFSET_MIDDLE_OK\n" : "NEG_OFFSET_MIDDLE_FAIL: $result7\n";
-
-// Test strrpos with empty string search - PHL returns false
-$result8 = strrpos("Hello World", "");
-echo $result8 === false ? "EMPTY_SEARCH_OK\n" : "EMPTY_SEARCH_FAIL: $result8\n";
-
-// Test strrpos with negative offset -1 on single char - PHL returns false
-$result9 = strrpos("a", "a", -1);
-echo $result9 === false ? "NEG_OFFSET_SINGLE_OK\n" : "NEG_OFFSET_SINGLE_FAIL: $result9\n";
+// A needle longer than the haystack simply is not found.
+var_dump(strrpos("ab", "abc"));
 ?>
 --EXPECT--
-NOT_FOUND_OFFSET_OK
-LARGE_OFFSET_OK
-OFFSET_PAST_END_OK
-ZERO_OFFSET_OK
-NEG_OFFSET_IMPOSSIBLE_OK
-NEG_OFFSET_NEAR_END_OK
-NEG_OFFSET_MIDDLE_OK
-EMPTY_SEARCH_OK
-NEG_OFFSET_SINGLE_OK
+int(0)
+int(3)
+int(3)
+int(3)
+int(5)
+int(5)
+int(3)
+int(11)
+int(0)
+strrpos(): Argument #3 ($offset) must be contained in argument #1 ($haystack)
+strrpos(): Argument #3 ($offset) must be contained in argument #1 ($haystack)
+bool(false)
 --CLEAN--
 <?php
-unset($result1, $result2, $result3, $result4, $result5, $result6, $result7, $result8, $result9);
