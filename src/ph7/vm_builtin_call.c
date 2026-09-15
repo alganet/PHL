@@ -79,9 +79,11 @@ PH7_PRIVATE int vm_builtin_func_num_args(ph7_context *pCtx,int nArg,ph7_value **
 	if( pFrame->pParent == 0 ){
 		SXUNUSED(nArg);
 		SXUNUSED(apArg);
-		/* Global frame,return -1 */
-		ph7_result_int(pCtx,-1);
-		return SXRET_OK;
+		/* php raises a catchable Error here. Returning -1 was a silent wrong
+		 * answer: it is a perfectly usable int, so `func_num_args() > 0` and any
+		 * arithmetic on it quietly took the wrong branch instead of failing. */
+		return PH7_VmThrowException(pCtx,"Error",
+			"func_num_args() must be called from a function context");
 	}
 	/* Total number of arguments passed to the enclosing function. The stamped
 	 * actual arity (band A #4) is php's answer — sArg over-counts (defaulted
@@ -117,17 +119,17 @@ PH7_PRIVATE int vm_builtin_func_get_arg(ph7_context *pCtx,int nArg,ph7_value **a
 	pFrame = pVm->pFrame;
 	pFrame = VmSkipExceptionFrames(pFrame);
 	if( nArg < 1 || pFrame->pParent == 0 ){
-		/* Global frame or Missing arguments,return FALSE */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Called in the global scope");
-		ph7_result_bool(pCtx,0);
-		return SXRET_OK;
+		/* php raises a catchable Error rather than warning and yielding FALSE. */
+		return PH7_VmThrowException(pCtx,"Error",
+			"func_get_arg() cannot be called from the global scope");
 	}
 	/* Extract the desired index */
 	nArg = ph7_value_to_int(apArg[0]);
 	if( nArg < 0 || nArg >= (int)SySetUsed(&pFrame->sArg) ){
-		/* Invalid index,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return SXRET_OK;
+		/* Out of range: php's ArgumentCountError-shaped Error, not a silent FALSE
+		 * (FALSE is indistinguishable from an argument that really is false). */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"func_get_arg(): Argument #1 ($position) must be less than the number of the arguments passed to the currently executed function");
 	}
 	/* Extract the desired argument */
 	if( (pSlot = (VmSlot *)SySetAt(&pFrame->sArg,(sxu32)nArg)) != 0 ){
@@ -167,7 +169,8 @@ PH7_PRIVATE int vm_builtin_func_get_args_byref(ph7_context *pCtx,int nArg,ph7_va
 	pFrame = VmSkipExceptionFrames(pFrame);
 	if( pFrame->pParent == 0 ){
 		/* Global frame,return FALSE */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Called in the global scope");
+		return PH7_VmThrowException(pCtx,"Error",
+			"func_get_args() cannot be called from the global scope");
 		ph7_result_bool(pCtx,0);
 		return SXRET_OK;
 	}
@@ -210,7 +213,8 @@ PH7_PRIVATE int vm_builtin_func_get_args(ph7_context *pCtx,int nArg,ph7_value **
 	pFrame = VmSkipExceptionFrames(pFrame);
 	if( pFrame->pParent == 0 ){
 		/* Global frame,return FALSE */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Called in the global scope");
+		return PH7_VmThrowException(pCtx,"Error",
+			"func_get_args() cannot be called from the global scope");
 		ph7_result_bool(pCtx,0);
 		return SXRET_OK;
 	}
