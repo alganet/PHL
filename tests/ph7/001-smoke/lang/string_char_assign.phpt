@@ -2,26 +2,28 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Assign character into a string index (string articulation branch for STORE_IDX)
---SKIPIF--
-<?php
-if (function_exists('zend_version')) {
-    echo "skip";
-}
-?>
+String offset assignment writes in place; [] on a string is an Error
+--DESCRIPTION--
+php raises "[] operator not supported for strings" and leaves the string untouched. PHL
+silently APPENDED, so this test asserted "AZ" from behind a bare skip -- a wrong answer
+that never ran under the oracle. Offset assignment ($s[1] = 'X') is unaffected.
 --FILE--
 <?php
 $s = "abc";
 $s[1] = 'X';
 echo $s . "\n";
-// Also test append to string using empty key assignment
 $s2 = "A";
-$s2[] = 'Z';
+try {
+    $s2[] = 'Z';
+} catch (\Error $e) {
+    echo get_class($e), ': ', $e->getMessage(), "\n";
+}
 echo $s2 . "\n";
 ?>
 --EXPECT--
 aXc
-AZ
+Error: [] operator not supported for strings
+A
 --CLEAN--
 <?php
 unset($s, $s2);

@@ -319,10 +319,18 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 				PH7_MemObjToString(pTos);
 			}
 			if( pKey == 0 ){
-				/* Append string */
-				if( SyBlobLength(&pTos->sBlob) > 0 ){
-					SyBlobAppend(&pObj->sBlob,SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
-				}
+				/* `$s[] = 'x'` on a STRING: php raises the catchable Error
+				 * "[] operator not supported for strings" and leaves the string
+				 * untouched. PHL silently APPENDED, so code that meant to build
+				 * an array from a variable holding a string quietly produced a
+				 * longer string instead of failing — a wrong answer, not a
+				 * missing diagnostic. */
+				SyBlob sErrMsg;
+				SyBlobInit(&sErrMsg,&pVm->sAllocator);
+				SyBlobAppend(&sErrMsg,"[] operator not supported for strings",
+					sizeof("[] operator not supported for strings")-1);
+				VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
+				VM_EXIT_BREAK;
 			}else{
 				sxi64 iOfft;
 				sxi64 nLen;
