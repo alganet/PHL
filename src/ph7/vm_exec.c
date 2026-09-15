@@ -4311,6 +4311,26 @@ case PH7_OP_CALL: {
 								SyMemBackendFree(&pVm->sAllocator, apCallArgs);
 								goto Abort;
 							}
+							if( rc == PH7_EXCEPTION ){
+								/* A named-argument error is php's catchable \Error.
+								 * No callee frame exists yet on this branch (the
+								 * generator body never runs and VmEnterFrame is
+								 * further down), so route it like the other
+								 * pre-frame OP_CALL throws: drop the args + the
+								 * function-name slot and land the enclosing try. */
+								SyMemBackendFree(&pVm->sAllocator, aGSlot);
+								SyMemBackendFree(&pVm->sAllocator, apCallArgs);
+								PH7_INLINE_RESUME_BREAK()
+								VmPopOperand(&pTos,nCallArgs + 1);
+								{
+									sxi32 iRpN;
+									if( VmRecordedResume(pVm,&iRpN,sState.pEntryFrame,aInstr) ){
+										pc = iRpN;
+										break;
+									}
+								}
+								goto Exception;
+							}
 							if( (pVmFunc->iFlags & (VM_FUNC_INTERNAL|VM_FUNC_CLASS_METHOD)) != VM_FUNC_INTERNAL ){
 								/* php's named-hole ArgumentCountError, checked BEFORE
 								 * hole compaction: compacting first would report the
@@ -4589,6 +4609,23 @@ case PH7_OP_CALL: {
 			if( rc == PH7_ABORT ){
 				SyMemBackendFree(&pVm->sAllocator, aSlot);
 				goto Abort;
+			}
+			if( rc == PH7_EXCEPTION ){
+				/* php's catchable \Error for a bad named argument. The callee
+				 * frame is already entered but its body must not run: unwind
+				 * exactly like the named-hole ArgumentCountError path below
+				 * (release the not-yet-installed actuals — Pass 2's release
+				 * loop has not run — pop the callee slot, mark that there is no
+				 * callee operand stack, and let VmCallFinish route the throw). */
+				sxu32 iRel;
+				SyMemBackendFree(&pVm->sAllocator, aSlot);
+				for( iRel = 0; iRel < nActual; iRel++ ){
+					PH7_MemObjRelease(&pArg[iRel]);
+				}
+				PH7_MemObjRelease(pTos);
+				pTos = &pTos[-nCallArgs];
+				pFrameStack = 0;
+				goto SkipFuncBody;
 			}
 			/* Pass 2: install arguments into the frame by formal parameter order */
 			{

@@ -3635,8 +3635,9 @@ PH7_PRIVATE sxi32 VmSuspendCtx(
  * every formal parameter that received a value.
  *
  * Returns SXRET_OK on success.  On error (duplicate, unknown parameter,
- * positional-overlaps-named) it calls VmThrowNamedArgError and returns
- * PH7_ABORT so the caller can jump to its Abort label.
+ * positional-overlaps-named) it raises php's CATCHABLE \Error via
+ * VmThrowNamedArgError and returns that status: PH7_EXCEPTION (route it to the
+ * enclosing try, as the OP_CALL arg-binding throws do) or PH7_ABORT.
  */
 PH7_PRIVATE sxi32 VmResolveNamedArgs(
 	ph7_vm *pVm,
@@ -3672,8 +3673,7 @@ PH7_PRIVATE sxi32 VmResolveNamedArgs(
 						SyBufferFormat(zErrMsg,sizeof(zErrMsg),
 							"Named parameter $%.*s overwrites previous argument",
 							(int)pMap->aNames[i].nByte,pMap->aNames[i].zString);
-						VmThrowNamedArgError(&(*pVm),zErrMsg,(sxu32)SyStrlen(zErrMsg));
-						return PH7_ABORT;
+						return VmThrowNamedArgError(&(*pVm),zErrMsg,(sxu32)SyStrlen(zErrMsg));
 					}
 					aSlot[i] = (sxi32)k;
 					aUsed[k] = 1;
@@ -3688,8 +3688,7 @@ PH7_PRIVATE sxi32 VmResolveNamedArgs(
 					SyBufferFormat(zErrMsg,sizeof(zErrMsg),
 						"Unknown named parameter $%.*s",
 						(int)pMap->aNames[i].nByte,pMap->aNames[i].zString);
-					VmThrowNamedArgError(&(*pVm),zErrMsg,(sxu32)SyStrlen(zErrMsg));
-					return PH7_ABORT;
+					return VmThrowNamedArgError(&(*pVm),zErrMsg,(sxu32)SyStrlen(zErrMsg));
 				}
 			}
 		}else{
@@ -3698,18 +3697,16 @@ PH7_PRIVATE sxi32 VmResolveNamedArgs(
 			 * reconstructed from an array — call_user_func_array(['b'=>9, 'x']) —
 			 * can, so enforce PHP's rule at this shared choke point. */
 			if( bSeenNamed ){
-				VmThrowNamedArgError(&(*pVm),
+				return VmThrowNamedArgError(&(*pVm),
 					"Cannot use positional argument after named argument",
 					sizeof("Cannot use positional argument after named argument") - 1);
-				return PH7_ABORT;
 			}
 			if( (sxu32)posIdx < nNonVariadic ){
 				if( aUsed[posIdx] ){
 					SyBufferFormat(zErrMsg,sizeof(zErrMsg),
 						"Named parameter $%.*s overwrites previous argument",
 						(int)aFormalArg[posIdx].sName.nByte,aFormalArg[posIdx].sName.zString);
-					VmThrowNamedArgError(&(*pVm),zErrMsg,(sxu32)SyStrlen(zErrMsg));
-					return PH7_ABORT;
+					return VmThrowNamedArgError(&(*pVm),zErrMsg,(sxu32)SyStrlen(zErrMsg));
 				}
 				aSlot[i] = posIdx;
 				aUsed[posIdx] = 1;

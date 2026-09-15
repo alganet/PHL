@@ -189,6 +189,7 @@
 	"class AssertionError extends Error { }"\
 	"class ArithmeticError extends Error { }"\
 	"class DivisionByZeroError extends ArithmeticError { }"\
+	"class UnhandledMatchError extends Error { }"\
 	"class ErrorException extends Exception { "\
 	"protected $severity;"\
 	"public function __construct(?string $message = null,"\

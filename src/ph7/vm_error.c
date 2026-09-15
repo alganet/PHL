@@ -2246,10 +2246,15 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
  */
 PH7_PRIVATE sxi32 VmThrowNamedArgError(ph7_vm *pVm,const char *zMsg,sxu32 nMsg)
 {
-	const char *zFunc = 0;
-	int nFunc = 0;
-	VmGetFrameContext(pVm,&zFunc,&nFunc);
-	return VmReportUncaughtException(pVm,"Error",5,zMsg,nMsg,zFunc,nFunc);
+	SyBlob sMsg;
+	/* php raises these as CATCHABLE \Error (`try { f(b:1); } catch (Error $e)`
+	 * runs the catch), so build a real exception object and hand the resulting
+	 * PH7_EXCEPTION back for the caller to route. This used to report straight
+	 * to the uncaught renderer, which made every named-argument mistake an
+	 * unconditional fatal even inside try/catch. */
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	SyBlobAppend(&sMsg,zMsg,nMsg);
+	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
 }
 /*
  * Format and throw a run-time error and invoke the supplied VM output consumer callback.
