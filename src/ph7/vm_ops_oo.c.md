@@ -561,10 +561,10 @@ Coverage: 868/1015 lines (85.52%)
 |     - |  551 | ``					 * the base of a write-subscript / `??=` (the modify-op is not the immediately-next`` |
 |     - |  552 | `					 * instruction there), and for ++/--/compound-assign/store the next opcode is the` |
 |     - |  553 | `					 * modify-op directly (VmMemberNextIsWrite). */` |
-|   385 |  554 | `					VmInstr *pNext = pInstr + 1;` |
-|   385 |  555 | `					if( pInstr->iP2 == PH7_MEMBER_WRITE \|\| VmMemberNextIsWrite(pNext) ){` |
-|    85 |  556 | `						ph7_class_attr *pDecl = PH7_ClassExtractAttribute(pThis->pClass,sName.zString,sName.nByte);` |
-|    85 |  557 | `						if( pDecl && (pDecl->iFlags & (PH7_CLASS_ATTR_STATIC\|PH7_CLASS_ATTR_CONSTANT)) == 0 ){` |
+|   384 |  554 | `					VmInstr *pNext = pInstr + 1;` |
+|   384 |  555 | `					if( pInstr->iP2 == PH7_MEMBER_WRITE \|\| VmMemberNextIsWrite(pNext) ){` |
+|    84 |  556 | `						ph7_class_attr *pDecl = PH7_ClassExtractAttribute(pThis->pClass,sName.zString,sName.nByte);` |
+|    84 |  557 | `						if( pDecl && (pDecl->iFlags & (PH7_CLASS_ATTR_STATIC\|PH7_CLASS_ATTR_CONSTANT)) == 0 ){` |
 |     7 |  558 | `							VmRecreateDeclaredAttr(&(*pVm),pThis,pDecl,&pObjAttr);` |
 |     4 |  559 | `						}else{` |
 |     - |  560 | `							/* php 8 semantics (band A #3b): a PLAIN store to a missing` |
@@ -578,13 +578,13 @@ Coverage: 868/1015 lines (85.52%)
 |     - |  568 | `							 * ANY class with the 8.2 deprecation (suppressed for` |
 |     - |  569 | `							 * stdClass and #[AllowDynamicProperties]); a readonly` |
 |     - |  570 | `							 * class raises php's catchable Error instead. */` |
-|    79 |  571 | `							ph7_class_method *pSetMagic = 0;` |
-|    79 |  572 | `							ph7_class_method *pCoalIsset = 0, *pCoalGet = 0, *pCoalSet = 0;` |
-|    79 |  573 | `							int bPlainStore = (pNext->iOp == PH7_OP_STORE && pNext->iP2 != 0);` |
-|    79 |  574 | `							if( bPlainStore ){` |
-|    61 |  575 | `								pSetMagic = PH7_ClassExtractMethod(pClass,"__set",sizeof("__set")-1);` |
+|    78 |  571 | `							ph7_class_method *pSetMagic = 0;` |
+|    78 |  572 | `							ph7_class_method *pCoalIsset = 0, *pCoalGet = 0, *pCoalSet = 0;` |
+|    78 |  573 | `							int bPlainStore = (pNext->iOp == PH7_OP_STORE && pNext->iP2 != 0);` |
+|    78 |  574 | `							if( bPlainStore ){` |
+|    60 |  575 | `								pSetMagic = PH7_ClassExtractMethod(pClass,"__set",sizeof("__set")-1);` |
 |    29 |  576 | `							}` |
-|    79 |  577 | `							if( pSetMagic && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'s') ){` |
+|    78 |  577 | `							if( pSetMagic && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'s') ){` |
 |     9 |  578 | `								pThis->iRef++;` |
 |     9 |  579 | `								pVm->pMagicSetThis = pThis;` |
 |     9 |  580 | `								SyBlobReset(&pVm->sMagicSetName);` |
@@ -592,7 +592,7 @@ Coverage: 868/1015 lines (85.52%)
 |     - |  582 | `								/* pObjAttr stays NULL; the miss path below stays silent. */` |
 |    73 |  583 | `							}else if( !bPlainStore && pInstr->iP2 == PH7_MEMBER_WRITE` |
 |    18 |  584 | `							 && pNext->iOp == PH7_OP_NULLC_JMP` |
-|    17 |  585 | `							 && ((pCoalIsset = PH7_ClassExtractMethod(pClass,"__isset",sizeof("__isset")-1)) != 0` |
+|    16 |  585 | `							 && ((pCoalIsset = PH7_ClassExtractMethod(pClass,"__isset",sizeof("__isset")-1)) != 0` |
 |     6 |  586 | `							  \|\| (pCoalGet = PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1)) != 0` |
 |     3 |  587 | `							  \|\| (pCoalSet = PH7_ClassExtractMethod(pClass,"__set",sizeof("__set")-1)) != 0) ){` |
 |     - |  588 | ``								/* `$o->p ??= v` on a missing property with magic accessors:`` |
@@ -663,7 +663,7 @@ Coverage: 868/1015 lines (85.52%)
 |     7 |  653 | `								VM_EXIT_BREAK;` |
 |    62 |  654 | `							}else if( !bPlainStore && pInstr->iP2 == PH7_MEMBER_WRITE` |
 |    12 |  655 | `							 && !VmMemberNextIsWrite(pNext)` |
-|    15 |  656 | `							 && PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1) ){` |
+|    14 |  656 | `							 && PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1) ){` |
 |     - |  657 | `								/* Subscript-write base on a class with __get: php reads` |
 |     - |  658 | `								 * through the magic layer (the write lands on the temp and` |
 |     - |  659 | `								 * is lost, like php's indirect-modification case). A PLAIN` |
@@ -676,14 +676,14 @@ Coverage: 868/1015 lines (85.52%)
 |     - |  666 | `								 * recorded RMW-vivifies-instead-of-__get residual, §7).` |
 |     - |  667 | `								 * Leave the miss path — the read gate below dispatches` |
 |     - |  668 | `								 * __get. */` |
-|    65 |  669 | `							}else if( pThis->pClass->iFlags & PH7_CLASS_READONLY ){` |
+|    64 |  669 | `							}else if( pThis->pClass->iFlags & PH7_CLASS_READONLY ){` |
 |     - |  670 | `								SyBlob sErrMsg;` |
 |   ! 0 |  671 | `								SyBlobInit(&sErrMsg,&pVm->sAllocator);` |
 |   ! 0 |  672 | `								SyBlobFormat(&sErrMsg,"Cannot create dynamic property %z::$%z",` |
 |   ! 0 |  673 | `									&pThis->pClass->sName,&sName);` |
 |   ! 0 |  674 | `								VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));` |
 |    62 |  675 | `							}else if( !VmClassAllowsDynamicProps(pVm,pThis->pClass)` |
-|    36 |  676 | `							       && !VmClassHasAttributeNamed(pThis->pClass,"AllowDynamicProperties",sizeof("AllowDynamicProperties")-1) ){` |
+|    35 |  676 | `							       && !VmClassHasAttributeNamed(pThis->pClass,"AllowDynamicProperties",sizeof("AllowDynamicProperties")-1) ){` |
 |     - |  677 | `								/* php 8.2 only DEPRECATES creating a dynamic property on a` |
 |     - |  678 | `								 * class without #[AllowDynamicProperties]; PHL rejects it.` |
 |     - |  679 | `								 * stdClass / __set / declared props are unaffected. */` |
@@ -693,7 +693,7 @@ Coverage: 868/1015 lines (85.52%)
 |     2 |  683 | `									&pThis->pClass->sName,&sName);` |
 |     3 |  684 | `								VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));` |
 |     2 |  685 | `							}else{` |
-|    63 |  686 | `								PH7_VmCreateDynamicAttr(&(*pVm),pThis,sName.zString,sName.nByte,&pObjAttr);` |
+|    62 |  686 | `								PH7_VmCreateDynamicAttr(&(*pVm),pThis,sName.zString,sName.nByte,&pObjAttr);` |
 |     - |  687 | `							}` |
 |     - |  688 | `						}` |
 |    38 |  689 | `					}` |

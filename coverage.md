@@ -10,18 +10,18 @@
 | src/ph7/builtin_mb.c           | 91.94%   | 479/521     |
 | src/ph7/builtin_parse.c        | 89.62%   | 1234/1377   |
 | src/ph7/builtin_string.c       | 85.81%   | 2310/2692   |
-| src/ph7/compile.c              | 92.02%   | 1476/1604   |
+| src/ph7/compile.c              | 92.04%   | 1481/1609   |
 | src/ph7/compile_class.c        | 74.85%   | 2018/2696   |
 | src/ph7/compile_func.c         | 85.88%   | 870/1013    |
 | src/ph7/compile_literal.c      | 89.15%   | 945/1060    |
-| src/ph7/compile_node.c         | 83.21%   | 669/804     |
+| src/ph7/compile_node.c         | 83.33%   | 675/810     |
 | src/ph7/compile_stmt.c         | 73.92%   | 1448/1959   |
 | src/ph7/constant.c             | 93.09%   | 970/1042    |
 | src/ph7/hashmap.c              | 90.77%   | 1042/1148   |
 | src/ph7/hashmap_builtin.c      | 87.21%   | 2482/2846   |
 | src/ph7/hashmap_sort.c         | 91.14%   | 463/508     |
 | src/ph7/lex.c                  | 93.34%   | 813/871     |
-| src/ph7/memobj.c               | 81.68%   | 834/1021    |
+| src/ph7/memobj.c               | 81.88%   | 836/1021    |
 | src/ph7/net.c                  | 57.45%   | 81/141      |
 | src/ph7/oo.c                   | 87.48%   | 727/831     |
 | src/ph7/parse.c                | 86.85%   | 1182/1361   |
@@ -48,7 +48,7 @@
 | src/ph7/vm_builtin_var.c       | 90.95%   | 382/420     |
 | src/ph7/vm_dom.c               | 86.09%   | 656/762     |
 | src/ph7/vm_error.c             | 86.71%   | 1755/2024   |
-| src/ph7/vm_exec.c              | 83.58%   | 2622/3137   |
+| src/ph7/vm_exec.c              | 83.62%   | 2630/3145   |
 | src/ph7/vm_exec_ctx.c          | 79.98%   | 1023/1279   |
 | src/ph7/vm_http.c              | 69.82%   | 310/444     |
 | src/ph7/vm_http_response.c     | 49.41%   | 126/255     |
@@ -79,5 +79,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.19%   | 48376/59586 |
+| Lines                          | 81.20%   | 48397/59605 |
 | Functions                      | 93.10%   | 2199/2362   |
