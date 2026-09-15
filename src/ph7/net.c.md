@@ -170,9 +170,9 @@ Coverage: 81/141 lines (57.45%)
 |    - |  160 | ` * Receive data from a socket.` |
 |    - |  161 | ` * Returns the number of bytes received, or -1 on error.` |
 |    - |  162 | ` */` |
-|   46 |  163 | `PH7_PRIVATE int PH7_NetRecv(ph7_socket sock, void *pBuf, int nLen, int flags)` |
+|   49 |  163 | `PH7_PRIVATE int PH7_NetRecv(ph7_socket sock, void *pBuf, int nLen, int flags)` |
 |  ! 0 |  164 | `{` |
-|   46 |  165 | `	return (int)recv(sock, (char *)pBuf, nLen, flags);` |
+|   49 |  165 | `	return (int)recv(sock, (char *)pBuf, nLen, flags);` |
 |  ! 0 |  166 | `}` |
 |    - |  167 | `/*` |
 |    - |  168 | ` * Send data on a socket.` |

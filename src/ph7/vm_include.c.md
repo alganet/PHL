@@ -29,7 +29,7 @@ Coverage: 435/517 lines (84.14%)
 |        - |   19 | ` * Refer to the eval() language construct implementation for more` |
 |        - |   20 | ` * information.` |
 |        - |   21 | ` */` |
-|    90930 |   22 | `PH7_PRIVATE sxi32 VmEvalChunk(` |
+|    90720 |   22 | `PH7_PRIVATE sxi32 VmEvalChunk(` |
 |        - |   23 | `	ph7_vm *pVm,        /* Underlying Virtual Machine */` |
 |        - |   24 | `	ph7_context *pCtx,  /* Call Context */` |
 |        - |   25 | `	SyString *pChunk,   /* PHP chunk to evaluate */` |
@@ -39,15 +39,15 @@ Coverage: 435/517 lines (84.14%)
 |        5 |   29 | `{` |
 |        - |   30 | `	SySet *pByteCode,aByteCode;` |
 |        - |   31 | `	SyBlob sSavedNs;` |
-|    90935 |   32 | `	ProcConsumer xErr = 0;` |
-|    90935 |   33 | `	void *pErrData = 0;` |
+|    90725 |   32 | `	ProcConsumer xErr = 0;` |
+|    90725 |   33 | `	void *pErrData = 0;` |
 |        - |   34 | `	ph7_gen_state sSavedGen;` |
 |        - |   35 | `	int bNested;` |
 |        - |   36 | `	/* Initialize bytecode container */` |
-|    90935 |   37 | `	SySetInit(&aByteCode,&pVm->sAllocator,sizeof(VmInstr));` |
-|    90935 |   38 | `	SySetAlloc(&aByteCode,0x20);` |
+|    90725 |   37 | `	SySetInit(&aByteCode,&pVm->sAllocator,sizeof(VmInstr));` |
+|    90725 |   38 | `	SySetAlloc(&aByteCode,0x20);` |
 |        - |   39 | `	/* Reset the code generator */` |
-|    90935 |   40 | `	if( bTrueReturn ){` |
+|    90725 |   40 | `	if( bTrueReturn ){` |
 |        - |   41 | `		/* Included file,log compile-time errors */` |
 |     9147 |   42 | `		xErr = pVm->pEngine->xConf.xErr;` |
 |     9147 |   43 | `		pErrData = pVm->pEngine->xConf.pErrData;` |
@@ -56,27 +56,27 @@ Coverage: 435/517 lines (84.14%)
 |        - |   46 | `	 * was reached from inside it (an autoload fired while resolving a base class).` |
 |        - |   47 | `	 * Wiping the generator would corrupt that outer parse, so snapshot it and hand` |
 |        - |   48 | `	 * the nested unit a fresh one; a plain runtime eval/include just resets. */` |
-|    90935 |   49 | `	bNested = (pVm->sCodeGen.pIn != 0);` |
-|    90935 |   50 | `	if( bNested ){` |
+|    90725 |   49 | `	bNested = (pVm->sCodeGen.pIn != 0);` |
+|    90725 |   50 | `	if( bNested ){` |
 |        5 |   51 | `		PH7_CompilerSaveState(pVm,&sSavedGen,xErr,pErrData);` |
 |        3 |   52 | `	}else{` |
-|    90931 |   53 | `		PH7_ResetCodeGenerator(pVm,xErr,pErrData);` |
+|    90721 |   53 | `		PH7_ResetCodeGenerator(pVm,xErr,pErrData);` |
 |        - |   54 | `	}` |
 |        - |   55 | `	/* Save and reset VM namespace state for the new compilation unit.` |
 |        - |   56 | `	 * Each included file has its own namespace scope; after execution,` |
 |        - |   57 | `	 * the caller's namespace is restored. */` |
-|    90935 |   58 | `	SyBlobInit(&sSavedNs,&pVm->sAllocator);` |
-|    90935 |   59 | `	SyBlobDup(&pVm->sNamespace,&sSavedNs);` |
-|    90935 |   60 | `	if( bTrueReturn ){` |
+|    90725 |   58 | `	SyBlobInit(&sSavedNs,&pVm->sAllocator);` |
+|    90725 |   59 | `	SyBlobDup(&pVm->sNamespace,&sSavedNs);` |
+|    90725 |   60 | `	if( bTrueReturn ){` |
 |        - |   61 | `		/* Include/require: start in a fresh (global) namespace scope. */` |
 |     9147 |   62 | `		SyBlobReset(&pVm->sNamespace);` |
 |     4572 |   63 | `	}` |
 |        - |   64 | `	/* Swap bytecode container */` |
-|    90935 |   65 | `	pByteCode = pVm->pByteContainer;` |
-|    90935 |   66 | `	pVm->pByteContainer = &aByteCode;` |
+|    90725 |   65 | `	pByteCode = pVm->pByteContainer;` |
+|    90725 |   66 | `	pVm->pByteContainer = &aByteCode;` |
 |        - |   67 | `	/* Compile the chunk */` |
-|    90935 |   68 | `	PH7_CompileScript(pVm,pChunk,iFlags);` |
-|   136399 |   69 | `	if( pVm->sCodeGen.nErr > 0 ){` |
+|    90725 |   68 | `	PH7_CompileScript(pVm,pChunk,iFlags);` |
+|   136084 |   69 | `	if( pVm->sCodeGen.nErr > 0 ){` |
 |        - |   70 | `		/* Compilation error,return false */` |
 |        3 |   71 | `		if( pCtx ){` |
 |        3 |   72 | `			ph7_result_bool(pCtx,0);` |
@@ -92,7 +92,7 @@ Coverage: 435/517 lines (84.14%)
 |        - |   82 | `		ph7_class *pClass;` |
 |        - |   83 | `		ph7_value sResult; /* Return value */` |
 |        - |   84 | `		sxi32 rc;` |
-|    90933 |   85 | `		if( pVm->nMagic != PH7_VM_INIT ){` |
+|    90723 |   85 | `		if( pVm->nMagic != PH7_VM_INIT ){` |
 |     9243 |   86 | `			SyHashResetLoopCursor(&pVm->hClass);` |
 |  2427414 |   87 | `			while((pEntry = SyHashGetNextEntry(&pVm->hClass)) != 0 ){` |
 |  2413559 |   88 | `				pClass = (ph7_class *)pEntry->pUserData;` |
@@ -109,56 +109,56 @@ Coverage: 435/517 lines (84.14%)
 |   122628 |   99 | `				}` |
 |        5 |  100 | `			}` |
 |     4618 |  101 | `		}` |
-|    90931 |  102 | `		if( SXRET_OK != PH7_VmEmitInstr(pVm,PH7_OP_DONE,0,0,0,0) ){` |
+|    90721 |  102 | `		if( SXRET_OK != PH7_VmEmitInstr(pVm,PH7_OP_DONE,0,0,0,0) ){` |
 |        - |  103 | `			/* Out of memory */` |
 |      ! 0 |  104 | `			if( pCtx ){` |
 |      ! 0 |  105 | `				ph7_result_bool(pCtx,0);` |
 |      ! 0 |  106 | `			}` |
 |      ! 0 |  107 | `			goto Cleanup;` |
 |        - |  108 | `		}` |
-|    90931 |  109 | `		if( bTrueReturn ){` |
+|    90721 |  109 | `		if( bTrueReturn ){` |
 |        - |  110 | `			/* Assume a boolean true return value */` |
 |     9147 |  111 | `			PH7_MemObjInitFromBool(pVm,&sResult,1);` |
 |     4575 |  112 | `		}else{` |
 |        - |  113 | `			/* Assume a null return value */` |
-|    81787 |  114 | `			PH7_MemObjInit(pVm,&sResult);` |
+|    81577 |  114 | `			PH7_MemObjInit(pVm,&sResult);` |
 |        - |  115 | `		}` |
 |        - |  116 | `		/* Execute the compiled chunk. eval()/include/require recurse in C here` |
 |        - |  117 | `		 * (VmLocalExec -> VmByteCodeExec) — a native re-entry bounded by` |
 |        - |  118 | `		 * nMaxNativeDepth in the wrapper, so a recursive include/eval hits the` |
 |        - |  119 | `		 * native-nesting fatal instead of overflowing the C stack. The PHP` |
 |        - |  120 | `		 * call-depth cap is OP_CALL-only (BYTECODE.md stage 5). */` |
-|    90931 |  121 | `		VmLocalExec(pVm,&aByteCode,&sResult,FALSE);` |
-|    90931 |  122 | `		if( pCtx ){` |
+|    90721 |  121 | `		VmLocalExec(pVm,&aByteCode,&sResult,FALSE);` |
+|    90721 |  122 | `		if( pCtx ){` |
 |        - |  123 | `			/* Set the execution result */` |
 |     9241 |  124 | `			ph7_result_value(pCtx,&sResult);` |
 |     4618 |  125 | `		}` |
-|    90931 |  126 | `		PH7_MemObjRelease(&sResult);` |
+|    90721 |  126 | `		PH7_MemObjRelease(&sResult);` |
 |        - |  127 | `	}` |
-|    45465 |  128 | `Cleanup:` |
+|    45360 |  128 | `Cleanup:` |
 |        - |  129 | `	/* Cleanup the mess left behind */` |
-|    90935 |  130 | `	pVm->pByteContainer = pByteCode;` |
-|    90935 |  131 | `	SySetRelease(&aByteCode);` |
+|    90725 |  130 | `	pVm->pByteContainer = pByteCode;` |
+|    90725 |  131 | `	SySetRelease(&aByteCode);` |
 |        - |  132 | `	/* Restore caller's namespace state */` |
-|    90935 |  133 | `	SyBlobReset(&pVm->sNamespace);` |
-|    90935 |  134 | `	SyBlobDup(&sSavedNs,&pVm->sNamespace);` |
-|    90935 |  135 | `	SyBlobRelease(&sSavedNs);` |
+|    90725 |  133 | `	SyBlobReset(&pVm->sNamespace);` |
+|    90725 |  134 | `	SyBlobDup(&sSavedNs,&pVm->sNamespace);` |
+|    90725 |  135 | `	SyBlobRelease(&sSavedNs);` |
 |        - |  136 | `	/* Restore the outer compile's generator state if this was a nested unit. */` |
-|    90935 |  137 | `	if( bNested ){` |
+|    90725 |  137 | `	if( bNested ){` |
 |        5 |  138 | `		PH7_CompilerRestoreState(pVm,&sSavedGen);` |
 |        2 |  139 | `	}` |
-|    90935 |  140 | `	return SXRET_OK;` |
+|    90725 |  140 | `	return SXRET_OK;` |
 |        5 |  141 | `}` |
 |        - |  142 | `/*` |
 |        - |  143 | ` * Compile an embedded builtin PHP chunk into the VM. Thin exported wrapper` |
 |        - |  144 | ` * around the static VmEvalChunk for builtin libraries that live outside` |
 |        - |  145 | ` * this file (e.g. the Reflection classes in vm_builtin_reflection.c).` |
 |        - |  146 | ` */` |
-|    73910 |  147 | `PH7_PRIVATE sxi32 PH7_VmEvalBuiltinChunk(ph7_vm *pVm,const char *zSrc,sxu32 nLen)` |
+|    73720 |  147 | `PH7_PRIVATE sxi32 PH7_VmEvalBuiltinChunk(ph7_vm *pVm,const char *zSrc,sxu32 nLen)` |
 |        5 |  148 | `{` |
 |        - |  149 | `	SyString sChunk;` |
-|    73915 |  150 | `	SyStringInitFromBuf(&sChunk,zSrc,nLen);` |
-|    73915 |  151 | `	return VmEvalChunk(&(*pVm),0,&sChunk,PH7_PHP_ONLY,FALSE);` |
+|    73725 |  150 | `	SyStringInitFromBuf(&sChunk,zSrc,nLen);` |
+|    73725 |  151 | `	return VmEvalChunk(&(*pVm),0,&sChunk,PH7_PHP_ONLY,FALSE);` |
 |        5 |  152 | `}` |
 |        - |  153 | `/*` |
 |        - |  154 | ` * value eval(string $code)` |
@@ -213,17 +213,17 @@ Coverage: 435/517 lines (84.14%)
 |        - |  203 | `/*` |
 |        - |  204 | ` * Push a file path in the appropriate VM container.` |
 |        - |  205 | ` */` |
-|    13046 |  206 | `PH7_PRIVATE sxi32 PH7_VmPushFilePath(ph7_vm *pVm,const char *zPath,int nLen,sxu8 bMain,sxi32 *pNew)` |
+|    13036 |  206 | `PH7_PRIVATE sxi32 PH7_VmPushFilePath(ph7_vm *pVm,const char *zPath,int nLen,sxu8 bMain,sxi32 *pNew)` |
 |        5 |  207 | `{` |
 |        - |  208 | `	SyString sPath;` |
 |        - |  209 | `	char *zDup;` |
 |        - |  210 | `	sxi32 rc;` |
-|    13051 |  211 | `	if( nLen < 0 ){` |
-|     3895 |  212 | `		nLen = SyStrlen(zPath);` |
-|     1945 |  213 | `	}` |
+|    13041 |  211 | `	if( nLen < 0 ){` |
+|     3885 |  212 | `		nLen = SyStrlen(zPath);` |
+|     1940 |  213 | `	}` |
 |        - |  214 | `	/* Duplicate the file path first */` |
-|    13051 |  215 | `	zDup = SyMemBackendStrDup(&pVm->sAllocator,zPath,nLen);` |
-|    13051 |  216 | `	if( zDup == 0 ){` |
+|    13041 |  215 | `	zDup = SyMemBackendStrDup(&pVm->sAllocator,zPath,nLen);` |
+|    13041 |  216 | `	if( zDup == 0 ){` |
 |      ! 0 |  217 | `		return SXERR_MEM;` |
 |        - |  218 | `	}` |
 |        - |  219 | `#ifdef __UNIXES__` |
@@ -233,17 +233,17 @@ Coverage: 435/517 lines (84.14%)
 |        - |  223 | `	 * the raw path (eval'd code, php:///data:// wrappers, a missing include that` |
 |        - |  224 | `	 * errors elsewhere). */` |
 |        - |  225 | `	{` |
-|    13046 |  226 | `		char *zReal = realpath(zDup,0); /* POSIX: malloc'd result */` |
-|    13046 |  227 | `		if( zReal ){` |
-|    13010 |  228 | `			sxu32 nReal = SyStrlen(zReal);` |
-|    13010 |  229 | `			char *zRealDup = SyMemBackendStrDup(&pVm->sAllocator,zReal,nReal);` |
-|    13010 |  230 | `			free(zReal);` |
-|    13010 |  231 | `			if( zRealDup ){` |
-|    13010 |  232 | `				SyMemBackendFree(&pVm->sAllocator,zDup);` |
-|    13010 |  233 | `				zDup = zRealDup;` |
-|    13010 |  234 | `				nLen = (int)nReal;` |
-|     6505 |  235 | `			}` |
-|     6505 |  236 | `		}` |
+|    13036 |  226 | `		char *zReal = realpath(zDup,0); /* POSIX: malloc'd result */` |
+|    13036 |  227 | `		if( zReal ){` |
+|    13000 |  228 | `			sxu32 nReal = SyStrlen(zReal);` |
+|    13000 |  229 | `			char *zRealDup = SyMemBackendStrDup(&pVm->sAllocator,zReal,nReal);` |
+|    13000 |  230 | `			free(zReal);` |
+|    13000 |  231 | `			if( zRealDup ){` |
+|    13000 |  232 | `				SyMemBackendFree(&pVm->sAllocator,zDup);` |
+|    13000 |  233 | `				zDup = zRealDup;` |
+|    13000 |  234 | `				nLen = (int)nReal;` |
+|     6500 |  235 | `			}` |
+|     6500 |  236 | `		}` |
 |        - |  237 | `	}` |
 |        - |  238 | `#endif` |
 |        - |  239 | `#ifdef __WINNT__` |
@@ -270,8 +270,8 @@ Coverage: 435/517 lines (84.14%)
 |        - |  260 | `	}` |
 |        - |  261 | `#endif` |
 |        - |  262 | `	/* Install the file path */` |
-|    13051 |  263 | `	SyStringInitFromBuf(&sPath,zDup,nLen);` |
-|    13051 |  264 | `	if( !bMain ){` |
+|    13041 |  263 | `	SyStringInitFromBuf(&sPath,zDup,nLen);` |
+|    13041 |  264 | `	if( !bMain ){` |
 |     9159 |  265 | `		if( VmIsIncludedFile(&(*pVm),&sPath) ){` |
 |        - |  266 | `			/* Already included */` |
 |       16 |  267 | `			*pNew = 0;` |
@@ -285,9 +285,9 @@ Coverage: 435/517 lines (84.14%)
 |     9145 |  275 | `			*pNew = 1;` |
 |        - |  276 | `		}` |
 |     4578 |  277 | `	}` |
-|    13051 |  278 | `	SySetPut(&pVm->aFiles,(const void *)&sPath);` |
-|    13051 |  279 | `	return SXRET_OK;` |
-|     6528 |  280 | `}` |
+|    13041 |  278 | `	SySetPut(&pVm->aFiles,(const void *)&sPath);` |
+|    13041 |  279 | `	return SXRET_OK;` |
+|     6523 |  280 | `}` |
 |        - |  281 | `/*` |
 |        - |  282 | ` * Compile and Execute a PHP script at run-time.` |
 |        - |  283 | ` * SXRET_OK is returned on sucessful evaluation.Any other return values` |

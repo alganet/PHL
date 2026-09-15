@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 632/702 lines (90.03%)
+Coverage: 633/703 lines (90.04%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -1210,164 +1210,168 @@ Coverage: 632/702 lines (90.03%)
 |    3 | 1200 | `		break;` |
 |    1 | 1201 | `	default:` |
 |    - | 1202 | `		/* unknown format,throw a warning */` |
-|    3 | 1203 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Unknown date format token");` |
-|    2 | 1204 | `		break;` |
-|    - | 1205 | `	}` |
-|    - | 1206 | `	/* Return the time value */` |
-|   40 | 1207 | `	ph7_result_int64(pCtx,iVal);` |
-|   40 | 1208 | `	return PH7_OK;` |
-|   21 | 1209 | `}` |
-|    - | 1210 | `/*` |
-|    - | 1211 | ` * int mktime/gmmktime([ int $hour = date("H") [, int $minute = date("i") [, int $second = date("s")` |
-|    - | 1212 | ` *  [, int $month = date("n") [, int $day = date("j") [, int $year = date("Y") [, int $is_dst = -1 ]]]]]]] )` |
-|    - | 1213 | ` *  Returns the Unix timestamp corresponding to the arguments given. This timestamp is a 64bit integer` |
-|    - | 1214 | ` *  containing the number of seconds between the Unix Epoch (January 1 1970 00:00:00 GMT) and the time` |
-|    - | 1215 | ` *  specified.` |
-|    - | 1216 | ` *  Arguments may be left out in order from right to left; any arguments thus omitted will be set to` |
-|    - | 1217 | ` *  the current value according to the local date and time.` |
-|    - | 1218 | ` * Parameters` |
-|    - | 1219 | ` * $hour` |
-|    - | 1220 | ` *  The number of the hour relevant to the start of the day determined by month, day and year.` |
-|    - | 1221 | ` *  Negative values reference the hour before midnight of the day in question. Values greater` |
-|    - | 1222 | ` *  than 23 reference the appropriate hour in the following day(s).` |
-|    - | 1223 | ` * $minute` |
-|    - | 1224 | ` *  The number of the minute relevant to the start of the hour. Negative values reference` |
-|    - | 1225 | ` *  the minute in the previous hour. Values greater than 59 reference the appropriate minute` |
-|    - | 1226 | ` *  in the following hour(s).` |
-|    - | 1227 | ` * $second` |
-|    - | 1228 | ` *  The number of seconds relevant to the start of the minute. Negative values reference` |
-|    - | 1229 | ` *  the second in the previous minute. Values greater than 59 reference the appropriate` |
-|    - | 1230 | ` * second in the following minute(s).` |
-|    - | 1231 | ` * $month` |
-|    - | 1232 | ` *  The number of the month relevant to the end of the previous year. Values 1 to 12 reference` |
-|    - | 1233 | ` *  the normal calendar months of the year in question. Values less than 1 (including negative values)` |
-|    - | 1234 | ` *  reference the months in the previous year in reverse order, so 0 is December, -1 is November)...` |
-|    - | 1235 | ` * $day` |
-|    - | 1236 | ` *  The number of the day relevant to the end of the previous month. Values 1 to 28, 29, 30 or 31` |
-|    - | 1237 | ` *  (depending upon the month) reference the normal days in the relevant month. Values less than 1` |
-|    - | 1238 | ` *  (including negative values) reference the days in the previous month, so 0 is the last day` |
-|    - | 1239 | ` *  of the previous month, -1 is the day before that, etc. Values greater than the number of days` |
-|    - | 1240 | ` *  in the relevant month reference the appropriate day in the following month(s).` |
-|    - | 1241 | ` * $year` |
-|    - | 1242 | ` *  The number of the year, may be a two or four digit value, with values between 0-69 mapping` |
-|    - | 1243 | ` *  to 2000-2069 and 70-100 to 1970-2000. On systems where time_t is a 32bit signed integer, as` |
-|    - | 1244 | ` *  most common today, the valid range for year is somewhere between 1901 and 2038.` |
-|    - | 1245 | ` * $is_dst` |
-|    - | 1246 | ` *  This parameter can be set to 1 if the time is during daylight savings time (DST), 0 if it is not,` |
-|    - | 1247 | ` *  or -1 (the default) if it is unknown whether the time is within daylight savings time or not.` |
-|    - | 1248 | ` * Return` |
-|    - | 1249 | ` *   mktime() returns the Unix timestamp of the arguments given.` |
-|    - | 1250 | ` *   If the arguments are invalid, the function returns FALSE` |
-|    - | 1251 | ` */` |
-|   44 | 1252 | `PH7_PRIVATE int PH7_builtin_mktime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 | 1253 | `{` |
-|    - | 1254 | `	const char *zFunction;` |
-|    - | 1255 | `	ph7_int64 iVal;` |
-|    - | 1256 | `	sxi64 h,mi,s,mo,d,y,yAdj;` |
-|    - | 1257 | `	int moN;` |
-|    - | 1258 | `	struct tm *pTm;` |
-|    - | 1259 | `	time_t t;` |
-|    - | 1260 | `	/* Extract function name */` |
-|   45 | 1261 | `	zFunction = ph7_function_name(pCtx);` |
-|    - | 1262 | `	/* PHP 8 dropped the legacy $is_dst 7th parameter: mktime()/gmmktime() now` |
-|    - | 1263 | `	 * accept at most 6 arguments and throw a catchable ArgumentCountError` |
-|    - | 1264 | `	 * otherwise (the central aBuiltinArity table only enforces the minimum, so` |
-|    - | 1265 | `	 * this maximum is checked here). */` |
-|   45 | 1266 | `	if( nArg > 6 ){` |
-|   10 | 1267 | `		return PH7_VmThrowException(pCtx,"ArgumentCountError",` |
-|    3 | 1268 | `			"%s() expects at most 6 arguments, %d given",zFunction,nArg);` |
-|    - | 1269 | `	}` |
-|   39 | 1270 | `	if( nArg < 1 ){` |
-|  ! 0 | 1271 | `		return PH7_VmThrowException(pCtx,"ArgumentCountError",` |
-|  ! 0 | 1272 | `			"%s() expects at least 1 argument, 0 given",zFunction);` |
+|    3 | 1203 | `		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Unrecognized date format token");` |
+|    - | 1204 | `		/* php returns FALSE for an unrecognized token, not 0 — the two are` |
+|    - | 1205 | ``		 * distinguishable (`idate($t) === false` is the documented check) and`` |
+|    - | 1206 | `		 * 0 is a legitimate result for several real tokens. */` |
+|    3 | 1207 | `		ph7_result_bool(pCtx,0);` |
+|    3 | 1208 | `		return PH7_OK;` |
+|    - | 1209 | `	}` |
+|    - | 1210 | `	/* Return the time value */` |
+|   37 | 1211 | `	ph7_result_int64(pCtx,iVal);` |
+|   37 | 1212 | `	return PH7_OK;` |
+|   21 | 1213 | `}` |
+|    - | 1214 | `/*` |
+|    - | 1215 | ` * int mktime/gmmktime([ int $hour = date("H") [, int $minute = date("i") [, int $second = date("s")` |
+|    - | 1216 | ` *  [, int $month = date("n") [, int $day = date("j") [, int $year = date("Y") [, int $is_dst = -1 ]]]]]]] )` |
+|    - | 1217 | ` *  Returns the Unix timestamp corresponding to the arguments given. This timestamp is a 64bit integer` |
+|    - | 1218 | ` *  containing the number of seconds between the Unix Epoch (January 1 1970 00:00:00 GMT) and the time` |
+|    - | 1219 | ` *  specified.` |
+|    - | 1220 | ` *  Arguments may be left out in order from right to left; any arguments thus omitted will be set to` |
+|    - | 1221 | ` *  the current value according to the local date and time.` |
+|    - | 1222 | ` * Parameters` |
+|    - | 1223 | ` * $hour` |
+|    - | 1224 | ` *  The number of the hour relevant to the start of the day determined by month, day and year.` |
+|    - | 1225 | ` *  Negative values reference the hour before midnight of the day in question. Values greater` |
+|    - | 1226 | ` *  than 23 reference the appropriate hour in the following day(s).` |
+|    - | 1227 | ` * $minute` |
+|    - | 1228 | ` *  The number of the minute relevant to the start of the hour. Negative values reference` |
+|    - | 1229 | ` *  the minute in the previous hour. Values greater than 59 reference the appropriate minute` |
+|    - | 1230 | ` *  in the following hour(s).` |
+|    - | 1231 | ` * $second` |
+|    - | 1232 | ` *  The number of seconds relevant to the start of the minute. Negative values reference` |
+|    - | 1233 | ` *  the second in the previous minute. Values greater than 59 reference the appropriate` |
+|    - | 1234 | ` * second in the following minute(s).` |
+|    - | 1235 | ` * $month` |
+|    - | 1236 | ` *  The number of the month relevant to the end of the previous year. Values 1 to 12 reference` |
+|    - | 1237 | ` *  the normal calendar months of the year in question. Values less than 1 (including negative values)` |
+|    - | 1238 | ` *  reference the months in the previous year in reverse order, so 0 is December, -1 is November)...` |
+|    - | 1239 | ` * $day` |
+|    - | 1240 | ` *  The number of the day relevant to the end of the previous month. Values 1 to 28, 29, 30 or 31` |
+|    - | 1241 | ` *  (depending upon the month) reference the normal days in the relevant month. Values less than 1` |
+|    - | 1242 | ` *  (including negative values) reference the days in the previous month, so 0 is the last day` |
+|    - | 1243 | ` *  of the previous month, -1 is the day before that, etc. Values greater than the number of days` |
+|    - | 1244 | ` *  in the relevant month reference the appropriate day in the following month(s).` |
+|    - | 1245 | ` * $year` |
+|    - | 1246 | ` *  The number of the year, may be a two or four digit value, with values between 0-69 mapping` |
+|    - | 1247 | ` *  to 2000-2069 and 70-100 to 1970-2000. On systems where time_t is a 32bit signed integer, as` |
+|    - | 1248 | ` *  most common today, the valid range for year is somewhere between 1901 and 2038.` |
+|    - | 1249 | ` * $is_dst` |
+|    - | 1250 | ` *  This parameter can be set to 1 if the time is during daylight savings time (DST), 0 if it is not,` |
+|    - | 1251 | ` *  or -1 (the default) if it is unknown whether the time is within daylight savings time or not.` |
+|    - | 1252 | ` * Return` |
+|    - | 1253 | ` *   mktime() returns the Unix timestamp of the arguments given.` |
+|    - | 1254 | ` *   If the arguments are invalid, the function returns FALSE` |
+|    - | 1255 | ` */` |
+|   44 | 1256 | `PH7_PRIVATE int PH7_builtin_mktime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1 | 1257 | `{` |
+|    - | 1258 | `	const char *zFunction;` |
+|    - | 1259 | `	ph7_int64 iVal;` |
+|    - | 1260 | `	sxi64 h,mi,s,mo,d,y,yAdj;` |
+|    - | 1261 | `	int moN;` |
+|    - | 1262 | `	struct tm *pTm;` |
+|    - | 1263 | `	time_t t;` |
+|    - | 1264 | `	/* Extract function name */` |
+|   45 | 1265 | `	zFunction = ph7_function_name(pCtx);` |
+|    - | 1266 | `	/* PHP 8 dropped the legacy $is_dst 7th parameter: mktime()/gmmktime() now` |
+|    - | 1267 | `	 * accept at most 6 arguments and throw a catchable ArgumentCountError` |
+|    - | 1268 | `	 * otherwise (the central aBuiltinArity table only enforces the minimum, so` |
+|    - | 1269 | `	 * this maximum is checked here). */` |
+|   45 | 1270 | `	if( nArg > 6 ){` |
+|   10 | 1271 | `		return PH7_VmThrowException(pCtx,"ArgumentCountError",` |
+|    3 | 1272 | `			"%s() expects at most 6 arguments, %d given",zFunction,nArg);` |
 |    - | 1273 | `	}` |
-|    - | 1274 | `	/* Missing components default from the current time in php's default` |
-|    - | 1275 | `	 * timezone. PHL's date_default_timezone_set() only accepts UTC/GMT (no tz` |
-|    - | 1276 | `	 * database), so mktime() and gmmktime() agree and both read gmtime(). */` |
-|   39 | 1277 | `	time(&t);` |
-|   39 | 1278 | `	pTm = gmtime(&t);` |
-|   19 | 1279 | `	SXUNUSED(zFunction);` |
-|   39 | 1280 | `	h  = pTm->tm_hour;` |
-|   39 | 1281 | `	mi = pTm->tm_min;` |
-|   39 | 1282 | `	s  = pTm->tm_sec;` |
-|   39 | 1283 | `	mo = pTm->tm_mon + 1;` |
-|   39 | 1284 | `	d  = pTm->tm_mday;` |
-|   39 | 1285 | `	y  = pTm->tm_year + 1900;` |
-|   39 | 1286 | `	h = ph7_value_to_int64(apArg[0]);` |
-|   39 | 1287 | `	if( nArg > 1 ){` |
-|   39 | 1288 | `		mi = ph7_value_to_int64(apArg[1]);` |
-|   39 | 1289 | `		if( nArg > 2 ){` |
-|   39 | 1290 | `			s = ph7_value_to_int64(apArg[2]);` |
-|   39 | 1291 | `			if( nArg > 3 ){` |
-|   39 | 1292 | `				mo = ph7_value_to_int64(apArg[3]);` |
-|   39 | 1293 | `				if( nArg > 4 ){` |
-|   39 | 1294 | `					d = ph7_value_to_int64(apArg[4]);` |
-|   39 | 1295 | `					if( nArg > 5 ){` |
-|    - | 1296 | `						/* php's legacy two-digit mapping: 0-69 -> 2000-2069,` |
-|    - | 1297 | `						 * 70-100 -> 1970-2000; anything else is verbatim */` |
-|   39 | 1298 | `						y = ph7_value_to_int64(apArg[5]);` |
-|   39 | 1299 | `						if( y >= 0 && y <= 69 ){` |
-|    7 | 1300 | `							y += 2000;` |
-|   36 | 1301 | `						}else if( y >= 70 && y <= 100 ){` |
-|    5 | 1302 | `							y += 1900;` |
-|    2 | 1303 | `						}` |
-|   19 | 1304 | `					}` |
-|   19 | 1305 | `				}` |
-|   19 | 1306 | `			}` |
-|   19 | 1307 | `		}` |
-|   19 | 1308 | `	}` |
-|    - | 1309 | `	/* Normalize the month with floor semantics, then let day/time components` |
-|    - | 1310 | `	 * overflow linearly (php: mktime(25,-30,0,1,1,2024) == Jan 2 00:30). */` |
-|   39 | 1311 | `	yAdj = y + DtFloorDiv(mo - 1,12);` |
-|   39 | 1312 | `	moN  = (int)(mo - 1 - DtFloorDiv(mo - 1,12) * 12) + 1;` |
-|   39 | 1313 | `	iVal = (DtDaysFromCivil(yAdj,moN,1) + (d - 1)) * 86400 + h*3600 + mi*60 + s;` |
-|    - | 1314 | `	/* Return the timestamp as a 64bit integer */` |
-|   39 | 1315 | `	ph7_result_int64(pCtx,iVal);` |
-|   39 | 1316 | `	return PH7_OK;` |
-|   23 | 1317 | `}` |
-|    - | 1318 | `/*` |
-|    - | 1319 | ` * string date_default_timezone_get(void)` |
-|    - | 1320 | ` *  Gets the default timezone used by all date/time functions in a script.` |
-|    - | 1321 | ` */` |
-|    4 | 1322 | `PH7_PRIVATE int PH7_builtin_date_default_timezone_get(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 | 1323 | `{` |
-|    5 | 1324 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    2 | 1325 | `	SXUNUSED(nArg);` |
-|    2 | 1326 | `	SXUNUSED(apArg);` |
-|    5 | 1327 | `	ph7_result_string(pCtx,pVm->zDefTz,(int)pVm->nDefTz);` |
-|    5 | 1328 | `	return PH7_OK;` |
-|    1 | 1329 | `}` |
-|    - | 1330 | `/*` |
-|    - | 1331 | ` * bool date_default_timezone_set(string $timezoneId)` |
-|    - | 1332 | ` *  Sets the default timezone used by all date/time functions in a script.` |
-|    - | 1333 | ` *  php validates against the tz database and stores the id verbatim (get()` |
-|    - | 1334 | ` *  echoes back "utc" if that's what was set). PHL ships no tz database, so` |
-|    - | 1335 | ` *  only UTC and GMT are accepted; every other id — including region names php` |
-|    - | 1336 | ` *  would accept — is rejected with php's invalid-id notice (recorded scope cut).` |
-|    - | 1337 | ` */` |
-|   24 | 1338 | `PH7_PRIVATE int PH7_builtin_date_default_timezone_set(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 | 1339 | `{` |
-|   25 | 1340 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    - | 1341 | `	const char *zId;` |
-|    - | 1342 | `	int nId;` |
-|   25 | 1343 | `	if( nArg < 1 ){` |
-|  ! 0 | 1344 | `		ph7_result_bool(pCtx,0);` |
-|  ! 0 | 1345 | `		return PH7_OK;` |
-|    - | 1346 | `	}` |
-|   25 | 1347 | `	zId = ph7_value_to_string(apArg[0],&nId);` |
-|   25 | 1348 | `	if( nId == 3 && (SyStrnicmp(zId,"UTC",3) == 0 \|\| SyStrnicmp(zId,"GMT",3) == 0) ){` |
-|   25 | 1349 | `		SyMemcpy(zId,pVm->zDefTz,3);` |
-|   25 | 1350 | `		pVm->zDefTz[3] = 0;` |
-|   25 | 1351 | `		pVm->nDefTz = 3;` |
-|   25 | 1352 | `		ph7_result_bool(pCtx,1);` |
-|   25 | 1353 | `		return PH7_OK;` |
-|    - | 1354 | `	}` |
-|    - | 1355 | `	/* ph7_context_throw_error_format prepends "date_default_timezone_set(): "` |
-|    - | 1356 | `	 * — exactly php's notice shape here */` |
-|  ! 0 | 1357 | `	ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,"Timezone ID '%.*s' is invalid",nId,zId);` |
-|  ! 0 | 1358 | `	ph7_result_bool(pCtx,0);` |
-|  ! 0 | 1359 | `	return PH7_OK;` |
-|   13 | 1360 | `}` |
-|    - | 1361 |  |
-|    - | 1362 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
-|    - | 1363 |  |
+|   39 | 1274 | `	if( nArg < 1 ){` |
+|  ! 0 | 1275 | `		return PH7_VmThrowException(pCtx,"ArgumentCountError",` |
+|  ! 0 | 1276 | `			"%s() expects at least 1 argument, 0 given",zFunction);` |
+|    - | 1277 | `	}` |
+|    - | 1278 | `	/* Missing components default from the current time in php's default` |
+|    - | 1279 | `	 * timezone. PHL's date_default_timezone_set() only accepts UTC/GMT (no tz` |
+|    - | 1280 | `	 * database), so mktime() and gmmktime() agree and both read gmtime(). */` |
+|   39 | 1281 | `	time(&t);` |
+|   39 | 1282 | `	pTm = gmtime(&t);` |
+|   19 | 1283 | `	SXUNUSED(zFunction);` |
+|   39 | 1284 | `	h  = pTm->tm_hour;` |
+|   39 | 1285 | `	mi = pTm->tm_min;` |
+|   39 | 1286 | `	s  = pTm->tm_sec;` |
+|   39 | 1287 | `	mo = pTm->tm_mon + 1;` |
+|   39 | 1288 | `	d  = pTm->tm_mday;` |
+|   39 | 1289 | `	y  = pTm->tm_year + 1900;` |
+|   39 | 1290 | `	h = ph7_value_to_int64(apArg[0]);` |
+|   39 | 1291 | `	if( nArg > 1 ){` |
+|   39 | 1292 | `		mi = ph7_value_to_int64(apArg[1]);` |
+|   39 | 1293 | `		if( nArg > 2 ){` |
+|   39 | 1294 | `			s = ph7_value_to_int64(apArg[2]);` |
+|   39 | 1295 | `			if( nArg > 3 ){` |
+|   39 | 1296 | `				mo = ph7_value_to_int64(apArg[3]);` |
+|   39 | 1297 | `				if( nArg > 4 ){` |
+|   39 | 1298 | `					d = ph7_value_to_int64(apArg[4]);` |
+|   39 | 1299 | `					if( nArg > 5 ){` |
+|    - | 1300 | `						/* php's legacy two-digit mapping: 0-69 -> 2000-2069,` |
+|    - | 1301 | `						 * 70-100 -> 1970-2000; anything else is verbatim */` |
+|   39 | 1302 | `						y = ph7_value_to_int64(apArg[5]);` |
+|   39 | 1303 | `						if( y >= 0 && y <= 69 ){` |
+|    7 | 1304 | `							y += 2000;` |
+|   36 | 1305 | `						}else if( y >= 70 && y <= 100 ){` |
+|    5 | 1306 | `							y += 1900;` |
+|    2 | 1307 | `						}` |
+|   19 | 1308 | `					}` |
+|   19 | 1309 | `				}` |
+|   19 | 1310 | `			}` |
+|   19 | 1311 | `		}` |
+|   19 | 1312 | `	}` |
+|    - | 1313 | `	/* Normalize the month with floor semantics, then let day/time components` |
+|    - | 1314 | `	 * overflow linearly (php: mktime(25,-30,0,1,1,2024) == Jan 2 00:30). */` |
+|   39 | 1315 | `	yAdj = y + DtFloorDiv(mo - 1,12);` |
+|   39 | 1316 | `	moN  = (int)(mo - 1 - DtFloorDiv(mo - 1,12) * 12) + 1;` |
+|   39 | 1317 | `	iVal = (DtDaysFromCivil(yAdj,moN,1) + (d - 1)) * 86400 + h*3600 + mi*60 + s;` |
+|    - | 1318 | `	/* Return the timestamp as a 64bit integer */` |
+|   39 | 1319 | `	ph7_result_int64(pCtx,iVal);` |
+|   39 | 1320 | `	return PH7_OK;` |
+|   23 | 1321 | `}` |
+|    - | 1322 | `/*` |
+|    - | 1323 | ` * string date_default_timezone_get(void)` |
+|    - | 1324 | ` *  Gets the default timezone used by all date/time functions in a script.` |
+|    - | 1325 | ` */` |
+|    4 | 1326 | `PH7_PRIVATE int PH7_builtin_date_default_timezone_get(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1 | 1327 | `{` |
+|    5 | 1328 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    2 | 1329 | `	SXUNUSED(nArg);` |
+|    2 | 1330 | `	SXUNUSED(apArg);` |
+|    5 | 1331 | `	ph7_result_string(pCtx,pVm->zDefTz,(int)pVm->nDefTz);` |
+|    5 | 1332 | `	return PH7_OK;` |
+|    1 | 1333 | `}` |
+|    - | 1334 | `/*` |
+|    - | 1335 | ` * bool date_default_timezone_set(string $timezoneId)` |
+|    - | 1336 | ` *  Sets the default timezone used by all date/time functions in a script.` |
+|    - | 1337 | ` *  php validates against the tz database and stores the id verbatim (get()` |
+|    - | 1338 | ` *  echoes back "utc" if that's what was set). PHL ships no tz database, so` |
+|    - | 1339 | ` *  only UTC and GMT are accepted; every other id — including region names php` |
+|    - | 1340 | ` *  would accept — is rejected with php's invalid-id notice (recorded scope cut).` |
+|    - | 1341 | ` */` |
+|   24 | 1342 | `PH7_PRIVATE int PH7_builtin_date_default_timezone_set(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1 | 1343 | `{` |
+|   25 | 1344 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    - | 1345 | `	const char *zId;` |
+|    - | 1346 | `	int nId;` |
+|   25 | 1347 | `	if( nArg < 1 ){` |
+|  ! 0 | 1348 | `		ph7_result_bool(pCtx,0);` |
+|  ! 0 | 1349 | `		return PH7_OK;` |
+|    - | 1350 | `	}` |
+|   25 | 1351 | `	zId = ph7_value_to_string(apArg[0],&nId);` |
+|   25 | 1352 | `	if( nId == 3 && (SyStrnicmp(zId,"UTC",3) == 0 \|\| SyStrnicmp(zId,"GMT",3) == 0) ){` |
+|   25 | 1353 | `		SyMemcpy(zId,pVm->zDefTz,3);` |
+|   25 | 1354 | `		pVm->zDefTz[3] = 0;` |
+|   25 | 1355 | `		pVm->nDefTz = 3;` |
+|   25 | 1356 | `		ph7_result_bool(pCtx,1);` |
+|   25 | 1357 | `		return PH7_OK;` |
+|    - | 1358 | `	}` |
+|    - | 1359 | `	/* ph7_context_throw_error_format prepends "date_default_timezone_set(): "` |
+|    - | 1360 | `	 * — exactly php's notice shape here */` |
+|  ! 0 | 1361 | `	ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,"Timezone ID '%.*s' is invalid",nId,zId);` |
+|  ! 0 | 1362 | `	ph7_result_bool(pCtx,0);` |
+|  ! 0 | 1363 | `	return PH7_OK;` |
+|   13 | 1364 | `}` |
+|    - | 1365 |  |
+|    - | 1366 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
+|    - | 1367 |  |

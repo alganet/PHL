@@ -1,6 +1,6 @@
 # src/ph7/
 
-Coverage: 45523/55966 lines (81.34%)
+Coverage: 45523/55967 lines (81.34%)
 
 [Up](../index.md)
 
@@ -8,7 +8,7 @@ Coverage: 45523/55966 lines (81.34%)
 |:---|---:|---:|
 |[api.c](api.c.md)|70.51%|777/1102|
 |[builtin.c](builtin.c.md)|57.52%|195/339|
-|[builtin_date.c](builtin_date.c.md)|90.03%|632/702|
+|[builtin_date.c](builtin_date.c.md)|90.04%|633/703|
 |[builtin_date_parse.c](builtin_date_parse.c.md)|87.86%|948/1079|
 |[builtin_fmt.c](builtin_fmt.c.md)|85.10%|474/557|
 |[builtin_hash.c](builtin_hash.c.md)|87.67%|256/292|
@@ -16,7 +16,7 @@ Coverage: 45523/55966 lines (81.34%)
 |[builtin_mb.c](builtin_mb.c.md)|91.94%|479/521|
 |[builtin_parse.c](builtin_parse.c.md)|89.62%|1234/1377|
 |[builtin_string.c](builtin_string.c.md)|85.81%|2310/2692|
-|[compile.c](compile.c.md)|92.10%|1493/1621|
+|[compile.c](compile.c.md)|92.04%|1492/1621|
 |[compile_class.c](compile_class.c.md)|74.85%|2018/2696|
 |[compile_func.c](compile_func.c.md)|85.88%|870/1013|
 |[compile_literal.c](compile_literal.c.md)|89.15%|945/1060|
