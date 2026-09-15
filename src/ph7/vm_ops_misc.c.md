@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 214/248 lines (86.29%)
+Coverage: 223/257 lines (86.77%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -35,42 +35,42 @@ Coverage: 214/248 lines (86.29%)
 |      - |   25 | ` * OP_CONSUME: body moved verbatim from the OP_CONSUME arm of` |
 |      - |   26 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
 |      - |   27 | ` */` |
-|  50882 |   28 | `PH7_PRIVATE VmOpRc VmExecOpConsume(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
+|  50954 |   28 | `PH7_PRIVATE VmOpRc VmExecOpConsume(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
 |      5 |   29 | `{` |
-|  50887 |   30 | `	ph7_value *pTos = pState->pTos;` |
-|  50887 |   31 | `	ph7_value *pStack = pState->pStack;` |
-|  50887 |   32 | `	VmInstr *aInstr = pState->aInstr;` |
-|  50887 |   33 | `	sxi32 pc = pState->pc;` |
+|  50959 |   30 | `	ph7_value *pTos = pState->pTos;` |
+|  50959 |   31 | `	ph7_value *pStack = pState->pStack;` |
+|  50959 |   32 | `	VmInstr *aInstr = pState->aInstr;` |
+|  50959 |   33 | `	sxi32 pc = pState->pc;` |
 |      - |   34 | `	sxi32 rc;` |
-|  25441 |   35 | `	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
-|  50887 |   36 | `	ph7_output_consumer *pCons = &pVm->sVmConsumer;` |
-|  50887 |   37 | `	ph7_value *pCur,*pOut = pTos;` |
+|  25477 |   35 | `	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
+|  50959 |   36 | `	ph7_output_consumer *pCons = &pVm->sVmConsumer;` |
+|  50959 |   37 | `	ph7_value *pCur,*pOut = pTos;` |
 |      - |   38 |  |
-|  50887 |   39 | `	pOut = &pTos[-pInstr->iP1 + 1];` |
-|  50887 |   40 | `	pCur = pOut;` |
+|  50959 |   39 | `	pOut = &pTos[-pInstr->iP1 + 1];` |
+|  50959 |   40 | `	pCur = pOut;` |
 |      - |   41 | `	/* Start the consume process  */` |
-| 101769 |   42 | `	while( pOut <= pTos ){` |
+| 101913 |   42 | `	while( pOut <= pTos ){` |
 |      - |   43 | `		/* Force a string cast */` |
-|  50887 |   44 | `		if( (pOut->iFlags & MEMOBJ_STRING) == 0 ){` |
+|  50959 |   44 | `		if( (pOut->iFlags & MEMOBJ_STRING) == 0 ){` |
 |   3027 |   45 | `			PH7_MemObjToString(pOut);` |
 |   1511 |   46 | `		}` |
-|  50887 |   47 | `		if( SyBlobLength(&pOut->sBlob) > 0 ){` |
+|  50959 |   47 | `		if( SyBlobLength(&pOut->sBlob) > 0 ){` |
 |      - |   48 | `			/*SyBlobNullAppend(&pOut->sBlob);*/` |
 |      - |   49 | `			/* Invoke the output consumer callback */` |
-|  38313 |   50 | `			rc = pCons->xConsumer(SyBlobData(&pOut->sBlob),SyBlobLength(&pOut->sBlob),pCons->pUserData);` |
-|  38313 |   51 | `			VmTrackOutput(pVm, SyBlobLength(&pOut->sBlob));` |
-|  38313 |   52 | `			SyBlobRelease(&pOut->sBlob);` |
-|  38313 |   53 | `			if( rc == SXERR_ABORT ){` |
+|  38383 |   50 | `			rc = pCons->xConsumer(SyBlobData(&pOut->sBlob),SyBlobLength(&pOut->sBlob),pCons->pUserData);` |
+|  38383 |   51 | `			VmTrackOutput(pVm, SyBlobLength(&pOut->sBlob));` |
+|  38383 |   52 | `			SyBlobRelease(&pOut->sBlob);` |
+|  38383 |   53 | `			if( rc == SXERR_ABORT ){` |
 |      - |   54 | `				/* Output consumer callback request an operation abort. */` |
 |    ! 0 |   55 | `				VM_EXIT_ABORT;` |
 |      - |   56 | `			}` |
-|  19154 |   57 | `		}` |
-|  50887 |   58 | `		pOut++;` |
+|  19189 |   57 | `		}` |
+|  50959 |   58 | `		pOut++;` |
 |      5 |   59 | `	}` |
-|  50887 |   60 | `	pTos = &pCur[-1];` |
-|  50887 |   61 | `	VM_EXIT_BREAK;` |
+|  50959 |   60 | `	pTos = &pCur[-1];` |
+|  50959 |   61 | `	VM_EXIT_BREAK;` |
 |    ! 0 |   62 | `	VM_EXIT_BREAK;` |
-|  25446 |   63 | `}` |
+|  25482 |   63 | `}` |
 |      - |   64 |  |
 |      - |   65 | `/*` |
 |      - |   66 | ` * OP_MATCH: body moved verbatim from the OP_MATCH arm of` |
@@ -167,285 +167,308 @@ Coverage: 214/248 lines (86.29%)
 |     59 |  157 | `}` |
 |      - |  158 |  |
 |      - |  159 | `/*` |
-|      - |  160 | ` * OP_THROW: body moved verbatim from the OP_THROW arm of` |
-|      - |  161 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
-|      - |  162 | ` */` |
-|    732 |  163 | `PH7_PRIVATE VmOpRc VmExecOpThrow(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
-|      5 |  164 | `{` |
-|    737 |  165 | `	ph7_value *pTos = pState->pTos;` |
-|    737 |  166 | `	ph7_value *pStack = pState->pStack;` |
-|    737 |  167 | `	VmInstr *aInstr = pState->aInstr;` |
-|    737 |  168 | `	sxi32 pc = pState->pc;` |
-|      - |  169 | `	sxi32 rc;` |
-|    366 |  170 | `	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
-|    737 |  171 | `	VmFrame *pFrameLocal = pVm->pFrame;` |
-|    737 |  172 | `	sxu32 nJump = pInstr->iP2;` |
-|      - |  173 | `#ifdef UNTRUST` |
-|      - |  174 | `	if( pTos < pStack ){` |
-|      - |  175 | `		VM_EXIT_ABORT;` |
-|      - |  176 | `	}` |
-|      - |  177 | `#endif` |
-|    737 |  178 | `	pFrameLocal = VmSkipExceptionFrames(pFrameLocal);` |
-|      - |  179 | `	/* Tell the upper layer that an exception was thrown */` |
-|    737 |  180 | `	pFrameLocal->iFlags \|= VM_FRAME_THROW;` |
-|    737 |  181 | `	if( pTos->iFlags & MEMOBJ_OBJ ){` |
-|    737 |  182 | `		ph7_class_instance *pThis = (ph7_class_instance *)pTos->x.pOther;` |
-|      - |  183 | `		ph7_class *pThrowable;` |
-|      - |  184 | `		/* Thrown object must implement the Throwable interface (PHP 7+). */` |
-|    737 |  185 | `		pThrowable = PH7_VmExtractClass(&(*pVm),"Throwable",sizeof("Throwable")-1,FALSE,0);` |
-|    738 |  186 | `		if( pThrowable == 0 \|\| !PH7_VmInstanceOf(pThis->pClass,pThrowable) ){` |
-|      - |  187 | `			/* Not a Throwable: replace with Error(msg) matching PHP behavior.` |
-|      - |  188 | `			 * Error::__construct is defined in the built-in library and` |
-|      - |  189 | `			 * cannot realistically fail, so we do not check its return. */` |
-|      3 |  190 | `			ph7_class *pErrorClass = PH7_VmExtractClass(&(*pVm),"Error",sizeof("Error")-1,TRUE,0);` |
-|      3 |  191 | `			ph7_class_instance *pErrInst = 0;` |
-|      3 |  192 | `			if( pErrorClass ){` |
-|      3 |  193 | `				pErrInst = PH7_NewClassInstance(&(*pVm),pErrorClass);` |
-|      1 |  194 | `			}` |
-|      3 |  195 | `			if( pErrInst ){` |
-|      - |  196 | `				ph7_class_method *pCons;` |
-|      3 |  197 | `				pCons = PH7_ClassExtractMethod(pErrorClass,"__construct",sizeof("__construct")-1);` |
-|      3 |  198 | `				if( pCons ){` |
-|      - |  199 | `					ph7_value sArg;` |
-|      - |  200 | `					ph7_value *apArg[1];` |
-|      - |  201 | `					SyString sMsgStr;` |
-|      - |  202 | `					static const char zErrMsg[] =` |
-|      - |  203 | `						"Cannot throw objects that do not implement Throwable";` |
-|      3 |  204 | `					SyStringInitFromBuf(&sMsgStr,zErrMsg,sizeof(zErrMsg)-1);` |
-|      3 |  205 | `					PH7_MemObjInit(pVm,&sArg);` |
-|      3 |  206 | `					PH7_MemObjInitFromString(pVm,&sArg,&sMsgStr);` |
-|      3 |  207 | `					apArg[0] = &sArg;` |
-|      3 |  208 | `					PH7_VmCallClassMethod(&(*pVm),pErrInst,pCons,0,1,apArg);` |
-|      3 |  209 | `					PH7_MemObjRelease(&sArg);` |
-|      1 |  210 | `				}` |
-|      3 |  211 | `				rc = VmThrowException(&(*pVm),pErrInst);` |
-|      3 |  212 | `				PH7_ClassInstanceUnref(pErrInst);` |
-|      3 |  213 | `				if( rc == SXERR_ABORT ){` |
-|    ! 0 |  214 | `					VM_EXIT_ABORT;` |
-|      - |  215 | `				}` |
-|      2 |  216 | `			}else{` |
-|      - |  217 | `				/* Bootstrap failure — fall back to uncaught reporting */` |
-|    ! 0 |  218 | `				rc = VmUncaughtException(&(*pVm),pThis);` |
-|    ! 0 |  219 | `				if( rc == SXERR_ABORT ){` |
-|    ! 0 |  220 | `					VM_EXIT_ABORT;` |
-|      - |  221 | `				}` |
-|      - |  222 | `			}` |
-|      2 |  223 | `		}else{` |
-|      - |  224 | `			/* Throw the exception */` |
-|    735 |  225 | `			rc = VmThrowException(&(*pVm),pThis);` |
-|    735 |  226 | `			if( rc == SXERR_ABORT ){` |
-|      - |  227 | `				/* Abort processing immediately */` |
-|     28 |  228 | `				VM_EXIT_ABORT;` |
-|      - |  229 | `			}` |
-|      - |  230 | `		}` |
-|    359 |  231 | `	}else{` |
-|      - |  232 | `		/* Expecting a class instance */` |
-|    ! 0 |  233 | `		VmUncaughtException(&(*pVm),0);` |
-|      - |  234 | `		/* Pre-split latent bug preserved verbatim: the original arm discarded` |
-|      - |  235 | `		 * VmUncaughtException's status and tested the dispatch loop's STALE rc` |
-|      - |  236 | `		 * (whatever the previous instruction left), which in practice was never` |
-|      - |  237 | `		 * SXERR_ABORT — so this branch effectively never aborted. Keep that` |
-|      - |  238 | `		 * de-facto behavior deterministic here; the real fix (testing the` |
-|      - |  239 | `		 * call's own status) is a recorded correctness follow-up. */` |
-|    ! 0 |  240 | `		rc = SXRET_OK;` |
-|    ! 0 |  241 | `		if( rc == SXERR_ABORT ){` |
-|      - |  242 | `			/* Abort processing immediately */` |
-|    ! 0 |  243 | `			VM_EXIT_ABORT;` |
-|      - |  244 | `		}` |
-|      - |  245 | `	}` |
-|      - |  246 | `	/* Pop the top entry */` |
-|    713 |  247 | `	VmPopOperand(&pTos,1);` |
-|      - |  248 | `	/* ROOT C: throw caught by an inline try in THIS exec -> jump to its catch/finally` |
-|      - |  249 | `	 * (draining any mid-expression operands back to the try's base). */` |
-|    713 |  250 | `	PH7_INLINE_RESUME_BREAK()` |
-|      - |  251 | `	/* pInlineInstr still set here means an inline try in an OUTER exec caught it (e.g. a` |
-|      - |  252 | ``	 * throwing sub-generator delegated via `yield from`): propagate so the owning exec lands. */`` |
-|    699 |  253 | `	if( rc == PH7_EXCEPTION \|\| pVm->pResumeFrame \|\| pVm->pInlineInstr ){` |
-|      - |  254 | ``		/* The throw was handled by a `catch` that ran IN PLACE — either this try's own`` |
-|      - |  255 | `		 * finally threw past itself superseding it (rc == PH7_EXCEPTION), or the catch` |
-|      - |  256 | `		 * sits several frames above this one (pVm->pResumeFrame recorded). Resume at the` |
-|      - |  257 | `		 * catching body's landing pad if that body is THIS exec (VmRecordedResume), else` |
-|      - |  258 | `		 * unwind so the owning exec lands. Without this a throw caught at an enclosing` |
-|      - |  259 | `		 * frame would blindly jump to nJump (this throw's lexically-nearest try) and run` |
-|      - |  260 | `		 * dead code after it (ROOT B, face a) or continue a callee as if it never threw` |
-|      - |  261 | `		 * (face c). */` |
-|      - |  262 | `		sxi32 iResumePc;` |
-|    623 |  263 | `		if( VmRecordedResume(pVm,&iResumePc,pState->pEntryFrame,aInstr) ){` |
-|    213 |  264 | `			pc = iResumePc;` |
-|    213 |  265 | `			VM_EXIT_BREAK;` |
-|      - |  266 | `		}` |
-|    415 |  267 | `		VM_EXIT_EXCEPTION;` |
+|      - |  160 | ` * Build an \Error instance carrying zMsg (or NULL when the class is` |
+|      - |  161 | ` * unavailable). Shared by OP_THROW's two "operand cannot be thrown" cases:` |
+|      - |  162 | ` * php reports a non-object as "Can only throw objects" and a non-Throwable` |
+|      - |  163 | ` * object as "Cannot throw objects that do not implement Throwable", both as` |
+|      - |  164 | ` * ordinary catchable throws. The caller hands the instance to` |
+|      - |  165 | ` * VmThrowException so the routing below sees exactly the status a normal` |
+|      - |  166 | ` * throw produces. Error::__construct comes from the built-in library and` |
+|      - |  167 | ` * cannot realistically fail, so its return is not checked.` |
+|      - |  168 | ` */` |
+|     18 |  169 | `static ph7_class_instance * VmNewThrowError(ph7_vm *pVm,const char *zMsg,sxu32 nMsg)` |
+|      2 |  170 | `{` |
+|      - |  171 | `	ph7_class *pErrorClass;` |
+|      - |  172 | `	ph7_class_instance *pErrInst;` |
+|      - |  173 | `	ph7_class_method *pCons;` |
+|     20 |  174 | `	pErrorClass = PH7_VmExtractClass(&(*pVm),"Error",sizeof("Error")-1,TRUE,0);` |
+|     20 |  175 | `	if( pErrorClass == 0 ){` |
+|    ! 0 |  176 | `		return 0;` |
+|      - |  177 | `	}` |
+|     20 |  178 | `	pErrInst = PH7_NewClassInstance(&(*pVm),pErrorClass);` |
+|     20 |  179 | `	if( pErrInst == 0 ){` |
+|    ! 0 |  180 | `		return 0;` |
+|      - |  181 | `	}` |
+|     20 |  182 | `	pCons = PH7_ClassExtractMethod(pErrorClass,"__construct",sizeof("__construct")-1);` |
+|     20 |  183 | `	if( pCons ){` |
+|      - |  184 | `		ph7_value sArg;` |
+|      - |  185 | `		ph7_value *apArg[1];` |
+|      - |  186 | `		SyString sMsgStr;` |
+|     20 |  187 | `		SyStringInitFromBuf(&sMsgStr,zMsg,nMsg);` |
+|     20 |  188 | `		PH7_MemObjInitFromString(pVm,&sArg,&sMsgStr);` |
+|     20 |  189 | `		apArg[0] = &sArg;` |
+|     20 |  190 | `		PH7_VmCallClassMethod(&(*pVm),pErrInst,pCons,0,1,apArg);` |
+|     20 |  191 | `		PH7_MemObjRelease(&sArg);` |
+|      9 |  192 | `	}` |
+|     20 |  193 | `	return pErrInst;` |
+|     11 |  194 | `}` |
+|      - |  195 | `/*` |
+|      - |  196 | ` * OP_THROW: body moved verbatim from the OP_THROW arm of` |
+|      - |  197 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
+|      - |  198 | ` */` |
+|    750 |  199 | `PH7_PRIVATE VmOpRc VmExecOpThrow(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
+|      5 |  200 | `{` |
+|    755 |  201 | `	ph7_value *pTos = pState->pTos;` |
+|    755 |  202 | `	ph7_value *pStack = pState->pStack;` |
+|    755 |  203 | `	VmInstr *aInstr = pState->aInstr;` |
+|    755 |  204 | `	sxi32 pc = pState->pc;` |
+|      - |  205 | `	sxi32 rc;` |
+|    375 |  206 | `	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
+|    755 |  207 | `	VmFrame *pFrameLocal = pVm->pFrame;` |
+|    755 |  208 | `	sxu32 nJump = pInstr->iP2;` |
+|      - |  209 | `#ifdef UNTRUST` |
+|      - |  210 | `	if( pTos < pStack ){` |
+|      - |  211 | `		VM_EXIT_ABORT;` |
+|      - |  212 | `	}` |
+|      - |  213 | `#endif` |
+|    755 |  214 | `	pFrameLocal = VmSkipExceptionFrames(pFrameLocal);` |
+|      - |  215 | `	/* Tell the upper layer that an exception was thrown */` |
+|    755 |  216 | `	pFrameLocal->iFlags \|= VM_FRAME_THROW;` |
+|    755 |  217 | `	if( pTos->iFlags & MEMOBJ_OBJ ){` |
+|    741 |  218 | `		ph7_class_instance *pThis = (ph7_class_instance *)pTos->x.pOther;` |
+|      - |  219 | `		ph7_class *pThrowable;` |
+|      - |  220 | `		/* Thrown object must implement the Throwable interface (PHP 7+). */` |
+|    741 |  221 | `		pThrowable = PH7_VmExtractClass(&(*pVm),"Throwable",sizeof("Throwable")-1,FALSE,0);` |
+|    743 |  222 | `		if( pThrowable == 0 \|\| !PH7_VmInstanceOf(pThis->pClass,pThrowable) ){` |
+|      - |  223 | `			/* Not a Throwable: replace with Error(msg) matching PHP behavior. */` |
+|      - |  224 | `			static const char zErrMsg[] =` |
+|      - |  225 | `				"Cannot throw objects that do not implement Throwable";` |
+|      6 |  226 | `			ph7_class_instance *pErrInst = VmNewThrowError(&(*pVm),zErrMsg,sizeof(zErrMsg)-1);` |
+|      6 |  227 | `			if( pErrInst ){` |
+|      6 |  228 | `				rc = VmThrowException(&(*pVm),pErrInst);` |
+|      6 |  229 | `				PH7_ClassInstanceUnref(pErrInst);` |
+|      6 |  230 | `				if( rc == SXERR_ABORT ){` |
+|    ! 0 |  231 | `					VM_EXIT_ABORT;` |
+|      - |  232 | `				}` |
+|      4 |  233 | `			}else{` |
+|      - |  234 | `				/* Bootstrap failure — fall back to uncaught reporting */` |
+|    ! 0 |  235 | `				rc = VmUncaughtException(&(*pVm),pThis);` |
+|    ! 0 |  236 | `				if( rc == SXERR_ABORT ){` |
+|    ! 0 |  237 | `					VM_EXIT_ABORT;` |
+|      - |  238 | `				}` |
+|      - |  239 | `			}` |
+|      4 |  240 | `		}else{` |
+|      - |  241 | `			/* Throw the exception */` |
+|    737 |  242 | `			rc = VmThrowException(&(*pVm),pThis);` |
+|    737 |  243 | `			if( rc == SXERR_ABORT ){` |
+|      - |  244 | `				/* Abort processing immediately */` |
+|     28 |  245 | `				VM_EXIT_ABORT;` |
+|      - |  246 | `			}` |
+|      - |  247 | `		}` |
+|    361 |  248 | `	}else{` |
+|      - |  249 | `		/* php raises a CATCHABLE Error for a non-object operand. This used to` |
+|      - |  250 | `		 * report a bogus uncaught "Exception" and then fall into the jump below,` |
+|      - |  251 | `		 * so no catch ran yet execution carried on past the try — and the branch` |
+|      - |  252 | `		 * tested a STALE rc left by the previous instruction, which is the` |
+|      - |  253 | `		 * latent bug the interpreter split surfaced. Build the same Error shape` |
+|      - |  254 | `		 * the not-Throwable case uses and let the routing below land it. */` |
+|      - |  255 | `		static const char zErrMsg[] = "Can only throw objects";` |
+|     15 |  256 | `		ph7_class_instance *pErrInst = VmNewThrowError(&(*pVm),zErrMsg,sizeof(zErrMsg)-1);` |
+|     15 |  257 | `		if( pErrInst ){` |
+|     15 |  258 | `			rc = VmThrowException(&(*pVm),pErrInst);` |
+|     15 |  259 | `			PH7_ClassInstanceUnref(pErrInst);` |
+|      8 |  260 | `		}else{` |
+|      - |  261 | `			/* Bootstrap failure — fall back to uncaught reporting */` |
+|    ! 0 |  262 | `			rc = VmUncaughtException(&(*pVm),0);` |
+|      - |  263 | `		}` |
+|     15 |  264 | `		if( rc == SXERR_ABORT ){` |
+|      - |  265 | `			/* Abort processing immediately */` |
+|    ! 0 |  266 | `			VM_EXIT_ABORT;` |
+|      - |  267 | `		}` |
 |      - |  268 | `	}` |
-|      - |  269 | `	/* No in-place catch recorded: this throw's own enclosing try caught it (the` |
-|      - |  270 | `	 * common case; its landing pad is exactly nJump). Perform an unconditional jump` |
-|      - |  271 | `	 * to the try's OP_POP_EXCEPTION landing pad, which tears down the try frame, runs` |
-|      - |  272 | ``	 * finally, and (when a catch/finally issued a `return`) materializes the body`` |
-|      - |  273 | `	 * frame's pending return. Routing the return through OP_POP_EXCEPTION keeps the` |
-|      - |  274 | `	 * frame stack balanced. */` |
-|     79 |  275 | `	pc = nJump - 1;` |
-|     79 |  276 | `	VM_EXIT_BREAK;` |
-|    ! 0 |  277 | `	VM_EXIT_BREAK;` |
-|    371 |  278 | `}` |
-|      - |  279 |  |
-|      - |  280 | `/*` |
-|      - |  281 | ` * OP_SWITCH: body moved verbatim from the OP_SWITCH arm of` |
-|      - |  282 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
-|      - |  283 | ` */` |
-|    324 |  284 | `PH7_PRIVATE VmOpRc VmExecOpSwitch(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
-|      5 |  285 | `{` |
-|    329 |  286 | `	ph7_value *pTos = pState->pTos;` |
-|    329 |  287 | `	ph7_value *pStack = pState->pStack;` |
-|    329 |  288 | `	VmInstr *aInstr = pState->aInstr;` |
-|    329 |  289 | `	sxi32 pc = pState->pc;` |
-|      - |  290 | `	sxi32 rc;` |
-|    162 |  291 | `	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
-|    329 |  292 | `	ph7_switch *pSwitch = (ph7_switch *)pInstr->p3;` |
-|      - |  293 | `	ph7_case_expr *aCase,*pCase;` |
-|      - |  294 | `	ph7_value sValue,sCaseValue;` |
-|      - |  295 | `	sxu32 n,nEntry;` |
-|      - |  296 | `#ifdef UNTRUST` |
-|      - |  297 | `	if( pSwitch == 0 \|\| pTos < pStack ){` |
-|      - |  298 | `		VM_EXIT_ABORT;` |
-|      - |  299 | `	}` |
-|      - |  300 | `#endif` |
-|      - |  301 | `	/* Point to the case table  */` |
-|    329 |  302 | `	aCase = (ph7_case_expr *)SySetBasePtr(&pSwitch->aCaseExpr);` |
-|    329 |  303 | `	nEntry = SySetUsed(&pSwitch->aCaseExpr);` |
-|      - |  304 | `	/* Select the appropriate case block to execute */` |
-|    329 |  305 | `	PH7_MemObjInit(pVm,&sValue);` |
-|    329 |  306 | `	PH7_MemObjInit(pVm,&sCaseValue);` |
-|   1211 |  307 | `	for( n = 0 ; n < nEntry ; ++n ){` |
-|   1209 |  308 | `		pCase = &aCase[n];` |
-|   1209 |  309 | `		PH7_MemObjLoad(pTos,&sValue);` |
-|      - |  310 | `		/* Execute the case expression first */` |
-|   1209 |  311 | `		VmLocalExec(pVm,&pCase->aByteCode,&sCaseValue,FALSE);` |
-|      - |  312 | `		/* Compare the two expression */` |
-|   1209 |  313 | `		rc = PH7_MemObjCmp(&sValue,&sCaseValue,FALSE,0);` |
-|   1209 |  314 | `		PH7_MemObjRelease(&sValue);` |
-|   1209 |  315 | `		PH7_MemObjRelease(&sCaseValue);` |
-|   1209 |  316 | `		if( rc == 0 ){` |
-|      - |  317 | `			/* Value match,jump to this block */` |
-|    327 |  318 | `			pc = pCase->nStart - 1;` |
-|    327 |  319 | `			break;` |
-|      - |  320 | `		}` |
-|    446 |  321 | `	}` |
-|    329 |  322 | `	VmPopOperand(&pTos,1);` |
-|    329 |  323 | `	if( n >= nEntry ){` |
-|      - |  324 | `		/* No approprite case to execute,jump to the default case */` |
-|      3 |  325 | `		if( pSwitch->nDefault > 0 ){` |
-|      3 |  326 | `			pc = pSwitch->nDefault - 1;` |
-|      2 |  327 | `		}else{` |
-|      - |  328 | `			/* No default case,jump out of this switch */` |
-|    ! 0 |  329 | `			pc = pSwitch->nOut - 1;` |
-|      - |  330 | `		}` |
-|      1 |  331 | `	}` |
-|    329 |  332 | `	VM_EXIT_BREAK;` |
-|    ! 0 |  333 | `	VM_EXIT_BREAK;` |
-|      5 |  334 | `}` |
-|      - |  335 |  |
-|      - |  336 | `/*` |
-|      - |  337 | ` * OP_CATCH: body moved verbatim from the OP_CATCH arm of` |
-|      - |  338 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
-|      - |  339 | ` */` |
-|     66 |  340 | `PH7_PRIVATE VmOpRc VmExecOpCatch(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
-|      5 |  341 | `{` |
-|     71 |  342 | `	ph7_value *pTos = pState->pTos;` |
-|     71 |  343 | `	ph7_value *pStack = pState->pStack;` |
-|     71 |  344 | `	VmInstr *aInstr = pState->aInstr;` |
-|     71 |  345 | `	sxi32 pc = pState->pc;` |
-|      - |  346 | `	sxi32 rc;` |
-|     33 |  347 | `	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
-|      - |  348 | `	/* BYTECODE stage 2b: mutable state (pInflight) lives on the LIVE activation` |
-|      - |  349 | `	 * of this try, not the compiled p3 (which VmThrowInline kept on aException` |
-|      - |  350 | `	 * marked iInCatch). Compiled fields (sEntry) are shared either way. */` |
-|     71 |  351 | `	ph7_exception *pExcC = (ph7_exception *)pInstr->p3;` |
-|     71 |  352 | `	ph7_exception *pExc = VmExcLive(&(*pVm),pExcC);` |
-|     71 |  353 | `	ph7_exception_block *pCatch = (ph7_exception_block *)SySetAt(&pExcC->sEntry,(sxu32)pInstr->iP1);` |
-|     71 |  354 | `	ph7_class_instance *pBind = pExc ? pExc->pInflight : 0;` |
-|     71 |  355 | `	VmFrame *pBody = VmSkipExceptionFrames(pVm->pFrame);` |
-|     71 |  356 | `	pBody->iFlags &= ~VM_FRAME_THROW;` |
-|     71 |  357 | `	if( pCatch && pBind && pCatch->sThis.nByte > 0 ){` |
-|      - |  358 | `		/* sThis empty => PHP 8.0 non-capturing catch (catch (Type) {}): the` |
-|      - |  359 | `		 * exception is caught but not bound to any variable. */` |
-|     69 |  360 | `		ph7_value *pObj = VmExtractMemObj(&(*pVm),&pCatch->sThis,FALSE,TRUE);` |
-|     69 |  361 | `		if( pObj ){` |
-|      - |  362 | `			/* Overwrite-then-release (mirrors PH7_MemObjStore): pin the new instance,` |
-|      - |  363 | `			 * free the slot's prior contents, then rebind. */` |
-|     69 |  364 | `			pBind->iRef++;` |
-|     69 |  365 | `			PH7_MemObjRelease(pObj);` |
-|     69 |  366 | `			pObj->x.pOther = pBind;` |
-|     69 |  367 | `			MemObjSetType(pObj,MEMOBJ_OBJ);` |
-|     32 |  368 | `		}` |
-|     32 |  369 | `	}` |
-|     71 |  370 | `	if( pBind ){` |
-|      - |  371 | `		/* Drop the hold VmThrowInline took across the redirect. */` |
-|     71 |  372 | `		PH7_ClassInstanceUnref(pBind);` |
-|     33 |  373 | `	}` |
-|     71 |  374 | `	if( pExc ){` |
-|     71 |  375 | `		pExc->pInflight = 0;` |
-|     33 |  376 | `	}` |
-|     71 |  377 | `	VM_EXIT_BREAK;` |
-|    ! 0 |  378 | `	VM_EXIT_BREAK;` |
-|      5 |  379 | `}` |
-|      - |  380 |  |
-|      - |  381 | `/*` |
-|      - |  382 | ` * OP_LOAD_EXCEPTION: body moved verbatim from the OP_LOAD_EXCEPTION arm of` |
-|      - |  383 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
-|      - |  384 | ` */` |
-|   2674 |  385 | `PH7_PRIVATE VmOpRc VmExecOpLoadException(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
-|      5 |  386 | `{` |
-|   2679 |  387 | `	ph7_value *pTos = pState->pTos;` |
-|   2679 |  388 | `	ph7_value *pStack = pState->pStack;` |
-|   2679 |  389 | `	VmInstr *aInstr = pState->aInstr;` |
-|   2679 |  390 | `	sxi32 pc = pState->pc;` |
-|      - |  391 | `	sxi32 rc;` |
-|   1337 |  392 | `	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
-|      - |  393 | `	/* BYTECODE stage 2b: push a fresh ACTIVATION of this lexical try (own` |
-|      - |  394 | `	 * mutable state per entry — see VmExcActivate), never the shared` |
-|      - |  395 | `	 * compiled object. */` |
-|   2679 |  396 | `	ph7_exception *pException = VmExcActivate(&(*pVm),(ph7_exception *)pInstr->p3);` |
-|      - |  397 | `	VmFrame *pFrameLocal;` |
-|   2679 |  398 | `	if( pException == 0 ){` |
-|    ! 0 |  399 | `		VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Fatal PH7 engine is runnig out of memory");` |
-|    ! 0 |  400 | `		VM_EXIT_ABORT;` |
-|      - |  401 | `	}` |
-|      - |  402 | `	/* Create the exception frame BEFORE publishing the activation, so an OOM` |
-|      - |  403 | `	 * abort cannot orphan a pushed entry with no frame behind it. */` |
-|   2679 |  404 | `	rc = VmEnterFrame(&(*pVm),0,0,&pFrameLocal);` |
-|   2679 |  405 | `	if( rc != SXRET_OK ){` |
-|    ! 0 |  406 | `		VmExcRelease(&(*pVm),pException);` |
-|    ! 0 |  407 | `		VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Fatal PH7 engine is runnig out of memory");` |
-|    ! 0 |  408 | `		VM_EXIT_ABORT;` |
-|      - |  409 | `	}` |
-|   2679 |  410 | `	if( SXRET_OK != SySetPut(&pVm->aException,(const void *)&pException) ){` |
-|    ! 0 |  411 | `		VmExcRelease(&(*pVm),pException);` |
-|    ! 0 |  412 | `		VmLeaveFrame(&(*pVm));` |
-|    ! 0 |  413 | `		VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Fatal PH7 engine is runnig out of memory");` |
-|    ! 0 |  414 | `		VM_EXIT_ABORT;` |
-|      - |  415 | `	}` |
-|      - |  416 | `	/* Mark the special frame */` |
-|   2679 |  417 | `	pFrameLocal->iFlags \|= VM_FRAME_EXCEPTION;` |
-|   2679 |  418 | `	pFrameLocal->iExceptionJump = pInstr->iP2;` |
-|      - |  419 | `	/* Record the landing pad on the exception too, so an in-place catch can resume` |
-|      - |  420 | `	 * the throwing site at THIS try (survives the exception frame's teardown), plus` |
-|      - |  421 | `	 * the bytecode array it indexes — the resume only fires in the exec running that` |
-|      - |  422 | `	 * array, so a mini-program (inline try in a catch/finally) and the body that` |
-|      - |  423 | `	 * shares its frame don't mis-apply each other's landing pad. iLandingPc mirrors the` |
-|      - |  424 | `	 * frame's iExceptionJump just set above — reuse it so the two can't drift. */` |
-|   2679 |  425 | `	pException->iLandingPc = pFrameLocal->iExceptionJump;` |
-|   2679 |  426 | `	pException->pOwnerInstr = (void *)aInstr;` |
-|      - |  427 | `	/* Operand-stack base at try entry (0-based TOS index; -1 when empty). The post-try` |
-|      - |  428 | `	 * landing pad is reached with the stack back at this depth; Generator::throw()` |
-|      - |  429 | `	 * inject-at-yield drains to it before landing (a mid-expression yield leaves the` |
-|      - |  430 | `	 * abandoned expression's operands above this base). Normal throws are already here. */` |
-|   2679 |  431 | `	pException->iStackDepth = (sxi32)(pTos - pStack);` |
-|      - |  432 | `	/* '@' depth at try entry — see ph7_exception.iErrSuppress */` |
-|   2679 |  433 | `	pException->iErrSuppress = pVm->nErrSuppress;` |
-|      - |  434 | `	/* Point to the frame that trigger the exception */` |
-|   2679 |  435 | `	pFrameLocal = pFrameLocal->pParent;` |
-|   2679 |  436 | `	pFrameLocal = VmSkipExceptionFrames(pFrameLocal);` |
-|   2679 |  437 | `	pException->pFrame = pFrameLocal;` |
-|   2679 |  438 | `	VM_EXIT_BREAK;` |
-|    ! 0 |  439 | `	VM_EXIT_BREAK;` |
-|   1342 |  440 | `}` |
-|      - |  441 |  |
+|      - |  269 | `	/* Pop the top entry */` |
+|    731 |  270 | `	VmPopOperand(&pTos,1);` |
+|      - |  271 | `	/* ROOT C: throw caught by an inline try in THIS exec -> jump to its catch/finally` |
+|      - |  272 | `	 * (draining any mid-expression operands back to the try's base). */` |
+|    731 |  273 | `	PH7_INLINE_RESUME_BREAK()` |
+|      - |  274 | `	/* pInlineInstr still set here means an inline try in an OUTER exec caught it (e.g. a` |
+|      - |  275 | ``	 * throwing sub-generator delegated via `yield from`): propagate so the owning exec lands. */`` |
+|    717 |  276 | `	if( rc == PH7_EXCEPTION \|\| pVm->pResumeFrame \|\| pVm->pInlineInstr ){` |
+|      - |  277 | ``		/* The throw was handled by a `catch` that ran IN PLACE — either this try's own`` |
+|      - |  278 | `		 * finally threw past itself superseding it (rc == PH7_EXCEPTION), or the catch` |
+|      - |  279 | `		 * sits several frames above this one (pVm->pResumeFrame recorded). Resume at the` |
+|      - |  280 | `		 * catching body's landing pad if that body is THIS exec (VmRecordedResume), else` |
+|      - |  281 | `		 * unwind so the owning exec lands. Without this a throw caught at an enclosing` |
+|      - |  282 | `		 * frame would blindly jump to nJump (this throw's lexically-nearest try) and run` |
+|      - |  283 | `		 * dead code after it (ROOT B, face a) or continue a callee as if it never threw` |
+|      - |  284 | `		 * (face c). */` |
+|      - |  285 | `		sxi32 iResumePc;` |
+|    641 |  286 | `		if( VmRecordedResume(pVm,&iResumePc,pState->pEntryFrame,aInstr) ){` |
+|    231 |  287 | `			pc = iResumePc;` |
+|    231 |  288 | `			VM_EXIT_BREAK;` |
+|      - |  289 | `		}` |
+|    415 |  290 | `		VM_EXIT_EXCEPTION;` |
+|      - |  291 | `	}` |
+|      - |  292 | `	/* No in-place catch recorded: this throw's own enclosing try caught it (the` |
+|      - |  293 | `	 * common case; its landing pad is exactly nJump). Perform an unconditional jump` |
+|      - |  294 | `	 * to the try's OP_POP_EXCEPTION landing pad, which tears down the try frame, runs` |
+|      - |  295 | ``	 * finally, and (when a catch/finally issued a `return`) materializes the body`` |
+|      - |  296 | `	 * frame's pending return. Routing the return through OP_POP_EXCEPTION keeps the` |
+|      - |  297 | `	 * frame stack balanced. */` |
+|     79 |  298 | `	pc = nJump - 1;` |
+|     79 |  299 | `	VM_EXIT_BREAK;` |
+|    ! 0 |  300 | `	VM_EXIT_BREAK;` |
+|    380 |  301 | `}` |
+|      - |  302 |  |
+|      - |  303 | `/*` |
+|      - |  304 | ` * OP_SWITCH: body moved verbatim from the OP_SWITCH arm of` |
+|      - |  305 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
+|      - |  306 | ` */` |
+|    324 |  307 | `PH7_PRIVATE VmOpRc VmExecOpSwitch(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
+|      5 |  308 | `{` |
+|    329 |  309 | `	ph7_value *pTos = pState->pTos;` |
+|    329 |  310 | `	ph7_value *pStack = pState->pStack;` |
+|    329 |  311 | `	VmInstr *aInstr = pState->aInstr;` |
+|    329 |  312 | `	sxi32 pc = pState->pc;` |
+|      - |  313 | `	sxi32 rc;` |
+|    162 |  314 | `	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
+|    329 |  315 | `	ph7_switch *pSwitch = (ph7_switch *)pInstr->p3;` |
+|      - |  316 | `	ph7_case_expr *aCase,*pCase;` |
+|      - |  317 | `	ph7_value sValue,sCaseValue;` |
+|      - |  318 | `	sxu32 n,nEntry;` |
+|      - |  319 | `#ifdef UNTRUST` |
+|      - |  320 | `	if( pSwitch == 0 \|\| pTos < pStack ){` |
+|      - |  321 | `		VM_EXIT_ABORT;` |
+|      - |  322 | `	}` |
+|      - |  323 | `#endif` |
+|      - |  324 | `	/* Point to the case table  */` |
+|    329 |  325 | `	aCase = (ph7_case_expr *)SySetBasePtr(&pSwitch->aCaseExpr);` |
+|    329 |  326 | `	nEntry = SySetUsed(&pSwitch->aCaseExpr);` |
+|      - |  327 | `	/* Select the appropriate case block to execute */` |
+|    329 |  328 | `	PH7_MemObjInit(pVm,&sValue);` |
+|    329 |  329 | `	PH7_MemObjInit(pVm,&sCaseValue);` |
+|   1211 |  330 | `	for( n = 0 ; n < nEntry ; ++n ){` |
+|   1209 |  331 | `		pCase = &aCase[n];` |
+|   1209 |  332 | `		PH7_MemObjLoad(pTos,&sValue);` |
+|      - |  333 | `		/* Execute the case expression first */` |
+|   1209 |  334 | `		VmLocalExec(pVm,&pCase->aByteCode,&sCaseValue,FALSE);` |
+|      - |  335 | `		/* Compare the two expression */` |
+|   1209 |  336 | `		rc = PH7_MemObjCmp(&sValue,&sCaseValue,FALSE,0);` |
+|   1209 |  337 | `		PH7_MemObjRelease(&sValue);` |
+|   1209 |  338 | `		PH7_MemObjRelease(&sCaseValue);` |
+|   1209 |  339 | `		if( rc == 0 ){` |
+|      - |  340 | `			/* Value match,jump to this block */` |
+|    327 |  341 | `			pc = pCase->nStart - 1;` |
+|    327 |  342 | `			break;` |
+|      - |  343 | `		}` |
+|    446 |  344 | `	}` |
+|    329 |  345 | `	VmPopOperand(&pTos,1);` |
+|    329 |  346 | `	if( n >= nEntry ){` |
+|      - |  347 | `		/* No approprite case to execute,jump to the default case */` |
+|      3 |  348 | `		if( pSwitch->nDefault > 0 ){` |
+|      3 |  349 | `			pc = pSwitch->nDefault - 1;` |
+|      2 |  350 | `		}else{` |
+|      - |  351 | `			/* No default case,jump out of this switch */` |
+|    ! 0 |  352 | `			pc = pSwitch->nOut - 1;` |
+|      - |  353 | `		}` |
+|      1 |  354 | `	}` |
+|    329 |  355 | `	VM_EXIT_BREAK;` |
+|    ! 0 |  356 | `	VM_EXIT_BREAK;` |
+|      5 |  357 | `}` |
+|      - |  358 |  |
+|      - |  359 | `/*` |
+|      - |  360 | ` * OP_CATCH: body moved verbatim from the OP_CATCH arm of` |
+|      - |  361 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
+|      - |  362 | ` */` |
+|     66 |  363 | `PH7_PRIVATE VmOpRc VmExecOpCatch(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
+|      5 |  364 | `{` |
+|     71 |  365 | `	ph7_value *pTos = pState->pTos;` |
+|     71 |  366 | `	ph7_value *pStack = pState->pStack;` |
+|     71 |  367 | `	VmInstr *aInstr = pState->aInstr;` |
+|     71 |  368 | `	sxi32 pc = pState->pc;` |
+|      - |  369 | `	sxi32 rc;` |
+|     33 |  370 | `	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
+|      - |  371 | `	/* BYTECODE stage 2b: mutable state (pInflight) lives on the LIVE activation` |
+|      - |  372 | `	 * of this try, not the compiled p3 (which VmThrowInline kept on aException` |
+|      - |  373 | `	 * marked iInCatch). Compiled fields (sEntry) are shared either way. */` |
+|     71 |  374 | `	ph7_exception *pExcC = (ph7_exception *)pInstr->p3;` |
+|     71 |  375 | `	ph7_exception *pExc = VmExcLive(&(*pVm),pExcC);` |
+|     71 |  376 | `	ph7_exception_block *pCatch = (ph7_exception_block *)SySetAt(&pExcC->sEntry,(sxu32)pInstr->iP1);` |
+|     71 |  377 | `	ph7_class_instance *pBind = pExc ? pExc->pInflight : 0;` |
+|     71 |  378 | `	VmFrame *pBody = VmSkipExceptionFrames(pVm->pFrame);` |
+|     71 |  379 | `	pBody->iFlags &= ~VM_FRAME_THROW;` |
+|     71 |  380 | `	if( pCatch && pBind && pCatch->sThis.nByte > 0 ){` |
+|      - |  381 | `		/* sThis empty => PHP 8.0 non-capturing catch (catch (Type) {}): the` |
+|      - |  382 | `		 * exception is caught but not bound to any variable. */` |
+|     69 |  383 | `		ph7_value *pObj = VmExtractMemObj(&(*pVm),&pCatch->sThis,FALSE,TRUE);` |
+|     69 |  384 | `		if( pObj ){` |
+|      - |  385 | `			/* Overwrite-then-release (mirrors PH7_MemObjStore): pin the new instance,` |
+|      - |  386 | `			 * free the slot's prior contents, then rebind. */` |
+|     69 |  387 | `			pBind->iRef++;` |
+|     69 |  388 | `			PH7_MemObjRelease(pObj);` |
+|     69 |  389 | `			pObj->x.pOther = pBind;` |
+|     69 |  390 | `			MemObjSetType(pObj,MEMOBJ_OBJ);` |
+|     32 |  391 | `		}` |
+|     32 |  392 | `	}` |
+|     71 |  393 | `	if( pBind ){` |
+|      - |  394 | `		/* Drop the hold VmThrowInline took across the redirect. */` |
+|     71 |  395 | `		PH7_ClassInstanceUnref(pBind);` |
+|     33 |  396 | `	}` |
+|     71 |  397 | `	if( pExc ){` |
+|     71 |  398 | `		pExc->pInflight = 0;` |
+|     33 |  399 | `	}` |
+|     71 |  400 | `	VM_EXIT_BREAK;` |
+|    ! 0 |  401 | `	VM_EXIT_BREAK;` |
+|      5 |  402 | `}` |
+|      - |  403 |  |
+|      - |  404 | `/*` |
+|      - |  405 | ` * OP_LOAD_EXCEPTION: body moved verbatim from the OP_LOAD_EXCEPTION arm of` |
+|      - |  406 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
+|      - |  407 | ` */` |
+|   2692 |  408 | `PH7_PRIVATE VmOpRc VmExecOpLoadException(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
+|      5 |  409 | `{` |
+|   2697 |  410 | `	ph7_value *pTos = pState->pTos;` |
+|   2697 |  411 | `	ph7_value *pStack = pState->pStack;` |
+|   2697 |  412 | `	VmInstr *aInstr = pState->aInstr;` |
+|   2697 |  413 | `	sxi32 pc = pState->pc;` |
+|      - |  414 | `	sxi32 rc;` |
+|   1346 |  415 | `	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
+|      - |  416 | `	/* BYTECODE stage 2b: push a fresh ACTIVATION of this lexical try (own` |
+|      - |  417 | `	 * mutable state per entry — see VmExcActivate), never the shared` |
+|      - |  418 | `	 * compiled object. */` |
+|   2697 |  419 | `	ph7_exception *pException = VmExcActivate(&(*pVm),(ph7_exception *)pInstr->p3);` |
+|      - |  420 | `	VmFrame *pFrameLocal;` |
+|   2697 |  421 | `	if( pException == 0 ){` |
+|    ! 0 |  422 | `		VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Fatal PH7 engine is runnig out of memory");` |
+|    ! 0 |  423 | `		VM_EXIT_ABORT;` |
+|      - |  424 | `	}` |
+|      - |  425 | `	/* Create the exception frame BEFORE publishing the activation, so an OOM` |
+|      - |  426 | `	 * abort cannot orphan a pushed entry with no frame behind it. */` |
+|   2697 |  427 | `	rc = VmEnterFrame(&(*pVm),0,0,&pFrameLocal);` |
+|   2697 |  428 | `	if( rc != SXRET_OK ){` |
+|    ! 0 |  429 | `		VmExcRelease(&(*pVm),pException);` |
+|    ! 0 |  430 | `		VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Fatal PH7 engine is runnig out of memory");` |
+|    ! 0 |  431 | `		VM_EXIT_ABORT;` |
+|      - |  432 | `	}` |
+|   2697 |  433 | `	if( SXRET_OK != SySetPut(&pVm->aException,(const void *)&pException) ){` |
+|    ! 0 |  434 | `		VmExcRelease(&(*pVm),pException);` |
+|    ! 0 |  435 | `		VmLeaveFrame(&(*pVm));` |
+|    ! 0 |  436 | `		VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Fatal PH7 engine is runnig out of memory");` |
+|    ! 0 |  437 | `		VM_EXIT_ABORT;` |
+|      - |  438 | `	}` |
+|      - |  439 | `	/* Mark the special frame */` |
+|   2697 |  440 | `	pFrameLocal->iFlags \|= VM_FRAME_EXCEPTION;` |
+|   2697 |  441 | `	pFrameLocal->iExceptionJump = pInstr->iP2;` |
+|      - |  442 | `	/* Record the landing pad on the exception too, so an in-place catch can resume` |
+|      - |  443 | `	 * the throwing site at THIS try (survives the exception frame's teardown), plus` |
+|      - |  444 | `	 * the bytecode array it indexes — the resume only fires in the exec running that` |
+|      - |  445 | `	 * array, so a mini-program (inline try in a catch/finally) and the body that` |
+|      - |  446 | `	 * shares its frame don't mis-apply each other's landing pad. iLandingPc mirrors the` |
+|      - |  447 | `	 * frame's iExceptionJump just set above — reuse it so the two can't drift. */` |
+|   2697 |  448 | `	pException->iLandingPc = pFrameLocal->iExceptionJump;` |
+|   2697 |  449 | `	pException->pOwnerInstr = (void *)aInstr;` |
+|      - |  450 | `	/* Operand-stack base at try entry (0-based TOS index; -1 when empty). The post-try` |
+|      - |  451 | `	 * landing pad is reached with the stack back at this depth; Generator::throw()` |
+|      - |  452 | `	 * inject-at-yield drains to it before landing (a mid-expression yield leaves the` |
+|      - |  453 | `	 * abandoned expression's operands above this base). Normal throws are already here. */` |
+|   2697 |  454 | `	pException->iStackDepth = (sxi32)(pTos - pStack);` |
+|      - |  455 | `	/* '@' depth at try entry — see ph7_exception.iErrSuppress */` |
+|   2697 |  456 | `	pException->iErrSuppress = pVm->nErrSuppress;` |
+|      - |  457 | `	/* Point to the frame that trigger the exception */` |
+|   2697 |  458 | `	pFrameLocal = pFrameLocal->pParent;` |
+|   2697 |  459 | `	pFrameLocal = VmSkipExceptionFrames(pFrameLocal);` |
+|   2697 |  460 | `	pException->pFrame = pFrameLocal;` |
+|   2697 |  461 | `	VM_EXIT_BREAK;` |
+|    ! 0 |  462 | `	VM_EXIT_BREAK;` |
+|   1351 |  463 | `}` |
+|      - |  464 |  |

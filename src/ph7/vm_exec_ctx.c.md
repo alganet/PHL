@@ -603,18 +603,18 @@ Coverage: 1023/1279 lines (79.98%)
 |       - |  593 | ` *` |
 |       - |  594 | ` * Returns non-zero iff pVal is a Closure instance.` |
 |       - |  595 | ` */` |
-| 1039811 |  596 | `PH7_PRIVATE int VmValueIsClosure(ph7_vm *pVm, ph7_value *pVal)` |
+| 1040125 |  596 | `PH7_PRIVATE int VmValueIsClosure(ph7_vm *pVm, ph7_value *pVal)` |
 |       5 |  597 | `{` |
 |       - |  598 | `	ph7_class_instance *pThis;` |
 |       - |  599 | `	/* Flag test first: a non-object call target (the hot common case) bails before any` |
 |       - |  600 | `	 * pVm dereference; pClosureClass==0 is a one-time pre-init concern, so it goes last. */` |
-| 1039816 |  601 | `	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 \|\| pVal->x.pOther == 0 \|\| pVm->pClosureClass == 0 ){` |
-| 1035294 |  602 | `		return 0;` |
+| 1040130 |  601 | `	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 \|\| pVal->x.pOther == 0 \|\| pVm->pClosureClass == 0 ){` |
+| 1035608 |  602 | `		return 0;` |
 |       - |  603 | `	}` |
 |    4527 |  604 | `	pThis = (ph7_class_instance *)pVal->x.pOther;` |
 |       - |  605 | `	/* Closure is final, so an exact class match is correct (no subclasses possible). */` |
 |    4527 |  606 | `	return pThis->pClass == pVm->pClosureClass;` |
-|  520369 |  607 | `}` |
+|  520526 |  607 | `}` |
 |       - |  608 | `/*` |
 |       - |  609 | ` * Unwrap a Closure value into the simple callable the existing dispatch machinery` |
 |       - |  610 | ` * already understands, written into pOut (which the caller must have initialised):` |
@@ -1272,8 +1272,8 @@ Coverage: 1023/1279 lines (79.98%)
 |      10 | 1262 | `}` |
 |      86 | 1263 | `static sxi32 VmEnforceGenArgType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_vm_func_arg *pFormal,` |
 |       - | 1264 | `	sxu32 nArgPos, ph7_value *pVal, int bStrict, ph7_class *pSelfHint)` |
-|       3 | 1265 | `{` |
-|      89 | 1266 | `	if( pFormal->iFlags & VM_FUNC_ARG_UNION ){` |
+|       4 | 1265 | `{` |
+|      90 | 1266 | `	if( pFormal->iFlags & VM_FUNC_ARG_UNION ){` |
 |     ! 0 | 1267 | `		if( VmCoerceToUnion(pVm,pVal,&pFormal->aUnionAlts,` |
 |     ! 0 | 1268 | `			(pFormal->iFlags & VM_FUNC_ARG_NULLABLE) ? 1 : 0,bStrict) != SXRET_OK ){` |
 |       - | 1269 | `			const char *zGiven;` |
@@ -1296,8 +1296,8 @@ Coverage: 1023/1279 lines (79.98%)
 |     ! 0 | 1286 | `		return SXRET_OK;` |
 |       - | 1287 | `	}` |
 |      86 | 1288 | `	if( pFormal->nType == 0` |
-|      65 | 1289 | `	 \|\| ((pFormal->iFlags & VM_FUNC_ARG_NULLABLE) && (pVal->iFlags & MEMOBJ_NULL)) ){` |
-|      53 | 1290 | `		return SXRET_OK;` |
+|      66 | 1289 | `	 \|\| ((pFormal->iFlags & VM_FUNC_ARG_NULLABLE) && (pVal->iFlags & MEMOBJ_NULL)) ){` |
+|      54 | 1290 | `		return SXRET_OK;` |
 |       - | 1291 | `	}` |
 |      38 | 1292 | `	if( pFormal->nType == SXU32_HIGH ){` |
 |       - | 1293 | `		/* Class or pseudo type */` |
@@ -1339,7 +1339,7 @@ Coverage: 1023/1279 lines (79.98%)
 |       - | 1329 | `		}` |
 |       3 | 1330 | `	}` |
 |      24 | 1331 | `	return SXRET_OK;` |
-|      46 | 1332 | `}` |
+|      47 | 1332 | `}` |
 |     596 | 1333 | `PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,` |
 |       - | 1334 | `	ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg,` |
 |       - | 1335 | `	int bStrict, ph7_class *pSelfHint, int bCallSiteInMsg)` |
@@ -1397,7 +1397,7 @@ Coverage: 1023/1279 lines (79.98%)
 |       - | 1387 | `	}` |
 |     669 | 1388 | `	for( n = 0; n < nFormal; n++ ){` |
 |       - | 1389 | `		ph7_value *pObj;` |
-|      93 | 1390 | `		if( aFormalArg[n].iFlags & VM_FUNC_ARG_VARIADIC ){` |
+|      94 | 1390 | `		if( aFormalArg[n].iFlags & VM_FUNC_ARG_VARIADIC ){` |
 |       - | 1391 | `			/* Variadic formal: collect this and every remaining actual into a` |
 |       - | 1392 | `			 * fresh array (php semantics — pre-fix nothing collected here, so a` |
 |       - | 1393 | ``			 * `function g(int ...$xs)` generator saw a bare scalar in $xs).`` |
@@ -1430,7 +1430,7 @@ Coverage: 1023/1279 lines (79.98%)
 |       2 | 1420 | `			}` |
 |       5 | 1421 | `			break; /* All remaining actuals consumed */` |
 |       - | 1422 | `		}` |
-|      89 | 1423 | `		if( n < (sxu32)nArg ){` |
+|      90 | 1423 | `		if( n < (sxu32)nArg ){` |
 |       - | 1424 | `			/* Argument provided — install with declared-type enforcement.` |
 |       - | 1425 | `			 * php binds and type-checks generator arguments EAGERLY at the` |
 |       - | 1426 | `			 * g(...) call site (and fiber arguments at Fiber::start()), so the` |
@@ -1438,19 +1438,19 @@ Coverage: 1023/1279 lines (79.98%)
 |       - | 1428 | `			 * VmEnforceGenArgType (TypeError on mismatch, weak coercion in` |
 |       - | 1429 | `			 * place otherwise) instead of the old silent xCast. A variadic` |
 |       - | 1430 | `			 * formal collects as-is (no per-element declared-type model). */` |
-|      83 | 1431 | `			pObj = VmExtractMemObj(pVm, &aFormalArg[n].sName, FALSE, TRUE);` |
-|      83 | 1432 | `			if( pObj ){` |
-|      83 | 1433 | `				PH7_MemObjStore(apArg[n], pObj);` |
-|      83 | 1434 | `				if( (aFormalArg[n].iFlags & VM_FUNC_ARG_VARIADIC) == 0 ){` |
-|      83 | 1435 | `					rc = VmEnforceGenArgType(pVm,pFunc,&aFormalArg[n],n+1,pObj,bStrict,pSelfHint);` |
-|      83 | 1436 | `					if( rc != SXRET_OK ){` |
+|      84 | 1431 | `			pObj = VmExtractMemObj(pVm, &aFormalArg[n].sName, FALSE, TRUE);` |
+|      84 | 1432 | `			if( pObj ){` |
+|      84 | 1433 | `				PH7_MemObjStore(apArg[n], pObj);` |
+|      84 | 1434 | `				if( (aFormalArg[n].iFlags & VM_FUNC_ARG_VARIADIC) == 0 ){` |
+|      84 | 1435 | `					rc = VmEnforceGenArgType(pVm,pFunc,&aFormalArg[n],n+1,pObj,bStrict,pSelfHint);` |
+|      84 | 1436 | `					if( rc != SXRET_OK ){` |
 |      15 | 1437 | `						return rc;` |
 |       - | 1438 | `					}` |
 |      33 | 1439 | `				}` |
-|      69 | 1440 | `				sSlot.nIdx = pObj->nIdx;` |
-|      69 | 1441 | `				sSlot.pUserData = 0;` |
-|      69 | 1442 | `				SySetPut(&pExecCtx->pFrame->sArg, &sSlot);` |
-|      36 | 1443 | `			}` |
+|      70 | 1440 | `				sSlot.nIdx = pObj->nIdx;` |
+|      70 | 1441 | `				sSlot.pUserData = 0;` |
+|      70 | 1442 | `				SySetPut(&pExecCtx->pFrame->sArg, &sSlot);` |
+|      37 | 1443 | `			}` |
 |      40 | 1444 | `		}else if( n < nReqGF ){` |
 |       - | 1445 | `			/* Required formal with no actual: php's ArgumentCountError, at` |
 |       - | 1446 | `			 * this point in the install order (see the watermark comment). */` |
@@ -1485,7 +1485,7 @@ Coverage: 1023/1279 lines (79.98%)
 |       3 | 1475 | `				SySetPut(&pExecCtx->pFrame->sArg, &sSlot);` |
 |       1 | 1476 | `			}` |
 |       1 | 1477 | `		}` |
-|      37 | 1478 | `	}` |
+|      38 | 1478 | `	}` |
 |       - | 1479 | `	/* Install closure environment (captured variables) */` |
 |     583 | 1480 | `	if( pFunc->iFlags & VM_FUNC_CLOSURE ){` |
 |       - | 1481 | `		ph7_vm_func_closure_env *aEnv, *pEnv;` |
@@ -2048,9 +2048,9 @@ Coverage: 1023/1279 lines (79.98%)
 |     104 | 2038 | `	if( rc == PH7_ABORT ) return PH7_ABORT;` |
 |     104 | 2039 | `	if( rc == PH7_EXCEPTION ) return PH7_EXCEPTION;` |
 |     101 | 2040 | `	if( pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){` |
-|      95 | 2041 | `		ph7_result_value(pCtx, &pGen->sYieldValue);` |
-|      49 | 2042 | `	}else{` |
-|       7 | 2043 | `		ph7_result_null(pCtx);` |
+|      94 | 2041 | `		ph7_result_value(pCtx, &pGen->sYieldValue);` |
+|      48 | 2042 | `	}else{` |
+|       8 | 2043 | `		ph7_result_null(pCtx);` |
 |       - | 2044 | `	}` |
 |     101 | 2045 | `	return PH7_OK;` |
 |      54 | 2046 | `}` |
@@ -2127,8 +2127,8 @@ Coverage: 1023/1279 lines (79.98%)
 |       - | 2117 | `		/* Caught inside the generator and it resumed: return the next yielded value (or` |
 |       - | 2118 | `		 * null if it then completed) — symmetric with Generator::send(). */` |
 |      46 | 2119 | `		if( pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED ){` |
-|      44 | 2120 | `			ph7_result_value(pCtx, &pGen->sYieldValue);` |
-|      24 | 2121 | `		}else{` |
+|      43 | 2120 | `			ph7_result_value(pCtx, &pGen->sYieldValue);` |
+|      23 | 2121 | `		}else{` |
 |       3 | 2122 | `			ph7_result_null(pCtx);` |
 |       - | 2123 | `		}` |
 |      46 | 2124 | `		return PH7_OK;` |
@@ -2153,18 +2153,18 @@ Coverage: 1023/1279 lines (79.98%)
 |       - | 2143 | ` * Generator::getReturn() — get the return value after the generator has finished.` |
 |       - | 2144 | ` */` |
 |      18 | 2145 | `PH7_PRIVATE int vm_builtin_Generator_getReturn(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|       4 | 2146 | `{` |
+|       3 | 2146 | `{` |
 |       - | 2147 | `	ph7_generator *pGen;` |
-|      22 | 2148 | `	if( nArg < 1 ){ ph7_result_null(pCtx); return PH7_OK; }` |
-|      22 | 2149 | `	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);` |
-|      22 | 2150 | `	if( pGen == 0 ){ ph7_result_null(pCtx); return PH7_OK; }` |
-|      22 | 2151 | `	if( pGen->pCtx->iState != PH7_CTX_STATE_COMPLETED ){` |
+|      21 | 2148 | `	if( nArg < 1 ){ ph7_result_null(pCtx); return PH7_OK; }` |
+|      21 | 2149 | `	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);` |
+|      21 | 2150 | `	if( pGen == 0 ){ ph7_result_null(pCtx); return PH7_OK; }` |
+|      21 | 2151 | `	if( pGen->pCtx->iState != PH7_CTX_STATE_COMPLETED ){` |
 |     ! 0 | 2152 | `		return PH7_VmThrowException(pCtx, "Error",` |
 |       - | 2153 | `			"Cannot get return value of a generator that hasn't returned");` |
 |       - | 2154 | `	}` |
-|      22 | 2155 | `	ph7_result_value(pCtx, &pGen->pCtx->sRetValue);` |
-|      22 | 2156 | `	return PH7_OK;` |
-|      13 | 2157 | `}` |
+|      21 | 2155 | `	ph7_result_value(pCtx, &pGen->pCtx->sRetValue);` |
+|      21 | 2156 | `	return PH7_OK;` |
+|      12 | 2157 | `}` |
 |       - | 2158 | `/*` |
 |       - | 2159 | ` * Generator::__destruct() — clean up.` |
 |       - | 2160 | ` */` |

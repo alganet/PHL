@@ -1333,13 +1333,13 @@ Coverage: 632/915 lines (69.07%)
 |     - | 1323 | `	{ "preg_last_error_msg",     PH7_builtin_preg_last_error_msg },` |
 |     - | 1324 | `};` |
 |     - | 1325 |  |
-|  3412 | 1326 | `PH7_PRIVATE void PH7_RegisterPcreFunctions(ph7_vm *pVm)` |
+|  3414 | 1326 | `PH7_PRIVATE void PH7_RegisterPcreFunctions(ph7_vm *pVm)` |
 |     5 | 1327 | `{` |
 |     - | 1328 | `	sxu32 n;` |
-| 30713 | 1329 | `	for( n = 0; n < SX_ARRAYSIZE(aPcreFunc); n++ ){` |
-| 27301 | 1330 | `		ph7_create_function(&(*pVm), aPcreFunc[n].zName, aPcreFunc[n].xFunc, 0);` |
-| 13653 | 1331 | `	}` |
-|  3417 | 1332 | `}` |
+| 30731 | 1329 | `	for( n = 0; n < SX_ARRAYSIZE(aPcreFunc); n++ ){` |
+| 27317 | 1330 | `		ph7_create_function(&(*pVm), aPcreFunc[n].zName, aPcreFunc[n].xFunc, 0);` |
+| 13661 | 1331 | `	}` |
+|  3419 | 1332 | `}` |
 |     - | 1333 |  |
 |     - | 1334 | `/* ===== Constant registration ===== */` |
 |     - | 1335 | `#define PCRE_CONST_INT(name, val) \` |
@@ -1363,24 +1363,24 @@ Coverage: 632/915 lines (69.07%)
 |   ! 0 | 1353 | `PCRE_CONST_INT(PREG_BAD_UTF8_OFFSET_ERROR,PHP_PREG_BAD_UTF8_OFFSET_ERROR)` |
 |   ! 0 | 1354 | `PCRE_CONST_INT(PREG_JIT_STACKLIMIT_ERROR,PHP_PREG_JIT_STACKLIMIT_ERROR)` |
 |     - | 1355 |  |
-|  3412 | 1356 | `PH7_PRIVATE void PH7_RegisterPcreConstants(ph7_vm *pVm)` |
+|  3414 | 1356 | `PH7_PRIVATE void PH7_RegisterPcreConstants(ph7_vm *pVm)` |
 |     5 | 1357 | `{` |
-|  3417 | 1358 | `	ph7_create_constant(&(*pVm), "PREG_PATTERN_ORDER",        PcreConst_PREG_PATTERN_ORDER, 0);` |
-|  3417 | 1359 | `	ph7_create_constant(&(*pVm), "PREG_SET_ORDER",            PcreConst_PREG_SET_ORDER, 0);` |
-|  3417 | 1360 | `	ph7_create_constant(&(*pVm), "PREG_OFFSET_CAPTURE",       PcreConst_PREG_OFFSET_CAPTURE, 0);` |
-|  3417 | 1361 | `	ph7_create_constant(&(*pVm), "PREG_UNMATCHED_AS_NULL",    PcreConst_PREG_UNMATCHED_AS_NULL, 0);` |
-|  3417 | 1362 | `	ph7_create_constant(&(*pVm), "PREG_SPLIT_NO_EMPTY",       PcreConst_PREG_SPLIT_NO_EMPTY, 0);` |
-|  3417 | 1363 | `	ph7_create_constant(&(*pVm), "PREG_GREP_INVERT",          PcreConst_PREG_GREP_INVERT, 0);` |
-|  3417 | 1364 | `	ph7_create_constant(&(*pVm), "PREG_SPLIT_DELIM_CAPTURE",  PcreConst_PREG_SPLIT_DELIM_CAPTURE, 0);` |
-|  3417 | 1365 | `	ph7_create_constant(&(*pVm), "PREG_SPLIT_OFFSET_CAPTURE", PcreConst_PREG_SPLIT_OFFSET_CAPTURE, 0);` |
-|  3417 | 1366 | `	ph7_create_constant(&(*pVm), "PREG_NO_ERROR",             PcreConst_PREG_NO_ERROR, 0);` |
-|  3417 | 1367 | `	ph7_create_constant(&(*pVm), "PREG_INTERNAL_ERROR",       PcreConst_PREG_INTERNAL_ERROR, 0);` |
-|  3417 | 1368 | `	ph7_create_constant(&(*pVm), "PREG_BACKTRACK_LIMIT_ERROR", PcreConst_PREG_BACKTRACK_LIMIT_ERROR, 0);` |
-|  3417 | 1369 | `	ph7_create_constant(&(*pVm), "PREG_RECURSION_LIMIT_ERROR", PcreConst_PREG_RECURSION_LIMIT_ERROR, 0);` |
-|  3417 | 1370 | `	ph7_create_constant(&(*pVm), "PREG_BAD_UTF8_ERROR",       PcreConst_PREG_BAD_UTF8_ERROR, 0);` |
-|  3417 | 1371 | `	ph7_create_constant(&(*pVm), "PREG_BAD_UTF8_OFFSET_ERROR",PcreConst_PREG_BAD_UTF8_OFFSET_ERROR, 0);` |
-|  3417 | 1372 | `	ph7_create_constant(&(*pVm), "PREG_JIT_STACKLIMIT_ERROR", PcreConst_PREG_JIT_STACKLIMIT_ERROR, 0);` |
-|  3417 | 1373 | `}` |
+|  3419 | 1358 | `	ph7_create_constant(&(*pVm), "PREG_PATTERN_ORDER",        PcreConst_PREG_PATTERN_ORDER, 0);` |
+|  3419 | 1359 | `	ph7_create_constant(&(*pVm), "PREG_SET_ORDER",            PcreConst_PREG_SET_ORDER, 0);` |
+|  3419 | 1360 | `	ph7_create_constant(&(*pVm), "PREG_OFFSET_CAPTURE",       PcreConst_PREG_OFFSET_CAPTURE, 0);` |
+|  3419 | 1361 | `	ph7_create_constant(&(*pVm), "PREG_UNMATCHED_AS_NULL",    PcreConst_PREG_UNMATCHED_AS_NULL, 0);` |
+|  3419 | 1362 | `	ph7_create_constant(&(*pVm), "PREG_SPLIT_NO_EMPTY",       PcreConst_PREG_SPLIT_NO_EMPTY, 0);` |
+|  3419 | 1363 | `	ph7_create_constant(&(*pVm), "PREG_GREP_INVERT",          PcreConst_PREG_GREP_INVERT, 0);` |
+|  3419 | 1364 | `	ph7_create_constant(&(*pVm), "PREG_SPLIT_DELIM_CAPTURE",  PcreConst_PREG_SPLIT_DELIM_CAPTURE, 0);` |
+|  3419 | 1365 | `	ph7_create_constant(&(*pVm), "PREG_SPLIT_OFFSET_CAPTURE", PcreConst_PREG_SPLIT_OFFSET_CAPTURE, 0);` |
+|  3419 | 1366 | `	ph7_create_constant(&(*pVm), "PREG_NO_ERROR",             PcreConst_PREG_NO_ERROR, 0);` |
+|  3419 | 1367 | `	ph7_create_constant(&(*pVm), "PREG_INTERNAL_ERROR",       PcreConst_PREG_INTERNAL_ERROR, 0);` |
+|  3419 | 1368 | `	ph7_create_constant(&(*pVm), "PREG_BACKTRACK_LIMIT_ERROR", PcreConst_PREG_BACKTRACK_LIMIT_ERROR, 0);` |
+|  3419 | 1369 | `	ph7_create_constant(&(*pVm), "PREG_RECURSION_LIMIT_ERROR", PcreConst_PREG_RECURSION_LIMIT_ERROR, 0);` |
+|  3419 | 1370 | `	ph7_create_constant(&(*pVm), "PREG_BAD_UTF8_ERROR",       PcreConst_PREG_BAD_UTF8_ERROR, 0);` |
+|  3419 | 1371 | `	ph7_create_constant(&(*pVm), "PREG_BAD_UTF8_OFFSET_ERROR",PcreConst_PREG_BAD_UTF8_OFFSET_ERROR, 0);` |
+|  3419 | 1372 | `	ph7_create_constant(&(*pVm), "PREG_JIT_STACKLIMIT_ERROR", PcreConst_PREG_JIT_STACKLIMIT_ERROR, 0);` |
+|  3419 | 1373 | `}` |
 |     - | 1374 |  |
 |     - | 1375 | `#else` |
 |     - | 1376 | `/* Ensure non-empty translation unit when PCRE is disabled (MSVC C4206) */` |

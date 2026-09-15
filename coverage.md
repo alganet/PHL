@@ -15,7 +15,7 @@
 | src/ph7/compile_func.c         | 85.88%   | 870/1013    |
 | src/ph7/compile_literal.c      | 89.15%   | 945/1060    |
 | src/ph7/compile_node.c         | 83.21%   | 669/804     |
-| src/ph7/compile_stmt.c         | 73.56%   | 1452/1974   |
+| src/ph7/compile_stmt.c         | 73.92%   | 1448/1959   |
 | src/ph7/constant.c             | 93.09%   | 970/1042    |
 | src/ph7/hashmap.c              | 90.77%   | 1042/1148   |
 | src/ph7/hashmap_builtin.c      | 87.21%   | 2482/2846   |
@@ -58,7 +58,7 @@
 | src/ph7/vm_ops_arith.c         | 82.93%   | 588/709     |
 | src/ph7/vm_ops_iter.c          | 80.00%   | 272/340     |
 | src/ph7/vm_ops_load.c          | 85.26%   | 665/780     |
-| src/ph7/vm_ops_misc.c          | 86.29%   | 214/248     |
+| src/ph7/vm_ops_misc.c          | 86.77%   | 223/257     |
 | src/ph7/vm_ops_oo.c            | 85.52%   | 868/1015    |
 | src/ph7/vm_pcre.c              | 69.07%   | 632/915     |
 | src/ph7/vm_serialize.c         | 96.07%   | 464/483     |
@@ -79,5 +79,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.17%   | 48334/59548 |
-| Functions                      | 93.09%   | 2197/2360   |
+| Lines                          | 81.18%   | 48339/59542 |
+| Functions                      | 93.10%   | 2198/2361   |

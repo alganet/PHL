@@ -1749,7 +1749,7 @@ Coverage: 1043/1211 lines (86.13%)
 |    69 | 1739 | `	ph7_result_value(pCtx, pOut);` |
 |    69 | 1740 | `	return PH7_OK;` |
 |    35 | 1741 | `}` |
-|  3880 | 1742 | `PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)` |
+|  3882 | 1742 | `PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)` |
 |     5 | 1743 | `{` |
 |     - | 1744 | `	static const struct {` |
 |     - | 1745 | `		const char *zName;` |
@@ -1778,9 +1778,9 @@ Coverage: 1043/1211 lines (86.13%)
 |     - | 1768 | `		{ "__reflect_attr_args",      vm_builtin_reflect_attr_args },` |
 |     - | 1769 | `	};` |
 |     - | 1770 | `	sxu32 n;` |
-| 85365 | 1771 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
-| 81485 | 1772 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
-| 40745 | 1773 | `	}` |
-|  3885 | 1774 | `	return PH7_VmInstallReflectionLib(&(*pVm));` |
+| 85409 | 1771 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
+| 81527 | 1772 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
+| 40766 | 1773 | `	}` |
+|  3887 | 1774 | `	return PH7_VmInstallReflectionLib(&(*pVm));` |
 |     5 | 1775 | `}` |
 |     - | 1776 |  |

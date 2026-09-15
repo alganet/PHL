@@ -25,7 +25,7 @@ Coverage: 195/339 lines (57.52%)
 |      - |   15 | ``/* Shared ZPP helper for `int` parameters — defined OUTSIDE the`` |
 |      - |   16 | ` * PH7_DISABLE_BUILTIN_FUNC guard because hashmap.c (array_slice) and` |
 |      - |   17 | ` * builtin_math.c (intdiv) call it and both compile in the tiny build. */` |
-| 493637 |   18 | `PH7_PRIVATE sxi32 PH7_IntArgResolve(` |
+| 493769 |   18 | `PH7_PRIVATE sxi32 PH7_IntArgResolve(` |
 |      - |   19 | `	ph7_context *pCtx,` |
 |      - |   20 | `	ph7_value *pArg,` |
 |      - |   21 | `	const char *zFunc,` |
@@ -34,7 +34,7 @@ Coverage: 195/339 lines (57.52%)
 |      - |   24 | `	const char *zTypeStr,` |
 |      - |   25 | `	sxi64 *pOut` |
 |      5 |   26 | `){` |
-| 493642 |   27 | `	if( ph7_value_is_null(pArg) ){` |
+| 493774 |   27 | `	if( ph7_value_is_null(pArg) ){` |
 |      - |   28 | `		/* php only DEPRECATES passing null to a non-nullable internal param; PHL` |
 |      - |   29 | `		 * targets php's non-deprecated surface and rejects it with the TypeError` |
 |      - |   30 | `		 * php will eventually raise. */` |
@@ -44,7 +44,7 @@ Coverage: 195/339 lines (57.52%)
 |    ! 0 |   34 | `			zFunc,iArgNum,zParamName,zTypeStr` |
 |      - |   35 | `			);` |
 |      - |   36 | `	}` |
-| 493642 |   37 | `	if( ph7_value_is_float(pArg) ){` |
+| 493774 |   37 | `	if( ph7_value_is_float(pArg) ){` |
 |     16 |   38 | `		double dVal = ph7_value_to_double(pArg);` |
 |      - |   39 | `		sxi64 iVal;` |
 |      - |   40 | `		/* php: NAN/INF/out-of-int64-range floats fail ZPP outright */` |
@@ -68,7 +68,7 @@ Coverage: 195/339 lines (57.52%)
 |      8 |   58 | `		*pOut = iVal;` |
 |      8 |   59 | `		return PH7_OK;` |
 |      - |   60 | `	}` |
-| 493628 |   61 | `	if( ph7_value_is_string(pArg) ){` |
+| 493760 |   61 | `	if( ph7_value_is_string(pArg) ){` |
 |      - |   62 | `		const char *zNum;` |
 |      - |   63 | `		int nSlen;` |
 |     18 |   64 | `		int i,bFloat = 0;` |
@@ -112,7 +112,7 @@ Coverage: 195/339 lines (57.52%)
 |      5 |  102 | `		*pOut = ph7_value_to_int64(pArg);` |
 |      5 |  103 | `		return PH7_OK;` |
 |      - |  104 | `	}` |
-| 493612 |  105 | `	if( !ph7_value_is_int(pArg) && !ph7_value_is_bool(pArg) ){` |
+| 493744 |  105 | `	if( !ph7_value_is_int(pArg) && !ph7_value_is_bool(pArg) ){` |
 |      - |  106 | `		/* Arrays, resources and objects: php names the class for objects */` |
 |    ! 0 |  107 | `		const char *zType = ph7_type_name(pArg);` |
 |    ! 0 |  108 | `		if( ph7_value_is_object(pArg) ){` |
@@ -127,9 +127,9 @@ Coverage: 195/339 lines (57.52%)
 |    ! 0 |  117 | `			zFunc,iArgNum,zParamName,zTypeStr,zType` |
 |      - |  118 | `			);` |
 |      - |  119 | `	}` |
-| 493612 |  120 | `	*pOut = ph7_value_to_int64(pArg);` |
-| 493612 |  121 | `	return PH7_OK;` |
-| 246925 |  122 | `}` |
+| 493744 |  120 | `	*pOut = ph7_value_to_int64(pArg);` |
+| 493744 |  121 | `	return PH7_OK;` |
+| 246991 |  122 | `}` |
 |      - |  123 |  |
 |      - |  124 | `/* This file implement built-in 'foreign' functions for the PH7 engine */` |
 |      - |  125 | `/*` |
@@ -187,18 +187,18 @@ Coverage: 195/339 lines (57.52%)
 |      - |  177 | ` *  TRUE if var is an integer. False otherwise.` |
 |      - |  178 | ` */` |
 |    930 |  179 | `static int PH7_builtin_is_int(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      3 |  180 | `{` |
-|    933 |  181 | `	int res = 0; /* Assume false by default */` |
-|    933 |  182 | `	if( nArg > 0 ){` |
+|      4 |  180 | `{` |
+|    934 |  181 | `	int res = 0; /* Assume false by default */` |
+|    934 |  182 | `	if( nArg > 0 ){` |
 |      - |  183 | `		/* Strict PHP identity: a float is never an int, even when it holds an` |
 |      - |  184 | `		 * integer value (1.0). An integer-valued real carries both MEMOBJ_INT` |
 |      - |  185 | `		 * (cached) and MEMOBJ_REAL, so REAL must be excluded here. */` |
-|    933 |  186 | `		res = ph7_value_is_int(apArg[0]) && !ph7_value_is_float(apArg[0]);` |
+|    934 |  186 | `		res = ph7_value_is_int(apArg[0]) && !ph7_value_is_float(apArg[0]);` |
 |    465 |  187 | `	}` |
 |      - |  188 | `	/* Query result */` |
-|    933 |  189 | `	ph7_result_bool(pCtx,res);` |
-|    933 |  190 | `	return PH7_OK;` |
-|      3 |  191 | `}` |
+|    934 |  189 | `	ph7_result_bool(pCtx,res);` |
+|    934 |  190 | `	return PH7_OK;` |
+|      4 |  191 | `}` |
 |      - |  192 | `/*` |
 |      - |  193 | ` * bool is_string($var)` |
 |      - |  194 | ` *  Finds out whether a variable is a string.` |
@@ -226,15 +226,15 @@ Coverage: 195/339 lines (57.52%)
 |      - |  216 | ` *  TRUE if var is NULL. False otherwise.` |
 |      - |  217 | ` */` |
 |     84 |  218 | `static int PH7_builtin_is_null(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      4 |  219 | `{` |
-|     88 |  220 | `	int res = 0; /* Assume false by default */` |
-|     88 |  221 | `	if( nArg > 0 ){` |
-|     88 |  222 | `		res = ph7_value_is_null(apArg[0]);` |
+|      3 |  219 | `{` |
+|     87 |  220 | `	int res = 0; /* Assume false by default */` |
+|     87 |  221 | `	if( nArg > 0 ){` |
+|     87 |  222 | `		res = ph7_value_is_null(apArg[0]);` |
 |     42 |  223 | `	}` |
 |      - |  224 | `	/* Query result */` |
-|     88 |  225 | `	ph7_result_bool(pCtx,res);` |
-|     88 |  226 | `	return PH7_OK;` |
-|      4 |  227 | `}` |
+|     87 |  225 | `	ph7_result_bool(pCtx,res);` |
+|     87 |  226 | `	return PH7_OK;` |
+|      3 |  227 | `}` |
 |      - |  228 | `/*` |
 |      - |  229 | ` * bool is_numeric($var)` |
 |      - |  230 | ` *  Find out whether a variable is NULL.` |
@@ -428,14 +428,14 @@ Coverage: 195/339 lines (57.52%)
 |      - |  418 | ` * Return` |
 |      - |  419 | ` *  0 if var has a non-empty and non-zero value.1 otherwise.` |
 |      - |  420 | ` */` |
-|  39622 |  421 | `static int PH7_builtin_empty(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  39632 |  421 | `static int PH7_builtin_empty(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 |  422 | `{` |
-|  39627 |  423 | `	int res = 1; /* Assume empty by default */` |
-|  39627 |  424 | `	if( nArg > 0 ){` |
-|  39625 |  425 | `		res = ph7_value_is_empty(apArg[0]);` |
-|  19810 |  426 | `	}` |
-|  39627 |  427 | `	ph7_result_bool(pCtx,res);` |
-|  39627 |  428 | `	return PH7_OK;` |
+|  39637 |  423 | `	int res = 1; /* Assume empty by default */` |
+|  39637 |  424 | `	if( nArg > 0 ){` |
+|  39635 |  425 | `		res = ph7_value_is_empty(apArg[0]);` |
+|  19815 |  426 | `	}` |
+|  39637 |  427 | `	ph7_result_bool(pCtx,res);` |
+|  39637 |  428 | `	return PH7_OK;` |
 |      - |  429 |  |
 |      5 |  430 | `}` |
 |      - |  431 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
@@ -800,17 +800,17 @@ Coverage: 195/339 lines (57.52%)
 |      - |  790 | ` * Register the built-in functions defined above,the array functions` |
 |      - |  791 | ` * defined in hashmap.c and the IO functions defined in vfs.c.` |
 |      - |  792 | ` */` |
-|   3412 |  793 | `PH7_PRIVATE void PH7_RegisterBuiltInFunction(ph7_vm *pVm)` |
+|   3414 |  793 | `PH7_PRIVATE void PH7_RegisterBuiltInFunction(ph7_vm *pVm)` |
 |      5 |  794 | `{` |
 |      - |  795 | `	sxu32 n;` |
-| 702877 |  796 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltInFunc) ; ++n ){` |
-| 699465 |  797 | `		ph7_create_function(&(*pVm),aBuiltInFunc[n].zName,aBuiltInFunc[n].xFunc,0);` |
-| 349735 |  798 | `	}` |
+| 703289 |  796 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltInFunc) ; ++n ){` |
+| 699875 |  797 | `		ph7_create_function(&(*pVm),aBuiltInFunc[n].zName,aBuiltInFunc[n].xFunc,0);` |
+| 349940 |  798 | `	}` |
 |      - |  799 | `	/* Register hashmap functions [i.e: array_merge(),sort(),count(),array_diff(),...] */` |
-|   3417 |  800 | `	PH7_RegisterHashmapFunctions(&(*pVm));` |
+|   3419 |  800 | `	PH7_RegisterHashmapFunctions(&(*pVm));` |
 |      - |  801 | `	/* Register IO functions [i.e: fread(),fwrite(),chdir(),mkdir(),file(),...] */` |
-|   3417 |  802 | `	PH7_RegisterIORoutine(&(*pVm));` |
-|   3417 |  803 | `}` |
+|   3419 |  802 | `	PH7_RegisterIORoutine(&(*pVm));` |
+|   3419 |  803 | `}` |
 |      - |  804 |  |
 |      - |  805 | `/*` |
 |      - |  806 | ` * UTF-8 encode/decode builtins (registered from vm.c).  Relocated here` |
