@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 633/703 lines (90.04%)
+Coverage: 631/703 lines (89.76%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -1263,7 +1263,7 @@ Coverage: 633/703 lines (90.04%)
 |    - | 1253 | ` *   mktime() returns the Unix timestamp of the arguments given.` |
 |    - | 1254 | ` *   If the arguments are invalid, the function returns FALSE` |
 |    - | 1255 | ` */` |
-|   44 | 1256 | `PH7_PRIVATE int PH7_builtin_mktime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   38 | 1256 | `PH7_PRIVATE int PH7_builtin_mktime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 | 1257 | `{` |
 |    - | 1258 | `	const char *zFunction;` |
 |    - | 1259 | `	ph7_int64 iVal;` |
@@ -1272,14 +1272,14 @@ Coverage: 633/703 lines (90.04%)
 |    - | 1262 | `	struct tm *pTm;` |
 |    - | 1263 | `	time_t t;` |
 |    - | 1264 | `	/* Extract function name */` |
-|   45 | 1265 | `	zFunction = ph7_function_name(pCtx);` |
+|   39 | 1265 | `	zFunction = ph7_function_name(pCtx);` |
 |    - | 1266 | `	/* PHP 8 dropped the legacy $is_dst 7th parameter: mktime()/gmmktime() now` |
 |    - | 1267 | `	 * accept at most 6 arguments and throw a catchable ArgumentCountError` |
 |    - | 1268 | `	 * otherwise (the central aBuiltinArity table only enforces the minimum, so` |
 |    - | 1269 | `	 * this maximum is checked here). */` |
-|   45 | 1270 | `	if( nArg > 6 ){` |
-|   10 | 1271 | `		return PH7_VmThrowException(pCtx,"ArgumentCountError",` |
-|    3 | 1272 | `			"%s() expects at most 6 arguments, %d given",zFunction,nArg);` |
+|   39 | 1270 | `	if( nArg > 6 ){` |
+|  ! 0 | 1271 | `		return PH7_VmThrowException(pCtx,"ArgumentCountError",` |
+|  ! 0 | 1272 | `			"%s() expects at most 6 arguments, %d given",zFunction,nArg);` |
 |    - | 1273 | `	}` |
 |   39 | 1274 | `	if( nArg < 1 ){` |
 |  ! 0 | 1275 | `		return PH7_VmThrowException(pCtx,"ArgumentCountError",` |
@@ -1328,7 +1328,7 @@ Coverage: 633/703 lines (90.04%)
 |    - | 1318 | `	/* Return the timestamp as a 64bit integer */` |
 |   39 | 1319 | `	ph7_result_int64(pCtx,iVal);` |
 |   39 | 1320 | `	return PH7_OK;` |
-|   23 | 1321 | `}` |
+|   20 | 1321 | `}` |
 |    - | 1322 | `/*` |
 |    - | 1323 | ` * string date_default_timezone_get(void)` |
 |    - | 1324 | ` *  Gets the default timezone used by all date/time functions in a script.` |

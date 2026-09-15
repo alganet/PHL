@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 551/653 lines (84.38%)
+Coverage: 539/653 lines (82.54%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -142,15 +142,15 @@ Coverage: 551/653 lines (84.38%)
 |    - |  132 | ` * Return` |
 |    - |  133 | ` *  Returns the next lowest integer value by rounding down value if necessary.` |
 |    - |  134 | ` */` |
-|   16 |  135 | `PH7_PRIVATE int PH7_builtin_floor(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    3 |  136 | `{` |
+|   14 |  135 | `PH7_PRIVATE int PH7_builtin_floor(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    2 |  136 | `{` |
 |    - |  137 | `	double r,x;` |
 |    - |  138 | `	/* PHP requires exactly one argument. */` |
-|   19 |  139 | `	if( nArg != 1 ){` |
-|    4 |  140 | `		return PH7_VmThrowException(pCtx,` |
+|   16 |  139 | `	if( nArg != 1 ){` |
+|  ! 0 |  140 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  141 | `			"ArgumentCountError",` |
 |    - |  142 | `			"floor() expects exactly 1 argument, %d given",` |
-|    1 |  143 | `			nArg` |
+|  ! 0 |  143 | `			nArg` |
 |    - |  144 | `			);` |
 |    - |  145 | `	}` |
 |    - |  146 | `	/*` |
@@ -188,7 +188,7 @@ Coverage: 551/653 lines (84.38%)
 |    - |  178 | `	/* store the result back */` |
 |   13 |  179 | `	ph7_result_double(pCtx,r);` |
 |   13 |  180 | `	return PH7_OK;` |
-|   11 |  181 | `}` |
+|    9 |  181 | `}` |
 |    - |  182 | `/*` |
 |    - |  183 | ` * float cos(float $arg )` |
 |    - |  184 | ` *  Cosine.` |
@@ -371,15 +371,15 @@ Coverage: 551/653 lines (84.38%)
 |    - |  361 | ` * Return` |
 |    - |  362 | ` *  The next highest integer value by rounding up value if necessary.` |
 |    - |  363 | ` */` |
-|   12 |  364 | `PH7_PRIVATE int PH7_builtin_ceil(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    3 |  365 | `{` |
+|   10 |  364 | `PH7_PRIVATE int PH7_builtin_ceil(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    2 |  365 | `{` |
 |    - |  366 | `	double r,x;` |
 |    - |  367 | `	/* PHP requires exactly one argument. */` |
-|   15 |  368 | `	if( nArg != 1 ){` |
-|    4 |  369 | `		return PH7_VmThrowException(pCtx,` |
+|   12 |  368 | `	if( nArg != 1 ){` |
+|  ! 0 |  369 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  370 | `			"ArgumentCountError",` |
 |    - |  371 | `			"ceil() expects exactly 1 argument, %d given",` |
-|    1 |  372 | `			nArg` |
+|  ! 0 |  372 | `			nArg` |
 |    - |  373 | `			);` |
 |    - |  374 | `	}` |
 |    - |  375 | `	/*` |
@@ -416,7 +416,7 @@ Coverage: 551/653 lines (84.38%)
 |    - |  406 | `	/* store the result back */` |
 |    9 |  407 | `	ph7_result_double(pCtx,r);` |
 |    9 |  408 | `	return PH7_OK;` |
-|    9 |  409 | `}` |
+|    7 |  409 | `}` |
 |    - |  410 | `/*` |
 |    - |  411 | ` * float tan(float $arg )` |
 |    - |  412 | ` *  Tangent.` |
@@ -448,15 +448,15 @@ Coverage: 551/653 lines (84.38%)
 |    - |  438 | ` * Return` |
 |    - |  439 | ` *  The arc tangent of arg.` |
 |    - |  440 | ` */` |
-|   38 |  441 | `PH7_PRIVATE int PH7_builtin_atan(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    3 |  442 | `{` |
+|   36 |  441 | `PH7_PRIVATE int PH7_builtin_atan(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    2 |  442 | `{` |
 |    - |  443 | `	double r,x;` |
 |    - |  444 | `	/* PHP enforces exactly one argument. */` |
-|   41 |  445 | `	if( nArg != 1 ){` |
-|    4 |  446 | `		return PH7_VmThrowException(pCtx,` |
+|   38 |  445 | `	if( nArg != 1 ){` |
+|  ! 0 |  446 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  447 | `			"ArgumentCountError",` |
 |    - |  448 | `			"atan() expects exactly 1 argument, %d given",` |
-|    1 |  449 | `			nArg` |
+|  ! 0 |  449 | `			nArg` |
 |    - |  450 | `			);` |
 |    - |  451 | `	}` |
 |    - |  452 | `	/* Type checking: reject non-numeric values (arrays, objects, resources, non-numeric strings).` |
@@ -474,7 +474,7 @@ Coverage: 551/653 lines (84.38%)
 |    - |  464 | `	/* store the result back */` |
 |   33 |  465 | `	ph7_result_double(pCtx,r);` |
 |   33 |  466 | `	return PH7_OK;` |
-|   22 |  467 | `}` |
+|   20 |  467 | `}` |
 |    - |  468 | `/*` |
 |    - |  469 | ` * float tanh(float $arg )` |
 |    - |  470 | ` *  Hyperbolic tangent.` |
@@ -507,15 +507,15 @@ Coverage: 551/653 lines (84.38%)
 |    - |  497 | ` * Return` |
 |    - |  498 | ` *  The arc tangent of y/x in radian.` |
 |    - |  499 | ` */` |
-|   52 |  500 | `PH7_PRIVATE int PH7_builtin_atan2(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    4 |  501 | `{` |
+|   50 |  500 | `PH7_PRIVATE int PH7_builtin_atan2(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    3 |  501 | `{` |
 |    - |  502 | `	double r,x,y;` |
 |    - |  503 | `	/* PHP enforces exactly two arguments. */` |
-|   56 |  504 | `	if( nArg != 2 ){` |
-|    4 |  505 | `		return PH7_VmThrowException(pCtx,` |
+|   53 |  504 | `	if( nArg != 2 ){` |
+|  ! 0 |  505 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  506 | `			"ArgumentCountError",` |
 |    - |  507 | `			"atan2() expects exactly 2 arguments, %d given",` |
-|    1 |  508 | `			nArg` |
+|  ! 0 |  508 | `			nArg` |
 |    - |  509 | `			);` |
 |    - |  510 | `	}` |
 |    - |  511 | `	/* Type checking: reject non-numeric values for $y (argument #1). */` |
@@ -541,7 +541,7 @@ Coverage: 551/653 lines (84.38%)
 |    - |  531 | `	/* store the result back */` |
 |   47 |  532 | `	ph7_result_double(pCtx,r);` |
 |   47 |  533 | `	return PH7_OK;` |
-|   30 |  534 | `}` |
+|   28 |  534 | `}` |
 |    - |  535 | `/*` |
 |    - |  536 | ` * float/int64 abs(float/int64 $arg )` |
 |    - |  537 | ` *  Absolute value.` |
@@ -550,15 +550,15 @@ Coverage: 551/653 lines (84.38%)
 |    - |  540 | ` * Return` |
 |    - |  541 | ` *  The absolute value of number.` |
 |    - |  542 | ` */` |
-|  132 |  543 | `PH7_PRIVATE int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  130 |  543 | `PH7_PRIVATE int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    3 |  544 | `{` |
 |    - |  545 | `	int is_float;` |
 |    - |  546 | `	/* PHP requires exactly one argument. */` |
-|  135 |  547 | `	if( nArg != 1 ){` |
-|    4 |  548 | `		return PH7_VmThrowException(pCtx,` |
+|  133 |  547 | `	if( nArg != 1 ){` |
+|  ! 0 |  548 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  549 | `			"ArgumentCountError",` |
 |    - |  550 | `			"abs() expects exactly 1 argument, %d given",` |
-|    1 |  551 | `			nArg` |
+|  ! 0 |  551 | `			nArg` |
 |    - |  552 | `			);` |
 |    - |  553 | `	}` |
 |    - |  554 |  |
@@ -603,7 +603,7 @@ Coverage: 551/653 lines (84.38%)
 |    - |  593 | `		}` |
 |    - |  594 | `	}` |
 |  129 |  595 | `	return PH7_OK;` |
-|   69 |  596 | `}` |
+|   68 |  596 | `}` |
 |    - |  597 | `/*` |
 |    - |  598 | ` * float log(float $arg,[int/float $base])` |
 |    - |  599 | ` *  Natural logarithm.` |
@@ -941,25 +941,25 @@ Coverage: 551/653 lines (84.38%)
 |    - |  931 | ` * Return` |
 |    - |  932 | ` *  The rounded value as a float.` |
 |    - |  933 | ` */` |
-|  188 |  934 | `PH7_PRIVATE int PH7_builtin_round(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  186 |  934 | `PH7_PRIVATE int PH7_builtin_round(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    2 |  935 | `{` |
 |    - |  936 | `	double value, r;` |
-|  190 |  937 | `	int places = 0;` |
-|  190 |  938 | `	int mode = PH7_ROUND_HALF_UP;` |
+|  188 |  937 | `	int places = 0;` |
+|  188 |  938 | `	int mode = PH7_ROUND_HALF_UP;` |
 |    - |  939 | `	/*` |
 |    - |  940 | `	 * Legacy PHL contract: no argument -> int(0). PHP throws an` |
 |    - |  941 | `	 * ArgumentCountError here, but two PHL-only (--SKIPIF-- zend_version)` |
 |    - |  942 | `	 * tests assert round()===0, so keep the historical behavior.` |
 |    - |  943 | `	 */` |
-|  190 |  944 | `	if( nArg < 1 ){` |
+|  188 |  944 | `	if( nArg < 1 ){` |
 |  ! 0 |  945 | `		ph7_result_int(pCtx,0);` |
 |  ! 0 |  946 | `		return PH7_OK;` |
 |    - |  947 | `	}` |
-|  190 |  948 | `	if( nArg > 3 ){` |
-|    4 |  949 | `		return PH7_VmThrowException(pCtx,` |
+|  188 |  948 | `	if( nArg > 3 ){` |
+|  ! 0 |  949 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  950 | `			"ArgumentCountError",` |
 |    - |  951 | `			"round() expects at most 3 arguments, %d given",` |
-|    1 |  952 | `			nArg` |
+|  ! 0 |  952 | `			nArg` |
 |    - |  953 | `			);` |
 |    - |  954 | `	}` |
 |    - |  955 | `	/*` |
@@ -1021,7 +1021,7 @@ Coverage: 551/653 lines (84.38%)
 |  164 | 1011 | `	r = MathRound(value, places, mode);` |
 |  164 | 1012 | `	ph7_result_double(pCtx,r);` |
 |  164 | 1013 | `	return PH7_OK;` |
-|   96 | 1014 | `}` |
+|   95 | 1014 | `}` |
 |    - | 1015 | `/*` |
 |    - | 1016 | ` * int intdiv(int $a, int $b)` |
 |    - | 1017 | ` *  Integer division.` |
