@@ -829,13 +829,15 @@ static const struct VmBuiltinSig {
  * variadic tail hides a second required argument). Verified against php 8.5.7
  * for all 462 signed builtins: 458 derive exactly, 4 are overridden.
  */
-static void VmDeriveArityFromSig(const char *zSig,sxi16 *pnMin,sxu8 *pbAtLeast)
+static void VmDeriveArityFromSig(const char *zSig,sxi16 *pnMin,sxu8 *pbAtLeast,sxi16 *pnMax,sxu8 *pbHasMax)
 {
 	const char *zCur = zSig;
 	int nMin = 0, bAtLeast = 0, bSeen = 0, bOptional = 0;
+	int nTotal = 0, bVariadic = 0;
 	for(;;){
 		if( zCur[0] == '\0' || zCur[0] == ',' ){
 			if( bSeen ){
+				nTotal++;
 				if( bOptional ){
 					bAtLeast = 1;
 				}else{
@@ -855,10 +857,18 @@ static void VmDeriveArityFromSig(const char *zSig,sxi16 *pnMin,sxu8 *pbAtLeast)
 		if( zCur[0] == '=' || (zCur[0] == '.' && zCur[1] == '.' && zCur[2] == '.') ){
 			bOptional = 1;
 		}
+		if( zCur[0] == '.' && zCur[1] == '.' && zCur[2] == '.' ){
+			bVariadic = 1;
+		}
 		zCur++;
 	}
 	*pnMin = (sxi16)nMin;
 	*pbAtLeast = (sxu8)bAtLeast;
+	/* php enforces a MAXIMUM too ("expects at most 1 argument, 2 given"); a
+	 * variadic tail means there is none. The parameter COUNT is the maximum,
+	 * whether or not the parameters carry defaults. */
+	*pnMax = (sxi16)nTotal;
+	*pbHasMax = (sxu8)(bVariadic ? 0 : 1);
 }
 /*
  * Does the declared type list (e.g. "array|string", "?int", "callable") contain
@@ -1059,6 +1069,26 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 	}
 	return SXRET_OK;
 }
+/*
+ * Builtins whose accepted arity is NOT a contiguous range, so the signature
+ * cannot express it and the central too-many-arguments check must stay out of
+ * the way: rand()/mt_rand() take 0 OR 2 arguments (never 1), and php words the
+ * violation "expects exactly 2 arguments, 3 given" from their own check rather
+ * than the ZPP "at most". They validate themselves; leaving bHasMaxArg at 0
+ * keeps their message php-faithful.
+ */
+static int VmBuiltinSelfValidatesArity(const char *zName)
+{
+	static const char *const azSelf[] = { "rand", "mt_rand" };
+	sxu32 i;
+	for( i = 0 ; i < SX_ARRAYSIZE(azSelf) ; i++ ){
+		sxu32 nSelf = SyStrlen(azSelf[i]);
+		if( SyStrlen(zName) == nSelf && SyStrncmp(zName,azSelf[i],nSelf) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
 PH7_PRIVATE void VmSetBuiltinSignatures(ph7_vm *pVm)
 {
 	sxu32 n;
@@ -1067,12 +1097,20 @@ PH7_PRIVATE void VmSetBuiltinSignatures(ph7_vm *pVm)
 			(const void *)aBuiltinSig[n].zName,(sxu32)SyStrlen(aBuiltinSig[n].zName));
 		if( pEntry ){
 			ph7_user_func *pFunc = (ph7_user_func *)pEntry->pUserData;
+			sxi16 nMin = 0, nMax = 0;
+			sxu8 bAtLeast = 0, bHasMax = 0;
 			pFunc->zSig = aBuiltinSig[n].zSig;
 			pFunc->zRet = aBuiltinSig[n].zRet[0] ? aBuiltinSig[n].zRet : 0;
+			VmDeriveArityFromSig(pFunc->zSig,&nMin,&bAtLeast,&nMax,&bHasMax);
+			/* The MAXIMUM always comes from the signature: the curated override
+			 * table speaks only to the minimum (and its wording). */
+			pFunc->nMaxArg = nMax;
+			pFunc->bHasMaxArg = (sxu8)(VmBuiltinSelfValidatesArity(aBuiltinSig[n].zName) ? 0 : bHasMax);
 			if( pFunc->nMinArg < 1 ){
 				/* VmSetBuiltinArity() ran first: a non-zero minimum here means the
 				 * curated override already spoke for this builtin, so leave it. */
-				VmDeriveArityFromSig(pFunc->zSig,&pFunc->nMinArg,&pFunc->bAtLeast);
+				pFunc->nMinArg = nMin;
+				pFunc->bAtLeast = bAtLeast;
 			}
 		}
 	}

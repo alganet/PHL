@@ -2350,7 +2350,12 @@ static int VmAppendExceptionTrace(ph7_vm *pVm,ph7_class_instance *pThis,SyBlob *
 	const char *zTmp;
 	int nTmp;
 	int bDone = 0;
+	int bSaved;
 	if( pThis == 0 ){
+		return 0;
+	}
+	if( pVm->bRenderingUncaught ){
+		/* Already inside a report: do not run userland trace code again. */
 		return 0;
 	}
 	pGetTrace = PH7_ClassExtractMethod(pThis->pClass,"getTraceAsString",sizeof("getTraceAsString")-1);
@@ -2358,6 +2363,12 @@ static int VmAppendExceptionTrace(ph7_vm *pVm,ph7_class_instance *pThis,SyBlob *
 		return 0;
 	}
 	PH7_MemObjInit(pVm,&sTrace);
+	/* getTraceAsString() is userland code from the builtin prelude; if it (or
+	 * anything it calls) throws, the throw would be reported by this very
+	 * renderer. Fence the window so that report falls back to the synthesized
+	 * trace rather than re-entering here forever. */
+	bSaved = pVm->bRenderingUncaught;
+	pVm->bRenderingUncaught = 1;
 	if( PH7_VmCallClassMethod(&(*pVm),pThis,pGetTrace,&sTrace,0,0) == SXRET_OK ){
 		zTmp = ph7_value_to_string(&sTrace,&nTmp);
 		if( zTmp && nTmp > 0 ){
@@ -2366,6 +2377,7 @@ static int VmAppendExceptionTrace(ph7_vm *pVm,ph7_class_instance *pThis,SyBlob *
 		}
 	}
 	PH7_MemObjRelease(&sTrace);
+	pVm->bRenderingUncaught = bSaved;
 	return bDone;
 }
 /*
@@ -2426,7 +2438,7 @@ static void VmRenderUncaughtEntry(
 	 * silently dropped every intermediate frame of a nested call chain and, at
 	 * file scope, invented a "#0 file(line): {main}" entry that php does not
 	 * print ({main} is the bottom marker, not a called frame). */
-	if( !VmAppendExceptionTrace(pVm,pExc,pOut) ){
+	if( pVm->bRenderingUncaught || !VmAppendExceptionTrace(pVm,pExc,pOut) ){
 		int bFrame = 0;
 		if( zFuncName && nFuncLen > 0 ){
 			if( pFile ){

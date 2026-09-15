@@ -286,6 +286,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallForeignFunction(
 		 * — otherwise an embedder overriding a listed builtin (e.g. a 1-arg
 		 * custom "substr") would inherit the old ArgumentCountError threshold. */
 		pFunc->nMinArg  = 0;
+		pFunc->nMaxArg  = 0;
+		pFunc->bHasMaxArg = 0; /* no too-many-arguments check until a signature stamps one */
 		pFunc->bAtLeast = 0;
 		return SXRET_OK;
 	}

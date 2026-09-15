@@ -233,6 +233,11 @@ struct ph7_user_func
 	                           * (the builtin self-validates, or genuinely accepts zero args). */
 	sxu8 bAtLeast;            /* 0 -> "expects exactly N", 1 -> "expects at least N" (the
 	                           * wording depends on whether the builtin has optional params). */
+	sxu8 bHasMaxArg;          /* 0 -> no central too-many-arguments check (the SAFE default: this
+	                           * struct is SyZero'd on creation, so an unstamped builtin must mean
+	                           * "unenforced", never "accepts at most zero"). 1 -> nMaxArg applies. */
+	sxi16 nMaxArg;            /* Maximum accepted arguments when bHasMaxArg; derived from the
+	                           * signature. A variadic parameter leaves bHasMaxArg at 0. */
 	const char *zSig;         /* PHP-style parameter list ("string $s, int $o = 0") from the
 	                           * static signature table, or NULL: ReflectionFunction input for
 	                           * internal functions. Points at static storage — never freed. */
@@ -1342,6 +1347,13 @@ struct ph7_vm
 	int bInlineTryCatch;        /* ROOT C: TRUE once the inline try/catch/finally VM handlers exist,
 	                             * enabling the compiler to inline generator-body try/catch (so a
 	                             * `yield` in a catch/finally suspends). Default 0 = legacy path. */
+	int bRenderingUncaught;     /* TRUE while the uncaught-exception report is being rendered. That
+	                             * report asks the exception for its own trace (getTraceAsString,
+	                             * userland code), so anything that throws in there would re-enter
+	                             * the renderer and recurse until the process dies — which is exactly
+	                             * what a bad max-arity stamp did (18 GB before the OOM killer, 19 Jul
+	                             * 2026). The guard makes the second entry fall back to the
+	                             * synthesized trace instead of looping. */
 	int bCompilingBuiltin;      /* TRUE while the embedded builtin PHP library chunks compile at VM
 	                             * init: classes/functions defined then are stamped INTERNAL so
 	                             * Reflection reports isInternal() like Zend does for C-level code. */
