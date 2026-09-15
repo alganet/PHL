@@ -2602,36 +2602,19 @@ Synchro:
  */
 static sxi32 GenStateThrowNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRoot)
 {
-	sxi32 rc = SXRET_OK;
-	if( pRoot->pOp ){
-		switch( pRoot->pOp->iOp ){
-		case EXPR_OP_NEW:            /* new Exception() */
-		case EXPR_OP_ARROW:          /* $obj->prop */
-		case EXPR_OP_NULLSAFE_ARROW: /* $obj?->prop */
-		case EXPR_OP_DC:             /* Cls::$p or Cls::m() */
-		case EXPR_OP_SUBSCRIPT:      /* $arr[0] */
-		case EXPR_OP_FUNC_CALL:      /* fn() or $obj->m() */
-			break;
-		default:
-			/* Runtime will still reject non-Throwable values; the set above
-			 * covers the common shapes and gives a friendlier compile error
-			 * for obvious mistakes like `throw 5`. */
-			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pRoot->pStart? pRoot->pStart->nLine : 0,
-				"throw: Expecting an exception class instance");
-			if( rc != SXERR_ABORT ){
-				rc = SXERR_INVALID;
-			}
-			break;
-		}
-	}else if( pRoot->xCode != PH7_CompileVariable ){
-		/* Unexpected expression */
-		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pRoot->pStart? pRoot->pStart->nLine : 0,
-			"throw: Expecting an exception class instance");
-		if( rc != SXERR_ABORT ){
-			rc = SXERR_INVALID;
-		}
-	}
-	return rc;
+	/* php decides throwability at RUNTIME: `throw 5` compiles and raises the
+	 * catchable Error "Can only throw objects" when it executes, and a
+	 * non-Throwable object raises "Cannot throw objects that do not implement
+	 * Throwable". This used to whitelist a handful of expression shapes and
+	 * reject the rest at compile time as a "friendlier" error, which meant the
+	 * program never ran and no catch could ever see it — and it was inconsistent
+	 * anyway, since `throw $v` (a variable holding an int) always compiled and
+	 * fell through to the same runtime path. OP_THROW now owns the whole rule,
+	 * so accept any expression here; `throw;` with no operand is still rejected
+	 * by PH7_CompileThrow's SXERR_EMPTY branch. */
+	SXUNUSED(pGen);
+	SXUNUSED(pRoot);
+	return SXRET_OK;
 }
 /*
  * Compile a 'throw' statement.
