@@ -413,27 +413,27 @@ Coverage: 236/295 lines (80.00%)
 |     - |  403 | ` *  If no previous handler was defined, NULL is also returned. If NULL is passed` |
 |     - |  404 | ` *  resetting the handler to its default state, TRUE is returned.` |
 |     - |  405 | ` */` |
-| 10052 |  406 | `PH7_PRIVATE int vm_builtin_set_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+| 10044 |  406 | `PH7_PRIVATE int vm_builtin_set_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     4 |  407 | `{` |
-| 10056 |  408 | `	ph7_vm *pVm = pCtx->pVm;` |
+| 10048 |  408 | `	ph7_vm *pVm = pCtx->pVm;` |
 |     - |  409 | `	ph7_value *pOld,*pNew;` |
 |     - |  410 | `	/* Point to the old and the new handler */` |
-| 10056 |  411 | `	pOld = &pVm->aErrCB[0];` |
-| 10056 |  412 | `	pNew = &pVm->aErrCB[1];` |
+| 10048 |  411 | `	pOld = &pVm->aErrCB[0];` |
+| 10048 |  412 | `	pNew = &pVm->aErrCB[1];` |
 |     - |  413 | `	/* Return the old handler */` |
-| 10056 |  414 | `	ph7_result_value(pCtx,pOld); /* Will make it's own copy */` |
-| 10056 |  415 | `	if( nArg > 0 ){` |
-| 10056 |  416 | `		if( !ph7_value_is_callable(apArg[0])) {` |
+| 10048 |  414 | `	ph7_result_value(pCtx,pOld); /* Will make it's own copy */` |
+| 10048 |  415 | `	if( nArg > 0 ){` |
+| 10048 |  416 | `		if( !ph7_value_is_callable(apArg[0])) {` |
 |     - |  417 | `			/* Not callable,return TRUE (As requested by the PHP specification) */` |
-|  5003 |  418 | `			PH7_MemObjRelease(pNew);` |
-|  5003 |  419 | `			ph7_result_bool(pCtx,1);` |
-|  2502 |  420 | `		}else{` |
-|  5054 |  421 | `			PH7_MemObjStore(pNew,pOld);` |
+|  4999 |  418 | `			PH7_MemObjRelease(pNew);` |
+|  4999 |  419 | `			ph7_result_bool(pCtx,1);` |
+|  2500 |  420 | `		}else{` |
+|  5050 |  421 | `			PH7_MemObjStore(pNew,pOld);` |
 |     - |  422 | `			/* Install the new handler */` |
-|  5054 |  423 | `			PH7_MemObjStore(apArg[0],pNew);` |
+|  5050 |  423 | `			PH7_MemObjStore(apArg[0],pNew);` |
 |     - |  424 | `		}` |
-|  5026 |  425 | `	}` |
-| 10056 |  426 | `	return PH7_OK;` |
+|  5022 |  425 | `	}` |
+| 10048 |  426 | `	return PH7_OK;` |
 |     4 |  427 | `}` |
 |     - |  428 | `/*` |
 |     - |  429 | ` * ?callable get_error_handler(void)     -- php 8.5` |

@@ -70,22 +70,22 @@ Coverage: 970/1042 lines (93.09%)
 |      - |   60 | ` * PHP_OS` |
 |      - |   61 | ` *  Expand the name of the host Operating System.` |
 |      - |   62 | ` */` |
-|   3932 |   63 | `static void PH7_OS_Const(ph7_value *pVal,void *pUnused)` |
+|   3930 |   63 | `static void PH7_OS_Const(ph7_value *pVal,void *pUnused)` |
 |      5 |   64 | `{` |
 |      - |   65 | `#if defined(__WINNT__)` |
 |      5 |   66 | `	ph7_value_string(pVal,"WINNT",(int)sizeof("WINNT")-1);` |
 |      - |   67 | `#elif defined(__UNIXES__)` |
 |      - |   68 | `	struct utsname sInfo;` |
-|   3932 |   69 | `	if( uname(&sInfo) != 0 ){` |
+|   3930 |   69 | `	if( uname(&sInfo) != 0 ){` |
 |    ! 0 |   70 | `		ph7_value_string(pVal,"Unix",(int)sizeof("Unix")-1);` |
 |    ! 0 |   71 | `	}else{` |
-|   3932 |   72 | `		ph7_value_string(pVal,sInfo.sysname,-1);` |
+|   3930 |   72 | `		ph7_value_string(pVal,sInfo.sysname,-1);` |
 |      - |   73 | `	}` |
 |      - |   74 | `#else` |
 |      - |   75 | `	ph7_value_string(pVal,"Host OS",(int)sizeof("Host OS")-1);` |
 |      - |   76 | `#endif` |
-|   1966 |   77 | `	SXUNUSED(pUnused);` |
-|   3937 |   78 | `}` |
+|   1965 |   77 | `	SXUNUSED(pUnused);` |
+|   3935 |   78 | `}` |
 |      - |   79 | `/*` |
 |      - |   80 | ` * PHP_OS_FAMILY (php 7.2)` |
 |      - |   81 | ` *  One of 'Windows', 'BSD', 'Darwin', 'Solaris', 'Linux' or 'Unknown', derived` |
@@ -1253,20 +1253,20 @@ Coverage: 970/1042 lines (93.09%)
 |      - | 1243 | ` * PATHINFO_EXTENSION` |
 |      - | 1244 | ` *  Expand 3.` |
 |      - | 1245 | ` */` |
-|   6522 | 1246 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
+|   6518 | 1246 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1247 | `{` |
-|   3261 | 1248 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6527 | 1249 | `	ph7_value_int(pVal,3);` |
-|   6527 | 1250 | `}` |
+|   3259 | 1248 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6523 | 1249 | `	ph7_value_int(pVal,3);` |
+|   6523 | 1250 | `}` |
 |      - | 1251 | `/*` |
 |      - | 1252 | ` * PATHINFO_FILENAME` |
 |      - | 1253 | ` *  Expand 4.` |
 |      - | 1254 | ` */` |
-|   6514 | 1255 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
+|   6510 | 1255 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1256 | `{` |
-|   3257 | 1257 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6519 | 1258 | `	ph7_value_int(pVal,4);` |
-|   6519 | 1259 | `}` |
+|   3255 | 1257 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6515 | 1258 | `	ph7_value_int(pVal,4);` |
+|   6515 | 1259 | `}` |
 |      - | 1260 | `/*` |
 |      - | 1261 | ` * SEEK_SET.` |
 |      - | 1262 | ` *  Expand 0` |

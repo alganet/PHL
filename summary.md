@@ -6,4 +6,4 @@
 | Lines                          | 81.17%   | 48334/59548 |
 | Functions                      | 93.09%   | 2197/2360   |
 
-Details: https://github.com/alganet/PHL/actions/runs/34966110269
+Details: https://github.com/alganet/PHL/actions/runs/34970000841

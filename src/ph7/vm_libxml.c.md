@@ -45,14 +45,14 @@ Coverage: 238/324 lines (73.46%)
 |      - |   35 | ` * equivalent note in vm_pcre.c); xmlCleanupParser() is deliberately never` |
 |      - |   36 | ` * called -- it is unsafe with threads and process exit reclaims everything.` |
 |      - |   37 | ` */` |
-|   3882 |   38 | `static void LibxmlGlobalInit(void)` |
+|   3880 |   38 | `static void LibxmlGlobalInit(void)` |
 |      5 |   39 | `{` |
 |      - |   40 | `	static int bInit = 0;` |
-|   3887 |   41 | `	if( !bInit ){` |
-|   3887 |   42 | `		xmlInitParser();` |
-|   3887 |   43 | `		bInit = 1;` |
-|   1941 |   44 | `	}` |
-|   3887 |   45 | `}` |
+|   3885 |   41 | `	if( !bInit ){` |
+|   3885 |   42 | `		xmlInitParser();` |
+|   3885 |   43 | `		bInit = 1;` |
+|   1940 |   44 | `	}` |
+|   3885 |   45 | `}` |
 |      - |   46 | `/*` |
 |      - |   47 | ` * Free one registered document: its orphaned subtrees first, then the tree` |
 |      - |   48 | ` * itself.  Registry links and the phl_xmldoc shell live in SyMemBackend and` |
@@ -573,7 +573,7 @@ Coverage: 238/324 lines (73.46%)
 |      - |  563 | ` * PHP-visible libxml_* functions + LibXMLError class.  Called from` |
 |      - |  564 | ` * PH7_VmInit inside the bCompilingBuiltin window.` |
 |      - |  565 | ` */` |
-|   3882 |  566 | `PH7_PRIVATE sxi32 PH7_VmInstallLibxml(ph7_vm *pVm)` |
+|   3880 |  566 | `PH7_PRIVATE sxi32 PH7_VmInstallLibxml(ph7_vm *pVm)` |
 |      5 |  567 | `{` |
 |      - |  568 | `	static const struct {` |
 |      - |  569 | `		const char *zName;` |
@@ -585,16 +585,16 @@ Coverage: 238/324 lines (73.46%)
 |      - |  575 | `		{ "__libxml_get_last_error_raw",  vm_builtin_libxml_get_last_error_raw  },` |
 |      - |  576 | `	};` |
 |      - |  577 | `	sxu32 n;` |
-|   3887 |  578 | `	LibxmlGlobalInit();` |
-|   3887 |  579 | `	SySetInit(&pVm->aLibxmlErr,&pVm->sAllocator,sizeof(phl_libxml_err));` |
-|   3887 |  580 | `	pVm->bLibxmlInternalErr = 0;` |
-|   3887 |  581 | `	pVm->pLibxmlLastErr = 0;` |
-|   3887 |  582 | `	pVm->pXmlDocs = 0;` |
-|   3887 |  583 | `	pVm->pXmlWriters = 0;` |
-|  19415 |  584 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
-|  15533 |  585 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
-|   7769 |  586 | `	}` |
-|   3887 |  587 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zLibxmlLib,sizeof(zLibxmlLib)-1);` |
+|   3885 |  578 | `	LibxmlGlobalInit();` |
+|   3885 |  579 | `	SySetInit(&pVm->aLibxmlErr,&pVm->sAllocator,sizeof(phl_libxml_err));` |
+|   3885 |  580 | `	pVm->bLibxmlInternalErr = 0;` |
+|   3885 |  581 | `	pVm->pLibxmlLastErr = 0;` |
+|   3885 |  582 | `	pVm->pXmlDocs = 0;` |
+|   3885 |  583 | `	pVm->pXmlWriters = 0;` |
+|  19405 |  584 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
+|  15525 |  585 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
+|   7765 |  586 | `	}` |
+|   3885 |  587 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zLibxmlLib,sizeof(zLibxmlLib)-1);` |
 |      5 |  588 | `}` |
 |      - |  589 |  |
 |      - |  590 | `#else` |

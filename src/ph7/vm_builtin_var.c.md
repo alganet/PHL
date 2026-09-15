@@ -30,39 +30,39 @@ Coverage: 382/420 lines (90.95%)
 |       - |   20 | ` * Return` |
 |       - |   21 | ` *  1 if var exists and has value other than NULL, 0 otherwise.` |
 |       - |   22 | ` */` |
-|  114884 |   23 | `PH7_PRIVATE int vm_builtin_isset(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  114828 |   23 | `PH7_PRIVATE int vm_builtin_isset(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |       5 |   24 | `{` |
 |       - |   25 | `	ph7_value *pObj;` |
-|  114889 |   26 | `	int res = 0;` |
+|  114833 |   26 | `	int res = 0;` |
 |       - |   27 | `	int i;` |
-|  114889 |   28 | `	if( nArg < 1 ){` |
+|  114833 |   28 | `	if( nArg < 1 ){` |
 |       - |   29 | `		/* Missing arguments,return false */` |
 |     ! 0 |   30 | `		ph7_result_bool(pCtx,res);` |
 |     ! 0 |   31 | `		return SXRET_OK;` |
 |       - |   32 | `	}` |
 |       - |   33 | `	/* Iterate over available arguments */` |
-|  147707 |   34 | `	for( i = 0 ; i < nArg ; ++i ){` |
-|  114901 |   35 | `		pObj = apArg[i];` |
-|  114901 |   36 | `		if( pObj->nIdx == SXU32_HIGH ){` |
+|  147643 |   34 | `	for( i = 0 ; i < nArg ; ++i ){` |
+|  114845 |   35 | `		pObj = apArg[i];` |
+|  114845 |   36 | `		if( pObj->nIdx == SXU32_HIGH ){` |
 |       - |   37 | `			/* Skip the "expecting a variable" warning for MEMOBJ_BOOL —` |
 |       - |   38 | `			 * synthesized by LOAD_IDX iP2=4 (ArrayAccess::offsetExists) and` |
 |       - |   39 | `			 * by anyone passing a bool literal (rare, harmless). */` |
-|   79315 |   40 | `			if( (pObj->iFlags & (MEMOBJ_NULL\|MEMOBJ_BOOL)) == 0 ){` |
+|   79263 |   40 | `			if( (pObj->iFlags & (MEMOBJ_NULL\|MEMOBJ_BOOL)) == 0 ){` |
 |       - |   41 | `				/* Not so fatal,Throw a warning */` |
 |     ! 0 |   42 | `				ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting a variable not a constant");` |
 |     ! 0 |   43 | `			}` |
-|   39655 |   44 | `		}` |
-|  114901 |   45 | `		res = (pObj->iFlags & MEMOBJ_NULL) ? 0 : 1;` |
-|  114901 |   46 | `		if( !res ){` |
+|   39629 |   44 | `		}` |
+|  114845 |   45 | `		res = (pObj->iFlags & MEMOBJ_NULL) ? 0 : 1;` |
+|  114845 |   46 | `		if( !res ){` |
 |       - |   47 | `			/* Variable not set,return FALSE */` |
-|   82083 |   48 | `			ph7_result_bool(pCtx,0);` |
-|   82083 |   49 | `			return SXRET_OK;` |
+|   82035 |   48 | `			ph7_result_bool(pCtx,0);` |
+|   82035 |   49 | `			return SXRET_OK;` |
 |       - |   50 | `		}` |
-|   16414 |   51 | `	}` |
+|   16410 |   51 | `	}` |
 |       - |   52 | `	/* All given variable are set,return TRUE */` |
-|   32811 |   53 | `	ph7_result_bool(pCtx,1);` |
-|   32811 |   54 | `	return SXRET_OK;` |
-|   57447 |   55 | `}` |
+|   32803 |   53 | `	ph7_result_bool(pCtx,1);` |
+|   32803 |   54 | `	return SXRET_OK;` |
+|   57419 |   55 | `}` |
 |       - |   56 | `/*` |
 |       - |   57 | ` * Unset a memory object [i.e: a ph7_value],remove it from the current` |
 |       - |   58 | ` * frame,the reference table and discard it's contents.` |
@@ -199,50 +199,50 @@ Coverage: 382/420 lines (90.95%)
 |       - |  189 | `` * common case, a reference taken TO an element (`$r = &$a[1]`), where the array still owns`` |
 |       - |  190 | ` * the value but is no longer its only holder.` |
 |       - |  191 | ` */` |
-|  710918 |  192 | `PH7_PRIVATE int PH7_VmSlotIsReferenced(ph7_vm *pVm,sxu32 nIdx)` |
+|  709778 |  192 | `PH7_PRIVATE int PH7_VmSlotIsReferenced(ph7_vm *pVm,sxu32 nIdx)` |
 |       5 |  193 | `{` |
 |       - |  194 | `	VmRefObj *pRef;` |
-|  710923 |  195 | `	sxu32 n, nLive = 0;` |
+|  709783 |  195 | `	sxu32 n, nLive = 0;` |
 |       - |  196 | `	SyHashEntry **apEntry;` |
-|  710923 |  197 | `	if( nIdx == SXU32_HIGH ){` |
+|  709783 |  197 | `	if( nIdx == SXU32_HIGH ){` |
 |     ! 0 |  198 | `		return 0;` |
 |       - |  199 | `	}` |
-|  710923 |  200 | `	pRef = VmRefObjExtract(&(*pVm),nIdx);` |
-|  710923 |  201 | `	if( pRef == 0 ){` |
+|  709783 |  200 | `	pRef = VmRefObjExtract(&(*pVm),nIdx);` |
+|  709783 |  201 | `	if( pRef == 0 ){` |
 |     ! 0 |  202 | `		return 0;` |
 |       - |  203 | `	}` |
-|  710923 |  204 | `	apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);` |
-|  710927 |  205 | `	for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){` |
+|  709783 |  204 | `	apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);` |
+|  709787 |  205 | `	for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){` |
 |       5 |  206 | `		if( apEntry[n] ){` |
 |       5 |  207 | `			nLive++;` |
 |       2 |  208 | `		}` |
 |       3 |  209 | `	}` |
-|  710923 |  210 | `	return nLive > 0;` |
-|  355464 |  211 | `}` |
-| 4133703 |  212 | `PH7_PRIVATE sxi32 PH7_VmUnsetMemObj(ph7_vm *pVm,sxu32 nObjIdx,int bForce)` |
+|  709783 |  210 | `	return nLive > 0;` |
+|  354894 |  211 | `}` |
+| 4225073 |  212 | `PH7_PRIVATE sxi32 PH7_VmUnsetMemObj(ph7_vm *pVm,sxu32 nObjIdx,int bForce)` |
 |       5 |  213 | `{` |
 |       - |  214 | `	ph7_value *pObj;` |
 |       - |  215 | `	VmRefObj *pRef;` |
-| 4133708 |  216 | `	pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nObjIdx);` |
-| 4133708 |  217 | `	if( pObj ){` |
+| 4225078 |  216 | `	pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nObjIdx);` |
+| 4225078 |  217 | `	if( pObj ){` |
 |       - |  218 | `		/* Release the object */` |
-| 4133708 |  219 | `		PH7_MemObjRelease(pObj);` |
-| 2067145 |  220 | `	}` |
+| 4225078 |  219 | `		PH7_MemObjRelease(pObj);` |
+| 2113145 |  220 | `	}` |
 |       - |  221 | `	/* Remove old reference links */` |
-| 4133708 |  222 | `	pRef = VmRefObjExtract(&(*pVm),nObjIdx);` |
-| 4133708 |  223 | `	if( pRef ){` |
-| 4133708 |  224 | `		sxi32 iFlags = pRef->iFlags;` |
+| 4225078 |  222 | `	pRef = VmRefObjExtract(&(*pVm),nObjIdx);` |
+| 4225078 |  223 | `	if( pRef ){` |
+| 4225078 |  224 | `		sxi32 iFlags = pRef->iFlags;` |
 |       - |  225 | `		/* Unlink from the reference table */` |
-| 4133708 |  226 | `		VmRefObjUnlink(&(*pVm),pRef);` |
-| 4133708 |  227 | `		if( (bForce == TRUE) \|\| (iFlags & VM_REF_IDX_KEEP) == 0 ){` |
+| 4225078 |  226 | `		VmRefObjUnlink(&(*pVm),pRef);` |
+| 4225078 |  227 | `		if( (bForce == TRUE) \|\| (iFlags & VM_REF_IDX_KEEP) == 0 ){` |
 |       - |  228 | `			VmSlot sFree;` |
 |       - |  229 | `			/* Restore to the free list */` |
-| 4133696 |  230 | `			sFree.nIdx = nObjIdx;` |
-| 4133696 |  231 | `			sFree.pUserData = 0;` |
-| 4133696 |  232 | `			SySetPut(&pVm->aFreeObj,(const void *)&sFree);` |
-| 2067139 |  233 | `		}` |
-| 2067145 |  234 | `	}` |
-| 4133708 |  235 | `	return SXRET_OK;` |
+| 4225066 |  230 | `			sFree.nIdx = nObjIdx;` |
+| 4225066 |  231 | `			sFree.pUserData = 0;` |
+| 4225066 |  232 | `			SySetPut(&pVm->aFreeObj,(const void *)&sFree);` |
+| 2113139 |  233 | `		}` |
+| 2113145 |  234 | `	}` |
+| 4225078 |  235 | `	return SXRET_OK;` |
 |       5 |  236 | `}` |
 |       - |  237 | `/*` |
 |       - |  238 | ` * void unset($var,...)` |

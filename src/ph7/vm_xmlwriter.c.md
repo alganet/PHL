@@ -331,7 +331,7 @@ Coverage: 163/220 lines (74.09%)
 |     - |  321 | ` * Install the XMLWriter library.  Called from PH7_VmInit inside the` |
 |     - |  322 | ` * bCompilingBuiltin window, after PH7_VmInstallLibxml.` |
 |     - |  323 | ` */` |
-|  3882 |  324 | `PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)` |
+|  3880 |  324 | `PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)` |
 |     5 |  325 | `{` |
 |     - |  326 | `	static const struct {` |
 |     - |  327 | `		const char *zName;` |
@@ -355,10 +355,10 @@ Coverage: 163/220 lines (74.09%)
 |     - |  345 | `		{ "__xw_flush",             vm_builtin_xw_flush             },` |
 |     - |  346 | `	};` |
 |     - |  347 | `	sxu32 n;` |
-| 65999 |  348 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
-| 62117 |  349 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
-| 31061 |  350 | `	}` |
-|  3887 |  351 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zXmlWriterLib,sizeof(zXmlWriterLib)-1);` |
+| 65965 |  348 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
+| 62085 |  349 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
+| 31045 |  350 | `	}` |
+|  3885 |  351 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zXmlWriterLib,sizeof(zXmlWriterLib)-1);` |
 |     5 |  352 | `}` |
 |     - |  353 |  |
 |     - |  354 | `#else` |
