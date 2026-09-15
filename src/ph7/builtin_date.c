@@ -1077,6 +1077,7 @@ PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_int64 iVal = 0;
 	int nLen;
 	Sytm sTm;
+	time_t t = 0; /* The resolved timestamp; 'U' must report THIS, not time(0) */
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid argument,return -1 */
 		ph7_result_int(pCtx,-1);
@@ -1091,10 +1092,10 @@ PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 #ifdef __WINNT__
 		SYSTEMTIME sOS;
 		GetSystemTime(&sOS);
+		time(&t);
 		SYSTEMTIME_TO_SYTM(&sOS,&sTm);
 #else
 		struct tm *pTm;
-		time_t t;
 		time(&t);
 		pTm = gmtime(&t);
 		STRUCT_TM_TO_SYTM(pTm,&sTm);
@@ -1102,7 +1103,6 @@ PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 #endif
 	}else{
 		/* Use the given timestamp */
-		time_t t;
 		struct tm *pTm;
 		if( ph7_value_is_int(apArg[1]) ){
 			t = (time_t)ph7_value_to_int64(apArg[1]);
@@ -1120,17 +1120,35 @@ PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Perform the requested operation */
 	switch(zFormat[0]){
 	case 'd':
-		/* Day of the month */
+	case 'j':
+		/* Day of the month ('j' differs from 'd' only in zero padding, which an
+		 * integer result cannot carry) */
 		iVal = sTm.tm_mday;
 		break;
 	case 'h':
-		/*	Hour (12 hour format)*/
-		iVal = 1 + (sTm.tm_hour % 12);
+	case 'g':
+		/* Hour (12 hour format): php reports midnight and noon as 12, not 0 —
+		 * `1 + hour % 12` answered 1 for both. */
+		iVal = sTm.tm_hour % 12;
+		if( iVal == 0 ){
+			iVal = 12;
+		}
 		break;
 	case 'H':
-		/* Hour (24 hour format)*/
+	case 'G':
+		/* Hour (24 hour format) */
 		iVal = sTm.tm_hour;
 		break;
+	case 'B': {
+		/* Swatch Internet time: 1000 "beats" per day in UTC+1, no fractions.
+		 * Integer math throughout so the tiny build (no floating point) agrees. */
+		ph7_int64 iSec = ((ph7_int64)t + 3600) % 86400;
+		if( iSec < 0 ){
+			iSec += 86400;
+		}
+		iVal = iSec * 1000 / 86400;
+		break;
+			  }
 	case 'i':
 		/*Minutes*/
 		iVal = sTm.tm_min;
@@ -1151,8 +1169,10 @@ PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		iVal = IS_LEAP_YEAR(sTm.tm_year);
 		break;
 	case 'm':
-		/* Month number*/
-		iVal = sTm.tm_mon;
+	case 'n':
+		/* Month number. Sytm keeps tm_mon 0-based (see 't' below, which tests
+		 * `tm_mon == 1` for February), so July used to answer 6. */
+		iVal = sTm.tm_mon + 1;
 		break;
 	case 's':
 		/*Seconds*/
@@ -1169,17 +1189,32 @@ PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		break;
 			 }
 	case 'U':
-		/*Seconds since the Unix Epoch*/
-		iVal = (ph7_int64)time(0);
+		/* Seconds since the Unix Epoch. This used to call time(0), ignoring the
+		 * $timestamp argument entirely and always answering "now". */
+		iVal = (ph7_int64)t;
 		break;
 	case 'w':
 		/*	Day of the week (0 on Sunday) */
 		iVal = sTm.tm_wday;
 		break;
-	case 'W': {
-		/* ISO-8601 week number of year, weeks starting on Monday */
-		static const int aISO8601_local[] = { 7 /* Sunday */,1 /* Monday */,2,3,4,5,6 };
-		iVal = aISO8601_local[sTm.tm_wday % 7 ];
+	case 'W':
+	case 'o': {
+		/* ISO-8601 week number / week-numbering year: both belong to the year
+		 * owning the Thursday of the civil week, so 2021-01-01 is 2020-W53.
+		 * The old code indexed a weekday table and returned a DAY number
+		 * (1..7) as if it were a week number — idate("W") answered 4 in the
+		 * middle of July. Same derivation as date()'s 'o'/'W' above. */
+		sxi64 days = DtDaysFromCivil((sxi64)sTm.tm_year,sTm.tm_mon+1,sTm.tm_mday);
+		int isoDow = (int)(((days + 3) % 7 + 7) % 7) + 1; /* Mon=1..Sun=7 */
+		sxi64 thu = days + (4 - isoDow);
+		sxi64 wy;
+		int wm,wd;
+		DtCivilFromDays(thu,&wy,&wm,&wd);
+		if( zFormat[0] == 'o' ){
+			iVal = (ph7_int64)wy;
+		}else{
+			iVal = (ph7_int64)((thu - DtDaysFromCivil(wy,1,1)) / 7) + 1;
+		}
 		break;
 			  }
 	case 'y':
