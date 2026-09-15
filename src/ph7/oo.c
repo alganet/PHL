@@ -1816,8 +1816,23 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmap(ph7_class_instance *pThis,ph7_hashm
 		/* Extract attribute value */
 		pValue = ExtractClassAttrValue(pThis->pVm,pAttr);
 		if( pValue ){
-			/* Build attribute name */
+			/* Build attribute name. php MANGLES the key of a non-public property
+			 * when it casts an object to an array: a private one becomes
+			 * "\0DeclaringClass\0name" and a protected one "\0*\0name", so two
+			 * same-named members from different visibility levels stay distinct
+			 * and `isset($arr['priv'])` is FALSE — PHL emitted the bare name,
+			 * which collided them and answered TRUE. The NULs are real bytes in
+			 * the key (this append is length-based, not NUL-terminated). */
 			pAttrName = &pAttr->pAttr->sName;
+			if( pAttr->pAttr->iProtection == PH7_CLASS_PROT_PRIVATE ){
+				ph7_class *pDecl = pAttr->pAttr->pDeclClass
+					? pAttr->pAttr->pDeclClass : pThis->pClass;
+				PH7_MemObjStringAppend(&sName,"\0",1);
+				PH7_MemObjStringAppend(&sName,SyStringData(&pDecl->sName),SyStringLength(&pDecl->sName));
+				PH7_MemObjStringAppend(&sName,"\0",1);
+			}else if( pAttr->pAttr->iProtection == PH7_CLASS_PROT_PROTECTED ){
+				PH7_MemObjStringAppend(&sName,"\0*\0",3);
+			}
 			PH7_MemObjStringAppend(&sName,pAttrName->zString,pAttrName->nByte);
 			/* Perform the insertion */
 			PH7_HashmapInsert(pMap,&sName,pValue);
