@@ -991,7 +991,8 @@ static sxi32 GenStateEmitExprCode(
 			 * `++`/`--` are unary, their operand is pLeft. */
 			if( pNode->pOp
 				&& (pNode->pOp->iVmOp == PH7_OP_INCR || pNode->pOp->iVmOp == PH7_OP_DECR) ){
-				iLeftFlags |= EXPR_FLAG_LOAD_IDX_STORE | EXPR_FLAG_MEMBER_WRITE;
+				iLeftFlags |= EXPR_FLAG_LOAD_IDX_STORE | EXPR_FLAG_MEMBER_WRITE
+					| EXPR_FLAG_RMW_LOAD /* php warns before seeding `$undef++` */;
 			}
 			/* `??` reads its LEFT operand in isset-context: an undefined or
 			 * UNINITIALIZED typed PROPERTY must yield the default rather than a
@@ -1000,19 +1001,31 @@ static sxi32 GenStateEmitExprCode(
 			 * value. A SUBSCRIPT LHS is left untagged: LOAD_IDX's ISSET mode means
 			 * offsetExists (a bool), but `$o[$k] ?? d` needs the offsetGet value —
 			 * that path is already handled correctly by OP_NULLC. */
-			if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_NULLC
-				&& pNode->pLeft && pNode->pLeft->pOp
-				&& (pNode->pLeft->pOp->iOp == EXPR_OP_ARROW
-					|| pNode->pLeft->pOp->iOp == EXPR_OP_NULLSAFE_ARROW
-					|| pNode->pLeft->pOp->iOp == EXPR_OP_DC) ){
-				iLeftFlags |= EXPR_FLAG_LOAD_IDX_ISSET;
+			if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_NULLC && pNode->pLeft ){
+				/* php reads the ENTIRE left operand of `??` in isset-context: no
+				 * "Undefined variable" for `$x ?? d` OR for the base of
+				 * `$x['k'] ?? d`. QUIET_VAR silences the variable read wherever it
+				 * sits in the chain. */
+				iLeftFlags |= EXPR_FLAG_QUIET_VAR;
+				if( pNode->pLeft->pOp
+					&& (pNode->pLeft->pOp->iOp == EXPR_OP_ARROW
+						|| pNode->pLeft->pOp->iOp == EXPR_OP_NULLSAFE_ARROW
+						|| pNode->pLeft->pOp->iOp == EXPR_OP_DC) ){
+					/* A member-access LHS additionally takes OP_MEMBER's silent
+					 * lookup (iP2 = ISSET) so an uninitialized typed property
+					 * yields the default instead of an Error. A SUBSCRIPT LHS must
+					 * NOT: LOAD_IDX's ISSET mode means offsetExists (a bool), while
+					 * `$o[$k] ?? d` needs the offsetGet value — OP_NULLC already
+					 * handles that path. */
+					iLeftFlags |= EXPR_FLAG_LOAD_IDX_ISSET;
+				}
 			}
 			if( iVmOp == PH7_OP_ERR_CTRL ){
 				/* '@' must suppress the diagnostics raised WHILE its operand runs, so
 				 * open the window here; the trailing emit below closes it (iP1 = 0). */
 				PH7_VmEmitInstr(pGen->pVm,PH7_OP_ERR_CTRL,1,0,0,0);
 			}
-			rc = GenStateEmitExprCode(&(*pGen),pNode->pLeft,iLeftFlags);
+			rc = GenStateEmitExprCode(&(*pGen),pNode->pLeft,iLeftFlags|EXPR_FLAG_RDONLY_LOAD);
 		}
 		if( rc != SXRET_OK ){
 			return rc;
@@ -1099,7 +1112,8 @@ static sxi32 GenStateEmitExprCode(
 			sxi32 n;
 			sxi32 iChildMask = ~(EXPR_FLAG_LOAD_IDX_STORE
 				|EXPR_FLAG_LOAD_IDX_ISSET|EXPR_FLAG_LOAD_IDX_UNSET
-				|EXPR_FLAG_LOAD_IDX_EMPTY|EXPR_FLAG_MEMBER_WRITE);
+				|EXPR_FLAG_LOAD_IDX_EMPTY|EXPR_FLAG_MEMBER_WRITE
+				|EXPR_FLAG_QUIET_VAR|EXPR_FLAG_RMW_LOAD);
 			/* Recurse and generate bytecodes for array index */
 			apNode = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);
 			for( n = 0 ; n < (sxi32)SySetUsed(&pNode->aNodeArgs) ; ++n ){
@@ -1205,9 +1219,15 @@ static sxi32 GenStateEmitExprCode(
 			 * target so a missing member (the base of a subscript-write, or a bare `$o->p`) is
 			 * auto-created — PHP auto-vivifies on write. */
 			iFlags |= EXPR_FLAG_LOAD_IDX_STORE | EXPR_FLAG_MEMBER_WRITE;
+			if( iVmOp != PH7_OP_STORE ){
+				/* COMPOUND assignment (`.=`, `+=`, ...) READS the target first, so
+				 * php warns when it is undefined and then seeds it; a plain `=`
+				 * writes without reading and stays silent. */
+				iFlags |= EXPR_FLAG_RMW_LOAD;
+			}
 		}
 		nRhsNsBase = SySetUsed(&pGen->aNullsafeJmp);
-		rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iFlags);
+		rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iFlags|EXPR_FLAG_RDONLY_LOAD);
 		if( !bIsChainOp ){
 			/* Non-chain parent: RHS nullsafe chain ends here, before the
 			 * operator instruction is emitted. */

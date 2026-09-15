@@ -104,6 +104,17 @@ struct LangConstruct
                                            * from the precedence-18 lvalue through SUBSCRIPT to the base
                                            * member; stripped when descending into an intermediate `->`
                                            * container (the container is read, not the write target). */
+#define EXPR_FLAG_RMW_LOAD          0x080 /* Operand is a read-modify-write target (`$x++`, `$x .= 'a'`,
+                                           * `$x += 1`): php WARNS that the variable is undefined and then
+                                           * creates it, unlike a plain `=` which is silent. Emits
+                                           * OP_LOAD iP2=2 — warn-then-create. */
+#define EXPR_FLAG_QUIET_VAR         0x100 /* A VARIABLE read in this sub-tree must not warn when the
+                                           * variable is undefined (`isset`/`empty`, and the whole left
+                                           * operand of `??` — php treats that chain as isset-context,
+                                           * including the BASE of a subscript). Distinct from
+                                           * EXPR_FLAG_LOAD_IDX_ISSET, which also switches LOAD_IDX to
+                                           * offsetExists — wrong for `$o[$k] ?? d`, which needs the
+                                           * offsetGet value. Emits OP_LOAD iP2=1. */
 /* compile.c GenState substrate — shared with the other compile*.c units */
 PH7_PRIVATE sxi32 GenStateEnterBlock(ph7_gen_state *pGen,sxi32 iType,sxu32 nFirstInstr,void *pUserData,GenBlock **ppBlock);
 PH7_PRIVATE sxi32 GenStateLeaveBlock(ph7_gen_state *pGen,GenBlock **ppBlock);
