@@ -4684,7 +4684,7 @@ case PH7_OP_CALL: {
 							if( SyStringLength(&aFormalArg[n].sTypeName) > 0 ){
 								zExpected = VmSyStringToCStr(&aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf));
 							}
-							rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
+							rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
 								&aFormalArg[n].sName, zExpected, zGiven);
 							if( rc == PH7_ABORT ) goto Abort;
 							SyMemBackendFree(&pVm->sAllocator, aSlot);
@@ -4704,7 +4704,7 @@ case PH7_OP_CALL: {
 							if( rcPseudo == 0 ){
 								/* Recognised pseudo-type (true/false/iterable); value mismatches */
 								char zTypeBuf[128],zGivenBuf[128];
-								rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
+								rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
 									&aFormalArg[n].sName,
 									VmSyStringToCStr(pName,zTypeBuf,sizeof(zTypeBuf)),
 									VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf)));
@@ -4733,7 +4733,7 @@ case PH7_OP_CALL: {
 									&& PH7_VmInstanceOf(((ph7_class_instance *)pVal->x.pOther)->pClass,pClass));
 								if( bBad ){
 									char zTypeBuf[128],zGivenBuf[128];
-									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
+									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
 										&aFormalArg[n].sName,
 										VmSyStringToCStr(&pClass->sName,zTypeBuf,sizeof(zTypeBuf)),
 										VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf)));
@@ -4748,7 +4748,7 @@ case PH7_OP_CALL: {
 							}
 						}else if( (pVal->iFlags & aFormalArg[n].nType) == 0 ){
 							if( aFormalArg[n].nType == MEMOBJ_OBJ ){
-								rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
+								rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
 									&aFormalArg[n].sName,"object",ph7_type_name(pVal));
 								if( rc == PH7_ABORT ) goto Abort;
 								SyMemBackendFree(&pVm->sAllocator, aSlot);
@@ -4759,7 +4759,7 @@ case PH7_OP_CALL: {
 								goto SkipFuncBody;
 							}else if( VmEnforceScalarType(pVal, aFormalArg[n].nType, bCallIsStrict) != SXRET_OK ){
 								char zTypeBuf[128];
-								rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
+								rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
 									&aFormalArg[n].sName,
 									VmScalarTypeName(aFormalArg[n].nType, &aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf)),
 									ph7_type_name(pVal));
@@ -5004,7 +5004,7 @@ case PH7_OP_CALL: {
 									if( SyStringLength(&aFormalArg[n].sTypeName) > 0 ){
 										zExpected = VmSyStringToCStr(&aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf));
 									}
-									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
+									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
 										&aFormalArg[n].sName, zExpected, zGiven);
 									if( rc == PH7_ABORT ){
 										goto Abort;
@@ -5026,7 +5026,7 @@ case PH7_OP_CALL: {
 								&& (pArg->iFlags & aFormalArg[n].nType) == 0 ){
 								if( aFormalArg[n].nType == MEMOBJ_OBJ ){
 									/* object type hint on variadic: reject non-objects with TypeError */
-									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
+									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
 										&aFormalArg[n].sName,"object",ph7_type_name(pArg));
 									if( rc == PH7_ABORT ){
 										goto Abort;
@@ -5039,7 +5039,7 @@ case PH7_OP_CALL: {
 									goto SkipFuncBody;
 								}else if( VmEnforceScalarType(pArg, aFormalArg[n].nType, bCallIsStrict) != SXRET_OK ){
 									char zTypeBuf[128];
-									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
+									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
 										&aFormalArg[n].sName,
 										VmScalarTypeName(aFormalArg[n].nType, &aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf)),
 										ph7_type_name(pArg));
@@ -5089,7 +5089,7 @@ case PH7_OP_CALL: {
 						if( SyStringLength(&aFormalArg[n].sTypeName) > 0 ){
 							zExpected = VmSyStringToCStr(&aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf));
 						}
-						rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
+						rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
 							&aFormalArg[n].sName, zExpected, zGiven);
 						if( rc == PH7_ABORT ){
 							goto Abort;
@@ -5113,7 +5113,7 @@ case PH7_OP_CALL: {
 						if( rcPseudo == 0 ){
 							/* Recognised pseudo-type (true/false/iterable); value mismatches */
 							char zTypeBuf[128],zGivenBuf[128];
-							rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
+							rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
 								&aFormalArg[n].sName,
 								VmSyStringToCStr(pName,zTypeBuf,sizeof(zTypeBuf)),
 								VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf)));
@@ -5139,7 +5139,7 @@ case PH7_OP_CALL: {
 								&& PH7_VmInstanceOf(((ph7_class_instance *)pArg->x.pOther)->pClass,pClass));
 							if( bBad ){
 								char zTypeBuf[128],zGivenBuf[128];
-								rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
+								rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
 									&aFormalArg[n].sName,
 									VmSyStringToCStr(&pClass->sName,zTypeBuf,sizeof(zTypeBuf)),
 									VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf)));
@@ -5154,7 +5154,7 @@ case PH7_OP_CALL: {
 					}else if( ((pArg->iFlags & aFormalArg[n].nType) == 0) ){
 						if( aFormalArg[n].nType == MEMOBJ_OBJ ){
 							/* object type hint: reject non-objects with TypeError */
-							rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
+							rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
 								&aFormalArg[n].sName,"object",ph7_type_name(pArg));
 							if( rc == PH7_ABORT ){
 								goto Abort;
@@ -5167,7 +5167,7 @@ case PH7_OP_CALL: {
 							goto SkipFuncBody;
 						}else if( VmEnforceScalarType(pArg, aFormalArg[n].nType, bCallIsStrict) != SXRET_OK ){
 							char zTypeBuf[128];
-							rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pVmFunc->sName,n+1,
+							rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
 								&aFormalArg[n].sName,
 								VmScalarTypeName(aFormalArg[n].nType, &aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf)),
 								ph7_type_name(pArg));

@@ -1280,7 +1280,7 @@ static sxi32 VmEnforceGenArgType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_vm_func_ar
 			if( SyStringLength(&pFormal->sTypeName) > 0 ){
 				zExpected = VmSyStringToCStr(&pFormal->sTypeName,zTypeBuf,sizeof(zTypeBuf));
 			}
-			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pFunc->sName,(int)nArgPos,
+			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pFunc,(int)nArgPos,
 				&pFormal->sName,zExpected,zGiven));
 		}
 		return SXRET_OK;
@@ -1296,7 +1296,7 @@ static sxi32 VmEnforceGenArgType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_vm_func_ar
 		int rcPseudo = VmCheckPseudoType(&(*pVm),pVal,pName);
 		if( rcPseudo == 0 ){
 			char zTypeBuf[128],zGivenBuf[128];
-			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pFunc->sName,(int)nArgPos,
+			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pFunc,(int)nArgPos,
 				&pFormal->sName,
 				VmSyStringToCStr(pName,zTypeBuf,sizeof(zTypeBuf)),
 				VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf))));
@@ -1307,7 +1307,7 @@ static sxi32 VmEnforceGenArgType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_vm_func_ar
 				&& PH7_VmInstanceOf(((ph7_class_instance *)pVal->x.pOther)->pClass,pClass));
 			if( bBad ){
 				char zTypeBuf[128],zGivenBuf[128];
-				return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pFunc->sName,(int)nArgPos,
+				return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pFunc,(int)nArgPos,
 					&pFormal->sName,
 					VmSyStringToCStr(&pClass->sName,zTypeBuf,sizeof(zTypeBuf)),
 					VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf))));
@@ -1317,12 +1317,12 @@ static sxi32 VmEnforceGenArgType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_vm_func_ar
 	}
 	if( (pVal->iFlags & pFormal->nType) == 0 ){
 		if( pFormal->nType == MEMOBJ_OBJ ){
-			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pFunc->sName,(int)nArgPos,
+			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pFunc,(int)nArgPos,
 				&pFormal->sName,"object",ph7_type_name(pVal)));
 		}
 		if( VmEnforceScalarType(pVal,pFormal->nType,bStrict) != SXRET_OK ){
 			char zTypeBuf[128];
-			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,&pFunc->sName,(int)nArgPos,
+			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pFunc,(int)nArgPos,
 				&pFormal->sName,
 				VmScalarTypeName(pFormal->nType,&pFormal->sTypeName,zTypeBuf,sizeof(zTypeBuf)),
 				ph7_type_name(pVal)));
