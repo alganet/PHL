@@ -1200,8 +1200,12 @@ PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		break;
 	default:
 		/* unknown format,throw a warning */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Unknown date format token");
-		break;
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Unrecognized date format token");
+		/* php returns FALSE for an unrecognized token, not 0 — the two are
+		 * distinguishable (`idate($t) === false` is the documented check) and
+		 * 0 is a legitimate result for several real tokens. */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
 	}
 	/* Return the time value */
 	ph7_result_int64(pCtx,iVal);
