@@ -2,21 +2,20 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-eval with empty string returns null
---SKIPIF--
-<?php
-if (!function_exists('eval')) { echo 'skip: eval not available'; }
-?>
+eval() return values for empty, whitespace and explicit returns
+--DESCRIPTION--
+php: eval('') compiles nothing and yields FALSE, while a whitespace-only chunk compiles and
+yields NULL. Guarded on function_exists('eval') before, which is FALSE in php (eval is a
+language construct), so this never ran under the oracle.
 --FILE--
 <?php
-$result = eval('');
-if ($result === null) { echo "empty_eval_null\n"; } else { echo "empty_eval_not_null\n"; }
-$result = eval('return null;');
-if ($result === null) { echo "return_null_ok\n"; } else { echo "return_null_failed\n"; }
+var_dump(eval(''));
+var_dump(eval('   '));
+var_dump(eval('return null;'));
+var_dump(eval('return 42;'));
 ?>
 --EXPECT--
-empty_eval_null
-return_null_ok
---CLEAN--
-<?php
-unset($result);
+bool(false)
+NULL
+NULL
+int(42)

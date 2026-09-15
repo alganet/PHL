@@ -33,6 +33,7 @@ PH7_PRIVATE sxi32 VmEvalChunk(
 	void *pErrData = 0;
 	ph7_gen_state sSavedGen;
 	int bNested;
+	sxi32 rcThrow = SXRET_OK; /* status of a ParseError raised for a failed eval() compile */
 	/* Initialize bytecode container */
 	SySetInit(&aByteCode,&pVm->sAllocator,sizeof(VmInstr));
 	SySetAlloc(&aByteCode,0x20);
@@ -67,8 +68,21 @@ PH7_PRIVATE sxi32 VmEvalChunk(
 	/* Compile the chunk */
 	PH7_CompileScript(pVm,pChunk,iFlags);
 	if( pVm->sCodeGen.nErr > 0 ){
-		/* Compilation error,return false */
-		if( pCtx ){
+		/* Compilation error. php makes this a CATCHABLE ParseError for eval()
+		 * ("syntax error, unexpected ..."), where PHL merely returned false —
+		 * so `eval('bad syntax')` silently produced a value instead of throwing.
+		 * include/require keep the false return: their parse error is a printed
+		 * fatal, not an exception. */
+		if( pCtx && !bTrueReturn ){
+			SyBlob *pErr = &pVm->sCodeGen.sErrBuf;
+			ph7_result_bool(pCtx,0);
+			if( SyBlobLength(pErr) > 0 ){
+				rcThrow = PH7_VmThrowException(pCtx,"ParseError","%.*s",
+					(int)SyBlobLength(pErr),(const char *)SyBlobData(pErr));
+			}else{
+				rcThrow = PH7_VmThrowException(pCtx,"ParseError","syntax error");
+			}
+		}else if( pCtx ){
 			ph7_result_bool(pCtx,0);
 		}
 	}else{
@@ -137,7 +151,10 @@ Cleanup:
 	if( bNested ){
 		PH7_CompilerRestoreState(pVm,&sSavedGen);
 	}
-	return SXRET_OK;
+	/* A ParseError raised above must reach the caller so the VM unwinds the rest
+	 * of the statement; returning OK left `eval('bad'); echo 'x';` running the
+	 * echo even though php had already thrown. */
+	return rcThrow;
 }
 /*
  * Compile an embedded builtin PHP chunk into the VM. Thin exported wrapper
@@ -163,6 +180,7 @@ PH7_PRIVATE sxi32 PH7_VmEvalBuiltinChunk(ph7_vm *pVm,const char *zSrc,sxu32 nLen
 PH7_PRIVATE int vm_builtin_eval(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	SyString sChunk;    /* Chunk to evaluate */
+	sxi32 rc;
 	if( nArg < 1 ){
 		/* Nothing to evaluate,return NULL */
 		ph7_result_null(pCtx);
@@ -171,17 +189,20 @@ PH7_PRIVATE int vm_builtin_eval(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Chunk to evaluate */
 	sChunk.zString = ph7_value_to_string(apArg[0],(int *)&sChunk.nByte);
 	if( sChunk.nByte < 1 ){
-		/* Empty string,return NULL */
-		ph7_result_null(pCtx);
+		/* php: eval('') compiles nothing and yields FALSE (a whitespace-only
+		 * chunk still compiles, and yields NULL through the normal path). */
+		ph7_result_bool(pCtx,0);
 		return SXRET_OK;
 	}
 	/* Eval the chunk */
-	VmEvalChunk(pCtx->pVm,&(*pCtx),&sChunk,PH7_PHP_ONLY,FALSE);
+	rc = VmEvalChunk(pCtx->pVm,&(*pCtx),&sChunk,PH7_PHP_ONLY,FALSE);
 	if( pCtx->pVm->bHaltRequested ){
 		/* exit/die inside the evaluated chunk: cascade the halt */
 		return PH7_ABORT;
 	}
-	return SXRET_OK;
+	/* Propagate a ParseError from a failed compile (php unwinds; PHL used to
+	 * keep executing the statement that contained the eval). */
+	return rc;
 }
 /*
  * Check if a file path is already included.
