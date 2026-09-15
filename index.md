@@ -1,7 +1,7 @@
 # /
 
-Coverage: 48339/59542 lines (81.18%)
+Coverage: 48359/59561 lines (81.19%)
 
 | Name | Rate | Hit/Total |
 |:---|---:|---:|
-|[src/](src/index.md)|81.18%|48339/59542|
+|[src/](src/index.md)|81.19%|48359/59561|

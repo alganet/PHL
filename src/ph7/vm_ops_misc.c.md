@@ -35,42 +35,42 @@ Coverage: 223/257 lines (86.77%)
 |      - |   25 | ` * OP_CONSUME: body moved verbatim from the OP_CONSUME arm of` |
 |      - |   26 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
 |      - |   27 | ` */` |
-|  50954 |   28 | `PH7_PRIVATE VmOpRc VmExecOpConsume(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
+|  50962 |   28 | `PH7_PRIVATE VmOpRc VmExecOpConsume(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
 |      5 |   29 | `{` |
-|  50959 |   30 | `	ph7_value *pTos = pState->pTos;` |
-|  50959 |   31 | `	ph7_value *pStack = pState->pStack;` |
-|  50959 |   32 | `	VmInstr *aInstr = pState->aInstr;` |
-|  50959 |   33 | `	sxi32 pc = pState->pc;` |
+|  50967 |   30 | `	ph7_value *pTos = pState->pTos;` |
+|  50967 |   31 | `	ph7_value *pStack = pState->pStack;` |
+|  50967 |   32 | `	VmInstr *aInstr = pState->aInstr;` |
+|  50967 |   33 | `	sxi32 pc = pState->pc;` |
 |      - |   34 | `	sxi32 rc;` |
-|  25477 |   35 | `	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
-|  50959 |   36 | `	ph7_output_consumer *pCons = &pVm->sVmConsumer;` |
-|  50959 |   37 | `	ph7_value *pCur,*pOut = pTos;` |
+|  25481 |   35 | `	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
+|  50967 |   36 | `	ph7_output_consumer *pCons = &pVm->sVmConsumer;` |
+|  50967 |   37 | `	ph7_value *pCur,*pOut = pTos;` |
 |      - |   38 |  |
-|  50959 |   39 | `	pOut = &pTos[-pInstr->iP1 + 1];` |
-|  50959 |   40 | `	pCur = pOut;` |
+|  50967 |   39 | `	pOut = &pTos[-pInstr->iP1 + 1];` |
+|  50967 |   40 | `	pCur = pOut;` |
 |      - |   41 | `	/* Start the consume process  */` |
-| 101913 |   42 | `	while( pOut <= pTos ){` |
+| 101929 |   42 | `	while( pOut <= pTos ){` |
 |      - |   43 | `		/* Force a string cast */` |
-|  50959 |   44 | `		if( (pOut->iFlags & MEMOBJ_STRING) == 0 ){` |
+|  50967 |   44 | `		if( (pOut->iFlags & MEMOBJ_STRING) == 0 ){` |
 |   3027 |   45 | `			PH7_MemObjToString(pOut);` |
 |   1511 |   46 | `		}` |
-|  50959 |   47 | `		if( SyBlobLength(&pOut->sBlob) > 0 ){` |
+|  50967 |   47 | `		if( SyBlobLength(&pOut->sBlob) > 0 ){` |
 |      - |   48 | `			/*SyBlobNullAppend(&pOut->sBlob);*/` |
 |      - |   49 | `			/* Invoke the output consumer callback */` |
-|  38383 |   50 | `			rc = pCons->xConsumer(SyBlobData(&pOut->sBlob),SyBlobLength(&pOut->sBlob),pCons->pUserData);` |
-|  38383 |   51 | `			VmTrackOutput(pVm, SyBlobLength(&pOut->sBlob));` |
-|  38383 |   52 | `			SyBlobRelease(&pOut->sBlob);` |
-|  38383 |   53 | `			if( rc == SXERR_ABORT ){` |
+|  38387 |   50 | `			rc = pCons->xConsumer(SyBlobData(&pOut->sBlob),SyBlobLength(&pOut->sBlob),pCons->pUserData);` |
+|  38387 |   51 | `			VmTrackOutput(pVm, SyBlobLength(&pOut->sBlob));` |
+|  38387 |   52 | `			SyBlobRelease(&pOut->sBlob);` |
+|  38387 |   53 | `			if( rc == SXERR_ABORT ){` |
 |      - |   54 | `				/* Output consumer callback request an operation abort. */` |
 |    ! 0 |   55 | `				VM_EXIT_ABORT;` |
 |      - |   56 | `			}` |
-|  19189 |   57 | `		}` |
-|  50959 |   58 | `		pOut++;` |
+|  19191 |   57 | `		}` |
+|  50967 |   58 | `		pOut++;` |
 |      5 |   59 | `	}` |
-|  50959 |   60 | `	pTos = &pCur[-1];` |
-|  50959 |   61 | `	VM_EXIT_BREAK;` |
+|  50967 |   60 | `	pTos = &pCur[-1];` |
+|  50967 |   61 | `	VM_EXIT_BREAK;` |
 |    ! 0 |   62 | `	VM_EXIT_BREAK;` |
-|  25482 |   63 | `}` |
+|  25486 |   63 | `}` |
 |      - |   64 |  |
 |      - |   65 | `/*` |
 |      - |   66 | ` * OP_MATCH: body moved verbatim from the OP_MATCH arm of` |
@@ -206,30 +206,30 @@ Coverage: 223/257 lines (86.77%)
 |      - |  196 | ` * OP_THROW: body moved verbatim from the OP_THROW arm of` |
 |      - |  197 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
 |      - |  198 | ` */` |
-|    750 |  199 | `PH7_PRIVATE VmOpRc VmExecOpThrow(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
+|    754 |  199 | `PH7_PRIVATE VmOpRc VmExecOpThrow(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
 |      5 |  200 | `{` |
-|    755 |  201 | `	ph7_value *pTos = pState->pTos;` |
-|    755 |  202 | `	ph7_value *pStack = pState->pStack;` |
-|    755 |  203 | `	VmInstr *aInstr = pState->aInstr;` |
-|    755 |  204 | `	sxi32 pc = pState->pc;` |
+|    759 |  201 | `	ph7_value *pTos = pState->pTos;` |
+|    759 |  202 | `	ph7_value *pStack = pState->pStack;` |
+|    759 |  203 | `	VmInstr *aInstr = pState->aInstr;` |
+|    759 |  204 | `	sxi32 pc = pState->pc;` |
 |      - |  205 | `	sxi32 rc;` |
-|    375 |  206 | `	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
-|    755 |  207 | `	VmFrame *pFrameLocal = pVm->pFrame;` |
-|    755 |  208 | `	sxu32 nJump = pInstr->iP2;` |
+|    377 |  206 | `	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
+|    759 |  207 | `	VmFrame *pFrameLocal = pVm->pFrame;` |
+|    759 |  208 | `	sxu32 nJump = pInstr->iP2;` |
 |      - |  209 | `#ifdef UNTRUST` |
 |      - |  210 | `	if( pTos < pStack ){` |
 |      - |  211 | `		VM_EXIT_ABORT;` |
 |      - |  212 | `	}` |
 |      - |  213 | `#endif` |
-|    755 |  214 | `	pFrameLocal = VmSkipExceptionFrames(pFrameLocal);` |
+|    759 |  214 | `	pFrameLocal = VmSkipExceptionFrames(pFrameLocal);` |
 |      - |  215 | `	/* Tell the upper layer that an exception was thrown */` |
-|    755 |  216 | `	pFrameLocal->iFlags \|= VM_FRAME_THROW;` |
-|    755 |  217 | `	if( pTos->iFlags & MEMOBJ_OBJ ){` |
-|    741 |  218 | `		ph7_class_instance *pThis = (ph7_class_instance *)pTos->x.pOther;` |
+|    759 |  216 | `	pFrameLocal->iFlags \|= VM_FRAME_THROW;` |
+|    759 |  217 | `	if( pTos->iFlags & MEMOBJ_OBJ ){` |
+|    745 |  218 | `		ph7_class_instance *pThis = (ph7_class_instance *)pTos->x.pOther;` |
 |      - |  219 | `		ph7_class *pThrowable;` |
 |      - |  220 | `		/* Thrown object must implement the Throwable interface (PHP 7+). */` |
-|    741 |  221 | `		pThrowable = PH7_VmExtractClass(&(*pVm),"Throwable",sizeof("Throwable")-1,FALSE,0);` |
-|    743 |  222 | `		if( pThrowable == 0 \|\| !PH7_VmInstanceOf(pThis->pClass,pThrowable) ){` |
+|    745 |  221 | `		pThrowable = PH7_VmExtractClass(&(*pVm),"Throwable",sizeof("Throwable")-1,FALSE,0);` |
+|    747 |  222 | `		if( pThrowable == 0 \|\| !PH7_VmInstanceOf(pThis->pClass,pThrowable) ){` |
 |      - |  223 | `			/* Not a Throwable: replace with Error(msg) matching PHP behavior. */` |
 |      - |  224 | `			static const char zErrMsg[] =` |
 |      - |  225 | `				"Cannot throw objects that do not implement Throwable";` |
@@ -249,10 +249,10 @@ Coverage: 223/257 lines (86.77%)
 |      - |  239 | `			}` |
 |      4 |  240 | `		}else{` |
 |      - |  241 | `			/* Throw the exception */` |
-|    737 |  242 | `			rc = VmThrowException(&(*pVm),pThis);` |
-|    737 |  243 | `			if( rc == SXERR_ABORT ){` |
+|    741 |  242 | `			rc = VmThrowException(&(*pVm),pThis);` |
+|    741 |  243 | `			if( rc == SXERR_ABORT ){` |
 |      - |  244 | `				/* Abort processing immediately */` |
-|     28 |  245 | `				VM_EXIT_ABORT;` |
+|     32 |  245 | `				VM_EXIT_ABORT;` |
 |      - |  246 | `			}` |
 |      - |  247 | `		}` |
 |    361 |  248 | `	}else{` |
@@ -308,7 +308,7 @@ Coverage: 223/257 lines (86.77%)
 |     79 |  298 | `	pc = nJump - 1;` |
 |     79 |  299 | `	VM_EXIT_BREAK;` |
 |    ! 0 |  300 | `	VM_EXIT_BREAK;` |
-|    380 |  301 | `}` |
+|    382 |  301 | `}` |
 |      - |  302 |  |
 |      - |  303 | `/*` |
 |      - |  304 | ` * OP_SWITCH: body moved verbatim from the OP_SWITCH arm of` |
