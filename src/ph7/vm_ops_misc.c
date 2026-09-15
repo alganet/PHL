@@ -157,6 +157,42 @@ PH7_PRIVATE VmOpRc VmExecOpMatch(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr
 }
 
 /*
+ * Build an \Error instance carrying zMsg (or NULL when the class is
+ * unavailable). Shared by OP_THROW's two "operand cannot be thrown" cases:
+ * php reports a non-object as "Can only throw objects" and a non-Throwable
+ * object as "Cannot throw objects that do not implement Throwable", both as
+ * ordinary catchable throws. The caller hands the instance to
+ * VmThrowException so the routing below sees exactly the status a normal
+ * throw produces. Error::__construct comes from the built-in library and
+ * cannot realistically fail, so its return is not checked.
+ */
+static ph7_class_instance * VmNewThrowError(ph7_vm *pVm,const char *zMsg,sxu32 nMsg)
+{
+	ph7_class *pErrorClass;
+	ph7_class_instance *pErrInst;
+	ph7_class_method *pCons;
+	pErrorClass = PH7_VmExtractClass(&(*pVm),"Error",sizeof("Error")-1,TRUE,0);
+	if( pErrorClass == 0 ){
+		return 0;
+	}
+	pErrInst = PH7_NewClassInstance(&(*pVm),pErrorClass);
+	if( pErrInst == 0 ){
+		return 0;
+	}
+	pCons = PH7_ClassExtractMethod(pErrorClass,"__construct",sizeof("__construct")-1);
+	if( pCons ){
+		ph7_value sArg;
+		ph7_value *apArg[1];
+		SyString sMsgStr;
+		SyStringInitFromBuf(&sMsgStr,zMsg,nMsg);
+		PH7_MemObjInitFromString(pVm,&sArg,&sMsgStr);
+		apArg[0] = &sArg;
+		PH7_VmCallClassMethod(&(*pVm),pErrInst,pCons,0,1,apArg);
+		PH7_MemObjRelease(&sArg);
+	}
+	return pErrInst;
+}
+/*
  * OP_THROW: body moved verbatim from the OP_THROW arm of
  * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
  */
@@ -184,30 +220,11 @@ PH7_PRIVATE VmOpRc VmExecOpThrow(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr
 		/* Thrown object must implement the Throwable interface (PHP 7+). */
 		pThrowable = PH7_VmExtractClass(&(*pVm),"Throwable",sizeof("Throwable")-1,FALSE,0);
 		if( pThrowable == 0 || !PH7_VmInstanceOf(pThis->pClass,pThrowable) ){
-			/* Not a Throwable: replace with Error(msg) matching PHP behavior.
-			 * Error::__construct is defined in the built-in library and
-			 * cannot realistically fail, so we do not check its return. */
-			ph7_class *pErrorClass = PH7_VmExtractClass(&(*pVm),"Error",sizeof("Error")-1,TRUE,0);
-			ph7_class_instance *pErrInst = 0;
-			if( pErrorClass ){
-				pErrInst = PH7_NewClassInstance(&(*pVm),pErrorClass);
-			}
+			/* Not a Throwable: replace with Error(msg) matching PHP behavior. */
+			static const char zErrMsg[] =
+				"Cannot throw objects that do not implement Throwable";
+			ph7_class_instance *pErrInst = VmNewThrowError(&(*pVm),zErrMsg,sizeof(zErrMsg)-1);
 			if( pErrInst ){
-				ph7_class_method *pCons;
-				pCons = PH7_ClassExtractMethod(pErrorClass,"__construct",sizeof("__construct")-1);
-				if( pCons ){
-					ph7_value sArg;
-					ph7_value *apArg[1];
-					SyString sMsgStr;
-					static const char zErrMsg[] =
-						"Cannot throw objects that do not implement Throwable";
-					SyStringInitFromBuf(&sMsgStr,zErrMsg,sizeof(zErrMsg)-1);
-					PH7_MemObjInit(pVm,&sArg);
-					PH7_MemObjInitFromString(pVm,&sArg,&sMsgStr);
-					apArg[0] = &sArg;
-					PH7_VmCallClassMethod(&(*pVm),pErrInst,pCons,0,1,apArg);
-					PH7_MemObjRelease(&sArg);
-				}
 				rc = VmThrowException(&(*pVm),pErrInst);
 				PH7_ClassInstanceUnref(pErrInst);
 				if( rc == SXERR_ABORT ){
@@ -229,15 +246,21 @@ PH7_PRIVATE VmOpRc VmExecOpThrow(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr
 			}
 		}
 	}else{
-		/* Expecting a class instance */
-		VmUncaughtException(&(*pVm),0);
-		/* Pre-split latent bug preserved verbatim: the original arm discarded
-		 * VmUncaughtException's status and tested the dispatch loop's STALE rc
-		 * (whatever the previous instruction left), which in practice was never
-		 * SXERR_ABORT — so this branch effectively never aborted. Keep that
-		 * de-facto behavior deterministic here; the real fix (testing the
-		 * call's own status) is a recorded correctness follow-up. */
-		rc = SXRET_OK;
+		/* php raises a CATCHABLE Error for a non-object operand. This used to
+		 * report a bogus uncaught "Exception" and then fall into the jump below,
+		 * so no catch ran yet execution carried on past the try — and the branch
+		 * tested a STALE rc left by the previous instruction, which is the
+		 * latent bug the interpreter split surfaced. Build the same Error shape
+		 * the not-Throwable case uses and let the routing below land it. */
+		static const char zErrMsg[] = "Can only throw objects";
+		ph7_class_instance *pErrInst = VmNewThrowError(&(*pVm),zErrMsg,sizeof(zErrMsg)-1);
+		if( pErrInst ){
+			rc = VmThrowException(&(*pVm),pErrInst);
+			PH7_ClassInstanceUnref(pErrInst);
+		}else{
+			/* Bootstrap failure — fall back to uncaught reporting */
+			rc = VmUncaughtException(&(*pVm),0);
+		}
 		if( rc == SXERR_ABORT ){
 			/* Abort processing immediately */
 			VM_EXIT_ABORT;
