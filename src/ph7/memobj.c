@@ -242,7 +242,9 @@ static sxi64 MemObjIntValue(ph7_value *pObj)
 		PH7_MemObjRelease(&sResult);
 		return iVal;
 	}else if(iFlags & MEMOBJ_RES ){
-		return pObj->x.pOther != 0;
+		/* php casts a resource to its ID, not to 1: two distinct resources must not
+		 * compare equal, which they did while every one of them cast to 1. */
+		return (sxi64)PH7_VmResourceId(pObj->pVm,pObj->x.pOther);
 	}
 	/* CANT HAPPEN */
 	return 0;
@@ -310,7 +312,7 @@ static ph7_real MemObjRealValue(ph7_value *pObj)
 		PH7_MemObjRelease(&sResult);
 		return rVal;
 	}else if(iFlags & MEMOBJ_RES ){
-		return (ph7_real)(pObj->x.pOther != 0);
+		return (ph7_real)PH7_VmResourceId(pObj->pVm,pObj->x.pOther);
 	}
 	/* NOT REACHED  */
 	return 0;
@@ -447,7 +449,9 @@ static sxi32 MemObjStringValue(SyBlob *pOut,ph7_value *pObj,sxu8 bStrictBool)
 		PH7_ClassInstanceUnref((ph7_class_instance *)pObj->x.pOther);
 		PH7_MemObjRelease(&sResult);
 	}else if(pObj->iFlags & MEMOBJ_RES ){
-		SyBlobFormat(&(*pOut),"ResourceID_%#x",pObj->x.pOther);
+		/* php renders a resource as "Resource id #N" with its sequential id; the
+		 * old "ResourceID_0x<pointer>" leaked an address and matched nothing. */
+		SyBlobFormat(&(*pOut),"Resource id #%u",PH7_VmResourceId(pObj->pVm,pObj->x.pOther));
 	}
 	return SXRET_OK;
 }
@@ -1393,6 +1397,13 @@ PH7_PRIVATE sxi32 PH7_MemObjCmp(ph7_value *pObj1,ph7_value *pObj2,int bStrict,in
 		}
 		iComb = pObj1->iFlags|pObj2->iFlags;
 	}
+	if( (pObj1->iFlags & MEMOBJ_RES) && (pObj2->iFlags & MEMOBJ_RES) ){
+		/* php compares two resources by their ID. The boolean path below would
+		 * call every live resource equal to every other, since all are truthy. */
+		sxu32 nId1 = PH7_VmResourceId(pObj1->pVm,pObj1->x.pOther);
+		sxu32 nId2 = PH7_VmResourceId(pObj2->pVm,pObj2->x.pOther);
+		return nId1 == nId2 ? 0 : (nId1 < nId2 ? -1 : 1);
+	}
 	if( iComb & (MEMOBJ_NULL|MEMOBJ_RES|MEMOBJ_BOOL) ){
 		/* Convert to boolean: Keep in mind FALSE < TRUE */
 		if( (pObj1->iFlags & MEMOBJ_BOOL) == 0 ){
@@ -1814,8 +1825,16 @@ PH7_PRIVATE sxi32 PH7_MemObjDump(
 		SyBlobAppend(&(*pOut),"\"\n",sizeof("\"\n")-1);
 		return SXRET_OK;
 	}
-	/* Resources and anything else: the legacy `type(value)` shape (php's
-	 * `resource(N) of type (stream)` needs the §8 typed-resource model). */
+	if( pObj->iFlags & MEMOBJ_RES ){
+		/* php: `resource(N) of type (stream)`, and `(Unknown)` once closed —
+		 * which is exactly what PH7_VfsResourceType() already reports. The old
+		 * shape printed the heap pointer through the string cast instead. */
+		SyBlobFormat(&(*pOut),"resource(%u) of type (%s)\n",
+			PH7_VmResourceId(pObj->pVm,pObj->x.pOther),
+			PH7_VfsResourceType(pObj->x.pOther));
+		return SXRET_OK;
+	}
+	/* Anything else: the legacy `type(value)` shape. */
 	{
 		const char *zType = PH7_MemObjTypeDump(pObj);
 		SyBlobAppend(&(*pOut),zType,SyStrlen(zType));

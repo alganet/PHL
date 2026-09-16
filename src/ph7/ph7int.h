@@ -1606,6 +1606,13 @@ struct ph7_vm
 	void *pXmlDocs;            /* phl_xmldoc registry chain; freed on reset/release */
 	void *pXmlWriters;         /* XMLWriter registry chain; freed on reset/release */
 #endif
+	/* php numbers every resource with a small sequential id that (int) casts and
+	 * "Resource id #N" render, and that distinguishes two live resources from one
+	 * another. PHL's resource value is a bare void*, so the id lives in this
+	 * per-VM registry: pointer -> phl_res_id, assigned on first observation.
+	 * Freed with the VM (ids are never recycled, as php's may be). */
+	SyHash hResourceId;        /* void* -> phl_res_id* */
+	sxu32 nResourceIdNext;     /* Next id to hand out (php's start at 1) */
 	ph7_vm *pNext,*pPrev;      /* List of active VM's */
 	sxu32 nMagic;              /* Sanity check against misuse */
 };
@@ -2119,6 +2126,7 @@ PH7_PRIVATE sxi32 PH7_VmThrowErrorAp(ph7_vm *pVm,SyString *pFuncName,sxi32 iErr,
 PH7_PRIVATE sxi32 PH7_VmThrowError(ph7_vm *pVm,SyString *pFuncName,sxi32 iErr,const char *zMessage);
 PH7_PRIVATE sxi32 PH7_VmMemoryError(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_ContextMemoryError(ph7_context *pCtx);
+PH7_PRIVATE sxu32 PH7_VmResourceId(ph7_vm *pVm,void *pRes);
 PH7_PRIVATE sxi32 PH7_VmThrowException(ph7_context *pCtx,const char *zClass,const char *zFormat,...);
 PH7_PRIVATE sxi32 PH7_VmThrowArrayNextIndexError(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmThrowGlobalsAppendError(ph7_vm *pVm);
@@ -2206,6 +2214,16 @@ PH7_PRIVATE void PH7_RegisterPcreConstants(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_PcreMatchQuiet(ph7_context *pCtx,const char *zPat,int nPat,
 	const char *zSub,int nSub,int *pMatched);
 #endif /* PH7_ENABLE_PCRE */
+/* One resource pointer's php-visible id. Allocated per distinct resource and
+ * owned by ph7_vm.hResourceId, whose key is the `pRes` field itself (SyHash
+ * stores the key POINTER, so it must outlive the entry). Core (used by
+ * PH7_VmResourceId) — must NOT sit under PH7_ENABLE_LIBXML or the tiny build,
+ * which omits libxml, fails to compile it. */
+typedef struct phl_res_id phl_res_id;
+struct phl_res_id {
+	void *pRes;   /* The resource pointer, and the hash key */
+	sxu32 nId;    /* php-visible id */
+};
 #ifdef PH7_ENABLE_LIBXML
 /* One entry in the per-VM libxml error queue (mirrors php's LibXMLError:
  * level/code/column/message/file/line).  Strings are SyMemBackend copies
@@ -2526,6 +2544,7 @@ PH7_PRIVATE int vm_builtin_isset(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_unset(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_get_defined_vars(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_gettype(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_get_resource_id(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_get_resource_type(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_var_dump(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_print_r(ph7_context *pCtx,int nArg,ph7_value **apArg);
