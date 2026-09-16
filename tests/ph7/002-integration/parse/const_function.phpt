@@ -2,16 +2,13 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-const with function call
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+A function call in a constant expression is a compile-time fatal (was a bare skip asserting PH7 evaluated the call)
 --FILE--
 <?php
 const TEST = strlen("hello");
 var_dump(TEST);
 ?>
---EXPECT--
-int(5)
+--EXPECTF--
+%AConstant expression contains invalid operations%A
 --CLEAN--
 <?php
-

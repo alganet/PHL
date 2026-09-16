@@ -269,6 +269,150 @@ static int GenStateInitHasNewExpr(ph7_gen_state *pGen)
 	return 0;
 }
 /*
+ * Return TRUE if the constant expression starting at the current token performs a
+ * FUNCTION CALL, which php rejects with "Constant expression contains invalid
+ * operations" in every constant-expression context (global `const`, class/interface
+ * constants, property defaults, parameter defaults, attribute arguments).
+ *
+ * Shares GenStateInitHasNewExpr's walk: depth-aware so a nested call is caught
+ * (`[1, f()]`) and an inner comma does not end the scan, and skipping any
+ * `function`/`fn` construct outright — a call inside a closure body runs when the
+ * closure is invoked, so php allows it.
+ *
+ * Deliberately NOT rejected, because php accepts them:
+ *   - first-class callables, `strlen(...)` — the parens hold only the ellipsis;
+ *   - `new X(...)` — constructor calls are legal in the contexts that allow `new`
+ *     at all, and GenStateInitHasNewExpr owns the contexts that do not;
+ *   - anything inside a ternary. php FOLDS a constant condition and only rejects a
+ *     call that survives, so `true ? 1 : f()` is legal while `false ? 1 : f()` is
+ *     not. PHL does not constant-fold here, so rather than risk rejecting valid
+ *     code this scan skips an initializer containing a depth-0 `?` entirely. The
+ *     residual is a call hiding in a TAKEN ternary branch, which stays accepted.
+ */
+PH7_PRIVATE int PH7_GenStateInitHasCallExpr(ph7_gen_state *pGen)
+{
+	SyToken *p = pGen->pIn;
+	int iDepth = 0;
+	/* Conservative ternary bail-out (see the note above). */
+	{
+		SyToken *q = pGen->pIn;
+		int iQd = 0;
+		while( q < pGen->pEnd ){
+			if( iQd == 0 && (q->nType & (PH7_TK_SEMI|PH7_TK_COMMA)) ){
+				break;
+			}
+			if( q->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+				iQd++;
+			}else if( q->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+				if( iQd > 0 ){ iQd--; }
+			}else if( (q->nType & PH7_TK_OP) && q->pUserData
+				&& ((const ph7_expr_op *)q->pUserData)->iOp == EXPR_OP_QUESTY ){
+				return 0;
+			}
+			q++;
+		}
+	}
+	while( p < pGen->pEnd ){
+		if( iDepth == 0 && (p->nType & (PH7_TK_SEMI|PH7_TK_COMMA)) ){
+			break; /* end of this initializer */
+		}
+		if( (p->nType & PH7_TK_KEYWORD)
+			&& ( SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FUNCTION
+				|| SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FN ) ){
+			/* A call inside a closure/arrow-fn is deferred to call time: skip the
+			 * whole construct. Delegating to the sibling scanner is not possible
+			 * (it reports `new`), so mirror its bracket walk. */
+			int bArrow = ( SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FN );
+			int iBase = iDepth;
+			p++;
+			if( bArrow ){
+				while( p < pGen->pEnd ){
+					if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+						iDepth++;
+					}else if( p->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+						if( iDepth <= iBase ){
+							break;
+						}
+						iDepth--;
+					}else if( iDepth <= iBase && (p->nType & (PH7_TK_SEMI|PH7_TK_COMMA)) ){
+						break;
+					}
+					p++;
+				}
+			}else{
+				int iLocal = 0;
+				while( p < pGen->pEnd ){
+					if( iLocal == 0 && (p->nType & PH7_TK_OCB) ){
+						break;
+					}
+					if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+						iLocal++;
+					}else if( p->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+						if( iLocal > 0 ){ iLocal--; }
+					}
+					p++;
+				}
+				if( p < pGen->pEnd ){
+					int iBrace = 0;
+					while( p < pGen->pEnd ){
+						if( p->nType & PH7_TK_OCB ){
+							iBrace++;
+						}else if( p->nType & PH7_TK_CCB ){
+							iBrace--;
+							if( iBrace == 0 ){
+								p++;
+								break;
+							}
+						}
+						p++;
+					}
+				}
+			}
+			continue;
+		}
+		if( p->nType & PH7_TK_OCB ){
+			if( iDepth == 0 ){
+				break; /* property-hook list: the default expression ends here */
+			}
+			iDepth++;
+		}else if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB) ){
+			/* A '(' directly after a NAME is a call. A name here is an identifier
+			 * token; `new X(` is excluded by looking for the `new` operator, and
+			 * `f(...)` (first-class callable) by peeking for a lone ellipsis. */
+			if( (p->nType & PH7_TK_LPAREN) && p > pGen->pIn
+				&& (p[-1].nType & PH7_TK_ID)
+				&& !((p[-1].nType & PH7_TK_OP) && p[-1].pUserData
+					&& ((const ph7_expr_op *)p[-1].pUserData)->iOp == EXPR_OP_NEW) ){
+				int bNewCtor = 0;
+				SyToken *q = &p[-1];
+				/* Walk back over a qualified name (A\B, A::b, $o->m) to a `new`. */
+				while( q > pGen->pIn && (q[-1].nType & (PH7_TK_ID|PH7_TK_OP|PH7_TK_NSSEP)) ){
+					if( (q[-1].nType & PH7_TK_OP) && q[-1].pUserData
+						&& ((const ph7_expr_op *)q[-1].pUserData)->iOp == EXPR_OP_NEW ){
+						bNewCtor = 1;
+						break;
+					}
+					if( !GenStateTokenIsMemberOp(&q[-1]) && (q[-1].nType & PH7_TK_NSSEP) == 0 ){
+						break;
+					}
+					q--;
+				}
+				if( !bNewCtor
+					&& !(&p[1] < pGen->pEnd && (p[1].nType & PH7_TK_ELLIPSIS)) ){
+					return 1;
+				}
+			}
+			iDepth++;
+		}else if( p->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+			if( iDepth > 0 ){
+				iDepth--;
+			}
+		}
+		p++;
+	}
+	return 0;
+}
+/*
  * Copy a parsed declared type onto a freshly created class attribute (property,
  * promoted property or class constant). nType/pClass/pTypeName/iTypeFlags come
  * straight from GenStateParseUnionTypeDecl; for a union the alternatives are
@@ -388,6 +532,16 @@ loop:
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 			"Cannot use float as value for class constant %z::%z of type %z",
 			&pClass->sName,pName,&sTypeText);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		goto Synchronize;
+	}
+	/* php: a constant expression may not CALL anything. Same rule as the global
+	 * `const` path in compile_stmt.c. */
+	if( PH7_GenStateInitHasCallExpr(pGen) ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+			"Constant expression contains invalid operations");
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -899,6 +1053,15 @@ loop:
 	 * the class-constant path above. pGen->pIn is still on the '=' (the scan skips
 	 * it and reads the initializer non-destructively); no '=' means no default, so
 	 * the helper stops at the ';'/',' and returns 0. */
+	/* php: a property default may not CALL anything either. */
+	if( (pGen->pIn->nType & PH7_TK_EQUAL /*'='*/) && PH7_GenStateInitHasCallExpr(pGen) ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+			"Constant expression contains invalid operations");
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		goto Synchronize;
+	}
 	if( (pGen->pIn->nType & PH7_TK_EQUAL /*'='*/) && GenStateInitHasNewExpr(pGen) ){
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 			"New expressions are not supported in this context");
