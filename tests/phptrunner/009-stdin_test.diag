@@ -1,0 +1,14 @@
+--CREDITS--
+SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
+SPDX-License-Identifier: BSD-3-Clause
+--TEST--
+--STDIN-- is redirected into the child (external mode only; skips in-process)
+--STDIN--
+first line
+second line
+--FILE--
+<?php
+echo trim(fgets(STDIN)), "|", trim(fgets(STDIN)), "\n";
+?>
+--EXPECT--
+first line|second line

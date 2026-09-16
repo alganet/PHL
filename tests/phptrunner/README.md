@@ -25,11 +25,22 @@ phl tests/phpt.php --target-dir tests/phptrunner --file-extension diag
 ## Per-diagnostic notes
 
 - `002-fail_test.diag` — output mismatch; reports as a failure by design.
-- `004-unimplemented_test.diag` — unsupported section; reports as a failure by design.
+- `004-unimplemented_test.diag` — carries a `--GET--` section. The CGI-shaped
+  sections (`--POST--`/`--POST_RAW--`/`--GET--`/`--COOKIE--`) are unimplemented
+  **by design**, not pending: PHL is CLI + `-S` only. A test carrying one is
+  reported as a failure rather than silently passing, so this fails by design.
 - `007-handler_format_test.diag` — verifies the in-process `handle_error`
   normalization (`Error [%d]: …`). It only passes **in-process**; under
   `--target-executable` the engine emits its native warning format, so it fails
   there. An in-process-mode diagnostic.
-- `008-exit_test.diag` — calls `die()`. In the default in-process run it triggers
-  the `Bail out!` guard and aborts the run, so it is intentionally LAST. Under
-  `--target-executable` it runs in a child process and passes.
+- `008-args_test.diag` / `009-stdin_test.diag` — `--ARGS--` (appended to the
+  child's argv) and `--STDIN--` (redirected into the child). Both shape the child
+  *invocation*, so like `--ENV--`/`--INI--` they need `--target-executable`; the
+  in-process runner shares its own argv and stdin, so those tests SKIP there with
+  a written reason rather than running with the section silently dropped.
+- `010-expectregex_test.diag` — `--EXPECTREGEX--`; the body is a delimiter-less
+  pattern matched against the whole output. Works in both modes.
+- `011-exit_test.diag` — calls `die()`. In the default in-process run it triggers
+  the `Bail out!` guard and aborts the run, so it is intentionally LAST — keep it
+  last when adding diagnostics. Under `--target-executable` it runs in a child
+  process and passes.
