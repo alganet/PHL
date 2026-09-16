@@ -76,6 +76,17 @@ PH7_PRIVATE sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 		goto Synchronize;
 	}
 	pGen->pIn++; /*Jump the equal sign */
+	/* php: a constant expression may not CALL anything --
+	 * "Constant expression contains invalid operations". PHL used to evaluate the
+	 * call happily, so `const X = strlen("ab");` defined X as 2. */
+	if( PH7_GenStateInitHasCallExpr(pGen) ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,
+			"Constant expression contains invalid operations");
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		goto Synchronize;
+	}
 	/* Allocate a new constant value container */
 	pConsCode = (SySet *)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(SySet));
 	if( pConsCode == 0 ){
