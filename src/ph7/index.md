@@ -1,6 +1,6 @@
 # src/ph7/
 
-Coverage: 45824/56300 lines (81.39%)
+Coverage: 45885/56362 lines (81.41%)
 
 [Up](../index.md)
 
@@ -63,7 +63,7 @@ Coverage: 45824/56300 lines (81.39%)
 |[vm_libxml.c](vm_libxml.c.md)|73.46%|238/324|
 |[vm_ops_arith.c](vm_ops_arith.c.md)|82.93%|588/709|
 |[vm_ops_iter.c](vm_ops_iter.c.md)|80.00%|272/340|
-|[vm_ops_load.c](vm_ops_load.c.md)|85.26%|671/787|
+|[vm_ops_load.c](vm_ops_load.c.md)|86.22%|732/849|
 |[vm_ops_misc.c](vm_ops_misc.c.md)|86.77%|223/257|
 |[vm_ops_oo.c](vm_ops_oo.c.md)|85.52%|868/1015|
 |[vm_pcre.c](vm_pcre.c.md)|69.07%|632/915|

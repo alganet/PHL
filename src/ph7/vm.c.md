@@ -83,16 +83,16 @@ Coverage: 2355/2831 lines (83.19%)
 |        - |   73 | `/*` |
 |        - |   74 | ` * Return TRUE if either operand is a NaN real value.` |
 |        - |   75 | ` */` |
-|  1307883 |   76 | `PH7_PRIVATE sxi32 VmIsUnorderedCmp(ph7_value *pLeft,ph7_value *pRight)` |
+|  1313925 |   76 | `PH7_PRIVATE sxi32 VmIsUnorderedCmp(ph7_value *pLeft,ph7_value *pRight)` |
 |        5 |   77 | `{` |
-|  1307888 |   78 | `	if( (pLeft->iFlags & MEMOBJ_REAL) && PH7_IS_NAN(pLeft->rVal) ){` |
+|  1313930 |   78 | `	if( (pLeft->iFlags & MEMOBJ_REAL) && PH7_IS_NAN(pLeft->rVal) ){` |
 |       40 |   79 | `		return TRUE;` |
 |        - |   80 | `	}` |
-|  1307850 |   81 | `	if( (pRight->iFlags & MEMOBJ_REAL) && PH7_IS_NAN(pRight->rVal) ){` |
+|  1313892 |   81 | `	if( (pRight->iFlags & MEMOBJ_REAL) && PH7_IS_NAN(pRight->rVal) ){` |
 |       11 |   82 | `		return TRUE;` |
 |        - |   83 | `	}` |
-|  1307840 |   84 | `	return FALSE;` |
-|   654459 |   85 | `}` |
+|  1313882 |   84 | `	return FALSE;` |
+|   657480 |   85 | `}` |
 |        - |   86 | `/*` |
 |        - |   87 | ` * Return TRUE if the value should take the Perl-style string-increment path:` |
 |        - |   88 | ` * any MEMOBJ_STRING that is empty, or whose contents are not a complete` |
@@ -102,14 +102,14 @@ Coverage: 2355/2831 lines (83.19%)
 |        - |   92 | ` * Perl path, like PHP.  Strict numeric strings ("5", "1.5", "5e2", "  5  ")` |
 |        - |   93 | ` * still go through the existing numeric coercion.` |
 |        - |   94 | ` */` |
-|   364699 |   95 | `PH7_PRIVATE int VmStringWantsPerlIncr(ph7_value *pVal)` |
+|   367615 |   95 | `PH7_PRIVATE int VmStringWantsPerlIncr(ph7_value *pVal)` |
 |        5 |   96 | `{` |
 |        - |   97 | `	SyString sStr;` |
-|   364704 |   98 | `	sxu8 bReal = FALSE;` |
-|   364704 |   99 | `	const char *zTail = 0;` |
+|   367620 |   98 | `	sxu8 bReal = FALSE;` |
+|   367620 |   99 | `	const char *zTail = 0;` |
 |        - |  100 | `	const char *zEnd;` |
-|   364704 |  101 | `	if( (pVal->iFlags & MEMOBJ_STRING) == 0 ){` |
-|   364690 |  102 | `		return FALSE;` |
+|   367620 |  101 | `	if( (pVal->iFlags & MEMOBJ_STRING) == 0 ){` |
+|   367606 |  102 | `		return FALSE;` |
 |        - |  103 | `	}` |
 |       17 |  104 | `	SyStringInitFromBuf(&sStr,SyBlobData(&pVal->sBlob),SyBlobLength(&pVal->sBlob));` |
 |       17 |  105 | `	if( sStr.nByte == 0 ){` |
@@ -126,7 +126,7 @@ Coverage: 2355/2831 lines (83.19%)
 |      ! 0 |  116 | `		zTail++;` |
 |      ! 0 |  117 | `	}` |
 |       13 |  118 | `	return zTail < zEnd;` |
-|   182457 |  119 | `}` |
+|   183915 |  119 | `}` |
 |        - |  120 | `/* SyhttpUri, SyhttpHeader and HTTP method/protocol defines moved to ph7int.h */` |
 |        - |  121 | `/* Constant expander used by define(); used below to recognise user-defined` |
 |        - |  122 | ` * (vs. host/built-in) constants so their owned value object can be freed when` |
@@ -144,20 +144,20 @@ Coverage: 2355/2831 lines (83.19%)
 |        - |  134 | ` * (Windows,Linux,...) and so on.` |
 |        - |  135 | ` * Please refer to the official documentation for additional information.` |
 |        - |  136 | ` */` |
-|  1519072 |  137 | `PH7_PRIVATE sxi32 PH7_VmRegisterConstant(` |
+|  1518180 |  137 | `PH7_PRIVATE sxi32 PH7_VmRegisterConstant(` |
 |        - |  138 | `	ph7_vm *pVm,            /* Target VM */` |
 |        - |  139 | `	const SyString *pName,  /* Constant name */` |
 |        - |  140 | `	ProcConstant xExpand,   /* Constant expansion callback */` |
 |        - |  141 | `	void *pUserData         /* Last argument to xExpand() */` |
 |        - |  142 | `	)` |
 |        5 |  143 | `{` |
-|  1519077 |  144 | `	return PH7_VmRegisterConstantEx(&(*pVm),pName,xExpand,pUserData,0,0,0);` |
+|  1518185 |  144 | `	return PH7_VmRegisterConstantEx(&(*pVm),pName,xExpand,pUserData,0,0,0);` |
 |        5 |  145 | `}` |
 |        - |  146 | `/*` |
 |        - |  147 | ` * Like PH7_VmRegisterConstant, additionally recording the constant's` |
 |        - |  148 | ` * origin (file/line/user-defined) for ReflectionConstant.` |
 |        - |  149 | ` */` |
-|  1519124 |  150 | `PH7_PRIVATE sxi32 PH7_VmRegisterConstantEx(` |
+|  1518232 |  150 | `PH7_PRIVATE sxi32 PH7_VmRegisterConstantEx(` |
 |        - |  151 | `	ph7_vm *pVm,            /* Target VM */` |
 |        - |  152 | `	const SyString *pName,  /* Constant name */` |
 |        - |  153 | `	ProcConstant xExpand,   /* Constant expansion callback */` |
@@ -171,8 +171,8 @@ Coverage: 2355/2831 lines (83.19%)
 |        - |  161 | `	SyHashEntry *pEntry;` |
 |        - |  162 | `	char *zDupName;` |
 |        - |  163 | `	sxi32 rc;` |
-|  1519129 |  164 | `	pEntry = SyHashGet(&pVm->hConstant,(const void *)pName->zString,pName->nByte);` |
-|  1519129 |  165 | `	if( pEntry ){` |
+|  1518237 |  164 | `	pEntry = SyHashGet(&pVm->hConstant,(const void *)pName->zString,pName->nByte);` |
+|  1518237 |  165 | `	if( pEntry ){` |
 |        - |  166 | `		/* Overwrite the old definition and return immediately */` |
 |        3 |  167 | `		pCons = (ph7_constant *)pEntry->pUserData;` |
 |        - |  168 | `		/* A user-defined (define()) constant owns a heap ph7_value as its` |
@@ -196,36 +196,36 @@ Coverage: 2355/2831 lines (83.19%)
 |        3 |  186 | `		return SXRET_OK;` |
 |        - |  187 | `	}` |
 |        - |  188 | `	/* Allocate a new constant instance */` |
-|  1519127 |  189 | `	pCons = (ph7_constant *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_constant));` |
-|  1519127 |  190 | `	if( pCons == 0 ){` |
+|  1518235 |  189 | `	pCons = (ph7_constant *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_constant));` |
+|  1518235 |  190 | `	if( pCons == 0 ){` |
 |      ! 0 |  191 | `		return 0;` |
 |        - |  192 | `	}` |
 |        - |  193 | `	/* Duplicate constant name */` |
-|  1519127 |  194 | `	zDupName = SyMemBackendStrDup(&pVm->sAllocator,pName->zString,pName->nByte);` |
-|  1519127 |  195 | `	if( zDupName == 0 ){` |
+|  1518235 |  194 | `	zDupName = SyMemBackendStrDup(&pVm->sAllocator,pName->zString,pName->nByte);` |
+|  1518235 |  195 | `	if( zDupName == 0 ){` |
 |      ! 0 |  196 | `		SyMemBackendPoolFree(&pVm->sAllocator,pCons);` |
 |      ! 0 |  197 | `		return 0;` |
 |        - |  198 | `	}` |
-|  1519127 |  199 | `	SyStringInitFromBuf(&pCons->sFile,0,0);` |
-|  1519127 |  200 | `	if( pFile ){` |
+|  1518235 |  199 | `	SyStringInitFromBuf(&pCons->sFile,0,0);` |
+|  1518235 |  200 | `	if( pFile ){` |
 |       54 |  201 | `		SyStringDupPtr(&pCons->sFile,pFile);` |
 |       25 |  202 | `	}` |
-|  1519127 |  203 | `	pCons->nLine = nLine;` |
-|  1519127 |  204 | `	pCons->bUserDefined = (sxu8)(bUser ? 1 : 0);` |
+|  1518235 |  203 | `	pCons->nLine = nLine;` |
+|  1518235 |  204 | `	pCons->bUserDefined = (sxu8)(bUser ? 1 : 0);` |
 |        - |  205 | `	/* Install the constant */` |
-|  1519127 |  206 | `	SyStringInitFromBuf(&pCons->sName,zDupName,pName->nByte);` |
-|  1519127 |  207 | `	pCons->xExpand = xExpand;` |
-|  1519127 |  208 | `	pCons->pUserData = pUserData;` |
-|  1519127 |  209 | `	SySetInit(&pCons->aAttrs,&pVm->sAllocator,sizeof(ph7_attribute));` |
-|  1519127 |  210 | `	rc = SyHashInsert(&pVm->hConstant,(const void *)zDupName,SyStringLength(&pCons->sName),pCons);` |
-|  1519127 |  211 | `	if( rc != SXRET_OK ){` |
+|  1518235 |  206 | `	SyStringInitFromBuf(&pCons->sName,zDupName,pName->nByte);` |
+|  1518235 |  207 | `	pCons->xExpand = xExpand;` |
+|  1518235 |  208 | `	pCons->pUserData = pUserData;` |
+|  1518235 |  209 | `	SySetInit(&pCons->aAttrs,&pVm->sAllocator,sizeof(ph7_attribute));` |
+|  1518235 |  210 | `	rc = SyHashInsert(&pVm->hConstant,(const void *)zDupName,SyStringLength(&pCons->sName),pCons);` |
+|  1518235 |  211 | `	if( rc != SXRET_OK ){` |
 |      ! 0 |  212 | `		SyMemBackendFree(&pVm->sAllocator,zDupName);` |
 |      ! 0 |  213 | `		SyMemBackendPoolFree(&pVm->sAllocator,pCons);` |
 |      ! 0 |  214 | `		return rc;` |
 |        - |  215 | `	}` |
 |        - |  216 | `	/* All done,constant can be invoked from PHP code */` |
-|  1519127 |  217 | `	return SXRET_OK;` |
-|   759567 |  218 | `}` |
+|  1518235 |  217 | `	return SXRET_OK;` |
+|   759121 |  218 | `}` |
 |        - |  219 | `/*` |
 |        - |  220 | ` * Allocate a new foreign function instance.` |
 |        - |  221 | ` * This function return SXRET_OK on success. Any other` |
@@ -233,7 +233,7 @@ Coverage: 2355/2831 lines (83.19%)
 |        - |  223 | ` * Please refer to the official documentation for an introduction to` |
 |        - |  224 | ` * the foreign function mechanism.` |
 |        - |  225 | ` */` |
-|  2227316 |  226 | `static sxi32 PH7_NewForeignFunction(` |
+|  2226040 |  226 | `static sxi32 PH7_NewForeignFunction(` |
 |        - |  227 | `	ph7_vm *pVm,              /* Target VM */` |
 |        - |  228 | `	const SyString *pName,    /* Foreign function name */` |
 |        - |  229 | `	ProchHostFunction xFunc,  /* Foreign function implementation */` |
@@ -244,28 +244,28 @@ Coverage: 2355/2831 lines (83.19%)
 |        - |  234 | `	ph7_user_func *pFunc;` |
 |        - |  235 | `	char *zDup;` |
 |        - |  236 | `	/* Allocate a new user function */` |
-|  2227321 |  237 | `	pFunc = (ph7_user_func *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_user_func));` |
-|  2227321 |  238 | `	if( pFunc == 0 ){` |
+|  2226045 |  237 | `	pFunc = (ph7_user_func *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_user_func));` |
+|  2226045 |  238 | `	if( pFunc == 0 ){` |
 |      ! 0 |  239 | `		return SXERR_MEM;` |
 |        - |  240 | `	}` |
 |        - |  241 | `	/* Duplicate function name */` |
-|  2227321 |  242 | `	zDup = SyMemBackendStrDup(&pVm->sAllocator,pName->zString,pName->nByte);` |
-|  2227321 |  243 | `	if( zDup == 0 ){` |
+|  2226045 |  242 | `	zDup = SyMemBackendStrDup(&pVm->sAllocator,pName->zString,pName->nByte);` |
+|  2226045 |  243 | `	if( zDup == 0 ){` |
 |      ! 0 |  244 | `		SyMemBackendPoolFree(&pVm->sAllocator,pFunc);` |
 |      ! 0 |  245 | `		return SXERR_MEM;` |
 |        - |  246 | `	}` |
 |        - |  247 | `	/* Zero the structure */` |
-|  2227321 |  248 | `	SyZero(pFunc,sizeof(ph7_user_func));` |
+|  2226045 |  248 | `	SyZero(pFunc,sizeof(ph7_user_func));` |
 |        - |  249 | `	/* Initialize structure fields */` |
-|  2227321 |  250 | `	SyStringInitFromBuf(&pFunc->sName,zDup,pName->nByte);` |
-|  2227321 |  251 | `	pFunc->pVm   = pVm;` |
-|  2227321 |  252 | `	pFunc->xFunc = xFunc;` |
-|  2227321 |  253 | `	pFunc->pUserData = pUserData;` |
-|  2227321 |  254 | `	SySetInit(&pFunc->aAux,&pVm->sAllocator,sizeof(ph7_aux_data));` |
+|  2226045 |  250 | `	SyStringInitFromBuf(&pFunc->sName,zDup,pName->nByte);` |
+|  2226045 |  251 | `	pFunc->pVm   = pVm;` |
+|  2226045 |  252 | `	pFunc->xFunc = xFunc;` |
+|  2226045 |  253 | `	pFunc->pUserData = pUserData;` |
+|  2226045 |  254 | `	SySetInit(&pFunc->aAux,&pVm->sAllocator,sizeof(ph7_aux_data));` |
 |        - |  255 | `	/* Write a pointer to the new function */` |
-|  2227321 |  256 | `	*ppOut = pFunc;` |
-|  2227321 |  257 | `	return SXRET_OK;` |
-|  1113663 |  258 | `}` |
+|  2226045 |  256 | `	*ppOut = pFunc;` |
+|  2226045 |  257 | `	return SXRET_OK;` |
+|  1113025 |  258 | `}` |
 |        - |  259 | `/*` |
 |        - |  260 | ` * Install a foreign function and it's associated callback so that` |
 |        - |  261 | ` * it can be invoked from the target PHP code.` |
@@ -274,7 +274,7 @@ Coverage: 2355/2831 lines (83.19%)
 |        - |  264 | ` * Please refer to the official documentation for an introduction to` |
 |        - |  265 | ` * the foreign function mechanism.` |
 |        - |  266 | ` */` |
-|  2230722 |  267 | `PH7_PRIVATE sxi32 PH7_VmInstallForeignFunction(` |
+|  2229444 |  267 | `PH7_PRIVATE sxi32 PH7_VmInstallForeignFunction(` |
 |        - |  268 | `	ph7_vm *pVm,              /* Target VM */` |
 |        - |  269 | `	const SyString *pName,    /* Foreign function name */` |
 |        - |  270 | `	ProchHostFunction xFunc,  /* Foreign function implementation */` |
@@ -285,41 +285,41 @@ Coverage: 2355/2831 lines (83.19%)
 |        - |  275 | `	SyHashEntry *pEntry;` |
 |        - |  276 | `	sxi32 rc;` |
 |        - |  277 | `	/* Overwrite any previously registered function with the same name */` |
-|  2230727 |  278 | `	pEntry = SyHashGet(&pVm->hHostFunction,pName->zString,pName->nByte);` |
-|  2230727 |  279 | `	if( pEntry ){` |
-|     3411 |  280 | `		pFunc = (ph7_user_func *)pEntry->pUserData;` |
-|     3411 |  281 | `		pFunc->pUserData = pUserData;` |
-|     3411 |  282 | `		pFunc->xFunc = xFunc;` |
-|     3411 |  283 | `		SySetReset(&pFunc->aAux);` |
+|  2229449 |  278 | `	pEntry = SyHashGet(&pVm->hHostFunction,pName->zString,pName->nByte);` |
+|  2229449 |  279 | `	if( pEntry ){` |
+|     3409 |  280 | `		pFunc = (ph7_user_func *)pEntry->pUserData;` |
+|     3409 |  281 | `		pFunc->pUserData = pUserData;` |
+|     3409 |  282 | `		pFunc->xFunc = xFunc;` |
+|     3409 |  283 | `		SySetReset(&pFunc->aAux);` |
 |        - |  284 | `		/* A replacement implementation carries its own (unknown) arity, so drop` |
 |        - |  285 | `		 * any minimum-arity metadata stamped on the previous holder of this name` |
 |        - |  286 | `		 * — otherwise an embedder overriding a listed builtin (e.g. a 1-arg` |
 |        - |  287 | `		 * custom "substr") would inherit the old ArgumentCountError threshold. */` |
-|     3411 |  288 | `		pFunc->nMinArg  = 0;` |
-|     3411 |  289 | `		pFunc->nMaxArg  = 0;` |
-|     3411 |  290 | `		pFunc->bHasMaxArg = 0; /* no too-many-arguments check until a signature stamps one */` |
-|     3411 |  291 | `		pFunc->bAtLeast = 0;` |
-|     3411 |  292 | `		return SXRET_OK;` |
+|     3409 |  288 | `		pFunc->nMinArg  = 0;` |
+|     3409 |  289 | `		pFunc->nMaxArg  = 0;` |
+|     3409 |  290 | `		pFunc->bHasMaxArg = 0; /* no too-many-arguments check until a signature stamps one */` |
+|     3409 |  291 | `		pFunc->bAtLeast = 0;` |
+|     3409 |  292 | `		return SXRET_OK;` |
 |        - |  293 | `	}` |
 |        - |  294 | `	/* Create a new user function */` |
-|  2227321 |  295 | `	rc = PH7_NewForeignFunction(&(*pVm),&(*pName),xFunc,pUserData,&pFunc);` |
-|  2227321 |  296 | `	if( rc != SXRET_OK ){` |
+|  2226045 |  295 | `	rc = PH7_NewForeignFunction(&(*pVm),&(*pName),xFunc,pUserData,&pFunc);` |
+|  2226045 |  296 | `	if( rc != SXRET_OK ){` |
 |      ! 0 |  297 | `		return rc;` |
 |        - |  298 | `	}` |
 |        - |  299 | `	/* Install the function in the corresponding hashtable */` |
-|  2227321 |  300 | `	rc = SyHashInsert(&pVm->hHostFunction,SyStringData(&pFunc->sName),pName->nByte,pFunc);` |
-|  2227321 |  301 | `	if( rc != SXRET_OK ){` |
+|  2226045 |  300 | `	rc = SyHashInsert(&pVm->hHostFunction,SyStringData(&pFunc->sName),pName->nByte,pFunc);` |
+|  2226045 |  301 | `	if( rc != SXRET_OK ){` |
 |      ! 0 |  302 | `		SyMemBackendFree(&pVm->sAllocator,(void *)SyStringData(&pFunc->sName));` |
 |      ! 0 |  303 | `		SyMemBackendPoolFree(&pVm->sAllocator,pFunc);` |
 |      ! 0 |  304 | `		return rc;` |
 |        - |  305 | `	}` |
 |        - |  306 | `	/* User function successfully installed */` |
-|  2227321 |  307 | `	return SXRET_OK;` |
-|  1115366 |  308 | `}` |
+|  2226045 |  307 | `	return SXRET_OK;` |
+|  1114727 |  308 | `}` |
 |        - |  309 | `/*` |
 |        - |  310 | ` * Initialize a VM function.` |
 |        - |  311 | ` */` |
-|  3413670 |  312 | `PH7_PRIVATE sxi32 PH7_VmInitFuncState(` |
+|  3411932 |  312 | `PH7_PRIVATE sxi32 PH7_VmInitFuncState(` |
 |        - |  313 | `	ph7_vm *pVm,        /* Target VM */` |
 |        - |  314 | `	ph7_vm_func *pFunc, /* Target Fucntion */` |
 |        - |  315 | `	const char *zName,  /* Function name */` |
@@ -329,41 +329,41 @@ Coverage: 2355/2831 lines (83.19%)
 |        - |  319 | `	)` |
 |        5 |  320 | `{` |
 |        - |  321 | `	/* Zero the structure */` |
-|  3413675 |  322 | `	SyZero(pFunc,sizeof(ph7_vm_func));` |
+|  3411937 |  322 | `	SyZero(pFunc,sizeof(ph7_vm_func));` |
 |        - |  323 | `	/* Initialize structure fields */` |
 |        - |  324 | `	/* Arguments container */` |
-|  3413675 |  325 | `	SySetInit(&pFunc->aArgs,&pVm->sAllocator,sizeof(ph7_vm_func_arg));` |
+|  3411937 |  325 | `	SySetInit(&pFunc->aArgs,&pVm->sAllocator,sizeof(ph7_vm_func_arg));` |
 |        - |  326 | `	/* Static variable container */` |
-|  3413675 |  327 | `	SySetInit(&pFunc->aStatic,&pVm->sAllocator,sizeof(ph7_vm_func_static_var));` |
+|  3411937 |  327 | `	SySetInit(&pFunc->aStatic,&pVm->sAllocator,sizeof(ph7_vm_func_static_var));` |
 |        - |  328 | `	/* Bytecode container */` |
-|  3413675 |  329 | `	SySetInit(&pFunc->aByteCode,&pVm->sAllocator,sizeof(VmInstr));` |
+|  3411937 |  329 | `	SySetInit(&pFunc->aByteCode,&pVm->sAllocator,sizeof(VmInstr));` |
 |        - |  330 | `    /* Preallocate some instruction slots */` |
-|  3413675 |  331 | `	SySetAlloc(&pFunc->aByteCode,0x10);` |
+|  3411937 |  331 | `	SySetAlloc(&pFunc->aByteCode,0x10);` |
 |        - |  332 | `	/* Closure environment */` |
-|  3413675 |  333 | `	SySetInit(&pFunc->aClosureEnv,&pVm->sAllocator,sizeof(ph7_vm_func_closure_env));` |
+|  3411937 |  333 | `	SySetInit(&pFunc->aClosureEnv,&pVm->sAllocator,sizeof(ph7_vm_func_closure_env));` |
 |        - |  334 | `	/* Return-type union alternatives (empty unless declared as a union) */` |
-|  3413675 |  335 | `	SySetInit(&pFunc->aReturnUnion,&pVm->sAllocator,sizeof(ph7_type_alt));` |
+|  3411937 |  335 | `	SySetInit(&pFunc->aReturnUnion,&pVm->sAllocator,sizeof(ph7_type_alt));` |
 |        - |  336 | `	/* Declared #[...] attributes */` |
-|  3413675 |  337 | `	SySetInit(&pFunc->aAttrs,&pVm->sAllocator,sizeof(ph7_attribute));` |
-|  3413675 |  338 | `	pFunc->iFlags = iFlags;` |
-|  3413675 |  339 | `	pFunc->pUserData = pUserData;` |
+|  3411937 |  337 | `	SySetInit(&pFunc->aAttrs,&pVm->sAllocator,sizeof(ph7_attribute));` |
+|  3411937 |  338 | `	pFunc->iFlags = iFlags;` |
+|  3411937 |  339 | `	pFunc->pUserData = pUserData;` |
 |        - |  340 | `	/* Capture the defining file's strict_types mode. PHP scopes return-type` |
 |        - |  341 | `	 * coercion by the callee's file, so we freeze it at definition time. */` |
-|  3413675 |  342 | `	pFunc->bStrictTypes = (sxu8)(pVm->sCodeGen.bStrictTypes ? 1 : 0);` |
-|  3413675 |  343 | `	if( pVm->bCompilingBuiltin ){` |
+|  3411937 |  342 | `	pFunc->bStrictTypes = (sxu8)(pVm->sCodeGen.bStrictTypes ? 1 : 0);` |
+|  3411937 |  343 | `	if( pVm->bCompilingBuiltin ){` |
 |        - |  344 | `		/* Defined by an embedded builtin chunk: internal, no defining file */` |
-|  3409125 |  345 | `		pFunc->iFlags \|= VM_FUNC_INTERNAL;` |
-|  1704565 |  346 | `	}else{` |
+|  3407365 |  345 | `		pFunc->iFlags \|= VM_FUNC_INTERNAL;` |
+|  1703685 |  346 | `	}else{` |
 |        - |  347 | `		/* Alias the VM-lifetime path dup on top of the include stack. eval()` |
 |        - |  348 | `		 * chunks push nothing, so eval-defined functions report the includer's` |
 |        - |  349 | `		 * file (documented divergence from PHP's "eval()'d code" pseudo-path). */` |
-|     4555 |  350 | `		SyString *pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
-|     4555 |  351 | `		if( pFile ){` |
-|     4555 |  352 | `			SyStringDupPtr(&pFunc->sFile,pFile);` |
-|     2275 |  353 | `		}` |
+|     4577 |  350 | `		SyString *pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
+|     4577 |  351 | `		if( pFile ){` |
+|     4577 |  352 | `			SyStringDupPtr(&pFunc->sFile,pFile);` |
+|     2286 |  353 | `		}` |
 |        - |  354 | `	}` |
-|  3413675 |  355 | `	SyStringInitFromBuf(&pFunc->sName,zName,nByte);` |
-|  3413675 |  356 | `	return SXRET_OK;` |
+|  3411937 |  355 | `	SyStringInitFromBuf(&pFunc->sName,zName,nByte);` |
+|  3411937 |  356 | `	return SXRET_OK;` |
 |        5 |  357 | `}` |
 |        - |  358 | `/*` |
 |        - |  359 | ` * Namespace-aware function lookup.` |
@@ -373,7 +373,7 @@ Coverage: 2355/2831 lines (83.19%)
 |        - |  363 | `/*` |
 |        - |  364 | ` * Install a user defined function in the corresponding VM container.` |
 |        - |  365 | ` */` |
-|  5858500 |  366 | `PH7_PRIVATE sxi32 PH7_VmInstallUserFunction(` |
+|  5855120 |  366 | `PH7_PRIVATE sxi32 PH7_VmInstallUserFunction(` |
 |        - |  367 | `	ph7_vm *pVm,        /* Target VM */` |
 |        - |  368 | `	ph7_vm_func *pFunc, /* Target function */` |
 |        - |  369 | `	SyString *pName     /* Function name */` |
@@ -381,55 +381,55 @@ Coverage: 2355/2831 lines (83.19%)
 |        5 |  371 | `{` |
 |        - |  372 | `	SyHashEntry *pEntry;` |
 |        - |  373 | `	sxi32 rc;` |
-|  5858505 |  374 | `	if( pName == 0 ){` |
+|  5855125 |  374 | `	if( pName == 0 ){` |
 |        - |  375 | `		/* Use the built-in name */` |
-|   521665 |  376 | `		pName = &pFunc->sName;` |
-|   260830 |  377 | `	}` |
+|   521419 |  376 | `		pName = &pFunc->sName;` |
+|   260707 |  377 | `	}` |
 |        - |  378 | `	/* Check for duplicates (functions with the same name) first */` |
-|  5858505 |  379 | `	pEntry = SyHashGet(&pVm->hFunction,pName->zString,pName->nByte);` |
-|  5858505 |  380 | `	if( pEntry ){` |
-|  2918163 |  381 | `		ph7_vm_func *pLink = (ph7_vm_func *)pEntry->pUserData;` |
-|  2918163 |  382 | `		if( pLink != pFunc ){` |
+|  5855125 |  379 | `	pEntry = SyHashGet(&pVm->hFunction,pName->zString,pName->nByte);` |
+|  5855125 |  380 | `	if( pEntry ){` |
+|  2916449 |  381 | `		ph7_vm_func *pLink = (ph7_vm_func *)pEntry->pUserData;` |
+|  2916449 |  382 | `		if( pLink != pFunc ){` |
 |        - |  383 | `			/* Link */` |
 |       35 |  384 | `			pFunc->pNextName = pLink;` |
 |       35 |  385 | `			pEntry->pUserData = pFunc;` |
 |       16 |  386 | `		}` |
-|  2918163 |  387 | `		return SXRET_OK;` |
+|  2916449 |  387 | `		return SXRET_OK;` |
 |        - |  388 | `	}` |
 |        - |  389 | `	/* First time seen */` |
-|  2940347 |  390 | `	pFunc->pNextName = 0;` |
-|  2940347 |  391 | `	rc = SyHashInsert(&pVm->hFunction,pName->zString,pName->nByte,pFunc);` |
-|  2940347 |  392 | `	return rc;` |
-|  2929255 |  393 | `}` |
+|  2938681 |  390 | `	pFunc->pNextName = 0;` |
+|  2938681 |  391 | `	rc = SyHashInsert(&pVm->hFunction,pName->zString,pName->nByte,pFunc);` |
+|  2938681 |  392 | `	return rc;` |
+|  2927565 |  393 | `}` |
 |        - |  394 | `/*` |
 |        - |  395 | ` * Install a user defined class in the corresponding VM container.` |
 |        - |  396 | ` */` |
-|   529012 |  397 | `PH7_PRIVATE sxi32 PH7_VmInstallClass(` |
+|   528742 |  397 | `PH7_PRIVATE sxi32 PH7_VmInstallClass(` |
 |        - |  398 | `	ph7_vm *pVm,      /* Target VM  */` |
 |        - |  399 | `	ph7_class *pClass /* Target Class */` |
 |        - |  400 | `	)` |
 |        5 |  401 | `{` |
-|   529017 |  402 | `	SyString *pName = &pClass->sName;` |
+|   528747 |  402 | `	SyString *pName = &pClass->sName;` |
 |        - |  403 | `	SyHashEntry *pEntry;` |
 |        - |  404 | `	sxi32 rc;` |
 |        - |  405 | `	/* Check for duplicates */` |
-|   529017 |  406 | `	pEntry = SyHashGet(&pVm->hClass,(const void *)pName->zString,pName->nByte);` |
-|   529017 |  407 | `	if( pEntry ){` |
+|   528747 |  406 | `	pEntry = SyHashGet(&pVm->hClass,(const void *)pName->zString,pName->nByte);` |
+|   528747 |  407 | `	if( pEntry ){` |
 |        3 |  408 | `		ph7_class *pLink = (ph7_class *)pEntry->pUserData;` |
 |        - |  409 | `		/* Link entry with the same name */` |
 |        3 |  410 | `		pClass->pNextName = pLink;` |
 |        3 |  411 | `		pEntry->pUserData = pClass;` |
 |        3 |  412 | `		return SXRET_OK;` |
 |        - |  413 | `	}` |
-|   529015 |  414 | `	pClass->pNextName = 0;` |
+|   528745 |  414 | `	pClass->pNextName = 0;` |
 |        - |  415 | `	/* Perform a simple hashtable insertion */` |
-|   529015 |  416 | `	rc = SyHashInsert(&pVm->hClass,(const void *)pName->zString,pName->nByte,pClass);` |
-|   529015 |  417 | `	return rc;` |
-|   264511 |  418 | `}` |
+|   528745 |  416 | `	rc = SyHashInsert(&pVm->hClass,(const void *)pName->zString,pName->nByte,pClass);` |
+|   528745 |  417 | `	return rc;` |
+|   264376 |  418 | `}` |
 |        - |  419 | `/*` |
 |        - |  420 | ` * Instruction builder interface.` |
 |        - |  421 | ` */` |
-| 98249490 |  422 | `PH7_PRIVATE sxi32 PH7_VmEmitInstr(` |
+| 98199492 |  422 | `PH7_PRIVATE sxi32 PH7_VmEmitInstr(` |
 |        - |  423 | `	ph7_vm *pVm,  /* Target VM */` |
 |        - |  424 | `	sxi32 iOp,    /* Operation to perform */` |
 |        - |  425 | `	sxi32 iP1,    /* First operand */` |
@@ -439,102 +439,102 @@ Coverage: 2355/2831 lines (83.19%)
 |        - |  429 | `	)` |
 |        5 |  430 | `{` |
 |        - |  431 | `	VmInstr sInstr;` |
-| 98249495 |  432 | `	ph7_gen_state *pGen = &pVm->sCodeGen;` |
+| 98199497 |  432 | `	ph7_gen_state *pGen = &pVm->sCodeGen;` |
 |        - |  433 | `	sxi32 rc;` |
 |        - |  434 | `	/* Fill the VM instruction */` |
-| 98249495 |  435 | `	sInstr.iOp = (sxu8)iOp;` |
-| 98249495 |  436 | `	sInstr.iP1 = iP1;` |
-| 98249495 |  437 | `	sInstr.iP2 = iP2;` |
-| 98249495 |  438 | `	sInstr.p3  = p3;` |
+| 98199497 |  435 | `	sInstr.iOp = (sxu8)iOp;` |
+| 98199497 |  436 | `	sInstr.iP1 = iP1;` |
+| 98199497 |  437 | `	sInstr.iP2 = iP2;` |
+| 98199497 |  438 | `	sInstr.p3  = p3;` |
 |        - |  439 | `	/* Stamp the source line. The node handlers point pGen->pIn at the token being` |
 |        - |  440 | `	 * compiled (that is how they read its text), so the current token IS this` |
 |        - |  441 | `	 * instruction's source position; pIn can sit one past the end of the stream` |
 |        - |  442 | `	 * between statements, hence the range check. */` |
-| 98249495 |  443 | `	sInstr.nLine = 0;` |
-| 98249495 |  444 | `	if( pGen->pIn && pGen->pEnd && pGen->pIn < pGen->pEnd ){` |
-| 41859607 |  445 | `		sInstr.nLine = pGen->pIn->nLine;` |
-| 77319694 |  446 | `	}else if( pGen->pIn && pGen->pEnd && pGen->pIn >= pGen->pEnd && pGen->pEnd > (SyToken *)0 ){` |
+| 98199497 |  443 | `	sInstr.nLine = 0;` |
+| 98199497 |  444 | `	if( pGen->pIn && pGen->pEnd && pGen->pIn < pGen->pEnd ){` |
+| 41838303 |  445 | `		sInstr.nLine = pGen->pIn->nLine;` |
+| 77280348 |  446 | `	}else if( pGen->pIn && pGen->pEnd && pGen->pIn >= pGen->pEnd && pGen->pEnd > (SyToken *)0 ){` |
 |        - |  447 | `		/* Past the end (statement tail): blame the last real token. */` |
-| 56175655 |  448 | `		sInstr.nLine = pGen->pEnd[-1].nLine;` |
-| 28087825 |  449 | `	}` |
-| 98249495 |  450 | `	if( pIndex ){` |
+| 56147053 |  448 | `		sInstr.nLine = pGen->pEnd[-1].nLine;` |
+| 28073524 |  449 | `	}` |
+| 98199497 |  450 | `	if( pIndex ){` |
 |        - |  451 | `		/* Instruction index in the bytecode array */` |
-|  6650767 |  452 | `		*pIndex = SySetUsed(pVm->pByteContainer);` |
-|  3325381 |  453 | `	}` |
+|  6647343 |  452 | `		*pIndex = SySetUsed(pVm->pByteContainer);` |
+|  3323669 |  453 | `	}` |
 |        - |  454 | `	/* Finally,record the instruction */` |
-| 98249495 |  455 | `	rc = SySetPut(pVm->pByteContainer,(const void *)&sInstr);` |
-| 98249495 |  456 | `	if( rc != SXRET_OK ){` |
+| 98199497 |  455 | `	rc = SySetPut(pVm->pByteContainer,(const void *)&sInstr);` |
+| 98199497 |  456 | `	if( rc != SXRET_OK ){` |
 |      ! 0 |  457 | `		PH7_GenCompileError(&pVm->sCodeGen,E_ERROR,1,"Fatal,Cannot emit instruction due to a memory failure");` |
 |        - |  458 | `		/* Fall throw */` |
 |      ! 0 |  459 | `	}` |
-| 98249495 |  460 | `	return rc;` |
+| 98199497 |  460 | `	return rc;` |
 |        5 |  461 | `}` |
 |        - |  462 | `/*` |
 |        - |  463 | ` * Swap the current bytecode container with the given one.` |
 |        - |  464 | ` */` |
-|  9770604 |  465 | `PH7_PRIVATE sxi32 PH7_VmSetByteCodeContainer(ph7_vm *pVm,SySet *pContainer)` |
+|  9765616 |  465 | `PH7_PRIVATE sxi32 PH7_VmSetByteCodeContainer(ph7_vm *pVm,SySet *pContainer)` |
 |        5 |  466 | `{` |
-|  9770609 |  467 | `	if( pContainer == 0 ){` |
+|  9765621 |  467 | `	if( pContainer == 0 ){` |
 |        - |  468 | `		/* Point to the default container */` |
 |      ! 0 |  469 | `		pVm->pByteContainer = &pVm->aByteCode;` |
 |      ! 0 |  470 | `	}else{` |
 |        - |  471 | `		/* Change container */` |
-|  9770609 |  472 | `		pVm->pByteContainer = &(*pContainer);` |
+|  9765621 |  472 | `		pVm->pByteContainer = &(*pContainer);` |
 |        - |  473 | `	}` |
-|  9770609 |  474 | `	return SXRET_OK;` |
+|  9765621 |  474 | `	return SXRET_OK;` |
 |        5 |  475 | `}` |
 |        - |  476 | `/*` |
 |        - |  477 | ` * Return the current bytecode container.` |
 |        - |  478 | ` */` |
-|  4885302 |  479 | `PH7_PRIVATE SySet * PH7_VmGetByteCodeContainer(ph7_vm *pVm)` |
+|  4882808 |  479 | `PH7_PRIVATE SySet * PH7_VmGetByteCodeContainer(ph7_vm *pVm)` |
 |        5 |  480 | `{` |
-|  4885307 |  481 | `	return pVm->pByteContainer;` |
+|  4882813 |  481 | `	return pVm->pByteContainer;` |
 |        5 |  482 | `}` |
 |        - |  483 | `/*` |
 |        - |  484 | ` * Extract the VM instruction rooted at nIndex.` |
 |        - |  485 | ` */` |
-|  6856558 |  486 | `PH7_PRIVATE VmInstr * PH7_VmGetInstr(ph7_vm *pVm,sxu32 nIndex)` |
+|  6853034 |  486 | `PH7_PRIVATE VmInstr * PH7_VmGetInstr(ph7_vm *pVm,sxu32 nIndex)` |
 |        5 |  487 | `{` |
 |        - |  488 | `	VmInstr *pInstr;` |
-|  6856563 |  489 | `	pInstr = (VmInstr *)SySetAt(pVm->pByteContainer,nIndex);` |
-|  6856563 |  490 | `	return pInstr;` |
+|  6853039 |  489 | `	pInstr = (VmInstr *)SySetAt(pVm->pByteContainer,nIndex);` |
+|  6853039 |  490 | `	return pInstr;` |
 |        5 |  491 | `}` |
 |        - |  492 | `/*` |
 |        - |  493 | ` * Return the total number of VM instructions recorded so far.` |
 |        - |  494 | ` */` |
-| 54104558 |  495 | `PH7_PRIVATE sxu32 PH7_VmInstrLength(ph7_vm *pVm)` |
+| 54076892 |  495 | `PH7_PRIVATE sxu32 PH7_VmInstrLength(ph7_vm *pVm)` |
 |        5 |  496 | `{` |
-| 54104563 |  497 | `	return SySetUsed(pVm->pByteContainer);` |
+| 54076897 |  497 | `	return SySetUsed(pVm->pByteContainer);` |
 |        5 |  498 | `}` |
 |        - |  499 | `/*` |
 |        - |  500 | ` * Pop the last VM instruction.` |
 |        - |  501 | ` */` |
-|  5392190 |  502 | `PH7_PRIVATE VmInstr * PH7_VmPopInstr(ph7_vm *pVm)` |
+|  5389440 |  502 | `PH7_PRIVATE VmInstr * PH7_VmPopInstr(ph7_vm *pVm)` |
 |        5 |  503 | `{` |
-|  5392195 |  504 | `	return (VmInstr *)SySetPop(pVm->pByteContainer);` |
+|  5389445 |  504 | `	return (VmInstr *)SySetPop(pVm->pByteContainer);` |
 |        5 |  505 | `}` |
 |        - |  506 | `/*` |
 |        - |  507 | ` * Peek the last VM instruction.` |
 |        - |  508 | ` */` |
-| 20425962 |  509 | `PH7_PRIVATE VmInstr * PH7_VmPeekInstr(ph7_vm *pVm)` |
+| 20415532 |  509 | `PH7_PRIVATE VmInstr * PH7_VmPeekInstr(ph7_vm *pVm)` |
 |        5 |  510 | `{` |
-| 20425967 |  511 | `	return (VmInstr *)SySetPeek(pVm->pByteContainer);` |
+| 20415537 |  511 | `	return (VmInstr *)SySetPeek(pVm->pByteContainer);` |
 |        5 |  512 | `}` |
-|  1710152 |  513 | `PH7_PRIVATE VmInstr * PH7_VmPeekNextInstr(ph7_vm *pVm)` |
+|  1709272 |  513 | `PH7_PRIVATE VmInstr * PH7_VmPeekNextInstr(ph7_vm *pVm)` |
 |        5 |  514 | `{` |
 |        - |  515 | `	VmInstr *aInstr;` |
 |        - |  516 | `	sxu32 n;` |
-|  1710157 |  517 | `	n = SySetUsed(pVm->pByteContainer);` |
-|  1710157 |  518 | `	if( n < 2 ){` |
+|  1709277 |  517 | `	n = SySetUsed(pVm->pByteContainer);` |
+|  1709277 |  518 | `	if( n < 2 ){` |
 |      ! 0 |  519 | `		return 0;` |
 |        - |  520 | `	}` |
-|  1710157 |  521 | `	aInstr = (VmInstr *)SySetBasePtr(pVm->pByteContainer);` |
-|  1710157 |  522 | `	return &aInstr[n - 2];` |
-|   855081 |  523 | `}` |
+|  1709277 |  521 | `	aInstr = (VmInstr *)SySetBasePtr(pVm->pByteContainer);` |
+|  1709277 |  522 | `	return &aInstr[n - 2];` |
+|   854641 |  523 | `}` |
 |        - |  524 | `/*` |
 |        - |  525 | ` * Allocate a new virtual machine frame.` |
 |        - |  526 | ` */` |
-|   114307 |  527 | `PH7_PRIVATE VmFrame * VmNewFrame(` |
+|   114413 |  527 | `PH7_PRIVATE VmFrame * VmNewFrame(` |
 |        - |  528 | `	ph7_vm *pVm,              /* Target VM */` |
 |        - |  529 | `	void *pUserData,          /* Upper-layer private data */` |
 |        - |  530 | `	ph7_class_instance *pThis /* Top most class instance [i.e: Object in the PHP jargon]. NULL otherwise */` |
@@ -542,32 +542,32 @@ Coverage: 2355/2831 lines (83.19%)
 |        5 |  532 | `{` |
 |        - |  533 | `	VmFrame *pFrame;` |
 |        - |  534 | `	/* Allocate a new vm frame */` |
-|   114312 |  535 | `	pFrame = (VmFrame *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(VmFrame));` |
-|   114312 |  536 | `	if( pFrame == 0 ){` |
+|   114418 |  535 | `	pFrame = (VmFrame *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(VmFrame));` |
+|   114418 |  536 | `	if( pFrame == 0 ){` |
 |      ! 0 |  537 | `		return 0;` |
 |        - |  538 | `	}` |
 |        - |  539 | `	/* Zero the structure */` |
-|   114312 |  540 | `	SyZero(pFrame,sizeof(VmFrame));` |
+|   114418 |  540 | `	SyZero(pFrame,sizeof(VmFrame));` |
 |        - |  541 | `	/* Initialize frame fields */` |
-|   114312 |  542 | `	pFrame->pUserData = pUserData;` |
-|   114312 |  543 | `	pFrame->pThis = pThis;` |
-|   114312 |  544 | `	pFrame->pVm = pVm;` |
-|   114312 |  545 | `	SyHashInit(&pFrame->hVar,&pVm->sAllocator,0,0);` |
-|   114312 |  546 | `	SySetInit(&pFrame->sArg,&pVm->sAllocator,sizeof(VmSlot));` |
-|   114312 |  547 | `	SySetInit(&pFrame->sLocal,&pVm->sAllocator,sizeof(VmSlot));` |
-|   114312 |  548 | `	SySetInit(&pFrame->sRef,&pVm->sAllocator,sizeof(VmSlot));` |
-|   114312 |  549 | `	pFrame->nActualArgs = -1; /* unknown until an arg-install site stamps it */` |
+|   114418 |  542 | `	pFrame->pUserData = pUserData;` |
+|   114418 |  543 | `	pFrame->pThis = pThis;` |
+|   114418 |  544 | `	pFrame->pVm = pVm;` |
+|   114418 |  545 | `	SyHashInit(&pFrame->hVar,&pVm->sAllocator,0,0);` |
+|   114418 |  546 | `	SySetInit(&pFrame->sArg,&pVm->sAllocator,sizeof(VmSlot));` |
+|   114418 |  547 | `	SySetInit(&pFrame->sLocal,&pVm->sAllocator,sizeof(VmSlot));` |
+|   114418 |  548 | `	SySetInit(&pFrame->sRef,&pVm->sAllocator,sizeof(VmSlot));` |
+|   114418 |  549 | `	pFrame->nActualArgs = -1; /* unknown until an arg-install site stamps it */` |
 |        - |  550 | `	/* Per-frame pending catch/finally return slot (always-init so release is` |
 |        - |  551 | `	 * unconditional; bHasRet is already 0 from SyZero). */` |
-|   114312 |  552 | `	PH7_MemObjInit(&(*pVm),&pFrame->sRet);` |
-|   114312 |  553 | `	return pFrame;` |
-|    57261 |  554 | `}` |
+|   114418 |  552 | `	PH7_MemObjInit(&(*pVm),&pFrame->sRet);` |
+|   114418 |  553 | `	return pFrame;` |
+|    57314 |  554 | `}` |
 |        - |  555 | `/* Forward declaration */` |
 |        - |  556 | `static void VmSpreadCaptureReset(ph7_vm *pVm);` |
 |        - |  557 | `/*` |
 |        - |  558 | ` * Enter a VM frame.` |
 |        - |  559 | ` */` |
-|   113711 |  560 | `PH7_PRIVATE sxi32 VmEnterFrame(` |
+|   113817 |  560 | `PH7_PRIVATE sxi32 VmEnterFrame(` |
 |        - |  561 | `	ph7_vm *pVm,               /* Target VM */` |
 |        - |  562 | `	void *pUserData,           /* Upper-layer private data */` |
 |        - |  563 | `	ph7_class_instance *pThis, /* Top most class instance [i.e: Object in the PHP jargon]. NULL otherwise */` |
@@ -576,21 +576,21 @@ Coverage: 2355/2831 lines (83.19%)
 |        5 |  566 | `{` |
 |        - |  567 | `	VmFrame *pFrame;` |
 |        - |  568 | `	/* Allocate a new frame */` |
-|   113716 |  569 | `	pFrame = VmNewFrame(&(*pVm),pUserData,pThis);` |
-|   113716 |  570 | `	if( pFrame == 0 ){` |
+|   113822 |  569 | `	pFrame = VmNewFrame(&(*pVm),pUserData,pThis);` |
+|   113822 |  570 | `	if( pFrame == 0 ){` |
 |      ! 0 |  571 | `		return SXERR_MEM;` |
 |        - |  572 | `	}` |
 |        - |  573 | `	/* The line currently executing IS the call site for the frame being pushed. */` |
-|   113716 |  574 | `	pFrame->nCallLine = pVm->nCurLine;` |
+|   113822 |  574 | `	pFrame->nCallLine = pVm->nCurLine;` |
 |        - |  575 | `	/* Link to the list of active VM frame */` |
-|   113716 |  576 | `	pFrame->pParent = pVm->pFrame;` |
-|   113716 |  577 | `	pVm->pFrame = pFrame;` |
-|   113716 |  578 | `	if( ppFrame ){` |
+|   113822 |  576 | `	pFrame->pParent = pVm->pFrame;` |
+|   113822 |  577 | `	pVm->pFrame = pFrame;` |
+|   113822 |  578 | `	if( ppFrame ){` |
 |        - |  579 | `		/* Write a pointer to the new VM frame */` |
-|   109834 |  580 | `		*ppFrame = pFrame;` |
-|    55017 |  581 | `	}` |
-|   113716 |  582 | `	return SXRET_OK;` |
-|    56963 |  583 | `}` |
+|   109942 |  580 | `		*ppFrame = pFrame;` |
+|    55071 |  581 | `	}` |
+|   113822 |  582 | `	return SXRET_OK;` |
+|    57016 |  583 | `}` |
 |        - |  584 | `/*` |
 |        - |  585 | ` * Link a foreign variable with the TOP most active frame.` |
 |        - |  586 | ` * Refer to the PH7_OP_UPLINK instruction implementation for more` |
@@ -640,51 +640,51 @@ Coverage: 2355/2831 lines (83.19%)
 |        - |  630 | ` * is defensive; it never fires for an intermediate exception wrapper popped during a` |
 |        - |  631 | ` * resume — pVm->pResumeFrame is always a real body, never a wrapper.` |
 |        - |  632 | ` */` |
-|   110259 |  633 | `PH7_PRIVATE void VmDropResumeTarget(ph7_vm *pVm, VmFrame *pFrame)` |
+|   110367 |  633 | `PH7_PRIVATE void VmDropResumeTarget(ph7_vm *pVm, VmFrame *pFrame)` |
 |        5 |  634 | `{` |
-|   110264 |  635 | `	if( pVm->pResumeFrame == pFrame ){` |
+|   110372 |  635 | `	if( pVm->pResumeFrame == pFrame ){` |
 |        3 |  636 | `		pVm->pResumeFrame = 0;` |
 |        1 |  637 | `	}` |
-|   110264 |  638 | `}` |
+|   110372 |  638 | `}` |
 |        - |  639 | `/*` |
 |        - |  640 | ` * Leave the top-most active frame.` |
 |        - |  641 | ` */` |
-|   109407 |  642 | `PH7_PRIVATE void VmLeaveFrame(ph7_vm *pVm)` |
+|   109515 |  642 | `PH7_PRIVATE void VmLeaveFrame(ph7_vm *pVm)` |
 |        5 |  643 | `{` |
-|   109412 |  644 | `		VmFrame *pCurFrame = pVm->pFrame;` |
-|   109412 |  645 | `	if( pCurFrame ){` |
+|   109520 |  644 | `		VmFrame *pCurFrame = pVm->pFrame;` |
+|   109520 |  645 | `	if( pCurFrame ){` |
 |        - |  646 | `		/* Unlink from the list of active VM frame */` |
-|   109412 |  647 | `		pVm->pFrame = pCurFrame->pParent;` |
-|   109412 |  648 | `		if( pCurFrame->pParent && (pCurFrame->iFlags & VM_FRAME_EXCEPTION) == 0 ){` |
+|   109520 |  647 | `		pVm->pFrame = pCurFrame->pParent;` |
+|   109520 |  648 | `		if( pCurFrame->pParent && (pCurFrame->iFlags & VM_FRAME_EXCEPTION) == 0 ){` |
 |        - |  649 | `			VmSlot  *aSlot;` |
 |        - |  650 | `			sxu32 n;` |
 |        - |  651 | `			/* Restore local variable to the free pool so that they can be reused again */` |
-|   104438 |  652 | `			aSlot = (VmSlot *)SySetBasePtr(&pCurFrame->sLocal);` |
-|   604760 |  653 | `			for(n = 0 ; n < SySetUsed(&pCurFrame->sLocal) ; ++n ){` |
+|   104510 |  652 | `			aSlot = (VmSlot *)SySetBasePtr(&pCurFrame->sLocal);` |
+|   604996 |  653 | `			for(n = 0 ; n < SySetUsed(&pCurFrame->sLocal) ; ++n ){` |
 |        - |  654 | `				/* Unset the local variable */` |
-|   500327 |  655 | `				PH7_VmUnsetMemObj(&(*pVm),aSlot[n].nIdx,FALSE);` |
-|   250781 |  656 | `			}` |
+|   500491 |  655 | `				PH7_VmUnsetMemObj(&(*pVm),aSlot[n].nIdx,FALSE);` |
+|   250863 |  656 | `			}` |
 |        - |  657 | `			/* Remove local reference */` |
-|   104438 |  658 | `			aSlot = (VmSlot *)SySetBasePtr(&pCurFrame->sRef);` |
-|   604844 |  659 | `			for(n = 0 ; n < SySetUsed(&pCurFrame->sRef) ; ++n ){` |
-|   500411 |  660 | `				PH7_VmRefObjRemove(&(*pVm),aSlot[n].nIdx,(SyHashEntry *)aSlot[n].pUserData,0);` |
-|   250823 |  661 | `			}` |
-|    52319 |  662 | `		}` |
+|   104510 |  658 | `			aSlot = (VmSlot *)SySetBasePtr(&pCurFrame->sRef);` |
+|   605080 |  659 | `			for(n = 0 ; n < SySetUsed(&pCurFrame->sRef) ; ++n ){` |
+|   500575 |  660 | `				PH7_VmRefObjRemove(&(*pVm),aSlot[n].nIdx,(SyHashEntry *)aSlot[n].pUserData,0);` |
+|   250905 |  661 | `			}` |
+|    52355 |  662 | `		}` |
 |        - |  663 | `		/* Release internal containers */` |
-|   109412 |  664 | `		SyHashRelease(&pCurFrame->hVar);` |
-|   109412 |  665 | `		SySetRelease(&pCurFrame->sArg);` |
-|   109412 |  666 | `		SySetRelease(&pCurFrame->sLocal);` |
-|   109412 |  667 | `		SySetRelease(&pCurFrame->sRef);` |
+|   109520 |  664 | `		SyHashRelease(&pCurFrame->hVar);` |
+|   109520 |  665 | `		SySetRelease(&pCurFrame->sArg);` |
+|   109520 |  666 | `		SySetRelease(&pCurFrame->sLocal);` |
+|   109520 |  667 | `		SySetRelease(&pCurFrame->sRef);` |
 |        - |  668 | `		/* Release the per-frame pending-return slot (a frame-level resource like the` |
 |        - |  669 | `		 * containers above — released for every frame, including transparent` |
 |        - |  670 | `		 * exception/catch wrappers, which never own a return so it is empty there). */` |
-|   109412 |  671 | `		PH7_MemObjRelease(&pCurFrame->sRet);` |
+|   109520 |  671 | `		PH7_MemObjRelease(&pCurFrame->sRet);` |
 |        - |  672 | `		/* Drop a recorded in-place-catch resume target pointing at this frame (ROOT B). */` |
-|   109412 |  673 | `		VmDropResumeTarget(pVm,pCurFrame);` |
+|   109520 |  673 | `		VmDropResumeTarget(pVm,pCurFrame);` |
 |        - |  674 | `		/* Release the whole structure */` |
-|   109412 |  675 | `		SyMemBackendPoolFree(&pVm->sAllocator,pCurFrame);` |
-|    54806 |  676 | `	}` |
-|   109412 |  677 | `}` |
+|   109520 |  675 | `		SyMemBackendPoolFree(&pVm->sAllocator,pCurFrame);` |
+|    54860 |  676 | `	}` |
+|   109520 |  677 | `}` |
 |        - |  678 | `/*` |
 |        - |  679 | ` * Pin a memory-object slot past its owning frame: remove it from whichever` |
 |        - |  680 | ` * active frame's local-teardown set records it (walking the parent chain` |
@@ -706,13 +706,13 @@ Coverage: 2355/2831 lines (83.19%)
 |        - |  696 | ` * sLocal entry makes VmLeaveFrame release that unrelated owner's value. Dropping the` |
 |        - |  697 | ` * entry at the point the slot leaves the frame closes that use-after-free.` |
 |        - |  698 | ` */` |
-|     6874 |  699 | `PH7_PRIVATE int VmDropFrameLocalSlot(ph7_vm *pVm,sxu32 nIdx)` |
+|     6892 |  699 | `PH7_PRIVATE int VmDropFrameLocalSlot(ph7_vm *pVm,sxu32 nIdx)` |
 |        5 |  700 | `{` |
 |        - |  701 | `	VmFrame *pFrame;` |
-|    13783 |  702 | `	for( pFrame = pVm->pFrame ; pFrame ; pFrame = pFrame->pParent ){` |
-|     6921 |  703 | `		VmSlot *aSlot = (VmSlot *)SySetBasePtr(&pFrame->sLocal);` |
+|    13819 |  702 | `	for( pFrame = pVm->pFrame ; pFrame ; pFrame = pFrame->pParent ){` |
+|     6939 |  703 | `		VmSlot *aSlot = (VmSlot *)SySetBasePtr(&pFrame->sLocal);` |
 |        - |  704 | `		sxu32 n;` |
-|     6981 |  705 | `		for( n = 0 ; n < SySetUsed(&pFrame->sLocal) ; ++n ){` |
+|     6999 |  705 | `		for( n = 0 ; n < SySetUsed(&pFrame->sLocal) ; ++n ){` |
 |       76 |  706 | `			if( aSlot[n].nIdx == nIdx ){` |
 |        - |  707 | `				/* Swap-remove: teardown order over sLocal is immaterial */` |
 |       13 |  708 | `				aSlot[n] = aSlot[SySetUsed(&pFrame->sLocal)-1];` |
@@ -720,29 +720,29 @@ Coverage: 2355/2831 lines (83.19%)
 |       13 |  710 | `				return TRUE; /* Slot owned by exactly one frame */` |
 |        - |  711 | `			}` |
 |       34 |  712 | `		}` |
-|     3457 |  713 | `	}` |
-|     6867 |  714 | `	return FALSE;` |
-|     3442 |  715 | `}` |
-|       78 |  716 | `PH7_PRIVATE void VmPinMemObjSlot(ph7_vm *pVm,sxu32 nIdx)` |
-|        2 |  717 | `{` |
+|     3466 |  713 | `	}` |
+|     6885 |  714 | `	return FALSE;` |
+|     3451 |  715 | `}` |
+|       96 |  716 | `PH7_PRIVATE void VmPinMemObjSlot(ph7_vm *pVm,sxu32 nIdx)` |
+|        3 |  717 | `{` |
 |        - |  718 | `	VmRefObj *pRef;` |
-|       80 |  719 | `	VmDropFrameLocalSlot(&(*pVm),nIdx);` |
-|       80 |  720 | `	pRef = VmRefObjExtract(&(*pVm),nIdx);` |
-|       80 |  721 | `	if( pRef ){` |
-|       80 |  722 | `		pRef->iFlags \|= VM_REF_IDX_KEEP;` |
-|       39 |  723 | `	}` |
-|       80 |  724 | `}` |
+|       99 |  719 | `	VmDropFrameLocalSlot(&(*pVm),nIdx);` |
+|       99 |  720 | `	pRef = VmRefObjExtract(&(*pVm),nIdx);` |
+|       99 |  721 | `	if( pRef ){` |
+|       99 |  722 | `		pRef->iFlags \|= VM_REF_IDX_KEEP;` |
+|       48 |  723 | `	}` |
+|       99 |  724 | `}` |
 |        - |  725 | `/*` |
 |        - |  726 | ` * Skip exception frames to reach the nearest non-exception frame.` |
 |        - |  727 | ` * Exception frames are transparent wrappers pushed by try/catch and` |
 |        - |  728 | ` * should be skipped when looking for the real execution context.` |
 |        - |  729 | ` */` |
-| 10596804 |  730 | `PH7_PRIVATE VmFrame * VmSkipExceptionFrames(VmFrame *pFrame)` |
+| 10619178 |  730 | `PH7_PRIVATE VmFrame * VmSkipExceptionFrames(VmFrame *pFrame)` |
 |        5 |  731 | `{` |
-| 10622935 |  732 | `	while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){` |
-|    26131 |  733 | `		pFrame = pFrame->pParent;` |
+| 10645453 |  732 | `	while( pFrame->pParent && (pFrame->iFlags & VM_FRAME_EXCEPTION) ){` |
+|    26275 |  733 | `		pFrame = pFrame->pParent;` |
 |        5 |  734 | `	}` |
-| 10596809 |  735 | `	return pFrame;` |
+| 10619183 |  735 | `	return pFrame;` |
 |        5 |  736 | `}` |
 |        - |  737 | `/*` |
 |        - |  738 | `` * After a `catch` ran IN PLACE inside VmThrowException, the throwing site — which`` |
@@ -767,9 +767,9 @@ Coverage: 2355/2831 lines (83.19%)
 |        - |  757 | ` * than identity-of-the-catcher and so resumed at the wrong landing pad whenever the` |
 |        - |  758 | ` * catching frame was not the nearest try (ROOT B).` |
 |        - |  759 | ` */` |
-|     3018 |  760 | `PH7_PRIVATE int VmRecordedResume(ph7_vm *pVm,sxi32 *pResumePc,VmFrame *pEntryFrame,VmInstr *aInstr)` |
+|     3054 |  760 | `PH7_PRIVATE int VmRecordedResume(ph7_vm *pVm,sxi32 *pResumePc,VmFrame *pEntryFrame,VmInstr *aInstr)` |
 |        5 |  761 | `{` |
-|     3023 |  762 | `	if( pVm->pResumeFrame == 0 ){` |
+|     3059 |  762 | `	if( pVm->pResumeFrame == 0 ){` |
 |       17 |  763 | `		return FALSE; /* no in-place catch recorded for this in-flight throw */` |
 |        - |  764 | `	}` |
 |        - |  765 | `	/* Resume here only when THIS exec is the one that owns the catching try: same` |
@@ -780,15 +780,15 @@ Coverage: 2355/2831 lines (83.19%)
 |        - |  770 | `	 * the try was compiled into. A mismatch on either means the exception was caught` |
 |        - |  771 | `	 * in a different exec, so we propagate (return/goto Exception) and let the owning` |
 |        - |  772 | `	 * exec's resume site match and land. */` |
-|     3004 |  773 | `	if( VmSkipExceptionFrames(pEntryFrame) != pVm->pResumeFrame` |
-|     2529 |  774 | `	 \|\| (void *)aInstr != pVm->pResumeInstr` |
-|     2046 |  775 | `	 \|\| pVm->iResumePc == 0 ){` |
+|     3040 |  773 | `	if( VmSkipExceptionFrames(pEntryFrame) != pVm->pResumeFrame` |
+|     2556 |  774 | `	 \|\| (void *)aInstr != pVm->pResumeInstr` |
+|     2064 |  775 | `	 \|\| pVm->iResumePc == 0 ){` |
 |        - |  776 | `		/* iResumePc is a try's post-construct landing pad (OP_LOAD_EXCEPTION's iP2),` |
 |        - |  777 | `		 * always >= 1 in practice; the ==0 guard keeps a malformed record from` |
 |        - |  778 | ``		 * underflowing `*pResumePc = iResumePc - 1` to -1 (which the dispatcher's pc++`` |
 |        - |  779 | `		 * would turn into a re-run from index 0) and from making the pop loop below` |
 |        - |  780 | `		 * never match a real frame. */` |
-|      981 |  781 | `		return FALSE;` |
+|      999 |  781 | `		return FALSE;` |
 |        - |  782 | `	}` |
 |        - |  783 | `	/* The catch may have run at an OUTER try, several call-levels above the throw.` |
 |        - |  784 | `	 * VmThrowException runs the catch in place and then leaves pVm->pFrame at the` |
@@ -811,19 +811,19 @@ Coverage: 2355/2831 lines (83.19%)
 |        - |  801 | `	 * pins (frame,array) to this exec, so the iExceptionJump match cannot stop at the` |
 |        - |  802 | `	 * wrong try. OP_POP_EXCEPTION's frame-leave is guarded on VM_FRAME_EXCEPTION, so` |
 |        - |  803 | `	 * leaving the catching exception frame here (rather than the body) lands cleanly. */` |
-|     3448 |  804 | `	while( pVm->pFrame != pEntryFrame` |
-|     3920 |  805 | `	    && !((pVm->pFrame->iFlags & VM_FRAME_EXCEPTION)` |
-|     2494 |  806 | `	         && pVm->pFrame->iExceptionJump == pVm->iResumePc) ){` |
-|      817 |  807 | `		VmLeaveFrame(&(*pVm));` |
+|     3484 |  804 | `	while( pVm->pFrame != pEntryFrame` |
+|     3965 |  805 | `	    && !((pVm->pFrame->iFlags & VM_FRAME_EXCEPTION)` |
+|     2521 |  806 | `	         && pVm->pFrame->iExceptionJump == pVm->iResumePc) ){` |
+|      835 |  807 | `		VmLeaveFrame(&(*pVm));` |
 |        5 |  808 | `	}` |
-|     2033 |  809 | `	*pResumePc = (sxi32)pVm->iResumePc - 1;` |
-|     2033 |  810 | `	pVm->pResumeFrame = 0; /* one-shot consume */` |
+|     2051 |  809 | `	*pResumePc = (sxi32)pVm->iResumePc - 1;` |
+|     2051 |  810 | `	pVm->pResumeFrame = 0; /* one-shot consume */` |
 |        - |  811 | `	/* Landing at the catch pad consumes any C-boundary parked copy of the same` |
 |        - |  812 | `	 * in-flight throw (VmBoundaryPark): the status is routed now, so the fetch-` |
 |        - |  813 | `	 * point router must not re-fire it after this resume. */` |
-|     2033 |  814 | `	pVm->nBoundaryRc = 0;` |
-|     2033 |  815 | `	return TRUE;` |
-|     1514 |  816 | `}` |
+|     2051 |  814 | `	pVm->nBoundaryRc = 0;` |
+|     2051 |  815 | `	return TRUE;` |
+|     1532 |  816 | `}` |
 |        - |  817 | `/*` |
 |        - |  818 | ` * Drain pending finally blocks for the try/catch contexts pushed during the` |
 |        - |  819 | ` * current VmByteCodeExec invocation (those above nExceptionBase). Invoked when` |
@@ -855,34 +855,34 @@ Coverage: 2355/2831 lines (83.19%)
 |        - |  845 | `` * "never free" constraint: a `goto` re-entering the try simply mints a fresh`` |
 |        - |  846 | ` * activation.` |
 |        - |  847 | ` */` |
-|     2758 |  848 | `PH7_PRIVATE ph7_exception * VmExcActivate(ph7_vm *pVm,ph7_exception *pCompiled)` |
+|     2776 |  848 | `PH7_PRIVATE ph7_exception * VmExcActivate(ph7_vm *pVm,ph7_exception *pCompiled)` |
 |        5 |  849 | `{` |
-|     2763 |  850 | `	ph7_exception *pClone = (ph7_exception *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_exception));` |
-|     2763 |  851 | `	if( pClone == 0 ){` |
+|     2781 |  850 | `	ph7_exception *pClone = (ph7_exception *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_exception));` |
+|     2781 |  851 | `	if( pClone == 0 ){` |
 |      ! 0 |  852 | `		return 0;` |
 |        - |  853 | `	}` |
-|     2763 |  854 | `	*pClone = *pCompiled;` |
-|     2763 |  855 | `	pClone->pCompiled = pCompiled;` |
-|     2763 |  856 | `	pClone->iFinallyDone = 0;` |
-|     2763 |  857 | `	pClone->iInCatch = 0;` |
-|     2763 |  858 | `	pClone->pInflight = 0;` |
-|     2763 |  859 | `	pClone->pFrame = 0;` |
-|     2763 |  860 | `	return pClone;` |
-|     1384 |  861 | `}` |
-|     5440 |  862 | `PH7_PRIVATE void VmExcRelease(ph7_vm *pVm,ph7_exception *pExc)` |
+|     2781 |  854 | `	*pClone = *pCompiled;` |
+|     2781 |  855 | `	pClone->pCompiled = pCompiled;` |
+|     2781 |  856 | `	pClone->iFinallyDone = 0;` |
+|     2781 |  857 | `	pClone->iInCatch = 0;` |
+|     2781 |  858 | `	pClone->pInflight = 0;` |
+|     2781 |  859 | `	pClone->pFrame = 0;` |
+|     2781 |  860 | `	return pClone;` |
+|     1393 |  861 | `}` |
+|     5476 |  862 | `PH7_PRIVATE void VmExcRelease(ph7_vm *pVm,ph7_exception *pExc)` |
 |        5 |  863 | `{` |
-|     5445 |  864 | `	if( pExc && pExc->pCompiled ){` |
+|     5481 |  864 | `	if( pExc && pExc->pCompiled ){` |
 |        - |  865 | `		/* Only activations are freed; the compiled object is compiler-owned.` |
 |        - |  866 | `		 * An unconsumed pInflight (VmThrowInline's iRef++ hold that OP_CATCH` |
 |        - |  867 | `		 * never ran to release — abort/reset between the pc-redirect and the` |
 |        - |  868 | `		 * catch) is dropped here so the exception instance cannot leak. */` |
-|     2751 |  869 | `		if( pExc->pInflight ){` |
+|     2769 |  869 | `		if( pExc->pInflight ){` |
 |      ! 0 |  870 | `			PH7_ClassInstanceUnref(pExc->pInflight);` |
 |      ! 0 |  871 | `			pExc->pInflight = 0;` |
 |      ! 0 |  872 | `		}` |
-|     2751 |  873 | `		SyMemBackendPoolFree(&pVm->sAllocator,pExc);` |
-|     1373 |  874 | `	}` |
-|     5445 |  875 | `}` |
+|     2769 |  873 | `		SyMemBackendPoolFree(&pVm->sAllocator,pExc);` |
+|     1382 |  874 | `	}` |
+|     5481 |  875 | `}` |
 |        - |  876 | `/*` |
 |        - |  877 | ` * TRUE when the aException entry pExc is (an activation of) the compiled try` |
 |        - |  878 | ` * pCompiled. One home for the identity rule (VmExcLive, OP_POP_EXCEPTION).` |
@@ -924,11 +924,11 @@ Coverage: 2355/2831 lines (83.19%)
 |      ! 0 |  914 | `	}` |
 |      ! 0 |  915 | `	return 0;` |
 |       38 |  916 | `}` |
-|   261831 |  917 | `PH7_PRIVATE sxi32 VmDrainFinally(ph7_vm *pVm, sxu32 nExceptionBase)` |
+|   261935 |  917 | `PH7_PRIVATE sxi32 VmDrainFinally(ph7_vm *pVm, sxu32 nExceptionBase)` |
 |        5 |  918 | `{` |
 |        - |  919 | `	sxu32 nUsed;` |
-|   261836 |  920 | `	sxi32 rcOut = SXRET_OK;` |
-|   261900 |  921 | `	while( (nUsed = SySetUsed(&pVm->aException)) > nExceptionBase ){` |
+|   261940 |  920 | `	sxi32 rcOut = SXRET_OK;` |
+|   262004 |  921 | `	while( (nUsed = SySetUsed(&pVm->aException)) > nExceptionBase ){` |
 |       68 |  922 | `		ph7_exception **apExc = (ph7_exception **)SySetBasePtr(&pVm->aException);` |
 |       68 |  923 | `		ph7_exception *pExc = apExc[nUsed - 1];` |
 |       68 |  924 | `		(void)SySetPop(&pVm->aException);` |
@@ -959,18 +959,18 @@ Coverage: 2355/2831 lines (83.19%)
 |       19 |  949 | `			VmExcRelease(&(*pVm),pExc);` |
 |        - |  950 | `		}` |
 |        4 |  951 | `	}` |
-|   261836 |  952 | `	return rcOut;` |
-|   131023 |  953 | `}` |
+|   261940 |  952 | `	return rcOut;` |
+|   131075 |  953 | `}` |
 |        - |  954 | `/*` |
 |        - |  955 | ` * Drop a body frame's pending catch/finally return: clear the flag and release` |
 |        - |  956 | ` * the slot value. Safe on a frame with no pending return (the slot is then an` |
 |        - |  957 | ` * empty MEMOBJ_NULL value and the release is a no-op).` |
 |        - |  958 | ` */` |
-|   158940 |  959 | `PH7_PRIVATE void VmClearFrameReturn(VmFrame *pFrame)` |
+|   158990 |  959 | `PH7_PRIVATE void VmClearFrameReturn(VmFrame *pFrame)` |
 |        5 |  960 | `{` |
-|   158945 |  961 | `	pFrame->bHasRet = 0;` |
-|   158945 |  962 | `	PH7_MemObjRelease(&pFrame->sRet);` |
-|   158945 |  963 | `}` |
+|   158995 |  961 | `	pFrame->bHasRet = 0;` |
+|   158995 |  962 | `	PH7_MemObjRelease(&pFrame->sRet);` |
+|   158995 |  963 | `}` |
 |        - |  964 | `/*` |
 |        - |  965 | `` * Materialize a `return` issued inside a catch/finally mini-program: copy the`` |
 |        - |  966 | ` * value deferred on the enclosing body frame (pEntryFrame->sRet) into the` |
@@ -1120,20 +1120,20 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 1110 | ` * destination slot's nIdx (excluded from its memcpy), so the slot identity is` |
 |        - | 1111 | ` * kept. Mirrors the enum-case backing path, which already evaluates into a local.` |
 |        - | 1112 | ` */` |
-|    34926 | 1113 | `PH7_PRIVATE sxi32 VmLocalExecIntoObj(ph7_vm *pVm,SySet *pByteCode,ph7_value **ppMemObj,int bReturnPropagates)` |
+|    34948 | 1113 | `PH7_PRIVATE sxi32 VmLocalExecIntoObj(ph7_vm *pVm,SySet *pByteCode,ph7_value **ppMemObj,int bReturnPropagates)` |
 |        5 | 1114 | `{` |
 |        - | 1115 | `	ph7_value sVal;` |
-|    34931 | 1116 | `	sxu32 nIdx = (*ppMemObj)->nIdx;` |
+|    34953 | 1116 | `	sxu32 nIdx = (*ppMemObj)->nIdx;` |
 |        - | 1117 | `	sxi32 rc;` |
-|    34931 | 1118 | `	PH7_MemObjInit(&(*pVm),&sVal);` |
-|    34931 | 1119 | `	rc = VmLocalExec(&(*pVm),pByteCode,&sVal,bReturnPropagates);` |
+|    34953 | 1118 | `	PH7_MemObjInit(&(*pVm),&sVal);` |
+|    34953 | 1119 | `	rc = VmLocalExec(&(*pVm),pByteCode,&sVal,bReturnPropagates);` |
 |        - | 1120 | `	/* aMemObj may have moved during the eval — re-fetch by the reserved index. */` |
-|    34931 | 1121 | `	*ppMemObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);` |
-|    34931 | 1122 | `	if( *ppMemObj ){` |
-|    34931 | 1123 | `		PH7_MemObjStore(&sVal,*ppMemObj);` |
-|    17463 | 1124 | `	}` |
-|    34931 | 1125 | `	PH7_MemObjRelease(&sVal);` |
-|    34931 | 1126 | `	return rc;` |
+|    34953 | 1121 | `	*ppMemObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);` |
+|    34953 | 1122 | `	if( *ppMemObj ){` |
+|    34953 | 1123 | `		PH7_MemObjStore(&sVal,*ppMemObj);` |
+|    17474 | 1124 | `	}` |
+|    34953 | 1125 | `	PH7_MemObjRelease(&sVal);` |
+|    34953 | 1126 | `	return rc;` |
 |        5 | 1127 | `}` |
 |        - | 1128 | `/*` |
 |        - | 1129 | ` * Mount a compiled class into the freshly created vitual machine so that` |
@@ -1148,7 +1148,7 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 1138 | ` * VmMountUserClass() so that ph7_vm_reset() can rebuild these slots on a VM` |
 |        - | 1139 | ` * reuse without re-installing the (compile-time) methods.` |
 |        - | 1140 | ` */` |
-|   708684 | 1141 | `static sxi32 VmMountUserClassAttrs(` |
+|   708414 | 1141 | `static sxi32 VmMountUserClassAttrs(` |
 |        - | 1142 | `	ph7_vm *pVm,      /* Target VM */` |
 |        - | 1143 | `	ph7_class *pClass /* Class whose static/const attributes are mounted */` |
 |        - | 1144 | `	)` |
@@ -1156,14 +1156,14 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 1146 | `	ph7_class_attr *pAttr;` |
 |        - | 1147 | `	SyHashEntry *pEntry;` |
 |        - | 1148 | `	/* Reset the loop cursor */` |
-|   708689 | 1149 | `	SyHashResetLoopCursor(&pClass->hAttr);` |
+|   708419 | 1149 | `	SyHashResetLoopCursor(&pClass->hAttr);` |
 |        - | 1150 | `	/* Process only static and constant attribute */` |
-|  2905913 | 1151 | `	while( (pEntry = SyHashGetNextEntry(&pClass->hAttr)) != 0 ){` |
+|  2904471 | 1151 | `	while( (pEntry = SyHashGetNextEntry(&pClass->hAttr)) != 0 ){` |
 |        - | 1152 | `		/* Extract the current attribute */` |
-|  2197233 | 1153 | `		pAttr = (ph7_class_attr *)pEntry->pUserData;` |
-|  2197228 | 1154 | `		if( (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT)` |
-|  1441295 | 1155 | `		 && ((pAttr->iFlags & PH7_CLASS_ATTR_TYPED) == 0` |
-|   343124 | 1156 | `			\|\| (pAttr->iFlags & PH7_CLASS_ATTR_ENUMCASE) != 0) ){` |
+|  2196061 | 1153 | `		pAttr = (ph7_class_attr *)pEntry->pUserData;` |
+|  2196056 | 1154 | `		if( (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT)` |
+|  1440549 | 1155 | `		 && ((pAttr->iFlags & PH7_CLASS_ATTR_TYPED) == 0` |
+|   342964 | 1156 | `			\|\| (pAttr->iFlags & PH7_CLASS_ATTR_ENUMCASE) != 0) ){` |
 |        - | 1157 | `			/* Untyped class constants and enum cases are evaluated LAZILY, on` |
 |        - | 1158 | `			 * first access (VmClassConstEvalOnDemand / VmEnumMaterializeCase),` |
 |        - | 1159 | `			 * matching php. Eager evaluation here ran BEFORE execution for` |
@@ -1173,45 +1173,45 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 1163 | `			 * mounted later in hash order silently read NULL. TYPED constants` |
 |        - | 1164 | `			 * stay eager: php validates them at DECLARATION time ("Cannot use` |
 |        - | 1165 | `			 * %s as value for class constant" fatal without any access). */` |
-|   684461 | 1166 | `			continue;` |
+|   684141 | 1166 | `			continue;` |
 |        - | 1167 | `		}` |
-|  1512777 | 1168 | `		if( pAttr->iFlags & (PH7_CLASS_ATTR_STATIC\|PH7_CLASS_ATTR_CONSTANT) ){` |
+|  1511925 | 1168 | `		if( pAttr->iFlags & (PH7_CLASS_ATTR_STATIC\|PH7_CLASS_ATTR_CONSTANT) ){` |
 |        - | 1169 | `			ph7_value *pMemObj;` |
-|    24845 | 1170 | `			if( pAttr->nIdx != SXU32_HIGH ){` |
+|    24831 | 1170 | `			if( pAttr->nIdx != SXU32_HIGH ){` |
 |        - | 1171 | `				/* Already materialized (an attr shared with an earlier-mounted` |
 |        - | 1172 | `				 * class). PH7_VmReset invalidates every nIdx before its` |
 |        - | 1173 | `				 * re-mount pass, so VM reuse still re-evaluates. */` |
 |      870 | 1174 | `				continue;` |
 |        - | 1175 | `			}` |
 |        - | 1176 | `			/* Reserve a memory object for this constant/static attribute */` |
-|    23977 | 1177 | `			pMemObj = PH7_ReserveMemObj(&(*pVm));` |
-|    23977 | 1178 | `			if( pMemObj == 0 ){` |
+|    23963 | 1177 | `			pMemObj = PH7_ReserveMemObj(&(*pVm));` |
+|    23963 | 1178 | `			if( pMemObj == 0 ){` |
 |      ! 0 | 1179 | `				VmErrorFormat(&(*pVm),PH7_CTX_ERR,` |
 |        - | 1180 | `					"Cannot reserve a memory object for class attribute '%z->%z' due to a memory failure",` |
 |      ! 0 | 1181 | `					&pClass->sName,&pAttr->sName` |
 |        - | 1182 | `					);` |
 |      ! 0 | 1183 | `				return SXERR_MEM;` |
 |        - | 1184 | `			}` |
-|    23977 | 1185 | `			if( SySetUsed(&pAttr->aByteCode) > 0 ){` |
+|    23963 | 1185 | `			if( SySetUsed(&pAttr->aByteCode) > 0 ){` |
 |        - | 1186 | `				/* Initialize attribute default value (any complex expression).` |
 |        - | 1187 | `				 * pConstEvalClass lets self::/parent:: in the initializer` |
 |        - | 1188 | `				 * resolve (VmLocalExec runs without a method frame). */` |
-|    23969 | 1189 | `				ph7_class *pSaveCtx = pVm->pConstEvalClass;` |
+|    23955 | 1189 | `				ph7_class *pSaveCtx = pVm->pConstEvalClass;` |
 |        - | 1190 | `				sxi32 rcExec;` |
-|    23969 | 1191 | `				pVm->pConstEvalClass = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;` |
-|    23969 | 1192 | `				pAttr->iFlags \|= PH7_CLASS_ATTR_EVALING; /* cycle guard, shared with the on-demand path */` |
-|    23969 | 1193 | `				pVm->nConstEvalDepth++;` |
-|    23969 | 1194 | `				rcExec = VmLocalExecIntoObj(&(*pVm),&pAttr->aByteCode,&pMemObj,FALSE);` |
-|    23969 | 1195 | `				pVm->nConstEvalDepth--;` |
-|    23969 | 1196 | `				pAttr->iFlags &= ~PH7_CLASS_ATTR_EVALING;` |
-|    23969 | 1197 | `				pVm->pConstEvalClass = pSaveCtx;` |
-|    23969 | 1198 | `				if( rcExec == PH7_EXCEPTION \|\| rcExec == PH7_ABORT ){` |
+|    23955 | 1191 | `				pVm->pConstEvalClass = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;` |
+|    23955 | 1192 | `				pAttr->iFlags \|= PH7_CLASS_ATTR_EVALING; /* cycle guard, shared with the on-demand path */` |
+|    23955 | 1193 | `				pVm->nConstEvalDepth++;` |
+|    23955 | 1194 | `				rcExec = VmLocalExecIntoObj(&(*pVm),&pAttr->aByteCode,&pMemObj,FALSE);` |
+|    23955 | 1195 | `				pVm->nConstEvalDepth--;` |
+|    23955 | 1196 | `				pAttr->iFlags &= ~PH7_CLASS_ATTR_EVALING;` |
+|    23955 | 1197 | `				pVm->pConstEvalClass = pSaveCtx;` |
+|    23955 | 1198 | `				if( rcExec == PH7_EXCEPTION \|\| rcExec == PH7_ABORT ){` |
 |        - | 1199 | `					/* The initializer raised (self-referencing constant, or a` |
 |        - | 1200 | `					 * throwing enum-case reference): park it for the fetch-point` |
 |        - | 1201 | `					 * router — user classes mount mid-execution, so the throw` |
 |        - | 1202 | `					 * lands catchably at the declaration site. */` |
 |      ! 0 | 1203 | `					VmBoundaryPark(&(*pVm),rcExec);` |
-|    23969 | 1204 | `				}else if( pVm->pConstCycleAttr && pVm->nConstEvalDepth == 0 ){` |
+|    23955 | 1204 | `				}else if( pVm->pConstCycleAttr && pVm->nConstEvalDepth == 0 ){` |
 |        - | 1205 | `					/* A nested evaluation detected a self-referencing constant:` |
 |        - | 1206 | `					 * raise it at this, the outermost level. */` |
 |      ! 0 | 1207 | `					VmBoundaryPark(&(*pVm),VmConstCycleThrow(&(*pVm)));` |
@@ -1219,26 +1219,26 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 1209 | `				/* Typed class constant (PHP 8.3): enforce the computed value` |
 |        - | 1210 | `				 * against the declared type. A mismatch is a non-catchable` |
 |        - | 1211 | `				 * fatal, raised here at definition time (matching PHP). */` |
-|    23964 | 1212 | `				if( (pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT\|PH7_CLASS_ATTR_TYPED))` |
-|    11987 | 1213 | `					== (PH7_CLASS_ATTR_CONSTANT\|PH7_CLASS_ATTR_TYPED) ){` |
+|    23950 | 1212 | `				if( (pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT\|PH7_CLASS_ATTR_TYPED))` |
+|    11980 | 1213 | `					== (PH7_CLASS_ATTR_CONSTANT\|PH7_CLASS_ATTR_TYPED) ){` |
 |       35 | 1214 | `					sxi32 rcType = VmEnforceConstantType(&(*pVm),pClass,pAttr,pMemObj);` |
 |       35 | 1215 | `					if( rcType != SXRET_OK ){` |
 |        6 | 1216 | `						return rcType;` |
 |        - | 1217 | `					}` |
 |       14 | 1218 | `				}` |
-|    11980 | 1219 | `			}` |
+|    11973 | 1219 | `			}` |
 |        - | 1220 | `			/* Record attribute index */` |
-|    23973 | 1221 | `			pAttr->nIdx = pMemObj->nIdx;` |
+|    23959 | 1221 | `			pAttr->nIdx = pMemObj->nIdx;` |
 |        - | 1222 | `			/* Install static attribute in the reference table */` |
-|    23973 | 1223 | `			PH7_VmRefObjInstall(&(*pVm),pMemObj->nIdx,0,0,VM_REF_IDX_KEEP);` |
+|    23959 | 1223 | `			PH7_VmRefObjInstall(&(*pVm),pMemObj->nIdx,0,0,VM_REF_IDX_KEEP);` |
 |        - | 1224 | `			/* If this is a typed static property, register the slot so the` |
 |        - | 1225 | `			 * STORE path can enforce the declared type. We allocate a tiny` |
 |        - | 1226 | `			 * VmClassAttr to uniformize with instance properties; the key` |
 |        - | 1227 | `			 * points at its own nIdx field (stable for the VM lifetime).` |
 |        - | 1228 | `			 * Typed *constants* are excluded — they are immutable and were` |
 |        - | 1229 | `			 * already enforced above, so they need no store-time slot. */` |
-|    23968 | 1230 | `			if( (pAttr->iFlags & PH7_CLASS_ATTR_TYPED)` |
-|    12012 | 1231 | `				&& (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){` |
+|    23954 | 1230 | `			if( (pAttr->iFlags & PH7_CLASS_ATTR_TYPED)` |
+|    12005 | 1231 | `				&& (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){` |
 |       21 | 1232 | `				VmClassAttr *pVmAttrS = (VmClassAttr *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(VmClassAttr));` |
 |       21 | 1233 | `				if( pVmAttrS == 0 ){` |
 |      ! 0 | 1234 | `					return SXERR_MEM;` |
@@ -1257,11 +1257,11 @@ Coverage: 2355/2831 lines (83.19%)
 |      ! 0 | 1247 | `					return SXERR_MEM;` |
 |        - | 1248 | `				}` |
 |        9 | 1249 | `			}` |
-|    11984 | 1250 | `		}` |
+|    11977 | 1250 | `		}` |
 |        5 | 1251 | `	}` |
-|   708685 | 1252 | `	return SXRET_OK;` |
-|   354347 | 1253 | `}` |
-|   707592 | 1254 | `PH7_PRIVATE sxi32 VmMountUserClass(` |
+|   708415 | 1252 | `	return SXRET_OK;` |
+|   354212 | 1253 | `}` |
+|   707322 | 1254 | `PH7_PRIVATE sxi32 VmMountUserClass(` |
 |        - | 1255 | `	ph7_vm *pVm,      /* Target VM */` |
 |        - | 1256 | `	ph7_class *pClass /* Class to be mounted */` |
 |        - | 1257 | `	)` |
@@ -1270,91 +1270,91 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 1260 | `	SyHashEntry *pEntry;` |
 |        - | 1261 | `	sxi32 rc;` |
 |        - | 1262 | `	/* Reserve/initialize the static and constant attribute slots */` |
-|   707597 | 1263 | `	rc = VmMountUserClassAttrs(&(*pVm),pClass);` |
-|   707597 | 1264 | `	if( rc != SXRET_OK ){` |
+|   707327 | 1263 | `	rc = VmMountUserClassAttrs(&(*pVm),pClass);` |
+|   707327 | 1264 | `	if( rc != SXRET_OK ){` |
 |        6 | 1265 | `		return rc;` |
 |        - | 1266 | `	}` |
 |        - | 1267 | `	/* Install class methods */` |
-|   707593 | 1268 | `	if( pClass->iFlags & (PH7_CLASS_INTERFACE\|PH7_CLASS_TRAIT) ){` |
+|   707323 | 1268 | `	if( pClass->iFlags & (PH7_CLASS_INTERFACE\|PH7_CLASS_TRAIT) ){` |
 |        - | 1269 | `		/* Do not mount interface/trait methods since they are not directly invocable.` |
 |        - | 1270 | `		 */` |
-|   310923 | 1271 | `		return SXRET_OK;` |
+|   310883 | 1271 | `		return SXRET_OK;` |
 |        - | 1272 | `	}` |
 |        - | 1273 | `	/* Create constructor alias if not yet done */` |
-|   396675 | 1274 | `	if( SyHashGet(&pClass->hMethod,"__construct",sizeof("__construct")-1) == 0 ){` |
+|   396445 | 1274 | `	if( SyHashGet(&pClass->hMethod,"__construct",sizeof("__construct")-1) == 0 ){` |
 |        - | 1275 | `		/* User constructor with the same base class name */` |
-|    59387 | 1276 | `		pEntry = SyHashGet(&pClass->hMethod,SyStringData(&pClass->sName),SyStringLength(&pClass->sName));` |
-|    59387 | 1277 | `		if( pEntry ){` |
+|    59355 | 1276 | `		pEntry = SyHashGet(&pClass->hMethod,SyStringData(&pClass->sName),SyStringLength(&pClass->sName));` |
+|    59355 | 1277 | `		if( pEntry ){` |
 |      ! 0 | 1278 | `			pMeth = (ph7_class_method *)pEntry->pUserData;` |
 |        - | 1279 | `			/* Create the alias */` |
 |      ! 0 | 1280 | `			SyHashInsert(&pClass->hMethod,"__construct",sizeof("__construct")-1,pMeth);` |
 |      ! 0 | 1281 | `		}` |
-|    29691 | 1282 | `	}` |
+|    29675 | 1282 | `	}` |
 |        - | 1283 | `	/* Install the methods now */` |
-|   396675 | 1284 | `	SyHashResetLoopCursor(&pClass->hMethod);` |
-|  5942090 | 1285 | `	while((pEntry = SyHashGetNextEntry(&pClass->hMethod)) != 0 ){` |
-|  5347085 | 1286 | `		pMeth = (ph7_class_method *)pEntry->pUserData;` |
-|  5347085 | 1287 | `		if( (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) == 0 ){` |
-|  5336845 | 1288 | `			rc = PH7_VmInstallUserFunction(&(*pVm),&pMeth->sFunc,&pMeth->sVmName);` |
-|  5336845 | 1289 | `			if( rc != SXRET_OK ){` |
+|   396445 | 1284 | `	SyHashResetLoopCursor(&pClass->hMethod);` |
+|  5938605 | 1285 | `	while((pEntry = SyHashGetNextEntry(&pClass->hMethod)) != 0 ){` |
+|  5343945 | 1286 | `		pMeth = (ph7_class_method *)pEntry->pUserData;` |
+|  5343945 | 1287 | `		if( (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) == 0 ){` |
+|  5333711 | 1288 | `			rc = PH7_VmInstallUserFunction(&(*pVm),&pMeth->sFunc,&pMeth->sVmName);` |
+|  5333711 | 1289 | `			if( rc != SXRET_OK ){` |
 |      ! 0 | 1290 | `				return rc;` |
 |        - | 1291 | `			}` |
-|  2668420 | 1292 | `		}` |
+|  2666853 | 1292 | `		}` |
 |        5 | 1293 | `	}` |
 |        - | 1294 | `	/* Mark class as mounted to avoid redundant mounting */` |
-|   396675 | 1295 | `	pClass->bMounted = TRUE;` |
-|   396675 | 1296 | `	return SXRET_OK;` |
-|   353801 | 1297 | `}` |
+|   396445 | 1295 | `	pClass->bMounted = TRUE;` |
+|   396445 | 1296 | `	return SXRET_OK;` |
+|   353666 | 1297 | `}` |
 |        - | 1298 | `/*` |
 |        - | 1299 | ` * Allocate a private frame for attributes of the given` |
 |        - | 1300 | ` * class instance (Object in the PHP jargon).` |
 |        - | 1301 | ` */` |
-|     8768 | 1302 | `PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(` |
+|     8806 | 1302 | `PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(` |
 |        - | 1303 | `	ph7_vm *pVm, /* Target VM */` |
 |        - | 1304 | `	ph7_class_instance *pObj /* Class instance */` |
 |        - | 1305 | `	)` |
 |        5 | 1306 | `{` |
-|     8773 | 1307 | `	ph7_class *pClass = pObj->pClass;` |
+|     8811 | 1307 | `	ph7_class *pClass = pObj->pClass;` |
 |        - | 1308 | `	ph7_class_attr *pAttr;` |
 |        - | 1309 | `	SyHashEntry *pEntry;` |
 |        - | 1310 | `	sxi32 rc;` |
 |        - | 1311 | `	/* Install class attribute in the private frame associated with this instance */` |
-|     8773 | 1312 | `	SyHashResetLoopCursor(&pClass->hAttr);` |
-|    46215 | 1313 | `	while( (pEntry = SyHashGetNextEntry(&pClass->hAttr)) != 0 ){` |
+|     8811 | 1312 | `	SyHashResetLoopCursor(&pClass->hAttr);` |
+|    46421 | 1313 | `	while( (pEntry = SyHashGetNextEntry(&pClass->hAttr)) != 0 ){` |
 |        - | 1314 | `		VmClassAttr *pVmAttr;` |
 |        - | 1315 | `		/* Extract the current attribute */` |
-|    37447 | 1316 | `		pAttr = (ph7_class_attr *)pEntry->pUserData;` |
-|    37447 | 1317 | `		pVmAttr = (VmClassAttr *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(VmClassAttr));` |
-|    37447 | 1318 | `		if( pVmAttr == 0 ){` |
+|    37615 | 1316 | `		pAttr = (ph7_class_attr *)pEntry->pUserData;` |
+|    37615 | 1317 | `		pVmAttr = (VmClassAttr *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(VmClassAttr));` |
+|    37615 | 1318 | `		if( pVmAttr == 0 ){` |
 |      ! 0 | 1319 | `			return SXERR_MEM;` |
 |        - | 1320 | `		}` |
-|    37447 | 1321 | `		pVmAttr->pAttr = pAttr;` |
-|    37447 | 1322 | `		if( (pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT\|PH7_CLASS_ATTR_STATIC)) == 0 ){` |
+|    37615 | 1321 | `		pVmAttr->pAttr = pAttr;` |
+|    37615 | 1322 | `		if( (pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT\|PH7_CLASS_ATTR_STATIC)) == 0 ){` |
 |        - | 1323 | `			ph7_value *pMemObj;` |
 |        - | 1324 | `			/* Reserve a memory object for this attribute */` |
-|    29387 | 1325 | `			pMemObj = PH7_ReserveMemObj(&(*pVm));` |
-|    29387 | 1326 | `			if( pMemObj == 0 ){` |
+|    29555 | 1325 | `			pMemObj = PH7_ReserveMemObj(&(*pVm));` |
+|    29555 | 1326 | `			if( pMemObj == 0 ){` |
 |      ! 0 | 1327 | `				SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);` |
 |      ! 0 | 1328 | `				return SXERR_MEM;` |
 |        - | 1329 | `			}` |
-|    29387 | 1330 | `			pVmAttr->nIdx = pMemObj->nIdx;` |
-|    29387 | 1331 | `			pVmAttr->iState = 0;` |
-|    29387 | 1332 | `			pVmAttr->pOwner = pClass;` |
-|    29387 | 1333 | `			if( SySetUsed(&pAttr->aByteCode) > 0 ){` |
+|    29555 | 1330 | `			pVmAttr->nIdx = pMemObj->nIdx;` |
+|    29555 | 1331 | `			pVmAttr->iState = 0;` |
+|    29555 | 1332 | `			pVmAttr->pOwner = pClass;` |
+|    29555 | 1333 | `			if( SySetUsed(&pAttr->aByteCode) > 0 ){` |
 |        - | 1334 | `				/* Initialize attribute default value (any complex expression).` |
 |        - | 1335 | `				 * pConstEvalClass: self::CONST in a property default resolves` |
 |        - | 1336 | `				 * against the declaring class (no method frame here). */` |
-|    10753 | 1337 | `				ph7_class *pSaveCtx = pVm->pConstEvalClass;` |
-|    10753 | 1338 | `				pVm->pConstEvalClass = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;` |
-|    10753 | 1339 | `				VmLocalExecIntoObj(&(*pVm),&pAttr->aByteCode,&pMemObj,FALSE);` |
-|    10753 | 1340 | `				pVm->pConstEvalClass = pSaveCtx;` |
-|    24013 | 1341 | `			}else if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){` |
+|    10789 | 1337 | `				ph7_class *pSaveCtx = pVm->pConstEvalClass;` |
+|    10789 | 1338 | `				pVm->pConstEvalClass = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;` |
+|    10789 | 1339 | `				VmLocalExecIntoObj(&(*pVm),&pAttr->aByteCode,&pMemObj,FALSE);` |
+|    10789 | 1340 | `				pVm->pConstEvalClass = pSaveCtx;` |
+|    24163 | 1341 | `			}else if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){` |
 |        - | 1342 | `				/* Typed property without a default: mark uninitialized. Reading` |
 |        - | 1343 | `				 * it before the first write is an Error in PHP 7.4+. */` |
 |      403 | 1344 | `				pVmAttr->iState \|= VM_CLASS_ATTR_UNINIT;` |
 |      199 | 1345 | `			}` |
-|    29387 | 1346 | `			rc = SyHashInsertTail(&pObj->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),pVmAttr);` |
-|    29387 | 1347 | `			if( rc != SXRET_OK ){` |
+|    29555 | 1346 | `			rc = SyHashInsertTail(&pObj->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),pVmAttr);` |
+|    29555 | 1347 | `			if( rc != SXRET_OK ){` |
 |        - | 1348 | `				VmSlot sSlot;` |
 |        - | 1349 | `				/* Restore memory object */` |
 |      ! 0 | 1350 | `				sSlot.nIdx = pMemObj->nIdx;` |
@@ -1364,11 +1364,11 @@ Coverage: 2355/2831 lines (83.19%)
 |      ! 0 | 1354 | `				return SXERR_MEM;` |
 |        - | 1355 | `			}` |
 |        - | 1356 | `			/* Install attribute in the reference table */` |
-|    29387 | 1357 | `			PH7_VmRefObjInstall(&(*pVm),pMemObj->nIdx,0,0,VM_REF_IDX_KEEP);` |
+|    29555 | 1357 | `			PH7_VmRefObjInstall(&(*pVm),pMemObj->nIdx,0,0,VM_REF_IDX_KEEP);` |
 |        - | 1358 | `			/* Register typed property slot for assignment-time enforcement.` |
 |        - | 1359 | `			 * On failure roll back the just-installed hAttr entry and the` |
 |        - | 1360 | `			 * reserved memobj so the caller sees a consistent instance. */` |
-|    29387 | 1361 | `			if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){` |
+|    29555 | 1361 | `			if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){` |
 |      617 | 1362 | `				rc = SyHashInsert(&pVm->hTypedSlot,(const void *)&pVmAttr->nIdx,sizeof(sxu32),pVmAttr);` |
 |      617 | 1363 | `				if( rc != SXRET_OK ){` |
 |        - | 1364 | `					VmSlot sSlot;` |
@@ -1380,7 +1380,7 @@ Coverage: 2355/2831 lines (83.19%)
 |      ! 0 | 1370 | `					return SXERR_MEM;` |
 |        - | 1371 | `				}` |
 |      306 | 1372 | `			}` |
-|    14696 | 1373 | `		}else{` |
+|    14780 | 1373 | `		}else{` |
 |        - | 1374 | `			/* Install static/constant attribute */` |
 |     8065 | 1375 | `			pVmAttr->nIdx = pAttr->nIdx;` |
 |     8065 | 1376 | `			pVmAttr->iState = 0;` |
@@ -1392,8 +1392,8 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 1382 | `			}` |
 |        - | 1383 | `		}` |
 |        5 | 1384 | `	}` |
-|     8773 | 1385 | `	return SXRET_OK;` |
-|     4389 | 1386 | `}` |
+|     8811 | 1385 | `	return SXRET_OK;` |
+|     4408 | 1386 | `}` |
 |        - | 1387 | `/*` |
 |        - | 1388 | ` * Whether [pClass] permits runtime-created (dynamic) properties. Scoped to` |
 |        - | 1389 | ` * stdClass for now; the future general-dynamic-props work turns` |
@@ -1566,48 +1566,48 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 1556 | ` * Reserve a constant memory object.` |
 |        - | 1557 | ` * Return a pointer to the raw ph7_value on success. NULL on failure.` |
 |        - | 1558 | ` */` |
-|  8557060 | 1559 | `PH7_PRIVATE ph7_value * PH7_ReserveConstObj(ph7_vm *pVm,sxu32 *pIndex)` |
+|  8552760 | 1559 | `PH7_PRIVATE ph7_value * PH7_ReserveConstObj(ph7_vm *pVm,sxu32 *pIndex)` |
 |        5 | 1560 | `{` |
 |        - | 1561 | `	ph7_value *pObj;` |
 |        - | 1562 | `	sxi32 rc;` |
-|  8557065 | 1563 | `	if( pIndex ){` |
+|  8552765 | 1563 | `	if( pIndex ){` |
 |        - | 1564 | `		/* Object index in the object table */` |
-|  8545443 | 1565 | `		*pIndex = SySetUsed(&pVm->aLitObj);` |
-|  4272719 | 1566 | `	}` |
+|  8541149 | 1565 | `		*pIndex = SySetUsed(&pVm->aLitObj);` |
+|  4270572 | 1566 | `	}` |
 |        - | 1567 | `	/* Reserve a slot for the new object */` |
-|  8557065 | 1568 | `	rc = SySetPut(&pVm->aLitObj,(const void *)zDummy);` |
-|  8557065 | 1569 | `	if( rc != SXRET_OK ){` |
+|  8552765 | 1568 | `	rc = SySetPut(&pVm->aLitObj,(const void *)zDummy);` |
+|  8552765 | 1569 | `	if( rc != SXRET_OK ){` |
 |        - | 1570 | `		/* If the supplied memory subsystem is so sick that we are unable to allocate` |
 |        - | 1571 | `		 * a tiny chunk of memory, there is no much we can do here.` |
 |        - | 1572 | `		 */` |
 |      ! 0 | 1573 | `		return 0;` |
 |        - | 1574 | `	}` |
-|  8557065 | 1575 | `	pObj = (ph7_value *)SySetPeek(&pVm->aLitObj);` |
-|  8557065 | 1576 | `	return pObj;` |
-|  4278535 | 1577 | `}` |
+|  8552765 | 1575 | `	pObj = (ph7_value *)SySetPeek(&pVm->aLitObj);` |
+|  8552765 | 1576 | `	return pObj;` |
+|  4276385 | 1577 | `}` |
 |        - | 1578 | `/*` |
 |        - | 1579 | ` * Reserve a memory object.` |
 |        - | 1580 | ` * Return a pointer to the raw ph7_value on success. NULL on failure.` |
 |        - | 1581 | ` */` |
-|  2237616 | 1582 | `PH7_PRIVATE ph7_value * VmReserveMemObj(ph7_vm *pVm,sxu32 *pIndex)` |
+|  2237656 | 1582 | `PH7_PRIVATE ph7_value * VmReserveMemObj(ph7_vm *pVm,sxu32 *pIndex)` |
 |        5 | 1583 | `{` |
 |        - | 1584 | `	ph7_value *pObj;` |
 |        - | 1585 | `	sxi32 rc;` |
-|  2237621 | 1586 | `	if( pIndex ){` |
+|  2237661 | 1586 | `	if( pIndex ){` |
 |        - | 1587 | `		/* Object index in the object table */` |
-|  2237621 | 1588 | `		*pIndex = SySetUsed(&pVm->aMemObj);` |
-|  1118808 | 1589 | `	}` |
+|  2237661 | 1588 | `		*pIndex = SySetUsed(&pVm->aMemObj);` |
+|  1118828 | 1589 | `	}` |
 |        - | 1590 | `	/* Reserve a slot for the new object */` |
-|  2237621 | 1591 | `	rc = SySetPut(&pVm->aMemObj,(const void *)zDummy);` |
-|  2237621 | 1592 | `	if( rc != SXRET_OK ){` |
+|  2237661 | 1591 | `	rc = SySetPut(&pVm->aMemObj,(const void *)zDummy);` |
+|  2237661 | 1592 | `	if( rc != SXRET_OK ){` |
 |        - | 1593 | `		/* If the supplied memory subsystem is so sick that we are unable to allocate` |
 |        - | 1594 | `		 * a tiny chunk of memory, there is no much we can do here.` |
 |        - | 1595 | `		 */` |
 |      ! 0 | 1596 | `		return 0;` |
 |        - | 1597 | `	}` |
-|  2237621 | 1598 | `	pObj = (ph7_value *)SySetPeek(&pVm->aMemObj);` |
-|  2237621 | 1599 | `	return pObj;` |
-|  1118813 | 1600 | `}` |
+|  2237661 | 1598 | `	pObj = (ph7_value *)SySetPeek(&pVm->aMemObj);` |
+|  2237661 | 1599 | `	return pObj;` |
+|  1118833 | 1600 | `}` |
 |        - | 1601 | `/* Forward declaration */` |
 |        - | 1602 | `/* Forward declarations for Fiber C functions */` |
 |        - | 1603 | `/* Forward declarations for Fiber/Generator infrastructure */` |
@@ -1621,7 +1621,7 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 1611 | ` * Initialize a freshly allocated PH7 Virtual Machine so that we can` |
 |        - | 1612 | ` * start compiling the target PHP program.` |
 |        - | 1613 | ` */` |
-|     3874 | 1614 | `PH7_PRIVATE sxi32 PH7_VmInit(` |
+|     3872 | 1614 | `PH7_PRIVATE sxi32 PH7_VmInit(` |
 |        - | 1615 | `	 ph7_vm *pVm, /* Initialize this */` |
 |        - | 1616 | `	 ph7 *pEngine /* Master engine */` |
 |        - | 1617 | `	 )` |
@@ -1629,112 +1629,112 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 1619 | `	ph7_value *pObj;` |
 |        - | 1620 | `	sxi32 rc;` |
 |        - | 1621 | `	/* Zero the structure */` |
-|     3879 | 1622 | `	SyZero(pVm,sizeof(ph7_vm));` |
+|     3877 | 1622 | `	SyZero(pVm,sizeof(ph7_vm));` |
 |        - | 1623 | `	/* Initialize VM fields */` |
-|     3879 | 1624 | `	pVm->pEngine = &(*pEngine);` |
-|     3879 | 1625 | `	pVm->bGcEnabled = 1; /* php default: the cycle collector is enabled */` |
-|     3879 | 1626 | `	SyMemBackendInitFromParent(&pVm->sAllocator,&pEngine->sAllocator);` |
+|     3877 | 1624 | `	pVm->pEngine = &(*pEngine);` |
+|     3877 | 1625 | `	pVm->bGcEnabled = 1; /* php default: the cycle collector is enabled */` |
+|     3877 | 1626 | `	SyMemBackendInitFromParent(&pVm->sAllocator,&pEngine->sAllocator);` |
 |        - | 1627 | `	/* Instructions containers */` |
-|     3879 | 1628 | `	SySetInit(&pVm->aByteCode,&pVm->sAllocator,sizeof(VmInstr));` |
-|     3879 | 1629 | `	SySetAlloc(&pVm->aByteCode,0xFF);` |
-|     3879 | 1630 | `	pVm->pByteContainer = &pVm->aByteCode;` |
+|     3877 | 1628 | `	SySetInit(&pVm->aByteCode,&pVm->sAllocator,sizeof(VmInstr));` |
+|     3877 | 1629 | `	SySetAlloc(&pVm->aByteCode,0xFF);` |
+|     3877 | 1630 | `	pVm->pByteContainer = &pVm->aByteCode;` |
 |        - | 1631 | `	/* Object containers */` |
-|     3879 | 1632 | `	SySetInit(&pVm->aMemObj,&pVm->sAllocator,sizeof(ph7_value));` |
-|     3879 | 1633 | `	SySetAlloc(&pVm->aMemObj,0xFF);` |
+|     3877 | 1632 | `	SySetInit(&pVm->aMemObj,&pVm->sAllocator,sizeof(ph7_value));` |
+|     3877 | 1633 | `	SySetAlloc(&pVm->aMemObj,0xFF);` |
 |        - | 1634 | `	/* Argument-unpacking key capture (see VmSpreadRun/VmSpreadKey in vm.c) */` |
-|     3879 | 1635 | `	SySetInit(&pVm->aSpreadRun,&pVm->sAllocator,sizeof(VmSpreadRun));` |
-|     3879 | 1636 | `	SySetInit(&pVm->aSpreadKey,&pVm->sAllocator,sizeof(VmSpreadKey));` |
-|     3879 | 1637 | `	SyBlobInit(&pVm->sSpreadKeyBlob,&pVm->sAllocator);` |
-|     3879 | 1638 | `	SySetInit(&pVm->aEffArgName,&pVm->sAllocator,sizeof(SyString));` |
+|     3877 | 1635 | `	SySetInit(&pVm->aSpreadRun,&pVm->sAllocator,sizeof(VmSpreadRun));` |
+|     3877 | 1636 | `	SySetInit(&pVm->aSpreadKey,&pVm->sAllocator,sizeof(VmSpreadKey));` |
+|     3877 | 1637 | `	SyBlobInit(&pVm->sSpreadKeyBlob,&pVm->sAllocator);` |
+|     3877 | 1638 | `	SySetInit(&pVm->aEffArgName,&pVm->sAllocator,sizeof(SyString));` |
 |        - | 1639 | `	/* Virtual machine internal containers */` |
-|     3879 | 1640 | `	SyBlobInit(&pVm->sConsumer,&pVm->sAllocator);` |
-|     3879 | 1641 | `	SyBlobInit(&pVm->sWorker,&pVm->sAllocator);` |
-|     3879 | 1642 | `	SyBlobInit(&pVm->sLastErrMsg,&pVm->sAllocator);` |
-|     3879 | 1643 | `	SyBlobInit(&pVm->sLastErrFile,&pVm->sAllocator);` |
-|     3879 | 1644 | `	SyBlobInit(&pVm->sArgv,&pVm->sAllocator);` |
-|     3879 | 1645 | `	SySetInit(&pVm->aLitObj,&pVm->sAllocator,sizeof(ph7_value));` |
-|     3879 | 1646 | `	SySetAlloc(&pVm->aLitObj,0xFF);` |
-|     3879 | 1647 | `	SyHashInit(&pVm->hHostFunction,&pVm->sAllocator,0,0);` |
-|     3879 | 1648 | `	SyHashInit(&pVm->hFunction,&pVm->sAllocator,0,0);` |
-|     3879 | 1649 | `	SyBlobInit(&pVm->sNamespace,&pVm->sAllocator);` |
-|     3879 | 1650 | `	SyHashInit(&pVm->hUseImports,&pVm->sAllocator,0,0);` |
-|     3879 | 1651 | `	SyHashInit(&pVm->hUseConstImports,&pVm->sAllocator,0,0);` |
-|     3879 | 1652 | `	SyHashInit(&pVm->hClass,&pVm->sAllocator,SyStrHash,SyStrnmicmp);` |
-|     3879 | 1653 | `	SyHashInit(&pVm->hConstant,&pVm->sAllocator,0,0);` |
-|     3879 | 1654 | `	SyHashInit(&pVm->hSuper,&pVm->sAllocator,0,0);` |
-|     3879 | 1655 | `	SyHashInit(&pVm->hPDO,&pVm->sAllocator,0,0);` |
-|     3879 | 1656 | `	SySetInit(&pVm->aFreeObj,&pVm->sAllocator,sizeof(VmSlot));` |
-|     3879 | 1657 | `	SySetInit(&pVm->aSelf,&pVm->sAllocator,sizeof(ph7_class *));` |
-|     3879 | 1658 | `	SySetInit(&pVm->aShutdown,&pVm->sAllocator,sizeof(VmShutdownCB));` |
-|     3879 | 1659 | `	SySetInit(&pVm->aIniCli,&pVm->sAllocator,sizeof(VmIniEntry));` |
-|     3879 | 1660 | `	SySetInit(&pVm->aAutoload,&pVm->sAllocator,sizeof(VmAutoloadCB));` |
-|     3879 | 1661 | `	SyHashInit(&pVm->hAutoloadActive,&pVm->sAllocator,0,0);` |
-|     3879 | 1662 | `	SyHashInit(&pVm->hWeakCell,&pVm->sAllocator,0,0);` |
-|     3879 | 1663 | `	SyHashInit(&pVm->hTypedSlot,&pVm->sAllocator,0,0);` |
-|     3879 | 1664 | `	SyHashInit(&pVm->hResourceId,&pVm->sAllocator,0,0);` |
-|     3879 | 1665 | `	pVm->nResourceIdNext = 1;` |
-|     3879 | 1666 | `	SySetInit(&pVm->aException,&pVm->sAllocator,sizeof(ph7_exception *));` |
-|     3879 | 1667 | `	SySetInit(&pVm->aMagicGuard,&pVm->sAllocator,sizeof(VmMagicGuard));` |
-|     3879 | 1668 | `	pVm->pMagicSetThis = 0;` |
-|     3879 | 1669 | `	SyBlobInit(&pVm->sMagicSetName,&pVm->sAllocator);` |
-|     3879 | 1670 | `	pVm->pHookSetThis = 0;` |
-|     3879 | 1671 | `	pVm->pHookSetAttr = 0;` |
-|     3879 | 1672 | `	pVm->nHookSetIdx = SXU32_HIGH;` |
-|     3879 | 1673 | `	SySetInit(&pVm->aHookRmw,&pVm->sAllocator,sizeof(VmHookRmw));` |
-|     3879 | 1674 | `	pVm->pMagicCallThis = 0;` |
-|     3879 | 1675 | `	pVm->pMagicCallClass = 0;` |
-|     3879 | 1676 | `	SyBlobInit(&pVm->sMagicCallName,&pVm->sAllocator);` |
-|     3879 | 1677 | `	pVm->pIdleCallFrames = 0;` |
-|     3879 | 1678 | `	pVm->pIdleOperandStacks = 0;` |
-|     3879 | 1679 | `	pVm->nIdleOperandStacks = 0;` |
-|     3879 | 1680 | `	pVm->pIdleStackNodes = 0;` |
-|     3879 | 1681 | `	SySetInit(&pVm->aFinallyAction,&pVm->sAllocator,sizeof(VmFinallyAction));` |
-|     3879 | 1682 | `	pVm->bInlineTryCatch = 1; /* ROOT C: enable inline generator try/catch/finally */` |
-|     3879 | 1683 | `	pVm->pPendingException = 0;` |
-|     3879 | 1684 | `	pVm->pInflightException = 0;` |
-|     3879 | 1685 | `	pVm->nInflightExcBase = 0;` |
-|     3879 | 1686 | `	pVm->pResumeFrame = 0;` |
-|     3879 | 1687 | `	pVm->iResumePc = 0;` |
-|     3879 | 1688 | `	pVm->pResumeInstr = 0;` |
-|     3879 | 1689 | `	pVm->iResumeStackDepth = 0;` |
-|     3879 | 1690 | `	pVm->nBoundaryRc = 0;` |
-|     3879 | 1691 | `	pVm->pConstEvalClass = 0;` |
-|     3879 | 1692 | `	pVm->nConstEvalDepth = 0;` |
-|     3879 | 1693 | `	pVm->pConstCycleAttr = 0;` |
-|     3879 | 1694 | `	pVm->pConstCycleClass = 0;` |
-|     3879 | 1695 | `	SySetReset(&pVm->aMagicGuard);` |
-|     3879 | 1696 | `	if( pVm->pMagicSetThis ){` |
+|     3877 | 1640 | `	SyBlobInit(&pVm->sConsumer,&pVm->sAllocator);` |
+|     3877 | 1641 | `	SyBlobInit(&pVm->sWorker,&pVm->sAllocator);` |
+|     3877 | 1642 | `	SyBlobInit(&pVm->sLastErrMsg,&pVm->sAllocator);` |
+|     3877 | 1643 | `	SyBlobInit(&pVm->sLastErrFile,&pVm->sAllocator);` |
+|     3877 | 1644 | `	SyBlobInit(&pVm->sArgv,&pVm->sAllocator);` |
+|     3877 | 1645 | `	SySetInit(&pVm->aLitObj,&pVm->sAllocator,sizeof(ph7_value));` |
+|     3877 | 1646 | `	SySetAlloc(&pVm->aLitObj,0xFF);` |
+|     3877 | 1647 | `	SyHashInit(&pVm->hHostFunction,&pVm->sAllocator,0,0);` |
+|     3877 | 1648 | `	SyHashInit(&pVm->hFunction,&pVm->sAllocator,0,0);` |
+|     3877 | 1649 | `	SyBlobInit(&pVm->sNamespace,&pVm->sAllocator);` |
+|     3877 | 1650 | `	SyHashInit(&pVm->hUseImports,&pVm->sAllocator,0,0);` |
+|     3877 | 1651 | `	SyHashInit(&pVm->hUseConstImports,&pVm->sAllocator,0,0);` |
+|     3877 | 1652 | `	SyHashInit(&pVm->hClass,&pVm->sAllocator,SyStrHash,SyStrnmicmp);` |
+|     3877 | 1653 | `	SyHashInit(&pVm->hConstant,&pVm->sAllocator,0,0);` |
+|     3877 | 1654 | `	SyHashInit(&pVm->hSuper,&pVm->sAllocator,0,0);` |
+|     3877 | 1655 | `	SyHashInit(&pVm->hPDO,&pVm->sAllocator,0,0);` |
+|     3877 | 1656 | `	SySetInit(&pVm->aFreeObj,&pVm->sAllocator,sizeof(VmSlot));` |
+|     3877 | 1657 | `	SySetInit(&pVm->aSelf,&pVm->sAllocator,sizeof(ph7_class *));` |
+|     3877 | 1658 | `	SySetInit(&pVm->aShutdown,&pVm->sAllocator,sizeof(VmShutdownCB));` |
+|     3877 | 1659 | `	SySetInit(&pVm->aIniCli,&pVm->sAllocator,sizeof(VmIniEntry));` |
+|     3877 | 1660 | `	SySetInit(&pVm->aAutoload,&pVm->sAllocator,sizeof(VmAutoloadCB));` |
+|     3877 | 1661 | `	SyHashInit(&pVm->hAutoloadActive,&pVm->sAllocator,0,0);` |
+|     3877 | 1662 | `	SyHashInit(&pVm->hWeakCell,&pVm->sAllocator,0,0);` |
+|     3877 | 1663 | `	SyHashInit(&pVm->hTypedSlot,&pVm->sAllocator,0,0);` |
+|     3877 | 1664 | `	SyHashInit(&pVm->hResourceId,&pVm->sAllocator,0,0);` |
+|     3877 | 1665 | `	pVm->nResourceIdNext = 1;` |
+|     3877 | 1666 | `	SySetInit(&pVm->aException,&pVm->sAllocator,sizeof(ph7_exception *));` |
+|     3877 | 1667 | `	SySetInit(&pVm->aMagicGuard,&pVm->sAllocator,sizeof(VmMagicGuard));` |
+|     3877 | 1668 | `	pVm->pMagicSetThis = 0;` |
+|     3877 | 1669 | `	SyBlobInit(&pVm->sMagicSetName,&pVm->sAllocator);` |
+|     3877 | 1670 | `	pVm->pHookSetThis = 0;` |
+|     3877 | 1671 | `	pVm->pHookSetAttr = 0;` |
+|     3877 | 1672 | `	pVm->nHookSetIdx = SXU32_HIGH;` |
+|     3877 | 1673 | `	SySetInit(&pVm->aHookRmw,&pVm->sAllocator,sizeof(VmHookRmw));` |
+|     3877 | 1674 | `	pVm->pMagicCallThis = 0;` |
+|     3877 | 1675 | `	pVm->pMagicCallClass = 0;` |
+|     3877 | 1676 | `	SyBlobInit(&pVm->sMagicCallName,&pVm->sAllocator);` |
+|     3877 | 1677 | `	pVm->pIdleCallFrames = 0;` |
+|     3877 | 1678 | `	pVm->pIdleOperandStacks = 0;` |
+|     3877 | 1679 | `	pVm->nIdleOperandStacks = 0;` |
+|     3877 | 1680 | `	pVm->pIdleStackNodes = 0;` |
+|     3877 | 1681 | `	SySetInit(&pVm->aFinallyAction,&pVm->sAllocator,sizeof(VmFinallyAction));` |
+|     3877 | 1682 | `	pVm->bInlineTryCatch = 1; /* ROOT C: enable inline generator try/catch/finally */` |
+|     3877 | 1683 | `	pVm->pPendingException = 0;` |
+|     3877 | 1684 | `	pVm->pInflightException = 0;` |
+|     3877 | 1685 | `	pVm->nInflightExcBase = 0;` |
+|     3877 | 1686 | `	pVm->pResumeFrame = 0;` |
+|     3877 | 1687 | `	pVm->iResumePc = 0;` |
+|     3877 | 1688 | `	pVm->pResumeInstr = 0;` |
+|     3877 | 1689 | `	pVm->iResumeStackDepth = 0;` |
+|     3877 | 1690 | `	pVm->nBoundaryRc = 0;` |
+|     3877 | 1691 | `	pVm->pConstEvalClass = 0;` |
+|     3877 | 1692 | `	pVm->nConstEvalDepth = 0;` |
+|     3877 | 1693 | `	pVm->pConstCycleAttr = 0;` |
+|     3877 | 1694 | `	pVm->pConstCycleClass = 0;` |
+|     3877 | 1695 | `	SySetReset(&pVm->aMagicGuard);` |
+|     3877 | 1696 | `	if( pVm->pMagicSetThis ){` |
 |      ! 0 | 1697 | `		PH7_ClassInstanceUnref(pVm->pMagicSetThis);` |
 |      ! 0 | 1698 | `		pVm->pMagicSetThis = 0;` |
 |      ! 0 | 1699 | `	}` |
-|     3879 | 1700 | `	SyBlobRelease(&pVm->sMagicSetName);` |
-|     3879 | 1701 | `	if( pVm->pHookSetThis ){` |
+|     3877 | 1700 | `	SyBlobRelease(&pVm->sMagicSetName);` |
+|     3877 | 1701 | `	if( pVm->pHookSetThis ){` |
 |      ! 0 | 1702 | `		PH7_ClassInstanceUnref(pVm->pHookSetThis);` |
 |      ! 0 | 1703 | `		pVm->pHookSetThis = 0;` |
 |      ! 0 | 1704 | `	}` |
-|     3879 | 1705 | `	pVm->pHookSetAttr = 0;` |
-|     3879 | 1706 | `	pVm->nHookSetIdx = SXU32_HIGH;` |
-|     3879 | 1707 | `	if( pVm->pMagicCallThis ){` |
+|     3877 | 1705 | `	pVm->pHookSetAttr = 0;` |
+|     3877 | 1706 | `	pVm->nHookSetIdx = SXU32_HIGH;` |
+|     3877 | 1707 | `	if( pVm->pMagicCallThis ){` |
 |      ! 0 | 1708 | `		PH7_ClassInstanceUnref(pVm->pMagicCallThis);` |
 |      ! 0 | 1709 | `		pVm->pMagicCallThis = 0;` |
 |      ! 0 | 1710 | `	}` |
-|     3879 | 1711 | `	pVm->pMagicCallClass = 0;` |
-|     3879 | 1712 | `	SyBlobRelease(&pVm->sMagicCallName);` |
+|     3877 | 1711 | `	pVm->pMagicCallClass = 0;` |
+|     3877 | 1712 | `	SyBlobRelease(&pVm->sMagicCallName);` |
 |        - | 1713 | `	/* Configuration containers */` |
-|     3879 | 1714 | `	SySetInit(&pVm->aFiles,&pVm->sAllocator,sizeof(SyString));` |
-|     3879 | 1715 | `	SySetInit(&pVm->aPaths,&pVm->sAllocator,sizeof(SyString));` |
-|     3879 | 1716 | `	SySetInit(&pVm->aIncluded,&pVm->sAllocator,sizeof(SyString));` |
-|     3879 | 1717 | `	SySetInit(&pVm->aOB,&pVm->sAllocator,sizeof(VmObEntry));` |
-|     3879 | 1718 | `	SySetInit(&pVm->aResponseHeaders,&pVm->sAllocator,sizeof(VmResponseHeader));` |
-|     3879 | 1719 | `	pVm->iResponseStatus = 200;` |
-|     3879 | 1720 | `	pVm->bHeadersSent = 0;` |
-|     3879 | 1721 | `	SySetInit(&pVm->aIOstream,&pVm->sAllocator,sizeof(ph7_io_stream *));` |
+|     3877 | 1714 | `	SySetInit(&pVm->aFiles,&pVm->sAllocator,sizeof(SyString));` |
+|     3877 | 1715 | `	SySetInit(&pVm->aPaths,&pVm->sAllocator,sizeof(SyString));` |
+|     3877 | 1716 | `	SySetInit(&pVm->aIncluded,&pVm->sAllocator,sizeof(SyString));` |
+|     3877 | 1717 | `	SySetInit(&pVm->aOB,&pVm->sAllocator,sizeof(VmObEntry));` |
+|     3877 | 1718 | `	SySetInit(&pVm->aResponseHeaders,&pVm->sAllocator,sizeof(VmResponseHeader));` |
+|     3877 | 1719 | `	pVm->iResponseStatus = 200;` |
+|     3877 | 1720 | `	pVm->bHeadersSent = 0;` |
+|     3877 | 1721 | `	SySetInit(&pVm->aIOstream,&pVm->sAllocator,sizeof(ph7_io_stream *));` |
 |        - | 1722 | `	/* Error callbacks containers */` |
-|     3879 | 1723 | `	PH7_MemObjInit(&(*pVm),&pVm->aExceptionCB[0]);` |
-|     3879 | 1724 | `	PH7_MemObjInit(&(*pVm),&pVm->aExceptionCB[1]);` |
-|     3879 | 1725 | `	PH7_MemObjInit(&(*pVm),&pVm->aErrCB[0]);` |
-|     3879 | 1726 | `	PH7_MemObjInit(&(*pVm),&pVm->aErrCB[1]);` |
-|     3879 | 1727 | `	PH7_MemObjInit(&(*pVm),&pVm->sAssertCallback);` |
+|     3877 | 1723 | `	PH7_MemObjInit(&(*pVm),&pVm->aExceptionCB[0]);` |
+|     3877 | 1724 | `	PH7_MemObjInit(&(*pVm),&pVm->aExceptionCB[1]);` |
+|     3877 | 1725 | `	PH7_MemObjInit(&(*pVm),&pVm->aErrCB[0]);` |
+|     3877 | 1726 | `	PH7_MemObjInit(&(*pVm),&pVm->aErrCB[1]);` |
+|     3877 | 1727 | `	PH7_MemObjInit(&(*pVm),&pVm->sAssertCallback);` |
 |        - | 1728 | `	/* Recursion policy (BYTECODE.md stage 5). PHP call depth is heap-bound since` |
 |        - | 1729 | `	 * the iterative executor, so the host default is UNBOUNDED (0) — real PHP runs` |
 |        - | 1730 | `	 * deep userland recursion until memory_limit, and so must PHL; an embedder opts` |
@@ -1742,8 +1742,8 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 1732 | `	 * is NATIVE VmByteCodeExec nesting (eval/include towers, coroutine-resume` |
 |        - | 1733 | `	 * chains, self-recursive C->PHP callbacks) — sized to the platform stack. */` |
 |        - | 1734 | `#if defined(__WINNT__) \|\| defined(__UNIXES__)` |
-|     3879 | 1735 | `	pVm->nMaxDepth = 0;         /* host: unbounded PHP call depth (memory-bound) */` |
-|     3879 | 1736 | `	pVm->nMaxNativeDepth = 256; /* host: proven the safe ceiling under ASan (the` |
+|     3877 | 1735 | `	pVm->nMaxDepth = 0;         /* host: unbounded PHP call depth (memory-bound) */` |
+|     3877 | 1736 | `	pVm->nMaxNativeDepth = 256; /* host: proven the safe ceiling under ASan (the` |
 |        - | 1737 | `	                             * usort-in-comparator path overflows at 1024) */` |
 |        - | 1738 | `#else` |
 |        - | 1739 | `	/* Small-stack embedders (e.g. ESP32 16 KB task, 8 MB PSRAM): PHP recursion is` |
@@ -1756,127 +1756,127 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 1746 | `	/* Default assertion flags: zend.assertions defaults to -1 on the php CLI, so` |
 |        - | 1747 | `	 * assert() is compiled out (a no-op) unless -d zend.assertions=1 turns it on.` |
 |        - | 1748 | `	 * ASSERT_ACTIVE (PH7_ASSERT_DISABLE) stays independently enabled, matching php. */` |
-|     3879 | 1749 | `	pVm->iAssertFlags = PH7_ASSERT_ZEND_OFF;` |
+|     3877 | 1749 | `	pVm->iAssertFlags = PH7_ASSERT_ZEND_OFF;` |
 |        - | 1750 | `	/* JSON return status */` |
-|     3879 | 1751 | `	pVm->json_rc = JSON_ERROR_NONE;` |
+|     3877 | 1751 | `	pVm->json_rc = JSON_ERROR_NONE;` |
 |        - | 1752 | `	/* PRNG context */` |
-|     3879 | 1753 | `	SyRandomnessInit(&pVm->sPrng,0,0);` |
+|     3877 | 1753 | `	SyRandomnessInit(&pVm->sPrng,0,0);` |
 |        - | 1754 | `	/* Install the null constant */` |
-|     3879 | 1755 | `	pObj = PH7_ReserveConstObj(&(*pVm),0);` |
-|     3879 | 1756 | `	if( pObj == 0 ){` |
+|     3877 | 1755 | `	pObj = PH7_ReserveConstObj(&(*pVm),0);` |
+|     3877 | 1756 | `	if( pObj == 0 ){` |
 |      ! 0 | 1757 | `		rc = SXERR_MEM;` |
 |      ! 0 | 1758 | `		goto Err;` |
 |        - | 1759 | `	}` |
-|     3879 | 1760 | `	PH7_MemObjInit(pVm,pObj);` |
+|     3877 | 1760 | `	PH7_MemObjInit(pVm,pObj);` |
 |        - | 1761 | `	/* Install the boolean TRUE constant */` |
-|     3879 | 1762 | `	pObj = PH7_ReserveConstObj(&(*pVm),0);` |
-|     3879 | 1763 | `	if( pObj == 0 ){` |
+|     3877 | 1762 | `	pObj = PH7_ReserveConstObj(&(*pVm),0);` |
+|     3877 | 1763 | `	if( pObj == 0 ){` |
 |      ! 0 | 1764 | `		rc = SXERR_MEM;` |
 |      ! 0 | 1765 | `		goto Err;` |
 |        - | 1766 | `	}` |
-|     3879 | 1767 | `	PH7_MemObjInitFromBool(pVm,pObj,1);` |
+|     3877 | 1767 | `	PH7_MemObjInitFromBool(pVm,pObj,1);` |
 |        - | 1768 | `	/* Install the boolean FALSE constant */` |
-|     3879 | 1769 | `	pObj = PH7_ReserveConstObj(&(*pVm),0);` |
-|     3879 | 1770 | `	if( pObj == 0 ){` |
+|     3877 | 1769 | `	pObj = PH7_ReserveConstObj(&(*pVm),0);` |
+|     3877 | 1770 | `	if( pObj == 0 ){` |
 |      ! 0 | 1771 | `		rc = SXERR_MEM;` |
 |      ! 0 | 1772 | `		goto Err;` |
 |        - | 1773 | `	}` |
-|     3879 | 1774 | `	PH7_MemObjInitFromBool(pVm,pObj,0);` |
+|     3877 | 1774 | `	PH7_MemObjInitFromBool(pVm,pObj,0);` |
 |        - | 1775 | `	/* Install a shared empty string constant so that every "" literal can` |
 |        - | 1776 | `	 * reuse the same slot rather than allocating a new one.` |
 |        - | 1777 | `	 * This mirrors the NULL/TRUE/FALSE handling above. */` |
-|     3879 | 1778 | `	pObj = PH7_ReserveConstObj(&(*pVm),&pVm->nEmptyStringIdx);` |
-|     3879 | 1779 | `	if( pObj == 0 ){` |
+|     3877 | 1778 | `	pObj = PH7_ReserveConstObj(&(*pVm),&pVm->nEmptyStringIdx);` |
+|     3877 | 1779 | `	if( pObj == 0 ){` |
 |      ! 0 | 1780 | `		rc = SXERR_MEM;` |
 |      ! 0 | 1781 | `		goto Err;` |
 |        - | 1782 | `	}` |
-|     3879 | 1783 | `	PH7_MemObjInitFromString(pVm,pObj,0);` |
+|     3877 | 1783 | `	PH7_MemObjInitFromString(pVm,pObj,0);` |
 |        - | 1784 | `	/* Create the global frame */` |
-|     3879 | 1785 | `	rc = VmEnterFrame(&(*pVm),0,0,0);` |
-|     3879 | 1786 | `	if( rc != SXRET_OK ){` |
+|     3877 | 1785 | `	rc = VmEnterFrame(&(*pVm),0,0,0);` |
+|     3877 | 1786 | `	if( rc != SXRET_OK ){` |
 |      ! 0 | 1787 | `		goto Err;` |
 |        - | 1788 | `	}` |
 |        - | 1789 | `	/* Initialize the code generator */` |
-|     3879 | 1790 | `	rc = PH7_InitCodeGenerator(pVm,pEngine->xConf.xErr,pEngine->xConf.pErrData);` |
-|     3879 | 1791 | `	if( rc != SXRET_OK ){` |
+|     3877 | 1790 | `	rc = PH7_InitCodeGenerator(pVm,pEngine->xConf.xErr,pEngine->xConf.pErrData);` |
+|     3877 | 1791 | `	if( rc != SXRET_OK ){` |
 |      ! 0 | 1792 | `		goto Err;` |
 |        - | 1793 | `	}` |
 |        - | 1794 | `	/* VM correctly initialized,set the magic number */` |
-|     3879 | 1795 | `	pVm->nMagic = PH7_VM_INIT;` |
+|     3877 | 1795 | `	pVm->nMagic = PH7_VM_INIT;` |
 |        - | 1796 | `	/* Classes/functions defined by the embedded builtin chunks below are` |
 |        - | 1797 | `	 * flagged INTERNAL (Reflection: isInternal() true, getFileName() false). */` |
-|     3879 | 1798 | `	pVm->bCompilingBuiltin = 1;` |
+|     3877 | 1798 | `	pVm->bCompilingBuiltin = 1;` |
 |        - | 1799 | `	/* Compile the built-in class library (vm_builtin_lib.c owns the chunk) */` |
-|     3879 | 1800 | `	PH7_VmInstallBuiltinLib(&(*pVm));` |
+|     3877 | 1800 | `	PH7_VmInstallBuiltinLib(&(*pVm));` |
 |        - | 1801 | `	/* bCompilingBuiltin stays set until the Reflection library below has` |
 |        - | 1802 | `	 * compiled — its classes are internal too. */` |
 |        - | 1803 | `	/* Cache the Fiber class pointer for fast dispatch */` |
-|     3879 | 1804 | `	pVm->pFiberClass = PH7_VmExtractClass(pVm,"Fiber",5,0,0);` |
+|     3877 | 1804 | `	pVm->pFiberClass = PH7_VmExtractClass(pVm,"Fiber",5,0,0);` |
 |        - | 1805 | `	/* Cache built-in interface pointers used on hot dispatch paths */` |
-|     3879 | 1806 | `	pVm->pArrayAccessClass = PH7_VmExtractClass(pVm,"ArrayAccess",sizeof("ArrayAccess")-1,0,0);` |
-|     3879 | 1807 | `	pVm->pCountableClass   = PH7_VmExtractClass(pVm,"Countable",sizeof("Countable")-1,0,0);` |
-|     3879 | 1808 | `	pVm->pStringableClass  = PH7_VmExtractClass(pVm,"Stringable",sizeof("Stringable")-1,0,0);` |
-|     3879 | 1809 | `	pVm->pJsonSerializableClass = PH7_VmExtractClass(pVm,"JsonSerializable",sizeof("JsonSerializable")-1,0,0);` |
-|     3879 | 1810 | `	pVm->pTraversableClass = PH7_VmExtractClass(pVm,"Traversable",sizeof("Traversable")-1,0,0);` |
+|     3877 | 1806 | `	pVm->pArrayAccessClass = PH7_VmExtractClass(pVm,"ArrayAccess",sizeof("ArrayAccess")-1,0,0);` |
+|     3877 | 1807 | `	pVm->pCountableClass   = PH7_VmExtractClass(pVm,"Countable",sizeof("Countable")-1,0,0);` |
+|     3877 | 1808 | `	pVm->pStringableClass  = PH7_VmExtractClass(pVm,"Stringable",sizeof("Stringable")-1,0,0);` |
+|     3877 | 1809 | `	pVm->pJsonSerializableClass = PH7_VmExtractClass(pVm,"JsonSerializable",sizeof("JsonSerializable")-1,0,0);` |
+|     3877 | 1810 | `	pVm->pTraversableClass = PH7_VmExtractClass(pVm,"Traversable",sizeof("Traversable")-1,0,0);` |
 |        - | 1811 | `	/* Initialize null-coalesce-assign scratch slot */` |
-|     3879 | 1812 | `	pVm->pCoalesceObj = 0;` |
-|     3879 | 1813 | `	pVm->bCoalesceArmed = 0;` |
-|     3879 | 1814 | `	PH7_MemObjInit(pVm,&pVm->sCoalesceKey);` |
+|     3877 | 1812 | `	pVm->pCoalesceObj = 0;` |
+|     3877 | 1813 | `	pVm->bCoalesceArmed = 0;` |
+|     3877 | 1814 | `	PH7_MemObjInit(pVm,&pVm->sCoalesceKey);` |
 |        - | 1815 | `	/* Register Fiber internal C functions */` |
-|     3879 | 1816 | `	ph7_create_function(pVm,"__fiber_suspend",vm_builtin_Fiber_suspend,0);` |
-|     3879 | 1817 | `	ph7_create_function(pVm,"__fiber_construct",vm_builtin_Fiber_construct,0);` |
-|     3879 | 1818 | `	ph7_create_function(pVm,"__fiber_start",vm_builtin_Fiber_start,0);` |
-|     3879 | 1819 | `	ph7_create_function(pVm,"__fiber_resume",vm_builtin_Fiber_resume,0);` |
-|     3879 | 1820 | `	ph7_create_function(pVm,"__fiber_getReturn",vm_builtin_Fiber_getReturn,0);` |
-|     3879 | 1821 | `	ph7_create_function(pVm,"__fiber_isStarted",vm_builtin_Fiber_isStarted,0);` |
-|     3879 | 1822 | `	ph7_create_function(pVm,"__fiber_isRunning",vm_builtin_Fiber_isRunning,0);` |
-|     3879 | 1823 | `	ph7_create_function(pVm,"__fiber_isSuspended",vm_builtin_Fiber_isSuspended,0);` |
-|     3879 | 1824 | `	ph7_create_function(pVm,"__fiber_isTerminated",vm_builtin_Fiber_isTerminated,0);` |
-|     3879 | 1825 | `	ph7_create_function(pVm,"__fiber_destruct",vm_builtin_Fiber_destruct,0);` |
+|     3877 | 1816 | `	ph7_create_function(pVm,"__fiber_suspend",vm_builtin_Fiber_suspend,0);` |
+|     3877 | 1817 | `	ph7_create_function(pVm,"__fiber_construct",vm_builtin_Fiber_construct,0);` |
+|     3877 | 1818 | `	ph7_create_function(pVm,"__fiber_start",vm_builtin_Fiber_start,0);` |
+|     3877 | 1819 | `	ph7_create_function(pVm,"__fiber_resume",vm_builtin_Fiber_resume,0);` |
+|     3877 | 1820 | `	ph7_create_function(pVm,"__fiber_getReturn",vm_builtin_Fiber_getReturn,0);` |
+|     3877 | 1821 | `	ph7_create_function(pVm,"__fiber_isStarted",vm_builtin_Fiber_isStarted,0);` |
+|     3877 | 1822 | `	ph7_create_function(pVm,"__fiber_isRunning",vm_builtin_Fiber_isRunning,0);` |
+|     3877 | 1823 | `	ph7_create_function(pVm,"__fiber_isSuspended",vm_builtin_Fiber_isSuspended,0);` |
+|     3877 | 1824 | `	ph7_create_function(pVm,"__fiber_isTerminated",vm_builtin_Fiber_isTerminated,0);` |
+|     3877 | 1825 | `	ph7_create_function(pVm,"__fiber_destruct",vm_builtin_Fiber_destruct,0);` |
 |        - | 1826 | `	/* Cache the Closure class pointer (closures are instances of it) */` |
-|     3879 | 1827 | `	pVm->pClosureClass = PH7_VmExtractClass(pVm,"Closure",7,0,0);` |
-|     3879 | 1828 | `	pVm->pClosureThis = 0; /* transient bound-$this slot, consumed per call */` |
-|     3879 | 1829 | `	pVm->pClosureScope = 0; /* transient bound-scope slot, consumed per call */` |
+|     3877 | 1827 | `	pVm->pClosureClass = PH7_VmExtractClass(pVm,"Closure",7,0,0);` |
+|     3877 | 1828 | `	pVm->pClosureThis = 0; /* transient bound-$this slot, consumed per call */` |
+|     3877 | 1829 | `	pVm->pClosureScope = 0; /* transient bound-scope slot, consumed per call */` |
 |        - | 1830 | `	/* Closure::bind/bindTo/call/fromCallable native delegates (Increment 2) */` |
-|     3879 | 1831 | `	ph7_create_function(pVm,"__closure_bindTo",vm_builtin_Closure_bindTo,0);` |
-|     3879 | 1832 | `	ph7_create_function(pVm,"__closure_fromCallable",vm_builtin_Closure_fromCallable,0);` |
+|     3877 | 1831 | `	ph7_create_function(pVm,"__closure_bindTo",vm_builtin_Closure_bindTo,0);` |
+|     3877 | 1832 | `	ph7_create_function(pVm,"__closure_fromCallable",vm_builtin_Closure_fromCallable,0);` |
 |        - | 1833 | `	/* Cache the stdClass pointer ((object) cast target + dynamic-property owner) */` |
-|     3879 | 1834 | `	pVm->pStdClass = PH7_VmExtractClass(pVm,"stdClass",sizeof("stdClass")-1,0,0);` |
+|     3877 | 1834 | `	pVm->pStdClass = PH7_VmExtractClass(pVm,"stdClass",sizeof("stdClass")-1,0,0);` |
 |        - | 1835 | `	/* Cache the Generator class pointer and register generator functions */` |
-|     3879 | 1836 | `	pVm->pGeneratorClass = PH7_VmExtractClass(pVm,"Generator",9,0,0);` |
-|     3879 | 1837 | `	ph7_create_function(pVm,"__gen_rewind",vm_builtin_Generator_rewind,0);` |
-|     3879 | 1838 | `	ph7_create_function(pVm,"__gen_valid",vm_builtin_Generator_valid,0);` |
-|     3879 | 1839 | `	ph7_create_function(pVm,"__gen_current",vm_builtin_Generator_current,0);` |
-|     3879 | 1840 | `	ph7_create_function(pVm,"__gen_key",vm_builtin_Generator_key,0);` |
-|     3879 | 1841 | `	ph7_create_function(pVm,"__gen_next",vm_builtin_Generator_next,0);` |
-|     3879 | 1842 | `	ph7_create_function(pVm,"__gen_send",vm_builtin_Generator_send,0);` |
-|     3879 | 1843 | `	ph7_create_function(pVm,"__gen_throw",vm_builtin_Generator_throw,0);` |
-|     3879 | 1844 | `	ph7_create_function(pVm,"__gen_getReturn",vm_builtin_Generator_getReturn,0);` |
-|     3879 | 1845 | `	ph7_create_function(pVm,"__gen_destruct",vm_builtin_Generator_destruct,0);` |
+|     3877 | 1836 | `	pVm->pGeneratorClass = PH7_VmExtractClass(pVm,"Generator",9,0,0);` |
+|     3877 | 1837 | `	ph7_create_function(pVm,"__gen_rewind",vm_builtin_Generator_rewind,0);` |
+|     3877 | 1838 | `	ph7_create_function(pVm,"__gen_valid",vm_builtin_Generator_valid,0);` |
+|     3877 | 1839 | `	ph7_create_function(pVm,"__gen_current",vm_builtin_Generator_current,0);` |
+|     3877 | 1840 | `	ph7_create_function(pVm,"__gen_key",vm_builtin_Generator_key,0);` |
+|     3877 | 1841 | `	ph7_create_function(pVm,"__gen_next",vm_builtin_Generator_next,0);` |
+|     3877 | 1842 | `	ph7_create_function(pVm,"__gen_send",vm_builtin_Generator_send,0);` |
+|     3877 | 1843 | `	ph7_create_function(pVm,"__gen_throw",vm_builtin_Generator_throw,0);` |
+|     3877 | 1844 | `	ph7_create_function(pVm,"__gen_getReturn",vm_builtin_Generator_getReturn,0);` |
+|     3877 | 1845 | `	ph7_create_function(pVm,"__gen_destruct",vm_builtin_Generator_destruct,0);` |
 |        - | 1846 | `	/* Install the Reflection library (embedded classes + __reflect_* thunks).` |
 |        - | 1847 | `	 * Still inside the bCompilingBuiltin window so its classes are flagged` |
 |        - | 1848 | `	 * internal; the Traversable pointer above must already be cached. */` |
-|     3879 | 1849 | `	PH7_VmInstallReflection(&(*pVm));` |
-|     3879 | 1850 | `	PH7_VmInstallDateTime(&(*pVm));` |
-|     3879 | 1851 | `	PH7_VmInstallSpl(&(*pVm));` |
-|     3879 | 1852 | `	PH7_VmInstallTokenizer(&(*pVm));` |
-|     3879 | 1853 | `	PH7_VmInstallSession(&(*pVm));` |
-|     3879 | 1854 | `	PH7_VmInstallIni(&(*pVm));` |
+|     3877 | 1849 | `	PH7_VmInstallReflection(&(*pVm));` |
+|     3877 | 1850 | `	PH7_VmInstallDateTime(&(*pVm));` |
+|     3877 | 1851 | `	PH7_VmInstallSpl(&(*pVm));` |
+|     3877 | 1852 | `	PH7_VmInstallTokenizer(&(*pVm));` |
+|     3877 | 1853 | `	PH7_VmInstallSession(&(*pVm));` |
+|     3877 | 1854 | `	PH7_VmInstallIni(&(*pVm));` |
 |        - | 1855 | `#ifdef PH7_ENABLE_LIBXML` |
 |        - | 1856 | `	/* libxml2-backed surfaces: shared plumbing first, then the DOM and` |
 |        - | 1857 | `	 * XMLWriter class libraries that build on it. */` |
-|     3879 | 1858 | `	PH7_VmInstallLibxml(&(*pVm));` |
-|     3879 | 1859 | `	PH7_VmInstallDom(&(*pVm));` |
-|     3879 | 1860 | `	PH7_VmInstallXmlWriter(&(*pVm));` |
+|     3877 | 1858 | `	PH7_VmInstallLibxml(&(*pVm));` |
+|     3877 | 1859 | `	PH7_VmInstallDom(&(*pVm));` |
+|     3877 | 1860 | `	PH7_VmInstallXmlWriter(&(*pVm));` |
 |        - | 1861 | `#endif` |
-|     3879 | 1862 | `	pVm->bCompilingBuiltin = 0;` |
+|     3877 | 1862 | `	pVm->bCompilingBuiltin = 0;` |
 |        - | 1863 | `	/* Reset the code generator */` |
-|     3879 | 1864 | `	PH7_ResetCodeGenerator(&(*pVm),pEngine->xConf.xErr,pEngine->xConf.pErrData);` |
-|     3879 | 1865 | `	return SXRET_OK;` |
+|     3877 | 1864 | `	PH7_ResetCodeGenerator(&(*pVm),pEngine->xConf.xErr,pEngine->xConf.pErrData);` |
+|     3877 | 1865 | `	return SXRET_OK;` |
 |      ! 0 | 1866 | `Err:` |
 |      ! 0 | 1867 | `	SyMemBackendRelease(&pVm->sAllocator);` |
 |      ! 0 | 1868 | `	return rc;` |
-|     1942 | 1869 | `}` |
+|     1941 | 1869 | `}` |
 |        - | 1870 | `/*` |
 |        - | 1871 | ` * Default VM output consumer callback.That is,all VM output is redirected to this` |
 |        - | 1872 | ` * routine which store the output in an internal blob.` |
@@ -1903,16 +1903,16 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 1893 | ` * Track output length and mark headers as sent when output reaches` |
 |        - | 1894 | ` * a real external consumer (not the internal blob or OB buffer).` |
 |        - | 1895 | ` */` |
-|    42516 | 1896 | `PH7_PRIVATE void VmTrackOutput(ph7_vm *pVm, sxu32 nLen)` |
+|    42598 | 1896 | `PH7_PRIVATE void VmTrackOutput(ph7_vm *pVm, sxu32 nLen)` |
 |        5 | 1897 | `{` |
-|    42521 | 1898 | `	ProcConsumer xCons = pVm->sVmConsumer.xConsumer;` |
-|    42521 | 1899 | `	if( xCons != VmObConsumer ){` |
-|    12669 | 1900 | `		pVm->nOutputLen += nLen;` |
-|    12669 | 1901 | `		if( !pVm->bHeadersSent && xCons != PH7_VmBlobConsumer ){` |
+|    42603 | 1898 | `	ProcConsumer xCons = pVm->sVmConsumer.xConsumer;` |
+|    42603 | 1899 | `	if( xCons != VmObConsumer ){` |
+|    12751 | 1900 | `		pVm->nOutputLen += nLen;` |
+|    12751 | 1901 | `		if( !pVm->bHeadersSent && xCons != PH7_VmBlobConsumer ){` |
 |     1399 | 1902 | `			pVm->bHeadersSent = 1;` |
 |      697 | 1903 | `		}` |
-|     6332 | 1904 | `	}` |
-|    42521 | 1905 | `}` |
+|     6373 | 1904 | `	}` |
+|    42603 | 1905 | `}` |
 |        - | 1906 | `/*` |
 |        - | 1907 | ` * Static operand-stack depth analysis (BYTECODE.md stage 7).` |
 |        - | 1908 | ` *` |
@@ -1963,19 +1963,19 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 1953 | ` * 1 if modeled, 0 if the opcode is outside the verified set (whole-body` |
 |        - | 1954 | ` * fallback). pc is this instruction's own index (fall-through = pc+1).` |
 |        - | 1955 | ` */` |
-|    51236 | 1956 | `static int VmInstrStackEffect(VmInstr *pI, sxu32 pc, int *pPush, int *pN, sxu32 aSucc[2], sxi32 aDelta[2])` |
+|    51334 | 1956 | `static int VmInstrStackEffect(VmInstr *pI, sxu32 pc, int *pPush, int *pN, sxu32 aSucc[2], sxi32 aDelta[2])` |
 |        5 | 1957 | `{` |
-|    51241 | 1958 | `	int push = 0, n = 0;` |
+|    51339 | 1958 | `	int push = 0, n = 0;` |
 |        - | 1959 | `	sxi32 d;` |
-|    51241 | 1960 | `	switch( pI->iOp ){` |
+|    51339 | 1960 | `	switch( pI->iOp ){` |
 |        - | 1961 | `	/* Pushers (+1). LOAD pushes only with an inline name operand (p3 != 0); with` |
 |        - | 1962 | `	 * the name taken from the stack (p3 == 0) it reuses that slot -> net 0. */` |
-|     8096 | 1963 | `	case PH7_OP_LOADC:` |
+|     8104 | 1963 | `	case PH7_OP_LOADC:` |
 |        - | 1964 | `	case PH7_OP_DUP:` |
-|    16197 | 1965 | `		push = 1; aSucc[0] = pc + 1; aDelta[0] = 1; n = 1; break;` |
-|     5767 | 1966 | `	case PH7_OP_LOAD:` |
-|    11539 | 1967 | `		if( pI->p3 ){ push = 1; d = 1; }else{ push = 0; d = 0; }` |
-|    11539 | 1968 | `		aSucc[0] = pc + 1; aDelta[0] = d; n = 1; break;` |
+|    16213 | 1965 | `		push = 1; aSucc[0] = pc + 1; aDelta[0] = 1; n = 1; break;` |
+|     5791 | 1966 | `	case PH7_OP_LOAD:` |
+|    11587 | 1967 | `		if( pI->p3 ){ push = 1; d = 1; }else{ push = 0; d = 0; }` |
+|    11587 | 1968 | `		aSucc[0] = pc + 1; aDelta[0] = d; n = 1; break;` |
 |      ! 0 | 1969 | `	case PH7_OP_LOAD_REF:` |
 |      ! 0 | 1970 | `		aSucc[0] = pc + 1; aDelta[0] = 0; n = 1; break;` |
 |        - | 1971 | `	/* Binary ops: 2-in/1-out, computed in place then one pop -> net -1. */` |
@@ -2007,35 +2007,35 @@ Coverage: 2355/2831 lines (83.19%)
 |     1639 | 1997 | `		d = ( pI->iP2 \|\| pI->p3 == 0 ) ? -1 : 0;` |
 |     1639 | 1998 | `		aSucc[0] = pc + 1; aDelta[0] = d; n = 1; break;` |
 |        - | 1999 | `	/* Explicit multi-slot pops (operand-encoded count). */` |
-|     1260 | 2000 | `	case PH7_OP_POP:` |
+|     1261 | 2000 | `	case PH7_OP_POP:` |
 |        - | 2001 | `	case PH7_OP_CONSUME:` |
-|     2525 | 2002 | `		aSucc[0] = pc + 1; aDelta[0] = -(sxi32)pI->iP1; n = 1; break;` |
+|     2527 | 2002 | `		aSucc[0] = pc + 1; aDelta[0] = -(sxi32)pI->iP1; n = 1; break;` |
 |        - | 2003 | `	/* Call: net -iP1 (args + callable consumed, result reuses the callable slot).` |
 |        - | 2004 | ``	 * Spread is excluded: OP_SPREAD is unmodeled, so a call with `...$x` — whose`` |
 |        - | 2005 | `	 * true pop count is a runtime value — never reaches here. */` |
-|     1913 | 2006 | `	case PH7_OP_CALL:` |
-|     3831 | 2007 | `		aSucc[0] = pc + 1; aDelta[0] = -(sxi32)pI->iP1; n = 1; break;` |
+|     1915 | 2006 | `	case PH7_OP_CALL:` |
+|     3835 | 2007 | `		aSucc[0] = pc + 1; aDelta[0] = -(sxi32)pI->iP1; n = 1; break;` |
 |        - | 2008 | `	/* Jumps. */` |
 |      147 | 2009 | `	case PH7_OP_JMP:` |
 |      299 | 2010 | `		aSucc[0] = pI->iP2; aDelta[0] = 0; n = 1; break;` |
-|      773 | 2011 | `	case PH7_OP_JZ: case PH7_OP_JNZ:` |
-|     1551 | 2012 | `		d = ( pI->iP1 == 0 ) ? -1 : 0; /* pops the condition on BOTH edges unless P1 says peek */` |
-|     1551 | 2013 | `		aSucc[0] = pc + 1; aDelta[0] = d; aSucc[1] = pI->iP2; aDelta[1] = d; n = 2; break;` |
+|      774 | 2011 | `	case PH7_OP_JZ: case PH7_OP_JNZ:` |
+|     1553 | 2012 | `		d = ( pI->iP1 == 0 ) ? -1 : 0; /* pops the condition on BOTH edges unless P1 says peek */` |
+|     1553 | 2013 | `		aSucc[0] = pc + 1; aDelta[0] = d; aSucc[1] = pI->iP2; aDelta[1] = d; n = 2; break;` |
 |        - | 2014 | `	/* Terminal: ends the path (its optional result pop does not propagate). */` |
 |     2966 | 2015 | `	case PH7_OP_DONE:` |
 |     5937 | 2016 | `		n = 0; break;` |
-|     3111 | 2017 | `	default:` |
-|     6227 | 2018 | `		return 0; /* unmodeled opcode -> whole-body fallback */` |
+|     3124 | 2017 | `	default:` |
+|     6253 | 2018 | `		return 0; /* unmodeled opcode -> whole-body fallback */` |
 |        - | 2019 | `	}` |
-|    45019 | 2020 | `	*pPush = push; *pN = n;` |
-|    45019 | 2021 | `	return 1;` |
-|    25623 | 2022 | `}` |
+|    45091 | 2020 | `	*pPush = push; *pN = n;` |
+|    45091 | 2021 | `	return 1;` |
+|    25672 | 2022 | `}` |
 |        - | 2023 | `/*` |
 |        - | 2024 | ` * Compute a tight upper bound on the operand-stack depth of a compiled body, or` |
 |        - | 2025 | ` * VM_STACK_UNMODELED to request the safe instruction-count bound. See the block` |
 |        - | 2026 | ` * comment above. Never underestimates a modelable body's true peak depth.` |
 |        - | 2027 | ` */` |
-|     8250 | 2028 | `PH7_PRIVATE sxu32 VmComputeMaxStack(ph7_vm *pVm, VmInstr *aInstr, sxu32 nInstr)` |
+|     8276 | 2028 | `PH7_PRIVATE sxu32 VmComputeMaxStack(ph7_vm *pVm, VmInstr *aInstr, sxu32 nInstr)` |
 |        5 | 2029 | `{` |
 |        - | 2030 | `	void *pScratch;` |
 |        - | 2031 | `	sxi32 *aH; sxu32 *aQ; unsigned char *aIn;` |
@@ -2043,16 +2043,16 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 2033 | `	sxi32 iMax;` |
 |        - | 2034 | `	int push, n, k;` |
 |        - | 2035 | `	sxu32 succ[2]; sxi32 delta[2];` |
-|     8255 | 2036 | `	if( nInstr == 0 \|\| nInstr > 8192 ){` |
+|     8281 | 2036 | `	if( nInstr == 0 \|\| nInstr > 8192 ){` |
 |        - | 2037 | `		/* Empty, or large enough that the analysis cost/benefit isn't worth it. */` |
 |      ! 0 | 2038 | `		return VM_STACK_UNMODELED;` |
 |        - | 2039 | `	}` |
 |        - | 2040 | `	/* Pre-scan: any unmodeled opcode -> bail before allocating scratch. */` |
-|    44667 | 2041 | `	for( i = 0; i < nInstr; i++ ){` |
-|    42639 | 2042 | `		if( !VmInstrStackEffect(&aInstr[i], i, &push, &n, succ, delta) ){` |
-|     6227 | 2043 | `			return VM_STACK_UNMODELED;` |
+|    44765 | 2041 | `	for( i = 0; i < nInstr; i++ ){` |
+|    42737 | 2042 | `		if( !VmInstrStackEffect(&aInstr[i], i, &push, &n, succ, delta) ){` |
+|     6253 | 2043 | `			return VM_STACK_UNMODELED;` |
 |        - | 2044 | `		}` |
-|    18211 | 2045 | `	}` |
+|    18247 | 2045 | `	}` |
 |        - | 2046 | `	/* aH (entry height per pc), aQ (worklist), aIn (queued flag) share one lifetime` |
 |        - | 2047 | `	 * and count -> one allocation, carved into three regions with the 4-byte arrays` |
 |        - | 2048 | `	 * first (the byte array last needs no alignment). */` |
@@ -2088,7 +2088,7 @@ Coverage: 2355/2831 lines (83.19%)
 |        5 | 2078 | `	}` |
 |     2033 | 2079 | `	SyMemBackendFree(&pVm->sAllocator, pScratch);` |
 |     2033 | 2080 | `	return ( iMax < 0 ) ? VM_STACK_UNMODELED : (sxu32)iMax;` |
-|     4130 | 2081 | `}` |
+|     4143 | 2081 | `}` |
 |        - | 2082 | `/*` |
 |        - | 2083 | ` * Allocate a new operand stack so that we can start executing` |
 |        - | 2084 | ` * our compiled PHP program.` |
@@ -2100,7 +2100,7 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 2090 | ` * parked buffer when it can and falls back to this; the other entries (top-level,` |
 |        - | 2091 | ` * eval, coroutine, callbacks) call this directly.` |
 |        - | 2092 | ` */` |
-|   246346 | 2093 | `PH7_PRIVATE ph7_value * VmNewOperandStack(` |
+|   246448 | 2093 | `PH7_PRIVATE ph7_value * VmNewOperandStack(` |
 |        - | 2094 | `	ph7_vm *pVm, /* Target VM */` |
 |        - | 2095 | `	sxu32 nInstr /* Total numer of generated byte-code instructions */` |
 |        - | 2096 | `	)` |
@@ -2113,19 +2113,19 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 2103 | `  **` |
 |        - | 2104 | `  ** Allocation all the stack space we will ever need.` |
 |        - | 2105 | `  */` |
-|   246351 | 2106 | `	nInstr += VM_STACK_GUARD;` |
-|   246351 | 2107 | `	pStack = (ph7_value *)SyMemBackendAlloc(&pVm->sAllocator,nInstr * sizeof(ph7_value));` |
-|   246351 | 2108 | `	if( pStack == 0 ){` |
+|   246453 | 2106 | `	nInstr += VM_STACK_GUARD;` |
+|   246453 | 2107 | `	pStack = (ph7_value *)SyMemBackendAlloc(&pVm->sAllocator,nInstr * sizeof(ph7_value));` |
+|   246453 | 2108 | `	if( pStack == 0 ){` |
 |      ! 0 | 2109 | `		return 0;` |
 |        - | 2110 | `	}` |
 |        - | 2111 | `	/* Initialize the operand stack */` |
-| 23411229 | 2112 | `	while( nInstr > 0 ){` |
-| 23164883 | 2113 | `		PH7_MemObjInit(&(*pVm),&pStack[nInstr - 1]);` |
-| 23164883 | 2114 | `		--nInstr;` |
+| 23414301 | 2112 | `	while( nInstr > 0 ){` |
+| 23167853 | 2113 | `		PH7_MemObjInit(&(*pVm),&pStack[nInstr - 1]);` |
+| 23167853 | 2114 | `		--nInstr;` |
 |        5 | 2115 | `	}` |
 |        - | 2116 | `	/* Ready for bytecode execution */` |
-|   246351 | 2117 | `	return pStack;` |
-|   123280 | 2118 | `}` |
+|   246453 | 2117 | `	return pStack;` |
+|   123331 | 2118 | `}` |
 |        - | 2119 | `/*` |
 |        - | 2120 | ` * Operand-stack recycling (BYTECODE.md stage 7).` |
 |        - | 2121 | ` *` |
@@ -2165,66 +2165,66 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 2155 | ` * Allocate an operand stack of nSlots (+ VM_STACK_GUARD) usable slots, reusing a` |
 |        - | 2156 | ` * parked same-size buffer when one is available (its slots are already clean).` |
 |        - | 2157 | ` */` |
-|   104709 | 2158 | `PH7_PRIVATE ph7_value * VmOperandStackAlloc(ph7_vm *pVm, sxu32 nSlots)` |
+|   104781 | 2158 | `PH7_PRIVATE ph7_value * VmOperandStackAlloc(ph7_vm *pVm, sxu32 nSlots)` |
 |        5 | 2159 | `{` |
-|   104714 | 2160 | `	VmIdleStack *pIdle = (VmIdleStack *)pVm->pIdleOperandStacks;` |
-|   104714 | 2161 | `	sxu32 nCap = nSlots + VM_STACK_GUARD;` |
-|   104714 | 2162 | `	if( pIdle && pIdle->nCap == nCap ){` |
-|    18566 | 2163 | `		ph7_value *pStack = pIdle->pStack;` |
-|    18566 | 2164 | `		pVm->pIdleOperandStacks = pIdle->pNext;` |
-|    18566 | 2165 | `		pVm->nIdleOperandStacks--;` |
+|   104786 | 2160 | `	VmIdleStack *pIdle = (VmIdleStack *)pVm->pIdleOperandStacks;` |
+|   104786 | 2161 | `	sxu32 nCap = nSlots + VM_STACK_GUARD;` |
+|   104786 | 2162 | `	if( pIdle && pIdle->nCap == nCap ){` |
+|    18586 | 2163 | `		ph7_value *pStack = pIdle->pStack;` |
+|    18586 | 2164 | `		pVm->pIdleOperandStacks = pIdle->pNext;` |
+|    18586 | 2165 | `		pVm->nIdleOperandStacks--;` |
 |        - | 2166 | `		/* Keep the wrapper node on the spare-node freelist for the next recycle` |
 |        - | 2167 | `		 * instead of returning it to the pool (mirrors pIdleCallFrames). */` |
-|    18566 | 2168 | `		pIdle->pNext = (VmIdleStack *)pVm->pIdleStackNodes;` |
-|    18566 | 2169 | `		pVm->pIdleStackNodes = pIdle;` |
-|    18566 | 2170 | `		return pStack; /* slots already released -> reusable without re-init */` |
+|    18586 | 2168 | `		pIdle->pNext = (VmIdleStack *)pVm->pIdleStackNodes;` |
+|    18586 | 2169 | `		pVm->pIdleStackNodes = pIdle;` |
+|    18586 | 2170 | `		return pStack; /* slots already released -> reusable without re-init */` |
 |        - | 2171 | `	}` |
-|    86153 | 2172 | `	return VmNewOperandStack(&(*pVm),nSlots);` |
-|    52462 | 2173 | `}` |
+|    86205 | 2172 | `	return VmNewOperandStack(&(*pVm),nSlots);` |
+|    52498 | 2173 | `}` |
 |        - | 2174 | `/*` |
 |        - | 2175 | ` * Return an operand stack to the freelist (or free it if the pool is full).` |
 |        - | 2176 | ` * nCap is its full allocated slot count (== the VmNewOperandStack size). Every` |
 |        - | 2177 | ` * slot is released so the parked buffer is clean for reuse and never retains a` |
 |        - | 2178 | ` * live value.` |
 |        - | 2179 | ` */` |
-|   104299 | 2180 | `PH7_PRIVATE void VmOperandStackRecycle(ph7_vm *pVm, ph7_value *pStack, sxu32 nCap)` |
+|   104371 | 2180 | `PH7_PRIVATE void VmOperandStackRecycle(ph7_vm *pVm, ph7_value *pStack, sxu32 nCap)` |
 |        5 | 2181 | `{` |
 |        - | 2182 | `	VmIdleStack *pIdle;` |
 |        - | 2183 | `	sxu32 i;` |
-|   104304 | 2184 | `	if( pStack == 0 ){` |
+|   104376 | 2184 | `	if( pStack == 0 ){` |
 |      ! 0 | 2185 | `		return;` |
 |        - | 2186 | `	}` |
-|   104304 | 2187 | `	if( pVm->nIdleOperandStacks >= VM_STACK_POOL_MAX \|\| nCap > VM_STACK_POOL_MAXSLOTS ){` |
+|   104376 | 2187 | `	if( pVm->nIdleOperandStacks >= VM_STACK_POOL_MAX \|\| nCap > VM_STACK_POOL_MAXSLOTS ){` |
 |    79891 | 2188 | `		SyMemBackendFree(&pVm->sAllocator,pStack);` |
 |    79891 | 2189 | `		return;` |
 |        - | 2190 | `	}` |
 |        - | 2191 | `	/* Take a spare wrapper node (reused across cycles, mirroring pIdleCallFrames);` |
 |        - | 2192 | `	 * pool-allocate only when the spare list is empty. */` |
-|    24418 | 2193 | `	pIdle = (VmIdleStack *)pVm->pIdleStackNodes;` |
-|    24418 | 2194 | `	if( pIdle ){` |
-|    18566 | 2195 | `		pVm->pIdleStackNodes = pIdle->pNext;` |
-|     9286 | 2196 | `	}else{` |
-|     5857 | 2197 | `		pIdle = (VmIdleStack *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(VmIdleStack));` |
-|     5857 | 2198 | `		if( pIdle == 0 ){` |
+|    24490 | 2193 | `	pIdle = (VmIdleStack *)pVm->pIdleStackNodes;` |
+|    24490 | 2194 | `	if( pIdle ){` |
+|    18586 | 2195 | `		pVm->pIdleStackNodes = pIdle->pNext;` |
+|     9296 | 2196 | `	}else{` |
+|     5909 | 2197 | `		pIdle = (VmIdleStack *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(VmIdleStack));` |
+|     5909 | 2198 | `		if( pIdle == 0 ){` |
 |      ! 0 | 2199 | `			SyMemBackendFree(&pVm->sAllocator,pStack);` |
 |      ! 0 | 2200 | `			return;` |
 |        - | 2201 | `		}` |
 |        - | 2202 | `	}` |
-|  1686731 | 2203 | `	for( i = 0; i < nCap; i++ ){` |
-|  1662318 | 2204 | `		PH7_MemObjRelease(&pStack[i]);` |
+|  1688643 | 2203 | `	for( i = 0; i < nCap; i++ ){` |
+|  1664158 | 2204 | `		PH7_MemObjRelease(&pStack[i]);` |
 |        - | 2205 | `		/* Reset the global-slot index to the "temporary / not a variable" marker.` |
 |        - | 2206 | `		 * A released slot is already reusable (the dispatch reuses released slots` |
 |        - | 2207 | `		 * mid-call, and every push sets nIdx before the slot is read), but marking` |
 |        - | 2208 | `		 * it here means a stale index can never masquerade as a live variable slot` |
 |        - | 2209 | `		 * across invocations — cheap defense in depth. */` |
-|  1662318 | 2210 | `		pStack[i].nIdx = SXU32_HIGH;` |
-|   831355 | 2211 | `	}` |
-|    24418 | 2212 | `	pIdle->pStack = pStack;` |
-|    24418 | 2213 | `	pIdle->nCap = nCap;` |
-|    24418 | 2214 | `	pIdle->pNext = (VmIdleStack *)pVm->pIdleOperandStacks;` |
-|    24418 | 2215 | `	pVm->pIdleOperandStacks = pIdle;` |
-|    24418 | 2216 | `	pVm->nIdleOperandStacks++;` |
-|    52257 | 2217 | `}` |
+|  1664158 | 2210 | `		pStack[i].nIdx = SXU32_HIGH;` |
+|   832275 | 2211 | `	}` |
+|    24490 | 2212 | `	pIdle->pStack = pStack;` |
+|    24490 | 2213 | `	pIdle->nCap = nCap;` |
+|    24490 | 2214 | `	pIdle->pNext = (VmIdleStack *)pVm->pIdleOperandStacks;` |
+|    24490 | 2215 | `	pVm->pIdleOperandStacks = pIdle;` |
+|    24490 | 2216 | `	pVm->nIdleOperandStacks++;` |
+|    52293 | 2217 | `}` |
 |        - | 2218 | `/* Forward declaration */` |
 |        - | 2219 | `static sxi32 VmRegisterSpecialFunction(ph7_vm *pVm);` |
 |        - | 2220 | `/*` |
@@ -2232,51 +2232,51 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 2222 | ` * This routine gets called by the PH7 engine after` |
 |        - | 2223 | ` * successful compilation of the target PHP program.` |
 |        - | 2224 | ` */` |
-|     3406 | 2225 | `PH7_PRIVATE sxi32 PH7_VmMakeReady(` |
+|     3404 | 2225 | `PH7_PRIVATE sxi32 PH7_VmMakeReady(` |
 |        - | 2226 | `	ph7_vm *pVm /* Target VM */` |
 |        - | 2227 | `	)` |
 |        5 | 2228 | `{` |
 |        - | 2229 | `	SyHashEntry *pEntry;` |
 |        - | 2230 | `	sxi32 rc;` |
-|     3411 | 2231 | `	if( pVm->nMagic != PH7_VM_INIT ){` |
+|     3409 | 2231 | `	if( pVm->nMagic != PH7_VM_INIT ){` |
 |        - | 2232 | `		/* Initialize your VM first */` |
 |      ! 0 | 2233 | `		return SXERR_CORRUPT;` |
 |        - | 2234 | `	}` |
 |        - | 2235 | `	/* Mark the VM ready for byte-code execution */` |
-|     3411 | 2236 | `	pVm->nMagic = PH7_VM_RUN;` |
+|     3409 | 2236 | `	pVm->nMagic = PH7_VM_RUN;` |
 |        - | 2237 | `	/* Release the code generator now we have compiled our program, but keep its` |
 |        - | 2238 | `	 * error consumer wired to the engine's: class mounting below (e.g. typed` |
 |        - | 2239 | `	 * class-constant enforcement) still reports definition-time fatals through` |
 |        - | 2240 | `	 * it, and the host VM output consumer is not installed until afterwards. */` |
-|     3411 | 2241 | `	PH7_ResetCodeGenerator(pVm,pVm->pEngine->xConf.xErr,pVm->pEngine->xConf.pErrData);` |
+|     3409 | 2241 | `	PH7_ResetCodeGenerator(pVm,pVm->pEngine->xConf.xErr,pVm->pEngine->xConf.pErrData);` |
 |        - | 2242 | `	/* Emit the DONE instruction */` |
-|     3411 | 2243 | `	rc = PH7_VmEmitInstr(&(*pVm),PH7_OP_DONE,0,0,0,0);` |
-|     3411 | 2244 | `	if( rc != SXRET_OK ){` |
+|     3409 | 2243 | `	rc = PH7_VmEmitInstr(&(*pVm),PH7_OP_DONE,0,0,0,0);` |
+|     3409 | 2244 | `	if( rc != SXRET_OK ){` |
 |      ! 0 | 2245 | `		return SXERR_MEM;` |
 |        - | 2246 | `	}` |
 |        - | 2247 | `	/* Script return value */` |
-|     3411 | 2248 | `	PH7_MemObjInit(&(*pVm),&pVm->sExec); /* Assume a NULL return value */` |
+|     3409 | 2248 | `	PH7_MemObjInit(&(*pVm),&pVm->sExec); /* Assume a NULL return value */` |
 |        - | 2249 | `	/* Allocate a new operand stack */` |
-|     3411 | 2250 | `	pVm->aOps = VmNewOperandStack(&(*pVm),SySetUsed(pVm->pByteContainer));` |
-|     3411 | 2251 | `	if( pVm->aOps == 0 ){` |
+|     3409 | 2250 | `	pVm->aOps = VmNewOperandStack(&(*pVm),SySetUsed(pVm->pByteContainer));` |
+|     3409 | 2251 | `	if( pVm->aOps == 0 ){` |
 |      ! 0 | 2252 | `		return SXERR_MEM;` |
 |        - | 2253 | `	}` |
 |        - | 2254 | `	/* Set the default VM output consumer callback and it's` |
 |        - | 2255 | `	 * private data. */` |
-|     3411 | 2256 | `	pVm->sVmConsumer.xConsumer = PH7_VmBlobConsumer;` |
-|     3411 | 2257 | `	pVm->sVmConsumer.pUserData = &pVm->sConsumer;` |
+|     3409 | 2256 | `	pVm->sVmConsumer.xConsumer = PH7_VmBlobConsumer;` |
+|     3409 | 2257 | `	pVm->sVmConsumer.pUserData = &pVm->sConsumer;` |
 |        - | 2258 | `	/* Allocate the reference table */` |
-|     3411 | 2259 | `	pVm->nRefSize = 0x10; /* Must be a power of two for fast arithemtic */` |
-|     3411 | 2260 | `	pVm->apRefObj = (VmRefObj **)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmRefObj *) * pVm->nRefSize);` |
-|     3411 | 2261 | `	if( pVm->apRefObj == 0 ){` |
+|     3409 | 2259 | `	pVm->nRefSize = 0x10; /* Must be a power of two for fast arithemtic */` |
+|     3409 | 2260 | `	pVm->apRefObj = (VmRefObj **)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmRefObj *) * pVm->nRefSize);` |
+|     3409 | 2261 | `	if( pVm->apRefObj == 0 ){` |
 |        - | 2262 | `		/* Don't worry about freeing memory, everything will be released shortly */` |
 |      ! 0 | 2263 | `		return SXERR_MEM;` |
 |        - | 2264 | `	}` |
 |        - | 2265 | `	/* Zero the reference table */` |
-|     3411 | 2266 | `	SyZero(pVm->apRefObj,sizeof(VmRefObj *) * pVm->nRefSize);` |
+|     3409 | 2266 | `	SyZero(pVm->apRefObj,sizeof(VmRefObj *) * pVm->nRefSize);` |
 |        - | 2267 | `	/* Register special functions first [i.e: print, json_encode(), func_get_args(), die, etc.] */` |
-|     3411 | 2268 | `	rc = VmRegisterSpecialFunction(&(*pVm));` |
-|     3411 | 2269 | `	if( rc != SXRET_OK ){` |
+|     3409 | 2268 | `	rc = VmRegisterSpecialFunction(&(*pVm));` |
+|     3409 | 2269 | `	if( rc != SXRET_OK ){` |
 |        - | 2270 | `		/* Don't worry about freeing memory, everything will be released shortly */` |
 |      ! 0 | 2271 | `		return rc;` |
 |        - | 2272 | `	}` |
@@ -2285,54 +2285,54 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 2275 | `	 * every object/variable created during execution) is per-exec state that` |
 |        - | 2276 | `	 * ph7_vm_reset() releases and truncates away before rebuilding; everything` |
 |        - | 2277 | `	 * below it is compile-time/init state that survives a reset. */` |
-|     3411 | 2278 | `	pVm->nSuperBaseline = SySetUsed(&pVm->aMemObj);` |
+|     3409 | 2278 | `	pVm->nSuperBaseline = SySetUsed(&pVm->aMemObj);` |
 |        - | 2279 | `	/* Create superglobals [i.e: $GLOBALS, $_GET, $_POST...] */` |
-|     3411 | 2280 | `	rc = PH7_HashmapCreateSuper(&(*pVm));` |
-|     3411 | 2281 | `	if( rc != SXRET_OK ){` |
+|     3409 | 2280 | `	rc = PH7_HashmapCreateSuper(&(*pVm));` |
+|     3409 | 2281 | `	if( rc != SXRET_OK ){` |
 |        - | 2282 | `		/* Don't worry about freeing memory, everything will be released shortly */` |
 |      ! 0 | 2283 | `		return rc;` |
 |        - | 2284 | `	}` |
 |        - | 2285 | `	/* Register built-in constants [i.e: PHP_EOL, PHP_OS...] */` |
-|     3411 | 2286 | `	PH7_RegisterBuiltInConstant(&(*pVm));` |
+|     3409 | 2286 | `	PH7_RegisterBuiltInConstant(&(*pVm));` |
 |        - | 2287 | `	/* Register the tokenizer T_* / TOKEN_PARSE constants */` |
-|     3411 | 2288 | `	PH7_RegisterTokenizerConstants(&(*pVm));` |
+|     3409 | 2288 | `	PH7_RegisterTokenizerConstants(&(*pVm));` |
 |        - | 2289 | `	/* Register built-in functions [i.e: is_null(), array_diff(), strlen(), etc.] */` |
-|     3411 | 2290 | `	PH7_RegisterBuiltInFunction(&(*pVm));` |
+|     3409 | 2290 | `	PH7_RegisterBuiltInFunction(&(*pVm));` |
 |        - | 2291 | `	/* Register HTTP response functions [i.e: header(), http_response_code(), etc.] */` |
-|     3411 | 2292 | `	PH7_RegisterHttpResponseFunctions(&(*pVm));` |
+|     3409 | 2292 | `	PH7_RegisterHttpResponseFunctions(&(*pVm));` |
 |        - | 2293 | `#ifdef PH7_ENABLE_PCRE` |
 |        - | 2294 | `	/* Register PCRE functions [i.e: preg_match(), preg_replace(), etc.] */` |
-|     3411 | 2295 | `	PH7_RegisterPcreFunctions(&(*pVm));` |
-|     3411 | 2296 | `	PH7_RegisterPcreConstants(&(*pVm));` |
+|     3409 | 2295 | `	PH7_RegisterPcreFunctions(&(*pVm));` |
+|     3409 | 2296 | `	PH7_RegisterPcreConstants(&(*pVm));` |
 |        - | 2297 | `#endif` |
 |        - | 2298 | `#ifdef PH7_ENABLE_LIBXML` |
 |        - | 2299 | `	/* Register the LIBXML_* / XML_*_NODE constants */` |
-|     3411 | 2300 | `	PH7_RegisterLibxmlConstants(&(*pVm));` |
+|     3409 | 2300 | `	PH7_RegisterLibxmlConstants(&(*pVm));` |
 |        - | 2301 | `#endif` |
 |        - | 2302 | `	/* Stamp PHP-8 minimum-arity metadata onto the registered builtins so the` |
 |        - | 2303 | `	 * OP_CALL choke point can raise ArgumentCountError on too few arguments. */` |
-|     3411 | 2304 | `	VmSetBuiltinArity(&(*pVm));` |
+|     3409 | 2304 | `	VmSetBuiltinArity(&(*pVm));` |
 |        - | 2305 | `	/* Attach PHP-style parameter signatures for reflection over builtins */` |
-|     3411 | 2306 | `	VmSetBuiltinSignatures(&(*pVm));` |
+|     3409 | 2306 | `	VmSetBuiltinSignatures(&(*pVm));` |
 |        - | 2307 | `	/* Initialize and install static and constants class attributes.` |
 |        - | 2308 | `	 * NOTE: the per-exec object graph created from nSuperBaseline onward (the` |
 |        - | 2309 | `	 * global frame via VmEnterFrame above, the superglobals via CreateSuper, and` |
 |        - | 2310 | `	 * these class static/const slots) is rebuilt on every ph7_vm_reset() — keep` |
 |        - | 2311 | `	 * that function in sync when changing what is reserved here. */` |
-|     3411 | 2312 | `	SyHashResetLoopCursor(&pVm->hClass);` |
-|   466885 | 2313 | `	while((pEntry = SyHashGetNextEntry(&pVm->hClass)) != 0 ){` |
-|   463481 | 2314 | `		rc = VmMountUserClass(&(*pVm),(ph7_class *)pEntry->pUserData);` |
-|   463481 | 2315 | `		if( rc != SXRET_OK ){` |
+|     3409 | 2312 | `	SyHashResetLoopCursor(&pVm->hClass);` |
+|   466613 | 2313 | `	while((pEntry = SyHashGetNextEntry(&pVm->hClass)) != 0 ){` |
+|   463211 | 2314 | `		rc = VmMountUserClass(&(*pVm),(ph7_class *)pEntry->pUserData);` |
+|   463211 | 2315 | `		if( rc != SXRET_OK ){` |
 |        3 | 2316 | `			return rc;` |
 |        - | 2317 | `		}` |
 |        5 | 2318 | `	}` |
 |        - | 2319 | `	/* Random number betwwen 0 and 1023 used to generate unique ID */` |
-|     3409 | 2320 | `	pVm->unique_id = PH7_VmRandomNum(&(*pVm)) & 1023;` |
+|     3407 | 2320 | `	pVm->unique_id = PH7_VmRandomNum(&(*pVm)) & 1023;` |
 |        - | 2321 | `	/* First object handle id handed out is 1 (matches PHP's first userland object #1) */` |
-|     3409 | 2322 | `	pVm->nNextObjId = 1;` |
+|     3407 | 2322 | `	pVm->nNextObjId = 1;` |
 |        - | 2323 | `	/* VM is ready for bytecode execution */` |
-|     3409 | 2324 | `	return SXRET_OK;` |
-|     1708 | 2325 | `}` |
+|     3407 | 2324 | `	return SXRET_OK;` |
+|     1707 | 2325 | `}` |
 |        - | 2326 | `/*` |
 |        - | 2327 | ` * Tear down the whole reference table. Unlinks every referenced object,` |
 |        - | 2328 | ` * deleting the hash entries (frame variables) and array nodes it points at.` |
@@ -2456,29 +2456,29 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 2446 | ` * registry cannot grow, which renders as php's "closed/unknown" id rather than` |
 |        - | 2447 | ` * aborting a cast.` |
 |        - | 2448 | ` */` |
-|       18 | 2449 | `PH7_PRIVATE sxu32 PH7_VmResourceId(ph7_vm *pVm,void *pRes)` |
-|        1 | 2450 | `{` |
+|       24 | 2449 | `PH7_PRIVATE sxu32 PH7_VmResourceId(ph7_vm *pVm,void *pRes)` |
+|        2 | 2450 | `{` |
 |        - | 2451 | `	SyHashEntry *pEntry;` |
 |        - | 2452 | `	phl_res_id *pRec;` |
-|       19 | 2453 | `	if( pVm == 0 \|\| pRes == 0 ){` |
+|       26 | 2453 | `	if( pVm == 0 \|\| pRes == 0 ){` |
 |      ! 0 | 2454 | `		return 0;` |
 |        - | 2455 | `	}` |
-|       19 | 2456 | `	pEntry = SyHashGet(&pVm->hResourceId,(const void *)&pRes,sizeof(void *));` |
-|       19 | 2457 | `	if( pEntry ){` |
-|       15 | 2458 | `		return ((phl_res_id *)pEntry->pUserData)->nId;` |
+|       26 | 2456 | `	pEntry = SyHashGet(&pVm->hResourceId,(const void *)&pRes,sizeof(void *));` |
+|       26 | 2457 | `	if( pEntry ){` |
+|       20 | 2458 | `		return ((phl_res_id *)pEntry->pUserData)->nId;` |
 |        - | 2459 | `	}` |
-|        5 | 2460 | `	pRec = (phl_res_id *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(phl_res_id));` |
-|        5 | 2461 | `	if( pRec == 0 ){` |
+|        8 | 2460 | `	pRec = (phl_res_id *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(phl_res_id));` |
+|        8 | 2461 | `	if( pRec == 0 ){` |
 |      ! 0 | 2462 | `		return 0;` |
 |        - | 2463 | `	}` |
-|        5 | 2464 | `	pRec->pRes = pRes;` |
-|        5 | 2465 | `	pRec->nId = pVm->nResourceIdNext++;` |
-|        5 | 2466 | `	if( SyHashInsert(&pVm->hResourceId,(const void *)&pRec->pRes,sizeof(void *),pRec) != SXRET_OK ){` |
+|        8 | 2464 | `	pRec->pRes = pRes;` |
+|        8 | 2465 | `	pRec->nId = pVm->nResourceIdNext++;` |
+|        8 | 2466 | `	if( SyHashInsert(&pVm->hResourceId,(const void *)&pRec->pRes,sizeof(void *),pRec) != SXRET_OK ){` |
 |      ! 0 | 2467 | `		SyMemBackendPoolFree(&pVm->sAllocator,pRec);` |
 |      ! 0 | 2468 | `		return 0;` |
 |        - | 2469 | `	}` |
-|        5 | 2470 | `	return pRec->nId;` |
-|       10 | 2471 | `}` |
+|        8 | 2470 | `	return pRec->nId;` |
+|       14 | 2471 | `}` |
 |        - | 2472 | `/*` |
 |        - | 2473 | ` * Drop the resource-id registry, freeing each phl_res_id record. Ids restart at` |
 |        - | 2474 | ` * 1 for the next run, matching a fresh php process.` |
@@ -2749,18 +2749,18 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 2739 | ` * Release a Virtual Machine.` |
 |        - | 2740 | ` * Every virtual machine must be destroyed in order to avoid memory leaks.` |
 |        - | 2741 | ` */` |
-|     3404 | 2742 | `PH7_PRIVATE sxi32 PH7_VmRelease(ph7_vm *pVm)` |
+|     3402 | 2742 | `PH7_PRIVATE sxi32 PH7_VmRelease(ph7_vm *pVm)` |
 |        5 | 2743 | `{` |
 |        - | 2744 | `	/* Set the stale magic number */` |
-|     3409 | 2745 | `	pVm->nMagic = PH7_VM_STALE;` |
+|     3407 | 2745 | `	pVm->nMagic = PH7_VM_STALE;` |
 |        - | 2746 | `#ifdef PH7_ENABLE_LIBXML` |
 |        - | 2747 | `	/* Free the libxml document registry (libxml2 allocations live outside` |
 |        - | 2748 | `	 * SyMemBackend, so the wholesale release below would leak them). */` |
-|     3409 | 2749 | `	PH7_LibxmlVmRelease(pVm);` |
+|     3407 | 2749 | `	PH7_LibxmlVmRelease(pVm);` |
 |        - | 2750 | `#endif` |
 |        - | 2751 | `	/* Release the private memory subsystem */` |
-|     3409 | 2752 | `	SyMemBackendRelease(&pVm->sAllocator);` |
-|     3409 | 2753 | `	return SXRET_OK;` |
+|     3407 | 2752 | `	SyMemBackendRelease(&pVm->sAllocator);` |
+|     3407 | 2753 | `	return SXRET_OK;` |
 |        5 | 2754 | `}` |
 |        - | 2755 | `/*` |
 |        - | 2756 | ` * Initialize a foreign function call context.` |
@@ -2772,7 +2772,7 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 2762 | ` * ph7_context_new_scalar(), ph7_context_alloc_chunk(), ph7_context_output(), ph7_context_throw_error()` |
 |        - | 2763 | ` * and many more. Refer to the C/C++ Interfaces documentation for additional information.` |
 |        - | 2764 | ` */` |
-|   935182 | 2765 | `PH7_PRIVATE sxi32 VmInitCallContext(` |
+|   935390 | 2765 | `PH7_PRIVATE sxi32 VmInitCallContext(` |
 |        - | 2766 | `	ph7_context *pOut,    /* Call Context */` |
 |        - | 2767 | `	ph7_vm *pVm,          /* Target VM */` |
 |        - | 2768 | `	ph7_user_func *pFunc, /* Foreign function to execute shortly */` |
@@ -2780,37 +2780,37 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 2770 | `	sxi32 iFlags          /* Control flags */` |
 |        - | 2771 | `	)` |
 |        5 | 2772 | `{` |
-|   935187 | 2773 | `	pOut->pFunc = pFunc;` |
-|   935187 | 2774 | `	pOut->pVm   = pVm;` |
-|   935187 | 2775 | `	SySetInit(&pOut->sVar,&pVm->sAllocator,sizeof(ph7_value *));` |
-|   935187 | 2776 | `	SySetInit(&pOut->sChunk,&pVm->sAllocator,sizeof(ph7_aux_data));` |
+|   935395 | 2773 | `	pOut->pFunc = pFunc;` |
+|   935395 | 2774 | `	pOut->pVm   = pVm;` |
+|   935395 | 2775 | `	SySetInit(&pOut->sVar,&pVm->sAllocator,sizeof(ph7_value *));` |
+|   935395 | 2776 | `	SySetInit(&pOut->sChunk,&pVm->sAllocator,sizeof(ph7_aux_data));` |
 |        - | 2777 | `	/* Assume a null return value */` |
-|   935187 | 2778 | `	MemObjSetType(pRet,MEMOBJ_NULL);` |
-|   935187 | 2779 | `	pOut->pRet = pRet;` |
-|   935187 | 2780 | `	pOut->iFlags = iFlags;` |
-|   935187 | 2781 | `	pOut->pArgMap = 0; /* Set by the OP_CALL dispatcher for named-arg-aware builtins */` |
-|   935187 | 2782 | `	return SXRET_OK;` |
+|   935395 | 2778 | `	MemObjSetType(pRet,MEMOBJ_NULL);` |
+|   935395 | 2779 | `	pOut->pRet = pRet;` |
+|   935395 | 2780 | `	pOut->iFlags = iFlags;` |
+|   935395 | 2781 | `	pOut->pArgMap = 0; /* Set by the OP_CALL dispatcher for named-arg-aware builtins */` |
+|   935395 | 2782 | `	return SXRET_OK;` |
 |        5 | 2783 | `}` |
 |        - | 2784 | `/*` |
 |        - | 2785 | ` * Release a foreign function call context and cleanup the mess` |
 |        - | 2786 | ` * left behind.` |
 |        - | 2787 | ` */` |
-|   935182 | 2788 | `PH7_PRIVATE void VmReleaseCallContext(ph7_context *pCtx)` |
+|   935390 | 2788 | `PH7_PRIVATE void VmReleaseCallContext(ph7_context *pCtx)` |
 |        5 | 2789 | `{` |
 |        - | 2790 | `	sxu32 n;` |
-|   935187 | 2791 | `	if( SySetUsed(&pCtx->sVar) > 0 ){` |
-|    11775 | 2792 | `		ph7_value **apObj = (ph7_value **)SySetBasePtr(&pCtx->sVar);` |
-|    68530 | 2793 | `		for( n = 0 ; n < SySetUsed(&pCtx->sVar) ; ++n ){` |
-|    56760 | 2794 | `			if( apObj[n] == 0 ){` |
+|   935395 | 2791 | `	if( SySetUsed(&pCtx->sVar) > 0 ){` |
+|    11777 | 2792 | `		ph7_value **apObj = (ph7_value **)SySetBasePtr(&pCtx->sVar);` |
+|    68534 | 2793 | `		for( n = 0 ; n < SySetUsed(&pCtx->sVar) ; ++n ){` |
+|    56762 | 2794 | `			if( apObj[n] == 0 ){` |
 |        - | 2795 | `				/* Already released */` |
 |      682 | 2796 | `				continue;` |
 |        - | 2797 | `			}` |
-|    56083 | 2798 | `			PH7_MemObjRelease(apObj[n]);` |
-|    56083 | 2799 | `			SyMemBackendPoolFree(&pCtx->pVm->sAllocator,apObj[n]);` |
-|    28044 | 2800 | `		}` |
-|    11775 | 2801 | `		SySetRelease(&pCtx->sVar);` |
-|     5885 | 2802 | `	}` |
-|   935187 | 2803 | `	if( SySetUsed(&pCtx->sChunk) > 0 ){` |
+|    56085 | 2798 | `			PH7_MemObjRelease(apObj[n]);` |
+|    56085 | 2799 | `			SyMemBackendPoolFree(&pCtx->pVm->sAllocator,apObj[n]);` |
+|    28045 | 2800 | `		}` |
+|    11777 | 2801 | `		SySetRelease(&pCtx->sVar);` |
+|     5886 | 2802 | `	}` |
+|   935395 | 2803 | `	if( SySetUsed(&pCtx->sChunk) > 0 ){` |
 |        - | 2804 | `		ph7_aux_data *aAux;` |
 |        - | 2805 | `		void *pChunk;` |
 |        - | 2806 | `		/* Automatic release of dynamically allocated chunk` |
@@ -2826,7 +2826,7 @@ Coverage: 2355/2831 lines (83.19%)
 |      124 | 2816 | `		}` |
 |      121 | 2817 | `		SySetRelease(&pCtx->sChunk);` |
 |       58 | 2818 | `	}` |
-|   935187 | 2819 | `}` |
+|   935395 | 2819 | `}` |
 |        - | 2820 | `/*` |
 |        - | 2821 | ` * Release a ph7_value allocated from the body of a foreign function.` |
 |        - | 2822 | ` * Refer to [ph7_context_release_value()] for additional information.` |
@@ -2857,52 +2857,52 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 2847 | `/*` |
 |        - | 2848 | ` * Pop and release as many memory object from the operand stack.` |
 |        - | 2849 | ` */` |
-|  5779447 | 2850 | `PH7_PRIVATE void VmPopOperand(` |
+|  5795239 | 2850 | `PH7_PRIVATE void VmPopOperand(` |
 |        - | 2851 | `	ph7_value **ppTos, /* Operand stack */` |
 |        - | 2852 | `	sxi32 nPop         /* Total number of memory objects to pop */` |
 |        - | 2853 | `	)` |
 |        5 | 2854 | `{` |
-|  5779452 | 2855 | `	ph7_value *pTos = *ppTos;` |
-| 12288848 | 2856 | `	while( nPop > 0 ){` |
-|  6509401 | 2857 | `		PH7_MemObjRelease(pTos);` |
-|  6509401 | 2858 | `		pTos--;` |
-|  6509401 | 2859 | `		nPop--;` |
+|  5795244 | 2855 | `	ph7_value *pTos = *ppTos;` |
+| 12320636 | 2856 | `	while( nPop > 0 ){` |
+|  6525397 | 2857 | `		PH7_MemObjRelease(pTos);` |
+|  6525397 | 2858 | `		pTos--;` |
+|  6525397 | 2859 | `		nPop--;` |
 |        5 | 2860 | `	}` |
 |        - | 2861 | `	/* Top of the stack */` |
-|  5779452 | 2862 | `	*ppTos = pTos;` |
-|  5779452 | 2863 | `}` |
+|  5795244 | 2862 | `	*ppTos = pTos;` |
+|  5795244 | 2863 | `}` |
 |        - | 2864 | `/*` |
 |        - | 2865 | ` * Reserve a memory object.` |
 |        - | 2866 | ` * Return a pointer to the raw ph7_value on success. NULL on failure.` |
 |        - | 2867 | ` */` |
-|  4383175 | 2868 | `PH7_PRIVATE ph7_value * PH7_ReserveMemObj(ph7_vm *pVm)` |
+|  4383803 | 2868 | `PH7_PRIVATE ph7_value * PH7_ReserveMemObj(ph7_vm *pVm)` |
 |        5 | 2869 | `{` |
-|  4383180 | 2870 | `	ph7_value *pObj = 0;` |
+|  4383808 | 2870 | `	ph7_value *pObj = 0;` |
 |        - | 2871 | `	VmSlot *pSlot;` |
 |        - | 2872 | `	sxu32 nIdx;` |
 |        - | 2873 | `	/* Check for a free slot */` |
-|  4383180 | 2874 | `	nIdx = SXU32_HIGH; /* cc warning */` |
-|  4383180 | 2875 | `	pSlot = (VmSlot *)SySetPop(&pVm->aFreeObj);` |
-|  4383180 | 2876 | `	if( pSlot ){` |
-|  2145590 | 2877 | `		pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pSlot->nIdx);` |
-|  2145590 | 2878 | `		nIdx = pSlot->nIdx;` |
-|  1073407 | 2879 | `	}` |
-|  4383180 | 2880 | `	if( pObj == 0 ){` |
+|  4383808 | 2874 | `	nIdx = SXU32_HIGH; /* cc warning */` |
+|  4383808 | 2875 | `	pSlot = (VmSlot *)SySetPop(&pVm->aFreeObj);` |
+|  4383808 | 2876 | `	if( pSlot ){` |
+|  2146178 | 2877 | `		pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pSlot->nIdx);` |
+|  2146178 | 2878 | `		nIdx = pSlot->nIdx;` |
+|  1073701 | 2879 | `	}` |
+|  4383808 | 2880 | `	if( pObj == 0 ){` |
 |        - | 2881 | `		/* Reserve a new memory object */` |
-|  2237595 | 2882 | `		pObj = VmReserveMemObj(&(*pVm),&nIdx);` |
-|  2237595 | 2883 | `		if( pObj == 0 ){` |
+|  2237635 | 2882 | `		pObj = VmReserveMemObj(&(*pVm),&nIdx);` |
+|  2237635 | 2883 | `		if( pObj == 0 ){` |
 |      ! 0 | 2884 | `			return 0;` |
 |        - | 2885 | `		}` |
-|  1118795 | 2886 | `	}` |
+|  1118815 | 2886 | `	}` |
 |        - | 2887 | `	/* Set a null default value */` |
-|  4383180 | 2888 | `	PH7_MemObjInit(&(*pVm),pObj);` |
-|  4383180 | 2889 | `	pObj->nIdx = nIdx;` |
-|  4383180 | 2890 | `	return pObj;` |
-|  2192207 | 2891 | `}` |
+|  4383808 | 2888 | `	PH7_MemObjInit(&(*pVm),pObj);` |
+|  4383808 | 2889 | `	pObj->nIdx = nIdx;` |
+|  4383808 | 2890 | `	return pObj;` |
+|  2192521 | 2891 | `}` |
 |        - | 2892 | `/*` |
 |        - | 2893 | ` * Insert an entry by reference (not copy) in the given hashmap.` |
 |        - | 2894 | ` */` |
-|    46246 | 2895 | `PH7_PRIVATE sxi32 VmHashmapRefInsert(` |
+|    46236 | 2895 | `PH7_PRIVATE sxi32 VmHashmapRefInsert(` |
 |        - | 2896 | `	ph7_hashmap *pMap, /* Target hashmap */` |
 |        - | 2897 | `	const char *zKey,  /* Entry key */` |
 |        - | 2898 | `	sxu32 nByte,       /* Key length */` |
@@ -2911,12 +2911,12 @@ Coverage: 2355/2831 lines (83.19%)
 |        5 | 2901 | `{` |
 |        - | 2902 | `	ph7_value sKey;` |
 |        - | 2903 | `	sxi32 rc;` |
-|    46251 | 2904 | `	PH7_MemObjInitFromString(pMap->pVm,&sKey,0);` |
-|    46251 | 2905 | `	PH7_MemObjStringAppend(&sKey,zKey,nByte);` |
+|    46241 | 2904 | `	PH7_MemObjInitFromString(pMap->pVm,&sKey,0);` |
+|    46241 | 2905 | `	PH7_MemObjStringAppend(&sKey,zKey,nByte);` |
 |        - | 2906 | `	/* Perform the insertion */` |
-|    46251 | 2907 | `	rc = PH7_HashmapInsertByRef(&(*pMap),&sKey,nRefIdx);` |
-|    46251 | 2908 | `	PH7_MemObjRelease(&sKey);` |
-|    46251 | 2909 | `	return rc;` |
+|    46241 | 2907 | `	rc = PH7_HashmapInsertByRef(&(*pMap),&sKey,nRefIdx);` |
+|    46241 | 2908 | `	PH7_MemObjRelease(&sKey);` |
+|    46241 | 2909 | `	return rc;` |
 |        5 | 2910 | `}` |
 |        - | 2911 | `/*` |
 |        - | 2912 | `` * The write side of php 8.1's $GLOBALS semantics: `$GLOBALS['x'] = $v` (or`` |
@@ -3030,24 +3030,24 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 3020 | ` * Return a pointer to the variable value on success.` |
 |        - | 3021 | ` * NULL otherwise (non-existent variable/Out-of-memory,...).` |
 |        - | 3022 | ` */` |
-|  5860783 | 3023 | `PH7_PRIVATE ph7_value * VmExtractMemObj(` |
+|  5882241 | 3023 | `PH7_PRIVATE ph7_value * VmExtractMemObj(` |
 |        - | 3024 | `	ph7_vm *pVm,           /* Target VM */` |
 |        - | 3025 | `	const SyString *pName, /* Variable name */` |
 |        - | 3026 | `	int bDup,              /* True to duplicate variable name */` |
 |        - | 3027 | `	int bCreate            /* True to create the variable if non-existent */` |
 |        - | 3028 | `	)` |
 |        5 | 3029 | `{` |
-|  5860788 | 3030 | `	int bNullify = FALSE;` |
+|  5882246 | 3030 | `	int bNullify = FALSE;` |
 |        - | 3031 | `	SyHashEntry *pEntry;` |
 |        - | 3032 | `	VmFrame *pFrame;` |
 |        - | 3033 | `	ph7_value *pObj;` |
 |        - | 3034 | `	sxu32 nIdx;` |
 |        - | 3035 | `	sxi32 rc;` |
 |        - | 3036 | `	/* Point to the top active frame */` |
-|  5860788 | 3037 | `	pFrame = pVm->pFrame;` |
-|  5860788 | 3038 | `	pFrame = VmSkipExceptionFrames(pFrame);` |
+|  5882246 | 3037 | `	pFrame = pVm->pFrame;` |
+|  5882246 | 3038 | `	pFrame = VmSkipExceptionFrames(pFrame);` |
 |        - | 3039 | `	/* Perform the lookup */` |
-|  5860788 | 3040 | `	if( pName == 0 \|\| pName->nByte < 1 ){` |
+|  5882246 | 3040 | `	if( pName == 0 \|\| pName->nByte < 1 ){` |
 |        - | 3041 | `		static const SyString sAnnon = { " " , sizeof(char) };` |
 |      ! 0 | 3042 | `		pName = &sAnnon;` |
 |        - | 3043 | `		/* Always nullify the object */` |
@@ -3055,73 +3055,73 @@ Coverage: 2355/2831 lines (83.19%)
 |      ! 0 | 3045 | `		bDup = FALSE;` |
 |      ! 0 | 3046 | `	}` |
 |        - | 3047 | `	/* Check the superglobals table first */` |
-|  5860788 | 3048 | `	pEntry = SyHashGet(&pVm->hSuper,(const void *)pName->zString,pName->nByte);` |
-|  5860788 | 3049 | `	if( pEntry == 0 ){` |
+|  5882246 | 3048 | `	pEntry = SyHashGet(&pVm->hSuper,(const void *)pName->zString,pName->nByte);` |
+|  5882246 | 3049 | `	if( pEntry == 0 ){` |
 |        - | 3050 | `		/* Query the top active frame */` |
-|  5860364 | 3051 | `		pEntry = SyHashGet(&pFrame->hVar,(const void *)pName->zString,pName->nByte);` |
-|  5860364 | 3052 | `		if( pEntry == 0 ){` |
-|   511005 | 3053 | `			char *zName = (char *)pName->zString;` |
+|  5881822 | 3051 | `		pEntry = SyHashGet(&pFrame->hVar,(const void *)pName->zString,pName->nByte);` |
+|  5881822 | 3052 | `		if( pEntry == 0 ){` |
+|   511201 | 3053 | `			char *zName = (char *)pName->zString;` |
 |        - | 3054 | `			VmSlot sLocal;` |
-|   511005 | 3055 | `			if( !bCreate ){` |
+|   511201 | 3055 | `			if( !bCreate ){` |
 |        - | 3056 | `				/* Do not create the variable,return NULL instead */` |
-|     1161 | 3057 | `				return 0;` |
+|     1181 | 3057 | `				return 0;` |
 |        - | 3058 | `			}` |
 |        - | 3059 | `			/* No such variable,automatically create a new one and install` |
 |        - | 3060 | `			 * it in the current frame.` |
 |        - | 3061 | `			 */` |
-|   509849 | 3062 | `			pObj = PH7_ReserveMemObj(&(*pVm));` |
-|   509849 | 3063 | `			if( pObj == 0 ){` |
+|   510025 | 3062 | `			pObj = PH7_ReserveMemObj(&(*pVm));` |
+|   510025 | 3063 | `			if( pObj == 0 ){` |
 |      ! 0 | 3064 | `				return 0;` |
 |        - | 3065 | `			}` |
-|   509849 | 3066 | `			nIdx = pObj->nIdx;` |
-|   509849 | 3067 | `			if( bDup ){` |
+|   510025 | 3066 | `			nIdx = pObj->nIdx;` |
+|   510025 | 3067 | `			if( bDup ){` |
 |        - | 3068 | `				/* Duplicate name */` |
-|      524 | 3069 | `				zName = SyMemBackendStrDup(&pVm->sAllocator,pName->zString,pName->nByte);` |
-|      524 | 3070 | `				if( zName == 0 ){` |
+|      532 | 3069 | `				zName = SyMemBackendStrDup(&pVm->sAllocator,pName->zString,pName->nByte);` |
+|      532 | 3070 | `				if( zName == 0 ){` |
 |      ! 0 | 3071 | `					return 0;` |
 |        - | 3072 | `				}` |
-|      260 | 3073 | `			}` |
+|      264 | 3073 | `			}` |
 |        - | 3074 | `			/* Link to the top active VM frame */` |
-|   509849 | 3075 | `			rc = SyHashInsert(&pFrame->hVar,zName,pName->nByte,SX_INT_TO_PTR(nIdx));` |
-|   509849 | 3076 | `			if( rc != SXRET_OK ){` |
+|   510025 | 3075 | `			rc = SyHashInsert(&pFrame->hVar,zName,pName->nByte,SX_INT_TO_PTR(nIdx));` |
+|   510025 | 3076 | `			if( rc != SXRET_OK ){` |
 |        - | 3077 | `				/* Return the slot to the free pool */` |
 |      ! 0 | 3078 | `				sLocal.nIdx = nIdx;` |
 |      ! 0 | 3079 | `				sLocal.pUserData = 0;` |
 |      ! 0 | 3080 | `				SySetPut(&pVm->aFreeObj,(const void *)&sLocal);` |
 |      ! 0 | 3081 | `				return 0;` |
 |        - | 3082 | `			}` |
-|   509849 | 3083 | `			if( pFrame->pParent != 0 ){` |
+|   510025 | 3083 | `			if( pFrame->pParent != 0 ){` |
 |        - | 3084 | `				/* Local variable */` |
-|   501307 | 3085 | `				sLocal.nIdx = nIdx;` |
-|   501307 | 3086 | `				SySetPut(&pFrame->sLocal,(const void *)&sLocal);` |
-|   251271 | 3087 | `			}else{` |
+|   501471 | 3085 | `				sLocal.nIdx = nIdx;` |
+|   501471 | 3086 | `				SySetPut(&pFrame->sLocal,(const void *)&sLocal);` |
+|   251353 | 3087 | `			}else{` |
 |        - | 3088 | `				/* Register in the $GLOBALS array */` |
-|     8547 | 3089 | `				VmHashmapRefInsert(pVm->pGlobal,pName->zString,pName->nByte,nIdx);` |
+|     8559 | 3089 | `				VmHashmapRefInsert(pVm->pGlobal,pName->zString,pName->nByte,nIdx);` |
 |        - | 3090 | `			}` |
 |        - | 3091 | `			/* Install in the reference table */` |
-|   509849 | 3092 | `			PH7_VmRefObjInstall(&(*pVm),nIdx,SyHashLastEntry(&pFrame->hVar),0,0);` |
+|   510025 | 3092 | `			PH7_VmRefObjInstall(&(*pVm),nIdx,SyHashLastEntry(&pFrame->hVar),0,0);` |
 |        - | 3093 | `			/* Save object index */` |
-|   509849 | 3094 | `			pObj->nIdx = nIdx;` |
-|   255542 | 3095 | `		}else{` |
+|   510025 | 3094 | `			pObj->nIdx = nIdx;` |
+|   255630 | 3095 | `		}else{` |
 |        - | 3096 | `			/* Extract variable contents */` |
-|  5349364 | 3097 | `			nIdx = (sxu32)SX_PTR_TO_INT(pEntry->pUserData);` |
-|  5349364 | 3098 | `			pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);` |
-|  5349364 | 3099 | `			if( bNullify && pObj ){` |
+|  5370626 | 3097 | `			nIdx = (sxu32)SX_PTR_TO_INT(pEntry->pUserData);` |
+|  5370626 | 3098 | `			pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);` |
+|  5370626 | 3099 | `			if( bNullify && pObj ){` |
 |      ! 0 | 3100 | `				PH7_MemObjRelease(pObj);` |
 |      ! 0 | 3101 | `			}` |
 |        - | 3102 | `		}` |
-|  2932280 | 3103 | `	}else{` |
+|  2942999 | 3103 | `	}else{` |
 |        - | 3104 | `		/* Superglobal */` |
 |      429 | 3105 | `		nIdx = (sxu32)SX_PTR_TO_INT(pEntry->pUserData);` |
 |      429 | 3106 | `		pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);` |
 |        - | 3107 | `	}` |
-|  5859632 | 3108 | `	return pObj;` |
-|  2933070 | 3109 | `}` |
+|  5881070 | 3108 | `	return pObj;` |
+|  2943799 | 3109 | `}` |
 |        - | 3110 | `/*` |
 |        - | 3111 | ` * Extract a superglobal variable such as $_GET,$_POST,$_HEADERS,....` |
 |        - | 3112 | ` * Return a pointer to the variable value on success.NULL otherwise.` |
 |        - | 3113 | ` */` |
-|    31044 | 3114 | `PH7_PRIVATE ph7_value * PH7_VmExtractSuper(` |
+|    31026 | 3114 | `PH7_PRIVATE ph7_value * PH7_VmExtractSuper(` |
 |        - | 3115 | `	ph7_vm *pVm,       /* Target VM */` |
 |        - | 3116 | `	const char *zName, /* Superglobal name: NOT NULL TERMINATED */` |
 |        - | 3117 | `	sxu32 nByte        /* zName length */` |
@@ -3131,22 +3131,22 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 3121 | `	ph7_value *pValue;` |
 |        - | 3122 | `	sxu32 nIdx;` |
 |        - | 3123 | `	/* Query the superglobal table */` |
-|    31049 | 3124 | `	pEntry = SyHashGet(&pVm->hSuper,(const void *)zName,nByte);` |
-|    31049 | 3125 | `	if( pEntry == 0 ){` |
+|    31031 | 3124 | `	pEntry = SyHashGet(&pVm->hSuper,(const void *)zName,nByte);` |
+|    31031 | 3125 | `	if( pEntry == 0 ){` |
 |        - | 3126 | `		/* No such entry */` |
 |      ! 0 | 3127 | `		return 0;` |
 |        - | 3128 | `	}` |
 |        - | 3129 | `	/* Extract the superglobal index in the global object pool */` |
-|    31049 | 3130 | `	nIdx = SX_PTR_TO_INT(pEntry->pUserData);` |
+|    31031 | 3130 | `	nIdx = SX_PTR_TO_INT(pEntry->pUserData);` |
 |        - | 3131 | `	/* Extract the variable value  */` |
-|    31049 | 3132 | `	pValue = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);` |
-|    31049 | 3133 | `	return pValue;` |
-|    15527 | 3134 | `}` |
+|    31031 | 3132 | `	pValue = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);` |
+|    31031 | 3133 | `	return pValue;` |
+|    15518 | 3134 | `}` |
 |        - | 3135 | `/*` |
 |        - | 3136 | ` * Perform a raw hashmap insertion.` |
 |        - | 3137 | ` * Refer to the [PH7_VmConfigure()] implementation for additional information.` |
 |        - | 3138 | ` */` |
-|    24322 | 3139 | `PH7_PRIVATE sxi32 PH7_VmHashmapInsert(` |
+|    24308 | 3139 | `PH7_PRIVATE sxi32 PH7_VmHashmapInsert(` |
 |        - | 3140 | `	ph7_hashmap *pMap,  /* Target hashmap  */` |
 |        - | 3141 | `	const char *zKey,   /* Entry key */` |
 |        - | 3142 | `	int nKeylen,        /* zKey length*/` |
@@ -3156,29 +3156,29 @@ Coverage: 2355/2831 lines (83.19%)
 |        5 | 3146 | `{` |
 |        - | 3147 | `	ph7_value sKey,sValue;` |
 |        - | 3148 | `	sxi32 rc;` |
-|    24327 | 3149 | `	PH7_MemObjInitFromString(pMap->pVm,&sKey,0);` |
-|    24327 | 3150 | `	PH7_MemObjInitFromString(pMap->pVm,&sValue,0);` |
-|    24327 | 3151 | `	if( zKey ){` |
-|    20917 | 3152 | `		if( nKeylen < 0 ){` |
-|    20813 | 3153 | `			nKeylen = (int)SyStrlen(zKey);` |
-|    10404 | 3154 | `		}` |
-|    20917 | 3155 | `		PH7_MemObjStringAppend(&sKey,zKey,(sxu32)nKeylen);` |
-|    10456 | 3156 | `	}` |
-|    24327 | 3157 | `	if( zData ){` |
-|    24327 | 3158 | `		if( nLen < 0 ){` |
+|    24313 | 3149 | `	PH7_MemObjInitFromString(pMap->pVm,&sKey,0);` |
+|    24313 | 3150 | `	PH7_MemObjInitFromString(pMap->pVm,&sValue,0);` |
+|    24313 | 3151 | `	if( zKey ){` |
+|    20905 | 3152 | `		if( nKeylen < 0 ){` |
+|    20801 | 3153 | `			nKeylen = (int)SyStrlen(zKey);` |
+|    10398 | 3154 | `		}` |
+|    20905 | 3155 | `		PH7_MemObjStringAppend(&sKey,zKey,(sxu32)nKeylen);` |
+|    10450 | 3156 | `	}` |
+|    24313 | 3157 | `	if( zData ){` |
+|    24313 | 3158 | `		if( nLen < 0 ){` |
 |        - | 3159 | `			/* Compute length automatically */` |
-|    13803 | 3160 | `			nLen = (int)SyStrlen(zData);` |
-|     6899 | 3161 | `		}` |
-|    24327 | 3162 | `		PH7_MemObjStringAppend(&sValue,zData,(sxu32)nLen);` |
-|    12161 | 3163 | `	}` |
+|    13795 | 3160 | `			nLen = (int)SyStrlen(zData);` |
+|     6895 | 3161 | `		}` |
+|    24313 | 3162 | `		PH7_MemObjStringAppend(&sValue,zData,(sxu32)nLen);` |
+|    12154 | 3163 | `	}` |
 |        - | 3164 | `	/* Perform the insertion. A NULL zKey means "append": pass a NULL key, NOT the empty` |
 |        - | 3165 | `	 * string sKey — an empty string is a real key now ($a[""]), it no longer collapses` |
 |        - | 3166 | `	 * into an automatic index. $argv is built through here, so getting this wrong files` |
 |        - | 3167 | `	 * every argument under "". */` |
-|    24327 | 3168 | `	rc = PH7_HashmapInsert(&(*pMap),zKey ? &sKey : 0,&sValue);` |
-|    24327 | 3169 | `	PH7_MemObjRelease(&sKey);` |
-|    24327 | 3170 | `	PH7_MemObjRelease(&sValue);` |
-|    24327 | 3171 | `	return rc;` |
+|    24313 | 3168 | `	rc = PH7_HashmapInsert(&(*pMap),zKey ? &sKey : 0,&sValue);` |
+|    24313 | 3169 | `	PH7_MemObjRelease(&sKey);` |
+|    24313 | 3170 | `	PH7_MemObjRelease(&sValue);` |
+|    24313 | 3171 | `	return rc;` |
 |        5 | 3172 | `}` |
 |        - | 3173 | `/*` |
 |        - | 3174 | ` * Configure a working virtual machine instance.` |
@@ -3193,17 +3193,17 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 3183 | ` * PH7_VM_CONFIG_HTTP_REQUEST and PH7_VM_CONFIG_ARGV_ENTRY.` |
 |        - | 3184 | ` * Refer to the official documentation for the list of allowed verbs.` |
 |        - | 3185 | ` */` |
-|    89134 | 3186 | `PH7_PRIVATE sxi32 PH7_VmConfigure(` |
+|    89082 | 3186 | `PH7_PRIVATE sxi32 PH7_VmConfigure(` |
 |        - | 3187 | `	ph7_vm *pVm, /* Target VM */` |
 |        - | 3188 | `	sxi32 nOp,   /* Configuration verb */` |
 |        - | 3189 | `	va_list ap   /* Subsequent option arguments */` |
 |        - | 3190 | `	)` |
 |        5 | 3191 | `{` |
-|    89139 | 3192 | `	sxi32 rc = SXRET_OK;` |
-|    89139 | 3193 | `	switch(nOp){` |
-|     1689 | 3194 | `	case PH7_VM_CONFIG_OUTPUT: {` |
-|     3383 | 3195 | `		ProcConsumer xConsumer = va_arg(ap,ProcConsumer);` |
-|     3383 | 3196 | `		void *pUserData = va_arg(ap,void *);` |
+|    89087 | 3192 | `	sxi32 rc = SXRET_OK;` |
+|    89087 | 3193 | `	switch(nOp){` |
+|     1688 | 3194 | `	case PH7_VM_CONFIG_OUTPUT: {` |
+|     3381 | 3195 | `		ProcConsumer xConsumer = va_arg(ap,ProcConsumer);` |
+|     3381 | 3196 | `		void *pUserData = va_arg(ap,void *);` |
 |        - | 3197 | `		/* VM output consumer callback */` |
 |        - | 3198 | `#ifdef UNTRUST` |
 |        - | 3199 | `		if( xConsumer == 0 ){` |
@@ -3212,40 +3212,40 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 3202 | `		}` |
 |        - | 3203 | `#endif` |
 |        - | 3204 | `		/* Install the output consumer */` |
-|     3383 | 3205 | `		pVm->sVmConsumer.xConsumer = xConsumer;` |
-|     3383 | 3206 | `		pVm->sVmConsumer.pUserData = pUserData;` |
-|     3383 | 3207 | `		break;` |
+|     3381 | 3205 | `		pVm->sVmConsumer.xConsumer = xConsumer;` |
+|     3381 | 3206 | `		pVm->sVmConsumer.pUserData = pUserData;` |
+|     3381 | 3207 | `		break;` |
 |        - | 3208 | `							   }` |
-|     1702 | 3209 | `	case PH7_VM_CONFIG_IMPORT_PATH: {` |
+|     1701 | 3209 | `	case PH7_VM_CONFIG_IMPORT_PATH: {` |
 |        - | 3210 | `		/* Import path */` |
 |        - | 3211 | `		  const char *zPath;` |
 |        - | 3212 | `		  SyString sPath;` |
-|     3409 | 3213 | `		  zPath = va_arg(ap,const char *);` |
+|     3407 | 3213 | `		  zPath = va_arg(ap,const char *);` |
 |        - | 3214 | `#if defined(UNTRUST)` |
 |        - | 3215 | `		  if( zPath == 0 ){` |
 |        - | 3216 | `			  rc = SXERR_EMPTY;` |
 |        - | 3217 | `			  break;` |
 |        - | 3218 | `		  }` |
 |        - | 3219 | `#endif` |
-|     3409 | 3220 | `		  SyStringInitFromBuf(&sPath,zPath,SyStrlen(zPath));` |
+|     3407 | 3220 | `		  SyStringInitFromBuf(&sPath,zPath,SyStrlen(zPath));` |
 |        - | 3221 | `		  /* Remove trailing slashes and backslashes */` |
 |        - | 3222 | `#ifdef __WINNT__` |
 |        5 | 3223 | `		  SyStringTrimTrailingChar(&sPath,'\\');` |
 |        - | 3224 | `#endif` |
-|     6813 | 3225 | `		  SyStringTrimTrailingChar(&sPath,'/');` |
+|     6809 | 3225 | `		  SyStringTrimTrailingChar(&sPath,'/');` |
 |        - | 3226 | `		  /* Remove leading and trailing white spaces */` |
-|     3409 | 3227 | `		  SyStringFullTrim(&sPath);` |
-|     3409 | 3228 | `		  if( sPath.nByte > 0 ){` |
+|     3407 | 3227 | `		  SyStringFullTrim(&sPath);` |
+|     3407 | 3228 | `		  if( sPath.nByte > 0 ){` |
 |        - | 3229 | `			  /* Store the path in the corresponding conatiner */` |
-|     3409 | 3230 | `			  rc = SySetPut(&pVm->aPaths,(const void *)&sPath);` |
-|     1702 | 3231 | `		  }` |
-|     3409 | 3232 | `		  break;` |
+|     3407 | 3230 | `			  rc = SySetPut(&pVm->aPaths,(const void *)&sPath);` |
+|     1701 | 3231 | `		  }` |
+|     3407 | 3232 | `		  break;` |
 |        - | 3233 | `									 }` |
-|     1705 | 3234 | `	case PH7_VM_CONFIG_ERR_REPORT:` |
+|     1704 | 3234 | `	case PH7_VM_CONFIG_ERR_REPORT:` |
 |        - | 3235 | `		/* Run-Time Error report */` |
-|     3415 | 3236 | `		pVm->bErrReport = 1;` |
-|     3415 | 3237 | `		pVm->iErrMask = 30719; /* E_ALL (php 8: E_STRICT/2048 is no longer part of E_ALL) */` |
-|     3415 | 3238 | `		break;` |
+|     3413 | 3236 | `		pVm->bErrReport = 1;` |
+|     3413 | 3237 | `		pVm->iErrMask = 30719; /* E_ALL (php 8: E_STRICT/2048 is no longer part of E_ALL) */` |
+|     3413 | 3238 | `		break;` |
 |        2 | 3239 | `	case PH7_VM_CONFIG_RECURSION_DEPTH:{` |
 |        - | 3240 | `		/* PHP call-depth cap (OP_CALL frames). The host default is UNBOUNDED` |
 |        - | 3241 | `		 * (nMaxDepth == 0) — PHP frames are heap-bound since the iterative` |
@@ -3287,11 +3287,11 @@ Coverage: 2355/2831 lines (83.19%)
 |      ! 0 | 3277 | `		break;` |
 |        - | 3278 | `							   }` |
 |        - | 3279 |  |
-|    18759 | 3280 | `	case PH7_VM_CONFIG_CREATE_SUPER:` |
+|    18748 | 3280 | `	case PH7_VM_CONFIG_CREATE_SUPER:` |
 |        - | 3281 | `	case PH7_VM_CONFIG_CREATE_VAR: {` |
 |        - | 3282 | `		/* Create a new superglobal/global variable */` |
-|    37523 | 3283 | `		const char *zName = va_arg(ap,const char *);` |
-|    37523 | 3284 | `		ph7_value *pValue = va_arg(ap,ph7_value *);` |
+|    37501 | 3283 | `		const char *zName = va_arg(ap,const char *);` |
+|    37501 | 3284 | `		ph7_value *pValue = va_arg(ap,ph7_value *);` |
 |        - | 3285 | `		SyHashEntry *pEntry;` |
 |        - | 3286 | `		ph7_value *pObj;` |
 |        - | 3287 | `		sxu32 nByte;` |
@@ -3302,15 +3302,15 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 3292 | `			break;` |
 |        - | 3293 | `		}` |
 |        - | 3294 | `#endif` |
-|    37523 | 3295 | `		nByte = SyStrlen(zName);` |
-|    37523 | 3296 | `		if( nOp == PH7_VM_CONFIG_CREATE_SUPER ){` |
+|    37501 | 3295 | `		nByte = SyStrlen(zName);` |
+|    37501 | 3296 | `		if( nOp == PH7_VM_CONFIG_CREATE_SUPER ){` |
 |        - | 3297 | `			/* Check if the superglobal is already installed */` |
-|    34145 | 3298 | `			pEntry = SyHashGet(&pVm->hSuper,(const void *)zName,nByte);` |
-|    17075 | 3299 | `		}else{` |
+|    34125 | 3298 | `			pEntry = SyHashGet(&pVm->hSuper,(const void *)zName,nByte);` |
+|    17065 | 3299 | `		}else{` |
 |        - | 3300 | `			/* Query the top active VM frame */` |
-|     3383 | 3301 | `			pEntry = SyHashGet(&pVm->pFrame->hVar,(const void *)zName,nByte);` |
+|     3381 | 3301 | `			pEntry = SyHashGet(&pVm->pFrame->hVar,(const void *)zName,nByte);` |
 |        - | 3302 | `		}` |
-|    37523 | 3303 | `		if( pEntry ){` |
+|    37501 | 3303 | `		if( pEntry ){` |
 |        - | 3304 | `			/* Variable already installed */` |
 |      ! 0 | 3305 | `			nIdx = SX_PTR_TO_INT(pEntry->pUserData);` |
 |        - | 3306 | `			/* Extract contents */` |
@@ -3321,115 +3321,115 @@ Coverage: 2355/2831 lines (83.19%)
 |      ! 0 | 3311 | `			}` |
 |      ! 0 | 3312 | `		}else{` |
 |        - | 3313 | `			/* Install a new variable */` |
-|    37523 | 3314 | `			pObj = PH7_ReserveMemObj(&(*pVm));` |
-|    37523 | 3315 | `			if( pObj == 0 ){` |
+|    37501 | 3314 | `			pObj = PH7_ReserveMemObj(&(*pVm));` |
+|    37501 | 3315 | `			if( pObj == 0 ){` |
 |      ! 0 | 3316 | `				rc = SXERR_MEM;` |
 |      ! 0 | 3317 | `				break;` |
 |        - | 3318 | `			}` |
-|    37523 | 3319 | `			nIdx = pObj->nIdx;` |
+|    37501 | 3319 | `			nIdx = pObj->nIdx;` |
 |        - | 3320 | `			/* Copy value */` |
-|    37523 | 3321 | `			PH7_MemObjStore(pValue,pObj);` |
-|    37523 | 3322 | `			if( nOp == PH7_VM_CONFIG_CREATE_SUPER ){` |
+|    37501 | 3321 | `			PH7_MemObjStore(pValue,pObj);` |
+|    37501 | 3322 | `			if( nOp == PH7_VM_CONFIG_CREATE_SUPER ){` |
 |        - | 3323 | `				/* Install the superglobal */` |
-|    34145 | 3324 | `				rc = SyHashInsert(&pVm->hSuper,(const void *)zName,nByte,SX_INT_TO_PTR(nIdx));` |
-|    17075 | 3325 | `			}else{` |
+|    34125 | 3324 | `				rc = SyHashInsert(&pVm->hSuper,(const void *)zName,nByte,SX_INT_TO_PTR(nIdx));` |
+|    17065 | 3325 | `			}else{` |
 |        - | 3326 | `				/* Install in the current frame */` |
-|     3383 | 3327 | `				rc = SyHashInsert(&pVm->pFrame->hVar,(const void *)zName,nByte,SX_INT_TO_PTR(nIdx));` |
+|     3381 | 3327 | `				rc = SyHashInsert(&pVm->pFrame->hVar,(const void *)zName,nByte,SX_INT_TO_PTR(nIdx));` |
 |        - | 3328 | `			}` |
-|    37523 | 3329 | `			if( rc == SXRET_OK ){` |
+|    37501 | 3329 | `			if( rc == SXRET_OK ){` |
 |        - | 3330 | `				SyHashEntry *pRef;` |
-|    37523 | 3331 | `				if( nOp == PH7_VM_CONFIG_CREATE_SUPER ){` |
-|    34145 | 3332 | `					pRef = SyHashLastEntry(&pVm->hSuper);` |
-|    17075 | 3333 | `				}else{` |
-|     3383 | 3334 | `					pRef = SyHashLastEntry(&pVm->pFrame->hVar);` |
+|    37501 | 3331 | `				if( nOp == PH7_VM_CONFIG_CREATE_SUPER ){` |
+|    34125 | 3332 | `					pRef = SyHashLastEntry(&pVm->hSuper);` |
+|    17065 | 3333 | `				}else{` |
+|     3381 | 3334 | `					pRef = SyHashLastEntry(&pVm->pFrame->hVar);` |
 |        - | 3335 | `				}` |
 |        - | 3336 | `				/* Install in the reference table */` |
-|    37523 | 3337 | `				PH7_VmRefObjInstall(&(*pVm),nIdx,pRef,0,0);` |
-|    37523 | 3338 | `				if( nOp == PH7_VM_CONFIG_CREATE_SUPER \|\| pVm->pFrame->pParent == 0){` |
+|    37501 | 3337 | `				PH7_VmRefObjInstall(&(*pVm),nIdx,pRef,0,0);` |
+|    37501 | 3338 | `				if( nOp == PH7_VM_CONFIG_CREATE_SUPER \|\| pVm->pFrame->pParent == 0){` |
 |        - | 3339 | `					/* Register in the $GLOBALS array */` |
-|    37523 | 3340 | `					VmHashmapRefInsert(pVm->pGlobal,zName,nByte,nIdx);` |
-|    18759 | 3341 | `				}` |
-|    18759 | 3342 | `			}` |
+|    37501 | 3340 | `					VmHashmapRefInsert(pVm->pGlobal,zName,nByte,nIdx);` |
+|    18748 | 3341 | `				}` |
+|    18748 | 3342 | `			}` |
 |        - | 3343 | `		}` |
-|    37523 | 3344 | `		break;` |
+|    37501 | 3344 | `		break;` |
 |        - | 3345 | `									}` |
-|    10404 | 3346 | `	case PH7_VM_CONFIG_SERVER_ATTR:` |
+|    10398 | 3346 | `	case PH7_VM_CONFIG_SERVER_ATTR:` |
 |        - | 3347 | `	case PH7_VM_CONFIG_ENV_ATTR:` |
 |        - | 3348 | `	case PH7_VM_CONFIG_SESSION_ATTR:` |
 |        - | 3349 | `	case PH7_VM_CONFIG_POST_ATTR:` |
 |        - | 3350 | `	case PH7_VM_CONFIG_GET_ATTR:` |
 |        - | 3351 | `	case PH7_VM_CONFIG_COOKIE_ATTR:` |
 |        - | 3352 | `	case PH7_VM_CONFIG_HEADER_ATTR: {` |
-|    20813 | 3353 | `		const char *zKey   = va_arg(ap,const char *);` |
-|    20813 | 3354 | `		const char *zValue = va_arg(ap,const char *);` |
-|    20813 | 3355 | `		int nLen = va_arg(ap,int);` |
+|    20801 | 3353 | `		const char *zKey   = va_arg(ap,const char *);` |
+|    20801 | 3354 | `		const char *zValue = va_arg(ap,const char *);` |
+|    20801 | 3355 | `		int nLen = va_arg(ap,int);` |
 |        - | 3356 | `		ph7_hashmap *pMap;` |
 |        - | 3357 | `		ph7_value *pValue;` |
-|    20813 | 3358 | `		if( nOp == PH7_VM_CONFIG_ENV_ATTR ){` |
+|    20801 | 3358 | `		if( nOp == PH7_VM_CONFIG_ENV_ATTR ){` |
 |        - | 3359 | `			/* Extract the $_ENV superglobal */` |
 |        3 | 3360 | `			pValue = PH7_VmExtractSuper(&(*pVm),"_ENV",sizeof("_ENV")-1);` |
-|    20812 | 3361 | `		}else if(nOp == PH7_VM_CONFIG_POST_ATTR ){` |
+|    20800 | 3361 | `		}else if(nOp == PH7_VM_CONFIG_POST_ATTR ){` |
 |        - | 3362 | `			/* Extract the $_POST superglobal */` |
 |      ! 0 | 3363 | `			pValue = PH7_VmExtractSuper(&(*pVm),"_POST",sizeof("_POST")-1);` |
-|    20811 | 3364 | `		}else if(nOp == PH7_VM_CONFIG_GET_ATTR ){` |
+|    20799 | 3364 | `		}else if(nOp == PH7_VM_CONFIG_GET_ATTR ){` |
 |        - | 3365 | `			/* Extract the $_GET superglobal */` |
 |      ! 0 | 3366 | `			pValue = PH7_VmExtractSuper(&(*pVm),"_GET",sizeof("_GET")-1);` |
-|    20811 | 3367 | `		}else if(nOp == PH7_VM_CONFIG_COOKIE_ATTR ){` |
+|    20799 | 3367 | `		}else if(nOp == PH7_VM_CONFIG_COOKIE_ATTR ){` |
 |        - | 3368 | `			/* Extract the $_COOKIE superglobal */` |
 |      ! 0 | 3369 | `			pValue = PH7_VmExtractSuper(&(*pVm),"_COOKIE",sizeof("_COOKIE")-1);` |
-|    20811 | 3370 | `		}else if(nOp == PH7_VM_CONFIG_SESSION_ATTR ){` |
+|    20799 | 3370 | `		}else if(nOp == PH7_VM_CONFIG_SESSION_ATTR ){` |
 |        - | 3371 | `			/* Extract the $_SESSION superglobal */` |
 |      ! 0 | 3372 | `			pValue = PH7_VmExtractSuper(&(*pVm),"_SESSION",sizeof("_SESSION")-1);` |
-|    20811 | 3373 | `		}else if( nOp == PH7_VM_CONFIG_HEADER_ATTR ){` |
+|    20799 | 3373 | `		}else if( nOp == PH7_VM_CONFIG_HEADER_ATTR ){` |
 |        - | 3374 | `			/* Extract the $_HEADER superglobale */` |
 |      ! 0 | 3375 | `			pValue = PH7_VmExtractSuper(&(*pVm),"_HEADER",sizeof("_HEADER")-1);` |
 |      ! 0 | 3376 | `		}else{` |
 |        - | 3377 | `			/* Extract the $_SERVER superglobal */` |
-|    20811 | 3378 | `			pValue = PH7_VmExtractSuper(&(*pVm),"_SERVER",sizeof("_SERVER")-1);` |
+|    20799 | 3378 | `			pValue = PH7_VmExtractSuper(&(*pVm),"_SERVER",sizeof("_SERVER")-1);` |
 |        - | 3379 | `		}` |
-|    20813 | 3380 | `		if( pValue == 0 \|\| (pValue->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
+|    20801 | 3380 | `		if( pValue == 0 \|\| (pValue->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
 |        - | 3381 | `			/* No such entry */` |
 |      ! 0 | 3382 | `			rc = SXERR_NOTFOUND;` |
 |      ! 0 | 3383 | `			break;` |
 |        - | 3384 | `		}` |
 |        - | 3385 | `		/* Point to the hashmap */` |
-|    20813 | 3386 | `		pMap = (ph7_hashmap *)pValue->x.pOther;` |
+|    20801 | 3386 | `		pMap = (ph7_hashmap *)pValue->x.pOther;` |
 |        - | 3387 | `		/* Perform the insertion */` |
-|    20813 | 3388 | `		rc = PH7_VmHashmapInsert(pMap,zKey,-1,zValue,nLen);` |
-|    20813 | 3389 | `		break;` |
+|    20801 | 3388 | `		rc = PH7_VmHashmapInsert(pMap,zKey,-1,zValue,nLen);` |
+|    20801 | 3389 | `		break;` |
 |        - | 3390 | `								   }` |
-|     1706 | 3391 | `	case PH7_VM_CONFIG_ARGV_ENTRY:{` |
+|     1705 | 3391 | `	case PH7_VM_CONFIG_ARGV_ENTRY:{` |
 |        - | 3392 | `		/* Script arguments */` |
-|     3417 | 3393 | `		const char *zValue = va_arg(ap,const char *);` |
+|     3415 | 3393 | `		const char *zValue = va_arg(ap,const char *);` |
 |        - | 3394 | `		ph7_hashmap *pMap;` |
 |        - | 3395 | `		ph7_value *pValue;` |
 |        - | 3396 | `		sxu32 n;` |
-|     3417 | 3397 | `		if( SX_EMPTY_STR(zValue) ){` |
+|     3415 | 3397 | `		if( SX_EMPTY_STR(zValue) ){` |
 |        2 | 3398 | `			rc = SXERR_EMPTY;` |
 |        2 | 3399 | `			break;` |
 |        - | 3400 | `		}` |
 |        - | 3401 | `		/* Extract the $argv array */` |
-|     3415 | 3402 | `		pValue = PH7_VmExtractSuper(&(*pVm),"argv",sizeof("argv")-1);` |
-|     3415 | 3403 | `		if( pValue == 0 \|\| (pValue->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
+|     3413 | 3402 | `		pValue = PH7_VmExtractSuper(&(*pVm),"argv",sizeof("argv")-1);` |
+|     3413 | 3403 | `		if( pValue == 0 \|\| (pValue->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
 |        - | 3404 | `			/* No such entry */` |
 |      ! 0 | 3405 | `			rc = SXERR_NOTFOUND;` |
 |      ! 0 | 3406 | `			break;` |
 |        - | 3407 | `		}` |
 |        - | 3408 | `		/* Point to the hashmap */` |
-|     3415 | 3409 | `		pMap = (ph7_hashmap *)pValue->x.pOther;` |
+|     3413 | 3409 | `		pMap = (ph7_hashmap *)pValue->x.pOther;` |
 |        - | 3410 | `		/* Perform the insertion */` |
-|     3415 | 3411 | `		n = (sxu32)SyStrlen(zValue);` |
-|     3415 | 3412 | `		rc = PH7_VmHashmapInsert(pMap,0,0,zValue,(int)n);` |
-|     3415 | 3413 | `		if( rc == SXRET_OK ){` |
-|     3415 | 3414 | `			if( pMap->nEntry > 1 ){` |
+|     3413 | 3411 | `		n = (sxu32)SyStrlen(zValue);` |
+|     3413 | 3412 | `		rc = PH7_VmHashmapInsert(pMap,0,0,zValue,(int)n);` |
+|     3413 | 3413 | `		if( rc == SXRET_OK ){` |
+|     3413 | 3414 | `			if( pMap->nEntry > 1 ){` |
 |        - | 3415 | `				/* Append space separator first */` |
 |       37 | 3416 | `				SyBlobAppend(&pVm->sArgv,(const void *)" ",sizeof(char));` |
 |       16 | 3417 | `			}` |
-|     3415 | 3418 | `			SyBlobAppend(&pVm->sArgv,(const void *)zValue,n);` |
-|     1705 | 3419 | `		}` |
-|     3415 | 3420 | `		break;` |
+|     3413 | 3418 | `			SyBlobAppend(&pVm->sArgv,(const void *)zValue,n);` |
+|     1704 | 3419 | `		}` |
+|     3413 | 3420 | `		break;` |
 |        - | 3421 | `								  }` |
-|     1689 | 3422 | `	case PH7_VM_CONFIG_SERVER_ARGV: {` |
+|     1688 | 3422 | `	case PH7_VM_CONFIG_SERVER_ARGV: {` |
 |        - | 3423 | `		/* php CLI exposes the script arguments in $_SERVER['argv'] and their` |
 |        - | 3424 | `		 * count in $_SERVER['argc'], in addition to the top-level $argv/$argc.` |
 |        - | 3425 | `		 * Mirror the already-populated $argv array into $_SERVER once, after` |
@@ -3437,37 +3437,37 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 3427 | `		ph7_value *pArgv,*pServer;` |
 |        - | 3428 | `		ph7_hashmap *pServerMap,*pArgvMap,*pDup;` |
 |        - | 3429 | `		ph7_value sArgvVal,sKey,sCount;` |
-|     3383 | 3430 | `		pArgv   = PH7_VmExtractSuper(&(*pVm),"argv",sizeof("argv")-1);` |
-|     3383 | 3431 | `		pServer = PH7_VmExtractSuper(&(*pVm),"_SERVER",sizeof("_SERVER")-1);` |
-|     3378 | 3432 | `		if( pArgv == 0 \|\| (pArgv->iFlags & MEMOBJ_HASHMAP) == 0` |
-|     3383 | 3433 | `		 \|\| pServer == 0 \|\| (pServer->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
+|     3381 | 3430 | `		pArgv   = PH7_VmExtractSuper(&(*pVm),"argv",sizeof("argv")-1);` |
+|     3381 | 3431 | `		pServer = PH7_VmExtractSuper(&(*pVm),"_SERVER",sizeof("_SERVER")-1);` |
+|     3376 | 3432 | `		if( pArgv == 0 \|\| (pArgv->iFlags & MEMOBJ_HASHMAP) == 0` |
+|     3381 | 3433 | `		 \|\| pServer == 0 \|\| (pServer->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
 |      ! 0 | 3434 | `			rc = SXERR_NOTFOUND;` |
 |      ! 0 | 3435 | `			break;` |
 |        - | 3436 | `		}` |
-|     3383 | 3437 | `		pArgvMap   = (ph7_hashmap *)pArgv->x.pOther;` |
-|     3383 | 3438 | `		pServerMap = (ph7_hashmap *)pServer->x.pOther;` |
+|     3381 | 3437 | `		pArgvMap   = (ph7_hashmap *)pArgv->x.pOther;` |
+|     3381 | 3438 | `		pServerMap = (ph7_hashmap *)pServer->x.pOther;` |
 |        - | 3439 | `		/* Deep-copy $argv so $_SERVER['argv'] is an independent array. */` |
-|     3383 | 3440 | `		pDup = PH7_NewHashmap(&(*pVm),0,0);` |
-|     3383 | 3441 | `		if( pDup == 0 ){` |
+|     3381 | 3440 | `		pDup = PH7_NewHashmap(&(*pVm),0,0);` |
+|     3381 | 3441 | `		if( pDup == 0 ){` |
 |      ! 0 | 3442 | `			rc = SXERR_MEM;` |
 |      ! 0 | 3443 | `			break;` |
 |        - | 3444 | `		}` |
-|     3383 | 3445 | `		PH7_HashmapDup(pArgvMap,pDup);` |
-|     3383 | 3446 | `		PH7_MemObjInitFromArray(&(*pVm),&sArgvVal,pDup);` |
-|     3383 | 3447 | `		PH7_MemObjInitFromString(&(*pVm),&sKey,0);` |
-|     3383 | 3448 | `		PH7_MemObjStringAppend(&sKey,"argv",sizeof("argv")-1);` |
-|     3383 | 3449 | `		PH7_HashmapInsert(pServerMap,&sKey,&sArgvVal);` |
-|     3383 | 3450 | `		PH7_MemObjRelease(&sArgvVal); /* drops the duplicated array */` |
-|     3383 | 3451 | `		PH7_MemObjRelease(&sKey);` |
+|     3381 | 3445 | `		PH7_HashmapDup(pArgvMap,pDup);` |
+|     3381 | 3446 | `		PH7_MemObjInitFromArray(&(*pVm),&sArgvVal,pDup);` |
+|     3381 | 3447 | `		PH7_MemObjInitFromString(&(*pVm),&sKey,0);` |
+|     3381 | 3448 | `		PH7_MemObjStringAppend(&sKey,"argv",sizeof("argv")-1);` |
+|     3381 | 3449 | `		PH7_HashmapInsert(pServerMap,&sKey,&sArgvVal);` |
+|     3381 | 3450 | `		PH7_MemObjRelease(&sArgvVal); /* drops the duplicated array */` |
+|     3381 | 3451 | `		PH7_MemObjRelease(&sKey);` |
 |        - | 3452 | `		/* $_SERVER['argc'] = count($argv). */` |
-|     3383 | 3453 | `		PH7_MemObjInitFromInt(&(*pVm),&sCount,(sxi64)pArgvMap->nEntry);` |
-|     3383 | 3454 | `		PH7_MemObjInitFromString(&(*pVm),&sKey,0);` |
-|     3383 | 3455 | `		PH7_MemObjStringAppend(&sKey,"argc",sizeof("argc")-1);` |
-|     3383 | 3456 | `		PH7_HashmapInsert(pServerMap,&sKey,&sCount);` |
-|     3383 | 3457 | `		PH7_MemObjRelease(&sCount);` |
-|     3383 | 3458 | `		PH7_MemObjRelease(&sKey);` |
-|     3383 | 3459 | `		rc = SXRET_OK;` |
-|     3383 | 3460 | `		break;` |
+|     3381 | 3453 | `		PH7_MemObjInitFromInt(&(*pVm),&sCount,(sxi64)pArgvMap->nEntry);` |
+|     3381 | 3454 | `		PH7_MemObjInitFromString(&(*pVm),&sKey,0);` |
+|     3381 | 3455 | `		PH7_MemObjStringAppend(&sKey,"argc",sizeof("argc")-1);` |
+|     3381 | 3456 | `		PH7_HashmapInsert(pServerMap,&sKey,&sCount);` |
+|     3381 | 3457 | `		PH7_MemObjRelease(&sCount);` |
+|     3381 | 3458 | `		PH7_MemObjRelease(&sKey);` |
+|     3381 | 3459 | `		rc = SXRET_OK;` |
+|     3381 | 3460 | `		break;` |
 |        - | 3461 | `								  }` |
 |       29 | 3462 | `	case PH7_VM_CONFIG_INI_ENTRY: {` |
 |        - | 3463 | `		/* A php.ini directive from the CLI (-d name=value or a -c file line).` |
@@ -3544,23 +3544,23 @@ Coverage: 2355/2831 lines (83.19%)
 |      ! 0 | 3534 | `		*ppValue = &pVm->sExec;` |
 |      ! 0 | 3535 | `		break;` |
 |        - | 3536 | `								   }` |
-|     6813 | 3537 | `	case PH7_VM_CONFIG_IO_STREAM: {` |
+|     6809 | 3537 | `	case PH7_VM_CONFIG_IO_STREAM: {` |
 |        - | 3538 | `		/* Register an IO stream device */` |
-|    13631 | 3539 | `		const ph7_io_stream *pStream = va_arg(ap,const ph7_io_stream *);` |
+|    13623 | 3539 | `		const ph7_io_stream *pStream = va_arg(ap,const ph7_io_stream *);` |
 |        - | 3540 | `		/* Make sure we are dealing with a valid IO stream */` |
-|    13626 | 3541 | `		if( pStream == 0 \|\| pStream->zName == 0 \|\| pStream->zName[0] == 0 \|\|` |
-|    13631 | 3542 | `			pStream->xOpen == 0 \|\| pStream->xRead == 0 ){` |
+|    13618 | 3541 | `		if( pStream == 0 \|\| pStream->zName == 0 \|\| pStream->zName[0] == 0 \|\|` |
+|    13623 | 3542 | `			pStream->xOpen == 0 \|\| pStream->xRead == 0 ){` |
 |        - | 3543 | `				/* Invalid stream */` |
 |      ! 0 | 3544 | `				rc = SXERR_INVALID;` |
 |      ! 0 | 3545 | `				break;` |
 |        - | 3546 | `		}` |
-|    13631 | 3547 | `		if( pVm->pDefStream == 0 && SyStrnicmp(pStream->zName,"file",sizeof("file")-1) == 0 ){` |
+|    13623 | 3547 | `		if( pVm->pDefStream == 0 && SyStrnicmp(pStream->zName,"file",sizeof("file")-1) == 0 ){` |
 |        - | 3548 | `			/* Make the 'file://' stream the defaut stream device */` |
-|     3411 | 3549 | `			pVm->pDefStream = pStream;` |
-|     1703 | 3550 | `		}` |
+|     3409 | 3549 | `			pVm->pDefStream = pStream;` |
+|     1702 | 3550 | `		}` |
 |        - | 3551 | `		/* Insert in the appropriate container */` |
-|    13631 | 3552 | `		rc = SySetPut(&pVm->aIOstream,(const void *)&pStream);` |
-|    13631 | 3553 | `		break;` |
+|    13623 | 3552 | `		rc = SySetPut(&pVm->aIOstream,(const void *)&pStream);` |
+|    13623 | 3553 | `		break;` |
 |        - | 3554 | `								  }` |
 |       16 | 3555 | `	case PH7_VM_CONFIG_EXTRACT_OUTPUT: {` |
 |        - | 3556 | `		/* Point to the VM internal output consumer buffer */` |
@@ -3628,7 +3628,7 @@ Coverage: 2355/2831 lines (83.19%)
 |      ! 0 | 3618 | `		rc = SXERR_UNKNOWN;` |
 |      ! 0 | 3619 | `		break;` |
 |        - | 3620 | `	}` |
-|    89139 | 3621 | `	return rc;` |
+|    89087 | 3621 | `	return rc;` |
 |        5 | 3622 | `}` |
 |        - | 3623 | `/* Forward declaration */` |
 |        - | 3624 | `static const char * VmInstrToString(sxi32 nOp);` |
@@ -4131,19 +4131,19 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 4121 | ` * ran, VmSpreadConsume already fired and the second call is a harmless no-op).` |
 |        - | 4122 | ` * pArg must be the site's FINAL argument base.` |
 |        - | 4123 | ` */` |
-|  1045329 | 4124 | `PH7_PRIVATE VmCallArgMap *VmEffCallArgMap(ph7_vm *pVm, VmInstr *pInstr,` |
+|  1045609 | 4124 | `PH7_PRIVATE VmCallArgMap *VmEffCallArgMap(ph7_vm *pVm, VmInstr *pInstr,` |
 |        - | 4125 | `	ph7_value *pArg, sxu32 nActual, VmCallArgMap *pStorage)` |
 |        5 | 4126 | `{` |
-|  1045334 | 4127 | `	VmCallArgMap *pCompile = (VmCallArgMap *)pInstr->p3;` |
-|  1045334 | 4128 | `	if( pInstr->iP2 == 0 ){` |
-|  1045032 | 4129 | `		return pCompile; /* no spread: compile map already aligned, nothing captured */` |
+|  1045614 | 4127 | `	VmCallArgMap *pCompile = (VmCallArgMap *)pInstr->p3;` |
+|  1045614 | 4128 | `	if( pInstr->iP2 == 0 ){` |
+|  1045312 | 4129 | `		return pCompile; /* no spread: compile map already aligned, nothing captured */` |
 |        - | 4130 | `	}` |
 |      306 | 4131 | `	if( nActual > 0 && VmBuildEffectiveArgMap(pVm, pCompile, pArg, nActual, pStorage) ){` |
 |       71 | 4132 | `		return pStorage;` |
 |        - | 4133 | `	}` |
 |      236 | 4134 | `	VmSpreadConsume(pVm);` |
 |      236 | 4135 | `	return pCompile;` |
-|   523135 | 4136 | `}` |
+|   523275 | 4136 | `}` |
 |        - | 4137 | `/*` |
 |        - | 4138 | ` * Raise the PHP "Cannot use <type> as array" warning for a non-array source used in a` |
 |        - | 4139 | ` * list / array-destructuring assignment. Shared by the positional OP_LOAD_LIST path and the` |
@@ -4479,21 +4479,21 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 4469 | ` * leaked step and let the scan match the stale one. A no-op if the step was` |
 |        - | 4470 | ` * never linked (INIT error path).` |
 |        - | 4471 | ` */` |
-|    23870 | 4472 | `PH7_PRIVATE void VmForeachStepUnlink(ph7_foreach_info *pInfo,ph7_foreach_step *pStep)` |
+|    23866 | 4472 | `PH7_PRIVATE void VmForeachStepUnlink(ph7_foreach_info *pInfo,ph7_foreach_step *pStep)` |
 |        5 | 4473 | `{` |
-|    23875 | 4474 | `	ph7_foreach_step **apStep = (ph7_foreach_step **)SySetBasePtr(&pInfo->aStep);` |
-|    23875 | 4475 | `	sxu32 n = SySetUsed(&pInfo->aStep);` |
+|    23871 | 4474 | `	ph7_foreach_step **apStep = (ph7_foreach_step **)SySetBasePtr(&pInfo->aStep);` |
+|    23871 | 4475 | `	sxu32 n = SySetUsed(&pInfo->aStep);` |
 |        - | 4476 | `	sxu32 i;` |
-|    26051 | 4477 | `	for( i = 0 ; i < n ; ++i ){` |
-|    26051 | 4478 | `		if( apStep[i] == pStep ){` |
-|    23883 | 4479 | `			for( ; i + 1 < n ; ++i ){` |
+|    26047 | 4477 | `	for( i = 0 ; i < n ; ++i ){` |
+|    26047 | 4478 | `		if( apStep[i] == pStep ){` |
+|    23879 | 4479 | `			for( ; i + 1 < n ; ++i ){` |
 |        9 | 4480 | `				apStep[i] = apStep[i + 1];` |
 |        5 | 4481 | `			}` |
-|    23875 | 4482 | `			(void)SySetPop(&pInfo->aStep);` |
-|    23875 | 4483 | `			return;` |
+|    23871 | 4482 | `			(void)SySetPop(&pInfo->aStep);` |
+|    23871 | 4483 | `			return;` |
 |        - | 4484 | `		}` |
 |     1093 | 4485 | `	}` |
-|    11940 | 4486 | `}` |
+|    11938 | 4486 | `}` |
 |      210 | 4487 | `PH7_PRIVATE void VmForeachStepAbandon(ph7_vm *pVm,ph7_foreach_info *pInfo,ph7_foreach_step *pStep,ph7_class_instance *pThis)` |
 |        5 | 4488 | `{` |
 |      215 | 4489 | `	if( pStep->pOwner ){` |
@@ -4513,43 +4513,43 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 4503 | ` * class), and the unregister must precede the unref in case the step held the` |
 |        - | 4504 | ` * map's last reference.` |
 |        - | 4505 | ` */` |
-|    23634 | 4506 | `PH7_PRIVATE void VmForeachHashmapStepRelease(ph7_vm *pVm,ph7_foreach_info *pInfo,ph7_foreach_step *pStep,int bPop)` |
+|    23630 | 4506 | `PH7_PRIVATE void VmForeachHashmapStepRelease(ph7_vm *pVm,ph7_foreach_info *pInfo,ph7_foreach_step *pStep,int bPop)` |
 |        5 | 4507 | `{` |
-|    23639 | 4508 | `	ph7_hashmap *pMap = pStep->xIter.pMap;` |
-|    23639 | 4509 | `	PH7_HashmapUnregisterForeachStep(pMap,pStep);` |
-|    23639 | 4510 | `	if( bPop ){` |
+|    23635 | 4508 | `	ph7_hashmap *pMap = pStep->xIter.pMap;` |
+|    23635 | 4509 | `	PH7_HashmapUnregisterForeachStep(pMap,pStep);` |
+|    23635 | 4510 | `	if( bPop ){` |
 |        - | 4511 | `		/* Remove by pointer, not position: an out-of-LIFO-order generator/fiber` |
 |        - | 4512 | `		 * teardown may leave this step below newer ones on the shared aStep. */` |
-|    23639 | 4513 | `		VmForeachStepUnlink(pInfo,pStep);` |
-|    11817 | 4514 | `	}` |
-|    23639 | 4515 | `	SyMemBackendPoolFree(&pVm->sAllocator,pStep);` |
-|    23639 | 4516 | `	PH7_HashmapUnref(pMap);` |
-|    23639 | 4517 | `}` |
+|    23635 | 4513 | `		VmForeachStepUnlink(pInfo,pStep);` |
+|    11815 | 4514 | `	}` |
+|    23635 | 4515 | `	SyMemBackendPoolFree(&pVm->sAllocator,pStep);` |
+|    23635 | 4516 | `	PH7_HashmapUnref(pMap);` |
+|    23635 | 4517 | `}` |
 |        - | 4518 | `/* VmExecState / VmCallRecord / VmCallFrame / VmParkedSegment structs moved to ph7int.h */` |
 |        - | 4519 | `/*` |
 |        - | 4520 | ` * Execute as much of a local PH7 bytecode program as we can then return.` |
 |        - | 4521 | ` * This function is a wrapper around [VmByteCodeExec()].` |
 |        - | 4522 | ` * See block-comment on that function for additional information.` |
 |        - | 4523 | ` */` |
-|   141800 | 4524 | `PH7_PRIVATE sxi32 VmLocalExec(ph7_vm *pVm,SySet *pByteCode,ph7_value *pResult,int bReturnPropagates)` |
+|   141830 | 4524 | `PH7_PRIVATE sxi32 VmLocalExec(ph7_vm *pVm,SySet *pByteCode,ph7_value *pResult,int bReturnPropagates)` |
 |        5 | 4525 | `{` |
 |        - | 4526 | `	ph7_value *pStack;` |
 |        - | 4527 | `	sxu32 nCap;` |
 |        - | 4528 | `	sxi32 rc;` |
 |        - | 4529 | `	/* Allocate a new operand stack */` |
-|   141805 | 4530 | `	pStack = VmNewOperandStack(&(*pVm),SySetUsed(pByteCode));` |
-|   141805 | 4531 | `	if( pStack == 0 ){` |
+|   141835 | 4530 | `	pStack = VmNewOperandStack(&(*pVm),SySetUsed(pByteCode));` |
+|   141835 | 4531 | `	if( pStack == 0 ){` |
 |      ! 0 | 4532 | `		return SXERR_MEM;` |
 |        - | 4533 | `	}` |
-|   141805 | 4534 | `	nCap = SySetUsed(pByteCode) + VM_STACK_GUARD; /* what VmNewOperandStack handed out */` |
+|   141835 | 4534 | `	nCap = SySetUsed(pByteCode) + VM_STACK_GUARD; /* what VmNewOperandStack handed out */` |
 |        - | 4535 | `	/* Execute the program. A base-level OP_SPREAD may realloc pStack (updating it +` |
 |        - | 4536 | `	 * nCap through the owner slots) — free whatever pStack ends up pointing at. */` |
-|   141805 | 4537 | `	rc = VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(pByteCode),pStack,-1,&(*pResult),0,FALSE,0,0,bReturnPropagates,0,&pStack,&nCap,nCap);` |
+|   141835 | 4537 | `	rc = VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(pByteCode),pStack,-1,&(*pResult),0,FALSE,0,0,bReturnPropagates,0,&pStack,&nCap,nCap);` |
 |        - | 4538 | `	/* Free the operand stack */` |
-|   141805 | 4539 | `	SyMemBackendFree(&pVm->sAllocator,pStack);` |
+|   141835 | 4539 | `	SyMemBackendFree(&pVm->sAllocator,pStack);` |
 |        - | 4540 | `	/* Execution result */` |
-|   141805 | 4541 | `	return rc;` |
-|    70905 | 4542 | `}` |
+|   141835 | 4541 | `	return rc;` |
+|    70920 | 4542 | `}` |
 |        - | 4543 | `/*` |
 |        - | 4544 | ` * Evaluate an attribute-argument bytecode with the attribute's DECLARING class` |
 |        - | 4545 | `` * installed as the const-eval scope, so `self::`/`parent::`/`self::CONST` inside`` |
@@ -4585,13 +4585,13 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 4575 | ` * that order to the default consumer (sVmConsumer.xDef), then tear the stack` |
 |        - | 4576 | ` * down and restore the default consumer.` |
 |        - | 4577 | ` */` |
-|     3410 | 4578 | `static void VmFlushOutputBuffers(ph7_vm *pVm)` |
+|     3408 | 4578 | `static void VmFlushOutputBuffers(ph7_vm *pVm)` |
 |        5 | 4579 | `{` |
-|     3415 | 4580 | `	ph7_output_consumer *pCons = &pVm->sVmConsumer;` |
+|     3413 | 4580 | `	ph7_output_consumer *pCons = &pVm->sVmConsumer;` |
 |        - | 4581 | `	sxu32 n,nUsed;` |
-|     3415 | 4582 | `	nUsed = SySetUsed(&pVm->aOB);` |
-|     3415 | 4583 | `	if( nUsed < 1 ){` |
-|     3413 | 4584 | `		return;` |
+|     3413 | 4582 | `	nUsed = SySetUsed(&pVm->aOB);` |
+|     3413 | 4583 | `	if( nUsed < 1 ){` |
+|     3411 | 4584 | `		return;` |
 |        - | 4585 | `	}` |
 |        7 | 4586 | `	for( n = 0 ; n < nUsed ; ++n ){` |
 |        5 | 4587 | `		VmObEntry *pOb = (VmObEntry *)SySetAt(&pVm->aOB,n);` |
@@ -4612,7 +4612,7 @@ Coverage: 2355/2831 lines (83.19%)
 |        3 | 4602 | `	}` |
 |        3 | 4603 | `	SySetReset(&pVm->aOB);` |
 |        3 | 4604 | `	pVm->nObDepth = 0;` |
-|     1710 | 4605 | `}` |
+|     1709 | 4605 | `}` |
 |        - | 4606 | `/*` |
 |        - | 4607 | ` * Shutdown callbacks are kept in a stack and are registered using one` |
 |        - | 4608 | ` * or more calls to [register_shutdown_function()].` |
@@ -4621,23 +4621,23 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 4611 | ` * Refer to the implementation of [register_shutdown_function()] for` |
 |        - | 4612 | ` * additional information.` |
 |        - | 4613 | ` */` |
-|     3410 | 4614 | `static void VmInvokeShutdownCallbacks(ph7_vm *pVm)` |
+|     3408 | 4614 | `static void VmInvokeShutdownCallbacks(ph7_vm *pVm)` |
 |        5 | 4615 | `{` |
 |        - | 4616 | `	VmShutdownCB *pEntry;` |
 |        - | 4617 | `	ph7_value *apArg[10];` |
 |        - | 4618 | `	sxu32 n,nEntry;` |
 |        - | 4619 | `	int i;` |
 |        - | 4620 | `	/* Point to the stack of registered callbacks */` |
-|     3415 | 4621 | `	nEntry = SySetUsed(&pVm->aShutdown);` |
-|    37515 | 4622 | `	for( i = 0 ; i < (int)SX_ARRAYSIZE(apArg) ; i++ ){` |
-|    34105 | 4623 | `		apArg[i] = 0;` |
-|    17055 | 4624 | `	}` |
+|     3413 | 4621 | `	nEntry = SySetUsed(&pVm->aShutdown);` |
+|    37493 | 4622 | `	for( i = 0 ; i < (int)SX_ARRAYSIZE(apArg) ; i++ ){` |
+|    34085 | 4623 | `		apArg[i] = 0;` |
+|    17045 | 4624 | `	}` |
 |        - | 4625 | `	/* A halt that led us here is consumed; a fresh one set by a callback` |
 |        - | 4626 | `	 * (i.e. exit() inside a shutdown function) skips the remaining` |
 |        - | 4627 | `	 * callbacks, mirroring PHP.` |
 |        - | 4628 | `	 */` |
-|     3415 | 4629 | `	pVm->bHaltRequested = 0;` |
-|     3433 | 4630 | `	for( n = 0 ; n < nEntry ; ++n ){` |
+|     3413 | 4629 | `	pVm->bHaltRequested = 0;` |
+|     3431 | 4630 | `	for( n = 0 ; n < nEntry ; ++n ){` |
 |       23 | 4631 | `		pEntry = (VmShutdownCB *)SySetAt(&pVm->aShutdown,n);` |
 |       23 | 4632 | `		if( pEntry ){` |
 |        - | 4633 | `			/* Prepare callback arguments if any */` |
@@ -4666,39 +4666,39 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 4656 | `			}` |
 |        9 | 4657 | `		}` |
 |       14 | 4658 | `	}` |
-|     3415 | 4659 | `	SySetReset(&pVm->aShutdown);` |
-|     3415 | 4660 | `}` |
+|     3413 | 4659 | `	SySetReset(&pVm->aShutdown);` |
+|     3413 | 4660 | `}` |
 |        - | 4661 | `/*` |
 |        - | 4662 | ` * Execute as much of a PH7 bytecode program as we can then return.` |
 |        - | 4663 | ` * This function is a wrapper around [VmByteCodeExec()].` |
 |        - | 4664 | ` * See block-comment on that function for additional information.` |
 |        - | 4665 | ` */` |
-|     3410 | 4666 | `PH7_PRIVATE sxi32 PH7_VmByteCodeExec(ph7_vm *pVm)` |
+|     3408 | 4666 | `PH7_PRIVATE sxi32 PH7_VmByteCodeExec(ph7_vm *pVm)` |
 |        5 | 4667 | `{` |
 |        - | 4668 | `	/* Make sure we are ready to execute this program */` |
-|     3415 | 4669 | `	if( pVm->nMagic != PH7_VM_RUN ){` |
+|     3413 | 4669 | `	if( pVm->nMagic != PH7_VM_RUN ){` |
 |      ! 0 | 4670 | `		return pVm->nMagic == PH7_VM_EXEC ? SXERR_LOCKED /* Locked VM */ : SXERR_CORRUPT; /* Stale VM */` |
 |        - | 4671 | `	}` |
 |        - | 4672 | `	/* Set the execution magic number  */` |
-|     3415 | 4673 | `	pVm->nMagic = PH7_VM_EXEC;` |
+|     3413 | 4673 | `	pVm->nMagic = PH7_VM_EXEC;` |
 |        - | 4674 | `	/* Execute the program. A top-level OP_SPREAD may realloc the operand stack;` |
 |        - | 4675 | `	 * pass &pVm->aOps so the growth updates the field that VM release frees. */` |
 |        - | 4676 | `	{` |
-|     3415 | 4677 | `		sxu32 nOpsCap = SySetUsed(pVm->pByteContainer) + VM_STACK_GUARD;` |
-|     3415 | 4678 | `		VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(pVm->pByteContainer),pVm->aOps,-1,&pVm->sExec,0,FALSE,0,0,FALSE,0,&pVm->aOps,&nOpsCap,nOpsCap);` |
+|     3413 | 4677 | `		sxu32 nOpsCap = SySetUsed(pVm->pByteContainer) + VM_STACK_GUARD;` |
+|     3413 | 4678 | `		VmByteCodeExec(&(*pVm),(VmInstr *)SySetBasePtr(pVm->pByteContainer),pVm->aOps,-1,&pVm->sExec,0,FALSE,0,0,FALSE,0,&pVm->aOps,&nOpsCap,nOpsCap);` |
 |        - | 4679 | `	}` |
 |        - | 4680 | `	/* Invoke any shutdown callbacks */` |
-|     3415 | 4681 | `	VmInvokeShutdownCallbacks(&(*pVm));` |
+|     3413 | 4681 | `	VmInvokeShutdownCallbacks(&(*pVm));` |
 |        - | 4682 | `	/* php flushes every still-open output buffer on shutdown — after the` |
 |        - | 4683 | `	 * shutdown callbacks, which may still write into them. */` |
-|     3415 | 4684 | `	VmFlushOutputBuffers(&(*pVm));` |
+|     3413 | 4684 | `	VmFlushOutputBuffers(&(*pVm));` |
 |        - | 4685 | `	/*` |
 |        - | 4686 | `	 * TICKET 1433-100: Do not remove the PH7_VM_EXEC magic number` |
 |        - | 4687 | `	 * so that any following call to [ph7_vm_exec()] without calling` |
 |        - | 4688 | `	 * [ph7_vm_reset()] first would fail.` |
 |        - | 4689 | `	 */` |
-|     3415 | 4690 | `	return SXRET_OK;` |
-|     1710 | 4691 | `}` |
+|     3413 | 4690 | `	return SXRET_OK;` |
+|     1709 | 4691 | `}` |
 |        - | 4692 | `/* ======================== Fiber Infrastructure ======================== */` |
 |        - | 4693 | `/*` |
 |        - | 4694 | ` * Invoke the installed VM output consumer callback to consume` |
@@ -4706,19 +4706,19 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 4696 | ` * Refer to the implementation of [ph7_context_output()] defined` |
 |        - | 4697 | ` * in 'api.c' for additional information.` |
 |        - | 4698 | ` */` |
-|     2358 | 4699 | `PH7_PRIVATE sxi32 PH7_VmOutputConsume(` |
+|     2356 | 4699 | `PH7_PRIVATE sxi32 PH7_VmOutputConsume(` |
 |        - | 4700 | `	ph7_vm *pVm,      /* Target VM */` |
 |        - | 4701 | `	SyString *pString /* Message to output */` |
 |        - | 4702 | `	)` |
 |        5 | 4703 | `{` |
-|     2363 | 4704 | `	ph7_output_consumer *pCons = &pVm->sVmConsumer;` |
-|     2363 | 4705 | `	sxi32 rc = SXRET_OK;` |
+|     2361 | 4704 | `	ph7_output_consumer *pCons = &pVm->sVmConsumer;` |
+|     2361 | 4705 | `	sxi32 rc = SXRET_OK;` |
 |        - | 4706 | `	/* Call the output consumer */` |
-|     2363 | 4707 | `	if( pString->nByte > 0 ){` |
-|     2363 | 4708 | `		rc = pCons->xConsumer((const void *)pString->zString,pString->nByte,pCons->pUserData);` |
-|     2363 | 4709 | `		VmTrackOutput(pVm, pString->nByte);` |
-|     1179 | 4710 | `	}` |
-|     2363 | 4711 | `	return rc;` |
+|     2361 | 4707 | `	if( pString->nByte > 0 ){` |
+|     2361 | 4708 | `		rc = pCons->xConsumer((const void *)pString->zString,pString->nByte,pCons->pUserData);` |
+|     2361 | 4709 | `		VmTrackOutput(pVm, pString->nByte);` |
+|     1178 | 4710 | `	}` |
+|     2361 | 4711 | `	return rc;` |
 |        5 | 4712 | `}` |
 |        - | 4713 | `/*` |
 |        - | 4714 | ` * Format a message and invoke the installed VM output consumer` |
@@ -5051,40 +5051,40 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 5041 | `/*` |
 |        - | 5042 | ` * Register the built-in VM functions defined above.` |
 |        - | 5043 | ` */` |
-|     3406 | 5044 | `static sxi32 VmRegisterSpecialFunction(ph7_vm *pVm)` |
+|     3404 | 5044 | `static sxi32 VmRegisterSpecialFunction(ph7_vm *pVm)` |
 |        5 | 5045 | `{` |
 |        - | 5046 | `	sxi32 rc;` |
 |        - | 5047 | `	sxu32 n;` |
-|   429161 | 5048 | `	for( n = 0 ; n < SX_ARRAYSIZE(aVmFunc) ; ++n ){` |
+|   428909 | 5048 | `	for( n = 0 ; n < SX_ARRAYSIZE(aVmFunc) ; ++n ){` |
 |        - | 5049 | `		/* Note that these special functions have access` |
 |        - | 5050 | `		 * to the underlying virtual machine as their` |
 |        - | 5051 | `		 * private data.` |
 |        - | 5052 | `		 */` |
-|   425755 | 5053 | `		rc = ph7_create_function(&(*pVm),aVmFunc[n].zName,aVmFunc[n].xFunc,&(*pVm));` |
-|   425755 | 5054 | `		if( rc != SXRET_OK ){` |
+|   425505 | 5053 | `		rc = ph7_create_function(&(*pVm),aVmFunc[n].zName,aVmFunc[n].xFunc,&(*pVm));` |
+|   425505 | 5054 | `		if( rc != SXRET_OK ){` |
 |      ! 0 | 5055 | `			return rc;` |
 |        - | 5056 | `		}` |
-|   212880 | 5057 | `	}` |
-|     3411 | 5058 | `	return SXRET_OK;` |
-|     1708 | 5059 | `}` |
+|   212755 | 5057 | `	}` |
+|     3409 | 5058 | `	return SXRET_OK;` |
+|     1707 | 5059 | `}` |
 |        - | 5060 | `/*` |
 |        - | 5061 | ` * Helper: Apply loadable filter to a class pointer.` |
 |        - | 5062 | ` * Returns the first concrete (non-interface, non-abstract, non-trait) class` |
 |        - | 5063 | ` * in the name collision chain, or NULL if none qualifies.` |
 |        - | 5064 | ` */` |
-|   783314 | 5065 | `static ph7_class * VmFilterLoadableClass(ph7_class *pClass,sxi32 iLoadable)` |
+|   782996 | 5065 | `static ph7_class * VmFilterLoadableClass(ph7_class *pClass,sxi32 iLoadable)` |
 |        5 | 5066 | `{` |
-|   783319 | 5067 | `	if( !iLoadable ){` |
-|   776587 | 5068 | `		return pClass;` |
+|   783001 | 5067 | `	if( !iLoadable ){` |
+|   776251 | 5068 | `		return pClass;` |
 |        - | 5069 | `	}` |
-|     6741 | 5070 | `	while(pClass){` |
-|     6737 | 5071 | `		if( (pClass->iFlags & (PH7_CLASS_INTERFACE\|PH7_CLASS_ABSTRACT\|PH7_CLASS_TRAIT)) == 0 ){` |
-|     6733 | 5072 | `			return pClass;` |
+|     6759 | 5070 | `	while(pClass){` |
+|     6755 | 5071 | `		if( (pClass->iFlags & (PH7_CLASS_INTERFACE\|PH7_CLASS_ABSTRACT\|PH7_CLASS_TRAIT)) == 0 ){` |
+|     6751 | 5072 | `			return pClass;` |
 |        - | 5073 | `		}` |
 |        5 | 5074 | `		pClass = pClass->pNextName;` |
 |        1 | 5075 | `	}` |
 |        5 | 5076 | `	return 0;` |
-|   391662 | 5077 | `}` |
+|   391503 | 5077 | `}` |
 |        - | 5078 | `/*` |
 |        - | 5079 | ` * Trigger the autoload mechanism for a class that was not found.` |
 |        - | 5080 | ` * Iterates through registered spl_autoload callbacks, calling each one` |
@@ -5093,16 +5093,16 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 5083 | ` * Returns a pointer to the class on success, NULL on failure.` |
 |        - | 5084 | ` * Uses hAutoloadActive to prevent infinite recursion.` |
 |        - | 5085 | ` */` |
-|      300 | 5086 | `static ph7_class * VmTriggerAutoload(ph7_vm *pVm,const char *zName,sxu32 nByte,sxi32 iLoadable)` |
+|      318 | 5086 | `static ph7_class * VmTriggerAutoload(ph7_vm *pVm,const char *zName,sxu32 nByte,sxi32 iLoadable)` |
 |        5 | 5087 | `{` |
 |        - | 5088 | `	VmAutoloadCB *pEntry;` |
 |        - | 5089 | `	ph7_value sArg,sResult;` |
 |        - | 5090 | `	SyHashEntry *pHashEntry;` |
 |        - | 5091 | `	ph7_class *pClass;` |
 |        - | 5092 | `	sxu32 n,nEntry;` |
-|      305 | 5093 | `	nEntry = SySetUsed(&pVm->aAutoload);` |
-|      305 | 5094 | `	if( nEntry < 1 ){` |
-|      233 | 5095 | `		return 0;` |
+|      323 | 5093 | `	nEntry = SySetUsed(&pVm->aAutoload);` |
+|      323 | 5094 | `	if( nEntry < 1 ){` |
+|      251 | 5095 | `		return 0;` |
 |        - | 5096 | `	}` |
 |        - | 5097 | `	/* Reentrancy guard: check if this class is already being autoloaded */` |
 |       77 | 5098 | `	if( SyHashGet(&pVm->hAutoloadActive,(const void *)zName,nByte) != 0 ){` |
@@ -5140,7 +5140,7 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 5130 | `	/* Remove reentrancy guard */` |
 |       75 | 5131 | `	SyHashDeleteEntry(&pVm->hAutoloadActive,(const void *)zName,nByte,0);` |
 |       75 | 5132 | `	return pClass;` |
-|      155 | 5133 | `}` |
+|      164 | 5133 | `}` |
 |        - | 5134 | `/*` |
 |        - | 5135 | ` * Trigger autoload for external callers (e.g. class_exists).` |
 |        - | 5136 | ` * Same as VmTriggerAutoload but exposed as PH7_PRIVATE.` |
@@ -5153,7 +5153,7 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 5143 | ` * Check if the given name refer to an installed class.` |
 |        - | 5144 | ` * Return a pointer to that class on success. NULL on failure.` |
 |        - | 5145 | ` */` |
-|   783560 | 5146 | `PH7_PRIVATE ph7_class * PH7_VmExtractClass(` |
+|   783260 | 5146 | `PH7_PRIVATE ph7_class * PH7_VmExtractClass(` |
 |        - | 5147 | `	ph7_vm *pVm,        /* Target VM */` |
 |        - | 5148 | `	const char *zName,  /* Name of the target class */` |
 |        - | 5149 | `	sxu32 nByte,        /* zName length */` |
@@ -5165,18 +5165,18 @@ Coverage: 2355/2831 lines (83.19%)
 |        5 | 5155 | `{` |
 |        - | 5156 | `	SyHashEntry *pEntry;` |
 |        - | 5157 | `	ph7_class *pClass;` |
-|   391780 | 5158 | `	SXUNUSED(iNest);` |
+|   391630 | 5158 | `	SXUNUSED(iNest);` |
 |        - | 5159 | `	/* Exact class lookup.` |
 |        - | 5160 | `	 * Static names are already namespace-qualified by the compiler.` |
 |        - | 5161 | `	 * Dynamic names (from variables) use exact match only, matching PHP behavior. */` |
-|   783565 | 5162 | `	pEntry = SyHashGet(&pVm->hClass,(const void *)zName,nByte);` |
-|   783565 | 5163 | `	if( pEntry == 0 ){` |
+|   783265 | 5162 | `	pEntry = SyHashGet(&pVm->hClass,(const void *)zName,nByte);` |
+|   783265 | 5163 | `	if( pEntry == 0 ){` |
 |        - | 5164 | `		/* Class not found in hash table — try autoload before giving up */` |
-|      267 | 5165 | `		return VmTriggerAutoload(pVm,zName,nByte,iLoadable);` |
+|      285 | 5165 | `		return VmTriggerAutoload(pVm,zName,nByte,iLoadable);` |
 |        - | 5166 | `	}` |
-|   783303 | 5167 | `	pClass = (ph7_class *)pEntry->pUserData;` |
-|   783303 | 5168 | `	return VmFilterLoadableClass(pClass,iLoadable);` |
-|   391785 | 5169 | `}` |
+|   782985 | 5167 | `	pClass = (ph7_class *)pEntry->pUserData;` |
+|   782985 | 5168 | `	return VmFilterLoadableClass(pClass,iLoadable);` |
+|   391635 | 5169 | `}` |
 |        - | 5170 | `/*` |
 |        - | 5171 | ` * Reference Table Implementation` |
 |        - | 5172 | ` * Status: stable <chm@symisc.net>` |
@@ -5191,30 +5191,30 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 5181 | `/*` |
 |        - | 5182 | ` * Allocate a new reference entry.` |
 |        - | 5183 | ` */` |
-|  4379731 | 5184 | `static VmRefObj * VmNewRefObj(ph7_vm *pVm,sxu32 nIdx)` |
+|  4380361 | 5184 | `static VmRefObj * VmNewRefObj(ph7_vm *pVm,sxu32 nIdx)` |
 |        5 | 5185 | `{` |
 |        - | 5186 | `	VmRefObj *pRef;` |
 |        - | 5187 | `	/* Allocate a new instance */` |
-|  4379736 | 5188 | `	pRef = (VmRefObj *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(VmRefObj));` |
-|  4379736 | 5189 | `	if( pRef == 0 ){` |
+|  4380366 | 5188 | `	pRef = (VmRefObj *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(VmRefObj));` |
+|  4380366 | 5189 | `	if( pRef == 0 ){` |
 |      ! 0 | 5190 | `		return 0;` |
 |        - | 5191 | `	}` |
 |        - | 5192 | `	/* Zero the structure */` |
-|  4379736 | 5193 | `	SyZero(pRef,sizeof(VmRefObj));` |
+|  4380366 | 5193 | `	SyZero(pRef,sizeof(VmRefObj));` |
 |        - | 5194 | `	/* Initialize fields */` |
-|  4379736 | 5195 | `	SySetInit(&pRef->aReference,&pVm->sAllocator,sizeof(SyHashEntry *));` |
-|  4379736 | 5196 | `	SySetInit(&pRef->aArrEntries,&pVm->sAllocator,sizeof(ph7_hashmap_node *));` |
-|  4379736 | 5197 | `	pRef->nIdx = nIdx;` |
-|  4379736 | 5198 | `	return pRef;` |
-|  2190485 | 5199 | `}` |
+|  4380366 | 5195 | `	SySetInit(&pRef->aReference,&pVm->sAllocator,sizeof(SyHashEntry *));` |
+|  4380366 | 5196 | `	SySetInit(&pRef->aArrEntries,&pVm->sAllocator,sizeof(ph7_hashmap_node *));` |
+|  4380366 | 5197 | `	pRef->nIdx = nIdx;` |
+|  4380366 | 5198 | `	return pRef;` |
+|  2190800 | 5199 | `}` |
 |        - | 5200 | `/*` |
 |        - | 5201 | ` * Default hash function used by the reference table` |
 |        - | 5202 | ` * for lookup/insertion operations.` |
 |        - | 5203 | ` */` |
-| 23522537 | 5204 | `static sxu32 VmRefHash(sxu32 nIdx)` |
+| 23525798 | 5204 | `static sxu32 VmRefHash(sxu32 nIdx)` |
 |        5 | 5205 | `{` |
 |        - | 5206 | `	/* Calculate the hash based on the memory object index */` |
-| 23522542 | 5207 | `	return nIdx ^ (nIdx << 8) ^ (nIdx >> 8);` |
+| 23525803 | 5207 | `	return nIdx ^ (nIdx << 8) ^ (nIdx >> 8);` |
 |        5 | 5208 | `}` |
 |        - | 5209 | `/*` |
 |        - | 5210 | ` * Check if a memory object [i.e: a variable] is already installed` |
@@ -5228,28 +5228,28 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 5218 | ` * Refer to the official for more information on this powerful` |
 |        - | 5219 | ` * extension.` |
 |        - | 5220 | ` */` |
-| 13606595 | 5221 | `PH7_PRIVATE VmRefObj * VmRefObjExtract(ph7_vm *pVm,sxu32 nObjIdx)` |
+| 13608335 | 5221 | `PH7_PRIVATE VmRefObj * VmRefObjExtract(ph7_vm *pVm,sxu32 nObjIdx)` |
 |        5 | 5222 | `{` |
 |        - | 5223 | `	VmRefObj *pRef;` |
 |        - | 5224 | `	sxu32 nBucket;` |
 |        - | 5225 | `	/* Point to the appropriate bucket */` |
-| 13606600 | 5226 | `	nBucket = VmRefHash(nObjIdx) & (pVm->nRefSize - 1);` |
+| 13608340 | 5226 | `	nBucket = VmRefHash(nObjIdx) & (pVm->nRefSize - 1);` |
 |        - | 5227 | `	/* Perform the lookup */` |
-| 13606600 | 5228 | `	pRef = pVm->apRefObj[nBucket];` |
-| 30042486 | 5229 | `	for(;;){` |
-| 60035077 | 5230 | `		if( pRef == 0 ){` |
-|  4880912 | 5231 | `			break;` |
+| 13608340 | 5228 | `	pRef = pVm->apRefObj[nBucket];` |
+| 30035251 | 5229 | `	for(;;){` |
+| 60029857 | 5230 | `		if( pRef == 0 ){` |
+|  4881706 | 5231 | `			break;` |
 |        - | 5232 | `		}` |
-| 55154170 | 5233 | `		if( pRef->nIdx == nObjIdx ){` |
+| 55148156 | 5233 | `		if( pRef->nIdx == nObjIdx ){` |
 |        - | 5234 | `			/* Entry found */` |
-|  8725693 | 5235 | `			return pRef;` |
+|  8726639 | 5235 | `			return pRef;` |
 |        - | 5236 | `		}` |
 |        - | 5237 | `		/* Point to the next entry */` |
-| 46428482 | 5238 | `		pRef = pRef->pNextCollide;` |
+| 46421522 | 5238 | `		pRef = pRef->pNextCollide;` |
 |        5 | 5239 | `	}` |
 |        - | 5240 | `	/* No such entry,return NULL */` |
-|  4880912 | 5241 | `	return 0;` |
-|  6805146 | 5242 | `}` |
+|  4881706 | 5241 | `	return 0;` |
+|  6806016 | 5242 | `}` |
 |        - | 5243 | `/*` |
 |        - | 5244 | ` * Install a memory object [i.e: a variable] in the reference table.` |
 |        - | 5245 | ` *` |
@@ -5260,53 +5260,53 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 5250 | ` * Refer to the official for more information on this powerful` |
 |        - | 5251 | ` * extension.` |
 |        - | 5252 | ` */` |
-|  4379731 | 5253 | `static sxi32 VmRefObjInsert(ph7_vm *pVm,VmRefObj *pRef)` |
+|  4380361 | 5253 | `static sxi32 VmRefObjInsert(ph7_vm *pVm,VmRefObj *pRef)` |
 |        5 | 5254 | `{` |
 |        - | 5255 | `	sxu32 nBucket;` |
-|  4379736 | 5256 | `	if( pVm->nRefUsed * 3 >= pVm->nRefSize ){` |
+|  4380366 | 5256 | `	if( pVm->nRefUsed * 3 >= pVm->nRefSize ){` |
 |        - | 5257 | `		VmRefObj **apNew;` |
 |        - | 5258 | `		sxu32 nNew;` |
 |        - | 5259 | `		/* Allocate a larger table */` |
-|    10551 | 5260 | `		nNew = pVm->nRefSize << 1;` |
-|    10551 | 5261 | `		apNew = (VmRefObj **)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmRefObj *) * nNew);` |
-|    10551 | 5262 | `		if( apNew ){` |
-|    10551 | 5263 | `			VmRefObj *pEntry = pVm->pRefList;` |
+|    10547 | 5260 | `		nNew = pVm->nRefSize << 1;` |
+|    10547 | 5261 | `		apNew = (VmRefObj **)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmRefObj *) * nNew);` |
+|    10547 | 5262 | `		if( apNew ){` |
+|    10547 | 5263 | `			VmRefObj *pEntry = pVm->pRefList;` |
 |        - | 5264 | `			sxu32 n;` |
 |        - | 5265 | `			/* Zero the structure */` |
-|    10551 | 5266 | `			SyZero((void *)apNew,nNew * sizeof(VmRefObj *));` |
+|    10547 | 5266 | `			SyZero((void *)apNew,nNew * sizeof(VmRefObj *));` |
 |        - | 5267 | `			/* Rehash all referenced entries */` |
-|  2966657 | 5268 | `			for( n = 0 ; n < pVm->nRefUsed ; ++n ){` |
+|  2966661 | 5268 | `			for( n = 0 ; n < pVm->nRefUsed ; ++n ){` |
 |        - | 5269 | `				/* Remove old collision links */` |
-|  2956111 | 5270 | `				pEntry->pNextCollide = pEntry->pPrevCollide = 0;` |
+|  2956119 | 5270 | `				pEntry->pNextCollide = pEntry->pPrevCollide = 0;` |
 |        - | 5271 | `				/* Point to the appropriate bucket */` |
-|  2956111 | 5272 | `				nBucket = VmRefHash(pEntry->nIdx) & (nNew - 1);` |
+|  2956119 | 5272 | `				nBucket = VmRefHash(pEntry->nIdx) & (nNew - 1);` |
 |        - | 5273 | `				/* Insert the entry  */` |
-|  2956111 | 5274 | `				pEntry->pNextCollide = apNew[nBucket];` |
-|  2956111 | 5275 | `				if( apNew[nBucket] ){` |
+|  2956119 | 5274 | `				pEntry->pNextCollide = apNew[nBucket];` |
+|  2956119 | 5275 | `				if( apNew[nBucket] ){` |
 |  2306069 | 5276 | `					apNew[nBucket]->pPrevCollide = pEntry;` |
 |  1153032 | 5277 | `				}` |
-|  2956111 | 5278 | `				apNew[nBucket] = pEntry;` |
+|  2956119 | 5278 | `				apNew[nBucket] = pEntry;` |
 |        - | 5279 | `				/* Point to the next entry */` |
-|  2956111 | 5280 | `				pEntry = pEntry->pNext;` |
-|  1478058 | 5281 | `			}` |
+|  2956119 | 5280 | `				pEntry = pEntry->pNext;` |
+|  1478062 | 5281 | `			}` |
 |        - | 5282 | `			/* Release the old table */` |
-|    10551 | 5283 | `			SyMemBackendFree(&pVm->sAllocator,pVm->apRefObj);` |
+|    10547 | 5283 | `			SyMemBackendFree(&pVm->sAllocator,pVm->apRefObj);` |
 |        - | 5284 | `			/* Install the new one */` |
-|    10551 | 5285 | `			pVm->apRefObj = apNew;` |
-|    10551 | 5286 | `			pVm->nRefSize = nNew;` |
-|     5273 | 5287 | `		}` |
-|     5273 | 5288 | `	}` |
+|    10547 | 5285 | `			pVm->apRefObj = apNew;` |
+|    10547 | 5286 | `			pVm->nRefSize = nNew;` |
+|     5271 | 5287 | `		}` |
+|     5271 | 5288 | `	}` |
 |        - | 5289 | `	/* Point to the appropriate bucket */` |
-|  4379736 | 5290 | `	nBucket = VmRefHash(pRef->nIdx) & (pVm->nRefSize - 1);` |
+|  4380366 | 5290 | `	nBucket = VmRefHash(pRef->nIdx) & (pVm->nRefSize - 1);` |
 |        - | 5291 | `	/* Insert the entry */` |
-|  4379736 | 5292 | `	pRef->pNextCollide = pVm->apRefObj[nBucket];` |
-|  4379736 | 5293 | `	if( pVm->apRefObj[nBucket] ){` |
-|  3373051 | 5294 | `		pVm->apRefObj[nBucket]->pPrevCollide = pRef;` |
-|  1687074 | 5295 | `	}` |
-|  4379736 | 5296 | `	pVm->apRefObj[nBucket] = pRef;` |
-|  4379736 | 5297 | `	MACRO_LD_PUSH(pVm->pRefList,pRef);` |
-|  4379736 | 5298 | `	pVm->nRefUsed++;` |
-|  4379736 | 5299 | `	return SXRET_OK;` |
+|  4380366 | 5292 | `	pRef->pNextCollide = pVm->apRefObj[nBucket];` |
+|  4380366 | 5293 | `	if( pVm->apRefObj[nBucket] ){` |
+|  3373203 | 5294 | `		pVm->apRefObj[nBucket]->pPrevCollide = pRef;` |
+|  1687150 | 5295 | `	}` |
+|  4380366 | 5296 | `	pVm->apRefObj[nBucket] = pRef;` |
+|  4380366 | 5297 | `	MACRO_LD_PUSH(pVm->pRefList,pRef);` |
+|  4380366 | 5298 | `	pVm->nRefUsed++;` |
+|  4380366 | 5299 | `	return SXRET_OK;` |
 |        5 | 5300 | `}` |
 |        - | 5301 | `/*` |
 |        - | 5302 | ` * Destroy a memory object [i.e: a variable] and remove it from` |
@@ -5320,40 +5320,40 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 5310 | ` * Refer to the official for more information on this powerful` |
 |        - | 5311 | ` * extension.` |
 |        - | 5312 | ` */` |
-|  4246147 | 5313 | `PH7_PRIVATE sxi32 VmRefObjUnlink(ph7_vm *pVm,VmRefObj *pRef)` |
+|  4246755 | 5313 | `PH7_PRIVATE sxi32 VmRefObjUnlink(ph7_vm *pVm,VmRefObj *pRef)` |
 |        5 | 5314 | `{` |
 |        - | 5315 | `	ph7_hashmap_node **apNode;` |
 |        - | 5316 | `	SyHashEntry **apEntry;` |
 |        - | 5317 | `	sxu32 n;` |
 |        - | 5318 | `	/* Point to the reference table */` |
-|  4246152 | 5319 | `	apNode = (ph7_hashmap_node **)SySetBasePtr(&pRef->aArrEntries);` |
-|  4246152 | 5320 | `	apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);` |
+|  4246760 | 5319 | `	apNode = (ph7_hashmap_node **)SySetBasePtr(&pRef->aArrEntries);` |
+|  4246760 | 5320 | `	apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);` |
 |        - | 5321 | `	/* Unlink the entry from the reference table */` |
-|  4753380 | 5322 | `	for( n = 0 ; n < SySetUsed(&pRef->aReference) ; n++ ){` |
-|   507233 | 5323 | `		if( apEntry[n] ){` |
-|   501415 | 5324 | `			SyHashDeleteEntry2(apEntry[n]);` |
-|   251320 | 5325 | `		}` |
-|   254234 | 5326 | `	}` |
-|  7969175 | 5327 | `	for(n = 0 ; n < SySetUsed(&pRef->aArrEntries) ; ++n ){` |
-|  3723028 | 5328 | `		if( apNode[n] ){` |
+|  4754152 | 5322 | `	for( n = 0 ; n < SySetUsed(&pRef->aReference) ; n++ ){` |
+|   507397 | 5323 | `		if( apEntry[n] ){` |
+|   501579 | 5324 | `			SyHashDeleteEntry2(apEntry[n]);` |
+|   251402 | 5325 | `		}` |
+|   254316 | 5326 | `	}` |
+|  7970119 | 5327 | `	for(n = 0 ; n < SySetUsed(&pRef->aArrEntries) ; ++n ){` |
+|  3723364 | 5328 | `		if( apNode[n] ){` |
 |     1390 | 5329 | `			PH7_HashmapUnlinkNode(apNode[n],FALSE);` |
 |      693 | 5330 | `		}` |
-|  1861516 | 5331 | `	}` |
-|  4246152 | 5332 | `	if( pRef->pPrevCollide ){` |
-|  1666047 | 5333 | `		pRef->pPrevCollide->pNextCollide = pRef->pNextCollide;` |
-|   833097 | 5334 | `	}else{` |
-|  2580110 | 5335 | `		pVm->apRefObj[VmRefHash(pRef->nIdx) & (pVm->nRefSize - 1)] = pRef->pNextCollide;` |
+|  1861684 | 5331 | `	}` |
+|  4246760 | 5332 | `	if( pRef->pPrevCollide ){` |
+|  1665772 | 5333 | `		pRef->pPrevCollide->pNextCollide = pRef->pNextCollide;` |
+|   832859 | 5334 | `	}else{` |
+|  2580993 | 5335 | `		pVm->apRefObj[VmRefHash(pRef->nIdx) & (pVm->nRefSize - 1)] = pRef->pNextCollide;` |
 |        - | 5336 | `	}` |
-|  4246152 | 5337 | `	if( pRef->pNextCollide ){` |
-|  2259926 | 5338 | `		pRef->pNextCollide->pPrevCollide = pRef->pPrevCollide;` |
-|  1130537 | 5339 | `	}` |
-|  4246152 | 5340 | `	MACRO_LD_REMOVE(pVm->pRefList,pRef);` |
+|  4246760 | 5337 | `	if( pRef->pNextCollide ){` |
+|  2260078 | 5338 | `		pRef->pNextCollide->pPrevCollide = pRef->pPrevCollide;` |
+|  1130613 | 5339 | `	}` |
+|  4246760 | 5340 | `	MACRO_LD_REMOVE(pVm->pRefList,pRef);` |
 |        - | 5341 | `	/* Release the node */` |
-|  4246152 | 5342 | `	SySetRelease(&pRef->aReference);` |
-|  4246152 | 5343 | `	SySetRelease(&pRef->aArrEntries);` |
-|  4246152 | 5344 | `	SyMemBackendPoolFree(&pVm->sAllocator,pRef);` |
-|  4246152 | 5345 | `	pVm->nRefUsed--;` |
-|  4246152 | 5346 | `	return SXRET_OK;` |
+|  4246760 | 5342 | `	SySetRelease(&pRef->aReference);` |
+|  4246760 | 5343 | `	SySetRelease(&pRef->aArrEntries);` |
+|  4246760 | 5344 | `	SyMemBackendPoolFree(&pVm->sAllocator,pRef);` |
+|  4246760 | 5345 | `	pVm->nRefUsed--;` |
+|  4246760 | 5346 | `	return SXRET_OK;` |
 |        5 | 5347 | `}` |
 |        - | 5348 | `/*` |
 |        - | 5349 | ` * Install a memory object [i.e: a variable] in the reference table.` |
@@ -5364,7 +5364,7 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 5354 | ` * Refer to the official for more information on this powerful` |
 |        - | 5355 | ` * extension.` |
 |        - | 5356 | ` */` |
-|  4426231 | 5357 | `PH7_PRIVATE sxi32 PH7_VmRefObjInstall(` |
+|  4426851 | 5357 | `PH7_PRIVATE sxi32 PH7_VmRefObjInstall(` |
 |        - | 5358 | `	ph7_vm *pVm,                 /* Target VM */` |
 |        - | 5359 | `	sxu32 nIdx,                  /* Memory object index in the global object pool */` |
 |        - | 5360 | `	SyHashEntry *pEntry,         /* Hash entry of this object */` |
@@ -5372,42 +5372,42 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 5362 | `	sxi32 iFlags                 /* Control flags */` |
 |        - | 5363 | `	)` |
 |        5 | 5364 | `{` |
-|  4426236 | 5365 | `	VmFrame *pFrame = pVm->pFrame;` |
+|  4426856 | 5365 | `	VmFrame *pFrame = pVm->pFrame;` |
 |        - | 5366 | `	VmRefObj *pRef;` |
 |        - | 5367 | `	/* Check if the referenced object already exists */` |
-|  4426236 | 5368 | `	pRef = VmRefObjExtract(&(*pVm),nIdx);` |
-|  4426236 | 5369 | `	if( pRef == 0 ){` |
+|  4426856 | 5368 | `	pRef = VmRefObjExtract(&(*pVm),nIdx);` |
+|  4426856 | 5369 | `	if( pRef == 0 ){` |
 |        - | 5370 | `		/* Create a new entry */` |
-|  4379736 | 5371 | `		pRef = VmNewRefObj(&(*pVm),nIdx);` |
-|  4379736 | 5372 | `		if( pRef == 0 ){` |
+|  4380366 | 5371 | `		pRef = VmNewRefObj(&(*pVm),nIdx);` |
+|  4380366 | 5372 | `		if( pRef == 0 ){` |
 |      ! 0 | 5373 | `			return SXERR_MEM;` |
 |        - | 5374 | `		}` |
-|  4379736 | 5375 | `		pRef->iFlags = iFlags;` |
+|  4380366 | 5375 | `		pRef->iFlags = iFlags;` |
 |        - | 5376 | `		/* Install the entry */` |
-|  4379736 | 5377 | `		VmRefObjInsert(&(*pVm),pRef);` |
-|  2190480 | 5378 | `	}` |
-|  4426236 | 5379 | `	pFrame = VmSkipExceptionFrames(pFrame);` |
-|  4426236 | 5380 | `	if( pFrame->pParent != 0 && pEntry ){` |
+|  4380366 | 5377 | `		VmRefObjInsert(&(*pVm),pRef);` |
+|  2190795 | 5378 | `	}` |
+|  4426856 | 5379 | `	pFrame = VmSkipExceptionFrames(pFrame);` |
+|  4426856 | 5380 | `	if( pFrame->pParent != 0 && pEntry ){` |
 |        - | 5381 | `		VmSlot sRef;` |
 |        - | 5382 | `		/* Local frame,record referenced entry so that it can` |
 |        - | 5383 | `		 * be deleted when we leave this frame.` |
 |        - | 5384 | `		 */` |
-|   501379 | 5385 | `		sRef.nIdx = nIdx;` |
-|   501379 | 5386 | `		sRef.pUserData = pEntry;` |
-|   501379 | 5387 | `		if( SXRET_OK != SySetPut(&pFrame->sRef,(const void *)&sRef)) {` |
+|   501543 | 5385 | `		sRef.nIdx = nIdx;` |
+|   501543 | 5386 | `		sRef.pUserData = pEntry;` |
+|   501543 | 5387 | `		if( SXRET_OK != SySetPut(&pFrame->sRef,(const void *)&sRef)) {` |
 |      ! 0 | 5388 | `			pEntry = 0; /* Do not record this entry */` |
 |      ! 0 | 5389 | `		}` |
-|   251302 | 5390 | `	}` |
-|  4426236 | 5391 | `	if( pEntry ){` |
+|   251384 | 5390 | `	}` |
+|  4426856 | 5391 | `	if( pEntry ){` |
 |        - | 5392 | `		/* Address of the hash-entry */` |
-|   547621 | 5393 | `		SySetPut(&pRef->aReference,(const void *)&pEntry);` |
-|   274423 | 5394 | `	}` |
-|  4426236 | 5395 | `	if( pMapEntry ){` |
+|   547775 | 5393 | `		SySetPut(&pRef->aReference,(const void *)&pEntry);` |
+|   274500 | 5394 | `	}` |
+|  4426856 | 5395 | `	if( pMapEntry ){` |
 |        - | 5396 | `		/* Address of the hashmap node [i.e: Array entry] */` |
-|  3824858 | 5397 | `		SySetPut(&pRef->aArrEntries,(const void *)&pMapEntry);` |
-|  1912426 | 5398 | `	}` |
-|  4426236 | 5399 | `	return SXRET_OK;` |
-|  2213735 | 5400 | `}` |
+|  3825170 | 5397 | `		SySetPut(&pRef->aArrEntries,(const void *)&pMapEntry);` |
+|  1912582 | 5398 | `	}` |
+|  4426856 | 5399 | `	return SXRET_OK;` |
+|  2214045 | 5400 | `}` |
 |        - | 5401 | `/*` |
 |        - | 5402 | ` * Remove a memory object [i.e: a variable] from the reference table.` |
 |        - | 5403 | ` * The implementation of the reference mechanism in the PH7 engine` |
@@ -5417,7 +5417,7 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 5407 | ` * Refer to the official for more information on this powerful` |
 |        - | 5408 | ` * extension.` |
 |        - | 5409 | ` */` |
-|  4217163 | 5410 | `PH7_PRIVATE sxi32 PH7_VmRefObjRemove(` |
+|  4217663 | 5410 | `PH7_PRIVATE sxi32 PH7_VmRefObjRemove(` |
 |        - | 5411 | `	ph7_vm *pVm,                 /* Target VM */` |
 |        - | 5412 | `	sxu32 nIdx,                  /* Memory object index in the global object pool */` |
 |        - | 5413 | `	SyHashEntry *pEntry,         /* Hash entry of this object */` |
@@ -5427,13 +5427,13 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 5417 | `	VmRefObj *pRef;` |
 |        - | 5418 | `	sxu32 n;` |
 |        - | 5419 | `	/* Check if the referenced object already exists */` |
-|  4217168 | 5420 | `	pRef = VmRefObjExtract(&(*pVm),nIdx);` |
-|  4217168 | 5421 | `	if( pRef == 0 ){` |
+|  4217668 | 5420 | `	pRef = VmRefObjExtract(&(*pVm),nIdx);` |
+|  4217668 | 5421 | `	if( pRef == 0 ){` |
 |        - | 5422 | `		/* Not such entry */` |
-|   501181 | 5423 | `		return SXERR_NOTFOUND;` |
+|   501345 | 5423 | `		return SXERR_NOTFOUND;` |
 |        - | 5424 | `	}` |
 |        - | 5425 | `	/* Remove the desired entry */` |
-|  3715992 | 5426 | `	if( pEntry ){` |
+|  3716328 | 5426 | `	if( pEntry ){` |
 |        - | 5427 | `		SyHashEntry **apEntry;` |
 |       87 | 5428 | `		apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);` |
 |      267 | 5429 | `		for( n = 0 ; n < SySetUsed(&pRef->aReference) ; n++ ){` |
@@ -5448,18 +5448,18 @@ Coverage: 2355/2831 lines (83.19%)
 |       40 | 5438 | `			}` |
 |       95 | 5439 | `		}` |
 |       41 | 5440 | `	}` |
-|  3715992 | 5441 | `	if( pMapEntry ){` |
+|  3716328 | 5441 | `	if( pMapEntry ){` |
 |        - | 5442 | `		ph7_hashmap_node **apNode;` |
-|  3715910 | 5443 | `		apNode = (ph7_hashmap_node **)SySetBasePtr(&pRef->aArrEntries);` |
-|  7432079 | 5444 | `		for(n = 0 ; n < SySetUsed(&pRef->aArrEntries) ; n++ ){` |
-|  3716174 | 5445 | `			if( apNode[n] == pMapEntry ){` |
+|  3716246 | 5443 | `		apNode = (ph7_hashmap_node **)SySetBasePtr(&pRef->aArrEntries);` |
+|  7432751 | 5444 | `		for(n = 0 ; n < SySetUsed(&pRef->aArrEntries) ; n++ ){` |
+|  3716510 | 5445 | `			if( apNode[n] == pMapEntry ){` |
 |        - | 5446 | `				/* nullify the entry */` |
-|  3715910 | 5447 | `				apNode[n] = 0;` |
-|  1857952 | 5448 | `			}` |
-|  1858089 | 5449 | `		}` |
-|  1857952 | 5450 | `	}` |
-|  3715992 | 5451 | `	return SXRET_OK;` |
-|  2109201 | 5452 | `}` |
+|  3716246 | 5447 | `				apNode[n] = 0;` |
+|  1858120 | 5448 | `			}` |
+|  1858257 | 5449 | `		}` |
+|  1858120 | 5450 | `	}` |
+|  3716328 | 5451 | `	return SXRET_OK;` |
+|  2109451 | 5452 | `}` |
 |        - | 5453 | `#if !defined(PH7_DISABLE_BUILTIN_FUNC) \|\| !defined(PH7_DISABLE_DISK_IO)` |
 |        - | 5454 | `/*` |
 |        - | 5455 | ` * Extract the IO stream device associated with a given scheme.` |
@@ -5483,34 +5483,34 @@ Coverage: 2355/2831 lines (83.19%)
 |        - | 5473 | `	/* Check if a scheme [i.e: file://,http://,zip://...] is available */` |
 |    30087 | 5474 | `	zNext = zCur = zIn = *pzDevice;` |
 |    30087 | 5475 | `	zEnd = &zIn[nByte];` |
-|  1906605 | 5476 | `	while( zIn < zEnd ){` |
-|  1876553 | 5477 | `		if( zIn < &zEnd[-3]/*://*/ && zIn[0] == ':' && zIn[1] == '/' && zIn[2] == '/' ){` |
+|  1906485 | 5476 | `	while( zIn < zEnd ){` |
+|  1876435 | 5477 | `		if( zIn < &zEnd[-3]/*://*/ && zIn[0] == ':' && zIn[1] == '/' && zIn[2] == '/' ){` |
 |        - | 5478 | `			/* Got one */` |
-|       32 | 5479 | `			zNext = &zIn[sizeof("://")-1];` |
-|       32 | 5480 | `			break;` |
+|       35 | 5479 | `			zNext = &zIn[sizeof("://")-1];` |
+|       35 | 5480 | `			break;` |
 |        - | 5481 | `		}` |
 |        - | 5482 | `		/* Advance the cursor */` |
-|  1876523 | 5483 | `		zIn++;` |
+|  1876403 | 5483 | `		zIn++;` |
 |        5 | 5484 | `	}` |
 |    30087 | 5485 | `	if( zIn >= zEnd ){` |
 |        - | 5486 | `		/* No such scheme,return the default stream */` |
-|    30057 | 5487 | `		return pVm->pDefStream;` |
+|    30055 | 5487 | `		return pVm->pDefStream;` |
 |        - | 5488 | `	}` |
-|       32 | 5489 | `	SyStringInitFromBuf(&sDev,zCur,zIn-zCur);` |
+|       35 | 5489 | `	SyStringInitFromBuf(&sDev,zCur,zIn-zCur);` |
 |        - | 5490 | `	/* Remove leading and trailing white spaces */` |
-|       32 | 5491 | `	SyStringFullTrim(&sDev);` |
+|       35 | 5491 | `	SyStringFullTrim(&sDev);` |
 |        - | 5492 | `	/* Perform a linear lookup on the installed stream devices */` |
-|       32 | 5493 | `	apStream = (ph7_io_stream **)SySetBasePtr(&pVm->aIOstream);` |
-|       32 | 5494 | `	nEntry = SySetUsed(&pVm->aIOstream);` |
-|       66 | 5495 | `	for( n = 0 ; n < nEntry ; n++ ){` |
-|       66 | 5496 | `		pStream = apStream[n];` |
-|       66 | 5497 | `		SyStringInitFromBuf(&sCur,pStream->zName,SyStrlen(pStream->zName));` |
+|       35 | 5493 | `	apStream = (ph7_io_stream **)SySetBasePtr(&pVm->aIOstream);` |
+|       35 | 5494 | `	nEntry = SySetUsed(&pVm->aIOstream);` |
+|       69 | 5495 | `	for( n = 0 ; n < nEntry ; n++ ){` |
+|       69 | 5496 | `		pStream = apStream[n];` |
+|       69 | 5497 | `		SyStringInitFromBuf(&sCur,pStream->zName,SyStrlen(pStream->zName));` |
 |        - | 5498 | `		/* Perfrom a case-insensitive comparison */` |
-|       66 | 5499 | `		rc = SyStringCmp(&sDev,&sCur,SyStrnicmp);` |
-|       66 | 5500 | `		if( rc == 0 ){` |
+|       69 | 5499 | `		rc = SyStringCmp(&sDev,&sCur,SyStrnicmp);` |
+|       69 | 5500 | `		if( rc == 0 ){` |
 |        - | 5501 | `			/* Stream device found */` |
-|       32 | 5502 | `			*pzDevice = zNext;` |
-|       32 | 5503 | `			return pStream;` |
+|       35 | 5502 | `			*pzDevice = zNext;` |
+|       35 | 5503 | `			return pStream;` |
 |        - | 5504 | `		}` |
 |       19 | 5505 | `	}` |
 |        - | 5506 | `	/* No such stream,return NULL */` |

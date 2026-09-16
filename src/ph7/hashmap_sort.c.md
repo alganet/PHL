@@ -50,13 +50,13 @@ Coverage: 463/508 lines (91.14%)
 |      - |   40 | `    /* Prevent compiler warning */` |
 |  52209 |   41 | `	result.pNext = result.pPrev = 0;` |
 |  52209 |   42 | `	pTail = &result;` |
-| 130125 |   43 | `	while( pA && pB ){` |
-|  77921 |   44 | `		if( xCmp(pA,pB,pCmpData) <= 0 ){` |
-|  61158 |   45 | `			pTail->pPrev = pA;` |
-|  61158 |   46 | `			pA->pNext = pTail;` |
-|  61158 |   47 | `			pTail = pA;` |
-|  61158 |   48 | `			pA = pA->pPrev;` |
-|  30727 |   49 | `		}else{` |
+| 130129 |   43 | `	while( pA && pB ){` |
+|  77925 |   44 | `		if( xCmp(pA,pB,pCmpData) <= 0 ){` |
+|  61162 |   45 | `			pTail->pPrev = pA;` |
+|  61162 |   46 | `			pA->pNext = pTail;` |
+|  61162 |   47 | `			pTail = pA;` |
+|  61162 |   48 | `			pA = pA->pPrev;` |
+|  30729 |   49 | `		}else{` |
 |  16768 |   50 | `			pTail->pPrev = pB;` |
 |  16768 |   51 | `			pB->pNext = pTail;` |
 |  16768 |   52 | `			pTail = pB;` |
@@ -66,10 +66,10 @@ Coverage: 463/508 lines (91.14%)
 |  52209 |   56 | `	if( pA ){` |
 |   4310 |   57 | `		pTail->pPrev = pA;` |
 |   4310 |   58 | `		pA->pNext = pTail;` |
-|  49926 |   59 | `	}else if( pB ){` |
+|  49925 |   59 | `	}else if( pB ){` |
 |  47584 |   60 | `		pTail->pPrev = pB;` |
 |  47584 |   61 | `		pB->pNext = pTail;` |
-|  23925 |   62 | `	}else{` |
+|  23926 |   62 | `	}else{` |
 |    325 |   63 | `		pTail->pPrev = pTail->pNext = 0;` |
 |      - |   64 | `	}` |
 |  52209 |   65 | `	return result.pPrev;` |
@@ -226,11 +226,11 @@ Coverage: 463/508 lines (91.14%)
 |    127 |  216 | `	PH7_MemObjRelease(&sB);` |
 |    127 |  217 | `	return rc;` |
 |     64 |  218 | `}` |
-|  77540 |  219 | `static sxi32 HashmapCmpCallback1(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
+|  77542 |  219 | `static sxi32 HashmapCmpCallback1(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
 |      5 |  220 | `{` |
-|  77545 |  221 | `	if( pCmpData == 0 ){` |
+|  77547 |  221 | `	if( pCmpData == 0 ){` |
 |      - |  222 | `		/* SORT_REGULAR fast path */` |
-|  77457 |  223 | `		return HashmapNodeCmp(pA,pB,FALSE);` |
+|  77459 |  223 | `		return HashmapNodeCmp(pA,pB,FALSE);` |
 |      - |  224 | `	}` |
 |     89 |  225 | `	return HashmapFlagValueCmp(pA,pB,SX_PTR_TO_INT(pCmpData));` |
 |  38667 |  226 | `}` |
@@ -479,17 +479,17 @@ Coverage: 463/508 lines (91.14%)
 |      - |  469 | ` * Node comparison callback: Random node comparison.` |
 |      - |  470 | ` * used-by: [shuffle()]` |
 |      - |  471 | ` */` |
-|     20 |  472 | `PH7_PRIVATE sxi32 HashmapCmpCallback7(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
+|     22 |  472 | `PH7_PRIVATE sxi32 HashmapCmpCallback7(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
 |      1 |  473 | `{` |
 |      - |  474 | `	sxu32 n;` |
-|      9 |  475 | `	SXUNUSED(pB); /* cc warning */` |
-|      9 |  476 | `	SXUNUSED(pCmpData);` |
+|     10 |  475 | `	SXUNUSED(pB); /* cc warning */` |
+|     10 |  476 | `	SXUNUSED(pCmpData);` |
 |      - |  477 | `	/* Grab a random number */` |
-|     21 |  478 | `	n = PH7_VmRandomNum(pA->pMap->pVm);` |
+|     23 |  478 | `	n = PH7_VmRandomNum(pA->pMap->pVm);` |
 |      - |  479 | `	/* if the random number is odd then the first node 'pA' is greater then` |
 |      - |  480 | `	 * the second node 'pB'. Otherwise the reverse is assumed.` |
 |      - |  481 | `	 */` |
-|     21 |  482 | `	return n&1 ? 1 : -1;` |
+|     23 |  482 | `	return n&1 ? 1 : -1;` |
 |      1 |  483 | `}` |
 |      - |  484 | `/*` |
 |      - |  485 | ` * Rehash all nodes keys after a merge-sort have been applied.` |
