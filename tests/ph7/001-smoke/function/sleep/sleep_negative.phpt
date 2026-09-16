@@ -2,21 +2,15 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-sleep() should return FALSE on negative values
---SKIPIF--
-<?php
-if (function_exists('zend_version')) {
-    echo "skip";
-}
-?>
+sleep() rejects a negative delay with a ValueError
 --FILE--
 <?php
-echo sleep(-1) ? "true\n" : "false\n";
-echo sleep('abc') ? "true\n" : "false\n";
+try { sleep(-1); } catch (ValueError $e) { echo $e->getMessage(), "\n"; }
+// A zero delay is valid and returns int(0), not a bool.
+var_dump(sleep(0));
 ?>
 --EXPECT--
-false
-false
+sleep(): Argument #1 ($seconds) must be greater than or equal to 0
+int(0)
 --CLEAN--
 <?php
-

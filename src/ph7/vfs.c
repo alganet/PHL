@@ -128,8 +128,11 @@ static int PH7_vfs_chdir(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zPath;
 	ph7_vfs *pVfs;
 	int rc;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
-		/* Missing/Invalid argument,return FALSE */
+	/* Only the ARITY is checked here: php coerces a scalar $directory to string,
+	 * so chdir(123) attempts "123" and warns that it does not exist. Requiring a
+	 * string outright made that call return FALSE silently, with no diagnostic. */
+	if( nArg < 1 ){
+		/* Missing argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -495,9 +498,9 @@ static int PH7_vfs_sleep(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Amount to sleep */
 	nSleep = ph7_value_to_int(apArg[0]);
 	if( nSleep < 0 ){
-		/* Invalid value,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+		/* php raises rather than sleeping for an unsigned-wrapped eternity */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"sleep(): Argument #1 ($seconds) must be greater than or equal to 0");
 	}
 	/* Perform the requested operation (Microseconds) */
 	rc = pVfs->xSleep((unsigned int)(nSleep * SX_USEC_PER_SEC));
@@ -540,8 +543,9 @@ static int PH7_vfs_usleep(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Amount to sleep */
 	nSleep = ph7_value_to_int(apArg[0]);
 	if( nSleep < 0 ){
-		/* Invalid value,return immediately */
-		return PH7_OK;
+		/* php raises rather than sleeping for an unsigned-wrapped eternity */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"usleep(): Argument #1 ($microseconds) must be greater than or equal to 0");
 	}
 	/* Perform the requested operation (Microseconds) */
 	pVfs->xSleep((unsigned int)nSleep);
