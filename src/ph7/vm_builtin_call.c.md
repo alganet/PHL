@@ -40,24 +40,24 @@ Coverage: 542/621 lines (87.28%)
 |     - |   30 | ` * string key, so they are exactly its HASHMAP_BLOB_NODE elements. Returns 0 when` |
 |     - |   31 | ` * the function has no variadic formal or no named args reached it.` |
 |     - |   32 | ` */` |
-|  1124 |   33 | `static sxu32 VmCountNamedVariadicArgs(ph7_vm *pVm, VmFrame *pFrame)` |
+|  1122 |   33 | `static sxu32 VmCountNamedVariadicArgs(ph7_vm *pVm, VmFrame *pFrame)` |
 |     5 |   34 | `{` |
-|  1129 |   35 | `	ph7_vm_func *pVmFunc = (ph7_vm_func *)pFrame->pUserData;` |
+|  1127 |   35 | `	ph7_vm_func *pVmFunc = (ph7_vm_func *)pFrame->pUserData;` |
 |     - |   36 | `	ph7_vm_func_arg *aFormal;` |
 |     - |   37 | `	sxu32 nFormal;` |
 |     - |   38 | `	VmSlot *aSlot;` |
 |     - |   39 | `	ph7_value *pObj;` |
-|  1129 |   40 | `	sxu32 nNamed = 0;` |
-|  1129 |   41 | `	if( pVmFunc == 0 ){` |
+|  1127 |   40 | `	sxu32 nNamed = 0;` |
+|  1127 |   41 | `	if( pVmFunc == 0 ){` |
 |   ! 0 |   42 | `		return 0;` |
 |     - |   43 | `	}` |
-|  1129 |   44 | `	nFormal = SySetUsed(&pVmFunc->aArgs);` |
-|  1129 |   45 | `	if( nFormal == 0 ){` |
+|  1127 |   44 | `	nFormal = SySetUsed(&pVmFunc->aArgs);` |
+|  1127 |   45 | `	if( nFormal == 0 ){` |
 |    20 |   46 | `		return 0;` |
 |     - |   47 | `	}` |
-|  1111 |   48 | `	aFormal = (ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs);` |
-|  1111 |   49 | `	if( (aFormal[nFormal-1].iFlags & VM_FUNC_ARG_VARIADIC) == 0 ){` |
-|  1105 |   50 | `		return 0;` |
+|  1109 |   48 | `	aFormal = (ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs);` |
+|  1109 |   49 | `	if( (aFormal[nFormal-1].iFlags & VM_FUNC_ARG_VARIADIC) == 0 ){` |
+|  1103 |   50 | `		return 0;` |
 |     - |   51 | `	}` |
 |     7 |   52 | `	if( nFormal - 1 >= SySetUsed(&pFrame->sArg) ){` |
 |   ! 0 |   53 | `		return 0;` |
@@ -76,17 +76,17 @@ Coverage: 542/621 lines (87.28%)
 |     8 |   66 | `		}` |
 |     3 |   67 | `	}` |
 |     7 |   68 | `	return nNamed;` |
-|   567 |   69 | `}` |
-|  1126 |   70 | `PH7_PRIVATE int vm_builtin_func_num_args(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   566 |   69 | `}` |
+|  1124 |   70 | `PH7_PRIVATE int vm_builtin_func_num_args(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     5 |   71 | `{` |
 |     - |   72 | `	VmFrame *pFrame;` |
 |     - |   73 | `	ph7_vm *pVm;` |
 |     - |   74 | `	/* Point to the target VM */` |
-|  1131 |   75 | `	pVm = pCtx->pVm;` |
+|  1129 |   75 | `	pVm = pCtx->pVm;` |
 |     - |   76 | `	/* Current frame */` |
-|  1131 |   77 | `	pFrame = pVm->pFrame;` |
-|  1131 |   78 | `	pFrame = VmSkipExceptionFrames(pFrame);` |
-|  1131 |   79 | `	if( pFrame->pParent == 0 ){` |
+|  1129 |   77 | `	pFrame = pVm->pFrame;` |
+|  1129 |   78 | `	pFrame = VmSkipExceptionFrames(pFrame);` |
+|  1129 |   79 | `	if( pFrame->pParent == 0 ){` |
 |     1 |   80 | `		SXUNUSED(nArg);` |
 |     1 |   81 | `		SXUNUSED(apArg);` |
 |     - |   82 | `		/* php raises a catchable Error here. Returning -1 was a silent wrong` |
@@ -101,14 +101,14 @@ Coverage: 542/621 lines (87.28%)
 |     - |   91 | ``	 * `function f($a,$b=2){}; f(1)` — 2 where php says 1). NAMED arguments`` |
 |     - |   92 | `	 * absorbed into a variadic are NOT counted by php (they are not positional),` |
 |     - |   93 | `	 * so discount them. */` |
-|  1129 |   94 | `	if( pFrame->nActualArgs >= 0 ){` |
-|  1129 |   95 | `		ph7_result_int(pCtx,pFrame->nActualArgs - (int)VmCountNamedVariadicArgs(pVm,pFrame));` |
-|  1129 |   96 | `		return SXRET_OK;` |
+|  1127 |   94 | `	if( pFrame->nActualArgs >= 0 ){` |
+|  1127 |   95 | `		ph7_result_int(pCtx,pFrame->nActualArgs - (int)VmCountNamedVariadicArgs(pVm,pFrame));` |
+|  1127 |   96 | `		return SXRET_OK;` |
 |     - |   97 | `	}` |
 |   ! 0 |   98 | `	nArg = (int)SySetUsed(&pFrame->sArg);` |
 |   ! 0 |   99 | `	ph7_result_int(pCtx,nArg);` |
 |   ! 0 |  100 | `	return SXRET_OK;` |
-|   568 |  101 | `}` |
+|   567 |  101 | `}` |
 |     - |  102 | `/*` |
 |     - |  103 | ` * value func_get_arg(int $arg_num)` |
 |     - |  104 | ` *   Return an item from the argument list.` |
@@ -317,43 +317,43 @@ Coverage: 542/621 lines (87.28%)
 |     - |  307 | ` * Return` |
 |     - |  308 | ` *  Return TRUE if the given function has been defined.False otherwise` |
 |     - |  309 | ` */` |
-|   540 |  310 | `PH7_PRIVATE int vm_builtin_func_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   534 |  310 | `PH7_PRIVATE int vm_builtin_func_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     5 |  311 | `{` |
 |     - |  312 | `	const char *zName;` |
 |     - |  313 | `	ph7_vm *pVm;` |
 |     - |  314 | `	int nLen;` |
 |     - |  315 | `	int res;` |
-|   545 |  316 | `	if( nArg < 1 ){` |
+|   539 |  316 | `	if( nArg < 1 ){` |
 |     - |  317 | `		/* Missing argument,return FALSE */` |
 |   ! 0 |  318 | `		ph7_result_bool(pCtx,0);` |
 |   ! 0 |  319 | `		return SXRET_OK;` |
 |     - |  320 | `	}` |
 |     - |  321 | `	/* Point to the target VM */` |
-|   545 |  322 | `	pVm = pCtx->pVm;` |
+|   539 |  322 | `	pVm = pCtx->pVm;` |
 |     - |  323 | `	/* Extract the function name */` |
-|   545 |  324 | `	zName = ph7_value_to_string(apArg[0],&nLen);` |
+|   539 |  324 | `	zName = ph7_value_to_string(apArg[0],&nLen);` |
 |     - |  325 | `	/* php: a leading '\' anchors the name to the global namespace; strip it. */` |
-|   545 |  326 | `	if( nLen > 0 && zName[0] == '\\' ){ zName++; nLen--; }` |
+|   539 |  326 | `	if( nLen > 0 && zName[0] == '\\' ){ zName++; nLen--; }` |
 |     - |  327 | `	/* Assume the function is not defined */` |
-|   545 |  328 | `	res = 0;` |
+|   539 |  328 | `	res = 0;` |
 |     - |  329 | `	/* Perform the lookup */` |
-|   797 |  330 | `	if( SyHashGet(&pVm->hFunction,(const void *)zName,(sxu32)nLen) != 0 \|\|` |
-|   504 |  331 | `		SyHashGet(&pVm->hHostFunction,(const void *)zName,(sxu32)nLen) != 0 ){` |
+|   788 |  330 | `	if( SyHashGet(&pVm->hFunction,(const void *)zName,(sxu32)nLen) != 0 \|\|` |
+|   498 |  331 | `		SyHashGet(&pVm->hHostFunction,(const void *)zName,(sxu32)nLen) != 0 ){` |
 |     - |  332 | `			/* Function is defined */` |
 |   177 |  333 | `			res = 1;` |
 |    86 |  334 | `	}` |
-|   545 |  335 | `	ph7_result_bool(pCtx,res);` |
-|   545 |  336 | `	return SXRET_OK;` |
-|   275 |  337 | `}` |
+|   539 |  335 | `	ph7_result_bool(pCtx,res);` |
+|   539 |  336 | `	return SXRET_OK;` |
+|   272 |  337 | `}` |
 |     - |  338 | `/*` |
 |     - |  339 | ` * Verify that the contents of a variable can be called as a function.` |
 |     - |  340 | ` * [i.e: Whether it is callable or not].` |
 |     - |  341 | ` * Return TRUE if callable.FALSE otherwise.` |
 |     - |  342 | ` */` |
-| 60430 |  343 | `PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)` |
+| 60470 |  343 | `PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)` |
 |     5 |  344 | `{` |
-| 60435 |  345 | `	int res = 0;` |
-| 60435 |  346 | `	if( pValue->iFlags & MEMOBJ_OBJ ){` |
+| 60475 |  345 | `	int res = 0;` |
+| 60475 |  346 | `	if( pValue->iFlags & MEMOBJ_OBJ ){` |
 |     - |  347 | `		/* PHP semantics: an object is callable iff its class declares __invoke` |
 |     - |  348 | `		 * (inherited methods count). The CallInvoke flag is unused — it` |
 |     - |  349 | `		 * formerly invoked __invoke as a runtime predicate, which is not` |
@@ -366,7 +366,7 @@ Coverage: 542/621 lines (87.28%)
 |    41 |  356 | `			res = 1;` |
 |    24 |  357 | `		}` |
 |   271 |  358 | `		(void)CallInvoke;` |
-| 60164 |  359 | `	}else if( pValue->iFlags & MEMOBJ_HASHMAP ){` |
+| 60204 |  359 | `	}else if( pValue->iFlags & MEMOBJ_HASHMAP ){` |
 |    74 |  360 | `		ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;` |
 |    74 |  361 | `		if( pMap->nEntry == 2 ){` |
 |     - |  362 | `			ph7_class *pClass;` |
@@ -390,20 +390,20 @@ Coverage: 542/621 lines (87.28%)
 |    24 |  380 | `				}` |
 |    26 |  381 | `			}` |
 |    30 |  382 | `		}` |
-| 59858 |  383 | `	}else if( pValue->iFlags & MEMOBJ_STRING ){` |
+| 59898 |  383 | `	}else if( pValue->iFlags & MEMOBJ_STRING ){` |
 |     - |  384 | `		const char *zName;` |
 |     - |  385 | `		int nLen;` |
 |     - |  386 | `		/* Extract the name */` |
-|  5151 |  387 | `		zName = ph7_value_to_string(pValue,&nLen);` |
+|  5141 |  387 | `		zName = ph7_value_to_string(pValue,&nLen);` |
 |     - |  388 | `		/* php: a leading '\' just anchors the callable to the global namespace` |
 |     - |  389 | `		 * ("\trim", "\Foo::bar"); strip it before the lookup. */` |
-|  5151 |  390 | `		if( nLen > 0 && zName[0] == '\\' ){ zName++; nLen--; }` |
+|  5141 |  390 | `		if( nLen > 0 && zName[0] == '\\' ){ zName++; nLen--; }` |
 |     - |  391 | `		/* Perform the lookup */` |
-|  5205 |  392 | `		if( SyHashGet(&pVm->hFunction,(const void *)zName,(sxu32)nLen) != 0 \|\|` |
+|  5195 |  392 | `		if( SyHashGet(&pVm->hFunction,(const void *)zName,(sxu32)nLen) != 0 \|\|` |
 |   108 |  393 | `			SyHashGet(&pVm->hHostFunction,(const void *)zName,(sxu32)nLen) != 0 ){` |
 |     - |  394 | `				/* Function is callable */` |
-|  5101 |  395 | `				res = 1;` |
-|  2602 |  396 | `		}else if( nLen > 3 ){` |
+|  5091 |  395 | `				res = 1;` |
+|  2597 |  396 | `		}else if( nLen > 3 ){` |
 |     - |  397 | `			/* php's "Class::method" static-callable string */` |
 |     - |  398 | `			int i;` |
 |   461 |  399 | `			for( i = 1 ; i + 2 < nLen ; ++i ){` |
@@ -416,8 +416,8 @@ Coverage: 542/621 lines (87.28%)
 |     - |  406 | `				}` |
 |   209 |  407 | `			}` |
 |    24 |  408 | `		}` |
-|  2573 |  409 | `	}` |
-| 60435 |  410 | `	return res;` |
+|  2568 |  409 | `	}` |
+| 60475 |  410 | `	return res;` |
 |     5 |  411 | `}` |
 |     - |  412 | `/*` |
 |     - |  413 | ` * bool is_callable(callable $name[,bool $syntax_only = false])` |
@@ -610,19 +610,19 @@ Coverage: 542/621 lines (87.28%)
 |     - |  600 | ` * Extract the top active class. NULL is returned` |
 |     - |  601 | ` * if the class stack is empty.` |
 |     - |  602 | ` */` |
-|  2158 |  603 | `PH7_PRIVATE ph7_class * PH7_VmPeekTopClass(ph7_vm *pVm)` |
+|  2162 |  603 | `PH7_PRIVATE ph7_class * PH7_VmPeekTopClass(ph7_vm *pVm)` |
 |     5 |  604 | `{` |
-|  2163 |  605 | `	SySet *pSet = &pVm->aSelf;` |
+|  2167 |  605 | `	SySet *pSet = &pVm->aSelf;` |
 |     - |  606 | `	ph7_class **apClass;` |
-|  2163 |  607 | `	if( SySetUsed(pSet) <= 0 ){` |
+|  2167 |  607 | `	if( SySetUsed(pSet) <= 0 ){` |
 |     - |  608 | `		/* Empty stack: fall back to the initializer-eval class (see` |
 |     - |  609 | `		 * pConstEvalClass) so static:: degrades to self:: there. */` |
-|  1129 |  610 | `		return pVm->pConstEvalClass;` |
+|  1133 |  610 | `		return pVm->pConstEvalClass;` |
 |     - |  611 | `	}` |
 |     - |  612 | `	/* Peek the last entry */` |
 |  1039 |  613 | `	apClass = (ph7_class **)SySetBasePtr(pSet);` |
 |  1039 |  614 | `	return apClass[pSet->nUsed - 1];` |
-|  1084 |  615 | `}` |
+|  1086 |  615 | `}` |
 |     - |  616 | `/*` |
 |     - |  617 | ` * ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm)` |
 |     - |  618 | ` *   Get the class that declared the currently executing method.` |
@@ -642,13 +642,13 @@ Coverage: 542/621 lines (87.28%)
 |     - |  632 | ` *   This is found by walking the call frames to locate the method's` |
 |     - |  633 | ` *   declaring class.` |
 |     - |  634 | ` */` |
-|  2094 |  635 | `PH7_PRIVATE ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm)` |
+|  2098 |  635 | `PH7_PRIVATE ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm)` |
 |     5 |  636 | `{` |
-|  2099 |  637 | `	VmFrame *pFrame = pVm->pFrame;` |
+|  2103 |  637 | `	VmFrame *pFrame = pVm->pFrame;` |
 |     - |  638 | `	ph7_vm_func *pVmFunc;` |
 |     - |  639 |  |
 |     - |  640 | `	/* Skip exception frames to find the actual method frame */` |
-|  2099 |  641 | `	pFrame = VmSkipExceptionFrames(pFrame);` |
+|  2103 |  641 | `	pFrame = VmSkipExceptionFrames(pFrame);` |
 |     - |  642 |  |
 |     - |  643 | `	/* An on-demand constant/property initializer is evaluated via VmLocalExec,` |
 |     - |  644 | `	 * which pushes no frame — so the enclosing method's frame is still current.` |
@@ -657,12 +657,12 @@ Coverage: 542/621 lines (87.28%)
 |     - |  647 | `	 * (pConstEvalClass), NOT the enclosing method's class. Once the initializer` |
 |     - |  648 | `	 * calls a method (a new frame), the marker no longer matches and the normal` |
 |     - |  649 | `	 * frame walk below picks that method's declaring class. */` |
-|  2099 |  650 | `	if( pVm->pConstEvalClass && pVm->pConstEvalFrame == (void *)pFrame ){` |
+|  2103 |  650 | `	if( pVm->pConstEvalClass && pVm->pConstEvalFrame == (void *)pFrame ){` |
 |    21 |  651 | `		return pVm->pConstEvalClass;` |
 |     - |  652 | `	}` |
 |     - |  653 |  |
 |     - |  654 | `	/* Check if we're in a method context */` |
-|  2079 |  655 | `	if( pFrame->pParent ){` |
+|  2083 |  655 | `	if( pFrame->pParent ){` |
 |  1035 |  656 | `		if( pFrame->pBoundScope ){` |
 |     - |  657 | `			/* Closure::bind/bindTo/call scope override: it REPLACES the closure's` |
 |     - |  658 | `			 * class scope (php), so self::/parent:: resolve against it. */` |
@@ -683,8 +683,8 @@ Coverage: 542/621 lines (87.28%)
 |    39 |  673 | `	}` |
 |     - |  674 | `	/* No method frame: a constant/property initializer evaluated via` |
 |     - |  675 | `	 * VmLocalExec resolves self:: against the class being initialized. */` |
-|  1127 |  676 | `	return pVm->pConstEvalClass;` |
-|  1052 |  677 | `}` |
+|  1131 |  676 | `	return pVm->pConstEvalClass;` |
+|  1054 |  677 | `}` |
 |     - |  678 | `/*` |
 |     - |  679 | `` * Resolve the `parent` keyword to the base class of the current method's scope.`` |
 |     - |  680 | ` * A trait method is shared by pointer into every using class (its declaring class` |
