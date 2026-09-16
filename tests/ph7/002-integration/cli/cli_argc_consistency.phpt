@@ -4,7 +4,7 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 $argc stays equal to count($argv) even when an argument is the empty string
 --SKIPIF--
-<?php if (PHP_OS == 'WINNT') { echo "skip"; } ?>
+<?php if (PHP_OS == 'WINNT') { echo "skip POSIX-only behavior; not applicable on Windows"; } ?>
 --FILE--
 <?php
 /* Regression: registering an argv entry can skip an empty string, so $argc must

@@ -4,7 +4,7 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 phl interpreter CLI inline code run (-r): $argv[0] is "Standard input code"
 --SKIPIF--
-<?php if (PHP_OS == 'WINNT') { echo "skip"; } ?>
+<?php if (PHP_OS == 'WINNT') { echo "skip POSIX-only behavior; not applicable on Windows"; } ?>
 --FILE--
 <?php
 /* Matches PHP: under -r, $argv[0] is the literal "Standard input code" and the

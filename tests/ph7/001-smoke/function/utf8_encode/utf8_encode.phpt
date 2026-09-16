@@ -5,9 +5,11 @@ SPDX-License-Identifier: BSD-3-Clause
 utf8_encode encodes ISO-8859-1 to UTF-8
 --SKIPIF--
 <?php
-if (defined('PHP_VERSION_ID') && PHP_VERSION_ID >= 80300) {
-	echo "skip";
-}
+// php DEPRECATES utf8_encode() since 8.2 (E_DEPRECATED, caught by the runner's error
+// handler); PHL still exposes it as non-deprecated surface. The scope policy says PHL
+// REMOVES what php merely deprecates -- removal is filed there as an open decision,
+// and this guard retires with it.
+if (function_exists('zend_version')) { echo 'skip php deprecates utf8_encode() since 8.2; PHL has not yet removed it'; }
 ?>
 --FILE--
 <?php

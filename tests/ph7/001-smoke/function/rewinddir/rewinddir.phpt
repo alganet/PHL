@@ -3,8 +3,6 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 rewinddir resets directory stream pointer (read same entry twice)
---SKIPIF--
-<?php if (!function_exists('rewinddir')) { echo 'skip'; } ?>
 --FILE--
 <?php
 $dir = sys_get_temp_dir() . '/ph7_rewinddir_'.uniqid();

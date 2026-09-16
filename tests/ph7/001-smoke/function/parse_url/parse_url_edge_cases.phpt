@@ -3,8 +3,6 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 parse_url handles edge cases and special URLs
---SKIPIF--
-<?php if (!function_exists('parse_url')) { die('skip'); } ?>
 --FILE--
 <?php
 // Test URLs with special characters and edge cases
@@ -20,7 +18,6 @@ $urls = array(
     "?query=value",                         // Query only
     "#fragment",                            // Fragment only
 );
-
 foreach ($urls as $i => $url) {
     $result = parse_url($url);
     echo "url" . $i . "_parsed: " . (is_array($result) ? "ok" : "fail") . "\n";

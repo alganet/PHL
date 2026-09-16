@@ -4,7 +4,7 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 phl interpreter CLI -l lints a file (syntax-check only), matching PHP
 --SKIPIF--
-<?php if (PHP_OS == 'WINNT') { echo "skip"; } ?>
+<?php if (PHP_OS == 'WINNT') { echo "skip POSIX-only behavior; not applicable on Windows"; } ?>
 --FILE--
 <?php
 $phl = getenv('PHPT_TARGET_EXECUTABLE');

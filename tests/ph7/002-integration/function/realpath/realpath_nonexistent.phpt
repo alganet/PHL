@@ -6,7 +6,7 @@ realpath() returns FALSE for non-existent path
 --SKIPIF--
 <?php
 if (PHP_OS == 'WINNT') {
-    echo "skip";
+    echo "skip POSIX-only behavior; not applicable on Windows";
 }
 ?>
 --FILE--
