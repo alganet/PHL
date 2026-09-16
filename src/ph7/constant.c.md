@@ -56,11 +56,11 @@ Coverage: 970/1042 lines (93.09%)
 |      1 |   46 | `	SXUNUSED(pUnused);` |
 |      3 |   47 | `	ph7_value_string(pVal,PHP_COMPAT_EXTRA_VERSION,(int)sizeof(PHP_COMPAT_EXTRA_VERSION)-1);` |
 |      3 |   48 | `}` |
-|      8 |   49 | `static void PH7_PHPVerIdConst(ph7_value *pVal,void *pUnused)` |
+|      4 |   49 | `static void PH7_PHPVerIdConst(ph7_value *pVal,void *pUnused)` |
 |      1 |   50 | `{` |
-|      4 |   51 | `	SXUNUSED(pUnused);` |
-|      9 |   52 | `	ph7_value_int64(pVal,PHP_COMPAT_VERSION_ID);` |
-|      9 |   53 | `}` |
+|      2 |   51 | `	SXUNUSED(pUnused);` |
+|      5 |   52 | `	ph7_value_int64(pVal,PHP_COMPAT_VERSION_ID);` |
+|      5 |   53 | `}` |
 |      - |   54 | `#ifdef __WINNT__` |
 |      - |   55 | `#include <Windows.h>` |
 |      - |   56 | `#elif defined(__UNIXES__)` |
@@ -470,11 +470,11 @@ Coverage: 970/1042 lines (93.09%)
 |      - |  460 | ` * E_DEPRECATED` |
 |      - |  461 | ` * Expands 8192` |
 |      - |  462 | ` */` |
-|      2 |  463 | `static void PH7_E_DEPRECATED_Const(ph7_value *pVal,void *pUserData)` |
+|      4 |  463 | `static void PH7_E_DEPRECATED_Const(ph7_value *pVal,void *pUserData)` |
 |      1 |  464 | `{` |
-|      3 |  465 | `	ph7_value_int(pVal,8192);` |
-|      1 |  466 | `	SXUNUSED(pUserData);` |
-|      3 |  467 | `}` |
+|      5 |  465 | `	ph7_value_int(pVal,8192);` |
+|      2 |  466 | `	SXUNUSED(pUserData);` |
+|      5 |  467 | `}` |
 |      - |  468 | `/*` |
 |      - |  469 | ` * E_USER_DEPRECATED` |
 |      - |  470 | ` *   Expands 16384.` |
