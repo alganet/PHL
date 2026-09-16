@@ -10,8 +10,10 @@
 // Valid section types
 $phpt_valid_sections = array('test', 'description', 'credits', 'skipif', 'file', 'expect', 'expectf', 'expectregex', 'clean', 'post', 'post_raw', 'get', 'cookie', 'stdin', 'ini', 'args', 'env');
 
-// Unimplemented section types
-$phpt_not_implemented = array('post', 'post_raw', 'get', 'cookie', 'stdin', 'args', 'expectregex');
+// Unimplemented section types. The remaining four all describe a CGI request;
+// PHL is CLI + `-S` only (scope policy), so they stay unimplemented by design
+// rather than pending — a test carrying one is reported, never silently passed.
+$phpt_not_implemented = array('post', 'post_raw', 'get', 'cookie');
 
 // Default values
 $phpt_target_executable = "";
@@ -396,7 +398,7 @@ function build_env_prefix($phpt_env) {
 
 // Run a PHPT section file through an external target executable
 // Returns the combined stdout/stderr output as string, or false if popen() failed
-function run_file_with_target($phpt_target_executable, $phpt_file, $phpt_env = array(), $phpt_ini = array()) {
+function run_file_with_target($phpt_target_executable, $phpt_file, $phpt_env = array(), $phpt_ini = array(), $phpt_argv_tail = '', $phpt_stdin = null) {
     // Export PHPT_TARGET_EXECUTABLE through the same per-OS, value-quoting path as
     // the --ENV-- vars (build_env_prefix) so a target path containing a space is
     // quoted too. The '+' keeps PHPT_TARGET_EXECUTABLE ahead of any --ENV-- vars.
@@ -413,10 +415,29 @@ function run_file_with_target($phpt_target_executable, $phpt_file, $phpt_env = a
             $cmd .= ' -d ' . "'" . str_replace("'", "'\\''", $phpt_ini_tok) . "'";
         }
     }
-    $cmd .= ' "' . $phpt_file . '" 2>&1';
+    $cmd .= ' "' . $phpt_file . '"';
+    // --ARGS--: appended after the script path, so the child sees them as
+    // $argv[1..] with $argv[0] still the script (php run-tests does the same).
+    // Passed through verbatim -- the section is shell-level text by design.
+    if ($phpt_argv_tail !== '') {
+        $cmd .= ' ' . $phpt_argv_tail;
+    }
+    // --STDIN--: fed by redirecting a temp file into the child. popen() only
+    // gives us one pipe direction, and a redirect is portable across cmd.exe
+    // and POSIX shells, so this avoids depending on proc_open().
+    $phpt_stdin_path = null;
+    if ($phpt_stdin !== null) {
+        $phpt_stdin_path = $phpt_file . '.stdin';
+        file_put_contents($phpt_stdin_path, $phpt_stdin);
+        $cmd .= ' < "' . $phpt_stdin_path . '"';
+    }
+    $cmd .= ' 2>&1';
     $fp = popen($cmd, 'r');
     if ($fp === false) {
         // piped execution failed
+        if ($phpt_stdin_path !== null) {
+            @unlink($phpt_stdin_path);
+        }
         return false;
     }
     $output = '';
@@ -426,6 +447,9 @@ function run_file_with_target($phpt_target_executable, $phpt_file, $phpt_env = a
         $output .= $chunk;
     }
     pclose($fp);
+    if ($phpt_stdin_path !== null) {
+        @unlink($phpt_stdin_path);
+    }
     return $output;
 }
 
@@ -477,6 +501,15 @@ foreach ($phpt_files as $phpt_file) {
     $phpt_ini = isset($phpt_sections['ini']) ? parse_env_section($phpt_sections['ini']) : array();
     $phpt_ini_unsupported = (!empty($phpt_ini) && empty($phpt_target_executable));
 
+    // Optional --ARGS-- / --STDIN--: both shape the CHILD's invocation (argv tail,
+    // redirected stdin), so like --ENV--/--INI-- they need a fresh process. The
+    // in-process runner shares the runner's own argv and stdin, so those tests are
+    // skipped there rather than run with the section silently dropped.
+    $phpt_argv_tail = isset($phpt_sections['args']) ? trim($phpt_sections['args']) : '';
+    $phpt_args_unsupported = ($phpt_argv_tail !== '' && empty($phpt_target_executable));
+    $phpt_stdin = isset($phpt_sections['stdin']) ? $phpt_sections['stdin'] : null;
+    $phpt_stdin_unsupported = ($phpt_stdin !== null && empty($phpt_target_executable));
+
     // Write sections to disk
     if (isset($phpt_sections['file'])) {
         $phpt_file_path = $phpt_file . '.file';
@@ -506,6 +539,14 @@ foreach ($phpt_files as $phpt_file) {
         // --INI-- is applied as -d flags to a fresh child; skip in-process runs.
         $phpt_skip = true;
         $phpt_skip_reason = '--INI-- requires --target-executable';
+    } elseif ($phpt_args_unsupported) {
+        // --ARGS-- becomes the child's argv tail; skip in-process runs.
+        $phpt_skip = true;
+        $phpt_skip_reason = '--ARGS-- requires --target-executable';
+    } elseif ($phpt_stdin_unsupported) {
+        // --STDIN-- is redirected into the child; skip in-process runs.
+        $phpt_skip = true;
+        $phpt_skip_reason = '--STDIN-- requires --target-executable';
     } elseif (isset($phpt_sections['skipif'])) {
         $phpt_skipif_path = $phpt_file . '.skipif';
         if (!empty($phpt_target_executable)) {
@@ -578,7 +619,7 @@ foreach ($phpt_files as $phpt_file) {
             // Test execution
             $phpt_file_path = $phpt_file . '.file';
             if (!empty($phpt_target_executable)) {
-                $phpt_output = run_file_with_target($phpt_target_executable, $phpt_file_path, $phpt_env, $phpt_ini);
+                $phpt_output = run_file_with_target($phpt_target_executable, $phpt_file_path, $phpt_env, $phpt_ini, $phpt_argv_tail, $phpt_stdin);
                 if ($phpt_output === false) {
                     echo "# ERROR: Failed to spawn test for $phpt_file_path\n";
                     $phpt_output = "";
@@ -604,9 +645,16 @@ foreach ($phpt_files as $phpt_file) {
 
             $phpt_expected = isset($phpt_sections['expect']) ? trim($phpt_sections['expect']) : '';
             $phpt_expectedf = isset($phpt_sections['expectf']) ? trim($phpt_sections['expectf']) : '';
+            $phpt_expectedr = isset($phpt_sections['expectregex']) ? trim($phpt_sections['expectregex']) : '';
 
             $phpt_matches = false;
-            if (!empty($phpt_expectedf)) {
+            if ($phpt_expectedr !== '') {
+                // --EXPECTREGEX--: the section body is the pattern WITHOUT delimiters
+                // (php run-tests wraps it), matched against the whole output. '/' is
+                // used as the delimiter, so any literal '/' in the body is escaped.
+                $phpt_regex = '/' . str_replace('/', '\\/', $phpt_expectedr) . '/s';
+                $phpt_matches = (preg_match($phpt_regex, $phpt_output) === 1);
+            } elseif (!empty($phpt_expectedf)) {
                 // Use EXPECTF with pattern matching for %d and %s
                 $phpt_matches = match_expectf_pattern($phpt_expectedf, $phpt_output);
             } elseif ($phpt_output === $phpt_expected) {
@@ -629,11 +677,14 @@ foreach ($phpt_files as $phpt_file) {
                         'name' => $phpt_test_name,
                         'expected' => $phpt_expected,
                         'expectedf' => $phpt_expectedf,
+                        'expectedr' => $phpt_expectedr,
                         'output' => $phpt_output
                     );
                 } else {
                     echo "not ok $phpt_count - $phpt_test_name\n";
-                    if (!empty($phpt_expectedf)) {
+                    if ($phpt_expectedr !== '') {
+                        echo "# Expected regex: '$phpt_expectedr'\n";
+                    } elseif (!empty($phpt_expectedf)) {
                         echo "# Expected pattern: '$phpt_expectedf'\n";
                     } else {
                         echo "# Expected: '$phpt_expected'\n";
@@ -710,7 +761,9 @@ if ($phpt_output_format == "tap") {
                 continue;
             }
             echo "\nnot ok " . $failure['count'] . " - " . $failure['name'] . "\n";
-            if (!empty($failure['expectedf'])) {
+            if (!empty($failure['expectedr'])) {
+                echo "# Expected regex: '" . $failure['expectedr'] . "'\n";
+            } elseif (!empty($failure['expectedf'])) {
                 echo "# Expected pattern: '" . $failure['expectedf'] . "'\n";
             } else {
                 echo "# Expected: '" . $failure['expected'] . "'\n";
