@@ -158,6 +158,82 @@ PH7_PRIVATE VmOpRc VmExecOpStoreRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 	VM_EXIT_BREAK;
 }
 
+/* LOAD_IDX's own iP2 context codes (they do NOT line up with PH7_MEMBER_*). */
+#define VM_IDX_CTX_ISSET 4
+#define VM_IDX_CTX_UNSET 5
+#define VM_IDX_CTX_EMPTY 6
+/*
+ * php rejects an OBJECT or an ARRAY used as an array offset, naming the offending
+ * type the way get_debug_type() does — the CLASS name for an object, "array" for
+ * an array — and wording the failure by context:
+ *
+ *   read/write   Cannot access offset of type Foo on array
+ *   isset/empty  Cannot access offset of type Foo in isset or empty
+ *   unset        Cannot unset offset of type Foo on array
+ *
+ * A RESOURCE is deliberately absent: php does not reject it, it warns
+ * ("Resource ID#N used as offset, casting to integer (N)") and uses the id as an
+ * integer key. VmOffsetResourceWarn() below handles that half.
+ *
+ * Returns TRUE and fills pMsg when the key must be rejected. iCtx is the
+ * instruction's iP2 (any value other than the isset/unset/empty codes reads as
+ * an access).
+ */
+static int VmOffsetTypeRejected(ph7_vm *pVm,ph7_value *pKey,int iCtx,SyBlob *pMsg)
+{
+	const char *zType;
+	SyString *pClass = 0;
+	if( pKey == 0 ){
+		return FALSE;
+	}
+	if( pKey->iFlags & MEMOBJ_OBJ ){
+		ph7_class_instance *pInst = (ph7_class_instance *)pKey->x.pOther;
+		if( pInst && pInst->pClass ){
+			pClass = &pInst->pClass->sName;
+		}
+		zType = "object";
+	}else if( pKey->iFlags & MEMOBJ_HASHMAP ){
+		zType = "array";
+	}else{
+		return FALSE;
+	}
+	SyBlobInit(pMsg,&pVm->sAllocator);
+	if( iCtx == VM_IDX_CTX_UNSET ){
+		SyBlobAppend(pMsg,"Cannot unset offset of type ",sizeof("Cannot unset offset of type ")-1);
+	}else{
+		SyBlobAppend(pMsg,"Cannot access offset of type ",sizeof("Cannot access offset of type ")-1);
+	}
+	if( pClass ){
+		SyBlobAppend(pMsg,pClass->zString,pClass->nByte);
+	}else{
+		SyBlobAppend(pMsg,zType,(sxu32)SyStrlen(zType));
+	}
+	if( iCtx == VM_IDX_CTX_ISSET || iCtx == VM_IDX_CTX_EMPTY ){
+		SyBlobAppend(pMsg," in isset or empty",sizeof(" in isset or empty")-1);
+	}else{
+		SyBlobAppend(pMsg," on array",sizeof(" on array")-1);
+	}
+	return TRUE;
+}
+/*
+ * php's other half of the offset-type rules: a RESOURCE offset is accepted, with
+ * `Warning: Resource ID#N used as offset, casting to integer (N)`, and the key
+ * becomes that integer. Rewrites pKey in place so the normal integer-key path
+ * takes over.
+ */
+static void VmOffsetResourceWarn(ph7_vm *pVm,ph7_value *pKey)
+{
+	sxu32 nId;
+	if( pKey == 0 || (pKey->iFlags & MEMOBJ_RES) == 0 ){
+		return;
+	}
+	nId = PH7_VmResourceId(pVm,pKey->x.pOther);
+	VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
+		"Resource ID#%u used as offset, casting to integer (%u)",nId,nId);
+	PH7_MemObjRelease(pKey);
+	pKey->x.iVal = (sxi64)nId;
+	MemObjSetType(pKey,MEMOBJ_INT);
+}
 /*
  * OP_STORE_IDX_REF: body moved verbatim from the OP_STORE_IDX_REF arm of
  * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
@@ -186,6 +262,19 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 			int bNull = (pKey->iFlags & MEMOBJ_NULL) != 0;
 			int bLossyFloat = (pKey->iFlags & MEMOBJ_REAL) != 0
 				&& pKey->rVal != (ph7_real)(sxi64)pKey->rVal;
+			SyBlob sTypeMsg;
+			/* An object/array key is php's TypeError; a resource key warns and
+			 * becomes its integer id. Both used to be stringified silently. */
+			if( VmOffsetTypeRejected(&(*pVm),pKey,0,&sTypeMsg) ){
+				sxi32 rcSc;
+				PH7_MemObjRelease(pKey);
+				VmPopOperand(&pTos,1);
+				rcSc = VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sTypeMsg);
+				if( rcSc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+				rc = rcSc;
+				PH7_THROW_ROUTE_MIDEXPR(rc)
+			}
+			VmOffsetResourceWarn(&(*pVm),pKey);
 			if( bNull || bLossyFloat ){
 				sxi32 rcSc;
 				const char *zErr = bNull ? "Cannot access offset of type null on array"
@@ -900,6 +989,21 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 	/* php only DEPRECATES a lossy-float subscript / null offset (then truncates /
 	 * normalizes to ""); PHL rejects them on a READ or WRITE (iP2 0/1) and stays
 	 * lenient in isset()/empty()/`??`/unset(), where a throw would be wrong. */
+	/* An object/array key is rejected in EVERY context, including isset()/empty()/
+	 * unset() where php still throws (only the wording changes) — unlike the
+	 * null/float deprecations below, which stay lenient there. A resource key is
+	 * accepted with a warning and becomes its integer id. */
+	if( (pTos->iFlags & MEMOBJ_HASHMAP) && pIdx ){
+		SyBlob sTypeMsg;
+		if( VmOffsetTypeRejected(&(*pVm),pIdx,pInstr->iP2,&sTypeMsg) ){
+			VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sTypeMsg));
+			PH7_MemObjRelease(pIdx);
+			PH7_MemObjRelease(pTos);
+			pTos->nIdx = SXU32_HIGH;
+			VM_EXIT_BREAK;
+		}
+		VmOffsetResourceWarn(&(*pVm),pIdx);
+	}
 	if( (pTos->iFlags & MEMOBJ_HASHMAP) && pIdx
 	 && (pInstr->iP2 == 0 || pInstr->iP2 == 1) ){
 		int bNull = (pIdx->iFlags & MEMOBJ_NULL) != 0;
@@ -1109,6 +1213,14 @@ PH7_PRIVATE VmOpRc VmExecOpLoadMap(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				 * is ABSENT (auto-index) is a NULL slot here, not a null key, so the
 				 * MEMOBJ_NULL check below is what tells the two apart. */
 					if( (pEntry->iFlags & MEMOBJ_AUX_NOKEY) == 0 ){
+						/* An object/array literal key is php's TypeError, a resource one
+						 * warns and becomes its id — same rules as a subscript. */
+						SyBlob sTypeMsg;
+						if( VmOffsetTypeRejected(&(*pVm),pEntry,0,&sTypeMsg) ){
+							VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sTypeMsg));
+						}else{
+							VmOffsetResourceWarn(&(*pVm),pEntry);
+						}
 						/* php only DEPRECATES a lossy-float / null literal key; PHL rejects it. */
 						int bNull = (pEntry->iFlags & MEMOBJ_NULL) != 0;
 						int bLossyFloat = (pEntry->iFlags & MEMOBJ_REAL) != 0
