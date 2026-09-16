@@ -1,54 +1,44 @@
 --CREDITS--
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
 --TEST--
-Type casting with resource values
+Type casting of resource values (was a bare skip freezing PHL's old behavior: every resource cast to int 1 and stringified to ResourceID_0x<pointer>)
 --FILE--
 <?php
-// Test type casting of resource values to various types
-
-// Create a resource (file handle)
 $fp = fopen(__FILE__, 'r');
-if (!$fp) {
-    echo "Failed to open file\n";
-    exit(1);
-}
+$id = get_resource_id($fp);
 
-// Test casting resource to int
-$int_val = (int)$fp;
-echo "resource to int: " . ($int_val === 1 ? 'ok' : 'fail') . "\n";
+// php casts a resource to its ID, not to a truthy 1.
+echo "int:      ", var_export((int)$fp === $id, true), "\n";
+echo "float:    ", var_export((float)$fp === (float)$id, true), "\n";
+echo "bool:     ", var_export((bool)$fp === true, true), "\n";
+echo "string:   ", var_export((string)$fp === "Resource id #$id", true), "\n";
+echo "interp:   ", var_export("$fp" === "Resource id #$id", true), "\n";
+echo "array:    ", var_export(is_array((array)$fp), true), "\n";
+echo "object:   ", var_export(is_object((object)$fp), true), "\n";
 
-// Test casting resource to float
-$float_val = (float)$fp;
-echo "resource to float: " . ($float_val == 1.0 ? 'ok' : 'fail') . "\n";
+// Two live resources are DISTINCT: they used to compare equal, both casting to 1.
+$fp2 = fopen(__FILE__, 'r');
+echo "distinct: ", var_export($fp == $fp2, true), "\n";
+echo "self:     ", var_export($fp == $fp, true), "\n";
 
-// Test casting resource to bool
-$bool_val = (bool)$fp;
-echo "resource to bool: " . ($bool_val === true ? 'ok' : 'fail') . "\n";
-
-// Test casting resource to string
-$str_val = (string)$fp;
-echo "resource to string contains ResourceID_: " . (strpos($str_val, 'ResourceID_') === 0 ? 'ok' : 'fail') . "\n";
-
-// Test casting resource to array
-$arr_val = (array)$fp;
-echo "resource to array: " . (is_array($arr_val) ? 'ok' : 'fail') . "\n";
-
-// Test casting resource to object
-$obj_val = (object)$fp;
-echo "resource to object: " . (is_object($obj_val) ? 'ok' : 'fail') . "\n";
-
+echo "type:     ", gettype($fp), " / ", get_resource_type($fp), "\n";
 fclose($fp);
+fclose($fp2);
+echo "closed:   ", gettype($fp), "\n";
 ?>
 --EXPECT--
-resource to int: ok
-resource to float: ok
-resource to bool: ok
-resource to string contains ResourceID_: ok
-resource to array: ok
-resource to object: ok
+int:      true
+float:    true
+bool:     true
+string:   true
+interp:   true
+array:    true
+object:   true
+distinct: false
+self:     true
+type:     resource / stream
+closed:   resource (closed)
 --CLEAN--
 <?php
-unset($fp, $int_val, $float_val, $bool_val, $str_val, $arr_val, $obj_val);
+unset($fp, $fp2, $id);

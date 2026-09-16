@@ -414,6 +414,21 @@ PH7_PRIVATE int vm_builtin_get_resource_type(ph7_context *pCtx,int nArg,ph7_valu
 	return SXRET_OK;
 }
 /*
+ * int get_resource_id(resource $resource)
+ *  Returns the integer id of a resource — the same number (int) casts to and
+ *  "Resource id #N" renders (php 8.0).
+ */
+PH7_PRIVATE int vm_builtin_get_resource_id(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"get_resource_id(): Argument #1 ($resource) must be of type resource, %s given",
+			nArg < 1 ? "none" : ph7_type_name(apArg[0]));
+	}
+	ph7_result_int64(pCtx,(ph7_int64)PH7_VmResourceId(pCtx->pVm,apArg[0]->x.pOther));
+	return SXRET_OK;
+}
+/*
  * void var_dump(expression,....)
  *   var_dump � Dumps information about a variable
  * Parameters

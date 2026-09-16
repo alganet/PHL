@@ -1661,6 +1661,8 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyHashInit(&pVm->hAutoloadActive,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hWeakCell,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hTypedSlot,&pVm->sAllocator,0,0);
+	SyHashInit(&pVm->hResourceId,&pVm->sAllocator,0,0);
+	pVm->nResourceIdNext = 1;
 	SySetInit(&pVm->aException,&pVm->sAllocator,sizeof(ph7_exception *));
 	SySetInit(&pVm->aMagicGuard,&pVm->sAllocator,sizeof(VmMagicGuard));
 	pVm->pMagicSetThis = 0;
@@ -2433,6 +2435,62 @@ static void VmResetTypedSlots(ph7_vm *pVm)
 	SyHashInit(&pVm->hTypedSlot,&pVm->sAllocator,0,0);
 }
 /*
+ * php-visible id of a resource. PHL's resource value is a bare void*, so the
+ * mapping lives in a per-VM registry: the first time a pointer is asked about it
+ * takes the next id, and every later lookup returns the same one. That is what
+ * makes (int)$res the id php prints, and what keeps two live resources from
+ * comparing equal — both used to cast to 1.
+ *
+ * The record's own `pRes` field is the hash key: SyHash stores the key POINTER
+ * (it does not copy), so the key has to outlive the entry. Returns 0 when the
+ * registry cannot grow, which renders as php's "closed/unknown" id rather than
+ * aborting a cast.
+ */
+PH7_PRIVATE sxu32 PH7_VmResourceId(ph7_vm *pVm,void *pRes)
+{
+	SyHashEntry *pEntry;
+	phl_res_id *pRec;
+	if( pVm == 0 || pRes == 0 ){
+		return 0;
+	}
+	pEntry = SyHashGet(&pVm->hResourceId,(const void *)&pRes,sizeof(void *));
+	if( pEntry ){
+		return ((phl_res_id *)pEntry->pUserData)->nId;
+	}
+	pRec = (phl_res_id *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(phl_res_id));
+	if( pRec == 0 ){
+		return 0;
+	}
+	pRec->pRes = pRes;
+	pRec->nId = pVm->nResourceIdNext++;
+	if( SyHashInsert(&pVm->hResourceId,(const void *)&pRec->pRes,sizeof(void *),pRec) != SXRET_OK ){
+		SyMemBackendPoolFree(&pVm->sAllocator,pRec);
+		return 0;
+	}
+	return pRec->nId;
+}
+/*
+ * Drop the resource-id registry, freeing each phl_res_id record. Ids restart at
+ * 1 for the next run, matching a fresh php process.
+ */
+static void VmResetResourceIds(ph7_vm *pVm)
+{
+	SyHashEntry *pEntry;
+	if( SyHashTotalEntry(&pVm->hResourceId) == 0 ){
+		pVm->nResourceIdNext = 1;
+		return;
+	}
+	SyHashResetLoopCursor(&pVm->hResourceId);
+	while( (pEntry = SyHashGetNextEntry(&pVm->hResourceId)) != 0 ){
+		if( pEntry->pUserData ){
+			SyMemBackendPoolFree(&pVm->sAllocator,pEntry->pUserData);
+		}
+	}
+	SyHashRelease(&pVm->hResourceId);
+	SyHashInit(&pVm->hResourceId,&pVm->sAllocator,0,0);
+	pVm->nResourceIdNext = 1;
+}
+/*
  * Reset a Virtual Machine to its post-compile (PH7_VmMakeReady) state so the
  * same compiled program can be executed again (compile-once / execute-many).
  *
@@ -2493,6 +2551,9 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	/* (4) Free the class static typed-property slots (instance ones are already
 	 * gone — object release in step 3 removes each instance's own slot). */
 	VmResetTypedSlots(&(*pVm));
+	/* (4b) Drop the resource-id registry: the resources it named are gone with
+	 * the object pool, and a re-executed program should number from 1 again. */
+	VmResetResourceIds(&(*pVm));
 	/* (5) Unwind any active frames back to none. */
 	while( pVm->pFrame ){
 		VmLeaveFrame(&(*pVm));
@@ -4900,6 +4961,7 @@ static const ph7_builtin_func aVmFunc[] = {
 	{ "get_defined_vars",vm_builtin_get_defined_vars},
 	{ "gettype",   vm_builtin_gettype              },
 	{ "get_resource_type", vm_builtin_get_resource_type},
+	{ "get_resource_id", vm_builtin_get_resource_id},
 	{ "isset",     vm_builtin_isset                },
 	{ "unset",     vm_builtin_unset                },
 	{ "var_dump",  vm_builtin_var_dump             },

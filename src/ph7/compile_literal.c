@@ -720,6 +720,7 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen,int bHeredoc)
 	const char *zIn,*zCur,*zEnd;
 	ph7_value *pObj = 0;
 	sxi32 iCons;
+	sxi32 nInterp;   /* how many of iCons came from an interpolated EXPRESSION */
 	sxi32 rc;
 	/* Delimit the string */
 	zIn  = pStr->zString;
@@ -735,6 +736,7 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen,int bHeredoc)
 	zCur = 0;
 	/* Compile the node */
 	iCons = 0;
+	nInterp = 0;
 	for(;;){
 		zCur = zIn;
 		while( zIn < zEnd && zIn[0] != '\\'  ){
@@ -947,6 +949,7 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen,int bHeredoc)
 			}
 			if( rc != SXERR_EMPTY ){
 				++iCons;
+				++nInterp;
 			}
 			if( zIn < zEnd ){
 				/* Jump the trailing curly */
@@ -1064,6 +1067,7 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen,int bHeredoc)
 						}
 						if( rc != SXERR_EMPTY ){
 							++iCons;
+							++nInterp;
 						}
 						pObj = 0;
 						continue;
@@ -1089,6 +1093,7 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen,int bHeredoc)
 			}
 			if( rc != SXERR_EMPTY ){
 				++iCons;
+				++nInterp;
 			}
 		}
 		/* Invalidate the previously used constant */
@@ -1097,6 +1102,13 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen,int bHeredoc)
 	if( iCons > 1 ){
 		/* Concatenate all compiled constants */
 		PH7_VmEmitInstr(pGen->pVm,PH7_OP_CAT,iCons,0,0,0);
+	}else if( iCons == 1 && nInterp == 1 ){
+		/* A string that is nothing but one interpolation ("$x") still has to
+		 * PRODUCE A STRING. With no CAT to force the conversion the operand was
+		 * left on the stack untouched, so `$s = "$x"` handed back $x's own type:
+		 * "$arr" stayed an array (and skipped php's "Array to string conversion"
+		 * warning), "$int" stayed an int, "$res" stayed a resource. */
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_CVT_STR,0,0,0,0);
 	}
 	/* Node successfully compiled */
 	return SXRET_OK;

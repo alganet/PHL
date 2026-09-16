@@ -124,13 +124,19 @@ TEST_INTEGRATION_PHP_CMD = "$(PHL_BIN)" "tests/phpt.php" \
 	--target-dir tests/ph7/002-integration \
 	--output-format dot
 
-# Stress / fault-injection tests (opt-in; NOT part of `make test`). These run in
+# Stress / fault-injection tests (opt-in; NOT part of `make test`).
+# NOTE: PHL_MAX_INPUT caps EVERY input this command loads -- including
+# tests/phpt.php itself, which the parent PHL reads before any test runs. So the
+# cap must stay comfortably above the runner's own size (it crossed 32768 when
+# the --ARGS--/--STDIN--/--EXPECTREGEX-- sections landed, which broke this whole
+# target). Raising it means re-padding tests/ph7/003-stress/lex/
+# tokenize_input_limit.phpt, whose body must still exceed the cap. These run in
 # child-process mode under a small per-allocation cap (PHL_MAX_ALLOC) so a
 # deliberately oversized allocation deterministically triggers the out-of-memory
 # paths. The cap is per-request (not cumulative), so the runner and the small
 # tests run normally while only the oversized allocations fail. Long-term these
 # migrate to per-test `--INI-- memory_limit=...` once php.ini lands.
-TEST_STRESS_CMD = PHL_MAX_ALLOC=1048576 PHL_MAX_INPUT=32768 "$(PHL_BIN)" "tests/phpt.php" \
+TEST_STRESS_CMD = PHL_MAX_ALLOC=1048576 PHL_MAX_INPUT=65536 "$(PHL_BIN)" "tests/phpt.php" \
 	--target-executable "$(PHL_BIN)" \
 	--target-dir tests/ph7/003-stress \
 	--output-format dot

@@ -150,6 +150,7 @@ static const struct VmBuiltinArity {
 	{ "tanh",                      1, 0 },
 	/* Type/var family */
 	{ "floatval",                  1, 0 },
+	{ "get_resource_id",           1, 0 },
 	{ "get_resource_type",         1, 0 },
 	{ "gettype",                   1, 0 },
 	{ "intval",                    1, 1 },
@@ -537,6 +538,7 @@ static const struct VmBuiltinSig {
 	{ "get_included_files", "", "array" },
 	{ "get_object_vars", "object $object", "array" },
 	{ "get_parent_class", "object|string $object_or_class = ?", "string|false" },
+	{ "get_resource_id", "$resource", "int" },
 	{ "get_resource_type", "$resource", "string" },
 	{ "getcwd", "", "string|false" },
 	{ "getdate", "?int $timestamp = NULL", "array" },
